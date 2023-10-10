@@ -1,0 +1,6 @@
+{
+  "ocaml.sandbox": {
+    "kind": "global"
+  },
+  "ocaml.terminal.shell.osx": ""
+}
