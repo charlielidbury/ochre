@@ -1,7 +1,9 @@
 open Base;;
+
 (* open Core.Std;; *)
 
 (* export MACOSX_DEPLOYMENT_TARGET=11.3 *)
+(* dune exec ocaml --profile release *)
 
 (* ---- AST ---- *)
 
@@ -13,7 +15,7 @@ type primitive
 
 (* Primitive for integer addition *)
 let pAdd = PFunc (fun l -> PFunc (fun r -> match (l, r) with
-  | (PInt l, PInt r) -> PInt (l + r)
+  |  (PInt l, PInt    r) -> PInt (l + r)
   | _ -> failwith "Type error"))
 
 (* Primitive for ; *)
@@ -113,3 +115,4 @@ let example_program = App(
   ),
   Prim(PInt 6)
 )
+
