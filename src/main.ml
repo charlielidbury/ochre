@@ -6,70 +6,97 @@ open Base
 
 let f a b = a + b
 
-type primitive =
-  | PInt of int
-  (* | PBool of bool *)
-  | PUnit
-  | PFunc of (primitive -> primitive)
+module Prim = struct
+  type t =
+    | PInt of int
+    (* | PBool of bool *)
+    | PUnit
+    | PFunc of (t -> t)
 
-(* Primitive for integer addition *)
-let pAdd =
-  PFunc
-    (fun l ->
-      PFunc
-        (fun r ->
-          match (l, r) with
-          | PInt l, PInt r -> PInt (l + r)
-          | _ -> failwith "Type error"))
+  let equal lhs rhs =
+    match (lhs, rhs) with
+    | PInt l, PInt r -> l = r
+    (* | PBool l, PBool r -> l = r *)
+    | PUnit, PUnit -> true
+    | _ -> false
 
-(* Primitive for ; *)
-let pSeq = PFunc (fun _ -> PFunc (fun r -> r))
+  let to_string expr =
+    match expr with
+    | PInt i -> Int.to_string i
+    (* | PBool b -> Bool.to_string b *)
+    | PUnit -> "()"
+    | PFunc _ -> "<function>"
 
-(* let pNot = PFunc (fun b -> match b with
-   | PBool b -> PBool (not b)
-   | _ -> failwith "Type error") *)
+  (* let pNot = PFunc (fun b -> match b with
+     | PBool b -> PBool (not b)
+     | _ -> failwith "Type error") *)
+end
 
-type expr =
-  | Declare of expr * expr
-  | Assign of expr * expr
-  | Ident of string
-  (* Primitives *)
-  | Prim of primitive
-  (* Functions *)
-  | App of expr * expr
-  | Lam of expr * expr
-(* Variables *)
-(* Mutability *)
-(* | Mut of expr *)
-(* | Ref of expr *)
+module Expr = struct
+  type t =
+    | Declare of t * t
+    | Assign of t * t
+    | Ident of string
+    (* Primitives *)
+    | EPrim of Prim.t
+    (* Functions *)
+    | App of t * t
+    | Lam of t * t
 
-let ( <+> ) x y = App (App (Prim pSeq, x), y)
-let ( <=> ) x y = Declare (x, y)
-let ( <:=> ) x y = Assign (x, y)
+  (* Variables *)
+  (* Mutability *)
+  (* | Mut of t *)
+  (* | Ref of t *)
+
+  (* Primitive for integer addition *)
+  let pAdd =
+    EPrim
+      (PFunc
+         (fun l ->
+           PFunc
+             (fun r ->
+               match (l, r) with
+               | PInt l, PInt r -> PInt (l + r)
+               | _ -> failwith "Type error")))
+
+  (* Primitive for ; *)
+  let pSeq = EPrim (PFunc (fun _ -> PFunc (fun r -> r)))
+  let pInt n = EPrim (PInt n)
+
+  (* Useful constructors. *)
+  let ( <+> ) x y = App (App (pSeq, x), y)
+  let ( <=> ) x y = Declare (x, y)
+  let ( <:=> ) x y = Assign (x, y)
+  let ( <$> ) x y = App (x, y)
+end
 
 (* ---- EVALUATION ---- *)
 
 module Scope = struct
-  type t = Scope of (string, primitive, String.comparator_witness) Map.t
+  type t = Scope of (string, Prim.t, String.comparator_witness) Map.t
 
   let empty = Scope (Map.empty (module String))
+  let equal (Scope lhs) (Scope rhs) = Map.equal Prim.equal lhs rhs
 
   let add (Scope vars) var value : t =
     match Map.add vars ~key:var ~data:value with
-    | Map.(`Ok m) ->
-        Stdio.print_endline "hello world";
-        Scope m
+    | Map.(`Ok m) -> Scope m
     | Map.(`Duplicate) -> failwith "already in scope"
 
   let get (Scope vars) var =
     match Map.find vars var with
     | Some value -> value
     | None -> failwith "variable not found in scope"
+
+  let to_string (Scope vars) =
+    "{ "
+    ^ (Map.to_alist vars
+      |> List.map ~f:(fun (k, v) -> k ^ ": " ^ Prim.to_string v)
+      |> String.concat ~sep:"\n")
+    ^ " }"
 end
 
-let empty = Map.empty (module String)
-
-let rec eval (exp : expr) (scope : Scope.t) : primitive * Scope.t =
+let rec eval (exp : Expr.t) (scope : Scope.t) : Prim.t * Scope.t =
   match exp with
   (* x = 5 *)
   (* x := 5 *)
@@ -78,7 +105,6 @@ let rec eval (exp : expr) (scope : Scope.t) : primitive * Scope.t =
       let value, _ = eval rhs scope in
 
       (* Put the result into current scope *)
-      Stdio.print_string "";
       let scope = Scope.add scope var value in
 
       (* Declarations evaluate to () *)
@@ -90,19 +116,19 @@ let rec eval (exp : expr) (scope : Scope.t) : primitive * Scope.t =
   (* 5 *)
   (* () *)
   (* + *)
-  | Prim prim ->
+  | EPrim prim ->
       (* Primitives are already evaluated *)
       (prim, scope)
   | App (func, arg) ->
       (* Evaluate function *)
-      let f =
+      let f, scope =
         match eval func scope with
-        | PFunc f, _ -> f
+        | PFunc f, s -> (f, s)
         | _ -> failwith "argument applied to non-function"
       in
 
       (* Evaluate arguement *)
-      let arg_val, _ = eval arg scope in
+      let arg_val, scope = eval arg scope in
 
       (* Apply *)
       let result = f arg_val in
@@ -125,4 +151,4 @@ let rec eval (exp : expr) (scope : Scope.t) : primitive * Scope.t =
 (* ---- PROGRAMS ---- *)
 
 (* 5; 6 *)
-let example_program = App (App (Prim pSeq, Prim (PInt 5)), Prim (PInt 6))
+let example_program = Expr.App (App (Expr.pSeq, Expr.pInt 5), EPrim (PInt 6))

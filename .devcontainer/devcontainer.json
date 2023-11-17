@@ -2,5 +2,13 @@
   "name": "Ocaml",
   "dockerFile": "Dockerfile",
   "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
-  "remoteUser": "opam"
+"remoteUser": "opam",
+"customizations": {
+	"vscode": {
+		"extensions": [
+			"GitHub.copilot",
+			"ocamllabs.ocaml-platform"
+		]
+	}
+}
 }
