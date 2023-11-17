@@ -2,10 +2,9 @@ open Base;;
 
 (* open Core.Std;; *)
 
-(* export MACOSX_DEPLOYMENT_TARGET=11.3 *)
-(* dune exec ocaml --profile release *)
-
 (* ---- AST ---- *)
+
+let f a b = a + b
 
 type primitive
   = PInt of int
@@ -38,17 +37,27 @@ type expr
   (* Mutability *)
   (* | Mut of expr *)
   (* | Ref of expr *)
-  
+
+let ( <+> ) x y = App(App(Prim pSeq, x), y)
+let ( <=> ) x y = Declare(x, y)
+let ( <:=> ) x y = Assign(x, y)
+
 (* ---- EVALUATION ---- *)
 
 module Scope = struct
   type t = Scope of (string, primitive, String.comparator_witness) Map.t
 
+  let empty = Scope (Map.empty (module String))
+
   let add (Scope vars) var value : t = match Map.add vars ~key:var ~data:value with
-    | Map.(`Ok m) -> Scope m
+    | Map.(`Ok m) ->
+      Stdio.print_endline "hello world";
+      Scope m
     | Map.(`Duplicate) -> failwith "already in scope"
 
-  let get scope var = failwith "unimplemented"
+  let get (Scope vars) var = match Map.find vars var with
+    | Some value -> value
+    | None -> failwith "variable not found in scope"
 end
 
 let empty = Map.empty (module String);;
@@ -61,6 +70,7 @@ let rec eval (exp : expr) (scope : Scope.t) : primitive * Scope.t = match exp wi
     let (value, _) = eval rhs scope in
 
     (* Put the result into current scope *)
+    Stdio.print_string "";
     let scope = Scope.add scope var value in
 
     (* Declarations evaluate to () *)
@@ -68,7 +78,7 @@ let rec eval (exp : expr) (scope : Scope.t) : primitive * Scope.t = match exp wi
   (* x *)
   | Ident(var) ->
     (* Lookup var in current scope *)
-    Scope.get scope var
+    (Scope.get scope var, scope)
   (* 5 *)
   (* () *)
   (* + *)
@@ -115,4 +125,3 @@ let example_program = App(
   ),
   Prim(PInt 6)
 )
-
