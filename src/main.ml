@@ -73,25 +73,32 @@ end
 (* ---- EVALUATION ---- *)
 
 module Scope = struct
-  type t = Scope of (string, Prim.t, String.comparator_witness) Map.t
+  type t = Scope of (string, Prim.t ref, String.comparator_witness) Map.t
 
   let empty = Scope (Map.empty (module String))
-  let equal (Scope lhs) (Scope rhs) = Map.equal Prim.equal lhs rhs
+
+  let equal (Scope lhs) (Scope rhs) =
+    Map.equal (fun l r -> Prim.equal !l !r) lhs rhs
 
   let add (Scope vars) var value : t =
-    match Map.add vars ~key:var ~data:value with
+    match Map.add vars ~key:var ~data:(ref value) with
     | Map.(`Ok m) -> Scope m
     | Map.(`Duplicate) -> failwith "already in scope"
 
   let get (Scope vars) var =
     match Map.find vars var with
-    | Some value -> value
+    | Some value -> !value
+    | None -> failwith "variable not found in scope"
+
+  let update (Scope vars) var value =
+    match Map.find vars var with
+    | Some entry -> entry := value
     | None -> failwith "variable not found in scope"
 
   let to_string (Scope vars) =
     "{ "
     ^ (Map.to_alist vars
-      |> List.map ~f:(fun (k, v) -> k ^ ": " ^ Prim.to_string v)
+      |> List.map ~f:(fun (k, v) -> k ^ ": " ^ Prim.to_string !v)
       |> String.concat ~sep:"\n")
     ^ " }"
 end
@@ -99,13 +106,22 @@ end
 let rec eval (exp : Expr.t) (scope : Scope.t) : Prim.t * Scope.t =
   match exp with
   (* x = 5 *)
-  (* x := 5 *)
-  | Declare (Ident var, rhs) | Assign (Ident var, rhs) ->
+  | Declare (Ident var, rhs) ->
       (* Evaluate rhs *)
-      let value, _ = eval rhs scope in
+      let value, scope = eval rhs scope in
 
       (* Put the result into current scope *)
       let scope = Scope.add scope var value in
+
+      (* Declarations evaluate to () *)
+      (PUnit, scope)
+  (* x := 5 *)
+  | Assign (Ident var, rhs) ->
+      (* Evaluate rhs *)
+      let value, scope = eval rhs scope in
+
+      (* Mutate the entry in the scope *)
+      Scope.update scope var value;
 
       (* Declarations evaluate to () *)
       (PUnit, scope)

@@ -42,4 +42,32 @@ let _ =
           let result, _end_state = eval program Scope.empty in
 
           match result with PInt res -> res == x + y | _ -> false);
+      QCheck.Test.make ~name:"declarations dont mutate scope" ~count:100
+        QCheck.(int)
+        (fun x ->
+          let scope_before = Scope.empty in
+
+          let program = Expr.(Ident "x" <=> pInt x) in
+
+          let result, scope_after = eval program scope_before in
+
+          match result with
+          | PUnit ->
+              (* Must have added x to scope *)
+              Scope.equal scope_after (Scope.add Scope.empty "x" (PInt x))
+              (* Must not have mutated scope in place *)
+              && Scope.equal scope_before Scope.empty
+          | _ -> false);
+      QCheck.Test.make ~name:"assignments do mutate scope" ~count:100
+        QCheck.(int)
+        (fun x ->
+          let scope_before = Scope.add Scope.empty "x" Prim.PUnit in
+
+          let program = Expr.(Ident "x" <:=> pInt x) in
+
+          let result, _scope_after = eval program scope_before in
+
+          match (result, Scope.get scope_before "x") with
+          | PUnit, PInt xx -> xx == x
+          | _ -> false);
     ]
