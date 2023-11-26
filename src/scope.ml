@@ -6,7 +6,22 @@ let init =
   Scope
     (Map.of_alist_exn
        (module String)
-       [ (";", ref (Ast.Prim.PFunc (fun _ -> PFunc (fun r -> r)))) ])
+       [
+         (";", ref (Ast.Prim.PFunc (fun _ -> PFunc (fun r -> r))));
+         ( "+",
+           ref
+             (Ast.Prim.PFunc
+                (fun l ->
+                  PFunc
+                    (fun r ->
+                      match (l, r) with
+                      | Ast.(PInt l, PInt r) -> PInt (l + r)
+                      | _ ->
+                          failwith
+                            (Printf.sprintf "type error: %s + %s"
+                               (Ast.Prim.to_string l) (Ast.Prim.to_string r)))))
+         );
+       ])
 
 let equal (Scope lhs) (Scope rhs) =
   Map.equal (fun l r -> Ast.Prim.equal !l !r) lhs rhs
@@ -19,12 +34,12 @@ let add (Scope vars) var value : t =
 let get (Scope vars) var =
   match Map.find vars var with
   | Some value -> !value
-  | None -> failwith "variable not found in scope"
+  | None -> failwith ("(get) variable not found in scope: " ^ var)
 
 let update (Scope vars) var value =
   match Map.find vars var with
   | Some entry -> entry := value
-  | None -> failwith "variable not found in scope"
+  | None -> failwith ("(update) variable not found in scope: " ^ var)
 
 let to_string (Scope vars) =
   "{ "
