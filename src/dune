@@ -1,12 +1,32 @@
 (library
- (name main)
- (modules main)
- (libraries base stdio))
+ (name parser_)
+ (modules parser_)
+ (libraries base stdio angstrom ast))
+
+(test
+ (name parser_test)
+ (modules parser_test)
+ (libraries qcheck ast parser_))
+
+(library
+ (name ast)
+ (modules ast)
+ (libraries base))
+
+(library
+ (name scope)
+ (modules scope)
+ (libraries base ast))
+
+(library
+ (name eval)
+ (modules eval)
+ (libraries base ast scope parser_))
 
 (test
  (name test)
  (modules test)
- (libraries main qcheck))
+ (libraries qcheck ast scope eval))
 
 (env
  (_
