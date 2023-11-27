@@ -65,6 +65,6 @@ let rec eval (exp : Ast.t) (scope : Scope.t) : Ast.Prim.t * Scope.t =
       (* Evaluates, but discards new scope produced *)
       let result, _ = eval e scope in
       (result, scope)
-  | _ -> failwith "type error"
+  | ast -> failwith ("unevaluatable expression: " ^ Ast.to_string ast)
 
 let run s = fst (eval (Parser_.parse s) Scope.init)
