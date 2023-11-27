@@ -2,25 +2,28 @@ open Base
 
 type t = Scope of (string, Ast.Prim.t ref, String.comparator_witness) Map.t
 
+let binPFun f =
+  Ast.Prim.PFunc
+    (fun l ->
+      Ast.Prim.PFunc
+        (fun r ->
+          match (l, r) with
+          | Ast.(PInt l, PInt r) -> Ast.Prim.PInt (f l r)
+          | _ ->
+              failwith
+                (Printf.sprintf "type error: %s and/or %s not ints"
+                   (Ast.Prim.to_string l) (Ast.Prim.to_string r))))
+
 let init =
   Scope
     (Map.of_alist_exn
        (module String)
        [
          (";", ref (Ast.Prim.PFunc (fun _ -> PFunc (fun r -> r))));
-         ( "+",
-           ref
-             (Ast.Prim.PFunc
-                (fun l ->
-                  PFunc
-                    (fun r ->
-                      match (l, r) with
-                      | Ast.(PInt l, PInt r) -> PInt (l + r)
-                      | _ ->
-                          failwith
-                            (Printf.sprintf "type error: %s + %s"
-                               (Ast.Prim.to_string l) (Ast.Prim.to_string r)))))
-         );
+         ("+", ref (binPFun ( + )));
+         ("-", ref (binPFun ( - )));
+         ("*", ref (binPFun ( * )));
+         ("/", ref (binPFun ( / )));
        ])
 
 let equal (Scope lhs) (Scope rhs) =
