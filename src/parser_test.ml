@@ -48,10 +48,7 @@ let _ =
           in
 
           match Angstrom.parse_string Parser_.expr s ~consume:Prefix with
-          | Result.Ok ast ->
-              (* print_endline ("ast = " ^ Ast.to_string ast);
-                 print_endline ("target_ast = " ^ Ast.to_string target_ast); *)
-              Ast.equal ast target_ast
+          | Result.Ok ast -> Ast.equal ast target_ast
           | Result.Error _ -> false);
       QCheck.Test.make ~name:"mini end to end" ~count:1 QCheck.unit (fun () ->
           let s = "x = 1 + 2; y = x + x; f = a => b => a + b; f x y" in
@@ -70,9 +67,6 @@ let _ =
           in
 
           match Angstrom.parse_string Parser_.expr s ~consume:All with
-          | Result.Ok ast ->
-              print_endline ("ast = " ^ Ast.to_string ast);
-              print_endline ("target_ast = " ^ Ast.to_string target_ast);
-              Ast.equal ast target_ast
+          | Result.Ok ast -> Ast.equal ast target_ast
           | Result.Error e -> failwith e);
     ]

@@ -87,4 +87,28 @@ let _ =
           let result, _end_state = Eval.eval e Scope.init in
 
           match result with PInt res -> res == target_result | _ -> false);
+      QCheck.Test.make ~name:"scope hides declares" ~count:100 QCheck.unit
+        (fun () ->
+          let s = "x = 5; (x = 6); x" in
+
+          let target_result = 5 in
+
+          let e =
+            Result.get_ok (Angstrom.parse_string Parser_.expr s ~consume:Prefix)
+          in
+          let result, _end_state = Eval.eval e Scope.init in
+
+          match result with PInt res -> res == target_result | _ -> false);
+      QCheck.Test.make ~name:"scope doesn't hide assigns" ~count:100 QCheck.unit
+        (fun () ->
+          let s = "x = 5; (x := 6); x" in
+
+          let target_result = 6 in
+
+          let e =
+            Result.get_ok (Angstrom.parse_string Parser_.expr s ~consume:Prefix)
+          in
+          let result, _end_state = Eval.eval e Scope.init in
+
+          match result with PInt res -> res == target_result | _ -> false);
     ]

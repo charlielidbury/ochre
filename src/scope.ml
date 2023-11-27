@@ -27,9 +27,7 @@ let equal (Scope lhs) (Scope rhs) =
   Map.equal (fun l r -> Ast.Prim.equal !l !r) lhs rhs
 
 let add (Scope vars) var value : t =
-  match Map.add vars ~key:var ~data:(ref value) with
-  | Map.(`Ok m) -> Scope m
-  | Map.(`Duplicate) -> failwith "already in scope"
+  Scope (Map.set vars ~key:var ~data:(ref value))
 
 let get (Scope vars) var =
   match Map.find vars var with

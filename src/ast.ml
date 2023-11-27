@@ -35,6 +35,8 @@ type t =
   (* Functions *)
   | App of t * t
   | Lam of t * t
+  (* Makes a new scope (brackets) *)
+  | Scope of t
 
 (* Variables *)
 (* Mutability *)
@@ -65,6 +67,7 @@ let rec to_string e =
       Printf.sprintf "(%s) %s (%s)" (to_string l) op (to_string r)
   | App (l, r) -> Printf.sprintf "%s %s" (to_string l) (to_string r)
   | Lam (l, r) -> Printf.sprintf "%s => (%s)" (to_string l) (to_string r)
+  | Scope e -> Printf.sprintf "{ %s }" (to_string e)
 
 (* Primitive for integer addition *)
 let pAdd =

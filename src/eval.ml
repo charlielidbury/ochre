@@ -61,6 +61,10 @@ let rec eval (exp : Ast.t) (scope : Scope.t) : Ast.Prim.t * Scope.t =
 
             body_val),
         scope )
+  | Scope e ->
+      (* Evaluates, but discards new scope produced *)
+      let result, _ = eval e scope in
+      (result, scope)
   | _ -> failwith "type error"
 
 let run s = fst (eval (Parser_.parse s) Scope.init)

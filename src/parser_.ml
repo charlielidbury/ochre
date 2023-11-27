@@ -2,7 +2,7 @@ open Base
 open Angstrom
 open Ast
 
-let ( let>>= ) x f = x >>= f
+let ( let>>= ) rhs cont = rhs >>= cont
 
 (* PREDICATES *)
 let is_whitespace = function
@@ -82,7 +82,7 @@ let expr =
             (* 523 *)
             (integer >>| fun n -> EPrim (PInt n));
             (* (expr) *)
-            parens expr;
+            (parens expr >>| fun e -> Scope e);
             (* xyz *)
             (text_ident >>| fun x -> Ident x);
           ]
