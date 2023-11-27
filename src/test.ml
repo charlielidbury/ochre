@@ -77,38 +77,12 @@ let _ =
 
           match result with PInt res -> res == x + 1 | _ -> false);
       QCheck.Test.make ~name:"mini end to end" ~count:100 QCheck.unit (fun () ->
-          let s = "x = 1 + 2; y = x + x; f = a => b => a + b; f x y" in
-
-          let target_result = 9 in
-
-          let e =
-            Result.get_ok (Angstrom.parse_string Parser_.expr s ~consume:Prefix)
-          in
-          let result, _end_state = Eval.eval e Scope.init in
-
-          match result with PInt res -> res == target_result | _ -> false);
+          Eval.run "x = 1 + 2; y = x + x; f = a => b => a + b; f x y" = PInt 9);
       QCheck.Test.make ~name:"scope hides declares" ~count:100 QCheck.unit
-        (fun () ->
-          let s = "x = 5; (x = 6); x" in
-
-          let target_result = 5 in
-
-          let e =
-            Result.get_ok (Angstrom.parse_string Parser_.expr s ~consume:Prefix)
-          in
-          let result, _end_state = Eval.eval e Scope.init in
-
-          match result with PInt res -> res == target_result | _ -> false);
+        (fun () -> Eval.run "x = 5; (x = 6); x" = PInt 5);
       QCheck.Test.make ~name:"scope doesn't hide assigns" ~count:100 QCheck.unit
+        (fun () -> Eval.run "x = 5; (x := 6); x" = PInt 6);
+      QCheck.Test.make ~name:"lambda captures scope" ~count:100 QCheck.unit
         (fun () ->
-          let s = "x = 5; (x := 6); x" in
-
-          let target_result = 6 in
-
-          let e =
-            Result.get_ok (Angstrom.parse_string Parser_.expr s ~consume:Prefix)
-          in
-          let result, _end_state = Eval.eval e Scope.init in
-
-          match result with PInt res -> res == target_result | _ -> false);
+          Eval.run "x = 0; f = _ => (x := x + 1); f(); f(); x" = PInt 2);
     ]
