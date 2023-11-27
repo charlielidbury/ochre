@@ -9,7 +9,7 @@ let is_whitespace = function
   | '\x20' | '\x0a' | '\x0d' | '\x09' -> true
   | _ -> false
 
-let is_alpha = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false
+let is_alpha = function 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false
 let is_digit = function '0' .. '9' -> true | _ -> false
 
 let list_to_string e_to_string l =
@@ -82,7 +82,7 @@ let expr =
             (* 523 *)
             (integer >>| fun n -> EPrim (PInt n));
             (* (expr) *)
-            (parens expr >>| fun e -> Scope e);
+            (parens (option (EPrim PUnit) expr) >>| fun e -> Scope e);
             (* xyz *)
             (text_ident >>| fun x -> Ident x);
           ]
