@@ -28,6 +28,11 @@
  (modules test)
  (libraries qcheck ast scope eval))
 
+(library
+ (name analyser)
+ (modules analyser)
+ (libraries eval ast))
+
 (env
  (_
   (flags

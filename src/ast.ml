@@ -1,9 +1,14 @@
 module Prim = struct
   type t =
     | PInt of int
-    (* | PBool of bool *)
     | PUnit
     | PFunc of (t -> t)
+    (* Types *)
+    | PTStar
+    | PTInt
+    | PTUnit
+    (* PPi(t1, fun x -> t2) = (x :: t1) -> t2 *)
+    | PTFunc of t * (t -> t)
 
   (* Is this whole thing just =? *)
   let equal lhs rhs =
@@ -14,12 +19,16 @@ module Prim = struct
     | PFunc l, PFunc r -> l = r
     | _ -> false
 
-  let to_string expr =
+  let rec to_string expr =
     match expr with
     | PInt i -> Int.to_string i
     (* | PBool b -> Bool.to_string b *)
     | PUnit -> "()"
     | PFunc _ -> "<function>"
+    | PTStar -> "*"
+    | PTInt -> "Int"
+    | PTUnit -> "Unit"
+    | PTFunc (t, _) -> Printf.sprintf "(_ :: %s) -> ..." (to_string t)
 
   (* let pNot = PFunc (fun b -> match b with
      | PBool b -> PBool (not b)
@@ -37,6 +46,11 @@ type t =
   | Lam of t * t
   (* Makes a new scope (brackets) *)
   | Scope of t
+  (* Type System *)
+  (* Type annotations *)
+  | Ann of t * t
+  (* Pi(x, t1, t2) = (x :: t1) -> t2 *)
+  | Pi of t * t * t
 
 (* Variables *)
 (* Mutability *)
@@ -68,6 +82,10 @@ let rec to_string e =
   | App (l, r) -> Printf.sprintf "%s %s" (to_string l) (to_string r)
   | Lam (l, r) -> Printf.sprintf "%s => (%s)" (to_string l) (to_string r)
   | Scope e -> Printf.sprintf "{ %s }" (to_string e)
+  | Ann (e, t) -> Printf.sprintf "(%s : %s)" (to_string e) (to_string t)
+  | Pi (x, t1, t2) ->
+      Printf.sprintf "(%s :: %s) -> %s" (to_string x) (to_string t1)
+        (to_string t2)
 
 (* Primitive for integer addition *)
 let pAdd =
