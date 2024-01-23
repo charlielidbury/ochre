@@ -1,0 +1,211 @@
+\documentclass[12pt,twoside]{report}
+
+% Add the necessary package to define the lstlisting environment
+\usepackage{listings}
+
+% Some definitions for the title page
+\newcommand{\reporttitle}{A Type Checker With Support For Mutability And Dependent Types}
+\newcommand{\reportauthor}{Charlie Lidbury}
+\newcommand{\supervisor}{Steffen van Bakel}
+\newcommand{\reporttype}{Interim Report}
+\newcommand{\degreetype}{MEng Computing} 
+
+% Load some definitions and default packages
+\input{includes}
+
+% Load some macros
+\input{notation}
+
+% Load title page
+\begin{document}
+\input{titlepage}
+
+
+% Page numbering etc.
+\pagenumbering{roman}
+\clearpage{\pagestyle{empty}\cleardoublepage}
+\setcounter{page}{1}
+\pagestyle{fancy}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \begin{abstract}
+% Your abstract.
+% \end{abstract}
+
+\cleardoublepage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \section*{Acknowledgments}
+% Comment this out if not needed.
+
+% \clearpage{\pagestyle{empty}\cleardoublepage}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%--- table of contents
+\fancyhead[RE,LO]{\sffamily {Table of Contents}}
+\tableofcontents 
+
+
+% \clearpage{\pagestyle{empty}\cleardoublepage}
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\fancyhead[LE,RO]{\slshape \rightmark}
+\fancyhead[LO,RE]{\slshape \leftmark}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Introduction}
+This research hopes to develop a type-checker that is capable of type-checking languages that support both mutation and a kind of type called dependent types.
+
+Dependent types are covered properly in the background section, but for now, it's enough to know they're a feature that allows you to check even more properties than just type safety at compile time. For instance, instead of just being able to say a variable $x$ is an integer, you can say it's an \textit{even} integer, and reject programs like $x := 5$ at compile time, instead of waiting for them to go wrong at runtime.
+
+This type-checker will support mutation, which is when a variable's value is changed. For instance, when a variable is declared with a value like $x = 2$, then later given a new value like $x := 5$. The most popular languages all support mutation [cite], it's somewhat the (industry) default. Some languages choose to be \textit{immutable} however, which means they do not support mutation. These include Haskell, and almost all languages with dependent types like Agda, Idris, and Coq.
+
+This type-checker is being built to hopefully be used for a larger, more useful language in the future, called Ochre. Ochre which will have both the speed of \textit{systems languages} like C and Rust and the ability to reason about runtime behaviour at compile time of \textit{theorem provers} like Agda and Coq. Exactly what systems languages and theorem provers are is discussed in Chapter \ref{background}.
+
+For now, I plan on presenting this type-checker in the form of an implementation; however, there is a good argument for focusing more on the theory behind this type-checker, for instance by presenting a set of typing rules or an abstract algorithm. Whether an implementation-heavy or theory-heavy approach is better is an open, and very important question, which is discussed in [ref].
+
+\section{Motivation}
+The main contribution of this research will be progress towards making a language that supports both mutability and dependent types, so the motivation behind this research will be the motivation behind these two features, as well as their combination.
+
+This section refers to technical concepts that haven't been explained yet, such as dependent types. The reader is advised to refer to Chapter \ref*{background} if they find concepts being referenced that they do not understand.
+
+\subsection{Mutation}
+This section argues why one would want mutation in a programming language.
+
+\subsubsection{Performance}
+Some data structures and operations, such as hash maps and their $O(1)$ access/modification, need to modify data in place to be efficiently implemented. Immutable languages like Haskell get around this by performing these mutable operations via unsafe escape hatches and then wrapping those in monads to sequence the immutable operations. However, this often makes mutable code harder to maintain and harder for beginners to understand. For instance, to operate on two hash maps at the same time, you would have to be operating within multiple monads simultaneously, which involves monad transformers or effect types, a much more advanced skillset than what would be required to do the same in Python.
+
+This has widespread effects on the data structures programmers use, and how they structure their programs. Often programmers in immutable languages will simply switch to data structures that don't perform as well but are easier to use in a pure-functional context, like tree-based maps and cons lists instead of hash-maps and vectors.
+
+The performance of explicit mutation can also be easier to reason about. For instance, the Rust code which increments every value in a list of integers doesn't perform any allocations: \verb|for x in xs.iter_mut() { x += 1 }|; whereas the Haskell equivalent looks like it allocates a whole new list, and relies on compiler optimizations to be efficient: \verb|map (+1) xs|.
+
+\subsubsection{Usability}
+Some algorithms are best thought of in terms of mutable operations, and new programmers especially tend to write stuff mutably. By embracing this in the language design, we can come to the user instead of making the user come to us.
+
+Since the CPU is natively works on mutable operations, if you want control over what the CPU does, which you do if you want to extract all the performance you can from it, you want the language to have graceful support for mutation.
+
+\subsubsection{The Immutability Argument}
+Proponents of immutability argue immutability helps you reason about your program; since there are no side effects of function calls, you cannot be tripped up by side effects you didn't see coming.
+
+I think this correctly identifies that aliased mutation is bad, but goes too far by removing all mutation. In languages like Rust, only one \textit{mutable} reference can exist to any given memory location, which is needed to write to that memory. This gives you most of the benefits of mutation while avoiding the uncontrolled side effects.
+
+\subsubsection{Popularity}
+The majority is often wrong, but it's a good sign if significant proportions of the industry agree on something. In the last quarter of 2023, at least 97.24\% of all committed code was written in a language with mutation [cite: GitHut]. At the very least this shows that people like languages with mutability, even if they are wrong to do so.
+
+\subsection{Dependent Types}
+This section argues why one would want dependent types in a programming language.
+
+\subsubsection{Formal Verification}
+Dependent types are one of the ways to mechanize logical reasoning, which allows you to reason about the correctness of your programs. For instance, a program that sorts lists should have (amongst other things) the property that it always outputs a list with ascending items. In a language with dependent types, you can make the type of a function express the fact that not only will it return a list of integers, but that it will be a sorted list of integers.
+
+The goal of Ochre, the language this research is done in the name of, is to enable formal verification of low-level systems code. There are other ways to do formal verification, but this is a popular and natural one.
+
+\subsubsection{Usability}
+Dependent types are a notoriously difficult feature to learn and reason about, and their ergonomics are underexplored due to them only being used in very niche, academic languages. However, I think if you're not using them for their extra power, they can be just as ergonomic as typical type systems. In this sense, if the language is designed correctly, you only pay for what you use.
+
+\subsection{Mutation + Dependent Types}
+This section explains why mutability and dependent types combine to form more than the sum of their parts.
+
+If you use the mutability to make the language high performance, you can use mutability and dependent types to do formal verification of high performance code. This is a common combination of requirements because they both occur when software is extremely widespread and has very high budget.
+
+\subsection{This Particular Method}
+This section explains what advantages this particular method has over other combinations of mutability and dependent types, such as ATS, Magmide, and Low*.
+
+This type checker allows the types and mutable values to be unusually close. In ATS for instance there are basically two separate languages: a dependently typed compile time language and a mutable run-time language. This creates lots of overhead manually linking the two together. For instance, $x : int(y)$ means an integer $x$ with value $y$. In compile time contexts, you use $y$ to refer to the value, in runtime contexts you use $x$. I hope to remove the need for this distinction.
+
+\section{Why Is This Hard?}
+The problem with having these features together in the same language is that a value that another variable's type depends on can be mutated, which changes the \textit{type} of the other variable. Concretely: if we have a variable $x: T$, and another variable $y: F(x)$ whose type depends on $x$, we can assign a new value to $x$ which in turn changes the type $F(x)$; now $y$ is ill-typed because its type has changed, but not it's value. The programmer could fix this by reassigning $y$ with a new value of type $F(x)$, if this happens before $y$ is ever used, the compiler should be able to identify this interaction as type-safe.
+
+\section{Solution}
+The technique this research presents goes as follows: convert the source code from the programmer, which will contain mutation, into a functionally equivalent (but maybe inefficient) immutable version, which can be dependently type-checked. Once this immutable version has been type-checked, the original mutable version can be executed, with full efficiency granted to it by mutability. \todo{Example of Rust doing this better}.
+
+Because this translation has been shown to be behaviour preserving [cite: Aeneas], we know properties we prove about the immutable version of the programmers code also hold for the mutable version which will be executed.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Background}
+\label{background}
+
+\section{Prerequisite Concepts}
+This section explains the concepts required to understand this research.
+
+\subsection{Mutability}
+Mutability is when the value of a variable can change at runtime. For instance in Rust, \verb|let mut x = 5; x = 6;| first assigns the value $5$ to the variable $x$, then updates it to $6$, which means the value of $x$ depends on the point within the programs execution. This becomes more relevant when you have large objects that get passed around your program, like \verb|let mut v = Vec::new(); v.push(1); v.push(2);| which makes a resizable array on the heap, then pushes $1$ and $2$ to it.
+
+In Rust to make a variable mutable you must annotate its definition with \verb|mut|, but in most languages it is just always enabled, like in C \verb|int x = 5; x = 6;| works.
+
+\subsection{Dependent Types}
+
+
+\subsection{Rust}
+
+\subsubsection{The Borrow Checker}
+
+\subsection{Mutable to Immutable Translation}
+
+
+\section{Existing Approaches}
+With a goal as broad as \textit{make verification of systems code easier}, I'm operating in a relatively mature research space, with significant industry interest. In this section, I lay out the various approaches researchers have taken to get verified low-level code.
+
+\subsection{Systems Theorem Provers}
+There have already been a couple of attempts to make a programming language which is both a systems language and a theorem prover.
+
+\subsubsection{ATS}
+ATS \cite{ATS} is the most mature systems programming language to date, with work dating back to 2002 \cite{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \cite{ATSHome}.
+
+It's more or less an eagerly evaluated functional language like OCaml, but with functions in the standard library that manipulate pointers, like \verb|ptr_get0| and \verb|ptr_set0| which read and write from the heap respectively. To read or write to a location in memory, you must have a token that represents your ownership of the memory, called a \textit{view}.
+
+For instance, the \verb|ptr_get0| function has the type $\{l:addr\} (T @ l | ptr (l)) \rightarrow (T @ l | T)$ where
+\begin{itemize}
+  \item $\{l:addr\}$ means for all memory addresses, $l$
+  \item $|$ is the pair type constructor
+  \item $T @ l$ means ownership of a value of type $T$, at location $l$. Since it is both an input and an output, this function is only \textit{borrowing} ownership.
+  \item $ptr(l)$ means a pointer pointing to location $l$. Since it can only point at location $l$, it is a singleton type. This is used to convert the static compile-time variable $l$ into an assertion about the runtime argument.
+\end{itemize}
+
+
+So overall, this type reads ``for all memory addresses $l$, the function borrows ownership of location $l$, and turns a pointer to location $l$ into a value of type $T$''.
+
+This necessity to manually pass ownership around introduces a lot of administrative overhead to ATS, which is one of the reasons it is a notoriously hard language to learn/use. ATS introduces syntactic shorthand for these things which you can use in simple cases to clean things up, but still requires this proof passing in many cases which would be dealt with automatically by Rust's borrow checker.
+
+Over the years several versions of ATS have been built, with interesting differences in approach. The current version, ATS2 has only a dependent type-checker, whereas the in-progress ATS3 uses both a conventional ML-like type-checker, as well as a dependent type-checker, and approach that the author of ATS himself developed in separate research, from which ATS3 gets its full name, ATS/Xanadu.
+
+\subsubsection{Magmide}
+The goal of Magmide is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
+
+\begin{itemize}
+  \item Logical Magmide is a dependently typed lambda calculus of constructions, where to-be-erased types and proofs are constructed.
+  \item Host Magmide is the imperative language that runs on real machines. (Hansen intends on using Rust for this)
+\end{itemize}
+
+I believe this will mean there are two separate languages co-existing on the front end, much like the separation between type-level objects and value-level objects in a language like Haskell.
+
+\subsection{Extract-to-C}
+These approaches work by expressing your program in some theorem prover like F* or Coq, which outputs some efficient code that can be executed like C source code.
+
+\subsubsection{Low*}
+Low* is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin.
+
+\subsubsection{}
+
+\subsection{Modelling a Conventional Program}
+
+\subsubsection{Rust Belt?}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Project Plan}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Evaluation Plan}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Ethical Issues}
+% Ethics checklist: https://wiki.imperial.ac.uk/display/docteaching/Ethics+Process
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Bibliography
+\bibliographystyle{vancouver}
+\bibliography{references}
+
+
+\end{document}
