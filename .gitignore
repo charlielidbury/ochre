@@ -5,7 +5,6 @@ _build
 *.toc
 *.out
 *.synctex.gz
-*.pdf
 *.gz
 *.bbl
 *.blg
