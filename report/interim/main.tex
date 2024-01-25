@@ -63,8 +63,7 @@ This type-checker will support mutation, which is when a variable's value is cha
 
 This type-checker is being built to hopefully be used for a larger, more useful language in the future, called Ochre. Ochre which will have both the speed of \textit{systems languages} like C and Rust and the ability to reason about runtime behaviour at compile time of \textit{theorem provers} like Agda and Coq. Exactly what systems languages and theorem provers are is discussed in Chapter \ref{background}.
 
-For now, I plan on presenting this type-checker in the form of an implementation; however, there is a good argument for focusing more on the theory behind this type-checker, for instance by presenting a set of typing rules or an abstract algorithm. Whether an implementation-heavy or theory-heavy approach is better is an open, and very important question, which is discussed in [ref].
-
+For now, I plan on presenting this type-checker in the form of an implementation; however, there is a good argument for focusing more on the theory behind this type-checker, for instance by presenting a set of typing rules or an abstract algorithm. Whether an implementation-heavy or theory-heavy approach is better is an open, and very important question.
 
 \subsection{Why Is It Hard?}
 The problem with having these features together in the same language is that a value that another variable's type depends on can be mutated, which changes the \textit{type} of the other variable. Concretely: if we have a variable $x: T$, and another variable $y: F(x)$ whose type depends on $x$, we can assign a new value to $x$ which in turn changes the type $F(x)$; now $y$ is ill-typed because its type has changed, but not it's value. The programmer could fix this by reassigning $y$ with a new value of type $F(x)$, if this happens before $y$ is ever used, the compiler should be able to identify this interaction as type-safe.
@@ -191,12 +190,12 @@ To get around this we could get the functions to give ownership back to us when 
 
 Here, \verb|&x| denotes a \textit{reference} to \verb|x|. At runtime, this is represented as a pointer. There are two different types of references in Rust: immutable references, denoted by \verb|&T|, and mutable references denoted by \verb|&mut T|. For any given value, you can either hold a single mutable reference or $n$ immutable references, but never both at the same time. This is called the aliasing xor (exclusive or) constraint, or AXM for short.
 
-The borrow checker keeps track of when these references exist, to ensure AXM is being upheld. To do this the programmer must annotate references with lifetime annotations, so the compiler has the information of how long the programmer intends each reference to last. Checking these lifetimes overlap in compatible ways is the job of the borrow checker.
+The borrow checker keeps track of when these references exist to ensure AXM is being upheld. To do this the programmer must annotate references with lifetime annotations, so the compiler has the information of how long the programmer intends each reference to last. Checking these lifetimes overlap in compatible ways is the job of the borrow checker.
 
 \subsection{Mutable $\rightarrow$ Immutable Translation}
-To reason about and type-check the mutable code from the programmer, the type checker translates the source code into an immutable version, as outlined in Section \ref{thesolution}.
+To reason about and type-check the mutable code from the programmer, the type checker this research presents translates the source code into an immutable version, as outlined in Section \ref{thesolution}.
 
-The crux of this translation is the observation that a function that mutates a value can be replaced by one that instead returns the new value. I.e. if the programmer writes a function with type \verb|&mut i32 -> ()|, it can be replaced by \verb|i32 -> i32|. Which would then be used like this:
+The crux of this translation is the observation that \textbf{a function that mutates a value can be replaced by one that instead returns the new value}. I.e. if the programmer writes a function with type \verb|&mut i32 -> ()|, it can be replaced by \verb|i32 -> i32|. Which would then be used like this:
 
 \noindent\begin{minipage}{.45\textwidth}
 \begin{lstlisting}[caption=Original]{Name}
@@ -232,16 +231,15 @@ let x = if x > 3 {
 \end{lstlisting}
 \end{minipage}
 
-This quickly gets complicated when you start to use more complicated features like for loops and functions which return mutable references. So much so safe Rust isn't even entirely covered by the two main attempts at this translation Electrolysis \cite{} and Aeneas \cite{aeneas}
+This quickly gets complicated when you start to use more advanced features like for loops and functions which return mutable references \footnote{See \cite{aeneas} Chapter 2 \textit{Aeneas and its Functional Translation, by Example} for explanation of returning mutable references. (Search for ``Returning a Mutable Borrow, and a Backward Function'') for the exact paragraph.}. So much so safe Rust isn't even entirely covered by the two main attempts at this translation Electrolysis \cite{ullrich_khaelectrolysis_2024} and Aeneas \cite{aeneas} \footnote{See Figure 14 of \cite{aeneas} for a table showing roughly which features are covered by Aeneas/Electrolysis, and see https://kha.github.io/electrolysis/ for exact Rust coverage for Electrolysis.}. In this research I don't intend to support any constructs not already supported by either of these prior works, so I can use the translation algorithms they have already developed.
 
 \section{Related Work}
-With a goal as broad as \textit{make verification of systems code easier} OUTDATED, I'm operating in a relatively mature research space, with significant industry interest. In this section, I lay out the various approaches researchers have taken to get verified low-level code.
+Related work comes under two main categories: research which works towards combining mutability with dependent types, and more general work which works towards formal verification of low level code.
 
-\subsection{Systems Theorem Provers}
-There have already been a couple of attempts to make a programming language which is both a systems language and a theorem prover.
+\subsection{Languages with Mutability and Dependent Types}
 
 \subsubsection{ATS}
-ATS \cite{ATS} is the most mature systems programming language to date, with work dating back to 2002 \cite{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \cite{ATSHome}.
+ATS \cite{xi_applied_2017} is the most mature systems programming language to date, with work dating back to 2002 \cite{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \cite{ATSHome}.
 
 It's more or less an eagerly evaluated functional language like OCaml, but with functions in the standard library that manipulate pointers, like \verb|ptr_get0| and \verb|ptr_set0| which read and write from the heap respectively. To read or write to a location in memory, you must have a token that represents your ownership of the memory, called a \textit{view}.
 
@@ -261,7 +259,7 @@ This necessity to manually pass ownership around introduces a lot of administrat
 Over the years several versions of ATS have been built, with interesting differences in approach. The current version, ATS2 has only a dependent type-checker, whereas the in-progress ATS3 uses both a conventional ML-like type-checker, as well as a dependent type-checker, and approach that the author of ATS himself developed in separate research, from which ATS3 gets its full name, ATS/Xanadu.
 
 \subsubsection{Magmide}
-The goal of Magmide is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
+The goal of Magmide \cite{noauthor_magmidemagmide_2024} is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
 
 \begin{itemize}
   \item Logical Magmide is a dependently typed lambda calculus of constructions, where to-be-erased types and proofs are constructed.
@@ -270,29 +268,86 @@ The goal of Magmide is to ``create a programming language capable of making form
 
 I believe this will mean there are two separate languages co-existing on the front end, much like the separation between type-level objects and value-level objects in a language like Haskell.
 
-\subsection{Extract-to-C}
-These approaches work by expressing your program in some theorem prover like F* or Coq, which outputs some efficient code that can be executed like C source code.
+I suspect this will cause a similar situation to what you see in ATS where for each variable you care about you have two versions, a compile-time one and a runtime one, but it's hard to tell because of the lack of code examples.
 
 \subsubsection{Low*}
-Low* is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin.
+Low*\cite{protzenko_low_2017} is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin. It has achieved impressive results, mostly at Microsoft Research, where they have used it to implement a formally verified library of modern cryptographic algorithms\cite{star_2024} and EverParse
 
-\subsubsection{}
+Its set of allowed features is carefully chosen to make this translation possible in the general case, which restricts the ergonomics of the language, it does not support closures, and therefore higher-order programming for example.
 
-\subsection{Modelling a Conventional Program}
+It is very much not a pay-for-what-you-use language, to compile anything you must manually manage things like pushing and popping frames on and off the stack, so even if it can achieve impressive results, it's only useful for teams willing to pay the high price which comes with verifying the entire program. This research aims to be better by not requiring any effort from the programmer in the case that they do not wish to use dependent types for their reasoning power.
 
-\subsubsection{Rust Belt?}
+\subsection{Embedding Mutability in Languages With Dependent Types}
+
+\subsubsection{Ynot: Dependent Types for Imperative Programs}
+Ynot\cite{nanevski_ynot_2008} is an extension of the Coq proof assistant which allows writing, reasoning about, and extracting higher-order, dependently-typed programs with side-effects including mutation. It does so by defining a monad \verb|ST p A q| which performs an effectful operation, with precondition \verb|p|, postcondition \verb|q| and producing a value of type \verb|A|. They also define another monad, \verb|STSep p A q| which is the same as \verb|ST| except it satisfies the frame rule from separation logic: any part of the heap that isn't referenced by the precondition won't be affected by the computation. This means if you prove properties about a \verb|STSep| computation locally, those proofs still apply even when the computation is put into a different context: this is called compositional reasoning. The Ynot paper presents a formally verified mutable hash table.
+
+Ynot is important foundational work in this area which seems to have inspired many of the other related work here, but is itself not up to the task of verifying low-level code for two reasons:
+
+\begin{enumerate}
+  \item It cannot be used to create performant imperative programs because all mutation occurs through a Coq monad which limits the performance to what you can do in Coq, which is a relatively slow language. This is in contrast to Low*\cite{protzenko_low_2017} for example which is extracted to C, and therefore unrestricted when it comes to performance.
+  \item To do any verification at all, you must use heap assertions, instead of reasoning about the values directly. This is sometimes needed, like when you're doing aliased mutation (verifying unsafe Rust), but usually not; Aeneas\cite{aeneas} claims to be hugely more productive than its competitors by not requiring heap assertions for safe Rust code.
+\end{enumerate}
+
+\subsection{Formal Verification of Low-Level Code}
+Low-level code, such as C code can be directly reasoned about by theorem provers like Isabelle, as was done to verify an entire operating system kernel SeL4\cite{klein_sel4_2009}. However, going via C like this has major drawbacks: since the source language is very unsafe, you have a lot of proof obligations. For instance, when reasoning about C you must often prove that a set of pointers do not point to the same location, otherwise mutating the value of one might mutate the others. With Rust references you do not need to do this because the type system prevents you from creating aliased pointers.
+
+\subsubsection{Rust Belt}
+RustBelt\cite{jung_rustbelt_2018} is a formal model of Rust, including unsafe Rust. Its primary implementation is a Coq framework, Iris\cite{noauthor_iris_nodate} which allows you to model unsafe Rust code in Coq, and prove it upholds Rust's correctness properties.
+
+I see RustBelt as a great complement to this work in the future: real programs require unsafe code, but you want to avoid having to model your code in a separate proof assistant as little as possible. In Ochre, I imagine the few people who write unsafe code will verify it with something like RustBelt, while the majority won't have to, but will benefit from the guarantees provided by the verified libraries they use which do.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Project Plan}
+Going with the assumption that the main deliverable of this work will be an implementation of a type-checker, instead of the theory behind it or a formalization, I will set my milestones as points in the programming language design space.
+
+
+\renewcommand{\arraystretch}{1.7}
+
+\begin{longtable}{p{0.17\textwidth}p{0.83\textwidth}}
+  \toprule
+  \addlinespace[-0.25em]
+  \textbf{Date Range} & \textbf{Objectives} \\
+  \addlinespace[-0.25em]
+  \midrule
+  \textsl{Nov - Dec '23 \newline (Part-time)} & Create a toy language, basically just lambda calculus with variable binding and mutation. Only supports integers and booleans; interpreted via a tree-walk (easiest); no manual memory management; no loops; support for functions.\\
+
+  \textsl{Jan - Feb '24 \newline (Part-time)} & Add a dependent type checker to the language. At this point, the type-checker will assume that mutation never changes any typing judgments, which is false, but means I don't have to deal with the combination of the two features. \\
+
+  \textsl{Mar - Apr '24 \newline (Easter)} & Add mutable and immutable references, with lifetime annotations as well as a borrow checker to check their usage is correct. Still no interaction with dependent types, but this will give the compiler the information required for the next step. \\
+
+  \textsl{May '24 \newline (Full-time)} & Use algorithm developed in Electrolysis\cite{ullrich_khaelectrolysis_2024} and Aeneas\cite{aeneas} to remove mutation from source language before type checking. At this point, the assumption that mutation doesn't affect typing judgments will be unused. This language should fulfill the objectives of this research. \\
+
+  \textsl{June '24 \newline (Full-time)} & While I should have been writing the report during my progress, there will inevitably be a large gap between my running progress and what I intend on handing in. In the last month, I intend on properly doing this final write-up. \\
+
+  \textsl{Extra time} & In the unlikely event that I'm running ahead of schedule, I can use the extra time to achieve stretch goals such as supporting loops, returning mutable references, or using my dependent type system to do logical reasoning. \\
+
+  \textsl{Summer '24} & Write up my research properly and submit it to POPL. \\
+
+  \bottomrule
+\end{longtable}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation Plan}
+If this project works, I should be able to type-check a program with both mutability and dependent types, and reject it if the mutation is done incorrectly. Which examples exactly I will test is yet to be determined, but it will be something along the following lines, probably with a $\Sigma$ type.
 
+\begin{lstlisting}
+  ResizeableArray: Type = (n : Nat, Vec(Int, n))
+  v: ResizeableArray = (0, ());
+
+  push(&mut v, 42); // v == (1, (42))
+  push(&mut v, 42); // v == (2, (42, 42))
+
+  double(&mut v); // v == (4, (42, 42, 42, 42))
+\end{lstlisting}
+
+This would only type check if \verb|push| and \verb|double| are implemented correctly, which involves them correctly keeping the length variable up to date (left-hand element of pair).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Ethical Issues}
 % Ethics checklist: https://wiki.imperial.ac.uk/display/docteaching/Ethics+Process
+I do not foresee any ethical issues arising from this project.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Bibliography

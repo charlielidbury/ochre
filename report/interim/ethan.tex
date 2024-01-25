@@ -1,0 +1,106 @@
+\documentclass[11pt]{article}
+\usepackage{a4wide,parskip,times}
+
+\usepackage[linktocpage,pdfstartview=FitH,colorlinks,
+linkcolor=blue,anchorcolor=blue,
+citecolor=blue,filecolor=blue,menucolor=blue,urlcolor=blue]{hyperref}
+
+\usepackage{booktabs}
+\usepackage{longtable}
+
+\begin{document}
+
+\centerline{\Large Optimising data structures with multi-stage programming}
+\vspace{2em}
+\centerline{\Large \emph{An MPhil project proposal}}
+\vspace{2em}
+\centerline{\large E. S. R. Range (\emph{esrr2}), St Edmund's College}
+\vspace{1em}
+\centerline{\large Project Supervisor: Jeremy Yallop}
+\vspace{1em}
+
+% \begin{abstract}
+% \textsl{Write an ``elevator pitch''. In other words what's the
+%   problem, why is it important or interesting, and what's your approach. (100 words)} 
+% \end{abstract}
+
+\section{Introduction, approach and outcomes (489 words)}
+
+% Provide an introduction to your project or essay. In particular, try to
+% motivate the work and explain the relevant context (general
+% background, as well as sufficient detail about any related
+% work).
+
+% What's the basic idea and approach? What are you thinking of 
+% doing, and how is it going to solve the problem (or need) you've 
+% identified. What are you going to ``produce''? 
+% A project will typically produce one (or perhaps more) of the following:
+% a piece of software, an evaluation of a published result, a proof, or
+% the design (and perhaps the construction of) a new piece of hardware. An
+% essay will typically either review and critique a particular area of the
+% academic literature, or evaluate a published result or proof. Try to 
+% name the specific things (and describe them) in this part of the 
+% proposal -- this will allow you to refer to them in the next.
+
+Generalisation and abstraction are two invaluable attributes in software engineering, allowing for the construction of elegant solutions when tackling complex problems. Many such problems will require storage and manipulation of data in data structures, with great effort devoted to ensuring efficient handling of such data. Herein, however, lies an inherent conflict; while efficient data structures, such as tries \cite{tries} or red-black \cite{rbt} trees, can offer improved performance, much of the work in ensuring high performance involves careful control of memory layout and accesses, in order to maximise spatial and temporal locality and exploit caching provisions. This conflicts directly with the principles of abstraction, where the underlying complexity is abstracted away. For example, features such as algebraic data types (\textsc{adt}s), originally staples of functional programming languages where abstraction and generalisation are central tenets, are now being increasingly introduced into mainstream programming languages. Data structures can be elegantly defined in terms of them, however no guarantees are made about the underlying data layout.
+
+Previous work, such as that by Hinze \cite{hinze} and Elliott \cite{elliott} has demonstrated great success in applying these generalisation and abstraction principles to data structures. \cite{hinze}, for example, allows for the extension of tries, initially utilised \cite{tries} as a structure to represent string-indexed data, to be used as maps indexed by arbitrary datatypes. This does, however, run up against the aforementioned conflict; the structures produced by this generalised approach often result in fragmented memory layouts, producing data structures far less space and computationally efficient than hand-crafted equivalents.
+
+A possible solution to this conflict is the application of multi-stage programming \cite{msp}. In multi-stage programming, compilation occurs in numerous distinct stages, allowing for the programmatic generation of hand-crafted code in a type-safe manner. Baudon et al. \cite{bitstealing} demonstrate that abstractly-defined data structures can have their underlying data representations safely transformed, permitting optimisations of the packing of data. Multi-stage programming can facilitate such optimisations, by enabling the translation of a high-level interface, such as those provided by \textsc{adt}-defined data structures, into lower-level representations, such as sequential nodes of a tree packed into contiguous memory, aiding cache efficiency. Staging allows this translation to occur without direct unboxing and manipulation of the high-level types, which although supported by many languages \cite{unboxedtypes}, discards any guarantees of safety, or of compatibility with other language versions or hardware systems. Control over exactly which optimisations are applied could either be given directly to the user, through some high-level interface, or could additionally be abstracted away entirely, decided through an analysis or micro-benchmarking of the target hardware.
+
+The primary outcome of this project will be to demonstrate improved performance characteristics of common data structures, through a staging-based manipulation of their underlying representations, invisible to clients of the data structure. To achieve and evaluate this, an analysis of the performance characteristics of existing generalised data structures will be required, necessitating the creation of representative example programs and testing and benchmarking infrastructure. From this analysis, specific causes of performance degradation can be identified and targeted with staging-based transformations.
+
+\section{Workplan (498 words)}
+
+% Project students have approximately 26 weeks between the approval of 
+% the proposal by the Head of Department, and the submission of the dissertation. This section
+% should account for what you intend to do during that time. You should divide the time into two-week chunks including dates, and 
+% describe the work to be done (and, as relevant, milestones to be 
+% achieved) in each chunk. You should leave two 
+% chunks for writing a project dissertation. You should leave 1 chunk for contingencies.}
+
+Over the course of the 26 weeks, there are three main sections of work which must be completed. First of all is the characterisation and analysis of the performance of existing generalised data structures. This will require the aforementioned creation of evaluation infrastructure. With this baseline measurement complete, the second stage will involve targeted optimisation of the determined performance impediments with staging techniques. Finally, the last stage will entail evaluation of the success of optimisation techniques, determination of potential avenues for further optimisation, and production of the final software and report artefacts. This work has been split into the following two-week segments:
+
+\renewcommand{\arraystretch}{1.7}
+
+\begin{longtable}{p{0.17\textwidth}p{0.83\textwidth}}
+  \toprule
+  \addlinespace[-0.25em]
+  \textbf{Date Range} & \textbf{Objectives} \\
+  \addlinespace[-0.25em]
+  \midrule
+  \textsl{4 Dec - 17 Dec} & Survey the existing landscape of generalised data structure implementations. Collect a representative sample of programs making use of these data structures. Explore relevant implementation details of potential host languages (Haskell, OCaml) and evaluate support for multi-stage programming and run-time code generation in each.\\
+
+  \textsl{18 Dec - 31 Dec} & Select a provisional implementation language. Investigate applicable staging techniques and familiarise self with staging tools for the target language. Construct benchmarking framework and evaluate performance of previously collected programs.\\
+
+  \textsl{1 Jan - 14 Jan} & Analysis and investigation of observed performance characteristics. Inspect intermediate compilation stages, core dumps, memory layouts. Determine, with reference to target language implementation, explanations for performance degradation and potential mitigations.\\
+
+  \textsl{15 Jan - 28 Jan} & Explore representations for data structure memory layouts and representation of potential optimisations within them. Connect previously identified mitigations to optimisations and design potential staging implementations of them.\\
+
+  \textsl{29 Jan - 11 Feb} & Implementation of staged optimisations to generalised data structures. Extend testing and benchmarking infrastructure to allow for comparison of implemented optimisations.\\
+
+  \textsl{12 Feb - 25 Feb} & Continue cyclical process of applying optimisations, evaluating results, and updating optimisations. Plan a more formal evaluation methodology to compare effects of optimisations. Refine representation of memory layouts if necessary.\\
+
+  \textsl{26 Feb - 10 Mar} & Preparation for project review (8th - 15th March). Begin initial draft of dissertation structure. Prepare rapid summary of achievements for one-minute madness (15th March).\\
+
+  \textsl{11 Mar - 24 Mar} & Evaluate possible extensions, particularly for more complex data structures (e.g. BTrees \cite{btrees}). Consider potential improvements to memory layout representation to simplify optimisation representation. Explore possible formalisation.\\
+
+  \textsl{25 Mar - 7 Apr} & Implementation of extension ideas. Contingency weeks for any optimisation or benchmarking harness work left incomplete.\\
+
+  \textsl{8 Apr - 21 Apr} & Execute previously planned evaluation methodology and compile results. Generate resources for evaluation section of dissertation (graphs, tables). Plan narrative for evaluation section.\\
+
+  \textsl{22 Apr - 5 May} & Start writing full version of dissertation.\\
+
+  \textsl{6 May - 19 May} & Continue working on dissertation writing. Produce initial draft of full dissertation and send for feedback from relevant parties. Finalisation of project title after draft completion (20th May).\\
+
+  \textsl{20 May - 2 Jun} & Begin finalisation of software artefact for release. Incorporate feedback from consulted parties. Finalise any structural adjustments and conduct proof-reading for accuracy and clarity.\\
+
+  \textsl{3 Jun - 13 Jun} & Submission deadline for overall project (3rd June). Final preparation of software artefact for release. Creation of presentation and materials.\\
+
+  \bottomrule
+\end{longtable}
+
+\bibliographystyle{vancouver}
+\bibliography{refs}
+
+\end{document}
