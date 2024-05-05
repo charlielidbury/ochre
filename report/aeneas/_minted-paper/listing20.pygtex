@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{call\PYGZus{}choose\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{s0} \PYG{o}{:} \PYG{o}{(}\PYG{n}{u32} \PYG{o}{\PYGZam{}} \PYG{n}{u32}\PYG{o}{))} \PYG{o}{:} \PYG{n}{u32} \PYG{o}{=}
+  \PYG{k+kd}{let} \PYG{o}{(}\PYG{n}{s1}\PYG{o}{,} \PYG{n}{s2}\PYG{o}{)} \PYG{o}{=} \PYG{n}{s0} \PYG{k}{in}
+  \PYG{n}{s3} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{choose\PYGZus{}fwd} \PYG{n+nb+bp}{true} \PYG{n}{s1} \PYG{n}{s2}\PYG{o}{;}
+  \PYG{k+kd}{let} \PYG{n}{s4} \PYG{o}{=} \PYG{n}{s3} \PYG{k}{in}
+  \PYG{o}{[.]}
+\end{Verbatim}

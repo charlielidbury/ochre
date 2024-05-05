@@ -1,0 +1,24 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:mreb:px1}}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{*}\PYG{n}{px1}\PYG{p}{)}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Reborrow: px2 now borrows (the value of) x $\label{line:mreb:px2}$}
+\PYG{c+c1}{// $ x \cspace\enspace \mapsto \emloan\ell_1 $}
+\PYG{c+c1}{// $ px1 \mapsto \emborrow{\ell_1}{(\emloan\ell_2)} $}
+\PYG{c+c1}{// $ px2 \mapsto \emborrow{\ell_2}{0} $}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}
+\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Update px1 to borrow y instead of x $\label{line:mreb:update}$}
+\PYG{c+c1}{// $ x \cspace\enspace\;\;\;\, \mapsto \emloan\ell_1 $ $\label{line:mreb:env0}$}
+\PYG{c+c1}{// $ px1_{\mathsf{old}} \mapsto \emborrow{\ell_1}{(\emloan\ell_2)} $}
+\PYG{c+c1}{// $ px2 \;\;\;\; \mapsto \emborrow{\ell_2}{0} $}
+\PYG{c+c1}{// $ y \cspace\enspace\;\;\;\, \mapsto \emloan\ell_y $}
+\PYG{c+c1}{// $ px1 \;\;\;\; \mapsto \emborrow{\ell_y}{1} $ $\label{line:mreb:env1}$}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{)}\PYG{p}{;}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{=}\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{)}\PYG{p}{;}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{)}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// End the borrow of y through px1 (shouldn\PYGZsq{}t impact px2!) $\label{line:mreb:asserty}$}
+\PYG{c+c1}{// $ x \cspace\enspace\;\;\;\, \mapsto \emloan\ell_1 $}
+\PYG{c+c1}{// $ px1_{\mathsf{old}} \mapsto \emborrow{\ell_1}{(\emloan\ell_2)} $}
+\PYG{c+c1}{// $ px2 \;\;\;\; \mapsto \emborrow{\ell_2}{0} $}
+\PYG{c+c1}{// $ y \cspace\enspace\;\;\;\, \mapsto 1 $}
+\PYG{c+c1}{// $ px1 \;\;\;\; \mapsto \bot $}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{=}\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{)}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Considered invalid by rustc, but accepted by Aeneas $\label{line:mreb:assertpy2}$}
+\end{Verbatim}

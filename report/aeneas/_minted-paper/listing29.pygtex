@@ -1,0 +1,20 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{fn} \PYG{n+nf}{try\PYGZus{}resize}\PYG{o}{\PYGZlt{}\PYGZsq{}}\PYG{n+na}{a}\PYG{o}{\PYGZgt{}}\PYG{p}{(}\PYG{o}{\PYGZam{}\PYGZsq{}}\PYG{n+na}{a}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n+nb+bp}{self}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{c+c1}{// Check that we can resize (prevent overflows)}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{capacity}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{slots}\PYG{p}{.}\PYG{n}{len}\PYG{p}{();}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{n}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{k+kt}{usize}::\PYG{n}{MAX}\PYG{+w}{ }\PYG{o}{/}\PYG{+w}{ }\PYG{l+m+mi}{2}\PYG{p}{;}
+\PYG{+w}{    }\PYG{k}{if}\PYG{+w}{ }\PYG{n}{capacity}\PYG{+w}{ }\PYG{o}{\PYGZlt{}=}\PYG{+w}{ }\PYG{n}{n}\PYG{+w}{ }\PYG{o}{/}\PYG{+w}{ }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{max\PYGZus{}load\PYGZus{}factor}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{c+c1}{// Create a new table with a bigger capacity}
+\PYG{+w}{        }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{ntable}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{HashTable}::\PYG{n}{new\PYGZus{}with\PYGZus{}capacity}\PYG{p}{(}
+\PYG{+w}{            }\PYG{n}{capacity}\PYG{+w}{ }\PYG{o}{*}\PYG{+w}{ }\PYG{l+m+mi}{2}\PYG{p}{,}
+\PYG{+w}{            }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{max\PYGZus{}load\PYGZus{}factor}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{,}
+\PYG{+w}{            }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{max\PYGZus{}load\PYGZus{}factor}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{p}{,}
+\PYG{+w}{        }\PYG{p}{);}
+\PYG{+w}{        }\PYG{c+c1}{// Move the elements to the new table}
+\PYG{+w}{        }\PYG{n}{HashTable}::\PYG{n}{move\PYGZus{}elements}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{ntable}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{slots}\PYG{p}{,}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{);}
+\PYG{+w}{        }\PYG{c+c1}{// Replace the current table with the new table}
+\PYG{+w}{        }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{slots}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{ntable}\PYG{p}{.}\PYG{n}{slots}\PYG{p}{;}
+\PYG{+w}{        }\PYG{n+nb+bp}{self}\PYG{p}{.}\PYG{n}{max\PYGZus{}load}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{ntable}\PYG{p}{.}\PYG{n}{max\PYGZus{}load}\PYG{p}{;}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

@@ -1,0 +1,15 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{val} \PYG{n}{hash\PYGZus{}map\PYGZus{}insert\PYGZus{}fwd\PYGZus{}lem} \PYG{o}{(\PYGZsh{}}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{self} \PYG{o}{:} \PYG{n}{hash\PYGZus{}map\PYGZus{}t} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{key} \PYG{o}{:} \PYG{n}{usize}\PYG{o}{)} \PYG{o}{(}\PYG{n}{value} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{:}
+  \PYG{n+nc}{Lemma} \PYG{o}{(}\PYG{k}{requires} \PYG{o}{(}\PYG{n}{hash\PYGZus{}map\PYGZus{}t\PYGZus{}inv} \PYG{n}{self}\PYG{o}{))} \PYG{o}{(}\PYG{k}{ensures} \PYG{o}{(}
+    \PYG{k}{match} \PYG{n}{hash\PYGZus{}map\PYGZus{}insert\PYGZus{}fwd} \PYG{n}{t} \PYG{n}{self} \PYG{n}{key} \PYG{n}{value} \PYG{k}{with}
+    \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{c}{(* We fail only if: *)}
+      \PYG{n+nc}{None}\PYG{o}{?} \PYG{o}{(}\PYG{n}{find\PYGZus{}s} \PYG{n}{self} \PYG{n}{key}\PYG{o}{)} \PYG{o}{/\PYGZbs{}} \PYG{c}{(* the key is not already in the map *)}
+      \PYG{n}{size\PYGZus{}s} \PYG{n}{self} \PYG{o}{=} \PYG{n}{usize\PYGZus{}max} \PYG{c}{(* and we can\PYGZsq{}t increment `num\PYGZus{}entries` *)}
+    \PYG{o}{|} \PYG{n+nc}{Return} \PYG{n}{hm\PYGZsq{}} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{c}{(* In case of success: *)}
+      \PYG{n}{hash\PYGZus{}map\PYGZus{}t\PYGZus{}inv} \PYG{n}{hm\PYGZsq{}} \PYG{o}{/\PYGZbs{}} \PYG{c}{(* The invariant is preserved *)}
+      \PYG{n}{find\PYGZus{}s} \PYG{n}{hm\PYGZsq{}} \PYG{n}{key} \PYG{o}{==} \PYG{n+nc}{Some} \PYG{n}{value} \PYG{o}{/\PYGZbs{}} \PYG{c}{(* [key] maps to [value] *)}
+      \PYG{o}{(}\PYG{k}{forall} \PYG{n}{k\PYGZsq{}}\PYG{o}{.} \PYG{n}{k\PYGZsq{}} \PYG{o}{\PYGZlt{}\PYGZgt{}} \PYG{n}{key} \PYG{o}{==\PYGZgt{}} \PYG{n}{find\PYGZus{}s} \PYG{n}{hm\PYGZsq{}} \PYG{n}{k\PYGZsq{}} \PYG{o}{==} \PYG{n}{find\PYGZus{}s} \PYG{n}{self} \PYG{n}{k\PYGZsq{}}\PYG{o}{)} \PYG{o}{/\PYGZbs{}} \PYG{c}{(* Other bindings unchanged *)}
+      \PYG{o}{(}\PYG{k}{match} \PYG{n}{find\PYGZus{}s} \PYG{n}{self} \PYG{n}{key} \PYG{k}{with} \PYG{c}{(* The size is incremented, iff we inserted a new key *)}
+      \PYG{o}{|} \PYG{n+nc}{None} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{size\PYGZus{}s} \PYG{n}{hm\PYGZsq{}} \PYG{o}{=} \PYG{n}{size\PYGZus{}s} \PYG{n}{self} \PYG{o}{+} \PYG{l+m+mi}{1}
+      \PYG{o}{|} \PYG{n+nc}{Some} \PYG{n}{\PYGZus{}} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{size\PYGZus{}s} \PYG{n}{hm\PYGZsq{}} \PYG{o}{=} \PYG{n}{size\PYGZus{}s} \PYG{n}{self}\PYG{o}{)))}
+\end{Verbatim}

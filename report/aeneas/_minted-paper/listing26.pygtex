@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{choose\PYGZus{}back}
+  \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{b} \PYG{o}{:} \PYG{k+kt}{bool}\PYG{o}{)} \PYG{o}{(}\PYG{n}{x} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{y} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)}
+  \PYG{o}{(}\PYG{n}{ret} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{:} \PYG{n}{result} \PYG{o}{(}\PYG{n}{t} \PYG{o}{\PYGZam{}} \PYG{n}{t}\PYG{o}{)} \PYG{o}{=}
+  \PYG{o}{[.]}
+\end{Verbatim}

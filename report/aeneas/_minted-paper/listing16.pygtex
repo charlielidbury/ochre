@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{call\PYGZus{}choose\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{s0} \PYG{o}{:} \PYG{o}{(}\PYG{n}{u32} \PYG{o}{\PYGZam{}} \PYG{n}{u32}\PYG{o}{))} \PYG{o}{:} \PYG{n}{u32} \PYG{o}{=}
+  \PYG{o}{[.]}
+\end{Verbatim}

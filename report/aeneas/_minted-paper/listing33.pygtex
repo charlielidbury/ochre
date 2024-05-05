@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{type} \PYG{n}{state} \PYG{o}{:} \PYG{n+nc}{Type}
+\PYG{k}{val} \PYG{n}{deserialize\PYGZus{}fwd} \PYG{o}{:} \PYG{n}{state} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{result} \PYG{o}{(}\PYG{n}{state} \PYG{o}{\PYGZam{}} \PYG{n}{hash\PYGZus{}map\PYGZus{}t} \PYG{n}{u64}\PYG{o}{)}
+\PYG{k}{val} \PYG{n}{serialize\PYGZus{}fwd} \PYG{o}{:} \PYG{n}{hash\PYGZus{}map\PYGZus{}t} \PYG{n}{u64} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{state} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{result} \PYG{o}{(}\PYG{n}{state} \PYG{o}{\PYGZam{}} \PYG{k+kt}{unit}\PYG{o}{)}
+\end{Verbatim}

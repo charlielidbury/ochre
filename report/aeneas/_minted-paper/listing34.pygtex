@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{insert\PYGZus{}on\PYGZus{}disk\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{key} \PYG{o}{:} \PYG{n}{usize}\PYG{o}{)} \PYG{o}{(}\PYG{n}{value} \PYG{o}{:} \PYG{n}{u64}\PYG{o}{)} \PYG{o}{:} \PYG{n}{state} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{result} \PYG{o}{(}\PYG{n}{state} \PYG{o}{\PYGZam{}} \PYG{k+kt}{unit}\PYG{o}{)} \PYG{o}{=}
+  \PYG{n}{hm} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{hashmap\PYGZus{}utils\PYGZus{}deserialize\PYGZus{}fwd}\PYG{o}{;}
+  \PYG{n}{hm} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{hash\PYGZus{}map\PYGZus{}insert\PYGZus{}fwd\PYGZus{}back} \PYG{n}{u64} \PYG{n}{hm} \PYG{n}{key} \PYG{n}{value}\PYG{o}{;}
+  \PYG{n}{\PYGZus{}} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{hashmap\PYGZus{}utils\PYGZus{}serialize\PYGZus{}fwd} \PYG{n}{hm}\PYG{o}{;}
+  \PYG{n}{return} \PYG{n+nb+bp}{()}
+\end{Verbatim}

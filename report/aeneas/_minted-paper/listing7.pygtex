@@ -1,0 +1,49 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k}{type} \PYG{n}{list\PYGZus{}t} \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{=}
+\PYG{o}{|} \PYG{n+nc}{ListCons} \PYG{o}{:} \PYG{n}{t} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{list\PYGZus{}t} \PYG{n}{t} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{list\PYGZus{}t} \PYG{n}{t}
+\PYG{o}{|} \PYG{n+nc}{ListNil} \PYG{o}{:} \PYG{n}{list\PYGZus{}t} \PYG{n}{t}
+
+\PYG{k+kd}{let} \PYG{k+kd}{rec} \PYG{n}{list\PYGZus{}nth\PYGZus{}mut\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{l} \PYG{o}{:} \PYG{n}{list\PYGZus{}t} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{i} \PYG{o}{:} \PYG{n}{u32}\PYG{o}{)} \PYG{o}{:} \PYG{n}{result} \PYG{n}{t} \PYG{o}{=}
+  \PYG{n}{begin} \PYG{k}{match} \PYG{n}{l} \PYG{k}{with}
+  \PYG{o}{|} \PYG{n+nc}{ListCons} \PYG{n}{x} \PYG{n}{tl} \PYG{o}{\PYGZhy{}\PYGZgt{}}
+    \PYG{n}{begin} \PYG{k}{match} \PYG{n}{i} \PYG{k}{with}
+    \PYG{o}{|} \PYG{l+m+mi}{0} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Return} \PYG{n}{x}
+    \PYG{o}{|} \PYG{n}{\PYGZus{}} \PYG{o}{\PYGZhy{}\PYGZgt{}}
+      \PYG{n}{i0} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{u32\PYGZus{}sub} \PYG{n}{i} \PYG{l+m+mi}{1}\PYG{o}{;}
+      \PYG{n}{list\PYGZus{}nth\PYGZus{}mut\PYGZus{}fwd} \PYG{n}{t} \PYG{n}{tl} \PYG{n}{i0}
+    \PYG{k}{end}
+  \PYG{o}{|} \PYG{n+nc}{ListNil} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Fail}
+  \PYG{k}{end}
+
+\PYG{k+kd}{let} \PYG{k+kd}{rec} \PYG{n}{list\PYGZus{}nth\PYGZus{}mut\PYGZus{}back} \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{l} \PYG{o}{:} \PYG{n}{list\PYGZus{}t} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{i} \PYG{o}{:} \PYG{n}{u32}\PYG{o}{)} \PYG{o}{(}\PYG{n}{ret} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{:} \PYG{n}{result} \PYG{o}{(}\PYG{n}{list\PYGZus{}t} \PYG{n}{t}\PYG{o}{)} \PYG{o}{=}
+  \PYG{n}{begin} \PYG{k}{match} \PYG{n}{l} \PYG{k}{with}
+  \PYG{o}{|} \PYG{n+nc}{ListCons} \PYG{n}{x} \PYG{n}{tl} \PYG{o}{\PYGZhy{}\PYGZgt{}}
+    \PYG{n}{begin} \PYG{k}{match} \PYG{n}{i} \PYG{k}{with}
+    \PYG{o}{|} \PYG{l+m+mi}{0} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n+nc}{ListCons} \PYG{n}{ret} \PYG{n}{tl}\PYG{o}{)}
+    \PYG{o}{|} \PYG{n}{\PYGZus{}} \PYG{o}{\PYGZhy{}\PYGZgt{}}
+      \PYG{n}{i0} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{u32\PYGZus{}sub} \PYG{n}{i} \PYG{l+m+mi}{1}\PYG{o}{;}
+      \PYG{n}{l0} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{list\PYGZus{}nth\PYGZus{}mut\PYGZus{}back} \PYG{n}{t} \PYG{n}{tl} \PYG{n}{i0} \PYG{n}{ret}\PYG{o}{;}
+      \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n+nc}{ListCons} \PYG{n}{x} \PYG{n}{l0}\PYG{o}{)}
+    \PYG{k}{end}
+  \PYG{o}{|} \PYG{n+nc}{ListNil} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Fail}
+  \PYG{k}{end}
+
+\PYG{k+kd}{let} \PYG{k+kd}{rec} \PYG{n}{sum\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{l} \PYG{o}{:} \PYG{n}{list\PYGZus{}t} \PYG{n}{i32}\PYG{o}{)} \PYG{o}{:} \PYG{n}{result} \PYG{n}{i32} \PYG{o}{=}
+  \PYG{n}{begin} \PYG{k}{match} \PYG{n}{l} \PYG{k}{with}
+  \PYG{o}{|} \PYG{n+nc}{ListCons} \PYG{n}{x} \PYG{n}{tl} \PYG{o}{\PYGZhy{}\PYGZgt{}}
+    \PYG{n}{i} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{sum\PYGZus{}fwd} \PYG{n}{tl}\PYG{o}{;}
+    \PYG{n}{i32\PYGZus{}add} \PYG{n}{x} \PYG{n}{i}
+    \PYG{k}{end}
+  \PYG{o}{|} \PYG{n+nc}{ListNil} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Return} \PYG{l+m+mi}{0}
+  \PYG{k}{end}
+
+\PYG{k+kd}{let} \PYG{n}{test\PYGZus{}nth\PYGZus{}fwd} \PYG{o}{:} \PYG{n}{result} \PYG{k+kt}{unit} \PYG{o}{=}
+  \PYG{k+kd}{let} \PYG{n}{l2} \PYG{o}{=} \PYG{n+nc}{ListCons} \PYG{o}{(}\PYG{l+m+mi}{1}\PYG{o}{,} \PYG{n+nc}{ListCons} \PYG{o}{(}\PYG{l+m+mi}{2}\PYG{o}{,} \PYG{n+nc}{ListConst} \PYG{o}{(}\PYG{l+m+mi}{3}\PYG{o}{,} \PYG{n+nc}{ListNil}\PYG{o}{)}\PYG{o}{)}\PYG{o}{)} \PYG{k}{in}
+  \PYG{n}{i} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{list\PYGZus{}nth\PYGZus{}mut\PYGZus{}fwd} \PYG{n}{i32} \PYG{n}{l2} \PYG{l+m+mi}{2}\PYG{o}{;} \PYG{esc}{\label{line:nth0}}
+  \PYG{n}{x} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{i32\PYGZus{}add} \PYG{n}{i} \PYG{l+m+mi}{1}\PYG{o}{;} \PYG{esc}{\label{line:nth1}}
+  \PYG{n}{l2} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{list\PYGZus{}nth\PYGZus{}mut\PYGZus{}back} \PYG{n}{i32} \PYG{n}{l2} \PYG{l+m+mi}{2} \PYG{n}{x}\PYG{o}{;} \PYG{esc}{\label{line:nth2}}
+  \PYG{n}{i0} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{sum\PYGZus{}fwd} \PYG{n}{l2}\PYG{o}{;}
+  \PYG{n}{massert} \PYG{o}{(}\PYG{k}{not} \PYG{o}{(}\PYG{n}{i0} \PYG{o}{=} \PYG{l+m+mi}{7}\PYG{o}{)}\PYG{o}{)}
+
+\PYG{k+kd}{let} \PYG{n}{\PYGZus{}} \PYG{o}{=} \PYG{n+ne}{assert} \PYG{o}{(}\PYG{n}{test\PYGZus{}nth\PYGZus{}fwd} \PYG{o}{=} \PYG{n+nc}{Return} \PYG{n+nb+bp}{()}\PYG{o}{)}
+\end{Verbatim}

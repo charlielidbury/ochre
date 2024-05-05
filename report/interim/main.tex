@@ -61,7 +61,7 @@ Dependent types are covered properly in the background section, but for now, it'
 
 This type-checker will support mutation, which is when a variable's value is changed. For instance, when a variable is declared with a value like $x = 2$, then later given a new value like $x := 5$. The most popular languages all support mutation [cite], it's somewhat the (industry) default. Some languages choose to be \textit{immutable} however, which means they do not support mutation. These include Haskell, and almost all languages with dependent types like Agda, Idris, and Coq.
 
-This type-checker is being built to hopefully be used for a larger, more useful language in the future, called Ochre. Ochre which will have both the speed of \textit{systems languages} like C and Rust and the ability to reason about runtime behaviour at compile time of \textit{theorem provers} like Agda and Coq. Exactly what systems languages and theorem provers are is discussed in Chapter \ref{background}.
+This type-checker is being built to hopefully be used for a larger, more useful language in the future, called Ochre. Ochre which will have both the speed of \textit{systems languages} like C and Rust and the ability to reason about runtime behaviour at compile time of \textit{theorem provers} like Agda and Coq. Exactly what systems languages and theorem provers are is discussed in Chapter \ref{prerequisites}.
 
 For now, I plan on presenting this type-checker in the form of an implementation; however, there is a good argument for focusing more on the theory behind this type-checker, for instance by presenting a set of typing rules or an abstract algorithm. Whether an implementation-heavy or theory-heavy approach is better is an open, and very important question.
 
@@ -70,9 +70,9 @@ The problem with having these features together in the same language is that a v
 
 \section{The Solution}
 \label{thesolution}
-The technique this research presents goes as follows: convert the source code from the programmer, which will contain mutation, into a functionally equivalent (but maybe inefficient) immutable version, which can be dependently type-checked. Once this immutable version has been type-checked, the original mutable version can be executed, with full efficiency granted to it by mutability. \todo{Example of Rust doing this better}.
+The technique this research presents goes as follows: convert the source code from the programmer, which will contain mutation, into a functionally equivalent (but maybe inefficient) immutable version, which can be dependently type-checked. Once this immutable version has been type-checked, the original mutable version can be executed, with full efficiency granted to it by mutability.
 
-Because this translation has been shown to be behaviour preserving [cite: Aeneas], we know properties we prove about the immutable version of the programmer's code also hold for the mutable version which will be executed.
+Because this translation has been shown to be behaviour preserving\cite{ullrich_electrolysis_nodate} we know properties we prove about the immutable version of the programmer's code also hold for the mutable version which will be executed.
 
 \section{Motivation}
 The main contribution of this research will be progress towards making a language that supports both mutability and dependent types, so the motivation behind this research will be the motivation behind these two features, as well as their combination.
@@ -87,7 +87,7 @@ Some data structures and operations, such as hash maps and their $O(1)$ access/m
 
 This has widespread effects on the data structures programmers use, and how they structure their programs. Often programmers in immutable languages will simply switch to data structures that don't perform as well but are easier to use in a pure-functional context, like tree-based maps and cons lists instead of hash-maps and vectors.
 
-The performance of explicit mutation can also be easier to reason about. For instance, the Rust code which increments every value in a list of integers doesn't perform any allocations: \verb|for x in xs.iter_mut() { x += 1 }|; whereas the Haskell equivalent looks like it allocates a whole new list, and relies on compiler optimizations to be efficient: \verb|map (+1) xs|.
+The performance of explicit mutation can also be easier to reason about. For instance, the Rust code which increments every value in a list of integers doesn't perform any allocations: \verb|for x in xs.iter_mut() { x += 1 }|; whereas the Haskell equivalent looks like it allocates a whole new list, and relies on compiler optimizations to be efficient: \verb|map (+1) xs|. In fact, in this example, Haskell does not do the update in-place and instead allocates a new list in case the old one is being referred to somewhere else. Languages like Koka
 
 \subsubsection{Usability}
 Some algorithms are best thought of in terms of mutable operations, and new programmers especially tend to write stuff mutably. By embracing this in the language design, we can come to the user instead of making the user come to us.
@@ -128,6 +128,7 @@ This type checker allows the types and mutable values to be unusually close. In 
 \label{background}
 
 \section{Prerequisite Concepts}
+\label{prerequisites}
 This section explains the concepts required to understand this research.
 
 \subsection{Mutability}

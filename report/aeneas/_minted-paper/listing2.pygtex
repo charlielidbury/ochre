@@ -1,0 +1,11 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{ref\PYGZus{}incr\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{x} \PYG{o}{:} \PYG{n}{i32}\PYG{o}{):} \PYG{n}{result} \PYG{n}{i32} \PYG{o}{=}
+  \PYG{k}{match} \PYG{n}{i32\PYGZus{}add} \PYG{n}{x} \PYG{l+m+mi}{1} \PYG{k}{with} \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Fail} \PYG{o}{|} \PYG{n+nc}{Return} \PYG{n}{x0} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Return} \PYG{n}{x0}
+
+\PYG{k+kd}{let} \PYG{n}{test\PYGZus{}incr} \PYG{o}{:} \PYG{n}{result} \PYG{k+kt}{unit} \PYG{o}{=}
+  \PYG{k}{match} \PYG{n}{ref\PYGZus{}incr\PYGZus{}fwd} \PYG{l+m+mi}{0} \PYG{k}{with}
+  \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Fail}
+  \PYG{o}{|} \PYG{n+nc}{Return} \PYG{n}{y} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{k}{if} \PYG{k}{not} \PYG{o}{(}\PYG{n}{y} \PYG{o}{=} \PYG{l+m+mi}{1}\PYG{o}{)} \PYG{k}{then} \PYG{n+nc}{Fail} \PYG{k}{else} \PYG{n+nc}{Return} \PYG{n+nb+bp}{()}
+
+\PYG{k+kd}{let} \PYG{n}{\PYGZus{}} \PYG{o}{=} \PYG{n+ne}{assert} \PYG{o}{(}\PYG{n}{test\PYGZus{}incr} \PYG{o}{=} \PYG{n+nc}{Return} \PYG{n+nb+bp}{()}\PYG{o}{)}
+\end{Verbatim}

@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{       }\PYG{c+c1}{// $x \mapsto 0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $x \mapsto \emloan\ell,\quad px \mapsto \emborrow\ell0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{ppx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px}\PYG{p}{;}\PYG{+w}{   }\PYG{c+c1}{// $x \mapsto \emloan\ell,\quad px \mapsto \emloan\ell',\qquad ppx \mapsto \emborrow{\ell'}{(\emborrow\ell0)}$}
+\end{Verbatim}

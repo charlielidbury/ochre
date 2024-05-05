@@ -1,0 +1,479 @@
+@misc{rust-anecdote,
+  howpublished = {\url{https://twitter.com/graydon_pub/status/1492792051657629698}},
+  author = {Graydon Hoare},
+  day =           {13},
+  month =         feb,
+  year =          2022
+}
+
+@inproceedings{wadler1990linear,
+  title={Linear types can change the world!},
+  author={Wadler, Philip},
+  booktitle={Programming concepts and methods},
+  volume={3},
+  number={4},
+  pages={5},
+  year={1990},
+  organization={Citeseer}
+}
+
+@inproceedings{fluet2006linear,
+  title={Linear regions are all you need},
+  author={Fluet, Matthew and Morrisett, Greg and Ahmed, Amal},
+  booktitle={European Symposium on Programming},
+  pages={7--21},
+  year={2006},
+  organization={Springer}
+}
+
+@article{tofte1997region,
+  title={Region-based memory management},
+  author={Tofte, Mads and Talpin, Jean-Pierre},
+  journal={Information and computation},
+  volume={132},
+  number={2},
+  pages={109--176},
+  year={1997},
+  publisher={Elsevier}
+}
+
+@inproceedings{matsushita2020rusthorn,
+  title={RustHorn: CHC-Based Verification for Rust Programs.},
+  author={Matsushita, Yusuke and Tsukada, Takeshi and Kobayashi, Naoki},
+  booktitle={ESOP},
+  pages={484--514},
+  year={2020}
+}
+
+@misc{verus,
+  title={{Verus, an Experimental Verification Framework for Rust-like code}},
+  howpublished={\url{https://github.com/secure-foundations/verus/blob/004eadd8c31b60c886f7a8c8b568806e46a49a78/source/docs/design/returning-mutable-references.md}},
+  year={2022}
+}
+
+@inproceedings{prusti,
+ title = {Leveraging {R}ust Types for Modular Specification and Verification},
+ author = {V. Astrauskas and P. M\"uller and F. Poli and A. J. Summers},
+ booktitle = {Object-Oriented Programming Systems, Languages, and Applications (OOPSLA)},
+ journal = {Proc. ACM Program. Lang.},
+ issue_date = {October 2019},
+ volume = {3},
+ number = {OOPSLA},
+ year = {2019},
+ pages = {147:1--147:30},
+ doi = {10.1145/3360573},
+ publisher = {ACM}
+}
+
+@article{prusti21,
+author = {Wolff, Fabian and B\'{\i}l\'{y}, Aurel and Matheja, Christoph and M\"{u}ller, Peter and Summers, Alexander J.},
+title = {Modular Specification and Verification of Closures in Rust},
+year = {2021},
+issue_date = {October 2021},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {5},
+number = {OOPSLA},
+url = {https://doi.org/10.1145/3485522},
+doi = {10.1145/3485522},
+abstract = {Closures are a language feature supported by many mainstream languages, combining the ability to package up references to code blocks with the possibility of capturing state from the environment of the closure's declaration. Closures are powerful, but complicate understanding and formal reasoning, especially when closure invocations may mutate objects reachable from the captured state or from closure arguments.  This paper presents a novel technique for the modular specification and verification of closure-manipulating code in Rust. Our technique combines Rust's type system guarantees and novel specification features to enable formal verification of rich functional properties. It encodes higher-order concerns into a first-order logic, which enables automation via SMT solvers. Our technique is implemented as an extension of the deductive verifier Prusti, with which we have successfully verified many common idioms of closure usage.},
+journal = {Proc. ACM Program. Lang.},
+month = {oct},
+articleno = {145},
+numpages = {29},
+keywords = {software verification, Rust, closures, higher-order functions}
+}
+
+@inproceedings{RustHornBelt,
+  title={RustHorn-Belt: A semantic foundation for functional verification of Rust programs with unsafe code},
+  author={Matsushita, Yusuke and Denis, Xavier and Jourdan, Jacques-Henri and Dreyer, Derek},
+  booktitle={Proceedings of the 43rd ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
+  year={2022}
+}
+
+
+@techreport{creusot,
+  TITLE = {{The Creusot Environment for the Deductive Verification of Rust Programs}},
+  AUTHOR = {Denis, Xavier and Jourdan, Jacques-Henri and March{\'e}, Claude},
+  URL = {https://hal.inria.fr/hal-03526634},
+  TYPE = {Research Report},
+  NUMBER = {RR-9448},
+  INSTITUTION = {{Inria Saclay - {\^I}le de France}},
+  YEAR = {2021},
+  KEYWORDS = {Rust programming language ; Formal Specification ; Deductive verification ; Aliasing and Ownership ; Prophecies ; Traits},
+  PDF = {https://hal.inria.fr/hal-03526634/file/report.pdf},
+  HAL_ID = {hal-03526634},
+  HAL_VERSION = {v1},
+}
+
+@misc{stackoverflow,
+  title = {{StackOverflow Developer Survey}},
+  howpublished={\url{https://insights.stackoverflow.com/survey/2021}},
+  year={2021}
+}
+
+@inproceedings{bhargavan2017everest,
+  title={Everest: Towards a verified, drop-in replacement of HTTPS},
+  author={Bhargavan, Karthikeyan and Bond, Barry and Delignat-Lavaud, Antoine and Fournet, C{\'e}dric and Hawblitzel, Chris and Hritcu, Catalin and Ishtiaq, Samin and Kohlweiss, Markulf and Leino, Rustan and Lorch, Jay and others},
+  booktitle={2nd Summit on Advances in Programming Languages (SNAPL 2017)},
+  year={2017},
+  organization={Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik}
+}
+
+@inproceedings{ferraiuolo2017komodo,
+  title={Komodo: Using verification to disentangle secure-enclave hardware from software},
+  author={Ferraiuolo, Andrew and Baumann, Andrew and Hawblitzel, Chris and Parno, Bryan},
+  booktitle={Proceedings of the 26th Symposium on Operating Systems Principles},
+  pages={287--305},
+  year={2017}
+}
+
+@inproceedings{lorch2020armada,
+  title={Armada: low-effort verification of high-performance concurrent programs},
+  author={Lorch, Jacob R and Chen, Yixuan and Kapritsos, Manos and Parno, Bryan and Qadeer, Shaz and Sharma, Upamanyu and Wilcox, James R and Zhao, Xueyuan},
+  booktitle={Proceedings of the 41st ACM SIGPLAN Conference on Programming Language Design and Implementation},
+  pages={197--210},
+  year={2020}
+}
+
+@inproceedings{klein2009sel4,
+  title={seL4: Formal verification of an OS kernel},
+  author={Klein, Gerwin and Elphinstone, Kevin and Heiser, Gernot and Andronick, June and Cock, David and Derrin, Philip and Elkaduwe, Dhammika and Engelhardt, Kai and Kolanski, Rafal and Norrish, Michael and others},
+  booktitle={Proceedings of the ACM SIGOPS 22nd symposium on Operating systems principles},
+  pages={207--220},
+  year={2009}
+}
+
+
+@inproceedings{reynolds2002separation,
+  title={Separation logic: A logic for shared mutable data structures},
+  author={Reynolds, John C},
+  booktitle={Proceedings 17th Annual IEEE Symposium on Logic in Computer Science},
+  pages={55--74},
+  year={2002},
+  organization={IEEE}
+}
+
+@inproceedings{leino2010dafny,
+  title={Dafny: An automatic program verifier for functional correctness},
+  author={Leino, K Rustan M},
+  booktitle={International Conference on Logic for Programming Artificial Intelligence and Reasoning},
+  pages={348--370},
+  year={2010},
+  organization={Springer}
+}
+
+@article{protzenko2017verified,
+  title={Verified low-level programming embedded in F.},
+  author={Protzenko, Jonathan and Zinzindohou{\'e}, Jean Karim and Rastogi, Aseem and Ramananandro, Tahina and Wang, Peng and B{\'e}guelin, Santiago Zanella and Delignat-Lavaud, Antoine and Hritcu, Catalin and Bhargavan, Karthikeyan and Fournet, C{\'e}dric and others},
+  journal={Proc. ACM program. lang.},
+  volume={1},
+  number={ICFP},
+  pages={17--1},
+  year={2017}
+}
+
+@inproceedings{sammler2021refinedc,
+  title={RefinedC: automating the foundational verification of C code with refined ownership types},
+  author={Sammler, Michael and Lepigre, Rodolphe and Krebbers, Robbert and Memarian, Kayvan and Dreyer, Derek and Garg, Deepak},
+  booktitle={Proceedings of the 42nd ACM SIGPLAN International Conference on Programming Language Design and Implementation},
+  pages={158--174},
+  year={2021}
+}
+
+@article{cao2018vst,
+  title={VST-Floyd: A separation logic tool to verify correctness of C programs},
+  author={Cao, Qinxiang and Beringer, Lennart and Gruetter, Samuel and Dodds, Josiah and Appel, Andrew W},
+  journal={Journal of Automated Reasoning},
+  volume={61},
+  number={1},
+  pages={367--422},
+  year={2018},
+  publisher={Springer}
+}
+
+@inproceedings{hawblitzel2014ironclad,
+  title={Ironclad Apps:$\{$End-to-End$\}$ Security via Automated $\{$Full-System$\}$ Verification},
+  author={Hawblitzel, Chris and Howell, Jon and Lorch, Jacob R and Narayan, Arjun and Parno, Bryan and Zhang, Danfeng and Zill, Brian},
+  booktitle={11th USENIX Symposium on Operating Systems Design and Implementation (OSDI 14)},
+  pages={165--181},
+  year={2014}
+}
+
+
+@InProceedings{lineardafny,
+  author    = {Jialin Li and Andrea Lattuada and Yi Zhou and Jonathan Cameron and Jon Howell and Bryan Parno and Chris Hawblitzel},
+  title     = {Linear Types for Large-Scale Systems Verification},
+  booktitle = {Proceedings of the ACM Conference on Object-Oriented Programming Systems, Languages, and Applications (OOPSLA)},
+  month     = nov,
+  year      = 2022
+}
+
+@inproceedings{chargueraud2008functional,
+  title={Functional translation of a calculus of capabilities},
+  author={Chargu{\'e}raud, Arthur and Pottier, Fran{\c{c}}ois},
+  booktitle={Proceedings of the 13th ACM SIGPLAN international conference on Functional programming},
+  pages={213--224},
+  year={2008}
+}
+
+@inproceedings{boyland2001capabilities,
+  title={Capabilities for sharing},
+  author={Boyland, John and Noble, James and Retert, William},
+  booktitle={European Conference on Object-Oriented Programming},
+  pages={2--27},
+  year={2001},
+  organization={Springer}
+}
+
+@misc{aeneas-website,
+  title={{Aeneas: A Verification Toolchain for Rust Programs}},
+  howpublished={\url{https://github.com/sonmarcho/aeneas}},
+  author={Ho, Son and Protzenko, Jonathan},
+  year={2022}
+}
+
+@misc{fstar1288,
+  title={{Not possible to bind to a pattern}},
+  howpublished={\url{https://github.com/FStarLang/FStar/issues/1288}},
+  year={2017}
+}
+
+@article{jung2019stacked,
+  title={Stacked borrows: an aliasing model for Rust},
+  author={Jung, Ralf and Dang, Hoang-Hai and Kang, Jeehoon and Dreyer, Derek},
+  journal={Proceedings of the ACM on Programming Languages},
+  volume={4},
+  number={POPL},
+  pages={1--32},
+  year={2019},
+  publisher={ACM New York, NY, USA}
+}
+
+@inproceedings{bohannon2008boomerang,
+  title={Boomerang: resourceful lenses for string data},
+  author={Bohannon, Aaron and Foster, J Nathan and Pierce, Benjamin C and Pilkiewicz, Alexandre and Schmitt, Alan},
+  booktitle={Proceedings of the 35th annual ACM SIGPLAN-SIGACT symposium on Principles of programming languages},
+  pages={407--419},
+  year={2008}
+}
+
+
+@misc{rustc-dev,
+  title={Guide to rustc development},
+  author={{The Rust Compiler Team}},
+  year={2022},
+  howpublished={\url{https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html}}
+}
+
+@misc{niko-regions,
+  title={Regions are Sets of Loans},
+  author={Niko Matsakis},
+  year={2018},
+  howpublished={\url{http://smallcultfollowing.com/babysteps/blog/2018/04/27/an-alias-based-formulation-of-the-borrow-checker/}}
+}
+
+@inproceedings{clarke1998ownership,
+  title={Ownership types for flexible alias protection},
+  author={Clarke, David G and Potter, John M and Noble, James},
+  booktitle={Proceedings of the 13th ACM SIGPLAN conference on Object-oriented programming, systems, languages, and applications},
+  pages={48--64},
+  year={1998}
+}
+
+@article{jung2017rustbelt,
+  title={RustBelt: Securing the foundations of the Rust programming language},
+  author={Jung, Ralf and Jourdan, Jacques-Henri and Krebbers, Robbert and Dreyer, Derek},
+  journal={Proceedings of the ACM on Programming Languages},
+  volume={2},
+  number={POPL},
+  pages={1--34},
+  year={2017},
+  publisher={ACM New York, NY, USA}
+}
+
+@article{balabonski2016design,
+  title={The design and formalization of Mezzo, a permission-based programming language},
+  author={Balabonski, Thibaut and Pottier, Fran{\c{c}}ois and Protzenko, Jonathan},
+  journal={ACM Transactions on Programming Languages and Systems (TOPLAS)},
+  volume={38},
+  number={4},
+  pages={1--94},
+  year={2016},
+  publisher={ACM New York, NY, USA}
+}
+
+@article{pottier2013programming,
+  title={Programming with permissions in Mezzo},
+  author={Pottier, Fran{\c{c}}ois and Protzenko, Jonathan},
+  journal={ACM SIGPLAN Notices},
+  volume={48},
+  number={9},
+  pages={173--184},
+  year={2013},
+  publisher={ACM New York, NY, USA}
+}
+
+@phdthesis{protzenko2014mezzo,
+  title={Mezzo: a typed language for safe effectful concurrent programs},
+  author={Protzenko, Jonathan},
+  year={2014},
+  school={Universit{\'e} Paris Diderot-Paris 7}
+}
+
+@article{rival2011abstract,
+  title={Abstract Domains for the Static Analysis of Programs Manipulating Complex Data Structures},
+  author={Rival, Xavier},
+  journal={Habilitation {\`a} diriger des recherches, {\'E}cole Normale Sup{\'e}rieure},
+  year={2011}
+}
+
+@article{electrolysis,
+  title={Simple verification of rust programs via functional purification},
+  author={Ullrich, Sebastian},
+  journal={Master's Thesis, Karlsruher Institut f{\"u}r Technologie (KIT)},
+  year={2016}
+}
+
+@article{betree,
+  title={An Introduction to B$\epsilon$-trees and Write-Optimization},
+  author={Michael A. Bender and Martin Farach-Colton and William Jannen and Rob Johnson and Bradley C. Kuszmaul and Donald E. Porter and Jun Yuan and Yang Zhan},
+  journal={login Usenix Mag.},
+  year={2015},
+  volume={40}
+}
+
+@misc{appel2016verifiable,
+  title={Verifiable C},
+  author={Andrew W Appel, Lennart Beringer, Qinxiang Cao},
+  year={2021},
+  howpublished={\url{https://softwarefoundations.cis.upenn.edu/vc-current/index.html}}
+}
+
+@inproceedings{pottier2017verifying,
+  title={Verifying a hash table and its iterators in higher-order separation logic},
+  author={Pottier, Fran{\c{c}}ois},
+  booktitle={Proceedings of the 6th ACM SIGPLAN Conference on Certified Programs and Proofs},
+  pages={3--16},
+  year={2017}
+}
+
+@article{ho2021noise,
+  title={Noise*: A Library of Verified High-Performance Secure Channel Protocol Implementations},
+  author={Ho, Son and Protzenko, Jonathan and Bichhawat, Abhishek and Bhargavan, Karthikeyan},
+  year={2021},
+  booktitle={2022 IEEE Symposium on Security and Privacy (SP)},
+  year={2022},
+  organization={IEEE}
+}
+
+@misc{longversion,
+  doi = {10.48550/ARXIV.2206.07185},
+  url = {https://arxiv.org/abs/2206.07185},
+  author = {Ho, Son and Protzenko, Jonathan},
+  keywords = {Programming Languages (cs.PL), FOS: Computer and information sciences, FOS: Computer and information sciences},
+  title = {Aeneas: Rust Verification by Functional Translation (Long Version)},
+  publisher = {arXiv},
+  year = {2022},
+  copyright = {Creative Commons Attribution Non Commercial Share Alike 4.0 International}
+}
+
+@misc{polonius,
+  title={The Polonius Book},
+  author={{The Rust Compiler Team}},
+  year={2021},
+  howpublished={\url{https://rust-lang.github.io/polonius/}}
+}
+
+@inproceedings{moura2015lean,
+  title={The Lean theorem prover (system description)},
+  author={Moura, Leonardo de and Kong, Soonho and Avigad, Jeremy and Doorn, Floris van and Raumer, Jakob von},
+  booktitle={International Conference on Automated Deduction},
+  pages={378--388},
+  year={2015},
+  organization={Springer}
+}
+
+@article{jung2018iris,
+  title={Iris from the ground up: A modular foundation for higher-order concurrent separation logic},
+  author={Jung, Ralf and Krebbers, Robbert and Jourdan, Jacques-Henri and Bizjak, Ale{\v{s}} and Birkedal, Lars and Dreyer, Derek},
+  journal={Journal of Functional Programming},
+  volume={28},
+  year={2018},
+  publisher={Cambridge University Press}
+}
+
+@techreport{juhasz2014viper,
+  title={Viper: A verification infrastructure for permission-based reasoning},
+  author={Juhasz, Uri and Kassios, Ioannis T and M{\"u}ller, Peter and Novacek, Milos and Schwerhoff, Malte and Summers, Alexander J},
+  year={2014},
+  institution={ETH Zurich}
+}
+
+@phdthesis{chargueraud2010characteristic,
+  title={Characteristic formulae for mechanized program verification},
+  author={Chargu{\'e}raud, Arthur},
+  year={2010},
+  school={PhD thesis, Universit{\'e} Paris 7}
+}
+
+@article{heapster,
+author = {He, Paul and Westbrook, Eddy and Carmer, Brent and Phifer, Chris and Robert, Valentin and Smeltzer, Karl and \c{S}tef\u{a}nescu, Andrei and Tomb, Aaron and Wick, Adam and Yacavone, Matthew and Zdancewic, Steve},
+title = {A Type System for Extracting Functional Specifications from Memory-Safe Imperative Programs},
+year = {2021},
+issue_date = {October 2021},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {5},
+number = {OOPSLA},
+url = {https://doi.org/10.1145/3485512},
+doi = {10.1145/3485512},
+abstract = {Verifying imperative programs is hard. A key difficulty is that the specification of what an imperative program does is often intertwined with details about pointers and imperative state. Although there are a number of powerful separation logics that allow the details of imperative state to be captured and managed, these details are complicated and reasoning about them requires significant time and expertise. In this paper, we take a different approach: a memory-safe type system that, as part of type-checking, extracts functional specifications from imperative programs. This disentangles imperative state, which is handled by the type system, from functional specifications, which can be verified without reference to pointers. A key difficulty is that sometimes memory safety depends crucially on the functional specification of a program; e.g., an array index is only memory-safe if the index is in bounds. To handle this case, our specification extraction inserts dynamic checks into the specification. Verification then requires the additional proof that none of these checks fail. However, these checks are in a purely functional language, and so this proof also requires no reasoning about pointers.},
+journal = {Proc. ACM Program. Lang.},
+month = {oct},
+articleno = {135},
+numpages = {29},
+keywords = {pointers, Specification extraction, type systems, memory safety}
+}
+
+@article{cogentold,
+author = {Amani, Sidney and Hixon, Alex and Chen, Zilin and Rizkallah, Christine and Chubb, Peter and O'Connor, Liam and Beeren, Joel and Nagashima, Yutaka and Lim, Japheth and Sewell, Thomas and Tuong, Joseph and Keller, Gabriele and Murray, Toby and Klein, Gerwin and Heiser, Gernot},
+title = {Cogent: Verifying High-Assurance File System Implementations},
+year = {2016},
+issue_date = {May 2016},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {44},
+number = {2},
+issn = {0163-5964},
+url = {https://doi.org/10.1145/2980024.2872404},
+doi = {10.1145/2980024.2872404},
+abstract = {We present an approach to writing and formally verifying high-assurance file-system code in a restricted language called Cogent, supported by a certifying compiler that produces C code, high-level specification of Cogent, and translation correctness proofs. The language is strongly typed and guarantees absence of a number of common file system implementation errors. We show how verification effort is drastically reduced for proving higher-level properties of the file system implementation by reasoning about the generated formal specification rather than its low-level C code. We use the framework to write two Linux file systems, and compare their performance with their native C implementations.},
+journal = {SIGARCH Comput. Archit. News},
+month = {mar},
+pages = {175–188},
+numpages = {14},
+keywords = {domain-specific languages, verification, file systems, isabelle/hol, co-generation}
+}
+
+@article{cogent,
+  title={Cogent: uniqueness types and certifying compilation},
+  author={O’Connor, LIAM and Chen, Zilin and Rizkallah, Christine and Jackson, Vincent and Amani, Sidney and Klein, Gerwin and Murray, Toby and Sewell, Thomas and Keller, Gabriele},
+  journal={Journal of Functional Programming},
+  volume={31},
+  year={2021},
+  publisher={Cambridge University Press}
+}
+
+@software{artifact,
+  author       = {Ho, Son and
+                  Protzenko, Jonathan},
+  title        = {{Aeneas: Rust Verification by Functional
+                   Translation}},
+  month        = may,
+  year         = 2022,
+  publisher    = {Zenodo},
+  version      = {1.1},
+  doi          = {10.5281/zenodo.6672939},
+  url          = {https://doi.org/10.5281/zenodo.6672939}
+}

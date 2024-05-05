@@ -1,0 +1,11 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{n}{cannot}\PYG{+w}{ }\PYG{k}{use}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{n}{because}\PYG{+w}{ }\PYG{n}{it}\PYG{+w}{ }\PYG{n}{was}\PYG{+w}{ }\PYG{n}{mutably}\PYG{+w}{ }\PYG{n}{borrowed}
+\PYG{+w}{   }\PYG{o}{|}
+\PYG{+w}{ }\PYG{l+m+mi}{8}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Update px1 to borrow y instead of x}
+\PYG{+w}{   }\PYG{o}{|}\PYG{+w}{           }\PYG{o}{\PYGZhy{}\PYGZhy{}\PYGZhy{}\PYGZhy{}\PYGZhy{}\PYGZhy{}}\PYG{+w}{ }\PYG{n}{borrow}\PYG{+w}{ }\PYG{n}{of}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{n}{occurs}\PYG{+w}{ }\PYG{n}{here}
+\PYG{o}{..}\PYG{p}{.}
+\PYG{l+m+mi}{16}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{y}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// End the borrow of y through px1 (shouldn\PYGZsq{}t impact px2!)}
+\PYG{+w}{   }\PYG{o}{|}\PYG{+w}{             }\PYG{o}{\PYGZca{}}\PYG{+w}{ }\PYG{k}{use}\PYG{+w}{ }\PYG{n}{of}\PYG{+w}{ }\PYG{n}{borrowed}\PYG{+w}{ }\PYG{n}{y}
+\PYG{l+m+mi}{22}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// Considered invalid by rustc, but accepted by Aeneas}
+\PYG{+w}{   }\PYG{o}{|}\PYG{+w}{             }\PYG{o}{\PYGZhy{}\PYGZhy{}\PYGZhy{}\PYGZhy{}}\PYG{+w}{ }\PYG{n}{borrow}\PYG{+w}{ }\PYG{n}{later}\PYG{+w}{ }\PYG{n}{used}\PYG{+w}{ }\PYG{n}{here}
+\end{Verbatim}

@@ -1,0 +1,11 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{fn} \PYG{n+nf}{choose}\PYG{o}{\PYGZlt{}\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{T}\PYG{o}{\PYGZgt{}}\PYG{p}{(}\PYG{n}{b}: \PYG{k+kt}{bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}: \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{n}{T}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}: \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{n}{T}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{n}{T}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k}{if}\PYG{+w}{ }\PYG{n}{b}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{k}{return}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}\PYG{+w}{ }\PYG{k}{else}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{k}{return}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{;}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+
+\PYG{k}{fn} \PYG{n+nf}{test\PYGZus{}choose}\PYG{p}{()}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{k}{i32}\PYG{p}{;}\PYG{+w}{ }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{k}{i32}\PYG{p}{;}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{z}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{choose}\PYG{p}{(}\PYG{k+kc}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{);}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{z}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{*}\PYG{n}{z}\PYG{+w}{ }\PYG{o}{+}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{z}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{);}
+\PYG{+w}{    }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{x}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{);}\PYG{+w}{ }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{y}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{);}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

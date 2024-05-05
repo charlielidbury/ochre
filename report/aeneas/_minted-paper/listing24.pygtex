@@ -1,0 +1,8 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{call\PYGZus{}choose\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{p} \PYG{o}{:} \PYG{o}{(}\PYG{n}{u32} \PYG{o}{\PYGZam{}} \PYG{n}{u32}\PYG{o}{))} \PYG{o}{:} \PYG{n}{u32} \PYG{o}{=}
+  \PYG{k+kd}{let} \PYG{o}{(}\PYG{n}{px}\PYG{o}{,} \PYG{n}{py}\PYG{o}{)} \PYG{o}{=} \PYG{n}{p} \PYG{k}{in}
+  \PYG{n}{pz} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{choose\PYGZus{}fwd} \PYG{n+nb+bp}{true} \PYG{n}{px} \PYG{n}{py}\PYG{o}{;}
+  \PYG{n}{pz0} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{u32\PYGZus{}add} \PYG{n}{pz} \PYG{l+m+mi}{1}\PYG{o}{;}
+  \PYG{o}{(}\PYG{n}{px0}\PYG{o}{,} \PYG{n}{\PYGZus{}}\PYG{o}{)} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{choose\PYGZus{}back} \PYG{n+nb+bp}{true} \PYG{n}{px} \PYG{n}{py} \PYG{n}{pz0}\PYG{o}{;}
+  \PYG{n+nc}{Return} \PYG{n}{px0}
+\end{Verbatim}

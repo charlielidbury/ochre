@@ -1,0 +1,12 @@
+fn f<'a, 'b>(ppx : &'a mut &'b mut u32) : &'a mut &'b mut u32;
+
+let mut x = 0;
+let mut px = &mut x;
+let ppx = &mut px;
+let mppx = &mut (*ppx);
+let ppy = f(move mppx); // First function call
+**ppy = 1;
+let mut y = 2;
+*ppy = &mut y; // Borrow overwrite - hard to track because ppy was returned by a function call $\label{line:nested:overwrite}$
+let mppy = &mut (*ppy);
+let ppz = f(&move mppy); // Chained function call $\label{line:nested:chained}$

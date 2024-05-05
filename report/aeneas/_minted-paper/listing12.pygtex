@@ -1,0 +1,8 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{    }\PYG{c+c1}{// $x \mapsto 0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $x \mapsto \emloan\ell,\quad px_1 \mapsto \emborrow\ell0$}
+\PYG{+w}{                  }\PYG{c+c1}{// $x \mapsto 0,\quad px_1 \mapsto \bot$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// aeneas: $x \mapsto \emloan\ell',\quad px_1 \mapsto \bot, \quad px_2 \mapsto \emborrow{\ell'}0$}
+\PYG{+w}{                  }\PYG{c+c1}{// rustc: error: cannot borrow `px1` as mutable more than once at a time}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// aeneas: error, attempt to deference unusable variable px1}
+\end{Verbatim}

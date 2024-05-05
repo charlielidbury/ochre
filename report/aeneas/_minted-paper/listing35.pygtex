@@ -1,0 +1,10 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{val} \PYG{n}{state\PYGZus{}v} \PYG{o}{:} \PYG{n}{state} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{hash\PYGZus{}map\PYGZus{}t} \PYG{n}{u64}
+
+\PYG{k}{val} \PYG{n}{serialize\PYGZus{}lem} \PYG{o}{(}\PYG{n}{hm} \PYG{o}{:} \PYG{n}{hash\PYGZus{}map\PYGZus{}t} \PYG{n}{u64}\PYG{o}{)} \PYG{o}{(}\PYG{n}{st} \PYG{o}{:} \PYG{n}{state}\PYG{o}{)} \PYG{o}{:} \PYG{n+nc}{Lemma} \PYG{o}{(}
+  \PYG{k}{match} \PYG{n}{serialize\PYGZus{}fwd} \PYG{n}{hm} \PYG{n}{st} \PYG{k}{with} \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nb+bp}{True} \PYG{o}{|} \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n}{st\PYGZsq{}}\PYG{o}{,} \PYG{n+nb+bp}{()}\PYG{o}{)} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{state\PYGZus{}v} \PYG{n}{st\PYGZsq{}} \PYG{o}{==} \PYG{n}{hm}\PYG{o}{)}
+
+\PYG{k}{val} \PYG{n}{deserialize\PYGZus{}lem} \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{st} \PYG{o}{:} \PYG{n}{state}\PYG{o}{)} \PYG{o}{:} \PYG{n+nc}{Lemma} \PYG{o}{(}
+  \PYG{k}{match} \PYG{n}{deserialize\PYGZus{}fwd} \PYG{n}{st} \PYG{k}{with}
+  \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nb+bp}{True} \PYG{o}{|} \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n}{st\PYGZsq{}}\PYG{o}{,} \PYG{n}{hm}\PYG{o}{)} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{hm} \PYG{o}{==} \PYG{n}{state\PYGZus{}v} \PYG{n}{st} \PYG{o}{/\PYGZbs{}} \PYG{n}{state\PYGZus{}v} \PYG{n}{st\PYGZsq{}} \PYG{o}{==} \PYG{n}{state\PYGZus{}v} \PYG{n}{st}\PYG{o}{)}
+\end{Verbatim}

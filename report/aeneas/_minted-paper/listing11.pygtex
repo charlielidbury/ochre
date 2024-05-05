@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{       }\PYG{c+c1}{// $x \mapsto 0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $x \mapsto \emloan\ell,\quad px \mapsto \emborrow\ell0$}
+\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{*}\PYG{n}{px}\PYG{p}{);}\PYG{+w}{     }\PYG{c+c1}{// $x \mapsto \emloan\ell,\quad px_{\mathsf{old}} \mapsto \emborrow\ell{(\emloan\ell')},\quad px \mapsto \emborrow\ell'0$}
+\PYG{+w}{                     }\PYG{c+c1}{// $x \mapsto \emloan\ell,\quad px_{\mathsf{old}} \mapsto \emborrow\ell0,\hspace{4.8em} px \mapsto\bot$}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{x}\PYG{o}{==}\PYG{l+m+mi}{0}\PYG{p}{);}\PYG{+w}{       }\PYG{c+c1}{// $x \mapsto 0,\hspace{3.7em} px_{\mathsf{old}} \mapsto \bot,\hspace{9.2em} px \mapsto \bot$}
+\end{Verbatim}

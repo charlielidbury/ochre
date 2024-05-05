@@ -1,0 +1,14 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k}{fn} \PYG{n+nf}{f}\PYG{o}{\PYGZlt{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{o}{\PYGZgt{}}\PYG{p}{(}\PYG{n}{ppx}\PYG{+w}{ }: \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{k+kt}{u32}\PYG{p}{)}\PYG{+w}{ }: \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{k+kt}{u32}\PYG{p}{;}
+
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{ppx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{mppx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{*}\PYG{n}{ppx}\PYG{p}{)}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{ppy}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{f}\PYG{p}{(}\PYG{k}{move}\PYG{+w}{ }\PYG{n}{mppx}\PYG{p}{)}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// First function call}
+\PYG{o}{*}\PYG{o}{*}\PYG{n}{ppy}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{2}\PYG{p}{;}
+\PYG{o}{*}\PYG{n}{ppy}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Borrow overwrite \PYGZhy{} hard to track because ppy was returned by a function call $\label{line:nested:overwrite}$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{mppy}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{*}\PYG{n}{ppy}\PYG{p}{)}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{ppz}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{f}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{k}{move}\PYG{+w}{ }\PYG{n}{mppy}\PYG{p}{)}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Chained function call $\label{line:nested:chained}$}
+\end{Verbatim}

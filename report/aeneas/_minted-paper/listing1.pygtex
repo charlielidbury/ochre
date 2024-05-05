@@ -1,0 +1,9 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{fn} \PYG{n+nf}{ref\PYGZus{}incr}\PYG{p}{(}\PYG{n}{x}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{mut}\PYG{+w}{ }\PYG{k+kt}{i32}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{*}\PYG{n}{x}\PYG{+w}{ }\PYG{o}{+}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+
+\PYG{k}{fn} \PYG{n+nf}{test\PYGZus{}incr}\PYG{p}{()}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{k}{i32}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{ref\PYGZus{}incr}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{);}
+\PYG{+w}{    }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{y}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{);}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

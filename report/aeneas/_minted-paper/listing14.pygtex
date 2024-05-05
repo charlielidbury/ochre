@@ -1,0 +1,16 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{   }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{py}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $ x \mapsto \emloan\ell_x,\  y \mapsto \emloan \ell_y,\  px \mapsto \emborrow{\ell_x}0,\  py \mapsto \emborrow{\ell_y}0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{pz}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{choose}\PYG{p}{(}\PYG{k+kc}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{k}{move}\PYG{+w}{ }\PYG{n}{px}\PYG{p}{,}\PYG{+w}{ }\PYG{k}{move}\PYG{+w}{ }\PYG{n}{py}\PYG{p}{)}\PYG{p}{;}
+\PYG{c+c1}{// $x \mapsto \emloan\ell_x,\quad y \mapsto \emloan\ell_y,\quad px \mapsto \bot,\quad py \mapsto \bot,\quad pz \mapsto \emborrow{\ell_r}{(\sigma: \kw{uint32})},$ $\label{line:call:0}$}
+\PYG{c+c1}{// $A(\rho) \ \{\quad \emborrow{\ell_x}0,\quad \emborrow{\ell_y}0,\quad \emloan\ell_r \quad \}$ $\label{line:call:1}$}
+\PYG{o}{*}\PYG{n}{pz}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{*}\PYG{n}{pz}\PYG{+w}{ }\PYG{o}{+}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:assign}}
+\PYG{c+c1}{// $x \mapsto \emloan\ell_x,\quad y \mapsto \emloan\ell_y,\quad px \mapsto \bot,\quad py \mapsto \bot,\quad pz \mapsto \emborrow{\ell_r}{(\sigma': \kw{uint32})},\;$         $\hspace{.9ex}$step 0$\label{line:step0:0}$}
+\PYG{c+c1}{// $A(\rho) \ \{\quad \emborrow{\ell_x}0,\quad \emborrow{\ell_y}0,\quad \emloan\ell_r \quad \}$ $\label{line:step0:1}$}
+\PYG{c+c1}{// $x \mapsto \emloan\ell_x,\quad y \mapsto \emloan\ell_y,\quad px \mapsto \bot,\quad py \mapsto \bot,\quad pz \mapsto \bot,$                             $\,$step 1$\label{line:step1:0}$}
+\PYG{c+c1}{// $A(\rho) \ \{\quad \emborrow{\ell_x}0,\quad \emborrow{\ell_y}0,\quad \sigma' \quad \}$ $\label{line:step1:1}$}
+\PYG{c+c1}{// $x \mapsto \emloan\ell_x,\quad y \mapsto \emloan\ell_y,\quad px \mapsto \bot,\quad py \mapsto \bot,\quad pz \mapsto \bot,$                             $\,$step 2$\label{line:step2:0}$}
+\PYG{c+c1}{// $px' \mapsto \emborrow{\ell_x}{\sigma_x},\quad py' \mapsto \emborrow{\ell_y}{\sigma_y}$ $\label{line:step2:1}$}
+\PYG{c+c1}{// $x \mapsto \sigma_x,\quad y \mapsto \emloan\ell_y,\quad px \mapsto \bot,\quad py \mapsto \bot,\quad pz \mapsto \bot,\quad px' \mapsto \bot,\quad py' \mapsto \emborrow{\ell_y}{\sigma_y}$   step 3$\label{line:step3}$}
+\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{)}\PYG{p}{;}
+\end{Verbatim}

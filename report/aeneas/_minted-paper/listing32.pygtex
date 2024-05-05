@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{fn} \PYG{n+nf}{insert\PYGZus{}on\PYGZus{}disk}\PYG{p}{(}\PYG{n}{key}: \PYG{n+nc}{Key}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{value}: \PYG{k+kt}{u64}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{hm}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{deserialize}\PYG{p}{();}
+\PYG{+w}{    }\PYG{n}{hm}\PYG{p}{.}\PYG{n}{insert}\PYG{p}{(}\PYG{n}{key}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{value}\PYG{p}{);}
+\PYG{+w}{    }\PYG{n}{serialize}\PYG{p}{(}\PYG{n}{hm}\PYG{p}{);}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

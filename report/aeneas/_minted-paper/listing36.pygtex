@@ -1,0 +1,10 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{val} \PYG{n}{insert\PYGZus{}on\PYGZus{}disk\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{key} \PYG{o}{:} \PYG{n}{usize}\PYG{o}{)} \PYG{o}{(}\PYG{n}{value} \PYG{o}{:} \PYG{n}{u64}\PYG{o}{)} \PYG{o}{(}\PYG{n}{st} \PYG{o}{:} \PYG{n}{state}\PYG{o}{)} \PYG{o}{:} \PYG{n+nc}{Lemma} \PYG{o}{(}
+  \PYG{k}{match} \PYG{n}{hash\PYGZus{}map\PYGZus{}main\PYGZus{}insert\PYGZus{}on\PYGZus{}disk\PYGZus{}fwd} \PYG{n}{key} \PYG{n}{value} \PYG{n}{st} \PYG{k}{with}
+  \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nb+bp}{True}
+  \PYG{o}{|} \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n}{st\PYGZsq{}}\PYG{o}{,} \PYG{n+nb+bp}{()}\PYG{o}{)} \PYG{o}{\PYGZhy{}\PYGZgt{}}
+    \PYG{k+kd}{let} \PYG{n}{hm} \PYG{o}{=} \PYG{n}{state\PYGZus{}v} \PYG{n}{st\PYGZsq{}} \PYG{k}{in}
+    \PYG{k}{match} \PYG{n}{hash\PYGZus{}map\PYGZus{}insert\PYGZus{}fwd\PYGZus{}back} \PYG{n}{u64} \PYG{n}{hm} \PYG{n}{key} \PYG{n}{value} \PYG{k}{with}
+    \PYG{o}{|} \PYG{n+nc}{Fail} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nb+bp}{False}
+    \PYG{o}{|} \PYG{n+nc}{Return} \PYG{n}{hm\PYGZsq{}} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{hm\PYGZsq{}} \PYG{o}{==} \PYG{n}{state\PYGZus{}v} \PYG{n}{st\PYGZsq{}}\PYG{o}{)}
+\end{Verbatim}

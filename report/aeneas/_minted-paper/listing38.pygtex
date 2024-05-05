@@ -1,0 +1,11 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{n}{cannot}\PYG{+w}{ }\PYG{n}{assign}\PYG{+w}{ }\PYG{n}{to}\PYG{+w}{ }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{n}{because}\PYG{+w}{ }\PYG{n}{it}\PYG{+w}{ }\PYG{n}{is}\PYG{+w}{ }\PYG{n}{borrowed}
+\PYG{+w}{   }\PYG{o}{|}
+\PYG{+w}{ }\PYG{l+m+mi}{2}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{pp}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{p}\PYG{p}{;}
+\PYG{+w}{   }\PYG{o}{|}\PYG{+w}{              }\PYG{o}{\PYGZhy{}\PYGZhy{}}\PYG{+w}{ }\PYG{n}{borrow}\PYG{+w}{ }\PYG{n}{of}\PYG{+w}{ }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{n}{occurs}\PYG{+w}{ }\PYG{n}{here}
+\PYG{+w}{ }\PYG{l+m+mi}{5}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{p}{(}\PYG{n}{pp}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{);}
+\PYG{+w}{ }\PYG{l+m+mi}{9}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{2}\PYG{p}{;}
+\PYG{+w}{   }\PYG{o}{|}\PYG{+w}{     }\PYG{o}{\PYGZca{}\PYGZca{}\PYGZca{}\PYGZca{}\PYGZca{}\PYGZca{}\PYGZca{}}\PYG{+w}{ }\PYG{n}{assignment}\PYG{+w}{ }\PYG{n}{to}\PYG{+w}{ }\PYG{n}{borrowed}\PYG{+w}{ }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{n}{occurs}\PYG{+w}{ }\PYG{n}{here}
+\PYG{l+m+mi}{13}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{     }\PYG{n+nf+fm}{assert!}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{);}
+\PYG{+w}{   }\PYG{o}{|}\PYG{+w}{             }\PYG{o}{\PYGZhy{}\PYGZhy{}\PYGZhy{}}\PYG{+w}{ }\PYG{n}{borrow}\PYG{+w}{ }\PYG{n}{later}\PYG{+w}{ }\PYG{n}{used}\PYG{+w}{ }\PYG{n}{here}
+\end{Verbatim}

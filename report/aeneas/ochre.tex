@@ -1,0 +1,1116 @@
+\documentclass[acmsmall,screen]{acmart}
+
+\citestyle{acmauthoryear}
+
+\setcopyright{none}
+
+
+\newif\iflong
+\newif\ifshort
+\shortfalse
+\longtrue
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{xspace}
+\usepackage{xparse}
+  \NewDocumentCommand{\li}{v}{\textbf{\footnotesize\texttt{#1}}}
+\usepackage[frozencache=true]{minted}
+  \ifshort
+  \setminted{fontsize=\footnotesize,linenos}
+  \fi
+  \iflong
+  \setminted{fontsize=\footnotesize,linenos}
+  \fi
+\usepackage{tikz}
+  \usetikzlibrary{calc}
+  \usetikzlibrary{shadows,graphs}
+\usepackage{amsmath}
+\usepackage{mathpartir}
+  \renewcommand{\DefTirName}[1]{\hypertarget{#1}{\TirName {#1}}}
+  \newcommand{\Rule}[1]{\hyperlink{#1}{\TirName {#1}}}
+
+\newcommand{\sref}[1]{Section~\ref{sec:#1}}
+\newcommand{\fref}[1]{Figure~\ref{fig:#1}}
+\newcommand{\tref}[1]{Table~\ref{table:#1}}
+
+\newcommand{\aeneas}{\textsc{Aeneas}\xspace}
+\newcommand{\charon}{\textsc{Charon}\xspace}
+\newcommand{\fstar}{F$^\ast$\xspace}
+\newcommand{\betree}{B$^\varepsilon$tree\xspace}
+
+\DeclareRobustCommand{\son}[1]{ {\begingroup\color{red!60!black}{(Son) #1}\endgroup} }
+\DeclareRobustCommand{\jonathan}[1]{ {\begingroup\color{teal}{(Jonathan) #1}\endgroup} }
+\DeclareRobustCommand{\aymeric}[1]\relax
+
+\newcommand\kw[1]{\ensuremath{\mathsf{#1}}}
+\newcommand\tbrw[2]{\ensuremath{\mathsf{\&}^#1\,#2}}
+\newcommand\tmbrw[2]{\ensuremath{\mathsf{\&}^#1\mathsf{mut}\,#2}}
+\newcommand\ebrw[1]{\ensuremath{\mathsf{\&}\,#1}}
+\newcommand\embrw[1]{\ensuremath{\mathsf{\&mut}\,#1}}
+\newcommand\eassign[2]{\ensuremath{#1 := #2}}
+\newcommand\ederefs[1]{\ensuremath{*^s#1}}
+\newcommand\ederefm[1]{\ensuremath{*^m#1}}
+\newcommand\ederefb[1]{\ensuremath{*^b#1}}
+\newcommand\edrop[1]{\ensuremath{\kw{drop}\,#1}}
+\newcommand\emove[1]{\ensuremath{\kw{move}\,#1}}
+\newcommand\ecopy[1]{\ensuremath{\kw{copy}\,#1}}
+\newcommand\epanic{\kw{panic}}
+\newcommand\ereturn{\kw{return}}
+\newcommand\eseq[2]{#1;\,#2}
+\newcommand\eite[3]{\kw{if}\,#1\,\kw{then}\,#2\,\kw{else}\,#3}
+\newcommand\eswitch[3]{\kw{switch}\,#1\;#2\;\mathsf{default}\,#3}
+\newcommand\ematch[2]{\kw{match}\,#1\,\kw{ with }\;#2}
+\newcommand\enone{\kw{None}}
+\newcommand\esome[1]{\kw{Some}\;#1}
+\newcommand\krv{\ensuremath{rv}}
+\newcommand\kop{\ensuremath{op}}
+\newcommand\eloop[1]{\ensuremath{\kw{loop}\,#1}}
+\newcommand\ebreak[1]{\ensuremath{\kw{break}\,#1}}
+\newcommand\econtinue[1]{\ensuremath{\kw{continue}\,#1}}
+\newcommand\kfalse{\mathsf{false}}
+\newcommand\ktrue{\mathsf{true}}
+
+\newcommand\emborrow[2]{\ensuremath{\mathsf{borrow}^m\,#1\;#2}}
+\newcommand\esborrow[1]{\ensuremath{\mathsf{borrow}^s\,#1}}
+\newcommand\eiborrow[1]{\ensuremath{\mathsf{borrow}^r\,#1}}
+\let\erborrow\eiborrow
+\newcommand\esloan[2]{\ensuremath{\mathsf{loan}^s\,\{#1\}\,#2}}
+\newcommand\emloan[1]{\ensuremath{\mathsf{loan}^m\,#1}}
+\newcommand\ebox[1]{\ensuremath{\mathsf{Box}\,#1}}
+
+\newcommand\elproj[1]{\ensuremath{\kw{proj}_\mathsf{l}\,#1}}
+\newcommand\ebproj[1]{\ensuremath{\kw{proj}_\mathsf{out}\,#1}}
+\let\eoproj\ebproj
+\newcommand\eiproj[1]{\ensuremath{\kw{proj}_\mathsf{in}\,#1}}
+\newcommand\etproj[2]{\ensuremath{\kw{proj}_{#1}\,#2}}
+
+\newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
+
+\ifshort
+\newcommand\myparagraph[1]{\emph{#1}.\ }
+\fi
+\iflong
+\let\myparagraph\paragraph
+\fi
+
+\newlength{\characterlength}
+\settowidth{\characterlength}{a}
+\newcommand\cspace{\hspace{\characterlength}}
+
+
+\definecolor{envcolor}{RGB}{61, 122, 122}
+
+
+\begin{document}
+
+\title{Ochre}
+
+\author{Charlie Lidbury}
+\affiliation{\institution{Imperial College London}\country{United Kingdom}}
+\email{cal120@ic.ac.uk}
+
+
+\begin{abstract}
+  Abstract goes here
+\end{abstract}
+
+
+\begin{CCSXML}
+<ccs2012>
+<concept>
+<concept_id>10003752.10003790.10003806</concept_id>
+<concept_desc>Theory of computation~Programming logic</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+<concept>
+<concept_id>10003752.10003790.10002990</concept_id>
+<concept_desc>Theory of computation~Logic and verification</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Theory of computation~Programming logic}
+\ccsdesc[500]{Theory of computation~Logic and verification}
+
+\keywords{Rust, verification, functional translation}
+
+
+\maketitle
+
+\section{Introduction}
+Hello There
+
+\section{All Figure}
+
+
+\begin{figure}
+  \smaller
+  \arraycolsep=1pt %
+  \centering
+
+  \ifshort
+  \ruleline{\sffamily\textbf{Syntax}} %
+  \vspace{-2ex} %
+  \fi
+  \[
+  \ifshort
+  \begin{array}{ll} %
+  \fi
+  \begin{array}[t]{llll}
+    \tau & ::= & & \text{type} \\
+      %
+      &&
+      \kw{bool}\mid\kw{uint32}\mid\kw{int32}\iflong\mid\ldots\fi & \text{base types} \\
+      && \tmbrw\rho\tau & \text{mutable borrow} \\
+      && \tbrw\rho\tau & \text{immutable \iflong(shared) \fi borrow} \\
+      && T\; \vec \tau & \text{type application} \\
+      %
+      && \alpha, \beta, \ldots & \text{type variables} \\
+      && (\vec \tau) & \text{tuple \iflong($\kw{len}(\vec \tau) > 1$) \fi or unit \iflong($\kw{len}(\vec \tau) = 0$)\fi}
+    \\[1ex]
+
+    T & ::= & & \text{type \iflong constructor\fi application} \\
+    && t& \text{user-defined data type\ifshort\quad\fi} \\
+    && \kw{Box}& \text{boxed type}
+    \\[1ex]
+
+    s & ::= & & \text{statement} \\
+    && \emptyset & \text{empty statement (nil)} \\
+    && \eseq s s & \text{sequence (cons)} \\
+    && \eassign p \krv & \text{assignment} \\
+    && \eassign p {f\,\vec\kop} & \text{function call} \\
+    %
+    && \eite \kop s s & \text{conditional} \\
+    && \ematch p {\overrightarrow{ C \to s}} & \text{\iflong data type\fi case analysis} \\
+    %
+    && \ereturn & \text{function exit} \\
+    && \epanic & \text{unrecoverable error} \\
+    && \ldots & \text{loops, etc.}
+    \\[1ex]
+
+    rv & ::= & & \text{assignable ``r'' values} \\
+    && \kop & \text{operand} \\
+    && \embrw p & \text{mutable borrow} \\
+    && \ebrw p & \text{immutable \iflong(shared) \fi borrow} \\
+    && !\kop \mid \kop + \kop \mid \kop - \kop \iflong\mid \ldots\fi & \text{operators}
+    \\[1ex]
+
+  \ifshort
+  \end{array} & %
+  \begin{array}[t]{llll} %
+  \fi
+
+    \kop & ::= & & \text{operand} \\
+    && \emove p & \text{ownership transfer} \\
+    && \ecopy p & \text{scalar copy} \\
+    && \ktrue \mid \kfalse \mid n_{\mathsf{i32}} \mid n_{\mathsf{u32}} \iflong\mid \ldots\fi & \text{constants} \\
+    && C [\vec f = \vec{\kop}] & \text{data type constructor} \\
+    && (\vec{op}) & \text{tuple \iflong($\kw{len}(\vec{op}) > 1$)\fi or unit \iflong($\kw{len}(\vec{op}) = 0$)\fi}
+    \\[1ex]
+
+    x & & & \text{variable}
+    \\[1ex]
+
+    p & ::= & P[x] & \text{place}
+    \\[1ex]
+
+    P & ::= & & \text{path} \\
+    && [.] & \text{base case} \\
+    && \ederefs P & \text{deref shared borrow} \\
+    && \ederefm P & \text{deref mutable borrow} \\
+    && \ederefb P & \text{deref box} \\
+    && P.f & \text{field selection} \\
+    && P.n & \text{field selection (tuple)}
+    \\[1ex]
+
+    D & ::= & & \text{top-level declaration} \\
+    &&
+    \iflong
+    \mathsf{fn}\,f\,\langle\vec\rho\rangle
+      \ (\vec x_\mathsf{arg}: \vec\tau)
+      \ (\vec x_\mathsf{local}: \vec \tau)
+      \ (x_\mathsf{ret}: \tau)
+      = s\quad
+      \fi
+      \ifshort
+    \begin{array}l
+    \mathsf{fn}\,f\,\langle\vec\rho\rangle \\
+      \ (\vec x_\mathsf{arg}: \vec\tau)\\
+      \ (\vec x_\mathsf{local}: \vec \tau)\\
+      \ (x_\mathsf{ret}: \vec \tau)\\
+      = s
+    \end{array}
+    \fi
+      & \text{function declaration} \\
+    && \mathsf{type}\,t\;\vec\alpha = C [\vec f: \vec\tau] \mid \ldots & \text{data type declaration}
+  \end{array}
+  \ifshort
+  \end{array} %
+  \fi
+  \]
+
+  \iflong
+\caption{The Low-Level Borrow Calculus: Syntax} %
+\label{fig:syntax} %
+\end{figure} %
+
+
+\begin{figure} %
+  \smaller %
+  \centering %
+\fi
+  \ifshort
+    \ruleline{\sffamily\textbf{Reduction}}
+    \centering
+    \arraycolsep=4pt
+  \fi
+  \[
+  \ifshort
+  \begin{array}{ll}
+  \fi
+  \begin{array}[t]{llll}
+    v & ::= & & \text{value} \\
+      && \ktrue \mid \kfalse \mid n_{\mathsf{i32}} \mid n_{\mathsf{u32}} \iflong\mid \ldots\quad\fi & \text{booleans and integers} \\
+      && \emborrow \ell v & \text{mutable borrow} \\
+      && \esborrow \ell & \text{shared borrow} \\
+      && \eiborrow \ell & \text{reserved borrow} \\
+      && \emloan \ell & \text{mutable loan} \\
+      && \esloan {\vec\ell} v & \text{shared loan} \\
+      && \bot & \text{inaccessible value} \\
+      && C\,[ \vec f = \vec v ] & \text{data type constructor} \\
+      && (\vec v) & \text{tuple constructor \iflong($\kw{len}(\vec v) > 1$) \fi or unit \iflong($\kw{len}(\vec v) = 0$)\fi}
+    \\[1ex]
+
+    r & ::= & & \text{result} \\
+      && \epanic & \text{unrecoverable error state} \\
+      && \ereturn\,v & \text{successful, possibly-early exit} \\
+      && \ldots & \text{loop states, etc.}
+    \\[1ex]
+
+  \ifshort
+  \end{array}
+  &
+  \begin{array}[t]{llll}
+  \fi
+
+    \ell & & & \text{loan identifier}
+    \\[1ex]
+
+    \Omega & ::= & & \text{evaluation context} \\
+      && \emptyset & \text{empty} \\
+      && x \mapsto v, \Omega & \text{new mapping} \\
+  \end{array}
+  \ifshort
+  \end{array}
+  \fi
+  \]
+  \ifshort
+\caption{The Low-Level Borrow Calculus: Syntax, Reduction Environments, Values}
+  \fi
+  \iflong
+\caption{The Low-Level Borrow Calculus: Reduction Environments, Values}
+\fi
+\label{fig:values}
+  \ifshort
+\label{fig:syntax}
+  \fi
+\end{figure}
+
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[Read]{
+      p = P[x] \\
+      x \mapsto v_x \in \Omega \\
+      \Omega \vdash P(v_x) \Rightarrow v
+    }{
+      \Omega(p) \Rightarrow v
+    }
+
+    %
+    \inferrule[R-Box]{
+      \Omega \vdash P(v_P) \Rightarrow v
+    }{
+      \Omega \vdash (\ederefb P)(\ebox v_P) \Rightarrow v
+    }
+
+    \inferrule[R-Mut-Borrow]{
+      \Omega \vdash P(v_P) \Rightarrow v
+    }{
+      \Omega \vdash (\ederefm P)(\emborrow \ell v_P) \Rightarrow v
+    }
+
+    \inferrule[R-Shared-Borrow]{
+      \esloan{\ell \cup \_}{v_P} \in \Omega \\
+      \Omega \vdash P(v_P) \Rightarrow v
+    }{
+      \Omega \vdash (\ederefs P)(\esborrow \ell) \Rightarrow v
+    }
+
+    %
+    \inferrule[R-Field]{
+      \Omega \vdash P(v_P) \Rightarrow v
+    }{
+      \Omega \vdash (P.f)(C\,[ \overrightarrow{ f = v_P } ]) \Rightarrow v
+    }
+
+    \inferrule[R-Base]{ }{
+      \Omega \vdash [.](v) \Rightarrow v
+    }
+
+    \inferrule[R-Shared-Loan]{
+      P \neq [.] \\
+      \Omega \vdash P(v_P) \Rightarrow v
+    }{
+      \Omega \vdash P(\esloan \_ v_P) \Rightarrow v
+    }
+
+    \inferrule[Write]{
+      x \mapsto v_x \in \Omega \\
+      p = P[x] \\\\
+      \Omega \vdash P(v_x) \leftarrow v \Rightarrow v'_x \\
+      \Omega' = \Omega[x \mapsto v'_x]
+    }{
+      \Omega(p) \leftarrow v \Rightarrow \Omega'
+    }
+
+    \inferrule[W-Box]{
+      \Omega \vdash P(v_P) \leftarrow v \Rightarrow v'_P
+    }{
+      \Omega \vdash (\ederefb P)(\ebox {v_P}) \leftarrow v \Rightarrow \ebox {v'_P}
+    }
+
+    \inferrule[W-Mut-Borrow]{
+      \Omega \vdash P(v_P) \leftarrow v \Rightarrow v'_P
+    }{
+      \Omega \vdash (\ederefm P)(\emborrow \ell {v_P}) \leftarrow v \Rightarrow \emborrow \ell {v'_P}
+    }
+
+    \inferrule[W-Base]{
+    }{
+    \Omega \vdash [.](v_P) \leftarrow v \Rightarrow v
+    }\iflong
+
+    \inferrule[W-Field]{
+    f = f_i \\
+    \Omega \vdash P(v_{P,i}) \leftarrow v \Rightarrow v'_{P,i} \\
+    v'_{P,j} = v_{P,j} \text{ for } j\neq i
+    }{
+    \Omega \vdash (P.f)(C[\overrightarrow{f = v_P}]) \leftarrow v \Rightarrow
+      C[\overrightarrow{f = v'_P}]
+    }\fi
+  \end{mathpar}
+  \caption{Reading From and Writing To Our Structured Memory Model}
+  \label{fig:proj}
+\end{figure}
+
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[E-Mut-Borrow]{
+      \Omega(p) \Rightarrow v \\
+      \{\bot, \kw{loan}, \kw{borrow}^r\} \not\in v \\\\
+      \ederefs\relax \not\in p \\
+      \ell \text{ fresh} \\
+      \Omega(p) \leftarrow \emloan\ell \Rightarrow \Omega'
+    }{
+      \Omega \vdash \embrw p \rightsquigarrow \emborrow \ell v \dashv \Omega'
+    }
+
+    \inferrule[E-Shared-Or-Reserved-Borrow]{
+      \Omega(p) \Rightarrow v \\
+      \{ \bot, \emloan\relax, \kw{borrow}^r\}\not\in v \\\\
+      \ell \text{ fresh} \\
+      \Omega' = \Omega[p \mapsto v'] \\\\
+      v' = \begin{cases}
+        \esloan {\vec \ell \cup \ell} v'' & \text { if } v = \esloan{\vec\ell} v'' \cr
+        \esloan {\ell} v & \text { otherwise }
+      \end{cases}
+    }{
+      \Omega \vdash \ebrw p \rightsquigarrow \kw{borrow}^{r,s} \ell \dashv \Omega'
+    }
+
+    \inferrule[E-Move]{
+      %
+      \Omega(p) \Rightarrow v \\
+      \{\bot, \kw{loan}, \kw{borrow}^r\}\not\in v \\\\
+      \{\ederefm\relax, \ederefs\relax\}\not\in p \\
+      \Omega(p) \leftarrow \bot \Rightarrow \Omega'
+    }{
+      \Omega \vdash \emove p \rightsquigarrow v \dashv \Omega'
+    }
+
+    \inferrule[E-Copy]{
+      \Omega(p) \Rightarrow v \\
+      \{\bot, \emloan\relax, \kw{borrow}^{m,r}\} \not\in v \\\\
+      \Omega \vdash \ecopy v \Rightarrow v' \dashv \Omega'
+    }{
+      \Omega \vdash \ecopy p \rightsquigarrow v' \dashv \Omega'
+    }\iflong
+
+    \inferrule[E-Constructor]{
+    \Omega_i \vdash op_i \rightsquigarrow v_i \dashv \Omega_{i+1}
+    }{
+    \Omega_0 \vdash C[\overrightarrow{f = \kop}] \rightsquigarrow
+    C[\overrightarrow{f = v}] \dashv \Omega_n
+    }
+
+    \inferrule[E-Return]{
+    \Omega_i \vdash \eassign{x_{\mathsf{local},i}}\bot \rightsquigarrow () \dashv \Omega_{i+1} \\\\
+    \Omega_n (x_\mathsf{ret}) \Rightarrow v \\
+    \{\bot, \kw{loan}\relax, \kw{borrow}^{r}\} \not\in v
+    }{
+      \Omega_0 \vdash \ereturn \rightsquigarrow \ereturn\,v \dashv \Omega_n
+    }
+
+    \inferrule[E-IfThenElse-T]{
+    \Omega \vdash \kop \rightsquigarrow \kw{true} \dashv \Omega'\\\\
+    \Omega' \vdash s_1 \rightsquigarrow r \dashv \Omega''
+    }{
+      \Omega \vdash \eite{\kop}{s_1}{s_2} \rightsquigarrow r \dashv \Omega''
+    }\fi
+
+    \inferrule[E-Assign]{
+      \Omega \vdash rv \rightsquigarrow v \dashv \Omega' \\
+      \Omega'(p) \Rightarrow v_p \\\\
+      %
+      v_p \text{ has no outer } \kw{loan}\text{s} \\
+      x_\mathsf{old} \text{ fresh}\\\\
+      \Omega'(p) \leftarrow v \Rightarrow \Omega'' \\
+      \Omega''' = \Omega''[x_\mathsf{old} \mapsto v_p]
+    }{
+    \Omega \vdash \eassign p {rv} \rightsquigarrow () \dashv \Omega'''
+    }\iflong
+
+    \inferrule[E-Free]{
+      \Omega(p) \Rightarrow \ebox v \\
+      \Omega \vdash \eassign p \bot \rightsquigarrow () \dashv \Omega'
+    }{
+    \Omega \vdash \kw{free}\,p \rightsquigarrow () \dashv \Omega'
+    }\fi
+
+    \inferrule[E-Match]{
+      \Omega \vdash p \stackrel s\Rightarrow C[\overrightarrow{f = v}] \\
+      \Omega \vdash s \rightsquigarrow r \dashv \Omega'
+    }{
+    \Omega \vdash \ematch{p}{\ldots \mid C \to s \mid \ldots} \rightsquigarrow r \dashv \Omega'
+    }\ifshort
+
+    \inferrule[C-Shared-Borrow]{
+      \ell' \text{ fresh} \\
+      \esloan{\ell \cup \vec\ell}v \in \Omega \\\\
+      \Omega' = \left[ \esloan{\ell \cup \ell' \cup \vec\ell}v
+        \big/ \esloan{\ell \cup \vec\ell}v \right] \Omega
+    }{
+      \Omega \vdash \ecopy \esborrow\ell \Rightarrow
+        \esborrow\ell' \dashv \Omega'
+    }
+
+    \inferrule[C-Shared-Loan]{
+      \Omega \vdash \ecopy v \Rightarrow v' \dashv \Omega'
+    }{
+    \Omega \vdash \ecopy \esloan{\vec\ell} v \Rightarrow
+        v' \dashv \Omega'
+    }\fi
+  \end{mathpar}
+  \caption{Selected Reduction Rules for LLBC. We omit: \ifshort\textsc{E-IfThenElse-F}, \fi{}tuples (similar to
+  constructor), sequences (trivial).  We also omit the handling of results -- these prevent further
+  execution and simply get carried through. \iflong Boxes behave like regular ADT constructors, except for
+  the \li+free+ Rust function, which receives primitive treatment, above.\fi}
+  \label{fig:reduction}
+\end{figure}
+
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[R-Not-Shared]{
+      \Omega(p) \Rightarrow v \\
+      v \neq \esloan{\vec l}{v'}
+    }{
+      \Omega(p) \stackrel s\Rightarrow v
+    }
+
+    \inferrule[R-Shared]{
+      \Omega(p) \Rightarrow \esloan{\vec l}{v}
+    }{
+      \Omega(p) \stackrel s\Rightarrow v
+    }
+  \end{mathpar}
+  \caption{Auxiliary Judgment: Reading a Possibly Immutably-Shared Value. Rust
+  allows matching on a value for which there are oustanding \emph{shared}
+  borrows; the auxiliary $\stackrel s\Rightarrow$ read allows reading underneath
+  a $\kw{loan}^s$\iflong, if applicable\fi.}
+  \label{fig:match-read}
+\end{figure}
+
+\iflong
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[C-Shared-Borrow]{
+      \ell' \text{ fresh} \\
+      \esloan{\ell \cup \vec\ell}v \in \Omega \\\\
+      \Omega' = \left[ \esloan{\ell \cup \ell' \cup \vec\ell}v
+        \big/ \esloan{\ell \cup \vec\ell}v \right] \Omega
+    }{
+      \Omega \vdash \ecopy \esborrow\ell \Rightarrow
+        \esborrow\ell' \dashv \Omega'
+    }
+
+    \inferrule[C-Shared-Loan]{
+      \Omega \vdash \ecopy v \Rightarrow v' \dashv \Omega'
+    }{
+    \Omega \vdash \ecopy \esloan{\vec\ell} v \Rightarrow
+        v' \dashv \Omega'
+    }
+
+    \inferrule[C-Scalar]{
+    v = \kw{true} \text{ or }\kw{false}\text{ or } n_\mathsf{i32} \text{ or } n_\mathsf{u32}\text{ or } \ldots
+    }{
+    \Omega \vdash \ecopy v \Rightarrow v \dashv \Omega
+    }
+
+    \inferrule[C-None]{
+    }{
+    \Omega \vdash \ecopy\enone \Rightarrow \enone \dashv \Omega
+    }
+
+    \inferrule[C-Some]{
+      \Omega \vdash \ecopy v \Rightarrow v' \dashv \Omega'
+    }{
+    \Omega \vdash \ecopy {\esome v} \Rightarrow {\esome v'} \dashv \Omega'
+    }
+
+    \inferrule[C-Tuple]{
+    \Omega_i \vdash \ecopy v_i \Rightarrow v'_i \dashv \Omega_{i+1}
+    }{
+    \Omega_0 \vdash \ecopy (\vec v) \Rightarrow (\vec v') \dashv \Omega_n
+    }
+  \end{mathpar}
+  \caption{Auxiliary Judgment: Copying. We mimic MIR and see the copy of options
+  and tuples as primitive operations. The judgment is undefined for any other
+  construct as Rust's MIR only permits copying primitive data.}
+  \label{fig:copy}
+\end{figure}
+\fi
+
+\iflong
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[A-Shorthand]{
+      \ominus\; v_p
+    }{
+      v_p \text{ has no outer } \kw{loan}\text{s}
+    }
+
+    \inferrule[A-Scalar]{
+      v = \kw{true} \text{ or }\kw{false}\text{ or } n_\mathsf{i32} \text{ or } n_\mathsf{u32}\text{ or } \ldots
+    }{
+      \ominus\; v
+    }
+
+    \inferrule[A-Tuple]{
+      \ominus\; v_i
+    }{
+      \ominus\; (\vec v)
+    }
+
+    \inferrule[A-Constructor]{
+      \ominus\; v_i
+    }{
+      \ominus\; C[\vec f = \vec v]
+    }
+
+    \inferrule[A-Borrow-M]{
+    }{
+    \ominus\; \emborrow\ell v
+    }
+
+    \inferrule[A-Borrow-R-S]{
+    }{
+    \ominus\; \kw{borrow}^{r,s} \ell
+    }
+
+    \inferrule[A-Bot]{
+    }{
+    \ominus\; \bot
+    }
+  \end{mathpar}
+  \caption{Auxiliary Judgment: Absence of Outer Loans. We use shorthand notation $\ominus$ for this
+  figure. Enforcing this
+  criterion ensures that, at assignment-time, the memory we are about to write does not contained
+  loaned-out data, as this would be unsound. This judgement is defined by omission, and is never
+  valid for values of the form $\kw{loan}\;\_$. Such values, however, may appear underneath borrows,
+  as the \textsc{A-Borrow-*} rules enforce no preconditions.}
+  \label{fig:no-outer-loans}
+\end{figure}
+\fi
+
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[Write-G]{
+    p = P[x] \\
+    x \mapsto v_x \in \Omega \\\\
+    \Omega \vdash p(v_x) \leftarrow v \stackrel g\Rightarrow v'_x \dashv \Omega' \\
+    \Omega'' = \Omega'[x\mapsto v'_x]
+    }{
+    \Omega[p \mapsto v] = \Omega''
+    }
+
+    \inferrule[W-G-Shared-Borrow]{
+    \esloan{\ell\cup \_}{v_p} \in \Omega \\
+    \Omega \vdash p(v_p) \leftarrow v \stackrel g\Rightarrow v'_p \dashv \Omega' \\\\
+    \Omega'' = \left[ \esloan{\ell\cup \_}{v'_p} \big/ \esloan{\ell\cup \_}{v_p} \right]\Omega'
+    }{
+    \Omega \vdash (\ederefs p)(\esborrow\ell) \leftarrow v \stackrel g\Rightarrow
+    \esborrow\ell \dashv \Omega''
+    }
+  \end{mathpar}
+  \caption{Auxiliary Judgment: Ghost Write. This judgment inherits all of the
+  rules of the form \textsc{W-*}.}
+  \label{fig:ghost-write}
+\end{figure}
+
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[Not-Borrowed]{
+      \not\exists V',V''.\ V[\cdot] = V'[\emborrow\_{(V''[\cdot])}] \\\\
+      \not\exists V',V''.\ V[\cdot] = V'[\esloan\_{(V''[\cdot])}]
+    }{
+      \mathsf{not\_borrowed\_value}\,V
+    }
+
+    \inferrule[End-Shared-Or-Reserved-1]{
+      \mathsf{not\_borrowed\_value}\,V
+    }{
+      \arraycolsep=1pt
+      \begin{array}{lll}
+        \Omega[x_1 \mapsto V[\kw{borrow}^{r,s} \ell], & x_2 \mapsto V'[\esloan{\ell}v]] &
+          \hookrightarrow \cr
+        \Omega[x_1 \mapsto V[\bot], & x_2 \mapsto V'[v]]
+      \end{array}
+    }
+
+    \inferrule[Not-Shared]{
+      \not\exists V',V''.\ V[\cdot] = V'[\esloan\_{(V''[\cdot])}]
+    }{
+      \mathsf{not\_shared\_value}\,V
+    }
+
+    \inferrule[End-Shared-Or-Reserved-2]{
+      \mathsf{not\_borrowed\_value}\,V \\
+      \ell \not\in \vec\ell
+    }{
+      \arraycolsep=1pt
+      \begin{array}{lll}
+        \Omega [x_1 \mapsto V[\kw{borrow}^{r,s} \ell], & x_2 \mapsto V'[\esloan{\ell\cup\vec\ell}v] ] &
+          \hookrightarrow \cr
+          \Omega[x_1 \mapsto V[\bot], & x_2 \mapsto V'[\esloan{\vec\ell}v]]
+      \end{array}
+    }
+
+    \inferrule[End-Mut]{
+      %
+      \{\kw{loan}, \kw{borrow}^r\} \not\in v \\
+      \mathsf{not\_borrowed\_value}\,V
+    }{
+      \arraycolsep=1pt
+      \begin{array}{lll}
+        \Omega[x_1 \mapsto V[\emborrow\ell{v}], & x_2 \mapsto V'[\emloan\ell]]
+          \hookrightarrow \cr
+        \Omega[x_1 \mapsto V[\bot], & x_2 \mapsto V'[v]]
+      \end{array}
+    }
+
+    \inferrule[Activate-Reserved]{
+      %
+      \{\kw{loan}, \kw{borrow}^r\} \not\in v \\
+      \mathsf{not\_shared\_value}\,V'
+    }{
+      \arraycolsep=1pt
+      \begin{array}{lll}
+        \Omega[x_1 \mapsto V[\eiborrow \ell], & x_2 \mapsto V'[\esloan{\ell}v]]
+          \hookrightarrow \cr
+        \Omega[x_1 \mapsto V[\emborrow\ell v], & x_2 \mapsto V'[\emloan\ell]]
+      \end{array}
+    }
+  \end{mathpar}
+  \caption{Reorganizing Environments}
+  \label{fig:reorg}
+\end{figure}
+
+
+\begin{figure}
+  \centering
+    \smaller
+    \[
+    \ifshort
+    \arraycolsep=4pt
+    \begin{array}{ll}
+    \fi
+    \begin{array}[t]{llll}
+      v & ::=  \\
+        && \dots & \text{(as before)} \\
+        && (\sigma: \tau) & \text{symbolic value} \\
+        && \eiproj v & \text{input borrow projector} \\
+        && \elproj v & \text{loan projector} \\
+        && \ebproj v & \text{output borrow projector} \\
+        \ifshort
+    \end{array}
+    &
+    \begin{array}[t]{llll}
+    \fi\iflong
+    \\[1ex]
+  \fi
+
+      \Omega & ::=  \\
+        && \ldots & \text{(as before)} \\
+        && A(\rho) \{ \vec v \}, \Omega \quad & \text{new region abstraction for \iflong region \fi}\rho \\
+      \\[1ex]
+
+      \rho & ::= & & \text{region identifier}
+    \end{array}
+    \ifshort
+    \end{array}
+    \fi
+    \]
+  \caption{Abstract Semantics: Environments, Values}
+  \label{fig:abstract-values}
+\end{figure}
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[Decompose-Tuple]{
+      \sigma_l, \sigma_r \text{ fresh}
+    }{
+      \Omega
+      \overset\sigma{\underset{{(\sigma_l, \sigma_r)}}\hookrightarrow}
+      \left[((\sigma_l, \sigma_r): (\tau_1, \tau_2))\Big/
+      (\sigma: (\tau_1, \tau_2))\right]\Omega
+    }
+
+    \inferrule[Proj-Tuple]{
+    }{
+    \begin{array}{l}\Omega[A(\rho)\mapsto\kw{proj}_{\kw{in,l,out}}\,{(\sigma_l, \sigma_r)}] \hookrightarrow
+    \cr\Omega[A(\rho)\mapsto(\kw{proj}_\kw{in,l,out}\,{\sigma_l}, \kw{proj}_\kw{in,l,out}\,{\sigma_r})]
+    \end{array}
+    }
+
+    \inferrule[Proj-I-Mut-Match]{
+    }{
+    \begin{array}{l}\Omega[A(\rho)\mapsto\eiproj{(\emborrow\ell\sigma: \tmbrw\rho\tau)}] \hookrightarrow
+    \cr\Omega[A(\rho)\mapsto\emborrow\ell(\sigma: \tau)]
+    \end{array}
+    }
+
+    \inferrule[Proj-I-Mut-No-Match]{
+    }{
+    \begin{array}{l}\Omega[A(\rho)\mapsto\eiproj{(\emborrow\ell\_: \tmbrw\mu\tau)}] \hookrightarrow
+    \cr\Omega[A(\rho)\mapsto\_]
+    \end{array}
+    }
+
+    \inferrule[Proj-I-Shared-Match]{
+    }{
+    \begin{array}{l}\Omega[A(\rho)\mapsto\eiproj{(\esborrow\ell: \tbrw\rho\tau)}] \hookrightarrow
+    \cr\Omega[A(\rho)\mapsto\esborrow\ell]
+    \end{array}
+    }
+
+    \inferrule[Proj-I-Shared-No-Match]{
+    }{
+    \begin{array}{l}\Omega[A(\rho)\mapsto\eiproj{(\esborrow\ell: \tbrw\mu\tau)}] \hookrightarrow
+    \cr\Omega[A(\rho)\mapsto\_]
+    \end{array}
+    }\iflong
+
+    \inferrule[Proj-I-Symb]{
+      \&\not\in\tau
+    }{
+    \Omega[A(\rho)\mapsto\eiproj{(\sigma: \tau)}] \hookrightarrow
+    \Omega[A(\rho)\mapsto\sigma]
+    }\fi
+
+    \inferrule[Proj-Unfold-Mut-Match]{
+      \sigma',\ell\text{ fresh}
+    }{
+    \arraycolsep=1.4pt
+    \begin{array}{ll}\Omega[p\mapsto \eoproj(\sigma: \tmbrw\rho\tau),& A(\rho) \mapsto \elproj{\sigma}] \hookrightarrow
+    \cr\Omega[p\mapsto \emborrow\ell\sigma',& A(\rho) \mapsto \emloan\ell]
+    \end{array}
+    }
+
+    \inferrule[Proj-Unfold-Shared-Match]{
+      \sigma',\ell\text{ fresh}
+    }{
+    \arraycolsep=1.4pt
+    \begin{array}{ll}\Omega[p\mapsto \eoproj(\sigma: \tbrw\rho\tau),& A(\rho) \mapsto \elproj{\sigma}] \hookrightarrow
+    \cr\Omega[p\mapsto \esborrow\ell,& A(\rho) \mapsto \esloan\ell\sigma']
+    \end{array}
+    }
+
+    \inferrule[Proj-L-No-Match]{
+      \&\not\in\tau
+    }{
+    \begin{array}{l}\Omega[A(\rho) \mapsto \elproj{(\sigma:\tau)}] \hookrightarrow
+    \cr\Omega[A(\rho) \mapsto \_]
+    \end{array}
+    }
+
+    \inferrule[End-Abstract-Mut]{
+      \mathsf{not\_borrowed\_value}\,V
+    }{
+    \arraycolsep=1.4pt
+    \begin{array}{ll}\Omega[ x \mapsto V[\emborrow\ell v], & A(\rho) \mapsto \emloan\ell ] \hookrightarrow
+      \cr\Omega[ x \mapsto V[\bot], & A(\rho) \mapsto v ]
+      \end{array}
+    }
+
+    \inferrule[End-Abstraction]{
+      \kw{borrows}^m(A(\rho)) = \overrightarrow{\emborrow\ell\_} \\\\
+      \kw{borrows}^s(A(\rho)) = \overrightarrow{\esborrow{\ell'}} \\\\
+      \kw{loan},\elproj\not\in A(\rho).v_r \\
+      \vec\sigma' \text{ fresh} \\
+      \vec x_g, \vec y_g \text{ fresh}
+    }{
+    A(\rho),\Omega \hookrightarrow
+    \Omega,
+    \overrightarrow{x_g \mapsto \emborrow\ell\sigma'},
+    \overrightarrow{y_g \mapsto \esborrow{\ell'}}
+    }
+  \end{mathpar}
+  \caption{Reorganizing Environments with Abstract Values and Projectors}
+  \label{fig:reorg-abstract}
+\end{figure}
+
+\iflong
+\newcommand\ksym{\kw{sym}}
+\begin{figure}
+  \centering
+  \smaller
+  \[
+  \begin{array}[h]{lllr}
+    \ksym(\alpha,(\vec\sigma),(\vec v)) & = & (\overrightarrow{\ksym(\alpha,\sigma,v)}) \\
+    %
+    \ksym(\alpha,\sigma,\emborrow\ell v: \tmbrw\alpha\tau) & = & \emborrow\ell\sigma \\
+    \ksym(\alpha,\_,\emborrow\ell v: \tmbrw{\beta}\tau) & = & \bot & \qquad \alpha \neq \beta
+    %
+  \end{array}
+  \]
+  \caption{The $\kw{sym}$ function, used for the generation of backward
+  functions. Specifically, $\kw{sym}(\alpha,\sigma,v)$ models the caller invoking
+  the backward function for $\alpha$ with the value originally returned by the
+  forward function to said caller. We abstract away the concrete view of the
+  return value ($v$) into a symbolic view (modeled by $\sigma$) -- essentially
+  saying that the caller may have arbitrarily mutated the return value while it
+  owned it.}
+  \label{fig:sym}
+\end{figure}
+\fi
+
+\begin{figure}
+  \centering
+  \smaller
+  \begin{mathpar}
+    \inferrule[Pure-Mut-Borrow]{
+      \Omega \vdash v \updownarrow e
+    }{
+      \Omega \vdash \emborrow\ell v \updownarrow e
+    }
+
+    \inferrule[Pure-Const]{
+    }{
+      \Omega \vdash n_\mathsf{i32} \updownarrow n_\mathsf{i32}
+    }
+
+    \inferrule[Pure-Tuple]{
+      \Omega \vdash \vec v \updownarrow \vec e
+    }{
+      \Omega \vdash (\vec v) \updownarrow (\vec e)
+    }
+
+    \inferrule[Pure-Symb]{
+    }{
+      \Omega \vdash \sigma \updownarrow \sigma
+    }
+
+    \inferrule[Pure-Box]{
+      \Omega \vdash v \updownarrow e
+    }{
+      \Omega \vdash \ebox v \updownarrow e
+    }
+
+    \inferrule[Pure-Shared-Borrow]{
+    \esloan{\vec\ell}{v} \in \Omega \\ \ell \in \vec\ell \\\\
+      \Omega \vdash v \updownarrow e
+    }{
+      \Omega \vdash \esborrow\ell \updownarrow e
+    }
+
+    \inferrule[T-Destruct]{
+    \vec{\sigma'} \text{ fresh} \\
+    M, \Omega \overset\sigma{\underset{(\vec{\sigma'})}\hookrightarrow} M', \Omega'
+    }{
+    M, \Omega \vdash \emptyset \updownarrow \kw{let}\;(\vec{\sigma'}) = \sigma\;\kw{in}\;[\cdot]\dashv M', \Omega''
+    }
+
+    \inferrule[T-Return-Forward]{
+      \Omega_i \vdash \eassign{x_{\mathsf{local},i}}\bot \rightsquigarrow () \dashv \Omega_{i+1} \\
+      \Omega_n (x_\mathsf{ret}) \Rightarrow v \\\\
+      \Omega_n \vdash v \downarrow e\\
+      \left\{ \kw{loan}, \bot, \kw{borrow}^r \right\} \not\in v
+    }{
+    M, \Omega_0 \vdash \kw{return} \downarrow e
+    }
+
+    \inferrule[T-IfThenElse]{
+      M, \Omega \vdash \kop \updownarrow \sigma \dashv M', \Omega' \\
+      \Omega' \overset\sigma{\underset{\kw{true}}\hookrightarrow}\Omega_1 \\
+      \Omega' \overset\sigma{\underset{\kw{false}}\hookrightarrow}\Omega_2 \\\\
+      M', \Omega_1 \vdash s_1 \updownarrow e_1 \\
+      M', \Omega_2 \vdash s_2 \updownarrow e_2
+    }{
+      M, \Omega \vdash \eite{\kop}{s_1}{s_2} \updownarrow \eite{\sigma}{e_1}{e_2}
+    }
+
+    \inferrule[T-Seq]{
+    M, \Omega \vdash s_1 \updownarrow E[\cdot] \dashv M', \Omega' \\\\
+    M', \Omega' \vdash s_2 \updownarrow e \dashv M'', \Omega''
+    }{
+    M, \Omega \vdash s_1; s_2 \updownarrow E[e] \dashv M'', \Omega''
+    }
+
+    \inferrule[T-Call-Forward]{
+    %
+    A(\rho_i) = \left\{ \overrightarrow{\eiproj v}, \elproj{\sigma_\kw{ret}} \right\} \\
+    (\sigma : \tau) \in \vec v \text{ implies } \& \not\in \tau \\
+    \vec\rho \text{ fresh} \\\\
+    %
+    \sigma_\kw{ret} \text{ fresh} \\
+    \Omega \vdash v_i \updownarrow e_i \\
+    \Omega, \overrightarrow{A(\rho)} \vdash \eassign p {\eoproj\sigma_\kw{ret}} \rightsquigarrow () \dashv \Omega'
+    }{
+    M, \Omega \vdash \eassign{p}{f\langle\vec\rho\rangle\,\vec{v}} \updownarrow
+    \sigma_\kw{ret} \leftharpoonup f_\mathsf{fwd}\,\vec e;\;[\cdot] \dashv (f\langle\vec\rho\rangle\,\vec e), M; \Omega'
+    }
+
+    \inferrule[T-Reorg-Anytime]{
+    M, \Omega \vdash\emptyset\updownarrow E[\cdot] \dashv M', \Omega' \\\\
+    M', \Omega' \vdash s \updownarrow E'[\cdot] \dashv M'', \Omega''
+    }{
+    M, \Omega \vdash s \updownarrow E[E'[\cdot]] \dashv M'', \Omega''
+    }
+
+    \inferrule[T-Call-Backward]{
+      \Omega = A(\rho), \Omega' \\
+      M = f\langle\ldots,\rho,\ldots\rangle\,\vec v, M' \\
+      \Omega \vdash A(\rho).v_\kw{ret} \updownarrow e_\kw{ret} \\\\ %
+      A(\rho), \Omega' \hookrightarrow
+        \Omega'',
+        \overrightarrow{x_g \mapsto \emborrow\ell\sigma'},
+        \overrightarrow{y_g \mapsto \ldots} %
+        \text{ \footnotesize via \Rule{End-Abstraction}}
+    }{
+    M, \Omega \vdash \emptyset \updownarrow
+      (\vec \sigma') \leftharpoonup f_{\mathsf{back}(\rho)}\,\vec e \,e_\kw{ret}; [\cdot] \dashv M', \Omega''
+    }
+
+    \inferrule[T-Return-Backward]{
+      \Omega_i \vdash \eassign{x_{\mathsf{local},i}}\bot \rightsquigarrow () \dashv \Omega_{i+1} \\\\
+      \Omega_n (x_\mathsf{ret}) \Rightarrow v_\mathsf{ret} \\
+      \left\{ \kw{loan}, \bot, \kw{borrow}^r \right\} \not\in v_\mathsf{ret} \\\\
+      \Omega' = \Omega_n[x_\mathsf{ret} \mapsto \kw{sym}(\rho,
+        \sigma_\mathsf{ret}, v_\mathsf{ret})] \\\\
+      \Omega' \vdash \emptyset \uparrow^\rho E[\cdot] \dashv \Omega'' \\
+      \Omega''[A(\rho)] = \left\{ \vec v \right\} \\\\
+      \left\{ \kw{loan},\kw{proj} \right\}\not\in \vec v \\
+      \Omega \vdash \vec v \uparrow \vec e
+    }{
+      \Omega_0 \vdash \kw{return} \uparrow^\rho E[\kw{ret}\;(\vec e)]
+    }
+
+    \inferrule[T-Fun-Backward]{
+    A(\rho_i) = \left\{ \overrightarrow{\elproj{(\sigma: \tau})} \right\} \\
+    \vec\sigma\text{ fresh}\\
+    \emptyset,\Omega \vdash s \uparrow^\rho e \\\\
+    \Omega = \overrightarrow{A(\rho)}, \overrightarrow{x\mapsto \eoproj\sigma},\,
+    \vec x_\mathsf{local}\mapsto\vec\bot,\,
+    x_\mathsf{ret}\mapsto\bot
+    }{
+    \begin{array}{l}
+    \mathsf{fn}\,f\,\langle\vec\rho\rangle\,(\vec x: \vec\tau)\,
+      (\vec x_\mathsf{local}: \vec \tau_\mathsf{local})\,(x_\mathsf{ret}: \tau_\mathsf{ret}) = s
+    \uparrow^\rho
+    \cr
+      \kw{def}\;f_{\mathsf{back}(\rho)} =
+      \lambda (\vec \sigma: \vec\tau)(\sigma_\mathsf{ret}: \etproj{\rho}{\tau_\mathsf{ret}}). e
+    \end{array}
+    }
+
+    \inferrule[T-Fun-Forward]{
+    A(\rho_i) = \left\{ \overrightarrow{\elproj{(\sigma: \tau})} \right\} \\
+    \vec\sigma\text{ fresh}\\
+    \emptyset,\Omega \vdash s \downarrow e \\\\
+    \Omega = \overrightarrow{A(\rho)}, \overrightarrow{x\mapsto \eoproj\sigma},\,
+    \vec x_\mathsf{local}\mapsto\vec\bot,\,
+    x_\mathsf{ret}\mapsto\bot
+    }{
+    \begin{array}{l}
+    \mathsf{fn}\,f\,\langle\vec\rho\rangle\,(\vec x: \vec\tau)\,
+    (\vec x_\mathsf{local}: \vec \tau_\mathsf{local})\,(x_\mathsf{ret}: \tau_\mathsf{ret}) = s
+      \downarrow \cr
+      \kw{def}\;f_\mathsf{fwd} =
+      \lambda (\vec \sigma: \vec\tau). e
+    \end{array}
+    }
+
+    \inferrule[T-Match-Concrete]{
+    \Omega(p) \stackrel s\Rightarrow C[\overrightarrow{f = v}] \\\\
+    M,\Omega \vdash s \updownarrow e
+    }{
+    M, \Omega \vdash \ematch{p}{\ldots\mid C \to s\mid\ldots} \updownarrow
+    e
+    }
+
+    \inferrule[T-Match-Symbolic]{
+    \Omega(p) \stackrel s\Rightarrow (\sigma: t\,\vec\tau) \\
+    \mathsf{type}\,t\;\vec\alpha = \overrightarrow{C [\vec f: \vec\tau_f]} \\
+    %
+    \vec \sigma_i \text{ fresh}\\\\
+    %
+    M, \left[ (C_i[\vec f_i: \vec \sigma_i]: t\,\vec\tau)\Big/ (\sigma: t\,\vec\tau) \right] \Omega \vdash s_i \updownarrow e_i
+    }{
+    M, \Omega \vdash \ematch{p}{\overrightarrow{C \to s}} \updownarrow
+    \ematch\sigma{\overrightarrow{C\,\vec\sigma \to e}}
+    }
+  \end{mathpar}
+  \caption{Functional Translation via our Symbolic Semantics}
+  \label{fig:pleasenomorerules}
+\end{figure}
+
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{paper.bib}
+
+
+\end{document}
+ 

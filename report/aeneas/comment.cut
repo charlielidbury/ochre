@@ -1,0 +1,9 @@
+  We are very grateful to Aymeric Fromherz who bravely proofread this paper
+  repeatedly at undue hours, and gave many useful remarks and feedback.
+  %
+  We warmly thank Xavier Denis and Jacques-Henri Jourdan for insightful
+  discussions and useful advice throughout the design of \aeneas.
+  %
+  We also thank Chris Hawblitzel and Andrea Lattuada for a thorough walk-through
+  of Verus and its approach to handling borrow termination. Finally, we thank Ralf
+  Jung for many insightful remarks on an early version of this paper.

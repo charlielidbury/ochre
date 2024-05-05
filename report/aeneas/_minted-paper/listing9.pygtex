@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{l+m+mi}{0}\PYG{p}{,}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{);}\PYG{+w}{    }\PYG{c+c1}{// $x \mapsto (0, 1)$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}\PYG{+w}{      }\PYG{c+c1}{// $x \mapsto \esloan\ell(0,1),$  $\qquad px1 \mapsto \esborrow\ell$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}\PYG{+w}{      }\PYG{c+c1}{// $x \mapsto \esloan{\ell\cup\ell'}(0, 1),\quad px1 \mapsto \esborrow\ell,\quad px2 \mapsto \esborrow\ell'$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{copy}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{  }\PYG{c+c1}{// $x \mapsto \esloan{\ell\cup\ell'}(0, 1),\quad px1 \mapsto \esborrow\ell,\quad px2 \mapsto \esborrow\ell',\quad y \mapsto 0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{z}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{p}{(}\PYG{o}{*}\PYG{n}{px1}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// $x \mapsto \esloan{\ell\cup\ell'}((\esloan{\ell''} 0), 1),\ px1 \mapsto\ldots,\ px2 \mapsto \ldots,\ y \mapsto 0,\ z \mapsto \esborrow\ell''$}
+\end{Verbatim}

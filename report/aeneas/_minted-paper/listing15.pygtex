@@ -1,0 +1,10 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k}{fn} \PYG{n+nf}{call\PYGZus{}choose}\PYG{p}{(}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{p}\PYG{+w}{ }: \PYG{p}{(}\PYG{k+kt}{u32}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{u32}\PYG{p}{)}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{p}{(}\PYG{n}{x\PYGZus{}ret}: \PYG{k+kt}{u32}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:synth1:px}}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{py}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:synth1:py}}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{pz}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{choose}\PYG{p}{(}\PYG{k+kc}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{k}{move}\PYG{+w}{ }\PYG{n}{px}\PYG{p}{,}\PYG{+w}{ }\PYG{k}{move}\PYG{+w}{ }\PYG{n}{py}\PYG{p}{)}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:synth1:call}}
+\PYG{+w}{  }\PYG{o}{*}\PYG{n}{pz}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{*}\PYG{n}{pz}\PYG{+w}{ }\PYG{o}{+}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:synth1:incr}}
+\PYG{+w}{  }\PYG{n}{x\PYGZus{}ret}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{k}{move}\PYG{+w}{ }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{ }\PYG{esc}{\label{line:synth1:ret}}
+\PYG{+w}{  }\PYG{k}{return}\PYG{p}{;}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

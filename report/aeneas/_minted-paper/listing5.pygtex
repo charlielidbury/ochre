@@ -1,0 +1,18 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kd}{let} \PYG{n}{choose\PYGZus{}fwd} \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{b} \PYG{o}{:} \PYG{k+kt}{bool}\PYG{o}{)} \PYG{o}{(}\PYG{n}{x} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{y} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{:} \PYG{n}{result} \PYG{n}{t} \PYG{o}{=}
+  \PYG{k}{if} \PYG{n}{b} \PYG{k}{then} \PYG{n+nc}{Return} \PYG{n}{x} \PYG{k}{else} \PYG{n+nc}{Return} \PYG{n}{y}
+
+\PYG{k+kd}{let} \PYG{n}{choose\PYGZus{}back} \PYG{o}{(}\PYG{n}{t} \PYG{o}{:} \PYG{n+nc}{Type}\PYG{o}{)} \PYG{o}{(}\PYG{n}{b} \PYG{o}{:} \PYG{k+kt}{bool}\PYG{o}{)} \PYG{o}{(}\PYG{n}{x} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{y} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{(}\PYG{n}{ret} \PYG{o}{:} \PYG{n}{t}\PYG{o}{)} \PYG{o}{:} \PYG{n}{result} \PYG{o}{(}\PYG{n}{t} \PYG{o}{\PYGZam{}} \PYG{n}{t}\PYG{o}{)} \PYG{o}{=}
+  \PYG{k}{if} \PYG{n}{b} \PYG{k}{then} \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n}{ret}\PYG{o}{,} \PYG{n}{y}\PYG{o}{)} \PYG{k}{else} \PYG{n+nc}{Return} \PYG{o}{(}\PYG{n}{x}\PYG{o}{,} \PYG{n}{ret}\PYG{o}{)}
+
+\PYG{k+kd}{let} \PYG{n}{test\PYGZus{}choose\PYGZus{}fwd} \PYG{o}{:} \PYG{n}{result} \PYG{k+kt}{unit} \PYG{o}{=}
+  \PYG{n}{i} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{choose\PYGZus{}fwd} \PYG{n}{i32} \PYG{n+nb+bp}{true} \PYG{l+m+mi}{0} \PYG{l+m+mi}{0}\PYG{o}{;}
+  \PYG{n}{z} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{i32\PYGZus{}add} \PYG{n}{i} \PYG{l+m+mi}{1}\PYG{o}{;}
+  \PYG{n}{massert} \PYG{o}{(}\PYG{n}{z} \PYG{o}{=} \PYG{l+m+mi}{1}\PYG{o}{);} \PYG{c}{(* monadic assert *)}
+  \PYG{o}{(}\PYG{n}{x0}\PYG{o}{,} \PYG{n}{y0}\PYG{o}{)} \PYG{o}{\PYGZlt{}\PYGZhy{}\PYGZhy{}} \PYG{n}{choose\PYGZus{}back} \PYG{n}{i32} \PYG{n+nb+bp}{true} \PYG{l+m+mi}{0} \PYG{l+m+mi}{0} \PYG{n}{z}\PYG{o}{;}
+  \PYG{n}{massert} \PYG{o}{(}\PYG{n}{x0} \PYG{o}{=} \PYG{l+m+mi}{1}\PYG{o}{);}
+  \PYG{n}{massert} \PYG{o}{(}\PYG{n}{y0} \PYG{o}{=} \PYG{l+m+mi}{0}\PYG{o}{);}
+  \PYG{n+nc}{Return} \PYG{n+nb+bp}{()}
+
+\PYG{k+kd}{let} \PYG{n}{\PYGZus{}} \PYG{o}{=} \PYG{n+ne}{assert} \PYG{o}{(}\PYG{n}{test\PYGZus{}choose\PYGZus{}fwd} \PYG{o}{=} \PYG{n+nc}{Return} \PYG{n+nb+bp}{()}\PYG{o}{)}
+\end{Verbatim}

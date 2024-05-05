@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{  }\PYG{c+c1}{// $x \mapsto 0$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}\PYG{+w}{   }\PYG{c+c1}{// $x \mapsto \esloan\ell0,$  $\qquad px1 \mapsto \esborrow\ell$}
+\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{px2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}\PYG{+w}{   }\PYG{c+c1}{// $x \mapsto \esloan{\ell\cup\ell'}0,\quad px1 \mapsto \esborrow\ell,\quad px2 \mapsto \esborrow\ell'$}
+\PYG{+w}{                }\PYG{c+c1}{// $x \mapsto 0,\hspace{6.8em} px1 \mapsto \bot,\quad px2 \mapsto \bot$}
+\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{          }\PYG{c+c1}{// $x \mapsto 1$}
+\end{Verbatim}
