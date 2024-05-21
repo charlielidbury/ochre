@@ -312,8 +312,8 @@ RustBelt\cite{jung_rustbelt_2018} is a formal model of Rust, including unsafe Ru
 I see RustBelt as a great complement to this work in the future: real programs require unsafe code, but you want to avoid having to model your code in a separate proof assistant as little as possible. In Ochre, I imagine the few people who write unsafe code will verify it with something like RustBelt, while the majority won't have to, but will benefit from the guarantees provided by the verified libraries they use which do.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{Type System}
-I will present a syntax and abstract interpretation on that syntax
+\chapter{\lochre{}}
+In order to achieve the desired properties, \lochre{} must have dependent functions, dependent pairs, Rust-like ownership semantics, user-defined data types, and in-place mutation. I took Aeneas's LLBC as a starting point, then gradually added in concepts from $\Pi\Sigma$\cite{altenkirch2010pisigma}. Where possible, I simplified the language down, 
 
 \section{\lochre}
 testing
