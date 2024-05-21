@@ -1,0 +1,226 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% University Assignment Title Page 
+% LaTeX Template
+% Version 1.0 (27/12/12)
+%
+% This template has been downloaded from:
+% http://www.LaTeXTemplates.com
+%
+% Original author:
+% WikiBooks (http://en.wikibooks.org/wiki/LaTeX/Title_Creation)
+%
+% License:
+% CC BY-NC-SA 3.0 (http://creativecommons.org/licenses/by-nc-sa/3.0/)
+% 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%----------------------------------------------------------------------------------------
+%	PACKAGES AND OTHER DOCUMENT CONFIGURATIONS
+%----------------------------------------------------------------------------------------
+\usepackage[a4paper,hmargin=2.8cm,vmargin=2.0cm,includeheadfoot]{geometry}
+\usepackage{textpos}
+\usepackage[square,numbers]{natbib} % for bibliography
+\usepackage{tabularx,longtable,multirow,subfigure,caption}%hangcaption
+\usepackage{fncylab} %formatting of labels
+\usepackage{fancyhdr} % page layout
+\usepackage{url} % URLs
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{dsfont}
+\usepackage{epstopdf} % automatically replace .eps with .pdf in graphics
+\usepackage{backref} % needed for citations
+\usepackage{array}
+\usepackage{latexsym}
+\usepackage[pdftex,pagebackref,hypertexnames=false,colorlinks]{hyperref} % provide links in pdf
+\usepackage{amsfonts}
+\usepackage{booktabs}
+
+% Aeneas imports
+\newif\iflong
+\newif\ifshort
+\shortfalse
+\longtrue
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{xspace}
+\usepackage{xparse}
+  \NewDocumentCommand{\li}{v}{\textbf{\footnotesize\texttt{#1}}}
+\usepackage[frozencache=true]{minted}
+  \ifshort
+  \setminted{fontsize=\footnotesize,linenos}
+  \fi
+  \iflong
+  \setminted{fontsize=\footnotesize,linenos}
+  \fi
+\usepackage{tikz}
+  \usetikzlibrary{calc}
+  \usetikzlibrary{shadows,graphs}
+\usepackage{amsmath}
+\usepackage{mathpartir}
+  \renewcommand{\DefTirName}[1]{\hypertarget{#1}{\TirName {#1}}}
+  \newcommand{\Rule}[1]{\hyperlink{#1}{\TirName {#1}}}
+
+\newcommand{\sref}[1]{Section~\ref{sec:#1}}
+\newcommand{\fref}[1]{Figure~\ref{fig:#1}}
+\newcommand{\tref}[1]{Table~\ref{table:#1}}
+
+\newcommand{\aeneas}{\textsc{Aeneas}\xspace}
+\newcommand{\charon}{\textsc{Charon}\xspace}
+\newcommand{\fstar}{F$^\ast$\xspace}
+\newcommand{\betree}{B$^\varepsilon$tree\xspace}
+
+\DeclareRobustCommand{\son}[1]{ {\begingroup\color{red!60!black}{(Son) #1}\endgroup} }
+\DeclareRobustCommand{\jonathan}[1]{ {\begingroup\color{teal}{(Jonathan) #1}\endgroup} }
+\DeclareRobustCommand{\aymeric}[1]\relax
+
+\newcommand\kw[1]{\ensuremath{\mathsf{#1}}}
+\newcommand\tbrw[2]{\ensuremath{\mathsf{\&}^#1\,#2}}
+\newcommand\tmbrw[2]{\ensuremath{\mathsf{\&}^#1\mathsf{mut}\,#2}}
+\newcommand\ebrw[1]{\ensuremath{\mathsf{\&}\,#1}}
+\newcommand\embrw[1]{\ensuremath{\mathsf{\&mut}\,#1}}
+\newcommand\eassign[2]{\ensuremath{#1 := #2}}
+\newcommand\ederefs[1]{\ensuremath{*^s#1}}
+\newcommand\ederefm[1]{\ensuremath{*^m#1}}
+\newcommand\ederefb[1]{\ensuremath{*^b#1}}
+\newcommand\edrop[1]{\ensuremath{\kw{drop}\,#1}}
+\newcommand\emove[1]{\ensuremath{\kw{move}\,#1}}
+\newcommand\ecopy[1]{\ensuremath{\kw{copy}\,#1}}
+\newcommand\epanic{\kw{panic}}
+\newcommand\ereturn{\kw{return}}
+\newcommand\eseq[2]{#1;\,#2}
+\newcommand\eite[3]{\kw{if}\,#1\,\kw{then}\,#2\,\kw{else}\,#3}
+\newcommand\eswitch[3]{\kw{switch}\,#1\;#2\;\mathsf{default}\,#3}
+\newcommand\ematch[2]{\kw{match}\,#1\,\kw{ with }\;#2}
+\newcommand\enone{\kw{None}}
+\newcommand\esome[1]{\kw{Some}\;#1}
+\newcommand\krv{\ensuremath{rv}}
+\newcommand\kop{\ensuremath{op}}
+\newcommand\eloop[1]{\ensuremath{\kw{loop}\,#1}}
+\newcommand\ebreak[1]{\ensuremath{\kw{break}\,#1}}
+\newcommand\econtinue[1]{\ensuremath{\kw{continue}\,#1}}
+\newcommand\kfalse{\mathsf{false}}
+\newcommand\ktrue{\mathsf{true}}
+
+\newcommand\emborrow[2]{\ensuremath{\mathsf{borrow}^m\,#1\;#2}}
+\newcommand\esborrow[1]{\ensuremath{\mathsf{borrow}^s\,#1}}
+\newcommand\eiborrow[1]{\ensuremath{\mathsf{borrow}^r\,#1}}
+\let\erborrow\eiborrow
+\newcommand\esloan[2]{\ensuremath{\mathsf{loan}^s\,\{#1\}\,#2}}
+\newcommand\emloan[1]{\ensuremath{\mathsf{loan}^m\,#1}}
+\newcommand\ebox[1]{\ensuremath{\mathsf{Box}\,#1}}
+
+\newcommand\elproj[1]{\ensuremath{\kw{proj}_\mathsf{l}\,#1}}
+\newcommand\ebproj[1]{\ensuremath{\kw{proj}_\mathsf{out}\,#1}}
+\let\eoproj\ebproj
+\newcommand\eiproj[1]{\ensuremath{\kw{proj}_\mathsf{in}\,#1}}
+\newcommand\etproj[2]{\ensuremath{\kw{proj}_{#1}\,#2}}
+
+\newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
+
+\ifshort
+\newcommand\myparagraph[1]{\emph{#1}.\ }
+\fi
+\iflong
+\let\myparagraph\paragraph
+\fi
+
+\newlength{\characterlength}
+\settowidth{\characterlength}{a}
+\newcommand\cspace{\hspace{\characterlength}}
+
+
+\hypersetup{pdftitle={},
+  pdfsubject={}, 
+  pdfauthor={},
+  pdfkeywords={}, 
+  pdfstartview=FitH,
+  pdfpagemode={UseOutlines},% None, FullScreen, UseOutlines
+  bookmarksnumbered=true, bookmarksopen=true, colorlinks,
+  citecolor=black,%
+    filecolor=black,%
+    linkcolor=black,%
+    urlcolor=black}
+
+\usepackage[all]{hypcap}
+
+\usepackage{todonotes}
+
+
+%\usepackage{color}
+%\usepackage[tight,ugly]{units}
+%\usepackage{float}
+%\usepackage{tcolorbox}
+%\usepackage[colorinlistoftodos]{todonotes}
+% \usepackage{ntheorem}
+% \theoremstyle{break}
+% \newtheorem{lemma}{Lemma}
+% \newtheorem{theorem}{Theorem}
+% \newtheorem{remark}{Remark}
+% \newtheorem{definition}{Definition}
+% \newtheorem{proof}{Proof}
+
+
+%%% Default fonts
+\renewcommand*{\rmdefault}{bch}
+\renewcommand*{\ttdefault}{cmtt}
+
+
+
+%%% Default settings (page layout)
+\setlength{\parindent}{0em}  % indentation of paragraph
+
+% \setlength{\parindent}{0em}  % indentation of paragraph
+
+\setlength{\parskip}{\baselineskip}
+
+\setlength{\headheight}{14.5pt}
+\pagestyle{fancy}
+\renewcommand{\chaptermark}[1]{\markboth{\chaptername\ \thechapter.\ #1}{}} 
+%\fancyhead[RO]{\sffamily \textbf{\thepage}} %Page no.in the right on even pages
+%\fancyhead[LE]{\sffamily \textbf{\thepage}} %Page no. in the left on odd pages
+
+\fancyfoot[ER,OL]{\thepage}%Page no. in the left on
+                                %odd pages and on right on even pages
+\fancyfoot[OC,EC]{\sffamily }
+\renewcommand{\headrulewidth}{0.1pt}
+\renewcommand{\footrulewidth}{0.1pt}
+\captionsetup{margin=10pt,font=small,labelfont=bf}
+
+
+%--- chapter heading
+
+\def\@makechapterhead#1{%
+  \vspace*{10\p@}%
+  {\parindent \z@ \raggedright \sffamily
+    \interlinepenalty\@M
+    \Huge\bfseries \thechapter \space\space #1\par\nobreak
+    \vskip 30\p@
+  }}
+
+%--- chapter heading
+
+\def\@makechapterhead#1{%
+  \vspace*{10\p@}%
+  {\parindent \z@ \raggedright \sffamily
+        %{\Large \MakeUppercase{\@chapapp} \space \thechapter}
+        %\\
+        %\hrulefill
+        %\par\nobreak
+        %\vskip 10\p@
+    \interlinepenalty\@M
+    \Huge\bfseries \thechapter \space\space #1\par\nobreak
+    \vskip 30\p@
+  }}
+
+%---chapter heading for \chapter*  
+\def\@makeschapterhead#1{%
+  \vspace*{10\p@}%
+  {\parindent \z@ \raggedright
+    \sffamily
+    \interlinepenalty\@M
+    \Huge \bfseries  #1\par\nobreak
+    \vskip 30\p@
+  }}	
+\allowdisplaybreaks
