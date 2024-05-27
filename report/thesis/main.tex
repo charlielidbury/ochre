@@ -313,15 +313,235 @@ I see RustBelt as a great complement to this work in the future: real programs r
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{\lochre{}}
+
+At its core, Ochre is an imperative language with functions, mutation, pointers, and user-defined types. Every value in Ochre at runtime is either an atom (more on this below), a dependent pair, a dependent function, or a pointer to one of the aforementioned. Algebraic data types like you would find in Haskell or Rust are defined using a composition of the above features.
+
+This chapter introduces \lochre{}'s features one by one with examples, skip to Figure \ref{fig:syntax} if you just want the syntax.
+
+\textbf{Atoms}
+
+\textbf{Pairs}
+
+\textbf{Variables}
+
+\textbf{References (Pointers)}
+
+\textbf{Functions}
+
+\textbf{yadayada}
+
+\lochre{} was originally based upon Aeneas's \cite{aeneas} LLBC, however over time so many features have been added and removed it has diverged 
+
 In order to achieve the desired properties, \lochre{} must have dependent functions, dependent pairs, Rust-like ownership semantics, user-defined data types, and in-place mutation. I took Aeneas's LLBC as a starting point, then gradually added in concepts from $\Pi\Sigma$\cite{altenkirch2010pisigma}. Where possible, I simplified the language down, 
 
-\section{\lochre}
-testing
 
+
+\section{Scope and Feature Set}
+List of features, along with why their inclusion was important.
+
+\textbf{Type Erasure} - A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
+
+\textbf{Implementability} - The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
+
+\textbf{Manual memory management} - Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \cite{aeneas}\cite{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
+
+List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
+
+\textbf{Returning mutable references} - In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
+
+\textbf{Reasoning about function side effects/strong updates} - In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
+\begin{enumerate}
+  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
+  \item It would complicate the type system and syntax further.
+  \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
+\end{enumerate}
+
+\textbf{Unboxed types} - All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within.
+
+\textbf{Primitive data types} - As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
+
+\section{Syntax}
+\lochre{} has an extremely permissive syntax, and heavily relies on the typing rules to reject ill-formed programs. This leads to some usual results like \verb|if 'a {'b} else {'c} = 'hello| being syntactically well-formed. In practice, this doesn't cause issues, because the typing rules are strict enough. Figure \ref{fig:syntax}
+
+\begin{figure}
+  \arraycolsep=1pt %
+  \centering
+
+  \vspace{-2ex} %
+  \[
+  \begin{array}[t]{llll}
+    T, U, M, N & ::= & & \\
+    && x\mid{}y\mid{}z & \text{runtime variable identifier}\\
+    && X\mid{}Y\mid{}Z & \text{comptime variable identifier}\\
+    && *M & \text{dereference}\\
+    && M N & \text{function application}\\
+    && M \rightarrow T\,(\{\,N\,\}) & \text{(dependent) function definition}\\
+    && & \text{(optional runtime body)} \\
+    && M, N & \text{pair construction}\\
+    && M = N & \text{assignment}\\
+    && 'a & \text{atom construction}\\
+    && T\,|\,U & \text{type union}\\
+    && M; N & \text{sequence}\\
+    && \kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\} & \text{case statement}\\
+    && \&M \mid \&\kw{mut}\,M & \text{borrow constructor}\\
+    && M:\,T & \text{type constraint}\\
+    && * & \text{top}\\
+    && \bot & \text{uninitialised}\\
+
+  \end{array} %
+  \]
+\caption{\lochre{} syntax} %
+\label{fig:syntax} %
+\end{figure} %
+
+\section{Type System}
+
+
+\section{Concrete Semantics}
+
+
+\section{Abstract Interpretation}
+Type checking is done via an abstract interpretation using 6 arrows. All \lochre{} syntax is defined for some subset of these arrows.
+
+Almost all typing rules take the form $\Omega \vdash M \diamond v \dashv \Omega'$ where $\diamond$ is one of the below 6 arrows, $M$ is Ochre syntax, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $m$ is the value which has been read or written.
+
+\begin{tabular}{c|c|c}
+  & Read & Write \\
+  \hline
+  Destructive & $\movearrow$ & $\writearrow$ \\
+  & \textit{move} & \textit{write}\\
+  Non-destructive & $\readarrow$ & $\narrowarrow$ \\
+  & \textit{read} & \textit{type narrow}\\
+  Compile time only & $\erasedreadarrow$ &  $\erasedwritearrow$ \\
+  & \textit{erased read} & \textit{erased write}\\
+\end{tabular}
+
+Destructive operations assert that a piece of syntax has a runtime influence on the data in memory, and updates the environment accordingly. As Ochre has Rust-like ownership semantics, so do these assertions; this means that reading from a variable will \textit{move} the value out of wherever it was previously, and prevent it from being used again. For example $\{x \mapsto 5\} \vdash x\,\dot{\Rightarrow}\,5 \dashv \{x \mapsto \bot\}$ means when $x$ is $5$ in the environment, you can read a $5$ from it, and can't read it again in the future. Writes are destructive because writing a value into memory requires the old value to be deallocated first. The full definition of $\dot{\Rightarrow}$
+
+Non-destructive operations
+
+Compile-time only operations
+
+
+\begin{figure}
+  \begin{adjustwidth}{-2cm}{-2cm}
+  \small
+  \begin{mathpar}
+    \inferrule[Var-Move]{
+      \Omega' = \Omega[\text{\texttt{x}} \mapsto \bot/\text{\texttt{x}} \mapsto m]
+    }{
+      \Omega \vdash \text{\texttt{x}}\,\dot{\Rightarrow}\,m \dashv \Omega'
+    }
+    
+    \inferrule[Pair-Left-Move]{
+      \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow (\bot, n, \mono{\_} \rightarrow \mono{U}) \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M.0} \movearrow m \dashv \Omega''
+    }
+
+    \inferrule[Pair-Right-Move]{
+      \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\textit{get pair}\\\\
+      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\textit{calculate right restriction}\\\\
+      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''\\\textit{calculate right restriction}\\\\
+      \Omega'' \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega'''\\\textit{return pair}
+    }{
+      \Omega \vdash \mono{M.1} \movearrow n \cap u \dashv \Omega'''
+    }
+
+    \inferrule[Mut-Ref-Move]{
+      \Omega \vdash \mono{M} \movearrow \kw{borrow}^m\,l\,v \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow \kw{borrow}^m\,l\,\bot \dashv \Omega''
+    }{
+      \Omega \vdash \mono{*M} \movearrow v \dashv \Omega''
+    }
+
+    \inferrule[Function-Call]{
+      \Omega \vdash \mono{F} \readarrow (\mono{T} \rightarrow \mono{U})\\\textit{eval function}\\\\
+      \Omega \vdash \mono{X} \movearrow v \dashv \Omega'\\\textit{eval argument}\\\\
+      \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega''\\\textit{calculate return type}\\\\
+      \Omega'' \vdash \mono{U} \erasedreadarrow w \dashv \Omega'\\\textit{calculate return type}\\\\
+      \text{maximally widen $v$ to $v'$ such that $T \erasedwritearrow v'$}\\\\
+      \Omega' \vdash \text{drop}\,v' \dashv \Omega'''\\\textit{propogate side effects}\\
+    }{
+      \Omega \vdash \mono{F X} \movearrow w \dashv \Omega'''
+    }
+
+    \inferrule[Function-Definition]{
+      \Omega \vdash \mono{M} \erasedwritearrow m \vdash \Omega'\\\textit{calculate widest input}\\\\
+      \Omega' \vdash \mono{T} \erasedreadarrow t\\\textit{calculate return type}\\\\
+      \Omega' \vdash \mono{N} \movearrow n \dashv \Omega\\\textit{body must reset environment}\\\\
+      n: t\\\textit{body must be a subtype of return type}
+    }{
+      \Omega \vdash \mono{M -> T \{ N \}} \movearrow \mono{T} \rightarrow \mono{U}
+    }
+
+    \inferrule[Pair-Construction]{
+      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
+      \Omega' \vdash \mono{N} \movearrow n \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M, N} \movearrow (m, n, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''
+    }
+
+    \inferrule[Assignment]{
+      \Omega \vdash \mono{N} \movearrow v \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow v \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M = N} \movearrow 'unit \dashv \Omega''
+    }
+
+    \inferrule[Atom-Construction]{
+    }{
+      \Omega \vdash \mono{'a} \movearrow 'a
+    }
+
+    \inferrule[Sequence]{
+      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
+      \Omega' \vdash \text{drop}\, m \dashv \Omega''\\\\
+      \Omega'' \vdash \mono{N} \movearrow n \dashv \Omega'''
+    }{
+      \Omega \vdash \mono{M; N} \movearrow n \dashv \Omega'''
+    }
+
+    \inferrule[Case]{
+      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\textit{eval interogant}\\\\
+      \forall i.[\Omega' \vdash \mono{M} \narrowarrow 'a_i \dashv \Omega'_i]\\\textit{narrow type in branch}\\\\
+      \forall i.[\Omega'_i \vdash \mono{N} \movearrow n_i \dashv \Omega''_i]\\\textit{eval branch}\\\\
+      n = n_0 \cup ... \cup n_k\\\textit{combine branch values}\\\\
+      \Omega'' = \Omega''_0 \cup ... \cup \Omega''_k\\\textit{combine branch side effects}
+    }{
+      \Omega \vdash \mono{case M \{ 'a0 => N0, ... \}} \movearrow n \dashv \Omega''
+    }
+
+    \inferrule[Immutable-Borrow]{
+      \Omega \vdash \mono{M} \readarrow m\\\\
+      \Omega \vdash \mono{M} \narrowarrow \kw{loan}^s\,l\,m \dashv \Omega'
+    }{
+      \Omega \vdash \mono{\&M} \movearrow \kw{borrow}^s\,l\,m \dashv \Omega'
+    }
+
+    \inferrule[Mutable-Borrow]{
+      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow \kw{borrow}^m\,l \dashv \Omega''
+    }{
+      \Omega \vdash \mono{\&mut M} \movearrow \kw{borrow}^m\,l\,m \dashv \Omega''
+    }
+
+    \inferrule[Type-Constraint-Move]{
+
+    }{
+      \Omega \vdash \mono{M : T} \movearrow m \dashv \Omega
+    }
+
+  \end{mathpar}
+  \end{adjustwidth}
+  \caption{Definition of $\dot{\Rightarrow}$/move/destructive read}
+  \label{fig:proj}
+\end{figure}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
-If this project works, I should be able to type-check a program with both mutability and dependent types, and reject it if the mutation is done incorrectly. Which examples exactly I will test is yet to be determined, but it will be something along the following lines, probably with a $\Sigma$ type.
+If this project works, I should be able to type-check a program with both mutability and dependent types and reject it if the mutation is done incorrectly. Which examples exactly I will test is yet to be determined, but it will be something along the following lines, probably with a $\Sigma$ type.
 
 \begin{lstlisting}
   ResizeableArray: Type = (n : Nat, Vec(Int, n))

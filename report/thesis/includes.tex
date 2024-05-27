@@ -26,6 +26,9 @@
 \usepackage{url} % URLs
 \usepackage[english]{babel}
 \usepackage{amsmath}
+% \usepackage{txfonts}
+% \usepackage{smaller}
+\usepackage{changepage}
 \usepackage{graphicx}
 \usepackage{dsfont}
 \usepackage{epstopdf} % automatically replace .eps with .pdf in graphics
@@ -35,6 +38,16 @@
 \usepackage[pdftex,pagebackref,hypertexnames=false,colorlinks]{hyperref} % provide links in pdf
 \usepackage{amsfonts}
 \usepackage{booktabs}
+\usepackage{nth}
+
+\makeatletter
+\providecommand{\leftsquigarrow}{%
+  \mathrel{\mathpalette\reflect@squig\relax}%
+}
+\newcommand{\reflect@squig}[2]{%
+  \reflectbox{$\m@th#1\rightsquigarrow$}%
+}
+\makeatother
 
 % Aeneas imports
 \newif\iflong
@@ -116,6 +129,15 @@
 \let\eoproj\ebproj
 \newcommand\eiproj[1]{\ensuremath{\kw{proj}_\mathsf{in}\,#1}}
 \newcommand\etproj[2]{\ensuremath{\kw{proj}_{#1}\,#2}}
+
+% Ochre commands
+\newcommand{\movearrow}{\ensuremath{\,\dot{\Rightarrow}\,}}
+\newcommand{\writearrow}{\ensuremath{\,\dot{\Leftarrow}\,}}
+\newcommand{\readarrow}{\ensuremath{\,\dot{\rightarrow}\,}}
+\newcommand{\narrowarrow}{\ensuremath{\,\dot{\leftarrow}\,}}
+\newcommand{\erasedreadarrow}{\ensuremath{\,\rightsquigarrow\,}}
+\newcommand{\erasedwritearrow}{\ensuremath{\,\leftsquigarrow\,}}
+\newcommand{\mono}[1]{\ensuremath{\text{\texttt{#1}}}}
 
 \newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
 
