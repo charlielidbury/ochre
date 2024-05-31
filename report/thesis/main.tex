@@ -51,6 +51,16 @@ I would also like to extend as much gratitude as is physically possible to do vi
 
 Last, but in no means least, I would like to thank my mother Kate Darracott. As well as giving birth to me, which has arguably enabled this project even more than the aforementioned, Mum came up with the brilliant name "Ochre", after being told no more than "the syntax is going to look a little bit like Rust's". Despite not knowing what syntax is, or the significance of dependently typed low-level systems programming languages, she may well have had the most visible contribution to this project of anyone. 
 
+\newpage
+\section*{Ethical Considerations}
+Much like Wittgenstein, I believe there is an equivalence between ethics and aesthetics; if you do not, here are a few parallels between the two you might find thought-provoking: We do not choose what we deem ethically permissive, much like we do not choose what we find beautiful. Pursuing one's ethical convictions is not a means to an end, it is an end in and of itself, much like aesthetic experiences.
+
+I and many others including cite cite cite, find aesthetic value in problems \& concepts turning out to be reduceable to each other and equivalences being drawn between distant domains. Some particularly high-profile instances of this happening include Euler's formula, the Curry-Howard correspondence and the Church-Turing thesis. To a smaller degree, I also think it happened with Rust's borrow checker, in solving memory management they also solved concurrency, iterator invalidation, and a few other problems that plagued imperative languages.
+
+Despite being sufficiently arrogant and pretentious, I know Ochre isn't as singificant or as beautiful as the previously mentioned identities and isomorphisms. But, in the walled garden of my special interests and obsessions, I have found great aesthetic value in the interplay between ownership semantics and dependent types.
+
+From this aesthetic value, and its equivalence to moral value, I conclude that this research is ethically permissible; I hope Imperial's ethical approval process will too.
+
 \clearpage{\pagestyle{empty}\cleardoublepage}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -67,6 +77,14 @@ Last, but in no means least, I would like to thank my mother Kate Darracott. As 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Introduction}
+(TAKEN FROM AENEAS FOR NOW)
+
+In 2006, exasperated by yet another crash of his building's elevator's firmware, and exhausted after walking up 21 flights of stairs, Graydon Hoare set out to design a new programming language \citep{rust-anecdote}. The language, soon to be known as Rust, had two goals. First, to be system-oriented, meaning the programmer would deal with references, pointers, and manually manage memory. Second, to be safe, meaning the compiler's static discipline would rule out memory errors such as use-after-free, or arbitrary memory access. Even though the language evolved a great deal since its inception, these two core premises remain today. 
+
+Eighteen years later, Rust enjoys a substantial amount of success and has ranked as the most loved programming language for 7 consecutive years on StackOverflow's developer survey~\citep{stackoverflow}, until they changed the phrasing of the question in 2023 in which it was the most \textit{admired} language. But as the systems community can attest~\citep{klein2009sel4,lorch2020armada,ferraiuolo2017komodo,bhargavan2017everest}, memory safety is too weak of a property, no matter how remarkable of an achievement Rust is.
+
+We have attempted to prove further properties 
+
 \section{The Problem}
 This research hopes to develop a type-checker that is capable of type-checking languages that support both mutation and a kind of type called dependent types. It will do this by removing mutation from the code before type checking, so the type checker only has to reason about immutable code.
 
@@ -85,7 +103,7 @@ The problem with having these features together in the same language is that a v
 \label{thesolution}
 The technique this research presents goes as follows: convert the source code from the programmer, which will contain mutation, into a functionally equivalent (but maybe inefficient) immutable version, which can be dependently type-checked. Once this immutable version has been type-checked, the original mutable version can be executed, with full efficiency granted to it by mutability.
 
-Because this translation has been shown to be behaviour preserving\cite{ullrich_electrolysis_nodate} we know properties we prove about the immutable version of the programmer's code also hold for the mutable version which will be executed.
+Because this translation has been shown to be behaviour preserving\citep{ullrich_electrolysis_nodate} we know properties we prove about the immutable version of the programmer's code also hold for the mutable version which will be executed.
 
 \section{Motivation}
 The main contribution of this research will be progress towards making a language that supports both mutability and dependent types, so the motivation behind this research will be the motivation behind these two features, as well as their combination.
@@ -245,7 +263,7 @@ let x = if x > 3 {
 \end{lstlisting}
 \end{minipage}
 
-This quickly gets complicated when you start to use more advanced features like for loops and functions which return mutable references \footnote{See \cite{aeneas} Chapter 2 \textit{Aeneas and its Functional Translation, by Example} for explanation of returning mutable references. (Search for ``Returning a Mutable Borrow, and a Backward Function'') for the exact paragraph.}. So much so safe Rust isn't even entirely covered by the two main attempts at this translation Electrolysis \cite{ullrich_khaelectrolysis_2024} and Aeneas \cite{aeneas} \footnote{See Figure 14 of \cite{aeneas} for a table showing roughly which features are covered by Aeneas/Electrolysis, and see https://kha.github.io/electrolysis/ for exact Rust coverage for Electrolysis.}. In this research I don't intend to support any constructs not already supported by either of these prior works, so I can use the translation algorithms they have already developed.
+This quickly gets complicated when you start to use more advanced features like for loops and functions which return mutable references \footnote{See \citep{aeneas} Chapter 2 \textit{Aeneas and its Functional Translation, by Example} for explanation of returning mutable references. (Search for ``Returning a Mutable Borrow, and a Backward Function'') for the exact paragraph.}. So much so safe Rust isn't even entirely covered by the two main attempts at this translation Electrolysis \citep{ullrich_khaelectrolysis_2024} and Aeneas \citep{aeneas} \footnote{See Figure 14 of \citep{aeneas} for a table showing roughly which features are covered by Aeneas/Electrolysis, and see https://kha.github.io/electrolysis/ for exact Rust coverage for Electrolysis.}. In this research I don't intend to support any constructs not already supported by either of these prior works, so I can use the translation algorithms they have already developed.
 
 \section{Related Work}
 Related work comes under two main categories: research which works towards combining mutability with dependent types, and more general work which works towards formal verification of low level code.
@@ -253,7 +271,7 @@ Related work comes under two main categories: research which works towards combi
 \subsection{Languages with Mutability and Dependent Types}
 
 \subsubsection{ATS}
-ATS \cite{xi_applied_2017} is the most mature systems programming language to date, with work dating back to 2002 \cite{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \cite{ATSHome}.
+ATS \citep{xi_applied_2017} is the most mature systems programming language to date, with work dating back to 2002 \citep{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \citep{ATSHome}.
 
 It's more or less an eagerly evaluated functional language like OCaml, but with functions in the standard library that manipulate pointers, like \verb|ptr_get0| and \verb|ptr_set0| which read and write from the heap respectively. To read or write to a location in memory, you must have a token that represents your ownership of the memory, called a \textit{view}.
 
@@ -273,7 +291,7 @@ This necessity to manually pass ownership around introduces a lot of administrat
 Over the years several versions of ATS have been built, with interesting differences in approach. The current version, ATS2 has only a dependent type-checker, whereas the in-progress ATS3 uses both a conventional ML-like type-checker, as well as a dependent type-checker, and approach that the author of ATS himself developed in separate research, from which ATS3 gets its full name, ATS/Xanadu.
 
 \subsubsection{Magmide}
-The goal of Magmide \cite{noauthor_magmidemagmide_2024} is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
+The goal of Magmide \citep{noauthor_magmidemagmide_2024} is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
 
 \begin{itemize}
   \item Logical Magmide is a dependently typed lambda calculus of constructions, where to-be-erased types and proofs are constructed.
@@ -285,7 +303,7 @@ I believe this will mean there are two separate languages co-existing on the fro
 I suspect this will cause a similar situation to what you see in ATS where for each variable you care about you have two versions, a compile-time one and a runtime one, but it's hard to tell because of the lack of code examples.
 
 \subsubsection{Low*}
-Low*\cite{protzenko_low_2017} is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin. It has achieved impressive results, mostly at Microsoft Research, where they have used it to implement a formally verified library of modern cryptographic algorithms\cite{star_2024} and EverParse
+Low*\citep{protzenko_low_2017} is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin. It has achieved impressive results, mostly at Microsoft Research, where they have used it to implement a formally verified library of modern cryptographic algorithms\citep{star_2024} and EverParse
 
 Its set of allowed features is carefully chosen to make this translation possible in the general case, which restricts the ergonomics of the language, it does not support closures, and therefore higher-order programming for example.
 
@@ -294,20 +312,20 @@ It is very much not a pay-for-what-you-use language, to compile anything you mus
 \subsection{Embedding Mutability in Languages With Dependent Types}
 
 \subsubsection{Ynot: Dependent Types for Imperative Programs}
-Ynot\cite{nanevski_ynot_2008} is an extension of the Coq proof assistant which allows writing, reasoning about, and extracting higher-order, dependently-typed programs with side-effects including mutation. It does so by defining a monad \verb|ST p A q| which performs an effectful operation, with precondition \verb|p|, postcondition \verb|q| and producing a value of type \verb|A|. They also define another monad, \verb|STSep p A q| which is the same as \verb|ST| except it satisfies the frame rule from separation logic: any part of the heap that isn't referenced by the precondition won't be affected by the computation. This means if you prove properties about a \verb|STSep| computation locally, those proofs still apply even when the computation is put into a different context: this is called compositional reasoning. The Ynot paper presents a formally verified mutable hash table.
+Ynot\citep{nanevski_ynot_2008} is an extension of the Coq proof assistant which allows writing, reasoning about, and extracting higher-order, dependently-typed programs with side-effects including mutation. It does so by defining a monad \verb|ST p A q| which performs an effectful operation, with precondition \verb|p|, postcondition \verb|q| and producing a value of type \verb|A|. They also define another monad, \verb|STSep p A q| which is the same as \verb|ST| except it satisfies the frame rule from separation logic: any part of the heap that isn't referenced by the precondition won't be affected by the computation. This means if you prove properties about a \verb|STSep| computation locally, those proofs still apply even when the computation is put into a different context: this is called compositional reasoning. The Ynot paper presents a formally verified mutable hash table.
 
 Ynot is important foundational work in this area which seems to have inspired many of the other related work here, but is itself not up to the task of verifying low-level code for two reasons:
 
 \begin{enumerate}
-  \item It cannot be used to create performant imperative programs because all mutation occurs through a Coq monad which limits the performance to what you can do in Coq, which is a relatively slow language. This is in contrast to Low*\cite{protzenko_low_2017} for example which is extracted to C, and therefore unrestricted when it comes to performance.
-  \item To do any verification at all, you must use heap assertions, instead of reasoning about the values directly. This is sometimes needed, like when you're doing aliased mutation (verifying unsafe Rust), but usually not; Aeneas\cite{aeneas} claims to be hugely more productive than its competitors by not requiring heap assertions for safe Rust code.
+  \item It cannot be used to create performant imperative programs because all mutation occurs through a Coq monad which limits the performance to what you can do in Coq, which is a relatively slow language. This is in contrast to Low*\citep{protzenko_low_2017} for example which is extracted to C, and therefore unrestricted when it comes to performance.
+  \item To do any verification at all, you must use heap assertions, instead of reasoning about the values directly. This is sometimes needed, like when you're doing aliased mutation (verifying unsafe Rust), but usually not; Aeneas\citep{aeneas} claims to be hugely more productive than its competitors by not requiring heap assertions for safe Rust code.
 \end{enumerate}
 
 \subsection{Formal Verification of Low-Level Code}
-Low-level code, such as C code can be directly reasoned about by theorem provers like Isabelle, as was done to verify an entire operating system kernel SeL4\cite{klein_sel4_2009}. However, going via C like this has major drawbacks: since the source language is very unsafe, you have a lot of proof obligations. For instance, when reasoning about C you must often prove that a set of pointers do not point to the same location, otherwise mutating the value of one might mutate the others. With Rust references you do not need to do this because the type system prevents you from creating aliased pointers.
+Low-level code, such as C code can be directly reasoned about by theorem provers like Isabelle, as was done to verify an entire operating system kernel SeL4\citep{klein_sel4_2009}. However, going via C like this has major drawbacks: since the source language is very unsafe, you have a lot of proof obligations. For instance, when reasoning about C you must often prove that a set of pointers do not point to the same location, otherwise mutating the value of one might mutate the others. With Rust references you do not need to do this because the type system prevents you from creating aliased pointers.
 
 \subsubsection{Rust Belt}
-RustBelt\cite{jung_rustbelt_2018} is a formal model of Rust, including unsafe Rust. Its primary implementation is a Coq framework, Iris\cite{noauthor_iris_nodate} which allows you to model unsafe Rust code in Coq, and prove it upholds Rust's correctness properties.
+RustBelt\citep{jung_rustbelt_2018} is a formal model of Rust, including unsafe Rust. Its primary implementation is a Coq framework, Iris\citep{noauthor_iris_nodate} which allows you to model unsafe Rust code in Coq, and prove it upholds Rust's correctness properties.
 
 I see RustBelt as a great complement to this work in the future: real programs require unsafe code, but you want to avoid having to model your code in a separate proof assistant as little as possible. In Ochre, I imagine the few people who write unsafe code will verify it with something like RustBelt, while the majority won't have to, but will benefit from the guarantees provided by the verified libraries they use which do.
 
@@ -330,9 +348,9 @@ This chapter introduces \lochre{}'s features one by one with examples, skip to F
 
 \textbf{yadayada}
 
-\lochre{} was originally based upon Aeneas's \cite{aeneas} LLBC, however over time so many features have been added and removed it has diverged 
+\lochre{} was originally based upon Aeneas's \citep{aeneas} LLBC, however over time so many features have been added and removed it has diverged 
 
-In order to achieve the desired properties, \lochre{} must have dependent functions, dependent pairs, Rust-like ownership semantics, user-defined data types, and in-place mutation. I took Aeneas's LLBC as a starting point, then gradually added in concepts from $\Pi\Sigma$\cite{altenkirch2010pisigma}. Where possible, I simplified the language down, 
+In order to achieve the desired properties, \lochre{} must have dependent functions, dependent pairs, Rust-like ownership semantics, user-defined data types, and in-place mutation. I took Aeneas's LLBC as a starting point, then gradually added in concepts from $\Pi\Sigma$\citep{altenkirch2010pisigma}. Where possible, I simplified the language down, 
 
 
 
@@ -343,7 +361,7 @@ List of features, along with why their inclusion was important.
 
 \textbf{Implementability} - The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
 
-\textbf{Manual memory management} - Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \cite{aeneas}\cite{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
+\textbf{Manual memory management} - Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
 
 List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
 
@@ -373,21 +391,23 @@ List of omitted features, along with why their omission is inconsequential for t
     T, U, M, N & ::= & & \\
     && x\mid{}y\mid{}z & \text{runtime variable identifier}\\
     && X\mid{}Y\mid{}Z & \text{comptime variable identifier}\\
+    && 'a & \text{atom construction}\\
+    && M, N & \text{pair construction}\\
+    && M.0 & \text{pair left access}\\
+    && M.1 & \text{pair right access}\\
     && *M & \text{dereference}\\
+    && \&M \mid \&\kw{mut}\,M & \text{borrow constructor}\\
     && M N & \text{function application}\\
     && M \rightarrow T\,(\{\,N\,\}) & \text{(dependent) function definition}\\
     && & \text{(optional runtime body)} \\
-    && M, N & \text{pair construction}\\
     && M = N & \text{assignment}\\
-    && 'a & \text{atom construction}\\
-    && T\,|\,U & \text{type union}\\
     && M; N & \text{sequence}\\
     && \kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\} & \text{case statement}\\
-    && \&M \mid \&\kw{mut}\,M & \text{borrow constructor}\\
-    && M:\,T & \text{type constraint}\\
-    && * & \text{top}\\
     && \bot & \text{uninitialised}\\
-
+    && * & \text{top}\\
+    && T\,|\,U & \text{type union}\\
+    && M:\,T & \text{type constraint}\\
+56
   \end{array} %
   \]
 \caption{\lochre{} syntax} %
@@ -416,6 +436,9 @@ Almost all typing rules take the form $\Omega \vdash M \diamond v \dashv \Omega'
   & \textit{erased read} & \textit{erased write}\\
 \end{tabular}
 
+Explain all 6 by looking at the interpretations of the variable $x$.
+
+\subsection{Moving From Syntax}
 Destructive operations assert that a piece of syntax has a runtime influence on the data in memory, and updates the environment accordingly. As Ochre has Rust-like ownership semantics, so do these assertions; this means that reading from a variable will \textit{move} the value out of wherever it was previously, and prevent it from being used again. For example $\{x \mapsto 5\} \vdash x\,\dot{\Rightarrow}\,5 \dashv \{x \mapsto \bot\}$ means when $x$ is $5$ in the environment, you can read a $5$ from it, and can't read it again in the future. Writes are destructive because writing a value into memory requires the old value to be deallocated first. The full definition of $\dot{\Rightarrow}$
 
 Non-destructive operations
@@ -426,37 +449,265 @@ Compile-time only operations
 \begin{figure}
   \begin{adjustwidth}{-2cm}{-2cm}
   \small
-  \begin{mathpar}
-    \inferrule[Var-Move]{
-      \Omega' = \Omega[\text{\texttt{x}} \mapsto \bot/\text{\texttt{x}} \mapsto m]
+  \begin{tabular}{c|ccc}
+    & \movearrow & \readarrow & \erasedreadarrow \\
+    \hline
+
+    \\\mono{x} or \mono{X} &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\mono{x} \mapsto \bot}{\mono{x} \mapsto m}\right]
     }{
-      \Omega \vdash \text{\texttt{x}}\,\dot{\Rightarrow}\,m \dashv \Omega'
+      \Omega \vdash \mono{x} \movearrow m \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\mono{x} \mapsto m'}{\mono{x} \mapsto m}\right]\\\\
+      m:m'
+    }{
+      \Omega \vdash \mono{x} \readarrow m' \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\mono{X} \mapsto m'}{\mono{X} \mapsto m}\right]\\\\
+      m:m'
+    }{
+      \Omega \vdash \mono{X} \erasedreadarrow m' \dashv \Omega'
     }
-    
-    \inferrule[Pair-Left-Move]{
+    \\
+
+    \\\mono{'a} &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{'a} \diamond\,'a
+        }
+      \right]$
+    }
+    \\
+
+    \\\mono{M,N} &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
+        \inferrule[]{
+          \Omega \vdash \mono{M} \diamond m \dashv \Omega'\\\\
+          \Omega' \vdash \mono{N} \diamond n \dashv \Omega''
+        }{
+          \Omega \vdash \mono{M, N} \diamond (m, n, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''
+        }
+      \right]$
+    }
+    \\
+
+    \\\mono{M.0} &
+    \inferrule[]{
       \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
       \Omega' \vdash \mono{M} \writearrow (\bot, n, \mono{\_} \rightarrow \mono{U}) \dashv \Omega''
     }{
       \Omega \vdash \mono{M.0} \movearrow m \dashv \Omega''
-    }
+    } &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \readarrow (m, \_, \_ \rightarrow \_) \dashv \Omega' 
+    }{
+      \Omega \vdash \mono{M.0} \readarrow m \dashv \Omega'
+    } &
+    \\
 
-    \inferrule[Pair-Right-Move]{
-      \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\textit{get pair}\\\\
-      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\textit{calculate right restriction}\\\\
-      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''\\\textit{calculate right restriction}\\\\
-      \Omega'' \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega'''\\\textit{return pair}
+    \\\mono{M.1} &
+    \inferrule[]{
+      \textit{get pair}\\\\  
+      \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
+      \textit{calculate right restriction}\\\\
+      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
+      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''\\\\
+      \textit{replace pair}\\\\
+      \Omega'' \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega'''
     }{
       \Omega \vdash \mono{M.1} \movearrow n \cap u \dashv \Omega'''
-    }
+    } &
+    \inferrule[]{
+      \textit{get pair}\\\\  
+      \Omega \vdash \mono{M} \readarrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
+      \textit{calculate right restriction}\\\\
+      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
+      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M.1} \readarrow n \cap u \dashv \Omega''
+    } \\
 
-    \inferrule[Mut-Ref-Move]{
+    \\\mono{\_} &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \movearrow, \readarrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{\_} \diamond *
+        }
+      \right]$
+    }
+    \\
+
+    \\\mono{*} &
+    &
+    &
+    \inferrule[]{
+    }{
+      \Omega \vdash \mono{*} \erasedreadarrow *
+    }
+    \\
+
+    \\\mono{*M} &
+    &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \readarrow \kw{borrow}^s\,l\,v
+    }{
+      \Omega \vdash \mono{*M} \readarrow v
+    }
+    \\
+
+    \\\mono{*M} (\kw{mut}) &
+    \inferrule[]{
       \Omega \vdash \mono{M} \movearrow \kw{borrow}^m\,l\,v \dashv \Omega'\\\\
       \Omega' \vdash \mono{M} \writearrow \kw{borrow}^m\,l\,\bot \dashv \Omega''
     }{
       \Omega \vdash \mono{*M} \movearrow v \dashv \Omega''
+    } &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \readarrow \kw{borrow}^m\,l\,v
+    }{
+      \Omega \vdash \mono{*M} \readarrow v
     }
+    \\
 
-    \inferrule[Function-Call]{
+  \end{tabular}
+\end{adjustwidth}
+\caption{readtable}
+\label{fig:readtable}
+\end{figure}
+
+\begin{figure}
+  \begin{adjustwidth}{-2cm}{-2cm}
+  \small
+  \begin{tabular}{c|ccc}
+    & \writearrow & \narrowarrow & \erasedwritearrow \\
+    \hline
+
+    \\\mono{x} or \mono{X} &
+    \inferrule[]{
+      \Omega' = \Omega[\mono{x} \mapsto m/\mono{x} \mapsto \bot]
+    }{
+      \Omega \vdash \mono{x} \writearrow m \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega[\mono{x} \mapsto m'/\mono{x} \mapsto m]\\\\
+      m':m
+    }{
+      \Omega \vdash \mono{x} \narrowarrow m' \dashv \Omega'
+    }
+    \\
+
+    \\\mono{'a} &
+    \inferrule[]{
+    }{
+      \Omega \vdash \mono{'a} \writearrow 'a
+    } &
+    \inferrule{
+    }{
+      \Omega \vdash \mono{'a} \narrowarrow 'a
+    }
+    \\
+
+    \\\mono{M,N} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \writearrow m \dashv \Omega'\\\\
+      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
+      \Omega' \vdash \mono{U} \erasedreadarrow n' \dashv \Omega'\\\\
+      \Omega' \vdash \mono{N} \writearrow n \cap n' \dashv \Omega'''
+    }{
+      \Omega \vdash \mono{M, N} \writearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'''
+    } &
+    \\
+
+    \\\mono{M.0} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \writearrow (\bot, n, \mono{\_} \rightarrow \mono{U}) \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M.0} \writearrow m \dashv \Omega''
+    } &
+    \\
+
+    \\\mono{M.1} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega'\\\\
+      \mono{U} = \kw{translate} \, n \\\\
+      \Omega' \vdash \mono{M} \writearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M.1} \writearrow n \dashv \Omega''
+    } &
+    \\
+
+    \\\mono{\_} &
+    \inferrule[]{
+      \Omega \vdash \kw{drop} \, v \dashv \Omega'
+    }{
+      \Omega \vdash \mono{\_} \writearrow v \dashv \Omega'
+    } &
+    \inferrule[]{
+    }{
+      \Omega \vdash \mono{\_} \readarrow \bot
+    }
+    \\
+
+    \\\mono{*}
+    \\
+
+    \\\mono{*M} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \movearrow \kw{borrow}^m \, l \, \bot \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow \kw{borrow}^m \, l \, v \dashv \Omega''
+    }{
+      \Omega \vdash \mono{*M} \writearrow v \dashv \Omega''
+    } &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \readarrow \kw{borrow}^s\,l\,v' \dashv \Omega'\\\\
+      \Omega'' = \Omega'[\kw{loan}^s\,l\,v'/\kw{loan}^s\,l\,v]\\\\
+      v':v
+    }{
+      \Omega \vdash \mono{*M} \narrowarrow v' \dashv \Omega'
+    }
+    \\
+
+  \end{tabular}
+\end{adjustwidth}
+\caption{writetable}
+\label{fig:writetable}
+\end{figure}
+
+\begin{figure}
+  \begin{adjustwidth}{-2cm}{-2cm}
+  \small
+  \begin{tabular}{p{2cm}|ccc}
+    & \movearrow & \readarrow & \erasedreadarrow \\
+    \hline
+
+    \\\mono{\&M} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \readarrow m\\\\
+      \Omega \vdash \mono{M} \narrowarrow \kw{loan}^s\,l\,m \dashv \Omega'
+    }{
+      \Omega \vdash \mono{\&M} \movearrow \kw{borrow}^s\,l\,m \dashv \Omega'
+    }
+    \\
+
+    \\\mono{\&\kw{mut} M} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow \kw{loan}^m\,l \dashv \Omega''
+    }{
+      \Omega \vdash \mono{\&mut M} \movearrow \kw{borrow}^m\,l\,m \dashv \Omega''
+    }
+    \\
+
+    \\\mono{M N} &
+    \inferrule[]{
       \Omega \vdash \mono{F} \readarrow (\mono{T} \rightarrow \mono{U})\\\textit{eval function}\\\\
       \Omega \vdash \mono{X} \movearrow v \dashv \Omega'\\\textit{eval argument}\\\\
       \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega''\\\textit{calculate return type}\\\\
@@ -465,45 +716,47 @@ Compile-time only operations
       \Omega' \vdash \text{drop}\,v' \dashv \Omega'''\\\textit{propogate side effects}\\
     }{
       \Omega \vdash \mono{F X} \movearrow w \dashv \Omega'''
-    }
+    } &
+    \\
 
-    \inferrule[Function-Definition]{
+    \\\mono{M -> T {N}} &
+    \inferrule[]{
       \Omega \vdash \mono{M} \erasedwritearrow m \vdash \Omega'\\\textit{calculate widest input}\\\\
       \Omega' \vdash \mono{T} \erasedreadarrow t\\\textit{calculate return type}\\\\
       \Omega' \vdash \mono{N} \movearrow n \dashv \Omega\\\textit{body must reset environment}\\\\
       n: t\\\textit{body must be a subtype of return type}
     }{
       \Omega \vdash \mono{M -> T \{ N \}} \movearrow \mono{T} \rightarrow \mono{U}
-    }
+    } &
+    \\
 
-    \inferrule[Pair-Construction]{
-      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
-      \Omega' \vdash \mono{N} \movearrow n \dashv \Omega''
-    }{
-      \Omega \vdash \mono{M, N} \movearrow (m, n, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''
-    }
-
-    \inferrule[Assignment]{
+    \\\mono{M = N} &
+    \inferrule[]{
       \Omega \vdash \mono{N} \movearrow v \dashv \Omega'\\\\
       \Omega' \vdash \mono{M} \writearrow v \dashv \Omega''
     }{
       \Omega \vdash \mono{M = N} \movearrow 'unit \dashv \Omega''
     }
+    \\
 
-    \inferrule[Atom-Construction]{
+    \\\mono{M;N} &
+    \inferrule[]{
+      \Omega \vdash \mono{M} \movearrow 'unit \dashv \Omega'\\\\
+      % \Omega' \vdash \text{drop}\, m \dashv \Omega''\\\\
+      \Omega' \vdash \mono{N} \movearrow n \dashv \Omega''
     }{
-      \Omega \vdash \mono{'a} \movearrow 'a
+      \Omega \vdash \mono{M;N} \movearrow n \dashv \Omega''
     }
+    \\
 
-    \inferrule[Sequence]{
-      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
-      \Omega' \vdash \text{drop}\, m \dashv \Omega''\\\\
-      \Omega'' \vdash \mono{N} \movearrow n \dashv \Omega'''
-    }{
-      \Omega \vdash \mono{M; N} \movearrow n \dashv \Omega'''
-    }
+    \\\mono{M.1}
+    \\
 
-    \inferrule[Case]{
+    \\\mono{case M \{}\newline
+      \mono{  'a => N,}\newline
+      \mono{  ...}\newline
+    \mono{\}}&
+    \inferrule[]{
       \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\textit{eval interogant}\\\\
       \forall i.[\Omega' \vdash \mono{M} \narrowarrow 'a_i \dashv \Omega'_i]\\\textit{narrow type in branch}\\\\
       \forall i.[\Omega'_i \vdash \mono{N} \movearrow n_i \dashv \Omega''_i]\\\textit{eval branch}\\\\
@@ -512,32 +765,41 @@ Compile-time only operations
     }{
       \Omega \vdash \mono{case M \{ 'a0 => N0, ... \}} \movearrow n \dashv \Omega''
     }
+    \\
 
-    \inferrule[Immutable-Borrow]{
-      \Omega \vdash \mono{M} \readarrow m\\\\
-      \Omega \vdash \mono{M} \narrowarrow \kw{loan}^s\,l\,m \dashv \Omega'
-    }{
-      \Omega \vdash \mono{\&M} \movearrow \kw{borrow}^s\,l\,m \dashv \Omega'
-    }
+    \\\mono{T | U}
+    \\
 
-    \inferrule[Mutable-Borrow]{
-      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\\
-      \Omega' \vdash \mono{M} \writearrow \kw{borrow}^m\,l \dashv \Omega''
-    }{
-      \Omega \vdash \mono{\&mut M} \movearrow \kw{borrow}^m\,l\,m \dashv \Omega''
-    }
+    \\\mono{M: T}
+    \\
 
-    \inferrule[Type-Constraint-Move]{
 
-    }{
-      \Omega \vdash \mono{M : T} \movearrow m \dashv \Omega
-    }
-
-  \end{mathpar}
-  \end{adjustwidth}
-  \caption{Definition of $\dot{\Rightarrow}$/move/destructive read}
-  \label{fig:proj}
+  \end{tabular}
+\end{adjustwidth}
+\caption{readonlytable}
+\label{fig:readonlytable}
 \end{figure}
+
+\subsection{Writing To Syntax}
+The $\writearrow$ defines what it means to \textit{write} to a given piece of syntax. This is how values get brought into the context, for instance, an assign (\mono{=}) works by evaluating the RHS, and then writing it to the LHS, which is usually just a variable $x$, but in the case of destructuring could also be a pair $(x, y)$.
+
+
+
+\subsection{Reading from syntax}
+The $\readarrow$ defines what it means to read from a piece of syntax. Judgments of this form turn into memory reads at runtime, they can follow references and look into pairs.
+
+While most of the time this is used for reading, it can also be used to do something called type \textit{widening}. $\mono{x} \readarrow 5$ means 5 can be read from $\mono{x}$, but if 5 can be read from $\mono{x}$, so can $\mathbb{N}$, because $5$ is a subtype of $\mathbb{N}$.
+
+It's called type widening because it widens the type in the environment, instead of just reading a wider type while leaving the original alone. So $\{\mono{x} \mapsto 5\} \vdash \mono{x} \readarrow \mathbb{N} \dashv \{\mono{x} \mapsto \mathbb{N}\}$.
+
+If you encounter a judgment like $\Omega \vdash \mono{x} \readarrow 5$, it means the environment hasn't changed (i.e. $\Omega \vdash \mono{x} \readarrow 5 \dashv \Omega$), so you know the value of $\mono{x}$ has just been read, instead of being widened in place.
+
+The definition of $\readarrow$ for all pieces of syntax is shown in Figure \ref{fig:read}.
+
+
+\subsection{Type Narrowing}
+The $\narrowarrow$ constrains the type of syntax down to a smaller type. This is primarily useful when type-checking $\kw{case}$ expressions. When type-checking a particular branch of a case expression, you can modify the environment to reflect the fact that you know which branch you're in and therefore what the value of the case expression is. This is particularly useful when the type of the right-hand side of a pair depends on the left-hand value, because you can $\kw{case}$ the left-hand value, and in each branch you will know the type of the right. This is how ADTs are implemented in Ochre. It's definition is given in Figure \ref{fig:narrow}.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
@@ -562,7 +824,7 @@ I do not foresee any ethical issues arising from this project.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Bibliography
-\bibliographystyle{vancouver}
+\bibliographystyle{plainnat}
 \bibliography{references}
 
 \appendix 

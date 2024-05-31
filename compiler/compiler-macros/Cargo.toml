@@ -12,5 +12,6 @@ proc-macro = true
 [dependencies]
 im-rc = "15.1.0"
 nom = "7.1.3"
+proc-macro2 = "1.0.84"
 quote = "1.0.36"
 syn = "2.0.65"

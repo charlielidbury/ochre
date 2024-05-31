@@ -1,261 +1,119 @@
+mod abstract_;
 mod ast;
+mod drop_op;
+mod move_op;
+mod parser;
+mod write_op;
 
-use ast::{Ast, AstB, Atom};
-use nom::{
-    branch::alt,
-    combinator::{all_consuming, fail, map, opt, value},
-    error,
-    multi::{many0, many1},
-    sequence::{pair, preceded, terminated, tuple},
-    IResult,
-};
-use proc_macro::{Delimiter, TokenStream, TokenTree};
-use quote::quote;
-use syn::token::Brace;
-// use syn::{parse_macro_input, Ident, LitStr};
+use std::rc::Rc;
 
-fn tok(t: &'static str) -> impl FnMut(&[TokenTree]) -> IResult<&[TokenTree], ()> {
-    move |input| match input {
-        [TokenTree::Ident(i), input @ ..] if i.to_string() == t => Ok((input, ())),
-        _ => fail(input),
-    }
-}
+use abstract_::Env;
+use move_op::move_op;
+use parser::parse_stream;
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned};
 
-fn punct(ch: &'static str) -> impl FnMut(&[TokenTree]) -> IResult<&[TokenTree], ()> {
-    move |input| match input {
-        [TokenTree::Punct(i), input @ ..] if i.to_string() == ch => Ok((input, ())),
-        input => fail(input),
-    }
-}
+use crate::abstract_::Type;
 
-fn liter(sym: &'static str) -> impl FnMut(&[TokenTree]) -> IResult<&[TokenTree], ()> {
-    move |input| match input {
-        [TokenTree::Literal(l), input @ ..] if l.to_string() == sym => Ok((input, ())),
-        input => fail(input),
-    }
-}
-
-fn ident(input: &[TokenTree]) -> IResult<&[TokenTree], String> {
-    match input {
-        [TokenTree::Ident(i), input @ ..] => Ok((input, i.to_string())),
-        input => fail(input),
-    }
-}
-
-fn brackets(input: &[TokenTree]) -> IResult<&[TokenTree], Ast> {
-    match input {
-        [TokenTree::Group(g), input @ ..] if g.delimiter() == Delimiter::Parenthesis => {
-            let (_, ast) = parse_stream(g.stream())?;
-            Ok((input, ast))
+fn gen_result_code(result_type: Rc<Type>) -> TokenStream {
+    match &*result_type {
+        Type::Atom(atoms) => {
+            let mut match_arms = quote!(_ => unreachable!());
+            for atom in atoms.iter() {
+                let hash = atom.hash();
+                let string = &atom.0;
+                match_arms = quote! {
+                    #hash => OchreResult::Atom(#string.to_string()),
+                    #match_arms
+                };
+            }
+            quote! {
+                match result.atom {
+                    #match_arms
+                }
+            }
         }
-        _ => fail(input),
-    }
-}
-
-const PREC_MAX: u8 = 4;
-
-fn parse<'a>(prec: u8) -> impl Fn(&'a [TokenTree]) -> IResult<&'a [TokenTree], Ast> {
-    move |input| {
-        match prec {
-            0 => alt((
-                // Seq
-                map(
-                    tuple((parse(prec + 1), punct(";"), parse(prec))),
-                    |(lhs, (), rhs)| Ast::Seq(Box::new(lhs), Box::new(rhs)),
-                ),
-                // (Dependent) Pair
-                map(
-                    tuple((
-                        opt(terminated(ident, punct(":"))),
-                        parse(prec + 1),
-                        punct(","),
-                        parse(prec),
-                        opt(preceded(punct(":"), parse(prec))),
-                    )),
-                    |(x, l, (), r, rt)| {
-                        Ast::Pair(
-                            x.unwrap_or("_".to_string()),
-                            Box::new(l),
-                            Box::new(r.clone()),
-                            Box::new(rt.unwrap_or(r)),
-                        )
-                    },
-                ),
-                parse(prec + 1),
-            ))(input),
-            1 => alt((
-                // Let
-                map(
-                    tuple((
-                        tok("let"),
-                        ident,
-                        opt(pair(punct(":"), parse(prec + 1))),
-                        punct("="),
-                        parse(prec + 1),
-                    )),
-                    |((), x, opt_ty, (), m)| {
-                        let ty = match opt_ty {
-                            Some(((), ty)) => ty,
-                            None => Ast::Top,
-                        };
-
-                        Ast::Let(x, Box::new(ty), Box::new(m))
-                    },
-                ),
-                // Assignment
-                map(
-                    tuple((parse(prec + 1), punct("="), parse(prec + 1))),
-                    |(lhs, (), rhs)| Ast::Ass(Box::new(lhs), Box::new(rhs)),
-                ),
-                parse(prec + 1),
-            ))(input),
-            2 => alt((
-                // Match
-                |input| {
-                    let (input, cond) = preceded(tok("match"), parse(0))(input)?;
-
-                    let (g, input) = match input {
-                        [TokenTree::Group(g), input @ ..] => (g, input),
-                        _ => return fail(input),
-                    };
-
-                    let inner_input = g.stream().into_iter().collect::<Vec<_>>();
-                    let inner_input = &*Box::leak(Box::new(inner_input));
-                    let (_, branches) = all_consuming(many0(map(
-                        tuple((
-                            punct("'"),
-                            ident,
-                            punct("="),
-                            punct(">"),
-                            parse(1),
-                            punct(","),
-                        )),
-                        |((), atom, (), (), branch, ())| (atom, branch),
-                    )))(&inner_input)?;
-
-                    Ok((input, Ast::Match(Box::new(cond), branches)))
-                },
-                // Dependent Function
-                |input: &'a [TokenTree]| {
-                    // parses (x: M) -> N
-                    match input {
-                        [TokenTree::Group(g), input @ ..] if g.delimiter() == Delimiter::Brace => {
-                            // parses (x: M)
-                            let g_input = g.stream().into_iter().collect::<Vec<_>>();
-                            let g_input = &*Box::leak(Box::new(g_input));
-                            let (_, (x, (), m)) =
-                                all_consuming(tuple((ident, punct(":"), parse(0))))(&g_input)?;
-
-                            // parses -> N
-                            let (input, ((), (), n)) =
-                                tuple((punct("-"), punct(">"), parse(prec)))(input)?;
-
-                            Ok((input, Ast::Fun(x, Box::new(m), Box::new(n))))
-                        }
-                        input => fail(input),
-                    }
-                },
-                // Function
-                map(
-                    // TODO: disallow space between - and > by enforcing the - is spacing=Joint
-                    tuple((parse(prec + 1), punct("-"), punct(">"), parse(prec))),
-                    |(lhs, (), (), rhs)| Ast::Fun("_".to_string(), Box::new(lhs), Box::new(rhs)),
-                ),
-                parse(prec + 1),
-            ))(input),
-            3 => alt((
-                // Type union
-                map(
-                    tuple((parse(prec + 1), punct("|"), parse(prec))),
-                    |(lhs, (), rhs)| Ast::Union(Box::new(lhs), Box::new(rhs)),
-                ),
-                // Repeatedly try parsers on the tail
-                |input| {
-                    let (mut input, mut head) = parse(prec + 1)(input)?;
-
-                    loop {
-                        // Application
-                        if let Ok((i, next)) = parse(prec + 1)(input) {
-                            input = i;
-                            head = Ast::App(Box::new(head), Box::new(next));
-                            continue;
-                        }
-
-                        // Left pair
-                        if let Ok((i, _)) = pair(punct("."), liter("0"))(input) {
-                            input = i;
-                            head = Ast::PairLeft(Box::new(head));
-                            continue;
-                        }
-
-                        // Right pair
-                        if let Ok((i, _)) = pair(punct("."), liter("1"))(input) {
-                            input = i;
-                            head = Ast::PairRight(Box::new(head));
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    Ok((input, head))
-                },
-                map(
-                    pair(parse(prec + 1), many0(parse(prec + 1))),
-                    |(mut f, args)| {
-                        for arg in args {
-                            f = Ast::App(Box::new(f), Box::new(arg));
-                        }
-                        f
-                    },
-                ),
-            ))(input),
-            PREC_MAX => alt((
-                // Deref
-                map(preceded(punct("*"), parse(prec)), |m| {
-                    Ast::Deref(Box::new(m))
-                }),
-                // Top
-                map(punct("*"), |_| Ast::Top),
-                // MutRef
-                map(
-                    tuple((punct("&"), tok("mut"), parse(prec))),
-                    |((), (), m)| Ast::MutRef(Box::new(m)),
-                ),
-                // Ref
-                map(preceded(punct("&"), parse(prec)), |m| Ast::Ref(Box::new(m))),
-                // Variable
-                map(ident, Ast::Var),
-                // Atom
-                map(preceded(punct("'"), ident), |atom| Ast::Atom(atom)),
-                // Brackets
-                brackets,
-            ))(input),
-            _ => panic!("parse error, input = {:?}", input),
+        Type::Func(_, _) => todo!("gen_result_code Func"),
+        Type::Pair(l, r, _, _) => {
+            let lhs_result_code = gen_result_code(l.clone());
+            let rhs_result_code = gen_result_code(r.clone());
+            quote! {
+                let (lhs, rhs) = *Box::from_raw(result.pair);
+                (
+                { let result = lhs; #lhs_result_code },
+                { let result = rhs; #rhs_result_code }
+            )
+            }
         }
+        Type::BorrowS(_, _) => todo!("gen_result_code BorrowS"),
+        Type::BorrowM(_, _) => todo!("gen_result_code BorrowM"),
+        Type::LoanS(_, _) => todo!("gen_result_code LoanS"),
+        Type::LoanM(_) => todo!("gen_result_code LoanM"),
+        Type::Top => todo!("gen_result_code Top"),
     }
-}
-
-fn parse_stream(input: TokenStream) -> IResult<&'static [TokenTree], Ast> {
-    // Convert input from stream to vec of tokens
-    let input = input.into_iter().collect::<Vec<_>>();
-    // Leak input so returned errors can reference parts of the input
-    let input = &*Box::leak(Box::new(input));
-    // parse the insides
-    all_consuming(parse(0))(&input)
 }
 
 fn ochre_impl(input: TokenStream) -> TokenStream {
-    dbg!(&input);
-    dbg!(parse_stream(input));
+    let ast = match parse_stream(input) {
+        Ok(ast) => ast,
+        Err(s) => {
+            return quote_spanned! {
+                s.into() =>
+                compile_error!("syntax error")
+            }
+            .into()
+        }
+    };
 
-    // quote!(compile_error!("hello world")).into()
-    quote!(println!("hello world")).into()
+    dbg!(&ast);
+
+    // Invoke Ochre compiler
+    let mut env = Env::new();
+    let (code, result_type) = match move_op(&mut env, ast) {
+        Ok(res) => res,
+        Err(s) => return quote!(compile_error!(#s)).into(),
+    };
+    dbg!(env);
+    dbg!(result_type.clone());
+
+    // Generate return value
+    let result_code = gen_result_code(result_type);
+
+    // // Output code
+    // quote! { unsafe {
+    //     use std::ptr;
+
+    //     union OchreValue {
+    //         uninit: (),
+    //         atom: u64,
+    //         pair: *mut (OchreValue, OchreValue),
+    //         func: fn(OchreValue) -> OchreValue,
+    //         ptr: *mut OchreValue,
+    //     }
+
+    //     #[derive(Debug, Clone)]
+    //     enum OchreResult {
+    //         Atom(String),
+    //         Pair(Box<(OchreResult, OchreResult)>),
+    //         // Returning pointers or functions not yet supported
+    //     }
+
+    //     // Functions
+
+    //     // Body
+    //     let result: OchreValue = { #code };
+
+    //     // Convert result to Rust
+    //     #result_code
+    // }}
+    // .into()
+
+    quote!(unimplemented!()).into()
 }
 
 #[proc_macro]
-pub fn ochre(item: TokenStream) -> TokenStream {
-    ochre_impl(item)
+pub fn ochre(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    ochre_impl(item.into()).into()
 }
 
 #[cfg(test)]
