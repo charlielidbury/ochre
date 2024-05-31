@@ -330,11 +330,9 @@ RustBelt\citep{jung_rustbelt_2018} is a formal model of Rust, including unsafe R
 I see RustBelt as a great complement to this work in the future: real programs require unsafe code, but you want to avoid having to model your code in a separate proof assistant as little as possible. In Ochre, I imagine the few people who write unsafe code will verify it with something like RustBelt, while the majority won't have to, but will benefit from the guarantees provided by the verified libraries they use which do.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{\lochre{}}
+\chapter{Ochre}
 
-At its core, Ochre is an imperative language with functions, mutation, pointers, and user-defined types. Every value in Ochre at runtime is either an atom (more on this below), a dependent pair, a dependent function, or a pointer to one of the aforementioned. Algebraic data types like you would find in Haskell or Rust are defined using a composition of the above features.
-
-This chapter introduces \lochre{}'s features one by one with examples, skip to Figure \ref{fig:syntax} if you just want the syntax.
+At the start of this chapter, Ochre is introduced informally via examples to provide an intuition about how the various language constructs behave, and how they are reasoned about statically. Then, we will move to the formalisms section, which is precise in the details, but doesn't help build intuition about the underlying concepts. The sections are kept separate because, at its core, Ochre is made up of a handful of fairly graspable concepts, but when they are combined and all the details are worked out, the complexity explodes. The hope is that with a strong enough intuition of Ochre, one could come up with the formal semantics, and the formalisms section serves only to clarify exact details.
 
 \textbf{Atoms}
 
@@ -445,6 +443,85 @@ Non-destructive operations
 
 Compile-time only operations
 
+\begin{figure}
+  \begin{adjustwidth}{-2cm}{-2cm}
+  \small
+  \begin{tabular}{c|cccccc}
+    & \erasedreadarrow & \readarrow & \movearrow & \writearrow & \narrowarrow & \erasedwritearrow \\
+    \hline
+
+    \\\mono{'a} &
+    \multicolumn{6}{c}{
+      $\forall \diamond \in \{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{'a} \diamond\,'a
+        }
+      \right]$
+    }
+    \\
+
+    \\\mono{\_} &
+    &
+    \multicolumn{4}{c}{
+      $\forall \diamond \in \{ \readarrow, \movearrow, \writearrow, \narrowarrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{\_} \diamond \top
+        }
+      \right]$
+    }
+    &
+    \\
+
+    \\\mono{*} &
+    \inferrule[]{
+    }{
+      \Omega \vdash \mono{*} \erasedreadarrow \top
+    }&
+    &
+    &
+    &
+    &
+    \inferrule[]{
+    }{
+      \Omega \vdash \mono{*} \erasedwritearrow \top
+    }\\
+
+    \\\mono{M:T} &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \erasedreadarrow, \readarrow, \movearrow \}. \left[
+        \raisebox{-2ex}{$\dfrac{
+          \begin{array}{cl}
+            \Omega \vdash M \diamond m \dashv \Omega' \\
+            \Omega' \vdash T \erasedreadarrow t \dashv \Omega'' \\
+            m: t
+          \end{array}
+        }{
+          \Omega \vdash \mono{M:T} \diamond t \dashv \Omega''
+        }$}
+      \right]$
+    } &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \erasedwritearrow, \narrowarrow, \writearrow \}. \left[
+        \raisebox{-2ex}{$\dfrac{
+          \begin{array}{cl}
+            \Omega \vdash M \diamond m \dashv \Omega' \\
+            \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\
+            m: t
+          \end{array}
+        }{
+          \Omega \vdash \mono{M:T} \diamond t \dashv \Omega''
+        }$}
+      \right]$
+    } \\
+
+
+  \end{tabular}
+\end{adjustwidth}
+\caption{everythingable}
+\label{fig:everythingable}
+\end{figure}
 
 \begin{figure}
   \begin{adjustwidth}{-2cm}{-2cm}
@@ -453,7 +530,7 @@ Compile-time only operations
     & \movearrow & \readarrow & \erasedreadarrow \\
     \hline
 
-    \\\mono{x} or \mono{X} &
+    \mono{x} or \mono{X} &
     \inferrule[]{
       \Omega' = \Omega\left[\frac{\mono{x} \mapsto \bot}{\mono{x} \mapsto m}\right]
     }{
@@ -473,17 +550,6 @@ Compile-time only operations
     }
     \\
 
-    \\\mono{'a} &
-    \multicolumn{3}{c}{
-      $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
-        \inferrule[]{
-        }{
-          \Omega \vdash \mono{'a} \diamond\,'a
-        }
-      \right]$
-    }
-    \\
-
     \\\mono{M,N} &
     \multicolumn{3}{c}{
       $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
@@ -491,7 +557,7 @@ Compile-time only operations
           \Omega \vdash \mono{M} \diamond m \dashv \Omega'\\\\
           \Omega' \vdash \mono{N} \diamond n \dashv \Omega''
         }{
-          \Omega \vdash \mono{M, N} \diamond (m, n, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''
+          \Omega \vdash \mono{M,N} \diamond (m, n, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''
         }
       \right]$
     }
@@ -504,52 +570,32 @@ Compile-time only operations
     }{
       \Omega \vdash \mono{M.0} \movearrow m \dashv \Omega''
     } &
-    \inferrule[]{
-      \Omega \vdash \mono{M} \readarrow (m, \_, \_ \rightarrow \_) \dashv \Omega' 
-    }{
-      \Omega \vdash \mono{M.0} \readarrow m \dashv \Omega'
-    } &
-    \\
-
-    \\\mono{M.1} &
-    \inferrule[]{
-      \textit{get pair}\\\\  
-      \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
-      \textit{calculate right restriction}\\\\
-      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
-      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''\\\\
-      \textit{replace pair}\\\\
-      \Omega'' \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega'''
-    }{
-      \Omega \vdash \mono{M.1} \movearrow n \cap u \dashv \Omega'''
-    } &
-    \inferrule[]{
-      \textit{get pair}\\\\  
-      \Omega \vdash \mono{M} \readarrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
-      \textit{calculate right restriction}\\\\
-      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
-      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''
-    }{
-      \Omega \vdash \mono{M.1} \readarrow n \cap u \dashv \Omega''
-    } \\
-
-    \\\mono{\_} &
     \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \movearrow, \readarrow \}. \left[
+      $\forall \diamond \in \{ \readarrow, \erasedreadarrow \}. \left[
         \inferrule[]{
+          \Omega \vdash \mono{M} \diamond (m, \_, \_ \rightarrow \_) \dashv \Omega' 
         }{
-          \Omega \vdash \mono{\_} \diamond *
+          \Omega \vdash \mono{M.0} \diamond m \dashv \Omega'
         }
       \right]$
     }
     \\
-
-    \\\mono{*} &
-    &
-    &
-    \inferrule[]{
-    }{
-      \Omega \vdash \mono{*} \erasedreadarrow *
+    
+    \\\mono{M.1} &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
+        \raisebox{-5.5ex}{$\dfrac{
+          \begin{array}{ccll}
+            & \Omega \vdash \mono{M} \diamond (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega' & \comment{get pair} & \\
+            & \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega'' & \comment{calculate right restriction} & \\
+            & \Omega'' \vdash \mono{U} \erasedreadarrow u \dashv \Omega' & \comment{calculate right restriction} & \\
+            & \Omega' \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega''' & \comment{replace pair} & \textit{if $\diamond = \movearrow$} \\
+            & \Omega''' = \Omega' & & \textit{if $\diamond \ne \movearrow$}
+          \end{array}
+        }{
+          \Omega \vdash \mono{M.1} \diamond n \cap u \dashv \Omega'''
+        }$}
+      \right]$
     }
     \\
 
@@ -591,38 +637,48 @@ Compile-time only operations
 
     \\\mono{x} or \mono{X} &
     \inferrule[]{
-      \Omega' = \Omega[\mono{x} \mapsto m/\mono{x} \mapsto \bot]
+      \Omega' = \Omega\left[\frac{\mono{x} \mapsto m}{\mono{x} \mapsto \bot}\right]
     }{
       \Omega \vdash \mono{x} \writearrow m \dashv \Omega'
     } &
     \inferrule[]{
-      \Omega' = \Omega[\mono{x} \mapsto m'/\mono{x} \mapsto m]\\\\
+      \Omega' = \Omega\left[\frac{\mono{x} \mapsto m'}{\mono{x} \mapsto m}\right]\\\\
       m':m
     }{
       \Omega \vdash \mono{x} \narrowarrow m' \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\mono{X} \mapsto m'}{\mono{X} \mapsto m}\right]\\\\
+      m':m
+    }{
+      \Omega \vdash \mono{X} \erasedwritearrow m' \dashv \Omega'
     }
     \\
 
     \\\mono{'a} &
-    \inferrule[]{
-    }{
-      \Omega \vdash \mono{'a} \writearrow 'a
-    } &
-    \inferrule{
-    }{
-      \Omega \vdash \mono{'a} \narrowarrow 'a
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{'a} \diamond\,'a
+        }
+      \right]$
     }
     \\
 
     \\\mono{M,N} &
-    \inferrule[]{
-      \Omega \vdash \mono{M} \writearrow m \dashv \Omega'\\\\
-      \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
-      \Omega' \vdash \mono{U} \erasedreadarrow n' \dashv \Omega'\\\\
-      \Omega' \vdash \mono{N} \writearrow n \cap n' \dashv \Omega'''
-    }{
-      \Omega \vdash \mono{M, N} \writearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'''
-    } &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
+        \vcenter{\inferrule[]{
+          \Omega \vdash \mono{M} \diamond m \dashv \Omega'\\\\
+          \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega''\\\\
+          \Omega' \vdash \mono{U} \erasedreadarrow n' \dashv \Omega'\\\\
+          \Omega' \vdash \mono{N} \diamond n \cap n' \dashv \Omega'''
+        }{
+          \Omega \vdash \mono{M, N} \diamond (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'''
+        }}
+      \right]$
+    }
     \\
 
     \\\mono{M.0} &
@@ -632,6 +688,15 @@ Compile-time only operations
     }{
       \Omega \vdash \mono{M.0} \writearrow m \dashv \Omega''
     } &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
+        \vcenter{\inferrule[]{
+          \Omega \vdash \mono{M} \diamond (\bot, n, \mono{\_} \rightarrow \mono{U}) \dashv \Omega'
+        }{
+          \Omega \vdash \mono{M.0} \diamond m \dashv \Omega''
+        }}
+      \right]$
+    }
     \\
 
     \\\mono{M.1} &
@@ -641,7 +706,7 @@ Compile-time only operations
       \Omega' \vdash \mono{M} \writearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega''
     }{
       \Omega \vdash \mono{M.1} \writearrow n \dashv \Omega''
-    } &
+    }
     \\
 
     \\\mono{\_} &
@@ -650,9 +715,13 @@ Compile-time only operations
     }{
       \Omega \vdash \mono{\_} \writearrow v \dashv \Omega'
     } &
-    \inferrule[]{
-    }{
-      \Omega \vdash \mono{\_} \readarrow \bot
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{\_} \readarrow \bot  
+        }
+      \right]$
     }
     \\
 
@@ -682,10 +751,10 @@ Compile-time only operations
 \end{figure}
 
 \begin{figure}
-  \begin{adjustwidth}{-2cm}{-2cm}
+  \begin{adjustwidth}{-2.2cm}{-2.2cm}
   \small
   \begin{tabular}{p{2cm}|ccc}
-    & \movearrow & \readarrow & \erasedreadarrow \\
+    & \movearrow & \erasedreadarrow \\
     \hline
 
     \\\mono{\&M} &
@@ -707,33 +776,61 @@ Compile-time only operations
     \\
 
     \\\mono{M N} &
-    \inferrule[]{
-      \Omega \vdash \mono{F} \readarrow (\mono{T} \rightarrow \mono{U})\\\textit{eval function}\\\\
-      \Omega \vdash \mono{X} \movearrow v \dashv \Omega'\\\textit{eval argument}\\\\
-      \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega''\\\textit{calculate return type}\\\\
-      \Omega'' \vdash \mono{U} \erasedreadarrow w \dashv \Omega'\\\textit{calculate return type}\\\\
-      \text{maximally widen $v$ to $v'$ such that $T \erasedwritearrow v'$}\\\\
-      \Omega' \vdash \text{drop}\,v' \dashv \Omega'''\\\textit{propogate side effects}\\
+    $\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash \mono{F} \readarrow (\mono{T} \rightarrow \mono{U}) & \comment{eval function} \\
+        \Omega \vdash \mono{X} \movearrow v \dashv \Omega' & \comment{eval argument} \\
+        \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega'' & \comment{calculate return type} \\
+        \Omega'' \vdash \mono{U} \erasedreadarrow w \dashv \Omega' & \comment{calculate return type} \\
+        \multicolumn{2}{c}{\text{maximally widen $v$ to $v'$ such that $T \erasedwritearrow v'$}} \\
+        \Omega' \vdash \text{drop}\,v' \dashv \Omega''' & \comment{propogate side effects} \\
+      \end{array}
     }{
       \Omega \vdash \mono{F X} \movearrow w \dashv \Omega'''
-    } &
+    }$ &
+    $\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash \mono{F} \erasedreadarrow (\mono{T} \rightarrow \mono{U}) & \comment{eval function} \\
+        \Omega \vdash \mono{X} \erasedreadarrow v \dashv \Omega' & \comment{eval argument} \\
+        \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega'' & \comment{calculate return} \\
+        \Omega'' \vdash \mono{U} \erasedreadarrow w \dashv \Omega' & \comment{calculate return}
+      \end{array}
+    }{
+      \Omega \vdash \mono{F X} \erasedreadarrow w \dashv \Omega'
+    }$ &
     \\
 
     \\\mono{M -> T {N}} &
-    \inferrule[]{
-      \Omega \vdash \mono{M} \erasedwritearrow m \vdash \Omega'\\\textit{calculate widest input}\\\\
-      \Omega' \vdash \mono{T} \erasedreadarrow t\\\textit{calculate return type}\\\\
-      \Omega' \vdash \mono{N} \movearrow n \dashv \Omega\\\textit{body must reset environment}\\\\
-      n: t\\\textit{body must be a subtype of return type}
+    $\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash \mono{M} \erasedwritearrow m \dashv \Omega' & \comment{calculate widest input} \\
+        \Omega' \vdash \mono{T} \erasedreadarrow t & \comment{calculate return type} \\
+        \Omega' \vdash \mono{N} \movearrow n \dashv \Omega & \comment{body must reset environment} \\
+        n: t & \comment{check body}
+      \end{array}
     }{
       \Omega \vdash \mono{M -> T \{ N \}} \movearrow \mono{T} \rightarrow \mono{U}
-    } &
+    }$ &
+    $\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash \mono{T} \erasedwritearrow t \dashv \Omega' & \comment{get input type} \\
+        \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega & \comment{check it works with body}
+      \end{array}
+    }{
+      \Omega \vdash \mono{T -> U} \erasedreadarrow \mono{T} \rightarrow \mono{U}
+    }$ &
     \\
 
     \\\mono{M = N} &
     \inferrule[]{
       \Omega \vdash \mono{N} \movearrow v \dashv \Omega'\\\\
       \Omega' \vdash \mono{M} \writearrow v \dashv \Omega''
+    }{
+      \Omega \vdash \mono{M = N} \movearrow 'unit \dashv \Omega''
+    } &
+    \inferrule[]{
+      \Omega \vdash \mono{N} \erasedreadarrow v \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \erasedwritearrow v \dashv \Omega''
     }{
       \Omega \vdash \mono{M = N} \movearrow 'unit \dashv \Omega''
     }
@@ -749,28 +846,36 @@ Compile-time only operations
     }
     \\
 
-    \\\mono{M.1}
-    \\
-
     \\\mono{case M \{}\newline
-      \mono{  'a => N,}\newline
+      \mono{  'a$_0$ => N$_0$,}\newline
       \mono{  ...}\newline
+      \mono{  'a$_k$ => N$_k$,}\newline
     \mono{\}}&
-    \inferrule[]{
-      \Omega \vdash \mono{M} \movearrow m \dashv \Omega'\\\textit{eval interogant}\\\\
-      \forall i.[\Omega' \vdash \mono{M} \narrowarrow 'a_i \dashv \Omega'_i]\\\textit{narrow type in branch}\\\\
-      \forall i.[\Omega'_i \vdash \mono{N} \movearrow n_i \dashv \Omega''_i]\\\textit{eval branch}\\\\
-      n = n_0 \cup ... \cup n_k\\\textit{combine branch values}\\\\
-      \Omega'' = \Omega''_0 \cup ... \cup \Omega''_k\\\textit{combine branch side effects}
-    }{
-      \Omega \vdash \mono{case M \{ 'a0 => N0, ... \}} \movearrow n \dashv \Omega''
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \movearrow, \erasedreadarrow \}. \left[
+        \raisebox{-3ex}{$\dfrac{
+          \begin{array}{cl}
+            \Omega \vdash \mono{M} \diamond m \dashv \Omega' & \comment{eval interogant} \\
+            \forall i.[\Omega' \vdash \mono{M} \narrowarrow 'a_i \dashv \Omega'_i] & \comment{narrow type in branch} \\
+            \forall i.[\Omega'_i \vdash \mono{N$_i$} \diamond n_i \dashv \Omega''_i] & \comment{eval branch} \\
+            n = n_0 \cup ... \cup n_k & \comment{combine branch values} \\
+            \Omega'' = \Omega''_0 \cup ... \cup \Omega''_k & \comment{combine branch side effects}
+          \end{array}
+        }{
+          \Omega \vdash \mono{case M \{ 'a$_0$ => N$_0$, ... \}} \diamond n \dashv \Omega''
+        }$}
+      \right]$
     }
     \\
 
-    \\\mono{T | U}
-    \\
-
-    \\\mono{M: T}
+    \\\mono{T | U} &
+    &
+    \inferrule[]{
+      \Omega \vdash \mono{T} \erasedreadarrow t \dashv \Omega'\\\\
+      \Omega' \vdash \mono{U} \erasedreadarrow u \dashv \Omega''
+    }{
+      \Omega \vdash \mono{T | U} \erasedreadarrow t \cup u \dashv \Omega''
+    }
     \\
 
 
