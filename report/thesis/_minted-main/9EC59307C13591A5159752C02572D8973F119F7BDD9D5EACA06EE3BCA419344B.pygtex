@@ -1,0 +1,3 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{k+kr}{data}\PYG{+w}{ }\PYG{k+kt}{Nat}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{k+kt}{Zero}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{k+kt}{Succ}\PYG{+w}{ }\PYG{k+kt}{Nat}
+\end{Verbatim}

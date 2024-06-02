@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{n}{Id}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// Definition of identity which can only be run at comp time}
+\PYG{+w}{    }\PYG{n}{id}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{x}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{p}{\PYGZcb{};}\PYG{+w}{ }\PYG{c+c1}{// Definition of identity which also exists at runtime}
+\end{Verbatim}

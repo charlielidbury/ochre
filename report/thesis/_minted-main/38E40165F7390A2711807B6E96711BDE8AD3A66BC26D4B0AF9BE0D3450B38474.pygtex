@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+
+\PYG{+w}{  }\PYG{err}{\PYGZbs{}}\PYG{n}{begin}\PYG{p}{\PYGZob{}}\PYG{n}{minted}\PYG{p}{\PYGZcb{}[}\PYG{n}{linenos}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{numbersep}\PYG{o}{=\PYGZhy{}}\PYG{l+m+mi}{5}\PYG{n}{pt}\PYG{p}{]\PYGZob{}}\PYG{n}{rust}\PYG{p}{\PYGZcb{}}
+\PYG{+w}{    }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}
+\end{Verbatim}

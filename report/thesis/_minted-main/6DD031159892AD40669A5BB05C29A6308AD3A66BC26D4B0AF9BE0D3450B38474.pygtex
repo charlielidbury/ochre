@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}: \PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// valid}
+\PYG{+w}{    }\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}: \PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// also valid}
+\PYG{+w}{    }\PYG{o}{\PYGZsq{}}\PYG{n+na}{c}: \PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// type error}
+\end{Verbatim}

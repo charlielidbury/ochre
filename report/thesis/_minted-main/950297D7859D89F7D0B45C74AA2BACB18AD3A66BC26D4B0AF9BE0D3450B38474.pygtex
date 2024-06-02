@@ -1,0 +1,8 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{rx1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{rx2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}one}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{rx1}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}one}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{rx2}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}one}
+\end{Verbatim}

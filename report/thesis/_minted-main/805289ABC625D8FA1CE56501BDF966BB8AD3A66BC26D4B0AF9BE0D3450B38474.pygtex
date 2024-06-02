@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{two}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// mutates x directly}
+\PYG{+w}{    }\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{three}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// mutates x via a mutable reference}
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}three}
+\end{Verbatim}

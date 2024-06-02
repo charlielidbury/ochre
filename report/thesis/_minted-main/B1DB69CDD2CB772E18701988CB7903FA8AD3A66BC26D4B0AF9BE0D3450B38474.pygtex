@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{foo}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{bar}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// direct mutation}
+\PYG{+w}{    }\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{baz}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// indirect mutation}
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}baz}
+\end{Verbatim}

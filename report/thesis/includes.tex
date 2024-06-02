@@ -17,7 +17,7 @@
 %----------------------------------------------------------------------------------------
 %	PACKAGES AND OTHER DOCUMENT CONFIGURATIONS
 %----------------------------------------------------------------------------------------
-\usepackage[a4paper,hmargin=2.8cm,vmargin=2.0cm,includeheadfoot]{geometry}
+\usepackage[a4paper,top=3cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{geometry}
 \usepackage{textpos}
 \usepackage[square]{natbib} % for bibliography
 \usepackage{tabularx,longtable,multirow,subfigure,caption}%hangcaption
@@ -60,13 +60,11 @@
 \usepackage{xspace}
 \usepackage{xparse}
   \NewDocumentCommand{\li}{v}{\textbf{\footnotesize\texttt{#1}}}
-\usepackage[frozencache=true]{minted}
-  \ifshort
-  \setminted{fontsize=\footnotesize,linenos}
-  \fi
-  \iflong
-  \setminted{fontsize=\footnotesize,linenos}
-  \fi
+\usepackage{minted}
+\usepackage{adjustbox}
+% \setminted{fontsize=\footnotesize,linenos}
+\setminted{linenos}
+\usepackage{wrapfig}
 \usepackage{tikz}
   \usetikzlibrary{calc}
   \usetikzlibrary{shadows,graphs}
@@ -77,6 +75,14 @@
 
 \newcommand{\sslash}{\mathbin{/\mkern-6mu/}}
 \newcommand{\comment}[1]{\textcolor{gray}{\sslash\textit{ #1}}}
+\newcommand{\grayit}[1]{\textcolor{gray}{\textit{#1}}}
+% \newcommand{\codeexample}[2]{
+%   \begin{minted}[linenos, numbersep=-5pt]{rust}
+%     #1
+%   \end{minted}
+
+%   \textcolor{gray}{\textit{#2}}
+% }
 
 \newcommand{\sref}[1]{Section~\ref{sec:#1}}
 \newcommand{\fref}[1]{Figure~\ref{fig:#1}}

@@ -334,22 +334,245 @@ I see RustBelt as a great complement to this work in the future: real programs r
 
 At the start of this chapter, Ochre is introduced informally via examples to provide an intuition about how the various language constructs behave, and how they are reasoned about statically. Then, we will move to the formalisms section, which is precise in the details, but doesn't help build intuition about the underlying concepts. The sections are kept separate because, at its core, Ochre is made up of a handful of fairly graspable concepts, but when they are combined and all the details are worked out, the complexity explodes. The hope is that with a strong enough intuition of Ochre, one could come up with the formal semantics, and the formalisms section serves only to clarify exact details.
 
-\textbf{Atoms}
+\section{Ochre, by Example}
+Ochre is ML-like or $\lambda$ calculus-like in that everything is an expression, however evaluating an expression can have side effects (non-purity).
 
-\textbf{Pairs}
+The most simple Ochre value is an \textit{atom}. Atoms are constructed with \mono{'} like \mono{'hello} or \mono{'world}. Their runtime representation is the hash of the string after the tick, which makes them all the same length (one machine word), and therefore they don't need to be heap allocated. Atoms are a crucial primitive upon which more complex types are built and also make talking about Ochre examples easier because you don't have to introduce lots of user-defined types to do anything.
+  
+\begin{listing}[H]
+  \begin{minted}{rust}
+    'hello
+  \end{minted}
+  \caption{A valid Ochre program}
+\end{listing}
 
-\textbf{Variables}
+Variables are declared via the \mono{=} operator, and expressions/statements can be chained together with \mono{;}. \mono{M = N} and \mono{M; N} are both expressions themselves, \mono{M = N} evaluates to \mono{'unit}, and \mono{M; N} evaluates to whatever \mono{N} evaluates to. Ochre uses C-style comments with \mono{//}.
 
-\textbf{References (Pointers)}
+\begin{listing}[H]
+  \begin{minted}{rust}
+    x = 'hello;
+    x // 'hello
+  \end{minted}
+  \caption{Variable assignment}
+\end{listing}
 
-\textbf{Functions}
+Variables in Ochre can either be modified directly, or via a mutable reference which is constructed with \mono{\&mut} and dereferenced with \mono{*}.
 
-\textbf{yadayada}
+\begin{listing}[H]
+  \begin{minted}{rust}
+    x = 'one;
+    x = 'two; // mutates x directly
+    rx = &mut x;
+    *rx = 'three; // mutates x via a mutable reference
+    x // 'three
+  \end{minted}
+  \caption{Mutation}
+  \label{lst:mutref}
+\end{listing}
 
-\lochre{} was originally based upon Aeneas's \citep{aeneas} LLBC, however over time so many features have been added and removed it has diverged 
+If a mutable reference exists to a variable, that variable cannot be read or modified. Listing \ref{lst:mutref} works because when the programmer uses \mono{x}, \mono{rx} is implicitly \textit{dropped}, making \mono{x} valid to use again. As a result of this, \mono{rx} is unusable after the \mono{x} access on line 5.
 
-In order to achieve the desired properties, \lochre{} must have dependent functions, dependent pairs, Rust-like ownership semantics, user-defined data types, and in-place mutation. I took Aeneas's LLBC as a starting point, then gradually added in concepts from $\Pi\Sigma$\citep{altenkirch2010pisigma}. Where possible, I simplified the language down, 
+In practice, this is very restrictive, because it means only one pointer can exist to any object at a time. Like Rust, Ochre solves this by also supporting \textit{immutable} references, constructed with \mono{\&} and dereferenced with \mono{*}. These allow the programmer to have multiple references to the same value, which will be referred to from here as \textit{aliasing}, with the tradeoff that you cannot mutate the referenced value. This trade-off is known as \textit{aliasing (exclusive) or mutability}, or AXM for short, and it's crucial to why Rust can be converted to pure functional code, or dependently type-checked.
 
+\begin{listing}[H]
+  \begin{minted}{rust}
+    x = 'one;
+    rx1 = &x;
+    rx2 = &x;
+    x; // 'one
+    *rx1; // 'one
+    *rx2; // 'one
+  \end{minted}
+  \caption{The value \mono{'one} can be accessed via \mono{x}, \mono{rx1}, and \mono{rx2} simultaneously}
+  \label{lst:immref}
+\end{listing}
+
+Pairs are constructed via the \mono{,} operator, and because of their low precedence in the grammar, are typically surrounded in brackets, like so: \mono{(M, N)}. If you have a pair, you can access the left and right elements with \mono{.0} and \mono{.1} respectively, like so:
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    x = ('one, 'two);
+    x.0; // 'one
+    x.1; // 'two
+  \end{minted}
+\end{listing}
+
+Ochre is structurally typed, like TypeScript. In Ochre, every value is its own type. So \mono{'one} is of type \mono{'one}, which is expressed in Ochre via colon. Non-singleton types are made up by taking the union of other types, using the \mono{|} operator, like \mono{'a | 'b | 'c}, which evaluates to the type of atoms which can any of \mono{'a}, \mono{'b}, or \mono{'c}.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    'a: 'a; // valid
+    'a: 'a | 'b; // also valid
+    'c: 'a | 'b; // type error
+  \end{minted}
+\end{listing}
+
+The same goes for references, pairs, and functions (which will be introduced later): the type of a reference is itself a reference, the type of a pair is itself a pair, and the type of a function is itself a function.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    ('a, 'b): ('a, 'b); // valid
+    ('a, 'b): ('a | 'b, 'a | 'b); // also valid
+  \end{minted}
+\end{listing}
+
+Types, just like values, can be assigned to variables for future re-use. However, they must all be statically known, which is enforced by only allowing them to be assigned to compile-time variables, which start with capital letters. This is similar to how in Haskell types must start with a capital letter, but here the line between types and values is blurred significantly.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    abPair = ('a | 'b, 'a | 'b); // error! type union can only occur at compile time
+    ABPair = ('a | 'b, 'a | 'b);
+    ('a, 'b): ABPair; // valid
+  \end{minted}
+\end{listing}
+
+Functions are defined with an arrow \mono{->} and an optional runtime body surrounded in curly braces. For instance, the identity function over \mono{'true | 'false} is defined as such:
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Bool = 'true | 'false;
+    id = (x: Bool) -> Bool { x };
+  \end{minted}
+\end{listing}
+
+If the runtime body is omitted, the function can only be called at compile time, which means it must be written to a comp time variable:
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Bool = 'true | 'false;
+    Id = (x: Bool) -> Bool; // valid
+    id = (x: Bool) -> Bool; // invalid: attempt to assign comptime func to runtime var
+  \end{minted}
+\end{listing}
+
+The only difference between a function body and its return type is that its return type is run at compile time, there is no syntactic difference. For functions you want to run at compile time, syntax after the arrow \textit{is} the function body.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Id = x -> x; // Definition of identity which can only be run at comp time
+    id = x -> x { x }; // Definition of identity which also exists at runtime
+  \end{minted}
+\end{listing}
+
+In Ochre, atoms can be branched on via a case statement. The discriminant of the case statement must be an atom, and there must be exactly one branch for each possible atom. In the future, I plan on adding if and match statements, which will be syntactic sugar for case statements.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Bool = 'true | 'false;
+    not = (b: Bool) -> Bool {
+      case b {
+        'true => 'false,
+        'false => 'true,
+      }
+    };
+    not('true); // 'false
+  \end{minted}
+\end{listing}
+
+The right of a pair can depend on the left if the left's value is bound to an identifier, like \mono{Same} and \mono{Different} in the below.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Same = (L: Bool, L); // binds LHS to L, so can be used by right
+    ('true, 'true): Same; // valid
+    ('true, 'false): Same; // error! 'false is not of type 'true
+
+    Different = (L: Bool, case L { 'true => 'false, 'false => 'true});
+    ('true, 'false): Different; // valid
+    ('true, 'true): Different; // error!
+  \end{minted}
+\end{listing}
+
+When you union together pairs, it doesn't just union together their left and right and make a new pair, it uses any information it can get from the left pair to more precisely type the right pair.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Same = ('true, 'true) | ('false, 'false);
+    // Expanded internally to:
+    Same = (
+      L: 'true | 'false,
+      case L { 'true => 'true, 'false => 'false }
+    )
+  \end{minted}
+\end{listing}
+
+This makes the union operator precise, taking the union of two types should never produce a type with inhabitants that weren't in either of the types which were unioned together.
+
+If the right of a pair depends on the left, and then you find something out about the left, you should in turn find something out about the right. This is done in Ochre via type \textit{narrowing}. In the below example, we define a function \mono{f}, and within \mono{f} we know that the left and right of our pair \mono{p} are the same. When we match on its left with \mono{p.0}, each branch is type-checked with the additional knowledge that we are in that particular case. This allows the compiler to correctly identify that when matching on the other side of the pair, you only need to have one branch.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Same = ('true, 'true) | ('false, 'false);
+    f = (p: Same) -> Bool {
+      case p.0 {
+        'true => case p.1 { 'true => 'unit }, // p.1: 'true
+        'false => case p.1 { 'false => 'unit }, // p.1: 'false
+      }
+    }
+  \end{minted}
+  \caption{Case statements narrow down the type of their discriminant in each branch}
+\end{listing}
+
+\subsubsection{Agebraic Data Types}
+
+Take the following definition of Peano naturals in Haskell syntax:
+
+\begin{listing}[H]
+  \begin{minted}{haskell}
+    data Nat = Zero | Succ Nat
+  \end{minted}
+\end{listing}
+
+In Ochre this is represented by a dependent pair. The left of the pair indicates which variant the ADT is in (either zero or succ), and the right contains the payload of that variant. In the zero case, nothing is stored, so the payload is \mono{'unit}, in the succ case, we store the natural that we are the successor of, so our payload is \mono{Nat}.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    // "manual" ADT encoding
+    Nat = (T: 'zero | 'succ, case T { 'zero => 'unit, 'succ => Nat });
+    // idiomatic encoding using type union
+    Nat = ('zero, 'unit) | ('succ, Nat);
+  \end{minted}
+\end{listing}
+
+By matching on the left, you can determine which variant the ADT is in, then you can access the payload through the right. For instance, this is how would define addition over Peano naturals:
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Nat = ('zero, 'unit) | ('succ, Nat);
+    add = (x: Nat, y: Nat) -> Nat {
+      case x.0 {
+        'zero => y, // 0 + y = y
+        'succ => ('succ, add(x.1, y)), // (1 + x) + y = 1 + (x + y)
+      }
+    }
+  \end{minted}
+\end{listing}
+
+\subsubsection{Recursion}
+
+The definition of \mono{add} above won't compile because of how it does recursion. When type-checking assignments, Ochre looks at the left first to figure out what type the identifiers have. In the case of \mono{Nat} and \mono{add} above there are no type annotations, so it evaluates the assigned value with no extra type information.
+
+If the programmer puts type annotations on the left of an assignment, the compiler knows at least something about the type, so it can evaluate the expression with that knowledge. This isn't required in the definition of \mono{Nat} because you can put anything in a pair, regardless of its type, so the usage of \mono{Nat} on the right was permissible.
+
+In the \mono{add} case, we need to know that \mono{add} has type {(Nat, Nat) -> Nat} while evaluating the function body, so we can check that \mono{add(x.1, y)} has type \mono{Nat}. To introduce this, add type annotations to the left of the assignment:
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    add: (Nat, Nat) -> Nat = (x: Nat, y: Nat) -> Nat {
+      // ...
+    }
+  \end{minted}
+\end{listing}
+
+This introduces repetition in the types, which we remove by adding the following syntactic sugar for the above:
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    add(x: Nat, y: Nat): Nat = {
+      // ...
+    }
+  \end{minted}
+\end{listing}
 
 
 \section{Scope and Feature Set}
@@ -655,17 +878,6 @@ Compile-time only operations
     }
     \\
 
-    \\\mono{'a} &
-    \multicolumn{3}{c}{
-      $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
-        \inferrule[]{
-        }{
-          \Omega \vdash \mono{'a} \diamond\,'a
-        }
-      \right]$
-    }
-    \\
-
     \\\mono{M,N} &
     \multicolumn{3}{c}{
       $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
@@ -800,7 +1012,7 @@ Compile-time only operations
     }$ &
     \\
 
-    \\\mono{M -> T {N}} &
+    \\\mono{M -> T \{N\}} &
     $\dfrac{
       \begin{array}{cl}
         \Omega \vdash \mono{M} \erasedwritearrow m \dashv \Omega' & \comment{calculate widest input} \\
