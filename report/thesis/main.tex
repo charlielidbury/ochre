@@ -870,24 +870,23 @@ Ochre has an extremely permissive syntax and heavily relies on typing rules to r
   \[
   \begin{array}[t]{llll}
     T, U, M, N & ::= & & \\
-    && x\mid{}y\mid{}z & \text{runtime variable identifier} \\
-    && X\mid{}Y\mid{}Z & \text{comptime variable identifier} \\
-    && 'a & \text{atom construction} \\
-    && M, N & \text{pair construction} \\
-    && M.0 & \text{pair left access} \\
-    && M.1 & \text{pair right access} \\
-    && *M & \text{dereference} \\
-    && \&M \mid \&\kw{mut}\,M & \text{borrow constructor} \\
-    && M N & \text{function application} \\
-    && M \rightarrow T\,(\{\,N\,\}) & \text{(dependent) function definition} \\
-    && & \text{(optional runtime body)}  \\
-    && M = N & \text{assignment} \\
-    && M; N & \text{sequence} \\
-    && \kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\} & \text{case statement} \\
-    && \bot & \text{uninitialised} \\
-    && * & \text{top} \\
-    && T\,|\,U & \text{type union} \\
-    && M:\,T & \text{type constraint} \\
+    && \mono{x}\mid{}\mono{y}\mid{}\mono{z} & \comment{runtime variable identifier} \\
+    && \mono{X}\mid{}\mono{Y}\mid{}\mono{Z} & \comment{comptime variable identifier} \\
+    && \mono{'}a & \comment{atom construction} \\
+    && M\mono{,} N & \comment{pair construction} \\
+    && M\mono{.0} & \comment{pair left access} \\
+    && M\mono{.1} & \comment{pair right access} \\
+    && \mono{*}M & \comment{dereference} \\
+    && \mono{\&}M \mid \mono{\&mut}\,M & \comment{borrow constructor} \\
+    && M N & \comment{function application} \\
+    && M \, \mono{->} \, T \,(\mono{\{}\,N\,\mono{\}}) & \comment{function definition (optional runtime body)} \\
+    && M \mono{=} N & \comment{assignment} \\
+    && M\mono{;} N & \comment{sequence} \\
+    && \mono{case}\,M\,\{\,\overrightarrow{\mono{'}a\mono{ => }N}\,\} & \comment{case statement} \\
+    && \mono{\_} & \comment{uninitialised} \\
+    && \mono{*} & \comment{top} \\
+    && T\,\mono{|}\,U & \comment{type union} \\
+    && M\mono{:}\,T & \comment{type constraint} \\
   \end{array} %
   \]
 \caption{Ochre syntax} %
@@ -903,19 +902,19 @@ We define two judgments over this syntax: $\Delta \vdash \mono{M} \evalarrow v \
   \vspace{-2ex} %
   \[
   \begin{array}[t]{llll}
-    \Delta & ::= & & \text{runtime environment (stack)} \\
-    && \emptyset & \text{empty stack} \\
-    && \Delta, x \mapsto v & \text{variable assignment} \\
+    \Delta & ::= & & \comment{runtime environment (stack)} \\
+    && \emptyset & \comment{empty stack} \\
+    && \Delta, x \mapsto v & \comment{variable assignment} \\
     \\
-    v, w & ::= & & \text{runtime value} \\
-    && 'a & \text{atom} \\
-    && (v, w) & \text{pair} \\
-    && p & \text{pointer} \\
-    && \mono{M} \rightarrow \mono{N} & \text{function} \\
+    v, w & ::= & & \comment{runtime value} \\
+    && 'a & \comment{atom} \\
+    && (v, w) & \comment{pair} \\
+    && p & \comment{pointer} \\
+    && \mono{M} \rightarrow \mono{N} & \comment{function} \\
     \\
-    p & ::= & & \text{pointer} \\
-    && x & \text{variable} \\
-    && p.0 \mid p.1 & \text{pair element access} \\
+    p & ::= & & \comment{pointer} \\
+    && x & \comment{variable} \\
+    && p.0 \mid p.1 & \comment{pair element access} \\
   \end{array} %
   \]
 \caption{Runtime state} %
@@ -941,13 +940,14 @@ This reads "the value $v$ is written to the syntax \mono{x} when the stack is $\
 
 For this rule to be applicable, \mono{x} must be uninitialized in the stack, which requires both that \mono{x} is in the stack at all, and that \mono{x} hasn't been written to previously, which is a very specific state for the stack to be in. There is a set of operations that can be performed at any time which perform things like memory allocation/deallocation, which one can use during derivations to get the stack into the right state, which will be covered later.
 
-Figure \ref{fig:concretesemantics} contains the concrete semantics for every piece of syntax. Often the rule for reading from a piece of syntax and writing to it differs only in which arrow is used; in these cases, I quantify over arrows using $\diamond$ to mean "either arrow".
+Figures \ref{fig:concretesemanticsbi} and \ref{fig:concretesemanticsread} contain the concrete semantics for every piece of syntax. Often the rule for reading from a piece of syntax and writing to it differs only in which arrow is used; in these cases, I quantify over arrows using $\diamond$ to mean "either arrow".
 
 \begin{figure}
+  \centering
   \begin{tabular}{c|cc}
     & $\evalarrow$ & $\ewritearrow$ \\
     \hline
-    \mono{x} &
+    \\\mono{x} &
     \inferrule{
       \absmap{x}{v} \in \Delta
     }{
@@ -959,7 +959,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
       \Delta \vdash \mono{x} \ewritearrow v' \dashv \Delta'
     } \\
     
-    \\$'a$ &
+    \\\mono{'a} &
     \multicolumn{2}{c}{
       $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
         \inferrule{
@@ -969,7 +969,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
       \right]$
     } \\
     
-    \\$M, N$ &
+    \\\mono{M, N} &
     \multicolumn{2}{c}{
       $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
         \inferrule{
@@ -981,7 +981,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
       \right]$
     }\\
     
-    \\$M.0$ &
+    \\\mono{M.0} &
     \inferrule{
       \Delta \vdash \mono{M} \evalarrow (v, \_) \dashv \Delta'
     }{
@@ -994,7 +994,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
       \Delta \vdash \mono{M.0} \evalarrow v' \dashv \Delta''
     } \\
     
-    \\$M.1$ &
+    \\\mono{M.1} &
     \inferrule{
       \Delta \vdash \mono{M} \evalarrow (\_, w) \dashv \Delta'
     }{
@@ -1007,7 +1007,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
       \Delta \vdash \mono{M.1} \evalarrow w' \dashv \Delta''
     } \\
     
-    \\$*M$ &
+    \\\mono{*M} &
     \multicolumn{2}{c}{
     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
       \inferrule{
@@ -1019,7 +1019,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
     \right]$
     } \\
     
-    \\$M:\,T$ &
+    \\\mono{M:T} &
     \multicolumn{2}{c}{
     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
       \inferrule{
@@ -1030,7 +1030,7 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
     \right]$
     } \\
     
-    \\$\bot$ &
+    \\\mono{\_} &
     \multicolumn{2}{c}{
     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
       \inferrule{
@@ -1039,17 +1039,90 @@ Figure \ref{fig:concretesemantics} contains the concrete semantics for every pie
       }
     \right]$
     } \\
-  
-    $\&M$ & & \\
-    $\&\kw{mut}\,M$ & & \\
-    $M N$ & & \\
-    $M \rightarrow T\,\{\,N\,\}$ & & \\
-    $M = N$ & & \\
-    $M; N$ & & \\
-    $\kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\}$ & & \\
   \end{tabular}
-  \caption{}
-  \label{fig:concretesemantics}
+  \caption{Concrete interpretation for the pieces of syntax which can be both read and written to.}
+  \label{fig:concretesemanticsbi}
+\end{figure}
+
+\begin{figure}
+  \centering
+  \begin{tabular}{p{3cm}|c}
+    & $\evalarrow$ \\
+    \hline
+    \\\mono{\&M} &
+    \inferrule{
+    }{
+      \Delta \vdash \mono{\&x} \evalarrow \mono{x}
+    }\,\,\,
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow p
+    }{
+      \Delta \vdash \mono{\&M.0} \evalarrow p.0
+    }\,\,\,
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow p
+    }{
+      \Delta \vdash \mono{\&M.1} \evalarrow p.1
+    }\\
+
+    \\\mono{\&\kw{mut}\,M} &
+    \inferrule{
+      \Delta \vdash \mono{\&M} \evalarrow p
+    }{
+      \Delta \vdash \mono{\&\kw{mut} M} \evalarrow p
+    }\\
+
+    \\\mono{M N} &
+    $\dfrac{
+      \begin{array}{cl}
+        \Delta \vdash \mono{M} \evalarrow (\mono{I} \rightarrow \mono{O}) \dashv \Delta' & \comment{evaluate function} \\
+        \Delta' \vdash \mono{N} \evalarrow n \dashv \Delta'' & \comment{evaluate argument} \\
+        \Delta'' \vdash \mono{I} \ewritearrow n \dashv \Delta''' & \comment{push argument to stack} \\
+        \Delta''' \vdash \mono{O} \evalarrow v \dashv \Delta'''' & \comment{execute function body}
+      \end{array}
+    }{
+      \Delta \vdash \mono{M N} \evalarrow v \dashv \Delta''''
+    }$ \\
+
+    \\\mono{M -> T\,\{\,N\,\}} &
+    \inferrule{
+    }{
+      \Delta \vdash \mono{M -> T \{ N \}} \evalarrow (\mono{M} \rightarrow \mono{N})
+    }\\
+
+    \\\mono{M = N} &
+    \inferrule{
+      \Delta \vdash \mono{N} \evalarrow v \dashv \Delta'\\\\
+      \Delta' \vdash \mono{M} \ewritearrow v \dashv \Delta''
+    }{
+      \Delta \vdash \mono{M = N} \evalarrow \atom{unit} \dashv \Delta''
+    }\\
+
+    \\\mono{M; N} &
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow \atom{unit} \dashv \Delta'\\\\
+      \Delta' \vdash \mono{N} \evalarrow n \dashv \Delta''
+    }{
+      \Delta \vdash \mono{M = N} \evalarrow n \dashv \Delta''
+    }\\
+
+    \\\mono{case M \{}\newline
+      \mono{  'a$_0$ => N$_0$,}\newline
+      \mono{  ...}\newline
+      \mono{  'a$_k$ => N$_k$,}\newline
+    \mono{\}} &
+    \raisebox{-6ex}{$\dfrac{
+      \begin{array}{cl}
+        \Delta \vdash \mono{M} \evalarrow \atom{a}_i \dashv \Delta' & \comment{interrogant matches i$^\text{th}$ branch} \\
+        \Delta' \vdash \mono{N}_i \evalarrow n_i \dashv \Delta'' & \comment{execute i$^\text{th}$ branch}
+      \end{array}
+    }{
+      \Delta \vdash \mono{case M \{ 'a$_0$\ => N$_0$\, ... \}} \evalarrow n_i \dashv \Delta''
+    }$} \\
+
+  \end{tabular}
+  \caption{Concrete interpretation for the pieces of syntax which can be evaluated but not written to.}
+  \label{fig:concretesemanticsread}
 \end{figure}
 
 \section{Abstract Interpretation}
