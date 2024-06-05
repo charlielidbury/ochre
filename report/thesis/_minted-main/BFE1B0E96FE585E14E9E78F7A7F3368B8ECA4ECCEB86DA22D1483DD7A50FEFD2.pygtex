@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{one} \}$}
+\PYG{+w}{    }\PYG{n}{rx1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \mono{x} \mapsto \loanm{l}, \,\mono{rx} \mapsto \borrowm{l}{'one} \}$}
+\PYG{+w}{    }\PYG{n}{rx2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{o}{*}\PYG{n}{rx1}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \mono{x} \mapsto \loanm{l}, \,\mono{rx} \mapsto \borrowm{l}{(\loanm{l'})}, \mono{rx2} \mapsto \borrowm{l}{'one} \}$}
+\end{Verbatim}

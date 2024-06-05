@@ -8,7 +8,7 @@
 \newcommand{\reportauthor}{Charlie Lidbury}
 \newcommand{\supervisorA}{Steffen van Bakel}
 \newcommand{\supervisorB}{Nicolas Wu}
-\newcommand{\reporttype}{Masters Thesis}
+\newcommand{\reporttype}{MEng Individual Project}
 \newcommand{\degreetype}{MEng Computing}
 
 % Load some definitions and default packages
@@ -331,12 +331,44 @@ I see RustBelt as a great complement to this work in the future: real programs r
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Ochre}
+\label{section:ochre}
+This chapter explains Ochre, its syntax, its runtime semantics, and how it is type-checked. To start with, these are explained informally, leveraging many examples in the hope of building the reader's intuition. Then, the same concepts are revisited formally, which will set us up to implement Ochre, and reason about any properties it may have. The 4 sections in this chapter fit on the following 2-way table:
 
-At the start of this chapter, Ochre is introduced informally via examples to provide an intuition about how the various language constructs behave, and how they are reasoned about statically. Then, we will move to the formalisms section, which is precise in the details, but doesn't help build intuition about the underlying concepts. The sections are kept separate because, at its core, Ochre is made up of a handful of fairly graspable concepts, but when they are combined and all the details are worked out, the complexity explodes. The hope is that with a strong enough intuition of Ochre, one could come up with the formal semantics, and the formalisms section serves only to clarify exact details.
+% \begin{tabular}{c|cc}
+%   & Runtime Semantics & Static Analysis \\
+%   \hline
+%   Informal & Section \ref{section:ochreexample}: Ochre, by Example & Section \ref{section:checkingexample}: Type \& Borrow Checking, by Example \\
+%   Formal & Section \ref{section:concreteinterpretation}: Concrete Interpretation & Section \ref{section:abstractinterpretation} Abstract Interpretation \\
+% \end{tabular}
+
+% \renewcommand{\arraystretch}{1.5}
+\begin{tabular}{c|cc}
+  & Runtime Semantics & Static Analysis \\
+  \hline
+  \\
+  Informal & \underline{Section \ref{section:ochreexample}} & \underline{Section \ref{section:checkingexample}} \\
+  & Ochre, by Example & Type \& Borrow Checking, by Example \\
+  \\
+  Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{section:abstractinterpretation}} \\
+  & Concrete Interpretation & Abstract Interpretation \\
+\end{tabular}
+% \renewcommand{\arraystretch}{1}
+
+The motivations behind Ochre, alternative design decisions, evaluation, implementation, or reasoning about any properties are all explicit non-goals of this Chapter.
+
+Ochre takes heavy influence from the following three existing works:
+
+\begin{itemize}
+  \item Centering the system around atoms, dependent pairs, and dependent functions came from \cite{altenkirch2010pisigma} including using atoms and dependent pairs to encode ADTs.
+  \item References and mutable references came from \cite{RustProgrammingLanguage}, and the way they are borrow checked in the abstract interpretation came from \cite{aeneas}.
+  \item The subtyping and the way terms and types are equivalent are my own work, but are very similar to and have taken inspiration from TypeScript.
+\end{itemize}
 
 \section{Ochre, by Example}
-Ochre is ML-like or $\lambda$ calculus-like in that everything is an expression, however evaluating an expression can have side effects (non-purity).
+\label{section:ochreexample}
+This section covers Ochre as a programming language, in the same way a tutorial for it might do so. The goal is to leave the reader with a good intuition for how an Ochre program will behave when it is executed at runtime, upon which everything else can be discussed.
 
+\subsubsection{Basic Language Constructs}
 The most simple Ochre value is an \textit{atom}. Atoms are constructed with \mono{'} like \mono{'hello} or \mono{'world}. Their runtime representation is the hash of the string after the tick, which makes them all the same length (one machine word), and therefore they don't need to be heap allocated. Atoms are a crucial primitive upon which more complex types are built and also make talking about Ochre examples easier because you don't have to introduce lots of user-defined types to do anything.
   
 \begin{listing}[H]
@@ -355,6 +387,8 @@ Variables are declared via the \mono{=} operator, and expressions/statements can
   \end{minted}
   \caption{Variable assignment}
 \end{listing}
+
+\subsubsection{References \& Mutation}
 
 Variables in Ochre can either be modified directly, or via a mutable reference which is constructed with \mono{\&mut} and dereferenced with \mono{*}.
 
@@ -387,53 +421,79 @@ In practice, this is very restrictive, because it means only one pointer can exi
   \label{lst:immref}
 \end{listing}
 
+\subsubsection{Pairs}
 Pairs are constructed via the \mono{,} operator, and because of their low precedence in the grammar, are typically surrounded in brackets, like so: \mono{(M, N)}. If you have a pair, you can access the left and right elements with \mono{.0} and \mono{.1} respectively, like so:
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     x = ('one, 'two);
     x.0; // 'one
     x.1; // 'two
   \end{minted}
-\end{listing}
+% \end{listing}
 
+\subsubsection{Move Semantics}
+Ochre uses Rust's ownership semantics to do manual memory management. When you use a value, by default it is consumed, and no longer accessible in the original location. This is how the compiler knows when the programmer has exclusive access to data, and is therefore allowed to mutate it. It also enables for the very simple memory management rule of "whenever a variable goes out of scope, free the memory associated with it", which is how Rust determines when to free memory.
+
+Move semantics can lead to some strange results, such as this program being invalid:
+
+\begin{minted}{rust}
+  x = 'one;
+  y = x;
+  x: 'one; // error! use of moved value
+\end{minted}
+
+The \mono{x = y} line has \textit{destructively} read \mono{x}, causing it to become uninitialised. You can explicitly construct uninitialised data with \mono{\_}. Moving is granular: you can move parts of a pair out of the pair without invalidating the whole thing.
+
+\subsubsection{Structural Typing and Type Union}
 Ochre is structurally typed, like TypeScript. In Ochre, every value is its own type. So \mono{'one} is of type \mono{'one}, which is expressed in Ochre via colon. Non-singleton types are made up by taking the union of other types, using the \mono{|} operator, like \mono{'a | 'b | 'c}, which evaluates to the type of atoms which can any of \mono{'a}, \mono{'b}, or \mono{'c}.
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     'a: 'a; // valid
     'a: 'a | 'b; // also valid
     'c: 'a | 'b; // type error
   \end{minted}
-\end{listing}
+% \end{listing}
 
-The same goes for references, pairs, and functions (which will be introduced later): the type of a reference is itself a reference, the type of a pair is itself a pair, and the type of a function is itself a function.
+The same goes for references, pairs, and functions (which will be introduced later): the type of a reference is itself a reference, the type of a pair is itself a pair, and the type of a function is itself a function. The only consistent difference between types and terms is types must be statically known, which means they can be erased by runtime.
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     ('a, 'b): ('a, 'b); // valid
     ('a, 'b): ('a | 'b, 'a | 'b); // also valid
   \end{minted}
-\end{listing}
+% \end{listing}
 
-Types, just like values, can be assigned to variables for future re-use. However, they must all be statically known, which is enforced by only allowing them to be assigned to compile-time variables, which start with capital letters. This is similar to how in Haskell types must start with a capital letter, but here the line between types and values is blurred significantly.
+The \mono{*} syntax denotes the infinite type/top, the type that contains all values. This is used to represent the concept of no typing information being available. There are three main places where this comes up:
 
-\begin{listing}[H]
+\begin{enumerate}
+  \item Taking the union of two types which don't have a meaningful union, like pairs and atoms. \mono{'a | ('a, 'a): *}.
+  \item Using it to represent the type of types, which is how you do generic functions. Polymorphic functions are defined by making a function which takes a type as input, and returns a function which uses that type.
+  \item The type of uninitialised/moved data.
+\end{enumerate}
+
+\subsubsection{Comptime vs Runtime}
+
+Types, just like values, can be assigned to variables for future re-use. However, they must all be statically known, which is enforced by only allowing them to be assigned to \textit{comptime} variables, which start with capital letters. This is similar to how in Haskell types must start with a capital letter, but here the line between types and values is blurred significantly.
+
+% \begin{listing}[H]
   \begin{minted}{rust}
     abPair = ('a | 'b, 'a | 'b); // error! type union can only occur at compile time
-    ABPair = ('a | 'b, 'a | 'b);
-    ('a, 'b): ABPair; // valid
+    ABPair = ('a | 'b, 'a | 'b); // valid
+    ('a, 'b): ABPair;
   \end{minted}
-\end{listing}
+% \end{listing}
 
+\subsubsection{Functions}
 Functions are defined with an arrow \mono{->} and an optional runtime body surrounded in curly braces. For instance, the identity function over \mono{'true | 'false} is defined as such:
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     Bool = 'true | 'false;
     id = (x: Bool) -> Bool { x };
   \end{minted}
-\end{listing}
+% \end{listing}
 
 If the runtime body is omitted, the function can only be called at compile time, which means it must be written to a comp time variable:
 
@@ -447,16 +507,17 @@ If the runtime body is omitted, the function can only be called at compile time,
 
 The only difference between a function body and its return type is that its return type is run at compile time, there is no syntactic difference. For functions you want to run at compile time, syntax after the arrow \textit{is} the function body.
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     Id = x -> x; // Definition of identity which can only be run at comp time
     id = x -> x { x }; // Definition of identity which also exists at runtime
   \end{minted}
-\end{listing}
+% \end{listing}
 
+\subsubsection{Case Statements}
 In Ochre, atoms can be branched on via a case statement. The discriminant of the case statement must be an atom, and there must be exactly one branch for each possible atom. In the future, I plan on adding if and match statements, which will be syntactic sugar for case statements.
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     Bool = 'true | 'false;
     not = (b: Bool) -> Bool {
@@ -467,21 +528,22 @@ In Ochre, atoms can be branched on via a case statement. The discriminant of the
     };
     not('true); // 'false
   \end{minted}
-\end{listing}
+% \end{listing}
 
-The right of a pair can depend on the left if the left's value is bound to an identifier, like \mono{Same} and \mono{Different} in the below.
+\subsubsection{Dependent Pairs}
+If a pair is being evaluated in a comptime context, the right of a pair can depend on the left. This is done by making the right a function that maps from left to right.
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
-    Same = (L: Bool, L); // binds LHS to L, so can be used by right
+    Same = (Bool, L -> L); // binds LHS to L, so can be used by right
     ('true, 'true): Same; // valid
     ('true, 'false): Same; // error! 'false is not of type 'true
 
-    Different = (L: Bool, case L { 'true => 'false, 'false => 'true});
+    Different = (Bool, L -> case L { 'true => 'false, 'false => 'true});
     ('true, 'false): Different; // valid
     ('true, 'true): Different; // error!
   \end{minted}
-\end{listing}
+% \end{listing}
 
 When you union together pairs, it doesn't just union together their left and right and make a new pair, it uses any information it can get from the left pair to more precisely type the right pair.
 
@@ -489,16 +551,26 @@ When you union together pairs, it doesn't just union together their left and rig
   \begin{minted}{rust}
     Same = ('true, 'true) | ('false, 'false);
     // Expanded internally to:
-    Same = (
-      L: 'true | 'false,
-      case L { 'true => 'true, 'false => 'false }
-    )
+    Same = ('true | 'false, L -> case L { 'true => 'true, 'false => 'false })
   \end{minted}
+  \caption{}
+  \label{lst:same}
 \end{listing}
 
 This makes the union operator precise, taking the union of two types should never produce a type with inhabitants that weren't in either of the types which were unioned together.
 
-If the right of a pair depends on the left, and then you find something out about the left, you should in turn find something out about the right. This is done in Ochre via type \textit{narrowing}. In the below example, we define a function \mono{f}, and within \mono{f} we know that the left and right of our pair \mono{p} are the same. When we match on its left with \mono{p.0}, each branch is type-checked with the additional knowledge that we are in that particular case. This allows the compiler to correctly identify that when matching on the other side of the pair, you only need to have one branch.
+If you want to record dependence between the left and right of a pair in a runtime context, you must construct the pair without the dependence, and then use a type constraint to add it back in.
+
+\begin{listing}[H]
+  \begin{minted}{rust}
+    Same = ('true, 'true) | ('false, 'false);
+    x = ('true, 'true); // x is a non-dependent pair
+    x: Same; // type constraint has made x a dependent pair
+  \end{minted}
+\end{listing}
+
+\subsubsection{Type Narrowing}
+If the right of a pair depends on the left, and then you find something out about the left, you should in turn find something out about the right. This is done in Ochre via type \textit{narrowing}. In the below example, we define a function \mono{f}, and within \mono{f} we know that the left and right of our pair \mono{p} are the same (using the definition in Listing \ref{lst:same}). When we match on its left with \mono{p.0}, each branch is type-checked with the additional knowledge that we are in that particular branch. This allows the compiler to correctly identify that when matching on the other side of the pair, you only need to have one branch.
 
 \begin{listing}[H]
   \begin{minted}{rust}
@@ -513,30 +585,29 @@ If the right of a pair depends on the left, and then you find something out abou
   \caption{Case statements narrow down the type of their discriminant in each branch}
 \end{listing}
 
-\subsubsection{Agebraic Data Types}
-
+\subsubsection{Algebraic Data Types}
 Take the following definition of Peano naturals in Haskell syntax:
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{haskell}
     data Nat = Zero | Succ Nat
   \end{minted}
-\end{listing}
+% \end{listing}
 
-In Ochre this is represented by a dependent pair. The left of the pair indicates which variant the ADT is in (either zero or succ), and the right contains the payload of that variant. In the zero case, nothing is stored, so the payload is \mono{'unit}, in the succ case, we store the natural that we are the successor of, so our payload is \mono{Nat}.
+In Ochre this is represented by a dependent pair. The left of the pair indicates which variant the ADT is in (either zero or successor), and the right contains the payload of that variant. In the zero case, nothing is stored, so the payload is \mono{'unit}, in the successor case, we store the natural that we are the successor of, so our payload is \mono{Nat}.
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     // "manual" ADT encoding
     Nat = (T: 'zero | 'succ, case T { 'zero => 'unit, 'succ => Nat });
     // idiomatic encoding using type union
     Nat = ('zero, 'unit) | ('succ, Nat);
   \end{minted}
-\end{listing}
+% \end{listing}
 
 By matching on the left, you can determine which variant the ADT is in, then you can access the payload through the right. For instance, this is how would define addition over Peano naturals:
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     Nat = ('zero, 'unit) | ('succ, Nat);
     add = (x: Nat, y: Nat) -> Nat {
@@ -546,63 +617,252 @@ By matching on the left, you can determine which variant the ADT is in, then you
       }
     }
   \end{minted}
-\end{listing}
+% \end{listing}
 
 \subsubsection{Recursion}
-
 The definition of \mono{add} above won't compile because of how it does recursion. When type-checking assignments, Ochre looks at the left first to figure out what type the identifiers have. In the case of \mono{Nat} and \mono{add} above there are no type annotations, so it evaluates the assigned value with no extra type information.
 
 If the programmer puts type annotations on the left of an assignment, the compiler knows at least something about the type, so it can evaluate the expression with that knowledge. This isn't required in the definition of \mono{Nat} because you can put anything in a pair, regardless of its type, so the usage of \mono{Nat} on the right was permissible.
 
 In the \mono{add} case, we need to know that \mono{add} has type {(Nat, Nat) -> Nat} while evaluating the function body, so we can check that \mono{add(x.1, y)} has type \mono{Nat}. To introduce this, add type annotations to the left of the assignment:
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     add: (Nat, Nat) -> Nat = (x: Nat, y: Nat) -> Nat {
       // ...
     }
   \end{minted}
-\end{listing}
+% \end{listing}
 
 This introduces repetition in the types, which we remove by adding the following syntactic sugar for the above:
 
-\begin{listing}[H]
+% \begin{listing}[H]
   \begin{minted}{rust}
     add(x: Nat, y: Nat): Nat = {
       // ...
     }
   \end{minted}
+% \end{listing}
+
+\section{Type \& Borrow Checking, by Example}
+\label{section:checkingexample}
+This section aims to give the reader an intuition behind the abstract interpretation used to type-check Ochre. Specifically, it answers two questions: what is the abstract environment? And how do the various syntactic constructs modify it?
+
+The abstract environment is a mapping from identifiers to types, although it can often look like a mapping from identifiers to values because the type of a value like \mono{'true} is $'true$. It stores the types of both runtime and comptime variables, which are distinguished by comptime variables starting with a capital letter.
+
+Throughout this thesis, syntax will be in monospace font \mono{like this}, and abstract values will be in mathematical text $like\,this$.
+
+\subsubsection{Basic Language Features}
+Type-checking an Ochre program always starts with an empty environment, and every time information is gained, it is added to the abstract environment. Like so. The type of every atom $\mono{'a}$ is the singleton set $\{'a\}$, but it is also every superset of that singleton set like $\{'a, 'b\}$.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'true; // $\{ \absmap{x}{\{\atom{true}\}} \}$
+    y = 'hello; // $\{ \absmap{x}{\{\atom{true}\}}, \absmap{y}{\{\atom{hello}\}} \}$
+    x = 'false; // $\{ \absmap{x}{\{\atom{false}\}}, \absmap{y}{\{\atom{hello}\}} \}$
+  \end{minted}
+  \caption{A series of assignments, and their corresponding effects on the abstract environment.}
+  \label{lst:atomabstract}
+\end{listing}
+
+In the above example, it would be sound for the abstract environment to map $x$ onto $\{'true, 'false\}$, or even $\{'true, 'unrelated\}$, but that would be losing information. The concept of losing typing information will be made explicit later with environment \textit{rearrangements}, but for now, we'll focus on the environment being as precise as possible.
+
+For brevity, we use $'a$ as syntactic sugar for the singleton set $\{'a\}$. This never causes ambiguity because the abstract environment only ever uses atoms in sets, never by themselves.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'true; // $\{ \absmap{x}{\atom{true}} \}$
+    y = 'hello; // $\{ \absmap{x}{\atom{true}}, \absmap{y}{\atom{hello}} \}$
+    x = 'false; // $\{ \absmap{x}{\atom{false}}, \absmap{y}{\atom{hello}} \}$
+  \end{minted}
+  \caption{Listing \ref{lst:atomabstract} but using syntactic sugar for singlton sets of atoms.}
+\end{listing}
+
+When you move a value, it is mapped to $\bot$ in the abstract environment:
+
+\begin{minted}[mathescape]{rust}
+  x = 'hello; // $\{ \absmap{x}{\atom{hello}} \}$
+  y = x; // $\{ \absmap{x}{\bot}, \absmap{y}{\atom{hello}} \}$
+\end{minted}
+
+\subsubsection{References \& Mutation}
+
+When you construct a reference, the value is \textit{borrowed}. In the case of mutable borrows, this means the value isn't available in the original location, which is represented in the abstract environment as $\kw{loan}^m \, l$ where $l$ is the \textit{loan identifier} for this particular loan. We set it to this instead of $\bot$ so we can find it again in the future when we want to terminate the loan. The reference will map to $\kw{borrow}^m \, l \, v$ where $v$ is the type of the value being borrowed.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'one; // $\{ \absmap{x}{\atom{one}} \}$
+    rx = &mut x; // $\{ \absmap{x}{\loanm{l}}, \absmap{rx}{\borrowm{l}{\atom{one}}} \}$
+    *rx = 'two; // $\{ \absmap{x}{\loanm{l}}, \absmap{rx}{\borrowm{l}{\atom{two}}} \}$
+    // rx dropped
+    x; // $\{ \absmap{x}{\atom{two}}, \absmap{rx}{\bot} \}$
+  \end{minted}
+  \caption{A reference to a variable being constructed and used for a mutation. When the reference \mono{rx} is dropped, the updated value from the mutable reference is written back to the original variable \mono{x}.}
+\end{listing}
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'one; // $\{ \absmap{x}{\atom{one}} \}$
+    rx = &mut x; // $\{ \absmap{x}{\loanm{l}}, \absmap{rx}{\borrowm{l}{\atom{one}}} \}$
+    *rx = 'two; // $\{ \absmap{x}{\loanm{l}}, \absmap{rx}{\borrowm{l}{'two}} \}$
+    // rx dropped
+    x; // $\{ \absmap{x}{'two}, \absmap{rx}{\bot} \}$
+  \end{minted}
+  \caption{A reference to a variable being constructed. When the reference is dropped, the updated value from the mutable reference is written back to the original variable.}
+\end{listing}
+
+Mutable references are similar, except the value is also stored on the $\kw{loan}$, reflecting the fact that while an immutable loan exists, the value is still available in its original location. Having $\kw{loan}$ in an environment like this is also used to prevent mutations to a borrowed value.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'one; // $\{ x \mapsto \,'one \}$
+    rx = &x; // $\{ x \mapsto \loans{l}{'one}, \,rx \mapsto \borrows{l}{'one} \}$
+  \end{minted}
+\end{listing}
+
+Loans can be nested, which is useful when you want to temporarily give a value you have borrowed to something else.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'one; // $\{ \absmap{x}{one} \}$
+    rx1 = &mut x; // $\{ \mono{x} \mapsto \loanm{l}, \,\mono{rx} \mapsto \borrowm{l}{'one} \}$
+    rx2 = &mut *rx1; // $\{ \mono{x} \mapsto \loanm{l}, \,\mono{rx} \mapsto \borrowm{l}{(\loanm{l'})}, \mono{rx2} \mapsto \borrowm{l}{'one} \}$
+  \end{minted}
+  \caption{A reborrow}
+\end{listing}
+
+When immutable references are re-borrowed, the syntactic representation of the environment grows exponentially.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'one; // $\{ \absmap{x}{one} \}$
+    rx1 = &x; // $\{ \mono{x} \mapsto \loans{l}{'one}, \,\mono{rx} \mapsto \borrows{l}{'one} \}$
+    rx2 = &*rx1; // $\{ \mono{x} \mapsto \loans{l}{(\loans{l'}{'one})}, \,\mono{rx} \mapsto \borrows{l}{(\loans{l'}{'one})}, rx2 \mapsto \borrows{l'}{'one} \}$
+    rx3 = &*rx2; // $\{ \mono{x} \mapsto \loans{l}{(\loans{l'}{(\loans{l''}{'one})})}, \,\mono{rx} \mapsto \borrows{l}{(\loans{l'}{(\loans{l''}{'one})})},$
+                 // $\mono{rx2} \mapsto \borrows{l'}{(\loans{l''}{'one})}, \mono{rx3} \mapsto \borrows{l''}{'one} \}$
+  \end{minted}
+  \caption{An immutable re-borrow}
+\end{listing}
+
+This is not a problem for the implementation because the value stored in the $\kw{loan}$ and the value stored in the $\kw{borrow}$ are two pointers to the same underlying memory, it can just make working examples out by hand longer.
+
+\subsubsection{(Dependent) Pairs}
+In the abstract environment pairs store the type of the left side, and how to turn the type of the left side into the right, like so: $(\{'true, \, 'false\}, \mono{L} \rightarrow \mono{L})$. This reads "The left of the pair is of type $\{'true, \, 'false\}$, and the right is whatever the left is". This means in the future if the left is narrowed down to be $'true$, the right will be read as $'true$.
+
+Non-dependent pairs are a special case of dependent pairs where the right happens to evaluate to the same type for any given left. A non-dependent pair of booleans would be constructed with \mono{(Bool, Bool)}, which is syntactic sugar for \mono{(Bool, \_ -> Bool)}.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    Bool = 'true | 'false;              // $\{ \absmap{Bool}{\{\atom{true}, \atom{false}\}} \}$
+    BoolPair = (Bool, Bool);            // $\{ ..., \absmap{BoolPair}{(\{\atom{true}, \atom{false}\}, \mono{\_} \rightarrow \mono{Bool})} \}$
+    Same = (Bool, L -> L);              // $\{ ..., \absmap{Same}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L}} \}$
+    specificPair = ('true, 'true);      // $\absenv{ ..., \absmap{specificPair}{(\atom{true}, \mono{\_} \rightarrow \mono{'true})}}$
+    widenedPair = ('true, 'true): Same; // $\absenv{ ..., \absmap{widenedPair}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L}}}$
+  \end{minted}
+  \caption{Various pair constructions and their respective entries in the abstract environment}
+\end{listing}
+
+Mutation breaks type dependencies across pairs. Once the left of a pair is mutated, the right must be generalized because the data is lost, meaning the programmer will never be able to recover which specific type the right had in the future.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    Same = ('true,  'true )
+         | ('false, 'false);  // $\absenv{ \absmap{Same}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L} )} }$
+    p = ('true, 'true): Same; // $\absenv{ \absmap{Same}{...}, \absmap{p}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L} )} }$
+    p.0 = 'false;             // $\absenv{ \absmap{Same}{...}, \absmap{p}{(\atom{false}, \mono{\_} \rightarrow \mono{('true | 'false)} )} }$
+    p.1 = 'false;             // $\absenv{ \absmap{Same}{...}, \absmap{p}{(\atom{false}, \mono{\_} \rightarrow \mono{'false})} }$
+    p: Same;                  // $\absenv{ \absmap{Same}{...}, \absmap{p}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L} )} }$
+  \end{minted}
+  \caption{Demonstration of how mutation interacts with dependent pairs. On line 4 when the left of the pair is mutated, the dependence is broken. When the right is mutated to $\atom{false}$, the pair's type is narrowed down, but it doesn't regain the dependence until the programmer explicitly widens the type on line 6.}
+  \label{lst:mutpairs}
+\end{listing}
+
+Listing \ref{lst:mutpairs} depicts \mono{('true, 'true) | ('false, 'false)} being evaluated to $(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L})$, which isn't strictly true. Type union between pairs will make the right depend on the left by producing a case statement for each of the possible left atoms, so \mono{('true, 'true) | ('false, 'false)} would instead evaluate to $(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{case L \{ 'true => 'true, 'false => 'false \}})$. In code examples it often evaluates to the former, to aid readability.
+
+\subsubsection{Type Annotations}
+Sometimes you want to manually manipulate what type the abstract interpretation reads from a piece of syntax. You do this with type annotations like \mono{M:T}. Evaluating a piece of syntax like \mono{M: T} both asserts that type of \mono{M} is a subtype of \mono{T} and makes the expression be of type \mono{T} instead of \mono{M}.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'true; // $\absenv{ \absmap{x}{\atom{true}}}$
+    y = 'true: 'true | 'false; // $\absenv{..., \absmap{y}{\{\atom{true}, \atom{false}\}}}$
+  \end{minted}
+  \caption{The type annotation has caused type information to be lost: both \mono{x} and \mono{y} are set to $\atom{true}$ in the above code, but the type annotation on \mono{y} has caused the abstract interpretation to only be able to assign the wider type of $\{ \atom{true}, \atom{false} \}$}
+\end{listing}
+
+\subsubsection{Comptime vs Runtime}
+As you will see in Section \ref{section:abstractinterpretation}, there are large differences in how the abstract interpretation is performed on runtime and comptime terms; however, for the most part, they map very similarly to the abstract environment. Following from the syntax level distinction, an entry in the abstract environment is marked as runtime or comptime by the variable identifier being capitalized or not.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'one; // $\absenv{ \absmap{x}{\atom{one}} }$
+    X = 'one; // $\absenv{ ..., \absmap{X}{\atom{one}} }$
+  \end{minted}
+\end{listing}
+
+One place differences do show is that runtime variables can mutate and be moved, whereas comptime values are immutable and can be freely used like values in typical pure functional languages.
+
+This is so the programmer doesn't have to deal with manual memory management of comptime values, which they wouldn't benefit from anyway because all comptime variables are erased by the time the code is executed.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    x = 'runtime; // $\absenv{ \absmap{x}{\atom{runtime}} }$
+    y = x; // $\absenv{ \absmap{x}{\bot}, \absmap{y}{\atom{runtime}}}$
+  
+    X = 'comptime; // $\absenv{ ..., \absmap{X}{\atom{comptime}} }$
+    Y = X; // $\absenv{ ..., \absmap{X}{\atom{comptime}}, \absmap{Y}{\atom{comptime}} }$
+  \end{minted}
+  \caption{Unlike the runtime variable \mono{x}, which becomes uninitialized after being moved to \mono{y}, the comptime variable \mono{X} remains accessible while the value is simultaneously used by \mono{Y}, as you would expect from languages move semantics like Haskell}
+\end{listing}
+
+\subsubsection{Functions}
+When a function is called, two things need to be calculated at the call site: whether or not the argument the programmer supplied is a subtype of the required argument; and what the return type is given this argument type. To achieve this we store two pieces of syntax, the input syntax and the return type syntax. We store syntax instead of types so the return type can depend on the input type.
+
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    Bool = 'true | 'false; // $\absenv{ \absmap{Bool}{\{\atom{true}, \atom{false}\}} }$
+    id = (b: Bool) -> Bool {
+      b // $\absenv{ \absmap{Bool}{...}, \absmap{id}{\top}, \absmap{b}{\{\atom{true}, \atom{false}\}} }$
+    } // $\absenv{ \absmap{Bool}{\{\atom{true}, \atom{false}\}}, \absmap{id}{\mono{(b: Bool)} \rightarrow \mono{Bool}} }$
+  \end{minted}
+  \caption{While type checking the body, argument \mono{b} is in the abstract environment. Abstractly the function is two pieces of \textit{syntax}: \mono{(b: Bool)} and \mono{Bool} instead of their respective types which are both $\{\atom{true}, \atom{false}\}$}
 \end{listing}
 
 
-\section{Scope and Feature Set}
-List of features, along with why their inclusion was important.
 
-\textbf{Type Erasure} - A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
+\subsubsection{Case Statements}
+In each of the branches of a case statement, the type of the interrogant is narrowed down to a specific atom. This is useful when the case is branching over the left of a dependent pair, because when the left of the pair gets narrowed down, so does the right\footnote{The right only gets narrowed once it is accessed, not immediately when the left is narrowed}.
 
-\textbf{Implementability} - The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
+Each branch of the case statement will modify the environment in some possibly different way. These are combined into one environment via an environment-wide union operation, which is the output environment.
 
-\textbf{Manual memory management} - Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
+\begin{listing}[H]
+  \begin{minted}[mathescape]{rust}
+    f = (b: 'true | 'false) -> 'unit {
+                        // $\absenv{ \absmap{b}{\{\atom{true}, \atom{false}\}} }$
+      case b {
+        'true => (      // $\absenv{ \absmap{b}{\atom{true}} }$
+          x = 'hello;   // $\absenv{ \absmap{b}{\atom{true}}, \absmap{x}{\atom{hello}} }$
+        ),
+        'false => (     // $\absenv{ \absmap{b}{\atom{false}} }$
+          x = 'world;   // $\absenv{ \absmap{b}{\atom{false}}, \absmap{x}{\atom{world}} }$
+          b = 'true;    // $\absenv{ \absmap{b}{\atom{true}}, \absmap{x}{\atom{world}} }$ 
+        )
+      };                // $\absenv{ \absmap{b}{\atom{true}}, \absmap{x}{\{ \atom{hello}, \atom{world} \}} }$
+    }
+  \end{minted}
+  \caption{Each branch of the case statement is abstractly interpreted with \mono{b} narrowed down to a single atom (lines 4 and 7). Both branches modify \mono{x}, but to different values which make their environments different (lines 5 and 8); these different values are unioned together in the final environment to $\{\atom{hello}, \atom{world}\}$. The false branch happens to mutate \mono{b} back to $\atom{true}$, which means by the end of \textit{both} branches, $b: \atom{true}$, which is reflected in the final environment which maps \mono{b} to $\atom{true}$ instead of $\{\atom{true}, \atom{false}\}$.}
+\end{listing}
 
-List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
+\subsubsection{Complex Example Programs}
+And last but not least, here are a few example programs which use several of the previous features together:
 
-\textbf{Returning mutable references} - In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
+\section{Concrete Interpretation}
+\label{section:concreteinterpretation}
+The primary contribution of this research is the abstract interpretation because that is what will be used in the compiler for the type checking, but the regular interpretation is still useful to better understand the language features and to better understand the abstract interpretation. If you're only interested in how Ochre is type-checked, not its exact behavior at runtime, skip to Section \ref{section:abstractinterpretation}.
 
-\textbf{Reasoning about function side effects/strong updates} - In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
-\begin{enumerate}
-  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
-  \item It would complicate the type system and syntax further.
-  \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
-\end{enumerate}
+Ochre has an extremely permissive syntax and heavily relies on typing rules to reject ill-formed programs. This leads to some usual results like \mono{(x = y) = z} being syntactically well-formed. In practice, this doesn't cause issues, because the typing rules are strict enough. The grammar for Ochre is shown in Figure \ref{fig:syntax}.
 
-\textbf{Unboxed types} - All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within.
-
-\textbf{Primitive data types} - As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
-
-\section{Syntax}
-\lochre{} has an extremely permissive syntax, and heavily relies on the typing rules to reject ill-formed programs. This leads to some usual results like \verb|if 'a {'b} else {'c} = 'hello| being syntactically well-formed. In practice, this doesn't cause issues, because the typing rules are strict enough. Figure \ref{fig:syntax}
-
-\begin{figure}
+\begin{figure}[H]
   \arraycolsep=1pt %
   \centering
 
@@ -610,38 +870,190 @@ List of omitted features, along with why their omission is inconsequential for t
   \[
   \begin{array}[t]{llll}
     T, U, M, N & ::= & & \\
-    && x\mid{}y\mid{}z & \text{runtime variable identifier}\\
-    && X\mid{}Y\mid{}Z & \text{comptime variable identifier}\\
-    && 'a & \text{atom construction}\\
-    && M, N & \text{pair construction}\\
-    && M.0 & \text{pair left access}\\
-    && M.1 & \text{pair right access}\\
-    && *M & \text{dereference}\\
-    && \&M \mid \&\kw{mut}\,M & \text{borrow constructor}\\
-    && M N & \text{function application}\\
-    && M \rightarrow T\,(\{\,N\,\}) & \text{(dependent) function definition}\\
-    && & \text{(optional runtime body)} \\
-    && M = N & \text{assignment}\\
-    && M; N & \text{sequence}\\
-    && \kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\} & \text{case statement}\\
-    && \bot & \text{uninitialised}\\
-    && * & \text{top}\\
-    && T\,|\,U & \text{type union}\\
-    && M:\,T & \text{type constraint}\\
-56
+    && x\mid{}y\mid{}z & \text{runtime variable identifier} \\
+    && X\mid{}Y\mid{}Z & \text{comptime variable identifier} \\
+    && 'a & \text{atom construction} \\
+    && M, N & \text{pair construction} \\
+    && M.0 & \text{pair left access} \\
+    && M.1 & \text{pair right access} \\
+    && *M & \text{dereference} \\
+    && \&M \mid \&\kw{mut}\,M & \text{borrow constructor} \\
+    && M N & \text{function application} \\
+    && M \rightarrow T\,(\{\,N\,\}) & \text{(dependent) function definition} \\
+    && & \text{(optional runtime body)}  \\
+    && M = N & \text{assignment} \\
+    && M; N & \text{sequence} \\
+    && \kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\} & \text{case statement} \\
+    && \bot & \text{uninitialised} \\
+    && * & \text{top} \\
+    && T\,|\,U & \text{type union} \\
+    && M:\,T & \text{type constraint} \\
   \end{array} %
   \]
-\caption{\lochre{} syntax} %
+\caption{Ochre syntax} %
 \label{fig:syntax} %
 \end{figure} %
 
-\section{Type System}
+We define two judgments over this syntax: $\Delta \vdash \mono{M} \evalarrow v \dashv \Delta'$ and $\Delta \vdash \mono{M} \ewritearrow v \dashv \Delta'$ where $\Delta$ and $Delta'$ are the stack states before and after, $\mono{M}$ is a piece of syntax, and $v$ is a runtime value. The syntax for $\Delta$ and $v$ are given in Figure \ref{fig:stack}
 
+\begin{figure}[H]
+  \arraycolsep=1pt %
+  \centering
 
-\section{Concrete Semantics}
+  \vspace{-2ex} %
+  \[
+  \begin{array}[t]{llll}
+    \Delta & ::= & & \text{runtime environment (stack)} \\
+    && \emptyset & \text{empty stack} \\
+    && \Delta, x \mapsto v & \text{variable assignment} \\
+    \\
+    v, w & ::= & & \text{runtime value} \\
+    && 'a & \text{atom} \\
+    && (v, w) & \text{pair} \\
+    && p & \text{pointer} \\
+    && \mono{M} \rightarrow \mono{N} & \text{function} \\
+    \\
+    p & ::= & & \text{pointer} \\
+    && x & \text{variable} \\
+    && p.0 \mid p.1 & \text{pair element access} \\
+  \end{array} %
+  \]
+\caption{Runtime state} %
+\label{fig:stack} %
+\end{figure} %
 
+$\mono{M} \evalarrow v$ defines what it means to evaluate a piece of syntax, and $\mono{M} \ewritearrow v$ defines what it means to \textit{write} to a piece of syntax. Not all syntax can be written to, but parts can. This roughly equates to the concept of an lvalue in other languages.
+
+As an example: writing the value $\atom{five}$, to the syntax \mono{x} will mutate the entry for \mono{x} on the stack and set it to $\atom{five}$. Formally, this is expressed via the following definition:
+
+\begin{figure}[H]
+  \begin{gather*}
+    \inferrule{
+      \Delta' = \Delta\left[\dfrac{\mono{x} \mapsto v}{\mono{x} \mapsto \bot}\right]
+    }{
+      \Delta \vdash \mono{x} \ewritearrow v \dashv \Delta'
+    }
+  \end{gather*}
+  \caption{Definition of $\ewritearrow$ for variable identifiers}
+\end{figure}
+
+This reads "the value $v$ is written to the syntax \mono{x} when the stack is $\Delta$, it will modify $\Delta$ such that \mono{x} now maps to $v$ instead of the previous $\bot$".
+
+For this rule to be applicable, \mono{x} must be uninitialized in the stack, which requires both that \mono{x} is in the stack at all, and that \mono{x} hasn't been written to previously, which is a very specific state for the stack to be in. There is a set of operations that can be performed at any time which perform things like memory allocation/deallocation, which one can use during derivations to get the stack into the right state, which will be covered later.
+
+Figure \ref{fig:concretesemantics} contains the concrete semantics for every piece of syntax. Often the rule for reading from a piece of syntax and writing to it differs only in which arrow is used; in these cases, I quantify over arrows using $\diamond$ to mean "either arrow".
+
+\begin{figure}
+  \begin{tabular}{c|cc}
+    & $\evalarrow$ & $\ewritearrow$ \\
+    \hline
+    \mono{x} &
+    \inferrule{
+      \absmap{x}{v} \in \Delta
+    }{
+      \Delta \vdash \mono{x} \evalarrow v
+    } &
+    \inferrule{
+      \Delta' = \Delta\left[\dfrac{\absmap{x}{v'}}{\absmap{x}{\bot}}\right]
+    }{
+      \Delta \vdash \mono{x} \ewritearrow v' \dashv \Delta'
+    } \\
+    
+    \\$'a$ &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+        \inferrule{
+        }{
+          \Delta \vdash \mono{\atom{a}} \diamond \atom{a}
+        }
+      \right]$
+    } \\
+    
+    \\$M, N$ &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+        \inferrule{
+          \Delta \vdash \mono{M} \diamond v \dashv \Delta'\\\\
+          \Delta' \vdash \mono{N} \diamond w \dashv \Delta''
+        }{
+          \Delta \vdash \mono{M, N} \diamond (v, w) \dashv \Delta''
+        }
+      \right]$
+    }\\
+    
+    \\$M.0$ &
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow (v, \_) \dashv \Delta'
+    }{
+      \Delta \vdash \mono{M.0} \evalarrow v \dashv \Delta'
+    } &
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow (\bot, w) \dashv \Delta' \\\\
+      \Delta' \vdash \mono{M} \ewritearrow (v', w) \dashv \Delta''
+    }{
+      \Delta \vdash \mono{M.0} \evalarrow v' \dashv \Delta''
+    } \\
+    
+    \\$M.1$ &
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow (\_, w) \dashv \Delta'
+    }{
+      \Delta \vdash \mono{M.1} \evalarrow w \dashv \Delta'
+    } &
+    \inferrule{
+      \Delta \vdash \mono{M} \evalarrow (v, \bot) \dashv \Delta' \\\\
+      \Delta' \vdash \mono{M} \ewritearrow (v, w') \dashv \Delta''
+    }{
+      \Delta \vdash \mono{M.1} \evalarrow w' \dashv \Delta''
+    } \\
+    
+    \\$*M$ &
+    \multicolumn{2}{c}{
+    $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+      \inferrule{
+        \Delta \vdash \mono{M} \evalarrow p \dashv \Delta' \\\\
+        \Delta' \vdash p \diamond v \dashv \Delta''
+      }{
+        \Delta \vdash \mono{*M} \diamond v \dashv \Delta''
+      }
+    \right]$
+    } \\
+    
+    \\$M:\,T$ &
+    \multicolumn{2}{c}{
+    $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+      \inferrule{
+        \Delta \vdash \mono{M} \diamond v \dashv \Delta' 
+      }{
+        \Delta \vdash \mono{M:T} \diamond v \dashv \Delta'
+      }
+    \right]$
+    } \\
+    
+    \\$\bot$ &
+    \multicolumn{2}{c}{
+    $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+      \inferrule{
+      }{
+        \Delta \vdash \mono{\_} \diamond \bot
+      }
+    \right]$
+    } \\
+  
+    $\&M$ & & \\
+    $\&\kw{mut}\,M$ & & \\
+    $M N$ & & \\
+    $M \rightarrow T\,\{\,N\,\}$ & & \\
+    $M = N$ & & \\
+    $M; N$ & & \\
+    $\kw{case}\,M\,\{\,\overrightarrow{'a \Rightarrow N}\,\}$ & & \\
+  \end{tabular}
+  \caption{}
+  \label{fig:concretesemantics}
+\end{figure}
 
 \section{Abstract Interpretation}
+\label{section:abstractinterpretation}
 Type checking is done via an abstract interpretation using 6 arrows. All \lochre{} syntax is defined for some subset of these arrows.
 
 Almost all typing rules take the form $\Omega \vdash M \diamond v \dashv \Omega'$ where $\diamond$ is one of the below 6 arrows, $M$ is Ochre syntax, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $m$ is the value which has been read or written.
@@ -667,7 +1079,7 @@ Non-destructive operations
 Compile-time only operations
 
 \begin{figure}
-  \begin{adjustwidth}{-2cm}{-2cm}
+  \begin{adjustwidth}{-1cm}{-1cm}
   \small
   \begin{tabular}{c|cccccc}
     & \erasedreadarrow & \readarrow & \movearrow & \writearrow & \narrowarrow & \erasedwritearrow \\
@@ -747,7 +1159,7 @@ Compile-time only operations
 \end{figure}
 
 \begin{figure}
-  \begin{adjustwidth}{-2cm}{-2cm}
+  \begin{adjustwidth}{-1cm}{-1cm}
   \small
   \begin{tabular}{c|ccc}
     & \movearrow & \readarrow & \erasedreadarrow \\
@@ -852,7 +1264,7 @@ Compile-time only operations
 \end{figure}
 
 \begin{figure}
-  \begin{adjustwidth}{-2cm}{-2cm}
+  \begin{adjustwidth}{-1cm}{-1cm}
   \small
   \begin{tabular}{c|ccc}
     & \writearrow & \narrowarrow & \erasedwritearrow \\
@@ -963,7 +1375,7 @@ Compile-time only operations
 \end{figure}
 
 \begin{figure}
-  \begin{adjustwidth}{-2.2cm}{-2.2cm}
+  \begin{adjustwidth}{-1cm}{-1cm}
   \small
   \begin{tabular}{p{2cm}|ccc}
     & \movearrow & \erasedreadarrow \\
@@ -1065,9 +1477,9 @@ Compile-time only operations
     \mono{\}}&
     \multicolumn{2}{c}{
       $\forall \diamond \in \{ \movearrow, \erasedreadarrow \}. \left[
-        \raisebox{-3ex}{$\dfrac{
+        \raisebox{-5ex}{$\dfrac{
           \begin{array}{cl}
-            \Omega \vdash \mono{M} \diamond m \dashv \Omega' & \comment{eval interogant} \\
+            \Omega \vdash \mono{M} \diamond \{'a_1, ..., 'a_k\} \dashv \Omega' & \comment{eval interogant} \\
             \forall i.[\Omega' \vdash \mono{M} \narrowarrow 'a_i \dashv \Omega'_i] & \comment{narrow type in branch} \\
             \forall i.[\Omega'_i \vdash \mono{N$_i$} \diamond n_i \dashv \Omega''_i] & \comment{eval branch} \\
             n = n_0 \cup ... \cup n_k & \comment{combine branch values} \\
@@ -1116,6 +1528,31 @@ The definition of $\readarrow$ for all pieces of syntax is shown in Figure \ref{
 
 \subsection{Type Narrowing}
 The $\narrowarrow$ constrains the type of syntax down to a smaller type. This is primarily useful when type-checking $\kw{case}$ expressions. When type-checking a particular branch of a case expression, you can modify the environment to reflect the fact that you know which branch you're in and therefore what the value of the case expression is. This is particularly useful when the type of the right-hand side of a pair depends on the left-hand value, because you can $\kw{case}$ the left-hand value, and in each branch you will know the type of the right. This is how ADTs are implemented in Ochre. It's definition is given in Figure \ref{fig:narrow}.
+
+
+\section{Scope and Feature Set}
+List of features, along with why their inclusion was important.
+
+\textbf{Type Erasure} - A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
+
+\textbf{Implementability} - The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
+
+\textbf{Manual memory management} - Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
+
+List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
+
+\textbf{Returning mutable references} - In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
+
+\textbf{Reasoning about function side effects/strong updates} - In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
+\begin{enumerate}
+  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
+  \item It would complicate the type system and syntax further.
+  \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
+\end{enumerate}
+
+\textbf{Unboxed types} - All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within.
+
+\textbf{Primitive data types} - As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

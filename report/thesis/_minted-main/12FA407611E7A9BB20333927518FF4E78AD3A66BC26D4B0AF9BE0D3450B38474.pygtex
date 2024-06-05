@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{n}{Same}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{);}
+\PYG{+w}{    }\PYG{c+c1}{// Expanded internally to:}
+\PYG{+w}{    }\PYG{n}{Same}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{L}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{case}\PYG{+w}{ }\PYG{n}{L}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{+w}{ }\PYG{p}{\PYGZcb{})}
+\end{Verbatim}

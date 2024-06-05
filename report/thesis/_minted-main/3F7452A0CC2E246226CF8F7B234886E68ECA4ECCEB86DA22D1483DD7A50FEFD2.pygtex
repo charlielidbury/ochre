@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{\atom{true}} \}$}
+\PYG{+w}{    }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{\atom{true}}, \absmap{y}{\atom{hello}} \}$}
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{\atom{false}}, \absmap{y}{\atom{hello}} \}$}
+\end{Verbatim}

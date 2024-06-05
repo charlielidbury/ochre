@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{  }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{\atom{hello}} \}$}
+\PYG{+w}{  }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{\bot}, \absmap{y}{\atom{hello}} \}$}
+\end{Verbatim}

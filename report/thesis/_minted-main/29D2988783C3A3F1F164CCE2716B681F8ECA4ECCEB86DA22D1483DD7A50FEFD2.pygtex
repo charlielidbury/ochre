@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ x \mapsto \,'one \}$}
+\PYG{+w}{    }\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ x \mapsto \loan, rx \mapsto \borrow{m}{l}{'one} \}$}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{two}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ x \mapsto \kw{loan}^m\,l, rx \mapsto \kw{borrow}^ \}$}
+\PYG{+w}{    }\PYG{n}{x}\PYG{p}{;}
+\end{Verbatim}

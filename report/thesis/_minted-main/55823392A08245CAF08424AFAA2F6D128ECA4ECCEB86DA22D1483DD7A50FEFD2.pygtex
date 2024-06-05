@@ -1,0 +1,9 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{  }\PYG{c+c1}{// $5$}
+\PYG{+w}{  }\PYG{o}{\PYGZpc{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{;}
+\PYG{+w}{  }\PYG{o}{\PYGZpc{}}\PYG{+w}{ }\PYG{c+cp}{$}\PYG{err}{\PYGZbs{}}\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{n}{mapsto}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{p}{\PYGZcb{}}\PYG{c+cp}{$}
+\PYG{+w}{  }\PYG{o}{\PYGZpc{}}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{;}
+\PYG{+w}{  }\PYG{o}{\PYGZpc{}}\PYG{+w}{ }\PYG{c+cp}{$}\PYG{err}{\PYGZbs{}}\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{n}{mapsto}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{n}{mapsto}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{p}{\PYGZcb{}}\PYG{c+cp}{$}
+\PYG{+w}{  }\PYG{o}{\PYGZpc{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{;}
+\PYG{+w}{  }\PYG{o}{\PYGZpc{}}\PYG{+w}{ }\PYG{c+cp}{$}\PYG{err}{\PYGZbs{}}\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{n}{mapsto}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{n}{mapsto}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{+w}{ }\PYG{err}{\PYGZbs{}}\PYG{p}{\PYGZcb{}}\PYG{c+cp}{$}
+\end{Verbatim}

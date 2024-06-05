@@ -140,6 +140,8 @@
 \newcommand\etproj[2]{\ensuremath{\kw{proj}_{#1}\,#2}}
 
 % Ochre commands
+\newcommand{\evalarrow}{\ensuremath{\,\Rightarrow\,}}
+\newcommand{\ewritearrow}{\ensuremath{\,\Leftarrow\,}}
 \newcommand{\movearrow}{\ensuremath{\,\dot{\Rightarrow}\,}}
 \newcommand{\writearrow}{\ensuremath{\,\dot{\Leftarrow}\,}}
 \newcommand{\readarrow}{\ensuremath{\,\dot{\rightarrow}\,}}
@@ -147,6 +149,13 @@
 \newcommand{\erasedreadarrow}{\ensuremath{\,\rightsquigarrow\,}}
 \newcommand{\erasedwritearrow}{\ensuremath{\,\leftsquigarrow\,}}
 \newcommand{\mono}[1]{\ensuremath{\text{\texttt{#1}}}}
+\newcommand{\loans}[2]{\ensuremath{\kw{loan}^s\,#1\,#2}}
+\newcommand{\loanm}[1]{\ensuremath{\kw{loan}^m\,#1}}
+\newcommand{\borrows}[2]{\ensuremath{\kw{borrow}^s\,#1\,#2}}
+\newcommand{\borrowm}[2]{\ensuremath{\kw{borrow}^m\,#1\,#2}}
+\newcommand{\absenv}[1]{\ensuremath{\{ #1 \}}}
+\newcommand{\absmap}[2]{\ensuremath{\mono{#1} \, \mapsto \, #2}}
+\newcommand{\atom}[1]{\text{'#1}}
 
 \newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
 

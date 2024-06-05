@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{Bool}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{;}\PYG{+w}{              }\PYG{c+c1}{// $\{ \absmap{Bool}{\{\atom{true}, \atom{false}\}} \}$}
+\PYG{+w}{    }\PYG{n}{BoolPair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{Bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Bool}\PYG{p}{);}\PYG{+w}{            }\PYG{c+c1}{// $\{ ..., \absmap{BoolPair}{(\{\atom{true}, \atom{false}\}, \mono{\_} \rightarrow \mono{Bool})} \}$}
+\PYG{+w}{    }\PYG{n}{Same}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{Bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{L}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{L}\PYG{p}{);}\PYG{+w}{              }\PYG{c+c1}{// $\{ ..., \absmap{Same}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L}} \}$}
+\PYG{+w}{    }\PYG{n}{specificPair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{);}\PYG{+w}{      }\PYG{c+c1}{// $\absenv{ ..., \absmap{specificPair}{(\atom{true}, \mono{\_} \rightarrow \mono{'true})}}$}
+\PYG{+w}{    }\PYG{n}{widenedPair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{)}: \PYG{n+nc}{Same}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\absenv{ ..., \absmap{widenedPair}{(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L}}}$}
+\end{Verbatim}

@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \absmap{x}{one} \}$}
+\PYG{+w}{    }\PYG{n}{rx1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \mono{x} \mapsto \loans{l}{'one}, \,\mono{rx} \mapsto \borrows{l}{'one} \}$}
+\PYG{+w}{    }\PYG{n}{rx2}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}*}\PYG{n}{rx1}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \mono{x} \mapsto \loans{l}{(\loans{l'}{'one})}, \,\mono{rx} \mapsto \borrows{l}{(\loans{l'}{'one})}, rx2 \mapsto \borrows{l'}{'one} \}$}
+\PYG{+w}{    }\PYG{n}{rx3}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}*}\PYG{n}{rx2}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\{ \mono{x} \mapsto \loans{l}{(\loans{l'}{(\loans{l''}{'one})})}, \,\mono{rx} \mapsto \borrows{l}{(\loans{l'}{(\loans{l''}{'one})})},$}
+\PYG{+w}{                 }\PYG{c+c1}{// $\mono{rx2} \mapsto \borrows{l'}{(\loans{l''}{'one})}, \mono{rx3} \mapsto \borrows{l''}{'one} \}$}
+\end{Verbatim}

@@ -1,6 +1,5 @@
 \backcite {rust-anecdote}{{2}{1}{chapter.4}}
 \backcite {stackoverflow}{{2}{1}{chapter.4}}
-\backcite {klein2009sel4}{{2}{1}{chapter.4}}
 \backcite {lorch2020armada}{{2}{1}{chapter.4}}
 \backcite {ferraiuolo2017komodo}{{2}{1}{chapter.4}}
 \backcite {bhargavan2017everest}{{2}{1}{chapter.4}}
@@ -10,5 +9,8 @@
 \backcite {ATSImplements}{{11}{2.2.1}{section*.59}}
 \backcite {ATSHome}{{11}{2.2.1}{section*.59}}
 \backcite {aeneas}{{13}{2}{Item.65}}
-\backcite {aeneas}{{21}{3.2}{section.77}}
-\backcite {ullrichKhaElectrolysis2024}{{21}{3.2}{section.77}}
+\backcite {altenkirch2010pisigma}{{15}{3}{chapter.68}}
+\backcite {RustProgrammingLanguage}{{15}{3}{chapter.68}}
+\backcite {aeneas}{{15}{3}{chapter.68}}
+\backcite {aeneas}{{36}{3.5}{section.127}}
+\backcite {ullrichKhaElectrolysis2024}{{36}{3.5}{section.127}}

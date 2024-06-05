@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{Bool}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\absenv{ \absmap{Bool}{\{\atom{true}, \atom{false}\}} }$}
+\PYG{+w}{    }\PYG{n}{id}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{b}: \PYG{n+nc}{Bool}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{Bool}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{      }\PYG{n}{b}\PYG{+w}{ }\PYG{c+c1}{// $\absenv{ \absmap{Bool}{...}, \absmap{id}{\top}, \absmap{b}{\{\atom{true}, \atom{false}\}} }$}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}\PYG{+w}{ }\PYG{c+c1}{// $\absenv{ \absmap{Bool}{\{\atom{true}, \atom{false}\}}, \absmap{id}{\mono{(b: Bool)} \rightarrow \mono{Bool}} }$}
+\end{Verbatim}

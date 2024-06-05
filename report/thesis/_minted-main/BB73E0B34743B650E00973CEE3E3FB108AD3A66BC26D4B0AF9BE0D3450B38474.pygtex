@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}
+\PYG{+w}{  }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}
+\PYG{+w}{  }\PYG{n}{x}: \PYG{o}{\PYGZsq{}}\PYG{n+na}{one}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// error! use of moved value}
+\end{Verbatim}
