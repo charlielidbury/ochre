@@ -332,65 +332,56 @@ I see RustBelt as a great complement to this work in the future: real programs r
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Ochre}
 \label{section:ochre}
-This chapter explains Ochre, its syntax, its runtime semantics, and how it is type-checked. To start with, these are explained informally, leveraging many examples in the hope of building the reader's intuition. Then, the same concepts are revisited formally, which will set us up to implement Ochre, and reason about any properties it may have. The 4 sections in this chapter fit on the following 2-way table:
+This chapter introduces the various language constructs of Ochre, at first via intuitive examples, then formally. Each language construct's runtime behavior is discussed, then how it is reasoned about statically, which splits this chapter into 4 sections with the following distinctions:
 
-% \begin{tabular}{c|cc}
-%   & Runtime Semantics & Static Analysis \\
-%   \hline
-%   Informal & Section \ref{section:ochreexample}: Ochre, by Example & Section \ref{section:checkingexample}: Type \& Borrow Checking, by Example \\
-%   Formal & Section \ref{section:concreteinterpretation}: Concrete Interpretation & Section \ref{section:abstractinterpretation} Abstract Interpretation \\
-% \end{tabular}
-
-% \renewcommand{\arraystretch}{1.5}
-\begin{tabular}{c|cc}
-  & Runtime Semantics & Static Analysis \\
-  \hline
-  \\
-  Informal & \underline{Section \ref{section:ochreexample}} & \underline{Section \ref{section:checkingexample}} \\
-  & Ochre, by Example & Type \& Borrow Checking, by Example \\
-  \\
-  Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{section:abstractinterpretation}} \\
-  & Concrete Interpretation & Abstract Interpretation \\
-\end{tabular}
-% \renewcommand{\arraystretch}{1}
+\begin{center}
+  \begin{tabular}{c|cc}
+    & Runtime Semantics & Static Analysis \\
+    \hline
+    \\
+    Intuition Building & \underline{Section \ref{section:ochreexample}} & \underline{Section \ref{section:checkingexample}} \\
+    & Ochre, by Example & Type \& Borrow Checking, by Example \\
+    \\
+    Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{section:abstractinterpretation}} \\
+    & Concrete Interpretation & Abstract Interpretation \\
+  \end{tabular}
+\end{center}
 
 The motivations behind Ochre, alternative design decisions, evaluation, implementation, or reasoning about any properties are all explicit non-goals of this Chapter.
 
-Ochre takes heavy influence from the following three existing works:
+\subsubsection{Attribution}
+With the exception of references, the primitive types in Ochre are taken from the $\Pi\Sigma$ language presented in \cite{altenkirch2010pisigma}, including the representation of algebraic data types.
 
-\begin{itemize}
-  \item Centering the system around atoms, dependent pairs, and dependent functions came from \cite{altenkirch2010pisigma} including using atoms and dependent pairs to encode ADTs.
-  \item References and mutable references came from \cite{RustProgrammingLanguage}, and the way they are borrow checked in the abstract interpretation came from \cite{aeneas}.
-  \item The subtyping and the way terms and types are equivalent are my own work, but are very similar to and have taken inspiration from TypeScript.
-\end{itemize}
+The mutation \& memory management techniques presented originated in Rust, including move semantics, references, and the restrictions placed on references.
 
+The novel work presented is the combination of these two features, which requires introducing a new kind of subtyping in which every term is its own type; for example \mono{'one}: $\atom{one}$. TypeScript partly does this with literal types, producing results like \mono{5:5}, but Ochre takes this to its logical conclusion where even functions are their own type, and there is almost no distinction between types and terms apart from the requirement that all types are resolved at compile time.
+
+\todo[inline]{explain double page + hyper links thing}
+\todo[inline]{do hyperlinks thing}
+
+\cleardoublepage
 \section{Ochre, by Example}
 \label{section:ochreexample}
-This section covers Ochre as a programming language, in the same way a tutorial for it might do so. The goal is to leave the reader with a good intuition for how an Ochre program will behave when it is executed at runtime, upon which everything else can be discussed.
+This section covers Ochre in a gradual, example-heavy manner, much like programming language tutorials like The Rust Book \citep{RustProgrammingLanguagea}. The goal of this section is to build an intuition behind the behavior which the type-checking will later reason about.
+
+Ochre is an impure functional language, composed of expressions that can have side effects.
 
 \subsubsection{Basic Language Constructs}
-The most simple Ochre value is an \textit{atom}. Atoms are constructed with \mono{'} like \mono{'hello} or \mono{'world}. Their runtime representation is the hash of the string after the tick, which makes them all the same length (one machine word), and therefore they don't need to be heap allocated. Atoms are a crucial primitive upon which more complex types are built and also make talking about Ochre examples easier because you don't have to introduce lots of user-defined types to do anything.
-  
-\begin{listing}[H]
-  \begin{minted}{rust}
-    'hello
-  \end{minted}
-  \caption{A valid Ochre program}
-\end{listing}
+The simplest Ochre value is an \textit{atom}. Atoms are constructed with \mono{'}, for example: \mono{'hello} or \mono{'world}\footnote{The runtime representation of an atom is assumed to be the hash of the string after the tick, which makes them constant length. This allows them to be stack-allocated instead of heap-allocated}. Atoms are an unopinionated primitive type upon which more complex structures can be built.
 
-Variables are declared via the \mono{=} operator, and expressions/statements can be chained together with \mono{;}. \mono{M = N} and \mono{M; N} are both expressions themselves, \mono{M = N} evaluates to \mono{'unit}, and \mono{M; N} evaluates to whatever \mono{N} evaluates to. Ochre uses C-style comments with \mono{//}.
+\begin{minted}{rust}
+  'hello
+\end{minted}
 
-\begin{listing}[H]
-  \begin{minted}{rust}
-    x = 'hello;
-    x // 'hello
-  \end{minted}
-  \caption{Variable assignment}
-\end{listing}
+$M \mono{=} N$ writes the result of evaluating $N$ to $M$, for example: \mono{x='one} sets \mono{x} to $\atom{one}$. Declarations are implicit in Ochre (for now); if \mono{x} was in scope previously, \mono{x='one} will bring it into scope, and if it was already in scope, it will mutate it. $M \mono{;} N$ sequences $M$, then $N$. Line comments are opened with \mono{//}.
+
+\begin{minted}{rust}
+  x = 'hello;
+  x // 'hello
+\end{minted}
 
 \subsubsection{References \& Mutation}
-
-Variables in Ochre can either be modified directly, or via a mutable reference which is constructed with \mono{\&mut} and dereferenced with \mono{*}.
+Variables are either modified directly or via a mutable reference. The latter is constructed with \mono{\&mut} and eliminated (dereferenced) with \mono{*}.
 
 \begin{listing}[H]
   \begin{minted}{rust}
@@ -404,9 +395,9 @@ Variables in Ochre can either be modified directly, or via a mutable reference w
   \label{lst:mutref}
 \end{listing}
 
-If a mutable reference exists to a variable, that variable cannot be read or modified. Listing \ref{lst:mutref} works because when the programmer uses \mono{x}, \mono{rx} is implicitly \textit{dropped}, making \mono{x} valid to use again. As a result of this, \mono{rx} is unusable after the \mono{x} access on line 5.
+Whilst a mutable reference to a value exists, that value cannot be read or modified directly, it can only be read or modified via the mutable reference. In Listing \ref{lst:mutref}, the use of \mono{x} on line 5 is not an error despite \mono{rx} existing because is implicitly \textit{dropped} just before the usage of \mono{x}. Because of this implicit drop, \mono{rx} cannot be used after line 5.
 
-In practice, this is very restrictive, because it means only one pointer can exist to any object at a time. Like Rust, Ochre solves this by also supporting \textit{immutable} references, constructed with \mono{\&} and dereferenced with \mono{*}. These allow the programmer to have multiple references to the same value, which will be referred to from here as \textit{aliasing}, with the tradeoff that you cannot mutate the referenced value. This trade-off is known as \textit{aliasing (exclusive) or mutability}, or AXM for short, and it's crucial to why Rust can be converted to pure functional code, or dependently type-checked.
+In practice, this is intolerably restrictive because it means only one pointer can exist to any value at a time. Like Rust, Ochre solves this by supporting \textit{immutable} references, constructed with \mono{\&} and dereferenced with \mono{*}. These allow the programmer to have multiple references to the same value, called \textit{aliasing}. There is a tradeoff that you cannot mutate the referenced value, known as \textit{aliasing xor mutability} (AXM), and it's crucial to how Rust can be converted to pure functional code, or dependently type-checked.
 
 \begin{listing}[H]
   \begin{minted}{rust}
@@ -422,7 +413,7 @@ In practice, this is very restrictive, because it means only one pointer can exi
 \end{listing}
 
 \subsubsection{Pairs}
-Pairs are constructed via the \mono{,} operator, and because of their low precedence in the grammar, are typically surrounded in brackets, like so: \mono{(M, N)}. If you have a pair, you can access the left and right elements with \mono{.0} and \mono{.1} respectively, like so:
+$M \mono{,} \, N$ constructs the pair of $M$ and $N$. Pairs are typically surrounded in brackets to make the precedence explicit. $M\mono{.0}$ and $M\mono{.1}$ access the right and left elements of the pair $M$.
 
 % \begin{listing}[H]
   \begin{minted}{rust}
@@ -433,19 +424,41 @@ Pairs are constructed via the \mono{,} operator, and because of their low preced
 % \end{listing}
 
 \subsubsection{Move Semantics}
-Ochre uses Rust's ownership semantics to do manual memory management. When you use a value, by default it is consumed, and no longer accessible in the original location. This is how the compiler knows when the programmer has exclusive access to data, and is therefore allowed to mutate it. It also enables for the very simple memory management rule of "whenever a variable goes out of scope, free the memory associated with it", which is how Rust determines when to free memory.
+Ochre uses Rust's ownership semantics to handle manual memory management. Using a value \textit{moves} it, which means it is no longer accessible in the original location. This means you have exclusive access to any value not accessed via an immutable reference. This enables the "whenever a variable goes out of scope, free its associated memory" rule, which is how Rust and Ochre avoid the need for a garbage collector.
 
-Move semantics can lead to some strange results, such as this program being invalid:
+Move semantics can lead to some strange results, such as the following program being invalid:
 
 \begin{minted}{rust}
   x = 'one;
   y = x;
-  x: 'one; // error! use of moved value
+  x; // error! use of moved value
 \end{minted}
 
-The \mono{x = y} line has \textit{destructively} read \mono{x}, causing it to become uninitialised. You can explicitly construct uninitialised data with \mono{\_}. Moving is granular: you can move parts of a pair out of the pair without invalidating the whole thing.
+\mono{y = x} moved the value $\atom{one}$ from \mono{x} into \mono{y}, which uninitializes \mono{x}. Moving is granular; you can move components of a pair out of the pair without invalidating the whole pair:
+
+\begin{minted}{rust}
+  x = ('unmoved, 'moved);
+  y = x.1; // move right component into y
+  x.0; // 'unmoved
+  x.1; // error! use of moved value
+\end{minted}
 
 \subsubsection{Structural Typing and Type Union}
+Ochre uses a structural type system. This means a type is entirely defined by the (potentially infinite) set of its inhabitants. This is in contrast to \textit{nominal} typing, where type equivalence depends on the type's name or place of declaration. Take the following type definitions in Rust:
+
+\begin{minted}{rust}
+  struct Foo(i32, i32);
+  struct Bar(i32, i32);
+\end{minted}
+
+\noindent
+Both \mono{Foo} and \mono{Bar} are types that can be constructed with a pair of integers\footnote{In Rust, \mono{i32} is the type of 32-bit signed integers.}. In Rust, it would be a type error to pass a \mono{Foo} to a function that expects a \mono{Bar}, because despite holding the same data, they are different types. The equivalent Ochre code would be:
+
+\begin{minted}{rust}
+  Foo = (Int, Int);
+  Bar = (Int, Int);
+\end{minted}
+
 Ochre is structurally typed, like TypeScript. In Ochre, every value is its own type. So \mono{'one} is of type \mono{'one}, which is expressed in Ochre via colon. Non-singleton types are made up by taking the union of other types, using the \mono{|} operator, like \mono{'a | 'b | 'c}, which evaluates to the type of atoms which can any of \mono{'a}, \mono{'b}, or \mono{'c}.
 
 % \begin{listing}[H]
@@ -553,9 +566,11 @@ When you union together pairs, it doesn't just union together their left and rig
     // Expanded internally to:
     Same = ('true | 'false, L -> case L { 'true => 'true, 'false => 'false })
   \end{minted}
+  \vspace{-0.5em}
   \caption{}
   \label{lst:same}
 \end{listing}
+\vspace{-1em}
 
 This makes the union operator precise, taking the union of two types should never produce a type with inhabitants that weren't in either of the types which were unioned together.
 
@@ -644,6 +659,7 @@ This introduces repetition in the types, which we remove by adding the following
   \end{minted}
 % \end{listing}
 
+\cleardoublepage
 \section{Type \& Borrow Checking, by Example}
 \label{section:checkingexample}
 This section aims to give the reader an intuition behind the abstract interpretation used to type-check Ochre. Specifically, it answers two questions: what is the abstract environment? And how do the various syntactic constructs modify it?
@@ -856,6 +872,7 @@ Each branch of the case statement will modify the environment in some possibly d
 \subsubsection{Complex Example Programs}
 And last but not least, here are a few example programs which use several of the previous features together:
 
+\cleardoublepage
 \section{Concrete Interpretation}
 \label{section:concreteinterpretation}
 The primary contribution of this research is the abstract interpretation because that is what will be used in the compiler for the type checking, but the regular interpretation is still useful to better understand the language features and to better understand the abstract interpretation. If you're only interested in how Ochre is type-checked, not its exact behavior at runtime, skip to Section \ref{section:abstractinterpretation}.
@@ -895,31 +912,6 @@ Ochre has an extremely permissive syntax and heavily relies on typing rules to r
 
 We define two judgments over this syntax: $\Delta \vdash \mono{M} \evalarrow v \dashv \Delta'$ and $\Delta \vdash \mono{M} \ewritearrow v \dashv \Delta'$ where $\Delta$ and $Delta'$ are the stack states before and after, $\mono{M}$ is a piece of syntax, and $v$ is a runtime value. The syntax for $\Delta$ and $v$ are given in Figure \ref{fig:stack}
 
-\begin{figure}[H]
-  \arraycolsep=1pt %
-  \centering
-
-  \vspace{-2ex} %
-  \[
-  \begin{array}[t]{llll}
-    \Delta & ::= & & \comment{runtime environment (stack)} \\
-    && \emptyset & \comment{empty stack} \\
-    && \Delta, x \mapsto v & \comment{variable assignment} \\
-    \\
-    v, w & ::= & & \comment{runtime value} \\
-    && 'a & \comment{atom} \\
-    && (v, w) & \comment{pair} \\
-    && p & \comment{pointer} \\
-    && \mono{M} \rightarrow \mono{N} & \comment{function} \\
-    \\
-    p & ::= & & \comment{pointer} \\
-    && x & \comment{variable} \\
-    && p.0 \mid p.1 & \comment{pair element access} \\
-  \end{array} %
-  \]
-\caption{Runtime state} %
-\label{fig:stack} %
-\end{figure} %
 
 $\mono{M} \evalarrow v$ defines what it means to evaluate a piece of syntax, and $\mono{M} \ewritearrow v$ defines what it means to \textit{write} to a piece of syntax. Not all syntax can be written to, but parts can. This roughly equates to the concept of an lvalue in other languages.
 
@@ -1125,6 +1117,7 @@ Figures \ref{fig:concretesemanticsbi} and \ref{fig:concretesemanticsread} contai
   \label{fig:concretesemanticsread}
 \end{figure}
 
+\cleardoublepage
 \section{Abstract Interpretation}
 \label{section:abstractinterpretation}
 Type checking is done via an abstract interpretation using 6 arrows. All \lochre{} syntax is defined for some subset of these arrows.
@@ -1150,6 +1143,38 @@ Destructive operations assert that a piece of syntax has a runtime influence on 
 Non-destructive operations
 
 Compile-time only operations
+
+\subsubsection{Abstract Environment}
+\begin{figure}[H]
+  \arraycolsep=1pt %
+  \centering
+
+  \vspace{-2ex} %
+  \[
+  \begin{array}[t]{llll}
+    \Omega & ::= & & \comment{abstract environment (stack)} \\
+    && \emptyset & \comment{empty stack} \\
+    && \Omega, x \mapsto v & \comment{runtime variable} \\
+    && \Omega, X \mapsto v & \comment{comptime variable} \\
+    \\
+    v, w, t, u & ::= & & \comment{type} \\
+    && \{\overrightarrow{\atom{a}}\} & \comment{atom} \\
+    && (v, T \rightarrow U) & \comment{pair} \\
+    && (T \rightarrow U) & \comment{function} \\
+    && \borrows{l}{v} \mid \borrowm{l}{v} & \comment{reference} \\
+    && \loans{l}{v} \mid \loanm{l} & \comment{referenced value} \\
+    % \\
+    % p & ::= & & \comment{pointer} \\
+    % && x & \comment{variable} \\
+    % && p.0 \mid p.1 & \comment{pair element access} \\
+  \end{array} %
+  \]
+\caption{Runtime state} %
+\label{fig:stack} %
+\end{figure} %
+
+\subsubsection{Type Operations}
+
 
 \begin{figure}
   \begin{adjustwidth}{-1cm}{-1cm}
@@ -1238,7 +1263,7 @@ Compile-time only operations
     & \movearrow & \readarrow & \erasedreadarrow \\
     \hline
 
-    \mono{x} or \mono{X} &
+    \\\mono{x} or \mono{X} &
     \inferrule[]{
       \Omega' = \Omega\left[\frac{\mono{x} \mapsto \bot}{\mono{x} \mapsto m}\right]
     }{
@@ -1273,15 +1298,17 @@ Compile-time only operations
 
     \\\mono{M.0} &
     \inferrule[]{
-      \Omega \vdash \mono{M} \movearrow (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
-      \Omega' \vdash \mono{M} \writearrow (\bot, n, \mono{\_} \rightarrow \mono{U}) \dashv \Omega''
+      \Omega \vdash \mono{M} \movearrow (v, \mono{T} \rightarrow \mono{U}) \dashv \Omega'\\\\
+      \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega''\\\\
+      \Omega'' \vdash \mono{U} \erasedreadarrow w \dashv \Omega'\\\\
+      \Omega' \vdash \mono{M} \writearrow (\top, \mono{\_} \rightarrow w) \dashv \Omega'''
     }{
-      \Omega \vdash \mono{M.0} \movearrow m \dashv \Omega''
+      \Omega \vdash \mono{M.0} \movearrow m \dashv \Omega'''
     } &
     \multicolumn{2}{c}{
       $\forall \diamond \in \{ \readarrow, \erasedreadarrow \}. \left[
         \inferrule[]{
-          \Omega \vdash \mono{M} \diamond (m, \_, \_ \rightarrow \_) \dashv \Omega' 
+          \Omega \vdash \mono{M} \diamond (m, \_) \dashv \Omega' 
         }{
           \Omega \vdash \mono{M.0} \diamond m \dashv \Omega'
         }
@@ -1294,14 +1321,14 @@ Compile-time only operations
       $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
         \raisebox{-5.5ex}{$\dfrac{
           \begin{array}{ccll}
-            & \Omega \vdash \mono{M} \diamond (m, n, \mono{T} \rightarrow \mono{U}) \dashv \Omega' & \comment{get pair} & \\
-            & \Omega' \vdash \mono{T} \erasedwritearrow m \dashv \Omega'' & \comment{calculate right restriction} & \\
-            & \Omega'' \vdash \mono{U} \erasedreadarrow u \dashv \Omega' & \comment{calculate right restriction} & \\
-            & \Omega' \vdash \mono{M} \writearrow (m, \bot, \mono{T} \rightarrow \mono{\_}) \dashv \Omega''' & \comment{replace pair} & \textit{if $\diamond = \movearrow$} \\
+            & \Omega \vdash \mono{M} \diamond (v, \mono{T} \rightarrow \mono{U}) \dashv \Omega' & \comment{get pair} & \\
+            & \Omega' \vdash \mono{T} \erasedwritearrow v \dashv \Omega'' & \comment{calculate right restriction} & \\
+            & \Omega'' \vdash \mono{U} \erasedreadarrow w \dashv \Omega' & \comment{calculate right restriction} & \\
+            & \Omega' \vdash \mono{M} \writearrow (m, \mono{T} \rightarrow \mono{\_}) \dashv \Omega''' & \comment{replace pair} & \textit{if $\diamond = \movearrow$} \\
             & \Omega''' = \Omega' & & \textit{if $\diamond \ne \movearrow$}
           \end{array}
         }{
-          \Omega \vdash \mono{M.1} \diamond n \cap u \dashv \Omega'''
+          \Omega \vdash \mono{M.1} \diamond w \dashv \Omega'''
         }$}
       \right]$
     }
@@ -1316,7 +1343,7 @@ Compile-time only operations
     }
     \\
 
-    \\\mono{*M} (\kw{mut}) &
+    \\ &
     \inferrule[]{
       \Omega \vdash \mono{M} \movearrow \kw{borrow}^m\,l\,v \dashv \Omega'\\\\
       \Omega' \vdash \mono{M} \writearrow \kw{borrow}^m\,l\,\bot \dashv \Omega''

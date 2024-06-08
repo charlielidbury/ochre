@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{unmoved}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{moved}\PYG{p}{);}
+\PYG{+w}{  }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// move right component into y}
+\PYG{+w}{  }\PYG{n}{x}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}unmoved}
+\PYG{+w}{  }\PYG{n}{x}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// error! use of moved value}
+\end{Verbatim}

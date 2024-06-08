@@ -113,7 +113,8 @@ fn ochre_impl(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn ochre(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    ochre_impl(item.into()).into()
+    // ochre_impl(item.into()).into();
+    quote!(42).into()
 }
 
 #[cfg(test)]

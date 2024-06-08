@@ -65,8 +65,9 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
         AstData::Case(_, _) => todo!("Case"),
         AstData::Ref(_) => todo!("Ref"),
         AstData::MutRef(ast) => {
-            let (_, m) = move_op(env, ast)?;
-            write_op(env, ast, Rc::new(Type::LoanM(())))
+            let (_, m) = move_op(env, ast.clone())?;
+            write_op(env, ast.clone(), Rc::new(Type::LoanM(42)));
+            todo!()
         }
         AstData::Ass(lhs, rhs) => {
             // evaluate rhs

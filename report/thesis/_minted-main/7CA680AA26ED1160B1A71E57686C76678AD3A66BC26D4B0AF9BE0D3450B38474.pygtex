@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{k}{struct} \PYG{n+nc}{Foo}\PYG{p}{(}\PYG{k+kt}{i32}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{i32}\PYG{p}{);}
+\PYG{+w}{  }\PYG{k}{struct} \PYG{n+nc}{Bar}\PYG{p}{(}\PYG{k+kt}{i32}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{i32}\PYG{p}{);}
+\end{Verbatim}

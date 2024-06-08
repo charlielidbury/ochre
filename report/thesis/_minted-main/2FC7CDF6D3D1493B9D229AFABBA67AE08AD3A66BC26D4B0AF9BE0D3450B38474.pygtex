@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{n}{Foo}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{Int}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Int}\PYG{p}{);}
+\PYG{+w}{  }\PYG{n}{Bar}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{Int}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Int}\PYG{p}{);}
+\end{Verbatim}

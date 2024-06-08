@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{;}
+\PYG{+w}{  }\PYG{n}{x}\PYG{+w}{ }\PYG{c+c1}{// \PYGZsq{}hello}
+\end{Verbatim}

@@ -39,6 +39,7 @@
 \usepackage{amsfonts}
 \usepackage{booktabs}
 \usepackage{nth}
+\usepackage{todonotes}
 
 \makeatletter
 \providecommand{\leftsquigarrow}{%
@@ -140,12 +141,13 @@
 \newcommand\etproj[2]{\ensuremath{\kw{proj}_{#1}\,#2}}
 
 % Ochre commands
+% \newcommand{\movearrow}{\ensuremath{\,\stackrel{_(._)}{\Rightarrow}\,}}
 \newcommand{\evalarrow}{\ensuremath{\,\Rightarrow\,}}
 \newcommand{\ewritearrow}{\ensuremath{\,\Leftarrow\,}}
-\newcommand{\movearrow}{\ensuremath{\,\dot{\Rightarrow}\,}}
-\newcommand{\writearrow}{\ensuremath{\,\dot{\Leftarrow}\,}}
-\newcommand{\readarrow}{\ensuremath{\,\dot{\rightarrow}\,}}
-\newcommand{\narrowarrow}{\ensuremath{\,\dot{\leftarrow}\,}}
+\newcommand{\movearrow}{\ensuremath{\,\stackrel{_(._)}{\Rightarrow}\,}}
+\newcommand{\writearrow}{\ensuremath{\,\stackrel{_(._)}{\Leftarrow}\,}}
+\newcommand{\readarrow}{\ensuremath{\,\stackrel{_(._)}{\rightarrow}\,}}
+\newcommand{\narrowarrow}{\ensuremath{\,\stackrel{_(._)}{\leftarrow}\,}}
 \newcommand{\erasedreadarrow}{\ensuremath{\,\rightsquigarrow\,}}
 \newcommand{\erasedwritearrow}{\ensuremath{\,\leftsquigarrow\,}}
 \newcommand{\mono}[1]{\ensuremath{\text{\texttt{#1}}}}
@@ -209,7 +211,7 @@
 
 
 %%% Default settings (page layout)
-\setlength{\parindent}{0em}  % indentation of paragraph
+% \setlength{\parindent}{0em}  % indentation of paragraph
 
 % \setlength{\parindent}{0em}  % indentation of paragraph
 
