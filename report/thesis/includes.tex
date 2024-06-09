@@ -40,6 +40,8 @@
 \usepackage{booktabs}
 \usepackage{nth}
 \usepackage{todonotes}
+\usepackage{placeins}
+\usepackage{scalerel}
 
 \makeatletter
 \providecommand{\leftsquigarrow}{%
@@ -145,19 +147,42 @@
 \newcommand{\evalarrow}{\ensuremath{\,\Rightarrow\,}}
 \newcommand{\ewritearrow}{\ensuremath{\,\Leftarrow\,}}
 \newcommand{\movearrow}{\ensuremath{\,\stackrel{_(._)}{\Rightarrow}\,}}
+\newcommand{\movearrowconc}{\ensuremath{\,{\Rightarrow}\,}}
+\newcommand{\movearrowabs}{\ensuremath{\,\stackrel{.}{\Rightarrow}\,}}
 \newcommand{\writearrow}{\ensuremath{\,\stackrel{_(._)}{\Leftarrow}\,}}
+\newcommand{\writearrowconc}{\ensuremath{\,{\Leftarrow}\,}}
+\newcommand{\writearrowabs}{\ensuremath{\,\stackrel{.}{\Leftarrow}\,}}
 \newcommand{\readarrow}{\ensuremath{\,\stackrel{_(._)}{\rightarrow}\,}}
+\newcommand{\readarrowconc}{\ensuremath{\,\rightarrow\,}}
+\newcommand{\readarrowabs}{\ensuremath{\,\stackrel{.}{\rightarrow}\,}}
 \newcommand{\narrowarrow}{\ensuremath{\,\stackrel{_(._)}{\leftarrow}\,}}
-\newcommand{\erasedreadarrow}{\ensuremath{\,\rightsquigarrow\,}}
-\newcommand{\erasedwritearrow}{\ensuremath{\,\leftsquigarrow\,}}
+\newcommand{\narrowarrowconc}{\ensuremath{\,\leftarrow\,}}
+\newcommand{\narrowarrowabs}{\ensuremath{\,\stackrel{.}{\leftarrow}\,}}
+\newcommand{\erasedreadarrow}{\ensuremath{\,\dot{\rightsquigarrow}\,}}
+\newcommand{\erasedwritearrow}{\ensuremath{\,\dot{\leftsquigarrow}\,}}
+\newcommand{\maxarrow}[1]{\ensuremath{\underset{^\kw{max}}{#1}}}
+\newcommand{\rearrangearrow}{\ensuremath{\hookrightarrow}}
 \newcommand{\mono}[1]{\ensuremath{\text{\texttt{#1}}}}
 \newcommand{\loans}[2]{\ensuremath{\kw{loan}^s\,#1\,#2}}
 \newcommand{\loanm}[1]{\ensuremath{\kw{loan}^m\,#1}}
-\newcommand{\borrows}[2]{\ensuremath{\kw{borrow}^s\,#1\,#2}}
-\newcommand{\borrowm}[2]{\ensuremath{\kw{borrow}^m\,#1\,#2}}
+\newcommand{\borrow}[3]{\ensuremath{\kw{borrow}^{#1}\,#2\,#3}}
+\newcommand{\borrows}[2]{\borrow{\kw{s}}{#1}{#2}}
+\newcommand{\borrowm}[2]{\borrow{\kw{m}}{#1}{#2}}
 \newcommand{\absenv}[1]{\ensuremath{\{ #1 \}}}
-\newcommand{\absmap}[2]{\ensuremath{\mono{#1} \, \mapsto \, #2}}
+\newcommand{\absmap}[2]{\ensuremath{#1 \, \mapsto \, #2}}
 \newcommand{\atom}[1]{\text{'#1}}
+\newcommand{\subtype}{\sqsubseteq}
+\newcommand{\typeunion}{\sqcup}
+\newcommand{\typeinter}{\sqcap}
+\newcommand{\odef}[2]{\ensuremath{\textit{def.} #1 \textit{for} \, #2}}
+\newcommand{\allarrows}{\ensuremath{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow }}
+\newcommand{\abstractarrows}{\ensuremath{ \erasedreadarrow, \readarrowabs, \movearrowabs, \writearrowabs, \narrowarrowabs, \erasedwritearrow }}
+\newcommand{\concretearrows}{\ensuremath{ \readarrowconc, \movearrowconc, \writearrowconc, \narrowarrowconc }}
+\newcommand{\drop}[1]{\ensuremath{ \kw{drop} \, #1 }}
+\newcommand{\concrete}[1]{\ensuremath{ \kw{concrete} \, #1 }}
+\newcommand{\oabstract}[1]{\ensuremath{ \kw{abstract} \, #1 }}
+\newcommand{\runtime}[1]{\kw{runtime} \, #1}
+\newcommand{\comptime}[1]{\kw{comptime} \, #1}
 
 \newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
 
