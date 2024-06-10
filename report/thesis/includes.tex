@@ -174,7 +174,7 @@
 \newcommand{\subtype}{\sqsubseteq}
 \newcommand{\typeunion}{\sqcup}
 \newcommand{\typeinter}{\sqcap}
-\newcommand{\odef}[2]{\ensuremath{\textit{def.} #1 \textit{for} \, #2}}
+\newcommand{\odef}[2]{\ensuremath{\langle \textit{def.} \, #1 \, \textit{for} \, #2 \rangle}}
 \newcommand{\allarrows}{\ensuremath{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow }}
 \newcommand{\abstractarrows}{\ensuremath{ \erasedreadarrow, \readarrowabs, \movearrowabs, \writearrowabs, \narrowarrowabs, \erasedwritearrow }}
 \newcommand{\concretearrows}{\ensuremath{ \readarrowconc, \movearrowconc, \writearrowconc, \narrowarrowconc }}
@@ -183,6 +183,7 @@
 \newcommand{\oabstract}[1]{\ensuremath{ \kw{abstract} \, #1 }}
 \newcommand{\runtime}[1]{\kw{runtime} \, #1}
 \newcommand{\comptime}[1]{\kw{comptime} \, #1}
+\newcommand{\size}[1]{\kw{size} \, #1}
 
 \newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
 

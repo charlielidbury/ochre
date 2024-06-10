@@ -927,188 +927,188 @@ For this rule to be applicable, \mono{x} must be uninitialized in the stack, whi
 
 Figures \ref{fig:concretesemanticsbi} and \ref{fig:concretesemanticsread} contain the concrete semantics for every piece of syntax. Often the rule for reading from a piece of syntax and writing to it differs only in which arrow is used; in these cases, I quantify over arrows using $\diamond$ to mean "either arrow".
 
-\begin{figure}
-  \centering
-  \begin{tabular}{c|cc}
-    & $\evalarrow$ & $\ewritearrow$ \\
-    \hline
-    \\\mono{x} &
-    \inferrule{
-      \absmap{x}{v} \in \Delta
-    }{
-      \Delta \vdash \mono{x} \evalarrow v
-    } &
-    \inferrule{
-      \Delta' = \Delta\left[\dfrac{\absmap{x}{v'}}{\absmap{x}{\bot}}\right]
-    }{
-      \Delta \vdash \mono{x} \ewritearrow v' \dashv \Delta'
-    } \\
+% \begin{figure}
+%   \centering
+%   \begin{tabular}{c|cc}
+%     & $\evalarrow$ & $\ewritearrow$ \\
+%     \hline
+%     \\\mono{x} &
+%     \inferrule{
+%       \absmap{x}{v} \in \Delta
+%     }{
+%       \Delta \vdash \mono{x} \evalarrow v
+%     } &
+%     \inferrule{
+%       \Delta' = \Delta\left[\dfrac{\absmap{x}{v'}}{\absmap{x}{\bot}}\right]
+%     }{
+%       \Delta \vdash \mono{x} \ewritearrow v' \dashv \Delta'
+%     } \\
     
-    \\\mono{'a} &
-    \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
-        \inferrule{
-        }{
-          \Delta \vdash \mono{\atom{a}} \diamond \atom{a}
-        }
-      \right]$
-    } \\
+%     \\\mono{'a} &
+%     \multicolumn{2}{c}{
+%       $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+%         \inferrule{
+%         }{
+%           \Delta \vdash \mono{\atom{a}} \diamond \atom{a}
+%         }
+%       \right]$
+%     } \\
     
-    \\$M\mono{,}N$ &
-    \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
-        \inferrule{
-          \Delta \vdash M \diamond v \dashv \Delta'\\\\
-          \Delta' \vdash N \diamond w \dashv \Delta''
-        }{
-          \Delta \vdash M\mono{,}N \diamond (v, w) \dashv \Delta''
-        }
-      \right]$
-    }\\
+%     \\$M\mono{,}N$ &
+%     \multicolumn{2}{c}{
+%       $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+%         \inferrule{
+%           \Delta \vdash M \diamond v \dashv \Delta'\\\\
+%           \Delta' \vdash N \diamond w \dashv \Delta''
+%         }{
+%           \Delta \vdash M\mono{,}N \diamond (v, w) \dashv \Delta''
+%         }
+%       \right]$
+%     }\\
     
-    \\\mono{$M$.0} &
-    \inferrule{
-      \Delta \vdash M \evalarrow (v, \_) \dashv \Delta'
-    }{
-      \Delta \vdash \mono{$M$.0} \evalarrow v \dashv \Delta'
-    } &
-    \inferrule{
-      \Delta \vdash M \evalarrow (\bot, w) \dashv \Delta' \\\\
-      \Delta' \vdash M \ewritearrow (v', w) \dashv \Delta''
-    }{
-      \Delta \vdash \mono{$M$.0} \evalarrow v' \dashv \Delta''
-    } \\
+%     \\\mono{$M$.0} &
+%     \inferrule{
+%       \Delta \vdash M \evalarrow (v, \_) \dashv \Delta'
+%     }{
+%       \Delta \vdash \mono{$M$.0} \evalarrow v \dashv \Delta'
+%     } &
+%     \inferrule{
+%       \Delta \vdash M \evalarrow (\bot, w) \dashv \Delta' \\\\
+%       \Delta' \vdash M \ewritearrow (v', w) \dashv \Delta''
+%     }{
+%       \Delta \vdash \mono{$M$.0} \evalarrow v' \dashv \Delta''
+%     } \\
     
-    \\\mono{$M$.1} &
-    \inferrule{
-      \Delta \vdash M \evalarrow (\_, w) \dashv \Delta'
-    }{
-      \Delta \vdash \mono{$M$.1} \evalarrow w \dashv \Delta'
-    } &
-    \inferrule{
-      \Delta \vdash M \evalarrow (v, \bot) \dashv \Delta' \\\\
-      \Delta' \vdash M \ewritearrow (v, w') \dashv \Delta''
-    }{
-      \Delta \vdash \mono{$M$.1} \evalarrow w' \dashv \Delta''
-    } \\
+%     \\\mono{$M$.1} &
+%     \inferrule{
+%       \Delta \vdash M \evalarrow (\_, w) \dashv \Delta'
+%     }{
+%       \Delta \vdash \mono{$M$.1} \evalarrow w \dashv \Delta'
+%     } &
+%     \inferrule{
+%       \Delta \vdash M \evalarrow (v, \bot) \dashv \Delta' \\\\
+%       \Delta' \vdash M \ewritearrow (v, w') \dashv \Delta''
+%     }{
+%       \Delta \vdash \mono{$M$.1} \evalarrow w' \dashv \Delta''
+%     } \\
     
-    \\\mono{*$M$} &
-    \multicolumn{2}{c}{
-    $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
-      \inferrule{
-        \Delta \vdash M \evalarrow p \dashv \Delta' \\\\
-        \Delta' \vdash p \diamond v \dashv \Delta''
-      }{
-        \Delta \vdash \mono{*$M$} \diamond v \dashv \Delta''
-      }
-    \right]$
-    } \\
+%     \\\mono{*$M$} &
+%     \multicolumn{2}{c}{
+%     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+%       \inferrule{
+%         \Delta \vdash M \evalarrow p \dashv \Delta' \\\\
+%         \Delta' \vdash p \diamond v \dashv \Delta''
+%       }{
+%         \Delta \vdash \mono{*$M$} \diamond v \dashv \Delta''
+%       }
+%     \right]$
+%     } \\
     
-    \\\mono{M:T} &
-    \multicolumn{2}{c}{
-    $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
-      \inferrule{
-        \Delta \vdash M \diamond v \dashv \Delta' 
-      }{
-        \Delta \vdash \mono{M:T} \diamond v \dashv \Delta'
-      }
-    \right]$
-    } \\
+%     \\\mono{M:T} &
+%     \multicolumn{2}{c}{
+%     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+%       \inferrule{
+%         \Delta \vdash M \diamond v \dashv \Delta' 
+%       }{
+%         \Delta \vdash \mono{M:T} \diamond v \dashv \Delta'
+%       }
+%     \right]$
+%     } \\
     
-    \\\mono{\_} &
-    \multicolumn{2}{c}{
-    $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
-      \inferrule{
-      }{
-        \Delta \vdash \mono{\_} \diamond \bot
-      }
-    \right]$
-    } \\
-  \end{tabular}
-  \caption{Concrete interpretation for the pieces of syntax which can be both read and written to.}
-  \label{fig:concretesemanticsbi}
-\end{figure}
+%     \\\mono{\_} &
+%     \multicolumn{2}{c}{
+%     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
+%       \inferrule{
+%       }{
+%         \Delta \vdash \mono{\_} \diamond \bot
+%       }
+%     \right]$
+%     } \\
+%   \end{tabular}
+%   \caption{Concrete interpretation for the pieces of syntax which can be both read and written to.}
+%   \label{fig:concretesemanticsbi}
+% \end{figure}
 
-\begin{figure}
-  \centering
-  \begin{tabular}{p{3cm}|c}
-    & $\evalarrow$ \\
-    \hline
-    \\\mono{\&M} &
-    \inferrule{
-    }{
-      \Delta \vdash \mono{\&x} \evalarrow \mono{x}
-    }\,\,\,
-    \inferrule{
-      \Delta \vdash M \evalarrow p
-    }{
-      \Delta \vdash \mono{\&M.0} \evalarrow p.0
-    }\,\,\,
-    \inferrule{
-      \Delta \vdash M \evalarrow p
-    }{
-      \Delta \vdash \mono{\&M.1} \evalarrow p.1
-    }\\
+% \begin{figure}
+%   \centering
+%   \begin{tabular}{p{3cm}|c}
+%     & $\evalarrow$ \\
+%     \hline
+%     \\\mono{\&M} &
+%     \inferrule{
+%     }{
+%       \Delta \vdash \mono{\&x} \evalarrow \mono{x}
+%     }\,\,\,
+%     \inferrule{
+%       \Delta \vdash M \evalarrow p
+%     }{
+%       \Delta \vdash \mono{\&M.0} \evalarrow p.0
+%     }\,\,\,
+%     \inferrule{
+%       \Delta \vdash M \evalarrow p
+%     }{
+%       \Delta \vdash \mono{\&M.1} \evalarrow p.1
+%     }\\
 
-    \\\mono{\&\kw{mut}\,M} &
-    \inferrule{
-      \Delta \vdash \mono{\&M} \evalarrow p
-    }{
-      \Delta \vdash \mono{\&\kw{mut} M} \evalarrow p
-    }\\
+%     \\\mono{\&\kw{mut}\,M} &
+%     \inferrule{
+%       \Delta \vdash \mono{\&M} \evalarrow p
+%     }{
+%       \Delta \vdash \mono{\&\kw{mut} M} \evalarrow p
+%     }\\
 
-    \\\mono{M N} &
-    $\dfrac{
-      \begin{array}{cl}
-        \Delta \vdash M \evalarrow (\mono{I} \rightarrow \mono{O}) \dashv \Delta' & \comment{evaluate function} \\
-        \Delta' \vdash N \evalarrow n \dashv \Delta'' & \comment{evaluate argument} \\
-        \Delta'' \vdash \mono{I} \ewritearrow n \dashv \Delta''' & \comment{push argument to stack} \\
-        \Delta''' \vdash \mono{O} \evalarrow v \dashv \Delta'''' & \comment{execute function body}
-      \end{array}
-    }{
-      \Delta \vdash \mono{M N} \evalarrow v \dashv \Delta''''
-    }$ \\
+%     \\\mono{M N} &
+%     $\dfrac{
+%       \begin{array}{cl}
+%         \Delta \vdash M \evalarrow (\mono{I} \rightarrow \mono{O}) \dashv \Delta' & \comment{evaluate function} \\
+%         \Delta' \vdash N \evalarrow n \dashv \Delta'' & \comment{evaluate argument} \\
+%         \Delta'' \vdash \mono{I} \ewritearrow n \dashv \Delta''' & \comment{push argument to stack} \\
+%         \Delta''' \vdash \mono{O} \evalarrow v \dashv \Delta'''' & \comment{execute function body}
+%       \end{array}
+%     }{
+%       \Delta \vdash \mono{M N} \evalarrow v \dashv \Delta''''
+%     }$ \\
 
-    \\\mono{M -> T\,\{\,N\,\}} &
-    \inferrule{
-    }{
-      \Delta \vdash \mono{M -> T \{ N \}} \evalarrow (M \rightarrow N)
-    }\\
+%     \\\mono{M -> T\,\{\,N\,\}} &
+%     \inferrule{
+%     }{
+%       \Delta \vdash \mono{M -> T \{ N \}} \evalarrow (M \rightarrow N)
+%     }\\
 
-    \\\mono{M = N} &
-    \inferrule{
-      \Delta \vdash N \evalarrow v \dashv \Delta'\\\\
-      \Delta' \vdash M \ewritearrow v \dashv \Delta''
-    }{
-      \Delta \vdash \mono{M = N} \evalarrow \atom{unit} \dashv \Delta''
-    }\\
+%     \\\mono{M = N} &
+%     \inferrule{
+%       \Delta \vdash N \evalarrow v \dashv \Delta'\\\\
+%       \Delta' \vdash M \ewritearrow v \dashv \Delta''
+%     }{
+%       \Delta \vdash \mono{M = N} \evalarrow \atom{unit} \dashv \Delta''
+%     }\\
 
-    \\\mono{M; N} &
-    \inferrule{
-      \Delta \vdash M \evalarrow \atom{unit} \dashv \Delta'\\\\
-      \Delta' \vdash N \evalarrow n \dashv \Delta''
-    }{
-      \Delta \vdash \mono{M = N} \evalarrow n \dashv \Delta''
-    }\\
+%     \\\mono{M; N} &
+%     \inferrule{
+%       \Delta \vdash M \evalarrow \atom{unit} \dashv \Delta'\\\\
+%       \Delta' \vdash N \evalarrow n \dashv \Delta''
+%     }{
+%       \Delta \vdash \mono{M = N} \evalarrow n \dashv \Delta''
+%     }\\
 
-    \\\mono{case M \{}\newline
-      \mono{  'a$_0$ => N$_0$,}\newline
-      \mono{  ...}\newline
-      \mono{  'a$_k$ => N$_k$,}\newline
-    \mono{\}} &
-    \raisebox{-6ex}{$\dfrac{
-      \begin{array}{cl}
-        \Delta \vdash M \evalarrow \atom{a}_i \dashv \Delta' & \comment{interrogant matches i$^\text{th}$ branch} \\
-        \Delta' \vdash N_i \evalarrow n_i \dashv \Delta'' & \comment{execute i$^\text{th}$ branch}
-      \end{array}
-    }{
-      \Delta \vdash \mono{case M \{ 'a$_0$\ => N$_0$\, ... \}} \evalarrow n_i \dashv \Delta''
-    }$} \\
+%     \\\mono{case M \{}\newline
+%       \mono{  'a$_0$ => N$_0$,}\newline
+%       \mono{  ...}\newline
+%       \mono{  'a$_k$ => N$_k$,}\newline
+%     \mono{\}} &
+%     \raisebox{-6ex}{$\dfrac{
+%       \begin{array}{cl}
+%         \Delta \vdash M \evalarrow \atom{a}_i \dashv \Delta' & \comment{interrogant matches i$^\text{th}$ branch} \\
+%         \Delta' \vdash N_i \evalarrow n_i \dashv \Delta'' & \comment{execute i$^\text{th}$ branch}
+%       \end{array}
+%     }{
+%       \Delta \vdash \mono{case M \{ 'a$_0$\ => N$_0$\, ... \}} \evalarrow n_i \dashv \Delta''
+%     }$} \\
 
-  \end{tabular}
-  \caption{Concrete interpretation for the pieces of syntax which can be evaluated but not written to.}
-  \label{fig:concretesemanticsread}
-\end{figure}
+%   \end{tabular}
+%   \caption{Concrete interpretation for the pieces of syntax which can be evaluated but not written to.}
+%   \label{fig:concretesemanticsread}
+% \end{figure}
 
 \cleardoublepage
 \section{Formalisms}
@@ -1217,9 +1217,14 @@ Ochre grammar:
   \vspace{-2ex} %
   \[
   \begin{array}[t]{llll}
-    T, U, M, N & ::= & & \\
-    && \mono{x}\mid{}\mono{y}\mid{}\mono{z} & \comment{runtime variable identifier} \\
-    && \mono{X}\mid{}\mono{Y}\mid{}\mono{Z} & \comment{comptime variable identifier} \\
+    S & ::= & & \comment{statement} \\
+    & & M & \comment{expression} \\
+    & & M = N; S & \comment{assignment} \\
+    & & \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} & \comment{match statement} \\
+    \\
+    T, U, M, N & ::= & & \comment{expression} \\
+    && x \mid{} y \mid{} z  & \comment{runtime variable identifier} \\
+    && X \mid{} Y \mid{} Z  & \comment{comptime variable identifier} \\
     && \mono{'}a & \comment{atom construction} \\
     && M\mono{,} N & \comment{pair construction} \\
     && M\mono{.0} & \comment{pair left access} \\
@@ -1228,18 +1233,40 @@ Ochre grammar:
     && \mono{\&}M \mid \mono{\&mut}\,M & \comment{borrow constructor} \\
     && M N & \comment{function application} \\
     && M \, \mono{->} \, T \,(\mono{\{}\,N\,\mono{\}}) & \comment{function definition (optional runtime body)} \\
-    && M \mono{=} N & \comment{assignment} \\
-    && M\mono{;} N & \comment{sequence} \\
-    && \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }N}\,\} & \comment{case statement} \\
     && \mono{\_} & \comment{uninitialised} \\
-    % && \mono{*} & \comment{top} \\
     && T\,\mono{|}\,U & \comment{type union} \\
     && M\mono{:}\,T & \comment{type constraint} \\
+    && v & \comment{type/value} \\
   \end{array} %
   \]
 \caption{Ochre syntax} %
 \label{fig:syntax} %
 \end{figure} %
+
+\textbf{Assignments never occur in a terminal position}. This avoids the question of what is the return value of an assignment.
+
+\textbf{Match statements always occur in a terminal position}. RustBelt's $\lambda_Rust$ \cite{jungRustBeltSecuringFoundations2018a} has the same restriction, but Aeneas' LLBC \cite{aeneas} does not. If it was permitted for operations to occur after a match statement, the environment \textit{after} the match statement would have to be calculated, which would be the type union of the environments produced by the branches. For this type union operation to be precise over environments, like it is on pairs, we would have to support dependencies between variables. We do not support such dependencies for the sake of simplicity, and thus cannot precisely define environment union.
+
+This restriction does not limit what programs can be represented because a program with match statements in non-terminal positions can be re-written to one that only has matches in terminal positions. This could be done by moving everything after the match statement into each of the match statement branches:
+
+\begin{figure}[H]
+  \begin{mathpar}
+    \forall \diamond \{ \movearrow, \erasedreadarrow \} . \left[
+      \inferrule{
+        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S \mono{;} S'}$ \} } \diamond t
+      }{
+        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S}$ \} }; S' \diamond t
+      } 
+    \right]
+  \end{mathpar}
+  \caption{A re-write rule which could enable matches in non-terminal positions.}
+\end{figure}
+
+This rewrite rule has not been included in Ochre because I intend to support dependence between variables in the future, and therefore precise environment union, which removes the need for the rewrite. This rewrite rule has the disadvantage of causing an exponential blowup in code size/interpretation derivation size.
+
+Assignment and match statements are the only constructs that can narrow types in the environment, so by having them both in statement ($S$) instead of expression ($M$), we guarantee that expression evaluation only ever widens types. This simplifies type-checking expressions.
+
+\textbf{Types/values can be treated as syntax}. This syntactic construction cannot be constructed by the programmer. It is constructed internally within the interpretations to make syntax that always returns the same type/value, such as in \odef{\movearrow}{M\mono{.0}} where it is used to break the dependence of the pair so the left value can be moved out.
 
 \FloatBarrier
 \subsection{Abstract Environment/Values}
@@ -1257,6 +1284,7 @@ The abstract environment, and abstract values:
     && \emptyset & \comment{empty stack} \\
     && \Omega, x \mapsto v & \comment{runtime variable} \\
     && \Omega, X \mapsto v & \comment{comptime variable} \\
+    && \Omega, l \mapsto v & \comment{loan restriction} \\
     \\
     m, n, v, w, t, u & ::= & & \comment{type/value} \\
     && \{\overrightarrow{\atom{a}}\} & \comment{atom} \\
@@ -1443,17 +1471,16 @@ Environment rearrangement is defined in Figure \ref{fig:environmentrearrangement
   } \\
 
 \end{tabular}
-\caption{Helper definitions \drop{} and \concrete{}}
+\caption{Definition of \drop{} and \concrete{}}
 \label{fig:dropconcrete}
 \end{figure}
-
 
 \FloatBarrier
 \subsection{Typing Judgements}
 \FloatBarrier
 The tables are to aid the reader to locate rules, they do not encode any information themselves.
 
-These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$ is the arrow being defined, and $M$, is the piece of syntax it is being defined for. For example \odef{M N}{\movearrow} refers to the rule for moving (regular, destructive, runtime evaluation) a function application.
+These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$ is the arrow being defined, and $M$, is the piece of syntax it is being defined for. For example \odef{M N}{\movearrow} refers to the rule for destructively reading a function application.
 
 
 \begin{figure}
@@ -1608,17 +1635,17 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
 
     \\\mono{$M$.0} &
     \inferrule[]{
-      \Omega \vdash M \movearrow (v, T \rightarrow U) \dashv \Omega'\\\\
+      \Omega \vdash M \movearrow (v, T \rightarrow S_t) \dashv \Omega'\\\\
       \Omega' \vdash T \erasedwritearrow v \dashv \Omega''\\\\
-      \Omega'' \vdash U \erasedreadarrow w \dashv \Omega'\\\\
-      \Omega' \vdash M \writearrow (\top, \mono{\_} \rightarrow w) \dashv \Omega'''
+      \Omega'' \vdash S_t \erasedreadarrow w \\\\
+      \Omega' \vdash M \writearrow (\top, \mono{\_} \rightarrow w) \dashv \Omega''
     }{
-      \Omega \vdash \mono{$M$.0} \movearrow m \dashv \Omega'''
+      \Omega \vdash \mono{$M$.0} \movearrow m \dashv \Omega''
     } &
     \multicolumn{2}{c}{
       $\forall \diamond \in \{ \readarrow, \erasedreadarrow \}. \left[
         \inferrule[]{
-          \Omega \vdash M \diamond (m, \_) \dashv \Omega' 
+          \Omega \vdash M \diamond (m, \_ \rightarrow \_) \dashv \Omega' 
         }{
           \Omega \vdash \mono{$M$.0} \diamond m \dashv \Omega'
         }
@@ -2008,9 +2035,10 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
 
     \\$(v, T \rightarrow U)$ &
     \inferrule{
+      \Omega \vdash t \subtype t' \\\\
       \Omega \vdash T' \erasedwritearrow t \dashv \Omega' \\\\
       \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
-      \Omega'' \vdash S : S_t \erasedreadarrow v
+      \Omega'' \vdash S : S' \erasedreadarrow v
     }{
       \Omega \vdash (t, T \rightarrow S) \subtype (t', T' \rightarrow S')
     }&
@@ -2083,34 +2111,61 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
 
 \FloatBarrier
 
-\section{Scope and Feature Set}
+\section{Design Decisions}
+\label{section:designdecisions}
+
+\subsection{Justification of Feature Inclusion}
 List of features, along with why their inclusion was important.
 
-\textbf{Type Erasure} - A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
+\subsubsection{Type Erasure}
+A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
 
-\textbf{Implementability} - The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
+\subsubsection{Implementability}
+The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
 
-\textbf{Manual memory management} - Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
+\subsubsection{Manual memory management}
+Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
 
+\subsection{Justification of Feature Omission}
 List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
 
-\textbf{Returning mutable references} - In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
+\subsubsection{Returning mutable references}
+In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
 
-\textbf{Reasoning about function side effects/strong updates} - In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
+\subsubsection{Reasoning about function side effects/strong updates}
+In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
 \begin{enumerate}
   \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
   \item It would complicate the type system and syntax further.
   \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
 \end{enumerate}
 
-\textbf{Unboxed types} - All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within.
+\subsubsection{Unboxed types}
+All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within.
 
-\textbf{Primitive data types} - As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
-
+\subsubsection{Primitive data types}
+As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
+Ochre has two goals: to be efficiently executable on hardware and to allow the programmer to encode strong properties in the type system. Section \ref{section:performance} evaluates Ochre against the former goals, and Section \ref{section:typesystem} evaluates against the latter.
 
+The contribution of this research is the design and specification of a language, as opposed to an implementation, so the contributions will be evaluated against how well the design \& type checking algorithm lays the foundations for a future implementation.
+
+\section{Performance}
+\label{section:performance}
+For the presented design to be good, it must describe a language with semantics that can easily be translated into efficient machine code by a compiler. This section discusses the various language features of Ochre and their performance implications.
+
+Due to having a borrow checker, the abstract interpretation introduced in Section \ref{section:abstractinterpretation} statically determines when objects are dropped, which means it can insert any necessary memory frees into the resultant binary, removing the requirement for a garbage collector.
+
+Being able to mutate data structures in place also allows programmers to express efficient algorithms provided they don't break the \textit{aliasing xor mutability} invariant, like Rust.
+
+Ochre does not have native machine integers, which restricts the programmer to using Peano arithmetic or similar. This is disastrous for performance, and would not be tolerated in even the slowest languages. However, the design presented, and its type checker are perfectly compatible with integers (they would be similar to atoms), so while this work does not directly include efficient integers, I consider them compatible with it, and adding them would be a matter of engineering. The decision not to include them is discussed further in Section \ref{section:designdecisions}.
+
+As presented, the type system does not support unboxed pairs, which means Ochre programs as currently stated have a lot of unnecessary indirection in their data structures. Much like not supporting machine integers, this is intolerable for a production systems language. However, the type system as presented is compatible with adding them in the future, and adding them at this point would detract from the core concepts. Appendix 
+
+\section{Type System}
+\label{section:typesystem}
 
 If this project works, I should be able to type-check a program with both mutability and dependent types and reject it if the mutation is done incorrectly. Which examples exactly I will test is yet to be determined, but it will be something along the following lines, probably with a $\Sigma$ type.
 
@@ -2139,7 +2194,8 @@ I do not foresee any ethical issues arising from this project.
 \appendix 
 \addcontentsline{toc}{chapter}{APPENDICES}
 
-\chapter{Formal Verification using (Dependent) Types}
+\chapter{Appendicies}
+\section{Formal Verification using (Dependent) Types}
 \label{verificationwithtypes}
 
 The primary motivation behind adding dependent types to a language is so you can perform theorem proving/formal verification in the type system. In some languages, like Lean, this is done to mechanize mathematical proofs to prevent errors and/or shorten the review process; in other languages, like F*, Idris or ATS this is done to allow the programmer to reason about the runtime properties of their programs. However, they are all just pure functional languages with dependent types, whether you choose to use this expressive power for maths or programs the underlying type system is the same.
@@ -2200,5 +2256,64 @@ This cannot be represented in Haskell, because $(\textbf{n}: \mathbb{Z}) \righta
 % what is formal verification
 % outline of various methods for doing it
 
+\section{Supporting Unboxed Pairs}
+\label{appendix:unbox}
+While atoms, functions, and references are unboxed in Ochre, pairs are always heap-allocated. As discussed in Section \ref{section:performance}, this would hinder the performance of compiled Ochre programs. This appendix lays out a rough plan for adding unboxed types to the formal semantics for Ochre, to make the point that the research as presented is compatible with such an extension.
+
+\textbf{Add $\kw{box} \, t$, a new type which represents an explicit heap allocation}, along with corresponding constructors and eliminators. This is required so the programmer can heap allocate objects whose size is not comptime known.
+
+\textbf{Edit the abstract interpretations to pass around (type, size) pairs instead of just types}. This would involve all read arrows returning the size of the value being read, and all write arrows taking the size of the data being written.
+
+The size of pairs is the sum of the size of the elements in the pair. Because the type of the right-hand side can depend on the left, this can cause some sizes to be unknown.
+
+% With pairs being boxed, this isn't required, because every type is one machine word long (pairs are a pointer to a heap allocation of two values, and pointers are a single word). The definition for size on statements and values would look something like the 
+
+% \begin{figure}[H]
+%   \small
+%   \centering
+%   \begin{mathpar}
+%     \begin{array}{c|c}
+%       t & \odef{\kw{size}}{t} \\
+%       \hline
+
+%       \\(t, T \rightarrow S) &
+%       \inferrule{
+%         \Omega \vdash \size{t} = l \\\\
+%         \Omega \vdash T \erasedwritearrow t \dashv \Omega' \\\\
+%         \Omega' \vdash \size{S} = r
+%       }{
+%         \Omega \vdash \size{(t, T \rightarrow S)} = l + r
+%       } \\
+
+%       \\M &
+%       \inferrule{
+%         M \textit{is not a pair}
+%       }{
+%         \Omega \vdash \size{M} = 1
+%       } \\
+
+%     \end{array}
+
+%     \begin{array}{c|c}
+%       S & \odef{\kw{size}}{S} \\
+%       \hline
+
+%       \\M &
+%       \inferrule{
+%         \\
+%       }{
+%         \Omega \vdash 
+%       } \\
+
+%       \\M &
+%       \inferrule{
+%         M \textit{is not a pair}
+%       }{
+%         \size{M} = 1
+%       } \\
+
+%     \end{array}
+%   \end{mathpar}
+% \end{figure}
 
 \end{document}
