@@ -43,6 +43,8 @@
 \usepackage{placeins}
 \usepackage{scalerel}
 \usepackage{amssymb}
+\usepackage{tikz,lipsum,lmodern}
+\usepackage[most]{tcolorbox}
 
 \makeatletter
 \providecommand{\leftsquigarrow}{%
@@ -78,7 +80,7 @@
   \newcommand{\Rule}[1]{\hyperlink{#1}{\TirName {#1}}}
 
 \newcommand{\sslash}{\mathbin{/\mkern-6mu/}}
-\newcommand{\comment}[1]{\textcolor{gray}{\sslash\textit{ #1}}}
+\newcommand{\ocomment}[1]{\ensuremath{\textcolor{gray}{\sslash\textit{ #1}}}}
 \newcommand{\grayit}[1]{\textcolor{gray}{\textit{#1}}}
 % \newcommand{\codeexample}[2]{
 %   \begin{minted}[linenos, numbersep=-5pt]{rust}
@@ -178,13 +180,20 @@
 \newcommand{\odef}[2]{\ensuremath{\langle \textit{def.} \, #1 \, \textit{for} \, #2 \rangle}}
 \newcommand{\allarrows}{\ensuremath{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow }}
 \newcommand{\abstractarrows}{\ensuremath{ \erasedreadarrow, \readarrowabs, \movearrowabs, \writearrowabs, \narrowarrowabs, \erasedwritearrow }}
-\newcommand{\concretearrows}{\ensuremath{ \readarrowconc, \movearrowconc, \writearrowconc, \narrowarrowconc }}
+\newcommand{\concreadarrows}{\ensuremath{ \readarrowconc, \movearrowconc }}
+\newcommand{\concwritearrows}{\ensuremath{ \writearrowconc, \narrowarrowconc }}
+\newcommand{\concarrows}{\ensuremath{ \concreadarrows , \concwritearrows }}
 \newcommand{\drop}[1]{\ensuremath{ \kw{drop} \, #1 }}
 \newcommand{\concrete}[1]{\ensuremath{ \kw{concrete} \, #1 }}
 \newcommand{\oabstract}[1]{\ensuremath{ \kw{abstract} \, #1 }}
 \newcommand{\runtime}[1]{\kw{runtime} \, #1}
 \newcommand{\comptime}[1]{\kw{comptime} \, #1}
 \newcommand{\size}[1]{\kw{size} \, #1}
+\newcommand{\oread}[1]{\ensuremath{\kw{read} \, #1}}
+\newcommand{\owrite}[1]{\ensuremath{\kw{write} \, #1}}
+% \newcommand{\oif}[2]{\ensuremath{\text{if   } #1 \text{   then   } #2}}
+\newcommand{\oif}[2]{\ensuremath{#2 \, \, (\text{if    } #1)}}
+\newcommand{\oimplies}[2]{\ensuremath{\left(#1\right) \text{   implies   } \left(#2\right)}}
 
 \newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
 
@@ -220,15 +229,14 @@
 %\usepackage{color}
 %\usepackage[tight,ugly]{units}
 %\usepackage{float}
-%\usepackage{tcolorbox}
 %\usepackage[colorinlistoftodos]{todonotes}
 % \usepackage{ntheorem}
 % \theoremstyle{break}
-% \newtheorem{lemma}{Lemma}
-% \newtheorem{theorem}{Theorem}
-% \newtheorem{remark}{Remark}
-% \newtheorem{definition}{Definition}
-% \newtheorem{proof}{Proof}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{remark}{Remark}
+\newtheorem{definition}{Definition}
+\newtheorem{proof}{Proof}
 
 
 %%% Default fonts
