@@ -1568,49 +1568,49 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
       \right]$
     } \\
 
-    \\\mono{M:T} &
+    % \\\mono{M:T} &
     
-    \multicolumn{3}{c}{
-      $\forall \diamond \in \{ \erasedreadarrow, \readarrowabs, \movearrowabs \}. \left[
-        \vcenter{\inferrule{
-          {\begin{aligned}
-            & \Omega \vdash M \diamond m \dashv \Omega' \\
-            & \Omega' \vdash T \erasedreadarrow t \\
-            & \Omega' \vdash m \subtype t
-          \end{aligned}}
-        }{
-          \Omega \vdash M\mono{:}T \diamond t \dashv \Omega'
-        }}
-      \right]$
-    } &
-    \multicolumn{3}{c}{
-      $\forall \diamond \in \{ \erasedwritearrow, \narrowarrowabs, \writearrowabs \}. \left[
-        \raisebox{-2ex}{$\dfrac{
-          \begin{array}{cl}
-            \Omega \vdash M \diamond m \dashv \Omega' \\
-            \Omega' \vdash T \erasedwritearrow t \\
-            \Omega' \vdash m \subtype t
-          \end{array}
-        }{
-          \Omega \vdash M\mono{:}T \diamond t \dashv \Omega'
-        }$}
-      \right]$
-    } \\
+    % \multicolumn{3}{c}{
+    %   $\forall \diamond \in \{ \erasedreadarrow, \readarrowabs, \movearrowabs \}. \left[
+    %     \vcenter{\inferrule{
+    %       {\begin{aligned}
+    %         & \Omega \vdash M \diamond m \dashv \Omega' \\
+    %         & \Omega' \vdash T \erasedreadarrow t \\
+    %         & \Omega' \vdash m \subtype t
+    %       \end{aligned}}
+    %     }{
+    %       \Omega \vdash M\mono{:}T \diamond t \dashv \Omega'
+    %     }}
+    %   \right]$
+    % } &
+    % \multicolumn{3}{c}{
+    %   $\forall \diamond \in \{ \erasedwritearrow, \narrowarrowabs, \writearrowabs \}. \left[
+    %     \raisebox{-2ex}{$\dfrac{
+    %       \begin{array}{cl}
+    %         \Omega \vdash M \diamond m \dashv \Omega' \\
+    %         \Omega' \vdash T \erasedwritearrow t \\
+    %         \Omega' \vdash m \subtype t
+    %       \end{array}
+    %     }{
+    %       \Omega \vdash M\mono{:}T \diamond t \dashv \Omega'
+    %     }$}
+    %   \right]$
+    % } \\
 
-    \\ &
-    &
-    \multicolumn{4}{c}{
-      $\forall \diamond \in \{ \concretearrows \}. \left[
-        \raisebox{-0ex}{$\dfrac{
-          \begin{array}{cl}
-            \Omega \vdash M \diamond m \dashv \Omega' & \comment{ignore types} \\
-          \end{array}
-        }{
-          \Omega \vdash M\mono{:}T \diamond m \dashv \Omega'
-        }$}
-      \right]$
-    } &
-    \\
+    % \\ &
+    % &
+    % \multicolumn{4}{c}{
+    %   $\forall \diamond \in \{ \concretearrows \}. \left[
+    %     \raisebox{-0ex}{$\dfrac{
+    %       \begin{array}{cl}
+    %         \Omega \vdash M \diamond m \dashv \Omega' & \comment{ignore types} \\
+    %       \end{array}
+    %     }{
+    %       \Omega \vdash M\mono{:}T \diamond m \dashv \Omega'
+    %     }$}
+    %   \right]$
+    % } &
+    % \\
 
 
 
@@ -1777,451 +1777,451 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
 \label{fig:readtable}
 \end{figure}
 
-% \begin{figure}
-%   \begin{adjustwidth}{-1cm}{-1cm}
-%   \small
-%   \centering
-%   \begin{tabular}{c|ccc}
-%     $M$ & $\Omega \vdash M \writearrow v \dashv \Omega' $ & $\Omega \vdash M \narrowarrow v \dashv \Omega' $ & $\Omega \vdash T \erasedwritearrow t \dashv \Omega' $ \\
-%     \hline
+\begin{figure}
+  \begin{adjustwidth}{-1cm}{-1cm}
+  \small
+  \centering
+  \begin{tabular}{c|ccc}
+    $M$ & $\Omega \vdash M \writearrow v \dashv \Omega' $ & $\Omega \vdash M \narrowarrow v \dashv \Omega' $ & $\Omega \vdash T \erasedwritearrow t \dashv \Omega' $ \\
+    \hline
 
-%     \\\mono{x} or \mono{X} &
-%     \inferrule[]{
-%       \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
-%     }{
-%       \Omega \vdash x \writearrow v \dashv \Omega'
-%     } &
-%     \inferrule[]{
-%       \Omega' = \Omega\left[\frac{\absmap{x}{v'}}{\absmap{x}{v}}\right]\\\\
-%       m':m
-%     }{
-%       \Omega \vdash x \narrowarrow m' \dashv \Omega'
-%     } &
-%     \inferrule[]{
-%       \Omega' = \Omega\left[\frac{\absmap{x}{v'}}{\absmap{x}{v}}\right]\\\\
-%       m':m
-%     }{
-%       \Omega \vdash X \erasedwritearrow m' \dashv \Omega'
-%     }
-%     \\
+    \\\mono{x} or \mono{X} &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
+    }{
+      \Omega \vdash x \writearrow v \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{v'}}{\absmap{x}{v}}\right]\\\\
+      m':m
+    }{
+      \Omega \vdash x \narrowarrow m' \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{v'}}{\absmap{x}{v}}\right]\\\\
+      m':m
+    }{
+      \Omega \vdash X \erasedwritearrow m' \dashv \Omega'
+    }
+    \\
 
-%     \\$M\mono{,}N$ &
-%     \multicolumn{3}{c}{
-%       $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
-%         \vcenter{\inferrule[]{
-%           \Omega \vdash T \erasedwritearrow m \dashv \Omega'\\\\
-%           \Omega' \vdash U \erasedreadarrow n\\\\
-%           \Omega \vdash M \diamond m \dashv \Omega''\\\\
-%           \Omega'' \vdash N \diamond n \dashv \Omega'''
-%         }{
-%           \Omega \vdash M\mono{,}N \,\diamond\, (m, T \rightarrow U) \dashv \Omega'''
-%         }}
-%       \right]$
-%     }
-%     \\
+    \\$M\mono{,}N$ &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
+        \vcenter{\inferrule[]{
+          \Omega \vdash T \erasedwritearrow m \dashv \Omega'\\\\
+          \Omega' \vdash U \erasedreadarrow n\\\\
+          \Omega \vdash M \diamond m \dashv \Omega''\\\\
+          \Omega'' \vdash N \diamond n \dashv \Omega'''
+        }{
+          \Omega \vdash M\mono{,}N \,\diamond\, (m, T \rightarrow U) \dashv \Omega'''
+        }}
+      \right]$
+    }
+    \\
 
-%     \\\mono{$M$.0} &
-%     \inferrule[]{
-%       \Omega \vdash M \writearrow (\bot, n, \mono{\_} \rightarrow U) \dashv \Omega'\\\\
-%       \Omega' \vdash M \writearrow (m, T \rightarrow U) \dashv \Omega''
-%     }{
-%       \Omega \vdash \mono{$M$.0} \writearrow m \dashv \Omega''
-%     } &
-%     \multicolumn{2}{c}{
-%       $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
-%         \vcenter{\inferrule[]{
-%           \Omega \vdash M \diamond (\bot, n, \mono{\_} \rightarrow U) \dashv \Omega'
-%         }{
-%           \Omega \vdash \mono{$M$.0} \diamond m \dashv \Omega''
-%         }}
-%       \right]$
-%     }
-%     \\
+    \\\mono{$M$.0} &
+    \inferrule[]{
+      \Omega \vdash M \writearrow (\bot, n, \mono{\_} \rightarrow U) \dashv \Omega'\\\\
+      \Omega' \vdash M \writearrow (m, T \rightarrow U) \dashv \Omega''
+    }{
+      \Omega \vdash \mono{$M$.0} \writearrow m \dashv \Omega''
+    } &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
+        \vcenter{\inferrule[]{
+          \Omega \vdash M \diamond (\bot, n, \mono{\_} \rightarrow U) \dashv \Omega'
+        }{
+          \Omega \vdash \mono{$M$.0} \diamond m \dashv \Omega''
+        }}
+      \right]$
+    }
+    \\
 
-%     \\\mono{$M$.1} &
-%     \inferrule[]{
-%       \Omega \vdash M \writearrow (m, \bot, T \rightarrow \mono{\_}) \dashv \Omega'\\\\
-%       U = \kw{translate} \, n \\\\
-%       \Omega' \vdash M \writearrow (m, T \rightarrow U) \dashv \Omega''
-%     }{
-%       \Omega \vdash \mono{$M$.1} \writearrow n \dashv \Omega''
-%     }
-%     \\
+    \\\mono{$M$.1} &
+    \inferrule[]{
+      \Omega \vdash M \writearrow (m, \bot, T \rightarrow \mono{\_}) \dashv \Omega'\\\\
+      U = \kw{translate} \, n \\\\
+      \Omega' \vdash M \writearrow (m, T \rightarrow U) \dashv \Omega''
+    }{
+      \Omega \vdash \mono{$M$.1} \writearrow n \dashv \Omega''
+    }
+    \\
 
-%     \\\mono{\_} &
-%     \inferrule[]{
-%       \Omega \vdash \drop{v} \dashv \Omega'
-%     }{
-%       \Omega \vdash \mono{\_} \writearrow v \dashv \Omega'
-%     } &
-%     \multicolumn{2}{c}{
-%       $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
-%         \inferrule[]{
-%         }{
-%           \Omega \vdash \mono{\_} \readarrow \bot  
-%         }
-%       \right]$
-%     }
-%     \\
+    \\\mono{\_} &
+    \inferrule[]{
+      \Omega \vdash \drop{v} \dashv \Omega'
+    }{
+      \Omega \vdash \mono{\_} \writearrow v \dashv \Omega'
+    } &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
+        \inferrule[]{
+        }{
+          \Omega \vdash \mono{\_} \readarrow \bot  
+        }
+      \right]$
+    }
+    \\
 
-%     \\\mono{*}
-%     \\
+    \\\mono{*}
+    \\
 
-%     \\\mono{*$M$} &
-%     \inferrule[]{
-%       \Omega \vdash M \movearrow \borrowm{l}{\bot} \dashv \Omega'\\\\
-%       \Omega' \vdash M \writearrow \borrowm{l}{v} \dashv \Omega''
-%     }{
-%       \Omega \vdash \mono{*$M$} \writearrow v \dashv \Omega''
-%     } &
-%     \inferrule[]{
-%       \Omega \vdash M \readarrow \borrows{l}{v'} \dashv \Omega'\\\\
-%       \Omega'' = \Omega'[\loans{l}{v'}/\loans{l}{v}]\\\\
-%       v':v
-%     }{
-%       \Omega \vdash \mono{*$M$} \narrowarrow v' \dashv \Omega'
-%     }
-%     \\
+    \\\mono{*$M$} &
+    \inferrule[]{
+      \Omega \vdash M \movearrow \borrowm{l}{\bot} \dashv \Omega'\\\\
+      \Omega' \vdash M \writearrow \borrowm{l}{v} \dashv \Omega''
+    }{
+      \Omega \vdash \mono{*$M$} \writearrow v \dashv \Omega''
+    } &
+    \inferrule[]{
+      \Omega \vdash M \readarrow \borrows{l}{v'} \dashv \Omega'\\\\
+      \Omega'' = \Omega'[\loans{l}{v'}/\loans{l}{v}]\\\\
+      v':v
+    }{
+      \Omega \vdash \mono{*$M$} \narrowarrow v' \dashv \Omega'
+    }
+    \\
 
-%   \end{tabular}
-% \end{adjustwidth}
-% \caption{writetable}
-% \label{fig:writetable}
-% \end{figure}
+  \end{tabular}
+\end{adjustwidth}
+\caption{writetable}
+\label{fig:writetable}
+\end{figure}
 
-% \begin{figure}
-%   \begin{adjustwidth}{-1cm}{-1cm}
-%   \small
-%   \begin{tabular}{c|ccc}
-%     $M$ & $\Omega \vdash M \movearrow v \dashv \Omega'$ & $\Omega \vdash T \erasedreadarrow t$ \\
-%     \hline
+\begin{figure}
+  \begin{adjustwidth}{-1cm}{-1cm}
+  \small
+  \begin{tabular}{c|ccc}
+    $M$ & $\Omega \vdash M \movearrow v \dashv \Omega'$ & $\Omega \vdash T \erasedreadarrow t$ \\
+    \hline
 
-%     \\\mono{\&}M &
-%     \inferrule[]{
-%       \Omega \vdash M \readarrow m\\\\
-%       \Omega \vdash M \narrowarrow \loans{l}{m} \dashv \Omega'
-%     }{
-%       \Omega \vdash \mono{\&}M \movearrow \borrows{l}{m} \dashv \Omega'
-%     }
-%     \\
+    \\\mono{\&}M &
+    \inferrule[]{
+      \Omega \vdash M \readarrow m\\\\
+      \Omega \vdash M \narrowarrow \loans{l}{m} \dashv \Omega'
+    }{
+      \Omega \vdash \mono{\&}M \movearrow \borrows{l}{m} \dashv \Omega'
+    }
+    \\
 
-%     \\\mono{\&mut} M &
-%     \inferrule[]{
-%       \Omega \vdash M \movearrow m \dashv \Omega'\\\\
-%       \Omega' \vdash M \writearrow \kw{loan}^m\,l \dashv \Omega''
-%     }{
-%       \Omega \vdash \mono{\&mut} M \movearrow \kw{borrow}^m\,l\,m \dashv \Omega''
-%     }
-%     \\
+    \\\mono{\&mut} M &
+    \inferrule[]{
+      \Omega \vdash M \movearrow m \dashv \Omega'\\\\
+      \Omega' \vdash M \writearrow \kw{loan}^m\,l \dashv \Omega''
+    }{
+      \Omega \vdash \mono{\&mut} M \movearrow \kw{borrow}^m\,l\,m \dashv \Omega''
+    }
+    \\
 
-%     \\M N &
-%     $\dfrac{
-%       \begin{array}{ll}
-%         \Omega \vdash F \readarrow (T \rightarrow U) & \comment{eval function} \\
-%         \Omega \vdash X \movearrow v \dashv \Omega' & \comment{eval argument} \\
-%         \Omega' \vdash T \erasedwritearrow v \dashv \Omega'' & \comment{calculate return type} \\
-%         \Omega'' \vdash U \erasedreadarrow w \dashv \Omega' & \comment{calculate return type} \\
-%         \multicolumn{2}{c}{\text{maximally widen $v$ to $v'$ such that $T \erasedwritearrow v'$}} \\
-%         \Omega' \vdash \text{drop}\,v' \dashv \Omega''' & \comment{propogate side effects} \\
-%       \end{array}
-%     }{
-%       \Omega \vdash F X \movearrow w \dashv \Omega'''
-%     }$ &
-%     $\dfrac{
-%       \begin{array}{ll}
-%         \Omega \vdash F \erasedreadarrow (T \rightarrow U) & \comment{eval function} \\
-%         \Omega \vdash X \erasedreadarrow v & \comment{eval argument} \\
-%         \Omega \vdash T \erasedwritearrow v \dashv \Omega' & \comment{calculate return} \\
-%         \Omega' \vdash U \erasedreadarrow w' & \comment{calculate return}
-%       \end{array}
-%     }{
-%       \Omega \vdash F X \erasedreadarrow w
-%     }$ &
-%     \\
+    \\M N &
+    $\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash F \readarrow (T \rightarrow U) & \comment{eval function} \\
+        \Omega \vdash X \movearrow v \dashv \Omega' & \comment{eval argument} \\
+        \Omega' \vdash T \erasedwritearrow v \dashv \Omega'' & \comment{calculate return type} \\
+        \Omega'' \vdash U \erasedreadarrow w \dashv \Omega' & \comment{calculate return type} \\
+        \multicolumn{2}{c}{\text{maximally widen $v$ to $v'$ such that $T \erasedwritearrow v'$}} \\
+        \Omega' \vdash \text{drop}\,v' \dashv \Omega''' & \comment{propogate side effects} \\
+      \end{array}
+    }{
+      \Omega \vdash F X \movearrow w \dashv \Omega'''
+    }$ &
+    $\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash F \erasedreadarrow (T \rightarrow U) & \comment{eval function} \\
+        \Omega \vdash X \erasedreadarrow v & \comment{eval argument} \\
+        \Omega \vdash T \erasedwritearrow v \dashv \Omega' & \comment{calculate return} \\
+        \Omega' \vdash U \erasedreadarrow w' & \comment{calculate return}
+      \end{array}
+    }{
+      \Omega \vdash F X \erasedreadarrow w
+    }$ &
+    \\
 
-%     \\M \mono{->} T (\mono{\{}N\mono{\}}) &
-%     $\dfrac{
-%       \begin{array}{ll}
-%         \Omega \vdash M \erasedwritearrow m \dashv \Omega' & \comment{calculate widest input} \\
-%         \Omega' \vdash T \erasedreadarrow t & \comment{calculate return type} \\
-%         \Omega' \vdash N \movearrow n \dashv \Omega & \comment{body must reset environment} \\
-%         n: t & \comment{check body}
-%       \end{array}
-%     }{
-%       \Omega \vdash M \mono{->} T \mono{\{} N \mono{\}} \movearrow T \rightarrow U
-%     }$ &
-%     $\dfrac{
-%       \begin{array}{cl}
-%         \Omega \vdash T \erasedwritearrow t \dashv \Omega' & \comment{get input type} \\
-%         \Omega' \vdash U \erasedreadarrow u \dashv \Omega & \comment{check it works with body}
-%       \end{array}
-%     }{
-%       \Omega \vdash T \mono{->} U \erasedreadarrow T \rightarrow U
-%     }$ &
-%     \\
+    \\M \mono{->} T (\mono{\{}N\mono{\}}) &
+    $\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash M \erasedwritearrow m \dashv \Omega' & \comment{calculate widest input} \\
+        \Omega' \vdash T \erasedreadarrow t & \comment{calculate return type} \\
+        \Omega' \vdash N \movearrow n \dashv \Omega & \comment{body must reset environment} \\
+        n: t & \comment{check body}
+      \end{array}
+    }{
+      \Omega \vdash M \mono{->} T \mono{\{} N \mono{\}} \movearrow T \rightarrow U
+    }$ &
+    $\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash T \erasedwritearrow t \dashv \Omega' & \comment{get input type} \\
+        \Omega' \vdash U \erasedreadarrow u \dashv \Omega & \comment{check it works with body}
+      \end{array}
+    }{
+      \Omega \vdash T \mono{->} U \erasedreadarrow T \rightarrow U
+    }$ &
+    \\
 
-%     \\T \mono{|} U &
-%     &
-%     \inferrule[]{
-%       \Omega \vdash T \erasedreadarrow t \dashv \Omega'\\\\
-%       \Omega' \vdash U \erasedreadarrow u \dashv \Omega''
-%     }{
-%       \Omega \vdash T \mono{|} U \erasedreadarrow t \cup u \dashv \Omega''
-%     }
-%     \\
+    \\T \mono{|} U &
+    &
+    \inferrule[]{
+      \Omega \vdash T \erasedreadarrow t \dashv \Omega'\\\\
+      \Omega' \vdash U \erasedreadarrow u \dashv \Omega''
+    }{
+      \Omega \vdash T \mono{|} U \erasedreadarrow t \cup u \dashv \Omega''
+    }
+    \\
 
-% \end{tabular}
-% \end{adjustwidth}
-% \caption{readonlytable}
-% \label{fig:readonlytable}
-% \end{figure}
+\end{tabular}
+\end{adjustwidth}
+\caption{readonlytable}
+\label{fig:readonlytable}
+\end{figure}
 
-% \begin{figure}
-%   \begin{adjustwidth}{-1cm}{-1cm}
-%   \small
-%   \centering
-%   \begin{tabular}{p{2.5cm}|cc}
-%     $S$ & $\Omega \vdash S : S_t \movearrow v$ & $\Omega \vdash S \erasedreadarrow t$ \\
-%     \hline
+\begin{figure}
+  \begin{adjustwidth}{-1cm}{-1cm}
+  \small
+  \centering
+  \begin{tabular}{p{2.5cm}|cc}
+    $S$ & $\Omega \vdash S : S_t \movearrow v$ & $\Omega \vdash S \erasedreadarrow t$ \\
+    \hline
 
-%     \\$M$ &
-%     $\forall \diamond \in \{ \writearrow, \erasedwritearrow \} \raisebox{-5ex}{$\dfrac{
-%       \begin{array}{cl}
-%         \Omega \vdash S_t \erasedreadarrow t \\
-%         \Omega \vdash M \movearrow v \dashv \Omega' \\
-%         \Omega' \vdash \kw{drop} \\
-%         v \subtype t
-%       \end{array}
-%     }{
-%       \Omega \vdash M \subtype S_t \movearrow w
-%     }$}$ &
-%     \raisebox{-5ex}{$\dfrac{
-%       \begin{array}{cl}
-%         \Omega \vdash T \erasedreadarrow t \dashv \Omega' \\
-%         \Omega' \vdash \kw{drop}
-%       \end{array}
-%     }{
-%       \Omega \vdash T \erasedreadarrow t
-%     }$}  \\
+    \\$M$ &
+    $\forall \diamond \in \{ \writearrow, \erasedwritearrow \} \raisebox{-5ex}{$\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash S_t \erasedreadarrow t \\
+        \Omega \vdash M \movearrow v \dashv \Omega' \\
+        \Omega' \vdash \kw{drop} \\
+        v \subtype t
+      \end{array}
+    }{
+      \Omega \vdash M \subtype S_t \movearrow w
+    }$}$ &
+    \raisebox{-5ex}{$\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash T \erasedreadarrow t \dashv \Omega' \\
+        \Omega' \vdash \kw{drop}
+      \end{array}
+    }{
+      \Omega \vdash T \erasedreadarrow t
+    }$}  \\
 
-%     \\$M \mono{=} N \mono{;} S$ &
-%     \raisebox{-6ex}{$\dfrac{
-%       \begin{array}{cl}
-%         \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
-%         \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
-%         \Omega \vdash S_t \erasedreadarrow t \\
-%         \Omega'' \vdash S_t \erasedreadarrow t' \\
-%         t' \subtype t \\
-%         \Omega'' \vdash S \subtype S_t \movearrow w
-%       \end{array}
-%     }{
-%       \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \movearrow w
-%     }$} &
-%     \raisebox{-6ex}{$\dfrac{
-%       \begin{array}{cl}
-%         \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
-%         \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
-%         \Omega'' \vdash S_t \erasedreadarrow w
-%       \end{array}
-%     }{
-%       \Omega \vdash M \mono{=} N \mono{;} S_t \erasedreadarrow w
-%     }$} \\
-%     % \multicolumn{2}{c}{
-%     %   $\forall \diamond \in \{ \movearrow, \erasedreadarrow \} \left[
-%     %     \raisebox{-6ex}{$\dfrac{
-%     %       \begin{array}{cl}
-%     %         \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
-%     %         \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
-%     %         \Omega \vdash S_t \erasedreadarrow t \\
-%     %         \Omega'' \vdash S_t \erasedreadarrow t' \\
-%     %         t' \subtype t \\
-%     %         \Omega'' \vdash S \subtype S_t \diamond w
-%     %       \end{array}
-%     %     }{
-%     %       \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \diamond w
-%     %     }$}
-%     %   \right]$
-%     % } \\
+    \\$M \mono{=} N \mono{;} S$ &
+    \raisebox{-6ex}{$\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
+        \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
+        \Omega \vdash S_t \erasedreadarrow t \\
+        \Omega'' \vdash S_t \erasedreadarrow t' \\
+        t' \subtype t \\
+        \Omega'' \vdash S \subtype S_t \movearrow w
+      \end{array}
+    }{
+      \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \movearrow w
+    }$} &
+    \raisebox{-6ex}{$\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
+        \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
+        \Omega'' \vdash S_t \erasedreadarrow w
+      \end{array}
+    }{
+      \Omega \vdash M \mono{=} N \mono{;} S_t \erasedreadarrow w
+    }$} \\
+    % \multicolumn{2}{c}{
+    %   $\forall \diamond \in \{ \movearrow, \erasedreadarrow \} \left[
+    %     \raisebox{-6ex}{$\dfrac{
+    %       \begin{array}{cl}
+    %         \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
+    %         \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
+    %         \Omega \vdash S_t \erasedreadarrow t \\
+    %         \Omega'' \vdash S_t \erasedreadarrow t' \\
+    %         t' \subtype t \\
+    %         \Omega'' \vdash S \subtype S_t \diamond w
+    %       \end{array}
+    %     }{
+    %       \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \diamond w
+    %     }$}
+    %   \right]$
+    % } \\
 
-%     \\$M \mono{:=} N \mono{;} S$ &
-%     $\vcenter{\inferrule[]{
-%       \Omega \vdash N \movearrow v \dashv \Omega' \\\\
-%       \Omega' \vdash M \writearrow v \dashv \Omega'' \\\\
-%       \Omega \vdash S_t \erasedreadarrow t \\\\
-%       \Omega'' \vdash S_t \erasedreadarrow t' \\\\
-%       t' \subtype t \\\\
-%       \Omega'' \vdash S \subtype S_t \movearrow w
-%     }{
-%       \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \movearrow w
-%     }}$ \\
+    \\$M \mono{:=} N \mono{;} S$ &
+    $\vcenter{\inferrule[]{
+      \Omega \vdash N \movearrow v \dashv \Omega' \\\\
+      \Omega' \vdash M \writearrow v \dashv \Omega'' \\\\
+      \Omega \vdash S_t \erasedreadarrow t \\\\
+      \Omega'' \vdash S_t \erasedreadarrow t' \\\\
+      t' \subtype t \\\\
+      \Omega'' \vdash S \subtype S_t \movearrow w
+    }{
+      \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \movearrow w
+    }}$ \\
 
-%     \\\mono{match $M$ \{}\newline
-%       \mono{  }$M'_0$ \mono{=>} $S_0$ \mono{,} \newline
-%       \mono{    }\vdots\newline
-%       \mono{  }$M'_k$ \mono{=>} $S_k$ \mono{,} \newline
-%     \mono{\}}&
-%     \multicolumn{2}{c}{
-%       $\forall \diamond \in \{ \movearrow, \erasedreadarrow \}. \left[
-%         \raisebox{-5ex}{$\dfrac{
-%           \begin{array}{cclc}
-%             & \Omega \vdash M \diamond m \dashv \Omega' & \comment{eval interogant} & \\
-%             \forall i.[ & \Omega' \vdash M \writearrow m_i \dashv \Omega'_i & \comment{branch input} & ] \\
-%             \forall i.[ & \Omega'_i \vdash S_i : S_t \diamond n_i & \comment{branch output} & ] \\
-%             & n = \bigsqcup_i [ n_i ]\\
-%           \end{array}
-%         }{
-%           \Omega \vdash \mono{case} \, M \mono{\{} 'a_0 \mono{=>} S_0, ... \mono{\}} : S_t \diamond n \dashv \Omega''
-%         }$}
-%       \right]$
-%     }
-%     \\
+    \\\mono{match $M$ \{}\newline
+      \mono{  }$M'_0$ \mono{=>} $S_0$ \mono{,} \newline
+      \mono{    }\vdots\newline
+      \mono{  }$M'_k$ \mono{=>} $S_k$ \mono{,} \newline
+    \mono{\}}&
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \movearrow, \erasedreadarrow \}. \left[
+        \raisebox{-5ex}{$\dfrac{
+          \begin{array}{cclc}
+            & \Omega \vdash M \diamond m \dashv \Omega' & \comment{eval interogant} & \\
+            \forall i.[ & \Omega' \vdash M \writearrow m_i \dashv \Omega'_i & \comment{branch input} & ] \\
+            \forall i.[ & \Omega'_i \vdash S_i : S_t \diamond n_i & \comment{branch output} & ] \\
+            & n = \bigsqcup_i [ n_i ]\\
+          \end{array}
+        }{
+          \Omega \vdash \mono{case} \, M \mono{\{} 'a_0 \mono{=>} S_0, ... \mono{\}} : S_t \diamond n \dashv \Omega''
+        }$}
+      \right]$
+    }
+    \\
 
-%   \end{tabular}
-% \end{adjustwidth}
-% \caption{statementtable}
-% \label{fig:statementtable}
-% \end{figure}
+  \end{tabular}
+\end{adjustwidth}
+\caption{statementtable}
+\label{fig:statementtable}
+\end{figure}
 
-% \FloatBarrier
-% \subsection{Type Operations}
+\FloatBarrier
+\subsection{Type Operations}
 
-% \begin{figure}[H]
-%   \begin{adjustwidth}{-1cm}{-1cm}
-%   \small
-%   \centering
-%   \begin{tabular}{c|ccc}
-%     $v$ & $\Omega \vdash t \subtype u $ & $\Omega \vdash v = t \typeunion u$ & $\Omega \vdash v = t \typeinter u$ \\
-%     \hline
+\begin{figure}[H]
+  \begin{adjustwidth}{-1cm}{-1cm}
+  \small
+  \centering
+  \begin{tabular}{c|ccc}
+    $v$ & $\Omega \vdash t \subtype u $ & $\Omega \vdash v = t \typeunion u$ & $\Omega \vdash v = t \typeinter u$ \\
+    \hline
 
-%     \\$\{ \overrightarrow{\atom{a}} \}$ &
-%     \inferrule{
-%       \{ \overrightarrow{\atom{a}} \} \subseteq  \{ \overrightarrow{\atom{b}} \}
-%     }{
-%       \Omega \vdash \{ \overrightarrow{\atom{a}} \} \subtype \{ \overrightarrow{\atom{b}} \}
-%     } &
-%     \inferrule{
-%       v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
-%     }{
-%       \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
-%     } &
-%     \inferrule{
-%       v = \{ \overrightarrow{\atom{a}} \} \cap  \{ \overrightarrow{\atom{b}} \}
-%     }{
-%       \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeinter \{ \overrightarrow{\atom{b}} \}
-%     } \\
+    \\$\{ \overrightarrow{\atom{a}} \}$ &
+    \inferrule{
+      \{ \overrightarrow{\atom{a}} \} \subseteq  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash \{ \overrightarrow{\atom{a}} \} \subtype \{ \overrightarrow{\atom{b}} \}
+    } &
+    \inferrule{
+      v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
+    } &
+    \inferrule{
+      v = \{ \overrightarrow{\atom{a}} \} \cap  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeinter \{ \overrightarrow{\atom{b}} \}
+    } \\
 
-%     \\$(v, T \rightarrow U)$ &
-%     \inferrule{
-%       \Omega \vdash t \subtype t' \\\\
-%       \Omega \vdash T' \erasedwritearrow t \dashv \Omega' \\\\
-%       \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
-%       \Omega'' \vdash S : S' \erasedreadarrow v
-%     }{
-%       \Omega \vdash (t, T \rightarrow S) \subtype (t', T' \rightarrow S')
-%     }&
-%     \inferrule{
-%       \Omega \vdash v'' = v \typeunion v' \\\\
-%       \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\
-%       w = (v'', T'' \rightarrow U'')
-%     }{
-%       \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
-%     }
-%     \\
+    \\$(v, T \rightarrow U)$ &
+    \inferrule{
+      \Omega \vdash t \subtype t' \\\\
+      \Omega \vdash T' \erasedwritearrow t \dashv \Omega' \\\\
+      \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
+      \Omega'' \vdash S : S' \erasedreadarrow v
+    }{
+      \Omega \vdash (t, T \rightarrow S) \subtype (t', T' \rightarrow S')
+    }&
+    \inferrule{
+      \Omega \vdash v'' = v \typeunion v' \\\\
+      \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\
+      w = (v'', T'' \rightarrow U'')
+    }{
+      \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
+    }
+    \\
 
-%     \\$(T \rightarrow U)$ &
-%     \inferrule{
-%       \Omega \vdash T' \maxarrow{\erasedwritearrow} t \dashv \Omega' \\\\
-%       \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
-%       \Omega'' \vdash S \subtype S' \erasedreadarrow v
-%     }{
-%       \Omega \vdash T \rightarrow S \subtype T' \rightarrow S' \dashv \Omega
-%     } &
-%     \inferrule{
-%       v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
-%       \mono{    $T$ => $U$, $T'$ => $U'$ \}})
-%     }{
-%       \Omega \vdash v = (T \rightarrow U) \typeunion (T' \rightarrow U')
-%     }\\
+    \\$(T \rightarrow U)$ &
+    \inferrule{
+      \Omega \vdash T' \maxarrow{\erasedwritearrow} t \dashv \Omega' \\\\
+      \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
+      \Omega'' \vdash S \subtype S' \erasedreadarrow v
+    }{
+      \Omega \vdash T \rightarrow S \subtype T' \rightarrow S' \dashv \Omega
+    } &
+    \inferrule{
+      v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
+      \mono{    $T$ => $U$, $T'$ => $U'$ \}})
+    }{
+      \Omega \vdash v = (T \rightarrow U) \typeunion (T' \rightarrow U')
+    }\\
 
-%     \\$\borrows{l}{v}$ \\
+    \\$\borrows{l}{v}$ \\
 
-%     \\$\borrowm{l}{v}$ \\
+    \\$\borrowm{l}{v}$ \\
 
-%     \\$\loans{l}{v}$ \\
+    \\$\loans{l}{v}$ \\
 
-%     \\$\loanm{l}$ \\
+    \\$\loanm{l}$ \\
 
 
-%   \end{tabular}
-% \end{adjustwidth}
-% \caption{typeoperations}
-% \label{fig:typeoperations}
-% \end{figure}
+  \end{tabular}
+\end{adjustwidth}
+\caption{typeoperations}
+\label{fig:typeoperations}
+\end{figure}
 
-% \FloatBarrier
-% \subsection{Helper Definitions}
-% \FloatBarrier
+\FloatBarrier
+\subsection{Helper Definitions}
+\FloatBarrier
 
-% \subsubsection{Arrow Designations}
-% \begin{figure}[H]
-%   \centering
-%   \small
-%   \begin{mathpar}
-%     \forall \diamond \in \{ \abstractarrows \} \left[
-%       \inferrule{
-%         \\
-%       }{
-%         \oabstract{\diamond}
-%       }\right]
+\subsubsection{Arrow Designations}
+\begin{figure}[H]
+  \centering
+  \small
+  \begin{mathpar}
+    \forall \diamond \in \{ \abstractarrows \} \left[
+      \inferrule{
+        \\
+      }{
+        \oabstract{\diamond}
+      }\right]
 
-%       \forall \diamond \in \{ \concretearrows \} \left[
-%         \inferrule{
-%           \\
-%         }{
-%           \concrete{\diamond}
-%         }
-%       \right]
-%   \end{mathpar}
-%   \caption{Helper designations for arrows}
-%   \label{fig:arrowhelper}
-% \end{figure}
+      \forall \diamond \in \{ \concretearrows \} \left[
+        \inferrule{
+          \\
+        }{
+          \concrete{\diamond}
+        }
+      \right]
+  \end{mathpar}
+  \caption{Helper designations for arrows}
+  \label{fig:arrowhelper}
+\end{figure}
 
-% \FloatBarrier
+\FloatBarrier
 
-% \section{Design Decisions}
-% \label{section:designdecisions}
+\section{Design Decisions}
+\label{section:designdecisions}
 
-% \subsection{Justification of Feature Inclusion}
-% List of features, along with why their inclusion was important.
+\subsection{Justification of Feature Inclusion}
+List of features, along with why their inclusion was important.
 
-% \subsubsection{Type Erasure}
-% A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
+\subsubsection{Type Erasure}
+A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
 
-% \subsubsection{Implementability}
-% The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
+\subsubsection{Implementability}
+The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
 
-% \subsubsection{Manual memory management}
-% Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
+\subsubsection{Manual memory management}
+Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
 
-% \subsection{Justification of Feature Omission}
-% List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
+\subsection{Justification of Feature Omission}
+List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
 
-% \subsubsection{Returning mutable references}
-% In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
+\subsubsection{Returning mutable references}
+In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
 
-% \subsubsection{Reasoning about function side effects/strong updates}
-% In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
-% \begin{enumerate}
-%   \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
-%   \item It would complicate the type system and syntax further.
-%   \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
-% \end{enumerate}
+\subsubsection{Reasoning about function side effects/strong updates}
+In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
+\begin{enumerate}
+  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
+  \item It would complicate the type system and syntax further.
+  \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
+\end{enumerate}
 
-% \subsubsection{Unboxed types}
-% All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within. Unboxed types could be introduced in the future via the method laid out in Appendix \ref{appendix:unbox}.
+\subsubsection{Unboxed types}
+All values in Ochre are one machine word long, which involves pairs being boxed. Unboxing data would require me to reason about the size of types at compile time, which would have complicated the type system further and detracted from the core contributions. Unboxing pairs should be very possible for Ochre in the future because it already has ownership and it will do generics via monomorphisation like Rust and C++. The complexity will arise because, unlike Rust, the type of data can change due to a mutation, and therefore its size. I will get around this via explicit boxing: a pointer to a heap allocation is always one machine word long, so you can change the size of the data behind it without changing the size of the data structure the pointer lies within. Unboxed types could be introduced in the future via the method laid out in Appendix \ref{appendix:unbox}.
 
-% \subsubsection{Primitive data types}
-% As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
+\subsubsection{Primitive data types}
+As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
