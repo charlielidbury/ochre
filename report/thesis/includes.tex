@@ -43,8 +43,31 @@
 \usepackage{placeins}
 \usepackage{scalerel}
 \usepackage{amssymb}
+\usepackage{relsize}
 \usepackage{tikz,lipsum,lmodern}
 \usepackage[most]{tcolorbox}
+\tcbuselibrary{theorems, breakable, skins}
+\newtcbtheorem[number within=section]{Definition}{Definition}%
+    {
+    enhanced, % tcolorbox styles
+    %     %attach boxed title to top center={yshift=-2.5mm},
+        % colback=white, colframe=black, colbacktitle=white, coltitle=black,
+    %     boxed title style={size=small,colframe=white},
+        % fonttitle=\bfseries,
+    %     rounded corners=all,
+    %     toptitle=1ex, top=0.5ex, % a little extra space at top, a little less before content
+    %     titlerule=-1ex, % get rid of separator rule
+    %     title={#1},
+    %     fontupper=\itshape, % make theorem content italics
+    %     description delimiters parenthesis, % parentheses around theorem title
+    %     description font=\normalfont,% no bold for theorem title
+    %     separator sign none,% no punctuation after theorem name
+    %     breakable
+    }{th}
+\newtcbtheorem[number within=section]{Theorem}{Theorem}%
+    {
+    enhanced,
+    }{th}
 
 \makeatletter
 \providecommand{\leftsquigarrow}{%
@@ -82,6 +105,7 @@
 \newcommand{\sslash}{\mathbin{/\mkern-6mu/}}
 \newcommand{\ocomment}[1]{\ensuremath{\textcolor{gray}{\sslash\textit{ #1}}}}
 \newcommand{\grayit}[1]{\textcolor{gray}{\textit{#1}}}
+\newcommand{\white}[1]{\textcolor{white}{#1}}
 % \newcommand{\codeexample}[2]{
 %   \begin{minted}[linenos, numbersep=-5pt]{rust}
 %     #1
@@ -166,34 +190,54 @@
 \newcommand{\maxarrow}[1]{\ensuremath{\underset{^\kw{max}}{#1}}}
 \newcommand{\rearrangearrow}{\ensuremath{\hookrightarrow}}
 \newcommand{\mono}[1]{\ensuremath{\text{\texttt{#1}}}}
-\newcommand{\loans}[2]{\ensuremath{\kw{loan}^s\,#1\,#2}}
+\newcommand{\loan}[3]{\ensuremath{\kw{loan}^{#1}\,#2\,#3}}
+\newcommand{\loans}[2]{\loan{\kw{s}}{#1}{#2}}
 \newcommand{\loanm}[1]{\ensuremath{\kw{loan}^m\,#1}}
+\newcommand{\loansm}[2]{\loan{\kw{s}|\kw{m}}{#1}{(#2)}}
 \newcommand{\borrow}[3]{\ensuremath{\kw{borrow}^{#1}\,#2\,#3}}
 \newcommand{\borrows}[2]{\borrow{\kw{s}}{#1}{#2}}
 \newcommand{\borrowm}[2]{\borrow{\kw{m}}{#1}{#2}}
+\newcommand{\borrowsm}[2]{\borrow{\kw{s}|\kw{m}}{#1}{#2}}
 \newcommand{\absenv}[1]{\ensuremath{\{ #1 \}}}
 \newcommand{\absmap}[2]{\ensuremath{#1 \, \mapsto \, #2}}
-\newcommand{\atom}[1]{\text{'#1}}
+\newcommand{\absmapm}[2]{\absmap{\mono{#1}}{#2}}
+\newcommand{\atom}[1]{\ensuremath{\text{'#1}}}
 \newcommand{\subtype}{\sqsubseteq}
 \newcommand{\typeunion}{\sqcup}
 \newcommand{\typeinter}{\sqcap}
-\newcommand{\odef}[2]{\ensuremath{\langle \textit{def.} \, #1 \, \textit{for} \, #2 \rangle}}
+\newcommand{\odef}[3][fig:lookuptable]{\ensuremath{\hyperref[#1]{\langle \textit{def.} #2 \textit{for} \, #3 \rangle}}}
 \newcommand{\allarrows}{\ensuremath{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow }}
 \newcommand{\abstractarrows}{\ensuremath{ \erasedreadarrow, \readarrowabs, \movearrowabs, \writearrowabs, \narrowarrowabs, \erasedwritearrow }}
 \newcommand{\concreadarrows}{\ensuremath{ \readarrowconc, \movearrowconc }}
 \newcommand{\concwritearrows}{\ensuremath{ \writearrowconc, \narrowarrowconc }}
 \newcommand{\concarrows}{\ensuremath{ \concreadarrows , \concwritearrows }}
+\newcommand{\readarrows}{\ensuremath{ \readarrow, \movearrow }}
+\newcommand{\writearrows}{\ensuremath{ \writearrow, \narrowarrow }}
 \newcommand{\drop}[1]{\ensuremath{ \kw{drop} \, #1 }}
 \newcommand{\concrete}[1]{\ensuremath{ \kw{concrete} \, #1 }}
 \newcommand{\oabstract}[1]{\ensuremath{ \kw{abstract} \, #1 }}
 \newcommand{\runtime}[1]{\kw{runtime} \, #1}
 \newcommand{\comptime}[1]{\kw{comptime} \, #1}
+\newcommand{\deref}[1]{\ensuremath{ \mono{*}#1 }}
+\newcommand{\oref}[1]{\ensuremath{ \mono{\&}#1 }}
+\newcommand{\mutref}[1]{\ensuremath{ \mono{\&\kw{mut}} \, #1 }}
+\newcommand{\pleft}[1]{\ensuremath{ #1\mono{.0} }}
+\newcommand{\pright}[1]{\ensuremath{ #1\mono{.1} }}
 \newcommand{\size}[1]{\kw{size} \, #1}
 \newcommand{\oread}[1]{\ensuremath{\kw{read} \, #1}}
 \newcommand{\owrite}[1]{\ensuremath{\kw{write} \, #1}}
 % \newcommand{\oif}[2]{\ensuremath{\text{if   } #1 \text{   then   } #2}}
 \newcommand{\oif}[2]{\ensuremath{#2 \, \, (\text{if    } #1)}}
-\newcommand{\oimplies}[2]{\ensuremath{\left(#1\right) \text{   implies   } \left(#2\right)}}
+\newcommand{\oimplies}[2]{\ensuremath{#1 \text{   implies   } #2}}
+\newcommand{\oand}[2]{\ensuremath{#1 \text{   and   } #2}}
+\newcommand{\oleft}[1]{\ensuremath{\kw{left} \, #1}}
+\newcommand{\oright}[1]{\ensuremath{\kw{right} \, #1}}
+\newcommand{\oflip}[1]{\ensuremath{(\kw{flip} \, #1)}}
+\newcommand{\otab}{\hspace{5ex}}
+
+\makeatletter % allow us to mention @-commands
+\def\arcr{\@arraycr}
+\makeatother
 
 \newcommand{\mcrot}[4]{\multicolumn{#1}{#2}{\rlap{\rotatebox{#3}{#4}~}}}
 

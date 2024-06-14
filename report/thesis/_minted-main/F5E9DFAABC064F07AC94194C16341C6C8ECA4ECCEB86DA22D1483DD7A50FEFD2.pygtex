@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// $ \absenv{ \absmap{\mono{x}}{('a, 'a)} }$}
+\PYG{+w}{    }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{x}: \PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{L}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{L}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// $ \absenv{ \absmap{\mono{x}}{(\{'a, 'b\}, L \rightarrow L)} }$}
+\end{Verbatim}

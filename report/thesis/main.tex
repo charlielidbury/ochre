@@ -53,11 +53,11 @@ Last, but in no means least, I would like to thank my mother Kate Darracott. As 
 
 \newpage
 \section*{Ethical Considerations}
-Much like Wittgenstein, I believe there is an equivalence between ethics and aesthetics; if you do not, here are a few parallels between the two you might find thought-provoking: We do not choose what we deem ethically permissive, much like we do not choose what we find beautiful. Pursuing one's ethical convictions is not a means to an end, it is an end in and of itself, much like aesthetic experiences.
+Much like Wittgenstein \citep[proposition 6.421]{wittgensteinTractatusLogicophilosophicus1922}, I believe there is an equivalence between ethics and aesthetics; if you do not, here are a few parallels between the two you might find thought-provoking: We do not choose what we deem ethically permissive, much like we do not choose what we find beautiful. Pursuing one's ethical convictions is not a means to an end, it is an end in and of itself, much like aesthetic experiences.
 
 I and many others including cite cite cite, find aesthetic value in problems \& concepts turning out to be reduceable to each other and equivalences being drawn between distant domains. Some particularly high-profile instances of this happening include Euler's formula, the Curry-Howard correspondence and the Church-Turing thesis. To a smaller degree, I also think it happened with Rust's borrow checker, in solving memory management they also solved concurrency, iterator invalidation, and a few other problems that plagued imperative languages.
 
-Despite being sufficiently arrogant and pretentious, I know Ochre isn't as singificant or as beautiful as the previously mentioned identities and isomorphisms. But, in the walled garden of my special interests and obsessions, I have found great aesthetic value in the interplay between ownership semantics and dependent types.
+Despite being sufficiently arrogant and pretentious \cite[Ethical Considerations]{lidburyOchreDependentlyTyped2024}, I know Ochre isn't as singificant or as beautiful as the previously mentioned identities and isomorphisms. But, in the walled garden of my special interests and obsessions, I have found great aesthetic value in the interplay between ownership semantics and dependent types.
 
 From this aesthetic value, and its equivalence to moral value, I conclude that this research is ethically permissible; I hope Imperial's ethical approval process will too.
 
@@ -352,10 +352,11 @@ RustBelt\citep{jung_rustbelt_2018} is a formal model of Rust, including unsafe R
 I see RustBelt as a great complement to this work in the future: real programs require unsafe code, but you want to avoid having to model your code in a separate proof assistant as little as possible. In Ochre, I imagine the few people who write unsafe code will verify it with something like RustBelt, while the majority won't have to, but will benefit from the guarantees provided by the verified libraries they use which do.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{Ochre}
+\chapter{Ochre, by Example}
 \label{section:ochre}
 This chapter introduces the various language constructs of Ochre, at first via intuitive examples, then formally. Each language construct's runtime behavior is discussed, then how it is reasoned about statically, which splits this chapter into 4 sections with the following distinctions:
 
+DEPRECATED
 \begin{center}
   \begin{tabular}{c|cc}
     & Runtime Semantics & Static Analysis \\
@@ -364,7 +365,7 @@ This chapter introduces the various language constructs of Ochre, at first via i
     Intuition Building & \underline{Section \ref{section:ochreexample}} & \underline{Section \ref{section:checkingexample}} \\
     & Ochre, by Example & Type \& Borrow Checking, by Example \\
     \\
-    Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{section:abstractinterpretation}} \\
+    Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{chapter:definition}} \\
     & Concrete Interpretation & Abstract Interpretation \\
   \end{tabular}
 \end{center}
@@ -382,7 +383,7 @@ The novel work presented is the combination of these two features, which require
 \todo[inline]{do hyperlinks thing}
 
 \cleardoublepage
-\section{Ochre, by Example}
+\section{The Language}
 \label{section:ochreexample}
 This section covers Ochre in a gradual, example-heavy manner, much like programming language tutorials like The Rust Book \citep{RustProgrammingLanguagea}. The goal of this section is to build an intuition behind the behavior which the type-checking will later reason about.
 
@@ -435,7 +436,7 @@ In practice, this is intolerably restrictive because it means only one pointer c
 \end{listing}
 
 \subsubsection{Pairs}
-$M \mono{,} \, N$ constructs the pair of $M$ and $N$. Pairs are typically surrounded in brackets to make the precedence explicit. $M\mono{.0}$ and $M\mono{.1}$ access the right and left elements of the pair $M$.
+$M \mono{,} \, N$ constructs the pair of $M$ and $N$. Pairs are typically surrounded in brackets to make the precedence explicit. $\pleft{M}$ and $\pright{M}$ access the right and left elements of the pair $M$.
 
 % \begin{listing}[H]
   \begin{minted}{rust}
@@ -684,7 +685,7 @@ This introduces repetition in the types, which we remove by adding the following
 % \end{listing}
 
 \cleardoublepage
-\section{Type \& Borrow Checking, by Example}
+\section{Type \& Borrow Checking}
 \label{section:checkingexample}
 This section aims to give the reader an intuition behind the abstract interpretation used to type-check Ochre. Specifically, it answers two questions: what is the abstract environment? And how do the various syntactic constructs modify it?
 
@@ -831,7 +832,7 @@ Sometimes you want to manually manipulate what type the abstract interpretation 
 \end{listing}
 
 \subsubsection{Comptime vs Runtime}
-As you will see in Section \ref{section:abstractinterpretation}, there are large differences in how the abstract interpretation is performed on runtime and comptime terms; however, for the most part, they map very similarly to the abstract environment. Following from the syntax level distinction, an entry in the abstract environment is marked as runtime or comptime by the variable identifier being capitalized or not.
+As you will see in Section \ref{chapter:definition}, there are large differences in how the abstract interpretation is performed on runtime and comptime terms; however, for the most part, they map very similarly to the abstract environment. Following from the syntax level distinction, an entry in the abstract environment is marked as runtime or comptime by the variable identifier being capitalized or not.
 
 \begin{listing}[H]
   \begin{minted}[mathescape]{rust}
@@ -871,7 +872,7 @@ When a function is called, two things need to be calculated at the call site: wh
 
 
 \subsubsection{Case Statements}
-In each of the branches of a case statement, the type of the interrogant is narrowed down to a specific atom. This is useful when the case is branching over the left of a dependent pair, because when the left of the pair gets narrowed down, so does the right\footnote{The right only gets narrowed once it is accessed, not immediately when the left is narrowed}.
+In each of the branches of a case statement, the type of the scrutinee is narrowed down to a specific atom. This is useful when the case is branching over the left of a dependent pair, because when the left of the pair gets narrowed down, so does the right\footnote{The right only gets narrowed once it is accessed, not immediately when the left is narrowed}.
 
 Each branch of the case statement will modify the environment in some possibly different way. These are combined into one environment via an environment-wide union operation, which is the output environment.
 
@@ -899,7 +900,7 @@ And last but not least, here are a few example programs which use several of the
 \cleardoublepage
 % \section{Concrete Interpretation}
 % \label{section:concreteinterpretation}
-% The primary contribution of this research is the abstract interpretation because that is what will be used in the compiler for the type checking, but the regular interpretation is still useful to better understand the language features and to better understand the abstract interpretation. If you're only interested in how Ochre is type-checked, not its exact behavior at runtime, skip to Section \ref{section:abstractinterpretation}.
+% The primary contribution of this research is the abstract interpretation because that is what will be used in the compiler for the type checking, but the regular interpretation is still useful to better understand the language features and to better understand the abstract interpretation. If you're only interested in how Ochre is type-checked, not its exact behavior at runtime, skip to Section \ref{chapter:definition}.
 
 % Ochre has an extremely permissive syntax and heavily relies on typing rules to reject ill-formed programs. This leads to some usual results like \mono{(x = y) = z} being syntactically well-formed. In practice, this doesn't cause issues, because the typing rules are strict enough. The grammar for Ochre is shown in Figure \ref{fig:syntax}.
 
@@ -992,14 +993,14 @@ And last but not least, here are a few example programs which use several of the
 %       \Delta \vdash \mono{$M$.1} \evalarrow w' \dashv \Delta''
 %     } \\
     
-%     \\\mono{*$M$} &
+%     \\\deref{M} &
 %     \multicolumn{2}{c}{
 %     $\forall \diamond \in \{ \evalarrow, \ewritearrow \}. \left[
 %       \inferrule{
 %         \Delta \vdash M \evalarrow p \dashv \Delta' \\\\
 %         \Delta' \vdash p \diamond v \dashv \Delta''
 %       }{
-%         \Delta \vdash \mono{*$M$} \diamond v \dashv \Delta''
+%         \Delta \vdash \deref{M} \diamond v \dashv \Delta''
 %       }
 %     \right]$
 %     } \\
@@ -1098,7 +1099,7 @@ And last but not least, here are a few example programs which use several of the
 %     \mono{\}} &
 %     \raisebox{-6ex}{$\dfrac{
 %       \begin{array}{cl}
-%         \Delta \vdash M \evalarrow \atom{a}_i \dashv \Delta' & \ocomment{interrogant matches i$^\text{th}$ branch} \\
+%         \Delta \vdash M \evalarrow \atom{a}_i \dashv \Delta' & \ocomment{scrutinee matches i$^\text{th}$ branch} \\
 %         \Delta' \vdash N_i \evalarrow n_i \dashv \Delta'' & \ocomment{execute i$^\text{th}$ branch}
 %       \end{array}
 %     }{
@@ -1111,25 +1112,30 @@ And last but not least, here are a few example programs which use several of the
 % \end{figure}
 
 \cleardoublepage
-\section{Formalisms}
-\label{section:abstractinterpretation}
-Type-checking is done via an abstract interpretation which takes a piece of Ochre syntax and outputs a type for that syntax while modifying the abstract environment. All interpretation rules take the form $\Omega \vdash M \diamond v \dashv \Omega'$ where $\diamond$ is one of $\{ \allarrows \}$, $M$ is Ochre syntax, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $v$ is the type of the value which has been read or written.
+\chapter{Formal Definition}
+\label{chapter:definition}
+Type-checking is done via an abstract interpretation which takes a term and outputs a type for that term while modifying an abstract environment. All interpretation rules take the form $\Omega \vdash M \diamond t \dashv \Omega'$ where $\diamond$ is one of $\{ \allarrows \}$, $M$ is a term, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $t$ is the type of the value which has been read or written.
 
 Section \ref{subsection:modalities} introduces key concepts that are required to understand the definitions; subsequent subsections define the abstract interpretation. The reader is encouraged to skip around definitions a lot, they are laid out in tables to make finding a particular definition easier, as one might in a repository of code.
 
-\subsection{Modalities}
+\section{Modalities}
 \label{subsection:modalities}
 It is best to conceptualize the arrows as a single interpretation with many modalities. The following arrows are used to denote the different modalities:
 
-\def\arraystretch{1.5}
-\begin{tabular}{c|l|l}
+\begin{figure}[H]
+  \centering
+  \def\arraystretch{1.5}
+  \begin{tabular}{c|l|l}
   & Read & Write \\
   \hline
   Runtime destructive & $\movearrow$ \ocomment{move}  & $\writearrow$ \ocomment{write}  \\
   Runtime non-destructive & $\readarrow$ \ocomment{read}  & $\narrowarrow$ \ocomment{type narrow} \\
   Comptime & $\erasedreadarrow$ \ocomment{erased read} &  $\erasedwritearrow$ \ocomment{erased write} \\
-\end{tabular}
-\def\arraystretch{1}
+  \end{tabular}
+  \def\arraystretch{1}
+  \caption{Exhaustive table of the interpretations which make up Ochre}
+  \label{fig:interpretationstable}
+\end{figure}
 
 To summarize the modalities: a dot above the arrow denotes \textit{abstract} interpretation which means it is not executing the code, only type-checking it; squiggly arrows denote the interpretation of terms that are erased at compile time; arrows which point rightwards (away from the term) denote reads, arrows which point leftwards (towards the term) denote writes. These modalities are elaborated on below.
 
@@ -1142,14 +1148,36 @@ There are two distinct types of terms in Ochre: runtime terms, and comptime term
 
 Because comptime terms do not have move semantics, we cannot have mutation\footnote{The method of combining mutability with dependent types this research uses relies on move semantics, therefore we cannot have mutability on non-move semantics code.}, and we do not need immutable references. Not supporting mutation within comptime terms has the added benefit of the programmer not having to reason about the side effects of evaluating types, which happens implicitly in situations including type checking a function call site (see \odef{\movearrow}{M N}).
  
-There is no syntactic distinction between comptime and runtime terms because they are so similar, although there could have been because one can always determine whether a term is comptime or runtime given it's position.
+There is no syntactic distinction between comptime and runtime terms because they are so similar, although there could have been because one can always determine whether a term is comptime or runtime given its position.
 
 \subsubsection{Abstract vs Concrete Modality}
 Comptime interpretations ($\erasedreadarrow, \erasedwritearrow$) are only ever abstract, whereas runtime interpretations ($\movearrow, \writearrow, \narrowarrow, \readarrow$) can have an optional dot above them; this dot means "abstract interpret".
 
-Execution and type checking are very closely related in Ochre because execution is just the totally precise version of type checking. They differ only in how they treat type annotations: abstract interpretation will evaluate $M \mono{:} T$ to the result of evaluating $T$, and concrete interpretation will evaluate the same syntax to the result of evaluating $M$.
+Execution and type checking are very closely related in Ochre because execution is just the totally precise version of type checking. They differ only in how they treat type annotations, and how they treat functions. Abstract interpretation will evaluate $M \mono{:} T$ to the result of evaluating $T$, and concrete interpretation will evaluate the same syntax to the result of evaluating $M$. Abstract interpretation will evaluate $M N$ by interpreting the return term of the function $M$ evaluates to, whereas concrete interpretation will execute the function's body.
 
-This guarantees concrete interpretation will output a precise result (singleton type) because the only way to form non-singleton types is via type union, which can only occur on the right hand side of a type annotation, because it's only permitted in comptime terms.
+This guarantees concrete interpretation will output a precise result (singleton type) because the only way to form non-singleton types is via type union, which can only occur on the right-hand side of a type annotation, or function return type.
+
+\begin{Definition}{Concrete and Abstract Arrow Designations}{}
+  \centering
+  \small
+  \begin{mathpar}
+    \forall \diamond \in \{ \abstractarrows \} \left[
+      \inferrule{
+        \\
+      }{
+        \oabstract{\diamond}
+      }\right]
+
+      \forall \diamond \in \{ \concarrows \} \left[
+        \inferrule{
+          \\
+        }{
+          \concrete{\diamond}
+        }
+      \right]
+  \end{mathpar}
+\end{Definition}
+\label{fig:arrowhelper}
 
 \subsubsection{Read vs Write Modality}
 In typical languages like the $\lambda$-calculus, terms are evaluated to a value, which is equivilant to the notion of the read modality in Ochre. The write modality allows you to write a value to a term, which is how variables are brought into scope. You might find it useful to compare reading a variable $x$ with writing to a variable $x$:
@@ -1173,6 +1201,28 @@ In typical languages like the $\lambda$-calculus, terms are evaluated to a value
 \vspace{-5ex}
 \noindent
 Defining the write operation for more complex pieces of syntax is how several language features are defined, including but not limited to: pattern matching, destructuring, and specifying function arguments.
+
+\begin{Definition}{Read/Write Arrow Designations}{}
+  \centering
+  \small
+  \begin{mathpar}
+    \forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \} \left[
+      \inferrule{
+        \\
+      }{
+        \oread{\diamond}
+      }\right]
+
+      \forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \} \left[
+        \inferrule{
+          \\
+        }{
+          \owrite{\diamond}
+        }
+      \right]
+  \end{mathpar}
+\end{Definition}
+\label{fig:readwritedesignations}
 
 % Explain all 6 by looking at the interpretations of the variable $x$.
 
@@ -1204,9 +1254,7 @@ Defining the write operation for more complex pieces of syntax is how several la
 
 % Compile-time only operations
 
-\FloatBarrier
-\subsection{Syntax}
-\FloatBarrier
+\section{Syntax}
 Ochre grammar:
 
 \begin{figure}[H]
@@ -1224,14 +1272,14 @@ Ochre grammar:
     T, U, M, N & ::= & & \ocomment{expression} \\
     && x \mid{} y \mid{} z  & \ocomment{runtime variable identifier} \\
     && X \mid{} Y \mid{} Z  & \ocomment{comptime variable identifier} \\
-    && \mono{'}a & \ocomment{atom construction} \\
-    && M\mono{,} N & \ocomment{pair construction} \\
-    && M\mono{.0} & \ocomment{pair left access} \\
-    && M\mono{.1} & \ocomment{pair right access} \\
-    && \mono{*}M & \ocomment{dereference} \\
+    && \atom{a} & \ocomment{atom construction} \\
+    && M\mono{,} (T \mono{-> }) N & \ocomment{pair construction} \\
+    && \pleft{M} & \ocomment{pair left access} \\
+    && \pright{M} & \ocomment{pair right access} \\
+    && \deref{M} & \ocomment{dereference} \\
     && \mono{\&}M \mid \mono{\&mut}\,M & \ocomment{borrow constructor} \\
-    && M N & \ocomment{function application} \\
-    && M \, \mono{->} \, T \,(\mono{\{}\,N\,\mono{\}}) & \ocomment{function definition (optional runtime body)} \\
+    && M N & \ocomment{application} \\
+    && \mono{$M$ -> $N$} \,(\mono{\{}\,N\,\mono{\}}) & \ocomment{abstraction (optional runtime body)} \\
     && \mono{\_} & \ocomment{uninitialised} \\
     && T\,\mono{|}\,U & \ocomment{type union} \\
     && M\mono{:}\,T & \ocomment{type constraint} \\
@@ -1265,11 +1313,9 @@ This rewrite rule has not been included in Ochre because I intend to support dep
 
 Assignment and match statements are the only constructs that can narrow types in the environment, so by having them both in statement ($S$) instead of expression ($M$), we guarantee that expression evaluation only ever widens types. This simplifies type-checking expressions.
 
-\textbf{Types/values can be treated as syntax}. This syntactic construction cannot be constructed by the programmer. It is constructed internally within the interpretations to make syntax that always returns the same type/value, such as in \odef{\movearrow}{M\mono{.0}} where it is used to break the dependence of the pair so the left value can be moved out.
+\textbf{Types/values can be treated as syntax}. This syntactic construction cannot be constructed by the programmer. It is constructed internally within the interpretations to make syntax that always returns the same type/value, such as in \odef{\movearrow}{\pleft{M}} where it is used to break the dependence of the pair so the left value can be moved out.
 
-\FloatBarrier
-\subsection{Abstract Environment/Values}
-\FloatBarrier
+\section{Environment, Values, and Types}
 The abstract environment, and abstract values:
 
 \begin{figure}[H]
@@ -1299,80 +1345,19 @@ The abstract environment, and abstract values:
   \end{array} %
   \]
 \caption{Abstract/Concrete Environment and Types} %
-\label{fig:stack} %
+\label{fig:env} %
 \end{figure} %
 
 \subsubsection{The Top Type}
-The $\top$ type is used to denote a lack of typing information. Every type/value is of type $\top$. When you move a value, the previous location is set to $\top$, to denote uninitialized data. When a value has never been writen to before, it's value is $\top$, again, to denote uninitialised data. When a type $t$ depends on another type $u$, but $u$ has not been narrowed down enough to deduce the type of $t$, $t$ evaluates to $\top$ to denote the lack of typing information.
+The $\top$ type is used to denote a lack of typing information. Every type/value is of type $\top$. When you move a value, the previous location is set to $\top$, to denote uninitialized data. When a value has never been written to before, its value is $\top$, again, to denote uninitialized data. When a type $t$ depends on another type $u$, but $u$ has not been narrowed down enough to deduce the type of $t$, $t$ evaluates to $\top$ to denote the lack of typing information.
 
 \subsubsection{Concrete Values}
-If a type is a singleton type (a type with one inhabitant), it is referred to as a value. For example $\{ \atom{a} \}$ is a concrete value/type, but $\{ \atom{a}, \atom{b} \}$ is not. Figure \ref{fig:dropconcrete} shows the formal definition of concrete values. Concrete values and non-singleton types share a grammar because rules are typically generic over both and preserve a values concreteness, so combining them avoids the syntatic overhead of introducing an additional modality.
+If a type is a singleton type (a type with one inhabitant), it is referred to as a value. For example $\{ \atom{a} \}$ is a concrete value/type, but $\{ \atom{a}, \atom{b} \}$ is not. Figure \ref{definition:dropconcrete} shows the formal definition of concrete values. Concrete values and non-singleton types share a grammar because rules are typically generic over both and preserve a values concreteness, so combining them avoids the syntatic overhead of introducing an additional modality.
 
 \subsubsection{Drop Operation}
-When an operation is no longer used, it must be dropped. At runtime, dropping a value will free it's associated memory, allowing it to be used for other operations, which is why Ochre doesn't need a garbage collector. Dropping a reference to a value removes the restrictions created by that reference. Drop is defined in Figure \ref{fig:dropconcrete}.
+When an operation is no longer used, it must be dropped. At runtime, dropping a value will free it's associated memory, allowing it to be used for other operations, which is why Ochre doesn't need a garbage collector. Dropping a reference to a value removes the restrictions created by that reference. Drop is defined in Figure \ref{definition:dropconcrete}.
 
-\subsubsection{Environment Rearrangement}
-At any point during a program interpretation, whether it be abstract or concrete interpretation, the environment can be \textit{rearranged}, a technique introduced by Aeneas \cite{aeneas}. Environment rearranges can be inserted before or after any of the interpretation judgements (as defined in Figure \ref{fig:environmentrearrangements}) and can perform one of the following operations:
-
-\begin{enumerate}
-  \item \textbf{Allocation} - Before a variable is used, including before it is first written to, it must be mapped to $\top$ in the environment. Allocation takes a variable previously not in the environment, and maps it to $\top$.
-  \item \textbf{Deallocation} - Occasionally typing judgements will assert that a series of operations leave the environment back in its original state (see \odef{\movearrow}{\mono{$M$ -> $T$ \{ $N$ \}}}). In order to achieve this variables allocated in that series of operations must be deallocated.
-  \item \textbf{Type Widening} - At any point during the interpretation it is valid to forget typing information. For example: if a value is known to be one of $\{ \atom{a}, \atom{b} \}$, it is valid to now consider it to be one of $\{ \atom{a}, \atom{b}, \atom{c} \}$.
-  \item \textbf{Dropping} - Before deallocation, values must be dropped. This is achieved in derivations by inserting rearrangements which drop values.
-\end{enumerate}
-
-Environment rearrangement is defined in Figure \ref{fig:environmentrearrangements}.
-
-\begin{figure}
-  \centering
-  \small
-  \begin{mathpar}
-    \inferrule[Allocation]{
-      \Omega' = \Omega,\absmap{xX}{\top}
-    }{
-      \Omega \rearrangearrow \Omega'
-    }
-
-    \inferrule[Deallocation]{
-      \Omega',\absmap{x}{\top} = \Omega
-    }{
-      \Omega \rearrangearrow \Omega'
-    }
-
-    \inferrule[Type-Widen]{
-      \Omega' = \Omega \left[ \frac{\absmap{x}{v'}}{\absmap{x}{v}} \right]\\\\
-      \Omega \vdash v \subtype v'
-    }{
-      \Omega \rearrangearrow \Omega'
-    }
-
-    \inferrule[Drop]{
-      \Omega' = \Omega \left[ \frac{\absmap{x}{\top}}{\absmap{x}{v}} \right]\\\\
-      \Omega' \vdash \drop{v} \dashv \Omega''
-    }{
-      \Omega \rearrangearrow \Omega''
-    }
-  \end{mathpar}
-  \begin{mathpar}
-    \forall \diamond \in \{ \allarrows \} \left[\vcenter{\inferrule[Rearrange-Before]{
-      \Omega \rearrangearrow \Omega' \\\\
-      \Omega' \vdash M \diamond v \dashv \Omega''
-    }{
-      \Omega \vdash M \diamond v \dashv \Omega''
-    }}\right]
-
-    \forall \diamond \in \{ \allarrows \} \left[\vcenter{\inferrule[Rearrange-After]{
-      \Omega \vdash M \diamond v \dashv \Omega' \\\\
-      \Omega' \rearrangearrow \Omega''
-    }{
-      \Omega \vdash M \diamond v \dashv \Omega''
-    }}\right]
-  \end{mathpar}
-  \caption{Definition of environment rearrangement $\Omega \rearrangearrow \Omega'$. \mono{xX} denotes "either runtime or comptime variable".}
-  \label{fig:environmentrearrangements}
-\end{figure}
-
-\begin{figure}
+\begin{Definition}{Drop and Concrete Operations}{}
   \centering
   \small
   \begin{tabular}{c|cc}
@@ -1419,11 +1404,11 @@ Environment rearrangement is defined in Figure \ref{fig:environmentrearrangement
     \concrete{(T \rightarrow U)}
   } \\
 
-  \\$\borrows{l}{v}$ &
+  \\$\borrowsm{l}{v}$ &
   \inferrule{
-    \Omega' = \Omega \left[ \frac{v}{\loans{l}{v}} \right ]
+    \Omega' = \Omega \left[ \frac{v}{\loansm{l}{v}} \right ]
   }{
-    \Omega \vdash \drop{(\borrows{l}{v})} \dashv \Omega'
+    \Omega \vdash \drop{(\borrowsm{l}{v})} \dashv \Omega'
   } &
   \inferrule{
     \concrete{v}
@@ -1431,24 +1416,20 @@ Environment rearrangement is defined in Figure \ref{fig:environmentrearrangement
     \concrete{(\borrows{l}{v})}
   } \\
 
-  \\$\borrowm{l}{v}$ &
+  \\ &
   \inferrule{
-    \Omega' = \Omega \left[ \frac{v}{\loanm{l}} \right ]
+    \Omega' = \Omega \backslash \{ \absmap{l}{v'} \} \\\\
+    \Omega' \vdash v \subtype v'
   }{
-    \Omega \vdash \drop{(\borrowm{l}{v})} \dashv \Omega'
-  } &
-  \inferrule{
-    \concrete{v}
-  }{
-    \concrete{(\borrowm{l}{v})}
+    \Omega \vdash \drop{(\borrowsm{l}{v})} \dashv \Omega'
   } \\
 
-  \\$\loans{l}{v}$ &
+  \\$\loansm{l}{v}$ &
   \inferrule{
-    \Omega' = \Omega \left[ \frac{\top}{\borrows{l}{v}} \right ] \\\\
+    \Omega' = \Omega \left[ \frac{\top}{\borrowsm{l}{v}} \right ] \\\\
     \Omega' \vdash \drop{v} \dashv \Omega'' 
   }{
-    \Omega \vdash \drop{(\borrows{l}{v})} \dashv \Omega''
+    \Omega \vdash \drop{(\loansm{l}{v})} \dashv \Omega''
   } &
   \inferrule{
     \concrete{v}
@@ -1457,35 +1438,445 @@ Environment rearrangement is defined in Figure \ref{fig:environmentrearrangement
   } \\
 
   \\$\loanm{l}$ &
-  \inferrule{
-    \Omega' = \Omega \left[ \frac{\top}{\borrowm{l}{v}} \right ] \\\\
-    \Omega' \vdash \drop{v} \dashv \Omega'' 
-  }{
-    \Omega \vdash \drop{(\borrowm{l}{v})} \dashv \Omega''
-  } &
+  &
   \inferrule{
     \\
   }{
     \concrete{(\loanm{l})}
   } \\
+  \end{tabular}
+\end{Definition}
+\label{definition:dropconcrete}
 
-\end{tabular}
-\caption{Definition of \drop{} and \concrete{}}
-\label{fig:dropconcrete}
+\subsubsection{Environment Rearrangement}
+At any point during a program interpretation, whether it be abstract or concrete interpretation, the environment can be \textit{rearranged}, a technique introduced by Aeneas \cite{aeneas}. Environment rearranges can be inserted before or after any of the interpretation judgements.
+
+\begin{Definition}{Environment Rearrangement}{}
+  \centering
+  \small
+  \begin{mathpar}
+    \inferrule[Allocation]{
+      \Omega' = \Omega,\absmap{xX}{\top}
+    }{
+      \Omega \rearrangearrow \Omega'
+    }
+
+    \inferrule[Deallocation]{
+      \Omega',\absmap{x}{\top} = \Omega
+    }{
+      \Omega \rearrangearrow \Omega'
+    }
+
+    \inferrule[Type-Widen]{
+      \Omega' = \Omega \left[ \frac{\absmap{x}{v'}}{\absmap{x}{v}} \right]\\\\
+      \Omega \vdash v \subtype v'
+    }{
+      \Omega \rearrangearrow \Omega'
+    }
+
+    \inferrule[Drop]{
+      \Omega' = \Omega \left[ \frac{\absmap{x}{\top}}{\absmap{x}{v}} \right]\\\\
+      \Omega' \vdash \drop{v} \dashv \Omega''
+    }{
+      \Omega \rearrangearrow \Omega''
+    }
+  \end{mathpar}
+  \begin{mathpar}
+    \forall \diamond \in \{ \allarrows \} \left[\vcenter{\inferrule[Rearrange-Before]{
+      \Omega \rearrangearrow \Omega' \\\\
+      \Omega' \vdash M \diamond v \dashv \Omega''
+    }{
+      \Omega \vdash M \diamond v \dashv \Omega''
+    }}\right]
+
+    \forall \diamond \in \{ \allarrows \} \left[\vcenter{\inferrule[Rearrange-After]{
+      \Omega \vdash M \diamond v \dashv \Omega' \\\\
+      \Omega' \rearrangearrow \Omega''
+    }{
+      \Omega \vdash M \diamond v \dashv \Omega''
+    }}\right]
+  \end{mathpar}
+\end{Definition}
+\label{definition:environmentrearrangements}
+
+\textbf{Allocation} - Before a variable is used, including before it is first written to, it must be mapped to $\top$ in the environment. Allocation takes a variable previously not in the environment, and maps it to $\top$.
+
+\textbf{Deallocation} - Occasionally typing judgements will assert that a series of operations leave the environment back in its original state (see \odef{\movearrow}{\mono{$M$ -> $T$ \{ $N$ \}}}). In order to achieve this variables allocated in that series of operations must be deallocated.
+
+\textbf{Type Widening} - At any point during the interpretation it is valid to forget typing information. For example: if a value is known to be one of $\{ \atom{a}, \atom{b} \}$, it is valid to now consider it to be one of $\{ \atom{a}, \atom{b}, \atom{c} \}$.
+
+\textbf{Dropping} - Before deallocation, values must be dropped. This is achieved in derivations by inserting rearrangements which drop values.
+
+\begin{Definition}{Environment Helpers}{}
+  \centering
+  \small
+  \begin{mathpar}
+
+  \begin{tabular}{c|cccc}
+  $\Omega$ & $\Gamma \vdash \kw{comptime}$ & $\Delta \vdash \kw{concrete}$ & $\Omega \vdash \kw{drop}$ \\
+  \hline
+
+  \\ $\emptyset$ &
+  \inferrule{
+  }{
+    \emptyset \vdash \comptime{}
+  } &
+  \inferrule{
+  }{
+    \emptyset \vdash \concrete{}
+  } &
+  \inferrule{
+  }{
+    \emptyset \vdash \drop{}
+  } \\
+
+  \\ $\Omega,\absmap{x}{t}$ &
+  &
+  \inferrule{
+    \concrete{t} \\\\
+    \Omega \vdash \concrete{}
+  }{
+    \Omega,\absmap{x}{t} \vdash \concrete{}
+  } &
+  \inferrule{
+    \Omega \vdash \drop{t} \dashv \Omega' \\\\
+    \Omega' \vdash \drop{}
+  }{
+    \Omega,\absmap{x}{t} \vdash \drop{}
+  } \\
+
+  \\ $\Omega,\absmap{X}{t}$ &
+  \inferrule{
+    \Omega \vdash \comptime{}
+  }{
+    \Omega,\absmap{X}{t} \vdash \comptime{}
+  } &
+  \inferrule{
+    \concrete{t} \\\\
+    \Omega \vdash \concrete{}
+  }{
+    \Omega,\absmap{X}{t} \vdash \concrete{}
+  } &
+  \inferrule{
+    \Omega \vdash \drop{}
+  }{
+    \Omega,\absmap{X}{t} \vdash \drop{}
+  } \\
+  
+  \end{tabular}
+
+  \end{mathpar}
+\end{Definition}
+
+\section{Type Operations}
+This section defines subtyping, type intersection, and type union. These operations are used throughout the interpretations and discussions of properties.
+
+\begin{Definition}{Subtype}{}
+  \centering
+  \small
+  \begin{tabular}{c|ccc}
+    $v$ & $t \subtype u$ \\
+    \hline
+
+    \\$\{ \overrightarrow{\atom{a}} \}$ &
+    \inferrule{
+      \{ \overrightarrow{\atom{a}} \} \subseteq  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash \{ \overrightarrow{\atom{a}} \} \subtype \{ \overrightarrow{\atom{b}} \}
+    } \\
+
+    \\$(v, T \rightarrow U)$ &
+    \inferrule{
+      \Omega \vdash t \subtype t' \\\\
+      \Omega \vdash \kw{comptime} \dashv \Gamma \\\\
+      \Gamma \vdash T' \erasedwritearrow t' \dashv \Gamma' \\\\
+      \Gamma' \vdash T \erasedwritearrow t \dashv \Gamma'' \\\\
+      \Gamma'' \vdash S \subtype S' \erasedreadarrow v
+    }{
+      \Omega \vdash (t, T \rightarrow S) \subtype (t', T' \rightarrow S')
+    } \\
+
+    \\$(T \rightarrow S)$ &
+    \inferrule{
+      \ocomment{note: function domains must be equal} \\\\
+      \Omega \vdash \kw{comptime} \dashv \Gamma \\\\
+      \Gamma \vdash T \maxarrow{\erasedwritearrow} t \dashv \Gamma' \\\\
+      % \Gamma' \vdash T \erasedwritearrow t \dashv \Gamma'' \\\\
+      \Gamma' \vdash S \subtype S' \erasedreadarrow v
+    }{
+      \Omega \vdash T \rightarrow S \subtype T \rightarrow S'
+    } \\
+
+    \\$\borrows{l}{v}$ &
+    \inferrule{
+      \Omega \vdash v \subtype v'
+    }{
+      \Omega \vdash \borrows{l}{v} \subtype \borrows{l}{v'}
+    } \\
+
+    \\$\borrowm{l}{v}$ &
+    \inferrule{
+      \Omega \vdash v \subtype v'
+    }{
+      \Omega \vdash \borrowm{l}{v} \subtype \borrowm{l}{v'}
+    } \\
+
+    \\$\loans{l}{v}$ &
+    \inferrule{
+      \Omega \vdash v \subtype v'
+    }{
+      \Omega \vdash \loans{l}{v} \subtype \loans{l}{v'}
+    } \\
+
+    \\$\loanm{l}$ &
+    \inferrule{
+    }{
+      \Omega \vdash \loanm{l} \subtype \loanm{l}
+    } \\
+  \end{tabular}
+\end{Definition}
+
+\begin{Definition}{Type Union and Intersection}{}
+  \small
+  \centering
+  \begin{tabular}{c|ccc}
+    $v$ & $v = t \typeunion u$ & $v = t \typeinter u$ \\
+    \hline
+
+    \\$\{ \overrightarrow{\atom{a}} \}$ &
+    \inferrule{
+      v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
+    } &
+    \inferrule{
+      v = \{ \overrightarrow{\atom{a}} \} \cap  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeinter \{ \overrightarrow{\atom{b}} \}
+    } \\
+
+    \\$(v, T \rightarrow U)$ &
+    \inferrule{
+      \Omega \vdash v'' = v \typeunion v' \\\\
+      \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\
+      w = (v'', T'' \rightarrow U'')
+    }{
+      \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
+    }
+    \\
+
+    \\$(T \rightarrow S)$ &
+    \inferrule{
+      v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
+      \mono{    $T$ => $S$, $T'$ => $S'$ \}})
+    }{
+      \Omega \vdash v = (T \rightarrow S) \typeunion (T' \rightarrow S')
+    }\\
+
+    \\$\borrows{l}{v}$ &
+    \inferrule{
+      \Omega \vdash t = v \typeunion v'
+    }{
+      \Omega \vdash \borrows{l}{t} = \borrows{l}{v} \typeunion \borrows{l}{v'}
+    } \\
+
+    \\$\borrowm{l}{v}$ &
+    \inferrule{
+      \Omega \vdash t = v \typeunion v'
+    }{
+      \Omega \vdash \borrowm{l}{t} = \borrowm{l}{v} \typeunion \borrowm{l}{v'}
+    } \\
+
+    \\$\loans{l}{v}$ &
+    \inferrule{
+      \Omega \vdash t = v \typeunion v'
+    }{
+      \Omega \vdash \loans{l}{t} = \loans{l}{v} \typeunion \loans{l}{v'}
+    } \\
+
+    \\$\loanm{l}$ &
+    \inferrule{
+    }{
+      \Omega \vdash \loanm{l} = \loanm{l} \typeunion \loanm{l}
+    } \\
+  \end{tabular}
+\end{Definition}
+
+\section{Interpretations}
+This section defines the abstract and concrete interpretations which define Ochre's type checking and runtime semantics respectively.
+
+Definitions are identified by \odef{M}{\rightarrow}, where $\rightarrow$ is the arrow being defined, and $M$, is the piece of syntax it is being defined for. For example \odef{M N}{\movearrow} refers to the rule for destructively reading a function application (potentially abstractly). The reader is encouraged to refer to Table \ref{fig:interpretationstable} while reading the interpretation definitions to look up the meaning of arrows.
+
+The definitions of the interpretations are laid out in tables. Each cell defines the interpretation of a kind of term for a single combination of modalities. For example, a single cell might define \movearrow for function application.
+
+The position of a definition within a definition table does not encode any information. The table layout serves entirely to aid definition lookup.
+
+For some syntactic constructs, the definition for one modality is identical to it's definition for another; to avoid repetition multiple interpretations can be defined for a single construct at once by quantifying over the arrow being defined. An extreme example of this is the atom constructor, which is defined identically for all 6 arrows:
+
+\begin{figure}[H]
+  \begin{mathpar}
+    \forall \diamond \in \{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
+      \inferrule[\odef{everything}{\atom{a}}]{
+      }{
+        \Omega \vdash \mono{'a} \diamond\,'a
+      }
+    \right]
+  \end{mathpar}
+  \caption{An example of quantification over all interpretation arrows}
 \end{figure}
 
-\FloatBarrier
-\subsection{Typing Judgements}
-\FloatBarrier
-The tables are to aid the reader to locate rules, they do not encode any information themselves.
+Not every syntactic construct is defined for every interpretation, which determines which constructions are permitted in which places in a program. For example, comptime variable identifiers cannot be used in runtime terms, so the runtime arrows are not defined for comptime variable identifiers: \odef{X}{\erasedreadarrow} exists but \odef{X}{\readarrowabs} does not.
 
-These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$ is the arrow being defined, and $M$, is the piece of syntax it is being defined for. For example \odef{M N}{\movearrow} refers to the rule for destructively reading a function application.
+The following table shows which interpretations are defined for which constructs, and where to find its definition:
 
-\begin{figure}
+% M
+% M = N; S
+% \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\}
+
+\begin{figure}[H]
   \begin{adjustwidth}{-1cm}{-1cm}
+  \def\arraystretch{1.3}
+  \begin{mathpar}
+    \begin{tabular}{c|cccccc}
+      $M$ & \erasedreadarrow & \readarrow & \movearrow & \writearrow & \narrowarrow & \erasedwritearrow \\
+      \hline
+
+      \ocomment{base expressions} &\multicolumn{6}{c}{Section \ref{section:formalbase}} \\
+      $\mono{'}a$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+      $\mono{\_}$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+      $x$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+      $X$ & \checkmark &  &  &  &  & \checkmark \\
+      
+      \ocomment{references} & \multicolumn{6}{c}{Section \ref{section:formalreferences}} \\
+      $\deref{M}$ &  & \checkmark & \checkmark & \checkmark & \checkmark &  \\
+      $\mono{\&}M$ & \checkmark &  & \checkmark &  &  & \\
+      $\mono{\&mut}\,M$ & \checkmark &  & \checkmark &  &  & \\
+
+      \ocomment{functions} & \multicolumn{6}{c}{Section \ref{section:formalfunctions}} \\
+      $M N$ & \checkmark &  & \checkmark &  &  & \\
+      $\mono{$M$ -> $T$ \{ $N$ \}}$ & &  & \checkmark &  &  & \\
+      $\mono{$M$ -> $N$}$ & \checkmark &  &  &  &  & \\
+
+      \ocomment{pairs} & \multicolumn{6}{c}{Section \ref{section:formalpairs}} \\
+      $M\mono{,} N$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+      $\pleft{M}$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+      $\pright{M}$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+
+      \ocomment{types} & \multicolumn{6}{c}{Section \ref{section:formaltypes}} \\
+      $M\mono{:}\,T$ & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+      $T\,\mono{|}\,U$ & \checkmark &  &  &  &  & \\
+      $t$ & \checkmark &  & &  &  & \\
+
+    \end{tabular}
+
+    \begin{tabular}{c|cc}
+      $S$ & \erasedreadarrow & \movearrow \\
+      \hline
+
+      \ocomment{statements} & \multicolumn{2}{c}{Section \ref{section:formalstatements}} \\
+      $M$ & \checkmark & \checkmark \\
+      $M = N; S$ & \checkmark & \checkmark \\
+      $\mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\}$ & \checkmark & \checkmark \\
+
+      \multicolumn{3}{c}{} \\
+
+      $M$ & \maxarrow{\writearrowabs} & \maxarrow{\erasedwritearrow} \\
+      \hline
+
+      \ocomment{expressions} & \multicolumn{2}{c}{Section \ref{section:formalmax}} \\
+      $\mono{'}a$ & \checkmark & \checkmark \\
+      $\mono{\_}$ & \checkmark & \checkmark \\
+      $x$ & \checkmark & \checkmark \\
+      $X$ &  & \checkmark \\
+      $\mono{\&}M$ & \checkmark & \checkmark \\
+      $\mono{\&mut}\,M$ & \checkmark & \checkmark \\
+      $M\mono{,} N$ & \checkmark & \checkmark \\
+      $M\mono{:}\,T$ & \checkmark & \checkmark \\
+
+    \end{tabular}
+  \end{mathpar}
+  \def\arraystretch{1}
+  \end{adjustwidth}
+  \caption{Interpretation Definition Lookup Table}
+  \label{fig:lookuptable}
+\end{figure}
+
+Each of the sections in the above tables will define the typing judgments formally and explain their definition.
+
+\subsection{Base Expressions}
+\label{section:formalbase}
+Base expressions are the simplest form of expression in Ochre. They do not themselves contain expressions, so the definitions of their interpretations do not rely on any other interpretations.
+
+\begin{Definition}{Variable Read Interpretations}{}
   \small
+  \centering
+  \begin{tabular}{c|ccc}
+
+    $M$ & $M \erasedreadarrow t$ & $M \readarrow t$ & $M \movearrow t$ \\
+    \hline
+
+    \\ $xX$ &
+    % \multicolumn{2}{c}{
+    \inferrule[]{
+      \absmap{xX}{t} \in \Omega
+    }{
+      \Omega \vdash xX \erasedreadarrow t \\\\
+    } &
+    \inferrule[]{
+      \absmap{x}{t} \in \Omega
+    }{
+      \Omega \vdash x \readarrow t \\\\
+    } &
+    % } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{\top}}{\absmap{x}{v}}\right]
+    }{
+      \Omega \vdash x \movearrow m \dashv \Omega'
+    } \\
+  \end{tabular}
+\end{Definition}
+
+\begin{Definition}{Variable Write Interpretations}{}
+  \small
+  \centering
+  \begin{tabular}{c|ccc}
+    $M$ & $M \writearrow t$ & $M \narrowarrow t$ & $M \erasedwritearrow t$ \\
+    \hline
+
+    \\ $xX$ &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
+    }{
+      \Omega \vdash x \writearrow v \dashv \Omega'
+    } &
+    % \multicolumn{2}{c}{
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{v'}}{\absmap{x}{v}}\right]\\\\
+      m':m
+    }{
+      \Omega \vdash x \narrowarrow v' \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega' = \Omega\left[\frac{\absmap{xX}{v'}}{\absmap{xX}{v}}\right]\\\\
+      m':m
+    }{
+      \Omega \vdash xX \erasedwritearrow v' \dashv \Omega'
+    } \\
+  \end{tabular}
+\end{Definition}
+
+The definition of the various interpretations of variables are a great demonstration of the differences between the different modalities. Compare \odef{\movearrowabs}{x} with \odef{\readarrowabs}{x}: when a variable is moved, its value is replaced with $\top$ in the environment to reflect the fact it has been moved, but when it is only read, the environment remains unchanged.
+
+Comptime interpretations (squiggly arrows) operate on comptime variables (upper case) as well as runtime variables (lower case), whereas runtime interpretations (straight arrows) can only operate on runtime variables.
+
+Note: you can only write a value to a variable if that variable is currently mapped to $\top$. This forces the value you are over-writing to be dropped via an environment rearrangement before writing to it.
+
+\begin{Definition}{Constant Expression Interpretations}{}
+  \small
+  \centering
   \begin{tabular}{c|cccccc}
-    & \erasedreadarrow & \readarrow & \movearrow & \writearrow & \narrowarrow & \erasedwritearrow \\
+
+    $M$ & $M \erasedreadarrow t$ & $M \readarrow t$ & $M \movearrow t$ & $M \writearrow t$ & $M \narrowarrow t$ & $M \erasedwritearrow t$ \\
     \hline
 
     \\\mono{'a} &
@@ -1496,8 +1887,7 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
           \Omega \vdash \mono{'a} \diamond\,'a
         }
       \right]$
-    }
-    \\
+    } \\
 
     \\\mono{\_} &
     \multicolumn{6}{c}{
@@ -1507,22 +1897,451 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
           \Omega \vdash \mono{\_} \diamond \top
         }
       \right]$
+    } \\
+  \end{tabular}
+\end{Definition}
+
+\textbf{Atoms} - Reading an atom gives you the singleton type (value) of that atom. Writing to an atom does not modify the environment, but it only works if the atom being written matches, so it is useful when you want to restrict the circumstances under which a write works. Match statements use this to determine under what circumstances each branch is executed: see \odef{\movearrow}{\mono{match}}.
+
+\textbf{Underscore/Top} - Reading from an underscore always gives you $\top$, which means no typing information. This is how the programmer constructs uninitialized data. $\top$ is also the type of all types, so it is how you explicitly declare that a variable is a type, like when making generic functions. Writing to an underscore drops the value, which is useful for ignoring the result of a function call.
+
+\subsection{References}
+\label{section:formalreferences}
+Borrow checking in Ochre occurs in the rules for interpretting references. \mono{\&} constructs references, and \mono{*} eliminates references (\textit{dereferencing}).
+
+% \begin{adjustwidth}{-1cm}{-1cm}
+\begin{Definition}{Dereference Interpretations}{}
+  \small
+  \centering
+  \begin{tabular}{c|cccc}
+
+    $M$ & $M \readarrow t$ & $M \movearrow t$  \\
+    \hline
+
+    \\\deref{M} & % shared
+    \inferrule[]{
+      \Omega \vdash M \readarrow \borrows{l}{v}
+    }{
+      \Omega \vdash \deref{M} \readarrow v
+    } &
+    \\
+    
+    \\ & % mutable
+    \inferrule[]{
+      \Omega \vdash M \readarrow \borrowm{l}{v}
+    }{
+      \Omega \vdash \deref{M} \readarrow v
+    } &
+    \inferrule[]{
+      \Omega \vdash M \movearrow \borrowm{l}{v} \dashv \Omega'\\\\
+      \Omega' \vdash M \writearrow \borrowm{l}{\bot} \dashv \Omega''
+    }{
+      \Omega \vdash \deref{M} \movearrow v \dashv \Omega''
+    } \\
+    
+    \\\multicolumn{3}{c}{}\\
+
+    $M$ & $M \writearrow t$ & $M \narrowarrow t$ \\
+    \hline
+
+    \\ \deref{M} & % shared
+    &
+    \inferrule[]{
+      \Omega \vdash M \readarrow \borrows{l}{v'} \dashv \Omega'\\\\
+      \Omega'' = \Omega'[\loans{l}{v'}/\loans{l}{v}]\\\\
+      v':v
+    }{
+      \Omega \vdash \deref{M} \narrowarrow v' \dashv \Omega'
+    } \\
+
+    \\& % mutable
+    \inferrule[]{
+      \Omega \vdash M \movearrow \borrowm{l}{\bot} \dashv \Omega'\\\\
+      \Omega' \vdash M \writearrow \borrowm{l}{v} \dashv \Omega''
+    }{
+      \Omega \vdash \deref{M} \writearrow v \dashv \Omega''
+    } &
+    \inferrule[]{
+      \Omega \vdash M \readarrow \borrowm{l}{v'} \dashv \Omega'\\\\
+      \Omega'' = \Omega'[\loans{l}{v'}/\loans{l}{v}]\\\\
+      v':v
+    }{
+      \Omega \vdash \deref{M} \narrowarrow v' \dashv \Omega'
+    } \\
+  \end{tabular}
+\end{Definition}
+% \end{adjustwidth}
+
+There is no syntactic distinction between a mutable and an immutable dereference because that can be determined by the type of the expression being dereferenced. Destructive operations are not defined for immutable operations, because that would break AXM\footnote{aliasing xor mutability}.
+
+Many types contain other types, in this case, the mutable reference type contains the type of the value being referenced. In these cases, move is typically defined by moving the entire type out of the context, and then writing it back with an inner value. \odef{\movearrow, \writearrow}{\deref{M}} both do this in the above definition and \odef{\movearrow, \writearrow}{\pleft{M}, \pright{M}} are good examples of this pattern in other language constructs.
+
+Type narrowing is permitted even via \textit{immutable} references (\odef{\narrowarrow}{\deref{M}}), despite causing a mutation to the environment. This is because type narrows don't occur when the user writes to a variable, they are only used by match statements to narrow the type of the scrutinee down to the appropriate branch.
+
+Comptime terms do not use move semantics, so there is no need for borrowing, so dereference is not defined for comptime interpretations.
+
+\begin{Definition}{Reference Construction Interpretations}{}
+  \small
+  \centering
+  \begin{tabular}{c|cc}
+    $M$ & $M \erasedreadarrow t$ & $M \movearrow t$ \\
+    \hline
+
+    \\$\oref{M}$ & % shared
+    \inferrule{
+      \Omega \vdash M \erasedreadarrow t \dashv \Omega' \\\\
+      \Omega'' = \Omega',\absmap{l}{t}
+    }{
+      \Omega \vdash \oref{M} \erasedreadarrow \borrows{l}{t} \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega \vdash M \readarrow t\\\\
+      \Omega \vdash M \narrowarrow \loans{l}{t} \dashv \Omega'
+    }{
+      \Omega \vdash \oref{M} \movearrow \borrows{l}{t} \dashv \Omega'
+    } \\
+
+    \\$\mutref{M}$ & % mutable
+    \inferrule{
+      \Omega \vdash M \erasedreadarrow t \dashv \Omega' \\\\
+      \Omega'' = \Omega',\absmap{l}{t}
+    }{
+      \Omega \vdash \mutref{M} \erasedreadarrow \borrowm{l}{t} \dashv \Omega'
+    } &
+    \inferrule[]{
+      \Omega \vdash M \movearrow t \dashv \Omega'\\\\
+      \Omega' \vdash M \writearrow \loanm{l} \dashv \Omega''
+    }{
+      \Omega \vdash \mutref{M} \movearrow \borrowm{l}{t} \dashv \Omega''
+    } \\
+  \end{tabular}
+\end{Definition}
+
+To construct a mutable reference (\odef{\movearrow}{\mutref{M}}), you first move the value from $M$, and replace it via a write with a loan identifier. When the reference is dropped, it uses this loan identifier to find where to write the updated value back to. Because \odef{\movearrow}{\mutref{M}} uses both move and write, it also enforces the location being referenced isn't behind an immutable reference.
+
+Immutable reference construction (\odef{\movearrow}{\oref{M}}) does the same, but with non-destructive operations which allows it to happen through immutable references.
+
+\textbf{Loan Restrictions} - Comptime reference construction puts a loan restriction into the environment, which forces the reference to have the same type when it is dropped as when it is created. This is used by function body checking:
+
+\begin{minted}[mathescape]{rust}
+  f = (x: &mut 'a) -> 'unit {
+    *x = 'b;
+    'unit
+  }; // $\times: \text{x cannot be dropped because it has the wrong type}$
+\end{minted}
+
+Function bodies drop everything in their environments (by nature of being statements, not expressions), and \textbf{to drop a reference it must be within its loan restriction}, so by type-checking a statement with a loan restriction in the environment, you know it writes the correct type back eventually, even if it temporarily changes the type of the reference locally.
+
+\subsection{Functions}
+\label{section:formalfunctions}
+This section defines abstraction and application.
+
+\begin{adjustwidth}{-0cm}{-0cm}
+\begin{Definition}{Function Interpretations}{}
+  \small
+  \begin{tabular}{p{1.2cm}|cc}
+    $M$ & $\Omega \vdash M \movearrow t \dashv \Omega'$ & $\Omega \vdash M \erasedreadarrow t \dashv \Omega'$ \\
+    \hline
+
+    \\$M N$ &
+    $\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash F \readarrowabs (M \rightarrow S_t) & \ocomment{function def.} \\
+        \Omega \vdash A \movearrowabs v \dashv \Omega' & \ocomment{argument type} \\
+        \Omega' \vdash T \writearrowabs v \dashv \Omega'' & \ocomment{inner env.} \\
+        \Omega'' \vdash S_t \subtype \mono{*} \erasedreadarrow w & \ocomment{return type} \\
+        \Omega' \vdash \text{drop}\,v \dashv \Omega''' & \ocomment{propogate effects} \\
+      \end{array}
+    }{
+      \Omega \vdash F A \movearrowabs w \dashv \Omega'''
+    }$ &
+    $\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash F \erasedreadarrow (T \rightarrow S_t) & \ocomment{function def.} \\
+        \Omega \vdash A \erasedreadarrow v & \ocomment{argument type} \\
+        \Omega \vdash T \erasedwritearrow v \dashv \Omega' & \ocomment{inner env.} \\
+        \Omega' \vdash S_t \subtype \mono{*} \erasedreadarrow w' & \ocomment{return type}
+      \end{array}
+    }{
+      \Omega \vdash F A \erasedreadarrow w
+    }$ \\
+
+    \\ &
+    $\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash F \readarrowconc (M \rightarrow S) & \ocomment{function def.} \\
+        \Omega \vdash A \movearrowconc v \dashv \Omega' & \ocomment{argument value} \\
+        \Omega' \vdash M \writearrowconc v \dashv \Omega'' & \ocomment{inner env.} \\
+        \Omega'' \vdash S \movearrowconc w \dashv \Omega''' & \ocomment{return value} \\
+      \end{array}
+    }{
+      \Omega \vdash F A \movearrowconc w \dashv \Omega'''
+    }$ \\
+    % \inferrule{
+    %   \Omega \vdash F \readarrowconc (M  \rightarrow S) \\\\
+    %   \Omega \vdash A \movearrowconc v \dashv \Omega' \\\\
+    %   \Omega' \vdash M \writearrowconc v \dashv \Omega'' \\\\
+    %   \Omega'' \vdash S \movearrowconc w \dashv \Omega'''
+    % }{
+    %   \Omega \vdash F A \movearrowconc w \dashv \Omega'''
+    % } \\
+
+    \\\mono{$M$->$S_t$\{} \newline
+      \mono{    }$S$ \newline
+    \mono{\}} &
+    % \\M \mono{->} S_t (\mono{\{}S\mono{\}}) &
+    $\raisebox{-4ex}{$\dfrac{
+      \begin{array}{ll}
+        \Omega \vdash M \maxarrow{\writearrowabs} m \dashv \Omega' & \ocomment{input type} \\
+        \Omega' \vdash S \subtype S_t \movearrowabs u & \ocomment{check body}
+      \end{array}
+    }{
+      \Omega \vdash M \mono{->} S_t \mono{\{} S \mono{\}} \movearrowabs M \rightarrow S_t
+    }$}$ &
+    $\raisebox{-4ex}{$\dfrac{
+      \begin{array}{cl}
+        \Omega \vdash T \maxarrow{\erasedwritearrow} t \dashv \Omega' & \ocomment{argument type} \\
+        \Omega' \vdash S_t \subtype S_t' \erasedreadarrow u & \ocomment{check body}
+      \end{array}
+    }{
+      \Omega \vdash T \mono{->} S_t \erasedreadarrow T \rightarrow S_t
+    }$}$ \\
+
+    \\ &
+    \inferrule{
+      \ocomment{no checking}
+    }{
+      \Omega \vdash M \mono{->} S_t \mono{\{} S \mono{\}} \movearrowconc M \rightarrow S
+    } \\
+
+  \end{tabular}
+\end{Definition}
+\end{adjustwidth}
+
+\subsubsection{Concrete vs abstract differences}
+Apart from \odef{\movearrow, \writearrow}{M:T}, abstraction and application are the only constructions that have a different behavior during abstract interpretation and concrete interpretation. \textbf{At a function call site: abstract interpretation executes the function's \textit{return type} whereas concrete interpretation executes the function's \textit{body}.} This means the cost of abstract interpretation is linear w.r.t. the number of runtime function bodies, whereas concrete interpretation directly executes your program, and gets its computational complexity from there.
+
+While abstract interpretation will not diverge due to executing runtime terms, it may diverge from executing comptime terms due to comptime terms themselves likely being Turing complete.
+
+For a function \mono{$M$ -> $S_t$ \{ $S$ \}}, abstract interpretation will run to the function return type ($M \rightarrow S_t$) whereas abstraction will run to the body ($M \rightarrow S$). This is why concrete interpretation runs the body whenever the function is called and abstract interpretation only runs the return type.
+
+\subsubsection{Function Checking}
+The return type must be a sound approximation of the body if the aforementioned difference in behavior between concrete and abstract interpretation is to be sound. This is done via bounded statement interpretation, $\Omega \vdash S \subtype S_t \movearrowabs u$. If bounded statement interpretation succeeds, then $S$ is a subtype $S_t$, and it will continue to be in all narrowings of $\Omega$. This property is discussed further in Theorem \ref{theorem:statementbounds} and \ref{theorem:statementsubtypingpreservation}.
+
+\subsection{Pairs}
+\label{section:formalpairs}
+Due to being dependent, the interpretations of pairs in Ochre are similar to the interpretations for functions. Accessing the left-hand side of a pair directly gives you the stored value/type. Accessing the right-hand side of a pair uses the type of the left, along with the syntax stored in the abstract environment, to calculate the type of the right-hand side.
+
+\begin{Definition}{Environment Pair Elimination}{}
+  \small
+  \centering
+  \begin{tabular}{c|cc}
+    $t$ & $\oleft{t}$ & $\oright{t}$ \\
+    \hline
+    
+    \\$(t, T \rightarrow S)$ &
+    \inferrule{
+    }{
+      \Omega \vdash \oleft{(t, T \rightarrow S)} = t
+    } &
+    \inferrule{
+      \Omega \vdash \kw{comptime} \dashv \Gamma \\\\
+      \Gamma \vdash T \erasedwritearrow t \dashv \Gamma' \\\\
+      \Gamma' \vdash S \subtype \mono{\_} \erasedreadarrow u
+    }{
+      \Omega \vdash \oright{(t, T \rightarrow S)} = u
+    }
+  \end{tabular}
+\end{Definition}
+
+Accessing the right element of a pair is so involved because it involves interpreting the term stored in the abstract environment. This must be done with care to avoid soundness issues: the environment being used to execute this term during a pair access is different to the one used to construct the pair; how can we expect it to give the same result? Because we filter the environment for only the comptime variables, and because interpretation only ever narrows comptime variables, we know that the result of executing the syntax at elimination is a subtype of what it was at construction. See Theorem \ref{theorem:interpretationnarrowscomptime} for more.
+
+\begin{adjustwidth}{-0.0cm}{-0.0cm}
+\begin{Definition}{Pair Construction Interpretations}{}
+  \small
+  \begin{adjustwidth}{-0.2cm}{-0.2cm}
+  \begin{tabular}{c|ccc}
+    $M$ & $M \movearrow v$ & $M \readarrow v$ & $T \erasedreadarrow t$ \\
+    \hline
+
+    \\$M\mono{,}N$ &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \movearrow, \readarrow \}. \left[
+        \inferrule[]{
+          \Omega \vdash M \diamond m \dashv \Omega'\\\\
+          \Omega' \vdash N \diamond n \dashv \Omega''
+        }{
+          \Omega \vdash \mono{($M$, $N$)} \diamond (m, \mono{\_} \rightarrow n) \dashv \Omega''
+        }
+      \right]$
+    } &
+    \inferrule{
+      \Omega \vdash \mono{($T$, \_ -> $S$)} \erasedreadarrow v
+    }{
+      \Omega \vdash \mono{($T$, $S$)} \erasedreadarrow v
+    } \\
+
+    &
+    &
+    &
+    \inferrule{
+      \Omega \vdash T \erasedreadarrow t \\\\
+      \Omega \vdash \oright{(t, T' \rightarrow S)} = u
+    }{
+      \Omega \vdash \mono{($T$, $T'$ -> $S$)} \erasedreadarrow (t, T' \rightarrow S)
+    } \\
+    
+\end{tabular}
+\end{adjustwidth}
+\end{Definition}
+\end{adjustwidth}
+  
+Pairs are a combination of a left type, and a way to turn a left type into the right type. Pairs constructors interpreted with a runtime modality \textit{cannot} be dependent immediately; but you can make them dependent after constructing them by widening their type with a type annotation, like so:
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    x = ('a, 'a); // $ \absenv{ \absmap{\mono{x}}{('a, 'a)} }$
+    x = x: ('a | 'b, L -> L); // $ \absenv{ \absmap{\mono{x}}{(\{'a, 'b\}, L \rightarrow L)} }$
+  \end{minted}
+  \caption{When x is constructed, it is non-dependent. When the type annotation is applied, it becomes dependent.}
+  \label{fig:dalwdunawdn}
+\end{listing}
+
+This shows itself in the difference between the comptime and runtime typing rules: In \odef{\movearrow, \readarrow}{M, N}, the constructed pair ($(m, \mono{\_} \rightarrow n)$) is always non-dependent. Whereas in \odef{\erasedreadarrow}{M, N} the constructed pair can be dependent ($(t, T' \rightarrow S)$). This is done because when calculating the right value of a pair, the term used to construct the right is executed, and since that execution is happening at compile time, it must be a comptime term.
+
+Within the comptime modality the left value of a pair can be bound in the definition of the right with an optional \mono{$T$ -> } prefix, as used in Figure \ref{fig:dalwdunawdn}. As shown in \odef{\erasedreadarrow}{M, N} this is put in the environment for later re-use.
+
+\begin{adjustwidth}{-0.0cm}{-0.0cm}
+  \begin{Definition}{Pair Elimination Interpretations}{}
+    \small
+    \centering
+    \begin{adjustwidth}{-0.2cm}{-0.2cm}
+    \begin{tabular}{c|ccc}
+      $M$ & $M \movearrow v$ & $M \readarrow v$ & $T \erasedreadarrow t$ \\
+      \hline
+  
+      \\\mono{$M$.0} &
+      \inferrule[]{
+        \Omega \vdash M \movearrow t \dashv \Omega'\\\\
+        \Omega \vdash \oleft{t} = t_0 \\\\
+        \Omega \vdash \oright{t} = t_1 \\\\
+        \Omega' \vdash M \writearrow (\top, \mono{\_} \rightarrow t_1) \dashv \Omega''
+      }{
+        \Omega \vdash \mono{$M$.0} \movearrow t_0 \dashv \Omega''
+      } &
+      \multicolumn{2}{c}{
+        $\forall \diamond \in \{ \readarrow, \erasedreadarrow \}. \left[
+          \vcenter{\inferrule[]{
+            \Omega \vdash M \diamond t \\\\
+            \Omega \vdash \oleft{t} = t_0
+          }{
+            \Omega \vdash \mono{$M$.0} \diamond t_0
+          }}
+        \right]$
+      } \\
+      
+      \\\mono{$M$.1} &
+      \inferrule{
+          \Omega \vdash M \movearrow t \dashv \Omega' \\\\
+          \Omega' \vdash \oleft{t} = t_0 \\\\
+          \Omega' \vdash \oright{t} = t_1 \\\\
+          \Omega' \vdash M \writearrow (t_0, \mono{\_} \rightarrow \top) \dashv \Omega''
+      }{
+        \Omega \vdash \mono{$M$.1} \movearrow t_1 \dashv \Omega''
+      } &
+      \multicolumn{2}{c}{
+        $\forall \diamond \in \{ \readarrow, \erasedreadarrow \}. \left[
+          \vcenter{\inferrule{
+            \Omega \vdash M \diamond t \\\\
+            \Omega' \vdash \oright{t} = t_1
+          }{
+            \Omega \vdash \mono{$M$.1} \diamond t_1
+          }}
+        \right]$
+      } \\
+      
+  \end{tabular}
+\end{adjustwidth}
+\end{Definition}
+\label{definition:readpairelemination}
+\end{adjustwidth}
+
+Pair elimination rules heavily leverage the \kw{left} and \kw{right} helper functions. Moving either the left or right element of a pair away from the pair breaks the dependence, as represented by both \odef{\movearrow}{\mono{$M$.0}} and \odef{\movearrow}{\mono{$M$.1}} replacing the pair with a non-dependent pair ($(\top, \mono{\_} \rightarrow t_1)$ and $(t_0, \mono{\_} \rightarrow \top)$ respectively).
+
+\begin{adjustwidth}{-0cm}{-0cm}
+\begin{Definition}{Pair Write Interpretations}{}
+  \small
+  \begin{adjustwidth}{-0cm}{-0cm}
+  \begin{tabular}{c|ccc}
+    $M$ & $M \writearrow v$ & $M \narrowarrow v$ & $M \erasedwritearrow v$ \\
+    \hline
+    
+    \\$M\mono{,}N$ &
+    \multicolumn{3}{c}{
+      $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
+        \vcenter{\inferrule[]{
+          \Omega \vdash \oleft{t} = t_0 \\\\  
+          \Omega \vdash \oright{t} = t_1 \\\\  
+          \Omega \vdash M \diamond t_0 \dashv \Omega'' \\\\
+          \Omega'' \vdash N \diamond t_1 \dashv \Omega'''
+        }{
+          \Omega \vdash M\mono{,}N \,\diamond\, t \dashv \Omega'''
+        }}
+      \right]$
     }
     \\
 
-    % \\\mono{*} &
-    % \inferrule[]{
-    % }{
-    %   \Omega \vdash \mono{*} \erasedreadarrow \top
-    % }&
-    % &
-    % &
-    % &
-    % &
-    % \inferrule[]{
-    % }{
-    %   \Omega \vdash \mono{*} \erasedwritearrow \top
-    % }\\
+    \\\mono{$M$.0} &
+    \inferrule[]{
+      \Omega \vdash M \movearrow t \dashv \Omega'\\\\
+      \Omega' \vdash \oleft{t} = \top \\\\
+      \Omega' \vdash \oright{t} = t_1 \\\\
+      \Omega' \vdash M \writearrow (t_0', \mono{\_} \rightarrow t_1) \dashv \Omega''
+    }{
+      \Omega \vdash \mono{$M$.0} \writearrow t_0' \dashv \Omega''
+    } &
+    \multicolumn{2}{c}{
+      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
+        \vcenter{\inferrule[]{
+          \Omega \vdash M \oflip{\diamond} (t_0, T \rightarrow S) \\\\
+          \Omega \vdash t_0' \subtype t_0 \\\\
+          \Omega \vdash M \diamond (t_0', T \rightarrow S) \dashv \Omega'
+        }{
+          \Omega \vdash \mono{$M$.0} \diamond m \dashv \Omega''
+        }}
+      \right]$
+    } \\
+
+    \\\mono{$M$.1} &
+    \inferrule[]{
+      \Omega \vdash M \readarrow t \dashv \Omega' \\\\
+      \Omega' \vdash \oleft{t} = t_0 \\\\
+      \Omega' \vdash \oright{t} = t_1 \\\\
+      \Omega' \vdash M \writearrow (t_0, \mono{\_} \rightarrow t_1') \dashv \Omega''
+    }{
+      \Omega \vdash \mono{$M$.1} \writearrow t_1' \dashv \Omega''
+    } \\
+  \end{tabular}
+  \end{adjustwidth}
+\end{Definition}
+\end{adjustwidth}
+
+Destructuring is done via \odef{\writearrow, \narrowarrow, \erasedwritearrow}{M\mono{,}N}. Writing a pair to a pair constructor breaks the pair into its left and right element, then writes each element to the respective terms in the pair constructor.
+
+Writing to a pair breaks the pair into left and right, then writes it back with a new left or right element. In the process, the dependence of the pair is broken.
+
+Narrowing the left of a pair does \textit{not} break the dependence, because the new value is a subtype of the old, so you know the term stored for the right-hand side will still work.
+
+Narrowing the right of a pair has not been defined because it is never used. There is no technical reason why it could not be interpreted; although asserting that a new term is a subtype could be difficult if you wanted to keep the dependence, and would probably involve bounded statement interpretation.
+
+\subsection{Type Constructs}
+\label{section:formaltypes}
+
+\begin{Definition}{Type Annotation Interpretations}{}
+  \small
+  \begin{tabular}{c|cccccc}
+    $M$ & $M \erasedreadarrow t$ & $M \readarrow t$ & $M \movearrow t$ & $M \writearrow t$ & $M \narrowarrow t$ & $M \erasedwritearrow t$ \\
+    \hline
 
     \\\mono{M:T} &
     \multicolumn{3}{c}{
@@ -1543,11 +2362,11 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
         \raisebox{-2ex}{$\dfrac{
           \begin{array}{cl}
             \Omega \vdash M \diamond m \dashv \Omega' \\
-            \Omega' \vdash T \erasedwritearrow t \\
+            \Omega' \vdash T \erasedreadarrow t \\
             \Omega' \vdash m \subtype t
           \end{array}
         }{
-          \Omega \vdash M\mono{:}T \diamond t \dashv \Omega'
+          \Omega \vdash M\mono{:}T \diamond m \dashv \Omega'
         }$}
       \right]$
     } \\
@@ -1566,390 +2385,48 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
       \right]$
     } &
     \\
-
-
-
   \end{tabular}
-\end{adjustwidth}
-\caption{everythingtable}
-\label{fig:everythingtable}
-\end{figure}
+\end{Definition}
 
-\begin{figure}
-  \begin{adjustwidth}{-1cm}{-1cm}
-  \small
-  \begin{tabular}{c|ccc}
-    $M$ & $\Omega \vdash M \movearrow v \dashv \Omega'$ & $\Omega \vdash M \readarrow v$ & $\Omega \vdash M \erasedreadarrow v$ \\
-    \hline
+Apart from \odef{\movearrow}{M N, M\mono{->}S}, type annotations are the only constructions that have a different behavior during abstract interpretation and concrete interpretation. \textbf{When interpreting a type annotation: abstract interpretation interprets both the left and right of the \mono{:}, then asserts the left is a subtype of the right whereas concrete interpretation ignores the right and acts on the left}. When read-interpreting a type annotation, information is lost: you only get the type of the annotation, not the term being typed.
 
-    \\\mono{x} or \mono{X} &
-    \inferrule[]{
-      \Omega' = \Omega\left[\frac{\absmap{x}{\top}}{\absmap{x}{v}}\right]
-    }{
-      \Omega \vdash x \movearrow m \dashv \Omega'
-    } &
-    \inferrule[]{
-      \absmap{x}{v} \in \Omega
-    }{
-      \Omega \vdash \mono{x} \readarrow v
-    } &
-    \inferrule[]{
-      \absmap{X}{t} \in \Omega
-    }{
-      \Omega \vdash \mono{X} \erasedreadarrow t
-    }
-    \\
-
-    \\$M\mono{,}N$ &
-    \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \movearrow, \readarrow \}. \left[
-        \inferrule[]{
-          \Omega \vdash M \diamond m \dashv \Omega'\\\\
-          \Omega' \vdash N \diamond n \dashv \Omega''
-        }{
-          \Omega \vdash \mono{($M$, $N$)} \diamond (m, \mono{\_} \rightarrow n) \dashv \Omega''
-        }
-      \right]$
-    } &
-    \inferrule{
-      \Omega \vdash \mono{($T$, \_ -> $U$)} \erasedreadarrow v
-    }{
-      \Omega \vdash \mono{($T$, $U$)} \erasedreadarrow v
-    } \\
-
-    &
-    &
-    &
-    \inferrule{
-      \Omega \vdash T \erasedreadarrow t \\\\
-      \Omega \vdash T' \erasedwritearrow t \dashv \Omega' \\\\
-      \Omega' \vdash U \erasedreadarrow u
-    }{
-      \Omega \vdash \mono{($T$, $T'$ -> $U$)} \erasedreadarrow (t, T' \rightarrow U)
-    } \\
-
-
-    \\\mono{$M$.0} &
-    \inferrule[]{
-      \Omega \vdash M \movearrow (v, T \rightarrow S_t) \dashv \Omega'\\\\
-      \Omega' \vdash T \erasedwritearrow v \dashv \Omega''\\\\
-      \Omega'' \vdash S_t \erasedreadarrow w \\\\
-      \Omega' \vdash M \writearrow (\top, \mono{\_} \rightarrow w) \dashv \Omega''
-    }{
-      \Omega \vdash \mono{$M$.0} \movearrow m \dashv \Omega''
-    } &
-    \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \readarrow, \erasedreadarrow \}. \left[
-        \inferrule[]{
-          \Omega \vdash M \diamond (m, \_ \rightarrow \_) \dashv \Omega' 
-        }{
-          \Omega \vdash \mono{$M$.0} \diamond m \dashv \Omega'
-        }
-      \right]$
-    }
-    \\
-    
-    \\\mono{$M$.1} &
-    \multicolumn{3}{c}{
-      $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
-        \raisebox{-5.5ex}{$\dfrac{
-          \begin{array}{lll}
-            \Omega \vdash M \diamond (v, T \rightarrow U) \dashv \Omega' & \ocomment{get pair} & \\
-            \Omega' \vdash T \erasedwritearrow v \dashv \Omega'' & \ocomment{calculate right restriction} & \\
-            \Omega'' \vdash U \erasedreadarrow w \dashv \Omega' & \ocomment{calculate right restriction} & \\
-            \Omega' \vdash M \writearrow (m, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''' & \ocomment{replace pair} & \textit{if $\diamond = \movearrow$} \\
-            \Omega''' = \Omega' & & \textit{if $\diamond \ne \movearrow$}
-          \end{array}
-        }{
-          \Omega \vdash \mono{$M$.1} \diamond w \dashv \Omega'''
-        }$}
-      \right]$
-    }
-    \\
-    
-    % \\\mono{$M$.1} &
-    % \multicolumn{3}{c}{
-    %   $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
-    %     \vcenter{\inferrule{
-    %       {\begin{aligned}
-    %         & \Omega \vdash M \diamond (v, T \rightarrow U) \dashv \Omega' & & \ocomment{get pair} & \\
-    %         & \Omega' \vdash T \erasedwritearrow v \dashv \Omega'' & & \ocomment{calculate right restriction} & \\
-    %         & \Omega'' \vdash U \erasedreadarrow w \dashv \Omega' & & \ocomment{calculate right restriction} & \\
-    %         & \Omega' \vdash M \writearrow (m, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''' & & \ocomment{replace pair} & \textit{if $\diamond = \movearrow$} \\
-    %         & \Omega''' = \Omega' & & & \textit{if $\diamond \ne \movearrow$}
-    %       \end{aligned}}
-    %     }{
-    %       \Omega \vdash \mono{$M$.1} \diamond w \dashv \Omega'''
-    %     }}
-    %   \right]$
-    % }
-    % \\
-    
-    %% MAKES LATEX HANG
-    % \\\mono{$M$.1} &
-    % \multicolumn{3}{c}{
-    %   $\forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \}. \left[
-    %     \vcenter{{\begin{array}{ccccc}
-    %       & \Omega \vdash M \diamond (v, T \rightarrow U) \dashv \Omega' & & \ocomment{get pair} & \\
-    %       & \Omega' \vdash T \erasedwritearrow v \dashv \Omega'' & & \ocomment{calculate right restriction} & \\
-    %       & \Omega'' \vdash U \erasedreadarrow w \dashv \Omega' & & \ocomment{calculate right restriction} & \\
-    %       & \Omega' \vdash M \writearrow (m, \mono{\_} \rightarrow \mono{\_}) \dashv \Omega''' & & \ocomment{replace pair} & \textit{if $\diamond = \movearrow$} \\
-    %       & \Omega''' = \Omega' & & & \textit{if $\diamond \ne \movearrow$}
-    %       \end{aligned}}
-    %       \hline
-    %       \Omega \vdash \mono{$M$.1} \diamond w \dashv \Omega'''
-    %     \end{array}}
-    %   \right]$
-    % }
-    % \\
-
-    \\\mono{*$M$} &
-    &
-    \inferrule[]{
-      \Omega \vdash M \readarrow \borrows{l}{v}
-    }{
-      \Omega \vdash \mono{*$M$} \readarrow v
-    }
-    \\
-
-    \\ &
-    \inferrule[]{
-      \Omega \vdash M \movearrow \borrowm{l}{v} \dashv \Omega'\\\\
-      \Omega' \vdash M \writearrow \borrowm{l}{\bot} \dashv \Omega''
-    }{
-      \Omega \vdash \mono{*$M$} \movearrow v \dashv \Omega''
-    } &
-    \inferrule[]{
-      \Omega \vdash M \readarrow \borrowm{l}{v}
-    }{
-      \Omega \vdash \mono{*$M$} \readarrow v
-    }
-    \\
-
-  \end{tabular}
-\end{adjustwidth}
-\caption{readtable}
-\label{fig:readtable}
-\end{figure}
-
-\begin{figure}
-  \begin{adjustwidth}{-1cm}{-1cm}
-  \small
+\begin{Definition}{Type Constructor Interpretations}{}
   \centering
-  \begin{tabular}{c|ccc}
-    $M$ & $\Omega \vdash M \writearrow v \dashv \Omega' $ & $\Omega \vdash M \narrowarrow v \dashv \Omega' $ & $\Omega \vdash T \erasedwritearrow t \dashv \Omega' $ \\
-    \hline
-
-    \\\mono{x} or \mono{X} &
-    \inferrule[]{
-      \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
-    }{
-      \Omega \vdash x \writearrow v \dashv \Omega'
-    } &
-    \inferrule[]{
-      \Omega' = \Omega\left[\frac{\absmap{x}{v'}}{\absmap{x}{v}}\right]\\\\
-      m':m
-    }{
-      \Omega \vdash x \narrowarrow m' \dashv \Omega'
-    } &
-    \inferrule[]{
-      \Omega' = \Omega\left[\frac{\absmap{X}{v'}}{\absmap{X}{v}}\right]\\\\
-      m':m
-    }{
-      \Omega \vdash X \erasedwritearrow m' \dashv \Omega'
-    }
-    \\
-
-    \\$M\mono{,}N$ &
-    \multicolumn{3}{c}{
-      $\forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
-        \vcenter{\inferrule[]{
-          \Omega \vdash T \erasedwritearrow m \dashv \Omega'\\\\
-          \Omega' \vdash U \erasedreadarrow n\\\\
-          \Omega \vdash M \diamond m \dashv \Omega''\\\\
-          \Omega'' \vdash N \diamond n \dashv \Omega'''
-        }{
-          \Omega \vdash M\mono{,}N \,\diamond\, (m, T \rightarrow U) \dashv \Omega'''
-        }}
-      \right]$
-    }
-    \\
-
-    \\\mono{$M$.0} &
-    \inferrule[]{
-      \Omega \vdash M \writearrow (\bot, n, \mono{\_} \rightarrow U) \dashv \Omega'\\\\
-      \Omega' \vdash M \writearrow (m, T \rightarrow U) \dashv \Omega''
-    }{
-      \Omega \vdash \mono{$M$.0} \writearrow m \dashv \Omega''
-    } &
-    \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
-        \vcenter{\inferrule[]{
-          \Omega \vdash M \diamond (\bot, n, \mono{\_} \rightarrow U) \dashv \Omega'
-        }{
-          \Omega \vdash \mono{$M$.0} \diamond m \dashv \Omega''
-        }}
-      \right]$
-    }
-    \\
-
-    \\\mono{$M$.1} &
-    \inferrule[]{
-      \Omega \vdash M \writearrow (m, \bot, T \rightarrow \mono{\_}) \dashv \Omega'\\\\
-      U = \kw{translate} \, n \\\\
-      \Omega' \vdash M \writearrow (m, T \rightarrow U) \dashv \Omega''
-    }{
-      \Omega \vdash \mono{$M$.1} \writearrow n \dashv \Omega''
-    }
-    \\
-
-    \\\mono{\_} &
-    \inferrule[]{
-      \Omega \vdash \drop{v} \dashv \Omega'
-    }{
-      \Omega \vdash \mono{\_} \writearrow v \dashv \Omega'
-    } &
-    \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \narrowarrow, \erasedwritearrow \}. \left[
-        \inferrule[]{
-        }{
-          \Omega \vdash \mono{\_} \readarrow \bot  
-        }
-      \right]$
-    }
-    \\
-
-    \\\mono{*}
-    \\
-
-    \\\mono{*$M$} &
-    \inferrule[]{
-      \Omega \vdash M \movearrow \borrowm{l}{\bot} \dashv \Omega'\\\\
-      \Omega' \vdash M \writearrow \borrowm{l}{v} \dashv \Omega''
-    }{
-      \Omega \vdash \mono{*$M$} \writearrow v \dashv \Omega''
-    } &
-    \inferrule[]{
-      \Omega \vdash M \readarrow \borrows{l}{v'} \dashv \Omega'\\\\
-      \Omega'' = \Omega'[\loans{l}{v'}/\loans{l}{v}]\\\\
-      v':v
-    }{
-      \Omega \vdash \mono{*$M$} \narrowarrow v' \dashv \Omega'
-    }
-    \\
-
-  \end{tabular}
-\end{adjustwidth}
-\caption{writetable}
-\label{fig:writetable}
-\end{figure}
-
-\begin{figure}
-  \begin{adjustwidth}{-1cm}{-1cm}
   \small
-  \begin{tabular}{c|ccc}
-    $M$ & $\Omega \vdash M \movearrow v \dashv \Omega'$ & $\Omega \vdash T \erasedreadarrow t$ \\
+  \begin{tabular}{c|cccccc}
+    $T$ & $T \erasedreadarrow t$ \\
     \hline
 
-    \\\mono{\&}M &
-    \inferrule[]{
-      \Omega \vdash M \readarrow m\\\\
-      \Omega \vdash M \narrowarrow \loans{l}{m} \dashv \Omega'
-    }{
-      \Omega \vdash \mono{\&}M \movearrow \borrows{l}{m} \dashv \Omega'
-    }
-    \\
-
-    \\\mono{\&mut} M &
-    \inferrule[]{
-      \Omega \vdash M \movearrow m \dashv \Omega'\\\\
-      \Omega' \vdash M \writearrow \kw{loan}^m\,l \dashv \Omega''
-    }{
-      \Omega \vdash \mono{\&mut} M \movearrow \kw{borrow}^m\,l\,m \dashv \Omega''
-    }
-    \\
-
-    \\M N &
-    $\dfrac{
-      \begin{array}{ll}
-        \Omega \vdash F \readarrowabs (M \rightarrow S_t) & \ocomment{eval function} \\
-        \Omega \vdash X \movearrowabs v \dashv \Omega' & \ocomment{eval argument} \\
-        \Omega' \vdash T \writearrowabs v \dashv \Omega'' & \ocomment{calculate return type} \\
-        \Omega'' \vdash S_t \erasedreadarrow w & \ocomment{calculate return type} \\
-        \multicolumn{2}{c}{\text{maximally widen $v$ to $v'$ such that $T \erasedwritearrow v'$}} \\
-        \Omega' \vdash \text{drop}\,v' \dashv \Omega''' & \ocomment{propogate side effects} \\
-      \end{array}
-    }{
-      \Omega \vdash F X \movearrowabs w \dashv \Omega'''
-    }$ &
-    $\dfrac{
-      \begin{array}{ll}
-        \Omega \vdash F \erasedreadarrow (T \rightarrow U) & \ocomment{eval function} \\
-        \Omega \vdash X \erasedreadarrow v & \ocomment{eval argument} \\
-        \Omega \vdash T \erasedwritearrow v \dashv \Omega' & \ocomment{calculate return} \\
-        \Omega' \vdash U \erasedreadarrow w' & \ocomment{calculate return}
-      \end{array}
-    }{
-      \Omega \vdash F X \erasedreadarrow w
-    }$ \\
-
-    \\ &
-    \inferrule{
-      \Omega \vdash F \readarrowconc (M  \rightarrow S) \\\\
-      \Omega \vdash X \movearrowconc v \dashv \Omega' \\\\
-      \Omega' \vdash M \writearrowconc v \dashv \Omega'' \\\\
-      \Omega'' \vdash S \movearrowconc w \dashv \Omega'''
-    }{
-      \Omega \vdash F X \movearrowconc w \dashv \Omega'''
-    } \\
-
-    \\\mono{$M$ -> $S_t$ $\left(\mono{\{}S\mono{\}}\right)$} &
-    % \\M \mono{->} S_t (\mono{\{}S\mono{\}}) &
-    $\dfrac{
-      \begin{array}{ll}
-        \Omega \vdash M \maxarrow{\erasedwritearrow} m \dashv \Omega' & \ocomment{calculate widest input} \\
-        \Omega' \vdash S \subtype S_t \movearrowabs u & \ocomment{check body}
-      \end{array}
-    }{
-      \Omega \vdash M \mono{->} S_t \mono{\{} S \mono{\}} \movearrowabs M \rightarrow S_t
-    }$ &
-    $\dfrac{
-      \begin{array}{cl}
-        \Omega \vdash T \maxarrow{\erasedwritearrow} t \dashv \Omega' & \ocomment{calculate widest input} \\
-        \Omega' \vdash S_t \erasedreadarrow u & \ocomment{check body}
-      \end{array}
-    }{
-      \Omega \vdash T \mono{->} S_t \erasedreadarrow T \rightarrow S_t
-    }$ &
-    \\
-
-    \\ &
-    \inferrule{
-      \\
-    }{
-      \Omega \vdash M \mono{->} S_t \mono{\{} S \mono{\}} \movearrowconc M \rightarrow S
-    } \\
-
-    \\T \mono{|} U &
-    &
+    \\$T \mono{|} U$ &
     \inferrule[]{
       \Omega \vdash T \erasedreadarrow t \dashv \Omega'\\\\
-      \Omega' \vdash U \erasedreadarrow u \dashv \Omega''
+      \Omega' \vdash U \erasedreadarrow u \dashv \Omega'' \\\\
+      \Omega'' \vdash t \sqcup u = t'
     }{
-      \Omega \vdash T \mono{|} U \erasedreadarrow t \cup u \dashv \Omega''
-    }
-    \\
+      \Omega \vdash T \mono{|} U \erasedreadarrow t' \dashv \Omega''
+    } \\
 
-\end{tabular}
-\end{adjustwidth}
-\caption{readonlytable}
-\label{fig:readonlytable}
-\end{figure}
+    \\$v$ &
+    \inferrule{
+    }{
+      \Omega \vdash v \erasedreadarrow v
+    } \\
 
-\begin{figure}
-  \begin{adjustwidth}{-1cm}{-1cm}
+  \end{tabular}
+\end{Definition}
+
+The type union operator \mono{|} interprets its arguments, then returns the union of their types. The type union operator is the only place in the expression interpretations where type union occurs (\odef{\movearrow, \erasedreadarrow}{\kw{match }} also does type union), and it is only defined for the comptime modality. This is how we guarantee that non-singleton types are only ever introduced via comptime interpretations, and therefore that runtime interpretations if they choose to read the left of type annotations instead of the right.
+
+\odef{\erasedreadarrow}{v} is a trick so we can write already interpreted values to the right of a pair, which is useful for breaking dependencies as is done in \odef{\movearrow}{M\mono{.0}}. Having to define this interpretation is a sign of a mistake in the design, I think this mistake is storing syntax in the abstract environment instead of isolating it more behind some other construct. I have chosen to prioritize other work over this.
+
+\subsection{Statements}
+\label{section:formalstatements}
+Statements are unique because in abstract interpretation they do not return a modified environment, they consume the environment. This is useful because in abstract interpretation you cannot soundly reason about the state of the environment after a match, at least not without supporting dependence between variables.
+
+In concrete interpretation, only a single match statement is executed (as guaranteed by the match arms being disjoint), so it is sound to return an environment afterward. Concrete interpretation uses this to allow the side effects of a statement to depend on the input environment.
+
+\begin{Definition}{Expression Statement Interpretations}{}
   \small
-  \centering
   \begin{tabular}{p{2.5cm}|cc}
     $S$ & $\Omega \vdash S \subtype S_t \movearrow v$ & $\Omega \vdash S \erasedreadarrow t$ \\
     \hline
@@ -1957,73 +2434,74 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
     \\$M$ &
     $\raisebox{-5ex}{$\dfrac{
       \begin{array}{cl}
-        \Omega \vdash S_t \erasedreadarrow t \\
         \Omega \vdash M \movearrow v \dashv \Omega' \\
         \Omega' \vdash \kw{drop} \\
-        v \subtype t
+        \Omega \vdash S_t \subtype \mono{*} \erasedreadarrow t \\
+        \Omega \vdash v \subtype t
       \end{array}
     }{
       \Omega \vdash M \subtype S_t \movearrow w
     }$}$ &
     \raisebox{-5ex}{$\dfrac{
       \begin{array}{cl}
-        \Omega \vdash T \erasedreadarrow t \dashv \Omega' \\
-        \Omega' \vdash \kw{drop}
+        \Omega \vdash T \erasedreadarrow t \\
+        \Omega \vdash S_t \subtype \mono{*} \erasedreadarrow t_s \\
+        \Omega \vdash t \subtype t_s
       \end{array}
     }{
-      \Omega \vdash T \erasedreadarrow t
+      \Omega \vdash T \subtype S_t \erasedreadarrow t
     }$}  \\
+  \end{tabular}
+\end{Definition}
+
+All expressions are themselves statements, when this is the case, the expression is executed and checked against the \textit{bound}, which is usually represented by $S_t$. After the expression is executed, the leftover environment is dropped, which will drop all leftover references and assert they conform to their loan restriction, see \odef{\kw{drop}}{\kw{borrow}} for discussion around loan restrictions.
+
+\begin{Definition}{Assingment Interpretations}{}
+  \small
+  \begin{tabular}{p{2.5cm}|cc}
+    $S$ & $\Omega \vdash S \subtype S_t \movearrow v$ & $\Omega \vdash S \erasedreadarrow t$ \\
+    \hline
 
     \\$M \mono{=} N \mono{;} S$ &
-    \raisebox{-6ex}{$\dfrac{
-      \begin{array}{cl}
-        \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
-        \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
-        \Omega \vdash S_t \erasedreadarrow t \\
-        \Omega'' \vdash S_t \erasedreadarrow t' \\
-        t' \subtype t \\
-        \Omega'' \vdash S \subtype S_t \movearrow w
-      \end{array}
-    }{
-      \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \movearrow w
-    }$} &
-    \raisebox{-6ex}{$\dfrac{
-      \begin{array}{cl}
-        \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
-        \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
-        \Omega'' \vdash S_t \erasedreadarrow w
-      \end{array}
-    }{
-      \Omega \vdash M \mono{=} N \mono{;} S_t \erasedreadarrow w
-    }$} \\
-    % \multicolumn{2}{c}{
-    %   $\forall \diamond \in \{ \movearrow, \erasedreadarrow \} \left[
-    %     \raisebox{-6ex}{$\dfrac{
-    %       \begin{array}{cl}
-    %         \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\
-    %         \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\
-    %         \Omega \vdash S_t \erasedreadarrow t \\
-    %         \Omega'' \vdash S_t \erasedreadarrow t' \\
-    %         t' \subtype t \\
-    %         \Omega'' \vdash S \subtype S_t \diamond w
-    %       \end{array}
-    %     }{
-    %       \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \diamond w
-    %     }$}
-    %   \right]$
-    % } \\
-
-    \\$M \mono{:=} N \mono{;} S$ &
-    $\vcenter{\inferrule[]{
-      \Omega \vdash N \movearrow v \dashv \Omega' \\\\
-      \Omega' \vdash M \writearrow v \dashv \Omega'' \\\\
-      \Omega \vdash S_t \erasedreadarrow t \\\\
-      \Omega'' \vdash S_t \erasedreadarrow t' \\\\
-      t' \subtype t \\\\
+    $\forall \diamond \in \{ \erasedreadarrow, \movearrow \} . \left[\vcenter{\inferrule[]{
+      \ocomment{peform assignment} \\\\
+      \Omega \vdash N \diamond v \dashv \Omega' \\\\
+      \Omega' \vdash M \, (\kw{flip}\diamond) \, v \dashv \Omega'' \\\\
+      \ocomment{assert: compatible LHS syntax} \\\\
+      \runtime{M} \\ \text{if \concrete{\diamond}} \\\\
+      \comptime{M} \\ \text{if} \, \kw{squiggily} \, \diamond \\\\
+      \ocomment{assert: bound can only tighten} \\\\
+      \Omega \vdash S_t \erasedreadarrow t \\ \text{if \oabstract{\diamond} }\\\\
+      \Omega'' \vdash S_t \erasedreadarrow t' \\ \text{if \oabstract{\diamond} }\\\\
+      \Omega'' \vdash t' \subtype t \\ \text{if \oabstract{\diamond} }\\\\
+      \ocomment{execute remaining computation} \\\\
       \Omega'' \vdash S \subtype S_t \movearrow w
     }{
       \Omega \vdash M \mono{=} N \mono{;} S \subtype S_t \movearrow w
-    }}$ \\
+    }}\right]$ &
+    {$\vcenter{\inferrule{
+      % \begin{array}{cl}
+        \Omega \vdash N \erasedreadarrow v \dashv \Omega' \\\\
+        \Omega' \vdash M \erasedwritearrow v \dashv \Omega'' \\\\
+        \Omega'' \vdash S_t \erasedreadarrow w
+      % \end{array}
+    }{
+      \Omega \vdash M \mono{=} N \mono{;} S_t \erasedreadarrow w
+    }}$} \\
+
+
+  \end{tabular}
+\end{Definition}
+
+Assignment read-interprets the right-hand side of the \mono{=}, then write-interprets the result to the left.
+
+Assignment has to be a statement-level construct because it can narrow the environment. Expressions cannot narrow the environment because that would break Theorem \ref{theorem:expressionreadwidens}. This is why we must assert the assignment has only tightened our upper bound, because that would defeat the point of an upper bound and break Theorem \ref{theorem:statementbounds}.
+
+\begin{Definition}{Match Statement Interpretations}{}
+  \small
+  \begin{tabular}{p{2.5cm}|cc}
+    $S$ & $\Omega \vdash S \subtype S_t \movearrow v$ & $\Omega \vdash S \erasedreadarrow t$ \\
+    \hline
 
     \\\mono{match $M$ \{}\newline
       \mono{  }$M'_0$ \mono{=>} $S_0$ \mono{,} \newline
@@ -2031,133 +2509,112 @@ These definitions are referenced with \odef{M}{\rightarrow}, where $\rightarrow$
       \mono{  }$M'_k$ \mono{=>} $S_k$ \mono{,} \newline
     \mono{\}}&
     \multicolumn{2}{c}{
-      $\forall \diamond \in \{ \movearrow, \erasedreadarrow \}. \left[
+      $\forall \diamond \in \{ \movearrowabs, \erasedreadarrow \}. \left[
         \raisebox{-5ex}{$\dfrac{
           \begin{array}{cclc}
-            & \Omega \vdash M \diamond m \dashv \Omega' & \ocomment{eval interogant} & \\
-            \forall i.[ & \Omega' \vdash M \writearrow m_i \dashv \Omega'_i & \ocomment{branch input} & ] \\
+            & \Omega \vdash M \diamond m \dashv \Omega' & \ocomment{eval scruitinee} & \\
+            \forall i.[ & \Omega' \vdash M_i \maxarrow{\writearrow} m_i \dashv \Omega'_i & \ocomment{branch input} & ] \\
+            & m = \biguplus_i [ m_i ] & \ocomment{assert branches disjoint} \\
             \forall i.[ & \Omega'_i \vdash S_i : S_t \diamond n_i & \ocomment{branch output} & ] \\
-            & n = \bigsqcup_i [ n_i ]\\
+            & n = \bigsqcup_i [ n_i ] & \ocomment{combine branch outputs} \\
           \end{array}
         }{
-          \Omega \vdash \mono{case} \, M \mono{\{} 'a_0 \mono{=>} S_0, ... \mono{\}} : S_t \diamond n \dashv \Omega''
+          \Omega \vdash \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} \subtype S_t \diamond n
         }$}
       \right]$
-    }
-    \\
-
-  \end{tabular}
-\end{adjustwidth}
-\caption{statementtable}
-\label{fig:statementtable}
-\end{figure}
-
-\FloatBarrier
-\subsection{Type Operations}
-
-\begin{figure}[H]
-  \begin{adjustwidth}{-1cm}{-1cm}
-  \small
-  \centering
-  \begin{tabular}{c|ccc}
-    $v$ & $\Omega \vdash t \subtype u $ & $\Omega \vdash v = t \typeunion u$ & $\Omega \vdash v = t \typeinter u$ \\
-    \hline
-
-    \\$\{ \overrightarrow{\atom{a}} \}$ &
-    \inferrule{
-      \{ \overrightarrow{\atom{a}} \} \subseteq  \{ \overrightarrow{\atom{b}} \}
-    }{
-      \Omega \vdash \{ \overrightarrow{\atom{a}} \} \subtype \{ \overrightarrow{\atom{b}} \}
-    } &
-    \inferrule{
-      v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
-    }{
-      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
-    } &
-    \inferrule{
-      v = \{ \overrightarrow{\atom{a}} \} \cap  \{ \overrightarrow{\atom{b}} \}
-    }{
-      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeinter \{ \overrightarrow{\atom{b}} \}
     } \\
 
-    \\$(v, T \rightarrow U)$ &
+    \\ &
+      \raisebox{-5ex}{$\dfrac{
+        \begin{array}{cclc}
+          & \Omega \vdash M \diamond m_i \dashv \Omega' & \ocomment{eval scruitinee} & \\
+          & \Omega' \vdash M_i' \writearrow m_i \dashv \Omega'' & \ocomment{branch input} & \\
+          & \Omega'' \vdash S_i \diamond v \dashv \Omega''' & \ocomment{branch output} & \\
+        \end{array}
+      }{
+        \Omega \vdash \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} \diamond v \dashv \Omega'''
+      }$} \\
+  \end{tabular}
+\end{Definition}
+
+Concrete match statement interpretation interprets the scrutinee and then calculates the return value from one of the outputs. By itself, this would make concrete interpretation non-deterministic because it can match any branch, but in our abstract interpretation of match statements, we assert that the branch domains are disjoint, so if we also have an abstract interpretation derivation, we know the concrete interpretation is deterministic.
+
+Abstract match statement interpretation first evaluates the scrutinee, then it evaluates all of the branches. The result of interpreting a match statement is the union of the types of each of the branches, which is precise (Theorem \ref{theorem:precisetypeunion}).
+
+\subsection{Max Interpretation}
+Max interpretation returns the maximum value that can be written to a given term. It is used in function definition checking to check the type of the argument (see \odef{\movearrowabs, \erasedreadarrow}{M \mono{->} S_t}).
+
+\begin{Definition}{Max Interpretation}{}
+  \centering
+  \begin{tabular}{c|cc}
+    $M$ & $M \maxarrow{\writearrowabs} t$ & $T \maxarrow{\erasedwritearrow}$ \\
+    \hline
+
+    \\$\mono{'}a$ &
+    \multicolumn{2}{c}{
+     $\forall \diamond \in \{ \maxarrow{\writearrowabs}, \maxarrow{\erasedwritearrow} \}. \left[
+      \inferrule{
+      }{
+        \Omega \vdash \mono{'}a \diamond \atom{a}
+      }
+    \right]$
+    } \\
+
+    \\$\mono{\_}$ &
+    \multicolumn{2}{c}{
+     $\forall \diamond \in \{ \maxarrow{\writearrowabs}, \maxarrow{\erasedwritearrow} \}. \left[
+      \inferrule{
+      }{
+        \Omega \vdash \mono{\_} \diamond \top
+      }
+    \right]$
+    } \\
+
+    \\$x$ &
+    \multicolumn{2}{c}{
+     $\forall \diamond \in \{ \maxarrow{\writearrowabs}, \maxarrow{\erasedwritearrow} \}. \left[
+      \inferrule{
+      }{
+        \Omega \vdash x \diamond \top
+      }
+    \right]$
+    } \\
+
+    \\$X$ &
+    &
     \inferrule{
-      \Omega \vdash t \subtype t' \\\\
-      \Omega \vdash T' \erasedwritearrow t \dashv \Omega' \\\\
-      \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
-      \Omega'' \vdash S : S' \erasedreadarrow v
     }{
-      \Omega \vdash (t, T \rightarrow S) \subtype (t', T' \rightarrow S')
-    }&
-    \inferrule{
-      \Omega \vdash v'' = v \typeunion v' \\\\
-      \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\
-      w = (v'', T'' \rightarrow U'')
-    }{
-      \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
-    }
-    \\
+      \Omega \vdash X \diamond \top
+    } \\
 
-    \\$(T \rightarrow S)$ &
-    \inferrule{
-      \ocomment{note: function domains must be equal} \\\\
-      \Omega \vdash T \maxarrow{\erasedwritearrow} t \dashv \Omega' \\\\
-      % \Omega' \vdash T \erasedwritearrow t \dashv \Omega'' \\\\
-      \Omega' \vdash S \subtype S' \erasedreadarrow v
-    }{
-      \Omega \vdash T \rightarrow S \subtype T \rightarrow S'
-    } &
-    \inferrule{
-      v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
-      \mono{    $T$ => $S$, $T'$ => $S'$ \}})
-    }{
-      \Omega \vdash v = (T \rightarrow S) \typeunion (T' \rightarrow S')
-    }\\
+    \\$M\mono{,} N$ &
+    \multicolumn{2}{c}{
+     $\forall \diamond \in \{ \maxarrow{\writearrowabs}, \maxarrow{\erasedwritearrow} \}. \left[
+      \vcenter{\inferrule{
+        \Omega \vdash M \diamond m \dashv \Omega' \\\\
+        \Omega' \vdash N \diamond n \dashv \Omega''
+      }{
+        \Omega \vdash M, N \diamond (m, \mono{\_} \rightarrow n) \vdash \Omega''
+      }}
+    \right]$
+    } \\
 
-    \\$\borrows{l}{v}$ \\
-
-    \\$\borrowm{l}{v}$ \\
-
-    \\$\loans{l}{v}$ \\
-
-    \\$\loanm{l}$ \\
-
+    \\$M\mono{:}\,T$ &
+    \multicolumn{2}{c}{
+     $\forall \diamond \in \{ \writearrowabs, \erasedwritearrow \}. \left[
+      \vcenter{\inferrule{
+        \Omega \vdash T \erasedreadarrow t \dashv \Omega' \\\\
+        \Omega' \vdash M \diamond t \dashv \Omega''
+      }{
+        \Omega \vdash M: T \underset{^\kw{max}}{\diamond} t \vdash \Omega''
+      }}
+    \right]$
+    } \\
 
   \end{tabular}
-\end{adjustwidth}
-\caption{typeoperations}
-\label{fig:typeoperations}
-\end{figure}
+\end{Definition}
 
-\FloatBarrier
-\subsection{Helper Definitions}
-\FloatBarrier
-
-\subsubsection{Arrow Designations}
-\begin{figure}[H]
-  \centering
-  \small
-  \begin{mathpar}
-    \forall \diamond \in \{ \abstractarrows \} \left[
-      \inferrule{
-        \\
-      }{
-        \oabstract{\diamond}
-      }\right]
-
-      \forall \diamond \in \{ \concarrows \} \left[
-        \inferrule{
-          \\
-        }{
-          \concrete{\diamond}
-        }
-      \right]
-  \end{mathpar}
-  \caption{Helper designations for arrows}
-  \label{fig:arrowhelper}
-\end{figure}
-
-\FloatBarrier
+The maximum value one can write to a type annotation is the annotated type, because of the subtype restriction on \odef{\writearrowabs, \erasedwritearrow}{M\mono{:}T}.
 
 \section{Design Decisions}
 \label{section:designdecisions}
@@ -2194,6 +2651,598 @@ All values in Ochre are one machine word long, which involves pairs being boxed.
 \subsubsection{Primitive data types}
 As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
 
+\chapter{Analysis}
+This chapter analyses whether the abstract interpretation, as defined in Chapter \ref{chapter:definition}, is capable of accepting correct programs and rejecting incorrect ones.
+
+Section \ref{section:examplechecks} answers this by using the abstract interpretation manually on interesting programs.
+
+Section \ref{section:properties} answers this by reasoning more generally about the properties held by the abstract interpretations.
+
+\section{Example Derivations}
+\label{section:examplechecks}
+This section starts by type-checking simple programs that other languages can already type-check to explore the basics of the abstract interpretation, then gradually introduces features which other languages cannot check.
+
+\subsection{Hello World}
+
+
+
+\begin{minted}[mathescape]{rust}
+  // $\Omega_0 = \emptyset$
+pair = ('world, 'hello); // $\Omega_1 = \emptyset,\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} $
+temp = pair.0;           // $\Omega_2 = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\atom{world}}$
+pair.0 = pair.1;         // $\Omega_3 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}}$
+pair.1 = temp;           // $\Omega_4 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}, \absmapm{temp}{\top}$
+
+pair // $(\atom{hello}, \mono{\_} \rightarrow \atom{world})$
+\end{minted}
+
+Define meta-level shortcuts for each of the lines:
+
+\[\begin{aligned}
+L_2 &= \mono{pair = ('world, 'hello)} \\
+L_3 &= \mono{temp = pair.0} \\
+L_4 &= \mono{pair.0 = pair.1} \\
+L_5 &= \mono{pair.1 = temp} \\
+L_7 &= \mono{pair} \\
+\end{aligned}\]
+
+The task of type-checking is to find a derivation for the following:
+
+\[
+\emptyset \vdash L_2\mono{;}L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world})
+\]
+
+Derivation
+
+\begin{adjustwidth}{-2cm}{-2cm}
+\smaller
+\[\begin{array}{ll}
+\Omega_0 \vdash L_2\mono{;}L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) &
+\Omega_0 = \emptyset \\
+
+\cline{0-0}
+
+% \end{array}\]
+% \[\begin{array}{ll}
+
+% pair = ('world, 'hello)
+\ocomment{\mono{pair = ('world, 'hello)}} \\
+\Omega_0 \vdash \mono{('world, 'hello)} \movearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \\
+\otab \Omega_0 \vdash \mono{'world} \movearrowabs \atom{world} \\
+\otab \Omega_0 \vdash \mono{'hello} \movearrowabs \atom{hello} \\
+\Omega_0 \vdash \mono{pair} \writearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1 &
+\langle\text{Rearrange-Before}\rangle \\
+\otab \Omega_0 \rearrangearrow \Omega_0' &
+\langle\text{Allocate}\rangle \\
+\otab\otab \Omega_0' = \Omega_0,\absmapm{pair}{\top} &
+\Omega_0' = \emptyset, \absmapm{pair}{\top} \\
+\otab \Omega_0' \vdash \mono{pair} \writearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1 \\
+\otab\otab \Omega_1 = \Omega_0'\left[\dfrac{\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}}{\absmapm{pair}{\top}}\right]
+&
+\Omega_1 = \emptyset,\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}\\
+\Omega_1 \vdash L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+\cline{0-0}
+
+% \end{array}\]
+% \[\begin{array}{ll}
+
+% temp = pair.0
+\ocomment{\mono{temp = pair.0}} \\
+% read right
+\Omega_1 \vdash \mono{pair.0} \movearrowabs \atom{world} \dashv \Omega_1'' \\
+\otab \Omega_1 \vdash \mono{pair} \movearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1' \\
+\otab\otab \Omega_1' = \Omega_1\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}}\right] &
+\Omega_1' = \emptyset, \absmapm{pair}{\top} \\
+\otab \Omega_1' \vdash \oleft{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} = \atom{world} \\
+\otab \Omega_1' \vdash \oright{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} = \atom{hello} \\
+\otab \Omega_1' \vdash \mono{pair} \writearrowabs (\top, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1'' \\
+\otab\otab \Omega_1'' = \Omega_1'\left[\dfrac{\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}}{\absmapm{pair}{\top}}\right] &
+\Omega_1'' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})} \\
+% write to left
+\Omega_1'' \vdash \mono{temp} \writearrowabs \atom{world} \dashv \Omega_2 &
+\langle\text{Rearrange-Before}\rangle \\
+\otab \Omega_1'' \rearrangearrow \Omega_1''' &
+\langle\text{Allocate}\rangle \\
+\otab\otab \Omega_1''' = \Omega_1'', \absmapm{temp}{\top} &
+\Omega''' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\top} \\
+\otab \Omega_2 = \Omega_1'''\left[\dfrac{\absmapm{temp}{\atom{world}}}{\absmapm{temp}{\top}}\right] &
+\Omega_2 = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\atom{world}} \\
+\Omega_2 \vdash L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+\cline{0-0}
+
+% \end{array}\]
+% \[\begin{array}{ll}
+
+% pair.0 = pair.1
+\ocomment{\mono{pair.0 = pair.1}} \\
+% read right
+\Omega_2 \dashv \mono{pair.1} \movearrowabs \atom{hello} \dashv \Omega_2' \\
+\otab \ocomment{Similar to $\Omega_1 \vdash \mono{pair.0} \movearrowabs \atom{world} \dashv \Omega_1''$} &
+% \otab \Omega_2 \vdash \mono{pair} \movearrowabs (\top, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_2' \\
+% \otab\otab \Omega_2' = \Omega_2\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}}\right] &
+\Omega_2' = \emptyset, \absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
+% \otab \Omega_2' \vdash \oleft{(\top, \mono{\_} \rightarrow \atom{hello})} = \top \\
+% \otab \Omega_2' \vdash \oright{(\top, \mono{\_} \rightarrow \atom{hello})} = \atom{hello} \\
+% \otab \Omega_2' \vdash \mono{pair} \writearrowabs (\top, \mono{\_} \rightarrow \top) \dashv \Omega_2'' \\
+% \otab\otab \Omega_2'' = \Omega_2'\left[\dfrac{\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}}{\absmapm{pair}{\top}}\right] &
+%   \Omega_2'' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
+% % write to left  
+\Omega_2' \dashv \mono{pair.0} \writearrowabs \atom{hello} \dashv \Omega_3 \\
+\otab \Omega_2' \vdash \mono{pair} \movearrowabs (\top, \mono{\_} \rightarrow \top) \dashv \Omega_2'' \\
+\otab\otab \Omega_2'' = \Omega_2'\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}}\right] &
+\Omega_2'' = \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\atom{world}} \\
+\otab \Omega_2'' \vdash \oleft{(\top, \mono{\_} \rightarrow \top)} = \top \\
+\otab \Omega_2'' \vdash \oright{(\top, \mono{\_} \rightarrow \top)} = \top \\
+\otab \Omega_2'' \vdash \mono{pair} \writearrowabs (\atom{hello}, \mono{\_} \rightarrow \top) \dashv \Omega_2''' \\
+\otab\otab \Omega_3 = \Omega_2''\left[\dfrac{\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}}{\absmapm{pair}{\top}}\right] &
+\Omega_3 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
+\Omega_3 \vdash L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{hello}) \\
+\cline{0-0}
+
+% \end{array}\]
+% \[\begin{array}{ll}
+
+% pair.1 = temp
+\ocomment{\mono{pair.1 = temp}} \\
+\Omega_3 \vdash \mono{temp} \movearrowabs \atom{world} \dashv \Omega_3' \\
+\otab \Omega_3' = \Omega_3\left[\dfrac{\absmapm{temp}{\top}}{\absmapm{temp}{\atom{world}}}\right] &
+\Omega_3' = \emptyset, \absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\top} \\
+\Omega_3' \vdash \mono{pair.1} \writearrowabs \atom{world} \dashv \Omega_4 \\
+\otab \ocomment{Similar to $\Omega_2' \dashv \mono{pair.0} \writearrowabs \atom{hello} \dashv \Omega_3$} &
+\Omega_4 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}, \absmapm{temp}{\top} \\
+\Omega_4 \vdash L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+\cline{0-0}
+
+% \end{array}\]
+% \[\begin{array}{ll}
+
+% pair
+\ocomment{\mono{pair}} \\
+\Omega_4 \vdash \mono{pair} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \dashv \Omega_4' \\
+\otab \Omega_4' = \Omega_4\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}}\right] &
+\Omega_4' = \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\top} \\
+\Omega_4' \vdash \drop{} \\
+\otab \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\top} \vdash \kw{drop} \\
+\otab\otab \emptyset, \absmapm{pair}{\top} \vdash \drop{\top} \\
+\otab\otab \emptyset, \absmapm{pair}{\top} \vdash \drop{} \\
+\otab\otab\otab \emptyset \vdash \drop{\top} \\
+\otab\otab\otab \emptyset \vdash \drop{} \\
+
+
+\end{array}\]
+\end{adjustwidth}
+
+\subsection{Mutating Dependent Pairs}
+\subsubsection{Accepting Correct Mutation}
+
+\begin{minted}[mathescape]{rust}
+                            // $\Omega_0 = \emptyset$
+  Same = ('a | 'b, L -> L); // $\Omega_1 = \emptyset, \absmapm{Same}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+
+  overwrite = (p: &mut Same) -> 'unit {
+                 // $\Omega_{10} = \Omega_1, \absmapm{p}{\borrowm{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+    (*p).0 = 'a; // $\Omega_{11} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+    (*p).1 = 'a; // $\Omega_{12} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \atom{a})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+    'unit        // $\Omega_{12} \vdash \drop{}$
+  }                         // $\Omega_2 = \Omega_1, \absmapm{overwrite}{\mono{(p: &mut Same)} \rightarrow \mono{'unit}}$
+
+  pair = ('b, 'b);          // $\Omega_3 = \Omega_2, \absmapm{pair}{(\atom{b}, \mono{\_} \rightarrow \atom{b})}$
+  overwrite(&mut pair);     // $\Omega_4 = \Omega_2, \absmapm{pair}{(\{\atom{a}, \atom{b}\}, \mono{L} \rightarrow \mono{L})}$
+
+  pair // $(\{\atom{a}, \atom{b}\}, L \rightarrow L)$
+\end{minted}
+
+Helper derivation: function type check
+
+$M = \mono{(p: \&mut Same)}$
+
+% $S_t = \mono{'unit}$
+
+$S = \mono{*p.0 = 'a; *p.1 = 'a; 'unit}$
+
+
+
+\begin{adjustwidth}{0cm}{0cm}
+\smaller
+\[\begin{array}{ll}
+  \mathcal{D_{\text{overwrite}}} = \\
+  \\
+  \Omega_1 \vdash \mono{$M$ -> 'unit \{$S$\}} \movearrowabs M \rightarrow \mono{'unit} \\
+  \cline{0-0}
+
+  \Omega_1 \vdash \mono{(p:\&mut Same)} \maxarrow{\writearrowabs} \borrowm{l}{p_0} \dashv \Omega_{10} \\
+  \otab \Omega_1 \vdash \mono{\&mut Same} \erasedreadarrow \borrowm{l}{p_0} \dashv \Omega_1' \\
+  \otab\otab \Omega_1 \vdash \mono{Same} \erasedreadarrow p_0 \\
+  \otab\otab\otab \absmapm{Same}{p_0} \in \Omega_1 &
+    p_0 = (\{\atom{a}, \atom{b}\}, L \rightarrow L) \\
+  \otab\otab \Omega_1' = \Omega_1, \absmap{l}{p_0} &
+    \Omega_1' = \Omega_1, \absmap{l}{p_0} \\
+  \otab \Omega_1' \vdash \mono{p} \writearrowabs \borrowm{l}{p_0} \dashv \Omega_{10} &
+    \langle\text{Rearrange-Before}\rangle \\
+  \otab\otab \Omega_1' \rearrangearrow \Omega_1'' &
+    \langle\text{Allocate}\rangle \\
+  \otab\otab\otab \Omega_1'' = \Omega_1', \absmapm{p}{\top} &
+    \Omega_1'' = \Omega_1', \absmapm{p}{\top} \\
+  \otab\otab \Omega_1'' \vdash \mono{p} \writearrowabs \borrowm{l}{p_0} \dashv \Omega_{10} \\
+  \otab\otab\otab \Omega_{10} = \Omega_1'\left[\dfrac{\absmapm{p}{\borrowm{l}{p_0}}}{\absmap{p}{\top}}\right] &
+    \Omega_{10} = \Omega_1', \absmapm{p}{\borrowm{l}{p_0}} \\
+  
+  \Omega_{10} \vdash \mono{*p.0 = 'a; *p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+  \cline{0-0}
+
+  \Omega_{10} \vdash \mono{'a} \movearrowabs \atom{a} \\
+  \Omega_{10} \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11} &
+    \langle\text{Rearrange-Before}\rangle \\
+  \otab \Omega_{10} \rearrangearrow \Omega_{10}' \, \ocomment{must set $*p.0$ to $\top$ to write} &
+    \langle\text{Type-Widen}\rangle \\
+  \otab\otab \Omega_{10}' = \Omega_{10}\left[\dfrac{\absmapm{p}{\borrowm{l}{p_1}}}{\absmapm{p}{\borrowm{l}{p_0}}}\right] &
+    \Omega_{10}' = \Omega_1', \absmap{p}{\borrowm{l}{p_1}} \\
+  \otab\otab \Omega_{10} \vdash \borrowm{l}{p_0} \subtype \borrowm{l}{p_1}  &
+    p_1 = (\top, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\}) \\
+  \otab\otab\otab \Omega_{10} \vdash p_0 \subtype p_1 \\
+  \otab\otab\otab\otab \Omega_{10} \vdash \{\atom{a}, \atom{b}\} \subtype \top \\
+  \otab\otab\otab\otab \Omega_{10} \vdash \comptime{} \dashv \Gamma_1 &
+    \Gamma_1 = \Omega_1,\absmapm{L}{\top} \\
+  \otab\otab\otab\otab \Gamma_1 \vdash \mono{\_} \erasedwritearrow \top \\
+  \otab\otab\otab\otab \Gamma_1 \vdash \mono{L} \erasedwritearrow \{\atom{a}, \atom{b}\} \dashv \Gamma_1' \\
+  \otab\otab\otab\otab\otab \Gamma_1' = \Gamma_1\left[\dfrac{\absmapm{L}{\{\atom{a}, \atom{b}\}}}{\absmapm{L}{\top}}\right] \\
+  \otab\otab\otab\otab \Gamma_1' \vdash \mono{L} \subtype \{\atom{a}, \atom{b}\} \erasedreadarrow \{\atom{a}, \atom{b}\} \\
+  \otab\otab\otab\otab\otab \Gamma_1' \vdash L \erasedreadarrow \{\atom{a}, \atom{b}\} \\
+  \otab\otab\otab\otab\otab \Gamma_1' \vdash \{\atom{a}, \atom{b}\} \erasedreadarrow \{\atom{a}, \atom{b}\} \\
+  \otab\otab\otab\otab\otab \Gamma_1' \vdash \{\atom{a}, \atom{b}\} \subtype \{\atom{a}, \atom{b}\} \\
+  \otab\otab\otab\otab\otab\otab \{\atom{a}, \atom{b}\} \subseteq \{\atom{a}, \atom{b}\} \\
+  \otab \Omega_{10}' \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11} \, \ocomment{write to \mono{*p.0}} \\
+  \otab\otab \Omega_{10}' \vdash \mono{*p} \movearrowabs p_1 \dashv \Omega_{10}''' \\
+  \otab\otab\otab \Omega_{10}' \vdash \mono{p} \movearrowabs \borrowm{l}{p_1} \vdash \Omega_{10}'' \\
+  \otab\otab\otab\otab \Omega_{10}'' = \Omega_{10}'\left[\dfrac{\absmapm{p}{\top}}{\absmapm{p}{p_1}}\right] &
+    \Omega_{10}'' = \Omega_1',\absmapm{p}{\top} \\
+  \otab\otab\otab \Omega_{10}'' \vdash \mono{p} \writearrowabs \borrowm{l}{\top} \vdash \Omega_{10}''' \\
+  \otab\otab\otab\otab \Omega_{10}''' = \Omega_{10}''\left[\dfrac{\absmapm{p}{\borrowm{l}{\top}}}{\absmapm{p}{\top}}\right] &
+    \Omega_{10}''' = \Omega_1',\absmapm{p}{\borrowm{l}{\top}} \\
+  \otab\otab \Omega_{10}''' \vdash \oleft{p_1} = \top \\
+  \otab\otab \Omega_{10}''' \vdash \oright{p_1} = \{\atom{a}, \atom{b}\} \\
+  \otab\otab \Omega_{10}''' \vdash \mono{*p} \writearrowabs p_2 \dashv \Omega_{11} &
+    p_2 = (\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\}) \\
+  \otab\otab\otab \Omega_{10}''' \vdash \mono{p} \movearrowabs \borrowm{l}{\top} \dashv \Omega_{10}'''' \\
+  \otab\otab\otab\otab \Omega_{10}'''' = \Omega_{10}'''\left[\dfrac{\absmapm{p}{\top}}{\absmap{p}{\borrowm{l}{\top}}}\right] &
+    \Omega_{10}'''' = \Omega_1',\absmapm{p}{\top} \\
+  \otab\otab\otab \Omega_{10}'''' \vdash \mono{p} \writearrowabs \borrowm{l}{p_2} \dashv \Omega_{11} \\
+  \otab\otab\otab\otab \Omega_{11} = \Omega_{10}''''\left[\dfrac{\absmapm{p}{\borrowm{l}{p_2}}}{\absmap{p}{\top}}\right] &
+    \Omega_{11} = \Omega_1', \absmapm{p}{\borrowm{l}{p_2}} \\
+
+  \Omega_{11} \vdash \mono{*p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+  \cline{0-0}
+  \ocomment{continued}
+\end{array}\]
+  
+\[\begin{array}{ll}
+  \Omega_{11} \vdash \mono{*p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+  \cline{0-0}
+  \Omega_{11} \vdash \mono{'a} \movearrowabs \atom{a} \\
+  \Omega_{11} \vdash \mono{*p.1} \writearrowabs \atom{a} \dashv \Omega_{12} &
+    \Omega_{12} = \Omega_1',\absmapm{p}{\borrowm{l}{p_3}} \\
+  \otab \ocomment{Similar to $\Omega_{10}' \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11}$} &
+    p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a}) \\
+  \Omega_{12} \vdash \mono{'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+  \cline{0-0}
+
+  \Omega_{12} \vdash \mono{'unit} \movearrowabs \atom{unit} \\
+  \ocomment{$\Omega_{12} \vdash \drop{} =$} \\
+  \Omega_1,\absmap{l}{p_0},\absmap{p}{\borrowm{l}{p_3}} \vdash \drop{} &
+    \ocomment{final cleanup} \\
+  \otab \Omega_1,\absmap{l}{p_0} \vdash \drop{(\borrowm{l}{p_3})} \dashv \Omega_1 \\
+  \otab\otab \Omega_1 = \Omega_1,\absmap{l}{p_0} \backslash \{ \absmap{l}{p_0} \} \\
+  \otab\otab \Omega_1 \vdash p_3 \subtype p_0 \\
+  \otab\otab\otab \Omega_1' \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} \\
+  \otab\otab\otab \Omega_1' \vdash \comptime{} \dashv \Gamma_2 &
+    \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
+  \otab\otab\otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \top \\
+  \otab\otab\otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
+  \otab\otab\otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+  \otab\otab\otab \Gamma_2' \vdash \mono{L} \subtype \atom{a} \erasedreadarrow \atom{a} \\
+  \otab\otab\otab\otab \Gamma_2' \vdash L \erasedreadarrow \atom{a} \\
+  \otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \erasedreadarrow \atom{a} \\
+  \otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \subtype \atom{a} \\
+  \otab\otab\otab\otab\otab \atom{a} \subseteq \atom{a} \\
+  \Omega_{12} \vdash \mono{'unit} \subtype \mono{*} \erasedreadarrow \atom{unit} \\
+  
+  \Omega_{12} \vdash \atom{unit} \subtype \atom{unit}
+\end{array}\]
+\end{adjustwidth}
+
+
+\subsubsection{Rejecting Incorrect Mutation}
+The function body may temporarily change the type of any references to any type, but by the end of the function body, they must all be of the correct type. The below code mutates the pair it is given reference to incorrectly: while $\atom{b}$ is a valid value for the right-hand side of the pair, it can only be $\atom{b}$ when the left is also $\atom{b}$, which in this case, it is not.
+
+\begin{minted}[mathescape]{rust}
+  incorrect_overwrite = (p: &mut Same) -> 'unit {
+              // $\Omega_{20} = \Omega_1, \absmapm{p}{\borrowm{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+    p.0 = 'a; // $\Omega_{21} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+    p.1 = 'b; // $\Omega_{21} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \atom{b})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+              // $\times, \text{cannot drop \mono{p}, loan restriction mismatch}$ 
+  }   
+\end{minted}
+
+The derivation for this incorrect program is almost identical to the derivation for its correct counterpart, apart from $p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{b})$ instead of $p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a})$. This causes the final cleanup to fail like so:
+
+\begin{adjustwidth}{0cm}{0cm}
+\smaller
+\[\begin{array}{ll}
+
+\end{array}\]
+\end{adjustwidth}
+
+\section{Properties and Proofs}
+\label{section:properties}
+
+\begin{Definition}{Colon Operator}{}
+  \inferrule{
+    \concrete{v} \\\\
+    \Omega \vdash v \subtype t
+  }{
+    \Omega \vdash v: t
+  }
+\end{Definition}
+
+In theorems, unless otherwise stated, free variables are universally quantified.
+
+This section aims to convince the reader that the following property holds:
+
+\begin{figure}[H]
+  \begin{Theorem}{Statement interpretation is sound (when environment empty)}{} \[
+    \oimplies{
+      \inferrule{
+        \emptyset \vdash S \subtype \_ \movearrowabs t \\\\
+        \emptyset \vdash S \subtype \_ \movearrowconc v
+      }{}
+    }{
+      \emptyset \vdash v: t
+    }
+  \]\end{Theorem}
+  \caption{Ochre's central soundness property}
+\end{figure}
+
+Which reads ``If the abstract interpretation runs to $t$, and the concrete interpretation runs to $v$, then $v:t$''. It also reflects the fact that program execution always starts with a statement in an empty environment.
+
+This soundness property assumes both \movearrowabs and \movearrowconc instead of only assuming the former and concluding the latter because that would equate to "if it type-checks, it executes" which is undecidable for turing complete languages \citep{turingComputableNumbersApplication1937}, which Ochre almost certainly is.
+
+The proof is done by induction on the \movearrowabs derivation and the \movearrowconc derivation simultaneously. So that a stronger inductive hypothesis can be assumed, we prove this stronger property:
+
+\begin{Theorem}{Statement interpretation is sound}{} \[
+  \oimplies{
+    \inferrule{
+    \Omega \vdash S \subtype \_ \movearrowabs t \\\\
+    \Delta \vdash S \subtype \_ \movearrowconc v \\\\
+    \Delta : \Omega
+  }{}  
+  }{
+    \Omega \vdash v: t
+  }
+\]\end{Theorem}
+
+Which involves proving all of these properties:
+
+\begin{Definition}{Environment Subtyping}{}
+  \begin{mathpar}
+  \inferrule{
+    \ocomment{todo}
+  }{
+    \Omega \subtype \Omega'
+  }
+  \end{mathpar}
+\end{Definition}
+
+\begin{Theorem}{Expression read-interpretation is sound}{} 
+  for all $\diamond$ in $\{ \readarrow, \movearrow \}$:
+  \[\oimplies{
+      \inferrule{
+      \Omega \vdash M \,\dot{\diamond}\, t \dashv \Omega' \\\\
+      \Delta \vdash N \diamond v \dashv \Delta' \\\\
+      \Delta : \Omega
+    }{}
+    }{
+      \inferrule{
+        \Delta' : \Omega' \\\\
+        \Omega' \vdash v: t
+      }{}
+    }
+\]
+\end{Theorem}
+
+\begin{Theorem}{Expression write-interpretation is sound}{}
+  \[\oimplies{
+    \inferrule{
+    \Omega \vdash M \writearrowabs \, t \dashv \Omega' \\\\
+    \Delta \vdash M \writearrowconc v \dashv \Delta' \\\\
+    \Delta : \Omega \\\\
+    \Omega \vdash v: t
+  }{}
+  }{
+    \inferrule{
+      \Delta' : \Omega'
+    }{}
+  }\]
+\end{Theorem}
+
+\begin{Theorem}{Statement interpretation is monotonic}{}
+  for all $\diamond$ in $\{ \erasedreadarrow, \movearrow \}$:
+  \[\oimplies{
+    \inferrule{
+    \Omega \vdash S \subtype S' \diamond v \\\\
+    \Omega' \subtype \Omega
+  }{}
+  }{
+    \text{there exists $v'$ s.t.   }
+    \inferrule{
+      \Omega' \vdash S \subtype S' \diamond v' \\\\
+      \Omega' \vdash v' \subtype v
+    }{}
+  }\]
+\end{Theorem}
+
+\begin{Theorem}{Expression read-interpretation is monotonic}{}
+  for all $\diamond$ in $\{ \readarrows \}$:
+  \[\oimplies{
+    \inferrule{
+      \Omega_0' \subtype \Omega_0 \\\\
+      \Omega_0 \vdash M \diamond t \dashv \Omega_1
+    }{}
+  }{
+    \text{there exists $\Omega_1', t'$ s.t.   }
+    \inferrule{
+      \Omega_1' \subtype \Omega_1 \\\\
+      \Omega_1' \vdash t' \subtype t \\\\
+      \Omega_0' \vdash M \diamond t' \dashv \Omega_1' 
+    }{}
+  }\]
+\end{Theorem}
+
+\begin{Theorem}{Expression write-interpretation is monotonic}{}
+  for all $\diamond$ in $\{ \writearrows \}$:
+  \[\oimplies{
+    \inferrule{
+      \Omega_0' \subtype \Omega_0 \\\\
+      \Omega_0' \vdash t' \subtype t \\\\
+      \Omega_0 \vdash M \diamond t \dashv \Omega_1
+    }{}
+  }{
+    \text{there exists $\Omega_1'$ s.t.   }
+    \inferrule{
+      \Omega_1' \subtype \Omega_1 \\\\
+      \Omega_0' \vdash M \diamond t' \dashv \Omega_1' 
+    }{}
+  }\]
+\end{Theorem}
+
+
+\begin{Theorem}{Statement bounds are respected}{}
+  for all $\diamond$ in \{ \concreadarrows \}:
+  \[\oimplies{
+    \inferrule{
+      \Omega \vdash S \subtype S' \diamond t
+    }{}
+  }{
+    \text{there exists a $u$ s.t.   }
+    \inferrule{
+      \Omega \vdash S \subtype \_ \diamond u \\\\
+      \Omega \vdash S' \subtype \_ \erasedreadarrow t \\\\
+      \Omega \vdash u \subtype t
+    }{}
+  }\]
+\end{Theorem}
+\label{theorem:statementbounds}
+
+\begin{Definition}{Expression Subtyping}{}
+  \[\inferrule{
+    \Omega \vdash M \movearrowabs m \dashv \Omega_m \\\\
+    \Omega \vdash N \movearrowabs n \dashv \Omega_n \\\\
+    \Omega_m \subtype \Omega_n \\\\
+    \Omega_m \vdash m \subtype n
+  }{
+    \Omega \vdash M \subtype N
+  }\]
+\end{Definition}
+
+\begin{Theorem}{Expression subtyping is preserved across environment subtyping}{}
+  \[\oimplies{
+    \inferrule{
+      \Omega \vdash M \subtype N \\\\
+      \Omega' \subtype \Omega
+    }{}
+  }{
+    \Omega' \vdash M \subtype N
+  }\]
+\end{Theorem}
+
+\begin{Definition}{Expression-Like Statement Subtyping}{}
+  \[\inferrule{
+    \Omega \vdash S_a \subtype \mono{*} \movearrowabs t_a \\\\
+    \Omega \vdash S_b \subtype \mono{*} \movearrowabs t_b \\\\
+    \Omega \vdash t_a \subtype t_b
+  }{
+    \Omega \vdash S_a \hat{\subtype} S_b
+  }\]
+\end{Definition}
+
+\begin{Theorem}{Expression-Like Statement subtyping \textbf{is not} preserved across environment subtyping}{} \[
+  \inferrule{
+    \Omega \vdash S_a \subtype S_b \\\\
+    \Omega' \subtype \Omega
+  }{}
+  \text{   does not imply   }
+  \Omega' \vdash S_a \subtype S_b
+\] \end{Theorem}
+\label{theorem:statementsubtypingpreservation}
+
+Boolean \mono{not} counter example
+
+The fact this does not hold is the motivation behind bounded statement interpretation because, with bounded statement interpretation, we can define statement subtyping and an equivalent subtyping preservation theorem. This is the primary reason why statements and expressions are separated.
+
+\begin{Definition}{Statement Subtyping}{}
+  \[\inferrule{
+    \Omega \vdash S_a \subtype S_b \movearrowabs t
+  }{
+    \Omega \vdash S_a \subtype S_b
+  }\]
+\end{Definition}
+
+\begin{Theorem}{Statement subtyping \textbf{is} preserved across environment subtyping}{} \[
+  \inferrule{
+    \Omega \vdash S_a \subtype S_b \\\\
+    \Omega' \subtype \Omega
+  }{}
+  \text{   implies   }
+  \Omega' \vdash S_a \subtype S_b
+\] \end{Theorem}
+
+\subsubsection{Non-Soundness}
+\begin{Theorem}{Expressions Read-Interpretation Widens Environment}{}
+  for all $\diamond$ in $\{ \movearrowabs, \readarrowabs, \erasedreadarrow \}$
+  \[
+    \inferrule{
+      \Omega \vdash M \diamond t \dashv \Omega'
+    }{}
+    \text{   implies   }
+    \Omega \subtype \Omega'
+  \]
+\end{Theorem}
+\label{theorem:expressionreadwidens}
+
+
+\begin{Theorem}{Expressions Write-Interpretation Narrows Environment}{}
+  for all $\diamond$ in $\{ \writearrowabs, \narrowarrowabs, \erasedwritearrow \}$
+  \[
+    \inferrule{
+      \Omega \vdash M \diamond t \dashv \Omega'
+    }{}
+    \text{   implies   }
+    \Omega' \subtype \Omega
+  \]
+\end{Theorem}
+\label{theorem:expressionwritewidens}
+
+The narrower an environment is, the more information it contains. These two theorems state that reading from the environment always \textit{uses} information and writing to the environment \textit{adds} information.
+
+\begin{Theorem}{Type Union is Precise}{}
+  \[
+    \Omega \vdash t_0 \sqcup t_1 = t
+    \text{   iff   }
+    \Omega \vdash t \subtype t_0
+    \text{   or   } 
+    \Omega \vdash t \subtype t_1
+  \]
+\end{Theorem}
+\label{theorem:precisetypeunion}
+
+\begin{Theorem}{Environment Union is \textbf{not} Precise}{}
+  \ocomment{todo}
+\end{Theorem}
+\label{theorem:inpreciseenvunion}
+
+% \begin{tcolorbox}[colback=red!5!white,colframe=red!75!black,title=Hole]
+%   test
+% \end{tcolorbox}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
 Ochre has two goals: to allow the programmer to encode strong properties in the type system, and to be efficiently executable on hardware. Section \ref{section:performance} evaluates Ochre against the former goal, and Section \ref{section:typesystem} evaluates against the latter.
@@ -2204,139 +3253,14 @@ The contribution of this research is the design and specification of a language,
 
 \section{Type System}
 \label{section:typesystem}
-The type system presented must reject well-formed programs, and reject ill-formed ones. This section evaluates whether or not this is the case in two distinct ways: firstly Section \ref{section:examplechecks} shows the typing rules in action for a collection of programs with should or shouldn't compile. Then, Section \ref{section:properties} attempts to reason about what properties should and do hold.
+The type system presented must reject well-formed programs, and reject ill-formed ones. This section evaluates whether or not this is the case in two distinct ways: firstly Section \ref{section:examplechecks} shows the typing rules in action for a collection of programs which should or shouldn't be accepted. Then, Section \ref{section:properties} states a set of theorems which should hold.
 
-\subsection{Example Type Checks}
-\label{section:examplechecks}
-
-\subsection{Properties \& Proofs}
-\label{section:properties}
-In theorems, unless otherwise specified, free variables are universally quantified.
-
-This section aims to convince the reader that the following property holds:
-
-\begin{theorem}{Statement interpretation is sound (when environment empty)} \[
-  \oimplies{
-    \inferrule{
-      \emptyset \vdash S \subtype \_ \movearrowabs t \\\\
-      \emptyset \vdash S \subtype \_ \movearrowconc v
-    }{}
-  }{
-    \emptyset \vdash v: t
-  }
-\]\end{theorem}
-
-Which reads ``If the abstract interpretation runs to $t$, and the concrete interpretation runs to $v$, then $v:t$''. It also reflects the fact that program execution always starts with a statement in an empty environment.
-
-This soundness property assumes both \movearrowabs and \movearrowconc instead of only assuming the former and concluding the latter because that would equate to "if it type-checks, it executes" which is undecidable for turing complete languages \citep{turingComputableNumbersApplication1937}, which Ochre almost certainly is.
-
-The proof is done by induction on the \movearrowabs derivation and the \movearrowconc derivation simultaneously. So that a stronger inductive hypothesis can be assumed, we prove this stronger property:
-
-\begin{theorem}{Statement interpretation is sound} \[
-  \oimplies{
-    \inferrule{
-    \Omega \vdash S \subtype \_ \movearrowabs t \\\\
-    \Delta \vdash S \subtype \_ \movearrowconc v \\\\
-    \Delta : \Omega
-  }{}  
-  }{
-    \Omega \vdash v: t
-  }
-\]\end{theorem}
-
-Which involves proving all of these properties:
-
-\begin{theorem}{Expression interpretation is sound} \[
-  \text{for all} \diamond \text{in} \{ \concarrows \} . \left[
-    \oimplies{
-      \inferrule{
-      \Omega \vdash S \subtype \_ \,\dot{\diamond}\, t \dashv \Omega' \\\\
-      \Delta \vdash S \subtype \_ \diamond v \dashv \Delta' \\\\
-      \Delta : \Omega \\\\
-      \oif{\owrite{\diamond}}{\Omega \vdash v : t}
-    }{}
-    }{
-      \inferrule{
-        \Delta' : \Omega' \\\\
-        \oif{\oread{\diamond}}{\Omega' \vdash v: t}
-      }{}
-    }
-  \right]
-\] \end{theorem}
-
-\begin{theorem}{Statement interpretation is monotonic} \[
-  \text{for all} \diamond \text{in} \{ \concreadarrows \} . \left[
-    \oimplies{
-      \inferrule{
-      \Omega \vdash S \subtype S' \movearrow v \\\\
-      \Omega' \vdash S \subtype S' \movearrow v' \\\\
-      \Omega' \subtype \Omega
-    }{}
-    }{
-      \inferrule{
-        \Omega' \vdash v \subtype v'
-      }{}
-    }
-  \right]
-\] \end{theorem}
-
-\begin{theorem}{Expression interpretation is monotonic} \[
-  \text{for all} \diamond \text{in} \{ \allarrows \} . \left[
-    \oimplies{
-      \inferrule{
-        \Omega_0 \vdash M \diamond t \dashv \Omega_1 \\\\
-        \Omega_0' \vdash M \diamond t' \dashv \Omega_1' \\\\
-        \Omega_0' \subtype \Omega_0 \\\\
-        \oif{\owrite{\diamond}}{\Omega_0' \vdash t' \subtype t}
-      }{}
-    }{
-      \inferrule{
-        \Omega_1' \subtype \Omega_1 \\\\
-        \oif{\oread{\diamond}}{\Omega_1' \vdash t' \subtype t}
-      }{}
-    }
-  \right]
-\] \end{theorem}
-
-\begin{theorem}{Statement checking is respected} \[
-  \text{for all} \diamond \text{in} \{ \concreadarrows \} . \left[
-    \oimplies{
-      \inferrule{
-        \Omega \vdash S \subtype S' \diamond t
-      }{}
-    }{
-      \text{there exists a $v$ s.t.} \left[
-        \inferrule{
-          \Omega \vdash S \subtype \_ \diamond v \\\\
-          \Omega \vdash S' \subtype \_ \erasedreadarrow t \\\\
-          \Omega \vdash v \subtype t
-        }{}
-      \right]
-    }
-  \right]
-\] \end{theorem}
-
-\begin{theorem}{Subtyping is transitive} \[
-  \oimplies{
-    \inferrule{
-      \Omega \vdash a \subtype b \\\\
-      \Omega \vdash b \subtype c
-    }{}
-  }{
-    \Omega \vdash a \subtype c
-  }
-\] \end{theorem}
-
-% \begin{tcolorbox}[colback=red!5!white,colframe=red!75!black,title=Hole]
-%   test
-% \end{tcolorbox}
-  
 \section{Performance}
 \label{section:performance}
 \todo[inline]{maybe explicitly talk about cache coherency and pointer indirection and function pointers}
 For the presented design to be good, it must describe a language with semantics that can easily be translated into efficient machine code by a compiler. This section discusses the various language features of Ochre and their performance implications.
 
-Due to having a borrow checker, the abstract interpretation introduced in Section \ref{section:abstractinterpretation} statically determines when objects are dropped, which means it can insert any necessary memory frees into the resultant binary, removing the requirement for a garbage collector.
+Due to having a borrow checker, the abstract interpretation introduced in Section \ref{chapter:definition} statically determines when objects are dropped, which means it can insert any necessary memory frees into the resultant binary, removing the requirement for a garbage collector.
 
 Being able to mutate data structures in place also allows programmers to express efficient algorithms provided they don't break the \textit{aliasing xor mutability} invariant, like Rust.
 
@@ -2345,6 +3269,151 @@ Ochre does not have native machine integers, which restricts the programmer to u
 As presented, the type system does not support unboxed pairs, which means Ochre programs as currently stated have a lot of unnecessary indirection in their data structures. Much like not supporting machine integers, this is intolerable for a production systems language. However, the type system as presented is compatible with adding them in the future, and adding them at this point would detract from the core concepts. To demonstrate this compatibility, Appendix \ref{appendix:unbox} lays out a potential method for adding unboxed types.
 
 Ochre does not have efficient contiguous arrays, which hurts the implementation of several dynamic structures, but after unboxed pairs are implemented, contiguous arrays are just many nested pairs. It is unclear how you would efficiently lookup the $n^{\text{th}}$ element in such a structure, but I am hopeful it would just be a matter of engineering/adding the right optimizations.
+
+\chapter{Conclusion}
+\section{Future Work}
+\subsection{Reduce Feature Set, Increase Rigor}
+Section {section:properties} attempts to argue that the system presented is sound, somewhat unconvincingly. Although I believe it could be proven by a better semanticist than myself, and/or with much more time, I think the best way of getting to that point is by reducing the feature set and progressively building them back. I suggest two such feature sets:
+
+\subsubsection{Och}
+Och would lack dependent types and mutability, but keep the core principle that terms are their own type, and subtyping/structural typing in general.
+
+Och would have the following syntax and environment:
+
+\begin{figure}[H]
+  \arraycolsep=1pt %
+  \begin{adjustwidth}{-1cm}{-1cm}
+  \begin{mathpar}
+  \begin{array}[t]{llll}
+    M, N & ::= & & \ocomment{term} \\
+    && x \mid{} y \mid{} z  & \ocomment{runtime variable} \\
+    && X \mid{} Y \mid{} Z  & \ocomment{comptime variable} \\
+    && \atom{a} & \ocomment{atom construction} \\
+    && M\mono{,} N & \ocomment{pair construction} \\
+    && \pleft{M} & \ocomment{pair left access} \\
+    && \pright{M} & \ocomment{pair right access} \\
+    && M N & \ocomment{application} \\
+    && \mono{$M$ -> $N$} & \ocomment{abstraction} \\
+    && \mono{\_} & \ocomment{uninitialised} \\
+    && T\,\mono{|}\,U & \ocomment{type union} \\
+    && M\mono{:}\,T & \ocomment{type constraint} \\
+    && M = N & \ocomment{assignment} \\
+    && \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} & \ocomment{match statement} \\
+  \end{array} %
+  
+  \begin{array}[t]{llll}
+    \Omega & ::= & & \ocomment{environment} \\
+    && \emptyset & \ocomment{empty env.} \\
+    && \Omega, x \mapsto v & \ocomment{runtime variable} \\
+    && \Omega, X \mapsto v & \ocomment{comptime variable} \\
+    \\
+    t, u & ::= & & \ocomment{type/value} \\
+    && \{\overrightarrow{\atom{a}}\} & \ocomment{atom} \\
+    && (t, u) & \ocomment{pair} \\
+    && (t \rightarrow u) & \ocomment{function} \\
+    && \top & \ocomment{top} \\
+  \end{array}
+  \end{mathpar}  
+  \end{adjustwidth}
+\caption{Och syntax} %
+\label{fig:ochsyntax} %
+\end{figure} %
+
+Because Och does not have references or mutation, it would not need move semantics, and therefore would not need the destructive/non-destructive modality. With this change, the difference between the runtime and comptime modalities might become negligible to the point of redundancy, which would reduce the interpretation down to only the read/write and abstract/concrete modalities.
+
+I speculate that these simplifications would make a soundness proof feasible, and undertaking such a proof effort would cause changes that would leave the language on firmer foundations.
+
+\subsubsection{Ochr}
+Once the core subtyping system is shown to be sound, useful, and implementable, dependent types should be added.
+
+Efforts should be made to not introduce syntax into the abstract environment for the sake of calculating return types as the current version of Ochre has, as this introduces a large amount of complexity into the soundness proof and makes the re-usability of subtyping derivations very labor intensive. This could be done by having the syntax wrapped in a construct that captures the environment needed to evaluate it, similar to how Haskell functions are embedded within the definition of \mono{Value} in \cite{lohTutorialImplementationDependently2010}, Section 2.4.
+
+Ochr would be Och extended as minimally as possible to include dependent types.
+
+Unlike Ochre as presented, Ochr would allow for dependencies between variables in the abstract environment, which would make environment union precise. This would solve the issue of computing the join, or the "merge problem" in Mezzo \citep{protzenkoMezzoTypedLanguage2014}, and enable match statements to occur in non-terminal positions without duplication of the code afterward.
+
+\subsection{Increase Feature Set, Increase Usability}
+There are many important features missing from Ochre which will be needed in order for it to become a useful tool for formal verification. These include:
+
+\subsubsection{Returning References From Functions}
+Aeneas' method of borrow checking is compatible with returning references from functions, so that method should be portable to Ochre.
+
+This is an extremely important feature for user-defined containers. Without references, any getter you define must move the objects out of the container, which prevents efficient in-place mutation.
+
+\subsubsection{Performance Critical Features}
+As discussed in Section \ref{section:performance}, there are a couple of features which would drastically increase the performance with relatively little effort: primitive numeric data types, and unboxed pairs.
+
+These would be mostly a matter of engineering, and I believe would complicate the system, so just like I believe Och and Ochr should be explored fully before Ochre, I believe Ochre should be explored fully before adding these features.
+
+\subsubsection{Ergonomic Improvements}
+Functions should be able to capture non-comptime environments, as you can with closures in Rust.
+
+Scoping does not currently respect brackets. There is no syntactic difference to the user between defining a new variable and mutating an existing one. These are not interesting for research purposes but are important for having predictable and compositional semantics.
+
+\subsubsection{Stretch Features}
+\textbf{A \mono{?} operator which passed the continuation to an expression} -  This would allow the programmer to write expressions like \mono{foo(x -> bar(y -> x + y))} as \mono{foo? + bar?}. If \mono{foo} has the type $(A \rightarrow B) \rightarrow B$, then \mono{foo?} has the type $A$.
+
+This would be useful for defining constructs like early returns, async/await, yield/generators, and give a powerful abstraction for programmers to use in libraries, like incremental computation.
+
+It could also have utility while using Ochre as a theorem prover because it has a very similar type signature to RAA.
+
+\textbf{Reverse Functions} - Writing to a function application is undefined, but maybe it should be. The interpretation of writing to a function application could be to run some sort of reverse function, which determines for a given value how to write it to the argument. This could be used to define custom pattern matching.
+
+\subsection{Undo Regrettable Design Decisions}
+There are a couple of design mistakes that I would not have made with the knowledge I have now.
+
+\textbf{Inprecise Environment Union} - Environment type union cannot be precise because dependencies between variables are not supported (see Theorem \ref{theorem:inpreciseenvunion} and surrounding discussion). Initially, dependencies between variables were avoided to simplify, but it turns out that not having a precise environment union introduces the requirement for statements, which complicates things much further. I hope in the future I can change this and simplify the presented system.
+
+\textbf{Storing Terms in Abstract Environment} - The terms used to define a function or a pair are stored in the environment, so they can be re-used to extract their precise types later. They do not store the environment in which they were first evaluated. A large reason for this design decision was to support recursion efficiently; take the following definition of Peano naturals:
+
+\begin{minted}[mathescape]{rust}
+  Nat = ('zero, 'unit) | ('succ, Nat);
+  Nat.1.1.1.1.0; // $\text{perfectly valid, and equal to } \{ \atom{zero}, \atom{succ} \} $
+\end{minted}
+
+When the right-hand side of the assignment is evaluated, \mono{Nat} is mapped to $\top$ in the environment, to reflect the fact we do not yet know anything about \mono{Nat}. Right-element access then re-executes the \mono{Nat} term, with a narrower context that has a more precise definition of \mono{Nat}.
+
+This takes advantage of the fact that it is evaluated with a more accurate environment later, so I could not remove this immediately, but I believe with future work it could be removed.
+
+\subsection{Implementation}
+The goal of this project is to enable formal verification of low-level systems code. In order to do that Ochre must have an implementation, and be usable.
+
+To do this I would implement Ochre in a Rust macro, so it could be invoked as such:
+
+\begin{minted}{rust}
+fn main() {
+  let result = ochre! {
+    Nat = ('zero, 'unit) | ('succ, Nat);
+    add(x: &Nat, y: &Nat): Nat = {
+      match x {
+        ('zero, 'unit) => ('zero, 'unit),
+        ('succ, px) => ('succ, add(px, y))
+      }
+    };
+    one = ('succ, ('zero, 'unit));
+    two = ('succ, ('succ, ('zero, 'unit)));
+    add(&one, &two)
+  };
+
+  println!("{}", result); // ('succ, ('succ, ('succ, ('zero, 'unit))))
+}
+\end{minted}
+
+And potentially allow importing of pure Ochre files from this macro, like such:
+
+\begin{minted}{rust}
+  fn main() {
+    let result = ochre! { import("./add.oc") };
+  
+    println!("{}", result); // ('succ, ('succ, ('succ, ('zero, 'unit))))
+  }
+\end{minted}
+
+The Rust library which defines this macro could also define traits (type classes) that allow the programmer to define how Rust types are converted to and from Ochre types so that they can pass them to Ochre functions, and use the results in Rust.
+
+The parser for a large subset of a previous version of Ochre is implemented in this way, and code generation/abstract interpretation for a few simple constructs (assignment, atoms, pairs) is implemented, but for this project I decided to prioritize the theory work.
+
+With this interface, programmers could take an existing Rust codebase, and incrementally convert it to Ochre as and when they need stronger properties about their program proven.
 
 % \section{Ergonomics}
 % \todo[inline]{implement}

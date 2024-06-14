@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{  }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{world}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{//  \PYGZbs{}Omega = \PYGZbs{}absenv\PYGZob{} \PYGZbs{}absmap\PYGZob{}x\PYGZcb{}\PYGZob{}\PYGZbs{}atom\PYGZob{}world\PYGZcb{}\PYGZcb{} \PYGZcb{}$}
+\PYG{+w}{  }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{wrong}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{world}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// \PYGZbs{}xmark}
+\end{Verbatim}

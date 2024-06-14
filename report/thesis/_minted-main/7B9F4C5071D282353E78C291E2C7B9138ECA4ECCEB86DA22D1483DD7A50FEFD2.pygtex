@@ -1,0 +1,16 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{                            }\PYG{c+c1}{// $\Omega_0 = \emptyset$}
+\PYG{+w}{  }\PYG{n}{Same}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{L}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{L}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// $\Omega_1 = \emptyset, \absmapm{Same}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$}
+
+\PYG{+w}{  }\PYG{n}{overwrite}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{p}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{mut}\PYG{+w}{ }\PYG{n}{Same}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{o}{\PYGZsq{}}\PYG{n+na}{unit} \PYG{p}{\PYGZob{}}
+\PYG{+w}{                 }\PYG{c+c1}{// $\Omega_{10} = \Omega_1, \absmapm{p}{\borrowm{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$}
+\PYG{+w}{    }\PYG{p}{(}\PYG{o}{*}\PYG{n}{p}\PYG{p}{).}\PYG{l+m+mi}{0}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\Omega_{11} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$}
+\PYG{+w}{    }\PYG{p}{(}\PYG{o}{*}\PYG{n}{p}\PYG{p}{).}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\Omega_{12} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \atom{a})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$}
+\PYG{+w}{    }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{+w}{        }\PYG{c+c1}{// $\Omega_{12} \vdash \drop{}$}
+\PYG{+w}{  }\PYG{p}{\PYGZcb{}}\PYG{+w}{                         }\PYG{c+c1}{// $\Omega_2 = \Omega_1, \absmapm{overwrite}{\mono{(p: &mut Same)} \rightarrow \mono{'unit}}$}
+
+\PYG{+w}{  }\PYG{n}{pair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{);}\PYG{+w}{          }\PYG{c+c1}{// $\Omega_3 = \Omega_2, \absmapm{pair}{(\atom{b}, \mono{\_} \rightarrow \atom{b})}$}
+\PYG{+w}{  }\PYG{n}{overwrite}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{pair}\PYG{p}{);}\PYG{+w}{     }\PYG{c+c1}{// $\Omega_4 = \Omega_2, \absmapm{pair}{(\{\atom{a}, \atom{b}\}, \mono{L} \rightarrow \mono{L})}$}
+
+\PYG{+w}{  }\PYG{n}{pair}\PYG{+w}{ }\PYG{c+c1}{// $(\{\atom{a}, \atom{b}\}, L \rightarrow L)$}
+\end{Verbatim}

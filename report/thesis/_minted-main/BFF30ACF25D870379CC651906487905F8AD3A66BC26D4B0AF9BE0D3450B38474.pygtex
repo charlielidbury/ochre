@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{k}{fn} \PYG{n+nf}{main}\PYG{p}{()}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{result}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{ochre}\PYG{o}{!}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{import}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}./add.oc\PYGZdq{}}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{\PYGZcb{};}
+
+\PYG{+w}{    }\PYG{n+nf+fm}{println!}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}\PYGZob{}\PYGZcb{}\PYGZdq{}}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{result}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// (\PYGZsq{}succ, (\PYGZsq{}succ, (\PYGZsq{}succ, (\PYGZsq{}zero, \PYGZsq{}unit))))}
+\PYG{+w}{  }\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

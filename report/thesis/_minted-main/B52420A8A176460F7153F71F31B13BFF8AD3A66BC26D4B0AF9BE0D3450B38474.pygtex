@@ -1,0 +1,18 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{fn} \PYG{n+nf}{main}\PYG{p}{()}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{result}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{ochre}\PYG{o}{!}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{n}{Nat}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Nat}\PYG{p}{);}
+\PYG{+w}{    }\PYG{n}{add}\PYG{p}{(}\PYG{n}{x}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{Nat}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{Nat}\PYG{p}{)}: \PYG{n+nc}{Nat}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{      }\PYG{k}{match}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{),}
+\PYG{+w}{        }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{px}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{add}\PYG{p}{(}\PYG{n}{px}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{))}
+\PYG{+w}{      }\PYG{p}{\PYGZcb{}}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{};}
+\PYG{+w}{    }\PYG{n}{one}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{));}
+\PYG{+w}{    }\PYG{n}{two}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{)));}
+\PYG{+w}{    }\PYG{n}{add}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{n}{one}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{n}{two}\PYG{p}{)}
+\PYG{+w}{  }\PYG{p}{\PYGZcb{};}
+
+\PYG{+w}{  }\PYG{n+nf+fm}{println!}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}\PYGZob{}\PYGZcb{}\PYGZdq{}}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{result}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// (\PYGZsq{}succ, (\PYGZsq{}succ, (\PYGZsq{}succ, (\PYGZsq{}zero, \PYGZsq{}unit))))}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

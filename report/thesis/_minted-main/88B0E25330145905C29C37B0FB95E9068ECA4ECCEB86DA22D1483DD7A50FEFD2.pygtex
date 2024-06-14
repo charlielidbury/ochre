@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{  }\PYG{n}{f}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{x}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{mut}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{a}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{o}{\PYGZsq{}}\PYG{n+na}{unit} \PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{o}{*}\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{b}\PYG{p}{;}
+\PYG{+w}{    }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}
+\PYG{+w}{  }\PYG{p}{\PYGZcb{};}\PYG{+w}{ }\PYG{c+c1}{// $\times: \text{x cannot be dropped because it has the wrong type}$}
+\end{Verbatim}

@@ -1,0 +1,10 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{  }\PYG{c+c1}{// $\Omega_0 = \emptyset$}
+\PYG{+w}{  }\PYG{n}{pair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{world}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{);}
+\PYG{+w}{  }\PYG{c+c1}{// $\Omega_1 = \absenv{ \absmapm{pair}{} }}
+\PYG{+w}{  }\PYG{n}{temp}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{pair}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{p}{;}
+\PYG{+w}{  }\PYG{n}{pair}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{pair}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{p}{;}
+\PYG{+w}{  }\PYG{n}{pair}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{temp}\PYG{p}{;}
+
+\PYG{+w}{  }\PYG{n}{pair}\PYG{+w}{ }\PYG{c+c1}{// (\PYGZsq{}hello, \PYGZsq{}world)}
+\end{Verbatim}

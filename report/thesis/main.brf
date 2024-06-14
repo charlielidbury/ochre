@@ -1,3 +1,5 @@
+\backcite {wittgensteinTractatusLogicophilosophicus1922}{{iv}{(document)}{Doc-Start}}
+\backcite {lidburyOchreDependentlyTyped2024}{{iv}{(document)}{Doc-Start}}
 \backcite {rust-anecdote}{{2}{1}{chapter.4}}
 \backcite {stackoverflow}{{2}{1}{chapter.4}}
 \backcite {lorch2020armada}{{2}{1}{chapter.4}}
@@ -17,9 +19,11 @@
 \backcite {RustProgrammingLanguagea}{{19}{3.1}{section.76}}
 \backcite {aeneas}{{20}{3.1}{listing.80}}
 \backcite {ullrichKhaElectrolysis2024}{{20}{3.1}{listing.80}}
-\backcite {jungRustBeltSecuringFoundations2018a}{{35}{3.3.2}{figure.caption.128}}
-\backcite {aeneas}{{35}{3.3.2}{figure.caption.128}}
-\backcite {aeneas}{{37}{3.3.3}{section*.135}}
-\backcite {aeneas}{{47}{3.4.1}{section*.157}}
-\backcite {ullrichKhaElectrolysis2024}{{47}{3.4.1}{section*.157}}
-\backcite {turingComputableNumbersApplication1937}{{50}{4.1.2}{theorem.170}}
+\backcite {jungRustBeltSecuringFoundations2018a}{{36}{4.2}{figure.caption.131}}
+\backcite {aeneas}{{36}{4.2}{figure.caption.131}}
+\backcite {aeneas}{{39}{4.3}{section*.139}}
+\backcite {aeneas}{{56}{4.6.1}{section*.179}}
+\backcite {ullrichKhaElectrolysis2024}{{56}{4.6.1}{section*.179}}
+\backcite {turingComputableNumbersApplication1937}{{64}{5.2}{figure.caption.196}}
+\backcite {lohTutorialImplementationDependently2010}{{71}{7.1.1}{section*.226}}
+\backcite {protzenkoMezzoTypedLanguage2014}{{71}{7.1.1}{section*.226}}
