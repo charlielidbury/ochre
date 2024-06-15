@@ -298,6 +298,25 @@
   keywords = {Hoare logic,monads,separation logic,type theory}
 }
 
+@inproceedings{ningningPerceusGarbageFree2021,
+  title = {Perceus: Garbage Free Reference Counting with Reuse},
+  shorttitle = {Perceus},
+  booktitle = {Proceedings of the 42nd {{ACM SIGPLAN International Conference}} on {{Programming Language Design}} and {{Implementation}}},
+  author = {Ningning, Xie and De Moura, Leonardo and Leijen, Daan and Reinking, Alex},
+  year = {2021},
+  month = jun,
+  pages = {96--111},
+  publisher = {ACM},
+  address = {Virtual Canada},
+  doi = {10.1145/3453483.3454032},
+  url = {https://dl.acm.org/doi/10.1145/3453483.3454032},
+  urldate = {2024-06-15},
+  abstract = {We introduce Perceus, an algorithm for precise reference counting with reuse and specialization. Starting from a functional core language with explicit control-flow, Perceus emits precise reference counting instructions such that programs are garbage free, where only live references are retained. This enables further optimizations, like reuse analysis that allows for guaranteed in-place updates at runtime. This in turn enables a novel programming paradigm that we call functional but in-place (FBIP). Much like tail-call optimization enables writing loops with regular function calls, reuse analysis enables writing in-place mutating algorithms in a purely functional way. We give a novel formalization of reference counting in a linear resource calculus, and prove that Perceus is sound and garbage free. We show evidence that Perceus, as implemented in Koka, has good performance and is competitive with other state-of-the-art memory collectors.},
+  isbn = {978-1-4503-8391-2},
+  langid = {english},
+  file = {/Users/charlielidbury/Zotero/storage/NVWZ7PYB/Reinking et al. - 2021 - Perceus garbage free reference counting with reus.pdf}
+}
+
 @article{pierre-evaristeTransportingFunctionsOrnaments2014,
   title = {Transporting {{Functions}} across {{Ornaments}}},
   author = {{Pierre-Evariste}, Dagand and Conor, McBride},
@@ -317,6 +336,13 @@
   archiveprefix = {arxiv},
   keywords = {Computer Science - Programming Languages},
   file = {/Users/charlielidbury/Zotero/storage/R2829K92/Pierre-Evariste and Conor - 2014 - Transporting Functions across Ornaments.pdf;/Users/charlielidbury/Zotero/storage/BPFQ54M3/Pierre-Evariste and Conor - 2014 - Transporting Functions across Ornaments.html;/Users/charlielidbury/Zotero/storage/HC3TCW8I/Pierre-Evariste and Conor - 2014 - Transporting Functions across Ornaments.html}
+}
+
+@misc{PoloniusCurrentStatus,
+  title = {Polonius - {{Current}} Status and Roadmap},
+  url = {https://rust-lang.github.io/polonius/current_status.html},
+  urldate = {2024-06-15},
+  file = {/Users/charlielidbury/Zotero/storage/PZIB9JMN/current_status.html}
 }
 
 @article{protzenkoLowVerifiedLowLevel2017,

@@ -1,0 +1,10 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{Nat}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Nat}\PYG{p}{);}
+
+\PYG{+w}{    }\PYG{n}{add}: \PYG{p}{(}\PYG{n}{x}: \PYG{n+nc}{Nat}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}: \PYG{n+nc}{Nat}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{Nat}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{x}: \PYG{n+nc}{Nat}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}: \PYG{n+nc}{Nat}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nc}{Nat}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{      }\PYG{k}{match}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{,}
+\PYG{+w}{        }\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{add}\PYG{p}{(}\PYG{n}{x}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{)),}
+\PYG{+w}{      }\PYG{p}{\PYGZcb{}}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{};}
+\end{Verbatim}

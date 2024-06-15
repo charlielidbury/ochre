@@ -44,10 +44,12 @@
 \usepackage{scalerel}
 \usepackage{amssymb}
 \usepackage{relsize}
+\usepackage{graphicx}
+\graphicspath{ {./figures/} }
 \usepackage{tikz,lipsum,lmodern}
 \usepackage[most]{tcolorbox}
-\tcbuselibrary{theorems, breakable, skins}
-\newtcbtheorem[number within=section]{Definition}{Definition}%
+\tcbuselibrary{theorems, breakable, skins, raster}
+\newtcbtheorem[number within=section]{Definition}{Def.}%
     {
     enhanced, % tcolorbox styles
     %     %attach boxed title to top center={yshift=-2.5mm},
@@ -64,9 +66,10 @@
     %     separator sign none,% no punctuation after theorem name
     %     breakable
     }{th}
-\newtcbtheorem[number within=section]{Theorem}{Theorem}%
+\newtcbtheorem[number within=section]{Property}{Prop.}%
     {
     enhanced,
+    lowerbox=ignored,
     }{th}
 
 \makeatletter
@@ -234,6 +237,7 @@
 \newcommand{\oright}[1]{\ensuremath{\kw{right} \, #1}}
 \newcommand{\oflip}[1]{\ensuremath{(\kw{flip} \, #1)}}
 \newcommand{\otab}{\hspace{5ex}}
+\newcommand{\abs}[1]{\ensuremath{\, \dot{#1} \,}}
 
 \makeatletter % allow us to mention @-commands
 \def\arcr{\@arraycr}

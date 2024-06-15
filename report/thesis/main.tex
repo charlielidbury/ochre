@@ -1509,11 +1509,10 @@ At any point during a program interpretation, whether it be abstract or concrete
 
 \begin{Definition}{Environment Helpers}{}
   \centering
-  \small
+  \smaller
   \begin{mathpar}
-
   \begin{tabular}{c|cccc}
-  $\Omega$ & $\Gamma \vdash \kw{comptime}$ & $\Delta \vdash \kw{concrete}$ & $\Omega \vdash \kw{drop}$ \\
+  $\Omega$ & $\Gamma \vdash \kw{comptime}$ & $\Delta \vdash \kw{concrete}$ & $\Omega \vdash \kw{drop}$ & $\Omega \subtype \Omega'$ \\
   \hline
 
   \\ $\emptyset$ &
@@ -1528,7 +1527,11 @@ At any point during a program interpretation, whether it be abstract or concrete
   \inferrule{
   }{
     \emptyset \vdash \drop{}
-  } \\
+  } &
+  \inferrule{
+  }{
+    \Omega \subtype \emptyset
+  }\\
 
   \\ $\Omega,\absmap{x}{t}$ &
   &
@@ -1543,6 +1546,13 @@ At any point during a program interpretation, whether it be abstract or concrete
     \Omega' \vdash \drop{}
   }{
     \Omega,\absmap{x}{t} \vdash \drop{}
+  } &
+  \inferrule{
+    \absmap{x}{t} \in \Omega \\\\
+    \Omega \vdash t \subtype t' \\\\
+    \Omega \subtype \Omega'
+  }{
+    \Omega \subtype \Omega',\absmap{x}{t'}
   } \\
 
   \\ $\Omega,\absmap{X}{t}$ &
@@ -1552,7 +1562,6 @@ At any point during a program interpretation, whether it be abstract or concrete
     \Omega,\absmap{X}{t} \vdash \comptime{}
   } &
   \inferrule{
-    \concrete{t} \\\\
     \Omega \vdash \concrete{}
   }{
     \Omega,\absmap{X}{t} \vdash \concrete{}
@@ -1561,12 +1570,32 @@ At any point during a program interpretation, whether it be abstract or concrete
     \Omega \vdash \drop{}
   }{
     \Omega,\absmap{X}{t} \vdash \drop{}
+  } &
+  \inferrule{
+    \absmap{X}{t} \in \Omega \\\\
+    \Omega \vdash t \subtype t' \\\\
+    \Omega \subtype \Omega'
+  }{
+    \Omega \subtype \Omega',\absmap{X}{t'}
   } \\
+
+  \\ $\Omega,\absmap{l}{t}$ &
+  \multicolumn{4}{c}{
+    \ocomment{all environment operations ignore loan restrictions}
+  }
   
   \end{tabular}
 
   \end{mathpar}
 \end{Definition}
+
+\textbf{Comptime} - An environment is comptime iff it only contains comptime variables.
+
+\textbf{Concrete} - An environment is concrete iff every runtime value within it is concrete. This does not cause problems for the soundness proof because concrete interpretation never reads comptime variables.
+
+\textbf{Drop} - Drops every runtime variable. Does not drop comptime ones.
+
+\textbf{Subtype} - If a variable is not mapped to something in the environment, it is implicitly mapped to $\top$, so $\emptyset$ is the supertype of every environment. This is the base case. It then takes variables off the super environment one by one, making sure each one is a supertype of its equivalent in the sub environment.
 
 \section{Type Operations}
 This section defines subtyping, type intersection, and type union. These operations are used throughout the interpretations and discussions of properties.
@@ -1589,7 +1618,7 @@ This section defines subtyping, type intersection, and type union. These operati
     \inferrule{
       \Omega \vdash t \subtype t' \\\\
       \Omega \vdash \kw{comptime} \dashv \Gamma \\\\
-      \Gamma \vdash T' \erasedwritearrow t' \dashv \Gamma' \\\\
+      \Gamma \vdash T' \erasedwritearrow t \dashv \Gamma' \\\\
       \Gamma' \vdash T \erasedwritearrow t \dashv \Gamma'' \\\\
       \Gamma'' \vdash S \subtype S' \erasedreadarrow v
     }{
@@ -1600,11 +1629,11 @@ This section defines subtyping, type intersection, and type union. These operati
     \inferrule{
       \ocomment{note: function domains must be equal} \\\\
       \Omega \vdash \kw{comptime} \dashv \Gamma \\\\
-      \Gamma \vdash T \maxarrow{\erasedwritearrow} t \dashv \Gamma' \\\\
-      % \Gamma' \vdash T \erasedwritearrow t \dashv \Gamma'' \\\\
-      \Gamma' \vdash S \subtype S' \erasedreadarrow v
+      \Gamma \vdash M \maxarrow{\writearrowabs} m_{max} \dashv \Gamma' \\\\
+      % \Gamma' \vdash M \erasedwritearrow M \dashv \Gamma'' \\\\
+      \Gamma' \vdash S_t \subtype S_t' \erasedreadarrow t
     }{
-      \Omega \vdash T \rightarrow S \subtype T \rightarrow S'
+      \Omega \vdash M \rightarrow S_t \subtype t \rightarrow S_t'
     } \\
 
     \\$\borrows{l}{v}$ &
@@ -1701,6 +1730,15 @@ This section defines subtyping, type intersection, and type union. These operati
     } \\
   \end{tabular}
 \end{Definition}
+
+\begin{Definition}{Type Operator}{} \[
+  \inferrule{
+    \concrete{v} \\\\
+    \Omega \vdash v \subtype t
+  }{
+    \Omega \vdash v: t
+  }
+\] \end{Definition}
 
 \section{Interpretations}
 This section defines the abstract and concrete interpretations which define Ochre's type checking and runtime semantics respectively.
@@ -2092,8 +2130,9 @@ This section defines abstraction and application.
     % \\M \mono{->} S_t (\mono{\{}S\mono{\}}) &
     $\raisebox{-4ex}{$\dfrac{
       \begin{array}{ll}
-        \Omega \vdash M \maxarrow{\writearrowabs} m \dashv \Omega' & \ocomment{input type} \\
-        \Omega' \vdash S \subtype S_t \movearrowabs u & \ocomment{check body}
+        \Omega \vdash \comptime{} \dashv \Gamma & \ocomment{no scope capture} \\
+        \Gamma \vdash M \maxarrow{\writearrowabs} m \dashv \Gamma' & \ocomment{input type} \\
+        \Gamma' \vdash S \subtype S_t \movearrowabs u & \ocomment{check body}
       \end{array}
     }{
       \Omega \vdash M \mono{->} S_t \mono{\{} S \mono{\}} \movearrowabs M \rightarrow S_t
@@ -2126,7 +2165,7 @@ While abstract interpretation will not diverge due to executing runtime terms, i
 For a function \mono{$M$ -> $S_t$ \{ $S$ \}}, abstract interpretation will run to the function return type ($M \rightarrow S_t$) whereas abstraction will run to the body ($M \rightarrow S$). This is why concrete interpretation runs the body whenever the function is called and abstract interpretation only runs the return type.
 
 \subsubsection{Function Checking}
-The return type must be a sound approximation of the body if the aforementioned difference in behavior between concrete and abstract interpretation is to be sound. This is done via bounded statement interpretation, $\Omega \vdash S \subtype S_t \movearrowabs u$. If bounded statement interpretation succeeds, then $S$ is a subtype $S_t$, and it will continue to be in all narrowings of $\Omega$. This property is discussed further in Theorem \ref{theorem:statementbounds} and \ref{theorem:statementsubtypingpreservation}.
+The return type must be a sound approximation of the body if the aforementioned difference in behavior between concrete and abstract interpretation is to be sound. This is done via bounded statement interpretation, $\Omega \vdash S \subtype S_t \movearrowabs u$. If bounded statement interpretation succeeds, then $S$ is a subtype $S_t$, and it will continue to be in all narrowings of $\Omega$. This property is discussed further in Property \ref{theorem:statementbounds} and \ref{theorem:statementsubtypingpreservation}.
 
 \subsection{Pairs}
 \label{section:formalpairs}
@@ -2154,7 +2193,7 @@ Due to being dependent, the interpretations of pairs in Ochre are similar to the
   \end{tabular}
 \end{Definition}
 
-Accessing the right element of a pair is so involved because it involves interpreting the term stored in the abstract environment. This must be done with care to avoid soundness issues: the environment being used to execute this term during a pair access is different to the one used to construct the pair; how can we expect it to give the same result? Because we filter the environment for only the comptime variables, and because interpretation only ever narrows comptime variables, we know that the result of executing the syntax at elimination is a subtype of what it was at construction. See Theorem \ref{theorem:interpretationnarrowscomptime} for more.
+Accessing the right element of a pair is so involved because it involves interpreting the term stored in the abstract environment. This must be done with care to avoid soundness issues: the environment being used to execute this term during a pair access is different to the one used to construct the pair; how can we expect it to give the same result? Because we filter the environment for only the comptime variables, and because interpretation only ever narrows comptime variables, we know that the result of executing the syntax at elimination is a subtype of what it was at construction. See Property \ref{theorem:interpretationnarrowscomptime} for more.
 
 \begin{adjustwidth}{-0.0cm}{-0.0cm}
 \begin{Definition}{Pair Construction Interpretations}{}
@@ -2495,7 +2534,7 @@ All expressions are themselves statements, when this is the case, the expression
 
 Assignment read-interprets the right-hand side of the \mono{=}, then write-interprets the result to the left.
 
-Assignment has to be a statement-level construct because it can narrow the environment. Expressions cannot narrow the environment because that would break Theorem \ref{theorem:expressionreadwidens}. This is why we must assert the assignment has only tightened our upper bound, because that would defeat the point of an upper bound and break Theorem \ref{theorem:statementbounds}.
+Assignment has to be a statement-level construct because it can narrow the environment. Expressions cannot narrow the environment because that would break Property \ref{theorem:expressionreadwidens}. This is why we must assert the assignment has only tightened our upper bound, because that would defeat the point of an upper bound and break Property \ref{theorem:statementbounds}.
 
 \begin{Definition}{Match Statement Interpretations}{}
   \small
@@ -2539,7 +2578,7 @@ Assignment has to be a statement-level construct because it can narrow the envir
 
 Concrete match statement interpretation interprets the scrutinee and then calculates the return value from one of the outputs. By itself, this would make concrete interpretation non-deterministic because it can match any branch, but in our abstract interpretation of match statements, we assert that the branch domains are disjoint, so if we also have an abstract interpretation derivation, we know the concrete interpretation is deterministic.
 
-Abstract match statement interpretation first evaluates the scrutinee, then it evaluates all of the branches. The result of interpreting a match statement is the union of the types of each of the branches, which is precise (Theorem \ref{theorem:precisetypeunion}).
+Abstract match statement interpretation first evaluates the scrutinee, then it evaluates all of the branches. The result of interpreting a match statement is the union of the types of each of the branches, which is precise (Property \ref{theorem:precisetypeunion}).
 
 \subsection{Max Interpretation}
 Max interpretation returns the maximum value that can be written to a given term. It is used in function definition checking to check the type of the argument (see \odef{\movearrowabs, \erasedreadarrow}{M \mono{->} S_t}).
@@ -2652,31 +2691,69 @@ All values in Ochre are one machine word long, which involves pairs being boxed.
 As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
 
 \chapter{Analysis}
-This chapter analyses whether the abstract interpretation, as defined in Chapter \ref{chapter:definition}, is capable of accepting correct programs and rejecting incorrect ones.
+This chapter analyses whether the abstract interpretation, as defined in Chapter \ref{chapter:definition}, is capable of accepting correct programs and rejecting incorrect ones, which is the goal of this research.
 
-Section \ref{section:examplechecks} answers this by using the abstract interpretation manually on interesting programs.
+Section \ref{section:examplechecks} answers this by using the abstract interpretation manually on specific programs, and making sure it rejects incorrect programs and accepts correct ones.
 
-Section \ref{section:properties} answers this by reasoning more generally about the properties held by the abstract interpretations.
+Section \ref{section:properties} answers this by reasoning more generally about the properties held by the abstract interpretations, including soundness.
 
-\section{Example Derivations}
+\section{Individual Programs}
 \label{section:examplechecks}
 This section starts by type-checking simple programs that other languages can already type-check to explore the basics of the abstract interpretation, then gradually introduces features which other languages cannot check.
 
+The goal of this section is to convince the reader that the abstract interpretation as defined does work for interesting programs and to provide the reader with reference when they are curious about how a particular detail plays out in a real program.
+
+\subsubsection{Notation}
+To allow for easier navigation and layout around large derivations, this section uses a non-standard notation for derivation trees. First, the derivations are displayed upside-down, with the conclusions at the top. Second, all premises are stacked vertically underneath, instead of across the page. Thirdly, all premises are \text{indented} to the right, so you can tell them apart from sub-premises. This notation is shown in Figure \ref{fig:notation}.
+
+This allows each line in the derivation to be much longer, which allows the right of the page to be used to declare variables for use in the derivation, such as commonly used types and environments.
+
+\begin{figure}
+  \begin{mathpar}
+    \inferrule{
+      \inferrule{AA \\ BB}{A} \\
+      \inferrule{BA \\ BB}{B}
+    }{
+      C
+    }
+
+    \begin{array}{ll}
+      C \\
+      \otab A \\
+      \otab\otab AA \\
+      \otab\otab AB \\
+      \otab B \\
+      \otab\otab BA \\
+      \otab\otab BB \\
+    \end{array}
+  \end{mathpar}
+  \caption{On the left: standard typing notation. On the right: the non-standard notation used in this section.}
+  \label{fig:notation}
+\end{figure}
+
 \subsection{Hello World}
+\label{section:helloworld}
+Listing \ref{listing:helloworld} defines an unconventional hello world program which starts by putting the atoms \atom{hello} and \atom{world} in a pair the wrong way around, then swaps them via a third variable.
 
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+                           // $\Omega_0 = \emptyset$
+  pair = ('world, 'hello); // $\Omega_1 = \emptyset,\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} $
+  temp = pair.0;           // $\Omega_2 = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\atom{world}}$
+  pair.0 = pair.1;         // $\Omega_3 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}}$
+  pair.1 = temp;           // $\Omega_4 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}, \absmapm{temp}{\top}$
 
+  pair // $(\atom{hello}, \mono{\_} \rightarrow \atom{world})$
+  \end{minted}
+  \caption{Hello world program. The state of the environment after each line is shown in the comments.}
+  \label{listing:helloworld}
+\end{listing}
 
-\begin{minted}[mathescape]{rust}
-  // $\Omega_0 = \emptyset$
-pair = ('world, 'hello); // $\Omega_1 = \emptyset,\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} $
-temp = pair.0;           // $\Omega_2 = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\atom{world}}$
-pair.0 = pair.1;         // $\Omega_3 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}}$
-pair.1 = temp;           // $\Omega_4 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}, \absmapm{temp}{\top}$
+This demonstrates how the abstract interpretation keeps track of which values have been moved and which haven't in the abstract environment and acts as a good demonstration of the inference rules that make up the abstract interpretation.
 
-pair // $(\atom{hello}, \mono{\_} \rightarrow \atom{world})$
-\end{minted}
+An alternative version of Listing \ref{listing:helloworld} could swap the values in the pair over with \mono{(pair.0, pair.1) = (pair.1, pair.0)} or simply \mono{pair = (pair.1, pair.0)}. Due to not having unboxed pairs, this would cause an extra allocation.
 
-Define meta-level shortcuts for each of the lines:
+We define meta-level shortcuts for each of the lines:
 
 \[\begin{aligned}
 L_2 &= \mono{pair = ('world, 'hello)} \\
@@ -2686,135 +2763,19 @@ L_5 &= \mono{pair.1 = temp} \\
 L_7 &= \mono{pair} \\
 \end{aligned}\]
 
-The task of type-checking is to find a derivation for the following:
+The program is shown to have type $(\atom{hello}, \mono{\_} \rightarrow \atom{world})$ if we can find a derivation of the following form:
 
 \[
 \emptyset \vdash L_2\mono{;}L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world})
 \]
 
-Derivation
-
-\begin{adjustwidth}{-2cm}{-2cm}
-\smaller
-\[\begin{array}{ll}
-\Omega_0 \vdash L_2\mono{;}L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) &
-\Omega_0 = \emptyset \\
-
-\cline{0-0}
-
-% \end{array}\]
-% \[\begin{array}{ll}
-
-% pair = ('world, 'hello)
-\ocomment{\mono{pair = ('world, 'hello)}} \\
-\Omega_0 \vdash \mono{('world, 'hello)} \movearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \\
-\otab \Omega_0 \vdash \mono{'world} \movearrowabs \atom{world} \\
-\otab \Omega_0 \vdash \mono{'hello} \movearrowabs \atom{hello} \\
-\Omega_0 \vdash \mono{pair} \writearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1 &
-\langle\text{Rearrange-Before}\rangle \\
-\otab \Omega_0 \rearrangearrow \Omega_0' &
-\langle\text{Allocate}\rangle \\
-\otab\otab \Omega_0' = \Omega_0,\absmapm{pair}{\top} &
-\Omega_0' = \emptyset, \absmapm{pair}{\top} \\
-\otab \Omega_0' \vdash \mono{pair} \writearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1 \\
-\otab\otab \Omega_1 = \Omega_0'\left[\dfrac{\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}}{\absmapm{pair}{\top}}\right]
-&
-\Omega_1 = \emptyset,\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}\\
-\Omega_1 \vdash L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
-\cline{0-0}
-
-% \end{array}\]
-% \[\begin{array}{ll}
-
-% temp = pair.0
-\ocomment{\mono{temp = pair.0}} \\
-% read right
-\Omega_1 \vdash \mono{pair.0} \movearrowabs \atom{world} \dashv \Omega_1'' \\
-\otab \Omega_1 \vdash \mono{pair} \movearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1' \\
-\otab\otab \Omega_1' = \Omega_1\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}}\right] &
-\Omega_1' = \emptyset, \absmapm{pair}{\top} \\
-\otab \Omega_1' \vdash \oleft{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} = \atom{world} \\
-\otab \Omega_1' \vdash \oright{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} = \atom{hello} \\
-\otab \Omega_1' \vdash \mono{pair} \writearrowabs (\top, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1'' \\
-\otab\otab \Omega_1'' = \Omega_1'\left[\dfrac{\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}}{\absmapm{pair}{\top}}\right] &
-\Omega_1'' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})} \\
-% write to left
-\Omega_1'' \vdash \mono{temp} \writearrowabs \atom{world} \dashv \Omega_2 &
-\langle\text{Rearrange-Before}\rangle \\
-\otab \Omega_1'' \rearrangearrow \Omega_1''' &
-\langle\text{Allocate}\rangle \\
-\otab\otab \Omega_1''' = \Omega_1'', \absmapm{temp}{\top} &
-\Omega''' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\top} \\
-\otab \Omega_2 = \Omega_1'''\left[\dfrac{\absmapm{temp}{\atom{world}}}{\absmapm{temp}{\top}}\right] &
-\Omega_2 = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\atom{world}} \\
-\Omega_2 \vdash L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
-\cline{0-0}
-
-% \end{array}\]
-% \[\begin{array}{ll}
-
-% pair.0 = pair.1
-\ocomment{\mono{pair.0 = pair.1}} \\
-% read right
-\Omega_2 \dashv \mono{pair.1} \movearrowabs \atom{hello} \dashv \Omega_2' \\
-\otab \ocomment{Similar to $\Omega_1 \vdash \mono{pair.0} \movearrowabs \atom{world} \dashv \Omega_1''$} &
-% \otab \Omega_2 \vdash \mono{pair} \movearrowabs (\top, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_2' \\
-% \otab\otab \Omega_2' = \Omega_2\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}}\right] &
-\Omega_2' = \emptyset, \absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
-% \otab \Omega_2' \vdash \oleft{(\top, \mono{\_} \rightarrow \atom{hello})} = \top \\
-% \otab \Omega_2' \vdash \oright{(\top, \mono{\_} \rightarrow \atom{hello})} = \atom{hello} \\
-% \otab \Omega_2' \vdash \mono{pair} \writearrowabs (\top, \mono{\_} \rightarrow \top) \dashv \Omega_2'' \\
-% \otab\otab \Omega_2'' = \Omega_2'\left[\dfrac{\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}}{\absmapm{pair}{\top}}\right] &
-%   \Omega_2'' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
-% % write to left  
-\Omega_2' \dashv \mono{pair.0} \writearrowabs \atom{hello} \dashv \Omega_3 \\
-\otab \Omega_2' \vdash \mono{pair} \movearrowabs (\top, \mono{\_} \rightarrow \top) \dashv \Omega_2'' \\
-\otab\otab \Omega_2'' = \Omega_2'\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}}\right] &
-\Omega_2'' = \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\atom{world}} \\
-\otab \Omega_2'' \vdash \oleft{(\top, \mono{\_} \rightarrow \top)} = \top \\
-\otab \Omega_2'' \vdash \oright{(\top, \mono{\_} \rightarrow \top)} = \top \\
-\otab \Omega_2'' \vdash \mono{pair} \writearrowabs (\atom{hello}, \mono{\_} \rightarrow \top) \dashv \Omega_2''' \\
-\otab\otab \Omega_3 = \Omega_2''\left[\dfrac{\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}}{\absmapm{pair}{\top}}\right] &
-\Omega_3 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
-\Omega_3 \vdash L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{hello}) \\
-\cline{0-0}
-
-% \end{array}\]
-% \[\begin{array}{ll}
-
-% pair.1 = temp
-\ocomment{\mono{pair.1 = temp}} \\
-\Omega_3 \vdash \mono{temp} \movearrowabs \atom{world} \dashv \Omega_3' \\
-\otab \Omega_3' = \Omega_3\left[\dfrac{\absmapm{temp}{\top}}{\absmapm{temp}{\atom{world}}}\right] &
-\Omega_3' = \emptyset, \absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\top} \\
-\Omega_3' \vdash \mono{pair.1} \writearrowabs \atom{world} \dashv \Omega_4 \\
-\otab \ocomment{Similar to $\Omega_2' \dashv \mono{pair.0} \writearrowabs \atom{hello} \dashv \Omega_3$} &
-\Omega_4 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}, \absmapm{temp}{\top} \\
-\Omega_4 \vdash L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
-\cline{0-0}
-
-% \end{array}\]
-% \[\begin{array}{ll}
-
-% pair
-\ocomment{\mono{pair}} \\
-\Omega_4 \vdash \mono{pair} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \dashv \Omega_4' \\
-\otab \Omega_4' = \Omega_4\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}}\right] &
-\Omega_4' = \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\top} \\
-\Omega_4' \vdash \drop{} \\
-\otab \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\top} \vdash \kw{drop} \\
-\otab\otab \emptyset, \absmapm{pair}{\top} \vdash \drop{\top} \\
-\otab\otab \emptyset, \absmapm{pair}{\top} \vdash \drop{} \\
-\otab\otab\otab \emptyset \vdash \drop{\top} \\
-\otab\otab\otab \emptyset \vdash \drop{} \\
-
-
-\end{array}\]
-\end{adjustwidth}
+A full derivation of this form is given in Appendix  \ref{appendix:helloworldderivation}.
 
 \subsection{Mutating Dependent Pairs}
-\subsubsection{Accepting Correct Mutation}
+\label{section:mutatingpairs}
+This section shows how mutation interacts with dependent types through an example where mutation is deemed correct or not based on a dependent type.
 
+\begin{listing}
 \begin{minted}[mathescape]{rust}
                             // $\Omega_0 = \emptyset$
   Same = ('a | 'b, L -> L); // $\Omega_1 = \emptyset, \absmapm{Same}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
@@ -2831,139 +2792,82 @@ Derivation
 
   pair // $(\{\atom{a}, \atom{b}\}, L \rightarrow L)$
 \end{minted}
+\caption{A program which mutates a dependent pair correctly.}
+\label{listing:mutatedependent}
+\end{listing}
 
-Helper derivation: function type check
+Listing \ref{listing:mutatedependent} defines a dependent pair type, where the right element must be equal to the left element. There are only two inhabitants of this type: $(\atom{a}, \atom{a})$ and $(\atom{b}, \atom{b})$. A function is defined, \mono{overwrite}, which writes $\atom{a}$ to both the left and the right of a pair of this type, via a mutable reference.
 
-$M = \mono{(p: \&mut Same)}$
+\mono{overwrite} temporarily leaves the pair in an invalid state between lines 6 \& 7 ($(\atom{a}, \atom{b})$), but by the end of the function call the pair is left in a valid state, so the program is correct. Notice, enforcing AXM is crucial to being able to temporarily invalidate the pair: without AXM, another reference could exist to this pair, and be dereferenced while the pair is in an invalid state.
 
-% $S_t = \mono{'unit}$
+The caller (line 12) cannot tell from the type signature of \mono{overwrite} what exact value it will set the pair to, it only knows it will be of type \mono{Same}. This means after the call to \mono{overwrite}, as far as the caller is concerned, \mono{pair} could be $(\atom{b}, \atom{b})$, which is why \absmapm{pair}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)} in the environment instead of the more precise \absmapm{pair}{(\atom{a}, \mono{\_} \rightarrow \atom{a})}.
 
-$S = \mono{*p.0 = 'a; *p.1 = 'a; 'unit}$
+The mutation is checked to be correct at the end of the function when the environment is cleaned up. Dropping the reference causes the value in the borrow $(\atom{a}, \mono{\_} \rightarrow \atom{a})$ to be checked against its loan restriction, which is $(\{\atom{a}, \atom{b}\}, \mono{L} \rightarrow \mono{L})$, as shown in full by Figure \ref{fig:postmutationderivation}.
 
+Appendix \ref{appendix:mutateddependentderivation} shows a full derivation of the \mono{overwrite} function.
 
-
-\begin{adjustwidth}{0cm}{0cm}
-\smaller
-\[\begin{array}{ll}
-  \mathcal{D_{\text{overwrite}}} = \\
-  \\
-  \Omega_1 \vdash \mono{$M$ -> 'unit \{$S$\}} \movearrowabs M \rightarrow \mono{'unit} \\
-  \cline{0-0}
-
-  \Omega_1 \vdash \mono{(p:\&mut Same)} \maxarrow{\writearrowabs} \borrowm{l}{p_0} \dashv \Omega_{10} \\
-  \otab \Omega_1 \vdash \mono{\&mut Same} \erasedreadarrow \borrowm{l}{p_0} \dashv \Omega_1' \\
-  \otab\otab \Omega_1 \vdash \mono{Same} \erasedreadarrow p_0 \\
-  \otab\otab\otab \absmapm{Same}{p_0} \in \Omega_1 &
-    p_0 = (\{\atom{a}, \atom{b}\}, L \rightarrow L) \\
-  \otab\otab \Omega_1' = \Omega_1, \absmap{l}{p_0} &
-    \Omega_1' = \Omega_1, \absmap{l}{p_0} \\
-  \otab \Omega_1' \vdash \mono{p} \writearrowabs \borrowm{l}{p_0} \dashv \Omega_{10} &
-    \langle\text{Rearrange-Before}\rangle \\
-  \otab\otab \Omega_1' \rearrangearrow \Omega_1'' &
-    \langle\text{Allocate}\rangle \\
-  \otab\otab\otab \Omega_1'' = \Omega_1', \absmapm{p}{\top} &
-    \Omega_1'' = \Omega_1', \absmapm{p}{\top} \\
-  \otab\otab \Omega_1'' \vdash \mono{p} \writearrowabs \borrowm{l}{p_0} \dashv \Omega_{10} \\
-  \otab\otab\otab \Omega_{10} = \Omega_1'\left[\dfrac{\absmapm{p}{\borrowm{l}{p_0}}}{\absmap{p}{\top}}\right] &
-    \Omega_{10} = \Omega_1', \absmapm{p}{\borrowm{l}{p_0}} \\
-  
-  \Omega_{10} \vdash \mono{*p.0 = 'a; *p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
-  \cline{0-0}
-
-  \Omega_{10} \vdash \mono{'a} \movearrowabs \atom{a} \\
-  \Omega_{10} \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11} &
-    \langle\text{Rearrange-Before}\rangle \\
-  \otab \Omega_{10} \rearrangearrow \Omega_{10}' \, \ocomment{must set $*p.0$ to $\top$ to write} &
-    \langle\text{Type-Widen}\rangle \\
-  \otab\otab \Omega_{10}' = \Omega_{10}\left[\dfrac{\absmapm{p}{\borrowm{l}{p_1}}}{\absmapm{p}{\borrowm{l}{p_0}}}\right] &
-    \Omega_{10}' = \Omega_1', \absmap{p}{\borrowm{l}{p_1}} \\
-  \otab\otab \Omega_{10} \vdash \borrowm{l}{p_0} \subtype \borrowm{l}{p_1}  &
-    p_1 = (\top, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\}) \\
-  \otab\otab\otab \Omega_{10} \vdash p_0 \subtype p_1 \\
-  \otab\otab\otab\otab \Omega_{10} \vdash \{\atom{a}, \atom{b}\} \subtype \top \\
-  \otab\otab\otab\otab \Omega_{10} \vdash \comptime{} \dashv \Gamma_1 &
-    \Gamma_1 = \Omega_1,\absmapm{L}{\top} \\
-  \otab\otab\otab\otab \Gamma_1 \vdash \mono{\_} \erasedwritearrow \top \\
-  \otab\otab\otab\otab \Gamma_1 \vdash \mono{L} \erasedwritearrow \{\atom{a}, \atom{b}\} \dashv \Gamma_1' \\
-  \otab\otab\otab\otab\otab \Gamma_1' = \Gamma_1\left[\dfrac{\absmapm{L}{\{\atom{a}, \atom{b}\}}}{\absmapm{L}{\top}}\right] \\
-  \otab\otab\otab\otab \Gamma_1' \vdash \mono{L} \subtype \{\atom{a}, \atom{b}\} \erasedreadarrow \{\atom{a}, \atom{b}\} \\
-  \otab\otab\otab\otab\otab \Gamma_1' \vdash L \erasedreadarrow \{\atom{a}, \atom{b}\} \\
-  \otab\otab\otab\otab\otab \Gamma_1' \vdash \{\atom{a}, \atom{b}\} \erasedreadarrow \{\atom{a}, \atom{b}\} \\
-  \otab\otab\otab\otab\otab \Gamma_1' \vdash \{\atom{a}, \atom{b}\} \subtype \{\atom{a}, \atom{b}\} \\
-  \otab\otab\otab\otab\otab\otab \{\atom{a}, \atom{b}\} \subseteq \{\atom{a}, \atom{b}\} \\
-  \otab \Omega_{10}' \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11} \, \ocomment{write to \mono{*p.0}} \\
-  \otab\otab \Omega_{10}' \vdash \mono{*p} \movearrowabs p_1 \dashv \Omega_{10}''' \\
-  \otab\otab\otab \Omega_{10}' \vdash \mono{p} \movearrowabs \borrowm{l}{p_1} \vdash \Omega_{10}'' \\
-  \otab\otab\otab\otab \Omega_{10}'' = \Omega_{10}'\left[\dfrac{\absmapm{p}{\top}}{\absmapm{p}{p_1}}\right] &
-    \Omega_{10}'' = \Omega_1',\absmapm{p}{\top} \\
-  \otab\otab\otab \Omega_{10}'' \vdash \mono{p} \writearrowabs \borrowm{l}{\top} \vdash \Omega_{10}''' \\
-  \otab\otab\otab\otab \Omega_{10}''' = \Omega_{10}''\left[\dfrac{\absmapm{p}{\borrowm{l}{\top}}}{\absmapm{p}{\top}}\right] &
-    \Omega_{10}''' = \Omega_1',\absmapm{p}{\borrowm{l}{\top}} \\
-  \otab\otab \Omega_{10}''' \vdash \oleft{p_1} = \top \\
-  \otab\otab \Omega_{10}''' \vdash \oright{p_1} = \{\atom{a}, \atom{b}\} \\
-  \otab\otab \Omega_{10}''' \vdash \mono{*p} \writearrowabs p_2 \dashv \Omega_{11} &
-    p_2 = (\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\}) \\
-  \otab\otab\otab \Omega_{10}''' \vdash \mono{p} \movearrowabs \borrowm{l}{\top} \dashv \Omega_{10}'''' \\
-  \otab\otab\otab\otab \Omega_{10}'''' = \Omega_{10}'''\left[\dfrac{\absmapm{p}{\top}}{\absmap{p}{\borrowm{l}{\top}}}\right] &
-    \Omega_{10}'''' = \Omega_1',\absmapm{p}{\top} \\
-  \otab\otab\otab \Omega_{10}'''' \vdash \mono{p} \writearrowabs \borrowm{l}{p_2} \dashv \Omega_{11} \\
-  \otab\otab\otab\otab \Omega_{11} = \Omega_{10}''''\left[\dfrac{\absmapm{p}{\borrowm{l}{p_2}}}{\absmap{p}{\top}}\right] &
-    \Omega_{11} = \Omega_1', \absmapm{p}{\borrowm{l}{p_2}} \\
-
-  \Omega_{11} \vdash \mono{*p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
-  \cline{0-0}
-  \ocomment{continued}
-\end{array}\]
-  
-\[\begin{array}{ll}
-  \Omega_{11} \vdash \mono{*p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
-  \cline{0-0}
-  \Omega_{11} \vdash \mono{'a} \movearrowabs \atom{a} \\
-  \Omega_{11} \vdash \mono{*p.1} \writearrowabs \atom{a} \dashv \Omega_{12} &
-    \Omega_{12} = \Omega_1',\absmapm{p}{\borrowm{l}{p_3}} \\
-  \otab \ocomment{Similar to $\Omega_{10}' \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11}$} &
-    p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a}) \\
-  \Omega_{12} \vdash \mono{'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
-  \cline{0-0}
-
-  \Omega_{12} \vdash \mono{'unit} \movearrowabs \atom{unit} \\
-  \ocomment{$\Omega_{12} \vdash \drop{} =$} \\
-  \Omega_1,\absmap{l}{p_0},\absmap{p}{\borrowm{l}{p_3}} \vdash \drop{} &
-    \ocomment{final cleanup} \\
-  \otab \Omega_1,\absmap{l}{p_0} \vdash \drop{(\borrowm{l}{p_3})} \dashv \Omega_1 \\
-  \otab\otab \Omega_1 = \Omega_1,\absmap{l}{p_0} \backslash \{ \absmap{l}{p_0} \} \\
-  \otab\otab \Omega_1 \vdash p_3 \subtype p_0 \\
-  \otab\otab\otab \Omega_1' \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} \\
-  \otab\otab\otab \Omega_1' \vdash \comptime{} \dashv \Gamma_2 &
-    \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
-  \otab\otab\otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \top \\
-  \otab\otab\otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
-  \otab\otab\otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
-  \otab\otab\otab \Gamma_2' \vdash \mono{L} \subtype \atom{a} \erasedreadarrow \atom{a} \\
-  \otab\otab\otab\otab \Gamma_2' \vdash L \erasedreadarrow \atom{a} \\
-  \otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \erasedreadarrow \atom{a} \\
-  \otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \subtype \atom{a} \\
-  \otab\otab\otab\otab\otab \atom{a} \subseteq \atom{a} \\
-  \Omega_{12} \vdash \mono{'unit} \subtype \mono{*} \erasedreadarrow \atom{unit} \\
-  
-  \Omega_{12} \vdash \atom{unit} \subtype \atom{unit}
-\end{array}\]
-\end{adjustwidth}
-
+\begin{figure}
+  \[\begin{array}{ll}
+    \Omega_1 \vdash p_3 \subtype p_0 \\
+    \otab \Omega_1 \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} \\
+    \otab\otab \{\atom{a}\} \subseteq \{\atom{a}, \atom{b}\} \\
+    \otab \Omega_1 \vdash \comptime{} \dashv \Gamma_2 &
+      \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
+    \otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
+    \otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+    \otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \atom{a} \\
+    \otab \Gamma_2' \vdash \atom{a} \subtype \mono{L} \erasedreadarrow \atom{a} \\
+    \otab\otab \Gamma_2' \vdash \atom{a} \erasedreadarrow \atom{a} \\
+    \otab\otab \Gamma_2' \vdash L \erasedreadarrow \atom{a} \\
+    \otab\otab\otab \absmapm{L}{\atom{a}} \in \Gamma_2' \\
+    \otab\otab \Gamma_2' \vdash \atom{a} \subtype \atom{a} \\
+    \otab\otab\otab \{\atom{a}\} \subseteq \{\atom{a}\} \\
+  \end{array}\]
+  \caption{Derivation which checks the post-mutation pair against the \mono{overwrite} function's type signature.}
+  \label{fig:postmutationderivation}
+\end{figure}
 
 \subsubsection{Rejecting Incorrect Mutation}
-The function body may temporarily change the type of any references to any type, but by the end of the function body, they must all be of the correct type. The below code mutates the pair it is given reference to incorrectly: while $\atom{b}$ is a valid value for the right-hand side of the pair, it can only be $\atom{b}$ when the left is also $\atom{b}$, which in this case, it is not.
+The function body may temporarily change the type of any references to any type, but by the end of the function body, they must all be of the correct type. Listing \ref{listing:incorrectmutation} mutates the pair it is given reference to incorrectly: while $\atom{b}$ is a valid value for the right-hand side of the pair, it can only be $\atom{b}$ when the left is also $\atom{b}$, which in this case, it is not.
 
-\begin{minted}[mathescape]{rust}
-  incorrect_overwrite = (p: &mut Same) -> 'unit {
-              // $\Omega_{20} = \Omega_1, \absmapm{p}{\borrowm{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
-    p.0 = 'a; // $\Omega_{21} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
-    p.1 = 'b; // $\Omega_{21} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \atom{b})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
-              // $\times, \text{cannot drop \mono{p}, loan restriction mismatch}$ 
-  }   
-\end{minted}
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    incorrect_overwrite = (p: &mut Same) -> 'unit {
+                // $\Omega_{20} = \Omega_1, \absmapm{p}{\borrowm{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+      p.0 = 'a; // $\Omega_{21} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+      p.1 = 'b; // $\Omega_{21} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \atom{b})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+                // $\times, \text{cannot drop \mono{p}, loan restriction mismatch}$ 
+    }   
+  \end{minted}
+  \caption{An incorrect program, which does not leave the pair in a valid state}
+  \label{listing:incorrectmutation}
+\end{listing}
 
-The derivation for this incorrect program is almost identical to the derivation for its correct counterpart, apart from $p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{b})$ instead of $p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a})$. This causes the final cleanup to fail like so:
+The derivation for this incorrect program is almost identical to the derivation for its correct counterpart, apart from $p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{b})$ instead of $p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a})$. The attempted derivation for the final type check is shown in Figure \ref{fig:incorrectpairmutation}, but it does not work ultimately because $\{\atom{b}\} \nsubseteq \{\atom{a}\}$.
+
+\begin{figure}
+  \[\begin{array}{ll}
+    \Omega_1 \vdash p_3 \subtype p_0 &
+      p_0 = (\{\atom{a}, \atom{b}\}, L \rightarrow L) \\
+    \otab \Omega_1 \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} &
+      p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{b}) \\
+    \otab\otab \{\atom{a}\} \subseteq \{\atom{a}, \atom{b}\} \\
+    \otab \Omega_1 \vdash \comptime{} \dashv \Gamma_2 &
+      \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
+    \otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
+    \otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+    \otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \atom{a} \\
+    \otab \Gamma_2' \vdash \atom{b} \subtype \mono{L} \erasedreadarrow \atom{a} \\
+    \otab\otab \Gamma_2' \vdash \atom{b} \erasedreadarrow \atom{b} \\
+    \otab\otab \Gamma_2' \vdash L \erasedreadarrow \atom{a} \\
+    \otab\otab\otab \absmapm{L}{\atom{a}} \in \Gamma_2' \\
+    \otab\otab \Gamma_2' \vdash \atom{b} \subtype \atom{a} \\
+    \otab\otab\otab \{\atom{b}\} \subseteq \{\atom{a}\} &
+      \ocomment{$\times$, type mismatch: \mono{p} is not of type $(\{\atom{a}, \atom{b}\}, L \rightarrow L)$} \\
+  \end{array}\]
+  \caption{Derivation which checks the post-mutation pair for the \mono{incorrect\_overwrite} function body}
+  \label{fig:incorrectpairmutation}
+\end{figure}
 
 \begin{adjustwidth}{0cm}{0cm}
 \smaller
@@ -2971,116 +2875,198 @@ The derivation for this incorrect program is almost identical to the derivation 
 
 \end{array}\]
 \end{adjustwidth}
+
+\subsection{Polymorphic Swap Function}
+Listing \ref{listing:polymorphicswap} shows a function that takes two references, and swaps the values referenced by them. \mono{Swap} is a comptime function which takes a type \mono{T} as its only argument, and returns a runtime function. This is how generics are done in Ochre, which is conceptually similar to Rust's monomorphisation: a separate function is generated for every combination of input arguments. The runtime function it returns takes the two mutable references and swaps their value.
+
+\mono{Swap} is an example of a function that takes advantage of Aeneas' more precise method of borrow checking: Rust cannot type check Listing \ref{listing:polymorphicswap}, despite it being correct. This is because Rust does not allow moving a value from behind a mutable reference, even if you put a valid value back into it by the end of the function call. Any mutable reference in Rust must at all points be valid and pointing to a constant type. This is a very nice consequence of using Aeneas as the borrow checker instead of something more approximate. There are ongoing efforts to make a new borrow checker for Rust which is more precise \citep{PoloniusCurrentStatus}.
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    Swap = T -> (x: &mut T, y: &mut T) -> 'unit {
+      (*x, *y)  = (*y, *x)
+    }
+  \end{minted}
+  \caption{Polymorphic Swap}
+  \label{listing:polymorphicswap}
+\end{listing}
+
+\todo[inline]{annotate environment within \mono{Swap}}
+
+\subsection{Peano Numbers and Add}
+Sections \ref{section:helloworld} and \ref{section:mutatingpairs} analyze simple programs thoroughly. This section analyses complex programs but instead of showing full typing derivations, it only shows the abstract environments after every program line.
+
+We do this so we can cover more features in a single program, to uncover more edge cases.
+
+Every listing in this section leads on from the last: a variable defined in a listing is available in all subsequent listings.
+
+Listing \ref{listing:natadd} defines Peano natural numbers and addition on them. Peano numbers use the typical ADT encoding: a Peano number is a pair where the left determines whether it is zero, or the successor of another number. If it is the successor of another number, the right of the pair stores that number.
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    Nat = ('zero, 'unit) | ('succ, Nat);
+
+    add: (x: Nat, x: Nat) -> Nat = (x: Nat, y: Nat) -> Nat {
+      match x.0 {
+        'zero => y,
+        'succ => ('succ, add(x.1, y)),
+      }
+    };
+  \end{minted}
+  \caption{Definition of \mono{Nat} and \mono{add}.}
+  \label{listing:natadd}
+\end{listing}
+
+Annoyingly, \mono{add} must be given an explicit type annotation on the left of the assignment as well as the right its type needs to be added to the environment before it is evaluated, so the recursive call can be type-checked.
+
+As defined, addition causes $O(n)$ memory allocations: for each iteration, a new successor node is allocated, which is wasteful. Instead, we can re-use the allocation we already have for \mono{x}, which we do not need once we have already read \mono{x}, as shown in Listing \ref{listing:addefficient}.
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    add: (x: Nat, x: Nat) -> Nat = (x: Nat, y: Nat) -> Nat {
+      match x.0 {
+        'zero => y,
+        'succ => (x.1 = add(x.1, y); x),
+      }
+    };
+  \end{minted}
+  \caption{More efficient definition of \mono{add}.}
+  \label{listing:natadd}
+\end{listing}
+
+You cannot do this in languages like Haskell because you cannot guarantee you have unique access to the allocation, so a new node is always allocated instead. Substantial efforts have been made to optimize re-use in scenarios like this \citep{ningningPerceusGarbageFree2021}, but until it is solved in the general case, systems languages will have to give the programmer enough control to perform optimizations like the above themselves. Ochre, like Rust, can give the programmer this control safely by tracking ownership.
+
+\todo[inline]{annotate add functions with environments}
 
 \section{Properties and Proofs}
 \label{section:properties}
 
-\begin{Definition}{Colon Operator}{}
-  \inferrule{
-    \concrete{v} \\\\
-    \Omega \vdash v \subtype t
-  }{
-    \Omega \vdash v: t
-  }
-\end{Definition}
+This section discusses the various properties of the presented abstract interpretation should have/do have/do not have.
 
-In theorems, unless otherwise stated, free variables are universally quantified.
+Statements stacked vertically denote conjunction: ``
+\inferrule{}{
+  A \\\\
+  B
+}''
+means ``$A \text{ and } B$''.
 
-This section aims to convince the reader that the following property holds:
+\subsection{Soundness}
+Ochre programs are a statement $S$. Type-checking and runtime execution both start with empty environments. Therefore, the following is our central soundness property:
 
 \begin{figure}[H]
-  \begin{Theorem}{Statement interpretation is sound (when environment empty)}{} \[
-    \oimplies{
-      \inferrule{
-        \emptyset \vdash S \subtype \_ \movearrowabs t \\\\
-        \emptyset \vdash S \subtype \_ \movearrowconc v
-      }{}
-    }{
-      \emptyset \vdash v: t
-    }
-  \]\end{Theorem}
+  \noindent
+  \begin{Property}{Statement Interpretation Soundness $(\emptyset)$}{}
+    \[
+      \oimplies{
+        \inferrule{
+          \emptyset \vdash S \subtype \_ \movearrowabs t \\\\
+          \emptyset \vdash S \subtype \_ \movearrowconc v
+        }{}
+      }{
+        \emptyset \vdash v: t
+      }
+    \]
+    \label{property:statementsoundnessempty}
+  \end{Property}
   \caption{Ochre's central soundness property}
 \end{figure}
 
 Which reads ``If the abstract interpretation runs to $t$, and the concrete interpretation runs to $v$, then $v:t$''. It also reflects the fact that program execution always starts with a statement in an empty environment.
 
-This soundness property assumes both \movearrowabs and \movearrowconc instead of only assuming the former and concluding the latter because that would equate to "if it type-checks, it executes" which is undecidable for turing complete languages \citep{turingComputableNumbersApplication1937}, which Ochre almost certainly is.
+Every property in this document after this point is a requirement for proving this soundness property.
+
+Property \ref{property:statementsoundnessempty} assumes both \movearrowabs and \movearrowconc instead of only assuming the former and concluding the latter because that would equate to "if it type-checks, it executes" which is undecidable for Turing complete languages \citep{turingComputableNumbersApplication1937}, which Ochre almost certainly is.
 
 The proof is done by induction on the \movearrowabs derivation and the \movearrowconc derivation simultaneously. So that a stronger inductive hypothesis can be assumed, we prove this stronger property:
 
-\begin{Theorem}{Statement interpretation is sound}{} \[
-  \oimplies{
-    \inferrule{
-    \Omega \vdash S \subtype \_ \movearrowabs t \\\\
-    \Delta \vdash S \subtype \_ \movearrowconc v \\\\
-    \Delta : \Omega
-  }{}  
-  }{
-    \Omega \vdash v: t
-  }
-\]\end{Theorem}
-
-Which involves proving all of these properties:
-
-\begin{Definition}{Environment Subtyping}{}
-  \begin{mathpar}
-  \inferrule{
-    \ocomment{todo}
-  }{
-    \Omega \subtype \Omega'
-  }
-  \end{mathpar}
-\end{Definition}
-
-\begin{Theorem}{Expression read-interpretation is sound}{} 
-  for all $\diamond$ in $\{ \readarrow, \movearrow \}$:
-  \[\oimplies{
+\begin{Property}{Statement interpretation Soundness}{}
+  \[
+    \oimplies{
       \inferrule{
-      \Omega \vdash M \,\dot{\diamond}\, t \dashv \Omega' \\\\
-      \Delta \vdash N \diamond v \dashv \Delta' \\\\
+      \Omega \vdash S \subtype \_ \movearrowabs t \\\\
+      \Delta \vdash S \subtype \_ \movearrowconc v \\\\
       \Delta : \Omega
+    }{}  
+    }{
+      \Omega \vdash v: t
+    }
+  \]
+  \label{property:statementsoundness}
+\end{Property}
+
+Abstract and concrete interpretation only differ in three language constructs: function application \odef{\movearrow}{M N}, function definition \odef{\movearrow}{M \rightarrow S_t \{S\}}, and type annotation \odef{\movearrow, \writearrow}{M:T}. The proof is more simple in the cases where the abstract and concrete interpretations are similar, so in order to more efficiently detect soundness issues I have prioritized these three cases. Appendix \ref{appendix:statementsoundness} contains a partial proof of Property \ref{property:statementsoundness} which covers these three cases along with another two.
+
+As well as statement interpretation soundness, we also have expression interpretation soundness.
+
+\begin{adjustwidth}{-0.1cm}{-0.1cm}
+  \noindent
+  \begin{Property}[width=0.49\linewidth, nobeforeafter]{Expression Read Soundness}{} 
+    for all $\diamond$ in $\{ \readarrowconc, \movearrowconc \}$:
+    \[\oimplies{
+        \inferrule{
+        \Omega \vdash M \,\dot{\diamond}\, t \dashv \Omega' \\\\
+        \Delta \vdash N \diamond v \dashv \Delta' \\\\
+        \Delta : \Omega
+      }{}
+      }{
+        \inferrule{
+          \Delta' : \Omega' \\\\
+          \Omega' \vdash v: t
+        }{}
+      }
+  \]
+    \label{property:expressionreadsoundness}
+  \end{Property}\hfill
+  \begin{Property}[width=0.495\linewidth, nobeforeafter]{Expression Write Soundness}{}
+    for all $\diamond$ in $\{ \narrowarrowconc, \writearrowconc \}$:
+    \[\oimplies{
+      \inferrule{
+      \Omega \vdash M \abs{\diamond} \, t \dashv \Omega' \\\\
+      \Delta \vdash M \diamond v \dashv \Delta' \\\\
+      \Delta : \Omega \\\\
+      \Omega \vdash v: t
     }{}
     }{
       \inferrule{
-        \Delta' : \Omega' \\\\
-        \Omega' \vdash v: t
+        \Delta' : \Omega'
       }{}
-    }
-\]
-\end{Theorem}
+    }\]
+    \end{Property}
+  \label{property:expressionwritesoundness}
 
-\begin{Theorem}{Expression write-interpretation is sound}{}
-  \[\oimplies{
-    \inferrule{
-    \Omega \vdash M \writearrowabs \, t \dashv \Omega' \\\\
-    \Delta \vdash M \writearrowconc v \dashv \Delta' \\\\
-    \Delta : \Omega \\\\
-    \Omega \vdash v: t
-  }{}
-  }{
-    \inferrule{
-      \Delta' : \Omega'
-    }{}
-  }\]
-\end{Theorem}
+In the interpretation $\Omega \vdash M \diamond t \dashv \Omega'$, $\Omega$ is always an input, $\Omega'$ is always an output, and $t$ is an input during write and an output during read. This difference between $t$ being an input and an output is why read interpretation properties and write interpretation properties are usually separate.
 
-\begin{Theorem}{Statement interpretation is monotonic}{}
+\subsection{Monotonicity}
+In this context, monotonicity means "if the input is narrowed, the output is narrowed". It is useful to think of the width of a type or an environment in terms of information: concluding a value has a narrow type gives you more information than concluding it has a wide type.
+
+The extreme of this is the $\top$ type which gives you no information about the value it is typing whatsoever. This is why it is used to represent uninitialized data. The environment equivalent of this is the $\emptyset$ environment, which effectively maps every variable to $\top$ (due to rearrangements allowing $\absmap{x}{\top}$ to be introduced at any point for any variable via $\langle\text{Allocation}\rangle$). $\top$ and $\emptyset$ are the widest types and environments respectively.
+
+\begin{tcolorbox}[title=Note on Graphical Representations]
+  Occasionally properties have graphical representations. In these representations, the origin represents no information (maximally wide type/environment, $\top$, $\emptyset$) and distance from the origin represents information gain/type narrowing. Lines represent a derivation that relates the input objects (x-axis) and the output objects (y-axis).
+\end{tcolorbox}
+
+
+\begin{Property}{Statement Interpretation Monotonicity}{}
   for all $\diamond$ in $\{ \erasedreadarrow, \movearrow \}$:
   \[\oimplies{
     \inferrule{
-    \Omega \vdash S \subtype S' \diamond v \\\\
-    \Omega' \subtype \Omega
+    \Omega_0 \vdash S \subtype S' \diamond v_0 \\\\
+    \Omega_1 \subtype \Omega_0
   }{}
   }{
-    \text{there exists $v'$ s.t.   }
+    \text{there exists $v_1$ s.t.   }
     \inferrule{
-      \Omega' \vdash S \subtype S' \diamond v' \\\\
-      \Omega' \vdash v' \subtype v
+      \Omega_1 \vdash S \subtype S' \diamond v_1 \\\\
+      \Omega_1 \vdash v_1 \subtype v_0
     }{}
   }\]
-\end{Theorem}
+  \ocomment{visualisation: monotic line + ...}
+  \label{property:statementmonotonicity}
+\end{Property}
+  
+\end{adjustwidth}
 
-\begin{Theorem}{Expression read-interpretation is monotonic}{}
+\begin{Property}{Expression Read Monotonicity}{}
   for all $\diamond$ in $\{ \readarrows \}$:
   \[\oimplies{
     \inferrule{
@@ -3095,9 +3081,12 @@ Which involves proving all of these properties:
       \Omega_0' \vdash M \diamond t' \dashv \Omega_1' 
     }{}
   }\]
-\end{Theorem}
+  \centering
+  \includegraphics[width=6cm]{expressionreadmonotonicity.png}
+  \label{property:expressionreadmonotonicity}
+\end{Property}
 
-\begin{Theorem}{Expression write-interpretation is monotonic}{}
+\begin{Property}{Expression write-interpretation is monotonic}{}
   for all $\diamond$ in $\{ \writearrows \}$:
   \[\oimplies{
     \inferrule{
@@ -3112,10 +3101,10 @@ Which involves proving all of these properties:
       \Omega_0' \vdash M \diamond t' \dashv \Omega_1' 
     }{}
   }\]
-\end{Theorem}
+  \label{property:expressionwritemonotonicity}
+\end{Property}
 
-
-\begin{Theorem}{Statement bounds are respected}{}
+\begin{Property}{Statement bounds are respected}{}
   for all $\diamond$ in \{ \concreadarrows \}:
   \[\oimplies{
     \inferrule{
@@ -3129,10 +3118,14 @@ Which involves proving all of these properties:
       \Omega \vdash u \subtype t
     }{}
   }\]
-\end{Theorem}
+\end{Property}
 \label{theorem:statementbounds}
 
-\begin{Definition}{Expression Subtyping}{}
+\subsection{Subtyping Preservation}
+We introduce subtyping between terms, like so;
+
+\noindent
+\begin{Definition}[width=0.45\textwidth, nobeforeafter]{Expression Subtyping}{}
   \[\inferrule{
     \Omega \vdash M \movearrowabs m \dashv \Omega_m \\\\
     \Omega \vdash N \movearrowabs n \dashv \Omega_n \\\\
@@ -3142,8 +3135,16 @@ Which involves proving all of these properties:
     \Omega \vdash M \subtype N
   }\]
 \end{Definition}
+\hfill
+\begin{Definition}[width=0.45\textwidth, nobeforeafter]{Statement Subtyping}{}
+  \[\inferrule{
+    \Omega \vdash S_a \subtype S_b \movearrowabs t
+  }{
+    \Omega \vdash S_a \subtype S_b
+  }\]
+\end{Definition}
 
-\begin{Theorem}{Expression subtyping is preserved across environment subtyping}{}
+\begin{Property}{Expression Subtyping Preservation}{}
   \[\oimplies{
     \inferrule{
       \Omega \vdash M \subtype N \\\\
@@ -3152,7 +3153,22 @@ Which involves proving all of these properties:
   }{
     \Omega' \vdash M \subtype N
   }\]
-\end{Theorem}
+\end{Property}
+
+Boolean \mono{not} counter example
+
+The fact this does not hold is the motivation behind bounded statement interpretation because, with bounded statement interpretation, we can define statement subtyping and an equivalent subtyping preservation theorem. This is the primary reason why statements and expressions are separated from expressions.
+
+\begin{Property}{Statement Subtyping Preservation}{} \[
+  \inferrule{
+    \Omega \vdash S_a \subtype S_b \\\\
+    \Omega' \subtype \Omega
+  }{}
+  \text{   implies   }
+  \Omega' \vdash S_a \subtype S_b
+\] \end{Property}
+
+\subsubsection{Statement Bound Motivation}
 
 \begin{Definition}{Expression-Like Statement Subtyping}{}
   \[\inferrule{
@@ -3164,39 +3180,21 @@ Which involves proving all of these properties:
   }\]
 \end{Definition}
 
-\begin{Theorem}{Expression-Like Statement subtyping \textbf{is not} preserved across environment subtyping}{} \[
+\begin{Property}{Expression-Like Statement Subtyping \textbf{Non-}Preservation}{} \[
   \inferrule{
     \Omega \vdash S_a \subtype S_b \\\\
     \Omega' \subtype \Omega
   }{}
   \text{   does not imply   }
   \Omega' \vdash S_a \subtype S_b
-\] \end{Theorem}
+\] \end{Property}
 \label{theorem:statementsubtypingpreservation}
 
-Boolean \mono{not} counter example
+\subsection{Determinism}
+\todo[inline]{include or remove this section}
 
-The fact this does not hold is the motivation behind bounded statement interpretation because, with bounded statement interpretation, we can define statement subtyping and an equivalent subtyping preservation theorem. This is the primary reason why statements and expressions are separated.
-
-\begin{Definition}{Statement Subtyping}{}
-  \[\inferrule{
-    \Omega \vdash S_a \subtype S_b \movearrowabs t
-  }{
-    \Omega \vdash S_a \subtype S_b
-  }\]
-\end{Definition}
-
-\begin{Theorem}{Statement subtyping \textbf{is} preserved across environment subtyping}{} \[
-  \inferrule{
-    \Omega \vdash S_a \subtype S_b \\\\
-    \Omega' \subtype \Omega
-  }{}
-  \text{   implies   }
-  \Omega' \vdash S_a \subtype S_b
-\] \end{Theorem}
-
-\subsubsection{Non-Soundness}
-\begin{Theorem}{Expressions Read-Interpretation Widens Environment}{}
+\subsection{Information Gain/Loss}
+\begin{Property}{Read-Interpretation Widens}{}
   for all $\diamond$ in $\{ \movearrowabs, \readarrowabs, \erasedreadarrow \}$
   \[
     \inferrule{
@@ -3205,11 +3203,12 @@ The fact this does not hold is the motivation behind bounded statement interpret
     \text{   implies   }
     \Omega \subtype \Omega'
   \]
-\end{Theorem}
+  \ocomment{below $\Omega = \Omega'$ line}
+\end{Property}
 \label{theorem:expressionreadwidens}
 
 
-\begin{Theorem}{Expressions Write-Interpretation Narrows Environment}{}
+\begin{Property}{Write-Interpretation Narrows}{}
   for all $\diamond$ in $\{ \writearrowabs, \narrowarrowabs, \erasedwritearrow \}$
   \[
     \inferrule{
@@ -3218,12 +3217,13 @@ The fact this does not hold is the motivation behind bounded statement interpret
     \text{   implies   }
     \Omega' \subtype \Omega
   \]
-\end{Theorem}
+  \ocomment{above $\Omega = \Omega'$ line}
+\end{Property}
 \label{theorem:expressionwritewidens}
 
 The narrower an environment is, the more information it contains. These two theorems state that reading from the environment always \textit{uses} information and writing to the environment \textit{adds} information.
 
-\begin{Theorem}{Type Union is Precise}{}
+\begin{Property}{Type Union is Precise}{}
   \[
     \Omega \vdash t_0 \sqcup t_1 = t
     \text{   iff   }
@@ -3231,12 +3231,12 @@ The narrower an environment is, the more information it contains. These two theo
     \text{   or   } 
     \Omega \vdash t \subtype t_1
   \]
-\end{Theorem}
+\end{Property}
 \label{theorem:precisetypeunion}
 
-\begin{Theorem}{Environment Union is \textbf{not} Precise}{}
+\begin{Property}{Environment Union is \textbf{not} Precise}{}
   \ocomment{todo}
-\end{Theorem}
+\end{Property}
 \label{theorem:inpreciseenvunion}
 
 % \begin{tcolorbox}[colback=red!5!white,colframe=red!75!black,title=Hole]
@@ -3362,7 +3362,7 @@ It could also have utility while using Ochre as a theorem prover because it has 
 \subsection{Undo Regrettable Design Decisions}
 There are a couple of design mistakes that I would not have made with the knowledge I have now.
 
-\textbf{Inprecise Environment Union} - Environment type union cannot be precise because dependencies between variables are not supported (see Theorem \ref{theorem:inpreciseenvunion} and surrounding discussion). Initially, dependencies between variables were avoided to simplify, but it turns out that not having a precise environment union introduces the requirement for statements, which complicates things much further. I hope in the future I can change this and simplify the presented system.
+\textbf{Inprecise Environment Union} - Environment type union cannot be precise because dependencies between variables are not supported (see Property \ref{theorem:inpreciseenvunion} and surrounding discussion). Initially, dependencies between variables were avoided to simplify, but it turns out that not having a precise environment union introduces the requirement for statements, which complicates things much further. I hope in the future I can change this and simplify the presented system.
 
 \textbf{Storing Terms in Abstract Environment} - The terms used to define a function or a pair are stored in the environment, so they can be re-used to extract their precise types later. They do not store the environment in which they were first evaluated. A large reason for this design decision was to support recursion efficiently; take the following definition of Peano naturals:
 
@@ -3558,5 +3558,488 @@ A potential method of adding unboxed pairs:
 %     \end{array}
 %   \end{mathpar}
 % \end{figure}
+
+\section{Derivations}
+\subsection{Hello World Program Derivation}
+\label{appendix:helloworldderivation}
+This appendix gives a derivation for the Hello World Program shown in Listing \ref{listing:helloworld}.
+
+Derivation:
+
+{\smaller
+\[\begin{array}{ll}
+  \Omega_0 \vdash L_2\mono{;}L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) &
+  \Omega_0 = \emptyset \\
+
+  % pair = ('world, 'hello)
+  \otab \ocomment{\mono{pair = ('world, 'hello)}} \\
+  \otab \Omega_0 \vdash \mono{('world, 'hello)} \movearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \\
+  \otab \otab \Omega_0 \vdash \mono{'world} \movearrowabs \atom{world} \\
+  \otab \otab \Omega_0 \vdash \mono{'hello} \movearrowabs \atom{hello} \\
+  \otab\Omega_0 \vdash \mono{pair} \writearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1 &
+   \langle\text{Rearrange-Before}\rangle \\
+  \otab\otab \Omega_0 \rearrangearrow \Omega_0' &
+   \langle\text{Allocate}\rangle \\
+  \otab\otab\otab \Omega_0' = \Omega_0,\absmapm{pair}{\top} &
+   \Omega_0' = \emptyset, \absmapm{pair}{\top} \\
+  \otab \otab \Omega_0' \vdash \mono{pair} \writearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1 \\
+  \otab\otab\otab \Omega_1 = \Omega_0'\left[\dfrac{\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}}{\absmapm{pair}{\top}}\right] &
+   \Omega_1 = \emptyset,\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}\\
+  \otab \Omega_1 \vdash L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+  \otab \otab \mathcal{D}_3 \\
+
+\end{array}\]
+\[\begin{array}{ll}
+  \mathcal{D}_3 = \\\\
+
+  \Omega_1 \vdash L_3\mono{;}L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+  % temp = pair.0
+  \otab \ocomment{\mono{temp = pair.0}} \\
+  % read right
+  \otab \Omega_1 \vdash \mono{pair.0} \movearrowabs \atom{world} \dashv \Omega_1'' \\
+  \otab \otab \Omega_1 \vdash \mono{pair} \movearrowabs (\atom{world}, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1' \\
+  \otab\otab\otab \Omega_1' = \Omega_1\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\atom{world}, \mono{\_} \rightarrow \atom{hello})}}\right] &
+    \Omega_1' = \emptyset, \absmapm{pair}{\top} \\
+  \otab \otab \Omega_1' \vdash \oleft{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} = \atom{world} \\
+  \otab \otab \Omega_1' \vdash \oright{(\atom{world}, \mono{\_} \rightarrow \atom{hello})} = \atom{hello} \\
+  \otab \otab \Omega_1' \vdash \mono{pair} \writearrowabs (\top, \mono{\_} \rightarrow \atom{hello}) \dashv \Omega_1'' \\
+  \otab\otab\otab \Omega_1'' = \Omega_1'\left[\dfrac{\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}}{\absmapm{pair}{\top}}\right] &
+    \Omega_1'' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})} \\
+  % write to left
+  \otab\Omega_1'' \vdash \mono{temp} \writearrowabs \atom{world} \dashv \Omega_2 &
+    \langle\text{Rearrange-Before}\rangle \\
+  \otab\otab \Omega_1'' \rearrangearrow \Omega_1''' &
+    \langle\text{Allocate}\rangle \\
+  \otab\otab\otab \Omega_1''' = \Omega_1'', \absmapm{temp}{\top} &
+    \Omega''' = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\top} \\
+  \otab\otab \Omega_2 = \Omega_1'''\left[\dfrac{\absmapm{temp}{\atom{world}}}{\absmapm{temp}{\top}}\right] &
+    \Omega_2 = \emptyset,\absmapm{pair}{(\top, \mono{\_} \rightarrow \atom{hello})}, \absmapm{temp}{\atom{world}} \\
+  \otab \Omega_2 \vdash L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+  \otab\otab \mathcal{D}_4 \\
+
+\end{array}\]
+\[\begin{array}{ll}
+  \mathcal{D}_4 = \\\\
+
+  \Omega_2 \vdash L_4\mono{;}L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+  % pair.0 = pair.1
+  \otab \ocomment{\mono{pair.0 = pair.1}} \\
+  % read right
+  \otab \Omega_2 \dashv \mono{pair.1} \movearrowabs \atom{hello} \dashv \Omega_2' \\
+  \otab\otab \ocomment{Similar to $\Omega_1 \vdash \mono{pair.0} \movearrowabs \atom{world} \dashv \Omega_1''$} &
+    \Omega_2' = \emptyset, \absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
+  \otab \Omega_2' \dashv \mono{pair.0} \writearrowabs \atom{hello} \dashv \Omega_3 \\
+  \otab \otab \Omega_2' \vdash \mono{pair} \movearrowabs (\top, \mono{\_} \rightarrow \top) \dashv \Omega_2'' \\
+  \otab\otab\otab \Omega_2'' = \Omega_2'\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\top, \mono{\_} \rightarrow \top)}}\right] &
+    \Omega_2'' = \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\atom{world}} \\
+  \otab \otab \Omega_2'' \vdash \oleft{(\top, \mono{\_} \rightarrow \top)} = \top \\
+  \otab \otab \Omega_2'' \vdash \oright{(\top, \mono{\_} \rightarrow \top)} = \top \\
+  \otab \otab \Omega_2'' \vdash \mono{pair} \writearrowabs (\atom{hello}, \mono{\_} \rightarrow \top) \dashv \Omega_2''' \\
+  \otab\otab\otab \Omega_3 = \Omega_2''\left[\dfrac{\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}}{\absmapm{pair}{\top}}\right] &
+    \Omega_3 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\atom{world}} \\
+  \otab \Omega_3 \vdash L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{hello}) \\
+  \otab\otab \mathcal{D}_5 \\
+\end{array}\]
+
+\[\begin{array}{ll}
+  \mathcal{D}_5 = \\\\
+
+  \Omega_3 \vdash L_5\mono{;}L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{hello}) \\
+  % pair.1 = temp
+  \otab \ocomment{\mono{pair.1 = temp}} \\
+  \otab \Omega_3 \vdash \mono{temp} \movearrowabs \atom{world} \dashv \Omega_3' \\
+  \otab \Omega_3' = \Omega_3\left[\dfrac{\absmapm{temp}{\top}}{\absmapm{temp}{\atom{world}}}\right] &
+  \otab \Omega_3' = \emptyset, \absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \top)}, \absmapm{temp}{\top} \\
+  \otab \Omega_3' \vdash \mono{pair.1} \writearrowabs \atom{world} \dashv \Omega_4 \\
+  \otab \ocomment{Similar to $\Omega_2' \dashv \mono{pair.0} \writearrowabs \atom{hello} \dashv \Omega_3$} &
+  \otab \Omega_4 = \emptyset,\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}, \absmapm{temp}{\top} \\
+  \otab \Omega_4 \vdash L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+  \otab\otab \mathcal{D}_7 \\
+\end{array}\]
+
+\[\begin{array}{ll}
+  \mathcal{D}_7 = \\\\
+
+  \otab \Omega_4 \vdash L_7 \subtype \mono{*} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \\
+  % pair
+  \otab \ocomment{\mono{pair}} \\
+  \otab \Omega_4 \vdash \mono{pair} \movearrowabs (\atom{hello}, \mono{\_} \rightarrow \atom{world}) \dashv \Omega_4' \\
+  \otab \otab \Omega_4' = \Omega_4\left[\dfrac{\absmapm{pair}{\top}}{\absmapm{pair}{(\atom{hello}, \mono{\_} \rightarrow \atom{world})}}\right] &
+    \Omega_4' = \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\top} \\
+  \otab \Omega_4' \vdash \drop{} \\
+  \otab \otab \emptyset, \absmapm{pair}{\top}, \absmapm{temp}{\top} \vdash \kw{drop} \\
+  \otab \otab\otab \emptyset, \absmapm{pair}{\top} \vdash \drop{\top} \\
+  \otab \otab\otab \emptyset, \absmapm{pair}{\top} \vdash \drop{} \\
+  \otab \otab\otab\otab \emptyset \vdash \drop{\top} \\
+  \otab \otab\otab\otab \emptyset \vdash \drop{} \\
+
+\end{array}\]
+}
+
+\subsection{Mutating a Dependent Pair}
+\label{appendix:mutateddependentderivation}
+This appendix shows the derivation which type checks the definition of the \mono{overwrite} function from Listing \ref{listing:mutatedependent}.
+
+{
+  \smaller
+  \[\begin{array}{ll}
+    \multicolumn{2}{l}{ 
+      $$\Omega_1 \vdash \mono{(p:\&mut Same) -> 'unit \{*p.0 = 'a; *p.1 = 'a; 'unit\}} \movearrowabs (\mono{p:\&mut Same}) \rightarrow \mono{'unit}$$
+    } \\
+  
+    \otab\Omega_1 \vdash \mono{(p:\&mut Same)} \maxarrow{\writearrowabs} \borrowm{l}{p_0} \dashv \Omega_{10} \\
+    \otab\otab \Omega_1 \vdash \mono{\&mut Same} \erasedreadarrow \borrowm{l}{p_0} \dashv \Omega_1' \\
+    \otab\otab\otab \Omega_1 \vdash \mono{Same} \erasedreadarrow p_0 \\
+    \otab\otab\otab\otab \absmapm{Same}{p_0} \in \Omega_1 &
+      p_0 = (\{\atom{a}, \atom{b}\}, L \rightarrow L) \\
+    \otab\otab\otab \Omega_1' = \Omega_1, \absmap{l}{p_0} &
+      \Omega_1' = \Omega_1, \absmap{l}{p_0} \\
+    \otab\otab \Omega_1' \vdash \mono{p} \writearrowabs \borrowm{l}{p_0} \dashv \Omega_{10} &
+      \langle\text{Rearrange-Before}\rangle \\
+    \otab\otab\otab \Omega_1' \rearrangearrow \Omega_1'' &
+      \langle\text{Allocate}\rangle \\
+    \otab\otab\otab\otab \Omega_1'' = \Omega_1', \absmapm{p}{\top} &
+      \Omega_1'' = \Omega_1', \absmapm{p}{\top} \\
+    \otab\otab\otab \Omega_1'' \vdash \mono{p} \writearrowabs \borrowm{l}{p_0} \dashv \Omega_{10} \\
+    \otab\otab\otab\otab \Omega_{10} = \Omega_1'\left[\dfrac{\absmapm{p}{\borrowm{l}{p_0}}}{\absmap{p}{\top}}\right] &
+      \Omega_{10} = \Omega_1', \absmapm{p}{\borrowm{l}{p_0}} \\
+    
+    \otab \Omega_{10} \vdash \mono{*p.0 = 'a; *p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+    \otab\otab \mathcal{D}_{10}
+  \end{array}\]
+  \[\begin{array}{ll}
+    \mathcal{D}_{10} = \\\\
+
+    \Omega_{10} \vdash \mono{*p.0 = 'a; *p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit}
+    \otab \Omega_{10} \vdash \mono{'a} \movearrowabs \atom{a} \\
+    \otab \Omega_{10} \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11} &
+      \langle\text{Rearrange-Before}\rangle \\
+    \otab \otab \Omega_{10} \rearrangearrow \Omega_{10}' \, \ocomment{must set $*p.0$ to $\top$ to write} &
+      \langle\text{Type-Widen}\rangle \\
+    \otab \otab\otab \Omega_{10}' = \Omega_{10}\left[\dfrac{\absmapm{p}{\borrowm{l}{p_1}}}{\absmapm{p}{\borrowm{l}{p_0}}}\right] &
+      \Omega_{10}' = \Omega_1', \absmap{p}{\borrowm{l}{p_1}} \\
+    \otab \otab\otab \Omega_{10} \vdash \borrowm{l}{p_0} \subtype \borrowm{l}{p_1}  &
+      p_1 = (\top, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\}) \\
+    \otab \otab\otab\otab \Omega_{10} \vdash p_0 \subtype p_1 \\
+    \otab \otab\otab\otab\otab \Omega_{10} \vdash \{\atom{a}, \atom{b}\} \subtype \top \\
+    \otab \otab\otab\otab\otab \Omega_{10} \vdash \comptime{} \dashv \Gamma_1 &
+      \Gamma_1 = \Omega_1,\absmapm{L}{\top} \\
+    \otab \otab\otab\otab\otab \Gamma_1 \vdash \mono{\_} \erasedwritearrow \top \\
+    \otab \otab\otab\otab\otab \Gamma_1 \vdash \mono{L} \erasedwritearrow \{\atom{a}, \atom{b}\} \dashv \Gamma_1' \\
+    \otab \otab\otab\otab\otab\otab \Gamma_1' = \Gamma_1\left[\dfrac{\absmapm{L}{\{\atom{a}, \atom{b}\}}}{\absmapm{L}{\top}}\right] \\
+    \otab \otab\otab\otab\otab \Gamma_1' \vdash \mono{L} \subtype \{\atom{a}, \atom{b}\} \erasedreadarrow \{\atom{a}, \atom{b}\} \\
+    \otab \otab\otab\otab\otab\otab \Gamma_1' \vdash L \erasedreadarrow \{\atom{a}, \atom{b}\} \\
+    \otab \otab\otab\otab\otab\otab\otab \absmapm{L}{\{\atom{a}, \atom{b}\}} \in \Gamma_1' \\
+    \otab \otab\otab\otab\otab\otab \Gamma_1' \vdash \{\atom{a}, \atom{b}\} \erasedreadarrow \{\atom{a}, \atom{b}\} \\
+    \otab \otab\otab\otab\otab\otab \Gamma_1' \vdash \{\atom{a}, \atom{b}\} \subtype \{\atom{a}, \atom{b}\} \\
+    \otab \otab\otab\otab\otab\otab\otab \{\atom{a}, \atom{b}\} \subseteq \{\atom{a}, \atom{b}\} \\
+    \otab \otab \Omega_{10}' \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11} \, \ocomment{write to \mono{*p.0}} \\
+    \otab \otab\otab \Omega_{10}' \vdash \mono{*p} \movearrowabs p_1 \dashv \Omega_{10}''' \\
+    \otab \otab\otab\otab \Omega_{10}' \vdash \mono{p} \movearrowabs \borrowm{l}{p_1} \vdash \Omega_{10}'' \\
+    \otab \otab\otab\otab\otab \Omega_{10}'' = \Omega_{10}'\left[\dfrac{\absmapm{p}{\top}}{\absmapm{p}{p_1}}\right] &
+      \Omega_{10}'' = \Omega_1',\absmapm{p}{\top} \\
+    \otab \otab\otab\otab \Omega_{10}'' \vdash \mono{p} \writearrowabs \borrowm{l}{\top} \vdash \Omega_{10}''' \\
+    \otab \otab\otab\otab\otab \Omega_{10}''' = \Omega_{10}''\left[\dfrac{\absmapm{p}{\borrowm{l}{\top}}}{\absmapm{p}{\top}}\right] &
+      \Omega_{10}''' = \Omega_1',\absmapm{p}{\borrowm{l}{\top}} \\
+    \otab \otab\otab \Omega_{10}''' \vdash \oleft{p_1} = \top \\
+    \otab \otab\otab \Omega_{10}''' \vdash \oright{p_1} = \{\atom{a}, \atom{b}\} \\
+    \otab \otab\otab \Omega_{10}''' \vdash \mono{*p} \writearrowabs p_2 \dashv \Omega_{11} &
+      p_2 = (\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\}) \\
+    \otab \otab\otab\otab \Omega_{10}''' \vdash \mono{p} \movearrowabs \borrowm{l}{\top} \dashv \Omega_{10}'''' \\
+    \otab \otab\otab\otab\otab \Omega_{10}'''' = \Omega_{10}'''\left[\dfrac{\absmapm{p}{\top}}{\absmap{p}{\borrowm{l}{\top}}}\right] &
+      \Omega_{10}'''' = \Omega_1',\absmapm{p}{\top} \\
+    \otab \otab\otab\otab \Omega_{10}'''' \vdash \mono{p} \writearrowabs \borrowm{l}{p_2} \dashv \Omega_{11} \\
+    \otab \otab\otab\otab\otab \Omega_{11} = \Omega_{10}''''\left[\dfrac{\absmapm{p}{\borrowm{l}{p_2}}}{\absmap{p}{\top}}\right] &
+      \Omega_{11} = \Omega_1', \absmapm{p}{\borrowm{l}{p_2}} \\
+  
+    \otab \Omega_{11} \vdash \mono{*p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+    \otab\otab \mathcal{D}_{11} \\
+  \end{array}\]
+    
+  \[\begin{array}{ll}
+    \mathcal{D}_{11} = \\\\
+
+    \Omega_{11} \vdash \mono{*p.1 = 'a; 'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+    \otab\Omega_{11} \vdash \mono{'a} \movearrowabs \atom{a} \\
+    \otab\Omega_{11} \vdash \mono{*p.1} \writearrowabs \atom{a} \dashv \Omega_{12} &
+      \Omega_{12} = \Omega_1',\absmapm{p}{\borrowm{l}{p_3}} \\
+    \otab\otab \ocomment{Similar to $\Omega_{10}' \vdash \mono{*p.0} \writearrowabs \atom{a} \dashv \Omega_{11}$} &
+      p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a}) \\
+    \otab\Omega_{12} \vdash \mono{'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+    \otab\otab \mathcal{D}_12 \\
+  \end{array}\]
+  
+  \[\begin{array}{lll}
+    \mathcal{D}_{12} = \\\\
+
+    \Omega_{12} \vdash \mono{'unit} \subtype \mono{'unit} \movearrowabs \atom{unit} \\
+    \otab\Omega_{12} \vdash \mono{'unit} \movearrowabs \atom{unit} \\
+    \otab\ocomment{$\Omega_{12} \vdash \drop{} =$} \\
+    \otab\Omega_1,\absmap{l}{p_0},\absmap{p}{\borrowm{l}{p_3}} \vdash \drop{} &
+      \ocomment{final cleanup} \\
+    \otab\otab \Omega_1,\absmap{l}{p_0} \vdash \drop{(\borrowm{l}{p_3})} \dashv \Omega_1 \\
+    \otab\otab\otab \Omega_1 = \Omega_1,\absmap{l}{p_0} \backslash \{ \absmap{l}{p_0} \} \\
+    \otab\otab\otab \Omega_1 \vdash p_3 \subtype p_0 \\
+    \otab\otab\otab\otab \Omega_1 \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} \\
+    \otab\otab\otab\otab\otab \{\atom{a}\} \subseteq \{\atom{a}, \atom{b}\} \\
+    \otab\otab\otab\otab \Omega_1 \vdash \comptime{} \dashv \Gamma_2 &
+      \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
+    \otab\otab\otab\otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
+    \otab\otab\otab\otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+    \otab\otab\otab\otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \atom{a} \\
+    \otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \subtype \mono{L} \erasedreadarrow \atom{a} \\
+    \otab\otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \erasedreadarrow \atom{a} \\
+    \otab\otab\otab\otab\otab \Gamma_2' \vdash L \erasedreadarrow \atom{a} \\
+    \otab\otab\otab\otab\otab\otab \absmapm{L}{\atom{a}} \in \Gamma_2' \\
+    \otab\otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \subtype \atom{a} \\
+    \otab\otab\otab\otab\otab\otab \{\atom{a}\} \subseteq \{\atom{a}\} \\
+    \otab\Omega_{12} \vdash \mono{'unit} \subtype \mono{*} \erasedreadarrow \atom{unit} \\
+    
+    \otab \Omega_{12} \vdash \atom{unit} \subtype \atom{unit}
+  \end{array}\]
+}
+
+
+\section{Properties and Proofs}
+\subsection{Statement Soundness}
+\label{appendix:statementsoundness}
+
+This section seeks to prove Property \ref{property:statementsoundness} (Statement Interpretation Soundness):
+
+\[
+  \oimplies{
+    \inferrule{
+    \Delta \vdash S \subtype \mono{*} \movearrowconc v \\\\
+    \Omega \vdash S \subtype \mono{*} \movearrowabs t \\\\
+    \Delta : \Omega
+  }{}  
+  }{
+    \Omega \vdash v: t
+  }
+\]
+
+We start by assuming all of the premises:
+
+\begin{equation}
+    \inferrule{
+        \Delta \vdash S \subtype \mono{*} \movearrowconc v \\\\
+        \Omega \vdash S \subtype \mono{*} \movearrowabs t \\\\
+        \Delta : \Omega
+    }{}
+\end{equation}
+\label{equation:soundnessstartassumption}
+
+for arbitrary statements $S$, environments $\Omega$, $\Delta$ and types $t$, and $v$.
+
+Then we take the proof by cases on the derivations used to construct $\Omega \vdash S \subtype \mono{*} \movearrowabs t$ and $\Delta \vdash S \subtype \mono{*} \movearrowconc v$, then conclude $\Omega \vdash v: t$ by induction. Conceptually, we are defining a recursive function which takes our premise derivations, and returns a derivation of $\Omega \vdash v: t$.
+
+\begin{tcolorbox}[title=Assumption: Concrete and Abstract Rearrangements are Synced]
+    We assume that the derivations used to construct $\Delta \vdash S \subtype \mono{*} \movearrowconc v$ and $\Omega \vdash S \subtype \mono{*} \movearrowabs t$ are \textit{in sync}. This would mean that both or neither are an instance of $\langle\text{Rearrange-Before}\rangle$ or $\langle\text{Rearrange-After}\rangle$. The intuition behind this is that the abstract interpretation drops a variable if and only if the concrete interpretation drops a variable. This could be made provable so we would not have to assume it, but I believe that would involve the abstract interpretation somehow inserting drop signals into the terms that the concrete interpretation reads and acts upon. This is possible, and I believe only a matter of effort, but it would complicate the interpretations further, slowing down future more important work.
+\end{tcolorbox}
+
+\textbf{Case} - $S$ is an expression $M$.
+
+The assumed derivations must be 
+
+\begin{equation}
+    \inferrule{
+    \Delta \vdash M \movearrowconc v \dashv \Delta' \\\\
+    \Delta' \vdash \drop{}
+    }{
+    \Delta \vdash M \subtype \mono{*} \movearrowconc
+    }
+    \text{ and }
+    \inferrule{
+    \Omega \vdash \mono{*} \erasedreadarrow \top \\\\
+    \Omega \vdash M \movearrowabs t \dashv \Omega' \\\\
+    \Omega' \vdash t \subtype \top \\\\
+    \Omega' \vdash \drop{}
+    }{
+    \Omega \vdash M \subtype \mono{*} \movearrowabs t
+    }
+\end{equation}
+
+for some environments $\Delta'$ and $\Omega'$.
+
+Using Property \ref{property:expressionreadsoundness} (Expression Read Soundness) on $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ we have $\Omega \vdash v:t$ and $\Delta \subtype \Omega$. \hfill $\square$
+
+\textbf{Case} - $S$ is an assignment \mono{$M$ = $N$; $S'$}.
+
+\textbf{Case} - $S$ is a match statement \mono{match $M$ \{$\overrightarrow{M' \mono{ => } S'}$\}}.
+
+\subsection{Expression Read Soundness}
+
+This section seeks to prove Property \ref{property:expressionreadsoundness} (Statement Read Soundness):
+
+for all $\diamond$ in $\{ \readarrowabs, \movearrowabs \}$: \[
+  \oimplies{
+    \inferrule{
+      \Delta \vdash M \diamond v \dashv \Delta' \\\\
+      \Omega \vdash M \,\abs{\diamond}\, t \dashv \Omega' \\\\
+      \Delta : \Omega
+    }{}
+  }{
+    \inferrule{
+      \Delta' : \Omega' \\\\
+      \Omega' \vdash v: t
+    }{}
+  }
+\]
+
+We start by assuming $\Delta \vdash M \diamond v \dashv \Delta'$, $\Omega \vdash M \,\abs{\diamond}\, t \dashv \Omega'$, and $\Delta : \Omega$ for arbitrary expressions $M$, environments $\Omega$, $\Omega'$,  $\Delta'$ and types $t$ and $v$.
+
+We then take the proof by an exhaustive set of cases.
+
+\textbf{Case} - $M$ is an atom constructor $\atom{a}$
+
+The assumed derivations $\Delta \vdash M \diamond v \dashv \Delta'$ and $\Omega \vdash M \,\abs{\diamond}\, t \dashv \Omega'$ must be $\Delta \vdash \atom{a} \abs{\diamond} \atom{a}$ and $\Omega \vdash \mono{'}a \diamond \atom{a}$ which tells us $v = \atom{a}$, $\Delta' = \Delta$, and $\Omega' = \Omega$.
+
+Our proof goals re-written are now $\Omega \vdash \atom{a} \subtype \atom{a}$ and $\Delta: \Omega$. The former holds directly from \odef{\subtype}{\atom{a}}, and the latter holds because we previously assumed it. \hfill $\square$
+
+\textbf{Case} - $M$ is a runtime variable $x$ and $\diamond$ is $\movearrowconc$.
+
+The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be
+
+\begin{equation}
+    \inferrule{
+    \Delta' = \Delta\left[\dfrac{\absmap{x}{\top}}{\absmap{x}{v}}\right]
+    }{
+    \Delta \vdash x \movearrowconc v \dashv \Delta'
+    }
+    \text{ and }
+    \inferrule{
+    \Omega' = \Omega\left[\dfrac{\absmap{x}{\top}}{\absmap{x}{t}}\right]
+    }{
+    \Omega \vdash x \movearrowabs t \dashv \Omega'
+    }.
+\end{equation}
+
+Since $x$ now maps to $\top$ in both environments $\Delta': \Omega'$ because environment subtyping is just variable-wise subtyping and $\Omega' \vdash \top \subtype \top$. $\top$ is concrete, so $\Delta'$ remains concrete. $\Omega' \vdash v:t$ by \odef{:}{\Omega}. \hfill $\square$.
+
+\textbf{Case} - $M$ is a function application $F A$ and $\diamond$ is $\movearrowconc$.
+
+The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be:
+
+\begin{equation}
+    \inferrule{
+        \Delta \vdash F \readarrowconc (M \rightarrow S) \\\\
+        \Delta \vdash A \movearrowconc a \dashv \Delta_1 \\\\
+        \Delta_1 \vdash M \writearrowconc a \dashv \Delta_2 \\\\
+        \Delta_2 \vdash S \movearrowconc v \dashv \Delta' 
+    }{
+        \Delta \vdash F A \movearrowconc v \dashv \Delta'
+    }
+    \text{ and }
+    \inferrule{
+        \Omega \vdash F \readarrowabs (\dot{M} \rightarrow S_t) \\\\
+        \Omega \vdash A \movearrowabs \dot{a} \dashv \Omega_1 \\\\
+        \Omega_1 \vdash \dot{M} \writearrowabs \dot{a} \dashv \Omega_2 \\\\
+        \Omega_2 \vdash S_t \subtype \mono{*} \erasedreadarrow t \\\\
+        \Omega_1 \vdash \text{drop}\,t \dashv \Omega' 
+    }{
+        \Omega \vdash F A \movearrowabs t \dashv \Omega'
+    }
+    \label{eq:functionappass}
+\end{equation}
+
+\textbf{Subgoal $M = \dot{M}$ and $\Omega \vdash (M \rightarrow S) \subtype (\dot{M} \rightarrow S_t)$} - We use Expression Read Soundness (induction) on $\Delta \vdash F \readarrowconc (M \rightarrow S)$ and $\Omega \vdash F \readarrowabs (\dot{M} \rightarrow S_t)$ to conclude that $\Omega \vdash (M \rightarrow S) \subtype (\dot{M} \rightarrow S_t)$. By \odef{\subtype}{M \rightarrow S}, we know that their domains $M$ and $\dot{M}$ must be equal. From here on we will use $M$ in $\dot{M}$'s place.
+
+\textbf{Subgoal $\Delta_2:\Omega_2$} - We use Expression Read Soundness (\ref{property:expressionreadsoundness}, induction) on $\Delta \vdash A \movearrowconc a \dashv \Delta_1$ and $\Omega \vdash A \movearrowabs \dot{a} \dashv \Omega_1$ which gives us $a:\dot{a}$ and $\Delta_1:\Omega_1$. This allows us to use Expression Write Soundness (\ref{property:expressionwritesoundness}) on $\Delta_1 \vdash M \writearrowconc a \dashv \Delta_2$ and $\Omega_1 \vdash \dot{M} \writearrowabs \dot{a} \dashv \Omega_2$ to get $\Delta_2:\Omega_2$. $\Delta_2$ and $\Omega_2$ are the environments that will be used to execute the function body and return type respectively.
+
+Now we know our concrete and abstract environments going into the function body are well-typed, we can reason about whether or not the two statements are well-typed. We can use the fact that the concrete function is a subtype of the abstract function ($\Omega \vdash (M \rightarrow S) \subtype (\dot{M} \rightarrow S_t)$) to get:
+
+\[\inferrule{
+    \Omega \vdash \kw{comptime} \dashv \Gamma \\\\
+    \Gamma \vdash M \maxarrow{\writearrowabs} m_{max} \dashv \Gamma' \\\\
+    \Gamma' \vdash S \subtype S_t \movearrowabs t_{max}
+}{
+    \Omega \vdash M \rightarrow S \subtype M \rightarrow S_t
+}\]
+
+That derivation gives us $\Gamma' \vdash S \subtype S_t \movearrowabs t_{max}$, which means the bodies are well-typed against each other with the \textit{widest} possible input type. Since we are writing a narrower value to $M$ at the function call site, and expression write interpretation is monotonic (\ref{property:expressionwritemonotonic}), the environment we type the function bodies with ($\Omega_2$) must be smaller than $\Gamma'$. Therefore, because statement interpretation is monotonic (\ref{property:statementmonotonicity}), we can turn $\Gamma' \vdash S \subtype S_t \movearrowabs t_{max}$ into  $\Omega_2 \vdash S \subtype S_t \movearrowabs t'$ for some $t'$ where $\Omega_2 \vdash t' \subtype t_{max}$.
+
+Because statement bounds are respected (\ref{property:statementbounds}) there exists a $u$ such that
+
+\begin{equation}
+    \inferrule{
+        \Omega_2 \vdash S \subtype \mono{*} \movearrowabs u \\\\
+        \Omega_2 \vdash S_t \subtype \mono{*} \erasedreadarrow t' \\\\
+        \Omega_2 \vdash u \subtype t'
+    }{}
+    \label{equation:dawudlaywd}
+\end{equation}
+
+We now prove $v:u$, $u \subtype t'$, and $t' \subtype t$ so we can combine them into $v:t$, which is one of the two statements we need to prove to show function application soundness (the other being $\Delta': \Omega'$).
+
+\textbf{Subgoal: $\Omega_2 \vdash v: u$} - We have $\Delta_2 \vdash S \movearrowconc v \dashv \Delta_3$ from our initial derivation of the concrete function application, and $\Omega_2 \vdash S \subtype \mono{*} \movearrowabs u$ from (\ref{equation:dawudlaywd}). Because statement interpretation is sound, and $\Delta_2:\Omega_2$, we have $\Omega_2 \vdash v:u$, as required for this subgoal.
+
+\textbf{Subgoal: $\Omega_2 \vdash u \subtype t'$} - Directly given by (\ref{equation:dawudlaywd}).
+
+\textbf{Subgoal: $\Omega_2 \vdash t' \subtype t$} - (\ref{equation:dawudlaywd}) gives us $\Omega_2 \vdash S_t \subtype \mono{*} \erasedreadarrow t'$ and (\ref{eq:functionappass}) gives us $\Omega_2 \vdash S_t \subtype \mono{*} \erasedreadarrow t$. Because $\Omega_2 \subtype \Omega_2$ (\ref{property:environmentsubtypereflexive}) and statement interpretation in monotonic (\ref{property:statementdeterminism}), we have $\Omega_2 \vdash t' \subtype t$.
+
+\textbf{Goal: $\Omega_2 \vdash v: t$} - Our first subgoal gives us $\Omega_2 \vdash v \subtype u$ and $\concrete v$ from \odef{:}{t}. Therefore, from our subgoals we have $\Omega_2 \vdash v \subtype u$, $\Omega_2 \vdash u \subtype t'$, and $\Omega_2 \vdash t' \subtype t$. Because subtyping is transitive \ref{property:subtypetransitive}, we can use these to get $\Omega_2 \vdash v \subtype t$, and since $\concrete{v}$ from our first subgoal, we have $\Omega_2 \vdash v: t$ as required.
+
+The above has proven the soundness of the return value from a function. Now we now reason about the function's side effects, in the form of its effects on the environment (goal: $\Delta': \Omega'$).
+
+The only side effects functions can have are those caused by dropping references (in their arguments). Functions cannot mutate non-local variables because their definitions only capture comptime variables, which cannot be mutated (or, more formally speaking, can only be narrowed).
+
+When a function body is interpreted, it is ensured that every reference is mutated back to the type it originally had at the beginning of the function body. Take a function $f$, which takes in an argument \mono{x} of type $\borrowm{l}{t}$. The function body is obligated to drop all of its local variables, which includes this borrow. This is checked by introducing a loan restriction into the context at the start of the function body, then only allowing the borrow to be terminated if it matches this loan restriction. Since $f$ has previously passed type checking (\odef{\movearrowabs}{M \rightarrow S}), we know that its body writes back a value of type $t$ to the referenced loans or a subtype of $t$. This means it is sound to approximate the function's side effects by immediately dropping its arguments, which is done by $\Omega_1 \vdash \drop{t} \dashv \Omega'$.
+
+It would be very labor-intensive to formalize this logic into a proof and possibly require introducing more logic to the interpretations. This would be worthwhile work if it was not for the fact that I think overall, the current model of side effects is not very elegant and would be worth refining as future work. This refining would make any proofs I make about the current system redundant. Therefore I have chosen to prioritize other cases, such as function application and type annotations.
+
+\textbf{Case} - $M$ is a function definition $M' \mono{->} S_t \mono{\{} S \mono{\}}$.
+
+The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be:
+
+\begin{equation}
+    \inferrule{
+        \ocomment{no checking}
+      }{
+        \Delta \vdash M' \mono{->} S_t \mono{\{} S \mono{\}} \movearrowconc M \rightarrow S
+      } 
+    \text{ and }
+    \inferrule{
+        \Omega \vdash \comptime{} \dashv \Gamma \\\\
+        \Gamma \vdash M' \maxarrow{\writearrowabs} m \dashv \Gamma' \\\\
+        \Gamma' \vdash S \subtype S_t \movearrowabs u
+    }{
+        \Omega \vdash M' \mono{->} S_t \mono{\{} S \mono{\}} \movearrowabs M \rightarrow S_t
+    }
+\end{equation}
+
+Our goal is to prove the return value is sound $(\Omega \vdash (M \rightarrow S) \subtype (M \rightarrow S_t))$ and our output environment is sound $(\Delta:\Omega)$.
+
+We immediately have $\Delta:\Omega$ because it is one of our starting premises (\ref{equation:soundnessstartassumption}).
+
+We can use $\Omega \vdash \comptime{} \dashv \Gamma$, $\Gamma \vdash M' \maxarrow{\writearrowabs} m \dashv \Gamma'$, and $\Gamma' \vdash S \subtype S_t \movearrowabs u$ with \odef{\subtype}{M \rightarrow S_t} to get $(\Omega \vdash (M \rightarrow S) \subtype (M \rightarrow S_t))$ immediately. \hfill $\square$
+
+This case is so short because \odef{\subtype}{M \rightarrow S_t} is almost an exact match of \odef{\movearrowabs}{M' \mono{->} S_t \mono{\{} S \mono{\}}}. The complexity of function checking is all in the application case. This reflects the fact that defining an ill-typed function never causes soundness issues at runtime, it is \textit{calling} an ill-typed function that makes your state unsound.
+
+\textbf{Case} - $M$ is a type annotation $M': T$.
+
+The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be:
+
+\begin{equation}
+    \inferrule{
+        \Delta \vdash M \movearrowconc v \dashv \Delta'
+      }{
+        \Delta \vdash M' \mono{:} T \movearrowconc v \dashv \Delta'
+      } 
+    \text{ and }
+    \inferrule{
+        \Omega \vdash M \movearrowabs m \dashv \Omega' \\\\
+        \Omega' \vdash T \erasedreadarrow t \\\\
+        \Omega' \vdash m \subtype t
+    }{
+        \Omega \vdash M' \mono{:} T \movearrowabs t \dashv \Omega'
+    }
+\end{equation}
+
+Because expression read interpretation is sound (\ref{property:statementsoundness}, induction), we can use $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs m \dashv \Omega'$ to get $\Omega' \vdash v: m$ and $\Delta' \subtype \Omega'$.
+
+Our assumed abstract derivation gives us $\Omega' \vdash m \subtype t$, which can be used with $\Omega' \vdash v: m$ and the transitivity of subtyping (\ref{property:subtypetransitive}) to get $\Omega' \vdash v: t$. \hfill $\square$
+
+\textbf{Remaining Cases} - In this section we have covered every language construct that has a different concrete interpretation to abstract interpretation. I am hopeful that the remaining constructs are provable because there are so few differences between their concrete and abstract interpretations. I leave these cases as future work so that I may prioritize other parts of this research.
+
 
 \end{document}

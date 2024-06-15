@@ -123,30 +123,36 @@ fn ochreshittery() {
     };
 }
 
-// enum Nat {
-//     Zero,
-//     Succ(Box<Nat>),
-// }
-// use Nat::*;
+enum Nat {
+    Zero,
+    Succ(Box<Nat>),
+}
+use Nat::*;
 
-// fn add(mut x: Nat, y: Nat) -> Nat {
-//     match &mut x {
-//         Zero => y,
-//         Succ(px) => {
-//             let mut z = Zero;
-//             mem::swap(&mut z, &mut **px);
-//             **px = add(z, y);
-//             x
-//         }
-//     }
-// }
+fn add(mut x: Nat, y: Nat) -> Nat {
+    match &mut x {
+        Zero => y,
+        Succ(px) => {
+            let mut z = Zero;
+            mem::swap(&mut z, &mut **px);
+            **px = add(z, y);
+            x
+        }
+    }
+}
 
-// fn add_mut(x: &mut Nat, y: &mut Nat) {
-//     match x {
-//         Zero => mem::swap(x, y),
-//         Succ(px) => add_mut(px, y),
-//     }
-// }
+fn swap<T>(x: &mut T, y: &mut T) {
+    let temp = *x;
+    *x = *y;
+    *y = temp;
+}
+
+fn add_mut(x: &mut Nat, y: &mut Nat) {
+    match x {
+        Zero => mem::swap(x, y),
+        Succ(px) => add_mut(px, y),
+    }
+}
 
 fn main() {
     println!("hello");
