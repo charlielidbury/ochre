@@ -88,7 +88,7 @@ From this aesthetic value, and its equivalence to moral value, I conclude that t
 
 In 2006, exasperated by yet another crash of his building's elevator's firmware, and exhausted after walking up 21 flights of stairs, Graydon Hoare set out to design a new programming language \citep{rust-anecdote}. The language, soon to be known as Rust, had two goals. First, to be system-oriented, meaning the programmer would deal with references, pointers, and manually manage memory. Second, to be safe, meaning the compiler's static discipline would rule out memory errors such as use-after-free, or arbitrary memory access. Even though the language evolved a great deal since its inception, these two core premises remain today. 
 
-Eighteen years later, Rust enjoys a substantial amount of success and has ranked as the most loved programming language for 7 consecutive years on StackOverflow's developer survey~\citep{stackoverflow}, until they changed the phrasing of the question in 2023 in which it was the most \textit{admired} language. But as the systems community can attest~\citep{klein2009sel4,lorch2020armada,ferraiuolo2017komodo,bhargavan2017everest}, memory safety is too weak of a property, no matter how remarkable of an achievement Rust is.
+Eighteen years later, Rust enjoys a substantial amount of success and has ranked as the most loved programming language for 7 consecutive years on StackOverflow's developer survey~\citep{stackoverflow}, until they changed the phrasing of the question in 2023 in which it was the most \textit{admired} language. But as the systems community can attest~\citep{klein2009sel4,lorch2020armada,ferraiuolo2017komodo,bhargavan2017everest}, memory safety is too weak of a property, no matter how remarkable of an achievement .
 
 We have attempted to prove further properties 
 
@@ -166,6 +166,8 @@ This type checker allows the types and mutable values to be unusually close. In 
 \label{background}
 
 \section{Dependent Types}
+
+\section{Abstract Interpretation}
 
 \section{Rust}
 Rust is a modern programming language that offers a unique combination of strong (memory) safety guarantees and bare-metal performance. Rust innovates in other areas relevant to software engineering, but for this research performance and safety are the two key features which will be built upon.
@@ -293,7 +295,7 @@ Related work comes under two main categories: research which works towards combi
 \subsection{Languages with Mutability and Dependent Types}
 
 \subsubsection{ATS}
-ATS \citep{xi_applied_2017} is the most mature systems programming language to date, with work dating back to 2002 \citep{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \citep{ATSHome}.
+ATS \citep{xi_applied_2017} is the most mature systems programming language with dependent types to date, with work dating back to 2002 \citep{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \citep{ATSHome}.
 
 It's more or less an eagerly evaluated functional language like OCaml, but with functions in the standard library that manipulate pointers, like \verb|ptr_get0| and \verb|ptr_set0| which read and write from the heap respectively. To read or write to a location in memory, you must have a token that represents your ownership of the memory, called a \textit{view}.
 
@@ -1114,11 +1116,75 @@ And last but not least, here are a few example programs which use several of the
 \cleardoublepage
 \chapter{Formal Definition}
 \label{chapter:definition}
-Type-checking is done via an abstract interpretation which takes a term and outputs a type for that term while modifying an abstract environment. All interpretation rules take the form $\Omega \vdash M \diamond t \dashv \Omega'$ where $\diamond$ is one of $\{ \allarrows \}$, $M$ is a term, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $t$ is the type of the value which has been read or written.
+
+\section{Syntax}
+There are two categories of terms in Ochre, \textit{statements} and \textit{expressions}. Both may have side effects. Most language constructs are expressions, but variable assignment (mutation) and match statements can only occur in statements. All expressions are themselves statements.
+
+\begin{figure}[H]
+  \arraycolsep=1pt %
+  \centering
+
+  \vspace{-2ex} %
+  \[
+  \begin{array}[t]{llll}
+    S & ::= & & \ocomment{statement} \\
+    & & M & \ocomment{expression} \\
+    & & M = N; S & \ocomment{assignment} \\
+    & & \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} & \ocomment{match statement} \\
+    \\
+    T, U, M, N & ::= & & \ocomment{expression} \\
+    && x \mid{} y \mid{} z  & \ocomment{runtime variable identifier} \\
+    && X \mid{} Y \mid{} Z  & \ocomment{comptime variable identifier} \\
+    && \atom{a} & \ocomment{atom construction} \\
+    && M\mono{,} (T \mono{-> }) N & \ocomment{pair construction} \\
+    && \pleft{M} & \ocomment{pair left access} \\
+    && \pright{M} & \ocomment{pair right access} \\
+    && \deref{M} & \ocomment{dereference} \\
+    && \mono{\&}M \mid \mono{\&mut}\,M & \ocomment{borrow constructor} \\
+    && M N & \ocomment{application} \\
+    && \mono{$M$ -> $N$} \,(\mono{\{}\,N\,\mono{\}}) & \ocomment{abstraction (optional runtime body)} \\
+    && \mono{\_} & \ocomment{uninitialised} \\
+    && T\,\mono{|}\,U & \ocomment{type union} \\
+    && M\mono{:}\,T & \ocomment{type constraint} \\
+    && v & \ocomment{type/value} \\
+  \end{array} %
+  \]
+\caption{Ochre syntax} %
+\label{fig:syntax} %
+\end{figure} %
+
+\textbf{Assignments never occur in a terminal position}. This avoids the question of what is the return value of an assignment.
+
+\textbf{Match statements always occur in a terminal position}. If it was permitted for operations to occur after a match statement, the environment \textit{after} the match statement would have to be calculated, which would be the type union of the environments produced by the branches. For this type union operation to be precise over environments, like it is on pairs, we would have to support dependencies between variables. We do not support such dependencies for the sake of simplicity, and thus cannot precisely define environment union. RustBelt's $\lambda_{Rust}$ \citep{jungRustBeltSecuringFoundations2018a}, Aeneas' LLBC \cite[Section 4.3]{aeneas}, and Mezzo \cite{protzenkoMezzoTypedLanguage2014} also enforce control control flow disjunctions to occur in terminal positions.
+
+This restriction does not limit what programs can be represented because a program with match statements in non-terminal positions can be re-written to one that only has matches in terminal positions. This could be done by moving everything after the match statement into each of the match statement branches:
+
+\begin{figure}[H]
+  \begin{mathpar}
+    \forall \diamond \{ \movearrow, \erasedreadarrow \} . \left[
+      \inferrule{
+        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S \mono{;} S'}$ \} } \diamond t
+      }{
+        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S}$ \} }; S' \diamond t
+      } 
+    \right]
+  \end{mathpar}
+  \caption{A re-write rule which could enable matches in non-terminal positions.}
+\end{figure}
+
+This rewrite rule has not been included in Ochre because I intend to support dependence between variables in the future, and therefore precise environment union, which removes the need for the rewrite. This rewrite rule has the disadvantage of causing an exponential blowup in code size/interpretation derivation size.
+
+Assignment and match statements are the only constructs that can narrow types in the environment, so by having them both in statement ($S$) instead of expression ($M$), we guarantee that expression evaluation only ever widens types. This simplifies type-checking expressions.
+
+\textbf{Types/values can be treated as syntax}. This syntactic construction cannot be constructed by the programmer. It is constructed internally within the interpretations to make syntax that always returns the same type/value, such as in \odef{\movearrow}{\pleft{M}} where it is used to break the dependence of the pair so the left value can be moved out.
+
+\section{Abstract and Concrete Interpretation}
+Type-checking is done via an abstract interpretation which takes a term and outputs a type for that term while modifying an abstract environment. Interpretations over statements take the form $\Omega \vdash S \subtype S_t \diamond t$ and interpretations over expression 
+
+All interpretation rules take the form $\Omega \vdash M \diamond t \dashv \Omega'$ where $\diamond$ is one of $\{ \allarrows \}$, $M$ is a term, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $t$ is the type of the value which has been read or written. This is analogous to Hoare triple where $\Omega$ is the pre-condition, and $\Omega'$ is the post-condition.
 
 Section \ref{subsection:modalities} introduces key concepts that are required to understand the definitions; subsequent subsections define the abstract interpretation. The reader is encouraged to skip around definitions a lot, they are laid out in tables to make finding a particular definition easier, as one might in a repository of code.
 
-\section{Modalities}
 \label{subsection:modalities}
 It is best to conceptualize the arrows as a single interpretation with many modalities. The following arrows are used to denote the different modalities:
 
@@ -1253,67 +1319,6 @@ Defining the write operation for more complex pieces of syntax is how several la
 % Non-destructive operations
 
 % Compile-time only operations
-
-\section{Syntax}
-Ochre grammar:
-
-\begin{figure}[H]
-  \arraycolsep=1pt %
-  \centering
-
-  \vspace{-2ex} %
-  \[
-  \begin{array}[t]{llll}
-    S & ::= & & \ocomment{statement} \\
-    & & M & \ocomment{expression} \\
-    & & M = N; S & \ocomment{assignment} \\
-    & & \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} & \ocomment{match statement} \\
-    \\
-    T, U, M, N & ::= & & \ocomment{expression} \\
-    && x \mid{} y \mid{} z  & \ocomment{runtime variable identifier} \\
-    && X \mid{} Y \mid{} Z  & \ocomment{comptime variable identifier} \\
-    && \atom{a} & \ocomment{atom construction} \\
-    && M\mono{,} (T \mono{-> }) N & \ocomment{pair construction} \\
-    && \pleft{M} & \ocomment{pair left access} \\
-    && \pright{M} & \ocomment{pair right access} \\
-    && \deref{M} & \ocomment{dereference} \\
-    && \mono{\&}M \mid \mono{\&mut}\,M & \ocomment{borrow constructor} \\
-    && M N & \ocomment{application} \\
-    && \mono{$M$ -> $N$} \,(\mono{\{}\,N\,\mono{\}}) & \ocomment{abstraction (optional runtime body)} \\
-    && \mono{\_} & \ocomment{uninitialised} \\
-    && T\,\mono{|}\,U & \ocomment{type union} \\
-    && M\mono{:}\,T & \ocomment{type constraint} \\
-    && v & \ocomment{type/value} \\
-  \end{array} %
-  \]
-\caption{Ochre syntax} %
-\label{fig:syntax} %
-\end{figure} %
-
-\textbf{Assignments never occur in a terminal position}. This avoids the question of what is the return value of an assignment.
-
-\textbf{Match statements always occur in a terminal position}. RustBelt's $\lambda_Rust$ \cite{jungRustBeltSecuringFoundations2018a} has the same restriction, but Aeneas' LLBC \cite{aeneas} does not. If it was permitted for operations to occur after a match statement, the environment \textit{after} the match statement would have to be calculated, which would be the type union of the environments produced by the branches. For this type union operation to be precise over environments, like it is on pairs, we would have to support dependencies between variables. We do not support such dependencies for the sake of simplicity, and thus cannot precisely define environment union.
-
-This restriction does not limit what programs can be represented because a program with match statements in non-terminal positions can be re-written to one that only has matches in terminal positions. This could be done by moving everything after the match statement into each of the match statement branches:
-
-\begin{figure}[H]
-  \begin{mathpar}
-    \forall \diamond \{ \movearrow, \erasedreadarrow \} . \left[
-      \inferrule{
-        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S \mono{;} S'}$ \} } \diamond t
-      }{
-        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S}$ \} }; S' \diamond t
-      } 
-    \right]
-  \end{mathpar}
-  \caption{A re-write rule which could enable matches in non-terminal positions.}
-\end{figure}
-
-This rewrite rule has not been included in Ochre because I intend to support dependence between variables in the future, and therefore precise environment union, which removes the need for the rewrite. This rewrite rule has the disadvantage of causing an exponential blowup in code size/interpretation derivation size.
-
-Assignment and match statements are the only constructs that can narrow types in the environment, so by having them both in statement ($S$) instead of expression ($M$), we guarantee that expression evaluation only ever widens types. This simplifies type-checking expressions.
-
-\textbf{Types/values can be treated as syntax}. This syntactic construction cannot be constructed by the programmer. It is constructed internally within the interpretations to make syntax that always returns the same type/value, such as in \odef{\movearrow}{\pleft{M}} where it is used to break the dependence of the pair so the left value can be moved out.
 
 \section{Environment, Values, and Types}
 The abstract environment, and abstract values:
@@ -2877,14 +2882,15 @@ The derivation for this incorrect program is almost identical to the derivation 
 \end{adjustwidth}
 
 \subsection{Polymorphic Swap Function}
-Listing \ref{listing:polymorphicswap} shows a function that takes two references, and swaps the values referenced by them. \mono{Swap} is a comptime function which takes a type \mono{T} as its only argument, and returns a runtime function. This is how generics are done in Ochre, which is conceptually similar to Rust's monomorphisation: a separate function is generated for every combination of input arguments. The runtime function it returns takes the two mutable references and swaps their value.
+Listing \ref{listing:polymorphicswap} shows a function that takes two references, and swaps the values referenced by them. \mono{Swap} is a comptime function which takes a type \mono{T} as its only argument, and returns a runtime function. This is how generics are done in Ochre, which is conceptually similar to Rust's monomorphisation: a separate function is generated for every type you want to instantiate the function with. The runtime function it returns takes the two mutable references and swaps their value.
 
 \mono{Swap} is an example of a function that takes advantage of Aeneas' more precise method of borrow checking: Rust cannot type check Listing \ref{listing:polymorphicswap}, despite it being correct. This is because Rust does not allow moving a value from behind a mutable reference, even if you put a valid value back into it by the end of the function call. Any mutable reference in Rust must at all points be valid and pointing to a constant type. This is a very nice consequence of using Aeneas as the borrow checker instead of something more approximate. There are ongoing efforts to make a new borrow checker for Rust which is more precise \citep{PoloniusCurrentStatus}.
 
 \begin{listing}
   \begin{minted}[mathescape]{rust}
     Swap = T -> (x: &mut T, y: &mut T) -> 'unit {
-      (*x, *y)  = (*y, *x)
+      (*x, *y)  = (*y, *x);
+      'unit
     }
   \end{minted}
   \caption{Polymorphic Swap}
@@ -2953,7 +2959,7 @@ means ``$A \text{ and } B$''.
 \subsection{Soundness}
 Ochre programs are a statement $S$. Type-checking and runtime execution both start with empty environments. Therefore, the following is our central soundness property:
 
-\begin{figure}[H]
+% \begin{figure}[H]
   \noindent
   \begin{Property}{Statement Interpretation Soundness $(\emptyset)$}{}
     \[
@@ -2966,16 +2972,16 @@ Ochre programs are a statement $S$. Type-checking and runtime execution both sta
         \emptyset \vdash v: t
       }
     \]
-    \label{property:statementsoundnessempty}
   \end{Property}
-  \caption{Ochre's central soundness property}
-\end{figure}
+  \label{property:statementsoundnessempty}
+%   \caption{Ochre's central soundness property}
+% \end{figure}
 
 Which reads ``If the abstract interpretation runs to $t$, and the concrete interpretation runs to $v$, then $v:t$''. It also reflects the fact that program execution always starts with a statement in an empty environment.
 
-Every property in this document after this point is a requirement for proving this soundness property.
+Every property in this document after this point is a direct or indirect requirement for proving the central soundness property (\ref{property:statementsoundnessempty}).
 
-Property \ref{property:statementsoundnessempty} assumes both \movearrowabs and \movearrowconc instead of only assuming the former and concluding the latter because that would equate to "if it type-checks, it executes" which is undecidable for Turing complete languages \citep{turingComputableNumbersApplication1937}, which Ochre almost certainly is.
+Our soundness property assumes both \movearrowabs and \movearrowconc instead of only assuming the former and concluding the latter because that would equate to "if it type-checks, it executes" which is undecidable for Turing complete languages \citep{turingComputableNumbersApplication1937}, which Ochre almost certainly is.
 
 The proof is done by induction on the \movearrowabs derivation and the \movearrowconc derivation simultaneously. So that a stronger inductive hypothesis can be assumed, we prove this stronger property:
 
@@ -2991,8 +2997,8 @@ The proof is done by induction on the \movearrowabs derivation and the \movearro
       \Omega \vdash v: t
     }
   \]
-  \label{property:statementsoundness}
-\end{Property}
+  \end{Property}
+\label{property:statementsoundness}
 
 Abstract and concrete interpretation only differ in three language constructs: function application \odef{\movearrow}{M N}, function definition \odef{\movearrow}{M \rightarrow S_t \{S\}}, and type annotation \odef{\movearrow, \writearrow}{M:T}. The proof is more simple in the cases where the abstract and concrete interpretations are similar, so in order to more efficiently detect soundness issues I have prioritized these three cases. Appendix \ref{appendix:statementsoundness} contains a partial proof of Property \ref{property:statementsoundness} which covers these three cases along with another two.
 
@@ -3001,123 +3007,148 @@ As well as statement interpretation soundness, we also have expression interpret
 \begin{adjustwidth}{-0.1cm}{-0.1cm}
   \noindent
   \begin{Property}[width=0.49\linewidth, nobeforeafter]{Expression Read Soundness}{} 
-    for all $\diamond$ in $\{ \readarrowconc, \movearrowconc \}$:
-    \[\oimplies{
-        \inferrule{
-        \Omega \vdash M \,\dot{\diamond}\, t \dashv \Omega' \\\\
-        \Delta \vdash N \diamond v \dashv \Delta' \\\\
-        \Delta : \Omega
-      }{}
-      }{
-        \inferrule{
-          \Delta' : \Omega' \\\\
-          \Omega' \vdash v: t
-        }{}
-      }
-  \]
+    \centering
+    for all $\diamond$ in $\{ \readarrowconc, \movearrowconc \}$.
+    \[\inferrule{
+      \Omega \vdash M \,\dot{\diamond}\, t \dashv \Omega' \\\\
+      \Delta \vdash N \diamond v \dashv \Delta' \\\\
+      \Delta : \Omega
+    }{}\]
+    implies
+    \[\inferrule{
+      \Delta' : \Omega' \\\\
+      \Omega' \vdash v: t
+    }{}\]
     \label{property:expressionreadsoundness}
   \end{Property}\hfill
   \begin{Property}[width=0.495\linewidth, nobeforeafter]{Expression Write Soundness}{}
-    for all $\diamond$ in $\{ \narrowarrowconc, \writearrowconc \}$:
-    \[\oimplies{
-      \inferrule{
+    \centering
+    for all $\diamond$ in $\{ \narrowarrowconc, \writearrowconc \}$.
+    \[\inferrule{
       \Omega \vdash M \abs{\diamond} \, t \dashv \Omega' \\\\
       \Delta \vdash M \diamond v \dashv \Delta' \\\\
       \Delta : \Omega \\\\
       \Omega \vdash v: t
-    }{}
-    }{
-      \inferrule{
-        \Delta' : \Omega'
-      }{}
-    }\]
-    \end{Property}
-  \label{property:expressionwritesoundness}
+    }{}\]
+    implies
+    \[\inferrule{
+      \Delta' : \Omega'
+    }{}\]
+  \end{Property}
+\label{property:expressionwritesoundness}
+\end{adjustwidth}
 
-In the interpretation $\Omega \vdash M \diamond t \dashv \Omega'$, $\Omega$ is always an input, $\Omega'$ is always an output, and $t$ is an input during write and an output during read. This difference between $t$ being an input and an output is why read interpretation properties and write interpretation properties are usually separate.
+Expression interpretation soundness also includes the output \textit{environments} being well-typed.
+
+The type on the right-hand side of the arrow, usually $t$ or $v$, acts as an input for write interpretations. This means that instead of write soundness concluding $v:t$, it takes it in as a premise. This reflects the fact that write interpretations do not produce a concrete value, they require one.
+
+Expression soundness is required directly in every case of our central soundness proof.
 
 \subsection{Monotonicity}
 In this context, monotonicity means "if the input is narrowed, the output is narrowed". It is useful to think of the width of a type or an environment in terms of information: concluding a value has a narrow type gives you more information than concluding it has a wide type.
 
 The extreme of this is the $\top$ type which gives you no information about the value it is typing whatsoever. This is why it is used to represent uninitialized data. The environment equivalent of this is the $\emptyset$ environment, which effectively maps every variable to $\top$ (due to rearrangements allowing $\absmap{x}{\top}$ to be introduced at any point for any variable via $\langle\text{Allocation}\rangle$). $\top$ and $\emptyset$ are the widest types and environments respectively.
 
-\begin{tcolorbox}[title=Note on Graphical Representations]
-  Occasionally properties have graphical representations. In these representations, the origin represents no information (maximally wide type/environment, $\top$, $\emptyset$) and distance from the origin represents information gain/type narrowing. Lines represent a derivation that relates the input objects (x-axis) and the output objects (y-axis).
-\end{tcolorbox}
-
+\noindent
+\begin{minipage}{0.6\textwidth}
+  \hspace{2.25ex} Occasionally properties have graphical representations. In these representations, the origin represents no information (maximally wide type/environment, $\top$, $\emptyset$) and distance from the origin represents information gain/type narrowing. Lines represent a derivation that relates the input objects (x-axis) and the output objects (y-axis), similar to how you might label a line on a graph $y = 5x + 2$ in mathematics.
+\end{minipage}
+\begin{minipage}{0.4\textwidth}
+  \centering
+  Example
+  \includegraphics[width=6cm]{atomexample.png}
+  Atoms leave $\Omega$ unchanged
+\end{minipage}
 
 \begin{Property}{Statement Interpretation Monotonicity}{}
-  for all $\diamond$ in $\{ \erasedreadarrow, \movearrow \}$:
-  \[\oimplies{
-    \inferrule{
-    \Omega_0 \vdash S \subtype S' \diamond v_0 \\\\
-    \Omega_1 \subtype \Omega_0
-  }{}
-  }{
-    \text{there exists $v_1$ s.t.   }
-    \inferrule{
-      \Omega_1 \vdash S \subtype S' \diamond v_1 \\\\
-      \Omega_1 \vdash v_1 \subtype v_0
-    }{}
-  }\]
-  \ocomment{visualisation: monotic line + ...}
-  \label{property:statementmonotonicity}
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \erasedreadarrow, \movearrow \}$.
+    \[\inferrule{
+      \Omega_0 \vdash S \subtype S' \diamond t_0 \\\\
+      \Omega_1 \subtype \Omega_0
+    }{}\]
+    implies there exists $t_1$ s.t.
+    \[\inferrule{
+      \Omega_1 \vdash S \subtype S' \diamond t_1 \\\\
+      \Omega_1 \vdash t_1 \subtype t_0
+    }{}\]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{statementmonotonicity.png}
+    Always up and right
+  \end{minipage}
 \end{Property}
-  
-\end{adjustwidth}
+\label{property:statementmonotonicity}
+
+\ref{property:statementmonotonicity} states that if you narrow the environment a statement is interpreted under, it narrows the type it is interpreted to.
 
 \begin{Property}{Expression Read Monotonicity}{}
-  for all $\diamond$ in $\{ \readarrows \}$:
-  \[\oimplies{
-    \inferrule{
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \readarrows \}$.
+    \[\inferrule{
       \Omega_0' \subtype \Omega_0 \\\\
       \Omega_0 \vdash M \diamond t \dashv \Omega_1
-    }{}
-  }{
-    \text{there exists $\Omega_1', t'$ s.t.   }
-    \inferrule{
+    }{}\]
+    implies there exists a $\Omega_1'$ and $t'$ s.t.
+    \[\inferrule{
       \Omega_1' \subtype \Omega_1 \\\\
       \Omega_1' \vdash t' \subtype t \\\\
       \Omega_0' \vdash M \diamond t' \dashv \Omega_1' 
-    }{}
-  }\]
-  \centering
-  \includegraphics[width=6cm]{expressionreadmonotonicity.png}
+    }{}\]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{expressionreadmonotonicity.png}
+    Always up and right
+  \end{minipage}
   \label{property:expressionreadmonotonicity}
 \end{Property}
 
-\begin{Property}{Expression write-interpretation is monotonic}{}
-  for all $\diamond$ in $\{ \writearrows \}$:
-  \[\oimplies{
-    \inferrule{
+\begin{Property}{Expression Write Monotonicity}{} % yes
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \writearrows \}$.
+    \[\inferrule{
       \Omega_0' \subtype \Omega_0 \\\\
       \Omega_0' \vdash t' \subtype t \\\\
       \Omega_0 \vdash M \diamond t \dashv \Omega_1
-    }{}
-  }{
-    \text{there exists $\Omega_1'$ s.t.   }
-    \inferrule{
+    }{}\]
+    there exists $\Omega_1'$ s.t.
+    \[\inferrule{
       \Omega_1' \subtype \Omega_1 \\\\
       \Omega_0' \vdash M \diamond t' \dashv \Omega_1' 
-    }{}
-  }\]
+    }{}\]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{expressionwritemonotonicity.png}
+    Always up and right
+  \end{minipage}
   \label{property:expressionwritemonotonicity}
 \end{Property}
 
-\begin{Property}{Statement bounds are respected}{}
-  for all $\diamond$ in \{ \concreadarrows \}:
-  \[\oimplies{
-    \inferrule{
+\begin{Property}{Statement Bounds Respected}{} % yes
+  % \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in \{ \readarrowabs, \movearrowabs \}.
+    \[\inferrule{
       \Omega \vdash S \subtype S' \diamond t
-    }{}
-  }{
-    \text{there exists a $u$ s.t.   }
-    \inferrule{
+    }{}\]
+    there exists a $u$ s.t.
+    \[\inferrule{
       \Omega \vdash S \subtype \_ \diamond u \\\\
       \Omega \vdash S' \subtype \_ \erasedreadarrow t \\\\
       \Omega \vdash u \subtype t
-    }{}
-  }\]
+    }{}\]
+  % \end{minipage}
+  % \begin{minipage}{0.35\textwidth}
+  %   \centering
+  %   \includegraphics[width=6.5cm]{statementbounds.png}
+  %   Lines never cross
+  % \end{minipage}
 \end{Property}
 \label{theorem:statementbounds}
 
@@ -3126,47 +3157,65 @@ We introduce subtyping between terms, like so;
 
 \noindent
 \begin{Definition}[width=0.45\textwidth, nobeforeafter]{Expression Subtyping}{}
-  \[\inferrule{
-    \Omega \vdash M \movearrowabs m \dashv \Omega_m \\\\
-    \Omega \vdash N \movearrowabs n \dashv \Omega_n \\\\
-    \Omega_m \subtype \Omega_n \\\\
-    \Omega_m \vdash m \subtype n
-  }{
-    \Omega \vdash M \subtype N
-  }\]
+    \[\inferrule{
+      \Omega \vdash M \diamond m \dashv \Omega_m \\\\
+      \Omega \vdash N \diamond n \dashv \Omega_n \\\\
+      \Omega_m \subtype \Omega_n \\\\
+      \Omega_m \vdash m \subtype n
+    }{
+      \Omega \vdash M \subtype_{\diamond} N
+    }\]
 \end{Definition}
 \hfill
 \begin{Definition}[width=0.45\textwidth, nobeforeafter]{Statement Subtyping}{}
-  \[\inferrule{
-    \Omega \vdash S_a \subtype S_b \movearrowabs t
-  }{
-    \Omega \vdash S_a \subtype S_b
-  }\]
+    \[\inferrule{
+      \Omega \vdash S \subtype S_t \movearrowabs t
+    }{
+      \Omega \vdash S \subtype S_t
+    }\]
 \end{Definition}
 
-\begin{Property}{Expression Subtyping Preservation}{}
-  \[\oimplies{
-    \inferrule{
-      \Omega \vdash M \subtype N \\\\
-      \Omega' \subtype \Omega
-    }{}
-  }{
-    \Omega' \vdash M \subtype N
-  }\]
+\begin{Property}{Expression Subtyping Preservation}{} % yes
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \movearrowabs, \readarrowabs, \erasedreadarrow \}$
+    \[\inferrule{
+      \Omega_0 \vdash M \subtype_{\diamond} N \\\\
+      \Omega_1 \subtype \Omega_0
+    }{}\]
+    implies
+    \[\Omega_1 \vdash M \subtype_{\diamond} N\]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{expressionsubtyping.png}
+    Lines never cross
+  \end{minipage}
 \end{Property}
+\label{property:expressionsubtyping}
 
 Boolean \mono{not} counter example
 
 The fact this does not hold is the motivation behind bounded statement interpretation because, with bounded statement interpretation, we can define statement subtyping and an equivalent subtyping preservation theorem. This is the primary reason why statements and expressions are separated from expressions.
 
-\begin{Property}{Statement Subtyping Preservation}{} \[
-  \inferrule{
-    \Omega \vdash S_a \subtype S_b \\\\
-    \Omega' \subtype \Omega
-  }{}
-  \text{   implies   }
-  \Omega' \vdash S_a \subtype S_b
-\] \end{Property}
+\begin{Property}{Statement Subtyping Preservation}{} % yes
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \movearrowabs, \erasedreadarrow \}$.
+    \[\inferrule{
+      \Omega_0 \vdash S \subtype_{\diamond} S_t \\\\
+      \Omega_1 \subtype \Omega_0
+    }{}\]
+    implies
+    \[\Omega_1 \vdash S \subtype_{\diamond} S_t \]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{statementsubtyping.png}
+    Lines never cross
+  \end{minipage}
+\end{Property}
+\label{property:statementsubtyping}
 
 \subsubsection{Statement Bound Motivation}
 
@@ -3182,42 +3231,57 @@ The fact this does not hold is the motivation behind bounded statement interpret
 
 \begin{Property}{Expression-Like Statement Subtyping \textbf{Non-}Preservation}{} \[
   \inferrule{
-    \Omega \vdash S_a \subtype S_b \\\\
+    \Omega \vdash S_a \hat{\subtype} S_b \\\\
     \Omega' \subtype \Omega
   }{}
-  \text{   does not imply   }
-  \Omega' \vdash S_a \subtype S_b
-\] \end{Property}
+    \text{   does not imply   }
+    \Omega' \vdash S_a \hat{\subtype} S_b
+  \] 
+\end{Property}
 \label{theorem:statementsubtypingpreservation}
 
 \subsection{Determinism}
 \todo[inline]{include or remove this section}
 
 \subsection{Information Gain/Loss}
-\begin{Property}{Read-Interpretation Widens}{}
-  for all $\diamond$ in $\{ \movearrowabs, \readarrowabs, \erasedreadarrow \}$
-  \[
-    \inferrule{
-      \Omega \vdash M \diamond t \dashv \Omega'
-    }{}
-    \text{   implies   }
-    \Omega \subtype \Omega'
-  \]
-  \ocomment{below $\Omega = \Omega'$ line}
+\begin{Property}{Read-Interpretation Widens}{} % yes
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \movearrowabs, \readarrowabs, \erasedreadarrow \}$
+    \[
+      \inferrule{
+        \Omega \vdash M \diamond t \dashv \Omega'
+      }{}
+      \text{   implies   }
+      \Omega \subtype \Omega'
+    \]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{placeholder.png}
+    Always up and right
+  \end{minipage}
 \end{Property}
 \label{theorem:expressionreadwidens}
 
 
-\begin{Property}{Write-Interpretation Narrows}{}
-  for all $\diamond$ in $\{ \writearrowabs, \narrowarrowabs, \erasedwritearrow \}$
-  \[
-    \inferrule{
-      \Omega \vdash M \diamond t \dashv \Omega'
-    }{}
-    \text{   implies   }
-    \Omega' \subtype \Omega
-  \]
-  \ocomment{above $\Omega = \Omega'$ line}
+\begin{Property}{Write-Interpretation Narrows}{} % yes
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \writearrowabs, \narrowarrowabs, \erasedwritearrow \}$
+    \[
+      \inferrule{
+        \Omega \vdash M \diamond t \dashv \Omega'
+      }{}
+      \text{   implies   }
+      \Omega' \subtype \Omega
+    \]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{placeholder.png}
+    Always up and right
+  \end{minipage}
 \end{Property}
 \label{theorem:expressionwritewidens}
 
@@ -3834,7 +3898,7 @@ for arbitrary statements $S$, environments $\Omega$, $\Delta$ and types $t$, and
 Then we take the proof by cases on the derivations used to construct $\Omega \vdash S \subtype \mono{*} \movearrowabs t$ and $\Delta \vdash S \subtype \mono{*} \movearrowconc v$, then conclude $\Omega \vdash v: t$ by induction. Conceptually, we are defining a recursive function which takes our premise derivations, and returns a derivation of $\Omega \vdash v: t$.
 
 \begin{tcolorbox}[title=Assumption: Concrete and Abstract Rearrangements are Synced]
-    We assume that the derivations used to construct $\Delta \vdash S \subtype \mono{*} \movearrowconc v$ and $\Omega \vdash S \subtype \mono{*} \movearrowabs t$ are \textit{in sync}. This would mean that both or neither are an instance of $\langle\text{Rearrange-Before}\rangle$ or $\langle\text{Rearrange-After}\rangle$. The intuition behind this is that the abstract interpretation drops a variable if and only if the concrete interpretation drops a variable. This could be made provable so we would not have to assume it, but I believe that would involve the abstract interpretation somehow inserting drop signals into the terms that the concrete interpretation reads and acts upon. This is possible, and I believe only a matter of effort, but it would complicate the interpretations further, slowing down future more important work.
+    We assume the abstract interpretation drops a variable if and only if the concrete interpretation drops a variable. Formally: either $\Delta \vdash S \subtype \mono{*} \movearrowconc v$ \textit{and} $\Omega \vdash S \subtype \mono{*} \movearrowabs t$ are rearrangements ($\langle\text{Rearrange-Before}\rangle$ or $\langle\text{Rearrange-After}\rangle$), or neither are. This could be made provable so we would not have to assume it, but I believe that would involve the abstract interpretation somehow inserting drop signals into the terms that the concrete interpretation reads and acts upon. This is possible, and I believe only a matter of effort, but it would complicate the interpretations further, slowing down future more important work.
 \end{tcolorbox}
 
 \textbf{Case} - $S$ is an expression $M$.
