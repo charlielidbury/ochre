@@ -84,11 +84,11 @@ From this aesthetic value, and its equivalence to moral value, I conclude that t
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Introduction}
-(TAKEN FROM AENEAS FOR NOW)
+% (TAKEN FROM AENEAS FOR NOW)
 
-In 2006, exasperated by yet another crash of his building's elevator's firmware, and exhausted after walking up 21 flights of stairs, Graydon Hoare set out to design a new programming language \citep{rust-anecdote}. The language, soon to be known as Rust, had two goals. First, to be system-oriented, meaning the programmer would deal with references, pointers, and manually manage memory. Second, to be safe, meaning the compiler's static discipline would rule out memory errors such as use-after-free, or arbitrary memory access. Even though the language evolved a great deal since its inception, these two core premises remain today. 
+% In 2006, exasperated by yet another crash of his building's elevator's firmware, and exhausted after walking up 21 flights of stairs, Graydon Hoare set out to design a new programming language \citep{rust-anecdote}. The language, soon to be known as Rust, had two goals. First, to be system-oriented, meaning the programmer would deal with references, pointers, and manually manage memory. Second, to be safe, meaning the compiler's static discipline would rule out memory errors such as use-after-free, or arbitrary memory access. Even though the language evolved a great deal since its inception, these two core premises remain today. 
 
-Eighteen years later, Rust enjoys a substantial amount of success and has ranked as the most loved programming language for 7 consecutive years on StackOverflow's developer survey~\citep{stackoverflow}, until they changed the phrasing of the question in 2023 in which it was the most \textit{admired} language. But as the systems community can attest~\citep{klein2009sel4,lorch2020armada,ferraiuolo2017komodo,bhargavan2017everest}, memory safety is too weak of a property, no matter how remarkable of an achievement .
+% Eighteen years later, Rust enjoys a substantial amount of success and has ranked as the most loved programming language for 7 consecutive years on StackOverflow's developer survey~\citep{stackoverflow}, until they changed the phrasing of the question in 2023 in which it was the most \textit{admired} language. But as the systems community can attest~\citep{klein2009sel4,lorch2020armada,ferraiuolo2017komodo,bhargavan2017everest}, memory safety is too weak of a property, no matter how remarkable of an achievement .
 
 We have attempted to prove further properties 
 
@@ -166,8 +166,25 @@ This type checker allows the types and mutable values to be unusually close. In 
 \label{background}
 
 \section{Dependent Types}
+A dependent type is a type whose definition depends on a value. The two dependent types used by this research are \textit{dependent functions} and \textit{dependent pairs}, reffered to in the literature as $\Pi$ and $\Sigma$ types respectively.
+
+The return type of a dependent function can depend on the \textit{value} of its argument. For example, you could define a function which takes a boolean as input, which returns the natural number $5$ in one case and the string $\text{"hello"}$ in the other. This is also possible in dynamic typing, where there are no types at all, but with dependent types the caller can statically determine which of these two types the return value will be without executing the function based on the functions type signature.
 
 \section{Abstract Interpretation}
+First formalized by Partick Cousout and Radhia Cousot in the late 1970s \citep{cousotAbstractInterpretationUnified1977}, abstract interpretation is a method of soundly approximating the semantics of programs, based on monotonic functions over ordered sets. Abstractly interpretting a program is similar to regular interpretation, like a Python interpreter might do, but instead of keeping track of the precise program state, it keeps track of an approximation of it.
+
+Abstract interpretation can be seem as a framework for developing program analyses, which requires the semanticist to define the following mathematical objects:
+
+\textbf{Concrete and Abstract Set} - Each element of the \textit{concrete set} represents a set of possible concrete states the program could be in. The concrete set if often the power set of some concrete value. For example, if you are analysing a function which increments a number by one, it would map the concrete state $\{1, 5\}$ to the concrete state $\{2, 6\}$. Both $\{1, 5\}$ and $\{2, 6\}$ are  elements of our concrete set, $\mathcal{P}(\mathbb{N})$. Each element of the \textit{abstract set} represents an approximation of the concrete states the program could be in. Continuing the above example, we could store the possible \textit{parities} of the number in our abstract state. The increment function would map $\{ \kw{even} \}$ to $\{ \kw{odd} \}$, and our abstract set would be $\mathcal{P}({\{ \kw{true}, \kw{false} \}})$. The fact it maps $\{ \kw{even} \}$ to $\{ \kw{odd} \}$ is intuitively: the input contains only even numbers, and the output contains only odd numbers.
+
+\textbf{Concrete and Abstract Semantics} - Our \textit{concrete semantics} is a function which maps a set of possible start states to a set of possible end states. The concrete semantics $f$ for our above increment program might look something like $f l = \{ x + 1 | x \in l \}$. Our \textit{abstract semantics} are the same, except they from and to our abstract set. In the increment function case, they would express the fact that incrementing a number always flips its parity: 
+
+\textbf{Concretization Function and Abstraction Function} - The \textit{concretization function} maps from our concrete set to our abstract set, 
+One of these functions is our \textit{abstraction function} which maps an element of the concrete set to its associated approximation in the abstract set. The other is our  which maps an approximation in our abstract set to the set of concrete values it could be approximating.
+
+We then define our \textit{concrete semantics} and our \textit{abstract semantics}. Our concrete semantics maps a concrete value to a concrete value,
+
+As an example: take a language with variable assignment, natural numbers and binary arithmetic operators. We then define an abstract interpretation which calculates the \textit{sign} of a particular program, and a concrete interpretation which calculates the precise natural number the program evaluates to. During concrete interpretation, 
 
 \section{Rust}
 Rust is a modern programming language that offers a unique combination of strong (memory) safety guarantees and bare-metal performance. Rust innovates in other areas relevant to software engineering, but for this research performance and safety are the two key features which will be built upon.
@@ -1114,8 +1131,10 @@ And last but not least, here are a few example programs which use several of the
 % \end{figure}
 
 \cleardoublepage
-\chapter{Formal Definition}
+\chapter{Ochre}
 \label{chapter:definition}
+
+Ochre is defined through a syntax and an abstract interpretation on that syntax.
 
 \section{Syntax}
 There are two categories of terms in Ochre, \textit{statements} and \textit{expressions}. Both may have side effects. Most language constructs are expressions, but variable assignment (mutation) and match statements can only occur in statements. All expressions are themselves statements.
