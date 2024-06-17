@@ -1,0 +1,10 @@
+    type Same = (bool, bool);
+
+    fn overwrite(p: &mut Same) {
+      *p = (true, true);
+    }
+
+    fn main() {
+      let pair = (false, false);
+      overwrite(&mut pair);
+    }
