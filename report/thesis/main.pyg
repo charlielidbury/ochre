@@ -1,10 +1,3 @@
-    type Same = (bool, bool);
-
-    fn overwrite(p: &mut Same) {
-      *p = (true, true);
-    }
-
-    fn main() {
-      let pair = (false, false);
-      overwrite(&mut pair);
-    }
+    Bool = 'true | 'false;
+    Id = (x: Bool) -> Bool; // valid
+    id = (x: Bool) -> Bool; // invalid: attempt to assign comptime func to runtime var
