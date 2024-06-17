@@ -1,0 +1,12 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+    \PYG{k}{type} \PYG{n+nc}{Same} \PYG{o}{=} \PYG{o}{|} \PYG{n+nc}{MkSame}\PYG{o}{:} \PYG{n}{b}\PYG{o}{:}\PYG{k+kt}{bool} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n}{b2}\PYG{o}{:}\PYG{k+kt}{bool}\PYG{o}{\PYGZob{}}\PYG{n}{b} \PYG{o}{==} \PYG{n}{b2}\PYG{o}{\PYGZcb{}} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Same}
+
+    \PYG{k}{val} \PYG{n}{overwrite}\PYG{o}{:} \PYG{n}{p}\PYG{o}{:}\PYG{n}{ptr} \PYG{n+nc}{Same} \PYG{o}{\PYGZhy{}\PYGZgt{}} \PYG{n+nc}{Stack} \PYG{k+kt}{unit}
+    \PYG{k+kd}{let} \PYG{n}{overwrite} \PYG{n}{p} \PYG{o}{=}
+      \PYG{n}{p} \PYG{o}{:=} \PYG{n+nc}{Same} \PYG{n+nb+bp}{false} \PYG{n+nb+bp}{false}
+
+    \PYG{k+kd}{let} \PYG{n}{main} \PYG{n+nb+bp}{()} \PYG{o}{:} \PYG{n+nc}{Stack} \PYG{k+kt}{unit} \PYG{o}{=}
+      \PYG{k+kd}{let} \PYG{n}{pair} \PYG{o}{=} \PYG{n}{alloc} \PYG{o}{(}\PYG{n+nc}{MkSame} \PYG{n+nb+bp}{true} \PYG{n+nb+bp}{true}\PYG{o}{)} \PYG{k}{in}
+      \PYG{n}{overwrite} \PYG{n}{s}\PYG{o}{;}
+      \PYG{n+nb+bp}{()}
+\end{Verbatim}

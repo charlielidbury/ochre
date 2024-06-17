@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{p}{;}\PYG{+w}{       }\PYG{c+c1}{// $\absmapm{x}{0}$}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{;}\PYG{+w}{ }\PYG{c+c1}{// $\absmapm{x}{\loanm{l}}, \absmapm{px}{\borrowm{l}{0}}$}
+\PYG{+w}{  }\PYG{o}{*}\PYG{n}{px}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{5}\PYG{p}{;}\PYG{+w}{             }\PYG{c+c1}{// $\absmapm{x}{\loanm{l}}, \absmapm{px}{\borrowm{l}{5}}$}
+\PYG{+w}{  }\PYG{n+nf+fm}{println!}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}\PYGZob{}\PYGZcb{}\PYGZdq{}}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{);}\PYG{+w}{   }\PYG{c+c1}{// $\absmapm{x}{5},         \absmapm{px}{\bot}$}
+\end{Verbatim}

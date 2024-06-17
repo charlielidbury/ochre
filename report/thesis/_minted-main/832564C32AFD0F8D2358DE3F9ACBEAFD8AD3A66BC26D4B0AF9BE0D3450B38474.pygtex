@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{5}\PYG{p}{;}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{5}\PYG{p}{;}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{choose}\PYG{p}{(}\PYG{k+kc}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{);}
+\PYG{+w}{  }\PYG{n+nf+fm}{println!}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}\PYGZob{}\PYGZcb{}\PYGZdq{}}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{);}
+\PYG{+w}{  }\PYG{o}{*}\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{42}\PYG{p}{;}
+\end{Verbatim}

@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n+nb}{Box}::\PYG{n}{new}\PYG{p}{(}\PYG{l+m+mi}{5}\PYG{p}{);}
+\PYG{+w}{  }\PYG{n}{f}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{);}
+\PYG{+w}{  }\PYG{n}{g}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{n}{x}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// Now works}
+\end{Verbatim}

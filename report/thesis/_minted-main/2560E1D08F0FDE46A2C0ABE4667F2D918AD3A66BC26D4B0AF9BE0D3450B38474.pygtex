@@ -1,0 +1,12 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{k}{fn} \PYG{n+nf}{choose}\PYG{o}{\PYGZlt{}\PYGZsq{}}\PYG{n+na}{a}\PYG{o}{\PYGZgt{}}\PYG{p}{(}\PYG{n}{returnLeft}: \PYG{k+kt}{bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{left}: \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{k+kt}{i32}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{right}: \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{k+kt}{i32}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{k+kp}{\PYGZam{}}\PYG{o}{\PYGZsq{}}\PYG{n+na}{a} \PYG{n+nc}{mut}\PYG{+w}{ }\PYG{k+kt}{i32}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k}{if}\PYG{+w}{ }\PYG{n}{returnLeft}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{left}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}\PYG{+w}{ }\PYG{k}{else}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{n}{right}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+\PYG{+w}{  }\PYG{p}{\PYGZcb{}}
+
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{5}\PYG{p}{;}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{5}\PYG{p}{;}
+\PYG{+w}{  }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{n}{choose}\PYG{p}{(}\PYG{k+kc}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{);}
+\PYG{+w}{  }\PYG{o}{*}\PYG{n}{rx}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{l+m+mi}{42}\PYG{p}{;}
+\PYG{+w}{  }\PYG{c+c1}{// lifetime \PYGZsq{}a ends}
+\PYG{+w}{  }\PYG{n+nf+fm}{println!}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}\PYGZob{}\PYGZcb{}\PYGZdq{}}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{x}\PYG{p}{);}
+\end{Verbatim}

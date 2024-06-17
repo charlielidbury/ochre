@@ -1,0 +1,19 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{n}{typedef}\PYG{+w}{ }\PYG{k+kt}{Same}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{bool}\PYG{p}{)}\PYG{+w}{ }\PYG{k+kr}{where}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{x}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{)}\PYG{+w}{ }\PYG{o+ow}{=\PYGZgt{}}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{n}{y}\PYG{+w}{ }\PYG{p}{\PYGZcb{}}
+
+\PYG{+w}{    }\PYG{n}{fun}\PYG{+w}{ }\PYG{n}{overwrite}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{n}{l}\PYG{k+kt}{:}\PYG{n}{addr}\PYG{p}{\PYGZcb{}}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{p}\PYG{k+kt}{:}\PYG{+w}{ }\PYG{o}{\PYGZam{}}\PYG{k+kt}{Same}\PYG{+w}{ }\PYG{o}{@}\PYG{+w}{ }\PYG{n}{l}\PYG{p}{)}\PYG{k+kt}{:}\PYG{+w}{ }\PYG{n}{void}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{k+kr}{let}
+\PYG{+w}{      }\PYG{n}{val}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{b1}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{b2}\PYG{p}{)}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{o}{!}\PYG{n}{p}
+\PYG{+w}{      }\PYG{n}{val}\PYG{+w}{ }\PYG{n}{p2}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{n}{cast}\PYG{p}{\PYGZob{}(}\PYG{n}{bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{bool}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{@}\PYG{+w}{ }\PYG{n}{l}\PYG{p}{\PYGZcb{}}\PYG{+w}{ }\PYG{n}{p}\PYG{+w}{ }\PYG{o}{//}\PYG{+w}{ }\PYG{k+kt}{Temporary}\PYG{+w}{ }\PYG{n}{unsafe}\PYG{+w}{ }\PYG{n}{cast}\PYG{+w}{ }\PYG{n}{to}\PYG{+w}{ }\PYG{n}{bypass}\PYG{+w}{ }\PYG{n}{the}\PYG{+w}{ }\PYG{k+kr}{type}\PYG{+w}{ }\PYG{n}{constraint}
+\PYG{+w}{    }\PYG{k+kr}{in}
+\PYG{+w}{      }\PYG{n}{p2}\PYG{+w}{ }\PYG{k+kt}{:=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{b2}\PYG{p}{)}
+\PYG{+w}{      }\PYG{o}{//}\PYG{+w}{ }\PYG{n}{pair}\PYG{+w}{ }\PYG{n}{can}\PYG{+w}{ }\PYG{n}{be}\PYG{+w}{ }\PYG{n}{used}\PYG{+w}{ }\PYG{n}{here}
+\PYG{+w}{      }\PYG{n}{p2}\PYG{+w}{ }\PYG{k+kt}{:=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{false}\PYG{p}{)}
+\PYG{+w}{    }\PYG{n}{end}
+
+\PYG{+w}{    }\PYG{n}{implement}\PYG{+w}{ }\PYG{n}{main0}\PYG{n+nb}{()}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{k+kr}{let}
+\PYG{+w}{      }\PYG{n}{var}\PYG{+w}{ }\PYG{n}{s}\PYG{k+kt}{:}\PYG{+w}{ }\PYG{k+kt}{Same}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{true}\PYG{p}{)}
+\PYG{+w}{      }\PYG{n}{val}\PYG{+w}{ }\PYG{n}{p}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{n}{addr}\PYG{o}{@}\PYG{+w}{ }\PYG{n}{s}
+\PYG{+w}{    }\PYG{k+kr}{in}
+\PYG{+w}{      }\PYG{n}{overwrite}\PYG{p}{(}\PYG{n}{p}\PYG{p}{);}
+\PYG{+w}{    }\PYG{n}{end}
+\end{Verbatim}

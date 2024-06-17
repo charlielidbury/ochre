@@ -11,6 +11,11 @@
 \newcommand{\reporttype}{MEng Individual Project}
 \newcommand{\degreetype}{MEng Computing}
 
+\usepackage{titlesec}
+\titleformat{\chapter}[display]   
+{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{20pt}{\Huge}   
+\titlespacing*{\chapter}{0pt}{-50pt}{40pt}
+
 % Load some definitions and default packages
 \input{includes}
 
@@ -33,9 +38,15 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
-This research presents Ochre, a dependently typed, low-level systems language. In Ochre, programmers can use the type system to prove stronger properties about their programs than they can in non-dependently typed languages such as Rust or Haskell. Ochre also gives programmers low-level enough control over their programs to be able to express efficient in-place algorithms and control the memory layout of user-defined data structures, which makes it a systems language, akin to Rust, C, or C++.
+As much an art as it is a science, programming language design continually improves over time, allowing programmers to write better programs. Some designs enable better compiler optimizations, others enable stronger static analyses; the design space is an ever-evolving field, fraught with trade-offs.
 
-This paper presents the formal semantics of Ochre via \lochre{}, an abstract interpretation over \lochre{}, a concrete interpretation, a proof that the abstract interpretation and the concrete interpretation are consistent, and an implementation of Ochre in the form of an embedding into the Rust programming language.
+% One such trade-off historically has been that between performance and memory safety: languages like C and C++ give the programmer control over memory, which allows the development of extremely fast programs, at the cost of allowing the programmer to introduce memory safety bugs. Rust, on the other hand, can detect the incorrect management of memory, and thus prevent the programmer from introducing memory safety bugs. This recent (2015) innovation has mostly removed the need to decide between memory safety and performance. 
+
+One such trade-off historically has been that between memory safety and performance. Rust has mostly solved this by introducing the borrow checker, which avoids the need for a costly runtime garbage collector while remaining memory-safety.
+
+In this report, we work to push the state-of-the-art of language design further and allow the programmer to prove stronger properties than just memory safety \textit{while remaining performant}. We do this by formally defining and reasoning about Ochre, a dependently typed, low-level systems language. In Ochre, programmers can use the type system to prove strong properties that they cannot in non-dependently typed languages such as Rust or Haskell, and they can do so with a Rust-like memory management strategy that does not require a garbage collector.
+
+Ochre is not the first performant language to feature dependent types, much like Rust was not the first language to offer safe manual memory management, but it achieves this combination of features with a novel technique, which offers a substantial improvement in ergonomics thanks to ownership semantics.
 \end{abstract}
 
 \cleardoublepage
@@ -57,7 +68,7 @@ Much like Wittgenstein \citep[proposition 6.421]{wittgensteinTractatusLogicophil
 
 I and many others including cite cite cite, find aesthetic value in problems \& concepts turning out to be reduceable to each other and equivalences being drawn between distant domains. Some particularly high-profile instances of this happening include Euler's formula, the Curry-Howard correspondence and the Church-Turing thesis. To a smaller degree, I also think it happened with Rust's borrow checker, in solving memory management they also solved concurrency, iterator invalidation, and a few other problems that plagued imperative languages.
 
-Despite being sufficiently arrogant and pretentious \cite[Ethical Considerations]{lidburyOchreDependentlyTyped2024}, I know Ochre isn't as singificant or as beautiful as the previously mentioned identities and isomorphisms. But, in the walled garden of my special interests and obsessions, I have found great aesthetic value in the interplay between ownership semantics and dependent types.
+Despite being sufficiently pretentious \cite[Ethical Considerations]{lidburyOchreDependentlyTyped2024}, I know Ochre isn't as singificant or as beautiful as the previously mentioned identities and isomorphisms. But, in the walled garden of my special interests and obsessions, I have found great aesthetic value in the interplay between ownership semantics and dependent types.
 
 From this aesthetic value, and its equivalence to moral value, I conclude that this research is ethically permissible; I hope Imperial's ethical approval process will too.
 
@@ -84,113 +95,103 @@ From this aesthetic value, and its equivalence to moral value, I conclude that t
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Introduction}
-% (TAKEN FROM AENEAS FOR NOW)
+In the beginning\footnote{Before C was assembly, Fortran, and the Big Bang; but C is a good starting point.}, there was C. When it was released in 1972, it was a revolution in terms of both ergonomics and safety. Its performance and control allowed it to replace programs previously written in assembly code, and its abstractions and type system allowed programmers to focus more on their program logic.
 
-% In 2006, exasperated by yet another crash of his building's elevator's firmware, and exhausted after walking up 21 flights of stairs, Graydon Hoare set out to design a new programming language \citep{rust-anecdote}. The language, soon to be known as Rust, had two goals. First, to be system-oriented, meaning the programmer would deal with references, pointers, and manually manage memory. Second, to be safe, meaning the compiler's static discipline would rule out memory errors such as use-after-free, or arbitrary memory access. Even though the language evolved a great deal since its inception, these two core premises remain today. 
+The next big step up from C for low-level systems programming came with C++ in 1985. C++ offered a plethora of abstractions like generics which allow much greater re-use of code, which ultimately resulted in the viability of a rich standard library with reusable data structures, something C lacks.
 
-% Eighteen years later, Rust enjoys a substantial amount of success and has ranked as the most loved programming language for 7 consecutive years on StackOverflow's developer survey~\citep{stackoverflow}, until they changed the phrasing of the question in 2023 in which it was the most \textit{admired} language. But as the systems community can attest~\citep{klein2009sel4,lorch2020armada,ferraiuolo2017komodo,bhargavan2017everest}, memory safety is too weak of a property, no matter how remarkable of an achievement .
+However, both of these C's have a fatal flaw: lack of safety. When programming in C and C++, it is common to introduce memory safety bugs that cause significant harm to real-world systems. Memory safety bugs account for roughly \textit{70\%} of real-world security vulnerabilities \citep{ProactiveApproachMore, MemorySafety} and the white house cited it as a matter of national cyber-security \citep[p. 8]{officeofthenationalcyberdirectorBackBuildingBlocks2024}. Software engineers mostly responded by switching to slower but memory-safe languages like Python and Java, accepting the trade-off in performance that came with safety. A lot of code needs to be performant though, which is why there are still so many memory-safety-related vulnerabilities in production.
 
-We have attempted to prove further properties 
+Rust \citep{RustProgrammingLanguage2015} has mostly solved this trade-off between memory safety and performance, as well as many concurrency bugs, with advancements in static analysis. The Rust \textit{borrow checker} allows you to manage your memory manually like you would in C or C++, but points out any mistakes you make at compile time, which gives you the performance of using C or C++ and the safety of Python or Java.
 
-\section{The Problem}
-This research hopes to develop a type-checker that is capable of type-checking languages that support both mutation and a kind of type called dependent types. It will do this by removing mutation from the code before type checking, so the type checker only has to reason about immutable code.
+Safe, performant, languages predate Rust significantly \citep{morrisettCycloneSafeDialect}, but Rust brought it to the masses with its unusually ergonomic method of memory management. 
 
-Dependent types are covered properly in the background section, but for now, it's enough to know they're a feature that allows you to check even more properties than just type safety at compile time. For instance, instead of just being able to say a variable $x$ is an integer, you can say it's an \textit{even} integer, and reject programs like $x := 5$ at compile time, instead of waiting for them to go wrong at runtime.
+Memory safety is important, but it alone is too weak a property - as evidenced by the Herculean efforts being made to formally verify foundational software \citep{kleinSeL4FormalVerification2009a, lorch2020armada, ferraiuolo2017komodo, bhargavan2017everest}. Alongside this slow, incremental, push towards reliable systems code, the functional programming world has made vast strides in the design and implementation of type systems and the properties they can prove. ``Modern'' features of Rust, which it is often hailed for, like algebraic data types, type classes, and typed errors, have all been in Haskell in an ergonomic way for decades.
 
-This type-checker will support mutation, which is when a variable's value is changed. For instance, when a variable is declared with a value like $x = 2$, then later given a new value like $x := 5$. The most popular languages all support mutation [cite], it's somewhat the (industry) default. Some languages choose to be \textit{immutable} however, which means they do not support mutation. These include Haskell, and almost all languages with dependent types like Agda, Idris, and Coq.
+\textit{Theorem provers} are functional languages with a type system that allows the programmer to prove almost \citep{kurtgodelUberFormalUnentscheidbare1931} any property about the runtime behavior of their programs. Even if you do not directly want to prove properties about the code you are writing, you may still benefit from using a language that allows you do to so:
+\begin{itemize}
+  \itemsep0em 
+  \item You may want to prove properties about your code in the future if your requirements for correctness increase.
+  \item Other people working on the same codebases as you may want to prove properties about their programs.
+  \item If you want the libraries you are importing to be proven correct, the library author needs to be using something capable of proofs, and they are probably using the same language as you.
+\end{itemize}
 
-This type-checker is being built to hopefully be used for a larger, more useful language in the future, called Ochre. Ochre which will have both the speed of \textit{systems languages} like C and Rust and the ability to reason about runtime behaviour at compile time of \textit{theorem provers} like Agda and Coq. Exactly what systems languages and theorem provers are is discussed in Chapter \ref{prerequisites}.
+These benefits are certainly achievable without the programming language doing the proving, much like it is possible to prove the memory safety of programs written in memory-unsafe languages \citep{kleinSeL4FormalVerification2009a}, but this approach requires sacrifices in ergonomics, fundamentally because the language has not been designed from the ground up with this use case in mind. It is analogous to creating an untyped dialect of Haskell, and then using a third-party tool to statically analyze Haskell programs instead of having the type system woven into the design of the language itself.
 
-For now, I plan on presenting this type-checker in the form of an implementation; however, there is a good argument for focusing more on the theory behind this type-checker, for instance by presenting a set of typing rules or an abstract algorithm. Whether an implementation-heavy or theory-heavy approach is better is an open, and very important question.
+The goal of Ochre is to solve the design problems which are stopping theorem proving from being brought to the systems programming masses. We do this integrating dependent types into the type system, and broader design of, of a programming language in an unusually ergonomic and performance-compatible way, much like Rust did with memory safety.
 
-\subsection{Why Is It Hard?}
-The problem with having these features together in the same language is that a value that another variable's type depends on can be mutated, which changes the \textit{type} of the other variable. Concretely: if we have a variable $x: T$, and another variable $y: F(x)$ whose type depends on $x$, we can assign a new value to $x$ which in turn changes the type $F(x)$; now $y$ is ill-typed because its type has changed, but not it's value. The programmer could fix this by reassigning $y$ with a new value of type $F(x)$, if this happens before $y$ is ever used, the compiler should be able to identify this interaction as type-safe.
+Much like Rust has, I believe Ochre will benefit immensely from targetting low-level systems code: systems code is often critical to foundational software like operating systems, databases, and standard libraries; each line is developed with great care, and mistakes frequently cause widespread security vulnerabilities. At the same I consider the power of the type system presented to be a great success, we can type programs with mutability and dependent types tightly interwoven, as shown in Section \ref{section:}, time, any performance improvements made to these systems affect a massive install base, so large efforts are made to be fast, which more or less rules out languages that do not give the programmer control over data layout and memory management. These factors come together to make a perfect storm of demand for theorem-proving capabilities, as well as a tolerance for difficult-to-understand language concepts such as dependent types. This is why Rust has succeeded despite ownership being a difficult feature for programmers conceptually.
 
-\section{The Solution}
-\label{thesolution}
-The technique this research presents goes as follows: convert the source code from the programmer, which will contain mutation, into a functionally equivalent (but maybe inefficient) immutable version, which can be dependently type-checked. Once this immutable version has been type-checked, the original mutable version can be executed, with full efficiency granted to it by mutability.
+Somewhat surprisingly, the techniques that Rust uses to achieve memory safety can also be used to make dependent types compatible with systems programming; as this research demonstrates.
 
-Because this translation has been shown to be behaviour preserving\citep{ullrich_electrolysis_nodate} we know properties we prove about the immutable version of the programmer's code also hold for the mutable version which will be executed.
+\section{Contributions}
+The contributions of this report are as follows:
+\begin{enumerate}
+  \itemsep0em
+  \item The formal definition of Ochre, a language which uses a novel method to support dependent types, mutability, and manual memory management simultaneously in an ergonomic fashion.
+  \item A demonstration that this method of type-checking works in practice, in the form of typing derivations for a set of motivating example programs.
+  \item An investigation into the properties of Ochre, including a partial soundness proof.
+\end{enumerate}
 
-\section{Motivation}
-The main contribution of this research will be progress towards making a language that supports both mutability and dependent types, so the motivation behind this research will be the motivation behind these two features, as well as their combination.
+\section{Report Outline}
+Chapter \ref{chapter:background} contains an exploration of the concepts required to understand the work presented, as well as a deeper dive into the work Ochre is built upon, specifically Rust and Aeneas \citep{aeneas}. Section \ref{section:relatedwork} goes on to review the literature surrounding this work, including other efforts towards high-performance languages with proof capabilities, as well as the broader domain of verification of high-performance programs. 
 
-This section refers to technical concepts that haven't been explained yet, such as dependent types. The reader is advised to refer to Chapter \ref*{background} if they find concepts being referenced that they do not understand.
+In Chapter \ref{section:ochreexample} Ochre is presented by gradually introducing its language features. This serves to act as a reference for the reader to use throughout the report to remind themselves how various language features behave. We also introduce the static analysis without going into the abstract interpretation, in the form of showing what the various abstract states are in various scenarios.
 
-\subsection{Mutation}
-This section argues why one would want mutation in a programming language.
+Then, Ochre is defined formally in Chapter \ref{chapter:ochreformally}, along with the abstract interpretation used to type check it. Section \ref{section:interpretationjudgements} contains the bulk of the complexity of this definition, including how to type-check all language constructs, and how to execute them at runtime (which we use to reason about soundness).
 
-\subsubsection{Performance}
-Some data structures and operations, such as hash maps and their $O(1)$ access/modification, need to modify data in place to be efficiently implemented. Immutable languages like Haskell get around this by performing these mutable operations via unsafe escape hatches and then wrapping those in monads to sequence the immutable operations. However, this often makes mutable code harder to maintain and harder for beginners to understand. For instance, to operate on two hash maps at the same time, you would have to be operating within multiple monads simultaneously, which involves monad transformers or effect types, a much more advanced skillset than what would be required to do the same in Python.
+Chapter \ref{chapter:analysis} tests the core contributions against their goal of developing a novel way to combine mutability with dependent types in two distinct ways. First, Section \ref{section:examplechecks} answers this by using the system to type check a set of motivating programs, then Section \ref{section:properties} reasons about how Ochre will behave for arbitrary programs, in the form of a partial proof of soundness, along with an exploration of the other properties required for this soundness proof to hold.
 
-This has widespread effects on the data structures programmers use, and how they structure their programs. Often programmers in immutable languages will simply switch to data structures that don't perform as well but are easier to use in a pure-functional context, like tree-based maps and cons lists instead of hash-maps and vectors.
-
-The performance of explicit mutation can also be easier to reason about. For instance, the Rust code which increments every value in a list of integers doesn't perform any allocations: \verb|for x in xs.iter_mut() { x += 1 }|; whereas the Haskell equivalent looks like it allocates a whole new list, and relies on compiler optimizations to be efficient: \verb|map (+1) xs|. In fact, in this example, Haskell does not do the update in-place and instead allocates a new list in case the old one is being referred to somewhere else. Languages like Koka
-
-\subsubsection{Usability}
-Some algorithms are best thought of in terms of mutable operations, and new programmers especially tend to write stuff mutably. By embracing this in the language design, we can come to the user instead of making the user come to us.
-
-Since the CPU is natively works on mutable operations, if you want control over what the CPU does, which you do if you want to extract all the performance you can from it, you want the language to have graceful support for mutation.
-
-\subsubsection{The Immutability Argument}
-Proponents of immutability argue immutability helps you reason about your program; since there are no side effects of function calls, you cannot be tripped up by side effects you didn't see coming.
-
-I think this correctly identifies that aliased mutation is bad, but goes too far by removing all mutation. In languages like Rust, only one \textit{mutable} reference can exist to any given memory location, which is needed to write to that memory. This gives you most of the benefits of mutation while avoiding the uncontrolled side effects.
-
-\subsubsection{Popularity}
-The majority is often wrong, but it's a good sign if significant proportions of the industry agree on something. In the last quarter of 2023, at least 97.24\% of all committed code was written in a language with mutation [cite: GitHut]. At the very least this shows that people like languages with mutability, even if they are wrong to do so.
-
-\subsection{Dependent Types}
-This section argues why one would want dependent types in a programming language.
-
-\subsubsection{Formal Verification}
-Dependent types are one of the ways to mechanize logical reasoning, which allows you to reason about the correctness of your programs. For instance, a program that sorts lists should have (amongst other things) the property that it always outputs a list with ascending items. In a language with dependent types, you can make the type of a function express the fact that not only will it return a list of integers, but that it will be a sorted list of integers.
-
-The goal of Ochre, the language this research is done in the name of, is to enable formal verification of low-level systems code. There are other ways to do formal verification, but this is a popular and natural one.
-
-\subsubsection{Usability}
-Dependent types are a notoriously difficult feature to learn and reason about, and their ergonomics are underexplored due to them only being used in very niche, academic languages. However, I think if you're not using them for their extra power, they can be just as ergonomic as typical type systems. In this sense, if the language is designed correctly, you only pay for what you use.
-
-\subsection{Mutation + Dependent Types}
-This section explains why mutability and dependent types combine to form more than the sum of their parts.
-
-If you use the mutability to make the language high performance, you can use mutability and dependent types to do formal verification of high performance code. This is a common combination of requirements because they both occur when software is extremely widespread and has very high budget.
-
-\subsection{This Particular Method}
-This section explains what advantages this particular method has over other combinations of mutability and dependent types, such as ATS, Magmide, and Low*.
-
-This type checker allows the types and mutable values to be unusually close. In ATS for instance there are basically two separate languages: a dependently typed compile time language and a mutable run-time language. This creates lots of overhead manually linking the two together. For instance, $x : int(y)$ means an integer $x$ with value $y$. In compile time contexts, you use $y$ to refer to the value, in runtime contexts you use $x$. I hope to remove the need for this distinction.
+Finally, in Chapter \ref{chapter:conclusion} we summarise and evaluate the work presented, and discuss future work which should be undertaken.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Background}
-\label{background}
+\label{chapter:background}
+In this chapter, we cover the concepts required to understand how Ochre programs are type checked, as well as the surrounding literature on the topic. 
 
 \section{Dependent Types}
-A dependent type is a type whose definition depends on a value. The two dependent types used by this research are \textit{dependent functions} and \textit{dependent pairs}, reffered to in the literature as $\Pi$ and $\Sigma$ types respectively.
+In most languages and theories, types and values are separate; the definition of a type cannot depend on a value. Dependently typed languages blur this separation: the definition of a type can use terms. The two dependent types used by this research are \textit{dependent functions} and \textit{dependent pairs}, referred to in the literature as $\Pi$ and $\Sigma$ types respectively.
 
-The return type of a dependent function can depend on the \textit{value} of its argument. For example, you could define a function which takes a boolean as input, which returns the natural number $5$ in one case and the string $\text{"hello"}$ in the other. This is also possible in dynamic typing, where there are no types at all, but with dependent types the caller can statically determine which of these two types the return value will be without executing the function based on the functions type signature.
+The return type of a dependent function can depend on the \textit{value} of its argument. For example, you could define a function that takes a number $n$ as input, which returns $n$-tuple of numbers as an output, where the size of $n$-tuple returned depends on which number was passed as input. This is also possible in dynamic typing, where there are no types at all, but with dependent types, the caller can statically determine which of these two types the return value will be without executing the function body.
+
+\subsection{Formal Verification with Dependent Types}
+While dependent types can be nice to have by themselves, a large part of their motivation is using them to perform formal verification.
+
+\textbf{If you are willing to accept that dependent types can be used to perform formal verification, you do not need to understand how dependent types can be used for logical reasoning}: none of this information will be used since the goal of this research is not to perform formal verification, it's just to do dependent type checking.
+
+Readers who are nonetheless interested are invited to read Appendix \ref{verificationwithtypes}.
 
 \section{Abstract Interpretation}
-First formalized by Partick Cousout and Radhia Cousot in the late 1970s \citep{cousotAbstractInterpretationUnified1977}, abstract interpretation is a method of soundly approximating the semantics of programs, based on monotonic functions over ordered sets. Abstractly interpretting a program is similar to regular interpretation, like a Python interpreter might do, but instead of keeping track of the precise program state, it keeps track of an approximation of it.
+This system presented is an abstract interpretation. This fact is not leveraged in any proofs, and no results from abstract interpretation are brought over, but having an understanding of the concepts behind abstract interpretation will be useful for understanding the architecture of the presented language.
+
+First formalized by Partick Cousout and Radhia Cousot in the late 1970s \citep{cousotAbstractInterpretationUnified1977}, abstract interpretation is a method of soundly approximating the semantics of programs, based on monotonic functions over ordered sets. Abstractly interpreting a program is similar to regular interpretation, like a Python interpreter might do, but instead of keeping track of the precise program state, it keeps track of an approximation of it.
+
+In this section, I will explain abstract interpretation in a less general way than Cousout an Cousout did, to give the reader an easier time understanding the relevant aspects. The more general explanation can be found in Appendix \ref{appendix:backgroundabstractinterpretation} and a more formal one in \cite{blanchetIntroductionAbstractInterpretation}.
 
 Abstract interpretation can be seem as a framework for developing program analyses, which requires the semanticist to define the following mathematical objects:
 
-\textbf{Concrete and Abstract Set} - Each element of the \textit{concrete set} represents a set of possible concrete states the program could be in. The concrete set if often the power set of some concrete value. For example, if you are analysing a function which increments a number by one, it would map the concrete state $\{1, 5\}$ to the concrete state $\{2, 6\}$. Both $\{1, 5\}$ and $\{2, 6\}$ are  elements of our concrete set, $\mathcal{P}(\mathbb{N})$. Each element of the \textit{abstract set} represents an approximation of the concrete states the program could be in. Continuing the above example, we could store the possible \textit{parities} of the number in our abstract state. The increment function would map $\{ \kw{even} \}$ to $\{ \kw{odd} \}$, and our abstract set would be $\mathcal{P}({\{ \kw{true}, \kw{false} \}})$. The fact it maps $\{ \kw{even} \}$ to $\{ \kw{odd} \}$ is intuitively: the input contains only even numbers, and the output contains only odd numbers.
+\textbf{Concrete and Abstract Set} - Each element of the \textit{concrete set} represents a program state. For example, if you are analysing a function which increments a number by one, it would map the concrete state $1$ to the concrete state $2$. Both $1$ and $2$ are  elements of our concrete set, $\mathbb{N}$. Each element of the \textit{abstract set} represents an approximation of the concrete states the program could be in. Continuing the above example, we could store the possible \textit{parities} of the number in our abstract state. The increment function would map $\{ \kw{odd} \}$ to $\{ \kw{even} \}$, and our abstract set would be $\mathcal{P}({\{ \kw{true}, \kw{false} \}})$. The fact it maps $\{ \kw{odd} \}$ to $\{ \kw{even} \}$ is intuitively: if the input is an odd numbers, our output is an even number. Our abstract set here is the power set of ${\{ \kw{true}, \kw{false} \}}$ instead of just ${\{ \kw{true}, \kw{false} \}}$ to represent uncertainty: $\{ \kw{true}, \kw{false} \}$ represents ``the state could be odd, or even''.
 
-\textbf{Concrete and Abstract Semantics} - Our \textit{concrete semantics} is a function which maps a set of possible start states to a set of possible end states. The concrete semantics $f$ for our above increment program might look something like $f l = \{ x + 1 | x \in l \}$. Our \textit{abstract semantics} are the same, except they from and to our abstract set. In the increment function case, they would express the fact that incrementing a number always flips its parity: 
+\textbf{Concrete and Abstract Semantics} - The \textit{concrete semantics} for a program maps a set of possible start states to a set of possible end states. The concrete semantics $f$ for our above increment program might look something like $f (x) = x + 1$. The \textit{abstract semantics} for a program map the start abstract states to the end abstract state. The abstract semantics $f'$ for the continuing example would express the fact that incrementing a number always flips its parity: $f (l) = \{ \kw{odd} \,|\, \kw{even} \in l \} \cup \{ \kw{odd} \,|\, \kw{even} \in l \}$.
 
-\textbf{Concretization Function and Abstraction Function} - The \textit{concretization function} maps from our concrete set to our abstract set, 
-One of these functions is our \textit{abstraction function} which maps an element of the concrete set to its associated approximation in the abstract set. The other is our  which maps an approximation in our abstract set to the set of concrete values it could be approximating.
+\textbf{Concretization Function and Abstraction Function} - The \textit{concretisation function} maps from an approximation to the set of concrete values they could be approximating. The \textit{abstraction function} maps from a concrete state to an approximation (element of our abstract set). It answers: for a given concrete value, what is its approximation? In the above, it would map $1$ to $\{ \kw{odd} \}$ and $5$ to $\{ \kw{odd} \}$, reflecting the fact that the input is definitely odd.
 
-We then define our \textit{concrete semantics} and our \textit{abstract semantics}. Our concrete semantics maps a concrete value to a concrete value,
+With this framework in place, the research can be summarised as an abstract interpretation where:
 
-As an example: take a language with variable assignment, natural numbers and binary arithmetic operators. We then define an abstract interpretation which calculates the \textit{sign} of a particular program, and a concrete interpretation which calculates the precise natural number the program evaluates to. During concrete interpretation, 
+\begin{itemize}
+  \item The abstract set is a mapping from variables to types, and the concrete set is a mapping from variables to values.
+  \item Our abstract semantics are type checking, and our concrete semantics are execution or reduction.
+  \item Our abstraction function maps a value to its type, and our concretization function maps a type to its set of values.
+\end{itemize}
+
+As is typical with abstract interpretations, or abstract set is ordered, and our abstract semantics are monotonic, as shown in Section \ref{section:properties}, but I will leave the explanation here for now.
 
 \section{Rust}
-Rust is a modern programming language that offers a unique combination of strong (memory) safety guarantees and bare-metal performance. Rust innovates in other areas relevant to software engineering, but for this research performance and safety are the two key features which will be built upon.
+In 2006, in response to a crash in his building's elevator's firmware\footnote{I cannot find the source of this anecdote, but it is mentioned in the introduction to \cite{aeneas} and dozens of secondary sources on the internet, search ``Rust language elevator firmware origins''.}, Gradon Hoare designed Rust, a modern programming language that offers a unique combination of strong (memory) safety guarantees and bare-metal performance. Rust innovates in other areas relevant to software engineering, but for this research performance and safety are the two key features which will be built upon.
 
-\subsubsection{Performance}
-Rust is a fast language. Its performance is roughly equivalent to that of C and C++ \cite{RustVsWhich}, which are generally accepted as the benchmark of language performance. Rust has enduring performance problems \cite{AreWeStackefficient2022}, but it is fair to say that on the whole there aren't major performance differences between the fastest languages. The fastest programming languages have more or less hit a ceiling of performance, with no major improvements in speed even since Fortran \cite{GccVsClassic} which dates back to 1957 \cite[p. 16]{wilsonComparativeProgrammingLanguages2001}.
+Since then it has enjoyed significant success, surpassing Haskell, Kotlin, Scala, and Ruby in market share \citep{TIOBEIndex} and being voted the most loved language for 7 years in a row as of 2023 \cite{StackOverflowDeveloper}.
+
+\subsection{Performance}
+Rust is a fast language. Its performance is roughly equivalent to that of C and C++ \cite{BenchmarksGame}, which are generally accepted as the benchmark of language performance. Rust has enduring performance problems \cite{RustStackEfficiency2022}, but it is fair to say that on the whole there aren't major performance differences between the fastest languages. The fastest programming languages have more or less hit a ceiling of performance, with no major improvements in speed even since Fortran \citep{GccVsClassic} which dates back to 1957 \cite[p. 16]{wilsonComparativeProgrammingLanguages2001}.
 
 Making a fast programming language is more about removing slow features than it is about introducing ones that explicitly help performance. Languages like Haskell and Java automatically handle memory allocation and deallocation at the cost of having to have a garbage collector that periodically scans the heap and deallocates inaccessible objects; this is an example of a feature that reduces performance.
 
@@ -198,8 +199,10 @@ Rust is a fast language because it doesn't have a runtime or garbage collector, 
 
 To generate optimal code, systems languages let the programmer manage their memory, and choose memory layouts. In doing so, they typically sacrifice the memory safety guarantees higher-level languages make due to not being able to check the programmer has managed their memory correctly, this is the case in C and C++. Rust uses a concept called \textit{ownership} to recover these memory safety guarantees while still giving the programmer sufficient control to match C and C++'s performance.
 
-\subsubsection{Ownership}
-Ownership is a set of rules that govern how a Rust program manages memory. All programs have to manage the way they use a computer’s memory while running. Some languages have garbage collection that regularly looks for no-longer-used memory as the program runs; in other languages, the programmer must explicitly allocate and free the memory. Rust uses a third approach: memory is managed through a system of ownership with a set of rules that the compiler checks. If any of the rules are violated, the program won’t compile. None of the features of ownership will slow down your program while it’s running. \footnote{Paragraph taken from the Rust Book https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html which I highly recommend for a deeper explanation of ownership.}
+\subsection{Ownership}
+Ownership is the concept that data is a movable and finite resource; it cannot be used in multiple places without first being duplicated. This materializes as a set of rules in Rust that prevent a user from using the same piece of data in multiple places at once. This intuition of data having a location, and needing to be in the right one, is what gives \textit{move semantics} its name. In a language with move semantics, like Rust, using a value destroys it and prevents it from being used again. Preventing this old (moved) value from being used is useful for performance: if a data structure is in a variable, we know that we have exclusive \textit{ownership} of the data structure and all its memory allocations. Therefore, when the variable goes out of scope, we know that nobody will have access to it, and therefore its memory allocations can be given back to the operating system without causing memory safety issues.
+
+Rust's innovation was introducing the concept of \textit{borrowing}: in Rust, you can make a pointer to a variable, and the existence of that pointer disallows the data from being mutated by any means other than that pointer. You may mutate data through a pointer if and only if it is the only pointer that exists to that data. Pointers with these restrictions are so different to use in practice than pointers they are referred to with a separate name, \textit{references}.
 
 There are three rules associated with ownership in Rust:
 \begin{itemize}
@@ -211,110 +214,167 @@ There are three rules associated with ownership in Rust:
 \subsubsection{Borrowing And The Borrow Checker}
 A consequence of only being able to have one owner of any given value at a time is that passing a value to a function invalidates the variable that used to hold that value. This is referred to as the ownership \textit{moving}. For instance:
 
-\begin{lstlisting}
+\begin{minted}{rust}
   let x = Box::new(5);
   f(x); // Ownership of x passed to f
   g(x); // Invalid, we no longer have ownership of x
-\end{lstlisting}
+\end{minted}
 
-To get around this we could get the functions to give ownership back to us when they return, but this is very syntax-heavy. Rust uses a concept called borrowing in this scenario, which allows you to temporarily give a function access to a value, without giving it ownership. The above example would be done like so:
+To get around this we could get the functions to give ownership back to us when they return, but this is very syntax-heavy. Rust uses a concept called borrowing in this scenario, which allows you to \textit{temporarily} give a function access to a value, without giving it ownership. The above example would be done like so:
 
-\begin{lstlisting}
+\begin{minted}{rust}
   let x = Box::new(5);
   f(&x);
   g(&x); // Now works
-\end{lstlisting}
+\end{minted}
 
-Here, \verb|&x| denotes a \textit{reference} to \verb|x|. At runtime, this is represented as a pointer. There are two different types of references in Rust: immutable references, denoted by \verb|&T|, and mutable references denoted by \verb|&mut T|. For any given value, you can either hold a single mutable reference or $n$ immutable references, but never both at the same time. This is called the aliasing xor (exclusive or) constraint, or AXM for short.
+Here, \verb|&x| denotes a \textit{reference} to \verb|x|. At runtime, this is represented as a pointer. There are two different types of references in Rust: immutable references, denoted by \verb|&T|, and mutable references denoted by \verb|&mut T|. For any given value, you can either hold a single mutable reference or $n$ immutable references, but never both at the same time. This is called the aliasing xor (exclusive or) constraint, or AXM for short. It is an error to have more than one mutable reference to a variable simultaneously:
 
-The borrow checker keeps track of when these references exist to ensure AXM is being upheld. To do this the programmer must annotate references with lifetime annotations, so the compiler has the information of how long the programmer intends each reference to last. Checking these lifetimes overlap in compatible ways is the job of the borrow checker.
+\begin{minted}{rust}
+  let x = 5;
+  let rx1 = &mut x;
+  let rx2 = &mut x; // rx1 dropped here
+  *rx1 = 42; // error: rx1 not in scope
+  *rx2 = 43;
+\end{minted}
 
+Both of these references cannot exist at the same time, so Rust implicitly \textit{drops} the first when the second is constructed. This causes our usage of the first reference to error, it is no longer in scope for usage.
+
+The borrow checker keeps track of when these references exist to ensure AXM is being upheld. To do this the programmer must annotate references with lifetime annotations, so the compiler has the information of how long the programmer intends each reference to last. Checking these lifetimes overlap in compatible ways is the job of the borrow checker. Take the following function:
+
+\begin{minted}{rust}
+  fn choose<'a>(returnLeft: bool, left: &'a mut i32, right: &'a mut i32) -> &'a mut i32 {
+    if returnLeft { left } else { right }
+  }
+
+  let x = 5;
+  let y = 5;
+  let rx = choose(true, &mut x, &mut y);
+  *rx = 42;
+  // lifetime 'a ends
+  println!("{}", x);
+\end{minted}
+
+In the above, \mono{choose} is generic over a lifetime \mono{'a}. The type signature reads ``for any lifetime \mono{'a}, if you input a boolean and two references which last \textit{at least} as long as \mono{'a}, the function will return a reference which lasts \textit{at least} as long as \mono{'a}''.
+
+When \mono{choose} is used on line 7, Rust implicitly passes a lifetime which ends between the usage of \mono{rx} and the final print of \mono{x}. During lifetime \mono{'a}, \mono{rx} can be used and \mono{x} cannot.
+
+The following usage of choose \textit{does not} work:
+
+\begin{minted}{rust}
+  let x = 5;
+  let y = 5;
+  let rx = choose(true, &mut x, &mut y);
+  println!("{}", x);
+  *rx = 42;
+\end{minted}
+
+Rust cannot find an appropriate lifetime which satisfies all the constraints, because the usage of \mono{x} on line 4 must be after the lifetime ends, and the usage of \mono{rx} must be before the lifetime ends.
+
+There is much more to Rust, but this concept of ownership and borrowing are the relevant parts to Ochre which we build upon.
 
 \section{Aeneas \& The LLBC}
+Aeneas \citep{aeneas} is a verification toolchain for Rust programs which works by transpiling code written in Rust into the F* theorem prover\footnote{F* is the first amongst many backends for Aeneas}. This allows the programmer to execute the Rust version of their program, which is performant, and prove properties about the F* version of it, which has dependent types and is a full theorem prover.
 
-\section{Prerequisite Concepts}
-\label{prerequisites}
-This section explains the concepts required to understand this research.
+Aeneas takes MIR (mid-level IR) code as input, as it is much simpler than the source Rust langauge, and has already goen through type \& borrow checking, which means Aeneas does not have to do either. It then translates this MIR internally to the LLBC (Low-Level Borrow Calculus) which they define.
 
-\subsection{Mutability}
-Mutability is when the value of a variable can change at runtime. For instance in Rust, \verb|let mut x = 5; x = 6;| first assigns the value $5$ to the variable $x$, then updates it to $6$, which means the value of $x$ depends on the point within the programs execution. This becomes more relevant when you have large objects that get passed around your program, like \verb|let mut v = Vec::new(); v.push(1); v.push(2);| which makes a resizable array on the heap, then pushes $1$ and $2$ to it.
-
-In Rust to make a variable mutable you must annotate its definition with \verb|mut|, but in most languages, it is just always enabled, like in C \verb|int x = 5; x = 6;| works.
-
-\subsection{Dependent Types}
-A dependent type is a type that can change based on the value of another variable in the program. For instance, you might have a variable $y$ which is sometimes an integer, and sometimes a boolean, depending on the value of another variable, $x$.
-
-When discussing dependent types, there are two important dependent type constructors: $\Sigma$ and $\Pi$. They're usually referenced together because they're roughly equivalent; the dual of $\Sigma$ types are $\Pi$ types and visa versa, which apparently means something to category theorists. In the following, I use $Vec(\mathbb{Z}, n)$ to denote the type of an $n$-tuple of integers, i.e. $(1, 2, 3): Vec(\mathbb{Z}, 3)$.
+Once an LLBC term is obtained, Aeneas undergoes a very similar analysis to the one Ochre does, which is where I got the idea for Ochre's general analysis. As it scans through the LLBC, Aeneas passes around a piece of state called the \textit{evaluation context}, which maps each variable to its type and borrow state. A variable's borrow state tells you which of the following statements is true for any given variable:
 
 \begin{itemize}
-  \item \textbf{Dependent Functions} ($\Pi$ Types) - A dependent function is one whose return type depends on the input value. For instance, you could define a function $f$ which takes a natural $n$, and returns $n$ copies of $42$ in a tuple i.e. $f(3) = (42, 42, 42)$. $f$'s type would be denoted as $f: (\textbf{n}: \mathbb{N}) \rightarrow Vec(\mathbb{Z}, \textbf{n})$ in Agda/Ochre syntax, or $f: \Pi_{\textbf{n}: \mathbb{N}} Vec(\mathbb{Z}, \textbf{n})$ in a more formal mathematical context.
-  \item \textbf{Dependent Pairs} ($\Sigma$ Types) - A dependent pair is a pair where the type of the right element depends on the value of the left element. For instance, you could define a pair $p$ which holds a natural $n$ and a $n$-tuple of integers i.e. $p = (3, (42, 42, 42))$. $p$'s type would be denoted as $p: (\textbf{n}: \mathbb{N}, Vec(\mathbb{Z}, \textbf{n}))$ in Agda/Ochre syntax, or $p: \Sigma_{\textbf{n}: \mathbb{N}} Vec(\mathbb{Z}, \textbf{n})$ in a more formal mathematical context.
+  \item This variable owns a value.
+  \item This variable is a mutable or immutable reference to a value.
+  \item This variable owns a value, but has lent that ownership out to a reference.
 \end{itemize}
 
-A language supports dependent types if it can type-check objects like the aforementioned $f$ and $s$. Just allowing them to exist is not enough. For instance, Python is not dependently typed just because a function's return type can depend on its input, because its type checker doesn't reject programs when you do this wrong. $f$ can be typed in Agda, a dependently typed language with $f: (n: \mathbb{N}) \rightarrow Vec(\mathbb{Z}, n)$ but has no valid type in Haskell, which doesn't support dependent types.
+When a value is borrowed, it is replaced by a \textit{loan}, which, for mutable borrows, prevents the value being read from that location. Below is a poigant example which demonstrates how Aeneas tracks mutable borrows in its evaluation context, which is shown in comments after each line:
 
-\subsection{Formal Verification with Dependent Types}
-While dependent types can be nice to have by themselves, a large part of their motivation is using them to perform formal verification.
+\begin{minted}[mathescape]{rust}
+  let mut x = 0;       // $\absmapm{x}{0}$
+  let mut px = &mut x; // $\absmapm{x}{\loanm{l}}, \absmapm{px}{\borrowm{l}{0}}$
+  *px = 5;             // $\absmapm{x}{\loanm{l}}, \absmapm{px}{\borrowm{l}{5}}$
+  println!("{}", x);   // $\absmapm{x}{5},         \absmapm{px}{\bot}$
+\end{minted}
 
-\textbf{If you are willing to accept that dependent types can be used to perform formal verification, you do not need to understand how dependent types can be used for logical reasoning}: none of this information will be used since the goal of this research is not to perform formal verification, it's just to do dependent type checking.
+When the mutable reference is constructed on line 2, it causes \mono{x} to be \textit{borrowed}. This means the value currently in \mono{x} is replaced with a loan with a matching \textit{loan identifier} ($l$) to the constructed borrow. Now the value $0$ is stored under the entry for \mono{px} in the context instead of the entry for \mono{x}. Line 3 can now mutate the value without causing non-local side effects because the value is the \mono{rx} entry in the context. The interesting operation is line 4, where we want to read \mono{x} from the environment but we cannot, because the value has been borrowed. We match the loan identifier stored in \mono{x} with the loan identifier stored in \mono{px} to determine that $\borrowm{l}{5}$ must be dropped. Dropping the borrow replaces $\loanm{l}$ with $5$ in the context, allowing us to read and print \mono{x}.
 
-Readers who are nonetheless interested are invited to read Appendix \ref{verificationwithtypes}.
+As Aeneas is performing this analysis, it outputs dependently typed pure functional code. The details of how this is achieved are omitted because this part of Aeneas is not used in Ochre. 
 
-\subsection{Rust}
-The mutable $\rightarrow$ immutable translation this research relies on requires lifetime annotations to work. While ownership and lifetimes are standalone concepts, their only real-world use case so far has been memory management in the Rust programming language. This section explains these concepts in the context of Rust.
+% \section{Prerequisite Concepts}
+% \label{prerequisites}
+% This section explains the concepts required to understand this research.
+
+% \subsection{Mutability}
+% Mutability is when the value of a variable can change at runtime. For instance in Rust, \verb|let mut x = 5; x = 6;| first assigns the value $5$ to the variable $x$, then updates it to $6$, which means the value of $x$ depends on the point within the programs execution. This becomes more relevant when you have large objects that get passed around your program, like \verb|let mut v = Vec::new(); v.push(1); v.push(2);| which makes a resizable array on the heap, then pushes $1$ and $2$ to it.
+
+% In Rust to make a variable mutable you must annotate its definition with \verb|mut|, but in most languages, it is just always enabled, like in C \verb|int x = 5; x = 6;| works.
+
+% \subsection{Dependent Types}
+% A dependent type is a type that can change based on the value of another variable in the program. For instance, you might have a variable $y$ which is sometimes an integer, and sometimes a boolean, depending on the value of another variable, $x$.
+
+% When discussing dependent types, there are two important dependent type constructors: $\Sigma$ and $\Pi$. They're usually referenced together because they're roughly equivalent; the dual of $\Sigma$ types are $\Pi$ types and visa versa, which apparently means something to category theorists. In the following, I use $Vec(\mathbb{Z}, n)$ to denote the type of an $n$-tuple of integers, i.e. $(1, 2, 3): Vec(\mathbb{Z}, 3)$.
+
+% \begin{itemize}
+%   \item \textbf{Dependent Functions} ($\Pi$ Types) - A dependent function is one whose return type depends on the input value. For instance, you could define a function $f$ which takes a natural $n$, and returns $n$ copies of $42$ in a tuple i.e. $f(3) = (42, 42, 42)$. $f$'s type would be denoted as $f: (\textbf{n}: \mathbb{N}) \rightarrow Vec(\mathbb{Z}, \textbf{n})$ in Agda/Ochre syntax, or $f: \Pi_{\textbf{n}: \mathbb{N}} Vec(\mathbb{Z}, \textbf{n})$ in a more formal mathematical context.
+%   \item \textbf{Dependent Pairs} ($\Sigma$ Types) - A dependent pair is a pair where the type of the right element depends on the value of the left element. For instance, you could define a pair $p$ which holds a natural $n$ and a $n$-tuple of integers i.e. $p = (3, (42, 42, 42))$. $p$'s type would be denoted as $p: (\textbf{n}: \mathbb{N}, Vec(\mathbb{Z}, \textbf{n}))$ in Agda/Ochre syntax, or $p: \Sigma_{\textbf{n}: \mathbb{N}} Vec(\mathbb{Z}, \textbf{n})$ in a more formal mathematical context.
+% \end{itemize}
+
+% A language supports dependent types if it can type-check objects like the aforementioned $f$ and $s$. Just allowing them to exist is not enough. For instance, Python is not dependently typed just because a function's return type can depend on its input, because its type checker doesn't reject programs when you do this wrong. $f$ can be typed in Agda, a dependently typed language with $f: (n: \mathbb{N}) \rightarrow Vec(\mathbb{Z}, n)$ but has no valid type in Haskell, which doesn't support dependent types.
+
+% \subsection{Rust}
+% The mutable $\rightarrow$ immutable translation this research relies on requires lifetime annotations to work. While ownership and lifetimes are standalone concepts, their only real-world use case so far has been memory management in the Rust programming language. This section explains these concepts in the context of Rust.
 
 % cut out rust bits
 
-\subsection{Mutable $\rightarrow$ Immutable Translation}
-To reason about and type-check the mutable code from the programmer, the type checker this research presents translates the source code into an immutable version, as outlined in Section \ref{thesolution}.
+% \subsection{Mutable $\rightarrow$ Immutable Translation}
+% To reason about and type-check the mutable code from the programmer, the type checker this research presents translates the source code into an immutable version, as outlined in Section \ref{thesolution}.
 
-The crux of this translation is the observation that \textbf{a function that mutates a value can be replaced by one that instead returns the new value}. I.e. if the programmer writes a function with type \verb|&mut i32 -> ()|, it can be replaced by \verb|i32 -> i32|. Which would then be used like this:
+% The crux of this translation is the observation that \textbf{a function that mutates a value can be replaced by one that instead returns the new value}. I.e. if the programmer writes a function with type \verb|&mut i32 -> ()|, it can be replaced by \verb|i32 -> i32|. Which would then be used like this:
 
-\noindent\begin{minipage}{.45\textwidth}
-\begin{lstlisting}[caption=Original]{Name}
-let mut x = 5;
-f(&mut x); // Mutates x
-\end{lstlisting}
-\end{minipage}\hfill
-\begin{minipage}{.45\textwidth}
-\begin{lstlisting}[caption=Translated]{Name}
-let x = 5;
-let x = f(x); // Re-defines x
-\end{lstlisting}
-\end{minipage}
+% % \noindent\begin{minipage}{.45\textwidth}
+% % \begin{minted}{rust}[caption=Original]{Name}
+% % let mut x = 5;
+% % f(&mut x); // Mutates x
+% % \end{minted}
+% % \end{minipage}\hfill
+% % \begin{minipage}{.45\textwidth}
+% % \begin{minted}{rust}[caption=Translated]{Name}
+% % let x = 5;
+% % let x = f(x); // Re-defines x
+% % \end{minted}
+% % \end{minipage}
 
-The complexity of this translation comes in handling all language constructs in the general case, for instance, if statements need to return the values they edit. Like so:
+% The complexity of this translation comes in handling all language constructs in the general case, for instance, if statements need to return the values they edit. Like so:
 
-\noindent\begin{minipage}{.45\textwidth}
-\begin{lstlisting}[caption=Original]{Name}
-let mut x = 5;
-if x > 3 {
-  x = x + 1; // Mutation
-}
-\end{lstlisting}
-\end{minipage}\hfill
-\begin{minipage}{.45\textwidth}
-\begin{lstlisting}[caption=Translated]{Name}
-let x = 5;
-let x = if x > 3 {
-  x + 1
-} else {
-  x
-};
-\end{lstlisting}
-\end{minipage}
+% % \noindent\begin{minipage}{.45\textwidth}
+% % \begin{minted}{rust}[caption=Original]{Name}
+% % let mut x = 5;
+% % if x > 3 {
+% %   x = x + 1; // Mutation
+% % }
+% % \end{minted}
+% % \end{minipage}\hfill
+% % \begin{minipage}{.45\textwidth}
+% % \begin{minted}{rust}[caption=Translated]{Name}
+% % let x = 5;
+% % let x = if x > 3 {
+% %   x + 1
+% % } else {
+% %   x
+% % };
+% % \end{minted}
+% % \end{minipage}
 
-This quickly gets complicated when you start to use more advanced features like for loops and functions which return mutable references \footnote{See \citep{aeneas} Chapter 2 \textit{Aeneas and its Functional Translation, by Example} for explanation of returning mutable references. (Search for ``Returning a Mutable Borrow, and a Backward Function'') for the exact paragraph.}. So much so safe Rust isn't even entirely covered by the two main attempts at this translation Electrolysis \citep{ullrich_khaelectrolysis_2024} and Aeneas \citep{aeneas} \footnote{See Figure 14 of \citep{aeneas} for a table showing roughly which features are covered by Aeneas/Electrolysis, and see https://kha.github.io/electrolysis/ for exact Rust coverage for Electrolysis.}. In this research I don't intend to support any constructs not already supported by either of these prior works, so I can use the translation algorithms they have already developed.
+% This quickly gets complicated when you start to use more advanced features like for loops and functions which return mutable references \footnote{See \citep{aeneas} Chapter 2 \textit{Aeneas and its Functional Translation, by Example} for explanation of returning mutable references. (Search for ``Returning a Mutable Borrow, and a Backward Function'') for the exact paragraph.}. So much so safe Rust isn't even entirely covered by the two main attempts at this translation Electrolysis \citep{ullrich_khaelectrolysis_2024} and Aeneas \citep{aeneas} \footnote{See Figure 14 of \citep{aeneas} for a table showing roughly which features are covered by Aeneas/Electrolysis, and see https://kha.github.io/electrolysis/ for exact Rust coverage for Electrolysis.}. In this thesis I don't intend to support any constructs not already supported by either of these prior works, so I can use the translation algorithms they have already developed.
 
 \section{Related Work}
+\label{section:relatedwork}
 Related work comes under two main categories: research which works towards combining mutability with dependent types, and more general work which works towards formal verification of low level code.
 
-\subsection{Languages with Mutability and Dependent Types}
 
-\subsubsection{ATS}
-ATS \citep{xi_applied_2017} is the most mature systems programming language with dependent types to date, with work dating back to 2002 \citep{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \citep{ATSHome}.
+\subsection{ATS}
+ATS \citep{xiAppliedTypeSystem2017} is the most mature dependently typed programming language with dependent types to date, with work dating back to 2002 \citep{ATSImplements}. As its website states, it is a \textit{statically typed programming language that unifies implementation with formal specification} \citep{ATSHome}.
 
-It's more or less an eagerly evaluated functional language like OCaml, but with functions in the standard library that manipulate pointers, like \verb|ptr_get0| and \verb|ptr_set0| which read and write from the heap respectively. To read or write to a location in memory, you must have a token that represents your ownership of the memory, called a \textit{view}.
+It can be thought of as an eagerly evaluated functional language like OCaml, with functions in the standard library that manipulate pointers, like \verb|ptr_get0| and \verb|ptr_set0| which read and write from the heap respectively. To read or write to a location in memory, you must have a token that represents your ownership of the memory, called a \textit{view}.
 
 For instance, the \verb|ptr_get0| function has the type $\{l:addr\} (T @ l | ptr (l)) \rightarrow (T @ l | T)$ where
 \begin{itemize}
@@ -324,15 +384,21 @@ For instance, the \verb|ptr_get0| function has the type $\{l:addr\} (T @ l | ptr
   \item $ptr(l)$ means a pointer pointing to location $l$. Since it can only point at location $l$, it is a singleton type. This is used to convert the static compile-time variable $l$ into an assertion about the runtime argument.
 \end{itemize}
 
-
 So overall, this type reads ``for all memory addresses $l$, the function borrows ownership of location $l$, and turns a pointer to location $l$ into a value of type $T$''.
 
 This necessity to manually pass ownership around introduces a lot of administrative overhead to ATS, which is one of the reasons it is a notoriously hard language to learn/use. ATS introduces syntactic shorthand for these things which you can use in simple cases to clean things up, but still requires this proof passing in many cases which would be dealt with automatically by Rust's borrow checker.
 
 Over the years several versions of ATS have been built, with interesting differences in approach. The current version, ATS2 has only a dependent type-checker, whereas the in-progress ATS3 uses both a conventional ML-like type-checker, as well as a dependent type-checker, and approach that the author of ATS himself developed in separate research, from which ATS3 gets its full name, ATS/Xanadu.
 
-\subsubsection{Magmide}
-The goal of Magmide \citep{noauthor_magmidemagmide_2024} is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
+\subsection{Low*}
+Low*\citep{protzenko_low_2017} is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin. It has achieved impressive results, mostly at Microsoft Research, where they have used it to implement a formally verified library of modern cryptographic algorithms\citep{star_2024} and EverParse
+
+Its set of allowed features is carefully chosen to make this translation possible in the general case, which restricts the ergonomics of the language, it does not support closures, and therefore higher-order programming for example.
+
+It is very much not a pay-for-what-you-use language, to compile anything you must manually manage things like pushing and popping frames on and off the stack, so even if it can achieve impressive results, it's only useful for teams willing to pay the high price which comes with verifying the entire program. This research aims to be better by not requiring any effort from the programmer in the case that they do not wish to use dependent types for their reasoning power.
+
+\subsection{Magmide}
+The goal of Magmide \citep{MagmideMagmide2024} is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
 
 \begin{itemize}
   \item Logical Magmide is a dependently typed lambda calculus of constructions, where to-be-erased types and proofs are constructed.
@@ -341,18 +407,9 @@ The goal of Magmide \citep{noauthor_magmidemagmide_2024} is to ``create a progra
 
 I believe this will mean there are two separate languages co-existing on the front end, much like the separation between type-level objects and value-level objects in a language like Haskell.
 
-I suspect this will cause a similar situation to what you see in ATS where for each variable you care about you have two versions, a compile-time one and a runtime one, but it's hard to tell because of the lack of code examples.
+I suspect this will cause a similar situation to what you see in ATS where for each variable you care about you have two versions, a compile-time one and a runtime one, but it's hard to tell because of the lack of code examples. Other than that, Magmide is a promising project, although without results it is hard to evaluate or build off of.
 
-\subsubsection{Low*}
-Low*\citep{protzenko_low_2017} is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin. It has achieved impressive results, mostly at Microsoft Research, where they have used it to implement a formally verified library of modern cryptographic algorithms\citep{star_2024} and EverParse
-
-Its set of allowed features is carefully chosen to make this translation possible in the general case, which restricts the ergonomics of the language, it does not support closures, and therefore higher-order programming for example.
-
-It is very much not a pay-for-what-you-use language, to compile anything you must manually manage things like pushing and popping frames on and off the stack, so even if it can achieve impressive results, it's only useful for teams willing to pay the high price which comes with verifying the entire program. This research aims to be better by not requiring any effort from the programmer in the case that they do not wish to use dependent types for their reasoning power.
-
-\subsection{Embedding Mutability in Languages With Dependent Types}
-
-\subsubsection{Ynot: Dependent Types for Imperative Programs}
+\subsection{Ynot: Dependent Types for Imperative Programs}
 Ynot\citep{nanevski_ynot_2008} is an extension of the Coq proof assistant which allows writing, reasoning about, and extracting higher-order, dependently-typed programs with side-effects including mutation. It does so by defining a monad \verb|ST p A q| which performs an effectful operation, with precondition \verb|p|, postcondition \verb|q| and producing a value of type \verb|A|. They also define another monad, \verb|STSep p A q| which is the same as \verb|ST| except it satisfies the frame rule from separation logic: any part of the heap that isn't referenced by the precondition won't be affected by the computation. This means if you prove properties about a \verb|STSep| computation locally, those proofs still apply even when the computation is put into a different context: this is called compositional reasoning. The Ynot paper presents a formally verified mutable hash table.
 
 Ynot is important foundational work in this area which seems to have inspired many of the other related work here, but is itself not up to the task of verifying low-level code for two reasons:
@@ -365,14 +422,14 @@ Ynot is important foundational work in this area which seems to have inspired ma
 \subsection{Formal Verification of Low-Level Code}
 Low-level code, such as C code can be directly reasoned about by theorem provers like Isabelle, as was done to verify an entire operating system kernel SeL4\citep{klein_sel4_2009}. However, going via C like this has major drawbacks: since the source language is very unsafe, you have a lot of proof obligations. For instance, when reasoning about C you must often prove that a set of pointers do not point to the same location, otherwise mutating the value of one might mutate the others. With Rust references you do not need to do this because the type system prevents you from creating aliased pointers.
 
-\subsubsection{Rust Belt}
+\subsection{Rust Belt}
 RustBelt\citep{jung_rustbelt_2018} is a formal model of Rust, including unsafe Rust. Its primary implementation is a Coq framework, Iris\citep{noauthor_iris_nodate} which allows you to model unsafe Rust code in Coq, and prove it upholds Rust's correctness properties.
 
 I see RustBelt as a great complement to this work in the future: real programs require unsafe code, but you want to avoid having to model your code in a separate proof assistant as little as possible. In Ochre, I imagine the few people who write unsafe code will verify it with something like RustBelt, while the majority won't have to, but will benefit from the guarantees provided by the verified libraries they use which do.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Ochre, by Example}
-\label{section:ochre}
+\label{section:ochreexample}
 This chapter introduces the various language constructs of Ochre, at first via intuitive examples, then formally. Each language construct's runtime behavior is discussed, then how it is reasoned about statically, which splits this chapter into 4 sections with the following distinctions:
 
 DEPRECATED
@@ -384,7 +441,7 @@ DEPRECATED
     Intuition Building & \underline{Section \ref{section:ochreexample}} & \underline{Section \ref{section:checkingexample}} \\
     & Ochre, by Example & Type \& Borrow Checking, by Example \\
     \\
-    Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{chapter:definition}} \\
+    Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{chapter:ochreformally}} \\
     & Concrete Interpretation & Abstract Interpretation \\
   \end{tabular}
 \end{center}
@@ -399,11 +456,10 @@ The mutation \& memory management techniques presented are from Rust, including 
 The novel work presented is the combination of these two features, which requires introducing a new kind of subtyping in which every term is its own type. TypeScript partly does this with literal types, producing results like \mono{5:5}, but this research takes this to its logical conclusion where even functions are their own type, and there is almost no distinction between types and terms apart from the requirement that all types are resolved at compile time.
 
 \todo[inline]{explain double page + hyper links thing}
-\todo[inline]{do hyperlinks thing}
+% \todo[inline]{do hyperlinks thing}
 
 \cleardoublepage
 \section{The Language}
-\label{section:ochreexample}
 This section covers Ochre in a gradual, example-heavy manner, much like programming language tutorials like The Rust Book \citep{RustProgrammingLanguagea}. The goal of this section is to build an intuition behind the behavior which the type-checking will later reason about.
 
 Ochre is an impure functional language, composed of expressions that can have side effects.
@@ -851,7 +907,7 @@ Sometimes you want to manually manipulate what type the abstract interpretation 
 \end{listing}
 
 \subsubsection{Comptime vs Runtime}
-As you will see in Section \ref{chapter:definition}, there are large differences in how the abstract interpretation is performed on runtime and comptime terms; however, for the most part, they map very similarly to the abstract environment. Following from the syntax level distinction, an entry in the abstract environment is marked as runtime or comptime by the variable identifier being capitalized or not.
+As you will see in Section \ref{chapter:ochreformally}, there are large differences in how the abstract interpretation is performed on runtime and comptime terms; however, for the most part, they map very similarly to the abstract environment. Following from the syntax level distinction, an entry in the abstract environment is marked as runtime or comptime by the variable identifier being capitalized or not.
 
 \begin{listing}[H]
   \begin{minted}[mathescape]{rust}
@@ -919,7 +975,7 @@ And last but not least, here are a few example programs which use several of the
 \cleardoublepage
 % \section{Concrete Interpretation}
 % \label{section:concreteinterpretation}
-% The primary contribution of this research is the abstract interpretation because that is what will be used in the compiler for the type checking, but the regular interpretation is still useful to better understand the language features and to better understand the abstract interpretation. If you're only interested in how Ochre is type-checked, not its exact behavior at runtime, skip to Section \ref{chapter:definition}.
+% The primary contribution of this research is the abstract interpretation because that is what will be used in the compiler for the type checking, but the regular interpretation is still useful to better understand the language features and to better understand the abstract interpretation. If you're only interested in how Ochre is type-checked, not its exact behavior at runtime, skip to Section \ref{chapter:ochreformally}.
 
 % Ochre has an extremely permissive syntax and heavily relies on typing rules to reject ill-formed programs. This leads to some usual results like \mono{(x = y) = z} being syntactically well-formed. In practice, this doesn't cause issues, because the typing rules are strict enough. The grammar for Ochre is shown in Figure \ref{fig:syntax}.
 
@@ -1132,14 +1188,25 @@ And last but not least, here are a few example programs which use several of the
 
 \cleardoublepage
 \chapter{Ochre}
-\label{chapter:definition}
+\label{chapter:ochreformally}
 
-Ochre is defined through a syntax and an abstract interpretation on that syntax.
+Ochre is defined through a syntax, a concrete interpretation on the terms, and an abstract interpretation on the terms. The concrete semantics defined in our abstract interpretation models the programs execution (as a set of reduction rules would) and the abstract semantics defines how the type of a term is derived (as a set of typing rules would).
+
+This chapter starts by defining the prerequisite mathematical objects our abstract interpretation will be operating over in Sections \ref{section:syntax}, \ref{section:environmentvaluestypes}, and \ref{section:typeoperations}, then Sections \ref{section:interpretationconcepts} and \ref{section:interpretationjudgements} will define the abstract interpretation itself.
+
+Finally, a discussion defending the choice of language features is left in Section \ref{section:designdecisions} for the curious reader.
+
+In Ochre, a type is a set of possible values. There is no way to describe two types that differ only in name, as they will both become aliases to the same type, this is unlike Rust or Haskell where two types can store the same data with the same field names, but be incompatible with each other.
+
+Unlike most languages, type constructors and term constructors are typically the same object. For example, the type of a pair is itself a pair: \mono{('true, 'false): (Bool, Bool)}. In Haskell you have similar syntax, but the type of a pair is a fundamentally different object in the language than a pair itself. This is not so in Ochre. This extends to all language constructs: the type of every term is itself. In fact, a term $M$ is \textit{the most} precise type you can assign to a term $M$, type annotations serve only to lose type information. This even extends to functions: the type of the identity function is \mono{T -> T}, and an implementation of the identity function is \mono{T -> T}.
+
+The concept of type \textit{width} is used throughout this chapter to help the reader visualize what is going on. A type is wider than another if it is a supertype, and narrower if it is a subtype. Subtype will be defined formally in Section \ref{section:typeoperations}.
 
 \section{Syntax}
-There are two categories of terms in Ochre, \textit{statements} and \textit{expressions}. Both may have side effects. Most language constructs are expressions, but variable assignment (mutation) and match statements can only occur in statements. All expressions are themselves statements.
+\label{section:syntax}
+Ochre has categories of terms, \textit{statements} and \textit{expressions}. All expressions are statements, but variable assignment (mutation) and match statements can only occur in statements. Figure \ref{fig:syntax} shows the grammar for these two categories of terms.
 
-\begin{figure}[H]
+\begin{figure}
   \arraycolsep=1pt %
   \centering
 
@@ -1172,177 +1239,32 @@ There are two categories of terms in Ochre, \textit{statements} and \textit{expr
 \label{fig:syntax} %
 \end{figure} %
 
-\textbf{Assignments never occur in a terminal position}. This avoids the question of what is the return value of an assignment.
-
-\textbf{Match statements always occur in a terminal position}. If it was permitted for operations to occur after a match statement, the environment \textit{after} the match statement would have to be calculated, which would be the type union of the environments produced by the branches. For this type union operation to be precise over environments, like it is on pairs, we would have to support dependencies between variables. We do not support such dependencies for the sake of simplicity, and thus cannot precisely define environment union. RustBelt's $\lambda_{Rust}$ \citep{jungRustBeltSecuringFoundations2018a}, Aeneas' LLBC \cite[Section 4.3]{aeneas}, and Mezzo \cite{protzenkoMezzoTypedLanguage2014} also enforce control control flow disjunctions to occur in terminal positions.
-
-This restriction does not limit what programs can be represented because a program with match statements in non-terminal positions can be re-written to one that only has matches in terminal positions. This could be done by moving everything after the match statement into each of the match statement branches:
-
-\begin{figure}[H]
-  \begin{mathpar}
-    \forall \diamond \{ \movearrow, \erasedreadarrow \} . \left[
-      \inferrule{
-        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S \mono{;} S'}$ \} } \diamond t
-      }{
-        \Omega \vdash \mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S}$ \} }; S' \diamond t
-      } 
-    \right]
-  \end{mathpar}
-  \caption{A re-write rule which could enable matches in non-terminal positions.}
-\end{figure}
-
-This rewrite rule has not been included in Ochre because I intend to support dependence between variables in the future, and therefore precise environment union, which removes the need for the rewrite. This rewrite rule has the disadvantage of causing an exponential blowup in code size/interpretation derivation size.
-
 Assignment and match statements are the only constructs that can narrow types in the environment, so by having them both in statement ($S$) instead of expression ($M$), we guarantee that expression evaluation only ever widens types. This simplifies type-checking expressions.
 
-\textbf{Types/values can be treated as syntax}. This syntactic construction cannot be constructed by the programmer. It is constructed internally within the interpretations to make syntax that always returns the same type/value, such as in \odef{\movearrow}{\pleft{M}} where it is used to break the dependence of the pair so the left value can be moved out.
+\textbf{Assignments never occur in a terminal position}. This avoids the question of what is the return value of an assignment.
 
-\section{Abstract and Concrete Interpretation}
-Type-checking is done via an abstract interpretation which takes a term and outputs a type for that term while modifying an abstract environment. Interpretations over statements take the form $\Omega \vdash S \subtype S_t \diamond t$ and interpretations over expression 
+\textbf{Match statements always occur in a terminal position}. This simplifies type checking: if it was permitted for operations to occur after a match statement, the environment \textit{after} the match statement would have to be calculated, which would be the type union of the environments produced by the branches. For this type union operation to be precise over environments, like it is on pairs, we would have to support dependencies between variables. We do not support such dependencies for the sake of simplicity, and thus cannot precisely define environment union. RustBelt's $\lambda_{Rust}$ \citep{jungRustBeltSecuringFoundations2018a}, Aeneas' LLBC \cite[Section 4.3]{aeneas}, and Mezzo \cite{protzenkoMezzoTypedLanguage2014} also enforce the same restriction on their equivilants of match statements.
 
-All interpretation rules take the form $\Omega \vdash M \diamond t \dashv \Omega'$ where $\diamond$ is one of $\{ \allarrows \}$, $M$ is a term, $\Omega$ and $\Omega'$ are the abstract environments before and after, and $t$ is the type of the value which has been read or written. This is analogous to Hoare triple where $\Omega$ is the pre-condition, and $\Omega'$ is the post-condition.
+This restriction does not limit what programs can be represented because a program with match statements in non-terminal positions can be re-written to one that only has matches in terminal positions with the following rewrite rule: replace all occurances of $\mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S \mono{;} S'}$ \} }$ with $\mono{match $M$ \{ $\overrightarrow{M' \mono{ => } S}$ \} }; S'$. This has not been included in Ochre because I intend to support dependence between variables in the future, and therefore precise environment union, which removes the need for the restriction. This rewrite rule has the disadvantage of causing an exponential blowup in code size/interpretation derivation size, and more importantly, an exponential blowup in the complexity of the analysis once implemented.
 
-Section \ref{subsection:modalities} introduces key concepts that are required to understand the definitions; subsequent subsections define the abstract interpretation. The reader is encouraged to skip around definitions a lot, they are laid out in tables to make finding a particular definition easier, as one might in a repository of code.
-
-\label{subsection:modalities}
-It is best to conceptualize the arrows as a single interpretation with many modalities. The following arrows are used to denote the different modalities:
-
-\begin{figure}[H]
-  \centering
-  \def\arraystretch{1.5}
-  \begin{tabular}{c|l|l}
-  & Read & Write \\
-  \hline
-  Runtime destructive & $\movearrow$ \ocomment{move}  & $\writearrow$ \ocomment{write}  \\
-  Runtime non-destructive & $\readarrow$ \ocomment{read}  & $\narrowarrow$ \ocomment{type narrow} \\
-  Comptime & $\erasedreadarrow$ \ocomment{erased read} &  $\erasedwritearrow$ \ocomment{erased write} \\
-  \end{tabular}
-  \def\arraystretch{1}
-  \caption{Exhaustive table of the interpretations which make up Ochre}
-  \label{fig:interpretationstable}
-\end{figure}
-
-To summarize the modalities: a dot above the arrow denotes \textit{abstract} interpretation which means it is not executing the code, only type-checking it; squiggly arrows denote the interpretation of terms that are erased at compile time; arrows which point rightwards (away from the term) denote reads, arrows which point leftwards (towards the term) denote writes. These modalities are elaborated on below.
-
-\subsubsection{Comptime vs Runtime Modality}
-There are two distinct types of terms in Ochre: runtime terms, and comptime terms.
-
-\textbf{Runtime terms} are constrained such that they can be executed efficiently on hardware. This involves manual memory management with move semantics, so no garbage collector is required at runtime, and allows the in-place mutation of data structures.
-
-\textbf{Comptime terms} are erased at compile time and are only used to compute types. Because comptime terms only exist during compilation, and not during runtime, inefficient but automatic memory management strategies can be used, such as reference counting. This removes the need for move semantics, which allows types to be used multiple times without explicit copying.
-
-Because comptime terms do not have move semantics, we cannot have mutation\footnote{The method of combining mutability with dependent types this research uses relies on move semantics, therefore we cannot have mutability on non-move semantics code.}, and we do not need immutable references. Not supporting mutation within comptime terms has the added benefit of the programmer not having to reason about the side effects of evaluating types, which happens implicitly in situations including type checking a function call site (see \odef{\movearrow}{M N}).
- 
-There is no syntactic distinction between comptime and runtime terms because they are so similar, although there could have been because one can always determine whether a term is comptime or runtime given its position.
-
-\subsubsection{Abstract vs Concrete Modality}
-Comptime interpretations ($\erasedreadarrow, \erasedwritearrow$) are only ever abstract, whereas runtime interpretations ($\movearrow, \writearrow, \narrowarrow, \readarrow$) can have an optional dot above them; this dot means "abstract interpret".
-
-Execution and type checking are very closely related in Ochre because execution is just the totally precise version of type checking. They differ only in how they treat type annotations, and how they treat functions. Abstract interpretation will evaluate $M \mono{:} T$ to the result of evaluating $T$, and concrete interpretation will evaluate the same syntax to the result of evaluating $M$. Abstract interpretation will evaluate $M N$ by interpreting the return term of the function $M$ evaluates to, whereas concrete interpretation will execute the function's body.
-
-This guarantees concrete interpretation will output a precise result (singleton type) because the only way to form non-singleton types is via type union, which can only occur on the right-hand side of a type annotation, or function return type.
-
-\begin{Definition}{Concrete and Abstract Arrow Designations}{}
-  \centering
-  \small
-  \begin{mathpar}
-    \forall \diamond \in \{ \abstractarrows \} \left[
-      \inferrule{
-        \\
-      }{
-        \oabstract{\diamond}
-      }\right]
-
-      \forall \diamond \in \{ \concarrows \} \left[
-        \inferrule{
-          \\
-        }{
-          \concrete{\diamond}
-        }
-      \right]
-  \end{mathpar}
-\end{Definition}
-\label{fig:arrowhelper}
-
-\subsubsection{Read vs Write Modality}
-In typical languages like the $\lambda$-calculus, terms are evaluated to a value, which is equivilant to the notion of the read modality in Ochre. The write modality allows you to write a value to a term, which is how variables are brought into scope. You might find it useful to compare reading a variable $x$ with writing to a variable $x$:
-
-\begin{figure}[H]
-  \begin{mathpar}
-    \inferrule[\odef{\movearrow}{x}]{
-      \Omega' = \Omega\left[\frac{\absmap{x}{\top}}{\absmap{x}{v}}\right]
-    }{
-      \Omega \vdash x \movearrow m \dashv \Omega'
-    }
-
-    \inferrule[\odef{\writearrow}{x}]{
-      \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
-    }{
-      \Omega \vdash x \writearrow v \dashv \Omega'
-    } 
-  \end{mathpar}
-  \caption{Reading removes a value from the environment, whereas writing adds a value.}
-\end{figure}
-\vspace{-5ex}
-\noindent
-Defining the write operation for more complex pieces of syntax is how several language features are defined, including but not limited to: pattern matching, destructuring, and specifying function arguments.
-
-\begin{Definition}{Read/Write Arrow Designations}{}
-  \centering
-  \small
-  \begin{mathpar}
-    \forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \} \left[
-      \inferrule{
-        \\
-      }{
-        \oread{\diamond}
-      }\right]
-
-      \forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \} \left[
-        \inferrule{
-          \\
-        }{
-          \owrite{\diamond}
-        }
-      \right]
-  \end{mathpar}
-\end{Definition}
-\label{fig:readwritedesignations}
-
-% Explain all 6 by looking at the interpretations of the variable $x$.
-
-% \subsection{Moving From Syntax}
-% Destructive operations assert that a piece of syntax has a runtime influence on the data in memory, and updates the environment accordingly. As Ochre has Rust-like ownership semantics, so do these assertions; this means that reading from a variable will \textit{move} the value out of wherever it was previously, and prevent it from being used again. For example $\{x \mapsto 5\} \vdash x\,\dot{\Rightarrow}\,5 \dashv \{x \mapsto \bot\}$ means when $x$ is $5$ in the environment, you can read a $5$ from it, and can't read it again in the future. Writes are destructive because writing a value into memory requires the old value to be deallocated first. The full definition of $\dot{\Rightarrow}$
-
-% \subsection{Writing To Syntax}
-% The $\writearrow$ defines what it means to \textit{write} to a given piece of syntax. This is how values get brought into the context, for instance, an assign (\mono{=}) works by evaluating the RHS, and then writing it to the LHS, which is usually just a variable $x$, but in the case of destructuring could also be a pair $(x, y)$.
-
-
-
-% \subsection{Reading from syntax}
-% The $\readarrow$ defines what it means to read from a piece of syntax. Judgments of this form turn into memory reads at runtime, they can follow references and look into pairs.
-
-% While most of the time this is used for reading, it can also be used to do something called type \textit{widening}. $\mono{x} \readarrow 5$ means 5 can be read from $\mono{x}$, but if 5 can be read from $\mono{x}$, so can $\mathbb{N}$, because $5$ is a subtype of $\mathbb{N}$.
-
-% It's called type widening because it widens the type in the environment, instead of just reading a wider type while leaving the original alone. So $\{\mono{x} \mapsto 5\} \vdash \mono{x} \readarrow \mathbb{N} \dashv \{\mono{x} \mapsto \mathbb{N}\}$.
-
-% If you encounter a judgment like $\Omega \vdash \mono{x} \readarrow 5$, it means the environment hasn't changed (i.e. $\Omega \vdash \mono{x} \readarrow 5 \dashv \Omega$), so you know the value of $\mono{x}$ has just been read, instead of being widened in place.
-
-% The definition of $\readarrow$ for all pieces of syntax is shown in Figure \ref{fig:read}.
-
-
-% \subsection{Type Narrowing}
-% The $\narrowarrow$ constrains the type of syntax down to a smaller type. This is primarily useful when type-checking $\kw{case}$ expressions. When type-checking a particular branch of a case expression, you can modify the environment to reflect the fact that you know which branch you're in and therefore what the value of the case expression is. This is particularly useful when the type of the right-hand side of a pair depends on the left-hand value, because you can $\kw{case}$ the left-hand value, and in each branch you will know the type of the right. This is how ADTs are implemented in Ochre. It's definition is given in Figure \ref{fig:narrow}.
-
-
-% Non-destructive operations
-
-% Compile-time only operations
+\textbf{Types can be treated as terms}. This is useful in a few rules where we need to construct a term which always interprets to the same type, such as in \odef{\movearrow}{\pleft{M}}.
 
 \section{Environment, Values, and Types}
-The abstract environment, and abstract values:
+\label{section:environmentvaluestypes}
+Our type checker is defined as an abstract interpretation that interprets terms while modifying an \textit{abstract environment}. The abstract environment contains everything we know statically about the program at a given point in the interpretation. Its most common use is storing the type of variables, but it is also used for storing \textit{loan restrictions}, which are used in function checking to ensure function bodies mutate their arguments correctly. Figure \ref{fig:env} shows our definition of the abstract environment.
 
-\begin{figure}[H]
+\subsubsection{Representation of Types}
+The abstract environment maps variables to types. Atom types are a mathematical set of atoms, which represent an exhaustive list of atoms inhabiting this type.
+
+Functions store syntax which can be used to turn input into output. If you have a value of type $t$, and you pass it to a function with type $T \rightarrow U$, its return type is calculated by writing $t$ to $T$, then reading the return type from $U$, as defined in Section \ref{section:formalfunctions}
+
+Pair types store two components, the type of the left element $t$, and syntax which can be used to turn the type of the left element into the type of the right element $T \rightarrow U$. By storing how to turn left into right, instead of storing right directly, we can make the right type \textit{depend} on the left type, this is what makes Ochre pairs dependent.
+
+Borrows and loans are used to track ownership information in the environment. If a type is a loan, it means the underlying value has been borrowed, and cannot be mutated. If the type is a borrow, it means you have borrowed the value, and must give it back eventually, as explained in Section \ref{section:checkingexample}.
+
+The $\top$ type is used to denote a lack of typing information. Every type/value is of type $\top$. When you move a value, the previous location is set to $\top$, to denote uninitialized data. When a value has never been written to before, its value is $\top$, again, to denote uninitialized data. When a type $t$ depends on another type $u$, but $u$ has not been narrowed down enough to deduce the type of $t$, $t$ evaluates to $\top$ to denote the lack of typing information.
+
+\begin{figure}
   \arraycolsep=1pt %
   \centering
 
@@ -1357,10 +1279,10 @@ The abstract environment, and abstract values:
     \\
     m, n, v, w, t, u & ::= & & \ocomment{type/value} \\
     && \{\overrightarrow{\atom{a}}\} & \ocomment{atom} \\
-    && (v, T \rightarrow U) & \ocomment{pair} \\
+    && (t, T \rightarrow U) & \ocomment{pair} \\
     && (T \rightarrow U) & \ocomment{function} \\
-    && \borrows{l}{v} \mid \borrowm{l}{v} & \ocomment{reference} \\
-    && \loans{l}{v} \mid \loanm{l} & \ocomment{referenced value} \\
+    && \borrows{l}{t} \mid \borrowm{l}{t} & \ocomment{reference} \\
+    && \loans{l}{t} \mid \loanm{l} & \ocomment{referenced value} \\
     && \top & \ocomment{top} \\
     % \\
     % p & ::= & & \ocomment{pointer} \\
@@ -1371,9 +1293,6 @@ The abstract environment, and abstract values:
 \caption{Abstract/Concrete Environment and Types} %
 \label{fig:env} %
 \end{figure} %
-
-\subsubsection{The Top Type}
-The $\top$ type is used to denote a lack of typing information. Every type/value is of type $\top$. When you move a value, the previous location is set to $\top$, to denote uninitialized data. When a value has never been written to before, its value is $\top$, again, to denote uninitialized data. When a type $t$ depends on another type $u$, but $u$ has not been narrowed down enough to deduce the type of $t$, $t$ evaluates to $\top$ to denote the lack of typing information.
 
 \subsubsection{Concrete Values}
 If a type is a singleton type (a type with one inhabitant), it is referred to as a value. For example $\{ \atom{a} \}$ is a concrete value/type, but $\{ \atom{a}, \atom{b} \}$ is not. Figure \ref{definition:dropconcrete} shows the formal definition of concrete values. Concrete values and non-singleton types share a grammar because rules are typically generic over both and preserve a values concreteness, so combining them avoids the syntatic overhead of introducing an additional modality.
@@ -1473,7 +1392,7 @@ When an operation is no longer used, it must be dropped. At runtime, dropping a 
 \label{definition:dropconcrete}
 
 \subsubsection{Environment Rearrangement}
-At any point during a program interpretation, whether it be abstract or concrete interpretation, the environment can be \textit{rearranged}, a technique introduced by Aeneas \cite{aeneas}. Environment rearranges can be inserted before or after any of the interpretation judgements.
+At any point during a program interpretation, whether it be abstract or concrete interpretation, the environment can be \textit{rearranged}, a technique introduced by Aeneas \cite{aeneas}. Environment rearranges can be inserted before or after any of the interpretation judgments.
 
 \begin{Definition}{Environment Rearrangement}{}
   \centering
@@ -1622,13 +1541,14 @@ At any point during a program interpretation, whether it be abstract or concrete
 \textbf{Subtype} - If a variable is not mapped to something in the environment, it is implicitly mapped to $\top$, so $\emptyset$ is the supertype of every environment. This is the base case. It then takes variables off the super environment one by one, making sure each one is a supertype of its equivalent in the sub environment.
 
 \section{Type Operations}
-This section defines subtyping, type intersection, and type union. These operations are used throughout the interpretations and discussions of properties.
+\label{section:typeoperations}
+This section defines subtyping and type union. These operations are used throughout the interpretations and discussions of properties.
 
-\begin{Definition}{Subtype}{}
+\begin{Definition}{Type Operations}{}
   \centering
-  \small
+  \smaller
   \begin{tabular}{c|ccc}
-    $v$ & $t \subtype u$ \\
+    $v$ & $t \subtype u$ & $t \sqcup u$ \\
     \hline
 
     \\$\{ \overrightarrow{\atom{a}} \}$ &
@@ -1636,6 +1556,11 @@ This section defines subtyping, type intersection, and type union. These operati
       \{ \overrightarrow{\atom{a}} \} \subseteq  \{ \overrightarrow{\atom{b}} \}
     }{
       \Omega \vdash \{ \overrightarrow{\atom{a}} \} \subtype \{ \overrightarrow{\atom{b}} \}
+    } &
+    \inferrule{
+      v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
+    }{
+      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
     } \\
 
     \\$(v, T \rightarrow U)$ &
@@ -1647,6 +1572,11 @@ This section defines subtyping, type intersection, and type union. These operati
       \Gamma'' \vdash S \subtype S' \erasedreadarrow v
     }{
       \Omega \vdash (t, T \rightarrow S) \subtype (t', T' \rightarrow S')
+    } &
+    \inferrule{
+      \Omega \vdash v'' = v \typeunion v' \\\\      \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\      w = (v'', T'' \rightarrow U'')
+    }{
+      \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
     } \\
 
     \\$(T \rightarrow S)$ &
@@ -1658,75 +1588,20 @@ This section defines subtyping, type intersection, and type union. These operati
       \Gamma' \vdash S_t \subtype S_t' \erasedreadarrow t
     }{
       \Omega \vdash M \rightarrow S_t \subtype t \rightarrow S_t'
-    } \\
+    } &
+    \inferrule{
+      v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
+      \mono{    $T$ => $S$, $T'$ => $S'$ \}})
+    }{
+      \Omega \vdash v = (T \rightarrow S) \typeunion (T' \rightarrow S')
+     } \\
 
     \\$\borrows{l}{v}$ &
     \inferrule{
       \Omega \vdash v \subtype v'
     }{
       \Omega \vdash \borrows{l}{v} \subtype \borrows{l}{v'}
-    } \\
-
-    \\$\borrowm{l}{v}$ &
-    \inferrule{
-      \Omega \vdash v \subtype v'
-    }{
-      \Omega \vdash \borrowm{l}{v} \subtype \borrowm{l}{v'}
-    } \\
-
-    \\$\loans{l}{v}$ &
-    \inferrule{
-      \Omega \vdash v \subtype v'
-    }{
-      \Omega \vdash \loans{l}{v} \subtype \loans{l}{v'}
-    } \\
-
-    \\$\loanm{l}$ &
-    \inferrule{
-    }{
-      \Omega \vdash \loanm{l} \subtype \loanm{l}
-    } \\
-  \end{tabular}
-\end{Definition}
-
-\begin{Definition}{Type Union and Intersection}{}
-  \small
-  \centering
-  \begin{tabular}{c|ccc}
-    $v$ & $v = t \typeunion u$ & $v = t \typeinter u$ \\
-    \hline
-
-    \\$\{ \overrightarrow{\atom{a}} \}$ &
-    \inferrule{
-      v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
-    }{
-      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
     } &
-    \inferrule{
-      v = \{ \overrightarrow{\atom{a}} \} \cap  \{ \overrightarrow{\atom{b}} \}
-    }{
-      \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeinter \{ \overrightarrow{\atom{b}} \}
-    } \\
-
-    \\$(v, T \rightarrow U)$ &
-    \inferrule{
-      \Omega \vdash v'' = v \typeunion v' \\\\
-      \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\
-      w = (v'', T'' \rightarrow U'')
-    }{
-      \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
-    }
-    \\
-
-    \\$(T \rightarrow S)$ &
-    \inferrule{
-      v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
-      \mono{    $T$ => $S$, $T'$ => $S'$ \}})
-    }{
-      \Omega \vdash v = (T \rightarrow S) \typeunion (T' \rightarrow S')
-    }\\
-
-    \\$\borrows{l}{v}$ &
     \inferrule{
       \Omega \vdash t = v \typeunion v'
     }{
@@ -1735,12 +1610,23 @@ This section defines subtyping, type intersection, and type union. These operati
 
     \\$\borrowm{l}{v}$ &
     \inferrule{
+      \Omega \vdash v \subtype v'
+    }{
+      \Omega \vdash \borrowm{l}{v} \subtype \borrowm{l}{v'}
+    } &
+    \inferrule{
       \Omega \vdash t = v \typeunion v'
     }{
       \Omega \vdash \borrowm{l}{t} = \borrowm{l}{v} \typeunion \borrowm{l}{v'}
     } \\
 
+
     \\$\loans{l}{v}$ &
+    \inferrule{
+      \Omega \vdash v \subtype v'
+    }{
+      \Omega \vdash \loans{l}{v} \subtype \loans{l}{v'}
+    } &
     \inferrule{
       \Omega \vdash t = v \typeunion v'
     }{
@@ -1750,10 +1636,75 @@ This section defines subtyping, type intersection, and type union. These operati
     \\$\loanm{l}$ &
     \inferrule{
     }{
+      \Omega \vdash \loanm{l} \subtype \loanm{l}
+    } &
+    \inferrule{
+    }{
       \Omega \vdash \loanm{l} = \loanm{l} \typeunion \loanm{l}
     } \\
   \end{tabular}
 \end{Definition}
+
+% \begin{Definition}{Type Union and Intersection}{}
+%   \small
+%   \centering
+%   \begin{tabular}{c|ccc}
+%     $v$ & $v = t \typeunion u$ \\
+%     \hline
+
+%     \\$\{ \overrightarrow{\atom{a}} \}$ &
+%     \inferrule{
+%       v = \{ \overrightarrow{\atom{a}} \} \uplus  \{ \overrightarrow{\atom{b}} \}
+%     }{
+%       \Omega \vdash v = \{ \overrightarrow{\atom{a}} \} \typeunion \{ \overrightarrow{\atom{b}} \}
+%     } \\
+
+%     \\$(v, T \rightarrow U)$ &
+%     \inferrule{
+%       \Omega \vdash v'' = v \typeunion v' \\\\      \Omega \vdash (T'' \rightarrow U'') = (T \rightarrow U) \typeunion (T' \rightarrow U') \\\\      w = (v'', T'' \rightarrow U'')
+%     }{
+%       \Omega \vdash w = (v, T \rightarrow U) \typeunion (v', T' \rightarrow U')
+%     }
+%     \\
+
+%     \\$(T \rightarrow S)$ &
+%     \inferrule{
+%       v = (\mono{(L: $T$ | $T'$)} \rightarrow \mono{match L \{} \\\\
+%       \mono{    $T$ => $S$, $T'$ => $S'$ \}})
+%     }{
+%       \Omega \vdash v = (T \rightarrow S) \typeunion (T' \rightarrow S')
+%     }\\
+
+%     \\$\borrows{l}{v}$ &
+%     \inferrule{
+%       \Omega \vdash t = v \typeunion v'
+%     }{
+%       \Omega \vdash \borrows{l}{t} = \borrows{l}{v} \typeunion \borrows{l}{v'}
+%     } \\
+
+%     \\$\borrowm{l}{v}$ &
+%     \inferrule{
+%       \Omega \vdash t = v \typeunion v'
+%     }{
+%       \Omega \vdash \borrowm{l}{t} = \borrowm{l}{v} \typeunion \borrowm{l}{v'}
+%     } \\
+
+%     \\$\loans{l}{v}$ &
+%     \inferrule{
+%       \Omega \vdash t = v \typeunion v'
+%     }{
+%       \Omega \vdash \loans{l}{t} = \loans{l}{v} \typeunion \loans{l}{v'}
+%     } \\
+
+%     \\$\loanm{l}$ &
+%     \inferrule{
+%     }{
+%       \Omega \vdash \loanm{l} = \loanm{l} \typeunion \loanm{l}
+%     } \\
+%   \end{tabular}
+% \end{Definition}
+
+We also define the lesser-used type operator (as opposed to \textit{sub}-type operator) which additionally asserts that the left hand of the colon is a concrete type; that is, a singleton.
 
 \begin{Definition}{Type Operator}{} \[
   \inferrule{
@@ -1764,8 +1715,167 @@ This section defines subtyping, type intersection, and type union. These operati
   }
 \] \end{Definition}
 
-\section{Interpretations}
-This section defines the abstract and concrete interpretations which define Ochre's type checking and runtime semantics respectively.
+\section{Interpretation Introduction}
+\label{section:interpretationconcepts}
+Now we have defined the objects our interpretation operates over, this section covers the core of the system: the abstract interpretation which defines. This interpretation takes a term and outputs a type while modifying an abstract environment. This abstract interpretation is given in terms of two judgments:
+
+\begin{itemize}
+  \item $\Omega \vdash S \subtype S_t \diamond t$ where $\diamond$ is one of $\{ \movearrow, \erasedreadarrow \}$ which reads ``when the statement $S$ is interpreted under $\Omega$ with a bound of $S_t$, a value of type $t$ is produced.''. The bound $S_t$ is a statement that must always be wider than $S$, which is checked and upheld throughout the interpretations.
+  \item $\Omega \vdash M \diamond t \dashv \Omega'$ where $\diamond$ is one of $\{ \allarrows \}$.
+  \begin{itemize}
+    \item If $\diamond$ is a read arrow (rightward pointing), it reads ``Under $\Omega$, $M$ is interpretted to a value of type $t$, and updates the environment to $\Omega'$.''
+    \item If $\diamond$ is a write arrow (leftward pointing), it reads ``under $\Omega$, if $t$ is written to $M$, the environment is updated to $\Omega'$''.
+  \end{itemize}
+\end{itemize}
+
+\noindent This is analogous to a Hoare triple where $\Omega$ is the pre-condition, and $\Omega'$ is the post-condition.
+
+We first introduce key concepts that are required to understand the definitions; then subsequent sections define the abstract interpretation. The reader is encouraged to skip around definitions a lot, they are laid out in tables to make finding a particular definition easier, as one might in a repository of code.
+
+It is best to conceptualize the arrows as a single interpretation with many modalities. Figure \ref{fig:interpretationstable} shows the different modalities and their respective arrows.
+
+\begin{figure}
+  \centering
+  \def\arraystretch{1.5}
+  \begin{tabular}{c|l|l}
+  & Read & Write \\
+  \hline
+  Runtime destructive & $\movearrow$ \ocomment{move}  & $\writearrow$ \ocomment{write}  \\
+  Runtime non-destructive & $\readarrow$ \ocomment{read}  & $\narrowarrow$ \ocomment{type narrow} \\
+  Comptime & $\erasedreadarrow$ \ocomment{erased read} &  $\erasedwritearrow$ \ocomment{erased write} \\
+  \end{tabular}
+  \def\arraystretch{1}
+  \caption{Exhaustive table of the interpretations which make up Ochre}
+  \label{fig:interpretationstable}
+\end{figure}
+
+To summarize the modalities: a dot above the arrow denotes \textit{abstract} interpretation which means it is not executing the code, only type-checking it; squiggly arrows denote the interpretation of terms that are erased at compile time; arrows which point rightwards (away from the term) denote reads, arrows which point leftwards (towards the term) denote writes. These modalities are elaborated on below.
+
+\subsubsection{Comptime vs Runtime Modality}
+Ochre has two distinct sorts of term: runtime terms, and comptime (compile-time) terms.
+
+\textbf{Runtime terms} must run efficiently on hardware, and are constrained to support this. This involves move semantics to enable manual memory management and allows the in-place mutation of data structures.
+
+\textbf{Comptime terms} are only used to compute types, thus they are erased at compile time. Inefficient but automatic memory management strategies can be used for comptime terms, such as reference counting, because they are not used by the concrete interpretation. This removes the need for move semantics, which allows types to be used multiple times without explicit copying.
+
+Comptime terms do not have move semantics, so they cannot have mutation\footnote{The method of combining mutability with dependent types this research uses relies on move semantics, therefore we cannot have mutability on non-move semantics code.}, and thus we do not need immutable references. By not supporting mutation within comptime terms, the programmer does not have to reason about the side effects of evaluating types. The evaluation of types occurs implicitly in situations such as type checking a function call site (see \odef{\movearrow}{M N}).
+ 
+There is no syntactic distinction between comptime and runtime terms because they are so similar, although there could have been because one can always determine whether a term is comptime or runtime given its position.
+
+\subsubsection{Abstract vs Concrete Modality}
+Comptime interpretations ($\erasedreadarrow, \erasedwritearrow$) are only ever abstract, whereas runtime interpretations ($\movearrow, \writearrow, \narrowarrow, \readarrow$) can have an optional dot above them; this dot means "abstract interpret".
+
+The motivation behind having concrete semantics is so we can reason about the system's soundness, it is not useful for making efficient programs or otherwise implementing Ochre because hte concrete semantics as described here would not be performant.
+
+Execution and type checking are very closely related in Ochre; execution is the precise version of type checking, where the inferred type is always a singleton type. They abstract and concrete modalities differ only in how they treat type annotations, and how they treat functions:
+
+\begin{itemize}
+  \item $M \mono{:} T$ runs to $T$ under abstract interpretation, and $M$ under concrete interpretation.
+  \item $M N$ causes the return type of the function to be executed under abstract interpretation, and the body fo the function to be executed under concrete interpretation.
+\end{itemize}
+
+\noindent This guarantees concrete interpretation will output a precise result (singleton type). The only way to form non-singleton types is via type union, which can only occur on the right-hand side of a type annotation, or function return type, as enforced by type union interpretation only being defined for $\erasedreadarrow$.
+
+In the interpretation rules, the following definition is used occasionally to make assertions conditional:
+
+\begin{Definition}{Concrete and Abstract Arrow Designations}{}
+  \centering
+  \small
+  \begin{mathpar}
+    \forall \diamond \in \{ \abstractarrows \} \left[
+      \inferrule{
+        \\
+      }{
+        \oabstract{\diamond}
+      }\right]
+
+      \forall \diamond \in \{ \concarrows \} \left[
+        \inferrule{
+          \\
+        }{
+          \concrete{\diamond}
+        }
+      \right]
+  \end{mathpar}
+\end{Definition}
+\label{fig:arrowhelper}
+
+\subsubsection{Read vs Write Modality}
+The read modality in Ochre evaluates a term to a value. This is analagous to reduction in the $\lambda$-calculus. The write modality writes a value to a term. The write modality allows one to write a value to a term; this brings variables into scope. Figure \ref{fig:readvswrite} illustrates the difference between the read and write modality with the example of variable interpretation. Defining the write operation for more complex pieces of syntax is how several language features are defined, including but not limited to: pattern matching, destructuring, and specifying function arguments.
+
+\begin{figure}
+  \begin{mathpar}
+    \inferrule[\odef{\movearrow}{x}]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{\top}}{\absmap{x}{v}}\right]
+    }{
+      \Omega \vdash x \movearrow m \dashv \Omega'
+    }
+
+    \inferrule[\odef{\writearrow}{x}]{
+      \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
+    }{
+      \Omega \vdash x \writearrow v \dashv \Omega'
+    } 
+  \end{mathpar}
+  \caption{Reading removes a value from the environment, whereas writing adds a value.}
+  \label{fig:readvswrite}
+\end{figure}
+
+\begin{Definition}{Read/Write Arrow Designations}{}
+  \centering
+  \small
+  \begin{mathpar}
+    \forall \diamond \in \{ \movearrow, \readarrow, \erasedreadarrow \} \left[
+      \inferrule{
+        \\
+      }{
+        \oread{\diamond}
+      }\right]
+
+      \forall \diamond \in \{ \writearrow, \narrowarrow, \erasedwritearrow \} \left[
+        \inferrule{
+          \\
+        }{
+          \owrite{\diamond}
+        }
+      \right]
+  \end{mathpar}
+\end{Definition}
+\label{fig:readwritedesignations}
+
+% Explain all 6 by looking at the interpretations of the variable $x$.
+
+% \subsection{Moving From Syntax}
+% Destructive operations assert that a piece of syntax has a runtime influence on the data in memory, and updates the environment accordingly. As Ochre has Rust-like ownership semantics, so do these assertions; this means that reading from a variable will \textit{move} the value out of wherever it was previously, and prevent it from being used again. For example $\{x \mapsto 5\} \vdash x\,\dot{\Rightarrow}\,5 \dashv \{x \mapsto \bot\}$ means when $x$ is $5$ in the environment, you can read a $5$ from it, and can't read it again in the future. Writes are destructive because writing a value into memory requires the old value to be deallocated first. The full definition of $\dot{\Rightarrow}$
+
+% \subsection{Writing To Syntax}
+% The $\writearrow$ defines what it means to \textit{write} to a given piece of syntax. This is how values get brought into the context, for instance, an assign (\mono{=}) works by evaluating the RHS, and then writing it to the LHS, which is usually just a variable $x$, but in the case of destructuring could also be a pair $(x, y)$.
+
+
+
+% \subsection{Reading from syntax}
+% The $\readarrow$ defines what it means to read from a piece of syntax. Judgments of this form turn into memory reads at runtime, they can follow references and look into pairs.
+
+% While most of the time this is used for reading, it can also be used to do something called type \textit{widening}. $\mono{x} \readarrow 5$ means 5 can be read from $\mono{x}$, but if 5 can be read from $\mono{x}$, so can $\mathbb{N}$, because $5$ is a subtype of $\mathbb{N}$.
+
+% It's called type widening because it widens the type in the environment, instead of just reading a wider type while leaving the original alone. So $\{\mono{x} \mapsto 5\} \vdash \mono{x} \readarrow \mathbb{N} \dashv \{\mono{x} \mapsto \mathbb{N}\}$.
+
+% If you encounter a judgment like $\Omega \vdash \mono{x} \readarrow 5$, it means the environment hasn't changed (i.e. $\Omega \vdash \mono{x} \readarrow 5 \dashv \Omega$), so you know the value of $\mono{x}$ has just been read, instead of being widened in place.
+
+% The definition of $\readarrow$ for all pieces of syntax is shown in Figure \ref{fig:read}.
+
+
+% \subsection{Type Narrowing}
+% The $\narrowarrow$ constrains the type of syntax down to a smaller type. This is primarily useful when type-checking $\kw{case}$ expressions. When type-checking a particular branch of a case expression, you can modify the environment to reflect the fact that you know which branch you're in and therefore what the value of the case expression is. This is particularly useful when the type of the right-hand side of a pair depends on the left-hand value, because you can $\kw{case}$ the left-hand value, and in each branch you will know the type of the right. This is how ADTs are implemented in Ochre. It's definition is given in Figure \ref{fig:narrow}.
+
+
+% Non-destructive operations
+
+% Compile-time only operations
+
+\section{Interpretation Judgements}
+\label{section:interpretationjudgements}
+This section defines the abstract and concrete semantics which define Ochre's type checking and runtime semantics respectively using the concepts introduced by Section \ref{section:inter}
 
 Definitions are identified by \odef{M}{\rightarrow}, where $\rightarrow$ is the arrow being defined, and $M$, is the piece of syntax it is being defined for. For example \odef{M N}{\movearrow} refers to the rule for destructively reading a function application (potentially abstractly). The reader is encouraged to refer to Table \ref{fig:interpretationstable} while reading the interpretation definitions to look up the meaning of arrows.
 
@@ -1773,29 +1883,30 @@ The definitions of the interpretations are laid out in tables. Each cell defines
 
 The position of a definition within a definition table does not encode any information. The table layout serves entirely to aid definition lookup.
 
-For some syntactic constructs, the definition for one modality is identical to it's definition for another; to avoid repetition multiple interpretations can be defined for a single construct at once by quantifying over the arrow being defined. An extreme example of this is the atom constructor, which is defined identically for all 6 arrows:
+For some syntactic constructs, the definition for one modality is identical to its definition for another; to avoid repetition multiple interpretations can be defined for a single construct at once by quantifying over the arrow being defined. An extreme example of this is the atom constructor, which is defined identically for all 6 arrows, as shown in Figure \ref{fig:quantificationoverall}.
 
-\begin{figure}[H]
+\begin{figure}
   \begin{mathpar}
     \forall \diamond \in \{ \erasedreadarrow, \readarrow, \movearrow, \writearrow, \narrowarrow, \erasedwritearrow \}. \left[
-      \inferrule[\odef{everything}{\atom{a}}]{
+      \inferrule[\odef{\diamond}{\atom{a}}]{
       }{
         \Omega \vdash \mono{'a} \diamond\,'a
       }
     \right]
   \end{mathpar}
   \caption{An example of quantification over all interpretation arrows}
+  \label{fig:quantificationoverall}
 \end{figure}
 
 Not every syntactic construct is defined for every interpretation, which determines which constructions are permitted in which places in a program. For example, comptime variable identifiers cannot be used in runtime terms, so the runtime arrows are not defined for comptime variable identifiers: \odef{X}{\erasedreadarrow} exists but \odef{X}{\readarrowabs} does not.
 
-The following table shows which interpretations are defined for which constructs, and where to find its definition:
+Figure \ref{fig:lookuptable} shows which interpretations are defined for which constructs, and where to find its definition. References to definitions in prose link to this table for easy reference, for example: \odef{\movearrowabs}{M N}.  Each of the following sections will define the typing judgments formally and explain their definition, as per the lookup table.
 
 % M
 % M = N; S
 % \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\}
 
-\begin{figure}[H]
+\begin{figure}
   \begin{adjustwidth}{-1cm}{-1cm}
   \def\arraystretch{1.3}
   \begin{mathpar}
@@ -1862,8 +1973,6 @@ The following table shows which interpretations are defined for which constructs
   \caption{Interpretation Definition Lookup Table}
   \label{fig:lookuptable}
 \end{figure}
-
-Each of the sections in the above tables will define the typing judgments formally and explain their definition.
 
 \subsection{Base Expressions}
 \label{section:formalbase}
@@ -2134,10 +2243,11 @@ This section defines abstraction and application.
         \Omega \vdash F \readarrowconc (M \rightarrow S) & \ocomment{function def.} \\
         \Omega \vdash A \movearrowconc v \dashv \Omega' & \ocomment{argument value} \\
         \Omega' \vdash M \writearrowconc v \dashv \Omega'' & \ocomment{inner env.} \\
-        \Omega'' \vdash S \movearrowconc w \dashv \Omega''' & \ocomment{return value} \\
+        \Omega'' \vdash S \movearrowconc w & \ocomment{return value} \\
+        \Omega'' \vdash \kw{drop} w \dashv \Omega'''
       \end{array}
     }{
-      \Omega \vdash F A \movearrowconc w \dashv \Omega'''
+      \Omega \vdash F A \movearrowconc w \dashv \Omega''
     }$ \\
     % \inferrule{
     %   \Omega \vdash F \readarrowconc (M  \rightarrow S) \\\\
@@ -2217,7 +2327,7 @@ Due to being dependent, the interpretations of pairs in Ochre are similar to the
   \end{tabular}
 \end{Definition}
 
-Accessing the right element of a pair is so involved because it involves interpreting the term stored in the abstract environment. This must be done with care to avoid soundness issues: the environment being used to execute this term during a pair access is different to the one used to construct the pair; how can we expect it to give the same result? Because we filter the environment for only the comptime variables, and because interpretation only ever narrows comptime variables, we know that the result of executing the syntax at elimination is a subtype of what it was at construction. See Property \ref{theorem:interpretationnarrowscomptime} for more.
+Accessing the right element of a pair is so involved because it involves interpreting the term stored in the abstract environment. This must be done with care to avoid soundness issues: the environment being used to execute this term during a pair access is different to the one used to construct the pair; how can we expect it to give the same result? Because we filter the environment for only the comptime variables, and because interpretation only ever narrows comptime variables, we know that the result of executing the syntax at elimination is a subtype of what it was at construction.
 
 \begin{adjustwidth}{-0.0cm}{-0.0cm}
 \begin{Definition}{Pair Construction Interpretations}{}
@@ -2605,6 +2715,7 @@ Concrete match statement interpretation interprets the scrutinee and then calcul
 Abstract match statement interpretation first evaluates the scrutinee, then it evaluates all of the branches. The result of interpreting a match statement is the union of the types of each of the branches, which is precise (Property \ref{theorem:precisetypeunion}).
 
 \subsection{Max Interpretation}
+\label{section:maxinterpretation}
 Max interpretation returns the maximum value that can be written to a given term. It is used in function definition checking to check the type of the argument (see \odef{\movearrowabs, \erasedreadarrow}{M \mono{->} S_t}).
 
 \begin{Definition}{Max Interpretation}{}
@@ -2681,31 +2792,25 @@ The maximum value one can write to a type annotation is the annotated type, beca
 
 \section{Design Decisions}
 \label{section:designdecisions}
-
-\subsection{Justification of Feature Inclusion}
-List of features, along with why their inclusion was important.
+This section covers the broader design decisions of Ochre that are not tied to a particular language construct, a the motivation behind their inclusion or exclusion.
 
 \subsubsection{Type Erasure}
 A crucial goal of this project is to generate efficient machine code, so I don't want any aspect of the type system to influence runtime. It also ensures all reasoning about the program's correctness is done at compile time.
 
-\subsubsection{Implementability}
-The type system presented as a means to the end of making a production-ready language with sound foundations. If it relies too heavily on non-syntax-driven typing rules or extra information provided during the derivation, implementation could be rendered infeasible. An example of this is the $:$ operator, which asserts that the LHS has the type of the RHS; if this was just theory work I wouldn't need this because I could make these type assertions in the derivations.
-
 \subsubsection{Manual memory management}
 Manual memory management is important both toward the end of making efficient machine code, and dependent types. The real core of why dependent types are possible in this context is because safe Rust behaves very similarly to pure functional code behind the scenes, as demonstrated by the existence of multiple projects that can translate safe Rust into pure functional code \citep{aeneas}\citep{ullrichKhaElectrolysis2024}. The abstract interpretation introduced by Aeneas to track the state of ownership has proven crucial to detecting when typing judgments are invalidated by mutations.
 
-\subsection{Justification of Feature Omission}
-List of omitted features, along with why their omission is inconsequential for the conclusions of this research:
-
 \subsubsection{Returning mutable references}
-In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container. Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system.
+In Ochre you can put references in variables and pass them to functions, but you can never return them from a function. This doesn't restrict which programs you can express, because you can inline any function that would return a mutable reference and it will work, however, it does make using custom data structures like containers extremely cumbersome because you cannot define generic getters that return references to elements within the container.
+
+Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system. I leave this to future work 
 
 \subsubsection{Reasoning about function side effects/strong updates}
 In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
 \begin{enumerate}
-  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
-  \item It would complicate the type system and syntax further.
   \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
+  \item It would complicate the type system and syntax further.
+  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
 \end{enumerate}
 
 \subsubsection{Unboxed types}
@@ -2715,13 +2820,14 @@ All values in Ochre are one machine word long, which involves pairs being boxed.
 As presented, Ochre doesn't expose key data types such as machine integers which can be used to generate efficient arithmetic. This is a major problem for its short-term usefulness because all numeric arithmetic must be done with inefficient algorithms over heap-allocated Peano numbers. I think this is a reasonable omission because this work is mostly a proof of concept, and efficiently type-checking and compiling these primitives is well-explored and will be introduced into Ochre in the future.
 
 \chapter{Analysis}
-This chapter analyses whether the abstract interpretation, as defined in Chapter \ref{chapter:definition}, is capable of accepting correct programs and rejecting incorrect ones, which is the goal of this research.
+\label{chapter:analysis}
+This chapter analyses whether the abstract interpretation, as defined in Chapter \ref{chapter:ochreformally}, is capable of accepting correct programs and rejecting incorrect ones, which is the goal of this research.
 
 Section \ref{section:examplechecks} answers this by using the abstract interpretation manually on specific programs, and making sure it rejects incorrect programs and accepts correct ones.
 
 Section \ref{section:properties} answers this by reasoning more generally about the properties held by the abstract interpretations, including soundness.
 
-\section{Individual Programs}
+\section{Specific Program Checks}
 \label{section:examplechecks}
 This section starts by type-checking simple programs that other languages can already type-check to explore the basics of the abstract interpretation, then gradually introduces features which other languages cannot check.
 
@@ -2797,7 +2903,7 @@ A full derivation of this form is given in Appendix  \ref{appendix:helloworldder
 
 \subsection{Mutating Dependent Pairs}
 \label{section:mutatingpairs}
-This section shows how mutation interacts with dependent types through an example where mutation is deemed correct or not based on a dependent type.
+This section shows how mutation interacts with dependent types through an example where the correctness of a mutation depends on a dependent pair.
 
 \begin{listing}
 \begin{minted}[mathescape]{rust}
@@ -2826,19 +2932,23 @@ Listing \ref{listing:mutatedependent} defines a dependent pair type, where the r
 
 The caller (line 12) cannot tell from the type signature of \mono{overwrite} what exact value it will set the pair to, it only knows it will be of type \mono{Same}. This means after the call to \mono{overwrite}, as far as the caller is concerned, \mono{pair} could be $(\atom{b}, \atom{b})$, which is why \absmapm{pair}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)} in the environment instead of the more precise \absmapm{pair}{(\atom{a}, \mono{\_} \rightarrow \atom{a})}.
 
-The mutation is checked to be correct at the end of the function when the environment is cleaned up. Dropping the reference causes the value in the borrow $(\atom{a}, \mono{\_} \rightarrow \atom{a})$ to be checked against its loan restriction, which is $(\{\atom{a}, \atom{b}\}, \mono{L} \rightarrow \mono{L})$, as shown in full by Figure \ref{fig:postmutationderivation}.
+At the end of the derivation for the \mono{overwrite} function, the mutation is checked to be correct, triggered by the environment being cleaned up. Dropping the reference causes the value in the borrow $(\atom{a}, \mono{\_} \rightarrow \atom{a})$ to be checked against its loan restriction, which is $(\{\atom{a}, \atom{b}\}, \mono{L} \rightarrow \mono{L})$. The sub-derivation which performs this checking is shown in by Figure \ref{fig:postmutationderivation}.
 
 Appendix \ref{appendix:mutateddependentderivation} shows a full derivation of the \mono{overwrite} function.
 
 \begin{figure}
   \[\begin{array}{ll}
-    \Omega_1 \vdash p_3 \subtype p_0 \\
-    \otab \Omega_1 \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} \\
-    \otab\otab \{\atom{a}\} \subseteq \{\atom{a}, \atom{b}\} \\
+    \Omega_1 \vdash p_3 \subtype p_0 
+      & \Omega_1 = \emptyset, \absmapm{Same}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)} \\
+    \otab \Omega_1 \vdash \atom{a} \subtype \{\atom{a}, \atom{b}\} &
+      p_0 = (\{\atom{a}, \atom{b}\}, L \rightarrow L) \\
+    \otab\otab \{\atom{a}\} \subseteq \{\atom{a}, \atom{b}\}   &
+      p_3 = (\atom{a}, \mono{\_} \rightarrow \atom{a}) \\
     \otab \Omega_1 \vdash \comptime{} \dashv \Gamma_2 &
       \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
     \otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
-    \otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+    \otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] &
+       \Gamma_2' = \Omega_1,\absmapm{L}{\atom{a}} \\
     \otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \atom{a} \\
     \otab \Gamma_2' \vdash \atom{a} \subtype \mono{L} \erasedreadarrow \atom{a} \\
     \otab\otab \Gamma_2' \vdash \atom{a} \erasedreadarrow \atom{a} \\
@@ -2847,7 +2957,7 @@ Appendix \ref{appendix:mutateddependentderivation} shows a full derivation of th
     \otab\otab \Gamma_2' \vdash \atom{a} \subtype \atom{a} \\
     \otab\otab\otab \{\atom{a}\} \subseteq \{\atom{a}\} \\
   \end{array}\]
-  \caption{Derivation which checks the post-mutation pair against the \mono{overwrite} function's type signature.}
+  \caption{Derivation which checks the post-mutation pair against the \mono{overwrite} function's type signature from Listing \ref{listing:mutatedependent}. See Appendix \ref{appendix:mutateddependentderivation} for surrounding derivation.}
   \label{fig:postmutationderivation}
 \end{figure}
 
@@ -2879,7 +2989,8 @@ The derivation for this incorrect program is almost identical to the derivation 
     \otab \Omega_1 \vdash \comptime{} \dashv \Gamma_2 &
       \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
     \otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
-    \otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+    \otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] &
+       \Gamma_2' = \Omega_1,\absmapm{L}{\atom{a}} \\
     \otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \atom{a} \\
     \otab \Gamma_2' \vdash \atom{b} \subtype \mono{L} \erasedreadarrow \atom{a} \\
     \otab\otab \Gamma_2' \vdash \atom{b} \erasedreadarrow \atom{b} \\
@@ -2908,7 +3019,9 @@ Listing \ref{listing:polymorphicswap} shows a function that takes two references
 \begin{listing}
   \begin{minted}[mathescape]{rust}
     Swap = T -> (x: &mut T, y: &mut T) -> 'unit {
-      (*x, *y)  = (*y, *x);
+                           // $\Omega_0 = \emptyset,\absmap{l_x}{\top},\absmap{l_y}{\top}$
+                           // $\Omega_1 = \Omega_0,\absmapm{x}{\borrowm{l_x}{\top}},\absmapm{y}{\borrowm{l_y}{\top}}$
+      (*x, *y) = (*y, *x); // $\Omega_1 = \Omega_0,\absmapm{x}{\borrowm{l_x}{\top}},\absmapm{y}{\borrowm{l_y}{\top}}$
       'unit
     }
   \end{minted}
@@ -2916,7 +3029,7 @@ Listing \ref{listing:polymorphicswap} shows a function that takes two references
   \label{listing:polymorphicswap}
 \end{listing}
 
-\todo[inline]{annotate environment within \mono{Swap}}
+% \todo[inline]{annotate environment within \mono{Swap}}
 
 \subsection{Peano Numbers and Add}
 Sections \ref{section:helloworld} and \ref{section:mutatingpairs} analyze simple programs thoroughly. This section analyses complex programs but instead of showing full typing derivations, it only shows the abstract environments after every program line.
@@ -3328,22 +3441,205 @@ The narrower an environment is, the more information it contains. These two theo
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
-Ochre has two goals: to allow the programmer to encode strong properties in the type system, and to be efficiently executable on hardware. Section \ref{section:performance} evaluates Ochre against the former goal, and Section \ref{section:typesystem} evaluates against the latter.
+As stated in our introduction:
 
-A secondary goal of this research is to make a pleasant and powerful language with useful abstractions. This is discussed in Section \ref{section:ergonomics}.
+\begin{quote}
+  The goal of Ochre is to solve the design problems which are stopping theorem proving from being brought to the systems programming masses. We do this integrating dependent types into the type system, and broader design of, of a programming language in an unusually ergonomic and performance-compatible way, much like Rust did with memory safety.
+\end{quote}
 
-The contribution of this research is the design and specification of a language, as opposed to an implementation, so the contributions will be evaluated against how well the design \& type checking algorithm lays the foundations for a future implementation.
+This section discusses how successful we were at achieving this goal.
 
-\section{Type System}
-\label{section:typesystem}
-The type system presented must reject well-formed programs, and reject ill-formed ones. This section evaluates whether or not this is the case in two distinct ways: firstly Section \ref{section:examplechecks} shows the typing rules in action for a collection of programs which should or shouldn't be accepted. Then, Section \ref{section:properties} states a set of theorems which should hold.
+I consider the power of the type system presented to be a great success, we can type programs with mutability and dependent types tightly interwoven, as shown in Section \ref{section:mutatingpairs}. The more interesting question is do we offer significant ergonomic improvements over the encumbant low level systems languages with dependent types.
+
+\section{Ergonomics}
+We evaluate Ochre's ergonomics by the implementation of various programs in Ochre and three other languages:
+\begin{itemize}
+  \item Low*, because it is battle tested, and has been used for large-scale verification projects \citep{zinzindohoueHACLVerifiedModern2017, ramananandroEverParseVerifiedSecure, taoDICEFormallyVerified}. Low* also has state of the art ergonomics for a language of its featureset, as you will see with its comparison with ATS.
+  \item ATS, because it was one of the first and is the most mature language which offers dependent typing of low level systems code.
+  \item Rust, as a baseline, for what ergonomics can look like without dependent types at all.
+\end{itemize}
+Low* and ATS require imports to work, which have been omitted from the code examples.
+
+\subsection{Mutating Dependent Pairs}
+We compare the implementation of a modified version of the \textit{pair mutation} program from Section \ref{section:mutatingpairs} in Listings \ref{listing:pairmutationochre}, \ref{listing:pairmutationlowstar}, \ref{listing:pairmutationats}, and \ref{listing:pairmutationrust}. Originally in Section \ref{section:mutatingpairs}, our Ochre program mutated each element of the pair on a separate line, for now I have modified the program to mutate both at once because neither ATS nor Low* support \textit{temporarily} breaking type constraints like this.
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    Same = ('true | 'false, L -> L); 
+  
+    overwrite = (p: &mut Same) -> 'unit {
+      *p = ('true, 'true);
+      'unit
+    };
+  
+    pair = ('false, 'false);          
+    overwrite(&mut pair);
+  \end{minted}
+  \caption{Ochre implementation of the pair mutation program.}
+  \label{listing:pairmutationochre}
+\end{listing}
+
+\begin{listing}
+  \begin{minted}{fstar}
+    type Same = | MkSame: b:bool -> b2:bool{b == b2} -> Same
+
+    val overwrite: p:ptr Same -> Stack unit
+    let overwrite p =
+      p := Same false false
+      
+    let main () : Stack unit =
+      let pair = alloc (MkSame true true) in
+      overwrite s;
+      ()
+  \end{minted}
+  \caption{Low* implementation of the pair mutation program.}
+  \label{listing:pairmutationlowstar}
+\end{listing}
+
+\begin{listing}
+  \begin{minted}{haskell}
+    typedef Same = (bool, bool) where { (x, y) => x == y }
+
+    fun overwrite {l:addr} (p: &Same @ l): void = let
+    in
+      p := (false, false)
+    end
+
+    implement main0() = let
+      var s: Same = (true, true)
+      val p = addr@ s
+    in
+      overwrite(p);
+    end
+  \end{minted}
+  \caption{ATS implementation of the pair mutation program.}
+  \label{listing:pairmutationats}
+\end{listing}
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    type Same = (bool, bool);
+
+    fn overwrite(p: &mut Same) {
+      *p = (true, true);
+    }
+
+    fn main() {
+      let pair = (false, false);          
+      overwrite(&mut pair);
+    }
+  \end{minted}
+  \caption{Rust implementation of the pair mutation program.}
+  \label{listing:pairmutationrust}
+\end{listing}
+
+\textbf{Comparison with Low*} - In Low*, mutation is handled through the \mono{Stack} monad, this allows Low* to be a pure functional language at the surface level, which avoids the issue of combining mutability with dependent types. Ochre avoids the need to work within a monad like \mono{Stack}, and so does not need to do explicit stack allocation like Low* does on line 8.
+
+\textbf{Comparison with ATS} - In ATS, most runtime values have a type-level counterpart. You use the runtime value for execution and the type-level counterpart for type signatures. In Listing \ref{listing:pairmutationats}, line 10 constructs the runtime pointer, then ATS implicitly creates a compile-time counterpart called the pointers \textit{address} when \mono{p} is passed to \mono{overwrite}.
+
+Having both a pointer and a type-level address for that pointer clutters the type signature, although does not add too much complexity to the programmer's mental model. This separation between type level objects and value level objects applies to everything in ATS: if a function takes an integer, and the return type depends on that integer, you must have a type level and a value level version of that integer.
+
+\textbf{Comparison with Rust} - Apart from missing the dependent type, and needing a main function, the Rust implementation is almost identical to Ochre's. Apart from Ochre's definition of \mono{Same}, the presence of dependent types do not complicate the Ochre implementation at all.
+
+\subsection{Mutating Dependent Pairs Field-By-Field}
+We now consider the pair mutation program as presented originally in Section \ref{section:mutatingpairs}. Ergonomics suffer immensely in these examples for Low* and ATS, because they do not support breaking the type constraint of a dependent pair temporarily\footnote{To motivate this feature a bit: you may want to do in the implementation of data structures, where you have updated parts of it but not all. For example: when resizing a Rust-like vector.}
+
+This a bit of a strawman comparison because in reality, you would rework your codebase to not require this feature, but I think it serves as a good demonstration of the benefits of the type system remaining flexible and safe. It also demonstrates the problems caused when you stray out of a language's typically supported feature set, which people do in pursuit of performance, and will have to do less in Ochre than Low* and ATS, due to differences like this.
+
+Listings \ref{listing:pairmutationochreunsafe}, \ref{listing:pairmutationlowstarunsafe}, \ref{listing:pairmutationatsunsafe}, and \ref{listing:pairmutationrustunsafe} show the program in Ochre, Low*, ATS, and Rust respectively. The reason the Low* and ATS programs look bad is that in order to mutate the pair in place one field at a time, you must use escape hatches to tell the type system to not check whether the mutations you are doing are type-safe, which as well as being error-prone and dangerous, is very labor intensive.
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    Same = ('true | 'false, L -> L); 
+  
+    overwrite = (p: &mut Same) -> 'unit {
+      // Does not need to use any escape hatches
+      *p.0 = 'true;
+      // pair can be used in middle-state
+      *p.1 = 'true;
+      'unit
+    };
+  
+    pair = ('false, 'false);          
+    overwrite(&mut pair);
+  \end{minted}
+  \caption{Ochre implementation of the original pair mutation program.}
+  \label{listing:pairmutationochreunsafe}
+\end{listing}
+
+\begin{listing}
+  \begin{minted}{fstar}
+    type Same = | MkSame: b:bool -> b2:bool{b == b2} -> Same
+
+    val overwrite: p:loc Same -> Stack unit
+    let overwrite p =
+      // Temporarily cast away the type invariant
+      let ptr = p in
+
+      // Unsafe operations to modify the pair
+      let _ = (ptr as ref (bool, bool)) in
+      (let r = (ptr as ref (bool, bool)) in r := (false, snd (!r))); // First update
+      // pair can be used here
+      (let r = (ptr as ref (bool, bool)) in r := (false, false)); // Second update
+
+      ()
+
+    let main () : Stack unit =
+      let s = alloc (MkSame true true) in
+      overwrite s;
+      ()
+  \end{minted}
+  \caption{Low* implementation of the original pair mutation program.}
+  \label{listing:pairmutationlowstarunsafe}
+\end{listing}
+
+\begin{listing}
+  \begin{minted}{haskell}
+    typedef Same = (bool, bool) where { (x, y) => x == y }
+
+    fun overwrite {l:addr} (p: &Same @ l): void = let
+      val (b1, b2) = !p
+      val p2 = cast{(bool, bool) @ l} p // Temporary unsafe cast to bypass the type constraint
+    in
+      p2 := (false, b2)
+      // pair can be used here
+      p2 := (false, false)
+    end
+
+    implement main0() = let
+      var s: Same = (true, true)
+      val p = addr@ s
+    in
+      overwrite(p);
+    end
+  \end{minted}
+  \caption{ATS implementation of the original pair mutation program.}
+  \label{listing:pairmutationatsunsafe}
+\end{listing}
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    type Same = (bool, bool);
+
+    fn overwrite(p: &mut Same) {
+      p.0 = true;
+      // pair can be used here
+      p.1 = true;
+    }
+
+    fn main() {
+      let pair = (false, false);          
+      overwrite(&mut pair);
+    }
+  \end{minted}
+  \caption{Rust implementation of the original pair mutation program.}
+  \label{listing:pairmutationrustunsafe}
+\end{listing}
 
 \section{Performance}
-\label{section:performance}
-\todo[inline]{maybe explicitly talk about cache coherency and pointer indirection and function pointers}
-For the presented design to be good, it must describe a language with semantics that can easily be translated into efficient machine code by a compiler. This section discusses the various language features of Ochre and their performance implications.
+While it is impossible to empirically test the performance Ochre enables, due to not having an implementation, we can reason about how compatible it is with performance-relevant language features. To summarise: Ochre as presented would not be performant, but unlike other languages like Java or Haskell, it does not have features that hold its performance back. Making Ochre performant would just be a matter of engineering, not new research.
 
-Due to having a borrow checker, the abstract interpretation introduced in Section \ref{chapter:definition} statically determines when objects are dropped, which means it can insert any necessary memory frees into the resultant binary, removing the requirement for a garbage collector.
+Due to having a borrow checker, the abstract interpretation introduced in Section \ref{chapter:ochreformally} statically determines when objects are dropped, which means it can insert any necessary memory frees into the resultant binary, removing the requirement for a garbage collector.
 
 Being able to mutate data structures in place also allows programmers to express efficient algorithms provided they don't break the \textit{aliasing xor mutability} invariant, like Rust.
 
@@ -3353,7 +3649,13 @@ As presented, the type system does not support unboxed pairs, which means Ochre 
 
 Ochre does not have efficient contiguous arrays, which hurts the implementation of several dynamic structures, but after unboxed pairs are implemented, contiguous arrays are just many nested pairs. It is unclear how you would efficiently lookup the $n^{\text{th}}$ element in such a structure, but I am hopeful it would just be a matter of engineering/adding the right optimizations.
 
+\section{Reusability}
+This research is intended to be used in the future to form an implementation, and as such it must provide usable foundations to work upon. While Ochre the language is pleasant to work with, the type system as presented is extremely complex and hard to work with. It contains many features that do not directly work towards making a dependently typed systems language, such as pattern matching and the concept of writing to syntax generally. These features make the language more usable, but restrict the re-use of the underlying theory, and certainly make reasoning about its properties harder.
+
 \chapter{Conclusion}
+\label{chapter:conclusion}
+To summarize, we have presented the formal semantics for a dependently typed systems language, which can correctly accept correct programs and reject incorrect ones, as shown , and in doing so made imporvements 
+
 \section{Future Work}
 \subsection{Reduce Feature Set, Increase Rigor}
 Section {section:properties} attempts to argue that the system presented is sound, somewhat unconvincingly. Although I believe it could be proven by a better semanticist than myself, and/or with much more time, I think the best way of getting to that point is by reducing the feature set and progressively building them back. I suggest two such feature sets:
@@ -3540,18 +3842,18 @@ We can use this to represent logical statements as types. Here is how various co
 
 For example, to prove the logical statement $(a \wedge b) \Rightarrow a$, we must define a Haskell term with type \verb|(a, b) -> a|, which can be done as such:
 
-\begin{lstlisting}
+\begin{minted}{haskell}
 proof :: (a, b) -> a
 proof (a, b) = a
-\end{lstlisting}
+\end{minted}
 
 For another example, we can prove $((a \wedge b) \vee (a \wedge c)) \Rightarrow (a \wedge (b \vee c))$, which you might want to convince yourself of separately before moving on, by providing a Haskell term of type \verb|Either (a, b) (a, c) -> (a, Either b c)|.
 
-\begin{lstlisting}
-proof' :: Either (a, b) (a, c) -> (a, Either b c)
-proof' (Left (a, b)) = (a, Left b)
-proof' (Right (a, c)) = (a, Right c)
-\end{lstlisting}
+\begin{minted}{haskell}
+  proof' :: Either (a, b) (a, c) -> (a, Either b c)
+  proof' (Left (a, b)) = (a, Left b)
+  proof' (Right (a, c)) = (a, Right c)
+\end{minted}
 
 % We now set out to represent statements in logic as types, and their proofs as terms.
 % \begin{itemize}
@@ -3576,6 +3878,18 @@ This cannot be represented in Haskell, because $(\textbf{n}: \mathbb{Z}) \righta
 
 % what is formal verification
 % outline of various methods for doing it
+
+\section{Abstract Interpretation}
+\label{appendix:backgroundabstractinterpretation}
+Here is a repeat of the Section \ref{section:backgroundabstractinterpretation} explanations of the objects in abstract interpretation, in the general form typically used in the literature:
+
+Abstract interpretation can be seem as a framework for developing program analyses, which requires the semanticist to define the following mathematical objects:
+
+\textbf{Concrete and Abstract Set} - Each element of the \textit{concrete set} represents a set of possible concrete states the program could be in. The concrete set if often the power set of some concrete value. For example, if you are analysing a function which increments a number by one, it would map the concrete state $\{1, 5\}$ to the concrete state $\{2, 6\}$. Both $\{1, 5\}$ and $\{2, 6\}$ are  elements of our concrete set, $\mathcal{P}(\mathbb{N})$. Each element of the \textit{abstract set} represents an approximation of the concrete states the program could be in. Continuing the above example, we could store the possible \textit{parities} of the number in our abstract state. The increment function would map $\{ \kw{odd} \}$ to $\{ \kw{even} \}$, and our abstract set would be $\mathcal{P}({\{ \kw{true}, \kw{false} \}})$. The fact it maps $\{ \kw{odd} \}$ to $\{ \kw{even} \}$ is intuitively: the input contains only odd numbers, and the output contains only even numbers.
+
+\textbf{Concrete and Abstract Semantics} - The \textit{concrete semantics} for a program maps a set of possible start states to a set of possible end states. The concrete semantics $f$ for our above increment program might look something like $f l = \{ x + 1 | x \in l \}$. The \textit{abstract semantics} for a program map the a set of possible start abstract states to possible end abstract states. The abstract semantics $f'$ for the continuing example would express the fact that incrementing a number always flips its parity: $f l = \{ \kw{odd} | \kw{even} \in l \} \cup \{ \kw{odd} | \kw{even} \in l \}$.
+
+\textbf{Concretization Function and Abstraction Function} - The concretisation function maps from a set of possible approximations to the set of concrete values they could be approximating. The \textit{abstraction function} maps from our sets of concrete states (elements of our concrete set) to sets of abstract states (elements of our abstract set). It answers: for a given concrete value, what is its approximation? But lifted to work on sets of concrete values and abstract values. In the above, it would map $\{1, 5\}$ to $\{ odd \}$, reflecting the fact that the input is definitely odd.
 
 \section{Supporting Unboxed Pairs}
 \label{appendix:unbox}
@@ -3868,7 +4182,8 @@ This appendix shows the derivation which type checks the definition of the \mono
     \otab\otab\otab\otab \Omega_1 \vdash \comptime{} \dashv \Gamma_2 &
       \Gamma_2 = \Omega_1,\absmapm{L}{\top} \\
     \otab\otab\otab\otab \Gamma_2 \vdash \mono{L} \erasedwritearrow \atom{a} \dashv \Gamma_2' \\
-    \otab\otab\otab\otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] \\
+    \otab\otab\otab\otab\otab \Gamma_2' = \Gamma_2\left[\dfrac{\absmapm{L}{\atom{a}}}{\absmapm{L}{\top}}\right] &
+       \Gamma_2' = \Omega_1,\absmapm{L}{\atom{a}} \\
     \otab\otab\otab\otab \Gamma_2 \vdash \mono{\_} \erasedwritearrow \atom{a} \\
     \otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \subtype \mono{L} \erasedreadarrow \atom{a} \\
     \otab\otab\otab\otab\otab \Gamma_2' \vdash \atom{a} \erasedreadarrow \atom{a} \\

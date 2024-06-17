@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{  }\PYG{n}{proof\PYGZsq{}}\PYG{+w}{ }\PYG{o+ow}{::}\PYG{+w}{ }\PYG{k+kt}{Either}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{b}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{c}\PYG{p}{)}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{Either}\PYG{+w}{ }\PYG{n}{b}\PYG{+w}{ }\PYG{n}{c}\PYG{p}{)}
+\PYG{+w}{  }\PYG{n}{proof\PYGZsq{}}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kt}{Left}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{b}\PYG{p}{))}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{Left}\PYG{+w}{ }\PYG{n}{b}\PYG{p}{)}
+\PYG{+w}{  }\PYG{n}{proof\PYGZsq{}}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kt}{Right}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{c}\PYG{p}{))}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{Right}\PYG{+w}{ }\PYG{n}{c}\PYG{p}{)}
+\end{Verbatim}

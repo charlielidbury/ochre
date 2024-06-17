@@ -1,0 +1,14 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{k}{type} \PYG{n+nc}{Same}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kt}{bool}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kt}{bool}\PYG{p}{);}
+
+\PYG{+w}{    }\PYG{k}{fn} \PYG{n+nf}{overwrite}\PYG{p}{(}\PYG{n}{p}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{mut}\PYG{+w}{ }\PYG{n}{Same}\PYG{p}{)}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{      }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{0}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{k+kc}{true}\PYG{p}{;}
+\PYG{+w}{      }\PYG{c+c1}{// pair can be used here}
+\PYG{+w}{      }\PYG{n}{p}\PYG{p}{.}\PYG{l+m+mi}{1}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{k+kc}{true}\PYG{p}{;}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}
+
+\PYG{+w}{    }\PYG{k}{fn} \PYG{n+nf}{main}\PYG{p}{()}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{      }\PYG{k+kd}{let}\PYG{+w}{ }\PYG{n}{pair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kc}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{k+kc}{false}\PYG{p}{);}
+\PYG{+w}{      }\PYG{n}{overwrite}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{pair}\PYG{p}{);}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}
+\end{Verbatim}
