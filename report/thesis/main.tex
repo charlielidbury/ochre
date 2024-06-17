@@ -66,7 +66,7 @@ Last, but in no means least, I would like to thank my mother Kate Darracott. As 
 \section*{Ethical Considerations}
 Much like Wittgenstein \citep[proposition 6.421]{wittgensteinTractatusLogicophilosophicus1922}, I believe there is an equivalence between ethics and aesthetics; if you do not, here are a few parallels between the two you might find thought-provoking: We do not choose what we deem ethically permissive, much like we do not choose what we find beautiful. Pursuing one's ethical convictions is not a means to an end, it is an end in and of itself, much like aesthetic experiences.
 
-I and many others including cite cite cite, find aesthetic value in problems \& concepts turning out to be reduceable to each other and equivalences being drawn between distant domains. Some particularly high-profile instances of this happening include Euler's formula, the Curry-Howard correspondence and the Church-Turing thesis. To a smaller degree, I also think it happened with Rust's borrow checker, in solving memory management they also solved concurrency, iterator invalidation, and a few other problems that plagued imperative languages.
+I also argue there aesthetic value in problems \& concepts turning out to be reduceable to each other and equivalences being drawn between distant domains. Some particularly high-profile instances of this happening include Euler's formula, the Curry-Howard correspondence and the Church-Turing thesis. To a smaller degree, I also think it happened with Rust's borrow checker, in solving memory management they also solved concurrency, iterator invalidation, and a few other problems that plagued imperative languages.
 
 Despite being sufficiently pretentious \cite[Ethical Considerations]{lidburyOchreDependentlyTyped2024}, I know Ochre isn't as singificant or as beautiful as the previously mentioned identities and isomorphisms. But, in the walled garden of my special interests and obsessions, I have found great aesthetic value in the interplay between ownership semantics and dependent types.
 
@@ -115,7 +115,7 @@ Memory safety is important, but it alone is too weak a property - as evidenced b
   \item If you want the libraries you are importing to be proven correct, the library author needs to be using something capable of proofs, and they are probably using the same language as you.
 \end{itemize}
 
-These benefits are certainly achievable without the programming language doing the proving, much like it is possible to prove the memory safety of programs written in memory-unsafe languages \citep{kleinSeL4FormalVerification2009a}, but this approach requires sacrifices in ergonomics, fundamentally because the language has not been designed from the ground up with this use case in mind. It is analogous to creating an untyped dialect of Haskell, and then using a third-party tool to statically analyze Haskell programs instead of having the type system woven into the design of the language itself.
+These benefits are certainly achievable without the programming language doing the proving, much like it is possible to prove the memory safety of programs written in memory-unsafe languages \citep{kleinSeL4FormalVerification2009a}, but this approach requires sacrifices in ergonomics, fundamentally because the language has not been designed from the ground up with this use match in mind. It is analogous to creating an untyped dialect of Haskell, and then using a third-party tool to statically analyze Haskell programs instead of having the type system woven into the design of the language itself.
 
 The goal of Ochre is to solve the design problems which are stopping theorem proving from being brought to the systems programming masses. We do this integrating dependent types into the type system, and broader design of, of a programming language in an unusually ergonomic and performance-compatible way, much like Rust did with memory safety.
 
@@ -153,12 +153,112 @@ In most languages and theories, types and values are separate; the definition of
 
 The return type of a dependent function can depend on the \textit{value} of its argument. For example, you could define a function that takes a number $n$ as input, which returns $n$-tuple of numbers as an output, where the size of $n$-tuple returned depends on which number was passed as input. This is also possible in dynamic typing, where there are no types at all, but with dependent types, the caller can statically determine which of these two types the return value will be without executing the function body.
 
-\subsection{Formal Verification with Dependent Types}
-While dependent types can be nice to have by themselves, a large part of their motivation is using them to perform formal verification.
+Do demonstrate dependent types, we use Caclulus of Constructions, denoted as $\lambda C$ \citep{barendregtIntroductionGeneralizedType1991}, which is slightly different from the MLTT norm \citep{martin-lofperandsambingiovanniIntuitionisticTypeTheory1984}, but simpler and it is enough to understand this research.
 
-\textbf{If you are willing to accept that dependent types can be used to perform formal verification, you do not need to understand how dependent types can be used for logical reasoning}: none of this information will be used since the goal of this research is not to perform formal verification, it's just to do dependent type checking.
+We define an extension to the normal lambda calculus, which introduces the dependent function type constructor $\Pi x : M. N$ and \textit{sorts} $s$. Are terms and typing context are given in Figure \ref{fig:lambdacterms}, our reduction rules in \ref{fig:reductionrules} and our typing judgements in \ref{fig:typingruleslambdac}. The system is included in its entirity for the sake of completeness, but the readers attention is drawn specifically to Application.
 
-Readers who are nonetheless interested are invited to read Appendix \ref{verificationwithtypes}.
+In the application typing rule, the function \textit{type} is evaluated under the context, in much the same way function application is defined in the beta reduction rule for application. This means calculating the return type of a function can trigger arbitrary execution, much like executing one can, which allows the return type to depend on the input type.
+
+\begin{figure}
+  \[
+    A, B, C ::= x \mid s \mid M M \mid \lambda x : M. N \mid \Pi x : M. N
+  \]\[
+    \Gamma ::= \emptyset \mid \Gamma,x:A
+  \]
+  \caption{$\lambda C$ terms}
+  \label{fig:lambdacterms}
+\end{figure}
+
+\begin{figure}
+  \begin{mathpar}
+    \inferrule[Application]{
+    }{
+      (\lambda x : A. B) C \rightarrow_{\beta} B[C/x]
+    }
+
+    \inferrule[Argument-Reduction]{
+      A \rightarrow_{\beta} A'
+    }{
+      \lambda x : A. B \rightarrow_{\beta} \lambda x : A'. B
+    }
+
+    \inferrule[Body-Reduction]{
+      B \rightarrow_{\beta} B'
+    }{
+      \lambda x : A. B \rightarrow_{\beta} \lambda x : A'. B
+    }
+
+    \inferrule[Pi-Argument-Reduction]{
+      A \rightarrow_{\beta} A'
+    }{
+      \Pi x : A. B \rightarrow_{\beta} \Pi x : A'. B
+    }
+
+    \inferrule[Pi-Body-Reduction]{
+      B \rightarrow_{\beta} B'
+    }{
+      \Pi x : A. B \rightarrow_{\beta} \Pi x : A'. B
+    }
+  \end{mathpar}
+  \caption{Beta-Reduction Rules, $=_{\beta}$ is the transitive, reflexive closure of $\rightarrow_{\beta}$}
+  \label{fig:reductionrules}
+\end{figure}
+
+\begin{figure}
+  \begin{mathpar}
+    \inferrule[Axiom]{
+    }{
+      \vdash * : \square
+    }
+
+    \inferrule[Start]{
+      \Gamma \vdash A : B \\ \Gamma \vdash C : s
+    }{
+      \Gamma,x:A \vdash A : B
+    }
+
+    \inferrule[Weakening]{
+      \Gamma \vdash A : B \\
+      \Gamma \vdash C : s
+    }{
+      \Gamma,x:C \vdash A : B
+    }
+
+    \inferrule[Application]{
+      \Gamma \vdash C : \Pi x : A. B \\
+      \Gamma \vdash a :  A
+    }{
+      \Gamma \vdash C a : B[a/x]
+    }
+
+    \inferrule[Conversion]{
+      \Gamma \vdash A : B \\
+      B =_{\beta} B' \\
+      \Gamma \vdash B' : s
+    }{
+      \Gamma \vdash A : B'
+    }
+
+    \inferrule[Product]{
+      \Gamma \vdash A  : s_1 \\
+      \Gamma, x : A \vdash B : s_2
+    }{
+      \Gamma \vdash \Pi x : A . B : s_2
+    }
+
+    \inferrule[Abstraction]{
+      \Gamma \vdash A  : s_1 \\
+      \Gamma,x : A \vdash b : B \\
+      \Gamma, x : A \vdash B : s_2
+    }{
+      \Gamma \vdash \lambda : A. b : \Pi x : A . B
+    }
+  \end{mathpar}
+  \caption{Typing Rules for $\lambda C$}
+  \label{fig:typingruleslambdac}
+\end{figure}
+
+While dependent types can be nice to have by themselves, a large part of their motivation is using them to perform formal verification. Appendix \ref{verificationwithtypes} contains an explanation of how types can be used to represent statements, and their programs proofs of those statements. If you are willing to accept that dependent types can be used to perform formal verification, you do not need to understand how dependent types can be used for logical reasoning: none of this information will be used since the goal of this research is to add dependent types to a language, not use them to prove properties ourselves.
 
 \section{Abstract Interpretation}
 This system presented is an abstract interpretation. This fact is not leveraged in any proofs, and no results from abstract interpretation are brought over, but having an understanding of the concepts behind abstract interpretation will be useful for understanding the architecture of the presented language.
@@ -197,7 +297,7 @@ Making a fast programming language is more about removing slow features than it 
 
 Rust is a fast language because it doesn't have a runtime or garbage collector, and has an efficient memory layout. In languages like Haskell or Java, almost all data is heap-allocated and deallocated automatically via a 
 
-To generate optimal code, systems languages let the programmer manage their memory, and choose memory layouts. In doing so, they typically sacrifice the memory safety guarantees higher-level languages make due to not being able to check the programmer has managed their memory correctly, this is the case in C and C++. Rust uses a concept called \textit{ownership} to recover these memory safety guarantees while still giving the programmer sufficient control to match C and C++'s performance.
+To generate optimal code, systems languages let the programmer manage their memory, and choose memory layouts. In doing so, they typically sacrifice the memory safety guarantees higher-level languages make due to not being able to check the programmer has managed their memory correctly, this is the match in C and C++. Rust uses a concept called \textit{ownership} to recover these memory safety guarantees while still giving the programmer sufficient control to match C and C++'s performance.
 
 \subsection{Ownership}
 Ownership is the concept that data is a movable and finite resource; it cannot be used in multiple places without first being duplicated. This materializes as a set of rules in Rust that prevent a user from using the same piece of data in multiple places at once. This intuition of data having a location, and needing to be in the right one, is what gives \textit{move semantics} its name. In a language with move semantics, like Rust, using a value destroys it and prevents it from being used again. Preventing this old (moved) value from being used is useful for performance: if a data structure is in a variable, we know that we have exclusive \textit{ownership} of the data structure and all its memory allocations. Therefore, when the variable goes out of scope, we know that nobody will have access to it, and therefore its memory allocations can be given back to the operating system without causing memory safety issues.
@@ -321,7 +421,7 @@ As Aeneas is performing this analysis, it outputs dependently typed pure functio
 % A language supports dependent types if it can type-check objects like the aforementioned $f$ and $s$. Just allowing them to exist is not enough. For instance, Python is not dependently typed just because a function's return type can depend on its input, because its type checker doesn't reject programs when you do this wrong. $f$ can be typed in Agda, a dependently typed language with $f: (n: \mathbb{N}) \rightarrow Vec(\mathbb{Z}, n)$ but has no valid type in Haskell, which doesn't support dependent types.
 
 % \subsection{Rust}
-% The mutable $\rightarrow$ immutable translation this research relies on requires lifetime annotations to work. While ownership and lifetimes are standalone concepts, their only real-world use case so far has been memory management in the Rust programming language. This section explains these concepts in the context of Rust.
+% The mutable $\rightarrow$ immutable translation this research relies on requires lifetime annotations to work. While ownership and lifetimes are standalone concepts, their only real-world use match so far has been memory management in the Rust programming language. This section explains these concepts in the context of Rust.
 
 % cut out rust bits
 
@@ -343,7 +443,7 @@ As Aeneas is performing this analysis, it outputs dependently typed pure functio
 % % \end{minted}
 % % \end{minipage}
 
-% The complexity of this translation comes in handling all language constructs in the general case, for instance, if statements need to return the values they edit. Like so:
+% The complexity of this translation comes in handling all language constructs in the general match, for instance, if statements need to return the values they edit. Like so:
 
 % % \noindent\begin{minipage}{.45\textwidth}
 % % \begin{minted}{rust}[caption=Original]{Name}
@@ -393,9 +493,9 @@ Over the years several versions of ATS have been built, with interesting differe
 \subsection{Low*}
 Low*\citep{protzenko_low_2017} is a subset of another language, F*, which can be extracted into C via a transpiler called KreMLin. It has achieved impressive results, mostly at Microsoft Research, where they have used it to implement a formally verified library of modern cryptographic algorithms\citep{star_2024} and EverParse
 
-Its set of allowed features is carefully chosen to make this translation possible in the general case, which restricts the ergonomics of the language, it does not support closures, and therefore higher-order programming for example.
+Its set of allowed features is carefully chosen to make this translation possible in the general match, which restricts the ergonomics of the language, it does not support closures, and therefore higher-order programming for example.
 
-It is very much not a pay-for-what-you-use language, to compile anything you must manually manage things like pushing and popping frames on and off the stack, so even if it can achieve impressive results, it's only useful for teams willing to pay the high price which comes with verifying the entire program. This research aims to be better by not requiring any effort from the programmer in the case that they do not wish to use dependent types for their reasoning power.
+It is very much not a pay-for-what-you-use language, to compile anything you must manually manage things like pushing and popping frames on and off the stack, so even if it can achieve impressive results, it's only useful for teams willing to pay the high price which comes with verifying the entire program. This research aims to be better by not requiring any effort from the programmer in the match that they do not wish to use dependent types for their reasoning power.
 
 \subsection{Magmide}
 The goal of Magmide \citep{MagmideMagmide2024} is to ``create a programming language capable of making formal verification and provably correct software practical and mainstream''. Currently, Magmide is unimplemented, and there are barely even code snippets of it. However, there is extensive design documentation in which the author Blaine Hansen lays out the compiler architecture he intends to use, which involves two internal representations: \textit{logical} Magmide and \textit{host} Magmide.
@@ -430,21 +530,7 @@ I see RustBelt as a great complement to this work in the future: real programs r
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Ochre, by Example}
 \label{section:ochreexample}
-This chapter introduces the various language constructs of Ochre, at first via intuitive examples, then formally. Each language construct's runtime behavior is discussed, then how it is reasoned about statically, which splits this chapter into 4 sections with the following distinctions:
-
-DEPRECATED
-\begin{center}
-  \begin{tabular}{c|cc}
-    & Runtime Semantics & Static Analysis \\
-    \hline
-    \\
-    Intuition Building & \underline{Section \ref{section:ochreexample}} & \underline{Section \ref{section:checkingexample}} \\
-    & Ochre, by Example & Type \& Borrow Checking, by Example \\
-    \\
-    Formal & \underline{Section \ref{section:concreteinterpretation}} & \underline{Section \ref{chapter:ochreformally}} \\
-    & Concrete Interpretation & Abstract Interpretation \\
-  \end{tabular}
-\end{center}
+This chapter introduces the various language constructs of Ochre, at first via intuitive examples of program executions, then by looking at how the environment changes due to different language constructs.
 
 The motivations behind Ochre, alternative design decisions, evaluation, implementation, or reasoning about any properties are all explicit non-goals of this Chapter.
 
@@ -455,7 +541,7 @@ The mutation \& memory management techniques presented are from Rust, including 
 
 The novel work presented is the combination of these two features, which requires introducing a new kind of subtyping in which every term is its own type. TypeScript partly does this with literal types, producing results like \mono{5:5}, but this research takes this to its logical conclusion where even functions are their own type, and there is almost no distinction between types and terms apart from the requirement that all types are resolved at compile time.
 
-\todo[inline]{explain double page + hyper links thing}
+% \todo[inline]{explain double page + hyper links thing}
 % \todo[inline]{do hyperlinks thing}
 
 \cleardoublepage
@@ -627,14 +713,14 @@ The only difference between a function body and its return type is that its retu
   \end{minted}
 % \end{listing}
 
-\subsubsection{Case Statements}
-In Ochre, atoms can be branched on via a case statement. The discriminant of the case statement must be an atom, and there must be exactly one branch for each possible atom. In the future, I plan on adding if and match statements, which will be syntactic sugar for case statements.
+\subsubsection{Match Statements}
+In Ochre, atoms can be branched on via a match statement. The discriminant of the match statement must be a comptime expression which evaluates to a type, and there must be exactly one branch for each possible value of the scruitinee. Match statements only \textit{read} the scruitinee instead of consuming it, which allows the scruitinee to be used in the branch statements.
 
 % \begin{listing}[H]
   \begin{minted}{rust}
     Bool = 'true | 'false;
     not = (b: Bool) -> Bool {
-      case b {
+      match b {
         'true => 'false,
         'false => 'true,
       }
@@ -652,7 +738,7 @@ If a pair is being evaluated in a comptime context, the right of a pair can depe
     ('true, 'true): Same; // valid
     ('true, 'false): Same; // error! 'false is not of type 'true
 
-    Different = (Bool, L -> case L { 'true => 'false, 'false => 'true});
+    Different = (Bool, L -> match L { 'true => 'false, 'false => 'true});
     ('true, 'false): Different; // valid
     ('true, 'true): Different; // error!
   \end{minted}
@@ -664,7 +750,7 @@ When you union together pairs, it doesn't just union together their left and rig
   \begin{minted}{rust}
     Same = ('true, 'true) | ('false, 'false);
     // Expanded internally to:
-    Same = ('true | 'false, L -> case L { 'true => 'true, 'false => 'false })
+    Same = ('true | 'false, L -> match L { 'true => 'true, 'false => 'false })
   \end{minted}
   \vspace{-0.5em}
   \caption{}
@@ -691,13 +777,13 @@ If the right of a pair depends on the left, and then you find something out abou
   \begin{minted}{rust}
     Same = ('true, 'true) | ('false, 'false);
     f = (p: Same) -> Bool {
-      case p.0 {
-        'true => case p.1 { 'true => 'unit }, // p.1: 'true
-        'false => case p.1 { 'false => 'unit }, // p.1: 'false
+      match p.0 {
+        'true => match p.1 { 'true => 'unit }, // p.1: 'true
+        'false => match p.1 { 'false => 'unit }, // p.1: 'false
       }
     }
   \end{minted}
-  \caption{Case statements narrow down the type of their discriminant in each branch}
+  \caption{Match statements narrow down the type of their discriminant in each branch}
 \end{listing}
 
 \subsubsection{Algebraic Data Types}
@@ -709,12 +795,12 @@ Take the following definition of Peano naturals in Haskell syntax:
   \end{minted}
 % \end{listing}
 
-In Ochre this is represented by a dependent pair. The left of the pair indicates which variant the ADT is in (either zero or successor), and the right contains the payload of that variant. In the zero case, nothing is stored, so the payload is \mono{'unit}, in the successor case, we store the natural that we are the successor of, so our payload is \mono{Nat}.
+In Ochre this is represented by a dependent pair. The left of the pair indicates which variant the ADT is in (either zero or successor), and the right contains the payload of that variant. In the zero match, nothing is stored, so the payload is \mono{'unit}, in the successor match, we store the natural that we are the successor of, so our payload is \mono{Nat}.
 
 % \begin{listing}[H]
   \begin{minted}{rust}
     // "manual" ADT encoding
-    Nat = (T: 'zero | 'succ, case T { 'zero => 'unit, 'succ => Nat });
+    Nat = (T: 'zero | 'succ, match T { 'zero => 'unit, 'succ => Nat });
     // idiomatic encoding using type union
     Nat = ('zero, 'unit) | ('succ, Nat);
   \end{minted}
@@ -726,7 +812,7 @@ By matching on the left, you can determine which variant the ADT is in, then you
   \begin{minted}{rust}
     Nat = ('zero, 'unit) | ('succ, Nat);
     add = (x: Nat, y: Nat) -> Nat {
-      case x.0 {
+      match x.0 {
         'zero => y, // 0 + y = y
         'succ => ('succ, add(x.1, y)), // (1 + x) + y = 1 + (x + y)
       }
@@ -735,25 +821,15 @@ By matching on the left, you can determine which variant the ADT is in, then you
 % \end{listing}
 
 \subsubsection{Recursion}
-The definition of \mono{add} above won't compile because of how it does recursion. When type-checking assignments, Ochre looks at the left first to figure out what type the identifiers have. In the case of \mono{Nat} and \mono{add} above there are no type annotations, so it evaluates the assigned value with no extra type information.
+The definition of \mono{add} above won't compile because of how it does recursion. When type-checking assignments, Ochre looks at the left first to figure out what type the identifiers have. In the match of \mono{Nat} and \mono{add} above there are no type annotations, so it evaluates the assigned value with no extra type information.
 
 If the programmer puts type annotations on the left of an assignment, the compiler knows at least something about the type, so it can evaluate the expression with that knowledge. This isn't required in the definition of \mono{Nat} because you can put anything in a pair, regardless of its type, so the usage of \mono{Nat} on the right was permissible.
 
-In the \mono{add} case, we need to know that \mono{add} has type {(Nat, Nat) -> Nat} while evaluating the function body, so we can check that \mono{add(x.1, y)} has type \mono{Nat}. To introduce this, add type annotations to the left of the assignment:
+In the \mono{add} match, we need to know that \mono{add} has type {(Nat, Nat) -> Nat} while evaluating the function body, so we can check that \mono{add(x.1, y)} has type \mono{Nat}. To introduce this, add type annotations to the left of the assignment:
 
 % \begin{listing}[H]
   \begin{minted}{rust}
     add: (Nat, Nat) -> Nat = (x: Nat, y: Nat) -> Nat {
-      // ...
-    }
-  \end{minted}
-% \end{listing}
-
-This introduces repetition in the types, which we remove by adding the following syntactic sugar for the above:
-
-% \begin{listing}[H]
-  \begin{minted}{rust}
-    add(x: Nat, y: Nat): Nat = {
       // ...
     }
   \end{minted}
@@ -803,7 +879,7 @@ When you move a value, it is mapped to $\bot$ in the abstract environment:
 
 \subsubsection{References \& Mutation}
 
-When you construct a reference, the value is \textit{borrowed}. In the case of mutable borrows, this means the value isn't available in the original location, which is represented in the abstract environment as $\kw{loan}^m \, l$ where $l$ is the \textit{loan identifier} for this particular loan. We set it to this instead of $\bot$ so we can find it again in the future when we want to terminate the loan. The reference will map to $\borrowm{l}{v}$ where $v$ is the type of the value being borrowed.
+When you construct a reference, the value is \textit{borrowed}. In the match of mutable borrows, this means the value isn't available in the original location, which is represented in the abstract environment as $\kw{loan}^m \, l$ where $l$ is the \textit{loan identifier} for this particular loan. We set it to this instead of $\bot$ so we can find it again in the future when we want to terminate the loan. The reference will map to $\borrowm{l}{v}$ where $v$ is the type of the value being borrowed.
 
 \begin{listing}[H]
   \begin{minted}[mathescape]{rust}
@@ -865,7 +941,7 @@ This is not a problem for the implementation because the value stored in the $\k
 \subsubsection{(Dependent) Pairs}
 In the abstract environment pairs store the type of the left side, and how to turn the type of the left side into the right, like so: $(\{'true, \, 'false\}, \mono{L} \rightarrow \mono{L})$. This reads "The left of the pair is of type $\{'true, \, 'false\}$, and the right is whatever the left is". This means in the future if the left is narrowed down to be $'true$, the right will be read as $'true$.
 
-Non-dependent pairs are a special case of dependent pairs where the right happens to evaluate to the same type for any given left. A non-dependent pair of booleans would be constructed with \mono{(Bool, Bool)}, which is syntactic sugar for \mono{(Bool, \_ -> Bool)}.
+Non-dependent pairs are a special match of dependent pairs where the right happens to evaluate to the same type for any given left. A non-dependent pair of booleans would be constructed with \mono{(Bool, Bool)}, which is syntactic sugar for \mono{(Bool, \_ -> Bool)}.
 
 \begin{listing}[H]
   \begin{minted}[mathescape]{rust}
@@ -893,7 +969,7 @@ Mutation breaks type dependencies across pairs. Once the left of a pair is mutat
   \label{lst:mutpairs}
 \end{listing}
 
-Listing \ref{lst:mutpairs} depicts \mono{('true, 'true) | ('false, 'false)} being evaluated to $(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L})$, which isn't strictly true. Type union between pairs will make the right depend on the left by producing a case statement for each of the possible left atoms, so \mono{('true, 'true) | ('false, 'false)} would instead evaluate to $(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{case L \{ 'true => 'true, 'false => 'false \}})$. In code examples it often evaluates to the former, to aid readability.
+Listing \ref{lst:mutpairs} depicts \mono{('true, 'true) | ('false, 'false)} being evaluated to $(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{L})$, which isn't strictly true. Type union between pairs will make the right depend on the left by producing a match statement for each of the possible left atoms, so \mono{('true, 'true) | ('false, 'false)} would instead evaluate to $(\{\atom{true}, \atom{false}\}, \mono{L} \rightarrow \mono{match L \{ 'true => 'true, 'false => 'false \}})$. In code examples it often evaluates to the former, to aid readability.
 
 \subsubsection{Type Annotations}
 Sometimes you want to manually manipulate what type the abstract interpretation reads from a piece of syntax. You do this with type annotations like \mono{M:T}. Evaluating a piece of syntax like \mono{M: T} both asserts that type of M is a subtype of T and makes the expression be of type T instead of M.
@@ -946,16 +1022,16 @@ When a function is called, two things need to be calculated at the call site: wh
 
 
 
-\subsubsection{Case Statements}
-In each of the branches of a case statement, the type of the scrutinee is narrowed down to a specific atom. This is useful when the case is branching over the left of a dependent pair, because when the left of the pair gets narrowed down, so does the right\footnote{The right only gets narrowed once it is accessed, not immediately when the left is narrowed}.
+\subsubsection{Match Statements}
+In each of the branches of a match statement, the type of the scrutinee is narrowed down to a specific atom. This is useful when the match is branching over the left of a dependent pair, because when the left of the pair gets narrowed down, so does the right\footnote{The right only gets narrowed once it is accessed, not immediately when the left is narrowed}.
 
-Each branch of the case statement will modify the environment in some possibly different way. These are combined into one environment via an environment-wide union operation, which is the output environment.
+Each branch of the match statement will modify the environment in some possibly different way. These are combined into one environment via an environment-wide union operation, which is the output environment.
 
 \begin{listing}[H]
   \begin{minted}[mathescape]{rust}
     f = (b: 'true | 'false) -> 'unit {
                         // $\absenv{ \absmap{b}{\{\atom{true}, \atom{false}\}} }$
-      case b {
+      match b {
         'true => (      // $\absenv{ \absmap{b}{\atom{true}} }$
           x = 'hello;   // $\absenv{ \absmap{b}{\atom{true}}, \absmap{x}{\atom{hello}} }$
         ),
@@ -966,7 +1042,7 @@ Each branch of the case statement will modify the environment in some possibly d
       };                // $\absenv{ \absmap{b}{\atom{true}}, \absmap{x}{\{ \atom{hello}, \atom{world} \}} }$
     }
   \end{minted}
-  \caption{Each branch of the case statement is abstractly interpreted with \mono{b} narrowed down to a single atom (lines 4 and 7). Both branches modify \mono{x}, but to different values which make their environments different (lines 5 and 8); these different values are unioned together in the final environment to $\{\atom{hello}, \atom{world}\}$. The false branch happens to mutate \mono{b} back to $\atom{true}$, which means by the end of \textit{both} branches, $b: \atom{true}$, which is reflected in the final environment which maps \mono{b} to $\atom{true}$ instead of $\{\atom{true}, \atom{false}\}$.}
+  \caption{Each branch of the match statement is abstractly interpreted with \mono{b} narrowed down to a single atom (lines 4 and 7). Both branches modify \mono{x}, but to different values which make their environments different (lines 5 and 8); these different values are unioned together in the final environment to $\{\atom{hello}, \atom{world}\}$. The false branch happens to mutate \mono{b} back to $\atom{true}$, which means by the end of \textit{both} branches, $b: \atom{true}$, which is reflected in the final environment which maps \mono{b} to $\atom{true}$ instead of $\{\atom{true}, \atom{false}\}$.}
 \end{listing}
 
 \subsubsection{Complex Example Programs}
@@ -1167,7 +1243,7 @@ And last but not least, here are a few example programs which use several of the
 %       \Delta \vdash \mono{M = N} \evalarrow n \dashv \Delta''
 %     }\\
 
-%     \\\mono{case M \{}\newline
+%     \\\mono{match M \{}\newline
 %       \mono{  'a$_0$ => N$_0$,}\newline
 %       \mono{  ...}\newline
 %       \mono{  'a$_k$ => N$_k$,}\newline
@@ -1178,7 +1254,7 @@ And last but not least, here are a few example programs which use several of the
 %         \Delta' \vdash N_i \evalarrow n_i \dashv \Delta'' & \ocomment{execute i$^\text{th}$ branch}
 %       \end{array}
 %     }{
-%       \Delta \vdash \mono{case M \{ 'a$_0$\ => N$_0$\, ... \}} \evalarrow n_i \dashv \Delta''
+%       \Delta \vdash \mono{match M \{ 'a$_0$\ => N$_0$\, ... \}} \evalarrow n_i \dashv \Delta''
 %     }$} \\
 
 %   \end{tabular}
@@ -1538,7 +1614,7 @@ At any point during a program interpretation, whether it be abstract or concrete
 
 \textbf{Drop} - Drops every runtime variable. Does not drop comptime ones.
 
-\textbf{Subtype} - If a variable is not mapped to something in the environment, it is implicitly mapped to $\top$, so $\emptyset$ is the supertype of every environment. This is the base case. It then takes variables off the super environment one by one, making sure each one is a supertype of its equivalent in the sub environment.
+\textbf{Subtype} - If a variable is not mapped to something in the environment, it is implicitly mapped to $\top$, so $\emptyset$ is the supertype of every environment. This is the base match. It then takes variables off the super environment one by one, making sure each one is a supertype of its equivalent in the sub environment.
 
 \section{Type Operations}
 \label{section:typeoperations}
@@ -1849,7 +1925,7 @@ The read modality in Ochre evaluates a term to a value. This is analagous to red
 % Destructive operations assert that a piece of syntax has a runtime influence on the data in memory, and updates the environment accordingly. As Ochre has Rust-like ownership semantics, so do these assertions; this means that reading from a variable will \textit{move} the value out of wherever it was previously, and prevent it from being used again. For example $\{x \mapsto 5\} \vdash x\,\dot{\Rightarrow}\,5 \dashv \{x \mapsto \bot\}$ means when $x$ is $5$ in the environment, you can read a $5$ from it, and can't read it again in the future. Writes are destructive because writing a value into memory requires the old value to be deallocated first. The full definition of $\dot{\Rightarrow}$
 
 % \subsection{Writing To Syntax}
-% The $\writearrow$ defines what it means to \textit{write} to a given piece of syntax. This is how values get brought into the context, for instance, an assign (\mono{=}) works by evaluating the RHS, and then writing it to the LHS, which is usually just a variable $x$, but in the case of destructuring could also be a pair $(x, y)$.
+% The $\writearrow$ defines what it means to \textit{write} to a given piece of syntax. This is how values get brought into the context, for instance, an assign (\mono{=}) works by evaluating the RHS, and then writing it to the LHS, which is usually just a variable $x$, but in the match of destructuring could also be a pair $(x, y)$.
 
 
 
@@ -1866,7 +1942,7 @@ The read modality in Ochre evaluates a term to a value. This is analagous to red
 
 
 % \subsection{Type Narrowing}
-% The $\narrowarrow$ constrains the type of syntax down to a smaller type. This is primarily useful when type-checking $\kw{case}$ expressions. When type-checking a particular branch of a case expression, you can modify the environment to reflect the fact that you know which branch you're in and therefore what the value of the case expression is. This is particularly useful when the type of the right-hand side of a pair depends on the left-hand value, because you can $\kw{case}$ the left-hand value, and in each branch you will know the type of the right. This is how ADTs are implemented in Ochre. It's definition is given in Figure \ref{fig:narrow}.
+% The $\narrowarrow$ constrains the type of syntax down to a smaller type. This is primarily useful when type-checking $\kw{match}$ expressions. When type-checking a particular branch of a match expression, you can modify the environment to reflect the fact that you know which branch you're in and therefore what the value of the match expression is. This is particularly useful when the type of the right-hand side of a pair depends on the left-hand value, because you can $\kw{match}$ the left-hand value, and in each branch you will know the type of the right. This is how ADTs are implemented in Ochre. It's definition is given in Figure \ref{fig:narrow}.
 
 
 % Non-destructive operations
@@ -2038,7 +2114,7 @@ Base expressions are the simplest form of expression in Ochre. They do not thems
 
 The definition of the various interpretations of variables are a great demonstration of the differences between the different modalities. Compare \odef{\movearrowabs}{x} with \odef{\readarrowabs}{x}: when a variable is moved, its value is replaced with $\top$ in the environment to reflect the fact it has been moved, but when it is only read, the environment remains unchanged.
 
-Comptime interpretations (squiggly arrows) operate on comptime variables (upper case) as well as runtime variables (lower case), whereas runtime interpretations (straight arrows) can only operate on runtime variables.
+Comptime interpretations (squiggly arrows) operate on comptime variables (upper match) as well as runtime variables (lower match), whereas runtime interpretations (straight arrows) can only operate on runtime variables.
 
 Note: you can only write a value to a variable if that variable is currently mapped to $\top$. This forces the value you are over-writing to be dropped via an environment rearrangement before writing to it.
 
@@ -2145,7 +2221,7 @@ Borrow checking in Ochre occurs in the rules for interpretting references. \mono
 
 There is no syntactic distinction between a mutable and an immutable dereference because that can be determined by the type of the expression being dereferenced. Destructive operations are not defined for immutable operations, because that would break AXM\footnote{aliasing xor mutability}.
 
-Many types contain other types, in this case, the mutable reference type contains the type of the value being referenced. In these cases, move is typically defined by moving the entire type out of the context, and then writing it back with an inner value. \odef{\movearrow, \writearrow}{\deref{M}} both do this in the above definition and \odef{\movearrow, \writearrow}{\pleft{M}, \pright{M}} are good examples of this pattern in other language constructs.
+Many types contain other types, in this match, the mutable reference type contains the type of the value being referenced. In these cases, move is typically defined by moving the entire type out of the context, and then writing it back with an inner value. \odef{\movearrow, \writearrow}{\deref{M}} both do this in the above definition and \odef{\movearrow, \writearrow}{\pleft{M}, \pright{M}} are good examples of this pattern in other language constructs.
 
 Type narrowing is permitted even via \textit{immutable} references (\odef{\narrowarrow}{\deref{M}}), despite causing a mutation to the environment. This is because type narrows don't occur when the user writes to a variable, they are only used by match statements to narrow the type of the scrutinee down to the appropriate branch.
 
@@ -2627,7 +2703,7 @@ In concrete interpretation, only a single match statement is executed (as guaran
   \end{tabular}
 \end{Definition}
 
-All expressions are themselves statements, when this is the case, the expression is executed and checked against the \textit{bound}, which is usually represented by $S_t$. After the expression is executed, the leftover environment is dropped, which will drop all leftover references and assert they conform to their loan restriction, see \odef{\kw{drop}}{\kw{borrow}} for discussion around loan restrictions.
+All expressions are themselves statements, when this is the match, the expression is executed and checked against the \textit{bound}, which is usually represented by $S_t$. After the expression is executed, the leftover environment is dropped, which will drop all leftover references and assert they conform to their loan restriction, see \odef{\kw{drop}}{\kw{borrow}} for discussion around loan restrictions.
 
 \begin{Definition}{Assingment Interpretations}{}
   \small
@@ -2806,11 +2882,11 @@ In Ochre you can put references in variables and pass them to functions, but you
 Supporting returning mutable references would involve introducing the concept of regions from Aeneas into Ochre, which I'm almost certain is possible, but would have complicated the already complicated type system. I leave this to future work 
 
 \subsubsection{Reasoning about function side effects/strong updates}
-In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the case if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
+In Ochre, if a function takes a mutable reference to a value of type $T$, the value is guaranteed to still be of type $T$ after the function return. You may want this not to be the match if the type encodes some property of your data structure, for instance, if you have a type for lists and another for sorted lists you may want an in-place sorting algorithm to change the type of the referenced list into a sorted list. I choose to not support this for a few reasons:
 \begin{enumerate}
   \item People can still do strong updates by moving the data structure in and out of a function instead of giving it a borrow. This is even possible if the caller only has a mutable reference to the data because strong updates are allowed locally.
   \item It would complicate the type system and syntax further.
-  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the case, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
+  \item I predict that it will be idiomatic in Ochre to separate data structures from proofs about their structure. If this is the match, you could return a proof about one of your inputs, which immutably borrows that input, causing it to be invalidated if the data structure is ever mutated. This would not involve strong updates.
 \end{enumerate}
 
 \subsubsection{Unboxed types}
@@ -2901,6 +2977,24 @@ The program is shown to have type $(\atom{hello}, \mono{\_} \rightarrow \atom{wo
 
 A full derivation of this form is given in Appendix  \ref{appendix:helloworldderivation}.
 
+\subsection{Recursion}
+When defining a variable, the variable can use itself, since everything initially maps to top. This allows for the definition of recursive structures in comptime terms, as shown in Listing \ref{listing:recursioncomptime}. This example demonstrates the power of storing syntax in the type for dependent pairs. When type checking \mono{('repeated, Repetative)}, we only had the information that $\absmapm{Repetative}{\top}$, but this didn't cause any problems because we do not need any typing about variable information to be able to put it in a pair.
+
+Then, the assignment narrows the type of \mono{Repetative} from $\top$ down to $(\atom{repeated}, \mono{\_} \rightarrow \mono{Repetative})$. This is sound due to the monotonicity of typing judgments (Property \ref{property:expressionreadmonotonicity}), which will be covered more in Section \ref{section:properties}, but for now I give the following intuition: $(\atom{repeated}, \mono{\_} \rightarrow \mono{Repetative})$ encodes more information than $\top$, so if we can conclude something with only the information $\top$, we can certainly include it with $(\atom{repeated}, \mono{\_} \rightarrow \mono{Repetative})$.
+
+Accessing the right side of the pair with \mono{Repetative.1} then executes this syntax stored in the environment under this new, narrower environment, which gives a pair. A derivation of this is given in Appendix \ref{appendix:recursionderivation}.
+
+\begin{listing}
+  \begin{minted}[mathescape]{rust}
+    Repetative = ('repeated, Repetative); // $ \emptyset, \absmapm{Repetative}{(\atom{repeated}, \mono{\_} \rightarrow \mono{Repetative})}$
+    Repetative.1.1.0 // $\atom{'repeated}$
+  \end{minted}
+  \caption{An example of a comptime pair being defined in terms of itself.}
+  \label{listing:recursioncomptime}
+\end{listing}
+
+
+
 \subsection{Mutating Dependent Pairs}
 \label{section:mutatingpairs}
 This section shows how mutation interacts with dependent types through an example where the correctness of a mutation depends on a dependent pair.
@@ -2962,7 +3056,7 @@ Appendix \ref{appendix:mutateddependentderivation} shows a full derivation of th
 \end{figure}
 
 \subsubsection{Rejecting Incorrect Mutation}
-The function body may temporarily change the type of any references to any type, but by the end of the function body, they must all be of the correct type. Listing \ref{listing:incorrectmutation} mutates the pair it is given reference to incorrectly: while $\atom{b}$ is a valid value for the right-hand side of the pair, it can only be $\atom{b}$ when the left is also $\atom{b}$, which in this case, it is not.
+The function body may temporarily change the type of any references to any type, but by the end of the function body, they must all be of the correct type. Listing \ref{listing:incorrectmutation} mutates the pair it is given reference to incorrectly: while $\atom{b}$ is a valid value for the right-hand side of the pair, it can only be $\atom{b}$ when the left is also $\atom{b}$, which in this match, it is not.
 
 \begin{listing}
   \begin{minted}[mathescape]{rust}
@@ -3072,9 +3166,9 @@ As defined, addition causes $O(n)$ memory allocations: for each iteration, a new
   \label{listing:natadd}
 \end{listing}
 
-You cannot do this in languages like Haskell because you cannot guarantee you have unique access to the allocation, so a new node is always allocated instead. Substantial efforts have been made to optimize re-use in scenarios like this \citep{ningningPerceusGarbageFree2021}, but until it is solved in the general case, systems languages will have to give the programmer enough control to perform optimizations like the above themselves. Ochre, like Rust, can give the programmer this control safely by tracking ownership.
+You cannot do this in languages like Haskell because you cannot guarantee you have unique access to the allocation, so a new node is always allocated instead. Substantial efforts have been made to optimize re-use in scenarios like this \citep{ningningPerceusGarbageFree2021}, but until it is solved in the general match, systems languages will have to give the programmer enough control to perform optimizations like the above themselves. Ochre, like Rust, can give the programmer this control safely by tracking ownership.
 
-\todo[inline]{annotate add functions with environments}
+% \todo[inline]{annotate add functions with environments}
 
 \section{Properties and Proofs}
 \label{section:properties}
@@ -3174,16 +3268,18 @@ Expression interpretation soundness also includes the output \textit{environment
 
 The type on the right-hand side of the arrow, usually $t$ or $v$, acts as an input for write interpretations. This means that instead of write soundness concluding $v:t$, it takes it in as a premise. This reflects the fact that write interpretations do not produce a concrete value, they require one.
 
-Expression soundness is required directly in every case of our central soundness proof.
+Expression soundness is required directly in every match of our central soundness proof.
 
 \subsection{Monotonicity}
 In this context, monotonicity means "if the input is narrowed, the output is narrowed". It is useful to think of the width of a type or an environment in terms of information: concluding a value has a narrow type gives you more information than concluding it has a wide type.
+
+This a crucial property for all abstract and concrete semantics to have if they are to be used in abstract interpretation. We do not take advantage of results from abstract interpretion, but these properties happen to be required in the proofs nonetheless.
 
 The extreme of this is the $\top$ type which gives you no information about the value it is typing whatsoever. This is why it is used to represent uninitialized data. The environment equivalent of this is the $\emptyset$ environment, which effectively maps every variable to $\top$ (due to rearrangements allowing $\absmap{x}{\top}$ to be introduced at any point for any variable via $\langle\text{Allocation}\rangle$). $\top$ and $\emptyset$ are the widest types and environments respectively.
 
 \noindent
 \begin{minipage}{0.6\textwidth}
-  \hspace{2.25ex} Occasionally properties have graphical representations. In these representations, the origin represents no information (maximally wide type/environment, $\top$, $\emptyset$) and distance from the origin represents information gain/type narrowing. Lines represent a derivation that relates the input objects (x-axis) and the output objects (y-axis), similar to how you might label a line on a graph $y = 5x + 2$ in mathematics.
+  \hspace{2.25ex} Occasionally properties have graphical representations. In these representations, the origin represents no information (maximally wide type/environment, $\top$, $\emptyset$) and distance from the origin represents information gain/type narrowing. Lines represent a derivation that relates the input objects (x-axis) and the output objects (y-axis), similar to how you might label a line on a graph $y = 5x + 2$ in mathematics. Lines pass through the origin iff their statment is valid in an empty environment.
 \end{minipage}
 \begin{minipage}{0.4\textwidth}
   \centering
@@ -3213,8 +3309,6 @@ The extreme of this is the $\top$ type which gives you no information about the 
   \end{minipage}
 \end{Property}
 \label{property:statementmonotonicity}
-
-\ref{property:statementmonotonicity} states that if you narrow the environment a statement is interpreted under, it narrows the type it is interpreted to.
 
 \begin{Property}{Expression Read Monotonicity}{}
   \begin{minipage}{0.6\textwidth}
@@ -3261,6 +3355,11 @@ The extreme of this is the $\top$ type which gives you no information about the 
   \end{minipage}
   \label{property:expressionwritemonotonicity}
 \end{Property}
+
+\subsection{Statement Bounds}
+Statement evaluation occurs with a \textit{bound}. At all future program points, the bound statement must be wider than the statement on the left. This is how function bodies are type checked against their type.
+
+This property is upheld by each of the statement rules. When doing variable assignment \odef{\movearrowabs}{M = N; S} we have to check that each assignment does not break our statement bounds.
 
 \begin{Property}{Statement Bounds Respected}{} % yes
   % \begin{minipage}{0.6\textwidth}
@@ -3326,10 +3425,6 @@ We introduce subtyping between terms, like so;
 \end{Property}
 \label{property:expressionsubtyping}
 
-Boolean \mono{not} counter example
-
-The fact this does not hold is the motivation behind bounded statement interpretation because, with bounded statement interpretation, we can define statement subtyping and an equivalent subtyping preservation theorem. This is the primary reason why statements and expressions are separated from expressions.
-
 \begin{Property}{Statement Subtyping Preservation}{} % yes
   \begin{minipage}{0.6\textwidth}
     \centering
@@ -3350,6 +3445,23 @@ The fact this does not hold is the motivation behind bounded statement interpret
 \label{property:statementsubtyping}
 
 \subsubsection{Statement Bound Motivation}
+
+Term subtyping preservation means that any relationship we conclude between two terms under one environment, can still be used under all environments which contain more information. This is useful in proofs when we do a series of operations on the environment which narrow it, and we want to re-use an earlier conclusion.
+
+Expression subtyping and statement subtyping are defined in a very different way (\ref{property:expressionsubtyping} vs \ref{property:statementsubtyping}). This is because narrowing the input environment for two statements can cause their output in different ways. For example, take the following example
+
+\begin{minted}{rust}
+  id = (b: 'true | 'false) -> b {
+    match b {
+      'true => 'false,
+      'false => 'true
+    }
+  }
+\end{minted}
+
+The function body, when executed under $\absmapm{x}{\{ 'true, 'false \}}$, evaluates to $\absmapm{x}{\{ 'true, 'false \}}$ reflecting the fact it could be either true or false, and so does the body. However, if we then narrow this input down to $\absmapm{x}{'true}$, the return type and the function body narrow in different ways, one to $\atom{true}$, the other to $\atom{false}$.
+
+The fact this does not hold is the motivation behind bounded statement interpretation because, with bounded statement interpretation, we can define statement subtyping and an equivalent subtyping preservation theorem. This is the primary reason why statements and expressions are separated from expressions.
 
 \begin{Definition}{Expression-Like Statement Subtyping}{}
   \[\inferrule{
@@ -3372,14 +3484,19 @@ The fact this does not hold is the motivation behind bounded statement interpret
 \end{Property}
 \label{theorem:statementsubtypingpreservation}
 
-\subsection{Determinism}
-\todo[inline]{include or remove this section}
+% \subsection{Determinism}
+% \todo[inline]{include or remove this section}
 
 \subsection{Information Gain/Loss}
-\begin{Property}{Read-Interpretation Widens}{} % yes
+The narrower an environment is, the more information it contains. These two theorems state that reading from the environment always \textit{uses} information and writing to the environment \textit{adds} information.
+
+Evaluating an expression changes how much information there is in the environment. Moving a value from a term removes that information from the environment, moves always widen environments.
+
+\begin{figure}[H]
+\begin{Property}{Move-Interpretation Widens}{} % yes
   \begin{minipage}{0.6\textwidth}
     \centering
-    for all $\diamond$ in $\{ \movearrowabs, \readarrowabs, \erasedreadarrow \}$
+    for all $\diamond$ in $\{ \movearrowabs \}$
     \[
       \inferrule{
         \Omega \vdash M \diamond t \dashv \Omega'
@@ -3390,12 +3507,41 @@ The fact this does not hold is the motivation behind bounded statement interpret
   \end{minipage}
   \begin{minipage}{0.3\textwidth}
     \centering
-    \includegraphics[width=6cm]{placeholder.png}
-    Always up and right
+    \includegraphics[width=4cm]{expressionmovewidens.png}
+    Always above the dotted line
   \end{minipage}
 \end{Property}
-\label{theorem:expressionreadwidens}
+\label{theorem:expressionmovewidens}
+\end{figure}
 
+Non-destructive reads never widen or narrow the environment, although they can add loan identifiers so we cannot say they are equal.
+
+\begin{figure}[H]
+\begin{Property}{Read-Interpretation Does Nothing}{} % yes
+  \begin{minipage}{0.6\textwidth}
+    \centering
+    for all $\diamond$ in $\{ \readarrowabs, \erasedreadarrow \}$
+    \[
+      \inferrule{
+        \Omega \vdash M \diamond t \dashv \Omega'
+      }{}
+      \text{   implies   }
+      \inferrule{
+        \Omega \subtype \Omega' \\\\
+        \Omega' \subtype \Omega
+      }{}
+    \]
+  \end{minipage}
+  \begin{minipage}{0.3\textwidth}
+    \centering
+    \includegraphics[width=6cm]{expressionreadnothing.png}
+    Lines always together
+  \end{minipage}
+\end{Property}
+\label{theorem:expressionreadnothing}
+\end{figure}
+
+Write interpretation adds information to the environment, so it always narrows it.
 
 \begin{Property}{Write-Interpretation Narrows}{} % yes
   \begin{minipage}{0.6\textwidth}
@@ -3411,13 +3557,11 @@ The fact this does not hold is the motivation behind bounded statement interpret
   \end{minipage}
   \begin{minipage}{0.3\textwidth}
     \centering
-    \includegraphics[width=6cm]{placeholder.png}
-    Always up and right
+    \includegraphics[width=6cm]{expressionwritenarrows.png}
+    Always below dotted line
   \end{minipage}
 \end{Property}
-\label{theorem:expressionwritewidens}
-
-The narrower an environment is, the more information it contains. These two theorems state that reading from the environment always \textit{uses} information and writing to the environment \textit{adds} information.
+\label{theorem:expressionwritenarrows}
 
 \begin{Property}{Type Union is Precise}{}
   \[
@@ -3431,7 +3575,13 @@ The narrower an environment is, the more information it contains. These two theo
 \label{theorem:precisetypeunion}
 
 \begin{Property}{Environment Union is \textbf{not} Precise}{}
-  \ocomment{todo}
+  \[
+    \Omega \subtype \Omega' \sqcup \Omega''
+    \text{   \textbf{not} if and only if   }
+    \Omega \subtype \Omega'
+    \text{   or   } 
+    \Omega \subtype \Omega''
+  \]
 \end{Property}
 \label{theorem:inpreciseenvunion}
 
@@ -3441,6 +3591,7 @@ The narrower an environment is, the more information it contains. These two theo
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Evaluation}
+\label{chapter:evaluation}
 As stated in our introduction:
 
 \begin{quote}
@@ -3533,7 +3684,7 @@ We compare the implementation of a modified version of the \textit{pair mutation
   \label{listing:pairmutationrust}
 \end{listing}
 
-\textbf{Comparison with Low*} - In Low*, mutation is handled through the \mono{Stack} monad, this allows Low* to be a pure functional language at the surface level, which avoids the issue of combining mutability with dependent types. Ochre avoids the need to work within a monad like \mono{Stack}, and so does not need to do explicit stack allocation like Low* does on line 8.
+\textbf{Comparison with Low*} - In Low*, mutation is handled through the \mono{Stack} monad, this allows Low* to be a pure functional language at the surface level, which avoids the issue of combining mutability with dependent types. Subjectively, this is a very elegant approach to combining mutability and dependent types which Low* does well, but it does require always being within the \mono{Stack} monad. While monads have very elegant use cases, requiring them for absolutely everything is frustrating, and certainly would not be popular with low-level systems programmers. It also means there is a distinction between your surface-level variables like \mono{pair}, and the stack allocations they reference, which requires explicit stack allocation (as shown on line 8).
 
 \textbf{Comparison with ATS} - In ATS, most runtime values have a type-level counterpart. You use the runtime value for execution and the type-level counterpart for type signatures. In Listing \ref{listing:pairmutationats}, line 10 constructs the runtime pointer, then ATS implicitly creates a compile-time counterpart called the pointers \textit{address} when \mono{p} is passed to \mono{overwrite}.
 
@@ -3654,14 +3805,18 @@ This research is intended to be used in the future to form an implementation, an
 
 \chapter{Conclusion}
 \label{chapter:conclusion}
-To summarize, we have presented the formal semantics for a dependently typed systems language, which can correctly accept correct programs and reject incorrect ones, as shown , and in doing so made imporvements 
+To summarize, in Chapter \ref{chapter:ochreformally} we presented the formal semantics for Ochre, a dependently typed systems language. Then in Chapter \ref{chapter:analysis} we show it accepts correct programs and rejects incorrect ones, and in Chapter \ref{chapter:evaluation} we demonstrate that it does so with superior ergonomics when compared to languages with comparable feature sets, and even compares well to Rust.
+
+With this work undertaken, what is next?
 
 \section{Future Work}
+The two most important pieces of future work are proving the soundness of the presented system and implementing Ochre so that it may be used for useful theorem proving in production systems. I believe the best route to achieving these goals is to follow the following roadmap:
+
 \subsection{Reduce Feature Set, Increase Rigor}
-Section {section:properties} attempts to argue that the system presented is sound, somewhat unconvincingly. Although I believe it could be proven by a better semanticist than myself, and/or with much more time, I think the best way of getting to that point is by reducing the feature set and progressively building them back. I suggest two such feature sets:
+Although I believe it could be proven by a better semanticist than myself, and/or with much more time, I think the best way of getting to a soundness proof is by removing features and progressively building them back. I suggest two such feature sets:
 
 \subsubsection{Och}
-Och would lack dependent types and mutability, but keep the core principle that terms are their own type, and subtyping/structural typing in general.
+Och would lack mutability, but keep dependent types and the core principle that terms are their own type, and subtyping/structural typing in general.
 
 Och would have the following syntax and environment:
 
@@ -3672,18 +3827,11 @@ Och would have the following syntax and environment:
   \begin{array}[t]{llll}
     M, N & ::= & & \ocomment{term} \\
     && x \mid{} y \mid{} z  & \ocomment{runtime variable} \\
-    && X \mid{} Y \mid{} Z  & \ocomment{comptime variable} \\
-    && \atom{a} & \ocomment{atom construction} \\
-    && M\mono{,} N & \ocomment{pair construction} \\
-    && \pleft{M} & \ocomment{pair left access} \\
-    && \pright{M} & \ocomment{pair right access} \\
     && M N & \ocomment{application} \\
-    && \mono{$M$ -> $N$} & \ocomment{abstraction} \\
+    && \mono{$x: M$ -> $N$} & \ocomment{abstraction} \\
     && \mono{\_} & \ocomment{uninitialised} \\
-    && T\,\mono{|}\,U & \ocomment{type union} \\
-    && M\mono{:}\,T & \ocomment{type constraint} \\
-    && M = N & \ocomment{assignment} \\
-    && \mono{match}\,M\,\{\,\overrightarrow{M'\mono{ => }S}\,\} & \ocomment{match statement} \\
+    && M\,\mono{|}\,N & \ocomment{type union} \\
+    && M\mono{:}\,N & \ocomment{type constraint} \\
   \end{array} %
   
   \begin{array}[t]{llll}
@@ -3693,9 +3841,7 @@ Och would have the following syntax and environment:
     && \Omega, X \mapsto v & \ocomment{comptime variable} \\
     \\
     t, u & ::= & & \ocomment{type/value} \\
-    && \{\overrightarrow{\atom{a}}\} & \ocomment{atom} \\
-    && (t, u) & \ocomment{pair} \\
-    && (t \rightarrow u) & \ocomment{function} \\
+    && ((x: T) \rightarrow U) & \ocomment{function} \\
     && \top & \ocomment{top} \\
   \end{array}
   \end{mathpar}  
@@ -3706,19 +3852,19 @@ Och would have the following syntax and environment:
 
 Because Och does not have references or mutation, it would not need move semantics, and therefore would not need the destructive/non-destructive modality. With this change, the difference between the runtime and comptime modalities might become negligible to the point of redundancy, which would reduce the interpretation down to only the read/write and abstract/concrete modalities.
 
-I speculate that these simplifications would make a soundness proof feasible, and undertaking such a proof effort would cause changes that would leave the language on firmer foundations.
+Removing mutation and move semantics would also make it sound for functions to capture scope since that scope is guaranteed to never change. This would allow you to use church encodings for data structures and avoid the need for pairs and atoms. Variable assignment could be modelled with function application.
+
+Och, we could focus on the core principle of terms being their own types, and produce a soundness proof and implementation. Once this foundation has been laid, we can introduce the features back gradually. We could also focus on features whose omission hurt Ochre, such as variables in the environment not being able to depend on each other.
 
 \subsubsection{Ochr}
-Once the core subtyping system is shown to be sound, useful, and implementable, dependent types should be added.
+Once Och is established, the concepts of ownership and \textit{maybe} borrowing should be added to make Ochr. In Ochr, using a value consumes the value, to make this usable the concept of borrow may have to be added, but only immutable borrowing should be added.
 
-Efforts should be made to not introduce syntax into the abstract environment for the sake of calculating return types as the current version of Ochre has, as this introduces a large amount of complexity into the soundness proof and makes the re-usability of subtyping derivations very labor intensive. This could be done by having the syntax wrapped in a construct that captures the environment needed to evaluate it, similar to how Haskell functions are embedded within the definition of \mono{Value} in \cite{lohTutorialImplementationDependently2010}, Section 2.4.
-
-Ochr would be Och extended as minimally as possible to include dependent types.
-
-Unlike Ochre as presented, Ochr would allow for dependencies between variables in the abstract environment, which would make environment union precise. This would solve the issue of computing the join, or the "merge problem" in Mezzo \citep{protzenkoMezzoTypedLanguage2014}, and enable match statements to occur in non-terminal positions without duplication of the code afterward.
+Once Ochr is sound and well-understood, the mutability of local variables and mutable references should be introduced.
 
 \subsection{Increase Feature Set, Increase Usability}
-There are many important features missing from Ochre which will be needed in order for it to become a useful tool for formal verification. These include:
+Many important features are missing from Ochre which will be needed in order for it to become a useful tool for formal verification. On balance, I believe the theory work laid out above should be prioritized, but I am wary of spending too long developing the theory: Rust has transformed systems programming, and when it was released its specification was informal. To this day there is no official language specification other than the implementation of the reference compiler. Since Rust's inception, and in large part due to its success, academic rigor has been applied retrospectively with projects like \cite{jungRustBeltSecuringFoundations2018a}. This approach has its advantages: it avoids investing academic effort into formal reasoning about languages which don't provide any advantage over the status quo for programmers. There is also the concern that the theory work could prove to be a bottomless pit of potential work, and doing it all properly would delay Ochre to the point of never happening, which could totally stop other contributors from joining in on the intellectual efforts. Or, to put it briefly: don't let ``Perfect'' to be the enemy of ``Good'', especially when ``Good'' could offer substantial benefits over the status quo.
+
+Below are the most important features for Ochre to become a useful language:
 
 \subsubsection{Returning References From Functions}
 Aeneas' method of borrow checking is compatible with returning references from functions, so that method should be portable to Ochre.
@@ -3761,7 +3907,7 @@ When the right-hand side of the assignment is evaluated, \mono{Nat} is mapped to
 This takes advantage of the fact that it is evaluated with a more accurate environment later, so I could not remove this immediately, but I believe with future work it could be removed.
 
 \subsection{Implementation}
-The goal of this project is to enable formal verification of low-level systems code. In order to do that Ochre must have an implementation, and be usable.
+The goal of this project is to enable formal verification of low-level systems code. In order to do that Ochre must have an implementation, and be usable. At least initially I suggest doing this through an embedding in Rust via its powerful (albeit untyped) metaprogramming features. This would allow Ochre to incrementally replace Rust codebases, which is a great potential use match.
 
 To do this I would implement Ochre in a Rust macro, so it could be invoked as such:
 
@@ -3794,9 +3940,9 @@ And potentially allow importing of pure Ochre files from this macro, like such:
   }
 \end{minted}
 
-The Rust library which defines this macro could also define traits (type classes) that allow the programmer to define how Rust types are converted to and from Ochre types so that they can pass them to Ochre functions, and use the results in Rust.
+The Rust library which defines this macro would define traits (type classes) that allow the programmer to define how Rust types are converted to and from Ochre types so that they can pass them to Ochre functions, and use the results in Rust.
 
-The parser for a large subset of a previous version of Ochre is implemented in this way, and code generation/abstract interpretation for a few simple constructs (assignment, atoms, pairs) is implemented, but for this project I decided to prioritize the theory work.
+I have already implemented the parser for a previous version of Ochre in this way through macros, and code generation/abstract interpretation for a few simple constructs (assignment, atoms, pairs) is implemented. However, I decided the theory work was a more important contribution and focused my efforts there instead.
 
 With this interface, programmers could take an existing Rust codebase, and incrementally convert it to Ochre as and when they need stronger properties about their program proven.
 
@@ -4073,6 +4219,39 @@ Derivation:
 \end{array}\]
 }
 
+\subsection{Recursion}
+\label{appendix:recursionderivation}
+To make the derivation easier to understand, we shorten the program to \mono{R = ('r, R); R.1.0}:
+
+Begin derivation.
+{
+  \smaller
+  \[\begin{array}{ll}
+    \Omega_1 \vdash \mono{R = ('r, R); R.1.0} \subtype \mono{*} \erasedreadarrow \atom{r} &
+      \Omega_1 = \emptyset, \absmapm{R}{\top} \\
+    % R = ('r, R)
+    \otab \ocomment{\mono{R = ('r, R)}} \\
+    \otab \Omega_1 \vdash \mono{('r, R)} \erasedreadarrow (\atom{r}, \mono{\_} \rightarrow \mono{R}) \dashv \Omega_1 \\
+    \otab\otab \Omega_1 \vdash \mono{('r, \_ -> R)} \erasedreadarrow (\atom{r}, \mono{\_} \rightarrow \mono{R}) \dashv \Omega_1 \\
+    \otab\otab\otab \Omega_1 \vdash \mono{'r} \erasedreadarrow \atom{r} \\
+    \otab\otab\otab \Omega_1 \vdash \mono{\_} \writearrowabs \atom{r} \\
+    \otab\otab\otab \Omega_1 \vdash R \erasedreadarrow \top \ocomment{type check right of pair} \\
+    \otab \Omega_1 \vdash \mono{R} \writearrowabs (\atom{r}, \mono{\_} \rightarrow \mono{R}) \dashv \Omega_2 &
+      \Omega_2 = \emptyset,\absmapm{R}{(\atom{r}, \mono{\_} \rightarrow \mono{R})} \\
+    \otab\otab \ocomment{variable write rule ommitted} \\
+
+    \otab \ocomment{\mono{R.1.0}} \\
+    \otab \Omega_2 \vdash \mono{R.1.0} \erasedreadarrow \atom{r} \\
+    \otab\otab \Omega_2 \vdash \mono{R.1} \erasedreadarrow (\atom{r}, \mono{\_} \rightarrow \mono{R})  \dashv \Omega_2' \\
+    \otab\otab\otab \Omega_2 \vdash \mono{R} \erasedreadarrow (\atom{r}, \mono{\_} \rightarrow \mono{R}) \\
+    \otab\otab\otab\otab \Omega_2 \vdash \mono{\_} \erasedwritearrow \atom{r} \\
+    \otab\otab\otab\otab \Omega_2 \vdash \mono{R} \erasedreadarrow (\atom{r}, \mono{\_} \rightarrow \mono{R}) \\
+
+
+
+  \end{array}\]
+}
+
 \subsection{Mutating a Dependent Pair}
 \label{appendix:mutateddependentderivation}
 This appendix shows the derivation which type checks the definition of the \mono{overwrite} function from Listing \ref{listing:mutatedependent}.
@@ -4235,25 +4414,25 @@ Then we take the proof by cases on the derivations used to construct $\Omega \vd
     We assume the abstract interpretation drops a variable if and only if the concrete interpretation drops a variable. Formally: either $\Delta \vdash S \subtype \mono{*} \movearrowconc v$ \textit{and} $\Omega \vdash S \subtype \mono{*} \movearrowabs t$ are rearrangements ($\langle\text{Rearrange-Before}\rangle$ or $\langle\text{Rearrange-After}\rangle$), or neither are. This could be made provable so we would not have to assume it, but I believe that would involve the abstract interpretation somehow inserting drop signals into the terms that the concrete interpretation reads and acts upon. This is possible, and I believe only a matter of effort, but it would complicate the interpretations further, slowing down future more important work.
 \end{tcolorbox}
 
-\textbf{Case} - $S$ is an expression $M$.
+\textbf{Match} - $S$ is an expression $M$.
 
 The assumed derivations must be 
 
 \begin{equation}
     \inferrule{
-    \Delta \vdash M \movearrowconc v \dashv \Delta' \\\\
-    \Delta' \vdash \drop{}
+      \Delta \vdash M \movearrowconc v \dashv \Delta' \\\\
+      \Delta' \vdash \drop{}
     }{
-    \Delta \vdash M \subtype \mono{*} \movearrowconc
+      \Delta \vdash M \subtype \mono{*} \movearrowconc
     }
     \text{ and }
     \inferrule{
-    \Omega \vdash \mono{*} \erasedreadarrow \top \\\\
-    \Omega \vdash M \movearrowabs t \dashv \Omega' \\\\
-    \Omega' \vdash t \subtype \top \\\\
-    \Omega' \vdash \drop{}
+      \Omega \vdash \mono{*} \erasedreadarrow \top \\\\
+      \Omega \vdash M \movearrowabs t \dashv \Omega' \\\\
+      \Omega' \vdash t \subtype \top \\\\
+      \Omega' \vdash \drop{}
     }{
-    \Omega \vdash M \subtype \mono{*} \movearrowabs t
+      \Omega \vdash M \subtype \mono{*} \movearrowabs t
     }
 \end{equation}
 
@@ -4261,9 +4440,45 @@ for some environments $\Delta'$ and $\Omega'$.
 
 Using Property \ref{property:expressionreadsoundness} (Expression Read Soundness) on $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ we have $\Omega \vdash v:t$ and $\Delta \subtype \Omega$. \hfill $\square$
 
-\textbf{Case} - $S$ is an assignment \mono{$M$ = $N$; $S'$}.
+\textbf{Match} - $S$ is an assignment \mono{$M$ = $N$; $S'$}.
 
-\textbf{Case} - $S$ is a match statement \mono{match $M$ \{$\overrightarrow{M' \mono{ => } S'}$\}}.
+The assumed derivations must be 
+
+\begin{equation}
+  \inferrule[]{
+    \Delta \vdash N \movearrowconc v' \dashv \Delta' \\\\
+    \Delta' \vdash M \writearrowconc' v \dashv \Delta'' \\\\
+    \runtime{M} \\\\
+    \ocomment{execute remaining computation} \\\\
+    \Delta'' \vdash S' \subtype \mono{*} \movearrowconc v
+  }{
+    \Delta \vdash M \mono{=} N \mono{;} 'S' \subtype S_t \movearrowconc v
+  }
+  \text{ and }
+  \inferrule[]{
+    \Omega \vdash N \movearrowabs t' \dashv \Omega' \\\\
+    \Omega' \vdash M \writearrowabs t' \dashv \Omega'' \\\\
+    \runtime{M} \\\\
+    \ocomment{execute remaining computation} \\\\
+    \Omega'' \vdash S' \subtype \mono{*} \movearrowabs t
+  }{
+    \Omega \vdash M \mono{=} N \mono{;} 'S' \subtype S_t \movearrowabs t
+  }
+\end{equation}
+\label{equation:assignmentstatass}
+
+\noindent
+for some environments $\Delta$, $\Delta'$, $\Delta''$, $\Omega$, $\Omega'$, $\Omega''$ and types $v$ and $t$.
+
+By the soundness of read interpretation on expressions (\ref{property:expressionreadsoundness}), with $\Delta \vdash N \movearrowconc v \dashv \Delta'$ and $\Omega \vdash N \movearrowabs t \dashv \Omega'$ from \ref{equation:assignmentstatass}, we get $\Omega' \vdash v:t$ and $\Delta' \subtype \Omega'$.
+
+Using this with soundness of \textit{write} soundness for expressions (\ref{property:expressionwritesoundness}) with $\Delta' \vdash M \writearrowconc' v \dashv \Delta''$ and $\Omega' \vdash M \writearrowabs t' \dashv \Omega''$ and the previous conclusions $\Omega' \vdash v:t$ and $\Delta' \subtype \Omega'$, we get $\Delta'' \subtype \Omega''$.
+
+Because we have $\Delta'' \subtype \Omega''$, we can use statement soudness (\ref{property:statementsoundness}) on $\Delta'' \vdash S' \subtype \mono{*} \movearrowconc v$ and $\Omega'' \vdash S' \subtype \mono{*} \movearrowabs t$ to get $\Omega'' \vdash v: t$, as required.
+
+\textbf{Match} - $S$ is a match statement \mono{match $M$ \{$\overrightarrow{M' \mono{ => } S'}$\}}.
+
+Match omitted.
 
 \subsection{Expression Read Soundness}
 
@@ -4288,13 +4503,13 @@ We start by assuming $\Delta \vdash M \diamond v \dashv \Delta'$, $\Omega \vdash
 
 We then take the proof by an exhaustive set of cases.
 
-\textbf{Case} - $M$ is an atom constructor $\atom{a}$
+\textbf{Match} - $M$ is an atom constructor $\atom{a}$
 
 The assumed derivations $\Delta \vdash M \diamond v \dashv \Delta'$ and $\Omega \vdash M \,\abs{\diamond}\, t \dashv \Omega'$ must be $\Delta \vdash \atom{a} \abs{\diamond} \atom{a}$ and $\Omega \vdash \mono{'}a \diamond \atom{a}$ which tells us $v = \atom{a}$, $\Delta' = \Delta$, and $\Omega' = \Omega$.
 
 Our proof goals re-written are now $\Omega \vdash \atom{a} \subtype \atom{a}$ and $\Delta: \Omega$. The former holds directly from \odef{\subtype}{\atom{a}}, and the latter holds because we previously assumed it. \hfill $\square$
 
-\textbf{Case} - $M$ is a runtime variable $x$ and $\diamond$ is $\movearrowconc$.
+\textbf{Match} - $M$ is a runtime variable $x$ and $\diamond$ is $\movearrowconc$.
 
 The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be
 
@@ -4314,7 +4529,7 @@ The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\
 
 Since $x$ now maps to $\top$ in both environments $\Delta': \Omega'$ because environment subtyping is just variable-wise subtyping and $\Omega' \vdash \top \subtype \top$. $\top$ is concrete, so $\Delta'$ remains concrete. $\Omega' \vdash v:t$ by \odef{:}{\Omega}. \hfill $\square$.
 
-\textbf{Case} - $M$ is a function application $F A$ and $\diamond$ is $\movearrowconc$.
+\textbf{Match} - $M$ is a function application $F A$ and $\diamond$ is $\movearrowconc$.
 
 The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be:
 
@@ -4385,7 +4600,7 @@ When a function body is interpreted, it is ensured that every reference is mutat
 
 It would be very labor-intensive to formalize this logic into a proof and possibly require introducing more logic to the interpretations. This would be worthwhile work if it was not for the fact that I think overall, the current model of side effects is not very elegant and would be worth refining as future work. This refining would make any proofs I make about the current system redundant. Therefore I have chosen to prioritize other cases, such as function application and type annotations.
 
-\textbf{Case} - $M$ is a function definition $M' \mono{->} S_t \mono{\{} S \mono{\}}$.
+\textbf{Match} - $M$ is a function definition $M' \mono{->} S_t \mono{\{} S \mono{\}}$.
 
 The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be:
 
@@ -4411,9 +4626,9 @@ We immediately have $\Delta:\Omega$ because it is one of our starting premises (
 
 We can use $\Omega \vdash \comptime{} \dashv \Gamma$, $\Gamma \vdash M' \maxarrow{\writearrowabs} m \dashv \Gamma'$, and $\Gamma' \vdash S \subtype S_t \movearrowabs u$ with \odef{\subtype}{M \rightarrow S_t} to get $(\Omega \vdash (M \rightarrow S) \subtype (M \rightarrow S_t))$ immediately. \hfill $\square$
 
-This case is so short because \odef{\subtype}{M \rightarrow S_t} is almost an exact match of \odef{\movearrowabs}{M' \mono{->} S_t \mono{\{} S \mono{\}}}. The complexity of function checking is all in the application case. This reflects the fact that defining an ill-typed function never causes soundness issues at runtime, it is \textit{calling} an ill-typed function that makes your state unsound.
+This match is so short because \odef{\subtype}{M \rightarrow S_t} is almost an exact match of \odef{\movearrowabs}{M' \mono{->} S_t \mono{\{} S \mono{\}}}. The complexity of function checking is all in the application match. This reflects the fact that defining an ill-typed function never causes soundness issues at runtime, it is \textit{calling} an ill-typed function that makes your state unsound.
 
-\textbf{Case} - $M$ is a type annotation $M': T$.
+\textbf{Match} - $M$ is a type annotation $M': T$.
 
 The assumed derivations $\Delta \vdash M \movearrowconc v \dashv \Delta'$ and $\Omega \vdash M \movearrowabs t \dashv \Omega'$ must be:
 

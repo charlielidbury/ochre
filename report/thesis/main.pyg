@@ -1,3 +1,0 @@
-    Bool = 'true | 'false;
-    Id = (x: Bool) -> Bool; // valid
-    id = (x: Bool) -> Bool; // invalid: attempt to assign comptime func to runtime var

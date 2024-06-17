@@ -1,7 +1,7 @@
 \begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
 \PYG{+w}{    }\PYG{n}{f}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{b}: \PYG{o}{\PYGZsq{}}\PYG{n+na}{true} \PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{o}{\PYGZsq{}}\PYG{n+na}{unit} \PYG{p}{\PYGZob{}}
 \PYG{+w}{                        }\PYG{c+c1}{// $\absenv{ \absmap{b}{\{\atom{true}, \atom{false}\}} }$}
-\PYG{+w}{      }\PYG{n}{case}\PYG{+w}{ }\PYG{n}{b}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{      }\PYG{k}{match}\PYG{+w}{ }\PYG{n}{b}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
 \PYG{+w}{        }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{+w}{      }\PYG{c+c1}{// $\absenv{ \absmap{b}{\atom{true}} }$}
 \PYG{+w}{          }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{hello}\PYG{p}{;}\PYG{+w}{   }\PYG{c+c1}{// $\absenv{ \absmap{b}{\atom{true}}, \absmap{x}{\atom{hello}} }$}
 \PYG{+w}{        }\PYG{p}{),}

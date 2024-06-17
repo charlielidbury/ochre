@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{+w}{    }\PYG{c+c1}{// \PYGZdq{}manual\PYGZdq{} ADT encoding}
+\PYG{+w}{    }\PYG{n}{Nat}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{T}: \PYG{o}{\PYGZsq{}}\PYG{n+na}{zero} \PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{k}{match}\PYG{+w}{ }\PYG{n}{T}\PYG{+w}{ }\PYG{p}{\PYGZob{}}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{+w}{ }\PYG{o}{=\PYGZgt{}}\PYG{+w}{ }\PYG{n}{Nat}\PYG{+w}{ }\PYG{p}{\PYGZcb{});}
+\PYG{+w}{    }\PYG{c+c1}{// idiomatic encoding using type union}
+\PYG{+w}{    }\PYG{n}{Nat}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{zero}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}\PYG{p}{)}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{succ}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Nat}\PYG{p}{);}
+\end{Verbatim}

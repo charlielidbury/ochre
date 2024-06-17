@@ -15,7 +15,7 @@
   url = {http://arxiv.org/abs/2206.07185},
   urldate = {2024-01-24},
   abstract = {We present Aeneas, a new verification toolchain for Rust programs based on a lightweight functional translation. We leverage Rust's rich region-based type system to eliminate memory reasoning for many Rust programs, as long as they do not rely on interior mutability or unsafe code. Doing so, we relieve the proof engineer of the burden of memory-based reasoning, allowing them to instead focus on functional properties of their code. Our first contribution is a new approach to borrows and controlled aliasing. We propose a pure, functional semantics for LLBC, a Low-Level Borrow Calculus that captures a large subset of Rust programs. Our semantics is value-based, meaning there is no notion of memory, addresses or pointer arithmetic. Our semantics is also ownership-centric, meaning that we enforce soundness of borrows via a semantic criterion based on loans rather than through a syntactic type-based lifetime discipline. We claim that our semantics captures the essence of the borrow mechanism rather than its current implementation in the Rust compiler. Our second contribution is a translation from LLBC to a pure lambda-calculus. This allows the user to reason about the original Rust program through the theorem prover of their choice. To deal with the well-known technical difficulty of terminating a borrow, we rely on a novel approach, in which we approximate the borrow graph in the presence of function calls. This in turn allows us to perform the translation using a new technical device called backward functions. We implement our toolchain in a mixture of Rust and OCaml. Our evaluation shows significant gains of verification productivity for the programmer. Rust goes to great lengths to enforce static control of aliasing; the proof engineer should not waste any time on memory reasoning when so much already comes "for free"!},
-  archiveprefix = {arxiv},
+  archiveprefix = {arXiv},
   keywords = {Computer Science - Programming Languages},
   file = {/Users/charlielidbury/Zotero/storage/EWDQJVU3/Ho and Protzenko - 2022 - Aeneas Rust Verification by Functional Translatio.pdf;/Users/charlielidbury/Zotero/storage/DQQKHDX8/Ho and Protzenko - 2022 - Aeneas Rust Verification by Functional Translatio.html}
 }
@@ -33,7 +33,7 @@
   url = {http://arxiv.org/abs/1608.06499},
   urldate = {2024-01-24},
   abstract = {Dijkstra monads enable a dependent type theory to be enhanced with support for specifying and verifying effectful code via weakest preconditions. Together with their closely related counterparts, Hoare monads, they provide the basis on which verification tools like F*, Hoare Type Theory (HTT), and Ynot are built. We show that Dijkstra monads can be derived "for free" by applying a continuation-passing style (CPS) translation to the standard monadic definitions of the underlying computational effects. Automatically deriving Dijkstra monads in this way provides a correct-by-construction and efficient way of reasoning about user-defined effects in dependent type theories. We demonstrate these ideas in EMF*, a new dependently typed calculus, validating it via both formal proof and a prototype implementation within F*. Besides equipping F* with a more uniform and extensible effect system, EMF* enables a novel mixture of intrinsic and extrinsic proofs within F*.},
-  archiveprefix = {arxiv},
+  archiveprefix = {arXiv},
   keywords = {Computer Science - Programming Languages},
   file = {/Users/charlielidbury/Zotero/storage/8DDPIJHK/Ahman et al. - 2019 - Dijkstra Monads for Free.pdf;/Users/charlielidbury/Zotero/storage/4N32MFA2/Ahman et al. - 2019 - Dijkstra Monads for Free.html}
 }
@@ -57,6 +57,24 @@
   title = {{{ATS-Implements}}},
   url = {https://www.cs.bu.edu/~hwxi/atslangweb/Implements.html},
   urldate = {2024-01-24}
+}
+
+@article{barendregtIntroductionGeneralizedType1991,
+  title = {Introduction to Generalized Type Systems},
+  author = {Barendregt, Henk},
+  year = {1991},
+  month = apr,
+  journal = {Journal of Functional Programming},
+  volume = {1},
+  number = {2},
+  pages = {125--154},
+  issn = {0956-7968, 1469-7653},
+  doi = {10.1017/S0956796800020025},
+  url = {https://www.cambridge.org/core/journals/journal-of-functional-programming/article/introduction-to-generalized-type-systems/869991BA6A99180BF96A616894C6D710},
+  urldate = {2024-06-17},
+  abstract = {Programming languages often come with type systems. Some of these are simple, others are sophisticated. As a stylistic representation of types in programming languages several versions of typed lambda calculus are studied. During the last 20 years many of these systems have appeared, so there is some need of classification. Working towards a taxonomy, Barendregt (1991) gives a fine-structure of the theory of constructions (Coquand and Huet 1988) in the form of a canonical cube of eight type systems ordered by inclusion. Berardi (1988) and Terlouw (1988) have independently generalized the method of constructing systems in the {$\lambda$}-cube. Moreover, Berardi (1988, 1990) showed that the generalized type systems are flexible enough to describe many logical systems. In that way the well-known propositions-as-types interpretation obtains a nice canonical form.},
+  langid = {english},
+  file = {/Users/charlielidbury/Zotero/storage/976AHMQE/Barendregt - 1991 - Introduction to generalized type systems.pdf}
 }
 
 @misc{BenchmarksGame,
@@ -319,6 +337,15 @@
   keywords = {coq,dependent-types,formal-methods,formal-verification,logic,systems-programming,type-safety,verification}
 }
 
+@article{martin-lofperandsambingiovanniIntuitionisticTypeTheory1984,
+  title = {Intuitionistic Type Theory},
+  author = {{Martin-L\{{\textbackslash}"o\}f, Per and Sambin, Giovanni}},
+  year = {1984},
+  journal = {Bibliopolis Naples},
+  volume = {9},
+  url = {https://people.csail.mit.edu/jgross/personal-website/papers/academic-papers-local/Martin-Lof80.pdf}
+}
+
 @misc{MemorySafety,
   title = {Memory Safety},
   url = {https://www.chromium.org/Home/chromium-security/memory-safety/},
@@ -403,7 +430,7 @@
   url = {http://arxiv.org/abs/1201.4801},
   urldate = {2024-01-24},
   abstract = {Programming with dependent types is a blessing and a curse. It is a blessing to be able to bake invariants into the definition of data-types: we can finally write correct-by-construction software. However, this extreme accuracy is also a curse: a data-type is the combination of a structuring medium together with a special purpose logic. These domain-specific logics hamper any effort of code reuse among similarly structured data. In this paper, we exorcise our data-types by adapting the notion of ornament to our universe of inductive families. We then show how code reuse can be achieved by ornamenting functions. Using these functional ornament, we capture the relationship between functions such as the addition of natural numbers and the concatenation of lists. With this knowledge, we demonstrate how the implementation of the former informs the implementation of the latter: the user can ask the definition of addition to be lifted to lists and she will only be asked the details necessary to carry on adding lists rather than numbers. Our presentation is formalised in a type theory with a universe of data-types and all our constructions have been implemented as generic programs, requiring no extension to the type theory.},
-  archiveprefix = {arxiv},
+  archiveprefix = {arXiv},
   keywords = {Computer Science - Programming Languages},
   file = {/Users/charlielidbury/Zotero/storage/R2829K92/Pierre-Evariste and Conor - 2014 - Transporting Functions across Ornaments.pdf;/Users/charlielidbury/Zotero/storage/BPFQ54M3/Pierre-Evariste and Conor - 2014 - Transporting Functions across Ornaments.html;/Users/charlielidbury/Zotero/storage/HC3TCW8I/Pierre-Evariste and Conor - 2014 - Transporting Functions across Ornaments.html}
 }
@@ -438,7 +465,7 @@
   url = {http://arxiv.org/abs/1703.00053},
   urldate = {2024-01-24},
   abstract = {We present Low*, a language for low-level programming and verification, and its application to high-assurance optimized cryptographic libraries. Low* is a shallow embedding of a small, sequential, well-behaved subset of C in F*, a dependently-typed variant of ML aimed at program verification. Departing from ML, Low* does not involve any garbage collection or implicit heap allocation; instead, it has a structured memory model {\textbackslash}`a la CompCert, and it provides the control required for writing efficient low-level security-critical code. By virtue of typing, any Low* program is memory safe. In addition, the programmer can make full use of the verification power of F* to write high-level specifications and verify the functional correctness of Low* code using a combination of SMT automation and sophisticated manual proofs. At extraction time, specifications and proofs are erased, and the remaining code enjoys a predictable translation to C. We prove that this translation preserves semantics and side-channel resistance. We provide a new compiler back-end from Low* to C and, to evaluate our approach, we implement and verify various cryptographic algorithms, constructions, and tools for a total of about 28,000 lines of code, specification and proof. We show that our Low* code delivers performance competitive with existing (unverified) C cryptographic libraries, suggesting our approach may be applicable to larger-scale low-level software.},
-  archiveprefix = {arxiv},
+  archiveprefix = {arXiv},
   keywords = {Computer Science - Cryptography and Security,Computer Science - Programming Languages},
   file = {/Users/charlielidbury/Zotero/storage/6DNMIKF6/Protzenko et al. - 2017 - Verified Low-Level Programming Embedded in F.pdf;/Users/charlielidbury/Zotero/storage/2WRN5JKJ/Protzenko et al. - 2017 - Verified Low-Level Programming Embedded in F.html;/Users/charlielidbury/Zotero/storage/UTTHN35Q/Protzenko et al. - 2017 - Verified Low-Level Programming Embedded in F.html}
 }
@@ -617,7 +644,7 @@
   url = {http://arxiv.org/abs/1703.08683},
   urldate = {2024-01-24},
   abstract = {The framework Pure Type System (PTS) offers a simple and general approach to designing and formalizing type systems. However, in the presence of dependent types, there often exist certain acute problems that make it difficult for PTS to directly accommodate many common realistic programming features such as general recursion, recursive types, effects (e.g., exceptions, references, input/output), etc. In this paper, Applied Type System (ATS) is presented as a framework for designing and formalizing type systems in support of practical programming with advanced types (including dependent types). In particular, it is demonstrated that ATS can readily accommodate a paradigm referred to as programming with theorem-proving (PwTP) in which programs and proofs are constructed in a syntactically intertwined manner, yielding a practical approach to internalizing constraint-solving needed during type-checking. The key salient feature of ATS lies in a complete separation between statics, where types are formed and reasoned about, and dynamics, where programs are constructed and evaluated. With this separation, it is no longer possible for a program to occur in a type as is otherwise allowed in PTS. The paper contains not only a formal development of ATS but also some examples taken from ats-lang.org, a programming language with a type system rooted in ATS, in support of employing ATS as a framework to formulate advanced type systems for practical programming.},
-  archiveprefix = {arxiv},
+  archiveprefix = {arXiv},
   keywords = {Computer Science - Logic in Computer Science,Computer Science - Programming Languages},
   file = {/Users/charlielidbury/Zotero/storage/7QXFF65Y/Xi - 2017 - Applied Type System An Approach to Practical Prog.pdf;/Users/charlielidbury/Zotero/storage/A85LQM2C/Xi - 2017 - Applied Type System An Approach to Practical Prog.html}
 }

@@ -1,0 +1,4 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{Repetative}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{repeated}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Repetative}\PYG{p}{);}\PYG{+w}{ }\PYG{c+c1}{// $ \emptyset, \absmapm{Repetative}{(\atom{repeated}, \mono{\_} \rightarrow \mono{Repetative})}$}
+\PYG{+w}{    }\PYG{n}{Repetative}\PYG{p}{.}\PYG{l+m+mf}{1.1.0}\PYG{+w}{ }\PYG{c+c1}{// $\atom{'repeated}$}
+\end{Verbatim}
