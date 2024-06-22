@@ -1,0 +1,3 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{n+nf}{bind}\PYG{+w}{ }\PYG{o+ow}{::}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{n}{a}\PYG{p}{)}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{a}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{n}{b}\PYG{p}{)}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{n}{b}\PYG{p}{)}
+\end{Verbatim}

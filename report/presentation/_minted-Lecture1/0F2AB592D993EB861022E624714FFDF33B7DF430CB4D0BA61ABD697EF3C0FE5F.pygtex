@@ -1,0 +1,5 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{fn} \PYG{n+nf}{is\PYGZus{}a}\PYG{p}{(}\PYG{n}{c}: \PYG{k+kt}{char}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{k+kt}{bool} \PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{n}{c}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+s+sc}{\PYGZsq{}a\PYGZsq{}}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

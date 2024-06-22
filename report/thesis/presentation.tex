@@ -1,0 +1,154 @@
+\documentclass[12pt,twoside]{report}
+
+% Add the necessary package to define the lstlisting environment
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Some definitions for the title page
+\newcommand{\reporttitle}{Ochre: A Dependently Typed Systems Programming Language}
+\newcommand{\reportauthor}{Charlie Lidbury}
+\newcommand{\supervisorA}{Steffen van Bakel}
+\newcommand{\supervisorB}{Nicolas Wu}
+\newcommand{\reporttype}{MEng Individual Project}
+\newcommand{\degreetype}{MEng Computing}
+
+% Load some definitions and default packages
+\input{includes}
+
+% Load some macros
+\input{notation}
+
+% Custom commands
+\newcommand{\lochre}{$\lambda_\text{Ochre}$}
+
+\definecolor{slides}{HTML}{EEF4ED}
+\pagecolor{slides}
+\usemintedstyle{pastie}
+
+% Load title page
+\begin{document}
+\input{titlepage}
+
+
+% Page numbering etc.
+\pagenumbering{roman}
+\clearpage{\pagestyle{empty}\cleardoublepage}
+\setcounter{page}{1}
+\pagestyle{fancy}
+
+
+\begin{minted}[mathescape]{rust}
+    Bool = 'true | 'false;
+    Pair = (Bool, Bool);
+
+    overwrite = (p: &mut Pair) -> 'unit {
+        *p = ('true, 'true);
+        'unit
+    };
+
+    pair = ('false, 'false);          
+    overwrite(&mut pair);
+\end{minted}
+
+\begin{minted}[mathescape]{rust}
+    type Pair = (bool, bool);
+
+    fn overwrite(p: &mut Pair) {
+        *p = ('true, 'true);
+    }
+
+    fn main() {
+        let mut pair = (false, false);
+        overwrite(&mut pair);
+    }
+\end{minted}
+
+\begin{minted}[mathescape]{rust}
+    Bool = 'true | 'false;
+    Pair = (Bool, L -> L);
+
+    overwrite = (p: &mut Pair) -> 'unit {
+        *p = ('true, 'true);
+        'unit
+    };
+
+    pair = ('false, 'false);          
+    overwrite(&mut pair);
+\end{minted}
+
+\begin{minted}{fstar}
+    type Same = | MkSame: b:bool -> b2:bool{b == b2} -> Same
+
+    val overwrite: p:ptr Same -> Stack unit
+    let overwrite p =
+      p := Same false false
+      
+    let main () : Stack unit =
+      let pair = alloc (MkSame true true) in
+      overwrite pair;
+      ()
+\end{minted}
+
+\begin{listing}[H]
+    \begin{minted}[mathescape]{rust}
+                              // $\Omega_0 = \emptyset$
+    Same = ('a | 'b, L -> L); // $\Omega_1 = \emptyset, \absmapm{Same}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+
+    overwrite = (p: &mut Same) -> 'unit {
+                     // $\Omega_{10} = \Omega_1, \absmapm{p}{\borrowm{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+        (*p).0 = 'a; // $\Omega_{11} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \{\atom{a}, \atom{b}\})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+        (*p).1 = 'a; // $\Omega_{12} = \Omega_1, \absmapm{p}{\borrowm{l}{(\atom{a}, \mono{\_} \rightarrow \atom{a})}}, \absmap{l}{(\{\atom{a}, \atom{b}\}, L \rightarrow L)}$
+        'unit        // $\Omega_{12} \vdash \drop{}$
+    }                         // $\Omega_2 = \Omega_1, \absmapm{overwrite}{\mono{(p: &mut Same)} \rightarrow \mono{'unit}}$
+
+    pair = ('b, 'b);          // $\Omega_3 = \Omega_2, \absmapm{pair}{(\atom{b}, \mono{\_} \rightarrow \atom{b})}$
+    overwrite(&mut pair);     // $\Omega_4 = \Omega_2, \absmapm{pair}{(\{\atom{a}, \atom{b}\}, \mono{L} \rightarrow \mono{L})}$
+
+    pair // $(\{\atom{a}, \atom{b}\}, L \rightarrow L)$
+    \end{minted}
+\end{listing}
+
+\begin{figure}
+    \begin{mathpar}
+      \inferrule[\odef{\movearrowconc}{x}]{
+        \Omega' = \Omega\left[\frac{\absmap{x}{\top}}{\absmap{x}{v}}\right]
+      }{
+        \Omega \vdash x \movearrowconc m \dashv \Omega'
+      }
+  
+    %   \inferrule[\odef{\writearrow}{x}]{
+    %     \Omega' = \Omega\left[\frac{\absmap{x}{v}}{\absmap{x}{\top}}\right]
+    %   }{
+    %     \Omega \vdash x \writearrow v \dashv \Omega'
+    %   } 
+    \end{mathpar}
+    \caption{Reading removes a value from the environment, whereas writing adds a value.}
+    \label{fig:readvswrite}
+\end{figure}
+
+\begin{minted}[mathescape]{rust}
+    Bool = 'true | 'false;
+    Same = (Bool, L -> L);
+
+    overwrite = (p: &mut Pair) -> 'unit {
+
+
+        *p.0 = 'true;
+        *p.1 = 'true;
+
+        'unit
+    };
+\end{minted}
+
+$\{ \absmapm{x}{\{\atom{five}\}} \} \vdash \mono{x} \movearrowabs \{\atom{five}\} \dashv \{ \absmapm{x}{\top} \}$
+
+$\Omega \vdash M \diamond \, t \dashv \Omega'$
+
+$\left\{
+\inferrule{
+    \movearrowabs, \readarrowabs, \erasedreadarrow,\\\\
+    \writearrowabs, \narrowarrowabs, \erasedwritearrow
+}{}
+\right\}$
+
+\end{document}

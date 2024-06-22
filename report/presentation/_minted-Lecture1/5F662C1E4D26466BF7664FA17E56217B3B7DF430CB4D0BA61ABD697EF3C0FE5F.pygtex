@@ -1,0 +1,15 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{c+cp}{\PYGZsh{}[derive(Reflected)]}
+\PYG{k}{pub}\PYG{+w}{ }\PYG{k}{struct} \PYG{n+nc}{BranflakesProgram}\PYG{p}{(}\PYG{k}{pub}\PYG{+w}{ }\PYG{n+nb}{Vec}\PYG{o}{\PYGZlt{}}\PYG{n}{Branflakes}\PYG{o}{\PYGZgt{}}\PYG{p}{);}
+
+\PYG{c+cp}{\PYGZsh{}[derive(Reflected)]}
+\PYG{k}{pub}\PYG{+w}{ }\PYG{k}{enum} \PYG{n+nc}{Branflakes}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{n}{Add}\PYG{p}{,}
+\PYG{+w}{    }\PYG{n}{Sub}\PYG{p}{,}
+\PYG{+w}{    }\PYG{n}{Left}\PYG{p}{,}
+\PYG{+w}{    }\PYG{n}{Right}\PYG{p}{,}
+\PYG{+w}{    }\PYG{n}{Read}\PYG{p}{,}
+\PYG{+w}{    }\PYG{n}{Print}\PYG{p}{,}
+\PYG{+w}{    }\PYG{n}{Loop}\PYG{p}{(}\PYG{n}{BranflakesProgram}\PYG{p}{),}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

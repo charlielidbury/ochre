@@ -1,0 +1,12 @@
+\begin{Verbatim}[commandchars=\\\{\},codes={\catcode`\$=3\catcode`\^=7\catcode`\_=8\relax}]
+\PYG{+w}{    }\PYG{n}{Bool}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{+w}{ }\PYG{o}{|}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{;}
+\PYG{+w}{    }\PYG{n}{Pair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{Bool}\PYG{p}{,}\PYG{+w}{ }\PYG{n}{Bool}\PYG{p}{);}
+
+\PYG{+w}{    }\PYG{n}{overwrite}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{p}: \PYG{k+kp}{\PYGZam{}}\PYG{n+nc}{mut}\PYG{+w}{ }\PYG{n}{Pair}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{o}{\PYGZsq{}}\PYG{n+na}{unit} \PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{o}{*}\PYG{n}{p}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{true}\PYG{p}{);}
+\PYG{+w}{        }\PYG{o}{\PYGZsq{}}\PYG{n+na}{unit}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{};}
+
+\PYG{+w}{    }\PYG{n}{pair}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{p}{(}\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{,}\PYG{+w}{ }\PYG{o}{\PYGZsq{}}\PYG{n+na}{false}\PYG{p}{);}
+\PYG{+w}{    }\PYG{n}{overwrite}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{k}{mut}\PYG{+w}{ }\PYG{n}{pair}\PYG{p}{);}
+\end{Verbatim}

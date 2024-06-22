@@ -1,0 +1,15 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{struct} \PYG{n+nc}{is\PYGZus{}a}\PYG{p}{;}
+
+\PYG{k}{impl}\PYG{+w}{ }\PYG{n+nb}{FnOnce}\PYG{o}{\PYGZlt{}}\PYG{p}{(}\PYG{k+kt}{char}\PYG{p}{,)}\PYG{o}{\PYGZgt{}}\PYG{+w}{ }\PYG{k}{for}\PYG{+w}{ }\PYG{n}{is\PYGZus{}a}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k}{type} \PYG{n+nc}{Output}\PYG{+w}{ }\PYG{o}{=}\PYG{+w}{ }\PYG{k+kt}{bool}\PYG{p}{;}
+\PYG{+w}{    }\PYG{k}{extern}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}rust\PYGZhy{}call\PYGZdq{}}\PYG{+w}{ }\PYG{k}{fn} \PYG{n+nf}{call\PYGZus{}once}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{c}\PYG{p}{,)}: \PYG{p}{(}\PYG{k+kt}{char}\PYG{p}{,))}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{k+kt}{bool} \PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{n}{c}\PYG{+w}{ }\PYG{o}{==}\PYG{+w}{ }\PYG{l+s+sc}{\PYGZsq{}a\PYGZsq{}}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}
+\PYG{p}{\PYGZcb{}}
+\PYG{k}{impl}\PYG{+w}{ }\PYG{n}{Reflect}\PYG{+w}{ }\PYG{k}{for}\PYG{+w}{ }\PYG{n}{is\PYGZus{}a}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k}{fn} \PYG{n+nf}{reflect}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{n+nb+bp}{self}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nb}{String} \PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{l+s}{\PYGZdq{}fn is\PYGZus{}a(c : char) \PYGZhy{}\PYGZgt{} bool \PYGZob{} c == }\PYG{l+s+se}{\PYGZbs{}\PYGZsq{}}\PYG{l+s}{a}\PYG{l+s+se}{\PYGZbs{}\PYGZsq{}}\PYG{l+s}{ \PYGZcb{}\PYGZdq{}}\PYG{p}{.}\PYG{n}{to\PYGZus{}owned}\PYG{p}{()}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

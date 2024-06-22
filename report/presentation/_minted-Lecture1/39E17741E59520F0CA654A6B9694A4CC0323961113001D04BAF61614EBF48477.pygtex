@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{n+nf}{u8}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{n}{branch}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{map}\PYG{+w}{ }\PYG{n}{select}\PYG{+w}{ }\PYG{n}{parseNumber}\PYG{p}{)}\PYG{+w}{ }\PYG{n}{fail}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{pure}\PYG{+w}{ }\PYG{n}{id}\PYG{p}{)}
+\PYG{+w}{    }\PYG{k+kr}{where}
+\PYG{+w}{        }\PYG{n}{select}\PYG{+w}{ }\PYG{o+ow}{::}\PYG{+w}{ }\PYG{k+kt}{Int}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{k+kt}{Either}\PYG{+w}{ }\PYG{n+nb}{()}\PYG{+w}{ }\PYG{k+kt}{Int}
+\PYG{+w}{        }\PYG{n}{select}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o+ow}{=}\PYG{+w}{ }\PYG{k+kr}{if}\PYG{+w}{ }\PYG{l+m+mi}{0}\PYG{+w}{ }\PYG{o}{\PYGZlt{}=}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{o}{\PYGZlt{}=}\PYG{+w}{ }\PYG{l+m+mi}{255}\PYG{+w}{ }\PYG{k+kr}{then}\PYG{+w}{ }\PYG{k+kt}{Right}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{k+kr}{else}\PYG{+w}{ }\PYG{k+kt}{Left}\PYG{+w}{ }\PYG{n+nb}{()}
+\end{Verbatim}

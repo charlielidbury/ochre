@@ -1,0 +1,6 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{n+nf}{branch}\PYG{+w}{ }\PYG{o+ow}{::}\PYG{+w}{ }\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{p}{(}\PYG{k+kt}{Either}\PYG{+w}{ }\PYG{n}{x}\PYG{+w}{ }\PYG{n}{y}\PYG{p}{)}
+\PYG{+w}{            }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{x}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{n}{z}\PYG{p}{)}
+\PYG{+w}{            }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{p}{(}\PYG{n}{y}\PYG{+w}{ }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{n}{z}\PYG{p}{)}
+\PYG{+w}{            }\PYG{o+ow}{\PYGZhy{}\PYGZgt{}}\PYG{+w}{ }\PYG{k+kt}{Parser}\PYG{+w}{ }\PYG{n}{z}
+\end{Verbatim}

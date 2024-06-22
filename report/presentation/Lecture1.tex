@@ -1,0 +1,402 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Welcome to Overleaf --- just edit your LaTeX on the left,
+% and we'll compile it for you on the right. If you open the
+% 'Share' menu, you can invite other users to edit at the same
+% time. See www.overleaf.com/learn for more info. Enjoy!
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass{slides}
+
+% if using pdflatex
+
+\usepackage[utf8]{inputenc}
+
+% \usepackage[T1]{fontenc}
+% \usepackage{tgbonum}
+
+% \usepackage[T1]{roboto-mono}
+\usepackage{epigraph} 
+\usepackage{listings}
+% \usepackage{emoji}
+% \usepackage[T1]{FiraMono}
+% \setmonofont{FiraMono}
+
+\usepackage{graphicx}
+\graphicspath{{images/}}
+%Information to be included in the title page:
+\title{Parslers: A Staged Selective Parser Combinator Library for the Rust Programming Language}
+\author{Jordan Hall}
+\institute{Imperial Computing (BEng) Final Year Project Presentation}
+\date{2023}
+
+\newcommand{\centerimg}[2]{
+    \begin{center}
+        \includegraphics[#1]{#2}
+    \end{center}
+}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}
+\frametitle{Introduction to Parsing}
+Parsing is the act of converting one data format to another.
+
+Most commonly, converting a sequence of characters into data a computer can manipulate.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Types of Parsing libraries}
+
+\begin{itemize}
+    
+    \item Handwritten Parsers
+
+    \item Parser Generators
+
+    \item Parser Combinators
+\end{itemize}
+
+\end{frame}
+
+
+\begin{frame}
+\frametitle{Parser Combinators}
+
+Parser Combinators work by combining higher-order functions together. They are written in the host language, typically as a module.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Advantages of Parser Combinators}
+
+Parser combinators are very expressive, being Turing complete. It is possible to create full interpreters entirely expressed as parser combinators. 
+
+Parser combinators are embedded into the host language, unlike parser generators.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Disadvantages of Parser Combinators}
+
+\begin{itemize}
+    \item Parser combinators are generally considered slower than handwritten parsers and parser generators. This makes handwritten parsers the default route for high-performance parsing.
+
+    \item Parser combinators typically have poor error messaging support, as they can't generate tailored error messages, unlike parser generators.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fixing the Structural Problem (cont.)}
+
+Most parser combinator libraries express their parsers as monads.
+
+This poses many limitations on the optimisation of parsers.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Fixing the Structural Problem}
+
+A monad is a monoid in the category of endofunctors.
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Fixing the Structural Problem (cont.)}
+
+A monad is a type \mintinline{haskell}{M} with the two following functions:
+
+\begin{minted}[fontsize=\small]{haskell}
+pure :: a -> M a
+bind :: (M a) -> (a -> M b) -> (M b)
+\end{minted}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Fixing the Structural Problem (cont.)}
+
+Parser combinators are generally expressed as monads where:
+
+\mintinline{haskell}{pure :: a -> Parser a} is the parser that returns a value and consumes no input.
+
+\mintinline{haskell}{bind :: (Parser a) -> (a -> Parser b) -> (Parser b)} produces a new parser based on the output of the previous parser.
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Fixing the Structural Problem (cont.)}
+
+\mintinline{haskell}{bind} can produce parsers whose structure is not known at compile-time.
+
+Monadic parser combinators suffer from this lack of knowledge. 
+
+They can't be optimised like their handwritten parser or parser generator counterparts. 
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Fixing the Structural Problem (cont.)}
+
+We may only want only to parse numbers within a certain range (like an unsigned 8-bit integer):
+
+\begin{minted}[fontsize=\small]{haskell}
+u8 = bind parseNumber ( \x -> if 0 <= x <= 255 then pure x else Fail )
+\end{minted}
+
+This is not possible using only the applicative parsers.
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Fixing the Structural Problem (cont.)}
+
+The selective parser is defined as:
+
+\begin{minted}[fontsize=\small]{haskell}
+branch :: Parser (Either x y) 
+            -> Parser (x -> z) 
+            -> Parser (y -> z) 
+            -> Parser z 
+\end{minted}
+
+This allows the parser to make runtime decisions while maintaining a fixed structure, known at compile time. 
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Fixing the Structural Problem (cont.)}
+
+Now, the unsigned 8-bit integer parser is defined as:
+
+\begin{minted}[fontsize=\small]{haskell}
+u8 = branch (map select parseNumber) fail (pure id)
+    where
+        select :: Int -> Either () Int 
+        select x = if 0 <= x <= 255 then Right x else Left ()
+\end{minted}
+
+This parser's structure can now be traversed at compile-time.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{How Parslers Works}
+
+Parslers allows its users to write parsers in pure Rust as a domain-specific language. 
+
+It uses Rust's staged compilation model to optimise user-written parsers and generate native Rust code at compile time.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{How Parslers Works (cont.)}
+
+\centerimg{width=\textwidth}{compilation-stages.drawio.png}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Main Contributions of the Project}
+
+Parslers stands as the fastest general-purpose parsing library for the Rust programming language.
+
+This is because of the optimisations available at compile time both by Parslers and the Rust compiler.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Main Contributions of the Project (cont.)}
+
+For Parslers to exist, a new library also had to be created.
+
+The values produced by \mintinline{haskell}{pure} parsers exist in the build.rs file.
+The definitions are lost during the compilation of the build.rs file.
+
+Even worse, the definitions of functions in the build.rs file can't be inspected at compile time in Rust.
+
+If Parslers is staged, then the definition of functions and the values of \mintinline{haskell}{pure} parsers need to be preserved.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{How Parslers Works (cont.)}
+
+\centerimg{width=\textwidth}{compilation-stages.drawio.png}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Main Contributions of the Project (cont.)}
+
+This problem is not limited to Parslers.
+
+Lacking reflection is the main reason staged domain-specific languages are not readily available in the Rust ecosystem.
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Main Contributions of the Project (cont.)}
+
+The Reflect library acts as a general solution to the cross-staged persistence commonly needed in staged DSLs.
+
+\begin{minted}[fontsize=\small]{rust}
+fn is_a(c: char) -> bool {
+    c == 'a'
+}
+\end{minted}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Main Contributions of the Project (cont.)}
+
+The Reflect library acts as a general solution to the cross-staged persistence commonly needed in staged DSLs.
+
+\begin{minted}[fontsize=\small]{rust}
+#[reflect]
+fn is_a(c: char) -> bool {
+    c == 'a'
+}
+\end{minted}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Main Contributions of the Project (cont.)}
+
+\begin{minted}[fontsize=\small]{rust}
+struct is_a;
+
+impl FnOnce<(char,)> for is_a {
+    type Output = bool;
+    extern "rust-call" fn call_once(self, (c,): (char,)) -> bool {
+        c == 'a'
+    }
+}
+impl Reflect for is_a {
+    fn reflect(&self) -> String {
+        "fn is_a(c : char) -> bool { c == \'a\' }".to_owned()
+    }
+}
+\end{minted}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Main Contributions of the Project (cont.)}
+
+This method can also be used to retrieve the definitions of the values produced by \mintinline{haskell}{pure} parsers: 
+
+\begin{minted}[fontsize=\small]{rust}
+impl Reflect for u8 {
+    fn reflect(&self) -> String {
+        format!("{}u8", self)
+    }
+}
+\end{minted}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Main Contributions of the Project (cont.)}
+
+This method can also be used to retrieve the definitions of the values produced by \mintinline{haskell}{pure} parsers: 
+
+\begin{minted}[fontsize=\small]{rust}
+#[derive(Reflected)]
+pub struct BranflakesProgram(pub Vec<Branflakes>);
+
+#[derive(Reflected)]
+pub enum Branflakes {
+    Add,
+    Sub,
+    Left,
+    Right,
+    Read,
+    Print,
+    Loop(BranflakesProgram),
+}
+\end{minted}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Main Contributions of the Project (cont.)}
+
+The Reflect library is generic to a restricted form of cross-staged persistence intended only for creating staged, domain-specific languages in Rust. 
+
+This provides the possibility for more staged DSLs to exist within the Rust ecosystem.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Demonstration}
+How is Parslers different from other parser combinator libraries?
+
+What makes Parslers distinct from parser generator libraries?
+\end{frame}
+
+\begin{frame}
+\frametitle{Performance of Parslers}
+\centerimg{width=\textwidth}{Throughput of Parsers Built with Different Parsing Libraries (JSON).png}
+\end{frame}
+
+\begin{frame}
+\frametitle{Performance of Parslers (cont.)}
+\centerimg{width=\textwidth}{Throughput of Parsers Built with Different Parsing Libraries (Branflakes).png}
+\end{frame}
+
+\begin{frame}
+\frametitle{Performance of Parslers (cont.)}
+\centerimg{width=\textwidth}{Throughput of Parslers with Different Optimisations (JSON).png}
+\end{frame}
+
+\begin{frame}
+\frametitle{Performance of Parslers (cont.)}
+\centerimg{width=\textwidth}{Throughput of Parslers with Different Optimisations (Branflakes).png}
+\end{frame}
+
+\begin{frame}
+\frametitle{Conclusion}
+
+Parslers now stands as the fastest generalised parsing library for the Rust programming language.
+
+The Reflect library lays the foundation for other staged domain-specific languages to be built for the Rust ecosystem.
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Future Work}
+
+\begin{itemize}
+    \item Many more optimisation passes to be integrated into Parslers, further closing the gap between parsing libraries and hand written parsers.
+    \item Automatic error messaging would make Parslers a fully ready-to-use parsing library.
+\end{itemize} 
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Future Work (cont.)}
+
+\begin{itemize}
+    \item Adding buffered and asynchronous parsers should be possible in Parslers without any modification to the user-written parsers.
+    \item Registers will increase the expressive power of parsers written with Parslers
+\end{itemize} 
+
+\end{frame}
+
+\begin{frame}
+\frametitle{The End}
+\begin{center}
+\Large
+    Thank you for your time!
+\end{center}
+\end{frame}
+
+
+\end{document}

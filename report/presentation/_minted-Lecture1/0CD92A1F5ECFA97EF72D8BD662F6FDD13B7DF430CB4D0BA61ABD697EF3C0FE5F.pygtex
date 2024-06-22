@@ -1,0 +1,7 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k}{impl}\PYG{+w}{ }\PYG{n}{Reflect}\PYG{+w}{ }\PYG{k}{for}\PYG{+w}{ }\PYG{k+kt}{u8}\PYG{+w}{ }\PYG{p}{\PYGZob{}}
+\PYG{+w}{    }\PYG{k}{fn} \PYG{n+nf}{reflect}\PYG{p}{(}\PYG{o}{\PYGZam{}}\PYG{n+nb+bp}{self}\PYG{p}{)}\PYG{+w}{ }\PYGZhy{}\PYGZgt{} \PYG{n+nb}{String} \PYG{p}{\PYGZob{}}
+\PYG{+w}{        }\PYG{n+nf+fm}{format!}\PYG{p}{(}\PYG{l+s}{\PYGZdq{}\PYGZob{}\PYGZcb{}u8\PYGZdq{}}\PYG{p}{,}\PYG{+w}{ }\PYG{n+nb+bp}{self}\PYG{p}{)}
+\PYG{+w}{    }\PYG{p}{\PYGZcb{}}
+\PYG{p}{\PYGZcb{}}
+\end{Verbatim}

@@ -3,6 +3,8 @@
 % Add the necessary package to define the lstlisting environment
 \usepackage{listings}
 
+
+
 % Some definitions for the title page
 \newcommand{\reporttitle}{Ochre: A Dependently Typed Systems Programming Language}
 \newcommand{\reportauthor}{Charlie Lidbury}
@@ -29,6 +31,9 @@
 \begin{document}
 \input{titlepage}
 
+\definecolor{slides}{HTML}{EEF4ED}
+\pagecolor{slides}
+\usemintedstyle{pastie}
 
 % Page numbering etc.
 \pagenumbering{roman}
