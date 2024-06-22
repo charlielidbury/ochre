@@ -156,16 +156,21 @@ use compiler_macros::ochre;
 // }
 
 fn main() {
+    // ochre! {
+    //     Bool = 'true | 'false;
+    //     p = ('true, 'true): (Bool, Bool); //: Same;
+    //     p.0 = 'false;
+    //     p.1 = 'false;
+    //     p: ('false, 'false);
+    //     // p: 'hello | 'world;
+
+    //     'unit
+    // };
+
     ochre! {
-        // Bool = 'true | 'false;
-        // Same = (Bool, L -> L);
-
-        p = ('true, 'true); //: Same;
-        p.0 = 'false;
-        p.1 = 'false;
-        p: ('false, 'false);
-        // p: 'hello | 'world;
-
-        'unit
-    };
+        x = 'five;
+        rx = &mut x;
+        *rx = 'fourtytwo;
+        x
+    }
 }

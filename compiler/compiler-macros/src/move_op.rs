@@ -5,6 +5,7 @@ use crate::abstract_::{AbstractValue, Atom, Env, OchreType, Type};
 use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
 use crate::erased_read_op::erased_read_op;
+use crate::erased_write_op::erased_write_op;
 use crate::write_op::write_op;
 use proc_macro2::Ident;
 use proc_macro2::{Span, TokenStream};
@@ -48,7 +49,6 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 )),
             ))
         }
-        AstData::Let(_, _, _) => todo!("move Let"),
         AstData::Atom(s) => {
             let atom = Atom::new(s);
             let atom_hash = atom.hash();
@@ -74,19 +74,35 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
             todo!("move MutRef")
         }
         AstData::Ass(lhs, rhs) => {
-            // evaluate rhs
-            let (rhs_code, rhs_type) = move_op(env, rhs.clone())?;
-            // write to lhs
-            // let alloc_code = env.bot(lhs.clone())?;
-            let lhs_code = write_op(env, lhs.clone(), rhs_type)?;
-            // assignments evaluate to 'unit
-            let unit = Atom::new("unit");
-            let unit_hash = unit.hash();
-            // combine
-            Ok((
-                quote!(#lhs_code = #rhs_code; OchreValue { atom: #unit_hash }),
-                Rc::new(unit.into()),
-            ))
+            match lhs.runtime_comptime() {
+                (true, false) => {
+                    // Runtime assignment
+                    // evaluate rhs
+                    let (rhs_code, rhs_type) = move_op(env, rhs.clone())?;
+                    // write to lhs
+                    // let alloc_code = env.bot(lhs.clone())?;
+                    let lhs_code = write_op(env, lhs.clone(), rhs_type)?;
+                    // assignments evaluate to 'unit
+                    let unit = Atom::new("unit");
+                    let unit_hash = unit.hash();
+                    // combine
+                    Ok((
+                        quote!(#lhs_code = #rhs_code; OchreValue { atom: #unit_hash }),
+                        Rc::new(unit.into()),
+                    ))
+                }
+                (false, true) => {
+                    // comptime assignment
+                    let rhs_type = erased_read_op(env, rhs.clone())?;
+                    erased_write_op(env, lhs.clone(), rhs_type)?;
+                    // assignments evaluate to 'unit
+                    let unit = Atom::new("unit");
+                    Ok((quote!(), Rc::new(unit.into())))
+                }
+                _ => {
+                    return Err(ast.error(format!("lhs must be unambigiously comptime or runtime")))
+                }
+            }
         }
         AstData::Top => todo!("Top"),
         AstData::Annot(term, term_type) => {

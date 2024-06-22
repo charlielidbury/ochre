@@ -105,24 +105,24 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                 parse_data(prec + 1),
             ))(input),
             1 => alt((
-                // Let
-                map(
-                    tuple((
-                        tok("let"),
-                        ident,
-                        opt(pair(punct(":"), parse(prec + 1))),
-                        punct("="),
-                        parse(prec + 1),
-                    )),
-                    |((), x, opt_ty, (), m)| {
-                        let ty = match opt_ty {
-                            Some(((), ty)) => ty,
-                            None => Ast::new(None, AstData::Top),
-                        };
+                // // Let
+                // map(
+                //     tuple((
+                //         tok("let"),
+                //         ident,
+                //         opt(pair(punct(":"), parse(prec + 1))),
+                //         punct("="),
+                //         parse(prec + 1),
+                //     )),
+                //     |((), x, opt_ty, (), m)| {
+                //         let ty = match opt_ty {
+                //             Some(((), ty)) => ty,
+                //             None => Ast::new(None, AstData::Top),
+                //         };
 
-                        AstData::Let(x, ty, m)
-                    },
-                ),
+                //         AstData::Let(x, ty, m)
+                //     },
+                // ),
                 // Assignment
                 map(
                     tuple((parse(prec + 1), punct("="), parse(prec + 1))),

@@ -17,7 +17,7 @@ pub enum AstData {
     App(Ast, Ast),
     Fun(String, Ast, Ast),
     Pair(Ast, Ast),
-    Let(String, Ast, Ast),
+    // Let(String, Ast, Ast),
     Atom(String),
     Union(Ast, Ast),
     Annot(Ast, Ast),
@@ -31,24 +31,23 @@ pub enum AstData {
 }
 
 impl AstData {
-    pub fn runtime(&self) -> Option<bool> {
+    pub fn runtime_comptime(&self) -> (bool, bool) {
         match self {
-            AstData::RuntimeVar(_) => Some(true),
-            AstData::ComptimeVar(_) => Some(false),
-            AstData::PairLeft(_) => todo!("runtime PairLeft"),
-            AstData::PairRight(_) => todo!("runtime PairRight"),
-            AstData::Deref(_) => todo!("runtime Deref"),
+            AstData::RuntimeVar(_) => (true, false),
+            AstData::ComptimeVar(_) => (false, true),
+            AstData::PairLeft(ast)
+            | AstData::PairRight(ast)
+            | AstData::Deref(ast)
+            | AstData::Ref(ast)
+            | AstData::MutRef(ast) => ast.runtime_comptime(),
             AstData::App(_, _) => todo!("runtime App"),
             AstData::Fun(_, _, _) => todo!("runtime Fun"),
             AstData::Pair(_, _) => todo!("runtime Pair"),
-            AstData::Let(_, _, _) => todo!("runtime Let"),
             AstData::Atom(_) => todo!("runtime Atom"),
             AstData::Union(_, _) => todo!("runtime Union"),
             AstData::Annot(_, _) => todo!("runtime Annot"),
             AstData::Seq(_, _) => todo!("runtime Seq"),
             AstData::Case(_, _) => todo!("runtime Case"),
-            AstData::Ref(_) => todo!("runtime Ref"),
-            AstData::MutRef(_) => todo!("runtime MutRef"),
             AstData::Ass(_, _) => todo!("runtime Ass"),
             AstData::Top => todo!("runtime Top"),
             AstData::Type(_) => todo!("runtime Type"),
@@ -67,7 +66,6 @@ impl fmt::Display for AstData {
             AstData::App(ast1, ast2) => write!(f, "{} {}", ast1, ast2),
             AstData::Fun(param, body, ret) => write!(f, "fun {} -> {} : {}", param, body, ret),
             AstData::Pair(ast1, ast2) => write!(f, "({}, {})", ast1, ast2),
-            AstData::Let(var, expr, body) => write!(f, "let {} = {} in {}", var, expr, body),
             AstData::Atom(atom) => write!(f, "'{}", atom),
             AstData::Union(ast1, ast2) => write!(f, "{} | {}", ast1, ast2),
             AstData::Annot(expr, ty) => write!(f, "{} : {}", expr, ty),
@@ -104,6 +102,10 @@ impl Ast {
 
     pub fn error(&self, s: String) -> OError {
         (self.span, s)
+    }
+
+    pub fn runtime_comptime(&self) -> (bool, bool) {
+        self.data.runtime_comptime()
     }
 }
 

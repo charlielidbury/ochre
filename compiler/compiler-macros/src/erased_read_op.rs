@@ -24,7 +24,6 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
                 Ast::new(None, AstData::Type(rhs)),
             )))
         }
-        AstData::Let(_, _, _) => todo!("erased_read Let"),
         AstData::Atom(s) => Ok(Rc::new(Atom::new(s).into())),
         AstData::Union(lhs, rhs) => {
             let lhs = erased_read_op(env, lhs.clone())?;

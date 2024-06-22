@@ -89,7 +89,6 @@ pub fn write_op(
         (AstData::Deref(_), _) => todo!("write_op Deref"),
         (AstData::App(_, _), _) => todo!("write_op App"),
         (AstData::Fun(_, _, _), _) => todo!("write_op Fun"),
-        (AstData::Let(_, _, _), _) => todo!("write_op Let"),
         (AstData::Atom(_), _) => todo!("write_op Atom"),
         (AstData::Union(_, _), _) => todo!("write_op Union"),
         (AstData::Seq(_, _), _) => todo!("write_op Seq"),

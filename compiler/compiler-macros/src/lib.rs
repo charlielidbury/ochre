@@ -3,6 +3,7 @@ mod abstract_;
 mod ast;
 mod drop_op;
 mod erased_read_op;
+mod erased_write_op;
 mod move_op;
 mod parser;
 mod write_op;
