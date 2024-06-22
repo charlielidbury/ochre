@@ -2,7 +2,7 @@ use std::mem;
 use std::rc::Rc;
 
 use crate::abstract_::{AbstractValue, Atom, Env, OchreType, Type};
-use crate::ast::{Ast, AstData};
+use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
 use crate::erased_read_op::erased_read_op;
 use crate::write_op::write_op;
@@ -10,14 +10,14 @@ use proc_macro2::Ident;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
-pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, OchreType), String> {
+pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, OchreType), OError> {
     match &*ast.data {
         AstData::RuntimeVar(x) => {
             // Get value for x
             let v = match env.state.get_mut(x) {
-                None => return Err(format!("attempt to move non-existant value")),
+                None => return Err(ast.error(format!("attempt to move non-existant value"))),
                 Some(AbstractValue::Comptime(_)) => {
-                    return Err(format!("attempt to move comptime value"))
+                    return Err(ast.error(format!("attempt to move comptime value")))
                 }
                 Some(AbstractValue::Runtime(v)) => v,
             };
@@ -28,7 +28,9 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
             let id_x = Ident::new(x, Span::call_site());
             Ok((quote!(#id_x), x_val))
         }
-        AstData::ComptimeVar(x) => Err(format!("Cannot use comptime var {} in runtime context", x)),
+        AstData::ComptimeVar(x) => {
+            Err(ast.error(format!("Cannot use comptime var {} in runtime context", x)))
+        }
         AstData::PairLeft(_) => todo!("move PairLeft"),
         AstData::PairRight(_) => todo!("move PairRight"),
         AstData::Deref(_) => todo!("move Deref"),
@@ -93,7 +95,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
             if term.subtype(&*term_type) {
                 Ok((quote!(), term_type))
             } else {
-                Err(format!("{} is not of type {}", term, term_type))
+                Err(ast.error(format!("{} is not of type {}", term, term_type)))
             }
         }
         AstData::Type(_) => todo!("move Type"),

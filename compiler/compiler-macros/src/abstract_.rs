@@ -4,6 +4,7 @@ use std::{
     rc::Rc,
 };
 
+use crate::ast::OError;
 use crate::{
     ast::{Ast, AstData},
     drop_op::drop_op,
@@ -60,12 +61,12 @@ impl Type {
         }
     }
 
-    pub fn union(&self, other: &Type) -> Result<Rc<Type>, String> {
+    pub fn union(&self, other: &Type) -> Result<Rc<Type>, OError> {
         match (self, other) {
             (Type::Atom(lhs), Type::Atom(rhs)) => {
                 Ok(Rc::new(Type::Atom(lhs.clone().union(rhs.clone()))))
             }
-            (lhs, rhs) => Err(format!("{} and {} have no union", lhs, rhs)),
+            (lhs, rhs) => Err((None, format!("{} and {} have no union", lhs, rhs))),
         }
     }
 }
@@ -120,7 +121,7 @@ impl Env {
     // such that {ast} can be written into
     // either using allocation or deallocation
     // ast -> bot guarenteed afterwards
-    pub fn bot(&mut self, ast: Ast) -> Result<TokenStream, String> {
+    pub fn bot(&mut self, ast: Ast) -> Result<TokenStream, OError> {
         match &*ast.data {
             AstData::RuntimeVar(x) => {
                 if let Some(AbstractValue::Runtime(ty)) = self.state.remove(x) {
@@ -138,7 +139,7 @@ impl Env {
                     .insert(x.clone(), AbstractValue::Comptime(Rc::new(Type::Top)));
 
                 if old_val.is_some() {
-                    Err(format!("variable {} already exists", x))
+                    Err((None, format!("variable {} already exists", x)))
                 } else {
                     Ok(quote!())
                 }
@@ -163,15 +164,15 @@ impl Env {
         }
     }
 
-    pub fn get(&mut self, ast: Ast) -> Result<OchreType, String> {
+    pub fn get(&mut self, ast: Ast) -> Result<OchreType, OError> {
         match &*ast.data {
             AstData::RuntimeVar(x) => match self.state.get(x) {
                 Some(AbstractValue::Runtime(v)) => Ok(v.clone()),
-                _ => Err(format!("Cannot get {:?}", ast)),
+                _ => Err((None, format!("Cannot get {:?}", ast))),
             },
             AstData::ComptimeVar(x) => match self.state.get(x) {
                 Some(AbstractValue::Comptime(v)) => Ok(v.clone()),
-                _ => Err(format!("Cannot get {:?}", ast)),
+                _ => Err((None, format!("Cannot get {:?}", ast))),
             },
             AstData::PairLeft(_) => todo!("narrow PairLeft"),
             AstData::PairRight(_) => todo!("narrow PairRight"),
@@ -193,29 +194,39 @@ impl Env {
         }
     }
 
-    pub fn narrow(&mut self, ast: Ast, ty: OchreType) -> Result<(), String> {
+    pub fn narrow(&mut self, ast: Ast, ty: OchreType) -> Result<(), OError> {
         match &*ast.data {
             AstData::RuntimeVar(x) => match self.state.get_mut(x) {
                 Some(AbstractValue::Runtime(v)) => {
                     if !ty.subtype(v) {
-                        return Err(format!("Attempting to narrow {:?} down to {:?}", v, ty));
+                        return Err((
+                            None,
+                            format!("Attempting to narrow {:?} down to {:?}", v, ty),
+                        ));
                     }
                     *v = ty;
                     Ok(())
                 }
-                Some(AbstractValue::Comptime(_)) => Err(format!("attempt to narrow erased value")),
-                None => Err(format!("Attempt to narrow unallocated value")),
+                Some(AbstractValue::Comptime(_)) => {
+                    Err((None, format!("attempt to narrow erased value")))
+                }
+                None => Err((None, format!("Attempt to narrow unallocated value"))),
             },
             AstData::ComptimeVar(x) => match self.state.get_mut(x) {
                 Some(AbstractValue::Comptime(v)) => {
                     if !ty.subtype(v) {
-                        return Err(format!("Attempting to narrow {:?} down to {:?}", v, ty));
+                        return Err((
+                            None,
+                            format!("Attempting to narrow {:?} down to {:?}", v, ty),
+                        ));
                     }
                     *v = ty;
                     Ok(())
                 }
-                Some(AbstractValue::Runtime(_)) => Err(format!("attempt to narrow runtime value")),
-                None => Err(format!("Attempt to narrow unallocated value")),
+                Some(AbstractValue::Runtime(_)) => {
+                    Err((None, format!("attempt to narrow runtime value")))
+                }
+                None => Err((None, format!("Attempt to narrow unallocated value"))),
             },
             AstData::PairLeft(_) => todo!("narrow PairLeft"),
             AstData::PairRight(_) => todo!("narrow PairRight"),

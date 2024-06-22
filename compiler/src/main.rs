@@ -163,7 +163,7 @@ fn main() {
         p = ('true, 'true); //: Same;
         p.0 = 'false;
         p.1 = 'false;
-        p: ('true, 'false);
+        p: ('false, 'false);
         // p: 'hello | 'world;
 
         'unit

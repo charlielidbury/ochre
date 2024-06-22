@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::abstract_::OchreType;
 use std::fmt;
 
-pub type AstB = Box<Ast>;
+pub type OError = (Option<proc_macro2::Span>, String);
 
 // pub type Atom = String;
 
@@ -100,6 +100,10 @@ impl Ast {
             span,
             data: Rc::new(data),
         }
+    }
+
+    pub fn error(&self, s: String) -> OError {
+        (self.span, s)
     }
 }
 

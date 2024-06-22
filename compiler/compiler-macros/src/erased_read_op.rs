@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use crate::{
     abstract_::{Atom, Env, OchreType, Type},
-    ast::{Ast, AstData},
+    ast::{Ast, AstData, OError},
 };
 
-pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, String> {
+pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
     match &*ast.data {
         // Things which are straight env lookups
         AstData::RuntimeVar(_)

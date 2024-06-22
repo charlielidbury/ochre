@@ -1,3 +1,4 @@
+#![feature(never_type)]
 mod abstract_;
 mod ast;
 mod drop_op;
@@ -76,7 +77,8 @@ fn ochre_impl(input: TokenStream) -> TokenStream {
     let mut env = Env::new();
     let (code, result_type) = match move_op(&mut env, ast) {
         Ok(res) => res,
-        Err(s) => return quote!(compile_error!(#s)).into(),
+        Err((None, s)) => return quote!(compile_error!(#s)).into(),
+        Err((Some(span), s)) => return quote_spanned!(span => compile_error!(#s)).into(),
     };
     dbg!(env);
     dbg!(result_type.clone());

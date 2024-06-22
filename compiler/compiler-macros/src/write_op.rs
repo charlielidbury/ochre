@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::abstract_::{AbstractValue, Env, OchreType, Type};
-use crate::ast::{Ast, AstData};
+use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
 use im_rc::HashSet;
 use proc_macro2::{Ident, Span, TokenStream};
@@ -11,7 +11,7 @@ pub fn write_op(
     env: &mut Env,
     ast: Ast,
     val: OchreType,
-) -> Result<proc_macro2::TokenStream, String> {
+) -> Result<proc_macro2::TokenStream, OError> {
     match (&*ast.data, &*val) {
         (AstData::RuntimeVar(x), _) => {
             // Make sure there is nothing in x
@@ -40,7 +40,7 @@ pub fn write_op(
             // Get value which will be overrwriten
             let p = env.get(p_ast.clone())?;
             let Type::Pair(l, l_term, r_term) = &*p else {
-                return Err(format!("attempt to edit left element of non-pair {:?}", p));
+                return Err(ast.error(format!("attempt to edit left element of non-pair {:?}", p)));
             };
             drop_op(env, l.clone())?; // drop the value which will be overwrriten
             assert!(
@@ -65,7 +65,7 @@ pub fn write_op(
             // Get value which will be overrwriten
             let p = env.get(p_ast.clone())?;
             let Type::Pair(l, l_term, r_term) = &*p else {
-                return Err(format!("attempt to edit right element of non-pair {:?}", p));
+                return Err(ast.error(format!("attempt to edit right element of non-pair {:?}", p)));
             };
             // TODO: drop rhs
             // assert!(
@@ -98,6 +98,6 @@ pub fn write_op(
         (AstData::MutRef(_), _) => todo!("write_op MutRef"),
         (AstData::Ass(_, _), _) => todo!("write_op Ass"),
         (AstData::Top, _) => todo!("write_op Top"),
-        (syntax, val) => Err(format!("Attempt to write {:?} to {:?}", val, syntax)),
+        (syntax, val) => Err(ast.error(format!("Attempt to write {:?} to {:?}", val, syntax))),
     }
 }

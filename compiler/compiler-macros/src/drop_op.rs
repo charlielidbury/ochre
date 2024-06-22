@@ -3,10 +3,10 @@ use quote::quote;
 
 use crate::{
     abstract_::{Env, OchreType, Type},
-    ast::AstData,
+    ast::{AstData, OError},
 };
 
-pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, String> {
+pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, OError> {
     match &*v {
         // No deallocation required
         Type::Atom(_) | Type::Top | Type::Func(_, _) => Ok(quote!()),
