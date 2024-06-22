@@ -80,7 +80,7 @@ fn ident(input: &[OchreTree]) -> IResult<&[OchreTree], String> {
 fn brackets(input: &[OchreTree]) -> IResult<&[OchreTree], AstData> {
     match input {
         [OchreTree::Group(Delimiter::Parenthesis, g), input @ ..] => {
-            Ok((input, all_consuming(parse(0))(&g[..])?.1))
+            Ok((input, all_consuming(parse_data(0))(&g[..])?.1))
         }
         _ => fail(input),
     }
@@ -88,21 +88,21 @@ fn brackets(input: &[OchreTree]) -> IResult<&[OchreTree], AstData> {
 
 const PREC_MAX: u8 = 4;
 
-fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], AstData> {
+fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], AstData> {
     move |input| {
         match prec {
             0 => alt((
                 // Seq
                 map(
                     tuple((parse(prec + 1), punct(";"), parse(prec))),
-                    |(lhs, (), rhs)| AstData::Seq(Rc::new(lhs), Rc::new(rhs)),
+                    |(lhs, (), rhs)| AstData::Seq(lhs, rhs),
                 ),
                 // (Dependent) Pair
                 map(
                     tuple((parse(prec + 1), punct(","), parse(prec))),
-                    |(l, (), r)| AstData::Pair(Rc::new(l), Rc::new(r.clone())),
+                    |(l, (), r)| AstData::Pair(l, r.clone()),
                 ),
-                parse(prec + 1),
+                parse_data(prec + 1),
             ))(input),
             1 => alt((
                 // Let
@@ -117,18 +117,18 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
                     |((), x, opt_ty, (), m)| {
                         let ty = match opt_ty {
                             Some(((), ty)) => ty,
-                            None => AstData::Top,
+                            None => Ast::new(None, AstData::Top),
                         };
 
-                        AstData::Let(x, Rc::new(ty), Rc::new(m))
+                        AstData::Let(x, ty, m)
                     },
                 ),
                 // Assignment
                 map(
                     tuple((parse(prec + 1), punct("="), parse(prec + 1))),
-                    |(lhs, (), rhs)| AstData::Ass(Rc::new(lhs), Rc::new(rhs)),
+                    |(lhs, (), rhs)| AstData::Ass(lhs, rhs),
                 ),
-                parse(prec + 1),
+                parse_data(prec + 1),
             ))(input),
             2 => alt((
                 // Case
@@ -149,10 +149,10 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
                             parse(1),
                             punct(","),
                         )),
-                        |((), atom, (), (), branch, ())| (atom, Rc::new(branch)),
+                        |((), atom, (), (), branch, ())| (atom, branch),
                     )))(&g)?;
 
-                    Ok((input, AstData::Case(Rc::new(cond), branches)))
+                    Ok((input, AstData::Case(cond, branches)))
                 },
                 // Dependent Function
                 |input: &'a [OchreTree]| {
@@ -167,7 +167,7 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
                             let (input, ((), (), n)) =
                                 tuple((punct("-"), punct(">"), parse(prec)))(input)?;
 
-                            Ok((input, AstData::Fun(x, Rc::new(m), Rc::new(n))))
+                            Ok((input, AstData::Fun(x, m, n)))
                         }
                         input => fail(input),
                     }
@@ -176,16 +176,11 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
                 map(
                     // TODO: disallow space between - and > by enforcing the - is spacing=Joint
                     tuple((parse(prec + 1), punct("-"), punct(">"), parse(prec))),
-                    |(lhs, (), (), rhs)| AstData::Fun("_".to_string(), Rc::new(lhs), Rc::new(rhs)),
+                    |(lhs, (), (), rhs)| AstData::Fun("_".to_string(), lhs, rhs),
                 ),
-                parse(prec + 1),
+                parse_data(prec + 1),
             ))(input),
             3 => alt((
-                // Type union
-                map(
-                    tuple((parse(prec + 1), punct("|"), parse(prec))),
-                    |(lhs, (), rhs)| AstData::Union(Rc::new(lhs), Rc::new(rhs)),
-                ),
                 // Repeatedly try parsers on the tail
                 |input| {
                     let (mut input, mut head) = parse(prec + 1)(input)?;
@@ -194,57 +189,69 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
                         // Application
                         if let Ok((i, next)) = parse(prec + 1)(input) {
                             input = i;
-                            head = AstData::App(Rc::new(head), Rc::new(next));
+                            head = Ast::new(head.span, AstData::App(head, next));
                             continue;
                         }
 
                         // Left pair
                         if let Ok((i, _)) = pair(punct("."), liter("0"))(input) {
                             input = i;
-                            head = AstData::PairLeft(Rc::new(head));
+                            head = Ast::new(head.span, AstData::PairLeft(head));
                             continue;
                         }
 
                         // Right pair
                         if let Ok((i, _)) = pair(punct("."), liter("1"))(input) {
                             input = i;
-                            head = AstData::PairRight(Rc::new(head));
+                            head = Ast::new(head.span, AstData::PairRight(head));
                             continue;
+                        }
+
+                        // Type union
+                        if let Ok((i, (_, rhs))) = pair(punct("|"), parse(prec))(input) {
+                            input = i;
+                            head = Ast::new(head.span, AstData::Union(head, rhs))
+                        }
+
+                        // Type annotation
+                        if let Ok((i, (_, rhs))) = pair(punct(":"), parse(prec))(input) {
+                            input = i;
+                            head = Ast::new(head.span, AstData::Annot(head, rhs))
                         }
 
                         break;
                     }
 
-                    Ok((input, head))
+                    Ok((input, (*head.data).clone()))
                 },
-                map(
-                    pair(parse(prec + 1), many0(parse(prec + 1))),
-                    |(mut f, args)| {
-                        for arg in args {
-                            f = AstData::App(Rc::new(f), Rc::new(arg));
-                        }
-                        f
-                    },
-                ),
+                // map(
+                //     pair(parse(prec + 1), many0(parse(prec + 1))),
+                //     |(mut f, args)| {
+                //         for arg in args {
+                //             f = AstData::App(Rc::new(f), Rc::new(arg));
+                //         }
+                //         f
+                //     },
+                // ),
             ))(input),
             PREC_MAX => alt((
                 // Deref
-                map(preceded(punct("*"), parse(prec)), |m| {
-                    AstData::Deref(Rc::new(m))
-                }),
+                map(preceded(punct("*"), parse(prec)), |m| AstData::Deref(m)),
                 // Top
                 map(punct("*"), |_| AstData::Top),
                 // MutRef
                 map(
                     tuple((punct("&"), tok("mut"), parse(prec))),
-                    |((), (), m)| AstData::MutRef(Rc::new(m)),
+                    |((), (), m)| AstData::MutRef(m),
                 ),
                 // Ref
-                map(preceded(punct("&"), parse(prec)), |m| {
-                    AstData::Ref(Rc::new(m))
-                }),
+                map(preceded(punct("&"), parse(prec)), |m| AstData::Ref(m)),
                 // Variable
-                map(ident, AstData::Var),
+                map(ident, |input| match input.chars().nth(0).unwrap() {
+                    'a'..'z' => AstData::RuntimeVar(input),
+                    'A'..'Z' => AstData::ComptimeVar(input),
+                    _ => panic!("invalid identifier"),
+                }),
                 // Atom
                 map(preceded(punct("'"), ident), |atom| AstData::Atom(atom)),
                 // Brackets
@@ -252,6 +259,30 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
             ))(input),
             _ => panic!("parse error, input = {:?}", input),
         }
+    }
+}
+
+fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], Ast> {
+    move |input| {
+        let (remaining_input, ast_data) = parse_data(prec)(input)?;
+
+        let consumed_input = &input[..(input.len() - remaining_input.len())];
+        let consumed_span = consumed_input
+            .first()
+            .map(|tree| tree.get_span())
+            .unwrap_or_else(Span::call_site);
+
+        // Create a span that covers the consumed input
+        let span = consumed_span
+            .join(
+                remaining_input
+                    .first()
+                    .map(|tree| tree.get_span())
+                    .unwrap_or_else(Span::call_site),
+            )
+            .unwrap();
+
+        Ok((remaining_input, Ast::new(Some(span), ast_data)))
     }
 }
 
@@ -263,7 +294,7 @@ pub fn parse_stream(input: TokenStream) -> Result<Ast, Span> {
     // parse the insides
     let res = all_consuming(parse(0))(&input);
     match res {
-        Ok((_, ast)) => Ok(Rc::new(ast)),
+        Ok((_, ast)) => Ok(ast),
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
             println!("{:?}", e.input);
             let span = e.input[0].get_span();

@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use crate::abstract_::{AbstractValue, Env, OchreType, Type};
 use crate::ast::{Ast, AstData};
+use crate::drop_op::drop_op;
 use im_rc::HashSet;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
@@ -11,8 +12,8 @@ pub fn write_op(
     ast: Ast,
     val: OchreType,
 ) -> Result<proc_macro2::TokenStream, String> {
-    match (&*ast, &*val) {
-        (AstData::Var(x), _) => {
+    match (&*ast.data, &*val) {
+        (AstData::RuntimeVar(x), _) => {
             // Make sure there is nothing in x
             env.bot(ast.clone())?;
             assert_eq!(
@@ -25,13 +26,66 @@ pub fn write_op(
             let ident = Ident::new(x, Span::call_site());
             Ok(quote!(#ident))
         }
-        (AstData::Pair(l, r), Type::Pair(m, n, _, _)) => {
-            write_op(env, l.clone(), m.clone())?;
-            write_op(env, r.clone(), n.clone())?;
+        (AstData::Pair(l, r), Type::Pair(m, m_term, n_term)) => {
+            match (&*m_term.data, &*n_term.data) {
+                (AstData::Top, AstData::Type(n)) => {
+                    write_op(env, l.clone(), m.clone())?;
+                    write_op(env, r.clone(), n.clone())?;
+                    Ok(quote!())
+                }
+                _ => unimplemented!("write dependent pair"),
+            }
+        }
+        (AstData::PairLeft(p_ast), val) => {
+            // Get value which will be overrwriten
+            let p = env.get(p_ast.clone())?;
+            let Type::Pair(l, l_term, r_term) = &*p else {
+                return Err(format!("attempt to edit left element of non-pair {:?}", p));
+            };
+            drop_op(env, l.clone())?; // drop the value which will be overwrriten
+            assert!(
+                matches!(&*l_term.data, AstData::Top),
+                "attempt to edit non-depedenent pair"
+            );
+
+            // Write back with new value
+            write_op(
+                env,
+                p_ast.clone(),
+                Rc::new(Type::Pair(
+                    Rc::new(val.clone()),
+                    l_term.clone(),
+                    r_term.clone(),
+                )),
+            )?;
+
             Ok(quote!())
         }
-        (AstData::PairLeft(_), _) => todo!("write_op PairLeft"),
-        (AstData::PairRight(_), _) => todo!("write_op PairRight"),
+        (AstData::PairRight(p_ast), _) => {
+            // Get value which will be overrwriten
+            let p = env.get(p_ast.clone())?;
+            let Type::Pair(l, l_term, r_term) = &*p else {
+                return Err(format!("attempt to edit right element of non-pair {:?}", p));
+            };
+            // TODO: drop rhs
+            // assert!(
+            //     matches!(&**l_term, AstData::Top),
+            //     "attempt to edit non-depedenent pair"
+            // );
+
+            // Write back with new value
+            write_op(
+                env,
+                p_ast.clone(),
+                Rc::new(Type::Pair(
+                    l.clone(),
+                    Ast::new(None, AstData::Top),
+                    Ast::new(None, AstData::Type(val.clone())),
+                )),
+            )?;
+
+            Ok(quote!())
+        }
         (AstData::Deref(_), _) => todo!("write_op Deref"),
         (AstData::App(_, _), _) => todo!("write_op App"),
         (AstData::Fun(_, _, _), _) => todo!("write_op Fun"),
@@ -43,7 +97,6 @@ pub fn write_op(
         (AstData::Ref(_), _) => todo!("write_op Ref"),
         (AstData::MutRef(_), _) => todo!("write_op MutRef"),
         (AstData::Ass(_, _), _) => todo!("write_op Ass"),
-        (AstData::Moved, _) => todo!("write_op Moved"),
         (AstData::Top, _) => todo!("write_op Top"),
         (syntax, val) => Err(format!("Attempt to write {:?} to {:?}", val, syntax)),
     }

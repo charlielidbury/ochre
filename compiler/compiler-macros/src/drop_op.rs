@@ -1,16 +1,24 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::abstract_::{Env, OchreType, Type};
+use crate::{
+    abstract_::{Env, OchreType, Type},
+    ast::AstData,
+};
 
 pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, String> {
     match &*v {
         // No deallocation required
         Type::Atom(_) | Type::Top | Type::Func(_, _) => Ok(quote!()),
 
-        Type::Pair(l, r, _, _) => {
-            drop_op(env, l.clone())?;
-            drop_op(env, r.clone())?;
+        Type::Pair(l, l_term, r_term) => {
+            match (&*l_term.data, &*r_term.data) {
+                (AstData::Top, AstData::Type(r)) => {
+                    drop_op(env, l.clone())?;
+                    drop_op(env, r.clone())?;
+                }
+                _ => unimplemented!("drop dependent pair"),
+            }
             Ok(quote!())
         }
 

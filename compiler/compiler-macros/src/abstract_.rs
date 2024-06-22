@@ -11,6 +11,7 @@ use crate::{
 use im_rc::{HashMap, HashSet};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
+use std::fmt;
 
 type LoanId = usize;
 
@@ -33,7 +34,7 @@ impl Atom {
 pub enum Type {
     Atom(HashSet<Atom>),
     Func(Ast, Ast),
-    Pair(OchreType, OchreType, Ast, Ast),
+    Pair(OchreType, Ast, Ast),
     BorrowS(LoanId, OchreType),
     BorrowM(LoanId, OchreType),
     LoanS(LoanId, OchreType),
@@ -42,27 +43,47 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn subset(&self, other: &Type) -> bool {
+    pub fn subtype(&self, other: &Type) -> bool {
         use Type::*;
         match (self, other) {
             (_, Top) => true,
             (Atom(sub_atoms), Atom(super_atoms)) => sub_atoms.is_subset(super_atoms),
-            (Pair(sub_l, sub_r, a, b), Pair(sup_l, sup_r, c, d)) => {
-                assert!(
-                    matches!(
-                        (&**a, &**b, &**c, &**d),
-                        (AstData::Top, AstData::Top, AstData::Top, AstData::Top)
-                    ),
-                    "dep. pair subtype unimplemented"
-                );
-                sub_l.subset(sup_l) && sub_r.subset(sup_r)
+            (Pair(sub_l, a, b), Pair(sup_l, c, d)) => {
+                match (&*a.data, &*b.data, &*c.data, &*d.data) {
+                    (AstData::Top, AstData::Type(sub_r), AstData::Top, AstData::Type(sup_r)) => {
+                        sub_l.subtype(sup_l) && sub_r.subtype(sup_r)
+                    }
+                    _ => unimplemented!("dep. pair subtype"),
+                }
             }
-            (sub, sup) => unimplemented!(
-                "subset between {:?} and {:?}, {}",
-                sub,
-                sup,
-                Backtrace::capture()
-            ),
+            (_, _) => false,
+        }
+    }
+
+    pub fn union(&self, other: &Type) -> Result<Rc<Type>, String> {
+        match (self, other) {
+            (Type::Atom(lhs), Type::Atom(rhs)) => {
+                Ok(Rc::new(Type::Atom(lhs.clone().union(rhs.clone()))))
+            }
+            (lhs, rhs) => Err(format!("{} and {} have no union", lhs, rhs)),
+        }
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Atom(atoms) => {
+                let atoms_str: Vec<String> = atoms.iter().map(|atom| atom.0.clone()).collect();
+                write!(f, "{{{}}}", atoms_str.join(", "))
+            }
+            Type::Func(_param, _ret) => write!(f, "Func"),
+            Type::Pair(l, a, b) => write!(f, "({}, {} -> {})", l, a.data, b.data),
+            Type::BorrowS(loan_id, ochre_type) => write!(f, "BorrowS({}, {})", loan_id, ochre_type),
+            Type::BorrowM(loan_id, ochre_type) => write!(f, "BorrowM({}, {})", loan_id, ochre_type),
+            Type::LoanS(loan_id, ochre_type) => write!(f, "LoanS({}, {})", loan_id, ochre_type),
+            Type::LoanM(loan_id) => write!(f, "LoanM({})", loan_id),
+            Type::Top => write!(f, "_"),
         }
     }
 }
@@ -100,8 +121,8 @@ impl Env {
     // either using allocation or deallocation
     // ast -> bot guarenteed afterwards
     pub fn bot(&mut self, ast: Ast) -> Result<TokenStream, String> {
-        match &*ast {
-            AstData::Var(x) => {
+        match &*ast.data {
+            AstData::RuntimeVar(x) => {
                 if let Some(AbstractValue::Runtime(ty)) = self.state.remove(x) {
                     drop_op(self, ty.clone())?;
                 }
@@ -111,36 +132,89 @@ impl Env {
 
                 Ok(quote!())
             }
-            AstData::PairLeft(_) => todo!("PairLeft"),
-            AstData::PairRight(_) => todo!("PairRight"),
-            AstData::Deref(_) => todo!("Deref"),
-            AstData::App(_, _) => todo!("App"),
-            AstData::Fun(_, _, _) => todo!("Fun"),
-            AstData::Pair(_, _) => todo!("Pair"),
-            AstData::Let(_, _, _) => todo!("Let"),
-            AstData::Atom(_) => todo!("Atom"),
-            AstData::Union(_, _) => todo!("Union"),
-            AstData::Seq(_, _) => todo!("Seq"),
-            AstData::Case(_, _) => todo!("Case"),
-            AstData::Ref(_) => todo!("Ref"),
-            AstData::MutRef(_) => todo!("MutRef"),
-            AstData::Ass(_, _) => todo!("Ass"),
-            AstData::Moved => todo!("Moved"),
-            AstData::Top => todo!("Top"),
+            AstData::ComptimeVar(x) => {
+                let old_val = self
+                    .state
+                    .insert(x.clone(), AbstractValue::Comptime(Rc::new(Type::Top)));
+
+                if old_val.is_some() {
+                    Err(format!("variable {} already exists", x))
+                } else {
+                    Ok(quote!())
+                }
+            }
+            AstData::PairLeft(_) => todo!("bot PairLeft"),
+            AstData::PairRight(_) => todo!("bot PairRight"),
+            AstData::Deref(_) => todo!("bot Deref"),
+            AstData::App(_, _) => todo!("bot App"),
+            AstData::Fun(_, _, _) => todo!("bot Fun"),
+            AstData::Pair(_, _) => todo!("bot Pair"),
+            AstData::Let(_, _, _) => todo!("bot Let"),
+            AstData::Atom(_) => todo!("bot Atom"),
+            AstData::Union(_, _) => todo!("bot Union"),
+            AstData::Seq(_, _) => todo!("bot Seq"),
+            AstData::Case(_, _) => todo!("bot Case"),
+            AstData::Ref(_) => todo!("bot Ref"),
+            AstData::MutRef(_) => todo!("bot MutRef"),
+            AstData::Ass(_, _) => todo!("bot Ass"),
+            AstData::Top => todo!("bot Top"),
+            AstData::Annot(_, _) => todo!("bot Annot"),
+            AstData::Type(_) => todo!("bot Type"),
+        }
+    }
+
+    pub fn get(&mut self, ast: Ast) -> Result<OchreType, String> {
+        match &*ast.data {
+            AstData::RuntimeVar(x) => match self.state.get(x) {
+                Some(AbstractValue::Runtime(v)) => Ok(v.clone()),
+                _ => Err(format!("Cannot get {:?}", ast)),
+            },
+            AstData::ComptimeVar(x) => match self.state.get(x) {
+                Some(AbstractValue::Comptime(v)) => Ok(v.clone()),
+                _ => Err(format!("Cannot get {:?}", ast)),
+            },
+            AstData::PairLeft(_) => todo!("narrow PairLeft"),
+            AstData::PairRight(_) => todo!("narrow PairRight"),
+            AstData::Deref(_) => todo!("narrow Deref"),
+            AstData::App(_, _) => todo!("narrow App"),
+            AstData::Fun(_, _, _) => todo!("narrow Fun"),
+            AstData::Pair(_, _) => todo!("narrow Pair"),
+            AstData::Let(_, _, _) => todo!("narrow Let"),
+            AstData::Atom(_) => todo!("narrow Atom"),
+            AstData::Union(_, _) => todo!("narrow Union"),
+            AstData::Seq(_, _) => todo!("narrow Seq"),
+            AstData::Case(_, _) => todo!("narrow Case"),
+            AstData::Ref(_) => todo!("narrow Ref"),
+            AstData::MutRef(_) => todo!("narrow MutRef"),
+            AstData::Ass(_, _) => todo!("narrow Ass"),
+            AstData::Top => todo!("narrow Top"),
+            AstData::Annot(_, _) => todo!("narrow Annot"),
+            AstData::Type(_) => todo!("narrow Type"),
         }
     }
 
     pub fn narrow(&mut self, ast: Ast, ty: OchreType) -> Result<(), String> {
-        match &*ast {
-            AstData::Var(x) => match self.state.get_mut(x) {
+        match &*ast.data {
+            AstData::RuntimeVar(x) => match self.state.get_mut(x) {
                 Some(AbstractValue::Runtime(v)) => {
-                    if !ty.subset(v) {
+                    if !ty.subtype(v) {
                         return Err(format!("Attempting to narrow {:?} down to {:?}", v, ty));
                     }
                     *v = ty;
                     Ok(())
                 }
                 Some(AbstractValue::Comptime(_)) => Err(format!("attempt to narrow erased value")),
+                None => Err(format!("Attempt to narrow unallocated value")),
+            },
+            AstData::ComptimeVar(x) => match self.state.get_mut(x) {
+                Some(AbstractValue::Comptime(v)) => {
+                    if !ty.subtype(v) {
+                        return Err(format!("Attempting to narrow {:?} down to {:?}", v, ty));
+                    }
+                    *v = ty;
+                    Ok(())
+                }
+                Some(AbstractValue::Runtime(_)) => Err(format!("attempt to narrow runtime value")),
                 None => Err(format!("Attempt to narrow unallocated value")),
             },
             AstData::PairLeft(_) => todo!("narrow PairLeft"),
@@ -157,8 +231,9 @@ impl Env {
             AstData::Ref(_) => todo!("narrow Ref"),
             AstData::MutRef(_) => todo!("narrow MutRef"),
             AstData::Ass(_, _) => todo!("narrow Ass"),
-            AstData::Moved => todo!("narrow Moved"),
             AstData::Top => todo!("narrow Top"),
+            AstData::Annot(_, _) => todo!("narrow Annot"),
+            AstData::Type(_) => todo!("narrow Type"),
         }
     }
 }

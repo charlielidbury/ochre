@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 use std::mem;
 
 use compiler_macros::ochre;
@@ -155,8 +156,6 @@ use compiler_macros::ochre;
 // }
 
 fn main() {
-    println!("hello");
-
     ochre! {
         // Bool = 'true | 'false;
         // Same = (Bool, L -> L);
@@ -164,7 +163,8 @@ fn main() {
         p = ('true, 'true); //: Same;
         p.0 = 'false;
         p.1 = 'false;
-        p: Same;
+        p: ('true, 'false);
+        // p: 'hello | 'world;
 
         'unit
     };

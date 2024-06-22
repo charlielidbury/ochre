@@ -1,6 +1,7 @@
 mod abstract_;
 mod ast;
 mod drop_op;
+mod erased_read_op;
 mod move_op;
 mod parser;
 mod write_op;
@@ -8,6 +9,7 @@ mod write_op;
 use std::rc::Rc;
 
 use abstract_::Env;
+use ast::AstData;
 use move_op::move_op;
 use parser::parse_stream;
 use proc_macro2::TokenStream;
@@ -34,17 +36,20 @@ fn gen_result_code(result_type: Rc<Type>) -> TokenStream {
             }
         }
         Type::Func(_, _) => todo!("gen_result_code Func"),
-        Type::Pair(l, r, _, _) => {
-            let lhs_result_code = gen_result_code(l.clone());
-            let rhs_result_code = gen_result_code(r.clone());
-            quote! {
-                let (lhs, rhs) = *Box::from_raw(result.pair);
-                (
-                { let result = lhs; #lhs_result_code },
-                { let result = rhs; #rhs_result_code }
-            )
+        Type::Pair(l, l_term, r_term) => match (&*l_term.data, &*r_term.data) {
+            (AstData::Top, AstData::Type(r)) => {
+                let lhs_result_code = gen_result_code(l.clone());
+                let rhs_result_code = gen_result_code(r.clone());
+                quote! {
+                    let (lhs, rhs) = *Box::from_raw(result.pair);
+                    (
+                        { let result = lhs; #lhs_result_code },
+                        { let result = rhs; #rhs_result_code }
+                    )
+                }
             }
-        }
+            _ => unimplemented!("gen_result_code dependent pair"),
+        },
         Type::BorrowS(_, _) => todo!("gen_result_code BorrowS"),
         Type::BorrowM(_, _) => todo!("gen_result_code BorrowM"),
         Type::LoanS(_, _) => todo!("gen_result_code LoanS"),
@@ -77,7 +82,7 @@ fn ochre_impl(input: TokenStream) -> TokenStream {
     dbg!(result_type.clone());
 
     // Generate return value
-    let result_code = gen_result_code(result_type);
+    // let result_code = gen_result_code(result_type);
 
     // // Output code
     // quote! { unsafe {
@@ -108,7 +113,7 @@ fn ochre_impl(input: TokenStream) -> TokenStream {
     // }}
     // .into()
 
-    quote!(unimplemented!()).into()
+    quote!().into()
 }
 
 #[proc_macro]
