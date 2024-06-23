@@ -47,7 +47,12 @@ impl Type {
     pub fn subtype(&self, other: &Type) -> bool {
         use Type::*;
         match (self, other) {
+            // Top is widest
             (_, Top) => true,
+            // Auto-remove Loans
+            (LoanS(_, sub), sup) => sub.subtype(sup),
+            (sub, LoanS(_, sup)) => sub.subtype(sup),
+
             (Atom(sub_atoms), Atom(super_atoms)) => sub_atoms.is_subset(super_atoms),
             (Pair(sub_l, a, b), Pair(sup_l, c, d)) => {
                 match (&*a.data, &*b.data, &*c.data, &*d.data) {
@@ -185,9 +190,9 @@ impl fmt::Display for Type {
                 AstData::Top => write!(f, "({}, {})", l, b.data),
                 _ => write!(f, "({}, {} -> {})", l, a.data, b.data),
             },
-            Type::BorrowS(loan_id, ochre_type) => write!(f, "BorrowS({}, {})", loan_id, ochre_type),
-            Type::BorrowM(loan_id, ochre_type) => write!(f, "BorrowM({}, {})", loan_id, ochre_type),
-            Type::LoanS(loan_id, ochre_type) => write!(f, "LoanS({}, {})", loan_id, ochre_type),
+            Type::BorrowS(_, ochre_type) => write!(f, "&{}", ochre_type),
+            Type::BorrowM(_, ochre_type) => write!(f, "&mut {}", ochre_type),
+            Type::LoanS(loan_id, ochre_type) => write!(f, "{}", ochre_type),
             Type::LoanM(loan_id) => write!(f, "LoanM({})", loan_id),
             Type::Top => write!(f, "_"),
         }
@@ -208,7 +213,7 @@ pub enum AbstractValue {
     Comptime(OchreType),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Env {
     pub state: HashMap<String, AbstractValue>,
     // pub atoms: HashMap<u64, String>,
@@ -272,6 +277,7 @@ impl Env {
             AstData::Top => todo!("bot Top"),
             AstData::Annot(_, _) => todo!("bot Annot"),
             AstData::Type(_) => todo!("bot Type"),
+            AstData::TypeQuestion(_) => todo!("bot TypeQuestion"),
         }
     }
 
@@ -336,6 +342,7 @@ impl Env {
             AstData::Top => todo!("narrow Top"),
             AstData::Annot(_, _) => todo!("narrow Annot"),
             AstData::Type(_) => todo!("narrow Type"),
+            AstData::TypeQuestion(_) => todo!("narrow TypeQuestion"),
         };
 
         loop {
@@ -401,6 +408,7 @@ impl Env {
             AstData::Top => todo!("narrow Top"),
             AstData::Annot(_, _) => todo!("narrow Annot"),
             AstData::Type(_) => todo!("narrow Type"),
+            AstData::TypeQuestion(_) => todo!("narrow TypeQuestion"),
         }
     }
 }

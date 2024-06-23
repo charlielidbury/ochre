@@ -9,7 +9,7 @@ use nom::{
     sequence::{pair, preceded, terminated, tuple},
     IResult,
 };
-use proc_macro2::{Delimiter, Ident, Literal, Punct, Span, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Ident, Literal, Punct, Span, TokenStream, TokenTree};
 // use syn::{parse_macro_input, Ident, LitStr};
 
 #[derive(Debug)]
@@ -219,6 +219,11 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                             head = Ast::new(head.span, AstData::Annot(head, rhs))
                         }
 
+                        if let Ok((i, _)) = punct("?")(input) {
+                            input = i;
+                            head = Ast::new(head.span, AstData::TypeQuestion(head));
+                        }
+
                         break;
                     }
 
@@ -267,22 +272,14 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
         let (remaining_input, ast_data) = parse_data(prec)(input)?;
 
         let consumed_input = &input[..(input.len() - remaining_input.len())];
-        let consumed_span = consumed_input
-            .first()
-            .map(|tree| tree.get_span())
-            .unwrap_or_else(Span::call_site);
 
-        // Create a span that covers the consumed input
-        let span = consumed_span
-            .join(
-                remaining_input
-                    .first()
-                    .map(|tree| tree.get_span())
-                    .unwrap_or_else(Span::call_site),
-            )
-            .unwrap();
+        let span = match consumed_input {
+            [] => None,
+            [only] => Some(only.get_span()),
+            [first, .., last] => first.get_span().join(last.get_span()),
+        };
 
-        Ok((remaining_input, Ast::new(Some(span), ast_data)))
+        Ok((remaining_input, Ast::new(span, ast_data)))
     }
 }
 

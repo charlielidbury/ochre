@@ -90,10 +90,7 @@ pub fn write_op(
         (AstData::Deref(r_ast), _) => {
             let (_code, t_ref) = move_op(env, r_ast.clone())?;
             let Type::BorrowM(loan_id, old_val) = &*t_ref else {
-                return Err(ast.error(format!(
-                    "cannot dereference {}: {} is not a reference",
-                    ast, t_ref
-                )));
+                return Err(ast.error(format!("cannot mutate through a {}", t_ref)));
             };
             drop_op(env, old_val.clone())?;
 

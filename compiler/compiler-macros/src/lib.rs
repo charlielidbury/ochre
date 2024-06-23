@@ -1,4 +1,7 @@
+#![feature(proc_macro_diagnostic)]
+#![feature(proc_macro_span)]
 #![feature(never_type)]
+#![feature(try_blocks)]
 mod abstract_;
 mod ast;
 mod drop_op;
@@ -16,12 +19,11 @@ use abstract_::Env;
 use ast::AstData;
 use move_op::move_op;
 use parser::parse_stream;
-use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 
 use crate::abstract_::Type;
 
-fn gen_result_code(result_type: Rc<Type>) -> TokenStream {
+fn gen_result_code(result_type: Rc<Type>) -> proc_macro2::TokenStream {
     match &*result_type {
         Type::Atom(atoms) => {
             let mut match_arms = quote!(_ => unreachable!());
@@ -62,7 +64,7 @@ fn gen_result_code(result_type: Rc<Type>) -> TokenStream {
     }
 }
 
-fn ochre_impl(input: TokenStream) -> TokenStream {
+fn ochre_impl(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
     let ast = match parse_stream(input) {
         Ok(ast) => ast,
         Err(s) => {
@@ -81,7 +83,7 @@ fn ochre_impl(input: TokenStream) -> TokenStream {
     let (code, result_type) = match move_op(&mut env, ast) {
         Ok(res) => res,
         Err((None, s)) => return quote!(compile_error!(#s)).into(),
-        Err((Some(span), s)) => return quote_spanned!(span => compile_error!(#s)).into(),
+        Err((Some(span), s)) => return quote_spanned!(span.into() => compile_error!(#s)).into(),
     };
     dbg!(env);
     dbg!(result_type.clone());

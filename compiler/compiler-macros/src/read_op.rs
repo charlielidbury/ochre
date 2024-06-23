@@ -31,5 +31,6 @@ pub fn read_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
         AstData::Ass(_, _) => todo!("read_op Ass"),
         AstData::Top => todo!("read_op Top"),
         AstData::Type(_) => todo!("read_op Type"),
+        AstData::TypeQuestion(_) => todo!("read_op TypeQuestion"),
     }
 }

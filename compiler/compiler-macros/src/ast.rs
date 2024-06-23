@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::abstract_::OchreType;
 use std::fmt;
 
-pub type OError = (Option<proc_macro2::Span>, String);
+pub type OError = (Option<proc_macro::Span>, String);
 
 // pub type Atom = String;
 
@@ -28,6 +28,7 @@ pub enum AstData {
     Ass(Ast, Ast),
     Top,
     Type(OchreType),
+    TypeQuestion(Ast),
 }
 
 impl AstData {
@@ -51,6 +52,7 @@ impl AstData {
             AstData::Ass(_, _) => todo!("runtime Ass"),
             AstData::Top => todo!("runtime Top"),
             AstData::Type(_) => todo!("runtime Type"),
+            AstData::TypeQuestion(_) => todo!("runtime Type"),
         }
     }
 }
@@ -82,18 +84,19 @@ impl fmt::Display for AstData {
             AstData::Ass(ast1, ast2) => write!(f, "{} = {}", ast1, ast2),
             AstData::Top => write!(f, "_"),
             AstData::Type(ochre_type) => write!(f, "{}", ochre_type),
+            AstData::TypeQuestion(ast) => write!(f, "{}?", ast),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Ast {
-    pub span: Option<proc_macro2::Span>,
+    pub span: Option<proc_macro::Span>,
     pub data: Rc<AstData>,
 }
 
 impl Ast {
-    pub fn new(span: Option<proc_macro2::Span>, data: AstData) -> Self {
+    pub fn new(span: Option<proc_macro::Span>, data: AstData) -> Self {
         Ast {
             span,
             data: Rc::new(data),

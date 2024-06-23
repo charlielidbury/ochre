@@ -25,12 +25,18 @@ pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, OError> {
         Type::BorrowS(loan_id, _) => {
             env.terminate_loan(*loan_id, None)?;
             Ok(quote!())
-        },
+        }
         Type::BorrowM(loan_id, val) => {
             env.terminate_loan(*loan_id, Some(val.clone()))?;
             Ok(quote!())
         }
-        Type::LoanS(_, _) => todo!("drop_op LoanS"),
-        Type::LoanM(_) => todo!("drop_op LoanM"),
+        Type::LoanS(loan_id, _) => {
+            env.terminate_borrow(*loan_id)?;
+            Ok(quote!())
+        }
+        Type::LoanM(loan_id) => {
+            env.terminate_borrow(*loan_id)?;
+            Ok(quote!())
+        }
     }
 }

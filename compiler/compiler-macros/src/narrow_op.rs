@@ -14,8 +14,10 @@ pub fn narrow_op(
     val: OchreType,
 ) -> Result<proc_macro2::TokenStream, OError> {
     match &*ast.data {
-        AstData::RuntimeVar(_) => todo!("narrow_op RuntimeVar"),
-        AstData::ComptimeVar(_) => todo!("narrow_op ComptimeVar"),
+        AstData::RuntimeVar(_) | AstData::ComptimeVar(_) => {
+            env.narrow(ast, val)?;
+            Ok(quote!())
+        }
         AstData::PairLeft(_) => todo!("narrow_op PairLeft"),
         AstData::PairRight(_) => todo!("narrow_op PairRight"),
         AstData::Deref(_) => todo!("narrow_op Deref"),
@@ -32,5 +34,6 @@ pub fn narrow_op(
         AstData::Ass(_, _) => todo!("narrow_op Ass"),
         AstData::Top => todo!("narrow_op Top"),
         AstData::Type(_) => todo!("narrow_op Type"),
+        AstData::TypeQuestion(_) => todo!("narrow_op TypeQuestion"),
     }
 }

@@ -38,5 +38,6 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
         AstData::Ass(_, _) => todo!("erased_read Ass"),
         AstData::Top => todo!("erased_read Top"),
         AstData::Type(_) => todo!("erased_read Type"),
+        AstData::TypeQuestion(_) => todo!("erased_read TypeQuestion"),
     }
 }
