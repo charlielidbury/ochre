@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::abstract_::{AbstractValue, Atom, Env, OchreType, Type};
+use crate::abstract_::{Atom, Env, OchreType, Pair, Type};
 use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
 use crate::erased_read_op::erased_read_op;
@@ -17,8 +17,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
         match &*ast.data {
             AstData::RuntimeVar(x) => {
                 let ty = env.get(ast.clone())?;
-                env.state
-                    .insert(x.clone(), AbstractValue::Runtime(Rc::new(Type::Top)));
+                env.state.insert(x.clone(), Rc::new(Type::Top));
 
                 // Generate identifier (union is copy so old ident still usable)
                 let id_x = Ident::new(x, Span::call_site());
@@ -47,29 +46,24 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 (quote!(), val.clone())
             }
             AstData::TypeQuestion(ast) => {
-                println!("SPECIAL CASE");
                 // Add note of type
-                let inner_env = &mut env.clone();
-                let ty = move_op(inner_env, ast.clone())
+                let ty = move_op(&mut env.clone(), ast.clone())
                     .map(|r| r.1)
-                    .or(erased_read_op(inner_env, ast.clone()))?;
+                    .or(erased_read_op(&mut env.clone(), ast.clone()))?;
                 ast.span.unwrap().note(format!("{}", ty)).emit();
                 (quote!(), Rc::new(Type::Top))
             }
             AstData::App(_, _) => {
                 todo!("move_op App")
             }
-            AstData::Fun(_, _, _) => todo!("move Fun"),
+            AstData::RuntimeFun(_, _, _) => todo!("move RuntimeFun"),
+            AstData::ComptimeFun(_, _) => todo!("move ComptimeFun"),
             AstData::Pair(l, r) => {
                 let (l_code, l_val) = move_op(env, l.clone())?;
                 let (r_code, r_val) = move_op(env, r.clone())?;
                 (
                     quote!(OchreValue { pair: Box::leak(Box::new(({ #l_code }, { #r_code }))) }),
-                    Rc::new(Type::Pair(
-                        l_val,
-                        Ast::new(None, AstData::Top),
-                        Ast::new(None, AstData::Type(r_val)),
-                    )),
+                    Rc::new(Type::Pair(Pair::new(l_val, r_val))),
                 )
             }
             AstData::Atom(s) => {
@@ -77,13 +71,15 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 let atom_hash = atom.hash();
                 (quote!(OchreValue{ atom: #atom_hash }), Rc::new(atom.into()))
             }
-            AstData::Union(_, _) => Err(ast.error("Type union used in runtime context".to_string()))?,
+            AstData::Union(_, _) => {
+                Err(ast.error("Type union used in runtime context".to_string()))?
+            }
             AstData::Seq(lhs, rhs) => {
                 // Evaluate lhs
                 let (lhs_code, lhs_val) = move_op(env, lhs.clone())?;
                 // Drop lhs
                 let drop_code = drop_op(env, lhs_val)?;
-                dbg!(&env);
+                // dbg!(&env);
                 // Evaluate rhs
                 let (rhs_code, rhs_val) = move_op(env, rhs.clone())?;
                 // Return code
@@ -128,14 +124,16 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                         let unit = Atom::new("unit");
                         (quote!(), Rc::new(unit.into()))
                     }
-                    _ => Err(ast.error("lhs must be unambigiously comptime or runtime".to_string()))?,
+                    _ => {
+                        Err(ast.error("lhs must be unambigiously comptime or runtime".to_string()))?
+                    }
                 }
             }
             AstData::Top => (quote!(), Rc::new(Type::Top)),
             AstData::Annot(term, term_type) => {
                 let (_, term) = move_op(env, term.clone())?;
                 let term_type = erased_read_op(env, term_type.clone())?;
-                if term.subtype(&term_type) {
+                if term.subtype(env, &term_type)? {
                     (quote!(), term_type)
                 } else {
                     Err(ast.error(format!("{} is not of type {}", term, term_type)))?

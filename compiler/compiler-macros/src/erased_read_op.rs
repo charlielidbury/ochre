@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    abstract_::{Atom, Env, OchreType, Type},
+    abstract_::{Atom, Env, OchreType, Pair, Type},
     ast::{Ast, AstData, OError},
 };
 
@@ -14,15 +14,16 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
         | AstData::PairRight(_) => Ok(env.get(ast)?),
         AstData::Deref(_) => todo!("erased_read Deref"),
         AstData::App(_, _) => todo!("erased_read App"),
-        AstData::Fun(_, _, _) => todo!("erased_read Fun"),
-        AstData::Pair(lhs, rhs) => {
-            let lhs = erased_read_op(env, lhs.clone())?;
-            let rhs = erased_read_op(env, rhs.clone())?;
-            Ok(Rc::new(Type::Pair(
-                lhs,
-                Ast::new(None, AstData::Top),
-                Ast::new(None, AstData::Type(rhs)),
-            )))
+        AstData::RuntimeFun(_, _, _) => todo!("erased_read RuntimeFun"),
+        AstData::ComptimeFun(_, _) => todo!("erased_read ComptimeFun"),
+        AstData::Pair(l_ast, r_ast) => {
+            let l = erased_read_op(env, l_ast.clone())?;
+            let (l_term, r_term) = match &*r_ast.data {
+                AstData::ComptimeFun(l_term, r_term) => (l_term.clone(), r_term.clone()),
+                _ => (Ast::new(None, AstData::Top), r_ast.clone()),
+            };
+            dbg!(&l_term, &r_term);
+            Ok(Rc::new(Type::Pair(Pair { l, l_term, r_term })))
         }
         AstData::Atom(s) => Ok(Rc::new(Atom::new(s).into())),
         AstData::Union(lhs, rhs) => {
@@ -36,8 +37,8 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
         AstData::Ref(_) => todo!("erased_read Ref"),
         AstData::MutRef(_) => todo!("erased_read MutRef"),
         AstData::Ass(_, _) => todo!("erased_read Ass"),
-        AstData::Top => todo!("erased_read Top"),
-        AstData::Type(_) => todo!("erased_read Type"),
+        AstData::Top => Ok(Rc::new(Type::Top)),
+        AstData::Type(ty) => Ok(ty.clone()),
         AstData::TypeQuestion(_) => todo!("erased_read TypeQuestion"),
     }
 }

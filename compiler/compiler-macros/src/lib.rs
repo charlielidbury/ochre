@@ -41,21 +41,20 @@ fn gen_result_code(result_type: Rc<Type>) -> proc_macro2::TokenStream {
                 }
             }
         }
-        Type::Func(_, _) => todo!("gen_result_code Func"),
-        Type::Pair(l, l_term, r_term) => match (&*l_term.data, &*r_term.data) {
-            (AstData::Top, AstData::Type(r)) => {
-                let lhs_result_code = gen_result_code(l.clone());
-                let rhs_result_code = gen_result_code(r.clone());
-                quote! {
-                    let (lhs, rhs) = *Box::from_raw(result.pair);
-                    (
-                        { let result = lhs; #lhs_result_code },
-                        { let result = rhs; #rhs_result_code }
-                    )
-                }
+        Type::RuntimeFunc(_, _, _) => todo!("gen_result_code Func"),
+        Type::ComptimeFunc(_, _) => todo!("gen_result_code Func"),
+        Type::Pair(p) => {
+            let (l, r) = p.get(&Env::new()).expect("eval pair in result has failed"); // is it right to eval this with empty?
+            let lhs_result_code = gen_result_code(l.clone());
+            let rhs_result_code = gen_result_code(r.clone());
+            quote! {
+                let (lhs, rhs) = *Box::from_raw(result.pair);
+                (
+                    { let result = lhs; #lhs_result_code },
+                    { let result = rhs; #rhs_result_code }
+                )
             }
-            _ => unimplemented!("gen_result_code dependent pair"),
-        },
+        }
         Type::BorrowS(_, _) => todo!("gen_result_code BorrowS"),
         Type::BorrowM(_, _) => todo!("gen_result_code BorrowM"),
         Type::LoanS(_, _) => todo!("gen_result_code LoanS"),

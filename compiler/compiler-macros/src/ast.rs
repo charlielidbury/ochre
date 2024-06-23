@@ -15,7 +15,8 @@ pub enum AstData {
     PairRight(Ast),
     Deref(Ast),
     App(Ast, Ast),
-    Fun(String, Ast, Ast),
+    RuntimeFun(Ast, Ast, Ast),
+    ComptimeFun(Ast, Ast),
     Pair(Ast, Ast),
     // Let(String, Ast, Ast),
     Atom(String),
@@ -42,7 +43,8 @@ impl AstData {
             | AstData::Ref(ast)
             | AstData::MutRef(ast) => ast.runtime_comptime(),
             AstData::App(_, _) => todo!("runtime App"),
-            AstData::Fun(_, _, _) => todo!("runtime Fun"),
+            AstData::RuntimeFun(_, _, _) => (true, false),
+            AstData::ComptimeFun(_, _) => (false, true),
             AstData::Pair(_, _) => todo!("runtime Pair"),
             AstData::Atom(_) => todo!("runtime Atom"),
             AstData::Union(_, _) => todo!("runtime Union"),
@@ -66,7 +68,10 @@ impl fmt::Display for AstData {
             AstData::PairRight(ast) => write!(f, "{}", ast),
             AstData::Deref(ast) => write!(f, "*{}", ast),
             AstData::App(ast1, ast2) => write!(f, "{} {}", ast1, ast2),
-            AstData::Fun(param, body, ret) => write!(f, "fun {} -> {} : {}", param, body, ret),
+            AstData::RuntimeFun(param, ret, body) => write!(f, "{} -> {} {{{}}}", param, ret, body),
+            AstData::ComptimeFun(param, ret) => {
+                write!(f, "{} -> {}", param, ret)
+            }
             AstData::Pair(ast1, ast2) => write!(f, "({}, {})", ast1, ast2),
             AstData::Atom(atom) => write!(f, "'{}", atom),
             AstData::Union(ast1, ast2) => write!(f, "{} | {}", ast1, ast2),

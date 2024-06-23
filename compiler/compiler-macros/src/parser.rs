@@ -77,10 +77,24 @@ fn ident(input: &[OchreTree]) -> IResult<&[OchreTree], String> {
     }
 }
 
-fn brackets(input: &[OchreTree]) -> IResult<&[OchreTree], AstData> {
+fn ident_liter(id: &'static str) -> impl FnMut(&[OchreTree]) -> IResult<&[OchreTree], ()> {
+    move |input| match input {
+        [OchreTree::Ident(i), input @ ..] if i.to_string() == id => Ok((input, ())),
+        input => fail(input),
+    }
+}
+
+// fn ident_exact(input: &[OchreTree], id: &'static str) -> IResult<&[OchreTree], String> {
+//     match input {
+//         [OchreTree::Ident(i), input @ ..] if i.to_string() == id => Ok((input, i.to_string())),
+//         input => fail(input),
+//     }
+// }
+
+fn brackets(input: &[OchreTree], delimeter: Delimiter) -> IResult<&[OchreTree], Ast> {
     match input {
-        [OchreTree::Group(Delimiter::Parenthesis, g), input @ ..] => {
-            Ok((input, all_consuming(parse_data(0))(&g[..])?.1))
+        [OchreTree::Group(d, g), input @ ..] if *d == delimeter => {
+            Ok((input, all_consuming(parse(0))(&g[..])?.1))
         }
         _ => fail(input),
     }
@@ -154,29 +168,17 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
 
                     Ok((input, AstData::Case(cond, branches)))
                 },
-                // Dependent Function
-                |input: &'a [OchreTree]| {
-                    // parses (x: M) -> N
-                    match input {
-                        [OchreTree::Group(Delimiter::Brace, g), input @ ..] => {
-                            // parses (x: M)
-                            let (_, (x, (), m)) =
-                                all_consuming(tuple((ident, punct(":"), parse(0))))(g)?;
-
-                            // parses -> N
-                            let (input, ((), (), n)) =
-                                tuple((punct("-"), punct(">"), parse(prec)))(input)?;
-
-                            Ok((input, AstData::Fun(x, m, n)))
-                        }
-                        input => fail(input),
-                    }
-                },
-                // Function
+                // Comptime Function
                 map(
-                    // TODO: disallow space between - and > by enforcing the - is spacing=Joint
                     tuple((parse(prec + 1), punct("-"), punct(">"), parse(prec))),
-                    |(lhs, (), (), rhs)| AstData::Fun("_".to_string(), lhs, rhs),
+                    |(i, (), (), o)| AstData::ComptimeFun(i, o),
+                ),
+                // Runtime Function
+                map(
+                    tuple((parse(prec + 1), punct("-"), punct(">"), parse(prec), |i| {
+                        brackets(i, Delimiter::Brace)
+                    })),
+                    |(i, (), (), ret, body)| AstData::RuntimeFun(i, ret, body),
                 ),
                 parse_data(prec + 1),
             ))(input),
@@ -244,7 +246,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                 map(preceded(punct("*"), parse(prec)), AstData::Deref),
                 // Top
                 map(punct("*"), |_| AstData::Top),
-                map(liter("_"), |_| AstData::Top),
+                map(ident_liter("_"), |()| AstData::Top),
                 // MutRef
                 map(
                     tuple((punct("&"), tok("mut"), parse(prec))),
@@ -261,7 +263,10 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                 // Atom
                 map(preceded(punct("'"), ident), AstData::Atom),
                 // Brackets
-                brackets,
+                |i| {
+                    let (i, inner) = brackets(i, Delimiter::Parenthesis)?;
+                    Ok((i, (*inner.data).clone()))
+                },
             ))(input),
             _ => panic!("parse error, input = {:?}", input),
         }
