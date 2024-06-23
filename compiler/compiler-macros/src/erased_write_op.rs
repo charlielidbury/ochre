@@ -1,11 +1,5 @@
-use std::rc::Rc;
-
-use crate::abstract_::{AbstractValue, Env, OchreType, Type};
+use crate::abstract_::{Env, OchreType, Type};
 use crate::ast::{Ast, AstData, OError};
-use crate::drop_op::drop_op;
-use im_rc::HashSet;
-use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
 
 pub fn erased_write_op(env: &mut Env, ast: Ast, val: OchreType) -> Result<(), OError> {
     match (&*ast.data, &*val) {

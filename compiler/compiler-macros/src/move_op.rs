@@ -1,4 +1,3 @@
-use std::mem;
 use std::rc::Rc;
 
 use crate::abstract_::{AbstractValue, Atom, Env, OchreType, Type};
@@ -9,9 +8,8 @@ use crate::erased_write_op::erased_write_op;
 use crate::narrow_op::narrow_op;
 use crate::read_op::read_op;
 use crate::write_op::write_op;
-use proc_macro;
 use proc_macro2::Ident;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::Span;
 use quote::quote;
 
 pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, OchreType), OError> {
@@ -79,7 +77,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 let atom_hash = atom.hash();
                 (quote!(OchreValue{ atom: #atom_hash }), Rc::new(atom.into()))
             }
-            AstData::Union(_, _) => Err(ast.error(format!("Type union used in runtime context")))?,
+            AstData::Union(_, _) => Err(ast.error("Type union used in runtime context".to_string()))?,
             AstData::Seq(lhs, rhs) => {
                 // Evaluate lhs
                 let (lhs_code, lhs_val) = move_op(env, lhs.clone())?;
@@ -130,14 +128,14 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                         let unit = Atom::new("unit");
                         (quote!(), Rc::new(unit.into()))
                     }
-                    _ => Err(ast.error(format!("lhs must be unambigiously comptime or runtime")))?,
+                    _ => Err(ast.error("lhs must be unambigiously comptime or runtime".to_string()))?,
                 }
             }
             AstData::Top => (quote!(), Rc::new(Type::Top)),
             AstData::Annot(term, term_type) => {
                 let (_, term) = move_op(env, term.clone())?;
                 let term_type = erased_read_op(env, term_type.clone())?;
-                if term.subtype(&*term_type) {
+                if term.subtype(&term_type) {
                     (quote!(), term_type)
                 } else {
                     Err(ast.error(format!("{} is not of type {}", term, term_type)))?

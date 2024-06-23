@@ -72,7 +72,6 @@ fn ochre_impl(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
                 s.into() =>
                 compile_error!("syntax error")
             }
-            .into()
         }
     };
 
@@ -80,10 +79,10 @@ fn ochre_impl(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
 
     // Invoke Ochre compiler
     let mut env = Env::new();
-    let (code, result_type) = match move_op(&mut env, ast) {
+    let (_code, result_type) = match move_op(&mut env, ast) {
         Ok(res) => res,
-        Err((None, s)) => return quote!(compile_error!(#s)).into(),
-        Err((Some(span), s)) => return quote_spanned!(span.into() => compile_error!(#s)).into(),
+        Err((None, s)) => return quote!(compile_error!(#s)),
+        Err((Some(span), s)) => return quote_spanned!(span.into() => compile_error!(#s)),
     };
     dbg!(env);
     dbg!(result_type.clone());
@@ -120,18 +119,16 @@ fn ochre_impl(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
     // }}
     // .into()
 
-    quote!().into()
+    quote!()
 }
 
 #[proc_macro]
 pub fn ochre(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // proc_macro::Span::call_site().note("hello there!").emit();
 
-    ochre_impl(item.into()).into()
+    ochre_impl(item).into()
     // quote!(42).into()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}

@@ -1,12 +1,12 @@
 use std::fmt;
-use std::{fmt::Display, rc::Rc};
+use std::fmt::Display;
 
 use crate::ast::{Ast, AstData};
 use nom::{
     branch::alt,
     combinator::{all_consuming, fail, map, opt},
     multi::many0,
-    sequence::{pair, preceded, terminated, tuple},
+    sequence::{pair, preceded, tuple},
     IResult,
 };
 use proc_macro::{Delimiter, Ident, Literal, Punct, Span, TokenStream, TokenTree};
@@ -35,7 +35,7 @@ impl OchreTree {
 
     fn get_span(&self) -> Span {
         match self {
-            OchreTree::Group(_, g) => g.get(0).expect("empty group").get_span(),
+            OchreTree::Group(_, g) => g.first().expect("empty group").get_span(),
             OchreTree::Ident(i) => i.span(),
             OchreTree::Punct(p) => p.span(),
             OchreTree::Literal(l) => l.span(),
@@ -150,7 +150,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                             punct(","),
                         )),
                         |((), atom, (), (), branch, ())| (atom, branch),
-                    )))(&g)?;
+                    )))(g)?;
 
                     Ok((input, AstData::Case(cond, branches)))
                 },
@@ -161,7 +161,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                         [OchreTree::Group(Delimiter::Brace, g), input @ ..] => {
                             // parses (x: M)
                             let (_, (x, (), m)) =
-                                all_consuming(tuple((ident, punct(":"), parse(0))))(&g)?;
+                                all_consuming(tuple((ident, punct(":"), parse(0))))(g)?;
 
                             // parses -> N
                             let (input, ((), (), n)) =
@@ -241,7 +241,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
             ))(input),
             PREC_MAX => alt((
                 // Deref
-                map(preceded(punct("*"), parse(prec)), |m| AstData::Deref(m)),
+                map(preceded(punct("*"), parse(prec)), AstData::Deref),
                 // Top
                 map(punct("*"), |_| AstData::Top),
                 map(liter("_"), |_| AstData::Top),
@@ -251,15 +251,15 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                     |((), (), m)| AstData::MutRef(m),
                 ),
                 // Ref
-                map(preceded(punct("&"), parse(prec)), |m| AstData::Ref(m)),
+                map(preceded(punct("&"), parse(prec)), AstData::Ref),
                 // Variable
-                map(ident, |input| match input.chars().nth(0).unwrap() {
+                map(ident, |input| match input.chars().next().unwrap() {
                     'a'..'z' => AstData::RuntimeVar(input),
                     'A'..'Z' => AstData::ComptimeVar(input),
                     _ => panic!("invalid identifier"),
                 }),
                 // Atom
-                map(preceded(punct("'"), ident), |atom| AstData::Atom(atom)),
+                map(preceded(punct("'"), ident), AstData::Atom),
                 // Brackets
                 brackets,
             ))(input),
@@ -296,7 +296,7 @@ pub fn parse_stream(input: TokenStream) -> Result<Ast, Span> {
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
             println!("{:?}", e.input);
             let span = e.input[0].get_span();
-            Err(span.into())
+            Err(span)
         }
         Err(nom::Err::Incomplete(_)) => panic!("incomplete hit somehow"),
     }

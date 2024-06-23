@@ -1,11 +1,6 @@
-use std::rc::Rc;
 
-use crate::abstract_::{AbstractValue, Env, OchreType, Type};
+use crate::abstract_::{Env, OchreType};
 use crate::ast::{Ast, AstData, OError};
-use crate::drop_op::drop_op;
-use crate::move_op::move_op;
-use im_rc::HashSet;
-use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 
 pub fn narrow_op(

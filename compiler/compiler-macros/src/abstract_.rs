@@ -1,4 +1,3 @@
-use std::backtrace::Backtrace;
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     rc::Rc,
@@ -10,7 +9,7 @@ use crate::{
     drop_op::drop_op,
 };
 use im_rc::{HashMap, HashSet};
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 use std::fmt;
 
@@ -101,7 +100,7 @@ impl Type {
                 if let Some(_) = t.terminate_borrow(loan_id)? {
                     Err((
                         None,
-                        format!("cannot terminate borrow through immutable reference"),
+                        "cannot terminate borrow through immutable reference".to_string(),
                     ))
                 } else {
                     Ok(None)
@@ -124,7 +123,7 @@ impl Type {
                 if *l == loan_id {
                     // loan cant be inside its own borrow (circular reference), so this must not do anything
                     if let Some(_) = v.terminate_loan(loan_id, val)? {
-                        Err((None, format!("borrow referenced its own loan?!?!")))
+                        Err((None, "borrow referenced its own loan?!?!".to_string()))
                     } else {
                         Ok(None)
                     }
@@ -137,7 +136,8 @@ impl Type {
                     if val.is_some() {
                         return Err((
                             None,
-                            format!("attempt to terminate loan which has been immutably borrowed"),
+                            "attempt to terminate loan which has been immutably borrowed"
+                                .to_string(),
                         ));
                     }
 
@@ -148,7 +148,7 @@ impl Type {
                 if *l == loan_id {
                     // loan cant be inside its own borrow (circular reference), so this must not do anything
                     if let Some(_) = v.terminate_loan(loan_id, val)? {
-                        Err((None, format!("borrow referenced its own loan?!?!")))
+                        Err((None, "borrow referenced its own loan?!?!".to_string()))
                     } else {
                         Ok(None)
                     }
@@ -372,9 +372,9 @@ impl Env {
                     Ok(())
                 }
                 Some(AbstractValue::Comptime(_)) => {
-                    Err((None, format!("attempt to narrow erased value")))
+                    Err((None, "attempt to narrow erased value".to_string()))
                 }
-                None => Err((None, format!("Attempt to narrow unallocated value"))),
+                None => Err((None, "Attempt to narrow unallocated value".to_string())),
             },
             AstData::ComptimeVar(x) => match self.state.get_mut(x) {
                 Some(AbstractValue::Comptime(v)) => {
@@ -388,9 +388,9 @@ impl Env {
                     Ok(())
                 }
                 Some(AbstractValue::Runtime(_)) => {
-                    Err((None, format!("attempt to narrow runtime value")))
+                    Err((None, "attempt to narrow runtime value".to_string()))
                 }
-                None => Err((None, format!("Attempt to narrow unallocated value"))),
+                None => Err((None, "Attempt to narrow unallocated value".to_string())),
             },
             AstData::PairLeft(_) => todo!("narrow PairLeft"),
             AstData::PairRight(_) => todo!("narrow PairRight"),

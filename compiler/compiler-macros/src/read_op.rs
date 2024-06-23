@@ -1,14 +1,6 @@
-use std::mem;
-use std::rc::Rc;
 
-use crate::abstract_::{AbstractValue, Atom, Env, OchreType, Type};
+use crate::abstract_::{Env, OchreType};
 use crate::ast::{Ast, AstData, OError};
-use crate::drop_op::drop_op;
-use crate::erased_read_op::erased_read_op;
-use crate::erased_write_op::erased_write_op;
-use crate::write_op::write_op;
-use proc_macro2::Ident;
-use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 pub fn read_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, OchreType), OError> {

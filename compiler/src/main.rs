@@ -1,5 +1,4 @@
 #[rustfmt::skip]
-use std::mem;
 
 use compiler_macros::ochre;
 
