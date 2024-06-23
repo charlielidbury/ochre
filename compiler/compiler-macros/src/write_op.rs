@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::abstract_::{Env, OchreType, Pair, Type};
 use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
+use crate::erased_read_op::erased_read_op;
 use crate::move_op::move_op;
 use proc_macro2::{Ident, Span};
 use quote::quote;
@@ -74,6 +75,18 @@ pub fn write_op(
         (AstData::RuntimeFun(_, _, _), _) => todo!("write_op RuntimeFun"),
         (AstData::ComptimeFun(_, _), _) => todo!("write_op ComptimeFun"),
         (AstData::Atom(_), _) => todo!("write_op Atom"),
+        (AstData::Annot(dst_term, ty_term), val) => {
+            // Check vs annotation
+            let ty = erased_read_op(env, ty_term.clone())?;
+            if !val.subtype(env, &*ty)? {
+                return Err(ty_term.error(format!("cannot write {} here", ty)));
+            }
+
+            // Do the writey write
+            write_op(env, dst_term.clone(), Rc::new(val.clone()))?;
+
+            Ok(quote!())
+        }
         (AstData::Union(_, _), _) => todo!("write_op Union"),
         (AstData::Seq(_, _), _) => todo!("write_op Seq"),
         (AstData::Case(_, _), _) => todo!("write_op Case"),
@@ -84,6 +97,6 @@ pub fn write_op(
             drop_op(env, Rc::new(val.clone()))?;
             Ok(quote!())
         }
-        (syntax, val) => Err(ast.error(format!("Attempt to write {:?} to {:?}", val, syntax))),
+        (syntax, val) => Err(ast.error(format!("Attempt to write {} to {}", val, syntax))),
     }
 }

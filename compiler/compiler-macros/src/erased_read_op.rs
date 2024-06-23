@@ -3,6 +3,8 @@ use std::rc::Rc;
 use crate::{
     abstract_::{Atom, Env, OchreType, Pair, Type},
     ast::{Ast, AstData, OError},
+    erased_write_op::erased_write_op,
+    max_op::max_erased_write_op,
 };
 
 pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
@@ -13,9 +15,31 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
         | AstData::PairLeft(_)
         | AstData::PairRight(_) => Ok(env.get(ast)?),
         AstData::Deref(_) => todo!("erased_read Deref"),
-        AstData::App(_, _) => todo!("erased_read App"),
-        AstData::RuntimeFun(_, _, _) => todo!("erased_read RuntimeFun"),
-        AstData::ComptimeFun(_, _) => todo!("erased_read ComptimeFun"),
+        AstData::App(f_term, a_term) => {
+            let env = &mut env.comptime();
+            // eval function
+            let Type::Func(i_term, o_term) = &*erased_read_op(env, f_term.clone())? else {
+                return Err(f_term.error("not a compile time function"));
+            };
+            // eval argument
+            let t = erased_read_op(env, a_term.clone())?;
+            // eval return type
+            erased_write_op(env, i_term.clone(), t)?;
+            let ret = erased_read_op(env, o_term.clone())?;
+
+            Ok(ret)
+        }
+        AstData::RuntimeFun(_, _, _) => {
+            Err(ast.error("Compile time functions must not have a body"))
+        }
+        AstData::ComptimeFun(i_term, o_term) => {
+            // Check function body with max value
+            let env = &mut env.comptime();
+            max_erased_write_op(env, i_term.clone())?;
+            erased_read_op(env, o_term.clone())?;
+
+            Ok(Rc::new(Type::Func(i_term.clone(), o_term.clone())))
+        }
         AstData::Pair(l_ast, r_ast) => {
             let l = erased_read_op(env, l_ast.clone())?;
             let (l_term, r_term) = match &*r_ast.data {

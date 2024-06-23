@@ -3,8 +3,9 @@ use std::rc::Rc;
 use crate::abstract_::{Atom, Env, OchreType, Pair, Type};
 use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
-use crate::erased_read_op::erased_read_op;
+use crate::erased_read_op::{self, erased_read_op};
 use crate::erased_write_op::erased_write_op;
+use crate::max_op::{max_erased_write_op, max_move_op};
 use crate::narrow_op::narrow_op;
 use crate::read_op::read_op;
 use crate::write_op::write_op;
@@ -53,11 +54,38 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 ast.span.unwrap().note(format!("{}", ty)).emit();
                 (quote!(), Rc::new(Type::Top))
             }
-            AstData::App(_, _) => {
-                todo!("move_op App")
+            AstData::App(f_term, a_term) => {
+                // eval function
+                let Type::Func(i_term, o_term) = &*read_op(env, f_term.clone())?.1 else {
+                    return Err(f_term.error("not a runtime function"));
+                };
+                // eval argument
+                let (_, t) = move_op(env, a_term.clone())?;
+                // eval return type
+                let env = &mut env.comptime();
+                write_op(env, i_term.clone(), t)?;
+                let ret = erased_read_op(env, o_term.clone())?;
+
+                (quote!(), ret)
             }
-            AstData::RuntimeFun(_, _, _) => todo!("move RuntimeFun"),
-            AstData::ComptimeFun(_, _) => todo!("move ComptimeFun"),
+            AstData::RuntimeFun(i_term, ret_term, body_term) => {
+                // Get max input
+                let env = &mut env.comptime();
+                max_move_op(env, i_term.clone())?;
+                // Calculate ret and body
+                let ret_ty = erased_read_op(env, ret_term.clone())?;
+                let (_, body_ty) = move_op(env, body_term.clone())?;
+                // Check body
+                if !body_ty.subtype(env, &*ret_ty)? {
+                    return Err(body_term.error("body does not match return type"));
+                }
+
+                (
+                    quote!(),
+                    Rc::new(Type::Func(i_term.clone(), ret_term.clone())),
+                )
+            }
+            AstData::ComptimeFun(_, _) => Err(ast.error("Runtime functions must have body"))?,
             AstData::Pair(l, r) => {
                 let (l_code, l_val) = move_op(env, l.clone())?;
                 let (r_code, r_val) = move_op(env, r.clone())?;

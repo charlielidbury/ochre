@@ -64,8 +64,7 @@ impl Pair {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     Atom(HashSet<Atom>),
-    RuntimeFunc(Ast, Ast, Ast),
-    ComptimeFunc(Ast, Ast),
+    Func(Ast, Ast),
     Pair(Pair),
     BorrowS(LoanId, OchreType),
     BorrowM(LoanId, OchreType),
@@ -123,9 +122,7 @@ impl Type {
         loan_id: LoanId,
     ) -> Result<Option<(OchreType, OchreType)>, OError> {
         match self {
-            Type::Atom(_) | Type::RuntimeFunc(_, _, _) | Type::ComptimeFunc(_, _) | Type::Top => {
-                Ok(None)
-            }
+            Type::Atom(_) | Type::Func(_, _) | Type::Top => Ok(None),
             Type::Pair(p) => {
                 let (l, r) = p.get(env)?;
                 match (
@@ -182,9 +179,7 @@ impl Type {
         val: Option<OchreType>, // none = immutable loan, some = mutable loan
     ) -> Result<Option<OchreType>, OError> {
         match self {
-            Type::Atom(_) | Type::RuntimeFunc(_, _, _) | Type::ComptimeFunc(_, _) | Type::Top => {
-                Ok(None)
-            }
+            Type::Atom(_) | Type::Func(_, _) | Type::Top => Ok(None),
             Type::Pair(p) => {
                 let (l, r) = p.get(env)?;
                 match (
@@ -265,8 +260,7 @@ impl fmt::Display for Type {
                 let atoms_str: Vec<String> = atoms.iter().map(|atom| atom.0.clone()).collect();
                 write!(f, "{{{}}}", atoms_str.join(", "))
             }
-            Type::RuntimeFunc(_, _, _) => write!(f, "Func"),
-            Type::ComptimeFunc(_, _) => write!(f, "Func"),
+            Type::Func(i_term, o_term) => write!(f, "{} -> {}", i_term, o_term),
             Type::Pair(p) => match &*p.l_term.data {
                 AstData::Top => write!(f, "({}, {})", p.l, p.r_term.data),
                 _ => write!(f, "({}, {} -> {})", p.l, p.l_term.data, p.r_term.data),
@@ -307,6 +301,18 @@ impl Env {
     pub fn make_loan_id(&mut self) -> LoanId {
         self.next_loan_id += 1;
         self.next_loan_id - 1
+    }
+
+    pub fn comptime(&self) -> Self {
+        Self {
+            state: self
+                .state
+                .clone()
+                .into_iter()
+                .filter(|(k, _)| !runtime(k))
+                .collect::<HashMap<String, OchreType>>(),
+            next_loan_id: self.next_loan_id,
+        }
     }
 
     // Generates code and re-arranges the environment

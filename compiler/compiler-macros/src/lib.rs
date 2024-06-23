@@ -7,6 +7,7 @@ mod ast;
 mod drop_op;
 mod erased_read_op;
 mod erased_write_op;
+mod max_op;
 mod move_op;
 mod narrow_op;
 mod parser;
@@ -41,8 +42,7 @@ fn gen_result_code(result_type: Rc<Type>) -> proc_macro2::TokenStream {
                 }
             }
         }
-        Type::RuntimeFunc(_, _, _) => todo!("gen_result_code Func"),
-        Type::ComptimeFunc(_, _) => todo!("gen_result_code Func"),
+        Type::Func(_, _) => todo!("gen_result_code Func"),
         Type::Pair(p) => {
             let (l, r) = p.get(&Env::new()).expect("eval pair in result has failed"); // is it right to eval this with empty?
             let lhs_result_code = gen_result_code(l.clone());

@@ -9,9 +9,7 @@ use crate::{
 pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, OError> {
     match &*v {
         // No deallocation required
-        Type::Atom(_) | Type::Top | Type::RuntimeFunc(_, _, _) | Type::ComptimeFunc(_, _) => {
-            Ok(quote!())
-        }
+        Type::Atom(_) | Type::Top | Type::Func(_, _) => Ok(quote!()),
 
         Type::Pair(p) => {
             let (l, r) = p.get(env)?;

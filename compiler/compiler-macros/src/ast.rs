@@ -108,8 +108,8 @@ impl Ast {
         }
     }
 
-    pub fn error(&self, s: String) -> OError {
-        (self.span, s)
+    pub fn error(&self, s: impl Into<String>) -> OError {
+        (self.span, s.into())
     }
 
     pub fn runtime_comptime(&self) -> (bool, bool) {
