@@ -89,7 +89,7 @@ pub fn write_op(
         }
         (AstData::Union(_, _), _) => todo!("write_op Union"),
         (AstData::Seq(_, _), _) => todo!("write_op Seq"),
-        (AstData::Case(_, _), _) => todo!("write_op Case"),
+        (AstData::Match(_, _), _) => todo!("write_op Match"),
         (AstData::Ref(_), _) => todo!("write_op Ref"),
         (AstData::MutRef(_), _) => todo!("write_op MutRef"),
         (AstData::Ass(_, _), _) => todo!("write_op Ass"),

@@ -1,17 +1,32 @@
 use compiler_macros::ochre;
 
 fn main() {
-    ochre! {
+    // ochre! {
+    //     Bool = 'true | 'false;
 
-        Bool = 'true | 'false;
-        Id = X -> X;
+    //     y = 'true: Bool; y?;
 
-        not = (b: Bool) -> Bool {
-            'true
-        };
+    //     not = (x: Bool) -> Bool {
+    //         match x {
+    //             'false => 'true,
+    //             'true => 'false,
+    //         }
+    //     };
 
-        x = not 'true : Id Bool;
+    //     not?
+    // }
 
-        x?;
-    }
+    // ochre! {
+
+    //     Bool = 'true | 'false;
+    //     Id = X -> X;
+
+    //     not = (b: Bool) -> Bool {
+    //         'true
+    //     };
+
+    //     x = not 'true : Id Bool;
+
+    //     x?;
+    // }
 }

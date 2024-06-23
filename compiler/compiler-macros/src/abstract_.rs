@@ -106,7 +106,7 @@ impl Type {
         }
     }
 
-    pub fn union(&self, other: &Type) -> Result<Rc<Type>, OError> {
+    pub fn union(&self, env: &Env, other: &Type) -> Result<OchreType, OError> {
         match (self, other) {
             (Type::Atom(lhs), Type::Atom(rhs)) => {
                 Ok(Rc::new(Type::Atom(lhs.clone().union(rhs.clone()))))
@@ -349,7 +349,7 @@ impl Env {
             AstData::Atom(_) => todo!("bot Atom"),
             AstData::Union(_, _) => todo!("bot Union"),
             AstData::Seq(_, _) => todo!("bot Seq"),
-            AstData::Case(_, _) => todo!("bot Case"),
+            AstData::Match(_, _) => todo!("bot Match"),
             AstData::Ref(_) => todo!("bot Ref"),
             AstData::MutRef(_) => todo!("bot MutRef"),
             AstData::Ass(_, _) => todo!("bot Ass"),
@@ -413,7 +413,7 @@ impl Env {
             AstData::Atom(_) => todo!("narrow Atom"),
             AstData::Union(_, _) => todo!("narrow Union"),
             AstData::Seq(_, _) => todo!("narrow Seq"),
-            AstData::Case(_, _) => todo!("narrow Case"),
+            AstData::Match(_, _) => todo!("narrow Match"),
             AstData::Ref(_) => todo!("narrow Ref"),
             AstData::MutRef(_) => todo!("narrow MutRef"),
             AstData::Ass(_, _) => todo!("narrow Ass"),
@@ -445,7 +445,7 @@ impl Env {
             AstData::Atom(_) => todo!("narrow Atom"),
             AstData::Union(_, _) => todo!("narrow Union"),
             AstData::Seq(_, _) => todo!("narrow Seq"),
-            AstData::Case(_, _) => todo!("narrow Case"),
+            AstData::Match(_, _) => todo!("narrow Match"),
             AstData::Ref(_) => todo!("narrow Ref"),
             AstData::MutRef(_) => todo!("narrow MutRef"),
             AstData::Ass(_, _) => todo!("narrow Ass"),

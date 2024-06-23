@@ -145,9 +145,9 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                 parse_data(prec + 1),
             ))(input),
             2 => alt((
-                // Case
+                // Match
                 |input| {
-                    let (input, cond) = preceded(tok("case"), parse(0))(input)?;
+                    let (input, cond) = preceded(tok("match"), parse(0))(input)?;
 
                     let (g, input) = match input {
                         [OchreTree::Group(Delimiter::Brace, g), input @ ..] => (g, input),
@@ -155,18 +155,11 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                     };
 
                     let (_, branches) = all_consuming(many0(map(
-                        tuple((
-                            punct("'"),
-                            ident,
-                            punct("="),
-                            punct(">"),
-                            parse(1),
-                            punct(","),
-                        )),
-                        |((), atom, (), (), branch, ())| (atom, branch),
+                        tuple((parse(1), punct("="), punct(">"), parse(1), punct(","))),
+                        |(case, (), (), branch, ())| (case, branch),
                     )))(g)?;
 
-                    Ok((input, AstData::Case(cond, branches)))
+                    Ok((input, AstData::Match(cond, branches)))
                 },
                 // Function
                 map(

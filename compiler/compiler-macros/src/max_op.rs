@@ -33,7 +33,7 @@ pub fn max_erased_write_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError>
             Ok(max_ty)
         }
         AstData::Seq(_, _) => todo!("max_erased_write_op Seq"),
-        AstData::Case(_, _) => todo!("max_erased_write_op Case"),
+        AstData::Match(_, _) => todo!("max_erased_write_op Match"),
         AstData::Ref(_) => todo!("max_erased_write_op Ref"),
         AstData::MutRef(_) => todo!("max_erased_write_op MutRef"),
         AstData::Ass(_, _) => todo!("max_erased_write_op Ass"),
@@ -69,7 +69,7 @@ pub fn max_move_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
             Ok(max_ty)
         }
         AstData::Seq(_, _) => todo!("max_move_op Seq"),
-        AstData::Case(_, _) => todo!("max_move_op Case"),
+        AstData::Match(_, _) => todo!("max_move_op Match"),
         AstData::Ref(_) => todo!("max_move_op Ref"),
         AstData::MutRef(_) => todo!("max_move_op MutRef"),
         AstData::Ass(_, _) => todo!("max_move_op Ass"),

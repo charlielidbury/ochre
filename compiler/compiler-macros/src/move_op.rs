@@ -113,7 +113,45 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 // Return code
                 (quote!(#lhs_code; #drop_code; #rhs_code), rhs_val)
             }
-            AstData::Case(_, _) => todo!("move Case"),
+            AstData::Match(scrutinee, branches) => {
+                // evaluate scrutinee
+                let (_, scrutinee_ty) = read_op(env, scrutinee.clone())?;
+
+                let mut result: Option<(OchreType, OchreType)> = None;
+
+                for (branch_l, branch_r) in branches {
+                    let mut env = env.clone();
+                    // get type of branch
+                    let branch_in = erased_read_op(&mut env, branch_l.clone())?;
+                    // narrow down scrutinee
+                    narrow_op(&mut env, scrutinee.clone(), branch_in.clone())?;
+                    // execute branch
+                    let (_, branch_out) = move_op(&mut env, branch_r.clone())?;
+                    // union onto result
+                    result = Some(match result {
+                        None => (branch_in, branch_out),
+                        Some((total_in, total_out)) => (
+                            total_in.union(&env, &*branch_in)?,
+                            total_out.union(&env, &*branch_out)?,
+                        ),
+                    });
+                }
+
+                match result {
+                    None => Err(ast.error("match statement has no branches"))?,
+                    Some((total_in, total_out)) => {
+                        // resultant environment has all runtime effects erased
+                        *env = env.comptime();
+
+                        // match must be exhaustive
+                        if !scrutinee_ty.subtype(env, &*total_in)? {
+                            return Err(scrutinee.error("branches not exhaustive"));
+                        }
+
+                        (quote!(), total_out)
+                    }
+                }
+            }
             AstData::Ref(p_ast) => {
                 let (_, t) = read_op(env, p_ast.clone())?;
                 let loan_id = env.make_loan_id();

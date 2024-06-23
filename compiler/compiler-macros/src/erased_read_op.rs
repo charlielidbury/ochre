@@ -53,11 +53,11 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
         AstData::Union(lhs, rhs) => {
             let lhs = erased_read_op(env, lhs.clone())?;
             let rhs = erased_read_op(env, rhs.clone())?;
-            Ok(lhs.union(&rhs)?)
+            Ok(lhs.union(env, &rhs)?)
         }
         AstData::Annot(_, _) => todo!("erased_read Annot"),
         AstData::Seq(_, _) => todo!("erased_read Seq"),
-        AstData::Case(_, _) => todo!("erased_read Case"),
+        AstData::Match(_, _) => todo!("erased_read Match"),
         AstData::Ref(_) => todo!("erased_read Ref"),
         AstData::MutRef(_) => todo!("erased_read MutRef"),
         AstData::Ass(_, _) => todo!("erased_read Ass"),

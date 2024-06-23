@@ -23,7 +23,7 @@ pub fn erased_write_op(env: &mut Env, ast: Ast, val: OchreType) -> Result<(), OE
         (AstData::Atom(_), _) => todo!("erased_write_op Atom"),
         (AstData::Union(_, _), _) => todo!("erased_write_op Union"),
         (AstData::Seq(_, _), _) => todo!("erased_write_op Seq"),
-        (AstData::Case(_, _), _) => todo!("erased_write_op Case"),
+        (AstData::Match(_, _), _) => todo!("erased_write_op Match"),
         (AstData::Ref(_), _) => todo!("erased_write_op Ref"),
         (AstData::MutRef(_), _) => todo!("erased_write_op MutRef"),
         (AstData::Ass(_, _), _) => todo!("erased_write_op Ass"),

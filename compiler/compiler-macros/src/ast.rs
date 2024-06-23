@@ -23,7 +23,7 @@ pub enum AstData {
     Union(Ast, Ast),
     Annot(Ast, Ast),
     Seq(Ast, Ast),
-    Case(Ast, Vec<(String, Ast)>),
+    Match(Ast, Vec<(Ast, Ast)>),
     Ref(Ast),
     MutRef(Ast),
     Ass(Ast, Ast),
@@ -50,7 +50,7 @@ impl AstData {
             AstData::Union(_, _) => todo!("runtime Union"),
             AstData::Annot(_, _) => todo!("runtime Annot"),
             AstData::Seq(_, _) => todo!("runtime Seq"),
-            AstData::Case(_, _) => todo!("runtime Case"),
+            AstData::Match(_, _) => todo!("runtime Match"),
             AstData::Ass(_, _) => todo!("runtime Ass"),
             AstData::Top => todo!("runtime Top"),
             AstData::Type(_) => todo!("runtime Type"),
@@ -77,7 +77,7 @@ impl fmt::Display for AstData {
             AstData::Union(ast1, ast2) => write!(f, "{} | {}", ast1, ast2),
             AstData::Annot(expr, ty) => write!(f, "{} : {}", expr, ty),
             AstData::Seq(expr1, expr2) => write!(f, "{}; {}", expr1, expr2),
-            AstData::Case(expr, cases) => {
+            AstData::Match(expr, cases) => {
                 write!(f, "case {} of ", expr)?;
                 for (pattern, body) in cases {
                     write!(f, "{} -> {}; ", pattern, body)?;
