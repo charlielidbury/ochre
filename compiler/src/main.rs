@@ -17,29 +17,6 @@ fn main() {
     ochre! {
         Bool = 'true | 'false;
 
-        x = 'five;
-        rx = &x;
-        mutrx = &mut x;
-
-        x?;
-        rx?;
-        mutrx?;
-
-        *mutrx = 'hello: ('hello | Bool);
-
-        x?;
-        rx?;
-        mutrx?;
-
-
-
-        // y = *rx;
-        // *rx = 'six: ('one | 'six);
-
-        // x: ('one | 'two | 'six);
-        // y: 'five;
-
-
-        'unit
+        x = 'true: Bool;
     }
 }

@@ -133,7 +133,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                     _ => Err(ast.error(format!("lhs must be unambigiously comptime or runtime")))?,
                 }
             }
-            AstData::Top => todo!("Top"),
+            AstData::Top => (quote!(), Rc::new(Type::Top)),
             AstData::Annot(term, term_type) => {
                 let (_, term) = move_op(env, term.clone())?;
                 let term_type = erased_read_op(env, term_type.clone())?;

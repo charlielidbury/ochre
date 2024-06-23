@@ -94,8 +94,8 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
             0 => alt((
                 // Seq
                 map(
-                    tuple((parse(prec + 1), punct(";"), parse(prec))),
-                    |(lhs, (), rhs)| AstData::Seq(lhs, rhs),
+                    all_consuming(tuple((parse(prec + 1), punct(";"), opt(parse(prec))))),
+                    |(lhs, (), rhs)| AstData::Seq(lhs, rhs.unwrap_or(Ast::new(None, AstData::Top))),
                 ),
                 // (Dependent) Pair
                 map(
@@ -244,6 +244,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                 map(preceded(punct("*"), parse(prec)), |m| AstData::Deref(m)),
                 // Top
                 map(punct("*"), |_| AstData::Top),
+                map(liter("_"), |_| AstData::Top),
                 // MutRef
                 map(
                     tuple((punct("&"), tok("mut"), parse(prec))),
