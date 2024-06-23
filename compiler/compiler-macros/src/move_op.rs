@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::abstract_::{Atom, Env, OchreType, Pair, Type};
 use crate::ast::{Ast, AstData, OError};
-use crate::drop_op::drop_op;
+use crate::drop_op::{drop_op, env_drop_op};
 use crate::erased_read_op::{self, erased_read_op};
 use crate::erased_write_op::erased_write_op;
 use crate::max_op::{max_erased_write_op, max_move_op};
@@ -17,7 +17,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
     let res: Result<(proc_macro2::TokenStream, OchreType), OError> = try {
         match &*ast.data {
             AstData::RuntimeVar(x) => {
-                let ty = env.get(ast.clone())?;
+                let ty = env.get(x.clone())?;
                 env.state.insert(x.clone(), Rc::new(Type::Top));
 
                 // Generate identifier (union is copy so old ident still usable)
@@ -63,22 +63,32 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 let (_, t) = move_op(env, a_term.clone())?;
                 // eval return type
                 let env = &mut env.comptime();
-                write_op(env, i_term.clone(), t)?;
+                write_op(env, i_term.clone(), t.clone()).map_err(|(_, s)| {
+                    a_term.error(format!(
+                        "argument type incorrect. Need , have {}. Write error = {}",
+                        t, s
+                    ))
+                })?;
                 let ret = erased_read_op(env, o_term.clone())?;
 
                 (quote!(), ret)
             }
             AstData::RuntimeFun(i_term, ret_term, body_term) => {
                 // Get max input
-                let env = &mut env.comptime();
-                max_move_op(env, i_term.clone())?;
+                let mut body_env = env.comptime();
+                max_move_op(&mut body_env, i_term.clone())?;
+
                 // Calculate ret and body
-                let ret_ty = erased_read_op(env, ret_term.clone())?;
-                let (_, body_ty) = move_op(env, body_term.clone())?;
+                let ret_ty = erased_read_op(&mut body_env, ret_term.clone())?;
+                let (_, body_ty) = move_op(&mut body_env, body_term.clone())?;
+
                 // Check body
-                if !body_ty.subtype(env, &*ret_ty)? {
+                if !body_ty.subtype(&body_env, &*ret_ty)? {
                     return Err(body_term.error("body does not match return type"));
                 }
+
+                // Drop body environment, this checks loan restrictions
+                env_drop_op(body_env)?;
 
                 (
                     quote!(),

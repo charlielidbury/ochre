@@ -5,8 +5,8 @@ use quote::quote;
 
 pub fn narrow_op(env: &mut Env, ast: Ast, val: OchreType) -> Result<(), OError> {
     match &*ast.data {
-        AstData::RuntimeVar(_) | AstData::ComptimeVar(_) => {
-            let old_val = env.set(ast.clone(), val.clone())?;
+        AstData::RuntimeVar(x) | AstData::ComptimeVar(x) => {
+            let old_val = env.set(x.clone(), val.clone())?;
             if !val.subtype(env, &*old_val)? {
                 return Err(ast.error(format!("type narrowed down to a supertype")));
             }

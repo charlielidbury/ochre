@@ -6,10 +6,8 @@ use quote::quote;
 
 pub fn read_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, OchreType), OError> {
     match &*ast.data {
-        AstData::RuntimeVar(_)
-        | AstData::ComptimeVar(_)
-        | AstData::PairLeft(_)
-        | AstData::PairRight(_) => Ok((quote!(), env.get(ast)?)),
+        AstData::RuntimeVar(x) | AstData::ComptimeVar(x) => Ok((quote!(), env.get(x.clone())?)),
+        AstData::PairLeft(_) | AstData::PairRight(_) => todo!("read_op PairLEFTRIGHT"),
         AstData::Deref(_) => todo!("read_op Deref"),
         AstData::App(_, _) => todo!("read_op App"),
         AstData::RuntimeFun(_, _, _) => todo!("read_op RuntimeFun"),

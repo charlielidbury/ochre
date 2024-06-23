@@ -1,5 +1,6 @@
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
+    mem,
     rc::Rc,
 };
 
@@ -45,7 +46,7 @@ pub struct Pair {
 }
 
 impl Pair {
-    pub fn get(&self, env: &Env) -> Result<(OchreType, OchreType), OError> {
+    pub fn split(&self, env: &Env) -> Result<(OchreType, OchreType), OError> {
         let env = &mut env.clone();
         erased_write_op(env, self.l_term.clone(), self.l.clone())?;
         let r = erased_read_op(env, self.r_term.clone())?;
@@ -82,10 +83,13 @@ impl Type {
             (LoanS(_, sub), sup) => sub.subtype(env, sup),
             (sub, LoanS(_, sup)) => sub.subtype(env, sup),
 
+            (BorrowS(_, sub), BorrowS(_, sup)) => sub.subtype(env, sup),
+            (BorrowM(_, sub), BorrowM(_, sup)) => sub.subtype(env, sup),
+
             (Atom(sub_atoms), Atom(super_atoms)) => Ok(sub_atoms.is_subset(super_atoms)),
             (Pair(sub_p), Pair(sup_p)) => {
                 // eval sub-pair
-                let (sub_l, sub_r) = sub_p.get(env)?;
+                let (sub_l, sub_r) = sub_p.split(env)?;
 
                 // check sub-pair is less than sup-pair on the left
                 if !sub_l.subtype(env, &*sup_p.l)? {
@@ -124,7 +128,7 @@ impl Type {
         match self {
             Type::Atom(_) | Type::Func(_, _) | Type::Top => Ok(None),
             Type::Pair(p) => {
-                let (l, r) = p.get(env)?;
+                let (l, r) = p.split(env)?;
                 match (
                     l.terminate_borrow(env, loan_id)?,
                     r.terminate_borrow(env, loan_id)?,
@@ -181,7 +185,7 @@ impl Type {
         match self {
             Type::Atom(_) | Type::Func(_, _) | Type::Top => Ok(None),
             Type::Pair(p) => {
-                let (l, r) = p.get(env)?;
+                let (l, r) = p.split(env)?;
                 match (
                     l.terminate_loan(env, loan_id, val.clone())?,
                     r.terminate_loan(env, loan_id, val)?,
@@ -285,7 +289,7 @@ pub type OchreType = Rc<Type>;
 #[derive(Debug, Clone)]
 pub struct Env {
     pub state: HashMap<String, OchreType>,
-    // pub atoms: HashMap<u64, String>,
+    pub restrictions: HashMap<LoanId, OchreType>,
     pub next_loan_id: LoanId,
 }
 
@@ -293,6 +297,7 @@ impl Env {
     pub fn new() -> Self {
         Self {
             state: HashMap::new(),
+            restrictions: HashMap::new(),
             // atoms: HashMap::new(),
             next_loan_id: 0,
         }
@@ -311,54 +316,61 @@ impl Env {
                 .into_iter()
                 .filter(|(k, _)| !runtime(k))
                 .collect::<HashMap<String, OchreType>>(),
+            restrictions: self.restrictions.clone(),
             next_loan_id: self.next_loan_id,
         }
     }
 
-    // Generates code and re-arranges the environment
-    // such that {ast} can be written into
-    // either using allocation or deallocation
-    // ast -> bot guarenteed afterwards
-    pub fn bot(&mut self, ast: Ast) -> Result<TokenStream, OError> {
-        match &*ast.data {
-            AstData::RuntimeVar(x) => {
-                if let Some(ty) = self.state.remove(x) {
-                    drop_op(self, ty.clone())?;
-                }
-
-                self.state.insert(x.clone(), Rc::new(Type::Top));
-
-                Ok(quote!())
-            }
-            AstData::ComptimeVar(x) => {
-                let old_val = self.state.insert(x.clone(), Rc::new(Type::Top));
-
-                if old_val.is_some() {
-                    Err((None, format!("variable {} already exists", x)))
-                } else {
-                    Ok(quote!())
-                }
-            }
-            AstData::PairLeft(_) => todo!("bot PairLeft"),
-            AstData::PairRight(_) => todo!("bot PairRight"),
-            AstData::Deref(_) => todo!("bot Deref"),
-            AstData::App(_, _) => todo!("bot App"),
-            AstData::RuntimeFun(_, _, _) => todo!("bot RuntimeFun"),
-            AstData::ComptimeFun(_, _) => todo!("bot ComptimeFun"),
-            AstData::Pair(_, _) => todo!("bot Pair"),
-            AstData::Atom(_) => todo!("bot Atom"),
-            AstData::Union(_, _) => todo!("bot Union"),
-            AstData::Seq(_, _) => todo!("bot Seq"),
-            AstData::Match(_, _) => todo!("bot Match"),
-            AstData::Ref(_) => todo!("bot Ref"),
-            AstData::MutRef(_) => todo!("bot MutRef"),
-            AstData::Ass(_, _) => todo!("bot Ass"),
-            AstData::Top => todo!("bot Top"),
-            AstData::Annot(_, _) => todo!("bot Annot"),
-            AstData::Type(_) => todo!("bot Type"),
-            AstData::TypeQuestion(_) => todo!("bot TypeQuestion"),
-        }
+    pub fn loan_restriction(&mut self, ty: OchreType) -> LoanId {
+        let loan_id = self.make_loan_id();
+        self.restrictions.insert(loan_id, ty);
+        loan_id
     }
+
+    // // Generates code and re-arranges the environment
+    // // such that {ast} can be written into
+    // // either using allocation or deallocation
+    // // ast -> bot guarenteed afterwards
+    // pub fn bot(&mut self, ast: Ast) -> Result<TokenStream, OError> {
+    //     match &*ast.data {
+    //         AstData::RuntimeVar(x) => {
+    //             if let Some(ty) = self.state.remove(x) {
+    //                 drop_op(self, ty.clone())?;
+    //             }
+
+    //             self.state.insert(x.clone(), Rc::new(Type::Top));
+
+    //             Ok(quote!())
+    //         }
+    //         AstData::ComptimeVar(x) => {
+    //             let old_val = self.state.insert(x.clone(), Rc::new(Type::Top));
+
+    //             if old_val.is_some() {
+    //                 Err((None, format!("variable {} already exists", x)))
+    //             } else {
+    //                 Ok(quote!())
+    //             }
+    //         }
+    //         AstData::PairLeft(_) => todo!("bot PairLeft"),
+    //         AstData::PairRight(_) => todo!("bot PairRight"),
+    //         AstData::Deref(_) => todo!("bot Deref"),
+    //         AstData::App(_, _) => todo!("bot App"),
+    //         AstData::RuntimeFun(_, _, _) => todo!("bot RuntimeFun"),
+    //         AstData::ComptimeFun(_, _) => todo!("bot ComptimeFun"),
+    //         AstData::Pair(_, _) => todo!("bot Pair"),
+    //         AstData::Atom(_) => todo!("bot Atom"),
+    //         AstData::Union(_, _) => todo!("bot Union"),
+    //         AstData::Seq(_, _) => todo!("bot Seq"),
+    //         AstData::Match(_, _) => todo!("bot Match"),
+    //         AstData::Ref(_) => todo!("bot Ref"),
+    //         AstData::MutRef(_) => todo!("bot MutRef"),
+    //         AstData::Ass(_, _) => todo!("bot Ass"),
+    //         AstData::Top => todo!("bot Top"),
+    //         AstData::Annot(_, _) => todo!("bot Annot"),
+    //         AstData::Type(_) => todo!("bot Type"),
+    //         AstData::TypeQuestion(_) => todo!("bot TypeQuestion"),
+    //     }
+    // }
 
     pub fn terminate_borrow(&mut self, loan_id: LoanId) -> Result<OchreType, OError> {
         // scan through whole environment for loan :(
@@ -379,6 +391,22 @@ impl Env {
         loan_id: LoanId,
         val: Option<OchreType>,
     ) -> Result<(), OError> {
+        // check loan restrictions
+        if let Some(restriction) = self.restrictions.get(&loan_id) {
+            return match val {
+                // mutable reference
+                Some(v) => {
+                    if v.subtype(self, restriction)? {
+                        Ok(())
+                    } else {
+                        Err((None, format!("reference mutated to incorrect type")))
+                    }
+                }
+                // immutable reference
+                None => Ok(()),
+            };
+        }
+
         // scan through whole environment for loan :(
         for (x, ty) in self.state.iter() {
             if runtime(x) {
@@ -393,74 +421,55 @@ impl Env {
     }
 
     // POST: the type returned does not contain any loans
-    pub fn get(&mut self, ast: Ast) -> Result<OchreType, OError> {
-        let mut t = match &*ast.data {
-            AstData::RuntimeVar(x) => match self.state.get(x) {
-                Some(v) => v.clone(),
-                _ => return Err((None, format!("Use of undeclared variable {}", ast))),
-            },
-            AstData::ComptimeVar(x) => match self.state.get(x) {
-                Some(v) => v.clone(),
-                _ => return Err((None, format!("Use of undeclared variable {}", ast))),
-            },
-            AstData::PairLeft(_) => todo!("narrow PairLeft"),
-            AstData::PairRight(_) => todo!("narrow PairRight"),
-            AstData::Deref(_) => todo!("narrow Deref"),
-            AstData::App(_, _) => todo!("narrow App"),
-            AstData::RuntimeFun(_, _, _) => todo!("narrow RuntimeFun"),
-            AstData::ComptimeFun(_, _) => todo!("narrow ComptimeFun"),
-            AstData::Pair(_, _) => todo!("narrow Pair"),
-            AstData::Atom(_) => todo!("narrow Atom"),
-            AstData::Union(_, _) => todo!("narrow Union"),
-            AstData::Seq(_, _) => todo!("narrow Seq"),
-            AstData::Match(_, _) => todo!("narrow Match"),
-            AstData::Ref(_) => todo!("narrow Ref"),
-            AstData::MutRef(_) => todo!("narrow MutRef"),
-            AstData::Ass(_, _) => todo!("narrow Ass"),
-            AstData::Top => todo!("narrow Top"),
-            AstData::Annot(_, _) => todo!("narrow Annot"),
-            AstData::Type(_) => todo!("narrow Type"),
-            AstData::TypeQuestion(_) => todo!("narrow TypeQuestion"),
-        };
+    pub fn get(&mut self, var: String) -> Result<OchreType, OError> {
+        let entry = self.state.entry(var);
+        let mut t = entry.or_insert_with(|| Rc::new(Type::Top)).clone();
 
         // Terminate mutable loans
-        while let Type::LoanM(loan_id) = &*t {
-            t = self.terminate_borrow(*loan_id)?;
+        while let Type::LoanM(loan_id) = *t {
+            t = self.terminate_borrow(loan_id)?;
+            self.terminate_loan(loan_id, Some(t.clone()))?;
         }
 
         Ok(t)
     }
 
-    pub fn set(&mut self, ast: Ast, ty: OchreType) -> Result<OchreType, OError> {
-        let mut t = match &*ast.data {
-            AstData::RuntimeVar(x) => self.state.insert(x.clone(), ty),
-            AstData::ComptimeVar(x) => self.state.insert(x.clone(), ty),
-            AstData::PairLeft(_) => todo!("narrow PairLeft"),
-            AstData::PairRight(_) => todo!("narrow PairRight"),
-            AstData::Deref(_) => todo!("narrow Deref"),
-            AstData::App(_, _) => todo!("narrow App"),
-            AstData::RuntimeFun(_, _, _) => todo!("narrow RuntimeFun"),
-            AstData::ComptimeFun(_, _) => todo!("narrow ComptimeFun"),
-            AstData::Pair(_, _) => todo!("narrow Pair"),
-            AstData::Atom(_) => todo!("narrow Atom"),
-            AstData::Union(_, _) => todo!("narrow Union"),
-            AstData::Seq(_, _) => todo!("narrow Seq"),
-            AstData::Match(_, _) => todo!("narrow Match"),
-            AstData::Ref(_) => todo!("narrow Ref"),
-            AstData::MutRef(_) => todo!("narrow MutRef"),
-            AstData::Ass(_, _) => todo!("narrow Ass"),
-            AstData::Top => todo!("narrow Top"),
-            AstData::Annot(_, _) => todo!("narrow Annot"),
-            AstData::Type(_) => todo!("narrow Type"),
-            AstData::TypeQuestion(_) => todo!("narrow TypeQuestion"),
-        }
-        .unwrap_or(Rc::new(Type::Top));
+    // pub fn get_mut<'a>(&'a mut self, ast: Ast) -> Result<&'a mut OchreType, OError> {
+    //     self.get(ast.clone())?;
 
-        // Terminate mutable loans
-        while let Type::LoanM(loan_id) = &*t {
-            t = self.terminate_borrow(*loan_id)?;
-        }
+    //     match &*ast.data {
+    //         AstData::RuntimeVar(x) => Ok(self.state.get_mut(x).unwrap()),
+    //         AstData::ComptimeVar(x) => Ok(self.state.get_mut(x).unwrap()),
+    //         AstData::PairLeft(_) => todo!("set PairLeft"),
+    //         AstData::PairRight(_) => todo!("set PairRight"),
+    //         AstData::Deref(_) => todo!("set Deref"),
+    //         AstData::App(_, _) => todo!("set App"),
+    //         AstData::RuntimeFun(_, _, _) => todo!("set RuntimeFun"),
+    //         AstData::ComptimeFun(_, _) => todo!("set ComptimeFun"),
+    //         AstData::Pair(_, _) => todo!("set Pair"),
+    //         AstData::Atom(_) => todo!("set Atom"),
+    //         AstData::Union(_, _) => todo!("set Union"),
+    //         AstData::Seq(_, _) => todo!("set Seq"),
+    //         AstData::Match(_, _) => todo!("set Match"),
+    //         AstData::Ref(_) => todo!("set Ref"),
+    //         AstData::MutRef(_) => todo!("set MutRef"),
+    //         AstData::Ass(_, _) => todo!("set Ass"),
+    //         AstData::Top => todo!("set Top"),
+    //         AstData::Annot(_, _) => todo!("set Annot"),
+    //         AstData::Type(_) => todo!("set Type"),
+    //         AstData::TypeQuestion(_) => todo!("set TypeQuestion"),
+    //     }
+    // }
 
-        Ok(t)
+    pub fn set(&mut self, var: String, mut val: OchreType) -> Result<OchreType, OError> {
+        // Get old value
+        let entry = self.state.entry(var);
+        let t = entry.or_insert_with(|| Rc::new(Type::Top));
+
+        // Swap old value with new value
+        mem::swap(t, &mut val);
+
+        // Return old value
+        Ok(val)
     }
 }

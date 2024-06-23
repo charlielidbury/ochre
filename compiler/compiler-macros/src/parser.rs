@@ -287,7 +287,6 @@ fn parse<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTree], A
 pub fn parse_stream(input: TokenStream) -> Result<Ast, Span> {
     // Convert input from stream to vec of tokens
     let input = input.into_iter().map(OchreTree::new).collect::<Vec<_>>();
-    dbg!(&input);
     // Leak input so returned errors can reference parts of the input
     // parse the insides
     let res = all_consuming(parse(0))(&input);

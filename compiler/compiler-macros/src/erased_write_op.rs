@@ -3,9 +3,8 @@ use crate::ast::{Ast, AstData, OError};
 
 pub fn erased_write_op(env: &mut Env, ast: Ast, val: OchreType) -> Result<(), OError> {
     match (&*ast.data, &*val) {
-        (AstData::ComptimeVar(_), _) => {
-            env.bot(ast.clone())?;
-            let old_val = env.set(ast.clone(), val.clone())?;
+        (AstData::ComptimeVar(x), _) => {
+            let old_val = env.set(x.clone(), val.clone())?;
             if !val.subtype(env, &*old_val)? {
                 return Err(ast.error(format!(
                     "writes which widens type disallowed at compile time"
@@ -23,11 +22,11 @@ pub fn erased_write_op(env: &mut Env, ast: Ast, val: OchreType) -> Result<(), OE
         (AstData::Atom(_), _) => todo!("erased_write_op Atom"),
         (AstData::Union(_, _), _) => todo!("erased_write_op Union"),
         (AstData::Seq(_, _), _) => todo!("erased_write_op Seq"),
-        (AstData::Match(_, _), _) => todo!("erased_write_op Match"),
+        (AstData::Match(_, _), _) => todo!("erased_write_op Case"),
         (AstData::Ref(_), _) => todo!("erased_write_op Ref"),
         (AstData::MutRef(_), _) => todo!("erased_write_op MutRef"),
         (AstData::Ass(_, _), _) => todo!("erased_write_op Ass"),
         (AstData::Top, _) => Ok(()),
-        (syntax, val) => Err(ast.error(format!("Attempt to write {} to {}", val, syntax))),
+        (syntax, val) => Err(ast.error(format!("Attempt to erased write {} to {}", val, syntax))),
     }
 }

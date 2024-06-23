@@ -10,8 +10,8 @@ use crate::{
 
 pub fn max_erased_write_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
     match &*ast.data {
-        AstData::RuntimeVar(_) | AstData::ComptimeVar(_) => {
-            env.set(ast, Rc::new(Type::Top))?;
+        AstData::RuntimeVar(x) | AstData::ComptimeVar(x) => {
+            env.set(x.clone(), Rc::new(Type::Top))?;
             Ok(Rc::new(Type::Top))
         }
         AstData::PairLeft(_) => todo!("max_erased_write_op PairLeft"),
@@ -45,8 +45,8 @@ pub fn max_erased_write_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError>
 
 pub fn max_move_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
     match &*ast.data {
-        AstData::RuntimeVar(_) => {
-            env.set(ast, Rc::new(Type::Top))?;
+        AstData::RuntimeVar(x) => {
+            env.set(x.clone(), Rc::new(Type::Top))?;
             Ok(Rc::new(Type::Top))
         }
         AstData::ComptimeVar(_) => todo!("max_move_op ComptimeVar"),
@@ -57,8 +57,8 @@ pub fn max_move_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
         AstData::RuntimeFun(_, _, _) => todo!("max_move_op RuntimeFun"),
         AstData::ComptimeFun(_, _) => todo!("max_move_op ComptimeFun"),
         AstData::Pair(l_term, r_term) => {
-            let l_max = max_erased_write_op(env, l_term.clone())?;
-            let r_max = max_erased_write_op(env, r_term.clone())?;
+            let l_max = max_move_op(env, l_term.clone())?;
+            let r_max = max_move_op(env, r_term.clone())?;
             Ok(Rc::new(Type::Pair(Pair::new(l_max, r_max))))
         }
         AstData::Atom(_) => todo!("max_move_op Atom"),

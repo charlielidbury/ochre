@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -12,7 +14,7 @@ pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, OError> {
         Type::Atom(_) | Type::Top | Type::Func(_, _) => Ok(quote!()),
 
         Type::Pair(p) => {
-            let (l, r) = p.get(env)?;
+            let (l, r) = p.split(env)?;
             drop_op(env, l)?;
             drop_op(env, r)?;
             Ok(quote!())
@@ -35,4 +37,15 @@ pub fn drop_op(env: &mut Env, v: OchreType) -> Result<TokenStream, OError> {
             Ok(quote!())
         }
     }
+}
+
+pub fn env_drop_op(mut env: Env) -> Result<(), OError> {
+    let top = Rc::new(Type::Top);
+
+    for var in env.state.clone().keys() {
+        let val = env.set(var.clone(), top.clone())?;
+        drop_op(&mut env, val)?;
+    }
+
+    Ok(())
 }

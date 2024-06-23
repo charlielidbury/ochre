@@ -44,7 +44,9 @@ fn gen_result_code(result_type: Rc<Type>) -> proc_macro2::TokenStream {
         }
         Type::Func(_, _) => todo!("gen_result_code Func"),
         Type::Pair(p) => {
-            let (l, r) = p.get(&Env::new()).expect("eval pair in result has failed"); // is it right to eval this with empty?
+            let (l, r) = p
+                .split(&Env::new())
+                .expect("eval pair in result has failed"); // is it right to eval this with empty?
             let lhs_result_code = gen_result_code(l.clone());
             let rhs_result_code = gen_result_code(r.clone());
             quote! {
@@ -74,7 +76,7 @@ fn ochre_impl(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
         }
     };
 
-    dbg!(&ast);
+    // dbg!(&ast);
 
     // Invoke Ochre compiler
     let mut env = Env::new();
@@ -83,7 +85,7 @@ fn ochre_impl(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
         Err((None, s)) => return quote!(compile_error!(#s)),
         Err((Some(span), s)) => return quote_spanned!(span.into() => compile_error!(#s)),
     };
-    dbg!(env);
+    // dbg!(env);
     dbg!(result_type.clone());
 
     // Generate return value

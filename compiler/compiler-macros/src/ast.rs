@@ -45,10 +45,14 @@ impl AstData {
             AstData::App(_, _) => todo!("runtime App"),
             AstData::RuntimeFun(_, _, _) => (true, false),
             AstData::ComptimeFun(_, _) => (false, true),
-            AstData::Pair(_, _) => todo!("runtime Pair"),
-            AstData::Atom(_) => todo!("runtime Atom"),
+            AstData::Pair(l, r) => {
+                let (lrun, lcomp) = l.runtime_comptime();
+                let (rrun, rcomp) = r.runtime_comptime();
+                (lrun && rrun, lcomp && rcomp)
+            }
+            AstData::Atom(_) => (true, true),
             AstData::Union(_, _) => todo!("runtime Union"),
-            AstData::Annot(_, _) => todo!("runtime Annot"),
+            AstData::Annot(s, _) => s.runtime_comptime(),
             AstData::Seq(_, _) => todo!("runtime Seq"),
             AstData::Match(_, _) => todo!("runtime Match"),
             AstData::Ass(_, _) => todo!("runtime Ass"),
