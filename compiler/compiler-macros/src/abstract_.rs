@@ -69,6 +69,108 @@ impl Type {
             (lhs, rhs) => Err((None, format!("{} and {} have no union", lhs, rhs))),
         }
     }
+
+    // Returns (new self, type extracted from loan)
+    pub fn terminate_borrow(
+        &self,
+        loan_id: LoanId,
+    ) -> Result<Option<(OchreType, OchreType)>, OError> {
+        match self {
+            Type::Atom(_) | Type::Func(_, _) | Type::Top => Ok(None),
+            Type::Pair(l, l_term, r_term) => todo!("terminate_borrow Pair"),
+            Type::BorrowM(l, t) | Type::BorrowS(l, t) if *l == loan_id => {
+                Ok(Some((Rc::new(Type::Top), t.clone())))
+            }
+            Type::BorrowM(l, t) => {
+                // no hit
+                let Some((new_self, terminated_type)) = t.terminate_borrow(loan_id)? else {
+                    return Ok(None);
+                };
+
+                Ok(Some((
+                    Rc::new(Type::BorrowM(*l, new_self)),
+                    terminated_type,
+                )))
+            }
+            Type::LoanS(_, t) | Type::BorrowS(_, t) => {
+                if let Some(_) = t.terminate_borrow(loan_id)? {
+                    Err((
+                        None,
+                        format!("cannot terminate borrow through immutable reference"),
+                    ))
+                } else {
+                    Ok(None)
+                }
+            }
+            Type::LoanM(_) => Ok(None), // cannot terminate borrow through loanM
+        }
+    }
+
+    // Returns (new self, type extracted from loan)
+    pub fn terminate_loan(
+        &self,
+        loan_id: LoanId,
+        val: Option<OchreType>, // none = immutable loan, some = mutable loan
+    ) -> Result<Option<OchreType>, OError> {
+        match self {
+            Type::Atom(_) | Type::Func(_, _) | Type::Top => Ok(None),
+            Type::Pair(l, l_term, r_term) => todo!("terminate_loan Pair"),
+            Type::BorrowS(l, v) => {
+                if *l == loan_id {
+                    // loan cant be inside its own borrow (circular reference), so this must not do anything
+                    if let Some(_) = v.terminate_loan(loan_id, val)? {
+                        Err((None, format!("borrow referenced its own loan?!?!")))
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    let Some(new_self) = v.terminate_loan(loan_id, val.clone())? else {
+                        return Ok(None);
+                    };
+
+                    // cannot terminate mutable loans through immutable references
+                    if val.is_some() {
+                        return Err((
+                            None,
+                            format!("attempt to terminate loan which has been immutably borrowed"),
+                        ));
+                    }
+
+                    Ok(Some(Rc::new(Type::BorrowM(*l, new_self))))
+                }
+            }
+            Type::BorrowM(l, v) => {
+                if *l == loan_id {
+                    // loan cant be inside its own borrow (circular reference), so this must not do anything
+                    if let Some(_) = v.terminate_loan(loan_id, val)? {
+                        Err((None, format!("borrow referenced its own loan?!?!")))
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    let Some(new_self) = v.terminate_loan(loan_id, val)? else {
+                        return Ok(None);
+                    };
+
+                    Ok(Some(Rc::new(Type::BorrowM(*l, new_self))))
+                }
+            }
+            Type::LoanS(l, v) => {
+                if *l == loan_id && val.is_none() {
+                    Ok(Some(v.clone()))
+                } else {
+                    Ok(None)
+                }
+            }
+            Type::LoanM(l) => {
+                if *l == loan_id && val.is_some() {
+                    Ok(val)
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -79,7 +181,10 @@ impl fmt::Display for Type {
                 write!(f, "{{{}}}", atoms_str.join(", "))
             }
             Type::Func(_param, _ret) => write!(f, "Func"),
-            Type::Pair(l, a, b) => write!(f, "({}, {} -> {})", l, a.data, b.data),
+            Type::Pair(l, a, b) => match &*a.data {
+                AstData::Top => write!(f, "({}, {})", l, b.data),
+                _ => write!(f, "({}, {} -> {})", l, a.data, b.data),
+            },
             Type::BorrowS(loan_id, ochre_type) => write!(f, "BorrowS({}, {})", loan_id, ochre_type),
             Type::BorrowM(loan_id, ochre_type) => write!(f, "BorrowM({}, {})", loan_id, ochre_type),
             Type::LoanS(loan_id, ochre_type) => write!(f, "LoanS({}, {})", loan_id, ochre_type),
@@ -107,6 +212,7 @@ pub enum AbstractValue {
 pub struct Env {
     pub state: HashMap<String, AbstractValue>,
     // pub atoms: HashMap<u64, String>,
+    pub next_loan_id: LoanId,
 }
 
 impl Env {
@@ -114,7 +220,13 @@ impl Env {
         Self {
             state: HashMap::new(),
             // atoms: HashMap::new(),
+            next_loan_id: 0,
         }
+    }
+
+    pub fn make_loan_id(&mut self) -> LoanId {
+        self.next_loan_id += 1;
+        self.next_loan_id - 1
     }
 
     // Generates code and re-arranges the environment
@@ -163,15 +275,50 @@ impl Env {
         }
     }
 
+    pub fn terminate_borrow(&mut self, loan_id: LoanId) -> Result<OchreType, OError> {
+        // scan through whole environment for loan :(
+        for (x, value) in self.state.iter() {
+            if let AbstractValue::Runtime(ty) = value {
+                if let Some((new_self, extracted_ty)) = ty.terminate_borrow(loan_id)? {
+                    self.state
+                        .insert(x.clone(), AbstractValue::Runtime(new_self));
+                    return Ok(extracted_ty);
+                }
+            }
+        }
+
+        panic!("could not find borrow associated with loan")
+    }
+
+    pub fn terminate_loan(
+        &mut self,
+        loan_id: LoanId,
+        val: Option<OchreType>,
+    ) -> Result<(), OError> {
+        // scan through whole environment for loan :(
+        for (x, value) in self.state.iter() {
+            if let AbstractValue::Runtime(ty) = value {
+                if let Some(new_self) = ty.terminate_loan(loan_id, val.clone())? {
+                    self.state
+                        .insert(x.clone(), AbstractValue::Runtime(new_self));
+                    return Ok(());
+                }
+            }
+        }
+
+        panic!("could not find loan associated with borrow")
+    }
+
+    // POST: the type returned does not contain any loans
     pub fn get(&mut self, ast: Ast) -> Result<OchreType, OError> {
-        match &*ast.data {
+        let mut t = match &*ast.data {
             AstData::RuntimeVar(x) => match self.state.get(x) {
-                Some(AbstractValue::Runtime(v)) => Ok(v.clone()),
-                _ => Err((None, format!("Cannot get {:?}", ast))),
+                Some(AbstractValue::Runtime(v)) => v.clone(),
+                _ => return Err((None, format!("Use of undeclared variable {:?}", ast))),
             },
             AstData::ComptimeVar(x) => match self.state.get(x) {
-                Some(AbstractValue::Comptime(v)) => Ok(v.clone()),
-                _ => Err((None, format!("Cannot get {:?}", ast))),
+                Some(AbstractValue::Comptime(v)) => v.clone(),
+                _ => return Err((None, format!("Use of undeclared variable {:?}", ast))),
             },
             AstData::PairLeft(_) => todo!("narrow PairLeft"),
             AstData::PairRight(_) => todo!("narrow PairRight"),
@@ -189,7 +336,19 @@ impl Env {
             AstData::Top => todo!("narrow Top"),
             AstData::Annot(_, _) => todo!("narrow Annot"),
             AstData::Type(_) => todo!("narrow Type"),
+        };
+
+        loop {
+            // Terminate mutable loans
+            if let Type::LoanM(loan_id) = &*t {
+                t = self.terminate_borrow(*loan_id)?;
+                continue;
+            }
+
+            break;
         }
+
+        Ok(t)
     }
 
     pub fn narrow(&mut self, ast: Ast, ty: OchreType) -> Result<(), OError> {

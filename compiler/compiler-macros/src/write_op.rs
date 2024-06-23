@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::abstract_::{AbstractValue, Env, OchreType, Type};
 use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
+use crate::move_op::move_op;
 use im_rc::HashSet;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
@@ -86,7 +87,20 @@ pub fn write_op(
 
             Ok(quote!())
         }
-        (AstData::Deref(_), _) => todo!("write_op Deref"),
+        (AstData::Deref(r_ast), _) => {
+            let (_code, t_ref) = move_op(env, r_ast.clone())?;
+            let Type::BorrowM(loan_id, old_val) = &*t_ref else {
+                return Err(ast.error(format!(
+                    "cannot dereference {}: {} is not a reference",
+                    ast, t_ref
+                )));
+            };
+            drop_op(env, old_val.clone())?;
+
+            write_op(env, r_ast.clone(), Rc::new(Type::BorrowM(*loan_id, val)))?;
+
+            Ok(quote!())
+        }
         (AstData::App(_, _), _) => todo!("write_op App"),
         (AstData::Fun(_, _, _), _) => todo!("write_op Fun"),
         (AstData::Atom(_), _) => todo!("write_op Atom"),

@@ -5,7 +5,9 @@ mod drop_op;
 mod erased_read_op;
 mod erased_write_op;
 mod move_op;
+mod narrow_op;
 mod parser;
+mod read_op;
 mod write_op;
 
 use std::rc::Rc;
@@ -121,6 +123,8 @@ fn ochre_impl(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn ochre(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // proc_macro::Span::call_site().note("hello there!").emit();
+
     ochre_impl(item.into()).into()
     // quote!(42).into()
 }

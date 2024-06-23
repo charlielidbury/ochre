@@ -6,7 +6,10 @@ use crate::ast::{Ast, AstData, OError};
 use crate::drop_op::drop_op;
 use crate::erased_read_op::erased_read_op;
 use crate::erased_write_op::erased_write_op;
+use crate::narrow_op::narrow_op;
+use crate::read_op::read_op;
 use crate::write_op::write_op;
+use proc_macro;
 use proc_macro2::Ident;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -14,27 +17,36 @@ use quote::quote;
 pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, OchreType), OError> {
     match &*ast.data {
         AstData::RuntimeVar(x) => {
-            // Get value for x
-            let v = match env.state.get_mut(x) {
-                None => return Err(ast.error(format!("attempt to move non-existant value"))),
-                Some(AbstractValue::Comptime(_)) => {
-                    return Err(ast.error(format!("attempt to move comptime value")))
-                }
-                Some(AbstractValue::Runtime(v)) => v,
-            };
-            // Replace it with bot
-            let mut x_val = Rc::new(Type::Top);
-            mem::swap(&mut x_val, v);
+            let ty = env.get(ast.clone())?;
+            env.state
+                .insert(x.clone(), AbstractValue::Runtime(Rc::new(Type::Top)));
+
             // Generate identifier (union is copy so old ident still usable)
             let id_x = Ident::new(x, Span::call_site());
-            Ok((quote!(#id_x), x_val))
+            Ok((quote!(#id_x), ty))
         }
-        AstData::ComptimeVar(x) => {
-            Err(ast.error(format!("Cannot use comptime var {} in runtime context", x)))
-        }
+        AstData::ComptimeVar(x) => Err(ast.error(format!(
+            "Cannot use compile-time only var {} in runtime context",
+            x
+        ))),
         AstData::PairLeft(_) => todo!("move PairLeft"),
         AstData::PairRight(_) => todo!("move PairRight"),
-        AstData::Deref(_) => todo!("move Deref"),
+        AstData::Deref(p_ast) => {
+            let (_code, ty) = move_op(env, p_ast.clone())?;
+            let Type::BorrowM(loan_id, val) = &*ty else {
+                return Err(ast.error(format!(
+                    "cannot move out of {}, not a mutable reference",
+                    p_ast
+                )));
+            };
+            write_op(
+                env,
+                p_ast.clone(),
+                Rc::new(Type::BorrowM(*loan_id, Rc::new(Type::Top))),
+            )?;
+
+            Ok((quote!(), val.clone()))
+        }
         AstData::App(_, _) => todo!("move App"),
         AstData::Fun(_, _, _) => todo!("move Fun"),
         AstData::Pair(l, r) => {
@@ -54,7 +66,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
             let atom_hash = atom.hash();
             Ok((quote!(OchreValue{ atom: #atom_hash }), Rc::new(atom.into())))
         }
-        AstData::Union(_, _) => todo!("move Union"),
+        AstData::Union(_, _) => Err(ast.error(format!("Type union used in runtime context"))),
         AstData::Seq(lhs, rhs) => {
             // Evaluate lhs
             let (lhs_code, lhs_val) = move_op(env, lhs.clone())?;
@@ -67,11 +79,19 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
             Ok((quote!(#lhs_code; #drop_code; #rhs_code), rhs_val))
         }
         AstData::Case(_, _) => todo!("move Case"),
-        AstData::Ref(_) => todo!("move Ref"),
-        AstData::MutRef(ast) => {
-            let (_, m) = move_op(env, ast.clone())?;
-            write_op(env, ast.clone(), Rc::new(Type::LoanM(42)));
-            todo!("move MutRef")
+        AstData::Ref(p_ast) => {
+            let (_, t) = read_op(env, p_ast.clone())?;
+            let loan_id = env.make_loan_id();
+            narrow_op(env, p_ast.clone(), Rc::new(Type::LoanS(loan_id, t.clone())))?;
+            Ok((quote!(), Rc::new(Type::BorrowS(loan_id, t))))
+        }
+        AstData::MutRef(p_ast) => {
+            // let span: proc_macro::Span = p_ast.span.unwrap().into();
+            // span.warning("rference taken").emit();
+            let (_, t) = move_op(env, p_ast.clone())?;
+            let loan_id = env.make_loan_id();
+            write_op(env, p_ast.clone(), Rc::new(Type::LoanM(loan_id)))?;
+            Ok((quote!(), Rc::new(Type::BorrowM(loan_id, t))))
         }
         AstData::Ass(lhs, rhs) => {
             match lhs.runtime_comptime() {

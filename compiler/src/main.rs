@@ -158,8 +158,8 @@ use compiler_macros::ochre;
 fn main() {
     // ochre! {
     //     Bool = 'true | 'false;
-    //     p = ('true, 'true): (Bool, Bool); //: Same;
-    //     p.0 = 'false;
+    //     p = ('true, 'true): (Bool, Bool);
+    //     p.0 = 'true;
     //     p.1 = 'false;
     //     p: ('false, 'false);
     //     // p: 'hello | 'world;
@@ -170,7 +170,13 @@ fn main() {
     ochre! {
         x = 'five;
         rx = &mut x;
-        *rx = 'fourtytwo;
-        x
+        // y = *rx;
+        // *rx = 'six: ('one | 'six);
+
+        // x: ('one | 'two | 'six);
+        // y: 'five;
+
+
+        'unit
     }
 }
