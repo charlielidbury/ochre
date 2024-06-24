@@ -2796,7 +2796,7 @@ Concrete match statement interpretation interprets the scrutinee and then calcul
 Abstract match statement interpretation first evaluates the scrutinee, then it evaluates all of the branches. The result of interpreting a match statement is the union of the types of each of the branches, which is precise (Property \ref{theorem:precisetypeunion}).
 
 \subsection{Max Interpretation}
-\label{section:maxinterpretation}
+\label{section:formalmax}
 Max interpretation returns the maximum value that can be written to a given term. It is used in function definition checking to check the type of the argument (see \odef{\movearrowabs, \erasedreadarrow}{M \mono{->} S_t}).
 
 \begin{Definition}{Max Interpretation}{}

@@ -41,12 +41,12 @@
     Bool = 'true | 'false;
     Pair = (Bool, Bool);
 
-    overwrite = (p: &mut Pair) -> 'unit {
-        *p = ('true, 'true);
-        'unit
+    overwrite = (p: &mut Pair) {
+        *p.0 = 'true;
+        *p.1 = 'true;
     };
 
-    pair = ('false, 'false);          
+    pair = ('false, 'false);
     overwrite(&mut pair);
 \end{minted}
 
@@ -65,11 +65,10 @@
 
 \begin{minted}[mathescape]{rust}
     Bool = 'true | 'false;
-    Pair = (Bool, L -> L);
+    Same = (Bool, L -> L);
 
-    overwrite = (p: &mut Pair) -> 'unit {
+    overwrite = (p: &mut Same) {
         *p = ('true, 'true);
-        'unit
     };
 
     pair = ('false, 'false);          
@@ -81,10 +80,10 @@
 
     val overwrite: p:ptr Same -> Stack unit
     let overwrite p =
-      p := Same false false
+      p := Same true true
       
     let main () : Stack unit =
-      let pair = alloc (MkSame true true) in
+      let pair = alloc (MkSame false false) in
       overwrite pair;
       ()
 \end{minted}
@@ -130,13 +129,12 @@
     Bool = 'true | 'false;
     Same = (Bool, L -> L);
 
-    overwrite = (p: &mut Pair) -> 'unit {
+    overwrite = (p: &mut Same) {
 
 
         *p.0 = 'true;
         *p.1 = 'true;
 
-        'unit
     };
 \end{minted}
 
