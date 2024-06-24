@@ -161,18 +161,20 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
 
                     Ok((input, AstData::Match(cond, branches)))
                 },
-                // Function
+                // Comptime Function
+                map(
+                    tuple((parse(prec + 1), punct("-"), punct(">"), parse(prec))),
+                    |(i, (), (), o)| AstData::ComptimeFun(i, o),
+                ),
+                // Runtime Function
                 map(
                     tuple((
                         parse(prec + 1),
-                        punct("-"),
-                        punct(">"),
-                        parse(prec),
-                        opt(|i| brackets(i, Delimiter::Brace)),
+                        opt(preceded(pair(punct("-"), punct(">")), parse(prec))),
+                        |i| brackets(i, Delimiter::Brace),
                     )),
-                    |(i, (), (), o, body)| match body {
-                        None => AstData::ComptimeFun(i, o),
-                        Some(body) => AstData::RuntimeFun(i, o, body),
+                    |(i, ret, body)| {
+                        AstData::RuntimeFun(i, ret.unwrap_or(Ast::new(None, AstData::Top)), body)
                     },
                 ),
                 parse_data(prec + 1),

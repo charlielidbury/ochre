@@ -63,12 +63,8 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 let (_, t) = move_op(env, a_term.clone())?;
                 // eval return type
                 let env = &mut env.comptime();
-                write_op(env, i_term.clone(), t.clone()).map_err(|(_, s)| {
-                    a_term.error(format!(
-                        "argument type incorrect. Need , have {}. Write error = {}",
-                        t, s
-                    ))
-                })?;
+                write_op(env, i_term.clone(), t.clone())
+                    .map_err(|(_, _)| a_term.error(format!("argument type incorrect.")))?;
                 let ret = erased_read_op(env, o_term.clone())?;
 
                 (quote!(), ret)
