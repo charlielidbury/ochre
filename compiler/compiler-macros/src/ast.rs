@@ -56,7 +56,7 @@ impl AstData {
             AstData::Seq(_, _) => todo!("runtime Seq"),
             AstData::Match(_, _) => todo!("runtime Match"),
             AstData::Ass(_, _) => todo!("runtime Ass"),
-            AstData::Top => todo!("runtime Top"),
+            AstData::Top => (true, true),
             AstData::Type(_) => todo!("runtime Type"),
             AstData::TypeQuestion(_) => todo!("runtime Type"),
         }
@@ -82,10 +82,11 @@ impl fmt::Display for AstData {
             AstData::Annot(expr, ty) => write!(f, "{} : {}", expr, ty),
             AstData::Seq(expr1, expr2) => write!(f, "{}; {}", expr1, expr2),
             AstData::Match(expr, cases) => {
-                write!(f, "case {} of ", expr)?;
+                write!(f, "match {} {{", expr)?;
                 for (pattern, body) in cases {
-                    write!(f, "{} -> {}; ", pattern, body)?;
+                    write!(f, "{} => {}, ", pattern, body)?;
                 }
+                write!(f, "}}")?;
                 Ok(())
             }
             AstData::Ref(ast) => write!(f, "&{}", ast),

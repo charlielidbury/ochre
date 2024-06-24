@@ -110,10 +110,41 @@ impl Type {
         }
     }
 
-    pub fn union(&self, env: &Env, other: &Type) -> Result<OchreType, OError> {
+    pub fn union(&self, env: &mut Env, other: &Type) -> Result<OchreType, OError> {
         match (self, other) {
             (Type::Atom(lhs), Type::Atom(rhs)) => {
                 Ok(Rc::new(Type::Atom(lhs.clone().union(rhs.clone()))))
+            }
+            (Type::Pair(p0), Type::Pair(p1)) => {
+                let l_term = Ast::new(None, AstData::ComptimeVar(env.unique_ident()));
+                Ok(Rc::new(Type::Pair(Pair {
+                    l: p0.l.union(env, &*p1.l)?,
+                    l_term: l_term.clone(),
+                    r_term: Ast::new(
+                        None,
+                        AstData::Match(
+                            l_term.clone(),
+                            [p0, p1]
+                                .into_iter()
+                                .map(|p| {
+                                    (
+                                        Ast::new(None, AstData::Type(p.l.clone())),
+                                        Ast::new(
+                                            None,
+                                            AstData::Seq(
+                                                Ast::new(
+                                                    None,
+                                                    AstData::Ass(p.l_term.clone(), l_term.clone()),
+                                                ),
+                                                p.r_term.clone(),
+                                            ),
+                                        ),
+                                    )
+                                })
+                                .collect(),
+                        ),
+                    ),
+                })))
             }
             (lhs, rhs) => Err((None, format!("{} and {} have no union", lhs, rhs))),
         }
@@ -306,6 +337,13 @@ impl Env {
     pub fn make_loan_id(&mut self) -> LoanId {
         self.next_loan_id += 1;
         self.next_loan_id - 1
+    }
+
+    pub fn unique_ident(&mut self) -> String {
+        let id = self.make_loan_id();
+        let ident = format!("LL{}", id);
+        assert!(self.state.get(&ident).is_none());
+        ident
     }
 
     pub fn comptime(&self) -> Self {

@@ -141,8 +141,8 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                     result = Some(match result {
                         None => (branch_in, branch_out),
                         Some((total_in, total_out)) => (
-                            total_in.union(&env, &*branch_in)?,
-                            total_out.union(&env, &*branch_out)?,
+                            total_in.union(&mut env, &*branch_in)?,
+                            total_out.union(&mut env, &*branch_out)?,
                         ),
                     });
                 }

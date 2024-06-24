@@ -2,6 +2,12 @@ use compiler_macros::ochre;
 
 fn main() {
     // ochre! {
+    //     Nat = ('zero, *) | ('succ, Nat);
+
+    //     x = ('zero, _): Nat;
+    // }
+
+    // ochre! {
     //     Bool = 'true | 'false;
     //     Same = (Bool, L -> L);
 
