@@ -8,7 +8,16 @@ pub fn read_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
     match &*ast.data {
         AstData::RuntimeVar(x) | AstData::ComptimeVar(x) => Ok((quote!(), env.get(x.clone())?)),
         AstData::PairLeft(_) | AstData::PairRight(_) => todo!("read_op PairLEFTRIGHT"),
-        AstData::Deref(_) => todo!("read_op Deref"),
+        AstData::Deref(ref_ast) => {
+            let ref_ty = read_op(env, ref_ast.clone())?;
+
+            let ty = match &*ref_ty.1 {
+                Type::BorrowM(_, ty) | Type::BorrowS(_, ty) => ty.clone(),
+                _ => return Err(ref_ast.error(format!("cannot deference non-reference"))),
+            };
+
+            Ok((quote!(), ty))
+        }
         AstData::App(_, _) => todo!("read_op App"),
         AstData::RuntimeFun(_, _, _) => todo!("read_op RuntimeFun"),
         AstData::ComptimeFun(_, _) => todo!("read_op ComptimeFun"),

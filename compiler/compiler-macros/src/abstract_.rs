@@ -322,6 +322,7 @@ pub struct Env {
     pub state: HashMap<String, OchreType>,
     pub restrictions: HashMap<LoanId, OchreType>,
     pub next_loan_id: LoanId,
+    pub frozen: HashSet<String>,
 }
 
 impl Env {
@@ -331,6 +332,7 @@ impl Env {
             restrictions: HashMap::new(),
             // atoms: HashMap::new(),
             next_loan_id: 0,
+            frozen: HashSet::new(),
         }
     }
 
@@ -356,7 +358,19 @@ impl Env {
                 .collect::<HashMap<String, OchreType>>(),
             restrictions: self.restrictions.clone(),
             next_loan_id: self.next_loan_id,
+            frozen: self.frozen.clone(),
         }
+    }
+
+    pub fn freeze(&mut self) {
+        let runtime_vars = self
+            .state
+            .keys()
+            .filter(|x| runtime(x))
+            .map(String::clone)
+            .collect::<HashSet<String>>();
+
+        self.frozen = runtime_vars + self.frozen.clone();
     }
 
     pub fn loan_restriction(&mut self, ty: OchreType) -> LoanId {
@@ -500,6 +514,11 @@ impl Env {
     // }
 
     pub fn set(&mut self, var: String, mut val: OchreType) -> Result<OchreType, OError> {
+        if self.frozen.contains(&var) {
+            println!("backtrace = {}", std::backtrace::Backtrace::force_capture());
+            return Err((None, format!("cannot mutate {}, it has been frozen", var)));
+        }
+
         // Get old value
         let entry = self.state.entry(var);
         let t = entry.or_insert_with(|| Rc::new(Type::Top));

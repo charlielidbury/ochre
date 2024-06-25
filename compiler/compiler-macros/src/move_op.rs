@@ -71,7 +71,8 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
             }
             AstData::RuntimeFun(i_term, ret_term, body_term) => {
                 // Get max input
-                let mut body_env = env.comptime();
+                env.freeze();
+                let mut body_env = env.clone();
                 max_move_op(&mut body_env, i_term.clone())?;
 
                 // Calculate ret and body

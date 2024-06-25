@@ -14,7 +14,7 @@ use proc_macro::{Delimiter, Ident, Literal, Punct, Span, TokenStream, TokenTree}
 
 #[derive(Debug)]
 enum OchreTree {
-    Group(Delimiter, Vec<OchreTree>),
+    Group(Span, Delimiter, Vec<OchreTree>),
     Ident(Ident),
     Punct(Punct),
     Literal(Literal),
@@ -24,6 +24,7 @@ impl OchreTree {
     fn new(input: TokenTree) -> Self {
         match input {
             TokenTree::Group(g) => OchreTree::Group(
+                g.span(),
                 g.delimiter(),
                 g.stream().into_iter().map(OchreTree::new).collect(),
             ),
@@ -35,7 +36,7 @@ impl OchreTree {
 
     fn get_span(&self) -> Span {
         match self {
-            OchreTree::Group(_, g) => g.first().expect("empty group").get_span(),
+            OchreTree::Group(span, _, _) => span.clone(),
             OchreTree::Ident(i) => i.span(),
             OchreTree::Punct(p) => p.span(),
             OchreTree::Literal(l) => l.span(),
@@ -93,7 +94,7 @@ fn ident_liter(id: &'static str) -> impl FnMut(&[OchreTree]) -> IResult<&[OchreT
 
 fn brackets(input: &[OchreTree], delimeter: Delimiter) -> IResult<&[OchreTree], Ast> {
     match input {
-        [OchreTree::Group(d, g), input @ ..] if *d == delimeter => {
+        [OchreTree::Group(_, d, g), input @ ..] if *d == delimeter => {
             Ok((input, all_consuming(parse(0))(&g[..])?.1))
         }
         _ => fail(input),
@@ -116,6 +117,8 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                     tuple((parse(prec + 1), punct(","), parse(prec))),
                     |(l, (), r)| AstData::Pair(l, r.clone()),
                 ),
+                // Top
+                map(all_consuming(tuple(())), |()| AstData::Top),
                 parse_data(prec + 1),
             ))(input),
             1 => alt((
@@ -150,7 +153,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                     let (input, cond) = preceded(tok("match"), parse(0))(input)?;
 
                     let (g, input) = match input {
-                        [OchreTree::Group(Delimiter::Brace, g), input @ ..] => (g, input),
+                        [OchreTree::Group(_, Delimiter::Brace, g), input @ ..] => (g, input),
                         _ => return fail(input),
                     };
 
@@ -296,7 +299,11 @@ pub fn parse_stream(input: TokenStream) -> Result<Ast, Span> {
         Ok((_, ast)) => Ok(ast),
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
             println!("{:?}", e.input);
-            let span = e.input[0].get_span();
+            let span = if e.input.len() > 0 {
+                e.input[0].get_span()
+            } else {
+                Span::call_site()
+            };
             Err(span)
         }
         Err(nom::Err::Incomplete(_)) => panic!("incomplete hit somehow"),

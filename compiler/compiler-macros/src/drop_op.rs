@@ -43,6 +43,9 @@ pub fn env_drop_op(mut env: Env) -> Result<(), OError> {
     let top = Rc::new(Type::Top);
 
     for var in env.state.clone().keys() {
+        if env.frozen.contains(var) {
+            continue;
+        }
         let val = env.set(var.clone(), top.clone())?;
         drop_op(&mut env, val)?;
     }
