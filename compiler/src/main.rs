@@ -6,15 +6,15 @@ fn main() {
         Pair = (Bool, Bool);
         Same = (Bool, L -> L);
 
-        f = (p: &Pair) {};
+        f = (x: &Pair) {
+            x?;
+            // *p.0 = 'true;
+        };
 
         overwrite = (p: &mut Same) {
             *p.1 = 'false;
             f(&*p);
             *p.0 = 'false;
         };
-
-        pair = ('true, 'true);
-        overwrite(&mut pair);
     }
 }

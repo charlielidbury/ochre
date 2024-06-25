@@ -221,6 +221,7 @@ fn parse_data<'a>(prec: u8) -> impl Fn(&'a [OchreTree]) -> IResult<&'a [OchreTre
                             head = Ast::new(head.span, AstData::Annot(head, rhs))
                         }
 
+                        // Type Question
                         if let Ok((i, _)) = punct("?")(input) {
                             input = i;
                             head = Ast::new(head.span, AstData::TypeQuestion(head));

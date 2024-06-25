@@ -1,5 +1,8 @@
+use std::rc::Rc;
+
 use crate::abstract_::{Atom, Env, OchreType, Type};
 use crate::ast::{Ast, AstData, OError};
+use crate::read_op::read_op;
 use im_rc::HashSet;
 use quote::quote;
 
@@ -14,7 +17,27 @@ pub fn narrow_op(env: &mut Env, ast: Ast, val: OchreType) -> Result<(), OError> 
         }
         AstData::PairLeft(_) => todo!("narrow_op PairLeft"),
         AstData::PairRight(_) => todo!("narrow_op PairRight"),
-        AstData::Deref(_) => todo!("narrow_op Deref"),
+        AstData::Deref(ref_ast) => {
+            let (_, ref_ty) = read_op(env, ref_ast.clone())?;
+            match &*ref_ty {
+                Type::BorrowS(loan_id, old_val) => {
+                    if !val.subtype(env, &*old_val)? {
+                        return Err(ref_ast.error(format!("attempt to narrow down to wider value")));
+                    }
+                    // env.replace_loan(*loan_id, Rc::new(Type::LoanS(*loan_id, val)))?;
+                    narrow_op(env, ref_ast.clone(), Rc::new(Type::BorrowS(*loan_id, val)))?;
+                    Ok(())
+                }
+                Type::BorrowM(loan_id, old_val) => {
+                    if !val.subtype(env, &*old_val)? {
+                        return Err(ref_ast.error(format!("attempt to narrow down to wider value")));
+                    }
+                    narrow_op(env, ref_ast.clone(), Rc::new(Type::BorrowM(*loan_id, val)))?;
+                    Ok(())
+                }
+                _ => Err(ref_ast.error(format!("dereference of non-reference"))),
+            }
+        }
         AstData::App(_, _) => todo!("narrow_op App"),
         AstData::RuntimeFun(_, _, _) => todo!("narrow_op RuntimeFun"),
         AstData::ComptimeFun(_, _) => todo!("narrow_op ComptimeFun"),

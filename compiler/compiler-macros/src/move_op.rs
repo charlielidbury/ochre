@@ -28,8 +28,36 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 "Cannot use compile-time only var {} in runtime context",
                 x
             )))?,
-            AstData::PairLeft(_) => todo!("move PairLeft"),
-            AstData::PairRight(_) => todo!("move PairRight"),
+            AstData::PairLeft(p_ast) => {
+                let Type::Pair(p) = &*move_op(env, p_ast.clone())?.1 else {
+                    return Err(p_ast.error(format!("attempt to get left element of non-pair")));
+                };
+
+                let (l, r) = p.split(env)?;
+
+                write_op(
+                    env,
+                    p_ast.clone(),
+                    Rc::new(Type::Pair(Pair::new(Rc::new(Type::Top), r))),
+                )?;
+
+                (quote!(), l)
+            }
+            AstData::PairRight(p_ast) => {
+                let Type::Pair(p) = &*move_op(env, p_ast.clone())?.1 else {
+                    return Err(p_ast.error(format!("attempt to get left element of non-pair")));
+                };
+
+                let (l, r) = p.split(env)?;
+
+                write_op(
+                    env,
+                    p_ast.clone(),
+                    Rc::new(Type::Pair(Pair::new(l, Rc::new(Type::Top)))),
+                )?;
+
+                (quote!(), r)
+            }
             AstData::Deref(p_ast) => {
                 let (_code, ty) = move_op(env, p_ast.clone())?;
                 let Type::BorrowM(loan_id, val) = &*ty else {
@@ -64,7 +92,7 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 // eval return type
                 let env = &mut env.comptime();
                 write_op(env, i_term.clone(), t.clone())
-                    .map_err(|(_, _)| a_term.error(format!("argument type incorrect.")))?;
+                    .map_err(|(_, s)| a_term.error(format!("argument type incorrect. {}", s)))?;
                 let ret = erased_read_op(env, o_term.clone())?;
 
                 (quote!(), ret)
@@ -114,7 +142,8 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
                 let (lhs_code, lhs_val) = move_op(env, lhs.clone())?;
                 // Drop lhs
                 let drop_code = drop_op(env, lhs_val)?;
-                // dbg!(&env);
+                println!("{}", lhs);
+                dbg!(&env);
                 // Evaluate rhs
                 let (rhs_code, rhs_val) = move_op(env, rhs.clone())?;
                 // Return code
@@ -216,5 +245,18 @@ pub fn move_op(env: &mut Env, ast: Ast) -> Result<(proc_macro2::TokenStream, Och
         }
     };
 
-    res.map_err(|(span, s)| (span.or(ast.span), s))
+    match res {
+        Ok((code, mut t)) => {
+            // Terminate immutable loans
+            while let Type::LoanS(loan_id, ty) = &*t {
+                println!("terminated loan due to move");
+                env.terminate_borrow(*loan_id)?;
+                env.terminate_loan(*loan_id, None)?;
+                t = ty.clone();
+            }
+
+            Ok((code, t))
+        }
+        Err((span, s)) => Err((span.or(ast.span), s)),
+    }
 }

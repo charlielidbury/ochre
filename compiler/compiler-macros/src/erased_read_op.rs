@@ -11,7 +11,24 @@ pub fn erased_read_op(env: &mut Env, ast: Ast) -> Result<OchreType, OError> {
     match &*ast.data {
         // Things which are straight env lookups
         AstData::RuntimeVar(x) | AstData::ComptimeVar(x) => Ok(env.get(x.clone())?),
-        AstData::PairLeft(_) | AstData::PairRight(_) => todo!(),
+        AstData::PairLeft(p_ast) => {
+            let Type::Pair(p) = &*erased_read_op(env, p_ast.clone())? else {
+                return Err(p_ast.error(format!("attempt to get left element of non-pair")));
+            };
+
+            let (l, _) = p.split(env)?;
+
+            Ok(l)
+        }
+        AstData::PairRight(p_ast) => {
+            let Type::Pair(p) = &*erased_read_op(env, p_ast.clone())? else {
+                return Err(p_ast.error(format!("attempt to get left element of non-pair")));
+            };
+
+            let (_, r) = p.split(env)?;
+
+            Ok(r)
+        }
         AstData::Deref(_) => todo!("erased_read Deref"),
         AstData::App(f_term, a_term) => {
             let env = &mut env.comptime();

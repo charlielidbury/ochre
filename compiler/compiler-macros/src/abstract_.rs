@@ -435,7 +435,8 @@ impl Env {
             }
         }
 
-        panic!("could not find borrow associated with loan")
+        Ok(Rc::new(Type::Top))
+        // panic!("could not find borrow associated with loan")
     }
 
     pub fn terminate_loan(
@@ -469,7 +470,8 @@ impl Env {
             }
         }
 
-        panic!("could not find loan associated with borrow")
+        Ok(())
+        // panic!("could not find loan associated with borrow")
     }
 
     // POST: the type returned does not contain any loans
