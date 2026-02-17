@@ -184,6 +184,16 @@ Program Instance IsState : State LLBC_plus_state LLBC_plus_val := {
   add_anon a v S := {| vars := vars S; anons := insert a v (anons S); abstractions := abstractions S|};
 }.
 Next Obligation.
+  intros [? ? R0] [? ? R1]. cbn. intros ((-> & ->)%sum_maps_eq & ?)%sum_maps_eq ?. f_equal.
+  apply map_eq. intros i. destruct (decide (elem_of i (dom R0))) as [e | ].
+  - assert (elem_of i (dom R1)) as (b & Ha)%elem_of_dom by congruence.
+    apply elem_of_dom in e. destruct e as (a & Hb). rewrite Ha, Hb. f_equal.
+    apply map_eq. intros j.
+    apply lookup_Some_flatten with (j := j) in Ha. apply lookup_Some_flatten with (j := j) in Hb.
+    congruence.
+  - assert (~(elem_of i (dom R1))) by congruence. rewrite not_elem_of_dom in * |-. congruence.
+Qed.
+Next Obligation.
   intros ? ? y. cbn. destruct (decode' y) as [[z | (i & j)] | ] eqn:H.
   - destruct (decode' z) as [[? | ?] | ]; reflexivity.
   - cbn. apply dom_alter_L.
@@ -202,21 +212,11 @@ Next Obligation.
   - cbn. rewrite decode'_is_Some in H. rewrite <-H,  sum_maps_alter_inr, alter_flatten. reflexivity.
   - symmetry. apply map_alter_not_in_domain, sum_maps_lookup_None. assumption.
 Qed.
-Next Obligation.
-  intros [? ? R0] [? ? R1]. cbn. intros ((-> & ->)%sum_maps_eq & ?)%sum_maps_eq ?. f_equal.
-  apply map_eq. intros i. destruct (decide (elem_of i (dom R0))) as [e | ].
-  - assert (elem_of i (dom R1)) as (b & Ha)%elem_of_dom by congruence.
-    apply elem_of_dom in e. destruct e as (a & Hb). rewrite Ha, Hb. f_equal.
-    apply map_eq. intros j.
-    apply lookup_Some_flatten with (j := j) in Ha. apply lookup_Some_flatten with (j := j) in Hb.
-    congruence.
-  - assert (~(elem_of i (dom R1))) by congruence. rewrite not_elem_of_dom in * |-. congruence.
-Qed.
+Next Obligation. reflexivity. Qed.
 Next Obligation.
   intros. cbn. unfold encode_anon. rewrite sum_maps_insert_inl, sum_maps_insert_inr. reflexivity.
 Qed.
-Next Obligation. reflexivity. Qed.
-Next Obligation. intros. unfold encode_anon. rewrite !decode_encode. reflexivity. Qed.
+Next Obligation. intros. unfold encode_anon. reflexivity. Qed.
 
 (* Helper lemmas. *)
 Lemma get_at_var S x : get_at_accessor S (encode_var x) = lookup x (vars S).

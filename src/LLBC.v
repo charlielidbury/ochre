@@ -124,6 +124,7 @@ Program Instance IsState : State LLBC_state LLBC_val := {
     end;
   add_anon a v S := {| vars := vars S; anons := insert a v (anons S)|};
 }.
+Next Obligation. intros [? ?] [? ?]. cbn. intros (-> & ->)%sum_maps_eq _. reflexivity. Qed.
 Next Obligation. reflexivity. Qed.
 Next Obligation.
   intros ? ? i. cbn. destruct (decode' i) eqn:H.
@@ -132,13 +133,12 @@ Next Obligation.
       first [apply sum_maps_alter_inl | apply sum_maps_alter_inr].
   - symmetry. apply map_alter_not_in_domain, sum_maps_lookup_None. assumption.
 Qed.
-Next Obligation. intros [? ?] [? ?]. cbn. intros (-> & ->)%sum_maps_eq _. reflexivity. Qed.
 (* What are the two following obligations? *)
 Next Obligation. discriminate. Qed.
 Next Obligation. discriminate. Qed.
-Next Obligation. intros. cbn. unfold encode_anon. rewrite sum_maps_insert_inr. reflexivity. Qed.
 Next Obligation. reflexivity. Qed.
-Next Obligation. intros. unfold encode_anon. rewrite decode_encode. reflexivity. Qed.
+Next Obligation. intros. cbn. unfold encode_anon. rewrite sum_maps_insert_inr. reflexivity. Qed.
+Next Obligation. intros. unfold encode_anon. reflexivity. Qed.
 
 Declare Scope llbc_scope.
 Delimit Scope llbc_scope with llbc.

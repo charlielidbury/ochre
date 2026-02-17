@@ -142,6 +142,7 @@ Program Instance IsState : State HLPL_plus_state HLPL_plus_val (H := ValueHLPL) 
     end;
   add_anon a v S := {| vars := vars S; anons := insert a v (anons S)|};
 }.
+Next Obligation. intros [? ?] [? ?]. cbn. intros (-> & ->)%sum_maps_eq _. reflexivity. Qed.
 Next Obligation. reflexivity. Qed.
 Next Obligation.
   intros ? ? i. cbn. destruct (decode' i) eqn:H.
@@ -150,13 +151,12 @@ Next Obligation.
       first [apply sum_maps_alter_inl | apply sum_maps_alter_inr].
   - symmetry. apply map_alter_not_in_domain, sum_maps_lookup_None. assumption.
 Qed.
-Next Obligation. intros [? ?] [? ?]. cbn. intros (-> & ->)%sum_maps_eq _. reflexivity. Qed.
 (* What are the two following obligations? *)
 Next Obligation. discriminate. Qed.
 Next Obligation. discriminate. Qed.
+Next Obligation. reflexivity. Qed.
 Next Obligation. intros. cbn. symmetry. apply sum_maps_insert_inr. Qed.
 Next Obligation. reflexivity. Qed.
-Next Obligation. intros. unfold encode_anon. rewrite decode_encode. reflexivity. Qed.
 
 Lemma get_at_var S x : get_at_accessor S (encode_var x) = lookup x (vars S).
 Proof. unfold get_map, encode_var. cbn. apply sum_maps_lookup_l. Qed.
@@ -482,8 +482,8 @@ Inductive leq_base : HLPL_plus_state -> HLPL_plus_state -> Prop :=
     leq_base (S.[sp_loan <- loc(l, S.[sp_borrow +++ [0] ])].[sp_borrow <- ptr(l)]) S.
 
 Record well_formed (S : HLPL_plus_state) : Prop := {
-  at_most_one_borrow_mut l : at_most_one_node (borrowC^m(l)) S;
-  at_most_one_loan_mut l : at_most_one_node (loanC^m(l)) S;
+  at_most_one_mut_borrow l : at_most_one_node (borrowC^m(l)) S;
+  at_most_one_mut_loan l : at_most_one_node (loanC^m(l)) S;
   at_most_one_loc l : at_most_one_node (locC(l)) S;
   no_mut_loan_ptr l p : get_node (S.[p]) = loanC^m(l) -> not_state_contains (eq ptrC(l)) S;
   no_mut_loan_loc l p : get_node (S.[p]) = loanC^m(l) -> not_state_contains (eq locC(l)) S;
@@ -492,7 +492,7 @@ Record well_formed (S : HLPL_plus_state) : Prop := {
 Notation scount c S := (sweight (indicator c) S).
 
 Record well_formed_alt (S : HLPL_plus_state) l : Prop := {
-  at_most_one_borrow_mut_alt : scount (borrowC^m(l)) S <= 1;
+  at_most_one_mut_borrow_alt : scount (borrowC^m(l)) S <= 1;
   no_mut_loan_loc_alt : scount (loanC^m(l)) S + scount (locC(l)) S <= 1;
   no_mut_loan_ptr_alt : scount (loanC^m(l)) S > 0 -> scount (ptrC(l)) S <= 0;
 }.
@@ -502,11 +502,11 @@ Proof.
   split.
   - intros WF l. destruct WF. split.
     + rewrite<- decide_at_most_one_node; easy.
-    + specialize (at_most_one_loan_mut0 l).
-      rewrite decide_at_most_one_node in at_most_one_loan_mut0; [ | discriminate].
+    + specialize (at_most_one_mut_loan0 l).
+      rewrite decide_at_most_one_node in at_most_one_mut_loan0; [ | discriminate].
       specialize (at_most_one_loc0 l).
       rewrite decide_at_most_one_node in at_most_one_loc0; [ | discriminate ].
-      apply Nat.le_1_r in at_most_one_loan_mut0. destruct (at_most_one_loan_mut0).
+      apply Nat.le_1_r in at_most_one_mut_loan0. destruct (at_most_one_mut_loan0).
       * lia.
       * assert (scount loanC^m(l) S > 0) as (p & ? & ?%indicator_non_zero)%sweight_non_zero by lia.
         specialize (no_mut_loan_loc0 l p).
@@ -1412,10 +1412,10 @@ Proof.
          that we turn into a loc at sp_loan, and that the borrow that we end at q is the
          borrow we turn into a pointer at sp_borrow. *)
       * assert (p = sp_loan) as ->.
-        { eapply at_most_one_loan_mut. eassumption.
+        { eapply at_most_one_mut_loan. eassumption.
           rewrite H0. reflexivity. rewrite HS_loan. reflexivity. }
         assert (q = sp_borrow) as ->.
-        { eapply at_most_one_borrow_mut. eassumption.
+        { eapply at_most_one_mut_borrow. eassumption.
           rewrite H1. reflexivity. assumption. }
         reorg_step.
         { eapply Reorg_end_ptr with (p := sp_borrow). autorewrite with spath. reflexivity. }

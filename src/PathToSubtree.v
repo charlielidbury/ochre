@@ -467,27 +467,49 @@ Notation "v .[[ p <- w ]]" := (vset p w v) (left associativity, at level 50).
 
 Definition anon := positive.
 
-(* TODO: document it. *)
-Class State state V `{Value V} := {
-  extra : Type;
+(** Generic definition of states. The main ideas are that:
+ * - A state can be accessed by positives. Any accessor (variable, anonymous binding, abstraction
+ *   element) can be encoded as a positive number.
+ * - As such, an element << S : state >> can be turned into a map, using the method << get_map >>.
+ *   This map associates positive numbers to values of type << V >>, with << V >> a type that
+ *   satisfies the << Value >> typeclass.
+ * - It is also possible to modify a state as a given positive number, using the method
+ *   << alter_at_accessor >>.
+ *)
+(* Note: I am not satisfied with accessors being positive numbers. It should be an arbitrary type.
+ * In particular, it would be more natural to use a sum type. *)
+Class State (state : Type) V `{Value V} := {
   get_map : state -> Pmap V;
   alter_at_accessor : (V -> V) -> positive -> state -> state;
+
+  (* The << extra >> type describes all the information that is not contained in the positive
+   * map. For example, it can be the unit type if << get_map >> is injective. For LLBC# and
+   * LLBC+, the << extra >> type is the set of abstractions. *)
+  extra : Type;
   get_extra : state -> extra;
 
-  get_extra_alter S f a : get_extra (alter_at_accessor f a S) = get_extra S;
-  get_map_alter S f a : get_map (alter_at_accessor f a S) = alter f a (get_map S);
-
+  (* The << get_map >> and << get_extra >> methods completely characterize a state. *)
   state_eq_ext S S' :
     get_map S = get_map S' -> get_extra S = get_extra S' -> S = S';
 
-  (* Generic management of anons: *)
+  (* The method << alter_at_accessor >> only updates one value, at accessor a. It does not affect
+   * the "extra" part of the state. *)
+  get_extra_alter S f a : get_extra (alter_at_accessor f a S) = get_extra S;
+  get_map_alter S f a : get_map (alter_at_accessor f a S) = alter f a (get_map S);
+
+  (* Generic management of anonymous bindings. *)
+  (* The injection from anonymous bindings to positive accessors: *)
   anon_accessor : anon -> positive;
+  (* The reciprocal injection. *)
   accessor_anon : positive -> option anon;
+  anon_accessor_inj a : accessor_anon (anon_accessor a) = Some a;
+  (* It is always possible to add an anonymous value. This insert a new value in the state map,
+   * and it does not affect the "extra" part of the state. *)
   add_anon : anon -> V -> state -> state;
   get_map_add_anon a v S : get_map (add_anon a v S) = insert (anon_accessor a) v (get_map S);
   get_extra_add_anon a v S : get_extra (add_anon a v S) = get_extra S;
-  anon_accessor_inj a : accessor_anon (anon_accessor a) = Some a;
 }.
+(* Reading at an accessor is performed by only reading in the state map. *)
 Notation get_at_accessor S a := (lookup a (get_map S)).
 Notation "S ,, a  |->  v" := (add_anon a v S) (left associativity, at level 63, v at level 61).
 
@@ -501,7 +523,8 @@ Notation "S .[ p ]" := (sget p S) (left associativity, at level 50) : GetSetPath
 Local Hint Unfold sget : core.
 
 (* Set the value at path p to be v in S. If p is invalid, returns S. *)
-Definition sset {state V} `{State state V} (p : spath) (v : V) (S : state) : state := alter_at_accessor (vset (snd p) v) (fst p) S.
+Definition sset {state V} `{State state V} (p : spath) (v : V) (S : state) : state :=
+  alter_at_accessor (vset (snd p) v) (fst p) S.
 Notation "S .[ p <- v ]" := (sset p v S) (left associativity, at level 50).
 Local Hint Unfold sset : core.
 
