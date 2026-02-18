@@ -1,3 +1,4 @@
+(** * Mechanized_LLBC.lang : syntax of LLBC. *)
 Require Import base.
 Require Import PathToSubtree.
 From Stdlib Require Import PArith.

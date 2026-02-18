@@ -1,5 +1,6 @@
 (include_subdirs qualified)
 (coq.theory
- (name src)
+ (name Mechanized_LLBC)
  (theories stdpp Stdlib)
+ (coqdoc_flags (:standard --lib-subtitles))
  (package mechanized-llbc))

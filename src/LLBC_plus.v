@@ -1,21 +1,22 @@
+(** * Mechanized_LLBC.LLBC_plus : definition of symbolic states, and simulation proof for LLBC+. *)
 Require Import base.
 Require Import lang.
 Require Import SimulationUtils.
 From Stdlib Require Import List.
 Import ListNotations.
 From Stdlib Require Import PeanoNat Lia.
-(* Notation conflict between stdpp's `+++` and our `+++`. That's why we're importing stpp first,
+(* Notation conflict between stdpp's [+++] and our [+++]. That's why we're importing stpp first,
    then closing the scope. *)
 From stdpp Require Import pmap gmap.
 Close Scope stdpp_scope.
 Require Import PathToSubtree.
 Require Import OptionMonad.
 
-(* A limited notion of type. It only describes values that can be turned into symbolic values, and
- * that excludes mutable borrows for the moment.
- * The type soundness is ensured dynamically. We only need it for two reasons:
- * - Checking that a symbolic value of type T abstracts a value of type T.
- * - Checking that we a loan << loan^m(ty, t) >> obtains a value back, it is a value of type T. *)
+(** A limited notion of type. It only describes values that can be turned into symbolic values, and
+    that excludes mutable borrows for the moment.
+    The type soundness is ensured dynamically. We only need it for two reasons:
+    - Checking that a symbolic value of type T abstracts a value of type T.
+    - Checking that we a loan [loan^m(ty, t)] obtains a value back, it is a value of type T. *)
 Inductive LLBC_type :=
 | intT
 | boolT
@@ -149,9 +150,9 @@ Qed.
 Program Instance IsState : State LLBC_plus_state LLBC_plus_val := {
   get_map S := sum_maps (sum_maps (vars S) (anons S)) (flatten (abstractions S));
 
-  (* The flatten function in not injective. For example, R and R<[A := empty]> have the same
+  (* The flatten function in not injective. For example, [R] and [R<[A := empty]>] have the same
    * flattening. An empty region abstraction and a non-existant region abstraction can't be
-   * distinguished. Therefore, for the axiom `state_eq_ext` to be true, we need the set of region
+   * distinguished. Therefore, for the axiom [state_eq_ext] to be true, we need the set of region
    * abstractions identifiers as extra information. *)
   extra := Pset;
   get_extra S := dom (abstractions S);
@@ -348,7 +349,7 @@ Definition remove_abstraction i S :=
 (* Used to change a mutable borrow from borrow^m(l', v) to borrow^m(l, v). *)
 Notation rename_mut_borrow S sp l := (S.[sp <- borrow^m(l, S.[sp +++ [0] ])]).
 
-(* << is_of_type ty v >> asserts that the value v is initialized (not bot) and of type ty. *)
+(* [is_of_type ty v] asserts that the value v is initialized (not bot) and of type ty. *)
 Variant is_of_type : LLBC_type -> LLBC_plus_val -> Prop :=
 | Is_of_type_symbolic ty : is_of_type ty (LLBC_plus_symbolic ty)
 | Is_of_type_mut_loan ty l : is_of_type ty (loan^m(ty, l))
@@ -367,8 +368,8 @@ Definition store_compatible_types S p v :=
   forall q, strict_prefix q p -> is_mut_borrow (get_node (S.[q])) ->
     exists ty, is_of_type ty (S.[p]) /\ is_of_type ty v.
 
-(* << add_anons S A S' >> : when we end an abstraction region A, we need to add its values as anonymous
- * binding in a state S. The property << add_anons S A S' >> relates this state S and this
+(* [add_anons S A S'] : when we end an abstraction region A, we need to add its values as anonymous
+ * binding in a state S. The property [add_anons S A S'] relates this state S and this
  * abstraction A to a state S' with anonymous bindings added. *)
 Variant add_anons : LLBC_plus_state -> Pmap LLBC_plus_val -> LLBC_plus_state -> Prop :=
   | AddAnons S A anons' : union_maps (anons S) A anons' ->
@@ -400,11 +401,11 @@ Definition merge_abstractions A B C := exists A0 B0, remove_loans A B A0 B0 /\ u
 Definition remove_anon a S :=
   {| vars := vars S; anons := delete a (anons S); abstractions := abstractions S|}.
 
-(** * Permutation of LLBC+ states.
-    * A state permutation is a permutation of the anonymous variables and the elemnts of each regions.
- * It does not affect the variables. *)
+(** * Permutation of LLBC+ states. *)
+(** A state permutation is a permutation of the anonymous variables and the elemnts of each regions.
+    It does not affect the variables. *)
 
-(** ** First, let us introduce renaming of loan identifiers. *)
+(* First, let us introduce renaming of loan identifiers. *)
 Definition loan_id_map := Pmap positive.
 
 Definition rename_loan_id (m : loan_id_map) (l : loan_id) :=
@@ -573,6 +574,7 @@ Definition valid_loan_id_names (loan_map : loan_id_map) S :=
 Definition is_state_equivalence perm S :=
   valid_accessor_permutation (accessor_perm perm) S /\ (valid_loan_id_names (loan_id_names perm) S).
 
+(* Then, let us introduce renaming of anonymous binding and abstraction elements. *)
 Definition rename_accessors perm S := {|
   vars := vars S;
   anons := apply_permutation (anons_perm perm) (anons S);
@@ -588,6 +590,8 @@ Definition rename_state perm S := {|
   abstractions := fmap (M := Pmap) (rename_set perm) (abstractions S)
 |}.
 
+(* A state permutation is simply the composition of the renaming of loan identifiers, and the
+ * permutation of anonymous bindings and abstraction names. *)
 Definition apply_state_permutation perm S :=
   rename_accessors (accessor_perm perm) (rename_state (loan_id_names perm) S).
 
@@ -870,7 +874,7 @@ Definition _permutation_spath (perm : accessor_permutation) (sp : spath) : spath
   end.
 Notation permutation_spath perm := (_permutation_spath (accessor_perm perm)).
 
-(** Properties of LLBC+ operations. *)
+(** * Properties of LLBC+ operations. *)
 Instance Decidable_in_abstraction i x : Decision (in_abstraction i x).
 Proof.
   unfold in_abstraction, encode_abstraction.
@@ -910,7 +914,7 @@ Proof.
   - apply lookup_None_flatten. simpl_map. reflexivity.
 Qed.
 
-(* The hypothesis `fresh_abstraction S i` is not necessary, we're going to remove it. *)
+(* The hypothesis [fresh_abstraction S i] is not necessary, we're going to remove it. *)
 Lemma _get_at_accessor_add_abstraction_notin S i A x (fresh_i : fresh_abstraction S i)
   (H : ~in_abstraction i x) :
   get_at_accessor (S,,, i |-> A) x = get_at_accessor S x.
@@ -1168,7 +1172,7 @@ Proof.
 Qed.
 
 (* TODO: rewrite with in hypotheses a spath sp and an equality
- * << fst sp = encode_abstraction (i, j) >>, so as to reduce the number of destructions. *)
+ * [fst sp = encode_abstraction (i, j)], so as to reduce the number of destructions. *)
 Lemma in_abstraction_valid_spath S i j A q :
   valid_spath (S,,, i |->  A) (encode_abstraction (i, j), q) ->
   exists v, lookup j A = Some v /\ valid_vpath v q.
@@ -1253,7 +1257,7 @@ Hint Extern 0 (is_mut_borrow (get_node (?S.[?sp]))) =>
   end : spath.
 Hint Rewrite get_node_rename_mut_borrow using eauto with spath; fail : spath.
 
-(* In the state `rename_mut_borrow S p l1`, compared to S, only the node at p is changed.
+(* In the state [rename_mut_borrow S p l1], compared to S, only the node at p is changed.
  * Thus, if we read at a place q that is not a prefix of p, no node is changed. *)
 Lemma sget_reborrow_mut_borrow_not_prefix S p q l1
   (H : is_mut_borrow (get_node (S.[p]))) (G : ~prefix q p) :
@@ -1349,7 +1353,7 @@ Hint Resolve not_in_borrow_rename_mut_borrow : spath.
 Lemma loan_contains_loan ty l : ~not_contains_loan (loan^m(ty, l)).
 Proof. intros H. apply (H []); constructor. Qed.
 
-(** Lemmas about add_anons. *)
+(** ** Lemmas about add_anons. *)
 Lemma add_anons_delete S i A v S' :
   lookup i A = None -> add_anons S (insert i v A) S' ->
   exists a, fresh_anon S a /\ add_anons (S,, a |-> v) A S'.
@@ -1868,8 +1872,8 @@ Proof.
 Qed.
 
 (** ** Lemmas about typing. *)
-(* Note: when we add a static type checking, we may change the definition of << is_of_type >> so
- * that the invalid value << bot >> is of any type. For the moment, there is no reason to do that.
+(* Note: when we add a static type checking, we may change the definition of [is_of_type] so
+ * that the invalid value [bot] is of any type. For the moment, there is no reason to do that.
  * *)
 Lemma is_of_type_does_not_contain_bot ty v :
   is_of_type ty v -> not_value_contains (fun c => c = botC) v.
@@ -1922,8 +1926,8 @@ Proof.
 Qed.
 
 (* For the moment the theorem is trivial as we don't type mutable borrows. *)
-(* Note: with type on borrows, we could just apply the theorems << is_of_type_sset_rev >> and
- * << is_of_type_sset_rev >>. *)
+(* Note: with type on borrows, we could just apply the theorems [is_of_type_sset_rev] and
+ * [is_of_type_sset_rev]. *)
 Lemma _is_of_type_rename_mut_borrow_val v p l0 l1 ty :
   get_node (v.[[p]]) = borrowC^m(l0) -> is_of_type ty v ->
   is_of_type ty (v.[[p <- borrow^m(l1, v.[[p ++ [0] ]])]]).
@@ -2094,7 +2098,7 @@ Proof.
   specialize (Hcomp q Hstrict_prefix). autorewrite with spath in Hcomp. auto.
 Qed.
 
-(** ** Some tactics *)
+(** ** Automation *)
 Lemma not_value_contains_loan_id_loan l0 l1 ty :
   not_value_contains (is_loan_id l0) (loan^m(ty, l1)) -> l0 <> l1.
 Proof. intros H <-. apply (H []); [constructor | reflexivity]. Qed.
@@ -2189,8 +2193,8 @@ Ltac not_contains_outer :=
 
 Hint Resolve <-fresh_anon_add_anon : spath.
 
-(* Frequently, after the combination of tactics << remember >> and << destruct >>, we have
- * hypotheses of the form << E[Sl] = F[Sr] >>, with E and F expressions over states Sl and Sr
+(* Frequently, after the combination of tactics [remember] and [destruct], we have
+ * hypotheses of the form [E[Sl] = F[Sr]], with E and F expressions over states Sl and Sr
  * (adding anonymous bindings, abstractions and sset).
  * This tactic finds a common unificator S such that Sl are expressions over S, replaces Sl and
  * Sr, with the relevant hypotheses in the context. *)
@@ -3119,7 +3123,7 @@ Proof.
   - apply map_Forall2_insert_2; assumption.
 Qed.
 
-(* Note: the hypothesis << fresh_abstraction S i >> could be removed. *)
+(* Note: the hypothesis [fresh_abstraction S i] could be removed. *)
 Lemma add_abstraction_perm_equivalence perm S i A p :
   is_state_equivalence perm S -> is_permutation p A ->
   subseteq (loan_set_abstraction A) (dom (loan_id_names perm)) -> fresh_abstraction S i ->
@@ -3626,9 +3630,9 @@ Proof.
   - rewrite !fmap_delete. econstructor; simpl_map; eauto.
 Qed.
 
-(* We can always extend the map of loan identifiers of << perm >> so that it contains every loans
- * of a set L. We obtain a permutation << perm' >> that is still a valid permutation of S, and it
- * has the same effect as << perm >> when applied on S. *)
+(* We can always extend the map of loan identifiers of [perm] so that it contains every loans
+ * of a set L. We obtain a permutation [perm'] that is still a valid permutation of S, and it
+ * has the same effect as [perm] when applied on S. *)
 Lemma extend_loan_id_names L perm S :
   valid_loan_id_names perm S ->
   exists perm',
@@ -3769,8 +3773,8 @@ Variant eval_rvalue : rvalue -> LLBC_plus_state -> (LLBC_plus_val * LLBC_plus_st
       (Hbinop : eval_binary_op binop v0 v1 w) :
       S |-{rv} (BinaryOp binop op_0 op_1) => (w, S'')
   (* Note: with a typing judgement on LLBC, and with a well-typedness invariant, the type
-   * << ty >> could be obtained from the type of the place p, and the well-typedness of
-   * << S.[pi] >> could be derived from the well-typedness of << S >>. *)
+   * [ty] could be obtained from the type of the place p, and the well-typedness of
+   * [S.[pi]] could be derived from the well-typedness of [S]. *)
   | Eval_mut_borrow S p pi l ty (eval_p : S |-{p} p =>^{Mut} pi)
       (borrow_no_loan : not_contains_loan (S.[pi]))
       (borrow_no_bot : not_contains_bot (S.[pi]))
@@ -3896,9 +3900,9 @@ Proof.
   apply (map_sum_delete (vweight weight)) in get_v. lia.
 Qed.
 
-(* Note: the definition is duplicated in << leq_state_base_n >>.
- * Perhaps we should only define leq_state_base_n, and define << leq_state_base Sl Sr >> as
- * << exists n, leq_state_base_n n Sl Sr >>. *)
+(* Note: the definition is duplicated in [leq_state_base_n].
+ * Perhaps we should only define leq_state_base_n, and define [leq_state_base Sl Sr] as
+ * [exists n, leq_state_base_n n Sl Sr]. *)
 Variant leq_state_base : LLBC_plus_state -> LLBC_plus_state -> Prop :=
 (* Contrary to the article, symbolic values should be typed. Thus, only an integer can be converted
  * to a symbolic value for the moment. *)
@@ -4294,24 +4298,24 @@ Instance transitive_leq_HLPL_plus : Transitive leq.
 Proof. apply transitive_leq, leq_equiv_states_commute. Qed.
 
 (** The following section is here to prove the commutation between the relation
- * << leq_val_state_base >> and equivalence up to loan renaming.
- * The reason why we don't prove this for equivalence is that the actual definition is not
- * suitable. If we have (S,, a |-> v) < (S',, a |-> v') and a permutation perm on (S,, a |-> v),
- * by applying << leq_equiv_states_commute >>, we only know that there exists a permutation
- * << perm' >> such that perm(S,, a |-> v) < perm'(S',, a |-> v'). But there is no reason why we
- * would have perm(a) = perm'(a).
- * This is the case with rename_state, but this property is not specific to equivalence up to loan
- * renaming. And the theorem << leq_equiv_states_up_to_loan_renaming_commute >> is very redundant
- * with << leq_equiv_states_commute >>.
- * In order to avoid doing twice a similar tedious proof, a solution is just to change the
- * definition of is_state_equivalence and the statement of << leq_equiv_states_commute >>.
- * The idea is to have a single permutation perm such that
- * perm(S,, a |-> v) < perm(S',, a |-> v')$. This is not currently possible as the states
- * << S,, a |-> v >> and << S',, a |-> v' >> do not have the same anonymous variables and
- * abstraction regions. But if we change the definition on is_state_equivalence so that a
- * the domain of a the anonymous and abstractions permutations are superset (and not just equal)
- * of the the respective maps, we could prove this.
- * TODO: do these changes and remove this entire section.
+   [leq_val_state_base] and equivalence up to loan renaming.
+   The reason why we don't prove this for equivalence is that the actual definition is not
+   suitable. If we have [(S,, a |-> v) < (S',, a |-> v')] and a permutation perm on [S,, a |-> v],
+   by applying [leq_equiv_states_commute], we only know that there exists a permutation
+   [perm'] such that perm [(S,, a |-> v) < perm'(S',, a |-> v')]. But there is no reason why we
+   would have perm(a) = perm'(a).
+   This is the case with rename_state, but this property is not specific to equivalence up to loan
+   renaming. And the theorem [leq_equiv_states_up_to_loan_renaming_commute] is very redundant
+   with [leq_equiv_states_commute].
+   In order to avoid doing twice a similar tedious proof, a solution is just to change the
+   definition of is_state_equivalence and the statement of [leq_equiv_states_commute].
+   The idea is to have a single permutation perm such that
+   perm(S,, a |-> v) < perm(S',, a |-> v')$. This is not currently possible as the states
+   [S,, a |-> v] and [S',, a |-> v'] do not have the same anonymous variables and
+   abstraction regions. But if we change the definition on is_state_equivalence so that a
+   the domain of a the anonymous and abstractions permutations are superset (and not just equal)
+   of the the respective maps, we could prove this.
+   TODO: do these changes and remove this entire section.
  *)
 Lemma fresh_anon_rename_state S a r : fresh_anon S a -> fresh_anon (rename_state r S) a.
 Proof. unfold fresh_anon. rewrite !get_at_anon. cbn. simpl_map. intros ->. reflexivity. Qed.
@@ -4436,8 +4440,8 @@ Proof.
      cbn. rewrite apply_id_state_permutation. reflexivity.
 Qed.
 
-(* TODO: this could be a consequence of << leq_equiv_states_commute >>, with a different definition
- * of << is_state_equivalence >> (see explanation at the start of the section. *)
+(* TODO: this could be a consequence of [leq_equiv_states_commute], with a different definition
+ * of [is_state_equivalence] (see explanation at the start of the section. *)
 Lemma prove_leq_val_state_base v S v' S' a :
   fresh_anon S a -> fresh_anon S' a -> leq_state_base (S,, a |-> v) (S',, a |-> v') ->
   leq_val_state_base leq_state_base (v, S) (v', S').
@@ -4642,8 +4646,8 @@ Qed.
 Definition rel_ToAbs a i (p q : spath) :=
   p = q /\ ~in_abstraction i (fst p) /\ fst p <> anon_accessor a.
 
-(* Note: the hypothesis `no_borrow` is not necessary to prove this lemma. *)
-(* The hypothesis `no_loan` is not necessary yet, but it will be when we introduce shared
+(* Note: the hypothesis [no_borrow] is not necessary to prove this lemma. *)
+(* The hypothesis [no_loan] is not necessary yet, but it will be when we introduce shared
  * borrows. *)
 Lemma eval_place_ToAbs S a i v A p perm
   (fresh_a : fresh_anon S a)
@@ -4674,8 +4678,8 @@ Definition rel_change_anon a (p q : spath) := p = q /\ fst p <> anon_accessor a.
 Definition rel_change_anon_not_in_spath sp a pi_l pi_r :=
   rel_change_anon a pi_l pi_r /\ ~strict_prefix sp pi_l.
 
-(* Note: the hypothesis `no_borrow` is not necessary to prove this lemma. *)
-(* The hypothesis `no_loan` is not necessary yet, but it will be when we introduce shared
+(* Note: the hypothesis [no_borrow] is not necessary to prove this lemma. *)
+(* The hypothesis [no_loan] is not necessary yet, but it will be when we introduce shared
  * borrows. *)
 Lemma eval_place_RemoveAnon S perm a v p
   (fresh_a : fresh_anon S a)
@@ -4851,10 +4855,10 @@ Proof.
       eapply Eval_Deref_MutBorrow; eassumption.
 Qed.
 
-(* Suppose that Sl <= Sr (with a base case), and that p evaluates to a spath pi in Sr
-   (Sr |-{p} p =>^{perm} pi).
-   This tactic chooses the right lemmas to apply in order to prove that p reduces to a spath pi' in Sl, and generates facts about pi'.
-   It finally clears the initial hypothesis.
+(** Suppose that [Sl < Sr], and that p evaluates to a spath [pi] in [Sr]
+   ([Sr |-{p} p =>^{perm} pi]).
+    This tactic chooses the right lemmas to apply in order to prove that [p] reduces to a spath [pi'] in [Sl], and generates facts about [pi'].
+   Finally, it proves that [pi] is valid in [Sr], and clears the initial hypothesis.
  *)
 Ltac eval_place_preservation :=
   let eval_p_in_Sl := fresh "eval_p_in_Sl" in
@@ -4991,6 +4995,8 @@ Proof.
   intros a ? ?. cbn in *. destruct (G a) as (? & ? & ->); [assumption.. | ]. assumption.
 Qed.
 
+(** This tactic is used to prove a goal of the form [(vl, Sl) < ?vSr] without
+    exhibiting the existential variable [?vSr]. *)
 Ltac leq_step_left :=
   let a := fresh "a" in
   let H := fresh "H" in
@@ -5005,10 +5011,10 @@ Ltac leq_step_left :=
         [eauto with spath |
          intros a ? ?; eexists; split |
         ]
-  (* When proving a goal `leq (vl, Sl) ?vSr`, using this tactic creates three subgoals:
-     1. leq_base (Sl,, a |-> v) ?vSm
-     2. ?vSm = ?Sm,, a |-> ?vm
-     3. leq (?vm, ?Sm) ?vSr *)
+  (** When proving a goal [leq (vl, Sl) ?vSr], using this tactic creates three subgoals:
+      - [leq_base (Sl,, a |-> v) ?vSm]
+      - [?vSm = ?Sm,, a |-> ?vm]
+      - [leq (?vm, ?Sm) ?vSr] *)
   | |- ?leq_star^* (?vl, ?Sl) ?vSr =>
       eapply prove_leq_val_state_left_to_right;
         [intros a ?; rewrite <-?fresh_anon_sset in H; eexists; split; [
@@ -6059,9 +6065,9 @@ Proof.
   apply equiv_val_state_up_to_loan_renaming_implies_equiv_val_state. assumption.
 Qed.
 
-(** ** Simulation proofs for the store operation. *)
-(* We only store values that come from rvalue evaluations, and these values do not contain loans or
- * unitialized values. This can be used to prune cases. *)
+(** ** Simulation proofs for the [store] operation. *)
+(** We only store values that come from rvalue evaluations, and these values do not contain loans or
+    unitialized values. This can be used to prune cases. *)
 Lemma eval_rvalue_no_bot S S' rv v : S |-{rv} rv => (v, S') -> not_contains_bot v.
 Proof.
   inversion 1; subst; [ | inversion Hbinop; not_contains | not_contains].
@@ -6082,14 +6088,14 @@ Proof.
   + assumption.
 Qed.
 
-(* The stronger relation between pairs of value and state with the absence of loans and
- * unitilialized values. *)
+(** The stronger relation between pairs of value and state with the absence of loans and
+    unitilialized values. *)
 Definition leq_val_state_base' vSl vSr :=
   leq_val_state_base leq_state_base vSl vSr /\
   not_contains_bot (fst vSr) /\ not_contains_loan (fst vSr).
 
-(* If Sl <^* Sr and Sr does not contain any loan or unitialized value, then this is the case for
- * all of the intermediary states. *)
+(** If [Sl <^* Sr] and [Sr] does not contain any loan or unitialized value, then this is the case for
+    all of the intermediary states. *)
 (* Note: this proof is very repetitive, it could easily be automated. *)
 Lemma leq_base_does_not_insert_bot_loan vSl vSr :
   leq_val_state_base' vSl vSr -> not_contains_bot (fst vSl) /\ not_contains_loan (fst vSl).
@@ -6194,8 +6200,8 @@ Proof.
   - apply IHeval_path. destruct Heval_proj. assumption.
 Qed.
 
-(* Note: there are "boilerplate lemmas" like << states_add_anon_eq >>,
- * << add_anon_commute >> that we could automate the usage. *)
+(* Note: there are "boilerplate lemmas" like [states_add_anon_eq],
+ * [add_anon_commute] that we could automate the usage. *)
 Lemma store_preserves_leq_rel p :
   forward_simulation leq_val_state_base'^* leq (store p) (store p).
 Proof.
@@ -6623,7 +6629,7 @@ Proof.
   eapply prove_equiv_states; [reflexivity | eassumption].
 Qed.
 
-(** ** Lemmas used to prove the local commutation between leq_state_base and reorg: *)
+(** Lemmas used to prove the local commutation between leq_state_base and reorg: *)
 Lemma vget_borrow l v p c : get_node (borrow^m(l, v).[[p]]) = c -> c <> botC ->
   p = [] /\ borrowC^m(l) = c \/ exists q, p = [0] ++ q /\ get_node (v.[[q]]) = c.
 Proof.
@@ -7576,6 +7582,7 @@ Proof.
   - exact reorg_local_preservation.
 Qed.
 
+(** ** Simulation proofs for statement evaluation. *)
 Lemma stmt_preserves_LLBC_plus_rel s r :
   forward_simulation leq leq (eval_stmt s r) (eval_stmt s r).
 Proof.
@@ -7601,8 +7608,10 @@ Proof.
     execution_step. { econstructor; eassumption. } assumption.
 Qed.
 
+(** * Execution of a program in the LLBC+ semantics. *)
 Local Open Scope option_monad_scope.
-(*
+(** The program we execute is:
+<<
 fn main() {
    let mut x = 0;
    let mut y = 1;
@@ -7616,11 +7625,17 @@ fn main() {
    *z += 1;
    x += 2;
 }
+>>
  *)
 Notation x := 1%positive.
 Notation y := 2%positive.
 Notation z := 3%positive.
 
+(** Because our semantics does not model if-then-else disjunction yet, we define three programs,
+    one for the if-branch, one for the else-branch, and one final program. We prove that both
+    branch safely executes, and that their final state is in relation with an explicit state called
+    [join_state].
+*)
 Definition if_branch : statement :=
   ASSIGN (z, []) <- &mut (x, []).
 
@@ -7631,12 +7646,9 @@ Definition end_main : statement :=
   ASSIGN (z, [Deref]) <- BinaryOp BAdd (Copy (z, [Deref])) (Const (IntConst 1));;
   ASSIGN (x, []) <- BinaryOp BAdd (Copy (x, [])) (Const (IntConst 2))
 .
-(* Important note: the line `c = &mut b` overwrites a loan, but as it is an outer loan, it doesn't
- * cause any problem. This is a check that the overwriting of outer loans is supported. *)
-(* Also, the last `Nop` statement was added so that we could perform reorganization operations
- * before the end, and but back the value 58 in the variable a. *)
 
 Open Scope stdpp.
+(** The initial state: *)
 Definition cond_state := {|
   vars := {[x := LLBC_plus_int 0; y := LLBC_plus_int 1; z := bot]};
   anons := empty;
@@ -7732,7 +7744,7 @@ Qed.
 
 (* These two lemmas are used to show to limited cases of store_compatible_types.
  * Ideally, to be as general as possible when showing
- * << store_compatible_types S (acc, p) v >>, we should strip the last elements of p one by one,
+ * [store_compatible_types S (acc, p) v], we should strip the last elements of p one by one,
  * and for each encountered borrow, prove that the type is preserved. *)
 Lemma store_compatible_types_nil S acc v : store_compatible_types S (acc, []) v.
 Proof. intros q prefix_q_nil%not_strict_prefix_nil. contradiction. Qed.
@@ -7758,9 +7770,9 @@ Section Eval_LLBC_plus_program.
   Proof. reflexivity. Qed.
   Hint Rewrite (@insert_empty_is_singleton _ _ _ _ _ _ _ _ _ _ Pmap_finmap) : core.
 
-  (* Perform simplifications to put maps of the state in the form `{[x0 := v0; ...; xn := vn]}`,
+  (* Perform simplifications to put maps of the state in the form [{[x0 := v0; ...; xn := vn]}],
      that is a notation for a sequence of insertions applied to a singleton.
-     We cannot use the tactic `vm_compute` because it computes under the insertions and the
+     We cannot use the tactic [vm_compute] because it computes under the insertions and the
      singleton. *)
   Ltac simpl_state :=
     (* We can actually perform vm_compute on sget, because the result is a value and not a state. *)

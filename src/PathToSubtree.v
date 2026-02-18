@@ -1,3 +1,4 @@
+(** * Mechanized_LLBC.PathToSubtree : definitions and properties of values and states. *)
 From Stdlib Require Import List.
 From Stdlib Require Import PeanoNat.
 Require Import RelationClasses.
@@ -12,36 +13,36 @@ From stdpp Require Import pmap gmap.
 
 Local Open Scope option_monad_scope.
 
-(* As a hint database, "spath" is used to solve common goals, in particular, proving comparisons
- * between paths.
- * As a rewriting database, "spath" is used to reduce computations on paths, values and states, and
- * to put them in normal form. *)
+(** As a hint database, "spath" is used to solve common goals, in particular, proving comparisons
+    between paths.
+    As a rewriting database, "spath" is used to reduce computations on paths, values and states, and
+    to put them in normal form. *)
 Create HintDb spath.
 
-(* This is a hint database used to reduce weight computations. *)
+(** This is a hint database used to reduce weight computations. *)
 Create HintDb weight.
 
 Coercion Z.of_nat : nat >-> Z.
 
-(* Paths, prefixes and disjointness *)
+(** * Paths, prefixes and disjointness *)
 
-(* A vpath ("value path") is the data structure used to uniquely represent nodes in a tree. The
- * integers in the list are the indices of the children we take, going down from the root to the
- * node in the tree. It is called "vpath" because it will mostly be used by values in
- * intermediate languages between LLBC# and HLPL.
- * The vpaths are used to:
- * - Get the child at a node.
- * - Set a child at a node.
- * TODO: motivate the comparison between vpaths (prefix, equal, disjoint).
+(** A vpath ("value path") is the data structure used to uniquely represent nodes in a tree. The
+    integers in the list are the indices of the children we take, going down from the root to the
+    node in the tree. It is called "vpath" because it will mostly be used by values in
+    intermediate languages between LLBC# and HLPL.
+    The vpaths are used to:
+    - Get the child at a node.
+    - Set a child at a node.
+    TODO: motivate the comparison between vpaths (prefix, equal, disjoint).
  *)
 Definition vpath := list nat.
 
-(* A spath ("state path") is used to uniquely represent nodes in a state. It is a pair (i, q). The
- * positive i identifies a value in the state, and the vpath q identifies the node in this value.
+(** A spath ("state path") is used to uniquely represent nodes in a state. It is a pair (i, q). The
+    positive i identifies a value in the state, and the vpath q identifies the node in this value.
  *)
 Definition spath : Type  := positive * vpath.
 
-(* The concatenation of a spath and a vpath. *)
+(** The concatenation of a spath and a vpath. *)
 Definition app_spath_vpath (p : spath) (q : vpath) := (fst p, snd p ++ q).
 (* TODO: place the notation in a scope? *)
 Notation "p +++ q" := (app_spath_vpath p q) (right associativity, at level 60).
@@ -52,14 +53,14 @@ Proof. apply injective_projections; reflexivity || apply app_nil_r. Qed.
 Lemma app_spath_vpath_assoc (p : spath) q r : p +++ q ++ r = (p +++ q) +++ r.
 Proof. unfold app_spath_vpath. rewrite app_assoc. reflexivity. Qed.
 
-(* The large and strict prefix relations between two paths. *)
+(** The large and strict prefix relations between two paths. *)
 Definition vprefix (p q : vpath) := exists r, p ++ r = q.
 Definition vstrict_prefix (p q : vpath) := exists i r, p ++ i :: r = q.
 
-(* Two paths p and q are disjoint if neither is the prefix of the other. The most useful
- * characterization, that we are defining here, is that p and q are of the form
- * r ++ [i] ++ p' and r ++ [i] ++ q', where r is the longest common prefix, and where i <> j are
- * the first indices where p and q differ.
+(** Two paths p and q are disjoint if neither is the prefix of the other. The most useful
+    characterization, that we are defining here, is that p and q are of the form
+    r ++ [i] ++ p' and r ++ [i] ++ q', where r is the longest common prefix, and where i <> j are
+    the first indices where p and q differ.
  *)
 Definition vdisj (p q : vpath) :=
   exists (r p' q' : vpath) i j, i <> j /\ p = r ++ (i :: p') /\ q = r ++ (j :: q').
@@ -67,7 +68,7 @@ Definition vdisj (p q : vpath) :=
 Global Instance vdisj_symmetric : Symmetric vdisj.
 Proof. intros ? ? (v & p & q & i & j & ? & ? & ?). exists v, q, p, j, i. auto. Qed.
 
-(* Showing that every two paths are comparable. *)
+(** Showing that every two paths are comparable. *)
 Variant vComparable (p q : vpath) : Prop :=
 | vCompEq (H : p = q)
 | vCompStrictPrefixLeft (H : vstrict_prefix p q)
@@ -94,7 +95,7 @@ Proof.
     + apply vCompDisj. exists nil. repeat eexists. assumption.
 Qed.
 
-(* Prefixness and disjointness for spaths: *)
+(** Prefixness and disjointness for spaths: *)
 Definition prefix (p q : spath) := exists r, p +++ r = q.
 
 Definition strict_prefix (p q : spath) := exists i r, p +++ (i :: r) = q.
@@ -399,7 +400,7 @@ Qed.
 Lemma app_spath_vpath_inv_head p q r : p +++ q = p +++ r -> q = r.
 Proof. intros H%(f_equal snd). eapply app_inv_head. exact H. Qed.
 
-(* Automatically solving a comparison C p q using the hypotheses. *)
+(** Automatic resolution of comparisons between path. *)
 Hint Resolve disj_diff_fst : spath.
 Hint Resolve disj_diff_fst' : spath.
 Hint Resolve not_strict_prefix_nil : spath.
@@ -407,36 +408,40 @@ Hint Extern 0 (prefix ?p (?p +++ ?q)) => exists q; reflexivity : spath.
 Hint Extern 0 (prefix (?p +++ ?q) (?p +++ ?q ++ ?r)) =>
     exists r; symmetry; apply app_spath_vpath_assoc : spath.
 
+(** * Interface for values. *)
 Declare Scope GetSetPath_scope.
 Open Scope GetSetPath_scope.
 
-(* A value v : V is a tree-like structure. It is characterize by:
-   - A node of type nodes.
-   - A list of subvalues.
-   Each node is associated to a fixed number of children, called the "arity".
+(** A value [v : V] is a tree-like structure. It is characterize by:
+   - A node [get_node v], of type [nodes].
+   - A list of subvalues [children v].
+   - A weight function.
+   Also, each node [n] is associated to a fixed number of children [arity n].
 
-   For example, take the value u = borrow^m(ell, (3, 4)).
-   - Its node is `borrow^m(ell, .)`
-   - It gets a unique child `v = (3, 4)`
-     - The node of v is the pair node `(., .)`
-     - The children of v are [3, 4].
+   For example, take the value [u = borrow^m(ell, (3, 4))].
+   - Its node is [borrow^m(ell, -)]
+   - It gets a unique child [v = (3, 4)]
+     - The node of v is the pair node [(-, -)]
+     - The children of v are [[3, 4]].
+
    Thus, we can see that:
-   - The arity of the node `borrow^m(ell, .)` is 1 (it's a unary node).
-   - The arity of the node `(., .)` is 2 (it's a binary node).
-   - The arity of the nodes 3 and 4 are 0 (they're zeroary nodes).
+   - The arity of the node [borrow^m(ell, -)] is 1 (it is a unary node).
+   - The arity of the node [(-, -)] is 2 (it is a binary node).
+   - The arity of the nodes 3 and 4 are 0 (they are zeroary nodes).
  *)
 Class Value (V nodes : Type) `{EqDecision nodes} := {
   arity : nodes -> nat;
   children : V -> list V;
   get_node : V -> nodes;
-  (* Create a value given a node and a list of children. This is a total function. Therefore, if
-   * the numbers of children differ from the arity, the result is unspecified. *)
+  (** Create a value given a node and a list of children. This is a total function. Therefore, if
+      the numbers of children differ from the arity, the result is unspecified. *)
   fold_value : nodes -> list V -> V;
-  (* The sum of some quantity for each node of the tree. *)
+  (** The sum of some quantity for each node of the tree. *)
   vweight : (nodes -> nat) -> V -> nat;
-  (* A special zero-ary value "bot". *)
+  (** A special zero-ary value [bot]. *)
   bot : V;
 
+  (** Axioms on values. *)
   length_children_is_arity v : length (children v) = arity (get_node v);
   get_nodes_children_inj v w :
     get_node v = get_node w -> children v = children w -> v = w;
@@ -452,12 +457,12 @@ Notation get_subval_or_bot w i :=
     | Some u => u
     | None => bot
   end).
-(* Reads a value at path p. If the path p is invalid, returns bot. *)
+(** Read a value at path p. If the path p is invalid, return bot. *)
 Definition vget {V} `{Value V nodes} : vpath -> V -> V :=
   fold_left (fun w i => get_subval_or_bot w i).
 Notation "v .[[ p ]]" := (vget p v) (left associativity, at level 50) : GetSetPath_scope.
 
-(* Set the value at path p to be w in v. If the path p is invalid, the value v is unchanged. *)
+(** Set the value at path p to be w in v. If the path p is invalid, the value v is unchanged. *)
 Fixpoint vset {V} `{Value V nodes} (p : vpath) (w : V) (v : V) :=
   match p with
   | nil => w
@@ -467,53 +472,55 @@ Notation "v .[[ p <- w ]]" := (vset p w v) (left associativity, at level 50).
 
 Definition anon := positive.
 
-(** Generic definition of states. The main ideas are that:
- * - A state can be accessed by positives. Any accessor (variable, anonymous binding, abstraction
- *   element) can be encoded as a positive number.
- * - As such, an element << S : state >> can be turned into a map, using the method << get_map >>.
- *   This map associates positive numbers to values of type << V >>, with << V >> a type that
- *   satisfies the << Value >> typeclass.
- * - It is also possible to modify a state as a given positive number, using the method
- *   << alter_at_accessor >>.
+(** * Interface for states. *)
+(** The main ideas for the [State] typeclass are that:
+   - A state can be accessed by positives. Any accessor (variable, anonymous binding, abstraction
+     element) can be encoded as a positive number.
+   - As such, an element [S : state] can be turned into a map, using the method [get_map]
+     This map associates positive numbers to values of type [V], with [V] a type that
+     satisfies the [Value] typeclass.
+   - It is also possible to modify a state as a given positive number, using the method
+     [alter_at_accessor]
  *)
-(* Note: I am not satisfied with accessors being positive numbers. It should be an arbitrary type.
- * In particular, it would be more natural to use a sum type. *)
+(** Note: I am not satisfied with accessors being positive numbers. It should be an arbitrary type.
+    In particular, it would be more natural to use a sum type. *)
 Class State (state : Type) V `{Value V} := {
   get_map : state -> Pmap V;
   alter_at_accessor : (V -> V) -> positive -> state -> state;
 
-  (* The << extra >> type describes all the information that is not contained in the positive
-   * map. For example, it can be the unit type if << get_map >> is injective. For LLBC# and
-   * LLBC+, the << extra >> type is the set of abstractions. *)
+  (** The [extra] type describes all the information that is not contained in the positive
+      map. For example, it can be the unit type if [get_map] is injective. For LLBC# and
+      LLBC+, the [extra] type is the set of abstractions. *)
   extra : Type;
   get_extra : state -> extra;
 
-  (* The << get_map >> and << get_extra >> methods completely characterize a state. *)
+  (** The [get_map] and [get_extra] methods completely characterize a state. *)
   state_eq_ext S S' :
     get_map S = get_map S' -> get_extra S = get_extra S' -> S = S';
 
-  (* The method << alter_at_accessor >> only updates one value, at accessor a. It does not affect
-   * the "extra" part of the state. *)
+  (** The method [alter_at_accessor] only updates one value, at accessor a. It does not affect
+      the "extra" part of the state. *)
   get_extra_alter S f a : get_extra (alter_at_accessor f a S) = get_extra S;
   get_map_alter S f a : get_map (alter_at_accessor f a S) = alter f a (get_map S);
 
-  (* Generic management of anonymous bindings. *)
+  (** Generic management of anonymous bindings. *)
+  (* TODO: this should be a superclass of [State] *)
   (* The injection from anonymous bindings to positive accessors: *)
   anon_accessor : anon -> positive;
   (* The reciprocal injection. *)
   accessor_anon : positive -> option anon;
   anon_accessor_inj a : accessor_anon (anon_accessor a) = Some a;
   (* It is always possible to add an anonymous value. This insert a new value in the state map,
-   * and it does not affect the "extra" part of the state. *)
+     and it does not affect the "extra" part of the state. *)
   add_anon : anon -> V -> state -> state;
   get_map_add_anon a v S : get_map (add_anon a v S) = insert (anon_accessor a) v (get_map S);
   get_extra_add_anon a v S : get_extra (add_anon a v S) = get_extra S;
 }.
-(* Reading at an accessor is performed by only reading in the state map. *)
+(** Reading at an accessor is performed by only reading in the state map. *)
 Notation get_at_accessor S a := (lookup a (get_map S)).
 Notation "S ,, a  |->  v" := (add_anon a v S) (left associativity, at level 63, v at level 61).
 
-(* Reads a value at path p. If the path p is invalid, returns bot. *)
+(** Read a value at path p. If the path p is invalid, return bot. *)
 Definition sget {state V} `{State state V} (p : spath) (S : state) : V :=
   match get_at_accessor S (fst p) with
   | Some v => v.[[snd p]]
@@ -522,7 +529,7 @@ Definition sget {state V} `{State state V} (p : spath) (S : state) : V :=
 Notation "S .[ p ]" := (sget p S) (left associativity, at level 50) : GetSetPath_scope.
 Local Hint Unfold sget : core.
 
-(* Set the value at path p to be v in S. If p is invalid, returns S. *)
+(** Set the value at path p to be v in S. If p is invalid, return S. *)
 Definition sset {state V} `{State state V} (p : spath) (v : V) (S : state) : state :=
   alter_at_accessor (vset (snd p) v) (fst p) S.
 Notation "S .[ p <- v ]" := (sset p v S) (left associativity, at level 50).
@@ -532,11 +539,13 @@ Section GetSetPath.
   Context {V state : Type}.
   Context `{IsState : State state V}.
 
+  (** * Definitions and lemmas for values and vpaths. *)
   Lemma vget_app v p q : v.[[p ++ q]] = v.[[p]].[[q]].
   Proof. unfold vget. apply fold_left_app. Qed.
 
-  (* A vpath p is valid with regards to a value v if we can follow its indices down the value v
-   * interpreted as a tree. *)
+  (** ** Validity of vpaths. *)
+  (** A vpath p is valid with regards to a value v if we can follow its indices down the value v
+      interpreted as a tree. *)
   Inductive valid_vpath : V -> vpath -> Prop :=
     | valid_nil v : valid_vpath v nil
     | valid_cons v i p w :
@@ -558,8 +567,8 @@ Section GetSetPath.
         * cbn in valid_q. simplify_option.
   Qed.
 
-  (* We characterize invalid path by their longest valid prefix q. This means that the next
-     index i is out-of-bounds.*)
+  (** We characterize invalid path by their longest valid prefix q. This means that the next
+      index i is out-of-bounds.*)
   Definition invalid_vpath v p :=
     exists q i r, p = q ++ i :: r /\ valid_vpath v q /\ nth_error (children (v.[[q]])) i = None.
 
@@ -589,18 +598,20 @@ Section GetSetPath.
     - cbn. rewrite children_bot, nth_error_nil. assumption.
   Qed.
 
-  (* The vget function is defined in such a way that for any invalid path p, v.[[p]] = bot.
-   * This relies on two design choices:
-   * - For a value v, if the index i is the index of a child, then v.[[i :: r]] = bot.[[r]].
-   * - `bot` has 0 children (`children_bot` axiom), so bot.[[r]] = r.
+  (* TODO: move comment at the definition of vget. *)
+  (** The vget function is defined in such a way that for any invalid path p, [v.[[p]] = bot]
+      This relies on two design choices:
+      - For a value v, if the index i is the index of a child, then
+        [v.[[i :: r]] = bot.[[r]]]
+      - [bot] has 0 children ([children_bot] axiom), so [bot.[[r]] = r]
    *)
   Lemma vget_invalid v p : invalid_vpath v p -> v.[[p]] = bot.
   Proof.
     intros (q & i & r & -> & _ & Hout). rewrite vget_app. cbn. rewrite Hout. apply vget_bot.
   Qed.
 
-  (* A useful criterion for validity: if v.[[p]] <> bot, then p is a valid path for v.
-     This is going to be the main way of proving validity. *)
+  (** A useful criterion for validity: if [v.[[p]] <> bot], then p is a valid path for v.
+      This is going to be the main way of proving validity. *)
   Corollary get_not_bot_valid_vpath v p : v.[[p]] <> bot -> valid_vpath v p.
   Proof.
     intros ?. destruct (valid_or_invalid p v).
@@ -618,6 +629,7 @@ Section GetSetPath.
     - assumption.
   Qed.
 
+  (** ** Equations on the vget and vset operations. *)
   Lemma get_node_vset_cons v p w :
     p <> [] -> get_node (v.[[p <- w]]) = get_node v.
   Proof.
@@ -647,7 +659,7 @@ Section GetSetPath.
     -> ~vstrict_prefix p q.
   Proof. intros ? ? not_prefix ?. eapply not_prefix, vstrict_prefix_one_child; eassumption. Qed.
 
-  (* All of the lemmas to reduce an expression of the form v.[[q <- w]].[[p]], depending on the
+  (* All of the lemmas to reduce an expression of the form [v.[[q <- w]].[[p]]], depending on the
    * following cases:
    * - p = q
    * - p is a prefix of q
@@ -679,6 +691,7 @@ Section GetSetPath.
     valid_vpath v p -> v.[[p <- w]].[[p ++ q]] = w.[[q]].
   Proof. intros ?. rewrite vget_app, vset_vget_equal; try apply vset_same_valid; auto. Qed.
 
+  (* The validity condition is unnecessary, we are going to remove it. *)
   Lemma _vset_app_split v p q w (valid_v_p : valid_vpath v p) :
     v.[[p ++ q <- w]] = v.[[p <- v.[[p]].[[q <- w]]]].
   Proof.
@@ -696,13 +709,9 @@ Section GetSetPath.
       + rewrite children_vset_cons. eapply alter_list_invariant; simplify_option.
   Qed.
 
-  (* vset is defined in such a way that v.[[p <- w]] is v when p is invalid.
-   * To understand why, take v.[[i :: r <- w]] when i >= length (children v):
-   * - The node of v.[[i :: r <- w]] is the same node as v.
-   * - The vset function is recursively applied in the i-th child of v. But because the list
-   *   of children does not contained an i-th child, because of the definiton of alter_list, the
-   *   list of children of v.[[i :: r <- w]] is the same as for v.
-   * This trick allows us to omit validity hypotheses in some lemmas.
+  (* TODO: move commment at the definition of [vset] *)
+  (** [vset] is defined in such a way that [v.[[p <- w]] = v] when p is invalid.
+      This trick allows us to omit validity hypotheses in some lemmas.
    *)
   Lemma vset_invalid v p w : invalid_vpath v p -> v.[[p <- w]] = v.
   Proof.
@@ -762,8 +771,8 @@ Section GetSetPath.
     - rewrite vset_invalid; [reflexivity | assumption].
   Qed.
 
-  (* Now the we proved that v.[[p <- w]] = v when p in invalid, we can remove the validity
-   * hypothesis from the theorem _vset_app_split. *)
+  (* Now that we proved that [v.[[p <- w]] = v] when p in invalid, we can remove the validity
+     hypothesis from the theorem [_vset_app_split] *)
   Lemma vset_app_split v p q w : v.[[p ++ q <- w]] = v.[[p <- v.[[p]].[[q <- w]]]].
   Proof.
     destruct (valid_or_invalid p v) as [ | ].
@@ -797,15 +806,8 @@ Section GetSetPath.
     rewrite vset_twice_disj_commute_aux; auto.
   Qed.
 
-  Lemma get_arity_0 v i p : length (children v) = 1 -> v.[[i :: p]] <> bot -> i = 0.
-  Proof.
-    intros length_one not_bot. apply get_not_bot_valid_vpath in not_bot. inversion not_bot.
-    apply length_1_is_singleton in length_one. destruct length_one as (? & G).
-    rewrite G in *. destruct i.
-    - reflexivity.
-    - rewrite nth_error_cons, nth_error_nil in *. simplify_option.
-  Qed.
-
+  (** ** Lemmas about weighted sums on values. *)
+  (** The size of value can be used for general induction proofs on values. *)
   Definition vsize := vweight (fun _ => 1).
   Lemma vsize_decreasing (v w : V) i : nth_error (children v) i = Some w -> vsize w < vsize v.
   Proof.
@@ -839,13 +841,13 @@ Section GetSetPath.
 
   Notation vweight_ := (vweight weight).
 
-  (* The theorems of weight of sets are the following:
-     weight v.[[p <- w]] = weight v - weight v.[[p]] + weight.[[w]]
-     weight S.[p <- v] = weight S - weight S.[p] + weight v
-     As you can notice, these involve a substraction. Proving (in)equalities with natural
-     substraction is awkard, because is requires proving at each time that the weight of v (resp. S)
-     is greater than the weight of v.[[p]] (resp. S.[p]).
-     This is why we are going to go on relatives to avoid these complications. *)
+  (** These are the two equations that relate vweight/sweight and vset/sset:
+     - [weight (v.[[p <- w]]) = weight v - weight (v.[[p]]) + weight w]
+     - [weight (S.[p <- v]) = weight S - weight (S.[p]) + weight v]
+     Both involve a substraction. Proving (in)equalities with natural substraction is
+     inconvenient, because is requires proving at each time that the weight of v
+     (resp. [S]) is greater than the weight of [v.[[p]]] (resp. [S.[p]]).
+     This is why we use relatives to avoid these complications. *)
   Lemma vweight_vset v p w
     (valid_p : valid_vpath v p) :
     Z.of_nat (vweight_ (v.[[p <- w]])) = (vweight_ v - vweight_ (v.[[p]]) + vweight_ w)%Z.
@@ -890,7 +892,7 @@ Section GetSetPath.
     destruct arity_1 as (? & ->). cbn. lia.
   Qed.
 
-  (* Proving the same with sget and sset: *)
+  (** * Definitions and lemmas for states and spaths. *)
   Lemma sget_app (S : state) p q : S.[p +++ q] = S.[p].[[q]].
   Proof.
     unfold sget, app_spath_vpath. cbn. destruct (get_at_accessor S (fst p)).
@@ -898,7 +900,7 @@ Section GetSetPath.
     - rewrite vget_bot. reflexivity.
   Qed.
 
-  (* Lemmas about validity of spaths. *)
+  (** ** Validity of spaths. *)
   Definition valid_spath (S : state) (p : spath) :=
     exists v, get_at_accessor S (fst p) = Some v /\ valid_vpath v (snd p).
   Hint Unfold valid_spath : core.
@@ -985,6 +987,7 @@ Section GetSetPath.
     - apply get_extra_alter.
   Qed.
 
+  (** ** Equations on the sget and sset operations. *)
   Lemma sset_sget_prefix (S : state) v p q :
     valid_spath S p -> S.[p +++ q <- v].[p] = S.[p].[[q <- v]].
   Proof.
@@ -1085,9 +1088,9 @@ Section GetSetPath.
     - rewrite !get_extra_alter. reflexivity.
   Qed.
 
-  (* Interaction between validity and vset/sset.
-     Goal: if q is not a prefix of p, then p in valid in S iff p is valid in S.[q <- w].
-     In other words, setting q does not affect the validity of p. *)
+  (** * Preservation of validity by vset/sset. *)
+  (** Goal: if [q] is not a prefix of [p], then [p] is valid in S iff [p] is valid in [S.[q <- w]]
+      In other words, setting [q] does not affect the validity of [p]. *)
   Lemma vset_prefix_right_valid v p q w : valid_vpath v p -> valid_vpath (v.[[p ++ q <- w]]) p.
   Proof.
     intro. destruct (valid_or_invalid (p ++ q) v) as [G | ].
@@ -1187,6 +1190,7 @@ Section GetSetPath.
     - rewrite sset_sget_equal; assumption.
   Qed.
 
+  (** * Management of anonymous bindings. *)
   Definition fresh_anon S a := get_at_accessor S (anon_accessor a) = None.
   Hint Unfold fresh_anon : core.
 
@@ -1300,6 +1304,8 @@ Section GetSetPath.
     fresh_anon S a -> valid_spath S (anon_accessor b, p) -> b <> a.
   Proof. intros ? (? & G & _). cbn in G. congruence. Qed.
 
+  (* TODO: move? *)
+  (** Other lemmas on validity. *)
   Lemma valid_vpath_zeroary v p :
     arity (get_node v) = 0 -> valid_vpath v p -> p = [].
   Proof.
@@ -1336,7 +1342,8 @@ Section GetSetPath.
     - rewrite sset_invalid, sget_invalid in G by assumption. auto.
   Qed.
 
-  (* Setting up the definitions for judgements like "loan \notin v" or
+  (** * Definitions and lemmas around [not_value_contains] and [not_state_contains] *)
+  (** The goal is to set up the definitions for judgements like "loan \notin v" or
      "l is fresh". *)
   Definition not_value_contains (P : nodes -> Prop) (v : V) :=
     forall p, valid_vpath v p -> ~P (get_node (v.[[p]])).
@@ -1393,6 +1400,9 @@ Section GetSetPath.
     apply not_value_contains_vset; eassumption.
   Qed.
 
+  (** * Lemmas about weighted sums on states. *)
+  (** Other results on values. *)
+  (* TODO: move. *)
   Lemma weight_non_zero v :
     vweight_ v > 0 -> exists p, valid_vpath v p /\ weight (get_node (v.[[p]])) > 0.
   Proof.
@@ -1754,6 +1764,7 @@ Section GetSetPath.
     - rewrite sset_invalid; auto.
   Qed.
 
+  (** ** Weighted sums on states. *)
   Definition sweight (S : state) := map_sum vweight_ (get_map S).
   Hint Unfold sweight : core.
 
@@ -1794,9 +1805,9 @@ Section GetSetPath.
     intros (? & ? & ?)%sweight_non_zero. eapply not_contains; eauto.
   Qed.
 
-  (* Proving now that this is always possible to choose an anonymous variable that is not in the
-     state. *)
-  Definition maybe_add_anon k (anons_set : gset anon) := 
+  (** It is always possible to choose an anonymous variable that is not in the state. *)
+  (* TODO: move *)
+  Definition maybe_add_anon k (anons_set : gset anon) :=
     match accessor_anon k with
     | Some a => union anons_set (singleton a)
     | None => anons_set
@@ -1841,9 +1852,9 @@ Section GetSetPath.
       rewrite !sget_anon in eq_add_anon by reflexivity. exact eq_add_anon.
   Qed.
 
-  (* no_ancestor P S p : none of nodes preceding p in the tree satisfy the predicate P.
-   * This is used to define properties like "p is not in a mutable borrow" or "p is not in a shared
-   * loan". *)
+  (** [no_ancestor P S p] : none of nodes preceding p in the tree satisfy the predicate P.
+     This is used to define properties like "p is not in a mutable borrow" or "p is not in a shared
+     loan". *)
   Definition no_ancestor (P : nodes -> Prop) S p :=
     forall q, P (get_node (S.[q])) -> ~strict_prefix q p.
 
@@ -1904,6 +1915,9 @@ Section GetSetPath.
   Qed.
 End GetSetPath.
 
+(** * Reformulation of properties on states using weighted sums. *)
+(** These are properties like "The state S contains one/at most one/no node that satisfy a given
+   predicate." *)
 Section StateUniqueConstructor.
   Context `{IsState : State state V}.
 
@@ -1977,7 +1991,7 @@ Section StateUniqueConstructor.
         eapply map_sum_le_one with (m := get_map S); [eassumption.. | lia | lia].
   Qed.
 
-  (** ** Decision procedures. *)
+  (** Decision procedures. *)
   Lemma decidable_not_value_contains_zeroary P (G : forall n, Decision (P n)) v :
     arity (get_node v) = 0 -> Decision (not_value_contains P v).
   Proof.
@@ -2006,7 +2020,7 @@ Section StateUniqueConstructor.
 Defined.
 End StateUniqueConstructor.
 
-(* Automatically solving comparisons using environment information. *)
+(** * Automation. *)
 Hint Extern 5 (length (children ?v) = _) =>
   match goal with
   | H : get_node (?S.[?p]) = _ |- _ =>
@@ -2026,23 +2040,24 @@ Hint Extern 0 (~strict_prefix _ _) =>
 Hint Resolve sset_sget_diff : spath.
 Hint Resolve disj_spath_add_anon : spath.
 Hint Resolve disj_spath_add_anon' : spath.
-(* If the goal contains a hypothesis `get_node (S.[p]) = cp` and a hypothesis `get_node (S.[q]) = cq`
- * with cp <> cq, then we can automatically prove p <> q by congruence. *)
+(* If the goal contains a hypothesis  [get_node (S.[p]) = cp] and a hypothesis
+   [get_node (S.[q]) = cq]
+ * with [cp <> cq], then we can automatically prove [p <> q] by congruence. *)
 Hint Extern 0 (~ (@eq spath _ _)) => congruence : spath.
 
-(* Solving goals for anons freshness: *)
+(** Resolution of goals for anons freshness: *)
 Hint Resolve-> fresh_anon_sset : spath weight.
 Hint Rewrite<- @fresh_anon_sset : spath.
 
-(* Resolving goals of the form "fst p <> anon_accessor a".
- * They are used to solve the conditions of the rewrite lemmas sget_add_anon and sset_add_anon. *)
+(* Resolution of goals of the form [fst p <> anon_accessor a]
+   They are used to solve the conditions of the rewrite lemmas sget_add_anon and sset_add_anon. *)
 Hint Resolve valid_spath_diff_fresh_anon : spath.
 Hint Resolve valid_spath_diff_fresh_anon' : spath.
 Lemma diff_first_app_spath_vpath p q x : fst p <> x -> fst (p +++ q) <> x.
 Proof. easy. Qed.
 Hint Resolve diff_first_app_spath_vpath : spath.
 
-(* Hints for no_ancestor: *)
+(** Hints for no_ancestor: *)
 Hint Resolve <-no_ancestor_add_anon : spath.
 Hint Rewrite @no_ancestor_add_anon using assumption : spath.
 Hint Resolve <-no_ancestor_sset : spath.
@@ -2050,6 +2065,68 @@ Hint Rewrite @no_ancestor_sset using eauto with spath; fail: spath.
 Hint Rewrite @no_ancestor_anon using assumption : spath.
 Hint Resolve no_ancestor_app : spath.
 
+(** ** Automation for comparisons (prefix, strict_prefix, disj, =, and the negations). *)
+(** The issue with proving comparisons is that the lemma required can be cyclic. We sometimes need
+    to prove a strict prefix to obtain a prefix, and sometimes it's the opposite. If we just dump
+    all of comparison lemmas in the database, the tactic auto can become cyclic and a lot of times
+    can be lost. That's why these lemmas must be used immediatly. *)
+Hint Immediate symmetric_disj : spath.
+Hint Immediate vdisj_symmetric : spath.
+Hint Immediate strict_prefix_irrefl : spath.
+Hint Immediate not_prefix_implies_not_strict_prefix : spath.
+Hint Immediate not_disj_strict_prefix : spath.
+Hint Immediate not_disj_strict_prefix' : spath.
+Hint Immediate vstrict_prefix_is_vprefix : spath.
+
+(* Hint Immediate<- disj_common_prefix : spath. *)
+Lemma _disj_common_prefix p q r : vdisj q r -> disj (p +++ q) (p +++ r).
+Proof. rewrite disj_common_prefix. auto. Qed.
+Hint Immediate _disj_common_prefix : spath.
+
+(* Hint Immediate<- disj_common_index : spath. *)
+Lemma _disj_common_index i p q : vdisj p q -> disj (i, p) (i, q).
+Proof. rewrite disj_common_index. auto. Qed.
+Hint Immediate _disj_common_index : spath.
+
+(** In case the where the immediate hints are not sufficient, this tactic helps reduce the goal.
+    It selects one of the available lemma. Importantly, it does not backtrack. *)
+Ltac reduce_comp :=
+  eauto with spath;
+  lazymatch goal with
+  (* Note: shouldn't I use automatic rewriting instead? *)
+  | H : vdisj (?p ++ ?q) (?p ++ ?r) |- _ => rewrite vdisj_common_prefix in H
+  | H : disj (?p +++ ?q) (?p +++ ?r) |- _ => rewrite disj_common_prefix in H
+
+  | |- prefix (?p +++ [0]) ?q =>
+      eapply strict_prefix_one_child;
+        [ eauto with spath |
+          apply prefix_and_neq_implies_strict_prefix; [eauto with spath; fail | ] |
+        ]
+
+  | |- strict_prefix ?p ?q =>
+      apply prefix_and_neq_implies_strict_prefix; eauto with spath; fail
+
+  (* Note: shouldn't I use automatic rewriting instead? *)
+  | |- disj ?p (?q +++ ?r) => apply disj_if_left_disj_prefix; eauto with spath; fail
+  | |- disj (?p +++ ?r) ?q => apply disj_if_right_disj_prefix; eauto with spath; fail
+  | |- disj ?p ?q => apply prove_disj'
+
+  | |- ?p <> ?q => apply neq_implies_not_prefix; eauto with spath; fail
+
+  | |- ~prefix ?p ?q => apply prove_not_prefix
+
+  | |- ~strict_prefix ?p (?q +++ [?i]) =>
+      rewrite strict_prefix_app_last
+  | |- ~strict_prefix ?p ?q =>
+      first [
+        eapply not_prefix_one_child; [eauto with spath | | eauto with spath; fail] |
+        rewrite not_strict_prefix_app_last; eauto with spath; fail
+      ]
+  end
+.
+Ltac solve_comp := repeat reduce_comp.
+
+(** ** Automatic resolution of validity. *)
 Lemma valid_vpath_app_last_get_node_not_zeroary {V} `{IsValue : Value V nodes} v p :
   arity (get_node (v.[[p]])) > 0 -> valid_vpath v (p ++ [0]).
 Proof.
@@ -2128,72 +2205,29 @@ Hint Extern 5 (valid_spath _ _) =>
   repeat rewrite <-app_spath_vpath_assoc;
   validity0 : spath.
 
-(** ** Automation for comparisons (prefix, strict_prefix, disj, =, and the negations). *)
-(* The issue with proving comparisons is that the lemma required can be cyclic. We sometimes need
- * to prove a strict prefix to obtain a prefix, and sometimes it's the opposite. If we just dump
- * all of comparison lemmas in the database, the tactic auto can become cyclic and a lot of times
- * can be lost. That's why these lemmas must be used immediatly. *)
-Hint Immediate symmetric_disj : spath.
-Hint Immediate vdisj_symmetric : spath.
-Hint Immediate strict_prefix_irrefl : spath.
-Hint Immediate not_prefix_implies_not_strict_prefix : spath.
-Hint Immediate not_disj_strict_prefix : spath.
-Hint Immediate not_disj_strict_prefix' : spath.
-Hint Immediate vstrict_prefix_is_vprefix : spath.
-
-(* Why is it impossible to add an arrow for Hint Resolve? *)
-Lemma _disj_common_prefix p q r : vdisj q r -> disj (p +++ q) (p +++ r).
-Proof. rewrite disj_common_prefix. auto. Qed.
-Hint Immediate _disj_common_prefix : spath.
-
-Lemma _disj_common_index i p q : vdisj p q -> disj (i, p) (i, q).
-Proof. rewrite disj_common_index. auto. Qed.
-Hint Immediate _disj_common_index : spath.
-
-(* In case the where the immediate hints don't suffice, this tactic helps reduce the goal. It
- * selects one of the available lemma. Importantly, it does not backtrack. *)
-Ltac reduce_comp :=
-  eauto with spath;
-  lazymatch goal with
-  (* Note: shouldn't I use automatic rewriting instead? *)
-  | H : vdisj (?p ++ ?q) (?p ++ ?r) |- _ => rewrite vdisj_common_prefix in H
-  | H : disj (?p +++ ?q) (?p +++ ?r) |- _ => rewrite disj_common_prefix in H
-
-  | |- prefix (?p +++ [0]) ?q =>
-      eapply strict_prefix_one_child;
-        [ eauto with spath |
-          apply prefix_and_neq_implies_strict_prefix; [eauto with spath; fail | ] |
-        ]
-
-  | |- strict_prefix ?p ?q =>
-      apply prefix_and_neq_implies_strict_prefix; eauto with spath; fail
-
-  (* Note: shouldn't I use automatic rewriting instead? *)
-  | |- disj ?p (?q +++ ?r) => apply disj_if_left_disj_prefix; eauto with spath; fail
-  | |- disj (?p +++ ?r) ?q => apply disj_if_right_disj_prefix; eauto with spath; fail
-  | |- disj ?p ?q => apply prove_disj'
-
-  | |- ?p <> ?q => apply neq_implies_not_prefix; eauto with spath; fail
-
-  | |- ~prefix ?p ?q => apply prove_not_prefix
-
-  | |- ~strict_prefix ?p (?q +++ [?i]) =>
-      rewrite strict_prefix_app_last
-  | |- ~strict_prefix ?p ?q =>
-      first [
-        eapply not_prefix_one_child; [eauto with spath | | eauto with spath; fail] |
-        rewrite not_strict_prefix_app_last; eauto with spath; fail
-      ]
-  end
-.
-Ltac solve_comp := repeat reduce_comp.
 Ltac validity :=
   repeat rewrite <-app_spath_vpath_assoc;
   validity0;
   solve_comp.
 
-(* When we want to prove an equality of the form Sl = Sr.[p <- v] or Sl = Sr.[p +++ q <- v],
-   we perform commutations so that all of the writes [p <- v] or [p +++ r <- v] are at the end.
+(* Adding a hint to resolve a relation ~prefix p q using the facts that:
+ * - S.[p] does not contain a node c.
+ * - S.[q] starts by the node c.
+ * To solve the second goal, we need to help auto. When we are using this lemma, there should be a
+ * hypothesis S.[q] = v. We are giving the instruction to rewrite S.[q] into v, and then to reduce
+ * the expression (get_at_accessorue v) produced, so that it can be solved automatically.
+ *)
+Hint Extern 3 (~prefix ?p ?q) =>
+  match goal with
+  | H : get_node (?S.[?q]) = _ |- _ =>
+    simple eapply not_value_contains_not_prefix; [ | rewrite H; cbn | validity]
+  end : spath.
+Hint Resolve not_value_contains_not_prefix' : spath.
+
+(** ** Automatic proof of equality between states. *)
+(** When we want to prove an equality of the form [Sl = Sr.[p <- v]] or
+    [Sl = Sr.[p +++ q <- v]], we perform commutations so that all of the writes
+   [[p <- v]] or [[p +++ r <- v]] are at the end.
    We also reorder anonymous bindings.
  *)
 Ltac perform_commutation :=
@@ -2215,9 +2249,9 @@ Ltac perform_commutation :=
   end
 .
 
-(* Automatically solve equality between two states that are sets of a state S, ie solves goals of
- * the form:
- * S.[p0 <- v0] ... .[pm <- vm] = S.[q0 <- w0] ... .[qn <- vn]
+(** Automatically solve equality between two states that are sets of a state S, ie solves goals of
+    the form:
+    [S.[p0 <- v0] ... .[pm <- vm] = S.[q0 <- w0] ... .[qn <- vn]]
  *)
 Ltac states_eq :=
   apply reflexive_eq;
@@ -2231,14 +2265,15 @@ Ltac states_eq :=
   repeat (repeat (perform_commutation; autorewrite with spath); f_equal)
 .
 
-(* Automatic rewriting. *)
+(** ** Automatic rewriting database. *)
 (* Informally, here are the normal forms for the main objects: *)
 (* Normal form for vpaths : p ++ (p ++ ...) *)
 (* Normal form for spaths : p +++ (p ++ ...) *)
 (* Normal form for values : v.[[p]].[[p <- v]].[[p <- v]] ... or S.[p].[[p <- v]].[[p <- v]] *)
-(* Normal form for states : (S.[p <- v].[p <- v] ...), Anon |-> v *)
+(* Normal form for states : (S.[p <- v].[p <- v] ...), a |-> v *)
 
 (* Simple simplifications: *)
+(* TODO: I should rely on [cbn [fst]] and [cbn [snd]] instead. *)
 Hint Rewrite app_nil_r : spath.
 Lemma snd_pair [A B] (a : A) (b : B) : snd (a, b) = b. Proof. reflexivity. Qed.
 Hint Rewrite snd_pair : spath.
@@ -2271,8 +2306,8 @@ Hint Rewrite @sset_twice_equal : spath.
 Hint Rewrite @sset_twice_prefix_left : spath.
 Hint Rewrite @sset_twice_prefix_right : spath.
 
-(* When the term to rewrite contains a subterm of the form (S,, Anon |-> v).[p] or
-   (S,, Anon |-> v).[p <- w], it is not in normal form.
+(* When the term to rewrite contains a subterm of the form (S,, a |-> v).[p] or
+   (S,, a |-> v).[p <- w], it is not in normal form.
    Depending on whether p is a path in S, or a path in the last binding Anon |-> v, we use
    one of the following rewrite rules. *)
 Hint Rewrite @sset_add_anon using eauto with spath; fail : spath.
@@ -2281,20 +2316,6 @@ Hint Rewrite @sget_add_anon using eauto with spath; fail : spath.
 Hint Rewrite @sget_anon using try assumption; reflexivity : spath.
 Hint Rewrite<- @sget_app : spath.
 Hint Rewrite<- @vget_app : spath.
-
-(* Adding a hint to resolve a relation ~prefix p q using the facts that:
- * - S.[p] does not contain a node c.
- * - S.[q] starts by the node c.
- * To solve the second goal, we need to help auto. When we are using this lemma, there should be a
- * hypothesis S.[q] = v. We are giving the instruction to rewrite S.[q] into v, and then to reduce
- * the expression (get_at_accessorue v) produced, so that it can be solved automatically.
- *)
-Hint Extern 3 (~prefix ?p ?q) =>
-  match goal with
-  | H : get_node (?S.[?q]) = _ |- _ =>
-    simple eapply not_value_contains_not_prefix; [ | rewrite H; cbn | validity]
-  end : spath.
-Hint Resolve not_value_contains_not_prefix' : spath.
 
 (* Populating the "weight" rewrite database: *)
 (* These hints turn operations on naturals onto operations on relatives, so to rewrite
@@ -2316,7 +2337,7 @@ Hint Rewrite @indicator_same : weight.
 Hint Rewrite @indicator_diff using congruence : weight.
 Hint Rewrite @indicator_eq using auto; fail : weight.
 
-(* Rewriting weight_arity_0 and weight_arity_1 using goals of the form "get_node S.[p] = c".
+(** Rewriting weight_arity_0 and weight_arity_1 using goals of the form  [get_node S.[p] = c]
    I couldn't do it with autorewrite, so I'm using this strang tactic instead. *)
 Ltac weight_given_node :=
   lazymatch goal with

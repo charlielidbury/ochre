@@ -1,3 +1,4 @@
+(* TODO: documentation. *)
 From Stdlib Require Import List.
 From Stdlib Require Import PeanoNat Lia ZArith.
 Require Import OptionMonad.

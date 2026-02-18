@@ -1,3 +1,4 @@
+(** * Mechanized_LLBC.LLBC : definition of LLBC states. *)
 Require Import base.
 Require Import lang.
 Require Import SimulationUtils.
@@ -11,6 +12,7 @@ Close Scope stdpp_scope.
 Require Import PathToSubtree.
 From Stdlib Require Bool.
 
+(** * Definition of LLBC values and states. *)
 Inductive LLBC_val :=
 | LLBC_bot
 | LLBC_int (n : nat) (* TODO: use Aeneas integer types? *)
@@ -167,6 +169,7 @@ Notation "'borrowC^m' ( l )" := (LLBC_mut_borrowC l) : llbc_scope.
 (* Bind Scope llbc_scope with LLBC_val. *)
 Open Scope llbc_scope.
 
+(** * Semantics of LLBC *)
 Inductive eval_proj (S : LLBC_state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | Eval_Deref_MutBorrow q l
@@ -322,9 +325,10 @@ Inductive eval_stmt : statement -> statement_result -> LLBC_state -> LLBC_state 
       S0 |-{stmt} stmt => r, S2
 where "S |-{stmt} stmt => r , S'" := (eval_stmt stmt r S S').
 
+(** * Execution of a LLBC program. *)
 Local Open Scope option_monad_scope.
-(* Can we prove that the following proram terminates? *)
-(*
+(** The program we execute is:
+<<
 fn main() {
     let mut a = 1983;
     let mut b = 1986;
@@ -333,6 +337,7 @@ fn main() {
     c = &mut b;
     *d = 58;
 }
+>>
  *)
 Notation a := 1%positive.
 Notation b := 2%positive.
@@ -347,10 +352,11 @@ Definition main : statement :=
   ASSIGN (d, [Deref]) <- Just (Const (IntConst 58)) ;;
   Nop
 .
-(* Important note: the line `c = &mut b` overwrites a loan, but as it is an outer loan, it doesn't
- * cause any problem. This is a check that the overwriting of outer loans is supported. *)
-(* Also, the last `Nop` statement was added so that we could perform reorganization operations
- * before the end, and but back the value 58 in the variable a. *)
+(** Note: the line << c = &mut b >> overwrites a loan, but as it is an outer loan, it does
+   not cause any problem. This is a check that the overwriting of outer loans is supported.
+
+   Also, the last [Nop] statement was added so that we could perform reorganization operations
+   before the end, and but back the value 58 in the variable [a]. *)
 
 Open Scope stdpp.
 Notation init_state := {|
@@ -372,8 +378,8 @@ Proof.
   - rewrite H, nth_error_nil in G. inversion G.
 Qed.
 
-(* For the moment, the type of values is so restricted that a value contains an outer loan if and
- * only if it is a mutable loan. *)
+(** For the moment, the type of values is so restricted that a value contains an outer loan if and
+    only if it is a mutable loan. *)
 Lemma decide_not_contains_outer_loan_correct v :
   is_true (decide_not_contains_outer_loan v) -> not_contains_outer_loan v.
 Proof.

@@ -1,3 +1,4 @@
+(* TODO: documentation. *)
 Require Import RelationClasses.
 Require Import PathToSubtree.
 From Stdlib Require Import Arith.
@@ -84,7 +85,7 @@ Proof.
       * lia.
 Qed.
 
-(* Chaining two relations. *)
+(** Chaining two relations. *)
 Definition chain {A B C} (RAB : A -> B -> Prop) (RBC : B -> C -> Prop) a c :=
   exists b, RAB a b /\ RBC b c.
 
@@ -92,22 +93,23 @@ Global Instance reflexive_chain {A} (R S : relation A) `{Reflexive A R} `{Reflex
   Reflexive (chain R S).
 Proof. intros x. exists x. split; reflexivity. Qed.
 
-(* The general definition of forward simulation. That means that for all a >= b (with
-   a : A and b : B) and a -> c (with c : C), then there exists d : D that completes
-   the following square diagram:
-   b <= a
-   |    |
-   v    v
-   d <= c
-   If A = B and C = D, we call it "preservation".
+(** The general definition of forward simulation. That means that for all [a >= b] (with
+    [a : A] and [b : B]) and [a -> c] (with [c : C]), then there exists [d : D] that completes
+    the following square diagram:
+    b <= a
+    |    |
+    v    v
+    d <= c
+    If [A = B] and [C = D], we call it "preservation".
 
-   Genarally,
-   - The Leq relations is between states (S <= S'), or pairs of value and state ((v, S) <= (v', S')).
-   - The Red relations are among the following ones:
-     - Evaluation of operands.
-     - Evalutaion of rvalues.
-     - Reorganization.
-     - Evaluation of statements.
+    Genarally,
+    - The Leq relations is between states ([S <= S']), or pairs of value and state ([(v, S) <= (v', S')]).
+    - The Red relations are among the following ones:
+      - Evaluation of operands.
+      - Evalutaion of rvalues.
+      - Store operation.
+      - Reorganization.
+      - Evaluation of statements.
  *)
 Definition forward_simulation {A B C D : Type}
   (LeqBA : B -> A -> Prop) (LeqDC : D -> C -> Prop)
@@ -122,8 +124,8 @@ Proof. exists S'l. split; assumption. Qed.
 
 Ltac execution_step := eapply prove_execution_step.
 
-(* Generally, to prove preservation when the relation is a reflexive transitive closure, it
- * suffices to prove it for the base cases. *)
+(** Generally, to prove preservation when the relation is a reflexive transitive closure, it
+    suffices to prove it for the base cases. *)
 Lemma preservation_by_base_case {A B : Type}
   {LeqA : relation A} {LeqB : relation B} `{Reflexive _ LeqB} `{Transitive _ LeqB}
   {Red : A -> B -> Prop} :
@@ -216,7 +218,7 @@ Proof. intros. transitivity Sm; [ | constructor]; assumption. Qed.
 Lemma leq_step_left {S} {R : relation S} Sl Sm Sr : R Sl Sm -> R^* Sm Sr -> R^* Sl Sr.
 Proof. intros. transitivity Sm; [constructor | ]; assumption. Qed.
 
-(* Tactics to prove the commutation of reorganizations. *)
+(** Tactics to prove commutation of reorganizations. *)
 (* TODO: document it *)
 Lemma prove_reorg_step {S} {reorg leq : relation S} S0 S1 Sr:
   reorg S0 S1 -> (exists Sl, leq Sl Sr /\ reorg^* S1 Sl) ->

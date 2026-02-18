@@ -1,3 +1,4 @@
+(** * Mechanized_LLBC.HLPL_plus : Simulation proofs for HLPL+. *)
 Require Import lang.
 Require Import base.
 From Stdlib Require Import List.
@@ -14,6 +15,7 @@ Require Import OptionMonad.
 Local Open Scope option_monad_scope.
 Require Import SimulationUtils.
 
+(** * Definition of HLPL+ values and states. *)
 Inductive HLPL_plus_val :=
 | HLPL_plus_bot
 | HLPL_plus_int (n : nat) (* TODO: use Aeneas integer types? *)
@@ -199,7 +201,7 @@ Lemma sget_loc' l v : (loc(l, v)).[[ [0] ]] = v.
 Proof. reflexivity. Qed.
 Hint Rewrite sget_loc' : spath.
 
-
+(** * Semantics of HLPL+ *)
 (* This property represents the application of a projection p (such as a pointer dereference or a
  * field access) on spath pi0, on a state S and given a permission perm.
  * If this projection is successful, then we have eval_proj S perm p pi0 pi1.
@@ -290,63 +292,6 @@ Variant is_borrow : HLPL_plus_nodes -> Prop :=
 Definition not_contains_borrow := not_value_contains is_borrow.
 Hint Unfold not_contains_borrow : spath.
 Hint Extern 0 (~is_borrow _) => intro; easy : spath.
-
-(* Trying to prove that a value doesn't contain a node (ex: loan, loc, bot).
-   This tactic tries to solve this by applying the relevant lemmas, and never fails. *)
-(* Note: Can we remove the automatic rewriting out of this tactic? *)
-(* TODO: precise the "workflow" of this tactic. *)
-Ltac not_contains0 :=
-  try assumption;
-  match goal with
-  | |- True => auto
-  | |- not_state_contains ?P (?S.[?p <- ?v]) =>
-      simple apply not_state_contains_sset;
-      not_contains0
-  | |- not_value_contains ?P (?S.[?q <- ?v].[?p]) =>
-      simple apply not_value_contains_sset_disj;
-        [auto with spath; fail | not_contains0]
-  | |- not_value_contains ?P (?S.[?q <- ?v].[?p]) =>
-      simple apply not_value_contains_sset;
-       [ not_contains0 | not_contains0 | validity0]
-  | H : not_state_contains ?P ?S |- not_value_contains ?P (?S.[?p]) =>
-      simple apply (not_state_contains_implies_not_value_contains_sget _ S p H);
-      validity0
-  | |- not_value_contains ?P (?v.[[?p <- ?w]]) =>
-      simple apply not_value_contains_vset; not_contains0
-  | |- not_value_contains ?P (?S.[?p]) => idtac
-
-  | |- not_value_contains ?P ?v =>
-      simple apply not_value_contains_zeroary; [reflexivity | ]
-  | |- not_value_contains ?P ?v =>
-      simple eapply not_value_contains_unary; [reflexivity | | not_contains0]
-  | |- _ => idtac
-  end.
-Ltac not_contains := not_contains0; eauto with spath.
-
-Ltac not_contains_outer :=
-  (* The values we use this tactic on are of the form
-     (S,, Anon |-> v) (.[ sp <- v])* .[sp]
-     where the path sp we read is a path of S. We first do some rewritings to commute
-     the read with the writes and the addition of the anonymous value. *)
-  autorewrite with spath;
-  try assumption;
-  match goal with
-  | |- not_contains_outer _ ?P (?v.[[?p <- ?w]]) =>
-      let H := fresh "H" in
-      assert (H : not_value_contains P w) by auto with spath;
-      eapply not_contains_implies_not_contains_outer in H;
-      apply not_contains_outer_vset;
-        [not_contains_outer | exact H]
-  | no_outer_loan : not_contains_outer_loan (?S.[?q]),
-    loan_at_q : get_node (?S.[?q +++ ?p]) = loanC^m(?l)
-    |- not_contains_outer _ ?P (?S.[?q].[[?p <- ?w]]) =>
-    apply not_contains_outer_vset_in_borrow;
-     [ not_contains_outer |
-       apply no_outer_loan;
-         [ validity | rewrite<- (sget_app S q p), loan_at_q; constructor] ]
-  | |- not_contains_outer _ _ _ =>
-      idtac
-  end.
 
 Definition get_loan_id c :=
   match c with
@@ -481,6 +426,7 @@ Inductive leq_base : HLPL_plus_state -> HLPL_plus_state -> Prop :=
     (HS_borrow : get_node (S.[sp_borrow]) = borrowC^m(l)) :
     leq_base (S.[sp_loan <- loc(l, S.[sp_borrow +++ [0] ])].[sp_borrow <- ptr(l)]) S.
 
+(** ** Well-formedness property. *)
 Record well_formed (S : HLPL_plus_state) : Prop := {
   at_most_one_mut_borrow l : at_most_one_node (borrowC^m(l)) S;
   at_most_one_mut_loan l : at_most_one_node (loanC^m(l)) S;
@@ -491,6 +437,7 @@ Record well_formed (S : HLPL_plus_state) : Prop := {
 
 Notation scount c S := (sweight (indicator c) S).
 
+(** To automate well-formedness proofs, we use an equivalent linear property. *)
 Record well_formed_alt (S : HLPL_plus_state) l : Prop := {
   at_most_one_mut_borrow_alt : scount (borrowC^m(l)) S <= 1;
   no_mut_loan_loc_alt : scount (loanC^m(l)) S + scount (locC(l)) S <= 1;
@@ -539,27 +486,30 @@ Proof.
       autorewrite with weight in valid_q. lia.
 Qed.
 
+(** Rewriting lemmas for weight computation. *)
+(* Note: would it be possible to use [cbn [weight]] instead? *)
 Lemma vweight_loc weight l v :
   vweight weight (loc(l, v)) = weight (locC(l)) + vweight weight v.
 Proof. reflexivity. Qed.
-Hint Rewrite vweight_loc : weight.
 
 Lemma vweight_ptr weight l : vweight weight (ptr(l)) = weight (ptrC(l)).
 Proof. reflexivity. Qed.
-Hint Rewrite vweight_ptr : weight.
 
 Lemma vweight_int weight n :
   vweight weight (HLPL_plus_int n) = weight (HLPL_plus_intC n).
 Proof. reflexivity. Qed.
-Hint Rewrite vweight_int : weight.
 
 Lemma vweight_bool weight b :
   vweight weight (HLPL_plus_bool b) = weight (HLPL_plus_boolC b).
 Proof. reflexivity. Qed.
-Hint Rewrite vweight_bool : weight.
 
 Lemma vweight_bot weight : vweight weight bot = weight (botC).
 Proof. reflexivity. Qed.
+
+Hint Rewrite vweight_loc : weight.
+Hint Rewrite vweight_ptr : weight.
+Hint Rewrite vweight_int : weight.
+Hint Rewrite vweight_bool : weight.
 Hint Rewrite vweight_bot : weight.
 
 Lemma leq_base_preserves_wf_r Sl Sr : well_formed Sr -> leq_base Sl Sr -> well_formed Sl.
@@ -569,7 +519,66 @@ Proof.
   - destruct (decide (l0 = l)) as [<- | ]; split; weight_inequality.
 Qed.
 
-(* Simulation proofs. *)
+(** ** Automation. *)
+(** A tactic to prove that a value or state does not contain some node (ex: loan, loc, bot).
+    This tactic tries to solve this by applying the relevant lemmas, and never fails. *)
+(* Note: Can we remove the automatic rewriting out of this tactic? *)
+(* TODO: precise the "workflow" of this tactic. *)
+Ltac not_contains0 :=
+  try assumption;
+  match goal with
+  | |- True => auto
+  | |- not_state_contains ?P (?S.[?p <- ?v]) =>
+      simple apply not_state_contains_sset;
+      not_contains0
+  | |- not_value_contains ?P (?S.[?q <- ?v].[?p]) =>
+      simple apply not_value_contains_sset_disj;
+        [auto with spath; fail | not_contains0]
+  | |- not_value_contains ?P (?S.[?q <- ?v].[?p]) =>
+      simple apply not_value_contains_sset;
+       [ not_contains0 | not_contains0 | validity0]
+  | H : not_state_contains ?P ?S |- not_value_contains ?P (?S.[?p]) =>
+      simple apply (not_state_contains_implies_not_value_contains_sget _ S p H);
+      validity0
+  | |- not_value_contains ?P (?v.[[?p <- ?w]]) =>
+      simple apply not_value_contains_vset; not_contains0
+  | |- not_value_contains ?P (?S.[?p]) => idtac
+
+  | |- not_value_contains ?P ?v =>
+      simple apply not_value_contains_zeroary; [reflexivity | ]
+  | |- not_value_contains ?P ?v =>
+      simple eapply not_value_contains_unary; [reflexivity | | not_contains0]
+  | |- _ => idtac
+  end.
+Ltac not_contains := not_contains0; eauto with spath.
+
+Ltac not_contains_outer :=
+  (* The values we use this tactic on are of the form
+     (S,, Anon |-> v) (.[ sp <- v])* .[sp]
+     where the path sp we read is a path of S. We first do some rewritings to commute
+     the read with the writes and the addition of the anonymous value. *)
+  autorewrite with spath;
+  try assumption;
+  match goal with
+  | |- not_contains_outer _ ?P (?v.[[?p <- ?w]]) =>
+      let H := fresh "H" in
+      assert (H : not_value_contains P w) by auto with spath;
+      eapply not_contains_implies_not_contains_outer in H;
+      apply not_contains_outer_vset;
+        [not_contains_outer | exact H]
+  | no_outer_loan : not_contains_outer_loan (?S.[?q]),
+    loan_at_q : get_node (?S.[?q +++ ?p]) = loanC^m(?l)
+    |- not_contains_outer _ ?P (?S.[?q].[[?p <- ?w]]) =>
+    apply not_contains_outer_vset_in_borrow;
+     [ not_contains_outer |
+       apply no_outer_loan;
+         [ validity | rewrite<- (sget_app S q p), loan_at_q; constructor] ]
+  | |- not_contains_outer _ _ _ =>
+      idtac
+  end.
+
+(** * Simulation proofs. *)
+(** ** Simulation proofs for place evaluation. *)
 Lemma eval_path_app S perm P Q p q r :
   eval_path S perm P p q -> eval_path S perm Q q r -> eval_path S perm (P ++ Q) p r.
 Proof.
@@ -717,14 +726,14 @@ Proof.
   - intros ? ? eval_pi_r. destruct eval_pi_r; contradiction.
 Qed.
 
-(* This lemma is used to prove a goal of the form ?vSl < (vr, Sr) or (vl, Sl) < ?vSr without
- * exhibiting the existential variable ?vSl or ?vSr. *)
+(** This tactic is used to prove a goal of the form [?vSl < (vr, Sr)] without
+    exhibiting the existential variable [?vSl]. *)
 Ltac leq_step_right :=
   lazymatch goal with
-  (* When proving a goal `leq ?vSl (vr, Sr)`, using this tactic creates three subgoals:
-     1. leq_base ?vSm (Sr,, a |-> v)
-     2. ?vSm = ?Sm,, a |-> ?vm
-     3. leq ?vSl (?vm, ?Sm) *)
+  (** When proving a goal [leq ?vSl (vr, Sr)], this tactic creates three subgoals:
+      - [leq_base ?vSm (Sr,, a |-> v)]
+      - [?vSm = ?Sm,, a |-> ?vm]
+      - [leq ?vSl (?vm, ?Sm)] *)
   | |- ?leq_star ?vSl (?vr, ?Sr) =>
       let a := fresh "a" in
       let H := fresh "H" in
@@ -733,10 +742,10 @@ Ltac leq_step_right :=
   | |- ?leq_star ?Sl ?Sr => eapply leq_step_right
   end.
 
-(* Suppose that Sl <= Sr (with a base case), and that p evaluates to a spath pi in Sr
-   (Sr |-{p} p =>^{perm} pi).
-   This tactic chooses the right lemmas to apply in order to prove that p reduces to a spath pi' in Sl, and generates facts about pi'.
-   Finally, it proves that pi is valid in Sr, and clears the initial hypothesis.
+(** Suppose that [Sl < Sr], and that p evaluates to a spath [pi] in [Sr]
+   ([Sr |-{p} p =>^{perm} pi]).
+    This tactic chooses the right lemmas to apply in order to prove that [p] reduces to a spath pi' in Sl, and generates facts about pi'.
+   Finally, it proves that [pi] is valid in [Sr], and clears the initial hypothesis.
  *)
 Ltac eval_place_preservation :=
   lazymatch goal with
@@ -767,6 +776,7 @@ Ltac eval_place_preservation :=
       destruct eval_p_in_Sr as (pi_l & rel_pi_l_pi_r & eval_p_in_Sl)
   end.
 
+(** ** Simulation proofs for operand evaluation. *)
 Lemma copy_val_no_mut_loan v w : copy_val v w -> not_contains_loan v.
 Proof.
   induction 1.
@@ -917,6 +927,7 @@ Proof.
     split; weight_inequality.
 Qed.
 
+(** ** Simulation proofs for rvalue evaluation. *)
 Lemma leq_val_state_constant vl vr Sl Sr
   (vr_no_loan : not_contains_loan vr) (vr_no_borrow : not_contains_borrow vr) :
   (leq_val_state_base leq_base)^* (vl, Sl) (vr, Sr) ->
@@ -1113,6 +1124,9 @@ Proof.
     + destruct (decide (l = l0)) as [<- | ]; weight_inequality.
 Qed.
 
+(** ** Simulation proofs for the store operation. *)
+(** We only store values that come from rvalue evaluations, and these values do not contain loans or
+    locations. This can be used to prune cases. *)
 Hint Extern 0 (not_value_contains _ _) => not_contains0 : spath.
 Lemma eval_rvalue_no_loan_loc S rv vS' : S |-{rv} rv => vS' ->
   not_contains_loan (fst vS') /\ not_contains_loc (fst vS').
@@ -1149,10 +1163,10 @@ Proof.
     econstructor; autorewrite with spath; eassumption.
 Qed.
 
-(* Suppose that (v0, S0) <= (vn, Sn), and that vr does not contain any loan.
-   Let us take (v1, S1), ..., (v_{n-1}, S_{n-1}) the intermediate pairs such that
-   (v0, S0) <= (v1, S1) <= ... <= (vn, Sn).
-   Then, we are going to prove that for each (vi, Si), the value vi does not contain any loan. *)
+(** Suppose that [(v0, S0) <^* (vn, Sn)], and that [vr] does not contain any loan.
+    Let us take [(v1, S1)], ..., [(v_{n-1}, S_{n-1})] the intermediate pairs such that
+    [(v0, S0) < (v1, S1) < ... < (vn, Sn)].
+    Then, we prove that for each [(vi, Si)], the value [vi] does not contain any loan. *)
 (* TODO: the name is really similar to leq_val_state_base. *)
 Definition leq_val_state_base' (vSl vSr : HLPL_plus_val * HLPL_plus_state) : Prop :=
   leq_val_state_base leq_base vSl vSr /\ not_contains_loan (fst vSr) /\ not_contains_loc (fst vSr).
@@ -1354,6 +1368,7 @@ Proof.
   split; weight_inequality.
 Qed.
 
+(** ** Simulation proofs for reorganizations. *)
 Lemma reorg_preserves_well_formedness S S' :
   reorg S S' -> well_formed S -> well_formed S'.
 Proof.
@@ -1376,6 +1391,10 @@ Corollary reorgs_preserve_well_formedness S S' :
   reorg^* S S' -> well_formed S -> well_formed S'.
 Proof. intro Hreorg. induction Hreorg; eauto using reorg_preserves_well_formedness. Qed.
 
+(** The decreasing measure on HLPL+ states. Here is why it is decreasing:
+    - Each borrow, loan, pointer or location has a positive measure. Because a reorganization ends at least one node of this kind, the measure decreases.
+   - The measure of a pair of mutable loan and a borrow is 3. The measure of a pair of pointer and location is 2. Thus, the rule [Leq_MutBorrow_To_Ptr] makes the measure decrease by 1.
+ *)
 Definition measure_node c :=
   match c with
   | loanC^m(_) => 2
@@ -1569,6 +1588,7 @@ Proof.
               states_eq.
 Qed.
 
+(** ** Simulation proofs for statement evaluation. *)
 Lemma stmt_preserves_well_formedness S s r S' :
   S |-{stmt} s => r, S' -> well_formed S -> well_formed S'.
 Proof.
