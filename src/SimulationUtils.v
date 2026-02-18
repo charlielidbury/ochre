@@ -93,13 +93,19 @@ Global Instance reflexive_chain {A} (R S : relation A) `{Reflexive A R} `{Reflex
   Reflexive (chain R S).
 Proof. intros x. exists x. split; reflexivity. Qed.
 
+(* TODO: new documentation. *)
+(* TODO: the direction of the relations LeqAB and LeqCD are the opposite of the diagrams. *)
+(* TODO: The relation RedAC is supposed to be the "right" reduction, and RedBC the "left"
+ * reduction, but these relations are reversed. *)
 (** The general definition of forward simulation. That means that for all [a >= b] (with
     [a : A] and [b : B]) and [a -> c] (with [c : C]), then there exists [d : D] that completes
     the following square diagram:
-    b <= a
-    |    |
-    v    v
-    d <= c
+<<
+b <= a
+|    |
+v    v
+d <= c
+>>
     If [A = B] and [C = D], we call it "preservation".
 
     Genarally,
