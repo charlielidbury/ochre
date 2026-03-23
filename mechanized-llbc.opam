@@ -4,8 +4,8 @@ synopsis: "Formalization of the LLBC model for the Rust programming language"
 maintainer: ["Alban Reynaud Michez" "Vincent Rébiscoul"]
 authors: ["Alban Reynaud Michez" "Vincent Rébiscoul"]
 depends: [
-  "dune" {>= "3.16"}
-  "coq" {>= "9.0"}
+  "dune" {>= "3.21"}
+  "rocq" {>= "9.0"}
   "coq-stdpp" {>= "1.11"}
   "odoc" {with-doc}
 ]
@@ -23,3 +23,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
+x-maintenance-intent: ["(latest)"]
