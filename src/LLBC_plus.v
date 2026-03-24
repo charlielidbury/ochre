@@ -8,7 +8,6 @@ From Stdlib Require Import PeanoNat Lia.
 (* Notation conflict between stdpp's [+++] and our [+++]. That's why we're importing stpp first,
    then closing the scope. *)
 From stdpp Require Import pmap gmap.
-Close Scope stdpp_scope.
 Require Import PathToSubtree.
 Require Import OptionMonad.
 
@@ -3822,23 +3821,6 @@ Variant store (p : place) : LLBC_plus_val * LLBC_plus_state -> LLBC_plus_state -
   fresh_anon S a -> store p (v, S) (S.[sp <- v],, a |-> S.[sp])
 .
 
-(* When introducing non-terminating features (loops or recursivity), the signature of the relation
-   is going to be:
-   LLBC_plus_state -> statement -> nat -> Option (statement_result * LLBC_plus_state) -> Prop
-*)
-Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
-Inductive eval_stmt : statement -> statement_result -> LLBC_plus_state -> LLBC_plus_state -> Prop :=
-  | Eval_nop S : S |-{stmt} Nop => rUnit, S
-  | Eval_seq_unit S0 S1 S2 stmt_l stmt_r r (eval_stmt_l : S0 |-{stmt} stmt_l => rUnit, S1)
-      (eval_stmt_r : S1 |-{stmt} stmt_r => r, S2) :  S0 |-{stmt} stmt_l;; stmt_r => r, S2
-  | Eval_seq_panic S0 S1 stmt_l stmt_r (eval_stmt_l : S0 |-{stmt} stmt_l => rPanic, S1) :
-      S0 |-{stmt} stmt_l;; stmt_r => rPanic, S1
-  | Eval_assign S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
-      S |-{stmt} ASSIGN p <- rv => rUnit, S''
-  | Eval_reorg S0 S1 S2 stmt r (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => r, S2) :
-      S0 |-{stmt} stmt => r, S2
-where "S |-{stmt} stmt => r , S'" := (eval_stmt stmt r S S').
-
 (* A version of to-abs that is limited compared to the paper. Currently, we can only turn into a
  * region abstraction a value of the form:
  * - borrow^m l σ (with σ a symbolic value)
@@ -3854,59 +3836,13 @@ Variant to_abs : LLBC_plus_val -> Pmap LLBC_plus_val -> Prop :=
     to_abs (borrow^m(l, v)) ({[k := (borrow^m(l, LLBC_plus_symbolic ty))]})%stdpp
 .
 
-Lemma sweight_add_abstraction S weight i A :
-  fresh_abstraction S i ->
-  sweight weight (S,,, i |-> A) = sweight weight S + map_sum (vweight weight) A.
-Proof.
-  intros ?. unfold sweight, get_map. cbn. rewrite flatten_insert' by assumption.
-  rewrite sum_maps_union. rewrite map_sum_union. rewrite !map_sum_kmap by typeclasses eauto.
-  reflexivity.
-  apply map_disjoint_spec. intros j ? ? lookup_l.
-  intros ((? & ?) & ? & (? & (? & ?)%pair_eq & ?)%lookup_kmap_Some)%lookup_kmap_Some.
-  subst. rewrite sum_maps_lookup_r, lookup_None_flatten in lookup_l by assumption.
-  discriminate. all: typeclasses eauto.
-Qed.
-Hint Rewrite sweight_add_abstraction using auto with spath; fail : weight.
-
-Hint Rewrite @sweight_add_anon using auto with weight : weight.
-
-Lemma remove_abstraction_value_add_abstraction S i j A :
-  remove_abstraction_value (S,,, i |-> A) i j = S,,, i |-> (delete j A).
-Proof.
-  unfold add_abstraction, remove_abstraction_value. cbn. f_equal. apply alter_insert.
-Qed.
-
-Lemma remove_abstraction_value_add_abstraction_ne S i i' j A (H : i <> i') :
-  remove_abstraction_value (S,,, i |-> A) i' j =
-  (remove_abstraction_value S i' j),,, i |-> A.
-Proof.
-  unfold add_abstraction, remove_abstraction_value. cbn. f_equal.
-  rewrite alter_insert_ne by congruence. reflexivity.
-Qed.
-
-Hint Rewrite remove_abstraction_value_add_abstraction : spath.
-Hint Rewrite remove_abstraction_value_add_abstraction_ne using congruence : spath.
-
-Lemma sweight_remove_abstraction_value weight S i j v :
-  abstraction_element S i j = Some v ->
-  (Z.of_nat (sweight weight (remove_abstraction_value S i j)) =
-   (Z.of_nat (sweight weight S)) - (Z.of_nat (vweight weight v)))%Z.
-Proof.
-  unfold abstraction_element. rewrite get_at_abstraction.
-  intros (A & get_A & get_v)%bind_Some.
-  apply add_remove_abstraction in get_A.
-  rewrite <-get_A, remove_abstraction_value_add_abstraction.
-  rewrite !sweight_add_abstraction by apply remove_abstraction_fresh.
-  apply (map_sum_delete (vweight weight)) in get_v. lia.
-Qed.
-
 (* Note: the definition is duplicated in [leq_state_base_n].
  * Perhaps we should only define leq_state_base_n, and define [leq_state_base Sl Sr] as
  * [exists n, leq_state_base_n n Sl Sr]. *)
 Variant leq_state_base : LLBC_plus_state -> LLBC_plus_state -> Prop :=
 (* Contrary to the article, symbolic values should be typed. Thus, only an integer can be converted
  * to a symbolic value for the moment. *)
-| Leq_ToSymbolic S sp ty (Htype : is_of_type ty (S.[sp])) 
+| Leq_ToSymbolic S sp ty (Htype : is_of_type ty (S.[sp]))
     (no_loan : not_contains_loan (S.[sp])) (no_borrow : not_contains_borrow (S.[sp])) :
     leq_state_base S (S.[sp <- LLBC_plus_symbolic ty])
 | Leq_ToAbs S a i v A
@@ -3955,8 +3891,117 @@ Variant leq_state_base : LLBC_plus_state -> LLBC_plus_state -> Prop :=
 | Leq_AnonValue S a (is_fresh : fresh_anon S a) : leq_state_base S (S,, a |-> bot)
 .
 
-Definition leq := chain equiv_states leq_state_base^*.
+Definition leq_symbolic := chain equiv_states leq_state_base^*.
 Definition leq_val_state := chain equiv_val_state (leq_val_state_base leq_state_base)^*.
+
+(** ** Definition of branching semantics and [eval_stmt]. *)
+(** A symbolic execution abstracts all executions, from all branches. A "branching state" [B] is a partial map. It can associate a control-flow tag [r] (break, continue, panic...) to symbolic state [S] that is more general than all the computations that terminate with [r]. This maps is partial, because if no computation terminates on [r], we have [lookup r B = None]. *)
+Definition branching_state := gmap statement_result LLBC_plus_state.
+
+Reserved Notation "S  |-{stmt}  stmt  =>  B" (at level 50).
+
+(** The simulation relation on branching states. A branching state [Br] is more general than a branching state [Bl] if for any tag [r], if [Bl] maps a control-flow tag [r] to a symbolic state [Sl] ([lookup r Bl = Some Sl]), then [Br] maps [r] to a more general state [Sr] ([lookup r Br = Some Sr] and [leq_symbolic Sl Sr]).
+
+   Note that the domain of [Br] can be bigger than the domain of [Bl]. There can be computations that terminate on a tag [r] that are abstracted by [Bl] but not [Br]. *)
+Variant leq_option_symbolic : relation (option LLBC_plus_state) :=
+  | LeqNone oSr : leq_option_symbolic None oSr
+  | LeqSome Sl Sr : leq_symbolic Sl Sr -> leq_option_symbolic (Some Sl) (Some Sr).
+
+Definition leq_branching (Bl Br : branching_state) :=
+  forall r, leq_option_symbolic (lookup r Bl) (lookup r Br).
+
+(** In the ICPF article, Ho et al introduce a join operation, described with non-deterministic computation rules. However, we are not interested in an algorithm for joins. The join [Bjoin] of two states [B0] and [B1] can be provided by an oracle, we do not describe the computation rules. We only require two properties.
+   - The state [B_join] is an upper bound of [B0] and [B1], that means that we have [leq_branching B0 Bjoin] and [leq_branching Bs Bjoin].
+   - If a control-flow tag [r] is not in the domain of [Bl] (respectively [Br]), then [lookup r Bjoin = lookup r Br] (respectively [lookup r Bjoin = lookup r Bl]).
+
+   The second condition is here to ensure that LLBC is a stable subset of LLBC+. In particular, the join of a state [B = {[r := S]}] and the empty state can only be [B].
+ *)
+Variant option_is_join :
+  option LLBC_plus_state -> option LLBC_plus_state -> option LLBC_plus_state -> Prop :=
+  | UpperBound_None_None : option_is_join None None None
+  | UpperBound_Some_None S0 : option_is_join (Some S0) None (Some S0)
+  | UpperBound_None_Some S1 : option_is_join None (Some S1) (Some S1)
+  | UpperBound_Some_Some S0 S1 S2 : leq_symbolic S0 S2 -> leq_symbolic S1 S2 ->
+      option_is_join (Some S0) (Some S1) (Some S2).
+
+Definition is_join (B0 B1 Bjoin : branching_state) :=
+  forall r, option_is_join (lookup r B0) (lookup r B1) (lookup r Bjoin).
+
+Inductive eval_stmt : statement -> LLBC_plus_state -> branching_state -> Prop :=
+  | Eval_nop S : S |-{stmt} Nop => {[rUnit := S]}
+  | Eval_seq_no_unit S0 B1 stmt_0 stmt_1
+      (eval_stmt_0 : S0 |-{stmt} stmt_0 => B1) (Hno_unit : lookup rUnit B1 = None) :
+      S0 |-{stmt} (Seq stmt_0 stmt_1) => B1
+  | Eval_seq S0 B1 S_unit B_unit B_join stmt_0 stmt_1
+      (eval_stmt_0 : S0 |-{stmt} stmt_0 => B1) (H_unit : lookup rUnit B1 = Some S_unit)
+      (eval_stmt_1 : S_unit |-{stmt} stmt_1 => B_unit)
+      (His_join : is_join B_unit (delete rUnit B1) B_join) :
+      S0 |-{stmt} (Seq stmt_0 stmt_1) => B_join
+  | Eval_assign S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
+      S |-{stmt} ASSIGN p <- rv => {[rUnit := S'']}
+  | Eval_if_true S S' B_if cond stmt_if stmt_else
+      (eval_cond : S |-{op} cond => (LLBC_plus_bool true, S'))
+      (Heval_if_branch : S' |-{stmt} stmt_if => B_if) :
+      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_if
+  | Eval_if_false S S' B_else cond stmt_if stmt_else
+      (eval_cond : S |-{op} cond => (LLBC_plus_bool false, S'))
+      (Heval_else_branch : S' |-{stmt} stmt_else => B_else) :
+      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_else
+  | Eval_if_symbolic S S' B_if B_else B_join cond stmt_if stmt_else
+      (eval_cond : S |-{op} cond => (LLBC_plus_symbolic boolT, S'))
+      (Heval_if_branch : S' |-{stmt} stmt_if => B_if)
+      (Heval_else_branch : S' |-{stmt} stmt_else => B_else)
+      (His_join : is_join B_if B_else B_join) :
+      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_join
+  | Eval_reorg S0 S1 B2 stmt (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => B2) :
+      S0 |-{stmt} stmt => B2
+where "S |-{stmt} stmt => B" := (eval_stmt stmt S B).
+
+Lemma sweight_add_abstraction S weight i A :
+  fresh_abstraction S i ->
+  sweight weight (S,,, i |-> A) = sweight weight S + map_sum (vweight weight) A.
+Proof.
+  intros ?. unfold sweight, get_map. cbn. rewrite flatten_insert' by assumption.
+  rewrite sum_maps_union. rewrite map_sum_union. rewrite !map_sum_kmap by typeclasses eauto.
+  reflexivity.
+  apply map_disjoint_spec. intros j ? ? lookup_l.
+  intros ((? & ?) & ? & (? & (? & ?)%pair_eq & ?)%lookup_kmap_Some)%lookup_kmap_Some.
+  subst. rewrite sum_maps_lookup_r, lookup_None_flatten in lookup_l by assumption.
+  discriminate. all: typeclasses eauto.
+Qed.
+Hint Rewrite sweight_add_abstraction using auto with spath; fail : weight.
+
+Hint Rewrite @sweight_add_anon using auto with weight : weight.
+
+Lemma remove_abstraction_value_add_abstraction S i j A :
+  remove_abstraction_value (S,,, i |-> A) i j = S,,, i |-> (delete j A).
+Proof.
+  unfold add_abstraction, remove_abstraction_value. cbn. f_equal. apply alter_insert.
+Qed.
+
+Lemma remove_abstraction_value_add_abstraction_ne S i i' j A (H : i <> i') :
+  remove_abstraction_value (S,,, i |-> A) i' j =
+  (remove_abstraction_value S i' j),,, i |-> A.
+Proof.
+  unfold add_abstraction, remove_abstraction_value. cbn. f_equal.
+  rewrite alter_insert_ne by congruence. reflexivity.
+Qed.
+
+Hint Rewrite remove_abstraction_value_add_abstraction : spath.
+Hint Rewrite remove_abstraction_value_add_abstraction_ne using congruence : spath.
+
+Lemma sweight_remove_abstraction_value weight S i j v :
+  abstraction_element S i j = Some v ->
+  (Z.of_nat (sweight weight (remove_abstraction_value S i j)) =
+   (Z.of_nat (sweight weight S)) - (Z.of_nat (vweight weight v)))%Z.
+Proof.
+  unfold abstraction_element. rewrite get_at_abstraction.
+  intros (A & get_A & get_v)%bind_Some.
+  apply add_remove_abstraction in get_A.
+  rewrite <-get_A, remove_abstraction_value_add_abstraction.
+  rewrite !sweight_add_abstraction by apply remove_abstraction_fresh.
+  apply (map_sum_delete (vweight weight)) in get_v. lia.
+Qed.
 
 (* Derived rules of leq_state_base. *)
 Lemma Leq_Reborrow_MutBorrow_Abs S sp l0 l1 i kb kl ty
@@ -4294,8 +4339,32 @@ Proof.
   eapply leq_state_base_n_is_leq_state_base. eexists. eassumption.
 Qed.
 
-Instance transitive_leq_HLPL_plus : Transitive leq.
-Proof. apply transitive_leq, leq_equiv_states_commute. Qed.
+Instance leq_symbolic_preorder : PreOrder leq_symbolic.
+Proof.
+  split.
+  - apply reflexive_chain; intros S; reflexivity.
+  - apply transitive_leq, leq_equiv_states_commute.
+Qed.
+
+Lemma leq_branching_alt Bl Br :
+  leq_branching Bl Br <-> map_included (fun _ => leq_symbolic) Bl Br.
+Proof.
+  split. all: intros H r; specialize (H r); revert H.
+  all: remember (lookup r Bl) as Sl eqn:EQN_l; setoid_rewrite <-EQN_l.
+  all: remember (lookup r Br) as Sr eqn:EQN_r; setoid_rewrite <-EQN_r.
+  - intros [ ]; cbn.
+    + autodestruct.
+    + assumption.
+  - destruct Sl, Sr; cbn; try constructor; easy.
+Qed.
+
+(* Because [leq_symbolic] is a pre-order, [map_included (fun _ => leq_symbolic)] also is. We use this to prove that the equivalent relation [leq_branching] is a pre-order. *)
+Instance leq_symbolic_branching : PreOrder leq_branching.
+Proof.
+  split.
+  - intros ?. rewrite leq_branching_alt. reflexivity.
+  - intros Bl Bm Br. rewrite !leq_branching_alt. transitivity Bm; assumption.
+Qed.
 
 (** The following section is here to prove the commutation between the relation
    [leq_val_state_base] and equivalence up to loan renaming.
@@ -5543,12 +5612,15 @@ Proof.
     etransitivity; [apply loan_set_sget | apply H].
 Qed.
 
-(** ** Simulation proofs for rvalue evaluation. *)
-Definition leq_integer_state (vSl vSr : LLBC_plus_val * LLBC_plus_state) :=
-  let (vl, Sl) := vSl in
-  let (vr, Sr) := vSr in
-  (vl = vr \/ is_of_type intT vl /\ not_contains_loan vl /\ vr = LLBC_plus_symbolic intT) /\ leq_state_base^* Sl Sr.
+Lemma operand_preserves_leq op :
+  forward_simulation leq_symbolic leq_val_state (eval_operand op) (eval_operand op).
+Proof.
+  apply forward_simulation_chain.
+  - apply operand_preserves_equiv.
+  - apply operand_preserves_LLBC_plus_rel.
+Qed.
 
+(** ** Simulation proofs for rvalue evaluation. *)
 Lemma integer_zeroary v :
   not_contains_loan v -> is_of_type intT v -> arity (get_node v) = 0.
 Proof. intros ? H. inversion H; reflexivity. Qed.
@@ -5613,6 +5685,11 @@ Proof.
     left. split; [reflexivity | ]. econstructor; eassumption.
   - process_state_eq. left. split; [reflexivity | ]. constructor. assumption.
 Qed.
+
+Definition leq_integer_state (vSl vSr : LLBC_plus_val * LLBC_plus_state) :=
+  let (vl, Sl) := vSl in
+  let (vr, Sr) := vSr in
+  (vl = vr \/ is_of_type intT vl /\ not_contains_loan vl /\ vr = LLBC_plus_symbolic intT) /\ leq_state_base^* Sl Sr.
 
 Lemma leq_val_state_integer vSl vSr :
   (leq_val_state_base leq_state_base)^* vSl vSr ->
@@ -6052,7 +6129,7 @@ Proof.
 Qed.
 
 Lemma rvalue_preserves_leq rv :
-  forward_simulation leq leq_val_state (eval_rvalue rv) (eval_rvalue rv).
+  forward_simulation leq_symbolic leq_val_state (eval_rvalue rv) (eval_rvalue rv).
 Proof.
   intros S0 (v & S'0) eval_rv S2 (S1 & equiv_S2_S1 & leq_S1_S0).
   eapply rvalue_preserves_LLBC_plus_rel in eval_rv.
@@ -6203,7 +6280,7 @@ Qed.
 (* Note: there are "boilerplate lemmas" like [states_add_anon_eq],
  * [add_anon_commute] that we could automate the usage. *)
 Lemma store_preserves_leq_rel p :
-  forward_simulation leq_val_state_base'^* leq (store p) (store p).
+  forward_simulation leq_val_state_base'^* leq_symbolic (store p) (store p).
 Proof.
   eapply preservation_by_base_case.
   intros vSr S'r Hstore (vl & Sl) (Hleq & val_no_bot & val_no_loan).
@@ -6522,7 +6599,7 @@ Qed.
 Lemma store_preserves_LLBC_plus_rel p vr Sr S'r vl Sl :
   not_contains_loan vr -> not_contains_bot vr ->
   store p (vr, Sr) S'r -> leq_val_state (vl, Sl) (vr, Sr) ->
-  exists S'l, store p (vl, Sl) S'l /\ leq S'l S'r.
+  exists S'l, store p (vl, Sl) S'l /\ leq_symbolic S'l S'r.
 Proof.
   intros no_loan no_bot Hstore ((vm & Sm) & Hequiv & Hleq).
   edestruct store_preserves_leq_rel as (S'm & (? & Hequiv' & Hleq') & Hstore').
@@ -7571,7 +7648,7 @@ Proof.
     symmetry. eapply add_anons_equiv; eassumption.
 Qed.
 
-Lemma reorg_preservation : forward_simulation leq leq reorg^* reorg^*.
+Lemma reorg_preservation : forward_simulation leq_symbolic leq_symbolic reorg^* reorg^*.
 Proof.
   eapply preservation_reorg_l.
   - exact leq_state_base_n_decreases.
@@ -7583,17 +7660,221 @@ Proof.
 Qed.
 
 (** ** Simulation proofs for statement evaluation. *)
-Lemma stmt_preserves_LLBC_plus_rel s r :
-  forward_simulation leq leq (eval_stmt s r) (eval_stmt s r).
+Lemma leq_singleton r Sl Sr : leq_symbolic Sl Sr -> leq_branching {[r := Sl]} {[r := Sr]}.
+Proof.
+  intros H r'. destruct (decide (r = r')) as [<- | ].
+  - simpl_map. constructor. assumption.
+  - unfold branching_state. simpl_map. constructor.
+Qed.
+
+(** If [Bjoin] is a join state for two states [B0_r] and [B1_r], if these two states are more abstract than the respective states [B0_l] and [B1_l], it is not necessary the case that [Bjoin] is a join of [B0_l] and [B1_r]. Indeed, there can be a control-flow tag [r] such that [lookup r B0_l = None] while [Is_Some (lookup r B0_r)], and [lookup r Bjoin_r] is not necessarily [lookup r B1_r].
+
+   We need to "compute" a join by choosing a value among [lookup r B0_l],  [lookup r B1_l] and [lookup r Bjoin] depending if the values [lookup r B0_l] and [lookup r B1_l] are [Some] or [None]. *)
+Definition compute_option_join (oSl oSr : option LLBC_plus_state) default :=
+  match oSl, oSr with
+  | None, _ => oSr
+  | _, None => oSl
+  | _, _ => Some default
+  end.
+
+(* TODO: confusing name, similar to [leq_is_join_l]. *)
+Lemma is_join_left B0_l B1_l B0_r B1_r Bjoin_r (Hjoin : is_join B0_r B1_r Bjoin_r)
+  (Hleq_0 : leq_branching B0_l B0_r) (Hleq_1 : leq_branching B1_l B1_r) :
+  exists Bjoin_l : branching_state, is_join B0_l B1_l Bjoin_l /\ leq_branching Bjoin_l Bjoin_r.
+Proof.
+  exists (map_imap (fun r => compute_option_join (lookup r B0_l) (lookup r B1_l)) Bjoin_r).
+  split.
+  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
+    specialize (Hleq_0 r). specialize (Hleq_1 r). specialize (Hjoin r).
+    destruct Hjoin; inversion Hleq_0; inversion Hleq_1.
+    all: constructor. all: etransitivity; [eassumption | congruence].
+  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
+    specialize (Hleq_0 r). specialize (Hleq_1 r). specialize (Hjoin r).
+    unfold compute_option_join.
+    destruct Hjoin; inversion Hleq_0; inversion Hleq_1; constructor.
+    all: try reflexivity. all: try assumption. all: etransitivity; eassumption.
+Qed.
+
+Lemma leq_branching_delete r0 Sl Sr :
+  leq_branching Sl Sr -> leq_branching (delete r0 Sl) (delete r0 Sr).
+Proof.
+  intros H r. specialize (H r). unfold branching_state.
+  destruct (decide (r0 = r)) as [<- | ]; simpl_map; [constructor | assumption].
+Qed.
+
+Lemma leq_is_join_l Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Bl Bjoin.
+Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
+
+Lemma leq_is_join_r Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Br Bjoin.
+Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
+
+(* Note: most of that is a copy-paste of similar theorems for integers. *)
+(* Note: rewrite the following results when we introduce enumerations. Some of the assumptions this section relies on (e.g: boolean are zeroary, they do not contain borrows) are wrong in general.
+   We should prove a more general lemma:
+   - The relations [leq_symbolic] and [leq_val_state] preserve types.
+   - A value of type A + B is either:
+     - inl v, with v : A, and v do not contain loans.
+     - inr v, with v : B, and v do not contain loans.
+     - sigma_{A + B}
+ *)
+(* TODO: rewrite the lemma [leq_val_state_integer] accordingly. *)
+Definition leq_boolean_state leq (vSl vSr : LLBC_plus_val * LLBC_plus_state) :=
+  let (vl, Sl) := vSl in
+  let (vr, Sr) := vSr in
+  (vl = vr \/ is_of_type boolT vl /\ not_contains_loan vl /\ vr = LLBC_plus_symbolic boolT) /\
+  leq Sl Sr.
+
+Lemma boolean_zeroary v :
+  not_contains_loan v -> is_of_type boolT v -> arity (get_node v) = 0.
+Proof. intros ? H. inversion H; reflexivity. Qed.
+
+Lemma leq_val_state_base_boolean vl Sl vr Sr :
+  leq_val_state_base leq_state_base (vl, Sl) (vr, Sr) ->
+  is_of_type boolT vr -> not_contains_loan vr ->
+  (vl = vr /\ leq_state_base Sl Sr) \/
+  (is_of_type boolT vl /\ not_contains_loan vl /\ vr = LLBC_plus_symbolic boolT /\ Sl = Sr).
+Proof.
+  destruct (exists_fresh_anon2 Sl Sr) as (a & fresh_a_l & fresh_a_r).
+  intros H vr_is_int no_loan.
+  specialize (H a fresh_a_l fresh_a_r). rewrite !fst_pair, !snd_pair in H.
+  remember (Sl,, a |-> vl) eqn:EQN_l. remember (Sr,, a |-> vr) eqn:EQN_r.
+  destruct H; subst.
+  - destruct (decide (fst sp = anon_accessor a)).
+    + right. autorewrite with spath in * |-. process_state_eq.
+      assert (snd sp = []) as G.
+      { eapply valid_vpath_zeroary.
+        - apply boolean_zeroary; eassumption.
+        - apply vset_same_valid; eauto with spath. }
+      rewrite G in *. cbn in *. inversion vr_is_int. subst. eauto.
+    + left. autorewrite with spath in *.
+      process_state_eq. split; [reflexivity | ]. econstructor; eassumption.
+  - process_state_eq. left. split; [reflexivity | ]. constructor; assumption.
+  - process_state_eq. left. split; [reflexivity | ]. constructor; assumption.
+  - apply valid_spath_add_anon_cases in valid_sp.
+    destruct valid_sp as [(? & ?) | (? & ?)].
+    2: { autorewrite with spath in * |-. process_state_eq.
+      exfalso. eapply is_of_type_does_not_contain_bot.
+      - eassumption.
+      - apply vset_same_valid. validity.
+      - autorewrite with spath. reflexivity. }
+    autorewrite with spath in *. process_state_eq. autorewrite with spath in *.
+    left. split; [reflexivity | ]. constructor; assumption.
+  - process_state_eq. left. split; [reflexivity | ]. constructor; auto with spath.
+  - apply valid_spath_add_anon_cases in valid_sp.
+    destruct valid_sp as [(? & ?) | (? & ?)].
+    2: { autorewrite with spath in * |-. process_state_eq.
+      exfalso. eapply no_loan.
+      - apply vset_same_valid. validity.
+      - autorewrite with spath. constructor. }
+    autorewrite with spath in *. process_state_eq.
+    left. split; [reflexivity | ]. apply Leq_Fresh_MutLoan; auto. not_contains.
+  - destruct (decide (fst sp = anon_accessor a)).
+    { autorewrite with spath in * |-. process_state_eq.
+      exfalso. eapply boolean_does_not_contain_borrow.
+      - eassumption.
+      - apply vset_same_valid. validity.
+      - autorewrite with spath. constructor. }
+    autorewrite with spath in *. process_state_eq.
+    left. split; [reflexivity | ]. apply Leq_Reborrow_MutBorrow; auto. not_contains.
+  - autorewrite with spath in *. process_state_eq.
+    left. split; [reflexivity | ]. econstructor; eassumption.
+  - process_state_eq. left. split; [reflexivity | ]. constructor. assumption.
+Qed.
+
+Lemma _leq_val_state_boolean vl Sl vr Sr :
+  (leq_val_state_base leq_state_base)^* (vl, Sl) (vr, Sr) ->
+  is_of_type boolT vr -> not_contains_loan vr ->
+  leq_boolean_state (leq_state_base^*) (vl, Sl) (vr, Sr).
+Proof.
+  intros H Htype no_loan.
+  remember (vl, Sl) as vSl eqn:EQN_l. remember (vr, Sr) as vSr eqn:EQN_r.
+  revert vl Sl vr Sr EQN_l EQN_r Htype no_loan.
+  induction H as [ | ? (vm & Sm) ? Hleq_l IH Hleq_r]
+    using clos_refl_trans_ind_left';
+    intros  vl Sl vr Sr -> -> Htype no_loan.
+  - split; [ | reflexivity]. left. reflexivity.
+  - eapply leq_val_state_base_boolean in Hleq_r; [ | eassumption..].
+    destruct Hleq_r as [(? & ?) | (? & ? & ? & ?)]; subst.
+    + edestruct IH; [reflexivity | reflexivity | assumption.. | ]. split; [assumption | ].
+      transitivity Sm; [ | constructor]; assumption.
+    + edestruct IH as ([ | (? & ? & ?)] & ?); [reflexivity | reflexivity | assumption.. | | ];
+        subst; unfold leq_boolean_state; auto.
+Qed.
+
+Lemma leq_val_state_boolean vl Sl vr Sr :
+  leq_val_state (vl, Sl) (vr, Sr) -> is_of_type boolT vr -> not_contains_loan vr ->
+  leq_boolean_state leq_symbolic (vl, Sl) (vr, Sr).
+Proof.
+  intros ((v'r & S'r) & Hequiv & Hleq) Htype no_loan.
+  apply _leq_val_state_boolean in Hleq; [ | assumption..]. destruct Hleq as (Hv & Hleq).
+  destruct Hequiv as (perm & Hequiv & _ & -> & ->).
+  rewrite !rename_value_no_loan_id in Hv.
+  - split.
+    + exact Hv.
+    + eexists. split; [ | exact Hleq]. exists perm. auto.
+  (* This ugly case could be simply resolved with a hypothesis [is_of_type boolT vl]. *)
+  - destruct Hv as [<- | (type_vl & no_loan_l & ->)].
+    + destruct vl; inversion Htype; subst; try reflexivity.
+      exfalso. eapply no_loan; constructor.
+    + destruct vl; inversion type_vl; try reflexivity.
+      exfalso. eapply no_loan_l; constructor.
+Qed.
+
+Lemma leq_val_state_concrete_boolean b vl Sl Sr :
+  leq_val_state (vl, Sl) (LLBC_plus_bool b, Sr) -> vl = LLBC_plus_bool b /\ leq_symbolic Sl Sr.
+Proof.
+  intros (Hvl & Hleq)%leq_val_state_boolean.
+  - split; [ | exact Hleq]. destruct Hvl as [ | (_ & _ & [=])]. assumption.
+  - constructor.
+  - not_contains.
+Qed.
+
+Lemma leq_val_state_symbolic_boolean vl Sl Sr :
+  leq_val_state (vl, Sl) (LLBC_plus_symbolic boolT, Sr) ->
+  ((exists b, vl = LLBC_plus_bool b) \/ vl = LLBC_plus_symbolic boolT) /\ leq_symbolic Sl Sr.
+Proof.
+  intros (Hvl & Hleq)%leq_val_state_boolean.
+  - split; [ | exact Hleq]. destruct Hvl as [ | (Htype & no_loan & _)]; auto.
+    inversion Htype; subst; eauto. exfalso. eapply no_loan; constructor.
+  - constructor.
+  - not_contains.
+Qed.
+
+Lemma stmt_preserves_LLBC_plus_rel s :
+  forward_simulation leq_symbolic leq_branching (eval_stmt s) (eval_stmt s).
 Proof.
   intros Sr S'r Heval. induction Heval; intros Sl Hleq.
-  - execution_step. { constructor. } assumption.
-  - specialize (IHHeval1 _ Hleq). destruct IHHeval1 as (S'1 & Hleq' & ?).
-    specialize (IHHeval2 _ Hleq'). destruct IHHeval2 as (S'2 & ? & ?).
-    execution_step. { econstructor; eassumption. }
+  (* Case [Eval_nop]. *)
+  - execution_step. { constructor. }
+    apply leq_singleton. assumption.
+
+  (* Case [Eval_seq_no_unit] *)
+  - specialize (IHHeval _ Hleq). destruct IHHeval as (Bl & ? & ?).
+    execution_step.
+    { apply Eval_seq_no_unit; [eassumption | ].
+      (* TODO: lemma? *) specialize (H rUnit). inversion H; congruence. }
     assumption.
-  - specialize (IHHeval _ Hleq). destruct IHHeval as (? & ? & ?).
-    execution_step. { constructor. eassumption. } assumption.
+
+  (* Case [Eval_seq] *)
+  - specialize (IHHeval1 _ Hleq). destruct IHHeval1 as (B1l & Hleq1 & ?).
+    destruct (lookup rUnit B1l) as [S_unit_l | ] eqn:H_unit_l.
+    (* Case 1: TODO *)
+    + pose proof (Hleq1 rUnit) as _Hleq1. rewrite H_unit_l, H_unit in _Hleq1.
+      inversion _Hleq1 as [ | ? ? Hleq1_unit]. subst. clear _Hleq1.
+      specialize (IHHeval2 _ Hleq1_unit). destruct IHHeval2 as (B_unit_l & Hleq2 & Heval2_l).
+      edestruct is_join_left as (Bjoin_l & ? & ?);
+        [eassumption.. | apply leq_branching_delete; eassumption| ].
+      execution_step. { eapply Eval_seq; eassumption. }
+      assumption.
+    (* Case 2: TODO *)
+    + execution_step. { apply Eval_seq_no_unit; eassumption. }
+      etransitivity.
+      * apply (leq_branching_delete rUnit) in Hleq1.
+        unfold branching_state in Hleq1. rewrite delete_notin in Hleq1 by assumption.
+        exact Hleq1.
+      * eapply leq_is_join_r. exact His_join.
+
+  (* Case [Eval_assign] *)
   - destruct vS' as (vr & S'r).
     assert (not_contains_bot vr). { eapply eval_rvalue_no_bot. eassumption. }
     assert (not_contains_loan vr). { eapply eval_rvalue_no_loan. eassumption. }
@@ -7601,7 +7882,45 @@ Proof.
     destruct eval_rv as ((v'l & S'l) & ? & ?).
     eapply store_preserves_LLBC_plus_rel in Hstore; [ | eassumption..].
     destruct Hstore as (S''l & Hstore & ?).
+    execution_step. { econstructor; eassumption. }
+    apply leq_singleton. assumption.
+
+  (* Case [Eval_if_true] *)
+  - apply operand_preserves_leq in eval_cond. apply eval_cond in Hleq.
+    destruct Hleq as ((v' & S'l) & Hleq' & eval_cond').
+    apply leq_val_state_concrete_boolean in Hleq'. destruct Hleq' as (-> & Hleq').
+    apply IHHeval in Hleq'. destruct Hleq' as (S''l & Hleq'' & eval_if).
     execution_step. { econstructor; eassumption. } assumption.
+
+  (* Case [Eval_if_false] *)
+  - apply operand_preserves_leq in eval_cond. apply eval_cond in Hleq.
+    destruct Hleq as ((v' & S'l) & Hleq' & eval_cond').
+    apply leq_val_state_concrete_boolean in Hleq'. destruct Hleq' as (-> & Hleq').
+    apply IHHeval in Hleq'. destruct Hleq' as (S''l & Hleq'' & eval_else).
+    execution_step. { econstructor; eassumption. } assumption.
+
+  (* Case [Eval_if_symbolic] *)
+  - apply operand_preserves_leq in eval_cond. apply eval_cond in Hleq.
+    destruct Hleq as ((v' & S'l) & Hleq' & eval_cond').
+    apply leq_val_state_symbolic_boolean in Hleq'.
+    destruct Hleq' as ([([ | ] & ->) | ->] & Hleq').
+    (* Case 1: the symbolic value abstracts the boolean true. We apply the rule [Eval_if_true]. *)
+    + apply IHHeval1 in Hleq'. destruct Hleq' as (B''l & Hleq'' & eval_if).
+      execution_step. { econstructor; eassumption. }
+      transitivity B_if; eauto using leq_is_join_l.
+    (* Case 2: the symbolic value abstracts the boolean false. We apply the rule [Eval_if_false]. *)
+    + apply IHHeval2 in Hleq'. destruct Hleq' as (B''l & Hleq'' & eval_else).
+      execution_step. { econstructor; eassumption. }
+      transitivity B_else; eauto using leq_is_join_r.
+    (* Case 3: the symbolic value abstracts a symbolic value. *)
+    + specialize (IHHeval1 _ Hleq'). destruct IHHeval1 as (Bl_if & Hleq'_l & eval_if).
+      specialize (IHHeval2 _ Hleq'). destruct IHHeval2 as (Bl_else & Hleq'_r & eval_else).
+      eapply is_join_left in His_join; [ | eassumption..].
+      destruct His_join as (Bjoin_l & His_join & ?).
+      execution_step. { eapply Eval_if_symbolic; eassumption. } assumption.
+
+
+  (* Case [Eval_reorg] *)
   - eapply reorg_preservation in Hreorg. specialize (Hreorg _ Hleq).
     destruct Hreorg as (S'l & Hleq' & ?).
     specialize (IHHeval _ Hleq'). destruct IHHeval as (? & ? & ?).
@@ -7609,66 +7928,7 @@ Proof.
 Qed.
 
 (** * Execution of a program in the LLBC+ semantics. *)
-Local Open Scope option_monad_scope.
-(** The program we execute is:
-<<
-fn main() {
-   let mut x = 0;
-   let mut y = 1;
-   let z;
-   if cond {
-       z = &mut x;
-   }
-   else {
-       z = &mut y;
-   }
-   *z += 1;
-   x += 2;
-}
->>
- *)
-Notation x := 1%positive.
-Notation y := 2%positive.
-Notation z := 3%positive.
-
-(** Because our semantics does not model if-then-else disjunction yet, we define three programs,
-    one for the if-branch, one for the else-branch, and one final program. We prove that both
-    branch safely executes, and that their final state is in relation with an explicit state called
-    [join_state].
-*)
-Definition if_branch : statement :=
-  ASSIGN (z, []) <- &mut (x, []).
-
-Definition else_branch : statement :=
-  ASSIGN (z, []) <- &mut (y, []).
-
-Definition end_main : statement :=
-  ASSIGN (z, [Deref]) <- BinaryOp BAdd (Copy (z, [Deref])) (Const (IntConst 1));;
-  ASSIGN (x, []) <- BinaryOp BAdd (Copy (x, [])) (Const (IntConst 2))
-.
-
-Open Scope stdpp.
-(** The initial state: *)
-Definition cond_state := {|
-  vars := {[x := LLBC_plus_int 0; y := LLBC_plus_int 1; z := bot]};
-  anons := empty;
-  abstractions := empty;
-|}.
-
-Definition lx : loan_id := 1%positive.
-Definition ly : loan_id := 2%positive.
-Definition lz : loan_id := 3%positive.
-
-Definition A : positive := 1.
-
-Definition join_state : LLBC_plus_state := {|
-  vars := {[x := loan^m(intT, lx); y := loan^m(intT, ly); z := borrow^m(lz, LLBC_plus_symbolic intT)]};
-  anons := empty;
-  abstractions := {[A := {[1%positive := borrow^m(lx, LLBC_plus_symbolic intT);
-                      2%positive := borrow^m(ly, LLBC_plus_symbolic intT);
-                      3%positive := loan^m(intT, lz)]} ]}
-|}.
-
+(** Utilities to execute programs. *)
 Definition decide_not_contains_outer_loan v :=
   match v with
   | loan^m(_, l) => false
@@ -7733,7 +7993,8 @@ Ltac remove_anon a :=
   | |- ?leq_star ?S _ => erewrite<- (add_anon_remove_anon S a) by reflexivity
   end.
 
-Lemma prove_leq Sl Sm Sr : leq_state_base^* Sl Sm -> leq Sm Sr -> leq Sl Sr.
+Lemma prove_leq_symbolic Sl Sm Sr :
+  leq_state_base^* Sl Sm -> leq_symbolic Sm Sr -> leq_symbolic Sl Sr.
 Proof.
   intros H (? & G & ?).
   pose proof leq_equiv_states_commute as Hsim.
@@ -7758,6 +8019,96 @@ Proof.
   exists ty. split; assumption.
 Qed.
 
+(* TODO: rename Eval_seq to Eval_seq. *)
+Lemma eval_seq_unit S0 S1 B2 stmt_l stmt_r
+  (eval_stmt_l : S0 |-{stmt} stmt_l => {[rUnit := S1]})
+  (eval_stmt_r : S1 |-{stmt} stmt_r => B2) :
+  S0 |-{stmt} (Seq stmt_l stmt_r) => B2.
+Proof.
+  eapply Eval_seq.
+  - exact eval_stmt_l.
+  - reflexivity.
+  - exact eval_stmt_r.
+  - (* TODO: lemma? *)
+    intros r. unfold branching_state. rewrite delete_singleton, lookup_empty.
+    destruct (lookup _ _); constructor.
+Qed.
+
+Lemma is_join_singletons r S0 S1 Sjoin :
+  leq_symbolic S0 Sjoin -> leq_symbolic S1 Sjoin ->
+  is_join {[r := S0]} {[r := S1]} {[r := Sjoin]}.
+Proof.
+  intros ? ? r'. destruct (decide (r' = r)) as [-> | ].
+  - simpl_map. constructor; assumption.
+  - unfold branching_state. simpl_map. constructor.
+Qed.
+
+Local Open Scope option_monad_scope.
+(** The program we execute is:
+<<
+fn f(x : i32, y : i32) {
+   let z;
+   if x <= y {
+       z = &mut x;
+   }
+   else {
+       z = &mut y;
+   }
+   *z += 1;
+   x += 2;
+}
+>>
+ *)
+Notation x := 1%positive.
+Notation y := 2%positive.
+Notation z := 3%positive.
+Notation cond := 4%positive.
+
+(* TODO: solve scope issues. *)
+Close Scope stdpp_scope.
+
+(** Note that we have to introduce a temporary variable [cond] to store the result of the comparison. *)
+Definition f :=
+  ASSIGN (cond, []) <- BinaryOp BLe (Copy (x, [])) (Copy (y, []));;
+  IF Copy (cond, []) {{
+    ASSIGN (z, []) <- &mut (x, [])
+  }}
+  ELSE {{
+    ASSIGN (z, []) <- &mut (y, [])
+  }};;
+  ASSIGN (z, [Deref]) <- BinaryOp BAdd (Copy (z, [Deref])) (Const (IntConst 1));;
+  ASSIGN (x, []) <- BinaryOp BAdd (Copy (x, [])) (Const (IntConst 2))
+.
+
+Open Scope stdpp.
+(** We execute the function [f] on the most general state. The arguments << x >> and << y >> are initialized as symbolic values, while the local variables are uninitialized. *)
+Definition init_state := {|
+  vars := {[x := LLBC_plus_symbolic intT; y := LLBC_plus_symbolic intT; z := bot; cond := bot]};
+  anons := empty;
+  abstractions := empty;
+|}.
+
+Definition lx : loan_id := 1%positive.
+Definition ly : loan_id := 2%positive.
+Definition lz : loan_id := 3%positive.
+
+Definition A : positive := 1.
+
+(** The join state at the end of the conditional. *)
+Definition join_state : LLBC_plus_state := {|
+  vars := {[
+    x := loan^m(intT, lx);
+    y := loan^m(intT, ly);
+    z := borrow^m(lz, LLBC_plus_symbolic intT);
+    cond := LLBC_plus_symbolic boolT
+  ]};
+  anons := empty;
+  abstractions := {[
+    A := {[1%positive := borrow^m(lx, LLBC_plus_symbolic intT);
+           2%positive := borrow^m(ly, LLBC_plus_symbolic intT);
+           3%positive := loan^m(intT, lz)]} ]}
+|}.
+
 Section Eval_LLBC_plus_program.
   Hint Rewrite (@alter_insert _ _ _ _ _ _ _ _ _ _ Pmap_finmap) : core.
   Hint Rewrite (@alter_insert_ne _ _ _ _ _ _ _ _ _ _ Pmap_finmap) using discriminate : core.
@@ -7777,85 +8128,113 @@ Section Eval_LLBC_plus_program.
   Ltac simpl_state :=
     (* We can actually perform vm_compute on sget, because the result is a value and not a state. *)
     repeat (remember (sget _ _ ) eqn:EQN; vm_compute in EQN; subst);
-    compute - [insert alter empty singleton delete leq];
+    compute - [insert alter empty singletonM delete leq_symbolic];
     autorewrite with core.
 
-  Lemma exec_if :
-    exists if_state, eval_stmt if_branch rUnit cond_state if_state /\ leq if_state join_state.
-  Proof.
-    eexists. split.
-    { unfold cond_state. eapply Eval_assign; [ | apply Store with (a := 1%positive)].
-      - apply Eval_mut_borrow with (l := lx); [eval_var; constructor | .. | constructor].
-        all: try compute_done.
-      - eval_var. constructor.
-      - apply decide_not_contains_outer_loan_correct. reflexivity.
-      - apply store_compatible_types_nil.
-      - reflexivity.
-    }
-    simpl_state.
-    eapply prove_leq.
-    { eapply Leq_Reborrow_MutBorrow_Abs with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive) (kb := 1%positive) (kl := 3%positive); try compute_done.
-      eapply var_not_in_abstraction; reflexivity. reflexivity. constructor. }
-    simpl_state.
-    eapply prove_leq.
-    { eapply Leq_Fresh_MutLoan_Abs with (sp := (encode_var y, [])) (l' := ly) (i := 2%positive) (k := 2%positive);
-        [compute_done | now eapply var_not_in_abstraction | compute_done.. | constructor]. }
-    simpl_state.
-    eapply prove_leq; [constructor | ].
-    { remove_abstraction 1%positive. remove_abstraction 2%positive.
-      eapply Leq_MergeAbs; [reflexivity.. | | discriminate].
-      econstructor. eexists. split. constructor.
-      eapply UnionInsert with (j := 2%positive); [reflexivity.. | ].
-      apply UnionEmpty. }
-    simpl_state.
-    eapply prove_leq; [constructor | ].
-    { eapply Leq_ToSymbolic with (sp := (encode_var z, [0])). constructor. all: compute_done. }
-    simpl_state.
-    eapply prove_leq; [constructor | ].
-    { remove_anon 1%positive. apply Leq_RemoveAnon. all: compute_done. }
-    reflexivity.
-  Qed.
-
-  Lemma exec_else :
-    exists else_state, eval_stmt else_branch rUnit cond_state else_state /\ leq else_state join_state.
-  Proof.
-    eexists. split.
-    { unfold cond_state. eapply Eval_assign; [ | apply Store with (a := 1%positive)].
-      - apply Eval_mut_borrow with (l := ly); [eval_var; constructor | .. | constructor].
-        all: compute_done.
-      - eval_var. constructor.
-      - apply decide_not_contains_outer_loan_correct. reflexivity.
-      - apply store_compatible_types_nil.
-      - reflexivity.
-    }
-    simpl_state. eapply prove_leq.
-    { eapply Leq_Reborrow_MutBorrow_Abs with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive) (kb := 2%positive) (kl := 3%positive); try compute_done.
-      eapply var_not_in_abstraction; reflexivity. reflexivity. constructor. }
-    simpl_state.
-    eapply prove_leq.
-    { eapply Leq_Fresh_MutLoan_Abs with (sp := (encode_var x, [])) (l' := lx) (i := 2%positive) (k := 1%positive);
-        [compute_done | now eapply var_not_in_abstraction | compute_done.. | constructor]. }
-    simpl_state.
-    eapply prove_leq; [constructor | ].
-    { remove_abstraction 1%positive. remove_abstraction 2%positive.
-      apply Leq_MergeAbs; [reflexivity.. | | discriminate].
-      econstructor. eexists. split. constructor.
-      eapply UnionInsert with (j := 1%positive); [reflexivity.. | ].
-      apply UnionEmpty. }
-    simpl_state.
-    eapply prove_leq; [constructor | ].
-    { eapply Leq_ToSymbolic with (sp := (encode_var z, [0])); [constructor | compute_done..]. }
-    simpl_state.
-    eapply prove_leq; [constructor | ].
-    { remove_anon 1%positive. apply Leq_RemoveAnon. all: compute_done. }
-    reflexivity.
-  Qed.
-
-  Lemma safe_main :
-    exists end_state, eval_stmt end_main rUnit join_state end_state.
+  Lemma safe_f : exists end_state, eval_stmt f init_state end_state.
   Proof.
     eexists.
-    eapply Eval_seq_unit.
+    eapply eval_seq_unit.
+    (* Evaluation of the computation << x <= y >>. The result is stored in the temporary variable [cond]. *)
+    { eapply Eval_assign; [ | apply Store with (a := 1%positive)].
+      - econstructor.
+        + econstructor. eval_var. constructor. constructor. constructor.
+        + econstructor. eval_var. constructor. constructor. constructor.
+        + constructor.
+      - eval_var. constructor.
+      - apply decide_not_contains_outer_loan_correct. reflexivity.
+      - apply store_compatible_types_nil.
+      - reflexivity.
+    }
+    simpl_state. eapply eval_seq_unit.
+
+
+    (* Evaluation of the conditional. *)
+    { eapply Eval_if_symbolic with (B_join := {[rUnit := join_state]}).
+      { econstructor. eval_var. constructor. econstructor. constructor. }
+
+      (* Evaluation of the if branch. *)
+      { eapply Eval_assign; [ | apply Store with (a := 2%positive)].
+        + apply Eval_mut_borrow with (l := lx).
+          * eval_var. constructor.
+          * compute_done.
+          * compute_done.
+          * compute_done.
+          * constructor.
+        + eval_var. constructor.
+        + apply decide_not_contains_outer_loan_correct. constructor.
+        + apply store_compatible_types_nil.
+        + reflexivity. }
+
+      (* Evaluation of the else branch. *)
+      { eapply Eval_assign; [ | apply Store with (a := 2%positive)].
+        + apply Eval_mut_borrow with (l := ly).
+          * eval_var. constructor.
+          * compute_done.
+          * compute_done.
+          * compute_done.
+          * constructor.
+        + eval_var. constructor.
+        + apply decide_not_contains_outer_loan_correct. constructor.
+        + apply store_compatible_types_nil.
+        + reflexivity. }
+
+      apply is_join_singletons.
+      (* The state [S_join] is more abstract than the state at the end of the if branch. *)
+      { simpl_state.
+        eapply prove_leq_symbolic.
+        { eapply Leq_Reborrow_MutBorrow_Abs with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive) (kb := 1%positive) (kl := 3%positive); try compute_done.
+          eapply var_not_in_abstraction; reflexivity. reflexivity. constructor. }
+        simpl_state.
+        eapply prove_leq_symbolic.
+        { eapply Leq_Fresh_MutLoan_Abs with (sp := (encode_var y, [])) (l' := ly) (i := 2%positive) (k := 2%positive);
+            [compute_done | now eapply var_not_in_abstraction | compute_done.. | constructor]. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { remove_abstraction 1%positive. remove_abstraction 2%positive.
+          eapply Leq_MergeAbs; [reflexivity.. | | discriminate].
+          econstructor. eexists. split. constructor.
+          eapply UnionInsert with (j := 2%positive); [reflexivity.. | ].
+          apply UnionEmpty. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { eapply Leq_ToSymbolic with (sp := (encode_var z, [0])). constructor. all: compute_done. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { remove_anon 1%positive. apply Leq_RemoveAnon. all: compute_done. }
+        eapply prove_leq_symbolic; [constructor | ].
+        { remove_anon 2%positive. apply Leq_RemoveAnon. all: compute_done. }
+        reflexivity. }
+
+      (* The state [S_join] is more abstract than the state at the end of the else branch. *)
+      { eapply prove_leq_symbolic.
+        { eapply Leq_Reborrow_MutBorrow_Abs with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive) (kb := 2%positive) (kl := 3%positive); try compute_done.
+          eapply var_not_in_abstraction; reflexivity. reflexivity. constructor. }
+        simpl_state.
+        eapply prove_leq_symbolic.
+        { eapply Leq_Fresh_MutLoan_Abs with (sp := (encode_var x, [])) (l' := lx) (i := 2%positive) (k := 1%positive);
+            [compute_done | now eapply var_not_in_abstraction | compute_done.. | constructor]. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { remove_abstraction 1%positive. remove_abstraction 2%positive.
+          apply Leq_MergeAbs; [reflexivity.. | | discriminate].
+          econstructor. eexists. split. constructor.
+          eapply UnionInsert with (j := 1%positive); [reflexivity.. | ].
+          apply UnionEmpty. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { eapply Leq_ToSymbolic with (sp := (encode_var z, [0])); [constructor | compute_done..]. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { remove_anon 1%positive. apply Leq_RemoveAnon. all: compute_done. }
+        simpl_state.
+        eapply prove_leq_symbolic; [constructor | ].
+        { remove_anon 2%positive. apply Leq_RemoveAnon. all: compute_done. }
+        reflexivity. }
+    }
+
+    (* Execution of the line << *z += 1 >> *)
+    eapply eval_seq_unit.
     { eapply Eval_assign; [ | apply Store with (a := 1%positive)].
       - econstructor.
         + eapply Eval_copy.
@@ -7869,10 +8248,11 @@ Section Eval_LLBC_plus_program.
       - reflexivity.
     }
     simpl_state.
-    (* We must to reorganizations in order to end the loan lx. *)
+
+    (* In order to access the variable << x >>, we must perform reorganizations in order to end the loan [lx.] *)
     eapply Eval_reorg.
     { etransitivity.
-      (* Ending the loan lz ... *)
+      (* Ending the loan [lz] ... *)
       { constructor.
         eapply Reorg_end_borrow_m_in_abstraction
           with (i' := 1%positive) (j' := 3%positive) (q := (encode_var 3%positive, [])).
@@ -7893,7 +8273,7 @@ Section Eval_LLBC_plus_program.
           apply UnionEmpty.
       }
       simpl_state.
-      (* ... so that we could end the loan lx. *)
+      (* ... so that we could end the loan [lx]. *)
       { constructor.
         eapply Reorg_end_borrow_m with (p := (encode_var 1%positive, []))
                                        (q := (encode_anon 2%positive, [])).
@@ -7907,7 +8287,8 @@ Section Eval_LLBC_plus_program.
         - eapply anon_not_in_abstraction. reflexivity. }
     }
     simpl_state.
-    (* Finally, we can copy and overwrite x: *)
+
+    (* Execution of the line << x += 2 >> *)
     eapply Eval_assign; [ | apply Store with (a := 5%positive)].
     - econstructor.
       + eapply Eval_copy; [eval_var | ]; constructor. constructor.

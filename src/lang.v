@@ -2,6 +2,7 @@
 Require Import base.
 Require Import PathToSubtree.
 From Stdlib Require Import PArith.
+From stdpp Require Import pmap gmap.
 
 Definition var := positive.
 
@@ -51,6 +52,7 @@ Inductive statement :=
 
 
 (* TODO: notation scope. *)
+(* TODO: this notation conflicts with a stdpp notation. *)
 Notation "s0 ;; s1" := (Seq s0 s1)
   (at level 100, s1 at level 200, only parsing, right associativity).
 Notation "&mut p" := (BorrowMut p) (at level 80).
@@ -70,6 +72,30 @@ Definition loan_id := positive.
 
 Variant permission := Imm | Mut | Mov.
 
+(* TODO: rename [control_flow_tag] *)
 Variant statement_result : Set :=
 | rPanic
 | rUnit. (* Panicless termination. *)
+
+(** Control-flow tags can be keys for [gmap]. *)
+Global Instance stmt_result_eq_dec : EqDecision statement_result.
+Proof. unfold EqDecision, Decision. decide equality. Qed.
+
+Definition encode_stmt_result r :=
+  match r with
+  | rPanic => 1%positive
+  | rUnit => 2%positive
+  end.
+
+Definition decode_stmt_result r :=
+  match r with
+  | 1%positive => Some rPanic
+  | 2%positive => Some rUnit
+  | _ => None
+  end.
+
+Program Global Instance stmt_result_countable : Countable statement_result := {
+  encode := encode_stmt_result;
+  decode := decode_stmt_result
+}.
+Next Obligation. intros [ ]; reflexivity. Qed.
