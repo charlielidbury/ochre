@@ -97,8 +97,8 @@ x: A ∈ Γ
 
 [T-Asc]
 Γ ⊢ M ⇒ M'
+Γ ⊢ M' ⊑ A
 Γ ⊢ A ⇒ A'
-Γ ⊢ M' ⊑ A'
 ———————————
 Γ ⊢ (M : A) ⇒ A'
 ```
@@ -121,10 +121,11 @@ x: A ∈ Γ
   a function), the result is ⊤. This is the "no information in, no
   information out" case.
 
-- **T-Asc**: Abstractly evaluates both M and the ascription target A,
-  checks the result is a subtype of the evaluated target, then returns
-  the evaluated target (losing precision). The target is evaluated because
-  it may contain variables whose types are known from the environment.
+- **T-Asc**: Abstractly evaluates M to get M', checks M' ⊑ A (the raw
+  target, not evaluated), then evaluates A to get the result type A'.
+  The check uses raw A so that it is stable under environment narrowing
+  (see sharp edge #10). The target is still evaluated for the result
+  type, so downstream typing sees a clean evaluated form.
 
 ## Subtyping
 
@@ -157,6 +158,11 @@ x: A ∈ Γ
 Γ, x: B₁ ⊢ M₁ ⊑ M₂
 ——————————————————————————————
 Γ ⊢ (x: A₁) → M₁ ⊑ (x: B₁) → M₂
+
+[S-Eval]
+Γ ⊢ M ⇒ M'
+———————————
+Γ ⊢ M ⊑ M'
 ```
 
 ### Notes on subtyping
@@ -166,6 +172,12 @@ x: A ∈ Γ
   supertype). This means: "if the supertype accepts B₁'s, then
   for any such input, the subtype's body must be at least as
   precise as the supertype's body."
+
+- **S-Eval**: A term is at least as precise as its abstract evaluation.
+  This cannot be proved from the other rules (application and ascription
+  terms have no structural subtyping rules), so it is added as an axiom.
+  It does not enable the monotonicity counterexample because no typing
+  rule produces a variable as the type of a function literal.
 
 - **Open question**: S-Fun compares bodies structurally (after
   substitution via the context). This may not be enough computation

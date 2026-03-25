@@ -94,16 +94,18 @@ goes left-to-right, `False ⊑ b` is never derivable.
 **If you add a reverse S-Var:** The monotonicity bug returns immediately.
 `False : b` becomes typeable under `b: Bool` but not under `b: True`.
 
-## 7. T-Asc evaluates the ascription target
+## 7. T-Asc evaluates the ascription target for the result, but checks against raw
 
-`Γ ⊢ A ⇒ A'` before checking `M' ⊑ A'`. This matters when the target
-contains variables — e.g. `(M : x)` under `x: ⊤` evaluates the target
-to ⊤ before checking.
+T-Asc checks `M' ⊑ A` (raw target), then evaluates `A ⇒ A'` for the
+result type. The check uses raw A; the result uses evaluated A'.
 
-**If you don't evaluate the target:** Variables in ascription targets
-behave unpredictably. The check `M' ⊑ x` requires comparing against a
-variable, which only works via S-Refl (if M' is x) or S-Top (if x is ⊤).
-You lose the ability to ascribe to types that are stored in variables.
+The check `M' ⊑ A` against raw A means variable targets require
+syntactic subtyping: `(x : T)` works when x: T (S-Refl on M' = T ⊑ T),
+but `(x : y)` with independent x, y is rejected. This is correct —
+see sharp edge #10.
+
+**If you check against the evaluated target instead:** Monotonicity
+breaks — see sharp edge #10 for the counterexample.
 
 ## 8. Subtyping has no structural rule for ascription
 
@@ -133,3 +135,44 @@ gets stuck at the substitution lemma. You need to know that abstract
 evaluation is monotone in its inputs to close the gap between what
 T-App computes (using the argument's type) and what E-App computes
 (using the argument's value).
+
+## 10. T-Asc checks against the raw target, not the evaluated target
+
+Previous versions had T-Asc check `M' ⊑ A'` (evaluated type of M against
+evaluated target). This broke monotonicity: under a more precise
+environment, the target evaluates to something tighter, and the check
+can fail even though it passed before.
+
+**Concrete counterexample:** `(x : y)` under `Γ = {x: Bool, y: Bool}`
+types to Bool (since `Bool ⊑ Bool`). Under `Γ' = {x: Bool, y: True}`,
+the target evaluates to True, requiring `Bool ⊑ True` — which fails.
+The term becomes untypeable under narrowing, violating monotonicity.
+
+**Root cause:** The ascription target plays a dual role — covariant in
+the output (the result type is the evaluated target) and contravariant
+in the check (the term's type must be below the target). When the
+environment narrows, the target gets tighter in both positions. The
+output getting tighter is good (more precise result), but the check
+getting tighter can cause failure.
+
+**The fix:** Check `M' ⊑ A` (raw target syntax) instead of `M' ⊑ A'`
+(evaluated target). Raw syntax is invariant under environment changes,
+so the check is stable. The result is still the evaluated A', preserving
+precision in the output.
+
+**Consequence:** You cannot ascribe to a variable target like `(x : y)`
+where x and y are independent variables. This is correct — narrowing y
+could make it incompatible with x. You CAN ascribe `(x : T)` where
+x: T (S-Refl), `(x : ⊤)` (S-Top), or `(x : SomeLiteral)` where x's
+type is ⊑ that literal (S-Fun etc.).
+
+**Design connection:** `:` is the phase boundary between compile-time
+and runtime. The raw target is the developer's syntactic annotation —
+a deliberate "stop evaluating here" marker. Checking against raw syntax
+respects this boundary. Re-evaluating the target under a narrowed
+environment effectively re-interprets the developer's annotation, which
+breaks the contract.
+
+**If you check against the evaluated target:** The monotonicity
+counterexample returns. The trilemma is: {evaluated target check,
+monotonicity, no reverse S-Var} — pick two.

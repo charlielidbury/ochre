@@ -80,7 +80,21 @@ rejected in both environments, so there is no monotonicity violation.
 | 23 | `b: Bool ⊢ False : b ⇒ b`        | Reject   | ✓             | No rule derives False ⊑ b      |
 | 24 | `b: True ⊢ False : b ⇒ b`        | Reject   | ✓             | No rule derives False ⊑ b      |
 
-The key insight: S-Var only gives `b ⊑ Bool` (variable on the left of ⊑).
-No rule puts anything on the left of `⊑ b` (variable on the right) except
-S-Refl (`b ⊑ b`). So `False ⊑ b` is simply not derivable, regardless of
-what type `b` has in the environment. The bug cannot occur.
+The key insight: T-Asc checks `M' ⊑ A` (raw target). `False ⊑ b` is not
+derivable because S-Var only goes left-to-right. Even if the old rule
+(checking against evaluated target) were used, `False ⊑ Bool` would hold
+but narrowing y would break it — this is exactly sharp edge #10.
+
+## Group 7: T-Asc raw target check (sharp edge #10)
+
+These tests verify that T-Asc checks against the raw target, not the
+evaluated target. The counterexample `(x : y)` demonstrates that checking
+against evaluated targets breaks monotonicity.
+
+| #  | Program                                    | Expected | Current rules | Notes                              |
+|----|--------------------------------------------|----------|---------------|------------------------------------|
+| 25 | `x: Bool, y: Bool ⊢ (x : y) ⇒ ???`      | Reject   | ✓             | Bool ⋢ y (raw), no rule derives it |
+| 26 | `x: Bool, y: True ⊢ (x : y) ⇒ ???`      | Reject   | ✓             | Bool ⋢ y (raw), same reason        |
+| 27 | `x: True, y: Bool ⊢ (x : y) ⇒ ???`      | Reject   | ✓             | True ⋢ y (raw), same reason        |
+| 28 | `x: T ⊢ (x : T) ⇒ ⊤`                     | Accept   | ✓             | T ⊑ T (S-Refl), T ⇒ ⊤ (T: ⊤)    |
+| 29 | `x: T ⊢ (x : ⊤) ⇒ ⊤`                     | Accept   | ✓             | T ⊑ ⊤ (S-Top)                     |
