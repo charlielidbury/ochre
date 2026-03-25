@@ -37,11 +37,13 @@ Environments:
   It represents "I know nothing about this value." It also serves as the
   unit/trivial value when used at runtime.
 
-- **One function form.** `(x: A) → M` is both "the function that takes
-  `x` of type `A` and returns `M`" and "the type of functions that take
-  an `A` and return something in `M`". When used as a type, `M` is the
-  body interpreted abstractly; when applied at runtime, `M` is the body
-  executed concretely. The difference is in the semantics, not the syntax.
+- **One function form.** `(x: A) → M` is both a computable function and
+  a type. At runtime (concrete evaluation), the body M is executed with
+  the actual argument substituted in. At compile time (abstract evaluation),
+  the body is evaluated under `x: A`, resolving ascriptions and producing
+  a (potentially less precise) body M'. The type of the function is
+  `(x: A) → M'`. The runtime and compile-time only diverge at ascription
+  points — `:` is the sole source of precision loss.
 
 ### Examples
 
@@ -75,8 +77,9 @@ x: A ∈ Γ
 Γ ⊢ x ⇒ A
 
 [T-Fun]
+Γ, x: A ⊢ M ⇒ M'
 —————————————————————————————————————————
-Γ ⊢ (x: A) → M ⇒ (x: A) → M
+Γ ⊢ (x: A) → M ⇒ (x: A) → M'
 
 [T-App]
 Γ ⊢ M ⇒ (x: A) → B
@@ -92,27 +95,35 @@ x: A ∈ Γ
 
 [T-Asc]
 Γ ⊢ M ⇒ M'
-Γ ⊢ M' ⊑ A
+Γ ⊢ A ⇒ A'
+Γ ⊢ M' ⊑ A'
 ———————————
-Γ ⊢ (M : A) ⇒ A
+Γ ⊢ (M : A) ⇒ A'
 ```
 
 ### Notes on typing
 
-- **T-Fun**: A function is its own most precise type. No need to evaluate
-  the body — the function literal *is* the type.
+- **T-Fun**: Abstractly evaluates the body under the assumption `x: A`,
+  producing M'. The function's type is `(x: A) → M'`, which may be less
+  precise than the raw syntax `(x: A) → M`. The difference comes entirely
+  from ascription: each `:` in the body resolves to its widened type during
+  abstract evaluation. Without ascription, M' = M.
 
 - **T-App**: To type an application, we get the type of the function,
   check the argument is in the domain, then substitute the argument's
   type into the body. This is the "abstract evaluation" — we're running
   the function on the *type* of the argument, not the argument itself.
+  Note: the body B here is already abstractly evaluated (from T-Fun),
+  so ascriptions have already been resolved.
 
 - **T-App-Top**: If we apply something of type ⊤ (we don't know it's
   a function), the result is ⊤. This is the "no information in, no
   information out" case.
 
-- **T-Asc**: Ascription evaluates M, checks the result is a subtype
-  of A, then returns A (losing precision).
+- **T-Asc**: Abstractly evaluates both M and the ascription target A,
+  checks the result is a subtype of the evaluated target, then returns
+  the evaluated target (losing precision). The target is evaluated because
+  it may contain variables whose types are known from the environment.
 
 ## Subtyping
 
