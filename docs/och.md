@@ -38,12 +38,14 @@ Environments:
   unit/trivial value when used at runtime.
 
 - **One function form.** `(x: A) → M` is both a computable function and
-  a type. At runtime (concrete evaluation), the body M is executed with
-  the actual argument substituted in. At compile time (abstract evaluation),
-  the body is evaluated under `x: A`, resolving ascriptions and producing
-  a (potentially less precise) body M'. The type of the function is
-  `(x: A) → M'`. The runtime and compile-time only diverge at ascription
-  points — `:` is the sole source of precision loss.
+  a type. At runtime, E-Fun erases the parameter annotation to ⊤ and
+  E-App substitutes the concrete argument into the body. At compile time,
+  T-Fun returns the function as-is, and T-App substitutes the argument's
+  type into the body then abstractly evaluates the result. The body is
+  only evaluated at application time, when the argument type is known.
+  Runtime and compile-time diverge at two points: ascription (`:` loses
+  precision at compile time but is erased at runtime) and parameter
+  annotations (carried at compile time but erased to ⊤ at runtime).
 
 ### Examples
 
@@ -77,16 +79,16 @@ x: A ∈ Γ
 Γ ⊢ x ⇒ A
 
 [T-Fun]
-Γ, x: A ⊢ M ⇒ M'
 —————————————————————————————————————————
-Γ ⊢ (x: A) → M ⇒ (x: A) → M'
+Γ ⊢ (x: A) → M ⇒ (x: A) → M
 
 [T-App]
 Γ ⊢ M ⇒ (x: A) → B
 Γ ⊢ N ⇒ N'
 Γ ⊢ N' ⊑ A
+Γ ⊢ B[x ≔ N'] ⇒ R
 ——————————————————————————
-Γ ⊢ M N ⇒ B[x ≔ N']
+Γ ⊢ M N ⇒ R
 
 [T-App-Top]
 Γ ⊢ M ⇒ ⊤
@@ -103,18 +105,17 @@ x: A ∈ Γ
 
 ### Notes on typing
 
-- **T-Fun**: Abstractly evaluates the body under the assumption `x: A`,
-  producing M'. The function's type is `(x: A) → M'`, which may be less
-  precise than the raw syntax `(x: A) → M`. The difference comes entirely
-  from ascription: each `:` in the body resolves to its widened type during
-  abstract evaluation. Without ascription, M' = M.
+- **T-Fun**: A function literal is its own type. The body is NOT
+  abstractly evaluated at definition time — it remains as raw syntax.
+  Evaluation of the body happens at application time (in T-App), when
+  the actual argument type is known.
 
-- **T-App**: To type an application, we get the type of the function,
-  check the argument is in the domain, then substitute the argument's
-  type into the body. This is the "abstract evaluation" — we're running
-  the function on the *type* of the argument, not the argument itself.
-  Note: the body B here is already abstractly evaluated (from T-Fun),
-  so ascriptions have already been resolved.
+- **T-App**: Substitutes the argument's type (N') into the raw body B,
+  then abstractly evaluates the result. This means ascription checking
+  and precision loss happen at the call site, with the actual argument
+  type in scope. This avoids the problem of pre-evaluating the body
+  with only the parameter type, which would substitute a potentially
+  too-wide type into contravariant positions.
 
 - **T-App-Top**: If we apply something of type ⊤ (we don't know it's
   a function), the result is ⊤. This is the "no information in, no
@@ -183,7 +184,7 @@ The judgment `M ⟶ V` means "M reduces to V at runtime."
 
 [E-Fun]
 ———————————
-(x: A) → M ⟶ (x: A) → M
+(x: A) → M ⟶ (x: ⊤) → M
 
 [E-App]
 M ⟶ (x: A) → B
@@ -199,8 +200,15 @@ M ⟶ V
 
 ### Notes on concrete evaluation
 
+- **E-Fun**: The parameter annotation is erased to ⊤ at runtime. This
+  reflects the fact that type checking has already happened at compile
+  time — the runtime doesn't need to know what type the parameter was
+  declared as. Two functions that differ only in their parameter
+  annotation evaluate to the same runtime value.
+
 - **E-App**: Standard beta reduction — substitute the evaluated argument
-  into the body. No type checking at runtime.
+  into the body. No type checking at runtime. Note: after E-Fun, the
+  domain in the pattern is always ⊤.
 
 - **E-Asc**: Ascription is erased at runtime. It only affects typing.
 
@@ -217,10 +225,10 @@ M ⟶ V
    (More precise environment → more precise type. THIS IS THE ONE
    THAT BROKE IN OCHRE.)
 
-## Monotonicity Counterexample
+## Monotonicity Counterexample (Resolved)
 
-The original Ochre bug (Prop. 5.2.9) used atoms and match. Here is the
-same bug reproduced in Och₀ using only Church booleans.
+The original Ochre bug (Prop. 5.2.9) used atoms and match. The same
+bug structure can be expressed in Och₀ using Church booleans:
 
 ```
 Bool  = (T: ⊤) → (x: T) → (y: T) → T
@@ -228,47 +236,15 @@ True  = (T: ⊤) → (x: T) → (y: T) → x
 False = (T: ⊤) → (x: T) → (y: T) → y
 ```
 
-Consider the term `False : b` under two environments:
+Consider the term `False : b`. For this to type-check under T-Asc,
+we need `False ⊑ b` (after evaluating the target `b` to its type).
+But S-Var only gives `b ⊑ Bool` (variable on the left of ⊑). No
+rule derives `False ⊑ b` or `anything ⊑ b` (except `b ⊑ b` via
+S-Refl). So `False : b` is **rejected in all environments**.
 
-**Wide environment: `b: Bool`**
-
-```
-b: Bool ⊢ (False : b) ⇒ b
-  by T-Asc, need:
-  1. b: Bool ⊢ False ⇒ False
-     by T-Fun ✓
-  2. b: Bool ⊢ False ⊑ b
-     by S-Var (b: Bool ∈ Γ) + S-Trans, need:
-     b: Bool ⊢ False ⊑ Bool
-       (see proof below in Church Booleans section) ✓
-```
-
-This holds: `False ⊑ Bool`, and `b` has type `Bool`, so `False ⊑ b`.
-
-**Narrow environment: `b: True`**
-
-```
-b: True ⊢ (False : b) ⇒ b
-  by T-Asc, need:
-  1. b: True ⊢ False ⇒ False
-     by T-Fun ✓
-  2. b: True ⊢ False ⊑ b
-     by S-Var (b: True ∈ Γ), need:
-     b: True ⊢ False ⊑ True
-       at the leaf: T: ⊤, x: T, y: T ⊢ y ⊑ x
-       by S-Var (y: T ∈ Γ), need: T ⊑ x
-       no rule gives us T ⊑ x — we only have x ⊑ T, not the reverse.
-       ✗ FAILS
-```
-
-**This is the monotonicity bug.** We narrowed the environment from
-`b: Bool` to `b: True` (and `True ⊑ Bool`), but the judgment broke.
-A previously valid ascription became invalid under a more precise context.
-
-The root cause is S-Var: `b ⊑ B` holds when `B` is wide enough to
-contain all of `b`'s type, but when `b`'s type narrows, the thing we're
-ascribing to also narrows, and the ascription target becomes too precise
-for the value.
+This means the Ochre monotonicity bug cannot occur — the dangerous
+program is rejected before narrowing even enters the picture. The
+one-directional nature of S-Var prevents it.
 
 ## Examples
 
@@ -358,6 +334,6 @@ output. This is also exactly the monotonicity property we want.
 
 ## TODO
 
-- Determine whether S-Fun needs normalization of bodies
+- Prove soundness and monotonicity (see och-soundness-proof.md)
+- Determine whether S-Eval needs to be added as a rule
 - Think about what happens when we add unions and atoms
-- Try to prove soundness and monotonicity for Och₀
