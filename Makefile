@@ -7,6 +7,9 @@ CLEANCMD?=$(DUNE) clean $(DUNEARGS)
 all:
 	@$(BUILDCMD) -- @all
 
+doc:
+	@$(BUILDCMD) -- @doc
+
 %.vo:FORCE
 	@$(BUILDCMD) -- "$@"
 
