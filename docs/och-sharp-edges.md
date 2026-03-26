@@ -243,10 +243,29 @@ Precision is controlled by ascription (`:`) — if you want to assert that
 `f x` returns a specific type, write `(f x : T)`. The ascription check
 catches incompatible applications.
 
-**Remaining limitation:** The unconditional T-App-Top fixes monotonicity
-for T-App-Top and T-App-Stuck cases, but when the original derivation
-used T-App (giving precise R), and under Γ' only T-App-Top applies
-(giving ⊤), we need ⊤ ⊑ R which fails. This happens when M₁'s type
-degrades from a function type to a variable under narrowing. Fully
-resolving this requires T-Var to normalize its result (evaluate the
-environment entry) — see discussion in proof-status.md.
+**The variable-type sub-problem** is resolved by head normalization (⇓)
+in T-App. When M₁'s type is a variable g that aliases a function type,
+⇓ unfolds g to extract the function structure. This avoids changing
+T-Var (which would break T-Asc's raw target check — see sharp edge
+#13). Requires well-founded environments (no cyclic variable bindings).
+
+## 13. T-Var must NOT normalize its result
+
+A tempting fix for the variable-type gap (#12) is to change T-Var to
+evaluate the environment entry: `x ⇒ eval(Γ(x))` instead of `x ⇒ Γ(x)`.
+
+**This breaks T-Asc.** Consider `{T: ⊤, x: T} ⊢ (x : T)`. Under
+current T-Var: `x ⇒ T`, then T-Asc checks `T ⊑ T` (raw target) via
+S-Refl. Under normalizing T-Var: `x ⇒ ⊤` (since T: ⊤), then T-Asc
+checks `⊤ ⊑ T` (raw target) — **not derivable**. The term becomes
+untypeable.
+
+**Root cause:** T-Asc checks against the RAW target (sharp edge #10).
+If T-Var normalizes, the type `⊤` can't match the raw variable `T`.
+The raw target check is essential for monotonicity (#10), so we can't
+change it. And T-Var normalization destroys the variable identity that
+S-Refl needs.
+
+**The fix:** Use head normalization (⇓) in T-App instead. This only
+unfolds variables at the application site, preserving variable identity
+elsewhere in the system.

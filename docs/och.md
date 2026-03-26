@@ -16,6 +16,11 @@ Terms:
 
 Environments:
   Γ ::= · | Γ, x: A
+
+Well-foundedness:
+  Variable bindings in Γ must be acyclic. If x: A ∈ Γ and A mentions
+  variable y, then y must be bound before x in Γ (or not in Γ at all).
+  This ensures head normalization (⇓) terminates.
 ```
 
 ### Notes
@@ -83,7 +88,8 @@ x: A ∈ Γ
 Γ ⊢ (x: A) → M ⇒ (x: A) → M
 
 [T-App]
-Γ ⊢ M ⇒ (x: A) → B
+Γ ⊢ M ⇒ F
+Γ ⊢ F ⇓ (x: A) → B
 Γ ⊢ N ⇒ N'
 Γ ⊢ N' ⊑ A
 Γ ⊢ B[x ≔ N'] ⇒ R
@@ -102,6 +108,29 @@ x: A ∈ Γ
 Γ ⊢ (M : A) ⇒ A'
 ```
 
+### Head Normalization
+
+The judgment `Γ ⊢ F ⇓ G` unfolds variable aliases in F until a
+non-variable is reached. Used by T-App to extract function structure
+from types that may be variable aliases for function types.
+
+```
+[HN-Nonvar]
+F is not a variable
+————————————
+Γ ⊢ F ⇓ F
+
+[HN-Var]
+x: A ∈ Γ
+Γ ⊢ A ⇓ G
+————————————
+Γ ⊢ x ⇓ G
+```
+
+**Requires well-founded environments:** The environment must have no
+cycles in variable bindings (e.g., `{x: y, y: x}` is disallowed).
+Under well-founded environments, ⇓ always terminates.
+
 ### Notes on typing
 
 - **T-Fun**: A function literal is its own type. The body is NOT
@@ -109,12 +138,13 @@ x: A ∈ Γ
   Evaluation of the body happens at application time (in T-App), when
   the actual argument type is known.
 
-- **T-App**: Substitutes the argument's type (N') into the raw body B,
-  then abstractly evaluates the result. This means ascription checking
-  and precision loss happen at the call site, with the actual argument
-  type in scope. This avoids the problem of pre-evaluating the body
-  with only the parameter type, which would substitute a potentially
-  too-wide type into contravariant positions.
+- **T-App**: First types M to get F, then head-normalizes F (unfolding
+  variable aliases) to extract the function structure `(x: A) → B`.
+  Then substitutes the argument's type (N') into the raw body B and
+  abstractly evaluates the result. The head normalization step is
+  essential for monotonicity: under a narrower environment, M₁'s type
+  may become a variable alias for a function type (see sharp edge #12).
+  Without ⇓, T-App would fail on the variable, breaking monotonicity.
 
 - **T-App-Top**: Any application has type ⊤ as a fallback. This rule
   has no premises — it always applies. When T-App also applies (M₁
