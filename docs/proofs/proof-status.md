@@ -142,6 +142,7 @@ bindings.
 | Well-founded environments | ⇓ requires acyclic variable bindings | — |
 | E-Fun deep domain erasure | Soundness counterexample: inner domains break V ⊑ R | #14 |
 | S-App congruence added | Needed for erase(M) ⊑ M lemma on application terms | #14 |
+| HN-Eval added to ⇓ | App/asc terms in narrowed envs break monotonicity | #15 |
 
 ## Recommended Next Steps
 

@@ -339,3 +339,52 @@ subtyping rule decomposes ascription on the right of ⊑. This sub-gap
 only arises for function bodies containing ascription terms with
 parameter-dependent domains inside function-literal targets — an uncommon
 pattern. A logical relations proof would close it entirely.
+
+## 15. Head normalization must evaluate applications and ascriptions
+
+Previous versions had ⇓ only unfold variables (HN-Var) and return
+non-variables unchanged (HN-Nonvar). This breaks monotonicity when
+environment entries are application or ascription terms that evaluate
+to function types.
+
+**Concrete counterexample:**
+
+```
+Γ  = {z: (x: ⊤) → (y: ⊤) → y}
+Γ' = {z: ((f: ⊤) → (x: ⊤) → (y: ⊤) → y) ⊤}
+
+Γ'(z) ⊑ Γ(z) via S-Eval: the application evaluates to
+(x: ⊤) → (y: ⊤) → y.  ✓ (Γ' ⊑ Γ)
+
+Under Γ:  z ⊤ ⇒ (y: ⊤) → y  (T-App fires: z types to function)
+Under Γ': z ⊤ ⇒ ⊤           (T-App-Top: z types to application,
+                               old ⇓ can't see through it)
+
+Need ⊤ ⊑ (y: ⊤) → y — NOT DERIVABLE
+```
+
+**Root cause:** Under Γ' ⊑ Γ, the narrowed environment may contain
+entries that are application terms (from S-Eval subtyping). These
+application terms evaluate to function types, but the old ⇓ (which
+only unfolds variables) couldn't resolve them.
+
+**The fix:** Add HN-Eval: when ⇓ encounters an application or ascription
+term, first abstractly evaluate it (⇒), then ⇓ the result. This gives ⇓
+the power to see through evaluated application terms.
+
+```
+[HN-Eval]
+Γ ⊢ F ⇒ F'
+Γ ⊢ F' ⇓ G
+————————————————————————————
+Γ ⊢ F ⇓ G
+(where F is an application or ascription)
+```
+
+**Termination:** In Och₀ without recursive types, ⇒ always terminates.
+The result F' is "more evaluated" — the chain converges. Well-founded
+environments ensure HN-Var terminates. Together, ⇓ terminates.
+
+**If you remove HN-Eval:** The counterexample above breaks monotonicity.
+Any environment where entries are application terms (which arise naturally
+from S-Eval narrowing) will fail to head-normalize to function types.

@@ -110,26 +110,46 @@ x: A ∈ Γ
 
 ### Head Normalization
 
-The judgment `Γ ⊢ F ⇓ G` unfolds variable aliases in F until a
-non-variable is reached. Used by T-App to extract function structure
-from types that may be variable aliases for function types.
+The judgment `Γ ⊢ F ⇓ G` resolves F to a "head normal form" — either
+⊤ or a function type `(x: A) → B`. Used by T-App to extract function
+structure from types that may be variable aliases, application terms,
+or ascription terms that evaluate to function types.
 
 ```
-[HN-Nonvar]
-F is not a variable
+[HN-Fun]
 ————————————
-Γ ⊢ F ⇓ F
+Γ ⊢ (x: A) → B ⇓ (x: A) → B
+
+[HN-Top]
+————————————
+Γ ⊢ ⊤ ⇓ ⊤
 
 [HN-Var]
 x: A ∈ Γ
 Γ ⊢ A ⇓ G
 ————————————
 Γ ⊢ x ⇓ G
+
+[HN-Eval]
+Γ ⊢ F ⇒ F'
+Γ ⊢ F' ⇓ G
+————————————————————————————
+Γ ⊢ F ⇓ G
+(where F is an application or ascription)
 ```
 
-**Requires well-founded environments:** The environment must have no
-cycles in variable bindings (e.g., `{x: y, y: x}` is disallowed).
-Under well-founded environments, ⇓ always terminates.
+**Termination:** HN-Fun and HN-Top are base cases. HN-Var terminates
+under well-founded environments (acyclic variable bindings). HN-Eval
+terminates because abstract evaluation (⇒) always terminates in Och₀
+(no recursive types or fixpoints), and the result F' is "more evaluated"
+than F — the chain of ⇒ results converges to a function type or ⊤.
+
+**Why HN-Eval is needed:** Without it, environment entries that are
+application or ascription terms (which arise from S-Eval in narrowed
+environments) cannot be resolved to function types. This breaks
+monotonicity: under a narrower Γ', a variable's type might become an
+application term that evaluates to a function type, but the old ⇓
+couldn't see through it (see sharp edge #15).
 
 ### Notes on typing
 
@@ -138,13 +158,15 @@ Under well-founded environments, ⇓ always terminates.
   Evaluation of the body happens at application time (in T-App), when
   the actual argument type is known.
 
-- **T-App**: First types M to get F, then head-normalizes F (unfolding
-  variable aliases) to extract the function structure `(x: A) → B`.
-  Then substitutes the argument's type (N') into the raw body B and
-  abstractly evaluates the result. The head normalization step is
-  essential for monotonicity: under a narrower environment, M₁'s type
-  may become a variable alias for a function type (see sharp edge #12).
-  Without ⇓, T-App would fail on the variable, breaking monotonicity.
+- **T-App**: First types M to get F, then head-normalizes F to extract
+  the function structure `(x: A) → B`. Head normalization unfolds
+  variable aliases, evaluates application/ascription terms, and recurses
+  until a function type or ⊤ is reached. Then substitutes the argument's
+  type (N') into the raw body B and abstractly evaluates the result.
+  Head normalization is essential for monotonicity: under a narrower
+  environment, M₁'s type may become a variable alias or an application
+  term that evaluates to a function type (see sharp edges #12, #15).
+  Without ⇓, T-App would fail on these, breaking monotonicity.
 
 - **T-App-Top**: Any application has type ⊤ as a fallback. This rule
   has no premises — it always applies. When T-App also applies (M₁

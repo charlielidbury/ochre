@@ -130,3 +130,14 @@ is resolved by deep domain erasure in E-Fun.
 |----|------------------------------------------------------------------|----------|---------------|------------------------------|
 | 36 | `· ⊢ ((x: ⊤) → (y: ⊤) → (z: x) → z) (((w: ⊤) → w) : (w: ⊤) → ⊤) ⇒ (y: ⊤) → (z: (w: ⊤) → ⊤) → z` | Accept | ✓ | T-App, abstract subst |
 | 37 | (soundness: V ⊑ R for test 36)                                  | Accept   | ✓             | Deep erasure: V = (y:⊤)→(z:⊤)→z; (z:⊤)→z ⊑ (z:(w:⊤)→⊤)→z by S-Fun+S-Top |
+
+## Group 11: HN-Eval — head normalization through applications (sharp edge #15)
+
+These tests verify that ⇓ can see through application and ascription
+terms in the environment via HN-Eval.
+
+| #  | Program                                                          | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------------------|----------|---------------|------------------------------|
+| 38 | `z: ((f: ⊤) → (x: ⊤) → (y: ⊤) → y) ⊤ ⊢ z ⊤ ⇒ (y: ⊤) → y` | Accept   | ✓             | HN-Eval: app ⇒ fun type, T-App fires |
+| 39 | `z: (x: ⊤) → (y: ⊤) → y ⊢ z ⊤ ⇒ (y: ⊤) → y`                | Accept   | ✓             | Direct function type, T-App  |
+| 40 | Tests 38 & 39 are a monotonicity pair: 38 refines 39            | Accept   | ✓             | (y:⊤)→y ⊑ (y:⊤)→y by S-Refl |
