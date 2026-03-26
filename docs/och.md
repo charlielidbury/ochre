@@ -17,10 +17,13 @@ Terms:
 Environments:
   Γ ::= · | Γ, x: A
 
-Well-foundedness:
-  Variable bindings in Γ must be acyclic. If x: A ∈ Γ and A mentions
-  variable y, then y must be bound before x in Γ (or not in Γ at all).
-  This ensures head normalization (⇓) terminates.
+Well-foundedness (⊢ Γ ok):
+  Contexts must be well-formed: for each binding x: A in Γ, every
+  free variable of A must already be in scope (FV(A) ⊆ dom(Γ_before_x)).
+  Formally this is defined by WF-Empty and WF-Ext in
+  proofs/lemma-context-wf.md. This is strictly stronger than mere
+  acyclicity: it ensures all free variables in bindings are in scope,
+  which is needed for the scoping lemmas and for ⇓ termination.
 ```
 
 ### Notes

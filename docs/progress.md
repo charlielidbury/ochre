@@ -76,6 +76,11 @@ the parameter are lost. But this information was always erased at runtime
 | ⇓-Sub | Done | Inside lemma-hn-mono.md |
 | ⇓-preserves-⊑ | Done | Inside lemma-hn-mono.md |
 | Monotone Covariant Substitution | Done | Inside monotonicity-t-app.md |
+| Context Well-Formedness | Done | lemma-context-wf.md |
+| Substitution Preserves Scoping | Done | Inside lemma-context-wf.md |
+| Erasure Preserves Scoping | Done | Inside lemma-context-wf.md |
+| ⇓ Preserves Scoping | Done | Inside lemma-context-wf.md |
+| Typing Output Scoping | Done | Inside lemma-context-wf.md |
 
 ## Rule Changes Made During Proof
 
@@ -132,6 +137,7 @@ Overall: Complete.
 | `proofs/lemma-values-erased.md` | Values have ⊤ domains | Yes |
 | `proofs/lemma-narrowing-subtyping.md` | Narrowing preserves subtyping | Yes |
 | `proofs/lemma-hn-mono.md` | HN-Mono with sub-lemmas | Yes |
+| `proofs/lemma-context-wf.md` | Context well-formedness + scoping lemmas | Yes |
 
 ## Status: Complete
 
