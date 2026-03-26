@@ -68,7 +68,7 @@ the parameter are lost. But this information was always erased at runtime
 |-------|--------|------|
 | Weakening | Done | lemma-weakening.md |
 | Equal Substitution | Done | lemma-equal-substitution.md |
-| Narrowing Preserves Subtyping | Done | (inline) |
+| Narrowing Preserves Subtyping | Done | lemma-narrowing-subtyping.md |
 | S-Eval (axiom) | Done | lemma-s-eval.md |
 | Values Have Erased Domains | Done | lemma-values-erased.md |
 | Domain Erasure Subtyping (Erase-Sub) | Done | lemma-erase-sub.md |
@@ -139,6 +139,7 @@ Overall: Complete.
 | `proofs/lemma-s-eval.md` | S-Eval axiom | Yes |
 | `proofs/lemma-erase-sub.md` | erase(M) ⊑ M | Yes |
 | `proofs/lemma-values-erased.md` | Values have ⊤ domains | Yes |
+| `proofs/lemma-narrowing-subtyping.md` | Narrowing preserves subtyping | Yes |
 | `proofs/lemma-hn-mono.md` | HN-Mono with sub-lemmas | Yes |
 
 ## Recommended Next Steps

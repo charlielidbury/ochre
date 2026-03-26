@@ -132,27 +132,44 @@ with size `s = |𝒟₁| + |𝒟₂| + 1` (so `|𝒟₁| < s` and `|𝒟₂| < s
 
 We are given `F ⇓ G` with height `h`. We need `G ⊑ (x: A) → C`.
 
-We proceed by case-splitting on the ⇓ derivation `F ⇓ G`.
+We first case-split on whether D is a function type, then (if not)
+case-split on the ⇓ derivation `F ⇓ G`.
 
 ---
 
-#### S-Trans / HN-Fun
+#### S-Trans / D is a function type
+
+D = (x': A') → C' for some A', C'.
+
+Apply the IH to `𝒟₁: F ⊑ (x': A') → C'` and `F ⇓ G`.
+
+**Measure:** `(h, |𝒟₁|) ≺ (h, s)` because h = h and |𝒟₁| < s.
+
+This gives `G ⊑ (x': A') → C'`. Then `G ⊑ (x: A) → C` by
+S-Trans(G ⊑ D, 𝒟₂). ∎
+
+---
+
+For the remaining sub-cases, D is **not** a function type (D is a variable,
+application, ascription, or ⊤). We case-split on the ⇓ derivation `F ⇓ G`.
+
+#### S-Trans / D not a function type / HN-Fun
 
 F is a function type `(x: P) → Q`. G = F by HN-Fun.
 
-`G = F ⊑ D ⊑ (x: A) → C` by S-Trans from 𝒟₁ and 𝒟₂ (the original
-derivation). So G ⊑ (x: A) → C. ∎
+G = F, and we have the original derivation `F ⊑ (x: A) → C` by
+S-Trans(𝒟₁, 𝒟₂). So `G ⊑ (x: A) → C`. ∎
 
-#### S-Trans / HN-Top
+#### S-Trans / D not a function type / HN-Top
 
 F = ⊤, G = ⊤.
 
 From `𝒟₁: ⊤ ⊑ D`, Lemma ⊤-Sub gives D = ⊤. Then `𝒟₂: ⊤ ⊑ (x: A) → C`,
 and Lemma ⊤-Sub gives (x: A) → C = ⊤. Contradiction (function type ≠ ⊤). ∎
 
-#### S-Trans / HN-Var
+#### S-Trans / D not a function type / HN-Var
 
-F = y, `y: K ∈ Γ`, `K ⇓ G` (height h − 1).
+F = y, `y: K ∈ Γ`, `K ⇓ G` with height h − 1.
 
 We have `𝒟₁: y ⊑ D` and `𝒟₂: D ⊑ (x: A) → C`.
 
@@ -161,55 +178,64 @@ Apply **Var-Unfold** to `𝒟₁: y ⊑ D` with `y: K ∈ Γ`:
 **Var-Unfold case (1):** There exists a derivation `K ⊑ D`.
 
 Build `K ⊑ (x: A) → C` by S-Trans from `K ⊑ D` and `𝒟₂`. Call this 𝒟_K.
-Apply the outer IH to `𝒟_K: K ⊑ (x: A) → C` and `K ⇓ G` (height h − 1).
+Apply the IH to `𝒟_K: K ⊑ (x: A) → C` and `K ⇓ G` (height h − 1).
 
 **Measure:** `(h − 1, |𝒟_K|) ≺ (h, s)` because the primary component
 strictly decreases: h − 1 < h. The secondary component |𝒟_K| can be
 anything — when the primary component decreases, any secondary value
-is acceptable in the lexicographic order. ∎
+is acceptable in the lexicographic order.
+
+This gives `G ⊑ (x: A) → C`. ∎
 
 **Var-Unfold case (2):** y = D.
 
 Then `𝒟₂: y ⊑ (x: A) → C` with `|𝒟₂| < s`.
-Apply the outer IH to `𝒟₂: y ⊑ (x: A) → C` and `y ⇓ G` (height h).
+Apply the IH to `𝒟₂: y ⊑ (x: A) → C` and `y ⇓ G` (height h).
 
 **Measure:** `(h, |𝒟₂|) ≺ (h, s)` because h = h (same primary) and
-|𝒟₂| < s (secondary strictly decreases). ∎
+|𝒟₂| < s (secondary strictly decreases).
 
-#### S-Trans / HN-Eval
+This gives `G ⊑ (x: A) → C`. ∎
 
-F is an application or ascription. `F ⇒ F'`, `F' ⇓ G` (height h − 1).
+#### S-Trans / D not a function type / HN-Eval
+
+F is an application or ascription. `F ⇒ F'`, `F' ⇓ G` with height h − 1.
 
 We have `𝒟₁: F ⊑ D` and `𝒟₂: D ⊑ (x: A) → C`.
 
-Apply **Eval-Extract** to `𝒟₁: F ⊑ D` with `F ⇒ F'`:
+Apply **Eval-Extract** to `𝒟₁: F ⊑ D` (F is an application or ascription):
 
-**Eval-Extract case (1):** `F ⇒ F'` and there exists a derivation `F' ⊑ D`.
+**Eval-Extract case (1):** There exist F'' and a derivation `F'' ⊑ D` such
+that `F ⇒ F''`.
 
-(Note: Eval-Extract yields some F'' with `F ⇒ F''`; since abstract
-evaluation is deterministic, F'' = F'.)
+Since abstract evaluation is deterministic, F'' = F'. So we have `F' ⊑ D`.
 
 Build `F' ⊑ (x: A) → C` by S-Trans from `F' ⊑ D` and `𝒟₂`. Call this 𝒟'.
-Apply the outer IH to `𝒟': F' ⊑ (x: A) → C` and `F' ⇓ G` (height h − 1).
+Apply the IH to `𝒟': F' ⊑ (x: A) → C` and `F' ⇓ G` (height h − 1).
 
-**Measure:** `(h − 1, |𝒟'|) ≺ (h, s)` because h − 1 < h. ∎
+**Measure:** `(h − 1, |𝒟'|) ≺ (h, s)` because h − 1 < h.
+
+This gives `G ⊑ (x: A) → C`. ∎
 
 **Eval-Extract case (2):** F = D.
 
 Then `𝒟₂: F ⊑ (x: A) → C` with `|𝒟₂| < s`.
-Apply the outer IH to `𝒟₂: F ⊑ (x: A) → C` and `F ⇓ G` (height h).
+Apply the IH to `𝒟₂: F ⊑ (x: A) → C` and `F ⇓ G` (height h).
 
-**Measure:** `(h, |𝒟₂|) ≺ (h, s)` because |𝒟₂| < s. ∎
+**Measure:** `(h, |𝒟₂|) ≺ (h, s)` because |𝒟₂| < s.
+
+This gives `G ⊑ (x: A) → C`. ∎
 
 **Eval-Extract case (3):** D = ⊤.
 
 Then `𝒟₂: ⊤ ⊑ (x: A) → C`. By Lemma ⊤-Sub: (x: A) → C = ⊤.
-Contradiction. ∎
+Contradiction (function type ≠ ⊤). ∎
 
 ---
 
-This completes the S-Trans case, modulo the Eval-Extract lemma's
-dependence on ⇒-monotonicity (in its S-App and S-Asc cases). ∎
+This completes the S-Trans case. Every sub-case is fully resolved, modulo
+the Eval-Extract lemma's dependence on ⇒-monotonicity in its S-App and
+S-Asc cases (see Note on Mutual Induction below). ∎
 
 ## Note on Mutual Induction
 

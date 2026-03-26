@@ -178,17 +178,134 @@ of erase(B)**. Therefore R₀ has x only in covariant positions:
 - Other typing rules (T-App, T-Asc, T-Top) recursively evaluate, but
   never introduce x into domain positions. ✓
 
-**Monotone Covariant Substitution Lemma:** If R₀ has x only in covariant
-positions, then `N'' ⊑ N'` implies `R₀[x ≔ N''] ⊑ R₀[x ≔ N']`.
+---
 
-Proof by structural induction on R₀:
-- R₀ = ⊤: no x. S-Refl. ✓
-- R₀ = x: R₀[x ≔ N''] = N'' ⊑ N' = R₀[x ≔ N']. ✓
-- R₀ = y (y ≠ x): no change. S-Refl. ✓
-- R₀ = (y: E) → F where E does not mention x (it's ⊤ or from Γ):
-  By S-Fun: E ⊑ E (S-Refl) and F[x ≔ N''] ⊑ F[x ≔ N'] (IH on body). ✓
-- R₀ = M₁ M₂: By S-App with IH on M₁ and M₂. ✓
-- R₀ = (M₁ : E): By S-Asc with IH on M₁ and E. ✓
+### Monotone Covariant Substitution Lemma
+
+**Definition (Erased term).** A term E is *erased* if every function
+subterm has the form `(y: ⊤) → E'` where E' is itself erased. Formally,
+the set of erased terms is:
+
+```
+Erased ::=
+  | ⊤
+  | x                     (any variable)
+  | (y: ⊤) → E           where E is erased
+  | E₁ E₂                where E₁, E₂ are erased
+  | (E₁ : E₂)            where E₁, E₂ are erased
+```
+
+Equivalently, E is erased iff `erase(E) = E`. Note that `erase(B)`
+always produces an erased term.
+
+**Key structural property.** In an erased term E, every function domain
+is literally `⊤`, which contains no variables. Therefore a variable x
+can only occur in:
+- The term itself (base case, covariant)
+- The *body* of a function `(y: ⊤) → E'` (covariant, since domain is ⊤)
+- Either subterm of an application `E₁ E₂` (covariant — no domain to
+  be contravariant in, since those are all ⊤)
+- Either subterm of an ascription `(E₁ : E₂)` (covariant — same reasoning)
+
+In short: x *never* appears in a domain position, because all domains
+are the variable-free constant ⊤. Every occurrence of x is covariant.
+
+**Lemma (Monotone Covariant Substitution).** Let E be an erased term
+(i.e. `erase(E) = E`). If `Γ ⊢ N'' ⊑ N'`, then:
+
+```
+Γ ⊢ E[x ≔ N''] ⊑ E[x ≔ N']
+```
+
+**Proof.** By structural induction on E. Since E is erased, every
+function domain in E is `⊤`.
+
+**Case** `E = ⊤`:
+
+```
+E[x ≔ N''] = ⊤ = E[x ≔ N']
+```
+By S-Refl. ✓
+
+**Case** `E = x` (the substitution variable):
+
+```
+E[x ≔ N''] = N''
+E[x ≔ N']  = N'
+```
+By premise `Γ ⊢ N'' ⊑ N'`. ✓
+
+**Case** `E = y` where `y ≠ x`:
+
+```
+E[x ≔ N''] = y = E[x ≔ N']
+```
+By S-Refl. ✓
+
+**Case** `E = (y: ⊤) → E'` where E' is erased:
+
+The domain is `⊤`, which contains no variables, so:
+```
+E[x ≔ N''] = (y: ⊤) → E'[x ≔ N'']
+E[x ≔ N']  = (y: ⊤) → E'[x ≔ N']
+```
+
+By the induction hypothesis on E':
+```
+Γ ⊢ E'[x ≔ N''] ⊑ E'[x ≔ N']                       — (IH)
+```
+
+We need `Γ, y: ⊤ ⊢ E'[x ≔ N''] ⊑ E'[x ≔ N']`, which follows from
+(IH) by weakening (adding `y: ⊤` to the environment).
+
+By S-Fun with `Γ ⊢ ⊤ ⊑ ⊤` (S-Refl on domain) and the weakened (IH)
+on the body:
+```
+Γ ⊢ (y: ⊤) → E'[x ≔ N''] ⊑ (y: ⊤) → E'[x ≔ N']
+```
+✓
+
+**Case** `E = E₁ E₂` where E₁, E₂ are erased:
+
+```
+E[x ≔ N''] = E₁[x ≔ N''] E₂[x ≔ N'']
+E[x ≔ N']  = E₁[x ≔ N']  E₂[x ≔ N']
+```
+
+By the induction hypothesis on E₁ and E₂:
+```
+Γ ⊢ E₁[x ≔ N''] ⊑ E₁[x ≔ N']                       — (IH₁)
+Γ ⊢ E₂[x ≔ N''] ⊑ E₂[x ≔ N']                       — (IH₂)
+```
+
+By S-App with (IH₁) and (IH₂):
+```
+Γ ⊢ E₁[x ≔ N''] E₂[x ≔ N''] ⊑ E₁[x ≔ N'] E₂[x ≔ N']
+```
+✓
+
+**Case** `E = (E₁ : E₂)` where E₁, E₂ are erased:
+
+```
+E[x ≔ N''] = (E₁[x ≔ N''] : E₂[x ≔ N''])
+E[x ≔ N']  = (E₁[x ≔ N']  : E₂[x ≔ N'])
+```
+
+By the induction hypothesis on E₁ and E₂:
+```
+Γ ⊢ E₁[x ≔ N''] ⊑ E₁[x ≔ N']                       — (IH₁)
+Γ ⊢ E₂[x ≔ N''] ⊑ E₂[x ≔ N']                       — (IH₂)
+```
+
+By S-Asc with (IH₁) and (IH₂):
+```
+Γ ⊢ (E₁[x ≔ N''] : E₂[x ≔ N'']) ⊑ (E₁[x ≔ N'] : E₂[x ≔ N'])
+```
+✓
+
+All cases are exhaustive over the grammar of erased terms. ∎
+
+---
 
 So: `R₀[x ≔ N''] ⊑ R₀[x ≔ N']`.
 
