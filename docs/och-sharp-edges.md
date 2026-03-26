@@ -176,3 +176,31 @@ breaks the contract.
 **If you check against the evaluated target:** The monotonicity
 counterexample returns. The trilemma is: {evaluated target check,
 monotonicity, no reverse S-Var} — pick two.
+
+## 11. E-App evaluates the body after substitution
+
+Previous versions had E-App return the raw substituted body `B[x ≔ N']`.
+This broke soundness: substitution can place precise values into
+contravariant positions (parameter annotations of inner functions),
+making the result less precise as a type.
+
+**Concrete counterexample:** `f = (x: ⊤) → (y: x) → y` applied to
+`(id : Id)` where `id = (z: ⊤) → z`, `Id = (z: ⊤) → ⊤`.
+- Concrete: substitutes `id` for x → `(y: id) → y`. Domain is `id`.
+- Abstract: substitutes `Id` for x → `(y: Id) → y`. R = `(y: Id) → y`.
+- Need: `(y: id) → y ⊑ (y: Id) → y`. Contravariant check: `Id ⊑ id`.
+  Fails because `(z:⊤)→⊤ ⊑ (z:⊤)→z` requires `⊤ ⊑ z`.
+
+**The fix:** E-App evaluates `B[x ≔ N'] ⟶ V`. E-Fun fires on the
+intermediate function, erasing the domain to ⊤. Now `V = (y: ⊤) → y`
+and the contravariant check becomes `Id ⊑ ⊤` (S-Top). Trivially true.
+
+**Why this works in general:** Values always have ⊤ domains (E-Fun
+erases them). The S-Fun contravariant check on values is always
+`domain(R) ⊑ ⊤`, which is S-Top. Contravariance becomes free.
+
+**If you don't evaluate after substitution:** The raw substituted body
+keeps precise domain annotations, and the counterexample above breaks
+soundness. This is the whole reason E-Fun erases domains — but without
+the extra evaluation step in E-App, E-Fun never gets the chance to fire
+on intermediate results.

@@ -201,8 +201,9 @@ The judgment `M ⟶ V` means "M reduces to V at runtime."
 [E-App]
 M ⟶ (x: A) → B
 N ⟶ N'
+B[x ≔ N'] ⟶ V
 ——————————————————————————
-M N ⟶ B[x ≔ N']
+M N ⟶ V
 
 [E-Asc]
 M ⟶ V
@@ -218,9 +219,12 @@ M ⟶ V
   declared as. Two functions that differ only in their parameter
   annotation evaluate to the same runtime value.
 
-- **E-App**: Standard beta reduction — substitute the evaluated argument
-  into the body. No type checking at runtime. Note: after E-Fun, the
-  domain in the pattern is always ⊤.
+- **E-App**: Standard big-step beta reduction — substitute the evaluated
+  argument into the body, then evaluate the result. This ensures the
+  result is always a value (⊤ or a function with erased domain). The
+  extra evaluation step is critical: without it, substitution can place
+  precise values into contravariant positions (parameter annotations),
+  which breaks soundness (see sharp edge #11).
 
 - **E-Asc**: Ascription is erased at runtime. It only affects typing.
 
