@@ -76,52 +76,33 @@ Goal: Γ' ⊢ (x: A) → B ⇒ A' with Γ' ⊢ A' ⊑ (x: A) → B
 M ≔ (M₀ : A₀), with premises:
 
 1. `Γ ⊢ M₀ ⇒ M'`
-2. `Γ ⊢ A₀ ⇒ A'`
-3. `Γ ⊢ M' ⊑ A'`
+2. `Γ ⊢ M' ⊑ A₀` (raw target, not evaluated)
+3. `Γ ⊢ A₀ ⇒ A'`
 4. Result: `Γ ⊢ (M₀ : A₀) ⇒ A'`
 
 ```
 Goal: Γ' ⊢ (M₀ : A₀) ⇒ R with Γ' ⊢ R ⊑ A'
 
   By IH on (1): Γ' ⊢ M₀ ⇒ M''  with  Γ' ⊢ M'' ⊑ M'    — (IH₁)
-  By IH on (2): Γ' ⊢ A₀ ⇒ A''  with  Γ' ⊢ A'' ⊑ A'    — (IH₂)
-```
+  By IH on (3): Γ' ⊢ A₀ ⇒ A''  with  Γ' ⊢ A'' ⊑ A'    — (IH₂)
 
-To apply T-Asc under Γ', we need:
-
-```
   T-Asc under Γ' needs:
-  1. Γ' ⊢ M₀ ⇒ M''      — by IH₁ ✓
-  2. Γ' ⊢ A₀ ⇒ A''      — by IH₂ ✓
-  3. Γ' ⊢ M'' ⊑ A''      — ???
+  (a) Γ' ⊢ M₀ ⇒ M''      — by IH₁ ✓
+  (b) Γ' ⊢ M'' ⊑ A₀       — see below
+  (c) Γ' ⊢ A₀ ⇒ A''      — by IH₂ ✓
+
+  For (b):
+    Γ' ⊢ M'' ⊑ M'          — from IH₁
+    Γ ⊢ M' ⊑ A₀            — premise (2)
+    Γ' ⊢ M' ⊑ A₀           — by Narrowing Preserves Subtyping
+    Γ' ⊢ M'' ⊑ A₀          — by S-Trans ✓
+
+  Therefore by T-Asc:
+    Γ' ⊢ (M₀ : A₀) ⇒ A''  with  Γ' ⊢ A'' ⊑ A'  — by IH₂ ✓
 ```
 
-For (3), we have:
+Note: the key insight is that T-Asc checks against the *raw* target `A₀`, which is a syntactic term that does not change between environments. This avoids the blocker that the old rule (checking against the *evaluated* target `A'`) had, where the target could refine in the wrong direction.
 
-- `Γ' ⊢ M'' ⊑ M'` (from IH₁)
-- `Γ' ⊢ M' ⊑ A'` (from premise (3) — but this is under Γ, not Γ')
-- `Γ' ⊢ A'' ⊑ A'` (from IH₂)
+This case relies on Narrowing Preserves Subtyping (`Γ' ⊑ Γ` and `Γ ⊢ A ⊑ B` imply `Γ' ⊢ A ⊑ B`). That lemma itself depends on S-Eval, which invokes typing, creating a mutual dependency with this theorem. The full argument requires a combined induction over typing and subtyping.
 
-Even if we could transplant `M' ⊑ A'` to Γ' (which itself requires a separate argument), we would get `M'' ⊑ M' ⊑ A'` by S-Trans. But we need `M'' ⊑ A''`, and the chain goes:
-
-```
-  M'' ⊑ M' ⊑ A'
-                ↑
-  A'' ⊑ A' (goes from A'' up to A', the wrong direction)
-```
-
-**This is a genuine difficulty.** We need `M'' ⊑ A''` but only have `M'' ⊑ ... ⊑ A'` and `A'' ⊑ A'`. The subtyping `A'' ⊑ A'` tells us A'' is *more precise* than A', so it is a *smaller* type — making it *harder* to be a supertype of M''. In other words, the ascription target got tighter (more precise) while the term also got more precise, but there is no guarantee the term is still below the tighter target.
-
-**Concrete counterexample sketch.** Suppose under Γ, a term types to M' and the ascription target evaluates to A', with `M' ⊑ A'`. Under a more precise Γ', the term refines to M'' ⊑ M' and the target refines to A'' ⊑ A'. If A'' is strictly more precise than A' and M' was already at the boundary of A', then M'' might not be below A''.
-
-**Possible resolutions:**
-
-1. **Weaken the conclusion for T-Asc:** instead of claiming the result under Γ' is ⊑ A', show that if T-Asc applies at all under Γ', the result R = A'' satisfies `A'' ⊑ A'`. The difficulty is that T-Asc may *not* apply under Γ' (premise 3 fails), in which case the term is untypeable.
-
-2. **Additional lemma:** if `Γ ⊢ M' ⊑ A'` and `Γ' ⊑ Γ`, then `Γ' ⊢ M' ⊑ A'` (monotonicity of subtyping under environment refinement). This would not resolve the core issue, since we still land at A', not A''.
-
-3. **Restrict the theorem:** monotonicity may only hold for a subset of terms, or the environment refinement may need to be restricted.
-
-**This case is flagged as a hard case requiring further investigation.**
-
-∎ (deferred — blocked on the M'' ⊑ A'' obligation)
+∎

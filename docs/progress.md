@@ -132,7 +132,7 @@ Overall: Complete.
 | `proofs/soundness-t-var.md` | T-Var soundness | Yes |
 | `proofs/soundness-t-app.md` | T-App + T-Fun soundness | Yes |
 | `proofs/soundness-t-asc.md` | T-Asc soundness | Yes |
-| `proofs/monotonicity-easy.md` | Easy monotonicity cases | Mostly (T-Asc analysis outdated but conclusion correct) |
+| `proofs/monotonicity-easy.md` | Easy monotonicity cases | Yes |
 | `proofs/monotonicity-t-app.md` | T-App monotonicity | Yes |
 | `proofs/lemma-weakening.md` | Weakening | Yes |
 | `proofs/lemma-equal-substitution.md` | Equal substitution | Yes |
