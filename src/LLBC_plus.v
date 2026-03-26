@@ -347,6 +347,8 @@ Definition remove_abstraction i S :=
 
 (* Used to change a mutable borrow from borrow^m(l', v) to borrow^m(l, v). *)
 Notation rename_mut_borrow S sp l := (S.[sp <- borrow^m(l, S.[sp +++ [0] ])]).
+Notation rename_mut_borrow_val v vp l := (v.[[vp <- borrow^m(l, v.[[vp ++ [0] ]])]])
+  (vp in scope list_scope).
 
 (* [is_of_type ty v] asserts that the value v is initialized (not bot) and of type ty. *)
 Variant is_of_type : LLBC_type -> LLBC_plus_val -> Prop :=
@@ -1937,7 +1939,7 @@ Qed.
 
 Lemma is_of_type_rename_mut_borrow_val v p l0 l1 ty :
   get_node (v.[[p]]) = borrowC^m(l0) ->
-  is_of_type ty (v.[[p <- borrow^m(l1, v.[[p ++ [0] ]])]]) ->
+  is_of_type ty (rename_mut_borrow_val v p l1) ->
   is_of_type ty v.
 Proof.
   intros get_l0 Htype.
@@ -2057,10 +2059,9 @@ Proof.
     autorewrite with spath in Hcomp. auto.
 Qed.
 
-(* TODO: notation rename_mut_borrow for values. *)
 Lemma store_compatible_types_rename_mut_borrow_val S p q v l0 l1 :
   get_node (v.[[q]]) = borrowC^m(l0) ->
-  store_compatible_types S p (v.[[q <- borrow^m(l1, v.[[q ++ [0] ]])]]) ->
+  store_compatible_types S p (rename_mut_borrow_val v q l1) ->
   store_compatible_types S p v.
 Proof.
   intros get_borrow_q Hcomp r prefix_r_p get_borrow_r.
