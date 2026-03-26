@@ -3890,14 +3890,16 @@ Definition leq_symbolic := chain equiv_states leq_state_base^*.
 Definition leq_val_state := chain equiv_val_state (leq_val_state_base leq_state_base)^*.
 
 (** ** Definition of branching semantics and [eval_stmt]. *)
-(** A symbolic execution abstracts all executions, from all branches. A "branching state" [B] is a partial map. It can associate a control-flow tag [r] (break, continue, panic...) to symbolic state [S] that is more general than all the computations that terminate with [r]. This maps is partial, because if no computation terminates on [r], we have [lookup r B = None]. *)
-Definition branching_state := gmap statement_result LLBC_plus_state.
+(** A symbolic execution abstracts all executions, from all branches. A "branching state" [B] is a partial map. It can associate a control-flow token [r] (break, continue, panic...) to symbolic state [S] that is more general than all the computations that terminate with [r]. This maps is partial, because if no computation terminates on [r], we have [lookup r B = None].
+
+   _Note:_ in the ICFP'24 article, Ho et al. propose a more general notion of branching state. These states are simply sets of pairs [(r, S)] (with [r] a control-flow token and [S] a symbolic state). This allows duplication, and it may be more practical for panic management. The following definition could change in the future. *)
+Definition branching_state := gmap flow_token LLBC_plus_state.
 
 Reserved Notation "S  |-{stmt}  stmt  =>  B" (at level 50).
 
-(** The simulation relation on branching states. A branching state [Br] is more general than a branching state [Bl] if for any tag [r], if [Bl] maps a control-flow tag [r] to a symbolic state [Sl] ([lookup r Bl = Some Sl]), then [Br] maps [r] to a more general state [Sr] ([lookup r Br = Some Sr] and [leq_symbolic Sl Sr]).
+(** The simulation relation on branching states. A branching state [Br] is more general than a branching state [Bl] if for any token [r], if [Bl] maps a control-flow token [r] to a symbolic state [Sl] ([lookup r Bl = Some Sl]), then [Br] maps [r] to a more general state [Sr] ([lookup r Br = Some Sr] and [leq_symbolic Sl Sr]).
 
-   Note that the domain of [Br] can be bigger than the domain of [Bl]. There can be computations that terminate on a tag [r] that are abstracted by [Bl] but not [Br]. *)
+   Note that the domain of [Br] can be bigger than the domain of [Bl]. There can be computations that terminate on a token [r] that are abstracted by [Bl] but not [Br]. *)
 Variant leq_option_symbolic : relation (option LLBC_plus_state) :=
   | LeqNone oSr : leq_option_symbolic None oSr
   | LeqSome Sl Sr : leq_symbolic Sl Sr -> leq_option_symbolic (Some Sl) (Some Sr).
@@ -3907,7 +3909,7 @@ Definition leq_branching (Bl Br : branching_state) :=
 
 (** In the ICPF article, Ho et al introduce a join operation, described with non-deterministic computation rules. However, we are not interested in an algorithm for joins. The join [Bjoin] of two states [B0] and [B1] can be provided by an oracle, we do not describe the computation rules. We only require two properties.
    - The state [B_join] is an upper bound of [B0] and [B1], that means that we have [leq_branching B0 Bjoin] and [leq_branching Bs Bjoin].
-   - If a control-flow tag [r] is not in the domain of [Bl] (respectively [Br]), then [lookup r Bjoin = lookup r Br] (respectively [lookup r Bjoin = lookup r Bl]).
+   - If a control-flow token [r] is not in the domain of [Bl] (respectively [Br]), then [lookup r Bjoin = lookup r Br] (respectively [lookup r Bjoin = lookup r Bl]).
 
    The second condition is here to ensure that LLBC is a stable subset of LLBC+. In particular, the join of a state [B = {[r := S]}] and the empty state can only be [B].
  *)
@@ -3942,6 +3944,8 @@ Inductive eval_stmt : statement -> LLBC_plus_state -> branching_state -> Prop :=
       (eval_cond : S |-{op} cond => (LLBC_plus_bool false, S'))
       (Heval_else_branch : S' |-{stmt} stmt_else => B_else) :
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_else
+  (* Note: in the ICFP'24 article, the symbolic value is replaced by a concrete boolean in each
+     branch. We cannot do that as symbolic values are currently not named. *)
   | Eval_if_symbolic S S' B_if B_else B_join cond stmt_if stmt_else
       (eval_cond : S |-{op} cond => (LLBC_plus_symbolic boolT, S'))
       (Heval_if_branch : S' |-{stmt} stmt_if => B_if)
@@ -7662,7 +7666,7 @@ Proof.
   - unfold branching_state. simpl_map. constructor.
 Qed.
 
-(** If [Bjoin] is a join state for two states [B0_r] and [B1_r], if these two states are more abstract than the respective states [B0_l] and [B1_l], it is not necessary the case that [Bjoin] is a join of [B0_l] and [B1_r]. Indeed, there can be a control-flow tag [r] such that [lookup r B0_l = None] while [Is_Some (lookup r B0_r)], and [lookup r Bjoin_r] is not necessarily [lookup r B1_r].
+(** If [Bjoin] is a join state for two states [B0_r] and [B1_r], if these two states are more abstract than the respective states [B0_l] and [B1_l], it is not necessary the case that [Bjoin] is a join of [B0_l] and [B1_r]. Indeed, there can be a control-flow token [r] such that [lookup r B0_l = None] while [Is_Some (lookup r B0_r)], and [lookup r Bjoin_r] is not necessarily [lookup r B1_r].
 
    We need to "compute" a join by choosing a value among [lookup r B0_l],  [lookup r B1_l] and [lookup r Bjoin] depending if the values [lookup r B0_l] and [lookup r B1_l] are [Some] or [None]. *)
 Definition compute_option_join (oSl oSr : option LLBC_plus_state) default :=

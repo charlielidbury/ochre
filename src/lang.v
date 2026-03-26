@@ -72,30 +72,31 @@ Definition loan_id := positive.
 
 Variant permission := Imm | Mut | Mov.
 
-(* TODO: rename [control_flow_tag] *)
-Variant statement_result : Set :=
+(** LLBC is a langage with non-local control-flow management, with the << break >>, << continue >>, << panic >> and << return >> keywords. As such, statements yield a *control-flow token*, that determines the continuation of the computation. *)
+Variant flow_token : Set :=
 | rPanic
-| rUnit. (* Panicless termination. *)
+| rUnit (* Panicless termination. *)
+.
 
 (** Control-flow tags can be keys for [gmap]. *)
-Global Instance stmt_result_eq_dec : EqDecision statement_result.
+Global Instance flow_token_eq_dec : EqDecision flow_token.
 Proof. unfold EqDecision, Decision. decide equality. Qed.
 
-Definition encode_stmt_result r :=
+Definition encode_flow_token r :=
   match r with
   | rPanic => 1%positive
   | rUnit => 2%positive
   end.
 
-Definition decode_stmt_result r :=
+Definition decode_flow_token r :=
   match r with
   | 1%positive => Some rPanic
   | 2%positive => Some rUnit
   | _ => None
   end.
 
-Program Global Instance stmt_result_countable : Countable statement_result := {
-  encode := encode_stmt_result;
-  decode := decode_stmt_result
+Program Global Instance flow_token_countable : Countable flow_token := {
+  encode := encode_flow_token;
+  decode := decode_flow_token
 }.
 Next Obligation. intros [ ]; reflexivity. Qed.

@@ -396,11 +396,11 @@ Variant store (p : place) : HLPL_plus_val * HLPL_plus_state -> HLPL_plus_state -
 
 (* When introducing non-terminating features (loops or recursivity), the signature of the relation
    is going to be:
-   HLPL_plus_state -> statement -> nat -> Option (statement_result * HLPL_plus_state) -> Prop
+   HLPL_plus_state -> statement -> nat -> Option (flow_token * HLPL_plus_state) -> Prop
 *)
 Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
 
-Inductive eval_stmt : statement -> statement_result -> HLPL_plus_state -> HLPL_plus_state -> Prop :=
+Inductive eval_stmt : statement -> flow_token -> HLPL_plus_state -> HLPL_plus_state -> Prop :=
   | Eval_nop S : S |-{stmt} Nop => rUnit, S
   | Eval_seq_unit S0 S1 S2 stmt_l stmt_r r (eval_stmt_l : S0 |-{stmt} stmt_l => rUnit, S1)
       (eval_stmt_r : S1 |-{stmt} stmt_r => r, S2) :  S0 |-{stmt} stmt_l;; stmt_r => r, S2
