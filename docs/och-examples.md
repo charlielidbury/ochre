@@ -98,3 +98,15 @@ against evaluated targets breaks monotonicity.
 | 27 | `x: True, y: Bool ⊢ (x : y) ⇒ ???`      | Reject   | ✓             | True ⋢ y (raw), same reason        |
 | 28 | `x: T ⊢ (x : T) ⇒ ⊤`                     | Accept   | ✓             | T ⊑ T (S-Refl), T ⇒ ⊤ (T: ⊤)    |
 | 29 | `x: T ⊢ (x : ⊤) ⇒ ⊤`                     | Accept   | ✓             | T ⊑ ⊤ (S-Top)                     |
+
+## Group 8: Unconditional T-App-Top (sharp edge #12)
+
+T-App-Top has no premises — any application types to ⊤ as a fallback.
+These tests verify the new behavior and its interaction with monotonicity.
+
+| #  | Program                                              | Expected | Current rules | Notes                              |
+|----|------------------------------------------------------|----------|---------------|--------------------------------------|
+| 30 | `f: ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`               | Accept   | ✓             | T-App-Top, arg unchecked             |
+| 31 | `f: (y: ⊤) → ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`     | Accept   | ✓             | T-App-Top fallback (arg untypeable)  |
+| 32 | `· ⊢ ((x: ⊤) → x) ⊤ ⇒ ⊤`                          | Accept   | ✓             | T-App (precise), also T-App-Top (⊤) |
+| 33 | `g: (x: ⊤) → x, f: g ⊢ f ⊤ ⇒ ⊤`                  | Accept   | ✓             | T-App-Top (f ⇒ g, variable type)    |

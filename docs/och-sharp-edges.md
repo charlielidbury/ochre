@@ -204,3 +204,49 @@ keeps precise domain annotations, and the counterexample above breaks
 soundness. This is the whole reason E-Fun erases domains — but without
 the extra evaluation step in E-App, E-Fun never gets the chance to fire
 on intermediate results.
+
+## 12. T-App-Top is unconditional (no premises)
+
+Previous versions required `Γ ⊢ M ⇒ ⊤` as a premise of T-App-Top.
+This broke monotonicity in two ways:
+
+**Problem 1 — Typeability gap:** Under a wide environment Γ (where
+M₁ ⇒ ⊤), T-App-Top fires without checking M₂. Under a narrower Γ'
+(where M₁ ⇒ (x: A) → B), T-App requires M₂ to be typeable. If M₂
+contains a failing ascription, the term is untypeable under Γ'.
+
+Concrete counterexample: `f ((⊤ : (x: ⊤) → x))` under `{f: ⊤}` types
+to ⊤ (T-App-Top skips the argument), but under `{f: (y: ⊤) → ⊤}` the
+argument is untypeable.
+
+**Problem 2 — Variable-type gap:** Under Γ, M₁ ⇒ (x: A) → B (a
+function type) so T-App fires. Under Γ' ⊑ Γ, M₁ ⇒ g (a variable that
+is a subtype of a function type via S-Var). Neither T-App (needs
+syntactic function type) nor old T-App-Top (needs ⊤) applies.
+
+Concrete counterexample: `f ((z: ⊤) → z)` under `{g: ⊤, f: (x: ⊤) → x}`
+types to `(z: ⊤) → z`, but under `{g: (x: ⊤) → x, f: g}` is untypeable
+(f ⇒ g, a variable).
+
+**The fix:** Make T-App-Top unconditional. Any application `M N` always
+has type ⊤ as a fallback. This makes the typing judgment non-deterministic
+(T-App and T-App-Top can both fire), but every derivation is sound
+(V ⊑ ⊤ by S-Top), and monotonicity can always fall back to ⊤ ⊑ ⊤.
+
+**If you add premises back to T-App-Top:** Both gaps reopen. The typing
+judgment becomes partial (some well-formed terms are untypeable), and
+narrowing can make previously-typeable terms untypeable.
+
+**Design connection:** This aligns with Ochre's "everything has a type"
+philosophy. Applications always produce at least ⊤ (no information).
+Precision is controlled by ascription (`:`) — if you want to assert that
+`f x` returns a specific type, write `(f x : T)`. The ascription check
+catches incompatible applications.
+
+**Remaining limitation:** The unconditional T-App-Top fixes monotonicity
+for T-App-Top and T-App-Stuck cases, but when the original derivation
+used T-App (giving precise R), and under Γ' only T-App-Top applies
+(giving ⊤), we need ⊤ ⊑ R which fails. This happens when M₁'s type
+degrades from a function type to a variable under narrowing. Fully
+resolving this requires T-Var to normalize its result (evaluate the
+environment entry) — see discussion in proof-status.md.

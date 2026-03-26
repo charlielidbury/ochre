@@ -91,7 +91,6 @@ x: A ∈ Γ
 Γ ⊢ M N ⇒ R
 
 [T-App-Top]
-Γ ⊢ M ⇒ ⊤
 ——————————————————————————
 Γ ⊢ M N ⇒ ⊤
 
@@ -117,9 +116,16 @@ x: A ∈ Γ
   with only the parameter type, which would substitute a potentially
   too-wide type into contravariant positions.
 
-- **T-App-Top**: If we apply something of type ⊤ (we don't know it's
-  a function), the result is ⊤. This is the "no information in, no
-  information out" case.
+- **T-App-Top**: Any application has type ⊤ as a fallback. This rule
+  has no premises — it always applies. When T-App also applies (M₁
+  types to a function and the argument satisfies the domain), T-App
+  gives a more precise result. T-App-Top serves as the fallback when
+  T-App cannot fire (M₁ types to ⊤, or to a non-function type, or
+  the argument is untypeable/incompatible). This makes the typing
+  judgment non-deterministic (a term may have multiple types), but
+  every derivation is sound, and the fallback is essential for
+  monotonicity: narrowing an environment must never make a term
+  untypeable. See sharp edge #12.
 
 - **T-Asc**: Abstractly evaluates M to get M', checks M' ⊑ A (the raw
   target, not evaluated), then evaluates A to get the result type A'.
