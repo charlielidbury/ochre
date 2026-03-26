@@ -195,6 +195,12 @@ x: A ∈ Γ
 ——————————————————————————————
 Γ ⊢ (x: A₁) → M₁ ⊑ (x: B₁) → M₂
 
+[S-App]
+Γ ⊢ M₁ ⊑ M₂
+Γ ⊢ N₁ ⊑ N₂
+——————————————————————————————
+Γ ⊢ M₁ N₁ ⊑ M₂ N₂
+
 [S-Eval]
 Γ ⊢ M ⇒ M'
 ———————————
@@ -209,9 +215,15 @@ x: A ∈ Γ
   for any such input, the subtype's body must be at least as
   precise as the supertype's body."
 
+- **S-App**: Application is monotone in both function and argument.
+  If M₁ ⊑ M₂ (more precise function) and N₁ ⊑ N₂ (more precise
+  argument), then M₁ N₁ ⊑ M₂ N₂ (more precise application). This
+  rule is needed for the domain erasure lemma: `erase(M) ⊑ M` requires
+  comparing application subterms structurally.
+
 - **S-Eval**: A term is at least as precise as its abstract evaluation.
-  This cannot be proved from the other rules (application and ascription
-  terms have no structural subtyping rules), so it is added as an axiom.
+  This cannot be proved from the other rules (ascription terms have
+  no structural subtyping rules), so it is added as an axiom.
   It does not enable the monotonicity counterexample because no typing
   rule produces a variable as the type of a function literal.
 
@@ -220,6 +232,24 @@ x: A ∈ Γ
   to catch the monotonicity bug once we add atoms/match. At that
   point we may need to normalize bodies before comparing, or move
   toward evaluation-based subtyping.
+
+## Domain Erasure
+
+The function `erase(M)` recursively replaces all domain annotations with ⊤.
+
+```
+erase(⊤) = ⊤
+erase(x) = x
+erase((x: A) → M) = (x: ⊤) → erase(M)
+erase(M N) = erase(M) erase(N)
+erase(M : A) = erase(M) : erase(A)
+```
+
+This is used by E-Fun to perform deep type erasure: not only is the
+outermost parameter annotation erased, but all domain annotations inside
+the body are erased too. This prevents substitution in E-App from placing
+precise values into contravariant (domain) positions of inner functions,
+which would break soundness (see sharp edge #14).
 
 ## Concrete Evaluation
 
@@ -232,7 +262,7 @@ The judgment `M ⟶ V` means "M reduces to V at runtime."
 
 [E-Fun]
 ———————————
-(x: A) → M ⟶ (x: ⊤) → M
+(x: A) → M ⟶ (x: ⊤) → erase(M)
 
 [E-App]
 M ⟶ (x: A) → B
@@ -249,11 +279,15 @@ M ⟶ V
 
 ### Notes on concrete evaluation
 
-- **E-Fun**: The parameter annotation is erased to ⊤ at runtime. This
-  reflects the fact that type checking has already happened at compile
-  time — the runtime doesn't need to know what type the parameter was
-  declared as. Two functions that differ only in their parameter
-  annotation evaluate to the same runtime value.
+- **E-Fun**: Deep type erasure at runtime. The parameter annotation is
+  erased to ⊤, AND all domain annotations inside the body are
+  recursively erased to ⊤ via `erase(M)`. This reflects full type
+  erasure: the runtime doesn't need any parameter type information.
+  Deep erasure is essential for soundness: without it, E-App substitution
+  places precise concrete values into inner domain positions, creating
+  a mismatch with abstract evaluation where the less-precise argument
+  type is substituted instead. The contravariant domain comparison
+  then goes the wrong direction (see sharp edge #14).
 
 - **E-App**: Standard big-step beta reduction — substitute the evaluated
   argument into the body, then evaluate the result. This ensures the

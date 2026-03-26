@@ -269,3 +269,73 @@ S-Refl needs.
 **The fix:** Use head normalization (⇓) in T-App instead. This only
 unfolds variables at the application site, preserving variable identity
 elsewhere in the system.
+
+## 14. E-Fun must use deep domain erasure, not shallow
+
+Previous versions had E-Fun erase only the outermost parameter
+annotation: `(x: A) → M ⟶ (x: ⊤) → M` (body unchanged). This is
+unsound when the body contains inner function literals whose domains
+reference the parameter x.
+
+**Concrete counterexample:**
+
+```
+M = ((x: ⊤) → (y: ⊤) → (z: x) → z) (((w: ⊤) → w) : (w: ⊤) → ⊤)
+
+Concrete: substitute (w: ⊤) → w for x in body
+  V = (y: ⊤) → (z: (w: ⊤) → w) → z
+
+Abstract: substitute (w: ⊤) → ⊤ for x in body
+  R = (y: ⊤) → (z: (w: ⊤) → ⊤) → z
+
+Soundness check V ⊑ R fails:
+  Inner domain: need (w: ⊤) → ⊤ ⊑ (w: ⊤) → w (contravariant)
+  This requires w: ⊤ ⊢ ⊤ ⊑ w — NOT DERIVABLE
+```
+
+**Root cause:** With shallow erasure, the body retains raw domain
+annotations mentioning x. When E-App substitutes a concrete value for x,
+the precise value appears in a domain position. Abstract evaluation
+substitutes the less-precise type instead. The contravariant comparison
+then requires the abstract domain ⊑ the concrete domain — the wrong
+direction.
+
+**The fix:** Deep domain erasure: `(x: A) → M ⟶ (x: ⊤) → erase(M)`,
+where `erase` recursively replaces all domain annotations with ⊤. This
+removes x from all domain positions in the body BEFORE substitution.
+After deep erasure, substitution only places values in body (covariant)
+positions, where the more-precise concrete value helps rather than hurts.
+
+**Key property of deep erasure:** All values produced by ⟶ have ⊤ in
+every domain position. This makes all contravariant (domain) comparisons
+in the soundness proof trivially satisfiable via S-Top.
+
+Proof sketch (all values have erased domains):
+- E-Top: ⊤ has no domains. ✓
+- E-Fun: outer domain is ⊤; body domains are ⊤ via erase. ✓
+- E-App: the function body has erased domains (from E-Fun). The argument
+  is a value with erased domains (by IH). Substituting an erased value
+  into an erased body keeps all domains ⊤ (x only appears in body
+  positions after erasure). Then ⟶ on the result applies E-Fun again. ✓
+- E-Asc: inherits from M. ✓
+
+**If you revert to shallow erasure:** The counterexample above breaks
+soundness. Any function whose body contains `(z: x) → ...` (a function
+with a parameter-dependent domain) will produce unsound types when
+applied to a concretely-precise argument.
+
+**Semantic justification:** Domain annotations are only used at compile
+time (T-App checks `N' ⊑ A`). At runtime, function application never
+inspects the domain — E-App just substitutes into the body. Deep erasure
+reflects this: the runtime truly carries no domain information at all.
+This aligns with Ochre's "full type erasure" philosophy.
+
+**Remaining sub-gap:** The soundness proof for T-Fun needs `erase(M) ⊑ M`
+(the erased body is at least as precise as the raw body). This holds for
+variables (S-Refl), ⊤ (S-Refl), function literals (S-Fun with S-Top on
+domain), and applications (S-App congruence). It does NOT hold for
+ascription terms `(M : A)` where erase changes M or A, because no
+subtyping rule decomposes ascription on the right of ⊑. This sub-gap
+only arises for function bodies containing ascription terms with
+parameter-dependent domains inside function-literal targets — an uncommon
+pattern. A logical relations proof would close it entirely.

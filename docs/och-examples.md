@@ -110,3 +110,23 @@ These tests verify the new behavior and its interaction with monotonicity.
 | 31 | `f: (y: ⊤) → ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`     | Accept   | ✓             | T-App-Top fallback (arg untypeable)  |
 | 32 | `· ⊢ ((x: ⊤) → x) ⊤ ⇒ ⊤`                          | Accept   | ✓             | T-App (precise), also T-App-Top (⊤) |
 | 33 | `g: (x: ⊤) → x, f: g ⊢ f ⊤ ⇒ ⊤`                  | Accept   | ✓             | T-App-Top (f ⇒ g, variable type)    |
+
+## Group 9: S-App congruence
+
+S-App says application is monotone: if M₁ ⊑ M₂ and N₁ ⊑ N₂, then
+M₁ N₁ ⊑ M₂ N₂. Needed for the domain erasure lemma.
+
+| #  | Program                                                          | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------------------|----------|---------------|------------------------------|
+| 34 | `· ⊢ ((x: ⊤) → x) ⊤ ⊑ ((x: ⊤) → ⊤) ⊤`                      | Accept   | ✓             | S-App + S-Fun on fn, S-Refl |
+| 35 | `· ⊢ ((x: ⊤) → ⊤) ⊤ ⊑ ((x: ⊤) → x) ⊤`                      | Reject   | ✓             | S-App needs fn ⊑, (x:⊤)→⊤ ⋢ (x:⊤)→x |
+
+## Group 10: Deep domain erasure soundness (sharp edge #14)
+
+These tests verify that the soundness counterexample from sharp edge #14
+is resolved by deep domain erasure in E-Fun.
+
+| #  | Program                                                          | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------------------|----------|---------------|------------------------------|
+| 36 | `· ⊢ ((x: ⊤) → (y: ⊤) → (z: x) → z) (((w: ⊤) → w) : (w: ⊤) → ⊤) ⇒ (y: ⊤) → (z: (w: ⊤) → ⊤) → z` | Accept | ✓ | T-App, abstract subst |
+| 37 | (soundness: V ⊑ R for test 36)                                  | Accept   | ✓             | Deep erasure: V = (y:⊤)→(z:⊤)→z; (z:⊤)→z ⊑ (z:(w:⊤)→⊤)→z by S-Fun+S-Top |
