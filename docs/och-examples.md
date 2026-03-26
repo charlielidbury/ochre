@@ -154,3 +154,294 @@ positions, breaking monotonicity.
 | 41 | `a: (w: ⊤) → ⊤ ⊢ ((x: ⊤) → (y: x) → y) a ⇒ (y: ⊤) → y`    | Accept   | ✓             | T-App erases domain x to ⊤  |
 | 42 | `a: (w: ⊤) → w ⊢ ((x: ⊤) → (y: x) → y) a ⇒ (y: ⊤) → y`    | Accept   | ✓             | Same result: domain erased   |
 | 43 | Tests 41 & 42 are a monotonicity pair: 42 refines 41            | Accept   | ✓             | (y:⊤)→y ⊑ (y:⊤)→y by S-Refl |
+
+## Group 13: Church-encoded pairs and domain erasure
+
+### Definitions
+
+```
+MkPair = (a: ⊤) → (b: ⊤) → (K: ⊤) → (f: (x: ⊤) → (y: ⊤) → K) → f a b
+Fst    = (p: ⊤) → p ⊤ ((x: ⊤) → (y: ⊤) → x)
+Snd    = (p: ⊤) → p ⊤ ((x: ⊤) → (y: ⊤) → y)
+```
+
+A pair is a function that takes a handler `f` and applies it to both
+components. `K` is the return type of the handler (Church-style type
+parameter). `Fst` and `Snd` instantiate K = ⊤ and pass a handler that
+returns the first or second argument.
+
+### Typing MkPair True False — step by step
+
+`MkPair True False` applies MkPair to True, then to False. Each T-App
+erases the body before substituting.
+
+**Step 1: MkPair True**
+
+```
+MkPair = (a: ⊤) → (b: ⊤) → (K: ⊤) → (f: (x: ⊤) → (y: ⊤) → K) → f a b
+                    ↑ body ↑
+```
+
+T-App erases body:
+
+```
+erase((b: ⊤) → (K: ⊤) → (f: (x: ⊤) → (y: ⊤) → K) → f a b)
+     = (b: ⊤) → (K: ⊤) → (f: ⊤) → f a b
+                            ^^^
+```
+
+Note: the domain of `f` was `(x: ⊤) → (y: ⊤) → K` — erased to ⊤.
+The body `f a b` survives (covariant position).
+
+Substitute a ≔ True:
+
+```
+(b: ⊤) → (K: ⊤) → (f: ⊤) → f True b
+```
+
+T-Fun returns as-is. So `MkPair True ⇒` this term.
+
+**Step 2: (MkPair True) False**
+
+Body to erase: `(K: ⊤) → (f: ⊤) → f True b`
+
+```
+erase((K: ⊤) → (f: ⊤) → f True b)
+     = (K: ⊤) → (f: ⊤) → erase(f) erase(True) erase(b)
+     = (K: ⊤) → (f: ⊤) → f True† b
+```
+
+where `True† = erase(True) = (T: ⊤) → (x: ⊤) → (y: ⊤) → x`.
+
+Erasure reached inside True (which was substituted into the body
+at step 1) and replaced its inner domains `T` with `⊤`. The body
+positions (`x` return) survived. This is an important observation:
+**each T-App re-erases the entire body, including previously
+substituted values.**
+
+Substitute b ≔ False:
+
+```
+(K: ⊤) → (f: ⊤) → f True† False
+```
+
+(False appears in body position, so it survives this erasure step.
+It will be erased when this term is itself used as a body in a
+future T-App.)
+
+**Result type of `MkPair True False`:**
+
+```
+· ⊢ MkPair True False ⇒ (K: ⊤) → (f: ⊤) → f True† False
+```
+
+### What the pair remembers and forgets
+
+The pair's type `(K: ⊤) → (f: ⊤) → f True† False` tells us:
+- ✓ It contains True† and False (body positions, survived erasure)
+- ✓ True† still returns its first argument (`→ x` in body position)
+- ✗ True†'s inner domains are ⊤ — it lost `(x: T)` becoming `(x: ⊤)`
+- ✗ The handler type is ⊤ — we lost that f is a two-argument function
+- ✗ K (the return type) is still present but disconnected from f's domain
+
+The pair remembers **what** was stored (the values) but forgets the
+**contract** on the handler (that it takes two arguments of specific
+types). This is the cost of domain erasure: type-level constraints
+that live in domain positions are erased.
+
+### Fst and Snd
+
+| #  | Program                                              | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------|----------|---------------|------------------------------|
+| 44 | `· ⊢ MkPair True False ⇒ (K: ⊤) → (f: ⊤) → f True† False` | Accept | ✓ | True† = erase(True) |
+| 45 | `· ⊢ Fst (MkPair True False) ⇒ ⊤`                  | Accept   | ✓             | See derivation below |
+| 46 | `· ⊢ Snd (MkPair True False) ⇒ ⊤`                  | Accept   | ✓             | Symmetric |
+
+**Derivation for test 45 (Fst):**
+
+```
+Fst = (p: ⊤) → p ⊤ ((x: ⊤) → (y: ⊤) → x)
+
+Fst (MkPair True False):
+  p ≔ MkPair True False
+  body: p ⊤ ((x: ⊤) → (y: ⊤) → x)
+  erase(body) = p ⊤ ((x: ⊤) → (y: ⊤) → x)  — already erased
+  subst p ≔ (K: ⊤) → (f: ⊤) → f True† False:
+    ((K: ⊤) → (f: ⊤) → f True† False) ⊤ ((x: ⊤) → (y: ⊤) → x)
+
+  Now type this — two nested T-App calls:
+
+  Step A: ((K: ⊤) → (f: ⊤) → f True† False) ⊤
+    erase(body) = (f: ⊤) → f True† False
+                  (True† gets re-erased, but it's already erased: True†† = True†)
+    subst K ≔ ⊤: (f: ⊤) → f True† False
+    Result: (f: ⊤) → f True† False
+
+  Step B: ((f: ⊤) → f True† False) ((x: ⊤) → (y: ⊤) → x)
+    erase(body) = erase(f True† False) = f True†† False†
+                = f True† False†
+    where False† = erase(False) = (T: ⊤) → (x: ⊤) → (y: ⊤) → y
+    subst f ≔ (x: ⊤) → (y: ⊤) → x:
+      ((x: ⊤) → (y: ⊤) → x) True† False†
+
+  Now type this — two more T-App calls:
+
+  Step C: ((x: ⊤) → (y: ⊤) → x) True†
+    erase(body) = erase((y: ⊤) → x) = (y: ⊤) → x
+    subst x ≔ True†: (y: ⊤) → True†
+    Result: (y: ⊤) → True†
+
+  Step D: ((y: ⊤) → True†) False†
+    erase(body) = erase(True†) = True†  (idempotent)
+    subst y ≔ False†: True†  (y not free in True†)
+    Type True†: T-Fun → True† itself
+
+  Final result: True† = (T: ⊤) → (x: ⊤) → (y: ⊤) → x
+```
+
+Wait — the result is True†, not ⊤. Let me reconsider.
+
+Actually: `True† ⇒ True†` by T-Fun (it's a function literal). So
+`Fst (MkPair True False) ⇒ True†`, which is `(T: ⊤) → (x: ⊤) → (y: ⊤) → x`.
+
+This is more precise than ⊤! The pair actually does preserve the
+first component's identity — just with erased inner domains.
+
+| #  | Program                                              | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------|----------|---------------|------------------------------|
+| 44 | `· ⊢ MkPair True False ⇒ (K: ⊤) → (f: ⊤) → f True† False` | Accept | ✓ | True† = erase(True) |
+| 45 | `· ⊢ Fst (MkPair True False) ⇒ True†`              | Accept   | ✓             | Pair preserves values! |
+| 46 | `· ⊢ Snd (MkPair True False) ⇒ False†`             | Accept   | ✓             | Symmetric |
+| 47 | `· ⊢ True† ⊑ Bool`                                  | Accept   | ✓             | S-Fun; inner ⊤ ⊑ ⊤, x ⊑ T |
+| 48 | `· ⊢ True ⊑ True†`                                  | Reject   | ✓             | Would need T ⊑ ⊤ in domain (wrong direction for S-Fun) |
+
+Test 47: True† ⊑ Bool still holds — erasing inner domains only makes
+things less precise, and Bool already expects T (which is ⊤-bounded).
+
+Test 48: True ⊑ True† fails. True has domain `T` where True† has `⊤`.
+S-Fun is contravariant in domains: need `⊤ ⊑ T`, which is not derivable.
+So **erasure loses precision irreversibly** — you can go from precise
+to erased (True ⊑ Bool ⊑ True†... no, that's wrong too). Actually
+True† ⊑ Bool (test 47) and True ⊑ Bool (test 7), but True and True†
+are incomparable: neither is ⊑ the other.
+
+Correction — let me re-examine test 48. True = (T: ⊤) → (x: T) → (y: T) → x.
+True† = (T: ⊤) → (x: ⊤) → (y: ⊤) → x. For True ⊑ True† by S-Fun:
+- Outer domain: ⊤ ⊑ ⊤ ✓
+- Body under T: ⊤: (x: T) → (y: T) → x ⊑ (x: ⊤) → (y: ⊤) → x
+  S-Fun: need ⊤ ⊑ T — not derivable. ✗
+
+So True is NOT more precise than True†, even though True "has more
+information." The extra domain annotation T makes True *less* accepting
+of arguments (only T-typed args, not all ⊤-typed args), and S-Fun's
+contravariance treats this as incomparable, not more precise.
+
+| #  | Program                                              | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------|----------|---------------|------------------------------|
+| 48 | `· ⊢ True ⊑ True†`                                  | Reject   | ✓             | Contravariance: ⊤ ⊑ T fails |
+| 49 | `· ⊢ True† ⊑ True`                                  | Reject   | ✓             | T ⊑ ⊤ in domain, but body: need x ⊑ x ✓ ... actually let me check |
+
+For True† ⊑ True: S-Fun on outer:
+- Domain: ⊤ ⊑ ⊤ ✓
+- Body under T: ⊤: (x: ⊤) → (y: ⊤) → x ⊑ (x: T) → (y: T) → x
+  S-Fun: need T ⊑ ⊤ ✓ (S-Top... wait, S-Var: T: ⊤, so T ⊑ ⊤)
+  Body under x: T: (y: ⊤) → x ⊑ (y: T) → x
+  S-Fun: need T ⊑ ⊤ ✓ (same)
+  Body under y: T: x ⊑ x ✓
+
+So True† ⊑ True DOES hold! The erased version is less precise (wider
+domains accept more), which is exactly what ⊑ means.
+
+Let me correct the table. True† ⊑ True holds, and True ⊑ True† does not.
+This means erase(M) ⊑ M — which is exactly the Erase-Sub lemma!
+
+## Group 14: Pairs with invariants — the equal-pair
+
+### Definitions
+
+```
+EqPair = (a: Bool) → (b: a) → (K: ⊤) → (f: (x: ⊤) → (y: ⊤) → K) → f a b
+```
+
+Here `b: a` means "b has the singleton type of a." If a = True,
+then b must satisfy `b ⊑ True`. This encodes the invariant
+"both components are equal."
+
+### What happens when we construct EqPair True True
+
+**Step 1: EqPair True**
+
+```
+EqPair = (a: Bool) → (b: a) → (K: ⊤) → (f: (x: ⊤) → (y: ⊤) → K) → f a b
+```
+
+T-App: True ⊑ Bool ✓. Body:
+
+```
+(b: a) → (K: ⊤) → (f: (x: ⊤) → (y: ⊤) → K) → f a b
+```
+
+erase(body):
+
+```
+(b: ⊤) → (K: ⊤) → (f: ⊤) → f a b
+```
+
+The domain `a` on parameter `b` was erased to ⊤. **The invariant
+"b has the same type as a" is lost at this point.** After erasure,
+b can be anything.
+
+Substitute a ≔ True:
+
+```
+(b: ⊤) → (K: ⊤) → (f: ⊤) → f True b
+```
+
+This is the same result we'd get from `MkPair True` — the equal-pair
+invariant has been completely erased.
+
+**Step 2: (EqPair True) True**
+
+Same as MkPair — we get `(K: ⊤) → (f: ⊤) → f True† True`.
+
+### The invariant is NOT checked
+
+You might expect T-App to check `True ⊑ a` (the domain of b) which
+after substituting a ≔ True would become `True ⊑ True`. But this
+check **never happens**: T-App erases the body before substituting,
+so `(b: a)` becomes `(b: ⊤)` before `a ≔ True` is applied. The
+domain check in step 2 is just `True ⊑ ⊤` (S-Top).
+
+This means `EqPair True False` also type-checks — the "invariant"
+is never enforced! The domain `a` on parameter `b` was meant to
+express "b must have the same type as a," but erasure removes it
+before the argument is checked.
+
+This mirrors what happens at runtime: E-Fun erases `(b: a)` to `(b: ⊤)`,
+so the runtime function accepts any second argument. The type system
+is sound (it doesn't promise something the runtime doesn't deliver),
+but the constraint was never actually enforced on either side.
+
+### Can we do better?
+
+No — not in Och₀. The invariant `b: a` lives in a domain position,
+and domain erasure is fundamental to both soundness and monotonicity
+(sharp edges #14, #16). Any encoding where the relationship between
+components is expressed as a domain constraint will lose that
+relationship after application.
+
+To preserve such invariants, you'd need them expressed in **body**
+(covariant) positions — e.g., a proof term in the body that witnesses
+the equality. But Och₀ has no way to express equality proofs yet
+(no identity type, no atoms/match).
+
+| #  | Program                                                          | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------------------|----------|---------------|------------------------------|
+| 44 | `· ⊢ MkPair True False ⇒ (K: ⊤) → (f: ⊤) → f True† False`   | Accept   | ✓             | True† = erase(True) |
+| 45 | `· ⊢ Fst (MkPair True False) ⇒ True†`                          | Accept   | ✓             | Pair preserves component values |
+| 46 | `· ⊢ Snd (MkPair True False) ⇒ False†`                         | Accept   | ✓             | Symmetric |
+| 47 | `· ⊢ True† ⊑ Bool`                                              | Accept   | ✓             | Erased is less precise than Bool |
+| 48 | `· ⊢ True† ⊑ True`                                              | Accept   | ✓             | Erase-Sub lemma: erase(M) ⊑ M |
+| 49 | `· ⊢ True ⊑ True†`                                              | Reject   | ✓             | Contravariance: ⊤ ⊑ T fails |
+| 50 | `· ⊢ EqPair True True ⇒ (K: ⊤) → (f: ⊤) → f True† True`     | Accept   | ✓             | Same result as MkPair True True |
+| 51 | `· ⊢ EqPair True False ⇒ (K: ⊤) → (f: ⊤) → f True† False`   | Accept   | ✓             | "Invariant" not enforced: domain erased before check |
