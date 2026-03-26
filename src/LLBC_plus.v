@@ -1180,7 +1180,6 @@ Proof.
   rewrite get_at_accessor_add_abstraction in get_v. firstorder.
 Qed.
 
-(* TODO: name *)
 Lemma valid_spath_add_abstraction S i A sp :
   valid_spath S sp -> fresh_abstraction S i ->
   valid_spath (S,,, i |-> A) sp /\ ~in_abstraction i (fst sp).
@@ -2004,8 +2003,7 @@ Proof.
   specialize (H p0 Hprefix).
   (* TODO: are there lemmas to solve this? *)
   assert (~(strict_prefix q p0)).
-  { intros (? & ? & <-). eapply not_strict_prefix. destruct Hprefix as (? & ? & <-).
-    autorewrite with spath. eexists _, _. reflexivity. }
+  { intros ?. apply not_strict_prefix. etransitivity; eassumption. }
   (* For now, we use the trick that we cannot type mutable borrows. It is a real hack, because at
    * some point we want to type mutable borrows. *)
   (* I think it would be cleaner to use the hypothesis that S.[q] does not contain mutable
@@ -2052,11 +2050,7 @@ Proof.
   - exfalso. eapply Hnot_in_borrow; [eassumption | ].
     destruct prefix_q_sp as (? & <-). autorewrite with spath. eexists 0, _. reflexivity.
   - assert (disj q sp).
-    (* We are using the transitivity of strict_prefix (that we did not show). *)
-    (* TODO: lemma in PathToSubtree.v *)
-    { solve_comp. intros (? & ? & <-). eapply H.
-      destruct prefix_q_sp_store as (? & ? & <-). autorewrite with spath.
-      eexists _, _. reflexivity. }
+    { solve_comp. intros ?. apply H. transitivity q; assumption. }
     assert (disj sp_store sp).
     { destruct prefix_q_sp_store as (? & ? & <-). solve_comp. }
     specialize (Hcomp q prefix_q_sp_store).

@@ -190,6 +190,12 @@ Proof.
   intros ? ? ? (? & <-) (? & <-). rewrite<- app_spath_vpath_assoc. eexists. reflexivity.
 Qed.
 
+Global Instance strict_prefix_trans : Transitive strict_prefix.
+Proof.
+  intros ? ? ? (? & ? & <-) (? & ? & <-). rewrite<- app_spath_vpath_assoc.
+  eexists _, _. reflexivity.
+Qed.
+
 Global Instance reflexive_prefix : Reflexive prefix.
 Proof. intro p. exists nil. apply app_spath_vpath_nil_r. Qed.
 
