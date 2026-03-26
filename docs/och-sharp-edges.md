@@ -107,21 +107,25 @@ see sharp edge #10.
 **If you check against the evaluated target instead:** Monotonicity
 breaks — see sharp edge #10 for the counterexample.
 
-## 8. Subtyping has no structural rule for ascription
+## 8. Subtyping now has S-Asc (structural congruence for ascription)
 
-There is no rule to compare `(M₁ : A₁) ⊑ (M₂ : A₂)`. Ascription terms
-in subtyping position can only be handled by S-Refl (syntactic equality)
-or S-Top (right side is ⊤).
+S-Asc says `(M₁ : A₁) ⊑ (M₂ : A₂)` when `M₁ ⊑ M₂` and `A₁ ⊑ A₂`.
+This is the ascription analogue of S-App — structural congruence for
+the compound form. It was added to close the ascription sub-gap in
+the domain erasure lemma (`erase(M) ⊑ M`).
 
-This is currently OK because T-App evaluates the body after substitution,
-which resolves ascriptions before they appear in types. If ascription
-terms ever appear in types (e.g. from a T-App that doesn't evaluate),
-subtyping breaks.
+**Why it's safe:** S-Asc only fires when both sides are ascription
+terms. It does not enable `False ⊑ b` or any other judgment that
+would re-enable the Ochre monotonicity bug. It is semantically sound:
+(M : A) as a type evaluates to A' (evaluated A), so structural
+monotonicity of ascription follows from monotonicity of evaluation.
 
-**If you add S-Asc:** Be very careful about what it means. The obvious
-`(M : A) ⊑ B if A ⊑ B` is tempting but mixes the semantics of
-ascription (a compile-time operation) into subtyping (a structural
-relation). It might be fine, but needs careful analysis.
+**What NOT to add instead:** The rule `(M : A) ⊑ B if A ⊑ B`
+(S-Asc-R) is tempting but mixes the semantics of ascription (a
+compile-time operation) into subtyping in a way that conflates the
+inner term with the target. S-Asc-Struct is cleaner because it
+preserves the structural decomposition pattern used by S-Fun and
+S-App.
 
 ## 9. Soundness requires monotonicity
 
@@ -330,15 +334,12 @@ inspects the domain — E-App just substitutes into the body. Deep erasure
 reflects this: the runtime truly carries no domain information at all.
 This aligns with Ochre's "full type erasure" philosophy.
 
-**Remaining sub-gap:** The soundness proof for T-Fun needs `erase(M) ⊑ M`
-(the erased body is at least as precise as the raw body). This holds for
-variables (S-Refl), ⊤ (S-Refl), function literals (S-Fun with S-Top on
-domain), and applications (S-App congruence). It does NOT hold for
-ascription terms `(M : A)` where erase changes M or A, because no
-subtyping rule decomposes ascription on the right of ⊑. This sub-gap
-only arises for function bodies containing ascription terms with
-parameter-dependent domains inside function-literal targets — an uncommon
-pattern. A logical relations proof would close it entirely.
+**Previously remaining sub-gap (NOW RESOLVED):** The soundness proof for
+T-Fun needs `erase(M) ⊑ M` (the erased body is at least as precise as
+the raw body). This now holds for ALL cases: variables (S-Refl),
+⊤ (S-Refl), function literals (S-Fun with S-Top on domain), applications
+(S-App congruence), and ascription terms (S-Asc congruence with IH on
+both components). See lemma-erase-sub.md.
 
 ## 15. Head normalization must evaluate applications and ascriptions
 

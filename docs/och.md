@@ -228,6 +228,12 @@ x: A ∈ Γ
 ——————————————————————————————
 Γ ⊢ M₁ N₁ ⊑ M₂ N₂
 
+[S-Asc]
+Γ ⊢ M₁ ⊑ M₂
+Γ ⊢ A₁ ⊑ A₂
+——————————————————————————————
+Γ ⊢ (M₁ : A₁) ⊑ (M₂ : A₂)
+
 [S-Eval]
 Γ ⊢ M ⇒ M'
 ———————————
@@ -248,9 +254,23 @@ x: A ∈ Γ
   rule is needed for the domain erasure lemma: `erase(M) ⊑ M` requires
   comparing application subterms structurally.
 
+- **S-Asc**: Ascription is monotone (covariant) in both the inner term
+  and the target type. If M₁ ⊑ M₂ and A₁ ⊑ A₂, then (M₁ : A₁) ⊑
+  (M₂ : A₂). This is the ascription analogue of S-App — structural
+  congruence for the other compound form. Needed for the domain erasure
+  lemma: `erase(M : A) = erase(M) : erase(A)`, and by IH
+  `erase(M) ⊑ M` and `erase(A) ⊑ A`, so S-Asc gives the result.
+  **Soundness:** S-Asc does not re-enable the Ochre monotonicity bug.
+  The bug requires deriving `False ⊑ b` (a value below a variable),
+  and S-Asc only applies when both sides are ascription terms. It also
+  does not enable any false subtyping judgments: semantically, (M : A)
+  as a type evaluates to A' (evaluated A), so (M₁ : A₁) ⊑ (M₂ : A₂)
+  requires A₁' ⊑ A₂', which follows from A₁ ⊑ A₂ by monotonicity
+  of evaluation.
+
 - **S-Eval**: A term is at least as precise as its abstract evaluation.
-  This cannot be proved from the other rules (ascription terms have
-  no structural subtyping rules), so it is added as an axiom.
+  This cannot be proved from the other rules alone, so it is added as
+  an axiom.
   It does not enable the monotonicity counterexample because no typing
   rule produces a variable as the type of a function literal.
 

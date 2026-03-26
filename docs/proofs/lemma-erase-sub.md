@@ -34,36 +34,14 @@ By S-App:
 **Case M = (M₁ : A) (ascription):**
 erase(M₁ : A) = erase(M₁) : erase(A).
 Need: Γ ⊢ (erase(M₁) : erase(A)) ⊑ (M₁ : A).
-
-**This case is NOT derivable** with the current subtyping rules.
-No rule decomposes ascription on the right of ⊑. The only applicable
-rules are S-Refl (requires syntactic equality, which fails when erase
-changes M₁ or A) and S-Top (requires (M₁ : A) = ⊤, which it isn't).
-
-### Analysis of the ascription sub-gap
-
-The sub-gap only arises when erase actually CHANGES M₁ or A — that is,
-when M₁ or A contains function subterms `(y: B) → N` where B ≠ ⊤.
-This requires the ascription's inner term or target to contain function
-literals with non-trivial domains.
-
-**When erase doesn't change anything** (no function subterms with non-⊤
-domains in M₁ or A): erase(M₁ : A) = M₁ : A, and S-Refl applies. ✓
-
-**Semantic argument for the sub-gap:** At runtime, (M₁ : A) evaluates
-to M₁'s value (E-Asc erases ascription). And erase(M₁) evaluates to
-the same value as M₁ except with erased domains — which are all ⊤ in
-values anyway (by the all-values-have-erased-domains property). So
-(erase(M₁) : erase(A)) and (M₁ : A) produce the same runtime value.
-The sub-gap is a proof-technique limitation, not actual unsoundness.
+By S-Asc:
+1. Γ ⊢ erase(M₁) ⊑ M₁ — by IH on M₁ ✓
+2. Γ ⊢ erase(A) ⊑ A — by IH on A ✓ ∎
 
 ## Status
 
-✓ Complete for: variables, ⊤, function literals, applications.
-✗ Open sub-gap for: ascription terms with parameter-dependent domains
-  in function-literal targets.
+✓ Complete for all cases: variables, ⊤, function literals, applications,
+  and ascription terms. The ascription case is closed by S-Asc
+  (structural congruence for ascription), added to close this gap.
 
-The sub-gap is an uncommon pattern and is semantically harmless. A
-logical relations proof would close it entirely.
-
-∎ (modulo ascription sub-gap)
+∎

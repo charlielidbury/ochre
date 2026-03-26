@@ -26,7 +26,7 @@ more-precise-or-equal result.)
 | T-Fun | ✓ Complete | soundness-t-fun.md | E-Fun erases domain; S-Fun + S-Top |
 | T-App-Top | ✓ Complete | (trivial) | V ⊑ ⊤ by S-Top |
 | T-Asc | ✓ Complete | soundness-t-asc.md | V ⊑ M' ⊑ A ⊑ A' chain |
-| T-App | ✓ Complete | soundness-t-app-v2.md | Resolved by abstract + concrete erasure (modulo ascription sub-gap) |
+| T-App | ✓ Complete | soundness-t-app-v2.md | Resolved by abstract + concrete erasure |
 
 ### Monotonicity
 
@@ -37,7 +37,7 @@ more-precise-or-equal result.)
 | T-Fun | ✓ Complete | monotonicity-easy.md | T-Fun is environment-independent |
 | T-App-Top | ✓ Complete | (trivial) | Use T-App-Top under Γ'; ⊤ ⊑ ⊤ |
 | T-Asc | ✓ Complete | monotonicity-easy.md | Raw target stable; IH on sub-derivations |
-| T-App | ✓ Complete | monotonicity-t-app-v2.md | Resolved by abstract erasure + HN-Mono (modulo ascription sub-gap) |
+| T-App | ✓ Complete | monotonicity-t-app-v2.md | Resolved by abstract erasure + HN-Mono |
 
 ## Remaining Gaps
 
@@ -64,24 +64,22 @@ covariant positions of erase(B), the ⊑ direction is preserved:
 - Soundness: N_v ⊑ N' → R_concrete ⊑ R_abstract ✓
 - Monotonicity: N'' ⊑ N' → R' ⊑ R ✓
 
-**Remaining sub-gap: erase(M) ⊑ M for T-Fun soundness.**
+**Previously remaining sub-gap (NOW RESOLVED): erase(M) ⊑ M for ascription.**
 
 T-Fun soundness needs `(x: ⊤) → erase(M) ⊑ (x: A) → M`, which by
-S-Fun requires `x: A ⊢ erase(M) ⊑ M`. This holds for:
+S-Fun requires `x: A ⊢ erase(M) ⊑ M`. This holds for all cases:
 - Variables: erase(x) = x, S-Refl ✓
 - ⊤: erase(⊤) = ⊤, S-Refl ✓
 - Function literals: erase((y: B) → N) = (y: ⊤) → erase(N), S-Fun
   with B ⊑ ⊤ (S-Top) and IH on N ✓
 - Applications: erase(M₁ M₂) = erase(M₁) erase(M₂), S-App with
   IH on M₁ and M₂ ✓
-- **Ascription: erase(M : A) = erase(M) : erase(A). No rule
-  decomposes ascription on the right of ⊑. NOT DERIVABLE when erase
-  changes M or A.**
+- Ascription: erase(M : A) = erase(M) : erase(A), **S-Asc** with
+  IH on M and A ✓
 
-The ascription sub-gap only arises for function bodies containing
-ascription terms where the inner term or target contains function
-subterms with parameter-dependent domains. This is an uncommon pattern.
-A logical relations proof would close it entirely.
+The ascription sub-gap was closed by adding S-Asc (structural
+congruence for ascription), analogous to S-App for applications.
+See lemma-erase-sub.md for the complete proof.
 
 ### Gap 2: Variable-Type Gap — RESOLVED by head normalization
 
@@ -117,7 +115,7 @@ bindings.
 | S-Eval (axiom) | lemma-s-eval.md | ✓ (added as axiom) |
 | Narrowing Preserves Subtyping | full-proof-attempt.md | ✓ |
 | Values Have Erased Domains | lemma-values-erased.md | ✓ |
-| Domain Erasure Subtyping | lemma-erase-sub.md | ✓ (modulo ascription sub-gap) |
+| Domain Erasure Subtyping | lemma-erase-sub.md | ✓ Complete |
 | HN-Mono (sketch) | lemma-hn-mono.md | Sketch only |
 
 ## Rule Changes Made During Proof
@@ -134,12 +132,12 @@ bindings.
 | S-App congruence added | Needed for erase(M) ⊑ M lemma on application terms | #14 |
 | HN-Eval added to ⇓ | App/asc terms in narrowed envs break monotonicity | #15 |
 | T-App abstract domain erasure | Monotonicity counterexample: domains break ⊑ direction | #16 |
+| S-Asc structural congruence added | Needed for erase(M) ⊑ M lemma on ascription terms | #8 |
 
 ## Recommended Next Steps
 
-1. **Close the ascription sub-gap** (optional). Either:
-   - Accept it as a proof-technique limitation (pragmatic)
-   - Use logical relations for a publication-quality proof
+1. ~~**Close the ascription sub-gap**~~ — DONE. Resolved by adding S-Asc
+   (structural congruence for ascription). See lemma-erase-sub.md.
 
 2. **Formalize the ⇓-preserves-⊑ S-Trans case.** The combined induction
    argument in lemma-hn-mono-v2.md is sketched but not fully formal.
