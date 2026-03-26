@@ -128,8 +128,8 @@ is resolved by deep domain erasure in E-Fun.
 
 | #  | Program                                                          | Expected | Current rules | Notes                        |
 |----|------------------------------------------------------------------|----------|---------------|------------------------------|
-| 36 | `· ⊢ ((x: ⊤) → (y: ⊤) → (z: x) → z) (((w: ⊤) → w) : (w: ⊤) → ⊤) ⇒ (y: ⊤) → (z: (w: ⊤) → ⊤) → z` | Accept | ✓ | T-App, abstract subst |
-| 37 | (soundness: V ⊑ R for test 36)                                  | Accept   | ✓             | Deep erasure: V = (y:⊤)→(z:⊤)→z; (z:⊤)→z ⊑ (z:(w:⊤)→⊤)→z by S-Fun+S-Top |
+| 36 | `· ⊢ ((x: ⊤) → (y: ⊤) → (z: x) → z) (((w: ⊤) → w) : (w: ⊤) → ⊤) ⇒ (y: ⊤) → (z: ⊤) → z` | Accept | ✓ | T-App erases body: (z: x) becomes (z: ⊤) |
+| 37 | (soundness: V ⊑ R for test 36)                                  | Accept   | ✓             | V = (y:⊤)→(z:⊤)→z = R; S-Refl |
 
 ## Group 11: HN-Eval — head normalization through applications (sharp edge #15)
 
@@ -141,3 +141,15 @@ terms in the environment via HN-Eval.
 | 38 | `z: ((f: ⊤) → (x: ⊤) → (y: ⊤) → y) ⊤ ⊢ z ⊤ ⇒ (y: ⊤) → y` | Accept   | ✓             | HN-Eval: app ⇒ fun type, T-App fires |
 | 39 | `z: (x: ⊤) → (y: ⊤) → y ⊢ z ⊤ ⇒ (y: ⊤) → y`                | Accept   | ✓             | Direct function type, T-App  |
 | 40 | Tests 38 & 39 are a monotonicity pair: 38 refines 39            | Accept   | ✓             | (y:⊤)→y ⊑ (y:⊤)→y by S-Refl |
+
+## Group 12: Abstract domain erasure in T-App (sharp edge #16)
+
+T-App erases domains in the body before substitution, mirroring E-Fun's
+deep erasure. Without this, the argument type lands in contravariant
+positions, breaking monotonicity.
+
+| #  | Program                                                          | Expected | Current rules | Notes                        |
+|----|------------------------------------------------------------------|----------|---------------|------------------------------|
+| 41 | `a: (w: ⊤) → ⊤ ⊢ ((x: ⊤) → (y: x) → y) a ⇒ (y: ⊤) → y`    | Accept   | ✓             | T-App erases domain x to ⊤  |
+| 42 | `a: (w: ⊤) → w ⊢ ((x: ⊤) → (y: x) → y) a ⇒ (y: ⊤) → y`    | Accept   | ✓             | Same result: domain erased   |
+| 43 | Tests 41 & 42 are a monotonicity pair: 42 refines 41            | Accept   | ✓             | (y:⊤)→y ⊑ (y:⊤)→y by S-Refl |

@@ -92,7 +92,7 @@ x: A ∈ Γ
 Γ ⊢ F ⇓ (x: A) → B
 Γ ⊢ N ⇒ N'
 Γ ⊢ N' ⊑ A
-Γ ⊢ B[x ≔ N'] ⇒ R
+Γ ⊢ erase(B)[x ≔ N'] ⇒ R
 ——————————————————————————
 Γ ⊢ M N ⇒ R
 
@@ -161,12 +161,17 @@ couldn't see through it (see sharp edge #15).
 - **T-App**: First types M to get F, then head-normalizes F to extract
   the function structure `(x: A) → B`. Head normalization unfolds
   variable aliases, evaluates application/ascription terms, and recurses
-  until a function type or ⊤ is reached. Then substitutes the argument's
-  type (N') into the raw body B and abstractly evaluates the result.
-  Head normalization is essential for monotonicity: under a narrower
-  environment, M₁'s type may become a variable alias or an application
-  term that evaluates to a function type (see sharp edges #12, #15).
-  Without ⇓, T-App would fail on these, breaking monotonicity.
+  until a function type or ⊤ is reached. Then **erases** the body B
+  (replacing all domain annotations with ⊤) before substituting the
+  argument's type (N') and abstractly evaluating the result. The erasure
+  mirrors E-Fun's deep domain erasure at runtime and is essential for
+  monotonicity: without it, the argument type N' lands in contravariant
+  (domain) positions of B, and a more-precise N' produces a LESS precise
+  result type at those positions (see sharp edge #16). Head normalization
+  is also essential for monotonicity: under a narrower environment, M₁'s
+  type may become a variable alias or an application term that evaluates
+  to a function type (see sharp edges #12, #15). Without ⇓, T-App would
+  fail on these, breaking monotonicity.
 
 - **T-App-Top**: Any application has type ⊤ as a fallback. This rule
   has no premises — it always applies. When T-App also applies (M₁

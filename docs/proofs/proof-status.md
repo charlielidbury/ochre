@@ -26,7 +26,7 @@ more-precise-or-equal result.)
 | T-Fun | ✓ Complete | soundness-t-fun.md | E-Fun erases domain; S-Fun + S-Top |
 | T-App-Top | ✓ Complete | (trivial) | V ⊑ ⊤ by S-Top |
 | T-Asc | ✓ Complete | soundness-t-asc.md | V ⊑ M' ⊑ A ⊑ A' chain |
-| T-App | **GAP** | soundness-t-app.md | See Gap 1 below |
+| T-App | ✓ Complete | soundness-t-app-v2.md | Resolved by abstract + concrete erasure (modulo ascription sub-gap) |
 
 ### Monotonicity
 
@@ -37,35 +37,32 @@ more-precise-or-equal result.)
 | T-Fun | ✓ Complete | monotonicity-easy.md | T-Fun is environment-independent |
 | T-App-Top | ✓ Complete | (trivial) | Use T-App-Top under Γ'; ⊤ ⊑ ⊤ |
 | T-Asc | ✓ Complete | monotonicity-easy.md | Raw target stable; IH on sub-derivations |
-| T-App | **GAP** | monotonicity-t-app.md | See Gaps 1 and 2 below |
+| T-App | ✓ Complete | monotonicity-t-app-v2.md | Resolved by abstract erasure + HN-Mono (modulo ascription sub-gap) |
 
 ## Remaining Gaps
 
-### Gap 1: Monotone Substitution — MOSTLY RESOLVED by deep domain erasure
+### Gap 1: Monotone Substitution — RESOLVED by abstract domain erasure
 
 **Location:** T-App soundness and monotonicity.
 
 **Previous problem:** Substituting a more-precise value into a
 contravariant (domain) position of the body gives a WRONG-DIRECTION
-comparison. This was a concrete soundness counterexample (see sharp
-edge #14).
+comparison. This was a concrete soundness counterexample (sharp edge
+#14) AND a concrete monotonicity counterexample (sharp edge #16).
 
-**The fix:** Deep domain erasure in E-Fun: `(x: A) → M ⟶ (x: ⊤) → erase(M)`.
-The `erase` function recursively replaces all domain annotations with ⊤.
-This removes x from all domain positions before substitution. After erasure,
-x only appears in body (covariant) positions, where monotone substitution
-holds.
+**The fix (both soundness and monotonicity):**
+1. E-Fun deep domain erasure: `(x: A) → M ⟶ (x: ⊤) → erase(M)` — fixes
+   soundness by ensuring values have ⊤ domains.
+2. T-App abstract domain erasure: `erase(B)[x ≔ N'] ⇒ R` — fixes
+   monotonicity by ensuring the argument type only lands in covariant
+   positions.
 
-**How deep erasure resolves the T-App soundness case:**
-
-With deep erasure, E-App uses `erase(B)[x ≔ N_v]` (erased body with
-concrete argument). T-App uses `B[x ≔ N']` (raw body with abstract
-argument). The key differences:
-1. Domains: concrete has ⊤ everywhere; abstract has precise terms.
-   All domain comparisons are `domain(R) ⊑ ⊤` = S-Top. ✓
-2. Body positions: concrete has N_v; abstract has N'. Since N_v ⊑ N'
-   (by soundness IH) and these are covariant positions, the comparison
-   goes the right direction. ✓
+After erasure on both sides, concrete evaluation uses `erase(B)[x ≔ N_v]`
+and abstract evaluation uses `erase(B)[x ≔ N']`. The bodies are the same
+erased form; only the substituted values differ. Since x only appears in
+covariant positions of erase(B), the ⊑ direction is preserved:
+- Soundness: N_v ⊑ N' → R_concrete ⊑ R_abstract ✓
+- Monotonicity: N'' ⊑ N' → R' ⊑ R ✓
 
 **Remaining sub-gap: erase(M) ⊑ M for T-Fun soundness.**
 
@@ -85,13 +82,6 @@ The ascription sub-gap only arises for function bodies containing
 ascription terms where the inner term or target contains function
 subterms with parameter-dependent domains. This is an uncommon pattern.
 A logical relations proof would close it entirely.
-
-**Monotone substitution in covariant positions (new property):**
-
-After deep erasure, the concrete body `erase(B)` only has x in body
-(covariant) positions. Substituting N_v ⊑ N' into covariant positions
-preserves the ⊑ direction. This is provable by structural induction on
-erase(B), using the mutual soundness/monotonicity IH.
 
 ### Gap 2: Variable-Type Gap — RESOLVED by head normalization
 
@@ -143,26 +133,18 @@ bindings.
 | E-Fun deep domain erasure | Soundness counterexample: inner domains break V ⊑ R | #14 |
 | S-App congruence added | Needed for erase(M) ⊑ M lemma on application terms | #14 |
 | HN-Eval added to ⇓ | App/asc terms in narrowed envs break monotonicity | #15 |
+| T-App abstract domain erasure | Monotonicity counterexample: domains break ⊑ direction | #16 |
 
 ## Recommended Next Steps
 
-1. **Prove erase(M) ⊑ M lemma** for variables, ⊤, function literals,
-   and applications. Document the ascription sub-gap.
-
-2. **Prove HN-Mono lemma** (head normalization monotonicity). If
-   `F' ⊑ F` and `F ⇓ (x: A) → B` under well-founded Γ, then
-   `F' ⇓ (x: C) → D` with `(x: C) → D ⊑ (x: A) → B`. This should
-   close Gap 2 in the proof.
-
-3. **Complete T-App soundness** using deep erasure. The proof structure:
-   - All domain comparisons become S-Top (values have erased domains)
-   - Body comparisons use monotone substitution in covariant positions
-   - IH provides soundness on sub-derivations
-
-4. **Complete T-App monotonicity** using the same deep erasure argument.
-   The key insight: under Γ' ⊑ Γ, use T-App under Γ' (with HN-Mono
-   for head normalization) or fall back to T-App-Top for ⊤ ⊑ ⊤.
-
-5. **Close the ascription sub-gap** (optional). Either:
+1. **Close the ascription sub-gap** (optional). Either:
    - Accept it as a proof-technique limitation (pragmatic)
    - Use logical relations for a publication-quality proof
+
+2. **Formalize the ⇓-preserves-⊑ S-Trans case.** The combined induction
+   argument in lemma-hn-mono-v2.md is sketched but not fully formal.
+
+3. **Formalize the monotone-covariant-substitution lemma.** After
+   abstract erasure, x only appears covariantly in erase(B). Substituting
+   N'' ⊑ N' should preserve ⊑. This needs structural induction on
+   erase(B) with a clear definition of "covariant position."

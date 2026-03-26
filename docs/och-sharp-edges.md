@@ -388,3 +388,67 @@ environments ensure HN-Var terminates. Together, ⇓ terminates.
 **If you remove HN-Eval:** The counterexample above breaks monotonicity.
 Any environment where entries are application terms (which arise naturally
 from S-Eval narrowing) will fail to head-normalize to function types.
+
+## 16. T-App must erase domains in the body before substitution
+
+**If you substitute into raw B (without erasing):** The argument type N'
+lands in domain (contravariant) positions of B. Under monotonicity, a more
+precise N'' ⊑ N' produces a result type with a more precise domain, which
+is LESS precise as a function type (contravariance). Monotonicity fails.
+
+**Concrete counterexample:**
+
+```
+Γ  = { a: (w: ⊤) → ⊤ }
+Γ' = { a: (w: ⊤) → w }
+Γ' ⊑ Γ  (since (w: ⊤) → w ⊑ (w: ⊤) → ⊤)
+
+M = ((x: ⊤) → (y: x) → y) a
+
+Under Γ:  B = (y: x) → y, N' = (w: ⊤) → ⊤
+  B[x ≔ N'] = (y: (w: ⊤) → ⊤) → y
+  R = (y: (w: ⊤) → ⊤) → y
+
+Under Γ': B = (y: x) → y, N'' = (w: ⊤) → w
+  B[x ≔ N''] = (y: (w: ⊤) → w) → y
+  R' = (y: (w: ⊤) → w) → y
+
+R' ⊑ R requires (w: ⊤) → ⊤ ⊑ (w: ⊤) → w (contra in domain),
+which requires ⊤ ⊑ w — NOT DERIVABLE.
+```
+
+**Root cause:** The argument type x appears in a domain position of the
+body B = (y: x) → y. Substituting different values of x into this domain
+creates a contravariant comparison that goes the wrong direction.
+
+This is the abstract-evaluation analogue of sharp edge #14 (E-Fun deep
+domain erasure for soundness). The concrete evaluation side was fixed by
+E-Fun erasing all domains. The abstract evaluation side has the same
+issue and needs the same fix.
+
+**The fix:** T-App substitutes into `erase(B)` instead of `B`:
+
+```
+[T-App]
+Γ ⊢ M ⇒ F
+Γ ⊢ F ⇓ (x: A) → B
+Γ ⊢ N ⇒ N'
+Γ ⊢ N' ⊑ A
+Γ ⊢ erase(B)[x ≔ N'] ⇒ R
+——————————————————————————
+Γ ⊢ M N ⇒ R
+```
+
+After erasure, x only appears in body (covariant) positions of erase(B).
+Substituting N'' ⊑ N' into covariant positions preserves the ⊑ direction.
+
+**Precision loss:** Domain annotations in the body that depend on the
+function parameter are lost. For example, `(y: x) → y` becomes
+`(y: ⊤) → y` — we no longer track that y has the same type as the
+argument. But this information was always erased at runtime (E-Fun deep
+erasure), so the abstract side was over-promising. The types now match
+the runtime behavior.
+
+**If you remove the erasure:** The counterexample above breaks
+monotonicity. Any function body that places the parameter in a domain
+position will exhibit the wrong-direction comparison under narrowing.

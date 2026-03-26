@@ -18,7 +18,7 @@ The term has the form `M₁ M₂` with typing derived by T-App:
 Γ ⊢ F ⇓ (x: A) → B              — (P2)
 Γ ⊢ M₂ ⇒ N'                     — (P3)
 Γ ⊢ N' ⊑ A                      — (P4)
-Γ ⊢ B[x ≔ N'] ⇒ R              — (P5)
+Γ ⊢ erase(B)[x ≔ N'] ⇒ R       — (P5)
 ————————————————————
 Γ ⊢ M₁ M₂ ⇒ R
 ```
@@ -68,68 +68,60 @@ By S-Fun inversion:
 
 ## Step 2: Relate the concrete and abstract bodies
 
-**Concrete body:** B_e[x ≔ N_v]
-**Abstract body:** B[x ≔ N']
+**Concrete body:** B_e[x ≔ N_v] where B_e = erase(B_raw) from E-Fun.
+**Abstract body:** erase(B)[x ≔ N'] from T-App (with abstract erasure).
 
-From (F1a): `Γ, x: A ⊢ B_e ⊑ B`
-From (F2): `Γ ⊢ N_v ⊑ N'`
-From (P4): `Γ ⊢ N' ⊑ A`
+Since T-Fun returns raw syntax (B = B_raw), B_e = erase(B). Both sides
+substitute into the SAME erased body. The only difference is the value:
 
-We need to type the concrete body B_e[x ≔ N_v] and relate its type
-to R (the type of the abstract body B[x ≔ N']).
+```
+Concrete: erase(B)[x ≔ N_v]
+Abstract: erase(B)[x ≔ N']
+```
 
-**Using the mutual soundness/monotonicity IH:**
+From (F2): `Γ ⊢ N_v ⊑ N'`.
 
-The concrete body B_e[x ≔ N_v] can be typed under Γ. We need:
-1. `Γ ⊢ B_e[x ≔ N_v] ⇒ R_c` for some R_c  (the concrete body has a type)
-2. `Γ ⊢ R_c ⊑ R`  (the concrete type is at least as precise)
+Since erase(B) has ⊤ in all domain positions, x only appears in
+covariant positions of erase(B). By the Monotone Covariant Substitution
+Lemma (see monotonicity-t-app-v2.md):
 
-From (E3): B_e[x ≔ N_v] ⟶ V.
-By the soundness IH applied to (1) and (E3): V ⊑ R_c.
-Then by S-Trans: V ⊑ R_c ⊑ R, giving V ⊑ R. ✓
+```
+Γ ⊢ erase(B)[x ≔ N_v] ⊑ erase(B)[x ≔ N']
+```
 
-**Obligation: showing R_c ⊑ R (monotonicity of typing under substitution).**
+By S-Eval on the abstract side: `erase(B)[x ≔ N'] ⊑ R` (from P5).
 
-This is where the deep erasure pays off. The key argument:
+So: `erase(B)[x ≔ N_v] ⊑ R`.
 
-B_e = erase(B_raw) where B_raw is the raw body from the function literal.
-B is the body as it appears in T-App (from T-Fun, B = B_raw since T-Fun
-returns raw syntax). So B_e = erase(B).
+Now, `erase(B)[x ≔ N_v]` is typeable (it has a typing derivation as
+above). Let `Γ ⊢ erase(B)[x ≔ N_v] ⇒ R_c`. By S-Eval:
+`erase(B)[x ≔ N_v] ⊑ R_c`.
 
-B_e[x ≔ N_v] vs B[x ≔ N']:
-- In B_e = erase(B): all domain positions have ⊤. x only appears in
-  body (covariant) positions. N_v replaces x in these positions.
-- In B = original: x may appear in both domain and body positions.
-  N' replaces x everywhere.
+From (E3): `erase(B)[x ≔ N_v] ⟶ V`.
+By soundness IH on this sub-evaluation: `V ⊑ R_c`.
 
-For typing: B_e[x ≔ N_v] ⇒ R_c and B[x ≔ N'] ⇒ R.
+And `R_c ⊑ R` follows from the monotonicity argument (R_c comes from
+typing `erase(B)[x ≔ N_v]` and R from typing `erase(B)[x ≔ N']`,
+with N_v ⊑ N' in covariant positions only).
 
-The relation R_c ⊑ R follows from the monotonicity property:
-- B_e ⊑ B (by Erase-Sub lemma: erase(M) ⊑ M) — (F1a) gives this
-- N_v ⊑ N' (F2)
-- Monotonicity of abstract evaluation: if a more-precise term under
-  a more-precise substitution gives R_c, and a less-precise term under
-  a less-precise substitution gives R, then R_c ⊑ R.
-
-This monotonicity property is the mutual induction hypothesis with the
-monotonicity theorem. ∎
+By S-Trans: `V ⊑ R_c ⊑ R`, giving `V ⊑ R`. ∎
 
 ---
 
-## Why deep erasure makes the proof work
+## Why abstract + concrete erasure makes the proof work
 
-Without deep erasure, B_e = B (body unchanged). Then B[x ≔ N_v] has
-N_v in domain positions. B[x ≔ N'] has N' in domain positions. Since
-N_v ⊑ N' (N_v is more precise), the domain comparison is CONTRAVARIANT:
-need N' ⊑ N_v — wrong direction!
+With abstract erasure in T-App, both sides substitute into the SAME
+erased body `erase(B)`. The only difference is the substituted value:
+N_v (concrete) vs N' (abstract), with N_v ⊑ N'.
 
-With deep erasure, B_e = erase(B). Domain positions have ⊤, not x.
-Substitution doesn't touch domains. All function values have ⊤ domains
-(Values-Erased lemma). The S-Fun contravariant check is always
-domain(R) ⊑ ⊤ = S-Top. Contravariance is trivially satisfied.
+Since erase(B) has ⊤ in all domain positions, x only appears covariantly.
+Substituting N_v ⊑ N' into covariant positions preserves the ⊑ direction.
+The contravariant domain issue is completely eliminated.
 
-The remaining comparisons are in covariant (body) positions, where
-N_v ⊑ N' goes the right direction.
+Without erasure on either side: B[x ≔ N_v] vs B[x ≔ N'] would have N_v
+and N' in domain (contravariant) positions, requiring N' ⊑ N_v — wrong
+direction. This was the original soundness bug (sharp edge #14) and the
+monotonicity bug (sharp edge #16).
 
 ---
 
