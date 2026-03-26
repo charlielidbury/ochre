@@ -13,12 +13,83 @@
 - **HN-Eval:** F ⇒ F', F' ⇓ G. S-Eval: F ⊑ F'. IH: F' ⊑ G.
   S-Trans: F ⊑ G. ∎
 
+## Auxiliary Lemma: ⊤ is a subtyping minimum (⊤-Sub)
+
+**Statement:** If `Γ ⊢ ⊤ ⊑ B`, then `B = ⊤`.
+
+**Proof** by induction on the derivation of `⊤ ⊑ B`:
+- **S-Refl:** B = ⊤. ∎
+- **S-Top:** B = ⊤. ∎
+- **S-Trans:** ⊤ ⊑ E ⊑ B. By IH: E = ⊤. Then ⊤ ⊑ B; by IH: B = ⊤. ∎
+- **S-Eval:** ⊤ ⇒ ⊤ (T-Top), so B = ⊤. ∎
+- **S-Var/S-Fun/S-App/S-Asc:** ⊤ is not a variable/function/app/asc.
+  Contradiction. ∎
+
+## Auxiliary Lemma: Variable Unfolding (Var-Unfold)
+
+**Statement:** If `Γ ⊢ y ⊑ B` and `y: K ∈ Γ`, then either:
+1. There exists a derivation `Γ ⊢ K ⊑ B`, or
+2. `y = B`.
+
+**Proof** by induction on the derivation of `y ⊑ B`:
+- **S-Refl:** y = B. Case (2). ∎
+- **S-Top:** B = ⊤. K ⊑ ⊤ by S-Top. Case (1). ∎
+- **S-Var:** y: K' ∈ Γ, K' ⊑ B. Environments are functional, so K' = K.
+  Case (1). ∎
+- **S-Eval:** y ⇒ K (T-Var), so B = K. K ⊑ K by S-Refl. Case (1). ∎
+- **S-Trans:** y ⊑ E (𝒟_L), E ⊑ B (𝒟_R). Apply IH to 𝒟_L:
+  - Case (1): K ⊑ E. Then K ⊑ B by S-Trans(K ⊑ E, 𝒟_R). ∎
+  - Case (2): y = E. Then 𝒟_R: y ⊑ B (strictly smaller). Apply IH. ∎
+- **S-Fun/S-App/S-Asc:** y is not a function/app/asc. Contradiction. ∎
+
+## Auxiliary Lemma: App/Asc Eval Extraction (Eval-Extract)
+
+**Statement:** If F is an application or ascription and `Γ ⊢ F ⊑ B`,
+then either:
+1. There exist F' and a derivation `Γ ⊢ F' ⊑ B` such that `Γ ⊢ F ⇒ F'`, or
+2. `F = B`, or
+3. `B = ⊤`.
+
+**Proof** by induction on the derivation of `F ⊑ B`:
+- **S-Refl:** F = B. Case (2). ∎
+- **S-Top:** B = ⊤. Case (3). ∎
+- **S-Eval:** F ⇒ F', B = F'. F' ⊑ F' by S-Refl. Case (1). ∎
+- **S-Trans:** F ⊑ E (𝒟_L), E ⊑ B (𝒟_R). Apply IH to 𝒟_L:
+  - Case (1): F ⇒ F', F' ⊑ E. Then F' ⊑ B by S-Trans(F' ⊑ E, 𝒟_R).
+    Case (1). ∎
+  - Case (2): F = E. Then 𝒟_R: F ⊑ B (strictly smaller). Apply IH. ∎
+  - Case (3): E = ⊤. Then 𝒟_R: ⊤ ⊑ B. By ⊤-Sub: B = ⊤. Case (3). ∎
+- **S-App:** F = M₁ N₁, B = M₂ N₂, M₁ ⊑ M₂, N₁ ⊑ N₂.
+  F and B are both applications with F = M₁ N₁, B = M₂ N₂. Case (2) does
+  not apply (F ≠ B in general). Case (3) does not apply (B is an app, not ⊤).
+  For case (1): we need F ⇒ F' and F' ⊑ M₂ N₂.
+  We have M₁ ⊑ M₂ and N₁ ⊑ N₂, but deriving `F' ⊑ M₂ N₂` from
+  `M₁ N₁ ⇒ F'` requires **monotonicity of ⇒**.
+
+  **This case requires ⇒-monotonicity** (see note below). ∎ (conditional)
+
+- **S-Asc:** Same structure as S-App; requires ⇒-monotonicity. ∎ (conditional)
+- **S-Var:** F is a variable. Contradiction (F is app/asc). ∎
+- **S-Fun:** F is a function type. Contradiction. ∎
+
+**Note on mutual dependency:** The S-App and S-Asc cases of Eval-Extract
+require knowing that `M₁ N₁ ⇒ F'` and `M₂ N₂ ⇒ D'` with `F' ⊑ D'`
+(monotonicity of ⇒). This is the main monotonicity theorem. Therefore,
+⇓-preserves-⊑ and the monotonicity theorem must be proved by **mutual
+induction**. See the discussion after the S-Trans proof for details on
+how the mutual induction is structured.
+
 ## Sub-Lemma: ⇓ preserves ⊑ downward
 
 **Statement:** If `Γ ⊢ F ⊑ B` where B is a function type `(x: A) → C`,
 and `Γ ⊢ F ⇓ G`, then `Γ ⊢ G ⊑ (x: A) → C`.
 
-**Proof** by induction on the subtyping derivation F ⊑ (x: A) → C:
+**Proof** by well-founded induction on the lexicographic pair `(h, s)`
+where `h` = height of the ⇓ derivation `F ⇓ G` and `s` = size of the
+subtyping derivation `F ⊑ (x: A) → C`. We write `(h₁, s₁) ≺ (h₂, s₂)`
+when `h₁ < h₂`, or `h₁ = h₂` and `s₁ < s₂`.
+
+We case-split on the last rule of the subtyping derivation.
 
 **Case S-Refl:** F = (x: A) → C. F is a function type. ⇓ gives G = F
 by HN-Fun. G ⊑ (x: A) → C by S-Refl. ∎
@@ -35,61 +106,138 @@ and K ⇓ G: G ⊑ (x: A) → C. ∎
 **Case S-App:** F = M₁ N₁, (x: A) → C = M₂ N₂. But (x: A) → C is
 a function type, not an application. Contradiction. ∎
 
-**Case S-Trans:** F ⊑ D ⊑ (x: A) → C.
+**Case S-Asc:** F = (M₁ : A₁), (x: A) → C = (M₂ : A₂). But (x: A) → C
+is a function type, not an ascription. Contradiction. ∎
 
-Sub-case D = function type (x: E) → H:
-- By IH on F ⊑ (x: E) → H (smaller) and F ⇓ G: G ⊑ (x: E) → H.
-- (x: E) → H ⊑ (x: A) → C (given, smaller).
-- G ⊑ (x: A) → C by S-Trans. ∎
+**Case S-Eval:** F ⇒ F' and F' = (x: A) → C. Case-split on F ⇓ G:
+- HN-Fun: F is a function type, G = F. T-Fun: F ⇒ F, so F' = F = (x:A)→C.
+  G ⊑ (x:A)→C by S-Refl. ∎
+- HN-Top: F = ⊤. T-Top: ⊤ ⇒ ⊤, so F' = ⊤ = (x:A)→C. Contradiction. ∎
+- HN-Var: F = y, y: K ∈ Γ, K ⇓ G. T-Var: y ⇒ K, so F' = K = (x:A)→C.
+  K is a function type, so HN-Fun gives G = K = (x:A)→C.
+  G ⊑ (x:A)→C by S-Refl. ∎
+- HN-Eval: F ⇒ F'', F'' ⇓ G. Evaluation is deterministic: F'' = F'.
+  F' = (x:A)→C (function type). HN-Fun gives G = (x:A)→C.
+  G ⊑ (x:A)→C by S-Refl. ∎
 
-Sub-case D = variable z:
-- D ⊑ (x: A) → C, i.e., z ⊑ (x: A) → C. By S-Var: z: L ∈ Γ,
-  L ⊑ (x: A) → C. By IH on L ⊑ (x: A) → C (accessible because
-  the S-Var + inner derivation is smaller than the full S-Trans):
-  if L ⇓ G_L, then G_L ⊑ (x: A) → C.
-- But we need G (from F ⇓ G) to ⊑ (x: A) → C, not G_L.
-  F ⊑ z (from S-Trans premise). F ⇓ G. What is F?
-  If F is a function type: G = F (HN-Fun). F ⊑ z ⊑ (x: A) → C.
-  By IH on F ⊑ z (smaller) and F ⇓ G = F: hmm, z is not a function type.
+**Case S-Trans:** The derivation has the form:
 
-  Actually, the IH is stated for B = function type. F ⊑ z where z
-  is a variable doesn't fit. Need the generalized version.
+```
+  𝒟₁: F ⊑ D     𝒟₂: D ⊑ (x: A) → C
+  ————————————————————————————————————  [S-Trans]
+            F ⊑ (x: A) → C
+```
 
-  **Resolution:** Use ⇓-Sub: F ⊑ G (from ⇓-Sub lemma). And F ⊑ z
-  (given). And z ⊑ (x: A) → C (given). So F ⊑ (x: A) → C by
-  S-Trans (F ⊑ z ⊑ (x: A) → C). But we need G ⊑ (x: A) → C,
-  not F ⊑ (x: A) → C.
+with size `s = |𝒟₁| + |𝒟₂| + 1` (so `|𝒟₁| < s` and `|𝒟₂| < s`).
 
-  Hmm. Let's handle this case by induction on the ⇓ derivation instead.
+We are given `F ⇓ G` with height `h`. We need `G ⊑ (x: A) → C`.
 
-Sub-case D = ⊤: ⊤ ⊑ (x: A) → C requires (x: A) → C = ⊤. Contradiction.
+We proceed by case-splitting on the ⇓ derivation `F ⇓ G`.
 
-Sub-case D = application or ascription:
-- D ⊑ (x: A) → C. By S-Eval: D ⇒ D', D ⊑ D'. Then D' ⊑ (x: A) → C
-  follows from D ⊑ D' ⊑ (x: A) → C being part of the derivation.
+---
 
-  Actually, this sub-case has the same structure as S-Var: we need to
-  "unfold" D to reach (x: A) → C.
+#### S-Trans / HN-Fun
 
-**The S-Trans case is the tricky one.** For a complete proof, we need
-a more sophisticated induction (joint induction on ⇓ depth and subtyping
-derivation size). Here is the key argument:
+F is a function type `(x: P) → Q`. G = F by HN-Fun.
 
-**Combined induction on (⇓ height, subtyping size):**
+`G = F ⊑ D ⊑ (x: A) → C` by S-Trans from 𝒟₁ and 𝒟₂ (the original
+derivation). So G ⊑ (x: A) → C. ∎
 
-When F ⇓ G: either G = F (HN-Fun/HN-Top, trivial) or F unfolds
-through variables/evaluation to reach G. In the unfolding path:
-  F → F₁ → F₂ → ... → G
+#### S-Trans / HN-Top
 
-Each step is either HN-Var (unfold a variable) or HN-Eval (evaluate
-and recurse). And F ⊑ (x: A) → C implies, via the subtyping rules,
-that each Fᵢ is also ⊑ (x: A) → C (because S-Var and S-Eval both
-give Fᵢ ⊑ Fᵢ₊₁ and Fᵢ₊₁ ⊑ ... ⊑ (x: A) → C).
+F = ⊤, G = ⊤.
 
-At the end of the chain, G is a function type or ⊤ (it's non-variable
-and non-application/ascription). If G = ⊤, then ⊤ ⊑ (x: A) → C is
-not derivable, so this case is impossible. If G is a function type, then
-G ⊑ (x: A) → C by the chain argument. ∎
+From `𝒟₁: ⊤ ⊑ D`, Lemma ⊤-Sub gives D = ⊤. Then `𝒟₂: ⊤ ⊑ (x: A) → C`,
+and Lemma ⊤-Sub gives (x: A) → C = ⊤. Contradiction (function type ≠ ⊤). ∎
+
+#### S-Trans / HN-Var
+
+F = y, `y: K ∈ Γ`, `K ⇓ G` (height h − 1).
+
+We have `𝒟₁: y ⊑ D` and `𝒟₂: D ⊑ (x: A) → C`.
+
+Apply **Var-Unfold** to `𝒟₁: y ⊑ D` with `y: K ∈ Γ`:
+
+**Var-Unfold case (1):** There exists a derivation `K ⊑ D`.
+
+Build `K ⊑ (x: A) → C` by S-Trans from `K ⊑ D` and `𝒟₂`. Call this 𝒟_K.
+Apply the outer IH to `𝒟_K: K ⊑ (x: A) → C` and `K ⇓ G` (height h − 1).
+
+**Measure:** `(h − 1, |𝒟_K|) ≺ (h, s)` because the primary component
+strictly decreases: h − 1 < h. The secondary component |𝒟_K| can be
+anything — when the primary component decreases, any secondary value
+is acceptable in the lexicographic order. ∎
+
+**Var-Unfold case (2):** y = D.
+
+Then `𝒟₂: y ⊑ (x: A) → C` with `|𝒟₂| < s`.
+Apply the outer IH to `𝒟₂: y ⊑ (x: A) → C` and `y ⇓ G` (height h).
+
+**Measure:** `(h, |𝒟₂|) ≺ (h, s)` because h = h (same primary) and
+|𝒟₂| < s (secondary strictly decreases). ∎
+
+#### S-Trans / HN-Eval
+
+F is an application or ascription. `F ⇒ F'`, `F' ⇓ G` (height h − 1).
+
+We have `𝒟₁: F ⊑ D` and `𝒟₂: D ⊑ (x: A) → C`.
+
+Apply **Eval-Extract** to `𝒟₁: F ⊑ D` with `F ⇒ F'`:
+
+**Eval-Extract case (1):** `F ⇒ F'` and there exists a derivation `F' ⊑ D`.
+
+(Note: Eval-Extract yields some F'' with `F ⇒ F''`; since abstract
+evaluation is deterministic, F'' = F'.)
+
+Build `F' ⊑ (x: A) → C` by S-Trans from `F' ⊑ D` and `𝒟₂`. Call this 𝒟'.
+Apply the outer IH to `𝒟': F' ⊑ (x: A) → C` and `F' ⇓ G` (height h − 1).
+
+**Measure:** `(h − 1, |𝒟'|) ≺ (h, s)` because h − 1 < h. ∎
+
+**Eval-Extract case (2):** F = D.
+
+Then `𝒟₂: F ⊑ (x: A) → C` with `|𝒟₂| < s`.
+Apply the outer IH to `𝒟₂: F ⊑ (x: A) → C` and `F ⇓ G` (height h).
+
+**Measure:** `(h, |𝒟₂|) ≺ (h, s)` because |𝒟₂| < s. ∎
+
+**Eval-Extract case (3):** D = ⊤.
+
+Then `𝒟₂: ⊤ ⊑ (x: A) → C`. By Lemma ⊤-Sub: (x: A) → C = ⊤.
+Contradiction. ∎
+
+---
+
+This completes the S-Trans case, modulo the Eval-Extract lemma's
+dependence on ⇒-monotonicity (in its S-App and S-Asc cases). ∎
+
+## Note on Mutual Induction
+
+The Eval-Extract lemma's S-App and S-Asc cases require monotonicity
+of abstract evaluation (⇒-Mono): if `M₁ ⊑ M₂` and `N₁ ⊑ N₂`, and
+`M₁ N₁ ⇒ R₁` and `M₂ N₂ ⇒ R₂`, then `R₁ ⊑ R₂` (and similarly
+for ascriptions).
+
+This is precisely the main Monotonicity theorem that ⇓-preserves-⊑
+is a sub-lemma of. Therefore, the full proof requires **mutual
+induction**: ⇓-preserves-⊑ and the Monotonicity theorem are proved
+simultaneously by induction on the combined evaluation/subtyping
+derivation.
+
+The mutual induction is well-founded because:
+- ⇓-preserves-⊑ calls ⇒-Mono on **strictly smaller** terms: the
+  S-App/S-Asc case of Eval-Extract arises when `F ⊑ D` by S-App,
+  meaning F = M₁ N₁ and D = M₂ N₂ with M₁ ⊑ M₂ and N₁ ⊑ N₂. The
+  ⇒-Mono call is on M₁, M₂ (sub-terms of F, D) with their respective
+  argument sub-terms. These are structurally smaller than the original
+  head-normalization problem.
+- The Monotonicity theorem calls ⇓-preserves-⊑ on the ⇓ derivation
+  arising from T-App, which is part of the typing derivation being
+  analyzed.
+
+The combined induction is well-founded on the lexicographic triple
+`(term size, ⇓ height, subtyping size)` where term size measures the
+terms being evaluated/head-normalized.
 
 ## Main Lemma: HN-Mono
 
