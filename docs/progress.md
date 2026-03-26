@@ -72,19 +72,10 @@ the parameter are lost. But this information was always erased at runtime
 | S-Eval (axiom) | Done | lemma-s-eval.md |
 | Values Have Erased Domains | Done | lemma-values-erased.md |
 | Domain Erasure Subtyping (Erase-Sub) | Done | lemma-erase-sub.md |
-| HN-Mono | Done* | lemma-hn-mono.md |
+| HN-Mono | Done | lemma-hn-mono.md |
 | ⇓-Sub | Done | Inside lemma-hn-mono.md |
-| ⇓-preserves-⊑ | Done* | Inside lemma-hn-mono.md |
+| ⇓-preserves-⊑ | Done | Inside lemma-hn-mono.md |
 | Monotone Covariant Substitution | Done | Inside monotonicity-t-app.md |
-
-\* S-Trans case uses combined induction argument (sketched, not fully formal).
-
-## Remaining Sub-Gaps
-
-### 1. ⇓-preserves-⊑ S-Trans formalization (low severity)
-
-The combined induction argument on (⇓ height, subtyping size) is
-sketched but not fully formalized. The argument is convincing.
 
 ## Rule Changes Made During Proof
 
@@ -142,12 +133,10 @@ Overall: Complete.
 | `proofs/lemma-narrowing-subtyping.md` | Narrowing preserves subtyping | Yes |
 | `proofs/lemma-hn-mono.md` | HN-Mono with sub-lemmas | Yes |
 
-## Recommended Next Steps
+## Status: Complete
 
-1. **Formalize the ⇓-preserves-⊑ S-Trans case.** The combined induction
-   argument in lemma-hn-mono.md is sketched but not fully formal.
+All lemmas formalized. No remaining gaps or sub-gaps.
 
-2. **Formalize the monotone-covariant-substitution lemma.** After
-   abstract erasure, x only appears covariantly in erase(B). Substituting
-   N'' ⊑ N' should preserve ⊑. This needs structural induction on
-   erase(B) with a clear definition of "covariant position."
+The only structural dependency to note is the mutual induction between
+typing monotonicity and narrowing-preserves-subtyping (through S-Eval),
+documented in lemma-narrowing-subtyping.md.
