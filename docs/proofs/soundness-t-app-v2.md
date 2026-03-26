@@ -125,25 +125,6 @@ monotonicity bug (sharp edge #16).
 
 ---
 
-## Case T-App-Top
-
-The term has the form `M₁ M₂` with typing derived by T-App-Top:
-
-```
-————————————————————
-Γ ⊢ M₁ M₂ ⇒ ⊤
-```
-
-And `M₁ M₂ ⟶ V` by E-App:
-
-`M₁ ⟶ (x: ⊤) → B_e, M₂ ⟶ N_v, B_e[x ≔ N_v] ⟶ V`
-
-**Goal:** `Γ ⊢ V ⊑ ⊤`
-
-By S-Top. ∎ (trivial)
-
----
-
 ## Case T-Fun (updated for deep erasure)
 
 The term has the form `(x: A) → M` with typing by T-Fun:

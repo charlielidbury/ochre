@@ -71,7 +71,9 @@ const = (x: ⊤) → (y: ⊤) → x
 ## Abstract Evaluation (Typing)
 
 The judgment `Γ ⊢ M ⇒ A` means "under environment Γ, the most precise
-type of M is A." Since types are terms, A is a term too.
+type of M is A." Since types are terms, A is a term too. The typing
+judgment is deterministic: each term has at most one type under a given
+environment (and some terms are untypeable, e.g., applying a non-function).
 
 ```
 [T-Top]
@@ -95,10 +97,6 @@ x: A ∈ Γ
 Γ ⊢ erase(B)[x ≔ N'] ⇒ R
 ——————————————————————————
 Γ ⊢ M N ⇒ R
-
-[T-App-Top]
-——————————————————————————
-Γ ⊢ M N ⇒ ⊤
 
 [T-Asc]
 Γ ⊢ M ⇒ M'
@@ -171,18 +169,9 @@ couldn't see through it (see sharp edge #15).
   is also essential for monotonicity: under a narrower environment, M₁'s
   type may become a variable alias or an application term that evaluates
   to a function type (see sharp edges #12, #15). Without ⇓, T-App would
-  fail on these, breaking monotonicity.
-
-- **T-App-Top**: Any application has type ⊤ as a fallback. This rule
-  has no premises — it always applies. When T-App also applies (M₁
-  types to a function and the argument satisfies the domain), T-App
-  gives a more precise result. T-App-Top serves as the fallback when
-  T-App cannot fire (M₁ types to ⊤, or to a non-function type, or
-  the argument is untypeable/incompatible). This makes the typing
-  judgment non-deterministic (a term may have multiple types), but
-  every derivation is sound, and the fallback is essential for
-  monotonicity: narrowing an environment must never make a term
-  untypeable. See sharp edge #12.
+  fail on these, breaking monotonicity. T-App is the ONLY rule for
+  typing applications — if the head does not normalize to a function
+  type, the application is untypeable (rejected).
 
 - **T-Asc**: Abstractly evaluates M to get M', checks M' ⊑ A (the raw
   target, not evaluated), then evaluates A to get the result type A'.

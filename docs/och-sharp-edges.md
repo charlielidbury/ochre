@@ -209,49 +209,47 @@ soundness. This is the whole reason E-Fun erases domains — but without
 the extra evaluation step in E-App, E-Fun never gets the chance to fire
 on intermediate results.
 
-## 12. T-App-Top is unconditional (no premises)
+## 12. T-App-Top was removed (no longer in the calculus)
 
-Previous versions required `Γ ⊢ M ⇒ ⊤` as a premise of T-App-Top.
+T-App-Top was a rule that gave any application `M N` the type ⊤
+unconditionally (no premises). It went through several iterations:
+
+**History:** The original version required `Γ ⊢ M ⇒ ⊤` as a premise.
 This broke monotonicity in two ways:
 
-**Problem 1 — Typeability gap:** Under a wide environment Γ (where
-M₁ ⇒ ⊤), T-App-Top fires without checking M₂. Under a narrower Γ'
-(where M₁ ⇒ (x: A) → B), T-App requires M₂ to be typeable. If M₂
-contains a failing ascription, the term is untypeable under Γ'.
+- *Typeability gap:* Under a wide environment Γ (where M₁ ⇒ ⊤),
+  T-App-Top fired without checking M₂. Under a narrower Γ' (where
+  M₁ ⇒ (x: A) → B), T-App required M₂ to be typeable. If M₂ contained
+  a failing ascription, the term became untypeable under Γ'.
 
-Concrete counterexample: `f ((⊤ : (x: ⊤) → x))` under `{f: ⊤}` types
-to ⊤ (T-App-Top skips the argument), but under `{f: (y: ⊤) → ⊤}` the
-argument is untypeable.
+- *Variable-type gap:* Under Γ, M₁ types to a function so T-App fires.
+  Under Γ' ⊑ Γ, M₁ types to a variable alias. Neither T-App (needs
+  syntactic function type) nor old T-App-Top (needs ⊤) applied.
 
-**Problem 2 — Variable-type gap:** Under Γ, M₁ ⇒ (x: A) → B (a
-function type) so T-App fires. Under Γ' ⊑ Γ, M₁ ⇒ g (a variable that
-is a subtype of a function type via S-Var). Neither T-App (needs
-syntactic function type) nor old T-App-Top (needs ⊤) applies.
+The variable-type gap was resolved by head normalization (⇓) in T-App,
+which unfolds variable aliases to extract function structure. The
+typeability gap was temporarily resolved by making T-App-Top
+unconditional (no premises).
 
-Concrete counterexample: `f ((z: ⊤) → z)` under `{g: ⊤, f: (x: ⊤) → x}`
-types to `(z: ⊤) → z`, but under `{g: (x: ⊤) → x, f: g}` is untypeable
-(f ⇒ g, a variable).
+**Why it was removed:** The unconditional T-App-Top typed nonsensical
+programs (e.g., `⊤ ⊤ ⇒ ⊤`, applying a non-function) and introduced
+non-determinism (every application had at least two derivations). The
+monotonicity and soundness proofs turned out not to need it:
 
-**The fix:** Make T-App-Top unconditional. Any application `M N` always
-has type ⊤ as a fallback. This makes the typing judgment non-deterministic
-(T-App and T-App-Top can both fire), but every derivation is sound
-(V ⊑ ⊤ by S-Top), and monotonicity can always fall back to ⊤ ⊑ ⊤.
+- The variable-type gap is fully handled by head normalization (⇓).
+- The typeability gap doesn't arise: if a term was typeable under Γ via
+  T-App (head normalizes to a function), narrowing Γ to Γ' preserves
+  head normalization via HN-Mono.
+- Terms that were ONLY typeable via T-App-Top (e.g., `⊤ ⊤`) are
+  genuinely ill-typed — applying a non-function should be rejected.
 
-**If you add premises back to T-App-Top:** Both gaps reopen. The typing
-judgment becomes partial (some well-formed terms are untypeable), and
-narrowing can make previously-typeable terms untypeable.
+**Current state:** T-App is the only rule for typing applications. If
+the head does not normalize to a function type, the application is
+rejected. The typing judgment is deterministic. Head normalization
+handles all the cases that motivated T-App-Top.
 
-**Design connection:** This aligns with Ochre's "everything has a type"
-philosophy. Applications always produce at least ⊤ (no information).
-Precision is controlled by ascription (`:`) — if you want to assert that
-`f x` returns a specific type, write `(f x : T)`. The ascription check
-catches incompatible applications.
-
-**The variable-type sub-problem** is resolved by head normalization (⇓)
-in T-App. When M₁'s type is a variable g that aliases a function type,
-⇓ unfolds g to extract the function structure. This avoids changing
-T-Var (which would break T-Asc's raw target check — see sharp edge
-#13). Requires well-founded environments (no cyclic variable bindings).
+**If you re-add T-App-Top:** The calculus becomes non-deterministic
+and types nonsensical programs. The proofs don't need it.
 
 ## 13. T-Var must NOT normalize its result
 
@@ -358,10 +356,10 @@ to function types.
 (x: ⊤) → (y: ⊤) → y.  ✓ (Γ' ⊑ Γ)
 
 Under Γ:  z ⊤ ⇒ (y: ⊤) → y  (T-App fires: z types to function)
-Under Γ': z ⊤ ⇒ ⊤           (T-App-Top: z types to application,
-                               old ⇓ can't see through it)
+Under Γ': z ⊤ ⇒ ???          (old ⇓ can't see through the application
+                               term, T-App fails, term is untypeable)
 
-Need ⊤ ⊑ (y: ⊤) → y — NOT DERIVABLE
+Monotonicity broken: term is typeable under Γ but not Γ'.
 ```
 
 **Root cause:** Under Γ' ⊑ Γ, the narrowed environment may contain

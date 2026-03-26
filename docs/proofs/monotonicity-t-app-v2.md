@@ -153,8 +153,8 @@ typeable term), `erase(D)[x ≔ N'']` is typeable:
 `Γ' ⊢ erase(D)[x ≔ N''] ⇒ R'` for some R'.
 
 (Note: typeability of `erase(D)[x ≔ N'']` can also be established
-directly, since every subterm of erase(D) is well-formed and T-App-Top
-provides a fallback for applications.)
+directly, since every subterm of erase(D) is well-formed and the
+structure is preserved under substitution.)
 
 ### Step 5f: R' ⊑ R
 
@@ -197,19 +197,6 @@ Chaining: `R₁[x ≔ N''] ⊑ R₀[x ≔ N''] ⊑ R₀[x ≔ N'] = R`.
 The result R' of typing `erase(D)[x ≔ N'']` satisfies R' ⊑ R by the
 chain argument (via the S-Eval / S-Trans path from erase(D)[x ≔ N'']
 through erase(B)[x ≔ N''] to R₁[x ≔ N''] and then to R). ∎
-
----
-
-## Case T-App-Top
-
-```
-————————————————————
-Γ ⊢ M₁ M₂ ⇒ ⊤
-```
-
-**Goal:** `Γ' ⊢ M₁ M₂ ⇒ R'` with `R' ⊑ ⊤`.
-
-Use T-App-Top under Γ': `Γ' ⊢ M₁ M₂ ⇒ ⊤`. ⊤ ⊑ ⊤ by S-Refl. ∎
 
 ---
 

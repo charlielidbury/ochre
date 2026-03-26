@@ -10,10 +10,10 @@ in `docs/och.md`.
 **Monotonicity:** If `Γ ⊢ M ⇒ A` and `Γ' ⊑ Γ` (pointwise), then
 there exists a derivation `Γ' ⊢ M ⇒ A'` with `Γ' ⊢ A' ⊑ A`.
 
-(With unconditional T-App-Top, the typing judgment is non-deterministic.
-Soundness holds for every derivation. Monotonicity says: for every
-derivation under Γ, there exists a derivation under Γ' with a
-more-precise-or-equal result.)
+(The typing judgment is deterministic: each term has at most one type
+under a given environment. Soundness holds for every typeable term.
+Monotonicity says: for every typing derivation under Γ, there exists a
+typing derivation under Γ' with a more-precise-or-equal result.)
 
 ## Case-by-Case Status
 
@@ -24,7 +24,6 @@ more-precise-or-equal result.)
 | T-Top | ✓ Complete | soundness-t-top.md | V = ⊤, A = ⊤, S-Refl |
 | T-Var | ✓ Complete | soundness-t-var.md | Vacuous (variables don't evaluate) |
 | T-Fun | ✓ Complete | soundness-t-fun.md | E-Fun erases domain; S-Fun + S-Top |
-| T-App-Top | ✓ Complete | (trivial) | V ⊑ ⊤ by S-Top |
 | T-Asc | ✓ Complete | soundness-t-asc.md | V ⊑ M' ⊑ A ⊑ A' chain |
 | T-App | ✓ Complete | soundness-t-app-v2.md | Resolved by abstract + concrete erasure |
 
@@ -35,7 +34,6 @@ more-precise-or-equal result.)
 | T-Top | ✓ Complete | monotonicity-easy.md | ⊤ ⇒ ⊤ in both; S-Refl |
 | T-Var | ✓ Complete | monotonicity-easy.md | Γ'(x) ⊑ Γ(x) directly |
 | T-Fun | ✓ Complete | monotonicity-easy.md | T-Fun is environment-independent |
-| T-App-Top | ✓ Complete | (trivial) | Use T-App-Top under Γ'; ⊤ ⊑ ⊤ |
 | T-Asc | ✓ Complete | monotonicity-easy.md | Raw target stable; IH on sub-derivations |
 | T-App | ✓ Complete | monotonicity-t-app-v2.md | Resolved by abstract erasure + HN-Mono |
 
@@ -125,7 +123,7 @@ bindings.
 | S-Eval added as axiom | Can't be derived; needed for T-App soundness | — |
 | T-Asc checks raw target | Evaluated target breaks monotonicity | #10 |
 | E-App evaluates body | Concrete counterexample to soundness | #11 |
-| T-App-Top unconditional | Typeability + variable-type gaps break monotonicity | #12 |
+| T-App-Top added then removed | Was added for monotonicity fallback, removed when proofs didn't need it | #12 |
 | T-App uses head normalization (⇓) | Variable types from narrowing break T-App | #12, #13 |
 | Well-founded environments | ⇓ requires acyclic variable bindings | — |
 | E-Fun deep domain erasure | Soundness counterexample: inner domains break V ⊑ R | #14 |

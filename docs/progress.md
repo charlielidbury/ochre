@@ -23,7 +23,6 @@ for ascription terms (uncommon pattern, semantically harmless).
 | T-Top | Done | soundness-t-top.md | V = ⊤ = A, S-Refl |
 | T-Var | Done | soundness-t-var.md | Vacuous: variables don't evaluate |
 | T-Fun | Done | soundness-t-app-v2.md | S-Fun + S-Top + Erase-Sub |
-| T-App-Top | Done | (trivial) | V ⊑ ⊤ by S-Top |
 | T-Asc | Done | soundness-t-asc.md | V ⊑ M' ⊑ A' chain |
 | T-App | Done | soundness-t-app-v2.md | Abstract + concrete erasure align both sides |
 
@@ -34,7 +33,6 @@ for ascription terms (uncommon pattern, semantically harmless).
 | T-Top | Done | monotonicity-easy.md | ⊤ ⇒ ⊤ under any env |
 | T-Var | Done | monotonicity-easy.md | Γ'(x) ⊑ Γ(x) directly |
 | T-Fun | Done | monotonicity-easy.md | T-Fun is env-independent |
-| T-App-Top | Done | monotonicity-easy.md | T-App-Top under Γ'; ⊤ ⊑ ⊤ |
 | T-Asc | Done | monotonicity-easy.md | Raw target stable under narrowing |
 | T-App | Done | monotonicity-t-app-v2.md | HN-Mono + abstract erasure + covariant subst |
 
@@ -106,7 +104,7 @@ sketched but not fully formalized. The argument is convincing.
 | 1 | S-Eval added as axiom | Can't be derived; needed for T-App soundness | -- |
 | 2 | T-Asc checks raw target | Evaluated target breaks monotonicity | #10 |
 | 3 | E-App evaluates body | Concrete soundness counterexample | #11 |
-| 4 | T-App-Top unconditional | Typeability + variable-type gaps | #12 |
+| 4 | T-App-Top added then removed | Was added for monotonicity fallback, removed when proofs didn't need it | #12 |
 | 5 | T-App uses head normalization (⇓) | Variable types from narrowing | #12, #13 |
 | 6 | Well-founded environments | ⇓ termination requires acyclic bindings | -- |
 | 7 | E-Fun deep domain erasure | Inner domains break soundness | #14 |
@@ -121,7 +119,6 @@ Soundness:
   T-Top       ████████████ Done
   T-Var       ████████████ Done (vacuous)
   T-Fun       ███████████░ Done (modulo ascription sub-gap)
-  T-App-Top   ████████████ Done
   T-Asc       ████████████ Done
   T-App       ███████████░ Done (modulo ascription sub-gap)
 
@@ -129,7 +126,6 @@ Monotonicity:
   T-Top       ████████████ Done
   T-Var       ████████████ Done
   T-Fun       ████████████ Done
-  T-App-Top   ████████████ Done
   T-Asc       ████████████ Done
   T-App       ███████████░ Done (modulo ascription sub-gap)
 

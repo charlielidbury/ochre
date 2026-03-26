@@ -22,7 +22,7 @@ Pick  = (b: Bool) → b ((x: ⊤) → ⊤) ((x: ⊤) → x) ((x: ⊤) → ⊤)
 | 1  | `· ⊢ ⊤ ⇒ ⊤`                     | Accept   | ✓             | T-Top              |
 | 2  | `· ⊢ (x: ⊤) → x ⇒ (x: ⊤) → x` | Accept   | ✓             | T-Fun              |
 | 3  | `· ⊢ ((x: ⊤) → x) ⊤ ⇒ ⊤`       | Accept   | ✓             | T-App, subst x ≔ ⊤ |
-| 4  | `· ⊢ ⊤ ⊤ ⇒ ⊤`                   | Accept   | ✓             | T-App-Top          |
+| 4  | `· ⊢ ⊤ ⊤ ⇒ ⊤`                   | Reject   | ✓             | ⊤ is not a function type; T-App can't fire |
 
 ## Group 2: Subtyping
 
@@ -99,17 +99,18 @@ against evaluated targets breaks monotonicity.
 | 28 | `x: T ⊢ (x : T) ⇒ ⊤`                     | Accept   | ✓             | T ⊑ T (S-Refl), T ⇒ ⊤ (T: ⊤)    |
 | 29 | `x: T ⊢ (x : ⊤) ⇒ ⊤`                     | Accept   | ✓             | T ⊑ ⊤ (S-Top)                     |
 
-## Group 8: Unconditional T-App-Top (sharp edge #12)
+## Group 8: Application typing without T-App-Top (sharp edge #12)
 
-T-App-Top has no premises — any application types to ⊤ as a fallback.
-These tests verify the new behavior and its interaction with monotonicity.
+T-App is the only rule for typing applications. If the head does not
+normalize to a function type, or the argument is untypeable or
+incompatible with the domain, the application is rejected.
 
 | #  | Program                                              | Expected | Current rules | Notes                              |
 |----|------------------------------------------------------|----------|---------------|--------------------------------------|
-| 30 | `f: ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`               | Accept   | ✓             | T-App-Top, arg unchecked             |
-| 31 | `f: (y: ⊤) → ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`     | Accept   | ✓             | T-App-Top fallback (arg untypeable)  |
-| 32 | `· ⊢ ((x: ⊤) → x) ⊤ ⇒ ⊤`                          | Accept   | ✓             | T-App (precise), also T-App-Top (⊤) |
-| 33 | `g: (x: ⊤) → x, f: g ⊢ f ⊤ ⇒ ⊤`                  | Accept   | ✓             | T-App-Top (f ⇒ g, variable type)    |
+| 30 | `f: ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`               | Reject   | ✓             | f: ⊤, ⊤ ⇓ ⊤ (not a function), T-App can't fire |
+| 31 | `f: (y: ⊤) → ⊤ ⊢ f ((⊤ : (x: ⊤) → x)) ⇒ ⊤`     | Reject   | ✓             | Arg (⊤ : (x:⊤)→x): T-Asc needs ⊤ ⊑ (x:⊤)→x, fails (⊤ not ⊑ function type). Arg untypeable, T-App fails at premise 3. |
+| 32 | `· ⊢ ((x: ⊤) → x) ⊤ ⇒ ⊤`                          | Accept   | ✓             | T-App: head is function, ⊤ ⊑ ⊤, body evals to ⊤ |
+| 33 | `g: (x: ⊤) → x, f: g ⊢ f ⊤ ⇒ ⊤`                  | Accept   | ✓             | T-App: f ⇒ g, g ⇓ (x:⊤)→x via HN-Var, ⊤ ⊑ ⊤, body evals to ⊤ |
 
 ## Group 9: S-App congruence
 
