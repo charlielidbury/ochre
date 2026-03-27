@@ -672,7 +672,8 @@ Proof.
       * destruct (decidable_spath_eq sp_borrow q) as [<- | ].
         -- execution_step.
            ++ eapply Eval_cons.
-              { eapply Eval_Deref_Ptr_Locs; autorewrite with spath; try assumption; reflexivity. }
+              { eapply Eval_Deref_Ptr_Locs with (q' := sp_loan).
+                assumption. all: autorewrite with spath; reflexivity. }
               eapply Eval_path_loc.
               { econstructor; autorewrite with spath; easy. }
               apply Eval_nil.

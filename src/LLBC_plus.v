@@ -5532,6 +5532,7 @@ Proof.
 
     (* Leq-Reborrow-MutBorrow *)
     + eval_place_preservation.
+      (* TODO: time wasted by the rule `sget_reborrow_mut_borrow_not_prefix`. *)
       autorewrite with spath in * |-. (* TODO: long. *)
       destruct (decidable_prefix pi sp) as [(q & <-) | ].
 
@@ -6058,8 +6059,8 @@ Proof.
           rewrite sget_add_anon by eauto with spath.
           eapply is_of_type_rename_mut_borrow in Htype; [ | eassumption].
           eapply is_of_type_sset_sget; try eassumption. constructor. }
-        { autorewrite with spath. (* TODO: long. *) reflexivity. }
-        (* TODO: long. *) autorewrite with spath. reflexivity.
+        { autorewrite with spath. reflexivity. }
+        autorewrite with spath. reflexivity.
     (* Case Leq_Abs_ClearValue: *)
     + eval_place_preservation. autorewrite with spath in *.
       execution_step.
@@ -6436,11 +6437,12 @@ Proof.
       states_eq.
     (* Case 2: the fresh mutable loan is introduced in a place disjoint from the place we
      * overwrite. *)
-    + leq_step_left.
+    + assert (disj sp_store sp) by solve_comp.
+      leq_step_left.
       { eapply Leq_Fresh_MutLoan with (a := a) (sp := sp) (l' := l').
         not_contains. eauto with spath. validity. assumption.
         autorewrite with spath. eassumption. }
-      assert (disj sp_store sp) by solve_comp. states_eq.
+      states_eq.
 
   (* Case Leq_Reborrow_MutBorrow: *)
   - destruct (decide (fst sp = anon_accessor b)).
@@ -7006,7 +7008,8 @@ Proof.
         autorewrite with spath in get_borrow. inversion get_borrow. subst.
         (* The loan we end is the newly introduced loan. *)
         apply fresh_mut_loan_get_loan in get_loan; [ | exact fresh_l']. subst.
-        (* TODO: long. *) autorewrite with spath in *.
+        (* Issues with rewrite sget_anon, and hints like [valid_spath_diff_fresh_anon] *)
+          (* TODO: long. *) autorewrite with spath.
         (* The left state is just S,, a |-> bot. It does not contain the borrow of
          * loan id l. Thus, we don't have to do any reorganization step. *)
         reorg_done.

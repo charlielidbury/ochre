@@ -2309,7 +2309,22 @@ Hint Rewrite @sset_sget_equal using validity : spath.
 Hint Rewrite @sset_sget_prefix using validity : spath.
 Hint Rewrite @sset_sget_prefix_right using validity : spath.
 Hint Rewrite @sset_sget_common_prefix using validity : spath.
-Hint Rewrite @sset_sget_disj using solve_comp; fail : spath.
+
+Ltac solve_sset_sget_disj :=
+ lazymatch goal with
+  | H : disj ?p ?q |- disj ?p ?q => apply H
+  | H : disj ?p ?q |- disj (?p +++ _) ?q => apply disj_if_right_disj_prefix, H
+  | H : disj ?p ?q |- disj ?p (?q +++ _) => apply disj_if_left_disj_prefix, H
+  | H : disj ?p ?q |- disj (?p +++ _) (?q +++ _) =>
+      apply disj_if_right_disj_prefix, disj_if_left_disj_prefix, H
+  | H : disj ?q ?p |- disj ?p ?q => symmetry; apply H
+  | H : disj ?q ?p |- disj (?p +++ _) ?q => symmetry; apply disj_if_left_disj_prefix, H
+  | H : disj ?q ?p |- disj ?p (?q +++ _) => symmetry; apply disj_if_right_disj_prefix, H
+  | H : disj ?q ?p |- disj (?p +++ _) (?q +++ _) =>
+      symmetry; apply disj_if_right_disj_prefix, disj_if_left_disj_prefix, H
+  end.
+
+Hint Rewrite @sset_sget_disj using solve_sset_sget_disj : spath.
 
 (* Idem for vpaths: *)
 Hint Rewrite @vset_vget_equal using validity : spath.
