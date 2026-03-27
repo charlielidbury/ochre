@@ -4186,12 +4186,6 @@ Lemma loan_set_bot_subseteq (perm : loan_id_map) : subseteq (loan_set_val bot) (
 Proof. apply empty_subseteq. Qed.
 Hint Resolve loan_set_bot_subseteq : spath.
 
-Lemma prove_rel A (R : A -> A -> Prop) x y z : R x y -> y = z -> R x z.
-Proof. congruence. Qed.
-
-Lemma prove_rel_n A (R : nat -> A -> A -> Prop) x y z m n : R m x y -> m = n -> y = z -> R n x z.
-Proof. congruence. Qed.
-
 Lemma vsize_rename_value m v : vweight (fun _ => 1) (rename_value m v) = vweight (fun _ => 1) v.
 Proof. induction v; cbn in *; congruence. Qed.
 
