@@ -48,6 +48,7 @@ Inductive statement :=
 (* Note: this should be generalized to match any enumerations, as booleans should only be a
  * particular type of enumeration. *)
 | SwitchBool (op : operand) (stmt_if : statement) (stmt_else : statement)
+| Loop (body : statement)
 | Panic.
 
 
@@ -57,8 +58,9 @@ Notation "s0 ;; s1" := (Seq s0 s1)
   (at level 100, s1 at level 200, only parsing, right associativity).
 Notation "&mut p" := (BorrowMut p) (at level 80).
 Notation "'ASSIGN' p <- rv" := (Assign p rv) (at level 90).
-Notation "'IF'  op  {{ stmt_if }}  'ELSE'  {{ stmt_else }}" := (SwitchBool op stmt_if stmt_else)
+Notation "'IF'  op  {{  stmt_if  }}  'ELSE'  {{  stmt_else  }}" := (SwitchBool op stmt_if stmt_else)
   (at level 90).
+Notation "'LOOP'  {{  body  }}" := (Loop body) (at level 90).
 
 Local Open Scope positive_scope.
 Check (&mut (1, nil)).
@@ -75,7 +77,9 @@ Variant permission := Imm | Mut | Mov.
 (** LLBC is a langage with non-local control-flow management, with the << break >>, << continue >>, << panic >> and << return >> keywords. As such, statements yield a *control-flow token*, that determines the continuation of the computation. *)
 Variant flow_token : Set :=
 | rPanic
-| rUnit (* Panicless termination. *)
+| rUnit (* Panicless termination. TODO: rename. *)
+| rBreak
+| rContinue
 .
 
 (** Control-flow tags can be keys for [gmap]. *)
@@ -86,12 +90,16 @@ Definition encode_flow_token r :=
   match r with
   | rPanic => 1%positive
   | rUnit => 2%positive
+  | rBreak => 3%positive
+  | rContinue => 4%positive
   end.
 
 Definition decode_flow_token r :=
   match r with
   | 1%positive => Some rPanic
   | 2%positive => Some rUnit
+  | 3%positive => Some rBreak
+  | 4%positive => Some rContinue
   | _ => None
   end.
 
