@@ -108,17 +108,24 @@ Key behaviors:
    is the set `τ`.
 
 2. **Lambda:** `λ(x: τ). e` is its own most precise type — the singleton set
-   containing this specific function. If ascribed, precision is reduced.
+   containing this specific function. The body is checked for well-formedness
+   under the declared domain (e.g., `λ(x:Nat).(x:3)` is rejected because `x ⊑ 3`
+   fails for abstract `x : Nat`), but the result is the original lambda — the
+   checked body is discarded to preserve transparency.
 
-3. **Application:** To abstractly evaluate `f a`, the interpreter looks at `f`.
-   - If `f` is **transparent** (no ascription on the output), the interpreter
-     substitutes the abstract value of `a` into the body of `f` and abstractly
-     evaluates the body. This propagates precision.
-   - If `f` is **ascribed** (output has `(body : τ)`), the interpreter returns `τ`
-     without looking through the body.
+3. **Application:** To abstractly evaluate `f a` where `f` evaluates to
+   `λ(x: A). body`, the interpreter substitutes the abstract value of `a` for
+   `x` in `body` and abstractly evaluates the result. There is no special case
+   for "transparent" vs "ascribed" functions — there is a single, uniform rule.
+   The distinction emerges from what happens during evaluation of the body:
+   - If the body is ordinary code, evaluation propagates precision through it.
+   - If the body contains `(e : τ)`, the ascription rule (below) fires during
+     evaluation, returning `τ` and discarding precision at that point.
 
 4. **Ascription:** `(e : τ)` abstractly evaluates to `τ`, discarding any precision
-   from `e`. The interpreter must verify `e ⊑ τ` (soundness check).
+   from `e`. The interpreter must verify `e ⊑ τ` (soundness check). This is the
+   sole mechanism for losing precision — it applies uniformly wherever it appears,
+   including inside function bodies reached via application.
 
 5. **Branching / Church-encoded elimination:** When the interpreter encounters a
    Church-encoded boolean or natural being used as an eliminator with an abstract
@@ -141,6 +148,8 @@ Subtyping is set inclusion. Core rules:
   `f` is in the set `λ(x: A). B` iff for every `x ⊑ A`, `f x ⊑ B[x]`.
 - Singleton subtyping: the term `3` (a specific Church numeral) satisfies `3 ⊑ Nat`
   because the value `3` is in the set of all Church numerals.
+- `τ ⊑ Type` for any term `τ` (Type is top). Every term is a type (at minimum
+  a singleton set), so every term is a member of the universe.
 
 ### 4.4 Terms-as-Types
 

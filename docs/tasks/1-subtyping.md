@@ -37,6 +37,9 @@ before applying rules.
 Γ ⊢ A ⊑ C
   Γ ⊢ A ⊑ B
   Γ ⊢ B ⊑ C
+
+[Top]
+Γ ⊢ τ ⊑ Type
 ```
 
 Notes:
@@ -46,7 +49,11 @@ Notes:
 - **App** is needed for irreducible applications like `s z` where `s` is a
   variable of function type. It lets us conclude `s z ⊑ X` from `s ⊑ λ(_:X).X`
   and `z ⊑ X`.
-- **Refl** covers `Type ⊑ Type` as a special case.
+- **Refl** covers `Type ⊑ Type` as a special case (subsumed by Top, but
+  Refl is still needed for non-Type reflexive judgments).
+- **Top** says every term is a member of `Type`. This follows from the
+  terms-as-types philosophy: every term is a type (at minimum a singleton set),
+  so every term is in the universe.
 
 ## Task 1.1: Basic Subtyping
 
