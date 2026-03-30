@@ -566,7 +566,7 @@ Record state_equivalence := {
 
 Definition valid_accessor_permutation perm S :=
   is_permutation (anons_perm perm) (anons S) /\
-  map_Forall2 (fun k => is_permutation) (abstractions_perm perm) (abstractions S).
+  map_Forall2 (fun k => is_permutation (M := Pmap)) (abstractions_perm perm) (abstractions S).
 
 Definition valid_loan_id_names (loan_map : loan_id_map) S :=
   map_inj loan_map /\ subseteq (loan_set_state S) (dom loan_map)
@@ -580,7 +580,7 @@ Definition rename_accessors perm S := {|
   vars := vars S;
   anons := apply_permutation (anons_perm perm) (anons S);
   abstractions :=
-    map_zip_with (fun p A => apply_permutation p A) (abstractions_perm perm) (abstractions S);
+    map_zip_with (fun p (A : Pmap _) => apply_permutation p A) (abstractions_perm perm) (abstractions S);
 |}.
 
 Notation rename_set perm := (fmap (rename_value perm)).
@@ -2225,7 +2225,7 @@ Ltac process_state_eq := repeat process_state_eq0.
 (** * Effect of permutation on LLBC+ operations. *)
 Definition id_state_permutation S := {|
   anons_perm := id_permutation (anons S);
-  abstractions_perm := fmap id_permutation (abstractions S);
+  abstractions_perm := fmap (id_permutation (M := Pmap)) (abstractions S);
 |}.
 
 Lemma apply_id_state_permutation S : rename_accessors (id_state_permutation S) S = S.
@@ -2306,7 +2306,7 @@ Proof. intros S. eapply prove_equiv_states; reflexivity. Qed.
 
 Definition anons_permutation S p := {|
   anons_perm := p;
-  abstractions_perm := fmap id_permutation (abstractions S);
+  abstractions_perm := fmap (id_permutation (M := Pmap)) (abstractions S);
 |}.
 
 Lemma equiv_states_by_anons_equivalence S S' :
@@ -2604,7 +2604,7 @@ Qed.
 
 Definition invert_accessor_perm perm := {|
   anons_perm := invert_permutation (anons_perm perm);
-  abstractions_perm := fmap invert_permutation (abstractions_perm perm);
+  abstractions_perm := fmap (invert_permutation (M := Pmap)) (abstractions_perm perm);
 |}.
 
 Definition invert_state_permutation perm := {|
@@ -2634,7 +2634,7 @@ Proof.
     rewrite rename_state_sget in get_l.
     rewrite get_node_rename_value, get_loan_id_rename_node, fmap_Some in get_l.
     destruct get_l as (l' & ? & ?).
-    cbn. rewrite dom_invert_permutation, elem_of_map_img by assumption.
+    unfold loan_id_map. rewrite dom_invert_permutation, elem_of_map_img by assumption.
     exists l'. subst. unfold rename_loan_id. autodestruct.
     intros K%not_elem_of_dom. exfalso. apply K, Hinclusion.
     apply elem_of_loan_set_state. exists p. assumption.
@@ -2655,7 +2655,8 @@ Lemma rename_state_invert_permutation S perm (H : valid_loan_id_names perm S) :
 Proof.
   rewrite rename_state_compose by auto using invert_valid_loan_id_names.
   destruct H. apply state_eq_ext.
-  - rewrite get_map_rename_state. rewrite compose_invert_permutation by assumption.
+  - rewrite get_map_rename_state.
+    unfold loan_id_map. rewrite compose_invert_permutation by assumption.
     apply map_eq. intros i. rewrite lookup_fmap.
     destruct (get_at_accessor S i); [ | reflexivity]. cbn. f_equal.
     apply rename_value_id, lookup_id_permutation_is_Some.
@@ -2708,8 +2709,8 @@ Proof.
   - apply loan_set_rename_value; [exact Hv | apply Hp].
   - symmetry. apply apply_invert_state_permutation. assumption.
   - cbn. rewrite rename_value_compose.
-    + rewrite compose_invert_permutation by apply Hp. symmetry. apply rename_value_id.
-      intros ? ?. apply lookup_id_permutation_is_Some.
+    + unfold loan_id_map. rewrite compose_invert_permutation by apply Hp.
+      symmetry. apply rename_value_id. intros ? ?. apply lookup_id_permutation_is_Some.
     + assumption.
     + apply loan_set_rename_value; [exact Hv | apply Hp].
 Qed.
@@ -3043,7 +3044,7 @@ Qed.
 
 Lemma add_anons_rename_accessors perm p S0 A S1 S'1 :
   is_permutation (anons_perm perm) (anons S0) ->
-  map_Forall2 (fun k => is_permutation) (abstractions_perm perm) (abstractions S0) ->
+  map_Forall2 (fun k => is_permutation (M := Pmap)) (abstractions_perm perm) (abstractions S0) ->
   is_permutation p A ->
   let S'0 := rename_accessors perm S0 in
   let B := apply_permutation p A in
