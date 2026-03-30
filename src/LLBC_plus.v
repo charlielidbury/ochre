@@ -3896,7 +3896,7 @@ Definition leq_val_state := chain equiv_val_state (leq_val_state_base leq_state_
    _Note:_ in the ICFP'24 article, Ho et al. propose a more general notion of branching state. These states are simply sets of pairs [(r, S)] (with [r] a control-flow token and [S] a symbolic state). This allows duplication, and it may be more practical for panic management. The following definition could change in the future. *)
 Definition branching_state := gmap flow_token LLBC_sharp_state.
 
-Reserved Notation "S  |-{stmt}  stmt  =>  B" (at level 50).
+Reserved Notation "S  |-{stmt}  stmt  ~>{ n }  B" (at level 50).
 
 (** The simulation relation on branching states. A branching state [Br] is more general than a branching state [Bl] if for any token [r], if [Bl] maps a control-flow token [r] to a symbolic state [Sl] ([lookup r Bl = Some Sl]), then [Br] maps [r] to a more general state [Sr] ([lookup r Br = Some Sr] and [leq_symbolic Sl Sr]).
 
@@ -3925,37 +3925,56 @@ Variant option_is_join :
 Definition is_join (B0 B1 Bjoin : branching_state) :=
   forall r, option_is_join (lookup r B0) (lookup r B1) (lookup r Bjoin).
 
-Inductive LLBC_plus_eval_stmt : statement -> LLBC_sharp_state -> branching_state -> Prop :=
-  | LLBC_plus_E_Nop S : S |-{stmt} Nop => {[rUnit := S]}
-  | LLBC_plus_E_Propagate S0 B1 stmt_0 stmt_1
-      (eval_stmt_0 : S0 |-{stmt} stmt_0 => B1) (Hno_unit : lookup rUnit B1 = None) :
-      S0 |-{stmt} (Seq stmt_0 stmt_1) => B1
-  | LLBC_plus_E_Seq_Unit_Propagate S0 B1 S_unit B_unit B_join stmt_0 stmt_1
-      (eval_stmt_0 : S0 |-{stmt} stmt_0 => B1) (H_unit : lookup rUnit B1 = Some S_unit)
-      (eval_stmt_1 : S_unit |-{stmt} stmt_1 => B_unit)
+(** Turning the state at the end of the last iteration of the loop into the state after the loop. *)
+(** We simply need to rename the tags of each branch. *)
+Definition end_loop (B : branching_state) : branching_state := pkmap end_loop_tag B.
+
+Inductive LLBC_plus_eval_stmt : nat -> statement -> LLBC_sharp_state -> branching_state -> Prop :=
+  | LLBC_plus_E_Step_Zero s S : S |-{stmt} s ~>{0} empty
+  | LLBC_plus_E_Nop n S : S |-{stmt} Nop ~>{1 + n} {[rUnit := S]}
+  | LLBC_plus_E_Propagate n S0 B1 stmt_0 stmt_1
+      (eval_stmt_0 : S0 |-{stmt} stmt_0 ~>{1 + n} B1) (Hno_unit : lookup rUnit B1 = None) :
+      S0 |-{stmt} (Seq stmt_0 stmt_1) ~>{1 + n} B1
+  | LLBC_plus_E_Seq_Unit_Propagate n S0 B1 S_unit B_unit B_join stmt_0 stmt_1
+      (eval_stmt_0 : S0 |-{stmt} stmt_0 ~>{1 + n} B1) (H_unit : lookup rUnit B1 = Some S_unit)
+      (eval_stmt_1 : S_unit |-{stmt} stmt_1 ~>{1 + n} B_unit)
       (His_join : is_join B_unit (delete rUnit B1) B_join) :
-      S0 |-{stmt} (Seq stmt_0 stmt_1) => B_join
-  | LLBC_plus_E_Assign S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
-      S |-{stmt} ASSIGN p <- rv => {[rUnit := S'']}
-  | LLBC_plus_E_IfThenElse_T S S' B_if cond stmt_if stmt_else
+      S0 |-{stmt} (Seq stmt_0 stmt_1) ~>{1 + n} B_join
+  | LLBC_plus_E_Assign n S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
+      S |-{stmt} ASSIGN p <- rv ~>{1 + n} {[rUnit := S'']}
+  | LLBC_plus_E_IfThenElse_T n S S' B_if cond stmt_if stmt_else
       (eval_cond : S |-{op} cond => (LLBC_sharp_bool true, S'))
-      (Heval_if_branch : S' |-{stmt} stmt_if => B_if) :
-      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_if
-  | LLBC_plus_E_IfThenElse_F S S' B_else cond stmt_if stmt_else
+      (Heval_if_branch : S' |-{stmt} stmt_if ~>{1 + n} B_if) :
+      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~>{1 + n} B_if
+  | LLBC_plus_E_IfThenElse_F n S S' B_else cond stmt_if stmt_else
       (eval_cond : S |-{op} cond => (LLBC_sharp_bool false, S'))
-      (Heval_else_branch : S' |-{stmt} stmt_else => B_else) :
-      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_else
+      (Heval_else_branch : S' |-{stmt} stmt_else ~>{1 + n} B_else) :
+      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~>{1 + n} B_else
   (* Note: in the ICFP'24 article, the symbolic value is replaced by a concrete boolean in each
      branch. We cannot do that as symbolic values are currently not named. *)
-  | LLBC_plus_IfThenElse_Symbolic S S' B_if B_else B_join cond stmt_if stmt_else
+  | LLBC_plus_IfThenElse_Symbolic n S S' B_if B_else B_join cond stmt_if stmt_else
       (eval_cond : S |-{op} cond => (LLBC_sharp_symbolic boolT, S'))
-      (Heval_if_branch : S' |-{stmt} stmt_if => B_if)
-      (Heval_else_branch : S' |-{stmt} stmt_else => B_else)
+      (Heval_if_branch : S' |-{stmt} stmt_if ~>{1 + n} B_if)
+      (Heval_else_branch : S' |-{stmt} stmt_else ~>{1 + n} B_else)
       (His_join : is_join B_if B_else B_join) :
-      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => B_join
-  | LLBC_plus_E_Reorg S0 S1 B2 stmt (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => B2) :
-      S0 |-{stmt} stmt => B2
-where "S |-{stmt} stmt => B" := (LLBC_plus_eval_stmt stmt S B).
+      S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~>{1 + n} B_join
+  | LLBC_plus_E_Reorg n S0 S1 B2 stmt (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt ~>{1 + n} B2) :
+      S0 |-{stmt} stmt ~>{1 + n} B2
+  (* We perform a single loop execution. *)
+  | LLBC_plus_E_Loop_Stop n S body B1
+      (eval_body : S |-{stmt} body ~>{n} B1)
+      (no_unit : lookup rUnit B1 = None)
+      (no_continue : lookup rContinue B1 = None) :
+      S |-{stmt} (LOOP {{ body }}) ~>{1 + n} (end_loop B1)
+  (* *)
+  | LLBC_plus_E_Loop_Continue n S body B1 S1 B2 Bend
+      (eval_body : S |-{stmt} body ~>{n} B1)
+      (no_unit : lookup rUnit B1 = None)
+      (Hcontinue : lookup rContinue B1 = Some S1)
+      (Heval2 : S1 |-{stmt} (LOOP {{ body }}) ~>{n} B2)
+      (His_join : is_join (delete rContinue B1) B2 Bend) :
+      S |-{stmt} (LOOP {{ body }}) ~>{1 + n} (end_loop Bend)
+where "S |-{stmt} stmt ~>{ n } B" := (LLBC_plus_eval_stmt n stmt S B).
 
 Lemma sweight_add_abstraction S weight i A :
   fresh_abstraction S i ->
@@ -4139,7 +4158,8 @@ Proof.
     destruct (dom_p kl) as (_ & (kl' & ?)); [simpl_map; auto | ].
     rewrite fmap_insert, map_fmap_singleton.
     erewrite apply_permutation_insert by (simpl_map; eauto).
-    erewrite <-insert_empty, apply_permutation_insert by (simpl_map; auto using map_inj_delete).
+    erewrite <-insert_empty, apply_permutation_insert;
+      [ | now apply map_inj_delete | simpl_map; reflexivity..].
     constructor. intros ?. eapply Hk, inj_p; eassumption.
   - specialize (dom_p k). simpl_map. destruct dom_p as (_ & (k' & ?)); [auto | ].
     (* TODO: lemma apply_permutation_singleton. *)
@@ -7837,10 +7857,27 @@ Proof.
   - not_contains.
 Qed.
 
-Lemma stmt_preserves_LLBC_sharp_rel s :
-  forward_simulation leq_symbolic leq_branching (LLBC_plus_eval_stmt s) (LLBC_plus_eval_stmt s).
+Lemma leq_end_loop Bl Br : leq_branching Bl Br -> leq_branching (end_loop Bl) (end_loop Br).
+Proof.
+  intros H r. destruct (lookup r (end_loop Bl)) eqn:EQN.
+  - pose proof EQN as G.
+    apply mk_is_Some, lookup_pkmap_rev in G; [ | exact partial_inj_end_loop_tag].
+    destruct G as (r0 & get_r).
+    unfold end_loop, branching_state in *.
+    erewrite lookup_pkmap in EQN |- * by exact get_r || exact partial_inj_end_loop_tag.
+    specialize (H r0). unfold branching_state in H. rewrite EQN in H.
+    inversion H. constructor. assumption.
+  - constructor.
+Qed.
+
+Lemma stmt_preserves_LLBC_sharp_rel n s :
+  forward_simulation leq_symbolic leq_branching
+                     (LLBC_plus_eval_stmt n s) (LLBC_plus_eval_stmt n s).
 Proof.
   intros Sr S'r Heval. induction Heval; intros Sl Hleq.
+  (* Case [LLBC_plus_E_Step_Zero] *)
+  - execution_step. { constructor. } reflexivity.
+
   (* Case [LLBC_plus_E_Nop]. *)
   - execution_step. { constructor. }
     apply leq_singleton. assumption.
@@ -7916,12 +7953,40 @@ Proof.
       destruct His_join as (Bjoin_l & His_join & ?).
       execution_step. { eapply LLBC_plus_IfThenElse_Symbolic; eassumption. } assumption.
 
-
   (* Case [LLBC_plus_E_Reorg] *)
   - eapply reorg_preservation in Hreorg. specialize (Hreorg _ Hleq).
     destruct Hreorg as (S'l & Hleq' & ?).
     specialize (IHHeval _ Hleq'). destruct IHHeval as (? & ? & ?).
     execution_step. { econstructor; eassumption. } assumption.
+
+  (* Case [LLBC_plus_E_Loop_Stop] *)
+  - apply IHHeval in Hleq. destruct Hleq as (B1l & Hleq' & Heval').
+    execution_step.
+    { apply LLBC_plus_E_Loop_Stop. eassumption.
+      (* TODO: lemma *)
+      specialize (Hleq' rUnit). inversion Hleq'; congruence.
+      specialize (Hleq' rContinue). inversion Hleq'; congruence. }
+    apply leq_end_loop. assumption.
+
+  (* Case [LLBC_plus_E_Loop_Continue] *)
+  - apply IHHeval1 in Hleq. destruct Hleq as (B1_l & Hleq' & Heval').
+    destruct (lookup rContinue B1_l) as [S1l | ] eqn:Hcontinue_l.
+    + pose proof (Hleq' rContinue) as _Hleq_S1. rewrite Hcontinue, Hcontinue_l in _Hleq_S1.
+      inversion _Hleq_S1 as [ | ? ? Hleq_S1]. subst.
+      apply IHHeval2 in Hleq_S1. destruct Hleq_S1 as (B2_l & Hleq'' & Heval2_l).
+      eapply is_join_left in His_join; [ | eauto using leq_branching_delete..].
+      destruct His_join as (Bend_l & His_join & Hleq_end).
+      execution_step.
+      { eapply LLBC_plus_E_Loop_Continue. eassumption.
+        specialize (Hleq' rUnit). inversion Hleq'; congruence. eassumption.
+        eassumption. eassumption. }
+      apply leq_end_loop. assumption.
+    + execution_step.
+      { eapply LLBC_plus_E_Loop_Stop. eassumption.
+        specialize (Hleq' rUnit). inversion Hleq'; congruence. eassumption. }
+      apply leq_end_loop. etransitivity; [ | eapply leq_is_join_l; exact His_join].
+      rewrite <-(delete_notin B1_l rContinue) by assumption.
+      apply leq_branching_delete. assumption.
 Qed.
 
 (** * Execution of a program in the LLBC+ semantics. *)
@@ -8017,10 +8082,10 @@ Proof.
 Qed.
 
 (* TODO: rename LLBC_plus_E_Seq_Unit_Propagate to LLBC_plus_E_Seq_Unit_Propagate. *)
-Lemma eval_seq_unit S0 S1 B2 stmt_l stmt_r
-  (eval_stmt_l : S0 |-{stmt} stmt_l => {[rUnit := S1]})
-  (eval_stmt_r : S1 |-{stmt} stmt_r => B2) :
-  S0 |-{stmt} (Seq stmt_l stmt_r) => B2.
+Lemma eval_seq_unit n S0 S1 B2 stmt_l stmt_r
+  (eval_stmt_l : S0 |-{stmt} stmt_l ~>{1 + n} {[rUnit := S1]})
+  (eval_stmt_r : S1 |-{stmt} stmt_r ~>{1 + n} B2) :
+  S0 |-{stmt} (Seq stmt_l stmt_r) ~>{1 + n} B2.
 Proof.
   eapply LLBC_plus_E_Seq_Unit_Propagate.
   - exact eval_stmt_l.
@@ -8128,7 +8193,7 @@ Section Eval_LLBC_sharp_program.
     compute - [insert alter empty singletonM delete leq_symbolic];
     autorewrite with core.
 
-  Lemma safe_f : exists end_state, LLBC_plus_eval_stmt f init_state end_state.
+  Lemma safe_f : exists end_state, init_state |-{stmt} f ~>{1} end_state.
   Proof.
     eexists.
     eapply eval_seq_unit.
@@ -8144,7 +8209,6 @@ Section Eval_LLBC_sharp_program.
       - reflexivity.
     }
     simpl_state. eapply eval_seq_unit.
-
 
     (* Evaluation of the conditional. *)
     { eapply LLBC_plus_IfThenElse_Symbolic with (B_join := {[rUnit := join_state]}).

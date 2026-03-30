@@ -1,4 +1,4 @@
-(** * Mechanized_LLBC.lang : syntax of LLBC. *)
+(** * Mechanized_LLBC.lang : Syntax of LLBC and general definitions. *)
 Require Import base.
 Require Import PathToSubtree.
 From Stdlib Require Import PArith.
@@ -108,3 +108,19 @@ Program Global Instance flow_token_countable : Countable flow_token := {
   decode := decode_flow_token
 }.
 Next Obligation. intros [ ]; reflexivity. Qed.
+
+(** If the execution of the loop body ends on a token [r <> rContinue], computes the tag of the state after the loop. *)
+Definition end_loop_tag r : option flow_token :=
+  match r with
+  (** If the loop ends on a break, the program continues as usual. *)
+  | rBreak => Some rUnit
+  (** Panics are propagated through the loop. *)
+  | rPanic => Some rPanic
+  (** Note that [end_loop_tag] is not defined for [rContinue] and [rUnit].
+     - If the body ends on [rContinue], it loops back.
+     - If the body ends on [rUnit], the behavior is not defined, the program gets stuck. *)
+  | _ => None
+  end.
+
+Lemma partial_inj_end_loop_tag : partial_inj end_loop_tag.
+Proof. intros r0 (? & H) r1. destruct r0; destruct r1; easy. Qed.
