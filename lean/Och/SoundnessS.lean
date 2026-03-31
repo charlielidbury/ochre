@@ -152,6 +152,54 @@ theorem substAll_fix (inner : Expr) (σ : List (Name × Expr)) :
     exact ih (inner.subst x v)
 
 -- ============================================================
+-- absEval depends only on env lookup behavior
+-- ============================================================
+
+/-- absEval depends only on the lookup behavior of the environment,
+    not on the list structure. If two envs give the same lookups,
+    absEval produces the same result. -/
+theorem absEval_lookup_ext : ∀ (k : Nat) (Γ₁ Γ₂ : Env) (e : Expr),
+    (∀ z, Env.lookup Γ₁ z = Env.lookup Γ₂ z) →
+    absEval k Γ₁ e = absEval k Γ₂ e := by
+  intro k
+  induction k with
+  | zero => intros; rfl
+  | succ k ih =>
+    intro Γ₁ Γ₂ e h_eq
+    cases e with
+    | var z => simp only [absEval]; exact h_eq z
+    | type => rfl
+    | lam y d b =>
+      simp only [absEval]
+      have h_ext : ∀ z, Env.lookup ((y, .var y) :: Γ₁) z = Env.lookup ((y, .var y) :: Γ₂) z := by
+        intro z; simp only [Env.lookup]; split <;> first | rfl | exact h_eq z
+      rw [ih ((y, .var y) :: Γ₁) ((y, .var y) :: Γ₂) b h_ext]
+    | asc t ty =>
+      simp only [absEval]; exact ih Γ₁ Γ₂ ty h_eq
+    | fix inner =>
+      simp only [absEval]
+      cases inner with
+      | lam f dom body => exact ih Γ₁ Γ₂ dom h_eq
+      | _ => rfl
+    | app f a =>
+      simp only [absEval]
+      have hf := ih Γ₁ Γ₂ f h_eq
+      have ha := ih Γ₁ Γ₂ a h_eq
+      rw [hf, ha]
+      cases absEval k Γ₂ f with
+      | none => rfl
+      | some vf =>
+        cases absEval k Γ₂ a with
+        | none => rfl
+        | some va =>
+          cases vf with
+          | lam x d body =>
+            have h_ext : ∀ z, Env.lookup ((x, va) :: Γ₁) z = Env.lookup ((x, va) :: Γ₂) z := by
+              intro z; simp only [Env.lookup]; split <;> first | rfl | exact h_eq z
+            exact ih ((x, va) :: Γ₁) ((x, va) :: Γ₂) body h_ext
+          | _ => rfl
+
+-- ============================================================
 -- Env.lookup membership
 -- ============================================================
 
@@ -421,7 +469,122 @@ theorem absEval_normalize_stable (k_n k : Nat) (Γ : Env) (body : Expr)
     (h_norm : absEval k_n ((x, .var x) :: Γ) body = some body')
     (h_eval : absEval k ((x, a) :: Γ) body' = some τ') :
     absEval (k_n + k) ((x, a) :: Γ) body = some τ' := by
-  sorry
+  induction k_n generalizing Γ body body' τ' with
+  | zero => simp [absEval] at h_norm
+  | succ n ih =>
+    cases body with
+    | type =>
+      -- body = .type: normalizes to .type, re-evaluates to .type
+      simp only [absEval] at h_norm; cases h_norm  -- body' = .type
+      simp only [absEval] at h_eval
+      cases k with
+      | zero => simp [absEval] at h_eval
+      | succ k' => simp only [absEval] at h_eval; cases h_eval; simp [absEval]
+    | var y =>
+      -- body = .var y: lookup in the normalization env
+      simp only [absEval] at h_norm
+      simp only [Env.lookup] at h_norm
+      split at h_norm
+      · -- y == x: body' = .var x
+        rename_i h_eq
+        cases h_norm  -- body' = .var x
+        -- Re-evaluation: absEval k ((x, a) :: Γ) (var x) = a
+        -- Need: absEval (n+1+k) ((x, a) :: Γ) (var y) where y == x
+        have h_fuel : n + 1 + k ≥ 1 := by omega
+        obtain ⟨m, hm⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : n + 1 + k ≠ 0)
+        rw [hm]; simp only [absEval, Env.lookup, h_eq]
+        -- Now need: absEval k ((x, a) :: Γ) (var x) = some τ'
+        -- and we've shown absEval (n+1+k) ((x,a)::Γ) (var y) = Env.lookup ((x,a)::Γ) y
+        -- Since y == x, lookup gives a
+        -- h_eval: absEval k ((x, a) :: Γ) (.var x) = some τ'
+        cases k with
+        | zero => simp [absEval] at h_eval
+        | succ k' =>
+          simp only [absEval, Env.lookup] at h_eval
+          split at h_eval
+          · cases h_eval; rfl
+          · rename_i h_neq
+            -- x == x should be true, contradiction with h_neq
+            exact absurd (BEq.refl (α := String) x) h_neq
+      · -- y ≠ x: body' = Γ.lookup y, need absEval idempotency
+        -- This case requires showing that v_y (from Γ) re-evaluates to itself.
+        -- Non-trivial: v_y may contain variable references.
+        sorry
+    | asc term ty =>
+      -- body = .asc term ty: absEval takes the rhs (ty)
+      simp only [absEval] at h_norm
+      -- h_norm: absEval n ((x, var x) :: Γ) ty = some body'
+      have ih_ty := ih Γ ty body' τ' h_norm h_eval
+      -- ih_ty: absEval (n + k) ((x, a) :: Γ) ty = some τ'
+      have h_fuel : n + 1 + k = (n + k) + 1 := by omega
+      rw [h_fuel]; simp only [absEval]
+      exact ih_ty
+    | fix inner =>
+      -- body = .fix inner: absEval evaluates the domain
+      simp only [absEval] at h_norm
+      cases inner with
+      | lam f dom body_f =>
+        -- h_norm: absEval n ((x, var x) :: Γ) dom = some body'
+        simp only at h_norm
+        have ih_dom := ih Γ dom body' τ' h_norm h_eval
+        -- ih_dom: absEval (n + k) ((x, a) :: Γ) dom = some τ'
+        have h_fuel : n + 1 + k = (n + k) + 1 := by omega
+        rw [h_fuel]; simp only [absEval]
+        exact ih_dom
+      | var _ | app _ _ | asc _ _ | type | fix _ =>
+        simp at h_norm
+    | lam y d b =>
+      -- body = .lam y d b: normalization evaluates b under extended env.
+      -- The normalization env is ((y, var y) :: (x, var x) :: Γ) but the
+      -- IH expects ((x, var x) :: Γ'). We use absEval_lookup_ext to swap.
+      simp only [absEval] at h_norm
+      cases h_b_norm : absEval n ((y, .var y) :: (x, .var x) :: Γ) b with
+      | none => simp [h_b_norm] at h_norm
+      | some b_norm =>
+        simp [h_b_norm] at h_norm; cases h_norm  -- body' = .lam y d b_norm
+        -- h_eval: absEval k ((x, a) :: Γ) (.lam y d b_norm) = some τ'
+        cases k with
+        | zero => simp [absEval] at h_eval
+        | succ k' =>
+          simp only [absEval] at h_eval
+          cases h_b_re : absEval k' ((y, .var y) :: (x, a) :: Γ) b_norm with
+          | none => simp [h_b_re] at h_eval
+          | some b_re =>
+            simp [h_b_re] at h_eval; cases h_eval  -- τ' = .lam y d b_re
+            -- Goal: absEval (n+1+(k'+1)) ((x,a)::Γ) (.lam y d b) = some (.lam y d b_re)
+            have h_fuel : n + 1 + (k' + 1) = (n + k' + 1) + 1 := by omega
+            rw [h_fuel]; simp only [absEval]
+            -- Goal: match absEval (n+k'+1) ((y,var y)::(x,a)::Γ) b with ...
+            --       = some (.lam y d b_re)
+            -- Strategy: use IH with Γ' = (y, var y) :: Γ, then env_swap + fuel_mono.
+            -- Step 1: Swap normalization env order
+            have h_swap_norm : ∀ z, Env.lookup ((y, .var y) :: (x, .var x) :: Γ) z =
+                Env.lookup ((x, .var x) :: (y, .var y) :: Γ) z := by
+              intro z; simp only [Env.lookup]
+              by_cases h1 : y == z <;> by_cases h2 : x == z <;> simp [h1, h2]
+            have h_b_norm_s : absEval n ((x, .var x) :: (y, .var y) :: Γ) b = some b_norm :=
+              (absEval_lookup_ext n _ _ b h_swap_norm).symm ▸ h_b_norm
+            -- Step 2: Swap evaluation env order
+            have h_swap_eval : ∀ z, Env.lookup ((y, .var y) :: (x, a) :: Γ) z =
+                Env.lookup ((x, a) :: (y, .var y) :: Γ) z := by
+              intro z; simp only [Env.lookup]
+              by_cases h1 : y == z <;> by_cases h2 : x == z <;> simp [h1, h2]
+            have h_b_re_s : absEval k' ((x, a) :: (y, .var y) :: Γ) b_norm = some b_re :=
+              (absEval_lookup_ext k' _ _ b_norm h_swap_eval).symm ▸ h_b_re
+            -- Step 3: Apply IH with Γ' = (y, var y) :: Γ
+            have ih_result := ih ((y, .var y) :: Γ) b b_norm b_re h_b_norm_s h_b_re_s
+            -- ih_result: absEval (n + k') ((x, a) :: (y, var y) :: Γ) b = some b_re
+            -- Step 4: Convert back to original env order
+            have ih_unswap : absEval (n + k') ((y, .var y) :: (x, a) :: Γ) b = some b_re :=
+              (absEval_lookup_ext (n + k') _ _ b h_swap_eval) ▸ ih_result
+            -- Step 5: Fuel monotonicity: bump from n+k' to n+k'+1
+            have ih_bump := absEval_fuel_mono (n + k') 1 ((y, .var y) :: (x, a) :: Γ) b b_re ih_unswap
+            -- ih_bump: absEval (n+k'+1) ((y,var y)::(x,a)::Γ) b = some b_re
+            simp [ih_bump]
+    | app f_e a_e =>
+      -- body = .app f_e a_e: complex case with two sub-evaluations
+      -- and shape-dependent beta-reduction.
+      sorry
 
 -- ============================================================
 -- Closed values (infrastructure for substAll_var)
@@ -847,9 +1010,42 @@ theorem fundamental (fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
     | fix inner =>
       -- absEval returns the declared type (domain of inner lambda).
       -- concEvalS unrolls and evaluates body with f := fix inner in scope.
-      -- Similar structure to Soundness.lean fix case, but needs LR-based
-      -- env consistency instead of SubtypeTrans-based EnvConsistent.
-      sorry
+      rw [substAll_fix] at hc
+      simp only [absEval] at ha
+      cases inner with
+      | lam f dom body =>
+        simp only at ha
+        -- ha: absEval k Γ dom = some τ
+        -- hc: concEvalS (k+1) (.fix (substAll (.lam f dom body) σ)) = some v
+        -- h_wt: WellTyped (k+1) Γ (.fix (.lam f dom body))
+        intro n
+        cases n with
+        | zero => trivial  -- LR 0 = True
+        | succ m =>
+          -- LR (m+1) v τ: only non-trivial when BOTH v and τ are lambdas
+          -- For all other shapes, LR's catch-all gives True.
+          cases v with
+          | lam xv dv bv =>
+            cases τ with
+            | type => simp [LR]
+            | lam xa da ba =>
+              -- Both lambdas: need extensional property for the fix result.
+              -- This requires step-indexed reasoning: the fix body produces
+              -- LR-related results when applied to LR-related arguments.
+              -- Blocked by the fix-in-env circularity (see PROGRESS.md).
+              simp only [LR]
+              sorry
+            | var _ => simp [LR]
+            | app _ _ => simp [LR]
+            | asc _ _ => simp [LR]
+            | fix _ => simp [LR]
+          | type => cases τ <;> simp [LR]
+          | var _ => cases τ <;> simp [LR]
+          | app _ _ => cases τ <;> simp [LR]
+          | asc _ _ => cases τ <;> simp [LR]
+          | fix _ => cases τ <;> simp [LR]
+      | var _ | app _ _ | asc _ _ | type | fix _ =>
+        simp at ha
     | app f a =>
       -- THE KEY CASE — fully proved using the ∀ n approach.
       -- Both evaluators evaluate f and a at fuel k, then beta-reduce.

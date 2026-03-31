@@ -45,11 +45,40 @@ Current status of the Och mechanization. Updated by agents after each session.
 ## Current sorry count
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**6** in SoundnessS.lean:
-- 1 in absEval_normalize_stable (reformulated with additive fuel)
+**7** in SoundnessS.lean:
+- 2 in absEval_normalize_stable (var y≠x needs idempotency, app needs sub-eval reasoning)
 - 3 in LR_upcast (only the hard lam-lam subcases; refl/top PROVED)
 - 1 in fundamental lam case
-- 1 in fundamental fix case
+- 1 in fundamental fix case (now only the lam-lam subcase; all other LR shapes proved)
+
+## New this session (ochre-lean-20260331-220210)
+
+- **Proved `absEval_lookup_ext`**: absEval depends only on env lookup behavior.
+  If two envs give the same lookups, absEval produces the same result.
+  Key infrastructure for env permutation in normalize_stable.
+- **Proved 5 of 7 cases of `absEval_normalize_stable`**:
+  - **type**: trivial (normalizes and re-evaluates to .type)
+  - **var (y=x)**: lookup gives var x, re-evaluates to a via lookup
+  - **asc**: IH on the rhs (ty) at fuel n, fuel arithmetic n+1+k = (n+k)+1
+  - **fix**: IH on the domain at fuel n (same fuel arithmetic as asc)
+  - **lam**: uses absEval_lookup_ext to swap env entry order
+    ((y,var y)::(x,var x)::Γ) ↔ ((x,var x)::(y,var y)::Γ)), then IH
+    at Γ'=(y,var y)::Γ, then absEval_fuel_mono to bump fuel by 1.
+  - **var (y≠x)**: sorry — needs "absEval idempotency" (v_y from Γ re-evaluates
+    to itself). The issue: absEval of .var y returns Γ.lookup y = v_y directly
+    (a raw lookup with no further evaluation), but h_eval further evaluates v_y
+    to τ'. Need v_y = τ', which requires absEval k Γ' v_y = some v_y.
+    True when Γ values are already-normalized absEval results (which they are
+    in practice), but proving this requires an explicit normalization invariant.
+  - **app**: sorry — complex case with two sub-evaluations and shape-dependent
+    beta-reduction. The IH applies to each sub-expression individually, but
+    the combined result depends on intermediate shapes. Needs careful case analysis
+    on the shapes of absEval results for f and a.
+- **Partially proved fundamental fix case**: All LR shapes except lam-lam are
+  trivially True (LR's catch-all handles non-lambda values). Only the case where
+  BOTH the concrete fix result and the abstract domain type are lambdas remains
+  sorry'd. This case requires step-indexed reasoning to show the fix body produces
+  extensionally correct results (see "Analysis: the fix case" below).
 
 ## New this session (ochre-lean-20260331-211841)
 
@@ -73,22 +102,24 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## What remains
 
-1. **Finish concEvalS soundness** — 4 sorry's remain in SoundnessS.lean:
-   - **absEval_normalize_stable** (line ~361): Reformulated with additive fuel.
-     The old formulation (absEval body' = absEval body at same fuel) was FALSE.
-     The new one needs a careful inductive proof; even the var case requires
-     showing that env values are "absEval fixpoints." See detailed analysis below.
-   - **LR_upcast fuel adequacy** (3 sorry's, lines ~721,731,741): Partially
-     proved. refl→contradiction (DONE), top→True (DONE). Remaining: when
-     both v' and τ₁' are lambdas under lam_body/app_cong/fix_cong. These
-     need the extensional LR property but we can't derive it from the
-     hypothesis (body₂ didn't evaluate).
-   - **lam case** (line ~727): Blocked on normalize_stable + the universal Γ
-     in the LR lambda clause. See "Analysis: the lam case" below.
-   - **fix case** (line ~748): `.fix inner` is not `IsValue`, so extending σ
-     breaks `h_vals`. However, `LR n (.fix ..) anything = True` (catch-all),
-     so the fix value IS trivially LR-related. The blocker is that h_vals is
-     used in the var case (concEvalS_value requires IsValue). Options:
+1. **Finish concEvalS soundness** — 7 sorry's remain in SoundnessS.lean:
+   - **absEval_normalize_stable** (2 sorry's):
+     - **var (y≠x)**: Needs "absEval idempotency" — if v_y was produced by
+       absEval (already normalized), then absEval k Γ v_y = some v_y.
+       True for well-formed envs but needs explicit normalization invariant.
+     - **app**: Needs careful case analysis on sub-evaluation shapes. The IH
+       applies to f and a individually, but combining results requires tracking
+       how beta-reduction interacts with normalization/re-evaluation.
+   - **LR_upcast fuel adequacy** (3 sorry's): Partially proved.
+     refl→contradiction (DONE), top→True (DONE). Remaining: when both v' and
+     τ₁' are lambdas under lam_body/app_cong/fix_cong. These need the
+     extensional LR property but we can't derive it (body₂ didn't evaluate).
+   - **lam case** of fundamental: Blocked on normalize_stable + the universal
+     Γ in the LR lambda clause. See "Analysis: the lam case" below.
+   - **fix case** of fundamental (lam-lam only): All non-lam-lam LR shapes
+     proved. The lam-lam case requires step-indexed reasoning: the fix body
+     produces extensionally correct results when applied to LR-related args.
+     Blocked by fix-in-env circularity (see below). Options:
      (a) Relax h_vals to allow .fix, handle var case by evaluating .fix
      (b) Direct induction on fix fuel without extending σ
      (c) Step-indexed approach
