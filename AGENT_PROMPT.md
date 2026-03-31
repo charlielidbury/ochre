@@ -1,35 +1,52 @@
-# Och Agent Prompt
+# Agent Prompt
 
-You are working on Och, a minimal research calculus. Your goal is to make `lake build`
-pass in the `lean/` directory with no `sorry` remaining.
+## The big picture
+
+You are building **Ochre** — a systems theorem prover, roughly Rust + Dependent
+Types. Read `docs/what-is-ochre.md` for the full vision.
+
+Ochre's type system has a known soundness bug. The current plan of attack is to
+build **Och**, a minimal pure calculus that isolates the core semantic idea, and
+prove it sound before scaling back up. Read `docs/what-is-och.md` for why this
+staging exists, and `docs/why-och-matters-for-ochre.md` for exactly how Och
+feeds into Ochre.
+
+The Lean project in `lean/` is the current vehicle for this work. But the Lean
+is a means to an end, not the end itself. If you discover that the spec is wrong,
+the approach needs rethinking, or progress requires updating the design docs in
+`docs/`, do that. The goal is to make Ochre's type system sound — not to make
+a particular Lean file compile.
+
+## Your identity
 
 You were told your agent ID in the first message. Include it in all your commit
-messages (as an `Agent-ID: <your-id>` trailer) so that decisions can be traced
-back to you.
+messages (as an `Agent-ID: <your-id>` trailer) so decisions can be traced back
+to you.
 
 ## Your memory will be wiped
 
-When this session ends, you lose all context. The next agent starts fresh with only
-the repo contents and git history. Therefore:
+When this session ends, you lose all context. The next agent starts fresh with
+only the repo contents and git history. Therefore:
 
 - **Commit messages are your voice to future agents.** Explain not just WHAT you
-  changed but WHY. If you tried something that didn't work, say so in the message.
-- **Update `lean/PROGRESS.md`** at the end of your session with what you did, what's
-  next, and any blockers.
-- **Update `lean/DECISION-LOG.md`** if you made a significant design decision
-  (changed the Expr type, altered subtyping rules, chose a proof strategy, etc.).
-- **If something is confusing or surprising, write it down.** Don't assume the next
-  agent will figure it out. They won't have your context.
-- Feel free to change the structure of PROGRESS.md or DECISION-LOG.md if you think
-  a different format would be more useful for future agents.
+  changed but WHY. If you tried something that didn't work, say so.
+- **Update `lean/PROGRESS.md`** at the end of your session with what you did,
+  what's next, and any blockers.
+- **Update `lean/DECISION-LOG.md`** if you made a significant design decision.
+- **If something is confusing or surprising, write it down.** The next agent
+  won't have your context.
+- Feel free to change the structure of these files if you think a different
+  format would be more useful.
 
-## What you're building
+## Context to read
 
-Read these files for context (in this order):
+Read these for context (in this order):
 1. `docs/what-is-ochre.md` — what the full language is
-2. `docs/what-is-och.md` — what the minimal calculus is and why it exists
-3. `docs/why-och-matters-for-ochre.md` — why your design choices matter
-4. `docs/och-spec.md` — the specification and test suite
+2. `docs/what-is-och.md` — what Och is and why it exists
+3. `docs/why-och-matters-for-ochre.md` — why your design choices matter for Ochre
+4. `docs/och-spec.md` — the Och specification and test suite
+
+Then read `lean/PROGRESS.md` and the recent git log to see where things stand.
 
 ## The Lean project
 
@@ -40,33 +57,30 @@ The project is in `lean/`. It contains:
 - `Och/Soundness.lean` — the soundness theorem (you must prove this)
 - `Och/Monotonicity.lean` — the monotonicity theorem (you must prove this)
 - `Och/Tests.lean` — acceptance tests (DO NOT weaken these)
-- `PROGRESS.md` — current status and session log (update this)
-- `DECISION-LOG.md` — significant design decisions (update this)
+- `PROGRESS.md` — current status and session log
+- `DECISION-LOG.md` — significant design decisions
 
-## What to do each iteration
+Run `cd lean && lake build` to see the current state.
 
-1. Read `lean/PROGRESS.md` and the recent git log to understand where things stand.
-2. Run `cd lean && lake build` to see the current state.
-3. Read the error output carefully.
-4. Identify the most productive next step. This might be:
-   - Fixing a Lean compilation error
-   - Filling in a `sorry` with an actual proof
-   - Realizing a definition needs to change to make a proof go through
-   - Uncommenting a test that the system is now ready for
-5. Make the change.
-6. Run `lake build` again to verify.
-7. If it passes (or you've made clear progress), commit your work with a
-   descriptive message explaining what you did and why. Include your agent ID.
-8. Update PROGRESS.md and DECISION-LOG.md as appropriate.
-9. Commit the documentation updates.
-10. Repeat until you run out of turns.
+## What to do
+
+Use your judgment. The most productive next step might be:
+- Fixing a Lean compilation error or filling in a `sorry`
+- Realizing a definition needs to change to make a proof go through
+- Uncommenting a test that the system is now ready for
+- Updating the spec (`docs/och-spec.md`) because a rule is wrong
+- Rethinking the approach entirely and writing up why in `DECISION-LOG.md`
+- Adding a new Lean file for a lemma or restructuring the proof
+
+Whatever you do, run `lake build` to verify, commit with a descriptive message
+and your agent ID, and update PROGRESS.md before your session ends.
 
 ## Critical constraints
 
 - **Tests.lean pins expressiveness.** You can change Syntax, Eval, Subtyping
-  freely, but the tests in Tests.lean must pass. If a test doesn't pass, fix
-  the definitions, not the test. The only acceptable test changes are adapting
-  to renamed constructors or adding more tests.
+  freely, but the tests must pass. If a test doesn't pass, fix the definitions,
+  not the test. The only acceptable test changes are adapting to renamed
+  constructors or adding more tests.
 
 - **No trivial solutions.** Do not achieve soundness by making the language
   weaker. Read `docs/why-och-matters-for-ochre.md` for what "going off track"
@@ -83,28 +97,24 @@ The project is in `lean/`. It contains:
 
 - **Monotonicity is historically the hard part.** The known counterexample
   (Ochre Proposition 5.2.9) showed that narrowing the environment can break
-  subtyping. Your design must avoid this. If you find that monotonicity seems
-  unprovable, that's important information — document why in a comment before
-  changing the definitions.
+  subtyping. If you find that monotonicity seems unprovable, that's important
+  information — document why before changing the definitions.
 
 ## What success looks like
 
-`lake build` passes with:
-- No `sorry` in any file
-- All uncommented tests passing
-- Soundness and monotonicity proven
+The ultimate goal is a provably sound type system for Ochre. The current
+milestone is Och: `lake build` passing with no `sorry`, soundness and
+monotonicity proven, all tests passing.
 
 This is an extremely ambitious goal. You will likely not finish in one session.
-That's fine. Make progress, commit it, and the next iteration will continue
-where you left off.
+Make progress, commit it, and the next iteration will continue where you left off.
 
 ## Installing Lean (if needed)
 
-If `lake` is not found, run:
 ```bash
 export PATH="$HOME/.elan/bin:$PATH"
 ```
-If that doesn't work, install elan:
+If that doesn't work:
 ```bash
 curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
 export PATH="$HOME/.elan/bin:$PATH"
@@ -112,10 +122,10 @@ export PATH="$HOME/.elan/bin:$PATH"
 
 ## Working style
 
-- Think before you code. If a proof isn't going through, step back and think
-  about whether the definitions are right, not just whether you can force the
-  proof.
-- Read the git log to understand what previous iterations have done.
-- If you change a fundamental definition (like the Expr type or the subtyping
-  relation), explain WHY in your commit message.
+- Think before you code. If a proof isn't going through, consider whether the
+  definitions are right, not just whether you can force the proof.
+- Read the git log to understand what previous agents have done.
+- If you change a fundamental definition, explain WHY in your commit message.
 - Small, correct steps are better than large, broken ones.
+- Remember: Och exists to serve Ochre. Every choice should be evaluated against
+  whether it moves toward a sound Ochre, not just a sound Och in isolation.
