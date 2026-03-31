@@ -29,7 +29,7 @@ Coercion Z.of_nat : nat >-> Z.
 (** A vpath ("value path") is the data structure used to uniquely represent nodes in a tree. The
     integers in the list are the indices of the children we take, going down from the root to the
     node in the tree. It is called "vpath" because it will mostly be used by values in
-    intermediate languages between LLBC# and HLPL. The vpaths are used to:
+    intermediate languages between LLBC## and HLPL. The vpaths are used to:
     - Get the child at a node.
     - Set a child at a node.
  *)
@@ -496,7 +496,7 @@ Class State (state : Type) V `{Value V} := {
   alter_at_accessor : (V -> V) -> positive -> state -> state;
 
   (** The [extra] type describes all the information that is not contained in the positive
-      map. For example, it can be the unit type if [get_map] is injective. For LLBC# and
+      map. For example, it can be the unit type if [get_map] is injective. For LLBC## and
       LLBC+, the [extra] type is the set of abstractions. *)
   extra : Type;
   get_extra : state -> extra;
