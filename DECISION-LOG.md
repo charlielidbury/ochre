@@ -5,6 +5,53 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-03-31 ochre-lean-20260331-233210: Closure-based concrete evaluator (concEvalC) — NEW APPROACH
+
+**Decision:** Added `concEvalC` in `Och/Closure.lean` — a closure-based concrete
+evaluator that captures the definition-site env in lambda values. This is a
+fundamentally different approach to the concEvalS soundness problem.
+
+**Why closures (not substitution or env-with-normalization):**
+
+The three previous approaches all hit fundamental obstacles:
+1. **concEval (env + normalization under binders):** Normalizes both branches of
+   Church-encoded conditionals, causing recursive fix to diverge. UNSOUND for
+   recursive programs.
+2. **concEvalS (substitution, lambdas as values):** Correct CBV but uses
+   substitution while absEval uses env extension. The bridge theorem
+   `absEval_normalize_stable` is PROVABLY FALSE. The LR-based soundness proof
+   has been stuck for 5+ sessions.
+3. **concEvalE (env, lambdas as values, no closures):** Has the "closure problem" —
+   returned lambdas lose their definition-site env bindings. `(λx. λy. x) 3 5`
+   gives a stuck result because `var x` is not resolved.
+
+Closures solve all three problems:
+- Lambdas ARE values (no normalization under binders → fix works)
+- Env extension for beta-reduction (structurally parallel to absEval)
+- Captured env ensures correct scoping for higher-order functions
+
+**Soundness proof strategy:**
+
+The key insight: `readback` normalizes a closure's body using `absEval` in the
+captured env. So relating readback to absEval is a MONOTONICITY question (same
+expression, related envs), NOT a normalize-stability question. Monotonicity is
+already proven!
+
+Specifically, in the lam case:
+- readback body = `absEval ((x, var x) :: readbackEnv γ) body`
+- absEval body = `absEval ((x, var x) :: Γ) body`
+- If `EnvSub (readbackEnv γ) Γ`, then monotonicity gives `Subtype' readback_body absEval_body`
+
+**Remaining challenge:** CEnvConsistent (the env relationship from the IH) gives
+SubtypeTrans (transitive closure), but monotonicity requires Subtype' (single step).
+A generalized monotonicity theorem for SubtypeTrans envs would close this gap.
+
+**Tests:** All existing tests pass, including recursive fix with thunked branches
+(toZeroThunked, rebuildThunked, addThunked, compositions). Higher-order closure
+tests also pass (e.g., `(λx. λy. x) 3 5 = 3`).
+
+---
+
 ## 2026-03-31 ochre-lean-20260331-225410: absEval_normalize_stable is FALSE — the LR approach needs restructuring
 
 **Discovery:** The `absEval_normalize_stable` theorem (the planned bridge between

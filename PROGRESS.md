@@ -38,18 +38,61 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **§6.1 data structure tests** — Array construction, head/tail, Vec pack/unpack
 - [x] **§6.2 abstract tests** — abstract Vec/Nat operations with ascription
 - [x] **Concrete recursive fix** — RESOLVED via `concEvalS` (substitution-based evaluator + thunked branches)
-- [ ] **Soundness of concEvalS** — IN PROGRESS in `SoundnessS.lean`. Logical relation
-  (LR) defined, fundamental theorem partially proved. **Var, type, app, asc cases DONE.**
-  Lam/fix cases remain. See SoundnessS.lean for detailed roadmap.
+- [x] **Closure-based concrete evaluator** — `concEvalC` in `Closure.lean`,
+  captures definition-site env in lambda values. Handles recursive fix correctly.
+- [ ] **Soundness of concEvalC** — Stated in `Closure.lean` (1 sorry). Uses readback
+  via absEval in captured env. The lam case reduces to monotonicity (same body,
+  related envs), avoiding the impossible `absEval_normalize_stable`.
+- [ ] **Soundness of concEvalS** — STALLED in `SoundnessS.lean` (7 sorry's).
+  The LR approach is blocked by `absEval_normalize_stable` being FALSE.
+  concEvalC supersedes this approach — see DECISION-LOG.md.
 
 ## Current sorry count
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**7** in SoundnessS.lean:
+**1** in Closure.lean: `soundnessC` (soundness of closure-based evaluator)
+**7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach):
 - 2 in absEval_normalize_stable (**THEOREM IS FALSE** — see below)
 - 3 in LR_upcast (only the hard lam-lam subcases; refl/top PROVED)
 - 1 in fundamental lam case (blocked on false theorem)
 - 1 in fundamental fix case (now only the lam-lam subcase; all other LR shapes proved)
+
+## New this session (ochre-lean-20260331-233210)
+
+### Closure-based concrete evaluator (concEvalC)
+
+Added `Och/Closure.lean` with a new approach to the concEvalS soundness problem.
+Instead of substitution-based evaluation (concEvalS) or normalization-under-binders
+(concEval), the closure-based evaluator captures the definition-site env in lambda
+values.
+
+**What it solves:**
+- Recursive fix with Church-encoded branching works (lambdas are values, no
+  eager branch evaluation)
+- Higher-order functions work (captured env provides correct scoping)
+- Soundness proof reduces to monotonicity (same body, related envs), NOT
+  the impossible absEval_normalize_stable
+
+**Tests passing:** All existing tests + recursive fix (toZeroThunked,
+rebuildThunked, addThunked, compositions) + higher-order closure tests.
+
+**Soundness proof status:** Theorem stated, proof is sorry'd. The key insight:
+readback uses absEval to normalize the closure's body in the captured env. So the
+lam case compares two absEval evaluations of the SAME body in related envs —
+exactly what monotonicity gives. No normalize_stable needed.
+
+**Remaining gap:** monotonicity (absEval_mono) uses Subtype' (single step) in
+EnvSub, but the IH from the asc case gives SubtypeTrans (transitive closure).
+Need a generalized monotonicity for SubtypeTrans envs. This is a TRACTABLE
+problem (unlike the impossible absEval_normalize_stable).
+
+### Recommended next step
+
+Prove `absEval_mono_trans`: a version of monotonicity that works with
+`EnvSubTrans` (transitive env subtyping) instead of `EnvSub` (single-step).
+This should follow the same induction structure as `absEval_mono` in
+Monotonicity.lean. Once this is proved, the lam case of `soundnessC` should
+go through, and the overall proof structure follows Soundness.lean.
 
 ## New this session (ochre-lean-20260331-225410)
 
