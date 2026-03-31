@@ -275,3 +275,207 @@ example : concEval testFuel [] (.app fixId zero') = some zero' := by native_deci
 
 -- fix ⊑ Type (everything is ⊑ Type)
 example : subCheck testFuel fixId .type = true := by native_decide
+
+-- ============================================================
+-- §5.4–5.8 Pairs, Arrays, Vectors (Church-encoded data structures)
+-- ============================================================
+
+-- Pair = λ(A: Type). λ(B: Type). λ(X: Type). λ(k: λ(_: A). B → X). X
+def Pair' : Expr := .lam "A" .type (.lam "B" .type (
+  .lam "X" .type (.lam "k" (.lam "_" (.var "A") (.lam "_" (.var "B") (.var "X"))) (.var "X"))))
+
+-- pair = λ(A: Type). λ(B: Type). λ(a: A). λ(b: B). λ(X: Type). λ(k: ...). k a b
+def pair' : Expr := .lam "A" .type (.lam "B" .type (.lam "a" (.var "A") (.lam "b" (.var "B") (
+  .lam "X" .type (.lam "k" (.lam "_" (.var "A") (.lam "_" (.var "B") (.var "X")))
+    (.app (.app (.var "k") (.var "a")) (.var "b")))))))
+
+-- Array = λ(n: Nat). λ(T: Type). n Type Unit (λ(acc: Type). Pair T acc)
+def Array' : Expr := .lam "n" Nat' (.lam "T" .type (
+  .app (.app (.app (.var "n") .type) Unit') (.lam "acc" .type (
+    .app (.app Pair' (.var "T")) (.var "acc")))))
+
+-- emptyArray = λ(T: Type). unit
+def emptyArray' : Expr := .lam "T" .type unit'
+
+-- consArray = λ(T: Type). λ(n: Nat). λ(x: T). λ(rest: Array n T). pair T (Array n T) x rest
+def consArray' : Expr := .lam "T" .type (.lam "n" Nat' (.lam "x" (.var "T") (.lam "rest" (.app (.app Array' (.var "n")) (.var "T")) (
+  .app (.app (.app (.app pair' (.var "T")) (.app (.app Array' (.var "n")) (.var "T"))) (.var "x")) (.var "rest")))))
+
+-- headArray = λ(T: Type). λ(n: Nat). λ(arr: Array (succ n) T). arr T (λ(x: T). λ(_: Array n T). x)
+def headArray' : Expr := .lam "T" .type (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.app succ' (.var "n"))) (.var "T")) (
+  .app (.app (.var "arr") (.var "T")) (.lam "x" (.var "T") (.lam "_" (.app (.app Array' (.var "n")) (.var "T")) (.var "x"))))))
+
+-- tailArray = λ(T: Type). λ(n: Nat). λ(arr: Array (succ n) T). arr (Array n T) (λ(_: T). λ(rest: Array n T). rest)
+def tailArray' : Expr := .lam "T" .type (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.app succ' (.var "n"))) (.var "T")) (
+  .app (.app (.var "arr") (.app (.app Array' (.var "n")) (.var "T"))) (.lam "_" (.var "T") (.lam "rest" (.app (.app Array' (.var "n")) (.var "T")) (.var "rest"))))))
+
+-- ============================================================
+-- §6.1 Array/Pair concrete tests
+-- ============================================================
+
+-- Array 0 Nat = Unit (by β-reduction)
+example : absEval testFuel [] (.app (.app Array' zero') Nat') = some Unit' := by native_decide
+
+-- Array 1 Nat = Pair Nat Unit (by β-reduction)
+-- Array (succ 0) Nat = Pair Nat (Array 0 Nat) = Pair Nat Unit
+-- We check via subtyping since the normal forms may differ structurally
+-- First, let's check Array 2 Nat evaluates properly
+-- Array 2 Nat = Pair Nat (Pair Nat Unit)
+
+-- pair Nat Nat 10 20 — construct a simple pair
+-- For now let's just encode concrete numerals as themselves (they're Church-encoded)
+-- 10 and 20 are large Church numerals, so let's use small ones.
+
+-- Construct arr1 = consArray Nat 0 zero (emptyArray Nat) — a 1-element array [0]
+def testArr1 : Expr := .app (.app (.app (.app consArray' Nat') zero') zero') (.app emptyArray' Nat')
+
+-- Abstract eval should produce a normal form
+-- consArray Nat 0 zero (emptyArray Nat) : Array 1 Nat = Pair Nat Unit
+-- Check that it's subtype of Array 1 Nat
+example : subCheck testFuel testArr1 (.app (.app Array' one') Nat') = true := by native_decide
+
+-- headArray Nat 0 testArr1 should give zero
+example : absEval testFuel [] (.app (.app (.app headArray' Nat') zero') testArr1) = some zero' := by native_decide
+
+-- Construct arr2 = consArray Nat 1 one (consArray Nat 0 two (emptyArray Nat)) — [1, 2]
+def testArr2 : Expr := .app (.app (.app (.app consArray' Nat') one') one')
+  (.app (.app (.app (.app consArray' Nat') zero') two') (.app emptyArray' Nat'))
+
+-- arr2 ⊑ Array 2 Nat
+example : subCheck testFuel testArr2 (.app (.app Array' two') Nat') = true := by native_decide
+
+-- headArray Nat 1 arr2 = 1
+example : absEval testFuel [] (.app (.app (.app headArray' Nat') one') testArr2) = some one' := by native_decide
+
+-- ============================================================
+-- §5.8 Vectors (Sigma types)
+-- ============================================================
+
+-- Sigma = λ(A: Type). λ(B: A → Type). λ(X: Type). λ(k: λ(a: A). λ(_: B a). X). X
+def Sigma' : Expr := .lam "A" .type (.lam "B" (.lam "_" (.var "A") .type) (
+  .lam "X" .type (.lam "k" (.lam "a" (.var "A") (.lam "_" (.app (.var "B") (.var "a")) (.var "X"))) (.var "X"))))
+
+-- dpair = λ(A: Type). λ(B: A → Type). λ(a: A). λ(b: B a). λ(X: Type). λ(k: ...). k a b
+def dpair' : Expr := .lam "A" .type (.lam "B" (.lam "_" (.var "A") .type) (
+  .lam "a" (.var "A") (.lam "b" (.app (.var "B") (.var "a")) (
+    .lam "X" .type (.lam "k" (.lam "a2" (.var "A") (.lam "_" (.app (.var "B") (.var "a2")) (.var "X")))
+      (.app (.app (.var "k") (.var "a")) (.var "b")))))))
+
+-- Vec T = Sigma Nat (λ(n: Nat). Array n T)
+def Vec' : Expr := .lam "T" .type (
+  .app (.app Sigma' Nat') (.lam "n" Nat' (.app (.app Array' (.var "n")) (.var "T"))))
+
+-- mkVec = λ(T: Type). λ(n: Nat). λ(arr: Array n T). dpair Nat (λ(n: Nat). Array n T) n arr
+def mkVec' : Expr := .lam "T" .type (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.var "n")) (.var "T")) (
+  .app (.app (.app (.app dpair' Nat') (.lam "n2" Nat' (.app (.app Array' (.var "n2")) (.var "T")))) (.var "n")) (.var "arr"))))
+
+-- Construct vec1 = mkVec Nat 1 testArr1
+def testVec1 : Expr := .app (.app (.app mkVec' Nat') one') testArr1
+
+-- vec1 ⊑ Vec Nat
+example : subCheck testFuel testVec1 (.app Vec' Nat') = true := by native_decide
+
+-- Unpack vec1 to get the length: vec1 Nat (λn. λarr. n) should give 1
+example : absEval testFuel [] (.app (.app testVec1 Nat') (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.var "n")) Nat') (.var "n")))) = some one' := by native_decide
+
+-- tailArray Nat 0 arr1 should give emptyArray Nat (= unit)
+-- tailArray Nat 0 [0] = unit
+example : absEval testFuel [] (.app (.app (.app tailArray' Nat') zero') testArr1) = some unit' := by native_decide
+
+-- headArray Nat 0 (tailArray Nat 1 arr2) = 2  (second element of [1, 2])
+-- Note: tailArray Nat 1 arr2 strips the first element, giving [2]
+-- Then headArray Nat 0 [2] = 2
+example : absEval testFuel [] (.app (.app (.app headArray' Nat') zero')
+  (.app (.app (.app tailArray' Nat') one') testArr2)) = some two' := by native_decide
+
+-- Construct vec2 = mkVec Nat 2 testArr2
+def testVec2 : Expr := .app (.app (.app mkVec' Nat') two') testArr2
+
+-- vec2 ⊑ Vec Nat
+example : subCheck testFuel testVec2 (.app Vec' Nat') = true := by native_decide
+
+-- Unpack vec2 to get length: should give 2
+example : absEval testFuel [] (.app (.app testVec2 Nat') (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.var "n")) Nat') (.var "n")))) = some two' := by native_decide
+
+-- ============================================================
+-- §6.2 Abstract instantiation tests
+-- These test abstract inputs (ascribed) — the core use case for typing.
+-- ============================================================
+
+-- Abstract vector: (... : Vec Nat) — modeled as ascription on unit (dummy value)
+-- absEval of (e : Vec Nat) returns Vec Nat (the rhs)
+-- Unpack: v1 Nat (λn. λarr. n) should give Nat (abstract length)
+example : absEval testFuel [] (.app (.app (.asc unit' (.app Vec' Nat')) Nat')
+  (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.var "n")) Nat') (.var "n"))))
+  = some Nat' := by native_decide
+
+-- Rewrapped: v1 (Vec Nat) (λn. λarr. mkVec Nat n arr) ⊑ Vec Nat
+-- This tests that unpacking and repacking preserves the type
+example : subCheck testFuel
+  (.app (.app (.asc unit' (.app Vec' Nat')) (.app Vec' Nat'))
+    (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.var "n")) Nat')
+      (.app (.app (.app mkVec' Nat') (.var "n")) (.var "arr")))))
+  (.app Vec' Nat') = true := by native_decide
+
+-- Abstract Nat: (... : Nat) behaves like an unknown natural number
+-- add (... : Nat) (... : Nat) ⊑ Nat
+example : subCheck testFuel
+  (.app (.app add' (.asc unit' Nat')) (.asc unit' Nat'))
+  Nat' = true := by native_decide
+
+-- succ (... : Nat) ⊑ Nat
+example : subCheck testFuel
+  (.app succ' (.asc unit' Nat'))
+  Nat' = true := by native_decide
+
+-- isZero (... : Nat) ⊑ Bool
+example : subCheck testFuel
+  (.app isZero' (.asc unit' Nat'))
+  Bool' = true := by native_decide
+
+-- double (... : Nat) ⊑ Nat
+example : subCheck testFuel
+  (.app double' (.asc unit' Nat'))
+  Nat' = true := by native_decide
+
+-- ============================================================
+-- §6.3 More negative tests (data structures)
+-- ============================================================
+
+-- BAD5: emptyArray Nat ≠ Array 1 Nat (Unit ≠ Pair Nat Unit)
+example : subCheck testFuel (.app emptyArray' Nat') (.app (.app Array' one') Nat') = false := by native_decide
+
+-- ============================================================
+-- §7.1 Recursive fix: concrete recursion limitation
+-- ============================================================
+
+-- FINDING: Concrete recursive fix with Church-encoded branching does NOT
+-- work with the current evaluator. Both concEval and absEval normalize
+-- under binders, which means both branches of a Church-encoded conditional
+-- (like `(isZero n) Result base_case recursive_case`) are always fully
+-- evaluated, even if only one is selected at runtime.
+--
+-- This causes the recursive branch to be evaluated even when not taken,
+-- leading to fuel exhaustion. For example:
+--   toZero = fix (λself. λn. (isZero n) Nat 0 (self (pred n)))
+--   toZero 1 → fuel exhaustion (none)
+--   because at n=0, the false-branch (self 0) is still evaluated
+--
+-- This is demonstrated below:
+def toZero : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat'
+  (.app (.app (.app (.app isZero' (.var "n")) Nat') zero') (.app (.var "self") zero'))))
+
+-- Recursive fix with Church branching exhausts fuel (returns none)
+example : concEval testFuel [] (.app toZero one') = none := by native_decide
+
+-- But abstract eval correctly returns the declared type
+example : absEval testFuel [] toZero = some NatToNat := by native_decide
+
+-- FIX PROPOSAL: Change concEval to NOT normalize under binders.
+-- Standard lambda calculus treats λx.body as a value without reducing body.
+-- This would let Church-encoded conditionals work because the un-selected
+-- branch (a lambda argument) wouldn't have its body evaluated.
+-- The soundness proof would need adjustment: the lam case would use
+-- extensional reasoning (soundness holds at application sites) rather than
+-- intensional (comparing normalized bodies).
+-- See PROGRESS.md for full analysis.

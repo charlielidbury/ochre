@@ -17,6 +17,9 @@ the approach needs rethinking, or progress requires updating the design docs in
 `docs/`, do that. The goal is to make Ochre's type system sound — not to make
 a particular Lean file compile.
 
+Suggested next work in in SUGGESTIONS.md, read and consider doing these.
+You might decide it's better if something else is completed before doing these suggestions. That is okay.
+
 ## Your identity
 
 You were told your agent ID in the first message. Include it in all your commit

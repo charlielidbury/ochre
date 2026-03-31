@@ -34,6 +34,10 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **`fix` monotonicity** — fully proven (0 sorry)
 - [x] **`absEval_not_fix`** — absEval never returns .fix with fix-free env
 - [x] **`fix` soundness** — proved via fix typing axiom in WellTyped
+- [x] **Pair/Array/Vec standard library** — Church-encoded definitions in Tests.lean
+- [x] **§6.1 data structure tests** — Array construction, head/tail, Vec pack/unpack
+- [x] **§6.2 abstract tests** — abstract Vec/Nat operations with ascription
+- [ ] **Concrete recursive fix** — BLOCKED: evaluator normalizes under binders, breaks Church branching
 
 ## Current sorry count
 
@@ -41,7 +45,13 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## What remains
 
-1. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
+1. **Fix the concrete evaluator for recursive fix** — See "Concrete fix limitation"
+   below. The current evaluator normalizes under binders in both concEval and
+   absEval, which prevents Church-encoded branching from working with recursive
+   fix. The proposed fix: stop normalizing under binders in concEval (treat lambdas
+   as values), and adjust the soundness proof to use extensional reasoning.
+
+2. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
    on a fix typing axiom included in `WellTyped`:
    `∀ body_c, SubtypeTrans (.fix (.lam f dom body_c)) dom'`
    This axiom states that any fixpoint with the same domain subtypes the evaluated
@@ -50,15 +60,12 @@ Current status of the Och mechanization. Updated by agents after each session.
    WellTyped) would require step-indexed logical relations. See "Design analysis"
    below.
 
-2. **More fix tests** — Test actual recursive functions (e.g., a function that
-   recurses on Church nats). Currently only non-recursive fix is tested.
+3. **Partitioning** — The critical missing capability for abstract evaluation with
+   unknown inputs. See SUGGESTIONS.md.
 
-3. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
+4. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
    sound. The next step is to extend it toward the full Ochre language (see
    `docs/why-och-matters-for-ochre.md`).
-
-4. **More §6 tests** — Many spec tests from §6.2 (abstract instantiation) are
-   not yet formalized. These would increase confidence in the evaluator.
 
 ## Design analysis: fix typing axiom
 
@@ -175,9 +182,79 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
   says fix is well-typed when its body satisfies the declared contract, implying
   the fixpoint itself satisfies the contract.
 
+## Concrete fix limitation
+
+**Problem**: Concrete recursive fix with Church-encoded branching does NOT work.
+
+Both `concEval` and `absEval` normalize under binders — when evaluating
+`λx.body`, they evaluate `body` with `x` as a neutral variable. This means
+both branches of a Church-encoded conditional are always fully evaluated,
+even if only one is selected at runtime.
+
+Example: `toZero = fix (λself. λn. (isZero n) Nat 0 (self 0))`
+- At n=0: `isZero 0 = true`, so `true Nat 0 (self 0)` should return 0
+- But the evaluator evaluates ALL arguments before applying, so `self 0` is
+  evaluated even though `true` would discard it
+- `self 0` unrolls fix again → same problem → infinite loop (fuel exhaustion)
+- Verified empirically: `concEval 1000 [] (toZero 1) = none`
+
+**Why concEval normalizes under binders**: This was a deliberate design choice
+(session och-agent-20260331-120514) to make concEval structurally parallel to
+absEval. The parallel structure makes the soundness proof a straightforward
+induction — the lam case works because both evaluators process the body
+identically, differing only at ascription.
+
+**Proposed fix**: Change concEval to NOT normalize under binders. Standard
+lambda calculus treats `λx.body` as a value without reducing the body. This
+would let Church-encoded conditionals work: the unselected branch (passed as
+a lambda argument) wouldn't have its body eagerly evaluated.
+
+**Impact on soundness proof**: The lam case currently proves `body_c' ⊑ body_a'`
+for normalized bodies. Without normalization in concEval, we'd have `v = lam x dom body`
+(raw) vs `τ = lam x dom body'` (normalized). The proof would need to show
+`body ⊑ body'` without having concrete-evaluated `body`. Two approaches:
+1. **Extensional soundness**: Reformulate soundness at application sites only.
+   Lambdas are sound when applied, not when compared structurally.
+2. **Normalization lemma**: Prove that `absEval` only widens — if
+   `absEval Γ e = some e'`, then `SubtypeTrans e e'`. This would let the
+   lam case conclude via `SubtypeTrans body body'`.
+
+Approach 2 is likely simpler. The key insight: absEval's only "widening"
+operation is ascription (`(e : τ)` → `τ`). All other cases preserve or
+propagate structure. So `SubtypeTrans e (absEval e)` should hold when
+the environment maps each variable to itself (neutral normalization).
+
+**Alternative**: Add a native `if`/case-split construct instead of relying
+on Church-encoded branching. This would short-circuit evaluation of the
+un-taken branch. But this adds syntax and complexity.
+
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-152025
+What I did:
+- Added Pair/Array/Vec standard library definitions to Tests.lean (§5.4-5.8)
+- Added §6.1 concrete tests: Array construction, head/tail access, Vec packing
+- Added §6.2 abstract instantiation tests: abstract Vec/Nat operations
+- Added §6.3 negative test: emptyArray ≠ Array 1 (BAD5)
+- Discovered and documented concrete fix limitation:
+  concEval normalizes under binders, so Church-encoded branching always
+  evaluates both branches, causing recursive fix to exhaust fuel
+- Added concrete test demonstrating the limitation: toZero 1 = none
+- Proposed fix: stop normalizing under binders in concEval
+- Analyzed impact on soundness proof (see "Concrete fix limitation" above)
+- **lake build: 0 sorry, all tests pass (including 15+ new tests)**
+
+What's next:
+- Implement the concEval fix (stop normalizing under binders)
+- Prove normalization lemma: SubtypeTrans e (absEval e) for neutral envs
+- Re-prove soundness lam case with the new evaluator
+- Then test concrete recursive appendArrays
+
+Blockers:
+- Concrete recursive fix is blocked on the evaluator change
+- The soundness proof will need adjustment (see analysis above)
+
 ## 2026-03-31 ochre-lean-20260331-143556
 What I did:
 - Eliminated the LAST sorry in soundness_gen (fix case)!
