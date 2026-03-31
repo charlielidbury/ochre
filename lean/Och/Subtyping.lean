@@ -1,4 +1,5 @@
 import Och.Syntax
+import Och.Eval
 
 /-!
 # Och Subtyping
@@ -7,27 +8,14 @@ Subtyping is set inclusion. `A ⊑ B` means every value in A is also in B.
 
 For lambda terms this is checked pointwise:
   `λ(x: A₁). B₁ ⊑ λ(x: A₂). B₂` if `A₂ ⊑ A₁` (contravariant) and
-  `B₁[x] ⊑ B₂[x]` for all `x ⊑ A₂` (covariant).
+  `B₁ ⊑ B₂` for all `x ⊑ A₂` (covariant, checked with x as neutral).
 
 Type is top: `τ ⊑ Type` for any τ.
-
-Agents: you may change everything in this file. The relation below is a
-starting point. You will likely need to:
-- Decide between an inductive relation (for proofs) and a decision procedure
-  (for testing), or both with a correctness bridge
-- Handle the "for all x ⊑ A₂" quantifier in function subtyping — this is
-  one of the hardest parts
-- Ensure the relation is compatible with beta-equivalence
 -/
 
 open Expr
 
-/-- Subtyping relation. `Subtype' a b` means `a ⊑ b`.
-
-    This is a placeholder inductive definition. Agents should extend or
-    redesign it. The rules below are incomplete — they don't yet handle
-    the covariant body check for functions (which requires quantifying
-    over all inhabitants of the domain). -/
+/-- Subtyping relation. `Subtype' a b` means `a ⊑ b`. -/
 inductive Subtype' : Expr → Expr → Prop where
   /-- Reflexivity: `e ⊑ e` -/
   | refl (e : Expr) : Subtype' e e
@@ -35,19 +23,52 @@ inductive Subtype' : Expr → Expr → Prop where
   | top (e : Expr) : Subtype' e .type
   /-- Transitivity -/
   | trans {a b c : Expr} : Subtype' a b → Subtype' b c → Subtype' a c
-  -- Function subtyping placeholder — needs the body/covariance rule
-  -- | lam : ...
 
-/-- Decidable subtyping check (for testing). Uses fuel.
+/-- Infer the type of a neutral term from a typing context.
+    Variables have their declared type; applications use the function's
+    return type (substituting the argument). -/
+private def inferType (ctx : List (Name × Expr)) : Expr → Option Expr
+  | .var x =>
+    match ctx with
+    | [] => none
+    | (y, ty) :: rest => if y == x then some ty else inferType rest (.var x)
+  | .app f a =>
+    match inferType ctx f with
+    | some (.lam x _dom retTy) => some (retTy.subst x a)
+    | _ => none
+  | _ => none
 
-    Agents: this is a very incomplete placeholder. It only handles
-    syntactic equality and the Type-is-top rule. The real implementation
-    needs beta-reduction, pointwise function comparison, etc. -/
-def subCheck (fuel : Nat) (a b : Expr) : Bool :=
+/-- Structural subtype check on normalized terms.
+    ctx tracks (variable_name, declared_domain) for bound variables.
+
+    Key rules:
+    - Syntactic equality → true (reflexivity)
+    - b = Type → true (Type is top)
+    - Both lambdas → contravariant domains, covariant bodies
+    - Otherwise → infer type of a, check type ⊑ b (transitivity through type) -/
+private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : Bool :=
   match fuel with
   | 0 => false
-  | _fuel + 1 =>
+  | fuel + 1 =>
     if a == b then true
     else match b with
-    | .type => true  -- anything ⊑ Type
-    | _ => false     -- placeholder: extend this
+    | .type => true
+    | _ =>
+      match a, b with
+      | .lam x domA bodyA, .lam y domB bodyB =>
+        -- Function subtyping: contravariant domain, covariant body
+        let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
+        subCheckNF fuel ctx domB domA
+        && subCheckNF fuel ((x, domB) :: ctx) bodyA bodyB'
+      | _, _ =>
+        match inferType ctx a with
+        | some ty => subCheckNF fuel ctx ty b
+        | none => false
+
+/-- Decidable subtyping check. Normalizes both sides via absEval, then
+    compares structurally with pointwise function subtyping and type
+    inference for neutral terms. -/
+def subCheck (fuel : Nat) (a b : Expr) : Bool :=
+  match absEval fuel [] a, absEval fuel [] b with
+  | some a', some b' => subCheckNF fuel [] a' b'
+  | _, _ => false

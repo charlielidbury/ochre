@@ -50,23 +50,27 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
       | some f' => some (.app f' a)  -- stuck application (neutral term)
       | none    => none
 
-/-- Abstract evaluation (typing). Same as concrete, but ascription takes the rhs.
-
+/-- Abstract evaluation (typing) with normalization under binders.
     `Γ ⊢ e ⇝ τ` is computed by `absEval fuel Γ e = some τ`.
 
-    Agents: this is a placeholder. The real abstract evaluator needs to:
-    - Look up variables in the environment
-    - Check well-formedness of lambda bodies under extended environments
-    - Handle the interaction between substitution and environments
-    - Eventually support partitioning for Church-encoded eliminators
-    Redesign freely. -/
+    Lambda bodies are normalized under the binder (with the bound variable
+    as neutral). This ensures that beta-redexes created by substitution are
+    reduced, so e.g. `succ 2` has precise type `3`.
+
+    Domains are NOT normalized, to preserve monotonicity: normalizing
+    domains would make them vary with the environment, breaking the
+    contravariant domain requirement of function subtyping. -/
 def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match e with
     | .var x        => Γ.lookup x
-    | .lam _ _ _    => some e  -- a lambda is its own most precise type
+    | .lam x dom body =>
+      -- Normalize body under the binder: x is treated as neutral
+      match absEval fuel ((x, .var x) :: Γ) body with
+      | some body' => some (.lam x dom body')
+      | none => none
     | .type         => some .type
     | .asc _term ty => absEval fuel Γ ty  -- compile-time: take the rhs
     | .app f a      =>

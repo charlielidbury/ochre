@@ -92,19 +92,19 @@ example : absEval testFuel [] (.app (.app idAscribed Nat') three') = some Nat' :
 -- ============================================================
 
 -- true ⊑ Bool
--- example : subCheck testFuel true' Bool' = true := by native_decide
+example : subCheck testFuel true' Bool' = true := by native_decide
 
 -- false ⊑ Bool
--- example : subCheck testFuel false' Bool' = true := by native_decide
+example : subCheck testFuel false' Bool' = true := by native_decide
 
 -- 0 ⊑ Nat
--- example : subCheck testFuel zero' Nat' = true := by native_decide
+example : subCheck testFuel zero' Nat' = true := by native_decide
 
 -- 3 ⊑ Nat
--- example : subCheck testFuel three' Nat' = true := by native_decide
+example : subCheck testFuel three' Nat' = true := by native_decide
 
 -- unit ⊑ Unit
--- example : subCheck testFuel unit' Unit' = true := by native_decide
+example : subCheck testFuel unit' Unit' = true := by native_decide
 
 -- anything ⊑ Type
 example : subCheck testFuel true' .type = true := by native_decide
@@ -115,20 +115,19 @@ example : subCheck testFuel Nat' .type = true := by native_decide
 -- ============================================================
 
 -- BAD3: true is not in Nat
--- example : subCheck testFuel true' Nat' = false := by native_decide
+example : subCheck testFuel true' Nat' = false := by native_decide
 
 -- BAD4: succ 2 ≠ 2, so 3 ⊑ 2 must fail
--- example : subCheck testFuel three' two' = false := by native_decide
+example : subCheck testFuel three' two' = false := by native_decide
 
 -- ============================================================
 -- §6.4 Transparency preservation
 -- ============================================================
 
 -- succ 2 should have precise type 3
--- This requires concrete eval of (succ 2) to produce 3, and abstract
--- eval to also produce 3.
--- example : absEval testFuel [] (.app succ' two') = some three' := by
---   native_decide
+-- Abstract eval computes the fully normalized Church numeral.
+example : absEval testFuel [] (.app succ' two') = some three' := by
+  native_decide
 
 -- ============================================================
 -- Regression test: Proposition 5.2.9 counterexample
