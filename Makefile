@@ -16,7 +16,7 @@ doc:
 %.required_vo:FORCE
 # A trick from https://github.com/ocaml/dune/issues/7972#issue-1757514337
 # to build the .vo files needed to check interactively $*.v
-	@$(DUNE) coq top $(DUNEARGS) --toplevel=true -- $*.v
+	@$(DUNE) rocq top $(DUNEARGS) --toplevel=true -- $*.v
 
 clean:
 	@$(CLEANCMD)
