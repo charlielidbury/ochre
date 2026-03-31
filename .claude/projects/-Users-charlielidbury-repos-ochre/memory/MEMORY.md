@@ -1,1 +1,2 @@
 - [Derivation tree notation](feedback_derivation_trees.md) — use indented top-down format, not standard bottom-up
+- [Human-readable names](feedback_naming.md) — use clean capitalized names for tmux sessions, etc.
