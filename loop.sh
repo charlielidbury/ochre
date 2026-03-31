@@ -3,8 +3,10 @@ set -euo pipefail
 
 # Infinite loop of Claude Code agents working on Och.
 #
-# Each iteration gets a fresh Claude Code session with a unique ID.
-# You can resume any agent later with: claude --resume <session-name>
+# Each iteration launches an interactive Claude Code session in tmux.
+# You can:
+#   - Watch live:    tmux attach -t <session-name>
+#   - Resume later:  claude --resume <session-name>
 #
 # Usage:
 #   ./loop.sh              # run with defaults
@@ -16,15 +18,9 @@ set -euo pipefail
 # To stop: Ctrl-C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROMPT_FILE="$SCRIPT_DIR/AGENT_PROMPT.md"
 MAX_TURNS="${MAX_TURNS:-50}"
 PAUSE_EVERY="${1:-0}"
 ITERATION=0
-
-if [ ! -f "$PROMPT_FILE" ]; then
-  echo "Error: $PROMPT_FILE not found"
-  exit 1
-fi
 
 echo "Starting Och agent loop"
 echo "  Max turns per iteration: $MAX_TURNS"
@@ -34,27 +30,33 @@ echo ""
 
 while true; do
   ITERATION=$((ITERATION + 1))
-  SESSION_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
   SESSION_NAME="och-agent-$(date +%Y%m%d-%H%M%S)"
 
   echo "=========================================="
   echo "  Iteration $ITERATION"
   echo "  Session: $SESSION_NAME"
-  echo "  ID:      $SESSION_ID"
+  echo "  Attach:  tmux attach -t $SESSION_NAME"
   echo "  Resume:  claude --resume $SESSION_NAME"
   echo "  $(date)"
   echo "=========================================="
 
-  # Substitute $AGENT_ID into the prompt (use session name as the agent ID)
-  PROMPT="$(sed "s/\$AGENT_ID/$SESSION_NAME/g" "$PROMPT_FILE")"
+  # Launch claude interactively in a tmux session
+  tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
+    "cd '$SCRIPT_DIR' && claude --dangerously-skip-permissions --name '$SESSION_NAME' --max-turns $MAX_TURNS"
 
-  # Run Claude Code with a named, resumable session
-  claude --print \
-    --dangerously-skip-permissions \
-    --session-id "$SESSION_ID" \
-    --name "$SESSION_NAME" \
-    --max-turns "$MAX_TURNS" \
-    -p "$PROMPT" || true
+  # Wait for claude to start up
+  sleep 5
+
+  # Send the initial message
+  tmux send-keys -t "$SESSION_NAME" \
+    "Your agent ID is $SESSION_NAME. Read and follow AGENT_PROMPT.md" Enter
+
+  echo "  Agent started. Waiting for it to finish..."
+
+  # Wait for the tmux session to end
+  while tmux has-session -t "$SESSION_NAME" 2>/dev/null; do
+    sleep 10
+  done
 
   echo ""
   echo "Agent $SESSION_NAME finished"

@@ -3,10 +3,9 @@
 You are working on Och, a minimal research calculus. Your goal is to make `lake build`
 pass in the `lean/` directory with no `sorry` remaining.
 
-Your agent ID is: **$AGENT_ID**
-
-Include this ID in all your commit messages (as a `Agent-ID: $AGENT_ID` trailer) so
-that decisions can be traced back to you.
+You were told your agent ID in the first message. Include it in all your commit
+messages (as an `Agent-ID: <your-id>` trailer) so that decisions can be traced
+back to you.
 
 ## Your memory will be wiped
 
