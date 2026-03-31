@@ -50,10 +50,10 @@ while true; do
 
   # Run Claude Code with a named, resumable session
   claude --print \
+    --dangerously-skip-permissions \
     --session-id "$SESSION_ID" \
     --name "$SESSION_NAME" \
     --max-turns "$MAX_TURNS" \
-    --allowedTools "Edit,Write,Read,Glob,Grep,Bash" \
     -p "$PROMPT" || true
 
   echo ""
