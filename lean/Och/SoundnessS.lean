@@ -355,6 +355,37 @@ theorem concEvalS_fuel_mono : ∀ (k j : Nat) (e v : Expr),
             simp only at h ⊢; exact h
 
 -- ============================================================
+-- WellTyped fuel monotonicity — NOT true in general!
+-- ============================================================
+
+/-! **WellTyped fuel monotonicity does NOT hold in general.**
+
+WellTyped k Γ e → WellTyped (k+j) Γ e is FALSE because the app case
+of WellTyped has a match on `absEval k Γ f`:
+  - At low fuel: absEval k Γ f = none → match falls through to `True`
+  - At high fuel: absEval (k+j) Γ f = some (lam x d body) → requires
+    WellTyped (k+j) ((x, aVal) :: Γ) body
+
+At low fuel, the body's well-typedness is not checked (vacuously True).
+At high fuel, it IS checked. So a term can be "WellTyped" at low fuel
+but NOT at high fuel, if its app body is actually ill-typed.
+
+This means the additive-fuel approach to the lam case (bump fuel from k
+to k_n+k and use WellTyped at the higher level) does NOT directly work
+— we'd need WellTyped at the higher fuel, which we can't derive from
+WellTyped at the lower fuel.
+
+**Implication for the lam case:** The corrected absEval_normalize_stable
+with additive fuel CANNOT be used with the current fundamental theorem
+unless WellTyped is somehow handled. Possible fixes:
+1. Prove fundamental for ALL fuels at once (strong induction, not the
+   current structural induction on fuel)
+2. Change WellTyped to be fuel-independent (check all depths)
+3. Avoid the additive-fuel approach entirely — use a different proof
+   strategy for the lam case
+-/
+
+-- ============================================================
 -- Normalization stability (reformulated)
 -- ============================================================
 

@@ -56,6 +56,11 @@ Current status of the Och mechanization. Updated by agents after each session.
   WRONG (see analysis below). New formulation uses additive fuel:
   if normalization at fuel k_n gives body', and re-evaluation at fuel k gives τ',
   then the original body at fuel k_n+k also gives τ'.
+- **Discovered WellTyped is NOT fuel-monotone**: `WellTyped k → WellTyped (k+j)`
+  is FALSE because at low fuel, absEval may fail in the app case, making the
+  body check vacuously True. At higher fuel, it succeeds and the body is checked.
+  This means the additive-fuel approach to the lam case cannot directly use
+  the corrected normalize_stable.
 - **Deep analysis** of why the lam case is the hardest remaining problem.
   See "Analysis: the lam case" below.
 
@@ -267,10 +272,10 @@ outputs, which is non-trivial but doable.
 
 ### Recommended approach for next agent
 
-**Option A (easiest):** Prove WellTyped fuel-weakening + the corrected
-normalize_stable. Then the lam case uses additive fuel with the IH.
-Estimated effort: 100-150 lines for WellTyped weakening, 150-200 lines for
-normalize_stable.
+**Option A (BLOCKED):** WellTyped fuel-weakening + corrected normalize_stable.
+WellTyped fuel monotonicity is FALSE (discovered this session). At low fuel,
+app body well-typedness is vacuously True; at high fuel, it's actually checked.
+This approach does NOT work without restructuring WellTyped.
 
 **Option B (cleanest):** Prove "absEval outputs are closed under the env"
 (free-variable analysis). This handles the universal Γ_arb and may also
