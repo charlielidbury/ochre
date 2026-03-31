@@ -694,12 +694,53 @@ theorem LR_upcast : ∀ (n : Nat) (v σ' τ : Expr),
           -- recursive LR_upcast at level m
           exact ih v' τ₂' τ₁' h_lr_body h_mono
         | none =>
-          -- body₂ doesn't succeed at this fuel (fuel adequacy gap).
-          -- This can only happen when Subtype' body₂ body₁ involves a `top`
-          -- somewhere (making body₁ simpler than body₂), but the structural
-          -- effect propagates through absEval making the conclusion non-trivial.
-          -- See PROGRESS.md "LR_upcast fuel adequacy" for detailed analysis.
-          sorry
+          -- body₂ doesn't succeed at this fuel but body₁ does.
+          -- Case-split on h_body to handle easy constructors.
+          cases h_body with
+          | refl =>
+            -- body₂ = body₁, but body₂ = none and body₁ = some. Contradiction.
+            rw [h_body₂] at h_abs_1; exact absurd h_abs_1 (by simp)
+          | top =>
+            -- body₁ = .type → absEval k ... .type = some .type → τ₁' = .type
+            -- LR (m+1) v' .type = True
+            simp only [absEval] at h_abs_1
+            cases k with
+            | zero => simp [absEval] at h_abs_1
+            | succ k' =>
+              simp only [absEval] at h_abs_1
+              cases h_abs_1
+              -- τ₁' = .type, so LR (m+1) v' .type = True
+              cases v' <;> simp [LR]
+          | lam_body h_inner =>
+            -- body₂ = lam y d b₂, body₁ = lam y d b₁
+            -- Both are lambdas. body₂ lam fails normalization, body₁ succeeds.
+            -- τ₁' = lam y d b₁_norm. Need LR (m+1) v' τ₁'.
+            -- Non-trivial: need the extensional property for v' and τ₁'.
+            -- If v' is not a lam → catch-all True. If both lam → sorry.
+            cases v' with
+            | lam _ _ _ => sorry  -- Hard case: both lambdas, need extensional property
+            | _ => simp [LR]
+          | app_cong _ _ =>
+            -- body₂ = app .., body₁ = app ..
+            -- τ₁' is the result of evaluating an app — could be any shape.
+            -- If τ₁' is .type → True. If v' not lam → True. Otherwise sorry.
+            cases v' with
+            | lam _ _ _ =>
+              cases τ₁' with
+              | type => simp [LR]
+              | lam _ _ _ => sorry  -- Hard case
+              | _ => simp [LR]
+            | _ => simp [LR]
+          | fix_cong _ =>
+            -- body₂ = fix .., body₁ = fix ..
+            -- τ₁' is the result of evaluating fix's domain — could be any shape.
+            cases v' with
+            | lam _ _ _ =>
+              cases τ₁' with
+              | type => simp [LR]
+              | lam _ _ _ => sorry  -- Hard case
+              | _ => simp [LR]
+            | _ => simp [LR]
       | _ => -- non-lambda v: catch-all True
         simp [LR]
     | app_cong => -- τ = app ..: catch-all True
