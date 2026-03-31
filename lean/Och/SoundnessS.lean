@@ -403,67 +403,141 @@ theorem concEvalS_fuel_mono : ∀ (k j : Nat) (e v : Expr),
             simp only at h ⊢; exact h
 
 -- ============================================================
--- WellTyped fuel monotonicity — NOT true in general!
+-- WellTyped fuel behavior — NEITHER monotone NOR anti-monotone
 -- ============================================================
 
-/-! **WellTyped fuel monotonicity does NOT hold in general.**
+/-! **WellTyped is NEITHER fuel-monotone NOR fuel-anti-monotone.**
 
-WellTyped k Γ e → WellTyped (k+j) Γ e is FALSE because the app case
-of WellTyped has a match on `absEval k Γ f`:
-  - At low fuel: absEval k Γ f = none → match falls through to `True`
-  - At high fuel: absEval (k+j) Γ f = some (lam x d body) → requires
-    WellTyped (k+j) ((x, aVal) :: Γ) body
+Previous analysis (session ochre-lean-20260331-211841) correctly identified
+that `WellTyped k → WellTyped (k+j)` is FALSE (the "strengthening" direction).
+But the reverse ("weakening") direction `WellTyped (k+j) → WellTyped k` is
+ALSO FALSE. The claim in PROGRESS.md that "this direction holds" is incorrect.
 
-At low fuel, the body's well-typedness is not checked (vacuously True).
-At high fuel, it IS checked. So a term can be "WellTyped" at low fuel
-but NOT at high fuel, if its app body is actually ill-typed.
+**Why NEITHER direction holds:**
 
-This means the additive-fuel approach to the lam case (bump fuel from k
-to k_n+k and use WellTyped at the higher level) does NOT directly work
-— we'd need WellTyped at the higher fuel, which we can't derive from
-WellTyped at the lower fuel.
+WellTyped 0 Γ e = True for ALL e (base case — no checks at all).
+WellTyped 1 Γ (.asc .type .type) = True ∧ True ∧ ∃ σ τ', absEval 0 Γ .type = some σ ∧ ...
+  But absEval 0 = none always, so the existential is False.
+  → WellTyped 1 Γ (.asc .type .type) = FALSE
+WellTyped 2 Γ (.asc .type .type) = True ∧ True ∧ ∃ σ τ', absEval 1 Γ .type = some σ ∧ ...
+  absEval 1 Γ .type = some .type ✓
+  → WellTyped 2 Γ (.asc .type .type) = TRUE
 
-**Implication for the lam case:** The corrected absEval_normalize_stable
-with additive fuel CANNOT be used with the current fundamental theorem
-unless WellTyped is somehow handled. Possible fixes:
-1. Prove fundamental for ALL fuels at once (strong induction, not the
-   current structural induction on fuel)
-2. Change WellTyped to be fuel-independent (check all depths)
-3. Avoid the additive-fuel approach entirely — use a different proof
-   strategy for the lam case
+So: True (fuel 0) → False (fuel 1) → True (fuel ≥ 2).
+
+- Monotone (k → k+j) fails: WellTyped 0 = True but WellTyped 1 = False
+- Anti-monotone (k+j → k) fails: WellTyped 2 = True but WellTyped 1 = False
+
+In general, WellTyped oscillates at low fuel levels because:
+- fuel 0: everything is vacuously True
+- fuel 1: asc/fix require absEval 0 to succeed (impossible), so they're False
+- fuel ≥ 2: absEval starts succeeding, so checks are meaningful
+
+**Consequence**: WellTyped stabilizes at "sufficient" fuel (where all absEval
+calls in the expression succeed), but there's no monotonicity property to
+exploit. Neither bumping fuel up nor down preserves WellTyped.
+
+**Implication for the lam case:** ANY approach that needs WellTyped at a
+different fuel level than what the induction provides is fundamentally blocked.
 -/
 
+-- Machine-verify the fuel behavior:
+-- absEval 0 always fails, absEval 1 succeeds for .type
+example : absEval 0 ([] : Env) Expr.type = none := by native_decide
+example : absEval 1 ([] : Env) Expr.type = some .type := by native_decide
+
+-- WellTyped 1 [] (.asc .type .type) requires absEval 0 to succeed, which it can't.
+-- WellTyped 2 [] (.asc .type .type) uses absEval 1, which succeeds.
+-- So WellTyped 2 does NOT imply WellTyped 1 (anti-monotone fails).
+-- And WellTyped 0 = True does NOT imply WellTyped 1 = False (monotone fails).
+
 -- ============================================================
--- Normalization stability (reformulated)
+-- Normalization stability — FALSE AS STATED
 -- ============================================================
 
-/-- **Normalization stability** (the key bridge lemma).
+/-- **COUNTEREXAMPLE: absEval_normalize_stable is FALSE.**
 
-    absEval normalizes lambda bodies under a neutral binder:
-      absEval Γ (lam x d body) = lam x d body'
-      where body' = absEval ((x, var x) :: Γ) body
+    The theorem claims: if normalization gives body', and re-evaluating body'
+    gives τ', then evaluating the original body at additive fuel also gives τ'.
 
-    When this lambda is later applied with argument a, absEval evaluates
-    the NORMALIZED body body' in ((x, a) :: Γ), not the original body.
+    This is FALSE because absEval's var case returns env values WITHOUT
+    re-evaluating them. Normalization "inlines" env values (via var lookup),
+    and re-evaluation then evaluates those inlined values further. But
+    direct evaluation of the original body just does a lookup, returning
+    the raw (un-evaluated) env value.
 
-    **Corrected formulation:** The original `k ≤ k'` constraint was wrong.
-    The normalized body may need LESS fuel (some work is pre-computed),
-    so evaluating the original body needs MORE fuel. The correct relationship
-    is: if normalization used k_n fuel and re-evaluation uses k fuel, then
-    evaluating the original needs at most k_n + k fuel.
+    **Concrete counterexample** (verified by #eval below):
 
-    absEval_normalize_stable states: evaluating the normalized body at fuel k
-    and evaluating the original body at fuel k_n + k give the same result,
-    PROVIDED the normalized body succeeds.
+    Γ = [("y", app (var "z") type), ("z", lam "a" type type), ("w", type)]
+    body = var "y", x = "x", a = type
 
-    Equivalently (one-directional): if the normalized body succeeds, the
-    original succeeds at higher fuel with the same result.
+    - Normalization: absEval 2 ((x, var x) :: Γ) (var "y")
+      = Env.lookup Γ "y" = some (app (var "z") type)
+      → body' = app (var "z") type
 
-    **STATUS: UNPROVED.** This is a deep property requiring careful reasoning
-    about how absEval's normalization interacts with re-evaluation. The proof
-    likely needs strong induction on fuel + body structure. Left as sorry for
-    the next agent. The fuel monotonicity lemmas above are the key building
-    blocks. -/
+    - Re-evaluation: absEval 3 ((x, type) :: Γ) (app (var "z") type)
+      = absEval 2 env (var "z") → lam "a" type type
+      = absEval 2 env type → type
+      = beta-reduce → type
+      → τ' = type
+
+    - Original at additive fuel: absEval 5 ((x, type) :: Γ) (var "y")
+      = Env.lookup Γ "y" = some (app (var "z") type)
+      → result = app (var "z") type ≠ type
+
+    The var lookup returns the raw env value without further evaluation,
+    while re-evaluation of the inlined value evaluates it deeply.
+
+    **Root cause**: absEval's var case is `| .var x => Γ.lookup x` — a raw
+    lookup with no recursive evaluation. Normalization inlines these values
+    into the body, and re-evaluation evaluates them. But direct evaluation
+    doesn't evaluate past the lookup.
+
+    **Impact on the lam case of fundamental**: This theorem was the planned
+    bridge between the normalized body (stored in absEval's lambda result)
+    and the original body (needed for the IH). Without it, a different
+    approach is needed. See PROGRESS.md for alternatives. -/
+
+-- Verify the counterexample computationally (machine-checked):
+private def ce_Γ : Env :=
+  [("y", .app (.var "z") .type),
+   ("z", .lam "a" .type .type),
+   ("w", .type)]
+
+-- Step 1: Normalization inlines the raw env value
+example : absEval 2 (("x", .var "x") :: ce_Γ) (.var "y") =
+    some (.app (.var "z") .type) := by native_decide
+
+-- Step 2: Re-evaluation evaluates the inlined value deeply
+example : absEval 3 (("x", .type) :: ce_Γ) (.app (.var "z") .type) =
+    some .type := by native_decide
+
+-- Step 3: Original at additive fuel just does a lookup (NO further eval)
+example : absEval 5 (("x", .type) :: ce_Γ) (.var "y") =
+    some (.app (.var "z") .type) := by native_decide
+
+-- The theorem claims Step 3 = Step 2, but:
+--   some (.app (.var "z") .type) ≠ some .type
+-- This is a machine-verified refutation of absEval_normalize_stable.
+
+/-- **absEval_normalize_stable — FALSE AS STATED.**
+
+    Kept here (with sorry) for historical reference. See counterexample above.
+    The var (y≠x) case is fundamentally unprovable: normalization inlines env
+    values, re-evaluation evaluates them, but direct evaluation just does a
+    lookup. These give different results when env values contain reducible
+    sub-expressions.
+
+    The app case is also likely false for similar reasons (sub-expressions
+    may inline different env values).
+
+    **A correct reformulation would need one of:**
+    1. Change absEval's var case to recursively evaluate the lookup result
+       (but this changes all proofs and creates env-scope issues)
+    2. Add a hypothesis that all env values are "self-evaluating" (idempotent
+       under absEval), which is only true for fully-normalized envs
+    3. Abandon this approach entirely and use a different proof strategy
+       for the lam case (see PROGRESS.md for alternatives) -/
 theorem absEval_normalize_stable (k_n k : Nat) (Γ : Env) (body : Expr)
     (x : Name) (a body' τ' : Expr)
     (h_norm : absEval k_n ((x, .var x) :: Γ) body = some body')

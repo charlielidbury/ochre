@@ -46,10 +46,87 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
 **7** in SoundnessS.lean:
-- 2 in absEval_normalize_stable (var y≠x needs idempotency, app needs sub-eval reasoning)
+- 2 in absEval_normalize_stable (**THEOREM IS FALSE** — see below)
 - 3 in LR_upcast (only the hard lam-lam subcases; refl/top PROVED)
-- 1 in fundamental lam case
+- 1 in fundamental lam case (blocked on false theorem)
 - 1 in fundamental fix case (now only the lam-lam subcase; all other LR shapes proved)
+
+## New this session (ochre-lean-20260331-225410)
+
+### Critical discovery: `absEval_normalize_stable` is FALSE
+
+The theorem that previous agents were trying to prove is **provably false**.
+Machine-verified counterexample added to SoundnessS.lean.
+
+**The counterexample:**
+```
+Γ = [("y", app (var "z") type), ("z", lam "a" type type)]
+body = var "y", x = "x", a = type
+```
+- Normalization looks up "y" → gets `app (var "z") type` (body')
+- Re-evaluating body' in Γ: evaluates `var "z"` → `lam "a" type type`,
+  then beta-reduces → `type`
+- Original at additive fuel: looks up "y" → `app (var "z") type` (raw value)
+- Result: `type ≠ app (var "z") type`
+
+**Root cause:** absEval's var case returns `Γ.lookup x` WITHOUT recursively
+evaluating the result. Normalization "inlines" env values (via lookup), and
+re-evaluation evaluates those inlined values deeply. But direct evaluation
+just returns the raw lookup — no further evaluation.
+
+### Also discovered: WellTyped is NEITHER fuel-monotone NOR anti-monotone
+
+Previous analysis claimed WellTyped is "anti-monotone" (higher fuel → stricter).
+This is FALSE. WellTyped 2 [] (.asc .type .type) = True but WellTyped 1 = False.
+The behavior oscillates: True (fuel 0, vacuous) → False (fuel 1, absEval 0 fails)
+→ True (fuel ≥ 2, absEval succeeds). Machine-verified in SoundnessS.lean.
+
+### Impact on the proof strategy
+
+These discoveries mean the entire normalize_stable approach to the lam case
+is a dead end. Two sessions' worth of work on normalize_stable was pursuing
+an impossible goal. The sorry's in normalize_stable are not "hard to prove" —
+they are unprovable because the theorem statement is wrong.
+
+### Recommended path forward
+
+The fundamental issue is that absEval normalizes under binders (creating body'),
+while any correct concrete evaluator treats lambdas as values (keeping body).
+Relating body' to body is the core difficulty, and normalize_stable was the
+wrong bridge.
+
+**Option A (most promising): Env-based concrete evaluator without normalization.**
+Define `concEvalE` that uses env extension (like concEval) but treats lambdas
+as values (like concEvalS):
+```
+| .lam _ _ _ => some e  -- value, no body normalization
+| .app f a =>
+  | some (.lam x _ body), some aVal => concEvalE fuel ((x, aVal) :: γ) body
+```
+This keeps the SAME body in both evaluators (key for soundness), while treating
+lambdas as values (key for fix correctness). The existing Soundness.lean proof
+structure should adapt directly.
+
+**Challenge with Option A:** The concrete lambda captures its definition-site
+env implicitly. When applied later, the body is evaluated in the application-site
+env extended with the argument. If the body references variables not in the
+application-site env, they won't resolve. This is the "closure problem."
+
+However, in practice the existing concEval already has this pattern (env-based
+beta). The issue only arises with returned lambdas, not with immediately-applied
+ones. For Church-encoded branching with thunks, the branch lambdas reference
+only their arguments (not env variables), so the closure problem doesn't arise.
+
+**Option B (accept current state):** The existing Soundness.lean already proves
+concEval sound (0 sorry) with the fix typing axiom. concEvalS soundness
+(SoundnessS.lean) is aspirational but not required for the core milestone.
+Focus instead on partitioning, abstract branching, or other extensions.
+
+**Option C (change absEval):** Make absEval's var case recursively evaluate
+the lookup result: `| .var x => match Γ.lookup x with | some v => absEval fuel Γ v`.
+This makes env values self-normalizing and would make normalize_stable true.
+But it changes all existing proofs (monotonicity, soundness) and creates scope
+issues (env values may reference variables from a different env scope).
 
 ## New this session (ochre-lean-20260331-220210)
 
@@ -103,26 +180,21 @@ Current status of the Och mechanization. Updated by agents after each session.
 ## What remains
 
 1. **Finish concEvalS soundness** — 7 sorry's remain in SoundnessS.lean:
-   - **absEval_normalize_stable** (2 sorry's):
-     - **var (y≠x)**: Needs "absEval idempotency" — if v_y was produced by
-       absEval (already normalized), then absEval k Γ v_y = some v_y.
-       True for well-formed envs but needs explicit normalization invariant.
-     - **app**: Needs careful case analysis on sub-evaluation shapes. The IH
-       applies to f and a individually, but combining results requires tracking
-       how beta-reduction interacts with normalization/re-evaluation.
+   - **absEval_normalize_stable** (2 sorry's): **THEOREM IS FALSE** (proved by
+     counterexample in session ochre-lean-20260331-225410). The var (y≠x) and
+     app cases are not "hard to prove" — they are **unprovable** because the
+     theorem statement is wrong. See "Critical discovery" section above.
    - **LR_upcast fuel adequacy** (3 sorry's): Partially proved.
      refl→contradiction (DONE), top→True (DONE). Remaining: when both v' and
      τ₁' are lambdas under lam_body/app_cong/fix_cong. These need the
      extensional LR property but we can't derive it (body₂ didn't evaluate).
-   - **lam case** of fundamental: Blocked on normalize_stable + the universal
-     Γ in the LR lambda clause. See "Analysis: the lam case" below.
+   - **lam case** of fundamental: Was blocked on normalize_stable (now known
+     false). Needs a fundamentally different approach — see recommended options
+     in the session summary above.
    - **fix case** of fundamental (lam-lam only): All non-lam-lam LR shapes
      proved. The lam-lam case requires step-indexed reasoning: the fix body
      produces extensionally correct results when applied to LR-related args.
-     Blocked by fix-in-env circularity (see below). Options:
-     (a) Relax h_vals to allow .fix, handle var case by evaluating .fix
-     (b) Direct induction on fix fuel without extending σ
-     (c) Step-indexed approach
+     Blocked by fix-in-env circularity (see below).
 
 2. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
    on a fix typing axiom included in `WellTyped`:
@@ -259,7 +331,7 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
 
 The lam case of fundamental is the hardest remaining sorry. Here is a
 detailed analysis of the difficulties and potential approaches, based on
-deep investigation by agent ochre-lean-20260331-211841.
+deep investigation by multiple agents.
 
 ### The problem
 
@@ -271,83 +343,81 @@ The IH (fundamental at fuel k') gives us: if `absEval k' ((x, aa) :: Γ) body`
 succeeds, the results are LR-related. But this uses the ORIGINAL body in the
 ORIGINAL Γ, while the LR clause uses the NORMALIZED body' in an ARBITRARY Γ_arb.
 
-### Why absEval_normalize_stable was WRONG
+### absEval_normalize_stable is FALSE (discovered session ochre-lean-20260331-225410)
 
-The original formulation claimed `absEval k Γ body' = absEval k Γ body` (at the
-same fuel). This is FALSE. Counterexample:
+**BOTH formulations are wrong:**
 
-    body = app (lam y T y) (var x)
-    Normalization resolves this to: body' = var x
-    absEval 1 Γ (var x) = a       (var lookup, needs fuel 1)
-    absEval 1 Γ body    = none    (app needs fuel 2+)
+1. The original formulation (same fuel) was shown false by session 211841:
+   body = app (lam y T y) (var x) normalizes to body' = var x. Different fuel needed.
 
-The normalized body needs LESS fuel because some reductions are pre-computed.
+2. The corrected additive-fuel formulation was shown false by session 225410:
+   body = var y (y≠x), Γ maps y to a reducible app. Normalization inlines the raw
+   env value. Re-evaluation evaluates the inlined value deeply. But direct evaluation
+   just looks up and returns the raw value. **Machine-verified counterexample** in
+   SoundnessS.lean (native_decide).
 
-### Corrected formulation (reformulated in SoundnessS.lean)
+### WellTyped fuel-weakening is also FALSE (discovered session ochre-lean-20260331-225410)
 
-    If absEval k_n ((x, var x) :: Γ) body = some body'
-    and absEval k ((x, a) :: Γ) body' = some τ'
-    then absEval (k_n + k) ((x, a) :: Γ) body = some τ'
+WellTyped is NEITHER monotone NOR anti-monotone in fuel:
+- WellTyped 0 = True (vacuous), WellTyped 1 = False (absEval 0 fails in asc/fix),
+  WellTyped 2 = True (absEval 1 succeeds).
+This was previously claimed to be anti-monotone. It is not.
 
-This additive-fuel version accounts for the pre-computed work. But using it
-in the lam case requires ALL of:
-1. `concEvalS_fuel_mono` — PROVED (this session)
-2. `absEval_fuel_mono` — PROVED (this session)
-3. WellTyped fuel-weakening: `WellTyped (k+j) Γ e → WellTyped k Γ e` — NOT PROVED
-   (WellTyped is anti-monotone: higher fuel = stricter requirements, so this
-   direction holds. Lower fuel = weaker = easier to satisfy.)
+### Why the normalize-under-binders approach is fundamentally hard
 
-### The universal Γ_arb problem
+The core tension: absEval normalizes under binders (evaluating the body to produce
+body'), but any correct CBV concrete evaluator treats lambdas as values (keeping the
+original body). Relating body' to body requires a "normalization stability" property,
+but:
+- Direct var lookup in absEval returns raw env values without evaluation
+- Normalization inlines these values and subsequent evaluation evaluates them
+- These are structurally different computations with different results
 
-Even with additive fuel, the universal Γ_arb in the LR lambda clause causes trouble.
-The IH only works for the SPECIFIC Γ from fundamental's context.
+### The universal Γ_arb problem (still relevant but secondary)
 
-However, body' (the normalized body) should only reference `x` as a free variable
-(all other variables were resolved during normalization in Γ). So
-`absEval k ((x, aa) :: Γ_arb) body'` should be independent of Γ_arb.
+The universal Γ_arb in the LR lambda clause is a secondary issue (the primary
+blocker is normalize_stable being FALSE). Even if normalize_stable were true,
+the universal Γ_arb would require proving that body' has no free vars other
+than x. This is plausible but unproven, and is now moot since the approach
+via normalize_stable is dead.
 
-Proving "body' only has x free" requires a free-variable analysis of absEval
-outputs, which is non-trivial but doable.
+### Recommended approach for next agent (updated session 225410)
 
-### Recommended approach for next agent
+**Option A (DEAD — DO NOT PURSUE):** Any approach based on absEval_normalize_stable
+or WellTyped fuel properties. Both theorems are FALSE. Multiple sessions were spent
+pursuing this dead end.
 
-**Option A (BLOCKED):** WellTyped fuel-weakening + corrected normalize_stable.
-WellTyped fuel monotonicity is FALSE (discovered this session). At low fuel,
-app body well-typedness is vacuously True; at high fuel, it's actually checked.
-This approach does NOT work without restructuring WellTyped.
+**Option B (most promising — env-based CBV evaluator):** Define `concEvalE` that
+uses env extension (same body as absEval) but treats lambdas as values:
+```
+| .lam _ _ _ => some e  -- value, body NOT evaluated
+| .app f a =>
+  | some (.lam x _ body), some aVal => concEvalE fuel ((x, aVal) :: γ) body
+```
+This keeps the same body in both evaluators (key for soundness proofs) while
+avoiding the normalization-under-binders issue. The existing Soundness.lean
+proof structure adapts: the lam case is trivial (returns e, same as absEval
+returns lam x dom body'), and the app case uses the IH on the same body.
+**The closure problem**: returned lambdas need their definition-site env for
+correctness. For the Church-encoded test cases, this works because branch
+lambdas only reference their own parameters.
 
-**Option B (cleanest):** Prove "absEval outputs are closed under the env"
-(free-variable analysis). This handles the universal Γ_arb and may also
-simplify normalize_stable. Estimated effort: 200-300 lines.
+**Option C (accept current state):** Soundness.lean has 0 sorry. SoundnessS.lean
+is aspirational. Focus on partitioning, abstract branching, or other extensions
+instead.
 
-**Option C (nuclear):** Abandon the LR approach entirely. Redefine concEvalS
-to also use env extension (like concEval) but WITHOUT normalizing under binders.
-This would keep the structural parallel with absEval while fixing the
-Church-encoded branching issue. The existing Soundness.lean proof could be
-adapted. Estimated effort: 200+ lines of restructuring, but eliminates the
-entire normalization stability problem.
+## Analysis: absEval_normalize_stable — FALSE (session 225410)
 
-## Analysis: absEval_normalize_stable (detailed)
+The theorem is **provably false**. Machine-verified counterexample in SoundnessS.lean.
 
-### Even the corrected formulation is non-trivial
+The root cause: absEval's var case returns `Γ.lookup x` as a raw value without
+further evaluation. Normalization inlines these raw values into the body. When
+the inlined values are re-evaluated, they get fully reduced. But direct evaluation
+of the original body just does a lookup — no further reduction.
 
-The var case of normalize_stable requires: if `body = var y` and `y ≠ x`, then
-`body' = Γ.lookup y = v_y`. Re-evaluating body' gives `absEval k Γ' v_y`, while
-evaluating body at higher fuel gives `Γ'.lookup y = v_y` (just a lookup, no
-further evaluation). These differ unless `absEval k Γ' v_y = v_y`.
-
-This requires "absEval idempotency": `absEval k Γ v = some v` when v was
-produced by absEval (so it's already normalized). This is likely true for
-sufficient fuel but requires a separate inductive proof.
-
-### Fuel monotonicity helps but doesn't solve everything
-
-The fuel monotonicity lemmas (absEval_fuel_mono, concEvalS_fuel_mono) proved
-this session are necessary building blocks. They ensure that if a computation
-succeeds at fuel k, it also succeeds with the same result at fuel k+j.
-
-But they don't directly help with the normalize_stable var case, which
-needs idempotency (same input, same output after re-evaluation).
+This is NOT a matter of "needing idempotency" or "needing more infrastructure."
+The theorem STATEMENT is wrong. No amount of additional hypotheses (short of
+changing absEval's var case to re-evaluate after lookup) can fix it.
 
 ## Analysis: LR_upcast fuel adequacy
 

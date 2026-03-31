@@ -5,6 +5,38 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-03-31 ochre-lean-20260331-225410: absEval_normalize_stable is FALSE — the LR approach needs restructuring
+
+**Discovery:** The `absEval_normalize_stable` theorem (the planned bridge between
+normalized body' and original body in the lam case of fundamental) is **provably
+false**. A machine-verified counterexample was added to SoundnessS.lean using
+`native_decide`.
+
+**What's false and why:**
+
+The theorem claims: if normalization gives body', and re-evaluating body' gives τ',
+then evaluating the original body at additive fuel also gives τ'. This fails for
+the `var y ≠ x` case because:
+
+1. Normalization looks up var y → gets raw env value v_y (containing sub-expressions)
+2. Re-evaluation evaluates v_y deeply (resolving its internal references)
+3. Direct evaluation looks up var y → returns raw v_y WITHOUT further evaluation
+
+Steps 2 and 3 give different results when v_y contains reducible sub-expressions.
+
+**Also discovered:** WellTyped is NEITHER fuel-monotone NOR fuel-anti-monotone.
+Previous analysis claimed anti-monotonicity. Machine-verified that WellTyped 2 = True
+but WellTyped 1 = False for `.asc .type .type`.
+
+**Impact:** The entire normalize_stable approach to the lam case (pursued across
+sessions 211841 and 220210) was a dead end. The 5 proved cases of normalize_stable
+are correct, but the var y≠x and app cases are not just "hard" — they're impossible.
+
+**Recommended next step:** See PROGRESS.md for Option B (env-based CBV evaluator
+without normalization under binders) and Option C (accept current state).
+
+---
+
 ## 2026-03-31 ochre-lean-20260331-160108: concEvalS — substitution-based concrete evaluator (IMPLEMENTED)
 
 **Decision:** Added `concEvalS` as a second concrete evaluator alongside the existing
