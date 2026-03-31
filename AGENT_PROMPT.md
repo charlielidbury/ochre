@@ -30,9 +30,9 @@ only the repo contents and git history. Therefore:
 
 - **Commit messages are your voice to future agents.** Explain not just WHAT you
   changed but WHY. If you tried something that didn't work, say so.
-- **Update `lean/PROGRESS.md`** at the end of your session with what you did,
+- **Update `PROGRESS.md`** at the end of your session with what you did,
   what's next, and any blockers.
-- **Update `lean/DECISION-LOG.md`** if you made a significant design decision.
+- **Update `DECISION-LOG.md`** if you made a significant design decision.
 - **If something is confusing or surprising, write it down.** The next agent
   won't have your context.
 - Feel free to change the structure of these files if you think a different
@@ -46,7 +46,7 @@ Read these for context (in this order):
 3. `docs/why-och-matters-for-ochre.md` — why your design choices matter for Ochre
 4. `docs/och-spec.md` — the Och specification and test suite
 
-Then read `lean/PROGRESS.md` and the recent git log to see where things stand.
+Then read `PROGRESS.md` and the recent git log to see where things stand.
 
 ## The Lean project
 
@@ -57,8 +57,6 @@ The project is in `lean/`. It contains:
 - `Och/Soundness.lean` — the soundness theorem (you must prove this)
 - `Och/Monotonicity.lean` — the monotonicity theorem (you must prove this)
 - `Och/Tests.lean` — acceptance tests (DO NOT weaken these)
-- `PROGRESS.md` — current status and session log
-- `DECISION-LOG.md` — significant design decisions
 
 Run `cd lean && lake build` to see the current state.
 
