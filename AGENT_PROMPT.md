@@ -47,7 +47,16 @@ Then read `PROGRESS.md` and the recent git log.
 
 ## What to do
 
-Use your judgment. Productive work might include:
+**Do one impactful thing per session.** Read the state, pick the single most
+valuable next step, do it well, commit it, and finish. Do not try to solve
+everything — you are one agent in a long relay. A clean commit with a clear
+handoff is worth more than an ambitious attempt that runs out of context.
+
+If you find yourself stuck for more than a few minutes, stop. Commit what you
+have, document the blocker clearly in PROGRESS.md, and finish. A well-documented
+dead end is progress.
+
+Productive work might include:
 
 - **Deriving typing rules** as natural deduction judgments and writing them up
   in markdown (in `docs/` or a new file)
@@ -90,3 +99,6 @@ is the key research question. Figuring out if this can be made sound is the poin
   human reviewer need to follow your reasoning.
 - Commit early and often. A half-finished derivation that's committed is
   infinitely more useful than a finished one that's lost when your session ends.
+- **Before you finish:** update PROGRESS.md with exactly what the next agent
+  needs to know. Be specific about what you tried, what worked, what didn't,
+  and what the most promising next step is.
