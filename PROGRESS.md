@@ -38,11 +38,14 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **§6.1 data structure tests** — Array construction, head/tail, Vec pack/unpack
 - [x] **§6.2 abstract tests** — abstract Vec/Nat operations with ascription
 - [x] **Concrete recursive fix** — RESOLVED via `concEvalS` (substitution-based evaluator + thunked branches)
-- [ ] **Soundness of concEvalS** — NOT YET PROVEN. Needs logical-relations approach. See DECISION-LOG.md
+- [ ] **Soundness of concEvalS** — FRAMEWORK SET UP in `SoundnessS.lean`. Logical relation
+  (LR) defined, key infrastructure proved (substAll lemmas, closed-value stability,
+  EnvLR). Main theorem stated with 10 sorry's. See SoundnessS.lean for detailed roadmap.
 
 ## Current sorry count
 
-**ZERO** — all proofs complete!
+**ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
+**10** in the new SoundnessS.lean (logical-relations framework, in progress)
 
 ## What remains
 
@@ -208,6 +211,50 @@ references. See DECISION-LOG.md for the detailed analysis with example.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-163117
+What I did:
+- Created `SoundnessS.lean`: logical-relations framework for proving concEvalS sound.
+- Defined `LR` (logical relation): step-indexed, extensional for lambda pairs.
+  Key design: LR level n decoupled from eval fuel. Lambda clause universally
+  quantifies over env Γ (vacuously true for wrong Γ's). Catch-all is True
+  (non-lambda pairs don't arise for well-typed programs).
+- Defined `substAll` and proved distribution lemmas: substAll_app, substAll_asc,
+  substAll_type, substAll_fix — substAll commutes with all Expr constructors.
+- Defined `HasNoFreeVars`/`IsClosed` predicates. Proved `subst_noop_of_not_free`:
+  substituting a variable that isn't free is a no-op. Corollary: `subst_closed_noop`.
+- Proved `substAll_var`: for closed σ values, `substAll (var x) σ = σ.lookup x`.
+  This is the key lemma connecting the substitution model to env lookup.
+- Defined `EnvLR`, proved `envLR_nil` and `envLR_extend`.
+- Proved `concEvalS_value`: values (.lam, .type) self-evaluate under concEvalS.
+- Stated `fundamental` theorem with detailed proof outline in comments. Proved
+  the type case. Set up var case (reduces to a lookup membership sorry).
+- Stated `soundnessS` (top-level corollary for closed terms), proved from fundamental.
+- 10 sorry's remain, all in SoundnessS.lean. Existing proofs untouched (0 sorry).
+
+What's next (in order of priority):
+1. Prove `absEval_normalize_stable` (SoundnessS.lean:214) — THE key bridge lemma.
+   This says: absEval on a normalized body = absEval on the original body (when
+   the neutral binder gets a concrete value). ~80-100 lines, induction on body.
+2. Complete the app case of fundamental — uses the IH at reduced fuel plus
+   absEval_normalize_stable. Also needs substAll commutativity for closed values
+   (showing `(substAll body σ).subst x v = substAll body ((x,v)::σ)` for closed v).
+3. Complete the lam case — construct the LR extensional property using the IH at
+   the inner fuel level. Needs the same substAll commutativity.
+4. Complete the asc case — compose IH on lhs with WellTyped's Subtype' condition.
+5. Complete the fix case — similar to existing fix soundness in Soundness.lean.
+6. Minor: lookup membership lemma for var case (SoundnessS.lean:402).
+
+Key insight documented in comments: the app case of fundamental does NOT use the
+lambda clause of LR. Instead, it applies the IH directly to the body evaluation
+(at reduced fuel), getting LR n — the SAME level, not n-1. The lambda clause is
+only needed by external consumers of soundnessS.
+
+Blockers:
+- absEval_normalize_stable is the critical dependency. Without it, the app and
+  lam cases can't be completed. The proof strategy is induction on body expression,
+  using the fact that normalization with a neutral variable is idempotent when the
+  variable is later given a concrete value.
+
 ## 2026-03-31 ochre-lean-20260331-162003
 What I did:
 - Added `pred'` (Church predecessor) using the standard pair trick:
