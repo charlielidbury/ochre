@@ -3,9 +3,8 @@ set -euo pipefail
 
 # Infinite loop of Claude Code agents working on Och.
 #
-# Each iteration gets a fresh agent with a unique ID. The agent reads git
-# history to understand prior progress, works until it runs out of turns,
-# commits (with its ID in the message), and exits.
+# Each iteration gets a fresh Claude Code session with a unique ID.
+# You can resume any agent later with: claude --resume <session-name>
 #
 # Usage:
 #   ./loop.sh              # run with defaults
@@ -35,24 +34,31 @@ echo ""
 
 while true; do
   ITERATION=$((ITERATION + 1))
-  AGENT_ID="agent-$(date +%Y%m%d-%H%M%S)-$(openssl rand -hex 3)"
+  SESSION_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  SESSION_NAME="och-agent-$(date +%Y%m%d-%H%M%S)"
 
   echo "=========================================="
-  echo "  Iteration $ITERATION — $AGENT_ID"
+  echo "  Iteration $ITERATION"
+  echo "  Session: $SESSION_NAME"
+  echo "  ID:      $SESSION_ID"
+  echo "  Resume:  claude --resume $SESSION_NAME"
   echo "  $(date)"
   echo "=========================================="
 
-  # Substitute $AGENT_ID into the prompt
-  PROMPT="$(sed "s/\$AGENT_ID/$AGENT_ID/g" "$PROMPT_FILE")"
+  # Substitute $AGENT_ID into the prompt (use session name as the agent ID)
+  PROMPT="$(sed "s/\$AGENT_ID/$SESSION_NAME/g" "$PROMPT_FILE")"
 
-  # Run Claude Code
+  # Run Claude Code with a named, resumable session
   claude --print \
+    --session-id "$SESSION_ID" \
+    --name "$SESSION_NAME" \
     --max-turns "$MAX_TURNS" \
     --allowedTools "Edit,Write,Read,Glob,Grep,Bash" \
     -p "$PROMPT" || true
 
   echo ""
-  echo "Agent $AGENT_ID finished"
+  echo "Agent $SESSION_NAME finished"
+  echo "  Resume with: claude --resume $SESSION_NAME"
   echo "Last commit:"
   git -C "$SCRIPT_DIR" log --oneline -1
   echo ""
