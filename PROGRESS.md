@@ -45,7 +45,11 @@ Current status of the Och mechanization. Updated by agents after each session.
 ## Current sorry count
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**4** in SoundnessS.lean: absEval_normalize_stable, LR_upcast fuel adequacy, lam, fix
+**6** in SoundnessS.lean:
+- 1 in absEval_normalize_stable (reformulated with additive fuel)
+- 3 in LR_upcast (only the hard lam-lam subcases; refl/top PROVED)
+- 1 in fundamental lam case
+- 1 in fundamental fix case
 
 ## New this session (ochre-lean-20260331-211841)
 
@@ -61,6 +65,9 @@ Current status of the Och mechanization. Updated by agents after each session.
   body check vacuously True. At higher fuel, it succeeds and the body is checked.
   This means the additive-fuel approach to the lam case cannot directly use
   the corrected normalize_stable.
+- **Partially proved LR_upcast fuel adequacy**: case-split by Subtype' constructor.
+  Proved refl (contradiction) and top (τ₁'=.type→True). Only lam-lam subcases
+  of lam_body, app_cong, fix_cong remain sorry'd.
 - **Deep analysis** of why the lam case is the hardest remaining problem.
   See "Analysis: the lam case" below.
 
@@ -71,10 +78,11 @@ Current status of the Och mechanization. Updated by agents after each session.
      The old formulation (absEval body' = absEval body at same fuel) was FALSE.
      The new one needs a careful inductive proof; even the var case requires
      showing that env values are "absEval fixpoints." See detailed analysis below.
-   - **LR_upcast fuel adequacy** (line ~639): The lam_body case of LR_upcast
-     when absEval succeeds for body₁ but fails for body₂. The Subtype'.refl
-     case is impossible (contradiction), and .top gives τ₁'=.type→LR=True.
-     The hard case is .lam_body where both v' and τ₁' are lambdas.
+   - **LR_upcast fuel adequacy** (3 sorry's, lines ~721,731,741): Partially
+     proved. refl→contradiction (DONE), top→True (DONE). Remaining: when
+     both v' and τ₁' are lambdas under lam_body/app_cong/fix_cong. These
+     need the extensional LR property but we can't derive it from the
+     hypothesis (body₂ didn't evaluate).
    - **lam case** (line ~727): Blocked on normalize_stable + the universal Γ
      in the LR lambda clause. See "Analysis: the lam case" below.
    - **fix case** (line ~748): `.fix inner` is not `IsValue`, so extending σ
