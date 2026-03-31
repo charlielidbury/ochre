@@ -15,8 +15,9 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] Negative tests (§6.3) uncommented and passing
 - [x] Transparency tests (§6.4) uncommented and passing
 - [x] `Subtype'` inductive relation has function subtyping rules (lam_body, app_cong)
-- [ ] Soundness theorem proven (no sorry) — **var/type/lam/asc/stuck-app done; beta-app sorry**
-- [ ] Monotonicity theorem proven (no sorry) — **var/lam/type/asc/stuck-app done; beta-app sorry**
+- [x] Closure-based evaluator (env extension instead of substitution for app)
+- [ ] Soundness theorem proven (no sorry) — **var/type/lam/asc/stuck-app done; 3 sorry in app**
+- [ ] Monotonicity theorem proven (no sorry) — **var/lam/type/asc/stuck-app done; 3 sorry in app**
 - [ ] Prop 5.2.9 regression test formalized and passing
 
 ## Current sorry count
@@ -26,50 +27,75 @@ Current status of the Och mechanization. Updated by agents after each session.
 | Soundness.lean | 3 | app: lam-lam, lam-nonlam, nonlam-lam |
 | Monotonicity.lean | 3 | app: lam-lam, lam-nonlam, nonlam-lam |
 
-All sorries are the same structural issue: after beta-reduction, the two
-evaluators (or two envs) produce different substituted expressions, and
-the IH requires the same expression. See "Current blockers" below.
+## Critical path forward: remove trans from Subtype'
 
-## Current blockers
+The remaining 6 sorries are all blocked by the same issue: the IH gives
+`Subtype' (lam x dom body₂) (lam x dom body₁)` but we need to extract
+`Subtype' body₂ body₁` (lambda inversion). This fails because `Subtype'`
+includes `trans`, and `trans` can go through arbitrary intermediate terms,
+making inversion unsound.
 
-### The app-after-beta problem (blocks both Soundness and Monotonicity)
+### Recommended fix (next agent should do this):
 
-When `f` evaluates to a lambda and we beta-reduce, the two sides of the
-proof work with different substituted expressions:
+1. **Remove `trans` from `Subtype'`**. The resulting relation is directly
+   invertible: `lam ⊑ lam` can only be `refl` or `lam_body`.
 
-**Monotonicity:** `body₁.subst x₁ a₁` vs `body₂.subst x₂ a₂` (same source f,
-different envs produce different normalized bodies and args). The IH covers
-the same expression in different envs, but not different expressions.
+2. **Define `SubtypeTrans`** as the transitive closure of `Subtype'`:
+   ```lean
+   inductive SubtypeTrans : Expr → Expr → Prop
+     | step : Subtype' a b → SubtypeTrans a b
+     | trans : SubtypeTrans a b → SubtypeTrans b c → SubtypeTrans a c
+   ```
 
-**Soundness:** `body_a.subst x_a a_a` vs `body_c.subst x_c a_c` (same source f,
-but absEval and concEval diverge at ascriptions inside f's body, producing
-different lambda bodies).
+3. **Use `SubtypeTrans` in soundness** (the asc case needs transitivity)
+   and in `WellTyped` and `EnvConsistent`.
 
-### Potential approaches
+4. **Prove monotonicity with `Subtype'`** (no trans). The proof structure:
+   - Generalize to `absEval_mono`: related expressions AND related envs
+   - Case-split on Subtype' proof (clean inversion, no trans)
+   - lam-lam app case: invert lam ⊑ lam → body₂ ⊑ body₁ → apply IH
+   - Standard monotonicity is a corollary (with Subtype'.refl)
 
-1. **Substitution monotonicity lemma:** Prove that if body₂ ⊑ body₁ and v₂ ⊑ v₁,
-   then absEval Γ₂ (body₂.subst x v₂) ⊑ absEval Γ₁ (body₁.subst x v₁). This
-   is essentially monotonicity generalized to different expressions.
+5. **The closure-based evaluator is already in place** (this session).
+   After beta-reduction, both sides evaluate the same `body` expression
+   (just with different env extensions), making the IH applicable.
 
-2. **Substitution-environment equivalence:** Prove absEval Γ (body.subst x v) =
-   absEval ((x,v)::Γ) body. Then the IH applies (same body, different env).
-   Doesn't hold directly because substitution replaces x with v which then gets
-   re-evaluated, while env-based just returns v.
+### Why this works
 
-3. **Closure-based evaluator:** Redesign absEval to use closures/environments
-   instead of substitution. Then beta-reduction extends the env rather than
-   substituting, and the IH applies (same body in both cases).
+With closure-based eval + no-trans Subtype':
+```
+App case of monotonicity:
+  f evals in Γ₁ → lam x dom body₁
+  f evals in Γ₂ → lam x dom body₂  
+  By IH: lam x dom body₂ ⊑ lam x dom body₁  (Subtype', no trans)
+  Invert: body₂ ⊑ body₁  ← NOW POSSIBLE (no trans to worry about)
+  
+  a evals in Γ₁ → a₁, a evals in Γ₂ → a₂. By IH: a₂ ⊑ a₁.
+  
+  Beta in Γ₁: absEval ((x, a₁) :: Γ₁) body₁  ← closure, not subst
+  Beta in Γ₂: absEval ((x, a₂) :: Γ₂) body₂  ← closure, not subst
+  
+  EnvSub: ((x, a₂) :: Γ₂) ⊑ ((x, a₁) :: Γ₁) ✓ (a₂ ⊑ a₁, Γ₂ ⊑ Γ₁)
+  ExprSub: body₂ ⊑ body₁ ✓ (from inversion)
+  
+  By generalized IH: τ₂ ⊑ τ₁ ✓
+```
 
-4. **Beta-subtyping rule:** Add Subtype' rules relating redexes to their reducts.
-   E.g., `app (lam x dom body) a ⊑ body.subst x a`. Helps with mixed cases
-   (one side beta-reduces, the other is stuck).
+## Current blockers (lesser)
+
+### Mixed lam/non-lam cases in app
+
+When one side produces a lambda and the other doesn't (e.g., Γ₁ has a
+stuck variable but Γ₂ has it resolved to a lambda). These cases are
+rare and may be eliminated by proving that if f₂ ⊑ f₁ (no trans) and
+f₁ is a lambda, then f₂ must also be a lambda. Verify this by checking
+that no Subtype' constructor sends a non-lam to a lam.
 
 ### The dependent domain issue
 
 When a lambda domain depends on a narrowed variable, contravariant domain
-checking fails. E.g., `λx:3. x ⊑ λx:Nat. x` fails because 3 ⊑ Nat but
-Nat ⊑ 3 doesn't hold (contravariance). Related to Ochre Prop 5.2.9.
-Mitigated by NOT normalizing domains in absEval.
+checking fails. Related to Ochre Prop 5.2.9. Mitigated by NOT normalizing
+domains in absEval.
 
 ## Session log
 
@@ -79,21 +105,23 @@ What I did:
 - Implemented normalization under binders in absEval (key for succ 2 = 3)
 - Implemented pointwise subCheck with inferType for neutral terms
 - Added Subtype' rules: lam_body, app_cong (for monotonicity proof)
-- Proved monotonicity for var, lam, type, asc cases; partial app case
-  (stuck-stuck sub-case proven, beta sub-case sorry)
+- Proved monotonicity for var, lam, type, asc, stuck-app cases
 - Made concEval parallel to absEval (takes env, normalizes under binders)
 - Defined WellTyped predicate for soundness precondition
 - Proved soundness for var, type, lam, asc, stuck-app cases
-- Added extensive tests: add, isZero, double, Church numerals, subtyping
-- All tests pass (25+ test examples)
+- Switched from substitution to closure-based evaluation (env extension)
+  in both absEval and concEval app cases. All tests pass.
+- Added 25+ test examples (add, isZero, double, Church numerals, subtyping)
+- Identified the path forward: remove trans from Subtype' to enable
+  lambda inversion, then the app case proof goes through
 
 What's next:
-- Resolve the app-after-beta problem (see blockers above)
-- Option 3 (closure-based evaluator) is most promising for provability
-- Formalize the Prop 5.2.9 regression test
-- Consider adding beta-subtyping rules to handle mixed lam/non-lam cases
+- Remove trans from Subtype', add SubtypeTrans (see "Critical path forward")
+- Prove the generalized monotonicity (absEval_mono) using lambda inversion
+- Prove soundness app case using the same technique
+- Handle mixed lam/non-lam cases (may require proving they can't occur)
 
 Blockers:
-- The substitution-based evaluator makes the app case unprovable without
-  additional lemmas. A closure-based redesign would fix this structurally.
+- trans in Subtype' prevents lambda inversion (the core issue)
+- Mixed lam/non-lam app cases (minor, may be eliminable)
 ```

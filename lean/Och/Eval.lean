@@ -53,7 +53,7 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
     | .app f a      =>
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
-        concEval fuel γ (body.subst x aVal)
+        concEval fuel ((x, aVal) :: γ) body
       | some f', some a' => some (.app f' a')
       | _, _ => none
 
@@ -83,6 +83,11 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
     | .app f a      =>
       match absEval fuel Γ f, absEval fuel Γ a with
       | some (.lam x _dom body), some aVal =>
-        absEval fuel Γ (body.subst x aVal)
+        -- Environment-based beta: extend env instead of substituting.
+        -- body was already normalized under [(x, var x) :: Γ_def], so x
+        -- appears as (var x). Extending env with (x, aVal) resolves it.
+        -- This approach keeps the SAME body in both sides of monotonicity/
+        -- soundness proofs, making the IH directly applicable.
+        absEval fuel ((x, aVal) :: Γ) body
       | some f', some a' => some (.app f' a')  -- stuck
       | _, _ => none

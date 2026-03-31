@@ -103,27 +103,62 @@ Future work could move the check into absEval itself.
 
 ---
 
-## 2026-03-31 och-agent-20260331-120514: Closure-based evaluator recommended
+## 2026-03-31 och-agent-20260331-120514: Closure-based evaluator (IMPLEMENTED)
 
-**Decision:** (NOT YET IMPLEMENTED) The substitution-based evaluator should be
-redesigned to use closures/environments for beta-reduction.
+**Decision:** Changed absEval and concEval app cases from substitution-based
+(`absEval Γ (body.subst x aVal)`) to environment-based (`absEval ((x, aVal) :: Γ) body`).
 
-**Why:** The app case in both Soundness and Monotonicity is unprovable with the
-current substitution-based approach. After beta-reduction, the two sides have
-DIFFERENT expressions (body₁.subst x v₁ vs body₂.subst x v₂), and the IH
-requires the SAME expression. A closure-based evaluator would extend the env
-instead of substituting, keeping the same body expression in both sides.
+**Why:** With substitution, the two sides of monotonicity/soundness proofs work
+with DIFFERENT expressions (body₁.subst x v₁ vs body₂.subst x v₂), and the IH
+requires the same expression. With env extension, both sides evaluate the same
+`body` in different envs, making the IH applicable (after solving the inversion
+issue — see next decision).
+
+**Result:** All 25+ tests pass with the closure-based approach. The normalized
+body has no free references to env variables (they were resolved during
+normalization under binders), so only the `(x, aVal)` binding matters.
+
+**Alternatives considered:** See previous entry.
+
+**Implications:** The app case proof now only needs lambda inversion (extracting
+body₂ ⊑ body₁ from lam ⊑ lam). This is blocked by trans in Subtype' — see
+next decision.
+
+---
+
+## 2026-03-31 och-agent-20260331-120514: Remove trans from Subtype' (RECOMMENDED)
+
+**Decision:** (NOT YET IMPLEMENTED) trans should be removed from the Subtype'
+inductive and placed in a separate SubtypeTrans wrapper.
+
+**Why:** Lambda inversion (`Subtype' (lam x dom b₂) (lam x dom b₁) → Subtype' b₂ b₁`)
+is needed for the app case of monotonicity. With trans in Subtype', inversion fails
+because `lam ⊑ lam` could be proved via `lam ⊑ mid ⊑ lam` where `mid` is any term.
+Without trans, the only ways to prove `lam ⊑ lam` are `refl` and `lam_body`, both
+of which give us `body₂ ⊑ body₁`.
+
+**Implementation plan:**
+1. Remove `trans` from `Subtype'`
+2. Define `SubtypeTrans` as transitive closure of `Subtype'`
+3. `EnvSub` and `EnvConsistent` can use either (choose based on proof needs)
+4. Soundness uses `SubtypeTrans` (needs trans for asc case)
+5. Monotonicity produces `Subtype'` (no trans, enables lambda inversion)
+6. Generalize monotonicity to `absEval_mono`: takes `Subtype' e₂ e₁` + `EnvSub Γ₂ Γ₁`
+   as inputs, produces `Subtype' τ₂ τ₁`. Standard monotonicity is the corollary
+   with `Subtype'.refl`.
+
+**Why this unblocks everything:**
+The lam-lam app case of monotonicity becomes:
+- IH gives: `lam x dom body₂ ⊑ lam x dom body₁` (Subtype', no trans)
+- Invert: `body₂ ⊑ body₁` ✓
+- Extended envs: `((x, a₂) :: Γ₂) ⊑ ((x, a₁) :: Γ₁)` ✓
+- Generalized IH: `τ₂ ⊑ τ₁` ✓
 
 **Alternatives considered:**
-- Substitution monotonicity lemma. Hard to state and prove.
-- Logical relations / step-indexed argument. Very complex.
-- Beta-subtyping rules. Helps with mixed cases but not the core issue.
+- Induction on Subtype' proof to prove inversion. Fails at trans case.
+- Strong monotonicity with Subtype' (including trans). Trans case requires
+  intermediate term to evaluate, which isn't guaranteed.
+- Mutual induction with absEval_subtype_input lemma. Also circular at trans.
 
-**Implications:** This is the most impactful change for future agents. Requires:
-1. Change app case of absEval: `absEval ((x, aVal) :: Γ) body` instead of
-   `absEval Γ (body.subst x aVal)`
-2. Prove that the new evaluator gives equivalent results (tests still pass)
-3. The monotonicity and soundness proofs should then go through for the app case
-4. Need to handle the interaction between env-based eval and normalization
-   under binders (body was already normalized, so re-evaluating in new env
-   might produce different results)
+**Implications:** subCheck (the Bool decision procedure) doesn't use Subtype',
+so tests are unaffected. Only the proof-level Subtype' changes.
