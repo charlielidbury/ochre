@@ -54,6 +54,7 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
         concEval fuel ((x, aVal) :: γ) body
+      | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')
       | _, _ => none
 
@@ -89,5 +90,6 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
         -- This approach keeps the SAME body in both sides of monotonicity/
         -- soundness proofs, making the IH directly applicable.
         absEval fuel ((x, aVal) :: Γ) body
+      | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')  -- stuck
       | _, _ => none

@@ -71,6 +71,112 @@ theorem Subtype'.lam_rhs_shape {x : Name} {dom body : Expr} {e : Expr}
   | refl => exact ⟨body, rfl, Subtype'.refl body⟩
   | lam_body h => exact ⟨_, rfl, h⟩
 
+/-- If `Subtype' (lam x d b) e` then `e` is either a lam or Type.
+    Used to eliminate impossible mixed cases in monotonicity. -/
+theorem Subtype'.lam_lhs_cases {x : Name} {dom body : Expr} {e : Expr}
+    (h : Subtype' (.lam x dom body) e) :
+    (∃ body', e = .lam x dom body' ∧ Subtype' body body') ∨ e = .type := by
+  cases h with
+  | refl => exact Or.inl ⟨body, rfl, Subtype'.refl body⟩
+  | top _ => exact Or.inr rfl
+  | lam_body h => exact Or.inl ⟨_, rfl, h⟩
+
+/-- Helper: generalized lam target shape with variable target. -/
+private theorem SubtypeTrans.lam_target_shape_aux {e b : Expr}
+    (h : SubtypeTrans e b) :
+    ∀ {x : Name} {dom body : Expr}, b = .lam x dom body →
+    ∃ body', e = .lam x dom body' ∧ SubtypeTrans body' body := by
+  induction h with
+  | step h' =>
+    intro x dom body hb; subst hb
+    obtain ⟨body', eq, hsub⟩ := Subtype'.lam_rhs_shape h'
+    exact ⟨body', eq, .step hsub⟩
+  | trans _ _ ih₁ ih₂ =>
+    intro x dom body hb
+    obtain ⟨b_mid, eq_mid, h_mid_b⟩ := ih₂ hb
+    obtain ⟨b', eq', h_b'_mid⟩ := ih₁ eq_mid
+    exact ⟨b', eq', .trans h_b'_mid h_mid_b⟩
+
+/-- If `SubtypeTrans e (lam x d b)` then e is a lam with same name/domain. -/
+theorem SubtypeTrans.lam_target_shape {x : Name} {dom body : Expr} {e : Expr}
+    (h : SubtypeTrans e (.lam x dom body)) :
+    ∃ body', e = .lam x dom body' ∧ SubtypeTrans body' body :=
+  h.lam_target_shape_aux rfl
+
+/-- Lambda inversion for SubtypeTrans. -/
+theorem SubtypeTrans.lam_inv {x : Name} {dom body₁ body₂ : Expr}
+    (h : SubtypeTrans (.lam x dom body₂) (.lam x dom body₁)) :
+    SubtypeTrans body₂ body₁ := by
+  obtain ⟨body', eq, hsub⟩ := h.lam_target_shape
+  cases eq; exact hsub
+
+/-- Helper: generalized app target shape with variable target. -/
+private theorem SubtypeTrans.app_target_shape_aux {e b : Expr}
+    (h : SubtypeTrans e b) :
+    ∀ {f a : Expr}, b = .app f a →
+    ∃ f' a', e = .app f' a' ∧ SubtypeTrans f' f ∧ SubtypeTrans a' a := by
+  induction h with
+  | step h' =>
+    intro f a hb; subst hb
+    cases h' with
+    | refl => exact ⟨f, a, rfl, .step (.refl f), .step (.refl a)⟩
+    | app_cong hf ha => exact ⟨_, _, rfl, .step hf, .step ha⟩
+  | trans _ _ ih₁ ih₂ =>
+    intro f a hb
+    obtain ⟨f_mid, a_mid, eq_mid, hf_mid, ha_mid⟩ := ih₂ hb
+    obtain ⟨f', a', eq', hf', ha'⟩ := ih₁ eq_mid
+    exact ⟨f', a', eq', .trans hf' hf_mid, .trans ha' ha_mid⟩
+
+/-- If `SubtypeTrans e (app f a)` then e is an app with related parts. -/
+theorem SubtypeTrans.app_target_shape {f a : Expr} {e : Expr}
+    (h : SubtypeTrans e (.app f a)) :
+    ∃ f' a', e = .app f' a' ∧ SubtypeTrans f' f ∧ SubtypeTrans a' a :=
+  h.app_target_shape_aux rfl
+
+/-- If every Subtype' step into `b` is refl, then SubtypeTrans e b → e = b. -/
+theorem SubtypeTrans.eq_of_rigid_target {e b : Expr}
+    (h : SubtypeTrans e b)
+    (rigid : ∀ a, Subtype' a b → a = b) :
+    e = b := by
+  induction h with
+  | step h' => exact rigid _ h'
+  | trans _ _ ih₁ ih₂ =>
+    have hmid := ih₂ rigid
+    subst hmid
+    exact ih₁ rigid
+
+/-- If `SubtypeTrans e (var x)` then `e = var x`. -/
+theorem SubtypeTrans.var_target {x : Name} {e : Expr}
+    (h : SubtypeTrans e (.var x)) : e = .var x :=
+  h.eq_of_rigid_target (fun _ h => by cases h with | refl => rfl)
+
+/-- If `SubtypeTrans e (asc t τ)` then `e = asc t τ`. -/
+theorem SubtypeTrans.asc_target {t τ : Expr} {e : Expr}
+    (h : SubtypeTrans e (.asc t τ)) : e = .asc t τ :=
+  h.eq_of_rigid_target (fun _ h => by cases h with | refl => rfl)
+
+/-- Congruence for app through SubtypeTrans (left component). -/
+private theorem SubtypeTrans.app_cong_left {f₁ f₂ : Expr} (a : Expr)
+    (hf : SubtypeTrans f₂ f₁) :
+    SubtypeTrans (.app f₂ a) (.app f₁ a) := by
+  induction hf with
+  | step h => exact .step (.app_cong h (.refl a))
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Congruence for app through SubtypeTrans (right component). -/
+private theorem SubtypeTrans.app_cong_right (f : Expr) {a₁ a₂ : Expr}
+    (ha : SubtypeTrans a₂ a₁) :
+    SubtypeTrans (.app f a₂) (.app f a₁) := by
+  induction ha with
+  | step h => exact .step (.app_cong (.refl f) h)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Congruence for app through SubtypeTrans. -/
+theorem SubtypeTrans.app_cong {f₁ f₂ a₁ a₂ : Expr}
+    (hf : SubtypeTrans f₂ f₁) (ha : SubtypeTrans a₂ a₁) :
+    SubtypeTrans (.app f₂ a₂) (.app f₁ a₁) :=
+  .trans (app_cong_left a₂ hf) (app_cong_right f₁ ha)
+
 /-- Infer the type of a neutral term from a typing context.
     Variables have their declared type; applications use the function's
     return type (substituting the argument). -/

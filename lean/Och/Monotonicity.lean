@@ -100,26 +100,26 @@ theorem absEval_mono
                   exact ih _ _ body₁ body₂ _ _ hbody_sub
                     (envSub_extend_sub h_env x₁ ha_sub) h₁ h₂
                 | var v₁ =>
-                  -- Stuck. Case f₂:
                   cases f₂ with
-                  | lam _ _ _ => sorry -- mixed case
+                  | lam _ _ _ => cases hf_sub  -- Subtype' (lam ..) (var ..) impossible
+                  | type => cases hf_sub       -- Subtype' .type (var ..) impossible
                   | _ => simp only at h₁ h₂; cases h₁; cases h₂
                          exact Subtype'.app_cong hf_sub ha_sub
                 | app _ _ =>
                   cases f₂ with
-                  | lam _ _ _ => sorry
+                  | lam _ _ _ => cases hf_sub
+                  | type => cases hf_sub
                   | _ => simp only at h₁ h₂; cases h₁; cases h₂
                          exact Subtype'.app_cong hf_sub ha_sub
                 | asc _ _ =>
                   cases f₂ with
-                  | lam _ _ _ => sorry
+                  | lam _ _ _ => cases hf_sub
+                  | type => cases hf_sub
                   | _ => simp only at h₁ h₂; cases h₁; cases h₂
                          exact Subtype'.app_cong hf_sub ha_sub
                 | type =>
-                  cases f₂ with
-                  | lam _ _ _ => sorry
-                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                         exact Subtype'.app_cong hf_sub ha_sub
+                  -- f₁=.type: evaluator returns .type (type-app-returns-type)
+                  simp only at h₁; cases h₁; exact Subtype'.top τ₂
     | .top e =>
       simp [absEval] at h₁; rw [← h₁]; exact Subtype'.top τ₂
     | .lam_body hbody =>
@@ -162,24 +162,25 @@ theorem absEval_mono
                   (envSub_extend_sub h_env x₁ ha_sub) h₁ h₂
               | var v₁ =>
                 cases f₂ with
-                | lam _ _ _ => sorry
+                | lam _ _ _ => cases hf_sub
+                | type => cases hf_sub
                 | _ => simp only at h₁ h₂; cases h₁; cases h₂
                        exact Subtype'.app_cong hf_sub ha_sub
               | app _ _ =>
                 cases f₂ with
-                | lam _ _ _ => sorry
+                | lam _ _ _ => cases hf_sub
+                | type => cases hf_sub
                 | _ => simp only at h₁ h₂; cases h₁; cases h₂
                        exact Subtype'.app_cong hf_sub ha_sub
               | asc _ _ =>
                 cases f₂ with
-                | lam _ _ _ => sorry
+                | lam _ _ _ => cases hf_sub
+                | type => cases hf_sub
                 | _ => simp only at h₁ h₂; cases h₁; cases h₂
                        exact Subtype'.app_cong hf_sub ha_sub
               | type =>
-                cases f₂ with
-                | lam _ _ _ => sorry
-                | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                       exact Subtype'.app_cong hf_sub ha_sub
+                -- f₁=.type: evaluator returns .type (type-app-returns-type)
+                simp only at h₁; cases h₁; exact Subtype'.top τ₂
 
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)

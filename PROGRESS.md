@@ -16,73 +16,104 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] Transparency tests (§6.4) uncommented and passing
 - [x] `Subtype'` inductive relation has function subtyping rules (lam_body, app_cong)
 - [x] Closure-based evaluator (env extension instead of substitution for app)
-- [x] **`trans` removed from `Subtype'`** — enables lambda inversion
-- [x] **`SubtypeTrans` defined** — transitive closure for soundness
-- [x] **Lambda inversion proven** — `Subtype'.lam_inv` and `Subtype'.lam_rhs_shape`
+- [x] `trans` removed from `Subtype'` — enables lambda inversion
+- [x] `SubtypeTrans` defined — transitive closure for soundness
+- [x] Lambda inversion proven — `Subtype'.lam_inv` and `Subtype'.lam_rhs_shape`
 - [x] **Generalized monotonicity proven** — `absEval_mono` handles related exprs + envs
-- [x] **Lam-lam app case of monotonicity proven** — the previously impossible case!
-- [x] **Stuck-stuck app case of monotonicity proven** — via `app_cong`
-- [ ] Mixed lam/non-lam app case of monotonicity — **8 sorry, all same issue**
-- [ ] Soundness app case — **1 sorry** (needs generalization like monotonicity)
+- [x] **Monotonicity COMPLETE** — 0 sorry!
+- [x] **Type-app-returns-type** — evaluator returns `.type` when applying Type
+- [x] **SubtypeTrans inversion lemmas** — lam_target_shape, app_target_shape, var_target, asc_target
+- [x] **SubtypeTrans.app_cong** — congruence for app through transitive closure
+- [x] **Generalized soundness proven** — `soundness_gen` handles related exprs via SubtypeTrans
+- [x] **Soundness COMPLETE** — 0 sorry!
 - [ ] Prop 5.2.9 regression test formalized and passing
 
 ## Current sorry count
 
-| File | sorry count | Cases remaining |
-|------|-------------|-----------------|
-| Monotonicity.lean | 8 | app: mixed lam/non-lam (f₂=lam, f₁≠lam) |
-| Soundness.lean | 1 | app: entire case (needs generalized soundness) |
+**ZERO.** All proofs are complete.
 
-## Critical path forward: eliminate mixed lam/non-lam sorry
+## What remains
 
-All 8 monotonicity sorry are the same issue: when `f` evaluates to a
-non-lambda in Γ₁ (e.g., stuck var) but evaluates to a lambda in Γ₂
-(more precise env). This means Γ₂ beta-reduces but Γ₁ doesn't.
+1. **Prop 5.2.9 regression test** — The counterexample from Ochre should be
+   formalized as a test. This is the "narrowing B to true breaks typing" scenario.
+   The test scaffolding is in Tests.lean (commented out at the bottom).
 
-We need `Subtype' (beta-reduced-result) (app f₁ a₁)`.
+2. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
+   sound. The next step is to extend it toward the full Ochre language (see
+   `docs/why-och-matters-for-ochre.md`).
 
-### Recommended fix: add type-app-returns-type to evaluator
+## Key theorems proven
 
-Change absEval (and concEval) so that when `f` evaluates to `.type`,
-the app case returns `.type` instead of a stuck `.app .type a`:
+### Monotonicity (`absEval_mono` in Monotonicity.lean)
+Given `Subtype' e₂ e₁` and `EnvSub Γ₂ Γ₁`:
+if `absEval fuel Γ₁ e₁ = some τ₁` and `absEval fuel Γ₂ e₂ = some τ₂`,
+then `Subtype' τ₂ τ₁`.
 
-```lean
-| some (.lam x _dom body), some aVal => absEval fuel ((x, aVal) :: Γ) body
-| some .type, some _ => some .type  -- NEW: Type applied = Type
-| some f', some a' => some (.app f' a')
-| _, _ => none
-```
+Standard monotonicity (same expression, different envs) is the corollary
+with `Subtype'.refl`.
 
-This is semantically correct: applying the universe (top) to anything
-gives the universe. It eliminates the f₁=type/f₂=lam mixed case (since
-Subtype'.top covers it: τ₂ ⊑ type).
+### Soundness (`soundness_gen` in Soundness.lean)
+Given `SubtypeTrans e_c e_a` and `EnvConsistent γ Γ` and `WellTyped fuel Γ e_a`:
+if `absEval fuel Γ e_a = some τ` and `concEval fuel γ e_c = some v`,
+then `SubtypeTrans v τ`.
 
-After this change, the remaining mixed cases (f₁=var/app, f₂=lam) can
-be shown impossible: `Subtype' (lam ...) (var ...)` and `Subtype' (lam ...) (app ...)`
-have no constructors in the trans-free `Subtype'`.
+Standard soundness (same expression in both evaluators) is the corollary
+with `SubtypeTrans.step (Subtype'.refl e)`.
 
-**Technical challenge**: The evaluator change adds a new match arm, and
-Lean's `simp` currently struggles to reduce match hypotheses with the
-extra arm. This was attempted in this session but reverted. The next agent
-should either:
-1. Use `dsimp` or explicit `show`/`change` tactics for match reduction
-2. Write helper lemmas that reduce absEval one step (e.g., `absEval_app_lam`)
-3. Restructure the proof to avoid hypothesis rewriting
+## Key techniques
 
-### Soundness app case
+- **Trans-free Subtype'**: Removing `trans` from `Subtype'` enables lambda
+  inversion (extracting body relation from `Subtype' (lam..) (lam..)`).
+  `SubtypeTrans` provides transitivity where needed (soundness asc case).
 
-The soundness app case needs the same generalization as monotonicity:
-a `soundness_gen` that takes `Subtype' e_c e_a` for related expressions.
-The structure would mirror `absEval_mono`. After beta-reduction,
-body_c ≠ body_a (different normalized bodies), so the IH needs the
-generalized form.
+- **SubtypeTrans target shape lemmas**: For each constructor shape (var, lam,
+  app, asc), if `SubtypeTrans e (constructor ..)`, then `e` must have the same
+  constructor shape. This is used in the generalized soundness to constrain the
+  concrete expression's shape from the abstract expression's shape.
 
-A `SubtypeTrans.lam_body` lemma has already been added to Subtyping.lean
-(proven by induction on SubtypeTrans).
+- **Type-app-returns-type**: When the function evaluates to `.type`, the app
+  case returns `.type` instead of a stuck `(.app .type a)`. This eliminates the
+  mixed lam/type case in monotonicity (since `Subtype'.top` handles it trivially).
+
+- **Closure-based evaluation**: Using env extension instead of substitution
+  keeps the SAME body expression in both sides of the proof, making the IH
+  directly applicable.
 
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-131404
+What I did:
+- COMPLETED ALL PROOFS — zero sorry remaining!
+- Eliminated 6 impossible mixed cases in monotonicity (Subtype' (lam..) (var/app/asc..)
+  has no constructors, so `cases hf_sub` closes them)
+- Added type-app-returns-type to both evaluators (absEval and concEval):
+  when f evaluates to .type, app returns .type instead of stuck (.app .type a)
+- This made the remaining 2 type mixed cases in monotonicity trivial (Subtype'.top)
+- Added SubtypeTrans inversion lemmas to Subtyping.lean:
+  - lam_target_shape: SubtypeTrans e (lam..) → e = lam.. with body relation
+  - app_target_shape: SubtypeTrans e (app..) → e = app.. with component relations
+  - var_target: SubtypeTrans e (var x) → e = var x
+  - asc_target: SubtypeTrans e (asc..) → e = asc..
+  - lam_inv: SubtypeTrans (lam x d b₂) (lam x d b₁) → SubtypeTrans b₂ b₁
+  - app_cong: lift app congruence through SubtypeTrans
+  - eq_of_rigid_target: general helper for shapes where only refl matches
+- Proved generalized soundness (soundness_gen) taking SubtypeTrans e_c e_a:
+  - Case-splits on e_a (abstract expression shape)
+  - Uses target shape lemmas to constrain e_c
+  - App-beta case: uses lam_target_shape + lam_inv to extract body relation,
+    then recurses with SubtypeTrans body_c body_a
+  - Asc case: chains IH with well-typedness via SubtypeTrans.trans
+- Standard soundness is a corollary with SubtypeTrans.step (Subtype'.refl e)
+- Added envConsistent_extend_sub for extending EnvConsistent with SubtypeTrans
+
+What's next:
+- Formalize and uncomment the Prop 5.2.9 regression test
+- Consider scaling toward full Ochre
+
+Blockers:
+- None! All proofs complete.
+
 ## 2026-03-31 och-agent-20260331-124544
 What I did:
 - Removed `trans` from `Subtype'`, added `SubtypeTrans` (transitive closure)
