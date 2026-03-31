@@ -1,33 +1,42 @@
 # Extend Och gradually until it's ready
 
-## Prove soundness of concEvalS
+## Prove soundness of concEvalC (closure-based evaluator)
 
-`concEvalS` (substitution-based concrete evaluator, Eval.lean) correctly handles
-concrete recursive fix with thunked branches. But it has no soundness proof.
+`concEvalC` (closure-based concrete evaluator, Closure.lean) correctly handles
+concrete recursive fix with thunked branches AND captures definition-site envs
+for correct higher-order behavior. Its soundness theorem is stated but sorry'd.
 
-**Why it's hard:** `concEvalS` uses substitution; `absEval` uses environments.
-The current soundness proof relies on both evaluators processing the SAME body
-expression in different envs. With substitution, the concrete side evaluates
-`body.subst x v` while the abstract side evaluates `body` in `(x,τ)::Γ`.
-These are structurally incompatible for a simple inductive proof.
+**Why it's promising:** The lam case of soundness reduces to MONOTONICITY (same
+body, related envs) rather than the impossible `absEval_normalize_stable` that
+blocked the concEvalS approach. Readback normalizes the closure's body using
+absEval in the captured env, producing the same structure as absEval's output.
 
-**Recommended approach: Logical relations.**
-Define `Sound : Nat → Expr → Expr → Prop`:
-- For non-lambdas: `SubtypeTrans v τ`
-- For lambdas: when applied to Sound arguments, the results are Sound
+**The remaining gap:** `absEval_mono` uses `Subtype'` (single step) in `EnvSub`,
+but the IH from the asc case gives `SubtypeTrans` (transitive closure). Options:
 
-This decouples the lam case (no body comparison) and handles the structural
-mismatch at application sites. The proof would be by strong induction on fuel.
+1. **Prove `absEval_mono_env_trans`** — monotonicity with `SubtypeTrans` envs.
+   Follows the same induction as `absEval_mono`. The var case directly uses
+   SubtypeTrans from the env. Other cases lift Subtype' to SubtypeTrans.step.
+   **Challenge:** the app-beta case needs the SAME expression on both sides, but
+   SubtypeTrans.lam_target_shape gives different bodies. May need to decompose
+   into a chain of Subtype' steps and show absEval succeeds at each intermediate.
 
-**Estimated effort:** 200-300 lines. The relation definition + app case is the
-core work. Var, type, asc cases are straightforward. Fix case reuses the existing
-typing axiom approach.
+2. **Use a CVal-Expr logical relation** — avoid readback entirely. Define CValLR
+   that's step-indexed and existentially quantifies the definition-site env.
+   **Challenge:** need to show that the existential Γ_clo matches the Γ_current
+   from the app case. This requires either env extension monotonicity or a
+   free-variable analysis of normalized bodies.
 
-**Alternative: Unify the evaluators.** Instead of proving concEvalS sound
-separately, restructure the main soundness proof to work with a single
-substitution-based evaluator. This would make concEvalS the primary evaluator
-and eliminate concEval. But it requires changing absEval to substitution too
-(losing the "same body" property that makes monotonicity easy).
+3. **Prove fuel completeness** — if Subtype' e₂ e₁ and absEval k Γ e₂ succeeds,
+   then absEval k Γ e₁ also succeeds. This would allow decomposing SubtypeTrans
+   envs into chains of Subtype' steps. The proof follows absEval's structure.
+
+**Estimated effort:** 100-200 lines for the generalized monotonicity, then ~100
+lines to fill in soundnessC using the same structure as Soundness.lean.
+
+**Note:** The concEvalS approach (SoundnessS.lean, 7 sorry's) is STALLED — the
+bridge theorem `absEval_normalize_stable` is provably FALSE. The closure-based
+approach supersedes it.
 
 ## North Star: abstract appendVec
 
