@@ -38,22 +38,30 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **§6.1 data structure tests** — Array construction, head/tail, Vec pack/unpack
 - [x] **§6.2 abstract tests** — abstract Vec/Nat operations with ascription
 - [x] **Concrete recursive fix** — RESOLVED via `concEvalS` (substitution-based evaluator + thunked branches)
-- [ ] **Soundness of concEvalS** — FRAMEWORK SET UP in `SoundnessS.lean`. Logical relation
-  (LR) defined, key infrastructure proved (substAll lemmas, closed-value stability,
-  EnvLR). Main theorem stated with 10 sorry's. See SoundnessS.lean for detailed roadmap.
+- [ ] **Soundness of concEvalS** — IN PROGRESS in `SoundnessS.lean`. Logical relation
+  (LR) defined, fundamental theorem partially proved. **Var, type, and app cases DONE.**
+  Lam/asc/fix cases remain (4 sorry's). See SoundnessS.lean for detailed roadmap.
 
 ## Current sorry count
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**10** in the new SoundnessS.lean (logical-relations framework, in progress)
+**4** in SoundnessS.lean (down from 10): absEval_normalize_stable, lam, asc, fix cases
 
 ## What remains
 
-1. **Prove soundness of concEvalS** — `concEvalS` (substitution-based, lambdas as
-   values) correctly handles concrete recursive fix (tested). But soundness w.r.t.
-   `absEval` is unproven. The challenge: `concEvalS` uses substitution while
-   `absEval` uses env extension, making them structurally incompatible for a simple
-   inductive proof. A logical-relations approach is recommended. See DECISION-LOG.md.
+1. **Finish concEvalS soundness** — 4 sorry's remain in SoundnessS.lean:
+   - **absEval_normalize_stable** (line ~228): THE key bridge lemma. Needed for
+     the lam case. States: evaluating a normalized body with a concrete binding
+     gives the same result as evaluating the original. May need careful fuel
+     constraints — see "Analysis: absEval_normalize_stable" below.
+   - **lam case** (line ~424): Blocked on absEval_normalize_stable + substAll
+     commutativity (substAll body ((x,v)::σ) = (substAll body σ).subst x v).
+   - **asc case** (line ~434): Needs LR_upcast (if LR n v τ₁ and Subtype' τ₁ τ₂,
+     then LR n v τ₂). The lambda-lambda case of upcast is blocked because we'd
+     need absEval of the more-precise body to succeed, which isn't guaranteed.
+   - **fix case** (line ~440): Needs LR_upcast (same blocker as asc case) +
+     substAll commutativity. The fix typing axiom in WellTyped gives Subtype'
+     body_result dom', and we need to compose this with LR via upcast.
 
 2. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
    on a fix typing axiom included in `WellTyped`:
@@ -186,6 +194,47 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
   says fix is well-typed when its body satisfies the declared contract, implying
   the fixpoint itself satisfies the contract.
 
+## Analysis: absEval_normalize_stable and LR_upcast
+
+Two key lemmas are needed to complete the concEvalS soundness proof.
+
+### absEval_normalize_stable (needed for lam case)
+
+**Claim:** `absEval k ((x, a) :: Γ) body' = absEval k ((x, a) :: Γ) body`
+where `body' = absEval k' ((x, var x) :: Γ) body`.
+
+**Status:** Believed true but potentially not for all fuel combinations.
+Normalization pre-computes work, so the normalized body may succeed with
+LESS fuel than the original. If k < k', body' might evaluate in k fuel
+while body doesn't. This means the equality direction matters:
+- body succeeds → body' succeeds (likely true: less work to do)
+- body' succeeds → body succeeds (may be FALSE when k is too small!)
+
+**Possible fix:** Change the lemma to the first direction (from body to body'),
+which suffices if we can ensure the original body evaluation always succeeds.
+But the LR lambda clause has `absEval k Γ body' = some τ'` as a HYPOTHESIS
+(we don't get to choose k), so we need the other direction.
+
+**Alternative:** Change the LR definition to capture the defining environment,
+avoiding the need for this lemma entirely. This would require the lambda clause
+to use a specific Γ instead of universally quantifying over it. Tricky but
+might be the right approach.
+
+### LR_upcast (needed for asc and fix cases)
+
+**Claim:** If `LR n v τ₁` and `Subtype' τ₁ τ₂`, then `LR n v τ₂`.
+
+**Status:** Provable for all cases EXCEPT lambda-lambda. The lambda case
+requires: if the extensional property holds for τ₁'s body, and τ₂'s body
+is less precise (Subtype'), then the property holds for τ₂'s body. This
+needs absEval of the more-precise body to succeed when the less-precise
+body succeeds, which is the reverse direction of monotonicity's fuel adequacy.
+
+**Possible fixes:**
+1. Add fuel adequacy as a hypothesis to LR_upcast
+2. Prove a "reverse monotonicity" lemma (more precise body needs ≤ fuel)
+3. Restructure the LR to incorporate subtyping directly
+
 ## Concrete fix limitation (RESOLVED)
 
 **Problem (now resolved)**: The env-based `concEval` normalizes under binders,
@@ -211,6 +260,50 @@ references. See DECISION-LOG.md for the detailed analysis with example.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-182533
+What I did:
+- Reformulated `fundamental` to prove `∀ n, LR n v τ` instead of `LR n v τ`
+  for a specific n. This is THE key insight that makes the app case work:
+  the LR lambda clause at level n+1 gives body results at level n, and since
+  we prove for all n, the level loss is absorbed.
+- Changed `h_env` from `EnvLR n σ Γ` to `∀ n, EnvLR n σ Γ` to support
+  the ∀ n conclusion (need to instantiate IH at different levels).
+- Proved the app case of fundamental — ALL subcases:
+  - lam-lam: use LR lambda clause from ih_f at level m+1 with ih_a at level m.
+    The LR lambda clause already has the right shape (universally quantifies
+    over Γ and k, so we instantiate with the current Γ and inner fuel k).
+    This avoids absEval_normalize_stable entirely in the app case!
+  - non-lam concrete (v_f not a lambda): LR catch-all gives True.
+  - type abstract (τ_f = .type): LR with .type result is True.
+  - stuck abstract (τ_f = var/app/asc/fix): result is stuck app, LR catch-all True.
+- Proved var case using new `Env.lookup_mem` lemma (env lookup → list membership).
+- Fixed WellTyped extraction in app case (was using sorry, now uses tuple destructuring).
+- Reduced sorry count from 10 to 4 (eliminated 6).
+- **lake build: 0 errors, 4 sorry (all in SoundnessS.lean), all tests pass.**
+
+What's next (in priority order):
+1. **absEval_normalize_stable** — Still needed for the lam case. BUT: the lemma
+   may be false for small fuel (normalization pre-computes, so body' may succeed
+   with less fuel than body). Consider alternative approaches:
+   - Change LR lambda clause to capture the defining env (avoid universal Γ)
+   - Prove only the "body succeeds → body' succeeds" direction
+   - Add fuel adequacy as a hypothesis
+   See "Analysis: absEval_normalize_stable" in PROGRESS.md.
+
+2. **LR_upcast** (if LR n v τ₁ and Subtype' τ₁ τ₂, then LR n v τ₂) — Needed
+   for both asc and fix cases. Lambda-lambda subcase is blocked on the same
+   fuel adequacy issue as absEval_normalize_stable.
+
+3. **substAll commutativity** — Needed for lam and fix cases:
+   `substAll body ((x,v)::σ) = (substAll body σ).subst x v` when x is fresh for
+   σ and σ values are closed. Should be straightforward.
+
+Blockers:
+- absEval_normalize_stable may need a reformulation (see analysis above)
+- LR_upcast's lambda case needs absEval of more-precise body to succeed
+- Both blockers trace back to fuel adequacy for absEval
+
+
 ## 2026-03-31 ochre-lean-20260331-163117
 What I did:
 - Created `SoundnessS.lean`: logical-relations framework for proving concEvalS sound.

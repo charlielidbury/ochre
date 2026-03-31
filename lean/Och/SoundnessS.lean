@@ -21,58 +21,52 @@ applied to related arguments, they produce related results. This sidesteps
 the syntactic mismatch between un-normalized (concEvalS) and normalized
 (absEval) lambda bodies.
 
-## Proof architecture
+## Proof architecture (revised by agent ochre-lean-20260331-182533)
 
-The main theorem (`fundamental`) is proved by induction on fuel. The key
-insight is that the app case applies the IH directly to the body evaluation
-(fuel decreases from k+1 to k), yielding LR n at the SAME level — no need
-to go through the lambda clause of LR (which would lose a level).
+The main theorem (`fundamental`) proves `∀ n, LR n v τ` — the results are
+LR-related at ALL depths. This avoids the "level loss" problem in the app case:
 
-The lambda clause of LR is used only by EXTERNAL consumers of soundnessS
-who want to apply a sound function value to new arguments.
+**The level-loss problem (original formulation):** The LR lambda clause at
+level n+1 gives body results at level n. If fundamental proves `LR n` for a
+specific n, the app case can only get `LR (n-1)` via the lambda clause.
 
-### Key lemma needed: `absEval_normalize_stable`
+**The fix (∀ n formulation):** fundamental proves `∀ n, LR n v τ`. In the
+app case, for any target level m, we instantiate the IH on f at level m+1,
+getting the lambda clause at level m, and instantiate the IH on a at level m.
+This yields `LR m` for the body results. Since m was arbitrary, we get ∀ m.
 
-absEval normalizes lambda bodies under neutral binders, then re-evaluates
-with concrete bindings. The fundamental theorem's IH applies to the ORIGINAL
-body, but absEval evaluates the NORMALIZED body. This lemma bridges the gap:
+This approach completely avoids `absEval_normalize_stable` in the app case.
+
+### Remaining blocker: `absEval_normalize_stable`
+
+The lam case still needs this lemma to bridge normalized vs original bodies:
 
   absEval k ((x, a) :: Γ) (absEval k' ((x, var x) :: Γ) body)
   = absEval k ((x, a) :: Γ) body
 
-Intuitively: normalization with x as neutral is a "pre-computation" that
-doesn't change the result when x is later given a concrete value.
+The lam case of fundamental must CONSTRUCT the LR extensional property.
+The IH gives the property for the original body, but the lambda's stored
+body is normalized. This bridge is needed to connect them.
 
-### Infrastructure needed: `substAll_var`
-
-The var case needs: `substAll (var x) σ = v` when `σ.lookup x = some v` and
-all values in σ are closed. This requires a "closed expression" predicate
-and the lemma that closed values are fixed points of `subst`.
+NOTE: This lemma may need a careful fuel constraint or even a reformulation.
+Normalization pre-computes some work, so the normalized body may succeed with
+LESS fuel than the original. If k_app < k_norm, absEval k_app Γ body' may
+succeed while absEval k_app Γ body fails. The lemma as stated (with k ≤ k')
+may be too weak — it might need the reverse direction or a different approach.
+See PROGRESS.md for discussion.
 
 ## Status
 
 - [x] LR definition
 - [x] EnvLR definition
 - [x] substAll definition and distribution lemmas (app, asc, type, fix)
-- [x] Fundamental theorem stated with proof outline
-- [x] Top-level soundnessS corollary (proved from fundamental)
-- [x] Type case of fundamental proved
-- [ ] substAll_var lemma (needs "closed value" infrastructure, ~40 lines)
-- [ ] absEval_normalize_stable (the key bridge lemma, ~80-100 lines)
-- [ ] Var, lam, asc, fix, app cases of fundamental (~150 lines total)
-
-## Recommended order for completing the proof
-
-1. Define `IsClosed : Expr → Prop` (no free variables)
-2. Prove `IsClosed v → v.subst x s = v`
-3. Prove `substAll_var`: `substAll (var x) σ = σ.lookup x` for closed σ
-4. Prove `absEval_normalize_stable` by induction on body expression
-5. Complete the var case using substAll_var + EnvLR
-6. Complete the lam case: construct the extensional property using the IH
-7. Complete the app case: unfold both evaluators, apply IH at reduced fuel,
-   use absEval_normalize_stable to bridge normalized vs original body
-8. Complete the asc case: IH on lhs + WellTyped gives the subtyping chain
-9. Complete the fix case: similar to existing fix soundness
+- [x] substAll_var lemma (closed value infrastructure)
+- [x] Fundamental theorem — var, type, app cases PROVED
+- [x] Top-level soundnessS corollary
+- [ ] Lam case of fundamental (needs absEval_normalize_stable)
+- [ ] Asc case of fundamental (needs LR/subtyping interaction)
+- [ ] Fix case of fundamental (needs fix-specific reasoning)
+- [ ] absEval_normalize_stable (the key bridge lemma for lam case)
 -/
 
 open Expr
@@ -122,6 +116,26 @@ theorem substAll_fix (inner : Expr) (σ : List (Name × Expr)) :
   | cons ⟨x, v⟩ rest ih =>
     simp only [substAll, List.foldl]
     exact ih (inner.subst x v)
+
+-- ============================================================
+-- Env.lookup membership
+-- ============================================================
+
+/-- If Env.lookup finds a value, the pair is in the list. -/
+theorem Env.lookup_mem {σ : List (Name × Expr)} {x : Name} {v : Expr}
+    (h : Env.lookup σ x = some v) : (x, v) ∈ σ := by
+  induction σ with
+  | nil => simp [Env.lookup] at h
+  | cons ⟨y, w⟩ rest ih =>
+    simp only [Env.lookup] at h
+    split at h
+    · -- y == x
+      cases h
+      rename_i h_eq
+      have := (beq_iff_eq (α := String)).mp h_eq
+      subst this
+      exact List.mem_cons_self _ _
+    · exact List.mem_cons_of_mem _ (ih h)
 
 -- ============================================================
 -- Logical Relation
@@ -338,68 +352,48 @@ theorem concEvalS_value (k : Nat) (v : Expr) (h : IsValue v) :
 /-- **Fundamental theorem of the logical relation.**
 
     For any expression e with free variables bound by σ (concrete) and Γ (abstract),
-    if σ and Γ are LR-related, and both evaluators terminate, then the results
-    are LR-related.
+    if σ and Γ are LR-related at all depths, and both evaluators terminate,
+    then the results are LR-related at all depths.
 
-    **Proof by induction on fuel.** Key cases:
+    The `∀ n` formulation is essential for the app case: using the LR lambda
+    clause at level n+1 gives body results at level n; since we prove the
+    result for all n, this level loss is harmless.
 
-    **var x**: substAll (var x) σ = σ(x) by substAll_var. concEvalS of a
-    closed value returns it. EnvLR gives LR n σ(x) Γ(x).
+    **App case strategy:**
+    1. IH on f gives `∀ n, LR n v_f τ_f`
+    2. IH on a gives `∀ n, LR n v_a τ_a`
+    3. For target level m: use LR (m+1) for f (lambda clause at level m)
+    4. Use LR m for a as the argument
+    5. Lambda clause gives LR m for body results
+    6. Since m was arbitrary: ∀ m, LR m v' τ' ✓
 
-    **type**: both return .type. LR n .type .type = True.
+    **Lam case:** Needs `absEval_normalize_stable` to bridge the normalized
+    body (stored in the abstract lambda) with the original body (for the IH).
+    Left as sorry — see module doc for discussion.
 
-    **lam x d body**: concEvalS returns the substituted lambda as-is.
-    absEval normalizes the body. Need to construct the LR extensional
-    property: for any LR args, body results are LR. Use the IH at
-    reduced fuel on the body, with envLR_extend for the new binding.
-    The absEval_normalize_stable lemma bridges normalized vs original body.
+    **Asc case:** Needs composition of LR with Subtype'. Left as sorry.
 
-    **app f a**: Both evaluators evaluate f and a (at fuel k), then beta-reduce.
-    IH at fuel k gives LR n f_c f_a and LR n a_c a_a. For the body:
-    - concrete: concEvalS k (body_c.subst x a_c)
-    - abstract: absEval k ((x, a_a) :: Γ) body_a'  (body_a' = normalized body)
-    Apply IH at fuel k to the ORIGINAL body with extended env/subst.
-    Use absEval_normalize_stable to equate absEval on body_a' with body.
-    The substAll commutativity (closed values) equates body_c.subst x a_c
-    with substAll body ((x, a_c) :: σ).
-
-    **asc term ty**: concEvalS evaluates term, absEval evaluates ty.
-    IH on term gives LR n v σ_term. WellTyped gives Subtype' σ_term τ.
-    Need: LR n v τ. For lambdas, this requires composing the extensional
-    property with subtyping — the most complex case.
-
-    **fix (lam f d body)**: absEval returns d' = absEval Γ d (declared type).
-    concEvalS unrolls. Similar structure to existing fix soundness.
-
-    **Assumptions on σ:**
-    - All values in σ are closed (results of concEvalS on closed terms)
-    - σ and Γ have the same domain (same variable names)
-    These hold for the top-level call (σ = [], Γ = []) and are preserved
-    by envLR_extend when processing lambda bodies. -/
-theorem fundamental (n fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
+    **Fix case:** Similar to existing fix soundness. Left as sorry. -/
+theorem fundamental (fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
     (e v τ : Expr)
-    (h_env : EnvLR n σ Γ)
+    (h_env : ∀ n, EnvLR n σ Γ)
     (hc : concEvalS fuel (substAll e σ) = some v)
     (ha : absEval fuel Γ e = some τ)
     (h_wt : WellTyped fuel Γ e)
     (h_closed : ∀ p ∈ σ, IsClosed p.2)
     (h_vals : ∀ p ∈ σ, IsValue p.2) :
-    LR n v τ := by
-  induction fuel generalizing n σ Γ e v τ with
+    ∀ n, LR n v τ := by
+  induction fuel generalizing σ Γ e v τ with
   | zero => simp [absEval] at ha
   | succ k ih =>
     cases e with
     | var x =>
       simp only [absEval] at ha
       rw [substAll_var x σ h_closed] at hc
-      obtain ⟨v_x, h_σ_x, h_lr⟩ := h_env x τ ha
+      intro n
+      obtain ⟨v_x, h_σ_x, h_lr⟩ := h_env n x τ ha
       rw [h_σ_x] at hc
-      -- hc : concEvalS (k+1) v_x = some v, v_x is a value
-      -- Lookup gives some pair in σ, so v_x is a value
-      have h_in_σ : (x, v_x) ∈ σ := by
-        -- h_σ_x : Env.lookup σ x = some v_x
-        -- Env.lookup is List lookup, so (x, v_x) ∈ σ
-        sorry  -- needs a small lookup membership lemma
+      have h_in_σ := Env.lookup_mem h_σ_x
       have h_val : IsValue v_x := h_vals ⟨x, v_x⟩ h_in_σ
       rw [concEvalS_value k v_x h_val] at hc
       cases hc; exact h_lr
@@ -408,32 +402,44 @@ theorem fundamental (n fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
       rw [substAll_type] at hc
       simp only [concEvalS] at hc
       cases ha; cases hc
-      exact True.intro  -- LR n .type .type = True (second clause)
+      intro n; cases n <;> simp [LR]  -- LR _ .type .type = True
     | lam x dom body =>
       -- concEvalS returns the lambda as-is (value).
-      -- absEval normalizes the body.
-      -- Need to construct the LR extensional property.
-      -- For n = 0: LR 0 = True. ✓
-      -- For n+1: need ∀ Γ' k' av aa, LR n av aa → body results LR n.
-      -- Use the IH on the body with extended env/subst.
-      -- Key difficulty: relating substAll body ((x, av) :: σ) with
-      -- (substAll body σ_without_x).subst x av (how concEvalS processes it).
-      -- Also need absEval_normalize_stable for the abstract side.
+      -- absEval normalizes the body under (x, var x) :: Γ.
+      -- Need to construct the LR extensional property for all n.
+      --
+      -- For n = 0: LR 0 = True ✓
+      -- For n+1, both lambdas: need ∀ Γ' k' av aa, LR n av aa → body
+      --   results LR n.
+      --
+      -- The IH gives: for the ORIGINAL body with extended env/subst, results
+      -- are LR at all levels. But the abstract lambda stores the NORMALIZED
+      -- body (body' = absEval k ((x, var x) :: Γ) body). To connect:
+      --   absEval k' ((x, aa) :: Γ') body' = absEval k' ((x, aa) :: Γ') body
+      -- This is `absEval_normalize_stable`, which is unproven.
+      --
+      -- Additionally, the concrete side needs substAll commutativity:
+      --   (substAll body σ).subst x av = substAll body ((x, av) :: σ)
+      -- when x is fresh for σ and σ values are closed.
       sorry
     | asc term ty =>
-      -- concEvalS evaluates term (lhs)
-      -- absEval evaluates ty (rhs)
-      -- WellTyped gives Subtype' (absEval term) (absEval ty)
-      -- IH on term: LR n v (absEval term)
-      -- Need to compose with subtyping to get LR n v (absEval ty)
+      -- concEvalS evaluates term (lhs), absEval evaluates ty (rhs).
+      -- WellTyped gives Subtype' (absEval Γ term) (absEval Γ ty).
+      -- IH on term: ∀ n, LR n v (absEval Γ term).
+      -- Need: ∀ n, LR n v (absEval Γ ty).
+      -- This requires: if LR n v τ₁ and Subtype' τ₁ τ₂, then LR n v τ₂.
+      -- For τ₂ = .type: trivially True.
+      -- For both lambdas: need to compose the extensional property with
+      --   the body relation from Subtype'.lam_body. Complex but doable.
       sorry
     | fix inner =>
-      -- absEval returns the declared type (domain of inner lambda)
-      -- concEvalS unrolls and evaluates body
-      -- Similar to Soundness.lean fix case
+      -- absEval returns the declared type (domain of inner lambda).
+      -- concEvalS unrolls and evaluates body with f := fix inner in scope.
+      -- Similar structure to Soundness.lean fix case, but needs LR-based
+      -- env consistency instead of SubtypeTrans-based EnvConsistent.
       sorry
     | app f a =>
-      -- THE KEY CASE.
+      -- THE KEY CASE — fully proved using the ∀ n approach.
       -- Both evaluators evaluate f and a at fuel k, then beta-reduce.
       rw [substAll_app] at hc
       simp only [concEvalS] at hc
@@ -452,13 +458,13 @@ theorem fundamental (n fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
             cases hac : concEvalS k (substAll a σ) with
             | none => simp [hfc, hac] at hc
             | some v_a =>
+              -- Extract WellTyped components for app
+              have ⟨h_wt_f, h_wt_a, h_wt_body⟩ := h_wt
               -- Apply IH to f and a (fuel decreases: k < k+1)
-              have ih_f := ih n σ Γ f v_f τ_f h_env hfc hfa
-                (by cases h_wt_app : h_wt; sorry) h_closed  -- need WellTyped for f
-              have ih_a := ih n σ Γ a v_a τ_a h_env hac haa
-                (by sorry) h_closed  -- need WellTyped for a
+              have ih_f := ih σ Γ f v_f τ_f h_env hfc hfa h_wt_f h_closed h_vals
+              have ih_a := ih σ Γ a v_a τ_a h_env hac haa h_wt_a h_closed h_vals
               -- Now case-split on τ_f (what absEval got for the function)
-              rw [hfa, haa] at ha
+              rw [hfa, haa] at ha h_wt_body
               rw [hfc, hac] at hc
               cases τ_f with
               | lam xa da ba =>
@@ -470,35 +476,44 @@ theorem fundamental (n fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
                   simp only at hc
                   -- hc : concEvalS k (bv.subst xv v_a) = some v
                   -- ha : absEval k ((xa, τ_a) :: Γ) ba = some τ
-                  -- ih_f : LR n (lam xv dv bv) (lam xa da ba)
-                  -- ih_a : LR n v_a τ_a
+                  -- ih_f : ∀ n, LR n (lam xv dv bv) (lam xa da ba)
+                  -- ih_a : ∀ n, LR n v_a τ_a
                   --
-                  -- OPTION A: Use the IH at fuel k on the original body.
-                  --   Need absEval_normalize_stable to equate absEval on ba
-                  --   (normalized) with absEval on the original body.
-                  --   Need substAll commutativity for the concrete side.
-                  --
-                  -- OPTION B: Use the lambda clause of ih_f.
-                  --   This gives LR (n-1) for the body results (loses a level).
-                  --   Sufficient for external consumers but not for the
-                  --   inductive proof which needs LR n.
-                  --
-                  -- OPTION A is correct. The IH at fuel k gives LR n directly.
-                  sorry
+                  -- Strategy: use the LR lambda clause.
+                  -- For any target level m:
+                  --   ih_f (m+1) : LR (m+1) (lam xv dv bv) (lam xa da ba)
+                  --   = ∀ Γ' k' av aa, LR m av aa → ... → LR m v' τ'
+                  --   ih_a m : LR m v_a τ_a
+                  --   Instantiate with Γ' = Γ, k' = k, av = v_a, aa = τ_a
+                  --   Get LR m v τ ✓
+                  intro m
+                  cases m with
+                  | zero => trivial  -- LR 0 = True
+                  | succ m =>
+                    -- ih_f (m+1+1) gives lambda clause at level m+1
+                    have h_lam_lr := ih_f (m + 1 + 1)
+                    -- LR (m+1+1) (lam xv dv bv) (lam xa da ba)
+                    -- = ∀ Γ' k' av aa, LR (m+1) av aa → ... → LR (m+1) v' τ'
+                    simp only [LR] at h_lam_lr
+                    exact h_lam_lr Γ k v_a τ_a (ih_a (m + 1)) v τ hc ha
                 | _ =>
-                  -- Concrete function is not a lambda.
-                  -- For well-typed closed terms, this shouldn't happen
-                  -- (if abstract gives a lambda, concrete should too).
-                  -- The catch-all LR clause gives True.
-                  sorry
+                  -- Concrete function is not a lambda (var/app/asc/type/fix).
+                  -- LR n (non-lam) (lam ..) falls into the catch-all → True
+                  intro n; cases n <;> simp [LR]
               | type =>
                 -- Abstract function is Type → type-app-returns-type
                 simp only at ha; cases ha
-                exact True.intro  -- LR n v .type = True
-              | _ =>
-                -- Abstract function is stuck (var/app/asc/fix)
-                -- Catch-all LR clause gives True for most cases
-                sorry
+                intro n; cases n <;> simp [LR]  -- LR _ _ .type = True
+              | var _ | app _ _ | asc _ _ | fix _ =>
+                -- Abstract function is stuck → result is stuck app or type
+                -- In all cases, τ is not .type and not .lam (it's app/var/etc.)
+                -- so LR n v τ falls into the catch-all → True
+                all_goals (
+                  simp only at ha
+                  intro n
+                  cases ha_eq : ha
+                  cases n <;> simp [LR]
+                )
 
 /-- **Top-level soundness of concEvalS.**
 
@@ -518,5 +533,5 @@ theorem soundnessS (n fuel : Nat) (e v τ : Expr)
     (h_wt : WellTyped fuel [] e) :
     LR n v τ := by
   have h_subst : substAll e [] = e := rfl
-  exact fundamental n fuel [] [] e v τ (envLR_nil n)
-    (h_subst ▸ hc) ha h_wt (fun _ h => nomatch h) (fun _ h => nomatch h)
+  exact fundamental fuel [] [] e v τ (fun n => envLR_nil n)
+    (h_subst ▸ hc) ha h_wt (fun _ h => nomatch h) (fun _ h => nomatch h) n
