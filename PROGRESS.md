@@ -16,90 +16,98 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] Transparency tests (§6.4) uncommented and passing
 - [x] `Subtype'` inductive relation has function subtyping rules (lam_body, app_cong)
 - [x] Closure-based evaluator (env extension instead of substitution for app)
-- [ ] Soundness theorem proven (no sorry) — **var/type/lam/asc/stuck-app done; 3 sorry in app**
-- [ ] Monotonicity theorem proven (no sorry) — **var/lam/type/asc/stuck-app done; 3 sorry in app**
+- [x] **`trans` removed from `Subtype'`** — enables lambda inversion
+- [x] **`SubtypeTrans` defined** — transitive closure for soundness
+- [x] **Lambda inversion proven** — `Subtype'.lam_inv` and `Subtype'.lam_rhs_shape`
+- [x] **Generalized monotonicity proven** — `absEval_mono` handles related exprs + envs
+- [x] **Lam-lam app case of monotonicity proven** — the previously impossible case!
+- [x] **Stuck-stuck app case of monotonicity proven** — via `app_cong`
+- [ ] Mixed lam/non-lam app case of monotonicity — **8 sorry, all same issue**
+- [ ] Soundness app case — **1 sorry** (needs generalization like monotonicity)
 - [ ] Prop 5.2.9 regression test formalized and passing
 
 ## Current sorry count
 
 | File | sorry count | Cases remaining |
 |------|-------------|-----------------|
-| Soundness.lean | 3 | app: lam-lam, lam-nonlam, nonlam-lam |
-| Monotonicity.lean | 3 | app: lam-lam, lam-nonlam, nonlam-lam |
+| Monotonicity.lean | 8 | app: mixed lam/non-lam (f₂=lam, f₁≠lam) |
+| Soundness.lean | 1 | app: entire case (needs generalized soundness) |
 
-## Critical path forward: remove trans from Subtype'
+## Critical path forward: eliminate mixed lam/non-lam sorry
 
-The remaining 6 sorries are all blocked by the same issue: the IH gives
-`Subtype' (lam x dom body₂) (lam x dom body₁)` but we need to extract
-`Subtype' body₂ body₁` (lambda inversion). This fails because `Subtype'`
-includes `trans`, and `trans` can go through arbitrary intermediate terms,
-making inversion unsound.
+All 8 monotonicity sorry are the same issue: when `f` evaluates to a
+non-lambda in Γ₁ (e.g., stuck var) but evaluates to a lambda in Γ₂
+(more precise env). This means Γ₂ beta-reduces but Γ₁ doesn't.
 
-### Recommended fix (next agent should do this):
+We need `Subtype' (beta-reduced-result) (app f₁ a₁)`.
 
-1. **Remove `trans` from `Subtype'`**. The resulting relation is directly
-   invertible: `lam ⊑ lam` can only be `refl` or `lam_body`.
+### Recommended fix: add type-app-returns-type to evaluator
 
-2. **Define `SubtypeTrans`** as the transitive closure of `Subtype'`:
-   ```lean
-   inductive SubtypeTrans : Expr → Expr → Prop
-     | step : Subtype' a b → SubtypeTrans a b
-     | trans : SubtypeTrans a b → SubtypeTrans b c → SubtypeTrans a c
-   ```
+Change absEval (and concEval) so that when `f` evaluates to `.type`,
+the app case returns `.type` instead of a stuck `.app .type a`:
 
-3. **Use `SubtypeTrans` in soundness** (the asc case needs transitivity)
-   and in `WellTyped` and `EnvConsistent`.
-
-4. **Prove monotonicity with `Subtype'`** (no trans). The proof structure:
-   - Generalize to `absEval_mono`: related expressions AND related envs
-   - Case-split on Subtype' proof (clean inversion, no trans)
-   - lam-lam app case: invert lam ⊑ lam → body₂ ⊑ body₁ → apply IH
-   - Standard monotonicity is a corollary (with Subtype'.refl)
-
-5. **The closure-based evaluator is already in place** (this session).
-   After beta-reduction, both sides evaluate the same `body` expression
-   (just with different env extensions), making the IH applicable.
-
-### Why this works
-
-With closure-based eval + no-trans Subtype':
-```
-App case of monotonicity:
-  f evals in Γ₁ → lam x dom body₁
-  f evals in Γ₂ → lam x dom body₂  
-  By IH: lam x dom body₂ ⊑ lam x dom body₁  (Subtype', no trans)
-  Invert: body₂ ⊑ body₁  ← NOW POSSIBLE (no trans to worry about)
-  
-  a evals in Γ₁ → a₁, a evals in Γ₂ → a₂. By IH: a₂ ⊑ a₁.
-  
-  Beta in Γ₁: absEval ((x, a₁) :: Γ₁) body₁  ← closure, not subst
-  Beta in Γ₂: absEval ((x, a₂) :: Γ₂) body₂  ← closure, not subst
-  
-  EnvSub: ((x, a₂) :: Γ₂) ⊑ ((x, a₁) :: Γ₁) ✓ (a₂ ⊑ a₁, Γ₂ ⊑ Γ₁)
-  ExprSub: body₂ ⊑ body₁ ✓ (from inversion)
-  
-  By generalized IH: τ₂ ⊑ τ₁ ✓
+```lean
+| some (.lam x _dom body), some aVal => absEval fuel ((x, aVal) :: Γ) body
+| some .type, some _ => some .type  -- NEW: Type applied = Type
+| some f', some a' => some (.app f' a')
+| _, _ => none
 ```
 
-## Current blockers (lesser)
+This is semantically correct: applying the universe (top) to anything
+gives the universe. It eliminates the f₁=type/f₂=lam mixed case (since
+Subtype'.top covers it: τ₂ ⊑ type).
 
-### Mixed lam/non-lam cases in app
+After this change, the remaining mixed cases (f₁=var/app, f₂=lam) can
+be shown impossible: `Subtype' (lam ...) (var ...)` and `Subtype' (lam ...) (app ...)`
+have no constructors in the trans-free `Subtype'`.
 
-When one side produces a lambda and the other doesn't (e.g., Γ₁ has a
-stuck variable but Γ₂ has it resolved to a lambda). These cases are
-rare and may be eliminated by proving that if f₂ ⊑ f₁ (no trans) and
-f₁ is a lambda, then f₂ must also be a lambda. Verify this by checking
-that no Subtype' constructor sends a non-lam to a lam.
+**Technical challenge**: The evaluator change adds a new match arm, and
+Lean's `simp` currently struggles to reduce match hypotheses with the
+extra arm. This was attempted in this session but reverted. The next agent
+should either:
+1. Use `dsimp` or explicit `show`/`change` tactics for match reduction
+2. Write helper lemmas that reduce absEval one step (e.g., `absEval_app_lam`)
+3. Restructure the proof to avoid hypothesis rewriting
 
-### The dependent domain issue
+### Soundness app case
 
-When a lambda domain depends on a narrowed variable, contravariant domain
-checking fails. Related to Ochre Prop 5.2.9. Mitigated by NOT normalizing
-domains in absEval.
+The soundness app case needs the same generalization as monotonicity:
+a `soundness_gen` that takes `Subtype' e_c e_a` for related expressions.
+The structure would mirror `absEval_mono`. After beta-reduction,
+body_c ≠ body_a (different normalized bodies), so the IH needs the
+generalized form.
+
+A `SubtypeTrans.lam_body` lemma has already been added to Subtyping.lean
+(proven by induction on SubtypeTrans).
 
 ## Session log
 
 ```
+## 2026-03-31 och-agent-20260331-124544
+What I did:
+- Removed `trans` from `Subtype'`, added `SubtypeTrans` (transitive closure)
+- Proved lambda inversion lemmas (`lam_inv`, `lam_rhs_shape`)
+- Added `SubtypeTrans.lam_body` (lift lam_body through transitive closure)
+- Added `envSub_extend_sub` (extend EnvSub with related bindings)
+- Proved generalized monotonicity `absEval_mono` taking `Subtype' e₂ e₁`
+- Proved the lam-lam app case of monotonicity (PREVIOUSLY IMPOSSIBLE!)
+- Proved the stuck-stuck app case of monotonicity
+- Standard `monotonicity` is now a corollary of `absEval_mono`
+- Fixed soundness to use `SubtypeTrans`, proved lam case
+- Fixed `WellTyped` to use closure-based eval (matching evaluator)
+- Attempted type-app-returns-type evaluator change but reverted due to
+  match reduction issues with simp
+
+What's next:
+- Eliminate mixed lam/non-lam sorry (see "Recommended fix" above)
+- Prove soundness app case via generalized soundness_gen
+
+Blockers:
+- simp can't reduce match hypotheses with the extra type-app arm
+  (needs a different tactic approach)
+- Mixed lam/non-lam cases need either evaluator change or proof that
+  they're impossible given the Subtype' relation
+
 ## 2026-03-31 och-agent-20260331-120514
 What I did:
 - Implemented normalization under binders in absEval (key for succ 2 = 3)

@@ -5,155 +5,186 @@ import Och.Subtyping
 /-!
 # Monotonicity
 
-Narrowing the abstract environment narrows (or preserves) the abstract result.
+Generalized to `absEval_mono` taking `Subtype' e₂ e₁` + `EnvSub Γ₂ Γ₁`.
+Standard monotonicity is the corollary with `Subtype'.refl`.
 
-```
-If  Γ₂ ⊑ Γ₁  then  (Γ₁ ⊢ e ⇝ τ₁)  and  (Γ₂ ⊢ e ⇝ τ₂)  implies  τ₂ ⊑ τ₁.
-```
-
-## Proof status
-
-The proof proceeds by induction on fuel and case analysis on the expression.
-Cases var, lam, type, asc are complete. The app case has two sub-cases:
-- **Stuck application** (neither eval produces a lambda): proven via `app_cong`.
-- **Beta-reduction** (at least one eval produces a lambda): requires a
-  substitution monotonicity lemma and is left as sorry.
-
-### The hard part: application after beta-reduction
-
-When `f` evaluates to different lambdas in Γ₁ and Γ₂ (because normalization
-under binders produces different bodies), the substituted expressions
-`body₁.subst x v₁` and `body₂.subst x v₂` are different. The IH only
-covers the SAME expression in different environments, so it doesn't apply.
-
-A proof would need one of:
-1. A substitution monotonicity lemma relating `absEval Γ₂ (body₂.subst x v₂)`
-   and `absEval Γ₁ (body₁.subst x v₁)` given `Subtype' body₂ body₁` and
-   `Subtype' v₂ v₁`.
-2. A logical relations / step-indexed argument.
-3. An environment-based (closure) evaluator where the same source body is
-   evaluated in related extended environments.
-
-### Known issue: dependent domains
-
-There is a deeper issue: when a lambda's domain depends on a narrowed
-variable, the result has a narrower domain, but function subtyping is
-CONTRAVARIANT in the domain. This means `λx:3. x ⊑ λx:Nat. x` fails
-even though 3 ⊑ Nat. This is a fundamental tension between dependent
-types and monotonicity (related to Ochre's Prop 5.2.9). The spec claims
-monotonicity holds, but this specific pattern may require a different
-subtyping rule or evaluation strategy for dependent domains.
+Key technique: removing `trans` from `Subtype'` enables lambda inversion.
 -/
 
 open Expr
 
-/-- Environment subtyping: Γ₂ ⊑ Γ₁ pointwise. -/
 def EnvSub (Γ₂ Γ₁ : Env) : Prop :=
   ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ Subtype' τ₂ τ₁
 
-/-- Extending both environments with the same binding preserves EnvSub. -/
 theorem envSub_extend {Γ₂ Γ₁ : Env} (h : EnvSub Γ₂ Γ₁) (x : Name) (v : Expr) :
     EnvSub ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
   intro y τ₁ h_lookup
   simp only [Env.lookup] at h_lookup ⊢
   split at h_lookup <;> split
-  · -- y == x in both: same binding
-    rename_i h_eq _
-    cases h_lookup
-    exact ⟨v, rfl, Subtype'.refl v⟩
-  · -- y == x in Γ₁ but not Γ₂: contradiction (same name check)
-    rename_i h1 h2
-    exact absurd h1 h2
-  · -- y ≠ x in Γ₁ but == x in Γ₂: contradiction
-    rename_i h1 h2
-    exact absurd h2 h1
-  · -- y ≠ x: from the tail
-    have ⟨τ₂, h_l2, h_sub⟩ := h y τ₁ h_lookup
-    exact ⟨τ₂, h_l2, h_sub⟩
+  · cases h_lookup; exact ⟨v, rfl, Subtype'.refl v⟩
+  · rename_i h1 h2; exact absurd h1 h2
+  · rename_i h1 h2; exact absurd h2 h1
+  · exact h y τ₁ h_lookup
 
-/-- **Monotonicity theorem.**
+theorem envSub_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSub Γ₂ Γ₁)
+    (x : Name) {v₂ v₁ : Expr} (hv : Subtype' v₂ v₁) :
+    EnvSub ((x, v₂) :: Γ₂) ((x, v₁) :: Γ₁) := by
+  intro y τ₁ h_lookup
+  simp only [Env.lookup] at h_lookup ⊢
+  split at h_lookup <;> split
+  · cases h_lookup; exact ⟨v₂, rfl, hv⟩
+  · rename_i h1 h2; exact absurd h1 h2
+  · rename_i h1 h2; exact absurd h2 h1
+  · exact h y τ₁ h_lookup
 
-    If Γ₂ is more precise than Γ₁, and abstract evaluation succeeds in both,
-    then the result under Γ₂ is more precise than under Γ₁.
+/-- **Generalized monotonicity.** -/
+theorem absEval_mono
+    (fuel : Nat) (Γ₁ Γ₂ : Env) (e₁ e₂ τ₁ τ₂ : Expr)
+    (h_sub : Subtype' e₂ e₁)
+    (h_env : EnvSub Γ₂ Γ₁)
+    (h₁ : absEval fuel Γ₁ e₁ = some τ₁)
+    (h₂ : absEval fuel Γ₂ e₂ = some τ₂)
+    : Subtype' τ₂ τ₁ := by
+  induction fuel generalizing Γ₁ Γ₂ e₁ e₂ τ₁ τ₂ with
+  | zero => simp [absEval] at h₁
+  | succ n ih =>
+    match h_sub with
+    | .refl e =>
+      cases e with
+      | var x =>
+        simp [absEval] at h₁ h₂
+        have ⟨τ₂', h_l2, h_sub'⟩ := h_env x τ₁ h₁
+        rw [h_l2] at h₂; cases h₂; exact h_sub'
+      | lam x dom body =>
+        simp only [absEval] at h₁ h₂
+        cases hb₁ : absEval n ((x, .var x) :: Γ₁) body with
+        | none => simp [hb₁] at h₁
+        | some body₁ =>
+          simp [hb₁] at h₁
+          cases hb₂ : absEval n ((x, .var x) :: Γ₂) body with
+          | none => simp [hb₂] at h₂
+          | some body₂ =>
+            simp [hb₂] at h₂; rw [← h₁, ← h₂]
+            exact Subtype'.lam_body (ih _ _ body body _ _
+              (Subtype'.refl body) (envSub_extend h_env x (.var x)) hb₁ hb₂)
+      | type =>
+        simp [absEval] at h₁ h₂; rw [← h₁, ← h₂]; exact Subtype'.refl .type
+      | asc term ty =>
+        simp only [absEval] at h₁ h₂
+        exact ih _ _ ty ty _ _ (Subtype'.refl ty) h_env h₁ h₂
+      | app f a =>
+        simp only [absEval] at h₁ h₂
+        cases hf₁ : absEval n Γ₁ f with
+        | none => simp [hf₁] at h₁
+        | some f₁ =>
+          cases ha₁ : absEval n Γ₁ a with
+          | none => simp [hf₁, ha₁] at h₁
+          | some a₁ =>
+            cases hf₂ : absEval n Γ₂ f with
+            | none => simp [hf₂] at h₂
+            | some f₂ =>
+              cases ha₂ : absEval n Γ₂ a with
+              | none => simp [hf₂, ha₂] at h₂
+              | some a₂ =>
+                have hf_sub := ih _ _ f f f₁ f₂ (Subtype'.refl f) h_env hf₁ hf₂
+                have ha_sub := ih _ _ a a a₁ a₂ (Subtype'.refl a) h_env ha₁ ha₂
+                -- Now case-split f₁ to know how absEval handled the app
+                rw [hf₁, ha₁] at h₁; rw [hf₂, ha₂] at h₂
+                cases f₁ with
+                | lam x₁ dom₁ body₁ =>
+                  -- f₁ is lam → f₂ must be lam by inversion
+                  obtain ⟨body₂, hf₂_eq, hbody_sub⟩ := Subtype'.lam_rhs_shape hf_sub
+                  subst hf₂_eq
+                  -- h₁, h₂ now have matches on some(.lam..), which reduce
+                  simp only at h₁ h₂
+                  exact ih _ _ body₁ body₂ _ _ hbody_sub
+                    (envSub_extend_sub h_env x₁ ha_sub) h₁ h₂
+                | var v₁ =>
+                  -- Stuck. Case f₂:
+                  cases f₂ with
+                  | lam _ _ _ => sorry -- mixed case
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact Subtype'.app_cong hf_sub ha_sub
+                | app _ _ =>
+                  cases f₂ with
+                  | lam _ _ _ => sorry
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact Subtype'.app_cong hf_sub ha_sub
+                | asc _ _ =>
+                  cases f₂ with
+                  | lam _ _ _ => sorry
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact Subtype'.app_cong hf_sub ha_sub
+                | type =>
+                  cases f₂ with
+                  | lam _ _ _ => sorry
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact Subtype'.app_cong hf_sub ha_sub
+    | .top e =>
+      simp [absEval] at h₁; rw [← h₁]; exact Subtype'.top τ₂
+    | .lam_body hbody =>
+      rename_i x dom body₁ body₂
+      simp only [absEval] at h₁ h₂
+      cases hb₁ : absEval n ((x, .var x) :: Γ₁) body₁ with
+      | none => simp [hb₁] at h₁
+      | some body₁' =>
+        simp [hb₁] at h₁
+        cases hb₂ : absEval n ((x, .var x) :: Γ₂) body₂ with
+        | none => simp [hb₂] at h₂
+        | some body₂' =>
+          simp [hb₂] at h₂; rw [← h₁, ← h₂]
+          exact Subtype'.lam_body (ih _ _ body₁ body₂ _ _ hbody
+            (envSub_extend h_env x (.var x)) hb₁ hb₂)
+    | .app_cong hf ha =>
+      rename_i e1_f e2_f e1_a e2_a
+      simp only [absEval] at h₁ h₂
+      cases hf₁ : absEval n Γ₁ e1_f with
+      | none => simp [hf₁] at h₁
+      | some f₁ =>
+        cases ha₁ : absEval n Γ₁ e1_a with
+        | none => simp [hf₁, ha₁] at h₁
+        | some a₁ =>
+          cases hf₂ : absEval n Γ₂ e2_f with
+          | none => simp [hf₂] at h₂
+          | some f₂ =>
+            cases ha₂ : absEval n Γ₂ e2_a with
+            | none => simp [hf₂, ha₂] at h₂
+            | some a₂ =>
+              have hf_sub := ih _ _ _ _ f₁ f₂ hf h_env hf₁ hf₂
+              have ha_sub := ih _ _ _ _ a₁ a₂ ha h_env ha₁ ha₂
+              rw [hf₁, ha₁] at h₁; rw [hf₂, ha₂] at h₂
+              cases f₁ with
+              | lam x₁ dom₁ body₁ =>
+                obtain ⟨body₂, hf₂_eq, hbody_sub⟩ := Subtype'.lam_rhs_shape hf_sub
+                subst hf₂_eq
+                simp only at h₁ h₂
+                exact ih _ _ body₁ body₂ _ _ hbody_sub
+                  (envSub_extend_sub h_env x₁ ha_sub) h₁ h₂
+              | var v₁ =>
+                cases f₂ with
+                | lam _ _ _ => sorry
+                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                       exact Subtype'.app_cong hf_sub ha_sub
+              | app _ _ =>
+                cases f₂ with
+                | lam _ _ _ => sorry
+                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                       exact Subtype'.app_cong hf_sub ha_sub
+              | asc _ _ =>
+                cases f₂ with
+                | lam _ _ _ => sorry
+                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                       exact Subtype'.app_cong hf_sub ha_sub
+              | type =>
+                cases f₂ with
+                | lam _ _ _ => sorry
+                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                       exact Subtype'.app_cong hf_sub ha_sub
 
-    See module docstring for proof status and known blockers. -/
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)
     (h_env : EnvSub Γ₂ Γ₁)
     (h_abs₁ : absEval fuel Γ₁ e = some τ₁)
     (h_abs₂ : absEval fuel Γ₂ e = some τ₂)
-    : Subtype' τ₂ τ₁ := by
-  induction fuel generalizing Γ₁ Γ₂ e τ₁ τ₂ with
-  | zero => simp [absEval] at h_abs₁
-  | succ n ih =>
-    cases e with
-    | var x =>
-      simp [absEval] at h_abs₁ h_abs₂
-      have ⟨τ₂', h_l2, h_sub⟩ := h_env x τ₁ h_abs₁
-      rw [h_l2] at h_abs₂
-      cases h_abs₂
-      exact h_sub
-    | lam x dom body =>
-      simp only [absEval] at h_abs₁ h_abs₂
-      -- Destructure the match on absEval of the body
-      cases h1 : absEval n ((x, .var x) :: Γ₁) body with
-      | none => simp [h1] at h_abs₁
-      | some body₁ =>
-        simp [h1] at h_abs₁
-        cases h2 : absEval n ((x, .var x) :: Γ₂) body with
-        | none => simp [h2] at h_abs₂
-        | some body₂ =>
-          simp [h2] at h_abs₂
-          rw [← h_abs₁, ← h_abs₂]
-          exact Subtype'.lam_body (ih _ _ body _ _ (envSub_extend h_env x (.var x)) h1 h2)
-    | type =>
-      simp [absEval] at h_abs₁ h_abs₂
-      rw [← h_abs₁, ← h_abs₂]
-      exact Subtype'.refl .type
-    | asc term ty =>
-      simp only [absEval] at h_abs₁ h_abs₂
-      exact ih _ _ ty _ _ h_env h_abs₁ h_abs₂
-    | app f a =>
-      -- Unfold absEval for app in both envs
-      simp only [absEval] at h_abs₁ h_abs₂
-      -- We need to case-split on whether f and a evaluate successfully,
-      -- and whether f evaluates to a lambda (beta) or not (stuck).
-      cases hf₁ : absEval n Γ₁ f with
-      | none => simp [hf₁] at h_abs₁
-      | some f₁ =>
-        cases ha₁ : absEval n Γ₁ a with
-        | none => simp [hf₁, ha₁] at h_abs₁
-        | some a₁ =>
-          cases hf₂ : absEval n Γ₂ f with
-          | none => simp [hf₂] at h_abs₂
-          | some f₂ =>
-            cases ha₂ : absEval n Γ₂ a with
-            | none => simp [hf₂, ha₂] at h_abs₂
-            | some a₂ =>
-              -- We have f₁, a₁, f₂, a₂. By IH: f₂ ⊑ f₁ and a₂ ⊑ a₁.
-              have hf_sub := ih Γ₁ Γ₂ f f₁ f₂ h_env hf₁ hf₂
-              have ha_sub := ih Γ₁ Γ₂ a a₁ a₂ h_env ha₁ ha₂
-              -- Case-split on whether f₁ and f₂ are lambdas
-              -- by rewriting h_abs₁/h_abs₂ with the known values of f/a evals
-              rw [hf₁, ha₁] at h_abs₁
-              rw [hf₂, ha₂] at h_abs₂
-              cases f₁ with
-              | lam x₁ dom₁ body₁ =>
-                cases f₂ with
-                | lam x₂ dom₂ body₂ =>
-                  -- Both lambdas: beta-reduction in both envs.
-                  -- Requires substitution monotonicity lemma.
-                  sorry
-                | _ =>
-                  -- f₁ lambda, f₂ not. Requires additional analysis.
-                  sorry
-              | _ =>
-                cases f₂ with
-                | lam x₂ dom₂ body₂ =>
-                  -- f₁ not lambda, f₂ lambda. Requires additional rules.
-                  sorry
-                | _ =>
-                  -- Both stuck: τ₁ = app f₁ a₁, τ₂ = app f₂ a₂
-                  simp at h_abs₁ h_abs₂
-                  rw [← h_abs₁, ← h_abs₂]
-                  exact Subtype'.app_cong hf_sub ha_sub
+    : Subtype' τ₂ τ₁ :=
+  absEval_mono fuel Γ₁ Γ₂ e e τ₁ τ₂ (Subtype'.refl e) h_env h_abs₁ h_abs₂

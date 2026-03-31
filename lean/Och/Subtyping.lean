@@ -15,14 +15,17 @@ Type is top: `τ ⊑ Type` for any τ.
 
 open Expr
 
-/-- Subtyping relation. `Subtype' a b` means `a ⊑ b`. -/
+/-- Subtyping relation (trans-free). `Subtype' a b` means `a ⊑ b`.
+
+    Trans is deliberately excluded so that lambda inversion is possible:
+    `Subtype' (lam x d b₂) (lam x d b₁)` can only arise from `refl` or
+    `lam_body`, both of which give `b₂ ⊑ b₁`. This is essential for the
+    monotonicity proof's app case. -/
 inductive Subtype' : Expr → Expr → Prop where
   /-- Reflexivity: `e ⊑ e` -/
   | refl (e : Expr) : Subtype' e e
   /-- Type is top: `e ⊑ Type` for any `e` -/
   | top (e : Expr) : Subtype' e .type
-  /-- Transitivity -/
-  | trans {a b c : Expr} : Subtype' a b → Subtype' b c → Subtype' a c
   /-- Lambda body covariance (same name and domain).
       If body₂ ⊑ body₁ then λx:dom. body₂ ⊑ λx:dom. body₁.
       Used in the monotonicity proof for the lambda case. -/
@@ -33,6 +36,40 @@ inductive Subtype' : Expr → Expr → Prop where
       Used in the monotonicity proof for stuck applications. -/
   | app_cong {f₁ f₂ a₁ a₂ : Expr} :
       Subtype' f₂ f₁ → Subtype' a₂ a₁ → Subtype' (.app f₂ a₂) (.app f₁ a₁)
+
+/-- Transitive closure of Subtype'. Used in soundness where transitivity
+    is needed (the asc case chains IH result with the well-typedness hyp). -/
+inductive SubtypeTrans : Expr → Expr → Prop where
+  /-- Lift a single-step subtyping into the transitive closure. -/
+  | step {a b : Expr} : Subtype' a b → SubtypeTrans a b
+  /-- Transitivity. -/
+  | trans {a b c : Expr} : SubtypeTrans a b → SubtypeTrans b c → SubtypeTrans a c
+
+/-- Lift lam_body through SubtypeTrans: if bodies are related transitively,
+    then the lambdas are related transitively. -/
+theorem SubtypeTrans.lam_body {x : Name} {dom body₁ body₂ : Expr}
+    (h : SubtypeTrans body₂ body₁) :
+    SubtypeTrans (.lam x dom body₂) (.lam x dom body₁) := by
+  induction h with
+  | step h => exact .step (.lam_body h)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Lambda inversion: if `Subtype' (lam x d b₂) (lam x d b₁)` then `Subtype' b₂ b₁`.
+    This is the key lemma enabled by removing trans from Subtype'. -/
+theorem Subtype'.lam_inv {x : Name} {dom body₁ body₂ : Expr}
+    (h : Subtype' (.lam x dom body₂) (.lam x dom body₁)) : Subtype' body₂ body₁ := by
+  cases h with
+  | refl => exact Subtype'.refl body₁
+  | lam_body h => exact h
+
+/-- If `Subtype' e (lam x d b)` then `e` must be a lam with same name and domain.
+    Essential for eliminating mixed lam/non-lam cases in proofs. -/
+theorem Subtype'.lam_rhs_shape {x : Name} {dom body : Expr} {e : Expr}
+    (h : Subtype' e (.lam x dom body)) :
+    ∃ body', e = .lam x dom body' ∧ Subtype' body' body := by
+  cases h with
+  | refl => exact ⟨body, rfl, Subtype'.refl body⟩
+  | lam_body h => exact ⟨_, rfl, h⟩
 
 /-- Infer the type of a neutral term from a typing context.
     Variables have their declared type; applications use the function's

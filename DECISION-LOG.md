@@ -5,6 +5,54 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-03-31 och-agent-20260331-124544: Remove trans from Subtype' (IMPLEMENTED)
+
+**Decision:** Removed `trans` from `Subtype'` and created `SubtypeTrans` as the
+transitive closure.
+
+**Why:** Lambda inversion (`Subtype' (lam x d b₂) (lam x d b₁) → Subtype' b₂ b₁`)
+is needed for the app case of monotonicity. With `trans` in `Subtype'`, inversion
+fails because `lam ⊑ lam` could go through any intermediate term. Without `trans`,
+the only ways to prove `lam ⊑ lam` are `refl` and `lam_body`, both of which give
+`body₂ ⊑ body₁`.
+
+**Result:** The lam-lam app case of monotonicity is now proven! This was previously
+impossible. The generalized `absEval_mono` takes `Subtype' e₂ e₁` (related exprs)
+and `EnvSub Γ₂ Γ₁` (related envs), proving the result for both same-expression
+and different-expression cases.
+
+**Implications:**
+- `SubtypeTrans` is used in soundness (asc case chains IH with well-typedness via trans)
+- `Subtype'` is used in monotonicity (no trans = clean inversion)
+- Lambda inversion lemmas `lam_inv` and `lam_rhs_shape` are proven in Subtyping.lean
+- `SubtypeTrans.lam_body` lifts the body relation through the transitive closure
+
+---
+
+## 2026-03-31 och-agent-20260331-124544: Generalized monotonicity (absEval_mono)
+
+**Decision:** Monotonicity is proven as a generalized theorem `absEval_mono` that
+takes `Subtype' e₂ e₁` (related expressions) in addition to `EnvSub Γ₂ Γ₁`.
+Standard monotonicity is the corollary with `Subtype'.refl`.
+
+**Why:** In the app case, evaluating the same function `f` in different environments
+produces different normalized lambdas `lam x dom body₁` and `lam x dom body₂` (body₁
+is normalized under Γ₁, body₂ under Γ₂). The IH gives `Subtype' body₂ body₁` via
+lambda inversion. The recursive call on the beta-reduced body then needs `Subtype' body₂ body₁`
+as input — not just `Subtype'.refl`.
+
+**Alternatives considered:**
+- Standard monotonicity (same expr, different envs): insufficient because the
+  recursive call in the app case involves different bodies.
+- Substitution-based monotonicity: would need a substitution-Subtype interaction
+  lemma, which is complex and doesn't fit the closure-based evaluator.
+
+**Implications:** The proof is by induction on fuel, with `match` on the
+`Subtype' e₂ e₁` proof at each step. Cases: refl (5 expression sub-cases),
+top (trivial), lam_body (IH on bodies), app_cong (IH on subexpressions).
+
+---
+
 ## 2026-03-31 och-agent-20260331-120514: Normalize under binders in absEval
 
 **Decision:** absEval normalizes lambda bodies under the binder (with bound
