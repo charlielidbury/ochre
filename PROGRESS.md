@@ -27,19 +27,66 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **Generalized soundness proven** — `soundness_gen` handles related exprs via SubtypeTrans
 - [x] **Soundness COMPLETE** — 0 sorry!
 - [x] **Prop 5.2.9 regression test** formalized and passing
+- [x] **`fix` syntax** added to Expr (6 forms total)
+- [x] **`fix` concrete eval** — unrolling with fixpoint thunk in env
+- [x] **`fix` abstract eval** — returns declared type (like ascription)
+- [x] **`fix` in Subtype'** — `fix_cong` constructor + shape lemmas
+- [x] **`fix` monotonicity** — fully proven (0 sorry)
+- [ ] **`fix` soundness** — 2 sorry (circular EnvConsistent + unreachable case)
 
 ## Current sorry count
 
-**ZERO.** All proofs are complete.
+**TWO** (both in Soundness.lean, both related to `fix`):
+1. `soundness_gen` fix case (line ~149): The core fix soundness requires
+   `SubtypeTrans (.fix inner_c) dom'` to establish EnvConsistent. This is
+   circular (the property we're proving is what we need as a precondition).
+   Breaking this circularity via fuel induction is the key proof challenge.
+2. `soundness_gen` app case, τ_f=fix (line ~214): Unreachable in practice
+   (absEval never produces .fix as a function value), but Lean needs a proof.
+   Could be resolved by proving `absEval_never_fix` lemma.
 
 ## What remains
 
-1. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
+1. **Prove fix soundness** — The two sorry's above. See "Proof challenge" below.
+
+2. **More fix tests** — Test actual recursive functions (e.g., a function that
+   recurses on Church nats). Currently only non-recursive fix is tested.
+
+3. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
    sound. The next step is to extend it toward the full Ochre language (see
    `docs/why-och-matters-for-ochre.md`).
 
-2. **More §6 tests** — Many spec tests from §6.2 (abstract instantiation) are
+4. **More §6 tests** — Many spec tests from §6.2 (abstract instantiation) are
    not yet formalized. These would increase confidence in the evaluator.
+
+## Proof challenge: fix soundness
+
+The fix case in soundness requires showing that when:
+- Abstract: `fix (λf: dom. body_a)` returns `dom'` (normalized dom)
+- Concrete: `fix (λf: dom. body_c)` evaluates body_c with `f := .fix(inner_c)`
+
+...the concrete result `v ⊑ dom'`.
+
+The proof needs `EnvConsistent ((f, .fix(inner_c)) :: γ) ((f, dom') :: Γ)`,
+which requires `SubtypeTrans (.fix inner_c) dom'`. But this IS the property
+we're trying to prove — it's circular.
+
+**Breaking the circularity:** The standard approach is fuel induction:
+- At fuel 0, both return `none` → vacuously true
+- At fuel n+1, concrete eval of body_c may call `f`, which evaluates
+  `fix(inner_c)` at fuel ≤ n. By IH, this result ⊑ dom'.
+
+**Implementation options:**
+1. **Strengthen the induction**: Prove a combined statement like
+   `∀ fuel, concEval fuel γ (.fix inner) = some v → SubtypeTrans v dom'`
+   by strong induction on fuel. Then use this in the body's soundness.
+2. **Add `fix_type` to Subtype'**: `Subtype' (.fix (lam f dom body)) dom`.
+   Simple but needs relating `dom` (raw) to `dom'` (normalized).
+3. **Prove `absEval_never_fix`**: Show absEval never returns `.fix`,
+   eliminating the second sorry entirely.
+4. **Change concEval**: Use substitution instead of env for fix, avoiding
+   `.fix` in env. But this breaks proof structure (different body in the two
+   evaluators).
 
 ## Key theorems proven
 
@@ -58,6 +105,16 @@ then `SubtypeTrans v τ`.
 
 Standard soundness (same expression in both evaluators) is the corollary
 with `SubtypeTrans.step (Subtype'.refl e)`.
+
+### Fix extension
+`fix (λf: dom. body)`:
+- Abstract eval: returns `absEval Γ dom` (the declared type)
+- Concrete eval: evaluates body with `f := .fix (lam f dom body)` in env
+- When `f` is applied (app case), `.fix` is re-evaluated (unrolled)
+- `.fix` can appear in normalized forms (during normalization under binders,
+  the self-reference is stuck)
+- Monotonicity: proven — reduces to monotonicity of evaluating dom
+- Soundness: sorry — requires circular EnvConsistent argument
 
 ## Key techniques
 
@@ -81,6 +138,31 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-134523
+What I did:
+- Added `fix` (general recursion) to the Och calculus — 6 syntactic forms now
+- Syntax.lean: added `| fix : Expr → Expr` with subst case
+- Eval.lean: concrete eval unrolls fix by binding self-reference as .fix thunk;
+  app case handles .fix in function position by re-evaluating. Abstract eval
+  returns the declared type (domain annotation of the inner lambda).
+- Subtyping.lean: added `fix_cong` to Subtype', plus fix_rhs_shape and
+  SubtypeTrans.fix_target_shape lemmas
+- Monotonicity.lean: fully proven with fix (0 sorry!) — fix case reduces to
+  monotonicity of evaluating the domain type
+- Soundness.lean: added fix case to WellTyped, soundness_gen, and app handler.
+  Two sorry's remain (see "Proof challenge" section above).
+- Tests.lean: added fix tests — abstract type, subtyping, concrete application
+
+What's next:
+- Prove fix soundness (the hard part — see proof challenge above)
+- Add recursive function tests (currently only non-recursive fix tested)
+- Consider proving `absEval_never_fix` to eliminate the second sorry
+
+Blockers:
+- Fix soundness proof is circular: needs SubtypeTrans (.fix inner) dom' to
+  establish EnvConsistent, but that's the property being proved. Fuel-based
+  induction should break this but needs careful formalization.
+
 ## 2026-03-31 ochre-lean-20260331-133412
 What I did:
 - Formalized the Prop 5.2.9 regression test in Tests.lean

@@ -50,10 +50,24 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
       | none => none
     | .type         => some .type
     | .asc term _   => concEval fuel γ term  -- runtime: take the lhs
+    | .fix inner =>
+      match inner with
+      | .lam f _dom body =>
+        -- Unroll: evaluate body with f bound to the fixpoint thunk.
+        -- When body later uses f (via the app case), the fix is re-evaluated.
+        concEval fuel ((f, .fix inner) :: γ) body
+      | _ => none
     | .app f a      =>
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
         concEval fuel ((x, aVal) :: γ) body
+      | some (.fix inner), some aVal =>
+        -- Function is a fixpoint thunk: unroll it and apply
+        match concEval fuel γ (.fix inner) with
+        | some (.lam x _dom body) => concEval fuel ((x, aVal) :: γ) body
+        | some .type => some .type
+        | some fVal => some (.app fVal aVal)
+        | none => none
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')
       | _, _ => none
@@ -81,6 +95,13 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
       | none => none
     | .type         => some .type
     | .asc _term ty => absEval fuel Γ ty  -- compile-time: take the rhs
+    | .fix inner =>
+      match inner with
+      | .lam _f dom _body =>
+        -- Abstract eval of fix: return the declared type (the domain annotation).
+        -- Well-typedness (checked separately) ensures the body satisfies this type.
+        absEval fuel Γ dom
+      | _ => none
     | .app f a      =>
       match absEval fuel Γ f, absEval fuel Γ a with
       | some (.lam x _dom body), some aVal =>

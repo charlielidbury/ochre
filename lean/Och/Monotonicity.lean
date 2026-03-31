@@ -72,6 +72,15 @@ theorem absEval_mono
       | asc term ty =>
         simp only [absEval] at h₁ h₂
         exact ih _ _ ty ty _ _ (Subtype'.refl ty) h_env h₁ h₂
+      | fix inner =>
+        simp only [absEval] at h₁ h₂
+        cases inner with
+        | lam f dom body =>
+          -- absEval (.fix (.lam f dom body)) = absEval dom
+          -- Both τ₁ and τ₂ come from evaluating dom in Γ₁ and Γ₂ respectively
+          simp only at h₁ h₂
+          exact ih _ _ dom dom _ _ (Subtype'.refl dom) h_env h₁ h₂
+        | _ => simp at h₁
       | app f a =>
         simp only [absEval] at h₁ h₂
         cases hf₁ : absEval n Γ₁ f with
@@ -112,6 +121,14 @@ theorem absEval_mono
                   | _ => simp only at h₁ h₂; cases h₁; cases h₂
                          exact Subtype'.app_cong hf_sub ha_sub
                 | asc _ _ =>
+                  cases f₂ with
+                  | lam _ _ _ => cases hf_sub
+                  | type => cases hf_sub
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact Subtype'.app_cong hf_sub ha_sub
+                | fix _ =>
+                  -- absEval never produces .fix, but need case for exhaustiveness
+                  -- .fix falls through to stuck in absEval's app case
                   cases f₂ with
                   | lam _ _ _ => cases hf_sub
                   | type => cases hf_sub
@@ -178,9 +195,31 @@ theorem absEval_mono
                 | type => cases hf_sub
                 | _ => simp only at h₁ h₂; cases h₁; cases h₂
                        exact Subtype'.app_cong hf_sub ha_sub
+              | fix _ =>
+                cases f₂ with
+                | lam _ _ _ => cases hf_sub
+                | type => cases hf_sub
+                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                       exact Subtype'.app_cong hf_sub ha_sub
               | type =>
                 -- f₁=.type: evaluator returns .type (type-app-returns-type)
                 simp only at h₁; cases h₁; exact Subtype'.top τ₂
+    | .fix_cong h_inner =>
+      rename_i inner₁ inner₂
+      simp only [absEval] at h₁ h₂
+      -- inner₁ must be a lam (else absEval returns none, contradicting h₁)
+      -- Subtype' inner₂ inner₁ → inner₂ has same shape (lam with same dom)
+      -- Both sides return absEval of the same dom → IH on dom
+      cases inner₁ with
+      | lam f₁ dom₁ body₁ =>
+        obtain ⟨body₂, hinner₂_eq, _⟩ := Subtype'.lam_rhs_shape h_inner
+        subst hinner₂_eq
+        -- Both: absEval n Γ dom₁ (same domain by lam_rhs_shape)
+        simp only at h₁ h₂
+        exact ih _ _ dom₁ dom₁ _ _ (Subtype'.refl dom₁) h_env h₁ h₂
+      | _ =>
+        -- inner₁ not a lam: absEval returns none, contradiction
+        simp at h₁
 
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)

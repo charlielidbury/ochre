@@ -34,6 +34,14 @@ def WellTyped (fuel : Nat) (Γ : Env) (e : Expr) : Prop :=
         ∃ σ τ', absEval fuel Γ term = some σ ∧
                 absEval fuel Γ ty = some τ' ∧
                 Subtype' σ τ'
+    | .fix inner =>
+        match inner with
+        | .lam f dom body =>
+            ∃ dom', absEval fuel Γ dom = some dom' ∧
+                    WellTyped fuel ((f, dom') :: Γ) body ∧
+                    ∃ σ, absEval fuel ((f, dom') :: Γ) body = some σ ∧
+                         Subtype' σ dom'
+        | _ => False
     | .app f a =>
         WellTyped fuel Γ f ∧ WellTyped fuel Γ a ∧
         match absEval fuel Γ f, absEval fuel Γ a with
@@ -76,6 +84,7 @@ theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
     - lam → lam (lam_target_shape)
     - app → app (app_target_shape)
     - asc → asc (asc_target)
+    - fix → fix (fix_target_shape)
     - type → anything (trivial via top)
 -/
 theorem soundness_gen
@@ -125,6 +134,20 @@ theorem soundness_gen
       have h_vs := ih Γ γ term term σ v (SubtypeTrans.step (Subtype'.refl term))
         h_abs_term h_conc h_env h_wt_term
       exact SubtypeTrans.trans h_vs (SubtypeTrans.step h_sub_wt)
+    | fix inner_a =>
+      -- SubtypeTrans e_c (.fix inner_a) → e_c = .fix inner_c
+      obtain ⟨inner_c, hec_eq, h_inner_sub⟩ := h_sub.fix_target_shape
+      subst hec_eq
+      simp only [absEval, concEval] at h_abs h_conc
+      -- Abstract: inner_a must be a lam (else absEval returns none)
+      -- Concrete: inner_c must also be a lam (by SubtypeTrans shape)
+      -- The soundness of fix requires showing that the concrete fixpoint
+      -- unrolling produces a value ⊑ the declared type. This requires
+      -- EnvConsistent between (f, .fix inner_c) and (f, dom'), which
+      -- requires SubtypeTrans (.fix inner_c) dom' — the very property
+      -- we're trying to prove. This circularity is broken by fuel induction,
+      -- but formalizing it requires a more sophisticated proof strategy.
+      sorry
     | app f_a a_a =>
       -- SubtypeTrans e_c (app f_a a_a) → e_c = app f_c a_c
       obtain ⟨f_c, a_c, hec_eq, h_f_sub, h_a_sub⟩ := h_sub.app_target_shape
@@ -183,6 +206,13 @@ theorem soundness_gen
                 have := ih_f.asc_target; subst this
                 simp only at h_abs h_conc; cases h_abs; cases h_conc
                 exact SubtypeTrans.app_cong ih_f ih_a
+              | fix inner' =>
+                -- absEval never produces .fix as a function value, but we
+                -- can't easily prove this to Lean. In the concrete evaluator,
+                -- .fix in function position triggers special unrolling logic,
+                -- making this case complex. Since it's unreachable in practice
+                -- (absEval returns dom', never .fix), we mark it sorry.
+                sorry
 
 /-- **Soundness theorem.**
 

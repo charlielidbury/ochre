@@ -232,3 +232,46 @@ example : subCheck testFuel false' true' = false := by native_decide
 --   (Not true : Bool) is fine because Not true = false ⊑ Bool ✓
 example : subCheck testFuel (.app Not' true') Bool' = true := by native_decide
 example : subCheck testFuel (.app Not' false') Bool' = true := by native_decide
+
+-- ============================================================
+-- §7 Fix (general recursion) tests
+-- ============================================================
+
+-- Nat → Nat function type (as a lambda: λ(n: Nat). Nat)
+def NatToNat : Expr := .lam "n" Nat' Nat'
+
+-- Simple non-recursive fix: fix (λself: Nat→Nat. λn: Nat. n)
+-- The identity function, declared as Nat → Nat
+def fixId : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat' (.var "n")))
+
+-- Abstract eval of fix returns the declared type (dom)
+-- fix (λself: Nat→Nat. body) → Nat → Nat
+example : absEval testFuel [] fixId = some NatToNat := by native_decide
+
+-- fix ⊑ Nat → Nat (the declared type)
+example : subCheck testFuel fixId NatToNat = true := by native_decide
+
+-- Concrete eval: fix (λself. λn. n) applied to 3 should give 3
+-- The fix evaluates body with self := fix(...), body = λn. n,
+-- which doesn't use self, so result is λn. n. Apply to 3 → 3.
+example : concEval testFuel [] (.app fixId three') = some three' := by native_decide
+
+-- Concrete eval: fix (λself. λn. n) applied to 0 should give 0
+example : concEval testFuel [] (.app fixId zero') = some zero' := by native_decide
+
+-- Recursive fix: predecessor-based recursion to constant zero
+-- fix (λself: Nat→Nat. λn: Nat. isZero n ? 0 : self (pred n))
+-- This should always return 0 for any concrete nat.
+-- Note: In Church encoding, "isZero n ? 0 : self (pred n)" is
+-- (isZero n) Nat zero (self (pred n))
+-- But we need to be careful: Church bools are lazy in both branches.
+-- Actually: isZero n returns a Church bool, applied to Nat, then two branches.
+-- The issue is that both branches are evaluated (no laziness).
+-- Let's test with something simpler first.
+
+-- Simple recursive doubling that counts down: add n to itself
+-- Actually, let's just test that fix produces the right abstract type
+-- and works for non-recursive cases.
+
+-- fix ⊑ Type (everything is ⊑ Type)
+example : subCheck testFuel fixId .type = true := by native_decide

@@ -36,6 +36,9 @@ inductive Subtype' : Expr → Expr → Prop where
       Used in the monotonicity proof for stuck applications. -/
   | app_cong {f₁ f₂ a₁ a₂ : Expr} :
       Subtype' f₂ f₁ → Subtype' a₂ a₁ → Subtype' (.app f₂ a₂) (.app f₁ a₁)
+  /-- Fix congruence: if e₂ ⊑ e₁ then fix e₂ ⊑ fix e₁. -/
+  | fix_cong {e₁ e₂ : Expr} :
+      Subtype' e₂ e₁ → Subtype' (.fix e₂) (.fix e₁)
 
 /-- Transitive closure of Subtype'. Used in soundness where transitivity
     is needed (the asc case chains IH result with the well-typedness hyp). -/
@@ -154,6 +157,36 @@ theorem SubtypeTrans.var_target {x : Name} {e : Expr}
 theorem SubtypeTrans.asc_target {t τ : Expr} {e : Expr}
     (h : SubtypeTrans e (.asc t τ)) : e = .asc t τ :=
   h.eq_of_rigid_target (fun _ h => by cases h with | refl => rfl)
+
+/-- If `Subtype' e (fix inner)` then `e` is a fix with related inner. -/
+theorem Subtype'.fix_rhs_shape {inner : Expr} {e : Expr}
+    (h : Subtype' e (.fix inner)) :
+    ∃ inner', e = .fix inner' ∧ Subtype' inner' inner := by
+  cases h with
+  | refl => exact ⟨inner, rfl, Subtype'.refl inner⟩
+  | fix_cong h => exact ⟨_, rfl, h⟩
+
+/-- Helper: generalized fix target shape with variable target. -/
+private theorem SubtypeTrans.fix_target_shape_aux {e b : Expr}
+    (h : SubtypeTrans e b) :
+    ∀ {inner : Expr}, b = .fix inner →
+    ∃ inner', e = .fix inner' ∧ SubtypeTrans inner' inner := by
+  induction h with
+  | step h' =>
+    intro inner hb; subst hb
+    obtain ⟨inner', eq, hsub⟩ := Subtype'.fix_rhs_shape h'
+    exact ⟨inner', eq, .step hsub⟩
+  | trans _ _ ih₁ ih₂ =>
+    intro inner hb
+    obtain ⟨inner_mid, eq_mid, h_mid⟩ := ih₂ hb
+    obtain ⟨inner', eq', h'⟩ := ih₁ eq_mid
+    exact ⟨inner', eq', .trans h' h_mid⟩
+
+/-- If `SubtypeTrans e (fix inner)` then e is a fix with related inner. -/
+theorem SubtypeTrans.fix_target_shape {inner : Expr} {e : Expr}
+    (h : SubtypeTrans e (.fix inner)) :
+    ∃ inner', e = .fix inner' ∧ SubtypeTrans inner' inner :=
+  h.fix_target_shape_aux rfl
 
 /-- Congruence for app through SubtypeTrans (left component). -/
 private theorem SubtypeTrans.app_cong_left {f₁ f₂ : Expr} (a : Expr)

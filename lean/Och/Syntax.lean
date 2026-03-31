@@ -29,6 +29,7 @@ inductive Expr where
   | app    : Expr → Expr → Expr
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
+  | fix    : Expr → Expr
 deriving Repr, BEq, Inhabited, DecidableEq
 
 namespace Expr
@@ -47,5 +48,6 @@ def subst (e : Expr) (x : Name) (s : Expr) : Expr :=
   | .app f a      => .app (f.subst x s) (a.subst x s)
   | .asc term ty  => .asc (term.subst x s) (ty.subst x s)
   | .type         => .type
+  | .fix e        => .fix (e.subst x s)
 
 end Expr
