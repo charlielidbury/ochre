@@ -1,5 +1,0 @@
-open Base
-
-(* ---- EVALUATION ---- *)
-
-(* ---- PROGRAMS ---- *)
