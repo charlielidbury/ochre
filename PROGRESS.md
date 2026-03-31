@@ -33,18 +33,33 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## Current blockers
 
-**Monotonicity fails for unapplied functions with dependent domains.**
+**Two separate sources of anti-monotonicity identified:**
 
-The fundamental tension: function subtyping is contravariant in domains, but
-narrowing a context variable NARROWS the domain (covariant in the context).
-These two covariances conflict.
+1. **Domain anti-monotonicity**: Narrowing a context variable that appears
+   in a lambda domain narrows the domain, widening the function set (contra).
+   FIXABLE by domain erasure / two-level subtyping framework.
 
-Candidate fixes investigated (see docs/tasks/4-proofs.md):
-1. Restrict variables from appearing in lambda domains (kills dependent types)
-2. Use pointwise function subtyping instead of S-Lam (promising, needs investigation)
-3. Separate domain shape from behavior in subtyping
-4. Restrict monotonicity to ground types / fully-applied results (most promising)
-5. Modify App rule to preserve monotonicity
+2. **Body anti-monotonicity** (= Prop 5.2.9): Anti-monotone functions like
+   `Not` produce outputs that go in the opposite direction from inputs.
+   When used in ascription `(Not B : B)`, narrowing B breaks the check.
+   NOT fixable by subtyping rule changes — it's a property of the function.
+
+**Key discovery: `true = 0` at runtime.** Domain annotations are erased, so
+Church-encoded booleans and naturals overlap. This means `true ⋢ Nat` is a
+design choice (domain annotations as type identity), not a soundness
+requirement.
+
+**Proposed resolution: two-level subtyping.**
+- Static (⊑ₛ): current rules with domain checks (user-facing)
+- Runtime (⊑ᵣ): domain-erased rules (for metatheory)
+- Runtime subtyping IS monotone (domains erased = purely covariant)
+- Soundness stated as v ⊑ᵣ τ ("behavioral soundness")
+
+Candidate fixes investigated (see docs/fix-exploration.md):
+1. Widen domains on substitution — unsound
+2. Pointwise function subtyping — total is equiv to S-Lam, partial breaks true⋢Nat
+3. Denotational subtyping — fixes domains but breaks Bool/Nat distinction
+4. Two-level subtyping — fixes domain issue, not body issue (most promising)
 
 ## Session log
 
@@ -58,19 +73,25 @@ What I did:
 - Identified and proved that monotonicity (4.2) FAILS in general:
   concrete counterexample with λ(A:Type).λ(x:A).x showing anti-monotone
   behavior when A is narrowed (dependent domain + contravariant subtyping)
-- This is the Prop 5.2.9 phenomenon reproduced in the pure Och setting
-- Analyzed 5 candidate fixes, with "monotonicity for ground types only"
-  and "pointwise function subtyping" as most promising
+- Identified TWO separate sources of anti-monotonicity: domain-level (fixable)
+  and body-level (Prop 5.2.9, fundamental)
+- Discovered true = 0 at runtime (domain erasure); proposed two-level
+  subtyping framework (static ⊑ₛ for users, runtime ⊑ᵣ for metatheory)
+- Proved runtime subtyping is monotone (sketch): erasure eliminates the
+  domain-based anti-monotonicity, leaving covariant body checks only
+- Explored 4 concrete fixes in detail; two-level subtyping is most promising
+  but doesn't resolve body anti-monotonicity (Prop 5.2.9)
 
 What's next:
-- Investigate whether pointwise function subtyping (replacing S-Lam) rescues
-  monotonicity while preserving all Task 1 derivations
-- Try proving soundness without full monotonicity (closed-term simulation
-  lemma might be independent)
-- Formalize what "ground type" means and whether restricted monotonicity
-  suffices
+- Formalize the two-level subtyping framework and prove runtime monotonicity
+- Attempt behavioral soundness proof (v ⊑ᵣ τ) using runtime subtyping
+- Investigate whether body anti-monotonicity can be restricted without
+  killing expressiveness (e.g., polarity annotations on function parameters)
+- Consider whether Ochre's algebraic data types (with explicit constructors)
+  avoid the Church encoding collapse (true=0) entirely
 
 Blockers:
-- Monotonicity failure blocks the soundness proof's App case
-- Need a design decision on how to resolve the domain contravariance issue
+- Body anti-monotonicity (Prop 5.2.9) remains unresolved
+- Design decision needed: accept behavioral soundness (⊑ᵣ) or find a fix
+  for full syntactic soundness (⊑ₛ)
 ```
