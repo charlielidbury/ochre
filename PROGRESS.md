@@ -414,6 +414,38 @@ references. See DECISION-LOG.md for the detailed analysis with example.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-220210
+What I did:
+- Proved absEval_lookup_ext: absEval only depends on env lookup behavior.
+  ~50 lines, by induction on fuel + cases on expression. Handles all cases
+  including app (needs env extension for beta-reduction bodies).
+- Proved 5 of 7 cases of absEval_normalize_stable:
+  - type, var(y=x), asc, fix: straightforward IH applications
+  - lam: key technique — use absEval_lookup_ext to swap adjacent env entries,
+    apply IH with permuted env, then swap back + fuel_mono. Clean and general.
+- Partially proved fundamental fix case: all LR shapes except lam-lam proved
+  via LR catch-all (non-lambda values are trivially LR-related at any type).
+
+Key findings:
+- The var(y≠x) case of normalize_stable is harder than expected: absEval of
+  var y just does a raw lookup (returns Γ.lookup y = v_y), but h_eval further
+  evaluates v_y. These only agree when v_y is already a "fixpoint" of absEval
+  (evaluating it again gives the same result). This requires an explicit
+  normalization invariant on Γ values.
+- The app case needs tracking how beta-reduction shapes interact with
+  normalization at two different fuel levels. Not just an IH application.
+- The fix lam-lam case is blocked by the fundamental fix-in-env circularity:
+  proving LR for fix evaluation results requires LR for fix in the env, which
+  is what we're trying to prove. Step-indexed approach needed.
+
+What's next:
+1. Prove absEval idempotency (absEval k Γ v = some v when v is already an
+   absEval result) — unblocks var(y≠x) case of normalize_stable.
+2. Prove app case of normalize_stable — needs careful sub-eval shape tracking.
+3. Use completed normalize_stable in the lam case of fundamental (still blocked
+   by the universal Γ in LR lambda clause — see existing analysis).
+4. Step-indexed approach for fix case (or add LR fix typing axiom).
+
 ## 2026-03-31 ochre-lean-20260331-194223
 What I did:
 - Proved 3 substitution commutativity lemmas in SoundnessS.lean:
