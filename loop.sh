@@ -47,7 +47,9 @@ while true; do
   # Wait for claude to start up
   sleep 5
 
-  # Send the initial message
+  # Enable remote control, then send the initial message
+  tmux send-keys -t "$SESSION_NAME" "/remote-control" Enter
+  sleep 3
   tmux send-keys -t "$SESSION_NAME" \
     "Your agent ID is $SESSION_NAME. Read and follow AGENT_PROMPT.md" Enter
 
