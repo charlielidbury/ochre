@@ -114,3 +114,60 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')  -- stuck
       | _, _ => none
+
+/-- Substitution-based concrete evaluator. Standard call-by-value lambda calculus.
+
+    Unlike `concEval` (which uses an environment and normalizes under binders for
+    proof convenience), this evaluator uses substitution and treats lambdas as
+    values — their bodies are NOT evaluated until applied. This is the standard
+    CBV semantics from §4.1 of the spec.
+
+    **Why this exists alongside concEval:**
+    `concEval` normalizes under binders so it's structurally parallel to `absEval`,
+    making the soundness proof a straightforward induction. But normalization under
+    binders breaks Church-encoded branching with recursion: both branches of a
+    conditional are eagerly evaluated, causing recursive branches to diverge even
+    when not taken. `concEvalS` doesn't have this problem.
+
+    **Thunking convention:** Because `concEvalS` is call-by-value (arguments are
+    evaluated before being passed), Church-encoded branching still evaluates both
+    arguments. To enable recursion with Church booleans, wrap branches in thunks:
+    instead of `(isZero n) Nat base rec`, use
+    `(isZero n) (Unit→Nat) (λ_.base) (λ_.rec) unit`.
+    The thunk lambdas are values (not evaluated), so the unused branch is never
+    entered. The selected thunk is then applied to unit to force it.
+
+    **Soundness:** Not yet proven with respect to `absEval`. This requires either:
+    (a) a substitution lemma for SubtypeTrans (hard because lam_body needs same domain), or
+    (b) a logical-relations/step-indexed approach.
+    See DECISION-LOG.md for the full analysis. -/
+def concEvalS (fuel : Nat) (e : Expr) : Option Expr :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match e with
+    | .var _ => none  -- free variable = stuck (expects closed terms)
+    | .lam _ _ _ => some e  -- lambda is a VALUE — body not evaluated
+    | .type => some .type
+    | .asc term _ => concEvalS fuel term  -- runtime: erase ascription
+    | .fix inner =>
+      match inner with
+      | .lam f _dom body =>
+        -- Unroll: substitute self-reference into body, then evaluate
+        concEvalS fuel (body.subst f (.fix inner))
+      | _ => none
+    | .app f a =>
+      match concEvalS fuel f, concEvalS fuel a with
+      | some (.lam x _dom body), some aVal =>
+        -- Beta-reduce via substitution (not env extension)
+        concEvalS fuel (body.subst x aVal)
+      | some (.fix inner), some aVal =>
+        -- Fix in function position: unroll and retry
+        match concEvalS fuel (.fix inner) with
+        | some (.lam x _dom body) => concEvalS fuel (body.subst x aVal)
+        | some .type => some .type
+        | some fVal => some (.app fVal aVal)
+        | none => none
+      | some .type, some _ => some .type
+      | some fVal, some aVal => some (.app fVal aVal)
+      | _, _ => none

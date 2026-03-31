@@ -37,7 +37,8 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **Pair/Array/Vec standard library** — Church-encoded definitions in Tests.lean
 - [x] **§6.1 data structure tests** — Array construction, head/tail, Vec pack/unpack
 - [x] **§6.2 abstract tests** — abstract Vec/Nat operations with ascription
-- [ ] **Concrete recursive fix** — BLOCKED: evaluator normalizes under binders, breaks Church branching
+- [x] **Concrete recursive fix** — RESOLVED via `concEvalS` (substitution-based evaluator + thunked branches)
+- [ ] **Soundness of concEvalS** — NOT YET PROVEN. Needs logical-relations approach. See DECISION-LOG.md
 
 ## Current sorry count
 
@@ -45,11 +46,11 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## What remains
 
-1. **Fix the concrete evaluator for recursive fix** — See "Concrete fix limitation"
-   below. The current evaluator normalizes under binders in both concEval and
-   absEval, which prevents Church-encoded branching from working with recursive
-   fix. The proposed fix: stop normalizing under binders in concEval (treat lambdas
-   as values), and adjust the soundness proof to use extensional reasoning.
+1. **Prove soundness of concEvalS** — `concEvalS` (substitution-based, lambdas as
+   values) correctly handles concrete recursive fix (tested). But soundness w.r.t.
+   `absEval` is unproven. The challenge: `concEvalS` uses substitution while
+   `absEval` uses env extension, making them structurally incompatible for a simple
+   inductive proof. A logical-relations approach is recommended. See DECISION-LOG.md.
 
 2. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
    on a fix typing axiom included in `WellTyped`:
@@ -182,51 +183,27 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
   says fix is well-typed when its body satisfies the declared contract, implying
   the fixpoint itself satisfies the contract.
 
-## Concrete fix limitation
+## Concrete fix limitation (RESOLVED)
 
-**Problem**: Concrete recursive fix with Church-encoded branching does NOT work.
+**Problem (now resolved)**: The env-based `concEval` normalizes under binders,
+causing Church-encoded branching with recursion to diverge. See Tests.lean `toZero`.
 
-Both `concEval` and `absEval` normalize under binders — when evaluating
-`λx.body`, they evaluate `body` with `x` as a neutral variable. This means
-both branches of a Church-encoded conditional are always fully evaluated,
-even if only one is selected at runtime.
+**Solution**: Added `concEvalS` — a substitution-based concrete evaluator that
+treats lambdas as values (no normalization under binders). Combined with
+thunked branches (wrapping each branch in `λ_.branch`, then applying `unit` to
+the selected thunk), recursive Church-encoded functions terminate correctly.
 
-Example: `toZero = fix (λself. λn. (isZero n) Nat 0 (self 0))`
-- At n=0: `isZero 0 = true`, so `true Nat 0 (self 0)` should return 0
-- But the evaluator evaluates ALL arguments before applying, so `self 0` is
-  evaluated even though `true` would discard it
-- `self 0` unrolls fix again → same problem → infinite loop (fuel exhaustion)
-- Verified empirically: `concEval 1000 [] (toZero 1) = none`
+**Why the previous proposal ("just stop normalizing in concEval") failed**:
+The env-based evaluator REQUIRES normalization to resolve free variables in lambda
+bodies. Without normalization, variables from outer scopes become dangling
+references. See DECISION-LOG.md for the detailed analysis with example.
 
-**Why concEval normalizes under binders**: This was a deliberate design choice
-(session och-agent-20260331-120514) to make concEval structurally parallel to
-absEval. The parallel structure makes the soundness proof a straightforward
-induction — the lam case works because both evaluators process the body
-identically, differing only at ascription.
-
-**Proposed fix**: Change concEval to NOT normalize under binders. Standard
-lambda calculus treats `λx.body` as a value without reducing the body. This
-would let Church-encoded conditionals work: the unselected branch (passed as
-a lambda argument) wouldn't have its body eagerly evaluated.
-
-**Impact on soundness proof**: The lam case currently proves `body_c' ⊑ body_a'`
-for normalized bodies. Without normalization in concEval, we'd have `v = lam x dom body`
-(raw) vs `τ = lam x dom body'` (normalized). The proof would need to show
-`body ⊑ body'` without having concrete-evaluated `body`. Two approaches:
-1. **Extensional soundness**: Reformulate soundness at application sites only.
-   Lambdas are sound when applied, not when compared structurally.
-2. **Normalization lemma**: Prove that `absEval` only widens — if
-   `absEval Γ e = some e'`, then `SubtypeTrans e e'`. This would let the
-   lam case conclude via `SubtypeTrans body body'`.
-
-Approach 2 is likely simpler. The key insight: absEval's only "widening"
-operation is ascription (`(e : τ)` → `τ`). All other cases preserve or
-propagate structure. So `SubtypeTrans e (absEval e)` should hold when
-the environment maps each variable to itself (neutral normalization).
-
-**Alternative**: Add a native `if`/case-split construct instead of relying
-on Church-encoded branching. This would short-circuit evaluation of the
-un-taken branch. But this adds syntax and complexity.
+**Current state**:
+- `concEval` (env-based, normalizing) — used by soundness proof, breaks recursive fix
+- `concEvalS` (substitution-based, lambdas as values) — correct runtime semantics,
+  recursive fix works, but soundness w.r.t. absEval not yet proven
+- The soundness proof for `concEvalS` requires a logical-relations approach
+  because the two evaluators use fundamentally different mechanisms (env vs subst)
 
 ## Session log
 

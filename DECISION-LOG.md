@@ -5,50 +5,92 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
-## 2026-03-31 ochre-lean-20260331-140739: Stop normalizing under binders in concEval (NOT YET IMPLEMENTED)
+## 2026-03-31 ochre-lean-20260331-160108: concEvalS — substitution-based concrete evaluator (IMPLEMENTED)
 
-**Decision:** `concEval` should treat `λ(x: τ). e` as a value — return it as-is
+**Decision:** Added `concEvalS` as a second concrete evaluator alongside the existing
+`concEval`. `concEvalS` uses substitution and treats lambdas as values (no normalization
+under binders). It is the "real" runtime semantics per spec §4.1. `concEval` is kept
+as a proof artifact for soundness.
+
+**Why the previous proposal ("just stop normalizing in concEval") doesn't work:**
+
+The env-based `concEval` REQUIRES normalization under binders. Here's why:
+
+When `concEval env (lam x dom body)` returns the raw lambda, the body has
+free variables (like `var "y"`) that were resolved through the environment.
+Without normalization, these variables remain unresolved. When the lambda is
+later applied in a DIFFERENT env context (e.g., after being returned from a
+function), the free variables are looked up in the wrong env or not found at all.
+
+Example: `(λy. λx. x + y) 5 3`
+1. Evaluate `(λy. λx. x+y) 5`: app of lam, evaluate body `λx. x+y` with (y,5)::γ
+2. Without normalization: return `lam x dom (x + y)` — var "y" is NOT resolved
+3. Apply to 3: evaluate `x + y` with (x,3)::γ' — where is y? NOT in scope!
+
+With normalization (current): step 2 evaluates body → `lam x dom (x + 5)` → y resolved.
+With substitution (concEvalS): step 1 uses subst not env → body becomes `λx. x + 5` → y resolved.
+
+So the three viable approaches are:
+1. **Closures** — lambda values carry their environment. Requires changing Expr or
+   adding a Value type. Major refactor of Subtype' and all proofs.
+2. **Substitution** — beta-reduction uses `body.subst x arg` not env extension.
+   Loses the "same body expression" property that makes soundness proof easy.
+3. **Extensional soundness** — prove soundness as a logical relation (lambdas are
+   related when applied to related args, not when compared syntactically).
+
+Approach 2 was chosen as a stepping stone. `concEvalS` demonstrates that concrete
+recursive fix WORKS. Proving its soundness is left for future sessions.
+
+**Thunking convention for recursion:**
+Even `concEvalS` is call-by-value: arguments are evaluated before being passed.
+Church-encoded branching `(isZero n) R base_case recursive_case` evaluates BOTH
+branches. The fix: wrap branches in thunks (lambdas that delay evaluation):
+`(isZero n) (Unit→R) (λ_.base) (λ_.rec) unit`. The unused thunk is a value
+(not evaluated). The selected thunk is applied to unit, triggering evaluation.
+
+**Limitation:** `concEvalS` returns un-normalized lambdas, so `succ 2` is NOT
+syntactically equal to `three'`. It's extensionally correct (applying to X,z,s
+gives the same result) but structurally different. Tests should check behavior
+(apply to args) not normal forms.
+
+**What this unblocks:**
+- Concrete recursive fix: `toZeroThunked 3 = 0` ✓ (Tests.lean)
+- Composition: `toZeroThunked (add 2 1) = 0` ✓ (church numerals as args)
+- Future: `appendArrays`, `mapArray`, any recursive function with thunked branches
+
+**Soundness path forward:**
+To prove `concEvalS` sound w.r.t. `absEval`, the most promising approach is a
+logical-relations style proof. Define `Sound n v τ` as:
+- For non-lam: `SubtypeTrans v τ`
+- For lam-lam: when applied to Sound arguments, the results are Sound
+
+This decouples the lam case (no need to compare bodies syntactically) while
+preserving compositionality at application sites. Estimated effort: 200-300 lines,
+primarily in defining the Sound relation and proving the app case.
+
+---
+
+## 2026-03-31 ochre-lean-20260331-140739: Stop normalizing under binders in concEval (SUPERSEDED)
+
+**Status:** SUPERSEDED by the concEvalS decision above. The analysis below is
+kept for historical reference but the approach was found to be incomplete.
+
+**Original decision:** `concEval` should treat `λ(x: τ). e` as a value — return it as-is
 without reducing the body. `absEval` should continue normalizing under binders
 (needed for precision like `succ 2 = 3`).
 
-**Why:** The current `concEval` normalizes lambda bodies eagerly. This breaks
-Church-encoded branching, which works by passing two lambdas (branches) to an
-eliminator that selects one. When both branches are eagerly normalized, recursive
-branches diverge even when not taken. Demonstrated by `toZero 1 = none` in
-Tests.lean — the recursive branch `self (pred n)` is evaluated even at `n = 0`.
+**Why this doesn't work (discovered session ochre-lean-20260331-160108):**
+The env-based evaluator requires normalization to resolve free variables. Without
+it, lambda bodies have dangling variable references. See the entry above for the
+full analysis.
 
-The spec (§4.1) says `(λ(x: τ). e) v ⟶ e[x := v]` — standard call-by-value
-where lambdas are values. The implementation's normalization under binders
-departs from this.
+**Original analysis (for reference):**
+The current `concEval` normalizes lambda bodies eagerly. This breaks
+Church-encoded branching: both branches are eagerly normalized, causing recursive
+branches to diverge even when not taken. Demonstrated by `toZero 1 = none` in
+Tests.lean.
 
-**What changes:**
-- `concEval` lam case: return `some (.lam x dom body)` instead of normalizing body
-- `concEval` app case: unchanged (beta-reduction via env extension still works)
-- Soundness proof lam case: needs restructuring from intensional (comparing
-  normalized bodies) to extensional (related when applied to related args)
-
-**What this unblocks:**
-- Concrete recursive functions via Church-encoded branching (toZero, mapArray, etc.)
-- Concrete appendVec with fixed n and m
-
-**Why absEval keeps normalizing:**
-Abstract evaluation needs normalization under binders for precision. `succ 2`
-must have type `3`, which requires normalizing the body of `succ` after
-substituting `2` for `n`. The abstract evaluator computes precise normal forms;
-the concrete evaluator just runs programs.
-
-**Proof impact:**
-The soundness proof's lam case currently works by:
-1. Normalize both bodies under the binder
-2. Compare normalized bodies via SubtypeTrans
-
-Without concrete normalization, step 1 only happens abstractly. The proof needs
-extensional reasoning: show that for any argument `v ⊑ τ_a`, applying the
-concrete lambda to `v` gives a result ⊑ applying the abstract lambda to `τ_a`.
-This is standard but requires restructuring the lam case and possibly the
-Subtype' relation (adding an extensional function subtyping rule).
-
-**Alternatives considered:**
+**Alternatives considered (original):**
 - Add laziness annotations to Church encodings. Ad-hoc, not compositional.
 - Add a `thunk`/`delay` construct. Adds syntax for what should be default behavior.
 - Keep normalizing but add fuel-aware recursion limits. Doesn't fix the

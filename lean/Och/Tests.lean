@@ -428,6 +428,13 @@ example : subCheck testFuel
   (.app succ' (.asc unit' Nat'))
   Nat' = true := by native_decide
 
+-- isZero (succ (... : Nat)) = false (precisely!)
+-- Even with abstract n : Nat, isZero (succ n) is precisely false.
+-- succ n always fires the s branch, and isZero's s = λ(_: Bool). false
+-- is a constant function that discards the stuck (n X z s) subterm.
+example : absEval testFuel []
+  (.app isZero' (.app succ' (.asc unit' Nat'))) = some false' := by native_decide
+
 -- isZero (... : Nat) ⊑ Bool
 example : subCheck testFuel
   (.app isZero' (.asc unit' Nat'))
@@ -471,11 +478,83 @@ example : concEval testFuel [] (.app toZero one') = none := by native_decide
 -- But abstract eval correctly returns the declared type
 example : absEval testFuel [] toZero = some NatToNat := by native_decide
 
--- FIX PROPOSAL: Change concEval to NOT normalize under binders.
--- Standard lambda calculus treats λx.body as a value without reducing body.
--- This would let Church-encoded conditionals work because the un-selected
--- branch (a lambda argument) wouldn't have its body evaluated.
--- The soundness proof would need adjustment: the lam case would use
--- extensional reasoning (soundness holds at application sites) rather than
--- intensional (comparing normalized bodies).
--- See PROGRESS.md for full analysis.
+-- ANALYSIS: The env-based concEval CANNOT simply "stop normalizing under
+-- binders" because the environment wouldn't be captured — free variables
+-- in the body would be lost. The real fix requires either closures or
+-- substitution-based evaluation. See concEvalS in Eval.lean and
+-- DECISION-LOG.md for the full analysis.
+
+-- ============================================================
+-- §7.2 Substitution-based evaluator (concEvalS) tests
+-- concEvalS treats lambdas as values (no normalization under binders),
+-- uses substitution instead of environments.
+-- ============================================================
+
+-- Basic: concEvalS agrees with concEval on non-recursive examples
+
+-- true X t f ⟶ t (using substitution-based eval)
+-- We need closed terms, so instantiate X, t, f concretely
+example : concEvalS testFuel (.app (.app (.app true' Nat') zero') one') = some zero' := by
+  native_decide
+
+-- false X t f ⟶ f
+example : concEvalS testFuel (.app (.app (.app false' Nat') zero') one') = some one' := by
+  native_decide
+
+-- Non-recursive fix works with concEvalS
+example : concEvalS testFuel (.app fixId three') = some three' := by
+  native_decide
+example : concEvalS testFuel (.app fixId zero') = some zero' := by
+  native_decide
+
+-- isZero 0 = true, isZero 1 = false
+example : concEvalS testFuel (.app isZero' zero') = some true' := by native_decide
+example : concEvalS testFuel (.app isZero' one') = some false' := by native_decide
+example : concEvalS testFuel (.app isZero' three') = some false' := by native_decide
+
+-- Note: concEvalS returns un-normalized lambdas, so `succ 2` is NOT
+-- syntactically equal to `three'`. Instead, test behavior by applying
+-- the result to concrete arguments (which forces full evaluation).
+-- add 2 3 applied to Bool true (λ_.false) — tests if result behaves like 5
+-- (5 Bool true (λ_.false) = (λ_.false) (... (λ_.false) true ...) = false for 5 > 0)
+-- Simpler: just test concrete application chains work end-to-end
+-- double 3 = 6, tested by checking (double 3) applies correctly
+-- toZero (add 2 1) — exercises add producing a value that toZero can consume
+-- (tested below in the recursive fix section)
+
+-- ============================================================
+-- §7.3 Recursive fix with thunked branches (concEvalS)
+-- This is the KEY test: Church-encoded branching + recursion
+-- that fails with the env-based concEval but works with concEvalS.
+-- ============================================================
+
+-- Helper: Unit → Nat function type
+def UnitToNat : Expr := .lam "_" Unit' Nat'
+
+-- toZeroThunked: recursive function that always returns 0.
+-- Uses thunked branches: (isZero n) (Unit→Nat) (λ_.zero) (λ_.self zero) unit
+-- The thunk lambdas are values in CBV, so the recursive branch is NOT
+-- evaluated when isZero n = true (selecting the first thunk).
+def toZeroThunked : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat'
+  (.app
+    (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
+      (.lam "_" Unit' zero'))
+      (.lam "_" Unit' (.app (.var "self") zero')))
+    unit')))
+
+-- THE FIX: toZeroThunked terminates with concEvalS!
+-- Compare: toZero (non-thunked) returns none with concEval (line above)
+example : concEvalS testFuel (.app toZeroThunked zero') = some zero' := by native_decide
+example : concEvalS testFuel (.app toZeroThunked one') = some zero' := by native_decide
+example : concEvalS testFuel (.app toZeroThunked two') = some zero' := by native_decide
+example : concEvalS testFuel (.app toZeroThunked three') = some zero' := by native_decide
+
+-- Compose: toZeroThunked (add 2 1) = 0
+-- add 2 1 returns a Church numeral (un-normalized lambda), and toZeroThunked
+-- successfully recurses on it. This tests that the subst-based evaluator
+-- handles Church numerals as arguments even when they're not in normal form.
+example : concEvalS testFuel (.app toZeroThunked (.app (.app add' two') one')) = some zero' := by native_decide
+
+-- Abstract eval of toZeroThunked returns the declared type (Nat → Nat)
+-- (absEval is unchanged — it still normalizes under binders)
+example : absEval testFuel [] toZeroThunked = some NatToNat := by native_decide
