@@ -69,6 +69,90 @@ theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
   · rename_i h1 h2; exact absurd h2 h1
   · exact h y σ h_lookup
 
+/-- An environment has no `.fix` values. Used to show absEval never
+    returns `.fix`, which eliminates an impossible case in soundness. -/
+def EnvNoFix (Γ : Env) : Prop :=
+  ∀ x inner, Γ.lookup x ≠ some (.fix inner)
+
+theorem envNoFix_nil : EnvNoFix [] := by
+  intro x inner; simp [Env.lookup]
+
+theorem envNoFix_extend {Γ : Env} (h : EnvNoFix Γ) (y : Name) {v : Expr}
+    (hv : ∀ inner, v ≠ .fix inner) :
+    EnvNoFix ((y, v) :: Γ) := by
+  intro x inner h_lookup
+  simp only [Env.lookup] at h_lookup
+  split at h_lookup
+  · exact absurd (Option.some.inj h_lookup) (hv inner)
+  · exact h x inner h_lookup
+
+/-- absEval never returns `.fix` when the environment is fix-free.
+    This is because absEval only produces var (from env), lam, type, app,
+    or recursively calls itself — it never constructs a `.fix` node. -/
+theorem absEval_not_fix {fuel : Nat} {Γ : Env} {e v : Expr}
+    (h_no_fix : EnvNoFix Γ)
+    (h_eval : absEval fuel Γ e = some v) :
+    ∀ inner, v ≠ .fix inner := by
+  induction fuel generalizing Γ e v with
+  | zero => simp [absEval] at h_eval
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp only [absEval] at h_eval
+      intro inner heq; subst heq; exact absurd h_eval (h_no_fix x inner)
+    | type =>
+      simp only [absEval] at h_eval
+      have h := Option.some.inj h_eval; subst h
+      exact fun _ heq => Expr.noConfusion heq
+    | lam x dom body =>
+      simp only [absEval] at h_eval
+      split at h_eval
+      · have h := Option.some.inj h_eval; subst h
+        exact fun _ heq => Expr.noConfusion heq
+      · exact nomatch h_eval
+    | asc _ ty =>
+      simp only [absEval] at h_eval
+      exact ih h_no_fix h_eval
+    | fix inner' =>
+      simp only [absEval] at h_eval
+      cases inner' with
+      | lam _ _ _ => exact ih h_no_fix h_eval
+      | _ => exact nomatch h_eval
+    | app f_e a_e =>
+      simp only [absEval] at h_eval
+      generalize hf : absEval n Γ f_e = rf at h_eval
+      generalize ha : absEval n Γ a_e = ra at h_eval
+      cases rf with
+      | none => cases ra <;> simp at h_eval
+      | some vf =>
+        cases ra with
+        | none => simp at h_eval
+        | some va =>
+          cases vf with
+          | lam x_l dom_l body_l =>
+            simp only at h_eval
+            exact ih (envNoFix_extend h_no_fix x_l (ih h_no_fix ha)) h_eval
+          | type =>
+            simp only at h_eval
+            have h := Option.some.inj h_eval; subst h
+            exact fun _ heq => Expr.noConfusion heq
+          | var x' =>
+            simp only at h_eval
+            have h := Option.some.inj h_eval; subst h
+            exact fun _ heq => Expr.noConfusion heq
+          | app f' a' =>
+            simp only at h_eval
+            have h := Option.some.inj h_eval; subst h
+            exact fun _ heq => Expr.noConfusion heq
+          | asc t' τ' =>
+            simp only at h_eval
+            have h := Option.some.inj h_eval; subst h
+            exact fun _ heq => Expr.noConfusion heq
+          | fix inner' =>
+            simp only at h_eval
+            have h := Option.some.inj h_eval; subst h
+            exact fun _ heq => Expr.noConfusion heq
+
 /-- **Generalized soundness.**
 
     Takes `SubtypeTrans e_c e_a` as input (related expressions) to handle
@@ -94,6 +178,7 @@ theorem soundness_gen
     (h_conc : concEval fuel γ e_c = some v)
     (h_env : EnvConsistent γ Γ)
     (h_wt : WellTyped fuel Γ e_a)
+    (h_no_fix : EnvNoFix Γ)
     : SubtypeTrans v τ := by
   induction fuel generalizing Γ γ e_a e_c τ v with
   | zero => simp [absEval] at h_abs
@@ -124,7 +209,11 @@ theorem soundness_gen
           simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
           have h_env' := envConsistent_extend h_env x (.var x)
           have h_wt' : WellTyped n ((x, .var x) :: Γ) body_a := h_wt
-          exact SubtypeTrans.lam_body (ih _ _ body_a body_c _ _ h_body_sub hba hbc h_env' h_wt')
+          have h_nf' : EnvNoFix ((x, Expr.var x) :: Γ) := by
+            apply envNoFix_extend h_no_fix
+            intro inner h
+            exact absurd h (by simp [Expr.var, Expr.fix])
+          exact SubtypeTrans.lam_body (ih _ _ body_a body_c _ _ h_body_sub hba hbc h_env' h_wt' h_nf')
     | asc term ty =>
       -- SubtypeTrans e_c (asc term ty) → e_c = asc term ty
       have := h_sub.asc_target; subst this
@@ -132,7 +221,7 @@ theorem soundness_gen
       have ⟨h_wt_term, _, σ, τ', h_abs_term, h_abs_ty, h_sub_wt⟩ := h_wt
       rw [h_abs] at h_abs_ty; cases h_abs_ty
       have h_vs := ih Γ γ term term σ v (SubtypeTrans.step (Subtype'.refl term))
-        h_abs_term h_conc h_env h_wt_term
+        h_abs_term h_conc h_env h_wt_term h_no_fix
       exact SubtypeTrans.trans h_vs (SubtypeTrans.step h_sub_wt)
     | fix inner_a =>
       -- SubtypeTrans e_c (.fix inner_a) → e_c = .fix inner_c
@@ -169,8 +258,8 @@ theorem soundness_gen
             | none => simp [hfc, hac] at h_conc
             | some v_a =>
               -- IH on function and argument
-              have ih_f := ih _ _ f_a f_c _ _ h_f_sub hfa hfc h_env h_wt_f
-              have ih_a := ih _ _ a_a a_c _ _ h_a_sub haa hac h_env h_wt_a
+              have ih_f := ih _ _ f_a f_c _ _ h_f_sub hfa hfc h_env h_wt_f h_no_fix
+              have ih_a := ih _ _ a_a a_c _ _ h_a_sub haa hac h_env h_wt_a h_no_fix
               -- Now case-split on τ_f (what the abstract evaluator got for the function)
               rw [hfa, haa] at h_abs h_wt_body
               rw [hfc, hac] at h_conc
@@ -186,6 +275,7 @@ theorem soundness_gen
                 -- Env relation: EnvConsistent ((x, v_a) :: γ) ((x, τ_a) :: Γ)
                 exact ih _ _ body_a body_c _ _ h_body_sub h_abs h_conc
                   (envConsistent_extend_sub h_env x ih_a) h_wt_body
+                  (envNoFix_extend h_no_fix x (absEval_not_fix h_no_fix haa))
               | type =>
                 -- Abstract function is Type → type-app-returns-type
                 simp only at h_abs; cases h_abs
@@ -207,12 +297,8 @@ theorem soundness_gen
                 simp only at h_abs h_conc; cases h_abs; cases h_conc
                 exact SubtypeTrans.app_cong ih_f ih_a
               | fix inner' =>
-                -- absEval never produces .fix as a function value, but we
-                -- can't easily prove this to Lean. In the concrete evaluator,
-                -- .fix in function position triggers special unrolling logic,
-                -- making this case complex. Since it's unreachable in practice
-                -- (absEval returns dom', never .fix), we mark it sorry.
-                sorry
+                -- absEval never produces .fix when the env is fix-free
+                exact absurd rfl (absEval_not_fix h_no_fix hfa inner')
 
 /-- **Soundness theorem.**
 
@@ -224,6 +310,7 @@ theorem soundness
     (h_conc : concEval fuel γ e = some v)
     (h_env : EnvConsistent γ Γ)
     (h_wt : WellTyped fuel Γ e)
+    (h_no_fix : EnvNoFix Γ)
     : SubtypeTrans v τ :=
   soundness_gen fuel Γ γ e e τ v (SubtypeTrans.step (Subtype'.refl e))
-    h_abs h_conc h_env h_wt
+    h_abs h_conc h_env h_wt h_no_fix

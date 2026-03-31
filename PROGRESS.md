@@ -32,22 +32,24 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **`fix` abstract eval** — returns declared type (like ascription)
 - [x] **`fix` in Subtype'** — `fix_cong` constructor + shape lemmas
 - [x] **`fix` monotonicity** — fully proven (0 sorry)
-- [ ] **`fix` soundness** — 2 sorry (circular EnvConsistent + unreachable case)
+- [x] **`absEval_not_fix`** — absEval never returns .fix with fix-free env
+- [ ] **`fix` soundness** — 1 sorry (circular EnvConsistent)
 
 ## Current sorry count
 
-**TWO** (both in Soundness.lean, both related to `fix`):
-1. `soundness_gen` fix case (line ~149): The core fix soundness requires
+**ONE** (in Soundness.lean, the fix case):
+1. `soundness_gen` fix case (line ~239): The core fix soundness requires
    `SubtypeTrans (.fix inner_c) dom'` to establish EnvConsistent. This is
    circular (the property we're proving is what we need as a precondition).
    Breaking this circularity via fuel induction is the key proof challenge.
-2. `soundness_gen` app case, τ_f=fix (line ~214): Unreachable in practice
-   (absEval never produces .fix as a function value), but Lean needs a proof.
-   Could be resolved by proving `absEval_never_fix` lemma.
+
+ELIMINATED: `soundness_gen` app case, τ_f=fix — proved `absEval_not_fix`
+showing absEval never returns `.fix` when the environment is fix-free.
+Added `EnvNoFix Γ` hypothesis to soundness_gen and soundness.
 
 ## What remains
 
-1. **Prove fix soundness** — The two sorry's above. See "Proof challenge" below.
+1. **Prove fix soundness** — The one sorry above. See "Proof challenge" below.
 
 2. **More fix tests** — Test actual recursive functions (e.g., a function that
    recurses on Church nats). Currently only non-recursive fix is tested.
@@ -138,6 +140,32 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-140739
+What I did:
+- Eliminated sorry #2 (app case, τ_f=fix) from soundness_gen
+- Proved `absEval_not_fix`: absEval never returns `.fix` when the environment
+  is fix-free. Key insight: absEval only produces var (from env lookup), lam,
+  type, app, or recursive results — it never constructs `.fix` nodes. So if
+  the env has no `.fix` values, neither does any result.
+- Added `EnvNoFix Γ` predicate and `envNoFix_extend` helper lemma
+- Added `h_no_fix : EnvNoFix Γ` hypothesis to soundness_gen and soundness
+- Updated all IH calls to propagate EnvNoFix through env extensions
+- Sorry count reduced from 2 to 1
+
+What's next:
+- The remaining sorry is the fix case in soundness_gen (line ~239)
+- This requires showing SubtypeTrans (.fix inner_c) dom' to establish
+  EnvConsistent, but this IS the property being proved — circular
+- See "Proof challenge" section for approaches
+- The most promising approach: step-indexed EnvConsistent that handles
+  .fix values behaviorally (they're equivalent to dom' when APPLIED,
+  not syntactically). But this requires significant restructuring.
+- Alternative: add Subtype' (.fix (lam f dom body)) dom as a typing rule,
+  but relating raw dom to evaluated dom' is nontrivial.
+
+Blockers:
+- Fix soundness circularity remains the fundamental challenge
+
 ## 2026-03-31 ochre-lean-20260331-134523
 What I did:
 - Added `fix` (general recursion) to the Och calculus — 6 syntactic forms now
