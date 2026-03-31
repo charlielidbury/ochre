@@ -61,12 +61,14 @@ See PROGRESS.md for discussion.
 - [x] EnvLR definition
 - [x] substAll definition and distribution lemmas (app, asc, type, fix)
 - [x] substAll_var lemma (closed value infrastructure)
-- [x] Fundamental theorem — var, type, app cases PROVED
+- [x] subst_comm, substAll_subst_comm, substAll_lam (substitution commutativity)
+- [x] LR_upcast (composition of LR with Subtype') — proved except fuel adequacy gap
+- [x] Fundamental theorem — var, type, app, asc cases PROVED
 - [x] Top-level soundnessS corollary
 - [ ] Lam case of fundamental (needs absEval_normalize_stable)
-- [ ] Asc case of fundamental (needs LR/subtyping interaction)
-- [ ] Fix case of fundamental (needs fix-specific reasoning)
+- [ ] Fix case of fundamental (needs .fix not being IsValue → can't use IH directly)
 - [ ] absEval_normalize_stable (the key bridge lemma for lam case)
+- [ ] LR_upcast fuel adequacy (lam_body case when body₂ doesn't evaluate)
 -/
 
 open Expr
@@ -328,6 +330,108 @@ theorem substAll_var (x : Name) (σ : List (Name × Expr))
       exact ih h_rest_closed
 
 -- ============================================================
+-- Substitution commutativity
+-- ============================================================
+
+/-- Closed substitutions commute: if s₁ and s₂ are closed and x₁ ≠ x₂, then
+    applying (x₁ → s₁) then (x₂ → s₂) gives the same result as the reverse. -/
+theorem subst_comm (e : Expr) (x₁ x₂ : Name) (s₁ s₂ : Expr)
+    (h_neq : x₁ ≠ x₂) (h_cl₁ : IsClosed s₁) (h_cl₂ : IsClosed s₂) :
+    (e.subst x₁ s₁).subst x₂ s₂ = (e.subst x₂ s₂).subst x₁ s₁ := by
+  induction e with
+  | var y =>
+    simp only [Expr.subst]
+    by_cases h₁ : y == x₁ <;> by_cases h₂ : y == x₂ <;> simp [h₁, h₂]
+    · -- y = x₁ = x₂: contradiction
+      have := (beq_iff_eq (α := String)).mp h₁
+      have := (beq_iff_eq (α := String)).mp h₂
+      subst_vars; exact absurd rfl h_neq
+    · -- y = x₁ ≠ x₂
+      simp [Expr.subst]
+      have h₂' : ¬(y == x₂ = true) := h₂
+      simp [h₂']
+      exact subst_closed_noop s₁ x₂ s₂ h_cl₁
+    · -- y = x₂ ≠ x₁
+      simp [Expr.subst]
+      have h₁' : ¬(y == x₁ = true) := h₁
+      simp [h₁']
+      exact subst_closed_noop s₂ x₁ s₁ h_cl₂
+    · -- y ≠ x₁, y ≠ x₂
+      simp [Expr.subst, h₁, h₂]
+  | lam y d b ih_d ih_b =>
+    simp only [Expr.subst]
+    by_cases h_y1 : y == x₁ <;> by_cases h_y2 : y == x₂ <;> simp [h_y1, h_y2]
+    · -- y = x₁ = x₂: contradiction
+      have := (beq_iff_eq (α := String)).mp h_y1
+      have := (beq_iff_eq (α := String)).mp h_y2
+      subst_vars; exact absurd rfl h_neq
+    · -- y = x₁ ≠ x₂: subst x₁ shadows body, subst x₂ goes through
+      simp [Expr.subst, h_y1, h_y2]
+      exact congrArg₂ (Expr.lam y ·) ih_d rfl
+    · -- y = x₂ ≠ x₁: symmetric
+      simp [Expr.subst, h_y1, h_y2]
+      exact congrArg₂ (Expr.lam y ·) ih_d rfl
+    · -- y ≠ x₁, y ≠ x₂
+      simp [Expr.subst, h_y1, h_y2]
+      exact congrArg₂ (Expr.lam y ·) ih_d ih_b
+  | app f a ih_f ih_a =>
+    simp only [Expr.subst]
+    exact congrArg₂ Expr.app ih_f ih_a
+  | asc t τ ih_t ih_τ =>
+    simp only [Expr.subst]
+    exact congrArg₂ Expr.asc ih_t ih_τ
+  | type => rfl
+  | fix inner ih =>
+    simp only [Expr.subst]
+    exact congrArg Expr.fix ih
+
+/-- substAll and a single subst commute when the variable is fresh for σ's domain
+    and the substitution value and all σ values are closed.
+
+    substAll (e.subst x v) σ = (substAll e σ).subst x v -/
+theorem substAll_subst_comm (e : Expr) (x : Name) (v : Expr) (σ : List (Name × Expr))
+    (h_fresh : x ∉ σ.map Prod.fst)
+    (h_cl_v : IsClosed v)
+    (h_cl_σ : ∀ p ∈ σ, IsClosed p.2) :
+    substAll (e.subst x v) σ = (substAll e σ).subst x v := by
+  induction σ generalizing e with
+  | nil => rfl
+  | cons ⟨y, w⟩ rest ih =>
+    simp only [substAll, List.foldl]
+    have h_neq : x ≠ y := by
+      intro h_eq; subst h_eq
+      exact h_fresh (List.mem_cons_self x (rest.map Prod.fst))
+    have h_cl_w : IsClosed w := h_cl_σ ⟨y, w⟩ (List.mem_cons_self _ _)
+    have h_rest_fresh : x ∉ rest.map Prod.fst := by
+      intro h_mem; exact h_fresh (List.mem_cons_of_mem _ h_mem)
+    have h_rest_cl : ∀ p ∈ rest, IsClosed p.2 :=
+      fun p hp => h_cl_σ p (List.mem_cons_of_mem _ hp)
+    -- (e.subst x v).subst y w = (e.subst y w).subst x v by subst_comm
+    rw [subst_comm (e := e) (x₁ := x) (x₂ := y) (s₁ := v) (s₂ := w)
+        h_neq h_cl_v h_cl_w]
+    exact ih (e.subst y w) h_rest_fresh h_rest_cl
+
+/-- substAll distributes over lam when the binder is fresh for σ's domain. -/
+theorem substAll_lam (x : Name) (dom body : Expr) (σ : List (Name × Expr))
+    (h_fresh : x ∉ σ.map Prod.fst) :
+    substAll (.lam x dom body) σ = .lam x (substAll dom σ) (substAll body σ) := by
+  induction σ generalizing dom body with
+  | nil => rfl
+  | cons ⟨y, w⟩ rest ih =>
+    simp only [substAll, List.foldl]
+    have h_neq : x ≠ y := by
+      intro h_eq; subst h_eq
+      exact h_fresh (List.mem_cons_self x (rest.map Prod.fst))
+    -- Since x ≠ y, subst y w goes through both domain and body
+    have h_not_eq : ¬(x == y) := by
+      intro h_beq
+      exact h_neq ((beq_iff_eq (α := String)).mp h_beq)
+    simp only [Expr.subst, h_not_eq, ↓reduceIte]
+    have h_rest_fresh : x ∉ rest.map Prod.fst := by
+      intro h_mem; exact h_fresh (List.mem_cons_of_mem _ h_mem)
+    exact ih (dom.subst y w) (body.subst y w) h_rest_fresh
+
+-- ============================================================
 -- Value self-evaluation
 -- ============================================================
 
@@ -344,6 +448,70 @@ theorem concEvalS_value (k : Nat) (v : Expr) (h : IsValue v) :
   | lam _ _ _ => simp [concEvalS]
   | type => simp [concEvalS]
   | _ => exact absurd h (by simp [IsValue])
+
+-- ============================================================
+-- LR upcast (composition with Subtype')
+-- ============================================================
+
+/-- EnvSub is reflexive. -/
+theorem envSub_refl (Γ : Env) : EnvSub Γ Γ :=
+  fun _ τ₁ h => ⟨τ₁, h, Subtype'.refl τ₁⟩
+
+/-- **LR upcast**: if `LR n v σ'` and `Subtype' σ' τ`, then `LR n v τ`.
+
+    This is needed for the asc case of the fundamental theorem, where the
+    concrete value v is related to σ' (via IH on the term) and σ' subtypes τ
+    (from well-typedness of the ascription).
+
+    Most cases are trivial (top → .type → True; app/fix/var → catch-all True).
+    The lam_body case is partially proved: when absEval succeeds for the more-
+    precise body (body₂), we use monotonicity to relate the results and then
+    recurse. When body₂ doesn't succeed (fuel inadequacy), this is sorry'd.
+    See PROGRESS.md for analysis of this fuel adequacy issue. -/
+theorem LR_upcast : ∀ (n : Nat) (v σ' τ : Expr),
+    LR n v σ' → Subtype' σ' τ → LR n v τ := by
+  intro n
+  induction n with
+  | zero => intros; trivial
+  | succ m ih =>
+    intro v σ' τ h_lr h_sub
+    cases h_sub with
+    | refl => exact h_lr
+    | top => -- τ = .type, LR (m+1) v .type = True
+      cases v <;> simp [LR]
+    | lam_body h_body =>
+      -- σ' = lam x dom body₂, τ = lam x dom body₁, Subtype' body₂ body₁
+      rename_i x dom body₁ body₂
+      cases v with
+      | lam xv dv bv =>
+        -- Both sides are lam: need extensional property
+        simp only [LR] at h_lr ⊢
+        intro Γ k av aa h_lr_a v' τ₁' h_conc h_abs_1
+        -- Case-split on whether body₂ evaluates at this fuel
+        cases h_body₂ : absEval k ((x, aa) :: Γ) body₂ with
+        | some τ₂' =>
+          -- body₂ succeeds: use hypothesis to get LR m v' τ₂'
+          have h_lr_body := h_lr Γ k av aa h_lr_a v' τ₂' h_conc h_body₂
+          -- monotonicity gives Subtype' τ₂' τ₁'
+          have h_env_refl : EnvSub ((x, aa) :: Γ) ((x, aa) :: Γ) :=
+            envSub_refl _
+          have h_mono := absEval_mono k ((x, aa) :: Γ) ((x, aa) :: Γ)
+            body₁ body₂ τ₁' τ₂' h_body h_env_refl h_abs_1 h_body₂
+          -- recursive LR_upcast at level m
+          exact ih v' τ₂' τ₁' h_lr_body h_mono
+        | none =>
+          -- body₂ doesn't succeed at this fuel (fuel adequacy gap).
+          -- This can only happen when Subtype' body₂ body₁ involves a `top`
+          -- somewhere (making body₁ simpler than body₂), but the structural
+          -- effect propagates through absEval making the conclusion non-trivial.
+          -- See PROGRESS.md "LR_upcast fuel adequacy" for detailed analysis.
+          sorry
+      | _ => -- non-lambda v: catch-all True
+        simp [LR]
+    | app_cong => -- τ = app ..: catch-all True
+      cases v <;> simp [LR]
+    | fix_cong => -- τ = fix ..: catch-all True
+      cases v <;> simp [LR]
 
 -- ============================================================
 -- Fundamental theorem
@@ -371,9 +539,13 @@ theorem concEvalS_value (k : Nat) (v : Expr) (h : IsValue v) :
     body (stored in the abstract lambda) with the original body (for the IH).
     Left as sorry — see module doc for discussion.
 
-    **Asc case:** Needs composition of LR with Subtype'. Left as sorry.
+    **Asc case:** PROVED via LR_upcast. The IH on `term` gives LR n v σ',
+    WellTyped gives Subtype' σ' τ, and LR_upcast composes them.
 
-    **Fix case:** Similar to existing fix soundness. Left as sorry. -/
+    **Fix case:** Left as sorry. The key issue is that `.fix inner` is not
+    an `IsValue`, so extending σ with a fix value breaks `h_vals`. The fix
+    case needs a different proof strategy — either relax `h_vals` (which
+    complicates the var case) or handle fix separately from the IH. -/
 theorem fundamental (fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
     (e v τ : Expr)
     (h_env : ∀ n, EnvLR n σ Γ)
@@ -424,14 +596,19 @@ theorem fundamental (fuel : Nat) (σ : List (Name × Expr)) (Γ : Env)
       sorry
     | asc term ty =>
       -- concEvalS evaluates term (lhs), absEval evaluates ty (rhs).
-      -- WellTyped gives Subtype' (absEval Γ term) (absEval Γ ty).
-      -- IH on term: ∀ n, LR n v (absEval Γ term).
-      -- Need: ∀ n, LR n v (absEval Γ ty).
-      -- This requires: if LR n v τ₁ and Subtype' τ₁ τ₂, then LR n v τ₂.
-      -- For τ₂ = .type: trivially True.
-      -- For both lambdas: need to compose the extensional property with
-      --   the body relation from Subtype'.lam_body. Complex but doable.
-      sorry
+      rw [substAll_asc] at hc
+      simp only [concEvalS] at hc   -- concEvalS k (substAll term σ) = some v
+      simp only [absEval] at ha     -- absEval k Γ ty = some τ
+      -- Extract WellTyped components
+      obtain ⟨h_wt_term, _, term_type, ty_type, h_abs_term, h_abs_ty, h_sub_wt⟩ := h_wt
+      -- τ = ty_type (both are absEval k Γ ty)
+      have h_eq : ty_type = τ := by rw [h_abs_ty] at ha; exact Option.some.inj ha
+      subst h_eq
+      -- IH on term: ∀ n, LR n v term_type
+      have ih_term := ih σ Γ term v term_type h_env hc h_abs_term h_wt_term h_closed h_vals
+      -- LR_upcast: Subtype' term_type τ → LR n v τ
+      intro n
+      exact LR_upcast n v term_type τ (ih_term n) h_sub_wt
     | fix inner =>
       -- absEval returns the declared type (domain of inner lambda).
       -- concEvalS unrolls and evaluates body with f := fix inner in scope.

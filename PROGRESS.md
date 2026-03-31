@@ -39,13 +39,13 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **§6.2 abstract tests** — abstract Vec/Nat operations with ascription
 - [x] **Concrete recursive fix** — RESOLVED via `concEvalS` (substitution-based evaluator + thunked branches)
 - [ ] **Soundness of concEvalS** — IN PROGRESS in `SoundnessS.lean`. Logical relation
-  (LR) defined, fundamental theorem partially proved. **Var, type, and app cases DONE.**
-  Lam/asc/fix cases remain (4 sorry's). See SoundnessS.lean for detailed roadmap.
+  (LR) defined, fundamental theorem partially proved. **Var, type, app, asc cases DONE.**
+  Lam/fix cases remain. See SoundnessS.lean for detailed roadmap.
 
 ## Current sorry count
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**4** in SoundnessS.lean (down from 10): absEval_normalize_stable, lam, asc, fix cases
+**4** in SoundnessS.lean: absEval_normalize_stable, LR_upcast fuel adequacy, lam, fix
 
 ## What remains
 
@@ -54,14 +54,21 @@ Current status of the Och mechanization. Updated by agents after each session.
      the lam case. States: evaluating a normalized body with a concrete binding
      gives the same result as evaluating the original. May need careful fuel
      constraints — see "Analysis: absEval_normalize_stable" below.
-   - **lam case** (line ~424): Blocked on absEval_normalize_stable + substAll
-     commutativity (substAll body ((x,v)::σ) = (substAll body σ).subst x v).
-   - **asc case** (line ~434): Needs LR_upcast (if LR n v τ₁ and Subtype' τ₁ τ₂,
-     then LR n v τ₂). The lambda-lambda case of upcast is blocked because we'd
-     need absEval of the more-precise body to succeed, which isn't guaranteed.
-   - **fix case** (line ~440): Needs LR_upcast (same blocker as asc case) +
-     substAll commutativity. The fix typing axiom in WellTyped gives Subtype'
-     body_result dom', and we need to compose this with LR via upcast.
+   - **LR_upcast fuel adequacy** (line ~506): The lam_body case of LR_upcast
+     when absEval succeeds for body₁ but fails for body₂. This happens when
+     Subtype' body₂ body₁ involves `top` somewhere (making body₁ simpler).
+     The `some` case is fully handled via monotonicity + recursive LR_upcast.
+     See "Analysis: LR_upcast fuel adequacy" below.
+   - **lam case** (line ~590): Blocked on absEval_normalize_stable. The substAll
+     commutativity lemma is now PROVED (substAll_subst_comm), so the lam case
+     just needs the normalization stability bridge.
+   - **fix case** (line ~611): The key issue is that `.fix inner` is not an
+     `IsValue`, so extending σ with a fix value breaks `h_vals`. The var case
+     of fundamental relies on `concEvalS_value` (values self-evaluate), but
+     .fix values don't self-evaluate — they unroll. Options:
+     (a) Relax `h_vals` to allow .fix, handle the var case by evaluating .fix
+     (b) Handle the fix case without extending σ (direct induction on fix fuel)
+     (c) Use a step-indexed approach where .fix values are "morally well-typed"
 
 2. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
    on a fix typing axiom included in `WellTyped`:
@@ -220,20 +227,43 @@ avoiding the need for this lemma entirely. This would require the lambda clause
 to use a specific Γ instead of universally quantifying over it. Tricky but
 might be the right approach.
 
-### LR_upcast (needed for asc and fix cases)
+### LR_upcast (MOSTLY PROVED — asc case resolved)
 
 **Claim:** If `LR n v τ₁` and `Subtype' τ₁ τ₂`, then `LR n v τ₂`.
 
-**Status:** Provable for all cases EXCEPT lambda-lambda. The lambda case
-requires: if the extensional property holds for τ₁'s body, and τ₂'s body
-is less precise (Subtype'), then the property holds for τ₂'s body. This
-needs absEval of the more-precise body to succeed when the less-precise
-body succeeds, which is the reverse direction of monotonicity's fuel adequacy.
+**Status:** PROVED for all cases except one specific sub-case: the lam_body
+case when absEval fails for the more-precise body (body₂ at the given fuel).
 
-**Possible fixes:**
-1. Add fuel adequacy as a hypothesis to LR_upcast
-2. Prove a "reverse monotonicity" lemma (more precise body needs ≤ fuel)
-3. Restructure the LR to incorporate subtyping directly
+The proof is by induction on n. Cases:
+- refl, top: trivial
+- app_cong, fix_cong: trivially True (catch-all in LR)
+- lam_body with non-lam v: True (catch-all)
+- lam_body with v = lam xv dv bv, and absEval succeeds for body₂:
+  PROVED via monotonicity (Subtype' τ₂' τ₁') + recursive LR_upcast at level n-1
+- lam_body with v = lam, and absEval FAILS for body₂:
+  SORRY — this is the fuel adequacy gap
+
+**Analysis of the fuel adequacy gap:**
+When Subtype' body₂ body₁ involves `top` somewhere, body₁ can be simpler
+(e.g., .type) while body₂ is complex. absEval at fuel k' succeeds for
+body₁ but fails for body₂. In this case, we can't use the LR hypothesis
+(which requires body₂ to succeed) and must establish LR n v' τ₁' directly.
+
+Key observation: whenever body₁ = .type (from Subtype'.top), τ₁' = .type,
+and LR n v' .type = True. So the conclusion IS trivially true when top is
+at the TOP of the Subtype' derivation. The hard case is when top is NESTED
+inside lam_body or app_cong — then τ₁' may be a lambda, requiring the
+extensional property that we can't establish without the hypothesis.
+
+**Possible approaches:**
+1. Prove that for values produced by absEval, nested top propagates through
+   to make the result a "type tree" (all leaves are .type), which would make
+   the LR conclusion trivially True. This seems hard in general.
+2. Add a hypothesis to fundamental that absEval results are "fuel-adequate"
+   (more-precise bodies evaluate when less-precise do). This is a form of
+   termination preservation.
+3. Change the LR to quantify over a minimum fuel threshold for the abstract
+   side, avoiding the issue where body₂ needs more fuel than body₁.
 
 ## Concrete fix limitation (RESOLVED)
 
@@ -260,6 +290,52 @@ references. See DECISION-LOG.md for the detailed analysis with example.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-194223
+What I did:
+- Proved 3 substitution commutativity lemmas in SoundnessS.lean:
+  - `subst_comm`: closed substitutions commute (if IsClosed s₁, IsClosed s₂,
+    x₁ ≠ x₂, then (e.subst x₁ s₁).subst x₂ s₂ = (e.subst x₂ s₂).subst x₁ s₁)
+  - `substAll_subst_comm`: substAll and subst commute when variable is fresh
+    for σ's domain and both value and σ values are closed
+  - `substAll_lam`: substAll distributes over lam when binder is fresh for σ
+  These unblock the lam and fix cases (substAll commutativity was identified
+  as a prerequisite by previous agents).
+- Proved `envSub_refl` (reflexivity of EnvSub) in SoundnessS.lean.
+- Proved `LR_upcast`: if LR n v σ' and Subtype' σ' τ, then LR n v τ.
+  All cases handled EXCEPT one sorry: the lam_body case when absEval fails
+  for the more-precise body (fuel adequacy gap). The `some` sub-case is
+  fully proved via monotonicity (absEval_mono) + recursive LR_upcast.
+- **Proved the asc case of fundamental** using LR_upcast. The IH on the term
+  gives LR n v σ', WellTyped gives Subtype' σ' τ, and LR_upcast composes them.
+- **lake build: 0 errors, 4 sorry (SoundnessS.lean), all tests pass.**
+
+What's next (in priority order):
+1. **Fix case of fundamental** — the main blocker is that `.fix inner` is not
+   an IsValue, so extending σ with fix breaks h_vals. Three approaches:
+   (a) Relax h_vals to allow .fix, then handle the var case by evaluating .fix
+       (requires reasoning about fix unrolling in the var case — circular)
+   (b) Handle fix without extending σ (direct argument about the fix's value)
+   (c) Use a step-indexed approach for .fix in EnvLR
+
+2. **absEval_normalize_stable** — still needed for the lam case. The substAll
+   commutativity lemma is now proved, so the lam case is ONLY blocked on this.
+   The lemma is essentially "partial evaluation commutes with full evaluation"
+   and requires showing that absEval results are idempotent under re-evaluation.
+   Proof approach: induction on fuel, but the app case is hard because
+   normalization may beta-reduce (changing the expression structure).
+
+3. **LR_upcast fuel adequacy** — the remaining sorry in LR_upcast. Only
+   matters when Subtype' has nested `top` causing body₂ to be complex while
+   body₁ = .type. May be avoidable if LR can be reformulated or if a
+   "fuel adequacy for non-top Subtype'" lemma can be proved.
+
+Blockers:
+- absEval_normalize_stable is the critical dependency for the lam case
+- The fix case needs a design decision about how to handle .fix in σ
+- LR_upcast fuel adequacy is a deep issue about fuel consumption for
+  Subtype'-related expressions with different complexities
+
+
 ## 2026-03-31 ochre-lean-20260331-182533
 What I did:
 - Reformulated `fundamental` to prove `∀ n, LR n v τ` instead of `LR n v τ`
