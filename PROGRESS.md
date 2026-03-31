@@ -78,17 +78,36 @@ we're trying to prove — it's circular.
 - At fuel n+1, concrete eval of body_c may call `f`, which evaluates
   `fix(inner_c)` at fuel ≤ n. By IH, this result ⊑ dom'.
 
-**Implementation options:**
-1. **Strengthen the induction**: Prove a combined statement like
-   `∀ fuel, concEval fuel γ (.fix inner) = some v → SubtypeTrans v dom'`
-   by strong induction on fuel. Then use this in the body's soundness.
-2. **Add `fix_type` to Subtype'**: `Subtype' (.fix (lam f dom body)) dom`.
-   Simple but needs relating `dom` (raw) to `dom'` (normalized).
-3. **Prove `absEval_never_fix`**: Show absEval never returns `.fix`,
-   eliminating the second sorry entirely.
-4. **Change concEval**: Use substitution instead of env for fix, avoiding
-   `.fix` in env. But this breaks proof structure (different body in the two
-   evaluators).
+**Why it's hard:** The circularity arises in two cases:
+- **Applied use of f**: body calls f through app → app case re-evaluates .fix
+  at fuel n-1 → by IH at lower fuel, the result ⊑ dom'. Fuel induction works.
+- **Value use of f**: body returns f directly (e.g., `fix (λf:τ. f)`) → result
+  is .fix inner_c → need `.fix inner_c ⊑ dom'` with NO fuel decrease.
+  This is the genuine hard case.
+
+**Implementation options (analyzed in session ochre-lean-20260331-140739):**
+1. ~~**Prove `absEval_never_fix`**~~ ✅ DONE — eliminated sorry #2
+2. **Step-indexed EnvConsistent**: Make EnvConsistent indexed by fuel. For .fix
+   values, require behavioral consistency (re-evaluating at lower fuel gives
+   result ⊑ type) instead of syntactic SubtypeTrans. Breaks the circularity
+   because recursive calls use strictly less fuel. Requires significant
+   restructuring of EnvConsistent and all proofs that use it.
+3. **Add `fix_dom` to Subtype'**: `Subtype' (.fix (lam f dom body)) dom`.
+   Then need `SubtypeTrans dom dom'` to reach the evaluated form. But raw
+   dom and evaluated dom' have no general SubtypeTrans relationship. Also
+   BREAKS SubtypeTrans.lam_target_shape (fix would match lam targets).
+4. **Change concEval**: Bind f to concrete eval of dom instead of .fix thunk.
+   Makes proof trivial but loses recursion — breaks intended semantics of fix.
+   Existing tests pass (they don't test recursive functions) but future tests
+   would fail.
+
+**Recommended approach**: Option 2 (step-indexed EnvConsistent). It's the
+standard technique in the PL literature for fixpoint soundness. The key idea:
+`ValConsistent fuel v τ := match v with | .fix inner => ∀ fuel' < fuel, ∀ v',
+concEval fuel' γ (.fix inner) = some v' → SubtypeTrans v' τ | _ => SubtypeTrans v τ`.
+This breaks the circularity because the IH at lower fuel establishes the
+behavioral consistency, and each recursive call through f uses strictly less
+fuel (each app + fix re-eval costs ≥ 2 fuel units).
 
 ## Key theorems proven
 
