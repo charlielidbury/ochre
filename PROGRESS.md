@@ -208,6 +208,34 @@ references. See DECISION-LOG.md for the detailed analysis with example.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-160108
+What I did:
+- Added `concEvalS`: substitution-based concrete evaluator that treats lambdas
+  as values (standard CBV per spec §4.1). ~40 lines in Eval.lean.
+- Discovered WHY "just stop normalizing in concEval" doesn't work: env-based
+  evaluation requires normalization to resolve free variables. Documented in
+  DECISION-LOG.md with concrete example showing the dangling reference problem.
+- Added thunked `toZeroThunked`: recursive function using thunked branches to
+  avoid CBV eagerness. Terminates correctly with concEvalS!
+- Added 12 new tests: concEvalS basic tests (true/false selection, fixId,
+  isZero, add behavior), recursive fix tests (toZeroThunked 0/1/2/3),
+  composition test (toZeroThunked (add 2 1)).
+- Noted that concEvalS returns un-normalized lambdas (succ 2 ≠ three'
+  syntactically), so tests should check behavior not normal forms.
+- **lake build: 0 sorry, all tests pass (including 12 new concEvalS tests)**
+
+What's next:
+- Prove soundness of concEvalS w.r.t. absEval using logical relations
+  (see DECISION-LOG.md for recommended approach)
+- Add more recursive fix tests: pred, mapArray, appendArrays with thunked branches
+- Eventually: unify concEval and concEvalS (make concEvalS the primary evaluator
+  and restructure the soundness proof)
+
+Blockers:
+- Soundness of concEvalS needs a fundamentally different proof approach
+  (logical relations instead of structural induction)
+- concEvalS returns un-normalized lambdas, which limits syntactic testing
+
 ## 2026-03-31 ochre-lean-20260331-152025
 What I did:
 - Added Pair/Array/Vec standard library definitions to Tests.lean (§5.4-5.8)

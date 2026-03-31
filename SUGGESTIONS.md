@@ -1,31 +1,33 @@
 # Extend Och gradually until it's ready
 
-## URGENT: Stop normalizing under binders in concEval
+## Prove soundness of concEvalS
 
-The concrete evaluator currently normalizes inside lambda bodies:
-`γ ⊢ λ(x: τ). e ⟶ λ(x: τ). e'` where `e'` is the reduced body. This is a
-bug — the spec (§4.1) treats lambdas as values in standard call-by-value.
+`concEvalS` (substitution-based concrete evaluator, Eval.lean) correctly handles
+concrete recursive fix with thunked branches. But it has no soundness proof.
 
-**This breaks Church-encoded branching.** Church `if-then-else` works by passing
-two lambdas (branches) to an eliminator, which selects one. Normalizing under
-binders eagerly evaluates BOTH branches' bodies, including recursive ones,
-causing fuel exhaustion. See Tests.lean `toZero` example: `toZero 1 = none`.
+**Why it's hard:** `concEvalS` uses substitution; `absEval` uses environments.
+The current soundness proof relies on both evaluators processing the SAME body
+expression in different envs. With substitution, the concrete side evaluates
+`body.subst x v` while the abstract side evaluates `body` in `(x,τ)::Γ`.
+These are structurally incompatible for a simple inductive proof.
 
-**The fix:** Change `concEval` to return `λ(x: τ). e` as-is (a value), without
-reducing `e`. `absEval` should KEEP normalizing under binders (needed for
-precision: `succ 2 = 3`).
+**Recommended approach: Logical relations.**
+Define `Sound : Nat → Expr → Expr → Prop`:
+- For non-lambdas: `SubtypeTrans v τ`
+- For lambdas: when applied to Sound arguments, the results are Sound
 
-**Proof impact:** The soundness proof's lam case currently compares normalized
-bodies directly (`SubtypeTrans body_c' body_a'`). Without concEval normalization,
-concrete lambdas have unreduced bodies. Soundness would need extensional
-reasoning: concrete and abstract lambdas are related when applied to related
-arguments, not by comparing bodies syntactically. This is a standard technique
-but requires restructuring the lam case.
+This decouples the lam case (no body comparison) and handles the structural
+mismatch at application sites. The proof would be by strong induction on fuel.
 
-**This unblocks:** Recursive Church-encoded functions (appendVec, mapArray, etc.)
-in concrete mode. Combined with the existing abstract evaluation (which already
-handles `isZero (n : Nat) ⊑ Bool` correctly), this gets concrete recursive
-fix working.
+**Estimated effort:** 200-300 lines. The relation definition + app case is the
+core work. Var, type, asc cases are straightforward. Fix case reuses the existing
+typing axiom approach.
+
+**Alternative: Unify the evaluators.** Instead of proving concEvalS sound
+separately, restructure the main soundness proof to work with a single
+substitution-based evaluator. This would make concEvalS the primary evaluator
+and eliminate concEval. But it requires changing absEval to substitution too
+(losing the "same body" property that makes monotonicity easy).
 
 ## North Star: abstract appendVec
 
@@ -49,11 +51,11 @@ known-needed feature.
 
 ## Extension roadmap
 
-1. **Stop normalizing under binders in concEval** — the urgent fix above.
-   This is a small code change but requires soundness proof restructuring.
+1. **Prove concEvalS soundness** — the urgent next step above.
 
-2. **Concrete recursive fix tests** — once concEval is fixed, test `toZero`,
-   `mapArray`, `appendArrays` with concrete arguments.
+2. **More concrete recursive fix tests** — now that concEvalS works, add tests
+   for `pred`, `mapArray`, `appendArrays` with thunked branches. These exercise
+   the evaluator more deeply and may reveal edge cases.
 
 3. **Investigate abstract branching precision** — determine whether the current
    abstract evaluator (which gives `isZero n : Bool` for abstract `n`) is
