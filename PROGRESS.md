@@ -26,7 +26,7 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **SubtypeTrans.app_cong** — congruence for app through transitive closure
 - [x] **Generalized soundness proven** — `soundness_gen` handles related exprs via SubtypeTrans
 - [x] **Soundness COMPLETE** — 0 sorry!
-- [ ] Prop 5.2.9 regression test formalized and passing
+- [x] **Prop 5.2.9 regression test** formalized and passing
 
 ## Current sorry count
 
@@ -34,13 +34,12 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## What remains
 
-1. **Prop 5.2.9 regression test** — The counterexample from Ochre should be
-   formalized as a test. This is the "narrowing B to true breaks typing" scenario.
-   The test scaffolding is in Tests.lean (commented out at the bottom).
-
-2. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
+1. **Scale to full Ochre** — The Och calculus proves the core semantic idea is
    sound. The next step is to extend it toward the full Ochre language (see
    `docs/why-och-matters-for-ochre.md`).
+
+2. **More §6 tests** — Many spec tests from §6.2 (abstract instantiation) are
+   not yet formalized. These would increase confidence in the evaluator.
 
 ## Key theorems proven
 
@@ -82,6 +81,22 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-133412
+What I did:
+- Formalized the Prop 5.2.9 regression test in Tests.lean
+- Defined Not' (boolean negation): λ(X: Bool). X Bool false true
+- Verified Not' computes correctly: Not true = false, Not false = true, Not Bool = Bool
+- Demonstrated the core of the counterexample: false ⊑ true fails (subCheck = false)
+- Added safe-version tests: (Not true : Bool) and (Not false : Bool) pass subtyping
+- All tests pass, build clean
+
+What's next:
+- Scale toward full Ochre (see docs/why-och-matters-for-ochre.md)
+- Consider formalizing more §6.2 abstract tests from the spec
+
+Blockers:
+- None — Och milestone is essentially complete
+
 ## 2026-03-31 ochre-lean-20260331-131404
 What I did:
 - COMPLETED ALL PROOFS — zero sorry remaining!

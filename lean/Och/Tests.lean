@@ -211,5 +211,24 @@ example : subCheck testFuel succ' (.lam "n" Nat' Nat') = true := by native_decid
 -- type should be ⊑ the original result type.
 -- ============================================================
 
--- def Not' : Expr := .lam "X" Bool' (.app (.app (.app (.var "X") Bool') false') true')
--- Agents: formalize and uncomment this test once the system is mature enough.
+-- Not = λ(X: Bool). X Bool false true  (boolean negation)
+def Not' : Expr := .lam "X" Bool' (.app (.app (.app (.var "X") Bool') false') true')
+
+-- Not correctly computes boolean negation
+example : absEval testFuel [] (.app Not' true') = some false' := by native_decide
+example : absEval testFuel [] (.app Not' false') = some true' := by native_decide
+
+-- Not Bool = Bool (at the type level, negation maps Bool to Bool)
+example : absEval testFuel [] (.app Not' Bool') = some Bool' := by native_decide
+
+-- The Prop 5.2.9 scenario:
+--   F = λ(B: Bool). (Not B : B)
+-- Concretely: F true = Not true = false (ascription erased at runtime)
+-- Abstractly: F true → (Not true : true) → true (ascription takes rhs)
+-- This would need false ⊑ true for soundness — which correctly fails:
+example : subCheck testFuel false' true' = false := by native_decide
+
+-- The safe version uses Bool as the ascription type:
+--   (Not true : Bool) is fine because Not true = false ⊑ Bool ✓
+example : subCheck testFuel (.app Not' true') Bool' = true := by native_decide
+example : subCheck testFuel (.app Not' false') Bool' = true := by native_decide
