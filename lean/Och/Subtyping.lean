@@ -23,6 +23,16 @@ inductive Subtype' : Expr → Expr → Prop where
   | top (e : Expr) : Subtype' e .type
   /-- Transitivity -/
   | trans {a b c : Expr} : Subtype' a b → Subtype' b c → Subtype' a c
+  /-- Lambda body covariance (same name and domain).
+      If body₂ ⊑ body₁ then λx:dom. body₂ ⊑ λx:dom. body₁.
+      Used in the monotonicity proof for the lambda case. -/
+  | lam_body {x : Name} {dom body₁ body₂ : Expr} :
+      Subtype' body₂ body₁ → Subtype' (.lam x dom body₂) (.lam x dom body₁)
+  /-- Neutral application congruence.
+      If f₂ ⊑ f₁ and a₂ ⊑ a₁ then (f₂ a₂) ⊑ (f₁ a₁).
+      Used in the monotonicity proof for stuck applications. -/
+  | app_cong {f₁ f₂ a₁ a₂ : Expr} :
+      Subtype' f₂ f₁ → Subtype' a₂ a₁ → Subtype' (.app f₂ a₂) (.app f₁ a₁)
 
 /-- Infer the type of a neutral term from a typing context.
     Variables have their declared type; applications use the function's
