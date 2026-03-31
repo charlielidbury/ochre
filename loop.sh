@@ -22,7 +22,7 @@ MAX_TURNS="${MAX_TURNS:-50}"
 PAUSE_EVERY="${1:-0}"
 ITERATION=0
 
-echo "Starting Och agent loop"
+echo "Starting Och MARKDOWN agent loop"
 echo "  Max turns per iteration: $MAX_TURNS"
 echo "  Pause every: ${PAUSE_EVERY:-never} iterations"
 echo "  Press Ctrl-C to stop"
@@ -30,7 +30,7 @@ echo ""
 
 while true; do
   ITERATION=$((ITERATION + 1))
-  SESSION_NAME="och-agent-$(date +%Y%m%d-%H%M%S)"
+  SESSION_NAME="och-md-$(date +%Y%m%d-%H%M%S)"
 
   echo "=========================================="
   echo "  Iteration $ITERATION"
