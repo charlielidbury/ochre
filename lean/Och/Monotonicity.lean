@@ -114,9 +114,46 @@ theorem monotonicity
       simp only [absEval] at h_abs₁ h_abs₂
       exact ih _ _ ty _ _ h_env h_abs₁ h_abs₂
     | app f a =>
-      -- The application case is the hardest. We need to relate the results
-      -- when f evaluates to (potentially different) lambdas in the two envs.
-      -- The stuck-application sub-case works via app_cong, but the
-      -- beta-reduction sub-case requires a substitution monotonicity lemma
-      -- that we haven't proven yet.
-      sorry
+      -- Unfold absEval for app in both envs
+      simp only [absEval] at h_abs₁ h_abs₂
+      -- We need to case-split on whether f and a evaluate successfully,
+      -- and whether f evaluates to a lambda (beta) or not (stuck).
+      cases hf₁ : absEval n Γ₁ f with
+      | none => simp [hf₁] at h_abs₁
+      | some f₁ =>
+        cases ha₁ : absEval n Γ₁ a with
+        | none => simp [hf₁, ha₁] at h_abs₁
+        | some a₁ =>
+          cases hf₂ : absEval n Γ₂ f with
+          | none => simp [hf₂] at h_abs₂
+          | some f₂ =>
+            cases ha₂ : absEval n Γ₂ a with
+            | none => simp [hf₂, ha₂] at h_abs₂
+            | some a₂ =>
+              -- We have f₁, a₁, f₂, a₂. By IH: f₂ ⊑ f₁ and a₂ ⊑ a₁.
+              have hf_sub := ih Γ₁ Γ₂ f f₁ f₂ h_env hf₁ hf₂
+              have ha_sub := ih Γ₁ Γ₂ a a₁ a₂ h_env ha₁ ha₂
+              -- Case-split on whether f₁ and f₂ are lambdas
+              -- by rewriting h_abs₁/h_abs₂ with the known values of f/a evals
+              rw [hf₁, ha₁] at h_abs₁
+              rw [hf₂, ha₂] at h_abs₂
+              cases f₁ with
+              | lam x₁ dom₁ body₁ =>
+                cases f₂ with
+                | lam x₂ dom₂ body₂ =>
+                  -- Both lambdas: beta-reduction in both envs.
+                  -- Requires substitution monotonicity lemma.
+                  sorry
+                | _ =>
+                  -- f₁ lambda, f₂ not. Requires additional analysis.
+                  sorry
+              | _ =>
+                cases f₂ with
+                | lam x₂ dom₂ body₂ =>
+                  -- f₁ not lambda, f₂ lambda. Requires additional rules.
+                  sorry
+                | _ =>
+                  -- Both stuck: τ₁ = app f₁ a₁, τ₂ = app f₂ a₂
+                  simp at h_abs₁ h_abs₂
+                  rw [← h_abs₁, ← h_abs₂]
+                  exact Subtype'.app_cong hf_sub ha_sub

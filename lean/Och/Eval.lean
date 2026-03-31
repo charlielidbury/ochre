@@ -29,26 +29,33 @@ def lookup (Γ : Env) (x : Name) : Option Expr :=
 
 end Env
 
-/-- Concrete evaluation. Standard beta-reduction with ascription erasure.
+/-- Concrete evaluation with environment. Structurally parallel to absEval.
 
-    Uses fuel to avoid partiality. Returns `none` on timeout.
-    Agents: feel free to replace fuel with a well-founded recursion argument
-    if you can find one, or use a different termination strategy. -/
-def concEval (fuel : Nat) (e : Expr) : Option Expr :=
+    The ONLY difference from absEval is the ascription case:
+    - absEval takes the rhs (type annotation) — compile-time semantics
+    - concEval takes the lhs (term value) — runtime semantics
+
+    This parallel structure makes the soundness proof a straightforward induction.
+
+    Uses fuel to avoid partiality. Returns `none` on timeout. -/
+def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match e with
-    | .var _        => some e
-    | .lam _ _ _    => some e  -- lambdas are values
-    | .type         => some e
-    | .asc term _   => concEval fuel term  -- runtime: take the lhs
+    | .var x        => γ.lookup x
+    | .lam x dom body =>
+      match concEval fuel ((x, .var x) :: γ) body with
+      | some body' => some (.lam x dom body')
+      | none => none
+    | .type         => some .type
+    | .asc term _   => concEval fuel γ term  -- runtime: take the lhs
     | .app f a      =>
-      match concEval fuel f with
-      | some (.lam x _dom body) =>
-        concEval fuel (body.subst x a)
-      | some f' => some (.app f' a)  -- stuck application (neutral term)
-      | none    => none
+      match concEval fuel γ f, concEval fuel γ a with
+      | some (.lam x _dom body), some aVal =>
+        concEval fuel γ (body.subst x aVal)
+      | some f', some a' => some (.app f' a')
+      | _, _ => none
 
 /-- Abstract evaluation (typing) with normalization under binders.
     `Γ ⊢ e ⇝ τ` is computed by `absEval fuel Γ e = some τ`.

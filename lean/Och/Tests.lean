@@ -43,6 +43,25 @@ def succ' : Expr := .lam "n" Nat' (
   .lam "X" .type (.lam "z" (.var "X") (.lam "s" (.lam "_" (.var "X") (.var "X"))
     (.app (.var "s") (.app (.app (.app (.var "n") (.var "X")) (.var "z")) (.var "s"))))))
 
+-- More Church numerals
+def four' : Expr := .lam "X" .type (.lam "z" (.var "X") (.lam "s" (.lam "_" (.var "X") (.var "X"))
+  (.app (.var "s") (.app (.var "s") (.app (.var "s") (.app (.var "s") (.var "z")))))))
+def five' : Expr := .lam "X" .type (.lam "z" (.var "X") (.lam "s" (.lam "_" (.var "X") (.var "X"))
+  (.app (.var "s") (.app (.var "s") (.app (.var "s") (.app (.var "s") (.app (.var "s") (.var "z"))))))))
+def six' : Expr := .lam "X" .type (.lam "z" (.var "X") (.lam "s" (.lam "_" (.var "X") (.var "X"))
+  (.app (.var "s") (.app (.var "s") (.app (.var "s") (.app (.var "s") (.app (.var "s") (.app (.var "s") (.var "z")))))))))
+
+-- add = λ(n: Nat). λ(m: Nat). n Nat m succ
+def add' : Expr := .lam "n" Nat' (.lam "m" Nat'
+  (.app (.app (.app (.var "n") Nat') (.var "m")) succ'))
+
+-- isZero = λ(n: Nat). n Bool true (λ(_: Bool). false)
+def isZero' : Expr := .lam "n" Nat'
+  (.app (.app (.app (.var "n") Bool') true') (.lam "_" Bool' false'))
+
+-- double = λ(x: Nat). add x x
+def double' : Expr := .lam "x" Nat' (.app (.app add' (.var "x")) (.var "x"))
+
 -- id (for transparency tests)
 def id' : Expr := .lam "T" .type (.lam "x" (.var "T") (.var "x"))
 def idAscribed : Expr := .lam "T" .type (.lam "x" (.var "T") (.asc (.var "x") (.var "T")))
@@ -57,12 +76,14 @@ def testFuel : Nat := 1000
 -- These test that concrete evaluation produces the right values.
 -- ============================================================
 
--- Concrete eval: true X t f ⟶ t
-example : concEval testFuel (.app (.app (.app true' (.var "X")) (.var "t")) (.var "f")) = some (.var "t") := by
+-- Concrete eval: true X t f ⟶ t  (in env with X, t, f as neutral)
+example : concEval testFuel [("X", .var "X"), ("t", .var "t"), ("f", .var "f")]
+    (.app (.app (.app true' (.var "X")) (.var "t")) (.var "f")) = some (.var "t") := by
   native_decide
 
--- Concrete eval: false X t f ⟶ f
-example : concEval testFuel (.app (.app (.app false' (.var "X")) (.var "t")) (.var "f")) = some (.var "f") := by
+-- Concrete eval: false X t f ⟶ f  (in env with X, t, f as neutral)
+example : concEval testFuel [("X", .var "X"), ("t", .var "t"), ("f", .var "f")]
+    (.app (.app (.app false' (.var "X")) (.var "t")) (.var "f")) = some (.var "f") := by
   native_decide
 
 -- ============================================================
@@ -128,6 +149,55 @@ example : subCheck testFuel three' two' = false := by native_decide
 -- Abstract eval computes the fully normalized Church numeral.
 example : absEval testFuel [] (.app succ' two') = some three' := by
   native_decide
+
+-- ============================================================
+-- §6.5 Arithmetic and standard library tests
+-- ============================================================
+
+-- add 2 3 = 5
+example : absEval testFuel [] (.app (.app add' two') three') = some five' := by
+  native_decide
+
+-- isZero 0 = true
+example : absEval testFuel [] (.app isZero' zero') = some true' := by
+  native_decide
+
+-- isZero 3 = false
+example : absEval testFuel [] (.app isZero' three') = some false' := by
+  native_decide
+
+-- double 3 = 6
+example : absEval testFuel [] (.app double' three') = some six' := by
+  native_decide
+
+-- succ applied multiple times: succ(succ(succ 0)) = 3
+example : absEval testFuel [] (.app succ' (.app succ' (.app succ' zero'))) = some three' := by
+  native_decide
+
+-- add 0 0 = 0
+example : absEval testFuel [] (.app (.app add' zero') zero') = some zero' := by
+  native_decide
+
+-- ============================================================
+-- §6.5 More subtyping tests
+-- ============================================================
+
+-- 5 ⊑ Nat
+example : subCheck testFuel five' Nat' = true := by native_decide
+
+-- add 2 3 result ⊑ Nat
+example : subCheck testFuel (.app (.app add' two') three') Nat' = true := by native_decide
+
+-- double 3 result ⊑ Nat
+example : subCheck testFuel (.app double' three') Nat' = true := by native_decide
+
+-- isZero 0 result ⊑ Bool
+example : subCheck testFuel (.app isZero' zero') Bool' = true := by native_decide
+
+-- succ ⊑ (Nat → Nat), i.e. succ has type Nat → Nat
+-- succ is λ(n:Nat). ..., and Nat → Nat is λ(n:Nat). Nat
+-- This checks function subtyping: same domain, body ⊑ Nat
+example : subCheck testFuel succ' (.lam "n" Nat' Nat') = true := by native_decide
 
 -- ============================================================
 -- Regression test: Proposition 5.2.9 counterexample
