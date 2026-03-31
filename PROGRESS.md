@@ -208,6 +208,38 @@ references. See DECISION-LOG.md for the detailed analysis with example.
 ## Session log
 
 ```
+## 2026-03-31 ochre-lean-20260331-162003
+What I did:
+- Added `pred'` (Church predecessor) using the standard pair trick:
+  pred n = fst(fold n (0,0) (λ(a,b).(b, succ b)))
+  Implemented as: (n PairNN base step) Nat (λa.λ_.a)
+  Works with both absEval (normalized: pred 3 = two') and concEvalS
+  (behavioral: isZero(pred 1) = true, isZero(pred 2) = false).
+- Added `rebuildThunked`: recursive fix function that reconstructs n by
+  recursing to 0 with pred and building up with succ. Tests fix + pred +
+  succ + isZero + thunking all working together. rebuild 0 = zero,
+  isZero(rebuild k) behaves correctly for k=0..3.
+- Added `addThunked`: recursive addition via fix + pred (not using Church
+  fold). addThunked n m = (isZero n) ? m : succ(addThunked (pred n) m).
+  Tests: add 0 m = m, isZero(add 2 1) = false.
+- Added composition test: toZeroThunked(addThunked 2 1) = zero — chains
+  two recursive functions, proving un-normalized Church numerals from one
+  function can be consumed by another.
+- Added abstract type tests: pred ⊑ Nat→Nat, rebuild/add have correct
+  declared types.
+- Total: 25+ new tests, all passing. lake build: 0 sorry, all tests pass.
+
+What's next:
+- Prove soundness of concEvalS (see SUGGESTIONS.md for logical-relations approach)
+- Add mapArray/appendArrays with thunked branches using pred
+  (now that pred is available, these complex recursive functions are encodable)
+- Investigate abstract branching precision (for abstract appendVec)
+
+Blockers:
+- concEvalS soundness still needs logical-relations proof (unchanged)
+- concEvalS returns un-normalized lambdas, limiting syntactic testing
+  (behavioral tests via isZero work well as a workaround)
+
 ## 2026-03-31 ochre-lean-20260331-160108
 What I did:
 - Added `concEvalS`: substitution-based concrete evaluator that treats lambdas

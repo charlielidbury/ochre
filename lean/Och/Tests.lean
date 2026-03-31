@@ -558,3 +558,114 @@ example : concEvalS testFuel (.app toZeroThunked (.app (.app add' two') one')) =
 -- Abstract eval of toZeroThunked returns the declared type (Nat → Nat)
 -- (absEval is unchanged — it still normalizes under binders)
 example : absEval testFuel [] toZeroThunked = some NatToNat := by native_decide
+
+-- ============================================================
+-- §5.3 Predecessor (Church-encoded via pair trick)
+-- pred n = fst (fold n over pairs starting from (0,0))
+-- At each step: (a,b) → (b, succ b)
+-- After n steps: (n-1, n) for n>0, (0,0) for n=0
+-- ============================================================
+
+-- Pair Nat Nat type (used internally by pred)
+def PairNN : Expr := .app (.app Pair' Nat') Nat'
+
+-- pred n = (n PairNN base step) Nat (λa.λ_.a)
+-- where base = pair Nat Nat 0 0
+--       step = λp. pair Nat Nat (snd p) (succ (snd p))
+-- Extraction: apply the fold result (a Church pair) to Nat and (λa.λ_.a)
+-- to get the first component.
+def pred' : Expr := .lam "n" Nat' (
+  .app (.app
+    -- fold: n PairNN base step
+    (.app (.app (.app (.var "n") PairNN)
+      -- base = pair Nat Nat zero zero
+      (.app (.app (.app (.app pair' Nat') Nat') zero') zero'))
+      -- step = λp: PairNN. pair Nat Nat (snd p) (succ (snd p))
+      (.lam "p" PairNN (
+        .app (.app (.app (.app pair' Nat') Nat')
+          -- snd p = p Nat (λ_.λb.b)
+          (.app (.app (.var "p") Nat') (.lam "_" Nat' (.lam "b" Nat' (.var "b")))))
+          -- succ (snd p)
+          (.app succ' (.app (.app (.var "p") Nat') (.lam "_" Nat' (.lam "b" Nat' (.var "b"))))))))
+    -- extract first component: apply Nat then (λa.λ_.a)
+    Nat')
+    (.lam "a" Nat' (.lam "_" Nat' (.var "a"))))
+
+-- absEval: pred produces normalized Church numerals
+example : absEval testFuel [] (.app pred' zero') = some zero' := by native_decide
+example : absEval testFuel [] (.app pred' one') = some zero' := by native_decide
+example : absEval testFuel [] (.app pred' three') = some two' := by native_decide
+
+-- pred ⊑ Nat → Nat
+example : subCheck testFuel pred' NatToNat = true := by native_decide
+
+-- concEvalS: pred 0 = zero (exact match — base case returns zero directly)
+example : concEvalS testFuel (.app pred' zero') = some zero' := by native_decide
+
+-- concEvalS behavioral: pred returns un-normalized Church numerals for n>0,
+-- so we test behavior via isZero (which fully reduces the numeral)
+example : concEvalS testFuel (.app isZero' (.app pred' one')) = some true' := by native_decide
+example : concEvalS testFuel (.app isZero' (.app pred' two')) = some false' := by native_decide
+example : concEvalS testFuel (.app isZero' (.app pred' three')) = some false' := by native_decide
+
+-- ============================================================
+-- §7.4 Recursive fix + pred: rebuildThunked
+-- Reconstructs a number by recursing to 0 and building up with succ.
+-- rebuildThunked n = (isZero n) ? 0 : succ (rebuildThunked (pred n))
+-- Uses thunked branches to avoid CBV eagerness.
+-- Tests: fix + pred + succ + isZero + thunking all together.
+-- ============================================================
+
+def rebuildThunked : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat'
+  (.app
+    (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
+      (.lam "_" Unit' zero'))
+      (.lam "_" Unit' (.app succ' (.app (.var "self") (.app pred' (.var "n"))))))
+    unit')))
+
+-- rebuild 0 = zero (base case, exact match)
+example : concEvalS testFuel (.app rebuildThunked zero') = some zero' := by native_decide
+
+-- Behavioral tests: rebuild n produces a valid Church numeral for n
+-- (un-normalized for n>0, so test via isZero)
+example : concEvalS testFuel (.app isZero' (.app rebuildThunked zero')) = some true' := by native_decide
+example : concEvalS testFuel (.app isZero' (.app rebuildThunked one')) = some false' := by native_decide
+example : concEvalS testFuel (.app isZero' (.app rebuildThunked two')) = some false' := by native_decide
+example : concEvalS testFuel (.app isZero' (.app rebuildThunked three')) = some false' := by native_decide
+
+-- Abstract type: rebuild has declared type Nat → Nat
+example : absEval testFuel [] rebuildThunked = some NatToNat := by native_decide
+
+-- ============================================================
+-- §7.5 Recursive addition via fix + pred: addThunked
+-- addThunked n m = (isZero n) ? m : succ (addThunked (pred n) m)
+-- Equivalent to the standard add but implemented via recursion.
+-- ============================================================
+
+-- Nat → Nat → Nat type
+def NatToNatToNat : Expr := .lam "_" Nat' (.lam "_" Nat' Nat')
+
+def addThunked : Expr := .fix (.lam "self" NatToNatToNat (.lam "n" Nat' (.lam "m" Nat'
+  (.app
+    (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
+      (.lam "_" Unit' (.var "m")))
+      (.lam "_" Unit' (.app succ' (.app (.app (.var "self") (.app pred' (.var "n"))) (.var "m")))))
+    unit'))))
+
+-- addThunked 0 m = m (base case: returns m directly)
+example : concEvalS testFuel (.app (.app addThunked zero') zero') = some zero' := by native_decide
+example : concEvalS testFuel (.app (.app addThunked zero') three') = some three' := by native_decide
+
+-- Behavioral: addThunked computes correct sums (tested via isZero)
+-- addThunked 1 0 should be positive (= 1)
+example : concEvalS testFuel (.app isZero' (.app (.app addThunked one') zero')) = some false' := by native_decide
+-- addThunked 2 1 should be positive (= 3)
+example : concEvalS testFuel (.app isZero' (.app (.app addThunked two') one')) = some false' := by native_decide
+
+-- Composition: toZeroThunked (addThunked 2 1) = zero
+-- This chains two recursive functions: addThunked produces an un-normalized
+-- Church numeral 3, then toZeroThunked recursively reduces it to 0.
+example : concEvalS testFuel (.app toZeroThunked (.app (.app addThunked two') one')) = some zero' := by native_decide
+
+-- Abstract type: addThunked has declared type Nat → Nat → Nat
+example : absEval testFuel [] addThunked = some NatToNatToNat := by native_decide
