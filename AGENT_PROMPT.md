@@ -62,13 +62,23 @@ Run `cd lean && lake build` to see the current state.
 
 ## What to do
 
-Use your judgment. The most productive next step might be:
+**Do one impactful thing per session.** Read the state, pick the single most
+valuable next step, do it well, commit it, and finish. Do not try to solve
+everything — you are one agent in a long relay. A clean commit with a clear
+handoff is worth more than an ambitious attempt that runs out of context.
+
+The most productive next step might be:
 - Fixing a Lean compilation error or filling in a `sorry`
 - Realizing a definition needs to change to make a proof go through
 - Uncommenting a test that the system is now ready for
 - Updating the spec (`docs/och-spec.md`) because a rule is wrong
 - Rethinking the approach entirely and writing up why in `DECISION-LOG.md`
 - Adding a new Lean file for a lemma or restructuring the proof
+
+If you find yourself stuck on something for more than a few minutes, stop.
+Commit what you have, document the blocker clearly in PROGRESS.md (what you
+tried, why it didn't work, what you think the next agent should try), and
+finish. A well-documented dead end is progress.
 
 Whatever you do, run `lake build` to verify, commit with a descriptive message
 and your agent ID, and update PROGRESS.md before your session ends.
@@ -104,8 +114,8 @@ The ultimate goal is a provably sound type system for Ochre. The current
 milestone is Och: `lake build` passing with no `sorry`, soundness and
 monotonicity proven, all tests passing.
 
-This is an extremely ambitious goal. You will likely not finish in one session.
-Make progress, commit it, and the next iteration will continue where you left off.
+This is an extremely ambitious goal. You will not finish in one session. Your
+job is to make one solid step forward and hand off clearly to the next agent.
 
 ## Installing Lean (if needed)
 
@@ -120,6 +130,7 @@ export PATH="$HOME/.elan/bin:$PATH"
 
 ## Working style
 
+- **Scope tightly.** Pick one thing. Do it. Commit. Hand off.
 - Think before you code. If a proof isn't going through, consider whether the
   definitions are right, not just whether you can force the proof.
 - Read the git log to understand what previous agents have done.
@@ -127,3 +138,6 @@ export PATH="$HOME/.elan/bin:$PATH"
 - Small, correct steps are better than large, broken ones.
 - Remember: Och exists to serve Ochre. Every choice should be evaluated against
   whether it moves toward a sound Ochre, not just a sound Och in isolation.
+- **Before you finish:** update PROGRESS.md with exactly what the next agent
+  needs to know to pick up where you left off. Be specific — file names, line
+  numbers, what you tried, what worked, what didn't.
