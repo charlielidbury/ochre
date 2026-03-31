@@ -47,28 +47,38 @@ Current status of the Och mechanization. Updated by agents after each session.
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
 **4** in SoundnessS.lean: absEval_normalize_stable, LR_upcast fuel adequacy, lam, fix
 
+## New this session (ochre-lean-20260331-211841)
+
+- **Proved `absEval_fuel_mono`**: if `absEval k Γ e = some v` then
+  `absEval (k+j) Γ e = some v`. By induction on k. All cases handled.
+- **Proved `concEvalS_fuel_mono`**: same property for concEvalS.
+- **Reformulated `absEval_normalize_stable`**: The original formulation was
+  WRONG (see analysis below). New formulation uses additive fuel:
+  if normalization at fuel k_n gives body', and re-evaluation at fuel k gives τ',
+  then the original body at fuel k_n+k also gives τ'.
+- **Deep analysis** of why the lam case is the hardest remaining problem.
+  See "Analysis: the lam case" below.
+
 ## What remains
 
 1. **Finish concEvalS soundness** — 4 sorry's remain in SoundnessS.lean:
-   - **absEval_normalize_stable** (line ~228): THE key bridge lemma. Needed for
-     the lam case. States: evaluating a normalized body with a concrete binding
-     gives the same result as evaluating the original. May need careful fuel
-     constraints — see "Analysis: absEval_normalize_stable" below.
-   - **LR_upcast fuel adequacy** (line ~506): The lam_body case of LR_upcast
-     when absEval succeeds for body₁ but fails for body₂. This happens when
-     Subtype' body₂ body₁ involves `top` somewhere (making body₁ simpler).
-     The `some` case is fully handled via monotonicity + recursive LR_upcast.
-     See "Analysis: LR_upcast fuel adequacy" below.
-   - **lam case** (line ~590): Blocked on absEval_normalize_stable. The substAll
-     commutativity lemma is now PROVED (substAll_subst_comm), so the lam case
-     just needs the normalization stability bridge.
-   - **fix case** (line ~611): The key issue is that `.fix inner` is not an
-     `IsValue`, so extending σ with a fix value breaks `h_vals`. The var case
-     of fundamental relies on `concEvalS_value` (values self-evaluate), but
-     .fix values don't self-evaluate — they unroll. Options:
-     (a) Relax `h_vals` to allow .fix, handle the var case by evaluating .fix
-     (b) Handle the fix case without extending σ (direct induction on fix fuel)
-     (c) Use a step-indexed approach where .fix values are "morally well-typed"
+   - **absEval_normalize_stable** (line ~361): Reformulated with additive fuel.
+     The old formulation (absEval body' = absEval body at same fuel) was FALSE.
+     The new one needs a careful inductive proof; even the var case requires
+     showing that env values are "absEval fixpoints." See detailed analysis below.
+   - **LR_upcast fuel adequacy** (line ~639): The lam_body case of LR_upcast
+     when absEval succeeds for body₁ but fails for body₂. The Subtype'.refl
+     case is impossible (contradiction), and .top gives τ₁'=.type→LR=True.
+     The hard case is .lam_body where both v' and τ₁' are lambdas.
+   - **lam case** (line ~727): Blocked on normalize_stable + the universal Γ
+     in the LR lambda clause. See "Analysis: the lam case" below.
+   - **fix case** (line ~748): `.fix inner` is not `IsValue`, so extending σ
+     breaks `h_vals`. However, `LR n (.fix ..) anything = True` (catch-all),
+     so the fix value IS trivially LR-related. The blocker is that h_vals is
+     used in the var case (concEvalS_value requires IsValue). Options:
+     (a) Relax h_vals to allow .fix, handle var case by evaluating .fix
+     (b) Direct induction on fix fuel without extending σ
+     (c) Step-indexed approach
 
 2. **Strengthen the fix typing axiom** — The fix soundness proof currently relies
    on a fix typing axiom included in `WellTyped`:
@@ -201,31 +211,101 @@ with `SubtypeTrans.step (Subtype'.refl e)`.
   says fix is well-typed when its body satisfies the declared contract, implying
   the fixpoint itself satisfies the contract.
 
-## Analysis: absEval_normalize_stable and LR_upcast
+## Analysis: the lam case (THE main blocker)
 
-Two key lemmas are needed to complete the concEvalS soundness proof.
+The lam case of fundamental is the hardest remaining sorry. Here is a
+detailed analysis of the difficulties and potential approaches, based on
+deep investigation by agent ochre-lean-20260331-211841.
 
-### absEval_normalize_stable (needed for lam case)
+### The problem
 
-**Claim:** `absEval k ((x, a) :: Γ) body' = absEval k ((x, a) :: Γ) body`
-where `body' = absEval k' ((x, var x) :: Γ) body`.
+In the lam case, absEval normalizes the body: `body' = absEval k ((x, var x) :: Γ) body`.
+The LR lambda clause requires: for ANY Γ_arb and fuel k', if the abstract side
+`absEval k' ((x, aa) :: Γ_arb) body'` succeeds, then the results are LR-related.
 
-**Status:** Believed true but potentially not for all fuel combinations.
-Normalization pre-computes work, so the normalized body may succeed with
-LESS fuel than the original. If k < k', body' might evaluate in k fuel
-while body doesn't. This means the equality direction matters:
-- body succeeds → body' succeeds (likely true: less work to do)
-- body' succeeds → body succeeds (may be FALSE when k is too small!)
+The IH (fundamental at fuel k') gives us: if `absEval k' ((x, aa) :: Γ) body`
+succeeds, the results are LR-related. But this uses the ORIGINAL body in the
+ORIGINAL Γ, while the LR clause uses the NORMALIZED body' in an ARBITRARY Γ_arb.
 
-**Possible fix:** Change the lemma to the first direction (from body to body'),
-which suffices if we can ensure the original body evaluation always succeeds.
-But the LR lambda clause has `absEval k Γ body' = some τ'` as a HYPOTHESIS
-(we don't get to choose k), so we need the other direction.
+### Why absEval_normalize_stable was WRONG
 
-**Alternative:** Change the LR definition to capture the defining environment,
-avoiding the need for this lemma entirely. This would require the lambda clause
-to use a specific Γ instead of universally quantifying over it. Tricky but
-might be the right approach.
+The original formulation claimed `absEval k Γ body' = absEval k Γ body` (at the
+same fuel). This is FALSE. Counterexample:
+
+    body = app (lam y T y) (var x)
+    Normalization resolves this to: body' = var x
+    absEval 1 Γ (var x) = a       (var lookup, needs fuel 1)
+    absEval 1 Γ body    = none    (app needs fuel 2+)
+
+The normalized body needs LESS fuel because some reductions are pre-computed.
+
+### Corrected formulation (reformulated in SoundnessS.lean)
+
+    If absEval k_n ((x, var x) :: Γ) body = some body'
+    and absEval k ((x, a) :: Γ) body' = some τ'
+    then absEval (k_n + k) ((x, a) :: Γ) body = some τ'
+
+This additive-fuel version accounts for the pre-computed work. But using it
+in the lam case requires ALL of:
+1. `concEvalS_fuel_mono` — PROVED (this session)
+2. `absEval_fuel_mono` — PROVED (this session)
+3. WellTyped fuel-weakening: `WellTyped (k+j) Γ e → WellTyped k Γ e` — NOT PROVED
+   (WellTyped is anti-monotone: higher fuel = stricter requirements, so this
+   direction holds. Lower fuel = weaker = easier to satisfy.)
+
+### The universal Γ_arb problem
+
+Even with additive fuel, the universal Γ_arb in the LR lambda clause causes trouble.
+The IH only works for the SPECIFIC Γ from fundamental's context.
+
+However, body' (the normalized body) should only reference `x` as a free variable
+(all other variables were resolved during normalization in Γ). So
+`absEval k ((x, aa) :: Γ_arb) body'` should be independent of Γ_arb.
+
+Proving "body' only has x free" requires a free-variable analysis of absEval
+outputs, which is non-trivial but doable.
+
+### Recommended approach for next agent
+
+**Option A (easiest):** Prove WellTyped fuel-weakening + the corrected
+normalize_stable. Then the lam case uses additive fuel with the IH.
+Estimated effort: 100-150 lines for WellTyped weakening, 150-200 lines for
+normalize_stable.
+
+**Option B (cleanest):** Prove "absEval outputs are closed under the env"
+(free-variable analysis). This handles the universal Γ_arb and may also
+simplify normalize_stable. Estimated effort: 200-300 lines.
+
+**Option C (nuclear):** Abandon the LR approach entirely. Redefine concEvalS
+to also use env extension (like concEval) but WITHOUT normalizing under binders.
+This would keep the structural parallel with absEval while fixing the
+Church-encoded branching issue. The existing Soundness.lean proof could be
+adapted. Estimated effort: 200+ lines of restructuring, but eliminates the
+entire normalization stability problem.
+
+## Analysis: absEval_normalize_stable (detailed)
+
+### Even the corrected formulation is non-trivial
+
+The var case of normalize_stable requires: if `body = var y` and `y ≠ x`, then
+`body' = Γ.lookup y = v_y`. Re-evaluating body' gives `absEval k Γ' v_y`, while
+evaluating body at higher fuel gives `Γ'.lookup y = v_y` (just a lookup, no
+further evaluation). These differ unless `absEval k Γ' v_y = v_y`.
+
+This requires "absEval idempotency": `absEval k Γ v = some v` when v was
+produced by absEval (so it's already normalized). This is likely true for
+sufficient fuel but requires a separate inductive proof.
+
+### Fuel monotonicity helps but doesn't solve everything
+
+The fuel monotonicity lemmas (absEval_fuel_mono, concEvalS_fuel_mono) proved
+this session are necessary building blocks. They ensure that if a computation
+succeeds at fuel k, it also succeeds with the same result at fuel k+j.
+
+But they don't directly help with the normalize_stable var case, which
+needs idempotency (same input, same output after re-evaluation).
+
+## Analysis: LR_upcast fuel adequacy
 
 ### LR_upcast (MOSTLY PROVED — asc case resolved)
 

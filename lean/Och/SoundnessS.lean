@@ -37,23 +37,53 @@ This yields `LR m` for the body results. Since m was arbitrary, we get ∀ m.
 
 This approach completely avoids `absEval_normalize_stable` in the app case.
 
-### Remaining blocker: `absEval_normalize_stable`
+### Remaining blocker: normalization stability (lam case)
 
-The lam case still needs this lemma to bridge normalized vs original bodies:
+The lam case must CONSTRUCT the LR extensional property. The IH gives the
+property for the original body, but the lambda's stored body is normalized
+(`body' = absEval k ((x, var x) :: Γ) body`). The LR clause says: for any
+Γ_arb, k', and LR-related args, if `absEval k' ((x, aa) :: Γ_arb) body'`
+succeeds, the results are LR-related.
 
-  absEval k ((x, a) :: Γ) (absEval k' ((x, var x) :: Γ) body)
-  = absEval k ((x, a) :: Γ) body
+**Key difficulty (discovered by agent ochre-lean-20260331-211841):**
+The original formulation of `absEval_normalize_stable` was WRONG. It claimed:
 
-The lam case of fundamental must CONSTRUCT the LR extensional property.
-The IH gives the property for the original body, but the lambda's stored
-body is normalized. This bridge is needed to connect them.
+  absEval k ((x, a) :: Γ) body' = absEval k ((x, a) :: Γ) body  (when k ≤ k')
 
-NOTE: This lemma may need a careful fuel constraint or even a reformulation.
-Normalization pre-computes some work, so the normalized body may succeed with
-LESS fuel than the original. If k_app < k_norm, absEval k_app Γ body' may
-succeed while absEval k_app Γ body fails. The lemma as stated (with k ≤ k')
-may be too weak — it might need the reverse direction or a different approach.
-See PROGRESS.md for discussion.
+This is FALSE because normalization pre-computes some reductions, so body'
+may need LESS fuel than body. Example: body = app (lam y T y) (var x).
+Normalization resolves this to var x (body'). Evaluating body' needs fuel 1,
+but evaluating body needs fuel 2.
+
+The corrected formulation is one-directional with additive fuel:
+
+  If absEval k_n ((x, var x) :: Γ) body = some body'
+  and absEval k ((x, a) :: Γ) body' = some τ'
+  then absEval (k_n + k) ((x, a) :: Γ) body = some τ'
+
+But even this corrected version is hard to USE because the fundamental theorem
+has a FIXED fuel parameter. Using k_n + k fuel requires:
+- Fuel monotonicity for concEvalS (PROVED: concEvalS_fuel_mono)
+- Fuel monotonicity for absEval (PROVED: absEval_fuel_mono)
+- WellTyped at the higher fuel (WellTyped is ANTI-monotone: higher fuel =
+  stronger requirements, so this would need WellTyped at k_n + k which is
+  NOT implied by WellTyped at k)
+
+The universal Γ_arb in the LR lambda clause adds another layer: for the
+"right" Γ_arb (= Γ from fundamental), the IH applies; for other Γ_arb's,
+one needs "body' only has x as a free variable" (since all other variables
+were resolved during normalization). This is true for well-typed terms but
+needs a separate free-variable analysis.
+
+**Possible approaches for a future agent:**
+1. Prove a WellTyped fuel-weakening lemma (WellTyped (k+j) → WellTyped k)
+   and use the corrected normalize_stable with additive fuel.
+2. Change absEval to NOT normalize under binders, using env extension only.
+   This would break tests (they compare syntactically to expected values).
+3. Parameterize LR by a closure environment and avoid the universal Γ_arb.
+   This has its own complications with nesting (see analysis below).
+4. Prove absEval idempotency (absEval k Γ v = some v when v is an absEval
+   result) and use it to connect body and body' via two-step reasoning.
 
 ## Status
 
@@ -65,9 +95,11 @@ See PROGRESS.md for discussion.
 - [x] LR_upcast (composition of LR with Subtype') — proved except fuel adequacy gap
 - [x] Fundamental theorem — var, type, app, asc cases PROVED
 - [x] Top-level soundnessS corollary
-- [ ] Lam case of fundamental (needs absEval_normalize_stable)
-- [ ] Fix case of fundamental (needs .fix not being IsValue → can't use IH directly)
-- [ ] absEval_normalize_stable (the key bridge lemma for lam case)
+- [x] absEval_fuel_mono (fuel monotonicity for abstract evaluator)
+- [x] concEvalS_fuel_mono (fuel monotonicity for substitution-based evaluator)
+- [ ] Lam case of fundamental (blocked on normalize_stable)
+- [ ] Fix case of fundamental (blocked on .fix not being IsValue)
+- [ ] absEval_normalize_stable (reformulated with additive fuel, unproved)
 - [ ] LR_upcast fuel adequacy (lam_body case when body₂ doesn't evaluate)
 -/
 
@@ -197,7 +229,133 @@ theorem envLR_extend {n : Nat} {σ : List (Name × Expr)} {Γ : Env}
   · exact h y τ' h_lookup
 
 -- ============================================================
--- Key lemma: normalization stability
+-- Fuel monotonicity
+-- ============================================================
+
+/-- **Fuel monotonicity for absEval**: if absEval succeeds at fuel k,
+    it succeeds with the same result at any higher fuel k + j.
+
+    Key property: once the evaluator has enough fuel to produce a result,
+    adding more fuel doesn't change the result. This is because absEval is
+    deterministic — extra fuel just means we don't run out, but the computation
+    path is the same. -/
+theorem absEval_fuel_mono : ∀ (k j : Nat) (Γ : Env) (e v : Expr),
+    absEval k Γ e = some v → absEval (k + j) Γ e = some v := by
+  intro k
+  induction k with
+  | zero => intro j Γ e v h; simp [absEval] at h
+  | succ k ih =>
+    intro j Γ e v h
+    -- (k + 1) + j = (k + j) + 1
+    have h_fuel : k + 1 + j = (k + j) + 1 := by omega
+    rw [h_fuel]
+    cases e with
+    | var x =>
+      simp only [absEval] at h ⊢; exact h
+    | type =>
+      simp only [absEval] at h ⊢; exact h
+    | lam x d b =>
+      simp only [absEval] at h ⊢
+      cases hb : absEval k ((x, .var x) :: Γ) b with
+      | none => simp [hb] at h
+      | some b' =>
+        simp [hb] at h; cases h
+        have := ih j ((x, .var x) :: Γ) b b' hb
+        simp [this]
+    | asc t ty =>
+      simp only [absEval] at h ⊢
+      exact ih j Γ ty v h
+    | fix inner =>
+      simp only [absEval] at h ⊢
+      cases inner with
+      | lam f dom body => exact ih j Γ dom v h
+      | var _ | app _ _ | asc _ _ | type | fix _ => simp [absEval] at h
+    | app f a =>
+      simp only [absEval] at h ⊢
+      cases hf : absEval k Γ f with
+      | none => simp [hf] at h
+      | some vf =>
+        cases ha : absEval k Γ a with
+        | none => simp [hf, ha] at h
+        | some va =>
+          have hf' := ih j Γ f vf hf
+          have ha' := ih j Γ a va ha
+          rw [hf', ha']
+          rw [hf, ha] at h
+          cases vf with
+          | lam x _d body =>
+            simp only at h ⊢
+            exact ih j ((x, va) :: Γ) body v h
+          | type =>
+            simp only at h ⊢; exact h
+          | var _ | app _ _ | asc _ _ | fix _ =>
+            simp only at h ⊢; exact h
+
+/-- **Fuel monotonicity for concEvalS**: if concEvalS succeeds at fuel k,
+    it succeeds with the same result at any higher fuel k + j. -/
+theorem concEvalS_fuel_mono : ∀ (k j : Nat) (e v : Expr),
+    concEvalS k e = some v → concEvalS (k + j) e = some v := by
+  intro k
+  induction k with
+  | zero => intro j e v h; simp [concEvalS] at h
+  | succ k ih =>
+    intro j e v h
+    have h_fuel : k + 1 + j = (k + j) + 1 := by omega
+    rw [h_fuel]
+    cases e with
+    | var x =>
+      simp only [concEvalS] at h ⊢; exact h
+    | type =>
+      simp only [concEvalS] at h ⊢; exact h
+    | lam x d b =>
+      simp only [concEvalS] at h ⊢; exact h
+    | asc t ty =>
+      simp only [concEvalS] at h ⊢
+      exact ih j t v h
+    | fix inner =>
+      simp only [concEvalS] at h ⊢
+      cases inner with
+      | lam f _dom body =>
+        simp only at h ⊢
+        exact ih j (body.subst f (.fix (.lam f _dom body))) v h
+      | var _ | app _ _ | asc _ _ | type | fix _ => simp [concEvalS] at h
+    | app f a =>
+      simp only [concEvalS] at h ⊢
+      cases hf : concEvalS k f with
+      | none => simp [hf] at h
+      | some vf =>
+        cases ha : concEvalS k a with
+        | none => simp [hf, ha] at h
+        | some va =>
+          have hf' := ih j f vf hf
+          have ha' := ih j a va ha
+          rw [hf', ha']
+          rw [hf, ha] at h
+          cases vf with
+          | lam x _d body =>
+            simp only at h ⊢
+            exact ih j (body.subst x va) v h
+          | fix inner =>
+            simp only at h ⊢
+            -- Need to handle fix-in-function-position
+            cases hfix : concEvalS k (.fix inner) with
+            | none => simp [hfix] at h
+            | some fix_result =>
+              have hfix' := ih j (.fix inner) fix_result hfix
+              rw [hfix, hfix'] at h ⊢
+              cases fix_result with
+              | lam x _d body =>
+                simp only at h ⊢
+                exact ih j (body.subst x va) v h
+              | type => simp only at h ⊢; exact h
+              | _ => simp only at h ⊢; exact h
+          | type =>
+            simp only at h ⊢; exact h
+          | var _ | app _ _ | asc _ _ =>
+            simp only at h ⊢; exact h
+
+-- ============================================================
+-- Normalization stability (reformulated)
 -- ============================================================
 
 /-- **Normalization stability** (the key bridge lemma).
@@ -209,24 +367,29 @@ theorem envLR_extend {n : Nat} {σ : List (Name × Expr)} {Γ : Env}
     When this lambda is later applied with argument a, absEval evaluates
     the NORMALIZED body body' in ((x, a) :: Γ), not the original body.
 
-    This lemma states: evaluating the normalized body with a concrete binding
-    gives the same result as evaluating the original body directly.
+    **Corrected formulation:** The original `k ≤ k'` constraint was wrong.
+    The normalized body may need LESS fuel (some work is pre-computed),
+    so evaluating the original body needs MORE fuel. The correct relationship
+    is: if normalization used k_n fuel and re-evaluation uses k fuel, then
+    evaluating the original needs at most k_n + k fuel.
 
-    **Proof strategy:** By induction on fuel/body. Key cases:
-    - var y (y = x): body' has (var x), which maps to a in both evals. ✓
-    - var y (y ≠ x): body' has Γ(y). Re-evaluating Γ(y) in the same Γ
-      gives the same result (values in Γ are already normalized). ✓
-    - lam y d' inner: body' has lam y d' inner'. IH on inner. ✓
-    - app f' a': beta-reduced or stuck. IH on components. ✓
+    absEval_normalize_stable states: evaluating the normalized body at fuel k
+    and evaluating the original body at fuel k_n + k give the same result,
+    PROVIDED the normalized body succeeds.
 
-    Main difficulty: showing that values from Γ are "idempotent" under
-    re-normalization. This holds because absEval's results in a fixed env
-    are fixed points of re-evaluation (absEval Γ (absEval Γ e) = absEval Γ e). -/
-theorem absEval_normalize_stable (k k' : Nat) (Γ : Env) (body : Expr)
-    (x : Name) (a body' : Expr)
-    (h_norm : absEval k' ((x, .var x) :: Γ) body = some body')
-    (h_fuel : k ≤ k') :
-    absEval k ((x, a) :: Γ) body' = absEval k ((x, a) :: Γ) body := by
+    Equivalently (one-directional): if the normalized body succeeds, the
+    original succeeds at higher fuel with the same result.
+
+    **STATUS: UNPROVED.** This is a deep property requiring careful reasoning
+    about how absEval's normalization interacts with re-evaluation. The proof
+    likely needs strong induction on fuel + body structure. Left as sorry for
+    the next agent. The fuel monotonicity lemmas above are the key building
+    blocks. -/
+theorem absEval_normalize_stable (k_n k : Nat) (Γ : Env) (body : Expr)
+    (x : Name) (a body' τ' : Expr)
+    (h_norm : absEval k_n ((x, .var x) :: Γ) body = some body')
+    (h_eval : absEval k ((x, a) :: Γ) body' = some τ') :
+    absEval (k_n + k) ((x, a) :: Γ) body = some τ' := by
   sorry
 
 -- ============================================================
