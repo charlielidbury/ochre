@@ -5,6 +5,57 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-03-31 ochre-lean-20260331-140739: Stop normalizing under binders in concEval (NOT YET IMPLEMENTED)
+
+**Decision:** `concEval` should treat `λ(x: τ). e` as a value — return it as-is
+without reducing the body. `absEval` should continue normalizing under binders
+(needed for precision like `succ 2 = 3`).
+
+**Why:** The current `concEval` normalizes lambda bodies eagerly. This breaks
+Church-encoded branching, which works by passing two lambdas (branches) to an
+eliminator that selects one. When both branches are eagerly normalized, recursive
+branches diverge even when not taken. Demonstrated by `toZero 1 = none` in
+Tests.lean — the recursive branch `self (pred n)` is evaluated even at `n = 0`.
+
+The spec (§4.1) says `(λ(x: τ). e) v ⟶ e[x := v]` — standard call-by-value
+where lambdas are values. The implementation's normalization under binders
+departs from this.
+
+**What changes:**
+- `concEval` lam case: return `some (.lam x dom body)` instead of normalizing body
+- `concEval` app case: unchanged (beta-reduction via env extension still works)
+- Soundness proof lam case: needs restructuring from intensional (comparing
+  normalized bodies) to extensional (related when applied to related args)
+
+**What this unblocks:**
+- Concrete recursive functions via Church-encoded branching (toZero, mapArray, etc.)
+- Concrete appendVec with fixed n and m
+
+**Why absEval keeps normalizing:**
+Abstract evaluation needs normalization under binders for precision. `succ 2`
+must have type `3`, which requires normalizing the body of `succ` after
+substituting `2` for `n`. The abstract evaluator computes precise normal forms;
+the concrete evaluator just runs programs.
+
+**Proof impact:**
+The soundness proof's lam case currently works by:
+1. Normalize both bodies under the binder
+2. Compare normalized bodies via SubtypeTrans
+
+Without concrete normalization, step 1 only happens abstractly. The proof needs
+extensional reasoning: show that for any argument `v ⊑ τ_a`, applying the
+concrete lambda to `v` gives a result ⊑ applying the abstract lambda to `τ_a`.
+This is standard but requires restructuring the lam case and possibly the
+Subtype' relation (adding an extensional function subtyping rule).
+
+**Alternatives considered:**
+- Add laziness annotations to Church encodings. Ad-hoc, not compositional.
+- Add a `thunk`/`delay` construct. Adds syntax for what should be default behavior.
+- Keep normalizing but add fuel-aware recursion limits. Doesn't fix the
+  fundamental problem (both branches are entered).
+
+---
+
 ## 2026-03-31 och-agent-20260331-124544: Remove trans from Subtype' (IMPLEMENTED)
 
 **Decision:** Removed `trans` from `Subtype'` and created `SubtypeTrans` as the
