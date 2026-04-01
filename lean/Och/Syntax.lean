@@ -54,4 +54,15 @@ def subst (e : Expr) (x : Name) (s : Expr) : Expr :=
     if y == x then .iota y body  -- x is shadowed
     else .iota y (body.subst x s)
 
+/-- Free variables of an expression (may contain duplicates). -/
+def freeVars (e : Expr) : List Name :=
+  match e with
+  | .var x        => [x]
+  | .lam x dom body => dom.freeVars ++ (body.freeVars.filter (· != x))
+  | .app f a      => f.freeVars ++ a.freeVars
+  | .asc term ty  => term.freeVars ++ ty.freeVars
+  | .type         => []
+  | .fix e        => e.freeVars
+  | .iota x body  => body.freeVars.filter (· != x)
+
 end Expr

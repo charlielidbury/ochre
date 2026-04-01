@@ -274,6 +274,29 @@ theorem monotonicity
 def EnvSubTrans (Γ₂ Γ₁ : Env) : Prop :=
   ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ SubtypeTrans τ₂ τ₁
 
+/-- An env is "closed" if every free variable in every env value is bound in the env.
+    This excludes envs like [(y, λx:Type. z)] where z is unbound — these never
+    arise from well-formed evaluation but aren't ruled out by EnvSubTrans. -/
+def EnvClosed (Γ : Env) : Prop :=
+  ∀ x τ, Γ.lookup x = some τ → ∀ y, y ∈ τ.freeVars → Γ.lookup y ≠ none
+
+/-- Extending a closed env with a binding whose value has free vars covered by the
+    extended env preserves closedness. -/
+theorem envClosed_extend {Γ : Env} (h : EnvClosed Γ)
+    (x : Name) (v : Expr) (hv : ∀ y, y ∈ v.freeVars → Env.lookup ((x, v) :: Γ) y ≠ none) :
+    EnvClosed ((x, v) :: Γ) := by
+  intro z τ h_lookup y hy
+  simp only [Env.lookup] at h_lookup ⊢
+  split at h_lookup
+  · -- z = x, so τ = v
+    cases h_lookup; exact hv y hy
+  · -- z ≠ x, so τ is from Γ
+    have h_old := h z τ h_lookup y hy
+    split
+    · -- y = x → found
+      exact fun h => absurd h (by simp)
+    · exact h_old
+
 theorem envSubTrans_extend {Γ₂ Γ₁ : Env} (h : EnvSubTrans Γ₂ Γ₁) (x : Name) (v : Expr) :
     EnvSubTrans ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
   intro y τ₁ h_lookup
