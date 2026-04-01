@@ -230,6 +230,57 @@ relations (which are needed anyway for the mu-app sorrys).
 
 ---
 
+## 2026-04-02: Annotation consistency in WellTyped for mu-app proof
+
+**Decision:** Added annotation consistency condition to WellTyped's app case
+for mu functions. When absEval returns a mu with a lambda annotation AND lambda
+body, WellTyped requires: (1) matching binder names, (2) WellTyped for both
+body result and annotation return body, (3) absEval of the body result
+SubtypeCore's the absEval of the annotation return body.
+
+**The problem:** absEval's mu-app uses the annotation (return type) while
+concEval's mu-app uses the body (actual computation). These are fundamentally
+different expressions. SubtypeCore (structural) can't bridge them. Previous
+agents documented this as requiring step-indexed logical relations.
+
+**Key insight:** We DON'T need logical relations for the annotation path. If
+WellTyped asserts that the body "implements" the annotation (abstractly), the
+proof can chain: concEval(body) ⊑ absEval(body) ⊑ absEval(annotation) = τ.
+The first step uses the IH with SubtypeCore from lam_rhs_shape. The second
+uses the annotation consistency from WellTyped.
+
+**Why matching binder names are needed:** concEval binds the body's parameter
+name, absEval binds the annotation's parameter name. For EnvConsistent (which
+maps variables by name), both env extensions must use the same name. Without
+alpha-equivalence or de Bruijn indices, we require syntactic name matching.
+
+**Impact:** Proved the mu-app annotation path in soundness_gen (×2: refl and
+app_cong). Body-unfold path (ann≠lam or body≠lam) remains sorry'd — 4 sorrys
+total, but these are rare cases (iota-like mus used as functions, or mus whose
+evaluated body is not a lambda).
+
+**Caveat:** The matching binder name requirement means WellTyped is only
+non-vacuously satisfiable for programs where mu annotation parameter names
+match body parameter names. The test suite uses "_" in annotations and
+meaningful names in bodies. To make the test programs satisfy WellTyped,
+either change annotations to match, or switch to a representation without
+binder name sensitivity (e.g., de Bruijn indices).
+
+**Alternatives considered:**
+- Step-indexed logical relations: would solve everything including body-unfold
+  path, but is a major infrastructure change. Still recommended for the
+  remaining body-unfold sorrys.
+- Substitution-based renaming in the evaluator: avoids binder name matching
+  requirement but introduces variable capture issues with the naive subst.
+- De Bruijn indices: eliminates binder name issues entirely but requires
+  rewriting the whole codebase.
+- Using Subtype' instead of SubtypeCore for annotation consistency: SubtypeCore
+  is too weak to relate the abstract body result to the annotation return type
+  (they're semantically related but structurally different). The condition
+  instead uses absEval (evaluation-based), which CAN relate them semantically.
+
+---
+
 ## Historical decisions (pre-mu, from main branch)
 
 The following decisions were made before the mu experiment. They describe the
