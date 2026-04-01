@@ -1,143 +1,247 @@
-# Extend Och gradually until it's ready
+# The mu experiment
+
+## Background: what happened and why we're here
+
+Och previously had two separate self-reference primitives:
+- `fix` — general recursion (recursive functions)
+- `iota` — self types (dependent elimination)
+
+We discovered these are the same thing. In Och's "terms and types are the
+same thing" framework, both express self-reference. The only difference is
+how *determined* the self-reference is — and that's already handled by the
+concrete/abstract evaluation split. See `docs/ideas/merge-fix-iota.md` for
+the full analysis (READ THIS FIRST — it is the design document for this
+experiment).
+
+The unified primitive is `mu`:
+
+```lean
+| mu : Name → (ann : Expr) → (body : Expr) → Expr
+```
+
+`mu (x : T). body` means "the thing being defined can refer to itself as x,
+and its annotation is T."
+
+- **Concrete eval:** unroll — `body[x := mu x T body]` (like fix)
+- **Abstract eval:** normalize body under binder, return `mu x T' body'` (like iota)
+- **Subtyping:** mu-mu compares annotations; self-intro/elim unfold one level
+
+The annotation `T` is load-bearing (not optional): it prevents divergence in
+both abstract evaluation and subtype checking. See the "annotation argument"
+section of merge-fix-iota.md for why (based on Victor Maia's Kind2 work).
 
 ## North Star: abstract appendVec
 
-The medium-term research goal is getting `appendVec` from docs/add-fix.md working
-end-to-end, including with **abstract** arguments (`n : Nat, m : Nat`). Och is
-useless without this — a type system that can only verify concrete computations
-adds nothing over an evaluator.
+The goal is getting `appendVec` working end-to-end with **abstract** arguments
+(`n : Nat, m : Nat`). Och is useless without this — a type system that can
+only verify concrete computations adds nothing over an evaluator.
 
-Concrete appendVec (fixed n and m) should work once concEval stops normalizing
-under binders (see above). Test this first as a sanity check.
+`appendVec` needs dependent elimination: when you branch on abstract `n : Nat`,
+the return type must track which branch was taken (`Array 0 T` vs
+`Array (succ k) T`). Self types (via mu) provide this — the return type
+becomes `P n`, dependent on the input.
 
-For abstract appendVec, the abstract evaluator needs to handle branches where
-the result type depends on which branch is taken. Currently `isZero n` for
-abstract `n : Nat` correctly evaluates to `Bool` (by applying the type `Nat`
-through the elimination chain). But the result of the *outer* branching
-(e.g., `(isZero n) ResultType base_case recursive_case`) just gets `ResultType`
-— it doesn't know that `base_case` returns `Array 0 T` and `recursive_case`
-returns `Array (succ k) T`. Self types (suggestion 1) may solve this directly
-by making the return type depend on the eliminator's input.
+The end state also requires **Scott encoding** (recursive types via nested mu),
+which gives O(1) pattern matching and clean separation of concerns. Church
+encoding is a stepping stone — simpler to get working first because it avoids
+recursive types. But Scott is the target. See `docs/ideas/scott-encoding-fix-iota.md`.
 
-## Suggested Roadmap
+### Intermediate milestone: dependent `add`
 
-Bellow are the current set of suggested next steps which will maximise our dual goal of completing Och and having it be useful for Ochre.
+Before appendVec, get `add n m` to typecheck with abstract `n : Nat, m : Nat`,
+where `Nat` is self-typed Church Nat defined via mu. This is simpler than
+appendVec (non-dependent motive, no arrays) but exercises the same core
+machinery:
 
-In addition to these main "load bearing" pieces of work, it might also be value to do meta-work like cleaning up the codebase, combining/simplifying concepts, doing literature research (in docs/research/) if you get the sense that "this could have been solved already", etc.
+1. mu working as both recursion and self-types
+2. Type-directed evaluation in absEval's app case (mu-elim on stuck variables)
+3. β-reduction of the motive in types
 
-Suggested roadmap mega-list:
+See the worked example at the bottom of `docs/ideas/merge-fix-iota.md` for
+a complete typing derivation of `add`, which identifies exactly what the
+evaluator needs.
 
-1. **Implement self types (iota)** — add `iota` as a new `Expr` constructor
-   and move the standard library over to using dependent eliminators as the
-   representation for Nat, Bool, etc. Self types let Church-encoded data
-   carry its own induction principle (`Nat = iota n. (P : Nat -> Type) ->
-   P zero -> ((k : Nat) -> P k -> P (succ k)) -> P n`), giving dependent
-   elimination for free via function application. This may be enough to get
-   `appendVec` working with abstract arguments — the return type `P n`
-   tracks the dependency that Church encoding alone collapses to a fixed
-   `X`. See docs/research/self-types-for-och.md for full analysis. The main
-   open question is handling stuck self-typed applications in absEval (may
-   require type-directed evaluation). Should be done before proving
-   soundness, since adding a new `Expr` constructor touches every proof.
+### Long-term: Scott encoding via recursive types
 
-2. **Prove soundness of concEvalC (closure-based evaluator)** —
-   `concEvalC` (closure-based concrete evaluator, Closure.lean) correctly
-   handles concrete recursive fix with thunked branches AND captures
-   definition-site envs for correct higher-order behavior. Its soundness
-   theorem is stated but sorry'd.
+Once Church + mu is working, the path to Scott encoding is:
 
-   **What's been done:**
-   - `absEval_mono_trans` PROVED (Monotonicity.lean)
-   - VR logical relation DEFINED (Closure.lean) with var/type/asc cases proved
-   - Root cause fully analyzed: **body normalization mismatch** between
-     concEvalC (keeps original bodies in closures) and absEval (normalizes
-     bodies under binders)
+1. **Type-level mu** — `mu (T : Type). body` defines a recursive type.
+   Abstract eval normalizes the body (doesn't unroll). Self-elim in the
+   subtype checker gives one-step equi-recursive unfolding. The mu-mu
+   annotation comparison (Victor's trick) prevents divergent unfolding.
+2. **Scott-encoded Nat** — `mu (Nat : Type). mu (n : Nat). Π(P:Nat→Type).
+   P zero → (Π(k:Nat). P (succ k)) → P n`. Two nested mus: outer for type
+   recursion, inner for self-typing.
+3. **Full induction via mu-as-fix** — `indNat = mu (ind : ...). lam n.
+   n P z (lam k. s k (ind k P z s))`. Scott gives dependent case analysis;
+   mu-as-fix adds recursion for full induction.
 
-   **The VR approach (partially implemented) is BLOCKED.** The lam/app
-   cases of the fundamental theorem require the same expression on both
-   evaluation sides, but concEvalC evaluates `body` (original) while
-   absEval evaluates `body_a` (normalized). `absEval_normalize_stable` is
-   provably FALSE, so these can't be related.
+This should "just work" if mu is implemented correctly, because the same
+primitive handles all three levels of self-reference. But it needs
+verification. See `docs/ideas/scott-encoding-fix-iota.md` for full analysis.
 
-   **Recommended approach: closure-based abstract evaluator (absEvalC)**
+## Roadmap
 
-   The cleanest path is to factor the proof into two independent parts:
+### 1. Replace fix+iota with mu in Syntax.lean
 
-   *Step 1: Define absEvalC (~60 lines)*
+Replace the two constructors with one:
 
-   ```lean
-   inductive AVal where
-     | aclo : Name → Expr → Expr → AEnv → AVal  -- closure with captured env
-     | atype : AVal
-     | afixV : Expr → AEnv → AVal
+```lean
+inductive Expr where
+  | var  : Name → Expr
+  | lam  : Name → (dom : Expr) → (body : Expr) → Expr
+  | app  : Expr → Expr → Expr
+  | asc  : (term : Expr) → (ty : Expr) → Expr
+  | type : Expr
+  | mu   : Name → (ann : Expr) → (body : Expr) → Expr
+```
 
-   def absEvalC (fuel : Nat) (Γ : AEnv) (e : Expr) : Option AVal :=
-     -- Structurally IDENTICAL to concEvalC except:
-     -- asc case: takes RHS (ty) instead of LHS (term)
-     -- fix case: returns domain type instead of unrolling body
-     -- lam case: returns aclo (captures env, NO normalization under binders)
-     -- app case: evaluates ORIGINAL body in CAPTURED env extended with argument
-   ```
+Update `subst` and `freeVars` accordingly (mu binds its name in the body,
+like iota did, but also carries an annotation like lam's domain).
 
-   *Step 2: Prove soundnessC_abs: concEvalC vs absEvalC (~150 lines)*
+### 2. Update Eval.lean
 
-   Both evaluators:
-   - Keep original bodies in closures (no normalization)
-   - Use captured (definition-site) envs for beta-reduction
-   - Have structurally parallel evaluation rules
+**concEval:**
+```
+| .mu x ann body => concEval fuel (body.subst x (.mu x ann body))  -- unroll
+```
+Note: this uses substitution (not env extension) because the mu needs to
+substitute ITSELF, not a neutral variable. Env extension would lose the
+self-reference. This matches how fix currently works (it puts `fix inner`
+in the env for `f`). Either approach (subst or env with the mu expression)
+should work — use whichever is cleaner.
 
-   So the fundamental theorem IH applies directly (same body, captured envs).
+**absEval:**
+```
+| .mu x ann body =>
+  match absEval fuel ((x, .var x) :: Γ) body with
+  | some body' =>
+    match absEval fuel Γ ann with
+    | some ann' => some (.mu x ann' body')
+    | none => none
+  | none => none
+```
+This normalizes the body under the binder (iota behavior) AND normalizes
+the annotation.
 
-   VR_abs for closures: just check same body + consistent captured envs.
-   No application property needed — the IH handles it.
+**App case — mu-elim (the hard part):**
+When `absEval(f)` returns a mu (not a lambda), the app case needs to
+unfold it:
+```
+| some (.mu x ann body), some aVal =>
+  -- mu-elim: unfold self type, then apply
+  let unfolded := body.subst x f_original  -- or (var x), depending on design
+  -- unfolded should be a function type (lambda); apply it
+  match unfolded with
+  | .lam param dom retBody => absEval fuel ((param, aVal) :: Γ) retBody
+  | _ => some (.app (.mu x ann body) aVal)  -- still stuck
+```
 
-   **Challenge:** The asc case still diverges (concrete takes LHS, abstract
-   takes RHS). This needs a VR_upcast-like property. With AVal-based VR_abs
-   (simpler closure case), this may be tractable. If not, can use the
-   existential τ' approach from the current fundamentalVR.
+**The context must carry types.** The worked example in merge-fix-iota.md
+reveals that when `n` is a neutral variable with type `Nat = mu(...)`,
+the app case needs to look up `n`'s TYPE (not just its abstract value) to
+do mu-elim. This means the Env type may need to change from
+`List (Name × Expr)` to `List (Name × Expr × Expr)` (name, value, type),
+or the type information needs to come from somewhere else (e.g., lambda
+domain annotations in scope).
 
-   *Step 3: Prove absEvalC_equiv: readback(absEvalC) = absEval (~150 lines)*
+This is the single biggest design question. The worked example shows it's
+unavoidable. Figure out the cleanest way to thread type information through
+absEval.
 
-   readback normalizes the closure's body using absEval in the CAPTURED env.
-   absEval also normalizes in the SAME env. So both use the same env — no
-   env mismatch.
+### 3. Update Subtyping.lean
 
-   This is a separate, focused lemma that doesn't involve concEvalC.
+**Subtype' inductive:**
+```
+| mu_body : Subtype' body₂ body₁ → Subtype' (.mu x ann body₂) (.mu x ann body₁)
+```
 
-   **Total estimated effort:** ~360 lines across the three steps.
+**subCheckNF:**
+```
+| .mu x annA bodyA, .mu y annB bodyB =>
+  -- Compare annotations (Victor's trick — avoids divergent unfolding)
+  let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
+  subCheckNF fuel ((x, .mu x annA bodyA) :: ctx) annA annB
+  -- Optionally also check bodies covariant, or just use annotations
+| a, .mu x ann body =>
+  -- Self-intro: unfold, check a ⊑ body[x := a]
+  subCheckNF fuel ctx a (body.subst x a)
+| .mu x ann body, b =>
+  -- Self-elim: unfold, check body[x := mu x ann body] ⊑ b
+  subCheckNF fuel ctx (body.subst x (.mu x ann body)) b
+```
 
-   **Note:** The concEvalS approach (SoundnessS.lean, 7 sorry's) is
-   STALLED — the bridge theorem `absEval_normalize_stable` is provably
-   FALSE. The closure-based approach supersedes it.
+**inferType:** Handle mu in function position (mu-elim to get function type).
 
-3. **More concrete recursive fix tests** — add tests for `pred`,
-   `mapArray`, `appendArrays` with thunked branches. These exercise the
-   evaluator independently of self types and may reveal edge cases.
+### 4. Update Tests.lean
 
-4. **Investigate abstract branching precision** — determine whether self
-   types (suggestion 1) fully solve the abstract branching problem, or
-   whether partitioning/narrowing is still needed for some cases. Self
-   types should handle the common case (dependent elimination), but
-   there may be patterns that require branch-precision beyond what self
-   types provide. This is research, and should be revisited after (1) is
-   implemented.
+All existing `.fix` uses become `.mu` with appropriate annotations.
+All existing `.iota` uses become `.mu` with appropriate annotations.
 
-5. **Add support for recursive types (type-level fix)** — extend `fix` (or
-   add new machinery) so that it can define recursive types that the
-   evaluator and subtype checker can lazily unfold. This is a **hard
-   requirement** for Och's end state: the target is Scott encoding, where
-   `fix` handles type-level recursion, `iota` handles dependent typing,
-   and Scott constructors are simple one-level case splits. Requires
-   solving equi-recursive vs iso-recursive types and divergence prevention
-   during unfolding. Lower priority than (1) only because Church + iota
-   is a simpler stepping stone that gets dependent elimination working
-   first — but Church encoding is **not** the end state. Design decisions
-   throughout the codebase should avoid assumptions that would make
-   recursive types harder to add later. See
-   docs/ideas/scott-encoding-fix-iota.md for analysis.
+The fix translation is mechanical: `fix (lam f T body)` → `mu f T body`.
+The iota translation adds an annotation: `iota x body` → `mu x ann body`
+where `ann` needs to be determined (often the mu type itself, or Type).
 
-6. docs/add-cps.md — should be done eventually, but high risk and might make
-   everything very messy.
+**All existing tests must still pass.** The tests pin expressiveness.
 
-7. docs/add-implicits.md — should be done eventually, but not if it adds
-   unnecessary noise to the underlying theory.
+### 5. Update proof files (Soundness.lean, Monotonicity.lean, Closure.lean)
+
+Replace fix/iota cases with mu cases throughout. Many proofs will break.
+Use `sorry` freely — the goal is to get `lake build` compiling, not to
+re-prove everything immediately.
+
+**Delete SoundnessS.lean** — it was stalled with 7 sorrys and is superseded.
+
+Closure.lean is substantial (~1000+ lines). Use judgment on whether to adapt
+it or remove it and rebuild later. Either is fine.
+
+### 6. Prove soundness and monotonicity for mu
+
+Once the syntax/eval/subtyping changes are stable and tests pass, the proofs
+need to be redone. The mu case in soundness should combine the old fix case
+(concrete unrolls, abstract returns annotation) with the old iota case
+(normalize body under binder).
+
+### 7. Type-directed evaluation for abstract appendVec
+
+With mu working, tackle the stuck-application problem: when `n : Nat` is
+abstract and applied to arguments, the evaluator needs mu-elim to discover
+the function type. This requires the env to carry type information (see
+roadmap item 2).
+
+### 8. Dependent Nat and add
+
+Define self-typed Nat with mu, prove `add` typechecks with abstract
+arguments. This is the concrete validation of the whole approach. See the
+worked example in merge-fix-iota.md for what the definitions and typing
+derivation look like.
+
+### 9. Recursive types
+
+With mu handling both recursion and self-types, type-level recursion should
+come "for free" — `mu T Type body` defines a recursive type. The self-elim
+subtyping rule gives one-step equi-recursive unfolding. The mu-mu annotation
+comparison (Victor's trick) prevents divergent unfolding. Verify this works
+and move the standard library to Scott encoding.
+
+## Design principles for this experiment
+
+- **One primitive for self-reference.** If you find yourself wanting to add
+  a second self-reference mechanism, stop and think about whether mu can do
+  it. The whole point is that concrete/abstract evaluation provides the
+  distinction.
+
+- **The annotation is load-bearing.** Don't drop it or make it optional. It
+  prevents divergence in both absEval and subtype checking.
+
+- **Tests are sacred.** The existing test suite pins expressiveness. All
+  tests must pass after the syntax change (adapted for mu syntax). Don't
+  weaken tests.
+
+- **Sorry freely, compile always.** `lake build` must pass. Use sorry for
+  broken proofs. A compiling codebase with sorrys is infinitely more useful
+  than a broken one.
+
+- **Read merge-fix-iota.md.** It is the design document. The worked example
+  at the bottom is especially important — it shows exactly what the typing
+  rules need to look like and what the evaluator must do.

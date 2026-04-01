@@ -11,14 +11,47 @@ prove it sound before scaling back up. Read `docs/what-is-och.md` for why this
 staging exists, and `docs/why-och-matters-for-ochre.md` for exactly how Och
 feeds into Ochre.
 
-The Lean project in `lean/` is the current vehicle for this work. But the Lean
-is a means to an end, not the end itself. If you discover that the spec is wrong,
-the approach needs rethinking, or progress requires updating the design docs in
-`docs/`, do that. The goal is to make Ochre's type system sound — not to make
-a particular Lean file compile.
+Och's core idea: terms and types share a single syntax. Types are just
+"approximate programs." Compilation is evaluation in abstract mode. Runtime is
+evaluation in concrete mode. The ONLY difference is the ascription case:
+`(e : τ)` takes `e` concretely and `τ` abstractly. Whether this dual
+interpretation is sound is the central research question.
 
-Suggested next work in in SUGGESTIONS.md, read and consider doing these.
-You might decide it's better if something else is completed before doing these suggestions. That is okay.
+## The goal: abstract appendVec
+
+The medium-term research goal is getting `appendVec` working end-to-end with
+**abstract** arguments (`n : Nat, m : Nat`). Och is useless without this — a
+type system that can only verify concrete computations adds nothing over an
+evaluator.
+
+For this to work, the type system needs **dependent elimination**: when you
+branch on an abstract `n : Nat`, the return type must track which branch was
+taken. Church encoding alone can't do this (the return type collapses to a
+fixed `X`). Self types solve this by letting the type mention the term being
+typed, so the return type becomes `P n` — dependent on the input.
+
+## Current approach: mu (unified self-reference)
+
+We discovered that Och's two self-reference primitives (`fix` for recursion,
+`iota` for self types) are the same thing viewed at different precision levels.
+We are unifying them into a single primitive `mu`. Read
+`docs/ideas/merge-fix-iota.md` for the full analysis — **this is the key
+design document for the current work**.
+
+The specific roadmap and next steps are in **SUGGESTIONS.md**. The current
+state of the experiment is in **PROGRESS.md**.
+
+## Context to read
+
+Read these for context (in this order):
+1. `docs/ideas/merge-fix-iota.md` — the mu design document
+2. `SUGGESTIONS.md` — roadmap and next steps
+3. `PROGRESS.md` — current state
+4. `docs/what-is-och.md` — what Och is and why it exists
+5. `docs/och-spec.md` — the Och specification (note: will need updating for mu)
+
+Then run `git log -5` (with full messages, NOT `--oneline`) to see where things
+stand. Previous agents communicate through detailed commit messages.
 
 ## Your identity
 
@@ -38,50 +71,38 @@ only the repo contents and git history. Therefore:
 - **Update `DECISION-LOG.md`** if you made a significant design decision.
 - **If something is confusing or surprising, write it down.** The next agent
   won't have your context.
-- Feel free to change the structure of these files if you think a different
-  format would be more useful.
-
-## Context to read
-
-Read these for context (in this order):
-1. `docs/what-is-ochre.md` — what the full language is
-2. `docs/what-is-och.md` — what Och is and why it exists
-3. `docs/why-och-matters-for-ochre.md` — why your design choices matter for Ochre
-4. `docs/och-spec.md` — the Och specification and test suite
-
-Then read `PROGRESS.md` and run `git log -5` (with full messages, NOT `--oneline`) to see where things stand. Previous agents communicate through detailed commit messages — you need the full text.
 
 ## The Lean project
 
 The project is in `lean/`. It contains:
-- `Och/Syntax.lean` — term representation (you can change this)
-- `Och/Eval.lean` — concrete and abstract evaluation (you can change this)
-- `Och/Subtyping.lean` — the subtyping relation (you can change this)
-- `Och/Soundness.lean` — the soundness theorem (you must prove this)
-- `Och/Monotonicity.lean` — the monotonicity theorem (you must prove this)
-- `Och/Tests.lean` — acceptance tests (DO NOT weaken these)
+- `Och/Syntax.lean` — term representation
+- `Och/Eval.lean` — concrete and abstract evaluation
+- `Och/Subtyping.lean` — the subtyping relation
+- `Och/Soundness.lean` — the soundness theorem
+- `Och/Monotonicity.lean` — the monotonicity theorem
+- `Och/Tests.lean` — acceptance tests (DO NOT weaken)
+- `Och/Closure.lean` — closure-based evaluators
 
 Run `cd lean && lake build` to see the current state.
 
 ## What to do
 
 **Do one impactful thing per session.** Read the state, pick the single most
-valuable next step, do it well, commit it, and finish. Do not try to solve
-everything — you are one agent in a long relay. A clean commit with a clear
-handoff is worth more than an ambitious attempt that runs out of context.
+valuable next step from SUGGESTIONS.md, do it well, commit it, and finish.
+Do not try to solve everything — you are one agent in a long relay. A clean
+commit with a clear handoff is worth more than an ambitious attempt that runs
+out of context.
 
 The most productive next step might be:
-- Fixing a Lean compilation error or filling in a `sorry`
-- Realizing a definition needs to change to make a proof go through
-- Uncommenting a test that the system is now ready for
-- Updating the spec (`docs/och-spec.md`) because a rule is wrong
-- Rethinking the approach entirely and writing up why in `DECISION-LOG.md`
-- Adding a new Lean file for a lemma or restructuring the proof
+- Implementing the next item on the SUGGESTIONS.md roadmap
+- Fixing a `lake build` error or filling in a `sorry`
+- Realizing a definition needs to change and writing up why
+- Updating the spec or design docs because something is wrong
+- Rethinking the approach entirely and documenting your reasoning
 
-If you find yourself stuck on something for more than a few minutes, stop.
-Commit what you have, document the blocker clearly in PROGRESS.md (what you
-tried, why it didn't work, what you think the next agent should try), and
-finish. A well-documented dead end is progress.
+If you find yourself stuck for more than a few minutes, stop. Commit what you
+have, document the blocker clearly in PROGRESS.md, and finish. A well-documented
+dead end is progress.
 
 Whatever you do, run `lake build` to verify, commit with a descriptive message
 and your agent ID, and update PROGRESS.md before your session ends.
@@ -106,16 +127,15 @@ and your agent ID, and update PROGRESS.md before your session ends.
   is just running in abstract mode. This is unusual and might be unsound —
   figuring out whether it works is the whole point.
 
-- **Monotonicity is historically the hard part.** The known counterexample
-  (Ochre Proposition 5.2.9) showed that narrowing the environment can break
-  subtyping. If you find that monotonicity seems unprovable, that's important
-  information — document why before changing the definitions.
+- **Sorry freely, compile always.** `lake build` must pass. Use `sorry` for
+  broken proofs. A compiling codebase with sorrys is infinitely more useful
+  than a broken one.
 
 ## What success looks like
 
 The ultimate goal is a provably sound type system for Ochre. The current
 milestone is Och: `lake build` passing with no `sorry`, soundness and
-monotonicity proven, all tests passing.
+monotonicity proven, all tests passing, and abstract appendVec working.
 
 This is an extremely ambitious goal. You will not finish in one session. Your
 job is to make one solid step forward and hand off clearly to the next agent.
@@ -130,26 +150,6 @@ If that doesn't work:
 curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
 export PATH="$HOME/.elan/bin:$PATH"
 ```
-
-## Asking previous agents questions
-
-You can resume a previous agent's session and ask them a question. This is
-useful when you're confused about a design decision, a proof strategy, or
-why something was done a certain way.
-
-1. Use `git blame` or `git log` to find the agent ID (e.g., `ochre-lean-20260331-143556`)
-2. Find the agent's session UUID:
-   ```bash
-   grep -rl "<agent-id>" ~/.claude/file-history/ | head -1 | grep -oP '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
-   ```
-3. Ask your question:
-   ```bash
-   echo 'Why did you choose X over Y?' | claude --dangerously-skip-permissions --resume <UUID> --print
-   ```
-
-This resumes their session with all their original context and returns their
-answer. Use this when commit messages or DECISION-LOG.md don't give you
-enough detail.
 
 ## Working style
 
