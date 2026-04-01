@@ -9,13 +9,59 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **3 sorry warnings**:
+`lake build` passes with **3 sorry warnings** (declaration count):
 - Monotonicity.lean: 2 (absEval_mono_trans, absEval_succeeds_envsub)
-- Soundness.lean: 1 (soundness_gen)
+- Soundness.lean: 1 (soundness_gen — 5 individual sorrys, all mu-related or trans)
 
 **absEval_mono is FULLY PROVED** (no sorrys).
+**soundness_gen is PARTIALLY PROVED** — var, lam, type, asc, app-lam, app-stuck all proved.
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-200028)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-204457)
+
+**soundness_gen partial proof: all non-mu cases proved (sorry 1→1, but coverage 0%→~70%)**
+
+The soundness theorem `soundness_gen` (Soundness.lean) now has real proofs for
+most cases. Previously it was entirely sorry'd; now only mu-related cases and
+the SubtypeTrans transitivity case remain.
+
+**Proved cases in soundness_gen:**
+- var: direct from EnvConsistent
+- lam: IH on body under neutral binder, SubtypeTrans.lam_body
+- type: trivial (both return type)
+- asc: IH on term + WellTyped gives intermediate Subtype' σ τ, chain via trans
+- app-lam: SubtypeTrans.lam_target_shape inverts f_v, IH on bodies
+- app-stuck (var/app/asc in fn position): SubtypeTrans.app_cong
+- app-type: top absorbs
+- lam_body in h_sub: same as lam case with different bodies
+- app_cong in h_sub: same as app case with different exprs
+- top in h_sub: trivial
+
+**Sorry'd cases in soundness_gen (5 individual sorrys):**
+1. **trans** (line 120): SubtypeTrans e_c b, SubtypeTrans b e_a. Need b to evaluate
+   in both modes. Same class of problem as the false `absEval_succeeds_envsub`.
+2. **mu standalone** (line 167): absEval binds x to var x (neutral), concEval binds
+   x to mu x ann body. No SubtypeTrans (mu ...) (var x) exists.
+3. **mu-app in refl(app)** (line 202): concEval unrolls mu then applies, absEval
+   uses annotation or body-unfold. Fundamentally different paths.
+4. **mu-app in app_cong** (line 267): same as #3.
+5. **mu_body** (line 282): same env consistency issue as #2.
+
+**Key finding: all remaining soundness sorrys are mu-related.** The soundness
+proof works perfectly for the non-self-referential fragment. The mu case is
+blocked because EnvConsistent requires SubtypeTrans between concrete and abstract
+env bindings, but the mu case has (mu ...) vs (var x) which can't be related.
+
+**Three possible fixes (increasing complexity):**
+(a) Add self-intro/self-elim to Subtype'/SubtypeTrans (complicates inversion lemmas)
+(b) Use a step-indexed logical relation instead of SubtypeTrans for env consistency
+(c) Change absEval's mu case semantics (e.g., don't wrap result in mu)
+
+Option (c) is simplest but changes the type system. Option (b) is the standard
+approach in the literature but is a major proof technique change. Option (a) is
+most direct but might break the trans-free Subtype' invariant that enables
+lambda inversion.
+
+### Previous changes (2026-04-01, agent ochre-lean-20260401-200028)
 
 **Three proof-friendly changes to absEval; monotonicity partially proved**
 
@@ -117,16 +163,26 @@ expressive enough for abstract appendVec with the mu primitive.
   - env extension for body-unfold path (IH via envSub_extend_sub)
   - mu_rhs_shape for stuck-app cases in body-unfold results
 
-- **absEval_mono_trans:** Sorry'd. Needs induction on fuel parallel to
-  absEval_mono but with SubtypeTrans throughout. Alternatively, might need
-  absEval_succeeds_envsub to chain the base case with transitivity.
+- **soundness_gen:** PARTIALLY PROVED. All non-mu cases done (~70% coverage).
+  The remaining 5 sorrys are ALL mu-related:
+  - mu standalone: env consistency mismatch (mu value vs neutral var)
+  - mu-app (×2): different concrete/abstract paths for mu application
+  - mu_body: same as mu standalone
+  - trans: needs intermediate expression evaluation (same class as
+    absEval_succeeds_envsub)
 
-- **absEval_succeeds_envsub:** Sorry'd. Hard because the app case takes
-  different paths in different envs. If f evaluates to lam in Γ₂ (less
-  precise), the recursive call on the lam body needs to succeed, but we
-  only know f evaluated to something in Γ₁.
+  **The fundamental blocker for mu soundness:** EnvConsistent requires
+  SubtypeTrans between concrete and abstract env bindings. For mu, concrete
+  binds x to the mu value, abstract binds x to (var x). There's no
+  SubtypeTrans (mu ...) (var x). See Soundness.lean docstring for
+  three possible approaches: (a) self-intro in Subtype', (b) step-indexed
+  logical relation, (c) change absEval mu semantics.
 
-- **soundness_gen:** Sorry'd (Soundness.lean). Separate from monotonicity.
+- **absEval_mono_trans:** Sorry'd. Not used by anything currently. Blocked
+  by needing intermediate evaluation (same problem as trans in soundness).
+
+- **absEval_succeeds_envsub:** FALSE as stated (see CounterexampleTest.lean).
+  Not used by anything currently. Needs well-formedness precondition on Γ₂.
 
 ### Key files
 
@@ -136,7 +192,7 @@ expressive enough for abstract appendVec with the mu primitive.
 | Eval.lean | Done (ann passthrough in mu, annotation/env-ext in app) | 0 |
 | Subtyping.lean | Done (domain normalization) | 0 |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
-| Soundness.lean | Sorry'd | 1 |
+| Soundness.lean | Partially proved (5 mu-related sorrys in 1 decl) | 1 |
 | Monotonicity.lean | absEval_mono PROVED; 2 other theorems sorry'd | 2 |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done | 0 |

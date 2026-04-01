@@ -60,6 +60,40 @@ absEval), the impact should be contained to subCheckNF-related lemmas.
 
 ---
 
+## 2026-04-01: Mu soundness requires richer env consistency
+
+**Decision:** Document the blocker; do not change definitions yet. The next
+agent should analyze approaches before committing.
+
+**The problem:** In `soundness_gen`, the mu case requires relating
+`EnvConsistent ((x, mu x ann body) :: γ) ((x, var x) :: Γ)` — i.e.,
+`SubtypeTrans (mu x ann body) (var x)`. But `SubtypeTrans` has no
+constructor for `anything ⊑ var x` (only `refl` reaches `var x`).
+
+This is conceptually a circular dependency: proving `v ⊑ mu x ann body'`
+requires knowing that v satisfies the self-type, which IS what soundness
+is proving.
+
+**Three approaches identified:**
+
+(a) **Add self-intro to Subtype'/SubtypeTrans.** Direct but involves
+substitution, which could break inversion lemmas.
+
+(b) **Step-indexed logical relation.** The standard approach for self-types
+(Cedille, etc.). Replace SubtypeTrans in EnvConsistent with a fuel-indexed
+relation. Conceptually correct but major proof restructuring.
+
+(c) **Change absEval mu to not wrap in mu.** Return `body'` directly
+instead of `mu x ann body'`. Simplest change but alters type system
+semantics — needs checking against tests and subtyping.
+
+**Recommendation:** Try (c) first (cheapest to validate against tests).
+If it breaks things, consider (b).
+
+**Full analysis:** See PROGRESS.md "Recent changes" section.
+
+---
+
 ## Historical decisions (pre-mu, from main branch)
 
 The following decisions were made before the mu experiment. They describe the
