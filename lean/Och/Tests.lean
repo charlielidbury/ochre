@@ -727,3 +727,176 @@ def SelfRef : Expr := .mu "x" .type
       (.app (.var "P") (.var "x"))))
 -- unit should NOT satisfy SelfRef (domain mismatch: Type vs Type->Type)
 example : subCheck testFuel unit' SelfRef = false := by native_decide
+
+-- ============================================================
+-- §9 Abstract add with self-typed Nat (mu design validation)
+-- ============================================================
+
+def addSelfNat : Expr := .lam "n" SelfNat (.lam "m" SelfNat
+  (.app (.app (.app (.var "n") Nat') (.var "m")) succ'))
+
+example : absEval testFuel []
+  (.app (.app addSelfNat (.asc unit' SelfNat)) (.asc unit' SelfNat))
+  = some Nat' := by native_decide
+
+example : subCheck testFuel
+  (.app (.app addSelfNat (.asc unit' SelfNat)) (.asc unit' SelfNat))
+  Nat' = true := by native_decide
+
+example : subCheck testFuel
+  (.app (.app addSelfNat (.asc unit' SelfNat)) (.asc unit' SelfNat))
+  SelfNat = true := by native_decide
+
+example : subCheck testFuel addSelfNat
+  (.lam "n" SelfNat (.lam "m" SelfNat Nat')) = true := by native_decide
+
+example : absEval testFuel []
+  (.app (.app addSelfNat two') three') = some five' := by native_decide
+
+-- ============================================================
+-- §10 Variant B: truly self-referential Nat (Cedille-style)
+-- EXPECTED FAILs: needs equi-recursive subtyping
+-- ============================================================
+
+def MuNat : Expr := .mu "N" .type
+  (.lam "X" .type (.lam "z" (.var "X")
+    (.lam "s" (.lam "_" (.var "N") (.lam "_" (.var "X") (.var "X")))
+      (.var "X"))))
+
+def zero_mu : Expr := .lam "X" .type (.lam "z" (.var "X")
+  (.lam "s" (.lam "_" MuNat (.lam "_" (.var "X") (.var "X")))
+    (.var "z")))
+
+def add_mu : Expr := .lam "n" MuNat (.lam "m" MuNat
+  (.app (.app (.app (.var "n") MuNat) (.var "m"))
+    (.lam "k" MuNat (.lam "acc" MuNat (.app succ' (.var "acc"))))))
+
+example : absEval testFuel []
+  (.app (.app add_mu (.asc unit' MuNat)) (.asc unit' MuNat))
+  = some MuNat := by native_decide
+
+-- EXPECTED FAIL: zero_mu ⊑ MuNat
+example : subCheck testFuel zero_mu MuNat = false := by native_decide
+
+-- EXPECTED FAIL: add_mu ⊑ MuNat -> MuNat -> MuNat
+example : subCheck testFuel add_mu
+  (.lam "_" MuNat (.lam "_" MuNat MuNat)) = false := by native_decide
+
+-- ============================================================
+-- §11 Milestone ladder: road to abstract appendVec
+--
+-- Tests marked EXPECTED FAIL will flip to passing as definitions
+-- improve. When lake build breaks because = false started passing,
+-- that's SUCCESS — flip it to = true.
+--
+-- M1: Recursive add via mu    M2: mapArray
+-- M3: appendArrays             M4: appendVec (north star)
+-- ============================================================
+
+-- ---------- M1: Recursive add via mu ----------
+
+def addRec : Expr := .mu "self" (.lam "_" SelfNat (.lam "_" SelfNat Nat'))
+  (.lam "n" SelfNat (.lam "m" SelfNat
+    (.app
+      (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
+        (.lam "_" Unit' (.var "m")))
+        (.lam "_" Unit' (.app succ' (.app (.app (.var "self") (.app pred' (.var "n"))) (.var "m")))))
+      unit')))
+
+-- M1a: addRec ⊑ SelfNat -> SelfNat -> Nat
+example : subCheck testFuel addRec
+  (.lam "_" SelfNat (.lam "_" SelfNat Nat')) = true := by native_decide
+
+-- M1b: concrete addRec 0 3 = 3
+example : concEvalS testFuel (.app (.app addRec zero') three') = some three' := by native_decide
+
+-- M1c: concrete addRec 2 1 is a Nat
+example : concEvalS testFuel
+  (.app isZero' (.app (.app addRec two') one')) = some false' := by native_decide
+
+-- M1d: EXPECTED FAIL — abstract addRec ⊑ Nat
+example : subCheck testFuel
+  (.app (.app addRec (.asc unit' SelfNat)) (.asc unit' SelfNat))
+  Nat' = false := by native_decide
+
+-- ---------- M2: mapArray ----------
+
+def mapArray' : Expr := .mu "self"
+  (.lam "_" .type (.lam "_" .type (.lam "_" (.lam "_" Nat' Nat') (.lam "_" Nat' (.lam "_" .type .type)))))
+  (.lam "T" .type (.lam "U" .type (.lam "f" (.lam "_" (.var "T") (.var "U"))
+    (.lam "n" Nat' (.lam "arr" (.app (.app Array' (.var "n")) (.var "T"))
+      (.app
+        (.app (.app (.app (.app isZero' (.var "n"))
+          (.lam "_" Unit' .type))
+          (.lam "_" Unit' (.app emptyArray' (.var "U"))))
+          (.lam "_" Unit'
+            (.app (.app (.app (.app consArray' (.var "U")) (.app pred' (.var "n")))
+              (.app (.var "f")
+                (.app (.app (.app headArray' (.var "T")) (.app pred' (.var "n"))) (.var "arr"))))
+              (.app (.app (.app (.app (.app (.var "self") (.var "T")) (.var "U")) (.var "f"))
+                (.app pred' (.var "n")))
+                (.app (.app (.app tailArray' (.var "T")) (.app pred' (.var "n"))) (.var "arr"))))))
+        unit'))))))
+
+-- M2a: concrete mapArray base case
+example : concEvalS testFuel
+  (.app (.app (.app (.app (.app mapArray' Nat') Nat') succ') zero') (.app emptyArray' Nat'))
+  = some unit' := by native_decide
+
+-- ---------- M3: appendArrays ----------
+
+def appendArrays' : Expr := .mu "self"
+  (.lam "_" .type (.lam "_" Nat' (.lam "_" Nat' (.lam "_" .type (.lam "_" .type .type)))))
+  (.lam "T" .type (.lam "n" Nat' (.lam "m" Nat'
+    (.lam "a" (.app (.app Array' (.var "n")) (.var "T"))
+      (.lam "b" (.app (.app Array' (.var "m")) (.var "T"))
+        (.app
+          (.app (.app (.app (.app isZero' (.var "n"))
+            (.lam "_" Unit' .type))
+            (.lam "_" Unit' (.var "b")))
+            (.lam "_" Unit'
+              (.app (.app (.app (.app consArray' (.var "T"))
+                (.app (.app add' (.app pred' (.var "n"))) (.var "m")))
+                (.app (.app (.app headArray' (.var "T")) (.app pred' (.var "n"))) (.var "a")))
+                (.app (.app (.app (.app (.app (.var "self") (.var "T"))
+                  (.app pred' (.var "n"))) (.var "m"))
+                  (.app (.app (.app tailArray' (.var "T")) (.app pred' (.var "n"))) (.var "a")))
+                  (.var "b")))))
+          unit'))))))
+
+-- M3a: concrete appendArrays base case
+example : concEvalS testFuel
+  (.app (.app (.app (.app (.app appendArrays' Nat') zero') zero')
+    (.app emptyArray' Nat')) (.app emptyArray' Nat'))
+  = some unit' := by native_decide
+
+-- ---------- M4: appendVec (THE NORTH STAR) ----------
+
+def appendVec' : Expr :=
+  .lam "T" .type (.lam "v1" (.app Vec' (.var "T")) (.lam "v2" (.app Vec' (.var "T"))
+    (.app (.app (.var "v1") (.app Vec' (.var "T")))
+      (.lam "n1" Nat' (.lam "arr1" (.app (.app Array' (.var "n1")) (.var "T"))
+        (.app (.app (.var "v2") (.app Vec' (.var "T")))
+          (.lam "n2" Nat' (.lam "arr2" (.app (.app Array' (.var "n2")) (.var "T"))
+            (.app (.app (.app mkVec' (.var "T"))
+              (.app (.app add' (.var "n1")) (.var "n2")))
+              (.app (.app (.app (.app (.app appendArrays' (.var "T"))
+                (.var "n1")) (.var "n2")) (.var "arr1")) (.var "arr2")))))))))))
+
+-- M4a: EXPECTED FAIL — appendVec ⊑ T -> Vec T -> Vec T -> Vec T
+example : subCheck testFuel appendVec'
+  (.lam "T" .type (.lam "_" (.app Vec' (.var "T"))
+    (.lam "_" (.app Vec' (.var "T")) (.app Vec' (.var "T")))))
+  = false := by native_decide
+
+-- M4b: EXPECTED FAIL — appendVec Nat (abstract) (abstract) ⊑ Vec Nat
+example : subCheck testFuel
+  (.app (.app (.app appendVec' Nat')
+    (.asc unit' (.app Vec' Nat')))
+    (.asc unit' (.app Vec' Nat')))
+  (.app Vec' Nat') = false := by native_decide
+
+-- M4c: EXPECTED FAIL — concrete appendVec ⊑ Vec Nat
+example : subCheck testFuel
+  (.app (.app (.app appendVec' Nat') testVec1) testVec2)
+  (.app Vec' Nat') = false := by native_decide

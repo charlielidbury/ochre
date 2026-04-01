@@ -4,113 +4,95 @@
 
 We have replaced `fix` (recursion) and `iota` (self types) with a single
 unified primitive `mu` (self-reference). See `docs/ideas/merge-fix-iota.md`
-for the full design rationale.
-
-### Completed
-
-- [x] **Replace fix+iota with mu in Syntax.lean** — one constructor:
-  `mu : Name → (ann : Expr) → (body : Expr) → Expr`.
-  Updated `subst`, `freeVars`, `evalFreeVars`.
-- [x] **Update Eval.lean** — all three evaluators (concEval, absEval, concEvalS)
-  rewritten for mu. concEval unrolls (like fix). absEval normalizes body under
-  binder AND normalizes annotation (returns mu term, not annotation).
-  App case handles mu-elim for both concEval and absEval.
-- [x] **Update Subtyping.lean** — Subtype' now has `mu_body` (replaces both
-  `fix_cong` and `iota_body`). SubtypeTrans shape lemmas updated.
-  `subCheckNF` handles mu-mu (body covariant), self-intro, self-elim.
-  `inferType` handles mu via self-type elimination.
-- [x] **Update Tests.lean** — all `.fix` uses → `.mu`, all `.iota` uses →
-  `.mu x .type body`. ALL TESTS PASS. Key adaptations:
-  - absEval of fix-like mu returns the mu term itself (not the annotation)
-  - Tests that checked `absEval fixExpr = some annotation` now either check
-    `absEval fixExpr = some fixExpr` (when mu is its own normal form) or
-    use subtyping tests (which check via self-elim)
-- [x] **Update Soundness.lean** — sorry'd the soundness_gen proof. The proof
-  structure changes because absEval now returns mu terms (not annotations),
-  and the app case needs mu-elim handling. WellTyped updated for mu.
-  EnvNoFix removed (no longer needed).
-- [x] **Update Monotonicity.lean** — sorry'd absEval_mono, absEval_mono_trans,
-  absEval_succeeds_envsub, absEval_evalFreeVars_general. Key issue: mu_body
-  requires same annotation, but annotations normalized in different envs
-  may differ. EnvSub/EnvSubTrans helpers preserved.
-- [x] **Gut Closure.lean** — closure-based evaluators deeply tied to old
-  fix/iota constructors. Gutted with explanation. Rebuild deferred.
-- [x] **Delete SoundnessS.lean** — stalled with 7 sorrys, superseded.
-- [x] **Update CounterexampleTest.lean** — compiles, no fix/iota references.
+for the full design rationale, and **SUGGESTIONS.md** for the current
+roadmap and strategy.
 
 ### Build status
 
 `lake build` passes with **4 sorry warnings**:
-- Monotonicity.lean: 3 (absEval_mono, absEval_mono_trans,
+- Monotonicity.lean: 3 (absEval_mono [2 app-mu subcases], absEval_mono_trans,
   absEval_succeeds_envsub)
 - Soundness.lean: 1 (soundness_gen)
 
-All tests pass (native_decide). No other warnings.
+### Recent changes (2026-04-01, agent ochre-lean-20260401-181503)
+
+1. **Annotation non-normalization:** absEval no longer normalizes mu
+   annotations, just like lambda domains are not normalized. This is
+   needed for monotonicity: mu_body requires same annotation, and
+   normalizing in different envs would produce different annotations.
+
+2. **absEval_mono partially proved:** All cases handled except the app-mu
+   subcase (mu-elim). The blocker: substitution-based mu-elim creates
+   different expressions in each env (`body₁.subst x (mu x ann body₁)` vs
+   `body₂.subst x (mu x ann body₂)`), requiring a substitution lemma for
+   Subtype' that doesn't hold because lam_body/mu_body require identical
+   domains/annotations. Env extension was tried but breaks tests (recursive
+   mu needs re-evaluation, not just lookup).
+
+126 tests in Tests.lean, all compile. 7 are expected-fail milestones
+(marked `= false`) that will flip as the system improves.
+
+### Test milestone status (Tests.lean §11)
+
+| Test | Description | Status |
+|------|-------------|--------|
+| M1a | `addRec ⊑ SelfNat→SelfNat→Nat` | PASS |
+| M1b | `addRec 0 3 = 3` (concrete) | PASS |
+| M1c | `addRec 2 1` is a Nat (concrete) | PASS |
+| **M1d** | **`addRec (abstract) (abstract) ⊑ Nat`** | **FAIL — next target** |
+| M2a | `mapArray` base case (concrete) | PASS |
+| M3a | `appendArrays` base case (concrete) | PASS |
+| M4a | `appendVec ⊑ T→Vec T→Vec T→Vec T` | FAIL |
+| M4b | `appendVec (abstract) (abstract) ⊑ Vec Nat` | FAIL |
+| M4c | `appendVec` concrete ⊑ Vec Nat | FAIL |
+
+### What was completed in the mu migration
+
+- [x] Replace fix+iota with mu in Syntax.lean
+- [x] Update Eval.lean (concEval, absEval, concEvalS)
+- [x] Update Subtyping.lean (mu_body, self-intro, self-elim, inferType)
+- [x] Update Tests.lean (all fix→mu, all iota→mu)
+- [x] Sorry Soundness.lean and Monotonicity.lean
+- [x] Gut Closure.lean, delete SoundnessS.lean
+- [x] Add abstract add tests (§9: Church-style, §10: Variant B)
+- [x] Add milestone ladder (§11: M1-M4 toward appendVec)
+
+### Key findings from analysis (2026-04-01)
+
+1. **The annotation field on mu is dead code.** Never inspected by absEval,
+   never compared by subCheckNF (even mu-mu — both annotations are bound to
+   underscore-prefixed variables), not checked by WellTyped. This needs to
+   be resolved but is not blocking Phase 1.
+
+2. **The subtype checker compensates for the evaluator.** absEval does NOT
+   do type-directed evaluation. When it hits `app (var "n") arg` where n is
+   abstract, it returns a stuck application. The subtype checker's
+   `inferType` function does mu-elim to recover type information. This is
+   how `addSelfNat ⊑ SelfNat→SelfNat→Nat` passes — inferType looks up n's
+   type (SelfNat = mu), unfolds it to Nat', and infers the return type.
+
+3. **Variant A (SelfNat = mu n Type Nat') works because the self variable
+   is unused.** The mu is a trivial wrapper around Church Nat. mu-elim
+   strips it off. This is enough for non-recursive abstract add.
+
+4. **Variant B (MuNat, truly self-referential) fails subtyping.** Self-intro
+   substitution produces structurally different but semantically equal terms.
+   This likely needs equi-recursive subtyping or annotation comparison.
 
 ### What needs to happen next
 
-- [x] **Prove absEval_evalFreeVars_general for mu** — Done. The mu case is
-  structurally identical to the old iota case (body under binder, filter out
-  bound var). The ann normalization doesn't affect evalFreeVars (which excludes
-  mu annotations). The new mu-elim in the app case required handling the inner
-  match on the unfolded result (lam → beta, type → trivial, stuck → app union).
-  Helper lemmas `env_extend_neutral_or` and `env_extend_val` factor out common
-  env extension patterns.
-- [ ] **Prove absEval_mono for mu** — the mu case is non-trivial because
-  mu_body requires same annotation but absEval normalizes annotations in
-  different envs. Possible fix: add a more general Subtype' constructor
-  for mu that allows different annotations (mu_cong?), or prove annotations
-  normalize consistently under EnvSub.
-- [ ] **Prove soundness_gen for mu** — the proof structure changes because
-  absEval returns mu terms. The mu case in soundness should combine the old
-  fix reasoning (concrete unrolls, abstract preserves) with the old iota
-  reasoning (normalize body under binder). The app-mu case needs the
-  function IH to give a mu, then mu-elim unfolds.
-- [ ] **Rebuild Closure.lean** — closure-based evaluators with `cmu`/`amu`
-  constructors replacing cfix/ciota/aiota.
-- [ ] **Type-directed evaluation** — env must carry type info for stuck
-  variables. This is the biggest design question for abstract appendVec.
-- [ ] **Dependent Nat with mu** — self-typed Church Nat, typed add.
-
-### Key design observations from this session
-
-1. **absEval of mu returns the mu itself** (when already normalized). This is
-   different from old fix (which returned the annotation). The subtyping tests
-   still pass because self-elim unfolds `mu x ann body ⊑ T` to
-   `body[x := mu x ann body] ⊑ T`.
-
-2. **iota → mu translation uses `ann = .type`**. All iota self types get
-   annotation Type. This works because the mu-mu subtyping rule compares
-   bodies covariant, and the self-intro/self-elim rules don't depend on the
-   annotation.
-
-3. **The mu-mu subtyping rule in subCheckNF is body-covariant only** (not
-   annotation-comparing). This matches the old iota-iota rule. Victor's
-   annotation comparison trick (for preventing divergent recursive type
-   unfolding) is not yet needed — the fuel limit handles termination. When
-   recursive types are added (roadmap step 9), annotation comparison may
-   become necessary.
-
-4. **absEval's mu-elim in the app case uses substitution + re-evaluation**.
-   When `absEval f = mu x ann body` and we need to apply it:
-   ```
-   let unfolded := body.subst x (.mu x ann body)
-   absEval Γ unfolded
-   ```
-   This substitutes the self-reference and re-evaluates. Fuel prevents
-   divergence. The approach works because body was normalized under
-   `(x, var x)`, so `var x` in body gets replaced with the actual mu.
+See SUGGESTIONS.md for the full roadmap. The immediate target is **M1d**:
+getting recursive add with abstract arguments to work.
 
 ### Key files
 
 | File | Status | Sorry count |
 |------|--------|-------------|
-| Syntax.lean | ✅ Done | 0 |
-| Eval.lean | ✅ Done | 0 |
-| Subtyping.lean | ✅ Done | 0 |
-| Tests.lean | ✅ All pass | 0 |
-| Soundness.lean | ⚠️ Sorry'd | 1 |
-| Monotonicity.lean | ⚠️ Sorry'd | 4 |
-| Closure.lean | 🔨 Gutted | 0 |
-| CounterexampleTest.lean | ✅ Done | 0 |
-| SoundnessS.lean | 🗑️ Deleted | - |
+| Syntax.lean | Done | 0 |
+| Eval.lean | Done | 0 |
+| Subtyping.lean | Done | 0 |
+| Tests.lean | 126 tests (7 expected-fail milestones) | 0 |
+| Soundness.lean | Sorry'd | 1 |
+| Monotonicity.lean | Sorry'd | 3 |
+| Closure.lean | Gutted | 0 |
+| CounterexampleTest.lean | Done | 0 |
