@@ -260,6 +260,16 @@ private def inferType (ctx : List (Name × Expr)) : Expr → Option Expr
     | _ => none
   | _ => none
 
+/-- Normalize a domain expression using ctx variables as neutrals.
+    Domains in absEval output are deliberately left unnormalized (to preserve
+    monotonicity), but subCheckNF's inferType needs normalized types to
+    pattern-match on (e.g., recognizing `Vec' T` as a lambda). -/
+private def normalizeDomain (fuel : Nat) (ctx : List (Name × Expr)) (dom : Expr) : Expr :=
+  let env : Env := ctx.map fun (n, _) => (n, .var n)
+  match absEval fuel env dom with
+  | some d => d
+  | none => dom
+
 /-- Structural subtype check on normalized terms.
     ctx tracks (variable_name, declared_domain) for bound variables.
 
@@ -283,8 +293,11 @@ private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : B
       | .lam x domA bodyA, .lam y domB bodyB =>
         -- Function subtyping: contravariant domain, covariant body
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
+        -- Normalize domB so inferType can pattern-match on it (e.g.,
+        -- recognize Vec' T as a lambda rather than a beta-redex).
+        let domB_norm := normalizeDomain fuel ctx domB
         subCheckNF fuel ctx domB domA
-        && subCheckNF fuel ((x, domB) :: ctx) bodyA bodyB'
+        && subCheckNF fuel ((x, domB_norm) :: ctx) bodyA bodyB'
       | .mu x _annA bodyA, .mu y _annB bodyB =>
         -- Mu subtyping: covariant in body (like iota_body)
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)

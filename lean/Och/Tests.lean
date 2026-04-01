@@ -887,11 +887,14 @@ def appendVec' : Expr :=
               (.app (.app (.app (.app (.app appendArrays' (.var "T"))
                 (.var "n1")) (.var "n2")) (.var "arr1")) (.var "arr2")))))))))))
 
--- M4a: EXPECTED FAIL — appendVec ⊑ T -> Vec T -> Vec T -> Vec T
+-- M4a: appendVec ⊑ T -> Vec T -> Vec T -> Vec T
+-- Previously EXPECTED FAIL. Now passes: normalizing domains in subCheckNF
+-- allows inferType to recognize Vec' T as a lambda (function type), so it can
+-- infer the return type of stuck applications like (v1 (Vec T)) (lam ...).
 example : subCheck testFuel appendVec'
   (.lam "T" .type (.lam "_" (.app Vec' (.var "T"))
     (.lam "_" (.app Vec' (.var "T")) (.app Vec' (.var "T")))))
-  = false := by native_decide
+  = true := by native_decide
 
 -- M4b: appendVec Nat (abstract) (abstract) ⊑ Vec Nat
 -- Previously EXPECTED FAIL. Now passes: annotation-based mu-elim prevents

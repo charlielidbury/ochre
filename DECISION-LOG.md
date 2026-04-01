@@ -30,6 +30,36 @@ comparing mu types without unfolding bodies, per Victor Maia's Kind2 trick).
 
 ---
 
+## 2026-04-01: Normalize domains in subCheckNF
+
+**Decision:** Added `normalizeDomain` helper in subCheckNF that normalizes
+domain expressions (using absEval with context variables as neutrals) before
+adding them to the inferType context.
+
+**Why:** absEval deliberately does NOT normalize lambda domains (to preserve
+monotonicity for proofs). But subCheckNF's `inferType` needs domains in normal
+form to pattern-match on them. For example, `Vec' (var "T")` is stored as
+`app (lam "T" ...) (var "T")` — an `.app`, not a `.lam`. Without normalization,
+inferType can't recognize it as a function type, and type inference for stuck
+applications like `(v1 (Vec T)) (lam ...)` fails.
+
+This flipped M4a (`appendVec ⊑ T→Vec T→Vec T→Vec T`), completing Phase 1.
+
+**Alternatives considered:**
+- Normalize domains in absEval itself. Rejected — would break the
+  monotonicity invariant that proofs depend on.
+- Have inferType normalize types on lookup. Would work but is less clean —
+  normalization at insertion is simpler and predictable.
+- Enhance inferType to reduce beta-redexes inline. More complex, and
+  normalizeDomain already handles all cases.
+
+**Impact on proofs:** The monotonicity/soundness proofs are already sorry'd.
+When they resume, they'll need to account for domain normalization in
+subCheckNF. Since `normalizeDomain` only affects the subtype checker (not
+absEval), the impact should be contained to subCheckNF-related lemmas.
+
+---
+
 ## Historical decisions (pre-mu, from main branch)
 
 The following decisions were made before the mu experiment. They describe the

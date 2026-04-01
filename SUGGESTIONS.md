@@ -55,8 +55,7 @@ a system with 0 sorrys that can't express dependent elimination.
 ## Current state (as of 2026-04-01)
 
 `lake build` passes with **5 sorry warnings** (4 in Monotonicity.lean, 1 in
-Soundness.lean). All tests pass (126 tests, including 4 expected-fail
-milestones).
+Soundness.lean). **All M1-M4 milestone tests pass.** Phase 1 is complete.
 
 ### What's working
 
@@ -66,22 +65,21 @@ milestones).
 - **Annotation-based mu-elim in absEval** — when a recursive mu is applied,
   absEval uses the annotation (if it's a lambda) to determine the return
   type, preventing divergence. Falls back to body unfolding for self-types.
+- **Domain normalization in subCheckNF** — domains are normalized before
+  adding to inferType's context, so `Vec' T` is recognized as a lambda.
 - Self-intro and self-elim work in subCheckNF
 - `inferType` in the subtype checker does mu-elim on stuck applications
+- **All milestone tests pass:** M1a-d, M2a, M3a, M4a-c
 - **Abstract `add` (non-recursive, Church-style) with SelfNat passes** (§9)
-- **Recursive add (mu-as-fix) with both concrete and abstract args passes** (M1a-d in §11)
-- **mapArray and appendArrays base cases pass concretely** (M2a, M3a in §11)
-- **appendVec with concrete and abstract args passes** (M4b, M4c in §11)
+- **Recursive add (mu-as-fix) with both concrete and abstract args passes** (M1a-d)
+- **appendVec as raw function AND applied to abstract args passes** (M4a-c)
 
-### What's NOT working (expected-fail tests in Tests.lean §10-§11)
-
-- **M4a: `appendVec ⊑ T→Vec T→Vec T→Vec T`** — the raw function type check.
-  M4b-c pass (with applied args) but M4a fails because subCheckNF compares
-  the body under binders where annotation-based mu-elim doesn't help.
+### What's NOT working (expected-fail tests in Tests.lean §10)
 
 - **Variant B (§10): `zero_mu ⊑ MuNat`** — truly self-referential Nat
   (Cedille-style). Self-intro substitution produces structurally different
   terms that are semantically equal. Needs equi-recursive subtyping.
+  Not blocking current work (only needed for Phase 4: Scott encoding).
 
 ## Known risks and open questions
 
@@ -98,48 +96,27 @@ These are observations, not certainties. Investigate before acting on them.
 
 2. **The subtype checker compensates for the evaluator.** absEval does NOT
    do type-directed evaluation — stuck applications stay stuck. The subtype
-   checker's `inferType` does mu-elim to recover type information. This
-   works for current passing tests but may not scale. The alternative
-   (making absEval type-directed by changing Env to carry types) is a bigger
-   change. It's not obvious which approach is better — let the failing tests
-   guide the decision.
+   checker's `inferType` does mu-elim to recover type information, and
+   `normalizeDomain` resolves beta-redexes in domains. This architecture
+   works for all milestones through appendVec. Whether it scales to Phase 4
+   (Scott encoding) is an open question.
 
 3. **Do we need Variant B (truly self-referential Nat)?** Variant A (trivial
-   self-type wrapper, §9) may be expressive enough for everything through
-   appendVec. Variant B matters for Scott encoding (Phase 4). Don't assume
-   it's blocking — try the next milestone with Variant A first.
+   self-type wrapper, §9) was sufficient for everything through appendVec.
+   Variant B matters for Scott encoding (Phase 4). Don't assume it's
+   blocking unless Phase 4 tests fail without it.
 
 ## Roadmap
 
-### Phase 1: Get the milestone tests passing (no proofs)
+### Phase 1: Get the milestone tests passing (no proofs) ✓ COMPLETE
 
-Tests.lean §11 contains a ladder of milestone tests (M1-M4). Each is a
-`native_decide` test marked `= false` (expected fail). The goal is to make
-definition changes that flip these to `= true`. When `lake build` breaks
-because an expected-fail started passing, that's SUCCESS — flip it.
-
-Existing tests (§1-§9) must continue to pass. They pin expressiveness.
-Changing definitions is expected and encouraged — that's the whole point
-of this phase.
-
-**M1d, M4b, M4c are now PASSING** thanks to annotation-based mu-elim
-(see PROGRESS.md for details).
-
-**M4a** is the remaining target: `appendVec ⊑ T→Vec T→Vec T→Vec T`.
-This tests whether the raw appendVec expression (not applied to args)
-has the right function type. It fails because subCheckNF compares the
-function body under binders, where recursive calls in appendArrays'
-need to type-check without the annotation-based shortcut (which only
-fires in absEval's app case, not in subCheckNF's body comparison).
-
-Possible approaches for M4a:
-- Enhance subCheckNF's self-elim to use annotations for recursive mus
-- Enhance the mu-mu comparison rule to consider annotations
-- Add type-directed evaluation specifically for subCheckNF's context
-
-**After M4a**, the remaining milestones are:
-- M2b-c: mapArray recursive case (not yet written)
-- M3b-c: appendArrays recursive case (not yet written)
+All M1-M4 milestones now pass. Key changes that made this work:
+1. **Annotation-based mu-elim** (absEval): for fix-like mus, use the
+   annotation to determine return types instead of unfolding the body
+   (which diverges). Flipped M1d, M4b, M4c.
+2. **Domain normalization** (subCheckNF): absEval doesn't normalize domains,
+   so `Vec' T` stays as a beta-redex. `normalizeDomain` reduces it before
+   adding to inferType's context. Flipped M4a.
 
 ### Phase 2: Stabilise definitions
 

@@ -14,76 +14,60 @@ roadmap and strategy.
   absEval_succeeds_envsub, absEval_evalFreeVars_general [mu app subcase])
 - Soundness.lean: 1 (soundness_gen)
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-185842)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-192428)
 
-**Annotation-based mu-elim in absEval: 3 milestones flipped (M1d, M4b, M4c)**
+**Domain normalization in subCheckNF: M4a flipped (appendVec north star!)**
 
-The core insight: when absEval encounters `app (mu x ann body) aVal`, the
-previous behavior of unfolding the body (substituting the mu back in) causes
-**infinite recursion** for fix-like mus. The body contains recursive calls
-to `self`, and unfolding re-introduces the mu term, which gets unfolded
-again on the next application. With abstract arguments, there's no base
-case to terminate the recursion.
+The root cause of M4a's failure: absEval deliberately does NOT normalize
+lambda domains (to preserve monotonicity). This means domains like
+`Vec' (var "T")` remain as beta-redexes `app (lam "T" ...) (var "T")`
+rather than being reduced to `lam "X" .type (lam "k" ... X)`.
 
-**The fix**: use the mu's annotation to determine the return type.
+When subCheckNF compares appendVec's body against `Vec T`, it encounters
+stuck applications like `(v1 (Vec T)) (lam n1. ...)`. The `inferType`
+function tries to determine the type of this application by looking up
+v1's domain from the context. But the domain is an unreduced beta-redex
+(an `.app`, not a `.lam`), so inferType's pattern match on `.lam` fails.
+
+**The fix** (Subtyping.lean): added `normalizeDomain`, a helper that
+normalizes domain expressions using absEval with context variables as
+neutrals. In the lam-lam case of subCheckNF, domains are now normalized
+before being added to the inferType context:
 
 ```lean
-| some (.mu x ann body), some aVal =>
-    match absEval fuel Γ ann with
-    | some (.lam y _dom retBody) =>
-        -- Annotation is a function type: beta-reduce with the argument.
-        absEval fuel ((y, aVal) :: Γ) retBody
-    | _ =>
-        -- Annotation uninformative (e.g., Type). Fall back to body unfolding
-        -- for self-type elimination (iota-like mus).
-        let unfolded := body.subst x (.mu x ann body)
-        ...
+private def normalizeDomain (fuel : Nat) (ctx : List (Name × Expr)) (dom : Expr) : Expr :=
+  let env : Env := ctx.map fun (n, _) => (n, .var n)
+  match absEval fuel env dom with
+  | some d => d
+  | none => dom
 ```
 
-For **fix-like mus** (recursion, annotation = function type): the annotation
-gives the return type directly, avoiding divergence. This is semantically
-correct because the annotation declares the mu's type.
+This is safe because:
+1. It only affects subCheckNF's internal type inference, not absEval's behavior
+2. The monotonicity concern (why absEval doesn't normalize domains) doesn't
+   apply to the subtype checker's context
+3. The normalization uses context variables as neutrals, matching how
+   subCheckNF already treats bound variables
 
-For **iota-like mus** (self-types, annotation = Type): falls back to body
-unfolding, preserving the existing self-type elimination behavior.
-
-**This makes the annotation field on mu LOAD-BEARING.** Previously it was
-dead code (SUGGESTIONS.md risk #1). Now it determines whether absEval uses
-annotation-based or body-based mu-elim. A correct annotation is essential
-for recursive functions to type-check with abstract arguments.
-
-### Test milestone status (Tests.lean §11)
+### ALL M1-M4 milestones now PASSING
 
 | Test | Description | Status |
 |------|-------------|--------|
 | M1a | `addRec ⊑ SelfNat→SelfNat→Nat` | PASS |
 | M1b | `addRec 0 3 = 3` (concrete) | PASS |
 | M1c | `addRec 2 1` is a Nat (concrete) | PASS |
-| **M1d** | **`addRec (abstract) (abstract) ⊑ Nat`** | **PASS ← NEW** |
+| M1d | `addRec (abstract) (abstract) ⊑ Nat` | PASS |
 | M2a | `mapArray` base case (concrete) | PASS |
 | M3a | `appendArrays` base case (concrete) | PASS |
-| M4a | `appendVec ⊑ T→Vec T→Vec T→Vec T` | FAIL (see below) |
-| **M4b** | **`appendVec (abstract) (abstract) ⊑ Vec Nat`** | **PASS ← NEW** |
-| **M4c** | **`appendVec` concrete ⊑ Vec Nat** | **PASS ← NEW** |
+| **M4a** | **`appendVec ⊑ T→Vec T→Vec T→Vec T`** | **PASS ← NEW** |
+| M4b | `appendVec (abstract) (abstract) ⊑ Vec Nat` | PASS |
+| M4c | `appendVec` concrete ⊑ Vec Nat | PASS |
 
-### M4a analysis
+### Remaining expected-fail tests
 
-M4a (`appendVec ⊑ T→Vec T→Vec T→Vec T`) is the last remaining milestone.
-It tests whether appendVec, as a RAW expression (not applied to any args),
-has the right function type. This requires the subtype checker to handle
-appendVec's body abstractly under binders, comparing it against the expected
-return type.
-
-M4b and M4c pass because the arguments are provided (either abstract or
-concrete), so the annotation-based mu-elim can determine return types.
-M4a fails because appendVec is compared as a function definition, which
-goes through subCheckNF's lam-lam case, eventually reaching the body where
-recursive calls need to type-check without applied arguments.
-
-Possible approaches for M4a:
-- The subtype checker's self-elim may need to use annotations similarly
-- Or the mu-mu comparison rule needs enhancement
-- Or appendVec's body evaluation under binders needs different handling
+- **Variant B (§10):** `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`.
+  These are truly self-referential Nat (Cedille-style) which need
+  equi-recursive subtyping. Not blocking the current milestone.
 
 ### What was completed in the mu migration
 
@@ -96,10 +80,11 @@ Possible approaches for M4a:
 - [x] Add abstract add tests (§9: Church-style, §10: Variant B)
 - [x] Add milestone ladder (§11: M1-M4 toward appendVec)
 - [x] **Annotation-based mu-elim in absEval (M1d, M4b, M4c passing)**
+- [x] **Domain normalization in subCheckNF (M4a passing)**
 
 ### Key findings
 
-1. **The annotation field on mu is now load-bearing.** absEval uses it
+1. **The annotation field on mu is load-bearing.** absEval uses it
    to determine return types for recursive mus, preventing divergence.
    For fix-like mus (annotation = function type), the annotation is used.
    For iota-like mus (annotation = Type), body unfolding is used instead.
@@ -109,19 +94,32 @@ Possible approaches for M4a:
    abstract, it returns a stuck application. The subtype checker's
    `inferType` function does mu-elim to recover type information.
 
-3. **Variant A (SelfNat = mu n Type Nat') works because the self variable
+3. **Domains need normalization in the subtype checker.** absEval does not
+   normalize lambda domains (to preserve monotonicity). But subCheckNF's
+   inferType needs domains in normal form to pattern-match on them. The
+   `normalizeDomain` helper resolves this by normalizing domains before
+   adding them to the inferType context.
+
+4. **Variant A (SelfNat = mu n Type Nat') works because the self variable
    is unused.** The mu is a trivial wrapper around Church Nat. mu-elim
    strips it off. This is enough for non-recursive abstract add.
 
-4. **Variant B (MuNat, truly self-referential) still fails subtyping.**
+5. **Variant B (MuNat, truly self-referential) still fails subtyping.**
    Self-intro substitution produces structurally different but semantically
    equal terms. This likely needs equi-recursive subtyping.
 
 ### What needs to happen next
 
-- **M4a** is the last expected-fail milestone. See analysis above.
-- Then: fill sorrys (5 total), stabilize definitions, prove soundness.
-- See SUGGESTIONS.md for the full roadmap.
+**Phase 1 is COMPLETE.** All M1-M4 milestones pass. The definitions are
+expressive enough for abstract appendVec with the mu primitive.
+
+**Next priorities (Phase 2-3):**
+- Decide evaluator vs subtype checker architecture (risk #2 in SUGGESTIONS.md)
+- Fill the 5 sorrys (4 Monotonicity, 1 Soundness)
+- Consider whether `normalizeDomain` needs to be reflected in the proof
+  (it changes subCheckNF's behavior, so monotonicity/soundness proofs
+  must account for domain normalization)
+- Get Variant B working if needed for Scott encoding (Phase 4)
 
 ### Key files
 
@@ -129,8 +127,8 @@ Possible approaches for M4a:
 |------|--------|-------------|
 | Syntax.lean | Done | 0 |
 | Eval.lean | Done (annotation-based mu-elim) | 0 |
-| Subtyping.lean | Done | 0 |
-| Tests.lean | 126 tests (4 expected-fail milestones, 3 passed this session) | 0 |
+| Subtyping.lean | Done (domain normalization) | 0 |
+| Tests.lean | All milestones passing, Variant B expected-fail | 0 |
 | Soundness.lean | Sorry'd | 1 |
 | Monotonicity.lean | Sorry'd | 4 |
 | Closure.lean | Gutted | 0 |
