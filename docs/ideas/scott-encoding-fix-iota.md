@@ -167,7 +167,9 @@ the self-types survey, re: Kind2's similarity checking).
 | New syntax needed | `iota` only | `iota` + recursive type support |
 | Pattern matching cost | O(n) fold | O(1) case split |
 
-Church encoding is simpler to adopt (no recursive type machinery needed).
+Church encoding is simpler to adopt first (no recursive type machinery needed),
+which is why it comes first in the incremental plan. Scott encoding is the
+target end state.
 Scott encoding is a cleaner decomposition but requires solving the
 recursive-types-via-`fix` problem first.
 
@@ -182,10 +184,13 @@ share the word "self-referential."
 
 ---
 
-## Verdict: Church + iota is the right choice for Och
+## Verdict: Church + iota first, Scott + fix + iota is the end state
 
-Despite the theoretical elegance of the Scott decomposition, Church encoding
-with self types is clearly better for Och in its current state.
+Recursive types and Scott encoding are **requirements** for Och's end state —
+not optional extras. Church encoding with self types is the right *first step*
+because it avoids solving recursive types as a prerequisite to getting
+dependent elimination working at all. But Church encoding is a stepping stone,
+not the destination.
 
 ### The killer argument: recursive types
 
@@ -242,18 +247,17 @@ type-directed evaluation to infer the result type. Scott encoding doesn't
 help here; it makes it worse by also requiring recursive type unfolding
 during that same inference.
 
-### Where Scott encoding would win (but doesn't matter yet)
+### Scott encoding is the end state
 
-Scott encoding has real advantages: O(1) pattern matching, simpler data
-representation, cleaner separation of concerns. In a mature language these
-matter. But Och is proving core metatheory. The practical path is:
+Scott encoding is where Och needs to end up: O(1) pattern matching, simpler
+data representation, cleaner separation of concerns. These are requirements,
+not nice-to-haves. The incremental path is:
 
 1. Add `iota` (one new `Expr` constructor).
 2. Get dependent elimination working with Church encoding.
 3. Prove soundness and monotonicity for the extended system.
-4. Later, if recursive types become desirable for other reasons, Scott
-   encoding becomes a viable alternative.
+4. Add recursive type support (type-level `fix` with lazy unfolding).
+5. Move standard library to Scott encoding.
 
-The theoretical cleanliness of Scott + fix + iota is not worth the
-engineering and proof cost of solving recursive types as a prerequisite to
-getting dependent elimination at all.
+Church encoding is step 2, not the destination. Design decisions throughout
+should avoid painting into a corner that makes steps 4-5 harder.

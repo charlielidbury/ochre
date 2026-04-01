@@ -124,14 +124,17 @@ Suggested roadmap mega-list:
 
 5. **Add support for recursive types (type-level fix)** — extend `fix` (or
    add new machinery) so that it can define recursive types that the
-   evaluator and subtype checker can lazily unfold. This would enable
-   moving standard library data structure encodings from Church to Scott
-   encoding, where `fix` handles type-level recursion, `iota` handles
-   dependent typing, and Scott constructors are simple one-level case
-   splits. Requires solving equi-recursive vs iso-recursive types and
-   divergence prevention during unfolding. Lower priority than (1) because
-   Church + iota already gets dependent elimination without recursive type
-   machinery. See docs/ideas/scott-encoding-fix-iota.md for analysis.
+   evaluator and subtype checker can lazily unfold. This is a **hard
+   requirement** for Och's end state: the target is Scott encoding, where
+   `fix` handles type-level recursion, `iota` handles dependent typing,
+   and Scott constructors are simple one-level case splits. Requires
+   solving equi-recursive vs iso-recursive types and divergence prevention
+   during unfolding. Lower priority than (1) only because Church + iota
+   is a simpler stepping stone that gets dependent elimination working
+   first — but Church encoding is **not** the end state. Design decisions
+   throughout the codebase should avoid assumptions that would make
+   recursive types harder to add later. See
+   docs/ideas/scott-encoding-fix-iota.md for analysis.
 
 6. docs/add-cps.md — should be done eventually, but high risk and might make
    everything very messy.
