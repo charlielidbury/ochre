@@ -6,55 +6,64 @@
 concrete recursive fix with thunked branches AND captures definition-site envs
 for correct higher-order behavior. Its soundness theorem is stated but sorry'd.
 
-**What's been done:** `absEval_mono_trans` is PROVED (0 sorry, Monotonicity.lean).
-This handles SubtypeTrans on both expressions and environments, producing
-SubtypeTrans results. It was the key identified blocker.
+**What's been done:**
+- `absEval_mono_trans` PROVED (Monotonicity.lean)
+- VR logical relation DEFINED (Closure.lean) with var/type/asc cases proved
+- Root cause fully analyzed: **body normalization mismatch** between concEvalC
+  (keeps original bodies in closures) and absEval (normalizes bodies under binders)
 
-**What remains:** The readback-based approach to soundnessC has two deeper
-problems that absEval_mono_trans alone doesn't solve:
+**The VR approach (partially implemented) is BLOCKED.** The lam/app cases of
+the fundamental theorem require the same expression on both evaluation sides,
+but concEvalC evaluates `body` (original) while absEval evaluates `body_a`
+(normalized). `absEval_normalize_stable` is provably FALSE, so these can't
+be related.
 
-1. **Readback may fail.** readback normalizes closures via absEval in the readback
-   env. Proving absEval succeeds there needs `absEval_succeeds_envsub`, which is
-   blocked: in the app-beta case, different envs produce different normalized
-   bodies, and the completeness IH (same expression) doesn't handle different bodies.
+**Recommended approach: closure-based abstract evaluator (absEvalC)**
 
-2. **App-beta: different bodies in different envs.** After evaluating `f`,
-   concEvalC has `clo x dom body γ_c` (original body in captured env) while
-   absEval has `lam x dom body_a` (normalized body in current env). The
-   function IH gives readback(closure) ⊑ abstract lambda, but does NOT give
-   CEnvConsistent between the captured env and the abstract env.
+The cleanest path is to factor the proof into two independent parts:
 
-**Recommended approach: Kripke-style logical relation (VR)**
+### Step 1: Define absEvalC (~60 lines)
 
-Replace readback-based soundnessC with a step-indexed logical relation:
+```lean
+inductive AVal where
+  | aclo : Name → Expr → Expr → AEnv → AVal  -- closure with captured env
+  | atype : AVal
+  | afixV : Expr → AEnv → AVal
 
+def absEvalC (fuel : Nat) (Γ : AEnv) (e : Expr) : Option AVal :=
+  -- Structurally IDENTICAL to concEvalC except:
+  -- asc case: takes RHS (ty) instead of LHS (term)  
+  -- fix case: returns domain type instead of unrolling body
+  -- lam case: returns aclo (captures env, NO normalization under binders)
+  -- app case: evaluates ORIGINAL body in CAPTURED env extended with argument
 ```
-VR : Nat → CVal → Expr → Prop
-VR n .type .type = True
-VR n (.clo x dom body γ_c) (.lam x dom body_a) =
-  ∀ k < n, ∀ v_a τ_a, VR k v_a τ_a →
-    ∀ v_res τ_res, concEvalC k ((x, v_a) :: γ_c) body = some v_res →
-    absEval k ((x, τ_a) :: Γ_a) body_a = some τ_res → VR k v_res τ_res
-ER n γ Γ = ∀ x, γ(x) and Γ(x) satisfy VR n
-```
 
-**Why this works:**
-- **Lam case:** Construct VR directly — the closure satisfies VR because applying
-  it to any VR-consistent argument gives VR-consistent results (by the IH at lower
-  fuel).
-- **App-beta case:** Extract VR from the function result, apply it to the argument.
-  No readback needed. The captured env is handled implicitly by VR's closure case.
-- **Asc case:** Chain IH with well-typedness (needs absEval_mono_trans, PROVED).
+### Step 2: Prove soundnessC_abs: concEvalC vs absEvalC (~150 lines)
 
-**Challenge:** VR for closures needs to quantify over an abstract env Γ_a for
-the body_a evaluation. This Γ_a should come from the function's construction
-context. The VR definition must capture Γ_a existentially or carry it as a
-parameter. Step-indexing by fuel avoids circularity.
+Both evaluators:
+- Keep original bodies in closures (no normalization)
+- Use captured (definition-site) envs for beta-reduction
+- Have structurally parallel evaluation rules
 
-Then readback + SubtypeTrans follows as a corollary of VR.
+So the fundamental theorem IH applies directly (same body, captured envs).
 
-**Estimated effort:** ~200 lines for VR definition + fundamental theorem,
-~50 lines for the readback corollary.
+VR_abs for closures: just check same body + consistent captured envs.
+No application property needed — the IH handles it.
+
+**Challenge:** The asc case still diverges (concrete takes LHS, abstract takes
+RHS). This needs a VR_upcast-like property. With AVal-based VR_abs (simpler
+closure case), this may be tractable. If not, can use the existential τ'
+approach from the current fundamentalVR.
+
+### Step 3: Prove absEvalC_equiv: readback(absEvalC) = absEval (~150 lines)
+
+readback normalizes the closure's body using absEval in the CAPTURED env.
+absEval also normalizes in the SAME env. So both use the same env — no
+env mismatch.
+
+This is a separate, focused lemma that doesn't involve concEvalC.
+
+**Total estimated effort:** ~360 lines across the three steps.
 
 **Note:** The concEvalS approach (SoundnessS.lean, 7 sorry's) is STALLED — the
 bridge theorem `absEval_normalize_stable` is provably FALSE. The closure-based

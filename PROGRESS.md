@@ -58,12 +58,73 @@ Current status of the Och mechanization. Updated by agents after each session.
 ## Current sorry count
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**1** in Closure.lean: `soundnessC` (soundness of closure-based evaluator)
-**7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach):
-- 2 in absEval_normalize_stable (**THEOREM IS FALSE** — see below)
-- 3 in LR_upcast (only the hard lam-lam subcases; refl/top PROVED)
-- 1 in fundamental lam case (blocked on false theorem)
-- 1 in fundamental fix case (now only the lam-lam subcase; all other LR shapes proved)
+**1** in Closure.lean: `soundnessC` (original readback-based, kept for reference)
+**4** in Closure.lean: `fundamentalVR` (VR logical relation approach):
+- 1 in lam case (body normalization mismatch — see analysis below)
+- 1 in app case (env mismatch + body normalization mismatch)
+- 1 in fix case (not yet attempted, should parallel Soundness.lean)
+- (var, type, asc cases are PROVED)
+**7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
+
+## New this session (ochre-lean-20260401-104731)
+
+### VR logical relation — partial fundamental theorem
+
+Defined a Kripke-style logical relation `VR : Nat → CVal → Expr → Prop` in
+Closure.lean for proving soundnessC. Three constructors:
+- `VR.top`: Type is top — any value is in Type
+- `VR.base`: At fuel 0, VR holds vacuously
+- `VR.clo`: Closure is related to lambda if application gives VR-consistent results
+
+Also defined `ER` (environment relation, pointwise VR) with lemmas:
+- `VR.mono`: VR is anti-monotone in fuel
+- `ER.mono`: ER is anti-monotone in fuel
+- `ER.extend`: extend ER with a VR-consistent binding
+
+The fundamental theorem `fundamentalVR` has conclusion
+`∃ τ', VR fuel v τ' ∧ SubtypeTrans τ' τ` (existential avoids VR_upcast).
+
+**Proved cases:** var, type, asc (3 of 6 expression forms)
+**Sorry cases:** lam, app, fix (3 sorry's)
+
+### Root cause analysis: body normalization mismatch
+
+The core blocker for soundnessC is that absEval's lam case **normalizes bodies
+under binders** (absEval n ((x, var x) :: Γ) body = body_a), while concEvalC
+keeps the **original body** in closures. When the closure is later applied:
+- concEvalC evaluates `body` (original) in the captured env
+- absEval evaluates `body_a` (normalized) in the call-site env
+
+These are DIFFERENT expressions in DIFFERENT environments. The fundamental
+theorem's IH requires the same expression on both sides.
+
+`absEval_normalize_stable` (the compositionality property that would bridge
+this) is **provably FALSE** (machine-verified counterexample from session
+ochre-lean-20260331-225410).
+
+### Recommended next step: closure-based abstract evaluator (absEvalC)
+
+The cleanest resolution is a **closure-based abstract evaluator** that is
+structurally parallel to concEvalC:
+
+1. Define `AVal` type (abstract closures) and `absEvalC : Nat → AEnv → Expr → Option AVal`
+   - Same as concEvalC but: asc takes RHS, fix returns domain type
+   - No normalization under binders — bodies kept as-is in closures
+
+2. Prove `soundnessC_abs`: concEvalC vs absEvalC (structurally parallel, both use
+   same body and captured envs — fundamental theorem IH applies directly)
+
+3. Prove `absEvalC_equiv`: readback(absEvalC) = absEval (separate focused lemma,
+   both normalize in the SAME definition-site env — no env mismatch)
+
+This factors the problem into two independent, tractable proofs instead of one
+impossible monolithic proof.
+
+**Note:** The asc case in soundnessC_abs still needs VR_upcast-like reasoning
+(concrete evaluates term, abstract evaluates type, well-typedness gives ⊑).
+With AVal-based VR, this may be more tractable.
+
+See detailed analysis in Closure.lean comments.
 
 ## New this session (ochre-lean-20260401-101639)
 
