@@ -1,7 +1,7 @@
 /-!
 # Och Syntax
 
-The core calculus has five term forms. Terms and types share a single syntactic
+The core calculus has six term forms. Terms and types share a single syntactic
 category — there is no separate type language.
 
 Agents: you may change this file. The syntax below is a starting point derived
@@ -14,7 +14,7 @@ change it.
     locally nameless if substitution lemmas become painful. -/
 abbrev Name := String
 
-/-- Core syntax of Och. Five forms, no more.
+/-- Core syntax of Och. Six forms, no more.
 
     e, τ ::=
       | x              — variable
@@ -22,6 +22,7 @@ abbrev Name := String
       | e₁ e₂         — application
       | (e : τ)        — ascription (precision loss)
       | Type           — universe / top
+      | μ(x : τ). e   — unified self-reference (replaces fix + iota)
 -/
 inductive Expr where
   | var    : Name → Expr
@@ -29,8 +30,7 @@ inductive Expr where
   | app    : Expr → Expr → Expr
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
-  | fix    : Expr → Expr
-  | iota   : Name → (body : Expr) → Expr
+  | mu     : Name → (ann : Expr) → (body : Expr) → Expr
 deriving Repr, BEq, Inhabited, DecidableEq
 
 namespace Expr
@@ -49,10 +49,9 @@ def subst (e : Expr) (x : Name) (s : Expr) : Expr :=
   | .app f a      => .app (f.subst x s) (a.subst x s)
   | .asc term ty  => .asc (term.subst x s) (ty.subst x s)
   | .type         => .type
-  | .fix e        => .fix (e.subst x s)
-  | .iota y body  =>
-    if y == x then .iota y body  -- x is shadowed
-    else .iota y (body.subst x s)
+  | .mu y ann body =>
+    if y == x then .mu y (ann.subst x s) body  -- x is shadowed in body
+    else .mu y (ann.subst x s) (body.subst x s)
 
 /-- Free variables of an expression (may contain duplicates). -/
 def freeVars (e : Expr) : List Name :=
@@ -62,11 +61,10 @@ def freeVars (e : Expr) : List Name :=
   | .app f a      => f.freeVars ++ a.freeVars
   | .asc term ty  => term.freeVars ++ ty.freeVars
   | .type         => []
-  | .fix e        => e.freeVars
-  | .iota x body  => body.freeVars.filter (· != x)
+  | .mu x ann body => ann.freeVars ++ (body.freeVars.filter (· != x))
 
 /-- "Evaluable" free variables — the variables that `absEval` will actually
-    look up during evaluation. This EXCLUDES domain annotations in lambda/iota,
+    look up during evaluation. This EXCLUDES domain annotations in lambda/mu,
     because absEval does not evaluate domains (they pass through unchanged).
 
     This is the correct replacement for `freeVars` in the context of
@@ -80,8 +78,6 @@ def evalFreeVars (e : Expr) : List Name :=
   | .app f a       => f.evalFreeVars ++ a.evalFreeVars
   | .asc _term ty  => ty.evalFreeVars  -- absEval takes rhs
   | .type          => []
-  | .fix (.lam _f dom _body) => dom.evalFreeVars
-  | .fix _         => []
-  | .iota x body   => (body.evalFreeVars).filter (· != x)
+  | .mu x _ann body => (body.evalFreeVars).filter (· != x)  -- NO ann!
 
 end Expr

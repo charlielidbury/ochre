@@ -11,6 +11,11 @@ For lambda terms this is checked pointwise:
   `B₁ ⊑ B₂` for all `x ⊑ A₂` (covariant, checked with x as neutral).
 
 Type is top: `τ ⊑ Type` for any τ.
+
+mu replaces both fix and iota. Subtyping rules:
+- mu-mu: covariant in body (same binder name)
+- self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]
+- self-elim: mu x ann body ⊑ b  iff  body[x := mu x ann body] ⊑ b
 -/
 
 open Expr
@@ -36,14 +41,11 @@ inductive Subtype' : Expr → Expr → Prop where
       Used in the monotonicity proof for stuck applications. -/
   | app_cong {f₁ f₂ a₁ a₂ : Expr} :
       Subtype' f₂ f₁ → Subtype' a₂ a₁ → Subtype' (.app f₂ a₂) (.app f₁ a₁)
-  /-- Fix congruence: if e₂ ⊑ e₁ then fix e₂ ⊑ fix e₁. -/
-  | fix_cong {e₁ e₂ : Expr} :
-      Subtype' e₂ e₁ → Subtype' (.fix e₂) (.fix e₁)
-  /-- Iota body covariance (same binder name).
-      If body₂ ⊑ body₁ then iota x body₂ ⊑ iota x body₁.
-      Mirrors lam_body for self types. -/
-  | iota_body {x : Name} {body₁ body₂ : Expr} :
-      Subtype' body₂ body₁ → Subtype' (.iota x body₂) (.iota x body₁)
+  /-- Mu body covariance (same binder name and annotation).
+      If body₂ ⊑ body₁ then mu x ann body₂ ⊑ mu x ann body₁.
+      Replaces both fix_cong and iota_body. -/
+  | mu_body {x : Name} {ann body₁ body₂ : Expr} :
+      Subtype' body₂ body₁ → Subtype' (.mu x ann body₂) (.mu x ann body₁)
 
 /-- Transitive closure of Subtype'. Used in soundness where transitivity
     is needed (the asc case chains IH result with the well-typedness hyp). -/
@@ -163,86 +165,56 @@ theorem SubtypeTrans.asc_target {t τ : Expr} {e : Expr}
     (h : SubtypeTrans e (.asc t τ)) : e = .asc t τ :=
   h.eq_of_rigid_target (fun _ h => by cases h with | refl => rfl)
 
-/-- If `Subtype' e (fix inner)` then `e` is a fix with related inner. -/
-theorem Subtype'.fix_rhs_shape {inner : Expr} {e : Expr}
-    (h : Subtype' e (.fix inner)) :
-    ∃ inner', e = .fix inner' ∧ Subtype' inner' inner := by
-  cases h with
-  | refl => exact ⟨inner, rfl, Subtype'.refl inner⟩
-  | fix_cong h => exact ⟨_, rfl, h⟩
-
-/-- Helper: generalized fix target shape with variable target. -/
-private theorem SubtypeTrans.fix_target_shape_aux {e b : Expr}
-    (h : SubtypeTrans e b) :
-    ∀ {inner : Expr}, b = .fix inner →
-    ∃ inner', e = .fix inner' ∧ SubtypeTrans inner' inner := by
-  induction h with
-  | step h' =>
-    intro inner hb; subst hb
-    obtain ⟨inner', eq, hsub⟩ := Subtype'.fix_rhs_shape h'
-    exact ⟨inner', eq, .step hsub⟩
-  | trans _ _ ih₁ ih₂ =>
-    intro inner hb
-    obtain ⟨inner_mid, eq_mid, h_mid⟩ := ih₂ hb
-    obtain ⟨inner', eq', h'⟩ := ih₁ eq_mid
-    exact ⟨inner', eq', .trans h' h_mid⟩
-
-/-- If `SubtypeTrans e (fix inner)` then e is a fix with related inner. -/
-theorem SubtypeTrans.fix_target_shape {inner : Expr} {e : Expr}
-    (h : SubtypeTrans e (.fix inner)) :
-    ∃ inner', e = .fix inner' ∧ SubtypeTrans inner' inner :=
-  h.fix_target_shape_aux rfl
-
-/-- Lift iota_body through SubtypeTrans. -/
-theorem SubtypeTrans.iota_body {x : Name} {body₁ body₂ : Expr}
-    (h : SubtypeTrans body₂ body₁) :
-    SubtypeTrans (.iota x body₂) (.iota x body₁) := by
-  induction h with
-  | step h => exact .step (.iota_body h)
-  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
-
-/-- Iota inversion: if `Subtype' (iota x b₂) (iota x b₁)` then `Subtype' b₂ b₁`. -/
-theorem Subtype'.iota_inv {x : Name} {body₁ body₂ : Expr}
-    (h : Subtype' (.iota x body₂) (.iota x body₁)) : Subtype' body₂ body₁ := by
-  cases h with
-  | refl => exact Subtype'.refl body₁
-  | iota_body h => exact h
-
-/-- If `Subtype' e (iota x body)` then `e` must be an iota with same name. -/
-theorem Subtype'.iota_rhs_shape {x : Name} {body : Expr} {e : Expr}
-    (h : Subtype' e (.iota x body)) :
-    ∃ body', e = .iota x body' ∧ Subtype' body' body := by
+/-- If `Subtype' e (mu x ann body)` then `e` is a mu with same name/ann and related body. -/
+theorem Subtype'.mu_rhs_shape {x : Name} {ann body : Expr} {e : Expr}
+    (h : Subtype' e (.mu x ann body)) :
+    ∃ body', e = .mu x ann body' ∧ Subtype' body' body := by
   cases h with
   | refl => exact ⟨body, rfl, Subtype'.refl body⟩
-  | iota_body h => exact ⟨_, rfl, h⟩
+  | mu_body h => exact ⟨_, rfl, h⟩
 
-/-- Helper: generalized iota target shape with variable target. -/
-private theorem SubtypeTrans.iota_target_shape_aux {e b : Expr}
+/-- Helper: generalized mu target shape with variable target. -/
+private theorem SubtypeTrans.mu_target_shape_aux {e b : Expr}
     (h : SubtypeTrans e b) :
-    ∀ {x : Name} {body : Expr}, b = .iota x body →
-    ∃ body', e = .iota x body' ∧ SubtypeTrans body' body := by
+    ∀ {x : Name} {ann body : Expr}, b = .mu x ann body →
+    ∃ body', e = .mu x ann body' ∧ SubtypeTrans body' body := by
   induction h with
   | step h' =>
-    intro x body hb; subst hb
-    obtain ⟨body', eq, hsub⟩ := Subtype'.iota_rhs_shape h'
+    intro x ann body hb; subst hb
+    obtain ⟨body', eq, hsub⟩ := Subtype'.mu_rhs_shape h'
     exact ⟨body', eq, .step hsub⟩
   | trans _ _ ih₁ ih₂ =>
-    intro x body hb
-    obtain ⟨b_mid, eq_mid, h_mid_b⟩ := ih₂ hb
-    obtain ⟨b', eq', h_b'_mid⟩ := ih₁ eq_mid
-    exact ⟨b', eq', .trans h_b'_mid h_mid_b⟩
+    intro x ann body hb
+    obtain ⟨b_mid, eq_mid, h_mid⟩ := ih₂ hb
+    obtain ⟨b', eq', h'⟩ := ih₁ eq_mid
+    exact ⟨b', eq', .trans h' h_mid⟩
 
-/-- If `SubtypeTrans e (iota x body)` then e is an iota with same name. -/
-theorem SubtypeTrans.iota_target_shape {x : Name} {body : Expr} {e : Expr}
-    (h : SubtypeTrans e (.iota x body)) :
-    ∃ body', e = .iota x body' ∧ SubtypeTrans body' body :=
-  h.iota_target_shape_aux rfl
+/-- If `SubtypeTrans e (mu x ann body)` then e is a mu with same name/ann. -/
+theorem SubtypeTrans.mu_target_shape {x : Name} {ann body : Expr} {e : Expr}
+    (h : SubtypeTrans e (.mu x ann body)) :
+    ∃ body', e = .mu x ann body' ∧ SubtypeTrans body' body :=
+  h.mu_target_shape_aux rfl
 
-/-- Iota inversion for SubtypeTrans. -/
-theorem SubtypeTrans.iota_inv {x : Name} {body₁ body₂ : Expr}
-    (h : SubtypeTrans (.iota x body₂) (.iota x body₁)) :
+/-- Lift mu_body through SubtypeTrans. -/
+theorem SubtypeTrans.mu_body {x : Name} {ann body₁ body₂ : Expr}
+    (h : SubtypeTrans body₂ body₁) :
+    SubtypeTrans (.mu x ann body₂) (.mu x ann body₁) := by
+  induction h with
+  | step h => exact .step (.mu_body h)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Mu inversion: if `Subtype' (mu x a b₂) (mu x a b₁)` then `Subtype' b₂ b₁`. -/
+theorem Subtype'.mu_inv {x : Name} {ann body₁ body₂ : Expr}
+    (h : Subtype' (.mu x ann body₂) (.mu x ann body₁)) : Subtype' body₂ body₁ := by
+  cases h with
+  | refl => exact Subtype'.refl body₁
+  | mu_body h => exact h
+
+/-- Mu inversion for SubtypeTrans. -/
+theorem SubtypeTrans.mu_inv {x : Name} {ann body₁ body₂ : Expr}
+    (h : SubtypeTrans (.mu x ann body₂) (.mu x ann body₁)) :
     SubtypeTrans body₂ body₁ := by
-  obtain ⟨body', eq, hsub⟩ := h.iota_target_shape
+  obtain ⟨body', eq, hsub⟩ := h.mu_target_shape
   cases eq; exact hsub
 
 /-- Congruence for app through SubtypeTrans (left component). -/
@@ -278,8 +250,8 @@ private def inferType (ctx : List (Name × Expr)) : Expr → Option Expr
   | .app f a =>
     match inferType ctx f with
     | some (.lam x _dom retTy) => some (retTy.subst x a)
-    | some (.iota x body) =>
-      -- Self-type elimination: f : iota x body → f : body[x := f]
+    | some (.mu x _ann body) =>
+      -- Self-type elimination: f : mu x ann body → f : body[x := f]
       -- Unfold the self type, then try to infer application type
       let unfolded := body.subst x f
       match unfolded with
@@ -295,6 +267,9 @@ private def inferType (ctx : List (Name × Expr)) : Expr → Option Expr
     - Syntactic equality → true (reflexivity)
     - b = Type → true (Type is top)
     - Both lambdas → contravariant domains, covariant bodies
+    - Both mus → covariant bodies (same binder)
+    - self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]
+    - self-elim: mu x ann body ⊑ b  iff  body[x := mu x ann body] ⊑ b
     - Otherwise → infer type of a, check type ⊑ b (transitivity through type) -/
 private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : Bool :=
   match fuel with
@@ -310,16 +285,16 @@ private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : B
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
         subCheckNF fuel ctx domB domA
         && subCheckNF fuel ((x, domB) :: ctx) bodyA bodyB'
-      | .iota x bodyA, .iota y bodyB =>
-        -- Self-type subtyping: covariant in body (like lam_body)
+      | .mu x _annA bodyA, .mu y _annB bodyB =>
+        -- Mu subtyping: covariant in body (like iota_body)
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
-        subCheckNF fuel ((x, .iota x bodyA) :: ctx) bodyA bodyB'
-      | _, .iota x body =>
-        -- Self-intro: a ⊑ iota x body  iff  a ⊑ body[x := a]
+        subCheckNF fuel ((x, .mu x _annA bodyA) :: ctx) bodyA bodyB'
+      | _, .mu x _ann body =>
+        -- Self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]
         subCheckNF fuel ctx a (body.subst x a)
-      | .iota x body, _ =>
-        -- Self-elim: iota x body ⊑ b  iff  body[x := iota x body] ⊑ b
-        subCheckNF fuel ctx (body.subst x (.iota x body)) b
+      | .mu x ann body, _ =>
+        -- Self-elim: mu x ann body ⊑ b  iff  body[x := mu x ann body] ⊑ b
+        subCheckNF fuel ctx (body.subst x (.mu x ann body)) b
       | _, _ =>
         match inferType ctx a with
         | some ty => subCheckNF fuel ctx ty b

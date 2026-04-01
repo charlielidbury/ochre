@@ -106,10 +106,6 @@ example : absEval testFuel [] (.app (.app idAscribed Nat') three') = some Nat' :
 -- ============================================================
 -- §6.1 Subtyping tests
 -- These test that the subtyping relation is expressive enough.
---
--- NOTE: The subtyping tests below use `subCheck` (the decision procedure).
--- When agents build a proper subtyping checker, these should pass.
--- For now, many will fail because subCheck is a placeholder.
 -- ============================================================
 
 -- true ⊑ Bool
@@ -234,46 +230,46 @@ example : subCheck testFuel (.app Not' true') Bool' = true := by native_decide
 example : subCheck testFuel (.app Not' false') Bool' = true := by native_decide
 
 -- ============================================================
--- §7 Fix (general recursion) tests
+-- §7 Mu (general recursion) tests
+-- mu replaces fix: fix (λf: T. body) → mu f T body
 -- ============================================================
 
 -- Nat → Nat function type (as a lambda: λ(n: Nat). Nat)
 def NatToNat : Expr := .lam "n" Nat' Nat'
 
--- Simple non-recursive fix: fix (λself: Nat→Nat. λn: Nat. n)
+-- Simple non-recursive mu: mu self NatToNat (λn: Nat. n)
 -- The identity function, declared as Nat → Nat
-def fixId : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat' (.var "n")))
+def fixId : Expr := .mu "self" NatToNat (.lam "n" Nat' (.var "n"))
 
--- Abstract eval of fix returns the declared type (dom)
--- fix (λself: Nat→Nat. body) → Nat → Nat
-example : absEval testFuel [] fixId = some NatToNat := by native_decide
+-- Abstract eval of mu returns the mu itself (normalized form)
+-- (Previously, fix returned the declared type; now mu returns itself as a self-type)
+example : absEval testFuel [] fixId = some fixId := by native_decide
 
--- fix ⊑ Nat → Nat (the declared type)
+-- mu ⊑ Nat → Nat (via self-elim: unfold body, get λn.n which ⊑ NatToNat)
 example : subCheck testFuel fixId NatToNat = true := by native_decide
 
--- Concrete eval: fix (λself. λn. n) applied to 3 should give 3
--- The fix evaluates body with self := fix(...), body = λn. n,
--- which doesn't use self, so result is λn. n. Apply to 3 → 3.
+-- Concrete eval: mu self NatToNat (λn.n) applied to 3 should give 3
+-- mu unrolls body with self := mu(...), body = λn. n (doesn't use self).
+-- Apply to 3 → 3.
 example : concEval testFuel [] (.app fixId three') = some three' := by native_decide
 
--- Concrete eval: fix (λself. λn. n) applied to 0 should give 0
+-- Concrete eval: fixId applied to 0 should give 0
 example : concEval testFuel [] (.app fixId zero') = some zero' := by native_decide
 
--- Recursive fix: predecessor-based recursion to constant zero
--- fix (λself: Nat→Nat. λn: Nat. isZero n ? 0 : self (pred n))
+-- Recursive mu: predecessor-based recursion to constant zero
+-- mu self NatToNat (λn: Nat. isZero n ? 0 : self (pred n))
 -- This should always return 0 for any concrete nat.
 -- Note: In Church encoding, "isZero n ? 0 : self (pred n)" is
--- (isZero n) Nat zero (self (pred n))
--- But we need to be careful: Church bools are lazy in both branches.
--- Actually: isZero n returns a Church bool, applied to Nat, then two branches.
+-- (isZero n) Nat zero (self zero)
 -- The issue is that both branches are evaluated (no laziness).
--- Let's test with something simpler first.
+-- The env-based concEval normalizes under binders, so both branches
+-- are eagerly evaluated, causing divergence.
 
 -- Simple recursive doubling that counts down: add n to itself
--- Actually, let's just test that fix produces the right abstract type
+-- Actually, let's just test that mu produces the right abstract type
 -- and works for non-recursive cases.
 
--- fix ⊑ Type (everything is ⊑ Type)
+-- mu ⊑ Type (everything is ⊑ Type)
 example : subCheck testFuel fixId .type = true := by native_decide
 
 -- ============================================================
@@ -316,20 +312,9 @@ def tailArray' : Expr := .lam "T" .type (.lam "n" Nat' (.lam "arr" (.app (.app A
 -- Array 0 Nat = Unit (by β-reduction)
 example : absEval testFuel [] (.app (.app Array' zero') Nat') = some Unit' := by native_decide
 
--- Array 1 Nat = Pair Nat Unit (by β-reduction)
--- Array (succ 0) Nat = Pair Nat (Array 0 Nat) = Pair Nat Unit
--- We check via subtyping since the normal forms may differ structurally
--- First, let's check Array 2 Nat evaluates properly
--- Array 2 Nat = Pair Nat (Pair Nat Unit)
-
--- pair Nat Nat 10 20 — construct a simple pair
--- For now let's just encode concrete numerals as themselves (they're Church-encoded)
--- 10 and 20 are large Church numerals, so let's use small ones.
-
 -- Construct arr1 = consArray Nat 0 zero (emptyArray Nat) — a 1-element array [0]
 def testArr1 : Expr := .app (.app (.app (.app consArray' Nat') zero') zero') (.app emptyArray' Nat')
 
--- Abstract eval should produce a normal form
 -- consArray Nat 0 zero (emptyArray Nat) : Array 1 Nat = Pair Nat Unit
 -- Check that it's subtype of Array 1 Nat
 example : subCheck testFuel testArr1 (.app (.app Array' one') Nat') = true := by native_decide
@@ -383,8 +368,6 @@ example : absEval testFuel [] (.app (.app testVec1 Nat') (.lam "n" Nat' (.lam "a
 example : absEval testFuel [] (.app (.app (.app tailArray' Nat') zero') testArr1) = some unit' := by native_decide
 
 -- headArray Nat 0 (tailArray Nat 1 arr2) = 2  (second element of [1, 2])
--- Note: tailArray Nat 1 arr2 strips the first element, giving [2]
--- Then headArray Nat 0 [2] = 2
 example : absEval testFuel [] (.app (.app (.app headArray' Nat') zero')
   (.app (.app (.app tailArray' Nat') one') testArr2)) = some two' := by native_decide
 
@@ -453,36 +436,25 @@ example : subCheck testFuel
 example : subCheck testFuel (.app emptyArray' Nat') (.app (.app Array' one') Nat') = false := by native_decide
 
 -- ============================================================
--- §7.1 Recursive fix: concrete recursion limitation
+-- §7.1 Recursive mu: concrete recursion limitation
 -- ============================================================
 
--- FINDING: Concrete recursive fix with Church-encoded branching does NOT
--- work with the current evaluator. Both concEval and absEval normalize
+-- FINDING: Concrete recursive mu with Church-encoded branching does NOT
+-- work with the env-based concEval. Both concEval and absEval normalize
 -- under binders, which means both branches of a Church-encoded conditional
--- (like `(isZero n) Result base_case recursive_case`) are always fully
--- evaluated, even if only one is selected at runtime.
+-- are always fully evaluated, even if only one is selected at runtime.
 --
 -- This causes the recursive branch to be evaluated even when not taken,
--- leading to fuel exhaustion. For example:
---   toZero = fix (λself. λn. (isZero n) Nat 0 (self (pred n)))
---   toZero 1 → fuel exhaustion (none)
---   because at n=0, the false-branch (self 0) is still evaluated
---
--- This is demonstrated below:
-def toZero : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat'
-  (.app (.app (.app (.app isZero' (.var "n")) Nat') zero') (.app (.var "self") zero'))))
+-- leading to fuel exhaustion.
+def toZero : Expr := .mu "self" NatToNat (.lam "n" Nat'
+  (.app (.app (.app (.app isZero' (.var "n")) Nat') zero') (.app (.var "self") zero')))
 
--- Recursive fix with Church branching exhausts fuel (returns none)
+-- Recursive mu with Church branching exhausts fuel (returns none)
 example : concEval testFuel [] (.app toZero one') = none := by native_decide
 
--- But abstract eval correctly returns the declared type
-example : absEval testFuel [] toZero = some NatToNat := by native_decide
-
--- ANALYSIS: The env-based concEval CANNOT simply "stop normalizing under
--- binders" because the environment wouldn't be captured — free variables
--- in the body would be lost. The real fix requires either closures or
--- substitution-based evaluation. See concEvalS in Eval.lean and
--- DECISION-LOG.md for the full analysis.
+-- But abstract eval correctly returns a mu (self-type form)
+-- Subtyping recovers: toZero ⊑ NatToNat via self-elim
+example : subCheck testFuel toZero NatToNat = true := by native_decide
 
 -- ============================================================
 -- §7.2 Substitution-based evaluator (concEvalS) tests
@@ -501,7 +473,7 @@ example : concEvalS testFuel (.app (.app (.app true' Nat') zero') one') = some z
 example : concEvalS testFuel (.app (.app (.app false' Nat') zero') one') = some one' := by
   native_decide
 
--- Non-recursive fix works with concEvalS
+-- Non-recursive mu works with concEvalS
 example : concEvalS testFuel (.app fixId three') = some three' := by
   native_decide
 example : concEvalS testFuel (.app fixId zero') = some zero' := by
@@ -512,18 +484,8 @@ example : concEvalS testFuel (.app isZero' zero') = some true' := by native_deci
 example : concEvalS testFuel (.app isZero' one') = some false' := by native_decide
 example : concEvalS testFuel (.app isZero' three') = some false' := by native_decide
 
--- Note: concEvalS returns un-normalized lambdas, so `succ 2` is NOT
--- syntactically equal to `three'`. Instead, test behavior by applying
--- the result to concrete arguments (which forces full evaluation).
--- add 2 3 applied to Bool true (λ_.false) — tests if result behaves like 5
--- (5 Bool true (λ_.false) = (λ_.false) (... (λ_.false) true ...) = false for 5 > 0)
--- Simpler: just test concrete application chains work end-to-end
--- double 3 = 6, tested by checking (double 3) applies correctly
--- toZero (add 2 1) — exercises add producing a value that toZero can consume
--- (tested below in the recursive fix section)
-
 -- ============================================================
--- §7.3 Recursive fix with thunked branches (concEvalS)
+-- §7.3 Recursive mu with thunked branches (concEvalS)
 -- This is the KEY test: Church-encoded branching + recursion
 -- that fails with the env-based concEval but works with concEvalS.
 -- ============================================================
@@ -535,12 +497,12 @@ def UnitToNat : Expr := .lam "_" Unit' Nat'
 -- Uses thunked branches: (isZero n) (Unit→Nat) (λ_.zero) (λ_.self zero) unit
 -- The thunk lambdas are values in CBV, so the recursive branch is NOT
 -- evaluated when isZero n = true (selecting the first thunk).
-def toZeroThunked : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat'
+def toZeroThunked : Expr := .mu "self" NatToNat (.lam "n" Nat'
   (.app
     (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
       (.lam "_" Unit' zero'))
       (.lam "_" Unit' (.app (.var "self") zero')))
-    unit')))
+    unit'))
 
 -- THE FIX: toZeroThunked terminates with concEvalS!
 -- Compare: toZero (non-thunked) returns none with concEval (line above)
@@ -555,9 +517,8 @@ example : concEvalS testFuel (.app toZeroThunked three') = some zero' := by nati
 -- handles Church numerals as arguments even when they're not in normal form.
 example : concEvalS testFuel (.app toZeroThunked (.app (.app add' two') one')) = some zero' := by native_decide
 
--- Abstract eval of toZeroThunked returns the declared type (Nat → Nat)
--- (absEval is unchanged — it still normalizes under binders)
-example : absEval testFuel [] toZeroThunked = some NatToNat := by native_decide
+-- Abstract eval: toZeroThunked ⊑ NatToNat (via self-elim)
+example : subCheck testFuel toZeroThunked NatToNat = true := by native_decide
 
 -- ============================================================
 -- §5.3 Predecessor (Church-encoded via pair trick)
@@ -609,19 +570,19 @@ example : concEvalS testFuel (.app isZero' (.app pred' two')) = some false' := b
 example : concEvalS testFuel (.app isZero' (.app pred' three')) = some false' := by native_decide
 
 -- ============================================================
--- §7.4 Recursive fix + pred: rebuildThunked
+-- §7.4 Recursive mu + pred: rebuildThunked
 -- Reconstructs a number by recursing to 0 and building up with succ.
 -- rebuildThunked n = (isZero n) ? 0 : succ (rebuildThunked (pred n))
 -- Uses thunked branches to avoid CBV eagerness.
--- Tests: fix + pred + succ + isZero + thunking all together.
+-- Tests: mu + pred + succ + isZero + thunking all together.
 -- ============================================================
 
-def rebuildThunked : Expr := .fix (.lam "self" NatToNat (.lam "n" Nat'
+def rebuildThunked : Expr := .mu "self" NatToNat (.lam "n" Nat'
   (.app
     (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
       (.lam "_" Unit' zero'))
       (.lam "_" Unit' (.app succ' (.app (.var "self") (.app pred' (.var "n"))))))
-    unit')))
+    unit'))
 
 -- rebuild 0 = zero (base case, exact match)
 example : concEvalS testFuel (.app rebuildThunked zero') = some zero' := by native_decide
@@ -633,11 +594,11 @@ example : concEvalS testFuel (.app isZero' (.app rebuildThunked one')) = some fa
 example : concEvalS testFuel (.app isZero' (.app rebuildThunked two')) = some false' := by native_decide
 example : concEvalS testFuel (.app isZero' (.app rebuildThunked three')) = some false' := by native_decide
 
--- Abstract type: rebuild has declared type Nat → Nat
-example : absEval testFuel [] rebuildThunked = some NatToNat := by native_decide
+-- Abstract type: rebuildThunked ⊑ Nat → Nat (via self-elim)
+example : subCheck testFuel rebuildThunked NatToNat = true := by native_decide
 
 -- ============================================================
--- §7.5 Recursive addition via fix + pred: addThunked
+-- §7.5 Recursive addition via mu + pred: addThunked
 -- addThunked n m = (isZero n) ? m : succ (addThunked (pred n) m)
 -- Equivalent to the standard add but implemented via recursion.
 -- ============================================================
@@ -645,12 +606,12 @@ example : absEval testFuel [] rebuildThunked = some NatToNat := by native_decide
 -- Nat → Nat → Nat type
 def NatToNatToNat : Expr := .lam "_" Nat' (.lam "_" Nat' Nat')
 
-def addThunked : Expr := .fix (.lam "self" NatToNatToNat (.lam "n" Nat' (.lam "m" Nat'
+def addThunked : Expr := .mu "self" NatToNatToNat (.lam "n" Nat' (.lam "m" Nat'
   (.app
     (.app (.app (.app (.app isZero' (.var "n")) UnitToNat)
       (.lam "_" Unit' (.var "m")))
       (.lam "_" Unit' (.app succ' (.app (.app (.var "self") (.app pred' (.var "n"))) (.var "m")))))
-    unit'))))
+    unit')))
 
 -- addThunked 0 m = m (base case: returns m directly)
 example : concEvalS testFuel (.app (.app addThunked zero') zero') = some zero' := by native_decide
@@ -667,107 +628,100 @@ example : concEvalS testFuel (.app isZero' (.app (.app addThunked two') one')) =
 -- Church numeral 3, then toZeroThunked recursively reduces it to 0.
 example : concEvalS testFuel (.app toZeroThunked (.app (.app addThunked two') one')) = some zero' := by native_decide
 
--- Abstract type: addThunked has declared type Nat → Nat → Nat
-example : absEval testFuel [] addThunked = some NatToNatToNat := by native_decide
+-- Abstract type: addThunked ⊑ Nat → Nat → Nat (via self-elim)
+example : subCheck testFuel addThunked NatToNatToNat = true := by native_decide
 
 -- ============================================================
--- §8 Self types (iota) — self-intro subtyping and self-elim
+-- §8 Self types (mu with ann=Type) — self-intro subtyping and self-elim
+-- Previously iota x body → now mu x Type body
 -- ============================================================
 
--- SelfUnit = iota u. (X: Type) -> X -> X
+-- SelfUnit = mu u Type (X: Type) -> X -> X
 -- The self variable u is unused, so self-intro reduces to unit ⊑ Unit
-def SelfUnit : Expr := .iota "u" (.lam "X" .type (.lam "x" (.var "X") (.var "X")))
+def SelfUnit : Expr := .mu "u" .type (.lam "X" .type (.lam "x" (.var "X") (.var "X")))
 
 -- Self-intro: unit ⊑ SelfUnit via unit ⊑ body[u := unit] = Unit
 example : subCheck testFuel unit' SelfUnit = true := by native_decide
 
 -- Self-intro: true ⊑ SelfBool (self var unused)
-def SelfBool : Expr := .iota "b" (.lam "X" .type (.lam "t" (.var "X") (.lam "f" (.var "X") (.var "X"))))
+def SelfBool : Expr := .mu "b" .type (.lam "X" .type (.lam "t" (.var "X") (.lam "f" (.var "X") (.var "X"))))
 example : subCheck testFuel true' SelfBool = true := by native_decide
 example : subCheck testFuel false' SelfBool = true := by native_decide
 
 -- Self-intro: zero ⊑ SelfNat (self var unused, equivalent to Nat)
-def SelfNat : Expr := .iota "n" Nat'
+def SelfNat : Expr := .mu "n" .type Nat'
 example : subCheck testFuel zero' SelfNat = true := by native_decide
 example : subCheck testFuel one' SelfNat = true := by native_decide
 example : subCheck testFuel three' SelfNat = true := by native_decide
 
 -- Self-intro with self variable USED in body:
--- TrivialSelf = iota x. Type
+-- TrivialSelf = mu x Type Type
 -- Everything is in Type, so everything should satisfy this
-def TrivialSelf : Expr := .iota "x" .type
+def TrivialSelf : Expr := .mu "x" .type .type
 example : subCheck testFuel true' TrivialSelf = true := by native_decide
 example : subCheck testFuel Nat' TrivialSelf = true := by native_decide
 
--- Self-intro: iota x. (P : Type) -> P -> P (identity self type)
--- unit ⊑ iota x. (P : Type) -> P -> P means unit ⊑ ((P : Type) -> P -> P)[x := unit]
--- Since x doesn't appear in the body, this is unit ⊑ (P : Type) -> P -> P = Unit
-def IdSelf : Expr := .iota "x" Unit'
+-- Self-intro: mu x Type Unit (identity self type)
+-- unit ⊑ mu x Type Unit means unit ⊑ Unit[x := unit]
+-- Since x doesn't appear in the body, this is unit ⊑ Unit
+def IdSelf : Expr := .mu "x" .type Unit'
 example : subCheck testFuel unit' IdSelf = true := by native_decide
 
 -- Negative: true should NOT be a member of SelfNat-style self type
 -- when the self variable is actually used to constrain membership
--- (This requires recursive types to be truly interesting, but we can
--- test that non-members of the body type fail)
--- true ⊑ iota n. Nat' should fail since true ⊑ Nat' is false... wait, true ⊑ Nat is TRUE.
--- Let's use a genuinely failing case:
--- BAD: 0 ⊑ iota x. Bool' should fail because 0 ⊑ Bool' fails
-example : subCheck testFuel zero' (.iota "x" Bool') = false := by native_decide
+-- BAD: 0 ⊑ mu x Type Bool' should fail because 0 ⊑ Bool' fails
+example : subCheck testFuel zero' (.mu "x" .type Bool') = false := by native_decide
 
--- Iota-iota subtyping (covariance): SelfNat ⊑ TrivialSelf
+-- Mu-mu subtyping (covariance): SelfNat ⊑ TrivialSelf
 -- because Nat' ⊑ Type
 example : subCheck testFuel SelfNat TrivialSelf = true := by native_decide
 
 -- ============================================================
--- Self-elim in subCheckNF: iota on LHS unfolds
+-- Self-elim in subCheckNF: mu on LHS unfolds
 -- ============================================================
 
--- Self-elim: iota x. T ⊑ T[x := iota x. T]
--- iota x. Unit' ⊑ Unit' (since x unused in Unit', unfolds to Unit' ⊑ Unit')
-example : subCheck testFuel (.iota "x" Unit') Unit' = true := by native_decide
-example : subCheck testFuel (.iota "n" Nat') Nat' = true := by native_decide
+-- Self-elim: mu x Type T ⊑ T[x := mu x Type T]
+-- mu x Type Unit' ⊑ Unit' (since x unused in Unit', unfolds to Unit' ⊑ Unit')
+example : subCheck testFuel (.mu "x" .type Unit') Unit' = true := by native_decide
+example : subCheck testFuel (.mu "n" .type Nat') Nat' = true := by native_decide
 
 -- Self-elim chains with self-intro (via inferType):
--- λ(f : iota x. Unit'). f  ⊑  λ(f : iota x. Unit'). Unit'
--- Body: var f ⊑ Unit'. inferType gives f : iota x. Unit'.
--- Then iota x. Unit' ⊑ Unit' by self-elim.
+-- λ(f : mu x Type Unit'). f  ⊑  λ(f : mu x Type Unit'). Unit'
+-- Body: var f ⊑ Unit'. inferType gives f : mu x Type Unit'.
+-- Then mu x Type Unit' ⊑ Unit' by self-elim.
 example : subCheck testFuel
-  (.lam "f" (.iota "x" Unit') (.var "f"))
-  (.lam "f" (.iota "x" Unit') Unit')
+  (.lam "f" (.mu "x" .type Unit') (.var "f"))
+  (.lam "f" (.mu "x" .type Unit') Unit')
   = true := by native_decide
 
--- Self-elim in inferType: application through iota-typed function.
--- λ(f : iota x. Unit'). f Type  ⊑  λ(f : iota x. Unit'). (Type -> Type)
--- inferType for (app f Type): f has type iota x. Unit'.
+-- Self-elim in inferType: application through mu-typed function.
+-- λ(f : mu x Type Unit'). f Type  ⊑  λ(f : mu x Type Unit'). (Type -> Type)
+-- inferType for (app f Type): f has type mu x Type Unit'.
 -- Self-elim: unfold to Unit' = (X:Type)->X->X. This is a lam with retTy = lam x (var X) (var X).
 -- After substituting X=Type: retTy.subst X Type = lam x Type Type = (Type -> Type).
 -- So f Type : Type -> Type. Check (Type -> Type) ⊑ (Type -> Type) → refl ✓
 example : subCheck testFuel
-  (.lam "f" (.iota "x" Unit') (.app (.var "f") .type))
-  (.lam "f" (.iota "x" Unit') (.lam "_" .type .type))
+  (.lam "f" (.mu "x" .type Unit') (.app (.var "f") .type))
+  (.lam "f" (.mu "x" .type Unit') (.lam "_" .type .type))
   = true := by native_decide
 
 -- ============================================================
 -- Self types: ascription interaction
 -- ============================================================
 
--- (unit : iota f. Unit') abstractly evaluates to iota f. Unit'
-example : absEval testFuel [] (.asc unit' (.iota "f" Unit')) = some (.iota "f" Unit') := by native_decide
+-- (unit : mu f Type Unit') abstractly evaluates to mu f Type Unit'
+example : absEval testFuel [] (.asc unit' (.mu "f" .type Unit')) = some (.mu "f" .type Unit') := by native_decide
 
--- Ascribed iota type is subtype of unwrapped type (self-elim in subCheck)
-example : subCheck testFuel (.asc unit' (.iota "f" Unit')) Unit' = true := by native_decide
+-- Ascribed mu type is subtype of unwrapped type (self-elim in subCheck)
+example : subCheck testFuel (.asc unit' (.mu "f" .type Unit')) Unit' = true := by native_decide
 
 -- ============================================================
 -- Self types with self variable used in body
 -- ============================================================
 
--- SelfRef = iota x. (P : Type) -> P -> P
+-- SelfRef = mu x Type (P : Type -> Type) -> P x -> P x
 -- where P is applied to (var x), making the type depend on the value.
--- Concretely: iota x. λ(P : Type -> Type). P x -> P x
--- For unit ⊑ SelfRef: check unit ⊑ body[x := unit] = λ(P : Type->Type). P unit -> P unit
--- unit = λX.λx.x has domain Type (not Type->Type), so domain check fails.
--- This correctly rejects unit since the self-referencing body has different shape.
-def SelfRef : Expr := .iota "x"
+def SelfRef : Expr := .mu "x" .type
   (.lam "P" (.lam "_" .type .type)
     (.lam "pf" (.app (.var "P") (.var "x"))
       (.app (.var "P") (.var "x"))))

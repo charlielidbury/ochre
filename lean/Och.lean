@@ -6,3 +6,4 @@ import Och.Monotonicity
 import Och.Tests
 import Och.Closure
 import Och.CounterexampleTest
+-- SoundnessS.lean deleted: stalled with 7 sorrys, superseded by mu unification

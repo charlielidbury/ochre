@@ -10,9 +10,14 @@ Two evaluation modes that diverge only at ascription:
 Compiling an Och program is just running it in abstract mode. Whether this
 dual-interpretation is sound is a central research question.
 
-Agents: you may change everything in this file. The definitions below are
-starting points. The evaluation strategy, termination argument, and fuel
-mechanism are all open to redesign.
+## mu semantics
+
+`mu x ann body` is the unified self-reference primitive (replaces fix + iota):
+- **Concrete eval:** unroll — evaluate body with x bound to the mu itself.
+  This is the fix behavior: the recursive binding refers to the whole mu.
+- **Abstract eval:** normalize body under the binder (x as neutral) and
+  normalize ann; return `mu x ann' body'`. This is the iota behavior:
+  the self type is preserved, not unrolled.
 -/
 
 open Expr
@@ -50,26 +55,17 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
       | none => none
     | .type         => some .type
     | .asc term _   => concEval fuel γ term  -- runtime: take the lhs
-    | .fix inner =>
-      match inner with
-      | .lam f _dom body =>
-        -- Unroll: evaluate body with f bound to the fixpoint thunk.
-        -- When body later uses f (via the app case), the fix is re-evaluated.
-        concEval fuel ((f, .fix inner) :: γ) body
-      | _ => none
-    | .iota x body =>
-      -- iota is a type-level construct; normalize body under binder like lam
-      match concEval fuel ((x, .var x) :: γ) body with
-      | some body' => some (.iota x body')
-      | none => none
+    | .mu x ann body =>
+      -- Unroll: evaluate body with x bound to the mu itself (like fix).
+      concEval fuel ((x, .mu x ann body) :: γ) body
     | .app f a      =>
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
         concEval fuel ((x, aVal) :: γ) body
-      | some (.fix inner), some aVal =>
-        -- Function is a fixpoint thunk: unroll it and apply
-        match concEval fuel γ (.fix inner) with
-        | some (.lam x _dom body) => concEval fuel ((x, aVal) :: γ) body
+      | some (.mu x ann body), some aVal =>
+        -- mu in function position: unroll it, then apply the result
+        match concEval fuel γ (.mu x ann body) with
+        | some (.lam y _dom lamBody) => concEval fuel ((y, aVal) :: γ) lamBody
         | some .type => some .type
         | some fVal => some (.app fVal aVal)
         | none => none
@@ -100,27 +96,30 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
       | none => none
     | .type         => some .type
     | .asc _term ty => absEval fuel Γ ty  -- compile-time: take the rhs
-    | .fix inner =>
-      match inner with
-      | .lam _f dom _body =>
-        -- Abstract eval of fix: return the declared type (the domain annotation).
-        -- Well-typedness (checked separately) ensures the body satisfies this type.
-        absEval fuel Γ dom
-      | _ => none
-    | .iota x body =>
-      -- Self type: normalize body under the binder (like lam)
+    | .mu x ann body =>
+      -- Normalize body under binder (iota behavior) AND normalize annotation.
+      -- Returns the mu as a self-type value, not the annotation.
       match absEval fuel ((x, .var x) :: Γ) body with
-      | some body' => some (.iota x body')
+      | some body' =>
+        match absEval fuel Γ ann with
+        | some ann' => some (.mu x ann' body')
+        | none => none
       | none => none
     | .app f a      =>
       match absEval fuel Γ f, absEval fuel Γ a with
       | some (.lam x _dom body), some aVal =>
         -- Environment-based beta: extend env instead of substituting.
-        -- body was already normalized under [(x, var x) :: Γ_def], so x
-        -- appears as (var x). Extending env with (x, aVal) resolves it.
-        -- This approach keeps the SAME body in both sides of monotonicity/
-        -- soundness proofs, making the IH directly applicable.
         absEval fuel ((x, aVal) :: Γ) body
+      | some (.mu x ann body), some aVal =>
+        -- mu-elim: unfold self-type one step, then apply.
+        -- body was normalized under (x, var x), so substitute x with the mu.
+        let unfolded := body.subst x (.mu x ann body)
+        match absEval fuel Γ unfolded with
+        | some (.lam y _dom retBody) =>
+          absEval fuel ((y, aVal) :: Γ) retBody
+        | some .type => some .type
+        | some f' => some (.app f' aVal)
+        | none => none
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')  -- stuck
       | _, _ => none
@@ -160,22 +159,18 @@ def concEvalS (fuel : Nat) (e : Expr) : Option Expr :=
     | .lam _ _ _ => some e  -- lambda is a VALUE — body not evaluated
     | .type => some .type
     | .asc term _ => concEvalS fuel term  -- runtime: erase ascription
-    | .fix inner =>
-      match inner with
-      | .lam f _dom body =>
-        -- Unroll: substitute self-reference into body, then evaluate
-        concEvalS fuel (body.subst f (.fix inner))
-      | _ => none
-    | .iota _ _ => some e  -- iota is a type-level value, like lambda
+    | .mu x ann body =>
+      -- Unroll: substitute self-reference into body, then evaluate
+      concEvalS fuel (body.subst x (.mu x ann body))
     | .app f a =>
       match concEvalS fuel f, concEvalS fuel a with
       | some (.lam x _dom body), some aVal =>
         -- Beta-reduce via substitution (not env extension)
         concEvalS fuel (body.subst x aVal)
-      | some (.fix inner), some aVal =>
-        -- Fix in function position: unroll and retry
-        match concEvalS fuel (.fix inner) with
-        | some (.lam x _dom body) => concEvalS fuel (body.subst x aVal)
+      | some (.mu x ann body), some aVal =>
+        -- mu in function position: unroll and retry
+        match concEvalS fuel (.mu x ann body) with
+        | some (.lam y _dom lamBody) => concEvalS fuel (lamBody.subst y aVal)
         | some .type => some .type
         | some fVal => some (.app fVal aVal)
         | none => none
