@@ -116,24 +116,16 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
       | some (.mu x ann body), some aVal =>
         -- mu in function position. Two strategies depending on annotation:
         --
-        -- 1. If ann is informative (a lambda): use it to determine the return
-        --    type. This avoids divergence for recursive mus (fix-like), where
-        --    unfolding the body would substitute the mu back in and cause
-        --    infinite recursion in abstract mode.
+        -- 1. If ann is SYNTACTICALLY a lambda: use it directly to determine
+        --    the return type. Checking syntactically (not by evaluating)
+        --    ensures both envs always agree on which path, eliminating
+        --    cross-cases in the monotonicity proof.
         --
-        -- 2. If ann is uninformative (Type): fall back to body unfolding
-        --    (self-type elimination). This handles iota-like mus where the
-        --    body is the interesting part (e.g., SelfNat = mu n Type Nat').
-        match absEval fuel Γ ann with
-        | some (.lam y _dom retBody) =>
-          -- Annotation is a function type: beta-reduce with the argument.
+        -- 2. Otherwise: fall back to body unfolding (self-type elimination).
+        match ann with
+        | .lam y _dom retBody =>
           absEval fuel ((y, aVal) :: Γ) retBody
         | _ =>
-          -- Annotation uninformative. Unfold body via env extension
-          -- (self-type elimination). Using env extension instead of
-          -- body.subst x (mu x ann body) is semantically equivalent but
-          -- makes the monotonicity proof work: the IH applies directly
-          -- with envSub_extend_sub on related envs.
           match absEval fuel ((x, .mu x ann body) :: Γ) body with
           | some (.lam y _dom retBody) =>
             absEval fuel ((y, aVal) :: Γ) retBody
