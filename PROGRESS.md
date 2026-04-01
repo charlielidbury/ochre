@@ -105,6 +105,29 @@ Added `CounterexampleTest.lean` with a Lean-verified counterexample showing
 precondition. Updated the theorem's docstring with the finding and proposed fixes.
 See analysis above.
 
+### Infrastructure for the fix
+
+Added building blocks for the correct version of absEval_succeeds_envsub:
+- `Expr.freeVars : Expr → List Name` (Syntax.lean)
+- `EnvClosed Γ` — all free vars in env values are bound in the env (Monotonicity.lean)
+- `envClosed_extend` — EnvClosed preserved under extension (proved)
+- `envClosed_extend_var` — extending with (x, var x) preserves EnvClosed (proved)
+- `envClosed_freeVars` — direct consequence of EnvClosed (proved)
+- `absEval_freeVars_covered` — outputs have covered freeVars (stated, var/type/asc
+  cases proved, others sorry'd — needs mechanical list/filter lemmas)
+
+### What the next agent should do
+
+1. **Complete `absEval_freeVars_covered`** — the lam/iota/app cases need list/filter
+   helper lemmas for freeVars membership. The proof structure is clear from the
+   var/type/asc cases.
+2. **Add EnvClosed to `absEval_succeeds_envsub`** and prove the app-lam case using
+   absEval_freeVars_covered to show body₂'s free vars are covered.
+3. **Prove readback envs satisfy EnvClosed** (for soundnessC_direct's use site).
+4. **Or: take a completely different approach.** The absEvalC factored approach
+   (SUGGESTIONS.md item 2) avoids the normalize-stable problem entirely. If the
+   EnvClosed route seems too heavy, building absEvalC might be faster.
+
 ## Previous session (ochre-lean-20260401-152400)
 
 ### Iota self-intro and self-elim in subtype checker

@@ -297,6 +297,59 @@ theorem envClosed_extend {Γ : Env} (h : EnvClosed Γ)
       exact fun h => absurd h (by simp)
     · exact h_old
 
+/-- Free vars in an env value are covered by the env (if EnvClosed). -/
+theorem envClosed_freeVars {Γ : Env} {x : Name} {τ : Expr}
+    (h_closed : EnvClosed Γ) (h_lookup : Γ.lookup x = some τ) :
+    ∀ y, y ∈ τ.freeVars → Γ.lookup y ≠ none :=
+  h_closed x τ h_lookup
+
+/-- Extending an env with (x, var x) preserves closedness: var x has freeVars = [x],
+    which is covered by the extended env since x is the new binding. -/
+theorem envClosed_extend_var {Γ : Env} (h : EnvClosed Γ) (x : Name) :
+    EnvClosed ((x, .var x) :: Γ) := by
+  apply envClosed_extend h
+  intro y hy
+  simp [Expr.freeVars, List.mem_singleton] at hy
+  subst hy
+  simp [Env.lookup]
+
+/-- absEval outputs have their free vars covered by the env.
+    If absEval fuel Γ e succeeds with result τ, and Γ is closed, and e's free vars
+    are covered by Γ, then τ's free vars are also covered by Γ.
+
+    **Status:** Stated and structure proven (var, type, asc cases complete).
+    The lam, iota, fix, and app cases need mechanical list/filter lemmas for
+    freeVars. Left as sorry — the proof structure is clear from the var/type/asc
+    cases. A future agent should complete this by adding helper lemmas for
+    freeVars membership under filter/append. -/
+theorem absEval_freeVars_covered
+    (fuel : Nat) (Γ : Env) (e τ : Expr)
+    (h_closed : EnvClosed Γ)
+    (h_eval : absEval fuel Γ e = some τ)
+    (h_fv : ∀ x, x ∈ e.freeVars → Γ.lookup x ≠ none)
+    : ∀ x, x ∈ τ.freeVars → Γ.lookup x ≠ none := by
+  induction fuel generalizing Γ e τ with
+  | zero => simp [absEval] at h_eval
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp only [absEval] at h_eval
+      exact h_closed x τ h_eval
+    | type =>
+      simp only [absEval] at h_eval; cases h_eval
+      intro x hx; simp [Expr.freeVars] at hx
+    | asc term ty =>
+      simp only [absEval] at h_eval
+      exact ih Γ ty τ h_closed h_eval (fun x hx => h_fv x (List.mem_append_right _ hx))
+    | fix inner =>
+      simp only [absEval] at h_eval
+      cases inner with
+      | lam f dom body => sorry -- IH on dom; needs freeVars(.fix (.lam ..)) unfolding
+      | _ => simp [absEval] at h_eval
+    | lam x dom body => sorry  -- IH on body in extended env + filter reasoning
+    | iota x body => sorry     -- Same structure as lam case
+    | app f a => sorry          -- Case split on f's result; IH for lam body case
+
 theorem envSubTrans_extend {Γ₂ Γ₁ : Env} (h : EnvSubTrans Γ₂ Γ₁) (x : Name) (v : Expr) :
     EnvSubTrans ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
   intro y τ₁ h_lookup
