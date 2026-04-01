@@ -2,6 +2,7 @@ import Och.Syntax
 import Och.Eval
 import Och.Subtyping
 import Och.Soundness
+import Och.Monotonicity
 import Och.Tests
 
 /-!
@@ -523,198 +524,22 @@ proved for all cases EXCEPT the app-beta case where the function came from
 a different scope than the call site.
 -/
 
-import Och.Monotonicity
+/-!
+## VR / fundamentalVR — REMOVED (does not compile)
 
--- ============================================================
--- Value Relation (VR): Kripke-style logical relation
--- ============================================================
+The original VR (Kripke-style logical relation, CVal → Expr) and
+fundamentalVR were defined here but **never compiled** — VR.clo has
+VR in a non-strictly-positive position, which Lean 4's kernel rejects.
+Previous agents didn't catch this because Closure.lean was not imported
+in Och.lean.
 
-/-- Value relation between CVal (closure values) and Expr (abstract types).
-    Step-indexed by fuel to handle the circular dependency in the closure case.
+Additionally, fundamentalVR was blocked on the body normalization mismatch
+(3 sorry's: lam, app, fix). See PROGRESS.md for full analysis.
 
-    - `VR.top`: Type is the top type — any value is in Type.
-    - `VR.base`: At fuel 0, VR holds vacuously (no computation possible).
-    - `VR.clo`: A closure is related to a lambda if applying both to any
-      VR-consistent argument produces VR-consistent results. The existential
-      `Γ_a` records the abstract env at the closure's definition site. -/
-inductive VR : Nat → CVal → Expr → Prop where
-  /-- Type is top: any concrete value is in the abstract type Type. -/
-  | top : ∀ {n : Nat} {v : CVal}, VR n v .type
-  /-- Base case: at fuel 0, VR holds vacuously. -/
-  | base : ∀ {v : CVal} {τ : Expr}, VR 0 v τ
-  /-- Closure case: a closure is related to a lambda with matching name/domain
-      if applying to any VR-consistent argument gives VR-consistent results.
-      The Γ_a is the abstract env at definition time; the application property
-      evaluates body_a in ((x, τ_a) :: Γ_a). -/
-  | clo : ∀ {n : Nat} {x : Name} {dom : Expr} {body : Expr}
-            {γ_c : CEnv} {body_a : Expr} {Γ_a : Env},
-      (∀ k, k ≤ n →
-        ∀ v_a τ_a, VR k v_a τ_a →
-        ∀ v_res, concEvalC k ((x, v_a) :: γ_c) body = some v_res →
-        ∀ τ_res, absEval k ((x, τ_a) :: Γ_a) body_a = some τ_res →
-        VR k v_res τ_res) →
-      VR (n + 1) (.clo x dom body γ_c) (.lam x dom body_a)
-
-/-- Environment relation: pointwise VR between CEnv and Env. -/
-def ER (n : Nat) (γ : CEnv) (Γ : Env) : Prop :=
-  ∀ x τ, Γ.lookup x = some τ → ∃ v, γ.lookup x = some v ∧ VR n v τ
-
--- ============================================================
--- VR lemmas
--- ============================================================
-
-/-- VR is anti-monotone in fuel: more fuel means a stronger (or equal) relation. -/
-theorem VR.mono {n m : Nat} {v : CVal} {τ : Expr}
-    (h : VR (n + m) v τ) : VR n v τ := by
-  induction n with
-  | zero => exact VR.base
-  | succ k ih =>
-    cases h with
-    | top => exact VR.top
-    | base => exact VR.base  -- impossible since n+m > 0, but Lean needs it
-    | clo h_app =>
-      -- n + m = (k+1) + m, so clo level is k + m.
-      -- We need VR (k+1) at clo level k.
-      -- h_app : ∀ j ≤ k+m, ... → VR j ...
-      -- Need: ∀ j ≤ k, ... → VR j ...
-      -- Since j ≤ k ≤ k+m, this follows.
-      exact VR.clo (fun j hj v_a τ_a hvr v_res hc τ_res ha =>
-        h_app j (Nat.le_trans hj (Nat.le_add_right k m)) v_a τ_a hvr v_res hc τ_res ha)
-
-/-- ER is anti-monotone in fuel. -/
-theorem ER.mono {n m : Nat} {γ : CEnv} {Γ : Env}
-    (h : ER (n + m) γ Γ) : ER n γ Γ := by
-  intro x τ h_lookup
-  obtain ⟨v, hv, hvr⟩ := h x τ h_lookup
-  exact ⟨v, hv, VR.mono hvr⟩
-
-/-- Extend ER with a VR-consistent binding. -/
-theorem ER.extend {n : Nat} {γ : CEnv} {Γ : Env}
-    (h : ER n γ Γ) (x : Name) {v : CVal} {τ : Expr} (hvr : VR n v τ) :
-    ER n ((x, v) :: γ) ((x, τ) :: Γ) := by
-  intro y σ h_lookup
-  simp only [Env.lookup] at h_lookup ⊢
-  simp only [CEnv.lookup]
-  split at h_lookup <;> rename_i h_eq
-  · split
-    · cases h_lookup; exact ⟨v, rfl, hvr⟩
-    · exact absurd h_eq ‹¬_›
-  · split
-    · exact absurd ‹_› h_eq
-    · exact h y σ h_lookup
-
--- ============================================================
--- Fundamental theorem (VR version)
--- ============================================================
-
-/-- **Fundamental theorem for VR.**
-
-    If `absEval` and `concEvalC` both succeed for expression `e` in
-    consistent environments, then there exists τ' with VR fuel v τ' and
-    SubtypeTrans τ' τ.
-
-    The existential τ' avoids the need for VR_upcast (which is blocked
-    by `absEval_succeeds_sub` being false in general). The asc case chains
-    the SubtypeTrans component instead.
-
-    **Sorry analysis:**
-    - **lam case** (1 sorry): The closure captures the original body, but absEval
-      returns a normalized body. The VR.clo property needs to relate evaluations
-      of different bodies (original vs normalized) in different envs (captured vs
-      current). This is the **body normalization mismatch**.
-    - **app case** (1 sorry): After extracting VR from the function, the closure's
-      stored Γ_a may differ from the call-site Γ. This is the **env mismatch**.
-      Additionally, the body normalization mismatch from the lam case propagates.
-    - **fix case** (1 sorry): Needs fix typing axiom integration with VR. -/
-theorem fundamentalVR
-    (fuel : Nat) (γ : CEnv) (Γ : Env) (e τ : Expr) (v : CVal)
-    (h_abs : absEval fuel Γ e = some τ)
-    (h_conc : concEvalC fuel γ e = some v)
-    (h_env : ER fuel γ Γ)
-    (h_wt : WellTyped fuel Γ e)
-    (h_no_fix : EnvNoFix Γ)
-    : ∃ τ', VR fuel v τ' ∧ SubtypeTrans τ' τ := by
-  induction fuel generalizing Γ γ e τ v with
-  | zero => simp [absEval] at h_abs
-  | succ n ih =>
-    cases e with
-    | var x =>
-      -- Both look up x in their respective envs
-      simp [absEval, concEvalC] at h_abs h_conc
-      obtain ⟨v', hv', hvr⟩ := h_env x τ h_abs
-      rw [hv'] at h_conc; cases h_conc
-      exact ⟨τ, hvr, SubtypeTrans.step (Subtype'.refl τ)⟩
-    | type =>
-      -- Both return .type
-      simp [absEval] at h_abs; rw [← h_abs]
-      exact ⟨.type, VR.top, SubtypeTrans.step (Subtype'.refl .type)⟩
-    | lam x dom body =>
-      -- concEvalC returns closure, absEval normalizes body
-      simp only [concEvalC] at h_conc; cases h_conc
-      simp only [absEval] at h_abs
-      cases hba : absEval n ((x, .var x) :: Γ) body with
-      | none => simp [hba] at h_abs
-      | some body_a =>
-        simp [hba] at h_abs; rw [← h_abs]
-        -- Goal: ∃ τ', VR (n+1) (.clo x dom body γ) τ' ∧ SubtypeTrans τ' (.lam x dom body_a)
-        -- Construct VR.clo with Γ_a = Γ, τ' = .lam x dom body_a
-        refine ⟨.lam x dom body_a, ?_, SubtypeTrans.step (Subtype'.refl _)⟩
-        exact VR.clo (Γ_a := Γ) (fun k hk v_a τ_a hvr_a v_res hc τ_res ha => by
-          /- BLOCKER: body normalization mismatch.
-             concEvalC evaluates `body` (original) in ((x, v_a) :: γ).
-             absEval evaluates `body_a` (= absEval n ((x, var x) :: Γ) body, NORMALIZED)
-             in ((x, τ_a) :: Γ).
-
-             The IH (fundamentalVR at fuel k) expects the SAME expression on both sides.
-             But body ≠ body_a in general.
-
-             Approaches to resolve:
-             1. Use IH on `body` with absEval k ((x, τ_a) :: Γ) body = some σ (NOT body_a),
-                then relate σ to τ_res via a compositionality lemma:
-                  absEval k ((x,τ_a)::Γ) (absEval n ((x,var x)::Γ) body) ?= absEval k ((x,τ_a)::Γ) body
-                This is absEval_normalize_stable which is PROVABLY FALSE in general.
-             2. Use a closure-based abstract evaluator (absEvalC) that doesn't normalize under
-                binders, making the proof structurally parallel to concEvalC.
-             3. Prove a restricted compositionality lemma that holds when env values are
-                well-formed (no raw stuck terms in env bindings). -/
-          sorry)
-    | asc term ty =>
-      -- concEvalC evaluates term, absEval evaluates ty
-      simp only [concEvalC] at h_conc
-      simp only [absEval] at h_abs
-      -- WellTyped gives us σ ⊑ τ
-      have ⟨h_wt_term, _, σ, τ', h_abs_term, h_abs_ty, h_sub_wt⟩ := h_wt
-      -- τ = τ' (both are absEval of ty)
-      rw [h_abs] at h_abs_ty; cases h_abs_ty
-      -- IH on term: ∃ σ', VR n v σ' ∧ SubtypeTrans σ' σ
-      have ih_term := ih γ Γ term σ v h_abs_term h_conc
-        (ER.mono (m := 1) (by rwa [Nat.add_comm]))
-        h_wt_term h_no_fix
-      -- Chain: σ' ⊑ σ ⊑ τ
-      obtain ⟨σ', hvr_σ', h_sub_σ'⟩ := ih_term
-      exact ⟨σ', VR.mono (m := 1) (by rwa [Nat.add_comm] at hvr_σ'),
-             SubtypeTrans.trans h_sub_σ' (SubtypeTrans.step h_sub_wt)⟩
-    | fix inner =>
-      /- FIX CASE: Similar structure to Soundness.lean's fix case.
-         absEval evaluates the domain annotation.
-         concEvalC evaluates the body with the fix bound to .fixV.
-         Needs fix typing axiom from WellTyped. -/
-      sorry
-    | app f a =>
-      /- APP CASE: The hardest case. After evaluating f and a:
-         - concEvalC has .clo x dom body γ_c (closure with captured env)
-         - absEval has .lam x dom body_a (lambda with normalized body)
-         The continuation evaluates body in γ_c vs body_a in Γ.
-
-         Two interacting problems:
-         1. body ≠ body_a (normalization mismatch, same as lam case)
-         2. γ_c may differ from Γ (env mismatch: captured vs call-site)
-
-         Approach via VR.clo: extract the application property from the
-         function's VR. But VR stores Γ_a (definition-site env), and the
-         call site uses Γ (possibly different). Need either env weakening
-         or env irrelevance for normalized bodies. -/
-      sorry
+The recommended approach is soundnessC_abs (concEvalC vs absEvalC) using
+VR_abs, which avoids the normalization mismatch by keeping original bodies
+in closures on both sides.
+-/
 
 -- ============================================================
 -- NEW APPROACH: soundnessC via absEvalC (closure-based abstract evaluator)
@@ -741,50 +566,57 @@ The tests above confirm absEvalC_equiv holds empirically (all native_decide).
 -/
 
 /-- Value relation between CVal and AVal (no fuel parameter needed).
-    Much simpler than VR (CVal → Expr) because both use closures with
-    captured envs and original bodies. No application property needed —
-    the fundamental theorem IH handles application directly.
-
-    The relation is fuel-independent because it only checks structural
-    correspondence: same constructor shapes with recursively consistent envs.
-    The env consistency is inlined to avoid positivity issues with mutual
-    inductives. -/
+    Structural correspondence: same constructor shapes with recursively
+    consistent captured envs. Env consistency is inlined as two hypotheses
+    (coverage + VR) to satisfy Lean's nested inductive and positivity checks. -/
 inductive VR_abs : CVal → AVal → Prop where
   /-- Both are type values. -/
   | type_type : VR_abs .type .atype
   /-- Closure case: same name, domain, body, and consistent captured envs. -/
   | clo : ∀ {x dom body γ_c Γ_a},
-      (∀ y (a : AVal), Γ_a.lookup y = some a →
-        ∃ v, γ_c.lookup y = some v ∧ VR_abs v a) →
+      (∀ y (a : AVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y ≠ none) →
+      (∀ y (a : AVal) (v : CVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y = some v →
+        VR_abs v a) →
       VR_abs (.clo x dom body γ_c) (.aclo x dom body Γ_a)
   /-- Fix thunk case: same inner, consistent captured envs. -/
   | fixV : ∀ {inner γ_c Γ_a},
-      (∀ y (a : AVal), Γ_a.lookup y = some a →
-        ∃ v, γ_c.lookup y = some v ∧ VR_abs v a) →
+      (∀ y (a : AVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y ≠ none) →
+      (∀ y (a : AVal) (v : CVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y = some v →
+        VR_abs v a) →
       VR_abs (.fixV inner γ_c) (.afixV inner Γ_a)
 
-/-- Environment relation between CEnv and AEnv, pointwise VR_abs. -/
+/-- Environment relation between CEnv and AEnv: coverage + value relation. -/
 def ER_abs (γ : CEnv) (Γ : AEnv) : Prop :=
-  ∀ x (a : AVal), Γ.lookup x = some a → ∃ v, γ.lookup x = some v ∧ VR_abs v a
+  (∀ x (a : AVal), AEnv.lookup Γ x = some a → CEnv.lookup γ x ≠ none) ∧
+  (∀ x (a : AVal) (v : CVal), AEnv.lookup Γ x = some a → CEnv.lookup γ x = some v →
+    VR_abs v a)
 
 /-- Extend ER_abs with a VR_abs-consistent binding. -/
 theorem ER_abs.extend {γ : CEnv} {Γ : AEnv}
     (h : ER_abs γ Γ) (x : Name) {v : CVal} {a : AVal} (hvr : VR_abs v a) :
     ER_abs ((x, v) :: γ) ((x, a) :: Γ) := by
-  intro y σ h_lookup
-  simp only [AEnv.lookup] at h_lookup ⊢
-  simp only [CEnv.lookup]
-  split at h_lookup <;> rename_i h_eq
-  · split
-    · cases h_lookup; exact ⟨v, rfl, hvr⟩
-    · exact absurd h_eq ‹¬_›
-  · split
-    · exact absurd ‹_› h_eq
-    · exact h y σ h_lookup
+  obtain ⟨h_cov, h_vr⟩ := h
+  refine ⟨fun y σ ha hne => ?_, fun y σ v' ha hv' => ?_⟩
+  · -- Coverage
+    simp only [AEnv.lookup] at ha; simp only [CEnv.lookup] at hne
+    split at ha <;> rename_i h_eq
+    · split at hne
+      · simp at hne
+      · exact absurd h_eq ‹¬_›
+    · split at hne
+      · exact absurd ‹_› h_eq
+      · exact h_cov y σ ha hne
+  · -- Value relation
+    simp only [AEnv.lookup] at ha; simp only [CEnv.lookup] at hv'
+    split at ha <;> rename_i h_eq
+    · split at hv'
+      · cases ha; cases hv'; exact hvr
+      · exact absurd h_eq ‹¬_›
+    · split at hv'
+      · exact absurd ‹_› h_eq
+      · exact h_vr y σ v' ha hv'
 
-/-- Well-typedness for absEvalC: ascriptions are sound.
-    Parallel to WellTyped but for closure-based evaluation. -/
--- TODO: Define WellTypedC for absEvalC
+-- TODO: Define WellTypedC for absEvalC (well-typedness for closure-based evaluation)
 
 /-- **Soundness of concEvalC vs absEvalC.**
 
@@ -809,9 +641,7 @@ theorem soundnessC_abs
     cases e with
     | var x =>
       simp [concEvalC, absEvalC] at h_conc h_abs
-      obtain ⟨v', hv', hvr⟩ := h_env x a h_abs
-      rw [hv'] at h_conc; cases h_conc
-      exact hvr
+      exact h_env.2 x a v h_abs h_conc
     | type =>
       simp [concEvalC, absEvalC] at h_conc h_abs
       cases h_conc; cases h_abs
@@ -819,7 +649,7 @@ theorem soundnessC_abs
     | lam x dom body =>
       simp only [concEvalC] at h_conc; cases h_conc
       simp only [absEvalC] at h_abs; cases h_abs
-      exact VR_abs.clo h_env
+      exact VR_abs.clo h_env.1 h_env.2
     | asc term ty =>
       -- concEvalC evaluates term, absEvalC evaluates ty — they diverge here.
       -- Needs WellTypedC to relate term's value to ty's value.
@@ -860,43 +690,41 @@ theorem soundnessC_abs
                 simp only at h_conc h_abs
                 cases h_conc; cases h_abs
                 exact VR_abs.type_type
-              | clo h_env_cap =>
+              | clo h_cov_cap h_vr_cap =>
                 -- v_f = .clo x dom body γ_c, a_f = .aclo x dom body Γ_a
                 -- Both beta-reduce body in captured envs
                 simp only at h_conc h_abs
                 -- Apply IH on the body with extended captured envs
                 exact ih ((_, v_a) :: _) ((_, a_a) :: _) _ v a h_conc h_abs
-                  (ER_abs.extend h_env_cap _ ih_a)
-              | fixV h_env_cap =>
+                  (ER_abs.extend ⟨h_cov_cap, h_vr_cap⟩ _ ih_a)
+              | fixV h_cov_cap h_vr_cap =>
                 -- v_f = .fixV inner γ_c, a_f = .afixV inner Γ_a
                 -- Both unroll fix and apply
                 simp only at h_conc h_abs
                 -- First: evaluate .fix inner in captured envs
                 generalize hfc_fix : concEvalC n _ (.fix _) = rfc_fix at h_conc
                 generalize hfa_fix : absEvalC n _ (.fix _) = rfa_fix at h_abs
-                -- The fix result needs to be a closure on both sides
-                -- Use IH on .fix inner with captured env consistency
-                have ih_fix := ih _ _ (.fix _) _ _ hfc_fix hfa_fix h_env_cap
                 cases rfc_fix with
                 | none => simp at h_conc
                 | some v_fix =>
                   cases rfa_fix with
                   | none => simp at h_abs
                   | some a_fix =>
+                    -- Use IH on .fix inner with captured env consistency
+                    have ih_fix := ih _ _ (.fix _) _ _ hfc_fix hfa_fix ⟨h_cov_cap, h_vr_cap⟩
                     cases ih_fix with
                     | type_type =>
                       simp only at h_conc h_abs
                       cases h_conc; cases h_abs
                       exact VR_abs.type_type
-                    | clo h_env_fix =>
+                    | clo h_cov_fix h_vr_fix =>
                       simp only at h_conc h_abs
                       exact ih _ _ _ v a h_conc h_abs
-                        (ER_abs.extend h_env_fix _ ih_a)
-                    | fixV h_env_fix' =>
+                        (ER_abs.extend ⟨h_cov_fix, h_vr_fix⟩ _ ih_a)
+                    | fixV _ _ =>
+                      -- fixV in fix position: concEvalC match falls to `none`
                       simp only at h_conc h_abs
-                      -- fixV in fix position after unrolling: should not happen
-                      -- for well-formed programs (fix of fix is unusual)
-                      sorry  -- degenerate: fixV after fix unroll
+                      cases h_conc
 
 /-- **absEvalC ≡ absEval (via readback).**
 

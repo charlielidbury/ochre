@@ -59,16 +59,64 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
 **1** in Closure.lean: `soundnessC` (original readback-based, kept for reference)
-**3** in Closure.lean: `fundamentalVR` (VR approach, BLOCKED — see analysis)
-**3** in Closure.lean: `soundnessC_abs` (absEvalC approach, RECOMMENDED):
-- asc case: needs WellTypedC definition
-- fix case: needs fix typing axiom integration
-- app-fixV degenerate: fixV after fix unroll (likely eliminable)
-- (var, type, lam, app-clo, app-type cases are PROVED)
+**2** in Closure.lean: `soundnessC_abs` (absEvalC approach, RECOMMENDED):
+- asc case: needs subsumption (VR_abs is structural identity, can't widen)
+- fix case: same issue as asc — concrete evaluates body, abstract evaluates dom
+- (var, type, lam, app-clo, app-type, app-fixV cases are PROVED)
 **1** in Closure.lean: `absEvalC_equiv` (readback equivalence, separate lemma)
 **7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
-## New this session (ochre-lean-20260401-104731)
+## New this session (ochre-lean-20260401-112538)
+
+### Closure.lean now compiles (was never building!)
+
+Previous agents wrote Closure.lean but never imported it in Och.lean, so
+`lake build` never compiled it. Two critical compilation errors found:
+
+1. **VR (Kripke-style logical relation) — non-positivity error.** VR.clo has
+   VR in non-strictly-positive position (left of → inside the application
+   property). Lean 4's kernel rejects this even for Prop. Since VR and
+   fundamentalVR were already blocked (3 sorry's, body normalization mismatch),
+   removed the entire VR/fundamentalVR section.
+
+2. **VR_abs — nested inductive restriction.** VR_abs.clo used
+   `∃ v : CVal, ... ∧ VR_abs v a` in its hypothesis. Since CVal uses
+   `List (Name × CVal)` (nested inductive), Lean's kernel rejects `∃` over
+   CVal inside another inductive. Fixed by splitting env consistency into:
+   - Coverage: `∀ y a, AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y ≠ none`
+   - Value relation: `∀ y a v, ... → ... → VR_abs v a`
+
+### app-fixV degenerate case eliminated
+
+Proved by contradiction: when `concEvalC` unrolls a fix and gets another
+`.fixV`, the match falls through to `none`, contradicting `h_conc : ... = some v`.
+Similarly on the abstract side with `.afixV`.
+
+### Analysis: VR_abs cannot handle asc/fix cases
+
+Deep analysis of the remaining 2 sorry's (asc, fix). Both require "subsumption"
+— going from VR_abs v (absEvalC term) to VR_abs v (absEvalC ty). But VR_abs is
+structural identity (same body, same name), which fundamentally cannot relate
+closures with different bodies.
+
+**Approaches investigated:**
+- Application-based VR_sim (step-indexed): handles subsumption but has fuel
+  mismatch at the app case. concEvalC uses the SAME fuel for f, a, and body,
+  so the step-index is always off-by-one.
+- Fuel-independent application-based: circular — can't prove the property at
+  arbitrary fuel during the induction.
+- Readback-based conclusion: requires proving readback succeeds (blocked by
+  absEval totality, which is unproven).
+
+**Recommended next step:** The asc/fix cases likely need a different proof
+strategy from soundnessC_abs. Options:
+1. Prove absEvalC_equiv FIRST (readbackA(absEvalC) = absEval), then prove
+   soundnessC directly via readback + absEval_mono_trans.
+2. Change the evaluator to consume fuel at application, making step-indexing work.
+3. Define a "semantic subtyping" on AVal through readback, and add an existential
+   to soundnessC_abs's conclusion.
+
+## Previous session (ochre-lean-20260401-104731)
 
 ### VR logical relation — partial fundamental theorem
 
