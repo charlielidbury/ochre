@@ -132,6 +132,143 @@ def concEvalC (fuel : Nat) (γ : CEnv) (e : Expr) : Option CVal :=
       | _, _ => none  -- Stuck or failed
 
 -- ============================================================
+-- Abstract closure values and closure-based abstract evaluator
+-- ============================================================
+
+/-- Abstract closure values. Structurally identical to CVal but used by
+    the abstract (compile-time) evaluator. Kept separate to avoid
+    conflating concrete and abstract evaluation. -/
+inductive AVal where
+  /-- Abstract closure: a lambda that captured its definition-site abstract env. -/
+  | aclo : Name → (dom : Expr) → (body : Expr) → (env : List (Name × AVal)) → AVal
+  /-- Type (top) value. -/
+  | atype : AVal
+  /-- A fixpoint thunk — unrolled lazily at application time. -/
+  | afixV : Expr → (env : List (Name × AVal)) → AVal
+  deriving Repr, Inhabited
+
+abbrev AEnv := List (Name × AVal)
+
+namespace AEnv
+
+def lookup (Γ : AEnv) (x : Name) : Option AVal :=
+  match Γ with
+  | []          => none
+  | (y, v) :: rest => if y == x then some v else lookup rest x
+
+end AEnv
+
+/-- Closure-based abstract evaluator (compile-time / typing).
+
+    Structurally IDENTICAL to `concEvalC` except:
+    - **Ascription:** takes the RHS (type annotation), not the LHS (term).
+      This is the ONLY semantic difference — compile-time vs runtime.
+    - **Fix:** returns the domain type (like absEval), not the unrolled body.
+    - **Lambda:** returns a closure capturing the env (NO normalization under
+      binders). This is the key difference from `absEval`.
+    - **App:** evaluates the ORIGINAL body in the CAPTURED env, not a normalized
+      body in the call-site env.
+
+    The structural parallelism with concEvalC makes the soundness proof
+    (concEvalC vs absEvalC) a straightforward induction on fuel. -/
+def absEvalC (fuel : Nat) (Γ : AEnv) (e : Expr) : Option AVal :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match e with
+    | .var x        => Γ.lookup x
+    | .lam x dom body => some (.aclo x dom body Γ)  -- Closure! Captures env.
+    | .type         => some .atype
+    | .asc _term ty => absEvalC fuel Γ ty  -- Compile-time: take the rhs
+    | .fix inner    =>
+      match inner with
+      | .lam _f dom _body =>
+        -- Abstract: return the declared type (domain annotation).
+        -- Well-typedness ensures the body satisfies this type.
+        absEvalC fuel Γ dom
+      | _ => none
+    | .app f a      =>
+      match absEvalC fuel Γ f, absEvalC fuel Γ a with
+      | some (.aclo x _dom body Γ'), some aVal =>
+        -- Beta-reduce: evaluate body in CAPTURED env extended with argument
+        absEvalC fuel ((x, aVal) :: Γ') body
+      | some (.afixV inner Γ'), some aVal =>
+        -- Fix in function position: evaluate the fix, then apply
+        match absEvalC fuel Γ' (.fix inner) with
+        | some (.aclo x _dom body Γ'') =>
+          absEvalC fuel ((x, aVal) :: Γ'') body
+        | some .atype => some .atype
+        | _ => none
+      | some .atype, some _ => some .atype  -- Type applied = Type (top absorbs)
+      | _, _ => none  -- Stuck or failed
+
+-- ============================================================
+-- Readback from AVal to Expr (normalizes via absEval)
+-- ============================================================
+
+/-- Convert an abstract closure value to an Expr by normalizing the
+    closure's body using absEval in the captured environment.
+
+    This bridges absEvalC (closure-based) to absEval (Expr-based).
+    readbackA(absEvalC Γ e) should equal absEval (readbackAEnv Γ) e. -/
+def readbackA (fuel : Nat) (v : AVal) : Option Expr :=
+  match v with
+  | .atype => some .type
+  | .afixV inner _Γ => some (.fix inner)
+  | .aclo x dom body Γ =>
+    match readbackAEnv fuel Γ with
+    | some Γ' =>
+      match absEval fuel ((x, .var x) :: Γ') body with
+      | some body' => some (.lam x dom body')
+      | none => none
+    | none => none
+where
+  /-- Convert an AEnv to an Env by reading back each value. -/
+  readbackAEnv (fuel : Nat) : AEnv → Option Env
+    | [] => some []
+    | (x, v) :: rest =>
+      match readbackA fuel v, readbackAEnv fuel rest with
+      | some e, some rest' => some ((x, e) :: rest')
+      | _, _ => none
+
+-- ============================================================
+-- absEvalC tests: verify readbackA(absEvalC) = absEval
+-- ============================================================
+
+-- Helper: evaluate with absEvalC and read back to Expr
+private def absEvalCReadback (fuel : Nat) (e : Expr) : Option Expr :=
+  match absEvalC fuel [] e with
+  | some v => readbackA fuel v
+  | none => none
+
+-- Basic: type → type
+example : absEvalCReadback 100 .type = some .type := by native_decide
+
+-- true' through absEvalC should equal absEval
+example : absEvalCReadback 100 true' = absEval 100 [] true' := by native_decide
+
+-- false' through absEvalC should equal absEval
+example : absEvalCReadback 100 false' = absEval 100 [] false' := by native_decide
+
+-- succ 2 = 3 (precision through transparent function)
+example : absEvalCReadback 100 (.app succ' two') = absEval 100 [] (.app succ' two') := by native_decide
+
+-- add 2 3 = 5
+example : absEvalCReadback 100 (.app (.app add' two') three') = absEval 100 [] (.app (.app add' two') three') := by native_decide
+
+-- isZero 0 = true
+example : absEvalCReadback 100 (.app isZero' zero') = absEval 100 [] (.app isZero' zero') := by native_decide
+
+-- isZero 3 = false
+example : absEvalCReadback 100 (.app isZero' three') = absEval 100 [] (.app isZero' three') := by native_decide
+
+-- id Nat 3 = 3 (transparency)
+example : absEvalCReadback 100 (.app (.app id' Nat') three') = absEval 100 [] (.app (.app id' Nat') three') := by native_decide
+
+-- Ascription: (3 : Nat) should give Nat
+example : absEvalCReadback 100 (.asc three' Nat') = absEval 100 [] (.asc three' Nat') := by native_decide
+
+-- ============================================================
 -- Readback: convert CVal to Expr
 -- ============================================================
 
@@ -578,3 +715,107 @@ theorem fundamentalVR
          call site uses Γ (possibly different). Need either env weakening
          or env irrelevance for normalized bodies. -/
       sorry
+
+-- ============================================================
+-- NEW APPROACH: soundnessC via absEvalC (closure-based abstract evaluator)
+-- ============================================================
+
+/-!
+### Strategy: factor soundnessC into two independent proofs
+
+Instead of directly relating concEvalC (closure-based concrete) to absEval
+(Expr-based abstract with normalization under binders), we factor through
+absEvalC (closure-based abstract):
+
+```
+concEvalC ←— soundnessC_abs —→ absEvalC ←— absEvalC_equiv —→ absEval
+```
+
+1. **soundnessC_abs**: concEvalC vs absEvalC. Both use closures with captured
+   envs and evaluate original bodies. Structurally parallel → straightforward.
+
+2. **absEvalC_equiv**: readbackA(absEvalC) = absEval. Both normalize in the
+   same definition-site env → no env mismatch.
+
+The tests above confirm absEvalC_equiv holds empirically (all native_decide).
+-/
+
+/-- Value relation between CVal and AVal.
+    Much simpler than VR (CVal → Expr) because both use closures with
+    captured envs and original bodies. No application property needed —
+    the fundamental theorem IH handles application directly. -/
+inductive VR_abs : Nat → CVal → AVal → Prop where
+  /-- Both are type values. -/
+  | type_type : VR_abs n .type .atype
+  /-- Base case: fuel 0. -/
+  | base : VR_abs 0 v a
+  /-- Closure case: same body, consistent captured envs. -/
+  | clo : ∀ {n x dom body γ_c Γ_a},
+      ER_abs n γ_c Γ_a →
+      VR_abs (n + 1) (.clo x dom body γ_c) (.aclo x dom body Γ_a)
+  /-- Fix thunk case: same inner, consistent captured envs. -/
+  | fixV : ∀ {n inner γ_c Γ_a},
+      ER_abs n γ_c Γ_a →
+      VR_abs (n + 1) (.fixV inner γ_c) (.afixV inner Γ_a)
+
+/-- Environment relation between CEnv and AEnv, pointwise VR_abs. -/
+def ER_abs (n : Nat) (γ : CEnv) (Γ : AEnv) : Prop :=
+  ∀ x (a : AVal), Γ.lookup x = some a → ∃ v, γ.lookup x = some v ∧ VR_abs n v a
+
+/-- Extend ER_abs with a VR_abs-consistent binding. -/
+theorem ER_abs.extend {n : Nat} {γ : CEnv} {Γ : AEnv}
+    (h : ER_abs n γ Γ) (x : Name) {v : CVal} {a : AVal} (hvr : VR_abs n v a) :
+    ER_abs n ((x, v) :: γ) ((x, a) :: Γ) := by
+  intro y σ h_lookup
+  simp only [AEnv.lookup] at h_lookup ⊢
+  simp only [CEnv.lookup]
+  split at h_lookup <;> rename_i h_eq
+  · split
+    · cases h_lookup; exact ⟨v, rfl, hvr⟩
+    · exact absurd h_eq ‹¬_›
+  · split
+    · exact absurd ‹_› h_eq
+    · exact h y σ h_lookup
+
+/-- Well-typedness for absEvalC: ascriptions are sound.
+    Parallel to WellTyped but for closure-based evaluation. -/
+-- TODO: Define WellTypedC for absEvalC
+
+/-- **Soundness of concEvalC vs absEvalC.**
+
+    Both evaluators use closures with captured envs and evaluate original
+    bodies. The structural parallelism makes this a straightforward induction.
+
+    **Key advantage over fundamentalVR:** The body is the SAME on both sides.
+    No normalization mismatch. The IH applies directly.
+
+    **Remaining challenge:** The asc case diverges (concrete takes LHS,
+    abstract takes RHS). This needs well-typedness and a VR_abs upcast. -/
+theorem soundnessC_abs
+    (fuel : Nat) (γ : CEnv) (Γ : AEnv) (e : Expr) (v : CVal) (a : AVal)
+    (h_conc : concEvalC fuel γ e = some v)
+    (h_abs : absEvalC fuel Γ e = some a)
+    (h_env : ER_abs fuel γ Γ)
+    -- (h_wt : WellTypedC fuel Γ e)  -- TODO: define WellTypedC
+    : VR_abs fuel v a := by
+  sorry  -- Next agent: implement this proof. Key cases:
+         -- var: both look up, ER_abs gives VR_abs. Trivial.
+         -- type: both return type/atype. Trivial.
+         -- lam: both return closures with same body, ER_abs by hypothesis.
+         -- asc: HARD — concrete takes LHS, abstract takes RHS. Needs WellTypedC.
+         -- fix: concrete unrolls, abstract returns domain. Needs fix typing.
+         -- app: both beta-reduce same body in captured envs. IH applies directly.
+
+/-- **absEvalC ≡ absEval (via readback).**
+
+    readbackA(absEvalC fuel Γ e) = absEval fuel (readbackAEnv fuel Γ) e
+
+    Both normalize in the same env. Empirically verified by native_decide tests. -/
+theorem absEvalC_equiv
+    (fuel : Nat) (Γ : AEnv) (Γ' : Env) (e τ : Expr) (a : AVal)
+    (h_abs_c : absEvalC fuel Γ e = some a)
+    (h_readback_env : readbackA.readbackAEnv fuel Γ = some Γ')
+    (h_abs : absEval fuel Γ' e = some τ)
+    : readbackA fuel a = some τ := by
+  sorry  -- Next agent: prove by induction on fuel, case split on e.
+         -- Key: both normalize in Γ'/readbackAEnv(Γ) — same env.
