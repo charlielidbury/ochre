@@ -3035,34 +3035,6 @@ Proof.
   - unfold branching_state. simpl_map. constructor.
 Qed.
 
-(** If [Bjoin] is a join state for two states [B0_r] and [B1_r], if these two states are more abstract than the respective states [B0_l] and [B1_l], it is not necessary the case that [Bjoin] is a join of [B0_l] and [B1_r]. Indeed, there can be a control-flow token [r] such that [lookup r B0_l = None] while [Is_Some (lookup r B0_r)], and [lookup r Bjoin_r] is not necessarily [lookup r B1_r].
-
-   We need to "compute" a join by choosing a value among [lookup r B0_l],  [lookup r B1_l] and [lookup r Bjoin] depending if the values [lookup r B0_l] and [lookup r B1_l] are [Some] or [None]. *)
-Definition compute_option_join (oSl oSr : option LLBC_sharp_state) default :=
-  match oSl, oSr with
-  | None, _ => oSr
-  | _, None => oSl
-  | _, _ => Some default
-  end.
-
-(* TODO: confusing name, similar to [leq_is_join_l]. *)
-Lemma is_join_left B0_l B1_l B0_r B1_r Bjoin_r (Hjoin : is_join B0_r B1_r Bjoin_r)
-  (Hleq_0 : leq_branching B0_l B0_r) (Hleq_1 : leq_branching B1_l B1_r) :
-  exists Bjoin_l : branching_state, is_join B0_l B1_l Bjoin_l /\ leq_branching Bjoin_l Bjoin_r.
-Proof.
-  exists (map_imap (fun r => compute_option_join (lookup r B0_l) (lookup r B1_l)) Bjoin_r).
-  split.
-  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
-    specialize (Hleq_0 r). specialize (Hleq_1 r). specialize (Hjoin r).
-    destruct Hjoin; inversion Hleq_0; inversion Hleq_1.
-    all: constructor. all: etransitivity; [eassumption | congruence].
-  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
-    specialize (Hleq_0 r). specialize (Hleq_1 r). specialize (Hjoin r).
-    unfold compute_option_join.
-    destruct Hjoin; inversion Hleq_0; inversion Hleq_1; constructor.
-    all: try reflexivity. all: try assumption. all: etransitivity; eassumption.
-Qed.
-
 Lemma leq_branching_delete r0 Sl Sr :
   leq_branching Sl Sr -> leq_branching (delete r0 Sl) (delete r0 Sr).
 Proof.
@@ -3072,9 +3044,43 @@ Qed.
 
 Lemma leq_is_join_l Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Bl Bjoin.
 Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
+Hint Resolve leq_is_join_l.
 
 Lemma leq_is_join_r Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Br Bjoin.
 Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
+Hint Resolve leq_is_join_r.
+
+(** If [Bup] is an upper bound of two states [B0] and [B1], it is not necessarily a join. Indeed, there may exist tokens [r] such that [lookup r B0] (respectively [lookup r B1]) is None, but [lookup r Bup] is different from [lookup r B1] (respectively [lookup r B0]).
+
+   We need to "compute" a join by choosing for each tag [r] a value among [lookup r B0],  [lookup r B1] and [lookup r Bup]. *)
+Definition compute_option_join (oSl oSr : option LLBC_sharp_state) default :=
+  match oSl, oSr with
+  | None, _ => oSr
+  | _, None => oSl
+  | _, _ => Some default
+  end.
+
+Lemma exists_join_state B0 B1 Bup
+  (Hleq_0 : leq_branching B0 Bup) (Hleq_1 : leq_branching B1 Bup) :
+  exists Bjoin : branching_state, is_join B0 B1 Bjoin /\ leq_branching Bjoin Bup.
+Proof.
+  exists (map_imap (fun r => compute_option_join (lookup r B0) (lookup r B1)) Bup).
+  split.
+  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
+    specialize (Hleq_0 r). specialize (Hleq_1 r).
+    destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
+    all: try destruct oSr; constructor; assumption.
+  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
+    specialize (Hleq_0 r). specialize (Hleq_1 r).
+    unfold compute_option_join.
+    destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
+    all: try destruct oSr; constructor; assumption || reflexivity.
+Qed.
+
+Corollary exists_join_state' B0_l B1_l B0_r B1_r Bjoin_r :
+  is_join B0_r B1_r Bjoin_r -> leq_branching B0_l B0_r -> leq_branching B1_l B1_r ->
+  exists Bjoin_l : branching_state, is_join B0_l B1_l Bjoin_l /\ leq_branching Bjoin_l Bjoin_r.
+Proof. intros. apply exists_join_state; etransitivity; eauto with spath. Qed.
 
 (* Note: most of that is a copy-paste of similar theorems for integers. *)
 (* Note: rewrite the following results when we introduce enumerations. Some of the assumptions this section relies on (e.g: boolean are zeroary, they do not contain borrows) are wrong in general.
@@ -3220,6 +3226,28 @@ Proof.
     inversion H. constructor. assumption.
   - constructor.
 Qed.
+Hint Resolve leq_end_loop : spath.
+
+Lemma leq_branching_None_left_branch Bl Br r :
+  leq_branching Bl Br -> lookup r Br = None -> lookup r Bl = None.
+Proof.
+  intros Hleq G. specialize (Hleq r). rewrite G in Hleq. inversion Hleq. reflexivity.
+Qed.
+Hint Resolve leq_branching_None_left_branch : spath.
+
+Lemma lookup_token_cases Bl Br Sr r :
+  leq_branching Bl Br -> lookup r Br = Some Sr ->
+  (lookup r Bl = None /\ leq_branching Bl (delete r Br) \/
+   exists Sl, lookup r Bl = Some Sl /\
+              leq_symbolic Sl Sr /\ leq_branching (delete r Bl) (delete r Br)).
+Proof.
+  intros Hleq_B Hcontinue.
+  pose proof (Hleq_B r) as Hleq_S. apply (leq_branching_delete r) in Hleq_B.
+  rewrite Hcontinue in Hleq_S.
+  destruct (lookup r Bl) as [Sl | ] eqn:EQN.
+  - inversion Hleq_S; subst. eauto.
+  - rewrite (delete_notin _ _ EQN) in Hleq_B. auto.
+Qed.
 
 Lemma stmt_preserves_LLBC_sharp_rel n s :
   forward_simulation leq_symbolic leq_branching
@@ -3236,28 +3264,23 @@ Proof.
   (* Case [LLBC_plus_E_Propagate] *)
   - specialize (IHHeval _ Hleq). destruct IHHeval as (Bl & ? & ?).
     execution_step.
-    { apply LLBC_plus_E_Propagate; [eassumption | ].
-      (* TODO: lemma? *) specialize (H rUnit). inversion H; congruence. }
+    { apply LLBC_plus_E_Seq_Propagate; eauto with spath. }
     assumption.
 
   (* Case [LLBC_plus_E_Seq_Unit_Propagate] *)
   - specialize (IHHeval1 _ Hleq). destruct IHHeval1 as (B1l & Hleq1 & ?).
-    destruct (lookup rUnit B1l) as [S_unit_l | ] eqn:H_unit_l.
-    (* Case 1: TODO *)
-    + pose proof (Hleq1 rUnit) as _Hleq1. rewrite H_unit_l, H_unit in _Hleq1.
-      inversion _Hleq1 as [ | ? ? Hleq1_unit]. subst. clear _Hleq1.
-      specialize (IHHeval2 _ Hleq1_unit). destruct IHHeval2 as (B_unit_l & Hleq2 & Heval2_l).
-      edestruct is_join_left as (Bjoin_l & ? & ?);
-        [eassumption.. | apply leq_branching_delete; eassumption| ].
+    eapply lookup_token_cases in Hleq1; [ | exact H_unit].
+    destruct Hleq1 as [(? & ?) | (S1l & ? & Hleq1 & ?)].
+    (* Case 1: the state after the execution of the first statement ([B1_l]) does not contain
+        a [rUnit] token, we simply propagate. *)
+    + execution_step. { apply LLBC_plus_E_Seq_Propagate; eassumption. }
+      etransitivity; eauto with spath.
+    (* Case 2. *)
+    + specialize (IHHeval2 _ Hleq1). destruct IHHeval2 as (B_unit_l & Hleq2 & Heval2_l).
+      eapply exists_join_state' in His_join; [ | eauto with spath..].
+      destruct His_join as (Bjoin_l & ? & ?).
       execution_step. { eapply LLBC_plus_E_Seq_Unit_Propagate; eassumption. }
       assumption.
-    (* Case 2: TODO *)
-    + execution_step. { apply LLBC_plus_E_Propagate; eassumption. }
-      etransitivity.
-      * apply (leq_branching_delete rUnit) in Hleq1.
-        unfold branching_state in Hleq1. rewrite delete_notin in Hleq1 by assumption.
-        exact Hleq1.
-      * eapply leq_is_join_r. exact His_join.
 
   (* Case [LLBC_plus_E_Assign] *)
   - destruct vS' as (vr & S'r).
@@ -3300,7 +3323,7 @@ Proof.
     (* Case 3: the symbolic value abstracts a symbolic value. *)
     + specialize (IHHeval1 _ Hleq'). destruct IHHeval1 as (Bl_if & Hleq'_l & eval_if).
       specialize (IHHeval2 _ Hleq'). destruct IHHeval2 as (Bl_else & Hleq'_r & eval_else).
-      eapply is_join_left in His_join; [ | eassumption..].
+      eapply exists_join_state' in His_join; [ | eassumption..].
       destruct His_join as (Bjoin_l & His_join & ?).
       execution_step. { eapply LLBC_plus_IfThenElse_Symbolic; eassumption. } assumption.
 
@@ -3313,29 +3336,21 @@ Proof.
   (* Case [LLBC_plus_E_Loop_Stop] *)
   - apply IHHeval in Hleq. destruct Hleq as (B1l & Hleq' & Heval').
     execution_step.
-    { apply LLBC_plus_E_Loop_Stop. eassumption.
-      (* TODO: lemma *)
-      specialize (Hleq' rUnit). inversion Hleq'; congruence.
-      specialize (Hleq' rContinue). inversion Hleq'; congruence. }
-    apply leq_end_loop. assumption.
+    { apply LLBC_plus_E_Loop_Stop; eauto with spath. }
+    auto with spath.
 
   (* Case [LLBC_plus_E_Loop_Continue] *)
   - apply IHHeval1 in Hleq. destruct Hleq as (B1_l & Hleq' & Heval').
-    destruct (lookup rContinue B1_l) as [S1l | ] eqn:Hcontinue_l.
-    + pose proof (Hleq' rContinue) as _Hleq_S1. rewrite Hcontinue, Hcontinue_l in _Hleq_S1.
-      inversion _Hleq_S1 as [ | ? ? Hleq_S1]. subst.
-      apply IHHeval2 in Hleq_S1. destruct Hleq_S1 as (B2_l & Hleq'' & Heval2_l).
-      eapply is_join_left in His_join; [ | eauto using leq_branching_delete..].
+    eapply lookup_token_cases in Hcontinue; [ | exact Hleq'].
+    destruct Hcontinue as [(? & ?) | (S1_l & ? & Hleq_S1 & ?)].
+    + execution_step.
+      { eapply LLBC_plus_E_Loop_Stop; eauto with spath. }
+      etransitivity; eauto with spath.
+    + apply IHHeval2 in Hleq_S1. destruct Hleq_S1 as (B2_l & Hleq'' & Heval2_l).
+      (* TODO: solve conditions with [eauto]. *)
+      eapply exists_join_state' in His_join; [ | apply leq_end_loop | ]; eauto.
       destruct His_join as (Bend_l & His_join & Hleq_end).
       execution_step.
-      { eapply LLBC_plus_E_Loop_Continue. eassumption.
-        specialize (Hleq' rUnit). inversion Hleq'; congruence. eassumption.
-        eassumption. eassumption. }
-      apply leq_end_loop. assumption.
-    + execution_step.
-      { eapply LLBC_plus_E_Loop_Stop. eassumption.
-        specialize (Hleq' rUnit). inversion Hleq'; congruence. eassumption. }
-      apply leq_end_loop. etransitivity; [ | eapply leq_is_join_l; exact His_join].
-      rewrite <-(delete_notin B1_l rContinue) by assumption.
-      apply leq_branching_delete. assumption.
+      { eapply LLBC_plus_E_Loop_Continue; eauto with spath. }
+      assumption.
 Qed.

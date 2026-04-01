@@ -157,11 +157,12 @@ Definition end_loop (B : branching_state) : branching_state := pkmap end_loop_ta
 Inductive LLBC_plus_eval_stmt : nat -> statement -> LLBC_sharp_state -> branching_state -> Prop :=
   | LLBC_plus_E_Step_Zero s S : S |-{stmt} s ~>{0} empty
   | LLBC_plus_E_Nop n S : S |-{stmt} Nop ~>{1 + n} {[rUnit := S]}
-  | LLBC_plus_E_Propagate n S0 B1 stmt_0 stmt_1
+  | LLBC_plus_E_Seq_Propagate n S0 B1 stmt_0 stmt_1
       (eval_stmt_0 : S0 |-{stmt} stmt_0 ~>{1 + n} B1) (Hno_unit : lookup rUnit B1 = None) :
       S0 |-{stmt} (Seq stmt_0 stmt_1) ~>{1 + n} B1
   | LLBC_plus_E_Seq_Unit_Propagate n S0 B1 S_unit B_unit B_join stmt_0 stmt_1
-      (eval_stmt_0 : S0 |-{stmt} stmt_0 ~>{1 + n} B1) (H_unit : lookup rUnit B1 = Some S_unit)
+      (eval_stmt_0 : S0 |-{stmt} stmt_0 ~>{1 + n} B1)
+      (H_unit : lookup rUnit B1 = Some S_unit)
       (eval_stmt_1 : S_unit |-{stmt} stmt_1 ~>{1 + n} B_unit)
       (His_join : is_join B_unit (delete rUnit B1) B_join) :
       S0 |-{stmt} (Seq stmt_0 stmt_1) ~>{1 + n} B_join
@@ -198,6 +199,6 @@ Inductive LLBC_plus_eval_stmt : nat -> statement -> LLBC_sharp_state -> branchin
       (no_unit : lookup rUnit B1 = None)
       (Hcontinue : lookup rContinue B1 = Some S1)
       (Heval2 : S1 |-{stmt} (LOOP {{ body }}) ~>{n} B2)
-      (His_join : is_join (delete rContinue B1) B2 Bend) :
-      S |-{stmt} (LOOP {{ body }}) ~>{1 + n} (end_loop Bend)
+      (His_join : is_join (end_loop (delete rContinue B1)) B2 Bend) :
+      S |-{stmt} (LOOP {{ body }}) ~>{1 + n} Bend
 where "S |-{stmt} stmt ~>{ n } B" := (LLBC_plus_eval_stmt n stmt S B) : llbc_sharp_scope.
