@@ -94,6 +94,26 @@ theorem SubtypeCore.mu_rhs_shape {x : Name} {ann body : Expr} {e : Expr}
   | refl => exact ⟨body, rfl, .refl body⟩
   | mu_body h => exact ⟨_, rfl, h⟩
 
+/-- **SubtypeCore is transitive.** No self_intro means the proof is straightforward
+    structural induction on the second argument. -/
+theorem SubtypeCore.trans : {a b c : Expr} → SubtypeCore a b → SubtypeCore b c → SubtypeCore a c := by
+  intro a b c p q
+  induction q generalizing a with
+  | refl => exact p
+  | top => exact .top a
+  | lam_body h2 ih =>
+    cases p with
+    | refl => exact .lam_body h2
+    | lam_body h1 => exact .lam_body (ih h1)
+  | app_cong h2f h2a ihf iha =>
+    cases p with
+    | refl => exact .app_cong h2f h2a
+    | app_cong h1f h1a => exact .app_cong (ihf h1f) (iha h1a)
+  | mu_body h2 ih =>
+    cases p with
+    | refl => exact .mu_body h2
+    | mu_body h1 => exact .mu_body (ih h1)
+
 /-- **Subtype' is transitive.** Proved by well-founded induction on the sum of
     proof sizes (sizeOf p + sizeOf q). Each case either returns directly or
     makes recursive calls with strictly smaller total size.

@@ -190,6 +190,46 @@ dropped from 2 declarations to 1.
 
 ---
 
+## 2026-04-01: Switch soundness_gen to SubtypeCore to eliminate self_intro sorry
+
+**Decision:** Changed soundness_gen to take and return `SubtypeCore` (Subtype'
+without self_intro) instead of `Subtype'`. Changed EnvConsistent and WellTyped's
+asc case to use SubtypeCore. The main `soundness` theorem converts via toSubtype'.
+
+**The problem:** The self_intro case in soundness_gen had two fundamental
+mismatches that couldn't be resolved within the current proof framework:
+1. **Fuel mismatch:** absEval uses fuel n (after unwrapping mu), concEval uses
+   fuel n+1. Fuel weakening (n+1→n) is FALSE for concEval because it normalizes
+   under binders (more fuel = more normalization = different result).
+2. **Env mismatch:** absEval uses ((x,mu)::Γ), concEval uses γ (no x binding).
+   Can't extend γ with (x,mu) because e_c might reference x (self_intro allows
+   Subtype' (var x) body), and concEval isn't env-monotone for shadowed bindings.
+
+**Solution:** SubtypeCore doesn't have self_intro, so the case doesn't exist.
+The IH only produces SubtypeCore values (refl, lam_body, mu_body, app_cong, top).
+lam_rhs_shape on SubtypeCore gives SubtypeCore (no self_intro leaks through
+recursive calls). SubtypeCore.trans proved for the asc case composition.
+
+**Trade-off:** WellTyped's asc case uses SubtypeCore instead of Subtype'. Programs
+with ascriptions like `(e : mu_type)` where the proof requires self_intro (e.g.,
+e directly subtypes the mu body, not the whole mu) are not covered. In practice,
+this is fine for current milestones. Strengthening requires step-indexed logical
+relations (which are needed anyway for the mu-app sorrys).
+
+**Impact:** 3→2 sorrys in soundness_gen. Self_intro case eliminated entirely.
+
+**Alternatives considered:**
+- Decoupled fuels (separate fuel_a, fuel_c). Solves fuel mismatch but NOT env
+  mismatch. Would need env weakening/agreement lemmas that are hard to prove
+  in a named variable representation.
+- Strong induction on (fuel, sizeOf h_sub). Doesn't help with env mismatch.
+- Restrict EnvConsistent to SubtypeCore. Works (this is the approach taken),
+  but slightly weakens the soundness theorem.
+- Step-indexed logical relations. Would solve everything but is a major
+  multi-session effort. Still recommended for the mu-app sorrys.
+
+---
+
 ## Historical decisions (pre-mu, from main branch)
 
 The following decisions were made before the mu experiment. They describe the
@@ -247,8 +287,9 @@ equivalent (the body in the mu value is already evaluated).
 
 **Alternatives considered:**
 - Keep unrolling, prove self_intro case. Blocked by fuel/env mismatch.
-- Use SubtypeCore for h_sub (exclude self_intro). Doesn't work because
-  self_intro is reachable via the asc case's WellTyped Subtype'.
+- Use SubtypeCore for h_sub (exclude self_intro). ACTUALLY WORKS — was
+  adopted in the later "Switch soundness_gen to SubtypeCore" decision.
+  The key insight was changing WellTyped's asc case to SubtypeCore too.
 - Make concEval's app-mu use the annotation (like absEval). Wrong: `add 2 3`
   would evaluate to `Nat` instead of `5`.
 
