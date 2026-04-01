@@ -5,6 +5,43 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-01 ochre-lean-20260401-142109: Add iota constructor before proving remaining sorry's
+
+**Decision:** Added `iota : Name → Expr → Expr` to `Expr` now, before completing the
+soundness proofs. This is a structural change that touches every proof file.
+
+**Why now, not later:**
+SUGGESTIONS.md recommended doing this before proving soundness because adding a new
+constructor to `Expr` requires adding a case to every `cases e with` and `match e with`
+throughout the codebase. If we filled all sorry's first and then added iota, we'd have
+to re-prove every case. By adding iota first (even without full semantic support), all
+future proof work automatically accounts for it.
+
+**Design choices made:**
+- **absEval/concEval:** iota normalizes body under binder (like lam). This is the natural
+  choice since iota is a type-level construct whose body needs normalization.
+- **concEvalS:** iota is a value (like lam). Body not evaluated until used.
+- **Subtype':** Added `iota_body` constructor (covariant, like `lam_body`). This makes
+  iota-iota subtyping pointwise on bodies.
+- **App case:** iota in function position is treated as stuck. Self-type unfolding
+  (the key semantic feature) is deferred — it requires type-directed evaluation which
+  is a significant design change (see docs/research/self-types-for-och.md §2.4).
+- **concEvalC/absEvalC:** Returns type/atype as placeholder. Proper handling needs
+  new CVal/AVal constructors (iotaV/aiotaV).
+
+**What was NOT decided:**
+- How self-type unfolding works in absEval's app case
+- Whether type-directed evaluation is needed
+- How subtyping handles `a ⊑ iota x T` (self-introduction rule)
+- Self-typed standard library (Nat/Bool with iota)
+
+**Alternatives considered:**
+- Option A (3 new constructors: iota, selfIntro, selfElim) — too many forms
+- Option C (fold self into lambda, à la FormCoreJS) — changes lambda semantics
+- Chosen Option B (one new `iota` constructor, implicit intro/elim) — most minimal
+
+---
+
 ## 2026-04-01 ochre-lean-20260401-124404: Direct soundnessC — bypass the factored approach
 
 **Decision:** Added `soundnessC_direct` — a direct proof of concEvalC soundness against

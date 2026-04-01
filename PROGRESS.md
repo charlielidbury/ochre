@@ -28,6 +28,7 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **Soundness COMPLETE** — 0 sorry!
 - [x] **Prop 5.2.9 regression test** formalized and passing
 - [x] **`fix` syntax** added to Expr (6 forms total)
+- [x] **`iota` syntax** added to Expr (7 forms total) — self type constructor
 - [x] **`fix` concrete eval** — unrolling with fixpoint thunk in env
 - [x] **`fix` abstract eval** — returns declared type (like ascription)
 - [x] **`fix` in Subtype'** — `fix_cong` constructor + shape lemmas
@@ -59,17 +60,18 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 **1** in Monotonicity.lean: `absEval_succeeds_envsub` (app-lam case only)
 **1** in Closure.lean: `soundnessC` (original, kept for reference)
-**1** in Closure.lean: `soundnessC_direct` (app case only — var/type/asc/fix/lam PROVED)
+**1** in Closure.lean: `soundnessC_direct` (app + iota cases — var/type/asc/fix/lam PROVED)
 **2** in Closure.lean: `soundnessC_abs` (asc/fix cases)
-**1** in Closure.lean: `absEvalC_equiv` (app case only)
-**7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
+**1** in Closure.lean: `absEvalC_equiv` (app + iota cases)
+**4** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
 ### Key new theorem: `soundnessC_direct` (Closure.lean)
 
-Direct proof of concEvalC soundness WITHOUT going through absEvalC. Proves 5 of 6
+Direct proof of concEvalC soundness WITHOUT going through absEvalC. Proves 5 of 7
 cases (var, type, asc, fix, lam). The asc/fix cases that were stuck in the factored
 approach (soundnessC_abs) are now PROVED using WellTyped chains. The lam case uses
-`absEval_succeeds_envsub` + monotonicity.
+`absEval_succeeds_envsub` + monotonicity. The iota case is sorry'd because
+concEvalC returns .type for iota but absEval normalizes the body (design mismatch).
 
 ### Key new theorem: `absEval_succeeds_envsub` (Monotonicity.lean)
 
@@ -78,7 +80,46 @@ then absEval succeeds in Γ₂ (same expression). 5 of 6 cases proved. The app-l
 case is sorry'd because the function's body may differ between envs (normalized
 bodies from different envs have SubtypeTrans but not structural equality).
 
-## New this session (ochre-lean-20260401-124404)
+## New this session (ochre-lean-20260401-142109)
+
+### iota (self type) constructor added to Expr
+
+Added `| iota : Name → Expr → Expr` to the `Expr` inductive type. This is the
+first step toward self types (docs/research/self-types-for-och.md), which enable
+dependent elimination for Church-encoded data.
+
+**What was done:**
+- Syntax.lean: added `iota` constructor + `subst` case (x shadowed by iota binder)
+- Eval.lean: iota normalizes body under binder in absEval/concEval (like lam);
+  iota is a value in concEvalS (like lam); iota is type in concEvalC/absEvalC
+- Subtyping.lean: added `iota_body` to `Subtype'`, all shape/inversion lemmas
+  (iota_rhs_shape, iota_target_shape, iota_inv for both Subtype' and SubtypeTrans),
+  iota-iota case in subCheckNF (covariant body like lam)
+- Monotonicity.lean: all iota cases PROVED (0 new sorry). Follows lam pattern.
+- Soundness.lean: all iota cases PROVED (0 new sorry). Follows lam pattern.
+  WellTyped extended with iota case (checks body well-typedness under binder).
+  absEval_not_fix extended (iota result is .iota, not .fix).
+- Closure.lean: iota cases added to concEvalC (.type), absEvalC (.atype),
+  absEval_fuel_mono, soundnessC_direct (sorry), soundnessC_abs (proved),
+  absEvalC_equiv (sorry).
+- SoundnessS.lean: all iota cases added (file still stalled, 4 sorry's).
+
+**Design note on iota in evaluators:**
+- absEval: normalizes body under binder → returns `.iota x body'`
+- concEval: normalizes body under binder → returns `.iota x body'` (parallel)
+- concEvalS: returns `e` unchanged (iota is a value)
+- concEvalC: returns `.type` (placeholder — proper handling needs CVal.iotaV)
+- absEvalC: returns `.atype` (placeholder — proper handling needs AVal.aiotaV)
+- App case: iota in function position → stuck application (no unfolding yet)
+
+**What's NOT done yet (for next agents):**
+1. Self-type unfolding in app case of absEval (type-directed evaluation)
+2. Proper iota handling in concEvalC/absEvalC (add iotaV/aiotaV constructors)
+3. Self-typed standard library (Nat with iota, dependent elimination)
+4. Subtyping: `a ⊑ iota x T` checking (self-intro: check `a ⊑ T[x := a]`)
+5. inferType: iota unfolding for stuck applications
+
+## Previous session (ochre-lean-20260401-124404)
 
 ### soundnessC_direct: 5 of 6 cases proved
 

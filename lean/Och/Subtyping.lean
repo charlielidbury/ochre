@@ -39,6 +39,11 @@ inductive Subtype' : Expr → Expr → Prop where
   /-- Fix congruence: if e₂ ⊑ e₁ then fix e₂ ⊑ fix e₁. -/
   | fix_cong {e₁ e₂ : Expr} :
       Subtype' e₂ e₁ → Subtype' (.fix e₂) (.fix e₁)
+  /-- Iota body covariance (same binder name).
+      If body₂ ⊑ body₁ then iota x body₂ ⊑ iota x body₁.
+      Mirrors lam_body for self types. -/
+  | iota_body {x : Name} {body₁ body₂ : Expr} :
+      Subtype' body₂ body₁ → Subtype' (.iota x body₂) (.iota x body₁)
 
 /-- Transitive closure of Subtype'. Used in soundness where transitivity
     is needed (the asc case chains IH result with the well-typedness hyp). -/
@@ -188,6 +193,58 @@ theorem SubtypeTrans.fix_target_shape {inner : Expr} {e : Expr}
     ∃ inner', e = .fix inner' ∧ SubtypeTrans inner' inner :=
   h.fix_target_shape_aux rfl
 
+/-- Lift iota_body through SubtypeTrans. -/
+theorem SubtypeTrans.iota_body {x : Name} {body₁ body₂ : Expr}
+    (h : SubtypeTrans body₂ body₁) :
+    SubtypeTrans (.iota x body₂) (.iota x body₁) := by
+  induction h with
+  | step h => exact .step (.iota_body h)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Iota inversion: if `Subtype' (iota x b₂) (iota x b₁)` then `Subtype' b₂ b₁`. -/
+theorem Subtype'.iota_inv {x : Name} {body₁ body₂ : Expr}
+    (h : Subtype' (.iota x body₂) (.iota x body₁)) : Subtype' body₂ body₁ := by
+  cases h with
+  | refl => exact Subtype'.refl body₁
+  | iota_body h => exact h
+
+/-- If `Subtype' e (iota x body)` then `e` must be an iota with same name. -/
+theorem Subtype'.iota_rhs_shape {x : Name} {body : Expr} {e : Expr}
+    (h : Subtype' e (.iota x body)) :
+    ∃ body', e = .iota x body' ∧ Subtype' body' body := by
+  cases h with
+  | refl => exact ⟨body, rfl, Subtype'.refl body⟩
+  | iota_body h => exact ⟨_, rfl, h⟩
+
+/-- Helper: generalized iota target shape with variable target. -/
+private theorem SubtypeTrans.iota_target_shape_aux {e b : Expr}
+    (h : SubtypeTrans e b) :
+    ∀ {x : Name} {body : Expr}, b = .iota x body →
+    ∃ body', e = .iota x body' ∧ SubtypeTrans body' body := by
+  induction h with
+  | step h' =>
+    intro x body hb; subst hb
+    obtain ⟨body', eq, hsub⟩ := Subtype'.iota_rhs_shape h'
+    exact ⟨body', eq, .step hsub⟩
+  | trans _ _ ih₁ ih₂ =>
+    intro x body hb
+    obtain ⟨b_mid, eq_mid, h_mid_b⟩ := ih₂ hb
+    obtain ⟨b', eq', h_b'_mid⟩ := ih₁ eq_mid
+    exact ⟨b', eq', .trans h_b'_mid h_mid_b⟩
+
+/-- If `SubtypeTrans e (iota x body)` then e is an iota with same name. -/
+theorem SubtypeTrans.iota_target_shape {x : Name} {body : Expr} {e : Expr}
+    (h : SubtypeTrans e (.iota x body)) :
+    ∃ body', e = .iota x body' ∧ SubtypeTrans body' body :=
+  h.iota_target_shape_aux rfl
+
+/-- Iota inversion for SubtypeTrans. -/
+theorem SubtypeTrans.iota_inv {x : Name} {body₁ body₂ : Expr}
+    (h : SubtypeTrans (.iota x body₂) (.iota x body₁)) :
+    SubtypeTrans body₂ body₁ := by
+  obtain ⟨body', eq, hsub⟩ := h.iota_target_shape
+  cases eq; exact hsub
+
 /-- Congruence for app through SubtypeTrans (left component). -/
 private theorem SubtypeTrans.app_cong_left {f₁ f₂ : Expr} (a : Expr)
     (hf : SubtypeTrans f₂ f₁) :
@@ -221,6 +278,9 @@ private def inferType (ctx : List (Name × Expr)) : Expr → Option Expr
   | .app f a =>
     match inferType ctx f with
     | some (.lam x _dom retTy) => some (retTy.subst x a)
+    | some (.iota _x _body) =>
+      -- TODO: Self-type elimination: unfold iota and infer
+      none
     | _ => none
   | _ => none
 
@@ -246,6 +306,10 @@ private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : B
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
         subCheckNF fuel ctx domB domA
         && subCheckNF fuel ((x, domB) :: ctx) bodyA bodyB'
+      | .iota x bodyA, .iota y bodyB =>
+        -- Self-type subtyping: covariant in body (like lam_body)
+        let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
+        subCheckNF fuel ((x, .iota x bodyA) :: ctx) bodyA bodyB'
       | _, _ =>
         match inferType ctx a with
         | some ty => subCheckNF fuel ctx ty b

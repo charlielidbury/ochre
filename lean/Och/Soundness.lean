@@ -49,6 +49,7 @@ def WellTyped (fuel : Nat) (Γ : Env) (e : Expr) : Prop :=
                     -- Including it here as a well-typedness precondition.
                     (∀ body_c, SubtypeTrans (.fix (.lam f dom body_c)) dom')
         | _ => False
+    | .iota x body => WellTyped fuel ((x, .var x) :: Γ) body
     | .app f a =>
         WellTyped fuel Γ f ∧ WellTyped fuel Γ a ∧
         match absEval fuel Γ f, absEval fuel Γ a with
@@ -120,6 +121,12 @@ theorem absEval_not_fix {fuel : Nat} {Γ : Env} {e v : Expr}
     | asc _ ty =>
       simp only [absEval] at h_eval
       exact ih h_no_fix h_eval
+    | iota x body =>
+      simp only [absEval] at h_eval
+      split at h_eval
+      · have h := Option.some.inj h_eval; subst h
+        exact fun _ heq => Expr.noConfusion heq
+      · exact nomatch h_eval
     | fix inner' =>
       simp only [absEval] at h_eval
       cases inner' with
@@ -156,6 +163,10 @@ theorem absEval_not_fix {fuel : Nat} {Γ : Env} {e v : Expr}
             have h := Option.some.inj h_eval; subst h
             exact fun _ heq => Expr.noConfusion heq
           | fix inner' =>
+            simp only at h_eval
+            have h := Option.some.inj h_eval; subst h
+            exact fun _ heq => Expr.noConfusion heq
+          | iota x' body' =>
             simp only at h_eval
             have h := Option.some.inj h_eval; subst h
             exact fun _ heq => Expr.noConfusion heq
@@ -230,6 +241,26 @@ theorem soundness_gen
       have h_vs := ih Γ γ term term σ v (SubtypeTrans.step (Subtype'.refl term))
         h_abs_term h_conc h_env h_wt_term h_no_fix
       exact SubtypeTrans.trans h_vs (SubtypeTrans.step h_sub_wt)
+    | iota x body_a =>
+      -- SubtypeTrans e_c (iota x body_a) → e_c = iota x body_c
+      obtain ⟨body_c, hec_eq, h_body_sub⟩ := h_sub.iota_target_shape
+      subst hec_eq
+      simp only [absEval, concEval] at h_abs h_conc
+      cases hba : absEval n ((x, .var x) :: Γ) body_a with
+      | none => simp [hba] at h_abs
+      | some body_a' =>
+        simp [hba] at h_abs
+        cases hbc : concEval n ((x, .var x) :: γ) body_c with
+        | none => simp [hbc] at h_conc
+        | some body_c' =>
+          simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+          have h_env' := envConsistent_extend h_env x (.var x)
+          have h_wt' : WellTyped n ((x, .var x) :: Γ) body_a := h_wt
+          have h_nf' : EnvNoFix ((x, Expr.var x) :: Γ) := by
+            apply envNoFix_extend h_no_fix
+            intro inner h
+            exact absurd h (by simp [Expr.var, Expr.fix])
+          exact SubtypeTrans.iota_body (ih _ _ body_a body_c _ _ h_body_sub hba hbc h_env' h_wt' h_nf')
     | fix inner_a =>
       -- SubtypeTrans e_c (.fix inner_a) → e_c = .fix inner_c
       obtain ⟨inner_c, hec_eq, h_inner_sub⟩ := h_sub.fix_target_shape
@@ -323,6 +354,12 @@ theorem soundness_gen
               | fix inner' =>
                 -- absEval never produces .fix when the env is fix-free
                 exact absurd rfl (absEval_not_fix h_no_fix hfa inner')
+              | iota x' body' =>
+                -- Stuck: v_f must also be an iota
+                obtain ⟨body_c', hvf_eq, _⟩ := ih_f.iota_target_shape
+                subst hvf_eq
+                simp only at h_abs h_conc; cases h_abs; cases h_conc
+                exact SubtypeTrans.app_cong ih_f ih_a
 
 /-- **Soundness theorem.**
 

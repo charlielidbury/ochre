@@ -72,6 +72,19 @@ theorem absEval_mono
       | asc term ty =>
         simp only [absEval] at h₁ h₂
         exact ih _ _ ty ty _ _ (Subtype'.refl ty) h_env h₁ h₂
+      | iota x body =>
+        -- Structurally identical to the lam case
+        simp only [absEval] at h₁ h₂
+        cases hb₁ : absEval n ((x, .var x) :: Γ₁) body with
+        | none => simp [hb₁] at h₁
+        | some body₁ =>
+          simp [hb₁] at h₁
+          cases hb₂ : absEval n ((x, .var x) :: Γ₂) body with
+          | none => simp [hb₂] at h₂
+          | some body₂ =>
+            simp [hb₂] at h₂; rw [← h₁, ← h₂]
+            exact Subtype'.iota_body (ih _ _ body body _ _
+              (Subtype'.refl body) (envSub_extend h_env x (.var x)) hb₁ hb₂)
       | fix inner =>
         simp only [absEval] at h₁ h₂
         cases inner with
@@ -127,8 +140,12 @@ theorem absEval_mono
                   | _ => simp only at h₁ h₂; cases h₁; cases h₂
                          exact Subtype'.app_cong hf_sub ha_sub
                 | fix _ =>
-                  -- absEval never produces .fix, but need case for exhaustiveness
-                  -- .fix falls through to stuck in absEval's app case
+                  cases f₂ with
+                  | lam _ _ _ => cases hf_sub
+                  | type => cases hf_sub
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact Subtype'.app_cong hf_sub ha_sub
+                | iota _ _ =>
                   cases f₂ with
                   | lam _ _ _ => cases hf_sub
                   | type => cases hf_sub
@@ -201,6 +218,12 @@ theorem absEval_mono
                 | type => cases hf_sub
                 | _ => simp only at h₁ h₂; cases h₁; cases h₂
                        exact Subtype'.app_cong hf_sub ha_sub
+              | iota _ _ =>
+                cases f₂ with
+                | lam _ _ _ => cases hf_sub
+                | type => cases hf_sub
+                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                       exact Subtype'.app_cong hf_sub ha_sub
               | type =>
                 -- f₁=.type: evaluator returns .type (type-app-returns-type)
                 simp only at h₁; cases h₁; exact Subtype'.top τ₂
@@ -220,6 +243,20 @@ theorem absEval_mono
       | _ =>
         -- inner₁ not a lam: absEval returns none, contradiction
         simp at h₁
+    | .iota_body hbody =>
+      -- Structurally identical to the lam_body case
+      rename_i x body₁ body₂
+      simp only [absEval] at h₁ h₂
+      cases hb₁ : absEval n ((x, .var x) :: Γ₁) body₁ with
+      | none => simp [hb₁] at h₁
+      | some body₁' =>
+        simp [hb₁] at h₁
+        cases hb₂ : absEval n ((x, .var x) :: Γ₂) body₂ with
+        | none => simp [hb₂] at h₂
+        | some body₂' =>
+          simp [hb₂] at h₂; rw [← h₁, ← h₂]
+          exact Subtype'.iota_body (ih _ _ body₁ body₂ _ _ hbody
+            (envSub_extend h_env x (.var x)) hb₁ hb₂)
 
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)
@@ -308,6 +345,20 @@ theorem absEval_mono_trans
       have := h_sub.asc_target; subst this
       simp only [absEval] at h₁ h₂
       exact ih _ _ ty ty _ _ (SubtypeTrans.step (Subtype'.refl ty)) h_env h₁ h₂
+    | iota x body₁ =>
+      obtain ⟨body₂, hec_eq, h_body_sub⟩ := h_sub.iota_target_shape
+      subst hec_eq
+      simp only [absEval] at h₁ h₂
+      cases hb₁ : absEval n ((x, .var x) :: Γ₁) body₁ with
+      | none => simp [hb₁] at h₁
+      | some body₁' =>
+        simp [hb₁] at h₁
+        cases hb₂ : absEval n ((x, .var x) :: Γ₂) body₂ with
+        | none => simp [hb₂] at h₂
+        | some body₂' =>
+          simp [hb₂] at h₂; rw [← h₁, ← h₂]
+          exact SubtypeTrans.iota_body (ih _ _ body₁ body₂ _ _ h_body_sub
+            (envSubTrans_extend h_env x (.var x)) hb₁ hb₂)
     | fix inner₁ =>
       obtain ⟨inner₂, hec_eq, h_inner_sub⟩ := h_sub.fix_target_shape
       subst hec_eq
@@ -367,6 +418,11 @@ theorem absEval_mono_trans
                 subst ‹τ_f₂ = .fix inner₂'›
                 simp only at h₁ h₂; cases h₁; cases h₂
                 exact SubtypeTrans.app_cong ih_f ih_a
+              | iota x' body' =>
+                obtain ⟨body₂', _, _⟩ := ih_f.iota_target_shape
+                subst ‹τ_f₂ = .iota x' body₂'›
+                simp only at h₁ h₂; cases h₁; cases h₂
+                exact SubtypeTrans.app_cong ih_f ih_a
 
 /-- Standard monotonicity corollary with SubtypeTrans envs. -/
 theorem monotonicity_trans
@@ -416,6 +472,14 @@ theorem absEval_succeeds_envsub
     | asc term ty =>
       simp only [absEval] at h₁ ⊢
       exact ih Γ₁ Γ₂ ty τ₁ h_env h₁
+    | iota x body =>
+      simp only [absEval] at h₁ ⊢
+      cases hb₁ : absEval n ((x, .var x) :: Γ₁) body with
+      | none => simp [hb₁] at h₁
+      | some body₁' =>
+        have ⟨body₂', hb₂⟩ := ih ((x, .var x) :: Γ₁) ((x, .var x) :: Γ₂) body body₁'
+          (envSubTrans_extend h_env x (.var x)) hb₁
+        rw [hb₂]; exact ⟨_, rfl⟩
     | fix inner =>
       simp only [absEval] at h₁ ⊢
       cases inner with
@@ -457,4 +521,6 @@ theorem absEval_succeeds_envsub
           | asc _ _ =>
             simp only; exact ⟨_, rfl⟩
           | fix _ =>
+            simp only; exact ⟨_, rfl⟩
+          | iota _ _ =>
             simp only; exact ⟨_, rfl⟩

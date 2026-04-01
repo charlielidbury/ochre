@@ -110,6 +110,7 @@ def concEvalC (fuel : Nat) (γ : CEnv) (e : Expr) : Option CVal :=
     | .lam x dom body => some (.clo x dom body γ)  -- Closure! Captures env.
     | .type         => some .type
     | .asc term _   => concEvalC fuel γ term  -- Runtime: take the lhs
+    | .iota _ _ => some .type  -- iota is a type-level construct; return type at runtime
     | .fix inner    =>
       match inner with
       | .lam f _dom body =>
@@ -181,6 +182,7 @@ def absEvalC (fuel : Nat) (Γ : AEnv) (e : Expr) : Option AVal :=
     | .lam x dom body => some (.aclo x dom body Γ)  -- Closure! Captures env.
     | .type         => some .atype
     | .asc _term ty => absEvalC fuel Γ ty  -- Compile-time: take the rhs
+    | .iota _ _ => some .atype  -- iota is a type-level construct; return atype
     | .fix inner    =>
       match inner with
       | .lam _f dom _body =>
@@ -541,11 +543,19 @@ theorem absEval_fuel_mono : ∀ (k j : Nat) (Γ : Env) (e v : Expr),
     | asc t ty =>
       simp only [absEval] at h ⊢
       exact ih j Γ ty v h
+    | iota x body =>
+      simp only [absEval] at h ⊢
+      cases hb : absEval k ((x, .var x) :: Γ) body with
+      | none => simp [hb] at h
+      | some b' =>
+        simp [hb] at h; cases h
+        have := ih j ((x, .var x) :: Γ) body b' hb
+        simp [this]
     | fix inner =>
       simp only [absEval] at h ⊢
       cases inner with
       | lam f dom body => exact ih j Γ dom v h
-      | var _ | app _ _ | asc _ _ | type | fix _ => simp [absEval] at h
+      | var _ | app _ _ | asc _ _ | type | fix _ | iota _ _ => simp [absEval] at h
     | app f a =>
       simp only [absEval] at h ⊢
       cases hf : absEval k Γ f with
@@ -564,7 +574,7 @@ theorem absEval_fuel_mono : ∀ (k j : Nat) (Γ : Env) (e v : Expr),
             exact ih j ((x, va) :: Γ) body v h
           | type =>
             simp only at h ⊢; exact h
-          | var _ | app _ _ | asc _ _ | fix _ =>
+          | var _ | app _ _ | asc _ _ | fix _ | iota _ _ =>
             simp only at h ⊢; exact h
 
 /-- **Direct soundness of concEvalC vs absEval.**
@@ -614,6 +624,12 @@ theorem soundnessC_direct
         h_wt_term h_no_fix (Nat.le_of_succ_le h_fuel)
       -- Chain: v_e ⊑ σ ⊑ τ
       exact ⟨v_e, h_rv, SubtypeTrans.trans h_sub_v (SubtypeTrans.step h_sub_wt)⟩
+    | iota _ _ =>
+      -- iota is a type-level construct; concEvalC returns .type,
+      -- absEval normalizes body under binder. In well-typed programs, iota
+      -- only appears in type positions (not directly evaluated at runtime).
+      -- The concEvalC treatment of iota as .type is a placeholder.
+      sorry
     | fix inner =>
       simp only [concEvalC] at h_conc
       simp only [absEval] at h_abs
@@ -869,6 +885,10 @@ theorem soundnessC_abs
       simp only [concEvalC] at h_conc; cases h_conc
       simp only [absEvalC] at h_abs; cases h_abs
       exact VR_abs.clo h_env.1 h_env.2
+    | iota _ _ =>
+      simp only [concEvalC] at h_conc; cases h_conc
+      simp only [absEvalC] at h_abs; cases h_abs
+      exact VR_abs.type_type
     | asc term ty =>
       -- concEvalC evaluates term, absEvalC evaluates ty — they diverge here.
       -- Needs WellTypedC to relate term's value to ty's value.
@@ -1059,6 +1079,11 @@ theorem absEvalC_equiv
       simp only [absEvalC] at h_abs_c
       simp only [absEval] at h_abs
       exact ih Γ Γ' ty τ a h_abs_c h_readback_env h_abs (Nat.le_of_succ_le h_fuel_le)
+    | iota _ _ =>
+      -- absEvalC returns atype, absEval normalizes iota body.
+      -- These are fundamentally different; needs iota-aware AVal or
+      -- proper iota handling in absEvalC. Sorry for now.
+      sorry
     | fix inner =>
       simp only [absEvalC] at h_abs_c
       simp only [absEval] at h_abs

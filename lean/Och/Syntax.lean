@@ -30,6 +30,7 @@ inductive Expr where
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
   | fix    : Expr → Expr
+  | iota   : Name → (body : Expr) → Expr
 deriving Repr, BEq, Inhabited, DecidableEq
 
 namespace Expr
@@ -49,5 +50,8 @@ def subst (e : Expr) (x : Name) (s : Expr) : Expr :=
   | .asc term ty  => .asc (term.subst x s) (ty.subst x s)
   | .type         => .type
   | .fix e        => .fix (e.subst x s)
+  | .iota y body  =>
+    if y == x then .iota y body  -- x is shadowed
+    else .iota y (body.subst x s)
 
 end Expr

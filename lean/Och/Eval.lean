@@ -57,6 +57,11 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
         -- When body later uses f (via the app case), the fix is re-evaluated.
         concEval fuel ((f, .fix inner) :: γ) body
       | _ => none
+    | .iota x body =>
+      -- iota is a type-level construct; normalize body under binder like lam
+      match concEval fuel ((x, .var x) :: γ) body with
+      | some body' => some (.iota x body')
+      | none => none
     | .app f a      =>
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
@@ -102,6 +107,11 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
         -- Well-typedness (checked separately) ensures the body satisfies this type.
         absEval fuel Γ dom
       | _ => none
+    | .iota x body =>
+      -- Self type: normalize body under the binder (like lam)
+      match absEval fuel ((x, .var x) :: Γ) body with
+      | some body' => some (.iota x body')
+      | none => none
     | .app f a      =>
       match absEval fuel Γ f, absEval fuel Γ a with
       | some (.lam x _dom body), some aVal =>
@@ -156,6 +166,7 @@ def concEvalS (fuel : Nat) (e : Expr) : Option Expr :=
         -- Unroll: substitute self-reference into body, then evaluate
         concEvalS fuel (body.subst f (.fix inner))
       | _ => none
+    | .iota _ _ => some e  -- iota is a type-level value, like lambda
     | .app f a =>
       match concEvalS fuel f, concEvalS fuel a with
       | some (.lam x _dom body), some aVal =>
