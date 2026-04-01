@@ -59,11 +59,13 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
 **1** in Closure.lean: `soundnessC` (original readback-based, kept for reference)
-**4** in Closure.lean: `fundamentalVR` (VR logical relation approach):
-- 1 in lam case (body normalization mismatch — see analysis below)
-- 1 in app case (env mismatch + body normalization mismatch)
-- 1 in fix case (not yet attempted, should parallel Soundness.lean)
-- (var, type, asc cases are PROVED)
+**3** in Closure.lean: `fundamentalVR` (VR approach, BLOCKED — see analysis)
+**3** in Closure.lean: `soundnessC_abs` (absEvalC approach, RECOMMENDED):
+- asc case: needs WellTypedC definition
+- fix case: needs fix typing axiom integration
+- app-fixV degenerate: fixV after fix unroll (likely eliminable)
+- (var, type, lam, app-clo, app-type cases are PROVED)
+**1** in Closure.lean: `absEvalC_equiv` (readback equivalence, separate lemma)
 **7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
 ## New this session (ochre-lean-20260401-104731)
@@ -125,6 +127,26 @@ impossible monolithic proof.
 With AVal-based VR, this may be more tractable.
 
 See detailed analysis in Closure.lean comments.
+
+### soundnessC_abs — partial proof (4 of 6 cases proved)
+
+Proved var, type, lam, app-clo, and app-type cases of soundnessC_abs
+(concEvalC vs absEvalC). The app-clo case is the KEY win: both evaluators
+evaluate the SAME body in CAPTURED envs — the IH applies directly.
+
+Remaining sorry's need:
+1. **WellTypedC**: well-typedness for absEvalC (needed for asc case).
+   Should parallel WellTyped from Soundness.lean but use absEvalC/AVal.
+2. **Fix typing axiom**: for the fix case. Same as Soundness.lean's approach.
+3. **absEvalC_equiv**: readbackA(absEvalC) = absEval. Both normalize in the
+   same definition-site env, so this should be a clean induction.
+
+### VR_abs refactored to be fuel-independent
+
+Removed fuel parameter from VR_abs — the structural correspondence between
+CVal and AVal doesn't depend on fuel. This eliminates the off-by-one issue
+that plagued the fuel-indexed version. VR_abs.clo inlines ER_abs for
+Lean's strict positivity checker.
 
 ## New this session (ochre-lean-20260401-101639)
 
