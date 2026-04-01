@@ -58,20 +58,31 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## Current sorry count
 
-**1** in Monotonicity.lean: `absEval_succeeds_envsub` (app-lam case only)
+**2** in Monotonicity.lean:
+  - `absEval_freeVars_covered` (app-lam case — **THEOREM IS FALSE**, see below)
+  - `absEval_succeeds_envsub` (app-lam case only)
 **1** in Closure.lean: `soundnessC` (original, kept for reference)
 **1** in Closure.lean: `soundnessC_direct` (app + iota cases — var/type/asc/fix/lam PROVED)
 **2** in Closure.lean: `soundnessC_abs` (asc/fix cases)
 **1** in Closure.lean: `absEvalC_equiv` (app + iota cases)
 **4** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
-### Key new theorem: `soundnessC_direct` (Closure.lean)
+### Key theorem: `absEval_freeVars_covered` — **FALSE for app-lam case**
 
-Direct proof of concEvalC soundness WITHOUT going through absEvalC. Proves 5 of 7
-cases (var, type, asc, fix, lam). The asc/fix cases that were stuck in the factored
-approach (soundnessC_abs) are now PROVED using WellTyped chains. The lam case uses
-`absEval_succeeds_envsub` + monotonicity. The iota case is sorry'd because
-concEvalC returns .type for iota but absEval normalizes the body (design mismatch).
+⚠ **Counterexample found** (session ochre-lean-20260401-160031): The theorem claims
+that absEval output freeVars are covered by the input env. This is FALSE because
+absEval does NOT evaluate domain annotations in lambdas.
+
+Counterexample: `Γ = [], e = (λx:Type. λy:x. y) Type → τ = λy:(var x). y`.
+Result has "x" free but `[].lookup "x" = none`. The domain annotation `(var x)`
+survives because absEval keeps domains unchanged.
+
+**Impact:** The EnvClosed/freeVars approach to fixing `absEval_succeeds_envsub`
+is blocked. The previous plan (define freeVars, prove outputs have covered freeVars,
+use as precondition) cannot work because the covering property itself is false.
+
+**Cases proved (correct):** var, type, asc, fix, lam, iota — all 6 non-app cases.
+**False case:** app-lam only.
 
 ### Key theorem: `absEval_succeeds_envsub` (Monotonicity.lean) — **FALSE AS STATED**
 
@@ -84,19 +95,57 @@ fails in Γ₂ (z not in scope during beta-reduction).
 
 **Root cause:** EnvSubTrans has no well-formedness requirement. Env values can
 contain free variables not bound in the env. Such envs never arise from
-well-formed evaluation (absEval normalizes lambda bodies, failing on unbound
-vars) but EnvSubTrans doesn't capture this.
+well-formed evaluation but EnvSubTrans doesn't capture this.
 
-**Fix needed:** Add a well-formedness precondition on Γ₂. Options:
-1. Define `freeVars : Expr → List Name` and require env values to have their
-   free vars covered by the env (`EnvClosed`)
-2. Restrict to envs produced by absEval (specific to each use site)
-3. Require `∀ x τ, Γ₂.lookup x = some τ → ∃ τ', absEval fuel Γ₂ τ = some τ'`
+**Fix approach — EnvClosed is NOT sufficient:**
+`absEval_freeVars_covered` is FALSE for the app-lam case (domain annotations
+leak stale variable references). The EnvClosed approach is dead.
 
-The use site (soundnessC_direct lam case) uses readback envs, which ARE
-well-formed by construction. So the fix is tractable.
+**Viable alternatives:**
+1. Build absEvalC (closure-based abstract evaluator, SUGGESTIONS.md item 2) —
+   avoids the body normalization mismatch entirely
+2. Track "evaluable vars" (vars in positions absEval will look up) separately
+   from domain annotation vars
+3. Restrict to envs produced by absEval at each use site
 
-## New this session (ochre-lean-20260401-153454)
+## New this session (ochre-lean-20260401-160031)
+
+### Counterexample: absEval_freeVars_covered is false for app-lam
+
+Discovered that `absEval_freeVars_covered` is FALSE for the app-lam case.
+Domain annotations in lambdas are not evaluated by absEval, so they can contain
+stale variable references from the evaluation environment.
+
+Counterexample (Lean-verified in CounterexampleTest.lean):
+  `Γ = [], e = (λx:Type. λy:x. y) Type → τ = λy:(var x). y`
+  "x" is free in τ but not in Γ.
+
+### Completed 6 of 7 cases of absEval_freeVars_covered
+
+Proved all non-app cases: var, type, asc, fix, lam, iota. Added helper lemmas:
+- `lookup_extend_of_lookup`: env extension preserves non-none lookups
+- `lookup_of_lookup_extend`: non-binder vars accessible through extension
+- `body_freeVars_covered_by_extend`: body freeVars covered by extended env
+- `iota_body_freeVars_covered_by_extend`: iota body variant
+
+### Impact: EnvClosed approach is dead
+
+The previous session's plan was: define freeVars/EnvClosed → prove absEval
+outputs have covered freeVars → add EnvClosed to absEval_succeeds_envsub.
+This chain is broken at step 2 (the covering property is false).
+
+### What the next agent should do
+
+The most viable path forward is **building absEvalC** (SUGGESTIONS.md item 2):
+a closure-based abstract evaluator that is structurally parallel to concEvalC.
+This avoids the body normalization mismatch entirely and sidesteps both the
+freeVars and EnvClosed issues. The approach is well-documented in SUGGESTIONS.md.
+
+Alternatively, a "evaluable vars" predicate could work — track only vars in
+positions where absEval does a lookup (not domain annotations). But this is
+more complex and less well-understood.
+
+## Previous session (ochre-lean-20260401-153454)
 
 ### Counterexample: absEval_succeeds_envsub is false
 

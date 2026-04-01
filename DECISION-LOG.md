@@ -5,6 +5,34 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-01 ochre-lean-20260401-160031: EnvClosed/freeVars approach is dead — absEval_freeVars_covered is false
+
+**Finding:** `absEval_freeVars_covered` is FALSE for the app-lam case. The theorem
+claims that absEval output freeVars are covered by the input env. This fails because
+absEval does NOT evaluate domain annotations in lambdas — they survive unchanged and
+can reference variables from the evaluation env that aren't in the original env.
+
+**Counterexample (Lean-verified):**
+  Γ = [], e = (λx:Type. λy:x. y) Type → τ = λy:(var x). y
+  "x" is free in τ but [].lookup "x" = none.
+
+The domain annotation `(var x)` in `λy:(var x). y` refers to the outer lambda's binder
+`x`, which is no longer in scope after beta-reduction.
+
+**Impact:** The plan from the previous session (define freeVars/EnvClosed → prove
+absEval outputs have covered freeVars → add EnvClosed to absEval_succeeds_envsub)
+is broken. The middle step is unprovable.
+
+**What was still accomplished:** Proved 6 of 7 cases of absEval_freeVars_covered
+(var, type, asc, fix, lam, iota). The proof infrastructure (helper lemmas for env
+extension, filter, etc.) is solid and may be useful for alternative approaches.
+
+**Recommendation:** Build absEvalC (closure-based abstract evaluator, SUGGESTIONS.md
+item 2). This avoids both the body normalization mismatch and the stale domain
+annotation problem because closures capture the definition-site env.
+
+---
+
 ## 2026-04-01 ochre-lean-20260401-153454: absEval_succeeds_envsub is false — needs well-formedness
 
 **Finding:** `absEval_succeeds_envsub` in Monotonicity.lean (the only sorry in that

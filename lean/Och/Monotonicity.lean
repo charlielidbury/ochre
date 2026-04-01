@@ -313,15 +313,61 @@ theorem envClosed_extend_var {Γ : Env} (h : EnvClosed Γ) (x : Name) :
   subst hy
   simp [Env.lookup]
 
-/-- absEval outputs have their free vars covered by the env.
-    If absEval fuel Γ e succeeds with result τ, and Γ is closed, and e's free vars
-    are covered by Γ, then τ's free vars are also covered by Γ.
+/-- If Γ.lookup y ≠ none then extending the env preserves this. -/
+private theorem lookup_extend_of_lookup {Γ : Env} {x : Name} {v : Expr} {y : Name}
+    (h : Γ.lookup y ≠ none) : Env.lookup ((x, v) :: Γ) y ≠ none := by
+  simp only [Env.lookup]
+  split
+  · simp
+  · exact h
 
-    **Status:** Stated and structure proven (var, type, asc cases complete).
-    The lam, iota, fix, and app cases need mechanical list/filter lemmas for
-    freeVars. Left as sorry — the proof structure is clear from the var/type/asc
-    cases. A future agent should complete this by adding helper lemmas for
-    freeVars membership under filter/append. -/
+/-- If y ≠ x and ((x, v) :: Γ).lookup y ≠ none, then Γ.lookup y ≠ none. -/
+private theorem lookup_of_lookup_extend {Γ : Env} {x y : Name} {v : Expr}
+    (h : Env.lookup ((x, v) :: Γ) y ≠ none) (hne : x ≠ y) : Γ.lookup y ≠ none := by
+  simp only [Env.lookup] at h
+  rw [show (x == y) = false from by simp [beq_iff_eq, hne]] at h
+  exact h
+
+/-- freeVars of body are covered by ((x, v) :: Γ) when
+    freeVars of (lam x dom body) are covered by Γ. Works for any v. -/
+private theorem body_freeVars_covered_by_extend {Γ : Env} {x : Name} {dom body v : Expr}
+    (h_fv : ∀ y, y ∈ (Expr.lam x dom body).freeVars → Γ.lookup y ≠ none) :
+    ∀ y, y ∈ body.freeVars → Env.lookup ((x, v) :: Γ) y ≠ none := by
+  intro y hy
+  by_cases hxy : x = y
+  · subst hxy; simp [Env.lookup]
+  · exact lookup_extend_of_lookup (h_fv y (by
+      simp [Expr.freeVars, List.mem_append, List.mem_filter]
+      exact Or.inr ⟨hy, Ne.symm hxy⟩))
+
+/-- freeVars of body are covered by ((x, v) :: Γ) when
+    body.freeVars.filter(·!=x) are covered by Γ (for iota case). -/
+private theorem iota_body_freeVars_covered_by_extend {Γ : Env} {x : Name} {body v : Expr}
+    (h_fv : ∀ y, y ∈ (Expr.iota x body).freeVars → Γ.lookup y ≠ none) :
+    ∀ y, y ∈ body.freeVars → Env.lookup ((x, v) :: Γ) y ≠ none := by
+  intro y hy
+  by_cases hxy : x = y
+  · subst hxy; simp [Env.lookup]
+  · exact lookup_extend_of_lookup (h_fv y (by
+      simp [Expr.freeVars, List.mem_filter]
+      exact ⟨hy, Ne.symm hxy⟩))
+
+/-- ⚠ FALSE for app-lam case — see CounterexampleTest.lean.
+
+    The theorem claims: if absEval succeeds and the env is closed, the output's
+    freeVars are covered by the env. This is FALSE because absEval does NOT evaluate
+    domain annotations in lambdas. After beta-reduction, the body may contain nested
+    lambdas whose domain annotations reference the (now-gone) binder variable.
+
+    Counterexample: Γ = [], e = (λx:Type. λy:x. y) Type → τ = λy:(var x). y.
+    "x" is free in τ but not in Γ.
+
+    Cases proved: var, type, asc, fix, lam, iota (all correct).
+    False case: app-lam (domain annotations leak stale variable references).
+
+    This blocks the freeVars/EnvClosed approach to fixing absEval_succeeds_envsub.
+    Alternative: build absEvalC (closure-based abstract evaluator) or track
+    "evaluable vars" separately from domain annotation vars. -/
 theorem absEval_freeVars_covered
     (fuel : Nat) (Γ : Env) (e τ : Expr)
     (h_closed : EnvClosed Γ)
@@ -344,11 +390,98 @@ theorem absEval_freeVars_covered
     | fix inner =>
       simp only [absEval] at h_eval
       cases inner with
-      | lam f dom body => sorry -- IH on dom; needs freeVars(.fix (.lam ..)) unfolding
+      | lam f dom body =>
+        exact ih Γ dom τ h_closed h_eval (fun y hy =>
+          h_fv y (by simp [Expr.freeVars, List.mem_append]; exact Or.inl hy))
       | _ => simp [absEval] at h_eval
-    | lam x dom body => sorry  -- IH on body in extended env + filter reasoning
-    | iota x body => sorry     -- Same structure as lam case
-    | app f a => sorry          -- Case split on f's result; IH for lam body case
+    | lam x dom body =>
+      simp only [absEval] at h_eval
+      cases hb : absEval n ((x, .var x) :: Γ) body with
+      | none => simp [hb] at h_eval
+      | some body' =>
+        rw [hb] at h_eval; simp at h_eval; subst h_eval
+        intro y hy
+        -- (.lam x dom body').freeVars = dom.freeVars ++ body'.freeVars.filter(·!=x)
+        rcases List.mem_append.mp hy with h_dom | h_body
+        · -- y ∈ dom.freeVars
+          exact h_fv y (List.mem_append_left _ h_dom)
+        · -- y ∈ body'.freeVars.filter(·!=x)
+          have ⟨h_mem, h_ne⟩ := List.mem_filter.mp h_body
+          -- IH: body'.freeVars covered by ((x, .var x) :: Γ)
+          have h_ext := ih ((x, .var x) :: Γ) body body'
+            (envClosed_extend_var h_closed x) hb
+            (body_freeVars_covered_by_extend h_fv) y h_mem
+          -- h_ne : (y != x) = true, so y ≠ x
+          have h_ne' : x ≠ y := by
+            intro heq; subst heq
+            simp [bne_iff_ne] at h_ne
+          exact lookup_of_lookup_extend h_ext h_ne'
+    | iota x body =>
+      simp only [absEval] at h_eval
+      cases hb : absEval n ((x, .var x) :: Γ) body with
+      | none => simp [hb] at h_eval
+      | some body' =>
+        rw [hb] at h_eval; simp at h_eval; subst h_eval
+        intro y hy
+        -- (.iota x body').freeVars = body'.freeVars.filter(·!=x)
+        have ⟨h_mem, h_ne⟩ := List.mem_filter.mp hy
+        have h_ext := ih ((x, .var x) :: Γ) body body'
+          (envClosed_extend_var h_closed x) hb
+          (iota_body_freeVars_covered_by_extend h_fv) y h_mem
+        have h_ne' : x ≠ y := by
+          intro heq; subst heq
+          simp [bne_iff_ne] at h_ne
+        exact lookup_of_lookup_extend h_ext h_ne'
+    | app f a =>
+      simp only [absEval] at h_eval
+      cases hf : absEval n Γ f with
+      | none => simp [hf] at h_eval
+      | some f' =>
+        cases ha : absEval n Γ a with
+        | none => simp [hf, ha] at h_eval
+        | some a' =>
+          have h_fv_f := ih Γ f f' h_closed hf
+            (fun y hy => h_fv y (List.mem_append_left _ hy))
+          have h_fv_a := ih Γ a a' h_closed ha
+            (fun y hy => h_fv y (List.mem_append_right _ hy))
+          rw [hf, ha] at h_eval
+          cases f' with
+          | lam x dom body =>
+            -- result = absEval n ((x, a') :: Γ) body
+            have h_closed_ext : EnvClosed ((x, a') :: Γ) :=
+              envClosed_extend h_closed x a'
+                (fun y hy => lookup_extend_of_lookup (h_fv_a y hy))
+            have h_body_fv : ∀ z, z ∈ body.freeVars →
+                Env.lookup ((x, a') :: Γ) z ≠ none :=
+              body_freeVars_covered_by_extend h_fv_f
+            -- IH gives coverage by ((x, a') :: Γ). Bridge to Γ:
+            have h_ext := ih ((x, a') :: Γ) body τ h_closed_ext h_eval h_body_fv
+            intro y hy
+            have h_covered := h_ext y hy
+            by_cases hxy : x = y
+            · -- y = x. If x ∈ Γ we're done. If not, need x ∉ τ.freeVars.
+              subst hxy
+              -- x might or might not be in Γ. If Γ has x, done.
+              by_cases h_in_Γ : Γ.lookup x = none
+              · -- ⚠ THEOREM IS FALSE for this case.
+                -- Counterexample: Γ = [], e = (λx:Type. λy:x. y) Type
+                -- absEval returns λy:(var x). y, which has "x" free,
+                -- but [].lookup "x" = none.
+                -- Root cause: domain annotations in lambdas are NOT evaluated
+                -- by absEval, so they can contain stale variable references.
+                -- See CounterexampleTest.lean for Lean-verified counterexample.
+                sorry
+              · exact h_in_Γ
+            · exact lookup_of_lookup_extend h_covered hxy
+          | type =>
+            simp at h_eval; subst h_eval
+            intro y hy; simp [Expr.freeVars] at hy
+          | var _ | app _ _ | asc _ _ | fix _ | iota _ _ =>
+            simp at h_eval; subst h_eval
+            intro y hy
+            rcases List.mem_append.mp hy with h1 | h2
+            · exact h_fv_f y h1
+            · exact h_fv_a y h2
 
 theorem envSubTrans_extend {Γ₂ Γ₁ : Env} (h : EnvSubTrans Γ₂ Γ₁) (x : Name) (v : Expr) :
     EnvSubTrans ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
@@ -526,13 +659,17 @@ theorem monotonicity_trans
     absEval are well-formed (normalization under binders would have failed for
     unbound vars), but this isn't captured by the theorem's hypotheses.
 
-    **Fix needed:** Add a well-formedness precondition on Γ₂. Options:
-    1. `EnvClosed Γ₂` — all free vars in env values are bound in the env
-    2. Restrict to envs produced by absEval (specific to each use site)
-    3. Require `∀ x τ, Γ₂.lookup x = some τ → ∃ τ', absEval fuel Γ₂ τ = some τ'`
+    **Fix approaches — EnvClosed is NOT sufficient:**
+    `absEval_freeVars_covered` (which would support EnvClosed) is itself FALSE
+    for the app-lam case — domain annotations in lambdas are not evaluated, so
+    they can contain stale variable references. See CounterexampleTest.lean.
 
-    **Current use site** (soundnessC_direct lam case): Γ₂ comes from readback,
-    which guarantees well-formedness by construction. So the fix is tractable.
+    Viable alternatives:
+    1. Build absEvalC (closure-based abstract evaluator, SUGGESTIONS.md item 2)
+       which avoids the body normalization mismatch entirely
+    2. Track "evaluable vars" (vars in positions absEval will actually look up)
+       separately from domain annotation vars
+    3. Restrict to envs produced by absEval at each use site
 
     **Status:** All cases proved EXCEPT app-lam. The sorry is specifically for:
     when f evaluates to a lambda in Γ₂ but to Type in Γ₁, there's no Γ₁-side
