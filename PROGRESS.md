@@ -9,10 +9,11 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **4 sorry warnings**:
-- Monotonicity.lean: 3 (absEval_mono [2 mu-app sorrys], absEval_mono_trans,
-  absEval_succeeds_envsub)
+`lake build` passes with **3 sorry warnings**:
+- Monotonicity.lean: 2 (absEval_mono_trans, absEval_succeeds_envsub)
 - Soundness.lean: 1 (soundness_gen)
+
+**absEval_mono is FULLY PROVED** (no sorrys).
 
 ### Recent changes (2026-04-01, agent ochre-lean-20260401-200028)
 
@@ -35,10 +36,10 @@ roadmap and strategy.
 4. **Build fix (Monotonicity.lean):** Added `| mu _ _ _ => cases hf_sub` to
    catch-all branches to avoid dependent elimination failures.
 
-5. **Monotonicity proof status:** mu-body case proved. Mu-app sorry'd
-   pending tactic issues with `cases ann_mu` in match-containing hypotheses.
-   The proof logic is sound (no cross-cases) but Lean 4 can't reduce nested
-   matches after `cases`. Needs factoring out as a standalone lemma.
+5. **absEval_mono FULLY PROVED.** The `split at h₁` tactic splits the
+   syntactic annotation match in h₁, creating a hypothesis that
+   `simp only [*] at h₂` uses to reduce h₂'s match. This avoids the
+   dependent elimination issues that blocked `cases ann_mu`.
 
 ### Previous changes (2026-04-01, agent ochre-lean-20260401-192428)
 
@@ -109,24 +110,23 @@ See git log for details.
 **Phase 1 is COMPLETE.** All M1-M4 milestones pass. The definitions are
 expressive enough for abstract appendVec with the mu primitive.
 
-**Phase 3 (proofs) is underway.** Key status:
-- **absEval_mono mu case (body eval):** DONE. Annotation passthrough makes
-  mu_body apply directly.
-- **absEval_mono mu-app case:** Sorry'd (2 sites: .refl + .app_cong). The
-  cross-case problem is ELIMINATED by the syntactic annotation check. Both
-  envs always agree on which path to take. The remaining issue is purely
-  a Lean 4 tactic problem: `cases ann_mu` doesn't reduce `match ann_mu`
-  inside hypotheses h₁/h₂ when using `cases h_ann : ann_mu with | _ =>`.
-  
-  **How to fix:** Factor out the mu-app proof as a standalone lemma that
-  takes `ann`, `body₁`, `body₂`, `a₁`, `a₂`, `Γ₁`, `Γ₂` and the subtype
-  relations as arguments. In the standalone lemma, `cases ann` works because
-  the match expressions aren't nested inside a larger proof state. Then
-  both `.refl` and `.app_cong` can call the lemma.
+**Phase 3 (proofs) status:**
+- **absEval_mono:** FULLY PROVED (no sorrys). This is the core monotonicity
+  theorem. The key techniques:
+  - `split at h₁` + `simp only [*] at h₂` to handle the syntactic ann match
+  - env extension for body-unfold path (IH via envSub_extend_sub)
+  - mu_rhs_shape for stuck-app cases in body-unfold results
 
-- **absEval_mono_trans:** Depends on absEval_mono being fully proved.
-- **absEval_succeeds_envsub:** Independent sorry.
-- **soundness_gen:** Separate from monotonicity; needs its own analysis.
+- **absEval_mono_trans:** Sorry'd. Needs induction on fuel parallel to
+  absEval_mono but with SubtypeTrans throughout. Alternatively, might need
+  absEval_succeeds_envsub to chain the base case with transitivity.
+
+- **absEval_succeeds_envsub:** Sorry'd. Hard because the app case takes
+  different paths in different envs. If f evaluates to lam in Γ₂ (less
+  precise), the recursive call on the lam body needs to succeed, but we
+  only know f evaluated to something in Γ₁.
+
+- **soundness_gen:** Sorry'd (Soundness.lean). Separate from monotonicity.
 
 ### Key files
 
@@ -137,6 +137,6 @@ expressive enough for abstract appendVec with the mu primitive.
 | Subtyping.lean | Done (domain normalization) | 0 |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
 | Soundness.lean | Sorry'd | 1 |
-| Monotonicity.lean | Mostly proved (mu-body, mu-app lam-ann, mu-app body-unfold done; cross-cases sorry'd) | 3 |
+| Monotonicity.lean | absEval_mono PROVED; 2 other theorems sorry'd | 2 |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done | 0 |
