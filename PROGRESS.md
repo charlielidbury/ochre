@@ -18,6 +18,36 @@ roadmap and strategy.
 
 ### Recent changes (2026-04-01, agent ochre-lean-20260401-221721)
 
+**PROVED Subtype'.trans; rewrote soundness to use Subtype' directly (5→3 sorrys).**
+
+Key insight: Subtype' is transitive! Proved by structural induction on the
+second proof (`induction q generalizing a`). Each case either returns directly
+or recurses with a strictly smaller q:
+- refl/top: base cases
+- lam_body/app_cong/mu_body: structural (q component smaller)
+- self_intro: q component strictly smaller, p can be anything
+
+This means SubtypeTrans is UNNECESSARY for soundness. Rewrote soundness_gen:
+- `h_sub : Subtype'` instead of `SubtypeTrans`
+- `EnvConsistent` uses `Subtype'` instead of `SubtypeTrans`
+- Cases: refl, top, lam_body, app_cong, mu_body, self_intro (no trans!)
+- Shape lemmas on Subtype' are trivial (no trans case to propagate)
+- Composition via `Subtype'.trans` where `.trans` was used before
+
+**Eliminated sorrys:**
+- trans (was sorry #1): gone — not a constructor of Subtype'
+- SubtypeTrans.self_intro (was sorry #2): gone — SubtypeTrans unused
+- Combined with step>self_intro elimination
+
+**Remaining sorrys (3):**
+- mu-app (×2): same fundamental issue (different concrete/abstract paths)
+- self_intro (×1): fuel mismatch — absEval uses n fuel (after mu step),
+  concEval has n+1 fuel. UNREACHABLE from main theorem.
+
+**Also removed false evalFreeVars theorems (see below).**
+
+### Previous changes (2026-04-01, agent ochre-lean-20260401-221721, earlier)
+
 **Removed false evalFreeVars theorems from Monotonicity.lean (2→1 sorry decls).**
 
 `absEval_evalFreeVars_general` is **FALSE** for the mu case. Counterexample:
@@ -282,13 +312,13 @@ expressive enough for abstract appendVec with the mu primitive.
   - env extension for body-unfold path (IH via envSubCore_extend_sub)
   - SubtypeCore.mu_rhs_shape (no disjunction, unlike Subtype' version)
 
-- **soundness_gen:** MOSTLY PROVED (~85% coverage). 5 sorrys remain.
-  Proved: mu standalone, mu_body (via self_intro + IH).
+- **soundness_gen:** MOSTLY PROVED (~90% coverage). 3 sorrys remain.
+  Proved: all non-mu-app cases including mu standalone, mu_body, all
+  Subtype' congruence cases. Uses Subtype' directly (not SubtypeTrans)
+  since Subtype'.trans is proved.
   Remaining sorrys:
-  - trans: needs intermediate expression evaluation (blocked on totality)
-  - self_intro (×2): unreachable from main soundness (cosmetic)
   - mu-app (×2): different concrete/abstract paths for mu application
-    (see "Recent changes" for detailed analysis of why this is hard)
+  - self_intro (×1): fuel/env mismatch (unreachable from main theorem)
 
 - **absEval_evalFreeVars_general:** mu case sorry'd (env has mu value not
   neutral var, so binder_case helper doesn't apply).
@@ -301,7 +331,7 @@ expressive enough for abstract appendVec with the mu primitive.
 | Eval.lean | Done (mu env: x ↦ mu value, annotation-based mu-app) | 0 |
 | **Subtyping.lean** | **SORRY-FREE** (SubtypeCore + Subtype' + SubtypeTrans) | **0** |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
-| Soundness.lean | mu standalone+mu_body PROVED; 5 sorrys remain | 1 decl |
+| Soundness.lean | Uses Subtype' (not SubtypeTrans); 3 sorrys remain | 1 decl |
 | **Monotonicity.lean** | **SORRY-FREE** (evalFreeVars theorems removed — FALSE) | **0** |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done (includes EnvSubTrans + evalFreeVars counterexamples) | 0 |

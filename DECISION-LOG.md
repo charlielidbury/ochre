@@ -129,6 +129,41 @@ Subtype'.self_intro and Subtype'.refl — no recursive SubtypeTrans needed.
 
 ---
 
+## 2026-04-01: Prove Subtype'.trans; rewrite soundness without SubtypeTrans
+
+**Decision:** Proved that Subtype' is transitive, then rewrote soundness_gen
+to use Subtype' directly instead of SubtypeTrans.
+
+**Why:** SubtypeTrans existed solely because Subtype' wasn't known to be
+transitive. The trans constructor in SubtypeTrans created an irresolvable
+sorry in soundness_gen: the trans case needed the intermediate expression
+to evaluate in both modes, which isn't generally possible.
+
+**How Subtype'.trans is proved:** Structural induction on the second proof
+(`induction q generalizing a`). Key insight: in every recursive call, the
+second argument (q-position) is strictly smaller, and the first argument
+(p-position) can be anything. So standard structural induction on q works —
+no well-founded recursion needed.
+
+Cases:
+- refl/top: base cases
+- lam_body: destruct p (must be refl or lam_body), recurse on bodies
+- app_cong: destruct p (refl or app_cong), recurse on components
+- mu_body: destruct p (refl, mu_body, or self_intro), recurse
+- self_intro: recurse with same p and smaller h2
+
+**Impact:** Eliminated 2 sorrys from soundness_gen (5→3):
+- trans case: gone (not a constructor of Subtype')
+- SubtypeTrans.self_intro cases: gone (SubtypeTrans no longer used)
+New self_intro sorry exists for Subtype' but has a different root cause
+(fuel mismatch) and is unreachable from the main theorem.
+
+**SubtypeTrans status:** Still defined in Subtyping.lean (used by
+CounterexampleTest.lean for counterexamples), but no longer used by
+Soundness.lean. Could be removed entirely if counterexamples are reworked.
+
+---
+
 ## 2026-04-01: absEval_evalFreeVars_general is FALSE for mu case
 
 **Decision:** Removed `absEval_evalFreeVars_general`, `absEval_evalFreeVars_neutral`,

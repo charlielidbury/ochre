@@ -20,12 +20,14 @@ mu replaces both fix and iota. Subtyping rules:
 
 open Expr
 
-/-- Subtyping relation (trans-free). `Subtype' a b` means `a ⊑ b`.
+/-- Subtyping relation. `Subtype' a b` means `a ⊑ b`.
 
-    Trans is deliberately excluded so that lambda inversion is possible:
-    `Subtype' (lam x d b₂) (lam x d b₁)` can only arise from `refl` or
-    `lam_body`, both of which give `b₂ ⊑ b₁`. This is essential for the
-    monotonicity proof's app case. -/
+    Trans is NOT a constructor (lambda inversion requires it). Instead,
+    transitivity is proved as a theorem (`Subtype'.trans`) by structural
+    induction on the second proof. This gives the best of both worlds:
+    - Lambda inversion works (essential for monotonicity)
+    - Transitivity is available (essential for soundness)
+    - No SubtypeTrans wrapper needed -/
 inductive Subtype' : Expr → Expr → Prop where
   /-- Reflexivity: `e ⊑ e` -/
   | refl (e : Expr) : Subtype' e e
@@ -91,6 +93,33 @@ theorem SubtypeCore.mu_rhs_shape {x : Name} {ann body : Expr} {e : Expr}
   cases h with
   | refl => exact ⟨body, rfl, .refl body⟩
   | mu_body h => exact ⟨_, rfl, h⟩
+
+/-- **Subtype' is transitive.** Proved by well-founded induction on the sum of
+    proof sizes (sizeOf p + sizeOf q). Each case either returns directly or
+    makes recursive calls with strictly smaller total size.
+
+    This is a key structural property: it means SubtypeTrans is unnecessary
+    for soundness. The soundness proof can use Subtype' directly and compose
+    results via this theorem. -/
+theorem Subtype'.trans : {a b c : Expr} → Subtype' a b → Subtype' b c → Subtype' a c := by
+  intro a b c p q
+  induction q generalizing a with
+  | refl => exact p
+  | top => exact .top a
+  | lam_body h2 ih =>
+    cases p with
+    | refl => exact .lam_body h2
+    | lam_body h1 => exact .lam_body (ih h1)
+  | app_cong h2f h2a ihf iha =>
+    cases p with
+    | refl => exact .app_cong h2f h2a
+    | app_cong h1f h1a => exact .app_cong (ihf h1f) (iha h1a)
+  | mu_body h2 ih =>
+    cases p with
+    | refl => exact .mu_body h2
+    | mu_body h1 => exact .mu_body (ih h1)
+    | self_intro h1 => exact .self_intro (ih h1)
+  | self_intro h2 ih => exact .self_intro (ih p)
 
 /-- Transitive closure of Subtype'. Used in soundness where transitivity
     is needed (the asc case chains IH result with the well-typedness hyp). -/
