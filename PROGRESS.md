@@ -40,19 +40,22 @@ for the full design rationale.
 
 ### Build status
 
-`lake build` passes with **5 sorry warnings**:
-- Monotonicity.lean: 4 (absEval_mono, absEval_mono_trans,
-  absEval_succeeds_envsub, absEval_evalFreeVars_general)
+`lake build` passes with **4 sorry warnings**:
+- Monotonicity.lean: 3 (absEval_mono, absEval_mono_trans,
+  absEval_succeeds_envsub)
 - Soundness.lean: 1 (soundness_gen)
 
 All tests pass (native_decide). No other warnings.
 
 ### What needs to happen next
 
-- [ ] **Prove absEval_evalFreeVars_general for mu** — the old proof was fully
-  complete for fix/iota. The mu case needs handling for both body (like iota)
-  and annotation (new). Should be straightforward: body case same as old iota,
-  ann case like an additional sub-expression.
+- [x] **Prove absEval_evalFreeVars_general for mu** — Done. The mu case is
+  structurally identical to the old iota case (body under binder, filter out
+  bound var). The ann normalization doesn't affect evalFreeVars (which excludes
+  mu annotations). The new mu-elim in the app case required handling the inner
+  match on the unfolded result (lam → beta, type → trivial, stuck → app union).
+  Helper lemmas `env_extend_neutral_or` and `env_extend_val` factor out common
+  env extension patterns.
 - [ ] **Prove absEval_mono for mu** — the mu case is non-trivial because
   mu_body requires same annotation but absEval normalizes annotations in
   different envs. Possible fix: add a more general Subtype' constructor
