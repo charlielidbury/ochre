@@ -63,9 +63,9 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## Current sorry count
 
-**2** in Monotonicity.lean:
-  - `absEval_freeVars_covered` (app-lam case — **THEOREM IS FALSE**, see below)
+**1** in Monotonicity.lean:
   - `absEval_succeeds_envsub` (app-lam case only — **FALSE AS STATED**, see below)
+  - ~~`absEval_freeVars_covered`~~ REMOVED (was FALSE, superseded by `absEval_evalFreeVars_general`)
 **1** in Closure.lean: `soundnessC_direct` (app case only — var/type/asc/fix/lam/iota PROVED)
 **2** in Closure.lean: `soundnessC_abs` (asc/fix cases)
 **1** in Closure.lean: `absEvalC_equiv` (app case only — var/type/asc/fix/lam/iota PROVED)
