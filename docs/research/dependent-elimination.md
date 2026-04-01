@@ -743,9 +743,403 @@ The Och-specific question would be: does `iota x. T` interact well with
 Och's subtyping (`iota x. T1 <= iota x. T2` when `T1 <= T2`?) and
 with the abstract evaluator?
 
+### Option E: Extend Partitioning to Achieve Dependent Elimination
+
 A secondary consideration is whether Och's existing mechanism of
 "partition on Church-encoded eliminators" (section 4.2 of the spec)
 could be extended to achieve dependent elimination *without* self types,
 by having the abstract interpreter track which constructor was matched
-and refine the return type accordingly. This would be a novel approach
-but would need careful formalization.
+and refine the return type accordingly. The remainder of this section
+explores this idea in detail.
+
+#### E.1 What Partitioning Currently Means in the Spec
+
+Section 4.2 of the Och spec describes the abstract evaluation of
+Church-encoded elimination as follows:
+
+> **Branching / Church-encoded elimination:** When the interpreter
+> encounters a Church-encoded boolean or natural being used as an
+> eliminator with an abstract (unknown) value, it **partitions** the
+> set of possible values and checks each branch with the appropriately
+> narrowed environment.
+>
+> For example, `isZero n` where `n : Nat`:
+> - True branch: `n` narrowed to `{0}`
+> - False branch: `n` narrowed to `{succ k | k : Nat}`, with `k : Nat` bound
+
+Section 7.5 formalizes the correctness requirement for this partitioning:
+
+> For `isZero`:
+> ```
+> forall n in Nat:
+>   (isZero n = true  ==>  n = 0)  AND
+>   (isZero n = false ==>  exists k in Nat. n = succ k)
+> AND {0} UNION {succ k | k in Nat} = Nat
+> ```
+
+The key insight is that partitioning already does *half* of what
+dependent elimination requires: it narrows the environment so that in
+each branch, the evaluator knows *which constructor* was matched. The
+branch where `n = 0` has `n` refined to `0`; the branch where
+`n = succ k` has `n` refined to `succ k` with a fresh `k : Nat`.
+
+What is *missing* is that the return type of the overall elimination is
+fixed. When the spec says `(isZero n) ResultType base_case step_case`,
+the type `ResultType` is the same in both branches. For dependent
+elimination, we need the return type to *vary* per branch.
+
+#### E.2 What Is Missing for Dependent Elimination
+
+Consider the `appendArrays` example from add-fix.md:
+
+```
+appendArrays = fix (lam(self: ...). lam(n: Nat). lam(m: Nat).
+               lam(a: Array n T). lam(b: Array m T).
+               (isZero n) (Array (add n m) T)
+                 b
+                 (a (Array (add n m) T)
+                   (lam(x: T). lam(rest: Array (pred n) T).
+                     consArray T (add (pred n) m) x
+                       (self T (pred n) m rest b)))))
+```
+
+The verification comments in add-fix.md spell out what each branch needs:
+
+- **Branch n=0:** Need `b : Array (add 0 m) T`. This requires reducing
+  `add 0 m` to `m`. Since `n` is narrowed to `0` in this branch, the
+  evaluator needs to propagate that `add 0 m = m` (by beta-reduction of
+  the Church numeral `0` applied through `add`), giving
+  `Array (add n m) T = Array m T`. Then `b : Array m T` checks.
+
+- **Branch n=succ k:** Need
+  `consArray T (add k m) x (self T k m rest b) : Array (add (succ k) m) T`.
+  This requires reducing `add (succ k) m` to `succ (add k m)`. The
+  evaluator must propagate the refinement `n = succ k` into the return
+  type `Array (add n m) T`, yielding `Array (add (succ k) m) T`, and
+  then reduce `add (succ k) m = succ (add k m)`, giving
+  `Array (succ (add k m)) T = Pair T (Array (add k m) T)`.
+
+The fundamental difficulty is that the "return type" `Array (add n m) T`
+is supplied as an argument to the Church-encoded boolean (the result of
+`isZero n`). In the current abstract evaluator, this argument is
+evaluated *once* in the outer environment where `n : Nat`, yielding an
+abstract type. It is not re-evaluated per-branch with the narrowed
+binding of `n`.
+
+For dependent elimination, the evaluator would need to:
+
+1. Detect that a partitioning-eligible elimination is occurring.
+2. Re-evaluate the return type argument separately in each narrowed
+   environment (where `n = 0` or `n = succ k`).
+3. Check each branch against its specialized return type.
+4. Combine the per-branch results back into a single result type for the
+   overall expression.
+
+#### E.3 How This Could Concretely Work
+
+Here is a sketch of the abstract evaluation rule for partitioning with
+dependent return types. When the evaluator encounters an application
+chain of the form:
+
+```
+scrutinee ReturnType branch_0 branch_succ
+```
+
+where `scrutinee` evaluates to an abstract Church-encoded value
+(e.g., `n : Nat` used as an eliminator), the evaluator would:
+
+**Step 1: Recognize the elimination pattern.** The evaluator detects
+that a variable `n : Nat` appears in function position, applied to a
+sequence of arguments matching the arity of a Church-encoded eliminator.
+For `Nat`, this means four arguments: `X`, `z`, `s` (matching
+`forall X. X -> (X -> X) -> X`).
+
+**Step 2: Partition and specialize.** Instead of evaluating the
+application directly (which produces a stuck term `n X z s`), the
+evaluator forks into two sub-evaluations:
+
+- **Zero branch:** Bind `n := 0` in the environment. Re-evaluate the
+  entire application `0 ReturnType branch_0 branch_succ`. By
+  beta-reduction of the Church numeral `0`, this reduces to `branch_0`,
+  evaluated in the environment where `n = 0`. The evaluator checks that
+  the result has the appropriate type.
+
+- **Successor branch:** Introduce a fresh `k : Nat` and bind
+  `n := succ k` in the environment. Re-evaluate the application
+  `(succ k) ReturnType branch_0 branch_succ`. By beta-reduction of
+  Church `succ k`, this reduces to `branch_succ (k ReturnType branch_0 branch_succ)`.
+  The evaluator checks this in the narrowed environment.
+
+**Step 3: Combine results.** The overall type of the elimination is the
+join (least upper bound) of the per-branch result types. If both
+branches claim to return `Array (add n m) T` (specialized to their
+respective `n`), the join is `Array (add n m) T` at the original
+abstract `n`.
+
+More precisely, the evaluator needs to verify that each branch's result
+type is a subtype of the declared return type (specialized to that
+branch's value of `n`). The overall expression then has the declared
+return type.
+
+**Sketch in pseudo-code:**
+
+```
+absEval env (app (app (app (app n X z) s))
+  where n is abstract, n : Nat
+  ==>
+  let env_zero = env[n := 0]
+  let env_succ = env[n := succ k] with fresh k : Nat
+  let result_zero = absEval env_zero z          -- base branch
+  let result_succ = absEval env_succ (s applied_to_ih)
+  let X_zero = absEval env_zero X               -- return type in zero branch
+  let X_succ = absEval env_succ X               -- return type in succ branch
+  check result_zero <: X_zero
+  check result_succ <: X_succ
+  return absEval env X                          -- return type at abstract n
+```
+
+**Note on the return type argument:** The critical difference from
+non-dependent partitioning is that `X` (the return type argument) is
+re-evaluated in each narrowed environment. If `X` is `Array (add n m) T`,
+then `X_zero = Array (add 0 m) T = Array m T` and
+`X_succ = Array (add (succ k) m) T = Array (succ (add k m)) T`. Each
+branch is checked against its own specialized return type.
+
+#### E.4 The Recognition Problem
+
+For partitioning to fire, the abstract evaluator must *recognize* that
+an application chain constitutes an elimination that should be
+partitioned. This is the most fundamental obstacle.
+
+In the current `absEval` implementation (Eval.lean), there is no special
+logic for partitioning. When `n : Nat` is abstract and appears in
+function position, the evaluator proceeds as follows:
+
+```lean
+| .app f a =>
+  match absEval fuel env f, absEval fuel env a with
+  | some (.lam x _dom body), some aVal =>
+    absEval fuel ((x, aVal) :: env) body
+  | some .type, some _ => some .type
+  | some f', some a' => some (.app f' a')  -- stuck
+  | _, _ => none
+```
+
+When `f` evaluates to a variable (not a lambda, not Type), the
+application is *stuck*: the evaluator returns `app f' a'` as an
+irreducible term. This is exactly what happens with `n Bool true (lam _.false)`
+(i.e., `isZero n` after inlining). The evaluator computes:
+
+1. `absEval env n = Nat` (looking up `n` in the environment, where
+   `n : Nat` means `n` maps to `Nat = lam(X:Type). lam(z:X). lam(s:X->X). X`)
+2. Actually, `n : Nat` means the *type* of `n` is `Nat`, but `absEval`
+   looks up the abstract value, which for an ascribed input is just `Nat`.
+   But `Nat` is itself a lambda: `lam(X:Type). lam(z:X). lam(s:X->X). X`.
+3. So `n Bool` beta-reduces: `Nat Bool = (lam(X:Type). lam(z:X). lam(s:X->X). X) Bool = lam(z:Bool). lam(s:Bool->Bool). Bool`.
+4. Then `(n Bool) true` beta-reduces to `lam(s: Bool->Bool). Bool`.
+5. Then `(n Bool true) (lam _.false)` beta-reduces to `Bool`.
+
+So `isZero n` for abstract `n : Nat` evaluates to `Bool` -- which is
+correct but not useful for partitioning. The evaluator has successfully
+computed the *type* of the elimination result, but has lost all
+information about which branch is taken. It never "sees" that this is an
+elimination that should be partitioned.
+
+The fundamental issue is that **Church-encoded elimination is
+syntactically invisible**. The expression `n Bool true (lam _.false)` is
+just a chain of applications. There is no `match` keyword, no
+`eliminator` marker, nothing to distinguish "this is a case split on a
+data type" from "this is an ordinary function application chain." The
+evaluator would need a heuristic or annotation to recognize partitioning
+opportunities.
+
+**Possible recognition strategies:**
+
+1. **Annotation-based:** Require the programmer to mark elimination
+   sites explicitly, e.g., `(partition n) Bool true (lam _.false)`. This
+   is syntactically adding a match construct through the back door.
+
+2. **Pattern-based:** The evaluator could detect when an abstract
+   variable of a known type (e.g., `Nat`) is applied to a sequence of
+   arguments matching the Church encoding's arity. For `Nat = forall X. X -> (X -> X) -> X`,
+   seeing three arguments after the type argument triggers partitioning.
+   This requires the evaluator to understand the structure of Church
+   encodings, which undermines the "no native data types" philosophy.
+
+3. **Stuck-term analysis:** When an application gets stuck (the
+   function is not a lambda), the evaluator could analyze whether the
+   stuck term could be unstuck by refining the abstract variable. If
+   `n` is abstract and `n X z s` is stuck, the evaluator could try
+   partitioning `n` into its possible constructors and check whether
+   each instantiation makes progress. This is more general but
+   potentially expensive and non-obvious to the programmer.
+
+4. **Type-directed:** The evaluator could examine the *type* of the
+   abstract variable and, if it is a Church-encoded type (a universally
+   quantified function type with the right shape), automatically trigger
+   partitioning. This requires recognizing what "Church-encoded type"
+   means structurally, which is again a form of built-in knowledge about
+   data types.
+
+None of these strategies is clean. Each either requires explicit
+annotation (making this "match in disguise"), built-in knowledge of
+data-type structure (violating the "no native data types" philosophy),
+or expensive search (trying all possible refinements).
+
+#### E.5 Interaction with fix and Recursion
+
+The partitioning mechanism must interact with `fix` to handle recursive
+functions like `appendArrays`. Section 3.3 of add-fix.md describes the
+intended interaction:
+
+> The interpreter partitions on `isZero n`:
+> - Branch n=0: checks the base case, no recursive call
+> - Branch n=succ k: checks the step case with `self` assumed at
+>   `k = pred n`, which is structurally smaller
+
+For this to work with dependent return types, the evaluator must handle
+two additional complications:
+
+**The inductive hypothesis must be type-specialized per branch.** When
+`fix` introduces the assumption `self : lam(T:Type). lam(n:Nat). lam(m:Nat). lam(_:Array n T). lam(_:Array m T). Array (add n m) T`,
+the evaluator uses this assumption for recursive calls. In the successor
+branch where `n = succ k`, the recursive call `self T k m rest b` must
+be checked against the specialized type `Array (add k m) T`. The
+evaluator must propagate the environment narrowing `n = succ k` into the
+inductive hypothesis so that `pred n = k` is available and `add k m` can
+be computed.
+
+**Structural descent must be verified within the narrowed environment.**
+The evaluator needs to confirm that `k` (the argument to the recursive
+call) is structurally smaller than `succ k` (the original argument).
+This requires understanding that `pred (succ k) = k` by beta-reduction,
+which in turn requires the narrowing from partitioning to be in effect.
+Without partitioning, the evaluator only knows `n : Nat` and cannot
+establish that `pred n` is smaller than `n` (since `pred 0 = 0` is not
+smaller than `0`).
+
+**Partitioning is therefore not optional for recursive definitions over
+Church-encoded data** -- it is *required* for the evaluator to verify
+structural descent. The question is whether partitioning can be extended
+from merely narrowing the environment to also specializing the return
+type, or whether that requires a fundamentally different mechanism.
+
+#### E.6 Comparison to Self Types
+
+Self types (Option B) and extended partitioning (Option E) solve the
+same problem but at different levels:
+
+| Aspect | Self Types | Extended Partitioning |
+|--------|-----------|----------------------|
+| **Where it lives** | Type language | Evaluator/checker |
+| **New syntax** | `iota x. T` (one type former) | Partition annotation or heuristic |
+| **User-visible** | Yes (types mention themselves) | Possibly hidden in the evaluator |
+| **Dependent return type** | Encoded directly in the type: `P n` | Evaluator re-evaluates return type per branch |
+| **Recognition problem** | None (user writes self-typed elim) | Must detect elimination sites |
+| **Soundness argument** | Self-intro/elim rules, well-studied | Novel, requires proving partition + re-evaluation is sound |
+| **Composability** | Types compose via standard mechanisms | Each new data type needs new partitioning rules |
+
+The core trade-off is this: **self types move the complexity into the
+type language**, where it can be expressed once and reused. Extended
+partitioning moves the complexity into the evaluator, where it must
+be rediscovered for every elimination site.
+
+With self types, the user writes:
+
+```
+Nat = iota n. (P : Nat -> Type) -> P zero -> ((k:Nat) -> P k -> P (succ k)) -> P n
+```
+
+and the type system directly gives `n P z s : P n`, where `P n` is the
+dependent return type. The user controls what `P` is at each call site.
+No evaluator heuristics are needed.
+
+With extended partitioning, the evaluator must:
+1. Recognize that `n X z s` is an elimination (not obvious from syntax).
+2. Know that `Nat` has constructors `0` and `succ k` (built-in knowledge
+   or derived from the type's structure).
+3. Re-evaluate `X` per branch with the appropriate narrowing.
+4. Verify each branch against its specialized type.
+5. Combine the per-branch types into a single result type.
+
+This is essentially **reimplementing dependent match inside the
+evaluator** without giving it clean syntactic support. Each step above
+corresponds to a piece of the CIC `match` rule:
+
+- Step 1 = the `match` keyword identifying the elimination site.
+- Step 2 = the inductive declaration listing the constructors.
+- Step 3 = the motive `P` being instantiated per constructor.
+- Step 4 = each branch being checked against `P applied to constructor`.
+- Step 5 = the overall type being `P applied to scrutinee`.
+
+In other words, extended partitioning risks being CIC's `match`
+reimplemented as evaluator magic, without the clean syntactic interface
+that `match` provides. The advantage of CIC's approach is that all of
+this is explicit in the program text; the advantage of self types is
+that it emerges from a single type former applied to Church encodings.
+Extended partitioning has neither advantage.
+
+#### E.7 Could Both Coexist?
+
+There is a natural separation of concerns where partitioning and self
+types serve complementary roles:
+
+- **Self types as type mechanism:** `iota x. T` provides the *type-level*
+  capability for a return type to depend on a value. The user writes
+  self-typed eliminators, and the type system ensures that each branch
+  has the correct specialized type.
+
+- **Partitioning as evaluator mechanism:** When the abstract evaluator
+  encounters a self-typed elimination on an abstract scrutinee, it needs
+  to *evaluate* the branches. Partitioning tells the evaluator how to
+  split the abstract domain and narrow the environment in each branch.
+
+In this design:
+
+1. Self types handle the **typing** question: "what is the type of
+   `elim n P z s`?" Answer: `P n`, because of the self-type structure.
+
+2. Partitioning handles the **abstract evaluation** question: "when `n`
+   is abstract, how does the evaluator check that `z : P zero` and
+   `s k ih : P (succ k)`?" Answer: by partitioning `n` into `{0}` and
+   `{succ k}` and checking each branch in its narrowed environment.
+
+This is arguably what the spec already intends. Section 4.2's
+description of partitioning does not claim to solve dependent
+elimination; it claims to narrow the environment so that each branch can
+be checked. Self types would provide the missing piece: the return type
+that *uses* the narrowed environment to specialize.
+
+The combination would work as follows:
+
+```
+-- Self-typed Nat (with self types added to Och)
+Nat = iota n. (P : Nat -> Type) -> P zero -> ((k:Nat) -> P k -> P (succ k)) -> P n
+
+-- appendArrays using self-typed elimination
+appendArrays = fix (lam(self: ...). lam(n: Nat). lam(m: Nat).
+               lam(a: Array n T). lam(b: Array m T).
+               n (lam(n': Nat). Array (add n' m) T)  -- motive P
+                 b                                    -- P zero = Array (add 0 m) T = Array m T
+                 (lam(k: Nat). lam(ih: Array (add k m) T).
+                   consArray T (add k m) (headArray T k a)
+                     (self T k m (tailArray T k a) b)))
+```
+
+Here:
+- `n` is self-typed, so `n P z s : P n = Array (add n m) T`.
+- The motive `P = lam(n'. Array (add n' m) T)` is explicit in the code.
+- In the zero branch, the evaluator narrows `n = 0` and checks
+  `b : Array (add 0 m) T = Array m T`.
+- In the succ branch, the evaluator narrows `n = succ k` and checks
+  the step case against `Array (add (succ k) m) T`.
+- Partitioning provides the environment narrowing; self types provide
+  the dependent return type.
+
+**Verdict:** Partitioning alone is insufficient for dependent elimination
+because it lacks a mechanism for the return type to vary. Self types
+alone are insufficient for abstract evaluation because the evaluator
+still needs to know how to split an abstract domain into constructor
+cases. The two mechanisms are complementary: self types provide the type
+structure, and partitioning provides the evaluation strategy. This
+combination is the recommended path for Och.
