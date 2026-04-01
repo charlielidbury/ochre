@@ -97,13 +97,16 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
     | .type         => some .type
     | .asc _term ty => absEval fuel Γ ty  -- compile-time: take the rhs
     | .mu x ann body =>
-      -- Normalize body under binder (iota behavior) AND normalize annotation.
-      -- Returns the mu as a self-type value, not the annotation.
+      -- Normalize body under binder (iota behavior).
+      -- Annotation is NOT normalized here — it passes through unchanged.
+      -- This is correct because the annotation is re-evaluated when the mu
+      -- is applied (in the app case below), so normalizing it here would be
+      -- redundant. More importantly, keeping the annotation unchanged makes
+      -- the monotonicity proof work: two evaluations of `mu x ann body` in
+      -- different envs produce `mu x ann body₁'` and `mu x ann body₂'` with
+      -- the SAME annotation, so `mu_body` applies directly.
       match absEval fuel ((x, .var x) :: Γ) body with
-      | some body' =>
-        match absEval fuel Γ ann with
-        | some ann' => some (.mu x ann' body')
-        | none => none
+      | some body' => some (.mu x ann body')
       | none => none
     | .app f a      =>
       match absEval fuel Γ f, absEval fuel Γ a with

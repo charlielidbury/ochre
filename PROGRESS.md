@@ -9,45 +9,35 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **5 sorry warnings**:
-- Monotonicity.lean: 4 (absEval_mono [2 app-mu subcases], absEval_mono_trans,
-  absEval_succeeds_envsub, absEval_evalFreeVars_general [mu app subcase])
+`lake build` passes with **4 sorry warnings**:
+- Monotonicity.lean: 3 (absEval_mono [mu-app body-unfold/cross/none subcases],
+  absEval_mono_trans, absEval_succeeds_envsub)
 - Soundness.lean: 1 (soundness_gen)
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-192428)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-200028)
 
-**Domain normalization in subCheckNF: M4a flipped (appendVec north star!)**
+**Monotonicity proof progress: fix build, prove lam-annotation mu-app case**
 
-The root cause of M4a's failure: absEval deliberately does NOT normalize
-lambda domains (to preserve monotonicity). This means domains like
-`Vec' (var "T")` remain as beta-redexes `app (lam "T" ...) (var "T")`
-rather than being reduced to `lam "X" .type (lam "k" ... X)`.
+1. **Eval.lean change (from previous agent, uncommitted):** absEval no longer
+   normalizes mu annotations. The annotation passes through unchanged:
+   `mu x ann body` → `mu x ann body'`. This makes `mu_body` apply directly
+   (same annotation in both envs), fixing the fundamental monotonicity obstacle.
 
-When subCheckNF compares appendVec's body against `Vec T`, it encounters
-stuck applications like `(v1 (Vec T)) (lam n1. ...)`. The `inferType`
-function tries to determine the type of this application by looking up
-v1's domain from the context. But the domain is an unreduced beta-redex
-(an `.app`, not a `.lam`), so inferType's pattern match on `.lam` fails.
+2. **Build fix (Monotonicity.lean):** Added `| mu _ _ _ => cases hf_sub` to
+   six catch-all branches in the app case that previously caught mu in the
+   `| _ =>` wildcard. Lean 4's dependent elimination couldn't handle the
+   complex mu-app match expression in `cases h₂`, but mu in function position
+   is impossible for these cases (var/app/asc ⊑ mu is ruled out by Subtype').
 
-**The fix** (Subtyping.lean): added `normalizeDomain`, a helper that
-normalizes domain expressions using absEval with context variables as
-neutrals. In the lam-lam case of subCheckNF, domains are now normalized
-before being added to the inferType context:
+3. **Lam-annotation mu-app case proved** (both `.refl` and `.app_cong`):
+   When both envs evaluate the annotation to a lam, monotonicity follows
+   by lam_rhs_shape + IH on the return body. This handles all fix-like mus
+   (where the annotation is a function type like Nat→Nat→Nat).
 
-```lean
-private def normalizeDomain (fuel : Nat) (ctx : List (Name × Expr)) (dom : Expr) : Expr :=
-  let env : Env := ctx.map fun (n, _) => (n, .var n)
-  match absEval fuel env dom with
-  | some d => d
-  | none => dom
-```
+### Previous changes (2026-04-01, agent ochre-lean-20260401-192428)
 
-This is safe because:
-1. It only affects subCheckNF's internal type inference, not absEval's behavior
-2. The monotonicity concern (why absEval doesn't normalize domains) doesn't
-   apply to the subtype checker's context
-3. The normalization uses context variables as neutrals, matching how
-   subCheckNF already treats bound variables
+Domain normalization in subCheckNF flipped M4a (Phase 1 COMPLETE).
+See git log for details.
 
 ### ALL M1-M4 milestones now PASSING
 
@@ -113,23 +103,38 @@ This is safe because:
 **Phase 1 is COMPLETE.** All M1-M4 milestones pass. The definitions are
 expressive enough for abstract appendVec with the mu primitive.
 
-**Next priorities (Phase 2-3):**
-- Decide evaluator vs subtype checker architecture (risk #2 in SUGGESTIONS.md)
-- Fill the 5 sorrys (4 Monotonicity, 1 Soundness)
-- Consider whether `normalizeDomain` needs to be reflected in the proof
-  (it changes subCheckNF's behavior, so monotonicity/soundness proofs
-  must account for domain normalization)
-- Get Variant B working if needed for Scott encoding (Phase 4)
+**Phase 3 (proofs) is underway.** Key status:
+- **absEval_mono mu case (body eval):** DONE. Annotation passes through
+  unchanged, so mu_body applies directly.
+- **absEval_mono mu-app case (lam annotation):** DONE. Both `.refl` and
+  `.app_cong` subcases proved. Covers all fix-like mus.
+- **absEval_mono mu-app case (body-unfold path):** BLOCKED. When both envs
+  evaluate the annotation to non-lam, the body-unfold path produces different
+  unfolded expressions (`body₁.subst x (mu x ann body₁)` vs `body₂.subst x
+  (mu x ann body₂)`). Proving monotonicity requires a **substitution
+  congruence lemma**: `Subtype' e₂ e₁ → Subtype' v₂ v₁ →
+  Subtype' (e₂.subst x v₂) (e₁.subst x v₁)`. This is FALSE for the current
+  Subtype' because `lam_body` requires same domain, and substitution changes
+  domains differently. **Possible fixes:**
+  1. Add a `lam_dom` Subtype' constructor for different domains
+  2. Restrict the body-unfold path to only fire when `ann = Type` (then the
+     annotation eval is always `some .type` in both envs — no cross-case)
+  3. Prove a weaker substitution lemma that applies to the specific shapes
+     produced by absEval
+- **absEval_mono_trans:** Depends on absEval_mono being fully proved.
+- **absEval_succeeds_envsub:** Independent but also blocked by similar
+  mu-app case analysis.
+- **soundness_gen:** Separate from monotonicity; needs its own analysis.
 
 ### Key files
 
 | File | Status | Sorry count |
 |------|--------|-------------|
 | Syntax.lean | Done | 0 |
-| Eval.lean | Done (annotation-based mu-elim) | 0 |
+| Eval.lean | Done (ann not normalized in mu, annotation-based mu-elim in app) | 0 |
 | Subtyping.lean | Done (domain normalization) | 0 |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
 | Soundness.lean | Sorry'd | 1 |
-| Monotonicity.lean | Sorry'd | 4 |
+| Monotonicity.lean | Partially proved (mu-body done, mu-app lam-ann done) | 3 |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done | 0 |
