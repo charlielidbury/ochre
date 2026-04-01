@@ -5,6 +5,42 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-01 ochre-lean-20260401-124404: Direct soundnessC — bypass the factored approach
+
+**Decision:** Added `soundnessC_direct` — a direct proof of concEvalC soundness against
+absEval, bypassing the factored approach (soundnessC_abs + absEvalC_equiv).
+
+**Why the factored approach is stuck:**
+
+The factored approach has TWO independent blockers:
+1. **soundnessC_abs asc/fix** — VR_abs (structural equality) cannot relate closures
+   from different evaluation paths (asc evaluates term vs ty, fix evaluates body vs dom).
+2. **absEvalC_equiv app** — normalize_stable for readback envs.
+
+The direct approach eliminates blocker #1 entirely. For asc/fix, the IH gives
+`readback(v) ⊑ σ` (from evaluating the concrete side), and WellTyped gives `σ ⊑ τ`
+(from the well-typedness contract). The chain gives `readback(v) ⊑ τ` directly.
+
+**What was done:**
+1. `absEval_succeeds_envsub` (Monotonicity.lean) — totality under env narrowing.
+   If absEval succeeds in Γ₁ and EnvSubTrans Γ₂ Γ₁, it succeeds in Γ₂. 5/6 cases.
+2. `CEnvFull` (Closure.lean) — env consistency with explicit readback env.
+3. `soundnessC_direct` (Closure.lean) — var/type/asc/fix/lam proved, app sorry'd.
+4. Lam case uses `absEval_succeeds_envsub` + `monotonicity_trans` to show readback
+   of closures succeeds and subtypes the abstract result.
+
+**Remaining sorry's:** 2 (absEval_succeeds_envsub app-lam, soundnessC_direct app).
+Both are manifestations of the same normalize_stable issue. To finish:
+- Prove absEval produces "closed" expressions in readback envs (FV ⊆ {lambda params})
+- Prove env irrelevance for such closed expressions
+- Derive normalize_stable for readback envs
+
+**Alternative considered:** Proving the full generalized `absEval_mono_succeed` (with
+SubtypeTrans on expressions). This is FALSE in general because SubtypeTrans.top allows
+any e₂ ⊑ .type, and absEval of an arbitrary e₂ might fail (e.g., free var not in env).
+
+---
+
 ## 2026-04-01 ochre-lean-20260401-120716: absEvalC_equiv — partial proof + key insight about readback envs
 
 **What was done:**
