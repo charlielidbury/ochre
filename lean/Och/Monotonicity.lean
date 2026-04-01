@@ -870,13 +870,136 @@ theorem envEvalClosed'_extend_value {Γ : Env} (h : EnvEvalClosed' Γ) (x : Name
       exact absurd h_z (by rw [h_fresh]; simp)
     · exact h_z
 
+/-- **General coverage: absEval outputs have evalFreeVars ⊆ P for any predicate P
+    that is closed under env lookups.**
+
+    This is the key generalization that avoids the EnvEvalClosed' shadowing issue.
+    By parameterizing over an arbitrary predicate P (rather than neutralVars(Γ)):
+    - The lam/iota cases temporarily expand P to include the binder name
+    - The app-lam case reuses P unchanged (IH on a guarantees τ_a's evalFreeVars ∈ P)
+    - No need for EnvEvalClosed' on extended envs, avoiding the shadowing problem
+
+    The original `absEval_evalFreeVars_neutral` follows as a corollary with
+    P = isNeutral Γ. -/
+theorem absEval_evalFreeVars_general
+    (fuel : Nat) (Γ : Env) (e τ : Expr)
+    (P : Name → Prop)
+    (h_eval : absEval fuel Γ e = some τ)
+    (h_env : ∀ x v, Γ.lookup x = some v → ∀ y, y ∈ v.evalFreeVars → P y)
+    : ∀ y, y ∈ τ.evalFreeVars → P y := by
+  induction fuel generalizing Γ e τ P with
+  | zero => simp [absEval] at h_eval
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp only [absEval] at h_eval
+      exact h_env x τ h_eval
+    | type =>
+      simp only [absEval] at h_eval; cases h_eval
+      intro y hy; simp [Expr.evalFreeVars] at hy
+    | asc _term ty =>
+      simp only [absEval] at h_eval
+      exact ih Γ ty τ P h_eval h_env
+    | fix inner =>
+      simp only [absEval] at h_eval
+      cases inner with
+      | lam _f dom _body =>
+        exact ih Γ dom τ P h_eval h_env
+      | _ => simp [absEval] at h_eval
+    | lam x _dom body =>
+      simp only [absEval] at h_eval
+      cases hb : absEval n ((x, .var x) :: Γ) body with
+      | none => simp [hb] at h_eval
+      | some body' =>
+        simp [hb] at h_eval; cases h_eval
+        -- τ = lam x _dom body', evalFreeVars = body'.evalFreeVars.filter(·≠x)
+        intro y hy
+        -- hy : y ∈ (lam x _dom body').evalFreeVars = body'.evalFreeVars.filter(·!=x)
+        have ⟨h_mem, h_ne⟩ := List.mem_filter.mp hy
+        -- IH on body with predicate P' = fun z => P z ∨ z = x
+        have h_env' : ∀ z v, Env.lookup ((x, .var x) :: Γ) z = some v →
+            ∀ w, w ∈ v.evalFreeVars → P w ∨ w = x := by
+          intro z v h_lookup w hw
+          simp only [Env.lookup] at h_lookup
+          split at h_lookup <;> rename_i h_eq
+          · cases h_lookup; simp [Expr.evalFreeVars] at hw; exact Or.inr hw
+          · exact Or.inl (h_env z v h_lookup w hw)
+        have ih_body := ih ((x, .var x) :: Γ) body body' (fun z => P z ∨ z = x) hb h_env' y h_mem
+        cases ih_body with
+        | inl h => exact h
+        | inr h =>
+          -- y = x but filter says y ≠ x: contradiction
+          exfalso
+          have h_ne' : ¬(y == x) = true := by
+            intro heq; rw [beq_iff_eq.mp heq] at h_ne; simp at h_ne
+          exact h_ne' (beq_iff_eq.mpr h)
+    | iota x body =>
+      simp only [absEval] at h_eval
+      cases hb : absEval n ((x, .var x) :: Γ) body with
+      | none => simp [hb] at h_eval
+      | some body' =>
+        simp [hb] at h_eval; cases h_eval
+        -- τ = iota x body', evalFreeVars = body'.evalFreeVars.filter(·≠x)
+        intro y hy
+        have ⟨h_mem, h_ne⟩ := List.mem_filter.mp hy
+        have h_env' : ∀ z v, Env.lookup ((x, .var x) :: Γ) z = some v →
+            ∀ w, w ∈ v.evalFreeVars → P w ∨ w = x := by
+          intro z v h_lookup w hw
+          simp only [Env.lookup] at h_lookup
+          split at h_lookup <;> rename_i h_eq
+          · cases h_lookup; simp [Expr.evalFreeVars] at hw; exact Or.inr hw
+          · exact Or.inl (h_env z v h_lookup w hw)
+        have ih_body := ih ((x, .var x) :: Γ) body body' (fun z => P z ∨ z = x) hb h_env' y h_mem
+        cases ih_body with
+        | inl h => exact h
+        | inr h =>
+          exfalso
+          have h_ne' : ¬(y == x) = true := by
+            intro heq; rw [beq_iff_eq.mp heq] at h_ne; simp at h_ne
+          exact h_ne' (beq_iff_eq.mpr h)
+    | app f a =>
+      simp only [absEval] at h_eval
+      cases hf : absEval n Γ f with
+      | none => simp [hf] at h_eval
+      | some τ_f =>
+        cases ha : absEval n Γ a with
+        | none => simp [hf, ha] at h_eval
+        | some τ_a =>
+          rw [hf, ha] at h_eval
+          have ih_f := ih Γ f τ_f P hf h_env
+          have ih_a := ih Γ a τ_a P ha h_env
+          cases τ_f with
+          | lam x _dom body =>
+            -- Beta reduction: τ = absEval n ((x, τ_a) :: Γ) body
+            simp only at h_eval
+            have h_env' : ∀ z v, Env.lookup ((x, τ_a) :: Γ) z = some v →
+                ∀ w, w ∈ v.evalFreeVars → P w := by
+              intro z v h_lookup w hw
+              simp only [Env.lookup] at h_lookup
+              split at h_lookup <;> rename_i h_eq
+              · cases h_lookup; exact ih_a w hw
+              · exact h_env z v h_lookup w hw
+            exact ih ((x, τ_a) :: Γ) body τ P h_eval h_env'
+          | type =>
+            simp only at h_eval; cases h_eval
+            intro y hy; simp [Expr.evalFreeVars] at hy
+          | var _ | app _ _ | asc _ _ | fix _ | iota _ _ =>
+            -- Stuck: result is app τ_f τ_a
+            simp only at h_eval; cases h_eval
+            intro y hy
+            -- evalFreeVars(.app τ_f τ_a) = τ_f.evalFreeVars ++ τ_a.evalFreeVars (by defn)
+            rcases List.mem_append.mp hy with h1 | h2
+            · exact ih_f y h1
+            · exact ih_a y h2
+
 /-- **absEval outputs have evalFreeVars ⊆ neutralVars(Γ).**
 
-    Correct replacement for `absEval_freeVars_covered` (FALSE for freeVars).
-    See documentation block above for full analysis and proof strategy. -/
+    Corollary of `absEval_evalFreeVars_general` with P = isNeutral Γ.
+    The EnvEvalClosed' precondition says exactly that the env values'
+    evalFreeVars are neutral, which is the closure condition for P. -/
 theorem absEval_evalFreeVars_neutral
     (fuel : Nat) (Γ : Env) (e τ : Expr)
     (h_eval : absEval fuel Γ e = some τ)
     (h_env : EnvEvalClosed' Γ)
-    : ∀ y, y ∈ τ.evalFreeVars → isNeutral Γ y := by
-  sorry
+    : ∀ y, y ∈ τ.evalFreeVars → isNeutral Γ y :=
+  absEval_evalFreeVars_general fuel Γ e τ (isNeutral Γ) h_eval h_env
