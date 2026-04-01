@@ -280,7 +280,7 @@ example : evalAndReadback 1000 (.app pred' one') = some zero' := by native_decid
 example : evalAndReadback 1000 (.app pred' three') = some two' := by native_decide
 
 -- ============================================================
--- Soundness theorem (statement)
+-- Soundness theorem
 -- ============================================================
 
 /-- Env consistency between CEnv (concrete closures) and Env (abstract).
@@ -291,38 +291,20 @@ def CEnvConsistent (fuel : Nat) (γ : CEnv) (Γ : Env) : Prop :=
     ∃ v, γ.lookup x = some v ∧
       ∃ v_e, readback fuel v = some v_e ∧ SubtypeTrans v_e τ
 
-/-- **Soundness of the closure-based evaluator.**
+/-- **Soundness of the closure-based evaluator (readback formulation).**
 
     If `absEval` says expression `e` has type `τ`, and `concEvalC` produces
     value `v` (a closure), then the readback of `v` subtypes `τ`.
 
-    This is the same soundness guarantee as Soundness.lean, but for an
-    evaluator that correctly handles recursive fix with Church-encoded branching.
+    **Status:** This uses the readback-based approach. The lam case requires
+    readback to succeed (readbackEnv + absEval on body in readback env), which
+    depends on `absEval_succeeds_envsub` (not yet proven). The app case is harder:
+    after beta-reduction, concEvalC evaluates the closure's ORIGINAL body in the
+    CAPTURED env, while absEval evaluates the NORMALIZED body in the CURRENT env.
+    These are different bodies in different envs.
 
-    ### Proof sketch
-
-    **Lam case** (the historically hard case):
-    - concEvalC returns `.clo x dom body γ` (closure captures env)
-    - absEval returns `.lam x dom body'` where `body' = absEval ((x, var x) :: Γ) body`
-    - readback normalizes: `body'' = absEval ((x, var x) :: γ') body`
-      where `γ' = readbackEnv γ`
-    - Need: `SubtypeTrans body'' body'`
-    - This follows from **monotonicity** (absEval_mono): both evaluate the
-      SAME body in RELATED envs. If `EnvSub γ' Γ`, then `Subtype' body'' body'`.
-
-    **Key advantage over SoundnessS.lean**: No `absEval_normalize_stable` needed!
-    The readback function normalizes the closure's body using absEval (the same
-    function that produced the abstract result). So we're comparing two absEval
-    results on the same expression in related envs — exactly what monotonicity gives.
-
-    **The remaining challenge**: CEnvConsistent gives SubtypeTrans in the env,
-    but monotonicity (absEval_mono) requires Subtype' (EnvSub). A future agent
-    should either:
-    (a) Prove a generalized monotonicity that works with SubtypeTrans, OR
-    (b) Show that readback always produces values in Subtype' (not SubtypeTrans)
-        relation to the abstract types, OR
-    (c) Restructure the proof so the lam case doesn't need monotonicity
-        (e.g., by using an LR that captures the definition-site env). -/
+    See `soundnessC_lr` below for the logical-relations approach that avoids
+    these issues. -/
 theorem soundnessC
     (Γ : Env) (γ : CEnv) (e τ : Expr) (v : CVal) (fuel : Nat)
     (h_abs : absEval fuel Γ e = some τ)
@@ -331,4 +313,56 @@ theorem soundnessC
     (h_wt : WellTyped fuel Γ e)
     (h_no_fix : EnvNoFix Γ)
     : ∃ v_e, readback fuel v = some v_e ∧ SubtypeTrans v_e τ := by
-  sorry  -- Proof to be developed in future sessions
+  sorry  -- See analysis in soundnessC_lr below
+
+-- ============================================================
+-- Logical-relations approach to soundnessC (recommended path)
+-- ============================================================
+
+/-!
+### Why readback-based soundness is hard
+
+The readback approach (soundnessC above) faces two challenges:
+
+1. **Readback may fail.** `readback` normalizes a closure's body via absEval
+   in the readback env. But we can't prove absEval succeeds in the readback env
+   without an `absEval_succeeds_envsub` lemma (if absEval succeeds in Γ and
+   EnvSubTrans γ' Γ, does it succeed in γ'?). This lemma is blocked in the
+   app-beta case: different bodies arise from evaluating in different envs.
+
+2. **App-beta case: different bodies, different envs.** After evaluating `f` and
+   getting `clo x dom body_c γ_c` (concrete) and `lam x dom body_a` (abstract),
+   the continuation evaluates `body_c` in `(x, v_a) :: γ_c` but `body_a` in
+   `(x, τ_a) :: Γ`. The bodies are different (original vs normalized), and the
+   envs are different (captured vs current). The function IH gives us readback
+   relationship between the closure and the lambda, but not consistency between
+   the captured env and the abstract env.
+
+### The logical-relations alternative
+
+Instead of readback, define a **Kripke-style logical relation** (step-indexed by
+fuel) between CVal and Expr:
+
+- `VR n .type .type` — type values match
+- `VR n (.clo x dom body γ_c) (.lam x dom body_a)` — for any `k < n`,
+  any argument `v_a, τ_a` with `VR k v_a τ_a`, if concEvalC evaluates body
+  to v_res and absEval evaluates body_a to τ_res, then `VR k v_res τ_res`.
+- `ER n γ_c Γ` — pointwise: each binding satisfies VR
+
+This directly models what we need for the app-beta case: the closure "works
+correctly" when applied to any consistent argument.
+
+**Proof structure:**
+- Induction on fuel, case split on e
+- Lam case: construct VR directly — the closure satisfies VR because applying
+  it just recurses with the IH at lower fuel
+- App-beta case: extract VR from the function result, apply it to the argument
+- Other cases: straightforward
+
+**Prerequisite:** `absEval_mono_trans` (PROVED in Monotonicity.lean) is needed
+for the asc case (chain IH result with well-typedness through SubtypeTrans).
+
+**Connection to readback:** Once VR is established, showing readback succeeds
+and subtypes the abstract result becomes a COROLLARY, not a proof obligation
+in the main induction.
+-/

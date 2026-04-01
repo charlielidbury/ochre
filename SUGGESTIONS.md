@@ -6,33 +6,55 @@
 concrete recursive fix with thunked branches AND captures definition-site envs
 for correct higher-order behavior. Its soundness theorem is stated but sorry'd.
 
-**Why it's promising:** The lam case of soundness reduces to MONOTONICITY (same
-body, related envs) rather than the impossible `absEval_normalize_stable` that
-blocked the concEvalS approach. Readback normalizes the closure's body using
-absEval in the captured env, producing the same structure as absEval's output.
+**What's been done:** `absEval_mono_trans` is PROVED (0 sorry, Monotonicity.lean).
+This handles SubtypeTrans on both expressions and environments, producing
+SubtypeTrans results. It was the key identified blocker.
 
-**The remaining gap:** `absEval_mono` uses `Subtype'` (single step) in `EnvSub`,
-but the IH from the asc case gives `SubtypeTrans` (transitive closure). Options:
+**What remains:** The readback-based approach to soundnessC has two deeper
+problems that absEval_mono_trans alone doesn't solve:
 
-1. **Prove `absEval_mono_env_trans`** — monotonicity with `SubtypeTrans` envs.
-   Follows the same induction as `absEval_mono`. The var case directly uses
-   SubtypeTrans from the env. Other cases lift Subtype' to SubtypeTrans.step.
-   **Challenge:** the app-beta case needs the SAME expression on both sides, but
-   SubtypeTrans.lam_target_shape gives different bodies. May need to decompose
-   into a chain of Subtype' steps and show absEval succeeds at each intermediate.
+1. **Readback may fail.** readback normalizes closures via absEval in the readback
+   env. Proving absEval succeeds there needs `absEval_succeeds_envsub`, which is
+   blocked: in the app-beta case, different envs produce different normalized
+   bodies, and the completeness IH (same expression) doesn't handle different bodies.
 
-2. **Use a CVal-Expr logical relation** — avoid readback entirely. Define CValLR
-   that's step-indexed and existentially quantifies the definition-site env.
-   **Challenge:** need to show that the existential Γ_clo matches the Γ_current
-   from the app case. This requires either env extension monotonicity or a
-   free-variable analysis of normalized bodies.
+2. **App-beta: different bodies in different envs.** After evaluating `f`,
+   concEvalC has `clo x dom body γ_c` (original body in captured env) while
+   absEval has `lam x dom body_a` (normalized body in current env). The
+   function IH gives readback(closure) ⊑ abstract lambda, but does NOT give
+   CEnvConsistent between the captured env and the abstract env.
 
-3. **Prove fuel completeness** — if Subtype' e₂ e₁ and absEval k Γ e₂ succeeds,
-   then absEval k Γ e₁ also succeeds. This would allow decomposing SubtypeTrans
-   envs into chains of Subtype' steps. The proof follows absEval's structure.
+**Recommended approach: Kripke-style logical relation (VR)**
 
-**Estimated effort:** 100-200 lines for the generalized monotonicity, then ~100
-lines to fill in soundnessC using the same structure as Soundness.lean.
+Replace readback-based soundnessC with a step-indexed logical relation:
+
+```
+VR : Nat → CVal → Expr → Prop
+VR n .type .type = True
+VR n (.clo x dom body γ_c) (.lam x dom body_a) =
+  ∀ k < n, ∀ v_a τ_a, VR k v_a τ_a →
+    ∀ v_res τ_res, concEvalC k ((x, v_a) :: γ_c) body = some v_res →
+    absEval k ((x, τ_a) :: Γ_a) body_a = some τ_res → VR k v_res τ_res
+ER n γ Γ = ∀ x, γ(x) and Γ(x) satisfy VR n
+```
+
+**Why this works:**
+- **Lam case:** Construct VR directly — the closure satisfies VR because applying
+  it to any VR-consistent argument gives VR-consistent results (by the IH at lower
+  fuel).
+- **App-beta case:** Extract VR from the function result, apply it to the argument.
+  No readback needed. The captured env is handled implicitly by VR's closure case.
+- **Asc case:** Chain IH with well-typedness (needs absEval_mono_trans, PROVED).
+
+**Challenge:** VR for closures needs to quantify over an abstract env Γ_a for
+the body_a evaluation. This Γ_a should come from the function's construction
+context. The VR definition must capture Γ_a existentially or carry it as a
+parameter. Step-indexing by fuel avoids circularity.
+
+Then readback + SubtypeTrans follows as a corollary of VR.
+
+**Estimated effort:** ~200 lines for VR definition + fundamental theorem,
+~50 lines for the readback corollary.
 
 **Note:** The concEvalS approach (SoundnessS.lean, 7 sorry's) is STALLED — the
 bridge theorem `absEval_normalize_stable` is provably FALSE. The closure-based

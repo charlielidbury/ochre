@@ -40,9 +40,17 @@ Current status of the Och mechanization. Updated by agents after each session.
 - [x] **Concrete recursive fix** — RESOLVED via `concEvalS` (substitution-based evaluator + thunked branches)
 - [x] **Closure-based concrete evaluator** — `concEvalC` in `Closure.lean`,
   captures definition-site env in lambda values. Handles recursive fix correctly.
-- [ ] **Soundness of concEvalC** — Stated in `Closure.lean` (1 sorry). Uses readback
-  via absEval in captured env. The lam case reduces to monotonicity (same body,
-  related envs), avoiding the impossible `absEval_normalize_stable`.
+- [x] **`absEval_mono_trans`** — Generalized monotonicity with SubtypeTrans on
+  both expressions and environments (0 sorry). Same proof structure as
+  `soundness_gen`: induction on fuel, case split on e₁, SubtypeTrans target
+  shape lemmas constrain e₂. Includes `EnvSubTrans`, `envSubTrans_extend`,
+  `envSubTrans_extend_sub`, and `monotonicity_trans` corollary.
+- [ ] **Soundness of concEvalC** — Stated in `Closure.lean` (1 sorry).
+  The readback-based approach has two blockers (see Closure.lean comments):
+  (1) readback may fail without `absEval_succeeds_envsub`, and
+  (2) app-beta case has different bodies (original vs normalized) in different
+  envs (captured vs current). Recommended path: Kripke-style logical relation
+  indexed by fuel (avoids readback entirely). See detailed analysis in Closure.lean.
 - [ ] **Soundness of concEvalS** — STALLED in `SoundnessS.lean` (7 sorry's).
   The LR approach is blocked by `absEval_normalize_stable` being FALSE.
   concEvalC supersedes this approach — see DECISION-LOG.md.
@@ -56,6 +64,56 @@ Current status of the Och mechanization. Updated by agents after each session.
 - 3 in LR_upcast (only the hard lam-lam subcases; refl/top PROVED)
 - 1 in fundamental lam case (blocked on false theorem)
 - 1 in fundamental fix case (now only the lam-lam subcase; all other LR shapes proved)
+
+## New this session (ochre-lean-20260401-101639)
+
+### absEval_mono_trans — generalized monotonicity (0 sorry)
+
+Proved `absEval_mono_trans` in Monotonicity.lean: if `SubtypeTrans e₂ e₁` and
+`EnvSubTrans Γ₂ Γ₁`, and both absEval calls succeed, then their results are
+related by SubtypeTrans.
+
+**Proof technique:** Induction on fuel (NOT on SubtypeTrans). Case-split on e₁
+(the abstract/wider expression), use SubtypeTrans target shape lemmas to
+constrain e₂. This is the same pattern as `soundness_gen`. The SubtypeTrans.trans
+case is avoided entirely because we never destruct h_sub — we only use it through
+target_shape lemmas.
+
+**Why this matters:** This was the key lemma identified as blocking `soundnessC`.
+It handles the gap where CEnvConsistent gives SubtypeTrans (from asc case
+chaining) but the original absEval_mono only accepted Subtype' (single-step).
+
+### Analysis of soundnessC (documented in Closure.lean)
+
+Investigated the readback-based soundnessC proof and identified two fundamental
+obstacles:
+
+1. **Readback may not succeed.** readback normalizes the closure body via absEval
+   in the readback env. Proving absEval succeeds there requires an
+   `absEval_succeeds_envsub` lemma, which is blocked in the app-beta case: the
+   function body from evaluating in different envs gives different normalized
+   bodies, and the same-expression completeness IH doesn't apply.
+
+2. **App-beta: different bodies in different envs.** After evaluating `f`,
+   concEvalC has `clo x dom body_c γ_c` (original body in captured env) while
+   absEval has `lam x dom body_a` (normalized body). The continuation evaluates
+   body_c in `(x, v_a) :: γ_c` but body_a in `(x, τ_a) :: Γ`. The function
+   IH (via readback) gives SubtypeTrans between readback(closure) and the
+   abstract lambda, but does NOT give CEnvConsistent between the captured env
+   and the abstract env.
+
+**Recommended next step:** Replace the readback-based approach with a
+Kripke-style logical relation `VR n v τ` indexed by fuel:
+- `VR n .type .type`
+- `VR n (.clo x dom body γ_c) (.lam x dom body_a)` iff for all k < n,
+  for all v_a, τ_a with VR k v_a τ_a, if both sides evaluate, VR k v_res τ_res
+- `ER n γ Γ` = pointwise VR
+
+The lam case constructs VR directly (the IH at lower fuel provides the body).
+The app-beta case EXTRACTS VR from the function result and applies it to the
+argument — no readback, no absEval_succeeds, no env consistency mismatch.
+
+Then readback + SubtypeTrans can be derived as a COROLLARY of VR.
 
 ## New this session (ochre-lean-20260331-233210)
 
