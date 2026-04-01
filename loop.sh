@@ -63,9 +63,15 @@ while true; do
 
   echo "  Agent started. Waiting for it to finish..."
 
+  # Wait a bit, then capture pane to verify the agent is processing
+  sleep 15
+  echo "  --- Post-prompt pane snapshot (15s) ---"
+  tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | head -10
+  echo "  --- end snapshot ---"
+
   # Wait for the agent to finish by detecting when the pane stops changing.
   # First wait for the prompt to be ingested, then poll until stable.
-  sleep 30
+  sleep 15
   PREV_HASH=""
   STABLE_COUNT=0
   while tmux has-session -t "$SESSION_NAME" 2>/dev/null; do
