@@ -49,7 +49,7 @@ Read these for context (in this order):
 3. `docs/why-och-matters-for-ochre.md` — why your design choices matter for Ochre
 4. `docs/och-spec.md` — the Och specification and test suite
 
-Then read `PROGRESS.md` and the recent git log to see where things stand.
+Then read `PROGRESS.md` and run `git log -5` (with full messages, NOT `--oneline`) to see where things stand. Previous agents communicate through detailed commit messages — you need the full text.
 
 ## The Lean project
 
@@ -130,6 +130,26 @@ If that doesn't work:
 curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
 export PATH="$HOME/.elan/bin:$PATH"
 ```
+
+## Asking previous agents questions
+
+You can resume a previous agent's session and ask them a question. This is
+useful when you're confused about a design decision, a proof strategy, or
+why something was done a certain way.
+
+1. Use `git blame` or `git log` to find the agent ID (e.g., `ochre-lean-20260331-143556`)
+2. Find the agent's session UUID:
+   ```bash
+   grep -rl "<agent-id>" ~/.claude/file-history/ | head -1 | grep -oP '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+   ```
+3. Ask your question:
+   ```bash
+   echo 'Why did you choose X over Y?' | claude --dangerously-skip-permissions --resume <UUID> --print
+   ```
+
+This resumes their session with all their original context and returns their
+answer. Use this when commit messages or DECISION-LOG.md don't give you
+enough detail.
 
 ## Working style
 
