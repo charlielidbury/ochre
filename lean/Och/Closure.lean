@@ -726,16 +726,206 @@ theorem soundnessC_abs
                       simp only at h_conc h_abs
                       cases h_conc
 
+-- ============================================================
+-- Key lemmas for absEvalC_equiv
+-- ============================================================
+
+/-- **Fuel monotonicity for absEval**: if absEval succeeds at fuel k,
+    it succeeds with the same result at any higher fuel k + j.
+    (Copied from SoundnessS.lean to avoid importing the stalled file.) -/
+theorem absEval_fuel_mono : ∀ (k j : Nat) (Γ : Env) (e v : Expr),
+    absEval k Γ e = some v → absEval (k + j) Γ e = some v := by
+  intro k
+  induction k with
+  | zero => intro j Γ e v h; simp [absEval] at h
+  | succ k ih =>
+    intro j Γ e v h
+    have h_fuel : k + 1 + j = (k + j) + 1 := by omega
+    rw [h_fuel]
+    cases e with
+    | var x =>
+      simp only [absEval] at h ⊢; exact h
+    | type =>
+      simp only [absEval] at h ⊢; exact h
+    | lam x d b =>
+      simp only [absEval] at h ⊢
+      cases hb : absEval k ((x, .var x) :: Γ) b with
+      | none => simp [hb] at h
+      | some b' =>
+        simp [hb] at h; cases h
+        have := ih j ((x, .var x) :: Γ) b b' hb
+        simp [this]
+    | asc t ty =>
+      simp only [absEval] at h ⊢
+      exact ih j Γ ty v h
+    | fix inner =>
+      simp only [absEval] at h ⊢
+      cases inner with
+      | lam f dom body => exact ih j Γ dom v h
+      | var _ | app _ _ | asc _ _ | type | fix _ => simp [absEval] at h
+    | app f a =>
+      simp only [absEval] at h ⊢
+      cases hf : absEval k Γ f with
+      | none => simp [hf] at h
+      | some vf =>
+        cases ha : absEval k Γ a with
+        | none => simp [hf, ha] at h
+        | some va =>
+          have hf' := ih j Γ f vf hf
+          have ha' := ih j Γ a va ha
+          rw [hf', ha']
+          rw [hf, ha] at h
+          cases vf with
+          | lam x _d body =>
+            simp only at h ⊢
+            exact ih j ((x, va) :: Γ) body v h
+          | type =>
+            simp only at h ⊢; exact h
+          | var _ | app _ _ | asc _ _ | fix _ =>
+            simp only at h ⊢; exact h
+
+/-- If readbackAEnv succeeds for Γ and we look up x in Γ, the corresponding
+    readback appears in the readback env at the same key. -/
+theorem readbackAEnv_lookup (fuel : Nat) (Γ : AEnv) (Γ' : Env) (x : Name) (a : AVal)
+    (h_rb : readbackA.readbackAEnv fuel Γ = some Γ')
+    (h_lookup : AEnv.lookup Γ x = some a) :
+    ∃ τ, readbackA fuel a = some τ ∧ Env.lookup Γ' x = some τ := by
+  induction Γ generalizing Γ' with
+  | nil => simp [AEnv.lookup] at h_lookup
+  | cons entry rest ih =>
+    obtain ⟨y, v⟩ := entry
+    simp only [readbackA.readbackAEnv] at h_rb
+    cases h_rv : readbackA fuel v with
+    | none => simp [h_rv] at h_rb
+    | some τ_v =>
+      cases h_rr : readbackA.readbackAEnv fuel rest with
+      | none => simp [h_rv, h_rr] at h_rb
+      | some rest' =>
+        simp [h_rv, h_rr] at h_rb
+        subst h_rb
+        simp only [AEnv.lookup] at h_lookup
+        simp only [Env.lookup]
+        split at h_lookup <;> rename_i h_eq
+        · -- x = y: found it
+          cases h_lookup
+          split
+          · exact ⟨τ_v, h_rv, rfl⟩
+          · exact absurd h_eq ‹¬_›
+        · -- x ≠ y: recurse
+          split
+          · exact absurd ‹_› h_eq
+          · exact ih rest' h_rr h_lookup
+
+/-!
+### absEvalC_equiv: the key equivalence theorem
+
+**Statement:** readbackA(absEvalC fuel Γ e) = absEval fuel (readbackAEnv Γ) e
+
+**Proof strategy:** Induction on fuel, case split on e.
+- var: follows from readbackAEnv_lookup
+- type: trivial
+- lam: readbackA and absEval both normalize body in the SAME env
+  (needs absEval_fuel_mono for the fuel +1 offset in readbackA)
+- asc/fix: IH on the sub-expression
+- app: The hard case. When f evaluates to a closure, we need:
+
+  ```
+  absEval n ((x, τ_a) :: Γ_cap') body = absEval n ((x, τ_a) :: Γ') body_a
+  ```
+
+  where Γ_cap' is the readback of the captured env, Γ' is the readback of the
+  call-site env, body is the original body, and body_a is the normalized body
+  (= absEval ((x, var x) :: Γ_def') body, normalized at definition site).
+
+  **For lambda literals:** Γ_cap' = Γ' (captured env = call-site env), so this
+  reduces to: absEval body in E = absEval (absEval body with x=var x in E) in E.
+  This is absEval_normalize_stable.
+
+  **Key insight (new this session):** absEval_normalize_stable is FALSE in general
+  (see SoundnessS.lean counterexample with env value `app (var z) type`), BUT the
+  counterexample relies on env values being *reducible expressions*. In readback
+  envs (from readbackAEnv), ALL values are fully resolved (lam/type/fix with no
+  free variables other than bound lambda parameters). For such envs:
+  - Normalization resolves all env variables to their values
+  - The normalized body's only free variable is the lambda parameter
+  - Re-evaluating the normalized body in any env gives the same result
+    (the env is irrelevant since all non-parameter variables are already resolved)
+  - Therefore normalize-then-evaluate = direct-evaluate
+
+  **Proving this formally requires:**
+  1. A "closed body" lemma: absEval in a readback env produces expressions with
+     no free vars other than bound lambda params
+  2. An "env irrelevance" lemma: absEval of a closed expression gives the same
+     result regardless of env (for vars not in the expression)
+  3. absEval_normalize_stable restricted to readback envs
+
+  These are well-motivated but non-trivial. Left as the main sorry.
+
+**Fuel issue:** readbackA uses fuel for both readbackAEnv and absEval. When the
+theorem uses the same fuel for absEvalC, readbackAEnv, and absEval, sub-evaluations
+at fuel n need readbackAEnv at fuel n, but h_readback_env is at fuel n+1. We use
+a separate rb_fuel ≥ fuel for readback to avoid this.
+-/
+
 /-- **absEvalC ≡ absEval (via readback).**
 
-    readbackA(absEvalC fuel Γ e) = absEval fuel (readbackAEnv fuel Γ) e
-
-    Both normalize in the same env. Empirically verified by native_decide tests. -/
+    Uses separate `rb_fuel` for readback (≥ eval fuel) to handle the
+    fuel offset between sub-evaluations and readbackAEnv. -/
 theorem absEvalC_equiv
-    (fuel : Nat) (Γ : AEnv) (Γ' : Env) (e τ : Expr) (a : AVal)
+    (fuel rb_fuel : Nat) (Γ : AEnv) (Γ' : Env) (e τ : Expr) (a : AVal)
     (h_abs_c : absEvalC fuel Γ e = some a)
-    (h_readback_env : readbackA.readbackAEnv fuel Γ = some Γ')
+    (h_readback_env : readbackA.readbackAEnv rb_fuel Γ = some Γ')
     (h_abs : absEval fuel Γ' e = some τ)
-    : readbackA fuel a = some τ := by
-  sorry  -- Next agent: prove by induction on fuel, case split on e.
-         -- Key: both normalize in Γ'/readbackAEnv(Γ) — same env.
+    (h_fuel_le : fuel ≤ rb_fuel)
+    : readbackA rb_fuel a = some τ := by
+  induction fuel generalizing Γ Γ' e τ a with
+  | zero => simp [absEvalC] at h_abs_c
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp only [absEvalC] at h_abs_c
+      simp only [absEval] at h_abs
+      obtain ⟨τ_a, h_ra, h_lookup⟩ := readbackAEnv_lookup rb_fuel Γ Γ' x a h_readback_env h_abs_c
+      rw [h_lookup] at h_abs; cases h_abs; exact h_ra
+    | type =>
+      simp only [absEvalC] at h_abs_c; cases h_abs_c
+      simp only [absEval] at h_abs; cases h_abs; rfl
+    | asc term ty =>
+      simp only [absEvalC] at h_abs_c
+      simp only [absEval] at h_abs
+      exact ih Γ Γ' ty τ a h_abs_c h_readback_env h_abs (Nat.le_of_succ_le h_fuel_le)
+    | fix inner =>
+      simp only [absEvalC] at h_abs_c
+      simp only [absEval] at h_abs
+      cases inner with
+      | lam _f dom _body =>
+        exact ih Γ Γ' dom τ a h_abs_c h_readback_env h_abs (Nat.le_of_succ_le h_fuel_le)
+      | _ => simp [absEvalC] at h_abs_c
+    | lam x dom body =>
+      simp only [absEvalC] at h_abs_c; cases h_abs_c
+      simp only [absEval] at h_abs
+      cases h_body : absEval n ((x, .var x) :: Γ') body with
+      | none => simp [h_body] at h_abs
+      | some body_a =>
+        simp [h_body] at h_abs; cases h_abs
+        -- readbackA rb_fuel (aclo x dom body Γ)
+        simp only [readbackA]
+        rw [h_readback_env]
+        -- Need: absEval rb_fuel ((x, var x) :: Γ') body = some body_a
+        -- We have: absEval n ((x, var x) :: Γ') body = some body_a
+        -- By fuel mono: absEval n ≤ absEval (n + (rb_fuel - n)) = absEval rb_fuel
+        have h_diff : n + (rb_fuel - n) = rb_fuel := Nat.add_sub_cancel' (Nat.le_of_succ_le h_fuel_le)
+        have h_bump := absEval_fuel_mono n (rb_fuel - n) ((x, .var x) :: Γ') body body_a h_body
+        rw [h_diff] at h_bump; simp [h_bump]
+    | app f_e a_e =>
+      -- App case: the hardest. See analysis in the doc comment above.
+      -- Sub-evaluations at fuel n, IH at fuel n.
+      -- The IH on f and a works (same Γ, same Γ').
+      -- The IH on body requires:
+      --   (1) readbackAEnv rb_fuel ((x, v_a) :: Γ_cap) = some Γ_body_env
+      --   (2) absEval n Γ_body_env body = some τ_body
+      --   (3) τ_body = τ (the overall absEval result)
+      -- Condition (1) is derivable from ih_f and ih_a.
+      -- Condition (2) is the sub-IH.
+      -- Condition (3) requires absEval_normalize_stable for readback envs.
+      sorry

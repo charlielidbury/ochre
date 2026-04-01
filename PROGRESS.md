@@ -59,14 +59,70 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 **ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
 **1** in Closure.lean: `soundnessC` (original readback-based, kept for reference)
-**2** in Closure.lean: `soundnessC_abs` (absEvalC approach, RECOMMENDED):
+**2** in Closure.lean: `soundnessC_abs` (absEvalC approach):
 - asc case: needs subsumption (VR_abs is structural identity, can't widen)
 - fix case: same issue as asc — concrete evaluates body, abstract evaluates dom
 - (var, type, lam, app-clo, app-type, app-fixV cases are PROVED)
-**1** in Closure.lean: `absEvalC_equiv` (readback equivalence, separate lemma)
+**1** in Closure.lean: `absEvalC_equiv` (app case only — var/type/asc/fix/lam PROVED)
 **7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
-## New this session (ochre-lean-20260401-112538)
+## New this session (ochre-lean-20260401-120716)
+
+### absEvalC_equiv: 5 of 6 cases proved
+
+Proved var, type, asc, fix, and lam cases. The app case remains as sorry.
+
+**New lemmas added:**
+- `absEval_fuel_mono`: if absEval k Γ e = some v, then absEval (k+j) Γ e = some v.
+  Copied from SoundnessS.lean (self-contained, only depends on Eval.lean).
+- `readbackAEnv_lookup`: links AEnv.lookup to Env.lookup through readbackAEnv.
+
+**Reformulation:** Changed `absEvalC_equiv` to use separate `rb_fuel ≥ fuel` parameter,
+fixing a fuel mismatch between sub-evaluations (fuel n) and readbackAEnv (fuel n+1).
+
+### Key analysis: the app case and absEval_normalize_stable
+
+The app case of absEvalC_equiv reduces to proving:
+
+```
+absEval n ((x, τ_a) :: Γ_cap') body = absEval n ((x, τ_a) :: Γ') body_a
+```
+
+where Γ_cap' is the readback of the captured env, Γ' is the readback of the call-site
+env, body is the original body, and body_a = absEval ((x, var x) :: Γ_def') body.
+
+This is a form of `absEval_normalize_stable` (which is FALSE in general — see
+SoundnessS.lean counterexample). **However, the counterexample relies on env values
+that are reducible expressions (like `app (var z) type`).** Readback envs contain
+ONLY lam/type/fix with no free vars other than bound lambda parameters.
+
+**New conjecture:** absEval_normalize_stable holds for readback envs because:
+1. Readback-produced lambda bodies have no free vars other than their lambda parameter
+2. Re-normalizing such bodies is effectively a no-op (all variables already resolved)
+3. Evaluating in any env gives the same result (env irrelevant for non-parameter vars)
+
+**To prove this, the next agent needs:**
+1. "Closed body" lemma: absEval in readback env → output has no free vars other than
+   bound lambda params
+2. "Env irrelevance" lemma: absEval of closed expr is env-independent
+3. absEval_normalize_stable restricted to readback envs
+
+### Analysis: VR_abs subsumption is fundamentally impossible
+
+Deep analysis confirmed that the asc/fix cases of soundnessC_abs CANNOT be proved
+with VR_abs as the conclusion. VR_abs requires structural identity (same body/name/dom),
+but asc produces different closures on the concrete vs abstract sides. All considered
+alternatives (existential formulation, readback-based conclusion, step-indexed LR)
+either break the app case (which needs structural env info) or require the same
+absEval_normalize_stable property.
+
+**Recommended path:** Complete absEvalC_equiv first (prove the app case via the
+closed-body / env-irrelevance lemmas), then derive soundnessC from:
+  soundnessC_abs (concEvalC vs absEvalC, 4 of 6 cases proved)
+  + absEvalC_equiv (absEvalC vs absEval, 5 of 6 cases proved)
+  + existing soundness (concEval vs absEval, fully proved)
+
+## Previous session (ochre-lean-20260401-112538)
 
 ### Closure.lean now compiles (was never building!)
 

@@ -5,6 +5,65 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-01 ochre-lean-20260401-120716: absEvalC_equiv — partial proof + key insight about readback envs
+
+**What was done:**
+
+1. Proved 5 of 6 cases of `absEvalC_equiv` (var, type, asc, fix, lam). The app case
+   remains as sorry.
+
+2. Added `absEval_fuel_mono` to Closure.lean (copied from SoundnessS.lean to avoid
+   importing the stalled file). Used for the lam case where readbackA uses fuel n+1
+   but absEval's lam case uses fuel n.
+
+3. Added `readbackAEnv_lookup` lemma: if readbackAEnv Γ = some Γ' and Γ.lookup x = some a,
+   then readbackA a gives the corresponding Γ'.lookup x value.
+
+4. Reformulated `absEvalC_equiv` with separate `rb_fuel ≥ fuel` parameter to handle
+   the fuel offset between sub-evaluations and readbackAEnv.
+
+**Key insight: absEval_normalize_stable may hold for readback envs**
+
+The counterexample in SoundnessS.lean (which proves absEval_normalize_stable FALSE)
+relies on env values that are *reducible expressions* like `app (var "z") type`.
+But readback envs (from readbackAEnv) contain ONLY lam/type/fix — never var, app, or asc.
+
+More importantly, readback-produced lambda bodies have a crucial property: their only
+free variables are bound lambda parameters. All other variables are resolved to constants
+during readback (via absEval in the captured env). This means:
+
+1. **Normalization is effectively a no-op** on readback env values (re-normalizing
+   a readback result in the same env gives back the same result)
+2. **Re-evaluating normalized bodies is env-irrelevant** for non-parameter variables
+   (the body doesn't reference them)
+
+This suggests absEval_normalize_stable IS true when restricted to readback envs.
+
+**What's needed to finish the app case:**
+
+1. A "closed body" lemma: absEval in a readback env produces expressions where the
+   only free vars are bound lambda parameters
+2. An "env irrelevance" lemma: absEval of such closed expressions gives the same
+   result regardless of env (for non-referenced vars)
+3. absEval_normalize_stable restricted to readback envs
+
+These are well-motivated but non-trivial. Each is a separate proof by induction.
+
+**Alternative considered: changing absEval to use closures**
+
+If absEval used AVal (closures) instead of Expr, it would be structurally parallel
+to absEvalC, making absEvalC_equiv trivial. But this would require rewriting ALL
+existing proofs (soundness, monotonicity, tests), which is too large for one session.
+
+**Also analyzed and rejected:**
+
+- VR_abs subsumption for asc/fix cases of soundnessC_abs: fundamentally impossible
+  with structural VR_abs (requires same body/name, but asc produces different closures)
+- absEvalC_equiv at the original fuel (without rb_fuel): fuel mismatch between
+  readbackAEnv at fuel n+1 and sub-evaluations at fuel n
+
+---
+
 ## 2026-03-31 ochre-lean-20260331-233210: Closure-based concrete evaluator (concEvalC) — NEW APPROACH
 
 **Decision:** Added `concEvalC` in `Och/Closure.lean` — a closure-based concrete
