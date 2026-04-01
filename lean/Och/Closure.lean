@@ -740,32 +740,37 @@ concEvalC ←— soundnessC_abs —→ absEvalC ←— absEvalC_equiv —→ abs
 The tests above confirm absEvalC_equiv holds empirically (all native_decide).
 -/
 
-/-- Value relation between CVal and AVal.
+/-- Value relation between CVal and AVal (no fuel parameter needed).
     Much simpler than VR (CVal → Expr) because both use closures with
     captured envs and original bodies. No application property needed —
-    the fundamental theorem IH handles application directly. -/
-inductive VR_abs : Nat → CVal → AVal → Prop where
+    the fundamental theorem IH handles application directly.
+
+    The relation is fuel-independent because it only checks structural
+    correspondence: same constructor shapes with recursively consistent envs.
+    The env consistency is inlined to avoid positivity issues with mutual
+    inductives. -/
+inductive VR_abs : CVal → AVal → Prop where
   /-- Both are type values. -/
-  | type_type : VR_abs n .type .atype
-  /-- Base case: fuel 0. -/
-  | base : VR_abs 0 v a
-  /-- Closure case: same body, consistent captured envs. -/
-  | clo : ∀ {n x dom body γ_c Γ_a},
-      ER_abs n γ_c Γ_a →
-      VR_abs (n + 1) (.clo x dom body γ_c) (.aclo x dom body Γ_a)
+  | type_type : VR_abs .type .atype
+  /-- Closure case: same name, domain, body, and consistent captured envs. -/
+  | clo : ∀ {x dom body γ_c Γ_a},
+      (∀ y (a : AVal), Γ_a.lookup y = some a →
+        ∃ v, γ_c.lookup y = some v ∧ VR_abs v a) →
+      VR_abs (.clo x dom body γ_c) (.aclo x dom body Γ_a)
   /-- Fix thunk case: same inner, consistent captured envs. -/
-  | fixV : ∀ {n inner γ_c Γ_a},
-      ER_abs n γ_c Γ_a →
-      VR_abs (n + 1) (.fixV inner γ_c) (.afixV inner Γ_a)
+  | fixV : ∀ {inner γ_c Γ_a},
+      (∀ y (a : AVal), Γ_a.lookup y = some a →
+        ∃ v, γ_c.lookup y = some v ∧ VR_abs v a) →
+      VR_abs (.fixV inner γ_c) (.afixV inner Γ_a)
 
 /-- Environment relation between CEnv and AEnv, pointwise VR_abs. -/
-def ER_abs (n : Nat) (γ : CEnv) (Γ : AEnv) : Prop :=
-  ∀ x (a : AVal), Γ.lookup x = some a → ∃ v, γ.lookup x = some v ∧ VR_abs n v a
+def ER_abs (γ : CEnv) (Γ : AEnv) : Prop :=
+  ∀ x (a : AVal), Γ.lookup x = some a → ∃ v, γ.lookup x = some v ∧ VR_abs v a
 
 /-- Extend ER_abs with a VR_abs-consistent binding. -/
-theorem ER_abs.extend {n : Nat} {γ : CEnv} {Γ : AEnv}
-    (h : ER_abs n γ Γ) (x : Name) {v : CVal} {a : AVal} (hvr : VR_abs n v a) :
-    ER_abs n ((x, v) :: γ) ((x, a) :: Γ) := by
+theorem ER_abs.extend {γ : CEnv} {Γ : AEnv}
+    (h : ER_abs γ Γ) (x : Name) {v : CVal} {a : AVal} (hvr : VR_abs v a) :
+    ER_abs ((x, v) :: γ) ((x, a) :: Γ) := by
   intro y σ h_lookup
   simp only [AEnv.lookup] at h_lookup ⊢
   simp only [CEnv.lookup]
@@ -795,16 +800,103 @@ theorem soundnessC_abs
     (fuel : Nat) (γ : CEnv) (Γ : AEnv) (e : Expr) (v : CVal) (a : AVal)
     (h_conc : concEvalC fuel γ e = some v)
     (h_abs : absEvalC fuel Γ e = some a)
-    (h_env : ER_abs fuel γ Γ)
-    -- (h_wt : WellTypedC fuel Γ e)  -- TODO: define WellTypedC
-    : VR_abs fuel v a := by
-  sorry  -- Next agent: implement this proof. Key cases:
-         -- var: both look up, ER_abs gives VR_abs. Trivial.
-         -- type: both return type/atype. Trivial.
-         -- lam: both return closures with same body, ER_abs by hypothesis.
-         -- asc: HARD — concrete takes LHS, abstract takes RHS. Needs WellTypedC.
-         -- fix: concrete unrolls, abstract returns domain. Needs fix typing.
-         -- app: both beta-reduce same body in captured envs. IH applies directly.
+    (h_env : ER_abs γ Γ)
+    -- (h_wt : WellTypedC fuel Γ e)  -- TODO: define WellTypedC for asc/fix
+    : VR_abs v a := by
+  induction fuel generalizing γ Γ e v a with
+  | zero => simp [concEvalC] at h_conc
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp [concEvalC, absEvalC] at h_conc h_abs
+      obtain ⟨v', hv', hvr⟩ := h_env x a h_abs
+      rw [hv'] at h_conc; cases h_conc
+      exact hvr
+    | type =>
+      simp [concEvalC, absEvalC] at h_conc h_abs
+      cases h_conc; cases h_abs
+      exact VR_abs.type_type
+    | lam x dom body =>
+      simp only [concEvalC] at h_conc; cases h_conc
+      simp only [absEvalC] at h_abs; cases h_abs
+      exact VR_abs.clo h_env
+    | asc term ty =>
+      -- concEvalC evaluates term, absEvalC evaluates ty — they diverge here.
+      -- Needs WellTypedC to relate term's value to ty's value.
+      simp only [concEvalC] at h_conc
+      simp only [absEvalC] at h_abs
+      sorry  -- Needs WellTypedC: absEvalC term ⊑ absEvalC ty
+    | fix inner =>
+      -- concEvalC unrolls fix body, absEvalC returns domain type.
+      -- Needs fix typing axiom.
+      sorry
+    | app f_e a_e =>
+      simp only [concEvalC] at h_conc
+      simp only [absEvalC] at h_abs
+      -- Evaluate function and argument on both sides
+      generalize hfc : concEvalC n γ f_e = rfc at h_conc
+      generalize hac : concEvalC n γ a_e = rac at h_conc
+      generalize hfa : absEvalC n Γ f_e = rfa at h_abs
+      generalize haa : absEvalC n Γ a_e = raa at h_abs
+      cases rfc with
+      | none => cases rac <;> simp at h_conc
+      | some v_f =>
+        cases rac with
+        | none => simp at h_conc
+        | some v_a =>
+          cases rfa with
+          | none => cases raa <;> simp at h_abs
+          | some a_f =>
+            cases raa with
+            | none => simp at h_abs
+            | some a_a =>
+              -- IH on function and argument
+              have ih_f := ih γ Γ f_e v_f a_f hfc hfa h_env
+              have ih_a := ih γ Γ a_e v_a a_a hac haa h_env
+              -- Case-split on the function result
+              cases ih_f with
+              | type_type =>
+                -- v_f = .type, a_f = .atype
+                simp only at h_conc h_abs
+                cases h_conc; cases h_abs
+                exact VR_abs.type_type
+              | clo h_env_cap =>
+                -- v_f = .clo x dom body γ_c, a_f = .aclo x dom body Γ_a
+                -- Both beta-reduce body in captured envs
+                simp only at h_conc h_abs
+                -- Apply IH on the body with extended captured envs
+                exact ih ((_, v_a) :: _) ((_, a_a) :: _) _ v a h_conc h_abs
+                  (ER_abs.extend h_env_cap _ ih_a)
+              | fixV h_env_cap =>
+                -- v_f = .fixV inner γ_c, a_f = .afixV inner Γ_a
+                -- Both unroll fix and apply
+                simp only at h_conc h_abs
+                -- First: evaluate .fix inner in captured envs
+                generalize hfc_fix : concEvalC n _ (.fix _) = rfc_fix at h_conc
+                generalize hfa_fix : absEvalC n _ (.fix _) = rfa_fix at h_abs
+                -- The fix result needs to be a closure on both sides
+                -- Use IH on .fix inner with captured env consistency
+                have ih_fix := ih _ _ (.fix _) _ _ hfc_fix hfa_fix h_env_cap
+                cases rfc_fix with
+                | none => simp at h_conc
+                | some v_fix =>
+                  cases rfa_fix with
+                  | none => simp at h_abs
+                  | some a_fix =>
+                    cases ih_fix with
+                    | type_type =>
+                      simp only at h_conc h_abs
+                      cases h_conc; cases h_abs
+                      exact VR_abs.type_type
+                    | clo h_env_fix =>
+                      simp only at h_conc h_abs
+                      exact ih _ _ _ v a h_conc h_abs
+                        (ER_abs.extend h_env_fix _ ih_a)
+                    | fixV h_env_fix' =>
+                      simp only at h_conc h_abs
+                      -- fixV in fix position after unrolling: should not happen
+                      -- for well-formed programs (fix of fix is unusual)
+                      sorry  -- degenerate: fixV after fix unroll
 
 /-- **absEvalC ≡ absEval (via readback).**
 
