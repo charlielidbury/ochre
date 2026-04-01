@@ -278,9 +278,13 @@ private def inferType (ctx : List (Name × Expr)) : Expr → Option Expr
   | .app f a =>
     match inferType ctx f with
     | some (.lam x _dom retTy) => some (retTy.subst x a)
-    | some (.iota _x _body) =>
-      -- TODO: Self-type elimination: unfold iota and infer
-      none
+    | some (.iota x body) =>
+      -- Self-type elimination: f : iota x body → f : body[x := f]
+      -- Unfold the self type, then try to infer application type
+      let unfolded := body.subst x f
+      match unfolded with
+      | .lam y _dom retTy => some (retTy.subst y a)
+      | _ => none
     | _ => none
   | _ => none
 
@@ -310,6 +314,12 @@ private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : B
         -- Self-type subtyping: covariant in body (like lam_body)
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
         subCheckNF fuel ((x, .iota x bodyA) :: ctx) bodyA bodyB'
+      | _, .iota x body =>
+        -- Self-intro: a ⊑ iota x body  iff  a ⊑ body[x := a]
+        subCheckNF fuel ctx a (body.subst x a)
+      | .iota x body, _ =>
+        -- Self-elim: iota x body ⊑ b  iff  body[x := iota x body] ⊑ b
+        subCheckNF fuel ctx (body.subst x (.iota x body)) b
       | _, _ =>
         match inferType ctx a with
         | some ty => subCheckNF fuel ctx ty b

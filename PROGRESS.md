@@ -80,7 +80,48 @@ then absEval succeeds in Γ₂ (same expression). 5 of 6 cases proved. The app-l
 case is sorry'd because the function's body may differ between envs (normalized
 bodies from different envs have SubtypeTrans but not structural equality).
 
-## New this session (ochre-lean-20260401-142109)
+## New this session (ochre-lean-20260401-152400)
+
+### Iota self-intro and self-elim in subtype checker
+
+Implemented the two core semantic rules for self types in `subCheckNF`:
+
+1. **Self-intro** (`a ⊑ iota x body`): Unfolds to `a ⊑ body[x := a]`.
+   When checking if a value inhabits a self type, substitute the value for
+   the self variable and check the unfolded body.
+
+2. **Self-elim** (`iota x body ⊑ b`): Unfolds to `body[x := iota x body] ⊑ b`.
+   When an iota type appears on the LHS, substitute the iota itself for
+   the self variable and check against the target.
+
+3. **inferType iota-elim**: When a variable has type `iota x body` and is
+   applied, unfold to `body[x := f]` and extract the lambda return type.
+   Enables application through self-typed function variables.
+
+**Files changed:**
+- `Subtyping.lean`: 3 changes (self-intro/elim in subCheckNF, iota-elim in inferType)
+- `Tests.lean`: ~60 lines of new tests (§8 Self types section)
+
+**Tests added:**
+- Self-intro: unit ⊑ SelfUnit, true/false ⊑ SelfBool, numerals ⊑ SelfNat
+- Self-intro negative: zero ⊑ iota x. Bool' fails correctly
+- Self-elim: iota x. Unit' ⊑ Unit', iota n. Nat' ⊑ Nat'
+- Self-elim chains: f : iota x. Unit' → f ⊑ Unit' (via inferType + self-elim)
+- inferType self-elim: f : iota x. Unit' → f Type ⊑ (Type -> Type)
+- Ascription interaction: (unit : iota f. Unit') ⊑ Unit'
+- Self-ref negative: unit ⊑ SelfRef fails (domain mismatch)
+- Iota-iota covariance: SelfNat ⊑ TrivialSelf
+
+**What's NOT done:**
+- Subtype'/SubtypeTrans NOT extended with self-intro/elim constructors.
+  Adding these would break shape lemmas (e.g., lam_rhs_shape) which are
+  essential for monotonicity/soundness proofs. The theoretical relation
+  needs careful redesign to accommodate iota rules. Left for future agent.
+- Iota in function position in evaluators (absEval/concEval app case).
+  Currently produces stuck application. Needed for full self-type functionality.
+- Self-typed standard library requires recursive types (type-level fix).
+
+## Previous session (ochre-lean-20260401-142109)
 
 ### iota (self type) constructor added to Expr
 

@@ -669,3 +669,107 @@ example : concEvalS testFuel (.app toZeroThunked (.app (.app addThunked two') on
 
 -- Abstract type: addThunked has declared type Nat → Nat → Nat
 example : absEval testFuel [] addThunked = some NatToNatToNat := by native_decide
+
+-- ============================================================
+-- §8 Self types (iota) — self-intro subtyping and self-elim
+-- ============================================================
+
+-- SelfUnit = iota u. (X: Type) -> X -> X
+-- The self variable u is unused, so self-intro reduces to unit ⊑ Unit
+def SelfUnit : Expr := .iota "u" (.lam "X" .type (.lam "x" (.var "X") (.var "X")))
+
+-- Self-intro: unit ⊑ SelfUnit via unit ⊑ body[u := unit] = Unit
+example : subCheck testFuel unit' SelfUnit = true := by native_decide
+
+-- Self-intro: true ⊑ SelfBool (self var unused)
+def SelfBool : Expr := .iota "b" (.lam "X" .type (.lam "t" (.var "X") (.lam "f" (.var "X") (.var "X"))))
+example : subCheck testFuel true' SelfBool = true := by native_decide
+example : subCheck testFuel false' SelfBool = true := by native_decide
+
+-- Self-intro: zero ⊑ SelfNat (self var unused, equivalent to Nat)
+def SelfNat : Expr := .iota "n" Nat'
+example : subCheck testFuel zero' SelfNat = true := by native_decide
+example : subCheck testFuel one' SelfNat = true := by native_decide
+example : subCheck testFuel three' SelfNat = true := by native_decide
+
+-- Self-intro with self variable USED in body:
+-- TrivialSelf = iota x. Type
+-- Everything is in Type, so everything should satisfy this
+def TrivialSelf : Expr := .iota "x" .type
+example : subCheck testFuel true' TrivialSelf = true := by native_decide
+example : subCheck testFuel Nat' TrivialSelf = true := by native_decide
+
+-- Self-intro: iota x. (P : Type) -> P -> P (identity self type)
+-- unit ⊑ iota x. (P : Type) -> P -> P means unit ⊑ ((P : Type) -> P -> P)[x := unit]
+-- Since x doesn't appear in the body, this is unit ⊑ (P : Type) -> P -> P = Unit
+def IdSelf : Expr := .iota "x" Unit'
+example : subCheck testFuel unit' IdSelf = true := by native_decide
+
+-- Negative: true should NOT be a member of SelfNat-style self type
+-- when the self variable is actually used to constrain membership
+-- (This requires recursive types to be truly interesting, but we can
+-- test that non-members of the body type fail)
+-- true ⊑ iota n. Nat' should fail since true ⊑ Nat' is false... wait, true ⊑ Nat is TRUE.
+-- Let's use a genuinely failing case:
+-- BAD: 0 ⊑ iota x. Bool' should fail because 0 ⊑ Bool' fails
+example : subCheck testFuel zero' (.iota "x" Bool') = false := by native_decide
+
+-- Iota-iota subtyping (covariance): SelfNat ⊑ TrivialSelf
+-- because Nat' ⊑ Type
+example : subCheck testFuel SelfNat TrivialSelf = true := by native_decide
+
+-- ============================================================
+-- Self-elim in subCheckNF: iota on LHS unfolds
+-- ============================================================
+
+-- Self-elim: iota x. T ⊑ T[x := iota x. T]
+-- iota x. Unit' ⊑ Unit' (since x unused in Unit', unfolds to Unit' ⊑ Unit')
+example : subCheck testFuel (.iota "x" Unit') Unit' = true := by native_decide
+example : subCheck testFuel (.iota "n" Nat') Nat' = true := by native_decide
+
+-- Self-elim chains with self-intro (via inferType):
+-- λ(f : iota x. Unit'). f  ⊑  λ(f : iota x. Unit'). Unit'
+-- Body: var f ⊑ Unit'. inferType gives f : iota x. Unit'.
+-- Then iota x. Unit' ⊑ Unit' by self-elim.
+example : subCheck testFuel
+  (.lam "f" (.iota "x" Unit') (.var "f"))
+  (.lam "f" (.iota "x" Unit') Unit')
+  = true := by native_decide
+
+-- Self-elim in inferType: application through iota-typed function.
+-- λ(f : iota x. Unit'). f Type  ⊑  λ(f : iota x. Unit'). (Type -> Type)
+-- inferType for (app f Type): f has type iota x. Unit'.
+-- Self-elim: unfold to Unit' = (X:Type)->X->X. This is a lam with retTy = lam x (var X) (var X).
+-- After substituting X=Type: retTy.subst X Type = lam x Type Type = (Type -> Type).
+-- So f Type : Type -> Type. Check (Type -> Type) ⊑ (Type -> Type) → refl ✓
+example : subCheck testFuel
+  (.lam "f" (.iota "x" Unit') (.app (.var "f") .type))
+  (.lam "f" (.iota "x" Unit') (.lam "_" .type .type))
+  = true := by native_decide
+
+-- ============================================================
+-- Self types: ascription interaction
+-- ============================================================
+
+-- (unit : iota f. Unit') abstractly evaluates to iota f. Unit'
+example : absEval testFuel [] (.asc unit' (.iota "f" Unit')) = some (.iota "f" Unit') := by native_decide
+
+-- Ascribed iota type is subtype of unwrapped type (self-elim in subCheck)
+example : subCheck testFuel (.asc unit' (.iota "f" Unit')) Unit' = true := by native_decide
+
+-- ============================================================
+-- Self types with self variable used in body
+-- ============================================================
+
+-- SelfRef = iota x. (P : Type) -> P -> P
+-- where P is applied to (var x), making the type depend on the value.
+-- Concretely: iota x. λ(P : Type -> Type). P x -> P x
+-- For unit ⊑ SelfRef: check unit ⊑ body[x := unit] = λ(P : Type->Type). P unit -> P unit
+-- unit = λX.λx.x has domain Type (not Type->Type), so domain check fails.
+-- This correctly rejects unit since the self-referencing body has different shape.
+def SelfRef : Expr := .iota "x"
+  (.lam "P" (.lam "_" .type .type)
+    (.lam "pf" (.app (.var "P") (.var "x"))
+      (.app (.var "P") (.var "x"))))
+-- unit should NOT satisfy SelfRef (domain mismatch: Type vs Type->Type)
+example : subCheck testFuel unit' SelfRef = false := by native_decide
