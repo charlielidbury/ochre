@@ -67,6 +67,8 @@ inductive CVal where
   | type : CVal
   /-- A fixpoint thunk — unrolled lazily at application time. -/
   | fixV : Expr → (env : List (Name × CVal)) → CVal
+  /-- Self type closure: an iota that captured its definition-site environment. -/
+  | ciota : Name → (body : Expr) → (env : List (Name × CVal)) → CVal
   deriving Repr, Inhabited
 
 /-- Environment for the closure-based evaluator. -/
@@ -110,7 +112,7 @@ def concEvalC (fuel : Nat) (γ : CEnv) (e : Expr) : Option CVal :=
     | .lam x dom body => some (.clo x dom body γ)  -- Closure! Captures env.
     | .type         => some .type
     | .asc term _   => concEvalC fuel γ term  -- Runtime: take the lhs
-    | .iota _ _ => some .type  -- iota is a type-level construct; return type at runtime
+    | .iota x body => some (.ciota x body γ)  -- Capture env, like lam
     | .fix inner    =>
       match inner with
       | .lam f _dom body =>
@@ -147,6 +149,8 @@ inductive AVal where
   | atype : AVal
   /-- A fixpoint thunk — unrolled lazily at application time. -/
   | afixV : Expr → (env : List (Name × AVal)) → AVal
+  /-- Abstract self type closure: an iota that captured its definition-site env. -/
+  | aiota : Name → (body : Expr) → (env : List (Name × AVal)) → AVal
   deriving Repr, Inhabited
 
 abbrev AEnv := List (Name × AVal)
@@ -182,7 +186,7 @@ def absEvalC (fuel : Nat) (Γ : AEnv) (e : Expr) : Option AVal :=
     | .lam x dom body => some (.aclo x dom body Γ)  -- Closure! Captures env.
     | .type         => some .atype
     | .asc _term ty => absEvalC fuel Γ ty  -- Compile-time: take the rhs
-    | .iota _ _ => some .atype  -- iota is a type-level construct; return atype
+    | .iota x body => some (.aiota x body Γ)  -- Capture env, like lam
     | .fix inner    =>
       match inner with
       | .lam _f dom _body =>
@@ -223,6 +227,13 @@ def readbackA (fuel : Nat) (v : AVal) : Option Expr :=
     | some Γ' =>
       match absEval fuel ((x, .var x) :: Γ') body with
       | some body' => some (.lam x dom body')
+      | none => none
+    | none => none
+  | .aiota x body Γ =>
+    match readbackAEnv fuel Γ with
+    | some Γ' =>
+      match absEval fuel ((x, .var x) :: Γ') body with
+      | some body' => some (.iota x body')
       | none => none
     | none => none
 where
@@ -294,6 +305,13 @@ def readback (fuel : Nat) (v : CVal) : Option Expr :=
     | some γ' =>
       match absEval fuel ((x, .var x) :: γ') body with
       | some body' => some (.lam x dom body')
+      | none => none
+    | none => none
+  | .ciota x body γ =>
+    match readbackEnv fuel γ with
+    | some γ' =>
+      match absEval fuel ((x, .var x) :: γ') body with
+      | some body' => some (.iota x body')
       | none => none
     | none => none
 where
@@ -423,41 +441,9 @@ example : evalAndReadback 1000 (.app pred' three') = some two' := by native_deci
 -- Soundness theorem
 -- ============================================================
 
-/-- Env consistency between CEnv (concrete closures) and Env (abstract).
-    Each abstract binding has a corresponding concrete value whose readback
-    subtypes the abstract type. -/
-def CEnvConsistent (fuel : Nat) (γ : CEnv) (Γ : Env) : Prop :=
-  ∀ x τ, Γ.lookup x = some τ →
-    ∃ v, γ.lookup x = some v ∧
-      ∃ v_e, readback fuel v = some v_e ∧ SubtypeTrans v_e τ
-
-/-- **Soundness of the closure-based evaluator (readback formulation).**
-
-    If `absEval` says expression `e` has type `τ`, and `concEvalC` produces
-    value `v` (a closure), then the readback of `v` subtypes `τ`.
-
-    **Status:** This uses the readback-based approach. The lam case requires
-    readback to succeed (readbackEnv + absEval on body in readback env), which
-    depends on `absEval_succeeds_envsub` (not yet proven). The app case is harder:
-    after beta-reduction, concEvalC evaluates the closure's ORIGINAL body in the
-    CAPTURED env, while absEval evaluates the NORMALIZED body in the CURRENT env.
-    These are different bodies in different envs.
-
-    See `soundnessC_lr` below for the logical-relations approach that avoids
-    these issues. -/
-theorem soundnessC
-    (Γ : Env) (γ : CEnv) (e τ : Expr) (v : CVal) (fuel : Nat)
-    (h_abs : absEval fuel Γ e = some τ)
-    (h_conc : concEvalC fuel γ e = some v)
-    (h_env : CEnvConsistent fuel γ Γ)
-    (h_wt : WellTyped fuel Γ e)
-    (h_no_fix : EnvNoFix Γ)
-    : ∃ v_e, readback fuel v = some v_e ∧ SubtypeTrans v_e τ := by
-  sorry  -- Superseded by soundnessC_direct below
-
 /-- Full env consistency: provides the readback env and proves it subtypes Γ.
-    This is stronger than CEnvConsistent — it guarantees readback of the
-    ENTIRE concrete env succeeds (not just individual lookups). -/
+    Guarantees readback of the ENTIRE concrete env succeeds (not just
+    individual lookups). -/
 def CEnvFull (rb_fuel : Nat) (γ : CEnv) (Γ : Env) : Prop :=
   ∃ γ_rb : Env, readback.readbackEnv rb_fuel γ = some γ_rb ∧ EnvSubTrans γ_rb Γ
 
@@ -624,12 +610,32 @@ theorem soundnessC_direct
         h_wt_term h_no_fix (Nat.le_of_succ_le h_fuel)
       -- Chain: v_e ⊑ σ ⊑ τ
       exact ⟨v_e, h_rv, SubtypeTrans.trans h_sub_v (SubtypeTrans.step h_sub_wt)⟩
-    | iota _ _ =>
-      -- iota is a type-level construct; concEvalC returns .type,
-      -- absEval normalizes body under binder. In well-typed programs, iota
-      -- only appears in type positions (not directly evaluated at runtime).
-      -- The concEvalC treatment of iota as .type is a placeholder.
-      sorry
+    | iota x body =>
+      -- concEvalC returns ciota closure, absEval normalizes body under binder.
+      -- Parallel to the lam case.
+      simp only [concEvalC] at h_conc; cases h_conc
+      simp only [absEval] at h_abs
+      cases hba : absEval n ((x, .var x) :: Γ) body with
+      | none => simp [hba] at h_abs
+      | some body_a =>
+        simp [hba] at h_abs; cases h_abs
+        -- readback of ciota: readbackEnv γ then absEval body in readback env
+        obtain ⟨γ_rb, h_rb_ok, h_sub_env⟩ := h_env
+        -- Bump hba from fuel n to rb_fuel by fuel monotonicity
+        have h_fuel_le : n ≤ rb_fuel := Nat.le_of_succ_le h_fuel
+        have hba_up := absEval_fuel_mono n (rb_fuel - n) ((x, .var x) :: Γ) body body_a hba
+        rw [Nat.add_sub_cancel' h_fuel_le] at hba_up
+        -- absEval succeeds in sub-env by absEval_succeeds_envsub
+        have h_env_ext := envSubTrans_extend h_sub_env x (.var x)
+        obtain ⟨body_rb, hb_rb⟩ := absEval_succeeds_envsub rb_fuel
+          ((x, .var x) :: Γ) ((x, .var x) :: γ_rb) body body_a h_env_ext hba_up
+        -- SubtypeTrans body_rb body_a by monotonicity
+        have h_body_sub := monotonicity_trans ((x, .var x) :: Γ) ((x, .var x) :: γ_rb)
+          body body_a body_rb rb_fuel h_env_ext hba_up hb_rb
+        -- Construct readback result
+        have h_readback : readback rb_fuel (.ciota x body γ) = some (.iota x body_rb) := by
+          simp only [readback, h_rb_ok, hb_rb]
+        exact ⟨_, h_readback, SubtypeTrans.iota_body h_body_sub⟩
     | fix inner =>
       simp only [concEvalC] at h_conc
       simp only [absEval] at h_abs
@@ -819,6 +825,12 @@ inductive VR_abs : CVal → AVal → Prop where
       (∀ y (a : AVal) (v : CVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y = some v →
         VR_abs v a) →
       VR_abs (.fixV inner γ_c) (.afixV inner Γ_a)
+  /-- Iota case: same binder name and body, consistent captured envs. -/
+  | ciota : ∀ {x body γ_c Γ_a},
+      (∀ y (a : AVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y ≠ none) →
+      (∀ y (a : AVal) (v : CVal), AEnv.lookup Γ_a y = some a → CEnv.lookup γ_c y = some v →
+        VR_abs v a) →
+      VR_abs (.ciota x body γ_c) (.aiota x body Γ_a)
 
 /-- Environment relation between CEnv and AEnv: coverage + value relation. -/
 def ER_abs (γ : CEnv) (Γ : AEnv) : Prop :=
@@ -888,7 +900,7 @@ theorem soundnessC_abs
     | iota _ _ =>
       simp only [concEvalC] at h_conc; cases h_conc
       simp only [absEvalC] at h_abs; cases h_abs
-      exact VR_abs.type_type
+      exact VR_abs.ciota h_env.1 h_env.2
     | asc term ty =>
       -- concEvalC evaluates term, absEvalC evaluates ty — they diverge here.
       -- Needs WellTypedC to relate term's value to ty's value.
@@ -936,6 +948,9 @@ theorem soundnessC_abs
                 -- Apply IH on the body with extended captured envs
                 exact ih ((_, v_a) :: _) ((_, a_a) :: _) _ v a h_conc h_abs
                   (ER_abs.extend ⟨h_cov_cap, h_vr_cap⟩ _ ih_a)
+              | ciota _ _ =>
+                -- ciota in function position: both evaluators fall through to none
+                simp only at h_conc h_abs; cases h_conc
               | fixV h_cov_cap h_vr_cap =>
                 -- v_f = .fixV inner γ_c, a_f = .afixV inner Γ_a
                 -- Both unroll fix and apply
@@ -960,6 +975,9 @@ theorem soundnessC_abs
                       simp only at h_conc h_abs
                       exact ih _ _ _ v a h_conc h_abs
                         (ER_abs.extend ⟨h_cov_fix, h_vr_fix⟩ _ ih_a)
+                    | ciota _ _ =>
+                      -- ciota from fix: concEvalC falls to none
+                      simp only at h_conc h_abs; cases h_conc
                     | fixV _ _ =>
                       -- fixV in fix position: concEvalC match falls to `none`
                       simp only at h_conc h_abs
@@ -1079,11 +1097,22 @@ theorem absEvalC_equiv
       simp only [absEvalC] at h_abs_c
       simp only [absEval] at h_abs
       exact ih Γ Γ' ty τ a h_abs_c h_readback_env h_abs (Nat.le_of_succ_le h_fuel_le)
-    | iota _ _ =>
-      -- absEvalC returns atype, absEval normalizes iota body.
-      -- These are fundamentally different; needs iota-aware AVal or
-      -- proper iota handling in absEvalC. Sorry for now.
-      sorry
+    | iota x body =>
+      -- absEvalC returns aiota x body Γ, absEval normalizes body under binder.
+      -- Parallel to the lam case.
+      simp only [absEvalC] at h_abs_c; cases h_abs_c
+      simp only [absEval] at h_abs
+      cases h_body : absEval n ((x, .var x) :: Γ') body with
+      | none => simp [h_body] at h_abs
+      | some body_a =>
+        simp [h_body] at h_abs; cases h_abs
+        -- readbackA rb_fuel (aiota x body Γ)
+        simp only [readbackA]
+        rw [h_readback_env]
+        -- Bump fuel: absEval n → absEval rb_fuel
+        have h_diff : n + (rb_fuel - n) = rb_fuel := Nat.add_sub_cancel' (Nat.le_of_succ_le h_fuel_le)
+        have h_bump := absEval_fuel_mono n (rb_fuel - n) ((x, .var x) :: Γ') body body_a h_body
+        rw [h_diff] at h_bump; simp [h_bump]
     | fix inner =>
       simp only [absEvalC] at h_abs_c
       simp only [absEval] at h_abs

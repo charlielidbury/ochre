@@ -46,12 +46,13 @@ Current status of the Och mechanization. Updated by agents after each session.
   `soundness_gen`: induction on fuel, case split on e₁, SubtypeTrans target
   shape lemmas constrain e₂. Includes `EnvSubTrans`, `envSubTrans_extend`,
   `envSubTrans_extend_sub`, and `monotonicity_trans` corollary.
-- [ ] **Soundness of concEvalC** — Stated in `Closure.lean` (1 sorry).
-  The readback-based approach has two blockers (see Closure.lean comments):
-  (1) readback may fail without `absEval_succeeds_envsub`, and
-  (2) app-beta case has different bodies (original vs normalized) in different
-  envs (captured vs current). Recommended path: Kripke-style logical relation
-  indexed by fuel (avoids readback entirely). See detailed analysis in Closure.lean.
+- [x] **Proper iota in closure evaluators** — CVal.ciota, AVal.aiota, readback,
+  VR_abs.ciota. All iota cases proved in soundnessC_direct, soundnessC_abs,
+  absEvalC_equiv.
+- [ ] **Soundness of concEvalC** — Three parallel approaches in `Closure.lean`:
+  (1) `soundnessC_direct` (1 sorry: app case — closure env mismatch),
+  (2) `soundnessC_abs` (2 sorry: asc/fix — need WellTypedC/semantic VR),
+  (3) `absEvalC_equiv` (1 sorry: app case — normalize-stable).
 - [ ] **Soundness of concEvalS** — STALLED in `SoundnessS.lean` (7 sorry's).
   The LR approach is blocked by `absEval_normalize_stable` being FALSE.
   concEvalC supersedes this approach — see DECISION-LOG.md.
@@ -61,10 +62,9 @@ Current status of the Och mechanization. Updated by agents after each session.
 **2** in Monotonicity.lean:
   - `absEval_freeVars_covered` (app-lam case — **THEOREM IS FALSE**, see below)
   - `absEval_succeeds_envsub` (app-lam case only)
-**1** in Closure.lean: `soundnessC` (original, kept for reference)
-**1** in Closure.lean: `soundnessC_direct` (app + iota cases — var/type/asc/fix/lam PROVED)
+**1** in Closure.lean: `soundnessC_direct` (app case only — var/type/asc/fix/lam/iota PROVED)
 **2** in Closure.lean: `soundnessC_abs` (asc/fix cases)
-**1** in Closure.lean: `absEvalC_equiv` (app + iota cases)
+**1** in Closure.lean: `absEvalC_equiv` (app case only — var/type/asc/fix/lam/iota PROVED)
 **4** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
 ### Key theorem: `absEval_freeVars_covered` — **FALSE for app-lam case**
@@ -108,7 +108,57 @@ leak stale variable references). The EnvClosed approach is dead.
    from domain annotation vars
 3. Restrict to envs produced by absEval at each use site
 
-## New this session (ochre-lean-20260401-160031)
+## New this session (ochre-lean-20260401-162307)
+
+### Fixed iota handling in closure-based evaluators
+
+The closure-based evaluators (concEvalC, absEvalC) were treating iota as opaque
+(returning .type/.atype), but absEval normalizes iota bodies under binders.
+This mismatch made the iota cases in soundnessC_direct and absEvalC_equiv
+unprovable.
+
+**Changes:**
+- Added `CVal.ciota` and `AVal.aiota` constructors (self type closures)
+- Updated `concEvalC` and `absEvalC` iota cases to capture env (like lam)
+- Updated `readback`/`readbackA` to normalize ciota/aiota bodies
+- Added `VR_abs.ciota` constructor for structural value relation
+- Proved iota case in `soundnessC_direct` (follows lam pattern exactly)
+- Proved iota case in `absEvalC_equiv` (follows lam pattern exactly)
+- Proved iota case in `soundnessC_abs` (trivial: both sides return ciota/aiota)
+- Removed superseded `soundnessC` theorem and unused `CEnvConsistent`
+
+**Impact:** Reduced Closure.lean sorry warnings from 4 to 3. All iota cases
+are now proved. The remaining sorry's are all about the app case
+(normalize-stable / closure env mismatch) or the asc/fix cases in
+soundnessC_abs (need WellTypedC).
+
+### What the next agent should do
+
+The three remaining blockers in Closure.lean are:
+
+1. **`soundnessC_direct` app case** (line ~695): Blocked by closure env mismatch.
+   concEvalC uses the captured env, absEval uses the call-site env. The lam case
+   works because it relies on absEval_succeeds_envsub (itself sorry'd).
+
+2. **`soundnessC_abs` asc/fix cases** (lines ~909, ~913): Need a `WellTypedC`
+   predicate for closure-based evaluation. The fundamental challenge is that
+   VR_abs is structural (same body required), but the asc case has different
+   expressions on concrete vs abstract sides. A semantic VR (step-indexed,
+   relating closures with different bodies) would solve this.
+
+3. **`absEvalC_equiv` app case** (line ~1150): Needs normalize-stable for
+   readback envs. When f evaluates to a closure, the captured env's readback
+   may differ from the call-site env.
+
+**Most promising next steps:**
+- For (2): Define a step-indexed VR_sem that relates closures with different
+  bodies semantically. This enables the asc case in soundnessC_abs.
+- For (1) and (3): Both are variants of normalize-stable. Could be proven for
+  the restricted case of readback environments (where all values are fully
+  normalized). Alternatively, prove soundnessC_abs + absEvalC_equiv to get
+  full soundness without needing soundnessC_direct at all.
+
+## Previous session (ochre-lean-20260401-160031)
 
 ### Counterexample: absEval_freeVars_covered is false for app-lam
 
