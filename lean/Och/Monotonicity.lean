@@ -377,3 +377,84 @@ theorem monotonicity_trans
     : SubtypeTrans τ₂ τ₁ :=
   absEval_mono_trans fuel Γ₁ Γ₂ e e τ₁ τ₂ (SubtypeTrans.step (Subtype'.refl e))
     h_env h_abs₁ h_abs₂
+
+/-- **Totality under env narrowing (same expression).**
+
+    If absEval succeeds in Γ₁ with expression e, and Γ₂ ⊑ Γ₁ (EnvSubTrans),
+    then absEval succeeds in Γ₂ with the same expression. Together with
+    `monotonicity_trans`, this gives the full "mono + succeed" package.
+
+    **Status:** All cases proved EXCEPT app-beta, where the function evaluates
+    to a lambda whose body differs between Γ₁ and Γ₂ (due to normalization
+    under binders in different envs). This is the same normalize_stable issue.
+    The sorry is specifically for: does `absEval n Γ₂_ext body₂` succeed when
+    `absEval n Γ₁_ext body₁` succeeds, SubtypeTrans body₂ body₁, and
+    EnvSubTrans Γ₂_ext Γ₁_ext? -/
+theorem absEval_succeeds_envsub
+    (fuel : Nat) (Γ₁ Γ₂ : Env) (e τ₁ : Expr)
+    (h_env : EnvSubTrans Γ₂ Γ₁)
+    (h₁ : absEval fuel Γ₁ e = some τ₁)
+    : ∃ τ₂, absEval fuel Γ₂ e = some τ₂ := by
+  induction fuel generalizing Γ₁ Γ₂ e τ₁ with
+  | zero => simp [absEval] at h₁
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp only [absEval] at h₁ ⊢
+      obtain ⟨τ₂, h_l2, _⟩ := h_env x τ₁ h₁
+      exact ⟨τ₂, h_l2⟩
+    | type =>
+      exact ⟨.type, rfl⟩
+    | lam x dom body =>
+      simp only [absEval] at h₁ ⊢
+      cases hb₁ : absEval n ((x, .var x) :: Γ₁) body with
+      | none => simp [hb₁] at h₁
+      | some body₁' =>
+        have ⟨body₂', hb₂⟩ := ih ((x, .var x) :: Γ₁) ((x, .var x) :: Γ₂) body body₁'
+          (envSubTrans_extend h_env x (.var x)) hb₁
+        rw [hb₂]; exact ⟨_, rfl⟩
+    | asc term ty =>
+      simp only [absEval] at h₁ ⊢
+      exact ih Γ₁ Γ₂ ty τ₁ h_env h₁
+    | fix inner =>
+      simp only [absEval] at h₁ ⊢
+      cases inner with
+      | lam f dom body =>
+        exact ih Γ₁ Γ₂ dom τ₁ h_env h₁
+      | _ => simp [absEval] at h₁
+    | app f a =>
+      simp only [absEval] at h₁ ⊢
+      cases hf₁ : absEval n Γ₁ f with
+      | none => simp [hf₁] at h₁
+      | some τ_f₁ =>
+        cases ha₁ : absEval n Γ₁ a with
+        | none => simp [hf₁, ha₁] at h₁
+        | some τ_a₁ =>
+          -- IH: sub-evals succeed in Γ₂
+          obtain ⟨τ_f₂, hf₂⟩ := ih Γ₁ Γ₂ f τ_f₁ h_env hf₁
+          obtain ⟨τ_a₂, ha₂⟩ := ih Γ₁ Γ₂ a τ_a₁ h_env ha₁
+          -- Monotonicity gives shape relationship: τ_f₂ ⊑ τ_f₁
+          have h_f_sub := monotonicity_trans Γ₁ Γ₂ f τ_f₁ τ_f₂ n h_env hf₁ hf₂
+          rw [hf₁, ha₁] at h₁
+          -- Case split on τ_f₂ (which appears in the goal after rw)
+          rw [hf₂, ha₂]
+          cases τ_f₂ with
+          | lam x dom body₂ =>
+            -- τ_f₂ is lam → beta-reduce in Γ₂. Need body eval to succeed.
+            simp only
+            -- Get SubtypeTrans on a for env extension
+            have h_a_sub := monotonicity_trans Γ₁ Γ₂ a τ_a₁ τ_a₂ n h_env ha₁ ha₂
+            -- SubtypeTrans (lam x dom body₂) τ_f₁ → τ_f₁ = lam x dom body₁ or type
+            -- Use lam_lhs to get the two possible shapes of τ_f₁
+            -- For now, sorry the whole lam sub-case (needs generalized IH for body₂ ≠ body₁)
+            sorry
+          | type =>
+            simp only; exact ⟨.type, rfl⟩
+          | var _ =>
+            simp only; exact ⟨_, rfl⟩
+          | app _ _ =>
+            simp only; exact ⟨_, rfl⟩
+          | asc _ _ =>
+            simp only; exact ⟨_, rfl⟩
+          | fix _ =>
+            simp only; exact ⟨_, rfl⟩

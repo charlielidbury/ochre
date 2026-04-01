@@ -57,16 +57,66 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## Current sorry count
 
-**ZERO** in existing proof files (Soundness.lean, Monotonicity.lean, etc.)
-**1** in Closure.lean: `soundnessC` (original readback-based, kept for reference)
-**2** in Closure.lean: `soundnessC_abs` (absEvalC approach):
-- asc case: needs subsumption (VR_abs is structural identity, can't widen)
-- fix case: same issue as asc — concrete evaluates body, abstract evaluates dom
-- (var, type, lam, app-clo, app-type, app-fixV cases are PROVED)
-**1** in Closure.lean: `absEvalC_equiv` (app case only — var/type/asc/fix/lam PROVED)
+**1** in Monotonicity.lean: `absEval_succeeds_envsub` (app-lam case only)
+**1** in Closure.lean: `soundnessC` (original, kept for reference)
+**1** in Closure.lean: `soundnessC_direct` (app case only — var/type/asc/fix/lam PROVED)
+**2** in Closure.lean: `soundnessC_abs` (asc/fix cases)
+**1** in Closure.lean: `absEvalC_equiv` (app case only)
 **7** in SoundnessS.lean (STALLED — superseded by Closure.lean approach)
 
-## New this session (ochre-lean-20260401-120716)
+### Key new theorem: `soundnessC_direct` (Closure.lean)
+
+Direct proof of concEvalC soundness WITHOUT going through absEvalC. Proves 5 of 6
+cases (var, type, asc, fix, lam). The asc/fix cases that were stuck in the factored
+approach (soundnessC_abs) are now PROVED using WellTyped chains. The lam case uses
+`absEval_succeeds_envsub` + monotonicity.
+
+### Key new theorem: `absEval_succeeds_envsub` (Monotonicity.lean)
+
+Totality under env narrowing: if absEval succeeds in Γ₁ and EnvSubTrans Γ₂ Γ₁,
+then absEval succeeds in Γ₂ (same expression). 5 of 6 cases proved. The app-lam
+case is sorry'd because the function's body may differ between envs (normalized
+bodies from different envs have SubtypeTrans but not structural equality).
+
+## New this session (ochre-lean-20260401-124404)
+
+### soundnessC_direct: 5 of 6 cases proved
+
+New theorem `soundnessC_direct` in Closure.lean proves concEvalC soundness DIRECTLY
+against absEval (no absEvalC intermediary). Uses `CEnvFull` (env consistency with
+explicit readback env) instead of `CEnvConsistent`.
+
+**Key insight:** The asc/fix cases, which were fundamentally blocked in the factored
+approach (VR_abs requires structural equality, but asc/fix produce different closures),
+are trivially handled by the direct approach using WellTyped chains:
+- asc: IH on term gives readback(v) ⊑ σ, WellTyped gives σ ⊑ τ, chain ✓
+- fix: IH on body gives readback(v) ⊑ σ, WellTyped gives σ ⊑ dom', chain ✓
+
+**New helper definitions:**
+- `CEnvFull`: ∃ γ_rb, readbackEnv γ = some γ_rb ∧ EnvSubTrans γ_rb Γ
+- `cEnvFull_lookup`, `cEnvFull_extend`: lookup and extension lemmas
+- `readbackEnv_lookup`: CEnv analogue of readbackAEnv_lookup
+
+### absEval_succeeds_envsub: 5 of 6 cases proved
+
+New theorem in Monotonicity.lean. Proves that absEval evaluation success is
+preserved under env narrowing (same expression). Used in the lam case of
+soundnessC_direct to show that readback of a closure succeeds.
+
+### The remaining blocker: app case + normalize_stable
+
+Both sorry's (soundnessC_direct app, absEval_succeeds_envsub app-lam) are
+manifestations of the SAME fundamental issue: when a function evaluates to a
+lambda, the body differs between envs (normalization under binders produces
+different bodies in different envs). This is equivalent to absEval_normalize_stable,
+which is FALSE in general but conjectured TRUE for "readback envs" where all
+values are fully resolved.
+
+**To finish:** Prove that absEval in readback envs produces "closed" expressions
+(free vars ⊆ {bound lambda params}), then prove env irrelevance for such expressions.
+This is substantial (requires free-variable analysis) but well-motivated.
+
+## Previous session (ochre-lean-20260401-120716)
 
 ### absEvalC_equiv: 5 of 6 cases proved
 

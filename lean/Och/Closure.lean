@@ -451,7 +451,226 @@ theorem soundnessC
     (h_wt : WellTyped fuel Γ e)
     (h_no_fix : EnvNoFix Γ)
     : ∃ v_e, readback fuel v = some v_e ∧ SubtypeTrans v_e τ := by
-  sorry  -- See analysis in soundnessC_lr below
+  sorry  -- Superseded by soundnessC_direct below
+
+/-- Full env consistency: provides the readback env and proves it subtypes Γ.
+    This is stronger than CEnvConsistent — it guarantees readback of the
+    ENTIRE concrete env succeeds (not just individual lookups). -/
+def CEnvFull (rb_fuel : Nat) (γ : CEnv) (Γ : Env) : Prop :=
+  ∃ γ_rb : Env, readback.readbackEnv rb_fuel γ = some γ_rb ∧ EnvSubTrans γ_rb Γ
+
+/-- Lookup in a CEnvFull: if readbackEnv succeeds and we look up in the
+    concrete env, the readback value is in the readback env. -/
+theorem readbackEnv_lookup (rb_fuel : Nat) (γ : CEnv) (γ_rb : Env) (x : Name) (v : CVal)
+    (h_rb : readback.readbackEnv rb_fuel γ = some γ_rb)
+    (h_lookup : CEnv.lookup γ x = some v)
+    : ∃ v_e, readback rb_fuel v = some v_e ∧ Env.lookup γ_rb x = some v_e := by
+  induction γ generalizing γ_rb with
+  | nil => simp [CEnv.lookup] at h_lookup
+  | cons entry rest ih =>
+    obtain ⟨y, w⟩ := entry
+    simp only [readback.readbackEnv] at h_rb
+    cases h_rw : readback rb_fuel w with
+    | none => simp [h_rw] at h_rb
+    | some w_e =>
+      cases h_rr : readback.readbackEnv rb_fuel rest with
+      | none => simp [h_rw, h_rr] at h_rb
+      | some rest_rb =>
+        simp [h_rw, h_rr] at h_rb; subst h_rb
+        simp only [CEnv.lookup] at h_lookup
+        simp only [Env.lookup]
+        split at h_lookup <;> rename_i h_eq
+        · -- x = y: found it
+          cases h_lookup
+          split
+          · exact ⟨w_e, h_rw, rfl⟩
+          · exact absurd h_eq ‹¬_›
+        · -- x ≠ y: recurse
+          split
+          · exact absurd ‹_› h_eq
+          · exact ih rest_rb h_rr h_lookup
+
+/-- CEnvFull lookup: get readback and SubtypeTrans for a specific binding. -/
+theorem cEnvFull_lookup {rb_fuel : Nat} {γ : CEnv} {Γ : Env}
+    (h : CEnvFull rb_fuel γ Γ) (x : Name) (τ : Expr) (v : CVal)
+    (h_abs : Env.lookup Γ x = some τ)
+    (h_conc : CEnv.lookup γ x = some v)
+    : ∃ v_e, readback rb_fuel v = some v_e ∧ SubtypeTrans v_e τ := by
+  obtain ⟨γ_rb, h_rb_ok, h_sub⟩ := h
+  obtain ⟨v_e, h_rv, h_lv⟩ := readbackEnv_lookup rb_fuel γ γ_rb x v h_rb_ok h_conc
+  obtain ⟨τ₂, h_l2, h_sub'⟩ := h_sub x τ h_abs
+  rw [h_lv] at h_l2; cases h_l2
+  exact ⟨v_e, h_rv, h_sub'⟩
+
+/-- Extend CEnvFull with a new binding. -/
+theorem cEnvFull_extend {rb_fuel : Nat} {γ : CEnv} {Γ : Env}
+    (h : CEnvFull rb_fuel γ Γ) (x : Name) {v : CVal} {τ v_rb : Expr}
+    (h_rv : readback rb_fuel v = some v_rb)
+    (h_sub : SubtypeTrans v_rb τ)
+    : CEnvFull rb_fuel ((x, v) :: γ) ((x, τ) :: Γ) := by
+  obtain ⟨γ_rb, h_rb_ok, h_env_sub⟩ := h
+  exact ⟨(x, v_rb) :: γ_rb,
+    by simp only [readback.readbackEnv]; rw [h_rv, h_rb_ok],
+    envSubTrans_extend_sub h_env_sub x h_sub⟩
+
+/-- **Fuel monotonicity for absEval**: if absEval succeeds at fuel k,
+    it succeeds with the same result at any higher fuel k + j.
+    (Copied from SoundnessS.lean to avoid importing the stalled file.) -/
+theorem absEval_fuel_mono : ∀ (k j : Nat) (Γ : Env) (e v : Expr),
+    absEval k Γ e = some v → absEval (k + j) Γ e = some v := by
+  intro k
+  induction k with
+  | zero => intro j Γ e v h; simp [absEval] at h
+  | succ k ih =>
+    intro j Γ e v h
+    have h_fuel : k + 1 + j = (k + j) + 1 := by omega
+    rw [h_fuel]
+    cases e with
+    | var x =>
+      simp only [absEval] at h ⊢; exact h
+    | type =>
+      simp only [absEval] at h ⊢; exact h
+    | lam x d b =>
+      simp only [absEval] at h ⊢
+      cases hb : absEval k ((x, .var x) :: Γ) b with
+      | none => simp [hb] at h
+      | some b' =>
+        simp [hb] at h; cases h
+        have := ih j ((x, .var x) :: Γ) b b' hb
+        simp [this]
+    | asc t ty =>
+      simp only [absEval] at h ⊢
+      exact ih j Γ ty v h
+    | fix inner =>
+      simp only [absEval] at h ⊢
+      cases inner with
+      | lam f dom body => exact ih j Γ dom v h
+      | var _ | app _ _ | asc _ _ | type | fix _ => simp [absEval] at h
+    | app f a =>
+      simp only [absEval] at h ⊢
+      cases hf : absEval k Γ f with
+      | none => simp [hf] at h
+      | some vf =>
+        cases ha : absEval k Γ a with
+        | none => simp [hf, ha] at h
+        | some va =>
+          have hf' := ih j Γ f vf hf
+          have ha' := ih j Γ a va ha
+          rw [hf', ha']
+          rw [hf, ha] at h
+          cases vf with
+          | lam x _d body =>
+            simp only at h ⊢
+            exact ih j ((x, va) :: Γ) body v h
+          | type =>
+            simp only at h ⊢; exact h
+          | var _ | app _ _ | asc _ _ | fix _ =>
+            simp only at h ⊢; exact h
+
+/-- **Direct soundness of concEvalC vs absEval.**
+
+    Proves concEvalC results readback to subtypes of absEval results,
+    WITHOUT going through absEvalC. This handles asc/fix directly using
+    WellTyped, avoiding the structural-equality issues of VR_abs.
+
+    **Status:**
+    - var, type, asc, fix: PROVED
+    - lam: depends on absEval_succeeds_envsub (app case sorry)
+    - app: fundamentally blocked by normalize_stable / closure env mismatch
+
+    Compared to the factored approach (soundnessC_abs + absEvalC_equiv),
+    this consolidates 4 sorry's into 2 (lam + app), and the asc/fix cases
+    are fully proved using the WellTyped chain. -/
+theorem soundnessC_direct
+    (fuel rb_fuel : Nat) (γ : CEnv) (Γ : Env) (e τ : Expr) (v : CVal)
+    (h_abs : absEval fuel Γ e = some τ)
+    (h_conc : concEvalC fuel γ e = some v)
+    (h_env : CEnvFull rb_fuel γ Γ)
+    (h_wt : WellTyped fuel Γ e)
+    (h_no_fix : EnvNoFix Γ)
+    (h_fuel : fuel ≤ rb_fuel)
+    : ∃ v_e, readback rb_fuel v = some v_e ∧ SubtypeTrans v_e τ := by
+  induction fuel generalizing γ Γ e τ v with
+  | zero => simp [absEval] at h_abs
+  | succ n ih =>
+    cases e with
+    | var x =>
+      simp only [concEvalC] at h_conc
+      simp only [absEval] at h_abs
+      exact cEnvFull_lookup h_env x τ v h_abs h_conc
+    | type =>
+      simp only [concEvalC] at h_conc; cases h_conc
+      simp only [absEval] at h_abs; cases h_abs
+      exact ⟨.type, rfl, SubtypeTrans.step (Subtype'.refl .type)⟩
+    | asc term ty =>
+      -- concEvalC evaluates term, absEval evaluates ty
+      simp only [concEvalC] at h_conc
+      simp only [absEval] at h_abs
+      -- WellTyped gives: absEval term ⊑ absEval ty
+      have ⟨h_wt_term, _, σ, τ', h_abs_term, h_abs_ty, h_sub_wt⟩ := h_wt
+      rw [h_abs] at h_abs_ty; cases h_abs_ty  -- τ' = τ
+      -- IH on term
+      have ⟨v_e, h_rv, h_sub_v⟩ := ih γ Γ term σ v h_abs_term h_conc h_env
+        h_wt_term h_no_fix (Nat.le_of_succ_le h_fuel)
+      -- Chain: v_e ⊑ σ ⊑ τ
+      exact ⟨v_e, h_rv, SubtypeTrans.trans h_sub_v (SubtypeTrans.step h_sub_wt)⟩
+    | fix inner =>
+      simp only [concEvalC] at h_conc
+      simp only [absEval] at h_abs
+      cases inner with
+      | lam f dom body =>
+        simp only at h_conc h_abs
+        -- WellTyped for fix
+        obtain ⟨dom', h_dom_eval, h_wt_body, σ, h_body_eval, h_body_sub_dom,
+                h_fix_typing⟩ := h_wt
+        -- dom' = τ
+        have h_eq : dom' = τ := by rw [h_dom_eval] at h_abs; exact Option.some.inj h_abs
+        subst h_eq
+        -- readback of fixV
+        have h_rv_fix : readback rb_fuel (.fixV (.lam f dom body) γ) = some (.fix (.lam f dom body)) := by
+          simp [readback]
+        -- SubtypeTrans for the fix binding
+        have h_fix_sub : SubtypeTrans (.fix (.lam f dom body)) dom' := h_fix_typing body
+        -- Extend env for the body
+        have h_env' := cEnvFull_extend h_env f h_rv_fix h_fix_sub
+        -- EnvNoFix for extended abstract env
+        have h_nf' : EnvNoFix ((f, dom') :: Γ) := by
+          apply envNoFix_extend h_no_fix
+          exact absEval_not_fix h_no_fix h_dom_eval
+        -- IH on body
+        have ⟨v_e, h_rv, h_sub_v⟩ := ih ((f, .fixV (.lam f dom body) γ) :: γ) ((f, dom') :: Γ)
+          body σ v h_body_eval h_conc h_env' h_wt_body h_nf' (Nat.le_of_succ_le h_fuel)
+        -- Chain: v_e ⊑ σ ⊑ dom'
+        exact ⟨v_e, h_rv, SubtypeTrans.trans h_sub_v (SubtypeTrans.step h_body_sub_dom)⟩
+      | _ => simp [concEvalC] at h_conc
+    | lam x dom body =>
+      -- concEvalC returns closure, absEval normalizes body
+      simp only [concEvalC] at h_conc; cases h_conc
+      simp only [absEval] at h_abs
+      cases hba : absEval n ((x, .var x) :: Γ) body with
+      | none => simp [hba] at h_abs
+      | some body_a =>
+        simp [hba] at h_abs; cases h_abs
+        -- readback of closure: readbackEnv γ then absEval body in readback env
+        obtain ⟨γ_rb, h_rb_ok, h_sub_env⟩ := h_env
+        -- Bump hba from fuel n to rb_fuel by fuel monotonicity
+        have h_fuel_le : n ≤ rb_fuel := Nat.le_of_succ_le h_fuel
+        have hba_up := absEval_fuel_mono n (rb_fuel - n) ((x, .var x) :: Γ) body body_a hba
+        rw [Nat.add_sub_cancel' h_fuel_le] at hba_up
+        -- absEval succeeds in sub-env by absEval_succeeds_envsub
+        have h_env_ext := envSubTrans_extend h_sub_env x (.var x)
+        obtain ⟨body_rb, hb_rb⟩ := absEval_succeeds_envsub rb_fuel
+          ((x, .var x) :: Γ) ((x, .var x) :: γ_rb) body body_a h_env_ext hba_up
+        -- SubtypeTrans body_rb body_a by monotonicity
+        have h_body_sub := monotonicity_trans ((x, .var x) :: Γ) ((x, .var x) :: γ_rb)
+          body body_a body_rb rb_fuel h_env_ext hba_up hb_rb
+        -- Construct readback result
+        have h_readback : readback rb_fuel (.clo x dom body γ) = some (.lam x dom body_rb) := by
+          simp only [readback, h_rb_ok, hb_rb]
+        exact ⟨_, h_readback, SubtypeTrans.lam_body h_body_sub⟩
+    | app f_e a_e =>
+      -- App case: closure env mismatch + normalize_stable
+      sorry
 
 -- ============================================================
 -- Logical-relations approach to soundnessC (recommended path)
@@ -727,62 +946,8 @@ theorem soundnessC_abs
                       cases h_conc
 
 -- ============================================================
--- Key lemmas for absEvalC_equiv
+-- Key lemmas for absEvalC_equiv (absEval_fuel_mono moved earlier)
 -- ============================================================
-
-/-- **Fuel monotonicity for absEval**: if absEval succeeds at fuel k,
-    it succeeds with the same result at any higher fuel k + j.
-    (Copied from SoundnessS.lean to avoid importing the stalled file.) -/
-theorem absEval_fuel_mono : ∀ (k j : Nat) (Γ : Env) (e v : Expr),
-    absEval k Γ e = some v → absEval (k + j) Γ e = some v := by
-  intro k
-  induction k with
-  | zero => intro j Γ e v h; simp [absEval] at h
-  | succ k ih =>
-    intro j Γ e v h
-    have h_fuel : k + 1 + j = (k + j) + 1 := by omega
-    rw [h_fuel]
-    cases e with
-    | var x =>
-      simp only [absEval] at h ⊢; exact h
-    | type =>
-      simp only [absEval] at h ⊢; exact h
-    | lam x d b =>
-      simp only [absEval] at h ⊢
-      cases hb : absEval k ((x, .var x) :: Γ) b with
-      | none => simp [hb] at h
-      | some b' =>
-        simp [hb] at h; cases h
-        have := ih j ((x, .var x) :: Γ) b b' hb
-        simp [this]
-    | asc t ty =>
-      simp only [absEval] at h ⊢
-      exact ih j Γ ty v h
-    | fix inner =>
-      simp only [absEval] at h ⊢
-      cases inner with
-      | lam f dom body => exact ih j Γ dom v h
-      | var _ | app _ _ | asc _ _ | type | fix _ => simp [absEval] at h
-    | app f a =>
-      simp only [absEval] at h ⊢
-      cases hf : absEval k Γ f with
-      | none => simp [hf] at h
-      | some vf =>
-        cases ha : absEval k Γ a with
-        | none => simp [hf, ha] at h
-        | some va =>
-          have hf' := ih j Γ f vf hf
-          have ha' := ih j Γ a va ha
-          rw [hf', ha']
-          rw [hf, ha] at h
-          cases vf with
-          | lam x _d body =>
-            simp only at h ⊢
-            exact ih j ((x, va) :: Γ) body v h
-          | type =>
-            simp only at h ⊢; exact h
-          | var _ | app _ _ | asc _ _ | fix _ =>
-            simp only at h ⊢; exact h
 
 /-- If readbackAEnv succeeds for Γ and we look up x in Γ, the corresponding
     readback appears in the readback env at the same key. -/
