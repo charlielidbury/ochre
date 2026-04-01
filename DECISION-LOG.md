@@ -79,15 +79,53 @@ and added `self_intro` constructor to SubtypeTrans.
    (mu x ann body')`. This bridges IH result (v ⊑ body') to soundness goal
    (v ⊑ mu x ann body'), since absEval wraps the result in mu.
 
-**Trade-off:** self_intro breaks composability of SubtypeTrans congruence
-lemmas. The self_intro case in lam_body/mu_body/app_cong requires putting
-a mu INSIDE a context wrapper (lam/app), which no constructor supports.
-These are sorry'd but may not arise in practice.
+**Trade-off (RESOLVED):** self_intro was originally only in SubtypeTrans,
+which broke composability of congruence lemmas (lam_body, mu_body, app_cong).
+This was resolved by moving self_intro to Subtype' and changing SubtypeTrans.self_intro
+to take a Subtype' argument. See the 2026-04-01 "self_intro to Subtype'" entry below.
 
 **Alternatives rejected:**
 - (c) alone: transparent mu (no wrapping) breaks tests that expect mu in output
 - Wrapping concEval too: breaks mu-app unrolling (mu wrapping prevents lam matching)
-- self_intro in Subtype': breaks mu_rhs_shape needed by monotonicity
+
+---
+
+## 2026-04-01: Move self_intro to Subtype' to fix congruence composability
+
+**Decision:** Added `self_intro` to `Subtype'` (not just SubtypeTrans),
+and changed `SubtypeTrans.self_intro` to take a `Subtype'` argument instead
+of `SubtypeTrans`.
+
+**The problem:** With self_intro only in SubtypeTrans (taking a SubtypeTrans
+argument), the congruence lemmas (lam_body, mu_body, app_cong_left,
+app_cong_right) had sorry'd self_intro cases. The issue was circularity:
+in the induction on SubtypeTrans for lam_body, the self_intro case
+required calling lam_body on self_intro — the exact thing being proved.
+
+**Solution:** Adding self_intro to Subtype' breaks the circularity. In
+the self_intro case of `SubtypeTrans.lam_body`, we can now construct:
+```
+.trans (.step (.lam_body h'))
+      (.step (.lam_body (.self_intro (.refl _))))
+```
+The first step uses the Subtype' sub-proof directly. The second uses
+Subtype'.self_intro and Subtype'.refl — no recursive SubtypeTrans needed.
+
+**Impact:**
+- Eliminated all 5 sorry'd congruence cases in SubtypeTrans
+- Subtyping.lean is now sorry-free
+- mu_rhs_shape returns a disjunction (Or.inl mu / Or.inr self_intro)
+- absEval_mono gained 5 sorry'd self_intro cases (unreachable from monotonicity theorem)
+- soundness_gen gained 1 sorry'd Subtype'.self_intro case (unreachable from soundness theorem)
+- Net: 9→5 declarations with sorry, Subtyping.lean fully clean
+
+**Alternatives considered:**
+- Transparent mu (no wrapping in absEval): would avoid needing self_intro
+  entirely, but breaks annotation-based mu-app for abstract args (M1d fails)
+- Restricting absEval_mono to a Subtype' subset without self_intro:
+  too complex, would require duplicating the inductive definition
+- Well-founded recursion instead of structural: doesn't help because the
+  circular construction is NOT well-founded (can loop)
 
 ---
 

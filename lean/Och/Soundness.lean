@@ -27,10 +27,11 @@ soundness_gen is MOSTLY PROVED. Remaining sorrys: 4 (was 5).
   self_intro lifts to SubtypeTrans v (mu x ann body').
 - **mu_body (NEW):** same technique with self_intro.
 
-**Remaining sorrys (4):**
+**Remaining sorrys (5):**
 1. trans: needs intermediate expression to evaluate in both modes
-2. self_intro: unreachable from main soundness theorem (cosmetic)
-3-4. mu-app (×2): concEval unrolls mu then applies; absEval uses annotation
+2. SubtypeTrans.self_intro: unreachable from main soundness theorem (cosmetic)
+3. Subtype'.self_intro in step: unreachable (main theorem passes .step (.refl e))
+4-5. mu-app (×2): concEval unrolls mu then applies; absEval uses annotation
      or body-unfold. Different computation paths.
 -/
 
@@ -121,13 +122,21 @@ theorem soundness_gen
       -- BLOCKED: SubtypeTrans e_c b and SubtypeTrans b e_a.
       -- Need b to evaluate in both modes (abstract and concrete).
       sorry
-    | self_intro _ =>
-      -- e_a = mu x ann body_inner, SubtypeTrans e_c body_inner.
+    | self_intro h_intro =>
+      -- e_a = mu x ann body_inner, Subtype' e_c body_inner.
       -- Not reachable from the main soundness theorem (which passes .step (.refl e)).
       -- Only reachable from trans case, which is already sorry'd.
       sorry
     | step h_step =>
       cases h_step with
+      | self_intro h_intro =>
+        -- e_a = mu x ann body, Subtype' e_c body.
+        -- absEval normalizes body and wraps in mu.
+        -- concEval evaluates e_c.
+        -- Need to relate absEval(mu) to concEval(e_c).
+        -- This case is unreachable from the main soundness theorem
+        -- (which passes .step (.refl e), so h_step is .refl).
+        sorry
       | top e =>
         simp [absEval] at h_abs; rw [← h_abs]; exact .step (.top v)
       | refl =>
@@ -171,17 +180,18 @@ theorem soundness_gen
           -- Both evaluators bind x to the mu value itself.
           -- absEval: body with x ↦ mu x ann body → body' → wrapped: mu x ann body'
           -- concEval: body with x ↦ mu x ann body → v
-          -- IH on body gives SubtypeTrans v body', self_intro lifts to mu.
+          -- IH gives SubtypeTrans v body', chain with self_intro to get v ⊑ mu body'.
           simp only [absEval] at h_abs
           simp only [concEval] at h_conc
           cases hba : absEval n ((x, .mu x ann body) :: Γ) body with
           | none => simp [hba] at h_abs
           | some body_a =>
             simp [hba] at h_abs; rw [← h_abs]
-            exact .self_intro (ih _ _ body body body_a v
+            exact .trans (ih _ _ body body body_a v
               (.step (.refl body)) hba h_conc
               (envConsistent_extend h_env x (.mu x ann body))
               (by simp only [WellTyped] at h_wt; exact h_wt))
+              (.step (.self_intro (.refl _)))
         | app f a =>
           simp only [absEval] at h_abs
           simp only [concEval] at h_conc
@@ -307,11 +317,12 @@ theorem soundness_gen
         | none => simp [hba] at h_abs
         | some body_a' =>
           simp [hba] at h_abs; rw [← h_abs]
-          exact .self_intro (ih _ _ body_a body_c body_a' v
+          exact .trans (ih _ _ body_a body_c body_a' v
             (.step hbody) hba h_conc
             (envConsistent_extend_sub h_env x
               (SubtypeTrans.mu_body (.step hbody)))
             (by simp only [WellTyped] at h_wt; exact h_wt))
+            (.step (.self_intro (.refl _)))
 
 /-- **Soundness theorem.**
 

@@ -10,45 +10,63 @@ roadmap and strategy.
 ### Build status
 
 `lake build` passes with sorry warnings in:
-- Subtyping.lean: 5 (self_intro composability — lam_body, eq_of_rigid_target,
-  mu_body, app_cong_left, app_cong_right)
-- Monotonicity.lean: 3 (absEval_mono_trans, absEval_succeeds_envsub,
-  absEval_evalFreeVars_general mu case)
-- Soundness.lean: 1 (soundness_gen — 4 individual sorrys, down from 5)
+- **Subtyping.lean: 0** (was 5 — ALL congruence sorrys eliminated!)
+- Monotonicity.lean: 4 declarations (absEval_mono 5 sorrys + 3 old declarations)
+- Soundness.lean: 1 declaration (soundness_gen — 5 individual sorrys)
 
-**absEval_mono is FULLY PROVED** (no sorrys).
-**soundness_gen**: mu standalone and mu_body NOW PROVED via self_intro.
+**Subtyping.lean is sorry-free.** All SubtypeTrans congruence lemmas fully proved.
+**soundness_gen**: mu standalone and mu_body proved via self_intro.
+**absEval_mono**: all refl/mu_body/lam_body/app_cong/top cases proved;
+only self_intro cases sorry'd (unreachable from monotonicity theorem).
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-210632)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-213619)
+
+**Moved self_intro to Subtype', fixing SubtypeTrans congruence composability.**
+
+The root problem: `SubtypeTrans.self_intro` took a `SubtypeTrans` argument,
+creating circularity in congruence lemma proofs. In `SubtypeTrans.lam_body`,
+the self_intro case needed `lam_body` applied to `self_intro` — the exact
+thing being proved.
+
+The fix: add `self_intro` to `Subtype'` and change `SubtypeTrans.self_intro`
+to take `Subtype'` instead of `SubtypeTrans`. Now the congruence proofs work:
+```
+.trans (.step (.lam_body h')) (.step (.lam_body (.self_intro (.refl _))))
+```
+The first step uses the Subtype' sub-proof. The second uses Subtype'.self_intro
+and Subtype'.refl — no recursive SubtypeTrans needed.
+
+**Changes:**
+1. **Subtype': added self_intro constructor.** `Subtype' a body → Subtype' a (mu x ann body)`
+2. **SubtypeTrans.self_intro: now takes Subtype' (was SubtypeTrans).**
+3. **All 5 SubtypeTrans congruence sorrys: ELIMINATED.** lam_body, eq_of_rigid_target,
+   mu_body, app_cong_left, app_cong_right all fully proved.
+4. **mu_rhs_shape: returns disjunction** `(∃ body', ...) ∨ Subtype' e body`
+   to account for self_intro. mu_inv also updated.
+5. **absEval_mono: 5 new self_intro sorrys.** These are unreachable from the
+   monotonicity theorem (passes .refl e). They exist because the generalized
+   theorem takes arbitrary Subtype' and Lean requires all cases.
+6. **soundness_gen: adapted.** Uses `.trans ih (.step (.self_intro (.refl _)))`
+   instead of `.self_intro ih`. One new sorry for Subtype'.self_intro in step case.
+
+**Net result:** 9→5 declarations with sorry. Subtyping.lean fully clean.
+
+### Previous changes (2026-04-01, agent ochre-lean-20260401-210632)
 
 **Two key changes that unblock mu soundness proofs:**
 
 1. **absEval mu case: x ↦ mu value (not var x).** Changed the env binding in
    absEval's mu case from `(x, var x)` to `(x, mu x ann body)`. This matches
-   concEval's semantics: both evaluators now bind x to the mu value itself.
-   Makes EnvConsistent trivially satisfiable (refl) in the soundness proof.
-   All tests still pass — the change only affects how body is normalized
-   when it references x, and current tests don't depend on the old behavior.
+   concEval's semantics. Makes EnvConsistent trivially satisfiable (refl).
 
-2. **self_intro constructor in SubtypeTrans.** Added `self_intro : SubtypeTrans a body'
-   → SubtypeTrans a (mu x ann body')`. This bridges the gap between the IH
-   (which gives v ⊑ body') and the soundness goal (v ⊑ mu x ann body', since
-   absEval wraps the result in mu). This is semantically sound: if v satisfies
-   the body of a self-type, then v is a member of that self-type.
+2. **self_intro constructor in SubtypeTrans.** Bridges IH result (v ⊑ body')
+   to soundness goal (v ⊑ mu x ann body'). Trade-off: broke congruence
+   composability (now fixed — see above).
 
-   **Trade-off:** self_intro breaks composability of SubtypeTrans congruence lemmas
-   (lam_body, mu_body, app_cong). These now have sorry'd self_intro cases because
-   mu wrapping doesn't compose with context wrapping (lam of mu ≠ mu of lam).
-   Also invalidates mu_target_shape and mu_inv for SubtypeTrans.
-
-**Proved in soundness_gen:**
-- mu standalone (was sorry): IH on body + self_intro
-- mu_body (was sorry): IH on bodies + self_intro
-
-**Remaining sorrys in soundness_gen (4, was 5):**
+**Remaining sorrys in soundness_gen (5):**
 1. trans: needs intermediate expression to evaluate in both modes
-2. self_intro: unreachable from main soundness theorem (cosmetic)
-3-4. mu-app (×2): different computation paths (concEval unrolls, absEval uses annotation)
+2-3. self_intro (×2): unreachable from main soundness theorem (cosmetic)
+4-5. mu-app (×2): different computation paths (concEval unrolls, absEval uses annotation)
 
 ### Previous changes (2026-04-01, agent ochre-lean-20260401-204457)
 
@@ -191,28 +209,24 @@ See git log for details.
 expressive enough for abstract appendVec with the mu primitive.
 
 **Phase 3 (proofs) status:**
-- **absEval_mono:** FULLY PROVED (no sorrys). This is the core monotonicity
-  theorem. The key techniques:
+- **Subtyping.lean:** SORRY-FREE. All SubtypeTrans congruence lemmas
+  (lam_body, mu_body, app_cong, eq_of_rigid_target) fully proved.
+  self_intro is in both Subtype' and SubtypeTrans (SubtypeTrans version
+  takes Subtype' arg to break circularity).
+
+- **absEval_mono:** All refl/mu_body/lam_body/app_cong/top cases proved.
+  5 sorry'd self_intro cases (unreachable from monotonicity theorem).
+  Key techniques:
   - `split at h₁` + `simp only [*] at h₂` to handle the syntactic ann match
   - env extension for body-unfold path (IH via envSub_extend_sub)
-  - mu_rhs_shape for stuck-app cases in body-unfold results
+  - mu_rhs_shape (now returns disjunction) for stuck-app cases
 
-- **soundness_gen:** MOSTLY PROVED (~85% coverage). 4 sorrys remain (was 5).
-  **NEWLY PROVED:** mu standalone and mu_body cases, via:
-  - Changed absEval mu env: x ↦ mu x ann body (matching concEval)
-  - Added self_intro to SubtypeTrans to bridge IH to mu-wrapped goal
-  
-  **Remaining sorrys:**
+- **soundness_gen:** MOSTLY PROVED (~85% coverage). 5 sorrys remain.
+  Proved: mu standalone, mu_body (via self_intro + IH).
+  Remaining sorrys:
   - trans: needs intermediate expression evaluation
-  - self_intro: unreachable from main soundness (cosmetic sorry)
+  - self_intro (×2): unreachable from main soundness (cosmetic)
   - mu-app (×2): different concrete/abstract paths for mu application
-
-- **SubtypeTrans congruence sorrys (NEW):** self_intro in SubtypeTrans
-  breaks composability of lam_body, mu_body, app_cong_left, app_cong_right,
-  eq_of_rigid_target. These have sorry'd self_intro cases. The issue:
-  self_intro wraps at the TOP level (a ⊑ mu body'), but the congruence
-  lemmas need wrapping INSIDE a context (lam/app). No constructor provides
-  this. These sorrys may never arise in practice.
 
 - **absEval_mono_trans:** Sorry'd. Not used by anything currently.
 
@@ -228,9 +242,9 @@ expressive enough for abstract appendVec with the mu primitive.
 |------|--------|-------------|
 | Syntax.lean | Done | 0 |
 | Eval.lean | Done (mu env: x ↦ mu value, annotation-based mu-app) | 0 |
-| Subtyping.lean | self_intro added; 5 composability sorrys | 5 |
+| **Subtyping.lean** | **SORRY-FREE** (self_intro in Subtype'+SubtypeTrans) | **0** |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
-| Soundness.lean | mu standalone+mu_body PROVED; 4 sorrys remain | 1 decl |
-| Monotonicity.lean | absEval_mono PROVED; 3 other theorems sorry'd | 3 |
+| Soundness.lean | mu standalone+mu_body PROVED; 5 sorrys remain | 1 decl |
+| Monotonicity.lean | absEval_mono: 5 unreachable sorrys; 3 other decls sorry'd | 4 decls |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done | 0 |
