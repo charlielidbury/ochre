@@ -149,21 +149,176 @@ theorem absEval_mono
                   -- Case split on annotation evaluation in both envs
                   cases hann₁ : absEval n Γ₁ ann_mu with
                   | none =>
-                    rw [hann₁] at h₁
+                    rw [hann₁] at h₁; simp only at h₁
                     -- Γ₁ ann fails → body unfold path for Γ₁
                     cases hann₂ : absEval n Γ₂ ann_mu with
                     | none =>
-                      rw [hann₂] at h₂
-                      sorry -- both ann fail: body unfold path for both
+                      rw [hann₂] at h₂; simp only at h₂
+                      -- Both take body-unfold (same proof as both-non-lam)
+                      have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                        .mu_body hbody_mu_sub
+                      cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                      | none => rw [hunf₁] at h₁; simp at h₁
+                      | some unf₁ =>
+                        rw [hunf₁] at h₁
+                        cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                        | none => rw [hunf₂] at h₂; simp at h₂
+                        | some unf₂ =>
+                          rw [hunf₂] at h₂
+                          have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                            (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                          cases unf₁ with
+                          | lam y₁ dom₁ retBody₁ =>
+                            obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
+                            subst hunf₂_eq
+                            simp only at h₁ h₂
+                            exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                              (envSub_extend_sub h_env y₁ ha_sub) h₁ h₂
+                          | type =>
+                            simp only at h₁; cases h₁; exact .top τ₂
+                          | mu x_u ann_u body_u =>
+                            obtain ⟨body₂_u, hunf₂_eq, _⟩ := Subtype'.mu_rhs_shape hunf_sub
+                            subst hunf₂_eq
+                            simp only at h₁ h₂; cases h₁; cases h₂
+                            exact .app_cong hunf_sub ha_sub
+                          | var _ =>
+                            cases unf₂ with
+                            | lam _ _ _ => cases hunf_sub
+                            | type => cases hunf_sub
+                            | mu _ _ _ => cases hunf_sub
+                            | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                   exact .app_cong hunf_sub ha_sub
+                          | app _ _ =>
+                            cases unf₂ with
+                            | lam _ _ _ => cases hunf_sub
+                            | type => cases hunf_sub
+                            | mu _ _ _ => cases hunf_sub
+                            | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                   exact .app_cong hunf_sub ha_sub
+                          | asc _ _ =>
+                            cases unf₂ with
+                            | lam _ _ _ => cases hunf_sub
+                            | type => cases hunf_sub
+                            | mu _ _ _ => cases hunf_sub
+                            | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                   exact .app_cong hunf_sub ha_sub
                     | some ann₂_val =>
                       rw [hann₂] at h₂
-                      sorry -- Γ₁ ann fails, Γ₂ ann succeeds
+                      -- Γ₁ ann fails, Γ₂ ann succeeds
+                      cases ann₂_val with
+                      | lam y₂ dom₂ retBody₂ =>
+                        -- Γ₂ takes annotation path, Γ₁ takes body-unfold
+                        sorry -- cross case: Γ₁ body-unfold, Γ₂ annotation
+                      | _ =>
+                        -- Γ₂ also non-lam → both body-unfold
+                        simp only at h₂
+                        have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                          .mu_body hbody_mu_sub
+                        cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                        | none => rw [hunf₁] at h₁; simp at h₁
+                        | some unf₁ =>
+                          rw [hunf₁] at h₁
+                          cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                          | none => rw [hunf₂] at h₂; simp at h₂
+                          | some unf₂ =>
+                            rw [hunf₂] at h₂
+                            have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                              (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                            cases unf₁ with
+                            | lam y₁ dom₁ retBody₁ =>
+                              obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
+                              subst hunf₂_eq
+                              simp only at h₁ h₂
+                              exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                                (envSub_extend_sub h_env y₁ ha_sub) h₁ h₂
+                            | type =>
+                              simp only at h₁; cases h₁; exact .top τ₂
+                            | mu x_u ann_u body_u =>
+                              obtain ⟨body₂_u, hunf₂_eq, _⟩ := Subtype'.mu_rhs_shape hunf_sub
+                              subst hunf₂_eq
+                              simp only at h₁ h₂; cases h₁; cases h₂
+                              exact .app_cong hunf_sub ha_sub
+                            | var _ =>
+                              cases unf₂ with
+                              | lam _ _ _ => cases hunf_sub
+                              | type => cases hunf_sub
+                              | mu _ _ _ => cases hunf_sub
+                              | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                     exact .app_cong hunf_sub ha_sub
+                            | app _ _ =>
+                              cases unf₂ with
+                              | lam _ _ _ => cases hunf_sub
+                              | type => cases hunf_sub
+                              | mu _ _ _ => cases hunf_sub
+                              | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                     exact .app_cong hunf_sub ha_sub
+                            | asc _ _ =>
+                              cases unf₂ with
+                              | lam _ _ _ => cases hunf_sub
+                              | type => cases hunf_sub
+                              | mu _ _ _ => cases hunf_sub
+                              | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                     exact .app_cong hunf_sub ha_sub
                   | some ann₁_val =>
                     rw [hann₁] at h₁
                     cases hann₂ : absEval n Γ₂ ann_mu with
                     | none =>
-                      rw [hann₂] at h₂
-                      sorry -- Γ₁ ann succeeds, Γ₂ ann fails
+                      rw [hann₂] at h₂; simp only at h₂
+                      -- Γ₁ ann succeeds, Γ₂ ann fails → Γ₂ body-unfold
+                      cases ann₁_val with
+                      | lam y₁ dom₁ retBody₁ =>
+                        -- Γ₁ takes annotation path, Γ₂ takes body-unfold
+                        sorry -- cross case: Γ₁ annotation, Γ₂ body-unfold
+                      | _ =>
+                        -- Γ₁ also non-lam → both body-unfold
+                        simp only at h₁
+                        have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                          .mu_body hbody_mu_sub
+                        cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                        | none => rw [hunf₁] at h₁; simp at h₁
+                        | some unf₁ =>
+                          rw [hunf₁] at h₁
+                          cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                          | none => rw [hunf₂] at h₂; simp at h₂
+                          | some unf₂ =>
+                            rw [hunf₂] at h₂
+                            have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                              (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                            cases unf₁ with
+                            | lam y₁ dom₁ retBody₁ =>
+                              obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
+                              subst hunf₂_eq
+                              simp only at h₁ h₂
+                              exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                                (envSub_extend_sub h_env y₁ ha_sub) h₁ h₂
+                            | type =>
+                              simp only at h₁; cases h₁; exact .top τ₂
+                            | mu x_u ann_u body_u =>
+                              obtain ⟨body₂_u, hunf₂_eq, _⟩ := Subtype'.mu_rhs_shape hunf_sub
+                              subst hunf₂_eq
+                              simp only at h₁ h₂; cases h₁; cases h₂
+                              exact .app_cong hunf_sub ha_sub
+                            | var _ =>
+                              cases unf₂ with
+                              | lam _ _ _ => cases hunf_sub
+                              | type => cases hunf_sub
+                              | mu _ _ _ => cases hunf_sub
+                              | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                     exact .app_cong hunf_sub ha_sub
+                            | app _ _ =>
+                              cases unf₂ with
+                              | lam _ _ _ => cases hunf_sub
+                              | type => cases hunf_sub
+                              | mu _ _ _ => cases hunf_sub
+                              | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                     exact .app_cong hunf_sub ha_sub
+                            | asc _ _ =>
+                              cases unf₂ with
+                              | lam _ _ _ => cases hunf_sub
+                              | type => cases hunf_sub
+                              | mu _ _ _ => cases hunf_sub
+                              | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                     exact .app_cong hunf_sub ha_sub
                     | some ann₂_val =>
                       rw [hann₂] at h₂
                       have hann_sub := ih _ _ ann_mu ann_mu ann₁_val ann₂_val (.refl ann_mu) h_env hann₁ hann₂
@@ -185,9 +340,56 @@ theorem absEval_mono
                           -- only possible if ann₁ = type (via .top)
                           sorry -- cross case: Γ₂ ann=lam, Γ₁ ann=non-lam
                         | _ =>
-                          -- Neither is lam → both take body unfold path
+                          -- Neither is lam → both take body unfold path via env extension
                           simp only at h₂
-                          sorry -- both non-lam: body unfold for both
+                          -- Both evaluate body in extended env
+                          have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                            .mu_body hbody_mu_sub
+                          cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                          | none => rw [hunf₁] at h₁; simp at h₁
+                          | some unf₁ =>
+                            rw [hunf₁] at h₁
+                            cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                            | none => rw [hunf₂] at h₂; simp at h₂
+                            | some unf₂ =>
+                              rw [hunf₂] at h₂
+                              have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                                (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                              cases unf₁ with
+                              | lam y₁ dom₁ retBody₁ =>
+                                obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
+                                subst hunf₂_eq
+                                simp only at h₁ h₂
+                                exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                                  (envSub_extend_sub h_env y₁ ha_sub) h₁ h₂
+                              | type =>
+                                simp only at h₁; cases h₁; exact .top τ₂
+                              | mu x_u ann_u body_u =>
+                                obtain ⟨body₂_u, hunf₂_eq, _⟩ := Subtype'.mu_rhs_shape hunf_sub
+                                subst hunf₂_eq
+                                simp only at h₁ h₂; cases h₁; cases h₂
+                                exact .app_cong hunf_sub ha_sub
+                              | var _ =>
+                                cases unf₂ with
+                                | lam _ _ _ => cases hunf_sub
+                                | type => cases hunf_sub
+                                | mu _ _ _ => cases hunf_sub
+                                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                       exact .app_cong hunf_sub ha_sub
+                              | app _ _ =>
+                                cases unf₂ with
+                                | lam _ _ _ => cases hunf_sub
+                                | type => cases hunf_sub
+                                | mu _ _ _ => cases hunf_sub
+                                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                       exact .app_cong hunf_sub ha_sub
+                              | asc _ _ =>
+                                cases unf₂ with
+                                | lam _ _ _ => cases hunf_sub
+                                | type => cases hunf_sub
+                                | mu _ _ _ => cases hunf_sub
+                                | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                       exact .app_cong hunf_sub ha_sub
                 | type =>
                   simp only at h₁; cases h₁; exact .top τ₂
                 | var _ =>
@@ -256,22 +458,94 @@ theorem absEval_mono
                 subst hf₂_eq
                 simp only at h₁ h₂
                 -- Case split on annotation evaluation in both envs
+                -- Shared helper: body-unfold monotonicity proof
+                -- (Used when both sides take the body-unfold path)
+                have body_unfold_mono :
+                    ∀ h₁' : (match absEval n ((x_mu, Expr.mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                      | some (.lam y _dom retBody) => absEval n ((y, a₁) :: Γ₁) retBody
+                      | some .type => some .type
+                      | some f' => some (.app f' a₁)
+                      | none => none) = some τ₁,
+                    ∀ h₂' : (match absEval n ((x_mu, Expr.mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                      | some (.lam y _dom retBody) => absEval n ((y, a₂) :: Γ₂) retBody
+                      | some .type => some .type
+                      | some f' => some (.app f' a₂)
+                      | none => none) = some τ₂,
+                    Subtype' τ₂ τ₁ := by
+                  intro h₁' h₂'
+                  have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                    .mu_body hbody_mu_sub
+                  cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                  | none => rw [hunf₁] at h₁'; simp at h₁'
+                  | some unf₁ =>
+                    rw [hunf₁] at h₁'
+                    cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                    | none => rw [hunf₂] at h₂'; simp at h₂'
+                    | some unf₂ =>
+                      rw [hunf₂] at h₂'
+                      have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                        (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                      cases unf₁ with
+                      | lam y₁ dom₁ retBody₁ =>
+                        obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
+                        subst hunf₂_eq
+                        simp only at h₁' h₂'
+                        exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                          (envSub_extend_sub h_env y₁ ha_sub) h₁' h₂'
+                      | type =>
+                        simp only at h₁'; cases h₁'; exact .top τ₂
+                      | mu x_u ann_u body_u =>
+                        obtain ⟨body₂_u, hunf₂_eq, _⟩ := Subtype'.mu_rhs_shape hunf_sub
+                        subst hunf₂_eq
+                        simp only at h₁' h₂'; cases h₁'; cases h₂'
+                        exact .app_cong hunf_sub ha_sub
+                      | var _ =>
+                        cases unf₂ with
+                        | lam _ _ _ => cases hunf_sub
+                        | type => cases hunf_sub
+                        | mu _ _ _ => cases hunf_sub
+                        | _ => simp only at h₁' h₂'; cases h₁'; cases h₂'
+                               exact .app_cong hunf_sub ha_sub
+                      | app _ _ =>
+                        cases unf₂ with
+                        | lam _ _ _ => cases hunf_sub
+                        | type => cases hunf_sub
+                        | mu _ _ _ => cases hunf_sub
+                        | _ => simp only at h₁' h₂'; cases h₁'; cases h₂'
+                               exact .app_cong hunf_sub ha_sub
+                      | asc _ _ =>
+                        cases unf₂ with
+                        | lam _ _ _ => cases hunf_sub
+                        | type => cases hunf_sub
+                        | mu _ _ _ => cases hunf_sub
+                        | _ => simp only at h₁' h₂'; cases h₁'; cases h₂'
+                               exact .app_cong hunf_sub ha_sub
                 cases hann₁ : absEval n Γ₁ ann_mu with
                 | none =>
-                  rw [hann₁] at h₁
+                  rw [hann₁] at h₁; simp only at h₁
                   cases hann₂ : absEval n Γ₂ ann_mu with
                   | none =>
-                    rw [hann₂] at h₂
-                    sorry -- both ann fail: body unfold path for both
+                    rw [hann₂] at h₂; simp only at h₂
+                    exact body_unfold_mono h₁ h₂
                   | some ann₂_val =>
                     rw [hann₂] at h₂
-                    sorry -- Γ₁ ann fails, Γ₂ ann succeeds
+                    cases ann₂_val with
+                    | lam y₂ dom₂ retBody₂ =>
+                      sorry -- cross case: Γ₁ body-unfold, Γ₂ annotation
+                    | _ =>
+                      simp only at h₂
+                      exact body_unfold_mono h₁ h₂
                 | some ann₁_val =>
                   rw [hann₁] at h₁
                   cases hann₂ : absEval n Γ₂ ann_mu with
                   | none =>
-                    rw [hann₂] at h₂
-                    sorry -- Γ₁ ann succeeds, Γ₂ ann fails
+                    rw [hann₂] at h₂; simp only at h₂
+                    cases ann₁_val with
+                    | lam y₁ dom₁ retBody₁ =>
+                      sorry -- cross case: Γ₁ annotation, Γ₂ body-unfold
+                    | _ =>
+                      simp only at h₁
+                      exact body_unfold_mono h₁ h₂
                   | some ann₂_val =>
                     rw [hann₂] at h₂
                     have hann_sub := ih _ _ ann_mu ann_mu ann₁_val ann₂_val (.refl ann_mu) h_env hann₁ hann₂
@@ -289,7 +563,7 @@ theorem absEval_mono
                         sorry -- cross case: Γ₂ ann=lam, Γ₁ ann=non-lam
                       | _ =>
                         simp only at h₂
-                        sorry -- both non-lam: body unfold for both
+                        exact body_unfold_mono h₁ h₂
               | type =>
                 simp only at h₁; cases h₁; exact .top τ₂
               | var v₁ =>
@@ -527,8 +801,9 @@ theorem absEval_evalFreeVars_general
             split at h_eval
             · -- Annotation evaluates to a lambda: beta-reduce with arg
               exact ih _ _ τ P h_eval (env_extend_val Γ _ τ_a P h_env ih_a)
-            · -- Annotation not a lambda: fallback to body unfolding
-              -- Split on absEval n Γ (body_mu.subst x_mu (.mu x_mu ann_mu body_mu))
+            · -- Annotation not a lambda: fallback to body unfolding via env extension
+              -- Body is evaluated in ((x_mu, mu x_mu ann_mu body_mu) :: Γ)
+              have h_env_mu := env_extend_val Γ x_mu (.mu x_mu ann_mu body_mu) P h_env ih_f
               split at h_eval
               · -- Unfolded body is a lambda: beta-reduce with arg
                 exact ih _ _ τ P h_eval (env_extend_val Γ _ τ_a P h_env ih_a)
@@ -539,7 +814,7 @@ theorem absEval_evalFreeVars_general
                 cases h_eval
                 intro z hz
                 rcases List.mem_append.mp hz with h1 | h2
-                · exact ih Γ _ fVal P hunf_eval h_env z h1
+                · exact ih _ _ fVal P hunf_eval h_env_mu z h1
                 · exact ih_a z h2
               · -- Unfolded body eval failed: contradiction with h_eval
                 exact absurd h_eval (by simp)

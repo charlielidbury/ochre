@@ -129,9 +129,12 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
           -- Annotation is a function type: beta-reduce with the argument.
           absEval fuel ((y, aVal) :: Γ) retBody
         | _ =>
-          -- Annotation uninformative. Unfold body (self-type elimination).
-          let unfolded := body.subst x (.mu x ann body)
-          match absEval fuel Γ unfolded with
+          -- Annotation uninformative. Unfold body via env extension
+          -- (self-type elimination). Using env extension instead of
+          -- body.subst x (mu x ann body) is semantically equivalent but
+          -- makes the monotonicity proof work: the IH applies directly
+          -- with envSub_extend_sub on related envs.
+          match absEval fuel ((x, .mu x ann body) :: Γ) body with
           | some (.lam y _dom retBody) =>
             absEval fuel ((y, aVal) :: Γ) retBody
           | some .type => some .type

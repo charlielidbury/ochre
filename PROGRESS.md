@@ -9,8 +9,8 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **4 sorry warnings**:
-- Monotonicity.lean: 3 (absEval_mono [mu-app body-unfold/cross/none subcases],
+`lake build` passes with **4 sorry warnings** (4 declarations, 8 sorry sites):
+- Monotonicity.lean: 3 declarations (absEval_mono [6 cross-case sorrys],
   absEval_mono_trans, absEval_succeeds_envsub)
 - Soundness.lean: 1 (soundness_gen)
 
@@ -108,22 +108,37 @@ expressive enough for abstract appendVec with the mu primitive.
   unchanged, so mu_body applies directly.
 - **absEval_mono mu-app case (lam annotation):** DONE. Both `.refl` and
   `.app_cong` subcases proved. Covers all fix-like mus.
-- **absEval_mono mu-app case (body-unfold path):** BLOCKED. When both envs
-  evaluate the annotation to non-lam, the body-unfold path produces different
-  unfolded expressions (`body₁.subst x (mu x ann body₁)` vs `body₂.subst x
-  (mu x ann body₂)`). Proving monotonicity requires a **substitution
-  congruence lemma**: `Subtype' e₂ e₁ → Subtype' v₂ v₁ →
-  Subtype' (e₂.subst x v₂) (e₁.subst x v₁)`. This is FALSE for the current
-  Subtype' because `lam_body` requires same domain, and substitution changes
-  domains differently. **Possible fixes:**
-  1. Add a `lam_dom` Subtype' constructor for different domains
-  2. Restrict the body-unfold path to only fire when `ann = Type` (then the
-     annotation eval is always `some .type` in both envs — no cross-case)
-  3. Prove a weaker substitution lemma that applies to the specific shapes
-     produced by absEval
+- **absEval_mono mu-app case (body-unfold):** DONE. Changed absEval to use
+  env extension instead of substitution for the body-unfold path. Now
+  `absEval fuel ((x, mu x ann body) :: Γ) body` instead of
+  `absEval fuel Γ (body.subst x (mu x ann body))`. This makes the IH
+  apply directly via envSub_extend_sub with mu_body.
+- **absEval_mono mu-app cross-cases:** BLOCKED (6 sorrys). These are
+  cases where one env takes the annotation path and the other takes the
+  body-unfold path. There are three variants, each appearing in both
+  `.refl` and `.app_cong`:
+  1. Γ₁ ann fails, Γ₂ ann succeeds as lam → Γ₁ body-unfold, Γ₂ annotation
+  2. Γ₁ ann succeeds as lam, Γ₂ ann fails → Γ₁ annotation, Γ₂ body-unfold
+  3. Both succeed but Γ₁ non-lam, Γ₂ lam → Γ₁ body-unfold, Γ₂ annotation
+     (By Subtype', lam ⊑ non-lam only via .top, so ann₁ must be type)
+  
+  These require relating two different computation strategies (annotation
+  return type vs body unfolding). Without a formal link between a mu's
+  annotation and body, this seems unprovable from monotonicity alone.
+  
+  **Possible approaches:**
+  - Prove absEval_succeeds_envsub first (rules out case 1: if Γ₁ is more
+    precise, it should also succeed — eliminates the none/some cross-case)
+  - Add a well-typedness invariant: the body of a mu conforms to its
+    annotation. Then cross-cases become: body-unfold result ⊑ annotation,
+    which follows from well-typedness.
+  - Restrict annotation path to only fire when annotation is syntactically
+    a lambda (not just evaluates to one). This eliminates cross-case 3
+    since both envs would agree.
+
 - **absEval_mono_trans:** Depends on absEval_mono being fully proved.
-- **absEval_succeeds_envsub:** Independent but also blocked by similar
-  mu-app case analysis.
+- **absEval_succeeds_envsub:** Independent. Proving this would eliminate
+  some cross-cases in absEval_mono.
 - **soundness_gen:** Separate from monotonicity; needs its own analysis.
 
 ### Key files
@@ -131,10 +146,10 @@ expressive enough for abstract appendVec with the mu primitive.
 | File | Status | Sorry count |
 |------|--------|-------------|
 | Syntax.lean | Done | 0 |
-| Eval.lean | Done (ann not normalized in mu, annotation-based mu-elim in app) | 0 |
+| Eval.lean | Done (ann passthrough in mu, annotation/env-ext in app) | 0 |
 | Subtyping.lean | Done (domain normalization) | 0 |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
 | Soundness.lean | Sorry'd | 1 |
-| Monotonicity.lean | Partially proved (mu-body done, mu-app lam-ann done) | 3 |
+| Monotonicity.lean | Mostly proved (mu-body, mu-app lam-ann, mu-app body-unfold done; cross-cases sorry'd) | 3 |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done | 0 |
