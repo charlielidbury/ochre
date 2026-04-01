@@ -53,6 +53,45 @@ inductive Subtype' : Expr → Expr → Prop where
   | self_intro {a : Expr} {x : Name} {ann body : Expr} :
       Subtype' a body → Subtype' a (.mu x ann body)
 
+/-- Subtype' without self_intro. Used for absEval_mono where the IH never
+    generates self_intro (monotonicity starts with .refl e and structural
+    constructors preserve the no-self-intro invariant). This avoids 5
+    unreachable sorry cases in the generalized monotonicity proof. -/
+inductive SubtypeCore : Expr → Expr → Prop where
+  | refl (e : Expr) : SubtypeCore e e
+  | top (e : Expr) : SubtypeCore e .type
+  | lam_body {x : Name} {dom body₁ body₂ : Expr} :
+      SubtypeCore body₂ body₁ → SubtypeCore (.lam x dom body₂) (.lam x dom body₁)
+  | app_cong {f₁ f₂ a₁ a₂ : Expr} :
+      SubtypeCore f₂ f₁ → SubtypeCore a₂ a₁ → SubtypeCore (.app f₂ a₂) (.app f₁ a₁)
+  | mu_body {x : Name} {ann body₁ body₂ : Expr} :
+      SubtypeCore body₂ body₁ → SubtypeCore (.mu x ann body₂) (.mu x ann body₁)
+
+/-- Every SubtypeCore is a Subtype'. -/
+theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) : Subtype' a b := by
+  induction h with
+  | refl e => exact .refl e
+  | top e => exact .top e
+  | lam_body _ ih => exact .lam_body ih
+  | app_cong _ _ ihf iha => exact .app_cong ihf iha
+  | mu_body _ ih => exact .mu_body ih
+
+/-- If `SubtypeCore e (lam x d b)` then e is a lam with same name/domain. -/
+theorem SubtypeCore.lam_rhs_shape {x : Name} {dom body : Expr} {e : Expr}
+    (h : SubtypeCore e (.lam x dom body)) :
+    ∃ body', e = .lam x dom body' ∧ SubtypeCore body' body := by
+  cases h with
+  | refl => exact ⟨body, rfl, .refl body⟩
+  | lam_body h => exact ⟨_, rfl, h⟩
+
+/-- If `SubtypeCore e (mu x a b)` then e is a mu with same binder/ann. -/
+theorem SubtypeCore.mu_rhs_shape {x : Name} {ann body : Expr} {e : Expr}
+    (h : SubtypeCore e (.mu x ann body)) :
+    ∃ body', e = .mu x ann body' ∧ SubtypeCore body' body := by
+  cases h with
+  | refl => exact ⟨body, rfl, .refl body⟩
+  | mu_body h => exact ⟨_, rfl, h⟩
+
 /-- Transitive closure of Subtype'. Used in soundness where transitivity
     is needed (the asc case chains IH result with the well-typedness hyp). -/
 inductive SubtypeTrans : Expr → Expr → Prop where

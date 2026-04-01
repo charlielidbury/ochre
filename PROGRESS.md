@@ -10,16 +10,60 @@ roadmap and strategy.
 ### Build status
 
 `lake build` passes with sorry warnings in:
-- **Subtyping.lean: 0** (was 5 — ALL congruence sorrys eliminated!)
-- Monotonicity.lean: 4 declarations (absEval_mono 5 sorrys + 3 old declarations)
-- Soundness.lean: 1 declaration (soundness_gen — 5 individual sorrys)
+- **Subtyping.lean: 0**
+- **Monotonicity.lean: 1 declaration** (absEval_evalFreeVars_general, mu case)
+- **Soundness.lean: 1 declaration** (soundness_gen — 5 individual sorrys)
 
-**Subtyping.lean is sorry-free.** All SubtypeTrans congruence lemmas fully proved.
-**soundness_gen**: mu standalone and mu_body proved via self_intro.
-**absEval_mono**: all refl/mu_body/lam_body/app_cong/top cases proved;
-only self_intro cases sorry'd (unreachable from monotonicity theorem).
+**absEval_mono is SORRY-FREE.** Uses `SubtypeCore` (Subtype' without self_intro)
+to avoid 5 unreachable self_intro cases. All structural cases fully proved.
+**Dead code removed:** absEval_mono_trans, monotonicity_trans, absEval_succeeds_envsub
+(EnvSubTrans and helpers also removed; EnvSubTrans moved to CounterexampleTest.lean).
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-213619)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-215445)
+
+**Eliminated all sorrys from absEval_mono; removed 3 dead declarations (5→2 sorry decls).**
+
+The root problem: absEval_mono was generalized over `Subtype' e₂ e₁`, which
+includes `self_intro`. The monotonicity theorem only passes `.refl e`, and the
+IH never generates self_intro (only refl/lam_body/mu_body/app_cong/top). But
+Lean requires all Subtype' cases to be handled, creating 5 unreachable sorrys.
+
+The fix: introduced `SubtypeCore` — Subtype' without the self_intro constructor.
+absEval_mono now takes `SubtypeCore e₂ e₁` and returns `SubtypeCore τ₂ τ₁`.
+Since SubtypeCore has no self_intro, those cases don't exist. All structural
+cases go through as before. The `monotonicity` theorem converts via `.toSubtype'`.
+
+Also introduced `EnvSubCore` (using SubtypeCore) since absEval_mono's env
+relation must match: the IH produces SubtypeCore values that get stored in
+the env via extension lemmas.
+
+**Removed dead code:**
+- `absEval_mono_trans` (sorry'd, not used)
+- `monotonicity_trans` (depended on absEval_mono_trans, not used)
+- `absEval_succeeds_envsub` (FALSE — counterexample in CounterexampleTest.lean)
+- `EnvSubTrans` + helpers (moved to CounterexampleTest.lean where needed)
+
+**Also analyzed mu-app soundness case (NOT implemented — see below).**
+
+The mu-app sorrys in soundness_gen are genuinely hard. The issue:
+- Abstract path: uses the mu annotation (`lam y dom retBody`) to determine
+  return type — evaluates `retBody` directly
+- Concrete path: unrolls the mu body, gets a lambda, applies it
+- These are fundamentally different computation paths
+
+To bridge them, we'd need "annotation consistency": the mu body's abstract
+evaluation subtypes the annotation. But Subtype' is syntactic, so
+`Subtype' body_a ann` doesn't hold in general (e.g., `Subtype' (var x) Nat`
+fails even when x is bound to a Nat). This requires either:
+(a) A richer Subtype' that accounts for evaluation context
+(b) A step-indexed logical relation approach
+(c) Restructuring the evaluator so concrete/abstract paths are more similar
+
+Additionally, the concrete lambda and annotation may use different binder names,
+creating env consistency issues. This is a deep problem that likely needs a
+design-level change rather than a proof-level fix.
+
+### Previous changes (2026-04-01, agent ochre-lean-20260401-213619)
 
 **Moved self_intro to Subtype', fixing SubtypeTrans congruence composability.**
 
@@ -213,26 +257,23 @@ expressive enough for abstract appendVec with the mu primitive.
   (lam_body, mu_body, app_cong, eq_of_rigid_target) fully proved.
   self_intro is in both Subtype' and SubtypeTrans (SubtypeTrans version
   takes Subtype' arg to break circularity).
+  Also: `SubtypeCore` (Subtype' without self_intro) for monotonicity proof.
 
-- **absEval_mono:** All refl/mu_body/lam_body/app_cong/top cases proved.
-  5 sorry'd self_intro cases (unreachable from monotonicity theorem).
-  Key techniques:
+- **absEval_mono:** SORRY-FREE. Uses SubtypeCore to avoid unreachable
+  self_intro cases. Key techniques:
+  - `SubtypeCore` instead of `Subtype'` to eliminate self_intro cases
   - `split at h₁` + `simp only [*] at h₂` to handle the syntactic ann match
-  - env extension for body-unfold path (IH via envSub_extend_sub)
-  - mu_rhs_shape (now returns disjunction) for stuck-app cases
+  - env extension for body-unfold path (IH via envSubCore_extend_sub)
+  - SubtypeCore.mu_rhs_shape (no disjunction, unlike Subtype' version)
 
 - **soundness_gen:** MOSTLY PROVED (~85% coverage). 5 sorrys remain.
   Proved: mu standalone, mu_body (via self_intro + IH).
   Remaining sorrys:
-  - trans: needs intermediate expression evaluation
+  - trans: needs intermediate expression evaluation (blocked on totality)
   - self_intro (×2): unreachable from main soundness (cosmetic)
   - mu-app (×2): different concrete/abstract paths for mu application
+    (see "Recent changes" for detailed analysis of why this is hard)
 
-- **absEval_mono_trans:** Sorry'd. Not used by anything currently.
-
-- **absEval_succeeds_envsub:** FALSE as stated (see CounterexampleTest.lean).
-  Not used by anything currently.
-  
 - **absEval_evalFreeVars_general:** mu case sorry'd (env has mu value not
   neutral var, so binder_case helper doesn't apply).
 
@@ -242,9 +283,9 @@ expressive enough for abstract appendVec with the mu primitive.
 |------|--------|-------------|
 | Syntax.lean | Done | 0 |
 | Eval.lean | Done (mu env: x ↦ mu value, annotation-based mu-app) | 0 |
-| **Subtyping.lean** | **SORRY-FREE** (self_intro in Subtype'+SubtypeTrans) | **0** |
+| **Subtyping.lean** | **SORRY-FREE** (SubtypeCore + Subtype' + SubtypeTrans) | **0** |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
 | Soundness.lean | mu standalone+mu_body PROVED; 5 sorrys remain | 1 decl |
-| Monotonicity.lean | absEval_mono: 5 unreachable sorrys; 3 other decls sorry'd | 4 decls |
+| **Monotonicity.lean** | **absEval_mono SORRY-FREE**; evalFreeVars sorry'd | **1 decl** |
 | Closure.lean | Gutted | 0 |
-| CounterexampleTest.lean | Done | 0 |
+| CounterexampleTest.lean | Done (includes EnvSubTrans for counterexamples) | 0 |

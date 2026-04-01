@@ -5,11 +5,16 @@ import Och.Monotonicity
 
 open Expr
 
+/-- Environment subtyping via SubtypeTrans. Used locally for counterexamples;
+    removed from Monotonicity.lean since the theorems it supported were dead code. -/
+private def EnvSubTrans (Γ₂ Γ₁ : Env) : Prop :=
+  ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ SubtypeTrans τ₂ τ₁
+
 /-!
 # Counterexample: absEval_succeeds_envsub is FALSE as stated
 
-This file demonstrates that `absEval_succeeds_envsub` (Monotonicity.lean) cannot
-be proven without an additional well-formedness condition on the environment.
+This file demonstrates that `absEval_succeeds_envsub` (removed from Monotonicity.lean)
+cannot be proven without an additional well-formedness condition on the environment.
 
 ## The counterexample
 

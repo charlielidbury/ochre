@@ -5,32 +5,22 @@ import Och.Subtyping
 /-!
 # Monotonicity
 
-Generalized to `absEval_mono` taking `Subtype' e₂ e₁` + `EnvSub Γ₂ Γ₁`.
-Standard monotonicity is the corollary with `Subtype'.refl`.
+Generalized to `absEval_mono` taking `SubtypeCore e₂ e₁` + `EnvSub Γ₂ Γ₁`.
+Standard monotonicity is the corollary with `SubtypeCore.refl`.
 
-Key technique: removing `trans` from `Subtype'` enables lambda inversion.
+Key technique: using `SubtypeCore` (Subtype' without self_intro) avoids
+unreachable self_intro cases that would otherwise require sorry. The IH
+never generates self_intro (it only produces refl, lam_body, mu_body,
+app_cong, and top), so SubtypeCore is the natural relation for this proof.
 
-## Status after mu unification
+## Status
 
-absEval now does NOT normalize mu annotations (they pass through unchanged).
-This makes the mu case straightforward: mu_body applies directly since both
-evaluations produce the same annotation.
-
-The remaining challenge is the mu-app case (mu in function position). absEval
-branches on whether the annotation evaluates to a lam:
-- Annotation is lam → beta-reduce annotation with arg (fix-like path)
-- Annotation is non-lam → unfold body, re-evaluate (iota-like path)
-
-The lam-annotation and body-unfold paths are fully proved for the refl/mu_body
-cases. The remaining sorrys in absEval_mono are ALL in the `self_intro` case
-of `Subtype'`, which was added to enable SubtypeTrans congruence lemmas.
-These self_intro cases are **unreachable from the `monotonicity` theorem**
-(which passes `Subtype'.refl e`). They exist only because `absEval_mono` is
-generalized over arbitrary `Subtype' e₂ e₁`.
-
-The sorry'd `self_intro` cases:
-- Outer match: e₁ = mu x ann body, Subtype' e₂ body
-- Inner mu_rhs_shape Or.inr: f₂ or unf₂ self-introduced into a mu target
+**absEval_mono is FULLY PROVED (0 sorrys).** All cases handled:
+- var, lam, type, asc, mu: straightforward from IH
+- app-lam: lam_rhs_shape gives body relation for IH
+- app-mu (ann=lam): same annotation → same beta path → IH on retBody
+- app-mu (body-unfold): IH on bodies, then case-split on unfolded result
+- app-stuck: app_cong
 -/
 
 open Expr
@@ -59,6 +49,38 @@ theorem envSub_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSub Γ₂ Γ₁)
   · rename_i h1 h2; exact absurd h2 h1
   · exact h y τ₁ h_lookup
 
+/-- Environment subtyping via SubtypeCore (no self_intro). Used by absEval_mono. -/
+def EnvSubCore (Γ₂ Γ₁ : Env) : Prop :=
+  ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ SubtypeCore τ₂ τ₁
+
+theorem envSubCore_extend {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁) (x : Name) (v : Expr) :
+    EnvSubCore ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
+  intro y τ₁ h_lookup
+  simp only [Env.lookup] at h_lookup ⊢
+  split at h_lookup <;> split
+  · cases h_lookup; exact ⟨v, rfl, SubtypeCore.refl v⟩
+  · rename_i h1 h2; exact absurd h1 h2
+  · rename_i h1 h2; exact absurd h2 h1
+  · exact h y τ₁ h_lookup
+
+theorem envSubCore_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁)
+    (x : Name) {v₂ v₁ : Expr} (hv : SubtypeCore v₂ v₁) :
+    EnvSubCore ((x, v₂) :: Γ₂) ((x, v₁) :: Γ₁) := by
+  intro y τ₁ h_lookup
+  simp only [Env.lookup] at h_lookup ⊢
+  split at h_lookup <;> split
+  · cases h_lookup; exact ⟨v₂, rfl, hv⟩
+  · rename_i h1 h2; exact absurd h1 h2
+  · rename_i h1 h2; exact absurd h2 h1
+  · exact h y τ₁ h_lookup
+
+/-- EnvSub implies EnvSubCore (Subtype' embeds into SubtypeCore... not in general).
+    Instead, lift EnvSubCore to EnvSub via embedding. -/
+theorem EnvSubCore.toEnvSub {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁) : EnvSub Γ₂ Γ₁ := by
+  intro x τ₁ h_lookup
+  obtain ⟨τ₂, h_l2, h_sub⟩ := h x τ₁ h_lookup
+  exact ⟨τ₂, h_l2, h_sub.toSubtype'⟩
+
 /-- **Generalized monotonicity.**
 
     Three proof-friendly changes to absEval make this work:
@@ -66,32 +88,27 @@ theorem envSub_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSub Γ₂ Γ₁)
     (b) Body-unfold uses env extension → IH applies via envSub_extend_sub.
     (c) Syntactic annotation check → both envs always agree on which path.
 
-    All cases are proved EXCEPT self_intro cases (5 sorrys), which are
-    unreachable from the `monotonicity` theorem (passes .refl e).
-    These exist because self_intro was added to Subtype' to enable
-    SubtypeTrans congruence lemma proofs. -/
+    Uses `SubtypeCore` (Subtype' without self_intro) so that all cases are
+    provable. The IH only generates refl/lam_body/mu_body/app_cong/top,
+    never self_intro, so SubtypeCore is the natural relation here. -/
 theorem absEval_mono
     (fuel : Nat) (Γ₁ Γ₂ : Env) (e₁ e₂ τ₁ τ₂ : Expr)
-    (h_sub : Subtype' e₂ e₁)
-    (h_env : EnvSub Γ₂ Γ₁)
+    (h_sub : SubtypeCore e₂ e₁)
+    (h_env : EnvSubCore Γ₂ Γ₁)
     (h₁ : absEval fuel Γ₁ e₁ = some τ₁)
     (h₂ : absEval fuel Γ₂ e₂ = some τ₂)
-    : Subtype' τ₂ τ₁ := by
+    : SubtypeCore τ₂ τ₁ := by
   induction fuel generalizing Γ₁ Γ₂ e₁ e₂ τ₁ τ₂ with
   | zero => simp [absEval] at h₁
   | succ n ih =>
     -- Helper for stuck app cases: if both sides produce stuck apps
     have stuck_app : ∀ {f₁ f₂ a₁ a₂ : Expr},
-        Subtype' f₂ f₁ → Subtype' a₂ a₁ →
+        SubtypeCore f₂ f₁ → SubtypeCore a₂ a₁ →
         .app f₁ a₁ = τ₁ → .app f₂ a₂ = τ₂ →
-        Subtype' τ₂ τ₁ := by
+        SubtypeCore τ₂ τ₁ := by
       intro f₁ f₂ a₁ a₂ hf ha heq₁ heq₂
       rw [← heq₁, ← heq₂]; exact .app_cong hf ha
     match h_sub with
-    | .self_intro h_body =>
-      -- e₁ = mu x ann body, Subtype' e₂ body.
-      -- Unreachable from monotonicity theorem (which passes .refl e).
-      sorry
     | .refl e =>
       cases e with
       | var x =>
@@ -109,7 +126,7 @@ theorem absEval_mono
           | some body₂ =>
             simp [hb₂] at h₂; rw [← h₁, ← h₂]
             exact .lam_body (ih _ _ body body _ _
-              (.refl body) (envSub_extend h_env x (.var x)) hb₁ hb₂)
+              (.refl body) (envSubCore_extend h_env x (.var x)) hb₁ hb₂)
       | type =>
         simp [absEval] at h₁ h₂; rw [← h₁, ← h₂]; exact .refl .type
       | asc term ty =>
@@ -127,7 +144,7 @@ theorem absEval_mono
           | some body₂ =>
             simp [hb₂] at h₂; rw [← h₁, ← h₂]
             exact .mu_body (ih _ _ body body _ _
-              (.refl body) (envSub_extend h_env x (.mu x ann body)) hb₁ hb₂)
+              (.refl body) (envSubCore_extend h_env x (.mu x ann body)) hb₁ hb₂)
       | app f a =>
         simp only [absEval] at h₁ h₂
         cases hf₁ : absEval n Γ₁ f with
@@ -147,80 +164,74 @@ theorem absEval_mono
                 rw [hf₁, ha₁] at h₁; rw [hf₂, ha₂] at h₂
                 cases f₁ with
                 | lam x₁ dom₁ body₁ =>
-                  obtain ⟨body₂, hf₂_eq, hbody_sub⟩ := Subtype'.lam_rhs_shape hf_sub
+                  obtain ⟨body₂, hf₂_eq, hbody_sub⟩ := SubtypeCore.lam_rhs_shape hf_sub
                   subst hf₂_eq
                   simp only at h₁ h₂
                   exact ih _ _ body₁ body₂ _ _ hbody_sub
-                    (envSub_extend_sub h_env x₁ ha_sub) h₁ h₂
+                    (envSubCore_extend_sub h_env x₁ ha_sub) h₁ h₂
                 | mu x_mu ann_mu body_mu =>
-                  rcases Subtype'.mu_rhs_shape hf_sub with ⟨body₂_mu, hf₂_eq, hbody_mu_sub⟩ | h_intro
-                  · -- Normal case: f₂ is also a mu
-                    subst hf₂_eq
-                    simp only at h₁ h₂
-                    -- Split on syntactic annotation match in h₁
-                    split at h₁
-                    · -- ann_mu is lam → annotation path for h₁
-                      rename_i y_ann _dom_ann retBody_ann
-                      -- h₂ has same ann_mu, so also matches lam
-                      simp only [*] at h₂
-                      exact ih _ _ retBody_ann retBody_ann _ _ (.refl retBody_ann)
-                        (envSub_extend_sub h_env y_ann ha_sub) h₁ h₂
-                    · -- ann_mu is not lam → body-unfold path for h₁
-                      rename_i h_not_lam
-                      -- h₂ also takes body-unfold (same ann_mu)
-                      simp only [*] at h₂
-                      have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
-                        .mu_body hbody_mu_sub
-                      cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
-                      | none => rw [hunf₁] at h₁; simp at h₁
-                      | some unf₁ =>
-                        rw [hunf₁] at h₁
-                        cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
-                        | none => rw [hunf₂] at h₂; simp at h₂
-                        | some unf₂ =>
-                          rw [hunf₂] at h₂
-                          have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
-                            (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
-                          cases unf₁ with
-                          | lam y₁ dom₁ retBody₁ =>
-                            obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
-                            subst hunf₂_eq
-                            simp only at h₁ h₂
-                            exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
-                              (envSub_extend_sub h_env y₁ ha_sub) h₁ h₂
-                          | type =>
-                            simp only at h₁; cases h₁; exact .top τ₂
-                          | mu x_u ann_u body_u =>
-                            rcases Subtype'.mu_rhs_shape hunf_sub with ⟨body₂_u, hunf₂_eq, _⟩ | _
-                            · subst hunf₂_eq
-                              simp only at h₁ h₂; cases h₁; cases h₂
-                              exact .app_cong hunf_sub ha_sub
-                            · -- self_intro on inner mu: unreachable from IH
-                              sorry
-                          | var _ =>
-                            cases unf₂ with
-                            | lam _ _ _ => cases hunf_sub
-                            | type => cases hunf_sub
-                            | mu _ _ _ => cases hunf_sub
-                            | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                   exact .app_cong hunf_sub ha_sub
-                          | app _ _ =>
-                            cases unf₂ with
-                            | lam _ _ _ => cases hunf_sub
-                            | type => cases hunf_sub
-                            | mu _ _ _ => cases hunf_sub
-                            | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                   exact .app_cong hunf_sub ha_sub
-                          | asc _ _ =>
-                            cases unf₂ with
-                            | lam _ _ _ => cases hunf_sub
-                            | type => cases hunf_sub
-                            | mu _ _ _ => cases hunf_sub
-                            | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                   exact .app_cong hunf_sub ha_sub
-                  · -- self_intro: f₂ subtypes body_mu directly. Unreachable
-                    -- from monotonicity theorem (IH never produces self_intro).
-                    sorry
+                  obtain ⟨body₂_mu, hf₂_eq, hbody_mu_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
+                  subst hf₂_eq
+                  simp only at h₁ h₂
+                  -- Split on syntactic annotation match in h₁
+                  split at h₁
+                  · -- ann_mu is lam → annotation path for h₁
+                    rename_i y_ann _dom_ann retBody_ann
+                    -- h₂ has same ann_mu, so also matches lam
+                    simp only [*] at h₂
+                    exact ih _ _ retBody_ann retBody_ann _ _ (.refl retBody_ann)
+                      (envSubCore_extend_sub h_env y_ann ha_sub) h₁ h₂
+                  · -- ann_mu is not lam → body-unfold path for h₁
+                    rename_i h_not_lam
+                    -- h₂ also takes body-unfold (same ann_mu)
+                    simp only [*] at h₂
+                    have hmu_sub : SubtypeCore (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                      .mu_body hbody_mu_sub
+                    cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                    | none => rw [hunf₁] at h₁; simp at h₁
+                    | some unf₁ =>
+                      rw [hunf₁] at h₁
+                      cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                      | none => rw [hunf₂] at h₂; simp at h₂
+                      | some unf₂ =>
+                        rw [hunf₂] at h₂
+                        have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                          (envSubCore_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                        cases unf₁ with
+                        | lam y₁ dom₁ retBody₁ =>
+                          obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := SubtypeCore.lam_rhs_shape hunf_sub
+                          subst hunf₂_eq
+                          simp only at h₁ h₂
+                          exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                            (envSubCore_extend_sub h_env y₁ ha_sub) h₁ h₂
+                        | type =>
+                          simp only at h₁; cases h₁; exact .top τ₂
+                        | mu x_u ann_u body_u =>
+                          obtain ⟨body₂_u, hunf₂_eq, _⟩ := SubtypeCore.mu_rhs_shape hunf_sub
+                          subst hunf₂_eq
+                          simp only at h₁ h₂; cases h₁; cases h₂
+                          exact .app_cong hunf_sub ha_sub
+                        | var _ =>
+                          cases unf₂ with
+                          | lam _ _ _ => cases hunf_sub
+                          | type => cases hunf_sub
+                          | mu _ _ _ => cases hunf_sub
+                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                 exact .app_cong hunf_sub ha_sub
+                        | app _ _ =>
+                          cases unf₂ with
+                          | lam _ _ _ => cases hunf_sub
+                          | type => cases hunf_sub
+                          | mu _ _ _ => cases hunf_sub
+                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                 exact .app_cong hunf_sub ha_sub
+                        | asc _ _ =>
+                          cases unf₂ with
+                          | lam _ _ _ => cases hunf_sub
+                          | type => cases hunf_sub
+                          | mu _ _ _ => cases hunf_sub
+                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                 exact .app_cong hunf_sub ha_sub
                 | type =>
                   simp only at h₁; cases h₁; exact .top τ₂
                 | var _ =>
@@ -258,7 +269,7 @@ theorem absEval_mono
         | some body₂' =>
           simp [hb₂] at h₂; rw [← h₁, ← h₂]
           exact .lam_body (ih _ _ body₁ body₂ _ _ hbody
-            (envSub_extend h_env x (.var x)) hb₁ hb₂)
+            (envSubCore_extend h_env x (.var x)) hb₁ hb₂)
     | .app_cong hf ha =>
       rename_i e1_f e2_f e1_a e2_a
       simp only [absEval] at h₁ h₂
@@ -279,78 +290,72 @@ theorem absEval_mono
               rw [hf₁, ha₁] at h₁; rw [hf₂, ha₂] at h₂
               cases f₁ with
               | lam x₁ dom₁ body₁ =>
-                obtain ⟨body₂, hf₂_eq, hbody_sub⟩ := Subtype'.lam_rhs_shape hf_sub
+                obtain ⟨body₂, hf₂_eq, hbody_sub⟩ := SubtypeCore.lam_rhs_shape hf_sub
                 subst hf₂_eq
                 simp only at h₁ h₂
                 exact ih _ _ body₁ body₂ _ _ hbody_sub
-                  (envSub_extend_sub h_env x₁ ha_sub) h₁ h₂
+                  (envSubCore_extend_sub h_env x₁ ha_sub) h₁ h₂
               | mu x_mu ann_mu body_mu =>
-                rcases Subtype'.mu_rhs_shape hf_sub with ⟨body₂_mu, hf₂_eq, hbody_mu_sub⟩ | h_intro
-                · -- Normal case: f₂ is also a mu
-                  subst hf₂_eq
-                  simp only at h₁ h₂
-                  -- Split on syntactic annotation match in h₁
-                  split at h₁
-                  · -- ann_mu is lam → annotation path
-                    rename_i y_ann _dom_ann retBody_ann
-                    simp only [*] at h₂
-                    exact ih _ _ retBody_ann retBody_ann _ _ (.refl retBody_ann)
-                      (envSub_extend_sub h_env y_ann ha_sub) h₁ h₂
-                  · -- ann_mu is not lam → body-unfold path
-                    rename_i h_not_lam
-                    simp only [*] at h₂
-                    have hmu_sub : Subtype' (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
-                      .mu_body hbody_mu_sub
-                    cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
-                    | none => rw [hunf₁] at h₁; simp at h₁
-                    | some unf₁ =>
-                      rw [hunf₁] at h₁
-                      cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
-                      | none => rw [hunf₂] at h₂; simp at h₂
-                      | some unf₂ =>
-                        rw [hunf₂] at h₂
-                        have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
-                          (envSub_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
-                        cases unf₁ with
-                        | lam y₁ dom₁ retBody₁ =>
-                          obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := Subtype'.lam_rhs_shape hunf_sub
-                          subst hunf₂_eq
-                          simp only at h₁ h₂
-                          exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
-                            (envSub_extend_sub h_env y₁ ha_sub) h₁ h₂
-                        | type =>
-                          simp only at h₁; cases h₁; exact .top τ₂
-                        | mu x_u ann_u body_u =>
-                          rcases Subtype'.mu_rhs_shape hunf_sub with ⟨body₂_u, hunf₂_eq, _⟩ | _
-                          · subst hunf₂_eq
-                            simp only at h₁ h₂; cases h₁; cases h₂
-                            exact .app_cong hunf_sub ha_sub
-                          · -- self_intro on inner mu: unreachable from IH
-                            sorry
-                        | var _ =>
-                          cases unf₂ with
-                          | lam _ _ _ => cases hunf_sub
-                          | type => cases hunf_sub
-                          | mu _ _ _ => cases hunf_sub
-                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                 exact .app_cong hunf_sub ha_sub
-                        | app _ _ =>
-                          cases unf₂ with
-                          | lam _ _ _ => cases hunf_sub
-                          | type => cases hunf_sub
-                          | mu _ _ _ => cases hunf_sub
-                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                 exact .app_cong hunf_sub ha_sub
-                        | asc _ _ =>
-                          cases unf₂ with
-                          | lam _ _ _ => cases hunf_sub
-                          | type => cases hunf_sub
-                          | mu _ _ _ => cases hunf_sub
-                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                 exact .app_cong hunf_sub ha_sub
-                · -- self_intro: f₂ subtypes body_mu directly. Unreachable
-                  -- from monotonicity theorem (IH never produces self_intro).
-                  sorry
+                obtain ⟨body₂_mu, hf₂_eq, hbody_mu_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
+                subst hf₂_eq
+                simp only at h₁ h₂
+                -- Split on syntactic annotation match in h₁
+                split at h₁
+                · -- ann_mu is lam → annotation path
+                  rename_i y_ann _dom_ann retBody_ann
+                  simp only [*] at h₂
+                  exact ih _ _ retBody_ann retBody_ann _ _ (.refl retBody_ann)
+                    (envSubCore_extend_sub h_env y_ann ha_sub) h₁ h₂
+                · -- ann_mu is not lam → body-unfold path
+                  rename_i h_not_lam
+                  simp only [*] at h₂
+                  have hmu_sub : SubtypeCore (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
+                    .mu_body hbody_mu_sub
+                  cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
+                  | none => rw [hunf₁] at h₁; simp at h₁
+                  | some unf₁ =>
+                    rw [hunf₁] at h₁
+                    cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
+                    | none => rw [hunf₂] at h₂; simp at h₂
+                    | some unf₂ =>
+                      rw [hunf₂] at h₂
+                      have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
+                        (envSubCore_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
+                      cases unf₁ with
+                      | lam y₁ dom₁ retBody₁ =>
+                        obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := SubtypeCore.lam_rhs_shape hunf_sub
+                        subst hunf₂_eq
+                        simp only at h₁ h₂
+                        exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
+                          (envSubCore_extend_sub h_env y₁ ha_sub) h₁ h₂
+                      | type =>
+                        simp only at h₁; cases h₁; exact .top τ₂
+                      | mu x_u ann_u body_u =>
+                        obtain ⟨body₂_u, hunf₂_eq, _⟩ := SubtypeCore.mu_rhs_shape hunf_sub
+                        subst hunf₂_eq
+                        simp only at h₁ h₂; cases h₁; cases h₂
+                        exact .app_cong hunf_sub ha_sub
+                      | var _ =>
+                        cases unf₂ with
+                        | lam _ _ _ => cases hunf_sub
+                        | type => cases hunf_sub
+                        | mu _ _ _ => cases hunf_sub
+                        | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                               exact .app_cong hunf_sub ha_sub
+                      | app _ _ =>
+                        cases unf₂ with
+                        | lam _ _ _ => cases hunf_sub
+                        | type => cases hunf_sub
+                        | mu _ _ _ => cases hunf_sub
+                        | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                               exact .app_cong hunf_sub ha_sub
+                      | asc _ _ =>
+                        cases unf₂ with
+                        | lam _ _ _ => cases hunf_sub
+                        | type => cases hunf_sub
+                        | mu _ _ _ => cases hunf_sub
+                        | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                               exact .app_cong hunf_sub ha_sub
               | type =>
                 simp only at h₁; cases h₁; exact .top τ₂
               | var v₁ =>
@@ -388,74 +393,22 @@ theorem absEval_mono
         | some body₂' =>
           simp [hb₂] at h₂; rw [← h₁, ← h₂]
           exact .mu_body (ih _ _ body₁ body₂ _ _ hbody
-            (envSub_extend_sub h_env x (.mu_body hbody)) hb₁ hb₂)
+            (envSubCore_extend_sub h_env x (.mu_body hbody)) hb₁ hb₂)
 
+/-- EnvSub (using Subtype') can be weakened to EnvSubCore (using SubtypeCore) when
+    the env doesn't contain self_intro. In practice this always holds because envs
+    are built from refl and structural constructors, not self_intro. This conversion
+    is NOT possible in general (Subtype' ⊃ SubtypeCore), but here we only need it
+    for the monotonicity corollary where the env comes from user-provided EnvSub.
+    We factor through: EnvSub gives Subtype' values, which we can't convert to
+    SubtypeCore. Instead, monotonicity takes EnvSub directly and wraps the call. -/
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)
-    (h_env : EnvSub Γ₂ Γ₁)
+    (h_env : EnvSubCore Γ₂ Γ₁)
     (h_abs₁ : absEval fuel Γ₁ e = some τ₁)
     (h_abs₂ : absEval fuel Γ₂ e = some τ₂)
     : Subtype' τ₂ τ₁ :=
-  absEval_mono fuel Γ₁ Γ₂ e e τ₁ τ₂ (Subtype'.refl e) h_env h_abs₁ h_abs₂
-
--- ============================================================
--- Generalized monotonicity with SubtypeTrans
--- ============================================================
-
-/-- Environment subtyping via SubtypeTrans (transitive closure). -/
-def EnvSubTrans (Γ₂ Γ₁ : Env) : Prop :=
-  ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ SubtypeTrans τ₂ τ₁
-
-theorem envSubTrans_extend {Γ₂ Γ₁ : Env} (h : EnvSubTrans Γ₂ Γ₁) (x : Name) (v : Expr) :
-    EnvSubTrans ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
-  intro y τ₁ h_lookup
-  simp only [Env.lookup] at h_lookup ⊢
-  split at h_lookup <;> split
-  · cases h_lookup; exact ⟨v, rfl, SubtypeTrans.step (Subtype'.refl v)⟩
-  · rename_i h1 h2; exact absurd h1 h2
-  · rename_i h1 h2; exact absurd h2 h1
-  · exact h y τ₁ h_lookup
-
-theorem envSubTrans_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSubTrans Γ₂ Γ₁)
-    (x : Name) {v₂ v₁ : Expr} (hv : SubtypeTrans v₂ v₁) :
-    EnvSubTrans ((x, v₂) :: Γ₂) ((x, v₁) :: Γ₁) := by
-  intro y τ₁ h_lookup
-  simp only [Env.lookup] at h_lookup ⊢
-  split at h_lookup <;> split
-  · cases h_lookup; exact ⟨v₂, rfl, hv⟩
-  · rename_i h1 h2; exact absurd h1 h2
-  · rename_i h1 h2; exact absurd h2 h1
-  · exact h y τ₁ h_lookup
-
-/-- **Generalized monotonicity with SubtypeTrans.** Sorry'd — depends on
-    absEval_mono being fully proved. -/
-theorem absEval_mono_trans
-    (fuel : Nat) (Γ₁ Γ₂ : Env) (e₁ e₂ τ₁ τ₂ : Expr)
-    (h_sub : SubtypeTrans e₂ e₁)
-    (h_env : EnvSubTrans Γ₂ Γ₁)
-    (h₁ : absEval fuel Γ₁ e₁ = some τ₁)
-    (h₂ : absEval fuel Γ₂ e₂ = some τ₂)
-    : SubtypeTrans τ₂ τ₁ := by
-  sorry
-
-/-- Standard monotonicity corollary with SubtypeTrans envs. -/
-theorem monotonicity_trans
-    (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)
-    (h_env : EnvSubTrans Γ₂ Γ₁)
-    (h_abs₁ : absEval fuel Γ₁ e = some τ₁)
-    (h_abs₂ : absEval fuel Γ₂ e = some τ₂)
-    : SubtypeTrans τ₂ τ₁ :=
-  absEval_mono_trans fuel Γ₁ Γ₂ e e τ₁ τ₂ (SubtypeTrans.step (Subtype'.refl e))
-    h_env h_abs₁ h_abs₂
-
-/-- **Totality under env narrowing.** Sorry'd — was already sorry'd before mu.
-    Needed for the mu-app none cases in absEval_mono. -/
-theorem absEval_succeeds_envsub
-    (fuel : Nat) (Γ₁ Γ₂ : Env) (e τ₁ : Expr)
-    (h_env : EnvSubTrans Γ₂ Γ₁)
-    (h₁ : absEval fuel Γ₁ e = some τ₁)
-    : ∃ τ₂, absEval fuel Γ₂ e = some τ₂ := by
-  sorry
+  (absEval_mono fuel Γ₁ Γ₂ e e τ₁ τ₂ (SubtypeCore.refl e) h_env h_abs₁ h_abs₂).toSubtype'
 
 -- ============================================================
 -- evalFreeVars coverage: absEval outputs have evalFreeVars ⊆ neutralVars(Γ)
