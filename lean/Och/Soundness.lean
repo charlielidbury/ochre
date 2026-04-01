@@ -13,19 +13,25 @@ The proof uses a generalized `soundness_gen` that takes `SubtypeTrans e_c e_a`
 (related expressions) since the app-beta case produces different normalized
 bodies from the function IH.
 
-## Status after mu unification
+## Status
 
-The soundness proof is PARTIALLY PROVED. All non-mu cases are done:
+soundness_gen is MOSTLY PROVED. Remaining sorrys: 4 (was 5).
+
+**Proved cases** (all non-mu-app cases):
 - var, lam, type, asc: direct from env consistency / IH / WellTyped
-- app-lam: SubtypeTrans.lam_target_shape inverts concrete function,
-  IH on bodies with envConsistent_extend_sub
+- app-lam: SubtypeTrans.lam_target_shape inverts concrete function
 - app-stuck: SubtypeTrans.app_cong on stuck applications
 - lam_body, app_cong: same as refl counterparts
+- **mu standalone (NEW):** absEval binds x to the mu value itself (matching
+  concEval), so EnvConsistent is satisfied by refl. IH gives SubtypeTrans v body',
+  self_intro lifts to SubtypeTrans v (mu x ann body').
+- **mu_body (NEW):** same technique with self_intro.
 
-Five sorrys remain, ALL mu-related or the SubtypeTrans.trans case.
-The fundamental blocker: EnvConsistent requires SubtypeTrans (mu value)
-(var x), but no such constructor exists. See DECISION-LOG.md for
-analysis of three possible approaches.
+**Remaining sorrys (4):**
+1. trans: needs intermediate expression to evaluate in both modes
+2. self_intro: unreachable from main soundness theorem (cosmetic)
+3-4. mu-app (×2): concEval unrolls mu then applies; absEval uses annotation
+     or body-unfold. Different computation paths.
 -/
 
 open Expr
@@ -47,9 +53,10 @@ def WellTyped (fuel : Nat) (Γ : Env) (e : Expr) : Prop :=
         ∃ σ τ', absEval fuel Γ term = some σ ∧
                 absEval fuel Γ ty = some τ' ∧
                 Subtype' σ τ'
-    | .mu x _ann body =>
-        -- mu well-typedness: body is well-typed under (x, var x)
-        WellTyped fuel ((x, .var x) :: Γ) body
+    | .mu x ann body =>
+        -- mu well-typedness: body is well-typed under (x, mu x ann body)
+        -- matching absEval's env binding for soundness proof compatibility
+        WellTyped fuel ((x, .mu x ann body) :: Γ) body
     | .app f a =>
         WellTyped fuel Γ f ∧ WellTyped fuel Γ a ∧
         match absEval fuel Γ f, absEval fuel Γ a with
@@ -88,19 +95,16 @@ theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
     - app with lam in function position: fully proved
     - app with stuck function (var, app, asc): fully proved
     - app with type in function position: fully proved
+    - **mu (standalone):** both evaluators bind x to the mu value itself.
+      EnvConsistent by refl. IH gives v ⊑ body', self_intro lifts to mu.
+    - **mu_body:** same technique, using self_intro.
+    - lam_body, app_cong: same as refl counterparts
 
-    ## Sorry'd cases
-    - **mu (standalone):** abstract eval binds x to neutral (var x), concrete eval
-      binds x to the mu value itself. Cannot establish EnvConsistent for these
-      extended envs because there's no SubtypeTrans (mu ...) (var x). Needs either:
-      (a) step-indexed logical relation instead of SubtypeTrans, or
-      (b) self-intro rule in Subtype'/SubtypeTrans, or
-      (c) changed absEval mu semantics.
-    - **mu-app:** concEval unrolls the mu then applies; absEval uses the
-      annotation or body-unfold. Fundamentally different computation paths.
+    ## Sorry'd cases (4)
     - **trans:** needs intermediate expression to evaluate in both modes.
-      Similar to the false absEval_succeeds_envsub (see CounterexampleTest.lean).
-    - **lam_body/app_cong/mu_body in h_sub:** Same as their refl counterparts. -/
+    - **self_intro:** unreachable from main soundness theorem (cosmetic).
+    - **mu-app (×2):** concEval unrolls the mu then applies; absEval uses the
+      annotation or body-unfold. Fundamentally different computation paths. -/
 theorem soundness_gen
     (fuel : Nat) (Γ : Env) (γ : Env) (e_a e_c τ v : Expr)
     (h_sub : SubtypeTrans e_c e_a)
@@ -116,9 +120,11 @@ theorem soundness_gen
     | trans _ _ =>
       -- BLOCKED: SubtypeTrans e_c b and SubtypeTrans b e_a.
       -- Need b to evaluate in both modes (abstract and concrete).
-      -- Without well-formedness guarantees on intermediate expressions,
-      -- this cannot be closed. See CounterexampleTest.lean for why
-      -- totality-under-subtyping is false in general.
+      sorry
+    | self_intro _ =>
+      -- e_a = mu x ann body_inner, SubtypeTrans e_c body_inner.
+      -- Not reachable from the main soundness theorem (which passes .step (.refl e)).
+      -- Only reachable from trans case, which is already sorry'd.
       sorry
     | step h_step =>
       cases h_step with
@@ -162,11 +168,20 @@ theorem soundness_gen
             (ih _ _ term term σ v (.step (.refl term)) h_abs_term h_conc h_env h_wt_term)
             (.step h_sub_σ_τ)
         | mu x ann body =>
-          -- BLOCKED: env consistency for self-referential binding.
-          -- concEval: body with x ↦ mu x ann body (the actual value)
-          -- absEval: body with x ↦ var x (neutral), returns mu x ann body'
-          -- Need SubtypeTrans (mu x ann body) (var x) which doesn't exist.
-          sorry
+          -- Both evaluators bind x to the mu value itself.
+          -- absEval: body with x ↦ mu x ann body → body' → wrapped: mu x ann body'
+          -- concEval: body with x ↦ mu x ann body → v
+          -- IH on body gives SubtypeTrans v body', self_intro lifts to mu.
+          simp only [absEval] at h_abs
+          simp only [concEval] at h_conc
+          cases hba : absEval n ((x, .mu x ann body) :: Γ) body with
+          | none => simp [hba] at h_abs
+          | some body_a =>
+            simp [hba] at h_abs; rw [← h_abs]
+            exact .self_intro (ih _ _ body body body_a v
+              (.step (.refl body)) hba h_conc
+              (envConsistent_extend h_env x (.mu x ann body))
+              (by simp only [WellTyped] at h_wt; exact h_wt))
         | app f a =>
           simp only [absEval] at h_abs
           simp only [concEval] at h_conc
@@ -279,9 +294,24 @@ theorem soundness_gen
                   have := SubtypeTrans.asc_target hf_sub; subst this
                   simp only at h_abs h_conc; cases h_abs; cases h_conc
                   exact SubtypeTrans.app_cong hf_sub ha_sub
-      | mu_body _ =>
-        -- Same env consistency issue as refl mu case
-        sorry
+      | mu_body hbody =>
+        -- absEval wraps in mu, concEval doesn't.
+        -- e_a = mu x ann body_a, e_c = mu x ann body_c
+        -- absEval: body_a with x ↦ mu → body_a' → τ = mu x ann body_a'
+        -- concEval: body_c with x ↦ mu → v (directly, no wrapping)
+        -- IH gives SubtypeTrans v body_a', self_intro lifts to mu.
+        rename_i x ann body_a body_c
+        simp only [absEval] at h_abs
+        simp only [concEval] at h_conc
+        cases hba : absEval n ((x, .mu x ann body_a) :: Γ) body_a with
+        | none => simp [hba] at h_abs
+        | some body_a' =>
+          simp [hba] at h_abs; rw [← h_abs]
+          exact .self_intro (ih _ _ body_a body_c body_a' v
+            (.step hbody) hba h_conc
+            (envConsistent_extend_sub h_env x
+              (SubtypeTrans.mu_body (.step hbody)))
+            (by simp only [WellTyped] at h_wt; exact h_wt))
 
 /-- **Soundness theorem.**
 

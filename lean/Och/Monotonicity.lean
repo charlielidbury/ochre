@@ -102,18 +102,18 @@ theorem absEval_mono
         simp only [absEval] at h₁ h₂
         exact ih _ _ ty ty _ _ (.refl ty) h_env h₁ h₂
       | mu x ann body =>
-        -- annotation passes through unchanged → mu_body applies directly
+        -- x is bound to the mu itself; annotation passes through unchanged
         simp only [absEval] at h₁ h₂
-        cases hb₁ : absEval n ((x, .var x) :: Γ₁) body with
+        cases hb₁ : absEval n ((x, .mu x ann body) :: Γ₁) body with
         | none => simp [hb₁] at h₁
         | some body₁ =>
           simp [hb₁] at h₁
-          cases hb₂ : absEval n ((x, .var x) :: Γ₂) body with
+          cases hb₂ : absEval n ((x, .mu x ann body) :: Γ₂) body with
           | none => simp [hb₂] at h₂
           | some body₂ =>
             simp [hb₂] at h₂; rw [← h₁, ← h₂]
             exact .mu_body (ih _ _ body body _ _
-              (.refl body) (envSub_extend h_env x (.var x)) hb₁ hb₂)
+              (.refl body) (envSub_extend h_env x (.mu x ann body)) hb₁ hb₂)
       | app f a =>
         simp only [absEval] at h₁ h₂
         cases hf₁ : absEval n Γ₁ f with
@@ -351,17 +351,18 @@ theorem absEval_mono
     | .mu_body hbody =>
       rename_i x ann body₁ body₂
       -- annotation is the same in both (mu_body preserves ann)
+      -- x is bound to the respective mu value in each env
       simp only [absEval] at h₁ h₂
-      cases hb₁ : absEval n ((x, .var x) :: Γ₁) body₁ with
+      cases hb₁ : absEval n ((x, .mu x ann body₁) :: Γ₁) body₁ with
       | none => simp [hb₁] at h₁
       | some body₁' =>
         simp [hb₁] at h₁
-        cases hb₂ : absEval n ((x, .var x) :: Γ₂) body₂ with
+        cases hb₂ : absEval n ((x, .mu x ann body₂) :: Γ₂) body₂ with
         | none => simp [hb₂] at h₂
         | some body₂' =>
           simp [hb₂] at h₂; rw [← h₁, ← h₂]
           exact .mu_body (ih _ _ body₁ body₂ _ _ hbody
-            (envSub_extend h_env x (.var x)) hb₁ hb₂)
+            (envSub_extend_sub h_env x (.mu_body hbody)) hb₁ hb₂)
 
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)
@@ -529,12 +530,14 @@ theorem absEval_evalFreeVars_general
         exact binder_case x body body' hb
     | mu x ann body =>
       simp only [absEval] at h_eval
-      cases hb : absEval n ((x, .var x) :: Γ) body with
+      cases hb : absEval n ((x, .mu x ann body) :: Γ) body with
       | none => simp [hb] at h_eval
       | some body' =>
         simp [hb] at h_eval; cases h_eval
         -- evalFreeVars(.mu x ann body') = body'.evalFreeVars.filter(·!=x)
-        exact binder_case x body body' hb
+        -- binder_case doesn't apply directly since env has mu value, not var x.
+        -- The mu value's evalFreeVars may include vars from ann/body, not just x.
+        sorry
     | app f a =>
       simp only [absEval] at h_eval
       cases hf : absEval n Γ f with

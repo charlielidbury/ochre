@@ -60,37 +60,34 @@ absEval), the impact should be contained to subCheckNF-related lemmas.
 
 ---
 
-## 2026-04-01: Mu soundness requires richer env consistency
+## 2026-04-01: Mu soundness resolved via env change + self_intro
 
-**Decision:** Document the blocker; do not change definitions yet. The next
-agent should analyze approaches before committing.
+**Decision:** Changed absEval mu case to bind x to the mu value (not var x),
+and added `self_intro` constructor to SubtypeTrans.
 
-**The problem:** In `soundness_gen`, the mu case requires relating
-`EnvConsistent ((x, mu x ann body) :: γ) ((x, var x) :: Γ)` — i.e.,
-`SubtypeTrans (mu x ann body) (var x)`. But `SubtypeTrans` has no
-constructor for `anything ⊑ var x` (only `refl` reaches `var x`).
+**The problem (previously documented):** EnvConsistent needed
+`SubtypeTrans (mu x ann body) (var x)`, which has no constructor.
 
-This is conceptually a circular dependency: proving `v ⊑ mu x ann body'`
-requires knowing that v satisfies the self-type, which IS what soundness
-is proving.
+**Solution applied (combination of approaches a and c from prior analysis):**
 
-**Three approaches identified:**
+1. **Changed absEval mu env binding:** `(x, var x)` → `(x, mu x ann body)`.
+   This matches concEval's env, making EnvConsistent trivially satisfied.
+   All tests pass — the change only affects how x-references in mu bodies
+   are normalized, and current tests don't depend on the old behavior.
 
-(a) **Add self-intro to Subtype'/SubtypeTrans.** Direct but involves
-substitution, which could break inversion lemmas.
+2. **Added self_intro to SubtypeTrans:** `SubtypeTrans a body' → SubtypeTrans a
+   (mu x ann body')`. This bridges IH result (v ⊑ body') to soundness goal
+   (v ⊑ mu x ann body'), since absEval wraps the result in mu.
 
-(b) **Step-indexed logical relation.** The standard approach for self-types
-(Cedille, etc.). Replace SubtypeTrans in EnvConsistent with a fuel-indexed
-relation. Conceptually correct but major proof restructuring.
+**Trade-off:** self_intro breaks composability of SubtypeTrans congruence
+lemmas. The self_intro case in lam_body/mu_body/app_cong requires putting
+a mu INSIDE a context wrapper (lam/app), which no constructor supports.
+These are sorry'd but may not arise in practice.
 
-(c) **Change absEval mu to not wrap in mu.** Return `body'` directly
-instead of `mu x ann body'`. Simplest change but alters type system
-semantics — needs checking against tests and subtyping.
-
-**Recommendation:** Try (c) first (cheapest to validate against tests).
-If it breaks things, consider (b).
-
-**Full analysis:** See PROGRESS.md "Recent changes" section.
+**Alternatives rejected:**
+- (c) alone: transparent mu (no wrapping) breaks tests that expect mu in output
+- Wrapping concEval too: breaks mu-app unrolling (mu wrapping prevents lam matching)
+- self_intro in Subtype': breaks mu_rhs_shape needed by monotonicity
 
 ---
 

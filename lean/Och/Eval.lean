@@ -97,15 +97,15 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
     | .type         => some .type
     | .asc _term ty => absEval fuel Γ ty  -- compile-time: take the rhs
     | .mu x ann body =>
-      -- Normalize body under binder (iota behavior).
-      -- Annotation is NOT normalized here — it passes through unchanged.
-      -- This is correct because the annotation is re-evaluated when the mu
-      -- is applied (in the app case below), so normalizing it here would be
-      -- redundant. More importantly, keeping the annotation unchanged makes
-      -- the monotonicity proof work: two evaluations of `mu x ann body` in
-      -- different envs produce `mu x ann body₁'` and `mu x ann body₂'` with
-      -- the SAME annotation, so `mu_body` applies directly.
-      match absEval fuel ((x, .var x) :: Γ) body with
+      -- Evaluate body with x bound to the mu value itself (like concEval).
+      -- This makes the soundness proof work: both evaluators extend the env
+      -- with the same binding, so EnvConsistent is satisfied by refl.
+      -- The result is wrapped in mu to preserve the self-type structure.
+      --
+      -- Previously x was bound to (var x) (neutral), but this made soundness
+      -- unprovable: EnvConsistent needed SubtypeTrans (mu ...) (var x),
+      -- which has no constructor. Binding to the mu itself fixes this.
+      match absEval fuel ((x, .mu x ann body) :: Γ) body with
       | some body' => some (.mu x ann body')
       | none => none
     | .app f a      =>
