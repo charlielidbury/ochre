@@ -40,7 +40,10 @@ end Env
     - absEval takes the rhs (type annotation) — compile-time semantics
     - concEval takes the lhs (term value) — runtime semantics
 
-    This parallel structure makes the soundness proof a straightforward induction.
+    Both evaluators wrap mu results in mu (rather than unrolling). This
+    makes the soundness proof's mu case provable via mu_body (structural
+    subtyping) instead of self_intro. The app-mu case matches on the mu
+    body directly to apply functions.
 
     Uses fuel to avoid partiality. Returns `none` on timeout. -/
 def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
@@ -56,19 +59,28 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
     | .type         => some .type
     | .asc term _   => concEval fuel γ term  -- runtime: take the lhs
     | .mu x ann body =>
-      -- Unroll: evaluate body with x bound to the mu itself (like fix).
-      concEval fuel ((x, .mu x ann body) :: γ) body
+      -- Evaluate body with x bound to the mu itself, then wrap the result
+      -- in mu (structurally parallel to absEval). This enables the soundness
+      -- proof to use mu_body instead of self_intro for the mu case.
+      --
+      -- Previously this unrolled (returned body directly, like fix).
+      -- Wrapping preserves the mu structure, which the app-mu case
+      -- handles by matching on the body directly.
+      match concEval fuel ((x, .mu x ann body) :: γ) body with
+      | some body' => some (.mu x ann body')
+      | none => none
     | .app f a      =>
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
         concEval fuel ((x, aVal) :: γ) body
       | some (.mu x ann body), some aVal =>
-        -- mu in function position: unroll it, then apply the result
-        match concEval fuel γ (.mu x ann body) with
-        | some (.lam y _dom lamBody) => concEval fuel ((y, aVal) :: γ) lamBody
-        | some .type => some .type
-        | some fVal => some (.app fVal aVal)
-        | none => none
+        -- mu in function position: match on body directly (no re-unrolling).
+        -- Since concEval wraps mu results, the body is already evaluated.
+        -- This is structurally parallel to absEval's body-unfolding path.
+        match body with
+        | .lam y _dom lamBody => concEval fuel ((y, aVal) :: γ) lamBody
+        | .type => some .type
+        | _ => some (.app (.mu x ann body) aVal)
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')
       | _, _ => none

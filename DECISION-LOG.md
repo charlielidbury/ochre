@@ -227,6 +227,31 @@ normalization-under-binders problem for recursive fix.
 Enables lambda inversion for monotonicity. SubtypeTrans is the transitive
 closure, used in soundness.
 
+### concEval wraps mu results (2026-04-01)
+
+Changed concEval's mu case from unrolling (returning body directly) to wrapping
+(returning `mu x ann body'`, like absEval). The app-mu case now matches on the
+mu body directly instead of re-unrolling via `concEval fuel γ (.mu ...)`.
+
+**Why:** The old approach made the soundness mu case require self_intro
+(concEval unwraps → body value, absEval wraps → mu value). With wrapping, both
+evaluators produce mu values, and the soundness case uses mu_body (structural
+subtyping). This also corrected a false "unreachable" claim about the
+self_intro sorry — the previous mu case was producing self_intro that flowed
+through lam_body and appeared as input in recursive calls.
+
+**Trade-off:** The app-mu case in concEval no longer re-evaluates the body
+when a mu is in function position. Instead it matches the already-evaluated
+body for a lambda. This is slightly more fuel-efficient but semantically
+equivalent (the body in the mu value is already evaluated).
+
+**Alternatives considered:**
+- Keep unrolling, prove self_intro case. Blocked by fuel/env mismatch.
+- Use SubtypeCore for h_sub (exclude self_intro). Doesn't work because
+  self_intro is reachable via the asc case's WellTyped Subtype'.
+- Make concEval's app-mu use the annotation (like absEval). Wrong: `add 2 3`
+  would evaluate to `Nat` instead of `5`.
+
 ### Normalize under binders in absEval (2026-03-31)
 Required for `succ 2 = 3`. Domains NOT normalized (would break monotonicity).
 

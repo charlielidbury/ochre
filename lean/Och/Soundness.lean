@@ -25,19 +25,20 @@ soundness_gen has **3 individual sorrys** (was 5).
 - var, lam, type, asc: direct from env consistency / IH / WellTyped
 - app-lam: Subtype'.lam_rhs_shape inverts concrete function
 - app-stuck: direct Subtype' case analysis (no SubtypeTrans needed)
-- mu standalone: IH + Subtype'.trans + self_intro
-- lam_body, mu_body, app_cong: handled via Subtype' structure
+- mu standalone: mu_body (both evaluators now wrap mu results)
+- mu_body: mu_body (parallel structure from wrapping)
+- lam_body, app_cong: handled via Subtype' structure
 
 **Remaining sorrys (3):**
-- mu-app (×2): concEval unrolls mu then applies; absEval uses annotation
-  or body-unfold. Fundamentally different computation paths.
-- self_intro (×1): fuel mismatch (absEval uses n, concEval has n+1) and
-  env mismatch. UNREACHABLE from main soundness theorem.
+- mu-app (×2): concEval matches body for lambda; absEval uses annotation
+  (lam ann) or body-unfold (non-lam ann). Different computation paths.
+- self_intro (×1): fuel/env mismatch. Reachable via asc path (when
+  WellTyped has Subtype' σ (mu ...) via self_intro). See case comment.
 
-**Eliminated sorrys (2, from 5):**
-- trans: gone (not a constructor of Subtype'; Subtype'.trans proved)
-- SubtypeTrans.self_intro + step>self_intro: gone (SubtypeTrans no longer
-  used; self_intro handled directly as Subtype' case)
+**Key change:** concEval now wraps mu results (like absEval). This made
+the mu standalone and mu_body cases provable via mu_body instead of
+self_intro. The app-mu case matches on the mu body directly instead
+of re-unrolling.
 -/
 
 open Expr
@@ -92,11 +93,13 @@ theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
     and concrete evaluation gives value `v`, then `Subtype' v τ`.
 
     Uses Subtype' directly (not SubtypeTrans) since Subtype'.trans is proved.
-    This eliminates the trans/self_intro cases that were previously sorry'd.
 
-    ## Sorry'd cases (2)
-    - **mu-app (×2):** concEval unrolls the mu then applies; absEval uses the
-      annotation or body-unfold. Fundamentally different computation paths. -/
+    ## Sorry'd cases (3)
+    - **mu-app (×2):** concEval matches mu body for lambda; absEval uses
+      annotation (lam ann) or body-unfold. The annotation is an unrelated
+      expression from the mu body, so Subtype' can't bridge them.
+    - **self_intro (×1):** fuel/env mismatch. Reachable via asc path when
+      WellTyped contains Subtype' σ (mu ...) via self_intro. -/
 theorem soundness_gen
     (fuel : Nat) (Γ : Env) (γ : Env) (e_a e_c τ v : Expr)
     (h_sub : Subtype' e_c e_a)
@@ -152,12 +155,15 @@ theorem soundness_gen
         cases hba : absEval n ((x, .mu x ann body) :: Γ) body with
         | none => simp [hba] at h_abs
         | some body_a =>
-          simp [hba] at h_abs; rw [← h_abs]
-          exact (ih _ _ body body body_a v
-            (.refl body) hba h_conc
-            (envConsistent_extend h_env x (.mu x ann body))
-            (by simp only [WellTyped] at h_wt; exact h_wt)).trans
-            (.self_intro (.refl _))
+          simp [hba] at h_abs
+          cases hbc : concEval n ((x, .mu x ann body) :: γ) body with
+          | none => simp [hbc] at h_conc
+          | some body_c =>
+            simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+            exact .mu_body (ih _ _ body body body_a body_c
+              (.refl body) hba hbc
+              (envConsistent_extend h_env x (.mu x ann body))
+              (by simp only [WellTyped] at h_wt; exact h_wt))
       | app f a =>
         simp only [absEval] at h_abs
         simp only [concEval] at h_conc
@@ -192,7 +198,19 @@ theorem soundness_gen
                     rw [hfa, haa] at h3; exact h3
                   exact ih _ _ body_a body_c τ v hbody_sub h_abs h_conc
                     (envConsistent_extend_sub h_env x ha_sub) h_wt_body
-                | mu _ _ _ => sorry  -- mu-app: see docstring
+                | mu x_mu ann_mu body_mu =>
+                  -- mu-app: abstract uses annotation (if lam) or body-unfold,
+                  -- concrete matches on body directly.
+                  -- From mu_rhs_shape, f_v is either:
+                  --   (a) mu x_mu ann_mu body_c with body_c ⊑ body_mu
+                  --   (b) Subtype' f_v body_mu (self_intro)
+                  -- For (a): annotation consistency — the mu body (concEval
+                  --   matches body_c for lam) vs the annotation retBody
+                  --   (absEval uses ann_mu directly) are fundamentally
+                  --   different expressions. Subtype' can't relate them.
+                  -- For (b): different concEval app branch fires, depending
+                  --   on f_v's shape (lam, var, etc).
+                  sorry
                 | var v_name =>
                   -- f_v ⊑ var: f_v must be var (only refl)
                   cases hf_sub with
@@ -262,7 +280,10 @@ theorem soundness_gen
                   rw [hfa, haa] at h3; exact h3
                 exact ih _ _ body_a body_c τ v hbody_sub h_abs h_conc
                   (envConsistent_extend_sub h_env x ha_sub) h_wt_body
-              | mu _ _ _ => sorry  -- mu-app: see docstring
+              | mu x_mu ann_mu body_mu =>
+                -- mu-app in app_cong case (same structure as refl case).
+                -- See the refl mu-app case for the detailed analysis.
+                sorry
               | var v_name =>
                 cases hf_sub with
                 | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
@@ -285,12 +306,15 @@ theorem soundness_gen
       cases hba : absEval n ((x, .mu x ann body_a) :: Γ) body_a with
       | none => simp [hba] at h_abs
       | some body_a' =>
-        simp [hba] at h_abs; rw [← h_abs]
-        exact (ih _ _ body_a body_c body_a' v
-          hbody hba h_conc
-          (envConsistent_extend_sub h_env x (.mu_body hbody))
-          (by simp only [WellTyped] at h_wt; exact h_wt)).trans
-          (.self_intro (.refl _))
+        simp [hba] at h_abs
+        cases hbc : concEval n ((x, .mu x ann body_c) :: γ) body_c with
+        | none => simp [hbc] at h_conc
+        | some body_c' =>
+          simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+          exact .mu_body (ih _ _ body_a body_c body_a' body_c'
+            hbody hba hbc
+            (envConsistent_extend_sub h_env x (.mu_body hbody))
+            (by simp only [WellTyped] at h_wt; exact h_wt))
     | self_intro h_intro =>
       -- e_a = mu x ann body, h_intro : Subtype' e_c body.
       -- FUEL MISMATCH: absEval uses fuel n (after mu step), but
@@ -298,9 +322,21 @@ theorem soundness_gen
       -- Also: absEval uses extended env ((x, mu) :: Γ), but concEval
       -- uses the original env γ. These mismatches block the IH.
       --
-      -- This case is UNREACHABLE from the main soundness theorem:
-      -- the main theorem passes .refl e, and the recursive calls only
-      -- produce refl, lam_body, mu_body, and app_cong (never self_intro).
+      -- This case is REACHABLE but only via the asc path: when an
+      -- ascription `(term : mu_type)` has WellTyped with Subtype' σ τ'
+      -- where τ' is a mu, the asc case returns (IH).trans (self_intro ...)
+      -- which is self_intro at the top level. If this is inside a lambda
+      -- body that gets applied, lam_rhs_shape decomposes it, producing
+      -- self_intro as h_sub for the recursive call.
+      --
+      -- Previously also reachable from the mu standalone case (which
+      -- used self_intro). Now that concEval wraps mu results, the mu
+      -- case uses mu_body instead, reducing self_intro's reachability.
+      --
+      -- Proving this case requires either:
+      -- (a) A fuel monotonicity lemma for concEval
+      -- (b) Restructuring WellTyped so asc never produces self_intro
+      -- (c) A step-indexed/logical-relation approach
       sorry
 
 /-- **Soundness theorem.**

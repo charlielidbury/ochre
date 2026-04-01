@@ -12,11 +12,92 @@ roadmap and strategy.
 `lake build` passes with sorry warnings in:
 - **Subtyping.lean: 0**
 - **Monotonicity.lean: 0** (SORRY-FREE)
-- **Soundness.lean: 1 declaration** (soundness_gen — 5 individual sorrys)
+- **Soundness.lean: 1 declaration** (soundness_gen — 3 individual sorrys)
 
 **Total: 1 sorry declaration.**
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-221721)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-224247)
+
+**concEval wraps mu results; mu/mu_body soundness cases proved via mu_body.**
+
+Key change: concEval now wraps mu results in mu (like absEval) instead of
+unrolling. The app-mu case matches on the mu body directly instead of
+re-unrolling. This makes both evaluators produce structurally parallel
+results for mu, enabling the soundness proof to use `mu_body` instead
+of `self_intro`.
+
+**Changes:**
+1. **concEval mu case:** `concEval fuel ((x, mu) :: γ) body` wrapped in
+   `some (.mu x ann body')` instead of returning body' directly.
+2. **concEval app-mu case:** `match body with | .lam y _ lamBody => ...`
+   instead of `match concEval fuel γ (.mu ...) with | .lam => ...`.
+   No re-unrolling — body is already evaluated.
+3. **soundness_gen mu case (refl):** Uses `.mu_body (ih ...)` instead of
+   `(ih ...).trans (.self_intro (.refl _))`. Both evaluators wrap, so
+   mu_body (body sub from IH) is the right constructor.
+4. **soundness_gen mu_body case:** Same change — `.mu_body (ih ...)`.
+5. **self_intro comment corrected:** The self_intro case IS reachable
+   (via the asc path, not the mu path). See detailed comment in code.
+
+**Corrected false claim:** Previous agents stated the self_intro sorry
+was "UNREACHABLE from the main soundness theorem." This is wrong. The
+self_intro case is reachable via:
+1. The asc case returns `(ih).trans h_sub_σ_τ` where h_sub_σ_τ can be
+   self_intro (when the ascription type is a mu).
+2. Subtype'.trans with a self_intro q returns self_intro.
+3. If this is inside a lambda body that gets applied, lam_rhs_shape
+   decomposes it, producing self_intro as h_sub for the recursive call.
+The mu standalone case was ANOTHER source (now eliminated by wrapping).
+
+**Remaining sorrys (3):**
+- mu-app (×2): same fundamental issue — absEval uses annotation (or
+  body-unfold), concEval matches body directly. The annotation and
+  computed body are unrelated expressions that Subtype' can't bridge.
+  See detailed analysis below.
+- self_intro (×1): fuel/env mismatch. Now reachable only via asc path.
+
+**Analysis: why the mu-app sorry is hard (for future agents)**
+
+The mu-app case in absEval:
+```
+| some (.mu x ann body), some aVal =>
+    match ann with
+    | .lam y _dom retBody => absEval fuel ((y, aVal) :: Γ) retBody  -- annotation
+    | _ => ... body-unfold ...                                       -- body
+```
+
+The annotation path uses `retBody` from the annotation. The concrete
+path uses the mu body lambda. These are fundamentally different expressions:
+- `retBody` = return type from the declared annotation
+- `lamBody` = actual function body from the mu
+
+For soundness, we need `concEval(lamBody, arg) ⊑ absEval(retBody, arg)`.
+This is "annotation consistency" — the body implements the declared type.
+
+Why Subtype' can't express this: Subtype' is syntactic. It can't relate
+`(var "n")` to `Nat` even when n is bound to a Nat. Annotation
+consistency is a SEMANTIC property (requires evaluation context).
+
+**Possible solutions:**
+(a) **Strengthen WellTyped** to include annotation consistency as a
+    premise. But stating it requires evaluating terms, creating circular
+    dependencies.
+(b) **Step-indexed logical relations** — the standard approach. Replaces
+    syntactic Subtype' with a semantic V(fuel, τ) value set. Major
+    proof infrastructure change.
+(c) **Make absEval's mu-app use body instead of annotation.** This would
+    make both paths structurally parallel. BUT: for recursive functions
+    with abstract args, body-unfolding diverges (each unfolding triggers
+    another recursive call). The annotation cuts the recursion. So this
+    approach breaks abstract evaluation of recursive functions (the whole
+    point of mu).
+(d) **Make concEval's app-mu also use annotation.** This gives wrong
+    results: `add 2 3` would evaluate the annotation's `Nat` instead
+    of computing `5`. The concrete evaluator MUST compute, not type.
+
+Options (a) and (b) are the viable paths. Both are significant work.
+
+### Previous changes (2026-04-01, agent ochre-lean-20260401-221721)
 
 **PROVED Subtype'.trans; rewrote soundness to use Subtype' directly (5→3 sorrys).**
 
@@ -33,16 +114,6 @@ This means SubtypeTrans is UNNECESSARY for soundness. Rewrote soundness_gen:
 - Cases: refl, top, lam_body, app_cong, mu_body, self_intro (no trans!)
 - Shape lemmas on Subtype' are trivial (no trans case to propagate)
 - Composition via `Subtype'.trans` where `.trans` was used before
-
-**Eliminated sorrys:**
-- trans (was sorry #1): gone — not a constructor of Subtype'
-- SubtypeTrans.self_intro (was sorry #2): gone — SubtypeTrans unused
-- Combined with step>self_intro elimination
-
-**Remaining sorrys (3):**
-- mu-app (×2): same fundamental issue (different concrete/abstract paths)
-- self_intro (×1): fuel mismatch — absEval uses n fuel (after mu step),
-  concEval has n+1 fuel. UNREACHABLE from main theorem.
 
 **Also removed false evalFreeVars theorems (see below).**
 
@@ -315,23 +386,23 @@ expressive enough for abstract appendVec with the mu primitive.
 - **soundness_gen:** MOSTLY PROVED (~90% coverage). 3 sorrys remain.
   Proved: all non-mu-app cases including mu standalone, mu_body, all
   Subtype' congruence cases. Uses Subtype' directly (not SubtypeTrans)
-  since Subtype'.trans is proved.
+  since Subtype'.trans is proved. mu/mu_body cases use mu_body (not
+  self_intro) thanks to concEval wrapping.
   Remaining sorrys:
-  - mu-app (×2): different concrete/abstract paths for mu application
-  - self_intro (×1): fuel/env mismatch (unreachable from main theorem)
-
-- **absEval_evalFreeVars_general:** mu case sorry'd (env has mu value not
-  neutral var, so binder_case helper doesn't apply).
+  - mu-app (×2): annotation consistency (see analysis in "Recent changes")
+  - self_intro (×1): fuel/env mismatch. Reachable via asc path (when
+    WellTyped has self_intro for mu types). NOT unreachable as previously
+    claimed. See Soundness.lean self_intro case comment for details.
 
 ### Key files
 
 | File | Status | Sorry count |
 |------|--------|-------------|
 | Syntax.lean | Done | 0 |
-| Eval.lean | Done (mu env: x ↦ mu value, annotation-based mu-app) | 0 |
+| Eval.lean | Done (concEval wraps mu; app-mu matches body directly) | 0 |
 | **Subtyping.lean** | **SORRY-FREE** (SubtypeCore + Subtype' + SubtypeTrans) | **0** |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
-| Soundness.lean | Uses Subtype' (not SubtypeTrans); 3 sorrys remain | 1 decl |
+| Soundness.lean | mu/mu_body via mu_body; 3 sorrys remain (mu-app×2, self_intro×1) | 1 decl |
 | **Monotonicity.lean** | **SORRY-FREE** (evalFreeVars theorems removed — FALSE) | **0** |
 | Closure.lean | Gutted | 0 |
 | CounterexampleTest.lean | Done (includes EnvSubTrans + evalFreeVars counterexamples) | 0 |
