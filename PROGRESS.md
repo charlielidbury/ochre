@@ -11,15 +11,31 @@ roadmap and strategy.
 
 `lake build` passes with sorry warnings in:
 - **Subtyping.lean: 0**
-- **Monotonicity.lean: 1 declaration** (absEval_evalFreeVars_general, mu case)
+- **Monotonicity.lean: 0** (SORRY-FREE)
 - **Soundness.lean: 1 declaration** (soundness_gen — 5 individual sorrys)
 
-**absEval_mono is SORRY-FREE.** Uses `SubtypeCore` (Subtype' without self_intro)
-to avoid 5 unreachable self_intro cases. All structural cases fully proved.
-**Dead code removed:** absEval_mono_trans, monotonicity_trans, absEval_succeeds_envsub
-(EnvSubTrans and helpers also removed; EnvSubTrans moved to CounterexampleTest.lean).
+**Total: 1 sorry declaration.**
 
-### Recent changes (2026-04-01, agent ochre-lean-20260401-215445)
+### Recent changes (2026-04-01, agent ochre-lean-20260401-221721)
+
+**Removed false evalFreeVars theorems from Monotonicity.lean (2→1 sorry decls).**
+
+`absEval_evalFreeVars_general` is **FALSE** for the mu case. Counterexample:
+- Γ = [("y", var "z")], e = mu "x" type (app (var "y") (var "x")), P = (· = "z")
+- The mu env binding `(x, mu x ann body)` has evalFreeVars that include input
+  variable NAMES (like "y"), not just P-satisfying names. The output
+  `mu "x" _ (app (var "z") (mu "x" _ (app (var "y") (var "x"))))` has "y"
+  in its evalFreeVars, but P "y" = false.
+- Root cause: when absEval changed mu's env binding from `(x, var x)` to
+  `(x, mu x ann body)` (for soundness proof compatibility), the mu value's
+  evalFreeVars became input-level variable names, breaking the coverage property.
+
+Both `absEval_evalFreeVars_general` and `absEval_evalFreeVars_neutral` were
+unused. Removed along with helpers: `isNeutral`, `EnvEvalClosed'`,
+`envEvalClosed'_extend_neutral`, `env_extend_neutral_or`, `env_extend_val`.
+Counterexample added to CounterexampleTest.lean.
+
+### Previous changes (2026-04-01, agent ochre-lean-20260401-215445)
 
 **Eliminated all sorrys from absEval_mono; removed 3 dead declarations (5→2 sorry decls).**
 
@@ -286,6 +302,6 @@ expressive enough for abstract appendVec with the mu primitive.
 | **Subtyping.lean** | **SORRY-FREE** (SubtypeCore + Subtype' + SubtypeTrans) | **0** |
 | Tests.lean | All milestones passing, Variant B expected-fail | 0 |
 | Soundness.lean | mu standalone+mu_body PROVED; 5 sorrys remain | 1 decl |
-| **Monotonicity.lean** | **absEval_mono SORRY-FREE**; evalFreeVars sorry'd | **1 decl** |
+| **Monotonicity.lean** | **SORRY-FREE** (evalFreeVars theorems removed — FALSE) | **0** |
 | Closure.lean | Gutted | 0 |
-| CounterexampleTest.lean | Done (includes EnvSubTrans for counterexamples) | 0 |
+| CounterexampleTest.lean | Done (includes EnvSubTrans + evalFreeVars counterexamples) | 0 |

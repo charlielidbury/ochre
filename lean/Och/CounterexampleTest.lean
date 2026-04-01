@@ -128,3 +128,62 @@ example : (Expr.lam "y" (.var "x") (.var "y")).freeVars = ["x"] := by native_dec
 
 -- Verify: "x" not in empty env
 example : ([] : Env).lookup "x" = none := by native_decide
+
+/-!
+# Counterexample: absEval_evalFreeVars_general is FALSE for mu case
+
+The theorem claims: if `absEval fuel Γ e = some τ` and every env value's
+evalFreeVars ⊆ P, then τ.evalFreeVars ⊆ P.
+
+This is FALSE because the mu case binds `(x, mu x ann body)` in the env.
+The mu value's evalFreeVars include variable NAMES from the input expression,
+which are not necessarily in P. P tracks which names appear in env values'
+evalFreeVars, but the input variable names themselves may not be in P.
+
+## Counterexample
+
+  Γ = [("y", var "z")]
+  e = mu "x" type (app (var "y") (var "x"))
+  P = (· = "z")
+
+  h_env: for "y", value = var "z", evalFreeVars = ["z"], P "z" ✓
+
+  absEval 3 Γ e:
+    body = app (var "y") (var "x")
+    env' = (("x", mu "x" type (app (var "y") (var "x"))) :: Γ)
+    var "y" → var "z"
+    var "x" → mu "x" type (app (var "y") (var "x"))
+    result: app (var "z") (mu "x" type (app (var "y") (var "x")))
+    wrapped: mu "x" type (app (var "z") (mu "x" type (app (var "y") (var "x"))))
+
+  τ.evalFreeVars includes "y" (from the inner mu's body)
+  P "y" = ("y" = "z") = false ✗
+
+## Root cause
+
+When absEval evaluates `mu x ann body`, it binds x to the mu value itself.
+The mu value references input variable names (like "y") syntactically. When
+the body looks up x (getting the mu value), and this mu value appears in the
+output, its evalFreeVars include "y" — a variable name that exists in the env
+but is not in P (P only contains "z", the evalFreeVar of y's binding).
+
+## Impact
+
+absEval_evalFreeVars_general (and its corollary absEval_evalFreeVars_neutral)
+are FALSE and unused. They should be removed.
+-/
+
+def Γ_efv : Env := [("y", .var "z")]
+def e_efv : Expr := .mu "x" .type (.app (.var "y") (.var "x"))
+
+-- Verify: absEval produces the expected result
+example : absEval 3 Γ_efv e_efv =
+    some (.mu "x" .type (.app (.var "z") (.mu "x" .type (.app (.var "y") (.var "x"))))) :=
+  by native_decide
+
+-- Verify: the output has "y" in its evalFreeVars
+example : "y" ∈ (Expr.mu "x" .type (.app (.var "z") (.mu "x" .type (.app (.var "y") (.var "x"))))).evalFreeVars :=
+  by native_decide
+
+-- Verify: the env value's evalFreeVars only contain "z", not "y"
+example : (Expr.var "z").evalFreeVars = ["z"] := by native_decide

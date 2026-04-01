@@ -129,6 +129,32 @@ Subtype'.self_intro and Subtype'.refl — no recursive SubtypeTrans needed.
 
 ---
 
+## 2026-04-01: absEval_evalFreeVars_general is FALSE for mu case
+
+**Decision:** Removed `absEval_evalFreeVars_general`, `absEval_evalFreeVars_neutral`,
+and all supporting definitions (`isNeutral`, `EnvEvalClosed'`,
+`envEvalClosed'_extend_neutral`, `env_extend_neutral_or`, `env_extend_val`)
+from Monotonicity.lean. All were unused.
+
+**Why the theorem is false:** The mu case binds `(x, mu x ann body)` in the env.
+The mu value's `evalFreeVars` include input variable NAMES from the body (minus x).
+These names are not in P — P tracks which names appear in env values' evalFreeVars
+(one level of indirection removed). E.g., Γ = [("y", var "z")] with P = {z}:
+the mu value `mu "x" _ (app (var "y") (var "x"))` has evalFreeVars = ["y"],
+but P("y") is false.
+
+**Root cause:** The env change from `(x, var x)` to `(x, mu x ann body)` (needed
+for soundness) made the theorem false. With `(x, var x)`, evalFreeVars = [x] which
+trivially satisfies P ∨ (· = x). With `(x, mu ...)`, evalFreeVars = body's free
+vars minus x, which are input-level names not necessarily in P.
+
+**Impact:** Monotonicity.lean is now fully sorry-free. The overall sorry count
+dropped from 2 declarations to 1.
+
+**Counterexample:** CounterexampleTest.lean, native_decide verified.
+
+---
+
 ## Historical decisions (pre-mu, from main branch)
 
 The following decisions were made before the mu experiment. They describe the
