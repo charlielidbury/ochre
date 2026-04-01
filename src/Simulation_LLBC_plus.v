@@ -1,4 +1,4 @@
-(** * Mechanized_LLBC.Simulation_LLBC_plus : Proof of simulation for LLBC+. *)
+(** * Mechanized_LLBC.Simulation_LLBC_sharp_LLBC_plus : Proof of simulation between LLBC# and LLBC+. *)
 From Stdlib Require Import List.
 Import ListNotations.
 From stdpp Require Import fin_map_dom.
@@ -3044,11 +3044,11 @@ Qed.
 
 Lemma leq_is_join_l Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Bl Bjoin.
 Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
-Hint Resolve leq_is_join_l.
+Hint Resolve leq_is_join_l : spath.
 
 Lemma leq_is_join_r Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Br Bjoin.
 Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
-Hint Resolve leq_is_join_r.
+Hint Resolve leq_is_join_r : spath.
 
 (** If [Bup] is an upper bound of two states [B0] and [B1], it is not necessarily a join. Indeed, there may exist tokens [r] such that [lookup r B0] (respectively [lookup r B1]) is None, but [lookup r Bup] is different from [lookup r B1] (respectively [lookup r B0]).
 
@@ -3060,12 +3060,15 @@ Definition compute_option_join (oSl oSr : option LLBC_sharp_state) default :=
   | _, _ => Some default
   end.
 
+Definition compute_join (B0 B1 Bup : branching_state) : branching_state :=
+  map_imap (fun r => compute_option_join (lookup r B0) (lookup r B1)) Bup.
+
 Lemma exists_join_state B0 B1 Bup
   (Hleq_0 : leq_branching B0 Bup) (Hleq_1 : leq_branching B1 Bup) :
-  exists Bjoin : branching_state, is_join B0 B1 Bjoin /\ leq_branching Bjoin Bup.
+  let Bjoin := compute_join B0 B1 Bup in
+  is_join B0 B1 Bjoin /\ leq_branching Bjoin Bup.
 Proof.
-  exists (map_imap (fun r => compute_option_join (lookup r B0) (lookup r B1)) Bup).
-  split.
+  intros Bjoin. unfold Bjoin. split.
   - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
     specialize (Hleq_0 r). specialize (Hleq_1 r).
     destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
@@ -3077,10 +3080,26 @@ Proof.
     all: try destruct oSr; constructor; assumption || reflexivity.
 Qed.
 
-Corollary exists_join_state' B0_l B1_l B0_r B1_r Bjoin_r :
-  is_join B0_r B1_r Bjoin_r -> leq_branching B0_l B0_r -> leq_branching B1_l B1_r ->
-  exists Bjoin_l : branching_state, is_join B0_l B1_l Bjoin_l /\ leq_branching Bjoin_l Bjoin_r.
-Proof. intros. apply exists_join_state; etransitivity; eauto with spath. Qed.
+(** The LLBC+ rules [LLBC_plus_E_Seq_Unit_Propagate], [LLBC_plus_IfThenElse_Symbolic] and [LLBC_plus_E_Loop_Continue] require exhibiting a "join state" of two states [B0] and [B1]. Square diagrams that involve these rules are tricky, because it is required to prove that the states [B0] and [B1] are related to the final state [Br], but these states are only determined at the execution of the rule.
+
+   This tactic simplifies these square diagrams. It operates like this:
+   - The states [B0] and [B1] to join are introduced as existential variables.
+   - First, we prove the execution statement. We assume the hypothesis [is_join ?B0 ?B1 B]. Using this as an assumption determines the terms [B0] and [B1].
+   - Finally, we only have to prove that [B0] and [B1] are related to [Br]. *)
+(* TODO: lemma and tactic names. *)
+Lemma execution_join_state n s Sl (B0 B1 Br : branching_state) :
+  (forall B, is_join B0 B1 B -> Sl |-{stmt} s ~>{n} B) ->
+  leq_branching B0 Br ->
+  leq_branching B1 Br ->
+  exists Bl, leq_branching Bl Br /\ Sl |-{stmt} s ~>{n} Bl.
+Proof.
+  intros G leq_0 leq_1. destruct (exists_join_state _ _ _ leq_0 leq_1) as (? & ?).
+  exists (compute_join B0 B1 Br). auto.
+Qed.
+Ltac execution_join_state :=
+  let Bjoin_l := fresh "Bjoin_l" in
+  let Hjoin_l := fresh "Hjoin_l" in
+  eapply execution_join_state; [intros Bjoin_l Hjoin_l | | ].
 
 (* Note: most of that is a copy-paste of similar theorems for integers. *)
 (* Note: rewrite the following results when we introduce enumerations. Some of the assumptions this section relies on (e.g: boolean are zeroary, they do not contain borrows) are wrong in general.
@@ -3277,10 +3296,10 @@ Proof.
       etransitivity; eauto with spath.
     (* Case 2. *)
     + specialize (IHHeval2 _ Hleq1). destruct IHHeval2 as (B_unit_l & Hleq2 & Heval2_l).
-      eapply exists_join_state' in His_join; [ | eauto with spath..].
-      destruct His_join as (Bjoin_l & ? & ?).
-      execution_step. { eapply LLBC_plus_E_Seq_Unit_Propagate; eassumption. }
-      assumption.
+      execution_join_state.
+      { eapply LLBC_plus_E_Seq_Unit_Propagate; eassumption. }
+      { etransitivity; eauto with spath. }
+      { etransitivity; eauto with spath. }
 
   (* Case [LLBC_plus_E_Assign] *)
   - destruct vS' as (vr & S'r).
@@ -3323,9 +3342,10 @@ Proof.
     (* Case 3: the symbolic value abstracts a symbolic value. *)
     + specialize (IHHeval1 _ Hleq'). destruct IHHeval1 as (Bl_if & Hleq'_l & eval_if).
       specialize (IHHeval2 _ Hleq'). destruct IHHeval2 as (Bl_else & Hleq'_r & eval_else).
-      eapply exists_join_state' in His_join; [ | eassumption..].
-      destruct His_join as (Bjoin_l & His_join & ?).
-      execution_step. { eapply LLBC_plus_IfThenElse_Symbolic; eassumption. } assumption.
+      execution_join_state.
+      { eapply LLBC_plus_IfThenElse_Symbolic; eassumption. }
+      { etransitivity; eauto with spath. }
+      { etransitivity; eauto with spath. }
 
   (* Case [LLBC_plus_E_Reorg] *)
   - eapply reorg_preservation in Hreorg. specialize (Hreorg _ Hleq).
@@ -3347,10 +3367,92 @@ Proof.
       { eapply LLBC_plus_E_Loop_Stop; eauto with spath. }
       etransitivity; eauto with spath.
     + apply IHHeval2 in Hleq_S1. destruct Hleq_S1 as (B2_l & Hleq'' & Heval2_l).
-      (* TODO: solve conditions with [eauto]. *)
-      eapply exists_join_state' in His_join; [ | apply leq_end_loop | ]; eauto.
-      destruct His_join as (Bend_l & His_join & Hleq_end).
-      execution_step.
+      execution_join_state.
       { eapply LLBC_plus_E_Loop_Continue; eauto with spath. }
+      { etransitivity; eauto with spath. }
+      { etransitivity; eauto with spath. }
+Qed.
+
+Lemma simulation_LLBC_sharp_LLBC_plus n s :
+  forward_simulation eq leq_branching (LLBC_sharp_eval_stmt s) (LLBC_plus_eval_stmt n s).
+Proof.
+  intros Sr Br eval_Sr ? ->. revert s Sr Br eval_Sr. induction n as [ | n IHn]; intros.
+  - execution_step. { apply LLBC_plus_E_Step_Zero. }
+    intros r. unfold branching_state. simpl_map. constructor.
+  - induction eval_Sr.
+    (* Case [LLBC_sharp_E_Nop] *)
+    + execution_step. { constructor. } reflexivity.
+    (* Case [LLBC_sharp_E_Seq_Unit_Propagate] *)
+    + destruct IHeval_Sr as (Bl & ? & ?).
+      execution_step. { eapply LLBC_plus_E_Seq_Propagate; eauto with spath. }
       assumption.
+    (* Case [LLBC_sharp_E_Seq_Unit_Propagate] *)
+    + destruct IHeval_Sr1 as (B1_l & Hleq_B1 & ?).
+      destruct IHeval_Sr2 as (B2_m & Hleq_B2 & ?).
+      eapply lookup_token_cases in Hleq_B1; [ | exact H_unit].
+      destruct Hleq_B1 as [(? & ?) | (S1_l & ? & Hleq_S1 & ?)].
+      * execution_step. { apply LLBC_plus_E_Seq_Propagate; eassumption. }
+        etransitivity; eassumption.
+      * eapply stmt_preserves_LLBC_sharp_rel in Hleq_S1; [ | eassumption].
+        destruct Hleq_S1 as (B2_l & ? & ?).
+        execution_join_state.
+        { eapply LLBC_plus_E_Seq_Unit_Propagate; eassumption. }
+        { transitivity B2_m; assumption. }
+        { etransitivity; eauto with spath. }
+    (* Case [LLBC_sharp_E_Assign] *)
+    + execution_step. { econstructor; eassumption. } reflexivity.
+    (* Case [LLBC_sharp_E_IfThenElse_T] *)
+    + destruct IHeval_Sr as (? & ? & ?).
+      execution_step. { eapply LLBC_plus_E_IfThenElse_T; eassumption. } assumption.
+    (* Case [LLBC_sharp_E_IfThenElse_F] *)
+    + destruct IHeval_Sr as (? & ? & ?).
+      execution_step. { eapply LLBC_plus_E_IfThenElse_F; eassumption. } assumption.
+    (* Case [LLBC_sharp_IfThenElse_Symbolic] *)
+    + destruct IHeval_Sr1 as (B_if & ? & ?). destruct IHeval_Sr2 as (B_else & ? & ?).
+      execution_join_state.
+      { eapply LLBC_plus_IfThenElse_Symbolic; eassumption. }
+      { assumption. }
+      { assumption. }
+    (* Case [LLBC_sharp_E_Reorg] *)
+    + destruct IHeval_Sr as (? & ? & ?).
+      execution_step. { eapply LLBC_plus_E_Reorg; eassumption. } assumption.
+    (* Case [LLBC_sharp_E_Loop_Stop] *)
+    + destruct IHeval_Sr as (? & ? & ?).
+      execution_step. { eapply LLBC_plus_E_Loop_Stop; eauto with spath. } auto with spath.
+    (* Case [LLBC_sharp_E_Loop_Continue] *)
+    + destruct IHeval_Sr1 as (B1_l & leq_B1 & ?). clear IHeval_Sr2.
+      destruct (lookup_token_cases _ _ _ rContinue leq_B1 Hcontinue)
+        as [(? & ?) | (S1_l & ? & leq_S1 & leq_B1')].
+      * execution_step. { apply LLBC_plus_E_Loop_Stop; eauto with spath. }
+        etransitivity; eauto with spath.
+      * eapply LLBC_sharp_Weaken_Precondition in eval_Sr2; [ | exact leq_S1].
+        apply IHn in eval_Sr2. destruct eval_Sr2 as (B2_l & ? & ?).
+        execution_join_state.
+        { eapply LLBC_plus_E_Loop_Continue; eauto with spath. }
+        { etransitivity; eauto with spath. }
+        { assumption. }
+
+    (* Case [LLBC_sharp_E_Loop_Invariant]: *)
+    + destruct IHeval_Sr as (B1 & leq_B1 & eval_to_B1).
+      edestruct (lookup_token_cases _ _ _ rContinue leq_B1 inv_preservation)
+        as [(? & ?) | (S1 & ? & leq_S1 & leq_B1')].
+      * execution_step. { apply LLBC_plus_E_Loop_Stop; eauto with spath. }
+        apply leq_end_loop. assumption.
+      * assert (S1 |-# LOOP {{ body }} ~> (end_loop (delete rContinue Binv))) as eval_S1.
+        { eapply LLBC_sharp_Weaken_Precondition; [exact leq_S1 | ].
+          apply LLBC_sharp_E_Loop_Invariant; assumption. }
+        apply IHn in eval_S1. destruct eval_S1 as (B2 & leq_B2 & eval_to_B2).
+        execution_join_state.
+        { eapply LLBC_plus_E_Loop_Continue; eauto with spath. }
+        { auto with spath. }
+        { assumption. }
+
+    (* Case [LLBC_sharp_Weaken_Precondition]: *)
+    + destruct IHeval_Sr as (? & ? & ?).
+      eapply stmt_preserves_LLBC_sharp_rel in Hweaken; [ | eassumption].
+      destruct Hweaken as (? & ? & ?).
+      execution_step. { eassumption. } etransitivity; eassumption.
+    (* Case [LLBC_sharp_Weaken_Postcondition]: *)
+    + destruct IHeval_Sr as (B & Hleq_B & ?).
+      execution_step. { eassumption. } transitivity Bl; assumption.
 Qed.
