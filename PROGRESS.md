@@ -73,14 +73,39 @@ approach (soundnessC_abs) are now PROVED using WellTyped chains. The lam case us
 `absEval_succeeds_envsub` + monotonicity. The iota case is sorry'd because
 concEvalC returns .type for iota but absEval normalizes the body (design mismatch).
 
-### Key new theorem: `absEval_succeeds_envsub` (Monotonicity.lean)
+### Key theorem: `absEval_succeeds_envsub` (Monotonicity.lean) — **FALSE AS STATED**
 
-Totality under env narrowing: if absEval succeeds in Γ₁ and EnvSubTrans Γ₂ Γ₁,
-then absEval succeeds in Γ₂ (same expression). 5 of 6 cases proved. The app-lam
-case is sorry'd because the function's body may differ between envs (normalized
-bodies from different envs have SubtypeTrans but not structural equality).
+⚠ **Counterexample found** (session ochre-lean-20260401-153454): The theorem
+claims absEval in Γ₂ succeeds whenever absEval in Γ₁ succeeds and EnvSubTrans
+Γ₂ Γ₁. This is false. See `CounterexampleTest.lean` for a Lean-verified
+counterexample: Γ₁ = [(y, Type)], Γ₂ = [(y, λx:Type.z)] where z is unbound.
+EnvSubTrans holds via `top`, absEval succeeds in Γ₁ (Type applied = Type) but
+fails in Γ₂ (z not in scope during beta-reduction).
 
-## New this session (ochre-lean-20260401-152400)
+**Root cause:** EnvSubTrans has no well-formedness requirement. Env values can
+contain free variables not bound in the env. Such envs never arise from
+well-formed evaluation (absEval normalizes lambda bodies, failing on unbound
+vars) but EnvSubTrans doesn't capture this.
+
+**Fix needed:** Add a well-formedness precondition on Γ₂. Options:
+1. Define `freeVars : Expr → List Name` and require env values to have their
+   free vars covered by the env (`EnvClosed`)
+2. Restrict to envs produced by absEval (specific to each use site)
+3. Require `∀ x τ, Γ₂.lookup x = some τ → ∃ τ', absEval fuel Γ₂ τ = some τ'`
+
+The use site (soundnessC_direct lam case) uses readback envs, which ARE
+well-formed by construction. So the fix is tractable.
+
+## New this session (ochre-lean-20260401-153454)
+
+### Counterexample: absEval_succeeds_envsub is false
+
+Added `CounterexampleTest.lean` with a Lean-verified counterexample showing
+`absEval_succeeds_envsub` (Monotonicity.lean) is FALSE without a well-formedness
+precondition. Updated the theorem's docstring with the finding and proposed fixes.
+See analysis above.
+
+## Previous session (ochre-lean-20260401-152400)
 
 ### Iota self-intro and self-elim in subtype checker
 

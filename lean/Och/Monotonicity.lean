@@ -440,12 +440,27 @@ theorem monotonicity_trans
     then absEval succeeds in Γ₂ with the same expression. Together with
     `monotonicity_trans`, this gives the full "mono + succeed" package.
 
-    **Status:** All cases proved EXCEPT app-beta, where the function evaluates
-    to a lambda whose body differs between Γ₁ and Γ₂ (due to normalization
-    under binders in different envs). This is the same normalize_stable issue.
-    The sorry is specifically for: does `absEval n Γ₂_ext body₂` succeed when
-    `absEval n Γ₁_ext body₁` succeeds, SubtypeTrans body₂ body₁, and
-    EnvSubTrans Γ₂_ext Γ₁_ext? -/
+    **⚠ THIS THEOREM IS FALSE AS STATED.** See `CounterexampleTest.lean` for a
+    concrete counterexample where Γ₂ = [(y, λx:Type. z)] (z unbound) and
+    Γ₁ = [(y, Type)]. EnvSubTrans holds via `top`, absEval succeeds in Γ₁
+    (Type applied = Type) but fails in Γ₂ (z not in scope during beta-reduction).
+
+    The issue: EnvSubTrans has no well-formedness requirement — env values can
+    contain free variables not bound in the env. In practice, envs built by
+    absEval are well-formed (normalization under binders would have failed for
+    unbound vars), but this isn't captured by the theorem's hypotheses.
+
+    **Fix needed:** Add a well-formedness precondition on Γ₂. Options:
+    1. `EnvClosed Γ₂` — all free vars in env values are bound in the env
+    2. Restrict to envs produced by absEval (specific to each use site)
+    3. Require `∀ x τ, Γ₂.lookup x = some τ → ∃ τ', absEval fuel Γ₂ τ = some τ'`
+
+    **Current use site** (soundnessC_direct lam case): Γ₂ comes from readback,
+    which guarantees well-formedness by construction. So the fix is tractable.
+
+    **Status:** All cases proved EXCEPT app-lam. The sorry is specifically for:
+    when f evaluates to a lambda in Γ₂ but to Type in Γ₁, there's no Γ₁-side
+    body evaluation to bootstrap from. -/
 theorem absEval_succeeds_envsub
     (fuel : Nat) (Γ₁ Γ₂ : Env) (e τ₁ : Expr)
     (h_env : EnvSubTrans Γ₂ Γ₁)

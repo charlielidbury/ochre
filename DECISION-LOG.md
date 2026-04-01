@@ -5,6 +5,35 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-01 ochre-lean-20260401-153454: absEval_succeeds_envsub is false — needs well-formedness
+
+**Finding:** `absEval_succeeds_envsub` in Monotonicity.lean (the only sorry in that
+file) is **false as stated**. A Lean-verified counterexample is in
+`CounterexampleTest.lean`.
+
+**The counterexample:** Γ₁ = [(y, Type)], Γ₂ = [(y, λx:Type. z)] where z is
+unbound. EnvSubTrans Γ₂ Γ₁ holds (via `Subtype'.top`). Expression e = `y y`.
+In Γ₁: y evaluates to Type, `Type Type = Type` → succeeds.
+In Γ₂: y evaluates to λx:Type.z, applying gives `absEval ((x,λx:Type.z)::Γ₂) z`
+→ z not found → fails.
+
+**Why this matters:** The theorem is used in soundnessC_direct's lam case
+(Closure.lean line 678). That use site has readback envs which ARE well-formed,
+so the theorem is true for the specific case needed — it just can't be stated
+without a precondition.
+
+**Decision:** Document the counterexample, do NOT attempt to prove the theorem
+as-is. The right fix is to add a well-formedness condition. Recommended: define
+`freeVars : Expr → List Name` in Syntax.lean, add `EnvClosed` (all free vars in
+env values are bound in the env), and reprove with this precondition.
+
+**Alternatives considered:**
+- Operational condition `EnvEvalable`: "all env values re-evaluate in the env."
+  Rejected — hard to maintain under env extension (shadowing changes eval results).
+- Restrict to readback envs at the use site. Possible but loses generality.
+
+---
+
 ## 2026-04-01 ochre-lean-20260401-142109: Add iota constructor before proving remaining sorry's
 
 **Decision:** Added `iota : Name → Expr → Expr` to `Expr` now, before completing the
