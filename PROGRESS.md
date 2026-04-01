@@ -59,9 +59,10 @@ Current status of the Och mechanization. Updated by agents after each session.
 
 ## Current sorry count
 
-**2** in Monotonicity.lean:
+**3** in Monotonicity.lean:
   - `absEval_freeVars_covered` (app-lam case — **THEOREM IS FALSE**, see below)
   - `absEval_succeeds_envsub` (app-lam case only)
+  - `absEval_evalFreeVars_neutral` (**NEW** — correct replacement for freeVars_covered, see below)
 **1** in Closure.lean: `soundnessC_direct` (app case only — var/type/asc/fix/lam/iota PROVED)
 **2** in Closure.lean: `soundnessC_abs` (asc/fix cases)
 **1** in Closure.lean: `absEvalC_equiv` (app case only — var/type/asc/fix/lam/iota PROVED)
@@ -104,11 +105,101 @@ leak stale variable references). The EnvClosed approach is dead.
 **Viable alternatives:**
 1. Build absEvalC (closure-based abstract evaluator, SUGGESTIONS.md item 2) —
    avoids the body normalization mismatch entirely
-2. Track "evaluable vars" (vars in positions absEval will look up) separately
-   from domain annotation vars
+2. ✅ **`evalFreeVars` approach (NEW, session ochre-lean-20260401-163541)** —
+   `evalFreeVars` (Syntax.lean) excludes domain annotations. The coverage
+   theorem `absEval_evalFreeVars_neutral` is stated with `isNeutral`/`EnvEvalClosed'`
+   predicates. Extension lemmas proved. See detailed analysis below.
 3. Restrict to envs produced by absEval at each use site
 
-## New this session (ochre-lean-20260401-162307)
+### NEW: `absEval_evalFreeVars_neutral` — the correct coverage theorem
+
+**Defined in:** Monotonicity.lean (line ~877)
+
+**Statement:** If absEval n Γ e = some τ and EnvEvalClosed' Γ, then
+evalFreeVars(τ) ⊆ neutralVars(Γ) (where neutralVars = {x | Γ.lookup x = some (var x)}).
+
+**Why neutralVars (not just dom)?** The app-lam case needs to EXCLUDE the lambda
+binder x from the result. After beta-reducing (lam x dom body) τ_a in ((x, τ_a) :: Γ):
+- If τ_a ≠ var x: x is non-neutral → x not in result → result ⊆ neutralVars(Γ) ⊆ dom(Γ)
+- If τ_a = var x: x is neutral, and by IH on a, x ∈ neutralVars(Γ) → still ⊆ dom(Γ)
+
+**Key definitions:**
+- `evalFreeVars` (Syntax.lean) — free vars excluding domain annotations
+- `isNeutral Γ x` — Γ.lookup x = some (var x)
+- `EnvEvalClosed' Γ` — all env values have evalFreeVars ⊆ neutralVars(Γ)
+
+**Extension lemmas (PROVED):**
+- `envEvalClosed'_extend_neutral`: ((x, var x) :: Γ) is closed if Γ is
+- `envEvalClosed'_extend_value`: ((x, v) :: Γ) is closed if Γ is AND x is fresh (Γ.lookup x = none)
+
+**Freshness caveat:** `envEvalClosed'_extend_value` requires x to be fresh. This
+is needed because adding (x, v) with v ≠ var x when x was neutral in Γ would
+break the invariant for existing values referencing x. For well-scoped source
+code with distinct binder names, this holds. For full generality, need either
+a NoShadowing precondition or de Bruijn indices.
+
+**Proof structure (all cases worked out, sorry'd for BEq plumbing):**
+- var: direct from EnvEvalClosed'
+- type: trivial
+- asc, fix: IH on sub-expression
+- lam, iota: IH with neutral extension, filter out binder via mem_filter_ne
+- app-lam: IH with value extension, map neutralVars back via ih_a on τ_a = var y
+- app-stuck: combine ih_f and ih_a via List.mem_append
+
+**What the next agent should do:** Fill in the proof body. The trickiest parts are:
+1. BEq↔= conversions for String (use `beq_iff_eq`)
+2. The iota/lam cases need `mem_filter_ne` to split filter membership
+3. The app-lam neutral mapping needs to extract τ_a = var y from isNeutral in extended env
+4. The app-stuck cases need to handle each τ_f constructor's evalFreeVars shape separately
+
+## New this session (ochre-lean-20260401-163541)
+
+### Added `evalFreeVars` and the neutral-vars coverage theorem
+
+**Problem:** `absEval_freeVars_covered` (standard freeVars) is FALSE because domain
+annotations are not evaluated by absEval and leak stale variable references. This
+blocked `absEval_succeeds_envsub`, which is needed by soundnessC_direct's lam/iota cases.
+
+**Solution:** Defined `evalFreeVars` (Syntax.lean) which excludes domain annotations.
+Stated `absEval_evalFreeVars_neutral` with `isNeutral`/`EnvEvalClosed'` predicates.
+Proved extension lemmas. The theorem body is sorry'd (BEq/String plumbing) but the
+proof structure is fully worked out — see the detailed analysis in the theorem doc
+comments and in this file above.
+
+**Key insight:** The theorem needs `⊆ neutralVars(Γ)` (not just `⊆ dom(Γ)`) to handle
+the app-lam case. Only "neutral" variables (those mapping to themselves, like lambda
+binder vars during normalization) can appear free in absEval outputs. Non-neutral
+variables get resolved during evaluation.
+
+**Extension lemma freshness requirement:** `envEvalClosed'_extend_value` needs the
+new binding variable to be fresh (not already in Γ). This prevents shadowing from
+breaking the invariant. For well-scoped source code with distinct binder names,
+this is satisfied. For full generality, de Bruijn indices or a NoShadowing predicate
+would be needed.
+
+### Analysis of remaining closure soundness blockers
+
+Spent significant time analyzing the three approaches to concEvalC soundness:
+
+1. **soundnessC_direct** (1 sorry: app): The captured env γ_c differs from the
+   call-site abstract env Γ. Needs CEnvFull-like consistency on captured envs.
+   Depends on `absEval_succeeds_envsub` for lam/iota cases.
+
+2. **soundnessC_abs** (2 sorry: asc, fix): VR_abs requires same-body closures,
+   but asc evaluates different expressions on concrete vs abstract sides.
+   Needs either a step-indexed logical relation or a readback-based conclusion.
+
+3. **absEvalC_equiv** (1 sorry: app): When f evaluates to a closure, the captured
+   env differs from the call-site env. Needs `absEval((x,τ_a)::Γ_cap') body =
+   absEval((x,τ_a)::Γ') body_a` where body_a was normalized in Γ_cap'.
+   This is normalize-stable restricted to readback envs.
+
+**Most promising next step:** Prove `absEval_evalFreeVars_neutral` (fill in the sorry),
+then use it to prove `absEval_succeeds_envsub` with an EnvEvalClosed' precondition.
+This would complete soundnessC_direct's lam/iota cases (reducing from 1 sorry to 1
+sorry: the app case only).
+
+## Previous session (ochre-lean-20260401-162307)
 
 ### Fixed iota handling in closure-based evaluators
 

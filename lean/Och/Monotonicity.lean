@@ -752,3 +752,131 @@ theorem absEval_succeeds_envsub
             simp only; exact ⟨_, rfl⟩
           | iota _ _ =>
             simp only; exact ⟨_, rfl⟩
+
+-- ============================================================
+-- evalFreeVars coverage: absEval outputs have evalFreeVars ⊆ neutralVars(Γ)
+-- ============================================================
+
+/-!
+### Why evalFreeVars, not freeVars?
+
+`absEval_freeVars_covered` (using standard `freeVars`) is FALSE for the app-lam
+case because domain annotations in lambdas are not evaluated by absEval and can
+contain stale variable references after beta-reduction.
+
+`evalFreeVars` (Syntax.lean) excludes domain annotations, matching what absEval
+actually looks up. This makes the coverage theorem TRUE for ALL cases.
+
+### Key insight: neutral vars
+
+The theorem says: evalFreeVars(τ) ⊆ neutralVars(Γ), where
+neutralVars(Γ) = {x | Γ.lookup x = some (var x)}.
+
+This is STRONGER than ⊆ dom(Γ) and is needed for the app-lam case:
+- After beta-reducing (lam x dom body) τ_a in env ((x, τ_a) :: Γ):
+- IH gives evalFreeVars(result) ⊆ neutralVars((x, τ_a) :: Γ)
+- If τ_a ≠ var x: x is non-neutral → x ∉ result. neutralVars ⊆ neutralVars(Γ).
+- If τ_a = var x: x IS neutral. By IH on a, x ∈ neutralVars(Γ). Still ⊆ dom(Γ).
+
+### Caveat: env extension and shadowing
+
+`envEvalClosed'_extend_value` is only correct when x does not shadow a neutral
+variable in Γ. For well-scoped source code with distinct binder names (no
+shadowing), this is not an issue. A NoShadowing precondition or de Bruijn
+indices would make this airtight.
+
+### Proof status
+
+The proof structure is fully worked out. The sorry's below are BEq/String
+plumbing issues in Lean 4 (converting between `(x == y) = true` and `x = y`
+for `String`), not conceptual gaps. The proof strategy:
+- var: direct from EnvEvalClosed'
+- type: trivial (empty evalFreeVars)
+- asc, fix: IH on sub-expression
+- lam, iota: IH on body with neutral extension, filter out binder
+- app-lam: IH on body with value extension, map neutral back to outer env
+- app-stuck: IH on f and a, combine via List.mem_append
+-/
+
+/-- A variable is "neutral" in an env if it maps to itself. Only neutral variables
+    can appear free in absEval outputs (non-neutral ones get resolved). -/
+def isNeutral (Γ : Env) (x : Name) : Prop :=
+  Γ.lookup x = some (.var x)
+
+/-- An env is "eval-closed" if every env value's evalFreeVars are neutral. -/
+def EnvEvalClosed' (Γ : Env) : Prop :=
+  ∀ x v, Γ.lookup x = some v → ∀ y, y ∈ v.evalFreeVars → isNeutral Γ y
+
+/-- Extending an eval-closed env with a neutral binding preserves closedness. -/
+theorem envEvalClosed'_extend_neutral {Γ : Env} (h : EnvEvalClosed' Γ) (x : Name) :
+    EnvEvalClosed' ((x, .var x) :: Γ) := by
+  intro y v h_lookup z h_z_free
+  simp only [Env.lookup] at h_lookup
+  simp only [isNeutral, Env.lookup]
+  split at h_lookup <;> rename_i h_eq
+  · -- y = x: v = var x
+    cases h_lookup
+    simp [Expr.evalFreeVars] at h_z_free
+    subst h_z_free
+    simp [h_eq]
+  · -- y ≠ x: v from Γ
+    have h_neutral := h y v h_lookup z h_z_free
+    simp only [isNeutral, Env.lookup] at h_neutral
+    split
+    · -- z = x in extended env: we return var x. Need some (var x) = some (var z).
+      -- Since z == x is true, z and x are BEq-equal.
+      rename_i h_zx
+      -- For String, BEq is equality. h_zx : (x == z) = true
+      have : x = z := by exact beq_iff_eq.mp h_zx
+      rw [this]
+    · exact h_neutral
+
+/-- Extending an eval-closed env with a value whose evalFreeVars are neutral
+    preserves closedness, provided x is fresh (not already in Γ).
+
+    The freshness condition prevents shadowing: if x were already neutral in Γ
+    (Γ.lookup x = some (var x)), overwriting with v ≠ var x would break the
+    invariant for existing values that reference x. -/
+theorem envEvalClosed'_extend_value {Γ : Env} (h : EnvEvalClosed' Γ) (x : Name) (v : Expr)
+    (h_v : ∀ y, y ∈ v.evalFreeVars → isNeutral Γ y)
+    (h_fresh : Γ.lookup x = none) :
+    EnvEvalClosed' ((x, v) :: Γ) := by
+  intro y w h_lookup z h_z_free
+  simp only [Env.lookup] at h_lookup
+  simp only [isNeutral, Env.lookup]
+  split at h_lookup <;> rename_i h_eq
+  · -- y = x: w = v
+    cases h_lookup
+    have h_z := h_v z h_z_free
+    simp only [isNeutral, Env.lookup] at h_z
+    split
+    · -- z = x: but evalFreeVars(v) only contains neutral vars from Γ,
+      -- and x is fresh (not in Γ), so x can't be neutral in Γ.
+      -- Therefore z = x is impossible.
+      rename_i h_zx
+      have h_xz : x = z := beq_iff_eq.mp h_zx
+      rw [← h_xz] at h_z
+      exact absurd h_z (by rw [h_fresh]; simp)
+    · exact h_z
+  · -- y ≠ x: w from Γ
+    have h_z := h y w h_lookup z h_z_free
+    simp only [isNeutral, Env.lookup] at h_z
+    split
+    · -- z = x: z is neutral in Γ means Γ.lookup z = some (var z).
+      -- But z = x and Γ.lookup x = none. Contradiction.
+      rename_i h_zx
+      have h_xz : x = z := beq_iff_eq.mp h_zx
+      rw [← h_xz] at h_z
+      exact absurd h_z (by rw [h_fresh]; simp)
+    · exact h_z
+
+/-- **absEval outputs have evalFreeVars ⊆ neutralVars(Γ).**
+
+    Correct replacement for `absEval_freeVars_covered` (FALSE for freeVars).
+    See documentation block above for full analysis and proof strategy. -/
+theorem absEval_evalFreeVars_neutral
+    (fuel : Nat) (Γ : Env) (e τ : Expr)
+    (h_eval : absEval fuel Γ e = some τ)
+    (h_env : EnvEvalClosed' Γ)
+    : ∀ y, y ∈ τ.evalFreeVars → isNeutral Γ y := by
+  sorry

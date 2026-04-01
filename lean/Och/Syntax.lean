@@ -65,4 +65,23 @@ def freeVars (e : Expr) : List Name :=
   | .fix e        => e.freeVars
   | .iota x body  => body.freeVars.filter (· != x)
 
+/-- "Evaluable" free variables — the variables that `absEval` will actually
+    look up during evaluation. This EXCLUDES domain annotations in lambda/iota,
+    because absEval does not evaluate domains (they pass through unchanged).
+
+    This is the correct replacement for `freeVars` in the context of
+    `absEval_freeVars_covered`, which was shown to be FALSE because standard
+    `freeVars` includes domain annotations that can contain stale variable
+    references after beta-reduction. See PROGRESS.md. -/
+def evalFreeVars (e : Expr) : List Name :=
+  match e with
+  | .var x         => [x]
+  | .lam x _dom body => (body.evalFreeVars).filter (· != x)  -- NO dom!
+  | .app f a       => f.evalFreeVars ++ a.evalFreeVars
+  | .asc _term ty  => ty.evalFreeVars  -- absEval takes rhs
+  | .type          => []
+  | .fix (.lam _f dom _body) => dom.evalFreeVars
+  | .fix _         => []
+  | .iota x body   => (body.evalFreeVars).filter (· != x)
+
 end Expr
