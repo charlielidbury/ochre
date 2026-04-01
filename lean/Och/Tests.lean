@@ -814,10 +814,14 @@ example : concEvalS testFuel (.app (.app addRec zero') three') = some three' := 
 example : concEvalS testFuel
   (.app isZero' (.app (.app addRec two') one')) = some false' := by native_decide
 
--- M1d: EXPECTED FAIL — abstract addRec ⊑ Nat
+-- M1d: abstract addRec ⊑ Nat
+-- Previously EXPECTED FAIL. Now passes thanks to annotation-based mu-elim:
+-- when mu has an informative annotation (a lambda), absEval uses it to
+-- determine the return type instead of unfolding the body (which would diverge
+-- for recursive mus).
 example : subCheck testFuel
   (.app (.app addRec (.asc unit' SelfNat)) (.asc unit' SelfNat))
-  Nat' = false := by native_decide
+  Nat' = true := by native_decide
 
 -- ---------- M2: mapArray ----------
 
@@ -889,14 +893,18 @@ example : subCheck testFuel appendVec'
     (.lam "_" (.app Vec' (.var "T")) (.app Vec' (.var "T")))))
   = false := by native_decide
 
--- M4b: EXPECTED FAIL — appendVec Nat (abstract) (abstract) ⊑ Vec Nat
+-- M4b: appendVec Nat (abstract) (abstract) ⊑ Vec Nat
+-- Previously EXPECTED FAIL. Now passes: annotation-based mu-elim prevents
+-- divergence in appendArrays' recursive calls, and the annotation correctly
+-- propagates the return type through the Vec construction.
 example : subCheck testFuel
   (.app (.app (.app appendVec' Nat')
     (.asc unit' (.app Vec' Nat')))
     (.asc unit' (.app Vec' Nat')))
-  (.app Vec' Nat') = false := by native_decide
+  (.app Vec' Nat') = true := by native_decide
 
--- M4c: EXPECTED FAIL — concrete appendVec ⊑ Vec Nat
+-- M4c: concrete appendVec ⊑ Vec Nat
+-- Previously EXPECTED FAIL. Now passes for the same reason as M4b.
 example : subCheck testFuel
   (.app (.app (.app appendVec' Nat') testVec1) testVec2)
-  (.app Vec' Nat') = false := by native_decide
+  (.app Vec' Nat') = true := by native_decide

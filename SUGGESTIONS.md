@@ -54,29 +54,30 @@ a system with 0 sorrys that can't express dependent elimination.
 
 ## Current state (as of 2026-04-01)
 
-`lake build` passes with **4 sorry warnings** (3 in Monotonicity.lean, 1 in
-Soundness.lean). All tests pass (126 tests, including 7 expected-fail
-milestones that will flip to passing as the system improves).
+`lake build` passes with **5 sorry warnings** (4 in Monotonicity.lean, 1 in
+Soundness.lean). All tests pass (126 tests, including 4 expected-fail
+milestones).
 
 ### What's working
 
 - mu replaces fix+iota throughout the codebase
 - Concrete eval unrolls mu (like fix)
 - Abstract eval normalizes body under binder (like iota)
+- **Annotation-based mu-elim in absEval** — when a recursive mu is applied,
+  absEval uses the annotation (if it's a lambda) to determine the return
+  type, preventing divergence. Falls back to body unfolding for self-types.
 - Self-intro and self-elim work in subCheckNF
 - `inferType` in the subtype checker does mu-elim on stuck applications
 - **Abstract `add` (non-recursive, Church-style) with SelfNat passes** (§9)
-- **Recursive add (mu-as-fix) with concrete args passes** (M1a-c in §11)
+- **Recursive add (mu-as-fix) with both concrete and abstract args passes** (M1a-d in §11)
 - **mapArray and appendArrays base cases pass concretely** (M2a, M3a in §11)
+- **appendVec with concrete and abstract args passes** (M4b, M4c in §11)
 
 ### What's NOT working (expected-fail tests in Tests.lean §10-§11)
 
-- **M1d: `addRec (abstract) (abstract) ⊑ Nat`** — recursive add with
-  abstract args. The body uses isZero for branching on an abstract nat,
-  which produces a stuck application that doesn't reduce.
-
-- **M4a-c: appendVec** — the north star. Fails for both abstract and
-  concrete args. Depends on appendArrays recursion working.
+- **M4a: `appendVec ⊑ T→Vec T→Vec T→Vec T`** — the raw function type check.
+  M4b-c pass (with applied args) but M4a fails because subCheckNF compares
+  the body under binders where annotation-based mu-elim doesn't help.
 
 - **Variant B (§10): `zero_mu ⊑ MuNat`** — truly self-referential Nat
   (Cedille-style). Self-intro substitution produces structurally different
@@ -86,14 +87,14 @@ milestones that will flip to passing as the system improves).
 
 These are observations, not certainties. Investigate before acting on them.
 
-1. **The annotation field on mu is currently dead code.** It is never
-   inspected by absEval, never compared by subCheckNF (even mu-mu!), and
-   not checked by WellTyped. For fix-like mus the intended meaning seems
-   to be "the type of this expression." For iota-like mus it's always
-   `.type` (carrying no information). It's unclear whether a single
-   invariant covers both uses. Making annotations load-bearing may be
-   needed for recursive types (Victor's trick prevents divergent unfolding),
-   but it's not yet clear what invariant they should satisfy.
+1. **The annotation field on mu is now load-bearing (RESOLVED).**
+   absEval uses the annotation to determine return types for recursive mus:
+   when `app (mu x ann body) aVal` and ann is a lambda, it beta-reduces
+   ann with aVal instead of unfolding the body (which would diverge).
+   For iota-like mus (ann = Type), it falls back to body unfolding.
+   This resolved M1d, M4b, and M4c. The annotation is still NOT compared
+   by subCheckNF's mu-mu rule or checked by WellTyped — these may need
+   updating when proofs resume.
 
 2. **The subtype checker compensates for the evaluator.** absEval does NOT
    do type-directed evaluation — stuck applications stay stuck. The subtype
@@ -121,31 +122,30 @@ Existing tests (§1-§9) must continue to pass. They pin expressiveness.
 Changing definitions is expected and encouraged — that's the whole point
 of this phase.
 
-**Milestone M1d** is the immediate next target: `addRec` (recursive add via
-mu) with abstract SelfNat arguments should produce something ⊑ Nat. This
-currently fails because the body's isZero branching produces a stuck
-application on abstract input. Possible approaches (investigate, don't
-assume any will work):
+**M1d, M4b, M4c are now PASSING** thanks to annotation-based mu-elim
+(see PROGRESS.md for details).
 
-- Type-directed evaluation: change Env to carry types alongside values, so
-  absEval can do mu-elim on stuck variables in the app case
-- Smarter `inferType` in the subtype checker to handle deeper stuck chains
-- Partitioning: when absEval encounters a Church-encoded branch on an
-  abstract value, split into cases (zero vs succ). This is mentioned in
-  och-spec.md §4.2.5 but not yet implemented.
-- Something else entirely — the right fix may not be obvious until you
-  understand exactly where the stuck application occurs
+**M4a** is the remaining target: `appendVec ⊑ T→Vec T→Vec T→Vec T`.
+This tests whether the raw appendVec expression (not applied to args)
+has the right function type. It fails because subCheckNF compares the
+function body under binders, where recursive calls in appendArrays'
+need to type-check without the annotation-based shortcut (which only
+fires in absEval's app case, not in subCheckNF's body comparison).
 
-**After M1d**, the path is:
-- M2: mapArray with recursive case (not just base case)
-- M3: appendArrays with recursive case
-- M4a-c: appendVec — the north star
+Possible approaches for M4a:
+- Enhance subCheckNF's self-elim to use annotations for recursive mus
+- Enhance the mu-mu comparison rule to consider annotations
+- Add type-directed evaluation specifically for subCheckNF's context
+
+**After M4a**, the remaining milestones are:
+- M2b-c: mapArray recursive case (not yet written)
+- M3b-c: appendArrays recursive case (not yet written)
 
 ### Phase 2: Stabilise definitions
 
 Once milestone tests pass (or you understand exactly why they can't):
 
-- [ ] Resolve the annotation question (load-bearing or remove it)
+- [x] Resolve the annotation question → load-bearing (used by absEval)
 - [ ] Decide evaluator vs subtype checker architecture
 - [ ] Get Variant B working if needed for later phases
 

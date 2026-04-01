@@ -111,15 +111,29 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
         -- Environment-based beta: extend env instead of substituting.
         absEval fuel ((x, aVal) :: Γ) body
       | some (.mu x ann body), some aVal =>
-        -- mu-elim: unfold self-type one step, then apply.
-        -- body was normalized under (x, var x), so substitute x with the mu.
-        let unfolded := body.subst x (.mu x ann body)
-        match absEval fuel Γ unfolded with
+        -- mu in function position. Two strategies depending on annotation:
+        --
+        -- 1. If ann is informative (a lambda): use it to determine the return
+        --    type. This avoids divergence for recursive mus (fix-like), where
+        --    unfolding the body would substitute the mu back in and cause
+        --    infinite recursion in abstract mode.
+        --
+        -- 2. If ann is uninformative (Type): fall back to body unfolding
+        --    (self-type elimination). This handles iota-like mus where the
+        --    body is the interesting part (e.g., SelfNat = mu n Type Nat').
+        match absEval fuel Γ ann with
         | some (.lam y _dom retBody) =>
+          -- Annotation is a function type: beta-reduce with the argument.
           absEval fuel ((y, aVal) :: Γ) retBody
-        | some .type => some .type
-        | some f' => some (.app f' aVal)
-        | none => none
+        | _ =>
+          -- Annotation uninformative. Unfold body (self-type elimination).
+          let unfolded := body.subst x (.mu x ann body)
+          match absEval fuel Γ unfolded with
+          | some (.lam y _dom retBody) =>
+            absEval fuel ((y, aVal) :: Γ) retBody
+          | some .type => some .type
+          | some f' => some (.app f' aVal)
+          | none => none
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')  -- stuck
       | _, _ => none
