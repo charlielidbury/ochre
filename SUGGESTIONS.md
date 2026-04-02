@@ -88,7 +88,14 @@ vacuously true.
 
 **Now fixed:** WellTyped is Bool-valued with `subCheckNF` in the asc case.
 11 witness tests prove WellTyped is satisfiable for milestone programs.
-soundness_gen is sorry'd (needs "checker soundness" lemma — see Phase 5).
+soundness_gen is sorry'd (needs "checker soundness" lemma — see Phase 4).
+
+**Architecture:** The intended user-facing type checker is
+`WellTyped fuel [] e && subCheck fuel e τ`. `WellTyped` recursively checks
+that all ascriptions are sound (e.g., rejects `(b : not b)` inside a
+lambda). `subCheck` checks that the overall expression has the declared
+type. Both are decidable (Bool-valued). Once Phase 4 proves soundness_gen,
+the full guarantee is: if both return true, then `concEval(e) ⊑ absEval(τ)`.
 
 **Key finding:** `(.asc unit' SelfNat)` is NOT a valid test — unit' (Church
 unit) is not in SelfNat (Church Nat). Use `(.asc zero' SelfNat)` instead.
@@ -121,63 +128,84 @@ These are observations, not certainties. Investigate before acting on them.
 
 ## Roadmap
 
-### Phase 1: Get the milestone tests passing (no proofs) ✓ COMPLETE
+Phases are in priority + dependency order. Do the first incomplete phase.
 
-All M1-M4 milestones now pass. Key changes that made this work:
-1. **Annotation-based mu-elim** (absEval): for fix-like mus, use the
-   annotation to determine return types instead of unfolding the body
-   (which diverges). Flipped M1d, M4b, M4c.
-2. **Domain normalization** (subCheckNF): absEval doesn't normalize domains,
-   so `Vec' T` stays as a beta-redex. `normalizeDomain` reduces it before
-   adding to inferType's context. Flipped M4a.
+### Phase 1: Milestone tests ✓ COMPLETE
 
-### Phase 2: Stabilise definitions
+All M1-M4 milestones pass. Variant B passes. See git history for details.
 
-Once milestone tests pass (or you understand exactly why they can't):
+### Phase 2: Non-vacuous WellTyped ✓ STEP 1 COMPLETE
 
-- [x] Resolve the annotation question → load-bearing (used by absEval)
-- [ ] Decide evaluator vs subtype checker architecture
-- [x] Get Variant B working → equi-recursive self-intro + seen set
-
-### Phase 3: Proofs ✓ COMPLETE (but see Phase 5 — soundness is vacuous)
-
-- [x] Prove absEval_mono — SORRY-FREE
-- [x] Prove soundness_gen — SORRY-FREE (all 4 body-unfold sorrys eliminated)
-- [ ] Rebuild Closure.lean if needed
-
-**WARNING:** Phase 3 achieved zero sorrys, but the soundness theorem is
-vacuously true for mu programs. See "CRITICAL" section above. Phase 5
-addresses this.
-
-### Phase 4: Recursive types and Scott encoding
-
-- [ ] Type-level mu for recursive types
-- [ ] Scott-encoded Nat (nested mus)
-- [ ] Full induction via mu-as-fix
-
-### Phase 5: Non-vacuous soundness
-
-**Step 1 ✓ COMPLETE:** WellTyped is now Bool-valued with subCheckNF.
+WellTyped is now Bool-valued with `subCheckNF` (was Prop with SubtypeCore).
 11 witness tests prove satisfiability. soundness_gen is sorry'd.
 
-**Step 2 (THE PRIORITY): Prove soundness_gen with Bool-valued WellTyped.**
+**Architecture:** The intended user-facing type checker is
+`WellTyped fuel [] e && subCheck fuel e τ`. `WellTyped` recursively checks
+that all ascriptions are sound (e.g., rejects `(b : not b)` inside a
+lambda). `subCheck` checks that the overall expression has the declared
+type. Both are decidable (Bool-valued). Once Phase 4 proves soundness_gen,
+the full guarantee is: if both return true, then `concEval(e) ⊑ absEval(τ)`.
 
-The sorry in soundness_gen is in the asc case. The proof needs:
+### Phase 3: De Bruijn indices ← START HERE
+
+**Why this is next:** Everything downstream needs substitution to be correct
+and to have provable properties. The current `subst` in Syntax.lean is
+explicitly not capture-avoiding ("WARNING: This naive implementation does
+not handle capture"). This means:
+- `subCheckNF` can give wrong answers on programs with shadowed variables
+- Substitution lemmas (needed for checker soundness) are unprovable or false
+- `concEvalS` soundness requires `SubtypeCore a b → SubtypeCore (e[x:=a]) (e[x:=b])`
+  which needs correct substitution
+
+De Bruijn indices fix all of these by construction:
+- Substitution is correct (no variable names to capture)
+- Alpha-equivalence is syntactic equality (no binder name issues)
+- Substitution lemmas become provable
+- The WellTyped binder name matching issue (y_ann == y_body) disappears
+
+**Scope:** This is a mechanical refactor. Every file changes but the
+semantics don't. Existing `native_decide` tests verify nothing breaks.
+
+**Prep:** Delete dead code first (see `docs/ideas/simplification.md`) —
+less code to refactor. Specifically: SubtypeTrans (~200 lines), EnvSub,
+unused lemmas (lam_lhs_cases, lam_inv, mu_inv), Closure.lean stub.
+
+**Steps:**
+1. Change `Expr` to use de Bruijn indices (indices instead of `Name` for
+   bound variables; free variables can stay as names or also become indices)
+2. Update `subst`, `Env.lookup`, `absEval`, `concEval`, `concEvalS`
+3. Update `subCheckNF`, `inferType`, `normalizeDomain`
+4. Update `Subtype'`, `SubtypeCore` and all lemmas
+5. Rewrite Tests.lean (hardest part — all the test terms need rebuilding)
+6. Verify `lake build` passes and all tests (including witness tests) pass
+
+**Estimated effort:** 2-3 agent sessions. The first session should do
+Syntax.lean + Eval.lean + Tests.lean (get it compiling). Later sessions
+fix proofs.
+
+### Phase 4: Prove soundness_gen (checker soundness)
+
+**Depends on:** Phase 3 (substitution lemmas needed).
+
+The sorry in soundness_gen is in the asc case. The proof needs a "checker
+transitivity" lemma:
 
 ```
 subCheckNF fuel Γ [] σ τ' = true →
   SubtypeCore v σ → SubtypeCore v τ'
 ```
 
-This is "checker transitivity": if subCheckNF says σ ⊑ τ', and the IH
-gives SubtypeCore v σ, then SubtypeCore v τ'.
+If subCheckNF says σ ⊑ τ', and the IH gives SubtypeCore v σ, then
+SubtypeCore v τ'. Proving this requires reasoning about what subCheckNF
+does internally (including substitution in self-intro/self-elim), which is
+why Phase 3 must come first.
 
 **Approaches (increasing difficulty):**
 
 (a) **Specific shape lemmas** about subCheckNF:
     - If subCheckNF says a ⊑ lam x d b, then a is a lam (shape)
-    - Checker transitivity: subCheckNF a b = true → SubtypeCore v a → SubtypeCore v b
-    These might suffice for the asc case without full checker soundness.
+    - Checker transitivity for the specific cases that arise in soundness
+    These might suffice without full checker soundness.
 
 (b) **Full checker soundness:**
     ```
@@ -193,18 +221,61 @@ gives SubtypeCore v σ, then SubtypeCore v τ'.
     Then the asc case composes directly. Requires re-proving all other cases.
 
 (d) **Step-indexed logical relations:** The standard PL approach. Replace
-    syntactic SubtypeCore with semantic V(fuel, τ). Major infrastructure change.
+    syntactic SubtypeCore with semantic V(fuel, τ). Major infrastructure
+    change but the most principled solution.
 
 **Also needed (mu-app annotation consistency):** WellTyped's mu-app case
-was simplified to only check WellTyped of the sub-term that absEval
-evaluates. The previous version had annotation consistency (body result ⊑
-annotation result) but required matching binder names. When proving
-soundness_gen, the mu-app annotation path needs this consistency — it may
-need to be re-added to WellTyped (with subCheckNF, no binder name matching).
+was simplified (removed annotation consistency check). When proving
+soundness_gen, the mu-app annotation path may need this re-added to
+WellTyped (with subCheckNF, not SubtypeCore — no binder name issues).
 
 **Important:** The witness tests are the canary. Never weaken WellTyped
-without checking these tests still pass. A sorry'd proof with satisfiable
-WellTyped is worth more than a sorry-free proof with vacuous WellTyped.
+without checking these tests still pass.
+
+### Phase 5: Drop concEval, prove soundness for concEvalS
+
+**Depends on:** Phase 3 (substitution lemma), Phase 4 (soundness structure).
+
+`concEval` (environment-based, normalizes under binders) exists only to be
+structurally parallel to `absEval` for the soundness induction. It is NOT
+the intended runtime — it eagerly evaluates lambda bodies, breaking
+Church-encoded branching with recursion. `concEvalS` (substitution-based
+CBV, lambdas are values) is the real runtime.
+
+With de Bruijn indices, the substitution lemma becomes provable:
+```
+SubtypeCore a b → SubtypeCore (e[i:=a]) (e[i:=b])
+```
+
+This enables either:
+- Proving `concEvalS` results refine `concEval` results (then soundness
+  transfers)
+- Proving soundness directly for `concEvalS` (simpler codebase, one
+  evaluator instead of two)
+
+### Phase 6: Scott encoding and recursive types
+
+**Independent of Phases 3-5** (just tests, no proofs). Can be done any time.
+
+- [ ] Type-level mu for recursive types
+- [ ] Scott-encoded Nat (nested mus)
+- [ ] Full induction via mu-as-fix
+- [ ] Dependent elimination tests with abstract arguments
+
+### Completed phases (for reference)
+
+**Phase 1 (milestone tests):** All M1-M4 pass. Variant B passes.
+Key techniques: annotation-based mu-elim, domain normalization,
+equi-recursive self-intro + seen set.
+
+**Phase 2 (non-vacuous WellTyped):** WellTyped is Bool-valued with
+subCheckNF. 11 witness tests. soundness_gen sorry'd.
+
+**Previous Phase 3 (proofs):** absEval_mono and soundness_gen were
+sorry-free, but soundness was vacuously true for mu programs (WellTyped
+used SubtypeCore which is unsatisfiable for mu ascriptions). The sorry-free
+proofs are preserved in git (commit f7c40a1) for reference but should not
+be treated as "done" — the theorem statement was wrong.
 
 ## Design principles
 
