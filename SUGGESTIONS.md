@@ -54,9 +54,8 @@ a system with 0 sorrys that can't express dependent elimination.
 
 ## Current state (as of 2026-04-02)
 
-`lake build` passes with **ZERO warnings** (no sorrys, no unused variables).
-**All M1-M4 milestone tests pass.** Phases 1, 3, and Variant B are complete.
-**No expected-fail tests remain.**
+`lake build` passes with **3 sorrys** (all in soundness_gen, 2 distinct issues).
+**All M1-M4 milestone tests pass.** 11 WellTyped witness tests pass.
 
 ### What's working
 
@@ -78,6 +77,8 @@ a system with 0 sorrys that can't express dependent elimination.
 - **Recursive add (mu-as-fix) with both concrete and abstract args passes** (M1a-d)
 - **appendVec as raw function AND applied to abstract args passes** (M4a-c)
 - **Variant B passes:** `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat` (§10)
+- **soundness_gen ~300 lines of proof reinstated** — all non-asc,
+  non-annotation-path cases proved. 3 targeted sorrys remain.
 
 ## RESOLVED: WellTyped is now non-vacuous (Phase 5, Step 1 complete)
 
@@ -88,7 +89,6 @@ vacuously true.
 
 **Now fixed:** WellTyped is Bool-valued with `subCheckNF` in the asc case.
 11 witness tests prove WellTyped is satisfiable for milestone programs.
-soundness_gen is sorry'd (needs "checker soundness" lemma — see Phase 4).
 
 **Architecture:** The intended user-facing type checker is
 `WellTyped fuel [] e && subCheck fuel e τ`. `WellTyped` recursively checks
@@ -134,17 +134,10 @@ Phases are in priority + dependency order. Do the first incomplete phase.
 
 All M1-M4 milestones pass. Variant B passes. See git history for details.
 
-### Phase 2: Non-vacuous WellTyped ✓ STEP 1 COMPLETE
+### Phase 2: Non-vacuous WellTyped ✓ COMPLETE
 
 WellTyped is now Bool-valued with `subCheckNF` (was Prop with SubtypeCore).
-11 witness tests prove satisfiability. soundness_gen is sorry'd.
-
-**Architecture:** The intended user-facing type checker is
-`WellTyped fuel [] e && subCheck fuel e τ`. `WellTyped` recursively checks
-that all ascriptions are sound (e.g., rejects `(b : not b)` inside a
-lambda). `subCheck` checks that the overall expression has the declared
-type. Both are decidable (Bool-valued). Once Phase 4 proves soundness_gen,
-the full guarantee is: if both return true, then `concEval(e) ⊑ absEval(τ)`.
+11 witness tests prove satisfiability.
 
 ### Phase 3: De Bruijn indices ← START HERE
 
@@ -153,8 +146,8 @@ and to have provable properties. The current `subst` in Syntax.lean is
 explicitly not capture-avoiding ("WARNING: This naive implementation does
 not handle capture"). This means:
 - `subCheckNF` can give wrong answers on programs with shadowed variables
-- Substitution lemmas (needed for checker soundness) are unprovable or false
-- `concEvalS` soundness requires `SubtypeCore a b → SubtypeCore (e[x:=a]) (e[x:=b])`
+- Substitution lemmas (needed for Phase 4) are unprovable or false
+- `concEvalS` soundness requires `ValSub a b → ValSub (e[x:=a]) (e[x:=b])`
   which needs correct substitution
 
 De Bruijn indices fix all of these by construction:
@@ -165,10 +158,6 @@ De Bruijn indices fix all of these by construction:
 
 **Scope:** This is a mechanical refactor. Every file changes but the
 semantics don't. Existing `native_decide` tests verify nothing breaks.
-
-**Prep:** Delete dead code first (see `docs/ideas/simplification.md`) —
-less code to refactor. Specifically: SubtypeTrans (~200 lines), EnvSub,
-unused lemmas (lam_lhs_cases, lam_inv, mu_inv), Closure.lean stub.
 
 **Steps:**
 1. Change `Expr` to use de Bruijn indices (indices instead of `Name` for
@@ -183,40 +172,70 @@ unused lemmas (lam_lhs_cases, lam_inv, mu_inv), Closure.lean stub.
 Syntax.lean + Eval.lean + Tests.lean (get it compiling). Later sessions
 fix proofs.
 
-### Phase 4: Eliminate the 3 remaining sorrys in soundness_gen
+### Phase 4: Step-indexed `ValSub` — the new soundness relation
 
-**Current state:** soundness_gen has ~300 lines of proof with 3 targeted
-sorrys (asc case + mu-app annotation path ×2). All other cases proved.
+**Depends on:** Phase 3 (substitution lemmas needed).
 
-**THE FUNDAMENTAL BLOCKER: SubtypeCore is too weak as the output relation.**
+**The problem:** soundness_gen has 3 targeted sorrys. The fundamental
+blocker is that SubtypeCore is too weak as the output relation — it lacks
+self_intro and contra-domain lam_sub. Subtype' is also too weak. Adding
+these rules to an inductive relation breaks structural induction for
+transitivity. See `docs/research/equi-recursive-subtyping-lit-review.md`
+for full literature review.
 
-The proposed "checker transitivity" lemma
-`subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'` is **FALSE**:
-- SubtypeCore has no self_intro (can't relate lam to mu)
-- SubtypeCore has no contra-domain lam_sub (lam_body needs same domain)
-- Subtype' is also too weak (self_intro without substitution, adding lam_sub
-  breaks Subtype'.trans, adding equi-recursive rules breaks structural induction)
+**The solution: fuel-indexed semantic subtyping (step-indexed LR).**
 
-**Recommended approach: change the output relation.** Options:
+Define a new relation `ValSub (n : Nat) (v : Expr) (τ : Expr) : Prop`
+that captures "value v inhabits type τ for n steps." This relation:
 
-(a) **subCheckNF-based output** (most direct): State soundness as
-    `subCheckNF fuel Γ [] v τ = true`. Requires "checker transitivity":
-    `subCheckNF v σ = true → subCheckNF σ τ' = true → subCheckNF v τ' = true`.
-    Hard but natural for subCheckNF. The non-asc cases need reproving but
-    are straightforward (subCheckNF's `a == b` check handles reflexivity).
+- Handles equi-recursive mu by consuming fuel on unfolding (well-founded)
+- Handles contravariant function domains (lam_sub is built in)
+- Has trivial transitivity (semantic, not structural)
+- Uses fuel as the step index (Och already has fuel everywhere)
+- Is defined by well-founded recursion on `Nat` — natural in Lean 4,
+  no coinductive encoding needed
 
-(b) **Coinductive subtyping relation** with lam_sub + equi-recursive mu
-    rules. Lean 4 supports coinductives. Transitivity is also coinductive.
-    Prove subCheckNF implies the coinductive relation. Then the asc case
-    composes via coinductive transitivity.
+**Soundness becomes:**
+```
+concEval fuel γ e = some v →
+absEval fuel Γ e = some τ →
+EnvConsistent γ Γ →
+WellTyped fuel Γ e = true →
+ValSub fuel v τ
+```
 
-(c) **Step-indexed logical relations** (standard PL approach). Replace
-    SubtypeCore with semantic V(fuel, τ). Major infrastructure change but
-    the most principled solution.
+**The asc case then composes directly:**
+- IH gives: `ValSub fuel v σ`
+- WellTyped gives: `subCheckNF fuel Γ [] σ τ' = true`
+- Bridge lemma: `ValSub fuel v σ → subCheckNF σ τ' = true → ValSub fuel v τ'`
+- This bridge works because ValSub is semantic (handles mu unfolding and
+  contra-domain natively) — unlike SubtypeCore which is purely structural.
+
+**Literature basis:**
+- Appel & McAllester 2001 (seminal step-indexed model for recursive types)
+- Amin & Rompf POPL 2017 (fuel-bounded definitional interpreters — closest
+  existing architecture to Och)
+- See `docs/research/amin-rompf-deep-dive.md` for detailed analysis
+
+**Why this over other options:**
+
+| Approach | Transitivity | Lean 4 fit | Scales to Ochr/Ochre |
+|----------|-------------|------------|---------------------|
+| (a) Checker-based (subCheckNF output) | Unproven — seen-set composition is novel, no literature template | Good | Poor — doesn't scale to mutation |
+| (b) Coinductive relation | Free on the coinductive relation | Poor — Lean 4 lacks native coinduction | Medium |
+| **(c) Step-indexed ValSub** | **Trivial (semantic)** | **Excellent (induction on Nat)** | **Excellent — extends to Ochr/Ochre** |
+
+**Steps:**
+1. Define `ValSub n v τ` by well-founded recursion on `n`
+2. Prove the bridge lemma: `ValSub n v σ → subCheckNF σ τ = true → ValSub n v τ`
+3. Re-add annotation consistency to WellTyped (using subCheckNF)
+4. Rewrite soundness_gen to output `ValSub` instead of `SubtypeCore`
+5. Prove all cases (the non-asc cases should be similar to current proofs)
+6. Verify witness tests still pass
 
 **Also needed (mu-app annotation path):** Re-add annotation consistency
 to WellTyped using subCheckNF (no binder name matching needed). The proof
-then chains through consistency. Still needs the output relation fix.
+then chains through consistency using the ValSub bridge lemma.
 
 **Important:** The witness tests are the canary. Never weaken WellTyped
 without checking these tests still pass.
@@ -233,7 +252,7 @@ CBV, lambdas are values) is the real runtime.
 
 With de Bruijn indices, the substitution lemma becomes provable:
 ```
-SubtypeCore a b → SubtypeCore (e[i:=a]) (e[i:=b])
+ValSub n a b → ValSub n (e[i:=a]) (e[i:=b])
 ```
 
 This enables either:
@@ -251,6 +270,13 @@ This enables either:
 - [ ] Full induction via mu-as-fix
 - [ ] Dependent elimination tests with abstract arguments
 
+## Long-term proof strategy
+
+See `docs/long-term-proof-strategy.md` for the full Och → Ochr → Ochre
+proof roadmap and research references. Key takeaway: ownership-disciplined
+mutation does not require separation logic — the `ValSub` relation from
+Phase 4 extends naturally to Ochr and Ochre.
+
 ### Completed phases (for reference)
 
 **Phase 1 (milestone tests):** All M1-M4 pass. Variant B passes.
@@ -258,7 +284,8 @@ Key techniques: annotation-based mu-elim, domain normalization,
 equi-recursive self-intro + seen set.
 
 **Phase 2 (non-vacuous WellTyped):** WellTyped is Bool-valued with
-subCheckNF. 11 witness tests. soundness_gen sorry'd.
+subCheckNF. 11 witness tests. soundness_gen mostly proved (3 targeted
+sorrys in asc + annotation path).
 
 **Previous Phase 3 (proofs):** absEval_mono and soundness_gen were
 sorry-free, but soundness was vacuously true for mu programs (WellTyped
