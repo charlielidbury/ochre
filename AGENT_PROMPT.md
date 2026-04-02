@@ -99,6 +99,8 @@ The most productive next step might be:
 - Realizing a definition needs to change and writing up why
 - Updating the spec or design docs because something is wrong
 - Rethinking the approach entirely and documenting your reasoning
+- **Discovering that a theorem statement is vacuous or wrong** — this is as
+  valuable as proving it. Document it clearly and commit.
 
 If you find yourself stuck for more than a few minutes, stop. Commit what you
 have, document the blocker clearly in PROGRESS.md, and finish. A well-documented
@@ -131,11 +133,33 @@ and your agent ID, and update PROGRESS.md before your session ends.
   broken proofs. A compiling codebase with sorrys is infinitely more useful
   than a broken one.
 
+- **Never weaken a precondition without a witness test.** If you change a
+  theorem's precondition (e.g. WellTyped) to make a proof go through, you
+  MUST verify the precondition is still satisfiable for a real program. Add
+  a `native_decide` test like:
+  ```lean
+  example : WellTyped testFuel [] some_real_program = true := by native_decide
+  ```
+  A sorry-free proof with unsatisfiable preconditions is **worse** than a
+  sorry'd proof with satisfiable ones — the former gives false confidence.
+  This mistake has already happened once (see SUGGESTIONS.md "CRITICAL"
+  section). Do not repeat it.
+
 ## What success looks like
 
 The ultimate goal is a provably sound type system for Ochre. The current
-milestone is Och: `lake build` passing with no `sorry`, soundness and
-monotonicity proven, all tests passing, and abstract appendVec working.
+milestone is Och with ALL of these simultaneously:
+
+1. `lake build` passing with no `sorry`
+2. Soundness and monotonicity proven
+3. All tests passing, including abstract appendVec
+4. **The soundness theorem is non-vacuously true for the milestone programs**
+
+Point 4 is critical. A sorry-free soundness theorem whose preconditions
+can't be satisfied is vacuously true and proves nothing. The preconditions
+(currently `WellTyped`) must be satisfiable for real programs — verified by
+`native_decide` witness tests. Zero sorrys is not the goal; a meaningful
+theorem is the goal. Sorrys are a means of tracking progress toward that.
 
 This is an extremely ambitious goal. You will not finish in one session. Your
 job is to make one solid step forward and hand off clearly to the next agent.
@@ -156,6 +180,10 @@ export PATH="$HOME/.elan/bin:$PATH"
 - **Scope tightly.** Pick one thing. Do it. Commit. Hand off.
 - Think before you code. If a proof isn't going through, consider whether the
   definitions are right, not just whether you can force the proof.
+- **Question theorem statements, not just proofs.** Before working on a proof,
+  ask: "Are the preconditions satisfiable for real programs?" If you can't
+  construct a witness, the theorem may be vacuously true. Identifying a vacuous
+  theorem is more valuable than proving it.
 - Read the git log to understand what previous agents have done.
 - If you change a fundamental definition, explain WHY in your commit message.
 - Small, correct steps are better than large, broken ones.
