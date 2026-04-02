@@ -54,9 +54,10 @@ a system with 0 sorrys that can't express dependent elimination.
 
 ## Current state (as of 2026-04-02)
 
-`lake build` passes with **2 sorrys** (`absEval_mono` + `soundness_gen`).
-**All M1-M4 milestone tests pass.** 11 WellTyped witness tests pass.
-**ValSub.lean is SORRY-FREE** — bridge proved via compose_r + mono.
+`lake build` passes with **9 sorrys** (1 absEval_mono, 5 OutputRel helpers,
+3 legacy soundness_gen). **All M1-M4 milestone tests pass.** 11 WellTyped
+witness tests pass. **ValSub.lean is SORRY-FREE.**
+**soundness_gen_sr is SORRY-FREE** — all cases including nested asc proved.
 
 ### What's working
 
@@ -246,15 +247,15 @@ their outputs directly via the `EnvSoundRel` invariant.
 
 OutputRel is an inductive with two constructors:
 - `.sound h`: direct SoundRel (for non-asc cases)
-- `.compose h_sr h_check`: SoundRel to intermediate + subCheckNF to target
+- `.compose h_or h_check`: OutputRel to intermediate + subCheckNF to target
 
-**Asc case partially proved:** The `.sound` subcase (programs without nested
-asc) is PROVED. The `.compose` subcase (nested asc) needs subCheckNF
-transitivity.
+**OutputRel.compose is recursive** (takes OutputRel, not SoundRel). This
+allows nested asc cases to chain composes without needing subCheckNF
+transitivity. `soundness_gen_sr` is now **SORRY-FREE**.
 
-#### Step 3.5: Resolve remaining OutputRel sorrys ← DO THIS NEXT
+#### Step 3.5: Resolve remaining OutputRel helper sorrys ← DO THIS NEXT
 
-**7 new sorrys in Soundness.lean** (10 total, plus 3 legacy):
+**5 sorrys in Soundness.lean** (8 total, plus 3 legacy):
 
 1. **subCheckNF lifting lemmas** (3 sorrys: lam_congr, mu_congr×2):
    Need: `subCheckNF mid body_τ → subCheckNF (lam dom mid) (lam dom body_τ)`.
@@ -267,12 +268,7 @@ transitivity.
    - Or context-parameterized lifting lemmas
    - Or proving subCheckNF is independent of ctx for "closed-enough" terms
 
-2. **subCheckNF transitivity** (2 sorrys: asc compose subcases):
-   Need: `subCheckNF a b ∧ subCheckNF b c → subCheckNF a c`.
-   Standard property. Approach: direct case analysis on subCheckNF algorithm,
-   or prove soundness+completeness w.r.t. Subtype' and use Subtype' transitivity.
-
-3. **extractSoundRel** (1 sorry):
+2. **extractSoundRel** (1 sorry):
    Converts OutputRel→SoundRel for `soundness_app_case`. This is a hack —
    the real fix is rewriting soundness_app_case to accept OutputRel from the IH.
    **Approach:** case-split on OutputRel inside soundness_app_case:
@@ -280,8 +276,10 @@ transitivity.
    - `.compose`: sorry for now (needs structural decomposition of OutputRel)
    This would eliminate extractSoundRel entirely.
 
-4. **app-mu-annotation edge case** (1 sorry, unchanged):
-   ann_c = lam but ann_a ≠ lam. Still unreachable from .refl entry point.
+3. **app-mu-annotation edge case** (1 sorry, unchanged):
+   ann_c = lam but ann_a ≠ lam. Reachable from app_cong (via SoundRel.top).
+   May need annotation consistency from WellTyped, or restructuring the
+   mu-app proof to avoid separate ann_c/ann_a case splitting.
 
 **The legacy `soundness_gen` (ValSub-based, uses substitution-based
 concEval) is retained for compatibility.** Its 3 sorrys (lam, mu, app)

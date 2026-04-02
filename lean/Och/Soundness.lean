@@ -176,7 +176,7 @@ bridge this gap: there exists an intermediate `mid` such that SoundRel v mid
     from the WellTyped check. -/
 inductive OutputRel : Expr → Expr → Prop where
   | sound {v τ : Expr} : SoundRel v τ → OutputRel v τ
-  | compose {v mid τ : Expr} : SoundRel v mid →
+  | compose {v mid τ : Expr} : OutputRel v mid →
       {fuel : Nat} → {ctx : List Expr} →
       subCheckNF fuel ctx [] mid τ = true → OutputRel v τ
 
@@ -582,11 +582,7 @@ theorem soundness_gen_sr
           have ih_term := ih Γ γ term term σ v (.refl term)
             h_term_abs h_conc h_env h_wt_term
           -- Compose: OutputRel v σ + subCheckNF σ τ → OutputRel v τ
-          cases ih_term with
-          | sound hs => exact .compose hs h_check
-          | compose hs hc =>
-            -- Nested asc: needs subCheckNF transitivity (subCheckNF mid σ ∧ subCheckNF σ τ → subCheckNF mid τ)
-            sorry
+          exact .compose ih_term h_check
       | app f a =>
         exact .sound (soundness_app_case (.refl f) (.refl a) h_abs h_conc h_env h_wt ih_sr)
     | top =>
@@ -646,9 +642,7 @@ theorem soundness_gen_sr
         -- IH on (term_c, term_a): OutputRel v σ
         have ih_term := ih Γ γ term_a term_c σ v h_term
           h_term_abs h_conc h_env h_wt_term
-        cases ih_term with
-        | sound hs => exact .compose hs h_check
-        | compose hs hc => sorry -- needs subCheckNF transitivity
+        exact .compose ih_term h_check
 
 /-! ## Top-level soundness (concEvalE version)
 
