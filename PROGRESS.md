@@ -9,15 +9,63 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **1 sorry** (soundness_gen) and **11 WellTyped witness tests**.
+`lake build` passes with **3 sorrys** (all in soundness_gen) and **11 WellTyped witness tests**.
 
 - **Subtyping.lean: SORRY-FREE**
 - **Monotonicity.lean: SORRY-FREE**
-- **Soundness.lean: 1 sorry (soundness_gen) — intentional, see below**
+- **Soundness.lean: 3 sorrys (soundness_gen) — 2 distinct issues, see below**
 
-**Total: 1 sorry.** All tests pass including WellTyped witnesses.
+**Total: 3 sorrys.** All tests pass including WellTyped witnesses.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-104022)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-112327)
+
+**Reinstated soundness_gen proof for all non-asc, non-annotation-path cases.**
+
+Previously soundness_gen was a single blanket `sorry`. Now ~300 lines of
+proof are reinstated, adapted from the old Prop-valued proof (commit f7c40a1)
+to the new Bool-valued WellTyped. The proof covers: var, type, lam, mu,
+app-lam, app-mu-body-unfold, app-stuck, lam_body, app_cong, mu_body.
+
+**3 remaining sorrys (2 distinct issues):**
+
+1. **Asc case (Soundness.lean:188):** WellTyped gives `subCheckNF σ τ' = true`,
+   IH gives `SubtypeCore v σ`. Need `SubtypeCore v τ'`. This is FALSE for
+   SubtypeCore — it lacks self_intro and contra-domain lam_sub. See analysis below.
+
+2. **Mu-app annotation path (×2, Soundness.lean:247, 365):** When both ann
+   and body are lambdas, absEval uses the annotation's return body while
+   concEval uses the body's lambda body. These are different expressions.
+   Needs annotation consistency re-added to WellTyped (with subCheckNF).
+
+**CRITICAL ANALYSIS: SubtypeCore is fundamentally too weak for the asc case.**
+
+The proposed "checker transitivity" lemma
+`subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'` is FALSE because:
+- SubtypeCore has no `self_intro` (can't relate a lam to a mu type)
+- SubtypeCore has no contravariant domain subtyping (lam_body needs same domain)
+- subCheckNF handles BOTH (equi-recursive self-intro + contra-domain checking)
+
+Subtype' is ALSO insufficient:
+- Has self_intro WITHOUT substitution (subCheckNF substitutes x := mu in body)
+- Has no lam_sub (contra-domain). Adding it breaks Subtype'.trans because
+  composing two lam_sub's needs domain composition from BOTH sides of the
+  induction, but trans only inducts on one argument.
+- Adding equi-recursive unfolding (fold/unfold) breaks structural induction
+  entirely — the sub-proof body.subst x (mu x ann body) is LARGER than mu.
+
+**Viable paths forward:**
+(a) Change soundness output to `subCheckNF fuel Γ [] v τ = true`
+    (semantic soundness via the checker). Requires checker transitivity.
+(b) Coinductive subtyping relation with lam_sub + equi-recursive rules.
+(c) Step-indexed logical relations (standard PL approach, major change).
+
+The mu-app annotation sorrys are solvable independently: re-add annotation
+consistency to WellTyped using subCheckNF (no binder name matching required),
+then the proof chains through the consistency condition. This still needs the
+subCheckNF-to-SubtypeCore bridge for the final step, so it shares the same
+fundamental blocker as the asc case.
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-104022)
 
 **Phase 5 Step 1: NON-VACUOUS WellTyped + witness tests.**
 
@@ -571,30 +619,36 @@ resolved `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`.
 
 ### What needs to happen next
 
-**Phase 5, Step 2: Prove soundness_gen with Bool-valued WellTyped.**
+**Phase 5, Step 2 (continued): Eliminate the 3 remaining sorrys in soundness_gen.**
 
-The single sorry is in `soundness_gen` (Soundness.lean:152). The proof
-was sorry-free before WellTyped changed (commit f7c40a1). The change:
-WellTyped's asc case now has `subCheckNF fuel Γ [] σ τ' = true` instead
-of `SubtypeCore σ τ'`. The proof's asc case did:
-```
-exact (ih ...).trans h_sub_σ_τ
-```
-where `h_sub_σ_τ : SubtypeCore σ τ'`. Now it's `h_sub_σ_τ : subCheckNF ... = true`,
-and we need a way to derive SubtypeCore transitivity from the Bool check.
+The proof is now ~300 lines with 3 targeted sorrys (was 1 blanket sorry).
+All non-asc, non-annotation-path cases are fully proved. The remaining
+sorrys are at Soundness.lean:188 (asc), :247 (mu-app ann, refl), :365
+(mu-app ann, app_cong).
 
-**The key missing lemma:**
-```
-subCheckNF fuel Γ [] σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'
-```
+**The fundamental blocker: SubtypeCore is too weak as the output relation.**
 
-**Also:** The mu-app WellTyped case was simplified to only check WellTyped
-of the sub-term absEval evaluates (no annotation consistency check). The
-previous proof's annotation path used annotation consistency. When proving
-soundness_gen, either:
-(a) Re-add annotation consistency to WellTyped (using subCheckNF, no binder
-    name matching) and prove it, or
-(b) Restructure the proof to not need annotation consistency.
+The "checker transitivity" lemma
+`subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'` is FALSE.
+SubtypeCore lacks self_intro and contra-domain lam_sub. Subtype' is also
+too weak (self_intro without substitution, no lam_sub, adding these breaks
+structural induction for trans). See Soundness.lean header for full analysis.
+
+**Recommended next step: change the soundness output relation.**
+
+The most promising approach is (a) from the analysis: change soundness_gen
+to output `subCheckNF fuel Γ [] v τ = true` instead of `SubtypeCore v τ`.
+This requires proving "checker transitivity" for subCheckNF:
+```
+subCheckNF fuel Γ [] v σ = true →
+subCheckNF fuel Γ [] σ τ' = true →
+subCheckNF fuel Γ [] v τ' = true
+```
+This is hard but natural for subCheckNF (which already handles equi-recursive
+unfolding and contra-domain). The non-asc cases would need reproving to
+output subCheckNF results (using subCheckNF's reflexivity: a == b → true).
+
+Alternative: coinductive subtyping relation (Lean 4 supports coinductives).
 
 **Other priorities:**
 - Phase 4: Scott encoding (can proceed independently of proof work)
@@ -608,7 +662,7 @@ soundness_gen, either:
 | Eval.lean | Done (joint match (ann,body) in mu-app; concEval wraps mu) | **0** |
 | **Subtyping.lean** | **SORRY-FREE** (subCheckNF now public) | **0** |
 | Tests.lean | All milestones + 11 WellTyped witnesses (§12) | **0** |
-| **Soundness.lean** | **1 sorry** (soundness_gen; WellTyped now Bool w/ subCheckNF) | **1** |
+| **Soundness.lean** | **3 sorrys** (soundness_gen: asc + mu-app annotation ×2) | **3** |
 | **Monotonicity.lean** | **SORRY-FREE** | **0** |
 | Closure.lean | Gutted | **0** |
 | CounterexampleTest.lean | Done | **0** |

@@ -183,51 +183,40 @@ unused lemmas (lam_lhs_cases, lam_inv, mu_inv), Closure.lean stub.
 Syntax.lean + Eval.lean + Tests.lean (get it compiling). Later sessions
 fix proofs.
 
-### Phase 4: Prove soundness_gen (checker soundness)
+### Phase 4: Eliminate the 3 remaining sorrys in soundness_gen
 
-**Depends on:** Phase 3 (substitution lemmas needed).
+**Current state:** soundness_gen has ~300 lines of proof with 3 targeted
+sorrys (asc case + mu-app annotation path ×2). All other cases proved.
 
-The sorry in soundness_gen is in the asc case. The proof needs a "checker
-transitivity" lemma:
+**THE FUNDAMENTAL BLOCKER: SubtypeCore is too weak as the output relation.**
 
-```
-subCheckNF fuel Γ [] σ τ' = true →
-  SubtypeCore v σ → SubtypeCore v τ'
-```
+The proposed "checker transitivity" lemma
+`subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'` is **FALSE**:
+- SubtypeCore has no self_intro (can't relate lam to mu)
+- SubtypeCore has no contra-domain lam_sub (lam_body needs same domain)
+- Subtype' is also too weak (self_intro without substitution, adding lam_sub
+  breaks Subtype'.trans, adding equi-recursive rules breaks structural induction)
 
-If subCheckNF says σ ⊑ τ', and the IH gives SubtypeCore v σ, then
-SubtypeCore v τ'. Proving this requires reasoning about what subCheckNF
-does internally (including substitution in self-intro/self-elim), which is
-why Phase 3 must come first.
+**Recommended approach: change the output relation.** Options:
 
-**Approaches (increasing difficulty):**
+(a) **subCheckNF-based output** (most direct): State soundness as
+    `subCheckNF fuel Γ [] v τ = true`. Requires "checker transitivity":
+    `subCheckNF v σ = true → subCheckNF σ τ' = true → subCheckNF v τ' = true`.
+    Hard but natural for subCheckNF. The non-asc cases need reproving but
+    are straightforward (subCheckNF's `a == b` check handles reflexivity).
 
-(a) **Specific shape lemmas** about subCheckNF:
-    - If subCheckNF says a ⊑ lam x d b, then a is a lam (shape)
-    - Checker transitivity for the specific cases that arise in soundness
-    These might suffice without full checker soundness.
+(b) **Coinductive subtyping relation** with lam_sub + equi-recursive mu
+    rules. Lean 4 supports coinductives. Transitivity is also coinductive.
+    Prove subCheckNF implies the coinductive relation. Then the asc case
+    composes via coinductive transitivity.
 
-(b) **Full checker soundness:**
-    ```
-    subCheckNF fuel ctx a b = true →
-      ∀ γ, EnvConsistent γ ctx →
-        ∀ v, concEval fuel γ a = some v →
-          ∃ τ, absEval fuel ctx b = some τ ∧ SubtypeCore v τ
-    ```
-    Requires relating subCheckNF's equi-recursive unfolding to SubtypeCore.
+(c) **Step-indexed logical relations** (standard PL approach). Replace
+    SubtypeCore with semantic V(fuel, τ). Major infrastructure change but
+    the most principled solution.
 
-(c) **Richer semantic relation:** Replace SubtypeCore in soundness_gen's
-    output with a relation that supports equi-recursive unfolding.
-    Then the asc case composes directly. Requires re-proving all other cases.
-
-(d) **Step-indexed logical relations:** The standard PL approach. Replace
-    syntactic SubtypeCore with semantic V(fuel, τ). Major infrastructure
-    change but the most principled solution.
-
-**Also needed (mu-app annotation consistency):** WellTyped's mu-app case
-was simplified (removed annotation consistency check). When proving
-soundness_gen, the mu-app annotation path may need this re-added to
-WellTyped (with subCheckNF, not SubtypeCore — no binder name issues).
+**Also needed (mu-app annotation path):** Re-add annotation consistency
+to WellTyped using subCheckNF (no binder name matching needed). The proof
+then chains through consistency. Still needs the output relation fix.
 
 **Important:** The witness tests are the canary. Never weaken WellTyped
 without checking these tests still pass.

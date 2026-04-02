@@ -11,40 +11,43 @@ produces value `v`, then `v ⊑ τ` (in Subtype').
 
 ## Status
 
-**SORRY'D (1 sorry).** soundness_gen is sorry'd because WellTyped changed
-from Prop-valued (with SubtypeCore) to Bool-valued (with subCheckNF).
+**3 targeted sorrys** in soundness_gen (was 1 blanket sorry). All non-asc,
+non-annotation-path cases are fully proved. The sorry'd cases are:
 
-The previous sorry-free proof is in git (commit f7c40a1), but it was
-vacuously true for mu programs — WellTyped was unsatisfiable for any
-program with `(e : mu_type)` ascriptions.
+1. **asc case** (line ~193): needs "checker transitivity" bridge
+2. **mu-app annotation path** (lines ~252, ~370): needs annotation consistency
 
 ## Architecture
 
-WellTyped is now **Bool-valued** and uses `subCheckNF` (the decidable
-checker) in the ascription case. This makes WellTyped:
-1. **Decidable** — testable via `native_decide`
-2. **Satisfiable** — subCheckNF handles self-intro via equi-recursive unfolding
-3. **Testable** — witness tests prove WellTyped holds for milestone programs
+WellTyped is **Bool-valued** with `subCheckNF` in the ascription case.
+soundness_gen takes SubtypeCore for h_sub and returns SubtypeCore.
 
-soundness_gen still takes SubtypeCore for h_sub and returns SubtypeCore.
-The sorry is the missing "checker soundness" bridge: when WellTyped's
-subCheckNF accepts a ⊑ b, what SubtypeCore properties can we derive?
+## Why SubtypeCore is fundamentally too weak for the remaining sorrys
 
-## What the next agent needs to prove
+The asc case needs: `subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'`.
+This is FALSE for SubtypeCore because:
+- SubtypeCore has no `self_intro` (can't relate a lam to a mu)
+- SubtypeCore has no contravariant domain subtyping (`lam_body` requires same domain)
+- subCheckNF handles both (equi-recursive self-intro + contra-domain checking)
 
-The key missing lemma for the asc case:
-```
-  subCheckNF fuel Γ [] σ τ' = true →
-    SubtypeCore v σ → SubtypeCore v τ'
-```
+Subtype' is ALSO too weak:
+- Has `self_intro` but WITHOUT substitution (subCheckNF substitutes x := mu)
+- Has no contravariant domain subtyping (`lam_body` requires same domain)
+- Adding `lam_sub` (contra-domain) breaks `Subtype'.trans` (needs both sides of induction)
+- Adding equi-recursive unfolding breaks structural induction
 
-This is "checker transitivity": if the checker says σ ⊑ τ' and we
-have SubtypeCore v σ from the IH, we need SubtypeCore v τ'.
+## Viable approaches for the remaining sorrys
 
-Options:
-(a) Prove subCheckNF implies a semantic relation that composes with SubtypeCore
-(b) Strengthen SubtypeCore with equi-recursive rules
-(c) Use step-indexed logical relations
+(a) **Change soundness output to `subCheckNF`-based.** State soundness as
+    `subCheckNF fuel Γ [] v τ = true`. Requires "checker transitivity".
+(b) **Coinductive subtyping relation** with lam_sub + equi-recursive rules.
+    Lean 4 supports coinductives. Transitivity is coinductive.
+(c) **Step-indexed logical relations.** Standard PL approach. Major infra change.
+(d) **Prove checker transitivity directly** for subCheckNF. Hard due to
+    fuel bounds, inferType, and seen-set interactions.
+
+The mu-app annotation path additionally needs annotation consistency
+re-added to WellTyped (using subCheckNF, not SubtypeCore).
 -/
 
 open Expr
@@ -131,22 +134,14 @@ theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
     Uses SubtypeCore (Subtype' without self_intro) for both input and output.
     The main `soundness` theorem converts via `toSubtype'`.
 
-    **STATUS: SORRY'D.** WellTyped is now Bool-valued with `subCheckNF`
-    instead of `SubtypeCore`. The proof needs "checker soundness" lemmas:
-    when subCheckNF says a ⊑ b, what can we conclude about SubtypeCore?
-    The key missing lemma (for the asc case):
-
-      subCheckNF fuel ctx [] σ τ' = true →
-        SubtypeCore v σ → SubtypeCore v τ'
-
-    This is essentially: the checker's acceptance implies transitivity
-    through the checked pair. Proving this requires relating subCheckNF's
-    equi-recursive unfolding to SubtypeCore's structural rules, which may
-    need a richer semantic relation.
-
-    The previous sorry-free proof is preserved in git history (commit f7c40a1).
-    It worked because WellTyped used SubtypeCore directly — but that made
-    WellTyped unsatisfiable for mu programs (vacuous soundness). -/
+    **STATUS: 3 targeted sorrys** (was 1 blanket sorry). All non-asc,
+    non-annotation-path cases proved. Remaining sorrys:
+    1. **asc case:** WellTyped gives `subCheckNF σ τ' = true` but
+       `SubtypeCore v σ → SubtypeCore v τ'` doesn't follow (SubtypeCore
+       lacks self_intro and contra-domain lam_sub).
+    2. **mu-app annotation path (×2):** absEval uses annotation, concEval
+       uses body — different expressions. Needs annotation consistency
+       re-added to WellTyped with subCheckNF, plus a checker bridge. -/
 theorem soundness_gen
     (fuel : Nat) (Γ : Env) (γ : Env) (e_a e_c τ v : Expr)
     (h_sub : SubtypeCore e_c e_a)
@@ -155,7 +150,294 @@ theorem soundness_gen
     (h_env : EnvConsistent γ Γ)
     (h_wt : WellTyped fuel Γ e_a = true)
     : SubtypeCore v τ := by
-  sorry
+  induction fuel generalizing Γ γ e_a e_c τ v with
+  | zero => simp [absEval] at h_abs
+  | succ n ih =>
+    cases h_sub with
+    | top e =>
+      simp [absEval] at h_abs; rw [← h_abs]; exact .top v
+    | refl =>
+      cases e_a with
+      | var x =>
+        simp [absEval] at h_abs; simp [concEval] at h_conc
+        have ⟨v', hv', hsub⟩ := h_env x τ h_abs
+        rw [hv'] at h_conc; cases h_conc; exact hsub
+      | type =>
+        simp [absEval] at h_abs; simp [concEval] at h_conc
+        rw [← h_abs, ← h_conc]; exact .refl .type
+      | lam x dom body =>
+        simp only [absEval] at h_abs; simp only [concEval] at h_conc
+        cases hba : absEval n ((x, .var x) :: Γ) body with
+        | none => simp [hba] at h_abs
+        | some body_a =>
+          simp [hba] at h_abs
+          cases hbc : concEval n ((x, .var x) :: γ) body with
+          | none => simp [hbc] at h_conc
+          | some body_c =>
+            simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+            exact .lam_body (ih _ _ body body body_a body_c (.refl body) hba hbc
+              (envConsistent_extend h_env x (.var x))
+              (by simp only [WellTyped] at h_wt; exact h_wt))
+      | asc term ty =>
+        -- SORRY: asc case needs "checker transitivity" bridge.
+        -- WellTyped gives: subCheckNF fuel Γ [] σ τ' = true
+        -- IH gives: SubtypeCore v σ
+        -- Need: SubtypeCore v τ'
+        -- SubtypeCore is too weak: no self_intro, no contra-domain lam_sub.
+        -- See PROGRESS.md for analysis of why this is fundamentally hard.
+        sorry
+      | mu x ann body =>
+        simp only [absEval] at h_abs; simp only [concEval] at h_conc
+        cases hba : absEval n ((x, .mu x ann body) :: Γ) body with
+        | none => simp [hba] at h_abs
+        | some body_a =>
+          simp [hba] at h_abs
+          cases hbc : concEval n ((x, .mu x ann body) :: γ) body with
+          | none => simp [hbc] at h_conc
+          | some body_c =>
+            simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+            exact .mu_body (ih _ _ body body body_a body_c (.refl body) hba hbc
+              (envConsistent_extend h_env x (.mu x ann body))
+              (by simp only [WellTyped] at h_wt; exact h_wt))
+      | app f a =>
+        simp only [absEval] at h_abs; simp only [concEval] at h_conc
+        cases hfa : absEval n Γ f with
+        | none => simp [hfa] at h_abs
+        | some f_t =>
+          cases haa : absEval n Γ a with
+          | none => simp [hfa, haa] at h_abs
+          | some a_t =>
+            rw [hfa, haa] at h_abs
+            cases hfc : concEval n γ f with
+            | none => simp [hfc] at h_conc
+            | some f_v =>
+              cases hac : concEval n γ a with
+              | none => simp [hfc, hac] at h_conc
+              | some a_v =>
+                rw [hfc, hac] at h_conc
+                -- Extract WellTyped: f, a well-typed + match condition
+                have h_wt' := h_wt; simp only [WellTyped] at h_wt'
+                rw [hfa, haa] at h_wt'
+                simp only [Bool.and_eq_true_iff] at h_wt'
+                obtain ⟨⟨h_wt_f, h_wt_a⟩, h_wt_rest⟩ := h_wt'
+                have hf_sub := ih _ _ f f f_t f_v (.refl f) hfa hfc h_env h_wt_f
+                have ha_sub := ih _ _ a a a_t a_v (.refl a) haa hac h_env h_wt_a
+                -- Case split on abstract function result
+                cases f_t with
+                | type =>
+                  simp only at h_abs; cases h_abs; exact .top v
+                | lam x dom body_a =>
+                  obtain ⟨body_c, hfv_eq, hbody_sub⟩ := SubtypeCore.lam_rhs_shape hf_sub
+                  subst hfv_eq; simp only at h_abs h_conc
+                  exact ih _ _ body_a body_c τ v hbody_sub h_abs h_conc
+                    (envConsistent_extend_sub h_env x ha_sub) h_wt_rest
+                | mu x_mu ann_mu body_mu =>
+                  obtain ⟨body_c, hfv_eq, hbody_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
+                  subst hfv_eq
+                  -- mu-app: case split on body_mu shape
+                  cases body_mu with
+                  | lam y_body dom_body bodyRes =>
+                    obtain ⟨lamBody, hbc_eq, hlam_sub⟩ := SubtypeCore.lam_rhs_shape hbody_sub
+                    subst hbc_eq
+                    cases ann_mu with
+                    | lam y_ann dom_ann retBody =>
+                      -- ANNOTATION PATH: both ann and body are lambdas.
+                      -- absEval uses retBody (annotation), concEval uses lamBody (body).
+                      -- SORRY: needs annotation consistency in WellTyped + checker bridge.
+                      sorry
+                    | _ =>
+                      -- Body-unfold: ann ≠ lam, body is lam.
+                      simp only at h_abs h_conc
+                      exact ih _ _ bodyRes lamBody τ v hlam_sub h_abs h_conc
+                        (envConsistent_extend_sub h_env y_body ha_sub) h_wt_rest
+                  | type =>
+                    cases ann_mu with
+                    | lam _ _ _ => simp only at h_abs; cases h_abs; exact .top v
+                    | _ => simp only at h_abs; cases h_abs; exact .top v
+                  | var _ =>
+                    cases body_c with
+                    | lam _ _ _ => cases hbody_sub
+                    | type => cases hbody_sub
+                    | mu _ _ _ => cases hbody_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                          exact .app_cong hbody_sub ha_sub
+                           | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                  exact .app_cong hbody_sub ha_sub
+                  | app _ _ =>
+                    cases body_c with
+                    | lam _ _ _ => cases hbody_sub
+                    | type => cases hbody_sub
+                    | mu _ _ _ => cases hbody_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                          exact .app_cong hbody_sub ha_sub
+                           | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                  exact .app_cong hbody_sub ha_sub
+                  | mu _ _ _ =>
+                    obtain ⟨body₂, hbc_eq, _⟩ := SubtypeCore.mu_rhs_shape hbody_sub
+                    subst hbc_eq
+                    cases ann_mu with
+                    | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                   exact .app_cong hbody_sub ha_sub
+                    | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                           exact .app_cong hbody_sub ha_sub
+                  | asc _ _ =>
+                    cases body_c with
+                    | lam _ _ _ => cases hbody_sub
+                    | type => cases hbody_sub
+                    | mu _ _ _ => cases hbody_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                          exact .app_cong hbody_sub ha_sub
+                           | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                  exact .app_cong hbody_sub ha_sub
+                | var v_name =>
+                  cases hf_sub with
+                  | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                            exact .app_cong (.refl _) ha_sub
+                | app f' a' =>
+                  cases hf_sub with
+                  | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                            exact .app_cong (.refl _) ha_sub
+                  | app_cong h1f h1a =>
+                    simp only at h_abs h_conc; cases h_abs; cases h_conc
+                    exact .app_cong (.app_cong h1f h1a) ha_sub
+                | asc t ty =>
+                  cases hf_sub with
+                  | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                            exact .app_cong (.refl _) ha_sub
+    | lam_body hbody =>
+      rename_i x dom body_a body_c
+      simp only [absEval] at h_abs; simp only [concEval] at h_conc
+      cases hba : absEval n ((x, .var x) :: Γ) body_a with
+      | none => simp [hba] at h_abs
+      | some body_a' =>
+        simp [hba] at h_abs
+        cases hbc : concEval n ((x, .var x) :: γ) body_c with
+        | none => simp [hbc] at h_conc
+        | some body_c' =>
+          simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+          exact .lam_body (ih _ _ body_a body_c body_a' body_c' hbody hba hbc
+            (envConsistent_extend h_env x (.var x))
+            (by simp only [WellTyped] at h_wt; exact h_wt))
+    | app_cong hf ha =>
+      rename_i f_a f_c a_a a_c
+      simp only [absEval] at h_abs; simp only [concEval] at h_conc
+      cases hfa : absEval n Γ f_a with
+      | none => simp [hfa] at h_abs
+      | some f_t =>
+        cases haa : absEval n Γ a_a with
+        | none => simp [hfa, haa] at h_abs
+        | some a_t =>
+          rw [hfa, haa] at h_abs
+          cases hfc : concEval n γ f_c with
+          | none => simp [hfc] at h_conc
+          | some f_v =>
+            cases hac : concEval n γ a_c with
+            | none => simp [hfc, hac] at h_conc
+            | some a_v =>
+              rw [hfc, hac] at h_conc
+              -- Extract WellTyped
+              have h_wt' := h_wt; simp only [WellTyped] at h_wt'
+              rw [hfa, haa] at h_wt'
+              simp only [Bool.and_eq_true_iff] at h_wt'
+              obtain ⟨⟨h_wt_f, h_wt_a⟩, h_wt_rest⟩ := h_wt'
+              have hf_sub := ih _ _ f_a f_c f_t f_v hf hfa hfc h_env h_wt_f
+              have ha_sub := ih _ _ a_a a_c a_t a_v ha haa hac h_env h_wt_a
+              cases f_t with
+              | type => simp only at h_abs; cases h_abs; exact .top v
+              | lam x dom body_a =>
+                obtain ⟨body_c, hfv_eq, hbody_sub⟩ := SubtypeCore.lam_rhs_shape hf_sub
+                subst hfv_eq; simp only at h_abs h_conc
+                exact ih _ _ body_a body_c τ v hbody_sub h_abs h_conc
+                  (envConsistent_extend_sub h_env x ha_sub) h_wt_rest
+              | mu x_mu ann_mu body_mu =>
+                obtain ⟨body_c, hfv_eq, hbody_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
+                subst hfv_eq
+                cases body_mu with
+                | lam y_body dom_body bodyRes =>
+                  obtain ⟨lamBody, hbc_eq, hlam_sub⟩ := SubtypeCore.lam_rhs_shape hbody_sub
+                  subst hbc_eq
+                  cases ann_mu with
+                  | lam y_ann dom_ann retBody =>
+                    -- ANNOTATION PATH: same sorry as refl case
+                    sorry
+                  | _ =>
+                    simp only at h_abs h_conc
+                    exact ih _ _ bodyRes lamBody τ v hlam_sub h_abs h_conc
+                      (envConsistent_extend_sub h_env y_body ha_sub) h_wt_rest
+                | type =>
+                  cases ann_mu with
+                  | lam _ _ _ => simp only at h_abs; cases h_abs; exact .top v
+                  | _ => simp only at h_abs; cases h_abs; exact .top v
+                | var _ =>
+                  cases body_c with
+                  | lam _ _ _ => cases hbody_sub
+                  | type => cases hbody_sub
+                  | mu _ _ _ => cases hbody_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                        exact .app_cong hbody_sub ha_sub
+                         | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                exact .app_cong hbody_sub ha_sub
+                | app _ _ =>
+                  cases body_c with
+                  | lam _ _ _ => cases hbody_sub
+                  | type => cases hbody_sub
+                  | mu _ _ _ => cases hbody_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                        exact .app_cong hbody_sub ha_sub
+                         | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                exact .app_cong hbody_sub ha_sub
+                | mu _ _ _ =>
+                  obtain ⟨body₂, hbc_eq, _⟩ := SubtypeCore.mu_rhs_shape hbody_sub
+                  subst hbc_eq
+                  cases ann_mu with
+                  | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                 exact .app_cong hbody_sub ha_sub
+                  | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                         exact .app_cong hbody_sub ha_sub
+                | asc _ _ =>
+                  cases body_c with
+                  | lam _ _ _ => cases hbody_sub
+                  | type => cases hbody_sub
+                  | mu _ _ _ => cases hbody_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                        exact .app_cong hbody_sub ha_sub
+                         | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                exact .app_cong hbody_sub ha_sub
+              | var v_name =>
+                cases hf_sub with
+                | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                          exact .app_cong (.refl _) ha_sub
+              | app f' a' =>
+                cases hf_sub with
+                | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                          exact .app_cong (.refl _) ha_sub
+                | app_cong h1f h1a =>
+                  simp only at h_abs h_conc; cases h_abs; cases h_conc
+                  exact .app_cong (.app_cong h1f h1a) ha_sub
+              | asc t ty =>
+                cases hf_sub with
+                | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                          exact .app_cong (.refl _) ha_sub
+    | mu_body hbody =>
+      rename_i x ann body_a body_c
+      simp only [absEval] at h_abs; simp only [concEval] at h_conc
+      cases hba : absEval n ((x, .mu x ann body_a) :: Γ) body_a with
+      | none => simp [hba] at h_abs
+      | some body_a' =>
+        simp [hba] at h_abs
+        cases hbc : concEval n ((x, .mu x ann body_c) :: γ) body_c with
+        | none => simp [hbc] at h_conc
+        | some body_c' =>
+          simp [hbc] at h_conc; rw [← h_abs, ← h_conc]
+          exact .mu_body (ih _ _ body_a body_c body_a' body_c' hbody hba hbc
+            (envConsistent_extend_sub h_env x (.mu_body hbody))
+            (by simp only [WellTyped] at h_wt; exact h_wt))
 
 /-- **Soundness theorem.**
 
@@ -165,7 +447,7 @@ theorem soundness_gen
     Uses SubtypeCore internally (which avoids the self_intro case entirely),
     then converts to Subtype' via toSubtype'.
 
-    **STATUS: SORRY'D** (depends on sorry'd soundness_gen). -/
+    **STATUS: 3 sorrys** (depends on sorry'd soundness_gen). -/
 theorem soundness
     (Γ : Env) (γ : Env) (e τ v : Expr) (fuel : Nat)
     (h_abs : absEval fuel Γ e = some τ)
