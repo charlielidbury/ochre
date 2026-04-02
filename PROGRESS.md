@@ -13,12 +13,51 @@ roadmap and strategy.
 
 - **Subtyping.lean: SORRY-FREE** (includes `SubtypeCore.shift_preserve`)
 - **Monotonicity.lean: 1 sorry** (`absEval_mono` — blocked on SubtypeCore weakness)
-- **Soundness.lean: 1 sorry** (`soundness_gen` — fundamental SubtypeCore weakness)
+- **Soundness.lean: 1 sorry** (`soundness_gen` — uses concEvalS + ValSub, 3 sorry'd cases)
 - **ValSub.lean: SORRY-FREE** (bridge proved via compose_r + mono)
 
 **Total: 2 sorrys.** All tests pass including WellTyped witnesses.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-144702)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-150818)
+
+**Phase 4 Step 2 (partial): concEvalS switch — soundness_gen now uses concEvalS.**
+
+Rewrote `soundness_gen` to use `concEvalS` (substitution-based CBV, lambdas
+are values) instead of `concEval` (environment-based, normalizes under binders).
+The theorem is now top-level (empty absEval env, closed terms for concEvalS).
+
+**What changed:**
+- `soundness_gen` signature: `concEvalS fuel e = some v → absEval fuel [] e = some τ → WellTyped fuel [] e = true → ValSub fuel v τ`
+- No more `EnvConsistent` precondition (concEvalS has no env)
+- No more `SubtypeCore e_c e_a` generalization (single expression)
+- Output is `ValSub fuel v τ` (was `SubtypeCore v τ`)
+- Old `soundness` corollary (Subtype' output) removed — ValSub is primary
+
+**What's proved in soundness_gen:**
+- **bvar case:** vacuous (concEvalS returns None on free vars)
+- **type case:** trivial (both return type, ValSub.refl')
+- **asc case:** PROVED via IH on term + compose_r. Key: WellTyped gives
+  `subCheckNF(absEval term, absEval ty) = true`, IH gives `ValSub fuel v σ`,
+  compose_r bumps to `ValSub (fuel+1) v τ`.
+
+**3 sorry'd cases (all inside soundness_gen):**
+- **lam:** concEvalS returns source body, absEval returns normalized body.
+  Need ValSub between them. Requires semantic ValSub or normalization equiv.
+- **mu:** concEvalS unrolls via substitution, absEval normalizes under binder
+  via env. Need env-subst equivalence for absEval.
+- **app:** Different bodies and different arguments on each side. Same-expression
+  IH can't bridge this. Needs semantic ValSub (lam quantifies over all apps).
+
+**Key insight (correcting previous analysis):**
+The concEvalS switch fixes the CONCRETE side (lambda body is source body)
+but does NOT fix the ABSTRACT side. absEval still normalizes under binders,
+so type-level lambda bodies are pre-normalized. The app case still has two
+differences: (1) body vs body' (source vs normalized) and (2) av vs aτ
+(concrete vs abstract argument). A semantic ValSub resolves both.
+
+See SUGGESTIONS.md Phase 4 Step 2 for the detailed analysis and next steps.
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-144702)
 
 **Phase 4 Step 1.5: compose_r disjunct + bridge proof (3 → 2 sorrys).**
 

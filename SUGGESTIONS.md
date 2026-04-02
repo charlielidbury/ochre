@@ -217,38 +217,77 @@ disjunct sidesteps this: instead of decomposing subCheckNF structurally,
 it stores the subCheckNF result directly as evidence. The bridge proof
 is then trivial: apply mono to get ValSub (n-1), then compose_r.
 
-#### Step 2: Resolve the app case of soundness ← DO THIS NEXT
+#### Step 2: concEvalS switch ✓ DONE + semantic ValSub ← DO THIS NEXT
 
-The bridge (asc case) is solved. The remaining blocker for soundness_gen
-is the **app case**: after evaluating f and a in both modes, we need to
-show the body evaluation results are related.
+**concEvalS switch (DONE):** `soundness_gen` now uses `concEvalS` instead
+of `concEval`. The theorem is top-level (empty absEval env, closed terms).
+The asc case is PROVED via IH + compose_r. The bvar/type cases are proved.
 
-**The problem:** concEval normalizes lambda bodies (evaluates under binders).
-So the function value has a NORMALIZED body, not the original source body.
-When applied, we substitute and re-evaluate: `concEval env (bodyNorm.subst 0 aVal)`.
-The soundness IH is about the SOURCE body, not the normalized one.
+**What concEvalS fixes:** The concrete side's lambda body IS the source
+body (lambdas are values). This eliminates the concEval normalization
+mismatch for the concrete side.
 
-**Semantic ValSub (Amin-Rompf style) doesn't directly apply** because
-Amin-Rompf assumes lambdas are values (no normalization). In their system,
-the closure carries the original body, so the semantic lam's quantifier
-follows from the IH on the original body. See PROGRESS.md "Analysis" for
-details.
+**What concEvalS does NOT fix (IMPORTANT — previous version was wrong):**
+The abstract side (absEval) STILL normalizes under binders. When absEval
+evaluates `lam dom body`, it returns `lam dom body'` where `body'` is the
+normalized body. When the type-lambda is applied, absEval uses `body'`
+(normalized), not `body` (source). The IH requires the SAME expression
+for both evaluators, so it can't relate:
+- concEvalS on `body.subst 0 av` (source body, concrete arg)
+- absEval on `body'.subst 0 aτ` (normalized body, abstract arg)
 
-**Approaches (ordered by tractability):**
+**3 sorry'd cases in soundness_gen:**
 
-1. **Substitution-evaluation equivalence:** Prove (or assume) that
-   `concEval fuel env (bodyNorm.subst 0 val) ≈ concEval fuel (env.extend val) bodySource`
-   This connects the actual application back to the IH on the source body.
-   Then the app case uses the IH on the source body with extended envs.
-   Hardest part: might not hold exactly with finite fuel.
+1. **lam case:** concEvalS returns `lam dom body` (source), absEval returns
+   `lam dom body'` (normalized). Need `ValSub fuel (lam dom body) (lam dom body')`.
+   With syntactic ValSub this needs ValSub for source body vs normalized body.
 
-2. **Prove soundness for concEvalS (Phase 5):** concEvalS treats lambdas
-   as values (matching Amin-Rompf). But concEvalS can't evaluate open
-   terms. Soundness would need to be at the top level (closed programs)
-   with a different induction structure.
+2. **mu case:** concEvalS unrolls (substitution-based), absEval normalizes
+   under binder (env-based). Need an env-subst equivalence:
+   `absEval fuel [v] body = absEval fuel [] (body.subst 0 v)` for closed v.
+   This SHOULD hold but is non-trivial to prove.
 
-3. **Closure-based evaluator:** Add closures to concEval. Matches
-   Amin-Rompf exactly but requires significant refactoring.
+3. **app case:** Different bodies AND different arguments on each side.
+   The same-expression IH can't bridge this. Needs semantic ValSub.
+
+**The fix: semantic ValSub (logical relation).** Replace the syntactic
+lam case in ValSub with a semantic quantifier:
+
+```lean
+-- Current (syntactic): compares body structures
+∃ domV bodyV domT bodyT, v = lam domV bodyV ∧ τ = lam domT bodyT
+  ∧ ValSub n domT domV ∧ ValSub n bodyV bodyT
+
+-- Proposed (semantic): quantifies over all applications
+∃ domV bodyV domT bodyT, v = lam domV bodyV ∧ τ = lam domT bodyT
+  ∧ (∀ m, m < n → ∀ av aτ, ValSub m av domT →
+       ∀ rv, concEvalS m (bodyV.subst 0 av) = some rv →
+       ∀ rτ, absEval m [] (bodyT.subst 0 aτ) = some rτ →
+       ValSub m rv rτ)
+```
+
+With semantic ValSub:
+- **App case becomes trivial:** instantiate the quantifier with the
+  concrete/abstract arguments. Done.
+- **Lam case:** need to show the semantic condition. For `e = lam dom body`:
+  concEvalS returns `lam dom body`, absEval returns `lam dom body'`. Need:
+  for all m < fuel, av, aτ with ValSub m av dom, if concEvalS m (body.subst 0 av)
+  = rv and absEval m [] (body'.subst 0 aτ) = rτ, then ValSub m rv rτ.
+
+  The concEvalS side uses `body` (source) — IH applies to `body.subst 0 av`.
+  The absEval side uses `body'` (normalized) — need absEval normalization
+  equivalence: `absEval m [] (body'.subst 0 aτ) = absEval m [] (body.subst 0 aτ)`.
+  (Pre-normalizing then substituting ≈ substituting then normalizing.)
+  This should hold for a confluent normalizer but might fail with finite fuel.
+
+**Research direction (uncertain):** The lam case might also work via a
+**fundamental theorem of logical relations** approach: prove soundness by
+induction on the SOURCE expression with V-related substitutions, rather
+than by induction on fuel with the same expression. This is the standard
+approach in step-indexed logical relations (Appel-McAllester, Amin-Rompf).
+It would avoid the absEval normalization equivalence entirely. However,
+it requires rethinking the proof structure significantly and it's unclear
+if it meshes well with our env-based absEval.
 
 **Also needed (mu-app annotation path):** Re-add annotation consistency
 to WellTyped using subCheckNF.
@@ -256,26 +295,9 @@ to WellTyped using subCheckNF.
 **Important:** The witness tests are the canary. Never weaken WellTyped
 without checking these tests still pass.
 
-### Phase 5: Drop concEval, prove soundness for concEvalS
-
-**Depends on:** Phase 3 (substitution lemma), Phase 4 (soundness structure).
-
-`concEval` (environment-based, normalizes under binders) exists only to be
-structurally parallel to `absEval` for the soundness induction. It is NOT
-the intended runtime — it eagerly evaluates lambda bodies, breaking
-Church-encoded branching with recursion. `concEvalS` (substitution-based
-CBV, lambdas are values) is the real runtime.
-
-With de Bruijn indices, the substitution lemma becomes provable:
-```
-ValSub n a b → ValSub n (e[i:=a]) (e[i:=b])
-```
-
-This enables either:
-- Proving `concEvalS` results refine `concEval` results (then soundness
-  transfers)
-- Proving soundness directly for `concEvalS` (simpler codebase, one
-  evaluator instead of two)
+**Note:** subst_congr (`ValSub n a b → ValSub n (e[i:=a]) (e[i:=b])`)
+is FALSE for any relation with contravariant function domains. See
+ValSub.lean for the verified counterexample. Do not attempt this.
 
 ### Phase 6: Scott encoding and recursive types
 
