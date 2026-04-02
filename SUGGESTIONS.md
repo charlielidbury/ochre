@@ -155,7 +155,40 @@ Only needed if the proof falls back to `concEvalE`. In that case, prove:
 between v and v'. This is a separate concern from the main soundness proof.
 If soundness works directly with `concEval`, this step is unnecessary.
 
-## Critical constraints (unchanged)
+## Before you prove ANYTHING: try to disprove it first
+
+This is the most important rule. Previous agents wasted enormous effort
+proving theorems that turned out to be FALSE (SoundRel across ascription,
+ValSub.subst_congr). A sorry on a false statement is worse than useless —
+it gives false confidence and wastes every future agent's time.
+
+**Before attempting any proof, you MUST:**
+
+1. **Think about whether it could be false.** What would a counterexample
+   look like? Is there a program where the preconditions hold but the
+   conclusion doesn't? Write down your reasoning.
+
+2. **Test concrete cases with `native_decide`.** Pick 2-3 real programs
+   from Tests.lean and verify the theorem holds for them. For example,
+   if proving `VCompat.adequacy`, test:
+   ```lean
+   -- Does VCompat hold for (zero : Nat)?
+   example : VCompat 20 (absEval 20 [] zero') (absEval 20 [] SelfNat) ... 
+   ```
+   If you can't even construct a witness for a concrete case, the theorem
+   is probably wrong.
+
+3. **Try to construct a native_decide counterexample.** Especially for
+   lemmas involving subCheckNF, substitution, or cross-constructor cases.
+   A 5-minute counterexample search saves days of stuck proofs.
+
+4. **Only then attempt the proof.** And if you get stuck, go back to
+   step 1 — maybe you're stuck because it's false.
+
+**The sign of a productive session is discovering a false theorem statement
+and documenting it, NOT adding more sorrys to a stuck proof.**
+
+## Critical constraints
 
 - **Tests are sacred.** DO NOT WEAKEN. `lake build` must pass.
 - **Sorry freely, compile always.**
