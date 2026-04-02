@@ -108,7 +108,7 @@ theorem Subtype'.trans : {a b c : Expr} → Subtype' a b → Subtype' b c → Su
 
 /-- Infer the type of a neutral term from a typing context.
     ctx is a positional list: ctx[k] is the type/domain of bvar k. -/
-private def inferType (ctx : List Expr) : Expr → Option Expr
+def inferType (ctx : List Expr) : Expr → Option Expr
   | .bvar k => ctx.get? k
   | .app f a =>
     match inferType ctx f with
@@ -125,7 +125,7 @@ private def inferType (ctx : List Expr) : Expr → Option Expr
 /-- Normalize a domain expression. Domains in absEval output are deliberately
     left unnormalized. subCheckNF's inferType needs them normalized to
     pattern-match (e.g., recognizing Vec' T as a lambda). -/
-private def normalizeDomain (fuel : Nat) (ctxLen : Nat) (dom : Expr) : Expr :=
+def normalizeDomain (fuel : Nat) (ctxLen : Nat) (dom : Expr) : Expr :=
   -- Build an identity env: bvar k → bvar k (all neutrals)
   let env : Env := (List.range ctxLen).map fun k => .bvar k
   match absEval fuel env dom with
@@ -181,6 +181,55 @@ theorem Expr.beq_refl (e : Expr) : (e == e) = true := by
     Follows from the BEq check `if a == b then true`. -/
 theorem subCheckNF_refl (e : Expr) : subCheckNF 1 [] [] e e = true := by
   simp [subCheckNF, Expr.beq_refl]
+
+/-- When subCheckNF succeeds for lam ⊑ lam (not by reflexivity),
+    the body check also succeeds. Needed for VCompat.adequacy. -/
+theorem subCheckNF_lam_lam_body {fuel : Nat} {ctx : List Expr} {dS bS dT bT : Expr}
+    (h : subCheckNF (fuel + 1) ctx [] (Expr.lam dS bS) (Expr.lam dT bT) = true)
+    (h_neq : Expr.lam dS bS ≠ Expr.lam dT bT) :
+    ∃ fuel' ctx', subCheckNF fuel' ctx' [] bS bT = true := by
+  unfold subCheckNF at h
+  have h_beq : (Expr.lam dS bS == Expr.lam dT bT) = false :=
+    beq_eq_false_iff_ne.mpr h_neq
+  simp only [h_beq, ite_false, List.any_nil, Bool.false_eq_true, ite_true,
+             Bool.and_eq_true] at h
+  exact ⟨fuel, _, h.2⟩
+
+/-- inferType returns none for lambda expressions. -/
+theorem inferType_lam (ctx : List Expr) (dom body : Expr) :
+    inferType ctx (Expr.lam dom body) = none := by
+  rfl
+
+/-- subCheckNF of (lam ...) against a non-equal, non-type, non-lam, non-mu
+    target with empty seen returns false. -/
+theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : List Expr}
+    {dom body b : Expr}
+    (h : subCheckNF fuel ctx [] (Expr.lam dom body) b = true)
+    (h_neq : Expr.lam dom body ≠ b)
+    (h_not_type : b ≠ Expr.type)
+    (h_not_lam : ∀ d b', b ≠ Expr.lam d b')
+    (h_not_mu : ∀ a b', b ≠ Expr.mu a b') : False := by
+  cases fuel with
+  | zero => simp [subCheckNF] at h
+  | succ k =>
+    simp only [subCheckNF, beq_eq_false_iff_ne.mpr h_neq, ite_false, List.any_nil] at h
+    cases b with
+    | type => exact h_not_type rfl
+    | lam d b' => exact h_not_lam d b' rfl
+    | mu a b' => exact h_not_mu a b' rfl
+    | bvar j => simp [inferType] at h
+    | app f a => simp [inferType] at h
+    | asc t ty => simp [inferType] at h
+
+/-- When subCheckNF succeeds for mu ⊑ mu (not by reflexivity),
+    the body check also succeeds. -/
+theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : List Expr} {annS bodyS annT bodyT : Expr}
+    (h : subCheckNF (fuel + 1) ctx [] (Expr.mu annS bodyS) (Expr.mu annT bodyT) = true)
+    (h_neq : Expr.mu annS bodyS ≠ Expr.mu annT bodyT) :
+    ∃ fuel' ctx', subCheckNF fuel' ctx' [] bodyS bodyT = true := by
+  unfold subCheckNF at h
+  simp only [beq_eq_false_iff_ne.mpr h_neq, ite_false, List.any_nil, Bool.and_eq_true] at h
+  exact ⟨fuel, _, h⟩
 
 /-- Decidable subtyping check. Normalizes both sides via absEval, then
     compares structurally. -/

@@ -13,19 +13,42 @@ the mu design.
 
 ## Build status
 
-`lake build` passes. **3 sorrys** in Soundness.lean:
+`lake build` passes. **3 sorry'd declarations** in Soundness.lean:
 
-- `VCompat.adequacy` — VCompat through subCheckNF (line ~228)
-- `soundness_gen` app case — needs application congruence (line ~329)
-- `soundness` — needs concEval→concEvalE bridge (line ~362)
+- `VCompat.adequacy` — partially proven (5 sub-sorrys, see below)
+- `soundness_gen` app case — needs application congruence (line ~349)
+- `soundness` — needs concEval→concEvalE bridge (line ~449)
 
-**PROVEN this session (agent ochre-lean-20260402-214913):**
-- `soundness_gen` asc case — was sorry'd, now proven using adequacy
-- Key architectural change: decoupled VCompat step index from eval fuel
+**PROVEN this session (agent ochre-lean-20260402-221900):**
+- VCompat.adequacy PARTIAL — 9 of 14 case combinations proven
+  - σ = τ: direct ✓
+  - τ = .type: top ✓
+  - n = 0: trivial ✓
+  - v = σ (refl): subCheckNF fallback ✓
+  - σ = .type, τ ∉ {.type, .mu}: contradiction (inferType .type = none) ✓
+  - Structural lam, τ = lam: IH on bodies via subCheckNF_lam_lam_body ✓
+  - Structural lam, τ ∉ {.type, .lam, .mu}: contradiction (inferType lam = none) ✓
+  - Structural mu, τ = mu: IH on bodies via subCheckNF_mu_mu_body ✓
+  - Mu left: IH with original subCheckNF ✓
+
+**SORRY'D sub-cases in adequacy (all involve mu/seen interaction):**
+1. σ = .type, τ = mu — self-intro with seen list
+2. Structural lam, τ = mu — self-intro with seen list
+3. Structural mu, τ ∉ {.type, .mu} — self-elim with seen list
+4. Mu right (σ = mu, unfold right) — all subcases
+5. subCheckNF fallback — needs subCheckNF transitivity
+
+**Helper lemmas added to Subtyping.lean:**
+- `subCheckNF_lam_lam_body`: extracts body subCheckNF from lam⊑lam
+- `subCheckNF_mu_mu_body`: extracts body subCheckNF from mu⊑mu
+- `subCheckNF_lam_impossible`: contradiction for lam vs non-{type,lam,mu}
+- `inferType_lam`: inferType returns none for lambdas
+- Made `inferType` and `normalizeDomain` non-private (needed for proofs)
 
 **Previously proven (still proven):**
 - `VCompat.mono` (downward closure)
-- `soundness_gen` bvar, type, lam, mu cases
+- `soundness_gen` bvar, type, lam, mu, asc cases
+- Decoupled VCompat step index from fuel
 
 **All milestone tests pass** (M1-M4 including abstract appendVec).
 **11 WellTyped witness tests pass.**
@@ -34,85 +57,81 @@ the mu design.
 
 - `Syntax.lean` — Expr type (de Bruijn indices), substitution, shifting
 - `Eval.lean` — absEval, concEval, concEvalE, fuel monotonicity lemmas
-- `Subtyping.lean` — subCheckNF (algorithmic), SubtypeCore/Subtype' (declarative)
+- `Subtyping.lean` — subCheckNF (algorithmic), SubtypeCore/Subtype' (declarative),
+  helper extraction lemmas for adequacy
 - `Soundness.lean` — WellTyped, VCompat definition, soundness theorems
 - `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN)
 
-## Key design decisions this session
+## Key design insights this session
 
-### Decoupled VCompat step index from evaluation fuel
+### Adequacy proof structure
 
-**THE MOST IMPORTANT CHANGE THIS SESSION.**
+VCompat.adequacy is proved by **induction on n** (VCompat step index), with
+two upfront `by_cases` (σ = τ, τ = .type) that handle easy cases uniformly.
 
-Previous: `soundness_gen` concluded `VCompat fuel v τ` where the VCompat
-step index was the same as the evaluation fuel. This caused a step-index
-mismatch in the asc case:
-
-- The IH at fuel k gives VCompat k (step index = fuel).
-- The asc case needs VCompat (k+1) (the outer fuel).
-- Adequacy preserves the step level: VCompat k → VCompat k. Can't bridge.
-
-The structural cases (lam/mu) didn't have this problem because their
-VCompat disjunct at step k+1 uses VCompat k for bodies — the step
-decrease is "consumed" by the structural decomposition. But the asc case
-has no structural decomposition; it changes σ to τ via subCheckNF.
-
-**Fix:** Make `n` (VCompat step index) a separate parameter from `fuel`:
-
-```lean
-theorem soundness_gen
-    (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr) (n : Nat)
-    (...) : VCompat n v τ
+The IH at step m is universal over fuel and ctx:
+```
+ih : ∀ {v σ τ fuel ctx}, VCompat m v σ → subCheckNF fuel ctx [] σ τ → VCompat m v τ
 ```
 
-By induction on fuel with n universally quantified. The IH gives
-VCompat at ANY step level n. For the asc case: pick n = m+1 (same as
-goal), apply adequacy at the same level. For lam/mu cases: pick n = m
-(one less, consumed by structural case).
+For structural cases (lam→lam, mu→mu): extract body subCheckNF from the
+lam/lam or mu/mu case of subCheckNF, then apply IH on bodies. The body
+extraction requires the helper lemmas in Subtyping.lean.
 
-### VCompat: relaxed domain/annotation matching
+For mu-left: the IH applies directly with the ORIGINAL subCheckNF (no
+extraction needed). This is the cleanest case.
 
-Structural lam case no longer requires the same domain; structural mu
-case no longer requires the same annotation. This is needed for adequacy
-to be provable: when subCheckNF (lam dA bodyA) (lam dB bodyB) changes
-the domain from dA to dB, the resulting VCompat must accommodate dB ≠ dA.
+### Why the sorry'd cases are hard
 
-The soundness lam/mu cases still work because both evaluators produce
-the same domain/annotation from the same source expression.
+All remaining sorrys involve subCheckNF's `seen` list for coinductive
+termination. When subCheckNF does self-intro (σ ⊑ mu ann body), it adds
+(σ, mu ann body) to `seen` and recurses. The IH needs empty `seen`.
+
+**The fundamental tension:** subCheckNF uses COINDUCTION (seen list) for
+mu types, while VCompat uses INDUCTION (step index). Bridging them requires
+showing that n steps of VCompat unfolding suffice to cover what the seen
+list achieves coinductively.
+
+**Possible approaches for future agents:**
+1. **Well-founded induction on (n, fuel):** The combined measure n + fuel
+   decreases at each recursive call. For self-intro: decrease n (use
+   mu-right unfolding), for structural cases: decrease fuel.
+   The hseen invariant would quantify over m < n.
+
+2. **Generalized adequacy with seen:** Prove adequacy_gen with an hseen
+   invariant: `∀ p ∈ seen, ∀ m < n, VCompat m v p.1 → VCompat m v p.2`.
+   The self-intro case provides hseen by appealing to adequacy at lower n
+   (via strong induction). The seen check case uses hseen at m < n, which
+   gives VCompat m (not VCompat n). This is weaker but might suffice
+   combined with mu-right unfolding.
+
+3. **subCheckNF transitivity:** Would solve the fallback case. Proving
+   transitivity of the algorithmic checker is non-trivial due to
+   coinductive termination, but it's a well-defined mathematical property.
 
 ## What the next agent should do
 
-### 1. Prove VCompat.adequacy (Soundness.lean:~225)
+### Priority 1: Prove more adequacy sub-cases
 
-`VCompat n v σ → subCheckNF fuel ctx [] σ τ = true → VCompat n v τ`
+The most impactful next step is tackling the mu/seen cases in adequacy.
+Start with approach 2 (generalized adequacy with hseen at m < n). The
+self-intro case at step n+1 would:
+1. Use mu-right unfolding: need VCompat n v (body.subst 0 (mu ann body))
+2. Apply adequacy_gen at step n with the inner subCheckNF (fuel-1)
+3. Provide hseen for (σ, mu ann body) by strong induction on n
 
-This is the CRITICAL next step. The asc case of soundness_gen depends on it.
+Key question: when the inner subCheckNF hits the seen entry, hseen gives
+VCompat m (m < n), not VCompat n. The fuel IH at step n can't directly
+use this. This is the crux of the difficulty.
 
-**Proof strategy:** By induction on n.
-- n = 0: VCompat 0 = True, trivially true.
-- n + 1: Case split on VCompat (n+1) v σ, then on how subCheckNF returns true:
-  - σ = .type: subCheckNF .type τ implies τ = .type, VCompat via top. ✓
-  - v = σ: subCheckNF v τ, use subCheckNF fallback of VCompat. ✓
-  - structural lam: v = lam dV bV, σ = lam dS bS, VCompat n bV bS.
-    subCheckNF (lam dS bS) τ with τ = lam dT bT gives subCheckNF bS bT.
-    IH on bodies: VCompat n bV bS → subCheckNF bS bT → VCompat n bV bT.
-    Then VCompat (n+1) (lam dV bV) (lam dT bT) via structural lam. ✓
-  - structural mu: similar.
-  - mu unfold right/left: harder, interacts with subCheckNF's `seen` list.
-  - subCheckNF fallback: compose two subCheckNFs (needs transitivity).
+### Priority 2: App case (Soundness.lean:~349)
 
-**Hard part:** The mu-unfolding cases interact with subCheckNF's coinductive
-`seen` list. When subCheckNF uses self-intro (τ = mu ann body →
-check σ ⊑ body.subst 0 (mu ann body) with extended seen), the recursive
-adequacy call has non-empty seen. May need a generalized version.
+The app case needs "application congruence." The standard approach is to
+reformulate soundness_gen with **related environments** (EnvCompat), where
+env_v and env_τ are pointwise VCompat. This is a significant refactor but
+follows the textbook LR approach. See SUGGESTIONS.md for details.
 
-**Consider proving for non-mu cases first** and sorry'ing the mu cases.
-
-### 2. App case: "application congruence" (Soundness.lean:~329)
-
-The hardest remaining step. See SUGGESTIONS.md for detailed analysis.
-
-### 3. concEval→concEvalE bridge (Soundness.lean:~362)
+### Priority 3: concEval→concEvalE bridge (Soundness.lean:~449)
 
 For the top-level soundness theorem. Separate concern from the main proof.
 
@@ -125,7 +144,7 @@ with different constructors (e.g., a lam value vs a mu type), so no
 structural relation can bridge them.
 
 The step-index coupling (VCompat fuel = fuel) was also a dead end for the
-asc case. The fix (decoupled step index) is documented above.
+asc case. The fix (decoupled step index) is documented in commit 7afd7fc.
 
 **Do not attempt structural relations for soundness.** Use VCompat as described
 above.
