@@ -251,6 +251,49 @@ theorem subCheckNF_type_left_target {fuel : Nat} {ctx : List Expr} {τ : Expr}
     | app _ _ => simp [inferType] at h
     | asc _ _ => simp [inferType] at h
 
+/-- When subCheckNF succeeds for a neutral term (not lam, not mu) against a
+    non-type, non-mu target (not equal, empty seen), the inferType catch-all
+    must have fired. Extract the inferred type and recursive check. -/
+theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : List Expr} {a b : Expr}
+    (h : subCheckNF (fuel + 1) ctx [] a b = true)
+    (h_neq : a ≠ b) (h_b_not_type : b ≠ Expr.type)
+    (h_b_not_mu : ∀ ann body, b ≠ Expr.mu ann body)
+    (h_a_not_lam : ∀ dom body, a ≠ Expr.lam dom body)
+    (h_a_not_mu : ∀ ann body, a ≠ Expr.mu ann body) :
+    ∃ ty, inferType ctx a = some ty ∧ subCheckNF fuel ctx [] ty b = true := by
+  -- After equality/seen checks and eliminating structural branches,
+  -- only the inferType catch-all remains.
+  -- Strategy: case-split a and b to reach the catch-all, then extract.
+  -- Use `match` on inferType at the end.
+  unfold subCheckNF at h
+  have h_beq : (a == b) = false := beq_eq_false_iff_ne.mpr h_neq
+  simp only [h_beq, ite_false, List.any_nil, Bool.false_eq_true] at h
+  -- h now has the inner match structure. Case-split to reach inferType.
+  -- b ≠ .type eliminates the first match arm
+  cases b with
+  | type => exact absurd rfl h_b_not_type
+  | mu ann body => exact absurd rfl (h_b_not_mu ann body)
+  | _ =>
+    -- Now match (a, b): a is not lam/mu, so falls to catch-all
+    cases a with
+    | lam dom body => exact absurd rfl (h_a_not_lam dom body)
+    | mu ann body => exact absurd rfl (h_a_not_mu ann body)
+    | bvar k =>
+      -- h is now about: match inferType ctx (bvar k) with ...
+      -- inferType ctx (bvar k) = ctx.get? k
+      have h_infer_eq : inferType ctx (.bvar k) = ctx.get? k := rfl
+      match h_get : inferType ctx (.bvar k) with
+      | some ty => simp [h_get] at h; exact ⟨ty, rfl, h⟩
+      | none => simp [h_get] at h
+    | app f' a' =>
+      match h_inf : inferType ctx (.app f' a') with
+      | some ty => simp [h_inf] at h; exact ⟨ty, rfl, h⟩
+      | none => simp [h_inf] at h
+    | asc t ty =>
+      simp only [inferType] at h; exact absurd h (by decide)
+    | type =>
+      simp only [inferType] at h; exact absurd h (by decide)
+
 /-! ### subCheckNF non-properties
 
 **subCheckNF transitivity is FALSE.**

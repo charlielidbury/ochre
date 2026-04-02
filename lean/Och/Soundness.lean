@@ -32,7 +32,7 @@ function compatibility already quantifies over all possible applications.
 - **τ = mu:** unfold the mu, check compatibility with the unfolded body
   (equi-recursive; costs one step)
 - **v = mu:** unfold the mu on the value side (costs one step)
-- **Fallback:** use subCheckNF (algorithmic subtyping handles remaining cases)
+- **Fallback:** for neutral terms (bvar, app), infer a type and check at lower step
 
 The key theorem:
 
@@ -116,8 +116,10 @@ because the bodies diverge (concEval returns source body, absEval normalizes).
 With structural cases, the IH directly applies.
 
 The mu-unfolding cases (equi-recursive, costs one step) are kept for
-adequacy and the app case. The subCheckNF fallback handles remaining
-cases (neutral terms, stuck applications, cross-constructor compatibility). -/
+adequacy and the app case. The inferType fallback handles neutral terms
+(bvar, app) by inferring a type and checking compatibility at a lower
+step index. This replaces the old subCheckNF fallback, which required
+transitivity (proved FALSE — see Tests.lean counterexample). -/
 
 /-- Step-indexed value-type compatibility.
 
@@ -145,7 +147,7 @@ cases (neutral terms, stuck applications, cross-constructor compatibility). -/
     substitution+evaluation. This is harder but more modular.
 
     The mu-unfolding cases (equi-recursive) are kept for adequacy and the
-    app case. The subCheckNF fallback handles everything else. -/
+    app case. The inferType fallback handles neutral terms (bvar, app). -/
 def VCompat : Nat → Expr → Expr → Prop
   | 0, _, _ => True
   | n + 1, v, τ =>
@@ -174,8 +176,11 @@ def VCompat : Nat → Expr → Expr → Prop
     ∨ (∃ ann body,
         v = .mu ann body ∧
         VCompat n (body.subst 0 (.mu ann body)) τ)
-    -- Algorithmic fallback: subCheckNF witnesses compatibility
-    ∨ (∃ fuel ctx, subCheckNF fuel ctx [] v τ = true)
+    -- InferType fallback: for neutral terms (bvar, app), infer a type and
+    -- check compatibility at a lower step. The step decrease (n vs n+1)
+    -- ensures well-foundedness and enables composition in adequacy without
+    -- needing subCheckNF transitivity (which is FALSE).
+    ∨ (∃ ctx ty, inferType ctx v = some ty ∧ VCompat n ty τ)
 
 /-! ## VCompat lemmas -/
 
@@ -193,7 +198,7 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
                   ⟨domV, domT, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨annV, annT, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨ann, body, hτ, h_mu⟩ | ⟨ann, body, hv, h_mu⟩ |
-                  ⟨fuel, ctx, h_sub⟩
+                  ⟨ctx, ty, h_infer, h_compat⟩
     -- Top
     · exact Or.inl h_top
     -- Refl
@@ -206,8 +211,8 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩))))
     -- Mu left: VCompat (k+1) (body.subst ...) τ → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩)))))
-    -- subCheckNF fallback: passes through
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨fuel, ctx, h_sub⟩)))))
+    -- inferType fallback: apply mono to inner VCompat
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩)))))
 
 /-- VCompat respects subCheckNF: if v is compatible with σ, and σ ⊑ τ
     by the algorithmic checker, then v is compatible with τ.
@@ -220,9 +225,12 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     Proof approach: induction on n (VCompat step index).
     - n = 0: trivially True.
     - n + 1: case split on VCompat disjunct:
-      - top/refl/subCheckNF fallback: straightforward
+      - top: trivial
+      - refl (v = σ): case-split on σ shape; use structural VCompat + IH
+        for lam/mu, inferType disjunct for bvar/app
       - structural lam/mu: IH on bodies (subCheckNF decomposes structurally)
       - mu unfolding: use VCompat mu-unfold + IH (costs one step of n)
+      - inferType: compose via IH (no transitivity needed!)
     The mu cases interact with subCheckNF's `seen` list (coinductive
     termination). A generalized version with arbitrary `seen` may be needed. -/
 theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Expr}
@@ -243,7 +251,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                        ⟨annV, annS, bodyV, bodyS, hv_eq, hσ_eq, h_body⟩ |
                        ⟨ann_σ, body_σ, hσ_eq, h_unfold⟩ |
                        ⟨ann_v, body_v, hv_eq, h_unfold⟩ |
-                       ⟨fuel1, ctx1, h_sub⟩
+                       ⟨ctx1, ty1, h_infer, h_compat⟩
         -- Case 1: σ = .type (τ ≠ .type, τ ≠ σ → τ must be mu via self-intro)
         · subst h_top
           cases τ with
@@ -255,10 +263,126 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
             | zero => simp [subCheckNF] at hcheck
             | succ k =>
               simp [subCheckNF, inferType, beq_eq_false_iff_ne.mpr hστ] at hcheck
-        -- Case 2: v = σ → use subCheckNF fallback directly
+        -- Case 2: v = σ (refl) — case-split on v's shape to produce VCompat disjunct
         · subst h_refl
-          unfold VCompat
-          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨fuel, ctx, hcheck⟩)))))
+          -- v = σ, hcheck : subCheckNF fuel ctx [] v τ = true
+          -- Need: VCompat (m+1) v τ
+          -- Strategy: decompose v to find a VCompat disjunct for (v, τ)
+          cases v with
+          | type =>
+            -- v = σ = .type → subCheckNF .type τ, τ ≠ .type → τ = mu
+            cases τ with
+            | type => exact absurd rfl hτ
+            | mu _ _ => sorry  -- same as Case 1: self-intro with .type ⊑ mu
+            | bvar _ | lam _ _ | app _ _ | asc _ _ =>
+              cases fuel with
+              | zero => simp [subCheckNF] at hcheck
+              | succ k =>
+                simp [subCheckNF, inferType, beq_eq_false_iff_ne.mpr hστ] at hcheck
+          | lam dV bV =>
+            -- v = σ = lam dV bV, τ ≠ .type
+            cases τ with
+            | type => exact absurd rfl hτ
+            | lam dT bT =>
+              -- structural lam: need VCompat m bV bT
+              -- VCompat m bV bV by refl, subCheckNF bV bT from extraction, IH
+              cases fuel with
+              | zero => simp [subCheckNF] at hcheck
+              | succ k =>
+                by_cases h_eq : Expr.lam dV bV = Expr.lam dT bT
+                · exact absurd h_eq hστ
+                · obtain ⟨fuel', ctx', h_body_sub⟩ := subCheckNF_lam_lam_body hcheck h_eq
+                  -- VCompat m bV bV: by refl
+                  have h_bV_refl : VCompat m bV bV := by
+                    cases m with
+                    | zero => trivial
+                    | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                  have h_bT := ih h_bV_refl h_body_sub
+                  unfold VCompat
+                  exact Or.inr (Or.inr (Or.inl ⟨dV, dT, bV, bT, rfl, rfl, h_bT⟩))
+            | mu _ _ => sorry  -- self-intro (needs seen-list handling)
+            | bvar _ =>
+              exfalso; exact subCheckNF_lam_impossible hcheck hστ
+                (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+            | app _ _ =>
+              exfalso; exact subCheckNF_lam_impossible hcheck hστ
+                (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+            | asc _ _ =>
+              exfalso; exact subCheckNF_lam_impossible hcheck hστ
+                (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+          | mu annV bodyV =>
+            -- v = σ = mu annV bodyV
+            cases τ with
+            | type => exact absurd rfl hτ
+            | mu annT bodyT =>
+              -- structural mu: need VCompat m bodyV bodyT
+              cases fuel with
+              | zero => simp [subCheckNF] at hcheck
+              | succ k =>
+                by_cases h_eq : Expr.mu annV bodyV = Expr.mu annT bodyT
+                · exact absurd h_eq hστ
+                · obtain ⟨fuel', ctx', h_body_sub⟩ := subCheckNF_mu_mu_body hcheck h_eq
+                  have h_bV_refl : VCompat m bodyV bodyV := by
+                    cases m with
+                    | zero => trivial
+                    | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                  have h_bT := ih h_bV_refl h_body_sub
+                  unfold VCompat
+                  exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_bT⟩)))
+            | _ => sorry  -- self-elim (needs seen-list handling)
+          | bvar k =>
+            -- v = σ = bvar k. subCheckNF uses inferType catch-all.
+            cases fuel with
+            | zero => simp [subCheckNF] at hcheck
+            | succ fk =>
+              cases τ with
+              | type => exact absurd rfl hτ
+              | mu ann_τ body_τ =>
+                sorry  -- needs seen-list handling (bvar ⊑ mu via self-intro)
+              | _ =>
+                -- Non-type, non-mu τ: extract inferType from subCheckNF
+                obtain ⟨ty_inf, h_inf, h_sub⟩ := subCheckNF_neutral_inferType hcheck
+                  hστ hτ (fun _ _ h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+                -- Build inferType disjunct via IH
+                have h_refl : VCompat m ty_inf ty_inf := by
+                  cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                have h_ty_τ := ih h_refl h_sub
+                unfold VCompat
+                exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩)))))
+          | app f a =>
+            -- v = σ = app f a. Similar to bvar: inferType catch-all.
+            cases fuel with
+            | zero => simp [subCheckNF] at hcheck
+            | succ fk =>
+              cases τ with
+              | type => exact absurd rfl hτ
+              | mu ann_τ body_τ =>
+                sorry  -- needs seen-list handling (app ⊑ mu via self-intro)
+              | _ =>
+                obtain ⟨ty_inf, h_inf, h_sub⟩ := subCheckNF_neutral_inferType hcheck
+                  hστ hτ (fun _ _ h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+                have h_refl : VCompat m ty_inf ty_inf := by
+                  cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                have h_ty_τ := ih h_refl h_sub
+                unfold VCompat
+                exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩)))))
+          | asc t ty =>
+            -- v = σ = asc t ty. inferType returns none → subCheckNF fails
+            -- unless τ = .type (handled) or σ = τ (handled) or τ = .mu
+            cases fuel with
+            | zero => simp [subCheckNF] at hcheck
+            | succ fk =>
+              cases τ with
+              | type => exact absurd rfl hτ
+              | mu _ _ => sorry  -- self-intro with seen
+              | _ =>
+                -- asc is not lam/mu, τ is not type/mu → inferType catch-all
+                -- inferType (asc ...) = none → false, contradiction
+                exfalso
+                have := subCheckNF_neutral_inferType hcheck hστ hτ
+                  (fun _ _ h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+                obtain ⟨ty_inf, h_inf, _⟩ := this
+                simp [inferType] at h_inf
         -- Case 3: structural lam (v = lam dV bV, σ = lam dS bS)
         · subst hv_eq; subst hσ_eq
           -- h_body : VCompat m bV bS
@@ -316,8 +440,16 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
           unfold VCompat
           exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
             ⟨ann_v, body_v, rfl, ih h_unfold hcheck⟩)))))
-        -- Case 7: subCheckNF fallback (needs transitivity of subCheckNF)
-        · sorry
+        -- Case 7: inferType fallback — compose via IH (no transitivity needed!)
+        · -- h_infer : inferType ctx1 v = some ty1
+          -- h_compat : VCompat m ty1 σ
+          -- hcheck : subCheckNF fuel ctx [] σ τ = true
+          -- IH on h_compat: VCompat m ty1 τ
+          have h_ty_τ := ih h_compat hcheck
+          -- Build inferType disjunct of VCompat (m+1) v τ
+          unfold VCompat
+          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨ctx1, ty1, h_infer, h_ty_τ⟩)))))
 
 /-! ## Soundness theorem
 
@@ -444,9 +576,22 @@ theorem soundness_gen
             -- Bridge via adequacy: VCompat (m+1) v σ → subCheckNF σ τ → VCompat (m+1) v τ
             exact VCompat.adequacy ih_term h_sub
 
-/-- Soundness for the real runtime (concEval).
-    Follows from soundness_gen via a concEval→concEvalE bridge. -/
+/-- Soundness for the env-based concrete evaluator.
+    Direct corollary of soundness_gen with empty env. -/
 theorem soundness
+    (fuel : Nat) (e : Expr) (v τ : Expr) (n : Nat)
+    (h_wt : WellTyped fuel [] e = true)
+    (h_conc : concEvalE fuel [] e = some v)
+    (h_abs : absEval fuel [] e = some τ)
+    : VCompat n v τ :=
+  soundness_gen fuel [] e v τ n h_wt h_conc h_abs
+
+/-- Soundness for the substitution-based runtime (concEval).
+    Requires a bridge showing concEval and concEvalE agree on closed terms.
+    concEval doesn't normalize under binders (lambdas are values), while
+    concEvalE does. The bridge needs to show that the results are VCompat
+    despite differing in lambda body normalization. -/
+theorem soundness_concEval
     (fuel : Nat) (e : Expr) (v τ : Expr) (n : Nat)
     (h_wt : WellTyped fuel [] e = true)
     (h_conc : concEval fuel e = some v)
