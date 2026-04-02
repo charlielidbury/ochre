@@ -1,56 +1,100 @@
 /-!
-# Och Syntax
+# Och Syntax (de Bruijn indices)
 
 The core calculus has six term forms. Terms and types share a single syntactic
 category — there is no separate type language.
 
-Agents: you may change this file. The syntax below is a starting point derived
-from the spec (docs/och-spec.md §3). If the proofs require a different
-representation (e.g. de Bruijn indices, locally nameless, explicit substitutions),
-change it.
+Uses de Bruijn indices for bound variables. This eliminates capture issues in
+substitution and makes alpha-equivalent terms syntactically identical.
 -/
 
-/-- Variable names. Using `String` for readability; switch to de Bruijn or
-    locally nameless if substitution lemmas become painful. -/
-abbrev Name := String
-
-/-- Core syntax of Och. Six forms, no more.
+/-- Core syntax of Och with de Bruijn indices.
 
     e, τ ::=
-      | x              — variable
-      | λ(x: τ). e    — lambda abstraction
+      | n              — bound variable (de Bruijn index)
+      | λτ. e          — lambda abstraction (domain + body, bvar 0 = param)
       | e₁ e₂         — application
       | (e : τ)        — ascription (precision loss)
       | Type           — universe / top
-      | μ(x : τ). e   — unified self-reference (replaces fix + iota)
+      | μτ. e          — unified self-reference (bvar 0 = self)
 -/
 inductive Expr where
-  | var    : Name → Expr
-  | lam    : Name → (dom : Expr) → (body : Expr) → Expr
+  | bvar   : Nat → Expr
+  | lam    : (dom : Expr) → (body : Expr) → Expr
   | app    : Expr → Expr → Expr
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
-  | mu     : Name → (ann : Expr) → (body : Expr) → Expr
+  | mu     : (ann : Expr) → (body : Expr) → Expr
 deriving Repr, BEq, Inhabited, DecidableEq
 
 namespace Expr
 
-/-- Capture-avoiding substitution. Replace free occurrences of `x` with `s`.
+/-- Shift free variables with index ≥ c up by d. Used when going under
+    binders to adjust indices for the new binding depth. -/
+def shift (d c : Nat) : Expr → Expr
+  | .bvar k => if k < c then .bvar k else .bvar (k + d)
+  | .lam dom body => .lam (shift d c dom) (shift d (c + 1) body)
+  | .app f a => .app (shift d c f) (shift d c a)
+  | .asc term ty => .asc (shift d c term) (shift d c ty)
+  | .type => .type
+  | .mu ann body => .mu (shift d c ann) (shift d (c + 1) body)
 
-    WARNING: This naive implementation does not handle capture. It is a
-    placeholder. Agents should replace it with a correct implementation
-    (e.g. de Bruijn, locally nameless, or explicit alpha-renaming). -/
-def subst (e : Expr) (x : Name) (s : Expr) : Expr :=
+/-- Substitute: replace bvar j with s in e. Indices > j are decremented by 1
+    (the binder at j is being eliminated). s is shifted when going under
+    binders so its free variables stay correct at the new depth. -/
+def subst (e : Expr) (j : Nat) (s : Expr) : Expr :=
   match e with
-  | .var y        => if y == x then s else .var y
-  | .lam y dom body =>
-    if y == x then .lam y (dom.subst x s) body  -- x is shadowed in body
-    else .lam y (dom.subst x s) (body.subst x s)
-  | .app f a      => .app (f.subst x s) (a.subst x s)
-  | .asc term ty  => .asc (term.subst x s) (ty.subst x s)
-  | .type         => .type
-  | .mu y ann body =>
-    if y == x then .mu y (ann.subst x s) body  -- x is shadowed in body
-    else .mu y (ann.subst x s) (body.subst x s)
+  | .bvar k =>
+    if k == j then s
+    else if k > j then .bvar (k - 1)
+    else .bvar k
+  | .lam dom body => .lam (dom.subst j s) (body.subst (j + 1) (s.shift 1 0))
+  | .app f a => .app (f.subst j s) (a.subst j s)
+  | .asc term ty => .asc (term.subst j s) (ty.subst j s)
+  | .type => .type
+  | .mu ann body => .mu (ann.subst j s) (body.subst (j + 1) (s.shift 1 0))
 
 end Expr
+
+/-!
+## Named terms (for test readability)
+
+Named expressions use string variable names (like the old syntax). They
+convert to de Bruijn via `toExpr`, which computes indices from a name context.
+This lets test terms be written readably while using correct de Bruijn
+internally.
+-/
+
+/-- Named expression syntax — mirrors old named Expr for writing readable
+    test terms. Convert to de Bruijn via `toExpr`. -/
+inductive Named where
+  | var : String → Named
+  | lam : String → Named → Named → Named
+  | app : Named → Named → Named
+  | asc : Named → Named → Named
+  | type : Named
+  | mu : String → Named → Named → Named
+
+namespace Named
+
+/-- Find the de Bruijn index for a name in the binding context.
+    Returns 999 for unbound variables (will cause test failures). -/
+private def indexOf (ctx : List String) (name : String) : Nat :=
+  match ctx with
+  | [] => 999
+  | x :: rest => if x == name then 0 else 1 + indexOf rest name
+
+/-- Convert a named term to a de Bruijn term. ctx lists bound variable names
+    from innermost to outermost. -/
+def toExpr (ctx : List String := []) : Named → Expr
+  | .var name => .bvar (indexOf ctx name)
+  | .lam name dom body => .lam (dom.toExpr ctx) (body.toExpr (name :: ctx))
+  | .app f a => .app (f.toExpr ctx) (a.toExpr ctx)
+  | .asc term ty => .asc (term.toExpr ctx) (ty.toExpr ctx)
+  | .type => .type
+  | .mu name ann body => .mu (ann.toExpr ctx) (body.toExpr (name :: ctx))
+
+end Named
+
+/-- Shorthand: convert a named term to de Bruijn with empty context. -/
+def n (e : Named) : Expr := e.toExpr

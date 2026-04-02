@@ -1,38 +1,36 @@
 import Och.Syntax
 
 /-!
-# Och Evaluation
+# Och Evaluation (de Bruijn)
 
 Two evaluation modes that diverge only at ascription:
 - **Concrete (runtime):** `(e : τ)` takes the lhs `e`.
 - **Abstract (compile-time):** `(e : τ)` takes the rhs `τ`.
 
-Compiling an Och program is just running it in abstract mode. Whether this
-dual-interpretation is sound is a central research question.
+## Environment
 
-## mu semantics
+The environment is a positional list: `env[k]` is the value for bvar k.
+When entering a binder, we extend with a new entry and shift existing
+entries up by 1 (so their free variable indices stay correct at the new depth).
 
-`mu x ann body` is the unified self-reference primitive (replaces fix + iota):
-- **Concrete eval:** unroll — evaluate body with x bound to the mu itself.
-  This is the fix behavior: the recursive binding refers to the whole mu.
-- **Abstract eval:** normalize body under the binder (x as neutral) and
-  normalize ann; return `mu x ann' body'`. This is the iota behavior:
-  the self type is preserved, not unrolled.
+## Beta-reduction
+
+Uses substitution (not env extension) for beta-reduction. When a lambda
+is applied, we substitute the argument for bvar 0 in the body, then
+re-evaluate in the current env. This avoids the closure problem with
+de Bruijn env-based evaluation.
 -/
 
 open Expr
 
-/-- Typing environment: maps variable names to their (abstract) types. -/
-abbrev Env := List (Name × Expr)
+/-- Evaluation environment: positional list of values.
+    env[k] is the value for bvar k. -/
+abbrev Env := List Expr
 
-namespace Env
-
-def lookup (Γ : Env) (x : Name) : Option Expr :=
-  match Γ with
-  | []          => none
-  | (y, τ) :: rest => if y == x then some τ else lookup rest x
-
-end Env
+/-- Extend env for a new binder. Adds the new binding at position 0 and shifts
+    existing entries so their free variables adjust for the new depth. -/
+def Env.extend (env : Env) (v : Expr) : Env :=
+  v :: env.map (Expr.shift 1 0)
 
 /-- Concrete evaluation with environment. Structurally parallel to absEval.
 
@@ -46,47 +44,42 @@ end Env
     body directly to apply functions.
 
     Uses fuel to avoid partiality. Returns `none` on timeout. -/
-def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
+def concEval (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match e with
-    | .var x        => γ.lookup x
-    | .lam x dom body =>
-      match concEval fuel ((x, .var x) :: γ) body with
-      | some body' => some (.lam x dom body')
+    | .bvar k       => env.get? k
+    | .lam dom body =>
+      match concEval fuel (env.extend (.bvar 0)) body with
+      | some body' => some (.lam dom body')
       | none => none
     | .type         => some .type
-    | .asc term _   => concEval fuel γ term  -- runtime: take the lhs
-    | .mu x ann body =>
-      -- Evaluate body with x bound to the mu itself, then wrap the result
-      -- in mu (structurally parallel to absEval). This enables the soundness
-      -- proof to use mu_body instead of self_intro for the mu case.
-      --
-      -- Previously this unrolled (returned body directly, like fix).
-      -- Wrapping preserves the mu structure, which the app-mu case
-      -- handles by matching on the body directly.
-      match concEval fuel ((x, .mu x ann body) :: γ) body with
-      | some body' => some (.mu x ann body')
+    | .asc term _   => concEval fuel env term  -- runtime: take the lhs
+    | .mu ann body =>
+      -- Evaluate body with bvar 0 bound to the mu itself.
+      -- The mu value is NOT shifted because its bvars are already at
+      -- the correct depth (mu body scope = mu binder scope).
+      match concEval fuel (env.extend (.mu ann body)) body with
+      | some body' => some (.mu ann body')
       | none => none
     | .app f a      =>
-      match concEval fuel γ f, concEval fuel γ a with
-      | some (.lam x _dom body), some aVal =>
-        concEval fuel ((x, aVal) :: γ) body
-      | some (.mu _x _ann body), some aVal =>
-        -- mu in function position: match on body directly (no re-unrolling).
-        -- Since concEval wraps mu results, the body is already evaluated.
-        -- Structurally parallel to absEval's body-unfold path.
+      match concEval fuel env f, concEval fuel env a with
+      | some (.lam _dom body), some aVal =>
+        -- Beta-reduce via substitution: replace bvar 0 in body with aVal
+        concEval fuel env (body.subst 0 aVal)
+      | some (.mu _ann body), some aVal =>
+        -- mu in function position: match on body directly (already normalized).
         match body with
-        | .lam y _dom lamBody => concEval fuel ((y, aVal) :: γ) lamBody
+        | .lam _dom lamBody =>
+          concEval fuel env (lamBody.subst 0 aVal)
         | .type => some .type
         | _ => some (.app body aVal)
-      | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
+      | some .type, some _ => some .type
       | some f', some a' => some (.app f' a')
       | _, _ => none
 
 /-- Abstract evaluation (typing) with normalization under binders.
-    `Γ ⊢ e ⇝ τ` is computed by `absEval fuel Γ e = some τ`.
 
     Lambda bodies are normalized under the binder (with the bound variable
     as neutral). This ensures that beta-redexes created by substitution are
@@ -95,108 +88,70 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
     Domains are NOT normalized, to preserve monotonicity: normalizing
     domains would make them vary with the environment, breaking the
     contravariant domain requirement of function subtyping. -/
-def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
+def absEval (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match e with
-    | .var x        => Γ.lookup x
-    | .lam x dom body =>
-      -- Normalize body under the binder: x is treated as neutral
-      match absEval fuel ((x, .var x) :: Γ) body with
-      | some body' => some (.lam x dom body')
+    | .bvar k       => env.get? k
+    | .lam dom body =>
+      -- Normalize body under the binder: bvar 0 is treated as neutral
+      match absEval fuel (env.extend (.bvar 0)) body with
+      | some body' => some (.lam dom body')
       | none => none
     | .type         => some .type
-    | .asc _term ty => absEval fuel Γ ty  -- compile-time: take the rhs
-    | .mu x ann body =>
-      -- Evaluate body with x bound to the mu value itself (like concEval).
-      -- This makes the soundness proof work: both evaluators extend the env
-      -- with the same binding, so EnvConsistent is satisfied by refl.
-      -- The result is wrapped in mu to preserve the self-type structure.
-      --
-      -- Previously x was bound to (var x) (neutral), but this made soundness
-      -- unprovable: EnvConsistent needed SubtypeTrans (mu ...) (var x),
-      -- which has no constructor. Binding to the mu itself fixes this.
-      match absEval fuel ((x, .mu x ann body) :: Γ) body with
-      | some body' => some (.mu x ann body')
+    | .asc _term ty => absEval fuel env ty  -- compile-time: take the rhs
+    | .mu ann body =>
+      -- Evaluate body with bvar 0 bound to the mu value itself.
+      -- See concEval comment for why the mu value is not shifted.
+      match absEval fuel (env.extend (.mu ann body)) body with
+      | some body' => some (.mu ann body')
       | none => none
     | .app f a      =>
-      match absEval fuel Γ f, absEval fuel Γ a with
-      | some (.lam x _dom body), some aVal =>
-        -- Environment-based beta: extend env instead of substituting.
-        absEval fuel ((x, aVal) :: Γ) body
-      | some (.mu _x ann body), some aVal =>
-        -- mu in function position. Strategy depends on ann AND body shape:
-        --
-        -- 1. If both ann and body are SYNTACTICALLY lambdas: use the
-        --    annotation to determine the return type. This cuts recursion
-        --    for recursive functions (prevents divergence with abstract args).
-        --    Checking syntactically ensures both envs agree on which path,
-        --    eliminating cross-cases in the monotonicity proof.
-        --    Soundness uses annotation consistency (WellTyped condition).
-        --
-        -- 2. Otherwise: match on the already-evaluated body directly.
-        --    This makes the body-unfold path structurally parallel to
-        --    concEval's mu-app, enabling the soundness proof. The annotation
-        --    is only trusted when the body confirms it (both are lambdas).
-        match ann, body with
-        | .lam y _dom retBody, .lam _ _ _ =>
-          absEval fuel ((y, aVal) :: Γ) retBody
-        | _, .lam y _dom retBody =>
-          absEval fuel ((y, aVal) :: Γ) retBody
+      match absEval fuel env f, absEval fuel env a with
+      | some (.lam _dom body), some aVal =>
+        -- Beta-reduce via substitution
+        absEval fuel env (body.subst 0 aVal)
+      | some (.mu _ann body), some aVal =>
+        -- mu in function position. Strategy depends on ann AND body shape.
+        -- Uses the annotation (via subst) for return type when both are lambdas.
+        match _ann, body with
+        | .lam _dom retBody, .lam _ _ =>
+          absEval fuel env (retBody.subst 0 aVal)
+        | _, .lam _dom retBody =>
+          absEval fuel env (retBody.subst 0 aVal)
         | _, .type => some .type
         | _, _ => some (.app body aVal)
-      | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
-      | some f', some a' => some (.app f' a')  -- stuck
+      | some .type, some _ => some .type
+      | some f', some a' => some (.app f' a')
       | _, _ => none
 
 /-- Substitution-based concrete evaluator. Standard call-by-value lambda calculus.
 
     Unlike `concEval` (which uses an environment and normalizes under binders for
     proof convenience), this evaluator uses substitution and treats lambdas as
-    values — their bodies are NOT evaluated until applied. This is the standard
-    CBV semantics from §4.1 of the spec.
-
-    **Why this exists alongside concEval:**
-    `concEval` normalizes under binders so it's structurally parallel to `absEval`,
-    making the soundness proof a straightforward induction. But normalization under
-    binders breaks Church-encoded branching with recursion: both branches of a
-    conditional are eagerly evaluated, causing recursive branches to diverge even
-    when not taken. `concEvalS` doesn't have this problem.
-
-    **Thunking convention:** Because `concEvalS` is call-by-value (arguments are
-    evaluated before being passed), Church-encoded branching still evaluates both
-    arguments. To enable recursion with Church booleans, wrap branches in thunks:
-    instead of `(isZero n) Nat base rec`, use
-    `(isZero n) (Unit→Nat) (λ_.base) (λ_.rec) unit`.
-    The thunk lambdas are values (not evaluated), so the unused branch is never
-    entered. The selected thunk is then applied to unit to force it.
-
-    **Soundness:** Not yet proven with respect to `absEval`. This requires either:
-    (a) a substitution lemma for SubtypeTrans (hard because lam_body needs same domain), or
-    (b) a logical-relations/step-indexed approach.
-    See DECISION-LOG.md for the full analysis. -/
+    values — their bodies are NOT evaluated until applied. -/
 def concEvalS (fuel : Nat) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
     match e with
-    | .var _ => none  -- free variable = stuck (expects closed terms)
-    | .lam _ _ _ => some e  -- lambda is a VALUE — body not evaluated
+    | .bvar _ => none  -- free variable = stuck (expects closed terms)
+    | .lam _ _ => some e  -- lambda is a VALUE — body not evaluated
     | .type => some .type
     | .asc term _ => concEvalS fuel term  -- runtime: erase ascription
-    | .mu x ann body =>
+    | .mu ann body =>
       -- Unroll: substitute self-reference into body, then evaluate
-      concEvalS fuel (body.subst x (.mu x ann body))
+      concEvalS fuel (body.subst 0 (.mu ann body))
     | .app f a =>
       match concEvalS fuel f, concEvalS fuel a with
-      | some (.lam x _dom body), some aVal =>
-        -- Beta-reduce via substitution (not env extension)
-        concEvalS fuel (body.subst x aVal)
-      | some (.mu x ann body), some aVal =>
+      | some (.lam _dom body), some aVal =>
+        -- Beta-reduce via substitution
+        concEvalS fuel (body.subst 0 aVal)
+      | some (.mu ann body), some aVal =>
         -- mu in function position: unroll and retry
-        match concEvalS fuel (.mu x ann body) with
-        | some (.lam y _dom lamBody) => concEvalS fuel (lamBody.subst y aVal)
+        match concEvalS fuel (.mu ann body) with
+        | some (.lam _dom lamBody) => concEvalS fuel (lamBody.subst 0 aVal)
         | some .type => some .type
         | some fVal => some (.app fVal aVal)
         | none => none

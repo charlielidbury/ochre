@@ -9,660 +9,91 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **3 sorrys** (all in soundness_gen) and **11 WellTyped witness tests**.
+`lake build` passes with **6 sorrys** and all tests (including WellTyped witnesses).
 
 - **Subtyping.lean: SORRY-FREE**
-- **Monotonicity.lean: SORRY-FREE**
-- **Soundness.lean: 3 sorrys (soundness_gen) — 2 distinct issues, see below**
+- **Monotonicity.lean: 3 sorrys** (env extend lemmas + absEval_mono, sorry'd for de Bruijn migration)
+- **Soundness.lean: 3 sorrys** (env extend lemmas + soundness_gen, sorry'd for de Bruijn migration)
 
-**Total: 3 sorrys.** All tests pass including WellTyped witnesses.
+**Total: 6 sorrys.** All tests pass including WellTyped witnesses.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-112327)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-123003)
 
-**Reinstated soundness_gen proof for all non-asc, non-annotation-path cases.**
+**Phase 3: De Bruijn indices — COMPLETE.**
 
-Previously soundness_gen was a single blanket `sorry`. Now ~300 lines of
-proof are reinstated, adapted from the old Prop-valued proof (commit f7c40a1)
-to the new Bool-valued WellTyped. The proof covers: var, type, lam, mu,
-app-lam, app-mu-body-unfold, app-stuck, lam_body, app_cong, mu_body.
+Migrated the entire codebase from named variables to de Bruijn indices.
+This is the biggest mechanical change in the project's history.
 
-**3 remaining sorrys (2 distinct issues):**
+**What changed:**
 
-1. **Asc case (Soundness.lean:188):** WellTyped gives `subCheckNF σ τ' = true`,
-   IH gives `SubtypeCore v σ`. Need `SubtypeCore v τ'`. This is FALSE for
-   SubtypeCore — it lacks self_intro and contra-domain lam_sub. See analysis below.
+1. **Syntax.lean:** `Expr` now uses `bvar : Nat` (de Bruijn index) instead of
+   `var : Name`. `lam` and `mu` no longer carry binder names. Added `shift`
+   (increment free vars) and `subst` (substitute + shift down). Added `Named`
+   type + `toExpr` converter so test terms can be written readably.
 
-2. **Mu-app annotation path (×2, Soundness.lean:247, 365):** When both ann
-   and body are lambdas, absEval uses the annotation's return body while
-   concEval uses the body's lambda body. These are different expressions.
-   Needs annotation consistency re-added to WellTyped (with subCheckNF).
+2. **Eval.lean:** `Env = List Expr` (positional, env[k] = value for bvar k).
+   `Env.extend` shifts existing entries when entering a binder. Beta-reduction
+   uses **substitution** (not env extension) — subst argument into body, then
+   re-evaluate. This is a semantic change from the old env-based beta.
 
-**CRITICAL ANALYSIS: SubtypeCore is fundamentally too weak for the asc case.**
+3. **Subtyping.lean:** `subCheckNF` uses `Env.extend` for ctx management (with
+   shifting). Domains are normalized on BOTH sides before comparison (needed
+   because subst-produced domains contain unreduced applications). `inferType`
+   uses positional lookup (ctx.get? k). No variable renaming needed anywhere.
 
-The proposed "checker transitivity" lemma
-`subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'` is FALSE because:
-- SubtypeCore has no `self_intro` (can't relate a lam to a mu type)
-- SubtypeCore has no contravariant domain subtyping (lam_body needs same domain)
-- subCheckNF handles BOTH (equi-recursive self-intro + contra-domain checking)
+4. **Monotonicity.lean:** Sorry'd (was sorry-free). Needs reproving with new
+   env extension patterns.
 
-Subtype' is ALSO insufficient:
-- Has self_intro WITHOUT substitution (subCheckNF substitutes x := mu in body)
-- Has no lam_sub (contra-domain). Adding it breaks Subtype'.trans because
-  composing two lam_sub's needs domain composition from BOTH sides of the
-  induction, but trans only inducts on one argument.
-- Adding equi-recursive unfolding (fold/unfold) breaks structural induction
-  entirely — the sub-proof body.subst x (mu x ann body) is LARGER than mu.
+5. **Soundness.lean:** Sorry'd (was 3 sorrys). Needs reproving with new env
+   and subst-based beta. WellTyped updated to use Env.extend and subst.
 
-**Viable paths forward:**
-(a) Change soundness output to `subCheckNF fuel Γ [] v τ = true`
-    (semantic soundness via the checker). Requires checker transitivity.
-(b) Coinductive subtyping relation with lam_sub + equi-recursive rules.
-(c) Step-indexed logical relations (standard PL approach, major change).
+6. **Tests.lean:** All definitions use Named syntax + `n` converter. All tests
+   pass. One behavioral change: `concEval toZero one'` now terminates (= zero')
+   because subst-based beta reuses normalized mu bodies instead of re-evaluating.
 
-The mu-app annotation sorrys are solvable independently: re-add annotation
-consistency to WellTyped using subCheckNF (no binder name matching required),
-then the proof chains through the consistency condition. This still needs the
-subCheckNF-to-SubtypeCore bridge for the final step, so it shares the same
-fundamental blocker as the asc case.
+7. **CounterexampleTest.lean:** Deleted (named-variable-specific concepts like
+   freeVars/evalFreeVars; preserved in git history).
 
-### Previous changes (2026-04-02, agent ochre-lean-20260402-104022)
+**Key design decisions:**
 
-**Phase 5 Step 1: NON-VACUOUS WellTyped + witness tests.**
+- **Hybrid evaluation:** Env-based for normalization under binders (lam, mu body),
+  substitution-based for beta-reduction (app-lam, app-mu). This avoids the closure
+  problem (env-based de Bruijn beta would need closures to track definition-site envs).
 
-WellTyped was previously Prop-valued with `SubtypeCore` in the asc case.
-SubtypeCore has no self_intro, so `SubtypeCore unit' SelfNat` is impossible.
-This made WellTyped unsatisfiable for any program with `(e : mu_type)`
-ascriptions, and the soundness theorem was vacuously true (False → anything).
+- **Env.extend shifts all entries:** When entering a binder, existing env/ctx entries
+  are shifted up by 1 so their bvar indices stay correct at the new depth. New entries
+  (neutrals for lam, mu values for mu) are NOT shifted because they're already at the
+  correct depth. BUT domain types added to subCheckNF's ctx ARE shifted (they're from
+  the outer scope).
 
-**Changes:**
+- **Domain normalization on both sides:** With subst-based evaluation, domains can
+  contain unreduced applications (e.g., `zero' Type Unit' (λacc. ...)` instead of
+  `Unit'`). Both sides are normalized before comparison.
 
-1. **WellTyped is now Bool-valued** (was Prop). Uses `subCheckNF` instead
-   of `SubtypeCore` in the ascription case. subCheckNF handles self-intro
-   via equi-recursive unfolding, so `subCheckNF unit' SelfNat = false`
-   correctly (unit is not a Nat!) while `subCheckNF zero' SelfNat = true`.
+- **concEval behavioral change:** `concEval` for recursive mu + Church branching now
+  terminates (was divergent). The subst-based beta reuses the already-normalized mu
+  body, so the recursive call's result is embedded in the term rather than re-computed.
+  The test was updated to reflect this.
 
-2. **subCheckNF is now public** (was private). Needed for WellTyped to
-   reference it.
+**What's next (for the next agent):**
 
-3. **Simplified mu-app WellTyped case.** Removed annotation consistency
-   check (subCheckNF between body and annotation results). Only checks
-   WellTyped of the sub-term that absEval will actually evaluate. The old
-   annotation consistency required matching binder names (y_ann == y_body)
-   which failed for all real programs (annotations use "_", bodies use "n").
+Phase 3 is done. The next phases from SUGGESTIONS.md:
 
-4. **soundness_gen is sorry'd.** The proof used SubtypeCore extracted
-   from WellTyped's asc case and `.trans` for the asc chain. With
-   Bool-valued WellTyped, the proof needs a "checker soundness" lemma:
-   `subCheckNF = true → SubtypeCore v σ → SubtypeCore v τ'`. The
-   previous sorry-free proof is in git (commit f7c40a1).
+1. **Reprove monotonicity (absEval_mono).** The proof structure is the same
+   (induction on SubtypeCore), but the details of env extension (Env.extend
+   with shifting) and beta (substitution) need updating. Start with the env
+   extend lemmas (envSubCore_extend, envSubCore_extend_sub), then the main
+   theorem. Key files: Monotonicity.lean.
 
-5. **11 WellTyped witness tests added** (§12 in Tests.lean):
-   - W1: `(unit : Unit)` — basic ascription
-   - W2: `(zero : SelfNat)` — THE KEY TEST (was impossible with SubtypeCore)
-   - W3: `(zero_mu : MuNat)` — Variant B
-   - W4: `addSelfNat (zero : SelfNat) (zero : SelfNat)` — abstract add
-   - W5: `addRec (zero : SelfNat) (zero : SelfNat)` — recursive abstract add
-   - W6: `appendVec Nat vec1 vec2` — appendVec with concrete witnesses
-   - W7: concrete programs (add, succ, isZero) — always work
-   - W8: addRec itself (mu with annotation)
-   - W9: appendVec itself
+2. **Reprove soundness_gen.** Same structure but harder. The pre-existing
+   blockers remain (SubtypeCore too weak for asc case). Start with env
+   extend lemmas, then the non-asc cases. Key files: Soundness.lean.
 
-6. **Tests.lean now imports Soundness.lean** (for WellTyped).
+3. **Phase 4:** Address the SubtypeCore weakness (change output relation).
 
-**Key insight: unit' is NOT a valid witness for SelfNat.** The SUGGESTIONS.md
-examples used `(.asc unit' SelfNat)` but unit' (Church unit) is not in SelfNat
-(Church Nat). WellTyped correctly rejects this — the ascription is unsound.
-Use `(.asc zero' SelfNat)` instead (zero IS a Nat).
+### Previous changes
 
-**Trade-off:** 1 sorry (was 0), but WellTyped is now SATISFIABLE for real
-programs. A sorry'd proof with non-vacuous WellTyped is worth more than a
-sorry-free proof with vacuous WellTyped. The witness tests are the canary.
-
-### Previous changes (2026-04-02, agent ochre-lean-20260402-100831)
-
-**VARIANT B PASSING — equi-recursive self-intro + coinductive seen set.**
-
-Two changes to `subCheckNF` in Subtyping.lean:
-
-1. **Equi-recursive self-intro:** Changed `a ⊑ mu x ann body` from checking
-   `a ⊑ body[x := a]` (Cedille-style, substitutes value) to
-   `a ⊑ body[x := mu x ann body]` (equi-recursive, substitutes the type).
-   
-   **Why this matters:** In Variant B (MuNat), the self-variable N is used
-   as a TYPE in the successor's domain: `s : N → X → X`. Cedille-style
-   self-intro substitutes the value (`zero_mu`) there, creating
-   `s : zero_mu → X → X`. The contravariant domain check then requires
-   `MuNat ⊑ zero_mu` which fails (the type is not a subtype of a value).
-   Equi-recursive self-intro substitutes the mu type itself, keeping
-   `s : MuNat → X → X`, which makes the domain check trivial.
-
-   **Why this doesn't break anything:** (a) For Variant A (SelfNat), the
-   self-variable is unused in the body — both substitutions are no-ops.
-   (b) Dependent elimination goes through self-ELIM (which already
-   substitutes the mu), not self-intro. (c) All existing tests still pass.
-
-2. **Coinductive seen set:** Added a `seen : List (Expr × Expr)` parameter.
-   When unfolding mu (self-intro or self-elim), the pair `(a, b)` is added
-   to `seen`. If encountered again, succeed immediately (equi-recursive
-   coinduction). This prevents divergence on circular subtyping obligations
-   that arise from mutual unfolding.
-
-**Tests flipped:** §10 `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`
-now pass (were expected-fail).
-
-### Previous changes (2026-04-02, agent ochre-lean-20260402-094545)
-
-**ELIMINATED ALL SORRYS — soundness_gen is FULLY PROVED (0 sorrys, was 4).**
-
-The key insight: make absEval's mu-app structurally parallel to concEval by
-using a joint match `match ann, body with`:
-1. **Both lambdas** (`lam, lam`): annotation path (uses ann's return type
-   for soundness via annotation consistency in WellTyped). Already proved.
-2. **Body is lambda, ann isn't** (`_, lam`): use body directly. Parallel to
-   concEval. Proved via IH + WellTyped propagation.
-3. **Body is type** (`_, type`): both return type. Trivial (top).
-4. **Body is stuck** (`_, _`): both return stuck application. app_cong.
-
-Previously, absEval's mu-app matched on `ann` first: if ann was a lambda, it
-ALWAYS used the annotation (even when body was not a lambda). This created an
-unprovable case where absEval evaluates the annotation's return type while
-concEval operates on the (non-lambda) body — fundamentally different expressions.
-
-The fix: only use the annotation when BOTH ann and body are lambdas. When
-the body is not a lambda, fall through to the body-direct path regardless
-of the annotation. This makes absEval parallel to concEval for all non-annotation
-cases.
-
-Also simplified absEval's body-unfold path (when ann is not a lambda) to match
-on the already-evaluated body directly, rather than re-evaluating it. The
-body is already a normal form from the mu case, so re-evaluation was redundant.
-
-**Changes:**
-1. **Eval.lean (absEval mu-app):** Joint match `match ann, body with` instead
-   of `match ann with`. Annotation only used when both are lambdas. Body-unfold
-   matches directly (no re-evaluation).
-2. **Eval.lean (concEval mu-app):** Stuck case returns `app body aVal` (was
-   `app (mu x ann body) aVal`). More parallel to absEval.
-3. **Soundness.lean (soundness_gen):** All 4 body-unfold sorrys ELIMINATED.
-   Proof restructured to split on body_mu first, then ann_mu. Each case is
-   either annotation path (both lam), body-direct (body lam), type (top),
-   or stuck (app_cong).
-4. **Soundness.lean (WellTyped):** Added body-unfold conditions: when ann=lam
-   but body≠lam, require WellTyped for ann's retBody; when ann≠lam but
-   body=lam, require WellTyped for body's result.
-5. **Monotonicity.lean (absEval_mono):** Restructured mu-app proof to case-split
-   on body_mu first (matching the new joint match structure), then ann_mu.
-
-### Previous changes (2026-04-02, agent ochre-lean-20260401-235239)
-
-**PROVED mu-app annotation path via annotation consistency in WellTyped (2→4 sorrys, but annotation path PROVED).**
-
-The key blocker was that absEval's mu-app uses the annotation (return type)
-while concEval's mu-app uses the body (actual computation). These are
-fundamentally different expressions. Previous agents documented this as
-needing step-indexed logical relations.
-
-**The solution:** Add annotation consistency to WellTyped's app case. When
-absEval returns a mu with a lambda annotation AND lambda body:
-1. **Matching binder names:** the annotation and body must use the same
-   parameter name (y_ann = y_body)
-2. **Body implements annotation:** absEval of the body's lambda body must
-   SubtypeCore the absEval of the annotation's return body
-3. **WellTyped propagation:** both must be well-typed under the argument
-
-This lets the soundness proof chain: concEval(lamBody) ⊑ absEval(bodyRes) ⊑
-absEval(retBody) = τ. The first step uses the IH (with SubtypeCore from
-lam_rhs_shape), the second uses annotation consistency.
-
-**Why this works for all practical cases:** All fix-like mus (recursive
-functions like addRec, mapArray, appendArrays) have lambda annotations
-and lambda bodies. The body-unfold path (remaining sorrys) is only for:
-- Iota-like mus applied as functions (ann = type) — unusual
-- Mus whose evaluated body is not a lambda — pathological
-
-**Caveat:** The matching binder name requirement means WellTyped is only
-satisfiable for programs where the mu annotation uses the same parameter
-names as the body. In the test suite, annotations use "_" while bodies use
-meaningful names like "n", "m". The soundness theorem still holds for ALL
-programs, but programs with mismatched binder names have a vacuously true
-WellTyped (the condition falls through to True in the non-matching case).
-
-To make WellTyped non-vacuous for the test programs, either:
-(a) Change test annotations to use matching binder names (cosmetic change)
-(b) Enhance the evaluator to rename binders at mu-app (requires capture-free subst)
-(c) Switch to de Bruijn indices (eliminates binder name issues entirely)
-
-**Changes:**
-1. **WellTyped app case:** added mu-app condition requiring matching binders,
-   annotation consistency (SubtypeCore of absEval results), and WellTyped
-   propagation for both bodyRes and retBody
-2. **soundness_gen refl mu-app:** annotation path fully proved; body-unfold
-   path (ann≠lam or body≠lam) sorry'd
-3. **soundness_gen app_cong mu-app:** same as refl case
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-231614)
-
-**ELIMINATED self_intro sorry by switching soundness_gen to SubtypeCore (3→2 sorrys).**
-
-Key insight: the self_intro case in soundness_gen was genuinely hard
-(fuel/env mismatch — see analysis below). But it only exists because
-Subtype' has self_intro as a constructor. By switching soundness_gen
-to use SubtypeCore (Subtype' without self_intro), the case disappears
-entirely.
-
-**Why this works:**
-1. SubtypeCore doesn't have self_intro, so the case doesn't exist
-2. SubtypeCore is transitive (proved SubtypeCore.trans)
-3. The IH only produces SubtypeCore values (refl, lam_body, mu_body,
-   app_cong, top) — never self_intro. So SubtypeCore is the natural
-   output type for soundness_gen
-4. EnvConsistent and WellTyped's asc case now use SubtypeCore
-5. lam_rhs_shape on SubtypeCore gives SubtypeCore (no self_intro
-   can leak back in through recursive calls)
-6. The main `soundness` theorem converts via toSubtype'
-
-**Trade-off:** WellTyped's asc case uses SubtypeCore instead of Subtype'.
-This means programs with ascriptions like `(e : mu_type)` where the
-subtyping proof requires self_intro are not covered by the soundness
-theorem. In practice this is fine — self_intro in ascriptions is
-needed only for direct self-type introduction (not mu_body). The
-theorem can be strengthened later with step-indexed logical relations.
-
-**Changes:**
-1. **SubtypeCore.trans:** proved in Subtyping.lean by structural
-   induction on the second proof (same technique as Subtype'.trans
-   but simpler — no self_intro case to handle)
-2. **EnvConsistent:** uses SubtypeCore instead of Subtype'
-3. **WellTyped asc case:** uses SubtypeCore instead of Subtype'
-4. **envConsistent_extend:** uses SubtypeCore.refl
-5. **envConsistent_extend_sub:** takes SubtypeCore
-6. **soundness_gen:** takes SubtypeCore h_sub, returns SubtypeCore
-7. **soundness:** wraps with .toSubtype'
-
-**Why the self_intro sorry was genuinely hard (analysis for future agents):**
-
-The self_intro case had e_a = mu x ann body, h_intro : Subtype' e_c body.
-- absEval (n+1) Γ (mu x ann body) uses fuel n and env ((x,mu)::Γ)
-- concEval (n+1) γ e_c uses fuel n+1 and env γ
-- IH needs same fuel and EnvConsistent envs
-
-Two fundamental mismatches:
-- **Fuel:** absEval uses n, concEval uses n+1. concEval fuel
-  weakening (n+1→n) is FALSE because concEval normalizes under binders
-  (more fuel = more normalization = different result).
-- **Env:** absEval uses ((x,mu)::Γ), concEval uses γ. Can't extend
-  γ with (x,mu) because (a) e_c might reference x (self_intro allows
-  Subtype' (var x) body), so the binding would change the result, and
-  (b) concEval isn't env-monotone for shadowed bindings.
-
-Decoupling fuels (separate fuel_a for absEval and fuel_c for concEval)
-solves the fuel issue but NOT the env issue. Step-indexed logical
-relations are the standard solution (semantic V(n,τ) instead of
-syntactic Subtype').
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-224247)
-
-**concEval wraps mu results; mu/mu_body soundness cases proved via mu_body.**
-
-**Remaining sorrys (2) — self_intro ELIMINATED by switching to SubtypeCore:**
-- mu-app (×2): same fundamental issue — absEval uses annotation (or
-  body-unfold), concEval matches body directly. The annotation and
-  computed body are unrelated expressions that SubtypeCore can't bridge.
-  See detailed analysis below.
-
-**Analysis: why the mu-app sorry is hard (for future agents)**
-
-The mu-app case in absEval:
-```
-| some (.mu x ann body), some aVal =>
-    match ann with
-    | .lam y _dom retBody => absEval fuel ((y, aVal) :: Γ) retBody  -- annotation
-    | _ => ... body-unfold ...                                       -- body
-```
-
-The annotation path uses `retBody` from the annotation. The concrete
-path uses the mu body lambda. These are fundamentally different expressions:
-- `retBody` = return type from the declared annotation
-- `lamBody` = actual function body from the mu
-
-For soundness, we need `concEval(lamBody, arg) ⊑ absEval(retBody, arg)`.
-This is "annotation consistency" — the body implements the declared type.
-
-Why Subtype' can't express this: Subtype' is syntactic. It can't relate
-`(var "n")` to `Nat` even when n is bound to a Nat. Annotation
-consistency is a SEMANTIC property (requires evaluation context).
-
-**Possible solutions:**
-(a) **Strengthen WellTyped** to include annotation consistency as a
-    premise. But stating it requires evaluating terms, creating circular
-    dependencies.
-(b) **Step-indexed logical relations** — the standard approach. Replaces
-    syntactic Subtype' with a semantic V(fuel, τ) value set. Major
-    proof infrastructure change.
-(c) **Make absEval's mu-app use body instead of annotation.** This would
-    make both paths structurally parallel. BUT: for recursive functions
-    with abstract args, body-unfolding diverges (each unfolding triggers
-    another recursive call). The annotation cuts the recursion. So this
-    approach breaks abstract evaluation of recursive functions (the whole
-    point of mu).
-(d) **Make concEval's app-mu also use annotation.** This gives wrong
-    results: `add 2 3` would evaluate the annotation's `Nat` instead
-    of computing `5`. The concrete evaluator MUST compute, not type.
-
-Options (a) and (b) are the viable paths. Both are significant work.
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-221721)
-
-**PROVED Subtype'.trans; rewrote soundness to use Subtype' directly (5→3 sorrys).**
-
-Key insight: Subtype' is transitive! Proved by structural induction on the
-second proof (`induction q generalizing a`). Each case either returns directly
-or recurses with a strictly smaller q:
-- refl/top: base cases
-- lam_body/app_cong/mu_body: structural (q component smaller)
-- self_intro: q component strictly smaller, p can be anything
-
-This means SubtypeTrans is UNNECESSARY for soundness. Rewrote soundness_gen:
-- `h_sub : Subtype'` instead of `SubtypeTrans`
-- `EnvConsistent` uses `Subtype'` instead of `SubtypeTrans`
-- Cases: refl, top, lam_body, app_cong, mu_body, self_intro (no trans!)
-- Shape lemmas on Subtype' are trivial (no trans case to propagate)
-- Composition via `Subtype'.trans` where `.trans` was used before
-
-**Also removed false evalFreeVars theorems (see below).**
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-221721, earlier)
-
-**Removed false evalFreeVars theorems from Monotonicity.lean (2→1 sorry decls).**
-
-`absEval_evalFreeVars_general` is **FALSE** for the mu case. Counterexample:
-- Γ = [("y", var "z")], e = mu "x" type (app (var "y") (var "x")), P = (· = "z")
-- The mu env binding `(x, mu x ann body)` has evalFreeVars that include input
-  variable NAMES (like "y"), not just P-satisfying names. The output
-  `mu "x" _ (app (var "z") (mu "x" _ (app (var "y") (var "x"))))` has "y"
-  in its evalFreeVars, but P "y" = false.
-- Root cause: when absEval changed mu's env binding from `(x, var x)` to
-  `(x, mu x ann body)` (for soundness proof compatibility), the mu value's
-  evalFreeVars became input-level variable names, breaking the coverage property.
-
-Both `absEval_evalFreeVars_general` and `absEval_evalFreeVars_neutral` were
-unused. Removed along with helpers: `isNeutral`, `EnvEvalClosed'`,
-`envEvalClosed'_extend_neutral`, `env_extend_neutral_or`, `env_extend_val`.
-Counterexample added to CounterexampleTest.lean.
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-215445)
-
-**Eliminated all sorrys from absEval_mono; removed 3 dead declarations (5→2 sorry decls).**
-
-The root problem: absEval_mono was generalized over `Subtype' e₂ e₁`, which
-includes `self_intro`. The monotonicity theorem only passes `.refl e`, and the
-IH never generates self_intro (only refl/lam_body/mu_body/app_cong/top). But
-Lean requires all Subtype' cases to be handled, creating 5 unreachable sorrys.
-
-The fix: introduced `SubtypeCore` — Subtype' without the self_intro constructor.
-absEval_mono now takes `SubtypeCore e₂ e₁` and returns `SubtypeCore τ₂ τ₁`.
-Since SubtypeCore has no self_intro, those cases don't exist. All structural
-cases go through as before. The `monotonicity` theorem converts via `.toSubtype'`.
-
-Also introduced `EnvSubCore` (using SubtypeCore) since absEval_mono's env
-relation must match: the IH produces SubtypeCore values that get stored in
-the env via extension lemmas.
-
-**Removed dead code:**
-- `absEval_mono_trans` (sorry'd, not used)
-- `monotonicity_trans` (depended on absEval_mono_trans, not used)
-- `absEval_succeeds_envsub` (FALSE — counterexample in CounterexampleTest.lean)
-- `EnvSubTrans` + helpers (moved to CounterexampleTest.lean where needed)
-
-**Also analyzed mu-app soundness case (NOT implemented — see below).**
-
-The mu-app sorrys in soundness_gen are genuinely hard. The issue:
-- Abstract path: uses the mu annotation (`lam y dom retBody`) to determine
-  return type — evaluates `retBody` directly
-- Concrete path: unrolls the mu body, gets a lambda, applies it
-- These are fundamentally different computation paths
-
-To bridge them, we'd need "annotation consistency": the mu body's abstract
-evaluation subtypes the annotation. But Subtype' is syntactic, so
-`Subtype' body_a ann` doesn't hold in general (e.g., `Subtype' (var x) Nat`
-fails even when x is bound to a Nat). This requires either:
-(a) A richer Subtype' that accounts for evaluation context
-(b) A step-indexed logical relation approach
-(c) Restructuring the evaluator so concrete/abstract paths are more similar
-
-Additionally, the concrete lambda and annotation may use different binder names,
-creating env consistency issues. This is a deep problem that likely needs a
-design-level change rather than a proof-level fix.
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-213619)
-
-**Moved self_intro to Subtype', fixing SubtypeTrans congruence composability.**
-
-The root problem: `SubtypeTrans.self_intro` took a `SubtypeTrans` argument,
-creating circularity in congruence lemma proofs. In `SubtypeTrans.lam_body`,
-the self_intro case needed `lam_body` applied to `self_intro` — the exact
-thing being proved.
-
-The fix: add `self_intro` to `Subtype'` and change `SubtypeTrans.self_intro`
-to take `Subtype'` instead of `SubtypeTrans`. Now the congruence proofs work:
-```
-.trans (.step (.lam_body h')) (.step (.lam_body (.self_intro (.refl _))))
-```
-The first step uses the Subtype' sub-proof. The second uses Subtype'.self_intro
-and Subtype'.refl — no recursive SubtypeTrans needed.
-
-**Changes:**
-1. **Subtype': added self_intro constructor.** `Subtype' a body → Subtype' a (mu x ann body)`
-2. **SubtypeTrans.self_intro: now takes Subtype' (was SubtypeTrans).**
-3. **All 5 SubtypeTrans congruence sorrys: ELIMINATED.** lam_body, eq_of_rigid_target,
-   mu_body, app_cong_left, app_cong_right all fully proved.
-4. **mu_rhs_shape: returns disjunction** `(∃ body', ...) ∨ Subtype' e body`
-   to account for self_intro. mu_inv also updated.
-5. **absEval_mono: 5 new self_intro sorrys.** These are unreachable from the
-   monotonicity theorem (passes .refl e). They exist because the generalized
-   theorem takes arbitrary Subtype' and Lean requires all cases.
-6. **soundness_gen: adapted.** Uses `.trans ih (.step (.self_intro (.refl _)))`
-   instead of `.self_intro ih`. One new sorry for Subtype'.self_intro in step case.
-
-**Net result:** 9→5 declarations with sorry. Subtyping.lean fully clean.
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-210632)
-
-**Two key changes that unblock mu soundness proofs:**
-
-1. **absEval mu case: x ↦ mu value (not var x).** Changed the env binding in
-   absEval's mu case from `(x, var x)` to `(x, mu x ann body)`. This matches
-   concEval's semantics. Makes EnvConsistent trivially satisfiable (refl).
-
-2. **self_intro constructor in SubtypeTrans.** Bridges IH result (v ⊑ body')
-   to soundness goal (v ⊑ mu x ann body'). Trade-off: broke congruence
-   composability (now fixed — see above).
-
-**Remaining sorrys in soundness_gen (5):**
-1. trans: needs intermediate expression to evaluate in both modes
-2-3. self_intro (×2): unreachable from main soundness theorem (cosmetic)
-4-5. mu-app (×2): different computation paths (concEval unrolls, absEval uses annotation)
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-204457)
-
-**soundness_gen partial proof: all non-mu cases proved (sorry 1→1, but coverage 0%→~70%)**
-
-The soundness theorem `soundness_gen` (Soundness.lean) now has real proofs for
-most cases. Previously it was entirely sorry'd; now only mu-related cases and
-the SubtypeTrans transitivity case remain.
-
-**Proved cases in soundness_gen:**
-- var: direct from EnvConsistent
-- lam: IH on body under neutral binder, SubtypeTrans.lam_body
-- type: trivial (both return type)
-- asc: IH on term + WellTyped gives intermediate Subtype' σ τ, chain via trans
-- app-lam: SubtypeTrans.lam_target_shape inverts f_v, IH on bodies
-- app-stuck (var/app/asc in fn position): SubtypeTrans.app_cong
-- app-type: top absorbs
-- lam_body in h_sub: same as lam case with different bodies
-- app_cong in h_sub: same as app case with different exprs
-- top in h_sub: trivial
-
-**Sorry'd cases in soundness_gen (5 individual sorrys):**
-1. **trans** (line 120): SubtypeTrans e_c b, SubtypeTrans b e_a. Need b to evaluate
-   in both modes. Same class of problem as the false `absEval_succeeds_envsub`.
-2. **mu standalone** (line 167): absEval binds x to var x (neutral), concEval binds
-   x to mu x ann body. No SubtypeTrans (mu ...) (var x) exists.
-3. **mu-app in refl(app)** (line 202): concEval unrolls mu then applies, absEval
-   uses annotation or body-unfold. Fundamentally different paths.
-4. **mu-app in app_cong** (line 267): same as #3.
-5. **mu_body** (line 282): same env consistency issue as #2.
-
-**Key finding: all remaining soundness sorrys are mu-related.** The soundness
-proof works perfectly for the non-self-referential fragment. The mu case is
-blocked because EnvConsistent requires SubtypeTrans between concrete and abstract
-env bindings, but the mu case has (mu ...) vs (var x) which can't be related.
-
-**Three possible fixes (increasing complexity):**
-(a) Add self-intro/self-elim to Subtype'/SubtypeTrans (complicates inversion lemmas)
-(b) Use a step-indexed logical relation instead of SubtypeTrans for env consistency
-(c) Change absEval's mu case semantics (e.g., don't wrap result in mu)
-
-Option (c) is simplest but changes the type system. Option (b) is the standard
-approach in the literature but is a major proof technique change. Option (a) is
-most direct but might break the trans-free Subtype' invariant that enables
-lambda inversion.
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-200028)
-
-**Three proof-friendly changes to absEval; monotonicity partially proved**
-
-1. **absEval mu case: annotation passthrough.** Annotations are NOT normalized
-   in the mu case. `mu x ann body` evaluates to `mu x ann body'` (same ann).
-   This makes `mu_body` apply directly in the monotonicity proof.
-
-2. **absEval mu-app: env extension instead of substitution.** The body-unfold
-   path uses `absEval fuel ((x, mu x ann body) :: Γ) body` instead of
-   `absEval fuel Γ (body.subst x (mu x ann body))`. Semantically equivalent
-   but makes the IH apply directly via envSub_extend_sub.
-
-3. **absEval mu-app: SYNTACTIC annotation check.** `match ann with | .lam =>`
-   instead of `match absEval fuel Γ ann with | some (.lam ...) =>`. Both envs
-   always agree on which path to take (no cross-cases). All test annotations
-   are either syntactic lambdas (fix-like) or `.type` (iota-like).
-
-4. **Build fix (Monotonicity.lean):** Added `| mu _ _ _ => cases hf_sub` to
-   catch-all branches to avoid dependent elimination failures.
-
-5. **absEval_mono FULLY PROVED.** The `split at h₁` tactic splits the
-   syntactic annotation match in h₁, creating a hypothesis that
-   `simp only [*] at h₂` uses to reduce h₂'s match. This avoids the
-   dependent elimination issues that blocked `cases ann_mu`.
-
-### Previous changes (2026-04-01, agent ochre-lean-20260401-192428)
-
-Domain normalization in subCheckNF flipped M4a (Phase 1 COMPLETE).
-See git log for details.
-
-### ALL M1-M4 milestones now PASSING
-
-| Test | Description | Status |
-|------|-------------|--------|
-| M1a | `addRec ⊑ SelfNat→SelfNat→Nat` | PASS |
-| M1b | `addRec 0 3 = 3` (concrete) | PASS |
-| M1c | `addRec 2 1` is a Nat (concrete) | PASS |
-| M1d | `addRec (abstract) (abstract) ⊑ Nat` | PASS |
-| M2a | `mapArray` base case (concrete) | PASS |
-| M3a | `appendArrays` base case (concrete) | PASS |
-| **M4a** | **`appendVec ⊑ T→Vec T→Vec T→Vec T`** | **PASS ← NEW** |
-| M4b | `appendVec (abstract) (abstract) ⊑ Vec Nat` | PASS |
-| M4c | `appendVec` concrete ⊑ Vec Nat | PASS |
-
-### No remaining expected-fail tests
-
-All tests pass, including Variant B (§10). Equi-recursive self-intro
-resolved `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`.
-
-### What was completed in the mu migration
-
-- [x] Replace fix+iota with mu in Syntax.lean
-- [x] Update Eval.lean (concEval, absEval, concEvalS)
-- [x] Update Subtyping.lean (mu_body, self-intro, self-elim, inferType)
-- [x] Update Tests.lean (all fix→mu, all iota→mu)
-- [x] Sorry Soundness.lean and Monotonicity.lean
-- [x] Gut Closure.lean, delete SoundnessS.lean
-- [x] Add abstract add tests (§9: Church-style, §10: Variant B)
-- [x] Add milestone ladder (§11: M1-M4 toward appendVec)
-- [x] **Annotation-based mu-elim in absEval (M1d, M4b, M4c passing)**
-- [x] **Domain normalization in subCheckNF (M4a passing)**
-
-### Key findings
-
-1. **The annotation field on mu is load-bearing.** absEval uses it
-   to determine return types for recursive mus, preventing divergence.
-   For fix-like mus (annotation = function type), the annotation is used.
-   For iota-like mus (annotation = Type), body unfolding is used instead.
-
-2. **The subtype checker compensates for the evaluator.** absEval does NOT
-   do type-directed evaluation. When it hits `app (var "n") arg` where n is
-   abstract, it returns a stuck application. The subtype checker's
-   `inferType` function does mu-elim to recover type information.
-
-3. **Domains need normalization in the subtype checker.** absEval does not
-   normalize lambda domains (to preserve monotonicity). But subCheckNF's
-   inferType needs domains in normal form to pattern-match on them. The
-   `normalizeDomain` helper resolves this by normalizing domains before
-   adding them to the inferType context.
-
-4. **Variant A (SelfNat = mu n Type Nat') works because the self variable
-   is unused.** The mu is a trivial wrapper around Church Nat. mu-elim
-   strips it off. This is enough for non-recursive abstract add.
-
-5. **Variant B (MuNat, truly self-referential) still fails subtyping.**
-   Self-intro substitution produces structurally different but semantically
-   equal terms. This likely needs equi-recursive subtyping.
-
-### What needs to happen next
-
-**Phase 5, Step 2 (continued): Eliminate the 3 remaining sorrys in soundness_gen.**
-
-The proof is now ~300 lines with 3 targeted sorrys (was 1 blanket sorry).
-All non-asc, non-annotation-path cases are fully proved. The remaining
-sorrys are at Soundness.lean:188 (asc), :247 (mu-app ann, refl), :365
-(mu-app ann, app_cong).
-
-**The fundamental blocker: SubtypeCore is too weak as the output relation.**
-
-The "checker transitivity" lemma
-`subCheckNF σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'` is FALSE.
-SubtypeCore lacks self_intro and contra-domain lam_sub. Subtype' is also
-too weak (self_intro without substitution, no lam_sub, adding these breaks
-structural induction for trans). See Soundness.lean header for full analysis.
-
-**Recommended next step: change the soundness output relation.**
-
-The most promising approach is (a) from the analysis: change soundness_gen
-to output `subCheckNF fuel Γ [] v τ = true` instead of `SubtypeCore v τ`.
-This requires proving "checker transitivity" for subCheckNF:
-```
-subCheckNF fuel Γ [] v σ = true →
-subCheckNF fuel Γ [] σ τ' = true →
-subCheckNF fuel Γ [] v τ' = true
-```
-This is hard but natural for subCheckNF (which already handles equi-recursive
-unfolding and contra-domain). The non-asc cases would need reproving to
-output subCheckNF results (using subCheckNF's reflexivity: a == b → true).
-
-Alternative: coinductive subtyping relation (Lean 4 supports coinductives).
-
-**Other priorities:**
-- Phase 4: Scott encoding (can proceed independently of proof work)
-- Monotonicity and Subtyping are sorry-free and unaffected
-
-### Key files
-
-| File | Status | Sorry count |
-|------|--------|-------------|
-| Syntax.lean | Done | **0** |
-| Eval.lean | Done (joint match (ann,body) in mu-app; concEval wraps mu) | **0** |
-| **Subtyping.lean** | **SORRY-FREE** (subCheckNF now public) | **0** |
-| Tests.lean | All milestones + 11 WellTyped witnesses (§12) | **0** |
-| **Soundness.lean** | **3 sorrys** (soundness_gen: asc + mu-app annotation ×2) | **3** |
-| **Monotonicity.lean** | **SORRY-FREE** | **0** |
-| Closure.lean | Gutted | **0** |
-| CounterexampleTest.lean | Done | **0** |
+See git log for full history. Key milestones:
+- Phase 1 (milestone tests): All M1-M4 pass including abstract appendVec
+- Phase 2 (non-vacuous WellTyped): Bool-valued with subCheckNF, 11 witnesses
+- Phase 3 (de Bruijn): THIS SESSION

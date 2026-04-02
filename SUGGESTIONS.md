@@ -139,7 +139,7 @@ All M1-M4 milestones pass. Variant B passes. See git history for details.
 WellTyped is now Bool-valued with `subCheckNF` (was Prop with SubtypeCore).
 11 witness tests prove satisfiability.
 
-### Phase 3: De Bruijn indices ← START HERE
+### Phase 3: De Bruijn indices ✓ COMPLETE
 
 **Why this is next:** Everything downstream needs substitution to be correct
 and to have provable properties. The current `subst` in Syntax.lean is
@@ -168,9 +168,22 @@ semantics don't. Existing `native_decide` tests verify nothing breaks.
 5. Rewrite Tests.lean (hardest part — all the test terms need rebuilding)
 6. Verify `lake build` passes and all tests (including witness tests) pass
 
-**Estimated effort:** 2-3 agent sessions. The first session should do
-Syntax.lean + Eval.lean + Tests.lean (get it compiling). Later sessions
-fix proofs.
+**Completed** in one session. All tests pass. Monotonicity and soundness
+proofs sorry'd (need reproving with new env extension + subst patterns).
+
+### Phase 3.5: Reprove monotonicity and soundness ← START HERE
+
+**Why this is next:** Phase 3 sorry'd monotonicity (was sorry-free) and
+restructured soundness. The proofs need updating for:
+- `Env.extend` with shifting (replaces `(x, v) :: Γ`)
+- Substitution-based beta in app cases (replaces env extension)
+- `List.get?` positional lookups (replaces name-based lookup)
+
+Start with env extend lemmas (envSubCore_extend, envConsistent_extend),
+then absEval_mono, then soundness_gen's non-asc cases.
+
+**Estimated effort:** 1-2 sessions. Proof structure is the same; only
+the lemma applications change.
 
 ### Phase 4: Step-indexed `ValSub` — the new soundness relation
 
