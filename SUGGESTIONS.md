@@ -217,83 +217,62 @@ disjunct sidesteps this: instead of decomposing subCheckNF structurally,
 it stores the subCheckNF result directly as evidence. The bridge proof
 is then trivial: apply mono to get ValSub (n-1), then compose_r.
 
-#### Step 2: concEvalS switch ✓ DONE + semantic ValSub ← DO THIS NEXT
+#### Step 2: SoundRel + concEvalE ✓ DONE (app-lam-beta PROVED)
 
-**concEvalS switch (DONE):** `soundness_gen` now uses `concEvalS` instead
-of `concEval`. The theorem is top-level (empty absEval env, closed terms).
-The asc case is PROVED via IH + compose_r. The bvar/type cases are proved.
+**SoundRel** is now defined in Soundness.lean: like SubtypeCore but with
+flexible domains on lam and flexible annotations on mu. This enables
+`SoundRel.subst_congr` — the KEY lemma SubtypeCore can't prove.
 
-**What concEvalS fixes:** The concrete side's lambda body IS the source
-body (lambdas are values). This eliminates the concEval normalization
-mismatch for the concrete side.
+**concEvalE** (env-based concrete evaluator) is now in Eval.lean. It is
+structurally parallel to absEval (only differs at ascription: takes lhs
+instead of rhs). Used as a proof auxiliary by `soundness_gen_sr`.
 
-**What concEvalS does NOT fix (IMPORTANT — previous version was wrong):**
-The abstract side (absEval) STILL normalizes under binders. When absEval
-evaluates `lam dom body`, it returns `lam dom body'` where `body'` is the
-normalized body. When the type-lambda is applied, absEval uses `body'`
-(normalized), not `body` (source). The IH requires the SAME expression
-for both evaluators, so it can't relate:
-- concEvalS on `body.subst 0 av` (source body, concrete arg)
-- absEval on `body'.subst 0 aτ` (normalized body, abstract arg)
+**soundness_gen_sr** (Soundness.lean): SoundRel-generalized soundness
+theorem using concEvalE. Proved cases: bvar, type, lam, mu, top,
+app-lam-beta, app-stuck, lam/mu/app_cong.
 
-**3 sorry'd cases in soundness_gen:**
+**Why concEvalE was needed:** The substitution-based `concEval` (lambdas
+are values) creates a body/body' mismatch: concEval returns source body,
+absEval returns normalized body. An env-subst equivalence lemma
+(`SoundRel body (absEval body)`) is FALSE for mu-containing bodies — when
+absEval enters a mu body, it puts `mu ann body` in the env, so `bvar 0`
+resolves to the mu term (structurally different from bvar). The env-based
+`concEvalE` normalizes under binders like absEval, so the IH relates
+their outputs directly via the `EnvSoundRel` invariant.
 
-1. **lam case:** concEvalS returns `lam dom body` (source), absEval returns
-   `lam dom body'` (normalized). Need `ValSub fuel (lam dom body) (lam dom body')`.
-   With syntactic ValSub this needs ValSub for source body vs normalized body.
+#### Step 3: Resolve remaining sorrys in soundness_gen_sr ← DO THIS NEXT
 
-2. **mu case:** concEvalS unrolls (substitution-based), absEval normalizes
-   under binder (env-based). Need an env-subst equivalence:
-   `absEval fuel [v] body = absEval fuel [] (body.subst 0 v)` for closed v.
-   This SHOULD hold but is non-trivial to prove.
+**3 sorrys remaining in soundness_gen_sr:**
 
-3. **app case:** Different bodies AND different arguments on each side.
-   The same-expression IH can't bridge this. Needs semantic ValSub.
+1. **asc/refl case (Soundness.lean:470):** concEvalE takes the term (lhs),
+   absEval takes the type (rhs) — DIFFERENT subexpressions. The IH gives
+   SoundRel for the term, but we need to connect it to the type via
+   `subCheckNF`. Solution: change the output of soundness_gen_sr from
+   `SoundRel` to an `OutputRel` that wraps `SoundRel ∨ compose_r` (like
+   ValSub). The exp-b version has this as `OutputRel`. Steps:
+   - Define `OutputRel n v τ := SoundRel v τ ∨ ∃ mid, OutputRel (n-1) v mid ∧ subCheckNF mid τ`
+   - Prove bridge: `OutputRel n v σ → subCheckNF σ τ → OutputRel n v τ`
+   - Change soundness_gen_sr output from SoundRel to OutputRel
+   - Non-asc cases: wrap SoundRel results in `OutputRel.embed`
+   - Asc case: IH gives OutputRel for term, WellTyped gives subCheckNF,
+     bridge composes them.
 
-**The fix: semantic ValSub (logical relation).** Replace the syntactic
-lam case in ValSub with a semantic quantifier:
+2. **asc/SoundRel.asc case (Soundness.lean:509):** Same issue, but the
+   input has `SoundRel.asc h_term h_ty` relating different term/ty pairs.
+   Same solution: OutputRel handles the subCheckNF composition.
 
-```lean
--- Current (syntactic): compares body structures
-∃ domV bodyV domT bodyT, v = lam domV bodyV ∧ τ = lam domT bodyT
-  ∧ ValSub n domT domV ∧ ValSub n bodyV bodyT
+3. **app-mu-annotation case (Soundness.lean:334):** When f evaluates to
+   `mu ann body` where `ann = lam dom retBody`, absEval uses the
+   annotation's return type instead of the body. The IH gives SoundRel
+   for the body but not the annotation. Options:
+   - Add annotation consistency to WellTyped (check ann relates to body)
+   - Or: track SoundRel between ann and body in the mu definition
+   - This is a localized problem, not blocking the main proof structure.
 
--- Proposed (semantic): quantifies over all applications
-∃ domV bodyV domT bodyT, v = lam domV bodyV ∧ τ = lam domT bodyT
-  ∧ (∀ m, m < n → ∀ av aτ, ValSub m av domT →
-       ∀ rv, concEvalS m (bodyV.subst 0 av) = some rv →
-       ∀ rτ, absEval m [] (bodyT.subst 0 aτ) = some rτ →
-       ValSub m rv rτ)
-```
-
-With semantic ValSub:
-- **App case becomes trivial:** instantiate the quantifier with the
-  concrete/abstract arguments. Done.
-- **Lam case:** need to show the semantic condition. For `e = lam dom body`:
-  concEvalS returns `lam dom body`, absEval returns `lam dom body'`. Need:
-  for all m < fuel, av, aτ with ValSub m av dom, if concEvalS m (body.subst 0 av)
-  = rv and absEval m [] (body'.subst 0 aτ) = rτ, then ValSub m rv rτ.
-
-  The concEvalS side uses `body` (source) — IH applies to `body.subst 0 av`.
-  The absEval side uses `body'` (normalized) — need absEval normalization
-  equivalence: `absEval m [] (body'.subst 0 aτ) = absEval m [] (body.subst 0 aτ)`.
-  (Pre-normalizing then substituting ≈ substituting then normalizing.)
-  This should hold for a confluent normalizer but might fail with finite fuel.
-
-**Research direction (uncertain):** The lam case might also work via a
-**fundamental theorem of logical relations** approach: prove soundness by
-induction on the SOURCE expression with V-related substitutions, rather
-than by induction on fuel with the same expression. This is the standard
-approach in step-indexed logical relations (Appel-McAllester, Amin-Rompf).
-It would avoid the absEval normalization equivalence entirely. However,
-it requires rethinking the proof structure significantly and it's unclear
-if it meshes well with our env-based absEval.
-
-**Also needed (mu-app annotation path):** Re-add annotation consistency
-to WellTyped using subCheckNF.
-
-**Important:** The witness tests are the canary. Never weaken WellTyped
-without checking these tests still pass.
+**The legacy `soundness_gen` (ValSub-based, uses substitution-based
+concEval) is retained for compatibility.** Its 3 sorrys (lam, mu, app)
+could be eliminated by proving a bridge between concEval and concEvalE,
+but this is lower priority — the SoundRel-based proof is the main path.
 
 **Note:** subst_congr (`ValSub n a b → ValSub n (e[i:=a]) (e[i:=b])`)
 is FALSE for any relation with contravariant function domains. See

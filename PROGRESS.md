@@ -9,19 +9,94 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **5 sorrys** and all tests (including WellTyped witnesses).
+`lake build` passes with **7 sorrys** and all tests (including WellTyped witnesses).
 
-- **Syntax.lean:** Removed `BEq` from deriving (now comes from `DecidableEq`,
-  giving `LawfulBEq` for free). No functionality change.
-- **Eval.lean: 1 sorry** (`absEval_fuel_mono` mu-app sub-case — tedious case analysis)
-  `concEval_fuel_mono` is FULLY PROVED.
+- **Syntax.lean:** SORRY-FREE.
+- **Eval.lean: SORRY-FREE.** Added `concEvalE` (env-based concrete evaluator,
+  proof auxiliary). `absEval_fuel_mono` proved (was sorry'd). `concEval_fuel_mono`
+  proved.
 - **Subtyping.lean: SORRY-FREE** (`Expr.beq_refl` + `subCheckNF_refl` proved)
 - **Monotonicity.lean: 1 sorry** (`absEval_mono` — blocked on SubtypeCore weakness)
-- **Soundness.lean: 1 sorry** (`soundness_gen` — 3 sorry'd cases: lam, mu, app)
+- **Soundness.lean: 6 sorrys** across two theorems:
+  - `soundness_gen_sr` (NEW, SoundRel-based, uses concEvalE): **3 sorrys**
+    - asc/refl case (concEvalE takes term, absEval takes ty)
+    - asc/SoundRel.asc case (same issue)
+    - app-mu-annotation case (absEval uses annotation, not body)
+    - **PROVED: lam, mu, bvar, type, app-lam-beta** (was ALL sorry'd)
+  - `soundness_gen` (legacy, ValSub-based, uses concEval): **3 sorrys**
+    - lam, mu, app (same as before, kept for bridge compatibility)
 - **ValSub.lean: SORRY-FREE** (semantic lam_sem + mono + bridge + upward all proved)
 
-**Total: 5 sorrys** (was 2). 3 are the same soundness cases; 1 new in
-`absEval_fuel_mono` (mechanical); 1 existing `absEval_mono`.
+**Total: 7 sorrys** (was 5). Net new sorrys are from the new `soundness_gen_sr`
+theorem. The KEY win: app-lam-beta (the critical blocker) is now PROVED.
+
+### Recent changes (2026-04-02, agent ochre-lean-20260402-160931)
+
+**SoundRel + concEvalE: app-lam-beta case PROVED.**
+
+Added SoundRel (structural compatibility with flexible domains) and brought
+back the env-based concrete evaluator (`concEvalE`) as a proof auxiliary.
+Proved `soundness_gen_sr` — a generalized soundness theorem using SoundRel
+inputs and concEvalE — which resolves the app-lam-beta case via `subst_congr`.
+
+**What changed:**
+
+1. **Eval.lean:** Added `concEvalE` (env-based concrete evaluator, structurally
+   parallel to absEval — only differs at ascription). Proved `absEval_fuel_mono`
+   (was sorry'd — mechanical case analysis on mu-app).
+
+2. **Soundness.lean:** Major restructuring:
+   - Added `SoundRel` inductive: like SubtypeCore but with flexible domains
+     on lam and flexible annotations on mu.
+   - Proved `SoundRel.subst_congr`: the KEY lemma SubtypeCore can't prove.
+     `SoundRel body_v body_τ → SoundRel a_v a_τ → SoundRel (body_v.subst j a_v) (body_τ.subst j a_τ)`
+   - Proved supporting infrastructure: `shift_preserve`, `subst_arg_congr`,
+     `lam_rhs_shape`, `mu_rhs_shape`, `trans`, `SubtypeCore.toSoundRel`.
+   - Added `EnvSoundRel` (env consistency via SoundRel) + extend lemmas.
+   - Added `soundness_gen_sr`: SoundRel-generalized soundness with concEvalE.
+     **Proves lam, mu, bvar, type, app-lam-beta, app-stuck, top, lam/mu/app_cong.**
+   - Factored out `soundness_app_case` helper (shared by refl and app_cong cases).
+   - Added `soundness_concEvalE` top-level entry point.
+   - Retained `soundness_gen` (legacy, ValSub-based) for bridge compatibility.
+
+**Why concEvalE (env-based) was needed:**
+
+Option 2 (proving `SoundRel body (absEval body)` — normalization preserves
+SoundRel) is FALSE for mu-containing bodies. Counterexample:
+```
+e = mu ann (bvar 0)
+absEval normalizes: mu ann (bvar 0) → mu ann (mu ann (bvar 0))
+SoundRel (bvar 0) (mu ann (bvar 0)) — can't be constructed
+```
+When absEval enters a mu body, it puts `mu ann body` in the env. When
+`bvar 0` is looked up, it gets the mu term — structurally different from bvar.
+
+The env-based concEvalE sidesteps this: both evaluators use envs, so the IH
+relates their OUTPUTS (not source vs normalized). The env consistency invariant
+(`EnvSoundRel`) tracks that both envs contain SoundRel-related values at each
+index. When bvar 0 is looked up, both get their respective mu values, which
+are SoundRel by the invariant.
+
+**The remaining sorrys (analysis for next agent):**
+
+1. **asc case (2 sorrys in soundness_gen_sr):** concEvalE evaluates the term
+   (lhs), absEval evaluates the type (rhs). These are DIFFERENT subexpressions.
+   The IH can give SoundRel for each independently, but we need to connect them.
+   The WellTyped check gives `subCheckNF(absEval term, absEval ty) = true`.
+   Solution: need an OutputRel (ValSub-like) that composes SoundRel with
+   subCheckNF via compose_r. The exp-b version has this as `OutputRel`.
+   This is straightforward to add — just wrap SoundRel in compose_r.
+
+2. **app-mu-annotation case (1 sorry):** When f evaluates to `mu ann body`
+   where `ann = lam dom retBody` and `body = lam ...`, absEval uses the
+   annotation's return type (`retBody.subst 0 a_τ`) instead of the body.
+   SoundRel from the IH gives `SoundRel body_c body_a` but doesn't relate
+   body_a to ann_a. Needs annotation consistency in WellTyped or a
+   SoundRel between annotation and body.
+
+3. **soundness_gen (legacy, 3 sorrys):** Blocked on bridge from concEval to
+   concEvalE. Can be eliminated once the bridge is proved, or removed entirely
+   if we switch to concEvalE-based soundness.
 
 ### Recent changes (2026-04-02, agent ochre-lean-20260402-153654)
 

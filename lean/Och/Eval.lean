@@ -113,6 +113,45 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
       | some fVal, some aVal => some (.app fVal aVal)
       | _, _ => none
 
+/-- Environment-based concrete evaluator. Structurally parallel to absEval.
+
+    The ONLY difference from absEval is the ascription case:
+    - absEval takes the rhs (type annotation) — compile-time semantics
+    - concEvalE takes the lhs (term value) — runtime semantics
+
+    Used as a proof auxiliary for soundness_gen_sr. The env-based structure
+    makes the induction hypothesis apply directly (both evaluators normalize
+    under binders, so outputs are SoundRel by IH). -/
+def concEvalE (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match e with
+    | .bvar k       => env.get? k
+    | .lam dom body =>
+      match concEvalE fuel (env.extend (.bvar 0)) body with
+      | some body' => some (.lam dom body')
+      | none => none
+    | .type         => some .type
+    | .asc term _   => concEvalE fuel env term  -- runtime: take the lhs
+    | .mu ann body =>
+      match concEvalE fuel (env.extend (.mu ann body)) body with
+      | some body' => some (.mu ann body')
+      | none => none
+    | .app f a      =>
+      match concEvalE fuel env f, concEvalE fuel env a with
+      | some (.lam _dom body), some aVal =>
+        concEvalE fuel env (body.subst 0 aVal)
+      | some (.mu _ann body), some aVal =>
+        match body with
+        | .lam _dom lamBody =>
+          concEvalE fuel env (lamBody.subst 0 aVal)
+        | .type => some .type
+        | _ => some (.app body aVal)
+      | some .type, some _ => some .type
+      | some f', some a' => some (.app f' a')
+      | _, _ => none
+
 /-! ## Fuel monotonicity
 
 If evaluation succeeds with n fuel, it also succeeds with n+1 fuel to the
@@ -209,10 +248,9 @@ theorem absEval_fuel_mono {n : Nat} {env : Env} {e v : Expr}
           match fv with
           | .lam _dom body => exact ih h
           | .mu _ann body_mu =>
-            -- The nested match on _ann × body_mu has many sub-cases.
-            -- Each is either a recursive absEval call (ih) or a direct result.
-            -- Tedious but mechanical case analysis.
-            sorry
+            -- Nested match on _ann × body_mu mirrors absEval's mu-app case.
+            -- Each sub-case is either a recursive absEval call (ih) or direct.
+            cases _ann <;> cases body_mu <;> (first | exact ih h | exact h)
           | .type => exact h
           | .bvar _ => exact h
           | .app _ _ => exact h
