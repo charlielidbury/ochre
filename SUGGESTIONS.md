@@ -52,10 +52,10 @@ out in days (a failing test), not weeks (a stuck proof).
 with 10 sorrys and a passing appendVec test is in a far better position than
 a system with 0 sorrys that can't express dependent elimination.
 
-## Current state (as of 2026-04-01)
+## Current state (as of 2026-04-02)
 
-`lake build` passes with **5 sorry warnings** (4 in Monotonicity.lean, 1 in
-Soundness.lean). **All M1-M4 milestone tests pass.** Phase 1 is complete.
+`lake build` passes with **ZERO warnings** (no sorrys, no unused variables).
+**All M1-M4 milestone tests pass.** Phases 1 and 3 are complete.
 
 ### What's working
 
@@ -126,11 +126,10 @@ Once milestone tests pass (or you understand exactly why they can't):
 - [ ] Decide evaluator vs subtype checker architecture
 - [ ] Get Variant B working if needed for later phases
 
-### Phase 3: Proofs
+### Phase 3: Proofs ✓ COMPLETE
 
-Only after definitions are stable and tests pass.
-
-- [ ] Prove absEval_mono, soundness_gen, and related lemmas
+- [x] Prove absEval_mono — SORRY-FREE
+- [x] Prove soundness_gen — SORRY-FREE (all 4 body-unfold sorrys eliminated)
 - [ ] Rebuild Closure.lean if needed
 
 ### Phase 4: Recursive types and Scott encoding
