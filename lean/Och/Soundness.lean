@@ -105,10 +105,14 @@ compatible with an abstract type `τ`, given an observation budget `n`.
 
 **Design notes:**
 
-The function case uses `concEvalE` (env-based concrete evaluator) rather
-than `concEval` (substitution-based). Both evaluators substitute on
-beta-reduction, but concEvalE normalizes under binders like absEval,
-making the IH structure cleaner. A bridge to concEval is a separate step.
+The function case currently uses `concEvalE` (env-based concrete evaluator).
+**Try `concEval` (substitution-based) first** — it's the real runtime, and
+if the proof works with it directly, no bridge is needed. `concEval` treats
+lambdas as values (bodies untouched until applied), while `concEvalE`
+normalizes under binders like absEval. The lam case of soundness may be
+simpler with `concEval` (just return the lambda as-is) or harder (the
+semantic quantifier needs to relate un-normalized bodies). Try it and see.
+Fall back to `concEvalE` only if `concEval` doesn't work.
 
 The mu cases unfold one level and decrease the step index. This is the
 standard approach for equi-recursive types (Appel & McAllester 2001).
@@ -120,7 +124,6 @@ because subCheckNF is the intended algorithmic subtype checker.
 **Open question:** The exact definition below is a SKETCH. It may need
 refinement as proofs develop. In particular:
 - Should mu unfolding be on left, right, or both?
-- Should the function case use concEvalE or concEval?
 - Is the subCheckNF fallback the right escape hatch, or should it be
   more restrictive?
 - Does the env need to be threaded through (for non-closed terms)?
@@ -145,10 +148,11 @@ def VCompat : Nat → Expr → Expr → Prop
     -- Semantic function compatibility (THE KEY CASE):
     -- Both are lambdas, and for all compatible args, application gives
     -- compatible results.
+    -- NOTE: uses concEval (real runtime). If this doesn't work, try concEvalE.
     ∨ (∃ domV bodyV domT bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
         (∀ av aτ, VCompat n av aτ →
-           ∀ rv, concEvalE (n + 1) [] (bodyV.subst 0 av) = some rv →
+           ∀ rv, concEval (n + 1) (bodyV.subst 0 av) = some rv →
            ∀ rτ, absEval (n + 1) [] (bodyT.subst 0 aτ) = some rτ →
            VCompat n rv rτ))
     -- Mu unfolding on the right (self-intro): costs one step
@@ -166,10 +170,12 @@ def VCompat : Nat → Expr → Expr → Prop
 
 The main theorem. Sorry'd — this is what we're working toward. -/
 
+/-- Soundness for the real runtime (concEval).
+    Try this first. Fall back to concEvalE version only if needed. -/
 theorem soundness
     (fuel : Nat) (e : Expr) (v τ : Expr)
     (h_wt : WellTyped fuel [] e = true)
-    (h_conc : concEvalE fuel [] e = some v)
+    (h_conc : concEval fuel e = some v)
     (h_abs : absEval fuel [] e = some τ)
     : VCompat fuel v τ := by
   sorry

@@ -52,17 +52,24 @@ for all `VCompat n av aτ`, evaluating `bodyV[av]` and `bodyT[aτ]` gives
 **The definition may need refinement** as proofs develop. The current version
 is a well-informed sketch. Specific open questions:
 
-1. **Env threading:** The current definition uses `concEvalE [] ...` (empty env).
+1. **concEval vs concEvalE:** The definition currently uses `concEval`
+   (the real substitution-based runtime). **Try this first.** If it doesn't
+   work (e.g., the lam case is too hard because concEval doesn't normalize
+   under binders), fall back to `concEvalE` (env-based, normalizes under
+   binders like absEval). Using concEval directly avoids needing a bridge
+   theorem between the two evaluators.
+
+2. **Env threading:** The current definition uses empty envs.
    For the lam case of soundness (normalizing under binders), we may need
    `VCompat` to be parameterized by envs. Or maybe the empty-env version is
    fine because the IH provides what we need.
 
-2. **The subCheckNF fallback:** This is a catch-all that lets VCompat handle
+3. **The subCheckNF fallback:** This is a catch-all that lets VCompat handle
    neutral terms, stuck applications, etc. without structural decomposition.
    It might be too strong (making VCompat trivially true for anything
    subCheckNF can handle) or it might be exactly right. The proof will tell.
 
-3. **Mu unfolding direction:** Currently both left and right unfold. This
+4. **Mu unfolding direction:** Currently both left and right unfold. This
    matches equi-recursive subtyping. The step-index decrease prevents
    infinite unfolding.
 
@@ -110,15 +117,19 @@ By induction on fuel, case-split on the expression:
 
 - **type:** Both return .type. VCompat by refl.
 
-- **lam:** Both evaluators normalize the body under a binder (extend env
-  with bvar 0). Need to produce semantic function compatibility: for all
-  compatible args, evaluating both bodies gives compatible results. This
-  is the IH applied to the body with the arg added to the env.
+- **lam:** Need to produce semantic function compatibility: for all
+  compatible args, evaluating both bodies gives compatible results.
 
-  **Subtlety:** The evaluators extend the env with `bvar 0` for body
-  normalization. When the lambda is later applied, they substitute the
-  arg into the NORMALIZED body. The IH relates the normalized bodies.
-  The semantic quantifier then relates the post-substitution evaluations.
+  With `concEval`: lambdas are values — `concEval` returns the lambda
+  as-is (body untouched). The semantic quantifier says: for all compatible
+  args `(av, aτ)`, `concEval(bodyV.subst 0 av)` and `absEval(bodyT.subst 0 aτ)`
+  give compatible results. This IS the IH at lower fuel. The challenge: bodyV
+  is the SOURCE body (un-normalized), while bodyT is the NORMALIZED body
+  (absEval normalizes under binders). Are they related enough for the IH?
+
+  With `concEvalE` (fallback): both evaluators normalize under binders,
+  so bodyV and bodyT are both normalized. The IH relates them directly.
+  But then you need a bridge from concEval to concEvalE.
 
 - **mu:** Both evaluators normalize the body with the mu value in the env.
   Return mu with normalized body. VCompat by mu unfolding + IH on body.
@@ -137,12 +148,12 @@ By induction on fuel, case-split on the expression:
 
 - **top:** absEval returns .type. VCompat by top case. Trivial.
 
-### Step 4 (optional): Bridge to concEval
+### Step 4 (if using concEvalE): Bridge to concEval
 
-The soundness theorem uses `concEvalE` (env-based). For the real runtime
-(`concEval`, substitution-based), prove:
+Only needed if the proof falls back to `concEvalE`. In that case, prove:
 `concEval fuel e = v → concEvalE fuel [] e = v'` with some relationship
 between v and v'. This is a separate concern from the main soundness proof.
+If soundness works directly with `concEval`, this step is unnecessary.
 
 ## Critical constraints (unchanged)
 
