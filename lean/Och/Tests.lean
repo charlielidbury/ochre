@@ -1,6 +1,7 @@
 import Och.Syntax
 import Och.Eval
 import Och.Subtyping
+import Och.Soundness
 
 /-!
 # Och Test Suite
@@ -914,3 +915,55 @@ example : subCheck testFuel
 example : subCheck testFuel
   (.app (.app (.app appendVec' Nat') testVec1) testVec2)
   (.app Vec' Nat') = true := by native_decide
+
+-- ============================================================
+-- §12 WellTyped witness tests (Phase 5: non-vacuous soundness)
+--
+-- These tests prove that WellTyped is SATISFIABLE for real programs.
+-- Previously, WellTyped used SubtypeCore (which has no self_intro),
+-- making it unsatisfiable for any program with (e : mu_type) ascriptions.
+-- The soundness theorem was vacuously true (False → anything).
+--
+-- Now WellTyped uses subCheckNF (the decidable checker), which handles
+-- self-intro via equi-recursive unfolding. These tests are the CANARY:
+-- if WellTyped becomes unsatisfiable again, a witness test breaks.
+--
+-- RULE: Never weaken WellTyped without checking these tests still pass.
+-- ============================================================
+
+-- W1: Simple ascription (unit : Unit) — no self types
+example : WellTyped testFuel [] (.asc unit' Unit') = true := by native_decide
+
+-- W2: Ascription with SelfNat — THE KEY TEST
+-- Uses zero' (not unit'!) because zero' IS a SelfNat value.
+-- unit' is NOT in SelfNat (it's a unit, not a natural number).
+-- WellTyped correctly rejects unsound ascriptions like (unit' : SelfNat).
+example : WellTyped testFuel [] (.asc zero' SelfNat) = true := by native_decide
+
+-- W3: Ascription with MuNat (Variant B)
+example : WellTyped testFuel [] (.asc zero_mu MuNat) = true := by native_decide
+
+-- W4: Abstract add with self-typed args (using valid witnesses)
+example : WellTyped testFuel []
+  (.app (.app addSelfNat (.asc zero' SelfNat)) (.asc zero' SelfNat)) = true := by native_decide
+
+-- W5: Recursive add with abstract args
+example : WellTyped testFuel []
+  (.app (.app addRec (.asc zero' SelfNat)) (.asc zero' SelfNat)) = true := by native_decide
+
+-- W6: Abstract vector operations (using concrete vec as witness)
+example : WellTyped testFuel []
+  (.app (.app (.app appendVec' Nat')
+    (.asc testVec1 (.app Vec' Nat')))
+    (.asc testVec2 (.app Vec' Nat'))) = true := by native_decide
+
+-- W7: Concrete programs (no ascriptions) — should always work
+example : WellTyped testFuel [] (.app (.app add' two') three') = true := by native_decide
+example : WellTyped testFuel [] (.app succ' two') = true := by native_decide
+example : WellTyped testFuel [] (.app isZero' zero') = true := by native_decide
+
+-- W8: addRec itself (mu with annotation)
+example : WellTyped testFuel [] addRec = true := by native_decide
+
+-- W9: appendVec itself (no ascriptions in definition)
+example : WellTyped testFuel [] appendVec' = true := by native_decide

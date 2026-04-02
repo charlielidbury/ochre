@@ -5,6 +5,41 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-02: Bool-valued WellTyped with subCheckNF (Phase 5, Step 1)
+
+**Decision:** Changed WellTyped from Prop-valued (with SubtypeCore) to
+Bool-valued (with subCheckNF). Sorry'd soundness_gen. Added 11 witness tests.
+
+**Why:** WellTyped's asc case used `SubtypeCore σ τ'` which is unsatisfiable
+for mu programs (SubtypeCore has no self_intro). This made the soundness
+theorem vacuously true — it said nothing about programs with self-types,
+which is most of what Och exists to verify. See commit f0070bb for the
+analysis.
+
+**Alternatives considered:**
+1. **Use Subtype' instead of SubtypeCore.** Fails for a different reason:
+   Subtype' requires matching binder names, so `Subtype' unit' Nat'` is
+   false (unit' uses "x", Nat' uses "z"). Only subCheckNF handles alpha-renaming.
+2. **Keep Prop with `subCheckNF = true` as a Prop.** Would need Decidable
+   instance for native_decide. Possible but more complex than Bool.
+3. **Two definitions (Bool for tests, Prop for proof).** Requires a bridge
+   theorem that would be false (the Prop version is unsatisfiable).
+
+**Key finding:** `(.asc unit' SelfNat)` is NOT a valid test witness.
+unit' (Church unit) is not in SelfNat (Church Nat). subCheckNF correctly
+rejects it. Use `(.asc zero' SelfNat)` — zero IS a Nat. The ascription
+witness must actually inhabit the declared type.
+
+**Also simplified:** mu-app WellTyped case no longer checks annotation
+consistency (body result ⊑ annotation result). The old check required
+matching binder names (`y_ann == y_body`), which failed for all real
+programs. Removed for now; may need re-adding with subCheckNF when
+proving soundness_gen.
+
+**Trade-off:** 1 sorry (was 0), but WellTyped is now satisfiable.
+
+---
+
 ## 2026-04-02: Equi-recursive self-intro (substitute mu, not value)
 
 **Decision:** Changed self-intro in `subCheckNF` from Cedille-style

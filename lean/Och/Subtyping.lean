@@ -384,7 +384,7 @@ private def normalizeDomain (fuel : Nat) (ctx : List (Name × Expr)) (dom : Expr
     - self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]  (with (a, mu) in seen)
     - self-elim: mu x ann body ⊑ b  iff  body[x := mu] ⊑ b  (with (mu, b) in seen)
     - Otherwise → infer type of a, check type ⊑ b (transitivity through type) -/
-private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr))
+def subCheckNF (fuel : Nat) (ctx : List (Name × Expr))
     (seen : List (Expr × Expr)) (a b : Expr) : Bool :=
   match fuel with
   | 0 => false

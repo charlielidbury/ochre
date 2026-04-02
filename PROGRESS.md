@@ -9,15 +9,68 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **ZERO warnings** (no sorrys, no unused variables).
+`lake build` passes with **1 sorry** (soundness_gen) and **11 WellTyped witness tests**.
 
 - **Subtyping.lean: SORRY-FREE**
 - **Monotonicity.lean: SORRY-FREE**
-- **Soundness.lean: SORRY-FREE**
+- **Soundness.lean: 1 sorry (soundness_gen) — intentional, see below**
 
-**Total: 0 sorrys.** All proofs complete. All tests pass.
+**Total: 1 sorry.** All tests pass including WellTyped witnesses.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-100831)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-104022)
+
+**Phase 5 Step 1: NON-VACUOUS WellTyped + witness tests.**
+
+WellTyped was previously Prop-valued with `SubtypeCore` in the asc case.
+SubtypeCore has no self_intro, so `SubtypeCore unit' SelfNat` is impossible.
+This made WellTyped unsatisfiable for any program with `(e : mu_type)`
+ascriptions, and the soundness theorem was vacuously true (False → anything).
+
+**Changes:**
+
+1. **WellTyped is now Bool-valued** (was Prop). Uses `subCheckNF` instead
+   of `SubtypeCore` in the ascription case. subCheckNF handles self-intro
+   via equi-recursive unfolding, so `subCheckNF unit' SelfNat = false`
+   correctly (unit is not a Nat!) while `subCheckNF zero' SelfNat = true`.
+
+2. **subCheckNF is now public** (was private). Needed for WellTyped to
+   reference it.
+
+3. **Simplified mu-app WellTyped case.** Removed annotation consistency
+   check (subCheckNF between body and annotation results). Only checks
+   WellTyped of the sub-term that absEval will actually evaluate. The old
+   annotation consistency required matching binder names (y_ann == y_body)
+   which failed for all real programs (annotations use "_", bodies use "n").
+
+4. **soundness_gen is sorry'd.** The proof used SubtypeCore extracted
+   from WellTyped's asc case and `.trans` for the asc chain. With
+   Bool-valued WellTyped, the proof needs a "checker soundness" lemma:
+   `subCheckNF = true → SubtypeCore v σ → SubtypeCore v τ'`. The
+   previous sorry-free proof is in git (commit f7c40a1).
+
+5. **11 WellTyped witness tests added** (§12 in Tests.lean):
+   - W1: `(unit : Unit)` — basic ascription
+   - W2: `(zero : SelfNat)` — THE KEY TEST (was impossible with SubtypeCore)
+   - W3: `(zero_mu : MuNat)` — Variant B
+   - W4: `addSelfNat (zero : SelfNat) (zero : SelfNat)` — abstract add
+   - W5: `addRec (zero : SelfNat) (zero : SelfNat)` — recursive abstract add
+   - W6: `appendVec Nat vec1 vec2` — appendVec with concrete witnesses
+   - W7: concrete programs (add, succ, isZero) — always work
+   - W8: addRec itself (mu with annotation)
+   - W9: appendVec itself
+
+6. **Tests.lean now imports Soundness.lean** (for WellTyped).
+
+**Key insight: unit' is NOT a valid witness for SelfNat.** The SUGGESTIONS.md
+examples used `(.asc unit' SelfNat)` but unit' (Church unit) is not in SelfNat
+(Church Nat). WellTyped correctly rejects this — the ascription is unsound.
+Use `(.asc zero' SelfNat)` instead (zero IS a Nat).
+
+**Trade-off:** 1 sorry (was 0), but WellTyped is now SATISFIABLE for real
+programs. A sorry'd proof with non-vacuous WellTyped is worth more than a
+sorry-free proof with vacuous WellTyped. The witness tests are the canary.
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-100831)
 
 **VARIANT B PASSING — equi-recursive self-intro + coinductive seen set.**
 
@@ -518,27 +571,34 @@ resolved `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`.
 
 ### What needs to happen next
 
-**Phase 1 is COMPLETE.** All M1-M4 milestones pass. The definitions are
-expressive enough for abstract appendVec with the mu primitive.
+**Phase 5, Step 2: Prove soundness_gen with Bool-valued WellTyped.**
 
-**Phase 3 (proofs) status: COMPLETE — all proofs sorry-free.**
+The single sorry is in `soundness_gen` (Soundness.lean:152). The proof
+was sorry-free before WellTyped changed (commit f7c40a1). The change:
+WellTyped's asc case now has `subCheckNF fuel Γ [] σ τ' = true` instead
+of `SubtypeCore σ τ'`. The proof's asc case did:
+```
+exact (ih ...).trans h_sub_σ_τ
+```
+where `h_sub_σ_τ : SubtypeCore σ τ'`. Now it's `h_sub_σ_τ : subCheckNF ... = true`,
+and we need a way to derive SubtypeCore transitivity from the Bool check.
 
-- **Subtyping.lean:** SORRY-FREE.
+**The key missing lemma:**
+```
+subCheckNF fuel Γ [] σ τ' = true → SubtypeCore v σ → SubtypeCore v τ'
+```
 
-- **Monotonicity.lean (absEval_mono):** SORRY-FREE. Uses SubtypeCore
-  to avoid unreachable self_intro cases.
+**Also:** The mu-app WellTyped case was simplified to only check WellTyped
+of the sub-term absEval evaluates (no annotation consistency check). The
+previous proof's annotation path used annotation consistency. When proving
+soundness_gen, either:
+(a) Re-add annotation consistency to WellTyped (using subCheckNF, no binder
+    name matching) and prove it, or
+(b) Restructure the proof to not need annotation consistency.
 
-- **Soundness.lean (soundness_gen):** SORRY-FREE. Key techniques:
-  - SubtypeCore (not Subtype') — eliminates self_intro case
-  - Joint match `(ann, body)` in absEval — annotation path only when
-    both are lambdas; body-direct path otherwise (parallel to concEval)
-  - WellTyped annotation consistency for the (lam, lam) case
-  - WellTyped propagation for the body-unfold (_, lam) case
-  - Body-first case split in proof (body_mu determines branch)
-
-  **Trade-off:** WellTyped's asc case uses SubtypeCore (not Subtype').
-  Programs with self_intro ascriptions are not covered. Strengthening
-  to Subtype' requires step-indexed logical relations.
+**Other priorities:**
+- Phase 4: Scott encoding (can proceed independently of proof work)
+- Monotonicity and Subtyping are sorry-free and unaffected
 
 ### Key files
 
@@ -546,9 +606,9 @@ expressive enough for abstract appendVec with the mu primitive.
 |------|--------|-------------|
 | Syntax.lean | Done | **0** |
 | Eval.lean | Done (joint match (ann,body) in mu-app; concEval wraps mu) | **0** |
-| **Subtyping.lean** | **SORRY-FREE** | **0** |
-| Tests.lean | All milestones passing, Variant B expected-fail | **0** |
-| **Soundness.lean** | **SORRY-FREE** | **0** |
+| **Subtyping.lean** | **SORRY-FREE** (subCheckNF now public) | **0** |
+| Tests.lean | All milestones + 11 WellTyped witnesses (§12) | **0** |
+| **Soundness.lean** | **1 sorry** (soundness_gen; WellTyped now Bool w/ subCheckNF) | **1** |
 | **Monotonicity.lean** | **SORRY-FREE** | **0** |
 | Closure.lean | Gutted | **0** |
 | CounterexampleTest.lean | Done | **0** |
