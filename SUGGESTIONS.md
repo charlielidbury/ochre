@@ -108,25 +108,36 @@ See PROGRESS.md for detailed analysis.
 
 ### Step 3: Prove `VCompat.adequacy`
 
-`VCompat n v σ → subCheckNF σ τ = true → VCompat n v τ`
+`VCompat n v σ → subCheckNF fuel ctx [] σ τ = true → VCompat n v τ`
 
-Needed for the asc case of soundness_gen. Case-split on VCompat:
-- VCompat via subCheckNF fallback: compose the two subCheckNFs
-  (needs subCheckNF transitivity)
-- VCompat via structural lam/mu: transfer through subCheckNF's structural
-  cases (contra domain, cov body)
-- VCompat via mu unfold: subCheckNF may also unfold the mu
+**This is the critical next step.** The asc case of soundness_gen already
+uses it (via sorry). Once proven, the asc case becomes sorry-free.
 
-May require subCheckNF transitivity as a sub-lemma.
+**Proof strategy:** By induction on n.
+- n = 0: VCompat 0 = True, trivially true.
+- n + 1: Case split on VCompat (n+1) v σ:
+  - σ = .type: subCheckNF .type τ implies τ = .type, VCompat via top.
+  - v = σ: use subCheckNF fallback directly.
+  - structural lam: IH on bodies (subCheckNF decomposes structurally).
+    The relaxed domain matching in VCompat makes this work even when
+    subCheckNF changes the domain via contravariance.
+  - structural mu: similar to lam.
+  - mu unfold: harder — interacts with subCheckNF's `seen` list for
+    coinductive termination. May need a generalized version with
+    arbitrary `seen` and a coinductive hypothesis.
+  - subCheckNF fallback: compose two subCheckNFs (needs transitivity).
 
-### Step 4: Prove `soundness_gen` asc case (uses adequacy)
+**Sub-lemma needed:** subCheckNF transitivity. This is a well-defined
+property of the algorithmic checker and should be provable.
 
-Once adequacy is proved, the asc case follows:
-- IH on term: VCompat v σ (where σ = absEval term)
-- WellTyped: subCheckNF σ τ (where τ = absEval ty)
-- Adequacy: VCompat v τ
+### ✅ DONE — `soundness_gen` asc case
 
-### Step 5: Bridge concEval → concEvalE
+Proven using VCompat.adequacy (which is sorry'd). The key insight was
+decoupling the VCompat step index `n` from the evaluation fuel. With
+the decoupled approach, the IH gives VCompat at ANY step level, so
+adequacy (same-level n) applies without step-index mismatch.
+
+### Step 4: Bridge concEval → concEvalE
 
 For the top-level `soundness` theorem. Prove that concEval and concEvalE
 agree on closed terms (possibly up to VCompat).
@@ -139,6 +150,20 @@ because both evaluators process the same source body in the same env.
 ### ✅ DONE — `VCompat.mono` (downward closure)
 
 Proved. The structural lam/mu cases make mono trivial (apply IH on bodies).
+
+### ✅ DONE — Decoupled step index from fuel
+
+The VCompat step index `n` is now a separate parameter from evaluation
+`fuel` in soundness_gen. This was essential: with coupled indices, the
+asc case IH gives VCompat at fuel k but needs VCompat at fuel k+1,
+and adequacy preserves the step level. With decoupled indices, the IH
+gives VCompat at ANY step level, eliminating the mismatch.
+
+### ✅ DONE — VCompat: relaxed domain/annotation matching
+
+Structural lam/mu cases no longer require matching domains/annotations.
+This is needed for adequacy: subCheckNF can change domains via
+contravariance, so VCompat must accommodate different domains.
 
 ## Before you prove ANYTHING: try to disprove it first
 

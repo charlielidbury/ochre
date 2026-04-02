@@ -37,11 +37,14 @@ function compatibility already quantifies over all possible applications.
 The key theorem:
 
 ```
-soundness : WellTyped fuel [] e = true →
-            concEvalE fuel [] e = some v →
-            absEval fuel [] e = some τ →
-            VCompat fuel v τ
+soundness_gen : WellTyped fuel [] e = true →
+                concEvalE fuel [] e = some v →
+                absEval fuel [] e = some τ →
+                ∀ n, VCompat n v τ
 ```
+
+Note: the step index `n` is decoupled from `fuel`. This is essential
+for the asc case — see soundness_gen's doc comment.
 
 ## Key lemmas needed
 
@@ -150,15 +153,18 @@ def VCompat : Nat → Expr → Expr → Prop
     τ = .type
     -- Refl: syntactic equality (optimization)
     ∨ v = τ
-    -- Structural lambda: both are lambdas with the same domain,
+    -- Structural lambda: both are lambdas (possibly different domains),
     -- and the bodies are compatible at the lower step.
-    ∨ (∃ dom bodyV bodyT,
-        v = .lam dom bodyV ∧ τ = .lam dom bodyT ∧
+    -- Domains need not match: subCheckNF handles contravariant domain
+    -- checking, so adequacy (VCompat + subCheckNF → VCompat) can change
+    -- the domain via the subtype relation.
+    ∨ (∃ domV domT bodyV bodyT,
+        v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
         VCompat n bodyV bodyT)
-    -- Structural mu: both are mus with the same annotation,
+    -- Structural mu: both are mus (possibly different annotations),
     -- and the bodies are compatible at the lower step.
-    ∨ (∃ ann bodyV bodyT,
-        v = .mu ann bodyV ∧ τ = .mu ann bodyT ∧
+    ∨ (∃ annV annT bodyV bodyT,
+        v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
         VCompat n bodyV bodyT)
     -- Mu unfolding on the right (equi-recursive self-intro): costs one step
     ∨ (∃ ann body,
@@ -171,133 +177,7 @@ def VCompat : Nat → Expr → Expr → Prop
     -- Algorithmic fallback: subCheckNF witnesses compatibility
     ∨ (∃ fuel ctx, subCheckNF fuel ctx [] v τ = true)
 
-/-! ## Soundness theorem
-
-Two forms:
-1. `soundness_gen` — uses concEvalE (env-based, normalizes under binders).
-   Both evaluators process the SAME source expression in the SAME env,
-   so the IH applies directly for bvar/type/lam/mu cases.
-2. `soundness` — the top-level theorem using concEval (real runtime).
-   Follows from soundness_gen via a concEval→concEvalE bridge (TBD).
-
-The env-based form is the workhorse. The bridge is a separate concern. -/
-
-/-- Generalized soundness with concEvalE.
-    Uses the same env for both evaluators. By induction on fuel.
-    The lam and mu cases are direct (structural VCompat from IH on body).
-    The app case needs "application congruence" (VCompat through eval+subst).
-    The asc case needs VCompat.adequacy (VCompat through subCheckNF). -/
-theorem soundness_gen
-    (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr)
-    (h_wt : WellTyped fuel env e = true)
-    (h_conc : concEvalE fuel env e = some v)
-    (h_abs : absEval fuel env e = some τ)
-    : VCompat fuel v τ := by
-  cases fuel with
-  | zero => simp [concEvalE] at h_conc
-  | succ n =>
-    cases e with
-    | bvar k =>
-      -- Both evaluators look up env[k]. Same result → VCompat by refl.
-      simp [concEvalE] at h_conc
-      simp [absEval] at h_abs
-      have : v = τ := by
-        have := h_conc.symm.trans h_abs
-        exact Option.some.inj this
-      subst this
-      unfold VCompat; exact Or.inr (Or.inl rfl)
-    | type =>
-      simp [concEvalE] at h_conc
-      simp [absEval] at h_abs
-      subst h_conc; subst h_abs
-      unfold VCompat; exact Or.inr (Or.inl rfl)
-    | lam dom body =>
-      -- concEvalE normalizes body: v = lam dom bodyV'
-      -- absEval normalizes body: τ = lam dom bodyT'
-      -- Both use env.extend (bvar 0). IH on body gives VCompat n bodyV' bodyT'.
-      simp only [concEvalE] at h_conc
-      simp only [absEval] at h_abs
-      -- Extract bodyV' and bodyT' from the match on concEvalE/absEval of body
-      match h_cv : concEvalE n (Env.extend env (.bvar 0)) body with
-      | none => simp [h_cv] at h_conc
-      | some bodyV' =>
-        simp [h_cv] at h_conc
-        match h_av : absEval n (Env.extend env (.bvar 0)) body with
-        | none => simp [h_av] at h_abs
-        | some bodyT' =>
-          simp [h_av] at h_abs
-          -- h_conc : v = .lam dom bodyV', h_abs : τ = .lam dom bodyT'
-          subst h_conc; subst h_abs
-          -- WellTyped for body under binder
-          have h_wt_body : WellTyped n (Env.extend env (.bvar 0)) body = true := by
-            simp [WellTyped] at h_wt; exact h_wt
-          -- IH on body
-          have ih := soundness_gen n (Env.extend env (.bvar 0)) body bodyV' bodyT'
-                     h_wt_body h_cv h_av
-          -- VCompat (n+1) (lam dom bodyV') (lam dom bodyT') via structural lam
-          unfold VCompat
-          exact Or.inr (Or.inr (Or.inl ⟨dom, bodyV', bodyT', rfl, rfl, ih⟩))
-    | mu ann body =>
-      -- concEvalE: v = mu ann bodyV' where bodyV' = concEvalE n env' body
-      -- absEval: τ = mu ann bodyT' where bodyT' = absEval n env' body
-      -- Both use env.extend (mu ann body). IH on body gives VCompat n bodyV' bodyT'.
-      simp only [concEvalE] at h_conc
-      simp only [absEval] at h_abs
-      match h_cv : concEvalE n (Env.extend env (.mu ann body)) body with
-      | none => simp [h_cv] at h_conc
-      | some bodyV' =>
-        simp [h_cv] at h_conc
-        match h_av : absEval n (Env.extend env (.mu ann body)) body with
-        | none => simp [h_av] at h_abs
-        | some bodyT' =>
-          simp [h_av] at h_abs
-          subst h_conc; subst h_abs
-          have h_wt_body : WellTyped n (Env.extend env (.mu ann body)) body = true := by
-            simp [WellTyped] at h_wt; exact h_wt
-          have ih := soundness_gen n (Env.extend env (.mu ann body)) body bodyV' bodyT'
-                     h_wt_body h_cv h_av
-          -- VCompat (n+1) (mu ann bodyV') (mu ann bodyT') via structural mu
-          unfold VCompat
-          exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, bodyV', bodyT', rfl, rfl, ih⟩)))
-    | app f a =>
-      -- IH on f and a give VCompat for evaluated function and arg.
-      -- Need "application congruence": VCompat bodies + VCompat args →
-      -- VCompat results after substitution+evaluation.
-      sorry
-    | asc term ty =>
-      -- concEvalE: v = concEvalE n env term
-      -- absEval: τ = absEval n env ty
-      -- IH on term: VCompat n v (absEval n env term) =: VCompat n v σ
-      -- WellTyped: subCheckNF σ τ
-      -- Needs VCompat.adequacy to bridge.
-      sorry
-
-/-- Soundness for the real runtime (concEval).
-    Follows from soundness_gen via a concEval→concEvalE bridge. -/
-theorem soundness
-    (fuel : Nat) (e : Expr) (v τ : Expr)
-    (h_wt : WellTyped fuel [] e = true)
-    (h_conc : concEval fuel e = some v)
-    (h_abs : absEval fuel [] e = some τ)
-    : VCompat fuel v τ := by
-  sorry  -- needs concEval → concEvalE bridge
-
-/-! ## Key lemmas (all sorry'd — to be proved)
-
-These are the lemmas needed for the soundness proof. They should be
-proved in roughly this order. -/
-
-/-- VCompat respects subCheckNF: if v is compatible with σ, and σ ⊑ τ
-    by the algorithmic checker, then v is compatible with τ.
-
-    This is the "adequacy" lemma — the bridge between the semantic relation
-    (VCompat) and the algorithmic checker (subCheckNF). It's needed for the
-    asc case: the IH gives VCompat v σ (from evaluating the term), and
-    WellTyped gives subCheckNF σ τ (from the ascription check). -/
-theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Expr}
-    (hv : VCompat n v σ) (hcheck : subCheckNF fuel ctx [] σ τ = true)
-    : VCompat n v τ := by
-  sorry
+/-! ## VCompat lemmas -/
 
 /-- Downward closure: more observation budget implies less.
     Standard for step-indexed relations. -/
@@ -310,8 +190,8 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     -- h : VCompat (k+2) v τ, goal : VCompat (k+1) v τ
     unfold VCompat at h ⊢
     rcases h with h_top | h_refl |
-                  ⟨dom, bodyV, bodyT, hv, hτ, h_body⟩ |
-                  ⟨ann, bodyV, bodyT, hv, hτ, h_body⟩ |
+                  ⟨domV, domT, bodyV, bodyT, hv, hτ, h_body⟩ |
+                  ⟨annV, annT, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨ann, body, hτ, h_mu⟩ | ⟨ann, body, hv, h_mu⟩ |
                   ⟨fuel, ctx, h_sub⟩
     -- Top
@@ -319,12 +199,169 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     -- Refl
     · exact Or.inr (Or.inl h_refl)
     -- Structural lam: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
-    · exact Or.inr (Or.inr (Or.inl ⟨dom, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩))
+    · exact Or.inr (Or.inr (Or.inl ⟨domV, domT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩))
     -- Structural mu: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
-    · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩)))
+    · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩)))
     -- Mu right: VCompat (k+1) v (body.subst ...) → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩))))
     -- Mu left: VCompat (k+1) (body.subst ...) τ → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩)))))
     -- subCheckNF fallback: passes through
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨fuel, ctx, h_sub⟩)))))
+
+/-- VCompat respects subCheckNF: if v is compatible with σ, and σ ⊑ τ
+    by the algorithmic checker, then v is compatible with τ.
+
+    This is the "adequacy" lemma — the bridge between the semantic relation
+    (VCompat) and the algorithmic checker (subCheckNF). It's needed for the
+    asc case: the IH gives VCompat v σ (from evaluating the term), and
+    WellTyped gives subCheckNF σ τ (from the ascription check).
+
+    Proof approach: induction on n (VCompat step index).
+    - n = 0: trivially True.
+    - n + 1: case split on VCompat disjunct:
+      - top/refl/subCheckNF fallback: straightforward
+      - structural lam/mu: IH on bodies (subCheckNF decomposes structurally)
+      - mu unfolding: use VCompat mu-unfold + IH (costs one step of n)
+    The mu cases interact with subCheckNF's `seen` list (coinductive
+    termination). A generalized version with arbitrary `seen` may be needed. -/
+theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Expr}
+    (hv : VCompat n v σ) (hcheck : subCheckNF fuel ctx [] σ τ = true)
+    : VCompat n v τ := by
+  sorry
+
+/-! ## Soundness theorem
+
+Two forms:
+1. `soundness_gen` — uses concEvalE (env-based, normalizes under binders).
+   Both evaluators process the SAME source expression in the SAME env,
+   so the IH applies directly for bvar/type/lam/mu cases. The VCompat
+   step index `n` is a separate parameter from evaluation `fuel`.
+2. `soundness` — the top-level theorem using concEval (real runtime).
+   Follows from soundness_gen via a concEval→concEvalE bridge (TBD).
+
+The env-based form is the workhorse. The bridge is a separate concern. -/
+
+/-- Generalized soundness with concEvalE.
+    Uses the same env for both evaluators. By induction on fuel.
+
+    KEY DESIGN: the VCompat step index `n` is decoupled from `fuel`.
+    soundness_gen proves VCompat at ALL step levels simultaneously.
+    This is essential for the asc case: the IH gives VCompat at any n,
+    so adequacy (same-level n) applies without step-index mismatch.
+
+    Without this decoupling, the IH at fuel k gives VCompat k, but the
+    asc case needs VCompat (k+1) (which adequacy can't provide since
+    it preserves the step level).
+
+    The lam and mu cases are direct (structural VCompat from IH on body).
+    The app case needs "application congruence" (VCompat through eval+subst).
+    The asc case uses VCompat.adequacy (VCompat through subCheckNF). -/
+theorem soundness_gen
+    (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr) (n : Nat)
+    (h_wt : WellTyped fuel env e = true)
+    (h_conc : concEvalE fuel env e = some v)
+    (h_abs : absEval fuel env e = some τ)
+    : VCompat n v τ := by
+  induction fuel generalizing env e v τ n with
+  | zero => simp [concEvalE] at h_conc
+  | succ k ih =>
+    cases n with
+    | zero => exact trivial  -- VCompat 0 = True
+    | succ m =>
+      cases e with
+      | bvar j =>
+        -- Both evaluators look up env[j]. Same result → VCompat by refl.
+        simp [concEvalE] at h_conc
+        simp [absEval] at h_abs
+        have : v = τ := by
+          have := h_conc.symm.trans h_abs
+          exact Option.some.inj this
+        subst this
+        unfold VCompat; exact Or.inr (Or.inl rfl)
+      | type =>
+        simp [concEvalE] at h_conc
+        simp [absEval] at h_abs
+        subst h_conc; subst h_abs
+        unfold VCompat; exact Or.inr (Or.inl rfl)
+      | lam dom body =>
+        -- concEvalE normalizes body: v = lam dom bodyV'
+        -- absEval normalizes body: τ = lam dom bodyT'
+        -- Both use env.extend (bvar 0). IH on body gives VCompat m bodyV' bodyT'.
+        simp only [concEvalE] at h_conc
+        simp only [absEval] at h_abs
+        match h_cv : concEvalE k (Env.extend env (.bvar 0)) body with
+        | none => simp [h_cv] at h_conc
+        | some bodyV' =>
+          simp [h_cv] at h_conc
+          match h_av : absEval k (Env.extend env (.bvar 0)) body with
+          | none => simp [h_av] at h_abs
+          | some bodyT' =>
+            simp [h_av] at h_abs
+            subst h_conc; subst h_abs
+            have h_wt_body : WellTyped k (Env.extend env (.bvar 0)) body = true := by
+              simp [WellTyped] at h_wt; exact h_wt
+            -- IH on body at step m (one less than goal m+1)
+            have ih_body := ih (Env.extend env (.bvar 0)) body bodyV' bodyT' m
+                           h_wt_body h_cv h_av
+            -- VCompat (m+1) (lam dom bodyV') (lam dom bodyT') via structural lam
+            unfold VCompat
+            exact Or.inr (Or.inr (Or.inl ⟨dom, dom, bodyV', bodyT', rfl, rfl, ih_body⟩))
+      | mu ann body =>
+        simp only [concEvalE] at h_conc
+        simp only [absEval] at h_abs
+        match h_cv : concEvalE k (Env.extend env (.mu ann body)) body with
+        | none => simp [h_cv] at h_conc
+        | some bodyV' =>
+          simp [h_cv] at h_conc
+          match h_av : absEval k (Env.extend env (.mu ann body)) body with
+          | none => simp [h_av] at h_abs
+          | some bodyT' =>
+            simp [h_av] at h_abs
+            subst h_conc; subst h_abs
+            have h_wt_body : WellTyped k (Env.extend env (.mu ann body)) body = true := by
+              simp [WellTyped] at h_wt; exact h_wt
+            -- IH on body at step m (one less than goal m+1)
+            have ih_body := ih (Env.extend env (.mu ann body)) body bodyV' bodyT' m
+                           h_wt_body h_cv h_av
+            unfold VCompat
+            exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, ann, bodyV', bodyT', rfl, rfl, ih_body⟩)))
+      | app f a =>
+        -- IH on f and a give VCompat for evaluated function and arg.
+        -- Need "application congruence": VCompat bodies + VCompat args →
+        -- VCompat results after substitution+evaluation.
+        sorry
+      | asc term ty =>
+        -- concEvalE (k+1) env (asc term ty) = concEvalE k env term = some v
+        -- absEval (k+1) env (asc term ty) = absEval k env ty = some τ
+        simp only [concEvalE] at h_conc
+        simp only [absEval] at h_abs
+        -- Extract WellTyped components
+        simp only [WellTyped, Bool.and_eq_true] at h_wt
+        obtain ⟨⟨h_wt_term, h_wt_ty⟩, h_sub⟩ := h_wt
+        -- Get σ = absEval k env term
+        match h_σ : absEval k env term with
+        | none => simp [h_σ] at h_sub
+        | some σ =>
+          -- Get τ' = absEval k env ty (= τ from h_abs)
+          match h_τ' : absEval k env ty with
+          | none => simp [h_σ, h_τ'] at h_sub
+          | some τ' =>
+            simp [h_τ'] at h_abs; subst h_abs
+            simp [h_σ, h_τ'] at h_sub
+            -- IH on term at step (m+1) — SAME step level as goal!
+            -- This is the key benefit of decoupling n from fuel.
+            have ih_term := ih env term v σ (m + 1) h_wt_term h_conc h_σ
+            -- Bridge via adequacy: VCompat (m+1) v σ → subCheckNF σ τ → VCompat (m+1) v τ
+            exact VCompat.adequacy ih_term h_sub
+
+/-- Soundness for the real runtime (concEval).
+    Follows from soundness_gen via a concEval→concEvalE bridge. -/
+theorem soundness
+    (fuel : Nat) (e : Expr) (v τ : Expr) (n : Nat)
+    (h_wt : WellTyped fuel [] e = true)
+    (h_conc : concEval fuel e = some v)
+    (h_abs : absEval fuel [] e = some τ)
+    : VCompat n v τ := by
+  sorry  -- needs concEval → concEvalE bridge
+

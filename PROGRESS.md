@@ -15,13 +15,17 @@ the mu design.
 
 `lake build` passes. **3 sorrys** in Soundness.lean:
 
-- `soundness_gen` app case — needs application congruence lemma
-- `soundness_gen` asc case — needs VCompat.adequacy
-- `soundness` — needs concEval→concEvalE bridge
+- `VCompat.adequacy` — VCompat through subCheckNF (line ~228)
+- `soundness_gen` app case — needs application congruence (line ~329)
+- `soundness` — needs concEval→concEvalE bridge (line ~362)
 
-**PROVEN this session:**
-- `VCompat.mono` (downward closure) — was sorry'd, now sorry-free
-- `soundness_gen` bvar, type, lam, mu cases — all proven
+**PROVEN this session (agent ochre-lean-20260402-214913):**
+- `soundness_gen` asc case — was sorry'd, now proven using adequacy
+- Key architectural change: decoupled VCompat step index from eval fuel
+
+**Previously proven (still proven):**
+- `VCompat.mono` (downward closure)
+- `soundness_gen` bvar, type, lam, mu cases
 
 **All milestone tests pass** (M1-M4 including abstract appendVec).
 **11 WellTyped witness tests pass.**
@@ -36,110 +40,81 @@ the mu design.
 
 ## Key design decisions this session
 
-### VCompat: structural vs semantic function case
+### Decoupled VCompat step index from evaluation fuel
 
-Previous VCompat had a SEMANTIC function case: "for all compatible args,
-evaluating both bodies gives compatible results." This is the standard
-Appel-McAllester approach but has a fundamental problem with the soundness IH:
+**THE MOST IMPORTANT CHANGE THIS SESSION.**
 
-**Problem:** The soundness IH works on a SINGLE source expression evaluated
-by both evaluators. But the semantic function case has DIFFERENT bodies
-(concEval/concEvalE and absEval produce different normalized bodies from the
-same source). And it has DIFFERENT arguments on each side (av for concrete,
-aτ for abstract). There is no single expression to apply the IH to.
+Previous: `soundness_gen` concluded `VCompat fuel v τ` where the VCompat
+step index was the same as the evaluation fuel. This caused a step-index
+mismatch in the asc case:
 
-**Solution:** Use STRUCTURAL cases instead: "both are lambdas with the same
-domain and compatible bodies" (and similarly for mu). With concEvalE-based
-soundness, both evaluators normalize the SAME source body in the SAME env.
-The IH on the body gives VCompat for the two outputs directly.
+- The IH at fuel k gives VCompat k (step index = fuel).
+- The asc case needs VCompat (k+1) (the outer fuel).
+- Adequacy preserves the step level: VCompat k → VCompat k. Can't bridge.
 
-This makes lam/mu cases trivial but shifts the burden to the app case,
-which now needs an "application congruence" lemma.
+The structural cases (lam/mu) didn't have this problem because their
+VCompat disjunct at step k+1 uses VCompat k for bodies — the step
+decrease is "consumed" by the structural decomposition. But the asc case
+has no structural decomposition; it changes σ to τ via subCheckNF.
 
-### soundness_gen uses concEvalE (not concEval)
+**Fix:** Make `n` (VCompat step index) a separate parameter from `fuel`:
 
-The top-level `soundness` uses concEval (substitution-based runtime), but
-the proof works through `soundness_gen` which uses concEvalE (env-based).
-This is because concEvalE normalizes under binders like absEval, so both
-evaluators process the SAME source expression in the SAME env. The IH
-then applies directly.
+```lean
+theorem soundness_gen
+    (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr) (n : Nat)
+    (...) : VCompat n v τ
+```
 
-A concEval→concEvalE bridge is needed to connect the two. This is a
-separate concern from the main proof.
+By induction on fuel with n universally quantified. The IH gives
+VCompat at ANY step level n. For the asc case: pick n = m+1 (same as
+goal), apply adequacy at the same level. For lam/mu cases: pick n = m
+(one less, consumed by structural case).
 
-### VCompat bounded quantifier (earlier change)
+### VCompat: relaxed domain/annotation matching
 
-The function case (now structural) previously had `∀ av aτ, VCompat n av aτ`
-(exactly one step below). This was changed to `∀ m ≤ n` (bounded quantifier,
-standard Appel-McAllester). This made mono trivially provable for the
-function case. With the switch to structural cases, the bounded quantifier
-is no longer relevant, but the structural case makes mono equally easy.
+Structural lam case no longer requires the same domain; structural mu
+case no longer requires the same annotation. This is needed for adequacy
+to be provable: when subCheckNF (lam dA bodyA) (lam dB bodyB) changes
+the domain from dA to dB, the resulting VCompat must accommodate dB ≠ dA.
+
+The soundness lam/mu cases still work because both evaluators produce
+the same domain/annotation from the same source expression.
 
 ## What the next agent should do
 
-The two remaining sorry'd lemmas in soundness_gen are:
-
-### 1. App case: "application congruence" (Soundness.lean:277)
-
-**The hardest remaining piece.** When f_v = lam dom bodyV and
-f_τ = lam dom bodyT (from the IH on f), and a_v, a_τ are the evaluated
-args (from IH on a), the evaluators compute:
-- concEvalE n env (bodyV.subst 0 a_v) = some rv
-- absEval n env (bodyT.subst 0 a_τ) = some rτ
-
-We need VCompat n rv rτ. We have VCompat n (lam dom bodyV) (lam dom bodyT)
-via structural lam (so VCompat (n-1) bodyV bodyT), and VCompat n a_v a_τ.
-
-The challenge: bodyV.subst 0 a_v and bodyT.subst 0 a_τ are DIFFERENT
-expressions. The IH of soundness_gen needs the SAME expression.
-
-**Approaches to consider:**
-1. **Env-substitution equivalence:** Prove that
-   `concEvalE fuel env (body'.subst 0 aVal) = concEvalE fuel (env.extend aVal) body_source`
-   where body' = concEvalE (env.extend (bvar 0)) body_source. This would let
-   us apply soundness_gen to the source body with an extended env. But the
-   "source body" is not directly accessible from f_v (it's been normalized).
-   
-2. **Separate congruence lemma:** Prove
-   `VCompat n bV bT → VCompat n aV aT → EnvCompat n envV envT →
-    concEvalE k envV (bV.subst 0 aV) = some rv →
-    absEval k envT (bT.subst 0 aT) = some rτ →
-    VCompat ??? rv rτ`
-   by induction on VCompat or on the expressions.
-   
-3. **Reformulate soundness_gen with related envs:** Instead of a single env,
-   use env_v and env_τ with EnvCompat. The IH then supports different
-   expressions on each side (via env differences). This is the standard LR
-   approach but requires more infrastructure.
-
-4. **Use subCheckNF fallback:** If concEvalE and absEval outputs happen to
-   be subCheckNF-related for app results, use the subCheckNF fallback of
-   VCompat. This avoids the congruence issue but requires proving subCheckNF
-   holds for evaluation outputs (essentially a different form of soundness).
-
-### 2. Asc case: VCompat.adequacy (Soundness.lean:297)
+### 1. Prove VCompat.adequacy (Soundness.lean:~225)
 
 `VCompat n v σ → subCheckNF fuel ctx [] σ τ = true → VCompat n v τ`
 
-The asc case of soundness_gen:
-- concEvalE evaluates term → v
-- absEval evaluates ty → τ  
-- IH on term gives VCompat v (absEval term) = VCompat v σ
-- WellTyped gives subCheckNF σ τ
-- Need: VCompat v τ (by adequacy)
+This is the CRITICAL next step. The asc case of soundness_gen depends on it.
 
-Adequacy approach: case-split on VCompat, then on subCheckNF derivation.
-- VCompat via subCheckNF fallback: compose the two subCheckNFs (needs
-  subCheckNF transitivity)
-- VCompat via structural lam/mu: transfer through subCheckNF's structural
-  cases
-- VCompat via mu unfolding: subCheckNF may also unfold
+**Proof strategy:** By induction on n.
+- n = 0: VCompat 0 = True, trivially true.
+- n + 1: Case split on VCompat (n+1) v σ, then on how subCheckNF returns true:
+  - σ = .type: subCheckNF .type τ implies τ = .type, VCompat via top. ✓
+  - v = σ: subCheckNF v τ, use subCheckNF fallback of VCompat. ✓
+  - structural lam: v = lam dV bV, σ = lam dS bS, VCompat n bV bS.
+    subCheckNF (lam dS bS) τ with τ = lam dT bT gives subCheckNF bS bT.
+    IH on bodies: VCompat n bV bS → subCheckNF bS bT → VCompat n bV bT.
+    Then VCompat (n+1) (lam dV bV) (lam dT bT) via structural lam. ✓
+  - structural mu: similar.
+  - mu unfold right/left: harder, interacts with subCheckNF's `seen` list.
+  - subCheckNF fallback: compose two subCheckNFs (needs transitivity).
 
-### 3. concEval→concEvalE bridge (Soundness.lean:283)
+**Hard part:** The mu-unfolding cases interact with subCheckNF's coinductive
+`seen` list. When subCheckNF uses self-intro (τ = mu ann body →
+check σ ⊑ body.subst 0 (mu ann body) with extended seen), the recursive
+adequacy call has non-empty seen. May need a generalized version.
 
-For the top-level soundness theorem. Prove:
-`concEval fuel e = some v → concEvalE fuel [] e = some v'`
-with VCompat v v' (or v = v', if that holds for closed terms).
+**Consider proving for non-mu cases first** and sorry'ing the mu cases.
+
+### 2. App case: "application congruence" (Soundness.lean:~329)
+
+The hardest remaining step. See SUGGESTIONS.md for detailed analysis.
+
+### 3. concEval→concEvalE bridge (Soundness.lean:~362)
+
+For the top-level soundness theorem. Separate concern from the main proof.
 
 ## What's been tried (and failed)
 
@@ -148,6 +123,9 @@ using SoundRel (a relation requiring matching top-level constructors). This
 approach is **fundamentally broken**: ascription `(e : τ)` produces results
 with different constructors (e.g., a lam value vs a mu type), so no
 structural relation can bridge them.
+
+The step-index coupling (VCompat fuel = fuel) was also a dead end for the
+asc case. The fix (decoupled step index) is documented above.
 
 **Do not attempt structural relations for soundness.** Use VCompat as described
 above.
