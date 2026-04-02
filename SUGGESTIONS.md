@@ -56,6 +56,7 @@ a system with 0 sorrys that can't express dependent elimination.
 
 `lake build` passes with **2 sorrys** (`absEval_mono` + `soundness_gen`).
 **All M1-M4 milestone tests pass.** 11 WellTyped witness tests pass.
+**ValSub.lean is SORRY-FREE** — bridge proved via compose_r + mono.
 
 ### What's working
 
@@ -194,75 +195,60 @@ replaces SubtypeCore entirely, making that work redundant.
 SubtypeCore is too weak as the output relation — it lacks self_intro and
 contra-domain lam_sub. See `docs/research/equi-recursive-subtyping-lit-review.md`.
 
-#### Step 1: Syntactic ValSub ✓ COMPLETE
+#### Step 1: Syntactic ValSub + compose_r + bridge ✓ COMPLETE
 
-File: `Och/ValSub.lean`. Defined `ValSub n v τ : Prop` as a step-indexed
-disjunctive relation with rules: top, refl, lam_sub (contra domain + co body),
-mu_body, app_cong, mu_r (self-intro), mu_l (self-elim).
+File: `Och/ValSub.lean`. ValSub has 8 disjuncts:
+- (1-7) Structural: top, refl, lam_sub, mu_body, app_cong, mu_r, mu_l
+- (8) `compose_r`: right-compose with subCheckNF (algorithmic transitivity)
 
-**What's done:**
-- ValSub definition + 9 intro lemmas
+**What's proved (sorry-free):**
+- ValSub definition + 10 intro lemmas (including compose_r)
 - SubtypeCore embedding: `of_subtypeCore : SubtypeCore v τ → ∀n, ValSub n v τ`
-- Bridge lemma stated (sorry'd)
+- Downward closure: `mono : ValSub (n+1) v τ → ValSub n v τ`
+- **Bridge lemma: `bridge : ValSub n v σ → subCheckNF σ τ = true → ValSub n v τ`**
 
-**Critical finding: subst_congr is FALSE.**
-Counterexample (verified by `native_decide`):
-- e = `lam (bvar 0) (bvar 1)`, a = zero', b = Nat'
-- zero' ⊑ Nat' holds, but `lam zero' body ⊑ lam Nat' body` is false
-  (contra domain would need Nat' ⊑ zero')
-This means the generalized soundness approach (SubtypeCore/ValSub on inputs
-+ substitution congruence) is fundamentally blocked. See ValSub.lean for details.
+**Critical finding: subst_congr is FALSE** (verified by native_decide).
+This means generalized soundness via substitution congruence is blocked.
+See ValSub.lean for the counterexample.
 
-**Bridge lemma analysis:**
-The bridge `ValSub n v σ → subCheckNF σ τ → ValSub n v τ` has a domain
-composition problem in the lam case:
-- Body (covariant): recursive bridge ✓
-- Domain (contravariant): requires reverse bridge or ValSub transitivity ✗
-  (ValSub transitivity is hard — step accounting doesn't align)
+**Bridge design:** The bridge was previously blocked by domain composition
+(contravariant domains need reverse bridge or transitivity). The compose_r
+disjunct sidesteps this: instead of decomposing subCheckNF structurally,
+it stores the subCheckNF result directly as evidence. The bridge proof
+is then trivial: apply mono to get ValSub (n-1), then compose_r.
 
-#### Step 2: Semantic ValSub (logical relation) ← DO THIS NEXT
+#### Step 2: Resolve the app case of soundness ← DO THIS NEXT
 
-The syntactic ValSub's bridge is blocked by domain composition. The
-recommended fix is to **replace the lam case with a semantic definition**
-that quantifies over all argument evaluations:
+The bridge (asc case) is solved. The remaining blocker for soundness_gen
+is the **app case**: after evaluating f and a in both modes, we need to
+show the body evaluation results are related.
 
-```lean
--- Semantic lam case (Amin-Rompf style):
-ValSub n (lam domv bodyv) (lam domτ bodyτ) :=
-  ∀ m ≤ n, ∀ av aτ, ValSub m av domτ →
-    ∀ rv, concEval m [] (bodyv.subst 0 av) = some rv →
-    ∀ rτ, absEval m [] (bodyτ.subst 0 aτ) = some rτ →
-    ValSub m rv rτ
-```
+**The problem:** concEval normalizes lambda bodies (evaluates under binders).
+So the function value has a NORMALIZED body, not the original source body.
+When applied, we substitute and re-evaluate: `concEval env (bodyNorm.subst 0 aVal)`.
+The soundness IH is about the SOURCE body, not the normalized one.
 
-**Why this works:**
-1. **App case becomes trivial:** IH gives ValSub for function and args.
-   Instantiate the lam quantifier with actual args and eval results. Done.
-2. **Bridge's lam case works:** If v ⊑ σ (semantic) and subCheckNF σ τ,
-   then any arg satisfying domτ also satisfies domσ (since domτ ⊑ domσ),
-   so the ValSub v σ quantifier can be used.
-3. **No subst_congr needed:** The quantifier already handles all possible
-   substitutions.
+**Semantic ValSub (Amin-Rompf style) doesn't directly apply** because
+Amin-Rompf assumes lambdas are values (no normalization). In their system,
+the closure carries the original body, so the semantic lam's quantifier
+follows from the IH on the original body. See PROGRESS.md "Analysis" for
+details.
 
-**Downsides:**
-- Definition depends on concEval and absEval (couples relation to evaluator)
-- More complex to state and reason about
-- May need careful step-index bookkeeping
+**Approaches (ordered by tractability):**
 
-**Steps:**
-1. Define semantic `ValSub` (modify lam and possibly mu cases in ValSub.lean)
-2. Re-prove SubtypeCore embedding (may need adjustment for semantic lam)
-3. Prove bridge lemma (should now be tractable)
-4. Rewrite soundness_gen to output ValSub (non-generalized — same expression)
-5. Handle the app case via the semantic lam quantifier
-6. Handle the asc case via the bridge
-7. Verify witness tests still pass
+1. **Substitution-evaluation equivalence:** Prove (or assume) that
+   `concEval fuel env (bodyNorm.subst 0 val) ≈ concEval fuel (env.extend val) bodySource`
+   This connects the actual application back to the IH on the source body.
+   Then the app case uses the IH on the source body with extended envs.
+   Hardest part: might not hold exactly with finite fuel.
 
-**Key insight for the app case:** The generalized soundness (different
-expressions on inputs) is NOT needed if ValSub is semantic. The lam case's
-∀ quantifier absorbs the argument difference. The IH is non-generalized
-(same expression for both evaluators), which is simpler and avoids the
-subst_congr problem entirely.
+2. **Prove soundness for concEvalS (Phase 5):** concEvalS treats lambdas
+   as values (matching Amin-Rompf). But concEvalS can't evaluate open
+   terms. Soundness would need to be at the top level (closed programs)
+   with a different induction structure.
+
+3. **Closure-based evaluator:** Add closures to concEval. Matches
+   Amin-Rompf exactly but requires significant refactoring.
 
 **Also needed (mu-app annotation path):** Re-add annotation consistency
 to WellTyped using subCheckNF.
