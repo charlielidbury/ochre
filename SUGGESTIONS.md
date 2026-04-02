@@ -84,74 +84,61 @@ VCompat n av aτ → ...` to the standard Appel-McAllester bounded quantifier
 `∀ m, m ≤ n → ∀ av aτ, VCompat m av aτ → ...`. With this change, the
 function case of mono is trivial (restrict quantifier from m ≤ k+1 to m ≤ k).
 
-### Step 2: Prove `VCompat.adequacy`
+### Step 2: Prove `soundness_gen` app case (application congruence)
+
+**This is the hardest remaining step.** The IH gives VCompat for the
+evaluated function (structural lam: VCompat for bodies) and VCompat for
+the arg. The evaluators then substitute the arg into the body and
+re-evaluate. But the two bodies are DIFFERENT (normalized by different
+evaluators) and the two args are DIFFERENT (concrete vs abstract).
+
+The soundness_gen IH needs the SAME source expression on both sides.
+But after beta-reduction, we have bodyV.subst 0 a_v ≠ bodyT.subst 0 a_τ.
+
+**Approaches to consider:**
+1. **Env-substitution equivalence:** Show that evaluating (normalized body
+   with arg substituted) equals evaluating (source body with arg in env).
+   Then apply soundness_gen's IH to the source body.
+2. **Separate congruence lemma by induction on VCompat or expressions.**
+3. **Reformulate with related envs** (env_v, env_τ with EnvCompat). The
+   standard LR approach, but requires more infrastructure.
+4. **Use subCheckNF fallback** if evaluation outputs happen to be related.
+
+See PROGRESS.md for detailed analysis.
+
+### Step 3: Prove `VCompat.adequacy`
 
 `VCompat n v σ → subCheckNF σ τ = true → VCompat n v τ`
 
-This is the bridge between the semantic relation and the algorithmic checker.
-Needed for the asc case of soundness.
+Needed for the asc case of soundness_gen. Case-split on VCompat:
+- VCompat via subCheckNF fallback: compose the two subCheckNFs
+  (needs subCheckNF transitivity)
+- VCompat via structural lam/mu: transfer through subCheckNF's structural
+  cases (contra domain, cov body)
+- VCompat via mu unfold: subCheckNF may also unfold the mu
 
-**This is probably the hardest lemma.** It says: if `v` is compatible with
-`σ`, and `σ ⊑ τ` algorithmically, then `v` is compatible with `τ`.
+May require subCheckNF transitivity as a sub-lemma.
 
-Approach: case-split on VCompat, then on the subCheckNF derivation.
-- If VCompat via subCheckNF fallback: compose the two subCheckNFs
-  (needs subCheckNF transitivity, which is standard but non-trivial)
-- If VCompat via semantic function: need to show the semantic property
-  transfers through subCheckNF's function subtyping (contra domain,
-  cov body)
-- If VCompat via mu unfold: the subCheckNF may also unfold the mu
+### Step 4: Prove `soundness_gen` asc case (uses adequacy)
 
-This lemma may require proving subCheckNF transitivity as a sub-lemma.
-If that's too hard, consider proving soundness+completeness of subCheckNF
-w.r.t. Subtype' and using Subtype'.trans.
+Once adequacy is proved, the asc case follows:
+- IH on term: VCompat v σ (where σ = absEval term)
+- WellTyped: subCheckNF σ τ (where τ = absEval ty)
+- Adequacy: VCompat v τ
 
-### Step 3: Prove `soundness`
+### Step 5: Bridge concEval → concEvalE
 
-By induction on fuel, case-split on the expression:
+For the top-level `soundness` theorem. Prove that concEval and concEvalE
+agree on closed terms (possibly up to VCompat).
 
-- **bvar:** Both evaluators look up the env. With empty env, this is
-  vacuous (no free vars in closed programs).
+### ✅ DONE — `soundness_gen` bvar, type, lam, mu cases
 
-- **type:** Both return .type. VCompat by refl.
+All proved via structural VCompat + IH. The lam and mu cases are direct
+because both evaluators process the same source body in the same env.
 
-- **lam:** Need to produce semantic function compatibility: for all
-  compatible args, evaluating both bodies gives compatible results.
+### ✅ DONE — `VCompat.mono` (downward closure)
 
-  With `concEval`: lambdas are values — `concEval` returns the lambda
-  as-is (body untouched). The semantic quantifier says: for all compatible
-  args `(av, aτ)`, `concEval(bodyV.subst 0 av)` and `absEval(bodyT.subst 0 aτ)`
-  give compatible results. This IS the IH at lower fuel. The challenge: bodyV
-  is the SOURCE body (un-normalized), while bodyT is the NORMALIZED body
-  (absEval normalizes under binders). Are they related enough for the IH?
-
-  With `concEvalE` (fallback): both evaluators normalize under binders,
-  so bodyV and bodyT are both normalized. The IH relates them directly.
-  But then you need a bridge from concEval to concEvalE.
-
-- **mu:** Both evaluators normalize the body with the mu value in the env.
-  Return mu with normalized body. VCompat by mu unfolding + IH on body.
-
-- **app:** Both evaluators evaluate f and a, then case-split on f's shape.
-  IH gives VCompat for f and a. **This is where logical relations shine:**
-  if f_v and f_τ are both lam, use the semantic function compatibility
-  (instantiate with the arg). If one is lam and the other is mu, use mu
-  unfolding first, then the function case. The VCompat definition handles
-  all combinations.
-
-- **asc:** concEvalE evaluates term, absEval evaluates ty. IH on term gives
-  VCompat v σ (where σ = absEval(term)). WellTyped gives subCheckNF σ τ.
-  Apply VCompat.adequacy to compose them. **This is the crux — adequacy
-  bridges the semantic and algorithmic worlds.**
-
-- **top:** absEval returns .type. VCompat by top case. Trivial.
-
-### Step 4 (if using concEvalE): Bridge to concEval
-
-Only needed if the proof falls back to `concEvalE`. In that case, prove:
-`concEval fuel e = v → concEvalE fuel [] e = v'` with some relationship
-between v and v'. This is a separate concern from the main soundness proof.
-If soundness works directly with `concEval`, this step is unnecessary.
+Proved. The structural lam/mu cases make mono trivial (apply IH on bodies).
 
 ## Before you prove ANYTHING: try to disprove it first
 

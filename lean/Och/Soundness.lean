@@ -27,8 +27,8 @@ function compatibility already quantifies over all possible applications.
 
 - **n = 0:** everything is compatible (no observation budget)
 - **τ = .type:** everything is compatible (top type)
-- **Both lam:** for all compatible args at any level m ≤ n, evaluating both
-  bodies gives compatible results (semantic function compatibility)
+- **Both lam:** same domain, bodies are compatible (structural)
+- **Both mu:** same annotation, bodies are compatible (structural)
 - **τ = mu:** unfold the mu, check compatibility with the unfolded body
   (equi-recursive; costs one step)
 - **v = mu:** unfold the mu on the value side (costs one step)
@@ -105,31 +105,16 @@ compatible with an abstract type `τ`, given an observation budget `n`.
 
 **Design notes:**
 
-The function case currently uses `concEvalE` (env-based concrete evaluator).
-**Try `concEval` (substitution-based) first** — it's the real runtime, and
-if the proof works with it directly, no bridge is needed. `concEval` treats
-lambdas as values (bodies untouched until applied), while `concEvalE`
-normalizes under binders like absEval. The lam case of soundness may be
-simpler with `concEval` (just return the lambda as-is) or harder (the
-semantic quantifier needs to relate un-normalized bodies). Try it and see.
-Fall back to `concEvalE` only if `concEval` doesn't work.
+VCompat uses structural cases (bodies are compatible) rather than semantic
+function cases (quantifying over args and evaluating). This is because the
+soundness proof's IH gives VCompat for the two evaluators' outputs on the
+SAME source body. With a semantic function case, the lam/mu cases are hard
+because the bodies diverge (concEval returns source body, absEval normalizes).
+With structural cases, the IH directly applies.
 
-The mu cases unfold one level and decrease the step index. This is the
-standard approach for equi-recursive types (Appel & McAllester 2001).
-
-The `subCheckNF` fallback handles cases where structural decomposition
-doesn't apply (e.g., neutral terms, stuck applications). This is safe
-because subCheckNF is the intended algorithmic subtype checker.
-
-**Open question:** The exact definition below is a SKETCH. It may need
-refinement as proofs develop. In particular:
-- Should mu unfolding be on left, right, or both?
-- Is the subCheckNF fallback the right escape hatch, or should it be
-  more restrictive?
-- Does the env need to be threaded through (for non-closed terms)?
-
-These questions should be resolved by attempting the proof and seeing
-what the induction demands. -/
+The mu-unfolding cases (equi-recursive, costs one step) are kept for
+adequacy and the app case. The subCheckNF fallback handles remaining
+cases (neutral terms, stuck applications, cross-constructor compatibility). -/
 
 /-- Step-indexed value-type compatibility.
 
@@ -137,7 +122,27 @@ what the induction demands. -/
     given `n` steps of observation budget.
 
     This is defined as a recursive function on `n` (not an inductive),
-    following the Appel-McAllester style. -/
+    following the Appel-McAllester style.
+
+    **Design choice: structural function/mu cases.**
+
+    Previous versions used a SEMANTIC function case: "for all compatible
+    args, evaluating both bodies gives compatible results." This doesn't
+    work well with the soundness IH because the two evaluators (concEvalE
+    and absEval) produce different normalized bodies from the same source.
+    The IH needs the SAME expression on both sides.
+
+    Instead, we use STRUCTURAL cases: "both are lambdas with compatible
+    bodies" (and similarly for mu). The soundness proof's lam/mu cases
+    become trivial — the IH on the body (same source expression, same env)
+    gives VCompat for the two normalized bodies directly.
+
+    The app case of soundness then needs a separate "application congruence"
+    lemma: VCompat bodyV bodyT → VCompat a_v a_τ → compatible results after
+    substitution+evaluation. This is harder but more modular.
+
+    The mu-unfolding cases (equi-recursive) are kept for adequacy and the
+    app case. The subCheckNF fallback handles everything else. -/
 def VCompat : Nat → Expr → Expr → Prop
   | 0, _, _ => True
   | n + 1, v, τ =>
@@ -145,23 +150,21 @@ def VCompat : Nat → Expr → Expr → Prop
     τ = .type
     -- Refl: syntactic equality (optimization)
     ∨ v = τ
-    -- Semantic function compatibility (THE KEY CASE):
-    -- Both are lambdas, and for all compatible args at ANY level m ≤ n,
-    -- application gives compatible results. The bounded quantifier (∀ m ≤ n)
-    -- is the standard Appel-McAllester approach — it makes downward closure
-    -- (VCompat.mono) trivially provable for the function case.
-    -- NOTE: uses concEval (real runtime). If this doesn't work, try concEvalE.
-    ∨ (∃ domV bodyV domT bodyT,
-        v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
-        (∀ m, m ≤ n → ∀ av aτ, VCompat m av aτ →
-           ∀ rv, concEval (m + 1) (bodyV.subst 0 av) = some rv →
-           ∀ rτ, absEval (m + 1) [] (bodyT.subst 0 aτ) = some rτ →
-           VCompat m rv rτ))
-    -- Mu unfolding on the right (self-intro): costs one step
+    -- Structural lambda: both are lambdas with the same domain,
+    -- and the bodies are compatible at the lower step.
+    ∨ (∃ dom bodyV bodyT,
+        v = .lam dom bodyV ∧ τ = .lam dom bodyT ∧
+        VCompat n bodyV bodyT)
+    -- Structural mu: both are mus with the same annotation,
+    -- and the bodies are compatible at the lower step.
+    ∨ (∃ ann bodyV bodyT,
+        v = .mu ann bodyV ∧ τ = .mu ann bodyT ∧
+        VCompat n bodyV bodyT)
+    -- Mu unfolding on the right (equi-recursive self-intro): costs one step
     ∨ (∃ ann body,
         τ = .mu ann body ∧
         VCompat n v (body.subst 0 (.mu ann body)))
-    -- Mu unfolding on the left (self-elim): costs one step
+    -- Mu unfolding on the left (equi-recursive self-elim): costs one step
     ∨ (∃ ann body,
         v = .mu ann body ∧
         VCompat n (body.subst 0 (.mu ann body)) τ)
@@ -170,17 +173,114 @@ def VCompat : Nat → Expr → Expr → Prop
 
 /-! ## Soundness theorem
 
-The main theorem. Sorry'd — this is what we're working toward. -/
+Two forms:
+1. `soundness_gen` — uses concEvalE (env-based, normalizes under binders).
+   Both evaluators process the SAME source expression in the SAME env,
+   so the IH applies directly for bvar/type/lam/mu cases.
+2. `soundness` — the top-level theorem using concEval (real runtime).
+   Follows from soundness_gen via a concEval→concEvalE bridge (TBD).
+
+The env-based form is the workhorse. The bridge is a separate concern. -/
+
+/-- Generalized soundness with concEvalE.
+    Uses the same env for both evaluators. By induction on fuel.
+    The lam and mu cases are direct (structural VCompat from IH on body).
+    The app case needs "application congruence" (VCompat through eval+subst).
+    The asc case needs VCompat.adequacy (VCompat through subCheckNF). -/
+theorem soundness_gen
+    (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr)
+    (h_wt : WellTyped fuel env e = true)
+    (h_conc : concEvalE fuel env e = some v)
+    (h_abs : absEval fuel env e = some τ)
+    : VCompat fuel v τ := by
+  cases fuel with
+  | zero => simp [concEvalE] at h_conc
+  | succ n =>
+    cases e with
+    | bvar k =>
+      -- Both evaluators look up env[k]. Same result → VCompat by refl.
+      simp [concEvalE] at h_conc
+      simp [absEval] at h_abs
+      have : v = τ := by
+        have := h_conc.symm.trans h_abs
+        exact Option.some.inj this
+      subst this
+      unfold VCompat; exact Or.inr (Or.inl rfl)
+    | type =>
+      simp [concEvalE] at h_conc
+      simp [absEval] at h_abs
+      subst h_conc; subst h_abs
+      unfold VCompat; exact Or.inr (Or.inl rfl)
+    | lam dom body =>
+      -- concEvalE normalizes body: v = lam dom bodyV'
+      -- absEval normalizes body: τ = lam dom bodyT'
+      -- Both use env.extend (bvar 0). IH on body gives VCompat n bodyV' bodyT'.
+      simp only [concEvalE] at h_conc
+      simp only [absEval] at h_abs
+      -- Extract bodyV' and bodyT' from the match on concEvalE/absEval of body
+      match h_cv : concEvalE n (Env.extend env (.bvar 0)) body with
+      | none => simp [h_cv] at h_conc
+      | some bodyV' =>
+        simp [h_cv] at h_conc
+        match h_av : absEval n (Env.extend env (.bvar 0)) body with
+        | none => simp [h_av] at h_abs
+        | some bodyT' =>
+          simp [h_av] at h_abs
+          -- h_conc : v = .lam dom bodyV', h_abs : τ = .lam dom bodyT'
+          subst h_conc; subst h_abs
+          -- WellTyped for body under binder
+          have h_wt_body : WellTyped n (Env.extend env (.bvar 0)) body = true := by
+            simp [WellTyped] at h_wt; exact h_wt
+          -- IH on body
+          have ih := soundness_gen n (Env.extend env (.bvar 0)) body bodyV' bodyT'
+                     h_wt_body h_cv h_av
+          -- VCompat (n+1) (lam dom bodyV') (lam dom bodyT') via structural lam
+          unfold VCompat
+          exact Or.inr (Or.inr (Or.inl ⟨dom, bodyV', bodyT', rfl, rfl, ih⟩))
+    | mu ann body =>
+      -- concEvalE: v = mu ann bodyV' where bodyV' = concEvalE n env' body
+      -- absEval: τ = mu ann bodyT' where bodyT' = absEval n env' body
+      -- Both use env.extend (mu ann body). IH on body gives VCompat n bodyV' bodyT'.
+      simp only [concEvalE] at h_conc
+      simp only [absEval] at h_abs
+      match h_cv : concEvalE n (Env.extend env (.mu ann body)) body with
+      | none => simp [h_cv] at h_conc
+      | some bodyV' =>
+        simp [h_cv] at h_conc
+        match h_av : absEval n (Env.extend env (.mu ann body)) body with
+        | none => simp [h_av] at h_abs
+        | some bodyT' =>
+          simp [h_av] at h_abs
+          subst h_conc; subst h_abs
+          have h_wt_body : WellTyped n (Env.extend env (.mu ann body)) body = true := by
+            simp [WellTyped] at h_wt; exact h_wt
+          have ih := soundness_gen n (Env.extend env (.mu ann body)) body bodyV' bodyT'
+                     h_wt_body h_cv h_av
+          -- VCompat (n+1) (mu ann bodyV') (mu ann bodyT') via structural mu
+          unfold VCompat
+          exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, bodyV', bodyT', rfl, rfl, ih⟩)))
+    | app f a =>
+      -- IH on f and a give VCompat for evaluated function and arg.
+      -- Need "application congruence": VCompat bodies + VCompat args →
+      -- VCompat results after substitution+evaluation.
+      sorry
+    | asc term ty =>
+      -- concEvalE: v = concEvalE n env term
+      -- absEval: τ = absEval n env ty
+      -- IH on term: VCompat n v (absEval n env term) =: VCompat n v σ
+      -- WellTyped: subCheckNF σ τ
+      -- Needs VCompat.adequacy to bridge.
+      sorry
 
 /-- Soundness for the real runtime (concEval).
-    Try this first. Fall back to concEvalE version only if needed. -/
+    Follows from soundness_gen via a concEval→concEvalE bridge. -/
 theorem soundness
     (fuel : Nat) (e : Expr) (v τ : Expr)
     (h_wt : WellTyped fuel [] e = true)
     (h_conc : concEval fuel e = some v)
     (h_abs : absEval fuel [] e = some τ)
     : VCompat fuel v τ := by
-  sorry
+  sorry  -- needs concEval → concEvalE bridge
 
 /-! ## Key lemmas (all sorry'd — to be proved)
 
@@ -205,26 +305,26 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     (h : VCompat (n + 1) v τ) : VCompat n v τ := by
   cases n with
   | zero =>
-    -- VCompat 0 v τ = True
     unfold VCompat; trivial
   | succ k =>
     -- h : VCompat (k+2) v τ, goal : VCompat (k+1) v τ
-    -- Unfold one level of VCompat in both h and the goal
     unfold VCompat at h ⊢
-    rcases h with h_top | h_refl | ⟨domV, bodyV, domT, bodyT, hv, hτ, h_fn⟩ |
+    rcases h with h_top | h_refl |
+                  ⟨dom, bodyV, bodyT, hv, hτ, h_body⟩ |
+                  ⟨ann, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨ann, body, hτ, h_mu⟩ | ⟨ann, body, hv, h_mu⟩ |
                   ⟨fuel, ctx, h_sub⟩
-    -- τ = .type → trivial at any level
+    -- Top
     · exact Or.inl h_top
-    -- v = τ → trivial at any level
+    -- Refl
     · exact Or.inr (Or.inl h_refl)
-    -- Semantic function: ∀ m ≤ k+1 → ... becomes ∀ m ≤ k → ...
-    -- Since m ≤ k implies m ≤ k+1, just restrict the quantifier.
-    · exact Or.inr (Or.inr (Or.inl ⟨domV, bodyV, domT, bodyT, hv, hτ,
-        fun m hm => h_fn m (Nat.le_succ_of_le hm)⟩))
-    -- Mu right: VCompat (k+1) v (body.subst ...) → VCompat k v (body.subst ...) by IH
-    · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩)))
-    -- Mu left: VCompat (k+1) (body.subst ...) τ → VCompat k (body.subst ...) τ by IH
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩))))
-    -- subCheckNF fallback: no step index, passes through
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨fuel, ctx, h_sub⟩))))
+    -- Structural lam: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
+    · exact Or.inr (Or.inr (Or.inl ⟨dom, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩))
+    -- Structural mu: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
+    · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩)))
+    -- Mu right: VCompat (k+1) v (body.subst ...) → VCompat k by IH
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩))))
+    -- Mu left: VCompat (k+1) (body.subst ...) τ → VCompat k by IH
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩)))))
+    -- subCheckNF fallback: passes through
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨fuel, ctx, h_sub⟩)))))
