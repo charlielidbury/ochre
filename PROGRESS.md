@@ -9,15 +9,102 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **2 sorrys** and all tests (including WellTyped witnesses).
+`lake build` passes with **3 sorrys** and all tests (including WellTyped witnesses).
 
 - **Subtyping.lean: SORRY-FREE** (includes `SubtypeCore.shift_preserve`)
-- **Monotonicity.lean: 1 sorry** (`absEval_mono` — see below for why)
+- **Monotonicity.lean: 1 sorry** (`absEval_mono` — blocked on SubtypeCore weakness)
 - **Soundness.lean: 1 sorry** (`soundness_gen` — fundamental SubtypeCore weakness)
+- **ValSub.lean: 1 sorry** (`bridge` — see analysis below)
 
-**Total: 2 sorrys.** All tests pass including WellTyped witnesses.
+**Total: 3 sorrys.** All tests pass including WellTyped witnesses.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-135537)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-141112)
+
+**Phase 4 Step 1: ValSub definition + SubtypeCore embedding + analysis.**
+
+Created `Och/ValSub.lean` with:
+- **ValSub definition:** Step-indexed value subtyping, `ValSub n v τ : Prop`.
+  Defined as a disjunction by recursion on n. At n=0, trivially true (no
+  budget). At n+1, seven disjuncts: top, refl, lam_sub (contra domain +
+  co body), mu_body, app_cong, mu_r (self-intro), mu_l (self-elim).
+- **Intro lemmas:** Named constructors for each disjunct (top, refl, refl',
+  lam_sub, lam_body, mu_body, app_cong, mu_r, mu_l).
+- **SubtypeCore embedding:** `of_subtypeCore : SubtypeCore v τ → ∀n, ValSub n v τ`.
+  Proved by induction on SubtypeCore. Each case maps to the corresponding
+  ValSub disjunct. This ensures the existing soundness proof cases (which
+  produce SubtypeCore) still work when the output changes to ValSub.
+- **Bridge lemma (sorry'd):** The critical missing piece for the asc case.
+- **subst_congr counterexample (IMPORTANT):** Proved via native_decide that
+  substitution congruence is FALSE for ValSub. See below.
+
+### KEY FINDING: subst_congr is false
+
+`ValSub n a b → ValSub n (e.subst j a) (e.subst j b)` is **FALSE** for the
+syntactic ValSub with contra-domain lam_sub.
+
+**Counterexample (verified by native_decide):**
+- e = `lam (bvar 0) (bvar 1)` — lambda whose domain IS the substituted variable
+- a = zero', b = Nat'
+- zero' ⊑ Nat' holds (zero is a nat)
+- e.subst 0 zero' = `lam zero' (bvar 0)`
+- e.subst 0 Nat' = `lam Nat' (bvar 0)`
+- lam zero' body ⊑ lam Nat' body requires Nat' ⊑ zero' (contra domain) — FALSE
+
+**Consequence:** The GENERALIZED soundness approach (ValSub/SubtypeCore on
+inputs + substitution congruence) is fundamentally blocked. This is the same
+issue SubtypeCore had — contra-domain makes substitution non-monotone.
+
+### Analysis of the bridge lemma
+
+The bridge `ValSub n v σ → subCheckNF σ τ = true → ValSub n v τ` is needed
+for the asc case of soundness. Analysis of each case:
+
+- **σ = τ (refl):** Trivial ✓
+- **τ = Type (top):** ValSub.top ✓
+- **Bodies (covariant):** Recursive bridge call. ✓
+- **Domains (contravariant):** BLOCKED. Need ValSub domτ domv from
+  ValSub domσ domv + subCheckNF domτ domσ. This requires either:
+  (a) ValSub transitivity (hard — step accounting doesn't align)
+  (b) subCheckNF_sound into ValSub + ValSub transitivity
+  (c) A reverse bridge: subCheckNF(a,b) + ValSub(b,c) → ValSub(a,c)
+- **Mu cases:** Should work (fuel consumption aligns with step index).
+- **inferType cases:** Needs context awareness (subCheckNF uses ctx, ValSub doesn't).
+
+### Important insight: shared lambda domains
+
+In the soundness proof, v (from concEval) and σ (from absEval) always share
+lambda domains because both evaluators preserve the syntactic domain:
+```
+| .lam dom body => ... some (.lam dom body')  -- dom unchanged!
+```
+This means the domain composition problem may not arise at the TOP level
+(where v and σ are direct eval outputs). It DOES arise for nested comparisons.
+
+### Recommended next step: semantic ValSub (logical relation)
+
+The syntactic ValSub has clear limitations for the bridge. The recommended
+alternative is a **semantic (logical relation) ValSub** where the lam case
+quantifies over all argument evaluations:
+
+```
+ValSub n (lam domv bodyv) (lam domτ bodyτ) :=
+  ∀ m ≤ n, ∀ av aτ, ValSub m av domτ →
+    ∀ rv, concEval m [] (bodyv.subst 0 av) = some rv →
+    ∀ rτ, absEval m [] (bodyτ.subst 0 aτ) = some rτ →
+    ValSub m rv rτ
+```
+
+This approach:
+- Makes the app case of soundness trivial (instantiate the quantifier)
+- Avoids subst_congr entirely
+- Makes the bridge's lam case tractable (domain subsumption follows from
+  the quantifier's domain condition)
+- Couples the relation to the evaluator (acceptable trade-off)
+- Is the standard approach in the step-indexed logical relations literature
+
+See `docs/research/amin-rompf-deep-dive.md` for the Amin-Rompf precedent.
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-135537)
 
 **Phase 3.5: Env extend lemmas — COMPLETE (4 sorrys eliminated).**
 
@@ -34,11 +121,7 @@ given `SubtypeCore body₂ body₁` and `SubtypeCore aVal₂ aVal₁`. This does
 hold because `lam_body` requires equal domains — substituting different values
 into a nested lambda's domain breaks this. Fixing it requires adding
 `lam_cong`/`mu_cong` (allowing different domains/anns) to SubtypeCore, but
-Phase 4 replaces SubtypeCore with ValSub, making that work redundant.
-
-**Recommendation:** Skip directly to Phase 4 (ValSub). The remaining 2 sorrys
-are both fundamentally blocked by SubtypeCore's weakness. Phase 4 addresses
-this by replacing SubtypeCore entirely.
+Phase 4 replaces SubtypeCore entirely, making that work redundant.
 
 ### Previous changes (2026-04-02, agent ochre-lean-20260402-123003)
 
@@ -100,23 +183,16 @@ This is the biggest mechanical change in the project's history.
 
 **What's next (for the next agent):**
 
-Phase 3 is done. The next phases from SUGGESTIONS.md:
-
-1. **Reprove monotonicity (absEval_mono).** The proof structure is the same
-   (induction on SubtypeCore), but the details of env extension (Env.extend
-   with shifting) and beta (substitution) need updating. Start with the env
-   extend lemmas (envSubCore_extend, envSubCore_extend_sub), then the main
-   theorem. Key files: Monotonicity.lean.
-
-2. **Reprove soundness_gen.** Same structure but harder. The pre-existing
-   blockers remain (SubtypeCore too weak for asc case). Start with env
-   extend lemmas, then the non-asc cases. Key files: Soundness.lean.
-
-3. **Phase 4:** Address the SubtypeCore weakness (change output relation).
+See SUGGESTIONS.md Phase 4. The ValSub definition is in place. The critical
+next step is either:
+1. **Prove the bridge lemma** (hard — requires solving domain composition)
+2. **Replace syntactic ValSub with semantic ValSub** (logical relation approach)
+3. **Rewrite soundness to output ValSub** (straightforward once bridge works)
 
 ### Previous changes
 
 See git log for full history. Key milestones:
 - Phase 1 (milestone tests): All M1-M4 pass including abstract appendVec
 - Phase 2 (non-vacuous WellTyped): Bool-valued with subCheckNF, 11 witnesses
-- Phase 3 (de Bruijn): THIS SESSION
+- Phase 3 (de Bruijn): Complete migration
+- Phase 3.5 (env extend lemmas): 4 sorrys eliminated

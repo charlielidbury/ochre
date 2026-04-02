@@ -5,6 +5,42 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-02: Syntactic ValSub defined; subst_congr proven false
+
+**Agent:** ochre-lean-20260402-141112
+
+**Decision:** Defined `ValSub` as a step-indexed disjunctive Prop relation
+(Och/ValSub.lean) with contra-domain lam_sub, self-intro/elim, and all
+SubtypeCore rules. Proved SubtypeCore embeds into it.
+
+**What worked:**
+- ValSub definition compiles and is well-founded (recursion on Nat)
+- SubtypeCore embeds cleanly (`of_subtypeCore`)
+- Intro lemmas make proof construction readable
+
+**Key finding: subst_congr is FALSE.**
+Substitution congruence `ValSub a b → ValSub (e[j:=a]) (e[j:=b])` fails
+because contravariant domains make substitution non-monotone.
+Counterexample (verified by native_decide):
+- e = `lam (bvar 0) (bvar 1)`, a = zero', b = Nat'
+- zero' ⊑ Nat' holds, but `lam zero' body ⊑ lam Nat' body` is false
+  (contra domain would need Nat' ⊑ zero')
+
+**Consequence:** The generalized soundness approach (any relation on inputs
++ subst_congr) is dead. The syntactic bridge lemma is blocked at domains.
+
+**Bridge lemma analysis:**
+- Body (covariant): recursive bridge ✓
+- Domain (contravariant): requires reverse bridge or transitivity ✗
+  ValSub transitivity is hard (step accounting doesn't align)
+
+**Recommended next step:** Semantic ValSub (logical relation) where the
+lam case quantifies over all argument evaluations. This eliminates both
+the subst_congr problem and the domain bridge problem. See SUGGESTIONS.md
+Phase 4 Step 2 for details.
+
+---
+
 ## 2026-04-02: Bool-valued WellTyped with subCheckNF (Phase 5, Step 1)
 
 **Decision:** Changed WellTyped from Prop-valued (with SubtypeCore) to

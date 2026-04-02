@@ -190,66 +190,82 @@ replaces SubtypeCore entirely, making that work redundant.
 
 **Depends on:** Phase 3 (substitution lemmas needed — now available via de Bruijn subst).
 
-**The problem:** soundness_gen has 3 targeted sorrys. The fundamental
-blocker is that SubtypeCore is too weak as the output relation — it lacks
-self_intro and contra-domain lam_sub. Subtype' is also too weak. Adding
-these rules to an inductive relation breaks structural induction for
-transitivity. See `docs/research/equi-recursive-subtyping-lit-review.md`
-for full literature review.
+**The problem:** soundness_gen has sorrys. The fundamental blocker is that
+SubtypeCore is too weak as the output relation — it lacks self_intro and
+contra-domain lam_sub. See `docs/research/equi-recursive-subtyping-lit-review.md`.
 
-**The solution: fuel-indexed semantic subtyping (step-indexed LR).**
+#### Step 1: Syntactic ValSub ✓ COMPLETE
 
-Define a new relation `ValSub (n : Nat) (v : Expr) (τ : Expr) : Prop`
-that captures "value v inhabits type τ for n steps." This relation:
+File: `Och/ValSub.lean`. Defined `ValSub n v τ : Prop` as a step-indexed
+disjunctive relation with rules: top, refl, lam_sub (contra domain + co body),
+mu_body, app_cong, mu_r (self-intro), mu_l (self-elim).
 
-- Handles equi-recursive mu by consuming fuel on unfolding (well-founded)
-- Handles contravariant function domains (lam_sub is built in)
-- Has trivial transitivity (semantic, not structural)
-- Uses fuel as the step index (Och already has fuel everywhere)
-- Is defined by well-founded recursion on `Nat` — natural in Lean 4,
-  no coinductive encoding needed
+**What's done:**
+- ValSub definition + 9 intro lemmas
+- SubtypeCore embedding: `of_subtypeCore : SubtypeCore v τ → ∀n, ValSub n v τ`
+- Bridge lemma stated (sorry'd)
 
-**Soundness becomes:**
+**Critical finding: subst_congr is FALSE.**
+Counterexample (verified by `native_decide`):
+- e = `lam (bvar 0) (bvar 1)`, a = zero', b = Nat'
+- zero' ⊑ Nat' holds, but `lam zero' body ⊑ lam Nat' body` is false
+  (contra domain would need Nat' ⊑ zero')
+This means the generalized soundness approach (SubtypeCore/ValSub on inputs
++ substitution congruence) is fundamentally blocked. See ValSub.lean for details.
+
+**Bridge lemma analysis:**
+The bridge `ValSub n v σ → subCheckNF σ τ → ValSub n v τ` has a domain
+composition problem in the lam case:
+- Body (covariant): recursive bridge ✓
+- Domain (contravariant): requires reverse bridge or ValSub transitivity ✗
+  (ValSub transitivity is hard — step accounting doesn't align)
+
+#### Step 2: Semantic ValSub (logical relation) ← DO THIS NEXT
+
+The syntactic ValSub's bridge is blocked by domain composition. The
+recommended fix is to **replace the lam case with a semantic definition**
+that quantifies over all argument evaluations:
+
+```lean
+-- Semantic lam case (Amin-Rompf style):
+ValSub n (lam domv bodyv) (lam domτ bodyτ) :=
+  ∀ m ≤ n, ∀ av aτ, ValSub m av domτ →
+    ∀ rv, concEval m [] (bodyv.subst 0 av) = some rv →
+    ∀ rτ, absEval m [] (bodyτ.subst 0 aτ) = some rτ →
+    ValSub m rv rτ
 ```
-concEval fuel γ e = some v →
-absEval fuel Γ e = some τ →
-EnvConsistent γ Γ →
-WellTyped fuel Γ e = true →
-ValSub fuel v τ
-```
 
-**The asc case then composes directly:**
-- IH gives: `ValSub fuel v σ`
-- WellTyped gives: `subCheckNF fuel Γ [] σ τ' = true`
-- Bridge lemma: `ValSub fuel v σ → subCheckNF σ τ' = true → ValSub fuel v τ'`
-- This bridge works because ValSub is semantic (handles mu unfolding and
-  contra-domain natively) — unlike SubtypeCore which is purely structural.
+**Why this works:**
+1. **App case becomes trivial:** IH gives ValSub for function and args.
+   Instantiate the lam quantifier with actual args and eval results. Done.
+2. **Bridge's lam case works:** If v ⊑ σ (semantic) and subCheckNF σ τ,
+   then any arg satisfying domτ also satisfies domσ (since domτ ⊑ domσ),
+   so the ValSub v σ quantifier can be used.
+3. **No subst_congr needed:** The quantifier already handles all possible
+   substitutions.
 
-**Literature basis:**
-- Appel & McAllester 2001 (seminal step-indexed model for recursive types)
-- Amin & Rompf POPL 2017 (fuel-bounded definitional interpreters — closest
-  existing architecture to Och)
-- See `docs/research/amin-rompf-deep-dive.md` for detailed analysis
-
-**Why this over other options:**
-
-| Approach | Transitivity | Lean 4 fit | Scales to Ochr/Ochre |
-|----------|-------------|------------|---------------------|
-| (a) Checker-based (subCheckNF output) | Unproven — seen-set composition is novel, no literature template | Good | Poor — doesn't scale to mutation |
-| (b) Coinductive relation | Free on the coinductive relation | Poor — Lean 4 lacks native coinduction | Medium |
-| **(c) Step-indexed ValSub** | **Trivial (semantic)** | **Excellent (induction on Nat)** | **Excellent — extends to Ochr/Ochre** |
+**Downsides:**
+- Definition depends on concEval and absEval (couples relation to evaluator)
+- More complex to state and reason about
+- May need careful step-index bookkeeping
 
 **Steps:**
-1. Define `ValSub n v τ` by well-founded recursion on `n`
-2. Prove the bridge lemma: `ValSub n v σ → subCheckNF σ τ = true → ValSub n v τ`
-3. Re-add annotation consistency to WellTyped (using subCheckNF)
-4. Rewrite soundness_gen to output `ValSub` instead of `SubtypeCore`
-5. Prove all cases (the non-asc cases should be similar to current proofs)
-6. Verify witness tests still pass
+1. Define semantic `ValSub` (modify lam and possibly mu cases in ValSub.lean)
+2. Re-prove SubtypeCore embedding (may need adjustment for semantic lam)
+3. Prove bridge lemma (should now be tractable)
+4. Rewrite soundness_gen to output ValSub (non-generalized — same expression)
+5. Handle the app case via the semantic lam quantifier
+6. Handle the asc case via the bridge
+7. Verify witness tests still pass
+
+**Key insight for the app case:** The generalized soundness (different
+expressions on inputs) is NOT needed if ValSub is semantic. The lam case's
+∀ quantifier absorbs the argument difference. The IH is non-generalized
+(same expression for both evaluators), which is simpler and avoids the
+subst_congr problem entirely.
 
 **Also needed (mu-app annotation path):** Re-add annotation consistency
-to WellTyped using subCheckNF (no binder name matching needed). The proof
-then chains through consistency using the ValSub bridge lemma.
+to WellTyped using subCheckNF.
 
 **Important:** The witness tests are the canary. Never weaken WellTyped
 without checking these tests still pass.
