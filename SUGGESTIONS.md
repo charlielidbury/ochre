@@ -240,51 +240,48 @@ resolves to the mu term (structurally different from bvar). The env-based
 `concEvalE` normalizes under binders like absEval, so the IH relates
 their outputs directly via the `EnvSoundRel` invariant.
 
-#### Step 3: Change output type of soundness_gen_sr ← DO THIS NEXT
+#### Step 3: OutputRel output type ✓ DONE (partially)
 
-**CRITICAL: The 2 asc sorrys are UNPROVABLE with `SoundRel` output.**
-The theorem statement is FALSE — `SoundRel v τ` does not hold for programs
-with ascriptions because `v` (from evaluating the term) and `τ` (from
-evaluating the type) can have different constructors. Counterexample:
-`(zero : Nat)` where `concEvalE(zero) = lam ...` but `absEval(Nat) = mu ...`.
-DO NOT attempt to prove these sorrys without changing the output type first.
+**soundness_gen_sr now outputs OutputRel** (was SoundRel, which was FALSE).
 
-**3 sorrys remaining (2 in soundness_gen_sr, 1 in soundness_app_case):**
+OutputRel is an inductive with two constructors:
+- `.sound h`: direct SoundRel (for non-asc cases)
+- `.compose h_sr h_check`: SoundRel to intermediate + subCheckNF to target
 
-1. **asc/refl case (Soundness.lean:~493):** concEvalE takes the term (lhs),
-   absEval takes the type (rhs) — DIFFERENT subexpressions. The IH gives
-   SoundRel for the term, but we need to connect it to the type via
-   `subCheckNF`. Solution: change the output of soundness_gen_sr from
-   `SoundRel` to an `OutputRel` that wraps `SoundRel ∨ compose_r` (like
-   ValSub). Steps:
-   - Define `OutputRel n v τ := SoundRel v τ ∨ ∃ mid, OutputRel (n-1) v mid ∧ subCheckNF mid τ`
-   - Prove bridge: `OutputRel n v σ → subCheckNF σ τ → OutputRel n v τ`
-   - Change soundness_gen_sr output from SoundRel to OutputRel
-   - Non-asc cases: wrap SoundRel results in `OutputRel.embed`
-   - Asc case: IH gives OutputRel for term, WellTyped gives subCheckNF,
-     bridge composes them.
-   **WARNING:** Changing the output to OutputRel is non-trivial because the
-   app case uses `subst_congr` which needs SoundRel, not OutputRel, from
-   the IH. OutputRel needs structural constructors (lam, mu, app_cong) so
-   that IH results can be wrapped. Then the app case needs `OutputRel` inversion
-   (lam_rhs_shape for OutputRel), which is blocked by compose_r — you can't
-   extract body relationships from a subCheckNF chain without subCheckNF
-   decomposition lemmas. Consider alternative approaches:
-   - Prove a SoundRel bridge lemma for cases where self-intro doesn't apply
-   - Add structural constructors to OutputRel + subCheckNF lam decomposition
-   - Switch to a fully semantic approach (lam_sem in OutputRel)
+**Asc case partially proved:** The `.sound` subcase (programs without nested
+asc) is PROVED. The `.compose` subcase (nested asc) needs subCheckNF
+transitivity.
 
-2. **asc/SoundRel.asc case (Soundness.lean:~532):** Same issue, but the
-   input has `SoundRel.asc h_term h_ty` relating different term/ty pairs.
-   Same solution: OutputRel handles the subCheckNF composition.
+#### Step 3.5: Resolve remaining OutputRel sorrys ← DO THIS NEXT
 
-3. **app-mu-annotation edge case (Soundness.lean:~358):** ✓ MOSTLY RESOLVED.
-   The main case (ann_a = lam, body_a = lam) is PROVED via SoundRel.mu with
-   annotation tracking + concEvalE mirroring absEval. The remaining sorry is
-   a narrow edge case: ann_c = lam but ann_a ≠ lam (only via SoundRel.top,
-   unreachable from .refl entry point). Can be eliminated by:
-   - Restricting SoundRel.mu to require same-constructor annotations
-   - Or proving the .refl entry point guarantees same annotations throughout
+**7 new sorrys in Soundness.lean** (10 total, plus 3 legacy):
+
+1. **subCheckNF lifting lemmas** (3 sorrys: lam_congr, mu_congr×2):
+   Need: `subCheckNF mid body_τ → subCheckNF (lam dom mid) (lam dom body_τ)`.
+   These arise when the IH returns `.compose` (from inner asc) and we need
+   to lift through a structural constructor.
+   **Challenge:** subCheckNF's context changes under binders. The IH's
+   subCheckNF uses `ctx = Env.extend Γ (bvar 0)`, but the lifted check
+   needs `ctx' = Γ` extended by the domain. May require:
+   - Context monotonicity for subCheckNF (adding ctx entries preserves true)
+   - Or context-parameterized lifting lemmas
+   - Or proving subCheckNF is independent of ctx for "closed-enough" terms
+
+2. **subCheckNF transitivity** (2 sorrys: asc compose subcases):
+   Need: `subCheckNF a b ∧ subCheckNF b c → subCheckNF a c`.
+   Standard property. Approach: direct case analysis on subCheckNF algorithm,
+   or prove soundness+completeness w.r.t. Subtype' and use Subtype' transitivity.
+
+3. **extractSoundRel** (1 sorry):
+   Converts OutputRel→SoundRel for `soundness_app_case`. This is a hack —
+   the real fix is rewriting soundness_app_case to accept OutputRel from the IH.
+   **Approach:** case-split on OutputRel inside soundness_app_case:
+   - `.sound`: extract SoundRel, use existing proof (200+ lines, unchanged)
+   - `.compose`: sorry for now (needs structural decomposition of OutputRel)
+   This would eliminate extractSoundRel entirely.
+
+4. **app-mu-annotation edge case** (1 sorry, unchanged):
+   ann_c = lam but ann_a ≠ lam. Still unreachable from .refl entry point.
 
 **The legacy `soundness_gen` (ValSub-based, uses substitution-based
 concEval) is retained for compatibility.** Its 3 sorrys (lam, mu, app)
