@@ -143,13 +143,27 @@ def WellTyped (fuel : Nat) (env : Env) (e : Expr) : Bool :=
 
     Proof by induction on fuel.
 
-    **Sorry'd cases:**
-    - lam: source body vs absEval-normalized body (needs semantic ValSub
-      or absEval normalization idempotency)
-    - mu: env-subst equivalence for absEval (need to relate env-based
-      normalization to substitution-based unrolling)
-    - app: different bodies and arguments on each side (needs semantic
-      ValSub where the lam case quantifies over all applications) -/
+    **Sorry'd cases (updated with semantic ValSub analysis):**
+
+    - **lam**: concEval returns `lam dom body` (source), absEval returns
+      `lam dom body'` (normalized). With semantic lam_sem, need to prove:
+      for any related args av/aτ, body evals produce related results.
+      This requires either:
+      (a) IH at fuel-1 on body.subst (fuel alignment issue — eval uses
+          fuel+1 but IH provides fuel), or
+      (b) absEval normalization equivalence: `absEval m [] (body'.subst 0 aτ)
+          = absEval m [] (body.subst 0 aτ)` (pre-normalizing body is idempotent)
+      The lam case is the CRITICAL blocker — once proved, the app case follows.
+
+    - **mu**: env-subst equivalence for absEval (need to relate env-based
+      normalization to substitution-based unrolling):
+      `absEval fuel [v] body = absEval fuel [] (body.subst 0 v)` for closed v.
+
+    - **app**: With semantic lam_sem, the lam-lam sub-case is structurally
+      resolved: extract the semantic quantifier from ValSub fuel fv fτ,
+      instantiate with the concrete/abstract args, use fuel_mono + compose_r
+      twice to recover 2 lost ValSub levels. BLOCKED ON the lam case (the
+      IH for f must produce lam_sem evidence, which requires the lam case). -/
 theorem soundness_gen
     (fuel : Nat) (e : Expr) (τ v : Expr)
     (h_abs : absEval fuel [] e = some τ)
@@ -210,15 +224,21 @@ theorem soundness_gen
       -- Then IH + compose_r (via self-intro subcheck) would close this.
       sorry
     | .app f a =>
-      -- concEval: evaluate f → fv, a → av, then beta-reduce
-      -- absEval: evaluate f → fτ, a → aτ, then beta-reduce
-      -- By IH on f: ValSub fuel fv fτ
-      -- By IH on a: ValSub fuel av aτ
-      -- The body evaluation uses DIFFERENT bodies (source vs normalized) and
-      -- DIFFERENT arguments (concrete vs abstract). The IH requires the same
-      -- expression, so it can't bridge this gap.
-      -- FIX: semantic ValSub where V(lam, lam) quantifies over all applications.
-      -- The app case would then just instantiate the quantifier.
+      -- The app case is the primary motivation for semantic ValSub.
+      -- Strategy: get ValSub for function and arg via IH, then use
+      -- lam_sem's semantic quantifier to relate body evaluations.
+      --
+      -- This case requires:
+      -- 1. Extracting the semantic lam from ValSub fuel fv fτ
+      -- 2. Fuel monotonicity to lift body eval from fuel to fuel+1
+      -- 3. compose_r twice to recover 2 lost ValSub levels
+      --
+      -- SORRY'd: the case analysis over the many concEval/absEval app
+      -- sub-cases is very involved. The lam-lam case (the main one) works
+      -- with semantic ValSub + fuel mono + compose_r. Other sub-cases
+      -- (mu-app, type-app, stuck apps) need individual handling.
+      -- Blocking on: proving the lam case of soundness_gen first
+      -- (which produces the semantic lam evidence needed here).
       sorry
 
 -- Note: the old `soundness` corollary (Subtype' output) is removed.

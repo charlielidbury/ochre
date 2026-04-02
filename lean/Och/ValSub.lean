@@ -71,10 +71,19 @@ def ValSub : Nat → Expr → Expr → Prop
     τ = .type
     -- (2) refl: syntactic equality
     ∨ v = τ
-    -- (3) lam_sub: contravariant domain, covariant body
+    -- (3) lam_sub: contravariant domain, covariant body (syntactic)
     ∨ (∃ domV bodyV domT bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
         ValSub n domT domV ∧ ValSub n bodyV bodyT)
+    -- (3') lam_sem: semantic function subtyping (logical relation)
+    --     "for any related args, if both body evals succeed, results are related"
+    --     Eval fuel is n+1 (matches outer ValSub level); inner ValSub is n.
+    ∨ (∃ domV bodyV domT bodyT,
+        v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
+        (∀ av aτ, ValSub n av aτ →
+           ∀ rv, concEval (n + 1) (bodyV.subst 0 av) = some rv →
+           ∀ rτ, absEval (n + 1) [] (bodyT.subst 0 aτ) = some rτ →
+           ValSub n rv rτ))
     -- (4) mu_body: structural comparison of mu bodies (same annotation)
     ∨ (∃ ann bodyV bodyT,
         v = .mu ann bodyV ∧ τ = .mu ann bodyT ∧
@@ -123,30 +132,40 @@ theorem lam_body {n : Nat} {dom : Expr} {bodyV bodyT : Expr}
     ValSub (n + 1) (.lam dom bodyV) (.lam dom bodyT) :=
   lam_sub (refl' dom n) hbody
 
+/-- Semantic function subtyping: for any ValSub-related args, if both body
+    evaluations succeed, results are related. -/
+theorem lam_sem {n : Nat} {domV bodyV domT bodyT : Expr}
+    (hsem : ∀ av aτ, ValSub n av aτ →
+       ∀ rv, concEval (n + 1) (bodyV.subst 0 av) = some rv →
+       ∀ rτ, absEval (n + 1) [] (bodyT.subst 0 aτ) = some rτ →
+       ValSub n rv rτ) :
+    ValSub (n + 1) (.lam domV bodyV) (.lam domT bodyT) :=
+  Or.inr (Or.inr (Or.inr (Or.inl ⟨domV, bodyV, domT, bodyT, rfl, rfl, hsem⟩)))
+
 theorem mu_body {n : Nat} {ann : Expr} {bodyV bodyT : Expr}
     (hbody : ValSub n bodyV bodyT) :
     ValSub (n + 1) (.mu ann bodyV) (.mu ann bodyT) :=
-  Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, bodyV, bodyT, rfl, rfl, hbody⟩)))
+  Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, bodyV, bodyT, rfl, rfl, hbody⟩))))
 
 theorem app_cong {n : Nat} {fV aV fT aT : Expr}
     (hf : ValSub n fV fT) (ha : ValSub n aV aT) :
     ValSub (n + 1) (.app fV aV) (.app fT aT) :=
-  Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨fV, aV, fT, aT, rfl, rfl, hf, ha⟩))))
+  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨fV, aV, fT, aT, rfl, rfl, hf, ha⟩)))))
 
 theorem mu_r {n : Nat} {v ann body : Expr}
     (h : ValSub n v (body.subst 0 (.mu ann body))) :
     ValSub (n + 1) v (.mu ann body) :=
-  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, rfl, h⟩)))))
+  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, rfl, h⟩))))))
 
 theorem mu_l {n : Nat} {ann body τ : Expr}
     (h : ValSub n (body.subst 0 (.mu ann body)) τ) :
     ValSub (n + 1) (.mu ann body) τ :=
-  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, rfl, h⟩))))))
+  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, rfl, h⟩)))))))
 
 theorem compose_r {n : Nat} {v mid τ : Expr} {fuel : Nat} {ctx : List Expr}
     (hv : ValSub n v mid) (hcheck : subCheckNF fuel ctx [] mid τ = true) :
     ValSub (n + 1) v τ :=
-  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨mid, fuel, ctx, hv, hcheck⟩))))))
+  Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨mid, fuel, ctx, hv, hcheck⟩)))))))
 
 /-! ## Embedding from SubtypeCore
 
@@ -184,6 +203,7 @@ theorem mono {v τ : Expr} {n : Nat} : ValSub (n + 1) v τ → ValSub n v τ := 
     -- h : ValSub (m + 2) v τ, ih : ∀ {v τ}, ValSub (m + 1) v τ → ValSub m v τ
     -- goal : ValSub (m + 1) v τ
     rcases h with htop | hrefl | ⟨domV, bodyV, domT, bodyT, hv_eq, hτ_eq, hdom, hbody⟩
+      | ⟨domV, bodyV, domT, bodyT, hv_eq, hτ_eq, hsem⟩
       | ⟨ann, bodyV, bodyT, hv_eq, hτ_eq, hbody⟩
       | ⟨fV, aV, fT, aT, hv_eq, hτ_eq, hf, ha⟩
       | ⟨ann, body, hτ_eq, hsub⟩
@@ -196,6 +216,18 @@ theorem mono {v τ : Expr} {n : Nat} : ValSub (n + 1) v τ → ValSub n v τ := 
     -- (3) lam_sub
     · subst hv_eq; subst hτ_eq
       exact lam_sub (ih hdom) (ih hbody)
+    -- (3') lam_sem: need to produce semantic lam at level m+1 from level m+2.
+    --   Strategy: use fuel mono (upward) + ih (downward) to bridge the gap.
+    · subst hv_eq; subst hτ_eq
+      apply lam_sem
+      intro av aτ hav rv hrv rτ hrτ
+      -- hav : ValSub m av aτ, need to call hsem which requires ValSub (m+1) av aτ
+      -- Use compose_r to go upward: ValSub m av aτ → ValSub (m+1) av aτ
+      have hav' : ValSub (m + 1) av aτ := compose_r hav (subCheckNF_refl aτ)
+      -- hsem uses eval fuel m+2, we have eval fuel m+1. Use fuel mono.
+      have hrv' := concEval_fuel_mono hrv
+      have hrτ' := absEval_fuel_mono hrτ
+      exact ih (hsem av aτ hav' rv hrv' rτ hrτ')
     -- (4) mu_body
     · subst hv_eq; subst hτ_eq
       exact mu_body (ih hbody)
@@ -235,6 +267,20 @@ theorem bridge (n : Nat) (fuel : Nat) (ctx : List Expr)
     -- Need: ValSub (m + 1) v τ
     -- Use compose_r with mid = σ: need ValSub m v σ and subCheckNF σ τ
     exact compose_r (mono hv) hcheck
+
+/-! ## Upward closure (via compose_r + subCheckNF reflexivity)
+
+`ValSub n v τ → ValSub (n+1) v τ`: less observation budget implies more.
+This is the REVERSE of downward closure and does NOT hold in general for
+step-indexed relations. It holds here because compose_r stores subCheckNF
+evidence, and subCheckNF is reflexive.
+
+This is the key lemma that makes the semantic lam's mono proof work:
+we can upgrade ValSub n to ValSub (n+1) to feed into a higher-level quantifier. -/
+
+theorem upward {v τ : Expr} {n : Nat} (h : ValSub n v τ) :
+    ValSub (n + 1) v τ :=
+  compose_r h (subCheckNF_refl τ)
 
 /-! ## Substitution congruence analysis
 

@@ -173,6 +173,15 @@ def subCheckNF (fuel : Nat) (ctx : List Expr)
         | some ty => subCheckNF fuel ctx seen ty b
         | none => false
 
+/-- BEq on Expr is reflexive. Now trivial since BEq comes from DecidableEq. -/
+theorem Expr.beq_refl (e : Expr) : (e == e) = true := by
+  exact beq_self_eq_true e
+
+/-- subCheckNF is reflexive: any expression is a subtype of itself.
+    Follows from the BEq check `if a == b then true`. -/
+theorem subCheckNF_refl (e : Expr) : subCheckNF 1 [] [] e e = true := by
+  simp [subCheckNF, Expr.beq_refl]
+
 /-- Decidable subtyping check. Normalizes both sides via absEval, then
     compares structurally. -/
 def subCheck (fuel : Nat) (a b : Expr) : Bool :=

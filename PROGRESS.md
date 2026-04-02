@@ -9,14 +9,109 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **2 sorrys** and all tests (including WellTyped witnesses).
+`lake build` passes with **5 sorrys** and all tests (including WellTyped witnesses).
 
-- **Subtyping.lean: SORRY-FREE** (includes `SubtypeCore.shift_preserve`)
+- **Syntax.lean:** Removed `BEq` from deriving (now comes from `DecidableEq`,
+  giving `LawfulBEq` for free). No functionality change.
+- **Eval.lean: 1 sorry** (`absEval_fuel_mono` mu-app sub-case — tedious case analysis)
+  `concEval_fuel_mono` is FULLY PROVED.
+- **Subtyping.lean: SORRY-FREE** (`Expr.beq_refl` + `subCheckNF_refl` proved)
 - **Monotonicity.lean: 1 sorry** (`absEval_mono` — blocked on SubtypeCore weakness)
-- **Soundness.lean: 1 sorry** (`soundness_gen` — uses concEvalS + ValSub, 3 sorry'd cases)
-- **ValSub.lean: SORRY-FREE** (bridge proved via compose_r + mono)
+- **Soundness.lean: 1 sorry** (`soundness_gen` — 3 sorry'd cases: lam, mu, app)
+- **ValSub.lean: SORRY-FREE** (semantic lam_sem + mono + bridge + upward all proved)
 
-**Total: 2 sorrys.** All tests pass including WellTyped witnesses.
+**Total: 5 sorrys** (was 2). 3 are the same soundness cases; 1 new in
+`absEval_fuel_mono` (mechanical); 1 existing `absEval_mono`.
+
+### Recent changes (2026-04-02, agent ochre-lean-20260402-153654)
+
+**Phase 4 Step 2.5: Semantic ValSub + fuel monotonicity infrastructure.**
+
+Added semantic function subtyping (`lam_sem`) to ValSub and proved the
+supporting lemmas needed for the app case of soundness.
+
+**What changed:**
+
+1. **Syntax.lean:** Removed `BEq` from `deriving` clause. `Expr` now gets
+   `BEq` from `DecidableEq` via `instBEqOfDecidableEq`, which is `LawfulBEq`.
+   This lets us prove `beq_self_eq_true` and `subCheckNF_refl` trivially.
+
+2. **Eval.lean:** Added fuel monotonicity lemmas:
+   - `concEval_fuel_mono`: PROVED (by induction on fuel, case split on Expr)
+   - `absEval_fuel_mono`: almost proved (1 sorry in mu-app nested match)
+   Both state: `eval n e = some v → eval (n+1) e = some v`.
+
+3. **Subtyping.lean:** Added and proved:
+   - `Expr.beq_refl`: `(e == e) = true` (trivial from `LawfulBEq`)
+   - `subCheckNF_refl`: `subCheckNF 1 [] [] e e = true`
+
+4. **ValSub.lean:** Added `lam_sem` disjunct (9 disjuncts total, was 8):
+   ```lean
+   -- (3') lam_sem: semantic function subtyping
+   ∃ domV bodyV domT bodyT,
+     v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
+     (∀ av aτ, ValSub n av aτ →
+        ∀ rv, concEval (n+1) (bodyV.subst 0 av) = some rv →
+        ∀ rτ, absEval (n+1) [] (bodyT.subst 0 aτ) = some rτ →
+        ValSub n rv rτ)
+   ```
+   Proved:
+   - `lam_sem` intro lemma
+   - `mono` for `lam_sem` case: uses `upward` + fuel mono + IH
+   - `upward`: `ValSub n v τ → ValSub (n+1) v τ` (via compose_r + subCheckNF_refl)
+   - Bridge/of_subtypeCore unchanged (syntactic lam_sub kept alongside lam_sem)
+
+**Key insight: the compose_r + subCheckNF_refl trick.**
+
+The central problem with semantic ValSub is that the lam_sem quantifier at
+level n+1 uses ValSub n, but mono needs to go from n+1 to n. This requires
+upward closure (ValSub n → ValSub n+1), which normally doesn't hold for
+step-indexed relations.
+
+SOLUTION: compose_r stores subCheckNF evidence directly. Combined with
+subCheckNF reflexivity (`e ⊑ e` by BEq check), we get upward closure:
+`ValSub n v τ → ValSub (n+1) v τ` via `compose_r h (subCheckNF_refl τ)`.
+
+This makes mono provable for lam_sem (use upward to upgrade arg ValSub,
+fuel_mono to lift eval fuel, then IH to downgrade result ValSub).
+
+**How the app case will work (not yet proved, documented in soundness_gen):**
+
+At fuel+1 for `app f a`:
+1. IH(f): `ValSub fuel fv fτ` where fv = lam domV bodyV, fτ = lam domT bodyT
+2. IH(a): `ValSub fuel av aτ`
+3. Extract lam_sem from ValSub fuel (lam ...) (lam ...):
+   - Eval fuel: fuel matches body eval (concEval fuel body.subst = v) ✓
+   - Arg: mono gives ValSub (fuel-1) av aτ from ValSub fuel av aτ ✓
+   - Result: ValSub (fuel-1) v τ
+4. compose_r twice: ValSub (fuel-1) → ValSub fuel → ValSub (fuel+1) ✓
+
+BLOCKED ON: the lam case of soundness_gen must produce lam_sem evidence.
+The lam case's quantifier needs to relate evaluations of body.subst 0 av
+(concrete) and body'.subst 0 aτ (abstract), which are different expressions.
+Requires either an absEval normalization equivalence or a fundamental theorem
+of logical relations approach.
+
+**The remaining sorrys (analysis for next agent):**
+
+1. **soundness_gen lam case** (CRITICAL — blocks everything):
+   Need `ValSub (fuel+1) (lam dom body) (lam dom body')` where
+   body' = absEval fuel [bvar 0] body. Using lam_sem, must show:
+   for all ValSub-related args, body evals produce related results.
+   The IH works on body.subst 0 av, but absEval uses body'.subst 0 aτ.
+   Need: `absEval m [] (body'.subst 0 aτ) = absEval m [] (body.subst 0 aτ)`
+   (normalization is idempotent / commutes with substitution).
+
+2. **soundness_gen mu case**: Need env-subst equivalence:
+   `absEval fuel [v] body = absEval fuel [] (body.subst 0 v)` for closed v.
+   Then IH applies on body.subst 0 (mu ann body), and mu_r lifts to mu ann body'.
+
+3. **soundness_gen app case**: Mechanically follows from (1) once lam_sem
+   evidence is produced. The lam-lam sub-case uses the strategy above.
+   Other sub-cases (mu-app, type-app, stuck) need individual handling.
+
+4. **absEval_fuel_mono mu-app**: Tedious nested match case analysis.
+   All sub-cases are either `ih h` (recursive) or `exact h` (direct).
 
 ### Recent changes (2026-04-02, agent ochre-lean-20260402-150818)
 

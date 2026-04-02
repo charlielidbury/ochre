@@ -25,7 +25,7 @@ inductive Expr where
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
   | mu     : (ann : Expr) → (body : Expr) → Expr
-deriving Repr, BEq, Inhabited, DecidableEq
+deriving Repr, Inhabited, DecidableEq
 
 namespace Expr
 
