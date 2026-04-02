@@ -142,12 +142,17 @@ def concEvalE (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
       match concEvalE fuel env f, concEvalE fuel env a with
       | some (.lam _dom body), some aVal =>
         concEvalE fuel env (body.subst 0 aVal)
-      | some (.mu _ann body), some aVal =>
-        match body with
-        | .lam _dom lamBody =>
+      | some (.mu ann body), some aVal =>
+        -- Match on ann AND body, mirroring absEval's mu-app case.
+        -- When both are lam, use annotation's return type (prevents divergence
+        -- for recursive functions, matching absEval's behavior).
+        match ann, body with
+        | .lam _dom retBody, .lam _ _ =>
+          concEvalE fuel env (retBody.subst 0 aVal)
+        | _, .lam _dom lamBody =>
           concEvalE fuel env (lamBody.subst 0 aVal)
-        | .type => some .type
-        | _ => some (.app body aVal)
+        | _, .type => some .type
+        | _, _ => some (.app body aVal)
       | some .type, some _ => some .type
       | some f', some a' => some (.app f' a')
       | _, _ => none

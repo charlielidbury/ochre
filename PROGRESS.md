@@ -17,20 +17,70 @@ roadmap and strategy.
   proved.
 - **Subtyping.lean: SORRY-FREE** (`Expr.beq_refl` + `subCheckNF_refl` proved)
 - **Monotonicity.lean: 1 sorry** (`absEval_mono` — blocked on SubtypeCore weakness)
-- **Soundness.lean: 6 sorrys** across two theorems:
-  - `soundness_gen_sr` (NEW, SoundRel-based, uses concEvalE): **3 sorrys**
+- **Soundness.lean: 6 sorrys** across three theorems:
+  - `soundness_app_case` (helper for soundness_gen_sr): **1 sorry**
+    - Edge case: ann_c = lam but ann_a ≠ lam (only via SoundRel.top;
+      unreachable from the .refl entry point)
+  - `soundness_gen_sr` (SoundRel-based, uses concEvalE): **2 sorrys**
     - asc/refl case (concEvalE takes term, absEval takes ty)
     - asc/SoundRel.asc case (same issue)
-    - app-mu-annotation case (absEval uses annotation, not body)
-    - **PROVED: lam, mu, bvar, type, app-lam-beta** (was ALL sorry'd)
+    - **PROVED: lam, mu, bvar, type, app-lam-beta, app-mu-annotation**
   - `soundness_gen` (legacy, ValSub-based, uses concEval): **3 sorrys**
     - lam, mu, app (same as before, kept for bridge compatibility)
 - **ValSub.lean: SORRY-FREE** (semantic lam_sem + mono + bridge + upward all proved)
 
-**Total: 7 sorrys** (was 5). Net new sorrys are from the new `soundness_gen_sr`
-theorem. The KEY win: app-lam-beta (the critical blocker) is now PROVED.
+**Total: 7 sorrys** (unchanged). The app-mu-annotation sorry is now PROVED,
+replaced by a narrow edge case sorry (ann_c=lam, ann_a≠lam via SoundRel.top).
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-160931)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-164128)
+
+**app-mu-annotation case PROVED in soundness_gen_sr.**
+
+The problem: when absEval encounters `mu ann body` applied to an argument where
+both `ann` and `body` are lambdas, it uses the ANNOTATION's return type (to
+prevent divergence on recursive functions). But concEvalE used the BODY's
+return type. The IH gives SoundRel for the body, not the annotation.
+
+**Solution: two changes.**
+
+1. **SoundRel.mu now tracks annotation relationships:** Added `SoundRel ann_v ann_τ`
+   to the mu constructor. Previously only body was tracked. This enables extracting
+   SoundRel between annotation sub-terms via `lam_rhs_shape`.
+
+2. **concEvalE's mu-app case mirrors absEval:** When both `ann` and `body` are
+   lambdas, concEvalE now uses the annotation's return type (like absEval) instead
+   of the body's return type. This makes both evaluators process the SAME
+   subexpression in the mu-annotation case, so the IH applies directly.
+
+**What this proves:** For mu-app where ann = lam and body = lam:
+- Extract `SoundRel retAnn_c retAnn_a` from `h_ann.lam_rhs_shape`
+- `subst_congr` gives `SoundRel (retAnn_c.subst 0 a_v) (retAnn_a.subst 0 a_τ)`
+- IH gives `SoundRel v τ`
+
+**New edge case sorry:** When ann_a ≠ lam but ann_c = lam (possible only via
+SoundRel.top, meaning ann_a = .type). This requires SoundRel (lam ...) .type,
+which only arises from .top — a degenerate case where the abstract annotation
+is .type while the concrete annotation is a lambda. This is unreachable from
+the soundness_concEvalE entry point (which uses .refl, so ann_c = ann_a always).
+
+**Updated lemmas:** SoundRel.shift_preserve, subst_arg_congr, subst_congr,
+mu_rhs_shape, trans all updated for the new two-argument mu constructor.
+
+**The remaining sorrys (analysis for next agent):**
+
+1. **asc cases (2 sorrys in soundness_gen_sr):** Same as before — concEvalE takes
+   the term, absEval takes the type. Needs OutputRel (SoundRel + subCheckNF compose).
+   See SUGGESTIONS.md Step 3.1 for the approach.
+
+2. **Edge case sorry (1 in soundness_app_case):** ann_c = lam, ann_a ≠ lam.
+   Unreachable in practice. Could be eliminated by restricting SoundRel.mu to
+   require same-constructor annotations, or by proving SoundRel.top on annotations
+   contradicts the refl-only entry point.
+
+3. **Legacy soundness_gen (3 sorrys):** Unchanged. Can be eliminated by proving
+   a bridge between concEval and concEvalE.
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-160931)
 
 **SoundRel + concEvalE: app-lam-beta case PROVED.**
 

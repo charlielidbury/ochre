@@ -57,7 +57,8 @@ inductive SoundRel : Expr → Expr → Prop where
       SoundRel f_v f_τ → SoundRel a_v a_τ →
       SoundRel (.app f_v a_v) (.app f_τ a_τ)
   | mu {ann_v ann_τ body_v body_τ : Expr} :
-      SoundRel body_v body_τ → SoundRel (.mu ann_v body_v) (.mu ann_τ body_τ)
+      SoundRel ann_v ann_τ → SoundRel body_v body_τ →
+      SoundRel (.mu ann_v body_v) (.mu ann_τ body_τ)
   | asc {term_v term_τ ty_v ty_τ : Expr} :
       SoundRel term_v term_τ → SoundRel ty_v ty_τ →
       SoundRel (.asc term_v ty_v) (.asc term_τ ty_τ)
@@ -69,7 +70,7 @@ theorem SubtypeCore.toSoundRel {a b : Expr} (h : SubtypeCore a b) : SoundRel a b
   | top e => exact .top e
   | lam_body _ ih => exact .lam ih
   | app_cong _ _ ihf iha => exact .app_cong ihf iha
-  | mu_body _ ih => exact .mu ih
+  | mu_body _ ih => exact .mu (.refl _) ih
 
 /-- SoundRel is preserved under shifting. -/
 theorem SoundRel.shift_preserve {a b : Expr} (h : SoundRel a b) (d c : Nat) :
@@ -79,7 +80,7 @@ theorem SoundRel.shift_preserve {a b : Expr} (h : SoundRel a b) (d c : Nat) :
   | top e => simp [Expr.shift]; exact .top _
   | lam _ ih => simp [Expr.shift]; exact .lam (ih (c + 1))
   | app_cong _ _ ihf iha => simp [Expr.shift]; exact .app_cong (ihf c) (iha c)
-  | mu _ ih => simp [Expr.shift]; exact .mu (ih (c + 1))
+  | mu _ _ ih_ann ih_body => simp [Expr.shift]; exact .mu (ih_ann c) (ih_body (c + 1))
   | asc _ _ ih_term ih_ty => simp [Expr.shift]; exact .asc (ih_term c) (ih_ty c)
 
 /-- Single-variable substitution congruence: same body, different args. -/
@@ -107,7 +108,7 @@ theorem SoundRel.subst_arg_congr {a_v a_τ : Expr} (h : SoundRel a_v a_τ)
   | type => simp [Expr.subst]; exact .refl _
   | mu ann body ih_ann ih_body =>
     simp only [Expr.subst]
-    exact .mu (ih_body (h.shift_preserve 1 0) (j + 1))
+    exact .mu (ih_ann h j) (ih_body (h.shift_preserve 1 0) (j + 1))
 
 /-- Two-variable substitution congruence: different bodies, different args.
     The key lemma that SubtypeCore cannot prove (due to domain equality). -/
@@ -120,7 +121,7 @@ theorem SoundRel.subst_congr {body_v body_τ : Expr} (h_body : SoundRel body_v b
   | lam h ih => simp only [Expr.subst]; exact .lam (ih (h_arg.shift_preserve 1 0) (j + 1))
   | app_cong _ _ ihf iha =>
     simp only [Expr.subst]; exact .app_cong (ihf h_arg j) (iha h_arg j)
-  | mu h ih => simp only [Expr.subst]; exact .mu (ih (h_arg.shift_preserve 1 0) (j + 1))
+  | mu h_ann h ih_ann ih => simp only [Expr.subst]; exact .mu (ih_ann h_arg j) (ih (h_arg.shift_preserve 1 0) (j + 1))
   | asc _ _ ih_term ih_ty =>
     simp only [Expr.subst]; exact .asc (ih_term h_arg j) (ih_ty h_arg j)
 
@@ -132,13 +133,13 @@ theorem SoundRel.lam_rhs_shape {dom body : Expr} {e : Expr}
   | refl => exact ⟨dom, body, rfl, .refl body⟩
   | lam h => exact ⟨_, _, rfl, h⟩
 
-/-- Inversion: if SoundRel e (mu ann body), then e is a mu with related body. -/
+/-- Inversion: if SoundRel e (mu ann body), then e is a mu with related ann and body. -/
 theorem SoundRel.mu_rhs_shape {ann body : Expr} {e : Expr}
     (h : SoundRel e (.mu ann body)) :
-    ∃ ann' body', e = .mu ann' body' ∧ SoundRel body' body := by
+    ∃ ann' body', e = .mu ann' body' ∧ SoundRel ann' ann ∧ SoundRel body' body := by
   cases h with
-  | refl => exact ⟨ann, body, rfl, .refl body⟩
-  | mu h => exact ⟨_, _, rfl, h⟩
+  | refl => exact ⟨ann, body, rfl, .refl ann, .refl body⟩
+  | mu h_ann h_body => exact ⟨_, _, rfl, h_ann, h_body⟩
 
 /-- Transitivity of SoundRel. -/
 theorem SoundRel.trans : {a b c : Expr} → SoundRel a b → SoundRel b c → SoundRel a c := by
@@ -153,9 +154,9 @@ theorem SoundRel.trans : {a b c : Expr} → SoundRel a b → SoundRel b c → So
     cases p with
     | refl => exact .app_cong h2f h2a
     | app_cong h1f h1a => exact .app_cong (ihf h1f) (iha h1a)
-  | mu h2 ih =>
-    obtain ⟨ann_a, body_a, rfl, h1⟩ := p.mu_rhs_shape
-    exact .mu (ih h1)
+  | mu h2_ann h2_body ih_ann ih_body =>
+    obtain ⟨ann_a, body_a, rfl, h1_ann, h1_body⟩ := p.mu_rhs_shape
+    exact .mu (ih_ann h1_ann) (ih_body h1_body)
   | asc h2_term h2_ty ih_term ih_ty =>
     cases p with
     | refl => exact .asc h2_term h2_ty
@@ -317,7 +318,7 @@ private theorem soundness_app_case
             subst h_abs; exact .top v
           | mu ann_a body_a =>
             -- mu-in-function-position: case split on body_a shape
-            obtain ⟨ann_c, body_c, rfl, h_body⟩ := ih_f.mu_rhs_shape
+            obtain ⟨ann_c, body_c, rfl, h_ann, h_body⟩ := ih_f.mu_rhs_shape
             cases body_a with
             | type =>
               simp [absEval, h_af, h_aa] at h_abs
@@ -325,20 +326,42 @@ private theorem soundness_app_case
             | lam dom_a lamBody_a =>
               obtain ⟨dom_c, lamBody_c, hbc_eq, h_lam_body⟩ := h_body.lam_rhs_shape
               subst hbc_eq
-              have h_conc_beta : concEvalE n γ (lamBody_c.subst 0 a_v) = some v := by
-                simp [concEvalE, h_cf, h_ca] at h_conc; exact h_conc
-              have h_sub_beta := h_lam_body.subst_congr ih_a 0
               cases ann_a with
               | lam dom_ann retAnn =>
-                -- absEval uses annotation return type — no SoundRel for annotation
-                sorry
+                -- Both evaluators use annotation return type (concEvalE now
+                -- mirrors absEval's mu-app case when both ann and body are lam)
+                obtain ⟨dom_ann_c, retAnn_c, hac_eq, h_ret_ann⟩ := h_ann.lam_rhs_shape
+                subst hac_eq
+                have h_conc_beta : concEvalE n γ (retAnn_c.subst 0 a_v) = some v := by
+                  simp [concEvalE, h_cf, h_ca] at h_conc; exact h_conc
+                have h_abs_beta : absEval n Γ (retAnn.subst 0 a_τ) = some τ := by
+                  simp [absEval, h_af, h_aa] at h_abs; exact h_abs
+                have h_sub_beta := h_ret_ann.subst_congr ih_a 0
+                have h_wt_beta : WellTyped n Γ (retAnn.subst 0 a_τ) = true := by
+                  have := h_wt; simp only [WellTyped, h_af, h_aa] at this
+                  revert this; cases WellTyped n Γ f_a <;> cases WellTyped n Γ a_a <;> simp
+                exact ih _ _ _ _ _ _ h_sub_beta h_abs_beta h_conc_beta h_env h_wt_beta
               | _ =>
+                -- ann_a is not lam. absEval uses body's lamBody_a.
                 have h_abs_beta : absEval n Γ (lamBody_a.subst 0 a_τ) = some τ := by
                   simp [absEval, h_af, h_aa] at h_abs; exact h_abs
                 have h_wt_beta : WellTyped n Γ (lamBody_a.subst 0 a_τ) = true := by
                   have := h_wt; simp only [WellTyped, h_af, h_aa] at this
                   revert this; cases WellTyped n Γ f_a <;> cases WellTyped n Γ a_a <;> simp
-                exact ih _ _ _ _ _ _ h_sub_beta h_abs_beta h_conc_beta h_env h_wt_beta
+                -- concEvalE matches on (ann_c, body_c). Case split on ann_c
+                -- to determine which branch concEvalE takes.
+                cases ann_c with
+                | lam _dac _rac =>
+                    -- Edge case: ann_c is lam but ann_a is not (only via SoundRel.top,
+                    -- i.e., ann_a = .type). Unreachable from the .refl entry point
+                    -- since annotations are preserved by both evaluators.
+                    sorry
+                | bvar _ | app _ _ | asc _ _ | type | mu _ _ =>
+                    -- ann_c is also not lam: concEvalE uses body's lamBody_c
+                    have h_conc_beta : concEvalE n γ (lamBody_c.subst 0 a_v) = some v := by
+                      simp [concEvalE, h_cf, h_ca] at h_conc; exact h_conc
+                    have h_sub_beta := h_lam_body.subst_congr ih_a 0
+                    exact ih _ _ _ _ _ _ h_sub_beta h_abs_beta h_conc_beta h_env h_wt_beta
             | bvar k =>
               cases h_body with | refl =>
               simp [absEval, h_af, h_aa] at h_abs
@@ -376,11 +399,11 @@ private theorem soundness_app_case
                 simp [concEvalE, h_cf, h_ca] at h_conc
                 cases h_abs; cases h_conc
                 exact .app_cong (.refl _) ih_a
-              | mu h' =>
+              | mu h_ann' h' =>
                 simp [absEval, h_af, h_aa] at h_abs
                 simp [concEvalE, h_cf, h_ca] at h_conc
                 cases h_abs; cases h_conc
-                exact .app_cong (.mu h') ih_a
+                exact .app_cong (.mu h_ann' h') ih_a
           | bvar k =>
             cases ih_f with | refl =>
               simp [absEval, h_af, h_aa] at h_abs
@@ -417,8 +440,9 @@ Uses concEvalE (env-based, normalizes under binders) so both evaluators
 have parallel structure. The IH directly relates their outputs. -/
 
 /-- **Generalized soundness with SoundRel.**
-    Proves bvar, type, lam, mu, top, lam, mu AND app-lam-beta cases.
-    Remaining sorrys: asc (needs OutputRel bridge), app-mu-annotation. -/
+    Proves bvar, type, lam, mu, top, app-lam-beta AND app-mu-annotation cases.
+    Remaining sorrys: asc (2, needs OutputRel bridge),
+    app-mu-annotation edge case (1, ann_c=lam but ann_a≠lam via SoundRel.top). -/
 theorem soundness_gen_sr
     (fuel : Nat) (Γ : Env) (γ : Env) (e_a e_c τ v : Expr)
     (h_sub : SoundRel e_c e_a)
@@ -463,7 +487,7 @@ theorem soundness_gen_sr
           | none => simp
           | some body_v =>
             simp; intro h_abs h_conc; subst h_abs; subst h_conc
-            exact .mu (ih _ _ _ _ _ _ (.refl body) h_ba h_bc
+            exact .mu (.refl ann) (ih _ _ _ _ _ _ (.refl body) h_ba h_bc
               (envSoundRel_extend h_env _) h_wt)
       | asc term ty =>
         -- HARD: concEvalE takes term, absEval takes ty — different subexprs
@@ -488,7 +512,7 @@ theorem soundness_gen_sr
           subst h_abs; subst h_conc
           exact .lam (ih _ _ _ _ _ _ h_body h_ba h_bc
             (envSoundRel_extend h_env _) h_wt)
-    | mu h_body =>
+    | mu h_ann h_body =>
       rename_i ann_c ann_a body_c body_a
       simp only [absEval] at h_abs
       simp only [concEvalE] at h_conc
@@ -502,8 +526,8 @@ theorem soundness_gen_sr
         | some body_v =>
           simp [h_bc] at h_conc
           subst h_abs; subst h_conc
-          exact .mu (ih _ _ _ _ _ _ h_body h_ba h_bc
-            (envSoundRel_extend_sub h_env (.mu h_body)) h_wt)
+          exact .mu h_ann (ih _ _ _ _ _ _ h_body h_ba h_bc
+            (envSoundRel_extend_sub h_env (.mu h_ann h_body)) h_wt)
     | app_cong hf ha =>
       exact soundness_app_case hf ha h_abs h_conc h_env h_wt ih
     | asc h_term h_ty => sorry

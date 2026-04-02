@@ -242,32 +242,42 @@ their outputs directly via the `EnvSoundRel` invariant.
 
 #### Step 3: Resolve remaining sorrys in soundness_gen_sr ← DO THIS NEXT
 
-**3 sorrys remaining in soundness_gen_sr:**
+**3 sorrys remaining (2 in soundness_gen_sr, 1 in soundness_app_case):**
 
-1. **asc/refl case (Soundness.lean:470):** concEvalE takes the term (lhs),
+1. **asc/refl case (Soundness.lean:~493):** concEvalE takes the term (lhs),
    absEval takes the type (rhs) — DIFFERENT subexpressions. The IH gives
    SoundRel for the term, but we need to connect it to the type via
    `subCheckNF`. Solution: change the output of soundness_gen_sr from
    `SoundRel` to an `OutputRel` that wraps `SoundRel ∨ compose_r` (like
-   ValSub). The exp-b version has this as `OutputRel`. Steps:
+   ValSub). Steps:
    - Define `OutputRel n v τ := SoundRel v τ ∨ ∃ mid, OutputRel (n-1) v mid ∧ subCheckNF mid τ`
    - Prove bridge: `OutputRel n v σ → subCheckNF σ τ → OutputRel n v τ`
    - Change soundness_gen_sr output from SoundRel to OutputRel
    - Non-asc cases: wrap SoundRel results in `OutputRel.embed`
    - Asc case: IH gives OutputRel for term, WellTyped gives subCheckNF,
      bridge composes them.
+   **WARNING:** Changing the output to OutputRel is non-trivial because the
+   app case uses `subst_congr` which needs SoundRel, not OutputRel, from
+   the IH. OutputRel needs structural constructors (lam, mu, app_cong) so
+   that IH results can be wrapped. Then the app case needs `OutputRel` inversion
+   (lam_rhs_shape for OutputRel), which is blocked by compose_r — you can't
+   extract body relationships from a subCheckNF chain without subCheckNF
+   decomposition lemmas. Consider alternative approaches:
+   - Prove a SoundRel bridge lemma for cases where self-intro doesn't apply
+   - Add structural constructors to OutputRel + subCheckNF lam decomposition
+   - Switch to a fully semantic approach (lam_sem in OutputRel)
 
-2. **asc/SoundRel.asc case (Soundness.lean:509):** Same issue, but the
+2. **asc/SoundRel.asc case (Soundness.lean:~532):** Same issue, but the
    input has `SoundRel.asc h_term h_ty` relating different term/ty pairs.
    Same solution: OutputRel handles the subCheckNF composition.
 
-3. **app-mu-annotation case (Soundness.lean:334):** When f evaluates to
-   `mu ann body` where `ann = lam dom retBody`, absEval uses the
-   annotation's return type instead of the body. The IH gives SoundRel
-   for the body but not the annotation. Options:
-   - Add annotation consistency to WellTyped (check ann relates to body)
-   - Or: track SoundRel between ann and body in the mu definition
-   - This is a localized problem, not blocking the main proof structure.
+3. **app-mu-annotation edge case (Soundness.lean:~358):** ✓ MOSTLY RESOLVED.
+   The main case (ann_a = lam, body_a = lam) is PROVED via SoundRel.mu with
+   annotation tracking + concEvalE mirroring absEval. The remaining sorry is
+   a narrow edge case: ann_c = lam but ann_a ≠ lam (only via SoundRel.top,
+   unreachable from .refl entry point). Can be eliminated by:
+   - Restricting SoundRel.mu to require same-constructor annotations
+   - Or proving the .refl entry point guarantees same annotations throughout
 
 **The legacy `soundness_gen` (ValSub-based, uses substitution-based
 concEval) is retained for compatibility.** Its 3 sorrys (lam, mu, app)
