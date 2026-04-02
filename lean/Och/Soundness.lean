@@ -27,8 +27,8 @@ function compatibility already quantifies over all possible applications.
 
 - **n = 0:** everything is compatible (no observation budget)
 - **τ = .type:** everything is compatible (top type)
-- **Both lam:** for all compatible args, evaluating both bodies gives compatible
-  results (semantic function compatibility)
+- **Both lam:** for all compatible args at any level m ≤ n, evaluating both
+  bodies gives compatible results (semantic function compatibility)
 - **τ = mu:** unfold the mu, check compatibility with the unfolded body
   (equi-recursive; costs one step)
 - **v = mu:** unfold the mu on the value side (costs one step)
@@ -146,15 +146,17 @@ def VCompat : Nat → Expr → Expr → Prop
     -- Refl: syntactic equality (optimization)
     ∨ v = τ
     -- Semantic function compatibility (THE KEY CASE):
-    -- Both are lambdas, and for all compatible args, application gives
-    -- compatible results.
+    -- Both are lambdas, and for all compatible args at ANY level m ≤ n,
+    -- application gives compatible results. The bounded quantifier (∀ m ≤ n)
+    -- is the standard Appel-McAllester approach — it makes downward closure
+    -- (VCompat.mono) trivially provable for the function case.
     -- NOTE: uses concEval (real runtime). If this doesn't work, try concEvalE.
     ∨ (∃ domV bodyV domT bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
-        (∀ av aτ, VCompat n av aτ →
-           ∀ rv, concEval (n + 1) (bodyV.subst 0 av) = some rv →
-           ∀ rτ, absEval (n + 1) [] (bodyT.subst 0 aτ) = some rτ →
-           VCompat n rv rτ))
+        (∀ m, m ≤ n → ∀ av aτ, VCompat m av aτ →
+           ∀ rv, concEval (m + 1) (bodyV.subst 0 av) = some rv →
+           ∀ rτ, absEval (m + 1) [] (bodyT.subst 0 aτ) = some rτ →
+           VCompat m rv rτ))
     -- Mu unfolding on the right (self-intro): costs one step
     ∨ (∃ ann body,
         τ = .mu ann body ∧
@@ -201,4 +203,28 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
     Standard for step-indexed relations. -/
 theorem VCompat.mono {n : Nat} {v τ : Expr}
     (h : VCompat (n + 1) v τ) : VCompat n v τ := by
-  sorry
+  cases n with
+  | zero =>
+    -- VCompat 0 v τ = True
+    unfold VCompat; trivial
+  | succ k =>
+    -- h : VCompat (k+2) v τ, goal : VCompat (k+1) v τ
+    -- Unfold one level of VCompat in both h and the goal
+    unfold VCompat at h ⊢
+    rcases h with h_top | h_refl | ⟨domV, bodyV, domT, bodyT, hv, hτ, h_fn⟩ |
+                  ⟨ann, body, hτ, h_mu⟩ | ⟨ann, body, hv, h_mu⟩ |
+                  ⟨fuel, ctx, h_sub⟩
+    -- τ = .type → trivial at any level
+    · exact Or.inl h_top
+    -- v = τ → trivial at any level
+    · exact Or.inr (Or.inl h_refl)
+    -- Semantic function: ∀ m ≤ k+1 → ... becomes ∀ m ≤ k → ...
+    -- Since m ≤ k implies m ≤ k+1, just restrict the quantifier.
+    · exact Or.inr (Or.inr (Or.inl ⟨domV, bodyV, domT, bodyT, hv, hτ,
+        fun m hm => h_fn m (Nat.le_succ_of_le hm)⟩))
+    -- Mu right: VCompat (k+1) v (body.subst ...) → VCompat k v (body.subst ...) by IH
+    · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩)))
+    -- Mu left: VCompat (k+1) (body.subst ...) τ → VCompat k (body.subst ...) τ by IH
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩))))
+    -- subCheckNF fallback: no step index, passes through
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨fuel, ctx, h_sub⟩))))

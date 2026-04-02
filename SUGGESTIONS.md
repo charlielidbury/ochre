@@ -75,16 +75,14 @@ is a well-informed sketch. Specific open questions:
 
 ## Proof strategy
 
-### Step 1: Prove `VCompat.mono` (downward closure)
+### Step 1: ✅ DONE — `VCompat.mono` (downward closure)
 
 `VCompat (n+1) v τ → VCompat n v τ`
 
-Standard for step-indexed relations. Prove by induction on `n`, case-splitting
-on the VCompat disjuncts. The semantic function case needs fuel monotonicity
-(already proved in Eval.lean) to bridge `concEvalE n` vs `concEvalE (n+1)`.
-
-This is mechanical and should go through. If it doesn't, the VCompat
-definition needs adjustment (e.g., the subCheckNF fallback might interfere).
+**Proven.** Required changing the VCompat function case from `∀ av aτ,
+VCompat n av aτ → ...` to the standard Appel-McAllester bounded quantifier
+`∀ m, m ≤ n → ∀ av aτ, VCompat m av aτ → ...`. With this change, the
+function case of mono is trivial (restrict quantifier from m ≤ k+1 to m ≤ k).
 
 ### Step 2: Prove `VCompat.adequacy`
 
