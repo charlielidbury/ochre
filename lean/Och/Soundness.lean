@@ -26,31 +26,27 @@ bodies from the function IH.
 
 ## Status
 
-soundness_gen has **4 individual sorrys** in 1 declaration (body-unfold path only).
-The annotation path (ann=lam, body=lam) is **FULLY PROVED**.
+**SORRY-FREE.** soundness_gen is fully proved.
+
+**Key proof techniques:**
+- SubtypeCore (Subtype' without self_intro) for both input and output
+- absEval's mu-app uses joint match `(ann, body)`: annotation path only
+  when both are lambdas, body-direct path otherwise. This makes absEval
+  structurally parallel to concEval for all non-annotation cases.
+- Annotation consistency in WellTyped: when both ann and body are lambdas,
+  the body's absEval result must SubtypeCore the annotation's return body.
+- WellTyped propagation for body-unfold: when body is a lambda (but ann isn't),
+  WellTyped requires well-typedness of the body under the argument binding.
 
 **Proved cases:**
 - var, lam, type, asc: direct from env consistency / IH / WellTyped
 - app-lam: SubtypeCore.lam_rhs_shape inverts concrete function
 - app-stuck: direct SubtypeCore case analysis
-- mu standalone: mu_body (both evaluators now wrap mu results)
+- mu standalone: mu_body (both evaluators wrap mu results)
 - mu_body: mu_body (parallel structure from wrapping)
 - lam_body, app_cong: handled via SubtypeCore structure
-- **mu-app annotation path (×2): PROVED via annotation consistency in WellTyped**
-
-**Remaining sorrys (4, body-unfold path only):**
-- mu-app body-unfold (×4): when ann_mu is not a lambda OR body_mu is not
-  a lambda after evaluation. In practice, all fix-like mus (recursive
-  functions) have lambda annotations and lambda bodies, so the annotation
-  path covers them. The body-unfold path is for pathological cases
-  (e.g., a mu whose body is not a function).
-
-**Annotation consistency (NEW in WellTyped):**
-WellTyped's app case now requires annotation consistency for mu-app:
-when absEval returns a mu with lambda annotation AND lambda body, the
-evaluated body's result must subtype the annotation's return body
-(via SubtypeCore), and the binder names must match. This bridges the
-gap between concEval (uses body) and absEval (uses annotation).
+- mu-app annotation path (ann=lam, body=lam): via annotation consistency
+- mu-app body-unfold (ann≠lam or body≠lam): parallel to concEval
 -/
 
 open Expr
@@ -80,7 +76,9 @@ def WellTyped (fuel : Nat) (Γ : Env) (e : Expr) : Prop :=
         | some (.lam x _ body), some aVal => WellTyped fuel ((x, aVal) :: Γ) body
         | some (.mu _x_mu ann body_mu), some aVal =>
           match ann, body_mu with
-          | .lam y_ann dom_ann retBody, .lam y_body dom_body bodyRes =>
+          | .lam y_ann _dom_ann retBody, .lam y_body _dom_body bodyRes =>
+              -- Annotation path: ann and body both lambdas.
+              -- Annotation consistency bridges concEval (uses body) and absEval (uses ann).
               y_ann = y_body ∧
               WellTyped fuel ((y_ann, aVal) :: Γ) bodyRes ∧
               WellTyped fuel ((y_ann, aVal) :: Γ) retBody ∧
@@ -88,6 +86,12 @@ def WellTyped (fuel : Nat) (Γ : Env) (e : Expr) : Prop :=
                 absEval fuel ((y_ann, aVal) :: Γ) bodyRes = some v_body ∧
                 absEval fuel ((y_ann, aVal) :: Γ) retBody = some τ_ann ∧
                 SubtypeCore v_body τ_ann
+          | .lam y_ann _dom_ann retBody, _ =>
+              -- Annotation path with non-lambda body: absEval uses annotation.
+              WellTyped fuel ((y_ann, aVal) :: Γ) retBody
+          | _, .lam y_body _dom_body bodyRes =>
+              -- Body-unfold path with lambda body: absEval matches body directly.
+              WellTyped fuel ((y_body, aVal) :: Γ) bodyRes
           | _, _ => True
         | _, _ => True
 
@@ -119,11 +123,10 @@ theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
     This eliminates the self_intro case entirely — SubtypeCore has no self_intro
     constructor. The main `soundness` theorem converts via `toSubtype'`.
 
-    ## Sorry'd cases (4, body-unfold path only)
-    - **mu-app body-unfold (×4):** when the mu's annotation or evaluated body
-      is NOT a lambda. The annotation path (ann=lam, body=lam) is fully proved
-      via WellTyped's annotation consistency condition. The body-unfold path
-      (for iota-like mus or pathological cases) remains sorry'd. -/
+    **SORRY-FREE.** All cases proved. The mu-app case uses the joint
+    `match ann, body` structure: annotation path when both are lambdas
+    (via annotation consistency), body-direct path otherwise (parallel
+    to concEval). -/
 theorem soundness_gen
     (fuel : Nat) (Γ : Env) (γ : Env) (e_a e_c τ v : Expr)
     (h_sub : SubtypeCore e_c e_a)
@@ -223,24 +226,25 @@ theorem soundness_gen
                   exact ih _ _ body_a body_c τ v hbody_sub h_abs h_conc
                     (envConsistent_extend_sub h_env x ha_sub) h_wt_body
                 | mu x_mu ann_mu body_mu =>
-                  -- mu-app: proved for annotation path (ann=lam, body=lam)
-                  -- via annotation consistency from WellTyped.
-                  -- Body-unfold path (ann≠lam or body≠lam) remains sorry.
+                  -- mu-app: absEval matches on (ann, body) jointly.
+                  -- Split on body_mu first, then ann_mu, to align with match order.
                   obtain ⟨body_c, hfv_eq, hbody_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
                   subst hfv_eq
                   have h_wt3 := by
                     simp only [WellTyped] at h_wt; obtain ⟨_, _, h3⟩ := h_wt
                     rw [hfa, haa] at h3; exact h3
-                  cases ann_mu with
-                  | lam y_ann dom_ann retBody =>
-                    cases body_mu with
-                    | lam y_body dom_body bodyRes =>
+                  cases body_mu with
+                  | lam y_body dom_body bodyRes =>
+                    -- body is lambda. Check ann to determine which match arm.
+                    obtain ⟨lamBody, hbc_eq, hlam_sub⟩ := SubtypeCore.lam_rhs_shape hbody_sub
+                    subst hbc_eq
+                    cases ann_mu with
+                    | lam y_ann dom_ann retBody =>
+                      -- Both lam: annotation path via annotation consistency
                       simp only at h_wt3
                       obtain ⟨hy_eq, h_wt_bodyRes, h_wt_retBody, v_body, τ_ann,
                         h_abs_body, h_abs_ret, h_sub_body_ann⟩ := h_wt3
                       subst hy_eq
-                      obtain ⟨lamBody, hbc_eq, hlam_sub⟩ := SubtypeCore.lam_rhs_shape hbody_sub
-                      subst hbc_eq
                       simp only at h_abs h_conc
                       have hτ_eq : τ_ann = τ := by
                         rw [h_abs_ret] at h_abs; injection h_abs
@@ -248,8 +252,57 @@ theorem soundness_gen
                       exact (ih _ _ bodyRes lamBody v_body v hlam_sub h_abs_body h_conc
                         (envConsistent_extend_sub h_env y_ann ha_sub)
                         h_wt_bodyRes).trans h_sub_body_ann
-                    | _ => sorry  -- body-unfold path: body_mu not a lambda
-                  | _ => sorry  -- body-unfold path: ann_mu not a lambda
+                    | _ =>
+                      -- Ann not lam, body is lam: body-unfold path
+                      simp only at h_abs h_conc
+                      have h_wt_body : WellTyped n ((y_body, a_t) :: Γ) bodyRes := by
+                        simp only at h_wt3; exact h_wt3
+                      exact ih _ _ bodyRes lamBody τ v hlam_sub h_abs h_conc
+                        (envConsistent_extend_sub h_env y_body ha_sub) h_wt_body
+                  | type =>
+                    -- body = type: both evaluators return type (regardless of ann)
+                    cases ann_mu with
+                    | lam _ _ _ => simp only at h_abs; cases h_abs; exact .top v
+                    | _ => simp only at h_abs; cases h_abs; exact .top v
+                  | mu _ _ _ =>
+                    -- body = mu: stuck application
+                    obtain ⟨body₂, hbc_eq, _⟩ := SubtypeCore.mu_rhs_shape hbody_sub
+                    subst hbc_eq
+                    cases ann_mu with
+                    | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                   exact .app_cong hbody_sub ha_sub
+                    | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                           exact .app_cong hbody_sub ha_sub
+                  | var _ =>
+                    cases body_c with
+                    | lam _ _ _ => cases hbody_sub
+                    | type => cases hbody_sub
+                    | mu _ _ _ => cases hbody_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                          exact .app_cong hbody_sub ha_sub
+                           | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                  exact .app_cong hbody_sub ha_sub
+                  | app _ _ =>
+                    cases body_c with
+                    | lam _ _ _ => cases hbody_sub
+                    | type => cases hbody_sub
+                    | mu _ _ _ => cases hbody_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                          exact .app_cong hbody_sub ha_sub
+                           | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                  exact .app_cong hbody_sub ha_sub
+                  | asc _ _ =>
+                    cases body_c with
+                    | lam _ _ _ => cases hbody_sub
+                    | type => cases hbody_sub
+                    | mu _ _ _ => cases hbody_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                          exact .app_cong hbody_sub ha_sub
+                           | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                  exact .app_cong hbody_sub ha_sub
                 | var v_name =>
                   cases hf_sub with
                   | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc
@@ -317,22 +370,24 @@ theorem soundness_gen
                 exact ih _ _ body_a body_c τ v hbody_sub h_abs h_conc
                   (envConsistent_extend_sub h_env x ha_sub) h_wt_body
               | mu x_mu ann_mu body_mu =>
-                -- mu-app in app_cong case: same proof as refl case.
+                -- mu-app in app_cong: same structure as refl case.
+                -- Split on body_mu first (primary discriminant), then ann_mu.
                 obtain ⟨body_c, hfv_eq, hbody_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
                 subst hfv_eq
                 have h_wt3 := by
                   simp only [WellTyped] at h_wt; obtain ⟨_, _, h3⟩ := h_wt
                   rw [hfa, haa] at h3; exact h3
-                cases ann_mu with
-                | lam y_ann dom_ann retBody =>
-                  cases body_mu with
-                  | lam y_body dom_body bodyRes =>
+                cases body_mu with
+                | lam y_body dom_body bodyRes =>
+                  obtain ⟨lamBody, hbc_eq, hlam_sub⟩ := SubtypeCore.lam_rhs_shape hbody_sub
+                  subst hbc_eq
+                  cases ann_mu with
+                  | lam y_ann dom_ann retBody =>
+                    -- Both lam: annotation path via annotation consistency
                     simp only at h_wt3
                     obtain ⟨hy_eq, h_wt_bodyRes, h_wt_retBody, v_body, τ_ann,
                       h_abs_body, h_abs_ret, h_sub_body_ann⟩ := h_wt3
                     subst hy_eq
-                    obtain ⟨lamBody, hbc_eq, hlam_sub⟩ := SubtypeCore.lam_rhs_shape hbody_sub
-                    subst hbc_eq
                     simp only at h_abs h_conc
                     have hτ_eq : τ_ann = τ := by
                       rw [h_abs_ret] at h_abs; injection h_abs
@@ -340,8 +395,55 @@ theorem soundness_gen
                     exact (ih _ _ bodyRes lamBody v_body v hlam_sub h_abs_body h_conc
                       (envConsistent_extend_sub h_env y_ann ha_sub)
                       h_wt_bodyRes).trans h_sub_body_ann
-                  | _ => sorry  -- body-unfold path: body_mu not a lambda
-                | _ => sorry  -- body-unfold path: ann_mu not a lambda
+                  | _ =>
+                    -- Ann not lam, body is lam: body-unfold path
+                    simp only at h_abs h_conc
+                    have h_wt_body : WellTyped n ((y_body, a_t) :: Γ) bodyRes := by
+                      simp only at h_wt3; exact h_wt3
+                    exact ih _ _ bodyRes lamBody τ v hlam_sub h_abs h_conc
+                      (envConsistent_extend_sub h_env y_body ha_sub) h_wt_body
+                | type =>
+                  cases ann_mu with
+                  | lam _ _ _ => simp only at h_abs; cases h_abs; exact .top v
+                  | _ => simp only at h_abs; cases h_abs; exact .top v
+                | mu _ _ _ =>
+                  obtain ⟨body₂, hbc_eq, _⟩ := SubtypeCore.mu_rhs_shape hbody_sub
+                  subst hbc_eq
+                  cases ann_mu with
+                  | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                 exact .app_cong hbody_sub ha_sub
+                  | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                         exact .app_cong hbody_sub ha_sub
+                | var _ =>
+                  cases body_c with
+                  | lam _ _ _ => cases hbody_sub
+                  | type => cases hbody_sub
+                  | mu _ _ _ => cases hbody_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                        exact .app_cong hbody_sub ha_sub
+                         | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                exact .app_cong hbody_sub ha_sub
+                | app _ _ =>
+                  cases body_c with
+                  | lam _ _ _ => cases hbody_sub
+                  | type => cases hbody_sub
+                  | mu _ _ _ => cases hbody_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                        exact .app_cong hbody_sub ha_sub
+                         | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                exact .app_cong hbody_sub ha_sub
+                | asc _ _ =>
+                  cases body_c with
+                  | lam _ _ _ => cases hbody_sub
+                  | type => cases hbody_sub
+                  | mu _ _ _ => cases hbody_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                        exact .app_cong hbody_sub ha_sub
+                         | _ => simp only at h_abs h_conc; cases h_abs; cases h_conc
+                                exact .app_cong hbody_sub ha_sub
               | var v_name =>
                 cases hf_sub with
                 | refl => simp only at h_abs h_conc; cases h_abs; cases h_conc

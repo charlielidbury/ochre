@@ -73,14 +73,14 @@ def concEval (fuel : Nat) (γ : Env) (e : Expr) : Option Expr :=
       match concEval fuel γ f, concEval fuel γ a with
       | some (.lam x _dom body), some aVal =>
         concEval fuel ((x, aVal) :: γ) body
-      | some (.mu x ann body), some aVal =>
+      | some (.mu _x _ann body), some aVal =>
         -- mu in function position: match on body directly (no re-unrolling).
         -- Since concEval wraps mu results, the body is already evaluated.
-        -- This is structurally parallel to absEval's body-unfolding path.
+        -- Structurally parallel to absEval's body-unfold path.
         match body with
         | .lam y _dom lamBody => concEval fuel ((y, aVal) :: γ) lamBody
         | .type => some .type
-        | _ => some (.app (.mu x ann body) aVal)
+        | _ => some (.app body aVal)
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')
       | _, _ => none
@@ -125,25 +125,27 @@ def absEval (fuel : Nat) (Γ : Env) (e : Expr) : Option Expr :=
       | some (.lam x _dom body), some aVal =>
         -- Environment-based beta: extend env instead of substituting.
         absEval fuel ((x, aVal) :: Γ) body
-      | some (.mu x ann body), some aVal =>
-        -- mu in function position. Two strategies depending on annotation:
+      | some (.mu _x ann body), some aVal =>
+        -- mu in function position. Strategy depends on ann AND body shape:
         --
-        -- 1. If ann is SYNTACTICALLY a lambda: use it directly to determine
-        --    the return type. Checking syntactically (not by evaluating)
-        --    ensures both envs always agree on which path, eliminating
-        --    cross-cases in the monotonicity proof.
+        -- 1. If both ann and body are SYNTACTICALLY lambdas: use the
+        --    annotation to determine the return type. This cuts recursion
+        --    for recursive functions (prevents divergence with abstract args).
+        --    Checking syntactically ensures both envs agree on which path,
+        --    eliminating cross-cases in the monotonicity proof.
+        --    Soundness uses annotation consistency (WellTyped condition).
         --
-        -- 2. Otherwise: fall back to body unfolding (self-type elimination).
-        match ann with
-        | .lam y _dom retBody =>
+        -- 2. Otherwise: match on the already-evaluated body directly.
+        --    This makes the body-unfold path structurally parallel to
+        --    concEval's mu-app, enabling the soundness proof. The annotation
+        --    is only trusted when the body confirms it (both are lambdas).
+        match ann, body with
+        | .lam y _dom retBody, .lam _ _ _ =>
           absEval fuel ((y, aVal) :: Γ) retBody
-        | _ =>
-          match absEval fuel ((x, .mu x ann body) :: Γ) body with
-          | some (.lam y _dom retBody) =>
-            absEval fuel ((y, aVal) :: Γ) retBody
-          | some .type => some .type
-          | some f' => some (.app f' aVal)
-          | none => none
+        | _, .lam y _dom retBody =>
+          absEval fuel ((y, aVal) :: Γ) retBody
+        | _, .type => some .type
+        | _, _ => some (.app body aVal)
       | some .type, some _ => some .type  -- Type applied = Type (top absorbs)
       | some f', some a' => some (.app f' a')  -- stuck
       | _, _ => none

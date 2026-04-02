@@ -172,65 +172,69 @@ theorem absEval_mono
                   obtain ⟨body₂_mu, hf₂_eq, hbody_mu_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
                   subst hf₂_eq
                   simp only at h₁ h₂
-                  -- Split on syntactic annotation match in h₁
-                  split at h₁
-                  · -- ann_mu is lam → annotation path for h₁
-                    rename_i y_ann _dom_ann retBody_ann
-                    -- h₂ has same ann_mu, so also matches lam
-                    simp only [*] at h₂
-                    exact ih _ _ retBody_ann retBody_ann _ _ (.refl retBody_ann)
-                      (envSubCore_extend_sub h_env y_ann ha_sub) h₁ h₂
-                  · -- ann_mu is not lam → body-unfold path for h₁
-                    rename_i h_not_lam
-                    -- h₂ also takes body-unfold (same ann_mu)
-                    simp only [*] at h₂
-                    have hmu_sub : SubtypeCore (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
-                      .mu_body hbody_mu_sub
-                    cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
-                    | none => rw [hunf₁] at h₁; simp at h₁
-                    | some unf₁ =>
-                      rw [hunf₁] at h₁
-                      cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
-                      | none => rw [hunf₂] at h₂; simp at h₂
-                      | some unf₂ =>
-                        rw [hunf₂] at h₂
-                        have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
-                          (envSubCore_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
-                        cases unf₁ with
-                        | lam y₁ dom₁ retBody₁ =>
-                          obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := SubtypeCore.lam_rhs_shape hunf_sub
-                          subst hunf₂_eq
-                          simp only at h₁ h₂
-                          exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
-                            (envSubCore_extend_sub h_env y₁ ha_sub) h₁ h₂
-                        | type =>
-                          simp only at h₁; cases h₁; exact .top τ₂
-                        | mu x_u ann_u body_u =>
-                          obtain ⟨body₂_u, hunf₂_eq, _⟩ := SubtypeCore.mu_rhs_shape hunf_sub
-                          subst hunf₂_eq
-                          simp only at h₁ h₂; cases h₁; cases h₂
-                          exact .app_cong hunf_sub ha_sub
-                        | var _ =>
-                          cases unf₂ with
-                          | lam _ _ _ => cases hunf_sub
-                          | type => cases hunf_sub
-                          | mu _ _ _ => cases hunf_sub
-                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                 exact .app_cong hunf_sub ha_sub
-                        | app _ _ =>
-                          cases unf₂ with
-                          | lam _ _ _ => cases hunf_sub
-                          | type => cases hunf_sub
-                          | mu _ _ _ => cases hunf_sub
-                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                 exact .app_cong hunf_sub ha_sub
-                        | asc _ _ =>
-                          cases unf₂ with
-                          | lam _ _ _ => cases hunf_sub
-                          | type => cases hunf_sub
-                          | mu _ _ _ => cases hunf_sub
-                          | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                                 exact .app_cong hunf_sub ha_sub
+                  -- absEval matches on (ann, body) jointly. Case-split on body_mu
+                  -- to determine which branch both h₁ and h₂ take.
+                  cases body_mu with
+                  | lam y_body dom_body bodyRes =>
+                    -- body is lambda. Determine body₂_mu shape.
+                    obtain ⟨bodyRes₂, hbc_eq, hbody_res_sub⟩ := SubtypeCore.lam_rhs_shape hbody_mu_sub
+                    subst hbc_eq
+                    -- Both have lambda bodies. Now check if ann is also a lambda.
+                    cases ann_mu with
+                    | lam y_ann dom_ann retBody =>
+                      -- Both ann and body are lambdas: annotation path
+                      simp only at h₁ h₂
+                      exact ih _ _ retBody retBody _ _ (.refl retBody)
+                        (envSubCore_extend_sub h_env y_ann ha_sub) h₁ h₂
+                    | _ =>
+                      -- Ann not lambda, body is lambda: body-unfold path
+                      simp only at h₁ h₂
+                      exact ih _ _ bodyRes bodyRes₂ _ _ hbody_res_sub
+                        (envSubCore_extend_sub h_env y_body ha_sub) h₁ h₂
+                  | type =>
+                    -- body is type → both return type (regardless of ann)
+                    cases ann_mu with
+                    | lam _ _ _ => simp only at h₁; cases h₁; exact .top τ₂
+                    | _ => simp only at h₁; cases h₁; exact .top τ₂
+                  | mu _ _ _ =>
+                    -- body is mu → stuck app (regardless of ann)
+                    obtain ⟨body₂_u, hbc_eq, _⟩ := SubtypeCore.mu_rhs_shape hbody_mu_sub
+                    subst hbc_eq
+                    cases ann_mu with
+                    | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                   exact .app_cong hbody_mu_sub ha_sub
+                    | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                           exact .app_cong hbody_mu_sub ha_sub
+                  | var _ =>
+                    cases body₂_mu with
+                    | lam _ _ _ => cases hbody_mu_sub
+                    | type => cases hbody_mu_sub
+                    | mu _ _ _ => cases hbody_mu_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                          exact .app_cong hbody_mu_sub ha_sub
+                           | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                  exact .app_cong hbody_mu_sub ha_sub
+                  | app _ _ =>
+                    cases body₂_mu with
+                    | lam _ _ _ => cases hbody_mu_sub
+                    | type => cases hbody_mu_sub
+                    | mu _ _ _ => cases hbody_mu_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                          exact .app_cong hbody_mu_sub ha_sub
+                           | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                  exact .app_cong hbody_mu_sub ha_sub
+                  | asc _ _ =>
+                    cases body₂_mu with
+                    | lam _ _ _ => cases hbody_mu_sub
+                    | type => cases hbody_mu_sub
+                    | mu _ _ _ => cases hbody_mu_sub
+                    | _ => cases ann_mu with
+                           | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                          exact .app_cong hbody_mu_sub ha_sub
+                           | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                  exact .app_cong hbody_mu_sub ha_sub
                 | type =>
                   simp only at h₁; cases h₁; exact .top τ₂
                 | var _ =>
@@ -298,63 +302,62 @@ theorem absEval_mono
                 obtain ⟨body₂_mu, hf₂_eq, hbody_mu_sub⟩ := SubtypeCore.mu_rhs_shape hf_sub
                 subst hf₂_eq
                 simp only at h₁ h₂
-                -- Split on syntactic annotation match in h₁
-                split at h₁
-                · -- ann_mu is lam → annotation path
-                  rename_i y_ann _dom_ann retBody_ann
-                  simp only [*] at h₂
-                  exact ih _ _ retBody_ann retBody_ann _ _ (.refl retBody_ann)
-                    (envSubCore_extend_sub h_env y_ann ha_sub) h₁ h₂
-                · -- ann_mu is not lam → body-unfold path
-                  rename_i h_not_lam
-                  simp only [*] at h₂
-                  have hmu_sub : SubtypeCore (.mu x_mu ann_mu body₂_mu) (.mu x_mu ann_mu body_mu) :=
-                    .mu_body hbody_mu_sub
-                  cases hunf₁ : absEval n ((x_mu, .mu x_mu ann_mu body_mu) :: Γ₁) body_mu with
-                  | none => rw [hunf₁] at h₁; simp at h₁
-                  | some unf₁ =>
-                    rw [hunf₁] at h₁
-                    cases hunf₂ : absEval n ((x_mu, .mu x_mu ann_mu body₂_mu) :: Γ₂) body₂_mu with
-                    | none => rw [hunf₂] at h₂; simp at h₂
-                    | some unf₂ =>
-                      rw [hunf₂] at h₂
-                      have hunf_sub := ih _ _ body_mu body₂_mu unf₁ unf₂ hbody_mu_sub
-                        (envSubCore_extend_sub h_env x_mu hmu_sub) hunf₁ hunf₂
-                      cases unf₁ with
-                      | lam y₁ dom₁ retBody₁ =>
-                        obtain ⟨retBody₂, hunf₂_eq, hret_sub⟩ := SubtypeCore.lam_rhs_shape hunf_sub
-                        subst hunf₂_eq
-                        simp only at h₁ h₂
-                        exact ih _ _ retBody₁ retBody₂ _ _ hret_sub
-                          (envSubCore_extend_sub h_env y₁ ha_sub) h₁ h₂
-                      | type =>
-                        simp only at h₁; cases h₁; exact .top τ₂
-                      | mu x_u ann_u body_u =>
-                        obtain ⟨body₂_u, hunf₂_eq, _⟩ := SubtypeCore.mu_rhs_shape hunf_sub
-                        subst hunf₂_eq
-                        simp only at h₁ h₂; cases h₁; cases h₂
-                        exact .app_cong hunf_sub ha_sub
-                      | var _ =>
-                        cases unf₂ with
-                        | lam _ _ _ => cases hunf_sub
-                        | type => cases hunf_sub
-                        | mu _ _ _ => cases hunf_sub
-                        | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                               exact .app_cong hunf_sub ha_sub
-                      | app _ _ =>
-                        cases unf₂ with
-                        | lam _ _ _ => cases hunf_sub
-                        | type => cases hunf_sub
-                        | mu _ _ _ => cases hunf_sub
-                        | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                               exact .app_cong hunf_sub ha_sub
-                      | asc _ _ =>
-                        cases unf₂ with
-                        | lam _ _ _ => cases hunf_sub
-                        | type => cases hunf_sub
-                        | mu _ _ _ => cases hunf_sub
-                        | _ => simp only at h₁ h₂; cases h₁; cases h₂
-                               exact .app_cong hunf_sub ha_sub
+                -- absEval matches on (ann, body) jointly. Case-split on body_mu.
+                cases body_mu with
+                | lam y_body dom_body bodyRes =>
+                  obtain ⟨bodyRes₂, hbc_eq, hbody_res_sub⟩ := SubtypeCore.lam_rhs_shape hbody_mu_sub
+                  subst hbc_eq
+                  cases ann_mu with
+                  | lam y_ann dom_ann retBody =>
+                    simp only at h₁ h₂
+                    exact ih _ _ retBody retBody _ _ (.refl retBody)
+                      (envSubCore_extend_sub h_env y_ann ha_sub) h₁ h₂
+                  | _ =>
+                    simp only at h₁ h₂
+                    exact ih _ _ bodyRes bodyRes₂ _ _ hbody_res_sub
+                      (envSubCore_extend_sub h_env y_body ha_sub) h₁ h₂
+                | type =>
+                  cases ann_mu with
+                  | lam _ _ _ => simp only at h₁; cases h₁; exact .top τ₂
+                  | _ => simp only at h₁; cases h₁; exact .top τ₂
+                | mu _ _ _ =>
+                  obtain ⟨body₂_u, hbc_eq, _⟩ := SubtypeCore.mu_rhs_shape hbody_mu_sub
+                  subst hbc_eq
+                  cases ann_mu with
+                  | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                 exact .app_cong hbody_mu_sub ha_sub
+                  | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                         exact .app_cong hbody_mu_sub ha_sub
+                | var _ =>
+                  cases body₂_mu with
+                  | lam _ _ _ => cases hbody_mu_sub
+                  | type => cases hbody_mu_sub
+                  | mu _ _ _ => cases hbody_mu_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                        exact .app_cong hbody_mu_sub ha_sub
+                         | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                exact .app_cong hbody_mu_sub ha_sub
+                | app _ _ =>
+                  cases body₂_mu with
+                  | lam _ _ _ => cases hbody_mu_sub
+                  | type => cases hbody_mu_sub
+                  | mu _ _ _ => cases hbody_mu_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                        exact .app_cong hbody_mu_sub ha_sub
+                         | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                exact .app_cong hbody_mu_sub ha_sub
+                | asc _ _ =>
+                  cases body₂_mu with
+                  | lam _ _ _ => cases hbody_mu_sub
+                  | type => cases hbody_mu_sub
+                  | mu _ _ _ => cases hbody_mu_sub
+                  | _ => cases ann_mu with
+                         | lam _ _ _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                        exact .app_cong hbody_mu_sub ha_sub
+                         | _ => simp only at h₁ h₂; cases h₁; cases h₂
+                                exact .app_cong hbody_mu_sub ha_sub
               | type =>
                 simp only at h₁; cases h₁; exact .top τ₂
               | var v₁ =>
