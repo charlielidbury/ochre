@@ -79,6 +79,39 @@ a system with 0 sorrys that can't express dependent elimination.
 - **appendVec as raw function AND applied to abstract args passes** (M4a-c)
 - **Variant B passes:** `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat` (§10)
 
+## CRITICAL: The soundness theorem is vacuously true for mu programs
+
+**This is the most important issue in the project right now.**
+
+The soundness theorem (`soundness_gen` in Soundness.lean) is sorry-free,
+but its `WellTyped` precondition is **unsatisfiable** for any program that
+uses ascriptions with mu types. For example, `(unit' : SelfNat)` requires
+`SubtypeCore (absEval unit') (absEval SelfNat)`, but `absEval unit'` is a
+lambda and `absEval SelfNat` is a mu — no `SubtypeCore` constructor can
+relate them (SubtypeCore has no `self_intro`).
+
+This means the theorem holds vacuously: `False → anything`. It says nothing
+useful about programs that use self-types, which is most of what Och exists
+to verify.
+
+**Root cause:** Previous agents switched WellTyped from `Subtype'` (which
+has `self_intro`) to `SubtypeCore` (which doesn't) to eliminate a hard
+sorry. Each trade-off was locally reasonable, but the accumulation made
+WellTyped unsatisfiable. Nobody tested whether WellTyped could be
+satisfied for concrete programs — only `subCheck` (the decidable checker)
+was tested.
+
+**The fix (Phase 5 below):** Replace `SubtypeCore` in WellTyped with
+`subCheckNF` (the decidable checker). This makes WellTyped:
+1. **Decidable** — testable via `native_decide`
+2. **Satisfiable** — `subCheckNF` already accepts the milestone programs
+3. **Testable** — add witness tests that construct WellTyped for real programs
+
+The hard part: the soundness proof currently uses `SubtypeCore` properties
+(lam_rhs_shape, transitivity). With `subCheckNF = true`, the proof needs
+lemmas about what `subCheckNF` guarantees. This is "checker soundness" —
+proving that when the checker accepts, the evaluators are safe.
+
 ## Known risks and open questions
 
 These are observations, not certainties. Investigate before acting on them.
@@ -124,17 +157,82 @@ Once milestone tests pass (or you understand exactly why they can't):
 - [ ] Decide evaluator vs subtype checker architecture
 - [x] Get Variant B working → equi-recursive self-intro + seen set
 
-### Phase 3: Proofs ✓ COMPLETE
+### Phase 3: Proofs ✓ COMPLETE (but see Phase 5 — soundness is vacuous)
 
 - [x] Prove absEval_mono — SORRY-FREE
 - [x] Prove soundness_gen — SORRY-FREE (all 4 body-unfold sorrys eliminated)
 - [ ] Rebuild Closure.lean if needed
+
+**WARNING:** Phase 3 achieved zero sorrys, but the soundness theorem is
+vacuously true for mu programs. See "CRITICAL" section above. Phase 5
+addresses this.
 
 ### Phase 4: Recursive types and Scott encoding
 
 - [ ] Type-level mu for recursive types
 - [ ] Scott-encoded Nat (nested mus)
 - [ ] Full induction via mu-as-fix
+
+### Phase 5: Non-vacuous soundness (THE PRIORITY)
+
+**This is more important than Phase 4.** A proven-sound system that covers
+real programs is the whole point of Och. Scott encoding without soundness
+is just an interpreter.
+
+The goal: the soundness theorem should be non-vacuously true for the
+milestone programs (M1-M4, Variant B). Concretely, we need witness tests:
+
+```lean
+-- These must compile (not just subCheck — actual WellTyped witnesses):
+example : WellTyped testFuel [] (app addRec (asc unit' SelfNat)) := by native_decide
+example : WellTyped testFuel [] (app (app addRec (asc unit' SelfNat)) (asc unit' SelfNat)) := by native_decide
+```
+
+**Approach:**
+
+1. **Replace SubtypeCore in WellTyped's asc case with `subCheckNF`.**
+   Instead of `SubtypeCore σ τ'` (unprovable for mu), use
+   `subCheckNF fuel ctx σ τ' = true` (decidable, already works for mu).
+   This makes WellTyped decidable and testable via `native_decide`.
+
+2. **Add witness tests.** For each milestone test (M1-M4), add a
+   corresponding `WellTyped` witness. If WellTyped becomes unsatisfiable
+   again, a witness test breaks. This is the canary.
+
+3. **Prove soundness with the new WellTyped.** The soundness proof
+   currently uses SubtypeCore properties extracted from WellTyped:
+   - `SubtypeCore.lam_rhs_shape` (lambda inversion)
+   - `SubtypeCore.trans` (transitivity)
+   - Direct case analysis on SubtypeCore constructors
+
+   With `subCheckNF = true` instead, the proof needs "checker soundness"
+   lemmas. The key lemma is roughly:
+   ```
+   subCheckNF fuel ctx a b = true →
+     ∀ γ, EnvConsistent γ ctx →
+       ∀ v, concEval fuel γ a = some v →
+         ∃ τ, absEval fuel ctx b = some τ ∧ SubtypeCore v τ
+   ```
+   This is the semantic content: if the checker says a ⊑ b, then
+   concrete evaluation of a produces values that subtype abstract
+   evaluation of b. This may require a richer relation than SubtypeCore
+   (possibly with equi-recursive unfolding).
+
+   **This is the hardest part.** It may require restructuring SubtypeCore
+   or introducing a new semantic relation. Sorry freely — getting the
+   statement right matters more than filling proofs.
+
+4. **Alternative (simpler but weaker):** Instead of full checker soundness,
+   prove specific lemmas about subCheckNF that the soundness proof needs:
+   - If `subCheckNF` says `a ⊑ lam x d b`, then `a` is a lam (shape lemma)
+   - If `subCheckNF` says `a ⊑ b` and `b ⊑ c`, then `a ⊑ c` (transitivity)
+   These are weaker than full checker soundness but might suffice for the
+   soundness proof.
+
+**Do not skip the witness tests.** Even if the proof has sorrys, the
+witness tests ensure WellTyped is satisfiable. A sorry'd proof with
+satisfiable WellTyped is worth more than a sorry-free proof with vacuous
+WellTyped.
 
 ## Design principles
 
@@ -146,8 +244,13 @@ Once milestone tests pass (or you understand exactly why they can't):
   valuable than proving things about wrong definitions. If a proof isn't
   going through, consider whether the definition needs to change.
 
-- **Change definitions freely in Phase 1.** The whole point is to find the
-  right definitions. Existing tests catch regressions.
+- **Never weaken preconditions without a witness test.** If you change
+  WellTyped (or any theorem precondition) to make a proof go through,
+  you MUST also add or maintain a `native_decide` test that the
+  precondition is satisfiable for a real program. A sorry-free proof
+  with an unsatisfiable precondition is worthless — it's vacuously true.
+  This is how Phase 3 produced a "proven" soundness theorem that says
+  nothing about mu programs. **Do not repeat this mistake.**
 
 - **One primitive for self-reference.** If you find yourself wanting a second
   self-reference mechanism, stop and think about whether mu can do it.
