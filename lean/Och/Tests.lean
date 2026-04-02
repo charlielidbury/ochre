@@ -94,20 +94,6 @@ def idAscribed : Expr := n idAscribed_n
 def testFuel : Nat := 1000
 
 -- ============================================================
--- §6.1 Concrete evaluation: precision tests
--- ============================================================
-
--- Concrete eval: true X t f ⟶ t  (in env with X, t, f as neutral)
-example : concEval testFuel [.bvar 2, .bvar 1, .bvar 0]
-    (.app (.app (.app true' (.bvar 2)) (.bvar 1)) (.bvar 0)) = some (.bvar 1) := by
-  native_decide
-
--- Concrete eval: false X t f ⟶ f
-example : concEval testFuel [.bvar 2, .bvar 1, .bvar 0]
-    (.app (.app (.app false' (.bvar 2)) (.bvar 1)) (.bvar 0)) = some (.bvar 0) := by
-  native_decide
-
--- ============================================================
 -- §6.1 Abstract evaluation: precision tests
 -- ============================================================
 
@@ -237,9 +223,6 @@ def fixId : Expr := n fixId_n
 
 example : absEval testFuel [] fixId = some fixId := by native_decide
 example : subCheck testFuel fixId NatToNat = true := by native_decide
-
-example : concEval testFuel [] (.app fixId three') = some three' := by native_decide
-example : concEval testFuel [] (.app fixId zero') = some zero' := by native_decide
 
 example : subCheck testFuel fixId .type = true := by native_decide
 
@@ -385,13 +368,10 @@ def toZero_n : Named := .mu "self" NatToNat_n (.lam "n" Nat'_n
   (.app (.app (.app (.app isZero'_n (.var "n")) Nat'_n) zero'_n) (.app (.var "self") zero'_n)))
 def toZero : Expr := n toZero_n
 
--- De Bruijn + subst-based beta: concEval now terminates here (mu body
--- normalization resolves self zero = zero; old env-based beta diverged)
-example : concEval testFuel [] (.app toZero one') = some zero' := by native_decide
 example : subCheck testFuel toZero NatToNat = true := by native_decide
 
 -- ============================================================
--- §7.2 Substitution-based evaluator (concEvalS) tests
+-- §7.2 Concrete evaluation (concEvalS) tests
 -- ============================================================
 
 example : concEvalS testFuel (.app (.app (.app true' Nat') zero') one') = some zero' := by

@@ -13,10 +13,9 @@ Soundness relates the substitution-based concrete evaluator (`concEvalS`) to
 the environment-based abstract evaluator (`absEval`), outputting step-indexed
 value subtyping (`ValSub`).
 
-Previous versions used `concEval` (environment-based, normalizes under binders).
-That created an unfixable mismatch: concEval's lambda bodies are pre-normalized,
-so when applied, the IH (about the source body) doesn't cover the normalized
-body. concEvalS treats lambdas as values (bodies untouched), eliminating this.
+The concrete evaluator (`concEvalS`) treats lambdas as values (bodies untouched
+until application). This is essential for soundness: when a lambda is applied,
+the body IS the source body, so the induction hypothesis applies directly.
 
 ## Theorem structure
 
@@ -139,10 +138,8 @@ def WellTyped (fuel : Nat) (env : Env) (e : Expr) : Bool :=
     evaluator produces v and the abstract evaluator produces τ, then v
     is a value subtype of τ.
 
-    Uses concEvalS (lambdas are values, substitution-based beta) instead
-    of concEval (normalizes under binders). This is the real runtime
-    semantics — concEval was a proof convenience that created more
-    problems than it solved.
+    Uses concEvalS (lambdas are values, substitution-based beta).
+    This is the real runtime semantics.
 
     Proof by induction on fuel.
 
