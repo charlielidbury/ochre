@@ -17,7 +17,39 @@ roadmap and strategy.
 
 **Total: 0 sorrys.** All proofs complete. All tests pass.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-094545)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-100831)
+
+**VARIANT B PASSING — equi-recursive self-intro + coinductive seen set.**
+
+Two changes to `subCheckNF` in Subtyping.lean:
+
+1. **Equi-recursive self-intro:** Changed `a ⊑ mu x ann body` from checking
+   `a ⊑ body[x := a]` (Cedille-style, substitutes value) to
+   `a ⊑ body[x := mu x ann body]` (equi-recursive, substitutes the type).
+   
+   **Why this matters:** In Variant B (MuNat), the self-variable N is used
+   as a TYPE in the successor's domain: `s : N → X → X`. Cedille-style
+   self-intro substitutes the value (`zero_mu`) there, creating
+   `s : zero_mu → X → X`. The contravariant domain check then requires
+   `MuNat ⊑ zero_mu` which fails (the type is not a subtype of a value).
+   Equi-recursive self-intro substitutes the mu type itself, keeping
+   `s : MuNat → X → X`, which makes the domain check trivial.
+
+   **Why this doesn't break anything:** (a) For Variant A (SelfNat), the
+   self-variable is unused in the body — both substitutions are no-ops.
+   (b) Dependent elimination goes through self-ELIM (which already
+   substitutes the mu), not self-intro. (c) All existing tests still pass.
+
+2. **Coinductive seen set:** Added a `seen : List (Expr × Expr)` parameter.
+   When unfolding mu (self-intro or self-elim), the pair `(a, b)` is added
+   to `seen`. If encountered again, succeed immediately (equi-recursive
+   coinduction). This prevents divergence on circular subtyping obligations
+   that arise from mutual unfolding.
+
+**Tests flipped:** §10 `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`
+now pass (were expected-fail).
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-094545)
 
 **ELIMINATED ALL SORRYS — soundness_gen is FULLY PROVED (0 sorrys, was 4).**
 
@@ -440,11 +472,10 @@ See git log for details.
 | M4b | `appendVec (abstract) (abstract) ⊑ Vec Nat` | PASS |
 | M4c | `appendVec` concrete ⊑ Vec Nat | PASS |
 
-### Remaining expected-fail tests
+### No remaining expected-fail tests
 
-- **Variant B (§10):** `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`.
-  These are truly self-referential Nat (Cedille-style) which need
-  equi-recursive subtyping. Not blocking the current milestone.
+All tests pass, including Variant B (§10). Equi-recursive self-intro
+resolved `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat`.
 
 ### What was completed in the mu migration
 

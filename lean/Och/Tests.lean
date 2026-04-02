@@ -755,7 +755,7 @@ example : absEval testFuel []
 
 -- ============================================================
 -- §10 Variant B: truly self-referential Nat (Cedille-style)
--- EXPECTED FAILs: needs equi-recursive subtyping
+-- Previously EXPECTED FAIL. Now passes with equi-recursive self-intro.
 -- ============================================================
 
 def MuNat : Expr := .mu "N" .type
@@ -775,12 +775,15 @@ example : absEval testFuel []
   (.app (.app add_mu (.asc unit' MuNat)) (.asc unit' MuNat))
   = some MuNat := by native_decide
 
--- EXPECTED FAIL: zero_mu ⊑ MuNat
-example : subCheck testFuel zero_mu MuNat = false := by native_decide
+-- Previously EXPECTED FAIL. Now passes: equi-recursive self-intro substitutes
+-- the mu type itself (not the value), so the self-variable in type positions
+-- (e.g., successor domain) remains well-typed. Equi-recursive seen set
+-- handles circularity from mutual unfolding.
+example : subCheck testFuel zero_mu MuNat = true := by native_decide
 
--- EXPECTED FAIL: add_mu ⊑ MuNat -> MuNat -> MuNat
+-- Previously EXPECTED FAIL. Now passes for the same reason.
 example : subCheck testFuel add_mu
-  (.lam "_" MuNat (.lam "_" MuNat MuNat)) = false := by native_decide
+  (.lam "_" MuNat (.lam "_" MuNat MuNat)) = true := by native_decide
 
 -- ============================================================
 -- §11 Milestone ladder: road to abstract appendVec

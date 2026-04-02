@@ -373,20 +373,24 @@ private def normalizeDomain (fuel : Nat) (ctx : List (Name × Expr)) (dom : Expr
 
 /-- Structural subtype check on normalized terms.
     ctx tracks (variable_name, declared_domain) for bound variables.
+    seen tracks assumed subtyping pairs for equi-recursive termination.
 
     Key rules:
     - Syntactic equality → true (reflexivity)
     - b = Type → true (Type is top)
+    - Already in seen → true (equi-recursive coinductive hypothesis)
     - Both lambdas → contravariant domains, covariant bodies
     - Both mus → covariant bodies (same binder)
-    - self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]
-    - self-elim: mu x ann body ⊑ b  iff  body[x := mu x ann body] ⊑ b
+    - self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]  (with (a, mu) in seen)
+    - self-elim: mu x ann body ⊑ b  iff  body[x := mu] ⊑ b  (with (mu, b) in seen)
     - Otherwise → infer type of a, check type ⊑ b (transitivity through type) -/
-private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : Bool :=
+private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr))
+    (seen : List (Expr × Expr)) (a b : Expr) : Bool :=
   match fuel with
   | 0 => false
   | fuel + 1 =>
     if a == b then true
+    else if seen.any (fun (a', b') => a == a' && b == b') then true
     else match b with
     | .type => true
     | _ =>
@@ -397,21 +401,30 @@ private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : B
         -- Normalize domB so inferType can pattern-match on it (e.g.,
         -- recognize Vec' T as a lambda rather than a beta-redex).
         let domB_norm := normalizeDomain fuel ctx domB
-        subCheckNF fuel ctx domB domA
-        && subCheckNF fuel ((x, domB_norm) :: ctx) bodyA bodyB'
+        subCheckNF fuel ctx seen domB domA
+        && subCheckNF fuel ((x, domB_norm) :: ctx) seen bodyA bodyB'
       | .mu x _annA bodyA, .mu y _annB bodyB =>
         -- Mu subtyping: covariant in body (like iota_body)
         let bodyB' := if x == y then bodyB else bodyB.subst y (.var x)
-        subCheckNF fuel ((x, .mu x _annA bodyA) :: ctx) bodyA bodyB'
+        subCheckNF fuel ((x, .mu x _annA bodyA) :: ctx) seen bodyA bodyB'
       | _, .mu x _ann body =>
-        -- Self-intro: a ⊑ mu x ann body  iff  a ⊑ body[x := a]
-        subCheckNF fuel ctx a (body.subst x a)
+        -- Self-intro (equi-recursive): a ⊑ mu x ann body  iff  a ⊑ body[x := mu]
+        -- Substitutes the mu TYPE (not the value a). This is the equi-recursive
+        -- unfolding rule: mu x. body ≡ body[x := mu x. body]. Using the mu
+        -- instead of `a` avoids nonsensical contravariant obligations when the
+        -- self-variable is used in type positions (e.g., Variant B's MuNat where
+        -- N appears as a domain type). For Cedille-style self types where the
+        -- self-variable is unused (Variant A), both substitutions are equivalent.
+        -- Dependent elimination is unaffected (goes through self-elim, not intro).
+        -- Add (a, mu) to seen for equi-recursive coinduction.
+        subCheckNF fuel ctx ((a, b) :: seen) a (body.subst x b)
       | .mu x ann body, _ =>
         -- Self-elim: mu x ann body ⊑ b  iff  body[x := mu x ann body] ⊑ b
-        subCheckNF fuel ctx (body.subst x (.mu x ann body)) b
+        -- Add (mu, b) to seen for the same reason.
+        subCheckNF fuel ctx ((a, b) :: seen) (body.subst x (.mu x ann body)) b
       | _, _ =>
         match inferType ctx a with
-        | some ty => subCheckNF fuel ctx ty b
+        | some ty => subCheckNF fuel ctx seen ty b
         | none => false
 
 /-- Decidable subtyping check. Normalizes both sides via absEval, then
@@ -419,5 +432,5 @@ private def subCheckNF (fuel : Nat) (ctx : List (Name × Expr)) (a b : Expr) : B
     inference for neutral terms. -/
 def subCheck (fuel : Nat) (a b : Expr) : Bool :=
   match absEval fuel [] a, absEval fuel [] b with
-  | some a', some b' => subCheckNF fuel [] a' b'
+  | some a', some b' => subCheckNF fuel [] [] a' b'
   | _, _ => false

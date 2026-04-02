@@ -55,7 +55,8 @@ a system with 0 sorrys that can't express dependent elimination.
 ## Current state (as of 2026-04-02)
 
 `lake build` passes with **ZERO warnings** (no sorrys, no unused variables).
-**All M1-M4 milestone tests pass.** Phases 1 and 3 are complete.
+**All M1-M4 milestone tests pass.** Phases 1, 3, and Variant B are complete.
+**No expected-fail tests remain.**
 
 ### What's working
 
@@ -67,19 +68,16 @@ a system with 0 sorrys that can't express dependent elimination.
   type, preventing divergence. Falls back to body unfolding for self-types.
 - **Domain normalization in subCheckNF** — domains are normalized before
   adding to inferType's context, so `Vec' T` is recognized as a lambda.
+- **Equi-recursive self-intro in subCheckNF** — self-intro substitutes the
+  mu type itself (not the value), enabling Variant B (truly self-referential
+  Nat). Coinductive `seen` set prevents divergence on circular unfolding.
 - Self-intro and self-elim work in subCheckNF
 - `inferType` in the subtype checker does mu-elim on stuck applications
 - **All milestone tests pass:** M1a-d, M2a, M3a, M4a-c
 - **Abstract `add` (non-recursive, Church-style) with SelfNat passes** (§9)
 - **Recursive add (mu-as-fix) with both concrete and abstract args passes** (M1a-d)
 - **appendVec as raw function AND applied to abstract args passes** (M4a-c)
-
-### What's NOT working (expected-fail tests in Tests.lean §10)
-
-- **Variant B (§10): `zero_mu ⊑ MuNat`** — truly self-referential Nat
-  (Cedille-style). Self-intro substitution produces structurally different
-  terms that are semantically equal. Needs equi-recursive subtyping.
-  Not blocking current work (only needed for Phase 4: Scott encoding).
+- **Variant B passes:** `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat` (§10)
 
 ## Known risks and open questions
 
@@ -101,10 +99,10 @@ These are observations, not certainties. Investigate before acting on them.
    works for all milestones through appendVec. Whether it scales to Phase 4
    (Scott encoding) is an open question.
 
-3. **Do we need Variant B (truly self-referential Nat)?** Variant A (trivial
-   self-type wrapper, §9) was sufficient for everything through appendVec.
-   Variant B matters for Scott encoding (Phase 4). Don't assume it's
-   blocking unless Phase 4 tests fail without it.
+3. **Variant B now works (RESOLVED).** Equi-recursive self-intro
+   (substituting the mu type, not the value) resolved `zero_mu ⊑ MuNat`
+   and `add_mu ⊑ MuNat→MuNat→MuNat`. The coinductive `seen` set prevents
+   divergence. Phase 4 (Scott encoding) is now unblocked.
 
 ## Roadmap
 
@@ -124,7 +122,7 @@ Once milestone tests pass (or you understand exactly why they can't):
 
 - [x] Resolve the annotation question → load-bearing (used by absEval)
 - [ ] Decide evaluator vs subtype checker architecture
-- [ ] Get Variant B working if needed for later phases
+- [x] Get Variant B working → equi-recursive self-intro + seen set
 
 ### Phase 3: Proofs ✓ COMPLETE
 

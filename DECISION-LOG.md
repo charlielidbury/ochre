@@ -5,6 +5,45 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-02: Equi-recursive self-intro (substitute mu, not value)
+
+**Decision:** Changed self-intro in `subCheckNF` from Cedille-style
+(`a ⊑ body[x := a]`, substitutes the value) to equi-recursive
+(`a ⊑ body[x := mu x ann body]`, substitutes the mu type itself).
+Also added a coinductive `seen` set to prevent divergence from circular
+unfolding.
+
+**Why:** Variant B (MuNat) uses the self-variable `N` in a TYPE position
+(domain of the successor function: `s : N → X → X`). Cedille-style self-intro
+substitutes the VALUE (`zero_mu`) there, producing `s : zero_mu → X → X`.
+The contravariant domain check then requires `MuNat ⊑ zero_mu` (type ⊑
+value), which is false. Equi-recursive self-intro substitutes the mu TYPE,
+keeping `s : MuNat → X → X`, so the domain comparison is `MuNat ⊑ MuNat`
+(trivially true).
+
+**Alternatives considered:**
+1. **Cedille-style + equi-recursive caching only:** Caching alone doesn't
+   fix the problem because the circularity produces `MuNat ⊑ zero_mu`
+   (reverse direction), not the cached `zero_mu ⊑ MuNat`.
+2. **Separate rules based on annotation:** Use Cedille-style when
+   `ann ≠ Type` and equi-recursive when `ann = Type`. Rejected as
+   unnecessary complexity — equi-recursive works for both cases.
+3. **Keep Cedille-style, fix later with richer subtyping:** Would require
+   equi-recursive subtyping anyway, just pushed to a different layer.
+
+**Impact on dependent elimination:** None. Dependent elimination goes through
+self-ELIM (which already substitutes the mu, unchanged). Self-intro is about
+introducing a value INTO a mu type, not extracting dependent information.
+
+**Impact on existing tests:** None. Variant A (SelfNat) has an unused
+self-variable — both substitutions are no-ops. All M1-M4 tests still pass.
+
+**Impact on soundness proof:** None. The soundness proof is about
+`absEval`/`concEval`, not `subCheckNF`. The `Subtype'`/`SubtypeCore`
+inductive relations are unchanged.
+
+---
+
 ## 2026-04-01: Unify fix and iota into mu
 
 **Decision:** Replace `fix` (recursion) and `iota` (self types) with a single
