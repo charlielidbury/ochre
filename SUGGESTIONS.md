@@ -54,7 +54,7 @@ a system with 0 sorrys that can't express dependent elimination.
 
 ## Current state (as of 2026-04-02)
 
-`lake build` passes with **3 sorrys** (all in soundness_gen, 2 distinct issues).
+`lake build` passes with **2 sorrys** (`absEval_mono` + `soundness_gen`).
 **All M1-M4 milestone tests pass.** 11 WellTyped witness tests pass.
 
 ### What's working
@@ -171,23 +171,24 @@ semantics don't. Existing `native_decide` tests verify nothing breaks.
 **Completed** in one session. All tests pass. Monotonicity and soundness
 proofs sorry'd (need reproving with new env extension + subst patterns).
 
-### Phase 3.5: Reprove monotonicity and soundness ← START HERE
+### Phase 3.5: Reprove env extend lemmas ✓ COMPLETE
 
-**Why this is next:** Phase 3 sorry'd monotonicity (was sorry-free) and
-restructured soundness. The proofs need updating for:
-- `Env.extend` with shifting (replaces `(x, v) :: Γ`)
-- Substitution-based beta in app cases (replaces env extension)
-- `List.get?` positional lookups (replaces name-based lookup)
+Env extend lemmas proved for de Bruijn (4 sorrys eliminated):
+- `SubtypeCore.shift_preserve` — SubtypeCore preserved under shifting
+- `envSubCore_extend` / `envSubCore_extend_sub` (Monotonicity.lean)
+- `envConsistent_extend` / `envConsistent_extend_sub` (Soundness.lean)
 
-Start with env extend lemmas (envSubCore_extend, envConsistent_extend),
-then absEval_mono, then soundness_gen's non-asc cases.
+**absEval_mono is NOT reproved** — it requires a substitution lemma for
+SubtypeCore (`SubtypeCore e₂ e₁ → SubtypeCore a₂ a₁ → SubtypeCore
+(e₂.subst j a₂) (e₁.subst j a₁)`). This lemma doesn't hold for the
+current SubtypeCore because `lam_body` requires equal domains — substituting
+different values into a domain breaks equality. Fixing this requires adding
+`lam_cong` (allowing different domains) to SubtypeCore, but Phase 4
+replaces SubtypeCore entirely, making that work redundant.
 
-**Estimated effort:** 1-2 sessions. Proof structure is the same; only
-the lemma applications change.
+### Phase 4: Step-indexed `ValSub` — the new soundness relation ← START HERE
 
-### Phase 4: Step-indexed `ValSub` — the new soundness relation
-
-**Depends on:** Phase 3 (substitution lemmas needed).
+**Depends on:** Phase 3 (substitution lemmas needed — now available via de Bruijn subst).
 
 **The problem:** soundness_gen has 3 targeted sorrys. The fundamental
 blocker is that SubtypeCore is too weak as the output relation — it lacks

@@ -36,6 +36,16 @@ inductive SubtypeCore : Expr → Expr → Prop where
   | mu_body {ann body₁ body₂ : Expr} :
       SubtypeCore body₂ body₁ → SubtypeCore (.mu ann body₂) (.mu ann body₁)
 
+/-- SubtypeCore is preserved under shifting: if a ⊑ b then shift d c a ⊑ shift d c b. -/
+theorem SubtypeCore.shift_preserve {a b : Expr} (h : SubtypeCore a b) (d c : Nat) :
+    SubtypeCore (a.shift d c) (b.shift d c) := by
+  induction h generalizing c with
+  | refl e => exact .refl (e.shift d c)
+  | top e => simp [Expr.shift]; exact .top (e.shift d c)
+  | lam_body _ ih => simp [Expr.shift]; exact .lam_body (ih (c + 1))
+  | app_cong _ _ ihf iha => simp [Expr.shift]; exact .app_cong (ihf c) (iha c)
+  | mu_body _ ih => simp [Expr.shift]; exact .mu_body (ih (c + 1))
+
 theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) : Subtype' a b := by
   induction h with
   | refl e => exact .refl e

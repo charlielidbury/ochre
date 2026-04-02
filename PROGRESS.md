@@ -9,15 +9,38 @@ roadmap and strategy.
 
 ### Build status
 
-`lake build` passes with **6 sorrys** and all tests (including WellTyped witnesses).
+`lake build` passes with **2 sorrys** and all tests (including WellTyped witnesses).
 
-- **Subtyping.lean: SORRY-FREE**
-- **Monotonicity.lean: 3 sorrys** (env extend lemmas + absEval_mono, sorry'd for de Bruijn migration)
-- **Soundness.lean: 3 sorrys** (env extend lemmas + soundness_gen, sorry'd for de Bruijn migration)
+- **Subtyping.lean: SORRY-FREE** (includes `SubtypeCore.shift_preserve`)
+- **Monotonicity.lean: 1 sorry** (`absEval_mono` — see below for why)
+- **Soundness.lean: 1 sorry** (`soundness_gen` — fundamental SubtypeCore weakness)
 
-**Total: 6 sorrys.** All tests pass including WellTyped witnesses.
+**Total: 2 sorrys.** All tests pass including WellTyped witnesses.
 
-### Recent changes (2026-04-02, agent ochre-lean-20260402-123003)
+### Recent changes (2026-04-02, agent ochre-lean-20260402-135537)
+
+**Phase 3.5: Env extend lemmas — COMPLETE (4 sorrys eliminated).**
+
+Proved all env extend infrastructure for de Bruijn:
+- `SubtypeCore.shift_preserve` (Subtyping.lean) — SubtypeCore preserved under shifting
+- `envSubCore_extend` + `envSubCore_extend_sub` (Monotonicity.lean)
+- `envConsistent_extend` + `envConsistent_extend_sub` (Soundness.lean)
+
+**absEval_mono NOT reproved — blocked on substitution lemma.** The de Bruijn
+migration changed beta-reduction from env extension to substitution. The old
+proof used `envSubCore_extend_sub` to thread the argument into the env; the
+new proof needs `SubtypeCore (body₂.subst 0 aVal₂) (body₁.subst 0 aVal₁)`
+given `SubtypeCore body₂ body₁` and `SubtypeCore aVal₂ aVal₁`. This doesn't
+hold because `lam_body` requires equal domains — substituting different values
+into a nested lambda's domain breaks this. Fixing it requires adding
+`lam_cong`/`mu_cong` (allowing different domains/anns) to SubtypeCore, but
+Phase 4 replaces SubtypeCore with ValSub, making that work redundant.
+
+**Recommendation:** Skip directly to Phase 4 (ValSub). The remaining 2 sorrys
+are both fundamentally blocked by SubtypeCore's weakness. Phase 4 addresses
+this by replacing SubtypeCore entirely.
+
+### Previous changes (2026-04-02, agent ochre-lean-20260402-123003)
 
 **Phase 3: De Bruijn indices — COMPLETE.**
 

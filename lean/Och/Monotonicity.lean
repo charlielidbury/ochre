@@ -21,14 +21,45 @@ open Expr
 def EnvSubCore (Γ₂ Γ₁ : Env) : Prop :=
   ∀ k τ₁, Γ₁.get? k = some τ₁ → ∃ τ₂, Γ₂.get? k = some τ₂ ∧ SubtypeCore τ₂ τ₁
 
+-- Helper: relate List.get? to getElem? for proof interop
+private theorem list_get?_eq_getElem? {α : Type} {l : List α} {k : Nat} :
+    l.get? k = l[k]? := by
+  simp [List.get?_eq_getElem?]
+
 theorem envSubCore_extend {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁) (v : Expr) :
     EnvSubCore (Γ₂.extend v) (Γ₁.extend v) := by
-  sorry
+  intro k τ₁ hget
+  unfold Env.extend at hget ⊢
+  cases k with
+  | zero =>
+    simp at hget
+    subst hget
+    exact ⟨v, by simp, .refl v⟩
+  | succ k =>
+    simp at hget ⊢
+    obtain ⟨orig, horig, hshift⟩ := hget
+    rw [← list_get?_eq_getElem?] at horig
+    obtain ⟨τ₂_orig, hget₂, hsub⟩ := h k orig horig
+    rw [list_get?_eq_getElem?] at hget₂
+    exact ⟨τ₂_orig.shift 1 0, ⟨τ₂_orig, hget₂, rfl⟩, hshift ▸ hsub.shift_preserve 1 0⟩
 
 theorem envSubCore_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁)
     {v₂ v₁ : Expr} (hv : SubtypeCore v₂ v₁) :
     EnvSubCore (Γ₂.extend v₂) (Γ₁.extend v₁) := by
-  sorry
+  intro k τ₁ hget
+  unfold Env.extend at hget ⊢
+  cases k with
+  | zero =>
+    simp at hget
+    subst hget
+    exact ⟨v₂, by simp, hv⟩
+  | succ k =>
+    simp at hget ⊢
+    obtain ⟨orig, horig, hshift⟩ := hget
+    rw [← list_get?_eq_getElem?] at horig
+    obtain ⟨τ₂_orig, hget₂, hsub⟩ := h k orig horig
+    rw [list_get?_eq_getElem?] at hget₂
+    exact ⟨τ₂_orig.shift 1 0, ⟨τ₂_orig, hget₂, rfl⟩, hshift ▸ hsub.shift_preserve 1 0⟩
 
 /-- **Generalized monotonicity.** Sorry'd pending de Bruijn proof update. -/
 theorem absEval_mono

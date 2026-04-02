@@ -23,14 +23,45 @@ open Expr
 def EnvConsistent (γ : Env) (Γ : Env) : Prop :=
   ∀ k τ, Γ.get? k = some τ → ∃ v, γ.get? k = some v ∧ SubtypeCore v τ
 
+-- Helper: relate List.get? to getElem? for proof interop
+private theorem list_get?_eq_getElem? {α : Type} {l : List α} {k : Nat} :
+    l.get? k = l[k]? := by
+  simp [List.get?_eq_getElem?]
+
 theorem envConsistent_extend {γ Γ : Env} (h : EnvConsistent γ Γ) (v : Expr) :
     EnvConsistent (γ.extend v) (Γ.extend v) := by
-  sorry
+  intro k τ hget
+  unfold Env.extend at hget ⊢
+  cases k with
+  | zero =>
+    simp at hget
+    subst hget
+    exact ⟨v, by simp, .refl v⟩
+  | succ k =>
+    simp at hget ⊢
+    obtain ⟨orig, horig, hshift⟩ := hget
+    rw [← list_get?_eq_getElem?] at horig
+    obtain ⟨v_orig, hgetv, hsub⟩ := h k orig horig
+    rw [list_get?_eq_getElem?] at hgetv
+    exact ⟨v_orig.shift 1 0, ⟨v_orig, hgetv, rfl⟩, hshift ▸ hsub.shift_preserve 1 0⟩
 
 theorem envConsistent_extend_sub {γ Γ : Env} (h : EnvConsistent γ Γ)
     {v τ : Expr} (hv : SubtypeCore v τ) :
     EnvConsistent (γ.extend v) (Γ.extend τ) := by
-  sorry
+  intro k τ₁ hget
+  unfold Env.extend at hget ⊢
+  cases k with
+  | zero =>
+    simp at hget
+    subst hget
+    exact ⟨v, by simp, hv⟩
+  | succ k =>
+    simp at hget ⊢
+    obtain ⟨orig, horig, hshift⟩ := hget
+    rw [← list_get?_eq_getElem?] at horig
+    obtain ⟨v_orig, hgetv, hsub⟩ := h k orig horig
+    rw [list_get?_eq_getElem?] at hgetv
+    exact ⟨v_orig.shift 1 0, ⟨v_orig, hgetv, rfl⟩, hshift ▸ hsub.shift_preserve 1 0⟩
 
 /-- Well-typedness: all ascriptions encountered during evaluation are sound.
     Bool-valued with subCheckNF in the ascription case.
