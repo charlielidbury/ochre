@@ -1,14 +1,30 @@
 import Och.Syntax
 import Och.Eval
 import Och.Subtyping
-import Och.Monotonicity
 
 open Expr
 
-/-- Environment subtyping via SubtypeTrans. Used locally for counterexamples;
-    removed from Monotonicity.lean since the theorems it supported were dead code. -/
-private def EnvSubTrans (Γ₂ Γ₁ : Env) : Prop :=
-  ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ SubtypeTrans τ₂ τ₁
+-- These functions were moved from Syntax.lean — only needed for counterexamples.
+
+/-- Free variables of an expression (may contain duplicates). -/
+private def Expr.freeVars (e : Expr) : List Name :=
+  match e with
+  | .var x         => [x]
+  | .lam x dom body => dom.freeVars ++ (body.freeVars.filter (· != x))
+  | .app f a       => f.freeVars ++ a.freeVars
+  | .asc term ty   => term.freeVars ++ ty.freeVars
+  | .type          => []
+  | .mu x ann body => ann.freeVars ++ (body.freeVars.filter (· != x))
+
+/-- "Evaluable" free variables — excludes domain annotations. -/
+private def Expr.evalFreeVars (e : Expr) : List Name :=
+  match e with
+  | .var x          => [x]
+  | .lam x _dom body => (body.evalFreeVars).filter (· != x)
+  | .app f a        => f.evalFreeVars ++ a.evalFreeVars
+  | .asc _term ty   => ty.evalFreeVars
+  | .type           => []
+  | .mu x _ann body => (body.evalFreeVars).filter (· != x)
 
 /-!
 # Counterexample: absEval_succeeds_envsub is FALSE as stated
@@ -22,7 +38,7 @@ cannot be proven without an additional well-formedness condition on the environm
 - Γ₂ = [(y, λx:Type. z)]   where z is NOT bound in Γ₂
 - e  = y y
 
-EnvSubTrans Γ₂ Γ₁ holds because (λx:Type. z) ⊑ Type (via top).
+EnvSub Γ₂ Γ₁ holds because (λx:Type. z) ⊑ Type (via top).
 absEval 2 Γ₁ e = some Type   (Type applied to Type = Type)
 absEval 2 Γ₂ e = none        (applying λx:Type. z to (λx:Type. z) tries to
                                 evaluate z in env {x ↦ λx:Type.z, y ↦ λx:Type.z},
@@ -30,11 +46,11 @@ absEval 2 Γ₂ e = none        (applying λx:Type. z to (λx:Type. z) tries to
 
 ## Why this matters
 
-The theorem claims: if absEval succeeds in Γ₁ and EnvSubTrans Γ₂ Γ₁, then absEval
+The theorem claims: if absEval succeeds in Γ₁ and EnvSub Γ₂ Γ₁, then absEval
 succeeds in Γ₂ (same expression). This is false because Γ₂ can contain lambda
 values with free variables that are not bound in the env. Such envs never arise
 from well-formed evaluation (absEval normalizes lambda bodies, which would fail
-if free vars are missing), but EnvSubTrans has no well-formedness requirement.
+if free vars are missing), but EnvSub has no well-formedness requirement.
 
 ## The fix
 
@@ -51,13 +67,17 @@ def Γ₁_ce : Env := [("y", .type)]
 def Γ₂_ce : Env := [("y", .lam "x" .type (.var "z"))]
 def e_ce : Expr := .app (.var "y") (.var "y")
 
--- Verify EnvSubTrans Γ₂ Γ₁ holds (via top: lam ⊑ type)
-example : EnvSubTrans Γ₂_ce Γ₁_ce := by
+-- EnvSub: env subtyping via Subtype' (used locally for counterexamples).
+private def EnvSub (Γ₂ Γ₁ : Env) : Prop :=
+  ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ Subtype' τ₂ τ₁
+
+-- Verify EnvSub Γ₂ Γ₁ holds (via top: lam ⊑ type)
+example : EnvSub Γ₂_ce Γ₁_ce := by
   intro x τ₁ h
   simp only [Γ₁_ce, Env.lookup] at h
   by_cases hx : "y" = x
   · subst hx; simp [Env.lookup] at h; subst h
-    exact ⟨.lam "x" .type (.var "z"), by simp [Γ₂_ce, Env.lookup], .step (.top _)⟩
+    exact ⟨.lam "x" .type (.var "z"), by simp [Γ₂_ce, Env.lookup], .top _⟩
   · simp [Env.lookup, show ¬("y" == x) = true from by simp [BEq.beq, hx]] at h
 
 -- Verify absEval succeeds in Γ₁

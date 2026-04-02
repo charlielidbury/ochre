@@ -53,31 +53,4 @@ def subst (e : Expr) (x : Name) (s : Expr) : Expr :=
     if y == x then .mu y (ann.subst x s) body  -- x is shadowed in body
     else .mu y (ann.subst x s) (body.subst x s)
 
-/-- Free variables of an expression (may contain duplicates). -/
-def freeVars (e : Expr) : List Name :=
-  match e with
-  | .var x        => [x]
-  | .lam x dom body => dom.freeVars ++ (body.freeVars.filter (· != x))
-  | .app f a      => f.freeVars ++ a.freeVars
-  | .asc term ty  => term.freeVars ++ ty.freeVars
-  | .type         => []
-  | .mu x ann body => ann.freeVars ++ (body.freeVars.filter (· != x))
-
-/-- "Evaluable" free variables — the variables that `absEval` will actually
-    look up during evaluation. This EXCLUDES domain annotations in lambda/mu,
-    because absEval does not evaluate domains (they pass through unchanged).
-
-    This is the correct replacement for `freeVars` in the context of
-    `absEval_freeVars_covered`, which was shown to be FALSE because standard
-    `freeVars` includes domain annotations that can contain stale variable
-    references after beta-reduction. See PROGRESS.md. -/
-def evalFreeVars (e : Expr) : List Name :=
-  match e with
-  | .var x         => [x]
-  | .lam x _dom body => (body.evalFreeVars).filter (· != x)  -- NO dom!
-  | .app f a       => f.evalFreeVars ++ a.evalFreeVars
-  | .asc _term ty  => ty.evalFreeVars  -- absEval takes rhs
-  | .type          => []
-  | .mu x _ann body => (body.evalFreeVars).filter (· != x)  -- NO ann!
-
 end Expr

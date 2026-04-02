@@ -5,7 +5,7 @@ import Och.Subtyping
 /-!
 # Monotonicity
 
-Generalized to `absEval_mono` taking `SubtypeCore e₂ e₁` + `EnvSub Γ₂ Γ₁`.
+Generalized to `absEval_mono` taking `SubtypeCore e₂ e₁` + `EnvSubCore Γ₂ Γ₁`.
 Standard monotonicity is the corollary with `SubtypeCore.refl`.
 
 Key technique: using `SubtypeCore` (Subtype' without self_intro) avoids
@@ -23,30 +23,6 @@ absEval_evalFreeVars_neutral were unused and have been removed.
 -/
 
 open Expr
-
-def EnvSub (Γ₂ Γ₁ : Env) : Prop :=
-  ∀ x τ₁, Γ₁.lookup x = some τ₁ → ∃ τ₂, Γ₂.lookup x = some τ₂ ∧ Subtype' τ₂ τ₁
-
-theorem envSub_extend {Γ₂ Γ₁ : Env} (h : EnvSub Γ₂ Γ₁) (x : Name) (v : Expr) :
-    EnvSub ((x, v) :: Γ₂) ((x, v) :: Γ₁) := by
-  intro y τ₁ h_lookup
-  simp only [Env.lookup] at h_lookup ⊢
-  split at h_lookup <;> split
-  · cases h_lookup; exact ⟨v, rfl, Subtype'.refl v⟩
-  · rename_i h1 h2; exact absurd h1 h2
-  · rename_i h1 h2; exact absurd h2 h1
-  · exact h y τ₁ h_lookup
-
-theorem envSub_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSub Γ₂ Γ₁)
-    (x : Name) {v₂ v₁ : Expr} (hv : Subtype' v₂ v₁) :
-    EnvSub ((x, v₂) :: Γ₂) ((x, v₁) :: Γ₁) := by
-  intro y τ₁ h_lookup
-  simp only [Env.lookup] at h_lookup ⊢
-  split at h_lookup <;> split
-  · cases h_lookup; exact ⟨v₂, rfl, hv⟩
-  · rename_i h1 h2; exact absurd h1 h2
-  · rename_i h1 h2; exact absurd h2 h1
-  · exact h y τ₁ h_lookup
 
 /-- Environment subtyping via SubtypeCore (no self_intro). Used by absEval_mono. -/
 def EnvSubCore (Γ₂ Γ₁ : Env) : Prop :=
@@ -72,13 +48,6 @@ theorem envSubCore_extend_sub {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁)
   · rename_i h1 h2; exact absurd h1 h2
   · rename_i h1 h2; exact absurd h2 h1
   · exact h y τ₁ h_lookup
-
-/-- EnvSub implies EnvSubCore (Subtype' embeds into SubtypeCore... not in general).
-    Instead, lift EnvSubCore to EnvSub via embedding. -/
-theorem EnvSubCore.toEnvSub {Γ₂ Γ₁ : Env} (h : EnvSubCore Γ₂ Γ₁) : EnvSub Γ₂ Γ₁ := by
-  intro x τ₁ h_lookup
-  obtain ⟨τ₂, h_l2, h_sub⟩ := h x τ₁ h_lookup
-  exact ⟨τ₂, h_l2, h_sub.toSubtype'⟩
 
 /-- **Generalized monotonicity.**
 
@@ -397,13 +366,8 @@ theorem absEval_mono
           exact .mu_body (ih _ _ body₁ body₂ _ _ hbody
             (envSubCore_extend_sub h_env x (.mu_body hbody)) hb₁ hb₂)
 
-/-- EnvSub (using Subtype') can be weakened to EnvSubCore (using SubtypeCore) when
-    the env doesn't contain self_intro. In practice this always holds because envs
-    are built from refl and structural constructors, not self_intro. This conversion
-    is NOT possible in general (Subtype' ⊃ SubtypeCore), but here we only need it
-    for the monotonicity corollary where the env comes from user-provided EnvSub.
-    We factor through: EnvSub gives Subtype' values, which we can't convert to
-    SubtypeCore. Instead, monotonicity takes EnvSub directly and wraps the call. -/
+/-- Monotonicity corollary: same expression in two envs related by EnvSubCore.
+    Wraps absEval_mono with SubtypeCore.refl and converts output to Subtype'. -/
 theorem monotonicity
     (Γ₁ Γ₂ : Env) (e τ₁ τ₂ : Expr) (fuel : Nat)
     (h_env : EnvSubCore Γ₂ Γ₁)
