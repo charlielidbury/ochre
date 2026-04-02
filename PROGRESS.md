@@ -23,11 +23,85 @@ the mu design.
 **`soundness` (using concEvalE) is sorry-free!** It's a direct corollary
 of `soundness_gen` with empty env.
 
-**PROVEN (cumulative from all sessions):**
-- soundness (concEvalE version) — FULLY PROVEN
+## CRITICAL FINDING: VCompat.adequacy is FALSE (this session)
+
+**Agent:** ochre-lean-20260403-011825
+
+### The counterexample (proven constructively in Tests.lean §13)
+
+```
+v = mu type (app (bvar 0) type)     — non-fixpoint mu
+σ = mu type (lam type (bvar 0))     — fixpoint mu
+τ = lam type type                    — function type
+```
+
+- `VCompat 3 v σ = True` — structural mu: same ann, bodies VCompat via inferType
+- `subCheckNF σ τ = True` — self-elim → fixpoint → lam structural → top
+- `VCompat 3 v τ = False` — mu-left gives app(v,type) vs lam; inferType mu = none
+
+**Proved:** `adequacy_cex_compat` and `adequacy_cex_incompat` in Tests.lean.
+
+### What this means
+
+The **3 sorry'd cases in adequacy** (lines 540, 642, 644) and the **1 sorry
+in from_self_intro_gen** (line 411) are all **UNPROVABLE** — not just hard.
+The structural mu disjunct in VCompat allows two mus with compatible bodies
+but incompatible self-substitutions, which self-elim exposes.
+
+The `soundness` theorem depends (transitively via sorry) on adequacy, so the
+current proof chain is UNSOUND. However, soundness itself might still be TRUE
+— the VCompat definition just needs to change to make adequacy provable.
+
+### Root cause
+
+structural mu VCompat + self-elim in subCheckNF = VCompat.subst_congr,
+which is FALSE (also proven in Tests.lean §11.6).
+
+## What the next agent MUST do
+
+### Priority 1: Fix the VCompat definition
+
+The structural mu disjunct must change. Three options (see DECISION-LOG.md):
+
+**Option A (recommended): "Unfolded structural mu"**
+Replace:
+```lean
+∨ (∃ annV annT bodyV bodyT,
+    v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
+    VCompat n bodyV bodyT)
+```
+With:
+```lean
+∨ (∃ annV annT bodyV bodyT,
+    v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
+    VCompat n (bodyV.subst 0 (.mu annV bodyV)) (bodyT.subst 0 (.mu annT bodyT)))
+```
+
+This makes the adequacy self-elim cases work because the VCompat already
+talks about the unfolded forms. The challenge moves to soundness_gen's mu
+case, which currently gets VCompat for raw bodies from the IH, not unfolded
+forms. An env-substitution equivalence lemma may be needed.
+
+**Option B: Remove structural mu, use mu-right/mu-left only**
+This avoids the problem but makes soundness_gen's mu case much harder.
+
+**Option C: Semantic VCompat (long-term)**
+Define mu compatibility via evaluation rather than structure. This is the
+right long-term answer but requires a major refactor.
+
+### After fixing VCompat
+
+1. Re-prove VCompat.mono (should be straightforward for unfolded variant)
+2. Re-prove soundness_gen mu case with the new definition
+3. Re-prove adequacy for the self-elim cases
+4. Check that all existing tests still pass
+
+## PROVEN (cumulative from all sessions)
+
+- soundness (concEvalE version) — FULLY PROVEN (depends on sorry'd adequacy)
 - VCompat.from_type_sub_gen — FULLY PROVEN (self-intro from .type)
 - VCompat.from_type_sub — FULLY PROVEN (corollary)
-- VCompat.adequacy PARTIAL — ALL self-intro cases now proven via from_self_intro
+- VCompat.adequacy PARTIAL — self-intro cases done, SELF-ELIM UNPROVABLE
 - VCompat.mono (downward closure)
 - VCompat.mono_le (multi-step downward closure)
 - VCompat.fixpoint_mu (fixpoint mus are always VCompat)
@@ -40,59 +114,19 @@ of `soundness_gen` with empty env.
 **All milestone tests pass** (M1-M4 including abstract appendVec).
 **11 WellTyped witness tests pass.**
 
-## KEY CHANGES THIS SESSION (agent ochre-lean-20260403-001714)
+## CRITICAL FINDINGS: false properties
 
-### 1. VCompat.subst_congr is FALSE
+### 1. VCompat.adequacy is FALSE (NEW — this session)
+Counterexample and constructive proof in Tests.lean §13. See above.
 
-Counterexample found and documented in Tests.lean:
-- bodyV = bvar 0, bodyT = lam .type (bvar 0) — VCompat via inferType
-- av = lam .type .type, aτ = .type — VCompat via top
-- After subst: (lam .type .type) vs (lam .type (bvar 0))
-- VCompat FAILS: structural lam needs VCompat .type (bvar 0), which is false
+### 2. subCheckNF transitivity is FALSE
+Counterexample in Tests.lean §11.5.
 
-**This rules out the approach of proving the app case via structural VCompat +
-substitution congruence.** The app case requires either semantic VCompat or a
-different technique.
+### 3. subCheckNF_top_universal is FALSE
+Counterexample in Tests.lean §11.5.
 
-### 2. Self-intro cases of adequacy: 7 of 10 mu/seen sorrys eliminated
-
-Proved `VCompat.from_type_sub_gen` (fully, no sorry) and
-`VCompat.from_self_intro_gen` (1 sorry in inner recursion).
-
-The key technique: outer induction on fuel (self-intro decreases fuel) with
-inner induction on VCompat step index (mu-right decreases step). For .type
-as the left operand, this is fully proven because the only shapes body.subst
-can take are .type (VCompat by top) or another mu (self-intro recurses).
-
-For general σ (lam, bvar, app, asc), the inner recursion at `from_self_intro_gen`
-line ~411 is sorry'd because after self-intro unfolds, the inner subCheckNF
-operates on σ ⊑ body.subst, which has σ-specific matching (structural lam/mu,
-inferType catch-all). This requires either:
-1. A generalized adequacy that handles arbitrary σ with seen lists
-2. A seen-stripping lemma (subCheckNF with unused seen = without seen)
-3. Separate handling for each σ shape
-
-### 3. Self-elim cases remain (3 sorrys in adequacy)
-
-Self-elim cases (σ = mu, τ ∉ {type, mu}) need mu-left + inner recursion.
-The same technique (outer fuel induction + inner step induction) should work
-but requires a parallel `from_self_elim_gen` lemma.
-
-### 4. New helper lemmas
-
-- `VCompat.mono_le`: multi-step downward closure (VCompat n → VCompat m for m ≤ n)
-- `VCompat.fixpoint_mu`: VCompat n v (mu ann body) always true for fixpoints
-- `VCompat.fixpoint_mu_left`: VCompat n (mu ann body) τ always true for fixpoints
-- `VCompat.self_intro_eq`: self-intro when σ = body.subst 0 self
-- `subCheckNF_type_self_intro`: extract self-intro inner call from subCheckNF
-
-## CRITICAL FINDING: subCheckNF non-properties (still valid)
-
-### 1. subCheckNF transitivity is FALSE
-### 2. subCheckNF_top_universal is FALSE
-### 3. VCompat.subst_congr is FALSE (NEW)
-
-See Tests.lean for counterexamples.
+### 4. VCompat.subst_congr is FALSE
+Counterexample in Tests.lean §11.6.
 
 ## File structure
 
@@ -103,80 +137,30 @@ See Tests.lean for counterexamples.
 - `Soundness.lean` — WellTyped, VCompat definition (with inferType disjunct),
   from_type_sub_gen (proven), from_self_intro_gen (1 sorry), soundness theorems
 - `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN),
-  subCheckNF + VCompat counterexample tests
+  subCheckNF + VCompat counterexample tests, adequacy counterexample (§13)
 
 ## Sorry count by category
 
-### Self-intro inner recursion (1 sorry in from_self_intro_gen)
-The core issue: after self-intro unfolds σ ⊑ mu ann body to σ ⊑ body.subst
-with seen [(σ, mu ann body)], the inner subCheckNF does σ-specific matching.
-For σ = .type, this is fully handled (from_type_sub_gen). For other σ shapes,
-the inner matching (structural lam, inferType, etc.) interacts with the seen
-list in complex ways.
+### UNPROVABLE with current VCompat (4 sorrys):
+- `VCompat.adequacy` lines 540, 642, 644 — structural mu + self-elim = false
+- `VCompat.from_self_intro_gen` line 411 — depends on adequacy-with-seen
 
-**Fix approach**: The inner call has fuel k-1 (one less). The IH at fuel k-1
-gives from_self_intro_gen at lower fuel. But the inner call's target is
-body.subst 0 (mu ann body), which might not be a mu (could be lam, bvar, etc.).
-So from_self_intro_gen doesn't directly apply. Need a more general adequacy
-that handles σ ⊑ τ for arbitrary τ (not just mu) with seen lists.
+### App case (1 sorry in soundness_gen):
+Still requires semantic VCompat or substitution congruence. Orthogonal to
+the adequacy fix (but the eventual semantic VCompat refactor would fix both).
 
-### Self-elim (2 sorrys in adequacy)
-Mirror of self-intro: σ is mu, τ is not mu. Uses mu-left (body.subst unfolds
-the mu on the value side). Same seen-list interaction issue.
-
-### Mu-right in adequacy (1 sorry)
-σ = mu ann_σ body_σ unfolded. The unfolded body.subst 0 (mu ann_σ body_σ) is
-the new σ'. This is subsumed by the general seen-list adequacy.
-
-### App case (1 sorry in soundness_gen)
-The structural VCompat makes the app case hard: after beta-reduction, bodyV.subst 0 av
-and bodyT.subst 0 aτ are different expressions, and the IH needs the same expression.
-
-VCompat.subst_congr is FALSE (see above), so the structural approach can't
-work via simple substitution congruence. The semantic VCompat approach
-(SUGGESTIONS.md) trades an easy app case for a hard lam case. The lam case
-requires either:
-1. Two-env soundness_gen (generalize to separate envs for concrete/abstract)
-2. Env-substitution equivalence (concEvalE fuel env (bodyV'.subst 0 av) = 
-   concEvalE fuel (env.extend av) source_body)
-
-### soundness_concEval bridge (1 sorry)
-Orthogonal: needs showing concEval and concEvalE agree on closed terms.
-
-## What the next agent should do
-
-### Priority 1: Prove the from_self_intro_gen inner sorry
-
-The 1 remaining sorry in from_self_intro_gen (line ~411) is:
-```
-VCompat i v (body_τ.subst 0 (.mu ann_τ body_τ))
-```
-given `subCheckNF k ctx ((σ, .mu ann_τ body_τ) :: seen) σ (body_τ.subst 0 (.mu ann_τ body_τ)) = true`
-
-This is a general adequacy problem: show VCompat at step i given subCheckNF
-with non-empty seen. Approach: prove a generalized adequacy_gen with seen/hseen
-parameters, by the same outer-fuel/inner-step double induction technique used
-in from_type_sub_gen. The .type case shows the technique works; the general
-case requires handling all σ shapes in the inner subCheckNF matching.
-
-### Priority 2: Self-elim cases (from_self_elim_gen)
-
-Mirror of from_self_intro_gen for the mu-left direction. 2 sorrys.
-
-### Priority 3: App case
-
-See SUGGESTIONS.md for detailed analysis. VCompat.subst_congr is FALSE,
-so the semantic VCompat approach is the recommended path.
+### soundness_concEval bridge (1 sorry):
+Orthogonal. Needs concEval → concEvalE equivalence.
 
 ## What's been tried (and failed)
 
 - **Structural soundness via SoundRel**: fundamentally broken for ascription
 - **ValSub.subst_congr**: FALSE (verified by counterexample)
-- **VCompat.subst_congr**: FALSE (verified this session — see Tests.lean)
+- **VCompat.subst_congr**: FALSE (verified by counterexample)
 - **Step-index coupling (VCompat fuel = fuel)**: dead end for asc case
 - **subCheckNF transitivity**: FALSE (verified by counterexample)
 - **subCheckNF_top_universal**: FALSE (verified by counterexample)
-- **subCheckNF fallback in VCompat**: required transitivity → dead end.
-  **Replaced with inferType disjunct** (agent ochre-lean-20260402-234907).
+- **subCheckNF fallback in VCompat**: required transitivity → dead end
+- **VCompat.adequacy with structural mu**: FALSE (this session)
 
 **Do not attempt any of the above approaches.**

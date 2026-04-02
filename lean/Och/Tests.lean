@@ -813,3 +813,128 @@ example : WellTyped testFuel [] addRec = true := by native_decide
 
 -- W9: appendVec itself
 example : WellTyped testFuel [] appendVec' = true := by native_decide
+
+-- ============================================================
+-- §13 VCompat.adequacy COUNTEREXAMPLE
+-- ============================================================
+-- VCompat.adequacy is FALSE with the current VCompat definition.
+-- The structural mu disjunct allows two mus with compatible bodies
+-- but different "self" values, and after self-elim the divergent
+-- self-substitutions break VCompat.
+--
+-- Counterexample:
+--   v = mu type (app (bvar 0) type)     — non-fixpoint mu
+--   σ = mu type (lam type (bvar 0))     — fixpoint mu (body doesn't use self-ref at depth 0)
+--   τ = lam type type                    — simple function type
+--
+-- VCompat 3 v σ holds:
+--   structural mu (same ann = type): VCompat 2 (app (bvar 0) type) (lam type (bvar 0))
+--   via inferType with ctx = [lam type (lam type (bvar 0))]:
+--     inferType returns some (lam type (bvar 0)), VCompat 1 by refl ✓
+--
+-- subCheckNF σ τ = true:
+--   σ = mu type (lam type (bvar 0)), τ = lam type type
+--   self-elim: body.subst 0 σ = lam type (bvar 0) (body is fixpoint)
+--   subCheckNF (lam type (bvar 0)) (lam type type) with seen [(σ, τ)]:
+--     structural lam: domain type⊑type ✓, body (bvar 0)⊑type → top → ✓
+--
+-- VCompat 3 v τ is FALSE:
+--   v = mu type (app (bvar 0) type), τ = lam type type
+--   mu-left: need VCompat 2 (app v type) (lam type type)
+--     app is not lam/mu, inferType of mu = none → all disjuncts fail
+--   No other disjunct of VCompat (m+1) v τ applies (mu≠lam, inferType mu=none)
+--
+-- Root cause: structural mu VCompat between v and σ says their BODIES are
+-- compatible, but self-elim unfolds σ using σ's self-substitution while
+-- v unfolds with v's self-substitution. The substituted forms diverge
+-- because bodyV.subst 0 v ≠ bodyS.subst 0 σ in general, and this divergence
+-- is not captured by VCompat on the raw bodies.
+
+def adequacy_cex_v := Expr.mu .type (.app (.bvar 0) .type)
+def adequacy_cex_σ := Expr.mu .type (.lam .type (.bvar 0))
+def adequacy_cex_τ := Expr.lam .type .type
+
+-- Verify subCheckNF σ τ succeeds (self-elim → fixpoint → structural lam → top)
+example : subCheckNF 10 [] [] adequacy_cex_σ adequacy_cex_τ = true := by native_decide
+
+-- Verify the self-elim unfold is a fixpoint
+example : (Expr.lam .type (.bvar 0)).subst 0 adequacy_cex_σ = Expr.lam .type (.bvar 0) := by native_decide
+
+-- Verify inferType for the mu value is none (blocks inferType disjunct)
+example : inferType [] adequacy_cex_v = none := by native_decide
+example : inferType [.type] adequacy_cex_v = none := by native_decide
+
+-- Verify the key inferType step for VCompat v σ:
+-- inferType [lam type (lam type (bvar 0))] (app (bvar 0) type) = some (lam type (bvar 0))
+example : inferType [Expr.lam .type (.lam .type (.bvar 0))] (.app (.bvar 0) .type)
+    = some (Expr.lam .type (.bvar 0)) := by native_decide
+
+-- Verify the value's self-unfolding diverges from the type's
+example : (Expr.app (.bvar 0) .type).subst 0 adequacy_cex_v
+    = Expr.app adequacy_cex_v .type := by native_decide
+-- inferType of (app (mu ...) type) = none because inferType (mu ...) = none
+example : inferType [] (Expr.app adequacy_cex_v .type) = none := by native_decide
+
+-- CONSTRUCTIVE PROOF: VCompat 3 v σ holds
+-- Via structural mu (same annotation), then inferType on bodies
+theorem adequacy_cex_compat : VCompat 3 adequacy_cex_v adequacy_cex_σ := by
+  unfold VCompat
+  -- structural mu disjunct
+  apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+  exact ⟨.type, .type, .app (.bvar 0) .type, .lam .type (.bvar 0), rfl, rfl, by
+    -- VCompat 2 (app (bvar 0) type) (lam type (bvar 0))
+    unfold VCompat
+    -- inferType disjunct
+    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+    apply Or.inr; apply Or.inr
+    exact ⟨[.lam .type (.lam .type (.bvar 0))],
+           .lam .type (.bvar 0),
+           by native_decide,  -- inferType gives some (lam type (bvar 0))
+           by unfold VCompat; exact Or.inr (Or.inl rfl)  -- VCompat 1 by refl
+          ⟩
+  ⟩
+
+-- CONSTRUCTIVE PROOF: VCompat 3 v τ is FALSE
+-- Every disjunct of VCompat fails
+theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by
+  unfold VCompat
+  intro h
+  rcases h with h1 | h2 | ⟨dV, dT, bV, bT, hv, hτ, _⟩ |
+                 ⟨aV, aT, bV, bT, hv, hτ, _⟩ |
+                 ⟨ann, body, hτ, _⟩ |
+                 ⟨ann, body, hv, h_unfold⟩ |
+                 ⟨ctx, ty, h_inf, _⟩
+  · cases h1                              -- lam ≠ type
+  · cases h2                              -- mu ≠ lam
+  · cases hv                              -- mu ≠ lam (v not a lam)
+  · cases hτ                              -- lam ≠ mu (τ not a mu)
+  · cases hτ                              -- lam ≠ mu (τ not a mu)
+  · -- mu-left: v = mu type (app (bvar 0) type), unfold to (app v type)
+    cases hv
+    -- h_unfold : VCompat 2 ((app (bvar 0) type).subst 0 v) (lam type type)
+    -- which is VCompat 2 (app v type) (lam type type)
+    -- Note: (app (bvar 0) type).subst 0 (mu type (app (bvar 0) type))
+    --      = app (mu type (app (bvar 0) type)) type
+    change VCompat 2 ((Expr.app (.bvar 0) .type).subst 0 (Expr.mu .type (.app (.bvar 0) .type))) adequacy_cex_τ at h_unfold
+    simp [Expr.subst, Expr.shift] at h_unfold
+    -- h_unfold : VCompat 2 (app (mu type (app (bvar 0) type)) type) (lam type type)
+    unfold VCompat at h_unfold
+    rcases h_unfold with h1 | h2 | ⟨dV, dT, bV, bT, hv', _, _⟩ |
+                          ⟨aV, aT, bV, bT, hv', _, _⟩ |
+                          ⟨ann', body', hτ', _⟩ |
+                          ⟨ann', body', hv', _⟩ |
+                          ⟨ctx', ty', h_inf', _⟩
+    · cases h1                            -- lam ≠ type
+    · cases h2                            -- app ≠ lam
+    · cases hv'                           -- app ≠ lam
+    · cases hv'                           -- app ≠ mu
+    · cases hτ'                           -- lam ≠ mu
+    · cases hv'                           -- app ≠ mu
+    · -- inferType of app(mu..., type) = none
+      -- inferType ctx' (app (mu ...) type): inferType ctx' (mu ...) = none → none
+      have : inferType ctx' (Expr.app (Expr.mu .type (.app (.bvar 0) .type)) .type) = none := by
+        simp [inferType]
+      rw [this] at h_inf'; cases h_inf'
+  · -- inferType of mu = none
+    unfold adequacy_cex_v at h_inf
+    simp [inferType] at h_inf
