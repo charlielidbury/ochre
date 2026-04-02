@@ -78,10 +78,8 @@ The project is in `lean/`. It contains:
 - `Och/Syntax.lean` — term representation
 - `Och/Eval.lean` — concrete and abstract evaluation
 - `Och/Subtyping.lean` — the subtyping relation
-- `Och/Soundness.lean` — the soundness theorem
-- `Och/Monotonicity.lean` — the monotonicity theorem
+- `Och/Soundness.lean` — WellTyped + VCompat + soundness theorem
 - `Och/Tests.lean` — acceptance tests (DO NOT weaken)
-- `Och/Closure.lean` — closure-based evaluators
 
 Run `cd lean && lake build` to see the current state.
 

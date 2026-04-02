@@ -1,352 +1,167 @@
-# The mu experiment
+# Proving Och sound via logical relations
 
-## Background: what happened and why we're here
+## The goal
 
-Och previously had two separate self-reference primitives:
-- `fix` — general recursion (recursive functions)
-- `iota` — self types (dependent elimination)
-
-We discovered these are the same thing. In Och's "terms and types are the
-same thing" framework, both express self-reference. The only difference is
-how *determined* the self-reference is — and that's already handled by the
-concrete/abstract evaluation split. See `docs/ideas/merge-fix-iota.md` for
-the full analysis (READ THIS FIRST — it is the design document for this
-experiment).
-
-The unified primitive is `mu`:
+Prove: for well-typed closed programs, the concrete value is compatible
+with the abstract type.
 
 ```lean
-| mu : Name → (ann : Expr) → (body : Expr) → Expr
+theorem soundness
+    (fuel : Nat) (e : Expr) (v τ : Expr)
+    (h_wt : WellTyped fuel [] e = true)
+    (h_conc : concEvalE fuel [] e = some v)
+    (h_abs : absEval fuel [] e = some τ)
+    : VCompat fuel v τ
 ```
 
-`mu (x : T). body` means "the thing being defined can refer to itself as x,
-and its annotation is T."
-
-- **Concrete eval:** unroll — `body[x := mu x T body]` (like fix)
-- **Abstract eval:** normalize body under binder, return `mu x T' body'` (like iota)
-- **Subtyping:** mu-mu compares bodies covariant; self-intro/elim unfold one level
-
-## North Star: abstract appendVec
-
-The goal is getting `appendVec` working end-to-end with **abstract** arguments
-(`n : Nat, m : Nat`). Och is useless without this — a type system that can
-only verify concrete computations adds nothing over an evaluator.
-
-## Strategy: tests first, proofs last
-
-Proofs are expensive and fragile — they break whenever definitions change.
-The definitions are NOT yet stable (annotation semantics are unresolved,
-the env type may need to change, subtyping rules may evolve). So the strategy
-is:
-
-1. **Get appendVec working as native_decide tests** — validate that the
-   definitions are expressive enough by writing executable tests, not proofs.
-   Every milestone below is a test that either passes or doesn't.
-2. **Only then prove soundness/monotonicity** — once the tests pass and the
-   definitions have stabilised, the proofs confirm what we already believe.
-
-This brings risk forward: if the definitions can't express appendVec, we find
-out in days (a failing test), not weeks (a stuck proof).
-
-**Do not prioritise filling sorrys over getting tests to pass.** A system
-with 10 sorrys and a passing appendVec test is in a far better position than
-a system with 0 sorrys that can't express dependent elimination.
-
-## Current state (as of 2026-04-02)
-
-`lake build` passes with **9 sorrys** (1 absEval_mono, 5 OutputRel helpers,
-3 legacy soundness_gen). **All M1-M4 milestone tests pass.** 11 WellTyped
-witness tests pass. **ValSub.lean is SORRY-FREE.**
-**soundness_gen_sr is SORRY-FREE** — all cases including nested asc proved.
-
-### What's working
-
-- mu replaces fix+iota throughout the codebase
-- Concrete eval unrolls mu (like fix)
-- Abstract eval normalizes body under binder (like iota)
-- **Annotation-based mu-elim in absEval** — when a recursive mu is applied,
-  absEval uses the annotation (if it's a lambda) to determine the return
-  type, preventing divergence. Falls back to body unfolding for self-types.
-- **Domain normalization in subCheckNF** — domains are normalized before
-  adding to inferType's context, so `Vec' T` is recognized as a lambda.
-- **Equi-recursive self-intro in subCheckNF** — self-intro substitutes the
-  mu type itself (not the value), enabling Variant B (truly self-referential
-  Nat). Coinductive `seen` set prevents divergence on circular unfolding.
-- Self-intro and self-elim work in subCheckNF
-- `inferType` in the subtype checker does mu-elim on stuck applications
-- **All milestone tests pass:** M1a-d, M2a, M3a, M4a-c
-- **Abstract `add` (non-recursive, Church-style) with SelfNat passes** (§9)
-- **Recursive add (mu-as-fix) with both concrete and abstract args passes** (M1a-d)
-- **appendVec as raw function AND applied to abstract args passes** (M4a-c)
-- **Variant B passes:** `zero_mu ⊑ MuNat` and `add_mu ⊑ MuNat→MuNat→MuNat` (§10)
-- **soundness_gen ~300 lines of proof reinstated** — all non-asc,
-  non-annotation-path cases proved. 3 targeted sorrys remain.
-
-## RESOLVED: WellTyped is now non-vacuous (Phase 5, Step 1 complete)
-
-WellTyped was previously Prop-valued with SubtypeCore in the asc case.
-SubtypeCore lacks self_intro, making WellTyped unsatisfiable for any
-program with `(e : mu_type)` ascriptions — the soundness theorem was
-vacuously true.
-
-**Now fixed:** WellTyped is Bool-valued with `subCheckNF` in the asc case.
-11 witness tests prove WellTyped is satisfiable for milestone programs.
-
-**Architecture:** The intended user-facing type checker is
-`WellTyped fuel [] e && subCheck fuel e τ`. `WellTyped` recursively checks
-that all ascriptions are sound (e.g., rejects `(b : not b)` inside a
-lambda). `subCheck` checks that the overall expression has the declared
-type. Both are decidable (Bool-valued). Once Phase 4 proves soundness_gen,
-the full guarantee is: if both return true, then `concEval(e) ⊑ absEval(τ)`.
-
-**Key finding:** `(.asc unit' SelfNat)` is NOT a valid test — unit' (Church
-unit) is not in SelfNat (Church Nat). Use `(.asc zero' SelfNat)` instead.
-The ascription witness must actually inhabit the declared type.
-
-## Known risks and open questions
-
-These are observations, not certainties. Investigate before acting on them.
-
-1. **The annotation field on mu is now load-bearing (RESOLVED).**
-   absEval uses the annotation to determine return types for recursive mus:
-   when `app (mu x ann body) aVal` and ann is a lambda, it beta-reduces
-   ann with aVal instead of unfolding the body (which would diverge).
-   For iota-like mus (ann = Type), it falls back to body unfolding.
-   This resolved M1d, M4b, and M4c. The annotation is still NOT compared
-   by subCheckNF's mu-mu rule or checked by WellTyped — these may need
-   updating when proofs resume.
-
-2. **The subtype checker compensates for the evaluator.** absEval does NOT
-   do type-directed evaluation — stuck applications stay stuck. The subtype
-   checker's `inferType` does mu-elim to recover type information, and
-   `normalizeDomain` resolves beta-redexes in domains. This architecture
-   works for all milestones through appendVec. Whether it scales to Phase 4
-   (Scott encoding) is an open question.
+## Why logical relations?
 
-3. **Variant B now works (RESOLVED).** Equi-recursive self-intro
-   (substituting the mu type, not the value) resolved `zero_mu ⊑ MuNat`
-   and `add_mu ⊑ MuNat→MuNat→MuNat`. The coinductive `seen` set prevents
-   divergence. Phase 4 (Scott encoding) is now unblocked.
+Och's ascription `(e : τ)` evaluates `term` concretely and `ty` abstractly.
+The results can have **completely different constructors** — a lambda value
+vs a mu type, for instance. This is the whole point of ascription.
 
-## Roadmap
+Previous agents tried structural relations (SoundRel, SubtypeCore) that
+require matching top-level constructors. These are **fundamentally broken**
+for any program with ascription. See PROGRESS.md for the history.
 
-Phases are in priority + dependency order. Do the first incomplete phase.
+The standard PL solution: **logical relations**. Define compatibility
+semantically, by behavior. For functions: "compatible iff applying to
+compatible args gives compatible results." This avoids the need for
+substitution congruence (which is FALSE for contravariant subtyping) and
+handles cross-constructor cases (lam compat mu) via unfolding.
 
-### Phase 1: Milestone tests ✓ COMPLETE
+## VCompat — the compatibility relation
 
-All M1-M4 milestones pass. Variant B passes. See git history for details.
+Defined in `Soundness.lean`. Step-indexed (Appel & McAllester 2001 style):
 
-### Phase 2: Non-vacuous WellTyped ✓ COMPLETE
-
-WellTyped is now Bool-valued with `subCheckNF` (was Prop with SubtypeCore).
-11 witness tests prove satisfiability.
-
-### Phase 3: De Bruijn indices ✓ COMPLETE
-
-**Why this is next:** Everything downstream needs substitution to be correct
-and to have provable properties. The current `subst` in Syntax.lean is
-explicitly not capture-avoiding ("WARNING: This naive implementation does
-not handle capture"). This means:
-- `subCheckNF` can give wrong answers on programs with shadowed variables
-- Substitution lemmas (needed for Phase 4) are unprovable or false
-- `concEvalS` soundness requires `ValSub a b → ValSub (e[x:=a]) (e[x:=b])`
-  which needs correct substitution
+```
+VCompat 0 v τ := True                    -- no budget: trivially compatible
+VCompat (n+1) v τ :=
+    τ = .type                             -- top
+  ∨ v = τ                                -- refl
+  ∨ (both lam, semantic function compat)  -- THE KEY CASE
+  ∨ (τ = mu, unfold right, VCompat n)    -- equi-recursive right
+  ∨ (v = mu, unfold left, VCompat n)     -- equi-recursive left
+  ∨ (subCheckNF v τ)                     -- algorithmic fallback
+```
 
-De Bruijn indices fix all of these by construction:
-- Substitution is correct (no variable names to capture)
-- Alpha-equivalence is syntactic equality (no binder name issues)
-- Substitution lemmas become provable
-- The WellTyped binder name matching issue (y_ann == y_body) disappears
+The semantic function case: `v = lam domV bodyV`, `τ = lam domT bodyT`, and
+for all `VCompat n av aτ`, evaluating `bodyV[av]` and `bodyT[aτ]` gives
+`VCompat n rv rτ`.
 
-**Scope:** This is a mechanical refactor. Every file changes but the
-semantics don't. Existing `native_decide` tests verify nothing breaks.
+**The definition may need refinement** as proofs develop. The current version
+is a well-informed sketch. Specific open questions:
 
-**Steps:**
-1. Change `Expr` to use de Bruijn indices (indices instead of `Name` for
-   bound variables; free variables can stay as names or also become indices)
-2. Update `subst`, `Env.lookup`, `absEval`, `concEval`, `concEvalS`
-3. Update `subCheckNF`, `inferType`, `normalizeDomain`
-4. Update `Subtype'`, `SubtypeCore` and all lemmas
-5. Rewrite Tests.lean (hardest part — all the test terms need rebuilding)
-6. Verify `lake build` passes and all tests (including witness tests) pass
-
-**Completed** in one session. All tests pass. Monotonicity and soundness
-proofs sorry'd (need reproving with new env extension + subst patterns).
-
-### Phase 3.5: Reprove env extend lemmas ✓ COMPLETE
-
-Env extend lemmas proved for de Bruijn (4 sorrys eliminated):
-- `SubtypeCore.shift_preserve` — SubtypeCore preserved under shifting
-- `envSubCore_extend` / `envSubCore_extend_sub` (Monotonicity.lean)
-- `envConsistent_extend` / `envConsistent_extend_sub` (Soundness.lean)
-
-**absEval_mono is NOT reproved** — it requires a substitution lemma for
-SubtypeCore (`SubtypeCore e₂ e₁ → SubtypeCore a₂ a₁ → SubtypeCore
-(e₂.subst j a₂) (e₁.subst j a₁)`). This lemma doesn't hold for the
-current SubtypeCore because `lam_body` requires equal domains — substituting
-different values into a domain breaks equality. Fixing this requires adding
-`lam_cong` (allowing different domains) to SubtypeCore, but Phase 4
-replaces SubtypeCore entirely, making that work redundant.
-
-### Phase 4: Step-indexed `ValSub` — the new soundness relation ← START HERE
-
-**Depends on:** Phase 3 (substitution lemmas needed — now available via de Bruijn subst).
-
-**The problem:** soundness_gen has sorrys. The fundamental blocker is that
-SubtypeCore is too weak as the output relation — it lacks self_intro and
-contra-domain lam_sub. See `docs/research/equi-recursive-subtyping-lit-review.md`.
-
-#### Step 1: Syntactic ValSub + compose_r + bridge ✓ COMPLETE
-
-File: `Och/ValSub.lean`. ValSub has 8 disjuncts:
-- (1-7) Structural: top, refl, lam_sub, mu_body, app_cong, mu_r, mu_l
-- (8) `compose_r`: right-compose with subCheckNF (algorithmic transitivity)
-
-**What's proved (sorry-free):**
-- ValSub definition + 10 intro lemmas (including compose_r)
-- SubtypeCore embedding: `of_subtypeCore : SubtypeCore v τ → ∀n, ValSub n v τ`
-- Downward closure: `mono : ValSub (n+1) v τ → ValSub n v τ`
-- **Bridge lemma: `bridge : ValSub n v σ → subCheckNF σ τ = true → ValSub n v τ`**
-
-**Critical finding: subst_congr is FALSE** (verified by native_decide).
-This means generalized soundness via substitution congruence is blocked.
-See ValSub.lean for the counterexample.
-
-**Bridge design:** The bridge was previously blocked by domain composition
-(contravariant domains need reverse bridge or transitivity). The compose_r
-disjunct sidesteps this: instead of decomposing subCheckNF structurally,
-it stores the subCheckNF result directly as evidence. The bridge proof
-is then trivial: apply mono to get ValSub (n-1), then compose_r.
-
-#### Step 2: SoundRel + concEvalE ✓ DONE (app-lam-beta PROVED)
-
-**SoundRel** is now defined in Soundness.lean: like SubtypeCore but with
-flexible domains on lam and flexible annotations on mu. This enables
-`SoundRel.subst_congr` — the KEY lemma SubtypeCore can't prove.
-
-**concEvalE** (env-based concrete evaluator) is now in Eval.lean. It is
-structurally parallel to absEval (only differs at ascription: takes lhs
-instead of rhs). Used as a proof auxiliary by `soundness_gen_sr`.
-
-**soundness_gen_sr** (Soundness.lean): SoundRel-generalized soundness
-theorem using concEvalE. Proved cases: bvar, type, lam, mu, top,
-app-lam-beta, app-stuck, lam/mu/app_cong.
-
-**Why concEvalE was needed:** The substitution-based `concEval` (lambdas
-are values) creates a body/body' mismatch: concEval returns source body,
-absEval returns normalized body. An env-subst equivalence lemma
-(`SoundRel body (absEval body)`) is FALSE for mu-containing bodies — when
-absEval enters a mu body, it puts `mu ann body` in the env, so `bvar 0`
-resolves to the mu term (structurally different from bvar). The env-based
-`concEvalE` normalizes under binders like absEval, so the IH relates
-their outputs directly via the `EnvSoundRel` invariant.
-
-#### Step 3: OutputRel output type ✓ DONE (partially)
-
-**soundness_gen_sr now outputs OutputRel** (was SoundRel, which was FALSE).
-
-OutputRel is an inductive with two constructors:
-- `.sound h`: direct SoundRel (for non-asc cases)
-- `.compose h_or h_check`: OutputRel to intermediate + subCheckNF to target
-
-**OutputRel.compose is recursive** (takes OutputRel, not SoundRel). This
-allows nested asc cases to chain composes without needing subCheckNF
-transitivity. `soundness_gen_sr` is now **SORRY-FREE**.
-
-#### Step 3.5: Resolve remaining OutputRel helper sorrys ← DO THIS NEXT
-
-**5 sorrys in Soundness.lean** (8 total, plus 3 legacy):
-
-1. **subCheckNF lifting lemmas** (3 sorrys: lam_congr, mu_congr×2):
-   Need: `subCheckNF mid body_τ → subCheckNF (lam dom mid) (lam dom body_τ)`.
-   These arise when the IH returns `.compose` (from inner asc) and we need
-   to lift through a structural constructor.
-   **Challenge:** subCheckNF's context changes under binders. The IH's
-   subCheckNF uses `ctx = Env.extend Γ (bvar 0)`, but the lifted check
-   needs `ctx' = Γ` extended by the domain. May require:
-   - Context monotonicity for subCheckNF (adding ctx entries preserves true)
-   - Or context-parameterized lifting lemmas
-   - Or proving subCheckNF is independent of ctx for "closed-enough" terms
-
-2. **extractSoundRel** (1 sorry):
-   Converts OutputRel→SoundRel for `soundness_app_case`. This is a hack —
-   the real fix is rewriting soundness_app_case to accept OutputRel from the IH.
-   **Approach:** case-split on OutputRel inside soundness_app_case:
-   - `.sound`: extract SoundRel, use existing proof (200+ lines, unchanged)
-   - `.compose`: sorry for now (needs structural decomposition of OutputRel)
-   This would eliminate extractSoundRel entirely.
-
-3. **app-mu-annotation edge case** (1 sorry, unchanged):
-   ann_c = lam but ann_a ≠ lam. Reachable from app_cong (via SoundRel.top).
-   May need annotation consistency from WellTyped, or restructuring the
-   mu-app proof to avoid separate ann_c/ann_a case splitting.
-
-**The legacy `soundness_gen` (ValSub-based, uses substitution-based
-concEval) is retained for compatibility.** Its 3 sorrys (lam, mu, app)
-could be eliminated by proving a bridge between concEval and concEvalE,
-but this is lower priority — the SoundRel-based proof is the main path.
-
-**Note:** subst_congr (`ValSub n a b → ValSub n (e[i:=a]) (e[i:=b])`)
-is FALSE for any relation with contravariant function domains. See
-ValSub.lean for the verified counterexample. Do not attempt this.
-
-### Phase 6: Scott encoding and recursive types
-
-**Independent of Phases 3-5** (just tests, no proofs). Can be done any time.
-
-- [ ] Type-level mu for recursive types
-- [ ] Scott-encoded Nat (nested mus)
-- [ ] Full induction via mu-as-fix
-- [ ] Dependent elimination tests with abstract arguments
-
-## Long-term proof strategy
-
-See `docs/long-term-proof-strategy.md` for the full Och → Ochr → Ochre
-proof roadmap and research references. Key takeaway: ownership-disciplined
-mutation does not require separation logic — the `ValSub` relation from
-Phase 4 extends naturally to Ochr and Ochre.
-
-### Completed phases (for reference)
-
-**Phase 1 (milestone tests):** All M1-M4 pass. Variant B passes.
-Key techniques: annotation-based mu-elim, domain normalization,
-equi-recursive self-intro + seen set.
-
-**Phase 2 (non-vacuous WellTyped):** WellTyped is Bool-valued with
-subCheckNF. 11 witness tests. soundness_gen mostly proved (3 targeted
-sorrys in asc + annotation path).
-
-**Previous Phase 3 (proofs):** absEval_mono and soundness_gen were
-sorry-free, but soundness was vacuously true for mu programs (WellTyped
-used SubtypeCore which is unsatisfiable for mu ascriptions). The sorry-free
-proofs are preserved in git (commit f7c40a1) for reference but should not
-be treated as "done" — the theorem statement was wrong.
-
-## Design principles
-
-- **Tests before proofs.** A failing test is more informative than a stuck
-  proof. If you're choosing between "fill a sorry" and "write a test for the
-  next milestone," write the test.
-
-- **Definitions before proofs.** Getting the definitions right is more
-  valuable than proving things about wrong definitions. If a proof isn't
-  going through, consider whether the definition needs to change.
+1. **Env threading:** The current definition uses `concEvalE [] ...` (empty env).
+   For the lam case of soundness (normalizing under binders), we may need
+   `VCompat` to be parameterized by envs. Or maybe the empty-env version is
+   fine because the IH provides what we need.
 
+2. **The subCheckNF fallback:** This is a catch-all that lets VCompat handle
+   neutral terms, stuck applications, etc. without structural decomposition.
+   It might be too strong (making VCompat trivially true for anything
+   subCheckNF can handle) or it might be exactly right. The proof will tell.
+
+3. **Mu unfolding direction:** Currently both left and right unfold. This
+   matches equi-recursive subtyping. The step-index decrease prevents
+   infinite unfolding.
+
+## Proof strategy
+
+### Step 1: Prove `VCompat.mono` (downward closure)
+
+`VCompat (n+1) v τ → VCompat n v τ`
+
+Standard for step-indexed relations. Prove by induction on `n`, case-splitting
+on the VCompat disjuncts. The semantic function case needs fuel monotonicity
+(already proved in Eval.lean) to bridge `concEvalE n` vs `concEvalE (n+1)`.
+
+This is mechanical and should go through. If it doesn't, the VCompat
+definition needs adjustment (e.g., the subCheckNF fallback might interfere).
+
+### Step 2: Prove `VCompat.adequacy`
+
+`VCompat n v σ → subCheckNF σ τ = true → VCompat n v τ`
+
+This is the bridge between the semantic relation and the algorithmic checker.
+Needed for the asc case of soundness.
+
+**This is probably the hardest lemma.** It says: if `v` is compatible with
+`σ`, and `σ ⊑ τ` algorithmically, then `v` is compatible with `τ`.
+
+Approach: case-split on VCompat, then on the subCheckNF derivation.
+- If VCompat via subCheckNF fallback: compose the two subCheckNFs
+  (needs subCheckNF transitivity, which is standard but non-trivial)
+- If VCompat via semantic function: need to show the semantic property
+  transfers through subCheckNF's function subtyping (contra domain,
+  cov body)
+- If VCompat via mu unfold: the subCheckNF may also unfold the mu
+
+This lemma may require proving subCheckNF transitivity as a sub-lemma.
+If that's too hard, consider proving soundness+completeness of subCheckNF
+w.r.t. Subtype' and using Subtype'.trans.
+
+### Step 3: Prove `soundness`
+
+By induction on fuel, case-split on the expression:
+
+- **bvar:** Both evaluators look up the env. With empty env, this is
+  vacuous (no free vars in closed programs).
+
+- **type:** Both return .type. VCompat by refl.
+
+- **lam:** Both evaluators normalize the body under a binder (extend env
+  with bvar 0). Need to produce semantic function compatibility: for all
+  compatible args, evaluating both bodies gives compatible results. This
+  is the IH applied to the body with the arg added to the env.
+
+  **Subtlety:** The evaluators extend the env with `bvar 0` for body
+  normalization. When the lambda is later applied, they substitute the
+  arg into the NORMALIZED body. The IH relates the normalized bodies.
+  The semantic quantifier then relates the post-substitution evaluations.
+
+- **mu:** Both evaluators normalize the body with the mu value in the env.
+  Return mu with normalized body. VCompat by mu unfolding + IH on body.
+
+- **app:** Both evaluators evaluate f and a, then case-split on f's shape.
+  IH gives VCompat for f and a. **This is where logical relations shine:**
+  if f_v and f_τ are both lam, use the semantic function compatibility
+  (instantiate with the arg). If one is lam and the other is mu, use mu
+  unfolding first, then the function case. The VCompat definition handles
+  all combinations.
+
+- **asc:** concEvalE evaluates term, absEval evaluates ty. IH on term gives
+  VCompat v σ (where σ = absEval(term)). WellTyped gives subCheckNF σ τ.
+  Apply VCompat.adequacy to compose them. **This is the crux — adequacy
+  bridges the semantic and algorithmic worlds.**
+
+- **top:** absEval returns .type. VCompat by top case. Trivial.
+
+### Step 4 (optional): Bridge to concEval
+
+The soundness theorem uses `concEvalE` (env-based). For the real runtime
+(`concEval`, substitution-based), prove:
+`concEval fuel e = v → concEvalE fuel [] e = v'` with some relationship
+between v and v'. This is a separate concern from the main soundness proof.
+
+## Critical constraints (unchanged)
+
+- **Tests are sacred.** DO NOT WEAKEN. `lake build` must pass.
+- **Sorry freely, compile always.**
 - **Never weaken preconditions without a witness test.** If you change
-  WellTyped (or any theorem precondition) to make a proof go through,
-  you MUST also add or maintain a `native_decide` test that the
-  precondition is satisfiable for a real program. A sorry-free proof
-  with an unsatisfiable precondition is worthless — it's vacuously true.
-  This is how Phase 3 produced a "proven" soundness theorem that says
-  nothing about mu programs. **Do not repeat this mistake.**
+  WellTyped, verify satisfiability with `native_decide`.
+- **The VCompat definition is a sketch.** If a proof doesn't go through,
+  consider whether VCompat needs refinement before forcing the proof.
+  Getting the definition right is more valuable than proving things about
+  a wrong definition.
 
-- **One primitive for self-reference.** If you find yourself wanting a second
-  self-reference mechanism, stop and think about whether mu can do it.
+## What NOT to do
 
-- **Tests are sacred.** Existing tests pin expressiveness. Don't weaken them.
-  Adding new tests is encouraged.
-
-- **Sorry freely, compile always.** `lake build` must pass.
-
-- **Read merge-fix-iota.md.** It is the design document. The worked example
-  at the bottom shows what the typing rules need to look like.
+- **Do not use SoundRel or any structural same-constructor relation.**
+  This approach is fundamentally broken for ascription. See PROGRESS.md.
+- **Do not attempt ValSub.subst_congr.** It is FALSE (verified by
+  native_decide counterexample, preserved in git history on main).
+- **Do not re-add ValSub.lean or Monotonicity.lean.** These were part of
+  the old approach and were deliberately removed.
+- **Do not try to prove soundness by relating evaluator outputs
+  structurally.** Use VCompat (behavioral/semantic compatibility).
