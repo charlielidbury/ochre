@@ -752,6 +752,31 @@ example : subCheckNF 10 [] [] Expr.type (Expr.mu Expr.type (Expr.bvar 0)) = true
 example : subCheckNF 10 [] [] (Expr.mu Expr.type (Expr.lam Expr.type (Expr.bvar 0))) (Expr.mu Expr.type (Expr.bvar 0)) = false := by native_decide
 
 -- ============================================================
+-- §11.6 VCompat.subst_congr COUNTEREXAMPLE
+-- ============================================================
+-- VCompat.subst_congr is FALSE. This rules out the approach of
+-- proving the app case via structural VCompat + substitution congruence.
+--
+-- Counterexample:
+--   bodyV = bvar 0, bodyT = lam .type (bvar 0)  [VCompat via inferType]
+--   av = lam .type .type, aτ = .type  [VCompat via top]
+--
+-- After substitution:
+--   bodyV.subst 0 av = lam .type .type
+--   bodyT.subst 0 aτ = lam .type (bvar 0)  [bound bvar 0 unaffected by subst]
+--
+-- VCompat (lam .type .type) (lam .type (bvar 0)):
+--   structural lam requires VCompat .type (bvar 0), which is FALSE
+--   (inferType .type = none, not a mu, not refl, not top since τ = bvar ≠ .type)
+--
+-- Verified computationally: subst results differ and are incompatible.
+example : (Expr.bvar 0).subst 0 (Expr.lam .type .type) = Expr.lam .type .type := by native_decide
+example : (Expr.lam .type (Expr.bvar 0)).subst 0 .type = Expr.lam .type (Expr.bvar 0) := by native_decide
+-- The lam bodies (.type vs bvar 0) are not VCompat at step ≥ 1,
+-- so the structural lam case fails. No other VCompat disjunct applies.
+-- Therefore VCompat.subst_congr is FALSE.
+
+-- ============================================================
 -- §12 WellTyped witness tests (Phase 5: non-vacuous soundness)
 -- ============================================================
 

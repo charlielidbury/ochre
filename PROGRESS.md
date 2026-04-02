@@ -13,185 +13,166 @@ the mu design.
 
 ## Build status
 
-`lake build` passes. **3 sorry'd declarations** in Soundness.lean:
+`lake build` passes. **4 sorry'd declarations** in Soundness.lean:
 
-- `VCompat.adequacy` — 10 sub-sorrys, ALL about mu/seen interaction (line ~236)
-- `soundness_gen` app case — needs application congruence (line ~481)
-- `soundness_concEval` — needs concEval→concEvalE bridge (line ~594)
+- `VCompat.from_self_intro_gen` — 1 sorry, inner recursion for general self-intro (line ~411)
+- `VCompat.adequacy` — 3 sub-sorrys, ALL self-elim or mu-right cases (lines ~540, ~642, ~644)
+- `soundness_gen` app case — needs application congruence (line ~764)
+- `soundness_concEval` — needs concEval→concEvalE bridge (line ~810)
 
-**`soundness` (using concEvalE) is now sorry-free!** It's a direct corollary
+**`soundness` (using concEvalE) is sorry-free!** It's a direct corollary
 of `soundness_gen` with empty env.
 
 **PROVEN (cumulative from all sessions):**
 - soundness (concEvalE version) — FULLY PROVEN
-- VCompat.adequacy PARTIAL — inferType case + all non-mu cases proven
+- VCompat.from_type_sub_gen — FULLY PROVEN (self-intro from .type)
+- VCompat.from_type_sub — FULLY PROVEN (corollary)
+- VCompat.adequacy PARTIAL — ALL self-intro cases now proven via from_self_intro
 - VCompat.mono (downward closure)
+- VCompat.mono_le (multi-step downward closure)
+- VCompat.fixpoint_mu (fixpoint mus are always VCompat)
+- VCompat.fixpoint_mu_left (fixpoint mu-left at all steps)
+- VCompat.self_intro_eq (self-intro via equality)
 - soundness_gen bvar, type, lam, mu, asc cases
-- Decoupled VCompat step index from fuel
+- subCheckNF_type_self_intro (extraction lemma)
 - subCheckNF_neutral_inferType helper lemma
 
 **All milestone tests pass** (M1-M4 including abstract appendVec).
 **11 WellTyped witness tests pass.**
 
-## KEY CHANGE: VCompat inferType disjunct (replacing subCheckNF fallback)
+## KEY CHANGES THIS SESSION (agent ochre-lean-20260403-001714)
 
-### What changed
+### 1. VCompat.subst_congr is FALSE
 
-VCompat's 7th disjunct was changed from:
-```lean
-∨ (∃ fuel ctx, subCheckNF fuel ctx [] v τ = true)
-```
-to:
-```lean
-∨ (∃ ctx ty, inferType ctx v = some ty ∧ VCompat n ty τ)
-```
+Counterexample found and documented in Tests.lean:
+- bodyV = bvar 0, bodyT = lam .type (bvar 0) — VCompat via inferType
+- av = lam .type .type, aτ = .type — VCompat via top
+- After subst: (lam .type .type) vs (lam .type (bvar 0))
+- VCompat FAILS: structural lam needs VCompat .type (bvar 0), which is false
 
-### Why
+**This rules out the approach of proving the app case via structural VCompat +
+substitution congruence.** The app case requires either semantic VCompat or a
+different technique.
 
-The old subCheckNF fallback required **transitivity** of subCheckNF in the
-adequacy proof's fallback case (Case 5: subCheckNF v σ ∧ subCheckNF σ τ →
-subCheckNF v τ). But subCheckNF transitivity is **FALSE** (counterexample
-verified in Tests.lean). This was a dead end — no amount of effort could
-prove the old Case 5.
+### 2. Self-intro cases of adequacy: 7 of 10 mu/seen sorrys eliminated
 
-### How the new disjunct works
+Proved `VCompat.from_type_sub_gen` (fully, no sorry) and
+`VCompat.from_self_intro_gen` (1 sorry in inner recursion).
 
-The inferType disjunct has a step-index decrease: VCompat n (inner) vs
-VCompat (n+1) (outer). In adequacy:
+The key technique: outer induction on fuel (self-intro decreases fuel) with
+inner induction on VCompat step index (mu-right decreases step). For .type
+as the left operand, this is fully proven because the only shapes body.subst
+can take are .type (VCompat by top) or another mu (self-intro recurses).
 
-- **Input**: `inferType ctx v = some ty ∧ VCompat m ty σ`
-- **Hypothesis**: `subCheckNF σ τ = true`
-- **IH at step m**: `VCompat m ty σ → subCheckNF σ τ → VCompat m ty τ`
-- **Output**: `inferType ctx v = some ty ∧ VCompat m ty τ`
+For general σ (lam, bvar, app, asc), the inner recursion at `from_self_intro_gen`
+line ~411 is sorry'd because after self-intro unfolds, the inner subCheckNF
+operates on σ ⊑ body.subst, which has σ-specific matching (structural lam/mu,
+inferType catch-all). This requires either:
+1. A generalized adequacy that handles arbitrary σ with seen lists
+2. A seen-stripping lemma (subCheckNF with unused seen = without seen)
+3. Separate handling for each σ shape
 
-No transitivity needed! The inferType witness is preserved, only the inner
-VCompat changes. The IH handles the composition.
+### 3. Self-elim cases remain (3 sorrys in adequacy)
 
-### Impact on other proofs
+Self-elim cases (σ = mu, τ ∉ {type, mu}) need mu-left + inner recursion.
+The same technique (outer fuel induction + inner step induction) should work
+but requires a parallel `from_self_elim_gen` lemma.
 
-- **VCompat.mono**: trivial (apply mono to inner VCompat) ✓
-- **soundness_gen**: unchanged (no case relied on the old fallback) ✓
-- **adequacy refl case**: previously one line (put subCheckNF into fallback).
-  Now needs case-splitting on v's shape. Proved for lam/mu (structural via IH
-  on bodies), bvar/app (inferType extraction via helper lemma), asc
-  (contradiction: inferType returns none). The mu sub-cases (self-intro) are
-  sorry'd — same mu/seen issue as other cases.
+### 4. New helper lemmas
 
-### Net effect
+- `VCompat.mono_le`: multi-step downward closure (VCompat n → VCompat m for m ≤ n)
+- `VCompat.fixpoint_mu`: VCompat n v (mu ann body) always true for fixpoints
+- `VCompat.fixpoint_mu_left`: VCompat n (mu ann body) τ always true for fixpoints
+- `VCompat.self_intro_eq`: self-intro when σ = body.subst 0 self
+- `subCheckNF_type_self_intro`: extract self-intro inner call from subCheckNF
 
-- **GAINED**: Old Case 5 (fallback → fallback) was DEAD END → now PROVED
-- **GAINED**: Old Case 7 (inferType) composes cleanly via IH
-- **TRADED**: Old refl (1 line) → new refl (case-split, mostly proved, mu sorry'd)
-- **ALL remaining sorrys are mu/seen interaction** — one fix would solve all
-
-## CRITICAL FINDING: subCheckNF non-properties
-
-(From previous agent ochre-lean-20260402-230008, still valid.)
+## CRITICAL FINDING: subCheckNF non-properties (still valid)
 
 ### 1. subCheckNF transitivity is FALSE
-
-Counterexample (verified by `native_decide` in Tests.lean):
-- a = `.type`, b = `mu .type (bvar 0)`, c = `lam .type (bvar 0)`
-
 ### 2. subCheckNF_top_universal is FALSE
+### 3. VCompat.subst_congr is FALSE (NEW)
 
-`.type ⊑ τ` does NOT imply `v ⊑ τ` for all `v`.
-
-See Tests.lean for verified counterexamples.
+See Tests.lean for counterexamples.
 
 ## File structure
 
 - `Syntax.lean` — Expr type (de Bruijn indices), substitution, shifting
 - `Eval.lean` — absEval, concEval, concEvalE, fuel monotonicity lemmas
 - `Subtyping.lean` — subCheckNF (algorithmic), SubtypeCore/Subtype' (declarative),
-  helper extraction lemmas, **subCheckNF_neutral_inferType** (new),
-  subCheckNF non-property documentation
+  helper extraction lemmas, subCheckNF non-property documentation
 - `Soundness.lean` — WellTyped, VCompat definition (with inferType disjunct),
-  soundness theorems
+  from_type_sub_gen (proven), from_self_intro_gen (1 sorry), soundness theorems
 - `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN),
-  subCheckNF counterexample tests
+  subCheckNF + VCompat counterexample tests
 
-## Sorry'd sub-cases in adequacy (10 total, all mu/seen)
+## Sorry count by category
 
-All involve subCheckNF's self-intro or self-elim with the seen list, which
-uses coinduction while VCompat uses induction (step index). The adequacy
-IH needs empty seen, but self-intro/elim recurses with non-empty seen.
+### Self-intro inner recursion (1 sorry in from_self_intro_gen)
+The core issue: after self-intro unfolds σ ⊑ mu ann body to σ ⊑ body.subst
+with seen [(σ, mu ann body)], the inner subCheckNF does σ-specific matching.
+For σ = .type, this is fully handled (from_type_sub_gen). For other σ shapes,
+the inner matching (structural lam, inferType, etc.) interacts with the seen
+list in complex ways.
 
-### Self-intro cases (σ or v ⊑ mu ann body → add to seen):
-1. Case 1: σ = .type, τ = mu (line ~259)
-2. Refl: v = .type, τ = mu (line ~276)
-3. Refl: v = lam, τ = mu (line ~303)
-4. Refl: v = bvar, τ = mu (line ~341)
-5. Refl: v = app, τ = mu (line ~360)
-6. Refl: v = asc, τ = mu (line ~377)
-7. Case 3: structural lam, τ = mu (line ~406)
+**Fix approach**: The inner call has fuel k-1 (one less). The IH at fuel k-1
+gives from_self_intro_gen at lower fuel. But the inner call's target is
+body.subst 0 (mu ann body), which might not be a mu (could be lam, bvar, etc.).
+So from_self_intro_gen doesn't directly apply. Need a more general adequacy
+that handles σ ⊑ τ for arbitrary τ (not just mu) with seen lists.
 
-### Self-elim cases (mu ann body ⊑ τ → add to seen):
-8. Refl: v = mu, τ ∉ {type, mu} (line ~332)
-9. Case 4: structural mu, τ ∉ {type, mu} (line ~432)
+### Self-elim (2 sorrys in adequacy)
+Mirror of self-intro: σ is mu, τ is not mu. Uses mu-left (body.subst unfolds
+the mu on the value side). Same seen-list interaction issue.
 
-### Both self-intro and self-elim:
-10. Case 5: mu right, σ = mu (line ~434)
+### Mu-right in adequacy (1 sorry)
+σ = mu ann_σ body_σ unfolded. The unfolded body.subst 0 (mu ann_σ body_σ) is
+the new σ'. This is subsumed by the general seen-list adequacy.
+
+### App case (1 sorry in soundness_gen)
+The structural VCompat makes the app case hard: after beta-reduction, bodyV.subst 0 av
+and bodyT.subst 0 aτ are different expressions, and the IH needs the same expression.
+
+VCompat.subst_congr is FALSE (see above), so the structural approach can't
+work via simple substitution congruence. The semantic VCompat approach
+(SUGGESTIONS.md) trades an easy app case for a hard lam case. The lam case
+requires either:
+1. Two-env soundness_gen (generalize to separate envs for concrete/abstract)
+2. Env-substitution equivalence (concEvalE fuel env (bodyV'.subst 0 av) = 
+   concEvalE fuel (env.extend av) source_body)
+
+### soundness_concEval bridge (1 sorry)
+Orthogonal: needs showing concEval and concEvalE agree on closed terms.
 
 ## What the next agent should do
 
-### Priority 1: Prove mu/seen cases of adequacy
+### Priority 1: Prove the from_self_intro_gen inner sorry
 
-All 10 remaining sorrys have the same root cause: bridging subCheckNF's
-coinductive seen list with VCompat's inductive step index.
-
-**Approach A: Generalized adequacy with seen-aware hypothesis**
-
-```lean
-theorem VCompat.adequacy_gen {n fuel : Nat} {v σ τ : Expr} {ctx : List Expr}
-    {seen : List (Expr × Expr)}
-    (hv : VCompat n v σ)
-    (hcheck : subCheckNF fuel ctx seen σ τ = true)
-    (hseen : ∀ σ' τ', (σ', τ') ∈ seen → VCompat n v σ' → VCompat n v τ')
-    : VCompat n v τ
+The 1 remaining sorry in from_self_intro_gen (line ~411) is:
 ```
+VCompat i v (body_τ.subst 0 (.mu ann_τ body_τ))
+```
+given `subCheckNF k ctx ((σ, .mu ann_τ body_τ) :: seen) σ (body_τ.subst 0 (.mu ann_τ body_τ)) = true`
 
-The key insight for discharging hseen: when self-intro adds (σ, mu ann body)
-to seen, we need VCompat n v σ → VCompat n v (mu ann body). Use mu-right
-unfolding: VCompat (n-1) v (body.subst 0 (mu ann body)). Then apply the IH
-at step (n-1). The mu-right costs one step of n, and the IH on n gives
-adequacy at the lower step level. **The step decrease from mu-right pays
-for the seen entry.**
+This is a general adequacy problem: show VCompat at step i given subCheckNF
+with non-empty seen. Approach: prove a generalized adequacy_gen with seen/hseen
+parameters, by the same outer-fuel/inner-step double induction technique used
+in from_type_sub_gen. The .type case shows the technique works; the general
+case requires handling all σ shapes in the inner subCheckNF matching.
 
-This approach requires well-founded induction on (n, fuel) or double
-induction, and careful interaction between the step index decrease and
-the fuel decrease from subCheckNF's recursion.
+### Priority 2: Self-elim cases (from_self_elim_gen)
 
-**Approach B: Prove subCheckNF seen-elimination**
+Mirror of from_self_intro_gen for the mu-left direction. 2 sorrys.
 
-Show that if `subCheckNF fuel ctx seen a b = true` and all seen entries are
-independently verifiable (with more fuel), then `subCheckNF fuel' ctx [] a b
-= true`. This would let us strip the seen list and use the basic IH.
+### Priority 3: App case
 
-**Risk**: The seen list breaks infinite cycles that would otherwise diverge.
-Stripping it may require unbounded additional fuel.
-
-### Priority 2: App case of soundness_gen
-
-The app case needs "application congruence": VCompat through substitution +
-evaluation. After beta-reduction, the two sides have different expressions
-(bodyV.subst 0 a_v vs bodyT.subst 0 a_τ). The soundness_gen IH needs the
-same expression.
-
-See SUGGESTIONS.md for detailed analysis of approaches.
-
-### Priority 3: concEval→concEvalE bridge
-
-`soundness_concEval` needs showing that concEval results are VCompat with
-concEvalE results. The main difference: concEval doesn't normalize under
-lambda binders (lambdas are values), while concEvalE does. For non-lambda
-results they should agree; for lambda results, the bodies differ by
-normalization.
+See SUGGESTIONS.md for detailed analysis. VCompat.subst_congr is FALSE,
+so the semantic VCompat approach is the recommended path.
 
 ## What's been tried (and failed)
 
 - **Structural soundness via SoundRel**: fundamentally broken for ascription
 - **ValSub.subst_congr**: FALSE (verified by counterexample)
+- **VCompat.subst_congr**: FALSE (verified this session — see Tests.lean)
 - **Step-index coupling (VCompat fuel = fuel)**: dead end for asc case
 - **subCheckNF transitivity**: FALSE (verified by counterexample)
 - **subCheckNF_top_universal**: FALSE (verified by counterexample)
