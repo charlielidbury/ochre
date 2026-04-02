@@ -240,7 +240,14 @@ resolves to the mu term (structurally different from bvar). The env-based
 `concEvalE` normalizes under binders like absEval, so the IH relates
 their outputs directly via the `EnvSoundRel` invariant.
 
-#### Step 3: Resolve remaining sorrys in soundness_gen_sr ← DO THIS NEXT
+#### Step 3: Change output type of soundness_gen_sr ← DO THIS NEXT
+
+**CRITICAL: The 2 asc sorrys are UNPROVABLE with `SoundRel` output.**
+The theorem statement is FALSE — `SoundRel v τ` does not hold for programs
+with ascriptions because `v` (from evaluating the term) and `τ` (from
+evaluating the type) can have different constructors. Counterexample:
+`(zero : Nat)` where `concEvalE(zero) = lam ...` but `absEval(Nat) = mu ...`.
+DO NOT attempt to prove these sorrys without changing the output type first.
 
 **3 sorrys remaining (2 in soundness_gen_sr, 1 in soundness_app_case):**
 

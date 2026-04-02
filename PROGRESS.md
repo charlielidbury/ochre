@@ -68,9 +68,32 @@ mu_rhs_shape, trans all updated for the new two-argument mu constructor.
 
 **The remaining sorrys (analysis for next agent):**
 
-1. **asc cases (2 sorrys in soundness_gen_sr):** Same as before — concEvalE takes
-   the term, absEval takes the type. Needs OutputRel (SoundRel + subCheckNF compose).
-   See SUGGESTIONS.md Step 3.1 for the approach.
+1. **CRITICAL: asc cases (2 sorrys) are UNPROVABLE with the current statement.**
+   `soundness_gen_sr` claims `SoundRel v τ`, but this is FALSE for programs
+   with ascriptions. Concrete counterexample:
+
+   ```
+   e = (zero : Nat)  -- Church-encoded
+   concEvalE evaluates zero → lam X (lam z (lam s (bvar 1)))
+   absEval evaluates Nat  → lam X (lam z (lam s (bvar 2)))
+   ```
+
+   The innermost bodies are `bvar 1` (z) vs `bvar 2` (X). `SoundRel` requires
+   structural equality all the way down, so `SoundRel (bvar 1) (bvar 2)` is
+   false. With mu-encoded Nat it's worse: `v = lam ...`, `τ = mu ...` —
+   different constructors, `SoundRel` is impossible.
+
+   **The theorem statement must change.** The output should be `OutputRel`
+   (SoundRel composed with subCheckNF), not bare `SoundRel`. The INTENDED
+   statement `∃ mid, SoundRel v mid ∧ subCheckNF mid τ` IS true — `mid` is
+   `absEval(term)`, SoundRel comes from the IH, subCheckNF from WellTyped.
+
+   **But changing to OutputRel is non-trivial:** the app case uses `subst_congr`
+   which needs `SoundRel` from IH results. If the IH returns `OutputRel` with
+   compose_r (from an inner ascription), you can't extract `SoundRel` for
+   `subst_congr`. See SUGGESTIONS.md Step 3 for detailed analysis.
+
+   **DO NOT attempt to prove the asc sorrys without changing the output type.**
 
 2. **Edge case sorry (1 in soundness_app_case):** ann_c = lam, ann_a ≠ lam.
    Unreachable in practice. Could be eliminated by restricting SoundRel.mu to
