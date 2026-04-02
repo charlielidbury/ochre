@@ -4,7 +4,7 @@ import Och.Syntax
 # Och Evaluation (de Bruijn)
 
 Two evaluators:
-- **`concEvalS` (concrete/runtime):** Substitution-based CBV. Lambdas are
+- **`concEval` (concrete/runtime):** Substitution-based CBV. Lambdas are
   values (bodies not evaluated until applied). `(e : τ)` takes the lhs `e`.
 - **`absEval` (abstract/compile-time):** Environment-based normalizer.
   Normalizes under binders. `(e : τ)` takes the rhs `τ`.
@@ -85,7 +85,7 @@ def absEval (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
     Lambdas are values — their bodies are NOT evaluated until applied.
     Uses substitution for beta-reduction. Operates on closed terms only
     (free bvars return None). -/
-def concEvalS (fuel : Nat) (e : Expr) : Option Expr :=
+def concEval (fuel : Nat) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
   | fuel + 1 =>
@@ -93,19 +93,19 @@ def concEvalS (fuel : Nat) (e : Expr) : Option Expr :=
     | .bvar _ => none  -- free variable = stuck (expects closed terms)
     | .lam _ _ => some e  -- lambda is a VALUE — body not evaluated
     | .type => some .type
-    | .asc term _ => concEvalS fuel term  -- runtime: erase ascription
+    | .asc term _ => concEval fuel term  -- runtime: erase ascription
     | .mu ann body =>
       -- Unroll: substitute self-reference into body, then evaluate
-      concEvalS fuel (body.subst 0 (.mu ann body))
+      concEval fuel (body.subst 0 (.mu ann body))
     | .app f a =>
-      match concEvalS fuel f, concEvalS fuel a with
+      match concEval fuel f, concEval fuel a with
       | some (.lam _dom body), some aVal =>
         -- Beta-reduce via substitution
-        concEvalS fuel (body.subst 0 aVal)
+        concEval fuel (body.subst 0 aVal)
       | some (.mu ann body), some aVal =>
         -- mu in function position: unroll and retry
-        match concEvalS fuel (.mu ann body) with
-        | some (.lam _dom lamBody) => concEvalS fuel (lamBody.subst 0 aVal)
+        match concEval fuel (.mu ann body) with
+        | some (.lam _dom lamBody) => concEval fuel (lamBody.subst 0 aVal)
         | some .type => some .type
         | some fVal => some (.app fVal aVal)
         | none => none

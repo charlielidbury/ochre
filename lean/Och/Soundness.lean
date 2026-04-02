@@ -5,26 +5,26 @@ import Och.Monotonicity
 import Och.ValSub
 
 /-!
-# Soundness (concEvalS + ValSub)
+# Soundness (concEval + ValSub)
 
 ## Architecture
 
-Soundness relates the substitution-based concrete evaluator (`concEvalS`) to
+Soundness relates the substitution-based concrete evaluator (`concEval`) to
 the environment-based abstract evaluator (`absEval`), outputting step-indexed
 value subtyping (`ValSub`).
 
-The concrete evaluator (`concEvalS`) treats lambdas as values (bodies untouched
+The concrete evaluator (`concEval`) treats lambdas as values (bodies untouched
 until application). This is essential for soundness: when a lambda is applied,
 the body IS the source body, so the induction hypothesis applies directly.
 
 ## Theorem structure
 
 ```
-soundness : concEvalS fuel e = some v → absEval fuel [] e = some τ →
+soundness : concEval fuel e = some v → absEval fuel [] e = some τ →
             WellTyped fuel [] e = true → ValSub fuel v τ
 ```
 
-Top-level only (empty env for absEval, closed terms for concEvalS). This is
+Top-level only (empty env for absEval, closed terms for concEval). This is
 sufficient — the intended user-facing check is `WellTyped fuel [] e && subCheck fuel e τ`
 on closed programs.
 
@@ -132,13 +132,13 @@ def WellTyped (fuel : Nat) (env : Env) (e : Expr) : Bool :=
           | _, _ => true
         | _, _ => true
 
-/-- **Soundness (concEvalS + ValSub).**
+/-- **Soundness (concEval + ValSub).**
 
     For closed, well-typed programs: if the substitution-based concrete
     evaluator produces v and the abstract evaluator produces τ, then v
     is a value subtype of τ.
 
-    Uses concEvalS (lambdas are values, substitution-based beta).
+    Uses concEval (lambdas are values, substitution-based beta).
     This is the real runtime semantics.
 
     Proof by induction on fuel.
@@ -153,30 +153,30 @@ def WellTyped (fuel : Nat) (env : Env) (e : Expr) : Bool :=
 theorem soundness_gen
     (fuel : Nat) (e : Expr) (τ v : Expr)
     (h_abs : absEval fuel [] e = some τ)
-    (h_conc : concEvalS fuel e = some v)
+    (h_conc : concEval fuel e = some v)
     (h_wt : WellTyped fuel [] e = true)
     : ValSub fuel v τ := by
   induction fuel generalizing e τ v with
   | zero =>
     -- fuel = 0: both evaluators return none
-    simp [concEvalS] at h_conc
+    simp [concEval] at h_conc
   | succ fuel ih =>
     -- fuel + 1: case split on e
     match e with
     | .bvar k =>
-      -- concEvalS on bvar returns none (closed term)
-      simp [concEvalS] at h_conc
+      -- concEval on bvar returns none (closed term)
+      simp [concEval] at h_conc
     | .type =>
       -- Both return type
-      simp [concEvalS] at h_conc
+      simp [concEval] at h_conc
       simp [absEval] at h_abs
       subst h_conc; subst h_abs
       exact ValSub.refl' .type (fuel + 1)
     | .asc term ty =>
-      -- concEvalS takes the lhs (term), absEval takes the rhs (ty)
-      -- h_conc : concEvalS fuel term = some v
+      -- concEval takes the lhs (term), absEval takes the rhs (ty)
+      -- h_conc : concEval fuel term = some v
       -- h_abs : absEval fuel [] ty = some τ
-      simp only [concEvalS] at h_conc
+      simp only [concEval] at h_conc
       simp only [absEval] at h_abs
       -- WellTyped gives: WellTyped term ∧ WellTyped ty ∧ subCheckNF(absEval term, absEval ty)
       simp only [WellTyped, Bool.and_eq_true] at h_wt
@@ -194,7 +194,7 @@ theorem soundness_gen
       | none =>
         simp [h_term_abs] at h_wt_check
     | .lam dom body =>
-      -- concEvalS: lambda is a value, returns (lam dom body) unchanged
+      -- concEval: lambda is a value, returns (lam dom body) unchanged
       -- absEval: normalizes body under binder, returns (lam dom body')
       -- Need: ValSub (fuel+1) (lam dom body) (lam dom body')
       -- SORRY: requires either semantic ValSub or absEval normalization lemma
@@ -203,14 +203,14 @@ theorem soundness_gen
       -- and the app case tractable simultaneously.
       sorry
     | .mu ann body =>
-      -- concEvalS: unrolls mu, evaluates body.subst 0 (mu ann body)
+      -- concEval: unrolls mu, evaluates body.subst 0 (mu ann body)
       -- absEval: normalizes body under binder with env = [mu ann body]
       -- These use fundamentally different strategies. Need env-subst equivalence:
       --   absEval fuel [mu ann body] body = absEval fuel [] (body.subst 0 (mu ann body))
       -- Then IH + compose_r (via self-intro subcheck) would close this.
       sorry
     | .app f a =>
-      -- concEvalS: evaluate f → fv, a → av, then beta-reduce
+      -- concEval: evaluate f → fv, a → av, then beta-reduce
       -- absEval: evaluate f → fτ, a → aτ, then beta-reduce
       -- By IH on f: ValSub fuel fv fτ
       -- By IH on a: ValSub fuel av aτ

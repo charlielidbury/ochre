@@ -371,26 +371,26 @@ def toZero : Expr := n toZero_n
 example : subCheck testFuel toZero NatToNat = true := by native_decide
 
 -- ============================================================
--- §7.2 Concrete evaluation (concEvalS) tests
+-- §7.2 Concrete evaluation (concEval) tests
 -- ============================================================
 
-example : concEvalS testFuel (.app (.app (.app true' Nat') zero') one') = some zero' := by
+example : concEval testFuel (.app (.app (.app true' Nat') zero') one') = some zero' := by
   native_decide
 
-example : concEvalS testFuel (.app (.app (.app false' Nat') zero') one') = some one' := by
+example : concEval testFuel (.app (.app (.app false' Nat') zero') one') = some one' := by
   native_decide
 
-example : concEvalS testFuel (.app fixId three') = some three' := by
+example : concEval testFuel (.app fixId three') = some three' := by
   native_decide
-example : concEvalS testFuel (.app fixId zero') = some zero' := by
+example : concEval testFuel (.app fixId zero') = some zero' := by
   native_decide
 
-example : concEvalS testFuel (.app isZero' zero') = some true' := by native_decide
-example : concEvalS testFuel (.app isZero' one') = some false' := by native_decide
-example : concEvalS testFuel (.app isZero' three') = some false' := by native_decide
+example : concEval testFuel (.app isZero' zero') = some true' := by native_decide
+example : concEval testFuel (.app isZero' one') = some false' := by native_decide
+example : concEval testFuel (.app isZero' three') = some false' := by native_decide
 
 -- ============================================================
--- §7.3 Recursive mu with thunked branches (concEvalS)
+-- §7.3 Recursive mu with thunked branches (concEval)
 -- ============================================================
 
 def UnitToNat_n : Named := .lam "_" Unit'_n Nat'_n
@@ -404,13 +404,13 @@ def toZeroThunked_n : Named := .mu "self" NatToNat_n (.lam "n" Nat'_n
     unit'_n))
 def toZeroThunked : Expr := n toZeroThunked_n
 
-example : concEvalS testFuel (.app toZeroThunked zero') = some zero' := by native_decide
-example : concEvalS testFuel (.app toZeroThunked one') = some zero' := by native_decide
-example : concEvalS testFuel (.app toZeroThunked two') = some zero' := by native_decide
-example : concEvalS testFuel (.app toZeroThunked three') = some zero' := by native_decide
+example : concEval testFuel (.app toZeroThunked zero') = some zero' := by native_decide
+example : concEval testFuel (.app toZeroThunked one') = some zero' := by native_decide
+example : concEval testFuel (.app toZeroThunked two') = some zero' := by native_decide
+example : concEval testFuel (.app toZeroThunked three') = some zero' := by native_decide
 
 -- Compose: toZeroThunked (add 2 1) = 0
-example : concEvalS testFuel (.app toZeroThunked (.app (.app add' two') one')) = some zero' := by native_decide
+example : concEval testFuel (.app toZeroThunked (.app (.app add' two') one')) = some zero' := by native_decide
 
 example : subCheck testFuel toZeroThunked NatToNat = true := by native_decide
 
@@ -437,10 +437,10 @@ example : absEval testFuel [] (.app pred' one') = some zero' := by native_decide
 example : absEval testFuel [] (.app pred' three') = some two' := by native_decide
 example : subCheck testFuel pred' NatToNat = true := by native_decide
 
-example : concEvalS testFuel (.app pred' zero') = some zero' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app pred' one')) = some true' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app pred' two')) = some false' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app pred' three')) = some false' := by native_decide
+example : concEval testFuel (.app pred' zero') = some zero' := by native_decide
+example : concEval testFuel (.app isZero' (.app pred' one')) = some true' := by native_decide
+example : concEval testFuel (.app isZero' (.app pred' two')) = some false' := by native_decide
+example : concEval testFuel (.app isZero' (.app pred' three')) = some false' := by native_decide
 
 -- ============================================================
 -- §7.4 Recursive mu + pred: rebuildThunked
@@ -454,11 +454,11 @@ def rebuildThunked_n : Named := .mu "self" NatToNat_n (.lam "n" Nat'_n
     unit'_n))
 def rebuildThunked : Expr := n rebuildThunked_n
 
-example : concEvalS testFuel (.app rebuildThunked zero') = some zero' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app rebuildThunked zero')) = some true' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app rebuildThunked one')) = some false' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app rebuildThunked two')) = some false' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app rebuildThunked three')) = some false' := by native_decide
+example : concEval testFuel (.app rebuildThunked zero') = some zero' := by native_decide
+example : concEval testFuel (.app isZero' (.app rebuildThunked zero')) = some true' := by native_decide
+example : concEval testFuel (.app isZero' (.app rebuildThunked one')) = some false' := by native_decide
+example : concEval testFuel (.app isZero' (.app rebuildThunked two')) = some false' := by native_decide
+example : concEval testFuel (.app isZero' (.app rebuildThunked three')) = some false' := by native_decide
 example : subCheck testFuel rebuildThunked NatToNat = true := by native_decide
 
 -- ============================================================
@@ -476,12 +476,12 @@ def addThunked_n : Named := .mu "self" NatToNatToNat_n (.lam "n" Nat'_n (.lam "m
     unit'_n)))
 def addThunked : Expr := n addThunked_n
 
-example : concEvalS testFuel (.app (.app addThunked zero') zero') = some zero' := by native_decide
-example : concEvalS testFuel (.app (.app addThunked zero') three') = some three' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app (.app addThunked one') zero')) = some false' := by native_decide
-example : concEvalS testFuel (.app isZero' (.app (.app addThunked two') one')) = some false' := by native_decide
+example : concEval testFuel (.app (.app addThunked zero') zero') = some zero' := by native_decide
+example : concEval testFuel (.app (.app addThunked zero') three') = some three' := by native_decide
+example : concEval testFuel (.app isZero' (.app (.app addThunked one') zero')) = some false' := by native_decide
+example : concEval testFuel (.app isZero' (.app (.app addThunked two') one')) = some false' := by native_decide
 
-example : concEvalS testFuel (.app toZeroThunked (.app (.app addThunked two') one')) = some zero' := by native_decide
+example : concEval testFuel (.app toZeroThunked (.app (.app addThunked two') one')) = some zero' := by native_decide
 
 example : subCheck testFuel addThunked NatToNatToNat = true := by native_decide
 
@@ -622,10 +622,10 @@ example : subCheck testFuel addRec
   (n (.lam "_" SelfNat_n (.lam "_" SelfNat_n Nat'_n))) = true := by native_decide
 
 -- M1b
-example : concEvalS testFuel (.app (.app addRec zero') three') = some three' := by native_decide
+example : concEval testFuel (.app (.app addRec zero') three') = some three' := by native_decide
 
 -- M1c
-example : concEvalS testFuel
+example : concEval testFuel
   (.app isZero' (.app (.app addRec two') one')) = some false' := by native_decide
 
 -- M1d
@@ -654,7 +654,7 @@ def mapArray'_n : Named := .mu "self"
 def mapArray' : Expr := n mapArray'_n
 
 -- M2a
-example : concEvalS testFuel
+example : concEval testFuel
   (.app (.app (.app (.app (.app mapArray' Nat') Nat') succ') zero') (.app emptyArray' Nat'))
   = some unit' := by native_decide
 
@@ -681,7 +681,7 @@ def appendArrays'_n : Named := .mu "self"
 def appendArrays' : Expr := n appendArrays'_n
 
 -- M3a
-example : concEvalS testFuel
+example : concEval testFuel
   (.app (.app (.app (.app (.app appendArrays' Nat') zero') zero')
     (.app emptyArray' Nat')) (.app emptyArray' Nat'))
   = some unit' := by native_decide

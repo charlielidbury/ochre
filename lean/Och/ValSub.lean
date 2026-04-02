@@ -246,7 +246,7 @@ The compose_r disjunct resolves the BRIDGE (asc case of soundness) but does
 NOT resolve the APP case. The app case still requires either:
 1. Semantic ValSub (logical relation) — lam case quantifies over all args
 2. Non-generalized soundness with a substitution-evaluation equivalence
-3. Proving soundness for concEvalS (substitution-based evaluator)
+3. Proving soundness for concEval (substitution-based evaluator)
 
 See PROGRESS.md for detailed analysis. -/
 
