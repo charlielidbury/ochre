@@ -231,6 +231,52 @@ theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : List Expr} {annS bodyS annT bo
   simp only [beq_eq_false_iff_ne.mpr h_neq, ite_false, List.any_nil, Bool.and_eq_true] at h
   exact ⟨fuel, _, h⟩
 
+/-- When subCheckNF succeeds with .type on the left against a non-.type target
+    with empty seen, the target must be .mu. -/
+theorem subCheckNF_type_left_target {fuel : Nat} {ctx : List Expr} {τ : Expr}
+    (h : subCheckNF fuel ctx [] Expr.type τ = true) (h_neq : τ ≠ Expr.type) :
+    ∃ ann body, τ = Expr.mu ann body := by
+  cases fuel with
+  | zero => simp [subCheckNF] at h
+  | succ k =>
+    unfold subCheckNF at h
+    have h_beq : (Expr.type == τ) = false := by
+      rw [beq_eq_false_iff_ne]; intro heq; exact h_neq heq.symm
+    simp only [h_beq, ite_false, List.any_nil, Bool.false_eq_true] at h
+    cases τ with
+    | type => exact absurd rfl h_neq
+    | mu ann body => exact ⟨ann, body, rfl⟩
+    | bvar _ => simp [inferType] at h
+    | lam _ _ => simp [inferType] at h
+    | app _ _ => simp [inferType] at h
+    | asc _ _ => simp [inferType] at h
+
+/-! ### subCheckNF non-properties
+
+**subCheckNF transitivity is FALSE.**
+Counterexample (verified in Tests.lean):
+- a = .type, b = mu .type (bvar 0), c = lam .type (bvar 0)
+- a ⊑ b: self-intro → seen hit (fixpoint) → true
+- b ⊑ c: self-elim → seen hit (fixpoint) → true
+- a ⊑ c: .type vs lam → inferType .type = none → false
+
+**subCheckNF_top_universal is FALSE.**
+(.type ⊑ τ does NOT imply v ⊑ τ for all v.)
+Counterexample (verified in Tests.lean):
+- .type ⊑ mu .type (bvar 0): true (fixpoint, seen hit)
+- mu .type (lam .type (bvar 0)) ⊑ mu .type (bvar 0): false
+  (goes to structural mu/mu branch, checks lam .type (bvar 0) ⊑ bvar 0, fails)
+
+The issue: when v is a mu, subCheckNF takes the structural (mu, mu) branch
+instead of self-intro. The structural branch checks bodies, which may fail
+even when self-intro would succeed.
+
+These findings invalidate two proof strategies for VCompat.adequacy:
+1. The subCheckNF fallback case cannot use transitivity.
+2. The σ = .type case cannot use subCheckNF v τ as a witness.
+
+See PROGRESS.md for implications and revised approach suggestions. -/
+
 /-- Decidable subtyping check. Normalizes both sides via absEval, then
     compares structurally. -/
 def subCheck (fuel : Nat) (a b : Expr) : Bool :=

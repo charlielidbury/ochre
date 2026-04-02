@@ -719,6 +719,39 @@ example : subCheck testFuel
   (.app Vec' Nat') = true := by native_decide
 
 -- ============================================================
+-- §11.5 subCheckNF transitivity COUNTEREXAMPLE
+-- ============================================================
+-- subCheckNF is NOT transitive. This invalidates the approach
+-- of proving adequacy's fallback case via subCheckNF transitivity.
+-- See SUGGESTIONS.md which incorrectly claims it as a sub-lemma.
+--
+-- Counterexample:
+--   a = .type
+--   b = mu .type (bvar 0)    (fixpoint: unfolds to itself)
+--   c = lam .type (bvar 0)   (identity function type)
+--
+-- a ⊑ b: self-intro → .type ⊑ (bvar 0).subst = .type ⊑ b → seen hit → true
+-- b ⊑ c: self-elim → (bvar 0).subst = b ⊑ c → same pair → seen hit → true
+-- a ⊑ c: .type vs lam → inferType .type = none → FALSE
+--
+-- Therefore: subCheckNF a b = true ∧ subCheckNF b c = true ∧ subCheckNF a c = false
+
+def subCheckNF_trans_a := Expr.type
+def subCheckNF_trans_b := Expr.mu Expr.type (Expr.bvar 0)
+def subCheckNF_trans_c := Expr.lam Expr.type (Expr.bvar 0)
+
+example : subCheckNF 10 [] [] subCheckNF_trans_a subCheckNF_trans_b = true := by native_decide
+example : subCheckNF 10 [] [] subCheckNF_trans_b subCheckNF_trans_c = true := by native_decide
+example : subCheckNF 10 [] [] subCheckNF_trans_a subCheckNF_trans_c = false := by native_decide
+
+-- subCheckNF_top_universal COUNTEREXAMPLE:
+-- .type ⊑ mu .type (bvar 0) does NOT imply v ⊑ mu .type (bvar 0) for all v.
+-- When v is also a mu, subCheckNF uses the structural (mu, mu) branch
+-- instead of self-intro, and the structural check can fail.
+example : subCheckNF 10 [] [] Expr.type (Expr.mu Expr.type (Expr.bvar 0)) = true := by native_decide
+example : subCheckNF 10 [] [] (Expr.mu Expr.type (Expr.lam Expr.type (Expr.bvar 0))) (Expr.mu Expr.type (Expr.bvar 0)) = false := by native_decide
+
+-- ============================================================
 -- §12 WellTyped witness tests (Phase 5: non-vacuous soundness)
 -- ============================================================
 

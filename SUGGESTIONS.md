@@ -125,10 +125,15 @@ uses it (via sorry). Once proven, the asc case becomes sorry-free.
   - mu unfold: harder — interacts with subCheckNF's `seen` list for
     coinductive termination. May need a generalized version with
     arbitrary `seen` and a coinductive hypothesis.
-  - subCheckNF fallback: compose two subCheckNFs (needs transitivity).
+  - subCheckNF fallback: ~~compose two subCheckNFs (needs transitivity)~~
+    **BLOCKED**: subCheckNF transitivity is FALSE (see counterexample in
+    Tests.lean). The VCompat subCheckNF fallback may need to be replaced
+    with an inferType-aware disjunct. See PROGRESS.md for details.
 
-**Sub-lemma needed:** subCheckNF transitivity. This is a well-defined
-property of the algorithmic checker and should be provable.
+**~~Sub-lemma needed:~~ subCheckNF transitivity is FALSE.**
+Counterexample: .type → mu .type (bvar 0) → lam .type (bvar 0).
+Also: subCheckNF_top_universal (.type ⊑ τ → v ⊑ τ) is FALSE.
+See PROGRESS.md "CRITICAL FINDING" section for details and revised approach.
 
 ### ✅ DONE — `soundness_gen` asc case
 

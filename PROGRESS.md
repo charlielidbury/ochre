@@ -19,132 +19,172 @@ the mu design.
 - `soundness_gen` app case — needs application congruence (line ~349)
 - `soundness` — needs concEval→concEvalE bridge (line ~449)
 
-**PROVEN this session (agent ochre-lean-20260402-221900):**
+**PROVEN (cumulative from all sessions):**
 - VCompat.adequacy PARTIAL — 9 of 14 case combinations proven
-  - σ = τ: direct ✓
-  - τ = .type: top ✓
-  - n = 0: trivial ✓
-  - v = σ (refl): subCheckNF fallback ✓
-  - σ = .type, τ ∉ {.type, .mu}: contradiction (inferType .type = none) ✓
-  - Structural lam, τ = lam: IH on bodies via subCheckNF_lam_lam_body ✓
-  - Structural lam, τ ∉ {.type, .lam, .mu}: contradiction (inferType lam = none) ✓
-  - Structural mu, τ = mu: IH on bodies via subCheckNF_mu_mu_body ✓
-  - Mu left: IH with original subCheckNF ✓
-
-**SORRY'D sub-cases in adequacy (all involve mu/seen interaction):**
-1. σ = .type, τ = mu — self-intro with seen list
-2. Structural lam, τ = mu — self-intro with seen list
-3. Structural mu, τ ∉ {.type, .mu} — self-elim with seen list
-4. Mu right (σ = mu, unfold right) — all subcases
-5. subCheckNF fallback — needs subCheckNF transitivity
-
-**Helper lemmas added to Subtyping.lean:**
-- `subCheckNF_lam_lam_body`: extracts body subCheckNF from lam⊑lam
-- `subCheckNF_mu_mu_body`: extracts body subCheckNF from mu⊑mu
-- `subCheckNF_lam_impossible`: contradiction for lam vs non-{type,lam,mu}
-- `inferType_lam`: inferType returns none for lambdas
-- Made `inferType` and `normalizeDomain` non-private (needed for proofs)
-
-**Previously proven (still proven):**
-- `VCompat.mono` (downward closure)
-- `soundness_gen` bvar, type, lam, mu, asc cases
+- VCompat.mono (downward closure)
+- soundness_gen bvar, type, lam, mu, asc cases
 - Decoupled VCompat step index from fuel
 
 **All milestone tests pass** (M1-M4 including abstract appendVec).
 **11 WellTyped witness tests pass.**
+
+## CRITICAL FINDING: subCheckNF non-properties
+
+**Agent ochre-lean-20260402-230008 discovered two false proof strategies.**
+
+### 1. subCheckNF transitivity is FALSE
+
+Counterexample (verified by `native_decide` in Tests.lean):
+- a = `.type`
+- b = `mu .type (bvar 0)` (fixpoint: unfolds to itself)
+- c = `lam .type (bvar 0)` (identity function type)
+
+```
+subCheckNF a b = true    (self-intro → seen hit)
+subCheckNF b c = true    (self-elim → seen hit)
+subCheckNF a c = false   (.type vs lam → inferType .type = none → false)
+```
+
+**Implication:** The adequacy fallback case (Case 5) CANNOT be solved via
+subCheckNF transitivity as previously suggested in SUGGESTIONS.md.
+
+### 2. subCheckNF_top_universal is FALSE
+
+`.type ⊑ τ` does NOT imply `v ⊑ τ` for all `v`.
+
+Counterexample (verified by `native_decide` in Tests.lean):
+```
+subCheckNF .type (mu .type (bvar 0)) = true
+subCheckNF (mu .type (lam .type (bvar 0))) (mu .type (bvar 0)) = false
+```
+
+**Root cause:** When `v` is a `.mu`, subCheckNF takes the structural
+`(mu, mu)` branch instead of self-intro. The structural branch checks
+bodies, which may fail even when self-intro would succeed.
+
+**Implication:** Adequacy Case 1 (σ = .type, τ = mu) CANNOT be solved by
+constructing a `subCheckNF v τ` witness from `subCheckNF .type τ`.
+
+### What this means for the proof
+
+The subCheckNF fallback disjunct of VCompat creates requirements that
+subCheckNF cannot satisfy:
+
+1. **Case 5 (fallback input):** Needs `subCheckNF v σ ∧ subCheckNF σ τ →
+   subCheckNF v τ` — FALSE (transitivity counterexample).
+
+2. **Cases 1-2 (σ = .type or lam, τ = mu):** Cannot use `subCheckNF v τ`
+   as a VCompat witness because subCheckNF_top_universal is FALSE.
+
+**The subCheckNF fallback in VCompat may need to be replaced** with an
+inferType-aware disjunct. See "Recommended revised approach" below.
 
 ## File structure
 
 - `Syntax.lean` — Expr type (de Bruijn indices), substitution, shifting
 - `Eval.lean` — absEval, concEval, concEvalE, fuel monotonicity lemmas
 - `Subtyping.lean` — subCheckNF (algorithmic), SubtypeCore/Subtype' (declarative),
-  helper extraction lemmas for adequacy
+  helper extraction lemmas, **subCheckNF non-property documentation**
 - `Soundness.lean` — WellTyped, VCompat definition, soundness theorems
-- `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN)
+- `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN),
+  **subCheckNF counterexample tests**
 
-## Key design insights this session
+## Sorry'd sub-cases in adequacy
 
-### Adequacy proof structure
+All 5 involve mu/seen interaction or the now-known-FALSE transitivity:
 
-VCompat.adequacy is proved by **induction on n** (VCompat step index), with
-two upfront `by_cases` (σ = τ, τ = .type) that handle easy cases uniformly.
+1. σ = .type, τ = mu — can't use subCheckNF fallback (top_universal FALSE)
+2. Structural lam, τ = mu — similar issue
+3. Structural mu, τ ∉ {.type, .mu} — self-elim with seen list
+4. Mu right (σ = mu, unfold right) — all subcases
+5. subCheckNF fallback — needs transitivity (PROVED FALSE)
 
-The IH at step m is universal over fuel and ctx:
+## Recommended revised approach
+
+### Option A: Replace the subCheckNF fallback with an inferType disjunct
+
+Replace VCompat's 7th disjunct:
+```lean
+-- Current (problematic):
+∨ (∃ fuel ctx, subCheckNF fuel ctx [] v τ = true)
+
+-- Proposed:
+∨ (∃ ctx ty, inferType ctx v = some ty ∧ VCompat n ty τ)
 ```
-ih : ∀ {v σ τ fuel ctx}, VCompat m v σ → subCheckNF fuel ctx [] σ τ → VCompat m v τ
-```
 
-For structural cases (lam→lam, mu→mu): extract body subCheckNF from the
-lam/lam or mu/mu case of subCheckNF, then apply IH on bodies. The body
-extraction requires the helper lemmas in Subtyping.lean.
+**Why this works:** The inferType disjunct has a step-index decrease
+(VCompat n at step n vs the outer VCompat (n+1)). In adequacy:
+- Input: `inferType ctx v = some ty ∧ VCompat m ty σ`
+- Hypothesis: `subCheckNF σ τ = true`
+- Apply IH on `ty`: `VCompat m ty σ → subCheckNF σ τ → VCompat m ty τ`
+- Output: `inferType ctx v = some ty ∧ VCompat m ty τ`
 
-For mu-left: the IH applies directly with the ORIGINAL subCheckNF (no
-extraction needed). This is the cleanest case.
+No transitivity needed! The inferType witness is preserved, only the
+inner VCompat changes.
 
-### Why the sorry'd cases are hard
+**What changes:**
+1. VCompat definition: replace fallback with inferType disjunct
+2. VCompat.mono: straightforward (apply mono to inner VCompat)
+3. soundness_gen: current proofs may need adjustment (bvar/refl case
+   doesn't need the fallback; asc case via adequacy)
+4. adequacy: fallback case replaced by inferType case (cleaner)
+5. The refl case (v = σ) in adequacy currently uses the fallback.
+   With the new disjunct, it would need to decompose subCheckNF
+   structurally for the inferType sub-cases.
 
-All remaining sorrys involve subCheckNF's `seen` list for coinductive
-termination. When subCheckNF does self-intro (σ ⊑ mu ann body), it adds
-(σ, mu ann body) to `seen` and recurses. The IH needs empty `seen`.
+**Risk:** The refl case of adequacy becomes harder (must decompose
+subCheckNF for neutral terms instead of using the fallback shortcut).
+But this is a well-defined task, not a dead end.
 
-**The fundamental tension:** subCheckNF uses COINDUCTION (seen list) for
-mu types, while VCompat uses INDUCTION (step index). Bridging them requires
-showing that n steps of VCompat unfolding suffice to cover what the seen
-list achieves coinductively.
+### Option B: Generalized adequacy with seen-aware VCompat
 
-**Possible approaches for future agents:**
-1. **Well-founded induction on (n, fuel):** The combined measure n + fuel
-   decreases at each recursive call. For self-intro: decrease n (use
-   mu-right unfolding), for structural cases: decrease fuel.
-   The hseen invariant would quantify over m < n.
+Keep the current VCompat but generalize adequacy to track seen lists.
+This was the approach suggested by previous agents but is harder due
+to the coinduction/induction tension. The new counterexamples don't
+directly affect this approach (it doesn't use transitivity), but the
+mu/seen cases remain difficult.
 
-2. **Generalized adequacy with seen:** Prove adequacy_gen with an hseen
-   invariant: `∀ p ∈ seen, ∀ m < n, VCompat m v p.1 → VCompat m v p.2`.
-   The self-intro case provides hseen by appealing to adequacy at lower n
-   (via strong induction). The seen check case uses hseen at m < n, which
-   gives VCompat m (not VCompat n). This is weaker but might suffice
-   combined with mu-right unfolding.
+### Option C: Keep current VCompat, accept sorry on Case 5
 
-3. **subCheckNF transitivity:** Would solve the fallback case. Proving
-   transitivity of the algorithmic checker is non-trivial due to
-   coinductive termination, but it's a well-defined mathematical property.
+The fallback case (Case 5) of adequacy is only reachable through nested
+ascriptions where the inner adequacy produces a fallback. In practice,
+this might not arise for the milestone programs. We could:
+1. Sorry Case 5
+2. Verify the other 4 mu/seen cases using different techniques
+3. Test non-vacuity for the milestone programs despite the sorry
+
+This is pragmatic but leaves a known gap.
 
 ## What the next agent should do
 
-### Priority 1: Prove more adequacy sub-cases
+### Priority 1: Decide on the approach
 
-The most impactful next step is tackling the mu/seen cases in adequacy.
-Start with approach 2 (generalized adequacy with hseen at m < n). The
-self-intro case at step n+1 would:
-1. Use mu-right unfolding: need VCompat n v (body.subst 0 (mu ann body))
-2. Apply adequacy_gen at step n with the inner subCheckNF (fuel-1)
-3. Provide hseen for (σ, mu ann body) by strong induction on n
+Read the analysis above and decide which option (A, B, or C) to pursue.
+Option A (inferType disjunct) is recommended as the cleanest fix for the
+fundamental issue.
 
-Key question: when the inner subCheckNF hits the seen entry, hseen gives
-VCompat m (m < n), not VCompat n. The fuel IH at step n can't directly
-use this. This is the crux of the difficulty.
+### Priority 2: If Option A — implement the VCompat change
 
-### Priority 2: App case (Soundness.lean:~349)
+1. Change VCompat's 7th disjunct from `subCheckNF` to `inferType`
+2. Re-prove VCompat.mono (should be straightforward)
+3. Fix soundness_gen cases that relied on the fallback
+4. Re-prove adequacy with the new disjunct
 
-The app case needs "application congruence." The standard approach is to
-reformulate soundness_gen with **related environments** (EnvCompat), where
-env_v and env_τ are pointwise VCompat. This is a significant refactor but
-follows the textbook LR approach. See SUGGESTIONS.md for details.
+### Priority 3: App case or bridge
 
-### Priority 3: concEval→concEvalE bridge (Soundness.lean:~449)
-
-For the top-level soundness theorem. Separate concern from the main proof.
+The app case (soundness_gen) and concEval→concEvalE bridge remain
+separate concerns that need work regardless of the adequacy approach.
 
 ## What's been tried (and failed)
 
-Previous agents spent significant effort on a **structural** soundness proof
-using SoundRel (a relation requiring matching top-level constructors). This
-approach is **fundamentally broken**: ascription `(e : τ)` produces results
-with different constructors (e.g., a lam value vs a mu type), so no
-structural relation can bridge them.
+- **Structural soundness via SoundRel**: fundamentally broken for ascription
+  (different constructors on concrete vs abstract sides).
+- **ValSub.subst_congr**: FALSE (verified by counterexample).
+- **Step-index coupling (VCompat fuel = fuel)**: dead end for asc case.
+  Fixed by decoupling step index from fuel.
+- **subCheckNF transitivity**: FALSE (verified by counterexample).
+  Agent ochre-lean-20260402-230008.
+- **subCheckNF_top_universal (.type ⊑ τ → v ⊑ τ)**: FALSE (verified by
+  counterexample). Agent ochre-lean-20260402-230008.
 
-The step-index coupling (VCompat fuel = fuel) was also a dead end for the
-asc case. The fix (decoupled step index) is documented in commit 7afd7fc.
-
-**Do not attempt structural relations for soundness.** Use VCompat as described
-above.
+**Do not attempt any of the above approaches.**
