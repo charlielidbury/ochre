@@ -73,6 +73,55 @@ is a well-informed sketch. Specific open questions:
    matches equi-recursive subtyping. The step-index decrease prevents
    infinite unfolding.
 
+## Philosophy: tackle the hardest cases first
+
+**The goal is NOT to dispense of easy cases.** The goal is to find out
+whether the definitions are right. If Och in its current form is unsound,
+we need to discover that as early as possible so the definitions can change.
+
+Every session should focus on the hardest unproven case — the one most
+likely to reveal a problem with the definitions. Easy cases can wait.
+A session that proves the app case is worth ten sessions that polish
+infrastructure lemmas.
+
+**If you find yourself stuck on a case, that IS the interesting result.**
+Document WHY it's stuck, try to construct a counterexample, and if you
+suspect unsoundness, say so clearly. Changing a definition is not failure
+— it's the whole point of the experiment.
+
+## The critical question: structural vs semantic VCompat
+
+The current VCompat uses **structural** lam/mu cases ("both lam, bodies
+compatible"). This made the lam/mu cases of soundness_gen trivial, but
+it pushed the hard problem to the **app case**: after beta-reduction, we
+have `bodyV.subst 0 a_v ≠ bodyT.subst 0 a_τ`, and the soundness IH
+needs the SAME expression on both sides.
+
+**This is the same substitution congruence problem that broke SoundRel.**
+VCompat is covariant (so subst_congr might hold), but the structural
+approach trades an easy lam case for a hard app case.
+
+**The semantic approach should be tried first.** The original logical
+relations design used a semantic function case: "for all compatible args,
+evaluating both bodies gives compatible results." With a semantic function
+case, the **app case becomes trivial** — just instantiate the universal
+quantifier with the concrete args. The lam case becomes harder (you must
+produce the semantic witness), but this is the standard approach in PL
+theory (Appel & McAllester, Amin & Rompf, etc.) and there are established
+techniques.
+
+The semantic approach was abandoned because "the two evaluators produce
+different normalized bodies from the same source." But this can potentially
+be addressed by:
+1. Using `concEval` (lambdas are values, bodies untouched) instead of
+   `concEvalE` (which normalizes under binders)
+2. Proving env-substitution equivalence for concEvalE
+3. Reformulating with related envs (the standard LR approach)
+
+**Recommendation:** Try semantic VCompat with `concEval` first. If lam
+case is hard, try with `concEvalE` + env-substitution equivalence. Only
+fall back to structural VCompat if both semantic approaches fail.
+
 ## Proof strategy
 
 ### Step 1: ✅ DONE — `VCompat.mono` (downward closure)
@@ -84,25 +133,39 @@ VCompat n av aτ → ...` to the standard Appel-McAllester bounded quantifier
 `∀ m, m ≤ n → ∀ av aτ, VCompat m av aτ → ...`. With this change, the
 function case of mono is trivial (restrict quantifier from m ≤ k+1 to m ≤ k).
 
-### Step 2: Prove `soundness_gen` app case (application congruence)
+### Step 2: THE APP CASE — tackle this first
 
-**This is the hardest remaining step.** The IH gives VCompat for the
-evaluated function (structural lam: VCompat for bodies) and VCompat for
-the arg. The evaluators then substitute the arg into the body and
-re-evaluate. But the two bodies are DIFFERENT (normalized by different
-evaluators) and the two args are DIFFERENT (concrete vs abstract).
+**This is the hardest case and the most likely to reveal unsoundness.**
+Do NOT work on other cases until this one is resolved or understood.
 
-The soundness_gen IH needs the SAME source expression on both sides.
-But after beta-reduction, we have bodyV.subst 0 a_v ≠ bodyT.subst 0 a_τ.
+The IH gives VCompat for the evaluated function and arg. The evaluators
+then substitute the arg into the body and re-evaluate. But the two bodies
+are DIFFERENT (normalized by different evaluators) and the two args are
+DIFFERENT (concrete vs abstract).
 
-**Approaches to consider:**
-1. **Env-substitution equivalence:** Show that evaluating (normalized body
-   with arg substituted) equals evaluating (source body with arg in env).
-   Then apply soundness_gen's IH to the source body.
-2. **Separate congruence lemma by induction on VCompat or expressions.**
+**With structural VCompat (current):** The app case needs an "application
+congruence" lemma: VCompat bodies + VCompat args → VCompat results after
+substitution+evaluation. This is essentially substitution congruence —
+the same problem that broke previous approaches.
+
+**With semantic VCompat (recommended):** The app case is trivial — the
+semantic function quantifier already gives you the result. The difficulty
+moves to the lam case instead.
+
+**Approaches to consider (in order of preference):**
+1. **Switch to semantic VCompat with concEval.** The app case becomes
+   trivial. The lam case needs: "for all compatible args, concEval of
+   bodyV[av] and absEval of bodyT[aτ] give compatible results." Since
+   concEval treats lam as a value (body untouched = source body), this
+   may align with the soundness IH.
+2. **Switch to semantic VCompat with concEvalE + env-subst equivalence.**
+   Show `concEvalE [] (bodyV'.subst 0 av) = concEvalE [av] source_body`.
+   Then the soundness IH applies to the source body.
 3. **Reformulate with related envs** (env_v, env_τ with EnvCompat). The
    standard LR approach, but requires more infrastructure.
-4. **Use subCheckNF fallback** if evaluation outputs happen to be related.
+4. **Keep structural VCompat, prove subst_congr for VCompat.** VCompat is
+   covariant, so this MIGHT work (unlike SubtypeCore). Try to disprove
+   first with native_decide.
 
 See PROGRESS.md for detailed analysis.
 
@@ -174,8 +237,9 @@ contravariance, so VCompat must accommodate different domains.
 
 This is the most important rule. Previous agents wasted enormous effort
 proving theorems that turned out to be FALSE (SoundRel across ascription,
-ValSub.subst_congr). A sorry on a false statement is worse than useless —
-it gives false confidence and wastes every future agent's time.
+ValSub.subst_congr, subCheckNF transitivity). A sorry on a false statement
+is worse than useless — it gives false confidence and wastes every future
+agent's time.
 
 **Before attempting any proof, you MUST:**
 
@@ -184,14 +248,9 @@ it gives false confidence and wastes every future agent's time.
    conclusion doesn't? Write down your reasoning.
 
 2. **Test concrete cases with `native_decide`.** Pick 2-3 real programs
-   from Tests.lean and verify the theorem holds for them. For example,
-   if proving `VCompat.adequacy`, test:
-   ```lean
-   -- Does VCompat hold for (zero : Nat)?
-   example : VCompat 20 (absEval 20 [] zero') (absEval 20 [] SelfNat) ... 
-   ```
-   If you can't even construct a witness for a concrete case, the theorem
-   is probably wrong.
+   from Tests.lean and verify the theorem holds for them. If you can't
+   even construct a witness for a concrete case, the theorem is probably
+   wrong.
 
 3. **Try to construct a native_decide counterexample.** Especially for
    lemmas involving subCheckNF, substitution, or cross-constructor cases.
@@ -201,7 +260,12 @@ it gives false confidence and wastes every future agent's time.
    step 1 — maybe you're stuck because it's false.
 
 **The sign of a productive session is discovering a false theorem statement
-and documenting it, NOT adding more sorrys to a stuck proof.**
+or a problem with the definitions, NOT adding more sorrys to a stuck proof.**
+
+**Focus on the hardest cases.** Easy cases (bvar, type, top) tell you
+nothing about whether the system is sound. The app case and the asc case
+are where soundness lives or dies. If you have a choice between proving
+an easy case and investigating a hard one, always investigate the hard one.
 
 ## Critical constraints
 
