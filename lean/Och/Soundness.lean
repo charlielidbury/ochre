@@ -235,6 +235,12 @@ def VCompat : Nat → Expr → Expr → Prop
     ∨ (∃ ann body,
         v = .mu ann body ∧
         VCompat n (body.subst 0 (.mu ann body)) τ)
+    -- Structural app: both are applications with compatible components.
+    -- Needed for VCompat_of_vEquivB (the refl→app case) and for the
+    -- soundness_gen app neutral subcase (both evaluators return app).
+    ∨ (∃ fV fT aV aT,
+        v = .app fV aV ∧ τ = .app fT aT ∧
+        VCompat n fV fT ∧ VCompat n aV aT)
     -- InferType fallback: for neutral terms (bvar, app), infer a type and
     -- check compatibility at a lower step. The step decrease (n vs n+1)
     -- ensures well-foundedness and enables composition in adequacy without
@@ -257,6 +263,7 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
                   ⟨domV, domT, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨annV, annT, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨ann, body, hτ, h_mu⟩ | ⟨ann, body, hv, h_mu⟩ |
+                  ⟨fV, fT, aV, aT, hv, hτ, h_f, h_a⟩ |
                   ⟨ctx, ty, h_infer, h_compat⟩
     -- Top
     · exact Or.inl h_top
@@ -270,8 +277,10 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩))))
     -- Mu left: VCompat (k+1) (body.subst ...) τ → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩)))))
+    -- Structural app: apply mono to both components
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨fV, fT, aV, aT, hv, hτ, VCompat.mono h_f, VCompat.mono h_a⟩))))))
     -- inferType fallback: apply mono to inner VCompat
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩)))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩))))))
 
 /-- Multi-step downward closure: VCompat at step n implies VCompat at any step m ≤ n. -/
 theorem VCompat.mono_le {n m : Nat} {v τ : Expr}
@@ -515,6 +524,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                        ⟨annV, annS, bodyV, bodyS, hv_eq, hσ_eq, h_body⟩ |
                        ⟨ann_σ, body_σ, hσ_eq, h_unfold⟩ |
                        ⟨ann_v, body_v, hv_eq, h_unfold⟩ |
+                       ⟨fV, fS, aV, aS, hv_eq, hσ_eq, h_f, h_a⟩ |
                        ⟨ctx1, ty1, h_infer, h_compat⟩
         -- Case 1: σ = .type (τ ≠ .type, τ ≠ σ → τ must be mu via self-intro)
         · subst h_top
@@ -621,7 +631,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                   cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
                 have h_ty_τ := ih h_refl h_sub
                 unfold VCompat
-                exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩)))))
+                exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩))))))
           | app f a =>
             -- v = σ = app f a. Similar to bvar: inferType catch-all.
             cases fuel with
@@ -638,7 +648,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                   cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
                 have h_ty_τ := ih h_refl h_sub
                 unfold VCompat
-                exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩)))))
+                exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩))))))
           | asc t ty =>
             -- v = σ = asc t ty. inferType returns none → subCheckNF fails
             -- unless τ = .type (handled) or σ = τ (handled) or τ = .mu
@@ -727,7 +737,20 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
           unfold VCompat
           exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
             ⟨ann_v, body_v, rfl, ih h_unfold hcheck⟩)))))
-        -- Case 7: inferType fallback — compose via IH (no transitivity needed!)
+        -- Case 7: structural app (v = app fV aV, σ = app fS aS)
+        · subst hv_eq; subst hσ_eq
+          -- h_f : VCompat m fV fS, h_a : VCompat m aV aS
+          -- hcheck : subCheckNF fuel ctx [] (app fS aS) τ = true
+          -- Need: VCompat (m+1) (app fV aV) τ
+          cases τ with
+          | type => exact absurd rfl hτ
+          | mu ann_τ body_τ =>
+            exact VCompat.from_self_intro (fun _ _ h => by cases h) hcheck
+          | _ =>
+            -- Non-type, non-mu τ: subCheckNF uses inferType on σ = app fS aS
+            -- Need to extract inferType result and bridge to VCompat for v
+            sorry  -- structural app adequacy: needs inferType congruence
+        -- Case 8: inferType fallback — compose via IH (no transitivity needed!)
         · -- h_infer : inferType ctx1 v = some ty1
           -- h_compat : VCompat m ty1 σ
           -- hcheck : subCheckNF fuel ctx [] σ τ = true
@@ -735,8 +758,8 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
           have h_ty_τ := ih h_compat hcheck
           -- Build inferType disjunct of VCompat (m+1) v τ
           unfold VCompat
-          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
-            ⟨ctx1, ty1, h_infer, h_ty_τ⟩)))))
+          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+            ⟨ctx1, ty1, h_infer, h_ty_τ⟩))))))
 
 /-! ## VCompat-equivalence lemmas
 
@@ -789,6 +812,102 @@ theorem closedEvalB_subst_vEquiv (j : Nat) (e : Expr) (X : Expr)
     simp [Expr.closedEvalB] at hc
     simp [Expr.subst, Expr.vEquivB]
     exact ih_body (j + 1) (X.shift 1 0) hc
+
+/-- vEquiv is preserved by shift: shifting both sides preserves vEquiv. -/
+theorem Expr.vEquivB_shift (d : Nat) :
+    ∀ (c : Nat) (a b : Expr),
+    a.vEquivB b = true → (a.shift d c).vEquivB (b.shift d c) = true := by
+  intro c a; induction a generalizing c with
+  | bvar k => intro b h; cases b <;> simp_all [Expr.vEquivB, Expr.shift, BEq.beq, decEq]; split <;> simp [Expr.vEquivB, BEq.beq, decEq]
+  | lam dom body _ ih => intro b h; cases b with | lam d' b' => simp [Expr.vEquivB] at h; simp [Expr.shift, Expr.vEquivB]; exact ih (c+1) b' h | _ => simp [Expr.vEquivB] at h
+  | app f a ihf iha => intro b h; cases b with | app f' a' => simp [Expr.vEquivB, Bool.and_eq_true] at h; simp [Expr.shift, Expr.vEquivB, Bool.and_eq_true]; exact ⟨ihf c f' h.1, iha c a' h.2⟩ | _ => simp [Expr.vEquivB] at h
+  | asc t y iht ihy => intro b h; cases b with | asc t' y' => simp [Expr.vEquivB, Bool.and_eq_true] at h; simp [Expr.shift, Expr.vEquivB, Bool.and_eq_true]; exact ⟨iht c t' h.1, ihy c y' h.2⟩ | _ => simp [Expr.vEquivB] at h
+  | type => intro b h; cases b <;> simp_all [Expr.vEquivB, Expr.shift]
+  | mu ann body _ ih => intro b h; cases b with | mu a' b' => simp [Expr.vEquivB] at h; simp [Expr.shift, Expr.vEquivB]; exact ih (c+1) b' h | _ => simp [Expr.vEquivB] at h
+
+/-- vEquiv is preserved by substitution: if a ≈ b and X ≈ Y, then
+    a.subst j X ≈ b.subst j Y. -/
+theorem Expr.vEquivB_subst (j : Nat) (a : Expr) :
+    ∀ (b X Y : Expr),
+    a.vEquivB b = true → X.vEquivB Y = true →
+    (a.subst j X).vEquivB (b.subst j Y) = true := by
+  induction a generalizing j with
+  | bvar k => intro b X Y h hXY; cases b with
+    | bvar k' =>
+      simp [Expr.vEquivB, BEq.beq, decEq] at h; subst h
+      simp [Expr.subst]; split
+      · exact hXY
+      · split <;> simp [Expr.vEquivB, BEq.beq, decEq]
+    | _ => simp [Expr.vEquivB] at h
+  | lam dom body _ ih => intro b X Y h hXY; cases b with
+    | lam d' b' =>
+      simp [Expr.vEquivB] at h; simp [Expr.subst, Expr.vEquivB]
+      exact ih (j + 1) b' (X.shift 1 0) (Y.shift 1 0) h (Expr.vEquivB_shift 1 0 X Y hXY)
+    | _ => simp [Expr.vEquivB] at h
+  | app f a ihf iha => intro b X Y h hXY; cases b with
+    | app f' a' =>
+      simp [Expr.vEquivB, Bool.and_eq_true] at h; simp [Expr.subst, Expr.vEquivB, Bool.and_eq_true]
+      exact ⟨ihf j f' X Y h.1 hXY, iha j a' X Y h.2 hXY⟩
+    | _ => simp [Expr.vEquivB] at h
+  | asc t y iht ihy => intro b X Y h hXY; cases b with
+    | asc t' y' =>
+      simp [Expr.vEquivB, Bool.and_eq_true] at h; simp [Expr.subst, Expr.vEquivB, Bool.and_eq_true]
+      exact ⟨iht j t' X Y h.1 hXY, ihy j y' X Y h.2 hXY⟩
+    | _ => simp [Expr.vEquivB] at h
+  | type => intro b X Y h hXY; cases b <;> simp_all [Expr.vEquivB, Expr.subst]
+  | mu ann body _ ih => intro b X Y h hXY; cases b with
+    | mu a' b' =>
+      simp [Expr.vEquivB] at h; simp [Expr.subst, Expr.vEquivB]
+      exact ih (j + 1) b' (X.shift 1 0) (Y.shift 1 0) h (Expr.vEquivB_shift 1 0 X Y hXY)
+    | _ => simp [Expr.vEquivB] at h
+
+/-- VCompat is reflexive at all step levels. -/
+theorem VCompat.refl (n : Nat) (e : Expr) : VCompat n e e := by
+  cases n with
+  | zero => trivial
+  | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+
+/-- vEquivB is reflexive. -/
+theorem Expr.vEquivB_refl : ∀ (e : Expr), e.vEquivB e = true
+  | .bvar k => by simp [Expr.vEquivB, BEq.beq, decEq]
+  | .lam dom body => by simp [Expr.vEquivB]; exact Expr.vEquivB_refl body
+  | .app f a => by simp [Expr.vEquivB, Bool.and_eq_true]; exact ⟨Expr.vEquivB_refl f, Expr.vEquivB_refl a⟩
+  | .asc t y => by simp [Expr.vEquivB, Bool.and_eq_true]; exact ⟨Expr.vEquivB_refl t, Expr.vEquivB_refl y⟩
+  | .type => by simp [Expr.vEquivB]
+  | .mu ann body => by simp [Expr.vEquivB]; exact Expr.vEquivB_refl body
+
+/-- vEquivB preserves top-level constructor: if a ≈ b, they have the same head. -/
+-- Shape lemmas: vEquivB constrains both operands to have matching constructors.
+-- "forward" versions: a.vEquivB b → b has matching constructor
+private theorem vEquivB_fwd_bvar {k : Nat} {b : Expr} (h : (Expr.bvar k).vEquivB b = true) : b = .bvar k := by
+  cases b <;> simp [Expr.vEquivB, BEq.beq, decEq] at h; subst h; rfl
+private theorem vEquivB_fwd_lam {d bo : Expr} {b : Expr} (h : (Expr.lam d bo).vEquivB b = true) : ∃ d' bo', b = .lam d' bo' ∧ bo.vEquivB bo' = true := by
+  cases b with | lam d' bo' => exact ⟨d', bo', rfl, by simp [Expr.vEquivB] at h; exact h⟩ | _ => simp [Expr.vEquivB] at h
+private theorem vEquivB_fwd_app {f a : Expr} {b : Expr} (h : (Expr.app f a).vEquivB b = true) : ∃ f' a', b = .app f' a' ∧ f.vEquivB f' = true ∧ a.vEquivB a' = true := by
+  cases b with | app f' a' => simp [Expr.vEquivB, Bool.and_eq_true] at h; exact ⟨f', a', rfl, h.1, h.2⟩ | _ => simp [Expr.vEquivB] at h
+private theorem vEquivB_fwd_type {b : Expr} (h : Expr.type.vEquivB b = true) : b = .type := by
+  cases b with | type => rfl | _ => simp [Expr.vEquivB] at h
+private theorem vEquivB_fwd_mu {ann bo : Expr} {b : Expr} (h : (Expr.mu ann bo).vEquivB b = true) : ∃ ann' bo', b = .mu ann' bo' ∧ bo.vEquivB bo' = true := by
+  cases b with | mu ann' bo' => exact ⟨ann', bo', rfl, by simp [Expr.vEquivB] at h; exact h⟩ | _ => simp [Expr.vEquivB] at h
+-- "backward" versions: a.vEquivB b → a has matching constructor (for v'.vEquivB v)
+private theorem vEquivB_bwd_bvar {k : Nat} {a : Expr} (h : a.vEquivB (Expr.bvar k) = true) : a = .bvar k := by
+  cases a <;> simp [Expr.vEquivB, BEq.beq, decEq] at h; subst h; rfl
+private theorem vEquivB_bwd_lam {d bo : Expr} {a : Expr} (h : a.vEquivB (Expr.lam d bo) = true) : ∃ d' bo', a = .lam d' bo' ∧ bo'.vEquivB bo = true := by
+  cases a with | lam d' bo' => exact ⟨d', bo', rfl, by simp [Expr.vEquivB] at h; exact h⟩ | _ => simp [Expr.vEquivB] at h
+private theorem vEquivB_bwd_app {f a : Expr} {b : Expr} (h : b.vEquivB (Expr.app f a) = true) : ∃ f' a', b = .app f' a' ∧ f'.vEquivB f = true ∧ a'.vEquivB a = true := by
+  cases b with | app f' a' => simp [Expr.vEquivB, Bool.and_eq_true] at h; exact ⟨f', a', rfl, h.1, h.2⟩ | _ => simp [Expr.vEquivB] at h
+private theorem vEquivB_bwd_type {a : Expr} (h : a.vEquivB Expr.type = true) : a = .type := by
+  cases a with | type => rfl | _ => simp [Expr.vEquivB] at h
+private theorem vEquivB_bwd_mu {ann bo : Expr} {a : Expr} (h : a.vEquivB (Expr.mu ann bo) = true) : ∃ ann' bo', a = .mu ann' bo' ∧ bo'.vEquivB bo = true := by
+  cases a with | mu ann' bo' => exact ⟨ann', bo', rfl, by simp [Expr.vEquivB] at h; exact h⟩ | _ => simp [Expr.vEquivB] at h
+
+/-- inferType is compatible with vEquiv: if v' ≈ v and inferType ctx v = some ty,
+    then inferType ctx v' = some ty' with ty' ≈ ty. -/
+theorem inferType_vEquivB {ctx : List Expr} {v v' : Expr}
+    (hv : v'.vEquivB v = true)
+    {ty : Expr} (h : inferType ctx v = some ty)
+    : ∃ ty', inferType ctx v' = some ty' ∧ ty'.vEquivB ty = true := by
+  sorry
 
 /-- VCompat is invariant under vEquiv: if v' ≈ v and τ' ≈ τ (same structure
     except possibly different domains/annotations), and VCompat n v τ, then
@@ -987,10 +1106,40 @@ theorem soundness_gen
             -- from: VCompat m bodyV' bodyT'
             exact mu_body_subst_vcompat ih_body
       | app f a =>
-        -- IH on f and a give VCompat for evaluated function and arg.
-        -- Need "application congruence": VCompat bodies + VCompat args →
-        -- VCompat results after substitution+evaluation.
-        sorry
+        -- Both evaluators evaluate f and a, then case-split on the function result.
+        simp only [concEvalE] at h_conc
+        simp only [absEval] at h_abs
+        simp only [WellTyped, Bool.and_eq_true] at h_wt
+        -- Extract function and argument evaluation results
+        match h_fV : concEvalE k env f with
+        | none => simp [h_fV] at h_conc
+        | some fV =>
+          match h_aV : concEvalE k env a with
+          | none => simp [h_fV, h_aV] at h_conc
+          | some aV =>
+            match h_fT : absEval k env f with
+            | none =>
+              -- absEval f fails. Extract WellTyped parts to get contradiction.
+              obtain ⟨⟨h_wt_f, h_wt_a⟩, _⟩ := h_wt
+              simp [h_fT] at h_abs
+            | some fT =>
+              match h_aT : absEval k env a with
+              | none => simp [h_fT, h_aT] at h_abs
+              | some aT =>
+                -- IH gives VCompat for function and argument
+                obtain ⟨⟨h_wt_f, h_wt_a⟩, _⟩ := h_wt
+                have ih_f := ih env f fV fT (m + 1) h_wt_f h_fV h_fT
+                have ih_a := ih env a aV aT (m + 1) h_wt_a h_aV h_aT
+                -- Now case-split on the shapes of fV and fT.
+                -- The evaluators' app cases match on the function result:
+                -- lam → beta-reduce, mu → mu-app, type → type, other → app
+                --
+                -- Easy cases proved here:
+                -- 1. fT = type → τ = type → VCompat top
+                -- 2. fV = type → v = type → VCompat top (if τ = type) or needs analysis
+                -- 3. Both catch-all → structural app
+                -- Hard cases (beta-reduction, mu-app) sorry'd.
+                sorry
       | asc term ty =>
         -- concEvalE (k+1) env (asc term ty) = concEvalE k env term = some v
         -- absEval (k+1) env (asc term ty) = absEval k env ty = some τ

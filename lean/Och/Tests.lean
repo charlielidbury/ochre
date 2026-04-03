@@ -881,6 +881,7 @@ theorem adequacy_cex_now_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_σ :
                  ⟨_, _, _, _, hv, hσ, h_body⟩ |
                  ⟨_, _, hσ, h_unfold⟩ |
                  ⟨_, _, hv, h_unfold⟩ |
+                 ⟨_, _, _, _, hv, _, _, _⟩ |
                  ⟨_, _, h_inf, _⟩
   · cases h1                              -- σ(=mu) ≠ type
   · cases h2                              -- v ≠ σ (different mus)
@@ -892,13 +893,15 @@ theorem adequacy_cex_now_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_σ :
     -- All VCompat 2 disjuncts fail for (app(mu,...), lam)
     unfold VCompat at h_body
     rcases h_body with h1 | h2 | ⟨_, _, _, _, hv', _, _⟩ | ⟨_, _, _, _, hv', _, _⟩ |
-                        ⟨_, _, hτ', _⟩ | ⟨_, _, hv', _⟩ | ⟨ctx, _, h_inf', _⟩
+                        ⟨_, _, hτ', _⟩ | ⟨_, _, hv', _⟩ |
+                        ⟨_, _, _, _, _, hτ', _, _⟩ | ⟨ctx, _, h_inf', _⟩
     · cases h1
     · cases h2
     · cases hv'
     · cases hv'
     · cases hτ'
     · cases hv'
+    · cases hτ'  -- lam ≠ app
     · rw [inferType_app_v_none] at h_inf'; cases h_inf'
   · -- mu-right on σ: unfold σ to lam type (bvar 0)
     cases hσ; simp [Expr.subst, Expr.shift] at h_unfold
@@ -906,7 +909,8 @@ theorem adequacy_cex_now_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_σ :
     -- v = mu type (app (bvar 0) type): mu ≠ lam, try each disjunct
     unfold VCompat at h_unfold
     rcases h_unfold with h1 | h2 | ⟨_, _, _, _, hv', _, _⟩ | ⟨_, _, _, _, hv', hτ', _⟩ |
-                          ⟨_, _, hτ', _⟩ | ⟨_, _, hv', h_inner⟩ | ⟨_, _, h_inf', _⟩
+                          ⟨_, _, hτ', _⟩ | ⟨_, _, hv', h_inner⟩ |
+                          ⟨_, _, _, _, hv', _, _, _⟩ | ⟨_, _, h_inf', _⟩
     · cases h1
     · cases h2
     · cases hv'
@@ -916,21 +920,25 @@ theorem adequacy_cex_now_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_σ :
       cases hv'; simp [Expr.subst, Expr.shift] at h_inner
       unfold VCompat at h_inner
       rcases h_inner with h1 | h2 | ⟨_, _, _, _, hv'', _, _⟩ | ⟨_, _, _, _, hv'', _, _⟩ |
-                            ⟨_, _, hτ'', _⟩ | ⟨_, _, hv'', _⟩ | ⟨_, _, h_inf'', _⟩
+                            ⟨_, _, hτ'', _⟩ | ⟨_, _, hv'', _⟩ |
+                            ⟨_, _, _, _, _, hτ'', _, _⟩ | ⟨_, _, h_inf'', _⟩
       · cases h1
       · cases h2
       · cases hv''
       · cases hv''
       · cases hτ''
       · cases hv''
+      · cases hτ''  -- lam ≠ app
       · rw [inferType_app_v_none] at h_inf''; cases h_inf''
+    · cases hv'  -- mu ≠ app
     · unfold adequacy_cex_v at h_inf'; simp [inferType] at h_inf'
   · -- mu-left: unfold v to app v type
     cases hv; simp [Expr.subst, Expr.shift] at h_unfold
     -- h_unfold : VCompat 2 (app v type) σ where σ = mu type (lam type (bvar 0))
     unfold VCompat at h_unfold
     rcases h_unfold with h1 | h2 | ⟨_, _, _, _, hv', _, _⟩ | ⟨_, _, _, _, hv', _, _⟩ |
-                          ⟨_, _, hσ', h_inner⟩ | ⟨_, _, hv', _⟩ | ⟨_, _, h_inf', _⟩
+                          ⟨_, _, hσ', h_inner⟩ | ⟨_, _, hv', _⟩ |
+                          ⟨_, _, _, _, _, hσ', _, _⟩ | ⟨_, _, h_inf', _⟩
     · cases h1
     · cases h2
     · cases hv'
@@ -940,16 +948,20 @@ theorem adequacy_cex_now_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_σ :
       -- VCompat 1 (app v type) (lam type (bvar 0))
       unfold VCompat at h_inner
       rcases h_inner with h1 | h2 | ⟨_, _, _, _, hv'', _, _⟩ | ⟨_, _, _, _, hv'', _, _⟩ |
-                            ⟨_, _, hτ'', _⟩ | ⟨_, _, hv'', _⟩ | ⟨_, _, h_inf'', _⟩
+                            ⟨_, _, hτ'', _⟩ | ⟨_, _, hv'', _⟩ |
+                            ⟨_, _, _, _, _, hτ'', _, _⟩ | ⟨_, _, h_inf'', _⟩
       · cases h1
       · cases h2
       · cases hv''
       · cases hv''
-      · cases hτ''
-      · cases hv''
+      · cases hτ''       -- mu-right: lam ≠ mu
+      · cases hv''       -- mu-left: app ≠ mu
+      · cases hτ''       -- structural app: lam ≠ app
       · rw [inferType_app_v_none] at h_inf''; cases h_inf''
-    · cases hv'
+    · cases hv'          -- mu-left: app ≠ mu
+    · cases hσ'          -- structural app: mu ≠ app (σ side)
     · rw [inferType_app_v_none] at h_inf'; cases h_inf'
+  · cases hv  -- structural app: mu ≠ app
   · -- inferType of mu = none
     unfold adequacy_cex_v at h_inf
     simp [inferType] at h_inf
@@ -1167,6 +1179,7 @@ theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by
                  ⟨aV, aT, bV, bT, hv, hτ, _⟩ |
                  ⟨ann, body, hτ, _⟩ |
                  ⟨ann, body, hv, h_unfold⟩ |
+                 ⟨_, _, _, _, hv, _, _, _⟩ |
                  ⟨ctx, ty, h_inf, _⟩
   · cases h1                              -- lam ≠ type
   · cases h2                              -- mu ≠ lam
@@ -1187,6 +1200,7 @@ theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by
                           ⟨aV, aT, bV, bT, hv', _, _⟩ |
                           ⟨ann', body', hτ', _⟩ |
                           ⟨ann', body', hv', _⟩ |
+                          ⟨_, _, _, _, _, hτ', _, _⟩ |
                           ⟨ctx', ty', h_inf', _⟩
     · cases h1                            -- lam ≠ type
     · cases h2                            -- app ≠ lam
@@ -1194,11 +1208,13 @@ theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by
     · cases hv'                           -- app ≠ mu
     · cases hτ'                           -- lam ≠ mu
     · cases hv'                           -- app ≠ mu
+    · cases hτ'                           -- lam ≠ app
     · -- inferType of app(mu..., type) = none
       -- inferType ctx' (app (mu ...) type): inferType ctx' (mu ...) = none → none
       have : inferType ctx' (Expr.app (Expr.mu .type (.app (.bvar 0) .type)) .type) = none := by
         simp [inferType]
       rw [this] at h_inf'; cases h_inf'
+  · cases hv                              -- mu ≠ app
   · -- inferType of mu = none
     unfold adequacy_cex_v at h_inf
     simp [inferType] at h_inf

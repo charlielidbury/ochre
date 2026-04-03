@@ -13,20 +13,77 @@ the mu design.
 
 ## Build status
 
-`lake build` passes. **8 sorry'd declarations** in Soundness.lean:
+`lake build` passes. **9 sorry'd declarations** in Soundness.lean:
 
-- `VCompat.from_self_intro_gen` (line ~421) — 1 sorry, inner recursion
-- `VCompat.adequacy` (line ~500) — 5 sub-sorrys (mu/seen cases)
-- `VCompat_of_vEquivB` (line ~809) — 1 sorry, vEquiv congruence (infrastructure)
-- `concEvalE_closedEvalB` (line ~828) — 1 sorry, evaluator closedness (infrastructure)
-- `absEval_closedEvalB` (line ~834) — 1 sorry, evaluator closedness (infrastructure)
-- `mu_body_subst_vcompat` (line ~853) — 1 sorry (Case C only; Cases A+B proved)
-- `soundness_gen` (line ~885) — 1 sorry (app case only; **mu case now proved!**)
-- `soundness_concEval` (line ~1017) — 1 sorry (bridge)
+- `VCompat.from_self_intro_gen` (line ~430) — 1 sorry, inner recursion
+- `VCompat.adequacy` (line ~509) — 6 sub-sorrys (mu/seen cases + structural app case)
+- `inferType_vEquivB` (line ~906) — 1 sorry, inferType respects vEquiv (NEW)
+- `VCompat_of_vEquivB` (line ~928) — 1 sorry, vEquiv congruence
+- `concEvalE_closedEvalB` (line ~947) — 1 sorry, evaluator closedness
+- `absEval_closedEvalB` (line ~953) — 1 sorry, evaluator closedness
+- `mu_body_subst_vcompat` (line ~972) — 1 sorry (Case C only; Cases A+B proved)
+- `soundness_gen` (line ~1020) — 1 sorry (app case only; **mu case proved**)
+- `soundness_concEval` (line ~1182) — 1 sorry (bridge)
 
 **`soundness` (using concEvalE) is sorry-free!** (depends transitively on sorry'd lemmas)
 
-## KEY CHANGE: soundness_gen mu case resolved (this session)
+## KEY CHANGE: structural app added to VCompat (this session)
+
+**Agent:** ochre-lean-20260403-032052
+
+### What changed
+
+Added a **structural app** disjunct to VCompat:
+```
+∨ (∃ fV fT aV aT,
+    v = .app fV aV ∧ τ = .app fT aT ∧
+    VCompat n fV fT ∧ VCompat n aV aT)
+```
+
+This fills a gap in VCompat: previously, two applications with compatible
+components had no VCompat disjunct connecting them (unless inferType worked).
+This caused VCompat_of_vEquivB to be FALSE for app-of-lam expressions
+(counterexample: v = τ = app (lam (bvar 0) type) type, after vEquiv
+modification v' and τ' are different apps with different lam domains, and
+no VCompat disjunct handles this).
+
+### New proven lemmas
+
+1. **Expr.vEquivB_shift** (FULLY PROVEN): vEquiv is preserved by shift.
+2. **Expr.vEquivB_subst** (FULLY PROVEN): vEquiv is preserved by substitution
+   when both substitution values are vEquiv.
+3. **VCompat.refl** (FULLY PROVEN): VCompat n e e for all n and e.
+4. **Expr.vEquivB_refl** (FULLY PROVEN): e.vEquivB e for all e.
+5. **Shape lemmas** (FULLY PROVEN): forward and backward constructors for
+   extracting structure from vEquivB hypotheses.
+
+### New sorry'd lemma
+
+- **inferType_vEquivB**: if v' ≈ v and inferType ctx v = some ty, then
+  inferType ctx v' = some ty' with ty' ≈ ty. The proof structure is clear
+  (induction on v, use vEquivB_subst for the substitution steps) but
+  has fiddly Lean details around the mu-app unfolding case.
+
+### Why structural app
+
+The VCompat_of_vEquivB theorem (needed for mu_body_subst_vcompat Case C)
+was FALSE without structural app. The counterexample: any expression
+`app (lam (bvar 0) body) arg` where the lam domain contains a free bvar 0
+that gets modified by substitution. After vEquiv modification, the domains
+differ but VCompat has no disjunct to relate two applications with
+different-domain lam heads.
+
+With structural app, the refl→app case decomposes to structural app at one
+lower step, using VCompat.refl and the IH.
+
+### Impact on adequacy
+
+The structural app disjunct adds a new case to VCompat.adequacy: when
+VCompat holds via structural app and subCheckNF σ τ is true, we need to
+derive VCompat v τ. This is sorry'd (needs inferType congruence between
+the app components of v and σ).
+
+## KEY CHANGE: soundness_gen mu case resolved (previous session)
 
 **Agent:** ochre-lean-20260403-025516
 
@@ -91,27 +148,49 @@ closedEvalB fails AND evaluators differ, bodyT = type (VCompat trivially holds).
 
 ## What the next agent MUST do
 
-### Priority 1: Prove mu_body_subst_vcompat Case C
+### Priority 1: Prove inferType_vEquivB
 
-The remaining sorry in mu_body_subst_vcompat is Case C: bodyV ≠ bodyT AND
-bodyT ≠ type. This requires either:
+This is the most tractable next step. The statement is:
+```lean
+theorem inferType_vEquivB {ctx : List Expr} {v v' : Expr}
+    (hv : v'.vEquivB v = true) {ty : Expr} (h : inferType ctx v = some ty)
+    : ∃ ty', inferType ctx v' = some ty' ∧ ty'.vEquivB ty = true
+```
 
-1. **Prove the vEquiv chain**: show closedEvalB 0 holds for evaluator outputs
-   when bodyV ≠ bodyT ∧ bodyT ≠ type. Then use closedEvalB_subst_vEquiv
-   (already proven) + VCompat_of_vEquivB (sorry'd).
+The proof is by induction on v. For bvar: both look up the same ctx entry.
+For app: IH on the function part gives vEquiv inferType results, then
+vEquivB_subst (already proven!) handles the substitution step. The mu
+unfolding case in inferType needs vEquivB_subst for the body.subst 0 f step.
 
-2. **Prove it can't happen**: show that for well-typed programs, bodyV ≠ bodyT
-   ∧ bodyT ≠ type → closedEvalB 0 holds. This would make Case C provable
-   via the vEquiv chain.
+All the helper lemmas are proven:
+- Expr.vEquivB_shift ✓
+- Expr.vEquivB_subst ✓
+- Expr.vEquivB_refl ✓
+- vEquivB_bwd_* shape lemmas ✓
 
-3. **Alternative**: add the evaluator output conditions as a precondition to
-   mu_body_subst_vcompat (making it only applicable when the trichotomy holds)
-   and prove the trichotomy separately.
+The current agent (ochre-lean-20260403-032052) had the proof nearly working
+but ran into Lean-level details with the mu case's unfolding match.
 
-The brute-force tests strongly suggest Case C is always reachable only when
-closedEvalB holds.
+### Priority 2: Prove VCompat_of_vEquivB
 
-### Priority 2: Generalized adequacy with seen list
+Once inferType_vEquivB is proven, VCompat_of_vEquivB should be provable by
+induction on n. The key cases:
+
+- **top**: vEquivB_bwd_type extracts τ' = type ✓
+- **refl**: case-split on v shape; use structural lam/mu/app + VCompat.refl + IH
+- **structural lam**: extract bodies via vEquivB_bwd_lam, IH on bodies ✓
+- **structural mu**: extract bodies, use vEquivB_subst for unfolded forms, IH ✓
+- **mu-right/left**: extract mu structure, use vEquivB_subst for unfolded body, IH ✓
+- **structural app**: extract components, IH on each ✓ (THIS IS WHY STRUCTURAL APP WAS ADDED)
+- **inferType**: use inferType_vEquivB to get vEquiv inferType result, IH ✓
+
+### Priority 3: Prove mu_body_subst_vcompat Case C
+
+With VCompat_of_vEquivB + closedEvalB_subst_vEquiv (already proven), Case C
+reduces to proving closedEvalB for the evaluator outputs in question.
+Still needs concEvalE_closedEvalB / absEval_closedEvalB or the trichotomy.
+
+### Priority 4: Generalized adequacy with seen list
 
 The non-fixpoint self-elim cases (and the mu-right case) need:
 ```lean
@@ -123,7 +202,7 @@ theorem VCompat.adequacy_gen (fuel : Nat) (n : Nat) (v σ τ : Expr)
     : VCompat n v τ
 ```
 
-### Priority 3: App case
+### Priority 5: App case
 
 The soundness_gen app case needs either:
 - Semantic VCompat for lam (recommended long-term)
@@ -133,6 +212,10 @@ The soundness_gen app case needs either:
 
 - soundness (concEvalE version) — FULLY PROVEN (depends on sorry'd lemmas)
 - closedEvalB_subst_vEquiv — FULLY PROVEN (key lemma for vEquiv approach)
+- **Expr.vEquivB_shift** — FULLY PROVEN (vEquiv preserved by shift) NEW
+- **Expr.vEquivB_subst** — FULLY PROVEN (vEquiv preserved by subst) NEW
+- **VCompat.refl** — FULLY PROVEN (VCompat n e e for all n, e) NEW
+- **Expr.vEquivB_refl** — FULLY PROVEN (e.vEquivB e for all e) NEW
 - mu_body_subst_vcompat Cases A and B — PROVED (bodyT=type and bodyV=bodyT)
 - VCompat.from_type_sub_gen — FULLY PROVEN (self-intro from .type)
 - VCompat.from_type_sub — FULLY PROVEN (corollary)
@@ -142,15 +225,17 @@ The soundness_gen app case needs either:
   - self-elim NON-FIXPOINT sorry'd
   - mu/mu structural cases sorry'd (need subCheckNF for subst'd forms)
   - mu-right case sorry'd (step loss)
-- VCompat.mono (downward closure)
+  - **structural app case sorry'd** (needs inferType congruence) NEW
+- VCompat.mono (downward closure) — updated for structural app
 - VCompat.mono_le (multi-step downward closure)
 - VCompat.fixpoint_mu (fixpoint mus are always VCompat)
 - VCompat.fixpoint_mu_left (fixpoint mu-left at all steps)
 - VCompat.self_intro_eq (self-intro via equality)
-- soundness_gen bvar, type, lam, mu, asc cases (mu is NEW this session)
+- soundness_gen bvar, type, lam, mu, asc cases
 - subCheckNF_type_self_intro (extraction lemma)
 - subCheckNF_neutral_inferType helper lemma
 - adequacy_cex_now_incompat (counterexample no longer holds with new VCompat)
+- **vEquivB shape lemmas** (fwd/bwd for all constructors) NEW
 
 **All milestone tests pass** (M1-M4 including abstract appendVec).
 **11 WellTyped witness tests pass.**
@@ -188,9 +273,10 @@ happens and evaluators differ, bodyT = type (VCompat top). See Tests.lean §16.
 - `Subtyping.lean` — subCheckNF (algorithmic), SubtypeCore/Subtype' (declarative),
   helper extraction lemmas, subCheckNF non-property documentation
 - `Soundness.lean` — WellTyped, vEquivB, closedEvalB, VCompat definition
-  (with unfolded structural mu and inferType disjunct), closedEvalB_subst_vEquiv
-  (proven), mu_body_subst_vcompat (2/3 cases proved), from_type_sub_gen (proven),
-  from_self_intro_gen (1 sorry), soundness theorems
+  (with unfolded structural mu, **structural app**, and inferType disjunct),
+  vEquivB_shift/subst/refl (proven), closedEvalB_subst_vEquiv (proven),
+  mu_body_subst_vcompat (2/3 cases proved), from_type_sub_gen (proven),
+  from_self_intro_gen (1 sorry), inferType_vEquivB (sorry'd), soundness theorems
 - `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN),
   subCheckNF + VCompat counterexample tests, counterexample resolution proof (§13),
   closedness counterexample (§14), soundness_gen mu brute-force tests (§15),
@@ -211,10 +297,14 @@ happens and evaluators differ, bodyT = type (VCompat top). See Tests.lean §16.
 - adequacy refl/mu → mu target
 - adequacy structural mu → mu target
 
-### Infrastructure (sorry'd but not on critical path if Cases A+B suffice):
-- VCompat_of_vEquivB: vEquiv congruence (only needed for Case C)
-- concEvalE_closedEvalB: evaluator closedness (only needed for Case C)
-- absEval_closedEvalB: evaluator closedness (only needed for Case C)
+### vEquiv infrastructure (sorry'd, on critical path for Case C):
+- inferType_vEquivB: inferType respects vEquiv (NEW — helpers proven, proof nearly done)
+- VCompat_of_vEquivB: vEquiv congruence (depends on inferType_vEquivB)
+- concEvalE_closedEvalB: evaluator closedness
+- absEval_closedEvalB: evaluator closedness
+
+### Structural app in adequacy (1 sorry, NEW):
+- adequacy structural app case: needs inferType congruence between app components
 
 ### Other (3 sorrys):
 - from_self_intro_gen: inner recursion (1 sorry)
