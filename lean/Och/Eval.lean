@@ -250,9 +250,176 @@ theorem Env.extend_ascFree {env : Env} {v : Expr}
     have := henv j a
     exact Expr.ascFree_shift (this (by rwa [List.get?_eq_getElem?]))
 
-/-- On asc-free inputs, concEvalE and absEval produce the same result.
-    They differ ONLY at the asc case: concEvalE takes the lhs, absEval
-    takes the rhs. If there is no asc, they are identical. -/
+/-- Evaluator outputs are asc-free WHEN the input is asc-free.
+    NOTE: the unconditional version (without he) is FALSE — lambda domains
+    and mu annotations pass through unevaluated, so asc in those positions
+    persists in the output. Counterexample:
+      absEval 5 [] (lam (asc type type) (bvar 0)) = some (lam (asc type type) (bvar 0))
+    The output has asc in the domain, which is not evaluated.
+    The conditional version is TRUE because when the INPUT is asc-free,
+    domains/annotations are also asc-free, and the mu env entry (mu ann body)
+    inherits asc-free from the source. -/
+theorem absEval_ascFree {fuel : Nat} {env : Env} {e v : Expr}
+    (he : e.ascFree)
+    (h : absEval fuel env e = some v)
+    (henv : ∀ k e, env.get? k = some e → e.ascFree)
+    : v.ascFree := by
+  induction fuel generalizing env e v with
+  | zero => simp [absEval] at h
+  | succ k ih =>
+    cases e with
+    | bvar j =>
+      simp only [absEval] at h
+      exact henv j v h
+    | type =>
+      simp [absEval] at h; subst h; trivial
+    | asc _ _ => exact absurd he (by simp [Expr.ascFree])
+    | lam dom body =>
+      simp [Expr.ascFree] at he; obtain ⟨hd, hb⟩ := he
+      simp only [absEval] at h
+      match h_body : absEval k (Env.extend env (.bvar 0)) body with
+      | none => simp [h_body] at h
+      | some body' =>
+        simp [h_body] at h; subst h
+        have hbvar : Expr.ascFree (.bvar 0) := trivial
+        exact ⟨hd, ih hb h_body (Env.extend_ascFree henv hbvar)⟩
+    | mu ann body =>
+      simp [Expr.ascFree] at he; obtain ⟨ha, hb⟩ := he
+      simp only [absEval] at h
+      match h_body : absEval k (Env.extend env (.mu ann body)) body with
+      | none => simp [h_body] at h
+      | some body' =>
+        simp [h_body] at h; subst h
+        have hmu : Expr.ascFree (.mu ann body) := ⟨ha, hb⟩
+        exact ⟨ha, ih hb h_body (Env.extend_ascFree henv hmu)⟩
+    | app f a =>
+      simp [Expr.ascFree] at he; obtain ⟨hf, ha⟩ := he
+      simp only [absEval] at h
+      match h_fV : absEval k env f with
+      | none => simp [h_fV] at h
+      | some fV =>
+        match h_aV : absEval k env a with
+        | none => simp [h_fV, h_aV] at h
+        | some aV =>
+          have hfV_af := ih hf h_fV henv
+          have haV_af := ih ha h_aV henv
+          simp only [h_fV, h_aV] at h
+          -- Case-split on function value shape
+          cases fV with
+          | lam _dom bodyF =>
+            simp at h
+            have hbf : bodyF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.2
+            exact ih (Expr.ascFree_subst hbf haV_af) h henv
+          | mu annF bodyF =>
+            have haf : annF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.1
+            have hbf : bodyF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.2
+            simp only [] at h
+            split at h
+            · next _d retB _d2 _b2 =>
+              have : retB.ascFree := by
+                simp [Expr.ascFree] at haf; exact haf.2
+              exact ih (Expr.ascFree_subst this haV_af) h henv
+            · next retB _ =>
+              have : retB.ascFree := by
+                simp [Expr.ascFree] at hbf; exact hbf.2
+              exact ih (Expr.ascFree_subst this haV_af) h henv
+            · simp at h; subst h; trivial
+            · simp at h; subst h; exact ⟨hbf, haV_af⟩
+          | type =>
+            simp at h; subst h; trivial
+          | bvar _ =>
+            simp at h; subst h; exact ⟨hfV_af, haV_af⟩
+          | app _ _ =>
+            simp at h; subst h; exact ⟨hfV_af, haV_af⟩
+          | asc _ _ =>
+            exact absurd hfV_af (by simp [Expr.ascFree])
+
+/-- concEvalE version: identical structure to absEval_ascFree. -/
+theorem concEvalE_ascFree {fuel : Nat} {env : Env} {e v : Expr}
+    (he : e.ascFree)
+    (h : concEvalE fuel env e = some v)
+    (henv : ∀ k e, env.get? k = some e → e.ascFree)
+    : v.ascFree := by
+  induction fuel generalizing env e v with
+  | zero => simp [concEvalE] at h
+  | succ k ih =>
+    cases e with
+    | bvar j =>
+      simp only [concEvalE] at h
+      exact henv j v h
+    | type =>
+      simp [concEvalE] at h; subst h; trivial
+    | asc _ _ => exact absurd he (by simp [Expr.ascFree])
+    | lam dom body =>
+      simp [Expr.ascFree] at he; obtain ⟨hd, hb⟩ := he
+      simp only [concEvalE] at h
+      match h_body : concEvalE k (Env.extend env (.bvar 0)) body with
+      | none => simp [h_body] at h
+      | some body' =>
+        simp [h_body] at h; subst h
+        have hbvar : Expr.ascFree (.bvar 0) := trivial
+        exact ⟨hd, ih hb h_body (Env.extend_ascFree henv hbvar)⟩
+    | mu ann body =>
+      simp [Expr.ascFree] at he; obtain ⟨ha, hb⟩ := he
+      simp only [concEvalE] at h
+      match h_body : concEvalE k (Env.extend env (.mu ann body)) body with
+      | none => simp [h_body] at h
+      | some body' =>
+        simp [h_body] at h; subst h
+        have hmu : Expr.ascFree (.mu ann body) := ⟨ha, hb⟩
+        exact ⟨ha, ih hb h_body (Env.extend_ascFree henv hmu)⟩
+    | app f a =>
+      simp [Expr.ascFree] at he; obtain ⟨hf, ha⟩ := he
+      simp only [concEvalE] at h
+      match h_fV : concEvalE k env f with
+      | none => simp [h_fV] at h
+      | some fV =>
+        match h_aV : concEvalE k env a with
+        | none => simp [h_fV, h_aV] at h
+        | some aV =>
+          have hfV_af := ih hf h_fV henv
+          have haV_af := ih ha h_aV henv
+          simp only [h_fV, h_aV] at h
+          cases fV with
+          | lam _dom bodyF =>
+            simp at h
+            have hbf : bodyF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.2
+            exact ih (Expr.ascFree_subst hbf haV_af) h henv
+          | mu annF bodyF =>
+            have haf : annF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.1
+            have hbf : bodyF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.2
+            simp only [] at h
+            split at h
+            · next _d retB _d2 _b2 =>
+              have : retB.ascFree := by
+                simp [Expr.ascFree] at haf; exact haf.2
+              exact ih (Expr.ascFree_subst this haV_af) h henv
+            · next retB _ =>
+              have : retB.ascFree := by
+                simp [Expr.ascFree] at hbf; exact hbf.2
+              exact ih (Expr.ascFree_subst this haV_af) h henv
+            · simp at h; subst h; trivial
+            · simp at h; subst h; exact ⟨hbf, haV_af⟩
+          | type =>
+            simp at h; subst h; trivial
+          | bvar _ =>
+            simp at h; subst h; exact ⟨hfV_af, haV_af⟩
+          | app _ _ =>
+            simp at h; subst h; exact ⟨hfV_af, haV_af⟩
+          | asc _ _ =>
+            exact absurd hfV_af (by simp [Expr.ascFree])
+
+/-- On asc-free inputs with asc-free env, concEvalE and absEval produce the
+    same result. They differ ONLY at the asc case: concEvalE takes the lhs,
+    absEval takes the rhs. If there is no asc, they are identical.
+    Uses absEval_ascFree to show intermediate results are asc-free,
+    enabling the IH on beta-reduced/mu-app sub-expressions. -/
 theorem ascFree_eval_equiv {fuel : Nat} {env : Env} {e : Expr}
     (he : e.ascFree)
     (henv : ∀ k v, env.get? k = some v → v.ascFree)
@@ -277,25 +444,45 @@ theorem ascFree_eval_equiv {fuel : Nat} {env : Env} {e : Expr}
     | app f a =>
       simp [Expr.ascFree] at he; obtain ⟨hf, ha⟩ := he
       simp only [concEvalE, absEval]
+      -- Rewrite sub-evaluations of f and a to use absEval (since ascFree)
       rw [ih hf henv, ih ha henv]
-      -- After rewrite, the match on absEval results still has concEvalE in
-      -- sub-branches (beta-reduction, mu-app). These need the asc-free property
-      -- of the intermediate expressions to continue the equivalence.
-      sorry
-
-/-- Evaluator outputs are asc-free: neither concEvalE nor absEval produces
-    asc nodes in their output (both evaluate asc away). -/
-theorem concEvalE_ascFree {fuel : Nat} {env : Env} {e v : Expr}
-    (h : concEvalE fuel env e = some v)
-    (henv : ∀ k e, env.get? k = some e → e.ascFree)
-    : v.ascFree := by
-  sorry  -- by induction on fuel, cases on e; asc case forwards
-
-theorem absEval_ascFree {fuel : Nat} {env : Env} {e v : Expr}
-    (h : absEval fuel env e = some v)
-    (henv : ∀ k e, env.get? k = some e → e.ascFree)
-    : v.ascFree := by
-  sorry  -- identical structure to concEvalE_ascFree
+      -- Now both sides match on absEval results. Case-split and apply IH
+      -- to beta/mu-app sub-expressions (which are ascFree by absEval_ascFree).
+      match h_fV : absEval k env f with
+      | none => simp [h_fV]
+      | some fV =>
+        match h_aV : absEval k env a with
+        | none => simp [h_fV, h_aV]
+        | some aV =>
+          have hfV_af := absEval_ascFree hf h_fV henv
+          have haV_af := absEval_ascFree ha h_aV henv
+          cases fV with
+          | lam _dom bodyF =>
+            simp
+            have hbf : bodyF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.2
+            exact ih (Expr.ascFree_subst hbf haV_af) henv
+          | mu annF bodyF =>
+            have haf : annF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.1
+            have hbf : bodyF.ascFree := by
+              simp [Expr.ascFree] at hfV_af; exact hfV_af.2
+            -- Both evaluators have identical mu-app match structure.
+            -- Use split to case-split on the match, then IH for recursive cases.
+            simp only []
+            split
+            · next _d retB _d2 _b2 =>
+              have : retB.ascFree := by simp [Expr.ascFree] at haf; exact haf.2
+              exact ih (Expr.ascFree_subst this haV_af) henv
+            · next retB _ =>
+              have : retB.ascFree := by simp [Expr.ascFree] at hbf; exact hbf.2
+              exact ih (Expr.ascFree_subst this haV_af) henv
+            · rfl
+            · rfl
+          | type => simp
+          | bvar _ => simp
+          | app _ _ => simp
+          | asc _ _ => exact absurd hfV_af (by simp [Expr.ascFree])
 
 /-! ## Fuel monotonicity
 

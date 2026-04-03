@@ -1327,3 +1327,22 @@ example : concEvalE 5 [] (.asc (.lam .type (.bvar 0)) .type)
 example : concEvalE 5 [] (Expr.subst (.bvar 0) 0 .type)
         = absEval 5 [] (Expr.subst (.bvar 0) 0 .type)
         := by native_decide
+
+-- §17.1 UNCONDITIONAL absEval_ascFree/concEvalE_ascFree is FALSE
+-- Lambda domains are NOT evaluated, so asc in domains passes through:
+example : (absEval 5 [] (.lam (.asc .type .type) (.bvar 0))).map Expr.ascFreeB
+        = some false := by native_decide
+example : (concEvalE 5 [] (.lam (.asc .type .type) (.bvar 0))).map Expr.ascFreeB
+        = some false := by native_decide
+-- Mu annotations are NOT evaluated, so asc in annotations passes through:
+example : (absEval 5 [] (.mu (.asc .type .type) (.bvar 0))).map Expr.ascFreeB
+        = some false := by native_decide
+-- mu-app catch-all leaks raw body which can have asc:
+example : (absEval 5 [] (.mu .type (.app (.bvar 0) (.asc .type .type)))).map Expr.ascFreeB
+        = some false := by native_decide
+-- BUT: evaluators still AGREE on these expressions (asc in inactive positions):
+example : concEvalE 5 [] (.lam (.asc .type .type) (.bvar 0))
+        = absEval 5 [] (.lam (.asc .type .type) (.bvar 0)) := by native_decide
+example : concEvalE 5 [] (.mu (.asc .type .type) (.bvar 0))
+        = absEval 5 [] (.mu (.asc .type .type) (.bvar 0)) := by native_decide
+-- CONDITIONAL version IS true: ascFree input → ascFree output (now proven)

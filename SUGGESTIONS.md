@@ -172,33 +172,51 @@ for a working example of this pattern (handles σ = type with seen).
 The soundness_gen app case is now decomposed into 36 sub-cases. 23 proved,
 13 sorry'd. All sorry'd cases involve active computation (beta or mu-app).
 
-### KEY INSIGHT: Asc-free evaluator equivalence
+### ⚠ Asc-free approach has a hole (discovered 2026-04-03)
 
-Evaluator outputs are always asc-free (both evaluators strip ascription).
-On asc-free inputs, concEvalE = absEval (they differ only at asc).
-After beta-reduction or mu-app, the intermediate expression is asc-free,
-so both evaluators agree. **This reduces the cross-evaluator problem to
-a single-evaluator (absEval) congruence question.**
+**Agent:** ochre-lean-20260403-050103
 
-### Recommended next steps (in order):
+The claim "evaluator outputs are always asc-free" is FALSE. Unconditional
+`absEval_ascFree` / `concEvalE_ascFree` are FALSE — domains/annotations
+pass through unevaluated, and the mu-app catch-all leaks raw bodies with asc.
+See PROGRESS.md CRITICAL FINDING §7 and Tests.lean §17.1.
 
-1. **Formalize asc-free equivalence:** Define `ascFree`, prove evaluator
-   outputs are asc-free, prove `ascFree e → concEvalE fuel env e = absEval fuel env e`.
-   Concrete, independently useful.
+The CONDITIONAL version (`e.ascFree → output.ascFree`) is TRUE and proven,
+along with `ascFree_eval_equiv` (`ascFree → concEvalE = absEval`). But this
+doesn't help the app case because the post-beta expression is NOT ascFree
+when the source has asc.
 
-2. **Prove absEval-congruence:** If VCompat-related asc-free inputs go through
-   absEval (same fuel, env), the outputs are VCompat-related. This would
-   resolve all 13 sorry'd cases.
+**absEval-congruence** (step 2 below) also fails because it requires
+VCompat.subst_congr in the beta step, which is FALSE (Tests.lean §11.6).
 
-3. **Alternative: switch to semantic VCompat for lam.** The app case becomes
-   trivial (instantiate quantifier). Difficulty moves to lam case. The
-   semantic approach is cleaner long-term but requires more infrastructure.
+### Recommended next step: semantic VCompat for lam
 
-4. **Keep structural VCompat, use WellTyped:** For fT = lam, WellTyped gives
-   `WellTyped k env (bodyT.subst 0 aT) = true`. The IH almost applies —
-   the missing piece is showing concEvalE evaluates this successfully (which
-   follows from the asc-free equivalence: concEvalE = absEval on it, and
-   absEval already succeeded).
+The most promising approach is to change VCompat's lam case from structural
+to semantic. The app case becomes trivial (instantiate quantifier). The
+difficulty moves to the lam case of soundness_gen.
+
+```lean
+-- Replace structural:
+∨ (∃ domV domT bodyV bodyT, v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
+    VCompat n bodyV bodyT)
+-- With semantic:
+∨ (∃ domV domT bodyV bodyT, v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
+    ∀ j ≤ n, ∀ fuel env aV aT, VCompat j aV aT →
+      ∀ rv, concEvalE fuel env (bodyV.subst 0 aV) = some rv →
+      ∀ rτ, absEval fuel env (bodyT.subst 0 aT) = some rτ →
+      VCompat j rv rτ)
+```
+
+**Step-index trick:** For the app lam×lam case, ask for ih_f at step m+2
+(universally quantified n allows this). The semantic property at step m+2
+gives ∀ j ≤ m+1. With j = m+1 and ih_a at m+1, get VCompat (m+1) v τ.
+
+**Lam case challenge:** Proving the semantic property requires showing
+that evaluating normalized bodies with compatible args gives compatible
+results. This needs a congruence argument — but now it's about the
+evaluator OUTPUTS (not arbitrary VCompat expressions), so subst_congr
+isn't needed. The IH on body gives VCompat for the normalized bodies,
+and the semantic property wraps this in a quantifier over future applications.
 
 Note: VCompat.subst_congr is FALSE (counterexample in Tests.lean §11.6),
 so naive substitution congruence is NOT an option.

@@ -1,5 +1,49 @@
 # Decision Log
 
+## 2026-04-03: Unconditional ascFree of eval outputs is FALSE; conditional form proven
+
+**Agent:** ochre-lean-20260403-050103
+
+### Finding
+
+The previous agent claimed "evaluator outputs are always asc-free." This is FALSE.
+Lambda domains and mu annotations pass through unevaluated, so asc in those
+positions persists in the output. Additionally, the mu-app catch-all leaks the
+raw mu body (which comes from the evaluator output, not the source, but can still
+contain asc from domain/annotation passthrough).
+
+Counterexamples (added to Tests.lean §17.1):
+- `absEval 5 [] (lam (asc type type) (bvar 0))` → `lam (asc type type) (bvar 0)` (NOT ascFree)
+- `absEval 5 [] (mu type (app (bvar 0) (asc type type)))` → output has asc
+
+### What was proven instead
+
+The CONDITIONAL version is TRUE: if the INPUT is ascFree and the ENV is ascFree,
+then the OUTPUT is ascFree. This is because:
+- Domains/annotations come from the source (ascFree by hypothesis)
+- The mu env entry `.mu ann body` inherits ascFree from the source
+- Beta-reduced expressions are ascFree (by ascFree_subst)
+
+All three sorry'd Eval.lean theorems are now FULLY PROVEN:
+- `absEval_ascFree`: `e.ascFree → env ascFree → output.ascFree` (NEW precondition: `e.ascFree`)
+- `concEvalE_ascFree`: identical
+- `ascFree_eval_equiv`: `e.ascFree → env ascFree → concEvalE = absEval` (uses above two)
+
+### Impact on the app case
+
+The conditional `ascFree_eval_equiv` does NOT directly solve the soundness_gen
+app case. After beta-reduction, `bodyV.subst 0 aV` is NOT guaranteed ascFree
+because `bodyV` and `aV` come from evaluating a source program WITH asc.
+
+This means the asc-free approach for the app case is a dead end — the cross-
+evaluator problem cannot be reduced to a single evaluator this way. The most
+promising alternative is semantic VCompat for lam (quantify over compatible
+arguments instead of requiring structural body compatibility). See PROGRESS.md.
+
+### Sorry count change
+
+11 → 8 declarations with sorry. All 3 Eval.lean sorrys eliminated.
+
 ## 2026-04-03: Asc-free evaluator equivalence for app case
 
 **Agent:** ochre-lean-20260403-042336

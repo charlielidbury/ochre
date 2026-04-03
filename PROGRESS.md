@@ -13,7 +13,7 @@ the mu design.
 
 ## Build status
 
-`lake build` passes. **11 sorry'd declarations** (8 in Soundness.lean + 3 new in Eval.lean):
+`lake build` passes. **8 sorry'd declarations** (all in Soundness.lean):
 
 Soundness.lean (8):
 - `VCompat.from_self_intro_gen` (line ~437) — 1 sorry, inner recursion
@@ -25,10 +25,10 @@ Soundness.lean (8):
 - `soundness_gen` (line ~1152) — **13 sub-sorrys** (app case decomposed; was 1 sorry)
 - `soundness_concEval` (line ~1490) — 1 sorry (bridge)
 
-Eval.lean (3, NEW — asc-free infrastructure):
-- `ascFree_eval_equiv` — app case sorry'd (needs absEval_ascFree)
-- `concEvalE_ascFree` — evaluator output asc-free (sorry'd)
-- `absEval_ascFree` — evaluator output asc-free (sorry'd)
+Eval.lean (0 — all 3 asc-free declarations NOW PROVEN):
+- `absEval_ascFree` — PROVEN (conditional: requires input ascFree)
+- `concEvalE_ascFree` — PROVEN (conditional: requires input ascFree)
+- `ascFree_eval_equiv` — PROVEN (concEvalE = absEval on ascFree inputs)
 
 **`soundness` (using concEvalE) is sorry-free!** (depends transitively on sorry'd lemmas)
 
@@ -235,28 +235,43 @@ a source sub-expression).
 bodyV.subst 0 aV while absEval evaluates bodyT.subst 0 aT. These are DIFFERENT
 expressions. The IH requires evaluating the SAME expression by both evaluators.
 
-**The key insight (NEW):** Evaluator outputs are asc-free, and on asc-free
-inputs concEvalE = absEval. So after beta-reduction, both sides effectively
-use the same evaluator (absEval). This reduces the problem to:
+**⚠ The asc-free approach has a hole (discovered by agent ochre-lean-20260403-050103):**
+The claim "evaluator outputs are always asc-free" is FALSE (see CRITICAL FINDING §7).
+Evaluator outputs from programs with asc CAN have asc in:
+- Lambda domains (passed through unevaluated)
+- Mu annotations (passed through unevaluated)
+- Mu-app catch-all outputs (leak raw body which can contain asc)
 
-VCompat n (absEval k env (bodyV.subst 0 aV)) (absEval k env (bodyT.subst 0 aT))
+Therefore `bodyV.subst 0 aV` is NOT guaranteed ascFree when the source has asc.
+The conditional `ascFree_eval_equiv` (now proven) only applies to expressions
+that are already ascFree. **This approach does NOT directly solve the app case.**
 
-Which is **single-evaluator congruence for VCompat-related inputs**.
+**Remaining approaches for the app case:**
 
-**Recommended approach (in order):**
-1. Formalize asc-free equivalence: `ascFree e → concEvalE fuel env e = absEval fuel env e`
-   and `concEvalE fuel env e = some v → ascFree v` / `absEval fuel env e = some v → ascFree v`.
-   This is concrete, provable, and independently useful.
-2. Then prove absEval-congruence for VCompat-related asc-free inputs, OR switch
-   to semantic VCompat for lam.
+1. **Semantic VCompat for lam** (MOST PROMISING): Change VCompat's lam case from
+   structural (VCompat n bodyV bodyT) to semantic (∀ compatible args, applying
+   gives compatible results). App case becomes trivial (instantiate quantifier).
+   Difficulty moves to lam case of soundness_gen.
+   
+   **Challenge:** For the lam case of soundness_gen with semantic VCompat, we
+   need: given compatible args aV/aT, show bodyV'.subst 0 aV and bodyT'.subst 0 aT
+   evaluate to compatible results. But bodyV'/bodyT' are evaluator OUTPUTS (normalized
+   bodies), and the IH operates on SOURCE expressions. Bridging this gap requires
+   relating env-based evaluation to substitution.
+   
+   **Step-index consideration:** VCompat (n+1) lam gives semantic property at step n.
+   But IH gives VCompat at any step level (n universally quantified). So ask for
+   ih_f at step m+2 to get semantic property at m+1, which with ih_a at m+1 gives
+   VCompat (m+1) for the result. This resolves the off-by-one issue.
 
-**WellTyped gives a useful precondition:** For fT = lam, WellTyped's app case
-provides `WellTyped k env (bodyT.subst 0 aT) = true`. This means the IH
-applies to bodyT.subst 0 aT IF we can show concEvalE evaluates it successfully.
-By the asc-free insight, concEvalE(bodyT.subst 0 aT) = absEval(bodyT.subst 0 aT) = τ,
-so the IH gives VCompat n τ τ (VCompat.refl). This doesn't help directly
-(we need VCompat n v τ, not VCompat n τ τ), but shows the IH infrastructure
-is almost sufficient.
+2. **Use WellTyped to call IH on bodyT.subst 0 aT:** WellTyped app gives
+   `WellTyped k env (bodyT.subst 0 aT) = true`. The IH WOULD apply if we could
+   show concEvalE succeeds on it. This gives VCompat for the TYPE side (τ with
+   itself) but not for v vs τ. Still insufficient alone.
+
+3. **VCompat.subst_congr** is FALSE (counterexample in Tests.lean §11.6).
+   **absEval congruence** would also require subst_congr in the beta step.
+   Do NOT attempt either of these.
 
 ### Priority 2: Prove mu_body_subst_vcompat Case C
 
@@ -314,10 +329,13 @@ The soundness_gen app case is now decomposed — see Priority 1 above.
 - VCompat.fixpoint_mu_left (fixpoint mu-left at all steps)
 - VCompat.self_intro_eq (self-intro via equality)
 - **soundness_gen app case: 23/36 sub-cases** (type, contradiction, structural app) NEW
-- **Expr.ascFree_shift** — FULLY PROVEN (shift preserves asc-free) NEW
-- **Expr.ascFree_subst** — FULLY PROVEN (subst preserves asc-free) NEW
-- **Env.extend_ascFree** — FULLY PROVEN (env extension preserves asc-free) NEW
-- **Expr.ascFree_iff_ascFreeB** — FULLY PROVEN (Prop/Bool equivalence) NEW
+- **Expr.ascFree_shift** — FULLY PROVEN (shift preserves asc-free)
+- **Expr.ascFree_subst** — FULLY PROVEN (subst preserves asc-free)
+- **Env.extend_ascFree** — FULLY PROVEN (env extension preserves asc-free)
+- **Expr.ascFree_iff_ascFreeB** — FULLY PROVEN (Prop/Bool equivalence)
+- **absEval_ascFree** — FULLY PROVEN (conditional: ascFree input → ascFree output) NEW
+- **concEvalE_ascFree** — FULLY PROVEN (conditional: ascFree input → ascFree output) NEW
+- **ascFree_eval_equiv** — FULLY PROVEN (concEvalE = absEval on ascFree inputs) NEW
 - soundness_gen bvar, type, lam, mu, asc cases
 - subCheckNF_type_self_intro (extraction lemma)
 - subCheckNF_neutral_inferType helper lemma
@@ -346,17 +364,41 @@ Counterexample in Tests.lean §11.6.
 Counterexample in Tests.lean §14. Evaluators don't evaluate lambda domains
 or mu annotations, so outputs can have free bvar 0 in those positions.
 
-### 6. closedEvalB 0 for ALL evaluator outputs is FALSE (NEW)
+### 6. closedEvalB 0 for ALL evaluator outputs is FALSE
 The mu-app catch-all (`| _, _ => some (.app body aVal)`) leaks the raw mu
 body into the output. This body can have free bvar 0 (the self-reference)
 in evaluated positions. Example: `mu type (app (bvar 0) (bvar 0))`.
 However, the soundness_gen mu sorry is STILL TRUE because whenever this
 happens and evaluators differ, bodyT = type (VCompat top). See Tests.lean §16.
 
+### 7. UNCONDITIONAL absEval_ascFree / concEvalE_ascFree is FALSE (NEW)
+Evaluator outputs are NOT always asc-free. Lambda domains and mu annotations
+pass through unevaluated, so asc in those positions persists in the output.
+Additionally, the mu-app catch-all leaks the raw mu body which can have asc
+in active positions.
+
+Counterexamples (Tests.lean §17.1):
+- `absEval 5 [] (lam (asc type type) (bvar 0))` → `lam (asc type type) (bvar 0)` (NOT ascFree)
+- `absEval 5 [] (mu type (app (bvar 0) (asc type type)))` → output has asc
+
+The CONDITIONAL version IS true and is now PROVEN:
+- `absEval_ascFree`: `e.ascFree → env ascFree → output.ascFree`
+- `concEvalE_ascFree`: same
+- `ascFree_eval_equiv`: `e.ascFree → env ascFree → concEvalE = absEval`
+
+**Impact on app case:** The asc-free insight (concEvalE = absEval after beta)
+does NOT work for the general app case. After beta-reduction, `bodyV.subst 0 aV`
+might NOT be ascFree because `bodyV` and `aV` (evaluator outputs of a source
+program with asc) can have asc in domains/annotations and in mu-app catch-all
+outputs. The conditional `ascFree_eval_equiv` only helps when the input
+expression is already ascFree. See DECISION-LOG.md for analysis.
+
 ## File structure
 
 - `Syntax.lean` — Expr type (de Bruijn indices), substitution, shifting
-- `Eval.lean` — absEval, concEval, concEvalE, fuel monotonicity lemmas
+- `Eval.lean` — absEval, concEval, concEvalE, fuel monotonicity lemmas,
+  ascFree infrastructure (all proven: ascFree_shift/subst, Env.extend_ascFree,
+  absEval_ascFree, concEvalE_ascFree, ascFree_eval_equiv)
 - `Subtyping.lean` — subCheckNF (algorithmic), SubtypeCore/Subtype' (declarative),
   helper extraction lemmas, subCheckNF non-property documentation
 - `Soundness.lean` — WellTyped, vEquivB, closedEvalB, VCompat definition
@@ -427,5 +469,9 @@ Sub-cases:
 - **VCompat.adequacy with raw structural mu**: FALSE (resolved by definition change)
 - **Naive closedness lemma (v.subst 0 X = v)**: FALSE (evaluators don't eval domains)
 - **closedEvalB 0 for all eval outputs**: FALSE (mu-app catch-all leaks raw body)
+- **Unconditional absEval_ascFree / concEvalE_ascFree**: FALSE (domains pass through,
+  mu-app catch-all leaks raw body with asc). The CONDITIONAL version (ascFree input →
+  ascFree output) IS true and proven. But the conditional form doesn't help the
+  soundness_gen app case because evaluator outputs of programs WITH asc can have asc.
 
 **Do not attempt any of the above approaches.**
