@@ -399,17 +399,6 @@ theorem VCompat.fixpoint_mu_left {ann body : Expr} (n : Nat) (τ : Expr)
     apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
     exact ⟨ann, body, rfl, by rw [hfix]; exact ih⟩
 
-/-- When subCheckNF succeeds for .type ⊑ mu with empty seen, self-intro fires:
-    the inner call checks .type ⊑ body.subst 0 (mu ann body) with extended seen. -/
-theorem subCheckNF_type_self_intro {fuel : Nat} {ctx : List Expr} {ann body : Expr}
-    (h : subCheckNF (fuel + 1) ctx [] Expr.type (.mu ann body) = true)
-    : subCheckNF fuel ctx [(.type, .mu ann body)] .type (body.subst 0 (.mu ann body)) = true := by
-  unfold subCheckNF at h
-  have h_neq : (Expr.type == Expr.mu ann body) = false :=
-    beq_eq_false_iff_ne.mpr (fun h => nomatch h)
-  simp only [h_neq, ite_false, List.any_nil, Bool.false_eq_true] at h
-  exact h
-
 /-- When subCheckNF succeeds from .type, VCompat holds for all v and n.
     subCheckNF .type τ only succeeds when τ is .type (top) or a mu (self-intro chain).
     The proof uses outer induction on fuel (self-intro decreases fuel) and inner
@@ -446,9 +435,10 @@ theorem VCompat.from_type_sub_gen :
         cases τ with
         | type => simp [Expr.beq_refl] at heq_beq
         | mu ann_τ body_τ =>
-          -- Self-intro: hcheck is now the inner call after match
-          -- .type is not lam/mu, τ = mu → match goes to (_, .mu) → self-intro
-          -- hcheck : subCheckNF k ctx ((.type, mu) :: seen) .type (body.subst ...)
+          -- Self-intro: hcheck is now the inner call after normalization
+          -- With mu-as-value, subCheckNF normalizes body.subst via absEval.
+          -- The proof needs to bridge between the normalized form (in hcheck)
+          -- and the raw substitution (in VCompat mu-right).
           -- Build VCompat n v (mu ann_τ body_τ) via inner induction on step j ≤ n
           suffices h_all : ∀ j, j ≤ n → VCompat j v (.mu ann_τ body_τ) from
             h_all n (Nat.le_refl _)
@@ -460,18 +450,12 @@ theorem VCompat.from_type_sub_gen :
             unfold VCompat
             apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
             refine ⟨ann_τ, body_τ, rfl, ?_⟩
-            -- Use ih_fuel at step i with extended seen
-            apply ih_fuel i v _ ctx ((.type, .mu ann_τ body_τ) :: seen) hcheck
-            -- hseen for extended seen at step i
-            intro p hp
-            cases List.mem_cons.mp hp with
-            | inl heq_p =>
-              -- New entry (.type, mu ann_τ body_τ): need VCompat i v (mu ...)
-              cases heq_p; simp
-              exact ih_j (Nat.le_of_succ_le hi)
-            | inr h_old =>
-              -- Old entry: VCompat i v p.2 from hseen at step n via mono_le
-              exact VCompat.mono_le (hseen p h_old) (Nat.le_of_succ_le hi)
+            -- With mu-as-value, subCheckNF normalizes after substitution.
+            -- ih_fuel gives VCompat for the normalized form, but we need it
+            -- for the raw body.subst. This bridge requires showing that
+            -- absEval normalization preserves VCompat (evaluation soundness).
+            -- Sorry'd pending the normalization-VCompat bridge lemma.
+            sorry
         | lam _ _ => simp [inferType] at hcheck
         | bvar _ => simp [inferType] at hcheck
         | app _ _ => simp [inferType] at hcheck
@@ -1130,39 +1114,9 @@ theorem absEval_closedEvalB {fuel : Nat} {env : Env} {e v : Expr}
     : v.closedEvalB 0 = true := by
   sorry
 
-/-- For the soundness_gen mu case: if VCompat n bodyV bodyT, then
-    VCompat n (bodyV.subst 0 (mu ann bodyV)) (bodyT.subst 0 (mu ann bodyT)).
-
-    This holds because evaluator outputs satisfy one of:
-    1. bodyT = type → subst gives type → VCompat top
-    2. bodyV = bodyT → subst gives equal results → VCompat refl
-    3. closedEvalB 0 holds → subst is vEquiv-no-op → VCompat preserved
-
-    Brute-force tested in Tests.lean §16 for all small well-typed programs.
-    The proof requires either:
-    - A refined closedEvalB that accounts for mu-app catch-all outputs, or
-    - A direct proof that evaluator outputs satisfy the trichotomy above.
-    Sorry'd pending this development. -/
-theorem mu_body_subst_vcompat {n : Nat} {bodyV bodyT ann : Expr}
-    (h : VCompat n bodyV bodyT)
-    : VCompat n (bodyV.subst 0 (.mu ann bodyV)) (bodyT.subst 0 (.mu ann bodyT)) := by
-  -- Case A: bodyT = type → type.subst 0 Y = type → VCompat top
-  by_cases hτ : bodyT = .type
-  · subst hτ; simp [Expr.subst]
-    cases n with
-    | zero => simp [VCompat]
-    | succ k => unfold VCompat; exact Or.inl rfl
-  -- Case B: bodyV = bodyT → v = τ → subst gives same result → VCompat refl
-  · by_cases heq : bodyV = bodyT
-    · subst heq
-      cases n with
-      | zero => simp [VCompat]
-      | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
-    -- Case C: closedEvalB holds → vEquiv chain
-    -- This case requires proving that closedEvalB 0 bodyV and closedEvalB 0 bodyT
-    -- hold when bodyV ≠ bodyT and bodyT ≠ type. Brute-force tested in Tests.lean §16.
-    -- For now, sorry this case.
-    · sorry
+-- mu_body_subst_vcompat: REMOVED (no longer needed with mu-as-value).
+-- With mu-as-value, both evaluators return mu unchanged, so the soundness_gen
+-- mu case is trivially VCompat refl. The subst-VCompat bridge is unnecessary.
 
 /-! ## Soundness theorem
 
@@ -1252,43 +1206,12 @@ theorem soundness_gen
             apply Or.inr; apply Or.inr; apply Or.inl
             exact ⟨dom, dom, bodyV', bodyT', rfl, rfl, fun j hj fuel' env' aV aT h_args rv h_rv rτ h_rτ => sorry⟩
       | mu ann body =>
+        -- mu is a value: both evaluators return it unchanged.
         simp only [concEvalE] at h_conc
         simp only [absEval] at h_abs
-        match h_cv : concEvalE k (Env.extend env (.mu ann body)) body with
-        | none => simp [h_cv] at h_conc
-        | some bodyV' =>
-          simp [h_cv] at h_conc
-          match h_av : absEval k (Env.extend env (.mu ann body)) body with
-          | none => simp [h_av] at h_abs
-          | some bodyT' =>
-            simp [h_av] at h_abs
-            subst h_conc; subst h_abs
-            have h_wt_body : WellTyped k (Env.extend env (.mu ann body)) body (Env.extend tyCtx (.mu ann body)) = true := by
-              simp [WellTyped] at h_wt; exact h_wt
-            -- IH on body at step m (one less than goal m+1)
-            have ih_body := ih (Env.extend env (.mu ann body)) body bodyV' bodyT' m
-                           (Env.extend tyCtx (.mu ann body)) h_wt_body h_cv h_av
-            -- Need: VCompat (m+1) (mu ann bodyV') (mu ann bodyT')
-            -- Via unfolded structural mu: VCompat m (bodyV'.subst 0 v) (bodyT'.subst 0 τ)
-            -- where v = mu ann bodyV', τ = mu ann bodyT'
-            --
-            -- Three cases (all tested, no counterexample in §16):
-            -- Case A: bodyT' = type → τ.subst 0 Y = type → VCompat top
-            -- Case B: bodyV' = bodyT' → v = τ → subst equal → VCompat refl
-            -- Case C: closedEvalB 0 holds → vEquiv chain
-            --
-            -- Why these cover all well-typed evaluator outputs:
-            -- closedEvalB fails only when mu-app catch-all leaks raw bvar 0.
-            -- This happens when concEvalE sees mu in function position with non-lam
-            -- body. For absEval (which sees the asc rhs = type in these cases),
-            -- the result is type. So closedEvalB failure + bodyV'≠bodyT' → bodyT'=type.
-            -- Brute-force tested in §16. This trichotomy is sorry'd for now.
-            unfold VCompat
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-            refine ⟨ann, ann, bodyV', bodyT', rfl, rfl, ?_⟩
-            -- Need: VCompat m (bodyV'.subst 0 (mu ann bodyV')) (bodyT'.subst 0 (mu ann bodyT'))
-            -- from: VCompat m bodyV' bodyT'
-            exact mu_body_subst_vcompat ih_body
+        cases h_conc; cases h_abs
+        -- v = τ = mu ann body, so VCompat by refl
+        unfold VCompat; exact Or.inr (Or.inl rfl)
       | app f a =>
         -- Both evaluators evaluate f and a, then case-split on the function result.
         simp only [concEvalE] at h_conc

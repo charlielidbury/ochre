@@ -54,13 +54,7 @@ def absEval (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
       | none => none
     | .type         => some .type
     | .asc _term ty => absEval fuel env ty  -- compile-time: take the rhs
-    | .mu ann body =>
-      -- Evaluate body with bvar 0 bound to the mu value itself.
-      -- The mu value is NOT shifted because its bvars are already at
-      -- the correct depth (mu body scope = mu binder scope).
-      match absEval fuel (env.extend (.mu ann body)) body with
-      | some body' => some (.mu ann body')
-      | none => none
+    | .mu _ann _body => some e  -- mu is a value, like lambda
     | .app f a      =>
       match absEval fuel env f, absEval fuel env a with
       | some (.lam _dom body), some aVal =>
@@ -130,10 +124,7 @@ def concEvalE (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
       | none => none
     | .type         => some .type
     | .asc term _   => concEvalE fuel env term  -- runtime: take the lhs
-    | .mu ann body =>
-      match concEvalE fuel (env.extend (.mu ann body)) body with
-      | some body' => some (.mu ann body')
-      | none => none
+    | .mu _ann _body => some e  -- mu is a value, like lambda
     | .app f a      =>
       match concEvalE fuel env f, concEvalE fuel env a with
       | some (.lam _dom body), some aVal =>
@@ -278,14 +269,7 @@ theorem absEval_ascFree {fuel : Nat} {env : Env} {e v : Expr}
         have hbvar : Expr.ascFree (.bvar 0) := trivial
         exact ⟨hd, ih hb h_body (Env.extend_ascFree henv hbvar)⟩
     | mu ann body =>
-      simp [Expr.ascFree] at he; obtain ⟨ha, hb⟩ := he
-      simp only [absEval] at h
-      match h_body : absEval k (Env.extend env (.mu ann body)) body with
-      | none => simp [h_body] at h
-      | some body' =>
-        simp [h_body] at h; subst h
-        have hmu : Expr.ascFree (.mu ann body) := ⟨ha, hb⟩
-        exact ⟨ha, ih hb h_body (Env.extend_ascFree henv hmu)⟩
+      simp only [absEval] at h; cases h; exact he
     | app f a =>
       simp [Expr.ascFree] at he; obtain ⟨hf, ha⟩ := he
       simp only [absEval] at h
@@ -356,14 +340,7 @@ theorem concEvalE_ascFree {fuel : Nat} {env : Env} {e v : Expr}
         have hbvar : Expr.ascFree (.bvar 0) := trivial
         exact ⟨hd, ih hb h_body (Env.extend_ascFree henv hbvar)⟩
     | mu ann body =>
-      simp [Expr.ascFree] at he; obtain ⟨ha, hb⟩ := he
-      simp only [concEvalE] at h
-      match h_body : concEvalE k (Env.extend env (.mu ann body)) body with
-      | none => simp [h_body] at h
-      | some body' =>
-        simp [h_body] at h; subst h
-        have hmu : Expr.ascFree (.mu ann body) := ⟨ha, hb⟩
-        exact ⟨ha, ih hb h_body (Env.extend_ascFree henv hmu)⟩
+      simp only [concEvalE] at h; cases h; exact he
     | app f a =>
       simp [Expr.ascFree] at he; obtain ⟨hf, ha⟩ := he
       simp only [concEvalE] at h
@@ -481,13 +458,7 @@ theorem absEval_fuel_mono {n : Nat} {env : Env} {e v : Expr}
         simp only [ih hb]
         exact h
     | .mu ann body =>
-      unfold absEval at h ⊢
-      match hb : absEval k (Env.extend env (.mu ann body)) body with
-      | none => simp [hb] at h
-      | some body' =>
-        simp only [hb] at h
-        simp only [ih hb]
-        exact h
+      simp [absEval] at h ⊢; exact h
     | .app f a =>
       unfold absEval at h ⊢
       match hf : absEval k env f with

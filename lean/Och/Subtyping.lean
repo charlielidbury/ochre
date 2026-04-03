@@ -159,15 +159,24 @@ def subCheckNF (fuel : Nat) (ctx : List Expr)
         -- are one binder deeper.
         && subCheckNF fuel (Env.extend ctx (domB_norm.shift 1 0)) seen bodyA bodyB
       | .mu _annA bodyA, .mu _annB bodyB =>
-        -- Mu subtyping: covariant in body. The mu value is at the outer depth,
-        -- so shift it for the inner scope.
-        subCheckNF fuel (Env.extend ctx (Expr.shift 1 0 (.mu _annA bodyA))) seen bodyA bodyB
+        -- Mu subtyping: covariant in body. Normalize bodies (mu-as-value
+        -- means absEval no longer pre-normalizes mu bodies).
+        let ctxA := Env.extend ctx (Expr.shift 1 0 (.mu _annA bodyA))
+        let bodyA' := match absEval fuel ctxA bodyA with | some x => x | none => bodyA
+        let bodyB' := match absEval fuel ctxA bodyB with | some x => x | none => bodyB
+        subCheckNF fuel ctxA seen bodyA' bodyB'
       | _, .mu _ann body =>
         -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
-        subCheckNF fuel ctx ((a, b) :: seen) a (body.subst 0 b)
+        -- Normalize after substitution (mu bodies are raw).
+        let u := body.subst 0 b
+        let u' := match absEval fuel ctx u with | some x => x | none => u
+        subCheckNF fuel ctx ((a, b) :: seen) a u'
       | .mu ann body, _ =>
         -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
-        subCheckNF fuel ctx ((a, b) :: seen) (body.subst 0 (.mu ann body)) b
+        -- Normalize after substitution (mu bodies are raw).
+        let u := body.subst 0 (.mu ann body)
+        let u' := match absEval fuel ctx u with | some x => x | none => u
+        subCheckNF fuel ctx ((a, b) :: seen) u' b
       | _, _ =>
         match inferType ctx a with
         | some ty => subCheckNF fuel ctx seen ty b
@@ -222,14 +231,15 @@ theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : List Expr}
     | asc t ty => simp [inferType] at h
 
 /-- When subCheckNF succeeds for mu ⊑ mu (not by reflexivity),
-    the body check also succeeds. -/
+    the normalized body check also succeeds. With mu-as-value, bodies are
+    normalized on-demand in subCheckNF rather than pre-normalized by absEval. -/
 theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : List Expr} {annS bodyS annT bodyT : Expr}
     (h : subCheckNF (fuel + 1) ctx [] (Expr.mu annS bodyS) (Expr.mu annT bodyT) = true)
     (h_neq : Expr.mu annS bodyS ≠ Expr.mu annT bodyT) :
-    ∃ fuel' ctx', subCheckNF fuel' ctx' [] bodyS bodyT = true := by
+    ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = true := by
   unfold subCheckNF at h
   simp only [beq_eq_false_iff_ne.mpr h_neq, ite_false, List.any_nil, Bool.and_eq_true] at h
-  exact ⟨fuel, _, h⟩
+  exact ⟨fuel, _, _, _, h⟩
 
 /-- When subCheckNF succeeds with .type on the left against a non-.type target
     with empty seen, the target must be .mu. -/

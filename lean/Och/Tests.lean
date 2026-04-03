@@ -749,7 +749,9 @@ example : subCheckNF 10 [] [] subCheckNF_trans_a subCheckNF_trans_c = false := b
 -- When v is also a mu, subCheckNF uses the structural (mu, mu) branch
 -- instead of self-intro, and the structural check can fail.
 example : subCheckNF 10 [] [] Expr.type (Expr.mu Expr.type (Expr.bvar 0)) = true := by native_decide
-example : subCheckNF 10 [] [] (Expr.mu Expr.type (Expr.lam Expr.type (Expr.bvar 0))) (Expr.mu Expr.type (Expr.bvar 0)) = false := by native_decide
+-- With mu-as-value, mu bodies are normalized on-demand in subCheckNF,
+-- so this now succeeds (normalization resolves bvar 0 to the mu value).
+example : subCheckNF 10 [] [] (Expr.mu Expr.type (Expr.lam Expr.type (Expr.bvar 0))) (Expr.mu Expr.type (Expr.bvar 0)) = true := by native_decide
 
 -- ============================================================
 -- §11.6 VCompat.subst_congr COUNTEREXAMPLE
@@ -1038,21 +1040,17 @@ private def vcompat_check (ctxs : List (List Expr)) : Nat → Expr → Expr → 
          | none => false
 
 -- Helper: check soundness_gen mu case for a specific mu expression
--- Returns true iff:
--- 1. The program is not well-typed (vacuous), OR
--- 2. VCompat on subst'd bodies holds
--- This mimics what soundness_gen needs: WellTyped → VCompat on unfolded forms
-private def check_mu_soundness (fuel steps : Nat) (ann body : Expr) : Bool :=
+-- With mu-as-value, both evaluators return mu unchanged (v = τ = mu ann body),
+-- so VCompat is trivially refl. This test now just verifies that both evaluators
+-- agree (return the same mu) for well-typed programs.
+private def check_mu_soundness (fuel _steps : Nat) (ann body : Expr) : Bool :=
     let muExpr := Expr.mu ann body
     -- Check WellTyped first (vacuous if not well-typed)
     if !(WellTyped fuel [] muExpr) then true
     else
-      let env := Env.extend [] muExpr
-      match concEvalE fuel env body, absEval fuel env body with
-      | some bodyV', some bodyT' =>
-          let unV := bodyV'.subst 0 (.mu ann bodyV')
-          let unT := bodyT'.subst 0 (.mu ann bodyT')
-          vcompat_check [[], [.type], [.lam .type .type]] steps unV unT
+      -- With mu-as-value, absEval and concEvalE both return some (mu ann body)
+      match concEvalE fuel [] muExpr, absEval fuel [] muExpr with
+      | some v, some τ => v == τ  -- Both return the same mu, so VCompat by refl
       | _, _ => true  -- eval fails, vacuous
 
 -- Test 1: Simple mu with no ascription (both evaluators agree)
@@ -1227,41 +1225,14 @@ theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by
 -- §16 VCompat-equivalence (vEquiv) and mu_body_subst_vcompat tests
 -- ============================================================
 
--- §16.1 mu_body_subst_vcompat: the core lemma for soundness_gen mu case
--- Tests that VCompat on raw evaluator bodies implies VCompat on subst'd bodies.
--- This is mu_body_subst_vcompat's claim.
-
--- Helper: check mu_body_subst_vcompat for a specific mu expression
--- Returns true iff:
--- 1. Not well-typed (vacuous), OR
--- 2. Eval fails (vacuous), OR
--- 3. VCompat on subst'd bodies holds (given VCompat on raw bodies from IH)
-private def check_mu_subst_vcompat (fuel steps : Nat) (ann body : Expr) : Bool :=
-  if !(WellTyped fuel [] (.mu ann body)) then true
-  else
-    let env := Env.extend [] (.mu ann body)
-    match concEvalE fuel env body, absEval fuel env body with
-    | some bodyV', some bodyT' =>
-        -- The IH would give VCompat for raw bodies. Check subst'd bodies too.
-        let v := Expr.mu ann bodyV'
-        let τ := Expr.mu ann bodyT'
-        vcompat_check [[], [.type], [.lam .type .type]] steps
-          (bodyV'.subst 0 v) (bodyT'.subst 0 τ)
-    | _, _ => true
-
--- Individual cases with known different evaluator outputs
-example : check_mu_subst_vcompat 20 10 .type (.lam .type (.bvar 0)) = true := by native_decide
-example : check_mu_subst_vcompat 20 10 .type (.lam (.bvar 0) (.bvar 0)) = true := by native_decide
-example : check_mu_subst_vcompat 20 10 .type
-    (.asc (.lam (.bvar 0) (.bvar 0)) (.lam .type .type)) = true := by native_decide
-example : check_mu_subst_vcompat 20 10 .type
-    (.asc (.bvar 0) (.lam .type .type)) = true := by native_decide
-example : check_mu_subst_vcompat 20 10 .type
-    (.lam .type (.asc (.bvar 1) .type)) = true := by native_decide
-
--- Brute-force: all small bodies with all annotations
-example : (small_anns.all fun ann =>
-  small_bodies.all fun body => check_mu_subst_vcompat 20 8 ann body) = true := by native_decide
+-- §16.1 mu_body_subst_vcompat: NO LONGER NEEDED with mu-as-value
+-- With mu-as-value, both evaluators return mu unchanged, so the soundness_gen
+-- mu case is trivially VCompat refl. The mu_body_subst_vcompat lemma is
+-- no longer used. These tests verified the old lemma and are now obsolete.
+--
+-- The old test checked that VCompat on raw evaluator bodies implies VCompat
+-- on subst'd bodies. With mu-as-value, both evaluators produce identical
+-- results for mu, making this bridge unnecessary.
 
 -- §16.2 closedEvalB: NOT universally true for evaluator outputs
 -- The mu-app catch-all can leak raw bvar 0 into outputs. Example:
@@ -1700,8 +1671,9 @@ private def check_bridge_closed (fuel : Nat) (bodies args : List Expr)
 
 private def bridge_closed_failures :=
   check_bridge_closed 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) closed_values
--- Bridge is FALSE even with closed args:
-example : bridge_closed_failures.length > 0 := by native_decide
+-- With mu-as-value, mu bodies are no longer normalized under binders,
+-- so the bridge now holds for these test cases.
+example : bridge_closed_failures.length = 0 := by native_decide
 
 -- §20.2 Bridge with non-empty envs
 -- Test with env = [some_value] to simulate being under a binder
@@ -1727,8 +1699,8 @@ private def check_bridge_envs (fuel : Nat) (bodies args : List Expr) (envs : Lis
 
 private def bridge_env_failures :=
   check_bridge_envs 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) closed_values test_envs
--- Bridge also fails with various envs:
-example : bridge_env_failures.length > 0 := by native_decide
+-- With mu-as-value, bridge now holds with various envs.
+example : bridge_env_failures.length = 0 := by native_decide
 
 -- §20.3 Also test for absEval
 private def check_bridge_abs (fuel : Nat) (bodies args : List Expr) (envs : List Env)
@@ -1750,8 +1722,8 @@ private def check_bridge_abs (fuel : Nat) (bodies args : List Expr) (envs : List
 
 private def bridge_abs_failures :=
   check_bridge_abs 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) closed_values test_envs
--- Bridge also fails for absEval:
-example : bridge_abs_failures.length > 0 := by native_decide
+-- With mu-as-value, bridge now holds for absEval.
+example : bridge_abs_failures.length = 0 := by native_decide
 
 -- §20.4 Evaluation idempotency: concEvalE fuel env v = some v for evaluator outputs?
 private def check_eval_idempotent (fuel : Nat) (exprs : List Expr) (envs : List Env)
@@ -1801,8 +1773,8 @@ private def check_fixpoints (fuel : Nat) (env : Env) (vals : List Expr) : List (
     else acc ++ [(v, re)]
   ) []
 
--- Some evaluator outputs are not fixpoints (mu normalization creates deeper towers).
-example : (check_fixpoints 10 [] eval_outputs_empty).length > 0 := by native_decide
+-- With mu-as-value, evaluator outputs are fixpoints (mu returned as-is).
+example : (check_fixpoints 10 [] eval_outputs_empty).length = 0 := by native_decide
 
 -- Now test bridge with eval-output args only
 private def check_bridge_evalout (fuel : Nat) (bodies : List Expr) (envs : List Env)
@@ -1826,8 +1798,8 @@ private def check_bridge_evalout (fuel : Nat) (bodies : List Expr) (envs : List 
 private def bridge_evalout_failures :=
   check_bridge_evalout 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) test_envs
 
--- Bridge fails for some eval-output args (non-fixpoint mu outputs):
-example : bridge_evalout_failures.length > 0 := by native_decide
+-- With mu-as-value, bridge now holds for all eval-output args.
+example : bridge_evalout_failures.length = 0 := by native_decide
 
 -- §20.6 How many bridge failures are with non-fixpoint args?
 -- If the arg is an eval fixpoint (concEvalE fuel env a = some a), does the bridge hold?
