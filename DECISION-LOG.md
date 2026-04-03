@@ -1,5 +1,48 @@
 # Decision Log
 
+## 2026-04-03: Asc-free evaluator equivalence for app case
+
+**Agent:** ochre-lean-20260403-042336
+
+### Decision
+
+Decomposed the soundness_gen app case into 36 sub-cases (fV × fT constructor
+shapes). Proved 23, sorry'd 13. All sorry'd cases involve active computation
+(beta-reduction or mu-app).
+
+### Key insight: asc-free evaluator equivalence
+
+Both concEvalE and absEval strip ascription from their outputs (by evaluating
+the lhs/rhs respectively). Therefore evaluator outputs are always **asc-free**.
+On asc-free inputs, concEvalE and absEval are **identical** — they differ only
+at the `.asc` case, which never fires for asc-free input.
+
+After beta-reduction, the intermediate expression `bodyV.subst 0 aV` is asc-free
+(both `bodyV` and `aV` are evaluator outputs, hence asc-free, and subst preserves
+asc-free). So concEvalE and absEval agree on it:
+
+```
+v = concEvalE k env (bodyV.subst 0 aV) = absEval k env (bodyV.subst 0 aV)
+```
+
+This **reduces the cross-evaluator problem to single-evaluator congruence**:
+does absEval preserve VCompat through substitution and evaluation?
+
+### Formalization
+
+Added to Eval.lean:
+- `Expr.ascFree` / `Expr.ascFreeB`: predicates
+- `ascFree_shift`, `ascFree_subst`: preservation lemmas (PROVEN)
+- `Env.extend_ascFree`: env extension preservation (PROVEN)
+- `ascFree_eval_equiv`: concEvalE = absEval on asc-free input (partially proven)
+- `concEvalE_ascFree`, `absEval_ascFree`: output is asc-free (sorry'd)
+
+### Impact
+
+The app case is now the clearest blocker. The 13 sorry'd sub-cases all reduce
+to absEval-congruence for VCompat-related asc-free inputs. This is a much
+simpler problem than the original cross-evaluator formulation.
+
 ## 2026-04-03: Implemented vEquiv approach for soundness_gen mu case
 
 **Agent:** ochre-lean-20260403-025516

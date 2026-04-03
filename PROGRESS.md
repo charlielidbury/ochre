@@ -13,16 +13,22 @@ the mu design.
 
 ## Build status
 
-`lake build` passes. **8 sorry'd declarations** in Soundness.lean:
+`lake build` passes. **11 sorry'd declarations** (8 in Soundness.lean + 3 new in Eval.lean):
 
-- `VCompat.from_self_intro_gen` (line ~430) — 1 sorry, inner recursion
-- `VCompat.adequacy` (line ~509) — 6 sub-sorrys (mu/seen cases + structural app case)
-- `VCompat_of_vEquivB` (line ~970) — 1 sorry (refl→asc sub-case only; all other cases proved)
-- `concEvalE_closedEvalB` (line ~1072) — 1 sorry, evaluator closedness
-- `absEval_closedEvalB` (line ~1078) — 1 sorry, evaluator closedness
-- `mu_body_subst_vcompat` (line ~1097) — 1 sorry (Case C only; Cases A+B proved)
-- `soundness_gen` (line ~1145) — **13 sub-sorrys** (app case decomposed; was 1 sorry)
-- `soundness_concEval` (line ~1483) — 1 sorry (bridge)
+Soundness.lean (8):
+- `VCompat.from_self_intro_gen` (line ~437) — 1 sorry, inner recursion
+- `VCompat.adequacy` (line ~516) — 6 sub-sorrys (mu/seen cases + structural app case)
+- `VCompat_of_vEquivB` (line ~977) — 1 sorry (refl→asc sub-case only)
+- `concEvalE_closedEvalB` (line ~1079) — 1 sorry, evaluator closedness
+- `absEval_closedEvalB` (line ~1085) — 1 sorry, evaluator closedness
+- `mu_body_subst_vcompat` (line ~1104) — 1 sorry (Case C only; Cases A+B proved)
+- `soundness_gen` (line ~1152) — **13 sub-sorrys** (app case decomposed; was 1 sorry)
+- `soundness_concEval` (line ~1490) — 1 sorry (bridge)
+
+Eval.lean (3, NEW — asc-free infrastructure):
+- `ascFree_eval_equiv` — app case sorry'd (needs absEval_ascFree)
+- `concEvalE_ascFree` — evaluator output asc-free (sorry'd)
+- `absEval_ascFree` — evaluator output asc-free (sorry'd)
 
 **`soundness` (using concEvalE) is sorry-free!** (depends transitively on sorry'd lemmas)
 
@@ -308,6 +314,10 @@ The soundness_gen app case is now decomposed — see Priority 1 above.
 - VCompat.fixpoint_mu_left (fixpoint mu-left at all steps)
 - VCompat.self_intro_eq (self-intro via equality)
 - **soundness_gen app case: 23/36 sub-cases** (type, contradiction, structural app) NEW
+- **Expr.ascFree_shift** — FULLY PROVEN (shift preserves asc-free) NEW
+- **Expr.ascFree_subst** — FULLY PROVEN (subst preserves asc-free) NEW
+- **Env.extend_ascFree** — FULLY PROVEN (env extension preserves asc-free) NEW
+- **Expr.ascFree_iff_ascFreeB** — FULLY PROVEN (Prop/Bool equivalence) NEW
 - soundness_gen bvar, type, lam, mu, asc cases
 - subCheckNF_type_self_intro (extraction lemma)
 - subCheckNF_neutral_inferType helper lemma
