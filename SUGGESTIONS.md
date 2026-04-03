@@ -187,20 +187,34 @@ and evaluation results). The app lam×lam semantic sub-case is PROVED.
 ### What remains: the semantic property itself
 
 5 sorrys need: derive the semantic lam property from structural knowledge.
-See PROGRESS.md KEY CHANGE section for full analysis. The most promising
-approaches:
+See PROGRESS.md KEY CHANGE section and "Priority 1" for full analysis.
 
-1. **Generalized soundness_gen for different envs** — replace single `env`
-   with VCompat-related `envV`/`envT`. The lam case extends envs with
-   aV/aT and invokes IH on body. Needs VCompat preserved under env shift.
+**The fundamental obstacle** (analyzed in detail, session ochre-lean-20260403-082324):
+The evaluators normalize under lam binders, so lambda values contain normalized
+bodies. The semantic property needs VCompat for evaluating bodyV'.subst 0 aV
+(normalized body with arg substituted). The soundness_gen IH works for source
+expressions, NOT normalized-then-substituted ones.
 
-2. **Eval-subst commutativity** — show evaluating bodyV'.subst 0 aV equals
-   evaluating body in an env with aV. Then generalized IH applies.
+The eval-subst bridge `concEvalE fuel env (bodyV'.subst 0 a) = concEvalE fuel
+(env.extend a) body` is FALSE for mu args (Tests.lean §20). This rules out
+the simple "generalized soundness_gen with split envs" approach.
+
+**Viable approaches:**
+
+1. **Closure-based VCompat** — store source body + creation-time env in the
+   semantic lam. The lam case uses the generalized IH on the source body.
+   The app case needs an NbE bridge: for fixpoint args (proven to work, §20.6),
+   the bridge is trivial. For mu args, needs separate VCompat reasoning.
+
+2. **Mutual induction on (soundness fuel, semantic fuel)** — prove soundness
+   and the semantic property simultaneously. Avoids the "arbitrary fuel" problem.
 
 3. **vEquiv evaluator congruence** — show vEquiv inputs → vEquiv outputs.
    Resolves VCompat_of_vEquivB and adequacy sorrys.
 
-**Do NOT attempt:** VCompat.subst_congr (FALSE, §11.6).
+**Do NOT attempt:** VCompat.subst_congr (FALSE, §11.6), eval-subst
+commutativity (FALSE, §19.5), unrestricted eval-subst bridge (FALSE
+for mu args, §20.5).
 
 ## ✅ PARTIALLY RESOLVED: The app case (2026-04-03)
 
