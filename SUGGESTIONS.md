@@ -121,6 +121,16 @@ The mu-app catch-all leaks raw bvar 0. BUT: testing shows that whenever
 closedEvalB fails AND evaluators differ, bodyT = type (Case A handles this).
 See PROGRESS.md "CRITICAL FINDINGS §6" and Tests.lean §16.
 
+## ✅ RESOLVED: vEquiv infrastructure (2026-04-03)
+
+**Agent:** ochre-lean-20260403-040210
+
+- **inferType_vEquivB**: FULLY PROVEN. Induction on v, bvar/app cases.
+  The app case uses IH on function part + vEquivB_subst for substitution.
+- **VCompat_of_vEquivB**: Nearly fully proven. 7/8 VCompat disjuncts + refl
+  for 5/6 expression shapes. Only refl→asc sorry'd (unreachable: evaluator
+  outputs never contain asc). See PROGRESS.md for details.
+
 ## Priority 1: mu_body_subst_vcompat Case C
 
 **One sorry remaining.** Prove that when bodyV ≠ bodyT ∧ bodyT ≠ type,

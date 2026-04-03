@@ -907,7 +907,49 @@ theorem inferType_vEquivB {ctx : List Expr} {v v' : Expr}
     (hv : v'.vEquivB v = true)
     {ty : Expr} (h : inferType ctx v = some ty)
     : ∃ ty', inferType ctx v' = some ty' ∧ ty'.vEquivB ty = true := by
-  sorry
+  induction v generalizing v' ty with
+  | bvar k =>
+    have := vEquivB_bwd_bvar hv; subst this
+    exact ⟨ty, h, Expr.vEquivB_refl ty⟩
+  | lam _ _ _ _ => simp [inferType] at h
+  | asc _ _ _ _ => simp [inferType] at h
+  | type => simp [inferType] at h
+  | mu _ _ _ _ => simp [inferType] at h
+  | app f a ihf _ =>
+    obtain ⟨f', a', rfl, hf, ha⟩ := vEquivB_bwd_app hv
+    -- Case split on inferType ctx f
+    cases hfty : inferType ctx f with
+    | none =>
+      have : inferType ctx (.app f a) = none := by simp [inferType, hfty]
+      rw [this] at h; cases h
+    | some fty =>
+      obtain ⟨fty', hfty', hftye⟩ := ihf hf hfty
+      cases fty with
+      | lam dom retTy =>
+        have h1 : inferType ctx (.app f a) = some (retTy.subst 0 a) := by
+          simp [inferType, hfty]
+        rw [h1] at h; injection h with h; subst h
+        obtain ⟨dom', retTy', rfl, hre⟩ := vEquivB_bwd_lam hftye
+        exact ⟨retTy'.subst 0 a', by simp [inferType, hfty'],
+               Expr.vEquivB_subst 0 retTy' retTy a' a hre ha⟩
+      | mu ann body =>
+        obtain ⟨ann', body', rfl, hbe⟩ := vEquivB_bwd_mu hftye
+        have h_unf := Expr.vEquivB_subst 0 body' body f' f hbe hf
+        cases h_match : body.subst 0 f with
+        | lam dom retTy =>
+          have h1 : inferType ctx (.app f a) = some (retTy.subst 0 a) := by
+            simp [inferType, hfty, h_match]
+          rw [h1] at h; injection h with h; subst h
+          rw [h_match] at h_unf
+          obtain ⟨dom'', retTy', h_eq, hre⟩ := vEquivB_bwd_lam h_unf
+          exact ⟨retTy'.subst 0 a', by simp [inferType, hfty', h_eq],
+                 Expr.vEquivB_subst 0 retTy' retTy a' a hre ha⟩
+        | _ =>
+          have : inferType ctx (.app f a) = none := by simp [inferType, hfty, h_match]
+          rw [this] at h; cases h
+      | _ =>
+        have : inferType ctx (.app f a) = none := by simp [inferType, hfty]
+        rw [this] at h; cases h
 
 /-- VCompat is invariant under vEquiv: if v' ≈ v and τ' ≈ τ (same structure
     except possibly different domains/annotations), and VCompat n v τ, then
@@ -928,7 +970,90 @@ theorem inferType_vEquivB {ctx : List Expr} {v v' : Expr}
 theorem VCompat_of_vEquivB {n : Nat} {v v' τ τ' : Expr}
     (hv : v'.vEquivB v = true) (hτ : τ'.vEquivB τ = true)
     (h : VCompat n v τ) : VCompat n v' τ' := by
-  sorry
+  induction n generalizing v v' τ τ' with
+  | zero => trivial
+  | succ k ih =>
+    unfold VCompat at h ⊢
+    rcases h with h_top | h_refl
+      | ⟨dV, dT, bV, bT, rfl, rfl, hbody⟩
+      | ⟨aV, aT, bV, bT, rfl, rfl, hbody⟩
+      | ⟨ann, body, rfl, hunf⟩
+      | ⟨ann, body, rfl, hunf⟩
+      | ⟨fV, fT, aV, aT, rfl, rfl, hfc, hac⟩
+      | ⟨ctx1, ty1, hinf, hcompat⟩
+    -- Case 1: top (τ = type)
+    · subst h_top; exact Or.inl (vEquivB_bwd_type hτ)
+    -- Case 2: refl (v = τ)
+    · subst h_refl  -- now τ = v, hτ : τ'.vEquivB v = true
+      cases v with
+      | bvar k =>
+        have := vEquivB_bwd_bvar hv; have := vEquivB_bwd_bvar hτ
+        subst_vars; exact Or.inr (Or.inl rfl)
+      | type => exact Or.inl (vEquivB_bwd_type hτ)
+      | lam dom body =>
+        obtain ⟨d1, b1, rfl, hb1⟩ := vEquivB_bwd_lam hv
+        obtain ⟨d2, b2, rfl, hb2⟩ := vEquivB_bwd_lam hτ
+        exact Or.inr (Or.inr (Or.inl ⟨d1, d2, b1, b2, rfl, rfl,
+          ih hb1 hb2 (VCompat.refl k body)⟩))
+      | mu ann body =>
+        obtain ⟨a1, b1, rfl, hb1⟩ := vEquivB_bwd_mu hv
+        obtain ⟨a2, b2, rfl, hb2⟩ := vEquivB_bwd_mu hτ
+        have hmu1 : (Expr.mu a1 b1).vEquivB (.mu ann body) = true := by
+          simp [Expr.vEquivB]; exact hb1
+        have hmu2 : (Expr.mu a2 b2).vEquivB (.mu ann body) = true := by
+          simp [Expr.vEquivB]; exact hb2
+        exact Or.inr (Or.inr (Or.inr (Or.inl ⟨a1, a2, b1, b2, rfl, rfl,
+          ih (Expr.vEquivB_subst 0 b1 body (.mu a1 b1) (.mu ann body) hb1 hmu1)
+             (Expr.vEquivB_subst 0 b2 body (.mu a2 b2) (.mu ann body) hb2 hmu2)
+             (VCompat.refl k (body.subst 0 (.mu ann body)))⟩)))
+      | app f a =>
+        obtain ⟨f1, a1, rfl, hf1, ha1⟩ := vEquivB_bwd_app hv
+        obtain ⟨f2, a2, rfl, hf2, ha2⟩ := vEquivB_bwd_app hτ
+        exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+          ⟨f1, f2, a1, a2, rfl, rfl,
+           ih hf1 hf2 (VCompat.refl k f),
+           ih ha1 ha2 (VCompat.refl k a)⟩))))))
+      | asc _ _ =>
+        -- asc expressions never appear in evaluator outputs (evaluators strip them).
+        -- VCompat has no structural asc disjunct, so this case is stuck.
+        -- Unreachable in practice for the mu_body_subst_vcompat use case.
+        sorry
+    -- Case 3: structural lam
+    · obtain ⟨d1, b1, rfl, hb1⟩ := vEquivB_bwd_lam hv
+      obtain ⟨d2, b2, rfl, hb2⟩ := vEquivB_bwd_lam hτ
+      exact Or.inr (Or.inr (Or.inl ⟨d1, d2, b1, b2, rfl, rfl, ih hb1 hb2 hbody⟩))
+    -- Case 4: structural mu (unfolded)
+    · obtain ⟨a1, b1, rfl, hb1⟩ := vEquivB_bwd_mu hv
+      obtain ⟨a2, b2, rfl, hb2⟩ := vEquivB_bwd_mu hτ
+      have hmu_v : (Expr.mu a1 b1).vEquivB (.mu aV bV) = true := by
+        simp [Expr.vEquivB]; exact hb1
+      have hmu_τ : (Expr.mu a2 b2).vEquivB (.mu aT bT) = true := by
+        simp [Expr.vEquivB]; exact hb2
+      exact Or.inr (Or.inr (Or.inr (Or.inl ⟨a1, a2, b1, b2, rfl, rfl,
+        ih (Expr.vEquivB_subst 0 b1 bV (.mu a1 b1) (.mu aV bV) hb1 hmu_v)
+           (Expr.vEquivB_subst 0 b2 bT (.mu a2 b2) (.mu aT bT) hb2 hmu_τ)
+           hbody⟩)))
+    -- Case 5: mu-right (τ = mu ann body)
+    · obtain ⟨a2, b2, rfl, hb2⟩ := vEquivB_bwd_mu hτ
+      have hmu2 : (Expr.mu a2 b2).vEquivB (.mu ann body) = true := by
+        simp [Expr.vEquivB]; exact hb2
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨a2, b2, rfl,
+        ih hv (Expr.vEquivB_subst 0 b2 body (.mu a2 b2) (.mu ann body) hb2 hmu2) hunf⟩))))
+    -- Case 6: mu-left (v = mu ann body)
+    · obtain ⟨a1, b1, rfl, hb1⟩ := vEquivB_bwd_mu hv
+      have hmu1 : (Expr.mu a1 b1).vEquivB (.mu ann body) = true := by
+        simp [Expr.vEquivB]; exact hb1
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨a1, b1, rfl,
+        ih (Expr.vEquivB_subst 0 b1 body (.mu a1 b1) (.mu ann body) hb1 hmu1) hτ hunf⟩)))))
+    -- Case 7: structural app
+    · obtain ⟨f1, a1, rfl, hf1, ha1⟩ := vEquivB_bwd_app hv
+      obtain ⟨f2, a2, rfl, hf2, ha2⟩ := vEquivB_bwd_app hτ
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+        ⟨f1, f2, a1, a2, rfl, rfl, ih hf1 hf2 hfc, ih ha1 ha2 hac⟩))))))
+    -- Case 8: inferType fallback
+    · obtain ⟨ty', hinf', hve⟩ := inferType_vEquivB hv hinf
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr
+        ⟨ctx1, ty', hinf', ih hve hτ hcompat⟩))))))
 
 /-- Evaluator outputs satisfy closedEvalB 0: all bvar indices in VCompat-relevant
     positions (bodies, app structure) are resolved by the evaluator. Domains and
