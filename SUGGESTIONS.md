@@ -165,58 +165,49 @@ theorem VCompat.adequacy_gen (fuel : Nat) (n : Nat) (v σ τ : Expr)
 Use outer induction on fuel, inner on step j ≤ n. See `from_type_sub_gen`
 for a working example of this pattern (handles σ = type with seen).
 
+## ✅ DONE: Semantic VCompat for lam (2026-04-03)
+
+**Agent:** ochre-lean-20260403-053631
+
+VCompat's lam disjunct is now SEMANTIC (quantifies over compatible arguments
+and evaluation results). The app lam×lam semantic sub-case is PROVED.
+
+### What remains: the semantic property itself
+
+5 sorrys need: derive the semantic lam property from structural knowledge.
+See PROGRESS.md KEY CHANGE section for full analysis. The most promising
+approaches:
+
+1. **Generalized soundness_gen for different envs** — replace single `env`
+   with VCompat-related `envV`/`envT`. The lam case extends envs with
+   aV/aT and invokes IH on body. Needs VCompat preserved under env shift.
+
+2. **Eval-subst commutativity** — show evaluating bodyV'.subst 0 aV equals
+   evaluating body in an env with aV. Then generalized IH applies.
+
+3. **vEquiv evaluator congruence** — show vEquiv inputs → vEquiv outputs.
+   Resolves VCompat_of_vEquivB and adequacy sorrys.
+
+**Do NOT attempt:** VCompat.subst_congr (FALSE, §11.6).
+
 ## ✅ PARTIALLY RESOLVED: The app case (2026-04-03)
 
-**Agent:** ochre-lean-20260403-042336
+**Agent:** ochre-lean-20260403-042336, ochre-lean-20260403-053631
 
-The soundness_gen app case is now decomposed into 36 sub-cases. 23 proved,
-13 sorry'd. All sorry'd cases involve active computation (beta or mu-app).
+The soundness_gen app case is now decomposed into 36 sub-cases. **24 proved**
+(was 23), **12 sorry'd** (was 13) + 1 refl sub-sorry within the lam×lam case.
+
+The lam×lam case (★ hardest) is now split:
+- **Semantic sub-case: PROVED** via semantic VCompat (instantiate quantifier)
+- **Refl sub-case: sorry'd** (bodyV = bodyT but args differ)
 
 ### ⚠ Asc-free approach has a hole (discovered 2026-04-03)
 
 **Agent:** ochre-lean-20260403-050103
 
-The claim "evaluator outputs are always asc-free" is FALSE. Unconditional
-`absEval_ascFree` / `concEvalE_ascFree` are FALSE — domains/annotations
-pass through unevaluated, and the mu-app catch-all leaks raw bodies with asc.
-See PROGRESS.md CRITICAL FINDING §7 and Tests.lean §17.1.
-
-The CONDITIONAL version (`e.ascFree → output.ascFree`) is TRUE and proven,
-along with `ascFree_eval_equiv` (`ascFree → concEvalE = absEval`). But this
-doesn't help the app case because the post-beta expression is NOT ascFree
-when the source has asc.
-
-**absEval-congruence** (step 2 below) also fails because it requires
-VCompat.subst_congr in the beta step, which is FALSE (Tests.lean §11.6).
-
-### Recommended next step: semantic VCompat for lam
-
-The most promising approach is to change VCompat's lam case from structural
-to semantic. The app case becomes trivial (instantiate quantifier). The
-difficulty moves to the lam case of soundness_gen.
-
-```lean
--- Replace structural:
-∨ (∃ domV domT bodyV bodyT, v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
-    VCompat n bodyV bodyT)
--- With semantic:
-∨ (∃ domV domT bodyV bodyT, v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
-    ∀ j ≤ n, ∀ fuel env aV aT, VCompat j aV aT →
-      ∀ rv, concEvalE fuel env (bodyV.subst 0 aV) = some rv →
-      ∀ rτ, absEval fuel env (bodyT.subst 0 aT) = some rτ →
-      VCompat j rv rτ)
-```
-
-**Step-index trick:** For the app lam×lam case, ask for ih_f at step m+2
-(universally quantified n allows this). The semantic property at step m+2
-gives ∀ j ≤ m+1. With j = m+1 and ih_a at m+1, get VCompat (m+1) v τ.
-
-**Lam case challenge:** Proving the semantic property requires showing
-that evaluating normalized bodies with compatible args gives compatible
-results. This needs a congruence argument — but now it's about the
-evaluator OUTPUTS (not arbitrary VCompat expressions), so subst_congr
-isn't needed. The IH on body gives VCompat for the normalized bodies,
-and the semantic property wraps this in a quantifier over future applications.
+The claim "evaluator outputs are always asc-free" is FALSE. See PROGRESS.md
+CRITICAL FINDING §7 and Tests.lean §17.1. The conditional form IS proven but
+doesn't help the app case.
 
 Note: VCompat.subst_congr is FALSE (counterexample in Tests.lean §11.6),
 so naive substitution congruence is NOT an option.

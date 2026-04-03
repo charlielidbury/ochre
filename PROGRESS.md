@@ -16,14 +16,14 @@ the mu design.
 `lake build` passes. **8 sorry'd declarations** (all in Soundness.lean):
 
 Soundness.lean (8):
-- `VCompat.from_self_intro_gen` (line ~437) — 1 sorry, inner recursion
-- `VCompat.adequacy` (line ~516) — 6 sub-sorrys (mu/seen cases + structural app case)
-- `VCompat_of_vEquivB` (line ~977) — 1 sorry (refl→asc sub-case only)
-- `concEvalE_closedEvalB` (line ~1079) — 1 sorry, evaluator closedness
-- `absEval_closedEvalB` (line ~1085) — 1 sorry, evaluator closedness
-- `mu_body_subst_vcompat` (line ~1104) — 1 sorry (Case C only; Cases A+B proved)
-- `soundness_gen` (line ~1152) — **13 sub-sorrys** (app case decomposed; was 1 sorry)
-- `soundness_concEval` (line ~1490) — 1 sorry (bridge)
+- `VCompat.from_self_intro_gen` (line ~446) — 1 sorry, inner recursion
+- `VCompat.adequacy` (line ~525) — 8 sub-sorrys (mu/seen + structural app + 2 NEW semantic lam)
+- `VCompat_of_vEquivB` (line ~952) — 3 sorrys (refl→asc + 2 NEW semantic lam)
+- `concEvalE_closedEvalB` (line ~1058) — 1 sorry, evaluator closedness
+- `absEval_closedEvalB` (line ~1064) — 1 sorry, evaluator closedness
+- `mu_body_subst_vcompat` (line ~1083) — 1 sorry (Case C only; Cases A+B proved)
+- `soundness_gen` (line ~1131) — **14 sub-sorrys** (lam semantic + 13 app cases)
+- `soundness_concEval` (line ~1497) — 1 sorry (bridge)
 
 Eval.lean (0 — all 3 asc-free declarations NOW PROVEN):
 - `absEval_ascFree` — PROVEN (conditional: requires input ascFree)
@@ -32,7 +32,99 @@ Eval.lean (0 — all 3 asc-free declarations NOW PROVEN):
 
 **`soundness` (using concEvalE) is sorry-free!** (depends transitively on sorry'd lemmas)
 
-## KEY CHANGE: App case decomposed into 36 sub-cases (this session)
+## KEY CHANGE: Semantic VCompat for lam (this session)
+
+**Agent:** ochre-lean-20260403-053631
+
+### What changed
+
+Replaced VCompat's structural lam disjunct with a semantic one:
+
+```lean
+-- OLD (structural):
+∨ (∃ domV domT bodyV bodyT,
+    v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
+    VCompat n bodyV bodyT)
+
+-- NEW (semantic):
+∨ (∃ domV domT bodyV bodyT,
+    v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
+    ∀ (j : Nat), j ≤ n → ∀ (fuel : Nat) (env : Env) (aV aT : Expr),
+      VCompat j aV aT →
+      ∀ rv, concEvalE fuel env (bodyV.subst 0 aV) = some rv →
+      ∀ rτ, absEval fuel env (bodyT.subst 0 aT) = some rτ →
+      VCompat j rv rτ)
+```
+
+### Why
+
+The structural lam couldn't handle the app lam×lam case: after beta-reduction,
+the IH doesn't apply because `bodyV.subst 0 aV` is not a source sub-expression.
+VCompat.subst_congr is FALSE (Tests.lean §11.6), so structural body compatibility
+can't be threaded through substitution.
+
+The semantic property makes the app lam×lam case trivial: extract the semantic
+property from ih_f at step m+2, instantiate with ih_a at step m+1, done.
+
+### What was proved
+
+The **app lam×lam semantic sub-case** is now PROVED (was sorry'd). The proof:
+1. Get ih_f at step m+2: `VCompat (m+2) (lam domV bodyV) (lam domT bodyT)`
+2. Case-split: only semantic lam and refl are possible (top/mu/app/inferType impossible for lam)
+3. For semantic lam: instantiate `h_sem (m+1) (le_refl) k env aV aT ih_a v h_conc τ h_abs`
+4. For refl: sorry (see below)
+
+### What regressed (5 new sorrys, all the SAME problem)
+
+1. **soundness_gen lam case** (line ~1189): Must produce the semantic property.
+   Requires: given compatible args, evaluating normalized bodies gives compatible
+   results. The IH gives VCompat n bodyV' bodyT' (for evaluator outputs of body),
+   but the semantic property needs this to hold after substitution and re-evaluation.
+   
+2. **adequacy lam→lam cases** (2 sorrys, lines ~582, ~604): Must construct
+   semantic lam from subCheckNF. Was trivial with structural lam.
+
+3. **VCompat_of_vEquivB lam cases** (2 sorrys, lines ~980, ~1003): Must
+   transfer semantic property through vEquiv. Was trivial with structural lam.
+
+**All 5 new sorrys reduce to the SAME underlying problem:** given VCompat n
+bodyV bodyT (for bodies that are evaluator outputs of the same source),
+derive the semantic property (∀ compatible args, eval gives compatible results).
+
+### The central blocker: semantic property from structural knowledge
+
+The fundamental challenge: VCompat n bodyV bodyT says the bodies are
+"compatible" (syntactically or via mu unfolding), but the semantic property
+requires showing that evaluation preserves this compatibility through
+substitution and re-evaluation.
+
+This cannot work via VCompat.subst_congr (FALSE, §11.6). It might work via:
+
+1. **Eval-subst commutativity**: Show that evaluating bodyV'.subst 0 aV is
+   equivalent to re-evaluating body in an env with aV. Then the soundness IH
+   applies (same expression, compatible envs). Needs a generalized soundness_gen
+   for different envs.
+
+2. **Restricted subst_congr for evaluator outputs**: The counterexample for
+   subst_congr uses bvar 0 vs lam type (bvar 0) — not evaluator outputs of
+   the same source. Evaluator outputs might satisfy a restricted form.
+
+3. **vEquiv evaluator congruence**: Show vEquiv inputs give vEquiv outputs.
+   Then thread through VCompat_of_vEquivB. Would resolve the adequacy and
+   vEquivB sorrys as well.
+
+### App lam×lam refl sub-case
+
+When ih_f gives VCompat via refl (bodyV = bodyT), the semantic property
+isn't directly available. This happens when f evaluates to the same lambda
+by both evaluators (e.g., f = bvar 0 with a lambda in the env). The bodies
+are equal but the args differ (aV vs aT). This sub-case is sorry'd.
+
+The bridge idea (IH on `asc (body.subst 0 aV) (body.subst 0 aT)`) almost
+works but requires WellTyped for body.subst 0 aV, which isn't given by the
+WellTyped app case (it gives WellTyped for body.subst 0 aT only).
+
+## KEY CHANGE: App case decomposed into 36 sub-cases (previous session)
 
 **Agent:** ochre-lean-20260403-042336
 
@@ -224,84 +316,54 @@ closedEvalB fails AND evaluators differ, bodyT = type (VCompat trivially holds).
 
 ## What the next agent MUST do
 
-### Priority 1: Resolve soundness_gen app case (13 sorrys)
+### Priority 1: Prove the semantic property for lam (THE CENTRAL BLOCKER)
 
-The app case is now fully decomposed into 36 sub-cases (see KEY CHANGE above).
-23 proved, 13 sorry'd. ALL sorry'd cases involve active computation (beta or
-mu-app) where the IH can't apply directly (the beta-reduced expression is not
-a source sub-expression).
+The VCompat lam disjunct is now semantic (see KEY CHANGE above). The app
+lam×lam case is structurally resolved. But 5 sorrys (lam case of soundness_gen,
+2 adequacy cases, 2 vEquivB cases) all need the same thing: derive the semantic
+property from structural knowledge about bodies.
 
-**The fundamental blocker:** After beta-reduction, concEvalE evaluates
-bodyV.subst 0 aV while absEval evaluates bodyT.subst 0 aT. These are DIFFERENT
-expressions. The IH requires evaluating the SAME expression by both evaluators.
+**Most promising approaches:**
 
-**⚠ The asc-free approach has a hole (discovered by agent ochre-lean-20260403-050103):**
-The claim "evaluator outputs are always asc-free" is FALSE (see CRITICAL FINDING §7).
-Evaluator outputs from programs with asc CAN have asc in:
-- Lambda domains (passed through unevaluated)
-- Mu annotations (passed through unevaluated)
-- Mu-app catch-all outputs (leak raw body which can contain asc)
+1. **Generalized soundness_gen for different envs.** Replace the single `env`
+   with `envV` and `envT` related by VCompat. Then the lam case can extend envs
+   differently (envV.extend aV, envT.extend aT) and invoke the IH on body.
+   Requires: VCompat preserved under env shift (env extension shifts existing entries).
 
-Therefore `bodyV.subst 0 aV` is NOT guaranteed ascFree when the source has asc.
-The conditional `ascFree_eval_equiv` (now proven) only applies to expressions
-that are already ascFree. **This approach does NOT directly solve the app case.**
-
-**Remaining approaches for the app case:**
-
-1. **Semantic VCompat for lam** (MOST PROMISING): Change VCompat's lam case from
-   structural (VCompat n bodyV bodyT) to semantic (∀ compatible args, applying
-   gives compatible results). App case becomes trivial (instantiate quantifier).
-   Difficulty moves to lam case of soundness_gen.
+2. **Eval-subst commutativity.** Show: `concEvalE fuel env (bodyV'.subst 0 aV)`
+   = `concEvalE fuel (env_adjusted aV) body` for some env_adjusted. Then the IH
+   on body with different envs gives the semantic property.
    
-   **Challenge:** For the lam case of soundness_gen with semantic VCompat, we
-   need: given compatible args aV/aT, show bodyV'.subst 0 aV and bodyT'.subst 0 aT
-   evaluate to compatible results. But bodyV'/bodyT' are evaluator OUTPUTS (normalized
-   bodies), and the IH operates on SOURCE expressions. Bridging this gap requires
-   relating env-based evaluation to substitution.
-   
-   **Step-index consideration:** VCompat (n+1) lam gives semantic property at step n.
-   But IH gives VCompat at any step level (n universally quantified). So ask for
-   ih_f at step m+2 to get semantic property at m+1, which with ih_a at m+1 gives
-   VCompat (m+1) for the result. This resolves the off-by-one issue.
+3. **vEquiv evaluator congruence.** Show: vEquiv inputs → vEquiv outputs for
+   both evaluators. This would resolve the VCompat_of_vEquivB and adequacy sorrys.
 
-2. **Use WellTyped to call IH on bodyT.subst 0 aT:** WellTyped app gives
-   `WellTyped k env (bodyT.subst 0 aT) = true`. The IH WOULD apply if we could
-   show concEvalE succeeds on it. This gives VCompat for the TYPE side (τ with
-   itself) but not for v vs τ. Still insufficient alone.
+**Do NOT attempt:** VCompat.subst_congr (FALSE, §11.6), absEval congruence
+via subst_congr (also fails).
 
-3. **VCompat.subst_congr** is FALSE (counterexample in Tests.lean §11.6).
-   **absEval congruence** would also require subst_congr in the beta step.
-   Do NOT attempt either of these.
+### Priority 2: App lam×lam refl sub-case
 
-### Priority 2: Prove mu_body_subst_vcompat Case C
+When ih_f gives VCompat via refl (bodyV = bodyT), the semantic property isn't
+available. Sorry'd at line ~1416. Could be resolved by:
+- The bridge idea: IH on `asc (body.subst 0 aV) (body.subst 0 aT)` — needs
+  WellTyped for body.subst 0 aV (not currently given)
+- Adding WellTyped k env (body.subst 0 aV) to the WellTyped app definition
+  (risky: needs witness test verification)
+- Proving that soundness_gen ALWAYS produces semantic lam (not refl) for lam
+  evaluator outputs
 
-The vEquiv infrastructure is now complete: inferType_vEquivB ✓,
-VCompat_of_vEquivB ✓ (modulo unreachable asc), closedEvalB_subst_vEquiv ✓.
+### Priority 3: Prove mu_body_subst_vcompat Case C
 
-The chain for Case C is:
-1. `closedEvalB 0 bodyV` and `closedEvalB 0 bodyT` (needs proof)
-2. By `closedEvalB_subst_vEquiv`: subst is vEquiv-no-op → get vEquivB
-3. By `VCompat_of_vEquivB`: VCompat preserved under vEquiv → done
+Same as before — closedEvalB for evaluator outputs when bodyV ≠ bodyT ∧ bodyT ≠ type.
 
-**The blocker is step 1.** `closedEvalB 0` does NOT hold for all evaluator
-outputs (mu-app catch-all leaks raw body — see CRITICAL FINDING §6). But
-testing shows: whenever closedEvalB fails AND evaluators differ, bodyT = type
-(Case A handles this). So for Case C (bodyV ≠ bodyT ∧ bodyT ≠ type),
-closedEvalB should hold.
+### Priority 4: Remaining app case sorrys (12 cases)
 
-### Priority 3: Generalized adequacy with seen list
+The 12 non-lam×lam app sorrys involve mu-app on one or both sides. These need
+case-splitting on the mu-app behavior (which depends on ann and body shapes).
+Potentially resolvable by similar techniques to the lam case.
 
-The non-fixpoint self-elim cases (and the mu-right case) need:
-```lean
-theorem VCompat.adequacy_gen (fuel : Nat) (n : Nat) (v σ τ : Expr)
-    (ctx : List Expr) (seen : List (Expr × Expr))
-    (hv : VCompat n v σ)
-    (hcheck : subCheckNF fuel ctx seen σ τ = true)
-    (hseen : ∀ p ∈ seen, VCompat n v p.2)
-    : VCompat n v τ
-```
+### Priority 5: Generalized adequacy with seen list
 
-The soundness_gen app case is now decomposed — see Priority 1 above.
+Same as before — needs outer fuel induction, inner step induction.
 
 ## PROVEN (cumulative from all sessions)
 
@@ -436,17 +498,16 @@ expression is already ascFree. See DECISION-LOG.md for analysis.
 ### Structural app in adequacy (1 sorry):
 - adequacy structural app case: needs inferType congruence between app components
 
-### soundness_gen app case (13 sorrys, decomposed from 1): NEW
-All 13 involve active computation (beta or mu-app) on at least one side.
-The fundamental blocker: after beta/mu-app, the resulting expression is NOT
-a source sub-expression, so the soundness_gen IH doesn't apply directly.
-The asc-free evaluator equivalence insight (see KEY CHANGE) reduces this to
-a single-evaluator (absEval) congruence question.
+### Semantic lam property (5 sorrys, ALL THE SAME PROBLEM): NEW
+All 5 need: derive the semantic lam property from structural knowledge.
+- soundness_gen lam case (1 sorry, line ~1189)
+- adequacy lam→lam cases (2 sorrys, lines ~582, ~604)
+- VCompat_of_vEquivB lam cases (2 sorrys, lines ~980, ~1003)
 
-Sub-cases:
+### soundness_gen app case (13 sorrys):
+- fV=lam × fT=lam: 1 sorry (REFL sub-case only; SEMANTIC sub-case PROVED)
 - fV=mu × fT∈{bvar,app,asc}: 3 sorrys (mu-app left, structural right)
 - fV∈{bvar,app} × fT=lam: 2 sorrys (structural left, beta right)
-- fV=lam × fT=lam: 1 sorry (★ hardest — both beta)
 - fV=mu × fT=lam: 1 sorry
 - fV=type × fT=mu: 1 sorry
 - fV∈{bvar,app,asc} × fT=mu: 3 sorrys

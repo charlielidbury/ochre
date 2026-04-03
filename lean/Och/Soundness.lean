@@ -217,14 +217,19 @@ def VCompat : Nat → Expr → Expr → Prop
     τ = .type
     -- Refl: syntactic equality (optimization)
     ∨ v = τ
-    -- Structural lambda: both are lambdas (possibly different domains),
-    -- and the bodies are compatible at the lower step.
-    -- Domains need not match: subCheckNF handles contravariant domain
-    -- checking, so adequacy (VCompat + subCheckNF → VCompat) can change
-    -- the domain via the subtype relation.
+    -- Semantic lambda: both are lambdas; for all compatible arguments
+    -- at step j ≤ n, evaluating bodyV[aV] and bodyT[aT] gives compatible results.
+    -- Replaces the old structural lam (VCompat n bodyV bodyT) which couldn't
+    -- handle the app case: after beta-reduction, the IH doesn't apply because
+    -- bodyV.subst 0 aV is not a source sub-expression. The semantic version
+    -- makes the app lam×lam case trivial (instantiate the quantifier).
     ∨ (∃ domV domT bodyV bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
-        VCompat n bodyV bodyT)
+        ∀ (j : Nat), j ≤ n → ∀ (fuel : Nat) (env : Env) (aV aT : Expr),
+          VCompat j aV aT →
+          ∀ rv, concEvalE fuel env (bodyV.subst 0 aV) = some rv →
+          ∀ rτ, absEval fuel env (bodyT.subst 0 aT) = some rτ →
+          VCompat j rv rτ)
     -- Unfolded structural mu: both are mus (possibly different annotations),
     -- and the UNFOLDED bodies (self-substituted) are compatible at the lower step.
     -- This replaces the old "raw bodies compatible" variant, which was PROVEN
@@ -254,6 +259,9 @@ def VCompat : Nat → Expr → Expr → Prop
     -- needing subCheckNF transitivity (which is FALSE).
     ∨ (∃ ctx ty, inferType ctx v = some ty ∧ VCompat n ty τ)
 
+@[simp] theorem VCompat.zero_eq (v τ : Expr) : VCompat 0 v τ = True := by
+  unfold VCompat; rfl
+
 /-! ## VCompat lemmas -/
 
 /-- Downward closure: more observation budget implies less.
@@ -276,8 +284,9 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     · exact Or.inl h_top
     -- Refl
     · exact Or.inr (Or.inl h_refl)
-    -- Structural lam: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
-    · exact Or.inr (Or.inr (Or.inl ⟨domV, domT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩))
+    -- Semantic lam: ∀ j ≤ k+1 → ∀ j ≤ k (weakened bound)
+    · exact Or.inr (Or.inr (Or.inl ⟨domV, domT, bodyV, bodyT, hv, hτ,
+        fun j hj => h_body j (Nat.le_succ_of_le hj)⟩))
     -- Unfolded structural mu: VCompat (k+1) on subst'd bodies → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩)))
     -- Mu right: VCompat (k+1) v (body.subst ...) → VCompat k by IH
@@ -309,7 +318,7 @@ theorem VCompat.fixpoint_mu {ann body : Expr} (n : Nat) (v : Expr)
     (hfix : body.subst 0 (.mu ann body) = .mu ann body)
     : VCompat n v (.mu ann body) := by
   induction n with
-  | zero => trivial
+  | zero => simp [VCompat]
   | succ k ih =>
     unfold VCompat
     apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
@@ -332,7 +341,7 @@ theorem VCompat.fixpoint_mu_left {ann body : Expr} (n : Nat) (τ : Expr)
     (hfix : body.subst 0 (.mu ann body) = .mu ann body)
     : VCompat n (.mu ann body) τ := by
   induction n with
-  | zero => trivial
+  | zero => simp [VCompat]
   | succ k ih =>
     unfold VCompat
     apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
@@ -370,7 +379,7 @@ theorem VCompat.from_type_sub_gen :
     by_cases heq_beq : (Expr.type == τ) = true
     · have heq : τ = Expr.type := (eq_of_beq heq_beq).symm
       subst heq
-      cases n with | zero => trivial | succ m => unfold VCompat; exact Or.inl rfl
+      cases n with | zero => simp [VCompat] | succ m => unfold VCompat; exact Or.inl rfl
     · have heq_false : (Expr.type == τ) = false := by
         cases h : (Expr.type == τ) with | true => exact absurd h heq_beq | false => rfl
       simp only [heq_false, ite_false] at hcheck
@@ -392,7 +401,7 @@ theorem VCompat.from_type_sub_gen :
           suffices h_all : ∀ j, j ≤ n → VCompat j v (.mu ann_τ body_τ) from
             h_all n (Nat.le_refl _)
           intro j; induction j with
-          | zero => intro _; trivial
+          | zero => intro _; simp [VCompat]
           | succ i ih_j =>
             intro hi
             -- mu-right: VCompat i v (body.subst ...)
@@ -472,7 +481,7 @@ theorem VCompat.from_self_intro_gen :
         suffices h_all : ∀ j, j ≤ n → VCompat j v (.mu ann body) from
           h_all n (Nat.le_refl _)
         intro j; induction j with
-        | zero => intro _; trivial
+        | zero => intro _; simp [VCompat]
         | succ i ih_j =>
           intro hi
           unfold VCompat
@@ -517,7 +526,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
     (hv : VCompat n v σ) (hcheck : subCheckNF fuel ctx [] σ τ = true)
     : VCompat n v τ := by
   induction n generalizing v σ τ fuel ctx with
-  | zero => exact trivial
+  | zero => simp [VCompat]
   | succ m ih =>
     -- Handle σ = τ and τ = .type upfront (covers all VCompat disjuncts)
     by_cases hστ : σ = τ
@@ -567,22 +576,10 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
             cases τ with
             | type => exact absurd rfl hτ
             | lam dT bT =>
-              -- structural lam: need VCompat m bV bT
-              -- VCompat m bV bV by refl, subCheckNF bV bT from extraction, IH
-              cases fuel with
-              | zero => simp [subCheckNF] at hcheck
-              | succ k =>
-                by_cases h_eq : Expr.lam dV bV = Expr.lam dT bT
-                · exact absurd h_eq hστ
-                · obtain ⟨fuel', ctx', h_body_sub⟩ := subCheckNF_lam_lam_body hcheck h_eq
-                  -- VCompat m bV bV: by refl
-                  have h_bV_refl : VCompat m bV bV := by
-                    cases m with
-                    | zero => trivial
-                    | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
-                  have h_bT := ih h_bV_refl h_body_sub
-                  unfold VCompat
-                  exact Or.inr (Or.inr (Or.inl ⟨dV, dT, bV, bT, rfl, rfl, h_bT⟩))
+              -- semantic lam: need ∀ j ≤ m, ∀ compatible args, eval bodies → compatible results
+              -- This requires relating subCheckNF on bodies to the semantic property.
+              -- Sorry for now — the previous structural proof doesn't directly apply.
+              sorry
             | mu ann_τ body_τ =>
               exact VCompat.from_self_intro (fun _ _ h => by cases h) hcheck
             | bvar _ =>
@@ -616,7 +613,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
               · -- Fixpoint: bodyV.subst 0 v = v → use IH with refl
                 rw [hfix]
                 have h_refl : VCompat m (.mu annV bodyV) (.mu annV bodyV) := by
-                  cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                  cases m with | zero => simp [VCompat] | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
                 exact ih h_refl hcheck
               · -- Non-fixpoint: needs generalized adequacy with seen
                 sorry
@@ -635,7 +632,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                   hστ hτ (fun _ _ h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
                 -- Build inferType disjunct via IH
                 have h_refl : VCompat m ty_inf ty_inf := by
-                  cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                  cases m with | zero => simp [VCompat] | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
                 have h_ty_τ := ih h_refl h_sub
                 unfold VCompat
                 exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩))))))
@@ -652,7 +649,7 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                 obtain ⟨ty_inf, h_inf, h_sub⟩ := subCheckNF_neutral_inferType hcheck
                   hστ hτ (fun _ _ h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
                 have h_refl : VCompat m ty_inf ty_inf := by
-                  cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                  cases m with | zero => simp [VCompat] | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
                 have h_ty_τ := ih h_refl h_sub
                 unfold VCompat
                 exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty_inf, h_inf, h_ty_τ⟩))))))
@@ -674,37 +671,15 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
                   (fun _ _ h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
                 obtain ⟨ty_inf, h_inf, _⟩ := this
                 simp [inferType] at h_inf
-        -- Case 3: structural lam (v = lam dV bV, σ = lam dS bS)
+        -- Case 3: semantic lam (v = lam dV bV, σ = lam dS bS)
         · subst hv_eq; subst hσ_eq
-          -- h_body : VCompat m bV bS
+          -- h_body : semantic property for bV, bS
           -- hcheck : subCheckNF fuel ctx [] (lam dS bS) τ = true
           -- Need: VCompat (m+1) (lam dV bV) τ
-          cases τ with
-          | type => exact absurd rfl hτ
-          | lam dT bT =>
-            -- Extract body subCheckNF from lam/lam case
-            cases fuel with
-            | zero => simp [subCheckNF] at hcheck
-            | succ k =>
-              by_cases h_eq2 : Expr.lam dS bS = Expr.lam dT bT
-              · exact absurd h_eq2 hστ
-              · obtain ⟨fuel', ctx', h_body_sub⟩ := subCheckNF_lam_lam_body hcheck h_eq2
-                -- IH on bodies: VCompat m bV bT
-                have h_bT := ih h_body h_body_sub
-                -- Build structural lam VCompat
-                unfold VCompat
-                exact Or.inr (Or.inr (Or.inl ⟨dV, dT, bV, bT, rfl, rfl, h_bT⟩))
-          | mu ann_τ body_τ =>
-            exact VCompat.from_self_intro (fun _ _ h => by cases h) hcheck
-          | bvar _ =>
-            exfalso; exact subCheckNF_lam_impossible hcheck hστ
-              (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
-          | app _ _ =>
-            exfalso; exact subCheckNF_lam_impossible hcheck hστ
-              (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
-          | asc _ _ =>
-            exfalso; exact subCheckNF_lam_impossible hcheck hστ
-              (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
+          -- Sorry: adequacy for semantic lam requires threading the semantic property
+          -- through subCheckNF body decomposition. The previous structural proof
+          -- doesn't apply because h_body is now a quantified property, not VCompat on bodies.
+          sorry
         -- Case 4: structural mu (v = mu annV bodyV, σ = mu annS bodyS)
         · subst hv_eq; subst hσ_eq
           -- h_body : VCompat m (bodyV.subst 0 (mu annV bodyV)) (bodyS.subst 0 (mu annS bodyS))
@@ -871,7 +846,7 @@ theorem Expr.vEquivB_subst (j : Nat) (a : Expr) :
 /-- VCompat is reflexive at all step levels. -/
 theorem VCompat.refl (n : Nat) (e : Expr) : VCompat n e e := by
   cases n with
-  | zero => trivial
+  | zero => simp [VCompat]
   | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
 
 /-- vEquivB is reflexive. -/
@@ -978,7 +953,7 @@ theorem VCompat_of_vEquivB {n : Nat} {v v' τ τ' : Expr}
     (hv : v'.vEquivB v = true) (hτ : τ'.vEquivB τ = true)
     (h : VCompat n v τ) : VCompat n v' τ' := by
   induction n generalizing v v' τ τ' with
-  | zero => trivial
+  | zero => simp [VCompat]
   | succ k ih =>
     unfold VCompat at h ⊢
     rcases h with h_top | h_refl
@@ -1000,8 +975,9 @@ theorem VCompat_of_vEquivB {n : Nat} {v v' τ τ' : Expr}
       | lam dom body =>
         obtain ⟨d1, b1, rfl, hb1⟩ := vEquivB_bwd_lam hv
         obtain ⟨d2, b2, rfl, hb2⟩ := vEquivB_bwd_lam hτ
-        exact Or.inr (Or.inr (Or.inl ⟨d1, d2, b1, b2, rfl, rfl,
-          ih hb1 hb2 (VCompat.refl k body)⟩))
+        -- Need semantic property for b1, b2 from VCompat.refl body.
+        -- Requires: vEquiv evaluator congruence (body vEquiv b1/b2 → compatible eval results)
+        sorry
       | mu ann body =>
         obtain ⟨a1, b1, rfl, hb1⟩ := vEquivB_bwd_mu hv
         obtain ⟨a2, b2, rfl, hb2⟩ := vEquivB_bwd_mu hτ
@@ -1025,10 +1001,13 @@ theorem VCompat_of_vEquivB {n : Nat} {v v' τ τ' : Expr}
         -- VCompat has no structural asc disjunct, so this case is stuck.
         -- Unreachable in practice for the mu_body_subst_vcompat use case.
         sorry
-    -- Case 3: structural lam
+    -- Case 3: semantic lam
     · obtain ⟨d1, b1, rfl, hb1⟩ := vEquivB_bwd_lam hv
       obtain ⟨d2, b2, rfl, hb2⟩ := vEquivB_bwd_lam hτ
-      exact Or.inr (Or.inr (Or.inl ⟨d1, d2, b1, b2, rfl, rfl, ih hb1 hb2 hbody⟩))
+      -- hbody : semantic property for bV, bT
+      -- Need semantic property for b1, b2 (which are vEquiv to bV, bT resp.)
+      -- Requires: vEquiv evaluator congruence (vEquiv inputs → VCompat outputs)
+      sorry
     -- Case 4: structural mu (unfolded)
     · obtain ⟨a1, b1, rfl, hb1⟩ := vEquivB_bwd_mu hv
       obtain ⟨a2, b2, rfl, hb2⟩ := vEquivB_bwd_mu hτ
@@ -1108,13 +1087,13 @@ theorem mu_body_subst_vcompat {n : Nat} {bodyV bodyT ann : Expr}
   by_cases hτ : bodyT = .type
   · subst hτ; simp [Expr.subst]
     cases n with
-    | zero => trivial
+    | zero => simp [VCompat]
     | succ k => unfold VCompat; exact Or.inl rfl
   -- Case B: bodyV = bodyT → v = τ → subst gives same result → VCompat refl
   · by_cases heq : bodyV = bodyT
     · subst heq
       cases n with
-      | zero => trivial
+      | zero => simp [VCompat]
       | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
     -- Case C: closedEvalB holds → vEquiv chain
     -- This case requires proving that closedEvalB 0 bodyV and closedEvalB 0 bodyT
@@ -1159,7 +1138,7 @@ theorem soundness_gen
   | zero => simp [concEvalE] at h_conc
   | succ k ih =>
     cases n with
-    | zero => exact trivial  -- VCompat 0 = True
+    | zero => simp [VCompat]  -- VCompat 0 = True
     | succ m =>
       cases e with
       | bvar j =>
@@ -1179,7 +1158,7 @@ theorem soundness_gen
       | lam dom body =>
         -- concEvalE normalizes body: v = lam dom bodyV'
         -- absEval normalizes body: τ = lam dom bodyT'
-        -- Both use env.extend (bvar 0). IH on body gives VCompat m bodyV' bodyT'.
+        -- Both use env.extend (bvar 0).
         simp only [concEvalE] at h_conc
         simp only [absEval] at h_abs
         match h_cv : concEvalE k (Env.extend env (.bvar 0)) body with
@@ -1191,14 +1170,23 @@ theorem soundness_gen
           | some bodyT' =>
             simp [h_av] at h_abs
             subst h_conc; subst h_abs
-            have h_wt_body : WellTyped k (Env.extend env (.bvar 0)) body = true := by
-              simp [WellTyped] at h_wt; exact h_wt
-            -- IH on body at step m (one less than goal m+1)
-            have ih_body := ih (Env.extend env (.bvar 0)) body bodyV' bodyT' m
-                           h_wt_body h_cv h_av
-            -- VCompat (m+1) (lam dom bodyV') (lam dom bodyT') via structural lam
+            -- VCompat (m+1) (lam dom bodyV') (lam dom bodyT') via semantic lam
+            -- Need: ∀ j ≤ m, ∀ fuel' env' aV aT, VCompat j aV aT →
+            --   concEvalE fuel' env' (bodyV'.subst 0 aV) = some rv →
+            --   absEval fuel' env' (bodyT'.subst 0 aT) = some rτ →
+            --   VCompat j rv rτ
+            --
+            -- The IH gives: ∀ env' e', WellTyped k env' e' → concEvalE k env' e' = some v' →
+            --   absEval k env' e' = some τ' → VCompat n v' τ'
+            -- But bodyV'.subst 0 aV is NOT the same expression as bodyT'.subst 0 aT,
+            -- and the semantic property quantifies over arbitrary fuel/env.
+            --
+            -- This is the hardest part of the semantic VCompat approach.
+            -- The app lam×lam case becomes trivial, but this case becomes hard.
+            -- Sorry for now — the next step is to find a way to prove this.
             unfold VCompat
-            exact Or.inr (Or.inr (Or.inl ⟨dom, dom, bodyV', bodyT', rfl, rfl, ih_body⟩))
+            apply Or.inr; apply Or.inr; apply Or.inl
+            exact ⟨dom, dom, bodyV', bodyT', rfl, rfl, fun j hj fuel' env' aV aT h_args rv h_rv rτ h_rτ => sorry⟩
       | mu ann body =>
         simp only [concEvalE] at h_conc
         simp only [absEval] at h_abs
@@ -1405,21 +1393,40 @@ theorem soundness_gen
                     -- VCompat (m+1) (asc ...) (lam ...) = False
                     exfalso; revert ih_f; unfold VCompat; simp [inferType]
                   | lam domV bodyV =>
-                    -- ★ THE HARD CASE: both beta-reduce
-                    -- v = concEvalE k env (bodyV.subst 0 aV)
-                    -- τ = absEval k env (bodyT.subst 0 aT)
-                    -- ih_f: VCompat (m+1) (lam domV bodyV) (lam domT bodyT)
-                    --   → VCompat m bodyV bodyT (structural lam)
-                    -- ih_a: VCompat (m+1) aV aT
-                    -- WellTyped k env (bodyT.subst 0 aT) (from h_wt app case)
+                    -- ★ BOTH BETA-REDUCE — resolved via semantic VCompat!
+                    -- v = concEvalE k env (bodyV.subst 0 aV) (from h_conc)
+                    -- τ = absEval k env (bodyT.subst 0 aT) (from h_abs)
                     --
-                    -- KEY: Both bodyV.subst 0 aV and bodyT.subst 0 aT are asc-free
-                    -- (evaluator outputs are asc-free, subst preserves this).
-                    -- On asc-free inputs concEvalE = absEval, so:
-                    --   v = absEval k env (bodyV.subst 0 aV)
-                    --   τ = absEval k env (bodyT.subst 0 aT)
-                    -- Reduces to: absEval-congruence for VCompat-related inputs.
-                    sorry
+                    -- IH at m+2: VCompat (m+2) (lam domV bodyV) (lam domT bodyT)
+                    have ih_f2 := ih env f (.lam domV bodyV) (.lam domT bodyT) (m + 2)
+                                    h_wt_f h_fV h_fT
+                    -- VCompat (m+2) at lam×lam: case-split on disjuncts
+                    unfold VCompat at ih_f2
+                    rcases ih_f2 with h_top | h_refl |
+                      ⟨_, _, _, _, hv_eq, hτ_eq, h_sem⟩ |
+                      ⟨_, _, _, _, hv_mu, _, _⟩ |
+                      ⟨_, _, hτ_mu, _⟩ |
+                      ⟨_, _, hv_mu, _⟩ |
+                      ⟨_, _, _, _, hv_app, _, _, _⟩ |
+                      ⟨_, _, h_inf, _⟩
+                    -- Top: lam domT bodyT = type — impossible
+                    · cases h_top
+                    -- Refl: lam domV bodyV = lam domT bodyT
+                    · -- Bodies equal but args differ. Sorry for now.
+                      sorry
+                    -- Semantic lam: the key case!
+                    · cases hv_eq; cases hτ_eq
+                      exact h_sem (m + 1) (Nat.le_refl _) k env aV aT ih_a v h_conc τ h_abs
+                    -- Structural mu: lam = mu — impossible
+                    · cases hv_mu
+                    -- Mu right: lam domT bodyT = mu — impossible
+                    · cases hτ_mu
+                    -- Mu left: lam domV bodyV = mu — impossible
+                    · cases hv_mu
+                    -- Structural app: lam = app — impossible
+                    · cases hv_app
+                    -- InferType: inferType (lam ...) = none — impossible
+                    · simp [inferType] at h_inf
                   | mu annV bodyV =>
                     -- mu-app left, beta right: v from mu-app, τ from beta
                     sorry

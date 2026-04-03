@@ -1,5 +1,38 @@
 # Decision Log
 
+## 2026-04-03: Semantic VCompat for lam
+
+**Agent:** ochre-lean-20260403-053631
+
+### Decision
+
+Replaced VCompat's structural lam disjunct (VCompat n bodyV bodyT) with a
+semantic one (∀ compatible args, evaluating bodies gives compatible results).
+
+### Rationale
+
+The structural lam was a dead end for the app case:
+- After beta-reduction, bodyV.subst 0 aV is not a source sub-expression
+- VCompat.subst_congr is FALSE (Tests.lean §11.6)
+- The asc-free approach has a hole (evaluator outputs aren't always asc-free)
+
+The semantic property makes the app lam×lam case trivial (instantiate the
+quantifier from ih_f at step m+2 with ih_a at step m+1).
+
+### Trade-offs
+
+- **Gained:** App lam×lam semantic sub-case PROVED
+- **Lost:** 5 cases that were proved with structural lam need sorry (all the
+  same problem: derive semantic property from structural knowledge)
+- **Net:** Better architecture. The problem is concentrated in one place
+  (semantic property proof) instead of scattered across 13 app sub-cases.
+
+### What didn't work for the refl sub-case
+
+When ih_f gives VCompat via refl (bodyV = bodyT), the semantic property isn't
+available. The bridge idea (IH on `asc (body.subst 0 aV) (body.subst 0 aT)`)
+needs WellTyped for body.subst 0 aV, which WellTyped app doesn't provide.
+
 ## 2026-04-03: Unconditional ascFree of eval outputs is FALSE; conditional form proven
 
 **Agent:** ochre-lean-20260403-050103
