@@ -98,15 +98,15 @@ def testFuel : Nat := 1000
 -- ============================================================
 
 -- Abstract eval of a closed lambda: returns itself.
-example : absEval testFuel [] true' = some true' := by
+example : absEval testFuel [] true' = .ok true' := by
   native_decide
 
 -- id Nat 3 should have precise type 3 (transparency). §6.4
-example : absEval testFuel [] (.app (.app id' Nat') three') = some three' := by
+example : absEval testFuel [] (.app (.app id' Nat') three') = .ok three' := by
   native_decide
 
 -- id_ascribed Nat 3 should have type Nat (ascription loses precision). §6.4
-example : absEval testFuel [] (.app (.app idAscribed Nat') three') = some Nat' := by
+example : absEval testFuel [] (.app (.app idAscribed Nat') three') = .ok Nat' := by
   native_decide
 
 -- ============================================================
@@ -147,7 +147,7 @@ example : subCheck testFuel three' two' = false := by native_decide
 -- ============================================================
 
 -- succ 2 should have precise type 3
-example : absEval testFuel [] (.app succ' two') = some three' := by
+example : absEval testFuel [] (.app succ' two') = .ok three' := by
   native_decide
 
 -- ============================================================
@@ -155,27 +155,27 @@ example : absEval testFuel [] (.app succ' two') = some three' := by
 -- ============================================================
 
 -- add 2 3 = 5
-example : absEval testFuel [] (.app (.app add' two') three') = some five' := by
+example : absEval testFuel [] (.app (.app add' two') three') = .ok five' := by
   native_decide
 
 -- isZero 0 = true
-example : absEval testFuel [] (.app isZero' zero') = some true' := by
+example : absEval testFuel [] (.app isZero' zero') = .ok true' := by
   native_decide
 
 -- isZero 3 = false
-example : absEval testFuel [] (.app isZero' three') = some false' := by
+example : absEval testFuel [] (.app isZero' three') = .ok false' := by
   native_decide
 
 -- double 3 = 6
-example : absEval testFuel [] (.app double' three') = some six' := by
+example : absEval testFuel [] (.app double' three') = .ok six' := by
   native_decide
 
 -- succ applied multiple times: succ(succ(succ 0)) = 3
-example : absEval testFuel [] (.app succ' (.app succ' (.app succ' zero'))) = some three' := by
+example : absEval testFuel [] (.app succ' (.app succ' (.app succ' zero'))) = .ok three' := by
   native_decide
 
 -- add 0 0 = 0
-example : absEval testFuel [] (.app (.app add' zero') zero') = some zero' := by
+example : absEval testFuel [] (.app (.app add' zero') zero') = .ok zero' := by
   native_decide
 
 -- ============================================================
@@ -206,9 +206,9 @@ example : subCheck testFuel succ' NatToNat = true := by native_decide
 def Not'_n : Named := .lam "X" Bool'_n (.app (.app (.app (.var "X") Bool'_n) false'_n) true'_n)
 def Not' : Expr := n Not'_n
 
-example : absEval testFuel [] (.app Not' true') = some false' := by native_decide
-example : absEval testFuel [] (.app Not' false') = some true' := by native_decide
-example : absEval testFuel [] (.app Not' Bool') = some Bool' := by native_decide
+example : absEval testFuel [] (.app Not' true') = .ok false' := by native_decide
+example : absEval testFuel [] (.app Not' false') = .ok true' := by native_decide
+example : absEval testFuel [] (.app Not' Bool') = .ok Bool' := by native_decide
 
 example : subCheck testFuel false' true' = false := by native_decide
 example : subCheck testFuel (.app Not' true') Bool' = true := by native_decide
@@ -221,7 +221,7 @@ example : subCheck testFuel (.app Not' false') Bool' = true := by native_decide
 def fixId_n : Named := .mu "self" NatToNat_n (.lam "n" Nat'_n (.var "n"))
 def fixId : Expr := n fixId_n
 
-example : absEval testFuel [] fixId = some fixId := by native_decide
+example : absEval testFuel [] fixId = .ok fixId := by native_decide
 example : subCheck testFuel fixId NatToNat = true := by native_decide
 
 example : subCheck testFuel fixId .type = true := by native_decide
@@ -260,16 +260,16 @@ def tailArray'_n : Named := .lam "T" .type (.lam "n" Nat'_n (.lam "arr" (.app (.
 def tailArray' : Expr := n tailArray'_n
 
 -- Array tests
-example : absEval testFuel [] (.app (.app Array' zero') Nat') = some Unit' := by native_decide
+example : absEval testFuel [] (.app (.app Array' zero') Nat') = .ok Unit' := by native_decide
 
 def testArr1 : Expr := n (.app (.app (.app (.app consArray'_n Nat'_n) zero'_n) zero'_n) (.app emptyArray'_n Nat'_n))
 example : subCheck testFuel testArr1 (.app (.app Array' one') Nat') = true := by native_decide
-example : absEval testFuel [] (.app (.app (.app headArray' Nat') zero') testArr1) = some zero' := by native_decide
+example : absEval testFuel [] (.app (.app (.app headArray' Nat') zero') testArr1) = .ok zero' := by native_decide
 
 def testArr2 : Expr := n (.app (.app (.app (.app consArray'_n Nat'_n) one'_n) one'_n)
   (.app (.app (.app (.app consArray'_n Nat'_n) zero'_n) two'_n) (.app emptyArray'_n Nat'_n)))
 example : subCheck testFuel testArr2 (.app (.app Array' two') Nat') = true := by native_decide
-example : absEval testFuel [] (.app (.app (.app headArray' Nat') one') testArr2) = some one' := by native_decide
+example : absEval testFuel [] (.app (.app (.app headArray' Nat') one') testArr2) = .ok one' := by native_decide
 
 -- ============================================================
 -- §5.8 Vectors (Sigma types)
@@ -297,21 +297,21 @@ def testVec1 : Expr := n (.app (.app (.app mkVec'_n Nat'_n) one'_n) (.app (.app 
 example : subCheck testFuel testVec1 (.app Vec' Nat') = true := by native_decide
 
 -- Unpack vec1 to get length
-example : absEval testFuel [] (.app (.app testVec1 Nat') (n (.lam "n" Nat'_n (.lam "arr" (.app (.app Array'_n (.var "n")) Nat'_n) (.var "n"))))) = some one' := by native_decide
+example : absEval testFuel [] (.app (.app testVec1 Nat') (n (.lam "n" Nat'_n (.lam "arr" (.app (.app Array'_n (.var "n")) Nat'_n) (.var "n"))))) = .ok one' := by native_decide
 
 -- tailArray test
-example : absEval testFuel [] (.app (.app (.app tailArray' Nat') zero') testArr1) = some unit' := by native_decide
+example : absEval testFuel [] (.app (.app (.app tailArray' Nat') zero') testArr1) = .ok unit' := by native_decide
 
 -- headArray of tailArray
 example : absEval testFuel [] (.app (.app (.app headArray' Nat') zero')
-  (.app (.app (.app tailArray' Nat') one') testArr2)) = some two' := by native_decide
+  (.app (.app (.app tailArray' Nat') one') testArr2)) = .ok two' := by native_decide
 
 def testVec2 : Expr := n (.app (.app (.app mkVec'_n Nat'_n) two'_n) (.app (.app (.app (.app consArray'_n Nat'_n) one'_n) one'_n)
   (.app (.app (.app (.app consArray'_n Nat'_n) zero'_n) two'_n) (.app emptyArray'_n Nat'_n))))
 example : subCheck testFuel testVec2 (.app Vec' Nat') = true := by native_decide
 
 -- Unpack vec2 to get length
-example : absEval testFuel [] (.app (.app testVec2 Nat') (n (.lam "n" Nat'_n (.lam "arr" (.app (.app Array'_n (.var "n")) Nat'_n) (.var "n"))))) = some two' := by native_decide
+example : absEval testFuel [] (.app (.app testVec2 Nat') (n (.lam "n" Nat'_n (.lam "arr" (.app (.app Array'_n (.var "n")) Nat'_n) (.var "n"))))) = .ok two' := by native_decide
 
 -- ============================================================
 -- §6.2 Abstract instantiation tests
@@ -322,7 +322,7 @@ example : absEval testFuel [] (.app (.app testVec2 Nat') (n (.lam "n" Nat'_n (.l
 -- Abstract vector unpack (use testVec1 as a concrete Vec Nat)
 example : absEval testFuel [] (.app (.app (.asc testVec1 (.app Vec' Nat')) Nat')
   (n (.lam "n" Nat'_n (.lam "arr" (.app (.app Array'_n (.var "n")) Nat'_n) (.var "n")))))
-  = some Nat' := by native_decide
+  = .ok Nat' := by native_decide
 
 -- Rewrapped abstract vector ⊑ Vec Nat
 example : subCheck testFuel
@@ -343,7 +343,7 @@ example : subCheck testFuel
 
 -- isZero (succ (... : Nat)) = false (precisely!)
 example : absEval testFuel []
-  (.app isZero' (.app succ' (.asc zero' Nat'))) = some false' := by native_decide
+  (.app isZero' (.app succ' (.asc zero' Nat'))) = .ok false' := by native_decide
 
 -- isZero (... : Nat) ⊑ Bool
 example : subCheck testFuel
@@ -434,9 +434,9 @@ def pred'_n : Named := .lam "n" Nat'_n (
     (.lam "a" Nat'_n (.lam "_" Nat'_n (.var "a"))))
 def pred' : Expr := n pred'_n
 
-example : absEval testFuel [] (.app pred' zero') = some zero' := by native_decide
-example : absEval testFuel [] (.app pred' one') = some zero' := by native_decide
-example : absEval testFuel [] (.app pred' three') = some two' := by native_decide
+example : absEval testFuel [] (.app pred' zero') = .ok zero' := by native_decide
+example : absEval testFuel [] (.app pred' one') = .ok zero' := by native_decide
+example : absEval testFuel [] (.app pred' three') = .ok two' := by native_decide
 example : subCheck testFuel pred' NatToNat = true := by native_decide
 
 example : concEval testFuel (.app pred' zero') = some zero' := by native_decide
@@ -538,7 +538,7 @@ example : subCheck testFuel
   = true := by native_decide
 
 -- Ascription interaction
-example : absEval testFuel [] (.asc unit' (n (.mu "f" .type Unit'_n))) = some (n (.mu "f" .type Unit'_n)) := by native_decide
+example : absEval testFuel [] (.asc unit' (n (.mu "f" .type Unit'_n))) = .ok (n (.mu "f" .type Unit'_n)) := by native_decide
 example : subCheck testFuel (.asc unit' (n (.mu "f" .type Unit'_n))) Unit' = true := by native_decide
 
 -- Self types with self variable used
@@ -559,7 +559,7 @@ def addSelfNat : Expr := n addSelfNat_n
 
 example : absEval testFuel []
   (.app (.app addSelfNat (.asc zero' SelfNat)) (.asc zero' SelfNat))
-  = some Nat' := by native_decide
+  = .ok Nat' := by native_decide
 
 example : subCheck testFuel
   (.app (.app addSelfNat (.asc zero' SelfNat)) (.asc zero' SelfNat))
@@ -573,7 +573,7 @@ example : subCheck testFuel addSelfNat
   (n (.lam "n" SelfNat_n (.lam "m" SelfNat_n Nat'_n))) = true := by native_decide
 
 example : absEval testFuel []
-  (.app (.app addSelfNat two') three') = some five' := by native_decide
+  (.app (.app addSelfNat two') three') = .ok five' := by native_decide
 
 -- ============================================================
 -- §10 Variant B: truly self-referential Nat (Cedille-style)
@@ -597,7 +597,7 @@ def add_mu : Expr := n add_mu_n
 
 example : absEval testFuel []
   (.app (.app add_mu (.asc zero_mu MuNat)) (.asc zero_mu MuNat))
-  = some MuNat := by native_decide
+  = .ok MuNat := by native_decide
 
 example : subCheck testFuel zero_mu MuNat = true := by native_decide
 
@@ -789,21 +789,21 @@ example : (Expr.lam .type (Expr.bvar 0)).subst 0 .type = Expr.lam .type (Expr.bv
 -- ============================================================
 
 -- W1: Simple ascription
-example : (absEval testFuel [] (.asc unit' Unit')).isSome = true := by native_decide
+example : (absEval testFuel [] (.asc unit' Unit')).isOk = true := by native_decide
 
 -- W2: Ascription with SelfNat
-example : (absEval testFuel [] (.asc zero' SelfNat)).isSome = true := by native_decide
+example : (absEval testFuel [] (.asc zero' SelfNat)).isOk = true := by native_decide
 
 -- W3: Ascription with MuNat (Variant B)
-example : (absEval testFuel [] (.asc zero_mu MuNat)).isSome = true := by native_decide
+example : (absEval testFuel [] (.asc zero_mu MuNat)).isOk = true := by native_decide
 
 -- W4: Abstract add with self-typed args
 example : (absEval testFuel []
-  (.app (.app addSelfNat (.asc zero' SelfNat)) (.asc zero' SelfNat))).isSome = true := by native_decide
+  (.app (.app addSelfNat (.asc zero' SelfNat)) (.asc zero' SelfNat))).isOk = true := by native_decide
 
 -- W5: Recursive add with abstract args
 example : (absEval testFuel []
-  (.app (.app addRec (.asc zero' SelfNat)) (.asc zero' SelfNat))).isSome = true := by native_decide
+  (.app (.app addRec (.asc zero' SelfNat)) (.asc zero' SelfNat))).isOk = true := by native_decide
 
 -- W6: Abstract vector operations
 -- DISABLED: appendArrays' uses Type as Church Nat elimination return type,
@@ -812,19 +812,19 @@ example : (absEval testFuel []
 -- example : (absEval testFuel []
 --   (.app (.app (.app appendVec' Nat')
 --     (.asc testVec1 (.app Vec' Nat')))
---     (.asc testVec2 (.app Vec' Nat')))).isSome = true := by native_decide
+--     (.asc testVec2 (.app Vec' Nat')))).isOk = true := by native_decide
 
 -- W7: Concrete programs (no ascriptions)
-example : (absEval testFuel [] (.app (.app add' two') three')).isSome = true := by native_decide
-example : (absEval testFuel [] (.app succ' two')).isSome = true := by native_decide
-example : (absEval testFuel [] (.app isZero' zero')).isSome = true := by native_decide
+example : (absEval testFuel [] (.app (.app add' two') three')).isOk = true := by native_decide
+example : (absEval testFuel [] (.app succ' two')).isOk = true := by native_decide
+example : (absEval testFuel [] (.app isZero' zero')).isOk = true := by native_decide
 
 -- W8: addRec itself
-example : (absEval testFuel [] addRec).isSome = true := by native_decide
+example : (absEval testFuel [] addRec).isOk = true := by native_decide
 
 -- W9: appendVec itself
 -- DISABLED: same issue as W6 — appendArrays' uses Type as return type.
--- example : (absEval testFuel [] appendVec').isSome = true := by native_decide
+-- example : (absEval testFuel [] appendVec').isOk = true := by native_decide
 
 -- ============================================================
 -- §13 VCompat.adequacy COUNTEREXAMPLE (HISTORICAL + FIX VERIFICATION)
@@ -1002,7 +1002,7 @@ example : concEvalE 10 closedness_cex_env (.lam (.bvar 0) (.bvar 0))
 -- With the new TyCtx-based absEval, bvar returns bvar directly (no env lookup).
 -- Domains are now evaluated. The result is the same for this case.
 example : absEval 10 [closedness_cex_mu] (.lam (.bvar 0) (.bvar 0))
-    = some (.lam (.bvar 0) (.bvar 0)) := by native_decide
+    = .ok (.lam (.bvar 0) (.bvar 0)) := by native_decide
 
 -- Verify: subst 0 changes the output (closedness is FALSE)
 example : (Expr.lam (.bvar 0) (.bvar 0)).subst 0 closedness_cex_mu
@@ -1054,9 +1054,9 @@ private def vcompat_check (ctxs : List (List Expr)) : Nat → Expr → Expr → 
 -- Well-typedness is now implied by absEval succeeding (no separate WellTyped).
 private def check_mu_soundness (fuel _steps : Nat) (ann body : Expr) : Bool :=
     let muExpr := Expr.mu ann body
-    -- With mu-as-value, absEval and concEvalE both return some (mu ann body)
+    -- With mu-as-value, absEval and concEvalE both return the mu unchanged
     match concEvalE fuel [] muExpr, absEval fuel [] muExpr with
-    | some v, some τ => v == τ  -- Both return the same mu, so VCompat by refl
+    | some v, .ok τ => v == τ  -- Both return the same mu, so VCompat by refl
     | _, _ => true  -- eval fails, vacuous
 
 -- Test 1: Simple mu with no ascription (both evaluators agree)
@@ -1262,7 +1262,7 @@ after beta-reduction, both evaluators agree. -/
 -- Evaluator outputs are asc-free
 -- absEval output for identity with ascription inside:
 example : (absEval 5 [] (.lam .type (.asc (.bvar 0) .type))).map Expr.ascFreeB
-        = some true := by native_decide
+        = .ok true := by native_decide
 -- concEvalE output for identity with ascription inside:
 example : (concEvalE 5 [] (.lam .type (.asc (.bvar 0) .type))).map Expr.ascFreeB
         = some true := by native_decide
@@ -1274,16 +1274,16 @@ example : (concEvalE 5 [] (.lam .type (.asc (.bvar 0) .type))).map Expr.ascFreeB
 -- So asc in domains is now erased by absEval (not passed through).
 -- absEval evaluates the domain ascription: (.asc .type .type) → type ⊑ type → .type
 example : (absEval 5 [] (.lam (.asc .type .type) (.bvar 0))).map Expr.ascFreeB
-        = some true := by native_decide
+        = .ok true := by native_decide
 -- concEvalE still doesn't evaluate domains:
 example : (concEvalE 5 [] (.lam (.asc .type .type) (.bvar 0))).map Expr.ascFreeB
         = some false := by native_decide
 -- Mu annotations ARE now evaluated by absEval:
 example : (absEval 5 [] (.mu (.asc .type .type) (.bvar 0))).map Expr.ascFreeB
-        = some true := by native_decide
+        = .ok true := by native_decide
 -- mu-app catch-all leaks raw body which can have asc:
 example : (absEval 5 [] (.mu .type (.app (.bvar 0) (.asc .type .type)))).map Expr.ascFreeB
-        = some false := by native_decide
+        = .ok false := by native_decide
 -- NOTE: concEvalE (env-based) and absEval (ctx-based) no longer have parallel structure,
 -- so direct equality comparisons don't make sense. Soundness bridges them via VCompat.
 -- CONDITIONAL version IS true: ascFree input → ascFree output (now proven for concEvalE)
@@ -1355,7 +1355,7 @@ private def check_semantic_lam_body (fuel steps : Nat) (env : Env)
   let env' := Env.extend env (.bvar 0)
   let ctx' : TyCtx := TyCtx.extend [] .type  -- approximate: assume top-type domain
   match concEvalE fuel env' body, absEval fuel ctx' body with
-  | some bodyV', some bodyT' =>
+  | some bodyV', .ok bodyT' =>
     -- Only interesting when bodyV' ≠ bodyT'
     if bodyV' == bodyT' then true
     else
@@ -1364,7 +1364,7 @@ private def check_semantic_lam_body (fuel steps : Nat) (env : Env)
         [fuel, fuel + 5, fuel + 10].all fun test_fuel =>
           match concEvalE test_fuel [] (bodyV'.subst 0 aV),
                 absEval test_fuel [] (bodyT'.subst 0 aT) with
-          | some rv, some rτ => VCompatCheck steps rv rτ
+          | some rv, .ok rτ => VCompatCheck steps rv rτ
           | _, _ => true  -- vacuously true if eval fails
   | _, _ => true  -- can't test if eval fails
 
@@ -1397,15 +1397,16 @@ private def find_semantic_lam_failures (fuel steps : Nat) (env : Env)
     : List (Expr × Expr × Expr × Expr × Expr × Expr × Expr) :=
   bodies.foldl (fun acc body =>
     let env' := Env.extend env (.bvar 0)
-    match concEvalE fuel env' body, absEval fuel env' body with
-    | some bodyV', some bodyT' =>
+    let ctx' : TyCtx := TyCtx.extend [] .type
+    match concEvalE fuel env' body, absEval fuel ctx' body with
+    | some bodyV', .ok bodyT' =>
       if bodyV' == bodyT' then acc
       else
         let failures := args.foldl (fun acc2 (aV, aT) =>
           [fuel, fuel + 5].foldl (fun acc3 test_fuel =>
             match concEvalE test_fuel [] (bodyV'.subst 0 aV),
                   absEval test_fuel [] (bodyT'.subst 0 aT) with
-            | some rv, some rτ =>
+            | some rv, .ok rτ =>
               if VCompatCheck steps rv rτ then acc3
               else acc3 ++ [(body, bodyV', bodyT', aV, aT, rv, rτ)]
             | _, _ => acc3
@@ -1428,7 +1429,7 @@ example : concEvalE 10 (Env.extend [] (.bvar 0)) (.asc (.lam .type (.bvar 0)) (.
 
 -- With new TyCtx-based absEval, use ctx instead of env
 example : absEval 10 (TyCtx.extend [] .type) (.asc (.lam .type (.bvar 0)) (.lam .type .type))
-        = some (.lam .type .type) := by native_decide
+        = .ok (.lam .type .type) := by native_decide
 
 -- After subst with arg = lam type (bvar 0):
 -- bodyV'.subst 0 (lam type (bvar 0)) = (lam type (bvar 0)).subst 0 (lam type (bvar 0))
@@ -1488,14 +1489,14 @@ private def check_semantic_lam_body2 (fuel steps : Nat) (env : Env)
   let env' := Env.extend env (.bvar 0)
   let ctx' : TyCtx := TyCtx.extend [] .type
   match concEvalE fuel env' body, absEval fuel ctx' body with
-  | some bodyV', some bodyT' =>
+  | some bodyV', .ok bodyT' =>
     if bodyV' == bodyT' then true
     else
       test_args.all fun (aV, aT) =>
         [fuel, fuel + 5, fuel + 10].all fun test_fuel =>
           match concEvalE test_fuel [] (bodyV'.subst 0 aV),
                 absEval test_fuel [] (bodyT'.subst 0 aT) with
-          | some rv, some rτ => VCompatCheck2 steps rv rτ
+          | some rv, .ok rτ => VCompatCheck2 steps rv rτ
           | _, _ => true
   | _, _ => true
 
@@ -1507,17 +1508,17 @@ private def check_semantic_lam_wt (fuel steps : Nat)
   let env' := Env.extend ([] : Env) (.bvar 0)
   let ctx' : TyCtx := TyCtx.extend [] .type
   -- Well-typed iff absEval succeeds
-  if (absEval fuel ctx' body).isNone then true  -- skip non-well-typed bodies
+  if !(absEval fuel ctx' body).isOk then true  -- skip non-well-typed bodies
   else
     match concEvalE fuel env' body, absEval fuel ctx' body with
-    | some bodyV', some bodyT' =>
+    | some bodyV', .ok bodyT' =>
       if bodyV' == bodyT' then true  -- refl: trivially compatible
       else
         args.all fun a =>
           [fuel, fuel + 5].all fun test_fuel =>
             match concEvalE test_fuel [] (bodyV'.subst 0 a),
                   absEval test_fuel [] (bodyT'.subst 0 a) with
-            | some rv, some rτ => VCompatCheck2 steps rv rτ
+            | some rv, .ok rτ => VCompatCheck2 steps rv rτ
             | _, _ => true
     | _, _ => true
 
@@ -1533,10 +1534,10 @@ private def check_semantic_lam_wt_cross (fuel steps : Nat)
     (body : Expr) (arg_pairs : List (Expr × Expr)) : Bool :=
   let env' := Env.extend ([] : Env) (.bvar 0)
   let ctx' : TyCtx := TyCtx.extend [] .type
-  if (absEval fuel ctx' body).isNone then true
+  if !(absEval fuel ctx' body).isOk then true
   else
     match concEvalE fuel env' body, absEval fuel ctx' body with
-    | some bodyV', some bodyT' =>
+    | some bodyV', .ok bodyT' =>
       if bodyV' == bodyT' then true
       else
         arg_pairs.all fun (aV, aT) =>
@@ -1546,7 +1547,7 @@ private def check_semantic_lam_wt_cross (fuel steps : Nat)
             [fuel, fuel + 5].all fun test_fuel =>
               match concEvalE test_fuel [] (bodyV'.subst 0 aV),
                     absEval test_fuel [] (bodyT'.subst 0 aT) with
-              | some rv, some rτ => VCompatCheck2 steps rv rτ
+              | some rv, .ok rτ => VCompatCheck2 steps rv rτ
               | _, _ => true
     | _, _ => true
 

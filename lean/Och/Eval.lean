@@ -35,6 +35,26 @@ substitute the argument for bvar 0 in the body, then re-evaluate.
 
 open Expr
 
+/-! ## Except instances for native_decide -/
+
+instance {ε : Type} {α : Type} [DecidableEq ε] [DecidableEq α] : DecidableEq (Except ε α) := fun a b =>
+  match a, b with
+  | .ok a, .ok b => if h : a = b then isTrue (by rw [h]) else isFalse (by intro h2; cases h2; exact h rfl)
+  | .error a, .error b => if h : a = b then isTrue (by rw [h]) else isFalse (by intro h2; cases h2; exact h rfl)
+  | .ok _, .error _ => isFalse (by intro h; cases h)
+  | .error _, .ok _ => isFalse (by intro h; cases h)
+
+instance {ε : Type} {α : Type} [BEq ε] [BEq α] : BEq (Except ε α) where
+  beq a b := match a, b with
+    | .ok a, .ok b => a == b
+    | .error a, .error b => a == b
+    | _, _ => false
+
+instance {ε : Type} {α : Type} [Repr ε] [Repr α] : Repr (Except ε α) where
+  reprPrec x n := match x with
+    | .ok a => Repr.addAppParen (".ok " ++ reprPrec a 1) n
+    | .error e => Repr.addAppParen (".error " ++ reprPrec e 1) n
+
 /-! ## Type aliases and contexts -/
 
 /-- An expression that has been through absEval with some context.
@@ -118,57 +138,53 @@ mutual
       Key insight: with mu-as-value, the value env is always the identity
       mapping (bvar k → bvar k), so it's eliminated entirely. absEval uses
       only a type context — a list of domain annotations for bound variables. -/
-  def absEval (fuel : Nat) (ctx : TyCtx) (e : Expr) : Option NfExpr :=
+  def absEval (fuel : Nat) (ctx : TyCtx) (e : Expr) : Except String NfExpr :=
     match fuel with
-    | 0 => none
+    | 0 => .error "out of fuel"
     | fuel + 1 =>
       match e with
-      | .bvar k       => some (.bvar k)
-      | .lam dom body =>
+      | .bvar k       => .ok (.bvar k)
+      | .lam dom body => do
         -- Evaluate domain (rejects ill-formed domains)
-        match absEval fuel ctx dom with
-        | some dom' =>
-          -- Evaluate body under binder with evaluated domain in context
-          match absEval fuel (TyCtx.extend ctx dom') body with
-          | some body' => some (.lam dom' body')
-          | none => none
-        | none => none
-      | .type         => some .type
-      | .asc term ty  =>
+        let dom' ← absEval fuel ctx dom
+        -- Evaluate body under binder with evaluated domain in context
+        let body' ← absEval fuel (TyCtx.extend ctx dom') body
+        .ok (.lam dom' body')
+      | .type         => .ok .type
+      | .asc term ty  => do
         -- Type checking happens here:
         -- 1. Evaluate term → sigma
         -- 2. Evaluate ty → tau
         -- 3. Check sigma ⊑ tau via subCheckNF
         -- 4. Return tau (erase term)
-        match absEval fuel ctx term, absEval fuel ctx ty with
-        | some sigma, some tau =>
-          if subCheckNF fuel ctx [] sigma tau then some tau
-          else none
-        | _, _ => none
-      | .mu ann body  =>
+        let sigma ← absEval fuel ctx term
+        let tau ← absEval fuel ctx ty
+        if subCheckNF fuel ctx [] sigma tau then .ok tau
+        else .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
+      | .mu ann body  => do
         -- Evaluate annotation (rejects ill-formed annotations)
-        match absEval fuel ctx ann with
-        | some ann' => some (.mu ann' body)
-        | none => none
-      | .app f a      =>
-        match absEval fuel ctx f, absEval fuel ctx a with
-        | some (.lam _dom body), some aVal =>
+        let ann' ← absEval fuel ctx ann
+        .ok (.mu ann' body)
+      | .app f a      => do
+        let f' ← absEval fuel ctx f
+        let a' ← absEval fuel ctx a
+        match f' with
+        | .lam _dom body =>
           -- Beta-reduce via substitution
-          absEval fuel ctx (body.subst 0 aVal)
-        | some (.mu _ann body), some aVal =>
+          absEval fuel ctx (body.subst 0 a')
+        | .mu _ann body =>
           -- mu in function position. Strategy depends on ann AND body shape.
           match _ann, body with
           | .lam _dom retBody, .lam _ _ =>
-            absEval fuel ctx (retBody.subst 0 aVal)
+            absEval fuel ctx (retBody.subst 0 a')
           | _, .lam _dom retBody =>
-            absEval fuel ctx (retBody.subst 0 aVal)
-          | _, _ => some (.app body aVal)
-        | some .type, _ => none  -- Type is not callable
-        | some f', some a' =>
+            absEval fuel ctx (retBody.subst 0 a')
+          | _, _ => .ok (.app body a')
+        | .type => .error "Type is not callable"
+        | _ =>
           -- Neutral application: validate callability, return symbolic app
-          if isCallableNF ctx f' then some (.app f' a')
-          else none
-        | _, _ => none
+          if isCallableNF ctx f' then .ok (.app f' a')
+          else .error s!"not callable: {repr f'}"
   termination_by fuel
 
   /-- Structural subtype check on normalized terms.
@@ -180,8 +196,8 @@ mutual
     | 0 => false
     | fuel + 1 =>
       -- Normalize both sides to head form via absEval
-      let a := match absEval fuel ctx a with | some x => x | none => a
-      let b := match absEval fuel ctx b with | some x => x | none => b
+      let a := match absEval fuel ctx a with | .ok x => x | .error _ => a
+      let b := match absEval fuel ctx b with | .ok x => x | .error _ => b
       if a == b then true
       else if seen.any (fun (a', b') => a == a' && b == b') then true
       else match b with
@@ -190,26 +206,26 @@ mutual
         match a, b with
         | .lam domA bodyA, .lam domB bodyB =>
           -- Function subtyping: contravariant domain, covariant body
-          let domA_norm := match absEval fuel ctx domA with | some x => x | none => domA
-          let domB_norm := match absEval fuel ctx domB with | some x => x | none => domB
+          let domA_norm := match absEval fuel ctx domA with | .ok x => x | .error _ => domA
+          let domB_norm := match absEval fuel ctx domB with | .ok x => x | .error _ => domB
           subCheckNF fuel ctx seen domB_norm domA_norm
           -- TyCtx.extend shifts domB_norm automatically
           && subCheckNF fuel (TyCtx.extend ctx domB_norm) seen bodyA bodyB
         | .mu _annA bodyA, .mu _annB bodyB =>
           -- Mu subtyping: covariant in body
           let ctxA := TyCtx.extend ctx (.mu _annA bodyA)
-          let bodyA' := match absEval fuel ctxA bodyA with | some x => x | none => bodyA
-          let bodyB' := match absEval fuel ctxA bodyB with | some x => x | none => bodyB
+          let bodyA' := match absEval fuel ctxA bodyA with | .ok x => x | .error _ => bodyA
+          let bodyB' := match absEval fuel ctxA bodyB with | .ok x => x | .error _ => bodyB
           subCheckNF fuel ctxA seen bodyA' bodyB'
         | _, .mu _ann body =>
           -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
           let u := body.subst 0 b
-          let u' := match absEval fuel ctx u with | some x => x | none => u
+          let u' := match absEval fuel ctx u with | .ok x => x | .error _ => u
           subCheckNF fuel ctx ((a, b) :: seen) a u'
         | .mu ann body, _ =>
           -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
           let u := body.subst 0 (.mu ann body)
-          let u' := match absEval fuel ctx u with | some x => x | none => u
+          let u' := match absEval fuel ctx u with | .ok x => x | .error _ => u
           subCheckNF fuel ctx ((a, b) :: seen) u' b
         | _, _ =>
           match inferType ctx a with
@@ -224,7 +240,7 @@ end
     compares structurally. -/
 def subCheck (fuel : Nat) (a b : Expr) : Bool :=
   match absEval fuel [] a, absEval fuel [] b with
-  | some a', some b' => subCheckNF fuel [] [] a' b'
+  | .ok a', .ok b' => subCheckNF fuel [] [] a' b'
   | _, _ => false
 
 /-! ## Concrete evaluators -/
@@ -444,5 +460,5 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
 /-- absEval fuel monotonicity. With the new mutual definition, this needs
     updating. Sorry'd for now. -/
 theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {e v : Expr}
-    (h : absEval n ctx e = some v) : absEval (n + 1) ctx e = some v := by
+    (h : absEval n ctx e = .ok v) : absEval (n + 1) ctx e = .ok v := by
   sorry

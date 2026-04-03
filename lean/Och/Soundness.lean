@@ -36,7 +36,7 @@ The key theorem:
 
 ```
 soundness_gen : concEvalE fuel [] e = some v →
-                absEval fuel [] e = some τ →
+                absEval fuel [] e = .ok τ →
                 ∀ n, VCompat n v τ
 ```
 
@@ -100,7 +100,7 @@ def VCompat : Nat → Expr → Expr → Prop
         ∀ (j : Nat), j ≤ n → ∀ (fuel : Nat) (env : Env) (aV aT : Expr),
           VCompat j aV aT →
           ∀ rv, concEvalE fuel env (bodyV.subst 0 aV) = some rv →
-          ∀ rτ, absEval fuel [] (bodyT.subst 0 aT) = some rτ →
+          ∀ rτ, absEval fuel [] (bodyT.subst 0 aT) = .ok rτ →
           VCompat j rv rτ)
     -- Unfolded structural mu
     ∨ (∃ annV annT bodyV bodyT,
@@ -430,7 +430,7 @@ theorem concEvalE_closedEvalB {fuel : Nat} {env : Env} {e v : Expr}
   sorry
 
 theorem absEval_closedEvalB {fuel : Nat} {ctx : TyCtx} {e v : Expr}
-    (h : absEval fuel ctx e = some v)
+    (h : absEval fuel ctx e = .ok v)
     : v.closedEvalB 0 = true := by
   sorry
 
@@ -449,7 +449,7 @@ and callability internally. A term is well-typed iff absEval succeeds. -/
 theorem soundness_gen
     (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr) (n : Nat)
     (h_conc : concEvalE fuel env e = some v)
-    (h_abs : absEval fuel [] e = some τ)
+    (h_abs : absEval fuel [] e = .ok τ)
     : VCompat n v τ := by
   -- The proof structure changes significantly with the new absEval.
   -- absEval no longer takes an env, and concEvalE still does.
@@ -461,7 +461,7 @@ theorem soundness_gen
 theorem soundness
     (fuel : Nat) (e : Expr) (v τ : Expr) (n : Nat)
     (h_conc : concEvalE fuel [] e = some v)
-    (h_abs : absEval fuel [] e = some τ)
+    (h_abs : absEval fuel [] e = .ok τ)
     : VCompat n v τ :=
   soundness_gen fuel [] e v τ n h_conc h_abs
 
@@ -469,6 +469,6 @@ theorem soundness
 theorem soundness_concEval
     (fuel : Nat) (e : Expr) (v τ : Expr) (n : Nat)
     (h_conc : concEval fuel e = some v)
-    (h_abs : absEval fuel [] e = some τ)
+    (h_abs : absEval fuel [] e = .ok τ)
     : VCompat n v τ := by
   sorry  -- needs concEval → concEvalE bridge
