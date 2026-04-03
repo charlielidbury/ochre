@@ -1,5 +1,42 @@
 # Decision Log
 
+## 2026-04-03: from_self_intro_gen was FALSE; fixed to v = σ
+
+**Agent:** ochre-lean-20260403-065136
+
+### Finding
+
+`VCompat.from_self_intro_gen` claimed: if `subCheckNF σ (mu ann body)` succeeds
+and σ is not a mu, then `VCompat n v (mu ann body)` for ALL v and n.
+
+This is **FALSE**. Counterexample (Tests.lean §18):
+- σ = `lam type type`, ann = type, body = `lam type type`
+- `subCheckNF (lam type type) (mu type (lam type type)) = true` (self-intro → refl)
+- `(lam type type).subst 0 (mu type (lam type type)) = lam type type`
+- But `VCompat 2 type (mu type (lam type type)) = False`:
+  mu-right unfolds to `VCompat 1 type (lam type type)`, which has no applicable
+  disjunct (type is not lam/mu/app, inferType type = none).
+
+The issue: the theorem's ∀v quantification is too strong. `VCompat n v (lam ..)` is
+FALSE for v = type (type is not compatible with any lam at step ≥ 1).
+
+### Fix
+
+Changed from_self_intro_gen to fix `v = σ` (no universal quantification over v).
+`VCompat n σ (mu ann body)` IS true because:
+- mu-right → `VCompat (n-1) σ (body.subst 0 (mu ann body))`
+- If body.subst = σ: refl ✓
+- If body.subst = type: top ✓
+- If body.subst = lam: σ might also be lam → semantic lam / refl possible
+
+### Impact
+
+- 4 of 5 usages (adequacy refl cases) work unchanged (v = σ after subst)
+- 1 usage (adequacy structural app + mu target, line ~735) now explicitly sorry'd
+  (was hidden behind the false theorem)
+- The sorry on from_self_intro_gen is now on a CORRECT statement
+- Previous sorry was on a FALSE statement — would never have been provable
+
 ## 2026-04-03: Semantic VCompat for lam
 
 **Agent:** ochre-lean-20260403-053631

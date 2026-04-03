@@ -1346,3 +1346,18 @@ example : concEvalE 5 [] (.lam (.asc .type .type) (.bvar 0))
 example : concEvalE 5 [] (.mu (.asc .type .type) (.bvar 0))
         = absEval 5 [] (.mu (.asc .type .type) (.bvar 0)) := by native_decide
 -- CONDITIONAL version IS true: ascFree input → ascFree output (now proven)
+
+-- §18 from_self_intro_gen universal quantification is FALSE
+-- The old from_self_intro_gen claimed: ∀ v n, subCheckNF σ (mu ann body) → VCompat n v (mu ann body)
+-- This is FALSE when body.subst 0 (mu ann body) is a lam:
+-- Counterexample: σ = lam type type, ann = type, body = lam type type
+-- subCheckNF succeeds (via self-intro → refl):
+example : subCheckNF 10 [] [] (.lam .type .type) (.mu .type (.lam .type .type)) = true := by native_decide
+-- body.subst 0 self = lam type type (subst has no effect on type):
+example : (Expr.lam .type .type).subst 0 (.mu .type (.lam .type .type)) = .lam .type .type := by native_decide
+-- But VCompat 2 type (mu type (lam type type)) = False:
+-- mu-right unfolds to VCompat 1 type (lam type type), which has no applicable disjunct
+-- (type is not lam/mu/app, inferType type = none, lam ≠ type, type ≠ lam).
+-- So the ∀ v quantification is too strong — fails for v = type.
+-- The CORRECT statement is: VCompat n σ (mu ann body) (fix v = σ).
+-- VCompat n (lam type type) (mu type (lam type type)) IS true via mu-right → refl.

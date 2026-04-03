@@ -16,8 +16,8 @@ the mu design.
 `lake build` passes. **8 sorry'd declarations** (all in Soundness.lean):
 
 Soundness.lean (8):
-- `VCompat.from_self_intro_gen` (line ~446) — 1 sorry, inner recursion
-- `VCompat.adequacy` (line ~525) — 8 sub-sorrys (mu/seen + structural app + 2 NEW semantic lam)
+- `VCompat.from_self_intro_gen` (line ~447) — 1 sorry, inner recursion (CORRECTED: v = σ, was ∀v which was FALSE, see §18)
+- `VCompat.adequacy` (line ~530) — 9 sub-sorrys (mu/seen + structural app×2 + 2 NEW semantic lam)
 - `VCompat_of_vEquivB` (line ~952) — 3 sorrys (refl→asc + 2 NEW semantic lam)
 - `concEvalE_closedEvalB` (line ~1058) — 1 sorry, evaluator closedness
 - `absEval_closedEvalB` (line ~1064) — 1 sorry, evaluator closedness
@@ -32,7 +32,36 @@ Eval.lean (0 — all 3 asc-free declarations NOW PROVEN):
 
 **`soundness` (using concEvalE) is sorry-free!** (depends transitively on sorry'd lemmas)
 
-## KEY CHANGE: Semantic VCompat for lam (this session)
+## KEY CHANGE: from_self_intro_gen was FALSE; fixed (this session)
+
+**Agent:** ochre-lean-20260403-065136
+
+### What changed
+
+`VCompat.from_self_intro_gen` quantified over ALL v: `∀ v, VCompat n v (mu ann body)`.
+This was **FALSE**. Counterexample in Tests.lean §18:
+- σ = `lam type type`, ann = type, body = `lam type type`
+- `subCheckNF` succeeds (self-intro → refl)
+- But `VCompat 2 type (mu type (lam type type)) = False`
+
+The fix: changed to `v = σ` (no ∀v). `VCompat n σ (mu ann body)` IS true.
+
+### Impact
+
+- **The old sorry was on a FALSE statement** — it would NEVER have been provable
+- The corrected sorry is on a potentially TRUE statement
+- 4/5 usages (refl cases) work unchanged
+- 1 usage (structural app + mu target) now explicitly sorry'd (was hidden behind false theorem)
+- Future agents won't waste time trying to prove a false theorem
+
+### New critical finding: §8
+
+VCompat (n+1) type (lam ...) = False for all lam shapes. This means:
+- from_self_intro_gen CANNOT quantify over all v
+- Any theorem claiming VCompat for ALL v against a non-type, non-mu target is FALSE
+- The only "universal" VCompat is via top (τ = type) or mu-chain-to-type
+
+## KEY CHANGE: Semantic VCompat for lam (previous session)
 
 **Agent:** ochre-lean-20260403-053631
 
@@ -464,6 +493,24 @@ program with asc) can have asc in domains/annotations and in mu-app catch-all
 outputs. The conditional `ascFree_eval_equiv` only helps when the input
 expression is already ascFree. See DECISION-LOG.md for analysis.
 
+### 8. from_self_intro_gen ∀v quantification is FALSE (NEW)
+The old `VCompat.from_self_intro_gen` claimed `VCompat n v (mu ann body)` for ALL v.
+This is FALSE when `body.subst 0 (mu ann body)` is a lam (not type/mu).
+
+Counterexample (Tests.lean §18):
+- σ = `lam type type`, ann = type, body = `lam type type`
+- `subCheckNF (lam type type) (mu type (lam type type)) = true`
+- But `VCompat 2 type (mu type (lam type type)) = False`
+  (mu-right → `VCompat 1 type (lam type type)` → no applicable disjunct)
+
+Root cause: `VCompat (n+1) type (lam ..) = False` — type has no inferType,
+and no other disjunct matches (type is not lam/mu/app, lam is not type).
+
+**FIXED**: Changed to `v = σ` (no ∀v). The old sorry was on a FALSE statement.
+The new sorry is on a CORRECT (potentially provable) statement.
+
+**Do not re-add the ∀v quantification.** It is provably FALSE.
+
 ## File structure
 
 - `Syntax.lean` — Expr type (de Bruijn indices), substitution, shifting
@@ -477,11 +524,13 @@ expression is already ascFree. See DECISION-LOG.md for analysis.
   vEquivB_shift/subst/refl (proven), closedEvalB_subst_vEquiv (proven),
   inferType_vEquivB (proven), VCompat_of_vEquivB (nearly proven, 1 sorry),
   mu_body_subst_vcompat (2/3 cases proved), from_type_sub_gen (proven),
-  from_self_intro_gen (1 sorry), soundness theorems
+  from_self_intro_gen (1 sorry, CORRECTED: v=σ, old ∀v was FALSE §18),
+  soundness theorems
 - `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN),
   subCheckNF + VCompat counterexample tests, counterexample resolution proof (§13),
   closedness counterexample (§14), soundness_gen mu brute-force tests (§15),
-  vEquiv/trichotomy/mu_body_subst_vcompat tests (§16)
+  vEquiv/trichotomy/mu_body_subst_vcompat tests (§16),
+  from_self_intro_gen counterexample (§18)
 
 ## Sorry count by category
 
@@ -504,8 +553,9 @@ expression is already ascFree. See DECISION-LOG.md for analysis.
 - concEvalE_closedEvalB: evaluator closedness (sorry'd)
 - absEval_closedEvalB: evaluator closedness (sorry'd)
 
-### Structural app in adequacy (1 sorry):
-- adequacy structural app case: needs inferType congruence between app components
+### Structural app in adequacy (2 sorrys):
+- adequacy structural app + non-mu target: needs inferType congruence
+- adequacy structural app + mu target: needs VCompat bridge from σ to v (NEW from §18 fix)
 
 ### Semantic lam property (5 sorrys, ALL THE SAME PROBLEM): NEW
 All 5 need: derive the semantic lam property from structural knowledge.
@@ -524,7 +574,7 @@ All 5 need: derive the semantic lam property from structural knowledge.
 - fV=mu × fT=mu: 1 sorry
 
 ### Other (2 sorrys):
-- from_self_intro_gen: inner recursion (1 sorry)
+- from_self_intro_gen: inner recursion (1 sorry, CORRECTED statement, see §18)
 - soundness_concEval: concEval → concEvalE bridge (1 sorry)
 
 ## What's been tried (and failed)
@@ -543,5 +593,8 @@ All 5 need: derive the semantic lam property from structural knowledge.
   mu-app catch-all leaks raw body with asc). The CONDITIONAL version (ascFree input →
   ascFree output) IS true and proven. But the conditional form doesn't help the
   soundness_gen app case because evaluator outputs of programs WITH asc can have asc.
+- **from_self_intro_gen ∀v quantification**: FALSE (Tests.lean §18). The theorem claimed
+  VCompat n v (mu ann body) for ALL v, but VCompat (n+1) type (lam ..) = False.
+  FIXED by changing to v = σ. Do NOT re-add the ∀v quantification.
 
 **Do not attempt any of the above approaches.**

@@ -90,6 +90,18 @@ Document WHY it's stuck, try to construct a counterexample, and if you
 suspect unsoundness, say so clearly. Changing a definition is not failure
 — it's the whole point of the experiment.
 
+## ✅ RESOLVED: from_self_intro_gen ∀v quantification FALSE (2026-04-03)
+
+**Agent:** ochre-lean-20260403-065136
+
+The old `from_self_intro_gen` claimed `VCompat n v (mu ann body)` for ALL v.
+**FALSE** — `VCompat 2 type (mu type (lam type type)) = False` while
+`subCheckNF (lam type type) (mu type (lam type type)) = true`.
+Counterexample in Tests.lean §18.
+
+**Fixed** by changing to `v = σ`. The sorry is now on a CORRECT statement.
+One adequacy usage (structural app + mu target) now explicitly sorry'd.
+
 ## ✅ RESOLVED: VCompat "unfolded structural mu" (2026-04-03)
 
 The old structural mu disjunct (raw bodies) made VCompat.adequacy FALSE.

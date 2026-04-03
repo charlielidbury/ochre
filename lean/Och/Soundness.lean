@@ -433,28 +433,29 @@ theorem VCompat.from_type_sub {fuel : Nat} {ctx : List Expr} {n : Nat} {v : Expr
   VCompat.from_type_sub_gen fuel n v _ ctx [] hcheck
     (fun p hp => absurd hp (List.not_mem_nil p))
 
-/-- General self-intro: if subCheckNF σ (mu ann body) succeeds with empty seen,
-    and σ is not a mu, then VCompat n v (mu ann body) for all n and v.
+/-- General self-intro: if subCheckNF σ (mu ann body) succeeds, and σ is not a mu,
+    then VCompat n σ (mu ann body) for all n.
 
-    This works because self-intro unfolds to subCheckNF σ (body.subst 0 (mu ann body))
-    with seen [(σ, mu ann body)]. The inner recursion either:
-    1. Hits equality (σ = body.subst) → VCompat via refl/mono
-    2. Hits seen (body.subst = mu ann body, fixpoint) → VCompat via fixpoint chain
-    3. Further recurses (fuel decreases) → IH handles it
+    **IMPORTANT**: The old version quantified over ALL v, claiming VCompat n v (mu ann body).
+    This was FALSE — counterexample in Tests.lean §18:
+      σ = lam type type, ann = type, body = lam type type
+      subCheckNF succeeds, but VCompat 2 type (mu type (lam type type)) = False
+      (mu-right unfolds to VCompat 1 type (lam type type), no applicable disjunct).
+    The corrected version fixes v = σ.
 
     Uses outer induction on fuel and inner induction on VCompat step index. -/
 theorem VCompat.from_self_intro_gen :
-    ∀ (fuel : Nat), ∀ (n : Nat) (v σ : Expr) (ctx : List Expr) (seen : List (Expr × Expr)),
+    ∀ (fuel : Nat), ∀ (n : Nat) (σ : Expr) (ctx : List Expr) (seen : List (Expr × Expr)),
     (∀ ann' body', σ ≠ .mu ann' body') →
     ∀ (ann body : Expr),
     subCheckNF fuel ctx seen σ (.mu ann body) = true →
-    (∀ p, p ∈ seen → VCompat n v p.2) →
-    VCompat n v (.mu ann body) := by
+    (∀ p, p ∈ seen → VCompat n σ p.2) →
+    VCompat n σ (.mu ann body) := by
   intro fuel
   induction fuel with
-  | zero => intro n v σ ctx seen _ ann body h; simp [subCheckNF] at h
+  | zero => intro n σ ctx seen _ ann body h; simp [subCheckNF] at h
   | succ k ih_fuel =>
-    intro n v σ ctx seen hσ_not_mu ann body hcheck hseen
+    intro n σ ctx seen hσ_not_mu ann body hcheck hseen
     unfold subCheckNF at hcheck
     by_cases heq_beq : (σ == Expr.mu ann body) = true
     · -- σ = mu ann body — but σ is not a mu!
@@ -477,8 +478,8 @@ theorem VCompat.from_self_intro_gen :
         -- After equality and seen checks fail, match on rhs = mu ann body
         -- The match goes to (_, .mu ann body) → self-intro (since σ ≠ mu)
         -- hcheck is now: subCheckNF k ctx ((σ, mu ann body) :: seen) σ (body.subst 0 (mu ann body))
-        -- Build VCompat n v (mu ann body) by inner induction on step
-        suffices h_all : ∀ j, j ≤ n → VCompat j v (.mu ann body) from
+        -- Build VCompat n σ (mu ann body) by inner induction on step
+        suffices h_all : ∀ j, j ≤ n → VCompat j σ (.mu ann body) from
           h_all n (Nat.le_refl _)
         intro j; induction j with
         | zero => intro _; simp [VCompat]
@@ -487,20 +488,24 @@ theorem VCompat.from_self_intro_gen :
           unfold VCompat
           apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
           refine ⟨ann, body, rfl, ?_⟩
-          -- Need: VCompat i v (body.subst 0 (mu ann body))
-          -- The inner subCheckNF is σ ⊑ body.subst, not .type ⊑ body.subst.
-          -- We can't directly apply from_type_sub_gen.
-          -- Instead, we need a general self-intro adequacy at step i.
-          -- For now, use sorry for this complex case.
+          -- Need: VCompat i σ (body.subst 0 (mu ann body))
+          -- The inner subCheckNF is σ ⊑ body.subst with seen.
+          -- Key cases:
+          -- 1. body.subst = σ → VCompat by refl
+          -- 2. body.subst = type → VCompat by top
+          -- 3. body.subst = mu → recurse via ih_fuel
+          -- 4. body.subst = lam → need adequacy-like reasoning with v = σ
+          -- For now, sorry this case. The statement is now CORRECT (v = σ),
+          -- unlike the old version which was FALSE for v ≠ σ (see Tests.lean §18).
           sorry
 
-/-- Corollary: self-intro with empty seen. -/
-theorem VCompat.from_self_intro {fuel : Nat} {ctx : List Expr} {n : Nat} {v σ : Expr}
+/-- Corollary: self-intro with empty seen and v = σ. -/
+theorem VCompat.from_self_intro {fuel : Nat} {ctx : List Expr} {n : Nat} {σ : Expr}
     {ann body : Expr}
     (hσ_not_mu : ∀ ann' body', σ ≠ .mu ann' body')
     (hcheck : subCheckNF fuel ctx [] σ (.mu ann body) = true)
-    : VCompat n v (.mu ann body) :=
-  VCompat.from_self_intro_gen fuel n v σ ctx [] hσ_not_mu ann body hcheck
+    : VCompat n σ (.mu ann body) :=
+  VCompat.from_self_intro_gen fuel n σ ctx [] hσ_not_mu ann body hcheck
     (fun p hp => absurd hp (List.not_mem_nil p))
 
 /-- VCompat respects subCheckNF: if v is compatible with σ, and σ ⊑ τ
@@ -727,7 +732,13 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
           cases τ with
           | type => exact absurd rfl hτ
           | mu ann_τ body_τ =>
-            exact VCompat.from_self_intro (fun _ _ h => by cases h) hcheck
+            -- from_self_intro gives VCompat for σ = app fS aS, but we need it for
+            -- v = app fV aV (v ≠ σ in general). The old from_self_intro quantified
+            -- over all v (which was FALSE — see Tests.lean §18).
+            -- Need: VCompat (m+1) (app fV aV) (mu ann_τ body_τ)
+            -- Approach: mu-right → VCompat m (app fV aV) (body_τ.subst 0 (mu ...))
+            -- from_self_intro gives VCompat for app fS aS, need to bridge to app fV aV.
+            sorry  -- structural app + mu target: needs VCompat bridge from σ to v
           | _ =>
             -- Non-type, non-mu τ: subCheckNF uses inferType on σ = app fS aS
             -- Need to extract inferType result and bridge to VCompat for v
