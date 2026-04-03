@@ -3,11 +3,11 @@ import Och.Syntax
 /-!
 # Och Evaluation (de Bruijn)
 
-Three evaluators:
-- **`concEval` (concrete/runtime):** Substitution-based CBV. Lambdas are
-  values (bodies not evaluated until applied). `(e : τ)` takes the lhs `e`.
-- **`concEvalE` (concrete/env-based):** Environment-based concrete evaluator,
-  structurally parallel to the old absEval. Used for soundness proofs.
+Two evaluators:
+- **`concEval` (concrete/runtime):** Substitution-based CBV for closed terms.
+  Lambdas and mus are values (bodies not evaluated until applied).
+  `(e : τ)` takes the lhs `e`. Mu is only unrolled when applied (mu-app
+  dispatch: substitute self-reference, then re-apply).
 - **`absEval` (abstract/compile-time):** Combined normalizer + type checker.
   Uses a type context (TyCtx) instead of a value environment. Normalizes under
   binders, evaluates domains and annotations, validates ascriptions via
@@ -21,15 +21,9 @@ of bvar k. When entering a lambda binder, we evaluate the domain and extend
 with the evaluated form. The value env is eliminated entirely — with
 mu-as-value, the value env was always the identity mapping (bvar k → bvar k).
 
-## Environment (concEvalE only)
-
-The environment is a positional list: `env[k]` is the value for bvar k.
-When entering a binder, we extend with a new entry and shift existing
-entries up by 1 (so their free variable indices stay correct at the new depth).
-
 ## Beta-reduction
 
-All evaluators use substitution for beta-reduction. When a lambda is applied,
+Both evaluators use substitution for beta-reduction. When a lambda is applied,
 substitute the argument for bvar 0 in the body, then re-evaluate.
 -/
 
@@ -60,7 +54,7 @@ instance {ε : Type} {α : Type} [Repr ε] [Repr α] : Repr (Except ε α) where
 /-- An expression that has been through absEval with some context.
     Invariants (not enforced by the type system, proved separately):
     - No `.asc` constructors (ascriptions erased)
-    - No redexes (`.app (.lam ..) ..` does not occur)
+    - No redexes (`.app (.lam ..) ..` does not occur) (normal form)
     - Well-scoped: all `.bvar k` satisfy `k < ctx.length`
     - All applications are callable: if `.app f a` occurs and `f`
       is neutral, then `inferType ctx f` is a function type
@@ -77,14 +71,6 @@ abbrev TyCtx := List NfExpr
 def TyCtx.extend (ctx : TyCtx) (ty : NfExpr) : TyCtx :=
   (ty.shift 1 0) :: ctx.map (Expr.shift 1 0)
 
-/-- Evaluation environment: positional list of values.
-    env[k] is the value for bvar k. Used by concEvalE only. -/
-abbrev Env := List Expr
-
-/-- Extend env for a new binder. Adds the new binding at position 0 and shifts
-    existing entries so their free variables adjust for the new depth. -/
-def Env.extend (env : Env) (v : Expr) : Env :=
-  v :: env.map (Expr.shift 1 0)
 
 /-! ## Type inference for neutral terms -/
 
@@ -247,9 +233,10 @@ def subCheck (fuel : Nat) (a b : Expr) : Bool :=
 
 /-- Concrete evaluator. Standard call-by-value lambda calculus with substitution.
 
-    Lambdas are values — their bodies are NOT evaluated until applied.
+    Lambdas and mus are values — their bodies are NOT evaluated until applied.
     Uses substitution for beta-reduction. Operates on closed terms only
-    (free bvars return None). -/
+    (free bvars return None). Mu is only unrolled when it appears in function
+    position (mu-app dispatch: substitute self-reference, then re-apply). -/
 def concEval (fuel : Nat) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
@@ -259,158 +246,17 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
     | .lam _ _ => some e  -- lambda is a VALUE — body not evaluated
     | .type => some .type
     | .asc term _ => concEval fuel term  -- runtime: erase ascription
-    | .mu ann body =>
-      -- Unroll: substitute self-reference into body, then evaluate
-      concEval fuel (body.subst 0 (.mu ann body))
+    | .mu _ _ => some e  -- mu is a value (only unrolled when applied)
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | some (.lam _dom body), some aVal =>
         -- Beta-reduce via substitution
         concEval fuel (body.subst 0 aVal)
       | some (.mu ann body), some aVal =>
-        -- mu in function position: unroll and retry
-        match concEval fuel (.mu ann body) with
-        | some (.lam _dom lamBody) => concEval fuel (lamBody.subst 0 aVal)
-        | some fVal => some (.app fVal aVal)
-        | none => none
+        -- mu in function position: unroll self-reference, then re-apply
+        concEval fuel (.app (body.subst 0 (.mu ann body)) aVal)
       | some fVal, some aVal => some (.app fVal aVal)
       | _, _ => none
-
-/-- Environment-based concrete evaluator. Structurally parallel to the old absEval.
-
-    The ONLY difference from the old absEval is the ascription case:
-    - old absEval takes the rhs (type annotation) — compile-time semantics
-    - concEvalE takes the lhs (term value) — runtime semantics
-
-    Used as a proof auxiliary for soundness_gen. The env-based structure
-    makes the induction hypothesis apply directly (both evaluators normalize
-    under binders, so outputs are related by IH). -/
-def concEvalE (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
-  match fuel with
-  | 0 => none
-  | fuel + 1 =>
-    match e with
-    | .bvar k       => env.get? k
-    | .lam dom body =>
-      match concEvalE fuel (env.extend (.bvar 0)) body with
-      | some body' => some (.lam dom body')
-      | none => none
-    | .type         => some .type
-    | .asc term _   => concEvalE fuel env term  -- runtime: take the lhs
-    | .mu _ann _body => some e  -- mu is a value, like lambda
-    | .app f a      =>
-      match concEvalE fuel env f, concEvalE fuel env a with
-      | some (.lam _dom body), some aVal =>
-        concEvalE fuel env (body.subst 0 aVal)
-      | some (.mu ann body), some aVal =>
-        -- Match on ann AND body, mirroring the old absEval's mu-app case.
-        match ann, body with
-        | .lam _dom retBody, .lam _ _ =>
-          concEvalE fuel env (retBody.subst 0 aVal)
-        | _, .lam _dom lamBody =>
-          concEvalE fuel env (lamBody.subst 0 aVal)
-        | _, _ => some (.app body aVal)
-      | some f', some a' => some (.app f' a')
-      | _, _ => none
-
-/-! ## Asc-free expressions and evaluator equivalence
-
-Both evaluators strip ascription from their outputs. On asc-free inputs,
-concEvalE and the old absEval are identical (they differ ONLY at the asc case).
-This is the key insight for the soundness_gen app case: after beta-reduction,
-both sides effectively use the same evaluator.
-
-NOTE: These properties were proved for the old env-based absEval. With the new
-TyCtx-based absEval, the relationship between concEvalE and absEval changes
-(absEval no longer takes an env). The asc-free equivalence may need to be
-restated in terms of the new absEval. For now, the key properties are sorry'd
-pending the updated proof strategy. -/
-
-/-- An expression is asc-free if it contains no `.asc` constructor. -/
-def Expr.ascFree : Expr → Prop
-  | .bvar _ => True
-  | .lam dom body => dom.ascFree ∧ body.ascFree
-  | .app f a => f.ascFree ∧ a.ascFree
-  | .asc _ _ => False
-  | .type => True
-  | .mu ann body => ann.ascFree ∧ body.ascFree
-
-/-- Bool-valued version for native_decide. -/
-def Expr.ascFreeB : Expr → Bool
-  | .bvar _ => true
-  | .lam dom body => dom.ascFreeB && body.ascFreeB
-  | .app f a => f.ascFreeB && a.ascFreeB
-  | .asc _ _ => false
-  | .type => true
-  | .mu ann body => ann.ascFreeB && body.ascFreeB
-
-theorem Expr.ascFree_iff_ascFreeB (e : Expr) : e.ascFree ↔ e.ascFreeB = true := by
-  induction e with
-  | bvar _ => simp [ascFree, ascFreeB]
-  | type => simp [ascFree, ascFreeB]
-  | asc _ _ => simp [ascFree, ascFreeB]
-  | lam dom body ih_d ih_b => simp [ascFree, ascFreeB, Bool.and_eq_true, ih_d, ih_b]
-  | app f a ih_f ih_a => simp [ascFree, ascFreeB, Bool.and_eq_true, ih_f, ih_a]
-  | mu ann body ih_a ih_b => simp [ascFree, ascFreeB, Bool.and_eq_true, ih_a, ih_b]
-
-/-- Shifting preserves asc-free. -/
-theorem Expr.ascFree_shift {e : Expr} {d c : Nat}
-    (he : e.ascFree) : (e.shift d c).ascFree := by
-  induction e generalizing c with
-  | bvar _ => simp [shift]; split <;> simp [ascFree]
-  | type => simp [shift, ascFree]
-  | asc _ _ => exact absurd he (by simp [ascFree])
-  | lam _ _ ih_d ih_b =>
-    simp [ascFree] at he; simp [shift, ascFree]
-    exact ⟨ih_d he.1, ih_b he.2⟩
-  | app _ _ ih_f ih_a =>
-    simp [ascFree] at he; simp [shift, ascFree]
-    exact ⟨ih_f he.1, ih_a he.2⟩
-  | mu _ _ ih_a ih_b =>
-    simp [ascFree] at he; simp [shift, ascFree]
-    exact ⟨ih_a he.1, ih_b he.2⟩
-
-/-- Substitution preserves asc-free. -/
-theorem Expr.ascFree_subst {e : Expr} {j : Nat} {s : Expr}
-    (he : e.ascFree) (hs : s.ascFree) : (e.subst j s).ascFree := by
-  induction e generalizing j s with
-  | bvar k =>
-    simp [subst]
-    split
-    · exact hs  -- k == j: result is s
-    · split
-      · simp [ascFree]  -- k > j: bvar (k-1)
-      · simp [ascFree]  -- k < j: bvar k
-  | type => simp [subst, ascFree]
-  | asc _ _ => exact absurd he (by simp [ascFree])
-  | lam dom body ih_d ih_b =>
-    simp [ascFree] at he; obtain ⟨hd, hb⟩ := he
-    simp [subst, ascFree]
-    exact ⟨ih_d hd hs, ih_b hb (ascFree_shift hs)⟩
-  | app f a ih_f ih_a =>
-    simp [ascFree] at he; obtain ⟨hf, ha⟩ := he
-    simp [subst, ascFree]; exact ⟨ih_f hf hs, ih_a ha hs⟩
-  | mu ann body ih_a ih_b =>
-    simp [ascFree] at he; obtain ⟨ha, hb⟩ := he
-    simp [subst, ascFree]
-    exact ⟨ih_a ha hs, ih_b hb (ascFree_shift hs)⟩
-
-/-- Env.extend with an asc-free value preserves the env asc-free invariant. -/
-theorem Env.extend_ascFree {env : Env} {v : Expr}
-    (henv : ∀ k e, env.get? k = some e → e.ascFree)
-    (hv : v.ascFree)
-    : ∀ k e, (Env.extend env v).get? k = some e → e.ascFree := by
-  intro k e hk
-  simp [Env.extend] at hk
-  cases k with
-  | zero =>
-    simp at hk; subst hk; exact hv
-  | succ j =>
-    simp [List.get?] at hk
-    obtain ⟨a, ha_lookup, ha_shift⟩ := hk
-    subst ha_shift
-    have := henv j a
-    exact Expr.ascFree_shift (this (by rwa [List.get?_eq_getElem?]))
 
 /-! ## Fuel monotonicity -/
 
@@ -428,7 +274,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
     | .asc term _ =>
       simp only [concEval] at h ⊢; exact ih h
     | .mu ann body =>
-      simp only [concEval] at h ⊢; exact ih h
+      simp [concEval] at h ⊢; exact h
     | .app f a =>
       unfold concEval at h ⊢
       match hf : concEval k f with
@@ -443,17 +289,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           simp only [hf', ha']
           match fv with
           | .lam _dom body => exact ih h
-          | .mu ann body_mu =>
-            match hmu : concEval k (.mu ann body_mu) with
-            | none => simp [hmu] at h
-            | some muv =>
-              have hmu' := ih hmu
-              simp only [hmu] at h
-              simp only [hmu']
-              match muv with
-              | .lam _dom lamBody => exact ih h
-              | .type => exact h
-              | .bvar _ | .app _ _ | .asc _ _ | .mu _ _ => exact h
+          | .mu ann body_mu => exact ih h
           | .type => exact h
           | .bvar _ | .app _ _ | .asc _ _ => exact h
 
