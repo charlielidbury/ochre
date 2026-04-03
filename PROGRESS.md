@@ -343,7 +343,37 @@ closedEvalB fails AND evaluators differ, bodyT = type (VCompat trivially holds).
   NOTE: The env precondition needs refinement (doesn't hold for raw mu-app
   catch-all outputs). Only needed for Case C path.
 
-## KEY CHANGE: shift-subst cancellation + semantic lam testing (this session)
+## KEY CHANGE: eval-subst bridge analysis (this session)
+
+**Agent:** ochre-lean-20260403-082324
+
+### What was discovered
+
+The eval-subst bridge `concEvalE fuel env (bodyV'.subst 0 a) = concEvalE fuel (env.extend a) body`
+was comprehensively tested (Tests.lean §20).
+
+**Critical result: bridge HOLDS for eval-fixpoint args (0 failures) but FAILS for mu args (122 failures).**
+
+Root cause: subst puts the arg into the expression tree → re-evaluated. env.extend
+puts the arg in the env → just looked up. Re-evaluation matters for mu values
+(which unfold further on re-evaluation) but not for lam/type/app values (which
+are eval fixpoints).
+
+This RULES OUT the generalized soundness_gen approach in its simple form.
+The soundness_gen IH applies to the source body in an extended env, but the
+evaluator does subst-based beta which differs from env-based beta for mu args.
+
+Three potential approaches identified (see "What the next agent MUST do" for details):
+1. Closure-based VCompat + NbE correctness theorem
+2. Mutual induction on (soundness fuel, semantic fuel)
+3. Change evaluator to env-based beta (risky, changes semantics)
+
+### What was NOT changed
+
+No sorrys added or removed. The sorry count is unchanged at 8 declarations.
+The analysis is entirely in Tests.lean (new §20) and documentation.
+
+## KEY CHANGE: shift-subst cancellation + semantic lam testing (previous session)
 
 **Agent:** ochre-lean-20260403-073625
 
@@ -409,47 +439,102 @@ below for details.
 Status: brute-force tested TRUE for all well-typed bodies. The property
 ONLY holds for well-typed sources — proof MUST use WellTyped.
 
-**Most promising approach: generalized soundness_gen with split envs.**
+#### The fundamental obstacle (DEEPLY ANALYZED this session)
 
-The approach needs:
-1. **VCompat.shift** — `VCompat n v τ → VCompat n (v.shift 1 c) (τ.shift 1 c)`.
-   Infrastructure is ready (shift_subst_cancel_gen proven). The semantic lam
-   case of VCompat.shift is tricky: shifted body = bodyV.shift 1 1, and
-   (bodyV.shift 1 1).subst 0 aV ≠ bodyV.subst 0 aV in general. BUT: the
-   semantic property quantifies over ALL env, so we can pick env to compensate
-   for the shift difference. Specifically:
-   concEvalE fuel env ((bodyV.shift 1 1).subst 0 aV) evaluates with bvar k+1
-   referencing env[k+1], while concEvalE fuel env' (bodyV.subst 0 aV) has bvar k
-   referencing env'[k]. So env' = env.tail gives the same result.
+The evaluators normalize under lam/mu binders. So the lambda VALUE contains
+a normalized body (bodyV' = concEvalE k (env.extend (bvar 0)) body), not the
+source body. The semantic property requires showing VCompat for evaluating
+bodyV'.subst 0 aV (the normalized body with the argument substituted).
 
-2. **Handling the arbitrary fuel problem.** The semantic property says "for ALL
-   fuel" but the IH works for a specific fuel k. Key insight from testing:
-   when eval succeeds at fuel f, it succeeds at fuel f+1 with the same result
-   (fuel mono). So if we prove the property at fuel k (from IH), all fuel f ≤ k
-   follow by mono, and all fuel f > k give the same result by mono. BUT: the
-   semantic property uses DIFFERENT expressions (bodyV'.subst 0 aV vs the source
-   body), so the IH doesn't directly apply even at fuel k.
+The soundness_gen IH works for source expressions at fuel k. But
+bodyV'.subst 0 aV is NOT a source expression — it's a normalized-then-
+substituted expression. The IH can't apply to it directly.
 
-3. **The WellTyped requirement.** Testing shows the property fails without
-   WellTyped. The proof MUST thread WellTyped through the semantic property.
-   Consider adding WellTyped to the soundness_gen conclusion (as a conjunct)
-   or to the VCompat semantic lam case.
+#### Key finding: eval-subst bridge (Tests.lean §20)
 
-**Alternative approach: add WellTyped to the semantic lam VCompat case.**
-Change the semantic property to require WellTyped for the substituted body:
+Tested whether: `concEvalE fuel env (bodyV'.subst 0 a) = concEvalE fuel (env.extend a) body`
+
+Results:
+- **Bridge holds for eval-fixpoint args** (0 failures in §20.6).
+  An arg `a` is an eval fixpoint if `concEvalE fuel env a = some a`.
+- **Bridge FAILS for non-fixpoint args** (122 failures in §20.5).
+  The ONLY non-fixpoint evaluator outputs are **mu expressions**.
+  `mu type (mu type (bvar 0))` is NOT a fixpoint: re-evaluation
+  under mu resolves self-reference deeper, producing a taller tower.
+- **Evaluation is idempotent for non-mu outputs** (0 failures in §20.4).
+
+Root cause: `body.subst 0 aV` puts `aV` into the expression tree where
+the evaluator RE-EVALUATES it. `env.extend aV` puts `aV` in the env
+where it's just LOOKED UP (no re-evaluation). For fixpoint values,
+re-evaluation is a no-op, so both paths agree. For non-fixpoint mus,
+re-evaluation further normalizes, producing a different result.
+
+#### Why standard approaches DON'T work
+
+1. **Generalized soundness_gen with split envs**: Even with different envs
+   for concEvalE/absEval, the lam case still can't produce the semantic
+   property because the IH applies to the source body, not the normalized
+   body. The semantic property quantifies over ARBITRARY fuel, but the IH
+   is at specific fuel k. For fuel' > k, the IH is insufficient.
+
+2. **Eval-subst bridge**: FALSE for mu args (§20.5). The subst-based
+   beta-reduction re-evaluates the argument, while env-based lookup doesn't.
+
+3. **Not normalizing under lam**: Would break free variable resolution.
+   The normalized body has free vars > 0 already resolved from the
+   creation-time env. Without normalization, free vars refer to the
+   creation-time env, but at application time we only have the call-site
+   env (which is different). This is the CLOSURE PROBLEM.
+
+4. **Adding WellTyped to semantic lam**: Doesn't solve the fundamental
+   issue — even with WellTyped, we still can't invoke the IH on
+   bodyV'.subst 0 aV because it's not a source expression.
+
+5. **VCompat.subst_congr**: FALSE (§11.6).
+
+6. **Eval-subst commutativity**: FALSE (§19.5).
+
+#### What MIGHT work
+
+**Option A: Closure-based VCompat + NbE correctness.**
+Store source body + creation-time env in VCompat's semantic lam:
 ```lean
-∀ j ≤ n, ∀ fuel env aV aT, VCompat j aV aT →
-  WellTyped fuel env (bodyT.subst 0 aT) = true →  -- NEW
-  ∀ rv, concEvalE fuel env (bodyV.subst 0 aV) = some rv →
-  ∀ rτ, absEval fuel env (bodyT.subst 0 aT) = some rτ →
-  VCompat j rv rτ
+∃ src_body src_envV src_envT,
+  ∀ j ≤ n, ∀ aV aT, VCompat j aV aT →
+    ∀ fuel rv, concEvalE fuel (src_envV.extend aV) src_body = some rv →
+    ∀ rτ, absEval fuel (src_envT.extend aT) src_body = some rτ →
+    VCompat j rv rτ
 ```
-This would make the lam case of soundness_gen easier (WellTyped from IH),
-and the app case would still work (WellTyped for body.subst 0 aT is given
-by the app's WellTyped definition). Check that mono and adequacy still work.
+The lam case of soundness_gen proves this via generalized IH on the
+source body with extended envs. The app case needs a BRIDGE: show
+`concEvalE k env (bodyV.subst 0 aV) = some v` implies
+`concEvalE k' (src_envV.extend aV) src_body = some v` for some k'.
+This is an NbE correctness theorem. The bridge holds for fixpoint args
+(§20.6), and for mu args needs additional reasoning (mu unfolding VCompat).
+
+**Option B: Mutual induction on (fuel, fuel').**
+Prove soundness_gen and the semantic property simultaneously by mutual
+induction. soundness_gen at fuel k+1 calls the semantic property at any
+fuel'. The semantic property at fuel' f+1 reduces to soundness_gen at
+fuel' f (for sub-expression evaluation). This avoids the "arbitrary fuel"
+problem because each theorem can call the other at a lower parameter.
+
+Requires restructuring as a mutual/well-founded definition in Lean 4.
+Complex but principled.
+
+**Option C: Change evaluator app case to env-based beta.**
+Replace `concEvalE fuel env (body.subst 0 aVal)` with
+`concEvalE fuel (env.extend aVal) body` in the app case. This makes
+the app case directly match the semantic property (env-based evaluation
+of the source body). But:
+- body here is the NORMALIZED body, not the source body
+- Free vars in domains/annotations might resolve from the wrong env
+- Changes actual program semantics (mu values not re-evaluated on application)
+Need to verify tests still pass. RISKY — changes semantics.
 
 **Do NOT attempt:** VCompat.subst_congr (FALSE, §11.6), eval-subst
-commutativity (FALSE, §19.5), absEval congruence via subst_congr.
+commutativity (FALSE, §19.5), absEval congruence via subst_congr,
+unrestricted eval-subst bridge (FALSE for mu args, §20.5).
 
 ### Priority 2: App lam×lam refl sub-case
 
@@ -578,7 +663,7 @@ semantic property holds vacuously in these cases.
 **Do not attempt eval-subst commutativity as a proof strategy.** The
 equality is false. The semantic property must be proved differently.
 
-### 10. Semantic lam property FAILS for non-well-typed bodies (NEW)
+### 10. Semantic lam property FAILS for non-well-typed bodies
 The semantic property `∀ VCompat args, eval bodyV'.subst 0 aV compat eval
 bodyT'.subst 0 aT` is FALSE for non-well-typed source bodies.
 Counterexample: body = `asc type (bvar 0)` (not well-typed: subCheckNF type
@@ -588,6 +673,38 @@ rv = type, rτ = lam type (bvar 0), and VCompat type (lam ..) = False.
 **The semantic property ONLY holds for well-typed sources.** Any proof
 must use the WellTyped hypothesis. (Tests.lean §19.4 confirms the property
 holds for ALL tested well-typed bodies.)
+
+### 11. Eval-subst bridge is FALSE for non-fixpoint mu args (NEW)
+`concEvalE fuel env (bodyV'.subst 0 a) ≠ concEvalE fuel (env.extend a) body`
+when `a` is a mu evaluator output (non-fixpoint). 122 failures in §20.5.
+
+Root cause: `body.subst 0 a` puts `a` into the expression tree where the
+evaluator RE-EVALUATES it (mu unfolds further). `env.extend a` puts `a`
+in the env where it's just looked up (no re-evaluation).
+
+**BUT**: the bridge HOLDS for eval-fixpoint args (0 failures in §20.6).
+Non-mu evaluator outputs are all fixpoints (§20.4). The ONLY non-fixpoint
+eval outputs are mu expressions that keep growing under re-normalization.
+
+**Implication**: subst-based beta ≠ env-based beta in general. This is
+the fundamental obstacle for the generalized soundness_gen approach. Any
+approach that tries to relate `bodyV.subst 0 aV` (what the evaluator does)
+to env-based evaluation of the source body (what the IH handles) will fail
+for mu arguments.
+
+### 12. Mu evaluator outputs are NOT eval-fixpoints (NEW)
+`concEvalE fuel env (mu ann body')` where `body' = concEvalE fuel ... body`
+is NOT an eval-fixpoint. Re-evaluation further normalizes the mu body by
+resolving the self-reference (bvar 0) to the new outer mu value, producing
+a deeper tower of mus.
+
+Example: `concEvalE 10 [] (mu type (bvar 0)) = mu type (mu type (bvar 0))`.
+Re-evaluating: `concEvalE 10 [] (mu type (mu type (bvar 0))) = mu type (mu type (mu type (bvar 0)))`.
+
+However, these towers are VCompat-related via mu unfolding (step-indexed).
+So the semantic property CAN hold even though eval results differ — the
+implication only fires when eval succeeds, and VCompat handles different
+mu unfolding depths via mu-right/mu-left disjuncts.
 
 ## File structure
 
@@ -610,7 +727,9 @@ holds for ALL tested well-typed bodies.)
   closedness counterexample (§14), soundness_gen mu brute-force tests (§15),
   vEquiv/trichotomy/mu_body_subst_vcompat tests (§16),
   from_self_intro_gen counterexample (§18),
-  semantic lam property brute-force tests (§19, NEW)
+  semantic lam property brute-force tests (§19),
+  eval-subst bridge tests (§20, NEW: bridge holds for fixpoint args,
+  fails for mu args, eval idempotency for non-mu outputs)
 
 ## Sorry count by category
 

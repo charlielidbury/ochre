@@ -1656,3 +1656,198 @@ private def esf := find_eval_subst_failures 10 (atoms ++ lam_atoms ++ asc_pairs)
 example : esf.length = 15 := by native_decide
 -- All failures have LHS = none:
 example : esf.all (fun (_, _, lhs, _) => lhs.isNone) = true := by native_decide
+
+-- ============================================================
+-- §20 Eval-subst bridge with matching envs
+-- ============================================================
+-- Key question: does concEvalE fuel env (bodyV'.subst 0 aV) = concEvalE fuel (env.extend aV) body?
+-- Previous test (§19.5) used empty env on LHS, which fails for free bvars.
+-- Here we test with matching env on both sides.
+
+-- §20.1 Bridge with empty outer env and CLOSED args only
+-- The args are evaluator outputs in [], so they're closed values.
+private def closed_values : List Expr :=
+  [.type, .lam .type .type, .lam .type (.bvar 0), .mu .type .type,
+   .mu .type (.bvar 0), .app .type .type]
+
+-- Check: concEvalE fuel [] (bodyV'.subst 0 aV) = concEvalE fuel [aV] body
+-- where bodyV' = concEvalE fuel [bvar 0] body
+-- Using only closed values as args (evaluator outputs in [])
+private def check_bridge_closed (fuel : Nat) (bodies args : List Expr)
+    : List (Expr × Expr × Option Expr × Option Expr) :=
+  bodies.foldl (fun acc body =>
+    let env0 : Env := Env.extend [] (.bvar 0)
+    match concEvalE fuel env0 body with
+    | some bodyV' =>
+      args.foldl (fun acc2 a =>
+        let lhs := concEvalE fuel [] (bodyV'.subst 0 a)
+        let rhs := concEvalE fuel (Env.extend [] a) body
+        if lhs == rhs then acc2
+        else acc2 ++ [(body, a, lhs, rhs)]
+      ) acc
+    | none => acc
+  ) []
+
+private def bridge_closed_failures :=
+  check_bridge_closed 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) closed_values
+-- 52 failures: bridge is FALSE even with closed args
+example : bridge_closed_failures.length = 52 := by native_decide
+
+-- §20.2 Bridge with non-empty envs
+-- Test with env = [some_value] to simulate being under a binder
+private def test_envs : List Env :=
+  [[], [.type], [.lam .type (.bvar 0)], [.type, .lam .type (.bvar 0)]]
+
+private def check_bridge_envs (fuel : Nat) (bodies args : List Expr) (envs : List Env)
+    : List (Env × Expr × Expr × Option Expr × Option Expr) :=
+  envs.foldl (fun acc env =>
+    bodies.foldl (fun acc2 body =>
+      let env0 := Env.extend env (.bvar 0)
+      match concEvalE fuel env0 body with
+      | some bodyV' =>
+        args.foldl (fun acc3 a =>
+          let lhs := concEvalE fuel env (bodyV'.subst 0 a)
+          let rhs := concEvalE fuel (Env.extend env a) body
+          if lhs == rhs then acc3
+          else acc3 ++ [(env, body, a, lhs, rhs)]
+        ) acc2
+      | none => acc2
+    ) acc
+  ) []
+
+private def bridge_env_failures :=
+  check_bridge_envs 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) closed_values test_envs
+-- 244 failures with various envs
+example : bridge_env_failures.length = 244 := by native_decide
+
+-- §20.3 Also test for absEval
+private def check_bridge_abs (fuel : Nat) (bodies args : List Expr) (envs : List Env)
+    : List (Env × Expr × Expr × Option Expr × Option Expr) :=
+  envs.foldl (fun acc env =>
+    bodies.foldl (fun acc2 body =>
+      let env0 := Env.extend env (.bvar 0)
+      match absEval fuel env0 body with
+      | some bodyT' =>
+        args.foldl (fun acc3 a =>
+          let lhs := absEval fuel env (bodyT'.subst 0 a)
+          let rhs := absEval fuel (Env.extend env a) body
+          if lhs == rhs then acc3
+          else acc3 ++ [(env, body, a, lhs, rhs)]
+        ) acc2
+      | none => acc2
+    ) acc
+  ) []
+
+private def bridge_abs_failures :=
+  check_bridge_abs 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) closed_values test_envs
+-- 244 failures for absEval too — same pattern
+example : bridge_abs_failures.length = 244 := by native_decide
+
+-- §20.4 Evaluation idempotency: concEvalE fuel env v = some v for evaluator outputs?
+private def check_eval_idempotent (fuel : Nat) (exprs : List Expr) (envs : List Env)
+    : List (Env × Expr × Option Expr) :=
+  envs.foldl (fun acc env =>
+    exprs.foldl (fun acc2 e =>
+      match concEvalE fuel env e with
+      | some v =>
+        let re_eval := concEvalE fuel env v
+        if re_eval == some v then acc2
+        else acc2 ++ [(env, e, re_eval)]
+      | none => acc2
+    ) acc
+  ) []
+
+private def idempotent_failures :=
+  check_eval_idempotent 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) test_envs
+
+-- Idempotent for non-mu evaluator outputs
+example : idempotent_failures.length = 0 := by native_decide
+
+-- §20.5 CRUCIAL TEST: bridge with EVALUATOR OUTPUT args only
+-- In the app case, args are concEvalE/absEval outputs. These should be eval-fixpoints.
+-- Generate actual evaluator outputs as args.
+private def eval_output_args (fuel : Nat) (env : Env) (sources : List Expr) : List Expr :=
+  sources.foldl (fun acc e =>
+    match concEvalE fuel env e with
+    | some v => if acc.contains v then acc else acc ++ [v]
+    | none => acc
+  ) []
+
+-- Source expressions to generate evaluator outputs from
+private def source_exprs : List Expr :=
+  atoms ++ lam_atoms ++ asc_pairs ++
+  [.mu .type .type, .mu .type (.bvar 0), .app .type .type,
+   .app (.lam .type (.bvar 0)) .type,
+   .app (.lam .type (.bvar 0)) (.lam .type .type)]
+
+-- Evaluator outputs in empty env
+private def eval_outputs_empty := eval_output_args 10 [] source_exprs
+
+-- Check: are these all eval-fixpoints?
+private def check_fixpoints (fuel : Nat) (env : Env) (vals : List Expr) : List (Expr × Option Expr) :=
+  vals.foldl (fun acc v =>
+    let re := concEvalE fuel env v
+    if re == some v then acc
+    else acc ++ [(v, re)]
+  ) []
+
+-- KEY FINDING: Only 1 non-fixpoint among evaluator outputs: mu type (mu type (bvar 0)).
+-- Mu evaluator outputs are NOT fixpoints because normalization under mu resolves
+-- the self-reference (bvar 0) to the mu value, but re-evaluation resolves it again
+-- to the new outer mu, producing a deeper tower of mus.
+example : (check_fixpoints 10 [] eval_outputs_empty).length = 1 := by native_decide
+
+-- Now test bridge with eval-output args only
+private def check_bridge_evalout (fuel : Nat) (bodies : List Expr) (envs : List Env)
+    : List (Env × Expr × Expr × Option Expr × Option Expr) :=
+  envs.foldl (fun acc env =>
+    let args := eval_output_args fuel env source_exprs
+    bodies.foldl (fun acc2 body =>
+      let env0 := Env.extend env (.bvar 0)
+      match concEvalE fuel env0 body with
+      | some bodyV' =>
+        args.foldl (fun acc3 a =>
+          let lhs := concEvalE fuel env (bodyV'.subst 0 a)
+          let rhs := concEvalE fuel (Env.extend env a) body
+          if lhs == rhs then acc3
+          else acc3 ++ [(env, body, a, lhs, rhs)]
+        ) acc2
+      | none => acc2
+    ) acc
+  ) []
+
+private def bridge_evalout_failures :=
+  check_bridge_evalout 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) test_envs
+
+-- 122 failures: bridge fails for non-fixpoint (mu) eval outputs
+example : bridge_evalout_failures.length = 122 := by native_decide
+
+-- §20.6 How many bridge failures are with non-fixpoint args?
+-- If the arg is an eval fixpoint (concEvalE fuel env a = some a), does the bridge hold?
+private def check_bridge_fixpoint_args (fuel : Nat) (bodies : List Expr) (envs : List Env)
+    : List (Env × Expr × Expr × Option Expr × Option Expr) :=
+  envs.foldl (fun acc env =>
+    let args := (eval_output_args fuel env source_exprs).filter fun a =>
+      concEvalE fuel env a == some a
+    bodies.foldl (fun acc2 body =>
+      let env0 := Env.extend env (.bvar 0)
+      match concEvalE fuel env0 body with
+      | some bodyV' =>
+        args.foldl (fun acc3 a =>
+          let lhs := concEvalE fuel env (bodyV'.subst 0 a)
+          let rhs := concEvalE fuel (Env.extend env a) body
+          if lhs == rhs then acc3
+          else acc3 ++ [(env, body, a, lhs, rhs)]
+        ) acc2
+      | none => acc2
+    ) acc
+  ) []
+
+private def bridge_fixpoint_failures :=
+  check_bridge_fixpoint_args 10 (atoms ++ lam_atoms ++ asc_pairs ++ lam_test_bodies) test_envs
+
+-- ★ KEY RESULT: bridge holds for eval-fixpoint args (0 failures!)
+-- concEvalE fuel env (bodyV'.subst 0 a) = concEvalE fuel (env.extend a) body
+-- WHEN concEvalE fuel env a = some a (arg is an eval fixpoint).
+-- This means subst-based beta = env-based beta for fixpoint args.
+example : bridge_fixpoint_failures.length = 0 := by native_decide

@@ -1,5 +1,42 @@
 # Decision Log
 
+## 2026-04-03: Eval-subst bridge is FALSE for mu args; approach analysis
+
+**Agent:** ochre-lean-20260403-082324
+
+### Finding
+
+Comprehensively tested the eval-subst bridge:
+`concEvalE fuel env (bodyV'.subst 0 a) = concEvalE fuel (env.extend a) body`
+
+Results (Tests.lean §20):
+- **Bridge HOLDS for eval-fixpoint args** (0 failures)
+- **Bridge FAILS for mu args** (122 failures)
+- **Evaluation is idempotent for non-mu outputs** (0 failures)
+
+Root cause: substitution puts the arg into the expression tree where the
+evaluator RE-EVALUATES it. Env.extend puts it in the env where it's just
+looked up. For mu values, re-evaluation further normalizes (the mu
+self-reference gets resolved to the new outer mu), producing a taller tower.
+
+### Implication
+
+This RULES OUT the simple "generalized soundness_gen with split envs" approach
+for proving the semantic lam property. The soundness_gen IH applies to the
+source body evaluated in an extended env (env-based), but the evaluator's app
+case does subst-based beta (which differs from env-based for mu args).
+
+### What this means for the proof
+
+The semantic lam property IS true (brute-force verified). The problem is
+purely about how to PROVE it given the current evaluator design. Three
+approaches remain viable:
+1. Closure-based VCompat (store source body + env, needs NbE bridge)
+2. Mutual induction on (soundness fuel, semantic fuel)
+3. Change evaluator to env-based beta (changes semantics, risky)
+
+See PROGRESS.md "Priority 1" for detailed analysis.
+
 ## 2026-04-03: from_self_intro_gen was FALSE; fixed to v = σ
 
 **Agent:** ochre-lean-20260403-065136
