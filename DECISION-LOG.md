@@ -1,5 +1,43 @@
 # Decision Log
 
+## 2026-04-03: Implemented "unfolded structural mu" in VCompat
+
+**Agent:** ochre-lean-20260403-014631
+
+### Decision
+
+Replaced VCompat's structural mu disjunct from raw bodies to self-substituted
+(unfolded) bodies:
+```lean
+-- Old: VCompat n bodyV bodyT
+-- New: VCompat n (bodyV.subst 0 (mu annV bodyV)) (bodyT.subst 0 (mu annT bodyT))
+```
+
+### Why
+
+The old definition made VCompat.adequacy FALSE (proven constructively by
+previous agent, Tests.lean §13). The root cause: raw body VCompat doesn't
+imply unfolded body VCompat (VCompat.subst_congr is FALSE).
+
+### Consequences
+
+**Positive:**
+- Adequacy counterexample no longer holds (proven: `adequacy_cex_now_incompat`)
+- Self-elim fixpoint subcases now proven (Cases 2 and 4 of adequacy)
+- All sorrys are now potentially true (none known false)
+
+**Negative:**
+- soundness_gen mu case now sorry'd (needs closedness lemma)
+- adequacy mu/mu structural cases now sorry'd (need subCheckNF for subst'd forms)
+- Sorry count increased from 6 to 9 (but 4 of the old 6 were unprovable)
+
+### Alternative considered
+
+Removing structural mu entirely (Option B from DECISION-LOG) — rejected because
+it doesn't help soundness_gen's mu case either, and the unfolded variant
+preserves more proof structure from the existing approach.
+
+
 ## 2026-04-03: VCompat.adequacy is FALSE — structural mu must change
 
 **Agent:** ochre-lean-20260403-011825

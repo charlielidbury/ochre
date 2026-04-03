@@ -90,65 +90,57 @@ Document WHY it's stuck, try to construct a counterexample, and if you
 suspect unsoundness, say so clearly. Changing a definition is not failure
 — it's the whole point of the experiment.
 
-## CRITICAL: VCompat.adequacy is FALSE (discovered 2026-04-03)
+## ✅ RESOLVED: VCompat "unfolded structural mu" (2026-04-03)
 
-**VCompat.adequacy is FALSE** with the current structural mu disjunct.
-Constructive proof in Tests.lean §13. See DECISION-LOG.md for full analysis.
+The old structural mu disjunct (raw bodies) made VCompat.adequacy FALSE.
+**Fixed** by replacing with "unfolded structural mu" (self-substituted bodies).
+See DECISION-LOG.md and Tests.lean §13 for the counterexample and resolution.
 
-The structural mu disjunct says: `v = mu annV bodyV, τ = mu annT bodyT,
-VCompat n bodyV bodyT`. But after subCheckNF's self-elim unfolds σ = mu
-to `bodyS.subst 0 σ`, adequacy needs VCompat for `bodyV.subst 0 v` — the
-VALUE's unfolded form, not the raw body. `VCompat.subst_congr` is FALSE,
-so structural mu + self-elim = an impossible proof obligation.
+The fix trades sorrys in adequacy (which were PROVABLY FALSE) for sorrys in:
+1. soundness_gen mu case (needs closedness lemma)
+2. adequacy mu/mu structural cases (needs subCheckNF for subst'd forms)
+All new sorrys are potentially true — none known to be false.
 
-**The structural mu disjunct must change before any further adequacy work.**
+## Priority 1: Closedness lemma for evaluator outputs
 
-### Recommended fix: "unfolded structural mu"
-
-Replace the structural mu disjunct with one that requires VCompat for
-the SUBSTITUTED bodies (the mu-unfolded forms):
+**Highest-impact single lemma.** Would fix the soundness_gen mu sorry and
+potentially simplify adequacy mu/mu cases.
 
 ```lean
-∨ (∃ annV annT bodyV bodyT,
-    v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
-    VCompat n (bodyV.subst 0 (.mu annV bodyV)) (bodyT.subst 0 (.mu annT bodyT)))
+theorem eval_closed {fuel : Nat} {env : Env} {e v : Expr}
+    (h : concEvalE fuel env e = some v)
+    (henv : env.length > 0)
+    : v.subst 0 X = v  -- no free bvar 0 in result
 ```
 
-This makes adequacy self-elim cases trivial (VCompat already on the
-unfolded forms). The challenge moves to soundness_gen's mu case, which
-needs VCompat for substituted forms, not raw evaluator outputs. This
-likely requires an env-substitution equivalence lemma:
-`concEvalE fuel (env.extend (mu ann body)) body = some v'`
-`→ concEvalE fuel env (body.subst 0 (mu ann body)) = some v''`
-`→ VCompat n v' v''` (or v' = v'', or similar)
+Standard property of env-based evaluators: if env covers bvar 0, the output
+has no free bvar 0. Prove by induction on fuel.
 
-## The critical question: structural vs semantic VCompat
+## Priority 2: Generalized adequacy with seen list
 
-The current VCompat uses **structural** lam/mu cases ("both lam, bodies
-compatible"). This made the lam/mu cases of soundness_gen trivial, but
-it pushed the hard problem to the **app case** AND made adequacy FALSE
-for the mu case.
+The non-fixpoint self-elim cases need adequacy generalized to non-empty seen:
 
-**Two problems with structural VCompat:**
-1. **App case:** after beta-reduction, `bodyV.subst 0 a_v ≠ bodyT.subst 0 a_τ`
-2. **Adequacy mu case:** after self-elim, substituted forms diverge (PROVEN FALSE)
+```lean
+theorem VCompat.adequacy_gen (fuel : Nat) (n : Nat) (v σ τ : Expr)
+    (ctx : List Expr) (seen : List (Expr × Expr))
+    (hv : VCompat n v σ) (hcheck : subCheckNF fuel ctx seen σ τ = true)
+    (hseen : ∀ p ∈ seen, VCompat n v p.2)
+    : VCompat n v τ
+```
 
-**The semantic approach solves both.** The original logical relations design
-used a semantic function case: "for all compatible args, evaluating both
-bodies gives compatible results." With a semantic function case:
-- The **app case becomes trivial** — just instantiate the universal quantifier
-- The **mu case** can use semantic unfolding instead of structural bodies
+Use outer induction on fuel, inner on step j ≤ n. See `from_type_sub_gen`
+for a working example of this pattern (handles σ = type with seen).
 
-The semantic approach was abandoned because "the two evaluators produce
-different normalized bodies from the same source." But this can potentially
-be addressed by:
-1. Using `concEval` (lambdas are values, bodies untouched) instead of
-   `concEvalE` (which normalizes under binders)
-2. Proving env-substitution equivalence for concEvalE
-3. Reformulating with related envs (the standard LR approach)
+## The app case — structural vs semantic VCompat
 
-**Recommendation:** Fix the structural mu disjunct first (surgical fix).
-Then consider the semantic approach for lam (to fix the app case too).
+The app case still needs either:
+1. **Application congruence** (structural VCompat path)
+2. **Semantic VCompat for lam** (makes app case trivial)
+
+The semantic approach is still recommended long-term. With structural lam,
+the app case hits substitution congruence. With semantic lam ("for all
+compatible args, evaluating both bodies gives compatible results"), the app
+case just instantiates the universal quantifier.
 
 ## Proof strategy
 

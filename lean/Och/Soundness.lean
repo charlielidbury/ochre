@@ -28,7 +28,7 @@ function compatibility already quantifies over all possible applications.
 - **n = 0:** everything is compatible (no observation budget)
 - **τ = .type:** everything is compatible (top type)
 - **Both lam:** same domain, bodies are compatible (structural)
-- **Both mu:** same annotation, bodies are compatible (structural)
+- **Both mu:** same annotation, UNFOLDED bodies (self-substituted) are compatible
 - **τ = mu:** unfold the mu, check compatibility with the unfolded body
   (equi-recursive; costs one step)
 - **v = mu:** unfold the mu on the value side (costs one step)
@@ -108,12 +108,16 @@ compatible with an abstract type `τ`, given an observation budget `n`.
 
 **Design notes:**
 
-VCompat uses structural cases (bodies are compatible) rather than semantic
-function cases (quantifying over args and evaluating). This is because the
-soundness proof's IH gives VCompat for the two evaluators' outputs on the
-SAME source body. With a semantic function case, the lam/mu cases are hard
-because the bodies diverge (concEval returns source body, absEval normalizes).
-With structural cases, the IH directly applies.
+VCompat uses structural cases for lam (raw bodies compatible) and
+"unfolded structural" for mu (self-substituted bodies compatible).
+The mu case uses unfolded forms because the old raw-body variant
+made adequacy FALSE (see Tests.lean §13 counterexample). The unfolded
+structural mu tracks actual mu behavior after self-reference resolution.
+
+The lam case uses raw bodies because the soundness IH gives VCompat for
+the two evaluators' outputs on the SAME source body. The mu case uses
+unfolded forms and needs a closedness lemma (evaluator outputs have no
+free bvar 0, so subst 0 is a no-op) to connect with the IH.
 
 The mu-unfolding cases (equi-recursive, costs one step) are kept for
 adequacy and the app case. The inferType fallback handles neutral terms
@@ -129,25 +133,21 @@ transitivity (proved FALSE — see Tests.lean counterexample). -/
     This is defined as a recursive function on `n` (not an inductive),
     following the Appel-McAllester style.
 
-    **Design choice: structural function/mu cases.**
+    **Design choice: structural lam, unfolded structural mu.**
 
-    Previous versions used a SEMANTIC function case: "for all compatible
-    args, evaluating both bodies gives compatible results." This doesn't
-    work well with the soundness IH because the two evaluators (concEvalE
-    and absEval) produce different normalized bodies from the same source.
-    The IH needs the SAME expression on both sides.
+    Lam uses STRUCTURAL cases: "both are lambdas with compatible
+    bodies." The soundness proof's lam case is trivial — the IH on the
+    body gives VCompat for the normalized bodies directly.
 
-    Instead, we use STRUCTURAL cases: "both are lambdas with compatible
-    bodies" (and similarly for mu). The soundness proof's lam/mu cases
-    become trivial — the IH on the body (same source expression, same env)
-    gives VCompat for the two normalized bodies directly.
+    Mu uses UNFOLDED STRUCTURAL cases: "both are mus, and the self-
+    substituted (unfolded) bodies are compatible." This differs from
+    the old raw-body variant, which made VCompat.adequacy FALSE (proven
+    constructively in Tests.lean §13). The unfolded variant means VCompat
+    tracks actual mu behavior, making adequacy's self-elim cases work.
 
-    The app case of soundness then needs a separate "application congruence"
-    lemma: VCompat bodyV bodyT → VCompat a_v a_τ → compatible results after
-    substitution+evaluation. This is harder but more modular.
-
-    The mu-unfolding cases (equi-recursive) are kept for adequacy and the
-    app case. The inferType fallback handles neutral terms (bvar, app). -/
+    The app case of soundness needs a separate "application congruence"
+    lemma. The mu case needs a "closedness" lemma showing evaluator outputs
+    have no free bvar 0, so bodyV'.subst 0 X = bodyV'. -/
 def VCompat : Nat → Expr → Expr → Prop
   | 0, _, _ => True
   | n + 1, v, τ =>
@@ -163,11 +163,15 @@ def VCompat : Nat → Expr → Expr → Prop
     ∨ (∃ domV domT bodyV bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
         VCompat n bodyV bodyT)
-    -- Structural mu: both are mus (possibly different annotations),
-    -- and the bodies are compatible at the lower step.
+    -- Unfolded structural mu: both are mus (possibly different annotations),
+    -- and the UNFOLDED bodies (self-substituted) are compatible at the lower step.
+    -- This replaces the old "raw bodies compatible" variant, which was PROVEN
+    -- FALSE for adequacy (see Tests.lean §13 counterexample with old definition).
+    -- Using unfolded forms means VCompat tracks actual mu behavior after
+    -- self-reference resolution, not just syntactic body similarity.
     ∨ (∃ annV annT bodyV bodyT,
         v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
-        VCompat n bodyV bodyT)
+        VCompat n (bodyV.subst 0 (.mu annV bodyV)) (bodyT.subst 0 (.mu annT bodyT)))
     -- Mu unfolding on the right (equi-recursive self-intro): costs one step
     ∨ (∃ ann body,
         τ = .mu ann body ∧
@@ -205,7 +209,7 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     · exact Or.inr (Or.inl h_refl)
     -- Structural lam: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
     · exact Or.inr (Or.inr (Or.inl ⟨domV, domT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩))
-    -- Structural mu: VCompat (k+1) bodyV bodyT → VCompat k bodyV bodyT by IH
+    -- Unfolded structural mu: VCompat (k+1) on subst'd bodies → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩)))
     -- Mu right: VCompat (k+1) v (body.subst ...) → VCompat k by IH
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩))))
@@ -523,21 +527,27 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
             cases τ with
             | type => exact absurd rfl hτ
             | mu annT bodyT =>
-              -- structural mu: need VCompat m bodyV bodyT
-              cases fuel with
-              | zero => simp [subCheckNF] at hcheck
-              | succ k =>
-                by_cases h_eq : Expr.mu annV bodyV = Expr.mu annT bodyT
-                · exact absurd h_eq hστ
-                · obtain ⟨fuel', ctx', h_body_sub⟩ := subCheckNF_mu_mu_body hcheck h_eq
-                  have h_bV_refl : VCompat m bodyV bodyV := by
-                    cases m with
-                    | zero => trivial
-                    | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
-                  have h_bT := ih h_bV_refl h_body_sub
-                  unfold VCompat
-                  exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_bT⟩)))
-            | _ => sorry  -- self-elim (needs seen-list handling)
+              -- structural mu: need VCompat on subst'd bodies
+              -- With unfolded structural mu, need:
+              --   VCompat m (bodyV.subst 0 (mu annV bodyV)) (bodyT.subst 0 (mu annT bodyT))
+              -- Have: subCheckNF bodyV bodyT (from extraction), but IH needs
+              -- subCheckNF on subst'd forms. Sorry for now.
+              sorry
+            | _ =>
+              -- Self-elim: v = σ = mu annV bodyV, τ ≠ type, ≠ mu
+              -- Use mu-left: VCompat (m+1) v τ ← VCompat m (bodyV.subst 0 v) τ
+              unfold VCompat
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+              refine ⟨annV, bodyV, rfl, ?_⟩
+              -- Need: VCompat m (bodyV.subst 0 (mu annV bodyV)) τ
+              by_cases hfix : bodyV.subst 0 (.mu annV bodyV) = .mu annV bodyV
+              · -- Fixpoint: bodyV.subst 0 v = v → use IH with refl
+                rw [hfix]
+                have h_refl : VCompat m (.mu annV bodyV) (.mu annV bodyV) := by
+                  cases m with | zero => trivial | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+                exact ih h_refl hcheck
+              · -- Non-fixpoint: needs generalized adequacy with seen
+                sorry
           | bvar k =>
             -- v = σ = bvar k. subCheckNF uses inferType catch-all.
             cases fuel with
@@ -625,23 +635,35 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
               (fun h => nomatch h) (fun _ _ h => nomatch h) (fun _ _ h => nomatch h)
         -- Case 4: structural mu (v = mu annV bodyV, σ = mu annS bodyS)
         · subst hv_eq; subst hσ_eq
-          -- h_body : VCompat m bodyV bodyS
+          -- h_body : VCompat m (bodyV.subst 0 (mu annV bodyV)) (bodyS.subst 0 (mu annS bodyS))
           -- hcheck : subCheckNF fuel ctx [] (mu annS bodyS) τ = true
           cases τ with
           | type => exact absurd rfl hτ
           | mu annT bodyT =>
-            cases fuel with
-            | zero => simp [subCheckNF] at hcheck
-            | succ k =>
-              by_cases h_eq2 : Expr.mu annS bodyS = Expr.mu annT bodyT
-              · exact absurd h_eq2 hστ
-              · obtain ⟨fuel', ctx', h_body_sub⟩ := subCheckNF_mu_mu_body hcheck h_eq2
-                have h_bT := ih h_body h_body_sub
-                unfold VCompat
-                exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_bT⟩)))
-          | _ => sorry  -- self-elim (needs seen-list handling)
+            -- mu/mu → mu: subCheckNF extracts body check on raw bodies,
+            -- but IH needs subCheckNF on subst'd forms.
+            sorry
+          | _ =>
+            -- Self-elim: v = mu annV bodyV, σ = mu annS bodyS, τ ≠ type, ≠ mu
+            -- Use mu-left to construct VCompat (m+1) v τ
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+            refine ⟨annV, bodyV, rfl, ?_⟩
+            -- Need: VCompat m (bodyV.subst 0 v) τ where v = mu annV bodyV
+            -- For fixpoint σ: bodyS.subst 0 σ = σ → h_body becomes VCompat m ... σ
+            -- IH: VCompat m ... σ → subCheckNF σ τ → VCompat m ... τ
+            by_cases hfixσ : bodyS.subst 0 (.mu annS bodyS) = .mu annS bodyS
+            · rw [hfixσ] at h_body
+              exact ih h_body hcheck
+            · sorry  -- non-fixpoint σ: needs generalized adequacy with seen
         -- Case 5: mu right (σ = mu ann_σ body_σ, unfold right)
-        · subst hσ_eq; sorry
+        · subst hσ_eq
+          -- h_unfold : VCompat m v (body_σ.subst 0 (mu ann_σ body_σ))
+          -- hcheck : subCheckNF (mu ann_σ body_σ) τ
+          -- After self-elim: subCheckNF (body_σ.subst 0 σ) τ (with seen)
+          -- IH: VCompat m v (body_σ.subst 0 σ) → subCheckNF (body_σ.subst 0 σ) τ → VCompat m v τ
+          -- Same seen-list issue.
+          sorry
         -- Case 6: mu left (v = mu ann_v body_v, unfold left) → IH!
         · subst hv_eq
           -- h_unfold : VCompat m (body_v.subst 0 (mu ann_v body_v)) σ
@@ -753,10 +775,18 @@ theorem soundness_gen
             have h_wt_body : WellTyped k (Env.extend env (.mu ann body)) body = true := by
               simp [WellTyped] at h_wt; exact h_wt
             -- IH on body at step m (one less than goal m+1)
-            have ih_body := ih (Env.extend env (.mu ann body)) body bodyV' bodyT' m
+            have _ih_body := ih (Env.extend env (.mu ann body)) body bodyV' bodyT' m
                            h_wt_body h_cv h_av
-            unfold VCompat
-            exact Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, ann, bodyV', bodyT', rfl, rfl, ih_body⟩)))
+            -- With unfolded structural mu, we need:
+            --   VCompat m (bodyV'.subst 0 (mu ann bodyV')) (bodyT'.subst 0 (mu ann bodyT'))
+            -- IH gives: VCompat m bodyV' bodyT'
+            -- These are equal when the evaluator outputs are "closed" w.r.t. bvar 0,
+            -- i.e., bodyV'.subst 0 X = bodyV' for any X. This is true because the
+            -- env-based evaluator resolves all bvar 0 references (env[0] = mu ann body).
+            -- Proving this requires a closedness lemma for concEvalE/absEval.
+            -- TODO: prove eval_closed: concEvalE fuel env e = some v → v.subst 0 X = v
+            --       (when bvar 0 is covered by env)
+            sorry
       | app f a =>
         -- IH on f and a give VCompat for evaluated function and arg.
         -- Need "application congruence": VCompat bodies + VCompat args →
