@@ -165,63 +165,54 @@ theorem VCompat.adequacy_gen (fuel : Nat) (n : Nat) (v σ τ : Expr)
 Use outer induction on fuel, inner on step j ≤ n. See `from_type_sub_gen`
 for a working example of this pattern (handles σ = type with seen).
 
-## The app case — structural vs semantic VCompat
+## ✅ PARTIALLY RESOLVED: The app case (2026-04-03)
 
-The app case still needs either:
-1. **Application congruence** (structural VCompat path)
-2. **Semantic VCompat for lam** (makes app case trivial)
+**Agent:** ochre-lean-20260403-042336
 
-The semantic approach is still recommended long-term. With structural lam,
-the app case hits substitution congruence. With semantic lam ("for all
-compatible args, evaluating both bodies gives compatible results"), the app
-case just instantiates the universal quantifier.
+The soundness_gen app case is now decomposed into 36 sub-cases. 23 proved,
+13 sorry'd. All sorry'd cases involve active computation (beta or mu-app).
+
+### KEY INSIGHT: Asc-free evaluator equivalence
+
+Evaluator outputs are always asc-free (both evaluators strip ascription).
+On asc-free inputs, concEvalE = absEval (they differ only at asc).
+After beta-reduction or mu-app, the intermediate expression is asc-free,
+so both evaluators agree. **This reduces the cross-evaluator problem to
+a single-evaluator (absEval) congruence question.**
+
+### Recommended next steps (in order):
+
+1. **Formalize asc-free equivalence:** Define `ascFree`, prove evaluator
+   outputs are asc-free, prove `ascFree e → concEvalE fuel env e = absEval fuel env e`.
+   Concrete, independently useful.
+
+2. **Prove absEval-congruence:** If VCompat-related asc-free inputs go through
+   absEval (same fuel, env), the outputs are VCompat-related. This would
+   resolve all 13 sorry'd cases.
+
+3. **Alternative: switch to semantic VCompat for lam.** The app case becomes
+   trivial (instantiate quantifier). Difficulty moves to lam case. The
+   semantic approach is cleaner long-term but requires more infrastructure.
+
+4. **Keep structural VCompat, use WellTyped:** For fT = lam, WellTyped gives
+   `WellTyped k env (bodyT.subst 0 aT) = true`. The IH almost applies —
+   the missing piece is showing concEvalE evaluates this successfully (which
+   follows from the asc-free equivalence: concEvalE = absEval on it, and
+   absEval already succeeded).
+
+Note: VCompat.subst_congr is FALSE (counterexample in Tests.lean §11.6),
+so naive substitution congruence is NOT an option.
 
 ## Proof strategy
 
 ### Step 1: ✅ DONE — `VCompat.mono` (downward closure)
 
-`VCompat (n+1) v τ → VCompat n v τ`
+### Step 2: PARTIALLY DONE — THE APP CASE
 
-**Proven.** Required changing the VCompat function case from `∀ av aτ,
-VCompat n av aτ → ...` to the standard Appel-McAllester bounded quantifier
-`∀ m, m ≤ n → ∀ av aτ, VCompat m av aτ → ...`. With this change, the
-function case of mono is trivial (restrict quantifier from m ≤ k+1 to m ≤ k).
-
-### Step 2: THE APP CASE — tackle this first
-
-**This is the hardest case and the most likely to reveal unsoundness.**
-Do NOT work on other cases until this one is resolved or understood.
-
-The IH gives VCompat for the evaluated function and arg. The evaluators
-then substitute the arg into the body and re-evaluate. But the two bodies
-are DIFFERENT (normalized by different evaluators) and the two args are
-DIFFERENT (concrete vs abstract).
-
-**With structural VCompat (current):** The app case needs an "application
-congruence" lemma: VCompat bodies + VCompat args → VCompat results after
-substitution+evaluation. This is essentially substitution congruence —
-the same problem that broke previous approaches.
-
-**With semantic VCompat (recommended):** The app case is trivial — the
-semantic function quantifier already gives you the result. The difficulty
-moves to the lam case instead.
-
-**Approaches to consider (in order of preference):**
-1. **Switch to semantic VCompat with concEval.** The app case becomes
-   trivial. The lam case needs: "for all compatible args, concEval of
-   bodyV[av] and absEval of bodyT[aτ] give compatible results." Since
-   concEval treats lam as a value (body untouched = source body), this
-   may align with the soundness IH.
-2. **Switch to semantic VCompat with concEvalE + env-subst equivalence.**
-   Show `concEvalE [] (bodyV'.subst 0 av) = concEvalE [av] source_body`.
-   Then the soundness IH applies to the source body.
-3. **Reformulate with related envs** (env_v, env_τ with EnvCompat). The
-   standard LR approach, but requires more infrastructure.
-4. **Keep structural VCompat, prove subst_congr for VCompat.** VCompat is
-   covariant, so this MIGHT work (unlike SubtypeCore). Try to disprove
-   first with native_decide.
-
-See PROGRESS.md for detailed analysis.
+23/36 sub-cases proved. See PROGRESS.md KEY CHANGE section for details.
+The fundamental blocker for the 13 remaining cases: after beta/mu-app,
+the resulting expression is not a source sub-expression, so the IH doesn't
+apply directly. The asc-free insight provides a path forward.
 
 ### Step 3: BLOCKED — `VCompat.adequacy` — mu/seen cases
 

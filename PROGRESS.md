@@ -21,12 +21,98 @@ the mu design.
 - `concEvalE_closedEvalB` (line ~1072) — 1 sorry, evaluator closedness
 - `absEval_closedEvalB` (line ~1078) — 1 sorry, evaluator closedness
 - `mu_body_subst_vcompat` (line ~1097) — 1 sorry (Case C only; Cases A+B proved)
-- `soundness_gen` (line ~1145) — 1 sorry (app case only; **mu case proved**)
-- `soundness_concEval` (line ~1307) — 1 sorry (bridge)
+- `soundness_gen` (line ~1145) — **13 sub-sorrys** (app case decomposed; was 1 sorry)
+- `soundness_concEval` (line ~1483) — 1 sorry (bridge)
 
 **`soundness` (using concEvalE) is sorry-free!** (depends transitively on sorry'd lemmas)
 
-## KEY CHANGE: inferType_vEquivB and VCompat_of_vEquivB proven (this session)
+## KEY CHANGE: App case decomposed into 36 sub-cases (this session)
+
+**Agent:** ochre-lean-20260403-042336
+
+### What changed
+
+The soundness_gen app case was previously a single `sorry`. It is now fully
+case-split on fV (concEvalE output) × fT (absEval output) constructor shapes
+(6×6 = 36 sub-cases). **23 cases proved, 13 sorry'd.**
+
+### Proved cases (23/36):
+- **fT = type** (6 cases): τ = type → VCompat top. Trivial.
+- **fV = type × fT ∈ {bvar,app,asc,lam}** (4 cases): Contradiction.
+  VCompat (m+1) type X = False for X ∉ {type, mu} (no applicable disjunct).
+- **fV = lam × fT ∈ {bvar,app,asc}** (3 cases): Contradiction.
+  VCompat (m+1) (lam ..) X = False for X ∉ {type, lam, mu}.
+- **fV = asc × fT = lam** (1 case): Contradiction.
+  VCompat (m+1) (asc ..) (lam ..) = False.
+- **fV ∈ {bvar,app,asc} × fT ∈ {bvar,app,asc}** (9 cases): Both catch-all.
+  v = app fV aV, τ = app fT aT → structural app from ih_f.mono, ih_a.mono.
+
+### Sorry'd cases (13/36) — all involve active computation:
+1. **fV = mu × fT ∈ {bvar,app,asc}** (3): mu-app left, structural right
+2. **fV ∈ {bvar,app} × fT = lam** (2): structural left, beta right
+3. **fV = lam × fT = lam** (1): ★ THE HARD CASE — both beta-reduce
+4. **fV = mu × fT = lam** (1): mu-app left, beta right
+5. **fV = type × fT = mu** (1): v = type, mu-app right
+6. **fV ∈ {bvar,app,asc} × fT = mu** (3): structural left, mu-app right
+7. **fV = lam × fT = mu** (1): beta left, mu-app right
+8. **fV = mu × fT = mu** (1): both mu-app
+
+### KEY INSIGHT: asc-free evaluator equivalence
+
+Both evaluators strip ascription from their outputs (concEvalE evaluates the
+lhs, absEval evaluates the rhs — either way, the asc node itself is gone).
+Therefore **evaluator outputs are always asc-free**.
+
+On asc-free inputs, concEvalE and absEval are **identical** (they differ only
+at the asc case, which never fires for asc-free input). Substitution of
+asc-free values into asc-free bodies produces an asc-free result.
+
+**Consequence:** After beta-reduction or mu-app, the intermediate expression
+(e.g., bodyV.subst 0 aV) is asc-free, so concEvalE and absEval produce the
+same result on it. This means:
+
+```
+v = concEvalE k env (bodyV.subst 0 aV) = absEval k env (bodyV.subst 0 aV)
+τ = absEval k env (bodyT.subst 0 aT) = concEvalE k env (bodyT.subst 0 aT)
+```
+
+This **reduces the cross-evaluator app case to a single-evaluator (absEval)
+congruence question**: does absEval preserve VCompat through substitution
+and evaluation?
+
+### Why this matters for the lam × lam case
+
+For the hardest sub-case (both beta-reduce), the proof needs:
+- v = concEvalE k env (bodyV.subst 0 aV) — result of beta with concrete body+arg
+- τ = absEval k env (bodyT.subst 0 aT) — result of beta with abstract body+arg
+- ih_f: VCompat m bodyV bodyT (structural lam from IH on f)
+- ih_a: VCompat (m+1) aV aT (IH on a)
+- h_wt_beta: WellTyped k env (bodyT.subst 0 aT) = true (from WellTyped app case)
+
+By the asc-free insight: v = absEval k env (bodyV.subst 0 aV).
+So the goal becomes: VCompat n (absEval k env (bodyV.subst 0 aV)) (absEval k env (bodyT.subst 0 aT)).
+
+This is **absEval-congruence for VCompat-related inputs** — a much cleaner
+formulation than the original cross-evaluator problem.
+
+### Recommended approach for future agents
+
+Option A (absEval congruence): Prove that absEval preserves VCompat through
+substitution and evaluation: if VCompat n body1 body2 and VCompat n arg1 arg2,
+then VCompat n (absEval k env (body1.subst 0 arg1)) (absEval k env (body2.subst 0 arg2)).
+This would resolve ALL 13 sorry'd cases at once.
+
+Option B (semantic VCompat): Change VCompat's lam case from structural
+(VCompat n bodyV bodyT) to semantic (∀ compatible args, evaluating both
+bodies gives compatible results). The app case becomes trivial (instantiate
+the quantifier). The difficulty moves to the lam case of soundness_gen.
+
+Option C (formalize asc-free equivalence first): Prove the lemma
+`ascFree e → concEvalE fuel env e = absEval fuel env e`, then use it to
+reduce cross-evaluator sorrys to single-evaluator sorrys. This is a clean,
+self-contained contribution independent of the congruence approach.
+
+## KEY CHANGE: inferType_vEquivB and VCompat_of_vEquivB proven (previous session)
 
 **Agent:** ochre-lean-20260403-040210
 
@@ -132,7 +218,41 @@ closedEvalB fails AND evaluators differ, bodyT = type (VCompat trivially holds).
 
 ## What the next agent MUST do
 
-### Priority 1: Prove mu_body_subst_vcompat Case C
+### Priority 1: Resolve soundness_gen app case (13 sorrys)
+
+The app case is now fully decomposed into 36 sub-cases (see KEY CHANGE above).
+23 proved, 13 sorry'd. ALL sorry'd cases involve active computation (beta or
+mu-app) where the IH can't apply directly (the beta-reduced expression is not
+a source sub-expression).
+
+**The fundamental blocker:** After beta-reduction, concEvalE evaluates
+bodyV.subst 0 aV while absEval evaluates bodyT.subst 0 aT. These are DIFFERENT
+expressions. The IH requires evaluating the SAME expression by both evaluators.
+
+**The key insight (NEW):** Evaluator outputs are asc-free, and on asc-free
+inputs concEvalE = absEval. So after beta-reduction, both sides effectively
+use the same evaluator (absEval). This reduces the problem to:
+
+VCompat n (absEval k env (bodyV.subst 0 aV)) (absEval k env (bodyT.subst 0 aT))
+
+Which is **single-evaluator congruence for VCompat-related inputs**.
+
+**Recommended approach (in order):**
+1. Formalize asc-free equivalence: `ascFree e → concEvalE fuel env e = absEval fuel env e`
+   and `concEvalE fuel env e = some v → ascFree v` / `absEval fuel env e = some v → ascFree v`.
+   This is concrete, provable, and independently useful.
+2. Then prove absEval-congruence for VCompat-related asc-free inputs, OR switch
+   to semantic VCompat for lam.
+
+**WellTyped gives a useful precondition:** For fT = lam, WellTyped's app case
+provides `WellTyped k env (bodyT.subst 0 aT) = true`. This means the IH
+applies to bodyT.subst 0 aT IF we can show concEvalE evaluates it successfully.
+By the asc-free insight, concEvalE(bodyT.subst 0 aT) = absEval(bodyT.subst 0 aT) = τ,
+so the IH gives VCompat n τ τ (VCompat.refl). This doesn't help directly
+(we need VCompat n v τ, not VCompat n τ τ), but shows the IH infrastructure
+is almost sufficient.
+
+### Priority 2: Prove mu_body_subst_vcompat Case C
 
 The vEquiv infrastructure is now complete: inferType_vEquivB ✓,
 VCompat_of_vEquivB ✓ (modulo unreachable asc), closedEvalB_subst_vEquiv ✓.
@@ -148,14 +268,7 @@ testing shows: whenever closedEvalB fails AND evaluators differ, bodyT = type
 (Case A handles this). So for Case C (bodyV ≠ bodyT ∧ bodyT ≠ type),
 closedEvalB should hold.
 
-Approach options:
-(a) Prove `concEvalE_closedEvalB` / `absEval_closedEvalB` with refined
-    preconditions that exclude the mu-app catch-all case
-(b) Add closedEvalB preconditions to `mu_body_subst_vcompat` and discharge
-    them in soundness_gen's mu case
-(c) Prove the trichotomy formally: bodyT = type ∨ bodyV = bodyT ∨ closedEvalB
-
-### Priority 2: Generalized adequacy with seen list
+### Priority 3: Generalized adequacy with seen list
 
 The non-fixpoint self-elim cases (and the mu-right case) need:
 ```lean
@@ -167,11 +280,7 @@ theorem VCompat.adequacy_gen (fuel : Nat) (n : Nat) (v σ τ : Expr)
     : VCompat n v τ
 ```
 
-### Priority 3: App case
-
-The soundness_gen app case needs either:
-- Semantic VCompat for lam (recommended long-term)
-- Application congruence (hard with structural VCompat)
+The soundness_gen app case is now decomposed — see Priority 1 above.
 
 ## PROVEN (cumulative from all sessions)
 
@@ -198,6 +307,7 @@ The soundness_gen app case needs either:
 - VCompat.fixpoint_mu (fixpoint mus are always VCompat)
 - VCompat.fixpoint_mu_left (fixpoint mu-left at all steps)
 - VCompat.self_intro_eq (self-intro via equality)
+- **soundness_gen app case: 23/36 sub-cases** (type, contradiction, structural app) NEW
 - soundness_gen bvar, type, lam, mu, asc cases
 - subCheckNF_type_self_intro (extraction lemma)
 - subCheckNF_neutral_inferType helper lemma
@@ -274,9 +384,25 @@ happens and evaluators differ, bodyT = type (VCompat top). See Tests.lean §16.
 ### Structural app in adequacy (1 sorry):
 - adequacy structural app case: needs inferType congruence between app components
 
-### Other (3 sorrys):
+### soundness_gen app case (13 sorrys, decomposed from 1): NEW
+All 13 involve active computation (beta or mu-app) on at least one side.
+The fundamental blocker: after beta/mu-app, the resulting expression is NOT
+a source sub-expression, so the soundness_gen IH doesn't apply directly.
+The asc-free evaluator equivalence insight (see KEY CHANGE) reduces this to
+a single-evaluator (absEval) congruence question.
+
+Sub-cases:
+- fV=mu × fT∈{bvar,app,asc}: 3 sorrys (mu-app left, structural right)
+- fV∈{bvar,app} × fT=lam: 2 sorrys (structural left, beta right)
+- fV=lam × fT=lam: 1 sorry (★ hardest — both beta)
+- fV=mu × fT=lam: 1 sorry
+- fV=type × fT=mu: 1 sorry
+- fV∈{bvar,app,asc} × fT=mu: 3 sorrys
+- fV=lam × fT=mu: 1 sorry
+- fV=mu × fT=mu: 1 sorry
+
+### Other (2 sorrys):
 - from_self_intro_gen: inner recursion (1 sorry)
-- soundness_gen app case: application congruence (1 sorry)
 - soundness_concEval: concEval → concEvalE bridge (1 sorry)
 
 ## What's been tried (and failed)

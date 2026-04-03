@@ -59,6 +59,13 @@ for the asc case — see soundness_gen's doc comment.
 3. **Fuel monotonicity** (already proved in Eval.lean):
    `concEvalE n e = some v → concEvalE (n+1) e = some v`
    Needed to bridge fuel levels in the semantic function case.
+
+4. **Asc-free evaluator equivalence** (key insight, not yet formalized):
+   Evaluator outputs never contain asc (both evaluators strip asc by evaluating
+   the lhs or rhs). On asc-free inputs, concEvalE = absEval (they differ only
+   at the asc case). This means after beta-reduction or mu-app, both sides
+   effectively use the same evaluator. Reduces the app case from a cross-evaluator
+   problem to a single-evaluator congruence question.
 -/
 
 open Expr
@@ -1255,16 +1262,192 @@ theorem soundness_gen
                 obtain ⟨⟨h_wt_f, h_wt_a⟩, _⟩ := h_wt
                 have ih_f := ih env f fV fT (m + 1) h_wt_f h_fV h_fT
                 have ih_a := ih env a aV aT (m + 1) h_wt_a h_aV h_aT
-                -- Now case-split on the shapes of fV and fT.
-                -- The evaluators' app cases match on the function result:
-                -- lam → beta-reduce, mu → mu-app, type → type, other → app
+                -- Case-split on fV and fT shapes (6×6 = 36 sub-cases).
                 --
-                -- Easy cases proved here:
-                -- 1. fT = type → τ = type → VCompat top
-                -- 2. fV = type → v = type → VCompat top (if τ = type) or needs analysis
-                -- 3. Both catch-all → structural app
-                -- Hard cases (beta-reduction, mu-app) sorry'd.
-                sorry
+                -- PROVED (23 cases):
+                --   fT = type (6 cases): τ = type → VCompat top
+                --   fV = type × fT ∈ {bvar,app,asc,lam} (4 cases): contradiction
+                --     (VCompat (m+1) type X = False for X ∉ {type, mu})
+                --   fV = lam × fT ∈ {bvar,app,asc} (3 cases): contradiction
+                --     (VCompat (m+1) (lam ..) X = False for X ∉ {type, lam, mu})
+                --   fV = asc × fT = lam (1 case): contradiction
+                --     (VCompat (m+1) (asc ..) (lam ..) = False)
+                --   fV ∈ {bvar,app,asc} × fT ∈ {bvar,app,asc} (9 cases):
+                --     both catch-all → v = app fV aV, τ = app fT aT → structural app
+                --
+                -- SORRY'D (13 cases) — all involve active computation:
+                --   fV = mu × fT ∈ {bvar,app,asc} (3): mu-app left, structural right
+                --   fV ∈ {bvar,app} × fT = lam (2): structural left, beta right
+                --   fV = lam × fT = lam (1): BOTH BETA — hardest case
+                --   fV = mu × fT = lam (1): mu-app left, beta right
+                --   fV = type × fT = mu (1): v = type, mu-app right
+                --   fV ∈ {bvar,app,asc} × fT = mu (3): structural left, mu-app right
+                --   fV = lam × fT = mu (1): beta left, mu-app right
+                --   fV = mu × fT = mu (1): both mu-app
+                --
+                -- KEY INSIGHT: evaluator outputs are asc-free (evaluators strip asc).
+                -- On asc-free inputs, concEvalE = absEval (they differ only at asc).
+                -- So after beta/mu-app, both sides effectively use absEval.
+                -- This reduces the cross-evaluator problem to a SINGLE-evaluator
+                -- congruence question: does absEval preserve VCompat through subst+eval?
+                -- See PROGRESS.md for details.
+
+                -- Simplify evaluator results using matched values
+                simp only [h_fV, h_aV] at h_conc
+                simp only [h_fT, h_aT] at h_abs
+
+                -- Case-split on fT first (absEval's function result shape)
+                cases fT with
+                | type =>
+                  -- fT = type → absEval returns type → τ = type → VCompat top
+                  simp at h_abs; subst h_abs
+                  unfold VCompat; exact Or.inl rfl
+                | bvar jT =>
+                  -- fT = bvar → absEval catch-all → τ = app (bvar jT) aT
+                  simp at h_abs; subst h_abs
+                  -- Now case-split on fV
+                  cases fV with
+                  | type =>
+                    -- v = type, τ = app (bvar jT) aT
+                    -- VCompat (m+1) type (app ...) = False from ih_f
+                    simp at h_conc; subst h_conc
+                    -- ih_f: VCompat (m+1) type (bvar jT) — contradiction
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | bvar jV =>
+                    -- Both catch-all: v = app (bvar jV) aV, τ = app (bvar jT) aT
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.bvar jV, .bvar jT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | app fV1 fV2 =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.app fV1 fV2, .bvar jT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | asc tV yV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.asc tV yV, .bvar jT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | lam domV bodyV =>
+                    -- fV = lam, fT = bvar → contradiction:
+                    -- VCompat (m+1) (lam ...) (bvar ...) = False
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | mu annV bodyV =>
+                    -- fV = mu, fT = bvar → mu-app-left, structural-right
+                    sorry
+                | app fT1 fT2 =>
+                  -- fT = app → absEval catch-all → τ = app (app fT1 fT2) aT
+                  simp at h_abs; subst h_abs
+                  cases fV with
+                  | type =>
+                    simp at h_conc; subst h_conc
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | bvar jV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.bvar jV, .app fT1 fT2, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | app fV1 fV2 =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.app fV1 fV2, .app fT1 fT2, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | asc tV yV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.asc tV yV, .app fT1 fT2, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | lam domV bodyV =>
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | mu annV bodyV => sorry
+                | asc tT yT =>
+                  -- fT = asc → absEval catch-all → τ = app (asc tT yT) aT
+                  simp at h_abs; subst h_abs
+                  cases fV with
+                  | type =>
+                    simp at h_conc; subst h_conc
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | bvar jV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.bvar jV, .asc tT yT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | app fV1 fV2 =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.app fV1 fV2, .asc tT yT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | asc tV yV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.asc tV yV, .asc tT yT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | lam domV bodyV =>
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | mu annV bodyV => sorry
+                | lam domT bodyT =>
+                  -- fT = lam → absEval beta-reduces
+                  cases fV with
+                  | type =>
+                    -- VCompat (m+1) type (lam ...) = False → contradiction
+                    simp at h_conc; subst h_conc
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | bvar jV =>
+                    -- v = app (bvar jV) aV, τ = absEval(bodyT.subst 0 aT)
+                    -- Needs: relate structural app to beta-reduced type
+                    sorry
+                  | app fV1 fV2 =>
+                    -- v = app (app fV1 fV2) aV, τ = absEval(bodyT.subst 0 aT)
+                    sorry
+                  | asc tV yV =>
+                    -- fV = asc, fT = lam → contradiction:
+                    -- VCompat (m+1) (asc ...) (lam ...) = False
+                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                  | lam domV bodyV =>
+                    -- ★ THE HARD CASE: both beta-reduce
+                    -- v = concEvalE k env (bodyV.subst 0 aV)
+                    -- τ = absEval k env (bodyT.subst 0 aT)
+                    -- ih_f: VCompat (m+1) (lam domV bodyV) (lam domT bodyT)
+                    --   → VCompat m bodyV bodyT (structural lam)
+                    -- ih_a: VCompat (m+1) aV aT
+                    -- WellTyped k env (bodyT.subst 0 aT) (from h_wt app case)
+                    --
+                    -- KEY: Both bodyV.subst 0 aV and bodyT.subst 0 aT are asc-free
+                    -- (evaluator outputs are asc-free, subst preserves this).
+                    -- On asc-free inputs concEvalE = absEval, so:
+                    --   v = absEval k env (bodyV.subst 0 aV)
+                    --   τ = absEval k env (bodyT.subst 0 aT)
+                    -- Reduces to: absEval-congruence for VCompat-related inputs.
+                    sorry
+                  | mu annV bodyV =>
+                    -- mu-app left, beta right: v from mu-app, τ from beta
+                    sorry
+                | mu annT bodyT =>
+                  -- fT = mu → absEval does mu-app
+                  -- (sub-cases depend on annT and bodyT shapes)
+                  cases fV with
+                  | type =>
+                    -- v = type, τ from mu-app
+                    simp at h_conc; subst h_conc
+                    -- ih_f: VCompat (m+1) type (mu annT bodyT)
+                    -- Need VCompat (m+1) type τ — requires τ to be type or mu-chain
+                    sorry
+                  | bvar jV =>
+                    -- v = app (bvar jV) aV, τ from mu-app
+                    sorry
+                  | app fV1 fV2 =>
+                    -- v = app (app fV1 fV2) aV, τ from mu-app
+                    sorry
+                  | asc tV yV =>
+                    -- v = app (asc tV yV) aV, τ from mu-app
+                    sorry
+                  | lam domV bodyV =>
+                    -- beta left, mu-app right
+                    sorry
+                  | mu annV bodyV =>
+                    -- Both mu-app: v from mu-app, τ from mu-app
+                    sorry
       | asc term ty =>
         -- concEvalE (k+1) env (asc term ty) = concEvalE k env term = some v
         -- absEval (k+1) env (asc term ty) = absEval k env ty = some τ
