@@ -157,6 +157,9 @@ Definition end_loop (B : branching_state) : branching_state := pkmap end_loop_ta
 Inductive LLBC_plus_eval_stmt : nat -> statement -> LLBC_sharp_state -> branching_state -> Prop :=
   | LLBC_plus_E_Step_Zero s S : S |-{stmt} s ~>{0} empty
   | LLBC_plus_E_Nop n S : S |-{stmt} Nop ~>{1 + n} {[rUnit := S]}
+  | LLBC_plus_E_Panic n S : S |-{stmt} Panic ~>{1 + n} {[rPanic := S]}
+  | LLBC_plus_E_Break n S : S |-{stmt} Break ~>{1 + n} {[rBreak := S]}
+  | LLBC_plus_E_Continue n S : S |-{stmt} Continue ~>{1 + n} {[rContinue := S]}
   | LLBC_plus_E_Seq_Propagate n S0 B1 stmt_0 stmt_1
       (eval_stmt_0 : S0 |-{stmt} stmt_0 ~>{1 + n} B1) (Hno_unit : lookup rUnit B1 = None) :
       S0 |-{stmt} (Seq stmt_0 stmt_1) ~>{1 + n} B1
@@ -207,6 +210,9 @@ Global Reserved Notation "S  |-#  stmt  ~>  B" (at level 50).
 
 Inductive LLBC_sharp_eval_stmt : statement -> LLBC_sharp_state -> branching_state -> Prop :=
   | LLBC_sharp_E_Nop S : S |-# Nop ~> {[rUnit := S]}
+  | LLBC_sharp_E_Panic S : S |-# Panic ~> {[rPanic := S]}
+  | LLBC_sharp_E_Break S : S |-# Break ~> {[rBreak := S]}
+  | LLBC_sharp_E_Continue S : S |-# Continue ~> {[rContinue := S]}
   | LLBC_sharp_E_Seq_Propagate S0 B1 stmt_0 stmt_1
       (eval_stmt_0 : S0 |-# stmt_0 ~> B1) (Hno_unit : lookup rUnit B1 = None) :
       S0 |-# (Seq stmt_0 stmt_1) ~> B1

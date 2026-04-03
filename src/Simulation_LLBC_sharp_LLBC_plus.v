@@ -3277,8 +3277,13 @@ Proof.
   - execution_step. { constructor. } reflexivity.
 
   (* Case [LLBC_plus_E_Nop]. *)
-  - execution_step. { constructor. }
-    apply leq_singleton. assumption.
+  - execution_step. { constructor. } apply leq_singleton. assumption.
+  (* Case [LLBC_plus_E_Panic]. *)
+  - execution_step. { constructor. } apply leq_singleton. assumption.
+  (* Case [LLBC_plus_E_Break]. *)
+  - execution_step. { constructor. } apply leq_singleton. assumption.
+  (* Case [LLBC_plus_E_Continue]. *)
+  - execution_step. { constructor. } apply leq_singleton. assumption.
 
   (* Case [LLBC_plus_E_Propagate] *)
   - specialize (IHHeval _ Hleq). destruct IHHeval as (Bl & ? & ?).
@@ -3382,6 +3387,13 @@ Proof.
   - induction eval_Sr.
     (* Case [LLBC_sharp_E_Nop] *)
     + execution_step. { constructor. } reflexivity.
+    (* Case [LLBC_sharp_E_Panic] *)
+    + execution_step. { constructor. } reflexivity.
+    (* Case [LLBC_sharp_E_Break] *)
+    + execution_step. { constructor. } reflexivity.
+    (* Case [LLBC_sharp_E_Continue] *)
+    + execution_step. { constructor. } reflexivity.
+
     (* Case [LLBC_sharp_E_Seq_Unit_Propagate] *)
     + destruct IHeval_Sr as (Bl & ? & ?).
       execution_step. { eapply LLBC_plus_E_Seq_Propagate; eauto with spath. }
@@ -3399,6 +3411,7 @@ Proof.
         { eapply LLBC_plus_E_Seq_Unit_Propagate; eassumption. }
         { transitivity B2_m; assumption. }
         { etransitivity; eauto with spath. }
+
     (* Case [LLBC_sharp_E_Assign] *)
     + execution_step. { econstructor; eassumption. } reflexivity.
     (* Case [LLBC_sharp_E_IfThenElse_T] *)
@@ -3407,6 +3420,7 @@ Proof.
     (* Case [LLBC_sharp_E_IfThenElse_F] *)
     + destruct IHeval_Sr as (? & ? & ?).
       execution_step. { eapply LLBC_plus_E_IfThenElse_F; eassumption. } assumption.
+
     (* Case [LLBC_sharp_IfThenElse_Symbolic] *)
     + destruct IHeval_Sr1 as (B_if & ? & ?). destruct IHeval_Sr2 as (B_else & ? & ?).
       execution_join_state.

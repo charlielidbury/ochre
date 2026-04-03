@@ -49,7 +49,10 @@ Inductive statement :=
  * particular type of enumeration. *)
 | SwitchBool (op : operand) (stmt_if : statement) (stmt_else : statement)
 | Loop (body : statement)
-| Panic.
+| Panic
+| Break
+| Continue
+.
 
 
 (* TODO: notation scope. *)
