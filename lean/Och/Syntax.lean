@@ -54,6 +54,52 @@ def subst (e : Expr) (j : Nat) (s : Expr) : Expr :=
   | .type => .type
   | .mu ann body => .mu (ann.subst j s) (body.subst (j + 1) (s.shift 1 0))
 
+/-- Generalized shift-subst cancellation: shifting by 1 at cutoff c then
+    substituting at c is the identity, regardless of what value is substituted.
+    After shifting, there are no bvar c's in the result, so the substitution
+    value is never used. -/
+theorem shift_subst_cancel_gen (e : Expr) (c : Nat) (s : Expr)
+    : (e.shift 1 c).subst c s = e := by
+  induction e generalizing c s with
+  | bvar k =>
+    unfold shift
+    by_cases h : k < c
+    · -- k < c: shift leaves bvar k
+      simp [h, subst]
+      -- Goal: (if k = c then s else if c < k then bvar (k-1) else bvar k) = bvar k
+      have h1 : ¬ k = c := by omega
+      have h2 : ¬ c < k := by omega
+      simp [h1, h2]
+    · -- k ≥ c: shift gives bvar (k+1)
+      simp [h]
+      show Expr.subst (.bvar (k + 1)) c s = .bvar k
+      unfold Expr.subst
+      -- Goal: (if k+1 = c then s else if c < k+1 then bvar k else bvar (k+1)) = bvar k
+      have h1 : ¬ k + 1 = c := by omega
+      have h2 : c < k + 1 := by omega
+      simp [h1, h2]
+  | lam dom body ih_dom ih_body =>
+    unfold shift; unfold subst
+    simp only [Expr.lam.injEq]
+    exact ⟨ih_dom c s, ih_body (c + 1) (s.shift 1 0)⟩
+  | app f a ih_f ih_a =>
+    unfold shift; unfold subst
+    simp only [Expr.app.injEq]
+    exact ⟨ih_f c s, ih_a c s⟩
+  | asc t y ih_t ih_y =>
+    unfold shift; unfold subst
+    simp only [Expr.asc.injEq]
+    exact ⟨ih_t c s, ih_y c s⟩
+  | type => rfl
+  | mu ann body ih_ann ih_body =>
+    unfold shift; unfold subst
+    simp only [Expr.mu.injEq]
+    exact ⟨ih_ann c s, ih_body (c + 1) (s.shift 1 0)⟩
+
+/-- Shift-subst cancellation at cutoff 0 (common case). -/
+theorem shift_subst_cancel (e : Expr) (s : Expr) : (e.shift 1 0).subst 0 s = e :=
+  shift_subst_cancel_gen e 0 s
+
 end Expr
 
 /-!
