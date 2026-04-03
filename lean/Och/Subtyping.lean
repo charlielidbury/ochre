@@ -8,6 +8,12 @@ Subtyping is set inclusion. `A ⊑ B` means every value in A is also in B.
 
 With de Bruijn indices, lambda/mu subtyping no longer needs variable renaming:
 alpha-equivalent terms are syntactically identical, so body comparison is direct.
+
+## Algorithmic checker
+
+The algorithmic subtype checker `subCheckNF` is defined in Eval.lean (mutual
+with absEval). This file contains the inductive subtyping relations and
+their proofs, plus theorems about subCheckNF.
 -/
 
 open Expr
@@ -106,83 +112,6 @@ theorem Subtype'.trans : {a b c : Expr} → Subtype' a b → Subtype' b c → Su
     | self_intro h1 => exact .self_intro (ih h1)
   | self_intro h2 ih => exact .self_intro (ih p)
 
-/-- Infer the type of a neutral term from a typing context.
-    ctx is a positional list: ctx[k] is the type/domain of bvar k. -/
-def inferType (ctx : List Expr) : Expr → Option Expr
-  | .bvar k => ctx.get? k
-  | .app f a =>
-    match inferType ctx f with
-    | some (.lam _dom retTy) => some (retTy.subst 0 a)
-    | some (.mu _ann body) =>
-      -- Self-type elimination: unfold, then infer
-      let unfolded := body.subst 0 f
-      match unfolded with
-      | .lam _dom retTy => some (retTy.subst 0 a)
-      | _ => none
-    | _ => none
-  | _ => none
-
-/-- Normalize a domain expression. Domains in absEval output are deliberately
-    left unnormalized. subCheckNF's inferType needs them normalized to
-    pattern-match (e.g., recognizing Vec' T as a lambda). -/
-def normalizeDomain (fuel : Nat) (ctxLen : Nat) (dom : Expr) : Expr :=
-  -- Build an identity env: bvar k → bvar k (all neutrals)
-  let env : Env := (List.range ctxLen).map fun k => .bvar k
-  match absEval fuel env dom with
-  | some d => d
-  | none => dom
-
-/-- Structural subtype check on normalized terms.
-    ctx: positional list of domain types for bound variables.
-    seen: assumed subtyping pairs for equi-recursive termination. -/
-def subCheckNF (fuel : Nat) (ctx : List Expr)
-    (seen : List (Expr × Expr)) (a b : Expr) : Bool :=
-  match fuel with
-  | 0 => false
-  | fuel + 1 =>
-    -- Normalize both sides to head form. Uses normalizeDomain (identity env)
-    -- for safe reduction of closed redexes without conflating bvar meanings.
-    let a := normalizeDomain fuel ctx.length a
-    let b := normalizeDomain fuel ctx.length b
-    if a == b then true
-    else if seen.any (fun (a', b') => a == a' && b == b') then true
-    else match b with
-    | .type => true
-    | _ =>
-      match a, b with
-      | .lam domA bodyA, .lam domB bodyB =>
-        -- Function subtyping: contravariant domain, covariant body
-        -- No renaming needed with de Bruijn — bodies already share bvar 0
-        let domA_norm := normalizeDomain fuel ctx.length domA
-        let domB_norm := normalizeDomain fuel ctx.length domB
-        subCheckNF fuel ctx seen domB_norm domA_norm
-        -- Shift domB_norm: it was computed at the outer depth, but the bodies
-        -- are one binder deeper.
-        && subCheckNF fuel (Env.extend ctx (domB_norm.shift 1 0)) seen bodyA bodyB
-      | .mu _annA bodyA, .mu _annB bodyB =>
-        -- Mu subtyping: covariant in body. Normalize bodies (mu-as-value
-        -- means absEval no longer pre-normalizes mu bodies).
-        let ctxA := Env.extend ctx (Expr.shift 1 0 (.mu _annA bodyA))
-        let bodyA' := match absEval fuel ctxA bodyA with | some x => x | none => bodyA
-        let bodyB' := match absEval fuel ctxA bodyB with | some x => x | none => bodyB
-        subCheckNF fuel ctxA seen bodyA' bodyB'
-      | _, .mu _ann body =>
-        -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
-        -- Normalize after substitution (mu bodies are raw).
-        let u := body.subst 0 b
-        let u' := match absEval fuel ctx u with | some x => x | none => u
-        subCheckNF fuel ctx ((a, b) :: seen) a u'
-      | .mu ann body, _ =>
-        -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
-        -- Normalize after substitution (mu bodies are raw).
-        let u := body.subst 0 (.mu ann body)
-        let u' := match absEval fuel ctx u with | some x => x | none => u
-        subCheckNF fuel ctx ((a, b) :: seen) u' b
-      | _, _ =>
-        match inferType ctx a with
-        | some ty => subCheckNF fuel ctx seen ty b
-        | none => false
-
 /-- BEq on Expr is reflexive. Now trivial since BEq comes from DecidableEq. -/
 theorem Expr.beq_refl (e : Expr) : (e == e) = true := by
   exact beq_self_eq_true e
@@ -190,15 +119,15 @@ theorem Expr.beq_refl (e : Expr) : (e == e) = true := by
 /-- subCheckNF is reflexive: any expression is a subtype of itself.
     Follows from the BEq check `if a == b then true`. -/
 theorem subCheckNF_refl (e : Expr) : subCheckNF 1 [] [] e e = true := by
-  simp [subCheckNF, normalizeDomain, Expr.beq_refl]
+  simp [subCheckNF, Expr.beq_refl]
 
 /-- When subCheckNF succeeds for lam ⊑ lam (not by reflexivity),
     the body check also succeeds. Needed for VCompat.adequacy. -/
-theorem subCheckNF_lam_lam_body {fuel : Nat} {ctx : List Expr} {dS bS dT bT : Expr}
+theorem subCheckNF_lam_lam_body {fuel : Nat} {ctx : TyCtx} {dS bS dT bT : Expr}
     (h : subCheckNF (fuel + 1) ctx [] (Expr.lam dS bS) (Expr.lam dT bT) = true)
     (h_neq : Expr.lam dS bS ≠ Expr.lam dT bT) :
     ∃ fuel' ctx', subCheckNF fuel' ctx' [] bS bT = true := by
-  sorry -- needs update for normalization at top of subCheckNF
+  sorry -- needs update for new mutual absEval/subCheckNF
 
 /-- inferType returns none for lambda expressions. -/
 theorem inferType_lam (ctx : List Expr) (dom body : Expr) :
@@ -207,42 +136,41 @@ theorem inferType_lam (ctx : List Expr) (dom body : Expr) :
 
 /-- subCheckNF of (lam ...) against a non-equal, non-type, non-lam, non-mu
     target with empty seen returns false. -/
-theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : List Expr}
+theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : TyCtx}
     {dom body b : Expr}
     (h : subCheckNF fuel ctx [] (Expr.lam dom body) b = true)
     (h_neq : Expr.lam dom body ≠ b)
     (h_not_type : b ≠ Expr.type)
     (h_not_lam : ∀ d b', b ≠ Expr.lam d b')
     (h_not_mu : ∀ a b', b ≠ Expr.mu a b') : False := by
-  sorry -- needs update for normalization at top of subCheckNF
+  sorry -- needs update for new mutual absEval/subCheckNF
 
 /-- When subCheckNF succeeds for mu ⊑ mu (not by reflexivity),
-    the normalized body check also succeeds. With mu-as-value, bodies are
-    normalized on-demand in subCheckNF rather than pre-normalized by absEval. -/
-theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : List Expr} {annS bodyS annT bodyT : Expr}
+    the normalized body check also succeeds. -/
+theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
     (h : subCheckNF (fuel + 1) ctx [] (Expr.mu annS bodyS) (Expr.mu annT bodyT) = true)
     (h_neq : Expr.mu annS bodyS ≠ Expr.mu annT bodyT) :
     ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = true := by
-  sorry -- needs update for normalization at top of subCheckNF
+  sorry -- needs update for new mutual absEval/subCheckNF
 
 /-- When subCheckNF succeeds with .type on the left against a non-.type target
     with empty seen, the target must be .mu. -/
-theorem subCheckNF_type_left_target {fuel : Nat} {ctx : List Expr} {τ : Expr}
+theorem subCheckNF_type_left_target {fuel : Nat} {ctx : TyCtx} {τ : Expr}
     (h : subCheckNF fuel ctx [] Expr.type τ = true) (h_neq : τ ≠ Expr.type) :
     ∃ ann body, τ = Expr.mu ann body := by
-  sorry -- needs update for normalization at top of subCheckNF
+  sorry -- needs update for new mutual absEval/subCheckNF
 
 /-- When subCheckNF succeeds for a neutral term (not lam, not mu) against a
     non-type, non-mu target (not equal, empty seen), the inferType catch-all
-    must have fired. Extract the inferred type and recursive check. -/
-theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : List Expr} {a b : Expr}
+    must have fired. -/
+theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : TyCtx} {a b : Expr}
     (h : subCheckNF (fuel + 1) ctx [] a b = true)
     (h_neq : a ≠ b) (h_b_not_type : b ≠ Expr.type)
     (h_b_not_mu : ∀ ann body, b ≠ Expr.mu ann body)
     (h_a_not_lam : ∀ dom body, a ≠ Expr.lam dom body)
     (h_a_not_mu : ∀ ann body, a ≠ Expr.mu ann body) :
     ∃ ty, inferType ctx a = some ty ∧ subCheckNF fuel ctx [] ty b = true := by
-  sorry -- needs update for normalization at top of subCheckNF
+  sorry -- needs update for new mutual absEval/subCheckNF
 
 /-! ### subCheckNF non-properties
 
@@ -255,24 +183,4 @@ Counterexample (verified in Tests.lean):
 
 **subCheckNF_top_universal is FALSE.**
 (.type ⊑ τ does NOT imply v ⊑ τ for all v.)
-Counterexample (verified in Tests.lean):
-- .type ⊑ mu .type (bvar 0): true (fixpoint, seen hit)
-- mu .type (lam .type (bvar 0)) ⊑ mu .type (bvar 0): false
-  (goes to structural mu/mu branch, checks lam .type (bvar 0) ⊑ bvar 0, fails)
-
-The issue: when v is a mu, subCheckNF takes the structural (mu, mu) branch
-instead of self-intro. The structural branch checks bodies, which may fail
-even when self-intro would succeed.
-
-These findings invalidate two proof strategies for VCompat.adequacy:
-1. The subCheckNF fallback case cannot use transitivity.
-2. The σ = .type case cannot use subCheckNF v τ as a witness.
-
-See PROGRESS.md for implications and revised approach suggestions. -/
-
-/-- Decidable subtyping check. Normalizes both sides via absEval, then
-    compares structurally. -/
-def subCheck (fuel : Nat) (a b : Expr) : Bool :=
-  match absEval fuel [] a, absEval fuel [] b with
-  | some a', some b' => subCheckNF fuel [] [] a' b'
-  | _, _ => false
+See Tests.lean for verified counterexamples. -/
