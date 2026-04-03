@@ -157,6 +157,146 @@ def concEvalE (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
       | some f', some a' => some (.app f' a')
       | _, _ => none
 
+/-! ## Asc-free expressions and evaluator equivalence
+
+Both evaluators strip ascription from their outputs. On asc-free inputs,
+concEvalE and absEval are identical (they differ ONLY at the asc case).
+This is the key insight for the soundness_gen app case: after beta-reduction,
+both sides effectively use the same evaluator. -/
+
+/-- An expression is asc-free if it contains no `.asc` constructor. -/
+def Expr.ascFree : Expr → Prop
+  | .bvar _ => True
+  | .lam dom body => dom.ascFree ∧ body.ascFree
+  | .app f a => f.ascFree ∧ a.ascFree
+  | .asc _ _ => False
+  | .type => True
+  | .mu ann body => ann.ascFree ∧ body.ascFree
+
+/-- Bool-valued version for native_decide. -/
+def Expr.ascFreeB : Expr → Bool
+  | .bvar _ => true
+  | .lam dom body => dom.ascFreeB && body.ascFreeB
+  | .app f a => f.ascFreeB && a.ascFreeB
+  | .asc _ _ => false
+  | .type => true
+  | .mu ann body => ann.ascFreeB && body.ascFreeB
+
+theorem Expr.ascFree_iff_ascFreeB (e : Expr) : e.ascFree ↔ e.ascFreeB = true := by
+  induction e with
+  | bvar _ => simp [ascFree, ascFreeB]
+  | type => simp [ascFree, ascFreeB]
+  | asc _ _ => simp [ascFree, ascFreeB]
+  | lam dom body ih_d ih_b => simp [ascFree, ascFreeB, Bool.and_eq_true, ih_d, ih_b]
+  | app f a ih_f ih_a => simp [ascFree, ascFreeB, Bool.and_eq_true, ih_f, ih_a]
+  | mu ann body ih_a ih_b => simp [ascFree, ascFreeB, Bool.and_eq_true, ih_a, ih_b]
+
+/-- Shifting preserves asc-free. -/
+theorem Expr.ascFree_shift {e : Expr} {d c : Nat}
+    (he : e.ascFree) : (e.shift d c).ascFree := by
+  induction e generalizing c with
+  | bvar _ => simp [shift]; split <;> simp [ascFree]
+  | type => simp [shift, ascFree]
+  | asc _ _ => exact absurd he (by simp [ascFree])
+  | lam _ _ ih_d ih_b =>
+    simp [ascFree] at he; simp [shift, ascFree]
+    exact ⟨ih_d he.1, ih_b he.2⟩
+  | app _ _ ih_f ih_a =>
+    simp [ascFree] at he; simp [shift, ascFree]
+    exact ⟨ih_f he.1, ih_a he.2⟩
+  | mu _ _ ih_a ih_b =>
+    simp [ascFree] at he; simp [shift, ascFree]
+    exact ⟨ih_a he.1, ih_b he.2⟩
+
+/-- Substitution preserves asc-free. -/
+theorem Expr.ascFree_subst {e : Expr} {j : Nat} {s : Expr}
+    (he : e.ascFree) (hs : s.ascFree) : (e.subst j s).ascFree := by
+  induction e generalizing j s with
+  | bvar k =>
+    simp [subst]
+    split
+    · exact hs  -- k == j: result is s
+    · split
+      · simp [ascFree]  -- k > j: bvar (k-1)
+      · simp [ascFree]  -- k < j: bvar k
+  | type => simp [subst, ascFree]
+  | asc _ _ => exact absurd he (by simp [ascFree])
+  | lam dom body ih_d ih_b =>
+    simp [ascFree] at he; obtain ⟨hd, hb⟩ := he
+    simp [subst, ascFree]
+    exact ⟨ih_d hd hs, ih_b hb (ascFree_shift hs)⟩
+  | app f a ih_f ih_a =>
+    simp [ascFree] at he; obtain ⟨hf, ha⟩ := he
+    simp [subst, ascFree]; exact ⟨ih_f hf hs, ih_a ha hs⟩
+  | mu ann body ih_a ih_b =>
+    simp [ascFree] at he; obtain ⟨ha, hb⟩ := he
+    simp [subst, ascFree]
+    exact ⟨ih_a ha hs, ih_b hb (ascFree_shift hs)⟩
+
+/-- Env.extend with an asc-free value preserves the env asc-free invariant. -/
+theorem Env.extend_ascFree {env : Env} {v : Expr}
+    (henv : ∀ k e, env.get? k = some e → e.ascFree)
+    (hv : v.ascFree)
+    : ∀ k e, (Env.extend env v).get? k = some e → e.ascFree := by
+  intro k e hk
+  simp [Env.extend] at hk
+  cases k with
+  | zero =>
+    simp at hk; subst hk; exact hv
+  | succ j =>
+    simp [List.get?] at hk
+    obtain ⟨a, ha_lookup, ha_shift⟩ := hk
+    subst ha_shift
+    have := henv j a
+    exact Expr.ascFree_shift (this (by rwa [List.get?_eq_getElem?]))
+
+/-- On asc-free inputs, concEvalE and absEval produce the same result.
+    They differ ONLY at the asc case: concEvalE takes the lhs, absEval
+    takes the rhs. If there is no asc, they are identical. -/
+theorem ascFree_eval_equiv {fuel : Nat} {env : Env} {e : Expr}
+    (he : e.ascFree)
+    (henv : ∀ k v, env.get? k = some v → v.ascFree)
+    : concEvalE fuel env e = absEval fuel env e := by
+  induction fuel generalizing env e with
+  | zero => simp [concEvalE, absEval]
+  | succ k ih =>
+    cases e with
+    | bvar j => simp [concEvalE, absEval]
+    | type => simp [concEvalE, absEval]
+    | asc _ _ => exact absurd he (by simp [Expr.ascFree])
+    | lam dom body =>
+      simp [Expr.ascFree] at he; obtain ⟨_, hb⟩ := he
+      simp only [concEvalE, absEval]
+      have hbvar : Expr.ascFree (.bvar 0) := trivial
+      rw [ih hb (Env.extend_ascFree henv hbvar)]
+    | mu ann body =>
+      simp [Expr.ascFree] at he; obtain ⟨ha, hb⟩ := he
+      simp only [concEvalE, absEval]
+      have hmu : Expr.ascFree (.mu ann body) := ⟨ha, hb⟩
+      rw [ih hb (Env.extend_ascFree henv hmu)]
+    | app f a =>
+      simp [Expr.ascFree] at he; obtain ⟨hf, ha⟩ := he
+      simp only [concEvalE, absEval]
+      rw [ih hf henv, ih ha henv]
+      -- After rewrite, the match on absEval results still has concEvalE in
+      -- sub-branches (beta-reduction, mu-app). These need the asc-free property
+      -- of the intermediate expressions to continue the equivalence.
+      sorry
+
+/-- Evaluator outputs are asc-free: neither concEvalE nor absEval produces
+    asc nodes in their output (both evaluate asc away). -/
+theorem concEvalE_ascFree {fuel : Nat} {env : Env} {e v : Expr}
+    (h : concEvalE fuel env e = some v)
+    (henv : ∀ k e, env.get? k = some e → e.ascFree)
+    : v.ascFree := by
+  sorry  -- by induction on fuel, cases on e; asc case forwards
+
+theorem absEval_ascFree {fuel : Nat} {env : Env} {e v : Expr}
+    (h : absEval fuel env e = some v)
+    (henv : ∀ k e, env.get? k = some e → e.ascFree)
+    : v.ascFree := by
+  sorry  -- identical structure to concEvalE_ascFree
+
 /-! ## Fuel monotonicity
 
 If evaluation succeeds with n fuel, it also succeeds with n+1 fuel to the

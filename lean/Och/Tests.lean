@@ -1297,3 +1297,33 @@ example : ((Expr.lam .type (.bvar 0)).subst 0 (Expr.mu .type (Expr.lam .type (.b
 example : (Expr.lam (.bvar 0) .type).closedEvalB 0 = true := by native_decide
 -- bvar 0 in body AT depth 0 fails closedEvalB 0 (but body at depth 1 is fine)
 example : (Expr.lam .type (.bvar 0)).closedEvalB 0 = true := by native_decide  -- bvar 0 < 1 ✓
+
+/-! ## §17: Asc-free evaluator equivalence tests
+
+Verifies that evaluator outputs are asc-free and that concEvalE = absEval
+on asc-free inputs. This is the key insight for the soundness_gen app case:
+after beta-reduction, both evaluators agree. -/
+
+-- Evaluator outputs are asc-free
+-- absEval output for identity with ascription inside:
+example : (absEval 5 [] (.lam .type (.asc (.bvar 0) .type))).map Expr.ascFreeB
+        = some true := by native_decide
+-- concEvalE output for identity with ascription inside:
+example : (concEvalE 5 [] (.lam .type (.asc (.bvar 0) .type))).map Expr.ascFreeB
+        = some true := by native_decide
+-- Both evaluators agree on asc-free inputs:
+example : concEvalE 5 [] (.lam .type (.bvar 0)) = absEval 5 [] (.lam .type (.bvar 0))
+        := by native_decide
+example : concEvalE 5 [] (.app (.lam .type (.bvar 0)) .type)
+        = absEval 5 [] (.app (.lam .type (.bvar 0)) .type)
+        := by native_decide
+-- With ascription, they differ:
+example : concEvalE 5 [] (.asc (.lam .type (.bvar 0)) .type)
+        ≠ absEval 5 [] (.asc (.lam .type (.bvar 0)) .type)
+        := by native_decide
+-- After beta-reduction of asc-free values, evaluators agree:
+-- (lam type (bvar 0)) applied to type → body.subst 0 type = type
+-- Both evaluators agree on asc-free substituted body:
+example : concEvalE 5 [] (Expr.subst (.bvar 0) 0 .type)
+        = absEval 5 [] (Expr.subst (.bvar 0) 0 .type)
+        := by native_decide
