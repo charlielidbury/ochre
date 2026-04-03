@@ -124,45 +124,93 @@ def Expr.closedEvalB (n : Nat) : Expr → Bool
 
 /-! ## Well-typedness -/
 
-/-- Well-typedness: all ascriptions encountered during evaluation are sound.
-    Bool-valued with subCheckNF in the ascription case.
+/-- Normalize a type expression using tyCtx as the evaluation environment.
+    Unlike normalizeDomain (which uses an identity env), this resolves
+    free variables via tyCtx, so e.g. app(app(app(bvar 3, ...), ...), ...)
+    reduces when tyCtx[3] is a lam. -/
+def normalizeType (fuel : Nat) (tyCtx : List Expr) (e : Expr) : Expr :=
+  match absEval fuel tyCtx e with
+  | some r => r
+  | none => e
 
-    The env parameter serves double duty: it's the absEval environment AND
-    the subCheckNF typing context. -/
-def WellTyped (fuel : Nat) (env : Env) (e : Expr) : Bool :=
+/-- Normalizing type inference for neutral terms. Like inferType but
+    normalizes intermediate results using tyCtx as the evaluation env,
+    so that type-level applications of known constructors fully reduce.
+    This is needed because tyCtx entries may contain unreduced redexes,
+    and substitution results (retTy.subst 0 a) may create new redexes. -/
+def inferTypeNorm (fuel : Nat) (tyCtx : List Expr) : Expr → Option Expr
+  | .bvar k => (tyCtx.get? k).map (normalizeType fuel tyCtx)
+  | .app f a =>
+    match inferTypeNorm fuel tyCtx f with
+    | some (.lam _dom retTy) => some (normalizeType fuel tyCtx (retTy.subst 0 a))
+    | some (.mu _ann body) =>
+      let unfolded := body.subst 0 f
+      match normalizeType fuel tyCtx unfolded with
+      | .lam _dom retTy => some (normalizeType fuel tyCtx (retTy.subst 0 a))
+      | _ => none
+    | _ => none
+  | _ => none
+
+/-- Check that a neutral term in function position has a function type.
+    Uses inferTypeNorm (which resolves type-level applications via tyCtx)
+    to determine the type. Only lam and mu are considered callable.
+    Type (top) means "unknown" and is rejected — calling something of
+    unknown type is unsound. -/
+def isCallable (fuel : Nat) (tyCtx : List Expr) (fT : Expr) : Bool :=
+  match fT with
+  | .lam _ _ => true
+  | .mu _ _ => true
+  | .type => false
+  | _ =>
+    match inferTypeNorm fuel tyCtx fT with
+    | some (.lam _ _) => true
+    | some (.mu _ _) => true
+    | _ => false
+
+/-- Well-typedness: all ascriptions encountered during evaluation are sound,
+    and all function applications target terms that are statically known to
+    be functions.
+
+    env: absEval evaluation environment (bvar 0 = neutral placeholder).
+    tyCtx: typing context mapping bvar indices to their domain types.
+    These are kept in sync but carry different information:
+    - env has neutral placeholders for evaluation under binders
+    - tyCtx has domain annotations for type-checking applications -/
+def WellTyped (fuel : Nat) (env : Env) (e : Expr) (tyCtx : List Expr := []) : Bool :=
   match fuel with
   | 0 => true
   | fuel + 1 =>
     match e with
     | .bvar _ => true
-    | .lam _dom body => WellTyped fuel (env.extend (.bvar 0)) body
+    | .lam dom body =>
+        let domNorm := normalizeDomain fuel tyCtx.length dom
+        WellTyped fuel (env.extend (.bvar 0)) body (Env.extend tyCtx domNorm)
     | .type => true
     | .asc term ty =>
-        WellTyped fuel env term && WellTyped fuel env ty &&
+        WellTyped fuel env term tyCtx && WellTyped fuel env ty tyCtx &&
         match absEval fuel env term, absEval fuel env ty with
         | some σ, some τ' => subCheckNF fuel env [] σ τ'
         | _, _ => false
     | .mu ann body =>
-        WellTyped fuel (env.extend (.mu ann body)) body
+        WellTyped fuel (env.extend (.mu ann body)) body (Env.extend tyCtx (.mu ann body))
     | .app f a =>
-        WellTyped fuel env f && WellTyped fuel env a &&
+        WellTyped fuel env f tyCtx && WellTyped fuel env a tyCtx &&
         match absEval fuel env f, absEval fuel env a with
         | some (.lam _dom body), some aVal =>
-            WellTyped fuel env (body.subst 0 aVal)
+            WellTyped fuel env (body.subst 0 aVal) tyCtx
         | some (.mu ann body_mu), some aVal =>
           match ann, body_mu with
           | .lam _dom_ann retBody, .lam _ _ =>
-              WellTyped fuel env (retBody.subst 0 aVal)
+              WellTyped fuel env (retBody.subst 0 aVal) tyCtx
           | .lam _dom_ann retBody, _ =>
-              WellTyped fuel env (retBody.subst 0 aVal)
+              WellTyped fuel env (retBody.subst 0 aVal) tyCtx
           | _, .lam _dom_body bodyRes =>
-              WellTyped fuel env (bodyRes.subst 0 aVal)
+              WellTyped fuel env (bodyRes.subst 0 aVal) tyCtx
           | _, _ => true
-        -- Type in function position is not well-typed (Type is not callable).
-        -- Neutral terms (bvar, app) are allowed — they may represent functions
-        -- whose shape is unknown under the current binder.
-        | some .type, _ => false
-        | _, _ => true
+        -- Non-lam, non-mu function: check it's callable via inferType.
+        -- This rejects e.g. λ(x: Type). (x x) where x : Type is not a function.
+        | some fT, _ => isCallable fuel tyCtx fT
+        | _, _ => false
 
 /-! ## VCompat: step-indexed value-type compatibility
 
@@ -1145,11 +1193,12 @@ The env-based form is the workhorse. The bridge is a separate concern. -/
     The asc case uses VCompat.adequacy (VCompat through subCheckNF). -/
 theorem soundness_gen
     (fuel : Nat) (env : Env) (e : Expr) (v τ : Expr) (n : Nat)
-    (h_wt : WellTyped fuel env e = true)
+    (tyCtx : List Expr := [])
+    (h_wt : WellTyped fuel env e tyCtx = true)
     (h_conc : concEvalE fuel env e = some v)
     (h_abs : absEval fuel env e = some τ)
     : VCompat n v τ := by
-  induction fuel generalizing env e v τ n with
+  induction fuel generalizing env tyCtx e v τ n with
   | zero => simp [concEvalE] at h_conc
   | succ k ih =>
     cases n with
@@ -1214,11 +1263,11 @@ theorem soundness_gen
           | some bodyT' =>
             simp [h_av] at h_abs
             subst h_conc; subst h_abs
-            have h_wt_body : WellTyped k (Env.extend env (.mu ann body)) body = true := by
+            have h_wt_body : WellTyped k (Env.extend env (.mu ann body)) body (Env.extend tyCtx (.mu ann body)) = true := by
               simp [WellTyped] at h_wt; exact h_wt
             -- IH on body at step m (one less than goal m+1)
             have ih_body := ih (Env.extend env (.mu ann body)) body bodyV' bodyT' m
-                           h_wt_body h_cv h_av
+                           (Env.extend tyCtx (.mu ann body)) h_wt_body h_cv h_av
             -- Need: VCompat (m+1) (mu ann bodyV') (mu ann bodyT')
             -- Via unfolded structural mu: VCompat m (bodyV'.subst 0 v) (bodyT'.subst 0 τ)
             -- where v = mu ann bodyV', τ = mu ann bodyT'
@@ -1263,8 +1312,8 @@ theorem soundness_gen
               | some aT =>
                 -- IH gives VCompat for function and argument
                 obtain ⟨⟨h_wt_f, h_wt_a⟩, _⟩ := h_wt
-                have ih_f := ih env f fV fT (m + 1) h_wt_f h_fV h_fT
-                have ih_a := ih env a aV aT (m + 1) h_wt_a h_aV h_aT
+                have ih_f := ih env f fV fT (m + 1) tyCtx h_wt_f h_fV h_fT
+                have ih_a := ih env a aV aT (m + 1) tyCtx h_wt_a h_aV h_aT
                 -- Case-split on fV and fT shapes (6×6 = 36 sub-cases).
                 -- Type is no longer callable — it falls through to the neutral
                 -- catch-all producing app .type aVal, just like bvar/app/asc.
@@ -1444,7 +1493,7 @@ theorem soundness_gen
                     --
                     -- IH at m+2: VCompat (m+2) (lam domV bodyV) (lam domT bodyT)
                     have ih_f2 := ih env f (.lam domV bodyV) (.lam domT bodyT) (m + 2)
-                                    h_wt_f h_fV h_fT
+                                    tyCtx h_wt_f h_fV h_fT
                     -- VCompat (m+2) at lam×lam: case-split on disjuncts
                     unfold VCompat at ih_f2
                     rcases ih_f2 with h_top | h_refl |
@@ -1520,7 +1569,7 @@ theorem soundness_gen
             simp [h_σ, h_τ'] at h_sub
             -- IH on term at step (m+1) — SAME step level as goal!
             -- This is the key benefit of decoupling n from fuel.
-            have ih_term := ih env term v σ (m + 1) h_wt_term h_conc h_σ
+            have ih_term := ih env term v σ (m + 1) tyCtx h_wt_term h_conc h_σ
             -- Bridge via adequacy: VCompat (m+1) v σ → subCheckNF σ τ → VCompat (m+1) v τ
             exact VCompat.adequacy ih_term h_sub
 
@@ -1532,7 +1581,7 @@ theorem soundness
     (h_conc : concEvalE fuel [] e = some v)
     (h_abs : absEval fuel [] e = some τ)
     : VCompat n v τ :=
-  soundness_gen fuel [] e v τ n h_wt h_conc h_abs
+  soundness_gen fuel [] e v τ n [] h_wt h_conc h_abs
 
 /-- Soundness for the substitution-based runtime (concEval).
     Requires a bridge showing concEval and concEvalE agree on closed terms.

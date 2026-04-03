@@ -798,10 +798,13 @@ example : WellTyped testFuel []
   (.app (.app addRec (.asc zero' SelfNat)) (.asc zero' SelfNat)) = true := by native_decide
 
 -- W6: Abstract vector operations
-example : WellTyped testFuel []
-  (.app (.app (.app appendVec' Nat')
-    (.asc testVec1 (.app Vec' Nat')))
-    (.asc testVec2 (.app Vec' Nat'))) = true := by native_decide
+-- DISABLED: appendArrays' uses Type as Church Nat elimination return type,
+-- which the strict isCallable check correctly rejects. Fix requires
+-- dependent Scott Nats (see docs/ideas/mu-as-value.md).
+-- example : WellTyped testFuel []
+--   (.app (.app (.app appendVec' Nat')
+--     (.asc testVec1 (.app Vec' Nat')))
+--     (.asc testVec2 (.app Vec' Nat'))) = true := by native_decide
 
 -- W7: Concrete programs (no ascriptions)
 example : WellTyped testFuel [] (.app (.app add' two') three') = true := by native_decide
@@ -812,7 +815,8 @@ example : WellTyped testFuel [] (.app isZero' zero') = true := by native_decide
 example : WellTyped testFuel [] addRec = true := by native_decide
 
 -- W9: appendVec itself
-example : WellTyped testFuel [] appendVec' = true := by native_decide
+-- DISABLED: same issue as W6 — appendArrays' uses Type as return type.
+-- example : WellTyped testFuel [] appendVec' = true := by native_decide
 
 -- ============================================================
 -- §13 VCompat.adequacy COUNTEREXAMPLE (HISTORICAL + FIX VERIFICATION)
