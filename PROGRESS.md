@@ -325,10 +325,19 @@ property from structural knowledge about bodies.
 
 **Most promising approaches:**
 
-1. **Generalized soundness_gen for different envs.** Replace the single `env`
-   with `envV` and `envT` related by VCompat. Then the lam case can extend envs
-   differently (envV.extend aV, envT.extend aT) and invoke the IH on body.
-   Requires: VCompat preserved under env shift (env extension shifts existing entries).
+1. **Generalized soundness_gen for different envs** (MOST PROMISING). Replace
+   the single `env` with `envV` and `envT` related by VCompat. Then the lam case
+   extends envs differently (envV.extend aV, envT.extend aT) and invokes the IH
+   on body. Requires: VCompat preserved under env shift (`Env.extend` shifts
+   existing entries via `Expr.shift 1 0`).
+   
+   **Key insight (discovered this session):** For the semantic lam case of
+   VCompat.shift, `(bodyV.shift 1 0).subst 0 aV = bodyV` (shift-subst
+   cancellation). So the semantic property for shifted bodies is TRIVIALLY
+   equivalent to evaluating the original bodies. VCompat.shift should be
+   provable for all disjuncts. The asc case of the generalized theorem also
+   works: WellTyped provides absEval on term (from envT), and the IH on term
+   gives VCompat v σ, then adequacy bridges to τ.
 
 2. **Eval-subst commutativity.** Show: `concEvalE fuel env (bodyV'.subst 0 aV)`
    = `concEvalE fuel (env_adjusted aV) body` for some env_adjusted. Then the IH
