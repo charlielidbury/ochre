@@ -1,5 +1,49 @@
 # Decision Log
 
+## 2026-04-03: Implemented vEquiv approach for soundness_gen mu case
+
+**Agent:** ochre-lean-20260403-025516
+
+### Decision
+
+Implemented the VCompat-equivalence (vEquiv) approach for the soundness_gen
+mu case. The mu case is now PROVED (modulo one sorry in a sub-lemma).
+
+The proof uses `mu_body_subst_vcompat`, which has three cases:
+- **Case A (proved):** bodyT = type → trivial (type.subst = type → VCompat top)
+- **Case B (proved):** bodyV = bodyT → subst gives equal → VCompat refl
+- **Case C (sorry'd):** the vEquiv chain (closedEvalB → subst vEquiv → VCompat)
+
+### Key finding: closedEvalB is NOT universally true
+
+During implementation, discovered that `closedEvalB 0` does NOT hold for all
+evaluator outputs. The mu-app catch-all (`| _, _ => some (.app body aVal)`)
+leaks the raw mu body into the output, which can have free `bvar 0` in
+evaluated positions. Example: `mu type (app (bvar 0) (bvar 0))`.
+
+However, brute-force testing shows that whenever closedEvalB fails AND
+evaluators produce different results, `bodyT = type`. This means Case A
+handles all closedEvalB-failing cases with different outputs. Case C is
+only needed when closedEvalB holds AND bodyV ≠ bodyT ∧ bodyT ≠ type.
+
+### What was implemented
+
+1. `Expr.vEquivB`: Bool-valued VCompat-equivalence
+2. `Expr.closedEvalB`: Bool-valued eval-closedness
+3. `closedEvalB_subst_vEquiv`: FULLY PROVEN — subst is vEquiv-no-op
+4. `mu_body_subst_vcompat`: Cases A+B proved, Case C sorry'd
+5. soundness_gen mu case: now proved using mu_body_subst_vcompat
+6. Tests.lean §16: brute-force tests for the full chain + trichotomy
+
+### Impact
+
+- soundness_gen mu case: was sorry, now PROVED (modulo sub-lemma)
+- New sorry'd declarations: 4 (mu_body_subst_vcompat, VCompat_of_vEquivB,
+  concEvalE_closedEvalB, absEval_closedEvalB). Only mu_body_subst_vcompat
+  is on the critical path; the other 3 are infrastructure for Case C.
+- Total sorry'd declarations: 8 (was 4, but the old mu sorry was a bare
+  sorry in soundness_gen; now it's factored into focused sub-lemmas)
+
 ## 2026-04-03: Implemented "unfolded structural mu" in VCompat
 
 **Agent:** ochre-lean-20260403-014631

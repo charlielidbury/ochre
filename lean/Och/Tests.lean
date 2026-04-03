@@ -1202,3 +1202,82 @@ theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by
   · -- inferType of mu = none
     unfold adequacy_cex_v at h_inf
     simp [inferType] at h_inf
+
+-- ============================================================
+-- §16 VCompat-equivalence (vEquiv) and mu_body_subst_vcompat tests
+-- ============================================================
+
+-- §16.1 mu_body_subst_vcompat: the core lemma for soundness_gen mu case
+-- Tests that VCompat on raw evaluator bodies implies VCompat on subst'd bodies.
+-- This is mu_body_subst_vcompat's claim.
+
+-- Helper: check mu_body_subst_vcompat for a specific mu expression
+-- Returns true iff:
+-- 1. Not well-typed (vacuous), OR
+-- 2. Eval fails (vacuous), OR
+-- 3. VCompat on subst'd bodies holds (given VCompat on raw bodies from IH)
+private def check_mu_subst_vcompat (fuel steps : Nat) (ann body : Expr) : Bool :=
+  if !(WellTyped fuel [] (.mu ann body)) then true
+  else
+    let env := Env.extend [] (.mu ann body)
+    match concEvalE fuel env body, absEval fuel env body with
+    | some bodyV', some bodyT' =>
+        -- The IH would give VCompat for raw bodies. Check subst'd bodies too.
+        let v := Expr.mu ann bodyV'
+        let τ := Expr.mu ann bodyT'
+        vcompat_check [[], [.type], [.lam .type .type]] steps
+          (bodyV'.subst 0 v) (bodyT'.subst 0 τ)
+    | _, _ => true
+
+-- Individual cases with known different evaluator outputs
+example : check_mu_subst_vcompat 20 10 .type (.lam .type (.bvar 0)) = true := by native_decide
+example : check_mu_subst_vcompat 20 10 .type (.lam (.bvar 0) (.bvar 0)) = true := by native_decide
+example : check_mu_subst_vcompat 20 10 .type
+    (.asc (.lam (.bvar 0) (.bvar 0)) (.lam .type .type)) = true := by native_decide
+example : check_mu_subst_vcompat 20 10 .type
+    (.asc (.bvar 0) (.lam .type .type)) = true := by native_decide
+example : check_mu_subst_vcompat 20 10 .type
+    (.lam .type (.asc (.bvar 1) .type)) = true := by native_decide
+
+-- Brute-force: all small bodies with all annotations
+example : (small_anns.all fun ann =>
+  small_bodies.all fun body => check_mu_subst_vcompat 20 8 ann body) = true := by native_decide
+
+-- §16.2 closedEvalB: NOT universally true for evaluator outputs
+-- The mu-app catch-all can leak raw bvar 0 into outputs. Example:
+-- mu type (app (bvar 0) (bvar 0)):
+--   concEvalE body = app (app (bvar 0) (bvar 0)) (mu ...)  — has free bvar 0!
+--   closedEvalB 0 = false
+-- However, the soundness_gen mu sorry STILL holds because:
+-- 1. When closedEvalB fails AND evaluators differ, bodyT = type (VCompat top)
+-- 2. When closedEvalB fails AND evaluators agree, subst gives equal results
+-- 3. When closedEvalB holds, the vEquiv chain works
+
+-- Verify the trichotomy: for all well-typed mus, one of these holds:
+-- (a) bodyT' = type, (b) bodyV' = bodyT', (c) closedEvalB 0 for both
+private def check_trichotomy (fuel : Nat) (ann body : Expr) : Bool :=
+  if !(WellTyped fuel [] (.mu ann body)) then true
+  else
+    let env := Env.extend [] (.mu ann body)
+    match concEvalE fuel env body, absEval fuel env body with
+    | some bodyV', some bodyT' =>
+        bodyT' == .type ||
+        bodyV' == bodyT' ||
+        (bodyV'.closedEvalB 0 && bodyT'.closedEvalB 0)
+    | _, _ => true
+
+example : (small_anns.all fun ann =>
+  small_bodies.all fun body => check_trichotomy 20 ann body) = true := by native_decide
+
+-- §16.3 When closedEvalB holds, vEquiv chain works
+-- closedEvalB_subst_vEquiv is FULLY PROVEN — these tests validate it
+
+-- Spot checks on closedEvalB
+example : (Expr.lam .type (.bvar 0)).closedEvalB 0 = true := by native_decide
+example : ((Expr.lam .type (.bvar 0)).subst 0 (Expr.mu .type (Expr.lam .type (.bvar 0)))).vEquivB
+          (Expr.lam .type (.bvar 0)) = true := by native_decide
+-- closedEvalB 0 checks body position at depth 1, not domains
+-- bvar 0 in domain is NOT checked, only body positions
+example : (Expr.lam (.bvar 0) .type).closedEvalB 0 = true := by native_decide
+-- bvar 0 in body AT depth 0 fails closedEvalB 0 (but body at depth 1 is fine)
+example : (Expr.lam .type (.bvar 0)).closedEvalB 0 = true := by native_decide  -- bvar 0 < 1 ✓

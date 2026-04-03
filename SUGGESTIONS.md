@@ -101,68 +101,35 @@ The fix trades sorrys in adequacy (which were PROVABLY FALSE) for sorrys in:
 2. adequacy mu/mu structural cases (needs subCheckNF for subst'd forms)
 All new sorrys are potentially true — none known to be false.
 
-## Priority 1: VCompat-equivalence for soundness_gen mu case
+## ✅ PARTIALLY RESOLVED: soundness_gen mu case (2026-04-03)
 
-**Highest-impact single lemma.** Would fix the soundness_gen mu sorry.
+**Agent:** ochre-lean-20260403-025516
 
-### ⚠️ The naive closedness lemma is FALSE
+The soundness_gen mu case is now PROVED via `mu_body_subst_vcompat`, which
+has three cases:
+- **Case A (proved):** bodyT = type → trivial
+- **Case B (proved):** bodyV = bodyT → trivial
+- **Case C (sorry'd):** bodyV ≠ bodyT ∧ bodyT ≠ type → needs vEquiv chain
 
-The previously proposed closedness lemma (`v.subst 0 X = v` for evaluator
-outputs) is **FALSE**. The evaluators do NOT evaluate lambda domains or mu
-annotations — they copy them from the source. Un-evaluated domains can
-contain free `bvar 0` (the mu self-reference). See Tests.lean §14 for a
-concrete counterexample: `mu type (lam (bvar 0) (bvar 0))`.
+### Infrastructure implemented:
+- `Expr.vEquivB`: Bool-valued VCompat-equivalence (already defined)
+- `Expr.closedEvalB`: Bool-valued eval-closedness (already defined)
+- `closedEvalB_subst_vEquiv`: FULLY PROVEN — subst is vEquiv-no-op for closedEvalB
 
-### Why the mu case is still true
+### ⚠️ closedEvalB 0 does NOT hold for all evaluator outputs
+The mu-app catch-all leaks raw bvar 0. BUT: testing shows that whenever
+closedEvalB fails AND evaluators differ, bodyT = type (Case A handles this).
+See PROGRESS.md "CRITICAL FINDINGS §6" and Tests.lean §16.
 
-Despite closedness failing, brute-force testing (Tests.lean §15) confirms
-the soundness_gen mu sorry IS true for all tested well-typed programs (51
-bodies tested, 5 with genuinely different evaluator results, all pass).
+## Priority 1: mu_body_subst_vcompat Case C
 
-The reason: **VCompat doesn't compare domains or annotations.** Its
-structural lam compares only bodies, and structural mu compares only
-unfolded bodies. So `subst 0` into un-evaluated positions (domains,
-annotations) is invisible to VCompat.
+**One sorry remaining.** Prove that when bodyV ≠ bodyT ∧ bodyT ≠ type,
+closedEvalB 0 holds for both evaluator outputs. Then the existing chain
+(closedEvalB_subst_vEquiv + VCompat_of_vEquivB) gives VCompat.
 
-### Proposed approach: VCompat-equivalence
-
-Define "VCompat-equivalence" (`vEquiv`): two expressions agree on
-everything except lambda domains and mu annotations.
-
-```lean
-def Expr.vEquiv : Expr → Expr → Prop
-  | .bvar k, .bvar k' => k = k'
-  | .lam _ b1, .lam _ b2 => b1.vEquiv b2   -- domains ignored
-  | .app f1 a1, .app f2 a2 => f1.vEquiv f2 ∧ a1.vEquiv a2
-  | .asc t1 y1, .asc t2 y2 => t1.vEquiv t2 ∧ y1.vEquiv y2
-  | .type, .type => True
-  | .mu _ b1, .mu _ b2 => b1.vEquiv b2      -- annotations ignored
-  | _, _ => False
-```
-
-Then prove three lemmas:
-
-1. **VCompat respects vEquiv** (congruence):
-   `v1.vEquiv v2 → τ1.vEquiv τ2 → VCompat n v1 τ1 → VCompat n v2 τ2`
-   Note: the app case needs care — inferType ignores domains (uses
-   `_dom` as wildcard), so vEquiv apps give the same inferType result.
-
-2. **subst preserves vEquiv for closedEval expressions:**
-   `closedEval 0 e → (e.subst 0 X).vEquiv e`
-   Where `closedEval n e` checks that all bvar indices in
-   VCompat-relevant positions (everything except lam domains and mu
-   annotations) satisfy `k < n`.
-
-3. **Evaluator outputs satisfy closedEval:**
-   `concEvalE fuel env e = some v → [env invariant] → closedEval 0 v`
-   This holds because the evaluator resolves all bvar lookups in
-   evaluated positions. Un-evaluated positions (domains, annotations)
-   are NOT checked by closedEval.
-
-Chain: IH gives `VCompat m bodyV' bodyT'`. Lemma 3 gives
-`closedEval 0 bodyV'` and `closedEval 0 bodyT'`. Lemma 2 gives
-`(bodyV'.subst 0 X).vEquiv bodyV'` and `(bodyT'.subst 0 Y).vEquiv bodyT'`.
-Lemma 1 gives `VCompat m (bodyV'.subst 0 X) (bodyT'.subst 0 Y)`.
+Approach: prove closedEvalB for evaluator outputs EXCEPT when the mu-app
+catch-all fires. When the catch-all fires and evaluators differ, show
+bodyT = type (absEval's mu-app path via type annotation → type result).
 
 ### Alternative: change to raw body VCompat for mu
 
