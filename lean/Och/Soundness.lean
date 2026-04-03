@@ -158,6 +158,10 @@ def WellTyped (fuel : Nat) (env : Env) (e : Expr) : Bool :=
           | _, .lam _dom_body bodyRes =>
               WellTyped fuel env (bodyRes.subst 0 aVal)
           | _, _ => true
+        -- Type in function position is not well-typed (Type is not callable).
+        -- Neutral terms (bvar, app) are allowed — they may represent functions
+        -- whose shape is unknown under the current binder.
+        | some .type, _ => false
         | _, _ => true
 
 /-! ## VCompat: step-indexed value-type compatibility
@@ -1262,25 +1266,23 @@ theorem soundness_gen
                 have ih_f := ih env f fV fT (m + 1) h_wt_f h_fV h_fT
                 have ih_a := ih env a aV aT (m + 1) h_wt_a h_aV h_aT
                 -- Case-split on fV and fT shapes (6×6 = 36 sub-cases).
+                -- Type is no longer callable — it falls through to the neutral
+                -- catch-all producing app .type aVal, just like bvar/app/asc.
                 --
-                -- PROVED (23 cases):
-                --   fT = type (6 cases): τ = type → VCompat top
-                --   fV = type × fT ∈ {bvar,app,asc,lam} (4 cases): contradiction
-                --     (VCompat (m+1) type X = False for X ∉ {type, mu})
+                -- PROVED (20 cases):
+                --   fV ∈ {type,bvar,app,asc} × fT ∈ {type,bvar,app,asc} (16 cases):
+                --     both catch-all → v = app fV aV, τ = app fT aT → structural app
                 --   fV = lam × fT ∈ {bvar,app,asc} (3 cases): contradiction
                 --     (VCompat (m+1) (lam ..) X = False for X ∉ {type, lam, mu})
                 --   fV = asc × fT = lam (1 case): contradiction
                 --     (VCompat (m+1) (asc ..) (lam ..) = False)
-                --   fV ∈ {bvar,app,asc} × fT ∈ {bvar,app,asc} (9 cases):
-                --     both catch-all → v = app fV aV, τ = app fT aT → structural app
                 --
-                -- SORRY'D (13 cases) — all involve active computation:
-                --   fV = mu × fT ∈ {bvar,app,asc} (3): mu-app left, structural right
-                --   fV ∈ {bvar,app} × fT = lam (2): structural left, beta right
-                --   fV = lam × fT = lam (1): BOTH BETA — hardest case
+                -- SORRY'D (16 cases) — all involve active computation:
+                --   fV = mu × fT ∈ {type,bvar,app,asc} (4): mu-app left, neutral right
+                --   fV ∈ {type,bvar,app} × fT = lam (3): neutral left, beta right
+                --   fV = lam × fT ∈ {type,lam} (2): beta (both or left-only)
                 --   fV = mu × fT = lam (1): mu-app left, beta right
-                --   fV = type × fT = mu (1): v = type, mu-app right
-                --   fV ∈ {bvar,app,asc} × fT = mu (3): structural left, mu-app right
+                --   fV ∈ {type,bvar,app,asc} × fT = mu (4): neutral left, mu-app right
                 --   fV = lam × fT = mu (1): beta left, mu-app right
                 --   fV = mu × fT = mu (1): both mu-app
                 --
@@ -1289,29 +1291,57 @@ theorem soundness_gen
                 -- So after beta/mu-app, both sides effectively use absEval.
                 -- This reduces the cross-evaluator problem to a SINGLE-evaluator
                 -- congruence question: does absEval preserve VCompat through subst+eval?
-                -- See PROGRESS.md for details.
 
                 -- Simplify evaluator results using matched values
                 simp only [h_fV, h_aV] at h_conc
                 simp only [h_fT, h_aT] at h_abs
 
                 -- Case-split on fT first (absEval's function result shape)
+                -- Note: Type is no longer callable. All non-lam, non-mu fT values
+                -- (type, bvar, app, asc) fall through to the catch-all producing
+                -- app fT aT. These are handled uniformly below.
                 cases fT with
                 | type =>
-                  -- fT = type → absEval returns type → τ = type → VCompat top
+                  -- fT = type → absEval catch-all → τ = app .type aT
                   simp at h_abs; subst h_abs
-                  unfold VCompat; exact Or.inl rfl
+                  cases fV with
+                  | type =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.type, .type, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | bvar jV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.bvar jV, .type, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | app fV1 fV2 =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.app fV1 fV2, .type, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | asc tV yV =>
+                    simp at h_conc; subst h_conc
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.asc tV yV, .type, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
+                  | lam domV bodyV =>
+                    -- fV = lam, fT = type → beta left, neutral right
+                    sorry
+                  | mu annV bodyV =>
+                    -- fV = mu, fT = type → mu-app left, neutral right
+                    sorry
                 | bvar jT =>
                   -- fT = bvar → absEval catch-all → τ = app (bvar jT) aT
                   simp at h_abs; subst h_abs
                   -- Now case-split on fV
                   cases fV with
                   | type =>
-                    -- v = type, τ = app (bvar jT) aT
-                    -- VCompat (m+1) type (app ...) = False from ih_f
+                    -- v = app .type aV, τ = app (bvar jT) aT
                     simp at h_conc; subst h_conc
-                    -- ih_f: VCompat (m+1) type (bvar jT) — contradiction
-                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.type, .bvar jT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
                   | bvar jV =>
                     -- Both catch-all: v = app (bvar jV) aV, τ = app (bvar jT) aT
                     simp at h_conc; subst h_conc
@@ -1341,7 +1371,9 @@ theorem soundness_gen
                   cases fV with
                   | type =>
                     simp at h_conc; subst h_conc
-                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.type, .app fT1 fT2, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
                   | bvar jV =>
                     simp at h_conc; subst h_conc
                     unfold VCompat
@@ -1366,7 +1398,9 @@ theorem soundness_gen
                   cases fV with
                   | type =>
                     simp at h_conc; subst h_conc
-                    exfalso; revert ih_f; unfold VCompat; simp [inferType]
+                    unfold VCompat
+                    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl
+                      ⟨.type, .asc tT yT, aV, aT, rfl, rfl, ih_f.mono, ih_a.mono⟩))))))
                   | bvar jV =>
                     simp at h_conc; subst h_conc
                     unfold VCompat
@@ -1446,10 +1480,10 @@ theorem soundness_gen
                   -- (sub-cases depend on annT and bodyT shapes)
                   cases fV with
                   | type =>
-                    -- v = type, τ from mu-app
+                    -- v = app .type aV, τ from mu-app
                     simp at h_conc; subst h_conc
                     -- ih_f: VCompat (m+1) type (mu annT bodyT)
-                    -- Need VCompat (m+1) type τ — requires τ to be type or mu-chain
+                    -- Need VCompat (m+1) (app .type aV) τ
                     sorry
                   | bvar jV =>
                     -- v = app (bvar jV) aV, τ from mu-app

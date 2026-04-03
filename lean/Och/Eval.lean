@@ -74,9 +74,7 @@ def absEval (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
           absEval fuel env (retBody.subst 0 aVal)
         | _, .lam _dom retBody =>
           absEval fuel env (retBody.subst 0 aVal)
-        | _, .type => some .type
         | _, _ => some (.app body aVal)
-      | some .type, some _ => some .type
       | some f', some a' => some (.app f' a')
       | _, _ => none
 
@@ -106,10 +104,8 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
         -- mu in function position: unroll and retry
         match concEval fuel (.mu ann body) with
         | some (.lam _dom lamBody) => concEval fuel (lamBody.subst 0 aVal)
-        | some .type => some .type
         | some fVal => some (.app fVal aVal)
         | none => none
-      | some .type, some _ => some .type
       | some fVal, some aVal => some (.app fVal aVal)
       | _, _ => none
 
@@ -151,9 +147,7 @@ def concEvalE (fuel : Nat) (env : Env) (e : Expr) : Option Expr :=
           concEvalE fuel env (retBody.subst 0 aVal)
         | _, .lam _dom lamBody =>
           concEvalE fuel env (lamBody.subst 0 aVal)
-        | _, .type => some .type
         | _, _ => some (.app body aVal)
-      | some .type, some _ => some .type
       | some f', some a' => some (.app f' a')
       | _, _ => none
 
@@ -326,10 +320,9 @@ theorem absEval_ascFree {fuel : Nat} {env : Env} {e v : Expr}
               have : retB.ascFree := by
                 simp [Expr.ascFree] at hbf; exact hbf.2
               exact ih (Expr.ascFree_subst this haV_af) h henv
-            · simp at h; subst h; trivial
             · simp at h; subst h; exact ⟨hbf, haV_af⟩
           | type =>
-            simp at h; subst h; trivial
+            simp at h; subst h; exact ⟨hfV_af, haV_af⟩
           | bvar _ =>
             simp at h; subst h; exact ⟨hfV_af, haV_af⟩
           | app _ _ =>
@@ -404,10 +397,9 @@ theorem concEvalE_ascFree {fuel : Nat} {env : Env} {e v : Expr}
               have : retB.ascFree := by
                 simp [Expr.ascFree] at hbf; exact hbf.2
               exact ih (Expr.ascFree_subst this haV_af) h henv
-            · simp at h; subst h; trivial
             · simp at h; subst h; exact ⟨hbf, haV_af⟩
           | type =>
-            simp at h; subst h; trivial
+            simp at h; subst h; exact ⟨hfV_af, haV_af⟩
           | bvar _ =>
             simp at h; subst h; exact ⟨hfV_af, haV_af⟩
           | app _ _ =>
@@ -477,7 +469,6 @@ theorem ascFree_eval_equiv {fuel : Nat} {env : Env} {e : Expr}
             · next retB _ =>
               have : retB.ascFree := by simp [Expr.ascFree] at hbf; exact hbf.2
               exact ih (Expr.ascFree_subst this haV_af) henv
-            · rfl
             · rfl
           | type => simp
           | bvar _ => simp
