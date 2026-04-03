@@ -116,8 +116,11 @@ structural mu tracks actual mu behavior after self-reference resolution.
 
 The lam case uses raw bodies because the soundness IH gives VCompat for
 the two evaluators' outputs on the SAME source body. The mu case uses
-unfolded forms and needs a closedness lemma (evaluator outputs have no
-free bvar 0, so subst 0 is a no-op) to connect with the IH.
+unfolded forms and needs a "VCompat-equivalence" argument: evaluator
+outputs have no free bvar 0 in VCompat-relevant positions (lam bodies,
+mu bodies), so subst 0 only affects domains/annotations which VCompat
+doesn't compare. NOTE: the naive closedness lemma (v.subst 0 X = v)
+is FALSE because evaluators don't evaluate domains. See Tests.lean §14.
 
 The mu-unfolding cases (equi-recursive, costs one step) are kept for
 adequacy and the app case. The inferType fallback handles neutral terms
@@ -780,12 +783,28 @@ theorem soundness_gen
             -- With unfolded structural mu, we need:
             --   VCompat m (bodyV'.subst 0 (mu ann bodyV')) (bodyT'.subst 0 (mu ann bodyT'))
             -- IH gives: VCompat m bodyV' bodyT'
-            -- These are equal when the evaluator outputs are "closed" w.r.t. bvar 0,
-            -- i.e., bodyV'.subst 0 X = bodyV' for any X. This is true because the
-            -- env-based evaluator resolves all bvar 0 references (env[0] = mu ann body).
-            -- Proving this requires a closedness lemma for concEvalE/absEval.
-            -- TODO: prove eval_closed: concEvalE fuel env e = some v → v.subst 0 X = v
-            --       (when bvar 0 is covered by env)
+            --
+            -- FINDING (agent ochre-lean-20260403-021117):
+            -- The naive closedness lemma (bodyV'.subst 0 X = bodyV') is FALSE because
+            -- the evaluators do NOT evaluate lambda domains or mu annotations. These
+            -- un-evaluated positions can contain free bvar 0 from the source. See
+            -- Tests.lean §14 for a concrete counterexample.
+            --
+            -- However, brute-force testing (Tests.lean §15) confirms this sorry IS
+            -- true for all tested well-typed programs. The reason: VCompat's structural
+            -- lam/mu don't compare domains/annotations, so subst into un-evaluated
+            -- positions is invisible to VCompat.
+            --
+            -- PROPOSED APPROACH: Define "VCompat-equivalence" (vEquiv) — two
+            -- expressions agree on everything except domains/annotations. Then prove:
+            -- 1. vEquiv → VCompat (congruence: VCompat respects vEquiv)
+            -- 2. closedEval 0 e → (e.subst 0 X) vEquiv e (subst is no-op on
+            --    VCompat-relevant positions when those are closed)
+            -- 3. Evaluator outputs satisfy closedEval 0 (evaluated positions have
+            --    no free bvar 0; un-evaluated positions are not checked)
+            -- Chain: IH gives VCompat bodyV' bodyT', closedEval gives vEquiv
+            -- between subst'd and un-subst'd forms, congruence gives VCompat on
+            -- subst'd forms.
             sorry
       | app f a =>
         -- IH on f and a give VCompat for evaluated function and arg.

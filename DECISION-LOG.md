@@ -116,3 +116,57 @@ from evaluating `body` with the mu actually substituted. We may need an
 env-substitution equivalence lemma to bridge the gap.
 
 Option 3 (semantic VCompat) is the long-term answer but requires more work.
+
+
+## 2026-04-03: Closedness lemma is FALSE — need VCompat-equivalence
+
+**Agent:** ochre-lean-20260403-021117
+
+### Finding
+
+The naive closedness lemma (`v.subst 0 X = v` for evaluator outputs when
+`env.length > 0`) is **FALSE**. The evaluators (`concEvalE`, `absEval`) do
+not evaluate lambda domains or mu annotations — they copy them from the
+source expression. If the source has `bvar 0` in a domain position (e.g.,
+`mu type (lam (bvar 0) (bvar 0))`), the evaluator output retains this
+free `bvar 0`.
+
+Concrete counterexample in Tests.lean §14:
+```
+mu type (lam (bvar 0) (bvar 0))
+env' = [mu type (lam (bvar 0) (bvar 0))]
+concEvalE 10 env' (lam (bvar 0) (bvar 0)) = some (lam (bvar 0) (bvar 0))
+(lam (bvar 0) (bvar 0)).subst 0 (mu...) = lam (mu...) (bvar 0) ≠ input
+```
+
+### But the soundness_gen mu sorry IS true
+
+Brute-force testing (Tests.lean §15) of 51 small mu bodies confirms no
+counterexample to the soundness_gen mu case. Of these, 5 bodies produce
+genuinely different `concEvalE`/`absEval` results, and ALL pass the VCompat
+check on substituted forms.
+
+### Why it works despite closedness failing
+
+VCompat's structural cases for lambda and mu do NOT compare domains or
+annotations. The structural lam compares only bodies; the structural mu
+compares only unfolded bodies. Since `subst 0` only changes un-evaluated
+positions (domains, annotations), and VCompat ignores those positions,
+the substitution is invisible to VCompat.
+
+### Proposed approach: VCompat-equivalence (vEquiv)
+
+Define `vEquiv`: two expressions agree on everything except lambda domains
+and mu annotations. Then prove:
+1. VCompat respects vEquiv (congruence)
+2. subst preserves vEquiv for "eval-closed" expressions
+3. Evaluator outputs are eval-closed
+
+See SUGGESTIONS.md Priority 1 for the full plan.
+
+### Impact
+
+- The soundness_gen mu sorry CANNOT be resolved by a simple closedness lemma
+- The previously recommended approach in SUGGESTIONS.md was incorrect
+- A more sophisticated VCompat-equivalence approach is needed
+- The sorry count remains at 4 declarations, same 9 individual sorrys

@@ -954,6 +954,210 @@ theorem adequacy_cex_now_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_σ :
     unfold adequacy_cex_v at h_inf
     simp [inferType] at h_inf
 
+-- ============================================================
+-- §14 Closedness lemma investigation
+-- ============================================================
+
+-- The closedness lemma proposed in SUGGESTIONS.md:
+--   eval_closed : concEvalE fuel env e = some v → env.length > 0 → v.subst 0 X = v
+-- is FALSE because the evaluators do NOT evaluate lambda domains or mu annotations.
+-- Un-evaluated domain/annotation positions can contain free bvar 0.
+
+-- COUNTEREXAMPLE: mu type (lam (bvar 0) (bvar 0))
+-- body = lam (bvar 0) (bvar 0), where bvar 0 in the domain is the mu self-ref.
+-- The evaluator copies the domain as-is → output bodyV' = lam (bvar 0) (bvar 0).
+-- bodyV'.subst 0 X replaces the free bvar 0 in the domain: lam X (bvar 0) ≠ bodyV'.
+
+-- Verify: evaluation of the body in the mu env gives lam (bvar 0) (bvar 0)
+private def closedness_cex_mu := Expr.mu .type (.lam (.bvar 0) (.bvar 0))
+private def closedness_cex_env := Env.extend [] closedness_cex_mu
+
+example : concEvalE 10 closedness_cex_env (.lam (.bvar 0) (.bvar 0))
+    = some (.lam (.bvar 0) (.bvar 0)) := by native_decide
+
+example : absEval 10 closedness_cex_env (.lam (.bvar 0) (.bvar 0))
+    = some (.lam (.bvar 0) (.bvar 0)) := by native_decide
+
+-- Verify: subst 0 changes the output (closedness is FALSE)
+example : (Expr.lam (.bvar 0) (.bvar 0)).subst 0 closedness_cex_mu
+    = .lam closedness_cex_mu (.bvar 0) := by native_decide
+
+-- Therefore: bodyV'.subst 0 (mu ann bodyV') ≠ bodyV'. The closedness lemma FAILS.
+-- The output has free bvar 0 in the domain position (un-evaluated).
+
+-- ============================================================
+-- §15 Soundness_gen mu case: does VCompat survive subst?
+-- ============================================================
+
+-- Despite closedness failing, the soundness_gen mu case might still work because
+-- VCompat's structural lam does NOT check domains. So the substitution into
+-- un-evaluated domain positions is invisible to VCompat.
+--
+-- We test this by checking concrete instances: for a mu expression,
+-- evaluate body with both evaluators, check VCompat on raw bodies (IH)
+-- and on substituted bodies (what soundness_gen needs).
+
+-- Bool-valued VCompat checker (under-approximation: uses only the given ctxs for inferType)
+private def vcompat_check (ctxs : List (List Expr)) : Nat → Expr → Expr → Bool
+  | 0, _, _ => true
+  | n + 1, v, τ =>
+    τ == .type
+    || v == τ
+    || match v, τ with
+       | .lam _ bodyV, .lam _ bodyT => vcompat_check ctxs n bodyV bodyT
+       | _, _ => false
+    || match v, τ with
+       | .mu annV bodyV, .mu annT bodyT =>
+         vcompat_check ctxs n (bodyV.subst 0 (.mu annV bodyV)) (bodyT.subst 0 (.mu annT bodyT))
+       | _, _ => false
+    || match τ with
+       | .mu ann body => vcompat_check ctxs n v (body.subst 0 (.mu ann body))
+       | _ => false
+    || match v with
+       | .mu ann body => vcompat_check ctxs n (body.subst 0 (.mu ann body)) τ
+       | _ => false
+    || ctxs.any fun ctx =>
+         match inferType ctx v with
+         | some ty => vcompat_check ctxs n ty τ
+         | none => false
+
+-- Helper: check soundness_gen mu case for a specific mu expression
+-- Returns true iff:
+-- 1. The program is not well-typed (vacuous), OR
+-- 2. VCompat on subst'd bodies holds
+-- This mimics what soundness_gen needs: WellTyped → VCompat on unfolded forms
+private def check_mu_soundness (fuel steps : Nat) (ann body : Expr) : Bool :=
+    let muExpr := Expr.mu ann body
+    -- Check WellTyped first (vacuous if not well-typed)
+    if !(WellTyped fuel [] muExpr) then true
+    else
+      let env := Env.extend [] muExpr
+      match concEvalE fuel env body, absEval fuel env body with
+      | some bodyV', some bodyT' =>
+          let unV := bodyV'.subst 0 (.mu ann bodyV')
+          let unT := bodyT'.subst 0 (.mu ann bodyT')
+          vcompat_check [[], [.type], [.lam .type .type]] steps unV unT
+      | _, _ => true  -- eval fails, vacuous
+
+-- Test 1: Simple mu with no ascription (both evaluators agree)
+-- mu type (lam type (bvar 0)) — identity wrapped in mu
+example : check_mu_soundness 20 10 .type (.lam .type (.bvar 0)) = true := by native_decide
+
+-- Test 2: mu with self-reference in domain (closedness fails, but VCompat should hold)
+example : check_mu_soundness 20 10 .type (.lam (.bvar 0) (.bvar 0)) = true := by native_decide
+
+-- Test 3: mu with ascription — different concrete/abstract results
+-- body = asc (lam (bvar 0) (bvar 0)) (lam type type)
+-- concEvalE takes lhs → lam (bvar 0) (bvar 0)
+-- absEval takes rhs → lam type type
+example : check_mu_soundness 20 10 .type
+    (.asc (.lam (.bvar 0) (.bvar 0)) (.lam .type .type)) = true := by native_decide
+
+-- Test 4: mu with ascription where concrete result uses self-ref
+-- body = asc (bvar 0) (lam type type)
+-- concEvalE takes lhs → bvar 0 → mu self-ref
+-- absEval takes rhs → lam type type
+example : check_mu_soundness 20 10 .type
+    (.asc (.bvar 0) (.lam .type .type)) = true := by native_decide
+
+-- Test 5: Nested mu with ascription
+-- body = lam type (asc (bvar 1) type)
+-- bvar 1 under lam refers to mu self-ref
+-- concEvalE: lam type (mu-self-ref) — but bvar 1 resolves to the shifted mu
+-- absEval: lam type type
+example : check_mu_soundness 20 10 .type
+    (.lam .type (.asc (.bvar 1) .type)) = true := by native_decide
+
+-- Test 6: mu with self-reference in multiple positions
+-- body = lam (bvar 0) (asc (app (bvar 0) (bvar 0)) type)
+example : check_mu_soundness 20 10 .type
+    (.lam (.bvar 0) (.asc (.app (.bvar 0) (.bvar 0)) .type)) = true := by native_decide
+
+-- Test 7: Non-trivial annotation
+example : check_mu_soundness 20 10 (.lam .type .type)
+    (.lam (.bvar 0) (.asc (.bvar 0) .type)) = true := by native_decide
+
+-- Test 8: mu whose body is just asc with bvar 0 on both sides
+-- concEvalE: asc bvar0 bvar0 → takes lhs → bvar 0 → mu self
+-- absEval: asc bvar0 bvar0 → takes rhs → bvar 0 → mu self
+-- Same result! Both get the mu itself.
+example : check_mu_soundness 20 10 .type
+    (.asc (.bvar 0) (.bvar 0)) = true := by native_decide
+
+-- Test 9: mu body with nested asc producing very different results
+-- body = asc (lam (bvar 0) (app (bvar 0) (bvar 0))) (lam type type)
+-- concEvalE: lam (bvar 0) (app (bvar 0) (bvar 0))  [app of lambda param to itself]
+-- absEval: lam type type
+example : check_mu_soundness 20 10 .type
+    (.asc (.lam (.bvar 0) (.app (.bvar 0) (.bvar 0))) (.lam .type .type)) = true := by native_decide
+
+-- Brute-force search: enumerate small mu bodies with ascription
+-- Atoms: bvar 0, bvar 1, type
+-- Compound: lam type _, asc _ _, app _ _
+-- We test all mu type body for bodies that produce different concEvalE/absEval results
+private def atoms : List Expr := [.bvar 0, .bvar 1, .type]
+private def lam_atoms : List Expr := atoms.map fun a => .lam .type a
+private def asc_pairs : List Expr := atoms.flatMap fun l => atoms.map fun r => .asc l r
+private def small_bodies : List Expr :=
+  atoms ++ lam_atoms ++ asc_pairs ++
+  -- lam with asc body
+  (asc_pairs.map fun a => .lam .type a) ++
+  (asc_pairs.map fun a => .lam (.bvar 0) a) ++
+  -- app of atoms
+  (atoms.flatMap fun f => atoms.map fun a => .app f a) ++
+  -- lam with app body
+  (atoms.flatMap fun f => atoms.map fun a => .lam .type (.app f a))
+
+private def check_all_mu_bodies (fuel steps : Nat) (bodies : List Expr) : Bool :=
+  bodies.all fun body => check_mu_soundness fuel steps .type body
+
+-- All small mu bodies pass the soundness_gen mu case check
+example : check_all_mu_bodies 20 8 small_bodies = true := by native_decide
+
+-- Additional: mu with non-trivial annotations
+private def check_all_with_anns (fuel steps : Nat) (anns bodies : List Expr) : Bool :=
+  anns.all fun ann => bodies.all fun body => check_mu_soundness fuel steps ann body
+
+private def small_anns : List Expr := [.type, .lam .type .type, .lam .type (.bvar 0)]
+
+example : check_all_with_anns 20 8 small_anns small_bodies = true := by native_decide
+
+-- Brute-force results (verified during development):
+-- Of 51 test bodies: 14 not well-typed, 26 same evaluator results,
+-- 5 different results that pass VCompat, 6 eval failures.
+-- The 5 "diff-ok" cases all involve asc where absEval produces .type,
+-- so VCompat succeeds via the top disjunct. No counterexample found.
+
+-- Deeper tests: bodies where absEval produces non-type results
+-- body = lam type (asc X Y) where Y is a non-trivial function
+
+-- Test 10: different function depths
+-- body = lam type (asc (lam type (bvar 0)) (lam type (lam type (bvar 0))))
+-- concEvalE: lam type (lam type (bvar 0))
+-- absEval: lam type (lam type (lam type (bvar 0)))
+example : check_mu_soundness 30 10 .type
+    (.lam .type (.asc (.lam .type (.bvar 0)) (.lam .type (.lam .type (.bvar 0))))) = true := by native_decide
+
+-- Test 11: asc with different lambdas, bvar 0 in domain
+example : check_mu_soundness 30 10 .type
+    (.lam (.bvar 0) (.asc (.lam .type (.bvar 0)) (.lam .type (.lam .type (.bvar 0))))) = true := by native_decide
+
+-- Test 12: nested asc
+example : check_mu_soundness 30 10 .type
+    (.lam .type (.asc (.asc (.bvar 0) .type) (.lam .type .type))) = true := by native_decide
+
+-- Test 13: asc where lhs and rhs are both lams with different bodies
+example : check_mu_soundness 30 10 .type
+    (.lam .type (.asc (.lam .type (.bvar 1)) (.lam .type .type))) = true := by native_decide
+
+-- Test 14: mu body containing another mu
+example : check_mu_soundness 30 10 .type
+    (.mu .type (.asc (.bvar 1) .type)) = true := by native_decide
+
+-- Test 15: complex - lam with asc that has app inside
+example : check_mu_soundness 30 10 .type
+    (.lam .type (.asc (.app (.bvar 0) (.bvar 1)) .type)) = true := by native_decide
+
 -- CONSTRUCTIVE PROOF: VCompat 3 v τ is FALSE
 -- Every disjunct of VCompat fails
 theorem adequacy_cex_incompat : ¬VCompat 3 adequacy_cex_v adequacy_cex_τ := by

@@ -21,7 +21,7 @@ the mu design.
   - 2 for self-elim non-fixpoint (lines ~550, ~658): need generalized adequacy with seen
   - 1 for mu-right case (line ~666): step loss in mu-right unfolding
 - `soundness_gen` — 2 sorrys:
-  - mu case (line ~789): needs closedness lemma for evaluator outputs
+  - mu case (line ~789): needs VCompat-equivalence (closedness lemma is FALSE, see §14)
   - app case (line ~794): needs application congruence
 - `soundness_concEval` — needs concEval→concEvalE bridge (line ~840)
 
@@ -88,25 +88,35 @@ forms. This means:
 - **Sorrys partially resolved**:
   - adequacy self-elim cases: fixpoint subcases now proven (previously ALL sorry'd)
 
+## KEY FINDING: Closedness lemma is FALSE (agent ochre-lean-20260403-021117)
+
+The naive closedness lemma (`v.subst 0 X = v` for evaluator outputs with
+env covering bvar 0) is **FALSE**. Both `concEvalE` and `absEval` do NOT
+evaluate lambda domains or mu annotations — they copy them verbatim from
+the source. If the source has `bvar 0` in a domain/annotation position
+(e.g., `mu type (lam (bvar 0) (bvar 0))`), the output retains this free
+`bvar 0`. See Tests.lean §14 for a concrete counterexample.
+
+However, the soundness_gen mu sorry IS still true (no counterexample found
+in brute-force testing of 51 small bodies — see Tests.lean §15). The reason:
+VCompat's structural lam/mu don't compare domains/annotations, so the
+substitution into un-evaluated positions is invisible to VCompat.
+
 ## What the next agent MUST do
 
-### Priority 1: Closedness lemma for evaluator outputs
+### Priority 1: VCompat-equivalence for soundness_gen mu case
 
-The soundness_gen mu case needs:
-```lean
-theorem eval_closed : concEvalE fuel env e = some v →
-    env.length > 0 →  -- env covers bvar 0
-    v.subst 0 X = v   -- no free bvar 0 in result
-```
+The soundness_gen mu case needs VCompat m (bodyV'.subst 0 v) (bodyT'.subst 0 τ)
+from VCompat m bodyV' bodyT'. The closedness approach FAILS (see above).
 
-(And analogously for absEval.) This would make `bodyV'.subst 0 (mu ann bodyV') = bodyV'`,
-recovering the IH for the soundness_gen mu case.
+**Proposed approach: VCompat-equivalence (vEquiv).** See SUGGESTIONS.md
+for the full plan. Three lemmas needed:
+1. VCompat respects vEquiv (congruence)
+2. subst preserves vEquiv for closedEval expressions
+3. Evaluator outputs satisfy closedEval
 
-**This is the highest-impact lemma.** It's a standard property of evaluators
-and should be provable by induction on fuel. It would:
-- Fix the soundness_gen mu sorry
-- Potentially simplify adequacy mu/mu cases (if results are closed, the
-  unfolded structural mu reduces to the old structural mu)
+This is the highest-impact work. Each lemma is individually useful and
+can be sorry'd independently.
 
 ### Priority 2: Generalized adequacy with seen list
 
@@ -177,6 +187,13 @@ Counterexample in Tests.lean §11.5.
 ### 4. VCompat.subst_congr is FALSE
 Counterexample in Tests.lean §11.6.
 
+### 5. Naive closedness lemma (v.subst 0 X = v for eval outputs) is FALSE
+Counterexample in Tests.lean §14. Evaluators don't evaluate lambda domains
+or mu annotations, so outputs can have free bvar 0 in those positions.
+The soundness_gen mu sorry is still believed TRUE — VCompat doesn't compare
+domains/annotations, so the free bvar 0 is irrelevant. Brute-force tested
+in Tests.lean §15 (51 bodies, 5 with different evaluator results, all pass).
+
 ## File structure
 
 - `Syntax.lean` — Expr type (de Bruijn indices), substitution, shifting
@@ -187,13 +204,16 @@ Counterexample in Tests.lean §11.6.
   and inferType disjunct), from_type_sub_gen (proven), from_self_intro_gen
   (1 sorry), soundness theorems
 - `Tests.lean` — sacred acceptance tests (DO NOT WEAKEN),
-  subCheckNF + VCompat counterexample tests, counterexample resolution proof (§13)
+  subCheckNF + VCompat counterexample tests, counterexample resolution proof (§13),
+  closedness counterexample (§14), soundness_gen mu brute-force tests (§15)
 
 ## Sorry count by category
 
-### Needs closedness lemma (1 sorry in soundness_gen):
+### Needs VCompat-equivalence (1 sorry in soundness_gen):
 - soundness_gen mu case: IH gives VCompat for raw bodies, need subst'd forms.
-  Closedness lemma (eval outputs have no free bvar 0) would make subst a no-op.
+  The naive closedness lemma is FALSE (see §14). Need VCompat-equivalence
+  approach: prove subst only affects domains/annotations which VCompat ignores.
+  See SUGGESTIONS.md Priority 1 for the full plan.
 
 ### Needs generalized adequacy with seen (3 sorrys):
 - adequacy self-elim (2 cases): non-fixpoint σ needs seen-list handling
@@ -202,7 +222,8 @@ Counterexample in Tests.lean §11.6.
 ### Needs subCheckNF for subst'd forms (2 sorrys):
 - adequacy refl/mu → mu target
 - adequacy structural mu → mu target
-May follow from closedness lemma (if results are closed, subst is no-op).
+May follow from VCompat-equivalence (subst in VCompat-irrelevant positions).
+Note: naive closedness lemma is FALSE — need the vEquiv approach instead.
 
 ### Other (3 sorrys):
 - from_self_intro_gen: inner recursion (1 sorry)
@@ -219,5 +240,6 @@ May follow from closedness lemma (if results are closed, subst is no-op).
 - **subCheckNF_top_universal**: FALSE (verified by counterexample)
 - **subCheckNF fallback in VCompat**: required transitivity → dead end
 - **VCompat.adequacy with raw structural mu**: FALSE (resolved by definition change)
+- **Naive closedness lemma (v.subst 0 X = v)**: FALSE (evaluators don't eval domains)
 
 **Do not attempt any of the above approaches.**

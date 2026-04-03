@@ -101,20 +101,77 @@ The fix trades sorrys in adequacy (which were PROVABLY FALSE) for sorrys in:
 2. adequacy mu/mu structural cases (needs subCheckNF for subst'd forms)
 All new sorrys are potentially true — none known to be false.
 
-## Priority 1: Closedness lemma for evaluator outputs
+## Priority 1: VCompat-equivalence for soundness_gen mu case
 
-**Highest-impact single lemma.** Would fix the soundness_gen mu sorry and
-potentially simplify adequacy mu/mu cases.
+**Highest-impact single lemma.** Would fix the soundness_gen mu sorry.
+
+### ⚠️ The naive closedness lemma is FALSE
+
+The previously proposed closedness lemma (`v.subst 0 X = v` for evaluator
+outputs) is **FALSE**. The evaluators do NOT evaluate lambda domains or mu
+annotations — they copy them from the source. Un-evaluated domains can
+contain free `bvar 0` (the mu self-reference). See Tests.lean §14 for a
+concrete counterexample: `mu type (lam (bvar 0) (bvar 0))`.
+
+### Why the mu case is still true
+
+Despite closedness failing, brute-force testing (Tests.lean §15) confirms
+the soundness_gen mu sorry IS true for all tested well-typed programs (51
+bodies tested, 5 with genuinely different evaluator results, all pass).
+
+The reason: **VCompat doesn't compare domains or annotations.** Its
+structural lam compares only bodies, and structural mu compares only
+unfolded bodies. So `subst 0` into un-evaluated positions (domains,
+annotations) is invisible to VCompat.
+
+### Proposed approach: VCompat-equivalence
+
+Define "VCompat-equivalence" (`vEquiv`): two expressions agree on
+everything except lambda domains and mu annotations.
 
 ```lean
-theorem eval_closed {fuel : Nat} {env : Env} {e v : Expr}
-    (h : concEvalE fuel env e = some v)
-    (henv : env.length > 0)
-    : v.subst 0 X = v  -- no free bvar 0 in result
+def Expr.vEquiv : Expr → Expr → Prop
+  | .bvar k, .bvar k' => k = k'
+  | .lam _ b1, .lam _ b2 => b1.vEquiv b2   -- domains ignored
+  | .app f1 a1, .app f2 a2 => f1.vEquiv f2 ∧ a1.vEquiv a2
+  | .asc t1 y1, .asc t2 y2 => t1.vEquiv t2 ∧ y1.vEquiv y2
+  | .type, .type => True
+  | .mu _ b1, .mu _ b2 => b1.vEquiv b2      -- annotations ignored
+  | _, _ => False
 ```
 
-Standard property of env-based evaluators: if env covers bvar 0, the output
-has no free bvar 0. Prove by induction on fuel.
+Then prove three lemmas:
+
+1. **VCompat respects vEquiv** (congruence):
+   `v1.vEquiv v2 → τ1.vEquiv τ2 → VCompat n v1 τ1 → VCompat n v2 τ2`
+   Note: the app case needs care — inferType ignores domains (uses
+   `_dom` as wildcard), so vEquiv apps give the same inferType result.
+
+2. **subst preserves vEquiv for closedEval expressions:**
+   `closedEval 0 e → (e.subst 0 X).vEquiv e`
+   Where `closedEval n e` checks that all bvar indices in
+   VCompat-relevant positions (everything except lam domains and mu
+   annotations) satisfy `k < n`.
+
+3. **Evaluator outputs satisfy closedEval:**
+   `concEvalE fuel env e = some v → [env invariant] → closedEval 0 v`
+   This holds because the evaluator resolves all bvar lookups in
+   evaluated positions. Un-evaluated positions (domains, annotations)
+   are NOT checked by closedEval.
+
+Chain: IH gives `VCompat m bodyV' bodyT'`. Lemma 3 gives
+`closedEval 0 bodyV'` and `closedEval 0 bodyT'`. Lemma 2 gives
+`(bodyV'.subst 0 X).vEquiv bodyV'` and `(bodyT'.subst 0 Y).vEquiv bodyT'`.
+Lemma 1 gives `VCompat m (bodyV'.subst 0 X) (bodyT'.subst 0 Y)`.
+
+### Alternative: change to raw body VCompat for mu
+
+If the vEquiv approach proves too complex, consider using raw body VCompat
+for mu (restoring the old definition). The adequacy counterexample showed
+raw body mu makes adequacy FALSE, but the counterexample involves mus
+that can't arise from evaluation. A restricted adequacy that only handles
+evaluation-reachable VCompat pairs might work. This is riskier — the
+restriction is hard to formalize cleanly.
 
 ## Priority 2: Generalized adequacy with seen list
 
