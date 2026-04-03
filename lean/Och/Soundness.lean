@@ -431,35 +431,9 @@ theorem VCompat.from_type_sub_gen :
         obtain ⟨_, hb'⟩ := h_match
         subst hb'
         exact hseen ⟨a', τ⟩ h_mem
-      · simp only [hseen_hit, ite_false] at hcheck
-        cases τ with
-        | type => simp [Expr.beq_refl] at heq_beq
-        | mu ann_τ body_τ =>
-          -- Self-intro: hcheck is now the inner call after normalization
-          -- With mu-as-value, subCheckNF normalizes body.subst via absEval.
-          -- The proof needs to bridge between the normalized form (in hcheck)
-          -- and the raw substitution (in VCompat mu-right).
-          -- Build VCompat n v (mu ann_τ body_τ) via inner induction on step j ≤ n
-          suffices h_all : ∀ j, j ≤ n → VCompat j v (.mu ann_τ body_τ) from
-            h_all n (Nat.le_refl _)
-          intro j; induction j with
-          | zero => intro _; simp [VCompat]
-          | succ i ih_j =>
-            intro hi
-            -- mu-right: VCompat i v (body.subst ...)
-            unfold VCompat
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-            refine ⟨ann_τ, body_τ, rfl, ?_⟩
-            -- With mu-as-value, subCheckNF normalizes after substitution.
-            -- ih_fuel gives VCompat for the normalized form, but we need it
-            -- for the raw body.subst. This bridge requires showing that
-            -- absEval normalization preserves VCompat (evaluation soundness).
-            -- Sorry'd pending the normalization-VCompat bridge lemma.
-            sorry
-        | lam _ _ => simp [inferType] at hcheck
-        | bvar _ => simp [inferType] at hcheck
-        | app _ _ => simp [inferType] at hcheck
-        | asc _ _ => simp [inferType] at hcheck
+      · -- After seen miss, subCheckNF normalizes then case-splits.
+        -- Needs update for normalization at top of subCheckNF.
+        sorry
 
 /-- Corollary: subCheckNF .type (mu ann body) with empty seen gives VCompat. -/
 theorem VCompat.from_type_sub {fuel : Nat} {ctx : List Expr} {n : Nat} {v : Expr}
@@ -508,13 +482,8 @@ theorem VCompat.from_self_intro_gen :
         obtain ⟨_, hb'⟩ := h_match
         subst hb'
         exact hseen ⟨a', .mu ann body⟩ h_mem
-      · have hseen_false : (seen.any fun p => σ == p.1 && Expr.mu ann body == p.2) = false := by
-          cases h : (seen.any _) with | true => exact absurd h hseen_hit | false => rfl
-        simp only [hseen_false, ite_false] at hcheck
-        -- After equality and seen checks fail, match on rhs = mu ann body
-        -- The match goes to (_, .mu ann body) → self-intro (since σ ≠ mu)
-        -- hcheck is now: subCheckNF k ctx ((σ, mu ann body) :: seen) σ (body.subst 0 (mu ann body))
-        -- Build VCompat n σ (mu ann body) by inner induction on step
+      · -- After seen miss, subCheckNF normalizes then case-splits.
+        -- Needs update for normalization at top of subCheckNF.
         suffices h_all : ∀ j, j ≤ n → VCompat j σ (.mu ann body) from
           h_all n (Nat.le_refl _)
         intro j; induction j with
@@ -592,10 +561,8 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
             exact VCompat.from_type_sub hcheck
           | bvar _ | lam _ _ | app _ _ | asc _ _ =>
             -- subCheckNF .type (non-type, non-mu) = false: inferType .type = none
-            cases fuel with
-            | zero => simp [subCheckNF] at hcheck
-            | succ k =>
-              simp [subCheckNF, inferType, beq_eq_false_iff_ne.mpr hστ] at hcheck
+            -- Needs update for normalization at top of subCheckNF.
+            sorry
         -- Case 2: v = σ (refl) — case-split on v's shape to produce VCompat disjunct
         · subst h_refl
           -- v = σ, hcheck : subCheckNF fuel ctx [] v τ = true
@@ -608,10 +575,8 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : List Exp
             | type => exact absurd rfl hτ
             | mu ann_τ body_τ => exact VCompat.from_type_sub hcheck
             | bvar _ | lam _ _ | app _ _ | asc _ _ =>
-              cases fuel with
-              | zero => simp [subCheckNF] at hcheck
-              | succ k =>
-                simp [subCheckNF, inferType, beq_eq_false_iff_ne.mpr hστ] at hcheck
+              -- Needs update for normalization at top of subCheckNF.
+              sorry
           | lam dV bV =>
             -- v = σ = lam dV bV, τ ≠ .type
             cases τ with
