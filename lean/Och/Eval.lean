@@ -127,14 +127,17 @@ mutual
 
       Lambda bodies and domains are normalized under the binder. Mu annotations
       are normalized. Ascriptions are validated via subCheckNF and erased.
+      Lambda domain annotations are checked at application via subCheckNF.
       Neutral applications are validated for callability via inferType.
 
       A term is well-typed iff absEval succeeds (returns some).
 
-      Key insight: with mu-as-value, the value env is always the identity
-      mapping (bvar k → bvar k), so it's eliminated entirely. absEval uses
-      only a type context — a list of domain annotations for bound variables. -/
-  def absEval (fuel : Nat) (ctx : TyCtx) (e : Expr) : Except String NfExpr :=
+      The `seen` parameter (from subCheckNF) breaks cycles that arise when
+      domain-checking let-bindings inside mu types. E.g. checking
+      `dtrue_val <: dBool` inside dBool's own body is already in `seen`
+      from the outer subtype check. -/
+  def absEval (fuel : Nat) (ctx : TyCtx) (seen : List (Expr × Expr))
+      (e : Expr) : Except String NfExpr :=
     match fuel with
     | 0 => .error "out of fuel"
     | fuel + 1 =>
@@ -142,9 +145,9 @@ mutual
       | .bvar k       => .ok ⟨.bvar k⟩
       | .lam dom body => do
         -- Evaluate domain (rejects ill-formed domains)
-        let dom' ← absEval fuel ctx dom
+        let dom' ← absEval fuel ctx seen dom
         -- Evaluate body under binder with evaluated domain in context
-        let body' ← absEval fuel (TyCtx.extend ctx dom') body
+        let body' ← absEval fuel (TyCtx.extend ctx dom') seen body
         .ok ⟨.lam dom'.val body'.val⟩
       | .type         => .ok ⟨.type⟩
       | .asc term ty  => do
@@ -153,28 +156,32 @@ mutual
         -- 2. Evaluate ty → tau
         -- 3. Check sigma ⊑ tau via subCheckNF
         -- 4. Return tau (erase term)
-        let sigma ← absEval fuel ctx term
-        let tau ← absEval fuel ctx ty
-        if subCheckNF fuel ctx [] sigma.val tau.val then .ok tau
+        let sigma ← absEval fuel ctx seen term
+        let tau ← absEval fuel ctx seen ty
+        if subCheckNF fuel ctx seen sigma.val tau.val then .ok tau
         else .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
       | .mu ann body  => do
         -- Evaluate annotation (rejects ill-formed annotations)
-        let ann' ← absEval fuel ctx ann
+        let ann' ← absEval fuel ctx seen ann
         .ok ⟨.mu ann'.val body⟩
       | .app f a      => do
-        let f' ← absEval fuel ctx f
-        let a' ← absEval fuel ctx a
+        let f' ← absEval fuel ctx seen f
+        let a' ← absEval fuel ctx seen a
         match f'.val with
-        | .lam _dom body =>
-          -- Beta-reduce via substitution
-          absEval fuel ctx (body.subst 0 a'.val)
+        | .lam dom body =>
+          -- Check argument against domain annotation, then beta-reduce.
+          -- The `seen` set breaks cycles from let-bindings inside mu types.
+          let dom' := match absEval fuel ctx seen dom with | .ok x => x.val | .error _ => dom
+          if subCheckNF fuel ctx seen a'.val dom' then
+            absEval fuel ctx seen (body.subst 0 a'.val)
+          else .error s!"domain check failed: {repr a'} ⊄ {repr dom'}"
         | .mu _ann body =>
           -- mu in function position. Strategy depends on ann AND body shape.
           match _ann, body with
           | .lam _dom retBody, .lam _ _ =>
-            absEval fuel ctx (retBody.subst 0 a'.val)
+            absEval fuel ctx seen (retBody.subst 0 a'.val)
           | _, .lam _dom retBody =>
-            absEval fuel ctx (retBody.subst 0 a'.val)
+            absEval fuel ctx seen (retBody.subst 0 a'.val)
           | _, _ => .ok ⟨.app body a'.val⟩
         | .type => .error "Type is not callable"
         | _ =>
@@ -199,22 +206,24 @@ mutual
         match a, b with
         | .lam domA bodyA, .lam domB bodyB =>
           -- Function subtyping: contravariant domain, covariant body
-          let domA_norm := match absEval fuel ctx domA with | .ok x => x.val | .error _ => domA
-          let domB_norm := match absEval fuel ctx domB with | .ok x => x.val | .error _ => domB
+          let domA_norm := match absEval fuel ctx seen domA with | .ok x => x.val | .error _ => domA
+          let domB_norm := match absEval fuel ctx seen domB with | .ok x => x.val | .error _ => domB
           subCheckNF fuel ctx seen domB_norm domA_norm
           -- TyCtx.extend shifts domB_norm automatically
           && subCheckNF fuel (TyCtx.extend ctx ⟨domB_norm⟩) seen bodyA bodyB
         | _, .mu _ann body =>
           -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
           -- This also handles the mu-mu case via self-intro on the right side.
+          let seen' := (a, b) :: seen
           let u := body.subst 0 b
-          let u' := match absEval fuel ctx u with | .ok x => x.val | .error _ => u
-          subCheckNF fuel ctx ((a, b) :: seen) a u'
+          let u' := match absEval fuel ctx seen' u with | .ok x => x.val | .error _ => u
+          subCheckNF fuel ctx seen' a u'
         | .mu ann body, _ =>
           -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
+          let seen' := (a, b) :: seen
           let u := body.subst 0 (.mu ann body)
-          let u' := match absEval fuel ctx u with | .ok x => x.val | .error _ => u
-          subCheckNF fuel ctx ((a, b) :: seen) u' b
+          let u' := match absEval fuel ctx seen' u with | .ok x => x.val | .error _ => u
+          subCheckNF fuel ctx seen' u' b
         | .app f1 a1, .app f2 a2 =>
           -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
           -- Sound in the coinductive setting (Amadio-Cardelli style): the `seen`
@@ -226,13 +235,13 @@ mutual
           else
             match inferType ctx a with
             | some ty =>
-              let ty' := match absEval fuel ctx ty with | .ok x => x.val | .error _ => ty
+              let ty' := match absEval fuel ctx seen ty with | .ok x => x.val | .error _ => ty
               subCheckNF fuel ctx seen ty' b
             | none => false
         | _, _ =>
           match inferType ctx a with
           | some ty =>
-            let ty' := match absEval fuel ctx ty with | .ok x => x.val | .error _ => ty
+            let ty' := match absEval fuel ctx seen ty with | .ok x => x.val | .error _ => ty
             subCheckNF fuel ctx seen ty' b
           | none => false
   termination_by fuel
@@ -243,7 +252,7 @@ end
 /-- Decidable subtyping check. Normalizes both sides via absEval, then
     compares structurally. -/
 def subCheck (fuel : Nat) (a b : Expr) : Bool :=
-  match absEval fuel [] a, absEval fuel [] b with
+  match absEval fuel [] [] a, absEval fuel [] [] b with
   | .ok a', .ok b' => subCheckNF fuel [] [] a'.val b'.val
   | _, _ => false
 
@@ -313,6 +322,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
 
 /-- absEval fuel monotonicity. With the new mutual definition, this needs
     updating. Sorry'd for now. -/
-theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {e : Expr} {v : NfExpr}
-    (h : absEval n ctx e = .ok v) : absEval (n + 1) ctx e = .ok v := by
+theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {e : Expr} {v : NfExpr}
+    (h : absEval n ctx seen e = .ok v) : absEval (n + 1) ctx seen e = .ok v := by
   sorry

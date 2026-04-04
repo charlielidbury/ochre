@@ -7,26 +7,27 @@ import Och.Std.Nat
 # Combined Pairs (Product Type)
 
 ```
-Pair = λl:Type. λr:Type. λX:Type. λk:(l → r → X). k l r
-fst  = λp:(Pair Type Type). p Type (λa:Type. λ_:Type. a)
-snd  = λp:(Pair Type Type). p Type (λ_:Type. λb:Type. b)
+Pair = λl:Type. λr:Type. λk:(l → r → Type). k l r
+fst  = λp:(Pair Type Type). p (λa:Type. λ_:Type. a)
+snd  = λp:(Pair Type Type). p (λ_:Type. λb:Type. b)
 ```
 
 Pair serves as both type and constructor. `Pair Bool Bool` is a type
 (pairs of booleans) while `Pair true false` is a value (a specific pair).
 Subtyping via app congruence gives `Pair true false <: Pair Bool Bool`.
 
+The result type is hardcoded to `Type` since everything is `<: Type`.
 fst and snd use `Pair Type Type` as their domain — since everything is
 `<: Type`, any pair `Pair a b` is accepted without needing type arguments.
 -/
 
 namespace Std
 
-def Pair := och{ λl:Type. λr:Type. λX:Type. λk:(l → r → X). k l r }
+def Pair := och{ λl:Type. λr:Type. λk:(l → r → Type). k l r }
 
-def fst_ := och{ λp:(Pair Type Type). p Type (λa:Type. λ_:Type. a) }
+def fst_ := och{ λp:(Pair Type Type). p (λa:Type. λ_:Type. a) }
 
-def snd_ := och{ λp:(Pair Type Type). p Type (λ_:Type. λb:Type. b) }
+def snd_ := och{ λp:(Pair Type Type). p (λ_:Type. λb:Type. b) }
 
 -- ============================================================
 -- Tests

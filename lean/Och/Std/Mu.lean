@@ -49,7 +49,7 @@ open Expr
 -- ------------------------------------------------------------
 
 -- fixId evaluates to itself
-example : absEval 1000 [] fixId = .ok ⟨fixId⟩ := by native_decide
+example : absEval 1000 [] [] fixId = .ok ⟨fixId⟩ := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (positive)

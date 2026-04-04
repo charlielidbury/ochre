@@ -97,34 +97,34 @@ example : concEval 1000 (och{ isZero_ (pred_ zero_) }) = some Std.true_ := by na
 -- ------------------------------------------------------------
 
 -- succ 2 = 3
-example : absEval 200 [] (och{ succ_ two_ }) = .ok ⟨three_⟩ := by native_decide
+example : absEval 200 [] [] (och{ succ_ two_ }) = .ok ⟨three_⟩ := by native_decide
 -- add 2 3 = 5
-example : absEval 200 [] (och{ add_ two_ three_ }) = .ok ⟨five_⟩ := by native_decide
+example : absEval 200 [] [] (och{ add_ two_ three_ }) = .ok ⟨five_⟩ := by native_decide
 -- isZero 0 = true
-example : absEval 200 [] (och{ isZero_ zero_ }) = .ok ⟨Std.true_⟩ := by native_decide
+example : absEval 200 [] [] (och{ isZero_ zero_ }) = .ok ⟨Std.true_⟩ := by native_decide
 -- isZero 3 = false
-example : absEval 200 [] (och{ isZero_ three_ }) = .ok ⟨Std.false_⟩ := by native_decide
+example : absEval 200 [] [] (och{ isZero_ three_ }) = .ok ⟨Std.false_⟩ := by native_decide
 -- double 3 = 6
-example : absEval 200 [] (och{ double_ three_ }) = .ok ⟨six_⟩ := by native_decide
+example : absEval 200 [] [] (och{ double_ three_ }) = .ok ⟨six_⟩ := by native_decide
 -- pred 3 = 2
-example : absEval 1000 [] (och{ pred_ three_ }) = .ok ⟨two_⟩ := by native_decide
+example : absEval 1000 [] [] (och{ pred_ three_ }) = .ok ⟨two_⟩ := by native_decide
 -- pred 0 = 0
-example : absEval 1000 [] (och{ pred_ zero_ }) = .ok ⟨zero_⟩ := by native_decide
+example : absEval 1000 [] [] (och{ pred_ zero_ }) = .ok ⟨zero_⟩ := by native_decide
 -- pred 1 = 0
-example : absEval 1000 [] (och{ pred_ one_ }) = .ok ⟨zero_⟩ := by native_decide
+example : absEval 1000 [] [] (och{ pred_ one_ }) = .ok ⟨zero_⟩ := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (negative) — absEval
 -- ------------------------------------------------------------
 
 -- add 2 3 ≠ 4
-example : absEval 200 [] (och{ add_ two_ three_ }) ≠ .ok ⟨four_⟩ := by native_decide
+example : absEval 200 [] [] (och{ add_ two_ three_ }) ≠ .ok ⟨four_⟩ := by native_decide
 -- succ 2 ≠ 2
-example : absEval 200 [] (och{ succ_ two_ }) ≠ .ok ⟨two_⟩ := by native_decide
+example : absEval 200 [] [] (och{ succ_ two_ }) ≠ .ok ⟨two_⟩ := by native_decide
 -- pred 3 ≠ 3
-example : absEval 1000 [] (och{ pred_ three_ }) ≠ .ok ⟨three_⟩ := by native_decide
+example : absEval 1000 [] [] (och{ pred_ three_ }) ≠ .ok ⟨three_⟩ := by native_decide
 -- double 3 ≠ 3
-example : absEval 200 [] (och{ double_ three_ }) ≠ .ok ⟨three_⟩ := by native_decide
+example : absEval 200 [] [] (och{ double_ three_ }) ≠ .ok ⟨three_⟩ := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (negative) — concEval

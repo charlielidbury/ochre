@@ -21,9 +21,9 @@ open Std
 
 private def Not' := och{ λX:Bool. X Bool false_ true_ }
 
-example : absEval 1000 [] (och{ Not' true_ }) = .ok ⟨false_⟩ := by native_decide
-example : absEval 1000 [] (och{ Not' false_ }) = .ok ⟨true_⟩ := by native_decide
-example : absEval 1000 [] (och{ Not' Bool }) = .ok ⟨Bool⟩ := by native_decide
+example : absEval 1000 [] [] (och{ Not' true_ }) = .ok ⟨false_⟩ := by native_decide
+example : absEval 1000 [] [] (och{ Not' false_ }) = .ok ⟨true_⟩ := by native_decide
+example : absEval 1000 [] [] (och{ Not' Bool }) = .ok ⟨Bool⟩ := by native_decide
 example : subCheck 1000 false_ true_ = false := by native_decide
 example : subCheck 1000 (och{ Not' true_ }) Bool = true := by native_decide
 example : subCheck 1000 (och{ Not' false_ }) Bool = true := by native_decide
@@ -46,7 +46,7 @@ example : subCheck 1000
   Nat_ = true := by native_decide
 
 -- isZero (succ (... : Nat)) = false (precisely!)
-example : absEval 1000 []
+example : absEval 1000 [] []
   (och{ isZero_ (succ_ (zero_ : Nat_)) }) = .ok ⟨false_⟩ := by native_decide
 
 -- isZero (... : Nat) ⊑ Bool
@@ -64,10 +64,10 @@ example : subCheck 1000
 -- ============================================================
 
 -- testVec1 = mkVec Nat 1 [0]
-private def testVec1 := och{ mkVec Nat_ one_ (consArray Nat_ zero_ zero_ (emptyArray Nat_)) }
+private def testVec1 := och{ mkVec Nat_ one_ (Pair zero_ unit_) }
 
 -- Abstract vector unpack: ascribe concrete vec to Vec Nat, then unpack → get Nat (not 1)
-example : absEval 1000 [] (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+example : absEval 1000 [] [] (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
   = .ok ⟨Nat_⟩ := by native_decide
 
 -- Rewrapped abstract vector ⊑ Vec Nat

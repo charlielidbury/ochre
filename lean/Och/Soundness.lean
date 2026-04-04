@@ -36,7 +36,7 @@ The key theorem:
 
 ```
 soundness : concEval fuel e = some v →
-            absEval fuel [] e = .ok τ →
+            absEval fuel [] [] e = .ok τ →
             ∀ n, VCompat n v τ
 ```
 
@@ -66,7 +66,7 @@ def VCompat : Nat → Expr → Expr → Prop
         ∀ (j : Nat), j ≤ n → ∀ (fuel : Nat) (aV aT : Expr),
           VCompat j aV aT →
           ∀ rv, concEval fuel (bodyV.subst 0 aV) = some rv →
-          ∀ (rτ : NfExpr), absEval fuel [] (bodyT.subst 0 aT) = .ok rτ →
+          ∀ (rτ : NfExpr), absEval fuel [] [] (bodyT.subst 0 aT) = .ok rτ →
           VCompat j rv rτ.val)
     -- Unfolded structural mu
     ∨ (∃ annV annT bodyV bodyT,
@@ -233,6 +233,6 @@ and callability internally. A term is well-typed iff absEval succeeds. -/
 theorem soundness
     (fuel : Nat) (e : Expr) (v : Expr) (τ : NfExpr) (n : Nat)
     (h_conc : concEval fuel e = some v)
-    (h_abs : absEval fuel [] e = .ok τ)
+    (h_abs : absEval fuel [] [] e = .ok τ)
     : VCompat n v τ.val := by
   sorry
