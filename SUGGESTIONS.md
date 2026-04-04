@@ -81,38 +81,58 @@ tackled after Phase 0 is done.
 Proved via adequacy_gen. Key insight: v = σ, so VCompat(σ, σ) is trivially
 true by refl, and adequacy_gen transports across the subcheck.
 
-### `VCompat.adequacy_gen` (Soundness.lean:265) — PARTIALLY PROVED
+### `VCompat.adequacy_gen` (Soundness.lean:279) — PARTIALLY PROVED
 
 The generalized adequacy lemma with seen set support. Proved cases:
 - σ = τ (syntactic equality)
 - (σ, τ) in seen (callback)
 - τ = Type (top type)
 - τ = mu (self-intro): normalized mu-right disjunct + ih_fuel/ih_n
+- **τ = app, σ = app, structural congruence** ✅ PROVED (all 4 VCompat sub-cases)
+- Contradictions: σ ∈ {type, lam, asc} with τ = app ✅ PROVED
 
-**Remaining sorry (Soundness.lean:347) covers:**
+**DEFINITION CHANGE (agent ochre-20260404-224040):** subCheckNF's lam-lam
+and app-app structural cases now use empty `seen` `[]` instead of propagating
+the outer seen. This eliminates the "seen callback mismatch" blocker for
+structural cases: the outer seen's VCompat callback is tied to the original
+v, but structural decomposition needs callbacks for sub-components. With
+`[]`, the callback is vacuous. All tests pass.
 
-1. **Lam-lam**: Needs a substitution lemma — if subCheckNF(bodyσ, bodyτ)
-   under extended context, evaluating bodyσ[a] and bodyτ[a] preserves the
-   relationship. Hard because VCompat's lam case quantifies over ALL fuel
-   levels for the inner evaluation.
+**Remaining sorrys (Soundness.lean:341-445):**
 
-2. **Self-elim (mu ⊑ _)**: BLOCKED by annotation-trust. Going from
-   VCompat(v, mu ann body) to VCompat(v, ann) requires annotation
-   correctness. This is the main barrier.
+1. **Lam-lam** (τ = lam, Soundness.lean:341): The `seen` clearing change
+   enables the adequacy proof for domain/body components, but the hard part
+   is the "substitution lemma": connecting subCheckNF(bodyA, bodyB) under
+   extended context to VCompat after substituting concrete arguments into
+   the bodies. VCompat's semantic lam quantifies over ALL fuel levels.
 
-3. **App-app congruence**: Provable via structural app VCompat disjunct +
-   recursive adequacy on components. A good next target.
+2. **Self-elim** (σ = mu, τ ≠ mu, Soundness.lean:439): BLOCKED by
+   annotation-trust. Going from VCompat(v, mu ann body) to VCompat(v, ann)
+   requires annotation correctness. This is the main barrier.
 
-4. **InferType fallback**: Needs reasoning about inferType and its
-   relationship to VCompat.
+3. **InferType fallback** (Soundness.lean:436, 445): When subCheckNF falls
+   through to inferType catch-all. Needs a "semantic inferType" lemma:
+   if VCompat n v σ and inferType ctx σ = some ty, then VCompat relates
+   v to the normalized ty. This would also help with τ = bvar/asc cases
+   (Soundness.lean:344, 347).
+
+4. **τ = bvar, τ = asc** (Soundness.lean:344, 347): Combinations of
+   self-elim + inferType fallback. Same blockers as (2) and (3).
 
 ## Phase 3: Subtyping helper lemmas (Subtyping.lean)
 
-- `subCheckNF_neutral_inferType` (line 194) — has app-app congruence bug
+- `subCheckNF_neutral_inferType` (line 201) — may need statement fix:
+  the app-app structural check can succeed without inferType firing,
+  making the "inferType must have fired" conclusion unprovable for
+  a = app, b = app. Consider adding `h_a_not_app` precondition or
+  changing the conclusion.
 
-## Phase 4: Main soundness theorem (Soundness.lean:346)
+## Phase 4: Main soundness theorem (Soundness.lean:541)
 
 Once Phases 0-2 are done, the main theorem should be approachable.
+Challenge: VCompat's semantic lam quantifies over all fuel, but the
+soundness induction on fuel only gives the IH at lower fuel. Likely
+needs strong induction + fuel monotonicity to bridge the gap.
 
 ## Known hazards
 

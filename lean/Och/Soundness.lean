@@ -336,15 +336,119 @@ theorem VCompat.adequacy_gen :
                     (fun q hq => VCompat.mono (hseen q hq))
                 | tail _ hp_tail =>
                   exact VCompat.mono (hseen p hp_tail)⟩⟩
-        | _ =>
-          -- Remaining cases: τ is lam, bvar, app, or asc
-          -- subCheckNF matches on (σ, τ):
-          -- - (lam, lam): hard, needs substitution lemma
-          -- - (_, mu): already handled above
-          -- - (mu, _): self-elim, needs annotation correctness
-          -- - (app, app): congruence, might be provable
-          -- - (_, _): inferType fallback
+        | lam _dT _bT =>
+          -- τ = lam: lam-lam (needs substitution lemma), self-elim, inferType
           sorry
+        | bvar _j =>
+          -- τ = bvar: self-elim, inferType fallback
+          sorry
+        | asc _t _ty =>
+          -- τ = asc: self-elim, inferType fallback
+          sorry
+        | app f2 a2 =>
+          -- τ = app f2 a2. Case-split on σ to match subCheckNF dispatch.
+          cases σ with
+          | app f1 a1 =>
+            -- App-app congruence case.
+            -- Reduce hcheck now that both constructors are known.
+            dsimp only [] at hcheck
+            -- hcheck: (if subCheckNF k ctx [] f1 f2 && subCheckNF k ctx [] a1 a2
+            --          then true else inferType fallback) = true
+            by_cases hcong : (subCheckNF k ctx [] f1 f2 && subCheckNF k ctx [] a1 a2) = true
+            · -- Structural congruence succeeded
+              simp only [Bool.and_eq_true] at hcong
+              obtain ⟨hf_sub, ha_sub⟩ := hcong
+              -- Key insight: the structural check uses empty seen ([]), so we can
+              -- reconstruct subCheckNF (k+1) ctx [] (app f1 a1) (app f2 a2) = true.
+              -- This lets us use ih_n with empty seen (vacuous callback).
+              have hcheck_empty : subCheckNF (k + 1) ctx [] (Expr.app f1 a1) (Expr.app f2 a2) = true := by
+                -- The structural check uses [] and succeeds (hf_sub, ha_sub).
+                -- Reconstructing: subCheckNF (k+1) with empty seen must succeed.
+                unfold subCheckNF
+                by_cases heq2 : (Expr.app f1 a1 == Expr.app f2 a2) = true
+                · simp [heq2]
+                · simp only [if_neg heq2, List.any_nil, ite_false]
+                  -- After the if-checks, we're at match b with | .type | _ => match (a,b) with ...
+                  -- For (app f1 a1, app f2 a2), this hits the app-app branch
+                  simp only [hf_sub, ha_sub, Bool.and_self, ite_true]; decide
+              -- Case analysis on VCompat (m+1) v (app f1 a1)
+              unfold VCompat at hv
+              rcases hv with
+                h_type | h_refl |
+                ⟨_, _, _, _, _, hτl, _⟩ |
+                ⟨_, _, _, _, _, hτm, _⟩ |
+                ⟨_, _, hτm5, _⟩ |
+                ⟨_, _, ⟨_, _, _, _, hτm6, _, _⟩⟩ |
+                ⟨ann_l, body_l, hvm7, hvb7⟩ |
+                ⟨fV, fT, aV, aT, hva, hτa, hvf, hva_a⟩ |
+                ⟨ctxi, tyi, hinf, hty⟩
+              -- Impossible: app ≠ type/lam/mu
+              · cases h_type
+              · -- Refl: v = app f1 a1
+                subst h_refl
+                unfold VCompat
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                exact ⟨f1, f2, a1, a2, rfl, rfl,
+                  ih_fuel m f1 f1 f2 ctx []
+                    (VCompat.refl m f1) hf_sub
+                    (fun p hp => absurd hp (List.not_mem_nil p)),
+                  ih_fuel m a1 a1 a2 ctx []
+                    (VCompat.refl m a1) ha_sub
+                    (fun p hp => absurd hp (List.not_mem_nil p))⟩
+              · cases hτl
+              · cases hτm
+              · cases hτm5
+              · cases hτm6
+              · -- Mu-left: v = mu ann_l body_l, VCompat m (body_l.subst ...) (app f1 a1)
+                -- Use ih_n with empty seen (vacuous callback)
+                unfold VCompat
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                apply Or.inr; apply Or.inr; apply Or.inl
+                exact ⟨ann_l, body_l, hvm7,
+                  ih_n _ (Expr.app f1 a1) (Expr.app f2 a2) ctx []
+                    hvb7 hcheck_empty
+                    (fun p hp => absurd hp (List.not_mem_nil p))⟩
+              · -- Structural app: v = app fV aV, VCompat m fV fT, VCompat m aV aT
+                -- where app f1 a1 = app fT aT, so fT = f1, aT = a1
+                cases hτa
+                -- Now fT = f1, aT = a1, hvf: VCompat m fV f1, hva_a: VCompat m aV a1
+                unfold VCompat
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                exact ⟨fV, f2, aV, a2, hva, rfl,
+                  ih_fuel m fV f1 f2 ctx []
+                    hvf hf_sub
+                    (fun p hp => absurd hp (List.not_mem_nil p)),
+                  ih_fuel m aV a1 a2 ctx []
+                    hva_a ha_sub
+                    (fun p hp => absurd hp (List.not_mem_nil p))⟩
+              · -- InferType: VCompat m tyi (app f1 a1)
+                -- Use ih_n with empty seen (vacuous callback)
+                unfold VCompat
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                exact ⟨ctxi, tyi, hinf,
+                  ih_n _ (Expr.app f1 a1) (Expr.app f2 a2) ctx []
+                    hty hcheck_empty
+                    (fun p hp => absurd hp (List.not_mem_nil p))⟩
+            · -- Structural check failed, inferType fallback
+              sorry
+          | mu _annS _bodyS =>
+            -- Self-elim (mu ⊑ app): blocked by annotation-trust gap
+            sorry
+          | lam _dS _bS =>
+            -- σ = lam, τ = app: inferType(lam) = none → contradiction
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | bvar _kS =>
+            -- σ = bvar, τ = app: inferType fallback
+            sorry
+          | type =>
+            -- σ = type, τ = app: inferType(type) = none → contradiction
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | asc _t _ty =>
+            -- σ = asc, τ = app: inferType(asc) = none → contradiction
+            dsimp only [] at hcheck; simp [inferType] at hcheck
 
 /-- VCompat respects subCheckNF (adequacy). -/
 theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}

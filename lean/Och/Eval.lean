@@ -231,8 +231,11 @@ mutual
           -- re-normalization was a no-op anyway (same expression goes in and
           -- out). Using domains directly makes fuel monotonicity provable:
           -- the inputs to recursive subCheckNF calls don't change with fuel.
-          subCheckNF fuel ctx seen domB domA
-          && subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) seen bodyA bodyB
+          -- Uses empty seen for structural checks: equi-recursive assumptions
+          -- from the outer context don't apply to structural sub-components,
+          -- and this makes the adequacy proof tractable (seen callback is vacuous).
+          subCheckNF fuel ctx [] domB domA
+          && subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB
         | _, .mu _ann body =>
           -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
           -- This also handles the mu-mu case via self-intro on the right side.
@@ -258,7 +261,10 @@ mutual
             | .error _ => false
         | .app f1 a1, .app f2 a2 =>
           -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
-          if subCheckNF fuel ctx seen f1 f2 && subCheckNF fuel ctx seen a1 a2
+          -- Uses empty seen for structural checks: the outer equi-recursive
+          -- assumptions don't apply to sub-components, and this makes the
+          -- adequacy proof possible (seen callback is vacuous for []).
+          if subCheckNF fuel ctx [] f1 f2 && subCheckNF fuel ctx [] a1 a2
           then true
           else
             match inferType ctx a with
@@ -533,8 +539,8 @@ private theorem fuel_mono (n : Nat) :
               · -- congruence succeeded
                 rename_i hcong
                 simp only [Bool.and_eq_true] at hcong
-                simp only [show subCheckNF (k + 1) ctx seen _ _ = true from ih_sub hcong.1,
-                           show subCheckNF (k + 1) ctx seen _ _ = true from ih_sub hcong.2,
+                simp only [show subCheckNF (k + 1) ctx [] _ _ = true from ih_sub hcong.1,
+                           show subCheckNF (k + 1) ctx [] _ _ = true from ih_sub hcong.2,
                            Bool.and_self, ite_true]
               · -- congruence failed, inferType fallback
                 -- At higher fuel, congruence might succeed
