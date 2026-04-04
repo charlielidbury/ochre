@@ -120,5 +120,14 @@ absEval or strengthening the precondition. Options:
 3. **Add a WellAnnotated precondition:** Weaker but allows incremental
    progress. soundness would only hold for programs with correct annotations.
 
+**Tested approaches (by this agent):**
+- Option A (validate at creation): breaks fuel_mono proof (fixable, mechanical)
+- Option B (remove annotation-trust): breaks DNat + Vec tests including appendVec
+  (NOT viable without library restructuring)
+- Option A is the recommended path: the fuel_mono update for the mu-app case
+  is already solved (route all lam bodies through absEval_fuel_mono_mu_lam_body).
+  The mu-CONSTRUCTION case's fuel_mono also needs updating for the new absEval+subCheckNF
+  calls in the .mu handler.
+
 After fixing the annotation bug, work on **VCompat.adequacy** (Soundness.lean:322).
 from_self_intro_gen depends on it (its sorry IS adequacy).

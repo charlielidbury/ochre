@@ -23,7 +23,7 @@ absEval returns `lam Type (bvar 0)` (from annotation), concEval returns
 
 **This MUST be fixed before the soundness theorem can be proved.**
 
-### Option A: Validate annotations at mu creation (RECOMMENDED)
+### Option A: Validate annotations at mu creation (RECOMMENDED) ← TESTED, FEASIBLE
 
 In absEval's `.mu` case (Eval.lean:164-167), add a check:
 ```lean
@@ -46,12 +46,24 @@ on Church-encoded types). Test carefully.
 `absEval_fuel_mono` proof (Phase 1). The fuel monotonicity proof will need
 updating to handle the new validation check.
 
-### Option B: Remove annotation-trust, fix appendArrays
+### Option B: Remove annotation-trust ← TESTED, BREAKS TOO MUCH
 
-Remove the annotation-trust mu-app case entirely. The body-based path
-(with seen set for cycle-breaking) should work for most cases. If
-appendArrays breaks, it may need restructuring (e.g., using explicit
-ascriptions to guide the type checker).
+**Tested by agent ochre-20260404-204421. Result: breaks DNat and Vec tests.**
+
+Removing the annotation-trust case causes `absEval` to use the body-based
+path (self-substitution + seen set) for ALL mu-lam applications. This breaks:
+- `done_ ⊑ dNat`, `dtwo ⊑ dNat`, `dthree ⊑ dNat` (DNat.lean)
+- `appendVec ⊑ expected_type` (Vec.lean — the NORTH STAR test)
+
+The body-based path hits the seen-set cutoff for recursive types, producing
+symbolic applications instead of the annotation's return type. These symbolic
+applications can't be subtype-checked against the expected types.
+
+**This option is NOT viable without major library restructuring.**
+
+The fuel_mono proof update works (just route all lam bodies through
+`absEval_fuel_mono_mu_lam_body`), so if Option A is chosen, the mu-app
+fuel_mono case is already solved.
 
 ### Option C: WellAnnotated precondition (WEAKEST)
 
