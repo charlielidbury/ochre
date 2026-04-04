@@ -25,9 +25,42 @@ inductive Expr where
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
   | mu     : (ann : Expr) → (body : Expr) → Expr
-deriving Repr, Inhabited, DecidableEq
+deriving Inhabited, DecidableEq
 
 namespace Expr
+
+/-- Generate a variable name from a binding depth. -/
+private def nameAt (idx : Nat) : String :=
+  let letters := #["x", "y", "z", "w", "v", "u"]
+  let base := letters[idx % letters.size]!
+  if idx < letters.size then base else s!"{base}{idx / letters.size}"
+
+/-- Pretty-print with human-readable variable names (inverse of the `och{…}` macro).
+    `names` is the list of bound variable names (innermost-first, like de Bruijn).
+    `prec` is the ambient precedence (higher = tighter context). -/
+def pretty (e : Expr) (names : List String := []) (prec : Nat := 0) : String :=
+  match e with
+  | .type => "Type"
+  | .bvar k => names.get? k |>.getD s!"?{k}"
+  | .asc term ty =>
+    s!"({term.pretty names 0} : {ty.pretty names 0})"
+  | .lam dom body =>
+    let n := nameAt names.length
+    let s := s!"λ{n}:{dom.pretty names 10}. {body.pretty (n :: names) 0}"
+    if prec > 10 then s!"({s})" else s
+  | .mu ann body =>
+    let n := nameAt names.length
+    let s := s!"μ{n}:{ann.pretty names 10}. {body.pretty (n :: names) 0}"
+    if prec > 10 then s!"({s})" else s
+  | .app f a =>
+    let s := s!"{f.pretty names 50} {a.pretty names 51}"
+    if prec > 50 then s!"({s})" else s
+
+instance : Repr Expr where
+  reprPrec e _ := e.pretty
+
+instance : ToString Expr where
+  toString e := e.pretty
 
 /-- Shift free variables with index ≥ c up by d. Used when going under
     binders to adjust indices for the new binding depth. -/
