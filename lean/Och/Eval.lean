@@ -224,50 +224,55 @@ mutual
       | _ =>
         match a, b with
         | .lam domA bodyA, .lam domB bodyB =>
-          -- Function subtyping: contravariant domain, covariant body
-          let domA_norm := match absEval fuel ctx seen domA with | .ok x => x.val | .error _ => domA
-          let domB_norm := match absEval fuel ctx seen domB with | .ok x => x.val | .error _ => domB
-          subCheckNF fuel ctx seen domB_norm domA_norm
-          -- TyCtx.extend shifts domB_norm automatically
-          && subCheckNF fuel (TyCtx.extend ctx ⟨domB_norm⟩) seen bodyA bodyB
+          -- Function subtyping: contravariant domain, covariant body.
+          -- Domains are used directly (no re-normalization). When inputs come
+          -- from absEval output, domains are already normalized. When inputs
+          -- come from mu unfolding with fallback, domains may be raw but
+          -- re-normalization was a no-op anyway (same expression goes in and
+          -- out). Using domains directly makes fuel monotonicity provable:
+          -- the inputs to recursive subCheckNF calls don't change with fuel.
+          subCheckNF fuel ctx seen domB domA
+          && subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) seen bodyA bodyB
         | _, .mu _ann body =>
           -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
           -- This also handles the mu-mu case via self-intro on the right side.
           let seen' := (a, b) :: seen
           let u := body.subst 0 b
-          let u' := match absEval fuel ctx seen' u with | .ok x => x.val | .error _ => u
-          subCheckNF fuel ctx seen' a u'
+          match absEval fuel ctx seen' u with
+          | .ok u' => subCheckNF fuel ctx seen' a u'.val
+          | .error _ => false
         | .mu ann body, _ =>
-          -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
-          -- When normalization of the unfolded body fails (e.g. domain checks
-          -- on Church-encoded types with abstract arguments), fall back to the
-          -- mu annotation. The annotation is the declared type of the recursive
-          -- function and has already been normalized (in absEval's .mu case).
+          -- Self-elim: mu ann body ⊑ b  iff  ann ⊑ b  or  normalize(body[0:=mu]) ⊑ b.
+          -- Check annotation first (fuel-stable), then try body normalization.
+          -- This ordering makes fuel monotonicity provable: the annotation check
+          -- doesn't depend on absEval fuel, and the body check is stable because
+          -- absEval_fuel_mono ensures normalization results don't change with fuel.
+          -- The annotation is the declared type and was already normalized in
+          -- absEval's .mu case.
           let seen' := (a, b) :: seen
-          let u := body.subst 0 (.mu ann body)
-          let u' := match absEval fuel ctx seen' u with
-            | .ok x => x.val
-            | .error _ => ann  -- annotation fallback
-          subCheckNF fuel ctx seen' u' b
+          if subCheckNF fuel ctx seen' ann b then true
+          else
+            let u := body.subst 0 (.mu ann body)
+            match absEval fuel ctx seen' u with
+            | .ok u' => subCheckNF fuel ctx seen' u'.val b
+            | .error _ => false
         | .app f1 a1, .app f2 a2 =>
           -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
-          -- Sound in the coinductive setting (Amadio-Cardelli style): the `seen`
-          -- set ensures monotonicity is only assumed for pairs being verified.
-          -- Needed for dependent self-types where e.g. P dtrue ⊑ P dBool
-          -- decomposes into P ⊑ P (reflexivity) and dtrue ⊑ dBool (in `seen`).
           if subCheckNF fuel ctx seen f1 f2 && subCheckNF fuel ctx seen a1 a2
           then true
           else
             match inferType ctx a with
             | some ty =>
-              let ty' := match absEval fuel ctx seen ty with | .ok x => x.val | .error _ => ty
-              subCheckNF fuel ctx seen ty' b
+              match absEval fuel ctx seen ty with
+              | .ok ty' => subCheckNF fuel ctx seen ty'.val b
+              | .error _ => false
             | none => false
         | _, _ =>
           match inferType ctx a with
           | some ty =>
-            let ty' := match absEval fuel ctx seen ty with | .ok x => x.val | .error _ => ty
-            subCheckNF fuel ctx seen ty' b
+            match absEval fuel ctx seen ty with
+            | .ok ty' => subCheckNF fuel ctx seen ty'.val b
+            | .error _ => false
           | none => false
   termination_by fuel
 end
@@ -345,13 +350,18 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           | .type => exact h
           | .bvar _ | .app _ _ | .asc _ _ => exact h
 
-/-- Helper for absEval_fuel_mono: the mu-app case where body' is lam
-    and _ann is NOT lam. The if-then-else and inner match only differ
-    in fuel for recursive absEval calls. -/
+/-! ## Fuel monotonicity (mutual proof)
+
+absEval and subCheckNF are mutually recursive, so their fuel monotonicity
+proofs must be proved together. We prove a combined theorem by induction on
+fuel, then extract the individual results. -/
+
+/-- Helper for the mu-app case in absEval_fuel_mono: body' is lam and _ann is
+    NOT lam. Parameterized by ih_abs (absEval at fuel k → k+1). -/
 private theorem absEval_fuel_mono_mu_lam_body
     {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {_ann : Expr} {d1 b1 : Expr} {a'val : Expr} {v : NfExpr}
-    (ih : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
           absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
     (h : (let mu_expr := Expr.mu _ann (Expr.lam d1 b1)
           if (seen.any fun x => x.fst == mu_expr) = true then
@@ -376,105 +386,256 @@ private theorem absEval_fuel_mono_mu_lam_body
   · simp only [hc] at h ⊢; exact h
   · simp only [hc, ite_false] at h ⊢
     generalize Expr.subst (Expr.lam d1 b1) 0 (Expr.mu _ann (Expr.lam d1 b1)) = u at h ⊢
-    cases u <;> exact ih h
+    cases u <;> exact ih_abs h
 
-/-- subCheckNF fuel monotonicity: if a subtype check passes at fuel n,
-    it passes at fuel n+1. Needed by absEval_fuel_mono for the .asc and
-    domain-check cases. Sorry'd — the proof requires handling the
-    normalization-with-fallback pattern in subCheckNF's lam and mu cases. -/
-theorem subCheckNF_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
-    {a b : Expr}
-    (h : subCheckNF n ctx seen a b = true) : subCheckNF (n + 1) ctx seen a b = true := by
-  sorry
+/-- Helper for the "match absEval ... with | ok => subCheckNF | error => false"
+    pattern. Takes both ih_sub and ih_abs as parameters. -/
+private theorem subCheckNF_absEval_step
+    {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {b : Expr}
+    (ih_sub : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
+          subCheckNF k ctx seen a b = true → subCheckNF (k + 1) ctx seen a b = true)
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (h : (match absEval k ctx seen e with
+          | .ok ty' => subCheckNF k ctx seen ty'.val b
+          | .error _ => false) = true)
+    : (match absEval (k + 1) ctx seen e with
+       | .ok ty' => subCheckNF (k + 1) ctx seen ty'.val b
+       | .error _ => false) = true := by
+  match hae : absEval k ctx seen e with
+  | .ok ty' =>
+    simp only [hae] at h
+    rw [show absEval (k + 1) ctx seen e = .ok ty' from ih_abs hae]
+    exact ih_sub h
+  | .error _ => simp [hae] at h
 
-/-- absEval fuel monotonicity: if absEval succeeds at fuel n, it succeeds
-    at fuel n+1 with the same result. Uses subCheckNF_fuel_mono for the
-    .asc and domain-check cases. -/
-theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
-    {e : Expr} {v : NfExpr}
-    (h : absEval n ctx seen e = .ok v) : absEval (n + 1) ctx seen e = .ok v := by
-  induction n generalizing ctx seen e v with
-  | zero => simp [absEval] at h
+/-- Mirror of subCheckNF_absEval_step: absEval result goes to second position
+    of subCheckNF (for the self-intro case: subCheckNF ... a u'.val). -/
+private theorem subCheckNF_absEval_step_right
+    {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {a : Expr}
+    (ih_sub : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
+          subCheckNF k ctx seen a b = true → subCheckNF (k + 1) ctx seen a b = true)
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (h : (match absEval k ctx seen e with
+          | .ok u' => subCheckNF k ctx seen a u'.val
+          | .error _ => false) = true)
+    : (match absEval (k + 1) ctx seen e with
+       | .ok u' => subCheckNF (k + 1) ctx seen a u'.val
+       | .error _ => false) = true := by
+  match hae : absEval k ctx seen e with
+  | .ok u' =>
+    simp only [hae] at h
+    rw [show absEval (k + 1) ctx seen e = .ok u' from ih_abs hae]
+    exact ih_sub h
+  | .error _ => simp [hae] at h
+
+/-- Helper for the self-elim case: annotation-first, then body normalization. -/
+private theorem subCheckNF_self_elim_step
+    {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {ann body : Expr} {b : Expr}
+    (ih_sub : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
+          subCheckNF k ctx seen a b = true → subCheckNF (k + 1) ctx seen a b = true)
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (h : (let seen' := (Expr.mu ann body, b) :: seen
+          if subCheckNF k ctx seen' ann b then true
+          else
+            let u := body.subst 0 (Expr.mu ann body)
+            match absEval k ctx seen' u with
+            | .ok u' => subCheckNF k ctx seen' u'.val b
+            | .error _ => false) = true)
+    : (let seen' := (Expr.mu ann body, b) :: seen
+       if subCheckNF (k + 1) ctx seen' ann b then true
+       else
+         let u := body.subst 0 (Expr.mu ann body)
+         match absEval (k + 1) ctx seen' u with
+         | .ok u' => subCheckNF (k + 1) ctx seen' u'.val b
+         | .error _ => false) = true := by
+  simp only [] at h ⊢
+  split at h
+  · rename_i hann
+    rw [show subCheckNF (k + 1) _ _ ann b = true from ih_sub hann]; simp
+  · rename_i hann
+    -- h is already simplified to the else branch by split
+    split
+    · simp
+    · rename_i hann'
+      exact subCheckNF_absEval_step ih_sub ih_abs h
+
+/-- Helper for inferType-based fallback (app-app else branch and catch-all). -/
+private theorem subCheckNF_inferType_step
+    {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {a : Expr} {b : Expr}
+    (ih_sub : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
+          subCheckNF k ctx seen a b = true → subCheckNF (k + 1) ctx seen a b = true)
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (h : (match inferType ctx a with
+          | some ty =>
+            match absEval k ctx seen ty with
+            | .ok ty' => subCheckNF k ctx seen ty'.val b
+            | .error _ => false
+          | none => false) = true)
+    : (match inferType ctx a with
+       | some ty =>
+         match absEval (k + 1) ctx seen ty with
+         | .ok ty' => subCheckNF (k + 1) ctx seen ty'.val b
+         | .error _ => false
+       | none => false) = true := by
+  match hinf : inferType ctx a with
+  | some ty =>
+    simp only [hinf] at h ⊢
+    exact subCheckNF_absEval_step ih_sub ih_abs h
+  | none => simp [hinf] at h
+
+/-- Combined fuel monotonicity for absEval and subCheckNF. Both properties
+    are proved together by induction on fuel because they are mutually
+    dependent: absEval calls subCheckNF, and subCheckNF calls absEval. -/
+private theorem fuel_mono (n : Nat) :
+    (∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
+      subCheckNF n ctx seen a b = true → subCheckNF (n + 1) ctx seen a b = true) ∧
+    (∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+      absEval n ctx seen e = .ok v → absEval (n + 1) ctx seen e = .ok v) := by
+  induction n with
+  | zero =>
+    exact ⟨fun h => by simp [subCheckNF] at h, fun h => by simp [absEval] at h⟩
   | succ k ih =>
-    match e with
-    | .bvar _ =>
-      simp [absEval] at h ⊢; exact h
-    | .type =>
-      simp [absEval] at h ⊢; exact h
-    | .lam dom body =>
-      unfold absEval at h ⊢; dsimp only [] at h ⊢
-      match hd : absEval k ctx seen dom with
-      | .error _ => simp [hd, bind, Except.bind] at h
-      | .ok dom' =>
-        simp only [hd, bind, Except.bind] at h
-        match hb : absEval k (TyCtx.extend ctx dom') seen body with
-        | .error _ => simp [hb, bind, Except.bind] at h
-        | .ok body' =>
-          simp only [hb, bind, Except.bind] at h
-          rw [ih hd]; simp only [bind, Except.bind]; rw [ih hb]; simp only [bind, Except.bind]
-          exact h
-    | .mu ann body =>
-      unfold absEval at h ⊢; dsimp only [] at h ⊢
-      match ha : absEval k ctx seen ann with
-      | .error _ => simp [ha, bind, Except.bind] at h
-      | .ok ann' =>
-        simp only [ha, bind, Except.bind] at h
-        rw [ih ha]; simp only [bind, Except.bind]
-        exact h
-    | .asc term ty =>
-      unfold absEval at h ⊢; dsimp only [] at h ⊢
-      match ht : absEval k ctx seen term with
-      | .error _ => simp [ht, bind, Except.bind] at h
-      | .ok sigma =>
-        simp only [ht, bind, Except.bind] at h ⊢
-        match hty : absEval k ctx seen ty with
-        | .error _ => simp [hty, bind, Except.bind] at h
-        | .ok tau =>
-          simp only [hty, bind, Except.bind] at h
-          rw [ih ht]; simp only [bind, Except.bind]
-          rw [ih hty]; simp only [bind, Except.bind]
+    obtain ⟨ih_sub, ih_abs⟩ := ih
+    constructor
+    · -- subCheckNF_fuel_mono step: prove subCheckNF (k+1) → subCheckNF (k+2)
+      intro ctx seen a b h
+      unfold subCheckNF at h ⊢; dsimp only [] at h ⊢
+      -- The initial checks (a==b, seen) are fuel-independent.
+      -- Use by_cases to handle them in both h and goal simultaneously.
+      by_cases hab : (a == b) = true
+      · simp [hab]
+      · simp only [if_neg hab] at h ⊢
+        by_cases hseen : (seen.any fun (a', b') => a == a' && b == b') = true
+        · simp [hseen]
+        · simp only [if_neg hseen] at h ⊢
+          -- Now both h and goal are at the match b / match (a, b) level
+          -- Split the hypothesis's match structure
           split at h
-          · rename_i hsub
-            rw [show subCheckNF (k + 1) ctx seen sigma.val tau.val = true
-              from subCheckNF_fuel_mono hsub]
+          · -- b = .type → goal also matches .type → true
+            simp
+          · -- b ≠ .type → match (a, b) with ...
+            split at h
+            · -- lam, lam: covariant body + contravariant domain
+              simp only [Bool.and_eq_true] at h ⊢
+              exact ⟨ih_sub h.1, ih_sub h.2⟩
+            · -- _, mu (self-intro): subCheckNF ... a u'.val
+              exact subCheckNF_absEval_step_right ih_sub ih_abs h
+            · -- mu, _ (self-elim)
+              exact subCheckNF_self_elim_step ih_sub ih_abs h
+            · -- app, app (congruence + inferType fallback)
+              split at h
+              · -- congruence succeeded
+                rename_i hcong
+                simp only [Bool.and_eq_true] at hcong
+                simp only [show subCheckNF (k + 1) ctx seen _ _ = true from ih_sub hcong.1,
+                           show subCheckNF (k + 1) ctx seen _ _ = true from ih_sub hcong.2,
+                           Bool.and_self, ite_true]
+              · -- congruence failed, inferType fallback
+                -- At higher fuel, congruence might succeed
+                split
+                · simp  -- congruence succeeds at higher fuel: done
+                · -- congruence still fails
+                  exact subCheckNF_inferType_step ih_sub ih_abs h
+            · -- catch-all: inferType
+              exact subCheckNF_inferType_step ih_sub ih_abs h
+    · -- absEval_fuel_mono step
+      intro ctx seen e v h
+      match e with
+      | .bvar _ =>
+        simp [absEval] at h ⊢; exact h
+      | .type =>
+        simp [absEval] at h ⊢; exact h
+      | .lam dom body =>
+        unfold absEval at h ⊢; dsimp only [] at h ⊢
+        match hd : absEval k ctx seen dom with
+        | .error _ => simp [hd, bind, Except.bind] at h
+        | .ok dom' =>
+          simp only [hd, bind, Except.bind] at h
+          match hb : absEval k (TyCtx.extend ctx dom') seen body with
+          | .error _ => simp [hb, bind, Except.bind] at h
+          | .ok body' =>
+            simp only [hb, bind, Except.bind] at h
+            rw [ih_abs hd]; simp only [bind, Except.bind]
+            rw [ih_abs hb]; simp only [bind, Except.bind]
             exact h
-          · simp at h
-    | .app f a =>
-      unfold absEval at h ⊢; dsimp only [] at h ⊢
-      match hf : absEval k ctx seen f with
-      | .error _ => simp [hf, bind, Except.bind] at h
-      | .ok f' =>
-        simp only [hf, bind, Except.bind] at h ⊢
-        match ha : absEval k ctx seen a with
+      | .mu ann body =>
+        unfold absEval at h ⊢; dsimp only [] at h ⊢
+        match ha : absEval k ctx seen ann with
         | .error _ => simp [ha, bind, Except.bind] at h
-        | .ok a' =>
+        | .ok ann' =>
           simp only [ha, bind, Except.bind] at h
-          rw [ih hf]; simp only [bind, Except.bind]
-          rw [ih ha]; simp only [bind, Except.bind]
-          -- Both h and goal match on f'.val with fuel k vs k+1 in recursive calls
-          match hfv : f'.val with
-          | .lam dom body =>
-            simp only [hfv] at h ⊢
+          rw [ih_abs ha]; simp only [bind, Except.bind]
+          exact h
+      | .asc term ty =>
+        unfold absEval at h ⊢; dsimp only [] at h ⊢
+        match ht : absEval k ctx seen term with
+        | .error _ => simp [ht, bind, Except.bind] at h
+        | .ok sigma =>
+          simp only [ht, bind, Except.bind] at h ⊢
+          match hty : absEval k ctx seen ty with
+          | .error _ => simp [hty, bind, Except.bind] at h
+          | .ok tau =>
+            simp only [hty, bind, Except.bind] at h
+            rw [ih_abs ht]; simp only [bind, Except.bind]
+            rw [ih_abs hty]; simp only [bind, Except.bind]
             split at h
             · rename_i hsub
-              rw [show subCheckNF (k + 1) ctx seen a'.val dom = true
-                from subCheckNF_fuel_mono hsub]
-              exact ih h
+              rw [show subCheckNF (k + 1) ctx seen sigma.val tau.val = true
+                from ih_sub hsub]
+              exact h
             · simp at h
-          | .mu _ann body' =>
-            simp only [hfv] at h ⊢
-            -- mu-app: case-split to reduce the term-level match.
-            cases body' with
-            | lam d1 b1 =>
-              cases _ann with
-              | lam _ _ => exact ih h  -- first arm: both lam
+      | .app f a =>
+        unfold absEval at h ⊢; dsimp only [] at h ⊢
+        match hf : absEval k ctx seen f with
+        | .error _ => simp [hf, bind, Except.bind] at h
+        | .ok f' =>
+          simp only [hf, bind, Except.bind] at h ⊢
+          match ha : absEval k ctx seen a with
+          | .error _ => simp [ha, bind, Except.bind] at h
+          | .ok a' =>
+            simp only [ha, bind, Except.bind] at h
+            rw [ih_abs hf]; simp only [bind, Except.bind]
+            rw [ih_abs ha]; simp only [bind, Except.bind]
+            match hfv : f'.val with
+            | .lam dom body =>
+              simp only [hfv] at h ⊢
+              split at h
+              · rename_i hsub
+                rw [show subCheckNF (k + 1) ctx seen a'.val dom = true
+                  from ih_sub hsub]
+                exact ih_abs h
+              · simp at h
+            | .mu _ann body' =>
+              simp only [hfv] at h ⊢
+              cases body' with
+              | lam d1 b1 =>
+                cases _ann with
+                | lam _ _ => exact ih_abs h
+                | bvar _ | app _ _ | type | mu _ _ | asc _ _ =>
+                  exact absEval_fuel_mono_mu_lam_body ih_abs h
               | bvar _ | app _ _ | type | mu _ _ | asc _ _ =>
-                -- second arm: _ann not lam, body' lam
-                exact absEval_fuel_mono_mu_lam_body ih h
-            | bvar _ | app _ _ | type | mu _ _ | asc _ _ =>
-              -- third arm: body' not lam, catch-all
-              cases _ann <;> exact h
-          | .type =>
-            simp only [hfv] at h; simp at h
-          | .bvar _ | .app _ _ | .asc _ _ =>
-            simp only [hfv] at h ⊢; exact h
+                cases _ann <;> exact h
+            | .type =>
+              simp only [hfv] at h; simp at h
+            | .bvar _ | .app _ _ | .asc _ _ =>
+              simp only [hfv] at h ⊢; exact h
+
+/-- subCheckNF fuel monotonicity: if a subtype check passes at fuel n,
+    it also passes at fuel n+1. -/
+theorem subCheckNF_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {a b : Expr}
+    (h : subCheckNF n ctx seen a b = true) : subCheckNF (n + 1) ctx seen a b = true :=
+  (fuel_mono n).1 h
+
+/-- absEval fuel monotonicity: if absEval succeeds at fuel n, it succeeds
+    at fuel n+1 with the same result. -/
+theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {e : Expr} {v : NfExpr}
+    (h : absEval n ctx seen e = .ok v) : absEval (n + 1) ctx seen e = .ok v :=
+  (fuel_mono n).2 h

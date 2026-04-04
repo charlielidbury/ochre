@@ -3,23 +3,12 @@
 The current goal is proving soundness of Och. Here is the dependency chain
 and priority order for the remaining `sorry`s.
 
-## Phase 1: Foundation — absEval fuel monotonicity
+## Phase 1: Foundation — fuel monotonicity ✅ COMPLETE
 
-**`absEval_fuel_mono`** (Eval.lean:349)
-
-This is the single most important sorry. The soundness proof uses fuel
-induction, and fuel monotonicity is needed to show that if absEval succeeds
-with fuel `n`, it also succeeds with fuel `n+1` (same result).
-
-The `concEval_fuel_mono` proof (Eval.lean:314) is already done and can serve
-as a template. The difficulty is that `absEval` and `subCheckNF` are mutually
-recursive, so you likely need a mutual fuel monotonicity theorem covering both.
-
-Approach:
-- Induction on `n` (fuel), case split on `e`
-- For each case, unfold `absEval` at both fuel levels
-- The `subCheckNF` calls inside `absEval` also need fuel mono (mutual lemma)
-- The `seen` parameter threads through but doesn't change the fuel argument
+Both `absEval_fuel_mono` and `subCheckNF_fuel_mono` are proved. The proof
+required eliminating normalization-with-fallback patterns in subCheckNF (see
+PROGRESS.md for details). The mutual dependency between the two theorems is
+resolved via a combined `fuel_mono` theorem proved by induction on fuel.
 
 ## Phase 2: VCompat lemmas (Soundness.lean)
 
