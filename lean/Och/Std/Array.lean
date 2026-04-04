@@ -1,4 +1,4 @@
-import Och.Syntax
+import Och.Macro
 import Och.Eval
 import Och.Std.Nat
 import Och.Std.Unit
@@ -20,24 +20,17 @@ via the Church numeral `n`: `Array 0 T = Unit`, `Array 1 T = Pair T Unit`,
 `Array 2 T = Pair T (Pair T Unit)`, etc.
 -/
 
-open Named
-
 namespace Std
 
-def Array_ : Named := .lam "n" Nat_ (.lam "T" .type (
-  .app (.app (.app (.var "n") .type) Unit_) (.lam "acc" .type (
-    .app (.app Pair (.var "T")) (.var "acc")))))
+def Array_ : Expr := och{ λn:Nat_. λT:Type. n Type Unit_ (λacc:Type. Pair T acc) }
 
-def emptyArray : Named := .lam "T" .type unit_
+def emptyArray : Expr := och{ λT:Type. unit_ }
 
-def consArray : Named := .lam "T" .type (.lam "n" Nat_ (.lam "x" (.var "T") (.lam "rest" (.app (.app Array_ (.var "n")) (.var "T")) (
-  .app (.app (.app (.app pair (.var "T")) (.app (.app Array_ (.var "n")) (.var "T"))) (.var "x")) (.var "rest")))))
+def consArray : Expr := och{ λT:Type. λn:Nat_. λx:T. λrest:(Array_ n T). pair T (Array_ n T) x rest }
 
-def headArray : Named := .lam "T" .type (.lam "n" Nat_ (.lam "arr" (.app (.app Array_ (.app succ_ (.var "n"))) (.var "T")) (
-  .app (.app (.var "arr") (.var "T")) (.lam "x" (.var "T") (.lam "_" (.app (.app Array_ (.var "n")) (.var "T")) (.var "x"))))))
+def headArray : Expr := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr T (λx:T. λ_:(Array_ n T). x) }
 
-def tailArray : Named := .lam "T" .type (.lam "n" Nat_ (.lam "arr" (.app (.app Array_ (.app succ_ (.var "n"))) (.var "T")) (
-  .app (.app (.var "arr") (.app (.app Array_ (.var "n")) (.var "T"))) (.lam "_" (.var "T") (.lam "rest" (.app (.app Array_ (.var "n")) (.var "T")) (.var "rest"))))))
+def tailArray : Expr := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr (Array_ n T) (λ_:T. λrest:(Array_ n T). rest) }
 
 -- ============================================================
 -- Tests
@@ -49,41 +42,39 @@ open Expr
 -- ── Positive computation tests ─────────────────────────────
 
 -- Array 0 Nat = Unit
-example : absEval 1000 [] (.app (.app (n Array_) (n zero_)) (n Nat_)) = .ok (n Unit_) := by native_decide
+example : absEval 1000 [] (och{ Array_ zero_ Nat_ }) = .ok Unit_ := by native_decide
 
 -- cons 0 into emptyArray, head it back out
 -- testArr1 = cons Nat 0 0 (emptyArray Nat)
-private def testArr1 : Expr := n (.app (.app (.app (.app consArray Nat_) zero_) zero_) (.app emptyArray Nat_))
+private def testArr1 : Expr := och{ consArray Nat_ zero_ zero_ (emptyArray Nat_) }
 
 -- head testArr1 = 0
-example : absEval 1000 [] (.app (.app (.app (n headArray) (n Nat_)) (n zero_)) testArr1) = .ok (n zero_) := by native_decide
+example : absEval 1000 [] (och{ headArray Nat_ zero_ testArr1 }) = .ok zero_ := by native_decide
 
 -- tail testArr1 = unit
-example : absEval 1000 [] (.app (.app (.app (n tailArray) (n Nat_)) (n zero_)) testArr1) = .ok (n unit_) := by native_decide
+example : absEval 1000 [] (och{ tailArray Nat_ zero_ testArr1 }) = .ok unit_ := by native_decide
 
 -- testArr2 = cons Nat 1 1 (cons Nat 0 2 (emptyArray Nat))
-private def testArr2 : Expr := n (.app (.app (.app (.app consArray Nat_) one_) one_)
-  (.app (.app (.app (.app consArray Nat_) zero_) two_) (.app emptyArray Nat_)))
+private def testArr2 : Expr := och{ consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_)) }
 
 -- head testArr2 = 1
-example : absEval 1000 [] (.app (.app (.app (n headArray) (n Nat_)) (n one_)) testArr2) = .ok (n one_) := by native_decide
+example : absEval 1000 [] (och{ headArray Nat_ one_ testArr2 }) = .ok one_ := by native_decide
 
 -- head (tail testArr2) = 2
-example : absEval 1000 [] (.app (.app (.app (n headArray) (n Nat_)) (n zero_))
-  (.app (.app (.app (n tailArray) (n Nat_)) (n one_)) testArr2)) = .ok (n two_) := by native_decide
+example : absEval 1000 [] (och{ headArray Nat_ zero_ (tailArray Nat_ one_ testArr2) }) = .ok two_ := by native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 
 -- testArr1 ⊑ Array 1 Nat
-example : subCheck 1000 testArr1 (.app (.app (n Array_) (n one_)) (n Nat_)) = true := by native_decide
+example : subCheck 1000 testArr1 (och{ Array_ one_ Nat_ }) = true := by native_decide
 
 -- testArr2 ⊑ Array 2 Nat
-example : subCheck 1000 testArr2 (.app (.app (n Array_) (n two_)) (n Nat_)) = true := by native_decide
+example : subCheck 1000 testArr2 (och{ Array_ two_ Nat_ }) = true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
 -- emptyArray Nat ⊄ Array 1 Nat (wrong length)
-example : subCheck 1000 (.app (n emptyArray) (n Nat_)) (.app (.app (n Array_) (n one_)) (n Nat_)) = false := by native_decide
+example : subCheck 1000 (och{ emptyArray Nat_ }) (och{ Array_ one_ Nat_ }) = false := by native_decide
 
 end Tests
 end Std
