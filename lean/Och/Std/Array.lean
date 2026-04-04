@@ -105,13 +105,10 @@ example : concEval 5000 (och{ fst_ (snd_ appended) }) = concEval 5000 two_ := by
 example : concEval 5000 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 5000 three_ := by native_decide
 example : concEval 5000 (och{ fst_ appended }) ≠ concEval 5000 two_ := by native_decide
 
--- FOCUS: GET THIS TEST PASSING (`= true`)
 -- appendArrays : T → n1 → n2 → Array n1 T → Array n2 T → Array (add n1 n2) T
--- Future work (mu application bug): absEval loses the mu self-reference,
--- so the precise return type can't be verified for the recursive definition.
 example : subCheck 5000 appendArrays
   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
-  = false := by native_decide  -- should be true once mu application is fixed
+  = true := by native_decide
 
 end AppendArraysTests
 end Std

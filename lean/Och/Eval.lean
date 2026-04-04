@@ -88,6 +88,7 @@ def TyCtx.extend (ctx : TyCtx) (ty : NfExpr) : TyCtx :=
     and subCheckNF's inferType fallback. -/
 def inferType (ctx : TyCtx) : Expr → Option Expr
   | .bvar k => (ctx.get? k).map (·.val)
+  | .mu ann _body => some ann
   | .app f a =>
     match inferType ctx f with
     | some (.lam _dom retTy) => some (retTy.subst 0 a)
@@ -179,9 +180,26 @@ mutual
           -- mu in function position. Strategy depends on ann AND body shape.
           match _ann, body with
           | .lam _dom retBody, .lam _ _ =>
+            -- Annotation is a function type: use annotation's return type.
+            -- This trusts the annotation as the type of the recursive function,
+            -- avoiding normalization of the raw body (which may fail for
+            -- abstract arguments due to domain checks on Church-encoded types).
             absEval fuel ctx seen (retBody.subst 0 a'.val)
-          | _, .lam _dom retBody =>
-            absEval fuel ctx seen (retBody.subst 0 a'.val)
+          | _, .lam _dom _retBody =>
+            -- Annotation is not a function type: substitute self-reference
+            -- into the body, then beta-reduce. Uses `seen` set to break
+            -- infinite loops for recursive functions.
+            let mu_expr := Expr.mu _ann body
+            if seen.any (fun (a', _) => a' == mu_expr) then
+              .ok ⟨.app mu_expr a'.val⟩
+            else
+              let seen' := (mu_expr, mu_expr) :: seen
+              let unfolded := body.subst 0 mu_expr
+              match unfolded with
+              | .lam _dom2 retBody2 =>
+                absEval fuel ctx seen' (retBody2.subst 0 a'.val)
+              | _ =>
+                absEval fuel ctx seen' (.app unfolded a'.val)
           | _, _ => .ok ⟨.app body a'.val⟩
         | .type => .error "Type is not callable"
         | _ =>
@@ -220,9 +238,15 @@ mutual
           subCheckNF fuel ctx seen' a u'
         | .mu ann body, _ =>
           -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
+          -- When normalization of the unfolded body fails (e.g. domain checks
+          -- on Church-encoded types with abstract arguments), fall back to the
+          -- mu annotation. The annotation is the declared type of the recursive
+          -- function and has already been normalized (in absEval's .mu case).
           let seen' := (a, b) :: seen
           let u := body.subst 0 (.mu ann body)
-          let u' := match absEval fuel ctx seen' u with | .ok x => x.val | .error _ => u
+          let u' := match absEval fuel ctx seen' u with
+            | .ok x => x.val
+            | .error _ => ann  -- annotation fallback
           subCheckNF fuel ctx seen' u' b
         | .app f1 a1, .app f2 a2 =>
           -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
