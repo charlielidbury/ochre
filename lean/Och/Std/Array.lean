@@ -9,28 +9,28 @@ import Och.Std.Pair
 
 ```
 Array  = λn:Nat. λT:Type. n Type Unit (λacc:Type. Pair T acc)
-emptyArray = λT:Type. unit
-consArray  = λT:Type. λn:Nat. λx:T. λrest:(Array n T). pair T (Array n T) x rest
-headArray  = λT:Type. λn:Nat. λarr:(Array (succ n) T). arr T (λx:T. λ_:(Array n T). x)
-tailArray  = λT:Type. λn:Nat. λarr:(Array (succ n) T). arr (Array n T) (λ_:T. λrest:(Array n T). rest)
 ```
 
 Church-encoded length-indexed arrays. `Array n T` unfolds to nested pairs
 via the Church numeral `n`: `Array 0 T = Unit`, `Array 1 T = Pair T Unit`,
 `Array 2 T = Pair T (Pair T Unit)`, etc.
+
+Since Pair is its own constructor and fst/snd need no type args,
+array operations are just pair/unit operations:
+- empty array: `unit_`
+- cons: `Pair x rest`
+- head: `fst_ arr`
+- tail: `snd_ arr`
 -/
 
 namespace Std
 
 def Array_ := och{ λn:Nat_. λT:Type. n Type Unit_ (λacc:Type. Pair T acc) }
 
-def emptyArray := och{ λT:Type. unit_ }
-
-def consArray := och{ λT:Type. λn:Nat_. λx:T. λrest:(Array_ n T). pair T (Array_ n T) x rest }
-
-def headArray := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr T (λx:T. λ_:(Array_ n T). x) }
-
-def tailArray := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr (Array_ n T) (λ_:T. λrest:(Array_ n T). rest) }
+def emptyArray := unit_
+def consArray := Pair
+def headArray := fst_
+def tailArray := snd_
 
 -- ============================================================
 -- Tests
@@ -44,24 +44,23 @@ open Expr
 -- Array 0 Nat = Unit
 example : absEval 1000 [] (och{ Array_ zero_ Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
 
--- cons 0 into emptyArray, head it back out
--- testArr1 = cons Nat 0 0 (emptyArray Nat)
-private def testArr1 := och{ consArray Nat_ zero_ zero_ (emptyArray Nat_) }
+-- Pair 0 unit, head it back out
+private def testArr1 := och{ Pair zero_ unit_ }
 
 -- head testArr1 = 0
-example : absEval 1000 [] (och{ headArray Nat_ zero_ testArr1 }) = .ok ⟨zero_⟩ := by native_decide
+example : absEval 1000 [] (och{ fst_ testArr1 }) = .ok ⟨zero_⟩ := by native_decide
 
 -- tail testArr1 = unit
-example : absEval 1000 [] (och{ tailArray Nat_ zero_ testArr1 }) = .ok ⟨unit_⟩ := by native_decide
+example : absEval 1000 [] (och{ snd_ testArr1 }) = .ok ⟨unit_⟩ := by native_decide
 
--- testArr2 = cons Nat 1 1 (cons Nat 0 2 (emptyArray Nat))
-private def testArr2 := och{ consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_)) }
+-- testArr2 = Pair 1 (Pair 2 unit)
+private def testArr2 := och{ Pair one_ (Pair two_ unit_) }
 
 -- head testArr2 = 1
-example : absEval 1000 [] (och{ headArray Nat_ one_ testArr2 }) = .ok ⟨one_⟩ := by native_decide
+example : absEval 1000 [] (och{ fst_ testArr2 }) = .ok ⟨one_⟩ := by native_decide
 
 -- head (tail testArr2) = 2
-example : absEval 1000 [] (och{ headArray Nat_ zero_ (tailArray Nat_ one_ testArr2) }) = .ok ⟨two_⟩ := by native_decide
+example : absEval 1000 [] (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 
@@ -73,8 +72,8 @@ example : subCheck 1000 testArr2 (och{ Array_ two_ Nat_ }) = true := by native_d
 
 -- ── Negative subtype checks ────────────────────────────────
 
--- emptyArray Nat ⊄ Array 1 Nat (wrong length)
-example : subCheck 1000 (och{ emptyArray Nat_ }) (och{ Array_ one_ Nat_ }) = false := by native_decide
+-- unit ⊄ Array 1 Nat (wrong length)
+example : subCheck 1000 unit_ (och{ Array_ one_ Nat_ }) = false := by native_decide
 
 end Tests
 end Std

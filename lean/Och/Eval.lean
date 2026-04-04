@@ -225,11 +225,15 @@ mutual
           then true
           else
             match inferType ctx a with
-            | some ty => subCheckNF fuel ctx seen ty b
+            | some ty =>
+              let ty' := match absEval fuel ctx ty with | .ok x => x.val | .error _ => ty
+              subCheckNF fuel ctx seen ty' b
             | none => false
         | _, _ =>
           match inferType ctx a with
-          | some ty => subCheckNF fuel ctx seen ty b
+          | some ty =>
+            let ty' := match absEval fuel ctx ty with | .ok x => x.val | .error _ => ty
+            subCheckNF fuel ctx seen ty' b
           | none => false
   termination_by fuel
 end
