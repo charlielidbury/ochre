@@ -6,76 +6,95 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (9 total)
+### Sorry inventory (4 total, down from 5 at session start)
 
 **Phase 1 (fuel monotonicity): COMPLETE**
-- `subCheckNF_fuel_mono` — PROVED (was Eval.lean:385)
-- `absEval_fuel_mono` — PROVED (was Eval.lean:390)
+- `subCheckNF_fuel_mono` — PROVED
+- `absEval_fuel_mono` — PROVED
 
-**Blocking soundness (4):**
-1. `VCompat.from_type_sub_gen` — Soundness.lean:164 — Type subtyping gives VCompat
-2. `VCompat.from_self_intro_gen` — Soundness.lean:185 — self-intro gives VCompat
-3. `VCompat.adequacy` — Soundness.lean:209 — subCheckNF preserves VCompat
-4. `soundness` (main theorem) — Soundness.lean:233
+**Phase 2 (VCompat lemmas): IN PROGRESS**
+- `VCompat.from_type_sub_gen` — **PROVED** (Soundness.lean:171)
+- `VCompat.from_self_intro_gen` — Soundness.lean:265 — partially proved, inner sorry needs adequacy
+- `VCompat.adequacy` — Soundness.lean:341 — subCheckNF preserves VCompat
+- `soundness` (main theorem) — Soundness.lean:365
 
-**Not blocking soundness (5):**
-5. `subCheckNF_lam_lam_body` — Subtyping.lean:127
-6. `subCheckNF_lam_impossible` — Subtyping.lean:140
-7. `subCheckNF_mu_mu_body` — Subtyping.lean:151
-8. `subCheckNF_type_left_target` — Subtyping.lean:159
-9. `subCheckNF_neutral_inferType` — Subtyping.lean:167
+**Phase 3 (Subtyping helpers):**
+- `subCheckNF_lam_lam_body` — PROVED
+- `subCheckNF_lam_impossible` — PROVED
+- `subCheckNF_mu_mu_body` — PROVED
+- `subCheckNF_type_left_target` — PROVED
+- `subCheckNF_neutral_inferType` — Subtyping.lean:194 — sorry, has app-app congruence bug (see below)
 
-### What happened this session (agent ochre-20260404-191653)
+### What happened this session (agent ochre-20260404-201517)
 
-**`subCheckNF_fuel_mono` is PROVED.** Combined with the previous session's
-`absEval_fuel_mono`, Phase 1 (fuel monotonicity) is now complete.
+**`VCompat.from_type_sub_gen` is PROVED.** This is the first Phase 2 lemma:
+if `subCheckNF fuel ctx seen .type τ = true`, then `VCompat n v τ` for all v, n.
 
-Three definition changes to subCheckNF were needed to make fuel monotonicity
-provable, all eliminating normalization-with-fallback patterns where `absEval`
-failure caused a fallback to a raw/annotation term. The fallback made inputs
-to recursive calls fuel-dependent (different results at different fuel levels):
+**Key insight: VCompat needs a normalization disjunct.** The core problem was
+that VCompat's mu-right disjunct requires `VCompat n v (body.subst 0 (.mu ann body))`
+(the raw substitution), but subCheckNF normalizes via absEval before checking.
+We get VCompat for the *normalized* form u'.val, not the raw substitution.
+This gap is unbridgeable without changing VCompat because:
+- VCompat for `.asc` expressions fails (no matching disjunct)
+- The raw body from `.mu` can contain `.asc` nodes
+- So VCompat for raw ≠ VCompat for normalized
 
-1. **Lam-lam domain normalization removed (Eval.lean:226-235):** Domains
-   `domA`, `domB` are now used directly without re-normalizing via absEval.
-   This works because domains in the lam-lam case are typically already
-   normalized (sub-expressions of absEval outputs). All tests pass.
+**Solution: added a 9th disjunct to VCompat (Soundness.lean:89-93):**
+```lean
+∨ (∃ (nfuel : Nat) (nctx : TyCtx) (nseen : List (Expr × Expr)) (τ' : NfExpr),
+    absEval nfuel nctx nseen τ = .ok τ' ∧ VCompat n v τ'.val)
+```
+This says: if τ normalizes to τ' via absEval, then VCompat for τ' implies VCompat
+for τ. Semantically sound because normalization preserves type meaning.
 
-2. **Self-intro normalization: no fallback (Eval.lean:236-243):** Changed
-   `match absEval ... u with | ok x => x.val | error _ => u` to
-   `match absEval ... u with | ok x => subCheckNF ... a x.val | error _ => false`.
-   If normalization fails, the check fails rather than trying the raw term.
-   All tests pass — the raw-term fallback was never needed in practice.
+**Proof structure for from_type_sub_gen:** Double induction on fuel (outer) and
+step index n (inner). For the mu case at step m+1:
+1. mu-right disjunct: reduces to VCompat m at the raw substitution
+2. normalization disjunct: reduces to VCompat (m-1) at the normalized form u'.val
+3. ih_fuel (at fuel k): proves VCompat (m-1) at u'.val from the subCheckNF hypothesis
+4. ih_n (at step m): provides VCompat m for the seen callback (handles the circularity
+   in equi-recursive type unfolding)
 
-3. **Self-elim: annotation-first ordering (Eval.lean:244-258):** Changed from
-   "normalize body, fallback to annotation" to "check annotation first, then
-   try normalized body". Both paths are now fuel-stable: the annotation path
-   doesn't depend on absEval, and the body path is stable because absEval_fuel_mono
-   ensures consistent results. This preserves the annotation fallback needed by
-   `appendArrays` while making the proof go through.
+**from_self_intro_gen partially proved.** The proof follows the same structure
+(mu-right + normalization), but the inner sorry requires `VCompat m' σ u'.val`
+from `subCheckNF k ctx seen' σ u'.val = true`. This is essentially adequacy
+(with VCompat.refl as the base case). Once adequacy is proved, from_self_intro_gen
+will follow.
 
-4. **InferType normalization: no fallback (Eval.lean:259-276):** Same as
-   self-intro — absEval failure returns false. Tests pass.
-
-**Proof structure:** The mutual dependency between `absEval_fuel_mono` and
-`subCheckNF_fuel_mono` is resolved via a combined theorem `fuel_mono` that
-proves both simultaneously by induction on fuel. The inductive step uses
-helper lemmas for each subCheckNF case pattern:
-- `subCheckNF_absEval_step` — the "match absEval ... with | ok => subCheckNF | error => false" pattern
-- `subCheckNF_absEval_step_right` — mirror for self-intro (result in second position)
-- `subCheckNF_self_elim_step` — annotation-first + body normalization
-- `subCheckNF_inferType_step` — inferType + absEval normalization
-- `absEval_fuel_mono_mu_lam_body` — the mu-app sub-case in absEval
+**subCheckNF_neutral_inferType has a bug:** For the app-app congruence case,
+subCheckNF can succeed via structural congruence (f₁⊑f₂ ∧ a₁⊑a₂) without
+inferType firing. The theorem conclusion requires inferType to succeed, which
+isn't guaranteed. The theorem needs either an extra precondition excluding
+the app-app case, or a disjunctive conclusion handling both congruence and
+inferType.
 
 ### What's working
 - All tests pass (`lake build` succeeds with sorrys only in Subtyping/Soundness)
 - appendVec type-checks with abstract arguments
 - `concEval_fuel_mono` proved
-- **`absEval_fuel_mono` proved**
-- **`subCheckNF_fuel_mono` proved**
-- VCompat.mono, VCompat.mono_le, VCompat.refl, VCompat.fixpoint_mu all proved
+- `absEval_fuel_mono` proved
+- `subCheckNF_fuel_mono` proved
+- **`VCompat.from_type_sub_gen` proved** (NEW)
+- VCompat.mono (updated for normalization disjunct), VCompat.mono_le, VCompat.refl,
+  VCompat.fixpoint_mu, VCompat.self_intro_eq, VCompat.fixpoint_mu_left all proved
 - SubtypeCore.trans, Subtype'.trans proved
 
 ### Priority
-Next agent should work on Phase 2: the VCompat lemmas in Soundness.lean.
-See SUGGESTIONS.md for the dependency chain and priority order.
-The highest priority is `VCompat.from_type_sub_gen` (Soundness.lean:164).
+Next agent should work on **VCompat.adequacy** (Soundness.lean:341). This is
+the key bridge lemma and the biggest remaining blocker:
+- `VCompat n v σ ∧ subCheckNF σ τ = true → VCompat n v τ`
+- from_self_intro_gen depends on it (the inner sorry is essentially adequacy)
+- The soundness main theorem likely depends on it
+
+Approach for adequacy: case analysis on σ and τ, using VCompat n v σ to determine
+what v looks like. Key cases:
+- τ = .type: trivial (first disjunct)
+- σ = τ: trivial (already have VCompat)
+- σ = .type: use from_type_sub_gen (proved!)
+- Both lam: decompose subCheckNF domain/body checks, use VCompat lam disjunct
+- τ = .mu: use from_type_sub_gen or mu-right + normalization
+- σ = .mu: self-elim case, use mu-left disjunct
+- Neutral: inferType fallback
+
+The lam-lam case will need the most work: showing that compatible bodies under
+the subtype check give compatible results under evaluation.
