@@ -171,11 +171,12 @@ mutual
         match f'.val with
         | .lam dom body =>
           -- Check argument against domain annotation, then beta-reduce.
-          -- The `seen` set breaks cycles from let-bindings inside mu types.
-          let dom' := match absEval fuel ctx seen dom with | .ok x => x.val | .error _ => dom
-          if subCheckNF fuel ctx seen a'.val dom' then
+          -- `dom` is already normalized (it's a sub-expression of f', an absEval
+          -- output), so re-normalization is unnecessary. Using it directly also
+          -- makes fuel monotonicity provable without an idempotency lemma.
+          if subCheckNF fuel ctx seen a'.val dom then
             absEval fuel ctx seen (body.subst 0 a'.val)
-          else .error s!"domain check failed: {repr a'} ⊄ {repr dom'}"
+          else .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
         | .mu _ann body =>
           -- mu in function position. Strategy depends on ann AND body shape.
           match _ann, body with
@@ -344,9 +345,136 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           | .type => exact h
           | .bvar _ | .app _ _ | .asc _ _ => exact h
 
-/-- absEval fuel monotonicity. With the new mutual definition, this needs
-    updating. Sorry'd for now. -/
+/-- Helper for absEval_fuel_mono: the mu-app case where body' is lam
+    and _ann is NOT lam. The if-then-else and inner match only differ
+    in fuel for recursive absEval calls. -/
+private theorem absEval_fuel_mono_mu_lam_body
+    {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {_ann : Expr} {d1 b1 : Expr} {a'val : Expr} {v : NfExpr}
+    (ih : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (h : (let mu_expr := Expr.mu _ann (Expr.lam d1 b1)
+          if (seen.any fun x => x.fst == mu_expr) = true then
+            Except.ok { val := mu_expr.app a'val }
+          else
+            match (Expr.lam d1 b1).subst 0 mu_expr with
+            | .lam _d3 rB3 => absEval k ctx ((mu_expr, mu_expr) :: seen) (rB3.subst 0 a'val)
+            | _ => absEval k ctx ((mu_expr, mu_expr) :: seen)
+                     (((Expr.lam d1 b1).subst 0 mu_expr).app a'val))
+         = Except.ok v)
+    : (let mu_expr := Expr.mu _ann (Expr.lam d1 b1)
+       if (seen.any fun x => x.fst == mu_expr) = true then
+         Except.ok { val := mu_expr.app a'val }
+       else
+         match (Expr.lam d1 b1).subst 0 mu_expr with
+         | .lam _d3 rB3 => absEval (k + 1) ctx ((mu_expr, mu_expr) :: seen) (rB3.subst 0 a'val)
+         | _ => absEval (k + 1) ctx ((mu_expr, mu_expr) :: seen)
+                  (((Expr.lam d1 b1).subst 0 mu_expr).app a'val))
+      = Except.ok v := by
+  simp only [] at h ⊢
+  by_cases hc : (seen.any fun x => x.fst == Expr.mu _ann (Expr.lam d1 b1)) = true
+  · simp only [hc] at h ⊢; exact h
+  · simp only [hc, ite_false] at h ⊢
+    generalize Expr.subst (Expr.lam d1 b1) 0 (Expr.mu _ann (Expr.lam d1 b1)) = u at h ⊢
+    cases u <;> exact ih h
+
+/-- subCheckNF fuel monotonicity: if a subtype check passes at fuel n,
+    it passes at fuel n+1. Needed by absEval_fuel_mono for the .asc and
+    domain-check cases. Sorry'd — the proof requires handling the
+    normalization-with-fallback pattern in subCheckNF's lam and mu cases. -/
+theorem subCheckNF_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {a b : Expr}
+    (h : subCheckNF n ctx seen a b = true) : subCheckNF (n + 1) ctx seen a b = true := by
+  sorry
+
+/-- absEval fuel monotonicity: if absEval succeeds at fuel n, it succeeds
+    at fuel n+1 with the same result. Uses subCheckNF_fuel_mono for the
+    .asc and domain-check cases. -/
 theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {e : Expr} {v : NfExpr}
     (h : absEval n ctx seen e = .ok v) : absEval (n + 1) ctx seen e = .ok v := by
-  sorry
+  induction n generalizing ctx seen e v with
+  | zero => simp [absEval] at h
+  | succ k ih =>
+    match e with
+    | .bvar _ =>
+      simp [absEval] at h ⊢; exact h
+    | .type =>
+      simp [absEval] at h ⊢; exact h
+    | .lam dom body =>
+      unfold absEval at h ⊢; dsimp only [] at h ⊢
+      match hd : absEval k ctx seen dom with
+      | .error _ => simp [hd, bind, Except.bind] at h
+      | .ok dom' =>
+        simp only [hd, bind, Except.bind] at h
+        match hb : absEval k (TyCtx.extend ctx dom') seen body with
+        | .error _ => simp [hb, bind, Except.bind] at h
+        | .ok body' =>
+          simp only [hb, bind, Except.bind] at h
+          rw [ih hd]; simp only [bind, Except.bind]; rw [ih hb]; simp only [bind, Except.bind]
+          exact h
+    | .mu ann body =>
+      unfold absEval at h ⊢; dsimp only [] at h ⊢
+      match ha : absEval k ctx seen ann with
+      | .error _ => simp [ha, bind, Except.bind] at h
+      | .ok ann' =>
+        simp only [ha, bind, Except.bind] at h
+        rw [ih ha]; simp only [bind, Except.bind]
+        exact h
+    | .asc term ty =>
+      unfold absEval at h ⊢; dsimp only [] at h ⊢
+      match ht : absEval k ctx seen term with
+      | .error _ => simp [ht, bind, Except.bind] at h
+      | .ok sigma =>
+        simp only [ht, bind, Except.bind] at h ⊢
+        match hty : absEval k ctx seen ty with
+        | .error _ => simp [hty, bind, Except.bind] at h
+        | .ok tau =>
+          simp only [hty, bind, Except.bind] at h
+          rw [ih ht]; simp only [bind, Except.bind]
+          rw [ih hty]; simp only [bind, Except.bind]
+          split at h
+          · rename_i hsub
+            rw [show subCheckNF (k + 1) ctx seen sigma.val tau.val = true
+              from subCheckNF_fuel_mono hsub]
+            exact h
+          · simp at h
+    | .app f a =>
+      unfold absEval at h ⊢; dsimp only [] at h ⊢
+      match hf : absEval k ctx seen f with
+      | .error _ => simp [hf, bind, Except.bind] at h
+      | .ok f' =>
+        simp only [hf, bind, Except.bind] at h ⊢
+        match ha : absEval k ctx seen a with
+        | .error _ => simp [ha, bind, Except.bind] at h
+        | .ok a' =>
+          simp only [ha, bind, Except.bind] at h
+          rw [ih hf]; simp only [bind, Except.bind]
+          rw [ih ha]; simp only [bind, Except.bind]
+          -- Both h and goal match on f'.val with fuel k vs k+1 in recursive calls
+          match hfv : f'.val with
+          | .lam dom body =>
+            simp only [hfv] at h ⊢
+            split at h
+            · rename_i hsub
+              rw [show subCheckNF (k + 1) ctx seen a'.val dom = true
+                from subCheckNF_fuel_mono hsub]
+              exact ih h
+            · simp at h
+          | .mu _ann body' =>
+            simp only [hfv] at h ⊢
+            -- mu-app: case-split to reduce the term-level match.
+            cases body' with
+            | lam d1 b1 =>
+              cases _ann with
+              | lam _ _ => exact ih h  -- first arm: both lam
+              | bvar _ | app _ _ | type | mu _ _ | asc _ _ =>
+                -- second arm: _ann not lam, body' lam
+                exact absEval_fuel_mono_mu_lam_body ih h
+            | bvar _ | app _ _ | type | mu _ _ | asc _ _ =>
+              -- third arm: body' not lam, catch-all
+              cases _ann <;> exact h
+          | .type =>
+            simp only [hfv] at h; simp at h
+          | .bvar _ | .app _ _ | .asc _ _ =>
+            simp only [hfv] at h ⊢; exact h
