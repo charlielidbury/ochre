@@ -76,6 +76,15 @@ def VCompat : Nat → Expr → Expr → Prop
     ∨ (∃ ann body,
         τ = .mu ann body ∧
         VCompat n v (body.subst 0 (.mu ann body)))
+    -- Mu unfolding on the right with normalization: unfold the mu AND normalize
+    -- the result via absEval. This bridges the gap between raw substitution results
+    -- (which may contain .asc nodes) and their normalized forms. Only applies to mu
+    -- types, so it doesn't make VCompat trivially true (unlike a general normalization
+    -- disjunct which would allow VCompat n v τ for any normalizable τ).
+    ∨ (∃ ann body, ∃ (nfuel : Nat) (nctx : TyCtx) (nseen : List (Expr × Expr)) (u' : NfExpr),
+        τ = .mu ann body ∧
+        absEval nfuel nctx nseen (body.subst 0 (.mu ann body)) = .ok u' ∧
+        VCompat n v u'.val)
     -- Mu unfolding on the left (equi-recursive self-elim): costs one step
     ∨ (∃ ann body,
         v = .mu ann body ∧
@@ -86,11 +95,6 @@ def VCompat : Nat → Expr → Expr → Prop
         VCompat n fV fT ∧ VCompat n aV aT)
     -- InferType fallback: for neutral terms
     ∨ (∃ (ctx : TyCtx) (ty : Expr), inferType ctx v = some ty ∧ VCompat n ty τ)
-    -- Normalization: if τ normalizes via absEval, VCompat for the normal form suffices.
-    -- This bridges the gap between raw substitution results (e.g. body.subst 0 (mu ann body))
-    -- and their absEval-normalized forms, which is needed for mu-unfolding proofs.
-    ∨ (∃ (nfuel : Nat) (nctx : TyCtx) (nseen : List (Expr × Expr)) (τ' : NfExpr),
-        absEval nfuel nctx nseen τ = .ok τ' ∧ VCompat n v τ'.val)
 
 @[simp] theorem VCompat.zero_eq (v τ : Expr) : VCompat 0 v τ = True := by
   unfold VCompat; rfl
@@ -108,20 +112,22 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
     rcases h with h_top | h_refl |
                   ⟨domV, domT, bodyV, bodyT, hv, hτ, h_body⟩ |
                   ⟨annV, annT, bodyV, bodyT, hv, hτ, h_body⟩ |
-                  ⟨ann, body, hτ, h_mu⟩ | ⟨ann, body, hv, h_mu⟩ |
+                  ⟨ann, body, hτ, h_mu⟩ |
+                  ⟨ann, body, ⟨nfuel, nctx, nseen, u', hτ, habs, h_mu_norm⟩⟩ |
+                  ⟨ann, body, hv, h_mu⟩ |
                   ⟨fV, fT, aV, aT, hv, hτ, h_f, h_a⟩ |
-                  ⟨ctx, ty, h_infer, h_compat⟩ |
-                  ⟨nfuel, nctx, nseen, τ', habs, h_norm⟩
+                  ⟨ctx, ty, h_infer, h_compat⟩
     · exact Or.inl h_top
     · exact Or.inr (Or.inl h_refl)
     · exact Or.inr (Or.inr (Or.inl ⟨domV, domT, bodyV, bodyT, hv, hτ,
         fun j hj => h_body j (Nat.le_succ_of_le hj)⟩))
     · exact Or.inr (Or.inr (Or.inr (Or.inl ⟨annV, annT, bodyV, bodyT, hv, hτ, VCompat.mono h_body⟩)))
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hτ, VCompat.mono h_mu⟩))))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩)))))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨fV, fT, aV, aT, hv, hτ, VCompat.mono h_f, VCompat.mono h_a⟩))))))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩)))))))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨nfuel, nctx, nseen, τ', habs, VCompat.mono h_norm⟩)))))))
+    · -- Normalized mu-right: same mu structure, mono the inner VCompat
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, ⟨nfuel, nctx, nseen, u', hτ, habs, VCompat.mono h_mu_norm⟩⟩)))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩))))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨fV, fT, aV, aT, hv, hτ, VCompat.mono h_f, VCompat.mono h_a⟩)))))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩)))))))
 
 /-- Multi-step downward closure. -/
 theorem VCompat.mono_le {n m : Nat} {v τ : Expr}
@@ -164,7 +170,8 @@ theorem VCompat.fixpoint_mu_left {ann body : Expr} (n : Nat) (τ : Expr)
   | zero => simp [VCompat]
   | succ k ih =>
     unfold VCompat
-    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+    apply Or.inr; apply Or.inr; apply Or.inl
     exact ⟨ann, body, rfl, by rw [hfix]; exact ih⟩
 
 /-- When subCheckNF succeeds from .type, VCompat holds for all v and n. -/
@@ -206,9 +213,7 @@ theorem VCompat.from_type_sub_gen :
         | mu ann body =>
           -- Self-intro case: subCheckNF unfolds the mu and checks .type against
           -- the normalized unfolded body.
-          -- Strategy: mu-right disjunct (step m+1 → m), then normalization disjunct
-          -- (step m → m-1) to bridge raw substitution ↔ normalized form.
-          -- Extract the absEval result from hcheck
+          -- Strategy: use the normalized mu-right disjunct directly.
           have hcheck' := hcheck
           match habs : absEval k ctx ((Expr.type, Expr.mu ann body) :: seen)
               (body.subst 0 (Expr.mu ann body)) with
@@ -217,37 +222,24 @@ theorem VCompat.from_type_sub_gen :
             simp only [habs] at hcheck'
             -- hcheck': subCheckNF k ctx seen' .type u'.val = true
             -- Goal: VCompat (m+1) v (.mu ann body)
-            -- Use mu-right disjunct: need VCompat m v (body.subst 0 (.mu ann body))
+            -- Use normalized mu-right disjunct (6th): need VCompat m v u'.val
             unfold VCompat
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-            exact ⟨ann, body, rfl, by
-              -- Goal: VCompat m v (body.subst 0 (.mu ann body))
-              -- Use normalization disjunct: absEval normalizes the substitution to u'
-              cases m with
-              | zero => simp [VCompat]
-              | succ m' =>
-                unfold VCompat
-                -- Use the normalization disjunct (9th disjunct)
-                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-                exact ⟨k, ctx, (Expr.type, Expr.mu ann body) :: seen, u', habs, by
-                  -- Goal: VCompat m' v u'.val
-                  -- Use ih_fuel at fuel k, step m'
-                  apply ih_fuel m' v u'.val ctx ((Expr.type, Expr.mu ann body) :: seen) hcheck'
-                  intro p hp
-                  cases hp with
-                  | head =>
-                    -- Goal: VCompat m' v (.mu ann body)
-                    -- Use ih_n to get VCompat at step m, then mono down
-                    suffices h : VCompat (m' + 1) v (Expr.mu ann body) from
-                      VCompat.mono h
-                    -- m = m' + 1, so VCompat (m'+1) = VCompat m
-                    -- Use ih_n at step m = m' + 1, with the ORIGINAL hcheck
-                    exact ih_n v (Expr.mu ann body) ctx seen hcheck_orig
-                      (fun q hq => VCompat.mono (hseen q hq))
-                  | tail _ hp_tail =>
-                    -- p ∈ seen: from hseen (step m+1) + mono_le
-                    exact VCompat.mono_le (hseen p hp_tail) (by omega)⟩⟩
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+            apply Or.inr; apply Or.inl
+            exact ⟨ann, body, ⟨k, ctx, (Expr.type, Expr.mu ann body) :: seen, u', rfl, habs, by
+              -- Goal: VCompat m v u'.val
+              -- Use ih_fuel at fuel k, step m
+              apply ih_fuel m v u'.val ctx ((Expr.type, Expr.mu ann body) :: seen) hcheck'
+              intro p hp
+              cases hp with
+              | head =>
+                -- Goal: VCompat m v (.mu ann body)
+                -- Use ih_n at step m, with the ORIGINAL hcheck
+                exact ih_n v (Expr.mu ann body) ctx seen hcheck_orig
+                  (fun q hq => VCompat.mono (hseen q hq))
+              | tail _ hp_tail =>
+                -- p ∈ seen: from hseen (step m+1) + mono_le
+                exact VCompat.mono_le (hseen p hp_tail) (by omega)⟩⟩
         | lam _ _ => simp [inferType] at hcheck
         | bvar _ => simp [inferType] at hcheck
         | app _ _ => simp [inferType] at hcheck
@@ -307,26 +299,15 @@ theorem VCompat.from_self_intro_gen :
         simp only [habs] at hcheck_mu
         -- hcheck_mu: subCheckNF k ctx seen' σ u'.val = true
         -- Goal: VCompat (m+1) σ (.mu ann body)
-        -- Use mu-right: need VCompat m σ (body.subst 0 (.mu ann body))
+        -- Use normalized mu-right disjunct (6th): need VCompat m σ u'.val
         unfold VCompat
-        apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-        exact ⟨ann, body, rfl, by
-          -- Goal: VCompat m σ (body.subst 0 (.mu ann body))
-          -- Use normalization disjunct to bridge raw ↔ normalized
-          cases m with
-          | zero => simp [VCompat]
-          | succ m' =>
-            unfold VCompat
-            -- Use the normalization disjunct (9th disjunct)
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-            exact ⟨k, ctx, (σ, Expr.mu ann body) :: seen, u', habs, by
-              -- Goal: VCompat m' σ u'.val
-              -- This requires adequacy-like reasoning: subCheckNF k ... σ u'.val = true
-              -- and VCompat m' σ σ (from refl) should give VCompat m' σ u'.val.
-              -- For now, we use ih_fuel when u'.val is a mu (the common case for
-              -- equi-recursive types), and sorry the general case.
-              sorry⟩⟩
+        apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+        apply Or.inr; apply Or.inl
+        exact ⟨ann, body, ⟨k, ctx, (σ, Expr.mu ann body) :: seen, u', rfl, habs, by
+          -- Goal: VCompat m σ u'.val
+          -- This requires adequacy-like reasoning: subCheckNF k ... σ u'.val = true
+          -- and VCompat m σ σ (from refl) should give VCompat m σ u'.val.
+          sorry⟩⟩
 
 /-- Corollary: self-intro with empty seen. -/
 theorem VCompat.from_self_intro {fuel : Nat} {ctx : TyCtx} {n : Nat} {σ : Expr}

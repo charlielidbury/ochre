@@ -6,67 +6,90 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (4 total, down from 5 at session start)
+### Sorry inventory (4 total)
 
 **Phase 1 (fuel monotonicity): COMPLETE**
 - `subCheckNF_fuel_mono` — PROVED
 - `absEval_fuel_mono` — PROVED
 
 **Phase 2 (VCompat lemmas): IN PROGRESS**
-- `VCompat.from_type_sub_gen` — **PROVED** (Soundness.lean:171)
-- `VCompat.from_self_intro_gen` — Soundness.lean:265 — partially proved, inner sorry needs adequacy
-- `VCompat.adequacy` — Soundness.lean:341 — subCheckNF preserves VCompat
-- `soundness` (main theorem) — Soundness.lean:365
+- `VCompat.from_type_sub_gen` — **PROVED** (Soundness.lean:178)
+- `VCompat.from_self_intro_gen` — Soundness.lean:257 — sorry (needs adequacy)
+- `VCompat.adequacy` — Soundness.lean:322 — sorry
+- `soundness` (main theorem) — Soundness.lean:346 — sorry
 
 **Phase 3 (Subtyping helpers):**
 - `subCheckNF_lam_lam_body` — PROVED
 - `subCheckNF_lam_impossible` — PROVED
 - `subCheckNF_mu_mu_body` — PROVED
 - `subCheckNF_type_left_target` — PROVED
-- `subCheckNF_neutral_inferType` — Subtyping.lean:194 — sorry, has app-app congruence bug (see below)
+- `subCheckNF_neutral_inferType` — Subtyping.lean:194 — sorry
 
-### What happened this session (agent ochre-20260404-201517)
+### What happened this session (agent ochre-20260404-204421)
 
-**`VCompat.from_type_sub_gen` is PROVED.** This is the first Phase 2 lemma:
-if `subCheckNF fuel ctx seen .type τ = true`, then `VCompat n v τ` for all v, n.
+**CRITICAL FIX: VCompat's normalization disjunct made it trivially true.**
 
-**Key insight: VCompat needs a normalization disjunct.** The core problem was
-that VCompat's mu-right disjunct requires `VCompat n v (body.subst 0 (.mu ann body))`
-(the raw substitution), but subCheckNF normalizes via absEval before checking.
-We get VCompat for the *normalized* form u'.val, not the raw substitution.
-This gap is unbridgeable without changing VCompat because:
-- VCompat for `.asc` expressions fails (no matching disjunct)
-- The raw body from `.mu` can contain `.asc` nodes
-- So VCompat for raw ≠ VCompat for normalized
+The previous session added a "normalization" disjunct to VCompat (the 9th
+disjunct) to bridge raw mu body substitutions with their absEval-normalized
+forms. This disjunct:
 
-**Solution: added a 9th disjunct to VCompat (Soundness.lean:89-93):**
 ```lean
-∨ (∃ (nfuel : Nat) (nctx : TyCtx) (nseen : List (Expr × Expr)) (τ' : NfExpr),
-    absEval nfuel nctx nseen τ = .ok τ' ∧ VCompat n v τ'.val)
+∨ (∃ nfuel nctx nseen τ', absEval nfuel nctx nseen τ = .ok τ' ∧ VCompat n v τ'.val)
 ```
-This says: if τ normalizes to τ' via absEval, then VCompat for τ' implies VCompat
-for τ. Semantically sound because normalization preserves type meaning.
 
-**Proof structure for from_type_sub_gen:** Double induction on fuel (outer) and
-step index n (inner). For the mu case at step m+1:
-1. mu-right disjunct: reduces to VCompat m at the raw substitution
-2. normalization disjunct: reduces to VCompat (m-1) at the normalized form u'.val
-3. ih_fuel (at fuel k): proves VCompat (m-1) at u'.val from the subCheckNF hypothesis
-4. ih_n (at step m): provides VCompat m for the seen callback (handles the circularity
-   in equi-recursive type unfolding)
+**was trivially satisfiable**, making VCompat n v τ = True for ALL n, v, τ!
 
-**from_self_intro_gen partially proved.** The proof follows the same structure
-(mu-right + normalization), but the inner sorry requires `VCompat m' σ u'.val`
-from `subCheckNF k ctx seen' σ u'.val = true`. This is essentially adequacy
-(with VCompat.refl as the base case). Once adequacy is proved, from_self_intro_gen
-will follow.
+Proof: at step n+1, pick any normalizable τ (almost everything), then:
+VCompat (n+1) v τ via normalization → need VCompat n v τ'.val → 
+VCompat n v τ'.val via normalization → need VCompat (n-1) v τ''.val → 
+... → VCompat 0 v _ = True.
 
-**subCheckNF_neutral_inferType has a bug:** For the app-app congruence case,
-subCheckNF can succeed via structural congruence (f₁⊑f₂ ∧ a₁⊑a₂) without
-inferType firing. The theorem conclusion requires inferType to succeed, which
-isn't guaranteed. The theorem needs either an extra precondition excluding
-the app-app case, or a disjunctive conclusion handling both congruence and
-inferType.
+This meant ALL Phase 2 proofs (from_type_sub_gen, etc.) were vacuously true
+and the soundness theorem would have been vacuously true (conclusion always
+holds, regardless of inputs). The entire VCompat relation captured NO semantic
+content.
+
+**Fix: replaced the general normalization disjunct with a targeted
+normalized mu-right disjunct:**
+
+```lean
+∨ (∃ ann body, ∃ nfuel nctx nseen u',
+    τ = .mu ann body ∧
+    absEval nfuel nctx nseen (body.subst 0 (.mu ann body)) = .ok u' ∧
+    VCompat n v u'.val)
+```
+
+This ONLY applies when τ is a mu type, preventing the trivial induction.
+VCompat n v (lam ...) is now genuinely non-trivial (requires actual body
+compatibility). The old mu-right disjunct (raw substitution, no normalization)
+is kept for proofs like fixpoint_mu.
+
+**Re-proved from_type_sub_gen** with the new VCompat definition. The proof is
+actually simpler: one-step using the normalized mu-right instead of the old
+two-step (mu-right + normalization).
+
+**Also discovered: annotation-trust soundness bug in absEval (Eval.lean:183-188).**
+
+The mu-app annotation-trust case:
+```lean
+| .lam _dom retBody, .lam _ _ =>
+    absEval fuel ctx seen (retBody.subst 0 a'.val)
+```
+trusts the mu annotation without validation. Counterexample:
+```
+app (mu (lam Type (lam Type (bvar 0))) (lam Type Type)) Type
+```
+- absEval returns `lam Type (bvar 0)` (identity type, from annotation)
+- concEval returns `Type` (constant, from body)
+- VCompat Type (lam Type (bvar 0)) is false for n ≥ 1
+
+This is a real soundness bug. The fix requires either:
+1. Validating mu annotations against bodies at mu creation time
+2. Removing the annotation-trust path (breaks appendArrays tests)
+3. Adding a WellAnnotated precondition to soundness
+
+This is NOT fixed in this session — it requires careful design decisions.
+See SUGGESTIONS.md for discussion.
 
 ### What's working
 - All tests pass (`lake build` succeeds with sorrys only in Subtyping/Soundness)
@@ -74,27 +97,28 @@ inferType.
 - `concEval_fuel_mono` proved
 - `absEval_fuel_mono` proved
 - `subCheckNF_fuel_mono` proved
-- **`VCompat.from_type_sub_gen` proved** (NEW)
-- VCompat.mono (updated for normalization disjunct), VCompat.mono_le, VCompat.refl,
-  VCompat.fixpoint_mu, VCompat.self_intro_eq, VCompat.fixpoint_mu_left all proved
+- `VCompat.from_type_sub_gen` proved
+- VCompat.mono, VCompat.mono_le, VCompat.refl, VCompat.fixpoint_mu,
+  VCompat.self_intro_eq, VCompat.fixpoint_mu_left all proved
 - SubtypeCore.trans, Subtype'.trans proved
+- **VCompat is now meaningful** (not trivially true)
 
 ### Priority
-Next agent should work on **VCompat.adequacy** (Soundness.lean:341). This is
-the key bridge lemma and the biggest remaining blocker:
-- `VCompat n v σ ∧ subCheckNF σ τ = true → VCompat n v τ`
-- from_self_intro_gen depends on it (the inner sorry is essentially adequacy)
-- The soundness main theorem likely depends on it
 
-Approach for adequacy: case analysis on σ and τ, using VCompat n v σ to determine
-what v looks like. Key cases:
-- τ = .type: trivial (first disjunct)
-- σ = τ: trivial (already have VCompat)
-- σ = .type: use from_type_sub_gen (proved!)
-- Both lam: decompose subCheckNF domain/body checks, use VCompat lam disjunct
-- τ = .mu: use from_type_sub_gen or mu-right + normalization
-- σ = .mu: self-elim case, use mu-left disjunct
-- Neutral: inferType fallback
+**Next agent must address the annotation-trust soundness bug BEFORE working
+on adequacy.** The bug means soundness cannot be proved without either fixing
+absEval or strengthening the precondition. Options:
 
-The lam-lam case will need the most work: showing that compatible bodies under
-the subtype check give compatible results under evaluation.
+1. **Validate mu annotations at creation (preferred):** In absEval's .mu case,
+   check that `body` (with self of type ann) produces something ⊑ ann. This
+   is the standard recursive-type checking rule. Might need careful handling
+   to not break appendArrays tests.
+
+2. **Remove annotation-trust path + fix appendArrays:** Change mu-app to
+   always use the body-based path. appendArrays would need restructuring.
+
+3. **Add a WellAnnotated precondition:** Weaker but allows incremental
+   progress. soundness would only hold for programs with correct annotations.
+
+After fixing the annotation bug, work on **VCompat.adequacy** (Soundness.lean:322).
+from_self_intro_gen depends on it (its sorry IS adequacy).
