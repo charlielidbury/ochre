@@ -22,8 +22,8 @@ namespace Std
 -- Definitions
 -- ============================================================
 
-def id_ : Expr := och{ λT:Type. λx:T. x }
-def idAscribed : Expr := och{ λT:Type. λx:T. (x : T) }
+def id_ := och{ λT:Type. λx:T. x }
+def idAscribed := och{ λT:Type. λx:T. (x : T) }
 
 -- ============================================================
 -- Tests

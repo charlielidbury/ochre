@@ -28,26 +28,26 @@ namespace Std
 -- Exported definitions
 -- ============================================================
 
-def dBool : Expr := och{
+def dBool := och{
   μ dBool:Type.
     let dtrue : dBool = μ dtrue:dBool. λP:(dBool → Type). λt:(P dtrue). λf:Type. t in
     let dfalse : dBool = μ dfalse:dBool. λP:(dBool → Type). λt:Type. λf:(P dfalse). f in
     λP:(dBool → Type). λt:(P dtrue). λf:(P dfalse). P dBool
 }
 
-def dtrue : Expr := och{
+def dtrue := och{
   μ dtrue:dBool. λP:(dBool → Type). λt:(P dtrue). λf:Type. t
 }
 
-def dfalse : Expr := och{
+def dfalse := och{
   μ dfalse:dBool. λP:(dBool → Type). λt:Type. λf:(P dfalse). f
 }
 
-def not : Expr := och{
+def not := och{
   λb:dBool. b (dBool → dBool) dfalse dtrue
 }
 
-def and : Expr := och{
+def and := och{
   λa:dBool. λb:dBool. a (dBool → dBool) b dfalse
 }
 
@@ -64,7 +64,7 @@ example : concEval 50 (och{ dtrue (dBool → Nat_) zero_ one_ }) = some zero_ :=
 example : concEval 50 (och{ dfalse (dBool → Nat_) zero_ one_ }) = some one_ := by native_decide
 
 -- Non-dependent case analysis: true→0, false→1
-private def dbcase : Expr := och{
+private def dbcase := och{
   λb:dBool. b (dBool → Nat_) zero_ one_
 }
 
@@ -73,7 +73,7 @@ example : concEval 50 (och{ dbcase dfalse }) = some one_ := by native_decide
 
 -- Dependent elimination: motive that distinguishes true from false.
 -- P b = b (λ_.Type) Nat Bool, so P true = Nat, P false = Bool
-private def depMotive : Expr := och{
+private def depMotive := och{
   λb:dBool. b (dBool → Type → Type) Nat_ Bool
 }
 

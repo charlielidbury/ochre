@@ -19,13 +19,13 @@ continuation that receives both components.
 
 namespace Std
 
-def Pair : Expr := och{ λA:Type. λB:Type. λX:Type. λk:(A → B → X). X }
+def Pair := och{ λA:Type. λB:Type. λX:Type. λk:(A → B → X). X }
 
-def pair : Expr := och{ λA:Type. λB:Type. λa:A. λb:B. λX:Type. λk:(A → B → X). k a b }
+def pair := och{ λA:Type. λB:Type. λa:A. λb:B. λX:Type. λk:(A → B → X). k a b }
 
-def fst_ : Expr := och{ λA:Type. λB:Type. λp:(Pair A B). p A (λa:A. λ_:B. a) }
+def fst_ := och{ λA:Type. λB:Type. λp:(Pair A B). p A (λa:A. λ_:B. a) }
 
-def snd_ : Expr := och{ λA:Type. λB:Type. λp:(Pair A B). p B (λ_:A. λb:B. b) }
+def snd_ := och{ λA:Type. λB:Type. λp:(Pair A B). p B (λ_:A. λb:B. b) }
 
 -- ============================================================
 -- Tests
@@ -34,7 +34,7 @@ def snd_ : Expr := och{ λA:Type. λB:Type. λp:(Pair A B). p B (λ_:A. λb:B. b
 section Tests
 
 -- Convenience: pair Nat Nat 1 2
-private def p12 : Expr := och{ pair Nat_ Nat_ one_ two_ }
+private def p12 := och{ pair Nat_ Nat_ one_ two_ }
 
 -- ── Positive computation tests ──────────────────────────────
 

@@ -19,9 +19,9 @@ receives both `n` and the array.
 
 namespace Std
 
-def Vec : Expr := och{ λT:Type. Sigma Nat_ (λn:Nat_. Array_ n T) }
+def Vec := och{ λT:Type. Sigma Nat_ (λn:Nat_. Array_ n T) }
 
-def mkVec : Expr := och{ λT:Type. λn:Nat_. λarr:(Array_ n T). dpair Nat_ (λn2:Nat_. Array_ n2 T) n arr }
+def mkVec := och{ λT:Type. λn:Nat_. λarr:(Array_ n T). dpair Nat_ (λn2:Nat_. Array_ n2 T) n arr }
 
 -- ============================================================
 -- Tests
@@ -33,10 +33,10 @@ open Expr
 -- ── Test vectors ──────────────────────────────────────────────
 
 -- mkVec Nat 1 [0]
-private def testVec1 : Expr := och{ mkVec Nat_ one_ (consArray Nat_ zero_ zero_ (emptyArray Nat_)) }
+private def testVec1 := och{ mkVec Nat_ one_ (consArray Nat_ zero_ zero_ (emptyArray Nat_)) }
 
 -- mkVec Nat 2 [1, 2]
-private def testVec2 : Expr := och{ mkVec Nat_ two_ (consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_))) }
+private def testVec2 := och{ mkVec Nat_ two_ (consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_))) }
 
 -- ── Positive subtype checks ──────────────────────────────────
 

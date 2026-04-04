@@ -19,7 +19,7 @@ open Std
 -- Prop 5.2.9 counterexample: Not on Church Bool
 -- ============================================================
 
-private def Not' : Expr := och{ λX:Bool. X Bool false_ true_ }
+private def Not' := och{ λX:Bool. X Bool false_ true_ }
 
 example : absEval 1000 [] (och{ Not' true_ }) = .ok false_ := by native_decide
 example : absEval 1000 [] (och{ Not' false_ }) = .ok true_ := by native_decide
@@ -64,7 +64,7 @@ example : subCheck 1000
 -- ============================================================
 
 -- testVec1 = mkVec Nat 1 [0]
-private def testVec1 : Expr := och{ mkVec Nat_ one_ (consArray Nat_ zero_ zero_ (emptyArray Nat_)) }
+private def testVec1 := och{ mkVec Nat_ one_ (consArray Nat_ zero_ zero_ (emptyArray Nat_)) }
 
 -- Abstract vector unpack: ascribe concrete vec to Vec Nat, then unpack → get Nat (not 1)
 example : absEval 1000 [] (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })

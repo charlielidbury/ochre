@@ -61,14 +61,14 @@ Most of the time bare names just work:
 
 ```lean
 -- dBool resolves to Std.dBool : Expr in scope
-def not : Expr := och{ λb:dBool. b dBool dfalse dtrue }
+def not := och{ λb:dBool. b dBool dfalse dtrue }
 ```
 
 If implicit resolution is too magical, a simpler design uses explicit `$`
 for all free references:
 
 ```lean
-def not : Expr := och{ λb:$dBool. b $dBool $dfalse $dtrue }
+def not := och{ λb:$dBool. b $dBool $dfalse $dtrue }
 ```
 
 Either way, unbound variables that don't resolve are a **compile-time error**,
@@ -79,13 +79,13 @@ fixing the silent-999 bug in `indexOf`.
 **Definitions:**
 
 ```lean
-def Bool : Expr := och{ λX:Type. λt:X. λf:X. X }
-def true_ : Expr := och{ λX:Type. λt:X. λf:X. t }
-def false_ : Expr := och{ λX:Type. λt:X. λf:X. f }
+def Bool := och{ λX:Type. λt:X. λf:X. X }
+def true_ := och{ λX:Type. λt:X. λf:X. t }
+def false_ := och{ λX:Type. λt:X. λf:X. f }
 
-def not : Expr := och{ λb:$Bool. b $Bool $false_ $true_ }
+def not := och{ λb:$Bool. b $Bool $false_ $true_ }
 
-def dBool : Expr := och{
+def dBool := och{
   μ dBool:Type.
     let dtrue : dBool = μ dtrue:dBool. λP:(dBool → Type). λt:(P dtrue). λf:Type. t
     let dfalse : dBool = μ dfalse:dBool. λP:(dBool → Type). λt:Type. λf:(P dfalse). f

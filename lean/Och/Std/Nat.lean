@@ -21,40 +21,40 @@ namespace Std
 -- Type and constructors
 -- ============================================================
 
-def Nat_ : Expr := och{ λX:Type. λz:X. λs:(X → X). X }
+def Nat_ := och{ λX:Type. λz:X. λs:(X → X). X }
 
-def zero_ : Expr := och{ λX:Type. λz:X. λs:(X → X). z }
-def one_  : Expr := och{ λX:Type. λz:X. λs:(X → X). s z }
-def two_  : Expr := och{ λX:Type. λz:X. λs:(X → X). s (s z) }
-def three_ : Expr := och{ λX:Type. λz:X. λs:(X → X). s (s (s z)) }
-def four_ : Expr := och{ λX:Type. λz:X. λs:(X → X). s (s (s (s z))) }
-def five_ : Expr := och{ λX:Type. λz:X. λs:(X → X). s (s (s (s (s z)))) }
-def six_ : Expr := och{ λX:Type. λz:X. λs:(X → X). s (s (s (s (s (s z))))) }
+def zero_ := och{ λX:Type. λz:X. λs:(X → X). z }
+def one_  := och{ λX:Type. λz:X. λs:(X → X). s z }
+def two_  := och{ λX:Type. λz:X. λs:(X → X). s (s z) }
+def three_ := och{ λX:Type. λz:X. λs:(X → X). s (s (s z)) }
+def four_ := och{ λX:Type. λz:X. λs:(X → X). s (s (s (s z))) }
+def five_ := och{ λX:Type. λz:X. λs:(X → X). s (s (s (s (s z)))) }
+def six_ := och{ λX:Type. λz:X. λs:(X → X). s (s (s (s (s (s z))))) }
 
 -- ============================================================
 -- Operations
 -- ============================================================
 
-def succ_ : Expr := och{ λn:Nat_. λX:Type. λz:X. λs:(X → X). s (n X z s) }
+def succ_ := och{ λn:Nat_. λX:Type. λz:X. λs:(X → X). s (n X z s) }
 
 -- add = λ(n: Nat). λ(m: Nat). n Nat m succ
-def add_ : Expr := och{ λn:Nat_. λm:Nat_. n Nat_ m succ_ }
+def add_ := och{ λn:Nat_. λm:Nat_. n Nat_ m succ_ }
 
 -- isZero = λ(n: Nat). n Bool true (λ(_: Bool). false)
-def isZero_ : Expr := och{ λn:Nat_. n Std.Bool Std.true_ (Std.Bool → Std.false_) }
+def isZero_ := och{ λn:Nat_. n Std.Bool Std.true_ (Std.Bool → Std.false_) }
 
 -- double = λ(x: Nat). add x x
-def double_ : Expr := och{ λx:Nat_. add_ x x }
+def double_ := och{ λx:Nat_. add_ x x }
 
 -- Predecessor (uses a local Pair(Nat,Nat) helper)
-private def Pair_ : Expr := och{ λA:Type. λB:Type. λX:Type. λk:(A → B → X). X }
+private def Pair_ := och{ λA:Type. λB:Type. λX:Type. λk:(A → B → X). X }
 
-private def pair_ : Expr := och{ λA:Type. λB:Type. λa:A. λb:B. λX:Type. λk:(A → B → X). k a b }
+private def pair_ := och{ λA:Type. λB:Type. λa:A. λb:B. λX:Type. λk:(A → B → X). k a b }
 
-private def PairNN_ : Expr := och{ Pair_ Nat_ Nat_ }
+private def PairNN_ := och{ Pair_ Nat_ Nat_ }
 
 -- pred = λn:Nat. fst (n PairNN (pair 0 0) (λp. (snd p, succ (snd p))))
-def pred_ : Expr := och{
+def pred_ := och{
   λn:Nat_.
     n PairNN_ (pair_ Nat_ Nat_ zero_ zero_)
       (λp:PairNN_. pair_ Nat_ Nat_
@@ -71,7 +71,7 @@ def pred_ : Expr := och{
 section Tests
 
 -- Shorthand
-private def NatToNat : Expr := och{ Nat_ → Nat_ }
+private def NatToNat := och{ Nat_ → Nat_ }
 
 -- ------------------------------------------------------------
 -- Computation (positive) — concEval

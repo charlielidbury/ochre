@@ -24,18 +24,18 @@ namespace Std
 -- Definitions
 -- ============================================================
 
-def NatToNat : Expr := och{ Nat_ → Nat_ }
+def NatToNat := och{ Nat_ → Nat_ }
 
 -- id via fixpoint
-def fixId : Expr := och{ μ self:NatToNat. λn:Nat_. n }
+def fixId := och{ μ self:NatToNat. λn:Nat_. n }
 
 -- toZero (non-thunked, only works abstractly)
-def toZero : Expr := och{ μ self:NatToNat. λn:Nat_. isZero_ n Nat_ zero_ (self zero_) }
+def toZero := och{ μ self:NatToNat. λn:Nat_. isZero_ n Nat_ zero_ (self zero_) }
 
 -- toZeroThunked (thunked branches, works concretely)
-private def UnitToNat : Expr := och{ Unit_ → Nat_ }
+private def UnitToNat := och{ Unit_ → Nat_ }
 
-def toZeroThunked : Expr := och{ μ self:NatToNat. λn:Nat_. isZero_ n UnitToNat (λ_:Unit_. zero_) (λ_:Unit_. self zero_) unit_ }
+def toZeroThunked := och{ μ self:NatToNat. λn:Nat_. isZero_ n UnitToNat (λ_:Unit_. zero_) (λ_:Unit_. self zero_) unit_ }
 
 -- ============================================================
 -- Tests

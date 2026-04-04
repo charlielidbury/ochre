@@ -22,15 +22,15 @@ via the Church numeral `n`: `Array 0 T = Unit`, `Array 1 T = Pair T Unit`,
 
 namespace Std
 
-def Array_ : Expr := och{ λn:Nat_. λT:Type. n Type Unit_ (λacc:Type. Pair T acc) }
+def Array_ := och{ λn:Nat_. λT:Type. n Type Unit_ (λacc:Type. Pair T acc) }
 
-def emptyArray : Expr := och{ λT:Type. unit_ }
+def emptyArray := och{ λT:Type. unit_ }
 
-def consArray : Expr := och{ λT:Type. λn:Nat_. λx:T. λrest:(Array_ n T). pair T (Array_ n T) x rest }
+def consArray := och{ λT:Type. λn:Nat_. λx:T. λrest:(Array_ n T). pair T (Array_ n T) x rest }
 
-def headArray : Expr := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr T (λx:T. λ_:(Array_ n T). x) }
+def headArray := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr T (λx:T. λ_:(Array_ n T). x) }
 
-def tailArray : Expr := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr (Array_ n T) (λ_:T. λrest:(Array_ n T). rest) }
+def tailArray := och{ λT:Type. λn:Nat_. λarr:(Array_ (succ_ n) T). arr (Array_ n T) (λ_:T. λrest:(Array_ n T). rest) }
 
 -- ============================================================
 -- Tests
@@ -46,7 +46,7 @@ example : absEval 1000 [] (och{ Array_ zero_ Nat_ }) = .ok Unit_ := by native_de
 
 -- cons 0 into emptyArray, head it back out
 -- testArr1 = cons Nat 0 0 (emptyArray Nat)
-private def testArr1 : Expr := och{ consArray Nat_ zero_ zero_ (emptyArray Nat_) }
+private def testArr1 := och{ consArray Nat_ zero_ zero_ (emptyArray Nat_) }
 
 -- head testArr1 = 0
 example : absEval 1000 [] (och{ headArray Nat_ zero_ testArr1 }) = .ok zero_ := by native_decide
@@ -55,7 +55,7 @@ example : absEval 1000 [] (och{ headArray Nat_ zero_ testArr1 }) = .ok zero_ := 
 example : absEval 1000 [] (och{ tailArray Nat_ zero_ testArr1 }) = .ok unit_ := by native_decide
 
 -- testArr2 = cons Nat 1 1 (cons Nat 0 2 (emptyArray Nat))
-private def testArr2 : Expr := och{ consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_)) }
+private def testArr2 := och{ consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_)) }
 
 -- head testArr2 = 1
 example : absEval 1000 [] (och{ headArray Nat_ one_ testArr2 }) = .ok one_ := by native_decide

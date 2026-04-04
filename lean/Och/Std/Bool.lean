@@ -16,17 +16,17 @@ Standard System F Church encoding. Non-dependent: the motive is erased
 
 namespace Std
 
-def Bool : Expr := och{ λX:Type. λt:X. λf:X. X }
-def true_ : Expr := och{ λX:Type. λt:X. λf:X. t }
-def false_ : Expr := och{ λX:Type. λt:X. λf:X. f }
+def Bool := och{ λX:Type. λt:X. λf:X. X }
+def true_ := och{ λX:Type. λt:X. λf:X. t }
+def false_ := och{ λX:Type. λt:X. λf:X. f }
 
-def ite : Expr := och{ λb:Bool. λX:Type. λt:X. λf:X. b X t f }
+def ite := och{ λb:Bool. λX:Type. λt:X. λf:X. b X t f }
 
-def not' : Expr := och{ λb:Bool. b Bool false_ true_ }
+def not' := och{ λb:Bool. b Bool false_ true_ }
 
-def and' : Expr := och{ λa:Bool. λb:Bool. a Bool b false_ }
+def and' := och{ λa:Bool. λb:Bool. a Bool b false_ }
 
-def or : Expr := och{ λa:Bool. λb:Bool. a Bool true_ b }
+def or := och{ λa:Bool. λb:Bool. a Bool true_ b }
 
 -- ============================================================
 -- Tests

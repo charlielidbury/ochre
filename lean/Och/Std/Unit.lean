@@ -15,8 +15,8 @@ The eliminator just returns whatever the single branch produces.
 
 namespace Std
 
-def Unit_ : Expr := och{ λX:Type. λx:X. X }
-def unit_ : Expr := och{ λX:Type. λx:X. x }
+def Unit_ := och{ λX:Type. λx:X. X }
+def unit_ := och{ λX:Type. λx:X. x }
 
 -- ============================================================
 -- Tests

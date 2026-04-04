@@ -17,9 +17,9 @@ produces a result of type `X`.
 
 namespace Std
 
-def Sigma : Expr := och{ λA:Type. λB:(A → Type). λX:Type. λk:(λa:A. B a → X). X }
+def Sigma := och{ λA:Type. λB:(A → Type). λX:Type. λk:(λa:A. B a → X). X }
 
-def dpair : Expr := och{ λA:Type. λB:(A → Type). λa:A. λb:(B a). λX:Type. λk:(λa2:A. B a2 → X). k a b }
+def dpair := och{ λA:Type. λB:(A → Type). λa:A. λb:(B a). λX:Type. λk:(λa2:A. B a2 → X). k a b }
 
 -- ============================================================
 -- Tests
@@ -28,7 +28,7 @@ def dpair : Expr := och{ λA:Type. λB:(A → Type). λa:A. λb:(B a). λX:Type.
 section Tests
 
 -- Helper: constant family  λ_:Nat. Nat  (non-dependent case for simplicity)
-private def constNat : Expr := och{ Nat_ → Nat_ }
+private def constNat := och{ Nat_ → Nat_ }
 
 -- Build: dpair Nat (λ_.Nat) 1 2
 private def pair_1_2 : Expr :=
