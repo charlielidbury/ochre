@@ -188,17 +188,23 @@ theorem subCheckNF_type_left_target {fuel : Nat} {ctx : TyCtx} {τ : Expr}
       | mu ann body => exact ⟨ann, body, rfl⟩
       | bvar _ | lam _ _ | app _ _ | asc _ _ => simp [inferType] at h
 
-/-- When subCheckNF succeeds for a neutral term (not lam, not mu) against a
-    non-type, non-mu target (not equal, empty seen), the inferType catch-all
-    must have fired. -/
+/-- When subCheckNF succeeds for a neutral term (not lam, not mu, not app)
+    against a non-type, non-mu target (not equal, empty seen), the inferType
+    catch-all must have fired.
+
+    Note: h_a_not_app is required because the (app, app) structural check can
+    succeed without inferType. The conclusion includes the absEval normalization
+    step because the catch-all normalizes the inferred type before subchecking. -/
 theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : TyCtx} {a b : Expr}
     (h : subCheckNF (fuel + 1) ctx [] a b = true)
     (h_neq : a ≠ b) (h_b_not_type : b ≠ Expr.type)
     (h_b_not_mu : ∀ ann body, b ≠ Expr.mu ann body)
     (h_a_not_lam : ∀ dom body, a ≠ Expr.lam dom body)
-    (h_a_not_mu : ∀ ann body, a ≠ Expr.mu ann body) :
-    ∃ ty, inferType ctx a = some ty ∧ subCheckNF fuel ctx [] ty b = true := by
-  sorry -- needs update for new mutual absEval/subCheckNF
+    (h_a_not_mu : ∀ ann body, a ≠ Expr.mu ann body)
+    (h_a_not_app : ∀ f a', a ≠ Expr.app f a') :
+    ∃ (ty : Expr) (ty' : NfExpr), inferType ctx a = some ty ∧
+      absEval fuel ctx [] ty = .ok ty' ∧ subCheckNF fuel ctx [] ty'.val b = true := by
+  sorry
 
 /-! ### subCheckNF non-properties
 

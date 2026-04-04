@@ -337,14 +337,117 @@ theorem VCompat.adequacy_gen :
                 | tail _ hp_tail =>
                   exact VCompat.mono (hseen p hp_tail)⟩⟩
         | lam _dT _bT =>
-          -- τ = lam: lam-lam (needs substitution lemma), self-elim, inferType
-          sorry
+          -- τ = lam: case-split on σ to identify subCheckNF dispatch path
+          cases σ with
+          | type =>
+            -- σ = type, τ = lam: catch-all, inferType(type) = none → contradiction
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | asc _tS _tyS =>
+            -- σ = asc, τ = lam: catch-all, inferType(asc) = none → contradiction
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | lam _dS _bS =>
+            -- σ = lam _dS _bS, τ = lam _dT _bT: structural lam-lam check
+            -- The structural check uses empty seen [], so we can reconstruct
+            -- subCheckNF with [] for ih_n usage (vacuous callback).
+            -- Construct subCheckNF with empty seen (structural check is seen-independent)
+            have hcheck_empty : subCheckNF (k + 1) ctx [] (Expr.lam _dS _bS) (Expr.lam _dT _bT) = true := by
+              have h := hcheck_orig
+              unfold subCheckNF at h ⊢; dsimp only [] at h ⊢
+              simp only [if_neg heq] at h ⊢
+              simp only [if_neg hseen_chk] at h
+              simp only [List.any_nil, ite_false]
+              exact h
+            -- VCompat case analysis on VCompat (m+1) v (lam _dS _bS)
+            unfold VCompat at hv
+            rcases hv with
+              h_type | h_refl |
+              ⟨domV, _, bodyV, _, hv_eq, hσ_eq, h_body⟩ |
+              ⟨_, _, _, _, _, hσ_mu4, _⟩ |
+              ⟨_, _, hσ_mu5, _⟩ |
+              ⟨_, _, ⟨_, _, _, _, hσ_mu6, _, _⟩⟩ |
+              ⟨ann_l, body_l, hvm7, hvb7⟩ |
+              ⟨_, _, _, _, _, hσ_app8, _, _⟩ |
+              ⟨ctxi, tyi, hinf, hty⟩
+            · cases h_type  -- lam ≠ type
+            · -- Refl: v = lam _dS _bS. Needs substitution lemma to construct semantic lam.
+              sorry
+            · -- Semantic lam: v = lam domV bodyV. Needs substitution lemma to
+              -- transport body compatibility from _bS to _bT.
+              sorry
+            · cases hσ_mu4  -- lam ≠ mu
+            · cases hσ_mu5  -- lam ≠ mu
+            · cases hσ_mu6  -- lam ≠ mu
+            · -- Mu-left: v = mu ann_l body_l, VCompat m (body_l.subst ...) (lam _dS _bS)
+              unfold VCompat
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+              apply Or.inr; apply Or.inr; apply Or.inl
+              exact ⟨ann_l, body_l, hvm7,
+                ih_n _ (Expr.lam _dS _bS) (Expr.lam _dT _bT) ctx []
+                  hvb7 hcheck_empty
+                  (fun p hp => absurd hp (List.not_mem_nil p))⟩
+            · cases hσ_app8  -- lam ≠ app
+            · -- InferType: inferType ctx' v = some ty, VCompat m ty (lam _dS _bS)
+              unfold VCompat
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+              exact ⟨ctxi, tyi, hinf,
+                ih_n _ (Expr.lam _dS _bS) (Expr.lam _dT _bT) ctx []
+                  hty hcheck_empty
+                  (fun p hp => absurd hp (List.not_mem_nil p))⟩
+          | mu _annS _bodyS =>
+            -- σ = mu, τ = lam: self-elim (mu ⊑ lam)
+            -- BLOCKER: annotation-trust gap — going from VCompat(v, mu) to
+            -- VCompat(v, ann) requires annotation correctness
+            sorry
+          | bvar _kS =>
+            -- σ = bvar, τ = lam: inferType fallback
+            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
+            sorry
+          | app _fS _aS =>
+            -- σ = app, τ = lam: inferType fallback
+            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
+            sorry
         | bvar _j =>
-          -- τ = bvar: self-elim, inferType fallback
-          sorry
-        | asc _t _ty =>
-          -- τ = asc: self-elim, inferType fallback
-          sorry
+          -- τ = bvar: case-split on σ
+          cases σ with
+          | type =>
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | lam _dS _bS =>
+            -- σ = lam, τ = bvar: catch-all, inferType(lam) = none → contradiction
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | asc _tS _tyS =>
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | mu _annS _bodyS =>
+            -- σ = mu, τ = bvar: self-elim
+            -- BLOCKER: annotation-trust gap
+            sorry
+          | bvar _kS =>
+            -- σ = bvar, τ = bvar: inferType fallback
+            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
+            sorry
+          | app _fS _aS =>
+            -- σ = app, τ = bvar: inferType fallback
+            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
+            sorry
+        | asc _tA _tyA =>
+          -- τ = asc: case-split on σ
+          cases σ with
+          | type =>
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | lam _dS _bS =>
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | asc _tS _tyS =>
+            dsimp only [] at hcheck; simp [inferType] at hcheck
+          | mu _annS _bodyS =>
+            -- σ = mu, τ = asc: self-elim
+            -- BLOCKER: annotation-trust gap
+            sorry
+          | bvar _kS =>
+            -- σ = bvar, τ = asc: inferType fallback
+            sorry
+          | app _fS _aS =>
+            -- σ = app, τ = asc: inferType fallback
+            sorry
         | app f2 a2 =>
           -- τ = app f2 a2. Case-split on σ to match subCheckNF dispatch.
           cases σ with
@@ -543,4 +646,58 @@ theorem soundness
     (h_conc : concEval fuel e = some v)
     (h_abs : absEval fuel [] [] e = .ok τ)
     : VCompat n v τ.val := by
-  sorry
+  induction fuel generalizing e v τ n with
+  | zero => simp [concEval] at h_conc
+  | succ k ih =>
+    cases e with
+    | bvar _ => simp [concEval] at h_conc
+    | type =>
+      -- concEval: type is a value, v = type
+      -- absEval: type normalizes to type, τ = ⟨type⟩
+      unfold concEval at h_conc; injection h_conc with hv; subst hv
+      unfold absEval at h_abs; injection h_abs with hτ; subst hτ
+      exact VCompat.refl n Expr.type
+    | asc term ty =>
+      -- concEval erases ascription: concEval (k+1) (asc term ty) = concEval k term
+      unfold concEval at h_conc
+      -- absEval checks ascription: normalize both sides, check subtyping, return type
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_sigma : absEval k [] [] term with
+      | .error _ => simp [h_sigma, bind, Except.bind] at h_abs
+      | .ok sigma =>
+        simp only [h_sigma, bind, Except.bind] at h_abs
+        match h_tau : absEval k [] [] ty with
+        | .error _ => simp [h_tau, bind, Except.bind] at h_abs
+        | .ok tau =>
+          simp only [h_tau, bind, Except.bind] at h_abs
+          -- h_abs encodes: if subCheckNF succeeded, τ = tau; else error
+          by_cases hsub : subCheckNF k [] [] sigma.val tau.val = true
+          · simp only [hsub, ite_true] at h_abs
+            injection h_abs with h_eq; subst h_eq
+            -- IH gives VCompat n v sigma.val, adequacy bridges to tau.val
+            exact VCompat.adequacy (ih term v sigma n h_conc h_sigma) hsub
+          · simp only [Bool.not_eq_true] at hsub
+            simp only [hsub] at h_abs
+            simp at h_abs
+    | lam dom body =>
+      -- concEval: lam is a value, v = lam dom body
+      -- absEval: normalizes domain and body under binder
+      -- BLOCKER: semantic lam quantifies over ALL fuel levels for inner evaluation;
+      -- the fuel-induction IH only gives soundness at fuel k. Bridging requires
+      -- either strong induction + fuel mono, or a combined fuel/step induction.
+      -- See PROGRESS.md for analysis.
+      sorry
+    | mu ann body =>
+      -- concEval: mu is a value, v = mu ann body
+      -- absEval: normalizes annotation ann → ann', returns ⟨mu ann'.val body⟩
+      -- BLOCKER: need to relate (mu ann body) to (mu ann'.val body) in VCompat.
+      -- If ann = ann'.val (annotation already normal), it's refl. Otherwise need
+      -- a lemma about annotation normalization preserving VCompat.
+      sorry
+    | app f a =>
+      -- Beta-reduction case — most complex
+      -- concEval: evaluate f and a, dispatch on fV (lam → beta, mu → unroll, etc.)
+      -- absEval: evaluate f and a, dispatch on f'.val with domain checking
+      -- BLOCKER: same all-fuel issue as lam, plus needs VCompat dispatch on
+      -- fV/f'.val shapes (lam-lam, mu-app, neutral app).
+      sorry

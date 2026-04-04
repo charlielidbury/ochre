@@ -6,7 +6,11 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (8 total in Soundness, 1 in Subtyping)
+### Sorry inventory (17 in Soundness, 1 in Subtyping = 18 total)
+
+Note: sorry count increased from 8 to 18 due to case splitting, but each
+sorry is now much more specific. 12 new contradiction/structural cases were
+proved, and the remaining sorrys are precisely categorized (see above).
 
 **Phase 1 (fuel monotonicity): COMPLETE**
 - `subCheckNF_fuel_mono` — PROVED
@@ -17,28 +21,125 @@ proving soundness.
 - `VCompat.refl` — **PROVED** (Soundness.lean:257)
 - `VCompat.adequacy_gen` — **PARTIALLY PROVED** (Soundness.lean:279)
   - Proved: equality, seen hit, Type, self-intro (τ = mu)
-  - Proved: app-app structural congruence (τ = app, σ = app, structural check succeeds)
-    - All 4 VCompat sub-cases handled: refl, structural app, mu-left, inferType
-    - Key enabler: definition change to clear `seen` in structural recursive calls
-  - Proved: contradictions for σ ∈ {type, lam, asc} when τ = app (inferType fails)
-  - Sorry: τ = lam (lam-lam case, needs substitution lemma) — Soundness.lean:341
-  - Sorry: τ = bvar (self-elim + inferType) — Soundness.lean:344
-  - Sorry: τ = asc (self-elim + inferType) — Soundness.lean:347
-  - Sorry: app-app inferType fallback (structural check failed) — Soundness.lean:436
-  - Sorry: σ = mu, τ = app (self-elim, annotation-trust) — Soundness.lean:439
-  - Sorry: σ = bvar, τ = app (inferType fallback) — Soundness.lean:445
-- `VCompat.adequacy` — corollary of adequacy_gen (Soundness.lean:454)
-- `VCompat.from_self_intro_gen` — **PROVED** (Soundness.lean:462) via adequacy_gen
-- `soundness` (main theorem) — Soundness.lean:541 — sorry
+  - Proved: app-app structural congruence (all VCompat sub-cases)
+  - Proved: contradictions for σ ∈ {type, lam, asc} when τ = app
+  - Proved: contradictions for σ ∈ {type, asc} when τ = lam
+  - Proved: contradictions for σ ∈ {type, lam, asc} when τ ∈ {bvar, asc}
+  - **Proved: lam-lam mu-left + inferType sub-cases** (using empty-seen reconstruction)
+  - Sorry: lam-lam refl + semantic-lam (2 sorrys, lines 373/376) — substitution lemma
+  - Sorry: self-elim σ=mu for τ ∈ {lam, bvar, asc, app} (4 sorrys) — annotation-trust
+  - Sorry: inferType fallback σ∈{bvar,app} for τ ∈ {lam, bvar, asc, app} (8 sorrys) — normalization
+  - Sorry: app-app inferType fallback (1 sorry, line 539) — normalization
+- `VCompat.adequacy` — corollary of adequacy_gen (Soundness.lean:557)
+- `VCompat.from_self_intro_gen` — **PROVED** (Soundness.lean:565)
+- `soundness` (main theorem) — **PARTIALLY PROVED** (Soundness.lean:601)
+  - Proved: fuel=0 (contradiction), bvar (contradiction), type (trivial)
+  - **Proved: asc case** via IH + VCompat.adequacy
+  - Sorry: lam (3 sorrys) — all-fuel issue in semantic lam
+  - Sorry: mu — annotation normalization
+  - Sorry: app — combines multiple issues
 
 **Phase 3 (Subtyping helpers):**
 - `subCheckNF_lam_lam_body` — PROVED
 - `subCheckNF_lam_impossible` — PROVED
 - `subCheckNF_mu_mu_body` — PROVED
 - `subCheckNF_type_left_target` — PROVED
-- `subCheckNF_neutral_inferType` — Subtyping.lean:201 — sorry (may need statement fix)
+- `subCheckNF_neutral_inferType` — Subtyping.lean:201 — sorry (needs statement fix:
+  add h_a_not_app precondition and include absEval normalization in conclusion)
 
-### What happened this session (agent ochre-20260404-224040)
+### What happened this session (agent ochre-20260404-231427)
+
+**Two advances: soundness theorem scaffolding + adequacy_gen case refinement.**
+
+1. **Soundness theorem (Soundness.lean:601):** Set up fuel induction with 3 cases proved:
+   - `fuel = 0`: contradiction (concEval returns none)
+   - `bvar`: contradiction (concEval returns none for free vars)
+   - `type`: trivial (v = τ = type, VCompat by refl)
+   - `asc`: **PROVED** using IH + VCompat.adequacy. Key insight: concEval
+     erases the ascription (evaluating term at fuel k), absEval validates it
+     (normalizing both sides, checking subCheckNF), so IH at fuel k gives
+     VCompat for the term, and adequacy bridges to the ascribed type.
+   - `lam`, `mu`, `app`: sorry'd with documented blockers.
+
+   Soundness `lam` blocker: the semantic lam in VCompat quantifies over ALL
+   fuel levels for inner evaluation, but the fuel-induction IH only gives
+   soundness at fuel k. Needs either strong induction on (fuel, step) with
+   lexicographic ordering, or a different proof strategy. Key insight from
+   analysis: with lex induction on (fuel, n), the IH at (k, n+2) gives
+   VCompat (n+2) for f, and the semantic lam with j = n+1 gives VCompat (n+1)
+   for the application result. This should work for the `app` case.
+
+   Soundness `mu` blocker: absEval normalizes the annotation (ann → ann'.val),
+   so v = mu ann body but τ = mu ann'.val body. VCompat requires relating
+   these, which needs annotation normalization to preserve VCompat, or an
+   idempotency lemma (absEval on already-normal ann = ann).
+
+2. **Adequacy_gen case refinement (Soundness.lean:279):** Split the 3 sorry'd
+   τ cases (lam, bvar, asc) into sub-cases by σ constructor:
+   - **9 contradiction cases proved**: σ ∈ {type, asc} for all τ (inferType
+     returns none → subCheckNF false); σ = lam for τ ∈ {bvar, asc} (same).
+   - **Lam-lam (σ = lam, τ = lam):** Proved 7 of 9 VCompat sub-cases:
+     - Contradictions: type ≠ lam, mu ≠ lam, app ≠ lam (5 cases)
+     - **Mu-left PROVED**: reconstruct subCheckNF with empty seen (structural
+       check is seen-independent since it uses [] internally), then ih_n with
+       vacuous callback.
+     - **InferType PROVED**: same empty-seen technique.
+     - **Refl and Semantic Lam remain sorry'd**: both need the substitution
+       lemma (connecting subCheckNF(bodyS, bodyT) under binder to VCompat
+       after substitution).
+
+### Sorry categorization (17 in Soundness, 1 in Subtyping)
+
+The remaining sorrys fall into 4 categories:
+
+**Category 1: Structural lam-lam (2 sorrys, Soundness.lean:373, 376)**
+- Refl: v = lam _dS _bS, need VCompat (m+1) (lam _dS _bS) (lam _dT _bT)
+- Semantic lam: v = lam domV bodyV, need to transport body compatibility
+- BLOCKER: substitution lemma — connecting subCheckNF(bodyS, bodyT) under
+  extended context to VCompat after substituting concrete arguments. The
+  semantic lam quantifies over ALL fuel levels.
+
+**Category 2: Self-elim / annotation-trust (4 sorrys)**
+- σ = mu, τ ∈ {lam, bvar, asc, app} (lines 401, 423, 444, 542)
+- BLOCKER: annotation-trust gap. subCheckNF's mu self-elim tries the
+  annotation first, then body normalization. Both paths need guarantees
+  that VCompat is preserved.
+
+**Category 3: InferType fallback (8 sorrys)**
+- σ ∈ {bvar, app}, τ ∈ {lam, bvar, asc, app} (lines 405, 409, 427, 431,
+  447, 450, 539, 548)
+- BLOCKER: needs (a) semantic inferType lemma: VCompat n v σ + inferType
+  ctx σ = some ty → VCompat n v ty; (b) normalization-preserves-VCompat:
+  absEval ... ty = .ok ty' → VCompat n v ty → VCompat n v ty'.val. The
+  normalization gap is the core issue — the VCompat inferType disjunct
+  uses raw ty, but subCheckNF normalizes before checking.
+
+**Category 4: Soundness main cases (3 sorrys, Soundness.lean:689, 696, 703)**
+- lam: semantic lam all-fuel issue (see above)
+- mu: annotation normalization (ann vs ann'.val)
+- app: combines all above issues
+
+### Recommended next steps (updated)
+
+1. **Lex induction for soundness `app` case:** Change soundness to use
+   lexicographic induction on (fuel, n). The IH at (k, n+2) gives VCompat
+   (n+2) for the function, and the semantic lam with j=n+1 gives VCompat
+   (n+1) for the result. This should handle the `app` case.
+
+2. **absEval idempotency lemma:** Prove that if e is an NfExpr.val, then
+   absEval fuel ctx seen e = .ok ⟨e⟩ (for sufficient fuel). This would
+   unblock: soundness `mu` case (ann = ann'.val), and some inferType
+   fallback cases (ty from context is already normalized).
+
+3. **Substitution-preserves-subCheckNF:** If subCheckNF(bodyS, bodyT) under
+   extended context, and absEval(bodyS[aT]) and absEval(bodyT[aT]) both
+   succeed, then subCheckNF(result_S, result_T). This would unblock the
+   lam-lam refl/semantic-lam cases via adequacy.
+
+4. **Annotation-trust resolution:** Either add WellAnnotated precondition
+   (weakest) or find proof strategy that avoids going through annotations.
+
+### Previous session (agent ochre-20260404-224040)
 
 **DEFINITION CHANGE: Cleared `seen` in structural recursive calls of subCheckNF.**
 
