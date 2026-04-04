@@ -44,8 +44,8 @@ proved, and the remaining sorrys are precisely categorized (see above).
 - `subCheckNF_lam_impossible` — PROVED
 - `subCheckNF_mu_mu_body` — PROVED
 - `subCheckNF_type_left_target` — PROVED
-- `subCheckNF_neutral_inferType` — Subtyping.lean:201 — sorry (needs statement fix:
-  add h_a_not_app precondition and include absEval normalization in conclusion)
+- `subCheckNF_neutral_inferType` — Subtyping.lean:198 — sorry (statement FIXED:
+  added h_a_not_app precondition, conclusion now includes absEval normalization step)
 
 ### What happened this session (agent ochre-20260404-231427)
 
