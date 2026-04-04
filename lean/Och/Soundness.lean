@@ -66,8 +66,8 @@ def VCompat : Nat → Expr → Expr → Prop
         ∀ (j : Nat), j ≤ n → ∀ (fuel : Nat) (aV aT : Expr),
           VCompat j aV aT →
           ∀ rv, concEval fuel (bodyV.subst 0 aV) = some rv →
-          ∀ rτ, absEval fuel [] (bodyT.subst 0 aT) = .ok rτ →
-          VCompat j rv rτ)
+          ∀ (rτ : NfExpr), absEval fuel [] (bodyT.subst 0 aT) = .ok rτ →
+          VCompat j rv rτ.val)
     -- Unfolded structural mu
     ∨ (∃ annV annT bodyV bodyT,
         v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
@@ -85,7 +85,7 @@ def VCompat : Nat → Expr → Expr → Prop
         v = .app fV aV ∧ τ = .app fT aT ∧
         VCompat n fV fT ∧ VCompat n aV aT)
     -- InferType fallback: for neutral terms
-    ∨ (∃ ctx ty, inferType ctx v = some ty ∧ VCompat n ty τ)
+    ∨ (∃ (ctx : TyCtx) (ty : Expr), inferType ctx v = some ty ∧ VCompat n ty τ)
 
 @[simp] theorem VCompat.zero_eq (v τ : Expr) : VCompat 0 v τ = True := by
   unfold VCompat; rfl
@@ -231,8 +231,8 @@ and callability internally. A term is well-typed iff absEval succeeds. -/
     KEY DESIGN: the VCompat step index `n` is decoupled from `fuel`.
     soundness proves VCompat at ALL step levels simultaneously. -/
 theorem soundness
-    (fuel : Nat) (e : Expr) (v τ : Expr) (n : Nat)
+    (fuel : Nat) (e : Expr) (v : Expr) (τ : NfExpr) (n : Nat)
     (h_conc : concEval fuel e = some v)
     (h_abs : absEval fuel [] e = .ok τ)
-    : VCompat n v τ := by
+    : VCompat n v τ.val := by
   sorry

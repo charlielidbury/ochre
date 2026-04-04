@@ -131,7 +131,7 @@ theorem subCheckNF_lam_lam_body {fuel : Nat} {ctx : TyCtx} {dS bS dT bT : Expr}
   sorry -- needs update for new mutual absEval/subCheckNF
 
 /-- inferType returns none for lambda expressions. -/
-theorem inferType_lam (ctx : List Expr) (dom body : Expr) :
+theorem inferType_lam (ctx : TyCtx) (dom body : Expr) :
     inferType ctx (Expr.lam dom body) = none := by
   rfl
 

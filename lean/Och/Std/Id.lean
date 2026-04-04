@@ -39,11 +39,11 @@ private def fuel : Nat := 50
 
 -- id Nat 3 should have precise type 3 (transparency preserved). §6.4
 example : absEval fuel [] (och{ id_ Nat_ three_ })
-  = .ok three_ := by native_decide
+  = .ok ⟨three_⟩ := by native_decide
 
 -- idAscribed Nat 3 should have type Nat (ascription loses precision). §6.4
 example : absEval fuel [] (och{ idAscribed Nat_ three_ })
-  = .ok Nat_ := by native_decide
+  = .ok ⟨Nat_⟩ := by native_decide
 
 -- ----------------------------------------------------------
 -- Transparency: absEval (negative)
@@ -51,11 +51,11 @@ example : absEval fuel [] (och{ idAscribed Nat_ three_ })
 
 -- id Nat 3 should NOT equal Nat — it is more precise (singleton 3)
 example : absEval fuel [] (och{ id_ Nat_ three_ })
-  ≠ .ok Nat_ := by native_decide
+  ≠ .ok ⟨Nat_⟩ := by native_decide
 
 -- idAscribed Nat 3 should NOT equal three — precision is lost
 example : absEval fuel [] (och{ idAscribed Nat_ three_ })
-  ≠ .ok three_ := by native_decide
+  ≠ .ok ⟨three_⟩ := by native_decide
 
 -- ----------------------------------------------------------
 -- Computation: concEval (positive)

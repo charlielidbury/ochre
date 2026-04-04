@@ -42,26 +42,26 @@ open Expr
 -- ── Positive computation tests ─────────────────────────────
 
 -- Array 0 Nat = Unit
-example : absEval 1000 [] (och{ Array_ zero_ Nat_ }) = .ok Unit_ := by native_decide
+example : absEval 1000 [] (och{ Array_ zero_ Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
 
 -- cons 0 into emptyArray, head it back out
 -- testArr1 = cons Nat 0 0 (emptyArray Nat)
 private def testArr1 := och{ consArray Nat_ zero_ zero_ (emptyArray Nat_) }
 
 -- head testArr1 = 0
-example : absEval 1000 [] (och{ headArray Nat_ zero_ testArr1 }) = .ok zero_ := by native_decide
+example : absEval 1000 [] (och{ headArray Nat_ zero_ testArr1 }) = .ok ⟨zero_⟩ := by native_decide
 
 -- tail testArr1 = unit
-example : absEval 1000 [] (och{ tailArray Nat_ zero_ testArr1 }) = .ok unit_ := by native_decide
+example : absEval 1000 [] (och{ tailArray Nat_ zero_ testArr1 }) = .ok ⟨unit_⟩ := by native_decide
 
 -- testArr2 = cons Nat 1 1 (cons Nat 0 2 (emptyArray Nat))
 private def testArr2 := och{ consArray Nat_ one_ one_ (consArray Nat_ zero_ two_ (emptyArray Nat_)) }
 
 -- head testArr2 = 1
-example : absEval 1000 [] (och{ headArray Nat_ one_ testArr2 }) = .ok one_ := by native_decide
+example : absEval 1000 [] (och{ headArray Nat_ one_ testArr2 }) = .ok ⟨one_⟩ := by native_decide
 
 -- head (tail testArr2) = 2
-example : absEval 1000 [] (och{ headArray Nat_ zero_ (tailArray Nat_ one_ testArr2) }) = .ok two_ := by native_decide
+example : absEval 1000 [] (och{ headArray Nat_ zero_ (tailArray Nat_ one_ testArr2) }) = .ok ⟨two_⟩ := by native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 

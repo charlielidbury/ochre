@@ -49,10 +49,10 @@ example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = true := by native_decide
 -- ── Positive computation: unpack to get length ───────────────
 
 -- unpack vec1 → length = 1
-example : absEval 1000 [] (.app (.app testVec1 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) = .ok one_ := by native_decide
+example : absEval 1000 [] (.app (.app testVec1 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) = .ok ⟨one_⟩ := by native_decide
 
 -- unpack vec2 → length = 2
-example : absEval 1000 [] (.app (.app testVec2 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) = .ok two_ := by native_decide
+example : absEval 1000 [] (.app (.app testVec2 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) = .ok ⟨two_⟩ := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 
@@ -65,10 +65,10 @@ example : subCheck 1000 zero_ (och{ Vec Nat_ }) = false := by native_decide
 -- ── Negative computation ─────────────────────────────────────
 
 -- unpack vec1 → length ≠ 2  (it's 1, not 2)
-example : absEval 1000 [] (.app (.app testVec1 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) ≠ .ok two_ := by native_decide
+example : absEval 1000 [] (.app (.app testVec1 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) ≠ .ok ⟨two_⟩ := by native_decide
 
 -- unpack vec2 → length ≠ 1  (it's 2, not 1)
-example : absEval 1000 [] (.app (.app testVec2 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) ≠ .ok one_ := by native_decide
+example : absEval 1000 [] (.app (.app testVec2 Nat_) (och{ λn:Nat_. λarr:(Array_ n Nat_). n })) ≠ .ok ⟨one_⟩ := by native_decide
 
 end Tests
 end Std

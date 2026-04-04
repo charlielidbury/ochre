@@ -49,7 +49,7 @@ instance {ε : Type} {α : Type} [Repr ε] [Repr α] : Repr (Except ε α) where
     | .ok a => Repr.addAppParen (".ok " ++ reprPrec a 1) n
     | .error e => Repr.addAppParen (".error " ++ reprPrec e 1) n
 
-/-! ## Type aliases and contexts -/
+/-! ## NfExpr: newtype for absEval output -/
 
 /-- An expression that has been through absEval with some context.
     Invariants (not enforced by the type system, proved separately):
@@ -58,8 +58,16 @@ instance {ε : Type} {α : Type} [Repr ε] [Repr α] : Repr (Except ε α) where
     - Well-scoped: all `.bvar k` satisfy `k < ctx.length`
     - All applications are callable: if `.app f a` occurs and `f`
       is neutral, then `inferType ctx f` is a function type
-    - All domains and mu annotations are themselves NfExprs -/
-abbrev NfExpr := Expr
+    - All domains and mu annotations are themselves NfExprs
+
+    This is a newtype wrapper around Expr. The safe direction (NfExpr → Expr)
+    is provided via Coe. The unsafe direction (Expr → NfExpr) is only available
+    via absEval, enforcing that NfExpr values are always normalized. -/
+structure NfExpr where
+  val : Expr
+deriving DecidableEq, Repr, Inhabited
+
+instance : BEq NfExpr where beq a b := a.val == b.val
 
 /-- Type context: positional list of absEval'd domain types for bound variables.
     ctx[k] = absEval'd domain type of bvar k. -/
@@ -69,15 +77,17 @@ abbrev TyCtx := List NfExpr
     at the outer depth; shift it by 1 so its free variable references are correct
     at the inner depth. Existing entries are also shifted. -/
 def TyCtx.extend (ctx : TyCtx) (ty : NfExpr) : TyCtx :=
-  (ty.shift 1 0) :: ctx.map (Expr.shift 1 0)
+  ⟨ty.val.shift 1 0⟩ :: ctx.map (fun e => ⟨e.val.shift 1 0⟩)
 
 
 /-! ## Type inference for neutral terms -/
 
 /-- Infer the type of a neutral term from a typing context.
-    ctx is a positional list: ctx[k] is the type/domain of bvar k. -/
-def inferType (ctx : List Expr) : Expr → Option Expr
-  | .bvar k => ctx.get? k
+    ctx is a positional list: ctx[k] is the type/domain of bvar k.
+    Operates on raw Expr (not NfExpr) — used for callability checks
+    and subCheckNF's inferType fallback. -/
+def inferType (ctx : TyCtx) : Expr → Option Expr
+  | .bvar k => (ctx.get? k).map (·.val)
   | .app f a =>
     match inferType ctx f with
     | some (.lam _dom retTy) => some (retTy.subst 0 a)
@@ -95,11 +105,11 @@ def inferType (ctx : List Expr) : Expr → Option Expr
     Type (top) means "unknown" and is rejected — calling something of
     unknown type is unsound. -/
 def isCallableNF (ctx : TyCtx) (f : NfExpr) : Bool :=
-  match f with
+  match f.val with
   | .lam _ _ => true
   | .mu _ _ => true
   | _ =>
-    match inferType ctx f with
+    match inferType ctx f.val with
     | some (.lam _ _) => true
     | some (.mu _ _) => true
     | _ => false
@@ -129,14 +139,14 @@ mutual
     | 0 => .error "out of fuel"
     | fuel + 1 =>
       match e with
-      | .bvar k       => .ok (.bvar k)
+      | .bvar k       => .ok ⟨.bvar k⟩
       | .lam dom body => do
         -- Evaluate domain (rejects ill-formed domains)
         let dom' ← absEval fuel ctx dom
         -- Evaluate body under binder with evaluated domain in context
         let body' ← absEval fuel (TyCtx.extend ctx dom') body
-        .ok (.lam dom' body')
-      | .type         => .ok .type
+        .ok ⟨.lam dom'.val body'.val⟩
+      | .type         => .ok ⟨.type⟩
       | .asc term ty  => do
         -- Type checking happens here:
         -- 1. Evaluate term → sigma
@@ -145,31 +155,31 @@ mutual
         -- 4. Return tau (erase term)
         let sigma ← absEval fuel ctx term
         let tau ← absEval fuel ctx ty
-        if subCheckNF fuel ctx [] sigma tau then .ok tau
+        if subCheckNF fuel ctx [] sigma.val tau.val then .ok tau
         else .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
       | .mu ann body  => do
         -- Evaluate annotation (rejects ill-formed annotations)
         let ann' ← absEval fuel ctx ann
-        .ok (.mu ann' body)
+        .ok ⟨.mu ann'.val body⟩
       | .app f a      => do
         let f' ← absEval fuel ctx f
         let a' ← absEval fuel ctx a
-        match f' with
+        match f'.val with
         | .lam _dom body =>
           -- Beta-reduce via substitution
-          absEval fuel ctx (body.subst 0 a')
+          absEval fuel ctx (body.subst 0 a'.val)
         | .mu _ann body =>
           -- mu in function position. Strategy depends on ann AND body shape.
           match _ann, body with
           | .lam _dom retBody, .lam _ _ =>
-            absEval fuel ctx (retBody.subst 0 a')
+            absEval fuel ctx (retBody.subst 0 a'.val)
           | _, .lam _dom retBody =>
-            absEval fuel ctx (retBody.subst 0 a')
-          | _, _ => .ok (.app body a')
+            absEval fuel ctx (retBody.subst 0 a'.val)
+          | _, _ => .ok ⟨.app body a'.val⟩
         | .type => .error "Type is not callable"
         | _ =>
           -- Neutral application: validate callability, return symbolic app
-          if isCallableNF ctx f' then .ok (.app f' a')
+          if isCallableNF ctx f' then .ok ⟨.app f'.val a'.val⟩
           else .error s!"not callable: {repr f'}"
   termination_by fuel
 
@@ -189,21 +199,21 @@ mutual
         match a, b with
         | .lam domA bodyA, .lam domB bodyB =>
           -- Function subtyping: contravariant domain, covariant body
-          let domA_norm := match absEval fuel ctx domA with | .ok x => x | .error _ => domA
-          let domB_norm := match absEval fuel ctx domB with | .ok x => x | .error _ => domB
+          let domA_norm := match absEval fuel ctx domA with | .ok x => x.val | .error _ => domA
+          let domB_norm := match absEval fuel ctx domB with | .ok x => x.val | .error _ => domB
           subCheckNF fuel ctx seen domB_norm domA_norm
           -- TyCtx.extend shifts domB_norm automatically
-          && subCheckNF fuel (TyCtx.extend ctx domB_norm) seen bodyA bodyB
+          && subCheckNF fuel (TyCtx.extend ctx ⟨domB_norm⟩) seen bodyA bodyB
         | _, .mu _ann body =>
           -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
           -- This also handles the mu-mu case via self-intro on the right side.
           let u := body.subst 0 b
-          let u' := match absEval fuel ctx u with | .ok x => x | .error _ => u
+          let u' := match absEval fuel ctx u with | .ok x => x.val | .error _ => u
           subCheckNF fuel ctx ((a, b) :: seen) a u'
         | .mu ann body, _ =>
           -- Self-elim: mu ann body ⊑ b  iff  body[0 := mu] ⊑ b
           let u := body.subst 0 (.mu ann body)
-          let u' := match absEval fuel ctx u with | .ok x => x | .error _ => u
+          let u' := match absEval fuel ctx u with | .ok x => x.val | .error _ => u
           subCheckNF fuel ctx ((a, b) :: seen) u' b
         | .app f1 a1, .app f2 a2 =>
           -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
@@ -230,7 +240,7 @@ end
     compares structurally. -/
 def subCheck (fuel : Nat) (a b : Expr) : Bool :=
   match absEval fuel [] a, absEval fuel [] b with
-  | .ok a', .ok b' => subCheckNF fuel [] [] a' b'
+  | .ok a', .ok b' => subCheckNF fuel [] [] a'.val b'.val
   | _, _ => false
 
 /-! ## Concrete evaluators -/
@@ -299,6 +309,6 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
 
 /-- absEval fuel monotonicity. With the new mutual definition, this needs
     updating. Sorry'd for now. -/
-theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {e v : Expr}
+theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {e : Expr} {v : NfExpr}
     (h : absEval n ctx e = .ok v) : absEval (n + 1) ctx e = .ok v := by
   sorry
