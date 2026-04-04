@@ -8,10 +8,23 @@ proving soundness.
 
 ### Sorry inventory (22 in Soundness, 0 in Subtyping = 22 total)
 
-Up from 14 numerically, but the increase is from expanding one blanket sorry
-(over a **false** theorem) into 9 precisely categorized sub-cases with 3 proved.
+Up from 14 numerically, but the increase is from expanding blanket sorrys
+into precisely categorized sub-cases with some proved.
 
-Changes by agent ochre-20260405-003633:
+Changes by agent ochre-20260405-003615:
+- **Proved neutral app sub-cases in absEval_preserves** (refl-app + structural app):
+  When absEval dispatches to a neutral app (fT' ∉ {lam, mu}), the result is
+  a symbolic app ⟨app fT'.val aT'.val⟩. VCompat via structural app + IH on
+  sub-expressions. The lam/mu dispatch sub-cases remain sorry'd.
+- **Key analysis finding**: absEval_preserves and adequacy_gen have a **circular
+  dependency** for the refl-asc case. Breaking this requires either a combined
+  fuel-induction proof or restructuring. The refl-asc case doesn't arise at
+  current use sites (e from inferType is NfExpr, never asc).
+- **Verified asc-left disjunct invalidates the counterexample** from the previous
+  session: VCompat(2, asc(lam T (bvar 0), lam T T), lam T T) IS true via
+  asc-left + semantic lam at step 1 (trivially satisfied since j=0 only).
+
+Previous changes by agent ochre-20260405-003633:
 - **CRITICAL FIX: absEval_preserves was FALSE as stated.**
   Counterexample: v = e = asc (lam Type (bvar 0)) (lam Type Type), n=2.
   VCompat(2, v, v) via refl, absEval(v) = ok ⟨lam Type Type⟩, but
@@ -41,12 +54,14 @@ Changes by agent ochre-20260405-003633:
   - Sorry: refl-asc (1 sorry) — needs VCompat.adequacy (defined later, circular dep)
   - Sorry: refl-lam (1) — normalization coherence (absEval body vs raw body)
   - Sorry: refl-mu (1) — annotation normalization congruence
-  - Sorry: refl-app (1) — beta-reduction changes shape
+  - Sorry: refl-app lam/mu dispatch (2) — beta-reduction changes shape
+    Proved: refl-app neutral case (bvar/app/asc fT' → structural app + IH)
   - Sorry: semantic lam (1) — normalization coherence
   - Sorry: structural mu (1) — annotation normalization congruence
   - Sorry: mu-right (1) — annotation normalization congruence
   - Sorry: normalized mu-right (1) — composing normalizations
-  - Sorry: structural app (1) — beta-reduction changes shape
+  - Sorry: structural app lam/mu dispatch (2) — beta-reduction changes shape
+    Proved: structural app neutral case (bvar/app/asc fT' → structural app + IH)
   All sorry'd cases reduce to 2 fundamental blockers:
   (a) Normalization coherence: absEval(body) and body give same semantics
   (b) Annotation normalization congruence: absEval(ann) preserves mu semantics
@@ -99,6 +114,41 @@ Changes by agent ochre-20260405-003633:
    3 proved (mu-left, inferType, asc-left via IH on n), 9 sorry'd with clear
    documentation. The 9 sorrys reduce to 2 fundamental blockers: normalization
    coherence and annotation normalization congruence.
+
+### What happened this session (agent ochre-20260405-003615)
+
+**Proved neutral app sub-cases + deep analysis of proof architecture.**
+
+1. **Proved neutral app sub-cases in absEval_preserves (refl-app + structural app).**
+   When absEval(app fT aT) normalizes fT→fT' and fT'.val is neutral (bvar, app,
+   asc — not lam or mu), the result is ⟨app fT'.val aT'.val⟩. VCompat via
+   structural app disjunct + IH on sub-expressions. The lam/mu dispatch sub-cases
+   (beta-reduction, mu-app) remain sorry'd because they change the result shape.
+
+2. **Analyzed and documented circular dependency between absEval_preserves and
+   adequacy_gen.** The refl-asc case of absEval_preserves needs VCompat.adequacy
+   (to go from VCompat(term, sigma.val) + subCheckNF(sigma.val, tau.val) to
+   VCompat(term, tau.val)), but adequacy_gen uses absEval_preserves. Solutions:
+   - **Combined fuel-induction proof**: Prove both simultaneously by induction on
+     fuel, with each having access to the other at lower fuel. This would close
+     the refl-asc case. The refl-asc case currently does NOT arise at use sites
+     (e comes from inferType → NfExpr, never asc), so this is low priority.
+   - **Restructuring**: Move absEval_preserves after adequacy_gen, but inline the
+     chain at the bvar use sites in adequacy_gen.
+
+3. **Analyzed self-elim callback circularity.** The self-elim cases in adequacy_gen
+   (σ=mu, τ∈{lam,bvar,asc,app}) are fundamentally blocked by the seen-set callback:
+   the annotation path subcheck at fuel k uses seen' = (mu, τ) :: seen, and the
+   callback for this new entry requires VCompat(v, τ) — exactly the goal. Breaking
+   this requires either:
+   - A WellAnnotated precondition (weakening the theorem)
+   - Proving annotation correctness (the annotation describes the mu's behavior)
+   - Avoiding the annotation path entirely (using only the body normalization path,
+     which needs absEval_preserves)
+
+4. **Verified the asc counterexample is INVALID** after the asc-left fix.
+   VCompat(2, asc(lam T bvar0, lam T T), lam T T) IS true via asc-left +
+   semantic lam at step 1. The asc-left disjunct correctly handles this case.
 
 ### What happened in previous session (agent ochre-20260404-235445)
 

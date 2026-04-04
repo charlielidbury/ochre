@@ -392,9 +392,42 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
           -- HARD: needs annotation normalization congruence.
           sorry
         | app f a =>
-          -- absEval(app) evaluates f, a, dispatches. v = app f a.
-          -- HARD: e'.val could be beta-reduced, completely different shape.
-          sorry
+          -- absEval(app f a) normalizes f→f', a→a', dispatches on f'.val.
+          -- Neutral case: e' = ⟨app f'.val a'.val⟩, proved via structural app + IH.
+          -- Beta/mu cases: shape changes completely, sorry'd.
+          unfold absEval at habs; dsimp only [] at habs
+          match hf' : absEval k ctx seen f with
+          | .error _ => simp [hf', bind, Except.bind] at habs
+          | .ok fNF =>
+            simp only [hf', bind, Except.bind] at habs
+            match ha' : absEval k ctx seen a with
+            | .error _ => simp [ha', bind, Except.bind] at habs
+            | .ok aNF =>
+              simp only [ha', bind, Except.bind] at habs
+              -- IH: VCompat(m, f, fNF.val) and VCompat(m, a, aNF.val)
+              have hf_compat := ih (VCompat.refl m f) hf'
+              have ha_compat := ih (VCompat.refl m a) ha'
+              match hfv : fNF.val with
+              | .lam _ _ =>
+                -- Beta-reduction: result shape differs. HARD.
+                simp only [hfv] at habs; sorry
+              | .mu _ _ =>
+                -- Mu-app dispatch: complex. HARD.
+                simp only [hfv] at habs; sorry
+              | .type =>
+                simp only [hfv] at habs; simp at habs
+              | .bvar _ | .app _ _ | .asc _ _ =>
+                -- Neutral: e' = ⟨app fNF.val aNF.val⟩
+                simp only [hfv] at habs
+                by_cases hcall : isCallableNF ctx fNF = true
+                · simp only [hcall, ite_true] at habs
+                  have heq : e'.val = Expr.app fNF.val aNF.val := by
+                    injection habs with h; rw [← h]; simp [hfv]
+                  unfold VCompat
+                  apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                  apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                  exact ⟨f, fNF.val, a, aNF.val, rfl, heq, hf_compat, ha_compat⟩
+                · simp only [hcall] at habs; simp at habs
     · -- Semantic lam: v = lam domV bodyV, e = lam domT bodyT
       -- Need VCompat(m+1, lam domV bodyV, e'.val)
       -- HARD: needs normalization coherence for bodies
@@ -416,10 +449,52 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
       apply Or.inr; apply Or.inr; apply Or.inl
       exact ⟨ann_l, body_l, hv_mu, ih h_mu_body habs⟩
     · -- Structural app: v = app fV aV, e = app fT aT
-      -- absEval(app fT aT) might beta-reduce (if fT normalizes to lam)
-      -- or return a symbolic app (if fT is neutral).
-      -- HARD in general (beta-reduction changes shape)
-      sorry
+      -- absEval(app fT aT) normalizes fT and aT, then dispatches on fT'.val.
+      subst hv_eq; subst hτ_eq
+      -- Extract the sub-evaluations from absEval(app fT aT)
+      cases fuel with
+      | zero => simp [absEval] at habs
+      | succ k =>
+        unfold absEval at habs; dsimp only [] at habs
+        match hfT : absEval k ctx seen fT with
+        | .error _ => simp [hfT, bind, Except.bind] at habs
+        | .ok fT' =>
+          simp only [hfT, bind, Except.bind] at habs
+          match haT : absEval k ctx seen aT with
+          | .error _ => simp [haT, bind, Except.bind] at habs
+          | .ok aT' =>
+            simp only [haT, bind, Except.bind] at habs
+            -- IH on sub-expressions: VCompat(m, fV, fT'.val) and VCompat(m, aV, aT'.val)
+            have hfV := ih h_f hfT
+            have haV := ih h_a haT
+            -- Dispatch on fT'.val
+            match hfval : fT'.val with
+            | .lam _dom _body =>
+              -- Beta-reduction: absEval beta-reduces. Result has different shape.
+              -- HARD: need substitution/evaluation coherence
+              simp only [hfval] at habs
+              sorry
+            | .mu _ann _body' =>
+              -- Mu-app: various sub-cases depending on annotation and body shapes.
+              -- HARD: complex dispatch
+              simp only [hfval] at habs
+              sorry
+            | .type =>
+              -- Type is not callable → error
+              simp only [hfval] at habs; simp at habs
+            | .bvar _ | .app _ _ | .asc _ _ =>
+              -- Neutral app: e' = ⟨app fT'.val aT'.val⟩ (after callability check)
+              simp only [hfval] at habs
+              by_cases hcall : isCallableNF ctx fT' = true
+              · simp only [hcall, ite_true] at habs
+                have heq : e'.val = Expr.app fT'.val aT'.val := by
+                  injection habs with h; rw [← h]; simp [hfval]
+                -- VCompat(m+1, app fV aV, app fT'.val aT'.val) via structural app
+                unfold VCompat
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                exact ⟨fV, fT'.val, aV, aT'.val, rfl, heq, hfV, haV⟩
+              · simp only [hcall] at habs; simp at habs
     · -- InferType: inferType ctx' v = some ty', VCompat(m, ty', e)
       -- By IH: VCompat(m, ty', e'.val)
       -- Then inferType: VCompat(m+1, v, e'.val)

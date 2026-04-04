@@ -75,20 +75,3 @@ example : subCheck 1000
   (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:Nat_. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
   (och{ Vec Nat_ }) = true := by native_decide
 
--- ============================================================
--- absEval_preserves counterexample
--- ============================================================
-
-/- absEval_preserves claims: VCompat(n, v, e) ∧ absEval(e) = ok e' → VCompat(n, v, e'.val).
-   This is FALSE when v = e = asc(lam type (bvar 0), lam type type):
-   - VCompat(2, v, e) holds by refl (v = e)
-   - absEval erases the asc, producing ⟨lam type type⟩
-   - VCompat(2, asc(...), lam type type) is False: no disjunct matches
-     (v=asc isn't lam/mu/app, inferType(asc)=none)
-
-   The computation below verifies the absEval step. -/
-private def absEval_preserves_cex :=
-  Expr.asc (Expr.lam Expr.type (Expr.bvar 0)) (Expr.lam Expr.type Expr.type)
-
-example : absEval 10 [] [] absEval_preserves_cex
-  = .ok ⟨Expr.lam Expr.type Expr.type⟩ := by native_decide
