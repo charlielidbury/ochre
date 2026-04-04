@@ -146,11 +146,17 @@ needs strong induction + fuel monotonicity to bridge the gap.
   by agent ochre-20260404-204421. Use the targeted **normalized mu-right**
   disjunct instead (only for mu types).
 
-- **subCheckNF transitivity is FALSE** (counterexample in Tests.lean). Do not
-  assume it.
+- **subCheckNF transitivity is currently FALSE** (counterexample in Tests.lean).
+  **This is a bug, not a feature.** Subtyping transitivity is a fundamental
+  requirement for Ochre — it's load-bearing for the language's semantics.
+  If you encounter this, the right response is to fix `subCheckNF` (or the
+  definitions it depends on) so that transitivity holds, NOT to work around
+  its absence. The counterexample (`Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)`
+  but `Type ⋢ lam Type (bvar 0)`) likely points to the self-intro/self-elim
+  seen-hit mechanism being too permissive. Fixing this is high priority.
 
 - **subCheckNF top-universality is FALSE**. `Type <: tau` does NOT mean all
-  values inhabit `tau`.
+  values inhabit `tau`. (This may also be fixed by the transitivity fix.)
 
 - **Never weaken tests.** If a proof doesn't go through, the definitions or
   theorem statement may be wrong. Fix those, not the tests.

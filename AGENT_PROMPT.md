@@ -17,38 +17,25 @@ evaluation in concrete mode. The ONLY difference is the ascription case:
 `(e : τ)` takes `e` concretely and `τ` abstractly. Whether this dual
 interpretation is sound is the central research question.
 
-## The goal: abstract appendVec
+## The goal: prove soundness
 
-The medium-term research goal is getting `appendVec` working end-to-end with
-**abstract** arguments (`n : Nat, m : Nat`). Och is useless without this — a
-type system that can only verify concrete computations adds nothing over an
-evaluator.
+Och is feature-complete. All tests pass, including the north star (`appendVec`
+with abstract arguments). The goal now is to **prove soundness** — eliminate
+every `sorry` in the Lean codebase.
 
-For this to work, the type system needs **dependent elimination**: when you
-branch on an abstract `n : Nat`, the return type must track which branch was
-taken. Church encoding alone can't do this (the return type collapses to a
-fixed `X`). Self types solve this by letting the type mention the term being
-typed, so the return type becomes `P n` — dependent on the input.
-
-## Current approach: mu (unified self-reference)
-
-We discovered that Och's two self-reference primitives (`fix` for recursion,
-`iota` for self types) are the same thing viewed at different precision levels.
-We are unifying them into a single primitive `mu`. Read
-`docs/ideas/merge-fix-iota.md` for the full analysis — **this is the key
-design document for the current work**.
-
-The specific roadmap and next steps are in **SUGGESTIONS.md**. The current
-state of the experiment is in **PROGRESS.md**.
+The soundness theorem (Soundness.lean:233) states: if `concEval` and `absEval`
+both succeed on a term, their outputs are VCompat (value-type compatible) at
+all step levels. There are 10 `sorry`s remaining. See **SUGGESTIONS.md** for
+the dependency chain and priority order.
 
 ## Context to read
 
 Read these for context (in this order):
-1. `docs/ideas/merge-fix-iota.md` — the mu design document
-2. `SUGGESTIONS.md` — roadmap and next steps
-3. `PROGRESS.md` — current state
-4. `docs/what-is-och.md` — what Och is and why it exists
-5. `docs/och-spec.md` — the Och specification (note: will need updating for mu)
+1. `SUGGESTIONS.md` — the sorry dependency chain and proof roadmap
+2. `PROGRESS.md` — current state and sorry inventory
+3. `lean/Och/Soundness.lean` — the VCompat relation and soundness theorem
+4. `lean/Och/Eval.lean` — absEval, concEval, subCheckNF definitions
+5. `lean/Och/Subtyping.lean` — subtyping relations and helper lemmas
 
 Then run `git log -5` (with full messages, NOT `--oneline`) to see where things
 stand. Previous agents communicate through detailed commit messages.
@@ -75,30 +62,46 @@ only the repo contents and git history. Therefore:
 ## The Lean project
 
 The project is in `lean/`. It contains:
-- `Och/Syntax.lean` — term representation
-- `Och/Eval.lean` — concrete and abstract evaluation
-- `Och/Subtyping.lean` — the subtyping relation
-- `Och/Soundness.lean` — WellTyped + VCompat + soundness theorem
+- `Och/Syntax.lean` — term representation (de Bruijn indices)
+- `Och/Eval.lean` — concrete eval, abstract eval, subCheckNF (mutual)
+- `Och/Subtyping.lean` — inductive subtyping relations + subCheckNF lemmas
+- `Och/Soundness.lean` — VCompat logical relation + soundness theorem
 - `Och/Tests.lean` — acceptance tests (DO NOT weaken)
+- `Std/*.lean` — standard library (Church-encoded types with inline tests)
 
 Run `cd lean && lake build` to see the current state.
 
 ## What to do
 
-**Do one impactful thing per session.** Read the state, pick the single most
-valuable next step from SUGGESTIONS.md, do it well, commit it, and finish.
-Do not try to solve everything — you are one agent in a long relay. A clean
-commit with a clear handoff is worth more than an ambitious attempt that runs
-out of context.
+**Pick one sorry and make progress on it.** Read the state, pick the highest
+priority sorry from SUGGESTIONS.md that you can make progress on, work on it,
+commit, and finish. The priority order is:
 
-The most productive next step might be:
-- Implementing the next item on the SUGGESTIONS.md roadmap
-- Fixing a `lake build` error or filling in a `sorry`
+1. `absEval_fuel_mono` (Eval.lean:349) — foundation for everything else
+2. `VCompat.from_type_sub_gen` (Soundness.lean:164)
+3. `VCompat.from_self_intro_gen` (Soundness.lean:185)
+4. `VCompat.adequacy` (Soundness.lean:209)
+5. `soundness` main theorem (Soundness.lean:233)
+6. Subtyping helper lemmas (Subtyping.lean:127-174)
+
+**Before you start proving, sense-check the statement.** Read the theorem,
+think about what it claims, and try to construct a counterexample or identify
+why the preconditions might be unsatisfiable. If it passes your sanity check,
+commit to the proof. This prevents tunnel vision — an agent that burns its
+whole session forcing a broken proof is less useful than one that realizes
+the statement is wrong early.
+
+If a higher-priority sorry is blocked or you discover something wrong with the
+theorem statement, that's fine — document it and move to the next one, or fix
+the statement.
+
+The most productive thing you can do might be:
+- **Disproving a theorem statement** — finding a counterexample or showing
+  preconditions are unsatisfiable. This is the most valuable outcome because
+  it redirects all future work.
+- Proving a sorry
+- Making partial progress on a sorry and documenting what's left
 - Realizing a definition needs to change and writing up why
-- Updating the spec or design docs because something is wrong
-- Rethinking the approach entirely and documenting your reasoning
-- **Discovering that a theorem statement is vacuous or wrong** — this is as
-  valuable as proving it. Document it clearly and commit.
 
 If you find yourself stuck for more than a few minutes, stop. Commit what you
 have, document the blocker clearly in PROGRESS.md, and finish. A well-documented
@@ -113,6 +116,13 @@ and your agent ID, and update PROGRESS.md before your session ends.
   freely, but the tests must pass. If a test doesn't pass, fix the definitions,
   not the test. The only acceptable test changes are adapting to renamed
   constructors or adding more tests.
+
+- **Subtyping must be transitive.** If `a ⊑ b` and `b ⊑ c` then `a ⊑ c`
+  must hold. This is a deep requirement of the language, not negotiable.
+  There is currently a known counterexample (see Tests.lean). If you
+  encounter transitivity failure, fix `subCheckNF` or the underlying
+  definitions — do NOT work around it or redesign VCompat to avoid needing
+  transitivity. The language must bend to make transitivity true.
 
 - **No trivial solutions.** Do not achieve soundness by making the language
   weaker. Read `docs/why-och-matters-for-ochre.md` for what "going off track"
@@ -140,8 +150,7 @@ and your agent ID, and update PROGRESS.md before your session ends.
   ```
   A sorry-free proof with unsatisfiable preconditions is **worse** than a
   sorry'd proof with satisfiable ones — the former gives false confidence.
-  This mistake has already happened once (see SUGGESTIONS.md "CRITICAL"
-  section). Do not repeat it.
+  This mistake has already happened once. Do not repeat it.
 
 ## What success looks like
 
@@ -149,15 +158,14 @@ The ultimate goal is a provably sound type system for Ochre. The current
 milestone is Och with ALL of these simultaneously:
 
 1. `lake build` passing with no `sorry`
-2. Soundness and monotonicity proven
+2. Soundness proven (the main theorem in Soundness.lean)
 3. All tests passing, including abstract appendVec
 4. **The soundness theorem is non-vacuously true for the milestone programs**
 
 Point 4 is critical. A sorry-free soundness theorem whose preconditions
 can't be satisfied is vacuously true and proves nothing. The preconditions
-(currently `WellTyped`) must be satisfiable for real programs — verified by
-`native_decide` witness tests. Zero sorrys is not the goal; a meaningful
-theorem is the goal. Sorrys are a means of tracking progress toward that.
+must be satisfiable for real programs — verified by `native_decide` witness
+tests. Zero sorrys is not the goal; a meaningful theorem is the goal.
 
 This is an extremely ambitious goal. You will not finish in one session. Your
 job is to make one solid step forward and hand off clearly to the next agent.
@@ -175,7 +183,10 @@ export PATH="$HOME/.elan/bin:$PATH"
 
 ## Working style
 
-- **Scope tightly.** Pick one thing. Do it. Commit. Hand off.
+- **Scope tightly.** Pick one sorry. Work on it. Commit. Hand off.
+- **Do the hard cases first.** When proving a theorem by case analysis, identify
+  the hardest case and tackle it first. If the hard case fails, the easy cases
+  don't matter. If the hard case succeeds, the easy cases are usually mechanical.
 - Think before you code. If a proof isn't going through, consider whether the
   definitions are right, not just whether you can force the proof.
 - **Question theorem statements, not just proofs.** Before working on a proof,

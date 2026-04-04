@@ -235,15 +235,22 @@ theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : TyCtx} {a b : Expr}
           simp only [h_inf, h_abs] at h
           exact ⟨ty, ty', rfl, h_abs, h⟩
 
-/-! ### subCheckNF non-properties
+/-! ### subCheckNF non-properties (BUGS TO FIX)
 
-**subCheckNF transitivity is FALSE.**
+**subCheckNF transitivity is currently FALSE — THIS IS A BUG.**
+Subtyping transitivity is a fundamental requirement for Ochre. The right fix
+is to change subCheckNF (or the definitions it depends on) so transitivity
+holds, NOT to work around its absence in the proof.
+
 Counterexample (verified in Tests.lean):
 - a = .type, b = mu .type (bvar 0), c = lam .type (bvar 0)
 - a ⊑ b: self-intro → seen hit (fixpoint) → true
 - b ⊑ c: self-elim → seen hit (fixpoint) → true
 - a ⊑ c: .type vs lam → inferType .type = none → false
 
+The self-intro/self-elim seen-hit mechanism is likely too permissive.
+
 **subCheckNF_top_universal is FALSE.**
 (.type ⊑ τ does NOT imply v ⊑ τ for all v.)
-See Tests.lean for verified counterexamples. -/
+See Tests.lean for verified counterexamples. May also be fixed by the
+transitivity fix. -/
