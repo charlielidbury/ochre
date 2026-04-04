@@ -259,6 +259,55 @@ theorem VCompat.refl (n : Nat) (e : Expr) : VCompat n e e := by
   | zero => simp [VCompat]
   | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
 
+/-- VCompat(n, v, bvar k) implies VCompat(n, v, ty) when inferType looks up
+    bvar k to ty. Bridges the inferType fallback in subCheckNF for bvar terms. -/
+theorem VCompat.bvar_inferType {n : Nat} {v : Expr} {k : Nat} {ctx : TyCtx} {ty : Expr}
+    (hv : VCompat n v (.bvar k))
+    (hinf : inferType ctx (.bvar k) = some ty)
+    : VCompat n v ty := by
+  induction n generalizing v with
+  | zero => simp [VCompat]
+  | succ m ih =>
+    unfold VCompat at hv
+    rcases hv with
+      h_type | h_refl |
+      ⟨_, _, _, _, _, hτ_lam, _⟩ |
+      ⟨_, _, _, _, _, hτ_mu, _⟩ |
+      ⟨_, _, hτ_mu5, _⟩ |
+      ⟨_, _, ⟨_, _, _, _, hτ_mu6, _, _⟩⟩ |
+      ⟨ann, body, hv_mu, hv_body⟩ |
+      ⟨_, _, _, _, _, hτ_app, _, _⟩ |
+      ⟨ctx', ty', hinf_v, hcompat⟩
+    · cases h_type
+    · subst h_refl
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact ⟨ctx, ty, hinf, VCompat.refl m ty⟩
+    · cases hτ_lam
+    · cases hτ_mu
+    · cases hτ_mu5
+    · cases hτ_mu6
+    · unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inl
+      exact ⟨ann, body, hv_mu, ih hv_body⟩
+    · cases hτ_app
+    · unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact ⟨ctx', ty', hinf_v, ih hcompat⟩
+
+/-- Normalization preserves VCompat: if VCompat(n, v, e) and absEval normalizes
+    e to e', then VCompat(n, v, e'.val). KEY REMAINING LEMMA for inferType
+    fallback sorrys and soundness mu case. -/
+theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
+    {fuel : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)} {e' : NfExpr}
+    (hv : VCompat n v e)
+    (habs : absEval fuel ctx seen e = .ok e')
+    : VCompat n v e'.val := by
+  sorry
+
 /-- VCompat respects subCheckNF (adequacy), generalized over seen.
 
     Proved cases:
@@ -400,12 +449,22 @@ theorem VCompat.adequacy_gen :
             -- VCompat(v, ann) requires annotation correctness
             sorry
           | bvar _kS =>
-            -- σ = bvar, τ = lam: inferType fallback
-            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
-            sorry
+            -- σ = bvar, τ = lam: via bvar_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.bvar _kS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.lam _dT _bT) ctx seen
+                  (VCompat.absEval_preserves (VCompat.bvar_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
           | app _fS _aS =>
             -- σ = app, τ = lam: inferType fallback
-            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
+            -- BLOCKER: needs app_inferType lemma
             sorry
         | bvar _j =>
           -- τ = bvar: case-split on σ
@@ -413,7 +472,6 @@ theorem VCompat.adequacy_gen :
           | type =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | lam _dS _bS =>
-            -- σ = lam, τ = bvar: catch-all, inferType(lam) = none → contradiction
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | asc _tS _tyS =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
@@ -422,12 +480,22 @@ theorem VCompat.adequacy_gen :
             -- BLOCKER: annotation-trust gap
             sorry
           | bvar _kS =>
-            -- σ = bvar, τ = bvar: inferType fallback
-            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
-            sorry
+            -- σ = bvar, τ = bvar: via bvar_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.bvar _kS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.bvar _j) ctx seen
+                  (VCompat.absEval_preserves (VCompat.bvar_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
           | app _fS _aS =>
             -- σ = app, τ = bvar: inferType fallback
-            -- BLOCKER: needs semantic inferType + normalization-preserves-VCompat lemma
+            -- BLOCKER: needs app_inferType lemma
             sorry
         | asc _tA _tyA =>
           -- τ = asc: case-split on σ
@@ -443,10 +511,22 @@ theorem VCompat.adequacy_gen :
             -- BLOCKER: annotation-trust gap
             sorry
           | bvar _kS =>
-            -- σ = bvar, τ = asc: inferType fallback
-            sorry
+            -- σ = bvar, τ = asc: via bvar_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.bvar _kS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.asc _tA _tyA) ctx seen
+                  (VCompat.absEval_preserves (VCompat.bvar_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
           | app _fS _aS =>
             -- σ = app, τ = asc: inferType fallback
+            -- BLOCKER: needs app_inferType lemma
             sorry
         | app f2 a2 =>
           -- τ = app f2 a2. Case-split on σ to match subCheckNF dispatch.
@@ -544,8 +624,19 @@ theorem VCompat.adequacy_gen :
             -- σ = lam, τ = app: inferType(lam) = none → contradiction
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | bvar _kS =>
-            -- σ = bvar, τ = app: inferType fallback
-            sorry
+            -- σ = bvar, τ = app: via bvar_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.bvar _kS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.app f2 a2) ctx seen
+                  (VCompat.absEval_preserves (VCompat.bvar_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
           | type =>
             -- σ = type, τ = app: inferType(type) = none → contradiction
             dsimp only [] at hcheck; simp [inferType] at hcheck

@@ -6,12 +6,14 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (17 in Soundness, 0 in Subtyping = 17 total)
+### Sorry inventory (14 in Soundness, 0 in Subtyping = 14 total)
 
-Note: Concurrent worktree agent has uncommitted changes reducing Soundness
-sorrys to 14 (adding VCompat.absEval_preserves sorry + proving 4 bvar cases).
-The committed state has 17 sorrys. If the concurrent agent commits, the total
-drops to 14.
+Down from 18 (17+1). Changes by agent ochre-20260404-235517:
+- Proved `subCheckNF_neutral_inferType` (Subtyping): -1 sorry
+- Proved `VCompat.bvar_inferType` (new lemma, no sorry)
+- Added `VCompat.absEval_preserves` (sorry'd key lemma): +1 sorry
+- Closed 4 bvar inferType fallback cases using above: -4 sorrys
+- Net: -4 sorrys
 
 **Phase 1 (fuel monotonicity): COMPLETE**
 - `subCheckNF_fuel_mono` — PROVED
