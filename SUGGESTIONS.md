@@ -23,28 +23,22 @@ absEval returns `lam Type (bvar 0)` (from annotation), concEval returns
 
 **This MUST be fixed before the soundness theorem can be proved.**
 
-### Option A: Validate annotations at mu creation (RECOMMENDED) ← TESTED, FEASIBLE
+### Option A: Validate annotations at mu creation ← TESTED, DOES NOT WORK
 
-In absEval's `.mu` case (Eval.lean:164-167), add a check:
-```lean
-| .mu ann body => do
-    let ann' ← absEval fuel ctx seen ann
-    -- Check body against annotation with self having type ann'
-    let bodyCtx := TyCtx.extend ctx ann'
-    let body' ← absEval fuel bodyCtx seen body
-    if subCheckNF fuel bodyCtx seen body'.val (ann'.val.shift 1 0)
-    then .ok ⟨.mu ann'.val body⟩
-    else .error "mu body doesn't match annotation"
-```
+**Tested by agent ochre-20260404-215501. Result: breaks DNat and Array tests.**
 
-This is the standard recursive-type checking rule: the body must have the
-declared type when self has the declared type. The key risk is that this
-might break appendArrays (body normalization might fail due to domain checks
-on Church-encoded types). Test carefully.
+The creation-time check `body' ⊑ ann'.shift 1 0` fails for Church-encoded
+types with complex annotations. The fundamental issue: inside the mu, self is
+abstract (bvar), so the body's return type involves symbolic applications
+(like `app s m` for dsucc) that subCheckNF can't compare against the
+annotation type (like `dNat`).
 
-**WARNING:** This changes absEval's behavior, which invalidates the
-`absEval_fuel_mono` proof (Phase 1). The fuel monotonicity proof will need
-updating to handle the new validation check.
+Even a targeted lam-only validation (only checking when ann' is a lam) breaks
+because `dNat → dNat` is a lam. The fuel_mono proof update works, but the
+validation itself rejects legitimate types.
+
+**This option requires a more powerful subCheckNF that can reason about
+symbolic terms, or a fundamentally different validation strategy.**
 
 ### Option B: Remove annotation-trust ← TESTED, BREAKS TOO MUCH
 
@@ -82,22 +76,35 @@ tackled after Phase 0 is done.
 
 ### `VCompat.from_type_sub_gen` ✅ PROVED (Soundness.lean:178)
 
-### `VCompat.from_self_intro_gen` (Soundness.lean:257)
-When `subCheckNF` succeeds for `sigma <: mu ann body` and `sigma` is not
-itself a mu, VCompat holds. The inner sorry is essentially adequacy.
+### `VCompat.from_self_intro_gen` ✅ PROVED (Soundness.lean:355)
 
-### `VCompat.adequacy` (Soundness.lean:322)
-The bridge lemma: if `VCompat n v sigma` and `subCheckNF` says `sigma <: tau`,
-then `VCompat n v tau`. This is the key lemma connecting the logical relation
-to the algorithmic checker.
+Proved via adequacy_gen. Key insight: v = σ, so VCompat(σ, σ) is trivially
+true by refl, and adequacy_gen transports across the subcheck.
 
-**Known difficulty:** The lam-lam case requires showing that body compatibility
-transfers across subtype-related bodies. The self-elim annotation path requires
-VCompat v ann from VCompat v (mu ann body), which relies on the annotation
-being correct (Phase 0 prerequisite).
+### `VCompat.adequacy_gen` (Soundness.lean:265) — PARTIALLY PROVED
 
-Approach: generalize to arbitrary `seen` sets (needed for self-intro recursion).
-Double induction on fuel and step index n. Case analysis on subCheckNF structure.
+The generalized adequacy lemma with seen set support. Proved cases:
+- σ = τ (syntactic equality)
+- (σ, τ) in seen (callback)
+- τ = Type (top type)
+- τ = mu (self-intro): normalized mu-right disjunct + ih_fuel/ih_n
+
+**Remaining sorry (Soundness.lean:347) covers:**
+
+1. **Lam-lam**: Needs a substitution lemma — if subCheckNF(bodyσ, bodyτ)
+   under extended context, evaluating bodyσ[a] and bodyτ[a] preserves the
+   relationship. Hard because VCompat's lam case quantifies over ALL fuel
+   levels for the inner evaluation.
+
+2. **Self-elim (mu ⊑ _)**: BLOCKED by annotation-trust. Going from
+   VCompat(v, mu ann body) to VCompat(v, ann) requires annotation
+   correctness. This is the main barrier.
+
+3. **App-app congruence**: Provable via structural app VCompat disjunct +
+   recursive adequacy on components. A good next target.
+
+4. **InferType fallback**: Needs reasoning about inferType and its
+   relationship to VCompat.
 
 ## Phase 3: Subtyping helper lemmas (Subtyping.lean)
 

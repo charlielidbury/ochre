@@ -253,6 +253,106 @@ theorem VCompat.from_type_sub {fuel : Nat} {ctx : TyCtx} {n : Nat} {v : Expr}
   VCompat.from_type_sub_gen fuel n v _ ctx [] hcheck
     (fun p hp => absurd hp (List.not_mem_nil p))
 
+/-- VCompat is reflexive at all step levels. -/
+theorem VCompat.refl (n : Nat) (e : Expr) : VCompat n e e := by
+  cases n with
+  | zero => simp [VCompat]
+  | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
+
+/-- VCompat respects subCheckNF (adequacy), generalized over seen.
+
+    Proved cases:
+    - σ = τ (syntactic equality): direct from hypothesis
+    - (σ, τ) in seen: from seen callback
+    - τ = Type: top type, trivial
+    - τ = mu (self-intro): normalized mu-right disjunct + ih_fuel/ih_n
+
+    Sorry'd cases (documented blockers):
+    - (lam, lam): needs substitution lemma for subCheckNF — showing that
+      if subCheckNF(bodyσ, bodyτ) under extended context, evaluating bodyσ[a]
+      and bodyτ[a] preserves the subtype relationship
+    - (mu, _) self-elim: needs annotation correctness — going from
+      VCompat(v, mu ann body) to VCompat(v, ann) requires the annotation to
+      accurately describe the mu's behavior
+    - (app, app) congruence: provable in principle via structural app disjunct
+    - inferType fallback: needs inferType reasoning -/
+theorem VCompat.adequacy_gen :
+    ∀ (fuel : Nat), ∀ (n : Nat) (v σ τ : Expr) (ctx : TyCtx) (seen : List (Expr × Expr)),
+    VCompat n v σ →
+    subCheckNF fuel ctx seen σ τ = true →
+    (∀ p, p ∈ seen → VCompat n v p.2) →
+    VCompat n v τ := by
+  intro fuel
+  induction fuel with
+  | zero => intro n v σ τ ctx seen _ h; simp [subCheckNF] at h
+  | succ k ih_fuel =>
+    intro n
+    induction n with
+    | zero => intro v σ τ ctx seen _ _ _; simp [VCompat]
+    | succ m ih_n =>
+    intro v σ τ ctx seen hv hcheck hseen
+    have hcheck_orig := hcheck
+    unfold subCheckNF at hcheck; dsimp only [] at hcheck
+    -- Case 1: σ = τ (syntactic equality)
+    by_cases heq : (σ == τ) = true
+    · have : σ = τ := beq_iff_eq.mp heq; subst this; exact hv
+    · simp only [if_neg heq] at hcheck
+      -- Case 2: seen check
+      by_cases hseen_chk : (seen.any fun (a', b') => σ == a' && τ == b') = true
+      · rw [List.any_eq_true] at hseen_chk
+        obtain ⟨p, hp_mem, hp_match⟩ := hseen_chk
+        simp only [Bool.and_eq_true, beq_iff_eq] at hp_match
+        rw [hp_match.2]; exact hseen p hp_mem
+      · simp only [if_neg hseen_chk] at hcheck
+        -- Case 3: match on τ
+        cases τ with
+        | type => unfold VCompat; exact Or.inl rfl
+        | mu ann body =>
+          -- Self-intro: subCheckNF unfolds the mu and checks σ against normalized body
+          have hcheck' := hcheck
+          match habs : absEval k ctx ((σ, Expr.mu ann body) :: seen)
+              (body.subst 0 (Expr.mu ann body)) with
+          | .error _ => simp [habs] at hcheck'
+          | .ok u' =>
+            simp only [habs] at hcheck'
+            -- hcheck': subCheckNF k ctx seen' σ u'.val = true
+            -- Use normalized mu-right disjunct: need VCompat m v u'.val
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+            apply Or.inr; apply Or.inl
+            exact ⟨ann, body, ⟨k, ctx, (σ, Expr.mu ann body) :: seen, u', rfl, habs, by
+              -- Goal: VCompat m v u'.val
+              -- Use ih_fuel at fuel k, step m
+              apply ih_fuel m v σ u'.val ctx ((σ, Expr.mu ann body) :: seen)
+              · exact VCompat.mono hv
+              · exact hcheck'
+              · intro p hp
+                cases hp with
+                | head =>
+                  -- p = (σ, mu ann body): need VCompat m v (mu ann body)
+                  -- Use ih_n at step m with the ORIGINAL hcheck
+                  exact ih_n v σ (Expr.mu ann body) ctx seen
+                    (VCompat.mono hv) hcheck_orig
+                    (fun q hq => VCompat.mono (hseen q hq))
+                | tail _ hp_tail =>
+                  exact VCompat.mono (hseen p hp_tail)⟩⟩
+        | _ =>
+          -- Remaining cases: τ is lam, bvar, app, or asc
+          -- subCheckNF matches on (σ, τ):
+          -- - (lam, lam): hard, needs substitution lemma
+          -- - (_, mu): already handled above
+          -- - (mu, _): self-elim, needs annotation correctness
+          -- - (app, app): congruence, might be provable
+          -- - (_, _): inferType fallback
+          sorry
+
+/-- VCompat respects subCheckNF (adequacy). -/
+theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
+    (hv : VCompat n v σ) (hcheck : subCheckNF fuel ctx [] σ τ = true)
+    : VCompat n v τ :=
+  VCompat.adequacy_gen fuel n v σ τ ctx [] hv hcheck
+    (fun p hp => absurd hp (List.not_mem_nil p))
+
 /-- General self-intro. -/
 theorem VCompat.from_self_intro_gen :
     ∀ (fuel : Nat), ∀ (n : Nat) (σ : Expr) (ctx : TyCtx) (seen : List (Expr × Expr)),
@@ -285,29 +385,32 @@ theorem VCompat.from_self_intro_gen :
       simp only [Bool.and_eq_true, beq_iff_eq] at hp_match
       rw [hp_match.2]; exact hseen p hp_mem
     · simp only [if_neg hseen_chk] at hcheck
-      -- b = .mu ann body: self-intro case
-      -- After matching .type (no) and the (σ, .mu) case:
-      -- The match on b falls into the .mu case (since b = .mu ann body)
-      -- subCheckNF unfolds: absEval the unfolded body, then check σ against result
+      -- Self-intro case: subCheckNF unfolds the mu and checks σ against normalized body
       have hcheck_mu := hcheck
-      -- hcheck now encodes: the self-intro branch
-      -- Extract the absEval result
       match habs : absEval k ctx ((σ, Expr.mu ann body) :: seen)
           (body.subst 0 (Expr.mu ann body)) with
       | .error _ => simp [habs] at hcheck_mu
       | .ok u' =>
         simp only [habs] at hcheck_mu
         -- hcheck_mu: subCheckNF k ctx seen' σ u'.val = true
-        -- Goal: VCompat (m+1) σ (.mu ann body)
-        -- Use normalized mu-right disjunct (6th): need VCompat m σ u'.val
+        -- Use normalized mu-right disjunct: need VCompat m σ u'.val
         unfold VCompat
         apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
         apply Or.inr; apply Or.inl
         exact ⟨ann, body, ⟨k, ctx, (σ, Expr.mu ann body) :: seen, u', rfl, habs, by
           -- Goal: VCompat m σ u'.val
-          -- This requires adequacy-like reasoning: subCheckNF k ... σ u'.val = true
-          -- and VCompat m σ σ (from refl) should give VCompat m σ u'.val.
-          sorry⟩⟩
+          -- Use adequacy_gen: VCompat m σ σ (refl) + subCheckNF k ... σ u'.val → VCompat m σ u'.val
+          apply VCompat.adequacy_gen k m σ σ u'.val ctx ((σ, Expr.mu ann body) :: seen)
+          · exact VCompat.refl m σ
+          · exact hcheck_mu
+          · intro p hp
+            cases hp with
+            | head =>
+              -- p = (σ, mu ann body): need VCompat m σ (mu ann body)
+              exact ih_n σ ctx seen hσ_not_mu ann body hcheck_orig
+                (fun q hq => VCompat.mono (hseen q hq))
+            | tail _ hp_tail =>
+              exact VCompat.mono (hseen p hp_tail)⟩⟩
 
 /-- Corollary: self-intro with empty seen. -/
 theorem VCompat.from_self_intro {fuel : Nat} {ctx : TyCtx} {n : Nat} {σ : Expr}
@@ -317,18 +420,6 @@ theorem VCompat.from_self_intro {fuel : Nat} {ctx : TyCtx} {n : Nat} {σ : Expr}
     : VCompat n σ (.mu ann body) :=
   VCompat.from_self_intro_gen fuel n σ ctx [] hσ_not_mu ann body hcheck
     (fun p hp => absurd hp (List.not_mem_nil p))
-
-/-- VCompat respects subCheckNF (adequacy). -/
-theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
-    (hv : VCompat n v σ) (hcheck : subCheckNF fuel ctx [] σ τ = true)
-    : VCompat n v τ := by
-  sorry
-
-/-- VCompat is reflexive at all step levels. -/
-theorem VCompat.refl (n : Nat) (e : Expr) : VCompat n e e := by
-  cases n with
-  | zero => simp [VCompat]
-  | succ k => unfold VCompat; exact Or.inr (Or.inl rfl)
 
 /-! ## Soundness theorem
 
