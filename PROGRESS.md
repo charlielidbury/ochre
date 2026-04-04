@@ -1,19 +1,31 @@
 # Progress
 
-## Current state (2026-04-04)
+## Current state (2026-04-05)
 
 Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (14 in Soundness, 0 in Subtyping = 14 total)
+### Sorry inventory (22 in Soundness, 0 in Subtyping = 22 total)
 
-Down from 18 (17+1). Changes by agent ochre-20260404-235517:
-- Proved `subCheckNF_neutral_inferType` (Subtyping): -1 sorry
-- Proved `VCompat.bvar_inferType` (new lemma, no sorry)
-- Added `VCompat.absEval_preserves` (sorry'd key lemma): +1 sorry
-- Closed 4 bvar inferType fallback cases using above: -4 sorrys
-- Net: -4 sorrys
+Up from 14 numerically, but the increase is from expanding one blanket sorry
+(over a **false** theorem) into 9 precisely categorized sub-cases with 3 proved.
+
+Changes by agent ochre-20260405-003633:
+- **CRITICAL FIX: absEval_preserves was FALSE as stated.**
+  Counterexample: v = e = asc (lam Type (bvar 0)) (lam Type Type), n=2.
+  VCompat(2, v, v) via refl, absEval(v) = ok ⟨lam Type Type⟩, but
+  VCompat(2, asc(...), lam Type Type) fails — no disjunct handles asc on value side.
+- **DEFINITION CHANGE: Added asc-left disjunct to VCompat.**
+  `∨ (∃ term tyAsc, v = .asc term tyAsc ∧ VCompat n term τ)`
+  This reflects runtime semantics: concEval erases ascriptions, so
+  `(e : τ)` as a value behaves like `e`. Needed because mu-left unfolding
+  can introduce asc nodes in the value position.
+- **Proved 3 cases of absEval_preserves**: mu-left (IH), inferType (IH), asc-left (IH)
+- **Fixed all cascading proofs** for the new VCompat disjunct in:
+  VCompat.mono, VCompat.bvar_inferType, VCompat.adequacy_gen (2 rcases sites)
+- **Proved 2 new asc-left cases in adequacy_gen** (lam-lam and app-app structural)
+- All tests pass, `lake build` succeeds
 
 **Phase 1 (fuel monotonicity): COMPLETE**
 - `subCheckNF_fuel_mono` — PROVED
@@ -21,26 +33,40 @@ Down from 18 (17+1). Changes by agent ochre-20260404-235517:
 
 **Phase 2 (VCompat lemmas): IN PROGRESS**
 - `VCompat.from_type_sub_gen` — **PROVED** (Soundness.lean:178)
-- `VCompat.refl` — **PROVED** (Soundness.lean:257)
-- `VCompat.bvar_inferType` — **PROVED** (Soundness.lean:268)
-- `VCompat.absEval_preserves` — **SORRY** (Soundness.lean:334) — KEY LEMMA
-- `VCompat.adequacy_gen` — **PARTIALLY PROVED** (Soundness.lean:358)
+- `VCompat.refl` — **PROVED** (Soundness.lean:263)
+- `VCompat.bvar_inferType` — **PROVED** (Soundness.lean:273)
+- `VCompat.absEval_preserves` — **PARTIALLY PROVED** (Soundness.lean:320)
+  - Proved: top (trivial), refl-bvar (identity), refl-type (top)
+  - Proved: mu-left (IH on n), inferType (IH on n), asc-left (IH on n)
+  - Sorry: refl-asc (1 sorry) — needs VCompat.adequacy (defined later, circular dep)
+  - Sorry: refl-lam (1) — normalization coherence (absEval body vs raw body)
+  - Sorry: refl-mu (1) — annotation normalization congruence
+  - Sorry: refl-app (1) — beta-reduction changes shape
+  - Sorry: semantic lam (1) — normalization coherence
+  - Sorry: structural mu (1) — annotation normalization congruence
+  - Sorry: mu-right (1) — annotation normalization congruence
+  - Sorry: normalized mu-right (1) — composing normalizations
+  - Sorry: structural app (1) — beta-reduction changes shape
+  All sorry'd cases reduce to 2 fundamental blockers:
+  (a) Normalization coherence: absEval(body) and body give same semantics
+  (b) Annotation normalization congruence: absEval(ann) preserves mu semantics
+- `VCompat.adequacy_gen` — **PARTIALLY PROVED** (Soundness.lean:459)
   - Proved: equality, seen hit, Type, self-intro (τ = mu)
-  - Proved: app-app structural congruence (all VCompat sub-cases)
+  - Proved: app-app structural congruence (all VCompat sub-cases incl. asc-left)
   - Proved: contradictions for σ ∈ {type, lam, asc} when τ = app
   - Proved: contradictions for σ ∈ {type, asc} when τ = lam
   - Proved: contradictions for σ ∈ {type, lam, asc} when τ ∈ {bvar, asc}
-  - **Proved: lam-lam mu-left + inferType sub-cases** (using empty-seen reconstruction)
-  - **Proved: σ = bvar for τ ∈ {lam, bvar, asc, app}** via bvar_inferType + absEval_preserves
-  - Sorry: lam-lam refl + semantic-lam (2 sorrys, lines 452/455) — substitution lemma
+  - Proved: lam-lam mu-left + inferType + **asc-left** sub-cases
+  - Proved: σ = bvar for τ ∈ {lam, bvar, asc, app} via bvar_inferType + absEval_preserves
+  - Sorry: lam-lam refl + semantic-lam (2 sorrys) — substitution lemma
   - Sorry: self-elim σ=mu for τ ∈ {lam, bvar, asc, app} (4 sorrys) — annotation-trust
-  - Sorry: inferType fallback σ=app for τ ∈ {lam, bvar, asc} (3 sorrys) — needs app_inferType
-  - Sorry: app-app inferType fallback (1 sorry, line 653) — needs app_inferType + absEval_preserves
-- `VCompat.adequacy` — corollary of adequacy_gen (Soundness.lean:670)
-- `VCompat.from_self_intro_gen` — **PROVED** (Soundness.lean:678)
-- `soundness` (main theorem) — **PARTIALLY PROVED** (Soundness.lean:736)
+  - Sorry: inferType fallback σ=app for τ ∈ {lam, bvar, asc} (3 sorrys) — app_inferType
+  - Sorry: app-app inferType fallback (1 sorry) — app_inferType + absEval_preserves
+- `VCompat.adequacy` — corollary of adequacy_gen (Soundness.lean:798)
+- `VCompat.from_self_intro_gen` — **PROVED** (Soundness.lean:806)
+- `soundness` (main theorem) — **PARTIALLY PROVED** (Soundness.lean:882)
   - Proved: fuel=0 (contradiction), bvar (contradiction), type (trivial)
-  - **Proved: asc case** via IH + VCompat.adequacy
+  - Proved: asc case via IH + VCompat.adequacy
   - Sorry: lam — all-fuel issue in semantic lam
   - Sorry: mu — annotation normalization (ann vs ann'.val)
   - Sorry: app — combines multiple issues
@@ -52,7 +78,29 @@ Down from 18 (17+1). Changes by agent ochre-20260404-235517:
 - `subCheckNF_type_left_target` — PROVED
 - `subCheckNF_neutral_inferType` — **PROVED** (Subtyping.lean:198)
 
-### What happened this session (agent ochre-20260404-235445)
+### What happened this session (agent ochre-20260405-003633)
+
+**Found absEval_preserves counterexample + added asc-left disjunct to VCompat.**
+
+1. **CRITICAL: absEval_preserves was FALSE.** Found concrete counterexample
+   (see "Key insight" section below). The issue: VCompat had no mechanism to
+   "look through" ascriptions on the value side. Since mu-left unfolding can
+   introduce asc nodes in the value position, this was a real bug.
+
+2. **DEFINITION CHANGE: Added asc-left disjunct to VCompat** (10th disjunct).
+   `∨ (∃ term tyAsc, v = .asc term tyAsc ∧ VCompat n term τ)`.
+   Semantically correct: concEval erases ascriptions. Costs one step.
+
+3. **Fixed all cascading proofs:** VCompat.mono (new case), VCompat.bvar_inferType
+   (new case + Or.inl wrappers for inferType constructions), VCompat.adequacy_gen
+   (two rcases sites: lam-lam and app-app structural, both got asc-left cases).
+
+4. **Expanded absEval_preserves from 1 blanket sorry to 12 specific cases:**
+   3 proved (mu-left, inferType, asc-left via IH on n), 9 sorry'd with clear
+   documentation. The 9 sorrys reduce to 2 fundamental blockers: normalization
+   coherence and annotation normalization congruence.
+
+### What happened in previous session (agent ochre-20260404-235445)
 
 **Proved subCheckNF_neutral_inferType + explored bvar definition change.**
 
@@ -142,51 +190,82 @@ additions should be preserved — they're correct and useful.
        lemma (connecting subCheckNF(bodyS, bodyT) under binder to VCompat
        after substitution).
 
-### Sorry categorization (14 in Soundness, 0 in Subtyping)
+### Sorry categorization (22 in Soundness, 0 in Subtyping)
 
-The remaining sorrys fall into 4 categories:
+The remaining sorrys fall into 5 categories:
 
-**Category 1: Structural lam-lam (2 sorrys, Soundness.lean:373, 376)**
+**Category A: absEval_preserves sub-cases (9 sorrys, Soundness.lean:383-422)**
+- 3 cases PROVED (mu-left, inferType, asc-left — all via IH on n)
+- 9 sorrys remain, reducing to 2 fundamental blockers:
+  (a) **Normalization coherence**: absEval(body) and raw body have same semantics
+      under VCompat. Affects: refl-lam, refl-app, semantic lam, structural app.
+  (b) **Annotation normalization congruence**: absEval(ann) preserves mu semantics.
+      Affects: refl-mu, structural mu, mu-right, normalized mu-right.
+  Plus: refl-asc (1 sorry) which needs VCompat.adequacy (circular dependency
+  with adequacy_gen; does NOT arise at current use sites).
+
+**Category B: Structural lam-lam (2 sorrys, Soundness.lean:550/553)**
 - Refl: v = lam _dS _bS, need VCompat (m+1) (lam _dS _bS) (lam _dT _bT)
 - Semantic lam: v = lam domV bodyV, need to transport body compatibility
 - BLOCKER: substitution lemma — connecting subCheckNF(bodyS, bodyT) under
   extended context to VCompat after substituting concrete arguments. The
   semantic lam quantifies over ALL fuel levels.
 
-**Category 2: Self-elim / annotation-trust (4 sorrys)**
-- σ = mu, τ ∈ {lam, bvar, asc, app} (lines 401, 423, 444, 542)
+**Category C: Self-elim / annotation-trust (4 sorrys)**
+- σ = mu, τ ∈ {lam, bvar, asc, app} (lines 587, 618, 649, 769)
 - BLOCKER: annotation-trust gap. subCheckNF's mu self-elim tries the
   annotation first, then body normalization. Both paths need guarantees
-  that VCompat is preserved.
+  that VCompat is preserved. The body path IS provable with
+  absEval_preserves (but absEval_preserves is itself sorry'd for these cases).
 
-**Category 0: absEval_preserves (1 sorry, Soundness.lean:339)**
-- THE KEY LEMMA: VCompat(n, v, e) ∧ absEval(e) = ok e' → VCompat(n, v, e'.val)
-- Would unblock all σ=app inferType sorrys, soundness mu case, possibly self-elim
-
-**Category 3: InferType fallback σ=app (4 sorrys)**
-- σ = app, τ ∈ {lam, bvar, asc} (lines 501, 564, 653) + app-app fallback
+**Category D: InferType fallback σ=app (4 sorrys)**
+- σ = app, τ ∈ {lam, bvar, asc} (lines 605, 636, 667) + app-app fallback (766)
 - BLOCKER: needs app_inferType lemma + absEval_preserves.
   σ = bvar cases are DONE (via bvar_inferType + absEval_preserves).
 
-**Category 4: Soundness main cases (3 sorrys, Soundness.lean:689, 696, 703)**
-- lam: semantic lam all-fuel issue (see above)
+**Category E: Soundness main cases (3 sorrys, Soundness.lean:927, 934, 941)**
+- lam: semantic lam all-fuel issue
 - mu: annotation normalization (ann vs ann'.val)
 - app: combines all above issues
 
-### Recommended next steps (updated)
+### Recommended next steps (updated 2026-04-05)
 
-1. **absEval_preserves (Soundness.lean:339):** Most impactful lemma. Start
-   with easy cases (type→top, bvar→identity), then lam/mu/asc/app.
+1. **Normalization coherence** — The single biggest blocker. Need to show
+   that absEval doesn't change the semantic behavior of terms under VCompat.
+   This is essentially the correctness of absEval. Possible approaches:
+   (a) Prove absEval idempotency on NfExprs (if e is already normalized,
+       absEval returns the same thing). This would handle most practical cases.
+   (b) Prove a "semantic normalization" lemma: VCompat(n, e, absEval(e).val)
+       for appropriate e. This is close to absEval_preserves's refl case.
+   (c) Change the soundness proof to avoid going through un-normalized types.
 
-2. **app_inferType lemma:** Like bvar_inferType but for app. Harder because
-   the structural app disjunct in VCompat doesn't compose into return types.
+2. **Substitution lemma** — For lam-lam refl/semantic cases in adequacy_gen.
 
-3. **Substitution lemma:** For lam-lam refl/semantic cases.
+3. **app_inferType lemma** — Like bvar_inferType but for app.
 
-4. **Self-elim / annotation-trust:** Consider whether absEval_preserves +
-   body normalization path can bypass the annotation check.
+4. **Self-elim / annotation-trust** — The body normalization path would work
+   if absEval_preserves were fully proved. The annotation path remains the
+   fundamental Phase 0 issue from SUGGESTIONS.md.
 
-5. **Soundness main cases:** Lex/strong induction on fuel for lam/app.
+5. **Soundness main cases** — Lex/strong induction on fuel for lam/app.
+
+### Key insight from this session
+
+**absEval_preserves was FALSE before the asc-left fix.** The counterexample:
+- v = e = asc (lam Type (bvar 0)) (lam Type Type)
+- VCompat(2, v, v) via refl
+- absEval(v) = ok ⟨lam Type Type⟩
+- VCompat(2, asc(...), lam Type Type) was FALSE — no disjunct handled asc on value side
+
+The fix (asc-left disjunct) is semantically correct: at runtime, concEval erases
+ascriptions, so `(e : τ)` behaves like `e`. The disjunct costs one step to prevent
+infinite chains. All existing proofs updated.
+
+**Most remaining sorrys reduce to 2 fundamental problems:**
+1. Normalization coherence (absEval doesn't change semantics)
+2. Annotation trust (mu annotations are correct)
+Both are aspects of "absEval is semantically correct", which is deeply intertwined
+with the soundness theorem itself.
 
 ### Previous session (agent ochre-20260404-224040)
 
@@ -269,7 +348,7 @@ seen hit, Type, and self-intro cases. Identified the annotation-trust
 gap as the blocker for self-elim.
 
 ### What's working
-- All tests pass (`lake build` succeeds with sorrys only in Subtyping/Soundness)
+- All tests pass (`lake build` succeeds with sorrys only in Soundness)
 - appendVec type-checks with abstract arguments
 - `concEval_fuel_mono` proved
 - `absEval_fuel_mono` proved
@@ -277,9 +356,12 @@ gap as the blocker for self-elim.
 - `VCompat.from_type_sub_gen` proved
 - VCompat.mono, VCompat.mono_le, VCompat.refl, VCompat.fixpoint_mu,
   VCompat.self_intro_eq, VCompat.fixpoint_mu_left all proved
+- VCompat.bvar_inferType proved
+- VCompat.absEval_preserves partially proved (3/12 cases)
 - SubtypeCore.trans, Subtype'.trans proved
 - **VCompat is meaningful** (not trivially true)
-- **App-app structural congruence fully proved** in adequacy_gen
+- **VCompat has asc-left disjunct** (fixes false absEval_preserves)
+- **App-app structural congruence fully proved** in adequacy_gen (incl. asc-left)
 
 ### Priority
 

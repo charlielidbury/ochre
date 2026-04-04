@@ -98,26 +98,30 @@ structural cases: the outer seen's VCompat callback is tied to the original
 v, but structural decomposition needs callbacks for sub-components. With
 `[]`, the callback is vacuous. All tests pass.
 
-**Remaining sorrys (Soundness.lean:341-445):**
+**DEFINITION CHANGE (agent ochre-20260405-003633):** Added asc-left disjunct
+to VCompat: `∨ (∃ term tyAsc, v = .asc term tyAsc ∧ VCompat n term τ)`.
+This was needed because absEval_preserves was FALSE without it (see
+DECISION-LOG.md for the counterexample). All proofs updated.
 
-1. **Lam-lam** (τ = lam, Soundness.lean:341): The `seen` clearing change
+**Remaining sorrys (Soundness.lean, see PROGRESS.md for current line numbers):**
+
+1. **Lam-lam** (τ = lam, 2 sorrys): The `seen` clearing change
    enables the adequacy proof for domain/body components, but the hard part
    is the "substitution lemma": connecting subCheckNF(bodyA, bodyB) under
    extended context to VCompat after substituting concrete arguments into
    the bodies. VCompat's semantic lam quantifies over ALL fuel levels.
 
-2. **Self-elim** (σ = mu, τ ≠ mu, Soundness.lean:439): BLOCKED by
+2. **Self-elim** (σ = mu, τ ≠ mu, 4 sorrys): BLOCKED by
    annotation-trust. Going from VCompat(v, mu ann body) to VCompat(v, ann)
-   requires annotation correctness. This is the main barrier.
+   requires annotation correctness. The body normalization path would work
+   IF absEval_preserves were fully proved.
 
-3. **InferType fallback** (Soundness.lean:436, 445): When subCheckNF falls
-   through to inferType catch-all. Needs a "semantic inferType" lemma:
-   if VCompat n v σ and inferType ctx σ = some ty, then VCompat relates
-   v to the normalized ty. This would also help with τ = bvar/asc cases
-   (Soundness.lean:344, 347).
+3. **InferType fallback σ=app** (4 sorrys): Needs app_inferType lemma
+   + absEval_preserves. σ = bvar cases are DONE.
 
-4. **τ = bvar, τ = asc** (Soundness.lean:344, 347): Combinations of
-   self-elim + inferType fallback. Same blockers as (2) and (3).
+4. **absEval_preserves sub-cases** (9 sorrys): 3 cases proved (mu-left,
+   inferType, asc-left). Remaining 9 reduce to normalization coherence
+   and annotation normalization congruence.
 
 ## Phase 3: Subtyping helper lemmas (Subtyping.lean)
 

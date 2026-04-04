@@ -95,6 +95,12 @@ def VCompat : Nat → Expr → Expr → Prop
         VCompat n fV fT ∧ VCompat n aV aT)
     -- InferType fallback: for neutral terms
     ∨ (∃ (ctx : TyCtx) (ty : Expr), inferType ctx v = some ty ∧ VCompat n ty τ)
+    -- Asc-left erasure: (e : τ) as a value behaves like `e` at runtime.
+    -- concEval erases ascriptions, so the runtime value of `asc term ty` is
+    -- the runtime value of `term`. This disjunct reflects that in VCompat.
+    -- Needed because mu-left unfolding can introduce asc nodes in the value
+    -- position (body may contain asc from let-bindings etc.).
+    ∨ (∃ term tyAsc, v = .asc term tyAsc ∧ VCompat n term τ)
 
 @[simp] theorem VCompat.zero_eq (v τ : Expr) : VCompat 0 v τ = True := by
   unfold VCompat; rfl
@@ -116,7 +122,8 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
                   ⟨ann, body, ⟨nfuel, nctx, nseen, u', hτ, habs, h_mu_norm⟩⟩ |
                   ⟨ann, body, hv, h_mu⟩ |
                   ⟨fV, fT, aV, aT, hv, hτ, h_f, h_a⟩ |
-                  ⟨ctx, ty, h_infer, h_compat⟩
+                  ⟨ctx, ty, h_infer, h_compat⟩ |
+                  ⟨term, tyAsc, hv, h_asc⟩
     · exact Or.inl h_top
     · exact Or.inr (Or.inl h_refl)
     · exact Or.inr (Or.inr (Or.inl ⟨domV, domT, bodyV, bodyT, hv, hτ,
@@ -127,7 +134,9 @@ theorem VCompat.mono {n : Nat} {v τ : Expr}
       exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, ⟨nfuel, nctx, nseen, u', hτ, habs, VCompat.mono h_mu_norm⟩⟩)))))
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ann, body, hv, VCompat.mono h_mu⟩))))))
     · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨fV, fT, aV, aT, hv, hτ, VCompat.mono h_f, VCompat.mono h_a⟩)))))))
-    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩)))))))
+    · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨ctx, ty, h_infer, VCompat.mono h_compat⟩))))))))
+    · -- Asc-left: mono the inner VCompat
+      exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨term, tyAsc, hv, VCompat.mono h_asc⟩))))))))
 
 /-- Multi-step downward closure. -/
 theorem VCompat.mono_le {n m : Nat} {v τ : Expr}
@@ -277,13 +286,14 @@ theorem VCompat.bvar_inferType {n : Nat} {v : Expr} {k : Nat} {ctx : TyCtx} {ty 
       ⟨_, _, ⟨_, _, _, _, hτ_mu6, _, _⟩⟩ |
       ⟨ann, body, hv_mu, hv_body⟩ |
       ⟨_, _, _, _, _, hτ_app, _, _⟩ |
-      ⟨ctx', ty', hinf_v, hcompat⟩
+      ⟨ctx', ty', hinf_v, hcompat⟩ |
+      ⟨term, tyAsc, hv_asc, h_asc⟩
     · cases h_type
     · subst h_refl
       unfold VCompat
       apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
       apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-      exact ⟨ctx, ty, hinf, VCompat.refl m ty⟩
+      exact Or.inl ⟨ctx, ty, hinf, VCompat.refl m ty⟩
     · cases hτ_lam
     · cases hτ_mu
     · cases hτ_mu5
@@ -296,7 +306,13 @@ theorem VCompat.bvar_inferType {n : Nat} {v : Expr} {k : Nat} {ctx : TyCtx} {ty 
     · unfold VCompat
       apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
       apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-      exact ⟨ctx', ty', hinf_v, ih hcompat⟩
+      exact Or.inl ⟨ctx', ty', hinf_v, ih hcompat⟩
+    · -- Asc-left: v = asc term tyAsc, VCompat m term (bvar k)
+      -- Recurse: bvar_inferType on the inner term
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact Or.inr ⟨term, tyAsc, hv_asc, ih h_asc⟩
 
 /-- Normalization preserves VCompat: if VCompat(n, v, e) and absEval normalizes
     e to e', then VCompat(n, v, e'.val). KEY REMAINING LEMMA for inferType
@@ -306,7 +322,118 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
     (hv : VCompat n v e)
     (habs : absEval fuel ctx seen e = .ok e')
     : VCompat n v e'.val := by
-  sorry
+  induction n generalizing v e fuel ctx seen e' with
+  | zero => simp [VCompat]
+  | succ m ih =>
+    unfold VCompat at hv
+    rcases hv with
+      h_type | h_refl |
+      ⟨domV, domT, bodyV, bodyT, hv_eq, hτ_eq, h_body⟩ |
+      ⟨annV, annT, bodyV, bodyT, hv_eq, hτ_eq, h_body⟩ |
+      ⟨ann, body, hτ_mu, h_mu⟩ |
+      ⟨ann, body, ⟨nfuel, nctx, nseen, u', hτ_mu, habs_inner, h_mu_norm⟩⟩ |
+      ⟨ann_l, body_l, hv_mu, h_mu_body⟩ |
+      ⟨fV, fT, aV, aT, hv_eq, hτ_eq, h_f, h_a⟩ |
+      ⟨ctxi, tyi, hinf_v, h_compat⟩ |
+      ⟨term, tyAsc, hv_asc, h_asc⟩
+    · -- Top: e = type. absEval(type) = ok ⟨type⟩. e'.val = type.
+      subst h_type; unfold absEval at habs
+      cases fuel with
+      | zero => simp [absEval] at habs
+      | succ k => simp [absEval] at habs; subst habs; unfold VCompat; exact Or.inl rfl
+    · -- Refl: v = e. Need VCompat(m+1, e, e'.val).
+      subst h_refl
+      -- After subst, e is gone; case-split on v (= former e)
+      cases fuel with
+      | zero => simp [absEval] at habs
+      | succ k =>
+        cases v with
+        | bvar j =>
+          -- absEval(bvar j) = ok ⟨bvar j⟩, so e'.val = bvar j = e
+          unfold absEval at habs; injection habs with heq; subst heq
+          unfold VCompat; exact Or.inr (Or.inl rfl)
+        | type =>
+          -- absEval(type) = ok ⟨type⟩, e'.val = type
+          unfold absEval at habs; injection habs with heq; subst heq
+          unfold VCompat; exact Or.inl rfl
+        | asc term ty =>
+          -- absEval(asc term ty) = sigma ← absEval(term), tau ← absEval(ty),
+          -- check sigma ⊑ tau, return tau.
+          -- Use asc-left: VCompat(m, term, e'.val) via IH
+          unfold absEval at habs; dsimp only [] at habs
+          match h_sigma : absEval k ctx seen term with
+          | .error _ => simp [h_sigma, bind, Except.bind] at habs
+          | .ok sigma =>
+            simp only [h_sigma, bind, Except.bind] at habs
+            match h_tau : absEval k ctx seen ty with
+            | .error _ => simp [h_tau, bind, Except.bind] at habs
+            | .ok tau =>
+              simp only [h_tau, bind, Except.bind] at habs
+              by_cases hsub : subCheckNF k ctx seen sigma.val tau.val = true
+              · simp only [hsub, ite_true] at habs
+                injection habs with heq; subst heq
+                -- Goal: VCompat(m+1, asc term ty, tau.val)
+                -- Use asc-left: need VCompat(m, term, tau.val)
+                -- Proof sketch: IH gives VCompat(m, term, sigma.val), then
+                -- adequacy bridges to tau.val. But VCompat.adequacy is defined
+                -- AFTER this lemma, so we can't use it here.
+                -- NOTE: This case does NOT arise at current use sites — at the
+                -- bvar use sites in adequacy_gen, VCompat(n+1, v, bvar k) forces
+                -- v ∉ {asc}, so the asc-refl path is never taken.
+                sorry
+              · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at habs; simp at habs
+        | lam dom body =>
+          -- absEval(lam) normalizes domain and body. v = lam dom body.
+          -- Need VCompat(m+1, lam dom body, lam dom'.val body'.val).
+          -- HARD: needs substitution lemma / normalization coherence.
+          sorry
+        | mu ann body =>
+          -- absEval(mu) normalizes annotation. v = mu ann body, e'.val = mu ann'.val body.
+          -- HARD: needs annotation normalization congruence.
+          sorry
+        | app f a =>
+          -- absEval(app) evaluates f, a, dispatches. v = app f a.
+          -- HARD: e'.val could be beta-reduced, completely different shape.
+          sorry
+    · -- Semantic lam: v = lam domV bodyV, e = lam domT bodyT
+      -- Need VCompat(m+1, lam domV bodyV, e'.val)
+      -- HARD: needs normalization coherence for bodies
+      sorry
+    · -- Structural mu: v = mu annV bodyV, e = mu annT bodyT
+      -- HARD: annotation normalization congruence
+      sorry
+    · -- Mu-right: e = mu ann body, VCompat(m, v, body[0:=mu])
+      -- HARD: annotation normalization congruence
+      sorry
+    · -- Normalized mu-right: e = mu, already normalized VCompat(m, v, u'.val)
+      -- HARD: composing two normalizations
+      sorry
+    · -- Mu-left: v = mu ann_l body_l, VCompat(m, body_l[0:=mu], e)
+      -- By IH: VCompat(m, body_l[0:=mu], e'.val)
+      -- Then mu-left: VCompat(m+1, mu ann_l body_l, e'.val)
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inl
+      exact ⟨ann_l, body_l, hv_mu, ih h_mu_body habs⟩
+    · -- Structural app: v = app fV aV, e = app fT aT
+      -- absEval(app fT aT) might beta-reduce (if fT normalizes to lam)
+      -- or return a symbolic app (if fT is neutral).
+      -- HARD in general (beta-reduction changes shape)
+      sorry
+    · -- InferType: inferType ctx' v = some ty', VCompat(m, ty', e)
+      -- By IH: VCompat(m, ty', e'.val)
+      -- Then inferType: VCompat(m+1, v, e'.val)
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact Or.inl ⟨ctxi, tyi, hinf_v, ih h_compat habs⟩
+    · -- Asc-left: v = asc term tyAsc, VCompat(m, term, e)
+      -- By IH: VCompat(m, term, e'.val)
+      -- Then asc-left: VCompat(m+1, asc term tyAsc, e'.val)
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact Or.inr ⟨term, tyAsc, hv_asc, ih h_asc habs⟩
 
 /-- VCompat respects subCheckNF (adequacy), generalized over seen.
 
@@ -416,7 +543,8 @@ theorem VCompat.adequacy_gen :
               ⟨_, _, ⟨_, _, _, _, hσ_mu6, _, _⟩⟩ |
               ⟨ann_l, body_l, hvm7, hvb7⟩ |
               ⟨_, _, _, _, _, hσ_app8, _, _⟩ |
-              ⟨ctxi, tyi, hinf, hty⟩
+              ⟨ctxi, tyi, hinf, hty⟩ |
+              ⟨term_asc, tyAsc, hv_asc, h_asc⟩
             · cases h_type  -- lam ≠ type
             · -- Refl: v = lam _dS _bS. Needs substitution lemma to construct semantic lam.
               sorry
@@ -439,9 +567,18 @@ theorem VCompat.adequacy_gen :
               unfold VCompat
               apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
               apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-              exact ⟨ctxi, tyi, hinf,
+              exact Or.inl ⟨ctxi, tyi, hinf,
                 ih_n _ (Expr.lam _dS _bS) (Expr.lam _dT _bT) ctx []
                   hty hcheck_empty
+                  (fun p hp => absurd hp (List.not_mem_nil p))⟩
+            · -- Asc-left: v = asc term_asc tyAsc, VCompat m term_asc (lam _dS _bS)
+              -- Transport via ih_n on inner term
+              unfold VCompat
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+              exact Or.inr ⟨term_asc, tyAsc, hv_asc,
+                ih_n _ (Expr.lam _dS _bS) (Expr.lam _dT _bT) ctx []
+                  h_asc hcheck_empty
                   (fun p hp => absurd hp (List.not_mem_nil p))⟩
           | mu _annS _bodyS =>
             -- σ = mu, τ = lam: self-elim (mu ⊑ lam)
@@ -564,7 +701,8 @@ theorem VCompat.adequacy_gen :
                 ⟨_, _, ⟨_, _, _, _, hτm6, _, _⟩⟩ |
                 ⟨ann_l, body_l, hvm7, hvb7⟩ |
                 ⟨fV, fT, aV, aT, hva, hτa, hvf, hva_a⟩ |
-                ⟨ctxi, tyi, hinf, hty⟩
+                ⟨ctxi, tyi, hinf, hty⟩ |
+                ⟨term_asc, tyAsc, hv_asc, h_asc⟩
               -- Impossible: app ≠ type/lam/mu
               · cases h_type
               · -- Refl: v = app f1 a1
@@ -611,9 +749,18 @@ theorem VCompat.adequacy_gen :
                 unfold VCompat
                 apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
                 apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-                exact ⟨ctxi, tyi, hinf,
+                exact Or.inl ⟨ctxi, tyi, hinf,
                   ih_n _ (Expr.app f1 a1) (Expr.app f2 a2) ctx []
                     hty hcheck_empty
+                    (fun p hp => absurd hp (List.not_mem_nil p))⟩
+              · -- Asc-left: v = asc term_asc tyAsc, VCompat m term_asc (app f1 a1)
+                -- Transport via ih_n on inner term
+                unfold VCompat
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                exact Or.inr ⟨term_asc, tyAsc, hv_asc,
+                  ih_n _ (Expr.app f1 a1) (Expr.app f2 a2) ctx []
+                    h_asc hcheck_empty
                     (fun p hp => absurd hp (List.not_mem_nil p))⟩
             · -- Structural check failed, inferType fallback
               sorry

@@ -5,6 +5,38 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-05: Add asc-left disjunct to VCompat
+
+**Agent:** ochre-20260405-003633
+
+**Decision:** Added a 10th disjunct to VCompat:
+```lean
+∨ (∃ term tyAsc, v = .asc term tyAsc ∧ VCompat n term τ)
+```
+
+**Why:** `absEval_preserves` was FALSE without it. Counterexample:
+v = e = `asc (lam Type (bvar 0)) (lam Type Type)`, n=2. VCompat(2, v, v) holds
+via refl, but absEval(v) = ok ⟨lam Type Type⟩ and VCompat(2, asc(...), lam Type Type)
+had no way to hold — no existing disjunct could handle asc on the value side.
+
+**Semantics:** The disjunct is correct because concEval erases ascriptions —
+`(e : τ)` at runtime behaves like `e`. The asc-left disjunct costs one step
+(VCompat n+1 → VCompat n) to prevent infinite chains.
+
+**Why it's needed:** mu-left unfolding in adequacy_gen introduces `body.subst 0 (mu ...)`
+as the value, and body can contain asc nodes from let-bindings etc.
+
+**Alternatives considered:**
+1. Restricting absEval_preserves to v being a concEval output (too narrow —
+   mu-left recursion in adequacy_gen passes non-value v's)
+2. Adding IsNotAsc precondition (doesn't hold for mu-left unfolded values)
+3. Avoiding absEval_preserves entirely (would need completely different proof strategy)
+
+**Impact:** All existing proofs updated (VCompat.mono, bvar_inferType, adequacy_gen).
+The asc-left case is always handled by recursion (IH or ih_n).
+
+---
+
 ## 2026-04-04: Clear `seen` in structural subCheckNF recursive calls
 
 **Agent:** ochre-20260404-224040
