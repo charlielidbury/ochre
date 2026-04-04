@@ -252,12 +252,18 @@ mutual
           -- absEval_fuel_mono ensures normalization results don't change with fuel.
           -- The annotation is the declared type and was already normalized in
           -- absEval's .mu case.
+          --
+          -- IMPORTANT: The final body check uses `seen` (not `seen'`) to prevent
+          -- spurious circular reasoning. Previously, adding (mu, b) to seen allowed
+          -- the body path to succeed trivially for non-productive fixpoints like
+          -- `mu Type (bvar 0)`, breaking transitivity. The annotation check and
+          -- absEval call still use `seen'` for cycle detection.
           let seen' := (a, b) :: seen
           if subCheckNF fuel ctx seen' ann b then true
           else
             let u := body.subst 0 (.mu ann body)
             match absEval fuel ctx seen' u with
-            | .ok u' => subCheckNF fuel ctx seen' u'.val b
+            | .ok u' => subCheckNF fuel ctx seen u'.val b
             | .error _ => false
         | .app f1 a1, .app f2 a2 =>
           -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
@@ -449,14 +455,14 @@ private theorem subCheckNF_self_elim_step
           else
             let u := body.subst 0 (Expr.mu ann body)
             match absEval k ctx seen' u with
-            | .ok u' => subCheckNF k ctx seen' u'.val b
+            | .ok u' => subCheckNF k ctx seen u'.val b
             | .error _ => false) = true)
     : (let seen' := (Expr.mu ann body, b) :: seen
        if subCheckNF (k + 1) ctx seen' ann b then true
        else
          let u := body.subst 0 (Expr.mu ann body)
          match absEval (k + 1) ctx seen' u with
-         | .ok u' => subCheckNF (k + 1) ctx seen' u'.val b
+         | .ok u' => subCheckNF (k + 1) ctx seen u'.val b
          | .error _ => false) = true := by
   simp only [] at h ⊢
   split at h
@@ -467,7 +473,13 @@ private theorem subCheckNF_self_elim_step
     split
     · simp
     · rename_i hann'
-      exact subCheckNF_absEval_step ih_sub ih_abs h
+      -- Body path: absEval with seen' for cycle detection, subCheckNF with seen
+      match hae : absEval k ctx ((Expr.mu ann body, b) :: seen) (body.subst 0 (Expr.mu ann body)) with
+      | .ok ty' =>
+        simp only [hae] at h
+        rw [show absEval (k + 1) ctx ((Expr.mu ann body, b) :: seen) (body.subst 0 (Expr.mu ann body)) = .ok ty' from ih_abs hae]
+        exact ih_sub h
+      | .error _ => simp [hae] at h
 
 /-- Helper for inferType-based fallback (app-app else branch and catch-all). -/
 private theorem subCheckNF_inferType_step

@@ -75,3 +75,23 @@ example : subCheck 1000
   (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:Nat_. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
   (och{ Vec Nat_ }) = true := by native_decide
 
+-- ============================================================
+-- Subtyping transitivity tests
+-- ============================================================
+
+-- Previously-known counterexample: Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)
+-- but Type ⋢ lam Type (bvar 0). The fix: self-elim body check no longer uses
+-- the circular seen entry, so mu Type (bvar 0) ⊑ lam Type (bvar 0) now correctly
+-- returns false (the non-productive fixpoint can't prove it's a function type).
+
+-- Type ⊑ mu Type (bvar 0): still holds (self-intro is valid)
+example : subCheckNF 100 [] [] Expr.type (.mu .type (.bvar 0)) = true := by native_decide
+
+-- mu Type (bvar 0) ⊑ lam Type (bvar 0): now correctly FALSE (was spuriously true)
+example : subCheckNF 100 [] [] (.mu .type (.bvar 0)) (.lam .type (.bvar 0)) = false := by native_decide
+
+-- Type ⊑ lam Type (bvar 0): false (Type is not a function type)
+example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = false := by native_decide
+
+-- Transitivity instance: the old a ⊑ b ∧ b ⊑ c ∧ ¬(a ⊑ c) is gone because b ⊑ c is now false
+

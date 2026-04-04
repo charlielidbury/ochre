@@ -5,6 +5,46 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-05: Fix self-elim seen handling to restore transitivity
+
+**Agent:** ochre-20260405-013043
+
+**Decision:** Changed subCheckNF's self-elim body path to use the original
+`seen` (without the self-elim entry) for the final subCheckNF call:
+```lean
+-- Before:
+| .ok u' => subCheckNF fuel ctx seen' u'.val b  -- seen' = (mu, b) :: seen
+-- After:
+| .ok u' => subCheckNF fuel ctx seen u'.val b   -- original seen
+```
+The annotation check and absEval call still use `seen'`.
+
+**Why:** The self-elim entry `(mu ann body, b)` in seen' enabled circular
+reasoning. For non-productive fixpoints like `mu Type (bvar 0)`, the body
+unfolds to the same mu, hits the seen entry, and succeeds trivially —
+making `mu Type (bvar 0) ⊑ anything` true. This broke transitivity:
+`Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)` but `Type ⋢ lam Type (bvar 0)`.
+
+**Alternatives considered:**
+1. Remove seen from self-elim entirely (breaks absEval cycle detection
+   for recursive types during body normalization)
+2. Tag seen entries as intro/elim and only match intro entries in the
+   seen check (bigger change, harder to maintain)
+3. Check for "progress" in body unfolding — reject if normalized body
+   equals original mu (too narrow, misses subtle non-productive cases)
+
+**Validation:** All tests pass (DNat, Array, Vec, appendVec, Bool, etc.).
+The key insight: well-formed recursive types make PROGRESS when unfolded
+(reveal a constructor like lam), so the body path succeeds WITHOUT the
+seen entry. Only non-productive fixpoints needed the circular seen hit.
+
+**Impact on proofs:** Fuel_mono (`subCheckNF_self_elim_step`) updated
+trivially. Self-elim body path in adequacy_gen is now unblocked from
+the circular seen callback dependency — the body check uses the original
+seen, so ih_fuel needs only the outer `hseen` callback (already available).
+
+---
+
 ## 2026-04-05: Add asc-left disjunct to VCompat
 
 **Agent:** ochre-20260405-003633

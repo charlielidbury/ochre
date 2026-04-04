@@ -6,12 +6,28 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (22 in Soundness, 0 in Subtyping = 22 total)
+### Sorry inventory (24 in Soundness, 0 in Subtyping = 24 total)
 
-Up from 14 numerically, but the increase is from expanding blanket sorrys
-into precisely categorized sub-cases with some proved.
+Up from 22 numerically — 2 new from counting correction (agent
+ochre-20260405-013043 verified exact count). Definition change to
+self-elim didn't add/remove sorrys, just changed proof landscape.
 
-Changes by agent ochre-20260405-003615:
+Changes by agent ochre-20260405-013043:
+- **DEFINITION CHANGE: Fixed subCheckNF transitivity counterexample.**
+  Self-elim's body check now uses original `seen` (not `seen'`) for the
+  final subCheckNF call. This prevents non-productive fixpoints (like
+  `mu Type (bvar 0)`) from proving arbitrary subtyping via circular
+  seen-hit. The annotation check and absEval call still use `seen'`
+  for cycle detection. All tests pass including DNat, Array, Vec.
+- **Added transitivity regression tests** in Tests.lean: verified that
+  `mu Type (bvar 0) ⊑ lam Type (bvar 0)` is now correctly `false`.
+- **Updated fuel_mono proof** (`subCheckNF_self_elim_step` in Eval.lean)
+  to match the new self-elim structure.
+- **Proof landscape change:** Self-elim body path in adequacy_gen is no
+  longer circularly blocked by the seen callback. The remaining blockers
+  are absEval_preserves and the mu-right step-count issue.
+
+Previous changes by agent ochre-20260405-003615:
 - **Proved neutral app sub-cases in absEval_preserves** (refl-app + structural app):
   When absEval dispatches to a neutral app (fT' ∉ {lam, mu}), the result is
   a symbolic app ⟨app fT'.val aT'.val⟩. VCompat via structural app + IH on
@@ -93,7 +109,37 @@ Previous changes by agent ochre-20260405-003633:
 - `subCheckNF_type_left_target` — PROVED
 - `subCheckNF_neutral_inferType` — **PROVED** (Subtyping.lean:198)
 
-### What happened this session (agent ochre-20260405-003633)
+### What happened this session (agent ochre-20260405-013043)
+
+**Fixed subCheckNF transitivity counterexample by changing self-elim seen handling.**
+
+1. **ROOT CAUSE:** Self-elim's body path in subCheckNF added `(mu, b)` to `seen`,
+   then the normalized body path could hit this entry via circular reasoning.
+   For non-productive fixpoints like `mu Type (bvar 0)`, the body unfolds to
+   the same mu, hits the seen entry, and succeeds trivially — allowing
+   `mu Type (bvar 0) ⊑ anything`.
+
+2. **FIX:** Self-elim's final `subCheckNF` call now uses the original `seen`
+   (without the `(mu, b)` entry). The annotation check and absEval call still
+   use `seen'` (for annotation cycle detection and absEval's mu-app dispatch).
+
+3. **PROOF IMPACT:** Updated `subCheckNF_self_elim_step` in Eval.lean to match.
+   The proof is simpler — just `ih_abs` + `ih_sub` on the components, without
+   needing the `seen'` propagation.
+
+4. **TEST IMPACT:** All tests pass (DNat, Array, Vec, appendVec). Added
+   transitivity regression tests in Tests.lean.
+
+5. **PROOF LANDSCAPE:** The self-elim body path in adequacy_gen is now
+   unblocked from the circular seen dependency. Body path proof strategy:
+   - Case-split on VCompat(m+1, v, mu ann body)
+   - mu-left, inferType, asc-left cases: work via ih_n (no step loss)
+   - refl case: works via mu-left + absEval_preserves + ih_fuel
+   - structural mu: works via absEval_preserves + ih_fuel + mu-left
+   - mu-right/normalized mu-right: STUCK — loses one step, can't recover
+   - Annotation path: still blocked by annotation-trust (Phase 0)
+
+### What happened in previous session (agent ochre-20260405-003633)
 
 **Found absEval_preserves counterexample + added asc-left disjunct to VCompat.**
 

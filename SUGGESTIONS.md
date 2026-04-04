@@ -146,17 +146,26 @@ needs strong induction + fuel monotonicity to bridge the gap.
   by agent ochre-20260404-204421. Use the targeted **normalized mu-right**
   disjunct instead (only for mu types).
 
-- **subCheckNF transitivity is currently FALSE** (counterexample in Tests.lean).
-  **This is a bug, not a feature.** Subtyping transitivity is a fundamental
-  requirement for Ochre — it's load-bearing for the language's semantics.
-  If you encounter this, the right response is to fix `subCheckNF` (or the
-  definitions it depends on) so that transitivity holds, NOT to work around
-  its absence. The counterexample (`Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)`
-  but `Type ⋢ lam Type (bvar 0)`) likely points to the self-intro/self-elim
-  seen-hit mechanism being too permissive. Fixing this is high priority.
+- **subCheckNF transitivity counterexample FIXED** (agent ochre-20260405-013043).
+  The known counterexample (`Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)`
+  but `Type ⋢ lam Type (bvar 0)`) was caused by self-elim's body path using
+  a circular seen entry. Fix: self-elim's final subCheckNF call now uses
+  the original `seen` (without the self-elim entry), preventing non-productive
+  fixpoints from proving arbitrary subtyping. Verified in Tests.lean.
+  **Transitivity is NOT YET PROVED** — there may be other counterexamples.
+  Subtyping transitivity is still a fundamental requirement for Ochre.
+
+- **Self-elim proof landscape changed.** The self-elim body path in
+  adequacy_gen no longer has a circular seen callback dependency. Previously,
+  ih_fuel with seen' needed a callback for the (mu, τ) entry that required
+  VCompat(v, τ) — the goal. Now the body check uses original `seen`, so the
+  callback is the outer `hseen`. The remaining blockers for self-elim body
+  path are: (a) absEval_preserves (for mu-right to body normalization), and
+  (b) the step-count issue (mu-right costs one step, can't recover it).
+  The annotation path is still blocked by annotation-trust (Phase 0).
 
 - **subCheckNF top-universality is FALSE**. `Type <: tau` does NOT mean all
-  values inhabit `tau`. (This may also be fixed by the transitivity fix.)
+  values inhabit `tau`.
 
 - **Never weaken tests.** If a proof doesn't go through, the definitions or
   theorem statement may be wrong. Fix those, not the tests.

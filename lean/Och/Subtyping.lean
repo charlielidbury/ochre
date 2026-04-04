@@ -235,22 +235,20 @@ theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : TyCtx} {a b : Expr}
           simp only [h_inf, h_abs] at h
           exact ⟨ty, ty', rfl, h_abs, h⟩
 
-/-! ### subCheckNF non-properties (BUGS TO FIX)
+/-! ### subCheckNF properties and known issues
 
-**subCheckNF transitivity is currently FALSE — THIS IS A BUG.**
-Subtyping transitivity is a fundamental requirement for Ochre. The right fix
-is to change subCheckNF (or the definitions it depends on) so transitivity
-holds, NOT to work around its absence in the proof.
+**Transitivity counterexample FIXED.**
+The previous counterexample (Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)
+but Type ⋢ lam Type (bvar 0)) was caused by self-elim's body path using
+the circular seen entry to succeed spuriously. Fix: self-elim's body check
+now uses the ORIGINAL seen set (without the self-elim entry), preventing
+non-productive fixpoints from proving arbitrary subtyping. Verified in
+Tests.lean: mu Type (bvar 0) ⊑ lam Type (bvar 0) is now correctly false.
 
-Counterexample (verified in Tests.lean):
-- a = .type, b = mu .type (bvar 0), c = lam .type (bvar 0)
-- a ⊑ b: self-intro → seen hit (fixpoint) → true
-- b ⊑ c: self-elim → seen hit (fixpoint) → true
-- a ⊑ c: .type vs lam → inferType .type = none → false
-
-The self-intro/self-elim seen-hit mechanism is likely too permissive.
+**subCheckNF transitivity is NOT YET PROVED** but the known counterexample
+is eliminated. There may be other counterexamples — finding them or proving
+transitivity is high priority.
 
 **subCheckNF_top_universal is FALSE.**
 (.type ⊑ τ does NOT imply v ⊑ τ for all v.)
-See Tests.lean for verified counterexamples. May also be fixed by the
-transitivity fix. -/
+See Tests.lean for verified counterexamples. -/
