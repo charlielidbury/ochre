@@ -97,8 +97,9 @@ even though the actual computation is blocked.
 
 ## Affected Tests
 
-Currently blocked (asserts `= false`, should be `= true` after fix):
-- `subCheck appendArrays (λT. λn1. λn2. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T)` <- GETTING THIS TEST PASSING (`= true`) IS THE GOAL
+Currently blocked — get these passing:
+- `subCheck appendArrays (λT. λn1. λn2. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T)` currently `= false`, should be `= true` (Array.lean)
+- `subCheck dzero done_` currently `= true`, should be `= false` (DNat.lean) — the corrupted normal form of `done_` (dangling self-ref) causes the checker to spuriously accept `dzero <: dsucc dzero`
 
 Already passing (do NOT break these):
 - `subCheck appendVec (λT. Vec T → Vec T → Vec T) = true`
