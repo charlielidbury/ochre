@@ -204,7 +204,36 @@ theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : TyCtx} {a b : Expr}
     (h_a_not_app : ∀ f a', a ≠ Expr.app f a') :
     ∃ (ty : Expr) (ty' : NfExpr), inferType ctx a = some ty ∧
       absEval fuel ctx [] ty = .ok ty' ∧ subCheckNF fuel ctx [] ty'.val b = true := by
-  sorry
+  unfold subCheckNF at h; dsimp only [] at h
+  have hbeq : (a == b) = false := by rw [beq_eq_false_iff_ne]; exact h_neq
+  simp only [hbeq, ite_false, List.any_nil] at h
+  cases a with
+  | lam dom body => exact absurd rfl (h_a_not_lam dom body)
+  | mu ann body => exact absurd rfl (h_a_not_mu ann body)
+  | app f a' => exact absurd rfl (h_a_not_app f a')
+  | type =>
+    cases b with
+    | type => exact absurd rfl h_b_not_type
+    | mu ann body => exact absurd rfl (h_b_not_mu ann body)
+    | _ => simp [inferType] at h
+  | asc t ty =>
+    cases b with
+    | type => exact absurd rfl h_b_not_type
+    | mu ann body => exact absurd rfl (h_b_not_mu ann body)
+    | _ => simp [inferType] at h
+  | bvar k =>
+    cases b with
+    | type => exact absurd rfl h_b_not_type
+    | mu ann body => exact absurd rfl (h_b_not_mu ann body)
+    | _ =>
+      cases h_inf : inferType ctx (Expr.bvar k) with
+      | none => simp [h_inf] at h
+      | some ty =>
+        cases h_abs : absEval fuel ctx [] ty with
+        | error e => simp [h_inf, h_abs] at h
+        | ok ty' =>
+          simp only [h_inf, h_abs] at h
+          exact ⟨ty, ty', rfl, h_abs, h⟩
 
 /-! ### subCheckNF non-properties
 
