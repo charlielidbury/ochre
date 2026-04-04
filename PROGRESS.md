@@ -1,5 +1,7 @@
 # Och — current state
 
+(very out of date, don't bother reading)
+
 ## What Och is
 
 Och is a minimal pure calculus isolating the core semantic idea of Ochre

@@ -1,5 +1,7 @@
 # Proving Och sound via logical relations
 
+(very out of date, don't bother reading)
+
 ## The goal
 
 Prove: for well-typed closed programs, the concrete value is compatible
