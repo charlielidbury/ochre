@@ -181,9 +181,6 @@ mutual
     match fuel with
     | 0 => false
     | fuel + 1 =>
-      -- Normalize both sides to head form via absEval
-      let a := match absEval fuel ctx a with | .ok x => x | .error _ => a
-      let b := match absEval fuel ctx b with | .ok x => x | .error _ => b
       if a == b then true
       else if seen.any (fun (a', b') => a == a' && b == b') then true
       else match b with
@@ -197,14 +194,9 @@ mutual
           subCheckNF fuel ctx seen domB_norm domA_norm
           -- TyCtx.extend shifts domB_norm automatically
           && subCheckNF fuel (TyCtx.extend ctx domB_norm) seen bodyA bodyB
-        | .mu _annA bodyA, .mu _annB bodyB =>
-          -- Mu subtyping: covariant in body
-          let ctxA := TyCtx.extend ctx (.mu _annA bodyA)
-          let bodyA' := match absEval fuel ctxA bodyA with | .ok x => x | .error _ => bodyA
-          let bodyB' := match absEval fuel ctxA bodyB with | .ok x => x | .error _ => bodyB
-          subCheckNF fuel ctxA seen bodyA' bodyB'
         | _, .mu _ann body =>
           -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
+          -- This also handles the mu-mu case via self-intro on the right side.
           let u := body.subst 0 b
           let u' := match absEval fuel ctx u with | .ok x => x | .error _ => u
           subCheckNF fuel ctx ((a, b) :: seen) a u'
@@ -213,6 +205,18 @@ mutual
           let u := body.subst 0 (.mu ann body)
           let u' := match absEval fuel ctx u with | .ok x => x | .error _ => u
           subCheckNF fuel ctx ((a, b) :: seen) u' b
+        | .app f1 a1, .app f2 a2 =>
+          -- App congruence: f a ⊑ g b when f ⊑ g and a ⊑ b.
+          -- Sound in the coinductive setting (Amadio-Cardelli style): the `seen`
+          -- set ensures monotonicity is only assumed for pairs being verified.
+          -- Needed for dependent self-types where e.g. P dtrue ⊑ P dBool
+          -- decomposes into P ⊑ P (reflexivity) and dtrue ⊑ dBool (in `seen`).
+          if subCheckNF fuel ctx seen f1 f2 && subCheckNF fuel ctx seen a1 a2
+          then true
+          else
+            match inferType ctx a with
+            | some ty => subCheckNF fuel ctx seen ty b
+            | none => false
         | _, _ =>
           match inferType ctx a with
           | some ty => subCheckNF fuel ctx seen ty b

@@ -119,7 +119,8 @@ theorem Expr.beq_refl (e : Expr) : (e == e) = true := by
 /-- subCheckNF is reflexive: any expression is a subtype of itself.
     Follows from the BEq check `if a == b then true`. -/
 theorem subCheckNF_refl (e : Expr) : subCheckNF 1 [] [] e e = true := by
-  simp [subCheckNF, Expr.beq_refl]
+  unfold subCheckNF
+  simp [absEval, Expr.beq_refl]
 
 /-- When subCheckNF succeeds for lam ⊑ lam (not by reflexivity),
     the body check also succeeds. Needed for VCompat.adequacy. -/

@@ -11,8 +11,11 @@ on the value being eliminated.
 
 ```
 dBool = μ(dBool : Type).
-  let dtrue  = μ(dtrue  : dBool). λP:(dBool→Type). λt:(P dtrue).  λf:Type. t
-  let dfalse = μ(dfalse : dBool). λP:(dBool→Type). λt:Type. λf:(P dfalse). f
+  -- constructors
+  let dtrue  = μ(dtrue  : dBool). λP:(dBool→Type). λt:(P dtrue).  λf:Type. t in
+  let dfalse = μ(dfalse : dBool). λP:(dBool→Type). λt:Type. λf:(P dfalse). f in
+
+  -- the type itself
   λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dBool
 ```
 
@@ -81,9 +84,9 @@ example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = some zero_ := by n
 
 example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by native_decide
 
--- Subtype checking (known failure: let-substitution structural mismatch)
--- example : subCheck 50 dtrue dBool = true := by native_decide
--- example : subCheck 50 dfalse dBool = true := by native_decide
+-- Subtype checking
+example : subCheck 50 dtrue dBool = true := by native_decide
+example : subCheck 50 dfalse dBool = true := by native_decide
 
 -- not
 example : concEval 100 (och{ not dtrue }) = concEval 100 dfalse := by native_decide
