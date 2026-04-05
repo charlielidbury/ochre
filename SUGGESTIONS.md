@@ -218,10 +218,19 @@ Potential paths forward:
    - ✅ closedAt, liftEnvN, shift lemmas all proved
    - ✅ shift_subst_comm proved (Syntax.lean — generalized over binder depth)
    - **ALL INFRASTRUCTURE COMPLETE. No sorrys in Syntax.lean.**
-   - **NEXT: soundness_open** — State and prove the fundamental theorem.
-     Also needs absEval_preserves for the semantic lam case (connecting
-     IH's VCompat with the semantic lam's absEval requirement).
-   See DECISION-LOG entry "2026-04-05: Fundamental theorem" for full analysis.
+   - ✅ soundness_open STATED (Soundness.lean:1249)
+   - ✅ FunEnvCompat, ConcreteValEnv, concEval_val, fuel_mono_le helpers proved
+   - ✅ bvar and type cases PROVED
+   - **REMAINING: mu, lam, asc, app cases (4 sorrys)**
+   - **CRITICAL BLOCKER: circular dependency between lam case and absEval_preserves.**
+     The lam case's semantic lam needs absEval_preserves (to bridge IH's VCompat
+     with absEval's normalization), but absEval_preserves' lam case needs the
+     fundamental theorem. Possible resolutions:
+     (a) Prove both simultaneously via well-founded induction on combined measure
+     (b) Prove absEval idempotency to eliminate the absEval_preserves dependency
+     (c) Change VCompat's semantic lam to not reference absEval on the type side,
+         e.g., `VCompat j rv (bodyT.subst 0 aT)` instead of `VCompat j rv rτ.val`
+   See PROGRESS.md for detailed analysis of each blocker.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
    they give the same result (by confluence). Note: the unconditional version

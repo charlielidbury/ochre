@@ -1126,23 +1126,304 @@ The semantic lam is proved by extending the environment with VCompat args.
 REQUIRES: substEnv composition lemmas (showing substEnv commutes with
 single subst), and substEnv_idEnv (identity property). These are in Syntax.lean. -/
 
--- TODO: State and prove soundness_open here. The statement should be:
---
--- theorem soundness_open
---     (fuel : Nat) (ctx : TyCtx) (e : Expr) (τ : NfExpr)
---     (h_abs : absEval fuel ctx [] e = .ok τ)
---     (n : Nat) (γV γT : List Expr)
---     (h_env : EnvCompat n γV γT)
---     (h_ctx : γT.length = ctx.length)  -- environments match context size
---     (v : Expr)
---     (h_conc : concEval fuel (e.substEnv γV) = some v)
---     : VCompat n v (τ.val.substEnv γT)
---
--- The current `soundness` theorem below would follow as a corollary:
---   soundness fuel e v τ n h_conc h_abs =
---     soundness_open fuel [] e τ h_abs n [] [] ⟨rfl, fun i h => absurd h (Nat.not_lt_zero i)⟩
---       rfl v (by rw [substEnv_nil]; exact h_conc)
---     |>.by rw [substEnv_nil]
+/-- Multi-step fuel monotonicity for absEval: if it succeeds at fuel n,
+    it succeeds at any fuel ≥ n with the same result. -/
+theorem absEval_fuel_mono_le {n m : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {e : Expr} {v : NfExpr}
+    (h : absEval n ctx seen e = .ok v) (hle : n ≤ m) : absEval m ctx seen e = .ok v := by
+  induction m generalizing n with
+  | zero => have := Nat.le_zero.mp hle; subst this; exact h
+  | succ k ih =>
+    by_cases heq : n = k + 1
+    · subst heq; exact h
+    · exact absEval_fuel_mono (ih h (by omega))
+
+/-- Multi-step fuel monotonicity for concEval. -/
+theorem concEval_fuel_mono_le {n m : Nat} {e v : Expr}
+    (h : concEval n e = some v) (hle : n ≤ m) : concEval m e = some v := by
+  induction m generalizing n with
+  | zero => have := Nat.le_zero.mp hle; subst this; exact h
+  | succ k ih =>
+    by_cases heq : n = k + 1
+    · subst heq; exact h
+    · exact concEval_fuel_mono (ih h (by omega))
+
+/-- Concrete values (lam/type/mu) are stable under concEval: evaluating them
+    returns themselves. -/
+theorem concEval_val {fuel : Nat} {v : Expr} (hfuel : fuel > 0)
+    (hval : match v with | .lam _ _ | .type | .mu _ _ => True | _ => False)
+    : concEval fuel v = some v := by
+  cases fuel with
+  | zero => omega
+  | succ k =>
+    cases v with
+    | lam _ _ => simp [concEval]
+    | type => simp [concEval]
+    | mu _ _ => simp [concEval]
+    | bvar _ => exact absurd hval (by simp)
+    | app _ _ => exact absurd hval (by simp)
+    | asc _ _ => exact absurd hval (by simp)
+
+/-- A concrete-value environment: all entries are lam, type, or mu.
+    This ensures entries are stable under concEval. -/
+def ConcreteValEnv (γ : List Expr) : Prop :=
+  ∀ i (h : i < γ.length), match γ[i] with | .lam _ _ | .type | .mu _ _ => True | _ => False
+
+/-- Empty environment is a concrete value environment. -/
+theorem ConcreteValEnv.nil : ConcreteValEnv [] :=
+  fun i h => absurd h (Nat.not_lt_zero i)
+
+/-- Extending a concrete value environment with a concrete value. -/
+theorem ConcreteValEnv.cons {v : Expr} {γ : List Expr}
+    (hv : match v with | .lam _ _ | .type | .mu _ _ => True | _ => False)
+    (hγ : ConcreteValEnv γ)
+    : ConcreteValEnv (v :: γ) := by
+  intro i hi
+  cases i with
+  | zero => simp [List.getElem_cons_zero]; exact hv
+  | succ j =>
+    simp only [List.getElem_cons_succ]
+    exact hγ j (by simp [List.length_cons] at hi; omega)
+
+/-- EnvCompat for the fundamental theorem: environments are VCompat-related
+    AND the concrete side contains only concrete values (lam/type/mu). -/
+def FunEnvCompat (n : Nat) (γV γT : List Expr) : Prop :=
+  γV.length = γT.length ∧
+  ConcreteValEnv γV ∧
+  ∀ i (hV : i < γV.length) (hT : i < γT.length), VCompat n (γV[i]) (γT[i])
+
+/-- Empty FunEnvCompat. -/
+theorem FunEnvCompat.nil (n : Nat) : FunEnvCompat n [] [] :=
+  ⟨rfl, ConcreteValEnv.nil, fun i h => absurd h (Nat.not_lt_zero i)⟩
+
+/-- Extend FunEnvCompat with a concrete-value pair. -/
+theorem FunEnvCompat.cons {n : Nat} {v τ : Expr} {γV γT : List Expr}
+    (hval : match v with | .lam _ _ | .type | .mu _ _ => True | _ => False)
+    (hcompat : VCompat n v τ)
+    (henv : FunEnvCompat n γV γT)
+    : FunEnvCompat n (v :: γV) (τ :: γT) := by
+  obtain ⟨hlen, hval_env, hvc⟩ := henv
+  exact ⟨by simp [hlen], ConcreteValEnv.cons hval hval_env,
+    fun i hiV hiT => by
+      cases i with
+      | zero => simp [List.getElem_cons_zero]; exact hcompat
+      | succ j =>
+        simp only [List.getElem_cons_succ]
+        have hjV : j < γV.length := by simp [List.length_cons] at hiV; omega
+        have hjT : j < γT.length := by simp [List.length_cons] at hiT; omega
+        exact hvc j hjV hjT⟩
+
+/-- Downward closure for FunEnvCompat. -/
+theorem FunEnvCompat.mono {n : Nat} {γV γT : List Expr}
+    (h : FunEnvCompat (n + 1) γV γT) : FunEnvCompat n γV γT := by
+  obtain ⟨hlen, hval, hvc⟩ := h
+  exact ⟨hlen, hval, fun i hiV hiT => VCompat.mono (hvc i hiV hiT)⟩
+
+/-- Multi-step downward closure for FunEnvCompat. -/
+theorem FunEnvCompat.mono_le {n m : Nat} {γV γT : List Expr}
+    (h : FunEnvCompat n γV γT) (hle : m ≤ n) : FunEnvCompat m γV γT := by
+  obtain ⟨hlen, hval, hvc⟩ := h
+  exact ⟨hlen, hval, fun i hiV hiT => VCompat.mono_le (hvc i hiV hiT) hle⟩
+
+/-! ## Fundamental theorem of the logical relation (open-term soundness)
+
+This is the generalization of soundness to open terms with VCompat-related
+environments. It resolves the dual-substitution problem: the lam body is a
+sub-expression, so the IH applies directly. Both evaluators work on the SAME
+body; the environment difference is captured by substEnv.
+
+Key insight: induction is on EXPRESSION STRUCTURE (not fuel). The IH for
+the lam body gives soundness for the body with an extended environment.
+The semantic lam is proved by extending the environment with VCompat args.
+
+REQUIRES: substEnv composition lemmas (Syntax.lean) — ALL PROVED.
+
+PRECONDITIONS:
+- FunEnvCompat: environments are VCompat-related AND concrete-side entries
+  are concrete values (lam/type/mu). This ensures the bvar case works:
+  substEnv maps bvar k to γV[k], and concEval of a concrete value returns
+  itself, so v = γV[k] and VCompat follows from FunEnvCompat.
+- closedAt: the expression has at most ctx.length free variables. Needed
+  for the composition lemma (substEnv_subst_comp) in the lam case. -/
+
+theorem soundness_open (e : Expr)
+    (fuel : Nat) (ctx : TyCtx) (τ : NfExpr)
+    (h_abs : absEval fuel ctx [] e = .ok τ)
+    (n : Nat) (γV γT : List Expr)
+    (h_env : FunEnvCompat n γV γT)
+    (h_ctx : γT.length = ctx.length)
+    (h_closed : e.closedAt ctx.length = true)
+    (v : Expr)
+    (h_conc : concEval fuel (e.substEnv γV) = some v)
+    : VCompat n v (τ.val.substEnv γT) := by
+  induction e generalizing fuel ctx τ n γV γT v with
+  | bvar k =>
+    -- absEval: returns ⟨bvar k⟩ regardless of context
+    cases fuel with
+    | zero => simp [absEval] at h_abs
+    | succ fk =>
+      unfold absEval at h_abs; injection h_abs with hτ; subst hτ
+      -- τ.val = bvar k, so τ.val.substEnv γT = γT[k] (since k < ctx.length = γT.length)
+      simp only [Expr.substEnv]
+      have hk_lt : k < ctx.length := by simp [Expr.closedAt] at h_closed; exact h_closed
+      have hk_lt_T : k < γT.length := by omega
+      have hk_lt_V : k < γV.length := by
+        obtain ⟨hlen, _, _⟩ := h_env; omega
+      -- substEnv maps bvar k to γV[k]! / γT[k]!
+      -- Simplify goal and hypothesis using the bounds
+      simp only [Expr.substEnv, hk_lt_V, ite_true] at h_conc
+      simp only [hk_lt_T, ite_true]
+      obtain ⟨_, hval_env, hvc⟩ := h_env
+      -- γV[k]! is a concrete value, so concEval returns it unchanged
+      have hval_k : match γV[k]! with | .lam _ _ | .type | .mu _ _ => True | _ => False := by
+        have h := hval_env k hk_lt_V
+        rw [getElem!_pos γV k hk_lt_V]; exact h
+      have hstable := concEval_val (by omega : fk + 1 > 0) hval_k
+      rw [hstable] at h_conc; injection h_conc with hv; subst hv
+      -- v = γV[k]!, need VCompat n γV[k]! γT[k]!
+      have hvc_k := hvc k hk_lt_V hk_lt_T
+      rw [show γV[k]! = γV[k] from getElem!_pos γV k hk_lt_V,
+          show γT[k]! = γT[k] from getElem!_pos γT k hk_lt_T]
+      exact hvc_k
+  | type =>
+    -- absEval: type → ⟨type⟩, concEval: type → type, VCompat by refl
+    cases fuel with
+    | zero => simp [absEval] at h_abs
+    | succ fk =>
+      unfold absEval at h_abs; injection h_abs with hτ; subst hτ
+      simp only [Expr.substEnv] at h_conc ⊢
+      unfold concEval at h_conc; injection h_conc with hv; subst hv
+      exact VCompat.refl n .type
+  | mu ann body ih_ann ih_body =>
+    -- absEval: validates ann, returns ⟨mu ann body⟩ (raw)
+    -- concEval: mu is a value, returns itself
+    cases fuel with
+    | zero => simp [absEval] at h_abs
+    | succ fk =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_ann_abs : absEval fk ctx [] ann with
+      | .error _ => simp [h_ann_abs, bind, Except.bind] at h_abs
+      | .ok ann' =>
+        simp only [h_ann_abs, bind, Except.bind] at h_abs
+        injection h_abs with hτ; subst hτ
+        -- τ.val = mu ann body, τ.val.substEnv γT = mu (ann.substEnv γT) (body.substEnv (lift γT))
+        -- concEval of (mu ...).substEnv γV returns it as a value
+        simp only [Expr.substEnv] at h_conc ⊢
+        -- mu is a value: concEval (fk+1) (mu ...) = some (mu ...)
+        unfold concEval at h_conc
+        injection h_conc with hv; subst hv
+        -- v = mu (ann.substEnv γV) (body.substEnv (lift γV))
+        -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv (lift γV)))
+        --                 (mu (ann.substEnv γT) (body.substEnv (lift γT)))
+        -- SORRY: Need structural mu disjunct, which requires VCompat on
+        -- unfolded bodies (self-substitution + substEnv). This is complex.
+        sorry
+  | lam dom body ih_dom ih_body =>
+    -- KEY CASE: the whole point of the fundamental theorem.
+    -- absEval: normalizes domain and body under binder
+    -- concEval: lam is a value (body not evaluated)
+    cases fuel with
+    | zero => simp [absEval] at h_abs
+    | succ fk =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_dom_abs : absEval fk ctx [] dom with
+      | .error _ => simp [h_dom_abs, bind, Except.bind] at h_abs
+      | .ok dom' =>
+        simp only [h_dom_abs, bind, Except.bind] at h_abs
+        match h_body_abs : absEval fk (TyCtx.extend ctx dom') [] body with
+        | .error _ => simp [h_body_abs, bind, Except.bind] at h_abs
+        | .ok body' =>
+          simp only [h_body_abs, bind, Except.bind] at h_abs
+          injection h_abs with hτ; subst hτ
+          -- τ.val = lam dom'.val body'.val
+          -- τ.val.substEnv γT = lam (dom'.val.substEnv γT) (body'.val.substEnv (lift γT))
+          simp only [Expr.substEnv]
+          -- concEval: lam is a value
+          simp only [Expr.substEnv] at h_conc
+          have hfuel_pos : fk + 1 > 0 := by omega
+          unfold concEval at h_conc
+          injection h_conc with hv; subst hv
+          -- v = lam (dom.substEnv γV) (body.substEnv (lift γV))
+          -- Goal: VCompat n (lam (dom.substEnv γV) (body.substEnv (lift γV)))
+          --                 (lam (dom'.val.substEnv γT) (body'.val.substEnv (lift γT)))
+          -- Use the semantic lam disjunct
+          cases n with
+          | zero => simp [VCompat]
+          | succ m =>
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inl
+            refine ⟨_, _, _, _, rfl, rfl, ?_⟩
+            -- Prove the semantic lam: ∀ j ≤ m, fuel', aV, aT, VCompat j aV aT →
+            --   concEval fuel' (bodyV.subst 0 aV) = some rv →
+            --   absEval fuel' [] [] (bodyT.subst 0 aT) = .ok rτ →
+            --   VCompat j rv rτ.val
+            intro j hj fuel' aV aT hcompat_arg rv h_conc_body rτ h_abs_body
+            -- PROOF SKETCH (three blockers remain, each sorry'd):
+            --
+            -- Step 1: By composition lemma, rewrite subst as substEnv:
+            --   bodyV.subst 0 aV = body.substEnv (aV :: γV)
+            --   bodyT.subst 0 aT = body'.val.substEnv (aT :: γT)
+            -- Step 2: Use IH on body at fuel_max = max(fuel', fk):
+            --   absEval fuel_max (extend ctx dom') [] body = .ok body'  (fuel mono)
+            --   concEval fuel_max (body.substEnv (aV :: γV)) = some rv  (fuel mono)
+            --   → VCompat j rv (body'.val.substEnv (aT :: γT))
+            -- Step 3: absEval_preserves bridges to rτ.val:
+            --   VCompat j rv (body'.val.substEnv (aT :: γT)) + absEval rτ
+            --   → VCompat j rv rτ.val
+            --
+            -- BLOCKER 1: FunEnvCompat(j, aV :: γV, aT :: γT) needs isConcreteVal aV.
+            --   The semantic lam quantifies over ALL aV, including non-value ones.
+            --   For soundness of the existing app case, aV comes from concEval,
+            --   so aV ∈ {lam, type, mu, app}. Only app is not a concrete val.
+            -- BLOCKER 2: composition lemma for body'.val needs closedAt for body'.val.
+            --   This requires a lemma that absEval preserves closedAt (not yet proved).
+            -- BLOCKER 3: absEval_preserves (7 sorrys in its own proof).
+            sorry
+  | asc term ty ih_term ih_ty =>
+    -- absEval: check term ⊑ ty, return ty's normalization
+    -- concEval: erase ascription, evaluate term
+    cases fuel with
+    | zero => simp [absEval] at h_abs
+    | succ fk =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_sigma : absEval fk ctx [] term with
+      | .error _ => simp [h_sigma, bind, Except.bind] at h_abs
+      | .ok sigma =>
+        simp only [h_sigma, bind, Except.bind] at h_abs
+        match h_tau : absEval fk ctx [] ty with
+        | .error _ => simp [h_tau, bind, Except.bind] at h_abs
+        | .ok tau =>
+          simp only [h_tau, bind, Except.bind] at h_abs
+          by_cases hsub : subCheckNF fk ctx [] sigma.val tau.val = true
+          · simp only [hsub, ite_true] at h_abs
+            injection h_abs with heq; subst heq
+            -- τ = tau. τ.val.substEnv γT = tau.val.substEnv γT.
+            -- concEval: concEval (fk+1) (substEnv γV (asc term ty))
+            --         = concEval (fk+1) (asc (substEnv γV term) (substEnv γV ty))
+            --         = concEval fk (substEnv γV term)
+            simp only [Expr.substEnv] at h_conc
+            unfold concEval at h_conc
+            -- h_conc: concEval fk (term.substEnv γV) = some v
+            -- IH on term: VCompat n v (sigma.val.substEnv γT)
+            have h_closed_term : term.closedAt ctx.length = true := by
+              simp [Expr.closedAt] at h_closed; exact h_closed.1
+            have h_closed_ty : ty.closedAt ctx.length = true := by
+              simp [Expr.closedAt] at h_closed; exact h_closed.2
+            have ih_v_sigma := ih_term fk ctx sigma h_sigma n γV γT h_env h_ctx h_closed_term v h_conc
+            -- Now bridge from sigma.val.substEnv γT to tau.val.substEnv γT via adequacy
+            -- Need: subCheckNF bridges through substEnv.
+            -- This requires: subCheckNF fk ctx [] sigma.val tau.val = true
+            --   implies VCompat n v (sigma.substEnv γT) → VCompat n v (tau.substEnv γT)
+            -- BLOCKER: subCheckNF operates on open terms (in ctx), but we need the
+            -- result on closed terms (after substEnv). This is a key gap.
+            sorry
+          · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at h_abs; simp at h_abs
+  | app f a ih_f ih_a =>
+    -- The hardest case. concEval evaluates f and a, dispatches on f's value.
+    -- absEval evaluates f and a, dispatches on f's type.
+    -- The fundamental theorem resolves the lam-lam sub-case (different bodies
+    -- and arguments) but other sub-cases remain complex.
+    sorry
 
 /-! ## Soundness theorem (closed-term version)
 
