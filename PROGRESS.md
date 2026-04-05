@@ -94,16 +94,13 @@ Summary of changes by agent ochre-20260405-184922:
    to succeed (semantic lam's conditional), which needs soundness-like reasoning.
    Must be proved jointly with soundness_open (via joint induction) or bypassed.
 
-2. **Context irrelevance for closed terms** — needed by:
-   - subCheckNF_substEnv lam-lam (ctx alignment of existential IH results)
-   - General infrastructure for reasoning about substituted terms
-   **Status:** Not yet proved. Clean property: for closedAt 0 terms, subCheckNF
-   and absEval don't depend on ctx. Requires mutual induction (following the
-   fuel_mono pattern in Eval.lean:740). Under binders, closedAt 1 terms only
-   depend on ctx[0], which is determined by the binder (domB), not the outer ctx.
-   **Recommended approach:** Prove `ctx_irrelevant_closed` as a private mutual
-   theorem in Eval.lean, following fuel_mono's structure. The closedAt tracking
-   through binders is the main complexity.
+2. **Context irrelevance for closed terms** — ✅ PROVED (agent ochre-20260405-193641)
+   - subCheckNF_ctx_irrelevant and absEval_ctx_irrelevant FULLY PROVED in Eval.lean
+   - Also proved: inferType_closedAt, isCallableNF_ctx_irrelevant, TyCtx_extend_wf,
+     absEval_preserves_closedAt_d (generalized at any depth d), closedAt_mono
+   - NOTE: the theorem now requires a `hctx_wf` well-scopedness condition:
+     ctx entries at positions < d must have closedAt d values. This is satisfied
+     at the call site (d=0 is vacuous; under binders, TyCtx.extend preserves it).
 
 3. **Step-loss in semantic lam extraction** — blocks:
    - soundness_open app lam-lam (semantic lam gives VCompat at step n, need n+1)
@@ -115,9 +112,11 @@ Summary of changes by agent ochre-20260405-184922:
 
 **RECOMMENDED NEXT STEPS (updated priority order):**
 
-1. **HIGHEST PRIORITY: Prove `subCheckNF_ctx_irrelevant` and `absEval_ctx_irrelevant`**
-   (Eval.lean:924, 932). These are stated and sorry'd. Follow the fuel_mono pattern
-   (Eval.lean:740): mutual induction on fuel, conjunction of subCheckNF and absEval
+1. **HIGHEST PRIORITY: Close `subCheckNF_substEnv` lam-lam case** (Soundness.lean).
+   ctx_irrelevant is now PROVED. The 7-step strategy documented at Soundness.lean:1382
+   can now be executed. Steps: (1) recursive IH on domain/body, (2) substEnv_closedAt,
+   (3-4) ctx_irrelevant at d=0 and d=1, (5) fuel_mono_le, (6-7) construct combined check.
+   The new `hctx_wf` parameter is vacuous at d=0 and satisfiable at d=1 (TyCtx_extend_wf).
    results. At each case, show that closedAt d terms only access the first d entries.
    Under binders, d increases by 1 and ctx extends with the SAME entry (from the
    binder), so entries 0..d all match. ~200 lines, mechanical but critical.
