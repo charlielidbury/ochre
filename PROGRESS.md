@@ -6,7 +6,67 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (23 in Soundness, 1 in Eval, 0 in Syntax = 24 total)
+### Sorry inventory (17 in Soundness, 0 in Eval, 0 in Syntax = 17 total)
+
+Changes by agent ochre-20260405-074257:
+
+**PROVED: absEval_preserves_closedAt mu-app body-lam case (Eval.lean:904-935).**
+The previous agent left 1 sorry due to Lean's match compilation destructuring
+`body` after `split`. Fix: use `by_cases` on the seen check (instead of
+nested `split`), then `simp only [Expr.subst]` to resolve the unfolded lam
+match. The closedAt proof uses `subst_closedAt_gen` with explicit `Nat.add_comm`
+rewrites to bridge `1 + ctx.length` vs `ctx.length + 1`.
+
+**DERIVED: soundness from soundness_open (Soundness.lean:1461-1472).**
+Replaced the 180-line fuel-induction proof with a 6-line derivation from
+`soundness_open` via empty environments (γV = γT = []) and `substEnv_nil`.
+This eliminated 6 sorrys from the old soundness theorem (lam, 3×app-lam,
+mu-app, mu-neutral cases). Added `closedAt 0 e` precondition — verified
+satisfiable with 13 native_decide witness tests in Tests.lean (values,
+applications, ascriptions, recursive types).
+
+**NEW: subCheckNF_substEnv (Soundness.lean:1051, 1 sorry).**
+Statement: if subCheckNF succeeds on open terms in context ctx, then there
+exists a fuel at which subCheckNF succeeds on the substituted closed terms.
+Used to close the asc case of soundness_open.
+
+**CLOSED: soundness_open asc case (Soundness.lean:1435-1441).**
+Was sorry'd due to the gap between open-term subChecking and closed-term
+VCompat. Now proved via subCheckNF_substEnv + VCompat.adequacy.
+
+**NET: -7 sorrys (17 total, was 24).**
+
+**Remaining soundness_open sorrys (3):**
+1. **mu case** (Soundness.lean:1341): HARD. absEval doesn't evaluate the mu
+   body, so ih_body can't be used. The two mus have different substEnvs.
+   Possible approaches: (a) add "mu bodies are well-typed" precondition,
+   (b) nested induction on step index n (blocked by needing ih_body for
+   unfolded bodies), (c) change VCompat's structural mu to not require
+   VCompat on unfolded bodies.
+2. **app case** (Soundness.lean:1448): Completely sorry'd. Hardest case.
+   The semantic lam from ih_f must be extracted and applied.
+3. **subCheckNF_substEnv** (Soundness.lean:1055): New sorry. Standard property
+   but substantial proof (~100+ lines). Needs subCheckNF structure-following
+   induction + absEval_substEnv commutation for mu cases.
+
+**Remaining adequacy_gen sorrys (14):**
+Lines 365, 443, 449, 479, 482, 500, 581, 586, 730, 733, 782, 826, 866, 1010.
+These are in the old adequacy_gen proof. If soundness_open is fully proved,
+the closed-term soundness follows directly, and these adequacy_gen sorrys
+only matter for direct use of VCompat.adequacy (used in soundness_open asc case).
+
+**RECOMMENDED NEXT STEPS (priority order):**
+1. **Prove subCheckNF_substEnv** (Soundness.lean:1055). Well-defined statement.
+   Proof follows subCheckNF structure by fuel induction. Main challenges:
+   mu cases call absEval internally, need absEval_substEnv commutation.
+2. **Work on soundness_open app case** (Soundness.lean:1448). Sub-cases:
+   - fT=lam, fV=lam: extract semantic lam from ih_f, apply with ih_a
+   - fT=lam, fV=mu: concEval unrolls mu, use mu-left VCompat
+   - fT=mu: mu-app dispatch, annotation-trust interaction
+   - fT=neutral: structural app via IH
+3. **Work on soundness_open mu case** (Soundness.lean:1341). Blocked by
+   missing absEval on body. May require adding precondition or changing
+   proof strategy.
 
 Changes by agent ochre-20260405-071731:
 

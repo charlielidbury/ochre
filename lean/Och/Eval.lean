@@ -902,11 +902,46 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
                 simp [Expr.closedAt] at h_mu_cl_ann; exact h_mu_cl_ann.2
               exact ih h_abs (Expr.subst_closedAt h_ret_cl h_a'_cl)
             · -- Body path: body is a lam, _ann is not a matching lam.
-              -- All sub-paths (seen-hit, lam unfolding, non-lam unfolding) preserve
-              -- closedAt via h_unfolded_cl, h_mu_expr_cl, subst_closedAt, and IH.
-              -- The match compilation makes this tedious: `split` destructures `body`,
-              -- losing the original variable name needed for seen-check and unfolding.
-              sorry
+              -- After split, body is destructured into .lam components.
+              -- The absEval code: seen-check then unfold+dispatch.
+              -- (.lam _dom_b _retBody_b).subst 0 mu = .lam (...) (...) always,
+              -- so the inner match resolves to the lam branch.
+              -- All paths preserve closedAt via subst_closedAt + IH.
+              rename_i _dom_b _retBody_b _h_not_ann_lam
+              have h_retBody_b_cl : _retBody_b.closedAt (ctx.length + 2) = true := by
+                simp [Expr.closedAt] at h_mu_cl_body; exact h_mu_cl_body.2
+              -- Case split on the seen check
+              by_cases h_seen : (seen.any fun p => p.1 == Expr.mu _ann (Expr.lam _dom_b _retBody_b)) = true
+              · -- Seen hit: τ = app (mu ...) a'.val
+                simp only [h_seen, ite_true] at h_abs
+                injection h_abs with heq; subst heq
+                simp only [Expr.closedAt, Bool.and_eq_true]
+                exact ⟨by simp [Expr.closedAt] at h_mu_expr_cl; exact h_mu_expr_cl, h_a'_cl⟩
+              · -- Not seen: unfold body then beta-reduce
+                simp only [Bool.not_eq_true] at h_seen
+                simp only [h_seen, ite_false] at h_abs
+                -- (.lam _dom_b _retBody_b).subst 0 mu_expr = .lam (...) (...)
+                -- Lean should reduce this in h_abs, resolving the inner match to lam
+                simp only [Expr.subst] at h_abs
+                -- h_abs now: absEval k ctx seen' (retBody2.subst 0 a'.val) = .ok τ
+                have h_mu_shifted_cl : (Expr.shift 1 0 (Expr.mu _ann (Expr.lam _dom_b _retBody_b))).closedAt (ctx.length + 1) = true :=
+                  Expr.shift_closedAt (Expr.mu _ann (Expr.lam _dom_b _retBody_b)) ctx.length 1 0 (by omega) h_mu_expr_cl
+                -- closedAt for the substituted retBody
+                -- subst_closedAt_gen uses (j + n) ordering; bridge with Nat.add_comm
+                have h_shifted_comm : (Expr.shift 1 0 (Expr.mu _ann (Expr.lam _dom_b _retBody_b))).closedAt (1 + ctx.length) = true := by
+                  rw [Nat.add_comm]; exact h_mu_shifted_cl
+                have h_retBody_comm : _retBody_b.closedAt (1 + ctx.length + 1) = true := by
+                  rw [show 1 + ctx.length + 1 = ctx.length + 2 from by omega]; exact h_retBody_b_cl
+                have h_gen := Expr.subst_closedAt_gen _retBody_b 1 ctx.length
+                    (Expr.shift 1 0 (Expr.mu _ann (Expr.lam _dom_b _retBody_b)))
+                    h_retBody_comm h_shifted_comm
+                -- h_gen : closedAt (1 + ctx.length) (subst _retBody_b 1 (shift ...)) = true
+                -- Goal needs closedAt (ctx.length + 1) (subst (0+1) ...) = true
+                -- These are equal: 0+1=1 (definitional), 1+n = n+1 (Nat.add_comm)
+                have h_ret_subst_cl : (_retBody_b.subst (0 + 1) (Expr.shift 1 0 (Expr.mu _ann (Expr.lam _dom_b _retBody_b)))).closedAt (ctx.length + 1) = true := by
+                  rw [show (0 : Nat) + 1 = 1 from rfl, show ctx.length + 1 = 1 + ctx.length from by omega]
+                  exact h_gen
+                exact ih h_abs (Expr.subst_closedAt h_ret_subst_cl h_a'_cl)
             · -- Catch-all: body not lam
               -- After split, h_abs should be: .ok ⟨.app (body.subst 0 (mu _ann body)) a'.val⟩ = .ok τ
               have h_eq : τ = ⟨.app (body.subst 0 (Expr.mu _ann body)) a'.val⟩ := by

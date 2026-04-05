@@ -161,3 +161,31 @@ example : (edgeExprs.all fun a =>
            edgeExprs.all fun c =>
            checkTrans 100 a b c) = true := by native_decide
 
+-- ============================================================
+-- closedAt 0 witness tests for soundness theorem precondition
+-- ============================================================
+
+-- These verify that the closedAt 0 precondition added to soundness
+-- is satisfiable for representative real programs.
+
+-- Simple values
+example : Expr.closedAt 0 (och{ true_ }) = true := by native_decide
+example : Expr.closedAt 0 (och{ zero_ }) = true := by native_decide
+example : Expr.closedAt 0 Expr.type = true := by native_decide
+
+-- Function applications
+example : Expr.closedAt 0 (och{ Not' true_ }) = true := by native_decide
+example : Expr.closedAt 0 (och{ succ_ two_ }) = true := by native_decide
+example : Expr.closedAt 0 (och{ isZero_ zero_ }) = true := by native_decide
+example : Expr.closedAt 0 (och{ add_ two_ three_ }) = true := by native_decide
+example : Expr.closedAt 0 (och{ double_ three_ }) = true := by native_decide
+
+-- Ascriptions (key for asc case)
+example : Expr.closedAt 0 (och{ (zero_ : Nat_) }) = true := by native_decide
+example : Expr.closedAt 0 (och{ succ_ (zero_ : Nat_) }) = true := by native_decide
+
+-- Recursive types and north star
+example : Expr.closedAt 0 Nat_ = true := by native_decide
+example : Expr.closedAt 0 succ_ = true := by native_decide
+example : Expr.closedAt 0 (och{ Vec Nat_ }) = true := by native_decide
+

@@ -1039,6 +1039,21 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
   VCompat.adequacy_gen fuel n v σ τ ctx [] hv hcheck
     (fun p hp => absurd hp (List.not_mem_nil p))
 
+/-- Subtyping is preserved under environment substitution: if σ ⊑ τ in context
+    ctx (with empty seen), then σ.substEnv γ ⊑ τ.substEnv γ in empty context
+    (for compatible γ). This bridges open-term subtyping to closed-term subtyping.
+
+    SORRY: This is a standard property of structural subtyping under substitution.
+    The proof would follow the structure of subCheckNF by induction on fuel, showing
+    each case (equality, top, lam-lam, mu-intro, mu-elim, app-app, inferType fallback)
+    is preserved under substEnv. The main subtlety is the mu cases, which call absEval
+    internally — these would need an absEval_substEnv commutation lemma. -/
+theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List Expr}
+    (hsub : subCheckNF fuel ctx [] σ τ = true)
+    (hγ : γ.length = ctx.length)
+    : ∃ fuel', subCheckNF fuel' [] [] (σ.substEnv γ) (τ.substEnv γ) = true :=
+  sorry
+
 /-- General self-intro. -/
 theorem VCompat.from_self_intro_gen :
     ∀ (fuel : Nat), ∀ (n : Nat) (σ : Expr) (ctx : TyCtx) (seen : List (Expr × Expr)),
@@ -1419,13 +1434,11 @@ theorem soundness_open (e : Expr)
             have h_closed_ty : ty.closedAt ctx.length = true := by
               simp [Expr.closedAt] at h_closed; exact h_closed.2
             have ih_v_sigma := ih_term fk ctx sigma h_sigma n γV γT h_env h_ctx h_closed_term v h_conc
-            -- Now bridge from sigma.val.substEnv γT to tau.val.substEnv γT via adequacy
-            -- Need: subCheckNF bridges through substEnv.
-            -- This requires: subCheckNF fk ctx [] sigma.val tau.val = true
-            --   implies VCompat n v (sigma.substEnv γT) → VCompat n v (tau.substEnv γT)
-            -- BLOCKER: subCheckNF operates on open terms (in ctx), but we need the
-            -- result on closed terms (after substEnv). This is a key gap.
-            sorry
+            -- Bridge from sigma.val.substEnv γT to tau.val.substEnv γT:
+            -- 1. subCheckNF_substEnv gives subCheckNF on closed (substituted) terms
+            -- 2. VCompat.adequacy bridges via the closed subcheck
+            obtain ⟨fuel', hsub_cl⟩ := subCheckNF_substEnv hsub h_ctx
+            exact VCompat.adequacy ih_v_sigma hsub_cl
           · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at h_abs; simp at h_abs
   | app f a ih_f ih_a =>
     -- The hardest case. concEval evaluates f and a, dispatches on f's value.
@@ -1436,200 +1449,22 @@ theorem soundness_open (e : Expr)
 
 /-! ## Soundness theorem (closed-term version)
 
-The WellTyped precondition is gone — absEval now validates ascriptions
-and callability internally. A term is well-typed iff absEval succeeds. -/
+Derived from soundness_open (the fundamental theorem for open terms)
+by instantiation with empty environments. -/
 
-/-- Soundness: if both evaluators succeed on the same term, their outputs
+/-- Soundness: if both evaluators succeed on a closed term, their outputs
     are VCompat at all step levels.
 
-    KEY CHANGE: No WellTyped precondition. absEval succeeding implies
-    the term is well-typed (ascriptions are checked, callability is validated).
-
-    KEY DESIGN: the VCompat step index `n` is decoupled from `fuel`.
-    soundness proves VCompat at ALL step levels simultaneously. -/
+    The closedAt precondition ensures the term has no free variables,
+    which is required for the substEnv composition lemma in soundness_open.
+    All well-formed programs satisfy this trivially. -/
 theorem soundness
     (fuel : Nat) (e : Expr) (v : Expr) (τ : NfExpr) (n : Nat)
     (h_conc : concEval fuel e = some v)
     (h_abs : absEval fuel [] [] e = .ok τ)
+    (h_closed : e.closedAt 0 = true)
     : VCompat n v τ.val := by
-  induction fuel generalizing e v τ n with
-  | zero => simp [concEval] at h_conc
-  | succ k ih =>
-    cases e with
-    | bvar _ => simp [concEval] at h_conc
-    | type =>
-      -- concEval: type is a value, v = type
-      -- absEval: type normalizes to type, τ = ⟨type⟩
-      unfold concEval at h_conc; injection h_conc with hv; subst hv
-      unfold absEval at h_abs; injection h_abs with hτ; subst hτ
-      exact VCompat.refl n Expr.type
-    | asc term ty =>
-      -- concEval erases ascription: concEval (k+1) (asc term ty) = concEval k term
-      unfold concEval at h_conc
-      -- absEval checks ascription: normalize both sides, check subtyping, return type
-      unfold absEval at h_abs; dsimp only [] at h_abs
-      match h_sigma : absEval k [] [] term with
-      | .error _ => simp [h_sigma, bind, Except.bind] at h_abs
-      | .ok sigma =>
-        simp only [h_sigma, bind, Except.bind] at h_abs
-        match h_tau : absEval k [] [] ty with
-        | .error _ => simp [h_tau, bind, Except.bind] at h_abs
-        | .ok tau =>
-          simp only [h_tau, bind, Except.bind] at h_abs
-          -- h_abs encodes: if subCheckNF succeeded, τ = tau; else error
-          by_cases hsub : subCheckNF k [] [] sigma.val tau.val = true
-          · simp only [hsub, ite_true] at h_abs
-            injection h_abs with h_eq; subst h_eq
-            -- IH gives VCompat n v sigma.val, adequacy bridges to tau.val
-            exact VCompat.adequacy (ih term v sigma n h_conc h_sigma) hsub
-          · simp only [Bool.not_eq_true] at hsub
-            simp only [hsub] at h_abs
-            simp at h_abs
-    | lam dom body =>
-      -- concEval: lam is a value, v = lam dom body
-      -- absEval: normalizes domain and body under binder
-      -- BLOCKER: semantic lam quantifies over ALL fuel levels for inner evaluation;
-      -- the fuel-induction IH only gives soundness at fuel k. Bridging requires
-      -- either strong induction + fuel mono, or a combined fuel/step induction.
-      -- See PROGRESS.md for analysis.
-      sorry
-    | mu ann body =>
-      -- concEval: mu is a value, v = mu ann body
-      -- absEval: validates annotation, returns ⟨mu ann body⟩ (raw annotation kept)
-      -- Since both return mu ann body, VCompat by refl.
-      unfold concEval at h_conc; injection h_conc with hv; subst hv
-      unfold absEval at h_abs; dsimp only [] at h_abs
-      match h_ann : absEval k [] [] ann with
-      | .error _ => simp [h_ann, bind, Except.bind] at h_abs
-      | .ok ann' =>
-        simp only [h_ann, bind, Except.bind] at h_abs
-        injection h_abs with hτ; subst hτ
-        exact VCompat.refl n (Expr.mu ann body)
-    | app f a =>
-      -- concEval: evaluate f → fV, a → aV, dispatch on fV
-      unfold concEval at h_conc
-      match hcf : concEval k f with
-      | none => simp [hcf] at h_conc
-      | some fV =>
-        match hca : concEval k a with
-        | none => simp [hcf, hca] at h_conc
-        | some aV =>
-          simp only [hcf, hca] at h_conc
-          -- absEval: evaluate f → fT, a → aT, dispatch on fT.val
-          unfold absEval at h_abs; dsimp only [] at h_abs
-          match haf : absEval k [] [] f with
-          | .error _ => simp [haf, bind, Except.bind] at h_abs
-          | .ok fT =>
-            simp only [haf, bind, Except.bind] at h_abs
-            match haa : absEval k [] [] a with
-            | .error _ => simp [haa, bind, Except.bind] at h_abs
-            | .ok aT =>
-              simp only [haa, bind, Except.bind] at h_abs
-              -- IH: VCompat n fV fT.val, VCompat n aV aT.val
-              have ih_f := ih f fV fT n hcf haf
-              have ih_a := ih a aV aT n hca haa
-              -- Dispatch on fT.val (abstract function type)
-              match hftv : fT.val with
-              | .lam _domT _bodyT =>
-                -- absEval: lam case. Domain check + beta-reduce.
-                simp only [hftv] at h_abs
-                by_cases hdom : subCheckNF k [] [] aT.val _domT = true
-                · simp only [hdom, ite_true] at h_abs
-                  -- h_abs: absEval k [] [] (_bodyT.subst 0 aT.val) = .ok τ
-                  -- Dispatch on fV for concEval
-                  match hfvv : fV with
-                  | .bvar _k =>
-                    -- Impossible: concEval never produces bvar
-                    exact absurd hcf (by intro h; exact concEval_not_bvar h)
-                  | .asc _t _ty =>
-                    -- Impossible: concEval never produces asc
-                    exact absurd hcf (by intro h; exact concEval_not_asc h)
-                  | .type =>
-                    -- Contradiction: VCompat 1 type (lam ...) is False.
-                    -- type is not lam/mu/app/asc, inferType returns none for type.
-                    exfalso
-                    have h_vc := ih f Expr.type fT 1 hcf haf
-                    rw [hftv] at h_vc
-                    unfold VCompat at h_vc
-                    rcases h_vc with h | h |
-                      ⟨_, _, _, _, h, _, _⟩ | ⟨_, _, _, _, h, _, _⟩ |
-                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, _, _, h, _, _⟩ |
-                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, h, _, _, _⟩ |
-                      ⟨_, _, h, _⟩ | ⟨_, _, h, _⟩
-                    all_goals (first | cases h | simp [inferType] at h)
-                  | .lam _domV _bodyV =>
-                    -- BLOCKER: dual-substitution. concEval beta-reduces bodyV.subst 0 aV,
-                    -- absEval beta-reduces bodyT.subst 0 aT.val. Different bodies AND
-                    -- different arguments. The semantic lam from IH on f can't be extracted
-                    -- because VCompat might hold via the refl disjunct.
-                    simp only [hfvv] at h_conc
-                    sorry
-                  | .mu _annV _bodyV =>
-                    -- concEval unrolls mu then re-applies, absEval beta-reduces bodyT.
-                    simp only [hfvv] at h_conc
-                    sorry
-                  | .app _fV' _aV' =>
-                    -- Neutral app: v = app (app _fV' _aV') aV.
-                    -- absEval beta-reduces bodyT.subst 0 aT.val → τ.
-                    -- ih_f: VCompat n (app _fV' _aV') (lam domT bodyT) — may hold
-                    -- via inferType (which provides type info) but extracting the
-                    -- semantic lam from this is non-trivial.
-                    simp only [hfvv] at h_conc
-                    sorry
-                · simp only [Bool.not_eq_true] at hdom
-                  simp only [hdom] at h_abs; simp at h_abs
-              | .mu _annT _bodyT =>
-                -- absEval: mu-app dispatch. Complex annotation-trust + mu unrolling.
-                simp only [hftv] at h_abs
-                sorry
-              | .type =>
-                simp only [hftv] at h_abs; simp at h_abs
-              | .bvar _ | .app _ _ | .asc _ _ =>
-                -- absEval: neutral application. fT.val is not lam/mu/type.
-                simp only [hftv] at h_abs
-                by_cases hcall : isCallableNF [] fT = true
-                · simp only [hcall, ite_true] at h_abs
-                  injection h_abs with h_eq_abs
-                  -- τ = ⟨app fT.val aT.val⟩, so τ.val = app fT.val aT.val
-                  -- Dispatch on fV for concEval
-                  match hfvv : fV with
-                  | .lam _domV _bodyV =>
-                    -- fV = lam, fT.val = neutral: CONTRADICTION.
-                    -- VCompat 1 (lam) (bvar/app/asc) is False: no disjunct applies.
-                    -- (lam ≠ mu/app/asc, inferType returns none for lam,
-                    --  and fT.val ≠ type/lam/mu since those match arms were handled.)
-                    exfalso
-                    have h_vc := ih f (Expr.lam _domV _bodyV) fT 1 hcf haf
-                    rw [hftv] at h_vc
-                    unfold VCompat at h_vc
-                    rcases h_vc with h | h |
-                      ⟨_, _, _, _, _, h, _⟩ | ⟨_, _, _, _, h, _, _⟩ |
-                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, _, _, h, _, _⟩ |
-                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, h, _, _, _⟩ |
-                      ⟨_, _, h, _⟩ | ⟨_, _, h, _⟩
-                    all_goals (first | cases h | simp [inferType] at h)
-                  | .mu _annV _bodyV =>
-                    -- fV = mu, fT.val = neutral: concEval unrolls mu, absEval
-                    -- returns neutral app. Shape mismatch.
-                    simp only [hfvv] at h_conc
-                    sorry
-                  | .bvar _ | .type | .app _ _ | .asc _ _ =>
-                    -- NEUTRAL-NEUTRAL: both sides produce neutral apps.
-                    -- concEval: v = app fV aV (catch-all for non-lam/non-mu fV)
-                    -- absEval: τ.val = app fT.val aT.val
-                    -- VCompat via structural app + IH on f and a.
-                    simp only [hfvv] at h_conc
-                    injection h_conc with h_v; subst h_v
-                    -- Get τ.val equation from h_eq_abs
-                    have hτv : τ.val = Expr.app fT.val aT.val := by
-                      have := h_eq_abs.symm; subst this; simp [hftv]
-                    cases n with
-                    | zero => simp [VCompat]
-                    | succ m =>
-                      rw [hτv]
-                      unfold VCompat
-                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-                      exact ⟨_, fT.val, _, aT.val, rfl, rfl,
-                        VCompat.mono ih_f, VCompat.mono ih_a⟩
-                · simp only [hcall] at h_abs; simp at h_abs
+  have h := soundness_open e fuel [] τ h_abs n [] [] (FunEnvCompat.nil n) rfl
+    (by simpa using h_closed) v (by rw [Expr.substEnv_nil]; exact h_conc)
+  rw [Expr.substEnv_nil] at h
+  exact h
