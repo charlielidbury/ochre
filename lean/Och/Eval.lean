@@ -371,6 +371,63 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           | .type => exact h
           | .bvar _ | .app _ _ | .asc _ _ => exact h
 
+/-! ## concEval shape lemmas
+
+concEval never produces bvar or asc at the top level. This is a structural
+invariant: the base cases (lam, type, mu) never produce bvar/asc, and the
+recursive cases (asc-erasure, beta-reduction, mu-unrolling) just propagate
+inner results. The catch-all (neutral app) produces app, not bvar/asc. -/
+
+/-- concEval never produces a bare variable at the top level. -/
+theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
+    (h : concEval fuel e = some (.bvar k)) : False := by
+  induction fuel generalizing e with
+  | zero => simp [concEval] at h
+  | succ n ih =>
+    cases e with
+    | bvar => simp [concEval] at h
+    | lam => simp [concEval] at h
+    | type => simp [concEval] at h
+    | asc term _ => unfold concEval at h; exact ih h
+    | mu => simp [concEval] at h
+    | app f a =>
+      unfold concEval at h
+      match hf : concEval n f, ha : concEval n a with
+      | none, _ => simp [hf] at h
+      | some _, none => simp [hf, ha] at h
+      | some fVal, some aVal =>
+        simp only [hf, ha] at h
+        match fVal with
+        | .lam _ _ => exact ih h
+        | .mu _ _ => exact ih h
+        | .type | .bvar _ | .app _ _ | .asc _ _ =>
+          injection h with h; cases h
+
+/-- concEval never produces an ascription at the top level. -/
+theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
+    (h : concEval fuel e = some (.asc t ty)) : False := by
+  induction fuel generalizing e with
+  | zero => simp [concEval] at h
+  | succ n ih =>
+    cases e with
+    | bvar => simp [concEval] at h
+    | lam => simp [concEval] at h
+    | type => simp [concEval] at h
+    | asc term _ => unfold concEval at h; exact ih h
+    | mu => simp [concEval] at h
+    | app f a =>
+      unfold concEval at h
+      match hf : concEval n f, ha : concEval n a with
+      | none, _ => simp [hf] at h
+      | some _, none => simp [hf, ha] at h
+      | some fVal, some aVal =>
+        simp only [hf, ha] at h
+        match fVal with
+        | .lam _ _ => exact ih h
+        | .mu _ _ => exact ih h
+        | .type | .bvar _ | .app _ _ | .asc _ _ =>
+          injection h with h; cases h
+
 /-! ## Fuel monotonicity (mutual proof)
 
 absEval and subCheckNF are mutually recursive, so their fuel monotonicity

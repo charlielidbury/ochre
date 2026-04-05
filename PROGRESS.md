@@ -6,11 +6,52 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (19 in Soundness, 0 in Eval, 0 in Subtyping = 19 total)
+### Sorry inventory (20 in Soundness, 0 in Eval, 0 in Subtyping = 20 total)
 
-Up from 16 — agent ochre-20260405-031505 expanded the soundness app case from 1
-sorry into 5 sorrys (4 hard sub-cases) + proved the neutral-neutral sub-case.
-Net: 1 → 5 (but the neutral-neutral is fully proved, which was previously hidden).
+Up from 19 — agent ochre-20260405-040204 expanded the soundness app (fT=lam) case
+from 1 sorry into 3 (proving bvar/asc/type sub-cases), and proved the lam-neutral
+contradiction in the neutral branch.
+
+Changes by agent ochre-20260405-040204:
+- **NEW LEMMAS: concEval_not_bvar, concEval_not_asc (Eval.lean).** concEval never
+  produces bvar or asc at the top level. Proof by induction on fuel: base cases
+  (lam, type, mu) never produce bvar/asc, recursive cases (asc-erasure, beta,
+  mu-unroll) propagate inner results, and the catch-all (neutral app) produces app.
+- **PROVED: soundness app fT=neutral fV=lam (Soundness.lean:1264).** The case
+  where the abstract function is neutral (bvar/app/asc) but the concrete function
+  is a lam is a CONTRADICTION. The IH gives VCompat 1 (lam ...) (bvar/app/asc ...),
+  and all 10 VCompat disjuncts are false for this combination (lam ≠ mu/app/asc,
+  inferType returns none for lam, and bvar/app/asc ≠ type/lam/mu).
+- **EXPANDED: soundness app fT=lam (Soundness.lean:1204).** Dispatched on fV
+  (concrete function value), proving 3 sub-cases:
+  - fV = bvar: impossible (concEval_not_bvar)
+  - fV = asc: impossible (concEval_not_asc)
+  - fV = type: contradiction (VCompat 1 type (lam ...) is False, same technique)
+  - fV = lam: SORRY — dual-substitution (different bodies AND arguments)
+  - fV = mu: SORRY — concEval unrolls mu, absEval beta-reduces lam
+  - fV = app: SORRY — neutral app in concrete, beta-reduction in abstract
+
+**KEY ANALYSIS (for future agents):**
+
+The "VCompat 1 contradiction" technique works whenever the concrete value has a
+constructor that can't match any VCompat disjunct with the abstract type. It works
+for:
+- lam vs bvar/app/asc (proved — no disjunct applies since inferType returns none for lam)
+- type vs lam (proved — type ≠ lam/mu/app/asc, inferType returns none for type)
+
+It does NOT work for:
+- mu vs bvar/app/asc (mu-left disjunct applies with VCompat 0 = True)
+- bvar vs anything (inferType disjunct with existential ctx can be satisfied)
+- app vs anything (structural app or inferType disjunct can apply)
+
+The fundamental remaining blockers are:
+1. **Dual-substitution**: concEval(bodyV.subst 0 aV) vs absEval(bodyT.subst 0 aT.val)
+   — different bodies AND different arguments. Requires a substitution lemma or
+   generalized soundness theorem for compatible expression pairs.
+2. **Self-elim step count**: mu unfolding costs one observation step, and we can't
+   recover it. VCompat(n-1, v, τ) doesn't upgrade to VCompat(n, v, τ).
+3. **Annotation-trust**: the mu-app annotation-trust path in absEval trusts the
+   annotation without validation, creating a gap between concrete and abstract.
 
 Changes by agent ochre-20260405-031505:
 - **EXPANDED soundness app case (Soundness.lean:1175).** The single sorry is now
@@ -179,7 +220,15 @@ Previous changes by agent ochre-20260405-003633:
   - Proved: asc case via IH + VCompat.adequacy
   - Proved: mu case via VCompat.refl (raw annotation kept)
   - Sorry: lam — normalization coherence (absEval normalizes body, v ≠ τ.val)
-  - Sorry: app — dispatch cross-cases + normalization coherence
+  - Sorry: app fT=lam fV=lam �� dual-substitution
+  - Sorry: app fT=lam fV=mu — mu unrolling + lam beta-reduction
+  - Sorry: app fT=lam fV=app — neutral-app vs beta-reduction
+  - Proved: app fT=lam fV=bvar/asc — impossible (concEval_not_bvar/asc)
+  - Proved: app fT=lam fV=type — contradiction (VCompat 1 type (lam) = False)
+  - Sorry: app fT=mu — annotation-trust interaction
+  - Proved: app fT=neutral fV=neutral — structural app + IH
+  - Proved: app fT=neutral fV=lam — contradiction (VCompat 1 lam neutral = False)
+  - Sorry: app fT=neutral fV=mu — mu unrolling vs neutral app
 
 **Phase 3 (Subtyping helpers): COMPLETE**
 - `subCheckNF_lam_lam_body` — PROVED
@@ -187,6 +236,35 @@ Previous changes by agent ochre-20260405-003633:
 - `subCheckNF_mu_mu_body` — PROVED
 - `subCheckNF_type_left_target` — PROVED
 - `subCheckNF_neutral_inferType` — **PROVED** (Subtyping.lean:198)
+
+### What happened this session (agent ochre-20260405-040204)
+
+**Proved concEval shape lemmas + expanded soundness app into fV sub-cases (19→20 sorrys).**
+
+1. **concEval_not_bvar, concEval_not_asc (Eval.lean).** Two structural invariant
+   lemmas: concEval never produces bvar or asc at the top level. Proved by induction
+   on fuel. These allow eliminating impossible concEval output cases in soundness proofs.
+
+2. **soundness app fT=neutral fV=lam PROVED (Soundness.lean:1264).** Contradiction:
+   VCompat 1 (lam ...) (bvar/app/asc ...) is False since no disjunct applies.
+   Uses the IH instantiated at step n=1 to derive the contradiction.
+
+3. **soundness app fT=lam expanded (Soundness.lean:1204).** Dispatched on fV:
+   - bvar, asc: impossible by concEval_not_bvar/asc
+   - type: contradiction by VCompat 1 type (lam ...) = False
+   - lam, mu, app: sorry'd (dual-substitution / mu unrolling / neutral mismatch)
+
+4. **Analysis: identified 3 fundamental blockers** (documented in detail above):
+   - Dual-substitution: both the body AND the argument differ between evaluators
+   - Self-elim step count: mu unfolding costs one step, can't recover
+   - Annotation-trust: absEval trusts mu annotations without validation
+
+**Next agent should focus on:** The dual-substitution problem is the biggest
+blocker (blocks soundness lam, soundness app fT=lam fV=lam, and adequacy lam-lam).
+The main approaches not yet attempted are:
+- **Generalized soundness** for compatible expression pairs (path 1 in SUGGESTIONS.md)
+- **Biorthogonality** / observational VCompat (path 2 in SUGGESTIONS.md)
+- **Selective domain normalization** in absEval lam case (path 3 in SUGGESTIONS.md)
 
 ### What happened this session (agent ochre-20260405-024408)
 

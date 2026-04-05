@@ -1204,11 +1204,45 @@ theorem soundness
                 · simp only [hdom, ite_true] at h_abs
                   -- h_abs: absEval k [] [] (_bodyT.subst 0 aT.val) = .ok τ
                   -- Dispatch on fV for concEval
-                  -- BLOCKER: dual-substitution problem. All sub-cases here require
-                  -- relating concEval(bodyV.subst 0 aV) to absEval(bodyT.subst 0 aT.val)
-                  -- where aV ≠ aT.val. The semantic lam from IH on f helps but can't
-                  -- be extracted without handling the refl disjunct of VCompat.
-                  sorry
+                  match hfvv : fV with
+                  | .bvar _k =>
+                    -- Impossible: concEval never produces bvar
+                    exact absurd hcf (by intro h; exact concEval_not_bvar h)
+                  | .asc _t _ty =>
+                    -- Impossible: concEval never produces asc
+                    exact absurd hcf (by intro h; exact concEval_not_asc h)
+                  | .type =>
+                    -- Contradiction: VCompat 1 type (lam ...) is False.
+                    -- type is not lam/mu/app/asc, inferType returns none for type.
+                    exfalso
+                    have h_vc := ih f Expr.type fT 1 hcf haf
+                    rw [hftv] at h_vc
+                    unfold VCompat at h_vc
+                    rcases h_vc with h | h |
+                      ⟨_, _, _, _, h, _, _⟩ | ⟨_, _, _, _, h, _, _⟩ |
+                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, _, _, h, _, _⟩ |
+                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, h, _, _, _⟩ |
+                      ⟨_, _, h, _⟩ | ⟨_, _, h, _⟩
+                    all_goals (first | cases h | simp [inferType] at h)
+                  | .lam _domV _bodyV =>
+                    -- BLOCKER: dual-substitution. concEval beta-reduces bodyV.subst 0 aV,
+                    -- absEval beta-reduces bodyT.subst 0 aT.val. Different bodies AND
+                    -- different arguments. The semantic lam from IH on f can't be extracted
+                    -- because VCompat might hold via the refl disjunct.
+                    simp only [hfvv] at h_conc
+                    sorry
+                  | .mu _annV _bodyV =>
+                    -- concEval unrolls mu then re-applies, absEval beta-reduces bodyT.
+                    simp only [hfvv] at h_conc
+                    sorry
+                  | .app _fV' _aV' =>
+                    -- Neutral app: v = app (app _fV' _aV') aV.
+                    -- absEval beta-reduces bodyT.subst 0 aT.val → τ.
+                    -- ih_f: VCompat n (app _fV' _aV') (lam domT bodyT) — may hold
+                    -- via inferType (which provides type info) but extracting the
+                    -- semantic lam from this is non-trivial.
+                    simp only [hfvv] at h_conc
+                    sorry
                 · simp only [Bool.not_eq_true] at hdom
                   simp only [hdom] at h_abs; simp at h_abs
               | .mu _annT _bodyT =>
@@ -1227,10 +1261,20 @@ theorem soundness
                   -- Dispatch on fV for concEval
                   match hfvv : fV with
                   | .lam _domV _bodyV =>
-                    -- fV = lam, fT.val = neutral: concEval beta-reduces, absEval
-                    -- returns neutral app. Shape mismatch.
-                    simp only [hfvv] at h_conc
-                    sorry
+                    -- fV = lam, fT.val = neutral: CONTRADICTION.
+                    -- VCompat 1 (lam) (bvar/app/asc) is False: no disjunct applies.
+                    -- (lam ≠ mu/app/asc, inferType returns none for lam,
+                    --  and fT.val ≠ type/lam/mu since those match arms were handled.)
+                    exfalso
+                    have h_vc := ih f (Expr.lam _domV _bodyV) fT 1 hcf haf
+                    rw [hftv] at h_vc
+                    unfold VCompat at h_vc
+                    rcases h_vc with h | h |
+                      ⟨_, _, _, _, _, h, _⟩ | ⟨_, _, _, _, h, _, _⟩ |
+                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, _, _, h, _, _⟩ |
+                      ⟨_, _, h, _⟩ | ⟨_, _, _, _, h, _, _, _⟩ |
+                      ⟨_, _, h, _⟩ | ⟨_, _, h, _⟩
+                    all_goals (first | cases h | simp [inferType] at h)
                   | .mu _annV _bodyV =>
                     -- fV = mu, fT.val = neutral: concEval unrolls mu, absEval
                     -- returns neutral app. Shape mismatch.
