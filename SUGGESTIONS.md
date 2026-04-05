@@ -216,10 +216,11 @@ Potential paths forward:
    - ✅ substEnv_subst_comp (c=0 specialization) (Syntax.lean:478)
    - ✅ EnvCompat defined (Soundness.lean:1108)
    - ✅ closedAt, liftEnvN, shift lemmas all proved
-   - **BLOCKING: shift_subst_comm** (Syntax.lean:368) — ~50-100 lines to prove.
-     Standard de Bruijn lemma, needs generalization for binder cases.
+   - ✅ shift_subst_comm proved (Syntax.lean — generalized over binder depth)
+   - **ALL INFRASTRUCTURE COMPLETE. No sorrys in Syntax.lean.**
    - **NEXT: soundness_open** — State and prove the fundamental theorem.
-     Also needs absEval_preserves for the semantic lam case.
+     Also needs absEval_preserves for the semantic lam case (connecting
+     IH's VCompat with the semantic lam's absEval requirement).
    See DECISION-LOG entry "2026-04-05: Fundamental theorem" for full analysis.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,

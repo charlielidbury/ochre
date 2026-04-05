@@ -6,7 +6,7 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (20 in Soundness, 0 in Eval, 1 in Syntax = 21 total)
+### Sorry inventory (20 in Soundness, 0 in Eval, 0 in Syntax = 20 total)
 
 Changes by agent ochre-20260405-053702:
 - **PROVED: substEnv_idEnv** (Syntax.lean) — the identity property for simultaneous
@@ -27,14 +27,19 @@ Changes by agent ochre-20260405-053702:
   on shift_subst_comm.
 - **NEW: substEnv_subst_comp** (Syntax.lean) — the c=0 specialization used by
   the fundamental theorem.
-- **SORRY: shift_subst_comm** (Syntax.lean:368) — the ONLY remaining sorry in
-  Syntax.lean. Standard de Bruijn lemma: (e.shift 1 0).subst (j+1) (t.shift 1 0)
-  = (e.subst j t).shift 1 0. Requires a generalized version for the lam/mu
-  binder cases (cutoff d instead of 0). ~50-100 lines to prove.
+- **PROVED: shift_subst_comm** (Syntax.lean) — the generalized version
+  (shift_subst_comm_gen) proved by induction on e, generalizing over both
+  j (subst position) and d (binder depth). The bvar case requires careful
+  case analysis (4 sub-cases: k < d, k = j+d, k > j+d, d ≤ k < j+d).
+  The lam/mu body cases use shift_shift_same to compose the subst value shifts.
+  Specialization to d=0 gives the standard shift_subst_comm.
 
-**Net sorry change: -1 (substEnv_idEnv proved) + 1 (shift_subst_comm added) = 0.**
-But the substEnv_subst_comp infrastructure is a major unblocking: the composition
-lemma was the biggest missing piece for the fundamental theorem approach.
+**COMPOSITION LEMMA FULLY PROVED.** Zero sorrys in Syntax.lean.
+The substEnv_subst_comp infrastructure is complete. The next step is to
+state and prove soundness_open (the fundamental theorem) in Soundness.lean.
+
+**Net sorry change: -1 (substEnv_idEnv proved), 0 new sorrys in Syntax.lean.**
+20 sorrys remain in Soundness.lean (unchanged).
 
 Up from 19 — agent ochre-20260405-040204 expanded the soundness app (fT=lam) case
 from 1 sorry into 3 (proving bvar/asc/type sub-cases), and proved the lam-neutral

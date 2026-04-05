@@ -358,14 +358,90 @@ theorem liftEnvN_getElem?_lt (c : Nat) (γ : List Expr) (i : Nat) (h : i < c)
 
 /-! ## Shift-subst commutation -/
 
-/-- Shift-subst commutation: shifting up by 1 at cutoff 0 then substituting
-    at j+1 is the same as substituting at j then shifting up.
+-- Generalized shift-subst commutation: shifting by 1 at cutoff d then
+-- substituting at j+d+1 is the same as substituting at j+d then shifting.
+-- Under binders, cutoff d and subst position both increment by 1,
+-- and the subst value gains another shift 1 0 (composes to shift (d+1) 0).
+set_option maxHeartbeats 2000000 in
+theorem shift_subst_comm_gen (e : Expr) (j d : Nat) (t : Expr) :
+    (e.shift 1 d).subst (j + d + 1) (t.shift (d + 1) 0)
+    = (e.subst (j + d) (t.shift d 0)).shift 1 d := by
+  induction e generalizing j d with
+  | bvar k =>
+    show (if k < d then Expr.bvar k else .bvar (k + 1)).subst (j + d + 1) (t.shift (d + 1) 0)
+       = (if k == j + d then t.shift d 0 else if k > j + d then .bvar (k - 1) else .bvar k).shift 1 d
+    by_cases hd : k < d
+    · have h1 : ¬(k == j + d) = true := by simp; omega
+      have h2 : ¬(k > j + d) := by omega
+      simp only [if_pos hd, if_neg h1, show ¬(k > j + d) from h2, ite_false]
+      unfold subst; simp [show ¬(k == j + d + 1) = true from by simp; omega,
+                           show ¬(k > j + d + 1) from by omega]
+      unfold shift; simp [hd]
+    · by_cases h1 : k = j + d
+      · simp only [if_neg hd, show (k == j + d) = true from by simp [beq_iff_eq]; exact h1, if_true]
+        unfold subst; rw [h1]; simp
+        have := shift_shift t 1 d 0; simp at this
+        rw [show d + 1 = 1 + d from by omega]; exact this.symm
+      · by_cases h2 : k > j + d
+        · simp only [if_neg hd, show ¬(k == j + d) = true from by simp; exact h1,
+                      if_neg (show ¬(k == j + d) = true from by simp; exact h1),
+                      show k > j + d from h2, ite_true]
+          unfold subst
+          simp [show ¬(k + 1 == j + d + 1) = true from by simp; omega,
+                show k + 1 > j + d + 1 from by omega]
+          unfold shift; simp [show ¬(k - 1 < d) from by omega]; omega
+        · have hlt : k < j + d := by omega
+          simp only [if_neg hd, show ¬(k == j + d) = true from by simp; exact h1,
+                      if_neg (show ¬(k == j + d) = true from by simp; exact h1),
+                      show ¬(k > j + d) from h2, ite_false]
+          unfold subst
+          simp [show ¬(k + 1 == j + d + 1) = true from by simp; omega,
+                show ¬(k + 1 > j + d + 1) from by omega]
+          unfold shift; simp [show ¬(k < d) from hd]
+  | type => rfl
+  | lam dom body ih_dom ih_body =>
+    show Expr.lam ((shift 1 d dom).subst (j + d + 1) (t.shift (d + 1) 0))
+                  ((shift 1 (d + 1) body).subst (j + d + 2) ((t.shift (d + 1) 0).shift 1 0))
+       = Expr.lam ((dom.subst (j + d) (t.shift d 0)).shift 1 d)
+                  ((body.subst (j + d + 1) ((t.shift d 0).shift 1 0)).shift 1 (d + 1))
+    congr 1
+    · exact ih_dom j d
+    · rw [show j + d + 2 = j + (d + 1) + 1 from by omega,
+          shift_shift_same t 1 d 0, show 1 + d = d + 1 from by omega,
+          shift_shift_same t 1 (d + 1) 0, show 1 + (d + 1) = d + 1 + 1 from by omega,
+          show j + d + 1 = j + (d + 1) from by omega]
+      exact ih_body j (d + 1)
+  | app f a ih_f ih_a =>
+    show Expr.app ((shift 1 d f).subst (j + d + 1) (t.shift (d + 1) 0))
+                  ((shift 1 d a).subst (j + d + 1) (t.shift (d + 1) 0))
+       = Expr.app ((f.subst (j + d) (t.shift d 0)).shift 1 d)
+                  ((a.subst (j + d) (t.shift d 0)).shift 1 d)
+    congr 1; exact ih_f j d; exact ih_a j d
+  | asc tm ty ih_t ih_y =>
+    show Expr.asc ((shift 1 d tm).subst (j + d + 1) (t.shift (d + 1) 0))
+                  ((shift 1 d ty).subst (j + d + 1) (t.shift (d + 1) 0))
+       = Expr.asc ((tm.subst (j + d) (t.shift d 0)).shift 1 d)
+                  ((ty.subst (j + d) (t.shift d 0)).shift 1 d)
+    congr 1; exact ih_t j d; exact ih_y j d
+  | mu ann body ih_ann ih_body =>
+    show Expr.mu ((shift 1 d ann).subst (j + d + 1) (t.shift (d + 1) 0))
+                 ((shift 1 (d + 1) body).subst (j + d + 2) ((t.shift (d + 1) 0).shift 1 0))
+       = Expr.mu ((ann.subst (j + d) (t.shift d 0)).shift 1 d)
+                 ((body.subst (j + d + 1) ((t.shift d 0).shift 1 0)).shift 1 (d + 1))
+    congr 1
+    · exact ih_ann j d
+    · rw [show j + d + 2 = j + (d + 1) + 1 from by omega,
+          shift_shift_same t 1 d 0, show 1 + d = d + 1 from by omega,
+          shift_shift_same t 1 (d + 1) 0, show 1 + (d + 1) = d + 1 + 1 from by omega,
+          show j + d + 1 = j + (d + 1) from by omega]
+      exact ih_body j (d + 1)
 
-    Standard de Bruijn substitution lemma. Required for the composition lemma's
-    bvar case (inductive step under binders). -/
+/-- Shift-subst commutation at cutoff 0: the standard de Bruijn lemma.
+    Corollary of the generalized version at d=0. -/
 theorem shift_subst_comm (e : Expr) (j : Nat) (t : Expr) :
     (e.shift 1 0).subst (j + 1) (t.shift 1 0) = (e.subst j t).shift 1 0 := by
-  sorry
+  have := shift_subst_comm_gen e j 0 t
+  simp [shift_zero] at this; exact this
 
 /-! ## Substitution composition lemma (for the fundamental theorem)
 
@@ -421,7 +497,8 @@ private theorem liftEnvN_entry_subst (c : Nat) (γ : List Expr) (s : Expr) (k : 
 
     The c=0 case gives the main composition lemma.
 
-    PROOF STATUS: All cases proved except shift_subst_comm (1 sorry in Syntax.lean).
+    PROOF STATUS: Fully proved (zero sorrys). Uses shift_subst_comm_gen via
+    liftEnvN_entry_subst for the bvar case.
     The proof structure:
     - bvar: via liftEnvN_entry_subst (induction on c, uses shift_subst_comm)
     - lam/mu: IH on domain at depth c, IH on body at depth c+1
