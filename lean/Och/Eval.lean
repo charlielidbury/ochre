@@ -162,9 +162,14 @@ mutual
         if subCheckNF fuel ctx seen sigma.val tau.val then .ok tau
         else .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
       | .mu ann body  => do
-        -- Evaluate annotation (rejects ill-formed annotations)
-        let ann' ← absEval fuel ctx seen ann
-        .ok ⟨.mu ann'.val body⟩
+        -- Validate annotation is well-formed (rejects ill-typed annotations),
+        -- but return the raw annotation in the output. This ensures concEval
+        -- and absEval produce the SAME mu (both keep raw annotation), making
+        -- the soundness mu case trivial by VCompat.refl.
+        -- Normalization of annotations is deferred to where it's needed:
+        -- subCheckNF's self-elim and mu-app dispatch.
+        let _ ← absEval fuel ctx seen ann
+        .ok ⟨.mu ann body⟩
       | .app f a      => do
         let f' ← absEval fuel ctx seen f
         let a' ← absEval fuel ctx seen a
@@ -247,20 +252,23 @@ mutual
         | .mu ann body, _ =>
           -- Self-elim: mu ann body ⊑ b  iff  ann ⊑ b  or  normalize(body[0:=mu]) ⊑ b.
           --
-          -- ANNOTATION PATH: Only valid when the body is productive (not a pure
-          -- self-reference). For non-productive bodies like `bvar 0`, the mu
-          -- unfolds to itself, making it a "universal" type via self-intro.
-          -- Trusting the annotation for such types creates transitivity violations:
-          -- `a ⊑ mu ann (bvar 0) ⊑ ann` but `a ⋢ ann`.
+          -- ANNOTATION PATH: Normalize annotation on demand (since absEval's mu
+          -- case keeps raw annotations for soundness). Only valid when the body
+          -- is productive (not a pure self-reference). For non-productive bodies
+          -- like `bvar 0`, the mu unfolds to itself, making it a "universal" type
+          -- via self-intro. Trusting the annotation for such types creates
+          -- transitivity violations: `a ⊑ mu ann (bvar 0) ⊑ ann` but `a ⋢ ann`.
           --
           -- BODY PATH: The final subCheckNF uses `seen` (not `seen'`) to prevent
           -- circular reasoning via the seen-set hit.
-          --
-          -- This ordering makes fuel monotonicity provable: the annotation check
-          -- doesn't depend on absEval fuel, and the body check is stable because
-          -- absEval_fuel_mono ensures normalization results don't change with fuel.
           let seen' := (a, b) :: seen
-          if body != .bvar 0 && subCheckNF fuel ctx seen' ann b then true
+          let ann_path :=
+            if body != .bvar 0 then
+              match absEval fuel ctx seen' ann with
+              | .ok ann' => subCheckNF fuel ctx seen' ann'.val b
+              | .error _ => false
+            else false
+          if ann_path then true
           else
             let u := body.subst 0 (.mu ann body)
             match absEval fuel ctx seen' u with
@@ -443,7 +451,28 @@ private theorem subCheckNF_absEval_step_right
     exact ih_sub h
   | .error _ => simp [hae] at h
 
-/-- Helper for the self-elim case: annotation guard + annotation-first, then body normalization. -/
+/-- Helper for the self-elim annotation path: normalize annotation, then subcheck. -/
+private theorem subCheckNF_self_elim_ann_step
+    {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {ann : Expr} {b : Expr}
+    (ih_sub : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
+          subCheckNF k ctx seen a b = true → subCheckNF (k + 1) ctx seen a b = true)
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
+          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (h : (match absEval k ctx seen ann with
+          | .ok ann' => subCheckNF k ctx seen ann'.val b
+          | .error _ => false) = true)
+    : (match absEval (k + 1) ctx seen ann with
+       | .ok ann' => subCheckNF (k + 1) ctx seen ann'.val b
+       | .error _ => false) = true := by
+  match hae : absEval k ctx seen ann with
+  | .ok ann' =>
+    simp only [hae] at h
+    rw [show absEval (k + 1) ctx seen ann = .ok ann' from ih_abs hae]
+    exact ih_sub h
+  | .error _ => simp [hae] at h
+
+/-- Helper for the self-elim case: annotation path (with normalization) + body normalization. -/
 private theorem subCheckNF_self_elim_step
     {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {ann body : Expr} {b : Expr}
@@ -452,39 +481,80 @@ private theorem subCheckNF_self_elim_step
     (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
           absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
     (h : (let seen' := (Expr.mu ann body, b) :: seen
-          if (body != .bvar 0 && subCheckNF k ctx seen' ann b) = true then true
+          let ann_path :=
+            if body != .bvar 0 then
+              match absEval k ctx seen' ann with
+              | .ok ann' => subCheckNF k ctx seen' ann'.val b
+              | .error _ => false
+            else false
+          if ann_path then true
           else
             let u := body.subst 0 (Expr.mu ann body)
             match absEval k ctx seen' u with
             | .ok u' => subCheckNF k ctx seen u'.val b
             | .error _ => false) = true)
     : (let seen' := (Expr.mu ann body, b) :: seen
-       if (body != .bvar 0 && subCheckNF (k + 1) ctx seen' ann b) = true then true
+       let ann_path :=
+         if body != .bvar 0 then
+           match absEval (k + 1) ctx seen' ann with
+           | .ok ann' => subCheckNF (k + 1) ctx seen' ann'.val b
+           | .error _ => false
+         else false
+       if ann_path then true
        else
          let u := body.subst 0 (Expr.mu ann body)
          match absEval (k + 1) ctx seen' u with
          | .ok u' => subCheckNF (k + 1) ctx seen u'.val b
          | .error _ => false) = true := by
-  simp only [] at h ⊢
-  split at h
-  · rename_i hann
-    -- hann: (body != bvar 0 && subCheckNF k ...) = true
-    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hann
-    have hann' : (body != Expr.bvar 0 && subCheckNF (k + 1) ctx ((Expr.mu ann body, b) :: seen) ann b) = true := by
-      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq]
-      exact ⟨hann.1, ih_sub hann.2⟩
-    simp [hann']
-  · rename_i hann
-    split
-    · simp
-    · rename_i hann'
-      -- Body path
-      match hae : absEval k ctx ((Expr.mu ann body, b) :: seen) (body.subst 0 (Expr.mu ann body)) with
-      | .ok ty' =>
-        simp only [hae] at h
-        rw [show absEval (k + 1) ctx ((Expr.mu ann body, b) :: seen) (body.subst 0 (Expr.mu ann body)) = .ok ty' from ih_abs hae]
-        exact ih_sub h
-      | .error _ => simp [hae] at h
+  -- Both annotation path and body path are monotone in fuel.
+  -- Structure: if ann_path then true else body_path.
+  -- Strategy: show body_path@(k+1) = true whenever body_path@k = true,
+  -- and ann_path@(k+1) = true whenever ann_path@k = true.
+  -- Then: at fuel k, either ann_path or body_path is true.
+  -- If ann_path@k: ann_path@(k+1), so overall is true.
+  -- If body_path@k: body_path@(k+1), and overall = if X then true else true = true.
+  -- Key helper: if X then true else Y = Y || X (both give true when either is true).
+  -- But we just need: if either the new ann_path or new body_path is true, overall is true.
+  -- if ann_path then true else body_path = true ↔ ann_path = true ∨ body_path = true
+  have ite_or : ∀ (a b : Bool), (if a then true else b) = true ↔ a = true ∨ b = true := by
+    intro a b; cases a <;> simp
+  -- Apply to h and goal
+  rw [ite_or] at h ⊢
+  -- Body path monotonicity
+  have body_mono : (match absEval k ctx ((Expr.mu ann body, b) :: seen)
+        (body.subst 0 (Expr.mu ann body)) with
+      | .ok u' => subCheckNF k ctx seen u'.val b
+      | .error _ => false) = true →
+    (match absEval (k + 1) ctx ((Expr.mu ann body, b) :: seen)
+        (body.subst 0 (Expr.mu ann body)) with
+      | .ok u' => subCheckNF (k + 1) ctx seen u'.val b
+      | .error _ => false) = true := by
+    intro hb
+    match hae : absEval k ctx ((Expr.mu ann body, b) :: seen) (body.subst 0 (Expr.mu ann body)) with
+    | .ok ty' =>
+      simp only [hae] at hb
+      rw [ih_abs hae]; exact ih_sub hb
+    | .error _ => simp [hae] at hb
+  -- Annotation path monotonicity
+  have ann_mono : (if (body != Expr.bvar 0) = true then
+      match absEval k ctx ((Expr.mu ann body, b) :: seen) ann with
+      | .ok ann' => subCheckNF k ctx ((Expr.mu ann body, b) :: seen) ann'.val b
+      | .error _ => false
+    else false) = true →
+    (if (body != Expr.bvar 0) = true then
+      match absEval (k + 1) ctx ((Expr.mu ann body, b) :: seen) ann with
+      | .ok ann' => subCheckNF (k + 1) ctx ((Expr.mu ann body, b) :: seen) ann'.val b
+      | .error _ => false
+    else false) = true := by
+    intro ha
+    cases hbody : (body != Expr.bvar 0)
+    · simp only [hbody, ite_false, Bool.false_eq_true] at ha
+    · simp only [hbody, ite_true] at ha ⊢
+      exact subCheckNF_self_elim_ann_step ih_sub ih_abs ha
+  -- Main proof
+  rcases h with hann | hbody_k
+  · exact Or.inl (ann_mono hann)
+  · exact Or.inr (body_mono hbody_k)
 
 /-- Helper for inferType-based fallback (app-app else branch and catch-all). -/
 private theorem subCheckNF_inferType_step

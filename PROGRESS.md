@@ -6,13 +6,38 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (24 in Soundness, 0 in Subtyping = 24 total)
+### Sorry inventory (17 in Soundness, 0 in Eval, 0 in Subtyping = 17 total)
 
-Up from 22 numerically — 2 new from counting correction (agent
-ochre-20260405-013043 verified exact count). Definition change to
-self-elim didn't add/remove sorrys, just changed proof landscape.
+Down from 24 — 7 sorrys eliminated by agent ochre-20260405-020120.
 
-Changes by agent ochre-20260405-013043:
+Changes by agent ochre-20260405-020120:
+- **DEFINITION CHANGE: absEval's mu case keeps raw annotation.**
+  Previously: `let ann' ← absEval fuel ctx seen ann; .ok ⟨.mu ann'.val body⟩`
+  Now: `let _ ← absEval fuel ctx seen ann; .ok ⟨.mu ann body⟩`
+  This ensures concEval and absEval produce the SAME mu (both keep raw
+  annotation), eliminating the annotation normalization mismatch that was
+  blocking 5+ sorrys. Annotation normalization is deferred to subCheckNF's
+  self-elim annotation path (which now calls absEval on the annotation
+  before comparing).
+- **DEFINITION CHANGE: subCheckNF self-elim normalizes annotation on demand.**
+  The annotation path now does `absEval(ann)` before comparing, rather than
+  relying on the annotation being pre-normalized by absEval's mu case.
+- **PROVED: soundness mu case** (Soundness.lean:1020) — trivial by refl
+  since v = mu ann body = τ.val.
+- **PROVED: absEval_preserves refl-mu** (Soundness.lean:390) — trivial by
+  refl since absEval(mu ann body) = ok ⟨mu ann body⟩.
+- **PROVED: absEval_preserves structural mu** (Soundness.lean:441) —
+  e'.val = mu annT bodyT = e, reconstruct structural mu disjunct.
+- **PROVED: absEval_preserves mu-right** (Soundness.lean:444) —
+  e'.val = mu ann body = e, reconstruct mu-right disjunct.
+- **PROVED: absEval_preserves normalized mu-right** (Soundness.lean:447) —
+  e'.val = mu ann body = e, reconstruct normalized mu-right disjunct.
+- **PROVED: subCheckNF_self_elim_step fuel_mono** — updated for the new
+  annotation normalization in self-elim. Both paths are independently
+  monotone, so the overall result is monotone.
+- **All tests pass** including appendArrays and appendVec (north star).
+
+Previous changes by agent ochre-20260405-013043:
 - **TWO DEFINITION CHANGES to subCheckNF self-elim, fixing transitivity:**
   1. Body check uses original `seen` (not `seen'`), preventing circular
      reasoning for non-productive fixpoints.
@@ -263,20 +288,14 @@ additions should be preserved — they're correct and useful.
      erases the ascription (evaluating term at fuel k), absEval validates it
      (normalizing both sides, checking subCheckNF), so IH at fuel k gives
      VCompat for the term, and adequacy bridges to the ascribed type.
-   - `lam`, `mu`, `app`: sorry'd with documented blockers.
+   - `mu`: **PROVED** (agent ochre-20260405-020120). After the definition change
+     (absEval keeps raw annotation), v = τ.val = mu ann body. VCompat by refl.
+   - `lam`, `app`: sorry'd with documented blockers.
 
    Soundness `lam` blocker: the semantic lam in VCompat quantifies over ALL
    fuel levels for inner evaluation, but the fuel-induction IH only gives
    soundness at fuel k. Needs either strong induction on (fuel, step) with
-   lexicographic ordering, or a different proof strategy. Key insight from
-   analysis: with lex induction on (fuel, n), the IH at (k, n+2) gives
-   VCompat (n+2) for f, and the semantic lam with j = n+1 gives VCompat (n+1)
-   for the application result. This should work for the `app` case.
-
-   Soundness `mu` blocker: absEval normalizes the annotation (ann → ann'.val),
-   so v = mu ann body but τ = mu ann'.val body. VCompat requires relating
-   these, which needs annotation normalization to preserve VCompat, or an
-   idempotency lemma (absEval on already-normal ann = ann).
+   lexicographic ordering, or a different proof strategy.
 
 2. **Adequacy_gen case refinement (Soundness.lean:279):** Split the 3 sorry'd
    τ cases (lam, bvar, asc) into sub-cases by σ constructor:
@@ -292,21 +311,23 @@ additions should be preserved — they're correct and useful.
        lemma (connecting subCheckNF(bodyS, bodyT) under binder to VCompat
        after substitution).
 
-### Sorry categorization (22 in Soundness, 0 in Subtyping)
+### Sorry categorization (17 in Soundness, 0 in Eval = 17 total)
 
 The remaining sorrys fall into 5 categories:
 
-**Category A: absEval_preserves sub-cases (9 sorrys, Soundness.lean:383-422)**
-- 3 cases PROVED (mu-left, inferType, asc-left — all via IH on n)
-- 9 sorrys remain, reducing to 2 fundamental blockers:
+**Category A: absEval_preserves sub-cases (5 sorrys, Soundness.lean:383-526)**
+- 7 cases PROVED (mu-left, inferType, asc-left, refl-mu, structural mu,
+  mu-right, normalized mu-right)
+- 5 sorrys remain, down from 9 after annotation normalization fix:
   (a) **Normalization coherence**: absEval(body) and raw body have same semantics
-      under VCompat. Affects: refl-lam, refl-app, semantic lam, structural app.
-  (b) **Annotation normalization congruence**: absEval(ann) preserves mu semantics.
-      Affects: refl-mu, structural mu, mu-right, normalized mu-right.
-  Plus: refl-asc (1 sorry) which needs VCompat.adequacy (circular dependency
+      under VCompat. Affects: refl-lam (389), refl-app lam/mu dispatch (521, 526),
+      semantic lam (440).
+  (b) **Annotation normalization congruence**: ELIMINATED by the definition change.
+      absEval's mu case now keeps raw annotations, so there's no mismatch.
+  Plus: refl-asc (383, 1 sorry) which needs VCompat.adequacy (circular dependency
   with adequacy_gen; does NOT arise at current use sites).
 
-**Category B: Structural lam-lam (2 sorrys, Soundness.lean:550/553)**
+**Category B: Structural lam-lam (2 sorrys, Soundness.lean:670/673)**
 - Refl: v = lam _dS _bS, need VCompat (m+1) (lam _dS _bS) (lam _dT _bT)
 - Semantic lam: v = lam domV bodyV, need to transport body compatibility
 - BLOCKER: substitution lemma — connecting subCheckNF(bodyS, bodyT) under
@@ -314,21 +335,20 @@ The remaining sorrys fall into 5 categories:
   semantic lam quantifies over ALL fuel levels.
 
 **Category C: Self-elim / annotation-trust (4 sorrys)**
-- σ = mu, τ ∈ {lam, bvar, asc, app} (lines 587, 618, 649, 769)
-- BLOCKER: annotation-trust gap. subCheckNF's mu self-elim tries the
-  annotation first, then body normalization. Both paths need guarantees
-  that VCompat is preserved. The body path IS provable with
-  absEval_preserves (but absEval_preserves is itself sorry'd for these cases).
+- σ = mu, τ ∈ {lam, bvar, asc, app} (lines 722, 740, 786, 906)
+- BLOCKER: annotation-trust gap. subCheckNF's mu self-elim normalizes
+  annotation then compares (or uses body normalization). Both paths need
+  VCompat preservation. The body path IS provable with absEval_preserves.
 
 **Category D: InferType fallback σ=app (4 sorrys)**
-- σ = app, τ ∈ {lam, bvar, asc} (lines 605, 636, 667) + app-app fallback (766)
+- σ = app, τ ∈ {lam, bvar, asc} (lines 740, 756, 804) + app-app fallback (903)
 - BLOCKER: needs app_inferType lemma + absEval_preserves.
   σ = bvar cases are DONE (via bvar_inferType + absEval_preserves).
 
-**Category E: Soundness main cases (3 sorrys, Soundness.lean:927, 934, 941)**
+**Category E: Soundness main cases (2 sorrys, Soundness.lean:1064, 1083)**
 - lam: semantic lam all-fuel issue
-- mu: annotation normalization (ann vs ann'.val)
-- app: combines all above issues
+- app: combines multiple issues
+- mu: **PROVED** (trivial by refl after definition change)
 
 ### Recommended next steps (updated 2026-04-05)
 

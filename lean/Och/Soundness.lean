@@ -388,9 +388,15 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
           -- HARD: needs substitution lemma / normalization coherence.
           sorry
         | mu ann body =>
-          -- absEval(mu) normalizes annotation. v = mu ann body, e'.val = mu ann'.val body.
-          -- HARD: needs annotation normalization congruence.
-          sorry
+          -- absEval(mu) validates annotation but keeps raw. v = mu ann body, e'.val = mu ann body.
+          -- VCompat by refl since v = e'.val.
+          unfold absEval at habs; dsimp only [] at habs
+          match h_ann : absEval k ctx seen ann with
+          | .error _ => simp [h_ann, bind, Except.bind] at habs
+          | .ok ann' =>
+            simp only [h_ann, bind, Except.bind] at habs
+            injection habs with heq; subst heq
+            unfold VCompat; exact Or.inr (Or.inl rfl)
         | app f a =>
           -- absEval(app f a) normalizes f→f', a→a', dispatches on f'.val.
           -- Neutral case: e' = ⟨app f'.val a'.val⟩, proved via structural app + IH.
@@ -433,14 +439,53 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
       -- HARD: needs normalization coherence for bodies
       sorry
     · -- Structural mu: v = mu annV bodyV, e = mu annT bodyT
-      -- HARD: annotation normalization congruence
-      sorry
+      -- absEval(mu annT bodyT) validates ann, returns ⟨mu annT bodyT⟩.
+      -- So e'.val = mu annT bodyT = e. Reconstruct structural mu.
+      subst hv_eq; subst hτ_eq
+      cases fuel with
+      | zero => simp [absEval] at habs
+      | succ fk =>
+        unfold absEval at habs; dsimp only [] at habs
+        match h_ann : absEval fk ctx seen annT with
+        | .error _ => simp [h_ann, bind, Except.bind] at habs
+        | .ok ann' =>
+          simp only [h_ann, bind, Except.bind] at habs
+          injection habs with heq; subst heq
+          unfold VCompat
+          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+          exact ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_body⟩
     · -- Mu-right: e = mu ann body, VCompat(m, v, body[0:=mu])
-      -- HARD: annotation normalization congruence
-      sorry
-    · -- Normalized mu-right: e = mu, already normalized VCompat(m, v, u'.val)
-      -- HARD: composing two normalizations
-      sorry
+      -- absEval(mu ann body) = ok ⟨mu ann body⟩. So e'.val = mu ann body.
+      -- Use mu-right: VCompat(m, v, body.subst 0 (mu ann body)) is exactly h_mu.
+      subst hτ_mu
+      cases fuel with
+      | zero => simp [absEval] at habs
+      | succ fk =>
+        unfold absEval at habs; dsimp only [] at habs
+        match h_ann : absEval fk ctx seen ann with
+        | .error _ => simp [h_ann, bind, Except.bind] at habs
+        | .ok ann' =>
+          simp only [h_ann, bind, Except.bind] at habs
+          injection habs with heq; subst heq
+          unfold VCompat
+          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+          exact ⟨ann, body, rfl, h_mu⟩
+    · -- Normalized mu-right: e = mu ann body, absEval(body.subst) = ok u', VCompat(m, v, u'.val)
+      -- absEval(mu ann body) = ok ⟨mu ann body⟩. Use normalized mu-right.
+      subst hτ_mu
+      cases fuel with
+      | zero => simp [absEval] at habs
+      | succ fk =>
+        unfold absEval at habs; dsimp only [] at habs
+        match h_ann : absEval fk ctx seen ann with
+        | .error _ => simp [h_ann, bind, Except.bind] at habs
+        | .ok ann'' =>
+          simp only [h_ann, bind, Except.bind] at habs
+          injection habs with heq; subst heq
+          unfold VCompat
+          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+          apply Or.inr; apply Or.inl
+          exact ⟨ann, body, ⟨nfuel, nctx, nseen, u', rfl, habs_inner, h_mu_norm⟩⟩
     · -- Mu-left: v = mu ann_l body_l, VCompat(m, body_l[0:=mu], e)
       -- By IH: VCompat(m, body_l[0:=mu], e'.val)
       -- Then mu-left: VCompat(m+1, mu ann_l body_l, e'.val)
@@ -1019,11 +1064,16 @@ theorem soundness
       sorry
     | mu ann body =>
       -- concEval: mu is a value, v = mu ann body
-      -- absEval: normalizes annotation ann → ann', returns ⟨mu ann'.val body⟩
-      -- BLOCKER: need to relate (mu ann body) to (mu ann'.val body) in VCompat.
-      -- If ann = ann'.val (annotation already normal), it's refl. Otherwise need
-      -- a lemma about annotation normalization preserving VCompat.
-      sorry
+      -- absEval: validates annotation, returns ⟨mu ann body⟩ (raw annotation kept)
+      -- Since both return mu ann body, VCompat by refl.
+      unfold concEval at h_conc; injection h_conc with hv; subst hv
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_ann : absEval k [] [] ann with
+      | .error _ => simp [h_ann, bind, Except.bind] at h_abs
+      | .ok ann' =>
+        simp only [h_ann, bind, Except.bind] at h_abs
+        injection h_abs with hτ; subst hτ
+        exact VCompat.refl n (Expr.mu ann body)
     | app f a =>
       -- Beta-reduction case — most complex
       -- concEval: evaluate f and a, dispatch on fV (lam → beta, mu → unroll, etc.)

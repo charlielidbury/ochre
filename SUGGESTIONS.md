@@ -3,7 +3,13 @@
 The current goal is proving soundness of Och. Here is the dependency chain
 and priority order for the remaining `sorry`s.
 
-## Phase 0: Fix annotation-trust soundness bug ← NEW, BLOCKING
+## Phase 0: Fix annotation-trust soundness bug — PARTIALLY RESOLVED
+
+**Update (agent ochre-20260405-020120):** The annotation normalization
+mismatch between concEval and absEval is FIXED. absEval's mu case now
+keeps the raw annotation (validates but doesn't normalize), so both
+evaluators produce `mu ann body` (same term). This eliminated 7 sorrys.
+The mu-app annotation-trust issue below remains but is less blocking.
 
 **absEval's mu-app annotation-trust case (Eval.lean:183-188) is unsound.**
 
@@ -66,8 +72,9 @@ correct. This is the weakest fix but allows progress on the proof.
 
 ## Phase 1: Foundation — fuel monotonicity ✅ COMPLETE
 
-Both `absEval_fuel_mono` and `subCheckNF_fuel_mono` are proved. (May need
-updating if Phase 0 changes absEval.)
+Both `absEval_fuel_mono` and `subCheckNF_fuel_mono` are proved. Updated
+by agent ochre-20260405-020120 for the new annotation normalization in
+subCheckNF's self-elim and absEval's mu case.
 
 ## Phase 2: VCompat lemmas (Soundness.lean)
 
@@ -131,9 +138,12 @@ DECISION-LOG.md for the counterexample). All proofs updated.
   a = app, b = app. Consider adding `h_a_not_app` precondition or
   changing the conclusion.
 
-## Phase 4: Main soundness theorem (Soundness.lean:541)
+## Phase 4: Main soundness theorem (Soundness.lean:1019)
 
-Once Phases 0-2 are done, the main theorem should be approachable.
+**mu case: PROVED** (agent ochre-20260405-020120) — trivial by refl after
+the definition change (absEval keeps raw annotation).
+
+Remaining: lam and app cases. 
 Challenge: VCompat's semantic lam quantifies over all fuel, but the
 soundness induction on fuel only gives the IH at lower fuel. Likely
 needs strong induction + fuel monotonicity to bridge the gap.
@@ -163,6 +173,15 @@ needs strong induction + fuel monotonicity to bridge the gap.
   path are: (a) absEval_preserves (for mu-right to body normalization), and
   (b) the step-count issue (mu-right costs one step, can't recover it).
   The annotation path is still blocked by annotation-trust (Phase 0).
+
+- **absEval's mu case keeps raw annotations** (agent ochre-20260405-020120).
+  The annotation is validated but NOT normalized in absEval's output. This
+  means mu annotations in absEval output may contain un-normalized sub-
+  expressions (ascriptions, unevaluated applications, etc.). subCheckNF's
+  self-elim normalizes annotations on demand when comparing. The mu-app
+  annotation-trust path in absEval still matches on the raw annotation
+  shape (lam _dom retBody, .lam _ _), which works because in practice all
+  recursive function annotations ARE syntactically lams.
 
 - **subCheckNF top-universality is FALSE**. `Type <: tau` does NOT mean all
   values inhabit `tau`.

@@ -5,6 +5,39 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-05: Move annotation normalization from absEval to subCheckNF
+
+**Agent:** ochre-20260405-020120
+
+**What:** Changed absEval's mu case to keep raw annotations (validate but don't
+normalize), and moved annotation normalization to subCheckNF's self-elim
+annotation path (normalize on demand before comparing).
+
+**Why:** The annotation normalization mismatch between concEval (keeps raw) and
+absEval (normalized) was blocking 5+ sorrys. The soundness mu case needed
+VCompat(v, τ) where v = mu ann body (raw) and τ = mu ann'.val body (normalized).
+This required proving "annotation normalization congruence" — a deep lemma.
+
+By keeping raw annotations in absEval output, both evaluators produce the same
+mu term, making soundness mu trivial by VCompat.refl.
+
+**Impact:** 7 sorrys eliminated (24 → 17). Eliminated the entire "annotation
+normalization congruence" blocker from absEval_preserves.
+
+**Alternatives considered:**
+- WellAnnotated precondition: would weaken the theorem unnecessarily
+- Normalizing in concEval: concEval and absEval handle asc differently, so
+  their normalizations would produce different results
+- Adding a VCompat disjunct for "same expression with different annotations":
+  too invasive, would require updating every VCompat case split
+
+**Risk:** Raw annotations in absEval output mean subCheckNF's self-elim must
+normalize on demand. This adds an absEval call to the self-elim annotation
+path, changing fuel consumption. All tests pass including the north star
+(appendVec). fuel_mono proof updated and fully proved.
+
+---
+
 ## 2026-04-05: Fix self-elim to restore transitivity (two changes)
 
 **Agent:** ochre-20260405-013043
