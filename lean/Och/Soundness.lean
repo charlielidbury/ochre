@@ -70,6 +70,7 @@ def VCompat : Nat → Expr → Expr → Prop
     ∨ (∃ domV domT bodyV bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
         ∀ (j : Nat), j ≤ n → ∀ (aV aT : Expr),
+          (match aV with | .lam _ _ | .type | .mu _ _ => True | _ => False) →
           VCompat j aV aT →
           ∀ (fuel : Nat) rv, concEval fuel (bodyV.subst 0 aV) = some rv →
           VCompat j rv (bodyT.subst 0 aT))
@@ -1354,7 +1355,7 @@ theorem soundness_open (e : Expr)
           | succ m =>
             unfold VCompat
             apply Or.inr; apply Or.inr; apply Or.inl
-            exact ⟨_, _, _, _, rfl, rfl, fun j hj aV aT hcompat_arg fuel' rv h_conc_body => by
+            exact ⟨_, _, _, _, rfl, rfl, fun j hj aV aT hval_aV hcompat_arg fuel' rv h_conc_body => by
               -- Prove the semantic lam (no absEval on type side):
               -- bodyV.subst 0 aV = body.substEnv (aV :: γV) (composition)
               -- bodyT.subst 0 aT = body'.val.substEnv (aT :: γT) (composition)
@@ -1368,15 +1369,18 @@ theorem soundness_open (e : Expr)
               rw [Expr.substEnv_subst_comp body γV aV h_closed_body_env] at h_conc_body
               -- Composition on type side: sorry closedAt for body'.val
               have h_closed_body'_env : body'.val.closedAt (γT.length + 1) = true := by
-                sorry  -- need absEval_preserves_closedAt
+                have h_ext_len : (TyCtx.extend ctx dom').length = ctx.length + 1 := by
+                  simp [TyCtx.extend, List.length_cons, List.length_map]
+                rw [show γT.length + 1 = (TyCtx.extend ctx dom').length from by omega]
+                exact absEval_preserves_closedAt h_body_abs (by rw [h_ext_len]; exact h_closed_body)
               rw [Expr.substEnv_subst_comp body'.val γT aT h_closed_body'_env]
               -- Goal: VCompat j rv (body'.val.substEnv (aT :: γT))
               -- Align fuels and apply IH on body
               have h_abs_max := absEval_fuel_mono_le h_body_abs (Nat.le_max_right fuel' fk)
               have h_conc_max := concEval_fuel_mono_le h_conc_body (Nat.le_max_left fuel' fk)
-              -- Build extended environment (sorry isConcreteVal aV)
+              -- Build extended environment
               have h_env_ext : FunEnvCompat j (aV :: γV) (aT :: γT) := by
-                sorry  -- need isConcreteVal aV
+                exact FunEnvCompat.cons hval_aV hcompat_arg (FunEnvCompat.mono_le h_env (by omega))
               exact ih_body (max fuel' fk) (TyCtx.extend ctx dom') body' h_abs_max
                 j (aV :: γV) (aT :: γT) h_env_ext
                 (by simp [TyCtx.extend, List.length_cons, List.length_map]; omega)

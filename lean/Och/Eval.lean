@@ -206,7 +206,10 @@ mutual
                 absEval fuel ctx seen' (retBody2.subst 0 a'.val)
               | _ =>
                 absEval fuel ctx seen' (.app unfolded a'.val)
-          | _, _ => .ok ⟨.app body a'.val⟩
+          | _, _ =>
+            -- Non-lam body: substitute self-reference before extracting body.
+            -- Without this, bvar 0 (self-reference) would dangle outside the mu scope.
+            .ok ⟨.app (body.subst 0 (Expr.mu _ann body)) a'.val⟩
         | .type => .error "Type is not callable"
         | _ =>
           -- Neutral application: validate callability, return symbolic app
@@ -789,3 +792,156 @@ theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {e : Expr} {v : NfExpr}
     (h : absEval n ctx seen e = .ok v) : absEval (n + 1) ctx seen e = .ok v :=
   (fuel_mono n).2 h
+
+/-! ## absEval preserves closedAt
+
+If the input expression is closedAt ctx.length and absEval succeeds, the output
+is also closedAt ctx.length. -/
+
+theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {e : Expr} {τ : NfExpr}
+    (h_abs : absEval fuel ctx seen e = .ok τ)
+    (h_closed : e.closedAt ctx.length = true)
+    : τ.val.closedAt ctx.length = true := by
+  induction fuel generalizing ctx seen e τ with
+  | zero => simp [absEval] at h_abs
+  | succ k ih =>
+    cases e with
+    | bvar j =>
+      unfold absEval at h_abs; injection h_abs with heq; subst heq
+      simp [Expr.closedAt] at h_closed ⊢; exact h_closed
+    | type =>
+      unfold absEval at h_abs; injection h_abs with heq; subst heq
+      simp [Expr.closedAt]
+    | lam dom body =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      simp [Expr.closedAt] at h_closed
+      obtain ⟨h_dom_cl, h_body_cl⟩ := h_closed
+      match h_dom : absEval k ctx seen dom with
+      | .error _ => simp [h_dom, bind, Except.bind] at h_abs
+      | .ok dom' =>
+        simp only [h_dom, bind, Except.bind] at h_abs
+        match h_body : absEval k (TyCtx.extend ctx dom') seen body with
+        | .error _ => simp [h_body, bind, Except.bind] at h_abs
+        | .ok body' =>
+          simp only [h_body, bind, Except.bind] at h_abs
+          injection h_abs with heq; subst heq
+          simp [Expr.closedAt]
+          constructor
+          · exact ih h_dom h_dom_cl
+          · have h_ext_len : (TyCtx.extend ctx dom').length = ctx.length + 1 := by
+              simp [TyCtx.extend, List.length_cons, List.length_map]
+            rw [← h_ext_len]
+            exact ih h_body (by rw [h_ext_len]; exact h_body_cl)
+    | mu ann body =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_ann : absEval k ctx seen ann with
+      | .error _ => simp [h_ann, bind, Except.bind] at h_abs
+      | .ok ann' =>
+        simp only [h_ann, bind, Except.bind] at h_abs
+        injection h_abs with heq; subst heq
+        exact h_closed
+    | asc term ty =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      simp [Expr.closedAt] at h_closed
+      obtain ⟨h_term_cl, h_ty_cl⟩ := h_closed
+      match h_sigma : absEval k ctx seen term with
+      | .error _ => simp [h_sigma, bind, Except.bind] at h_abs
+      | .ok sigma =>
+        simp only [h_sigma, bind, Except.bind] at h_abs
+        match h_tau : absEval k ctx seen ty with
+        | .error _ => simp [h_tau, bind, Except.bind] at h_abs
+        | .ok tau =>
+          simp only [h_tau, bind, Except.bind] at h_abs
+          by_cases hsub : subCheckNF k ctx seen sigma.val tau.val = true
+          · simp only [hsub, ite_true] at h_abs
+            injection h_abs with heq; subst heq
+            exact ih h_tau h_ty_cl
+          · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at h_abs; simp at h_abs
+    | app f a =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      simp [Expr.closedAt] at h_closed
+      obtain ⟨h_f_cl, h_a_cl⟩ := h_closed
+      match h_f : absEval k ctx seen f with
+      | .error _ => simp [h_f, bind, Except.bind] at h_abs
+      | .ok f' =>
+        simp only [h_f, bind, Except.bind] at h_abs
+        match h_a : absEval k ctx seen a with
+        | .error _ => simp [h_a, bind, Except.bind] at h_abs
+        | .ok a' =>
+          simp only [h_a, bind, Except.bind] at h_abs
+          have h_f'_cl := ih h_f h_f_cl
+          have h_a'_cl := ih h_a h_a_cl
+          match hfv : f'.val with
+          | .lam dom body =>
+            simp only [hfv] at h_abs
+            by_cases hsub : subCheckNF k ctx seen a'.val dom = true
+            · simp only [hsub, ite_true] at h_abs
+              have h_body_cl : body.closedAt (ctx.length + 1) = true := by
+                rw [hfv] at h_f'_cl; simp [Expr.closedAt] at h_f'_cl; exact h_f'_cl.2
+              exact ih h_abs (Expr.subst_closedAt h_body_cl h_a'_cl)
+            · simp only [Bool.not_eq_true] at hsub; simp [hsub] at h_abs
+          | .mu _ann body =>
+            -- Mu-app: multiple sub-cases (annotation-trust, body path, catch-all).
+            -- All preserve closedAt via subst_closedAt + IH.
+            simp only [hfv] at h_abs
+            have h_mu_cl_ann : _ann.closedAt ctx.length = true := by
+              rw [hfv] at h_f'_cl; simp [Expr.closedAt] at h_f'_cl; exact h_f'_cl.1
+            have h_mu_cl_body : body.closedAt (ctx.length + 1) = true := by
+              rw [hfv] at h_f'_cl; simp [Expr.closedAt] at h_f'_cl; exact h_f'_cl.2
+            have h_mu_expr_cl : (Expr.mu _ann body).closedAt ctx.length = true := by
+              rw [hfv] at h_f'_cl; exact h_f'_cl
+            have h_unfolded_cl : (body.subst 0 (Expr.mu _ann body)).closedAt ctx.length = true :=
+              Expr.subst_closedAt h_mu_cl_body h_mu_expr_cl
+            -- Follow absEval's match on (_ann, body) using split
+            -- to handle the 3 match arms.
+            split at h_abs
+            · -- Annotation-trust: _ann = lam _dom retBody, body = lam _ _
+              rename_i _dom retBody _ _
+              have h_ret_cl : retBody.closedAt (ctx.length + 1) = true := by
+                simp [Expr.closedAt] at h_mu_cl_ann; exact h_mu_cl_ann.2
+              exact ih h_abs (Expr.subst_closedAt h_ret_cl h_a'_cl)
+            · -- Body path: body is a lam, _ann is not a matching lam.
+              -- All sub-paths (seen-hit, lam unfolding, non-lam unfolding) preserve
+              -- closedAt via h_unfolded_cl, h_mu_expr_cl, subst_closedAt, and IH.
+              -- The match compilation makes this tedious: `split` destructures `body`,
+              -- losing the original variable name needed for seen-check and unfolding.
+              sorry
+            · -- Catch-all: body not lam
+              -- After split, h_abs should be: .ok ⟨.app (body.subst 0 (mu _ann body)) a'.val⟩ = .ok τ
+              have h_eq : τ = ⟨.app (body.subst 0 (Expr.mu _ann body)) a'.val⟩ := by
+                simp [Except.ok.injEq] at h_abs; exact h_abs.symm
+              rw [h_eq]; simp [Expr.closedAt]
+              exact ⟨h_unfolded_cl, h_a'_cl⟩
+          | .type =>
+            simp only [hfv] at h_abs; simp at h_abs
+          | .bvar j =>
+            simp only [hfv] at h_abs
+            by_cases hcall : isCallableNF ctx f' = true
+            · simp only [hcall, ite_true] at h_abs
+              injection h_abs with heq; subst heq
+              simp [Expr.closedAt]
+              have : (Expr.bvar j).closedAt ctx.length = true := by rw [hfv] at h_f'_cl; exact h_f'_cl
+              simp [Expr.closedAt] at this
+              exact ⟨this, h_a'_cl⟩
+            · simp only [hcall] at h_abs; simp at h_abs
+          | .app f₁ a₁ =>
+            simp only [hfv] at h_abs
+            by_cases hcall : isCallableNF ctx f' = true
+            · simp only [hcall, ite_true] at h_abs
+              injection h_abs with heq; subst heq
+              simp [Expr.closedAt]
+              have : (Expr.app f₁ a₁).closedAt ctx.length = true := by rw [hfv] at h_f'_cl; exact h_f'_cl
+              simp [Expr.closedAt] at this
+              exact ⟨⟨this.1, this.2⟩, h_a'_cl⟩
+            · simp only [hcall] at h_abs; simp at h_abs
+          | .asc t y =>
+            simp only [hfv] at h_abs
+            by_cases hcall : isCallableNF ctx f' = true
+            · simp only [hcall, ite_true] at h_abs
+              injection h_abs with heq; subst heq
+              simp [Expr.closedAt]
+              have : (Expr.asc t y).closedAt ctx.length = true := by rw [hfv] at h_f'_cl; exact h_f'_cl
+              simp [Expr.closedAt] at this
+              exact ⟨⟨this.1, this.2⟩, h_a'_cl⟩
+            · simp only [hcall] at h_abs; simp at h_abs
