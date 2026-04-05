@@ -1341,6 +1341,9 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
 theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List Expr}
     (hsub : subCheckNF fuel ctx [] σ τ = true)
     (hγ : γ.length = ctx.length)
+    (hσ_cl : σ.closedAt ctx.length = true)
+    (hτ_cl : τ.closedAt ctx.length = true)
+    (hγ_cl : ∀ k (hk : k < γ.length), (γ[k]).closedAt 0 = true)
     : ∃ (fuel' : Nat) (ctx' : TyCtx), subCheckNF fuel' ctx' [] (σ.substEnv γ) (τ.substEnv γ) = true := by
   -- Easy case: σ = τ → σ.substEnv γ = τ.substEnv γ → equality check succeeds
   by_cases heq : σ = τ
@@ -1376,11 +1379,16 @@ theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List
             simp only [h_neq, ite_false, List.any_nil, Bool.false_eq_true, Bool.and_eq_true] at hsub
             exact hsub
           obtain ⟨h_dom, h_body⟩ := h_conj
-          -- BLOCKER: IH on domain gives ∃ f₁ c₁, and IH on body gives ∃ f₂ c₂.
-          -- To construct the combined lam-lam check, we need both at the SAME (fuel, ctx).
-          -- The body check uses extend ctx' ⟨domB.substEnv γ⟩, not the IH's arbitrary c₂.
-          -- Aligning requires ctx-independence for closed terms (not yet proved).
-          -- See PROGRESS.md for analysis.
+          -- PROOF STRATEGY (pending subCheckNF_ctx_irrelevant):
+          -- 1. Recursive IH on domain: ∃ f₁ c₁, subCheckNF f₁ c₁ [] domB' domA' = true
+          -- 2. Recursive IH on body: ∃ f₂ c₂, subCheckNF f₂ c₂ [] bodyA' bodyB' = true
+          -- 3. Substituted domains are closedAt 0 (by substEnv_closedAt + hσ_cl/hτ_cl + hγ_cl)
+          -- 4. Substituted bodies are closedAt 1 (same reasoning with d=1)
+          -- 5. By subCheckNF_ctx_irrelevant (d=0): domain check at c₁ → domain check at ANY ctx
+          -- 6. By subCheckNF_ctx_irrelevant (d=1): body check at c₂ → body check at
+          --    (extend any_ctx ⟨domB'⟩) provided ctx[0] matches (it does: both are domB')
+          -- 7. Combine with subCheckNF_fuel_mono_le + construct lam-lam check at fuel max(f₁,f₂)+1
+          -- BLOCKED BY: subCheckNF_ctx_irrelevant (sorry'd in Eval.lean)
           sorry
       | _ =>
         -- Non-lam σ vs lam τ: falls through to inferType
@@ -1850,7 +1858,12 @@ theorem soundness_open (e : Expr)
             -- Bridge from sigma.val.substEnv γT to tau.val.substEnv γT:
             -- 1. subCheckNF_substEnv gives subCheckNF on closed (substituted) terms
             -- 2. VCompat.adequacy bridges via the closed subcheck
-            obtain ⟨fuel', ctx', hsub_cl⟩ := subCheckNF_substEnv hsub h_ctx
+            have hσ_cl := absEval_preserves_closedAt h_sigma h_closed_term
+            have hτ_cl := absEval_preserves_closedAt h_tau h_closed_ty
+            have hγT_cl : ∀ k (hk : k < γT.length), (γT[k]).closedAt 0 = true := by
+              obtain ⟨hlen, hval_env, hvc⟩ := h_env
+              intro k hk; sorry -- TODO: need ConcreteValEnv → closedAt 0 or FunEnvCompat → closedAt
+            obtain ⟨fuel', ctx', hsub_cl⟩ := subCheckNF_substEnv hsub h_ctx hσ_cl hτ_cl hγT_cl
             exact VCompat.adequacy ih_v_sigma hsub_cl
           · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at h_abs; simp at h_abs
   | app f a ih_f ih_a =>

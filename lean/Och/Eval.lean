@@ -902,6 +902,52 @@ theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     (h : absEval n ctx seen e lenient = .ok v) : absEval (n + 1) ctx seen e lenient = .ok v :=
   (fuel_mono n).2 h
 
+/-! ## Context irrelevance for closed terms
+
+For closedAt 0 expressions, ctx is never consulted (no free bvar lookups).
+Under binders, closedAt increases and the binder-introduced entries are
+identical in both contexts. This mutual theorem follows the fuel_mono pattern.
+
+SORRY: Requires ~200 lines of mutual induction tracking closedAt through
+every case of absEval and subCheckNF. Clean but mechanical.
+Use substEnv_closedAt to show that substituted terms are closedAt 0,
+then apply this lemma to get ctx-independence. -/
+
+/-- subCheckNF depends only on the first d entries of ctx when terms are closedAt d.
+    For closedAt 0 terms, ctx is completely irrelevant. Under binders (closedAt 1+),
+    only the binder-introduced entries matter.
+
+    SORRY: Requires mutual induction with absEval_ctx_irrelevant (following fuel_mono
+    pattern). ~200 lines. Clean but mechanical: at each case, track closedAt through
+    sub-expressions and show ctx entries beyond depth d are never accessed. Under binders
+    (lam/mu), depth increases by 1 and ctx extends with the same entry in both cases. -/
+theorem subCheckNF_ctx_irrelevant {fuel : Nat} {ctx ctx' : TyCtx} {d : Nat}
+    {seen : List (Expr × Expr)} {a b : Expr}
+    (ha : a.closedAt d = true) (hb : b.closedAt d = true)
+    (hctx : ∀ i, i < d → ctx.get? i = ctx'.get? i)
+    : subCheckNF fuel ctx seen a b = subCheckNF fuel ctx' seen a b := by
+  sorry
+
+/-- absEval depends only on the first d entries of ctx when the expression is closedAt d. -/
+theorem absEval_ctx_irrelevant {fuel : Nat} {ctx ctx' : TyCtx} {d : Nat}
+    {seen : List (Expr × Expr)} {e : Expr} {lenient : Bool}
+    (he : e.closedAt d = true)
+    (hctx : ∀ i, i < d → ctx.get? i = ctx'.get? i)
+    : absEval fuel ctx seen e lenient = absEval fuel ctx' seen e lenient := by
+  sorry
+
+/-- Fuel monotonicity with ≤ for subCheckNF. -/
+theorem subCheckNF_fuel_mono_le {n m : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
+    {a b : Expr}
+    (h : subCheckNF n ctx seen a b = true) (hle : n ≤ m) : subCheckNF m ctx seen a b = true := by
+  induction m generalizing n with
+  | zero => have := Nat.le_zero.mp hle; subst this; exact h
+  | succ k ih =>
+    by_cases heq : n = k + 1
+    · subst heq; exact h
+    · have hlt : n ≤ k := by omega
+      exact subCheckNF_fuel_mono (ih h hlt)
+
 /-! ## absEval preserves closedAt
 
 If the input expression is closedAt ctx.length and absEval succeeds, the output
