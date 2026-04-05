@@ -10,11 +10,83 @@ proving soundness.
 
 6 sorry DECLARATIONS: app_inferType, absEval_preserves, adequacy_gen,
 subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
+0 sorrys in Syntax.lean (ALL infrastructure complete).
 
 Note: The total sorry count increased from ~25 to ~34 because agent
 ochre-20260405-181325 expanded 4 monolithic self-elim sorrys into detailed
 sub-case analyses (7 localized sorrys each). The refl, structural mu, and
 impossible sub-cases are now PROVED. See session summary below.
+
+Summary of changes by agent ochre-20260405-184922:
+
+**TWO NEW RESULTS, ONE IMPROVED PROOF STRUCTURE:**
+
+1. **PROVED: `substEnv_closedAt`** (Syntax.lean:916). New infrastructure lemma:
+   if `e.closedAt γ.length` and all entries of γ have `closedAt d`, then
+   `(e.substEnv γ).closedAt d`. Proved by structural induction on e. Handles
+   binder lifting correctly (lift γ entries have closedAt (d+1) via shift_closedAt).
+   **USE CASE:** enables reasoning about closedness of substituted terms, needed
+   for ctx-irrelevance arguments in subCheckNF_substEnv and other lemmas.
+
+2. **STRUCTURED: soundness_open mu case** (Soundness.lean:1672-1708). Both
+   lenient=false and lenient=true branches now:
+   - Handle n=0 trivially (VCompat 0 = True)
+   - At n+1: use structural mu disjunct, apply substEnv_subst_comp to rewrite
+     unfolded bodies from `(body.substEnv(lift γX)).subst 0 mu_X` to
+     `body.substEnv(mu_X :: γX)`. Leaves a targeted sorry:
+     **VCompat m (body.substEnv(mu_V :: γV)) (body.substEnv(mu_T :: γT))**
+   This replaces two monolithic sorrys with a clear, specific blocker.
+
+3. **EXPANDED: subCheckNF_substEnv lam-lam case** (Soundness.lean:1359-1386).
+   Extracted the two sub-checks (domain: subCheckNF k ctx [] domB domA,
+   body: subCheckNF k (extend ctx ⟨domB⟩) [] bodyA bodyB) from the hypothesis.
+   Documented the ctx alignment blocker: the IH gives existential ctx for each
+   sub-check, but the combined lam-lam check needs them at the SAME ctx.
+
+**ANALYSIS: Three fundamental blockers identified (refined from previous sessions):**
+
+1. **VCompat reflexivity under related environments** — needed by:
+   - soundness_open mu case (VCompat m (body.substEnv(mu_V :: γV)) (body.substEnv(mu_T :: γT)))
+   - Would also help the app cases via the "concEval preserves VCompat" angle
+   **Status:** Cannot be proved independently — the lam case requires concEval
+   to succeed (semantic lam's conditional), which needs soundness-like reasoning.
+   Must be proved jointly with soundness_open (via joint induction) or bypassed.
+
+2. **Context irrelevance for closed terms** — needed by:
+   - subCheckNF_substEnv lam-lam (ctx alignment of existential IH results)
+   - General infrastructure for reasoning about substituted terms
+   **Status:** Not yet proved. Clean property: for closedAt 0 terms, subCheckNF
+   and absEval don't depend on ctx. Requires mutual induction (following the
+   fuel_mono pattern in Eval.lean:740). Under binders, closedAt 1 terms only
+   depend on ctx[0], which is determined by the binder (domB), not the outer ctx.
+   **Recommended approach:** Prove `ctx_irrelevant_closed` as a private mutual
+   theorem in Eval.lean, following fuel_mono's structure. The closedAt tracking
+   through binders is the main complexity.
+
+3. **Step-loss in semantic lam extraction** — blocks:
+   - soundness_open app lam-lam (semantic lam gives VCompat at step n, need n+1)
+   - adequacy_gen self-elim mu-right sub-cases
+   **Status:** Joint (fuel, expression) induction remains the recommended fix
+   (see SUGGESTIONS.md). Alternative: prove everything at VCompat n (not n+1)
+   by accepting one step of "slack" throughout — would require weakening the
+   soundness theorem's conclusion, which may or may not be acceptable.
+
+**RECOMMENDED NEXT STEPS (updated priority order):**
+
+1. **Prove `ctx_irrelevant_closed`** (Eval.lean, mutual theorem). This directly
+   unblocks subCheckNF_substEnv lam-lam case. Pattern: follow fuel_mono's structure,
+   track closedAt through binders, show ctx entries beyond closedAt depth are unused.
+   After proving, combine with substEnv_closedAt to close the lam-lam case.
+
+2. **Attempt joint (fuel, expr) induction for soundness_open.** This unblocks the
+   step-loss problem and the mu reflexivity problem simultaneously. The approach:
+   use well-founded recursion on (fuel, sizeOf e) with Prod.Lex ordering. For lam:
+   body is structurally smaller. For app: beta-reduced expression has less fuel.
+   For mu: need n-induction within the VCompat goal (nested induction on step count).
+
+3. **Prove absEval_preserves for the easy remaining cases** (refl-mu is done,
+   mu-right is done, etc. — focus on refl-app neutral and structural app neutral
+   which should follow from structural app + IH).
 
 Summary of changes by agent ochre-20260405-181325:
 

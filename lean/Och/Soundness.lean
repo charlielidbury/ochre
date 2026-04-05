@@ -1348,10 +1348,43 @@ theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List
     exact ⟨1, [], by unfold subCheckNF; simp [BEq.beq, Expr.beq_refl]⟩
   · -- Non-trivial case: σ ≠ τ
     -- τ = type: Type.substEnv γ = Type, and subCheckNF _ _ _ σ' Type = true
-    cases τ with
-    | type =>
+    match τ with
+    | .type =>
       simp only [Expr.substEnv]
       exact ⟨1, [], by unfold subCheckNF; simp⟩
+    | .lam domB bodyB =>
+      -- Structural lam-lam or inferType fallback
+      match σ with
+      | .lam domA bodyA =>
+        -- lam-lam: subCheckNF checks contravariant domain + covariant body
+        -- Need to extract the two sub-checks from hsub
+        cases fuel with
+        | zero => simp [subCheckNF] at hsub
+        | succ k =>
+          -- subCheckNF (k+1) ctx [] (lam domA bodyA) (lam domB bodyB)
+          -- = if eq then true else if seen then true else
+          --   match .lam domB bodyB with | .type => true | _ =>
+          --     match .lam domA bodyA, .lam domB bodyB with
+          --     | .lam domA bodyA, .lam domB bodyB =>
+          --       subCheckNF k ctx [] domB domA && subCheckNF k (extend ctx ⟨domB⟩) [] bodyA bodyB
+          -- After the equality and seen checks fail (σ ≠ τ, seen = []), reduces to the conjunction.
+          -- Extract the sub-checks by showing the intermediate match steps.
+          have h_conj : subCheckNF k ctx [] domB domA = true ∧ subCheckNF k (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB = true := by
+            unfold subCheckNF at hsub; dsimp only [] at hsub
+            have h_neq : (Expr.lam domA bodyA == Expr.lam domB bodyB) = false := by
+              rw [beq_eq_false_iff_ne]; exact heq
+            simp only [h_neq, ite_false, List.any_nil, Bool.false_eq_true, Bool.and_eq_true] at hsub
+            exact hsub
+          obtain ⟨h_dom, h_body⟩ := h_conj
+          -- BLOCKER: IH on domain gives ∃ f₁ c₁, and IH on body gives ∃ f₂ c₂.
+          -- To construct the combined lam-lam check, we need both at the SAME (fuel, ctx).
+          -- The body check uses extend ctx' ⟨domB.substEnv γ⟩, not the IH's arbitrary c₂.
+          -- Aligning requires ctx-independence for closed terms (not yet proved).
+          -- See PROGRESS.md for analysis.
+          sorry
+      | _ =>
+        -- Non-lam σ vs lam τ: falls through to inferType
+        sorry
     | _ => sorry
 
 /-- General self-intro. -/
@@ -1660,14 +1693,65 @@ theorem soundness_open (e : Expr)
             simp only [Expr.substEnv] at h_conc ⊢
             unfold concEval at h_conc
             injection h_conc with hv; subst hv
-            sorry
+            -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv lift_γV))
+            --                  (mu (ann.substEnv γT) (body.substEnv lift_γT))
+            -- where lift_γX = (.bvar 0) :: γX.map (shift 1 0)
+            cases n with
+            | zero => simp [VCompat]
+            | succ m =>
+              -- Use structural mu disjunct
+              unfold VCompat
+              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+              refine ⟨ann.substEnv γV, ann.substEnv γT,
+                      body.substEnv ((.bvar 0) :: γV.map (·.shift 1 0)),
+                      body.substEnv ((.bvar 0) :: γT.map (·.shift 1 0)),
+                      rfl, rfl, ?_⟩
+              -- Goal: VCompat m (unfolded_V) (unfolded_T) where
+              --   unfolded_V = (body.substEnv lift_γV).subst 0 (mu (ann.substEnv γV) (body.substEnv lift_γV))
+              --   unfolded_T = (body.substEnv lift_γT).subst 0 (mu (ann.substEnv γT) (body.substEnv lift_γT))
+              -- By substEnv_subst_comp, these equal:
+              --   body.substEnv (mu_V :: γV) and body.substEnv (mu_T :: γT)
+              -- where mu_X = mu (ann.substEnv γX) (body.substEnv lift_γX)
+              have h_closed_body : body.closedAt (ctx.length + 1) = true := by
+                simp [Expr.closedAt] at h_closed; exact h_closed.2
+              have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
+                obtain ⟨hlen, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
+              have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
+                rw [← h_ctx] at h_closed_body; exact h_closed_body
+              rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
+                  Expr.substEnv_subst_comp body γT _ h_closed_body_T]
+              -- Goal: VCompat m (body.substEnv (mu_V :: γV)) (body.substEnv (mu_T :: γT))
+              -- BLOCKER: This requires a "VCompat reflexivity under related environments"
+              -- lemma, or joint (fuel, expression) induction. The key issue: ih_body
+              -- (structural IH on body) requires concEval to succeed on body.substEnv(mu_V :: γV),
+              -- but concEval of a mu just returns the mu value — the body is never evaluated.
+              -- See SUGGESTIONS.md "Potential paths forward" and PROGRESS.md.
+              sorry
         | true =>
           simp only [show (!true : Bool) = false from rfl, ite_false] at h_abs
           injection h_abs with hτ; subst hτ
           simp only [Expr.substEnv] at h_conc ⊢
           unfold concEval at h_conc
           injection h_conc with hv; subst hv
-          sorry
+          cases n with
+          | zero => simp [VCompat]
+          | succ m =>
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+            refine ⟨ann.substEnv γV, ann.substEnv γT,
+                    body.substEnv ((.bvar 0) :: γV.map (·.shift 1 0)),
+                    body.substEnv ((.bvar 0) :: γT.map (·.shift 1 0)),
+                    rfl, rfl, ?_⟩
+            have h_closed_body : body.closedAt (ctx.length + 1) = true := by
+              simp [Expr.closedAt] at h_closed; exact h_closed.2
+            have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
+              obtain ⟨hlen, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
+            have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
+              rw [← h_ctx] at h_closed_body; exact h_closed_body
+            rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
+                Expr.substEnv_subst_comp body γT _ h_closed_body_T]
+            -- Same blocker as lenient=false. See above.
+            sorry
   | lam dom body ih_dom ih_body =>
     -- KEY CASE: the whole point of the fundamental theorem.
     -- absEval: normalizes domain and body under binder

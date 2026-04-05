@@ -910,5 +910,62 @@ theorem subst_substEnv_comm (e : Expr) (s : Expr) (γ : List Expr)
   have := subst_substEnv_comm_gen 0 e γ s (by simpa using he) hs
   simpa [liftEnvN, shift_zero] using this
 
+/-- substEnv preserves closedAt: if `e` has free vars < `γ.length` and every
+    entry of `γ` has free vars < `d`, then `e.substEnv γ` has free vars < `d`.
+    Standard property: environment substitution closes free variables. -/
+theorem substEnv_closedAt (e : Expr) (γ : List Expr) (d : Nat)
+    (he : e.closedAt γ.length = true)
+    (hγ : ∀ k (hk : k < γ.length), (γ[k]).closedAt d = true)
+    : (e.substEnv γ).closedAt d = true := by
+  induction e generalizing γ d with
+  | bvar k =>
+    simp [closedAt] at he
+    simp [substEnv, he, ite_true]
+    exact hγ k he
+  | type => simp [substEnv, closedAt]
+  | app f a ih_f ih_a =>
+    simp [closedAt, Bool.and_eq_true] at he
+    simp [substEnv, closedAt, Bool.and_eq_true]
+    exact ⟨ih_f γ d he.1 hγ, ih_a γ d he.2 hγ⟩
+  | asc t y ih_t ih_y =>
+    simp [closedAt, Bool.and_eq_true] at he
+    simp [substEnv, closedAt, Bool.and_eq_true]
+    exact ⟨ih_t γ d he.1 hγ, ih_y γ d he.2 hγ⟩
+  | lam dom body ih_dom ih_body =>
+    simp [closedAt, Bool.and_eq_true] at he
+    simp [substEnv, closedAt, Bool.and_eq_true]
+    constructor
+    · exact ih_dom γ d he.1 hγ
+    · -- body.closedAt (γ.length + 1), lift γ has length γ.length + 1
+      let γ' := (.bvar 0) :: γ.map (·.shift 1 0)
+      have hlen : γ'.length = γ.length + 1 := by simp [γ', List.length_cons, List.length_map]
+      rw [show ((.bvar 0) :: List.map (fun x => shift 1 0 x) γ) = γ' from rfl]
+      apply ih_body γ' (d + 1) (by rw [hlen]; exact he.2)
+      intro k hk
+      simp [γ', List.length_cons, List.length_map] at hk
+      cases k with
+      | zero => simp [γ', List.getElem_cons_zero, closedAt]
+      | succ j =>
+        have hj : j < γ.length := by omega
+        simp [γ', List.getElem_cons_succ, List.getElem_map]
+        exact shift_closedAt (γ[j]) d 1 0 (Nat.zero_le d) (hγ j hj)
+  | mu ann body ih_ann ih_body =>
+    simp [closedAt, Bool.and_eq_true] at he
+    simp [substEnv, closedAt, Bool.and_eq_true]
+    constructor
+    · exact ih_ann γ d he.1 hγ
+    · let γ' := (.bvar 0) :: γ.map (·.shift 1 0)
+      have hlen : γ'.length = γ.length + 1 := by simp [γ', List.length_cons, List.length_map]
+      rw [show ((.bvar 0) :: List.map (fun x => shift 1 0 x) γ) = γ' from rfl]
+      apply ih_body γ' (d + 1) (by rw [hlen]; exact he.2)
+      intro k hk
+      simp [γ', List.length_cons, List.length_map] at hk
+      cases k with
+      | zero => simp [γ', List.getElem_cons_zero, closedAt]
+      | succ j =>
+        have hj : j < γ.length := by omega
+        simp [γ', List.getElem_cons_succ, List.getElem_map]
+        exact shift_closedAt (γ[j]) d 1 0 (Nat.zero_le d) (hγ j hj)
+
 end Expr
 
