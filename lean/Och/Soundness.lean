@@ -60,14 +60,19 @@ def VCompat : Nat → Expr → Expr → Prop
     -- Refl: syntactic equality (optimization)
     ∨ v = τ
     -- Semantic lambda: both are lambdas; for all compatible arguments
-    -- at step j ≤ n, evaluating bodyV[aV] and bodyT[aT] gives compatible results.
+    -- at step j ≤ n, concEval of bodyV[aV] is compatible with bodyT[aT].
+    -- NOTE: no absEval on the type side. The raw substitution bodyT.subst 0 aT
+    -- is used directly. This breaks a circular dependency: soundness_open's lam
+    -- case can use the IH on body + composition lemma to get VCompat directly,
+    -- without needing absEval_preserves. The cost: the app case of soundness
+    -- needs absEval_preserves to bridge from bodyT.subst 0 aT to the absEval
+    -- result. But the app case is already sorry'd.
     ∨ (∃ domV domT bodyV bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
-        ∀ (j : Nat), j ≤ n → ∀ (fuel : Nat) (aV aT : Expr),
+        ∀ (j : Nat), j ≤ n → ∀ (aV aT : Expr),
           VCompat j aV aT →
-          ∀ rv, concEval fuel (bodyV.subst 0 aV) = some rv →
-          ∀ (rτ : NfExpr), absEval fuel [] [] (bodyT.subst 0 aT) = .ok rτ →
-          VCompat j rv rτ.val)
+          ∀ (fuel : Nat) rv, concEval fuel (bodyV.subst 0 aV) = some rv →
+          VCompat j rv (bodyT.subst 0 aT))
     -- Unfolded structural mu
     ∨ (∃ annV annT bodyV bodyT,
         v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
@@ -1337,48 +1342,48 @@ theorem soundness_open (e : Expr)
           injection h_abs with hτ; subst hτ
           -- τ.val = lam dom'.val body'.val
           -- τ.val.substEnv γT = lam (dom'.val.substEnv γT) (body'.val.substEnv (lift γT))
-          simp only [Expr.substEnv]
+          simp only [Expr.substEnv] at h_conc ⊢
           -- concEval: lam is a value
-          simp only [Expr.substEnv] at h_conc
-          have hfuel_pos : fk + 1 > 0 := by omega
           unfold concEval at h_conc
           injection h_conc with hv; subst hv
           -- v = lam (dom.substEnv γV) (body.substEnv (lift γV))
-          -- Goal: VCompat n (lam (dom.substEnv γV) (body.substEnv (lift γV)))
-          --                 (lam (dom'.val.substEnv γT) (body'.val.substEnv (lift γT)))
+          -- Goal: VCompat n (lam ...) (lam ...)
           -- Use the semantic lam disjunct
           cases n with
           | zero => simp [VCompat]
           | succ m =>
             unfold VCompat
             apply Or.inr; apply Or.inr; apply Or.inl
-            refine ⟨_, _, _, _, rfl, rfl, ?_⟩
-            -- Prove the semantic lam: ∀ j ≤ m, fuel', aV, aT, VCompat j aV aT →
-            --   concEval fuel' (bodyV.subst 0 aV) = some rv →
-            --   absEval fuel' [] [] (bodyT.subst 0 aT) = .ok rτ →
-            --   VCompat j rv rτ.val
-            intro j hj fuel' aV aT hcompat_arg rv h_conc_body rτ h_abs_body
-            -- PROOF SKETCH (three blockers remain, each sorry'd):
-            --
-            -- Step 1: By composition lemma, rewrite subst as substEnv:
-            --   bodyV.subst 0 aV = body.substEnv (aV :: γV)
-            --   bodyT.subst 0 aT = body'.val.substEnv (aT :: γT)
-            -- Step 2: Use IH on body at fuel_max = max(fuel', fk):
-            --   absEval fuel_max (extend ctx dom') [] body = .ok body'  (fuel mono)
-            --   concEval fuel_max (body.substEnv (aV :: γV)) = some rv  (fuel mono)
-            --   → VCompat j rv (body'.val.substEnv (aT :: γT))
-            -- Step 3: absEval_preserves bridges to rτ.val:
-            --   VCompat j rv (body'.val.substEnv (aT :: γT)) + absEval rτ
-            --   → VCompat j rv rτ.val
-            --
-            -- BLOCKER 1: FunEnvCompat(j, aV :: γV, aT :: γT) needs isConcreteVal aV.
-            --   The semantic lam quantifies over ALL aV, including non-value ones.
-            --   For soundness of the existing app case, aV comes from concEval,
-            --   so aV ∈ {lam, type, mu, app}. Only app is not a concrete val.
-            -- BLOCKER 2: composition lemma for body'.val needs closedAt for body'.val.
-            --   This requires a lemma that absEval preserves closedAt (not yet proved).
-            -- BLOCKER 3: absEval_preserves (7 sorrys in its own proof).
-            sorry
+            exact ⟨_, _, _, _, rfl, rfl, fun j hj aV aT hcompat_arg fuel' rv h_conc_body => by
+              -- Prove the semantic lam (no absEval on type side):
+              -- bodyV.subst 0 aV = body.substEnv (aV :: γV) (composition)
+              -- bodyT.subst 0 aT = body'.val.substEnv (aT :: γT) (composition)
+              -- IH on body gives VCompat j rv (body'.val.substEnv (aT :: γT))
+              have h_closed_body : body.closedAt (ctx.length + 1) = true := by
+                simp [Expr.closedAt] at h_closed; exact h_closed.2
+              have h_closed_body_env : body.closedAt (γV.length + 1) = true := by
+                obtain ⟨hlen, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body
+                exact h_closed_body
+              -- Composition on concrete side: rewrite subst as substEnv
+              rw [Expr.substEnv_subst_comp body γV aV h_closed_body_env] at h_conc_body
+              -- Composition on type side: sorry closedAt for body'.val
+              have h_closed_body'_env : body'.val.closedAt (γT.length + 1) = true := by
+                sorry  -- need absEval_preserves_closedAt
+              rw [Expr.substEnv_subst_comp body'.val γT aT h_closed_body'_env]
+              -- Goal: VCompat j rv (body'.val.substEnv (aT :: γT))
+              -- Align fuels and apply IH on body
+              have h_abs_max := absEval_fuel_mono_le h_body_abs (Nat.le_max_right fuel' fk)
+              have h_conc_max := concEval_fuel_mono_le h_conc_body (Nat.le_max_left fuel' fk)
+              -- Build extended environment (sorry isConcreteVal aV)
+              have h_env_ext : FunEnvCompat j (aV :: γV) (aT :: γT) := by
+                sorry  -- need isConcreteVal aV
+              exact ih_body (max fuel' fk) (TyCtx.extend ctx dom') body' h_abs_max
+                j (aV :: γV) (aT :: γT) h_env_ext
+                (by simp [TyCtx.extend, List.length_cons, List.length_map]; omega)
+                (by show body.closedAt ((TyCtx.extend ctx dom').length) = true
+                    simp [TyCtx.extend, List.length_cons, List.length_map]
+                    exact h_closed_body)
+                rv h_conc_max⟩
   | asc term ty ih_term ih_ty =>
     -- absEval: check term ⊑ ty, return ty's normalization
     -- concEval: erase ascription, evaluate term
