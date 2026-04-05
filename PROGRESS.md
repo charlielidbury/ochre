@@ -6,7 +6,7 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (22 in Soundness, 0 in Eval, 0 in Syntax = 22 total)
+### Sorry inventory (22 in Soundness, 0 in Eval, 4 in Syntax = 26 total)
 
 Changes by agent ochre-20260405-080723:
 
@@ -54,8 +54,16 @@ the RAW body substitution, but the goal needs VCompat at the NORMALIZED result.
 Bridging this gap requires showing that absEval normalization preserves VCompat
 through substEnv.
 
-**NET: +5 sorrys (22 total, was 17). 1 opaque sorry → 6 structured sorrys,
-3 proved, 4 impossible.**
+**NET: +9 sorrys (26 total, was 17). Soundness: 1 opaque sorry → 6 structured
+sorrys, 3 proved, 4 impossible. Syntax: +4 sorrys for new composition lemmas.**
+
+**New Syntax.lean sorrys (4):**
+- `shift_substEnv_liftEnvN` (1 sorry): shift-substEnv commutation helper.
+  Standard de Bruijn property, proof by induction on s.
+- `subst_substEnv_comm_gen` bvar cases (3 sorrys): k=c needs
+  shift_substEnv_liftEnvN, k>c and k<c need liftEnvN getElem lemmas for
+  indices ≥ c. All recursive cases (lam/mu/app/asc/type) fully proved.
+- `subst_substEnv_comm` (sorry-free once gen is proved): c=0 specialization.
 
 **Remaining soundness_open sorrys (9 = 6 in app + 1 in mu + 1 in asc helper
 + 1 in subCheckNF_substEnv):**
@@ -68,14 +76,17 @@ Lines 365, 443, 449, 479, 482, 500, 581, 586, 730, 733, 782, 826, 866.
 (Line 1010 may have shifted; these are approximate.)
 
 **RECOMMENDED NEXT STEPS (priority order):**
-1. **Prove `subst_substEnv_comm`** (Syntax.lean, ~50 lines):
-   (e.subst 0 s).substEnv γ = e.substEnv (s.substEnv γ :: γ). Standard de Bruijn
-   property. Proof by induction on e generalizing depth. Needed for lam-lam.
-2. **Prove `absEval_preserves_VCompat_substEnv`** (Soundness.lean, ~100 lines):
+1. **Close `subst_substEnv_comm` sorrys** (Syntax.lean, ~40 lines remaining):
+   STATED with 4 sorrys. Recursive cases all proved. Remaining: prove
+   shift_substEnv_liftEnvN (the most substantial helper), then 3 bvar cases.
+   shift_substEnv_liftEnvN proof: induction on s, bvar uses shift_shift
+   (already proved), binders use IH at d+1. Needs liftEnvN_getElem?_ge
+   lemma (entries at index ≥ c = γ[i-c].shift c 0).
+2. **State and prove `absEval_preserves_VCompat_substEnv`** (~100 lines):
    VCompat n v (e.substEnv γ) + absEval fuel ctx [] e = .ok τ → VCompat n v
    (τ.val.substEnv γ). Proof by n-induction like absEval_preserves. Needed
    for lam-lam case.
-3. **Close lam-lam sub-case** using the above two lemmas + semantic lam.
+3. **Close lam-lam sub-case** using (1) + (2) + semantic lam extraction.
 4. **Prove subCheckNF_substEnv** (Soundness.lean:1055). Standard property.
 5. **Work on mu case** (Soundness.lean:1341).
 
