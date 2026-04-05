@@ -6,7 +6,7 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (23 in Soundness, 0 in Eval, 0 in Syntax = 23 total)
+### Sorry inventory (22 in Soundness, 0 in Eval, 0 in Syntax = 22 total)
 
 Changes by agent ochre-20260405-062531:
 
@@ -47,15 +47,27 @@ absEval_preserves when consuming the semantic lam (was already sorry'd).
 
 4. **app case** (1 sorry): completely sorry'd. Hardest case.
 
-**RECOMMENDED NEXT STEPS (in priority order):**
-1. Prove `subst_closedAt` in Syntax.lean (~50 lines)
-2. Prove `absEval_closedAt` in Soundness.lean (~100 lines)
-   → Closes 1 of 2 lam case sorrys
-3. Resolve the FunEnvCompat extension blocker (see options above)
-   → Closes the other lam case sorry
-4. Work on asc case (substEnv/subCheckNF interaction)
+**COMPLETED since last update:**
+- **PROVED: subst_closedAt_gen + subst_closedAt** (Syntax.lean). Standard de
+  Bruijn lemma. closedAt (j+n+1) e ∧ closedAt (j+n) s → closedAt (j+n) (e.subst j s).
+  This is a dependency for absEval_closedAt (see below).
+- **PROVED: shift_closedAt** (Syntax.lean). Shifting preserves closedAt.
 
-**Net sorry change from session start: +3 (23 total, was 20).**
+**RECOMMENDED NEXT STEPS (in priority order):**
+1. **Prove `absEval_closedAt`** (~100 lines, in Soundness.lean or new file).
+   Statement: if absEval fuel ctx seen e = .ok τ and closedAt n e, then
+   closedAt n τ.val. Uses subst_closedAt for the app-beta case. This closes
+   the closedAt sorry in soundness_open's lam case.
+2. **Resolve FunEnvCompat extension** — the isConcreteVal aV blocker.
+   Best option: prove concEval_preserves_VCompat by fuel induction:
+   VCompat n e τ → concEval fuel e = some v → VCompat n v τ.
+   Easy cases: lam/type/mu (v = e), bvar (contradiction).
+   Hard cases: asc (needs asc-left), app (needs evaluation reasoning).
+   This would let EnvCompat use all values, not just concrete ones.
+3. **Work on asc case** (substEnv/subCheckNF interaction).
+4. **Work on app case** of soundness_open.
+
+**Net sorry change from session start: +2 (22 total, was 20).**
 
 Changes by agent ochre-20260405-053702:
 - **PROVED: substEnv_idEnv** (Syntax.lean) — the identity property for simultaneous
