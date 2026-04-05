@@ -6,10 +6,81 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (25 actual sorrys in Soundness, 0 in Eval, 0 in Syntax)
+### Sorry inventory (6 declarations in Soundness, 0 in Eval, 0 in Syntax)
 
 6 sorry DECLARATIONS: app_inferType, absEval_preserves, adequacy_gen,
 subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
+
+Note: The total sorry count increased from ~25 to ~34 because agent
+ochre-20260405-181325 expanded 4 monolithic self-elim sorrys into detailed
+sub-case analyses (7 localized sorrys each). The refl, structural mu, and
+impossible sub-cases are now PROVED. See session summary below.
+
+Summary of changes by agent ochre-20260405-181325:
+
+**EXPANDED 4 self-elim sorrys in adequacy_gen into detailed case analyses.**
+
+The 4 self-elim sorrys (σ=mu, τ∈{lam,bvar,asc,app}) were monolithic blockers.
+Each is now expanded into 10 VCompat sub-cases with specific proof status:
+
+**PROVED sub-cases (for any seen):**
+- Refl (v = σ = mu): Strategy A — mu-left + VCompat.refl + absEval_preserves +
+  ih_fuel at step m+1. Callback = hseen. Works because absEval_preserves and
+  ih_fuel both use the ORIGINAL v, not the unfolded body.
+- Structural mu (v = mu annV bodyV): Same strategy via mu-left wrapper.
+- Impossible (type, semantic lam, structural app): constructor mismatch.
+
+**PROVED sub-cases (seen = [] only):**
+- Mu-left: Strategy B — ih_n with hcheck_orig and vacuous callback.
+- InferType: Same strategy.
+- Asc-left: Same strategy.
+
+**REMAINING sorrys per self-elim case (7 each × 4 cases = 28 total):**
+1. Body eval failed (annotation path only): 1 — rare, needs annotation trust
+2. Mu-right step-loss: 1 — VCompat m, need m+1. Fundamental.
+3. Normalized mu-right step-loss: 1 — same issue.
+4. Mu-left seen≠[]: 1 — callback mismatch (ih_n needs VCompat for inner, hseen has outer v)
+5. InferType seen≠[]: 1 — same callback mismatch.
+6. Asc-left seen≠[]: 1 — same callback mismatch.
+7. Body subcheck failed (annotation path only): 1 — rare.
+
+**KEY INSIGHT (corrected from previous analysis):** Strategy A works for ANY
+seen, not just seen=[]. The trick is to use absEval_preserves and ih_fuel
+at step m+1 with the ORIGINAL v (not unfolded_v). This avoids the callback
+mismatch entirely because hseen is about v at step m+1, which matches.
+
+**For VCompat.adequacy (the main caller, seen=[]):** 8 of 10 sub-cases proved
+per self-elim sorry. Only mu-right and normalized mu-right remain (step-loss).
+
+**ANALYSIS: soundness_open mu case (2 sorrys, lines 1668/1675) is BLOCKED.**
+
+The goal is VCompat n (mu ..V..) (mu ..T..) where V and T use different
+environment substitutions. The structural mu disjunct requires VCompat on
+unfolded bodies, which are body.substEnv(mu_V :: γV) and body.substEnv(mu_T :: γT).
+Using ih_body requires concEval to succeed on the unfolded body, which we don't
+have (concEval of a mu just returns the mu value itself, it doesn't evaluate
+the body). N-induction on the step count helps with FunEnvCompat (can build
+VCompat m mu_V mu_T from the IH), but still can't provide concEval on the body.
+
+Possible approaches (none attempted):
+1. Prove a "VCompat reflexivity under related environments" lemma:
+   ∀ e n γV γT, FunEnvCompat n γV γT → VCompat n (e.substEnv γV) (e.substEnv γT).
+   PROBLEM: Lam case requires semantic lam, which needs concEval to succeed.
+2. Change VCompat's structural mu to not require VCompat on unfolded bodies.
+   PROBLEM: Would break other proofs that rely on structural mu.
+3. Add a new VCompat disjunct for "mu with related environments".
+   PROBLEM: Major refactoring of VCompat and all proofs.
+4. Joint (fuel, expression) induction — the recommended approach from SUGGESTIONS.md.
+   This gives a stronger IH but still has the concEval requirement for mu bodies.
+
+**RECOMMENDED NEXT STEPS (updated):**
+1. Focus on the step-loss problem (mu-right sub-cases of self-elim + app lam-lam).
+   Joint (fuel, expr) induction remains the most promising approach.
+2. The mu case of soundness_open needs a fundamentally new approach or a
+   "VCompat reflexivity under related environments" lemma that handles the
+   concEval requirement for lam bodies.
+3. subCheckNF_substEnv lam-lam case needs context independence for closed terms.
+4. lam-lam sorrys in adequacy_gen (lines 758, 761) need subCheckNF_substEnv.
 
 Summary of changes by agent ochre-20260405-172626:
 

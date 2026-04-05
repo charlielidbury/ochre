@@ -647,17 +647,12 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
     - (lam, lam): needs substitution lemma for subCheckNF — showing that
       if subCheckNF(bodyσ, bodyτ) under extended context, evaluating bodyσ[a]
       and bodyτ[a] preserves the subtype relationship
-    - (mu, _) self-elim (4 sorrys: mu-lam, mu-bvar, mu-asc, mu-app):
-      Two strategies identified (agent ochre-20260405-172626):
-      (A) Body path + absEval_preserves + ih_fuel (at step m+1):
-          PROVES refl + structural mu sub-cases (via mu-left wrapper).
-          FAILS for mu-right/normalized mu-right (step count: VCompat m, need m+1).
-      (B) ih_n + VCompat wrapper (at step m):
-          PROVES mu-left + inferType + asc-left sub-cases (but ONLY when seen = []).
-          FAILS when seen ≠ [] due to callback mismatch (ih_n needs VCompat m inner p.2,
-          but hseen gives VCompat (m+1) v p.2 where inner ≠ v).
-      Blockers: (1) step count in mu-right, (2) callback mismatch in ih_n,
-      (3) annotation trust for annotation path, (4) body path extraction from hcheck.
+    - (mu, _) self-elim (4 cases, each expanded into 10 sub-cases):
+      PROVED (any seen): refl, structural mu (Strategy A: mu-left + absEval_preserves
+      + ih_fuel at m+1 with original v). Impossible: type, semantic lam, structural app.
+      PROVED (seen=[]): mu-left, inferType, asc-left (Strategy B: ih_n + vacuous callback).
+      SORRY: mu-right/normalized mu-right (step-loss), seen≠[] callback mismatch,
+      annotation path only, body subcheck failed.
     - (app, app) congruence: provable in principle via structural app disjunct
     - inferType fallback: needs inferType reasoning -/
 theorem VCompat.adequacy_gen :
@@ -790,34 +785,99 @@ theorem VCompat.adequacy_gen :
                   (fun p hp => absurd hp (List.not_mem_nil p))⟩
           | mu _annS _bodyS =>
             -- Self-elim: mu _annS _bodyS ⊑ lam _dT _bT
-            --
-            -- DETAILED ANALYSIS (agent ochre-20260405-172626):
-            --
-            -- The self-elim body path uses ORIGINAL seen (not seen'), so ih_fuel
-            -- callback = hseen. Two proof strategies:
-            --
-            -- Strategy A (body path + absEval_preserves + ih_fuel, step m+1):
-            --   Works for: refl (via mu-left wrapper), structural mu (via mu-left wrapper)
-            --   Fails for: mu-right/normalized mu-right (step count: VCompat m, need m+1)
-            --
-            -- Strategy B (ih_n + VCompat wrapper, step m):
-            --   Works for: mu-left (via mu-left wrapper), inferType (via inferType wrapper),
-            --              asc-left (via asc-left wrapper)
-            --   Fails for: all above when seen ≠ [] (callback mismatch: ih_n callback needs
-            --              VCompat m inner_expr p.2, but hseen gives VCompat (m+1) v p.2)
-            --
-            -- NET: Strategy A proves refl + structural mu (for any seen).
-            --      Strategy B proves mu-left + inferType + asc-left (only when seen = []).
-            --      mu-right and normalized mu-right are blocked (step count).
-            --      Extracting body path info from hcheck requires handling the annotation
-            --      path/body path disjunction in subCheckNF.
-            --
-            -- REMAINING BLOCKERS:
-            --   1. Step count: mu-right disjunct gives VCompat m, need m+1
-            --   2. Callback mismatch: ih_n's callback needs VCompat for inner_expr, not v
-            --   3. Annotation path: needs annotation trust (VCompat v ann)
-            --   4. Body path extraction: need to simplify hcheck to get absEval/subCheckNF
-            sorry
+            -- Strategy A: mu-left + absEval_preserves + ih_fuel (works for any seen)
+            -- Strategy B: ih_n + VCompat wrapper (works for seen = [])
+            -- Extract body path info (absEval on unfolded sigma + subCheckNF)
+            let seen' := (Expr.mu _annS _bodyS, Expr.lam _dT _bT) :: seen
+            let bsm := _bodyS.subst 0 (Expr.mu _annS _bodyS)
+            match h_body_abs : absEval k ctx seen' bsm with
+            | .error _ => sorry  -- body eval failed → annotation path only (sorry)
+            | .ok u' =>
+              by_cases h_body_sub : subCheckNF k ctx seen u'.val (Expr.lam _dT _bT) = true
+              · -- Body path works. Case-split on VCompat disjuncts of hv.
+                unfold VCompat at hv
+                rcases hv with
+                  h_type | h_refl |
+                  ⟨_, _, _, _, _, hσ_lam, _⟩ |
+                  ⟨annV, annT, bodyV, bodyT, hv_eq, hσ_eq, h_struct⟩ |
+                  ⟨ann_r, body_r, hσ_mu_r, h_unfold_r⟩ |
+                  ⟨ann_r2, body_r2, ⟨nf, nc, ns, nu, hσ_mu_nr, habs_nr, h_norm_r⟩⟩ |
+                  ⟨ann_l, body_l, hv_eq_l, h_unfold_l⟩ |
+                  ⟨_, _, _, _, _, hσ_app, _, _⟩ |
+                  ⟨ctxi, tyi, hinf_v, h_infer⟩ |
+                  ⟨term_asc, tyAsc, hv_asc, h_asc_inner⟩
+                · cases h_type  -- mu ≠ type
+                · -- REFL: v = mu _annS _bodyS. Strategy A.
+                  subst h_refl
+                  -- VCompat (m+1) v bsm via mu-left + refl
+                  have h1 : VCompat (m + 1) (Expr.mu _annS _bodyS) bsm := by
+                    unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨_annS, _bodyS, rfl, VCompat.refl m bsm⟩
+                  -- absEval_preserves: VCompat (m+1) v u'.val
+                  have h2 := VCompat.absEval_preserves h1 h_body_abs
+                  -- ih_fuel: VCompat (m+1) v τ
+                  exact ih_fuel (m + 1) (Expr.mu _annS _bodyS) u'.val
+                    (Expr.lam _dT _bT) ctx seen h2 h_body_sub hseen
+                · cases hσ_lam  -- mu ≠ lam
+                · -- STRUCTURAL MU: v = mu annV bodyV, σ = mu annT bodyT.
+                  -- Strategy A via mu-left.
+                  injection hσ_eq with h_ann h_body
+                  subst h_ann; subst h_body; subst hv_eq
+                  -- h_struct : VCompat m (bodyV.subst 0 (mu annV bodyV)) bsm
+                  -- VCompat (m+1) v bsm via mu-left
+                  have h1 : VCompat (m + 1) (Expr.mu annV bodyV) bsm := by
+                    unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨annV, bodyV, rfl, h_struct⟩
+                  have h2 := VCompat.absEval_preserves h1 h_body_abs
+                  exact ih_fuel (m + 1) (Expr.mu annV bodyV) u'.val
+                    (Expr.lam _dT _bT) ctx seen h2 h_body_sub hseen
+                · -- MU-RIGHT: VCompat m v (unfolded σ). Step-loss: have m, need m+1.
+                  sorry
+                · -- NORMALIZED MU-RIGHT: Step-loss.
+                  sorry
+                · -- MU-LEFT: v = mu ann_l body_l, VCompat m (unfolded v) σ.
+                  -- Strategy B: ih_n with hcheck_orig. Works when seen = [].
+                  by_cases hseen_nil : seen = []
+                  · subst hseen_nil
+                    unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨ann_l, body_l, hv_eq_l,
+                      ih_n (body_l.subst 0 (Expr.mu ann_l body_l))
+                        (Expr.mu _annS _bodyS) (Expr.lam _dT _bT) ctx []
+                        h_unfold_l hcheck_orig
+                        (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry  -- seen ≠ []: callback mismatch
+                · cases hσ_app  -- mu ≠ app
+                · -- INFERTYPE: inferType ctx v = some tyi, VCompat m tyi σ.
+                  -- Strategy B: ih_n. Works when seen = [].
+                  by_cases hseen_nil : seen = []
+                  · subst hseen_nil
+                    unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inl ⟨ctxi, tyi, hinf_v,
+                      ih_n tyi (Expr.mu _annS _bodyS) (Expr.lam _dT _bT) ctx []
+                        h_infer hcheck_orig
+                        (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry  -- seen ≠ []: callback mismatch
+                · -- ASC-LEFT: v = asc term_asc tyAsc, VCompat m term σ.
+                  -- Strategy B: ih_n. Works when seen = [].
+                  by_cases hseen_nil : seen = []
+                  · subst hseen_nil
+                    unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inr ⟨term_asc, tyAsc, hv_asc,
+                      ih_n term_asc (Expr.mu _annS _bodyS) (Expr.lam _dT _bT) ctx []
+                        h_asc_inner hcheck_orig
+                        (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry  -- seen ≠ []: callback mismatch
+              · sorry  -- body subcheck failed → annotation path only
           | bvar _kS =>
             -- σ = bvar, τ = lam: via bvar_inferType + absEval_preserves + ih_fuel
             dsimp only [] at hcheck
@@ -856,9 +916,76 @@ theorem VCompat.adequacy_gen :
           | asc _tS _tyS =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = bvar: self-elim. Same blockers as mu-lam case above.
-            -- See detailed analysis at the mu-lam self-elim case.
-            sorry
+            -- Self-elim: mu _annS _bodyS ⊑ bvar _j. Same structure as mu-lam.
+            let seen' := (Expr.mu _annS _bodyS, Expr.bvar _j) :: seen
+            let bsm := _bodyS.subst 0 (Expr.mu _annS _bodyS)
+            match h_body_abs : absEval k ctx seen' bsm with
+            | .error _ => sorry  -- annotation path only
+            | .ok u' =>
+              by_cases h_body_sub : subCheckNF k ctx seen u'.val (Expr.bvar _j) = true
+              · unfold VCompat at hv
+                rcases hv with
+                  h_type | h_refl |
+                  ⟨_, _, _, _, _, hσ_lam, _⟩ |
+                  ⟨annV, annT, bodyV, bodyT, hv_eq, hσ_eq, h_struct⟩ |
+                  ⟨ann_r, body_r, hσ_mu_r, h_unfold_r⟩ |
+                  ⟨ann_r2, body_r2, ⟨nf, nc, ns, nu, hσ_mu_nr, habs_nr, h_norm_r⟩⟩ |
+                  ⟨ann_l, body_l, hv_eq_l, h_unfold_l⟩ |
+                  ⟨_, _, _, _, _, hσ_app, _, _⟩ |
+                  ⟨ctxi, tyi, hinf_v, h_infer⟩ |
+                  ⟨term_asc, tyAsc, hv_asc, h_asc_inner⟩
+                · cases h_type
+                · -- REFL: Strategy A
+                  subst h_refl
+                  have h1 : VCompat (m + 1) (Expr.mu _annS _bodyS) bsm := by
+                    unfold VCompat; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨_annS, _bodyS, rfl, VCompat.refl m bsm⟩
+                  exact ih_fuel (m + 1) (Expr.mu _annS _bodyS) u'.val
+                    (Expr.bvar _j) ctx seen
+                    (VCompat.absEval_preserves h1 h_body_abs) h_body_sub hseen
+                · cases hσ_lam
+                · -- STRUCTURAL MU: Strategy A
+                  injection hσ_eq with h_ann h_body
+                  subst h_ann; subst h_body; subst hv_eq
+                  have h1 : VCompat (m + 1) (Expr.mu annV bodyV) bsm := by
+                    unfold VCompat; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨annV, bodyV, rfl, h_struct⟩
+                  exact ih_fuel (m + 1) (Expr.mu annV bodyV) u'.val
+                    (Expr.bvar _j) ctx seen
+                    (VCompat.absEval_preserves h1 h_body_abs) h_body_sub hseen
+                · sorry  -- mu-right: step-loss
+                · sorry  -- normalized mu-right: step-loss
+                · -- MU-LEFT: Strategy B (seen = [] only)
+                  by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨ann_l, body_l, hv_eq_l,
+                      ih_n _ (Expr.mu _annS _bodyS) (Expr.bvar _j) ctx []
+                        h_unfold_l hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+                · cases hσ_app
+                · -- INFERTYPE: Strategy B (seen = [] only)
+                  by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inl ⟨ctxi, tyi, hinf_v,
+                      ih_n tyi (Expr.mu _annS _bodyS) (Expr.bvar _j) ctx []
+                        h_infer hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+                · -- ASC-LEFT: Strategy B (seen = [] only)
+                  by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inr ⟨term_asc, tyAsc, hv_asc,
+                      ih_n term_asc (Expr.mu _annS _bodyS) (Expr.bvar _j) ctx []
+                        h_asc_inner hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+              · sorry  -- body subcheck failed
           | bvar _kS =>
             -- σ = bvar, τ = bvar: via bvar_inferType + absEval_preserves + ih_fuel
             dsimp only [] at hcheck
@@ -897,8 +1024,71 @@ theorem VCompat.adequacy_gen :
           | asc _tS _tyS =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = asc: self-elim. Same blockers as mu-lam case.
-            sorry
+            -- Self-elim: mu _annS _bodyS ⊑ asc _tA _tyA. Same structure as mu-lam.
+            let seen' := (Expr.mu _annS _bodyS, Expr.asc _tA _tyA) :: seen
+            let bsm := _bodyS.subst 0 (Expr.mu _annS _bodyS)
+            match h_body_abs : absEval k ctx seen' bsm with
+            | .error _ => sorry  -- annotation path only
+            | .ok u' =>
+              by_cases h_body_sub : subCheckNF k ctx seen u'.val (Expr.asc _tA _tyA) = true
+              · unfold VCompat at hv
+                rcases hv with
+                  h_type | h_refl |
+                  ⟨_, _, _, _, _, hσ_lam, _⟩ |
+                  ⟨annV, annT, bodyV, bodyT, hv_eq, hσ_eq, h_struct⟩ |
+                  ⟨ann_r, body_r, hσ_mu_r, h_unfold_r⟩ |
+                  ⟨ann_r2, body_r2, ⟨nf, nc, ns, nu, hσ_mu_nr, habs_nr, h_norm_r⟩⟩ |
+                  ⟨ann_l, body_l, hv_eq_l, h_unfold_l⟩ |
+                  ⟨_, _, _, _, _, hσ_app, _, _⟩ |
+                  ⟨ctxi, tyi, hinf_v, h_infer⟩ |
+                  ⟨term_asc, tyAsc, hv_asc, h_asc_inner⟩
+                · cases h_type
+                · subst h_refl
+                  have h1 : VCompat (m + 1) (Expr.mu _annS _bodyS) bsm := by
+                    unfold VCompat; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨_annS, _bodyS, rfl, VCompat.refl m bsm⟩
+                  exact ih_fuel (m + 1) (Expr.mu _annS _bodyS) u'.val
+                    (Expr.asc _tA _tyA) ctx seen
+                    (VCompat.absEval_preserves h1 h_body_abs) h_body_sub hseen
+                · cases hσ_lam
+                · injection hσ_eq with h_ann h_body
+                  subst h_ann; subst h_body; subst hv_eq
+                  have h1 : VCompat (m + 1) (Expr.mu annV bodyV) bsm := by
+                    unfold VCompat; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨annV, bodyV, rfl, h_struct⟩
+                  exact ih_fuel (m + 1) (Expr.mu annV bodyV) u'.val
+                    (Expr.asc _tA _tyA) ctx seen
+                    (VCompat.absEval_preserves h1 h_body_abs) h_body_sub hseen
+                · sorry  -- mu-right: step-loss
+                · sorry  -- normalized mu-right: step-loss
+                · by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨ann_l, body_l, hv_eq_l,
+                      ih_n _ (Expr.mu _annS _bodyS) (Expr.asc _tA _tyA) ctx []
+                        h_unfold_l hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+                · cases hσ_app
+                · by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inl ⟨ctxi, tyi, hinf_v,
+                      ih_n tyi (Expr.mu _annS _bodyS) (Expr.asc _tA _tyA) ctx []
+                        h_infer hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+                · by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inr ⟨term_asc, tyAsc, hv_asc,
+                      ih_n term_asc (Expr.mu _annS _bodyS) (Expr.asc _tA _tyA) ctx []
+                        h_asc_inner hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+              · sorry
           | bvar _kS =>
             -- σ = bvar, τ = asc: via bvar_inferType + absEval_preserves + ih_fuel
             dsimp only [] at hcheck
@@ -1041,8 +1231,71 @@ theorem VCompat.adequacy_gen :
                 | .error _ => simp [habs] at hcheck
               | none => simp [hinf] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = app: self-elim. Same blockers as mu-lam case.
-            sorry
+            -- Self-elim: mu _annS _bodyS ⊑ app f2 a2. Same structure as mu-lam.
+            let seen' := (Expr.mu _annS _bodyS, Expr.app f2 a2) :: seen
+            let bsm := _bodyS.subst 0 (Expr.mu _annS _bodyS)
+            match h_body_abs : absEval k ctx seen' bsm with
+            | .error _ => sorry  -- annotation path only
+            | .ok u' =>
+              by_cases h_body_sub : subCheckNF k ctx seen u'.val (Expr.app f2 a2) = true
+              · unfold VCompat at hv
+                rcases hv with
+                  h_type | h_refl |
+                  ⟨_, _, _, _, _, hσ_lam, _⟩ |
+                  ⟨annV, annT, bodyV, bodyT, hv_eq, hσ_eq, h_struct⟩ |
+                  ⟨ann_r, body_r, hσ_mu_r, h_unfold_r⟩ |
+                  ⟨ann_r2, body_r2, ⟨nf, nc, ns, nu, hσ_mu_nr, habs_nr, h_norm_r⟩⟩ |
+                  ⟨ann_l, body_l, hv_eq_l, h_unfold_l⟩ |
+                  ⟨_, _, _, _, _, hσ_app, _, _⟩ |
+                  ⟨ctxi, tyi, hinf_v, h_infer⟩ |
+                  ⟨term_asc, tyAsc, hv_asc, h_asc_inner⟩
+                · cases h_type
+                · subst h_refl
+                  have h1 : VCompat (m + 1) (Expr.mu _annS _bodyS) bsm := by
+                    unfold VCompat; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨_annS, _bodyS, rfl, VCompat.refl m bsm⟩
+                  exact ih_fuel (m + 1) (Expr.mu _annS _bodyS) u'.val
+                    (Expr.app f2 a2) ctx seen
+                    (VCompat.absEval_preserves h1 h_body_abs) h_body_sub hseen
+                · cases hσ_lam
+                · injection hσ_eq with h_ann h_body
+                  subst h_ann; subst h_body; subst hv_eq
+                  have h1 : VCompat (m + 1) (Expr.mu annV bodyV) bsm := by
+                    unfold VCompat; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨annV, bodyV, rfl, h_struct⟩
+                  exact ih_fuel (m + 1) (Expr.mu annV bodyV) u'.val
+                    (Expr.app f2 a2) ctx seen
+                    (VCompat.absEval_preserves h1 h_body_abs) h_body_sub hseen
+                · sorry  -- mu-right: step-loss
+                · sorry  -- normalized mu-right: step-loss
+                · by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inl
+                    exact ⟨ann_l, body_l, hv_eq_l,
+                      ih_n _ (Expr.mu _annS _bodyS) (Expr.app f2 a2) ctx []
+                        h_unfold_l hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+                · cases hσ_app
+                · by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inl ⟨ctxi, tyi, hinf_v,
+                      ih_n tyi (Expr.mu _annS _bodyS) (Expr.app f2 a2) ctx []
+                        h_infer hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+                · by_cases hseen_nil : seen = []
+                  · subst hseen_nil; unfold VCompat
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                    exact Or.inr ⟨term_asc, tyAsc, hv_asc,
+                      ih_n term_asc (Expr.mu _annS _bodyS) (Expr.app f2 a2) ctx []
+                        h_asc_inner hcheck_orig (fun p hp => absurd hp (List.not_mem_nil p))⟩
+                  · sorry
+              · sorry
           | lam _dS _bS =>
             -- σ = lam, τ = app: inferType(lam) = none → contradiction
             dsimp only [] at hcheck; simp [inferType] at hcheck
