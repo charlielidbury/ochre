@@ -1173,9 +1173,86 @@ theorem soundness
         injection h_abs with hτ; subst hτ
         exact VCompat.refl n (Expr.mu ann body)
     | app f a =>
-      -- Beta-reduction case — most complex
-      -- concEval: evaluate f and a, dispatch on fV (lam → beta, mu → unroll, etc.)
-      -- absEval: evaluate f and a, dispatch on f'.val with domain checking
-      -- BLOCKER: same all-fuel issue as lam, plus needs VCompat dispatch on
-      -- fV/f'.val shapes (lam-lam, mu-app, neutral app).
-      sorry
+      -- concEval: evaluate f → fV, a → aV, dispatch on fV
+      unfold concEval at h_conc
+      match hcf : concEval k f with
+      | none => simp [hcf] at h_conc
+      | some fV =>
+        match hca : concEval k a with
+        | none => simp [hcf, hca] at h_conc
+        | some aV =>
+          simp only [hcf, hca] at h_conc
+          -- absEval: evaluate f → fT, a → aT, dispatch on fT.val
+          unfold absEval at h_abs; dsimp only [] at h_abs
+          match haf : absEval k [] [] f with
+          | .error _ => simp [haf, bind, Except.bind] at h_abs
+          | .ok fT =>
+            simp only [haf, bind, Except.bind] at h_abs
+            match haa : absEval k [] [] a with
+            | .error _ => simp [haa, bind, Except.bind] at h_abs
+            | .ok aT =>
+              simp only [haa, bind, Except.bind] at h_abs
+              -- IH: VCompat n fV fT.val, VCompat n aV aT.val
+              have ih_f := ih f fV fT n hcf haf
+              have ih_a := ih a aV aT n hca haa
+              -- Dispatch on fT.val (abstract function type)
+              match hftv : fT.val with
+              | .lam _domT _bodyT =>
+                -- absEval: lam case. Domain check + beta-reduce.
+                simp only [hftv] at h_abs
+                by_cases hdom : subCheckNF k [] [] aT.val _domT = true
+                · simp only [hdom, ite_true] at h_abs
+                  -- h_abs: absEval k [] [] (_bodyT.subst 0 aT.val) = .ok τ
+                  -- Dispatch on fV for concEval
+                  -- BLOCKER: dual-substitution problem. All sub-cases here require
+                  -- relating concEval(bodyV.subst 0 aV) to absEval(bodyT.subst 0 aT.val)
+                  -- where aV ≠ aT.val. The semantic lam from IH on f helps but can't
+                  -- be extracted without handling the refl disjunct of VCompat.
+                  sorry
+                · simp only [Bool.not_eq_true] at hdom
+                  simp only [hdom] at h_abs; simp at h_abs
+              | .mu _annT _bodyT =>
+                -- absEval: mu-app dispatch. Complex annotation-trust + mu unrolling.
+                simp only [hftv] at h_abs
+                sorry
+              | .type =>
+                simp only [hftv] at h_abs; simp at h_abs
+              | .bvar _ | .app _ _ | .asc _ _ =>
+                -- absEval: neutral application. fT.val is not lam/mu/type.
+                simp only [hftv] at h_abs
+                by_cases hcall : isCallableNF [] fT = true
+                · simp only [hcall, ite_true] at h_abs
+                  injection h_abs with h_eq_abs
+                  -- τ = ⟨app fT.val aT.val⟩, so τ.val = app fT.val aT.val
+                  -- Dispatch on fV for concEval
+                  match hfvv : fV with
+                  | .lam _domV _bodyV =>
+                    -- fV = lam, fT.val = neutral: concEval beta-reduces, absEval
+                    -- returns neutral app. Shape mismatch.
+                    simp only [hfvv] at h_conc
+                    sorry
+                  | .mu _annV _bodyV =>
+                    -- fV = mu, fT.val = neutral: concEval unrolls mu, absEval
+                    -- returns neutral app. Shape mismatch.
+                    simp only [hfvv] at h_conc
+                    sorry
+                  | .bvar _ | .type | .app _ _ | .asc _ _ =>
+                    -- NEUTRAL-NEUTRAL: both sides produce neutral apps.
+                    -- concEval: v = app fV aV (catch-all for non-lam/non-mu fV)
+                    -- absEval: τ.val = app fT.val aT.val
+                    -- VCompat via structural app + IH on f and a.
+                    simp only [hfvv] at h_conc
+                    injection h_conc with h_v; subst h_v
+                    -- Get τ.val equation from h_eq_abs
+                    have hτv : τ.val = Expr.app fT.val aT.val := by
+                      have := h_eq_abs.symm; subst this; simp [hftv]
+                    cases n with
+                    | zero => simp [VCompat]
+                    | succ m =>
+                      rw [hτv]
+                      unfold VCompat
+                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                      exact ⟨_, fT.val, _, aT.val, rfl, rfl,
+                        VCompat.mono ih_f, VCompat.mono ih_a⟩
+                · simp only [hcall] at h_abs; simp at h_abs

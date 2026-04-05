@@ -6,10 +6,42 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (16 in Soundness, 0 in Eval, 0 in Subtyping = 16 total)
+### Sorry inventory (19 in Soundness, 0 in Eval, 0 in Subtyping = 19 total)
 
-Down from 17 — 3 net sorrys eliminated by agent ochre-20260405-024408.
-(Added 1 sorry in new app_inferType lemma, closed 4 inferType fallback sorrys in adequacy_gen.)
+Up from 16 — agent ochre-20260405-031505 expanded the soundness app case from 1
+sorry into 5 sorrys (4 hard sub-cases) + proved the neutral-neutral sub-case.
+Net: 1 → 5 (but the neutral-neutral is fully proved, which was previously hidden).
+
+Changes by agent ochre-20260405-031505:
+- **EXPANDED soundness app case (Soundness.lean:1175).** The single sorry is now
+  broken into sub-cases by dispatching on fT.val (abstract function type) and fV
+  (concrete function value):
+  - **fT.val = lam, all fV**: 1 sorry (line 1211). BLOCKER: dual-substitution
+    problem. Both sides beta-reduce but with different arguments (aV vs aT.val).
+    The semantic lam from IH on f can't be extracted from VCompat because the
+    refl disjunct blocks it. Options explored:
+    (a) Raw lam bodies in absEval (like mu change): TESTED AND FAILED. Breaks
+        pred_ and other tests because raw domains inside nested lam bodies
+        cause subCheckNF domain checks to fail (raw app expressions vs normalized types).
+    (b) Generalized soundness with compatible substitutions: Not attempted, would
+        require major restructuring.
+    (c) Single-argument semantic lam: More provable but weaker for adequacy.
+  - **fT.val = mu**: 1 sorry (line 1217). Annotation-trust interaction.
+  - **fT.val = neutral, fV = lam**: 1 sorry (line 1233). Shape mismatch
+    (concEval beta-reduces, absEval returns neutral app).
+  - **fT.val = neutral, fV = mu**: 1 sorry (line 1238). Shape mismatch
+    (concEval unrolls mu, absEval returns neutral app).
+  - **fT.val = neutral, fV = neutral**: ✅ PROVED. VCompat via structural app
+    + IH on f and a. Covers all 4 neutral fV forms (bvar, type, app, asc)
+    and all 3 neutral fT.val forms (bvar, app, asc).
+- **ANALYSIS: Raw lam body approach (like mu annotation change) is NOT viable.**
+  Tested changing absEval's lam case to keep raw bodies + subCheckNF lam-lam
+  case to normalize on demand. Soundness lam case becomes trivial (refl), BUT:
+  pred_ fails because nested lam domains (e.g., PairNN_ = app (app Pair_ Nat_) Nat_)
+  are left raw. When these lams are applied in absEval's app case, the domain check
+  compares the argument against the raw domain expression, which subCheckNF can't
+  handle. The mu annotation change worked because mu annotations are only used
+  in subCheckNF (which normalizes on demand), never in absEval's domain check.
 
 Changes by agent ochre-20260405-024408:
 - **NEW LEMMA: VCompat.app_inferType (Soundness.lean:321).** Analogous to

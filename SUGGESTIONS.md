@@ -145,13 +145,29 @@ DECISION-LOG.md for the counterexample). All proofs updated.
 the definition change (absEval keeps raw annotation).
 
 Remaining: lam and app cases. 
+
 Challenge for lam: absEval normalizes the body, so v ≠ τ.val. This is
 the normalization coherence problem, NOT a fuel quantification issue.
 Strong induction does NOT help — the blocker is expression mismatch
 (body.subst 0 aV vs body'.val.subst 0 aT).
-Challenge for app: neutral-neutral sub-case IS provable; lam-lam
-sub-case is provable via semantic lam from IH; refl-of-f sub-case
-and mu dispatch cases remain hard.
+
+**app case: PARTIALLY PROVED** (agent ochre-20260405-031505). Expanded into
+sub-cases. Neutral-neutral sub-case PROVED (structural app + IH).
+Remaining 4 sorrys:
+- **fT.val = lam (all fV)**: HARDEST. Dual-substitution: concEval beta-reduces
+  with aV, absEval beta-reduces with aT.val. Semantic lam from IH helps but
+  can't be extracted from VCompat (refl disjunct blocks it). NOTE: the claim
+  "lam-lam is provable via semantic lam" was WRONG — extracting the semantic
+  lam from VCompat requires case-splitting, and the refl case can't be resolved
+  without a generalized soundness theorem for compatible substitutions.
+- **fT.val = mu**: Annotation-trust interaction.
+- **fT.val = neutral, fV = lam/mu**: Shape mismatch (different reduction strategies).
+
+**Raw lam body approach: TESTED AND REJECTED.** Keeping raw lam bodies in
+absEval (like the mu annotation change) makes soundness lam trivial but breaks
+pred_ and similar tests. Raw domains inside nested lam bodies cause domain
+check failures. The mu change worked because annotations are only consumed
+by subCheckNF (which normalizes on demand), not by absEval's domain check.
 
 ## Known hazards
 
@@ -190,6 +206,15 @@ and mu dispatch cases remain hard.
 
 - **subCheckNF top-universality is FALSE**. `Type <: tau` does NOT mean all
   values inhabit `tau`.
+
+- **Raw lam body approach is NOT viable** (agent ochre-20260405-031505).
+  Keeping raw lam bodies (like the mu annotation change) breaks pred_ and
+  other standard library functions because raw DOMAINS inside nested lam
+  bodies cause absEval's app-case domain check to fail. The mu annotation
+  change succeeded because mu annotations are only consumed by subCheckNF
+  (which normalizes on demand), not by absEval's direct domain comparisons.
+  An approach that normalizes domains but not bodies partially works but
+  still has the dual-substitution problem for soundness.
 
 - **Never weaken tests.** If a proof doesn't go through, the definitions or
   theorem statement may be wrong. Fix those, not the tests.
