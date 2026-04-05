@@ -321,3 +321,23 @@ Potential paths forward:
 
 - **Check precondition satisfiability.** Any theorem change must be verified
   with `native_decide` witness tests on real programs.
+
+## Future: precision monotonicity (explore AFTER Phase 0 is resolved)
+
+Once absEval checks mu bodies at definition site, **precision monotonicity**
+may become important for the soundness proof. This is the property that more
+precise inputs to absEval yield more precise outputs — if absEval succeeds
+in a less precise type context, it also succeeds (with a related result) in
+a more precise context.
+
+This was previously part of the proof architecture but was removed during
+the shift to soundness_open + substEnv composition lemmas. It may need to
+come back: soundness_open relates a concrete environment (γV) to an abstract
+environment (γT) via VCompat, but absEval runs in the original context `ctx`.
+Precision monotonicity could bridge "absEval checked the body in the
+definition context" to "the body is sound under the more-precise runtime
+environment" — exactly the gap soundness_open's mu case needs.
+
+**Do NOT explore this until Phase 0 is resolved.** There's no point reasoning
+about transporting absEval results between contexts if absEval doesn't check
+mu bodies in the first place.
