@@ -119,10 +119,31 @@ and your agent ID, and update PROGRESS.md before your session ends.
 
 - **Subtyping must be transitive.** If `a ⊑ b` and `b ⊑ c` then `a ⊑ c`
   must hold. This is a deep requirement of the language, not negotiable.
-  There is currently a known counterexample (see Tests.lean). If you
-  encounter transitivity failure, fix `subCheckNF` or the underlying
+  If you encounter transitivity failure, fix `subCheckNF` or the underlying
   definitions — do NOT work around it or redesign VCompat to avoid needing
   transitivity. The language must bend to make transitivity true.
+
+- **absEval should probably check mu bodies at definition site.** Currently
+  absEval's mu case only validates the annotation, not the body. This is
+  likely the root cause of the annotation-trust blockers throughout the
+  soundness proof (soundness_open mu case, adequacy_gen self-elim, etc.).
+  The suggested approach: check the body with self (bvar 0) bound to the
+  annotation type, exactly like how lam bodies are checked with the
+  parameter bound to the domain type. Then assert the result is ⊑ the
+  annotation. Something like:
+  ```lean
+  | .mu ann body => do
+      let ann' ← absEval fuel ctx seen ann
+      let body' ← absEval fuel (TyCtx.extend ctx ann') seen body
+      if subCheckNF fuel ctx seen body'.val ann'.val then .ok ⟨.mu ann body⟩
+      else .error "mu body not ⊑ annotation"
+  ```
+  This shouldn't be circular — you're checking the body assuming self has
+  the annotation type, not unfolding the mu. This is the standard approach
+  for recursive types. It may require updating fuel_mono proofs and tests.
+  **If this approach doesn't work, document WHY** — understanding the
+  failure mode is as valuable as making it work. See SUGGESTIONS.md Phase 0
+  for details and previous attempts.
 
 - **No trivial solutions.** Do not achieve soundness by making the language
   weaker. Read `docs/why-och-matters-for-ochre.md` for what "going off track"

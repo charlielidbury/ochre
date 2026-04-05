@@ -3,72 +3,56 @@
 The current goal is proving soundness of Och. Here is the dependency chain
 and priority order for the remaining `sorry`s.
 
-## Phase 0: Fix annotation-trust soundness bug — PARTIALLY RESOLVED
+## Phase 0: Fix annotation-trust — SUGGESTED: check mu bodies at definition site
 
-**Update (agent ochre-20260405-020120):** The annotation normalization
-mismatch between concEval and absEval is FIXED. absEval's mu case now
-keeps the raw annotation (validates but doesn't normalize), so both
-evaluators produce `mu ann body` (same term). This eliminated 7 sorrys.
-The mu-app annotation-trust issue below remains but is less blocking.
+**The core problem:** absEval's mu case only validates the annotation, not the
+body. This means absEval can't guarantee the body is well-typed, which blocks
+the soundness proof everywhere (soundness_open mu case, adequacy_gen self-elim,
+absEval_preserves). All "annotation-trust" sorrys trace back to this.
 
-**absEval's mu-app annotation-trust case (Eval.lean:183-188) is unsound.**
+**Suggested approach:** Check the mu body at definition site, exactly like lam
+bodies are checked. Bind self (bvar 0) to the annotation type, absEval the
+body, and assert the result is ⊑ the annotation:
 
-When a mu is applied and both the annotation and body are lams, absEval
-uses the annotation's return type instead of evaluating the body:
 ```lean
-| .lam _dom retBody, .lam _ _ =>
-    absEval fuel ctx seen (retBody.subst 0 a'.val)
+| .mu ann body => do
+    let ann' ← absEval fuel ctx seen ann
+    let body' ← absEval fuel (TyCtx.extend ctx ann') seen body
+    if subCheckNF fuel ctx seen body'.val ann'.val then .ok ⟨.mu ann body⟩
+    else .error "mu body not ⊑ annotation"
 ```
 
-This trusts the annotation without validation. Counterexample:
-```
-app (mu (lam Type (lam Type (bvar 0))) (lam Type Type)) Type
-```
-absEval returns `lam Type (bvar 0)` (from annotation), concEval returns
-`Type` (from body). These are incompatible.
+**Why this should work:** This is the standard approach for recursive types.
+When checking `mu ann body`, you assume self has type `ann` and check that the
+body conforms to `ann`. This shouldn't be circular — you're not unfolding the
+mu, you're checking the body under an assumption about self's type. It's
+analogous to how `lam dom body` checks the body with bvar 0 bound to `dom`.
 
-**This MUST be fixed before the soundness theorem can be proved.**
+**Why this should unblock soundness:** The soundness_open mu case needs
+`absEval fuel (TyCtx.extend ctx ann') [] body = .ok body'` as a precondition
+for the structural IH on `body`. With this change, absEval would provide
+exactly that. The `body' ⊑ ann'` check also gives the adequacy connection
+between the body's behavior and the annotation's claim.
 
-### Option A: Validate annotations at mu creation ← TESTED, DOES NOT WORK
+**If this approach doesn't work, document WHY.** Understanding the failure
+mode (which tests break, which proofs cascade) is as valuable as making it
+work. The key question is whether `body' ⊑ ann'` holds for the real programs
+in the test suite (Church-encoded types, recursive functions, etc.).
 
-**Tested by agent ochre-20260404-215501. Result: breaks DNat and Array tests.**
+**Previous attempts (for context):**
+- Option A (agent ochre-20260404-215501) tested `body' ⊑ ann'.shift 1 0` —
+  this is DIFFERENT from what's suggested here. That checked the body against
+  the *shifted* annotation, which fails for Church-encoded types. The approach
+  above checks `body'.val ⊑ ann'.val` (both already normalized by absEval),
+  no shifting needed since we're comparing absEval outputs at the same level.
+- Option B (removing annotation-trust entirely) breaks too much.
+- Option C (WellAnnotated precondition) is a workaround, not a fix.
 
-The creation-time check `body' ⊑ ann'.shift 1 0` fails for Church-encoded
-types with complex annotations. The fundamental issue: inside the mu, self is
-abstract (bvar), so the body's return type involves symbolic applications
-(like `app s m` for dsucc) that subCheckNF can't compare against the
-annotation type (like `dNat`).
-
-Even a targeted lam-only validation (only checking when ann' is a lam) breaks
-because `dNat → dNat` is a lam. The fuel_mono proof update works, but the
-validation itself rejects legitimate types.
-
-**This option requires a more powerful subCheckNF that can reason about
-symbolic terms, or a fundamentally different validation strategy.**
-
-### Option B: Remove annotation-trust ← TESTED, BREAKS TOO MUCH
-
-**Tested by agent ochre-20260404-204421. Result: breaks DNat and Vec tests.**
-
-Removing the annotation-trust case causes `absEval` to use the body-based
-path (self-substitution + seen set) for ALL mu-lam applications. This breaks:
-- `done_ ⊑ dNat`, `dtwo ⊑ dNat`, `dthree ⊑ dNat` (DNat.lean)
-- `appendVec ⊑ expected_type` (Vec.lean — the NORTH STAR test)
-
-The body-based path hits the seen-set cutoff for recursive types, producing
-symbolic applications instead of the annotation's return type. These symbolic
-applications can't be subtype-checked against the expected types.
-
-**This option is NOT viable without major library restructuring.**
-
-The fuel_mono proof update works (just route all lam bodies through
-`absEval_fuel_mono_mu_lam_body`), so if Option A is chosen, the mu-app
-fuel_mono case is already solved.
-
-### Option C: WellAnnotated precondition (WEAKEST)
-
-Add a precondition to the soundness theorem that all mu annotations are
-correct. This is the weakest fix but allows progress on the proof.
+**Expected cascading changes:**
+- fuel_mono proofs will need updating (new absEval/subCheckNF calls in mu case)
+- Some tests may need more fuel (body checking costs fuel)
+- The mu-app annotation-trust case (Eval.lean:188) may become provable since
+  we'd now KNOW body ⊑ ann at definition site
 
 ## Phase 1: Foundation — fuel monotonicity ✅ COMPLETE
 
