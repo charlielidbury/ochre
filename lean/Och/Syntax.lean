@@ -364,6 +364,25 @@ theorem shift_closedAt (e : Expr) (n d c : Nat) (hc : c ≤ n)
     have := ih_body (n + 1) (c + 1) (by omega) h.2
     rwa [show n + 1 + d = n + d + 1 from by omega] at this
 
+/-- closedAt is monotone: if all bvars < n and n ≤ m, then all bvars < m. -/
+theorem closedAt_mono {e : Expr} {n m : Nat} (h : e.closedAt n = true) (hnm : n ≤ m)
+    : e.closedAt m = true := by
+  induction e generalizing n m with
+  | bvar k => simp [closedAt] at h ⊢; omega
+  | lam dom body ih_dom ih_body =>
+    simp [closedAt, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_dom h.1 hnm, ih_body h.2 (by omega)⟩
+  | app f a ih_f ih_a =>
+    simp [closedAt, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_f h.1 hnm, ih_a h.2 hnm⟩
+  | asc t y ih_t ih_y =>
+    simp [closedAt, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_t h.1 hnm, ih_y h.2 hnm⟩
+  | type => simp [closedAt]
+  | mu ann body ih_ann ih_body =>
+    simp [closedAt, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1 hnm, ih_body h.2 (by omega)⟩
+
 /-- Substitution preserves closedAt (generalized over subst position j).
     closedAt (j+n+1) e ∧ closedAt (j+n) s → closedAt (j+n) (e.subst j s)
     Standard de Bruijn lemma. Uses shift_closedAt for the lam/mu binder cases

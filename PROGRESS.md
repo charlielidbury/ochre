@@ -6,20 +6,54 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (6 in Soundness, 2 in Eval, 0 in Syntax)
+### Sorry inventory (6 in Soundness, 0 in Eval, 0 in Syntax)
 
-8 sorry DECLARATIONS total:
+6 sorry DECLARATIONS total:
 - Soundness.lean (6): app_inferType, absEval_preserves, adequacy_gen,
   subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
-- Eval.lean (2): subCheckNF_ctx_irrelevant, absEval_ctx_irrelevant.
-  These are NEW infrastructure lemmas — once proved, they immediately unblock
-  the lam-lam case of subCheckNF_substEnv.
-- Syntax.lean: 0 sorrys (ALL infrastructure complete).
+- Eval.lean: 0 sorrys. **ALL PROVED in this session.**
+- Syntax.lean: 0 sorrys.
 
-Note: The 2 new Eval.lean sorrys are INFRASTRUCTURE, not regressions. They
-represent ctx-irrelevance lemmas that were previously needed but unstated.
-Proving them is the HIGHEST PRIORITY next step — it directly unblocks the
-lam-lam case of subCheckNF_substEnv. See session summary below for details.
+Summary of session ochre-20260405-ctx-irrelevance:
+
+**PROVED: All remaining Eval.lean sorrys (ctx_irrelevant theorem)**
+
+The mutual `ctx_irrelevant` theorem in Eval.lean is now fully proved. This
+establishes that `subCheckNF` and `absEval` depend only on the first `d` entries
+of the context when terms are `closedAt d`. The proof required:
+
+1. **`inferType_closedAt`**: induction on `e generalizing d ty`, with careful
+   case analysis for `app` (uses `subst_closedAt`).
+
+2. **`isCallableNF_ctx_irrelevant`**: dispatches non-lam/non-mu cases via
+   `inferType_ctx_irrelevant`.
+
+3. **`TyCtx_extend_wf`**: both `0` and `succ j` cases proved using
+   `shift_closedAt`.
+
+4. **`ctx_irrelevant` mutual proof** (the main work):
+   - subCheckNF branch: used `cases b` approach to avoid `rename_i` issues;
+     extracted `inferType_fallback` and `self_elim` helpers; app-app case used
+     `simp only [hf_eq, ha_eq]` (not `rw`) since match variables get renamed.
+   - absEval branch: lam case uses `TyCtx_extend_ctx_irrelevant` and
+     `TyCtx_extend_wf`; mu case uses `cases lenient` with `simp`; asc case
+     uses `ih_sub`; app case handles all sub-cases including mu-app (split
+     following absEval's match structure, with `next` to get named vars after
+     split) and neutral app (via `isCallableNF_ctx_irrelevant`).
+
+Key fix for `simp only [hf_eq, ha_eq]` in app-app: the `split` tactic renames
+match pattern variables (e.g., `f1` → `f1_1`), so `rw` fails but `simp only`
+succeeds because it matches up to renaming.
+
+Key fix for mu-app case 2 (body = lam, ann ≠ lam): after `split`, the `body`
+variable is eliminated. Used `next _dom _retBody _` to name the fresh variables,
+then `Expr.lam _dom _retBody` explicitly throughout.
+
+Key fix for mu case (lenient branches): `simp only [Bool.not_false, ite_true,
+h_body_check]` closes the false/lenient case; `simp [Bool.not_true]` closes
+the true/lenient case.
+
+This fully unblocks the lam-lam case of `subCheckNF_substEnv` in Soundness.lean.
 
 Previous note: The total sorry count in Soundness.lean remains at ~34
 (expanded from ~25 by agent ochre-20260405-181325). Refl, structural mu,
