@@ -72,6 +72,7 @@ def VCompat : Nat → Expr → Expr → Prop
         ∀ (j : Nat), j ≤ n → ∀ (aV aT : Expr),
           ConcNF aV →
           VCompat j aV aT →
+          aT.closedAt 0 = true →
           ∀ (fuel : Nat) rv, concEval fuel (bodyV.subst 0 aV) = some rv →
           VCompat j rv (bodyT.subst 0 aT))
     -- Unfolded structural mu
@@ -1338,40 +1339,74 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
     Hard cases: mu-intro/elim (need absEval_substEnv commutation), inferType fallback
     (need inferType_substEnv commutation). The lam-lam case works with the
     existential ctx' = extend ctx' ⟨domB.substEnv γ⟩ for the body sub-check. -/
-theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List Expr}
-    (hsub : subCheckNF fuel ctx [] σ τ = true)
-    (hγ : γ.length = ctx.length)
-    (hσ_cl : σ.closedAt ctx.length = true)
-    (hτ_cl : τ.closedAt ctx.length = true)
-    (hγ_cl : ∀ k (hk : k < γ.length), (γ[k]).closedAt 0 = true)
-    : ∃ (fuel' : Nat) (ctx' : TyCtx), subCheckNF fuel' ctx' [] (σ.substEnv γ) (τ.substEnv γ) = true := by
-  -- Easy case: σ = τ → σ.substEnv γ = τ.substEnv γ → equality check succeeds
-  by_cases heq : σ = τ
-  · subst heq
-    exact ⟨1, [], by unfold subCheckNF; simp [BEq.beq, Expr.beq_refl]⟩
-  · -- Non-trivial case: σ ≠ τ
-    -- τ = type: Type.substEnv γ = Type, and subCheckNF _ _ _ σ' Type = true
-    match τ with
-    | .type =>
-      simp only [Expr.substEnv]
-      exact ⟨1, [], by unfold subCheckNF; simp⟩
-    | .lam domB bodyB =>
-      -- Structural lam-lam or inferType fallback
-      match σ with
-      | .lam domA bodyA =>
-        -- lam-lam: subCheckNF checks contravariant domain + covariant body
-        -- Need to extract the two sub-checks from hsub
-        cases fuel with
-        | zero => simp [subCheckNF] at hsub
-        | succ k =>
-          -- subCheckNF (k+1) ctx [] (lam domA bodyA) (lam domB bodyB)
-          -- = if eq then true else if seen then true else
-          --   match .lam domB bodyB with | .type => true | _ =>
-          --     match .lam domA bodyA, .lam domB bodyB with
-          --     | .lam domA bodyA, .lam domB bodyB =>
-          --       subCheckNF k ctx [] domB domA && subCheckNF k (extend ctx ⟨domB⟩) [] bodyA bodyB
-          -- After the equality and seen checks fail (σ ≠ τ, seen = []), reduces to the conjunction.
-          -- Extract the sub-checks by showing the intermediate match steps.
+private theorem liftEnvN_closedAt_succ {γ : List Expr} {d : Nat}
+    (hγ : ∀ k (hk : k < γ.length), (γ[k]).closedAt d = true)
+    : ∀ k (hk : k < (Expr.liftEnvN 1 γ).length), ((Expr.liftEnvN 1 γ)[k]).closedAt (d + 1) = true := by
+  intro k hk
+  rw [Expr.liftEnvN_length] at hk
+  simp only [Expr.liftEnvN]
+  cases k with
+  | zero =>
+    simp [List.getElem_cons_zero, Expr.closedAt]
+  | succ j =>
+    have hj : j < γ.length := by omega
+    -- The element at j+1 in (bvar 0 :: γ.map (·.shift 1 0)) is (γ[j]).shift 1 0
+    have h_elem : ((.bvar 0 : Expr) :: γ.map (·.shift 1 0))[j + 1] = (γ[j]).shift 1 0 := by
+      simp
+    rw [h_elem]
+    exact Expr.shift_closedAt (γ[j]) d 1 0 (Nat.zero_le d) (hγ j hj)
+
+private theorem TyCtx_extend_ctx_wf {ctx' : TyCtx} {d : Nat} {domB' : Expr}
+    (hctx_wf : ∀ i (v : NfExpr), ctx'.get? i = some v → i < d → v.val.closedAt d = true)
+    (h_domB_cl : domB'.closedAt d = true)
+    : ∀ i (v : NfExpr), (TyCtx.extend ctx' ⟨domB'⟩).get? i = some v → i < d + 1 → v.val.closedAt (d + 1) = true := by
+  intro i v hget hi
+  unfold TyCtx.extend at hget
+  cases i with
+  | zero =>
+    simp [List.get?] at hget; subst hget
+    exact Expr.shift_closedAt domB' d 1 0 (Nat.zero_le d) h_domB_cl
+  | succ j =>
+    have hj : j < d := by omega
+    simp only [List.get?_cons_succ] at hget
+    -- hget : (ctx'.map (fun e => ⟨e.val.shift 1 0⟩)).get? j = some v
+    -- Extract w from ctx' such that v = ⟨w.val.shift 1 0⟩
+    rw [List.get?_map] at hget
+    match hm : ctx'.get? j, hget with
+    | some w, hget' =>
+      have hv : v = ⟨w.val.shift 1 0⟩ := by simp [hm] at hget'; exact hget'.symm
+      rw [hv]
+      exact Expr.shift_closedAt w.val d 1 0 (Nat.zero_le d) (hctx_wf j w hm hj)
+
+/-- Substitution environment transport: if subCheckNF succeeds in ctx with terms
+    closedAt ctx.length, it succeeds at any well-formed target context after substEnv.
+    The depth parameter d tracks closedness of γ entries (d=0 at top level, d+1 under binders). -/
+theorem subCheckNF_substEnv :
+    ∀ (fuel : Nat) {ctx : TyCtx} {d : Nat} {σ τ : Expr} {γ : List Expr},
+    subCheckNF fuel ctx [] σ τ = true →
+    γ.length = ctx.length →
+    σ.closedAt ctx.length = true →
+    τ.closedAt ctx.length = true →
+    (∀ k (hk : k < γ.length), (γ[k]).closedAt d = true) →
+    ∀ (ctx' : TyCtx),
+    (∀ i (v : NfExpr), ctx'.get? i = some v → i < d → v.val.closedAt d = true) →
+    ∃ (fuel' : Nat), subCheckNF fuel' ctx' [] (σ.substEnv γ) (τ.substEnv γ) = true := by
+  intro fuel
+  induction fuel with
+  | zero => intro ctx d σ τ γ hsub; simp [subCheckNF] at hsub
+  | succ k ih =>
+    intro ctx d σ τ γ hsub hγ hσ_cl hτ_cl hγ_cl ctx' hctx_wf
+    by_cases heq : σ = τ
+    · subst heq
+      exact ⟨1, by unfold subCheckNF; simp [BEq.beq, Expr.beq_refl]⟩
+    · match τ with
+      | .type =>
+        simp only [Expr.substEnv]
+        exact ⟨1, by unfold subCheckNF; simp⟩
+      | .lam domB bodyB =>
+        match σ with
+        | .lam domA bodyA =>
+          -- Extract the two sub-checks from hsub
           have h_conj : subCheckNF k ctx [] domB domA = true ∧ subCheckNF k (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB = true := by
             unfold subCheckNF at hsub; dsimp only [] at hsub
             have h_neq : (Expr.lam domA bodyA == Expr.lam domB bodyB) = false := by
@@ -1379,21 +1414,41 @@ theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List
             simp only [h_neq, ite_false, List.any_nil, Bool.false_eq_true, Bool.and_eq_true] at hsub
             exact hsub
           obtain ⟨h_dom, h_body⟩ := h_conj
-          -- PROOF STRATEGY (pending subCheckNF_ctx_irrelevant):
-          -- 1. Recursive IH on domain: ∃ f₁ c₁, subCheckNF f₁ c₁ [] domB' domA' = true
-          -- 2. Recursive IH on body: ∃ f₂ c₂, subCheckNF f₂ c₂ [] bodyA' bodyB' = true
-          -- 3. Substituted domains are closedAt 0 (by substEnv_closedAt + hσ_cl/hτ_cl + hγ_cl)
-          -- 4. Substituted bodies are closedAt 1 (same reasoning with d=1)
-          -- 5. By subCheckNF_ctx_irrelevant (d=0): domain check at c₁ → domain check at ANY ctx
-          -- 6. By subCheckNF_ctx_irrelevant (d=1): body check at c₂ → body check at
-          --    (extend any_ctx ⟨domB'⟩) provided ctx[0] matches (it does: both are domB')
-          -- 7. Combine with subCheckNF_fuel_mono_le + construct lam-lam check at fuel max(f₁,f₂)+1
-          -- BLOCKED BY: subCheckNF_ctx_irrelevant (sorry'd in Eval.lean)
+          -- Decompose closedAt
+          simp only [Expr.closedAt, Bool.and_eq_true] at hσ_cl hτ_cl
+          -- Apply IH to domain (at depth d, same γ, same ctx')
+          obtain ⟨f₁, h_dom_sub⟩ := ih h_dom hγ hτ_cl.1 hσ_cl.1 hγ_cl ctx' hctx_wf
+          -- Apply IH to body (at depth d+1, liftEnvN 1 γ, extend ctx' ⟨domB.substEnv γ⟩)
+          have h_ext_len : (TyCtx.extend ctx ⟨domB⟩).length = ctx.length + 1 := by
+            simp [TyCtx.extend, List.length_cons, List.length_map]
+          have h_lift_len : (Expr.liftEnvN 1 γ).length = (TyCtx.extend ctx ⟨domB⟩).length := by
+            rw [Expr.liftEnvN_length, h_ext_len]; omega
+          have h_lift_cl := liftEnvN_closedAt_succ hγ_cl
+          have h_domB_cl : (domB.substEnv γ).closedAt d = true :=
+            Expr.substEnv_closedAt domB γ d (by rw [hγ]; exact hτ_cl.1) hγ_cl
+          have h_body_ctx_wf := TyCtx_extend_ctx_wf hctx_wf h_domB_cl
+          obtain ⟨f₂, h_body_sub⟩ := ih h_body h_lift_len
+            (by rw [h_ext_len]; exact hσ_cl.2) (by rw [h_ext_len]; exact hτ_cl.2)
+            h_lift_cl (TyCtx.extend ctx' ⟨domB.substEnv γ⟩) h_body_ctx_wf
+          -- Align fuel using fuel_mono_le
+          have h_dom_max := subCheckNF_fuel_mono_le h_dom_sub (Nat.le_max_left f₁ f₂)
+          have h_body_max := subCheckNF_fuel_mono_le h_body_sub (Nat.le_max_right f₁ f₂)
+          -- Construct the combined lam-lam check at fuel (max f₁ f₂ + 1)
+          -- substEnv distributes over lam
+          show ∃ fuel', subCheckNF fuel' ctx' []
+            (Expr.lam (domA.substEnv γ) (bodyA.substEnv (Expr.liftEnvN 1 γ)))
+            (Expr.lam (domB.substEnv γ) (bodyB.substEnv (Expr.liftEnvN 1 γ))) = true
+          refine ⟨max f₁ f₂ + 1, ?_⟩
+          unfold subCheckNF; dsimp only []
+          by_cases h_eq_sub : (Expr.lam (domA.substEnv γ) (bodyA.substEnv (Expr.liftEnvN 1 γ))
+                              == Expr.lam (domB.substEnv γ) (bodyB.substEnv (Expr.liftEnvN 1 γ)))
+          · simp [h_eq_sub]
+          · simp only [h_eq_sub, ite_false, List.any_nil, Bool.false_eq_true, Bool.and_eq_true]
+            exact ⟨h_dom_max, h_body_max⟩
+        | _ =>
+          -- Non-lam σ vs lam τ: falls through to inferType
           sorry
-      | _ =>
-        -- Non-lam σ vs lam τ: falls through to inferType
-        sorry
-    | _ => sorry
+      | _ => sorry
 
 /-- General self-intro. -/
 theorem VCompat.from_self_intro_gen :
@@ -1552,19 +1607,22 @@ theorem ConcreteValEnv.cons {v : Expr} {γ : List Expr}
 def FunEnvCompat (n : Nat) (γV γT : List Expr) : Prop :=
   γV.length = γT.length ∧
   ConcreteValEnv γV ∧
-  ∀ i (hV : i < γV.length) (hT : i < γT.length), VCompat n (γV[i]) (γT[i])
+  (∀ i (hV : i < γV.length) (hT : i < γT.length), VCompat n (γV[i]) (γT[i])) ∧
+  (∀ k (hk : k < γT.length), (γT[k]).closedAt 0 = true)
 
 /-- Empty FunEnvCompat. -/
 theorem FunEnvCompat.nil (n : Nat) : FunEnvCompat n [] [] :=
-  ⟨rfl, ConcreteValEnv.nil, fun i h => absurd h (Nat.not_lt_zero i)⟩
+  ⟨rfl, ConcreteValEnv.nil, fun i h => absurd h (Nat.not_lt_zero i),
+   fun k hk => absurd hk (Nat.not_lt_zero k)⟩
 
 /-- Extend FunEnvCompat with a ConcNF-value pair. -/
 theorem FunEnvCompat.cons {n : Nat} {v τ : Expr} {γV γT : List Expr}
     (hval : ConcNF v)
     (hcompat : VCompat n v τ)
     (henv : FunEnvCompat n γV γT)
+    (hτ_cl : τ.closedAt 0 = true)
     : FunEnvCompat n (v :: γV) (τ :: γT) := by
-  obtain ⟨hlen, hval_env, hvc⟩ := henv
+  obtain ⟨hlen, hval_env, hvc, hcl⟩ := henv
   exact ⟨by simp [hlen], ConcreteValEnv.cons hval hval_env,
     fun i hiV hiT => by
       cases i with
@@ -1573,19 +1631,26 @@ theorem FunEnvCompat.cons {n : Nat} {v τ : Expr} {γV γT : List Expr}
         simp only [List.getElem_cons_succ]
         have hjV : j < γV.length := by simp [List.length_cons] at hiV; omega
         have hjT : j < γT.length := by simp [List.length_cons] at hiT; omega
-        exact hvc j hjV hjT⟩
+        exact hvc j hjV hjT,
+    fun k hk => by
+      cases k with
+      | zero => simp [List.getElem_cons_zero]; exact hτ_cl
+      | succ j =>
+        simp only [List.getElem_cons_succ]
+        have hjT : j < γT.length := by simp [List.length_cons] at hk; omega
+        exact hcl j hjT⟩
 
 /-- Downward closure for FunEnvCompat. -/
 theorem FunEnvCompat.mono {n : Nat} {γV γT : List Expr}
     (h : FunEnvCompat (n + 1) γV γT) : FunEnvCompat n γV γT := by
-  obtain ⟨hlen, hval, hvc⟩ := h
-  exact ⟨hlen, hval, fun i hiV hiT => VCompat.mono (hvc i hiV hiT)⟩
+  obtain ⟨hlen, hval, hvc, hcl⟩ := h
+  exact ⟨hlen, hval, fun i hiV hiT => VCompat.mono (hvc i hiV hiT), hcl⟩
 
 /-- Multi-step downward closure for FunEnvCompat. -/
 theorem FunEnvCompat.mono_le {n m : Nat} {γV γT : List Expr}
     (h : FunEnvCompat n γV γT) (hle : m ≤ n) : FunEnvCompat m γV γT := by
-  obtain ⟨hlen, hval, hvc⟩ := h
-  exact ⟨hlen, hval, fun i hiV hiT => VCompat.mono_le (hvc i hiV hiT) hle⟩
+  obtain ⟨hlen, hval, hvc, hcl⟩ := h
+  exact ⟨hlen, hval, fun i hiV hiT => VCompat.mono_le (hvc i hiV hiT) hle, hcl⟩
 
 /-! ## Fundamental theorem of the logical relation (open-term soundness)
 
@@ -1657,10 +1722,10 @@ theorem soundness_open (e : Expr)
       have hk_lt : k < ctx.length := by simp [Expr.closedAt] at h_closed; exact h_closed
       have hk_lt_T : k < γT.length := by omega
       have hk_lt_V : k < γV.length := by
-        obtain ⟨hlen, _, _⟩ := h_env; omega
+        obtain ⟨hlen, _, _, _⟩ := h_env; omega
       simp only [Expr.substEnv, hk_lt_V, ite_true] at h_conc
       simp only [hk_lt_T, ite_true]
-      obtain ⟨_, hval_env, hvc⟩ := h_env
+      obtain ⟨_, hval_env, hvc, _⟩ := h_env
       have hval_k : ConcNF (γV[k]) := hval_env k hk_lt_V
       rw [getElem!_pos γV k hk_lt_V] at h_conc
       have hidem := ConcNF_concEval_idem hval_k h_conc
@@ -1723,7 +1788,7 @@ theorem soundness_open (e : Expr)
               have h_closed_body : body.closedAt (ctx.length + 1) = true := by
                 simp [Expr.closedAt] at h_closed; exact h_closed.2
               have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
-                obtain ⟨hlen, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
+                obtain ⟨hlen, _, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
               have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
                 rw [← h_ctx] at h_closed_body; exact h_closed_body
               rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
@@ -1753,7 +1818,7 @@ theorem soundness_open (e : Expr)
             have h_closed_body : body.closedAt (ctx.length + 1) = true := by
               simp [Expr.closedAt] at h_closed; exact h_closed.2
             have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
-              obtain ⟨hlen, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
+              obtain ⟨hlen, _, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
             have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
               rw [← h_ctx] at h_closed_body; exact h_closed_body
             rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
@@ -1791,7 +1856,7 @@ theorem soundness_open (e : Expr)
           | succ m =>
             unfold VCompat
             apply Or.inr; apply Or.inr; apply Or.inl
-            exact ⟨_, _, _, _, rfl, rfl, fun j hj aV aT hval_aV hcompat_arg fuel' rv h_conc_body => by
+            exact ⟨_, _, _, _, rfl, rfl, fun j hj aV aT hval_aV hcompat_arg haT_cl fuel' rv h_conc_body => by
               -- Prove the semantic lam (no absEval on type side):
               -- bodyV.subst 0 aV = body.substEnv (aV :: γV) (composition)
               -- bodyT.subst 0 aT = body'.val.substEnv (aT :: γT) (composition)
@@ -1799,7 +1864,7 @@ theorem soundness_open (e : Expr)
               have h_closed_body : body.closedAt (ctx.length + 1) = true := by
                 simp [Expr.closedAt] at h_closed; exact h_closed.2
               have h_closed_body_env : body.closedAt (γV.length + 1) = true := by
-                obtain ⟨hlen, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body
+                obtain ⟨hlen, _, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body
                 exact h_closed_body
               -- Composition on concrete side: rewrite subst as substEnv
               rw [Expr.substEnv_subst_comp body γV aV h_closed_body_env] at h_conc_body
@@ -1816,7 +1881,7 @@ theorem soundness_open (e : Expr)
               have h_conc_max := concEval_fuel_mono_le h_conc_body (Nat.le_max_left fuel' fk)
               -- Build extended environment
               have h_env_ext : FunEnvCompat j (aV :: γV) (aT :: γT) := by
-                exact FunEnvCompat.cons hval_aV hcompat_arg (FunEnvCompat.mono_le h_env (by omega))
+                exact FunEnvCompat.cons hval_aV hcompat_arg (FunEnvCompat.mono_le h_env (by omega)) haT_cl
               exact ih_body (max fuel' fk) (TyCtx.extend ctx dom') body' lenient h_abs_max
                 j (aV :: γV) (aT :: γT) h_env_ext
                 (by simp [TyCtx.extend, List.length_cons, List.length_map]; omega)
@@ -1861,9 +1926,9 @@ theorem soundness_open (e : Expr)
             have hσ_cl := absEval_preserves_closedAt h_sigma h_closed_term
             have hτ_cl := absEval_preserves_closedAt h_tau h_closed_ty
             have hγT_cl : ∀ k (hk : k < γT.length), (γT[k]).closedAt 0 = true := by
-              obtain ⟨hlen, hval_env, hvc⟩ := h_env
-              intro k hk; sorry -- TODO: need ConcreteValEnv → closedAt 0 or FunEnvCompat → closedAt
-            obtain ⟨fuel', ctx', hsub_cl⟩ := subCheckNF_substEnv hsub h_ctx hσ_cl hτ_cl hγT_cl
+              obtain ⟨_, _, _, hcl⟩ := h_env; exact hcl
+            obtain ⟨fuel', hsub_cl⟩ := subCheckNF_substEnv _ hsub h_ctx hσ_cl hτ_cl hγT_cl []
+              (by intro i v _ hi; omega)
             exact VCompat.adequacy ih_v_sigma hsub_cl
           · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at h_abs; simp at h_abs
   | app f a ih_f ih_a =>
