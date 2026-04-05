@@ -169,6 +169,46 @@ pred_ and similar tests. Raw domains inside nested lam bodies cause domain
 check failures. The mu change worked because annotations are only consumed
 by subCheckNF (which normalizes on demand), not by absEval's domain check.
 
+**THE DUAL-SUBSTITUTION PROBLEM (agent ochre-20260405-031505 analysis):**
+
+The fundamental blocker for both soundness lam and app(lam-lam) is that
+absEval's lam case normalizes bodies:
+- concEval(lam dom body) = lam dom body (raw)
+- absEval(lam dom body) = lam dom'.val body'.val (normalized)
+
+When this lam is applied, the evaluators beta-reduce DIFFERENT bodies with
+DIFFERENT arguments:
+- concEval: body.subst 0 aV (raw body, concrete arg)
+- absEval: body'.val.subst 0 aT.val (normalized body, abstract arg)
+
+The soundness IH requires the SAME expression for both evaluators. No
+reformulation of the semantic lam (separate args, single arg, app-based)
+avoids this — the mismatch is between the BODIES (body vs body'.val) AND
+the ARGUMENTS (aV vs aT.val).
+
+Approaches explored and their status:
+- **Raw lam bodies**: REJECTED (breaks domain checks, see above).
+- **Single-expression semantic lam** (∀ e, concEval(app v e) → absEval(app v e)):
+  Would work if v = τ, but v ≠ τ due to normalization. And absEval internally
+  normalizes v before dispatching.
+- **Extracting semantic lam from VCompat**: BLOCKED by refl disjunct. VCompat
+  at step n+1 might hold via refl (v = τ), which doesn't give body compatibility.
+- **Ascription-based argument** (`app v (asc aV aT)`): DOESN'T HELP. Both
+  evaluators still evaluate different sub-expressions after beta-reduction.
+
+Potential paths forward (not yet attempted):
+1. **Generalized soundness**: Prove soundness for pairs of "compatible" expressions
+   simultaneously. Statement: if concEval(eC) = v and absEval(eA) = τ and
+   eC "simulates" eA (new relation), then VCompat n v τ.val. Would need
+   mutual induction with the simulation relation.
+2. **Biorthogonality**: Define VCompat observationally (v and τ "behave the same
+   in all contexts") without reference to body substitution. Standard technique
+   for step-indexed logical relations. Requires rethinking VCompat entirely.
+3. **Change absEval to not normalize lam bodies for domains that are values**:
+   The pred_ failure was specifically due to raw `PairNN_ = app (app Pair_ Nat_) Nat_`
+   in a domain position. If domains that are already values (lam, mu, type, bvar)
+   are kept raw while app/asc domains are normalized, this might work. Not tested.
+
 ## Known hazards
 
 - **VCompat must NOT have a general normalization disjunct.** A disjunct like

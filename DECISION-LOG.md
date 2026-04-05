@@ -38,6 +38,43 @@ path, changing fuel consumption. All tests pass including the north star
 
 ---
 
+## 2026-04-05: Raw lam body approach REJECTED
+
+**Agent:** ochre-20260405-031505
+
+**What:** Attempted to apply the same "keep raw, normalize on demand" strategy
+from mu annotations to lam bodies. Changed absEval's lam case to return
+⟨lam dom body⟩ (raw) instead of ⟨lam dom'.val body'.val⟩ (normalized), and
+updated subCheckNF's lam-lam case to normalize bodies on demand via absEval.
+
+**Why it was attempted:** Would make soundness lam case trivial by VCompat.refl
+(concEval and absEval both return the same raw lam). This is the same insight
+that made soundness mu trivial.
+
+**Why it FAILED:** Raw lam bodies contain raw DOMAINS in nested lams. When these
+lams are applied later (in absEval's app case), the domain check
+`subCheckNF fuel ctx seen a'.val dom` compares the argument against a raw domain
+like `app (app Pair_ Nat_) Nat_` instead of the normalized Pair type. subCheckNF
+can't handle this comparison.
+
+The mu annotation change worked because annotations are only consumed by
+subCheckNF (which was updated to normalize on demand), never by absEval's
+direct domain check. For lams, the domain appears in TWO places: subCheckNF's
+lam-lam comparison AND absEval's app-case domain check. Updating both would
+require normalizing domains on demand inside the app case, adding significant
+complexity.
+
+**Variant tested:** Keep normalized domain but raw body (`.ok ⟨.lam dom'.val body⟩`).
+This partially works but: (a) v ≠ τ.val (different domains), so refl doesn't apply,
+and (b) the semantic lam still has the dual-substitution problem (aV vs aT).
+
+**Impact on approach:** The "normalize on demand" strategy has reached its limit.
+The remaining soundness blockers (lam/app) require a different approach — either
+a generalized soundness theorem, a change to VCompat's semantic lam definition,
+or an entirely new proof strategy.
+
+---
+
 ## 2026-04-05: Fix self-elim to restore transitivity (two changes)
 
 **Agent:** ochre-20260405-013043
