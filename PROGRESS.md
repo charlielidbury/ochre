@@ -11,7 +11,14 @@ proving soundness.
 6 sorry DECLARATIONS: app_inferType, absEval_preserves, adequacy_gen,
 subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
 
-Changes by agent ochre-20260405-172626:
+Summary of changes by agent ochre-20260405-172626:
+
+**THREE CHANGES:**
+1. Detailed case analysis of adequacy_gen self-elim (4 sorrys), identifying
+   which sub-cases are provable and which are blocked. See analysis below.
+2. Generalized subCheckNF_substEnv conclusion from `∃ fuel'` to `∃ fuel' ctx'`
+   (existential context) — the old statement was unprovable for lam-lam body case.
+3. Proved 2 easy cases of subCheckNF_substEnv (equality and type).
 
 **ANALYSIS: adequacy_gen self-elim (4 sorrys: mu-lam, mu-bvar, mu-asc, mu-app)**
 
