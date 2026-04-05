@@ -6,16 +6,24 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (6 declarations in Soundness, 0 in Eval, 0 in Syntax)
+### Sorry inventory (6 in Soundness, 2 in Eval, 0 in Syntax)
 
-6 sorry DECLARATIONS: app_inferType, absEval_preserves, adequacy_gen,
-subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
-0 sorrys in Syntax.lean (ALL infrastructure complete).
+8 sorry DECLARATIONS total:
+- Soundness.lean (6): app_inferType, absEval_preserves, adequacy_gen,
+  subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
+- Eval.lean (2): subCheckNF_ctx_irrelevant, absEval_ctx_irrelevant.
+  These are NEW infrastructure lemmas — once proved, they immediately unblock
+  the lam-lam case of subCheckNF_substEnv.
+- Syntax.lean: 0 sorrys (ALL infrastructure complete).
 
-Note: The total sorry count increased from ~25 to ~34 because agent
-ochre-20260405-181325 expanded 4 monolithic self-elim sorrys into detailed
-sub-case analyses (7 localized sorrys each). The refl, structural mu, and
-impossible sub-cases are now PROVED. See session summary below.
+Note: The 2 new Eval.lean sorrys are INFRASTRUCTURE, not regressions. They
+represent ctx-irrelevance lemmas that were previously needed but unstated.
+Proving them is the HIGHEST PRIORITY next step — it directly unblocks the
+lam-lam case of subCheckNF_substEnv. See session summary below for details.
+
+Previous note: The total sorry count in Soundness.lean remains at ~34
+(expanded from ~25 by agent ochre-20260405-181325). Refl, structural mu,
+and impossible sub-cases are PROVED.
 
 Summary of changes by agent ochre-20260405-184922:
 
@@ -73,18 +81,27 @@ Summary of changes by agent ochre-20260405-184922:
 
 **RECOMMENDED NEXT STEPS (updated priority order):**
 
-1. **Prove `ctx_irrelevant_closed`** (Eval.lean, mutual theorem). This directly
-   unblocks subCheckNF_substEnv lam-lam case. Pattern: follow fuel_mono's structure,
-   track closedAt through binders, show ctx entries beyond closedAt depth are unused.
-   After proving, combine with substEnv_closedAt to close the lam-lam case.
+1. **HIGHEST PRIORITY: Prove `subCheckNF_ctx_irrelevant` and `absEval_ctx_irrelevant`**
+   (Eval.lean:924, 932). These are stated and sorry'd. Follow the fuel_mono pattern
+   (Eval.lean:740): mutual induction on fuel, conjunction of subCheckNF and absEval
+   results. At each case, show that closedAt d terms only access the first d entries.
+   Under binders, d increases by 1 and ctx extends with the SAME entry (from the
+   binder), so entries 0..d all match. ~200 lines, mechanical but critical.
+   **UNBLOCKS:** subCheckNF_substEnv lam-lam case (complete 7-step proof strategy
+   documented at Soundness.lean:1383). Also useful for other subCheckNF reasoning.
 
-2. **Attempt joint (fuel, expr) induction for soundness_open.** This unblocks the
+2. **Also needed for subCheckNF_substEnv call site:** Show γT entries are closedAt 0
+   (Soundness.lean:1876, sorry). Options: (a) add closedAt 0 to FunEnvCompat defn,
+   (b) prove ConcNF → closedAt 0 (since ConcNF values are lam/mu/type/neutral app,
+   all closedAt 0 if their sub-expressions are). The simplest fix is (b).
+
+3. **Attempt joint (fuel, expr) induction for soundness_open.** This unblocks the
    step-loss problem and the mu reflexivity problem simultaneously. The approach:
    use well-founded recursion on (fuel, sizeOf e) with Prod.Lex ordering. For lam:
    body is structurally smaller. For app: beta-reduced expression has less fuel.
    For mu: need n-induction within the VCompat goal (nested induction on step count).
 
-3. **Prove absEval_preserves for the easy remaining cases** (refl-mu is done,
+4. **Prove absEval_preserves for the easy remaining cases** (refl-mu is done,
    mu-right is done, etc. — focus on refl-app neutral and structural app neutral
    which should follow from structural app + IH).
 
