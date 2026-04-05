@@ -209,8 +209,17 @@ Potential paths forward:
    parameter added to the environment. This sidesteps dual-substitution because
    both evaluators work on the SAME body expression — the environment difference
    is captured by substEnv and the VCompat-related environments.
-   **Required:** Define substEnv (simultaneous substitution), prove composition
-   lemmas, define EnvCompat, prove the theorem. ~300-500 lines.
+   **Infrastructure status (agent ochre-20260405-053702):**
+   - ✅ substEnv defined (Syntax.lean:150)
+   - ✅ substEnv_idEnv proved (Syntax.lean:194)
+   - ✅ substEnv_subst_comp_gen proved modulo shift_subst_comm (Syntax.lean:430)
+   - ✅ substEnv_subst_comp (c=0 specialization) (Syntax.lean:478)
+   - ✅ EnvCompat defined (Soundness.lean:1108)
+   - ✅ closedAt, liftEnvN, shift lemmas all proved
+   - **BLOCKING: shift_subst_comm** (Syntax.lean:368) — ~50-100 lines to prove.
+     Standard de Bruijn lemma, needs generalization for binder cases.
+   - **NEXT: soundness_open** — State and prove the fundamental theorem.
+     Also needs absEval_preserves for the semantic lam case.
    See DECISION-LOG entry "2026-04-05: Fundamental theorem" for full analysis.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
