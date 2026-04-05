@@ -314,6 +314,60 @@ theorem VCompat.bvar_inferType {n : Nat} {v : Expr} {k : Nat} {ctx : TyCtx} {ty 
       apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
       exact Or.inr ⟨term, tyAsc, hv_asc, ih h_asc⟩
 
+/-- VCompat(n, v, app f a) implies VCompat(n, v, ty) when inferType infers
+    app f a to ty. Bridges the inferType fallback in subCheckNF for app terms.
+    Analogous to bvar_inferType but for application expressions.
+    SORRY: structural app case (v = app fV aV with VCompat components). -/
+theorem VCompat.app_inferType {n : Nat} {v f a : Expr} {ctx : TyCtx} {ty : Expr}
+    (hv : VCompat n v (.app f a))
+    (hinf : inferType ctx (.app f a) = some ty)
+    : VCompat n v ty := by
+  induction n generalizing v with
+  | zero => simp [VCompat]
+  | succ m ih =>
+    unfold VCompat at hv
+    rcases hv with
+      h_type | h_refl |
+      ⟨_, _, _, _, _, hτ_lam, _⟩ |
+      ⟨_, _, _, _, _, hτ_mu, _⟩ |
+      ⟨_, _, hτ_mu5, _⟩ |
+      ⟨_, _, ⟨_, _, _, _, hτ_mu6, _, _⟩⟩ |
+      ⟨ann, body, hv_mu, hv_body⟩ |
+      ⟨fV, fT, aV, aT, hv_eq, hτ_eq, h_f, h_a⟩ |
+      ⟨ctx', ty', hinf_v, hcompat⟩ |
+      ⟨term, tyAsc, hv_asc, h_asc⟩
+    · cases h_type   -- app ≠ type
+    · -- Refl: v = app f a. Use inferType disjunct.
+      subst h_refl
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact Or.inl ⟨ctx, ty, hinf, VCompat.refl m ty⟩
+    · cases hτ_lam   -- app ≠ lam
+    · cases hτ_mu    -- app ≠ mu
+    · cases hτ_mu5   -- app ≠ mu
+    · cases hτ_mu6   -- app ≠ mu
+    · -- Mu-left: v = mu ann body, VCompat m (body.subst) (app f a)
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inl
+      exact ⟨ann, body, hv_mu, ih hv_body⟩
+    · -- Structural app: v = app fV aV, VCompat m fV f, VCompat m aV a
+      -- HARD: need to relate inferType(app fV aV) to inferType(app f a)
+      -- through VCompat on components. This requires showing that VCompat
+      -- preserves type inference structure, which is non-trivial.
+      sorry
+    · -- InferType: inferType ctx' v = some ty', VCompat m ty' (app f a)
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact Or.inl ⟨ctx', ty', hinf_v, ih hcompat⟩
+    · -- Asc-left: v = asc term tyAsc, VCompat m term (app f a)
+      unfold VCompat
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+      exact Or.inr ⟨term, tyAsc, hv_asc, ih h_asc⟩
+
 /-- Normalization preserves VCompat: if VCompat(n, v, e) and absEval normalizes
     e to e', then VCompat(n, v, e'.val). KEY REMAINING LEMMA for inferType
     fallback sorrys and soundness mu case. -/
@@ -735,9 +789,19 @@ theorem VCompat.adequacy_gen :
               | .error _ => simp [habs] at hcheck
             | none => simp [hinf] at hcheck
           | app _fS _aS =>
-            -- σ = app, τ = lam: inferType fallback
-            -- BLOCKER: needs app_inferType lemma
-            sorry
+            -- σ = app, τ = lam: via app_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.app _fS _aS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.lam _dT _bT) ctx seen
+                  (VCompat.absEval_preserves (VCompat.app_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
         | bvar _j =>
           -- τ = bvar: case-split on σ
           cases σ with
@@ -769,9 +833,19 @@ theorem VCompat.adequacy_gen :
               | .error _ => simp [habs] at hcheck
             | none => simp [hinf] at hcheck
           | app _fS _aS =>
-            -- σ = app, τ = bvar: inferType fallback
-            -- BLOCKER: needs app_inferType lemma
-            sorry
+            -- σ = app, τ = bvar: via app_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.app _fS _aS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.bvar _j) ctx seen
+                  (VCompat.absEval_preserves (VCompat.app_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
         | asc _tA _tyA =>
           -- τ = asc: case-split on σ
           cases σ with
@@ -799,9 +873,19 @@ theorem VCompat.adequacy_gen :
               | .error _ => simp [habs] at hcheck
             | none => simp [hinf] at hcheck
           | app _fS _aS =>
-            -- σ = app, τ = asc: inferType fallback
-            -- BLOCKER: needs app_inferType lemma
-            sorry
+            -- σ = app, τ = asc: via app_inferType + absEval_preserves + ih_fuel
+            dsimp only [] at hcheck
+            match hinf : inferType ctx (Expr.app _fS _aS) with
+            | some ty =>
+              simp only [hinf] at hcheck
+              match habs : absEval k ctx seen ty with
+              | .ok ty' =>
+                simp only [habs] at hcheck
+                exact ih_fuel (m + 1) v ty'.val (Expr.asc _tA _tyA) ctx seen
+                  (VCompat.absEval_preserves (VCompat.app_inferType hv hinf) habs)
+                  hcheck hseen
+              | .error _ => simp [habs] at hcheck
+            | none => simp [hinf] at hcheck
         | app f2 a2 =>
           -- τ = app f2 a2. Case-split on σ to match subCheckNF dispatch.
           cases σ with
@@ -900,7 +984,21 @@ theorem VCompat.adequacy_gen :
                     h_asc hcheck_empty
                     (fun p hp => absurd hp (List.not_mem_nil p))⟩
             · -- Structural check failed, inferType fallback
-              sorry
+              -- Simplify hcheck: structural check is false, so the else branch applies
+              have hcong_false : (subCheckNF k ctx [] f1 f2 && subCheckNF k ctx [] a1 a2) = false := by
+                simp only [Bool.not_eq_true] at hcong; exact hcong
+              simp only [hcong_false, ite_false] at hcheck
+              match hinf : inferType ctx (Expr.app f1 a1) with
+              | some ty =>
+                simp only [hinf] at hcheck
+                match habs : absEval k ctx seen ty with
+                | .ok ty' =>
+                  simp only [habs] at hcheck
+                  exact ih_fuel (m + 1) v ty'.val (Expr.app f2 a2) ctx seen
+                    (VCompat.absEval_preserves (VCompat.app_inferType hv hinf) habs)
+                    hcheck hseen
+                | .error _ => simp [habs] at hcheck
+              | none => simp [hinf] at hcheck
           | mu _annS _bodyS =>
             -- σ = mu, τ = app: self-elim (same structure as mu-lam case)
             sorry
