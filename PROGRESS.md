@@ -6,7 +6,7 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (21 in Soundness, 8 in Eval, 0 in Syntax = 29 total)
+### Sorry inventory (21 in Soundness, 0 in Eval, 0 in Syntax = 21 total)
 
 Changes by agent ochre-20260405-152415:
 
@@ -39,23 +39,20 @@ the mu body check evaluation.
 **All tests pass** including appendArrays, appendVec, and the appendVec_wrong
 negative test (which confirms the type checker still catches bugs in dependent types).
 
-**New sorrys in Eval.lean (8):** fuel_mono and preserves_closedAt proofs were
-sorry'd due to the new lenient parameter changing the proof structure. These are
-straightforward to restore — the proofs just need to handle the `if !lenient`
-condition and the `lenient && isNeutral` / `|| lenient` branches by case-splitting
-on `lenient`.
+**Eval.lean proofs fully restored:** fuel_mono generalized over `lenient`
+parameter; preserves_closedAt uses `split at h_abs` to handle the conditions.
+0 sorrys in Eval.lean.
 
 **Helper: Expr.isNeutral** (Syntax.lean:65): `bvar → true | app → true | _ → false`.
 
 **NEXT STEPS:**
-1. **Restore Eval.lean proofs** (fuel_mono, preserves_closedAt): case-split on
-   `lenient` at each sorry site. When `lenient=false`, the optimistic branches are
-   dead code. When `lenient=true`, the body check is skipped. Both cases should
-   follow the original proof structure.
-2. **Prove soundness_open mu case** (Soundness.lean:1364): with the body check,
+1. **Prove soundness_open mu case** (Soundness.lean:1364): with the body check,
    ih_body is now available. Use induction on n to build FunEnvCompat for extended
-   environments (self = mu), then apply ih_body.
-3. **Continue with remaining soundness sorrys** per SUGGESTIONS.md Phase 2-4.
+   environments (self = mu), then apply ih_body. Note: need to handle the
+   mismatch between ih_body's result (VCompat with body'.val.substEnv γT_ext) and
+   the structural mu disjunct (VCompat with body.substEnv γT_ext). May need
+   absEval_preserves or a bridging lemma.
+2. **Continue with remaining soundness sorrys** per SUGGESTIONS.md Phase 2-4.
 
 Changes by agent ochre-20260405-091658:
 
