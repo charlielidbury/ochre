@@ -165,16 +165,340 @@ def idEnv : Nat → List Expr
   | 0 => []
   | n + 1 => (.bvar 0) :: (idEnv n).map (·.shift 1 0)
 
+private theorem idEnv_length (n : Nat) : (idEnv n).length = n := by
+  induction n with
+  | zero => rfl
+  | succ k ih => simp [idEnv, ih]
+
+private theorem idEnv_getElem? (n k : Nat) (h : k < n) : (idEnv n)[k]? = some (.bvar k) := by
+  induction n generalizing k with
+  | zero => omega
+  | succ m ih =>
+    unfold idEnv
+    cases k with
+    | zero => simp [List.getElem?_cons_zero]
+    | succ j =>
+      simp [List.getElem?_cons_succ, List.getElem?_map]
+      have hj : j < m := by omega
+      rw [ih j hj]
+      simp [shift]
+
+private theorem lift_idEnv (n : Nat) :
+    (.bvar 0 :: List.map (fun x => shift 1 0 x) (idEnv n)) = idEnv (n + 1) := by
+  simp [idEnv]
+
 /-- substEnv with any identity environment is the identity.
-    Key lemma: the idEnv n entries satisfy (idEnv n)[k]! = bvar k for k < n,
+    Key lemma: the idEnv n entries satisfy (idEnv n)[k]? = some (bvar k) for k < n,
     and substEnv maps bvar k (k ≥ n) to bvar k. So all variables are preserved.
     The lam/mu cases use: bvar 0 :: (idEnv n).map (shift 1 0) = idEnv (n+1). -/
 theorem substEnv_idEnv (n : Nat) (e : Expr) : substEnv (idEnv n) e = e := by
-  sorry
+  induction e generalizing n with
+  | bvar k =>
+    unfold substEnv
+    simp only [idEnv_length]
+    by_cases h : k < n
+    · simp [h, idEnv_getElem? n k h]
+    · simp [h]
+  | lam dom body ih_dom ih_body =>
+    simp only [substEnv, lift_idEnv]
+    congr 1
+    · exact ih_dom n
+    · exact ih_body (n + 1)
+  | app f a ih_f ih_a =>
+    simp only [substEnv]
+    congr 1
+    · exact ih_f n
+    · exact ih_a n
+  | asc t y ih_t ih_y =>
+    simp only [substEnv]
+    congr 1
+    · exact ih_t n
+    · exact ih_y n
+  | type => rfl
+  | mu ann body ih_ann ih_body =>
+    simp only [substEnv, lift_idEnv]
+    congr 1
+    · exact ih_ann n
+    · exact ih_body (n + 1)
 
 /-- Empty environment is identity. Corollary of substEnv_idEnv at n=0. -/
 theorem substEnv_nil (e : Expr) : substEnv [] e = e :=
   substEnv_idEnv 0 e
+
+/-! ## Shift composition and identity -/
+
+/-- Shifting by 0 is the identity. -/
+@[simp] theorem shift_zero (e : Expr) (c : Nat) : e.shift 0 c = e := by
+  induction e generalizing c with
+  | bvar k => unfold shift; split <;> simp_all
+  | lam d b ih_d ih_b =>
+    show Expr.lam (d.shift 0 c) (b.shift 0 (c+1)) = .lam d b
+    congr 1; exact ih_d c; exact ih_b (c+1)
+  | app f a ih_f ih_a =>
+    show Expr.app (f.shift 0 c) (a.shift 0 c) = .app f a
+    congr 1; exact ih_f c; exact ih_a c
+  | asc t y ih_t ih_y =>
+    show Expr.asc (t.shift 0 c) (y.shift 0 c) = .asc t y
+    congr 1; exact ih_t c; exact ih_y c
+  | type => rfl
+  | mu a b ih_a ih_b =>
+    show Expr.mu (a.shift 0 c) (b.shift 0 (c+1)) = .mu a b
+    congr 1; exact ih_a c; exact ih_b (c+1)
+
+/-- Composing shifts at the same cutoff: shifting by d₂ then d₁ = shifting by d₁+d₂.
+    Both shifts use the same cutoff c (the inner shift creates a gap at c,
+    the outer shift extends it). Under binders, cutoff increments by 1 for both. -/
+theorem shift_shift (e : Expr) (d1 d2 c : Nat) :
+    (e.shift d2 c).shift d1 (c + d2) = e.shift (d1 + d2) c := by
+  induction e generalizing c with
+  | bvar k =>
+    show (if k < c then Expr.bvar k else .bvar (k + d2)).shift d1 (c + d2) =
+         if k < c then .bvar k else .bvar (k + (d1 + d2))
+    split
+    · rename_i h; show (Expr.bvar k).shift d1 (c + d2) = .bvar k
+      unfold shift; simp [show k < c + d2 from by omega]
+    · rename_i h; show (Expr.bvar (k + d2)).shift d1 (c + d2) = .bvar (k + (d1 + d2))
+      unfold shift; simp [show ¬(k + d2 < c + d2) from by omega]; omega
+  | lam dom body ih_dom ih_body =>
+    show Expr.lam ((dom.shift d2 c).shift d1 (c + d2)) ((body.shift d2 (c+1)).shift d1 (c + d2 + 1)) =
+         .lam (dom.shift (d1+d2) c) (body.shift (d1+d2) (c+1))
+    congr 1; exact ih_dom c
+    rw [show c + d2 + 1 = (c+1) + d2 from by omega]; exact ih_body (c + 1)
+  | app f a ih_f ih_a =>
+    show Expr.app ((f.shift d2 c).shift d1 (c+d2)) ((a.shift d2 c).shift d1 (c+d2)) =
+         .app (f.shift (d1+d2) c) (a.shift (d1+d2) c)
+    congr 1; exact ih_f c; exact ih_a c
+  | asc t y ih_t ih_y =>
+    show Expr.asc ((t.shift d2 c).shift d1 (c+d2)) ((y.shift d2 c).shift d1 (c+d2)) =
+         .asc (t.shift (d1+d2) c) (y.shift (d1+d2) c)
+    congr 1; exact ih_t c; exact ih_y c
+  | type => rfl
+  | mu ann body ih_ann ih_body =>
+    show Expr.mu ((ann.shift d2 c).shift d1 (c+d2)) ((body.shift d2 (c+1)).shift d1 (c+d2+1)) =
+         .mu (ann.shift (d1+d2) c) (body.shift (d1+d2) (c+1))
+    congr 1; exact ih_ann c
+    rw [show c + d2 + 1 = (c+1) + d2 from by omega]; exact ih_body (c + 1)
+
+/-- Composing shifts at the SAME cutoff: (e.shift d₂ c).shift d₁ c = e.shift (d₁+d₂) c.
+    Unlike shift_shift (which uses cutoff c+d₂ for the outer shift), this uses
+    the same cutoff c for both. Valid because shift d₂ c produces no variables
+    in [c, c+d₂), so the outer cutoff can be anywhere in that range. -/
+theorem shift_shift_same (e : Expr) (d1 d2 c : Nat) :
+    (e.shift d2 c).shift d1 c = e.shift (d1 + d2) c := by
+  induction e generalizing c with
+  | bvar k =>
+    show (if k < c then Expr.bvar k else .bvar (k + d2)).shift d1 c =
+         if k < c then .bvar k else .bvar (k + (d1 + d2))
+    split
+    · rename_i h; unfold shift; simp [h]
+    · rename_i h; unfold shift; simp [show ¬(k + d2 < c) from by omega]; omega
+  | lam dom body ih_dom ih_body =>
+    show Expr.lam ((dom.shift d2 c).shift d1 c) ((body.shift d2 (c+1)).shift d1 (c+1)) =
+         .lam (dom.shift (d1+d2) c) (body.shift (d1+d2) (c+1))
+    congr 1; exact ih_dom c; exact ih_body (c+1)
+  | app f a ih_f ih_a =>
+    show Expr.app ((f.shift d2 c).shift d1 c) ((a.shift d2 c).shift d1 c) =
+         .app (f.shift (d1+d2) c) (a.shift (d1+d2) c)
+    congr 1; exact ih_f c; exact ih_a c
+  | asc t y ih_t ih_y =>
+    show Expr.asc ((t.shift d2 c).shift d1 c) ((y.shift d2 c).shift d1 c) =
+         .asc (t.shift (d1+d2) c) (y.shift (d1+d2) c)
+    congr 1; exact ih_t c; exact ih_y c
+  | type => rfl
+  | mu ann body ih_ann ih_body =>
+    show Expr.mu ((ann.shift d2 c).shift d1 c) ((body.shift d2 (c+1)).shift d1 (c+1)) =
+         .mu (ann.shift (d1+d2) c) (body.shift (d1+d2) (c+1))
+    congr 1; exact ih_ann c; exact ih_body (c+1)
+
+/-- Corollary: (s.shift c 0).shift 1 0 = s.shift (c+1) 0. -/
+theorem shift_succ (s : Expr) (c : Nat) : (s.shift c 0).shift 1 0 = s.shift (c + 1) 0 := by
+  have := shift_shift_same s 1 c 0; rw [Nat.add_comm] at this; exact this
+
+/-! ## closedAt: scope predicate for free variables -/
+
+/-- `closedAt n e` is true when all free variables in `e` have index < n.
+    An expression is "closed at depth n" if it has at most n free variables. -/
+def closedAt (n : Nat) : Expr → Bool
+  | .bvar k => k < n
+  | .lam dom body => closedAt n dom && closedAt (n + 1) body
+  | .app f a => closedAt n f && closedAt n a
+  | .asc term ty => closedAt n term && closedAt n ty
+  | .type => true
+  | .mu ann body => closedAt n ann && closedAt (n + 1) body
+
+/-! ## liftEnvN: iterated environment lifting -/
+
+/-- Lift an environment c times (going under c binders).
+    `liftEnvN 0 γ = γ`, `liftEnvN (c+1) γ = bvar 0 :: (liftEnvN c γ).map (shift 1 0)`.
+    Entries: for i < c, bvar i; for i ≥ c, (γ[i-c]).shift c 0. -/
+def liftEnvN : Nat → List Expr → List Expr
+  | 0, γ => γ
+  | c + 1, γ => (.bvar 0) :: (liftEnvN c γ).map (·.shift 1 0)
+
+theorem liftEnvN_length (c : Nat) (γ : List Expr)
+    : (liftEnvN c γ).length = c + γ.length := by
+  induction c with
+  | zero => simp [liftEnvN]
+  | succ k ih => simp [liftEnvN, ih]; omega
+
+/-- Entries of liftEnvN below the lifting depth are bvar i. -/
+theorem liftEnvN_getElem?_lt (c : Nat) (γ : List Expr) (i : Nat) (h : i < c)
+    : (liftEnvN c γ)[i]? = some (.bvar i) := by
+  induction c generalizing i with
+  | zero => omega
+  | succ k ih =>
+    simp [liftEnvN]
+    cases i with
+    | zero => simp [List.getElem?_cons_zero]
+    | succ j =>
+      simp [List.getElem?_cons_succ, List.getElem?_map]
+      have hj : j < k := by omega
+      rw [ih j hj]
+      simp [shift]
+
+/-! ## Shift-subst commutation -/
+
+/-- Shift-subst commutation: shifting up by 1 at cutoff 0 then substituting
+    at j+1 is the same as substituting at j then shifting up.
+
+    Standard de Bruijn substitution lemma. Required for the composition lemma's
+    bvar case (inductive step under binders). -/
+theorem shift_subst_comm (e : Expr) (j : Nat) (t : Expr) :
+    (e.shift 1 0).subst (j + 1) (t.shift 1 0) = (e.subst j t).shift 1 0 := by
+  sorry
+
+/-! ## Substitution composition lemma (for the fundamental theorem)
+
+The key infrastructure lemma: substituting with a "hole" environment
+(bvar 0 :: γ.map shift) then filling the hole with `subst` is the same as
+substituting with the filled environment (s :: γ).
+
+Required by the fundamental theorem to connect the semantic lambda
+(which uses subst for beta-reduction) with the open-term IH
+(which uses substEnv for environment extension). -/
+
+/-- The bvar case of the composition lemma: the entry at position k of
+    liftEnvN c env_L, after applying subst c, equals the entry of liftEnvN c env_R.
+    Proved by induction on c using shift_subst_comm. -/
+private theorem liftEnvN_entry_subst (c : Nat) (γ : List Expr) (s : Expr) (k : Nat)
+    (h : k < c + γ.length + 1) :
+    (((liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0)))[k]?).getD default).subst c (s.shift c 0)
+    = ((liftEnvN c (s :: γ))[k]?).getD default := by
+  induction c generalizing k with
+  | zero =>
+    simp [liftEnvN]
+    cases k with
+    | zero => simp [List.getElem?_cons_zero, subst]
+    | succ j =>
+      simp [List.getElem?_cons_succ, List.getElem?_map]
+      have hj : j < γ.length := by omega
+      have hv := List.getElem?_eq_getElem (α := Expr) hj
+      simp [hv, shift_subst_cancel]
+  | succ c' ih =>
+    simp [liftEnvN]
+    cases k with
+    | zero => simp [List.getElem?_cons_zero, subst]
+    | succ j =>
+      simp [List.getElem?_cons_succ, List.getElem?_map]
+      have hj : j < c' + γ.length + 1 := by omega
+      have hjL : j < (liftEnvN c' ((.bvar 0) :: γ.map (·.shift 1 0))).length := by
+        rw [liftEnvN_length]; simp; omega
+      have hjR : j < (liftEnvN c' (s :: γ)).length := by
+        rw [liftEnvN_length]; simp; omega
+      have hvL := List.getElem?_eq_getElem (α := Expr) hjL
+      have hvR := List.getElem?_eq_getElem (α := Expr) hjR
+      simp [hvL, hvR]
+      rw [show shift (c' + 1) 0 s = (s.shift c' 0).shift 1 0 from (shift_succ s c').symm]
+      rw [shift_subst_comm]
+      congr 1
+      have := ih j hj
+      simp [hvL, hvR] at this
+      exact this
+
+/-- Generalized composition lemma, parameterized by binder depth c.
+    At depth c, the environment has been lifted c times and the subst
+    position is c with value s.shift c 0.
+
+    The c=0 case gives the main composition lemma.
+
+    PROOF STATUS: All cases proved except shift_subst_comm (1 sorry in Syntax.lean).
+    The proof structure:
+    - bvar: via liftEnvN_entry_subst (induction on c, uses shift_subst_comm)
+    - lam/mu: IH on domain at depth c, IH on body at depth c+1
+      (substEnv's lifting = liftEnvN (c+1), shift_succ converts the subst value)
+    - app/asc: IH on both parts at depth c
+    - type: trivial -/
+theorem substEnv_subst_comp_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
+    (h : e.closedAt (c + γ.length + 1) = true)
+    : (e.substEnv (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0)))).subst c (s.shift c 0)
+    = e.substEnv (liftEnvN c (s :: γ)) := by
+  induction e generalizing c with
+  | type => rfl
+  | bvar k =>
+    simp [closedAt] at h
+    unfold substEnv
+    simp only [List.length_cons, List.length_map, liftEnvN_length]
+    simp only [show c + (γ.length + 1) = c + γ.length + 1 from by omega, h, ite_true]
+    exact liftEnvN_entry_subst c γ s k h
+  | lam dom body ih_dom ih_body =>
+    simp [closedAt, Bool.and_eq_true] at h
+    obtain ⟨h_dom, h_body⟩ := h
+    show Expr.lam
+      ((dom.substEnv (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0)))).subst c (s.shift c 0))
+      ((body.substEnv ((.bvar 0) :: (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0))).map (·.shift 1 0))).subst (c + 1) ((s.shift c 0).shift 1 0))
+    = Expr.lam
+      (dom.substEnv (liftEnvN c (s :: γ)))
+      (body.substEnv ((.bvar 0) :: (liftEnvN c (s :: γ)).map (·.shift 1 0)))
+    congr 1
+    · exact ih_dom c h_dom
+    · rw [show (.bvar 0 :: (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0))).map (·.shift 1 0))
+            = liftEnvN (c + 1) ((.bvar 0) :: γ.map (·.shift 1 0)) from by simp [liftEnvN],
+        show (.bvar 0 :: (liftEnvN c (s :: γ)).map (·.shift 1 0))
+            = liftEnvN (c + 1) (s :: γ) from by simp [liftEnvN],
+        shift_succ]
+      exact ih_body (c + 1) (by rw [show c + 1 + γ.length + 1 = c + γ.length + 1 + 1 from by omega]; exact h_body)
+  | app f a ih_f ih_a =>
+    simp [closedAt, Bool.and_eq_true] at h
+    show Expr.app
+      ((f.substEnv (liftEnvN c _)).subst c (s.shift c 0))
+      ((a.substEnv (liftEnvN c _)).subst c (s.shift c 0))
+    = Expr.app (f.substEnv (liftEnvN c _)) (a.substEnv (liftEnvN c _))
+    congr 1; exact ih_f c h.1; exact ih_a c h.2
+  | asc t y ih_t ih_y =>
+    simp [closedAt, Bool.and_eq_true] at h
+    show Expr.asc
+      ((t.substEnv (liftEnvN c _)).subst c (s.shift c 0))
+      ((y.substEnv (liftEnvN c _)).subst c (s.shift c 0))
+    = Expr.asc (t.substEnv (liftEnvN c _)) (y.substEnv (liftEnvN c _))
+    congr 1; exact ih_t c h.1; exact ih_y c h.2
+  | mu ann body ih_ann ih_body =>
+    simp [closedAt, Bool.and_eq_true] at h
+    obtain ⟨h_ann, h_body⟩ := h
+    show Expr.mu
+      ((ann.substEnv (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0)))).subst c (s.shift c 0))
+      ((body.substEnv ((.bvar 0) :: (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0))).map (·.shift 1 0))).subst (c + 1) ((s.shift c 0).shift 1 0))
+    = Expr.mu
+      (ann.substEnv (liftEnvN c (s :: γ)))
+      (body.substEnv ((.bvar 0) :: (liftEnvN c (s :: γ)).map (·.shift 1 0)))
+    congr 1
+    · exact ih_ann c h_ann
+    · rw [show (.bvar 0 :: (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0))).map (·.shift 1 0))
+            = liftEnvN (c + 1) ((.bvar 0) :: γ.map (·.shift 1 0)) from by simp [liftEnvN],
+        show (.bvar 0 :: (liftEnvN c (s :: γ)).map (·.shift 1 0))
+            = liftEnvN (c + 1) (s :: γ) from by simp [liftEnvN],
+        shift_succ]
+      exact ih_body (c + 1) (by rw [show c + 1 + γ.length + 1 = c + γ.length + 1 + 1 from by omega]; exact h_body)
+
+/-- Composition lemma at depth 0: the key lemma for the fundamental theorem.
+    `(e.substEnv (bvar 0 :: γ.map shift)).subst 0 s = e.substEnv (s :: γ)`
+    when e has at most γ.length + 1 free variables.
+
+    This connects beta-reduction (subst 0) with environment extension (s :: γ). -/
+theorem substEnv_subst_comp (e : Expr) (γ : List Expr) (s : Expr)
+    (h : e.closedAt (γ.length + 1) = true)
+    : (e.substEnv ((.bvar 0) :: γ.map (·.shift 1 0))).subst 0 s = e.substEnv (s :: γ) := by
+  have := substEnv_subst_comp_gen 0 e γ s (by simpa using h)
+  simpa [liftEnvN] using this
 
 end Expr
 
