@@ -6,7 +6,78 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (17 in Soundness, 0 in Eval, 0 in Syntax = 17 total)
+### Sorry inventory (22 in Soundness, 0 in Eval, 0 in Syntax = 22 total)
+
+Changes by agent ochre-20260405-080723:
+
+**STRUCTURED: soundness_open app case (Soundness.lean:1443-1576).**
+Expanded the single sorry into 6 well-defined sub-cases. Proved 3 sub-cases,
+showed 4 impossible. Net: +5 sorrys (1 → 6), but the structure is now clear.
+
+**Sub-cases and their status:**
+
+1. **fT.val = lam (abstract function type):**
+   - fV = lam (lam-lam): 1 SORRY. The KEY sub-case. Needs:
+     (a) Extract semantic lam from ih_fV
+     (b) isConcreteVal for aV — problem when aV = app (neutral application)
+     (c) substEnv_subst_comp to rewrite body substitution
+     (d) `absEval_preserves_VCompat_substEnv` — new helper needed:
+         if VCompat n v (e.substEnv γ) and absEval fuel ctx [] e = .ok τ,
+         then VCompat n v (τ.val.substEnv γ). This bridges from the semantic
+         lam's raw substitution to the absEval-normalized result.
+     (e) `subst_substEnv_comm` — new helper needed:
+         (e.subst 0 s).substEnv γ = e.substEnv (s.substEnv γ :: γ)
+         Standard de Bruijn property, ~50 lines.
+   - fV = mu (mu-lam): 1 SORRY. concEval unrolls mu, abstract beta-reduces.
+   - fV = type (type-lam): ✅ PROVED. VCompat n type (lam ...) is False for
+     n ≥ 1 (no disjunct matches: type ≠ lam/mu/app/asc, inferType type = none).
+   - fV = app (app-lam): 1 SORRY. ih_fV can hold via inferType disjunct.
+   - fV = bvar: ✅ IMPOSSIBLE (concEval_not_bvar).
+   - fV = asc: ✅ IMPOSSIBLE (concEval_not_asc).
+
+2. **fT.val = mu (abstract mu type):** 1 SORRY. Mu-app dispatch.
+
+3. **fT.val = type:** ✅ IMPOSSIBLE (absEval returns error).
+
+4. **fT.val = neutral (bvar/app/asc):**
+   - fV = type: ✅ PROVED via structural app + VCompat.mono on ih_fV/ih_aV.
+   - fV = app: ✅ PROVED via structural app + VCompat.mono on ih_fV/ih_aV.
+   - fV = lam: 1 SORRY. Concrete beta-reduces, abstract stays structural app.
+   - fV = mu: 1 SORRY. Concrete mu-unrolls, abstract stays structural app.
+   - fV = bvar: ✅ IMPOSSIBLE (concEval_not_bvar).
+   - fV = asc: ✅ IMPOSSIBLE (concEval_not_asc).
+
+**KEY INSIGHT: The lam-lam sub-case is the fundamental blocker.** It requires
+two new helper lemmas (absEval_preserves_VCompat_substEnv and
+subst_substEnv_comm) that don't exist yet. The semantic lam gives VCompat at
+the RAW body substitution, but the goal needs VCompat at the NORMALIZED result.
+Bridging this gap requires showing that absEval normalization preserves VCompat
+through substEnv.
+
+**NET: +5 sorrys (22 total, was 17). 1 opaque sorry → 6 structured sorrys,
+3 proved, 4 impossible.**
+
+**Remaining soundness_open sorrys (9 = 6 in app + 1 in mu + 1 in asc helper
++ 1 in subCheckNF_substEnv):**
+- **app sub-cases** (6 sorrys): detailed above
+- **mu case** (Soundness.lean:1341): 1 sorry, same as before
+- **subCheckNF_substEnv** (Soundness.lean:1055): 1 sorry, same as before
+
+**Remaining adequacy_gen sorrys (13):**
+Lines 365, 443, 449, 479, 482, 500, 581, 586, 730, 733, 782, 826, 866.
+(Line 1010 may have shifted; these are approximate.)
+
+**RECOMMENDED NEXT STEPS (priority order):**
+1. **Prove `subst_substEnv_comm`** (Syntax.lean, ~50 lines):
+   (e.subst 0 s).substEnv γ = e.substEnv (s.substEnv γ :: γ). Standard de Bruijn
+   property. Proof by induction on e generalizing depth. Needed for lam-lam.
+2. **Prove `absEval_preserves_VCompat_substEnv`** (Soundness.lean, ~100 lines):
+   VCompat n v (e.substEnv γ) + absEval fuel ctx [] e = .ok τ → VCompat n v
+   (τ.val.substEnv γ). Proof by n-induction like absEval_preserves. Needed
+   for lam-lam case.
+3. **Close lam-lam sub-case** using the above two lemmas + semantic lam.
+4. **Prove subCheckNF_substEnv** (Soundness.lean:1055). Standard property.
+5. **Work on mu case** (Soundness.lean:1341).
 
 Changes by agent ochre-20260405-074257:
 

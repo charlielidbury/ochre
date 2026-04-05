@@ -1443,9 +1443,153 @@ theorem soundness_open (e : Expr)
   | app f a ih_f ih_a =>
     -- The hardest case. concEval evaluates f and a, dispatches on f's value.
     -- absEval evaluates f and a, dispatches on f's type.
-    -- The fundamental theorem resolves the lam-lam sub-case (different bodies
-    -- and arguments) but other sub-cases remain complex.
-    sorry
+    have h_closed_f : f.closedAt ctx.length = true := by
+      simp [Expr.closedAt] at h_closed; exact h_closed.1
+    have h_closed_a : a.closedAt ctx.length = true := by
+      simp [Expr.closedAt] at h_closed; exact h_closed.2
+    cases fuel with
+    | zero => simp [absEval] at h_abs
+    | succ fk =>
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match hfT : absEval fk ctx [] f with
+      | .error _ => simp [hfT, bind, Except.bind] at h_abs
+      | .ok fT =>
+        simp only [hfT, bind, Except.bind] at h_abs
+        match haT : absEval fk ctx [] a with
+        | .error _ => simp [haT, bind, Except.bind] at h_abs
+        | .ok aT =>
+          simp only [haT, bind, Except.bind] at h_abs
+          -- Now extract fV and aV from concEval
+          simp only [Expr.substEnv] at h_conc ⊢
+          unfold concEval at h_conc
+          match hfV : concEval fk (f.substEnv γV) with
+          | none => simp [hfV] at h_conc
+          | some fV =>
+            match haV : concEval fk (a.substEnv γV) with
+            | none => simp [hfV, haV] at h_conc
+            | some aV =>
+              simp only [hfV, haV] at h_conc
+              -- Get IH results
+              have ih_fV := ih_f fk ctx fT hfT n γV γT h_env h_ctx h_closed_f fV hfV
+              have ih_aV := ih_a fk ctx aT haT n γV γT h_env h_ctx h_closed_a aV haV
+              -- Now dispatch on fT.val (absEval's function type)
+              match hfT_val : fT.val with
+              | .lam dom bodyT =>
+                -- absEval: domain check + beta-reduce
+                simp only [hfT_val] at h_abs
+                by_cases h_dom_check : subCheckNF fk ctx [] aT.val dom = true
+                · simp only [h_dom_check, ite_true] at h_abs
+                  -- h_abs : absEval fk ctx [] (bodyT.subst 0 aT.val) = .ok τ
+                  -- Rewrite ih_fV with the known fT.val = lam dom bodyT
+                  rw [hfT_val] at ih_fV
+                  simp only [Expr.substEnv] at ih_fV
+                  -- ih_fV : VCompat n fV (lam (dom.substEnv γT) (bodyT.substEnv (lift γT)))
+                  -- Dispatch on fV from concEval
+                  match fV, hfV with
+                  | .lam _domV bodyV, hfV =>
+                    -- CASE: lam-lam. The key sub-case.
+                    -- concEval: beta-reduce bodyV.subst 0 aV
+                    -- absEval: beta-reduce bodyT.subst 0 aT.val, then normalize
+                    -- The semantic lam from ih_fV bridges this.
+                    simp only [] at h_conc
+                    -- SORRY: Need to extract semantic lam from ih_fV, apply it with
+                    -- aV and aT.val.substEnv γT, get VCompat for the body substitution,
+                    -- then bridge to τ.val.substEnv γT via absEval_preserves.
+                    sorry
+                  | .mu annV bodyVmu, hfV =>
+                    -- CASE: mu concrete, lam abstract. concEval unrolls the mu.
+                    simp only [] at h_conc
+                    sorry
+                  | .type, hfV =>
+                    -- fV = type, fT.val = lam. ih_fV : VCompat n type (lam ...)
+                    -- At n ≥ 1, this is False: no disjunct matches.
+                    simp only [] at h_conc; injection h_conc with hv; subst hv
+                    cases n with
+                    | zero => simp [VCompat]
+                    | succ m =>
+                      exfalso
+                      unfold VCompat at ih_fV
+                      rcases ih_fV with
+                        h | h | ⟨_, _, _, _, h, _, _⟩ | ⟨_, _, _, _, h, _, _⟩ |
+                        ⟨_, _, h, _⟩ | ⟨_, _, _, _, _, _, h, _, _⟩ | ⟨_, _, h, _⟩ |
+                        ⟨_, _, _, _, h, _, _, _⟩ | ⟨ctx', ty', h, _⟩ | ⟨_, _, h, _⟩
+                      · cases h -- lam ≠ type
+                      · cases h -- type ≠ lam
+                      · cases h -- type ≠ lam (semantic lam)
+                      · cases h -- type ≠ mu (structural mu)
+                      · cases h -- lam ≠ mu (mu-right)
+                      · cases h -- lam ≠ mu (normalized mu-right)
+                      · cases h -- type ≠ mu (mu-left)
+                      · cases h -- type ≠ app (structural app)
+                      · simp [inferType] at h -- inferType type = none
+                      · cases h -- type ≠ asc (asc-left)
+                  | .app f1 a1, hfV =>
+                    -- fV = app, fT.val = lam. concEval returns app (app f1 a1) aV.
+                    -- ih_fV : VCompat n (app ...) (lam ...) — can hold via inferType.
+                    simp only [] at h_conc; injection h_conc with hv; subst hv
+                    sorry
+                  | .bvar k, hfV =>
+                    exact absurd hfV (by intro h; exact concEval_not_bvar h)
+                  | .asc t ty, hfV =>
+                    exact absurd hfV (by intro h; exact concEval_not_asc h)
+                · simp only [Bool.not_eq_true] at h_dom_check
+                  simp only [h_dom_check, ite_false] at h_abs; simp at h_abs
+              | .mu _annT bodyTmu =>
+                -- absEval: mu-app dispatch (annotation-trust or body-based)
+                simp only [hfT_val] at h_abs
+                sorry
+              | .type =>
+                -- absEval: Type is not callable → error
+                simp only [hfT_val] at h_abs; simp at h_abs
+              | .bvar _ | .app _ _ | .asc _ _ =>
+                -- absEval: neutral function type → structural app
+                simp only [hfT_val] at h_abs
+                by_cases hcall : isCallableNF ctx fT = true
+                · simp only [hcall, ite_true] at h_abs
+                  injection h_abs with hτ; subst hτ
+                  -- τ.val = app fT.val aT.val
+                  -- Goal: VCompat n v ((app fT.val aT.val).substEnv γT)
+                  -- Rewrite ih_fV to use the specific fT.val form
+                  rw [hfT_val] at ih_fV
+                  simp only [Expr.substEnv]
+                  -- Dispatch on fV from concEval
+                  match fV, hfV with
+                  | .lam _domV bodyV, hfV =>
+                    -- Concrete side beta-reduces, abstract is neutral app.
+                    simp only [] at h_conc
+                    sorry
+                  | .mu annV bodyVmu, hfV =>
+                    -- Concrete side does mu-unrolling, abstract is neutral app.
+                    simp only [] at h_conc
+                    sorry
+                  | .type, hfV =>
+                    -- Both sides produce neutral app
+                    simp only [] at h_conc; injection h_conc with hv; subst hv
+                    cases n with
+                    | zero => simp [VCompat]
+                    | succ m =>
+                      unfold VCompat
+                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                      exact ⟨_, _, _, _, rfl, rfl,
+                        VCompat.mono ih_fV, VCompat.mono ih_aV⟩
+                  | .app f1 a1, hfV =>
+                    -- Both sides produce neutral app
+                    simp only [] at h_conc; injection h_conc with hv; subst hv
+                    cases n with
+                    | zero => simp [VCompat]
+                    | succ m =>
+                      unfold VCompat
+                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+                      apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+                      exact ⟨_, _, _, _, rfl, rfl,
+                        VCompat.mono ih_fV, VCompat.mono ih_aV⟩
+                  | .bvar k, hfV =>
+                    exact absurd hfV (by intro h; exact concEval_not_bvar h)
+                  | .asc t ty, hfV =>
+                    exact absurd hfV (by intro h; exact concEval_not_asc h)
+                · simp only [Bool.not_eq_true] at hcall; simp only [hcall, ite_false] at h_abs
+                  simp at h_abs
 
 /-! ## Soundness theorem (closed-term version)
 
