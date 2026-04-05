@@ -1488,14 +1488,62 @@ theorem soundness_open (e : Expr)
                   match fV, hfV with
                   | .lam _domV bodyV, hfV =>
                     -- CASE: lam-lam. The key sub-case.
-                    -- concEval: beta-reduce bodyV.subst 0 aV
-                    -- absEval: beta-reduce bodyT.subst 0 aT.val, then normalize
-                    -- The semantic lam from ih_fV bridges this.
+                    -- concEval: beta-reduce bodyV.subst 0 aV → v
+                    -- absEval: beta-reduce bodyT.subst 0 aT.val → τ
+                    -- ih_fV : VCompat n (lam _domV bodyV) (lam (dom.substEnv γT) (bodyT.substEnv (lift γT)))
+                    -- ih_aV : VCompat n aV (aT.val.substEnv γT)
                     simp only [] at h_conc
-                    -- SORRY: Need to extract semantic lam from ih_fV, apply it with
-                    -- aV and aT.val.substEnv γT, get VCompat for the body substitution,
-                    -- then bridge to τ.val.substEnv γT via absEval_preserves.
-                    sorry
+                    -- h_conc : concEval fk (bodyV.subst 0 aV) = some v
+                    -- h_abs : absEval fk ctx [] (bodyT.subst 0 aT.val) = .ok τ
+                    -- Goal: VCompat n v (τ.val.substEnv γT)
+                    cases n with
+                    | zero => simp [VCompat]
+                    | succ m =>
+                      -- Extract semantic lam from ih_fV at step m+1
+                      unfold VCompat at ih_fV
+                      rcases ih_fV with
+                        h_type | h_refl |
+                        ⟨domV', domT', bodyV', bodyT', hv_lam, hτ_lam, h_sem_lam⟩ |
+                        ⟨_, _, _, _, hv_mu, _, _⟩ |
+                        ⟨_, _, hτ_mu, _⟩ |
+                        ⟨_, _, ⟨_, _, _, _, hτ_mu2, _, _⟩⟩ |
+                        ⟨_, _, hv_mu2, _⟩ |
+                        ⟨_, _, _, _, hv_app, _, _, _⟩ |
+                        ⟨_, _, _, _⟩ |
+                        ⟨_, _, hv_asc, _⟩
+                      · cases h_type -- lam ≠ type
+                      · -- Refl: lam _domV bodyV = lam (dom.substEnv γT) (bodyT.substEnv (lift γT))
+                        -- So bodyV = bodyT.substEnv (lift γT) and _domV = dom.substEnv γT
+                        injection h_refl with hd hb
+                        -- SORRY: In the refl case, bodyV = bodyT.substEnv(lift γT).
+                        -- concEval fk ((bodyT.substEnv (lift γT)).subst 0 aV) = some v
+                        -- absEval fk ctx [] (bodyT.subst 0 aT.val) = .ok τ
+                        -- Need: VCompat (m+1) v (τ.val.substEnv γT)
+                        -- This requires soundness_open for bodyT (not available as IH)
+                        -- or absEval_preserves_VCompat_substEnv.
+                        sorry
+                      · -- Semantic lam: the useful case
+                        injection hv_lam with hd1 hb1
+                        injection hτ_lam with hd2 hb2
+                        -- bodyV' = bodyV, bodyT' = bodyT.substEnv (lift γT)
+                        -- h_sem_lam : ∀ j ≤ m, ∀ aV' aT', isConcreteVal aV' →
+                        --   VCompat j aV' aT' → concEval fuel rv (bodyV.subst 0 aV') = some rv →
+                        --   VCompat j rv (bodyT'.subst 0 aT')
+                        -- Apply with j = m, aV' = aV, aT' = aT.val.substEnv γT
+                        -- BLOCKERS:
+                        -- 1. isConcreteVal aV (need to show concEval produces concrete values)
+                        -- 2. absEval_preserves_VCompat_substEnv to bridge from
+                        --    VCompat m v ((bodyT.subst 0 aT.val).substEnv γT) to
+                        --    VCompat m v (τ.val.substEnv γT)
+                        sorry
+                      · cases hv_mu  -- lam ≠ mu
+                      · cases hτ_mu  -- lam ≠ mu
+                      · cases hτ_mu2 -- lam ≠ mu
+                      · cases hv_mu2 -- lam ≠ mu
+                      · cases hv_app -- lam ≠ app
+                      · -- InferType on lam: inferType ctx (lam ...) = none
+                        simp [inferType] at *
+                      · cases hv_asc -- lam ≠ asc
                   | .mu annV bodyVmu, hfV =>
                     -- CASE: mu concrete, lam abstract. concEval unrolls the mu.
                     simp only [] at h_conc

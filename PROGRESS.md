@@ -6,7 +6,7 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (22 in Soundness, 0 in Eval, 0 in Syntax = 22 total)
+### Sorry inventory (21 in Soundness, 0 in Eval, 0 in Syntax = 21 total)
 
 Changes by agent ochre-20260405-085031:
 
@@ -37,22 +37,56 @@ soundness_open's app case:
 `subst_substEnv_comm` (the c=0 specialization) was already sorry-free,
 derived from `subst_substEnv_comm_gen`.
 
-**NET: -4 sorrys (22 total, was 26). Syntax.lean now fully proved.**
+**NET: -5 sorrys (21 total, was 26). Syntax.lean now fully proved.**
+
+**STRUCTURED: soundness_open app lam-lam sub-case (Soundness.lean:1498-1538).**
+Expanded the single sorry into n-case analysis + VCompat disjunct case split.
+Proved 8 impossible cases (lam ≠ type/mu/app/asc, inferType lam = none).
+Reduced to 2 precise sorrys:
+- **Refl case** (1 sorry): bodyV = bodyT.substEnv(lift γT). Needs soundness
+  for bodyT under extended env, which is NOT available as IH (bodyT is not a
+  sub-expression of `app f a`). May need absEval_preserves_VCompat_substEnv.
+- **Semantic lam case** (1 sorry): The main path. Two blockers:
+  (a) isConcreteVal for aV (concEval produces concrete values — not proved)
+  (b) absEval_preserves_VCompat_substEnv to bridge from raw body substitution
+      to absEval-normalized result through substEnv.
+  The composition chain: semantic lam gives VCompat on (bodyT'.subst 0 aT'),
+  then substEnv_subst_comp + subst_substEnv_comm equate this to
+  (bodyT.subst 0 aT.val).substEnv γT, then absEval_preserves bridges to
+  τ.val.substEnv γT. All composition lemmas are NOW PROVED.
 
 **REMAINING (all in Soundness.lean, 22 sorrys):**
 - adequacy_gen: ~13 sorrys (lam-lam, self-elim, absEval_preserves sub-cases)
-- soundness_open: 8 sorrys (mu case, 6 app sub-cases, subCheckNF_substEnv)
+- soundness_open: 9 sorrys (mu case, 7 app sub-cases, subCheckNF_substEnv)
 - app_inferType: 1 sorry (structural app case)
 
+**MU CASE ANALYSIS (agent ochre-20260405-085031):**
+The mu case (Soundness.lean:1341) is genuinely blocked. The goal is
+VCompat n mu_V mu_T where mu_V and mu_T have different substEnvs.
+Using structural mu requires VCompat n on self-substituted bodies, which
+(by substEnv_subst_comp) are body.substEnv(mu_V::γV) and body.substEnv(mu_T::γT).
+ih_body requires absEval to succeed on body, but absEval for mu ONLY validates
+the annotation — it does NOT evaluate the body. Options explored:
+- n-induction: helps for n=0/1 but at n≥2 the unfolded bodies are general
+  expressions (not mus), so structural mu can't recurse.
+- VCompat.refl: requires γV = γT, not generally true.
+- Synthesizing absEval for body: would need to PROVE body is well-typed
+  in the extended context, which is not available from the mu's absEval result.
+POTENTIAL FIXES: (1) Change absEval for mu to also evaluate body (big change,
+may break things). (2) Add WellTyped precondition. (3) Restructure
+soundness_open to jointly induct on n and e.
+
 **RECOMMENDED NEXT STEPS (updated priority order):**
-1. **State and prove `absEval_preserves_VCompat_substEnv`** (~100 lines):
+1. **Prove `isConcreteVal` for concEval outputs** (~20 lines):
+   concEval always returns lam/type/mu (never bvar/app/asc). Needed for
+   the semantic lam application in the lam-lam sub-case.
+2. **State and prove `absEval_preserves_VCompat_substEnv`** (~100 lines):
    This is the bridge from VCompat's semantic lam (raw substitution) to
    absEval-normalized results through substEnv. Needed for lam-lam sub-case.
-2. **Close soundness_open lam-lam sub-case** using the now-proved
-   subst_substEnv_comm + absEval_preserves_VCompat_substEnv + semantic lam.
-3. **Prove subCheckNF_substEnv** (Soundness.lean:1055). Standard property.
-4. **Work on mu case** (Soundness.lean:1341). Needs structural mu VCompat
-   with self-substituted bodies under different substEnvs.
+3. **Close soundness_open lam-lam sub-case** using the now-proved
+   subst_substEnv_comm + (1) + (2) + semantic lam extraction.
+4. **Prove subCheckNF_substEnv** (Soundness.lean:1055). Standard property.
+5. **Resolve mu case** (Soundness.lean:1341). See analysis above.
 
 Changes by agent ochre-20260405-080723:
 
