@@ -533,25 +533,26 @@ fuel, then extract the individual results. -/
 private theorem absEval_fuel_mono_mu_lam_body
     {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {_ann : Expr} {d1 b1 : Expr} {a'val : Expr} {v : NfExpr}
-    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
-          absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
+    (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr} {lenient : Bool},
+          absEval k ctx seen e lenient = .ok v → absEval (k + 1) ctx seen e lenient = .ok v)
+    {lenient : Bool}
     (h : (let mu_expr := Expr.mu _ann (Expr.lam d1 b1)
           if (seen.any fun x => x.fst == mu_expr) = true then
             Except.ok { val := mu_expr.app a'val }
           else
             match (Expr.lam d1 b1).subst 0 mu_expr with
-            | .lam _d3 rB3 => absEval k ctx ((mu_expr, mu_expr) :: seen) (rB3.subst 0 a'val)
+            | .lam _d3 rB3 => absEval k ctx ((mu_expr, mu_expr) :: seen) (rB3.subst 0 a'val) lenient
             | _ => absEval k ctx ((mu_expr, mu_expr) :: seen)
-                     (((Expr.lam d1 b1).subst 0 mu_expr).app a'val))
+                     (((Expr.lam d1 b1).subst 0 mu_expr).app a'val) lenient)
          = Except.ok v)
     : (let mu_expr := Expr.mu _ann (Expr.lam d1 b1)
        if (seen.any fun x => x.fst == mu_expr) = true then
          Except.ok { val := mu_expr.app a'val }
        else
          match (Expr.lam d1 b1).subst 0 mu_expr with
-         | .lam _d3 rB3 => absEval (k + 1) ctx ((mu_expr, mu_expr) :: seen) (rB3.subst 0 a'val)
+         | .lam _d3 rB3 => absEval (k + 1) ctx ((mu_expr, mu_expr) :: seen) (rB3.subst 0 a'val) lenient
          | _ => absEval (k + 1) ctx ((mu_expr, mu_expr) :: seen)
-                  (((Expr.lam d1 b1).subst 0 mu_expr).app a'val))
+                  (((Expr.lam d1 b1).subst 0 mu_expr).app a'val) lenient)
       = Except.ok v := by
   simp only [] at h ⊢
   by_cases hc : (seen.any fun x => x.fst == Expr.mu _ann (Expr.lam d1 b1)) = true
@@ -739,11 +740,11 @@ private theorem subCheckNF_inferType_step
 private theorem fuel_mono (n : Nat) :
     (∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {a b : Expr},
       subCheckNF n ctx seen a b = true → subCheckNF (n + 1) ctx seen a b = true) ∧
-    (∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
-      absEval n ctx seen e = .ok v → absEval (n + 1) ctx seen e = .ok v) := by
+    (∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr} {lenient : Bool},
+      absEval n ctx seen e lenient = .ok v → absEval (n + 1) ctx seen e lenient = .ok v) := by
   induction n with
   | zero =>
-    exact ⟨fun h => by simp [subCheckNF] at h, fun h => by simp [absEval] at h⟩
+    exact ⟨fun h => by simp [subCheckNF] at h, fun {_ _ _ _ _} h => by simp [absEval] at h⟩
   | succ k ih =>
     obtain ⟨ih_sub, ih_abs⟩ := ih
     constructor
@@ -789,19 +790,19 @@ private theorem fuel_mono (n : Nat) :
             · -- catch-all: inferType
               exact subCheckNF_inferType_step ih_sub ih_abs h
     · -- absEval_fuel_mono step
-      intro ctx seen e v h
+      intro ctx seen e v lenient h
       match e with
       | .bvar _ =>
-        sorry
+        unfold absEval at h ⊢; exact h
       | .type =>
-        sorry
+        unfold absEval at h ⊢; exact h
       | .lam dom body =>
         unfold absEval at h ⊢; dsimp only [] at h ⊢
-        match hd : absEval k ctx seen dom with
+        match hd : absEval k ctx seen dom lenient with
         | .error _ => simp [hd, bind, Except.bind] at h
         | .ok dom' =>
           simp only [hd, bind, Except.bind] at h
-          match hb : absEval k (TyCtx.extend ctx dom') seen body with
+          match hb : absEval k (TyCtx.extend ctx dom') seen body lenient with
           | .error _ => simp [hb, bind, Except.bind] at h
           | .ok body' =>
             simp only [hb, bind, Except.bind] at h
@@ -809,14 +810,31 @@ private theorem fuel_mono (n : Nat) :
             rw [ih_abs hb]; simp only [bind, Except.bind]
             exact h
       | .mu ann body =>
-        sorry
+        unfold absEval at h ⊢; dsimp only [] at h ⊢
+        match ha : absEval k ctx seen ann lenient with
+        | .error _ => simp [ha, bind, Except.bind] at h
+        | .ok ann' =>
+          simp only [ha, bind, Except.bind] at h
+          rw [ih_abs ha]; simp only [bind, Except.bind]
+          -- Handle the `if !lenient` condition
+          by_cases hlen : (!lenient) = true
+          · simp only [hlen, ite_true] at h ⊢
+            match hb : absEval k (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+            | .error _ => simp [hb, bind, Except.bind] at h
+            | .ok body' =>
+              simp only [hb, bind, Except.bind] at h
+              rw [ih_abs hb]; simp only [bind, Except.bind]
+              exact h
+          · simp only [Bool.not_eq_true] at hlen
+            simp only [hlen, ite_false] at h ⊢
+            exact h
       | .asc term ty =>
         unfold absEval at h ⊢; dsimp only [] at h ⊢
-        match ht : absEval k ctx seen term with
+        match ht : absEval k ctx seen term lenient with
         | .error _ => simp [ht, bind, Except.bind] at h
         | .ok sigma =>
           simp only [ht, bind, Except.bind] at h ⊢
-          match hty : absEval k ctx seen ty with
+          match hty : absEval k ctx seen ty lenient with
           | .error _ => simp [hty, bind, Except.bind] at h
           | .ok tau =>
             simp only [hty, bind, Except.bind] at h
@@ -830,11 +848,11 @@ private theorem fuel_mono (n : Nat) :
             · simp at h
       | .app f a =>
         unfold absEval at h ⊢; dsimp only [] at h ⊢
-        match hf : absEval k ctx seen f with
+        match hf : absEval k ctx seen f lenient with
         | .error _ => simp [hf, bind, Except.bind] at h
         | .ok f' =>
           simp only [hf, bind, Except.bind] at h ⊢
-          match ha : absEval k ctx seen a with
+          match ha : absEval k ctx seen a lenient with
           | .error _ => simp [ha, bind, Except.bind] at h
           | .ok a' =>
             simp only [ha, bind, Except.bind] at h
@@ -845,7 +863,7 @@ private theorem fuel_mono (n : Nat) :
               simp only [hfv] at h ⊢
               split at h
               · rename_i hsub
-                -- Condition: subCheckNF || (seen.isEmpty && isNeutral)
+                -- Condition: subCheckNF || (lenient && isNeutral)
                 -- If true at fuel k, true at fuel k+1
                 cases Bool.or_eq_true_iff.mp hsub with
                 | inl hsub_l =>
@@ -878,10 +896,10 @@ theorem subCheckNF_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)
   (fuel_mono n).1 h
 
 /-- absEval fuel monotonicity: if absEval succeeds at fuel n, it succeeds
-    at fuel n+1 with the same result. -/
+    at fuel n+1 with the same result. Works for all lenient values. -/
 theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
-    {e : Expr} {v : NfExpr}
-    (h : absEval n ctx seen e = .ok v) : absEval (n + 1) ctx seen e = .ok v :=
+    {e : Expr} {v : NfExpr} {lenient : Bool}
+    (h : absEval n ctx seen e lenient = .ok v) : absEval (n + 1) ctx seen e lenient = .ok v :=
   (fuel_mono n).2 h
 
 /-! ## absEval preserves closedAt
