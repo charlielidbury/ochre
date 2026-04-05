@@ -326,6 +326,53 @@ def closedAt (n : Nat) : Expr → Bool
   | .type => true
   | .mu ann body => closedAt n ann && closedAt (n + 1) body
 
+/-- Shifting preserves closedAt: if e has free vars < n, then
+    e.shift d c has free vars < n + d (for c ≤ n). -/
+theorem shift_closedAt (e : Expr) (n d c : Nat) (hc : c ≤ n)
+    (h : closedAt n e = true) : closedAt (n + d) (e.shift d c) = true := by
+  induction e generalizing n c with
+  | bvar k =>
+    simp only [shift]
+    split
+    · -- k < c: result is bvar k, need k < n + d
+      simp only [closedAt, decide_eq_true_eq] at h ⊢; omega
+    · -- k ≥ c: result is bvar (k + d), need k + d < n + d
+      simp only [closedAt, decide_eq_true_eq] at h ⊢; omega
+  | lam dom body ih_dom ih_body =>
+    simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
+    refine ⟨ih_dom n c hc h.1, ?_⟩
+    have := ih_body (n + 1) (c + 1) (by omega) h.2
+    rwa [show n + 1 + d = n + d + 1 from by omega] at this
+  | app f a ih_f ih_a =>
+    simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_f n c hc h.1, ih_a n c hc h.2⟩
+  | asc t y ih_t ih_y =>
+    simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_t n c hc h.1, ih_y n c hc h.2⟩
+  | type => simp [shift, closedAt]
+  | mu ann body ih_ann ih_body =>
+    simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
+    refine ⟨ih_ann n c hc h.1, ?_⟩
+    have := ih_body (n + 1) (c + 1) (by omega) h.2
+    rwa [show n + 1 + d = n + d + 1 from by omega] at this
+
+/-- Substitution preserves closedAt (generalized over subst position j).
+    closedAt (j+n+1) e ∧ closedAt (j+n) s → closedAt (j+n) (e.subst j s)
+    Standard de Bruijn lemma. Uses shift_closedAt for the lam/mu binder cases
+    where s gets shifted. -/
+theorem subst_closedAt_gen (e : Expr) (j n : Nat) (s : Expr)
+    (he : closedAt (j + n + 1) e = true) (hs : closedAt (j + n) s = true)
+    : closedAt (j + n) (e.subst j s) = true := by
+  sorry
+
+/-- Substitution at position 0 preserves closedAt.
+    closedAt (n+1) e ∧ closedAt n s → closedAt n (e.subst 0 s) -/
+theorem subst_closedAt {e s : Expr} {n : Nat}
+    (he : closedAt (n + 1) e = true) (hs : closedAt n s = true)
+    : closedAt n (e.subst 0 s) = true := by
+  have := subst_closedAt_gen e 0 n s (by simpa using he) (by simpa using hs)
+  simpa using this
+
 /-! ## liftEnvN: iterated environment lifting -/
 
 /-- Lift an environment c times (going under c binders).
