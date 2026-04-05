@@ -1075,18 +1075,20 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
     (fun p hp => absurd hp (List.not_mem_nil p))
 
 /-- Subtyping is preserved under environment substitution: if σ ⊑ τ in context
-    ctx (with empty seen), then σ.substEnv γ ⊑ τ.substEnv γ in empty context
-    (for compatible γ). This bridges open-term subtyping to closed-term subtyping.
+    ctx (with empty seen), then σ.substEnv γ ⊑ τ.substEnv γ in some context
+    (for compatible γ). The existential ctx' handles binder-introduced variables:
+    lam-lam body checks use an extended context that depends on the substituted
+    domain type.
 
-    SORRY: This is a standard property of structural subtyping under substitution.
-    The proof would follow the structure of subCheckNF by induction on fuel, showing
-    each case (equality, top, lam-lam, mu-intro, mu-elim, app-app, inferType fallback)
-    is preserved under substEnv. The main subtlety is the mu cases, which call absEval
-    internally — these would need an absEval_substEnv commutation lemma. -/
+    SORRY: The proof follows subCheckNF's structure by induction on fuel.
+    Easy cases: equality (substEnv preserves equality), top (Type.substEnv = Type).
+    Hard cases: mu-intro/elim (need absEval_substEnv commutation), inferType fallback
+    (need inferType_substEnv commutation). The lam-lam case works with the
+    existential ctx' = extend ctx' ⟨domB.substEnv γ⟩ for the body sub-check. -/
 theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List Expr}
     (hsub : subCheckNF fuel ctx [] σ τ = true)
     (hγ : γ.length = ctx.length)
-    : ∃ fuel', subCheckNF fuel' [] [] (σ.substEnv γ) (τ.substEnv γ) = true :=
+    : ∃ (fuel' : Nat) (ctx' : TyCtx), subCheckNF fuel' ctx' [] (σ.substEnv γ) (τ.substEnv γ) = true :=
   sorry
 
 /-- General self-intro. -/
@@ -1501,7 +1503,7 @@ theorem soundness_open (e : Expr)
             -- Bridge from sigma.val.substEnv γT to tau.val.substEnv γT:
             -- 1. subCheckNF_substEnv gives subCheckNF on closed (substituted) terms
             -- 2. VCompat.adequacy bridges via the closed subcheck
-            obtain ⟨fuel', hsub_cl⟩ := subCheckNF_substEnv hsub h_ctx
+            obtain ⟨fuel', ctx', hsub_cl⟩ := subCheckNF_substEnv hsub h_ctx
             exact VCompat.adequacy ih_v_sigma hsub_cl
           · simp only [Bool.not_eq_true] at hsub; simp only [hsub] at h_abs; simp at h_abs
   | app f a ih_f ih_a =>
