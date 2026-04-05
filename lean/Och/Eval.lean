@@ -943,7 +943,19 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
             rw [← h_ext_len]
             exact ih h_body (by rw [h_ext_len]; exact h_body_cl)
     | mu ann body =>
-      sorry
+      unfold absEval at h_abs; dsimp only [] at h_abs
+      match h_ann : absEval k ctx seen ann with
+      | .error _ => simp [h_ann, bind, Except.bind] at h_abs
+      | .ok ann' =>
+        simp only [h_ann, bind, Except.bind] at h_abs
+        -- Handle `if !lenient` where lenient = false (default)
+        simp only [show (!false : Bool) = true from rfl, ite_true] at h_abs
+        match h_body : absEval k (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+        | .error _ => simp [h_body, bind, Except.bind] at h_abs
+        | .ok body' =>
+          simp only [h_body, bind, Except.bind] at h_abs
+          injection h_abs with heq; subst heq
+          exact h_closed
     | asc term ty =>
       unfold absEval at h_abs; dsimp only [] at h_abs
       simp [Expr.closedAt] at h_closed
@@ -977,7 +989,15 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
           have h_a'_cl := ih h_a h_a_cl
           match hfv : f'.val with
           | .lam dom body =>
-            sorry
+            simp only [hfv] at h_abs
+            -- The condition includes `lenient && isNeutral` but h_abs has it
+            -- resolved. Just split on the whole if-then-else.
+            split at h_abs
+            · rename_i hsub
+              have h_body_cl : body.closedAt (ctx.length + 1) = true := by
+                rw [hfv] at h_f'_cl; simp [Expr.closedAt] at h_f'_cl; exact h_f'_cl.2
+              exact ih h_abs (Expr.subst_closedAt h_body_cl h_a'_cl)
+            · simp at h_abs
           | .mu _ann body =>
             -- Mu-app: multiple sub-cases (annotation-trust, body path, catch-all).
             -- All preserve closedAt via subst_closedAt + IH.
@@ -1048,8 +1068,29 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
           | .type =>
             simp only [hfv] at h_abs; simp at h_abs
           | .bvar j =>
-            sorry
+            simp only [hfv] at h_abs
+            split at h_abs
+            · injection h_abs with heq; subst heq
+              simp [Expr.closedAt]
+              have : (Expr.bvar j).closedAt ctx.length = true := by rw [hfv] at h_f'_cl; exact h_f'_cl
+              simp [Expr.closedAt] at this
+              exact ⟨this, h_a'_cl⟩
+            · simp at h_abs
           | .app f₁ a₁ =>
-            sorry
+            simp only [hfv] at h_abs
+            split at h_abs
+            · injection h_abs with heq; subst heq
+              simp [Expr.closedAt]
+              have : (Expr.app f₁ a₁).closedAt ctx.length = true := by rw [hfv] at h_f'_cl; exact h_f'_cl
+              simp [Expr.closedAt] at this
+              exact ⟨⟨this.1, this.2⟩, h_a'_cl⟩
+            · simp at h_abs
           | .asc t y =>
-            sorry
+            simp only [hfv] at h_abs
+            split at h_abs
+            · injection h_abs with heq; subst heq
+              simp [Expr.closedAt]
+              have : (Expr.asc t y).closedAt ctx.length = true := by rw [hfv] at h_f'_cl; exact h_f'_cl
+              simp [Expr.closedAt] at this
+              exact ⟨⟨this.1, this.2⟩, h_a'_cl⟩
+            · simp at h_abs
