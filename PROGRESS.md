@@ -6,10 +6,71 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (31 in Soundness, 0 in Eval, 0 in Syntax = 31 total)
+### Sorry inventory (25 actual sorrys in Soundness, 0 in Eval, 0 in Syntax)
 
-(+10 from 21: +1 mu case lenient split, +1 absEval_preserves_VCompat_substEnv,
-rest is comments containing "sorry" — actual sorry DECLARATIONS unchanged at 6.)
+6 sorry DECLARATIONS: app_inferType, absEval_preserves, adequacy_gen,
+subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
+
+Changes by agent ochre-20260405-172626:
+
+**ANALYSIS: adequacy_gen self-elim (4 sorrys: mu-lam, mu-bvar, mu-asc, mu-app)**
+
+Performed detailed case analysis of the VCompat disjuncts in the self-elim proof.
+Each self-elim sorry expands into ~10 VCompat sub-cases. Two proof strategies
+were identified, covering 7 of 10 sub-cases:
+
+**Strategy A** (body path + absEval_preserves + ih_fuel, at step m+1):
+- Refl: v = mu ann body. Construct VCompat (m+1) v bsm via mu-left + VCompat.refl m.
+  Then absEval_preserves + ih_fuel at step m+1. Callback = hseen. ✓
+- Structural mu: v = mu annV bodyV. Same approach via mu-left wrapper. ✓
+- Mu-right: BLOCKED. VCompat m v bsm (step m, not m+1). Can't upgrade to m+1.
+- Normalized mu-right: BLOCKED. Same step-count issue.
+
+**Strategy B** (ih_n + VCompat wrapper, at step m):
+- Mu-left: VCompat m (unfolded v) (mu). ih_n gives VCompat m (unfolded v) τ.
+  Then mu-left wrapper: VCompat (m+1) v τ. ✓ when seen = [].
+- InferType: VCompat m ty' (mu). ih_n gives VCompat m ty' τ.
+  Then inferType wrapper. ✓ when seen = [].
+- Asc-left: VCompat m term (mu). ih_n gives VCompat m term τ.
+  Then asc-left wrapper. ✓ when seen = [].
+- ALL THREE FAIL when seen ≠ []: ih_n callback needs VCompat m inner_expr p.2,
+  but hseen gives VCompat (m+1) v p.2 where inner_expr ≠ v. Callback mismatch.
+
+**Impossible cases** (3): type, semantic lam, structural app — mu can't match these. ✓
+
+**Summary of blockers:**
+1. **Step count** (mu-right, normalized mu-right): mu-right disjunct at step n+1
+   gives VCompat n (one step less). absEval_preserves + ih_fuel preserve the step
+   level but can't increase it. Fundamental limitation of step-indexed LR.
+2. **Callback mismatch** (mu-left, inferType, asc-left when seen ≠ []): ih_n's
+   callback is about the inner expression, not the outer v. hseen is about v.
+   When seen = [] (from VCompat.adequacy), the callback is vacuous and works.
+3. **Annotation trust** (annotation path): VCompat v (mu ann body) doesn't imply
+   VCompat v ann. With Phase 0, absEval checks bodies, but the proof doesn't
+   carry this info into adequacy_gen.
+4. **Body path extraction**: simplifying hcheck to extract absEval/subCheckNF
+   results from the self-elim's if-then-else structure. Mechanical but non-trivial.
+
+No code changes (analysis only). The sorry count is unchanged at 6 declarations.
+
+**RECOMMENDED NEXT STEPS (updated priority order):**
+
+1. **Resolve the step-count issue** — this blocks both self-elim (mu-right sub-case)
+   AND soundness_open's app lam-lam case. The most promising approach remains
+   joint (fuel, expression) induction per agent ochre-20260405-163526's analysis.
+
+2. **Prove self-elim for seen = []** — Strategy A (refl + structural mu) works for
+   any seen. Strategy B (mu-left + inferType + asc-left) works when seen = [].
+   Together with the impossible cases, this covers 8/10 sub-cases (only mu-right
+   and normalized mu-right remain). Could be done as partial progress by expanding
+   the sorrys into case analyses with localized sorrys.
+
+3. **Prove absEval_preserves** — needed by Strategy A and many other places.
+   The easy cases (mu, refl-bvar, refl-type) are done. The hard cases (lam
+   normalization, app beta-reduction) require normalization coherence.
+
+4. **Prove subCheckNF_substEnv** — standard property but needs careful handling
+   of context changes through binders and absEval commutation for mu cases.
 
 Changes by agent ochre-20260405-163526:
 

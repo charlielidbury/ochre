@@ -120,10 +120,18 @@ DECISION-LOG.md for the counterexample). All proofs updated.
    extended context to VCompat after substituting concrete arguments into
    the bodies. VCompat's semantic lam quantifies over ALL fuel levels.
 
-2. **Self-elim** (σ = mu, τ ≠ mu, 4 sorrys): BLOCKED by
-   annotation-trust. Going from VCompat(v, mu ann body) to VCompat(v, ann)
-   requires annotation correctness. The body normalization path would work
-   IF absEval_preserves were fully proved.
+2. **Self-elim** (σ = mu, τ ≠ mu, 4 sorrys): PARTIALLY ANALYZED
+   (agent ochre-20260405-172626). Each sorry expands to ~10 VCompat sub-cases.
+   **7/10 sub-cases have clear proof paths:**
+   - Refl + structural mu: via mu-left wrapper at step m+1, then
+     absEval_preserves + ih_fuel. Works for any `seen`. Requires absEval_preserves.
+   - Mu-left + inferType + asc-left: via ih_n at step m + VCompat wrapper.
+     Works when seen = [] (callback is vacuous). Fails for seen ≠ [] (callback mismatch).
+   - Type, semantic lam, structural app: impossible (constructor mismatch).
+   **3/10 sub-cases are blocked:**
+   - Mu-right, normalized mu-right: step count (VCompat m, need m+1).
+   - Annotation path: annotation trust (VCompat v ann not available).
+   See PROGRESS.md for full analysis.
 
 3. **InferType fallback σ=app: RESOLVED** (agent ochre-20260405-024408).
    All 4 sorrys closed via new app_inferType lemma + absEval_preserves + ih_fuel.

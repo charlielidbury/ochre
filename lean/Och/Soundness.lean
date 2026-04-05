@@ -647,9 +647,17 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
     - (lam, lam): needs substitution lemma for subCheckNF — showing that
       if subCheckNF(bodyσ, bodyτ) under extended context, evaluating bodyσ[a]
       and bodyτ[a] preserves the subtype relationship
-    - (mu, _) self-elim: needs annotation correctness — going from
-      VCompat(v, mu ann body) to VCompat(v, ann) requires the annotation to
-      accurately describe the mu's behavior
+    - (mu, _) self-elim (4 sorrys: mu-lam, mu-bvar, mu-asc, mu-app):
+      Two strategies identified (agent ochre-20260405-172626):
+      (A) Body path + absEval_preserves + ih_fuel (at step m+1):
+          PROVES refl + structural mu sub-cases (via mu-left wrapper).
+          FAILS for mu-right/normalized mu-right (step count: VCompat m, need m+1).
+      (B) ih_n + VCompat wrapper (at step m):
+          PROVES mu-left + inferType + asc-left sub-cases (but ONLY when seen = []).
+          FAILS when seen ≠ [] due to callback mismatch (ih_n needs VCompat m inner p.2,
+          but hseen gives VCompat (m+1) v p.2 where inner ≠ v).
+      Blockers: (1) step count in mu-right, (2) callback mismatch in ih_n,
+      (3) annotation trust for annotation path, (4) body path extraction from hcheck.
     - (app, app) congruence: provable in principle via structural app disjunct
     - inferType fallback: needs inferType reasoning -/
 theorem VCompat.adequacy_gen :
@@ -781,24 +789,34 @@ theorem VCompat.adequacy_gen :
                   h_asc hcheck_empty
                   (fun p hp => absurd hp (List.not_mem_nil p))⟩
           | mu _annS _bodyS =>
-            -- σ = mu, τ = lam: self-elim (mu ⊑ lam)
-            -- Two paths: annotation check or body normalization.
+            -- Self-elim: mu _annS _bodyS ⊑ lam _dT _bT
             --
-            -- Annotation path: still blocked by annotation-trust gap (Phase 0).
+            -- DETAILED ANALYSIS (agent ochre-20260405-172626):
             --
-            -- Body path: the self-elim fix (seen not seen') removes the circular
-            -- callback dependency. However, expanding the proof reveals that:
-            -- - mu-left, inferType, asc-left cases work via ih_n (using hcheck_orig
-            --   + hseen callback for original v — NOT the transformed v)
-            -- - refl, structural mu cases need absEval_preserves (sorry'd)
-            -- - mu-right cases have a step-count issue (VCompat at m, need m+1)
+            -- The self-elim body path uses ORIGINAL seen (not seen'), so ih_fuel
+            -- callback = hseen. Two proof strategies:
             --
-            -- KEY INSIGHT: The ih_n callback uses hseen for the ORIGINAL v. This works
-            -- because ih_n is called with hcheck_orig (which has the original seen),
-            -- and the callback maps VCompat(m+1, v, p.2) → VCompat(m, v', p.2) via mono.
-            -- But v' ≠ v in general (v' = body.subst for mu-left, ty for inferType, etc.).
-            -- The callback needs VCompat for v', not v. This fails when seen is non-empty.
-            -- When seen = [] (the common case from VCompat.adequacy), it's vacuous.
+            -- Strategy A (body path + absEval_preserves + ih_fuel, step m+1):
+            --   Works for: refl (via mu-left wrapper), structural mu (via mu-left wrapper)
+            --   Fails for: mu-right/normalized mu-right (step count: VCompat m, need m+1)
+            --
+            -- Strategy B (ih_n + VCompat wrapper, step m):
+            --   Works for: mu-left (via mu-left wrapper), inferType (via inferType wrapper),
+            --              asc-left (via asc-left wrapper)
+            --   Fails for: all above when seen ≠ [] (callback mismatch: ih_n callback needs
+            --              VCompat m inner_expr p.2, but hseen gives VCompat (m+1) v p.2)
+            --
+            -- NET: Strategy A proves refl + structural mu (for any seen).
+            --      Strategy B proves mu-left + inferType + asc-left (only when seen = []).
+            --      mu-right and normalized mu-right are blocked (step count).
+            --      Extracting body path info from hcheck requires handling the annotation
+            --      path/body path disjunction in subCheckNF.
+            --
+            -- REMAINING BLOCKERS:
+            --   1. Step count: mu-right disjunct gives VCompat m, need m+1
+            --   2. Callback mismatch: ih_n's callback needs VCompat for inner_expr, not v
+            --   3. Annotation path: needs annotation trust (VCompat v ann)
+            --   4. Body path extraction: need to simplify hcheck to get absEval/subCheckNF
             sorry
           | bvar _kS =>
             -- σ = bvar, τ = lam: via bvar_inferType + absEval_preserves + ih_fuel
@@ -838,11 +856,8 @@ theorem VCompat.adequacy_gen :
           | asc _tS _tyS =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = bvar: self-elim
-            -- Same structure as mu-lam case above. Annotation path blocked by
-            -- annotation-trust. Body path: mu-left/inferType/asc-left work via
-            -- ih_n when seen=[]; refl/structural need absEval_preserves;
-            -- mu-right has step-count issue. See mu-lam comment for details.
+            -- σ = mu, τ = bvar: self-elim. Same blockers as mu-lam case above.
+            -- See detailed analysis at the mu-lam self-elim case.
             sorry
           | bvar _kS =>
             -- σ = bvar, τ = bvar: via bvar_inferType + absEval_preserves + ih_fuel
@@ -882,7 +897,7 @@ theorem VCompat.adequacy_gen :
           | asc _tS _tyS =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = asc: self-elim (same structure as mu-lam case)
+            -- σ = mu, τ = asc: self-elim. Same blockers as mu-lam case.
             sorry
           | bvar _kS =>
             -- σ = bvar, τ = asc: via bvar_inferType + absEval_preserves + ih_fuel
@@ -1026,7 +1041,7 @@ theorem VCompat.adequacy_gen :
                 | .error _ => simp [habs] at hcheck
               | none => simp [hinf] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = app: self-elim (same structure as mu-lam case)
+            -- σ = mu, τ = app: self-elim. Same blockers as mu-lam case.
             sorry
           | lam _dS _bS =>
             -- σ = lam, τ = app: inferType(lam) = none → contradiction
@@ -1332,23 +1347,18 @@ theorem soundness_open (e : Expr)
     | zero => simp [absEval] at h_abs
     | succ fk =>
       unfold absEval at h_abs; injection h_abs with hτ; subst hτ
-      -- τ.val = bvar k, so τ.val.substEnv γT = γT[k] (since k < ctx.length = γT.length)
       simp only [Expr.substEnv]
       have hk_lt : k < ctx.length := by simp [Expr.closedAt] at h_closed; exact h_closed
       have hk_lt_T : k < γT.length := by omega
       have hk_lt_V : k < γV.length := by
         obtain ⟨hlen, _, _⟩ := h_env; omega
-      -- substEnv maps bvar k to γV[k]! / γT[k]!
-      -- Simplify goal and hypothesis using the bounds
       simp only [Expr.substEnv, hk_lt_V, ite_true] at h_conc
       simp only [hk_lt_T, ite_true]
       obtain ⟨_, hval_env, hvc⟩ := h_env
-      -- γV[k]! is a ConcNF value, so concEval is idempotent on it
       have hval_k : ConcNF (γV[k]) := hval_env k hk_lt_V
       rw [getElem!_pos γV k hk_lt_V] at h_conc
       have hidem := ConcNF_concEval_idem hval_k h_conc
       subst hidem
-      -- v = γV[k], need VCompat n γV[k] γT[k]!
       have hvc_k := hvc k hk_lt_V hk_lt_T
       rw [show γT[k]! = γT[k] from getElem!_pos γT k hk_lt_T]
       exact hvc_k
@@ -1385,13 +1395,6 @@ theorem soundness_open (e : Expr)
             simp only [Expr.substEnv] at h_conc ⊢
             unfold concEval at h_conc
             injection h_conc with hv; subst hv
-            -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv (lift γV)))
-            --                 (mu (ann.substEnv γT) (body.substEnv (lift γT)))
-            -- ANALYSIS: ih_body gives VCompat on (body_abs'.val.substEnv γT'), but structural mu
-            -- needs VCompat on (body.substEnv γT'). The normalization gap (body_abs'.val ≠ body)
-            -- blocks direct use. The concEval gap (need rv, not raw expression) also blocks.
-            -- Both gaps are fundamental to the dual-substitution problem.
-            -- See PROGRESS.md for full analysis.
             sorry
         | true =>
           simp only [show (!true : Bool) = false from rfl, ite_false] at h_abs
@@ -1399,7 +1402,6 @@ theorem soundness_open (e : Expr)
           simp only [Expr.substEnv] at h_conc ⊢
           unfold concEval at h_conc
           injection h_conc with hv; subst hv
-          -- Same goal but no body check available (lenient=true skips it)
           sorry
   | lam dom body ih_dom ih_body =>
     -- KEY CASE: the whole point of the fundamental theorem.
