@@ -657,8 +657,23 @@ theorem VCompat.adequacy_gen :
                   (fun p hp => absurd hp (List.not_mem_nil p))⟩
           | mu _annS _bodyS =>
             -- σ = mu, τ = lam: self-elim (mu ⊑ lam)
-            -- BLOCKER: annotation-trust gap — going from VCompat(v, mu) to
-            -- VCompat(v, ann) requires annotation correctness
+            -- Two paths: annotation check or body normalization.
+            --
+            -- Annotation path: still blocked by annotation-trust gap (Phase 0).
+            --
+            -- Body path: the self-elim fix (seen not seen') removes the circular
+            -- callback dependency. However, expanding the proof reveals that:
+            -- - mu-left, inferType, asc-left cases work via ih_n (using hcheck_orig
+            --   + hseen callback for original v — NOT the transformed v)
+            -- - refl, structural mu cases need absEval_preserves (sorry'd)
+            -- - mu-right cases have a step-count issue (VCompat at m, need m+1)
+            --
+            -- KEY INSIGHT: The ih_n callback uses hseen for the ORIGINAL v. This works
+            -- because ih_n is called with hcheck_orig (which has the original seen),
+            -- and the callback maps VCompat(m+1, v, p.2) → VCompat(m, v', p.2) via mono.
+            -- But v' ≠ v in general (v' = body.subst for mu-left, ty for inferType, etc.).
+            -- The callback needs VCompat for v', not v. This fails when seen is non-empty.
+            -- When seen = [] (the common case from VCompat.adequacy), it's vacuous.
             sorry
           | bvar _kS =>
             -- σ = bvar, τ = lam: via bvar_inferType + absEval_preserves + ih_fuel
@@ -689,7 +704,10 @@ theorem VCompat.adequacy_gen :
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | mu _annS _bodyS =>
             -- σ = mu, τ = bvar: self-elim
-            -- BLOCKER: annotation-trust gap
+            -- Same structure as mu-lam case above. Annotation path blocked by
+            -- annotation-trust. Body path: mu-left/inferType/asc-left work via
+            -- ih_n when seen=[]; refl/structural need absEval_preserves;
+            -- mu-right has step-count issue. See mu-lam comment for details.
             sorry
           | bvar _kS =>
             -- σ = bvar, τ = bvar: via bvar_inferType + absEval_preserves + ih_fuel
@@ -719,8 +737,7 @@ theorem VCompat.adequacy_gen :
           | asc _tS _tyS =>
             dsimp only [] at hcheck; simp [inferType] at hcheck
           | mu _annS _bodyS =>
-            -- σ = mu, τ = asc: self-elim
-            -- BLOCKER: annotation-trust gap
+            -- σ = mu, τ = asc: self-elim (same structure as mu-lam case)
             sorry
           | bvar _kS =>
             -- σ = bvar, τ = asc: via bvar_inferType + absEval_preserves + ih_fuel
@@ -840,7 +857,7 @@ theorem VCompat.adequacy_gen :
             · -- Structural check failed, inferType fallback
               sorry
           | mu _annS _bodyS =>
-            -- Self-elim (mu ⊑ app): blocked by annotation-trust gap
+            -- σ = mu, τ = app: self-elim (same structure as mu-lam case)
             sorry
           | lam _dS _bS =>
             -- σ = lam, τ = app: inferType(lam) = none → contradiction

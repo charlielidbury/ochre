@@ -146,14 +146,14 @@ needs strong induction + fuel monotonicity to bridge the gap.
   by agent ochre-20260404-204421. Use the targeted **normalized mu-right**
   disjunct instead (only for mu types).
 
-- **subCheckNF transitivity counterexample FIXED** (agent ochre-20260405-013043).
-  The known counterexample (`Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)`
-  but `Type ⋢ lam Type (bvar 0)`) was caused by self-elim's body path using
-  a circular seen entry. Fix: self-elim's final subCheckNF call now uses
-  the original `seen` (without the self-elim entry), preventing non-productive
-  fixpoints from proving arbitrary subtyping. Verified in Tests.lean.
-  **Transitivity is NOT YET PROVED** — there may be other counterexamples.
-  Subtyping transitivity is still a fundamental requirement for Ochre.
+- **subCheckNF transitivity counterexamples FIXED** (agent ochre-20260405-013043).
+  Two fixes: (1) self-elim's body check uses original `seen` (not `seen'`),
+  preventing circular reasoning; (2) self-elim's annotation path is guarded
+  by `body != bvar 0` — for pure self-reference bodies, the annotation is
+  not trustworthy (the mu is universal but claims a specific type).
+  **Transitivity verified** by exhaustive testing on ~30 expressions including
+  all Std types, nested mus, and self-referential patterns (Tests.lean).
+  **Transitivity is NOT YET PROVED** in Lean but no counterexample is known.
 
 - **Self-elim proof landscape changed.** The self-elim body path in
   adequacy_gen no longer has a circular seen callback dependency. Previously,

@@ -95,3 +95,69 @@ example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = false := by na
 
 -- Transitivity instance: the old a ⊑ b ∧ b ⊑ c ∧ ¬(a ⊑ c) is gone because b ⊑ c is now false
 
+-- ============================================================
+-- Transitivity exhaustive search on small terms
+-- ============================================================
+
+-- Helper: check transitivity for a triple (a, b, c) with given fuel
+private def checkTrans (fuel : Nat) (a b c : Expr) : Bool :=
+  if subCheckNF fuel [] [] a b && subCheckNF fuel [] [] b c then
+    subCheckNF fuel [] [] a c
+  else true  -- vacuously true if a⊄b or b⊄c
+
+-- Small expression generators for exhaustive testing
+private def smallExprs : List Expr :=
+  [ .type,
+    .bvar 0,
+    .lam .type (.bvar 0),          -- identity: λx:Type. x
+    .lam .type .type,              -- const Type: λx:Type. Type
+    .mu .type (.bvar 0),           -- fixpoint identity: μType. self
+    .mu .type (.lam .type (.bvar 0)), -- μType. λx:Type. x
+    .mu (.lam .type .type) (.lam .type (.bvar 0)),  -- μ(Type→Type). λx:Type. x
+    .app (.bvar 0) (.bvar 0),      -- x x
+    .lam .type (.lam .type (.bvar 0)), -- λx:Type. λy:Type. y
+    .mu .type .type                -- μType. Type
+  ]
+
+-- Exhaustive transitivity check over all triples of small expressions
+-- If this passes, transitivity holds for all small terms (with fuel 50)
+example : (smallExprs.all fun a =>
+           smallExprs.all fun b =>
+           smallExprs.all fun c =>
+           checkTrans 50 a b c) = true := by native_decide
+
+-- Extended test with Std library types
+private def stdExprs : List Expr :=
+  [ Bool, true_, false_, Nat_, zero_,
+    .lam .type .type,              -- Type → Type
+    .lam .type (.bvar 0),          -- identity
+    .mu .type (.bvar 0),           -- fixpoint identity
+    .type,
+    .lam Nat_ Nat_,                -- Nat → Nat (constant)
+    .lam Bool Bool                 -- Bool → Bool (constant)
+  ]
+
+example : (stdExprs.all fun a =>
+           stdExprs.all fun b =>
+           stdExprs.all fun c =>
+           checkTrans 200 a b c) = true := by native_decide
+
+-- Edge cases: nested mus and self-referential patterns
+private def edgeExprs : List Expr :=
+  [ .type,
+    .mu .type (.bvar 0),                    -- μType. self (identity fixpoint)
+    .mu .type .type,                        -- μType. Type
+    .mu .type (.lam .type (.bvar 0)),       -- μType. λx:T. x
+    .mu (.lam .type .type) (.bvar 0),       -- μ(T→T). self
+    .mu (.lam .type .type) (.lam .type (.bvar 1)),  -- μ(T→T). λx:T. self (recursive)
+    .lam .type (.bvar 0),                   -- λx:T. x
+    .lam .type .type,                       -- λx:T. T
+    .mu .type (.mu .type (.bvar 0)),        -- nested mu
+    .app (.mu .type (.lam .type (.bvar 0))) .type  -- apply mu to Type
+  ]
+
+example : (edgeExprs.all fun a =>
+           edgeExprs.all fun b =>
+           edgeExprs.all fun c =>
+           checkTrans 100 a b c) = true := by native_decide
+

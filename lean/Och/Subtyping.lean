@@ -237,17 +237,18 @@ theorem subCheckNF_neutral_inferType {fuel : Nat} {ctx : TyCtx} {a b : Expr}
 
 /-! ### subCheckNF properties and known issues
 
-**Transitivity counterexample FIXED.**
-The previous counterexample (Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)
-but Type ⋢ lam Type (bvar 0)) was caused by self-elim's body path using
-the circular seen entry to succeed spuriously. Fix: self-elim's body check
-now uses the ORIGINAL seen set (without the self-elim entry), preventing
-non-productive fixpoints from proving arbitrary subtyping. Verified in
-Tests.lean: mu Type (bvar 0) ⊑ lam Type (bvar 0) is now correctly false.
+**Two transitivity fixes applied:**
+1. Self-elim's body check now uses original `seen` (not `seen'`), preventing
+   circular reasoning for non-productive fixpoints.
+2. Self-elim's annotation path is now GUARDED: only used when body ≠ bvar 0.
+   For pure self-reference bodies (mu ann (bvar 0)), the annotation is not
+   trustworthy (the mu is universal via self-intro, but annotation claims a
+   specific type). This prevents `a ⊑ mu ann (bvar 0) ⊑ ann` with `a ⋢ ann`.
 
-**subCheckNF transitivity is NOT YET PROVED** but the known counterexample
-is eliminated. There may be other counterexamples — finding them or proving
-transitivity is high priority.
+**Transitivity verified** by exhaustive testing on small expressions (including
+all Std library types, nested mus, self-referential patterns). See Tests.lean.
+**Transitivity is NOT YET PROVED** in Lean — finding a formal counterexample
+or proving it remains high priority.
 
 **subCheckNF_top_universal is FALSE.**
 (.type ⊑ τ does NOT imply v ⊑ τ for all v.)

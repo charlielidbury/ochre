@@ -246,20 +246,21 @@ mutual
           | .error _ => false
         | .mu ann body, _ =>
           -- Self-elim: mu ann body ⊑ b  iff  ann ⊑ b  or  normalize(body[0:=mu]) ⊑ b.
-          -- Check annotation first (fuel-stable), then try body normalization.
+          --
+          -- ANNOTATION PATH: Only valid when the body is productive (not a pure
+          -- self-reference). For non-productive bodies like `bvar 0`, the mu
+          -- unfolds to itself, making it a "universal" type via self-intro.
+          -- Trusting the annotation for such types creates transitivity violations:
+          -- `a ⊑ mu ann (bvar 0) ⊑ ann` but `a ⋢ ann`.
+          --
+          -- BODY PATH: The final subCheckNF uses `seen` (not `seen'`) to prevent
+          -- circular reasoning via the seen-set hit.
+          --
           -- This ordering makes fuel monotonicity provable: the annotation check
           -- doesn't depend on absEval fuel, and the body check is stable because
           -- absEval_fuel_mono ensures normalization results don't change with fuel.
-          -- The annotation is the declared type and was already normalized in
-          -- absEval's .mu case.
-          --
-          -- IMPORTANT: The final body check uses `seen` (not `seen'`) to prevent
-          -- spurious circular reasoning. Previously, adding (mu, b) to seen allowed
-          -- the body path to succeed trivially for non-productive fixpoints like
-          -- `mu Type (bvar 0)`, breaking transitivity. The annotation check and
-          -- absEval call still use `seen'` for cycle detection.
           let seen' := (a, b) :: seen
-          if subCheckNF fuel ctx seen' ann b then true
+          if body != .bvar 0 && subCheckNF fuel ctx seen' ann b then true
           else
             let u := body.subst 0 (.mu ann body)
             match absEval fuel ctx seen' u with
@@ -442,7 +443,7 @@ private theorem subCheckNF_absEval_step_right
     exact ih_sub h
   | .error _ => simp [hae] at h
 
-/-- Helper for the self-elim case: annotation-first, then body normalization. -/
+/-- Helper for the self-elim case: annotation guard + annotation-first, then body normalization. -/
 private theorem subCheckNF_self_elim_step
     {k : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {ann body : Expr} {b : Expr}
@@ -451,14 +452,14 @@ private theorem subCheckNF_self_elim_step
     (ih_abs : ∀ {ctx : TyCtx} {seen : List (Expr × Expr)} {e : Expr} {v : NfExpr},
           absEval k ctx seen e = .ok v → absEval (k + 1) ctx seen e = .ok v)
     (h : (let seen' := (Expr.mu ann body, b) :: seen
-          if subCheckNF k ctx seen' ann b then true
+          if (body != .bvar 0 && subCheckNF k ctx seen' ann b) = true then true
           else
             let u := body.subst 0 (Expr.mu ann body)
             match absEval k ctx seen' u with
             | .ok u' => subCheckNF k ctx seen u'.val b
             | .error _ => false) = true)
     : (let seen' := (Expr.mu ann body, b) :: seen
-       if subCheckNF (k + 1) ctx seen' ann b then true
+       if (body != .bvar 0 && subCheckNF (k + 1) ctx seen' ann b) = true then true
        else
          let u := body.subst 0 (Expr.mu ann body)
          match absEval (k + 1) ctx seen' u with
@@ -467,13 +468,17 @@ private theorem subCheckNF_self_elim_step
   simp only [] at h ⊢
   split at h
   · rename_i hann
-    rw [show subCheckNF (k + 1) _ _ ann b = true from ih_sub hann]; simp
+    -- hann: (body != bvar 0 && subCheckNF k ...) = true
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hann
+    have hann' : (body != Expr.bvar 0 && subCheckNF (k + 1) ctx ((Expr.mu ann body, b) :: seen) ann b) = true := by
+      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq]
+      exact ⟨hann.1, ih_sub hann.2⟩
+    simp [hann']
   · rename_i hann
-    -- h is already simplified to the else branch by split
     split
     · simp
     · rename_i hann'
-      -- Body path: absEval with seen' for cycle detection, subCheckNF with seen
+      -- Body path
       match hae : absEval k ctx ((Expr.mu ann body, b) :: seen) (body.subst 0 (Expr.mu ann body)) with
       | .ok ty' =>
         simp only [hae] at h

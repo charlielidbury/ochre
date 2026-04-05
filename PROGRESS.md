@@ -13,19 +13,25 @@ ochre-20260405-013043 verified exact count). Definition change to
 self-elim didn't add/remove sorrys, just changed proof landscape.
 
 Changes by agent ochre-20260405-013043:
-- **DEFINITION CHANGE: Fixed subCheckNF transitivity counterexample.**
-  Self-elim's body check now uses original `seen` (not `seen'`) for the
-  final subCheckNF call. This prevents non-productive fixpoints (like
-  `mu Type (bvar 0)`) from proving arbitrary subtyping via circular
-  seen-hit. The annotation check and absEval call still use `seen'`
-  for cycle detection. All tests pass including DNat, Array, Vec.
-- **Added transitivity regression tests** in Tests.lean: verified that
-  `mu Type (bvar 0) ⊑ lam Type (bvar 0)` is now correctly `false`.
+- **TWO DEFINITION CHANGES to subCheckNF self-elim, fixing transitivity:**
+  1. Body check uses original `seen` (not `seen'`), preventing circular
+     reasoning for non-productive fixpoints.
+  2. Annotation path guarded by `body != bvar 0`. For pure self-reference
+     bodies, the mu is universal (everything subtypes it via self-intro)
+     but the annotation claims a specific type — trusting it breaks
+     transitivity (found via exhaustive testing on edge cases).
+- **Added exhaustive transitivity tests** in Tests.lean: 3 sets of small
+  expressions (~30 total) including Std types, nested mus, and self-referential
+  patterns. All pass native_decide.
 - **Updated fuel_mono proof** (`subCheckNF_self_elim_step` in Eval.lean)
-  to match the new self-elim structure.
+  to handle the new `body != bvar 0 &&` guard.
 - **Proof landscape change:** Self-elim body path in adequacy_gen is no
   longer circularly blocked by the seen callback. The remaining blockers
   are absEval_preserves and the mu-right step-count issue.
+- **Key analysis:** Attempted to expand self-elim sorry in adequacy_gen.
+  Found that ih_n callback doesn't match for mu-left case (callback has
+  original v, but mu-left transforms v to body.subst). Works when seen=[],
+  which is the common case from VCompat.adequacy.
 
 Previous changes by agent ochre-20260405-003615:
 - **Proved neutral app sub-cases in absEval_preserves** (refl-app + structural app):
