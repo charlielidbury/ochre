@@ -123,12 +123,13 @@ DECISION-LOG.md for the counterexample). All proofs updated.
    requires annotation correctness. The body normalization path would work
    IF absEval_preserves were fully proved.
 
-3. **InferType fallback σ=app** (4 sorrys): Needs app_inferType lemma
-   + absEval_preserves. σ = bvar cases are DONE.
+3. **InferType fallback σ=app: RESOLVED** (agent ochre-20260405-024408).
+   All 4 sorrys closed via new app_inferType lemma + absEval_preserves + ih_fuel.
+   One sorry remains in app_inferType (structural app case).
 
-4. **absEval_preserves sub-cases** (9 sorrys): 3 cases proved (mu-left,
-   inferType, asc-left). Remaining 9 reduce to normalization coherence
-   and annotation normalization congruence.
+4. **absEval_preserves sub-cases** (7 sorrys): 7 cases proved (mu-left,
+   inferType, asc-left, refl-mu, structural mu, mu-right, normalized mu-right).
+   Remaining 7 reduce to normalization coherence and circular dependency.
 
 ## Phase 3: Subtyping helper lemmas (Subtyping.lean)
 
@@ -144,9 +145,13 @@ DECISION-LOG.md for the counterexample). All proofs updated.
 the definition change (absEval keeps raw annotation).
 
 Remaining: lam and app cases. 
-Challenge: VCompat's semantic lam quantifies over all fuel, but the
-soundness induction on fuel only gives the IH at lower fuel. Likely
-needs strong induction + fuel monotonicity to bridge the gap.
+Challenge for lam: absEval normalizes the body, so v ≠ τ.val. This is
+the normalization coherence problem, NOT a fuel quantification issue.
+Strong induction does NOT help — the blocker is expression mismatch
+(body.subst 0 aV vs body'.val.subst 0 aT).
+Challenge for app: neutral-neutral sub-case IS provable; lam-lam
+sub-case is provable via semantic lam from IH; refl-of-f sub-case
+and mu dispatch cases remain hard.
 
 ## Known hazards
 
