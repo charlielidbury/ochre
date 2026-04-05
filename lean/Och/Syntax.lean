@@ -456,6 +456,33 @@ theorem liftEnvN_getElem?_lt (c : Nat) (γ : List Expr) (i : Nat) (h : i < c)
       rw [ih j hj]
       simp [shift]
 
+/-- Entries of liftEnvN at or above the lifting depth are γ[i-c].shift c 0. -/
+theorem liftEnvN_getElem?_ge (c : Nat) (γ : List Expr) (i : Nat) (h : i ≥ c)
+    (hi : i < c + γ.length)
+    : (liftEnvN c γ)[i]? = some (γ[i - c]!.shift c 0) := by
+  induction c generalizing i with
+  | zero =>
+    simp [liftEnvN, shift_zero]
+    have hi' : i < γ.length := by omega
+    rw [List.getElem?_eq_getElem (by exact hi')]
+    -- Goal: some γ[i] = some ((some γ[i]).getD default)
+    simp
+  | succ k ih =>
+    simp [liftEnvN]
+    cases i with
+    | zero => omega
+    | succ j =>
+      simp [List.getElem?_cons_succ, List.getElem?_map]
+      have hj_ge : j ≥ k := by omega
+      have hj_lt : j < k + γ.length := by omega
+      rw [ih j hj_ge hj_lt]
+      simp
+      -- Goal: shift 1 0 (shift k 0 γ[j-k]!) = shift (k+1) 0 γ[j-k]!
+      -- But after simp, the index may have been simplified.
+      -- We need: shift_succ
+      show (γ[j - k]!.shift k 0).shift 1 0 = γ[j - k]!.shift (k + 1) 0
+      exact shift_succ (γ[j - k]!) k
+
 /-! ## Shift-subst commutation -/
 
 -- Generalized shift-subst commutation: shifting by 1 at cutoff d then
@@ -687,8 +714,77 @@ theorem substEnv_subst_comp (e : Expr) (γ : List Expr) (s : Expr)
     which follows from shift_shift. -/
 theorem shift_substEnv_liftEnvN (s : Expr) (c d : Nat) (γ : List Expr)
     (hs : s.closedAt (d + γ.length) = true)
-    : (s.shift c d).substEnv (liftEnvN (c + d) γ) = (s.substEnv (liftEnvN d γ)).shift c d :=
-  sorry
+    : (s.shift c d).substEnv (liftEnvN (c + d) γ) = (s.substEnv (liftEnvN d γ)).shift c d := by
+  induction s generalizing c d with
+  | type => rfl
+  | bvar k =>
+    simp [closedAt] at hs
+    simp only [shift]
+    by_cases hd : k < d
+    · -- k < d: shift leaves bvar k unchanged
+      simp only [if_pos hd, substEnv, liftEnvN_length,
+        show k < c + d + γ.length from by omega, ite_true,
+        show k < d + γ.length from by omega]
+      -- Both sides: (liftEnvN _ γ)[k]! which is bvar k for k < _
+      -- LHS = (liftEnvN (c+d) γ)[k]!, RHS = ((liftEnvN d γ)[k]!).shift c d
+      -- getElem! = (getElem?).getD default
+      show ((liftEnvN (c + d) γ)[k]?).getD default = (((liftEnvN d γ)[k]?).getD default).shift c d
+      rw [liftEnvN_getElem?_lt (c + d) γ k (by omega), liftEnvN_getElem?_lt d γ k hd]
+      simp [shift, hd]
+    · -- k ≥ d: shift gives bvar (k + c)
+      have hk_ge : k ≥ d := by omega
+      simp only [if_neg hd, substEnv, liftEnvN_length,
+        show k + c < c + d + γ.length from by omega, ite_true,
+        show k < d + γ.length from by omega]
+      show ((liftEnvN (c + d) γ)[k + c]?).getD default = (((liftEnvN d γ)[k]?).getD default).shift c d
+      rw [liftEnvN_getElem?_ge (c + d) γ (k + c) (by omega) (by omega),
+          liftEnvN_getElem?_ge d γ k hk_ge (by omega)]
+      simp [show k + c - (c + d) = k - d from by omega]
+      -- Goal: γ[k-d]!.shift (c+d) 0 = (γ[k-d]!.shift d 0).shift c d
+      have := shift_shift (γ[k - d]!) c d 0
+      simp at this; rw [this]
+  | lam dom body ih_dom ih_body =>
+    simp [closedAt, Bool.and_eq_true] at hs
+    show Expr.lam ((dom.shift c d).substEnv (liftEnvN (c + d) γ))
+                  ((body.shift c (d + 1)).substEnv ((.bvar 0) :: (liftEnvN (c + d) γ).map (·.shift 1 0)))
+       = Expr.lam ((dom.substEnv (liftEnvN d γ)).shift c d)
+                  ((body.substEnv ((.bvar 0) :: (liftEnvN d γ).map (·.shift 1 0))).shift c (d + 1))
+    congr 1
+    · exact ih_dom c d hs.1
+    · rw [show (.bvar 0 :: (liftEnvN (c + d) γ).map (·.shift 1 0))
+            = liftEnvN (c + d + 1) γ from by simp [liftEnvN],
+          show (.bvar 0 :: (liftEnvN d γ).map (·.shift 1 0))
+            = liftEnvN (d + 1) γ from by simp [liftEnvN],
+          show c + d + 1 = c + (d + 1) from by omega]
+      exact ih_body c (d + 1) (by rw [show d + 1 + γ.length = d + γ.length + 1 from by omega]; exact hs.2)
+  | mu ann body ih_ann ih_body =>
+    simp [closedAt, Bool.and_eq_true] at hs
+    show Expr.mu ((ann.shift c d).substEnv (liftEnvN (c + d) γ))
+                 ((body.shift c (d + 1)).substEnv ((.bvar 0) :: (liftEnvN (c + d) γ).map (·.shift 1 0)))
+       = Expr.mu ((ann.substEnv (liftEnvN d γ)).shift c d)
+                 ((body.substEnv ((.bvar 0) :: (liftEnvN d γ).map (·.shift 1 0))).shift c (d + 1))
+    congr 1
+    · exact ih_ann c d hs.1
+    · rw [show (.bvar 0 :: (liftEnvN (c + d) γ).map (·.shift 1 0))
+            = liftEnvN (c + d + 1) γ from by simp [liftEnvN],
+          show (.bvar 0 :: (liftEnvN d γ).map (·.shift 1 0))
+            = liftEnvN (d + 1) γ from by simp [liftEnvN],
+          show c + d + 1 = c + (d + 1) from by omega]
+      exact ih_body c (d + 1) (by rw [show d + 1 + γ.length = d + γ.length + 1 from by omega]; exact hs.2)
+  | app f a ih_f ih_a =>
+    simp [closedAt, Bool.and_eq_true] at hs
+    show Expr.app ((f.shift c d).substEnv (liftEnvN (c + d) γ))
+                  ((a.shift c d).substEnv (liftEnvN (c + d) γ))
+       = Expr.app ((f.substEnv (liftEnvN d γ)).shift c d)
+                  ((a.substEnv (liftEnvN d γ)).shift c d)
+    congr 1; exact ih_f c d hs.1; exact ih_a c d hs.2
+  | asc t y ih_t ih_y =>
+    simp [closedAt, Bool.and_eq_true] at hs
+    show Expr.asc ((t.shift c d).substEnv (liftEnvN (c + d) γ))
+                  ((y.shift c d).substEnv (liftEnvN (c + d) γ))
+       = Expr.asc ((t.substEnv (liftEnvN d γ)).shift c d)
+                  ((y.substEnv (liftEnvN d γ)).shift c d)
+    congr 1; exact ih_t c d hs.1; exact ih_y c d hs.2
 
 /-- Reverse composition: subst then substEnv = substEnv with substituted entry.
     Generalized over binder depth c.
@@ -702,20 +798,57 @@ theorem subst_substEnv_comm_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
   | type => rfl
   | bvar k =>
     simp [closedAt] at he
-    unfold subst
-    by_cases hk_c : k == c
+    by_cases hk_eq : k = c
     · -- k = c: subst replaces with s.shift c 0
-      -- LHS: (s.shift c 0).substEnv (liftEnvN c γ)
-      -- RHS: liftEnvN c (s.substEnv γ :: γ)[c]! = (s.substEnv γ).shift c 0
-      -- Needs shift_substEnv_liftEnvN: (s.shift c 0).substEnv (liftEnvN c γ) = (s.substEnv γ).shift c 0
-      simp only [hk_c, ite_true]
-      sorry
+      subst hk_eq
+      simp [subst]
+      -- Goal: (s.shift k 0).substEnv (liftEnvN k γ) = (bvar k).substEnv (liftEnvN k (s.substEnv γ :: γ))
+      -- LHS: use shift_substEnv_liftEnvN
+      have hlhs := shift_substEnv_liftEnvN s k 0 γ (by simpa using hs)
+      simp [liftEnvN] at hlhs
+      rw [hlhs]
+      -- Now goal: (s.substEnv γ).shift k 0 = (bvar k).substEnv (liftEnvN k (s.substEnv γ :: γ))
+      simp only [substEnv, liftEnvN_length, List.length_cons,
+                  show k < k + (γ.length + 1) from by omega, ite_true]
+      change (s.substEnv γ).shift k 0 = ((liftEnvN k (s.substEnv γ :: γ))[k]?).getD default
+      rw [liftEnvN_getElem?_ge k (s.substEnv γ :: γ) k (by omega)
+          (by simp only [List.length_cons]; omega)]
+      simp
     · by_cases hk_gt : k > c
-      · -- k > c: bvar (k-1) in liftEnvN c γ = bvar k in liftEnvN c (s.substEnv γ :: γ)
-        -- Both reduce to γ[(k-1)-c].shift c 0, needs liftEnvN entry lemmas.
-        sorry
-      · -- k < c: both liftEnvN map bvar k to bvar k.
-        sorry
+      · -- k > c: subst gives bvar (k-1)
+        have h_subst : (Expr.bvar k).subst c (s.shift c 0) = .bvar (k - 1) := by
+          simp [subst, show (k == c) = false from by simp [beq_iff_eq, hk_eq], hk_gt]
+        rw [h_subst]
+        -- Goal: (bvar (k-1)).substEnv (liftEnvN c γ) = (bvar k).substEnv (liftEnvN c (s.substEnv γ :: γ))
+        simp only [substEnv, liftEnvN_length, List.length_cons,
+              show k - 1 < c + γ.length from by omega, ite_true,
+              show k < c + (γ.length + 1) from by omega, ite_true]
+        change ((liftEnvN c γ)[k - 1]?).getD default
+             = ((liftEnvN c (s.substEnv γ :: γ))[k]?).getD default
+        rw [liftEnvN_getElem?_ge c γ (k - 1) (by omega) (by omega),
+            liftEnvN_getElem?_ge c (s.substEnv γ :: γ) k (by omega) (by simp [List.length_cons]; omega)]
+        simp [show k - 1 - c = k - c - 1 from by omega]
+        -- Goal: γ[k-c-1]!.shift c 0 = (s.substEnv γ :: γ)[k-c]!.shift c 0
+        -- Both sides are the same since (s.substEnv γ :: γ)[k-c]! = γ[k-c-1]! when k-c ≥ 1
+        congr 2
+        -- Goal: γ[k-c-1]? = (s.substEnv γ :: γ)[k-c]? (or getD default version)
+        cases hkc_case : k - c with
+        | zero => omega
+        | succ j => simp [List.getElem?_cons_succ]
+      · -- k < c: bvar k unchanged by subst, both liftEnvN map to bvar k
+        have hk_lt : k < c := by omega
+        have h_subst : (Expr.bvar k).subst c (s.shift c 0) = .bvar k := by
+          simp [subst, show (k == c) = false from by simp [beq_iff_eq, hk_eq],
+                show ¬(k > c) from by omega]
+        rw [h_subst]
+        -- Goal: (bvar k).substEnv (liftEnvN c γ) = (bvar k).substEnv (liftEnvN c (s.substEnv γ :: γ))
+        simp only [substEnv, liftEnvN_length, List.length_cons,
+              show k < c + γ.length from by omega, ite_true,
+              show k < c + (γ.length + 1) from by omega, ite_true]
+        change ((liftEnvN c γ)[k]?).getD default
+             = ((liftEnvN c (s.substEnv γ :: γ))[k]?).getD default
+        rw [liftEnvN_getElem?_lt c γ k hk_lt,
+            liftEnvN_getElem?_lt c (s.substEnv γ :: γ) k hk_lt]
   | lam dom body ih_dom ih_body =>
     simp [closedAt, Bool.and_eq_true] at he
     show Expr.lam ((dom.subst c (s.shift c 0)).substEnv (liftEnvN c γ))
