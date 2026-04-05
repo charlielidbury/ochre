@@ -431,6 +431,92 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
         | .type | .bvar _ | .app _ _ | .asc _ _ =>
           injection h with h; cases h
 
+/-- Concrete normal form: the shape of concEval outputs.
+    Values are lam/type/mu (base values) or neutral applications where
+    the function is not lam/mu (not a redex) and sub-expressions are ConcNF. -/
+inductive ConcNF : Expr → Prop
+  | lam (dom body : Expr) : ConcNF (.lam dom body)
+  | type : ConcNF .type
+  | mu (ann body : Expr) : ConcNF (.mu ann body)
+  | app (f a : Expr) : ConcNF f → ConcNF a →
+      (match f with | .lam _ _ | .mu _ _ => False | _ => True) → ConcNF (.app f a)
+
+/-- concEval always produces ConcNF values. -/
+theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
+    (h : concEval fuel e = some v) : ConcNF v := by
+  induction fuel generalizing e v with
+  | zero => simp [concEval] at h
+  | succ n ih =>
+    cases e with
+    | bvar => simp [concEval] at h
+    | lam dom body => simp [concEval] at h; subst h; exact .lam dom body
+    | type => simp [concEval] at h; subst h; exact .type
+    | asc term _ => unfold concEval at h; exact ih h
+    | mu ann body => simp [concEval] at h; subst h; exact .mu ann body
+    | app f a =>
+      unfold concEval at h
+      match hf : concEval n f, ha : concEval n a with
+      | none, _ => simp [hf] at h
+      | some _, none => simp [hf, ha] at h
+      | some fVal, some aVal =>
+        simp only [hf, ha] at h
+        match hfv : fVal with
+        | .lam _ _ => exact ih h
+        | .mu _ _ => exact ih h
+        | .type =>
+          injection h with hv; subst hv
+          exact ConcNF.app _ _ ConcNF.type (ih ha) True.intro
+        | .bvar k => exact absurd hf (by intro h; exact concEval_not_bvar h)
+        | .app f1 a1 =>
+          injection h with hv; subst hv
+          exact ConcNF.app _ _ (ih hf) (ih ha) True.intro
+        | .asc t ty => exact absurd hf (by intro h; exact concEval_not_asc h)
+
+/-- ConcNF values are idempotent under concEval: if concEval succeeds on
+    a ConcNF value, it returns the same value. This is because ConcNF values
+    have no redexes (no beta-reducible lam-app or mu-app). -/
+theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
+    (hv : ConcNF v) (h : concEval fuel v = some v') : v' = v := by
+  induction hv generalizing fuel v' with
+  | lam dom body =>
+    cases fuel with
+    | zero => simp [concEval] at h
+    | succ n => simp [concEval] at h; exact h.symm
+  | type =>
+    cases fuel with
+    | zero => simp [concEval] at h
+    | succ n => simp [concEval] at h; exact h.symm
+  | mu ann body =>
+    cases fuel with
+    | zero => simp [concEval] at h
+    | succ n => simp [concEval] at h; exact h.symm
+  | @app f a hf_nf ha_nf h_not_redex ih_f ih_a =>
+    cases fuel with
+    | zero => simp [concEval] at h
+    | succ n =>
+      unfold concEval at h
+      match hcf : concEval n f, hca : concEval n a with
+      | none, _ => simp [hcf] at h
+      | some _, none => simp [hcf, hca] at h
+      | some fVal, some aVal =>
+        simp only [hcf, hca] at h
+        have hf_eq : fVal = f := ih_f hcf
+        have ha_eq : aVal = a := ih_a hca
+        rw [hf_eq, ha_eq] at h
+        -- f is not lam or mu (by h_not_redex), so the neutral app case fires
+        -- We need to show v' = app f a given h about concEval's match on f
+        revert h
+        match f, h_not_redex with
+        | .type, _ | .bvar _, _ | .app _ _, _ | .asc _ _, _ =>
+          intro h; injection h with heq; exact heq.symm
+
+/-- ConcNF implies the old isConcreteVal-or-app pattern: not bvar, not asc. -/
+theorem ConcNF.not_bvar {v : Expr} (h : ConcNF v) : ∀ k, v ≠ .bvar k := by
+  intro k; cases h <;> intro heq <;> cases heq
+
+theorem ConcNF.not_asc {v : Expr} (h : ConcNF v) : ∀ t ty, v ≠ .asc t ty := by
+  intro t ty; cases h <;> intro heq <;> cases heq
+
 /-! ## Fuel monotonicity (mutual proof)
 
 absEval and subCheckNF are mutually recursive, so their fuel monotonicity

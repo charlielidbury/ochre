@@ -70,7 +70,7 @@ def VCompat : Nat → Expr → Expr → Prop
     ∨ (∃ domV domT bodyV bodyT,
         v = .lam domV bodyV ∧ τ = .lam domT bodyT ∧
         ∀ (j : Nat), j ≤ n → ∀ (aV aT : Expr),
-          (match aV with | .lam _ _ | .type | .mu _ _ => True | _ => False) →
+          ConcNF aV →
           VCompat j aV aT →
           ∀ (fuel : Nat) rv, concEval fuel (bodyV.subst 0 aV) = some rv →
           VCompat j rv (bodyT.subst 0 aT))
@@ -1185,18 +1185,18 @@ theorem concEval_val {fuel : Nat} {v : Expr} (hfuel : fuel > 0)
     | app _ _ => exact absurd hval (by simp)
     | asc _ _ => exact absurd hval (by simp)
 
-/-- A concrete-value environment: all entries are lam, type, or mu.
-    This ensures entries are stable under concEval. -/
+/-- A ConcNF-value environment: all entries are concEval normal forms.
+    This ensures entries are idempotent under concEval (ConcNF_concEval_idem). -/
 def ConcreteValEnv (γ : List Expr) : Prop :=
-  ∀ i (h : i < γ.length), match γ[i] with | .lam _ _ | .type | .mu _ _ => True | _ => False
+  ∀ i (h : i < γ.length), ConcNF (γ[i])
 
-/-- Empty environment is a concrete value environment. -/
+/-- Empty environment is a ConcNF environment. -/
 theorem ConcreteValEnv.nil : ConcreteValEnv [] :=
   fun i h => absurd h (Nat.not_lt_zero i)
 
-/-- Extending a concrete value environment with a concrete value. -/
+/-- Extending a ConcNF environment with a ConcNF value. -/
 theorem ConcreteValEnv.cons {v : Expr} {γ : List Expr}
-    (hv : match v with | .lam _ _ | .type | .mu _ _ => True | _ => False)
+    (hv : ConcNF v)
     (hγ : ConcreteValEnv γ)
     : ConcreteValEnv (v :: γ) := by
   intro i hi
@@ -1217,9 +1217,9 @@ def FunEnvCompat (n : Nat) (γV γT : List Expr) : Prop :=
 theorem FunEnvCompat.nil (n : Nat) : FunEnvCompat n [] [] :=
   ⟨rfl, ConcreteValEnv.nil, fun i h => absurd h (Nat.not_lt_zero i)⟩
 
-/-- Extend FunEnvCompat with a concrete-value pair. -/
+/-- Extend FunEnvCompat with a ConcNF-value pair. -/
 theorem FunEnvCompat.cons {n : Nat} {v τ : Expr} {γV γT : List Expr}
-    (hval : match v with | .lam _ _ | .type | .mu _ _ => True | _ => False)
+    (hval : ConcNF v)
     (hcompat : VCompat n v τ)
     (henv : FunEnvCompat n γV γT)
     : FunEnvCompat n (v :: γV) (τ :: γT) := by
@@ -1295,16 +1295,14 @@ theorem soundness_open (e : Expr)
       simp only [Expr.substEnv, hk_lt_V, ite_true] at h_conc
       simp only [hk_lt_T, ite_true]
       obtain ⟨_, hval_env, hvc⟩ := h_env
-      -- γV[k]! is a concrete value, so concEval returns it unchanged
-      have hval_k : match γV[k]! with | .lam _ _ | .type | .mu _ _ => True | _ => False := by
-        have h := hval_env k hk_lt_V
-        rw [getElem!_pos γV k hk_lt_V]; exact h
-      have hstable := concEval_val (by omega : fk + 1 > 0) hval_k
-      rw [hstable] at h_conc; injection h_conc with hv; subst hv
-      -- v = γV[k]!, need VCompat n γV[k]! γT[k]!
+      -- γV[k]! is a ConcNF value, so concEval is idempotent on it
+      have hval_k : ConcNF (γV[k]) := hval_env k hk_lt_V
+      rw [getElem!_pos γV k hk_lt_V] at h_conc
+      have hidem := ConcNF_concEval_idem hval_k h_conc
+      subst hidem
+      -- v = γV[k], need VCompat n γV[k] γT[k]!
       have hvc_k := hvc k hk_lt_V hk_lt_T
-      rw [show γV[k]! = γV[k] from getElem!_pos γV k hk_lt_V,
-          show γT[k]! = γT[k] from getElem!_pos γT k hk_lt_T]
+      rw [show γT[k]! = γT[k] from getElem!_pos γT k hk_lt_T]
       exact hvc_k
   | type =>
     -- absEval: type → ⟨type⟩, concEval: type → type, VCompat by refl
@@ -1526,15 +1524,20 @@ theorem soundness_open (e : Expr)
                         injection hv_lam with hd1 hb1
                         injection hτ_lam with hd2 hb2
                         -- bodyV' = bodyV, bodyT' = bodyT.substEnv (lift γT)
-                        -- h_sem_lam : ∀ j ≤ m, ∀ aV' aT', isConcreteVal aV' →
-                        --   VCompat j aV' aT' → concEval fuel rv (bodyV.subst 0 aV') = some rv →
-                        --   VCompat j rv (bodyT'.subst 0 aT')
-                        -- Apply with j = m, aV' = aV, aT' = aT.val.substEnv γT
-                        -- BLOCKERS:
-                        -- 1. isConcreteVal aV (need to show concEval produces concrete values)
-                        -- 2. absEval_preserves_VCompat_substEnv to bridge from
-                        --    VCompat m v ((bodyT.subst 0 aT.val).substEnv γT) to
-                        --    VCompat m v (τ.val.substEnv γT)
+                        -- h_sem_lam : ∀ j ≤ m, ∀ aV aT, ConcNF aV →
+                        --   VCompat j aV aT → concEval fuel rv (bodyV'.subst 0 aV) = some rv →
+                        --   VCompat j rv (bodyT'.subst 0 aT)
+                        -- Apply with j = m, aV = aV, aT = aT.val.substEnv γT
+                        subst hb1; subst hb2
+                        -- ConcNF aV: aV comes from concEval, so it's a ConcNF value
+                        have h_aV_concnf : ConcNF aV := concEval_ConcNF haV
+                        -- Semantic lam gives: VCompat m v ((bodyT.substEnv (lift γT)).subst 0 (aT.val.substEnv γT))
+                        have h_sem := h_sem_lam m (Nat.le_refl m) aV (aT.val.substEnv γT)
+                          h_aV_concnf (VCompat.mono ih_aV) fk v h_conc
+                        -- By subst_substEnv_comm: (bodyT.substEnv (lift γT)).subst 0 (aT.val.substEnv γT)
+                        --   = (bodyT.subst 0 aT.val).substEnv γT
+                        -- REMAINING: bridge from VCompat m v ((bodyT.subst 0 aT.val).substEnv γT)
+                        -- to VCompat m v (τ.val.substEnv γT) via absEval_preserves_VCompat_substEnv
                         sorry
                       · cases hv_mu  -- lam ≠ mu
                       · cases hτ_mu  -- lam ≠ mu
