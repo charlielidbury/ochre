@@ -8,11 +8,73 @@ proving soundness.
 
 ### Sorry inventory (6 in Soundness, 0 in Eval, 0 in Syntax)
 
-6 sorry DECLARATIONS total:
+6 sorry DECLARATIONS total (53 individual sorry occurrences):
 - Soundness.lean (6): app_inferType, absEval_preserves, adequacy_gen,
   subCheckNF_substEnv, absEval_preserves_VCompat_substEnv, soundness_open.
-- Eval.lean: 0 sorrys. **ALL PROVED in this session.**
+- Eval.lean: 0 sorrys.
 - Syntax.lean: 0 sorrys.
+
+Summary of session ochre-20260405-205523:
+
+**PROVED: subCheckNF_substEnv lam-lam case** (Soundness.lean:1384)
+
+The lam-lam case of subCheckNF_substEnv was the highest priority from previous sessions.
+The proof required:
+
+1. **Generalized theorem signature**: Added depth parameter `d` for closedAt flexibility
+   and made `ctx'` a universal parameter (not existential). The depth d=0 at top level,
+   d+1 under binders. The body case uses liftEnvN 1 γ (entries closedAt d+1) with
+   extend ctx' ⟨domB.substEnv γ⟩.
+
+2. **Helper lemmas**: `liftEnvN_closedAt_succ` (liftEnvN entries are closedAt d+1 when
+   γ entries are closedAt d) and `TyCtx_extend_ctx_wf` (extending a well-formed context
+   preserves well-formedness at d+1).
+
+3. **Proof by induction on fuel**: The domain IH uses same d, same ctx'. The body IH
+   uses d+1 and extend ctx' ⟨domB.substEnv γ⟩. Fuel alignment via subCheckNF_fuel_mono_le.
+
+**Also completed:**
+- Added `closedAt` field to FunEnvCompat (4th component). This closes the sorry at the
+  call site where γT entries need closedAt 0. Propagated through nil, cons, mono, mono_le.
+- Added `aT.closedAt 0` hypothesis to VCompat's semantic lam disjunct (needed for
+  FunEnvCompat.cons in soundness_open's lam case).
+- Closed the γT closedAt sorry in soundness_open's asc case.
+
+**ANALYSIS: Remaining blockers (unchanged from previous sessions):**
+
+1. **Mu case of soundness_open** (2 sorrys, lines 1802/1827): Needs VCompat m on
+   unfolded bodies `body.substEnv(mu_V :: γV)` and `body.substEnv(mu_T :: γT)`. Cannot
+   use soundness_open IH because concEval doesn't evaluate the mu body (mu is a value).
+   Joint (fuel, expr) induction does NOT help here — the issue is fundamentally about
+   mu bodies never being evaluated at runtime. Possible approaches:
+   - Add a "mu unfolding at definition site" case to soundness_open that uses the absEval
+     body check as evidence
+   - Strengthen VCompat's structural mu to carry a proof obligation that can be discharged
+     by the body check
+   - Neither approach has been attempted yet.
+
+2. **App lam-lam case of soundness_open** (2 sorrys, lines 2015/2033): Step-loss from
+   semantic lam extraction. Joint (fuel, expr) induction WOULD help here: the beta-reduced
+   expression uses fuel fk < fk+1, so the IH applies directly without extracting the
+   semantic lam.
+
+3. **absEval_preserves hard cases** (5 sorrys): refl-lam (normalization coherence),
+   semantic lam (same), app beta/mu-app (shape change), refl-asc (needs adequacy).
+
+**RECOMMENDED NEXT STEPS:**
+
+1. **Attempt joint (fuel, expr) induction for soundness_open.** This resolves the
+   step-loss problem in the app lam-lam case. Use well-founded recursion on
+   (fuel, sizeOf e) with Prod.Lex ordering. The mu case remains blocked.
+
+2. **Investigate the mu case further.** The core issue: mu is a value, so concEval
+   returns it immediately without evaluating the body. But the structural mu VCompat
+   disjunct requires VCompat on the unfolded bodies, which needs evaluation. This might
+   require a new proof technique or a change to VCompat's mu disjuncts.
+
+3. **Remaining subCheckNF_substEnv cases** (lines 1450-1451): non-lam σ vs lam τ
+   (inferType fallback) and τ = mu/app/bvar/asc. These require absEval_substEnv
+   commutation and are lower priority.
 
 Summary of session ochre-20260405-ctx-irrelevance:
 
