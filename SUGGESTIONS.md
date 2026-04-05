@@ -30,6 +30,17 @@ this gap is the core challenge.
   Church-encoded types have inner mus with symbolic bvar annotations; domain
   checks fail. Even without the body' ⊑ ann' subcheck, appendArrays errors.
 
+**Key diagnosis (agent ochre-20260405-091658):** The bottleneck is NOT
+the mu body check itself — it's absEval's domain check failing on abstract
+arguments. When appendArrays's body does `fst_ arr1` where
+`arr1 : Array_ n1 T` and n1 is abstract, `Array_ n1 T` stays as a symbolic
+application (n1 can't reduce). Then `fst_`'s domain check
+`symbolic_app ⊑ Pair` fails. This is a general limitation of absEval when
+abstract arguments prevent type-level computation from reducing. The mu body
+check just exposes it. The solution should make absEval smarter about
+abstract/stuck applications — this is the core of what "abstract evaluation"
+means.
+
 **Ideas not yet explored:**
 - Giving self more structure than just the annotation type. Option D failed
   because self was an opaque bvar — the body couldn't do anything with it.
