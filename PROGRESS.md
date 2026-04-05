@@ -59,17 +59,36 @@ then VCompat n v (τ.val.substEnv γ). This is NOT a corollary of absEval_preser
    version of the normalization gap. Not a corollary of absEval_preserves because
    absEval and substEnv don't commute in general.
 
+**TESTED AND REJECTED: ∀ n conclusion for soundness_open.** The idea was to
+strengthen the conclusion from `VCompat n` to `∀ n, VCompat n`, with
+`h_env : ∀ n, FunEnvCompat n`. This would let the app case extract the semantic
+lam at step n+2 (instead of n+1), recovering the lost step. PROBLEM: the lam
+case BREAKS. The semantic lam provides VCompat j aV aT for a specific j (from
+the quantifier ∀ j ≤ m). To build `∀ n, FunEnvCompat n (aV :: γV) (aT :: γT)`
+for ih_body, we'd need `∀ n, VCompat n aV aT`. But the semantic lam only gives
+VCompat at step j, not at all steps. The lam and app cases have OPPOSING
+requirements: lam needs specific-n environments (from semantic lam), app needs
+∀ n environments (to extract semantic lam at higher step).
+
+**NOTE: Inductive VCompat would also fail** for the same reason — the semantic
+lam constructor would have VCompat in negative position (left of →), violating
+strict positivity.
+
 **RECOMMENDED NEXT STEPS (updated priority order):**
 
-1. **Resolve the step-loss problem.** This is THE fundamental blocker. Most
-   promising: define VCompat as an inductive type with unrestricted semantic lam
-   (∀ j, not ∀ j ≤ n). This allows application to be "free" in the step index.
-   The well-foundedness comes from the inductive structure, not the Nat recursion.
-   Requires rewriting VCompat.mono, all case splits in adequacy_gen, etc. (~500 lines).
+1. **Resolve the step-loss via joint (fuel, expression) induction.** This is the
+   most promising approach. Instead of pure expression-structure induction, use
+   well-founded recursion on (fuel, expr.size) lexicographically. For the lam case,
+   body is structurally smaller (same fuel). For the app case, the beta-reduced
+   expression has strictly less fuel (fk < fk+1), regardless of expression size.
+   This sidesteps the step-loss because the IH for the beta-reduced expression
+   comes from fuel decrease, not from extracting a semantic lam.
+   The semantic lam disjunct would still exist in VCompat (for compositionality),
+   but the app case wouldn't NEED to extract it from ih_fV.
 
-2. **Prove absEval_preserves_VCompat_substEnv.** Even after fixing step-loss,
-   this is needed. Approaches: (a) show absEval commutes with substEnv for
-   normalized environments, (b) joint induction on (fuel, expression).
+2. **Prove absEval_preserves_VCompat_substEnv.** Needed regardless of the
+   induction strategy. Approaches: (a) show absEval commutes with substEnv for
+   normalized environments, (b) case analysis on absEval + substEnv interaction.
 
 3. **Prove mu case** via structural mu + n-induction. Blocked by (2) and by the
    concEval gap (structural mu requires unconditional VCompat on unfolded bodies,
