@@ -363,7 +363,60 @@ theorem shift_closedAt (e : Expr) (n d c : Nat) (hc : c ≤ n)
 theorem subst_closedAt_gen (e : Expr) (j n : Nat) (s : Expr)
     (he : closedAt (j + n + 1) e = true) (hs : closedAt (j + n) s = true)
     : closedAt (j + n) (e.subst j s) = true := by
-  sorry
+  induction e generalizing j s with
+  | bvar k =>
+    simp only [closedAt, decide_eq_true_eq] at he
+    simp only [subst]
+    by_cases heq : k == j
+    · -- k = j: result is s
+      simp only [heq, ↓reduceIte]; exact hs
+    · -- k ≠ j
+      simp only [heq, Bool.false_eq_true, ↓reduceIte]
+      have hne : k ≠ j := by intro h; simp [h] at heq
+      by_cases hgt : k > j
+      · -- k > j: result is bvar (k - 1), need k - 1 < j + n
+        simp [hgt, closedAt, decide_eq_true_eq]; omega
+      · -- k < j (since k ≠ j and ¬(k > j)): result is bvar k, need k < j + n
+        simp [hgt, closedAt, decide_eq_true_eq]; omega
+  | type => simp [subst, closedAt]
+  | lam dom body ih_dom ih_body =>
+    simp only [closedAt, Bool.and_eq_true] at he
+    obtain ⟨he_dom, he_body⟩ := he
+    simp only [subst, closedAt, Bool.and_eq_true]
+    refine ⟨ih_dom j s he_dom hs, ?_⟩
+    have hshift : closedAt (j + 1 + n) (s.shift 1 0) = true := by
+      have h1 := shift_closedAt s (j + n) 1 0 (Nat.zero_le _) hs
+      have : j + n + 1 = j + 1 + n := by omega
+      rw [this] at h1; exact h1
+    have he2 : closedAt (j + 1 + n + 1) body = true := by
+      have : (j + n + 1) + 1 = j + 1 + n + 1 := by omega
+      rw [this] at he_body; exact he_body
+    have := ih_body (j + 1) (s.shift 1 0) he2 hshift
+    rwa [show j + 1 + n = j + n + 1 from by omega] at this
+  | app f a ih_f ih_a =>
+    simp only [closedAt, Bool.and_eq_true] at he
+    obtain ⟨he_f, he_a⟩ := he
+    simp only [subst, closedAt, Bool.and_eq_true]
+    exact ⟨ih_f j s he_f hs, ih_a j s he_a hs⟩
+  | asc t y ih_t ih_y =>
+    simp only [closedAt, Bool.and_eq_true] at he
+    obtain ⟨he_t, he_y⟩ := he
+    simp only [subst, closedAt, Bool.and_eq_true]
+    exact ⟨ih_t j s he_t hs, ih_y j s he_y hs⟩
+  | mu ann body ih_ann ih_body =>
+    simp only [closedAt, Bool.and_eq_true] at he
+    obtain ⟨he_ann, he_body⟩ := he
+    simp only [subst, closedAt, Bool.and_eq_true]
+    refine ⟨ih_ann j s he_ann hs, ?_⟩
+    have hshift : closedAt (j + 1 + n) (s.shift 1 0) = true := by
+      have h1 := shift_closedAt s (j + n) 1 0 (Nat.zero_le _) hs
+      have : j + n + 1 = j + 1 + n := by omega
+      rw [this] at h1; exact h1
+    have he2 : closedAt (j + 1 + n + 1) body = true := by
+      have : (j + n + 1) + 1 = j + 1 + n + 1 := by omega
+      rw [this] at he_body; exact he_body
+    have := ih_body (j + 1) (s.shift 1 0) he2 hshift
+    rwa [show j + 1 + n = j + n + 1 from by omega] at this
 
 /-- Substitution at position 0 preserves closedAt.
     closedAt (n+1) e ∧ closedAt n s → closedAt n (e.subst 0 s) -/
