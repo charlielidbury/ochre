@@ -204,10 +204,18 @@ Potential paths forward (not yet attempted):
 2. **Biorthogonality**: Define VCompat observationally (v and τ "behave the same
    in all contexts") without reference to body substitution. Standard technique
    for step-indexed logical relations. Requires rethinking VCompat entirely.
-3. **Change absEval to not normalize lam bodies for domains that are values**:
-   The pred_ failure was specifically due to raw `PairNN_ = app (app Pair_ Nat_) Nat_`
-   in a domain position. If domains that are already values (lam, mu, type, bvar)
-   are kept raw while app/asc domains are normalized, this might work. Not tested.
+3. **Change absEval to not normalize lam bodies** ← TESTED, DOES NOT WORK
+   **Tested by agent ochre-20260405-040204.** Two variants tested:
+   (a) Raw body only: breaks succ_, add_, double_, pred_ — the raw body in
+       absEval output changes the observable output (lam dom rawBody instead
+       of lam dom normalizedBody), failing exact equality tests.
+   (b) Raw body + normalize-on-demand in subCheckNF lam-lam: same failures.
+       The issue is fundamental: absEval's output IS the normalized form. If lam
+       bodies are raw, ALL absEval outputs containing lams have raw bodies,
+       including final results. Tests check exact equality against normalized
+       expected values. The mu annotation change worked because mu annotations
+       are only consumed by subCheckNF (which normalizes on demand), never
+       appearing in absEval's FINAL output in a way tests check.
 
 ## Known hazards
 
@@ -247,14 +255,23 @@ Potential paths forward (not yet attempted):
 - **subCheckNF top-universality is FALSE**. `Type <: tau` does NOT mean all
   values inhabit `tau`.
 
-- **Raw lam body approach is NOT viable** (agent ochre-20260405-031505).
-  Keeping raw lam bodies (like the mu annotation change) breaks pred_ and
-  other standard library functions because raw DOMAINS inside nested lam
+- **Raw lam body approach is NOT viable** (agents ochre-20260405-031505,
+  ochre-20260405-040204). Three variants tested, ALL fail:
+  (a) Raw body only: breaks ALL Church numeral operations (succ, add, pred,
+      double). The raw body in output changes observable absEval results.
+  (b) Raw body + subCheckNF normalize-on-demand: same failures. The issue
+      is that absEval output IS the normalized form — tests check exact equality.
+  (c) Previous agent's variant: raw DOMAINS inside nested lam
   bodies cause absEval's app-case domain check to fail. The mu annotation
   change succeeded because mu annotations are only consumed by subCheckNF
   (which normalizes on demand), not by absEval's direct domain comparisons.
   An approach that normalizes domains but not bodies partially works but
   still has the dual-substitution problem for soundness.
+  **Bottom line:** The mu annotation change works because mu annotations flow
+  ONLY to subCheckNF (which normalizes on demand). Lam bodies flow to
+  absEval output (which tests check for exact equality), subCheckNF's
+  lam-lam structural comparison, AND absEval's app-case domain check for
+  nested lams. All three consumers expect normalized inputs.
 
 - **Never weaken tests.** If a proof doesn't go through, the definitions or
   theorem statement may be wrong. Fix those, not the tests.
