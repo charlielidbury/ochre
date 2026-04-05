@@ -227,17 +227,26 @@ Potential paths forward:
    - ✅ asc case PROVED (via subCheckNF_substEnv + VCompat.adequacy)
    - ✅ app case STRUCTURED (agent ochre-20260405-080723): 6 sub-cases,
      3 proved, 4 impossible, 6 sorry'd. See PROGRESS.md for details.
-   - **REMAINING: mu (1 sorry), app (6 sorrys), subCheckNF_substEnv (1 sorry)**
-   - **NEXT STEPS for app case (lam-lam sub-case is the KEY BLOCKER):**
-     (a) Prove `subst_substEnv_comm` in Syntax.lean (~50 lines):
-         `(e.subst 0 s).substEnv γ = e.substEnv (s.substEnv γ :: γ)`
-         Standard de Bruijn property. Proof by induction on e.
+   - ✅ subst_substEnv_comm PROVED (agent ochre-20260405-085031):
+     All 4 Syntax sorrys closed. New helper liftEnvN_getElem?_ge proved.
+     shift_substEnv_liftEnvN fully proved. subst_substEnv_comm_gen bvar
+     cases all proved. **Syntax.lean: 0 sorrys.**
+   - ✅ lam-lam sub-case STRUCTURED (agent ochre-20260405-085031):
+     8 impossible cases proved. Reduced to 2 sorrys (refl + semantic lam).
+   - **REMAINING: mu (1 sorry), app (7 sorrys), subCheckNF_substEnv (1 sorry)**
+   - **NEXT STEPS for app lam-lam (2 sorrys, the KEY BLOCKERS):**
+     (a) ✅ `subst_substEnv_comm` — DONE
      (b) Prove `absEval_preserves_VCompat_substEnv` (~100 lines):
          `VCompat n v (e.substEnv γ) → absEval fuel ctx [] e = .ok τ
           → VCompat n v (τ.val.substEnv γ)`
          This bridges from semantic lam's raw substitution to normalized result.
-     (c) Close lam-lam sub-case using (a) + (b) + semantic lam extraction.
-         Also needs isConcreteVal for aV (problem when aV = app).
+     (c) Resolve isConcreteVal for aV. concEval CAN produce neutral apps
+         (app type type), so isConcreteVal is NOT always true. Options:
+         - Prove it for well-typed terms (absEval-successful arguments)
+         - Remove isConcreteVal guard from VCompat semantic lam (requires
+           reworking soundness_open lam case)
+         - Add stronger precondition (WellTyped)
+     (d) Close lam-lam sub-case using (b) + (c) + composition lemmas.
    See PROGRESS.md for full analysis.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
