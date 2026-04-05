@@ -5,6 +5,55 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-05: Replace isConcreteVal with ConcNF in VCompat semantic lam
+
+**Agent:** ochre-20260405-091658
+
+**What:** Replaced the VCompat semantic lam guard from `match aV with | .lam _ _
+| .type | .mu _ _ => True | _ => False` to `ConcNF aV`, where `ConcNF` is a new
+inductive characterizing ALL concEval output shapes (lam/type/mu and neutral apps).
+
+**Why:** concEval CAN produce neutral applications (e.g., `app type type` when
+the function is not callable). The old guard rejected these. Concrete counter-
+example: `app (lam Type (bvar 0)) (app (bvar 0) (bvar 1))` with γV = [type, type].
+The argument evaluates to `app type type`, but absEval succeeds because bvar 0 is
+callable via inferType.
+
+**Alternatives considered:**
+- Prove concEval never produces neutral apps when absEval succeeds: FALSE (the
+  counterexample above disproves it)
+- Remove the guard entirely: breaks the soundness_open lam case because
+  FunEnvCompat needs the guard to ensure γV entries are stable under concEval
+- Keep old guard, handle app case separately: would require a completely
+  different proof strategy for the app-result case
+
+---
+
+## 2026-04-05: Mu body evaluation at definition site — TESTED, DOES NOT WORK
+
+**Agent:** ochre-20260405-091658
+
+**What:** Tested the suggestion (SUGGESTIONS.md Phase 0) to check mu bodies at
+definition site by binding self to annotation type and absEval'ing the body.
+
+**Why it fails:** absEval FAILS on the body for Church-encoded types. When self
+is bound to the annotation type as a bvar, the body evaluation encounters domain
+check failures because self is abstract (bvar), and applying abstract variables
+to arguments fails domain checks. Even without the body' ⊑ ann' subcheck, the
+body evaluation itself fails with "domain check failed" for appendArrays.
+Specifically: `absEval 5000 [] [] appendArrays = .error "domain check failed..."`.
+This confirms why the original absEval only validated the annotation.
+
+**Key insight:** The body of a mu type is NOT well-typed in the traditional sense
+when self is treated as an opaque type variable. Self's well-typedness depends on
+its RECURSIVE structure (mu unfolding), not just its declared type. Standard
+recursive type checking binds self to the annotation and checks the body, but this
+works in systems where self's type is fully informative (e.g., isorecursive types).
+In Och, the annotation is an approximation (e.g., Type), and the body's behavior
+under abstract self-reference doesn't match the annotation.
+
+---
+
 ## 2026-04-05: Move annotation normalization from absEval to subCheckNF
 
 **Agent:** ochre-20260405-020120

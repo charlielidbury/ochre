@@ -8,6 +8,78 @@ proving soundness.
 
 ### Sorry inventory (21 in Soundness, 0 in Eval, 0 in Syntax = 21 total)
 
+Changes by agent ochre-20260405-091658:
+
+**RESOLVED: isConcreteVal blocker for lam-lam sub-case (Eval.lean + Soundness.lean).**
+
+Defined `ConcNF : Expr → Prop` (Eval.lean:435), an inductive characterizing
+ALL concEval output shapes: lam, type, mu, and neutral apps (function not
+lam/mu, sub-expressions ConcNF). Proved `concEval_ConcNF` (concEval always
+produces ConcNF) and `ConcNF_concEval_idem` (ConcNF values are idempotent
+under concEval — if concEval succeeds on a ConcNF value, it returns it
+unchanged). Updated VCompat, ConcreteValEnv, FunEnvCompat to use ConcNF
+instead of the old lam/type/mu-only match pattern. Updated soundness_open
+bvar case to use ConcNF_concEval_idem.
+
+In soundness_open's app lam-lam sub-case (Soundness.lean:1533): the ConcNF
+guard is now discharged via `concEval_ConcNF haV`.
+
+**IDENTIFIED: step-loss blocker for lam-lam sub-case (fundamental issue).**
+
+After discharging the ConcNF guard, the semantic lam from ih_fV gives
+VCompat m (one step less). But the goal is VCompat (m+1). This is a
+fundamental limitation of step-indexed logical relations: application
+"costs one step." The semantic lam at step m+1 quantifies over j ≤ m
+(structurally required for VCompat's well-founded recursion on Nat).
+The gap between VCompat m and VCompat (m+1) CANNOT be resolved within
+the current VCompat definition and induction strategy.
+
+Analysis of potential fixes:
+- Step-free FunEnvCompat (∀ n, VCompat n): solves the app case but causes
+  circular reference in VCompat definition (semantic lam would need to
+  reference VCompat at the same step, which Lean's structural recursion rejects)
+- Fuel induction: gives smaller fuel for beta-reduced body, but the
+  dual-substitution problem persists (concrete body ≠ abstract body)
+- n-induction: gives VCompat m by IH but not VCompat (m+1) — same gap
+- Offset precondition (FunEnvCompat n+1 → VCompat n): the IH applies the
+  same offset, so the gap is unchanged
+
+**TESTED AND REJECTED: mu body check at definition site (suggested in SUGGESTIONS.md).**
+
+Tried checking mu bodies at definition site:
+```lean
+let ann' ← absEval fuel ctx seen ann
+let body' ← absEval fuel (TyCtx.extend ctx ann') seen body
+```
+
+Result: absEval FAILS on the body for Church-encoded types. When self is
+bound to the annotation type (bvar 0 → ⟨type⟩ for dBool, or ⟨bvar k⟩ for
+inner mus), the body evaluation encounters domain check failures because:
+1. Self is abstract (bvar), so applying self to arguments hits domain checks
+2. Inner mus (dtrue, dfalse) have symbolic bvar annotations, and their body
+   checks cascade with the same problem
+3. Even WITHOUT the body' ⊑ ann' subcheck, the body EVALUATION itself fails
+   with "domain check failed" for appendArrays and similar complex types
+
+This confirms why the original absEval only validated the annotation:
+the body of a mu type is not well-typed in the traditional sense when
+self is treated as an opaque type variable. The body's well-typedness
+depends on self's RECURSIVE nature, not just its declared type.
+
+The soundness_open mu case remains genuinely blocked by this.
+
+**RECOMMENDED NEXT STEPS (updated):**
+1. **Resolve the step-loss blocker** — this is the MOST IMPORTANT problem.
+   The most promising approach: change VCompat's semantic lam to not have
+   a step bound (quantify over all j, not j ≤ n). This requires making
+   VCompat well-founded without the step bound in the semantic lam, possibly
+   by using an inductive type instead of a recursive def, or by using
+   well-founded recursion on a different measure.
+2. **Prove absEval_preserves_VCompat_substEnv** — needed for lam-lam AND
+   for bridging from (bodyT.subst 0 aT.val).substEnv γT to τ.val.substEnv γT
+3. **Resolve mu case** — fundamentally blocked by absEval not evaluating body
+4. Other sorrys (adequacy_gen, subCheckNF_substEnv, app sub-cases)
+
 Changes by agent ochre-20260405-085031:
 
 **PROVED: All 4 Syntax.lean sorrys (Syntax.lean, 0 sorrys remaining).**

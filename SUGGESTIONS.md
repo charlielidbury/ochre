@@ -3,50 +3,48 @@
 The current goal is proving soundness of Och. Here is the dependency chain
 and priority order for the remaining `sorry`s.
 
-## Phase 0: Fix annotation-trust — SUGGESTED: check mu bodies at definition site
+## Phase 0: Fix annotation-trust — ALL APPROACHES TESTED, ALL FAIL
 
 **The core problem:** absEval's mu case only validates the annotation, not the
 body. This means absEval can't guarantee the body is well-typed, which blocks
 the soundness proof everywhere (soundness_open mu case, adequacy_gen self-elim,
 absEval_preserves). All "annotation-trust" sorrys trace back to this.
 
-**Suggested approach:** Check the mu body at definition site, exactly like lam
-bodies are checked. Bind self (bvar 0) to the annotation type, absEval the
-body, and assert the result is ⊑ the annotation:
+**ALL approaches tested and their results:**
 
-```lean
-| .mu ann body => do
-    let ann' ← absEval fuel ctx seen ann
-    let body' ← absEval fuel (TyCtx.extend ctx ann') seen body
-    if subCheckNF fuel ctx seen body'.val ann'.val then .ok ⟨.mu ann body⟩
-    else .error "mu body not ⊑ annotation"
-```
+- **Option A** (agent ochre-20260404-215501): `body' ⊑ ann'.shift 1 0` — fails
+  for Church-encoded types. Domain checks fail on symbolic applications.
+- **Option B** (agent ochre-20260404-204421): remove annotation-trust entirely —
+  breaks DNat and Vec tests.
+- **Option C**: WellAnnotated precondition — workaround, not a fix.
+- **Option D** (agent ochre-20260405-091658): check mu body at definition site
+  (bind self to annotation type, absEval body):
+  ```lean
+  let ann' ← absEval fuel ctx seen ann
+  let body' ← absEval fuel (TyCtx.extend ctx ann') seen body
+  ```
+  **Result: absEval of the body ITSELF fails** for Church-encoded types.
+  When self is bound to the annotation type (abstract bvar), body evaluation
+  encounters domain check failures. Inner mus (dtrue, dfalse in dBool) have
+  symbolic bvar annotations, compounding the problem. Even WITHOUT the
+  body' ⊑ ann' subcheck, `absEval 5000 [] [] appendArrays` returns
+  `.error "domain check failed"`.
 
-**Why this should work:** This is the standard approach for recursive types.
-When checking `mu ann body`, you assume self has type `ann` and check that the
-body conforms to `ann`. This shouldn't be circular — you're not unfolding the
-mu, you're checking the body under an assumption about self's type. It's
-analogous to how `lam dom body` checks the body with bvar 0 bound to `dom`.
+  **Root cause:** The mu body is NOT well-typed when self is an opaque type
+  variable. Self's well-typedness depends on its RECURSIVE nature (mu
+  unfolding), not just its declared type. Standard recursive type checking
+  assumes self's type is fully informative, but in Och, the annotation is an
+  approximation (e.g., Type) and the body under abstract self-reference doesn't
+  type-check.
 
-**Why this should unblock soundness:** The soundness_open mu case needs
-`absEval fuel (TyCtx.extend ctx ann') [] body = .ok body'` as a precondition
-for the structural IH on `body`. With this change, absEval would provide
-exactly that. The `body' ⊑ ann'` check also gives the adequacy connection
-between the body's behavior and the annotation's claim.
-
-**If this approach doesn't work, document WHY.** Understanding the failure
-mode (which tests break, which proofs cascade) is as valuable as making it
-work. The key question is whether `body' ⊑ ann'` holds for the real programs
-in the test suite (Church-encoded types, recursive functions, etc.).
-
-**Previous attempts (for context):**
-- Option A (agent ochre-20260404-215501) tested `body' ⊑ ann'.shift 1 0` —
-  this is DIFFERENT from what's suggested here. That checked the body against
-  the *shifted* annotation, which fails for Church-encoded types. The approach
-  above checks `body'.val ⊑ ann'.val` (both already normalized by absEval),
-  no shifting needed since we're comparing absEval outputs at the same level.
-- Option B (removing annotation-trust entirely) breaks too much.
-- Option C (WellAnnotated precondition) is a workaround, not a fix.
+**This is a fundamental design tension.** Och's mu bodies need self to be
+UNFOLDED (recursive) to type-check, but the soundness proof needs self to be
+BOUNDED (by the annotation) to terminate. The remaining options are:
+1. Find a way to evaluate the body that handles abstract self-references
+   (e.g., using the mu-app annotation-trust path during body evaluation)
+2. Accept that mu soundness requires a different proof technique (coinductive,
+   or using the seen-set/annotation-trust as an axiom)
+3. Restructure mu to be isorecursive (explicit fold/unfold)
 
 **Expected cascading changes:**
 - fuel_mono proofs will need updating (new absEval/subCheckNF calls in mu case)
