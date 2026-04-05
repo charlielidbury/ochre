@@ -73,16 +73,15 @@ Run `cd lean && lake build` to see the current state.
 
 ## What to do
 
-**Pick one sorry and make progress on it.** Read the state, pick the highest
-priority sorry from SUGGESTIONS.md that you can make progress on, work on it,
-commit, and finish. The priority order is:
+**Current top priority: Phase 0 (mu definition-site checking).** absEval
+must soundly analyze mu bodies at definition site. This is blocking ALL
+remaining sorrys. Do NOT work on proving sorrys until Phase 0 is resolved —
+the definitions will likely change, invalidating proof work. See
+SUGGESTIONS.md Phase 0 for the full context, what's been tried, and ideas
+to explore.
 
-1. `absEval_fuel_mono` (Eval.lean:349) — foundation for everything else
-2. `VCompat.from_type_sub_gen` (Soundness.lean:164)
-3. `VCompat.from_self_intro_gen` (Soundness.lean:185)
-4. `VCompat.adequacy` (Soundness.lean:209)
-5. `soundness` main theorem (Soundness.lean:233)
-6. Subtyping helper lemmas (Subtyping.lean:127-174)
+Once Phase 0 is resolved, pick the highest priority sorry from
+SUGGESTIONS.md, work on it, commit, and finish.
 
 **Before you start proving, sense-check the statement.** Read the theorem,
 think about what it claims, and try to construct a counterexample or identify
