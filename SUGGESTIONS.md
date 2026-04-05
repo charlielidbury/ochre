@@ -235,20 +235,25 @@ Potential paths forward:
      cases all proved. **Syntax.lean: 0 sorrys.**
    - ✅ lam-lam sub-case STRUCTURED (agent ochre-20260405-085031):
      8 impossible cases proved. Reduced to 2 sorrys (refl + semantic lam).
-   - **REMAINING: mu (1 sorry), app (7 sorrys), subCheckNF_substEnv (1 sorry)**
-   - **NEXT STEPS for app lam-lam (2 sorrys, the KEY BLOCKERS):**
-     (a) ✅ `subst_substEnv_comm` — DONE
-     (b) Prove `absEval_preserves_VCompat_substEnv` (~100 lines):
-         `VCompat n v (e.substEnv γ) → absEval fuel ctx [] e = .ok τ
-          → VCompat n v (τ.val.substEnv γ)`
-         This bridges from semantic lam's raw substitution to normalized result.
-     (c) Resolve isConcreteVal for aV. concEval CAN produce neutral apps
-         (app type type), so isConcreteVal is NOT always true. Options:
-         - Prove it for well-typed terms (absEval-successful arguments)
-         - Remove isConcreteVal guard from VCompat semantic lam (requires
-           reworking soundness_open lam case)
-         - Add stronger precondition (WellTyped)
-     (d) Close lam-lam sub-case using (b) + (c) + composition lemmas.
+   - **REMAINING: mu (2 sorrys), app (7 sorrys), subCheckNF_substEnv (1 sorry)**
+   - ✅ soundness_open GENERALIZED over `lenient : Bool` (agent ochre-20260405-163526).
+     ih_body now accepts lenient=true, matching the mu body check.
+   - ✅ absEval_preserves_VCompat_substEnv STATED (Soundness.lean:1299, sorry'd).
+   - ✅ ConcNF guard RESOLVED (agent ochre-20260405-091658).
+   - **THE STEP-LOSS PROBLEM (agent ochre-20260405-163526):**
+     The semantic lam at step n+1 gives VCompat at step j ≤ n. The composition
+     chain (semantic lam → subst_substEnv_comm → absEval_preserves_VCompat_substEnv)
+     is algebraically correct but produces VCompat n, not VCompat (n+1).
+     **TESTED AND REJECTED: ∀ n conclusion.** Strengthening to ∀ n, VCompat n
+     with ∀ n environments would let the app case extract at step n+2. But the
+     lam case BREAKS: the semantic lam provides VCompat at specific j, but
+     ∀ n environments need VCompat at ALL steps. Inductive VCompat also fails
+     (negative-position occurrence violates strict positivity).
+     **RECOMMENDED FIX: Joint (fuel, expression) induction.** Use well-founded
+     recursion on (fuel, expr.size) lexicographically. For lam: body is
+     structurally smaller (same fuel). For app: beta-reduced body has less fuel
+     (fk < fk+1). The app case uses the fuel-IH directly on the beta-reduced
+     expression, bypassing the semantic lam extraction entirely.
    See PROGRESS.md for full analysis.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
