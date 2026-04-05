@@ -133,5 +133,48 @@ theorem shift_subst_cancel_gen (e : Expr) (c : Nat) (s : Expr)
 theorem shift_subst_cancel (e : Expr) (s : Expr) : (e.shift 1 0).subst 0 s = e :=
   shift_subst_cancel_gen e 0 s
 
+/-! ## Simultaneous substitution (for the fundamental theorem)
+
+`substEnv γ e` simultaneously substitutes all free variables in `e` using
+the environment `γ`. Variable `bvar i` (for i < γ.length) is replaced by
+`γ[i]!`. Variables with index ≥ γ.length are shifted down by γ.length
+(they become free in the outer scope).
+
+This is needed for the fundamental theorem of the logical relation, where
+soundness is proved for open terms with VCompat-related environments. -/
+
+/-- Simultaneously substitute free variables using environment γ (partial).
+    bvar i (i < γ.length) → γ[i]!
+    bvar i (i ≥ γ.length) → bvar i  (identity — unchanged)
+    Under binders, γ is lifted: bvar 0 ↦ bvar 0 (new param), rest shifted. -/
+def substEnv (γ : List Expr) : Expr → Expr
+  | .bvar k =>
+    if k < γ.length then γ[k]!
+    else .bvar k
+  | .lam dom body =>
+    .lam (substEnv γ dom) (substEnv ((.bvar 0) :: γ.map (·.shift 1 0)) body)
+  | .app f a => .app (substEnv γ f) (substEnv γ a)
+  | .asc term ty => .asc (substEnv γ term) (substEnv γ ty)
+  | .type => .type
+  | .mu ann body =>
+    .mu (substEnv γ ann) (substEnv ((.bvar 0) :: γ.map (·.shift 1 0)) body)
+
+/-- Identity environment at depth n: [bvar 0, bvar 1, ..., bvar (n-1)].
+    Lifting: idEnv (n+1) = bvar 0 :: (idEnv n).map (shift 1 0). -/
+def idEnv : Nat → List Expr
+  | 0 => []
+  | n + 1 => (.bvar 0) :: (idEnv n).map (·.shift 1 0)
+
+/-- substEnv with any identity environment is the identity.
+    Key lemma: the idEnv n entries satisfy (idEnv n)[k]! = bvar k for k < n,
+    and substEnv maps bvar k (k ≥ n) to bvar k. So all variables are preserved.
+    The lam/mu cases use: bvar 0 :: (idEnv n).map (shift 1 0) = idEnv (n+1). -/
+theorem substEnv_idEnv (n : Nat) (e : Expr) : substEnv (idEnv n) e = e := by
+  sorry
+
+/-- Empty environment is identity. Corollary of substEnv_idEnv at n=0. -/
+theorem substEnv_nil (e : Expr) : substEnv [] e = e :=
+  substEnv_idEnv 0 e
+
 end Expr
 

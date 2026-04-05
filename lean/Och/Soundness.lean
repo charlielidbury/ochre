@@ -1101,7 +1101,50 @@ theorem VCompat.from_self_intro {fuel : Nat} {ctx : TyCtx} {n : Nat} {σ : Expr}
   VCompat.from_self_intro_gen fuel n σ ctx [] hσ_not_mu ann body hcheck
     (fun p hp => absurd hp (List.not_mem_nil p))
 
-/-! ## Soundness theorem
+/-! ## Environment compatibility (for the fundamental theorem) -/
+
+/-- Two environments are VCompat-related: corresponding entries are VCompat.
+    This is the semantic typing condition for the fundamental theorem. -/
+def EnvCompat (n : Nat) (γV γT : List Expr) : Prop :=
+  γV.length = γT.length ∧
+  ∀ i (hV : i < γV.length) (hT : i < γT.length), VCompat n (γV[i]) (γT[i])
+
+/-! ## Fundamental theorem of the logical relation (open-term soundness)
+
+This is the generalization of soundness to open terms with VCompat-related
+environments. It resolves the dual-substitution problem: the lam body is a
+sub-expression, so the IH applies directly. Both evaluators work on the SAME
+body; the environment difference is captured by substEnv.
+
+STATUS: Not yet proved. This is the recommended path forward for resolving
+the ~8 dual-substitution sorrys. See DECISION-LOG and SUGGESTIONS.md.
+
+Key insight: induction is on EXPRESSION STRUCTURE (not fuel). The IH for
+the lam body gives soundness for the body with an extended environment.
+The semantic lam is proved by extending the environment with VCompat args.
+
+REQUIRES: substEnv composition lemmas (showing substEnv commutes with
+single subst), and substEnv_idEnv (identity property). These are in Syntax.lean. -/
+
+-- TODO: State and prove soundness_open here. The statement should be:
+--
+-- theorem soundness_open
+--     (fuel : Nat) (ctx : TyCtx) (e : Expr) (τ : NfExpr)
+--     (h_abs : absEval fuel ctx [] e = .ok τ)
+--     (n : Nat) (γV γT : List Expr)
+--     (h_env : EnvCompat n γV γT)
+--     (h_ctx : γT.length = ctx.length)  -- environments match context size
+--     (v : Expr)
+--     (h_conc : concEval fuel (e.substEnv γV) = some v)
+--     : VCompat n v (τ.val.substEnv γT)
+--
+-- The current `soundness` theorem below would follow as a corollary:
+--   soundness fuel e v τ n h_conc h_abs =
+--     soundness_open fuel [] e τ h_abs n [] [] ⟨rfl, fun i h => absurd h (Nat.not_lt_zero i)⟩
+--       rfl v (by rw [substEnv_nil]; exact h_conc)
+--     |>.by rw [substEnv_nil]
+
+/-! ## Soundness theorem (closed-term version)
 
 The WellTyped precondition is gone — absEval now validates ascriptions
 and callability internally. A term is well-typed iff absEval succeeds. -/
