@@ -6,77 +6,56 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (22 in Soundness, 0 in Eval, 0 in Syntax = 22 total)
+### Sorry inventory (23 in Soundness, 0 in Eval, 0 in Syntax = 23 total)
 
 Changes by agent ochre-20260405-062531:
-- **STATED: soundness_open (Soundness.lean:1249)** — the fundamental theorem
-  of the logical relation for open terms. This is the key theorem that resolves
-  the dual-substitution problem. Statement:
-  ```
-  theorem soundness_open (e : Expr)
-      (fuel : Nat) (ctx : TyCtx) (τ : NfExpr)
-      (h_abs : absEval fuel ctx [] e = .ok τ)
-      (n : Nat) (γV γT : List Expr)
-      (h_env : FunEnvCompat n γV γT)
-      (h_ctx : γT.length = ctx.length)
-      (h_closed : e.closedAt ctx.length = true)
-      (v : Expr) (h_conc : concEval fuel (e.substEnv γV) = some v)
-      : VCompat n v (τ.val.substEnv γT)
-  ```
-- **PROVED: bvar and type cases** of soundness_open. The bvar case uses
-  FunEnvCompat (concrete value stability + VCompat) to bridge concEval
-  of γV[k] to VCompat with γT[k]. The type case is trivial by refl.
-- **NEW: FunEnvCompat** (Soundness.lean:1190) — environment compatibility
-  for the fundamental theorem. Packages VCompat + ConcreteValEnv (entries
-  are lam/type/mu). With nil, cons, mono, mono_le lemmas.
-- **NEW: ConcreteValEnv** (Soundness.lean:1166) — predicate that all entries
-  are concrete values (lam/type/mu), ensuring stability under concEval.
-- **NEW: concEval_val** (Soundness.lean:1157) — concrete values are stable
-  under concEval: concEval fuel v = some v when v is lam/type/mu.
-- **NEW: absEval_fuel_mono_le, concEval_fuel_mono_le** (Soundness.lean:1131,1141)
-  — multi-step fuel monotonicity for both evaluators.
 
-**SORRY ANALYSIS for soundness_open (4 new sorrys):**
+**DESIGN CHANGE: VCompat's semantic lam no longer references absEval.**
+Previously: `∀ j, fuel, aV, aT, VCompat j aV aT → concEval(bodyV.subst 0 aV) = some rv → absEval(bodyT.subst 0 aT) = .ok rτ → VCompat j rv rτ.val`
+Now: `∀ j, aV, aT, VCompat j aV aT → ∀ fuel rv, concEval(bodyV.subst 0 aV) = some rv → VCompat j rv (bodyT.subst 0 aT)`
 
-1. **mu case** (line ~1320): absEval doesn't evaluate the mu body, only
-   validates the annotation. So the IH on body is NOT available. VCompat of
-   two mus with different environments requires reasoning about mu unfolding,
-   which needs the app case (mu bodies are only evaluated when applied).
+This breaks the circular dependency between soundness_open's lam case and
+absEval_preserves. The cost is that the app case of soundness now needs
+absEval_preserves when consuming the semantic lam (was already sorry'd).
 
-2. **lam case / semantic lam** (line ~1374): THREE BLOCKERS:
-   - **Non-value arguments**: VCompat's semantic lam quantifies over ALL aV
-     including non-concrete-value ones (app). FunEnvCompat requires concrete
-     values. This could be resolved by (a) proving concEval stability for
-     neutral apps, or (b) restricting the semantic lam to concrete values.
-   - **closedAt preservation**: the composition lemma for body'.val needs
-     closedAt (γT.length + 1) body'.val. Requires a lemma that absEval
-     preserves closedAt (not yet proved).
-   - **absEval_preserves**: the IH gives VCompat j rv (body'.val.substEnv ...),
-     but the semantic lam needs VCompat j rv rτ.val where rτ = absEval(...).
-     This requires absEval_preserves (7 existing sorrys).
+- **STATED: soundness_open (Soundness.lean:1254)** — the fundamental theorem
+  for open terms. Statement: see Soundness.lean:1254.
+- **PROVED: bvar and type cases** of soundness_open.
+- **NEAR-PROVED: lam case** — semantic lam proof structure is complete.
+  Uses composition lemma + fuel monotonicity + IH on body. Only 2 sorrys:
+  (a) `closedAt body'.val` — needs absEval_closedAt lemma (which itself needs
+      subst_closedAt, a standard de Bruijn lemma: ~50+100 lines to prove)
+  (b) `FunEnvCompat for extended env` — needs isConcreteVal aV. The semantic
+      lam quantifies over ALL aV including neutral apps. Potential solutions:
+      - Prove concEval_preserves_VCompat (concEval on value side preserves VCompat)
+      - Restrict semantic lam to concrete values
+      - Prove neutral app stability (concEval is idempotent on neutral apps)
+- **NEW INFRASTRUCTURE:**
+  FunEnvCompat, ConcreteValEnv, concEval_val,
+  absEval_fuel_mono_le, concEval_fuel_mono_le
 
-3. **asc case** (line ~1419): IH gives VCompat n v (sigma.val.substEnv γT).
-   Need VCompat n v (tau.val.substEnv γT). Bridging requires "subCheckNF on
-   open terms implies VCompat.adequacy on closed (substEnv'd) terms" — a
-   non-trivial lemma about subCheckNF and substEnv interaction.
+**SORRY ANALYSIS for soundness_open (5 sorrys in 4 cases):**
 
-4. **app case** (line ~1426): completely sorry'd. The hardest case. Requires
-   dispatching on fT.val and fV (same as existing soundness app case). The
-   lam-lam sub-case is where the fundamental theorem helps most: both
-   evaluators beta-reduce the SAME body expression (just with different
-   environments), so the IH on f gives the semantic lam directly.
+1. **mu case** (1 sorry): absEval doesn't evaluate the mu body. Two mus with
+   different environments can't be related without reasoning about unfolding.
 
-**KEY INSIGHT: the lam case has a CIRCULAR DEPENDENCY with absEval_preserves.**
-soundness_open's lam case needs absEval_preserves, but absEval_preserves'
-lam case (refl+lam, line 443) needs the fundamental theorem. Resolving this
-requires either:
-(a) Proving both simultaneously (mutual recursion / well-founded induction)
-(b) Proving absEval idempotency (absEval(absEval(e)) = absEval(e)) to avoid
-    needing absEval_preserves entirely
-(c) Changing VCompat's semantic lam to not mention absEval on the type side
+2. **lam case** (2 sorrys): closedAt body'.val + FunEnvCompat extension.
+   See above for resolution paths.
 
-**Net sorry change: +2 (4 new in soundness_open, but the theorem is correctly
-stated and provides the framework for resolving existing sorrys).**
+3. **asc case** (1 sorry): needs "subCheckNF on open terms implies adequacy
+   on closed terms" — a non-trivial substEnv/subCheckNF interaction lemma.
+
+4. **app case** (1 sorry): completely sorry'd. Hardest case.
+
+**RECOMMENDED NEXT STEPS (in priority order):**
+1. Prove `subst_closedAt` in Syntax.lean (~50 lines)
+2. Prove `absEval_closedAt` in Soundness.lean (~100 lines)
+   → Closes 1 of 2 lam case sorrys
+3. Resolve the FunEnvCompat extension blocker (see options above)
+   → Closes the other lam case sorry
+4. Work on asc case (substEnv/subCheckNF interaction)
+
+**Net sorry change from session start: +3 (23 total, was 20).**
 
 Changes by agent ochre-20260405-053702:
 - **PROVED: substEnv_idEnv** (Syntax.lean) — the identity property for simultaneous

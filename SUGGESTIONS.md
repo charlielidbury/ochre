@@ -218,19 +218,23 @@ Potential paths forward:
    - ✅ closedAt, liftEnvN, shift lemmas all proved
    - ✅ shift_subst_comm proved (Syntax.lean — generalized over binder depth)
    - **ALL INFRASTRUCTURE COMPLETE. No sorrys in Syntax.lean.**
-   - ✅ soundness_open STATED (Soundness.lean:1249)
+   - ✅ soundness_open STATED (Soundness.lean:1254)
    - ✅ FunEnvCompat, ConcreteValEnv, concEval_val, fuel_mono_le helpers proved
    - ✅ bvar and type cases PROVED
-   - **REMAINING: mu, lam, asc, app cases (4 sorrys)**
-   - **CRITICAL BLOCKER: circular dependency between lam case and absEval_preserves.**
-     The lam case's semantic lam needs absEval_preserves (to bridge IH's VCompat
-     with absEval's normalization), but absEval_preserves' lam case needs the
-     fundamental theorem. Possible resolutions:
-     (a) Prove both simultaneously via well-founded induction on combined measure
-     (b) Prove absEval idempotency to eliminate the absEval_preserves dependency
-     (c) Change VCompat's semantic lam to not reference absEval on the type side,
-         e.g., `VCompat j rv (bodyT.subst 0 aT)` instead of `VCompat j rv rτ.val`
-   See PROGRESS.md for detailed analysis of each blocker.
+   - ✅ VCompat semantic lam CHANGED: removed absEval on type side (breaks
+     circular dependency with absEval_preserves)
+   - ✅ lam case NEAR-PROVED: only 2 sorry'd `have` statements remain
+   - **REMAINING: mu (1 sorry), lam (2 sorrys), asc (1 sorry), app (1 sorry)**
+   - **NEXT STEPS for lam case:**
+     (a) Prove `subst_closedAt` in Syntax.lean (~50 lines, standard de Bruijn)
+     (b) Prove `absEval_closedAt` using subst_closedAt (~100 lines)
+         → Closes closedAt sorry in lam case
+     (c) Resolve FunEnvCompat extension: prove `concEval_preserves_VCompat`
+         (VCompat n e τ → concEval fuel e = some v → VCompat n v τ)
+         OR restrict semantic lam to concrete values
+         OR expand FunEnvCompat to accept evaluation-stable entries
+         → Closes FunEnvCompat sorry in lam case
+   See PROGRESS.md for full analysis.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
    they give the same result (by confluence). Note: the unconditional version
