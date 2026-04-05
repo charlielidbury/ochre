@@ -455,8 +455,13 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
           | .error _ => simp [h_ann, bind, Except.bind] at habs
           | .ok ann' =>
             simp only [h_ann, bind, Except.bind] at habs
-            injection habs with heq; subst heq
-            unfold VCompat; exact Or.inr (Or.inl rfl)
+            simp only [show (!false : Bool) = true from rfl, ite_true] at habs
+            match h_body : absEval k (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+            | .error _ => simp [h_body, bind, Except.bind] at habs
+            | .ok body' =>
+              simp only [h_body, bind, Except.bind] at habs
+              injection habs with heq; subst heq
+              unfold VCompat; exact Or.inr (Or.inl rfl)
         | app f a =>
           -- absEval(app f a) normalizes f→f', a→a', dispatches on f'.val.
           -- Neutral case: e' = ⟨app f'.val a'.val⟩, proved via structural app + IH.
@@ -510,10 +515,15 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
         | .error _ => simp [h_ann, bind, Except.bind] at habs
         | .ok ann' =>
           simp only [h_ann, bind, Except.bind] at habs
-          injection habs with heq; subst heq
-          unfold VCompat
-          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-          exact ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_body⟩
+          simp only [show (!false : Bool) = true from rfl, ite_true] at habs
+          match h_bodyT : absEval fk (TyCtx.extend ctx ⟨.mu annT bodyT⟩) [] bodyT true with
+          | .error _ => simp [h_bodyT, bind, Except.bind] at habs
+          | .ok bodyT' =>
+            simp only [h_bodyT, bind, Except.bind] at habs
+            injection habs with heq; subst heq
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+            exact ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_body⟩
     · -- Mu-right: e = mu ann body, VCompat(m, v, body[0:=mu])
       -- absEval(mu ann body) = ok ⟨mu ann body⟩. So e'.val = mu ann body.
       -- Use mu-right: VCompat(m, v, body.subst 0 (mu ann body)) is exactly h_mu.
@@ -526,10 +536,15 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
         | .error _ => simp [h_ann, bind, Except.bind] at habs
         | .ok ann' =>
           simp only [h_ann, bind, Except.bind] at habs
-          injection habs with heq; subst heq
-          unfold VCompat
-          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-          exact ⟨ann, body, rfl, h_mu⟩
+          simp only [show (!false : Bool) = true from rfl, ite_true] at habs
+          match h_body_mu : absEval fk (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+          | .error _ => simp [h_body_mu, bind, Except.bind] at habs
+          | .ok body_mu' =>
+            simp only [h_body_mu, bind, Except.bind] at habs
+            injection habs with heq; subst heq
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+            exact ⟨ann, body, rfl, h_mu⟩
     · -- Normalized mu-right: e = mu ann body, absEval(body.subst) = ok u', VCompat(m, v, u'.val)
       -- absEval(mu ann body) = ok ⟨mu ann body⟩. Use normalized mu-right.
       subst hτ_mu
@@ -541,11 +556,16 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
         | .error _ => simp [h_ann, bind, Except.bind] at habs
         | .ok ann'' =>
           simp only [h_ann, bind, Except.bind] at habs
-          injection habs with heq; subst heq
-          unfold VCompat
-          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
-          apply Or.inr; apply Or.inl
-          exact ⟨ann, body, ⟨nfuel, nctx, nseen, u', rfl, habs_inner, h_mu_norm⟩⟩
+          simp only [show (!false : Bool) = true from rfl, ite_true] at habs
+          match h_body_mu2 : absEval fk (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+          | .error _ => simp [h_body_mu2, bind, Except.bind] at habs
+          | .ok body_mu2' =>
+            simp only [h_body_mu2, bind, Except.bind] at habs
+            injection habs with heq; subst heq
+            unfold VCompat
+            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
+            apply Or.inr; apply Or.inl
+            exact ⟨ann, body, ⟨nfuel, nctx, nseen, u', rfl, habs_inner, h_mu_norm⟩⟩
     · -- Mu-left: v = mu ann_l body_l, VCompat(m, body_l[0:=mu], e)
       -- By IH: VCompat(m, body_l[0:=mu], e'.val)
       -- Then mu-left: VCompat(m+1, mu ann_l body_l, e'.val)
@@ -1324,19 +1344,24 @@ theorem soundness_open (e : Expr)
       | .error _ => simp [h_ann_abs, bind, Except.bind] at h_abs
       | .ok ann' =>
         simp only [h_ann_abs, bind, Except.bind] at h_abs
-        injection h_abs with hτ; subst hτ
-        -- τ.val = mu ann body, τ.val.substEnv γT = mu (ann.substEnv γT) (body.substEnv (lift γT))
-        -- concEval of (mu ...).substEnv γV returns it as a value
-        simp only [Expr.substEnv] at h_conc ⊢
-        -- mu is a value: concEval (fk+1) (mu ...) = some (mu ...)
-        unfold concEval at h_conc
-        injection h_conc with hv; subst hv
-        -- v = mu (ann.substEnv γV) (body.substEnv (lift γV))
-        -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv (lift γV)))
-        --                 (mu (ann.substEnv γT) (body.substEnv (lift γT)))
-        -- SORRY: Need structural mu disjunct, which requires VCompat on
-        -- unfolded bodies (self-substitution + substEnv). This is complex.
-        sorry
+        simp only [show (!false : Bool) = true from rfl, ite_true] at h_abs
+        match h_body_abs : absEval fk (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+        | .error _ => simp [h_body_abs, bind, Except.bind] at h_abs
+        | .ok body_abs' =>
+          simp only [h_body_abs, bind, Except.bind] at h_abs
+          injection h_abs with hτ; subst hτ
+          -- τ.val = mu ann body, τ.val.substEnv γT = mu (ann.substEnv γT) (body.substEnv (lift γT))
+          -- concEval of (mu ...).substEnv γV returns it as a value
+          simp only [Expr.substEnv] at h_conc ⊢
+          -- mu is a value: concEval (fk+1) (mu ...) = some (mu ...)
+          unfold concEval at h_conc
+          injection h_conc with hv; subst hv
+          -- v = mu (ann.substEnv γV) (body.substEnv (lift γV))
+          -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv (lift γV)))
+          --                 (mu (ann.substEnv γT) (body.substEnv (lift γT)))
+          -- SORRY: Need structural mu disjunct, which requires VCompat on
+          -- unfolded bodies (self-substitution + substEnv). This is complex.
+          sorry
   | lam dom body ih_dom ih_body =>
     -- KEY CASE: the whole point of the fundamental theorem.
     -- absEval: normalizes domain and body under binder

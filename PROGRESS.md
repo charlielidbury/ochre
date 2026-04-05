@@ -6,7 +6,56 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (21 in Soundness, 0 in Eval, 0 in Syntax = 21 total)
+### Sorry inventory (21 in Soundness, 8 in Eval, 0 in Syntax = 29 total)
+
+Changes by agent ochre-20260405-152415:
+
+**PHASE 0 RESOLVED: absEval now checks mu bodies at definition site.**
+
+Three changes to absEval (Eval.lean):
+
+1. **Mu body check** (Eval.lean:164): absEval's mu case now evaluates the body
+   under an extended context with self bound to ⟨mu ann body⟩. This fires
+   only when `!lenient` (i.e., during top-level normalization, not during the
+   lenient body-check sub-evaluation). The body check uses `lenient=true`.
+
+2. **Optimistic domain check** (Eval.lean:186): In lenient mode, skip domain
+   check for neutral arguments (bvar, app). `subCheckNF || (lenient && isNeutral)`.
+   Essential for mu body checking where Church-encoded types with abstract lambda
+   parameters create stuck type-level computations that can't be structurally
+   compared.
+
+3. **Optimistic callability** (Eval.lean:220): In lenient mode, accept all
+   neutral applications. `isCallableNF || lenient`. Essential for the same reason.
+
+The `lenient : Bool := false` parameter on absEval controls this:
+- `lenient=false` (default): strict checks, fires body check on mus
+- `lenient=true` (body check only): optimistic domain/callability, no body check
+
+SubCheckNF calls absEval with default `lenient=false`, so subCheckNF's intermediate
+normalizations are completely unaffected. The optimistic behavior ONLY fires during
+the mu body check evaluation.
+
+**All tests pass** including appendArrays, appendVec, and the appendVec_wrong
+negative test (which confirms the type checker still catches bugs in dependent types).
+
+**New sorrys in Eval.lean (8):** fuel_mono and preserves_closedAt proofs were
+sorry'd due to the new lenient parameter changing the proof structure. These are
+straightforward to restore — the proofs just need to handle the `if !lenient`
+condition and the `lenient && isNeutral` / `|| lenient` branches by case-splitting
+on `lenient`.
+
+**Helper: Expr.isNeutral** (Syntax.lean:65): `bvar → true | app → true | _ → false`.
+
+**NEXT STEPS:**
+1. **Restore Eval.lean proofs** (fuel_mono, preserves_closedAt): case-split on
+   `lenient` at each sorry site. When `lenient=false`, the optimistic branches are
+   dead code. When `lenient=true`, the body check is skipped. Both cases should
+   follow the original proof structure.
+2. **Prove soundness_open mu case** (Soundness.lean:1364): with the body check,
+   ih_body is now available. Use induction on n to build FunEnvCompat for extended
+   environments (self = mu), then apply ih_body.
+3. **Continue with remaining soundness sorrys** per SUGGESTIONS.md Phase 2-4.
 
 Changes by agent ochre-20260405-091658:
 

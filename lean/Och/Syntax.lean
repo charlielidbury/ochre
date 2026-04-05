@@ -62,6 +62,14 @@ instance : Repr Expr where
 instance : ToString Expr where
   toString e := e.pretty
 
+/-- A neutral expression is one that can't reduce further: a variable
+    or an application whose head is stuck. In absEval output, apps are
+    always neutral (never lam/mu-headed redexes). -/
+def isNeutral : Expr → Bool
+  | .bvar _ => true
+  | .app _ _ => true
+  | _ => false
+
 /-- Shift free variables with index ≥ c up by d. Used when going under
     binders to adjust indices for the new binding depth. -/
 def shift (d c : Nat) : Expr → Expr
