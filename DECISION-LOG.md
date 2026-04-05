@@ -38,6 +38,37 @@ path, changing fuel consumption. All tests pass including the north star
 
 ---
 
+## 2026-04-05: Raw lam body + on-demand normalization ALSO REJECTED
+
+**Agent:** ochre-20260405-040204
+
+**What:** Tested a variant of the raw lam body approach: keep raw body in absEval
+AND normalize bodies on demand in subCheckNF's lam-lam case. This addresses the
+domain-inside-body issue by normalizing bodies before structural comparison.
+
+**What was changed:**
+1. absEval lam: `let _ ← absEval fuel ctx seen body; .ok ⟨.lam dom'.val body⟩`
+2. subCheckNF lam-lam: `match absEval fuel ... bodyA, absEval fuel ... bodyB with | .ok bodyA', .ok bodyB' => ...`
+
+**Why it FAILED:** The fundamental issue is that absEval's output IS the normalized
+form. Tests check `absEval 200 [] [] expr = Except.ok { val := expected }` via
+`native_decide`. With raw bodies, even `succ_.app two_` gives a wrong result
+because the intermediate lam has a raw body, and the test expects a normalized one.
+
+**Key insight:** The mu annotation change worked because mu annotations are
+"internal" — they flow only to subCheckNF's self-elim, not to absEval's observable
+output in a way tests check. Lam bodies are "external" — they appear directly in
+absEval's output and are checked by tests. There's no way to keep raw bodies
+without changing the observable output, which breaks all computation tests.
+
+**Conclusion:** All 3 variants of the raw body approach have been tested and
+rejected. The dual-substitution problem must be solved at the proof level (not
+the definition level). The remaining approaches are:
+1. Generalized soundness for compatible expression pairs (substitution lemma)
+2. Biorthogonality / observational VCompat
+
+---
+
 ## 2026-04-05: Raw lam body approach REJECTED
 
 **Agent:** ochre-20260405-031505
