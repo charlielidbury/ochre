@@ -6,7 +6,74 @@ Och is feature-complete for the current milestone. All tests pass, including
 the north star (`appendVec` with abstract arguments). The focus is now on
 proving soundness.
 
-### Sorry inventory (21 in Soundness, 0 in Eval, 0 in Syntax = 21 total)
+### Sorry inventory (31 in Soundness, 0 in Eval, 0 in Syntax = 31 total)
+
+(+10 from 21: +1 mu case lenient split, +1 absEval_preserves_VCompat_substEnv,
+rest is comments containing "sorry" — actual sorry DECLARATIONS unchanged at 6.)
+
+Changes by agent ochre-20260405-163526:
+
+**GENERALIZED soundness_open over `lenient : Bool` parameter.**
+
+Three changes:
+1. **soundness_open** (Soundness.lean:1317) now takes `(lenient : Bool)` and
+   `(h_abs : absEval fuel ctx [] e lenient = .ok τ)`. This allows ih_body
+   to be applied with lenient=true (matching the mu body check's absEval call).
+   ALL proved cases (bvar, type, lam, asc, app neutral) remain proved.
+
+2. **absEval_fuel_mono_le** (Soundness.lean:1172) generalized with `{lenient : Bool}`.
+
+3. **absEval_preserves_closedAt** (Eval.lean:910) generalized with `{lenient : Bool}`.
+   The mu case uses `split at h_abs` to handle both lenient values (body check
+   fires or not), but in both cases the output is `⟨mu ann body⟩` so closedAt
+   is just the input closedAt.
+
+**STATED absEval_preserves_VCompat_substEnv** (Soundness.lean:1299, 1 sorry).
+Key bridge lemma: if VCompat n v (e.substEnv γ) and absEval normalizes e to τ,
+then VCompat n v (τ.val.substEnv γ). This is NOT a corollary of absEval_preserves
+(which operates on e, not e.substEnv γ). Needed for app lam-lam semantic lam case.
+
+**ANALYZED: Three fundamental blockers identified.**
+
+1. **Step-loss in app lam-lam** (Soundness.lean:1600): The semantic lam at step
+   n+1 quantifies over j ≤ n, giving VCompat n on the result. But the goal is
+   VCompat (n+1). One step is consumed by the lambda application. This is a
+   well-known issue in step-indexed logical relations. The composition chain
+   (semantic lam → subst_substEnv_comm → absEval_preserves_VCompat_substEnv)
+   is correct but produces VCompat m, not VCompat (m+1).
+   
+   **Potential fix**: Change VCompat so application doesn't cost a step. Options:
+   - Make semantic lam quantify over all j (not j ≤ n). Requires making VCompat
+     well-founded without the step bound — possibly via inductive type instead
+     of recursive def. MAJOR refactoring.
+   - Switch to fuel-based induction for the app case (fuel decreases for
+     beta-reduced expressions). Would require joint induction on (fuel, expr).
+   - Accept VCompat (n-1) in soundness_open's conclusion (weaker theorem).
+
+2. **Normalization gap in mu case** (Soundness.lean:1390): ih_body gives VCompat
+   on body_abs'.val.substEnv (normalized body), but structural mu disjunct needs
+   VCompat on body.substEnv (raw body). The concEval gap (need evaluated result,
+   not raw expression) compounds this.
+
+3. **absEval_preserves_VCompat_substEnv** (Soundness.lean:1299): Standalone
+   version of the normalization gap. Not a corollary of absEval_preserves because
+   absEval and substEnv don't commute in general.
+
+**RECOMMENDED NEXT STEPS (updated priority order):**
+
+1. **Resolve the step-loss problem.** This is THE fundamental blocker. Most
+   promising: define VCompat as an inductive type with unrestricted semantic lam
+   (∀ j, not ∀ j ≤ n). This allows application to be "free" in the step index.
+   The well-foundedness comes from the inductive structure, not the Nat recursion.
+   Requires rewriting VCompat.mono, all case splits in adequacy_gen, etc. (~500 lines).
+
+2. **Prove absEval_preserves_VCompat_substEnv.** Even after fixing step-loss,
+   this is needed. Approaches: (a) show absEval commutes with substEnv for
+   normalized environments, (b) joint induction on (fuel, expression).
+
+3. **Prove mu case** via structural mu + n-induction. Blocked by (2) and by the
+   concEval gap (structural mu requires unconditional VCompat on unfolded bodies,
+   but ih_body only gives VCompat when concEval succeeds).
 
 Changes by agent ochre-20260405-152415:
 

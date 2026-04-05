@@ -908,11 +908,11 @@ If the input expression is closedAt ctx.length and absEval succeeds, the output
 is also closedAt ctx.length. -/
 
 theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
-    {e : Expr} {τ : NfExpr}
-    (h_abs : absEval fuel ctx seen e = .ok τ)
+    {e : Expr} {τ : NfExpr} {lenient : Bool}
+    (h_abs : absEval fuel ctx seen e lenient = .ok τ)
     (h_closed : e.closedAt ctx.length = true)
     : τ.val.closedAt ctx.length = true := by
-  induction fuel generalizing ctx seen e τ with
+  induction fuel generalizing ctx seen e τ lenient with
   | zero => simp [absEval] at h_abs
   | succ k ih =>
     cases e with
@@ -926,11 +926,11 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
       unfold absEval at h_abs; dsimp only [] at h_abs
       simp [Expr.closedAt] at h_closed
       obtain ⟨h_dom_cl, h_body_cl⟩ := h_closed
-      match h_dom : absEval k ctx seen dom with
+      match h_dom : absEval k ctx seen dom lenient with
       | .error _ => simp [h_dom, bind, Except.bind] at h_abs
       | .ok dom' =>
         simp only [h_dom, bind, Except.bind] at h_abs
-        match h_body : absEval k (TyCtx.extend ctx dom') seen body with
+        match h_body : absEval k (TyCtx.extend ctx dom') seen body lenient with
         | .error _ => simp [h_body, bind, Except.bind] at h_abs
         | .ok body' =>
           simp only [h_body, bind, Except.bind] at h_abs
@@ -944,27 +944,31 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
             exact ih h_body (by rw [h_ext_len]; exact h_body_cl)
     | mu ann body =>
       unfold absEval at h_abs; dsimp only [] at h_abs
-      match h_ann : absEval k ctx seen ann with
+      match h_ann : absEval k ctx seen ann lenient with
       | .error _ => simp [h_ann, bind, Except.bind] at h_abs
       | .ok ann' =>
         simp only [h_ann, bind, Except.bind] at h_abs
-        -- Handle `if !lenient` where lenient = false (default)
-        simp only [show (!false : Bool) = true from rfl, ite_true] at h_abs
-        match h_body : absEval k (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
-        | .error _ => simp [h_body, bind, Except.bind] at h_abs
-        | .ok body' =>
-          simp only [h_body, bind, Except.bind] at h_abs
+        -- Handle the `if !lenient` condition generically
+        split at h_abs
+        · -- Body check fires (!lenient = true)
+          match h_body : absEval k (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
+          | .error _ => simp [h_body, bind, Except.bind] at h_abs
+          | .ok body' =>
+            simp only [h_body, bind, Except.bind] at h_abs
+            injection h_abs with heq; subst heq
+            exact h_closed
+        · -- Body check skipped (!lenient = false)
           injection h_abs with heq; subst heq
           exact h_closed
     | asc term ty =>
       unfold absEval at h_abs; dsimp only [] at h_abs
       simp [Expr.closedAt] at h_closed
       obtain ⟨h_term_cl, h_ty_cl⟩ := h_closed
-      match h_sigma : absEval k ctx seen term with
+      match h_sigma : absEval k ctx seen term lenient with
       | .error _ => simp [h_sigma, bind, Except.bind] at h_abs
       | .ok sigma =>
         simp only [h_sigma, bind, Except.bind] at h_abs
-        match h_tau : absEval k ctx seen ty with
+        match h_tau : absEval k ctx seen ty lenient with
         | .error _ => simp [h_tau, bind, Except.bind] at h_abs
         | .ok tau =>
           simp only [h_tau, bind, Except.bind] at h_abs
@@ -977,11 +981,11 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
       unfold absEval at h_abs; dsimp only [] at h_abs
       simp [Expr.closedAt] at h_closed
       obtain ⟨h_f_cl, h_a_cl⟩ := h_closed
-      match h_f : absEval k ctx seen f with
+      match h_f : absEval k ctx seen f lenient with
       | .error _ => simp [h_f, bind, Except.bind] at h_abs
       | .ok f' =>
         simp only [h_f, bind, Except.bind] at h_abs
-        match h_a : absEval k ctx seen a with
+        match h_a : absEval k ctx seen a lenient with
         | .error _ => simp [h_a, bind, Except.bind] at h_abs
         | .ok a' =>
           simp only [h_a, bind, Except.bind] at h_abs
