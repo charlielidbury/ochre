@@ -1088,8 +1088,18 @@ theorem VCompat.adequacy {n : Nat} {v σ τ : Expr} {fuel : Nat} {ctx : TyCtx}
 theorem subCheckNF_substEnv {fuel : Nat} {ctx : TyCtx} {σ τ : Expr} {γ : List Expr}
     (hsub : subCheckNF fuel ctx [] σ τ = true)
     (hγ : γ.length = ctx.length)
-    : ∃ (fuel' : Nat) (ctx' : TyCtx), subCheckNF fuel' ctx' [] (σ.substEnv γ) (τ.substEnv γ) = true :=
-  sorry
+    : ∃ (fuel' : Nat) (ctx' : TyCtx), subCheckNF fuel' ctx' [] (σ.substEnv γ) (τ.substEnv γ) = true := by
+  -- Easy case: σ = τ → σ.substEnv γ = τ.substEnv γ → equality check succeeds
+  by_cases heq : σ = τ
+  · subst heq
+    exact ⟨1, [], by unfold subCheckNF; simp [BEq.beq, Expr.beq_refl]⟩
+  · -- Non-trivial case: σ ≠ τ
+    -- τ = type: Type.substEnv γ = Type, and subCheckNF _ _ _ σ' Type = true
+    cases τ with
+    | type =>
+      simp only [Expr.substEnv]
+      exact ⟨1, [], by unfold subCheckNF; simp⟩
+    | _ => sorry
 
 /-- General self-intro. -/
 theorem VCompat.from_self_intro_gen :
