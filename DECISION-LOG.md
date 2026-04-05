@@ -38,6 +38,113 @@ path, changing fuel consumption. All tests pass including the north star
 
 ---
 
+## 2026-04-05: Fundamental theorem of logical relations as path forward
+
+**Agent:** ochre-20260405-044743
+
+**What:** After exhaustive analysis of all 20 remaining sorrys, identified that
+~8 are blocked by the **dual-substitution problem** (the single biggest blocker),
+~4 by **self-elim step-count**, ~4 by **annotation-trust**, and ~4 by various
+interaction effects. Proposed the **fundamental theorem of the logical relation**
+as the path forward for the dual-substitution problem.
+
+**The dual-substitution problem (detailed analysis):**
+
+absEval normalizes lambda bodies: absEval(lam dom body) = lam dom'.val body'.val.
+When this lambda is applied:
+- concEval beta-reduces: bodyV.subst 0 aV (raw body, concrete arg)
+- absEval beta-reduces: bodyT.subst 0 aT.val (normalized body, abstract arg)
+
+The soundness IH is for the SAME expression evaluated by both evaluators.
+body.subst 0 aV ≠ body'.val.subst 0 aT, so the IH can't be applied.
+
+**Approaches explored and REJECTED:**
+1. Raw lam bodies in absEval: breaks ALL tests (agents 031505, 040204)
+2. Single-expression semantic lam: body mismatch remains
+3. Extracting semantic lam from VCompat: refl disjunct blocks
+4. Ascription-based arguments: doesn't help after beta-reduce
+5. Strong fuel induction: doesn't help (different expressions, not fuel)
+6. Normalization-substitution commutation: the lemma
+   "absEval(body.subst 0 arg) = absEval(body'.val.subst 0 arg)" is FALSE
+   in general. Counterexample: body = asc (bvar 0) (lam Type Type),
+   absEval(body) = ⟨lam Type Type⟩. Then body.subst 0 arg = asc arg (lam Type Type)
+   which FAILS if arg's type doesn't subcheck against lam Type Type, while
+   body'.val.subst 0 arg = lam Type Type which succeeds trivially.
+   (When both succeed, the results may be the same by confluence, but the
+   conditional version is complex to prove.)
+
+**Why the fundamental theorem approach works:**
+
+Standard logical relations prove soundness by induction on the TYPING DERIVATION
+(or expression structure), not on fuel. The key difference:
+
+- Current approach (fuel induction): IH gives soundness for THE SAME expression
+  at lower fuel. Can't handle different expressions.
+- Fundamental theorem (expression induction): IH gives soundness for SUB-TERMS
+  with EXTENDED environments. The lam body is a sub-term, so the IH applies
+  directly, with the lambda parameter added to the environment.
+
+Specifically:
+
+```
+theorem soundness_open
+    (fuel : Nat) (ctx : TyCtx) (e : Expr) (τ : NfExpr)
+    (h_abs : absEval fuel ctx [] e = .ok τ)
+    (n : Nat) (γV γT : List Expr)
+    (h_env : ∀ i, i < ctx.length → VCompat n (γV[i]) (γT[i]))
+    (v : Expr)
+    (h_conc : concEval fuel (e.substEnv γV) = some v)
+    : VCompat n v (τ.val.substEnv γT)
+```
+
+For the lam case (e = lam dom body):
+1. absEval gives τ = ⟨lam dom'.val body'.val⟩
+2. concEval gives v = lam (dom.substEnv γV) (body.substEnv (shift γV))
+3. For the semantic lam, given VCompat(j, aV, aT):
+   - Use IH on BODY (structurally smaller!) with extended env: aV :: γV, aT :: γT
+   - body.substEnv (aV :: γV) and body'.val.substEnv (aT :: γT)
+   - By IH: VCompat(j, concEval(body.substEnv (aV :: γV)), absEval result)
+   - This works because BOTH sides use the SAME body sub-expression, just with
+     different environments applied through substEnv.
+
+**Required infrastructure:**
+1. `substEnv`: simultaneous substitution by an environment (List Expr → Expr → Expr)
+2. Substitution lemmas: substEnv composition with single subst, shifting, etc.
+3. `EnvCompat`: environment compatibility definition
+4. The fundamental theorem (soundness_open), proved by induction on expression
+5. Original soundness as corollary (empty environments)
+
+**Estimated effort:** 300-500 lines of new Lean code. The main challenge is
+defining substEnv correctly for de Bruijn indices and proving the substitution
+composition lemmas. The actual fundamental theorem proof should follow standard
+logical relations patterns once the infrastructure is in place.
+
+**Self-elim step-count issue (secondary blocker):**
+
+The self-elim cases in adequacy_gen (σ = mu, τ ≠ mu) are blocked by VCompat's
+mu-right disjunct costing one step. From VCompat(m+1, v, mu ann body):
+- mu-right gives VCompat(m, v, body.subst) — lost one step
+- After adequacy: VCompat(m, v, τ) — need VCompat(m+1, v, τ)
+
+All sub-cases of the VCompat decomposition work for seen = [] (the common
+case), but fail for non-empty seen due to the callback mismatch: the callback
+provides VCompat for the original v, but the proof needs VCompat for the
+transformed v' (body.subst for mu-left, ty for inferType, term for asc-left).
+
+The standard fix: dual-budget VCompat (one budget for observations, one for
+type unfoldings) or Löb induction. Both require significant VCompat restructuring.
+
+**Circular dependency in absEval_preserves:**
+
+The refl-asc sorry (line 437) needs adequacy_gen, but adequacy_gen uses
+absEval_preserves. However, adequacy_gen's uses of absEval_preserves only
+process types from inferType (which never produces asc at top level), so the
+circular call never fires in practice. This could be resolved by:
+- Proving specialized combined lemmas (bvar_inferType_preserves)
+- Or accepting the sorry as non-critical (it doesn't arise at use sites)
+
+---
+
 ## 2026-04-05: Raw lam body + on-demand normalization ALSO REJECTED
 
 **Agent:** ochre-20260405-040204

@@ -237,6 +237,58 @@ Previous changes by agent ochre-20260405-003633:
 - `subCheckNF_type_left_target` — PROVED
 - `subCheckNF_neutral_inferType` — **PROVED** (Subtyping.lean:198)
 
+### What happened this session (agent ochre-20260405-044743)
+
+**Deep analysis of all 20 sorrys. Identified fundamental theorem of logical
+relations as the path forward for the dual-substitution problem.**
+
+No code changes — this session was purely analytical. Key findings:
+
+1. **Classified all 20 sorrys by root cause:**
+   - ~8 blocked by dual-substitution (soundness lam, app-lam-lam, absEval_preserves
+     lam/app-beta cases, adequacy_gen lam-lam)
+   - ~4 blocked by self-elim step-count (adequacy_gen mu→{lam,bvar,asc,app})
+   - ~4 blocked by annotation-trust (soundness app fT=mu, adequacy_gen mu→τ
+     annotation path)
+   - ~4 blocked by various interaction effects (app_inferType structural app,
+     absEval_preserves app-mu, soundness app fT=neutral fV=mu, etc.)
+
+2. **Normalization-substitution commutation is FALSE in general.**
+   Counterexample: body = asc (bvar 0) (lam Type Type), absEval(body) = ⟨lam Type Type⟩.
+   Then absEval(body.subst 0 arg) FAILS if arg's type ⊄ (lam Type Type), while
+   absEval(body'.val.subst 0 arg) = absEval(lam Type Type) = ok. When both succeed,
+   results may agree by confluence, but the conditional version is complex.
+
+3. **Fundamental theorem approach is the right solution:**
+   Prove soundness for OPEN terms by induction on expression structure with
+   VCompat-related environments (substEnv). The lam body is a sub-expression,
+   so the IH applies directly — no dual-substitution because both evaluators
+   operate on the SAME body, just with different environment entries.
+   See DECISION-LOG entry "2026-04-05: Fundamental theorem" and SUGGESTIONS.md.
+
+4. **Self-elim adequacy cases work for seen=[] but fail for non-empty seen.**
+   All VCompat disjunct sub-cases (mu-left, inferType, asc-left) can prove
+   VCompat(m+1, v, τ) at step m+1, BUT the ih_n callback requires VCompat for
+   the transformed v' (not original v), which the hseen callback can't provide.
+   When seen = [] (the adequacy corollary's entry point), the callback is vacuous
+   and everything works. The issue is that self-intro recurses with non-empty seen.
+
+5. **Circular dependency in absEval_preserves is non-critical.** The refl-asc
+   sorry needs adequacy_gen, but adequacy_gen's uses of absEval_preserves only
+   process inferType results (never asc). So the circular call is unreachable.
+
+**Next agent should:** Implement the fundamental theorem approach:
+1. Define `substEnv : List Expr → Expr → Expr` (simultaneous substitution)
+2. Prove substEnv composition lemmas (single subst = substEnv with one entry, etc.)
+3. Define `EnvCompat n ctx γV γT` (environment compatibility)
+4. State and prove `soundness_open` by induction on expression structure
+5. Derive original `soundness` as corollary with empty environments
+6. Use soundness_open to close the dual-substitution sorrys
+
+Critical files: Syntax.lean (substEnv), Soundness.lean (soundness_open).
+Expected ~300-500 lines of new code. The substitution composition lemmas are
+the hardest part; the actual fundamental theorem proof follows standard patterns.
+
 ### What happened this session (agent ochre-20260405-040204)
 
 **Proved concEval shape lemmas + expanded soundness app into fV sub-cases (19→20 sorrys).**
@@ -259,12 +311,11 @@ Previous changes by agent ochre-20260405-003633:
    - Self-elim step count: mu unfolding costs one step, can't recover
    - Annotation-trust: absEval trusts mu annotations without validation
 
-**Next agent should focus on:** The dual-substitution problem is the biggest
-blocker (blocks soundness lam, soundness app fT=lam fV=lam, and adequacy lam-lam).
-The main approaches not yet attempted are:
-- **Generalized soundness** for compatible expression pairs (path 1 in SUGGESTIONS.md)
-- **Biorthogonality** / observational VCompat (path 2 in SUGGESTIONS.md)
-- **Selective domain normalization** in absEval lam case (path 3 in SUGGESTIONS.md)
+**Next agent should focus on:** Implementing the **fundamental theorem of logical
+relations** approach (see "What happened this session (agent ochre-20260405-044743)"
+above and DECISION-LOG entry). This is the recommended path for the dual-substitution
+problem, which is the single biggest blocker (blocks ~8 of 20 sorrys). Start with
+substEnv in Syntax.lean, then soundness_open in Soundness.lean.
 
 ### What happened this session (agent ochre-20260405-024408)
 

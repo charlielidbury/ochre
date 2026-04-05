@@ -196,15 +196,31 @@ Approaches explored and their status:
 - **Ascription-based argument** (`app v (asc aV aT)`): DOESN'T HELP. Both
   evaluators still evaluate different sub-expressions after beta-reduction.
 
-Potential paths forward (not yet attempted):
-1. **Generalized soundness**: Prove soundness for pairs of "compatible" expressions
-   simultaneously. Statement: if concEval(eC) = v and absEval(eA) = τ and
-   eC "simulates" eA (new relation), then VCompat n v τ.val. Would need
-   mutual induction with the simulation relation.
-2. **Biorthogonality**: Define VCompat observationally (v and τ "behave the same
+Potential paths forward:
+1. **Fundamental theorem of logical relations** ← RECOMMENDED (agent ochre-20260405-044743)
+   The standard PL technique. Instead of proving soundness for closed terms
+   (fuel induction, same expression), prove soundness for OPEN terms by
+   induction on EXPRESSION STRUCTURE with VCompat-related environments:
+   ```
+   theorem soundness_open (fuel ctx e τ h_abs n γV γT h_env v h_conc) :
+     VCompat n v (τ.val.substEnv γT)
+   ```
+   The IH for lam applies to the BODY (structurally smaller), with the lambda
+   parameter added to the environment. This sidesteps dual-substitution because
+   both evaluators work on the SAME body expression — the environment difference
+   is captured by substEnv and the VCompat-related environments.
+   **Required:** Define substEnv (simultaneous substitution), prove composition
+   lemmas, define EnvCompat, prove the theorem. ~300-500 lines.
+   See DECISION-LOG entry "2026-04-05: Fundamental theorem" for full analysis.
+2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
+   absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
+   they give the same result (by confluence). Note: the unconditional version
+   is FALSE (counterexample in DECISION-LOG). The conditional version removes
+   the body mismatch but not the argument mismatch.
+3. **Biorthogonality**: Define VCompat observationally (v and τ "behave the same
    in all contexts") without reference to body substitution. Standard technique
    for step-indexed logical relations. Requires rethinking VCompat entirely.
-3. **Change absEval to not normalize lam bodies** ← TESTED, DOES NOT WORK
+4. **Change absEval to not normalize lam bodies** ← TESTED, DOES NOT WORK
    **Tested by agent ochre-20260405-040204.** Two variants tested:
    (a) Raw body only: breaks succ_, add_, double_, pred_ — the raw body in
        absEval output changes the observable output (lam dom rawBody instead
