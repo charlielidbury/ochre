@@ -223,17 +223,21 @@ Potential paths forward:
    - ✅ bvar and type cases PROVED
    - ✅ VCompat semantic lam CHANGED: removed absEval on type side (breaks
      circular dependency with absEval_preserves)
-   - ✅ lam case NEAR-PROVED: only 2 sorry'd `have` statements remain
-   - **REMAINING: mu (1 sorry), lam (2 sorrys), asc (1 sorry), app (1 sorry)**
-   - **NEXT STEPS for lam case:**
-     (a) Prove `subst_closedAt` in Syntax.lean (~50 lines, standard de Bruijn)
-     (b) Prove `absEval_closedAt` using subst_closedAt (~100 lines)
-         → Closes closedAt sorry in lam case
-     (c) Resolve FunEnvCompat extension: prove `concEval_preserves_VCompat`
-         (VCompat n e τ → concEval fuel e = some v → VCompat n v τ)
-         OR restrict semantic lam to concrete values
-         OR expand FunEnvCompat to accept evaluation-stable entries
-         → Closes FunEnvCompat sorry in lam case
+   - ✅ lam case FULLY PROVED
+   - ✅ asc case PROVED (via subCheckNF_substEnv + VCompat.adequacy)
+   - ✅ app case STRUCTURED (agent ochre-20260405-080723): 6 sub-cases,
+     3 proved, 4 impossible, 6 sorry'd. See PROGRESS.md for details.
+   - **REMAINING: mu (1 sorry), app (6 sorrys), subCheckNF_substEnv (1 sorry)**
+   - **NEXT STEPS for app case (lam-lam sub-case is the KEY BLOCKER):**
+     (a) Prove `subst_substEnv_comm` in Syntax.lean (~50 lines):
+         `(e.subst 0 s).substEnv γ = e.substEnv (s.substEnv γ :: γ)`
+         Standard de Bruijn property. Proof by induction on e.
+     (b) Prove `absEval_preserves_VCompat_substEnv` (~100 lines):
+         `VCompat n v (e.substEnv γ) → absEval fuel ctx [] e = .ok τ
+          → VCompat n v (τ.val.substEnv γ)`
+         This bridges from semantic lam's raw substitution to normalized result.
+     (c) Close lam-lam sub-case using (a) + (b) + semantic lam extraction.
+         Also needs isConcreteVal for aV (problem when aV = app).
    See PROGRESS.md for full analysis.
 2. **Normalization-substitution commutation (PARTIAL)**: Prove that when BOTH
    absEval(body.subst 0 arg) and absEval(body'.val.subst 0 arg) succeed,
