@@ -692,6 +692,20 @@ Proof.
   autorewrite with spath. reflexivity.
 Qed.
 
+Lemma leq_uninitialize_value S sp
+  (no_loan : not_contains_loan (S.[sp]))
+  (no_borrow : not_contains_borrow (S.[sp]))
+  (valid_sp : valid_spath S sp)
+  (sp_not_in_borrow : not_in_borrow S sp)
+  (sp_in_abstraction : not_in_abstraction sp) :
+  leq_state_base^* S (S.[sp <- bot]).
+Proof.
+  destruct (exists_fresh_anon S) as (a & fresh_a).
+  etransitivity; constructor.
+  { apply Leq_MoveValue with (sp := sp) (a := a); try assumption. not_contains_outer. }
+  { apply Leq_RemoveAnon; auto with spath. }
+Qed.
+
 (** * The simulation relation on branching states. *)
 (** A branching state [Br] is more general than a branching state [Bl] if for any token [r], if [Bl] maps a control-flow token [r] to a symbolic state [Sl] ([lookup r Bl = Some Sl]), then [Br] maps [r] to a more general state [Sr] ([lookup r Br = Some Sr] and [leq_symbolic Sl Sr]).
 
