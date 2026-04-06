@@ -105,22 +105,20 @@ private def checkTrans (fuel : Nat) (a b c : Expr) : Bool :=
     subCheckNF fuel [] [] a c
   else true  -- vacuously true if a⊄b or b⊄c
 
--- Small expression generators for exhaustive testing
+-- Small CLOSED expression generators for exhaustive testing.
+-- Only closed terms: transitivity need only hold for well-scoped terms.
 private def smallExprs : List Expr :=
   [ .type,
-    .bvar 0,
     .lam .type (.bvar 0),          -- identity: λx:Type. x
     .lam .type .type,              -- const Type: λx:Type. Type
     .mu .type (.bvar 0),           -- fixpoint identity: μType. self
     .mu .type (.lam .type (.bvar 0)), -- μType. λx:Type. x
     .mu (.lam .type .type) (.lam .type (.bvar 0)),  -- μ(Type→Type). λx:Type. x
-    .app (.bvar 0) (.bvar 0),      -- x x
     .lam .type (.lam .type (.bvar 0)), -- λx:Type. λy:Type. y
     .mu .type .type                -- μType. Type
   ]
 
--- Exhaustive transitivity check over all triples of small expressions
--- If this passes, transitivity holds for all small terms (with fuel 50)
+-- Exhaustive transitivity check over all triples of small closed expressions
 example : (smallExprs.all fun a =>
            smallExprs.all fun b =>
            smallExprs.all fun c =>

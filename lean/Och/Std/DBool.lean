@@ -11,9 +11,9 @@ on the value being eliminated.
 
 ```
 dBool = μ(dBool : Type).
-  -- constructors
-  let dtrue  = μ(dtrue  : dBool). λP:(dBool→Type). λt:(P dtrue).  λf:Type. t in
-  let dfalse = μ(dfalse : dBool). λP:(dBool→Type). λt:Type. λf:(P dfalse). f in
+  -- constructors (motive domain constrained to self for self-type intro)
+  let dtrue  = μ(dtrue  : dBool). λP:(dtrue→Type).  λt:(P dtrue).  λf:Type. t in
+  let dfalse = μ(dfalse : dBool). λP:(dfalse→Type). λt:Type. λf:(P dfalse). f in
 
   -- the type itself
   λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dBool
@@ -21,6 +21,12 @@ dBool = μ(dBool : Type).
 
 Key properties:
 - Dependent: motive P can vary over which boolean is eliminated
+- Each constructor constrains P's domain to itself (not dBool). This is
+  essential for self-type intro: when checking dtrue ⊑ dBool, the self-type
+  substitution replaces dBool with dtrue in the body, making the P domain
+  check reflexive (dtrue→Type ⊑ dtrue→Type).
+- Usage still works: passing P:(dBool→Type) to dtrue requires
+  (dBool→Type) ⊑ (dtrue→Type), which by contravariance needs dtrue ⊑ dBool.
 - dtrue has λf:Type (f unused, domain is Top for covariance)
 - dfalse has λt:Type (t unused, domain is Top for covariance)
 -/
@@ -31,19 +37,16 @@ namespace Std
 -- Exported definitions
 -- ============================================================
 
-def dBool := och{
-  μ dBool:Type.
-    let dtrue : dBool = μ dtrue:dBool. λP:(dBool → Type). λt:(P dtrue). λf:Type. t in
-    let dfalse : dBool = μ dfalse:dBool. λP:(dBool → Type). λt:Type. λf:(P dfalse). f in
-    λP:(dBool → Type). λt:(P dtrue). λf:(P dfalse). P dBool
-}
-
 def dtrue := och{
-  μ dtrue:dBool. λP:(dBool → Type). λt:(P dtrue). λf:Type. t
+  μ dtrue:Type. λP:(dtrue → Type). λt:(P dtrue). λf:Type. t
 }
 
 def dfalse := och{
-  μ dfalse:dBool. λP:(dBool → Type). λt:Type. λf:(P dfalse). f
+  μ dfalse:Type. λP:(dfalse → Type). λt:Type. λf:(P dfalse). f
+}
+
+def dBool := och{
+  μ dBool:Type. λP:(dBool → Type). λt:(P dtrue). λf:(P dfalse). P dBool
 }
 
 def not := och{

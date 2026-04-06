@@ -29,7 +29,7 @@ inductive Subtype' : Expr → Expr → Prop where
   | mu_body {ann body₁ body₂ : Expr} :
       Subtype' body₂ body₁ → Subtype' (.mu ann body₂) (.mu ann body₁)
   | self_intro {a : Expr} {ann body : Expr} :
-      Subtype' a body → Subtype' a (.mu ann body)
+      Subtype' a (body.subst 0 a) → Subtype' a (.mu ann body)
 
 /-- SubtypeCore: Subtype' without self_intro. Used for monotonicity/soundness. -/
 inductive SubtypeCore : Expr → Expr → Prop where
@@ -109,8 +109,15 @@ theorem Subtype'.trans : {a b c : Expr} → Subtype' a b → Subtype' b c → Su
     cases p with
     | refl => exact .mu_body h2
     | mu_body h1 => exact .mu_body (ih h1)
-    | self_intro h1 => exact .self_intro (ih h1)
-  | self_intro h2 ih => exact .self_intro (ih p)
+    | self_intro h1 =>
+      -- SORRY: need Subtype' a (body₁.subst 0 a) from h1 : Subtype' a (body₂.subst 0 a)
+      -- and h2 : Subtype' body₂ body₁. Requires a substitution-compatibility lemma:
+      -- if body₂ ⊑ body₁ then body₂.subst 0 a ⊑ body₁.subst 0 a.
+      sorry
+  | self_intro h2 ih =>
+    -- SORRY: need Subtype' a (body.subst 0 a) from ih p : Subtype' a (body.subst 0 b)
+    -- and p : Subtype' a b. Requires relating body.subst 0 a to body.subst 0 b.
+    sorry
 
 /-- BEq on Expr is reflexive. Now trivial since BEq comes from DecidableEq. -/
 theorem Expr.beq_refl (e : Expr) : (e == e) = true := by

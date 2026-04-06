@@ -250,10 +250,12 @@ mutual
           subCheckNF fuel ctx [] domB domA
           && subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB
         | _, .mu _ann body =>
-          -- Self-intro (equi-recursive): a ⊑ mu ann body  iff  a ⊑ body[0 := mu]
-          -- This also handles the mu-mu case via self-intro on the right side.
+          -- Self-intro (self-type / iota): a ⊑ mu ann body  iff  a ⊑ body[0 := a]
+          -- The self-reference is substituted with the VALUE being checked (a),
+          -- not the type (mu ann body). This is what makes dependent elimination
+          -- possible for Scott-encoded data.
           let seen' := (a, b) :: seen
-          let u := body.subst 0 b
+          let u := body.subst 0 a
           match absEval fuel ctx seen' u with
           | .ok u' => subCheckNF fuel ctx seen' a u'.val
           | .error _ => false
@@ -1405,8 +1407,8 @@ private theorem ctx_irrelevant (fuel : Nat) :
         simp only [Expr.closedAt, Bool.and_eq_true] at hb
         have hb_full : (Expr.mu _annB bodyB).closedAt d = true := by
           simp only [Expr.closedAt, Bool.and_eq_true]; exact hb
-        have hu_cl : (bodyB.subst 0 (Expr.mu _annB bodyB)).closedAt d = true :=
-          Expr.subst_closedAt hb.2 hb_full
+        have hu_cl : (bodyB.subst 0 a).closedAt d = true :=
+          Expr.subst_closedAt hb.2 ha
         unfold subCheckNF; dsimp only []
         by_cases hab : (a == Expr.mu _annB bodyB) = true
         · simp [hab]
@@ -1416,9 +1418,9 @@ private theorem ctx_irrelevant (fuel : Nat) :
           · simp only [if_neg hseen]
             -- self-intro: match absEval k ctx seen' u
             have habs_eq := ih_abs (ctx := ctx) (ctx' := ctx') (seen := (a, Expr.mu _annB bodyB) :: seen)
-              (e := bodyB.subst 0 (Expr.mu _annB bodyB)) (lenient := false) hu_cl hctx hctx_wf
+              (e := bodyB.subst 0 a) (lenient := false) hu_cl hctx hctx_wf
             rw [habs_eq]
-            match habs : absEval k ctx' ((a, Expr.mu _annB bodyB) :: seen) (bodyB.subst 0 (Expr.mu _annB bodyB)) with
+            match habs : absEval k ctx' ((a, Expr.mu _annB bodyB) :: seen) (bodyB.subst 0 a) with
             | .error _ => rfl
             | .ok u' =>
               have hu'_cl := absEval_preserves_closedAt_d habs hu_cl
