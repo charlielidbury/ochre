@@ -444,13 +444,8 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
           | .error _ => simp [h_ann, bind, Except.bind] at habs
           | .ok ann' =>
             simp only [h_ann, bind, Except.bind] at habs
-            simp only [show (!false : Bool) = true from rfl, ite_true] at habs
-            match h_body : absEval k (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
-            | .error _ => simp [h_body, bind, Except.bind] at habs
-            | .ok body' =>
-              simp only [h_body, bind, Except.bind] at habs
-              injection habs with heq; subst heq
-              unfold VCompat; exact Or.inr (Or.inl rfl)
+            injection habs with heq; subst heq
+            unfold VCompat; exact Or.inr (Or.inl rfl)
         | app f a =>
           -- absEval(app f a) normalizes f→f', a→a', dispatches on f'.val.
           -- Neutral case: e' = ⟨app f'.val a'.val⟩, proved via structural app + IH.
@@ -504,15 +499,10 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
         | .error _ => simp [h_ann, bind, Except.bind] at habs
         | .ok ann' =>
           simp only [h_ann, bind, Except.bind] at habs
-          simp only [show (!false : Bool) = true from rfl, ite_true] at habs
-          match h_bodyT : absEval fk (TyCtx.extend ctx ⟨.mu annT bodyT⟩) [] bodyT true with
-          | .error _ => simp [h_bodyT, bind, Except.bind] at habs
-          | .ok bodyT' =>
-            simp only [h_bodyT, bind, Except.bind] at habs
-            injection habs with heq; subst heq
-            unfold VCompat
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-            exact ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_body⟩
+          injection habs with heq; subst heq
+          unfold VCompat
+          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+          exact ⟨annV, annT, bodyV, bodyT, rfl, rfl, h_body⟩
     · -- Mu-right: e = mu ann body, VCompat(m, v, body[0:=mu])
       -- absEval(mu ann body) = ok ⟨mu ann body⟩. So e'.val = mu ann body.
       -- Use mu-right: VCompat(m, v, body.subst 0 (mu ann body)) is exactly h_mu.
@@ -525,15 +515,10 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
         | .error _ => simp [h_ann, bind, Except.bind] at habs
         | .ok ann' =>
           simp only [h_ann, bind, Except.bind] at habs
-          simp only [show (!false : Bool) = true from rfl, ite_true] at habs
-          match h_body_mu : absEval fk (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
-          | .error _ => simp [h_body_mu, bind, Except.bind] at habs
-          | .ok body_mu' =>
-            simp only [h_body_mu, bind, Except.bind] at habs
-            injection habs with heq; subst heq
-            unfold VCompat
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-            exact ⟨ann, body, rfl, h_mu⟩
+          injection habs with heq; subst heq
+          unfold VCompat
+          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+          exact ⟨ann, body, rfl, h_mu⟩
     · -- Normalized mu-right: e = mu ann body, absEval(body.subst) = ok u', VCompat(m, v, u'.val)
       -- absEval(mu ann body) = ok ⟨mu ann body⟩. Use normalized mu-right.
       subst hτ_mu
@@ -545,13 +530,8 @@ theorem VCompat.absEval_preserves {n : Nat} {v e : Expr}
         | .error _ => simp [h_ann, bind, Except.bind] at habs
         | .ok ann'' =>
           simp only [h_ann, bind, Except.bind] at habs
-          simp only [show (!false : Bool) = true from rfl, ite_true] at habs
-          match h_body_mu2 : absEval fk (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
-          | .error _ => simp [h_body_mu2, bind, Except.bind] at habs
-          | .ok body_mu2' =>
-            simp only [h_body_mu2, bind, Except.bind] at habs
-            injection habs with heq; subst heq
-            unfold VCompat
+          injection habs with heq; subst heq
+          unfold VCompat
             apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inr
             apply Or.inr; apply Or.inl
             exact ⟨ann, body, ⟨nfuel, nctx, nseen, u', rfl, habs_inner, h_mu_norm⟩⟩
@@ -1533,8 +1513,8 @@ single subst), and substEnv_idEnv (identity property). These are in Syntax.lean.
 /-- Multi-step fuel monotonicity for absEval: if it succeeds at fuel n,
     it succeeds at any fuel ≥ n with the same result. -/
 theorem absEval_fuel_mono_le {n m : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
-    {e : Expr} {v : NfExpr} {lenient : Bool}
-    (h : absEval n ctx seen e lenient = .ok v) (hle : n ≤ m) : absEval m ctx seen e lenient = .ok v := by
+    {e : Expr} {v : NfExpr}
+    (h : absEval n ctx seen e = .ok v) (hle : n ≤ m) : absEval m ctx seen e = .ok v := by
   induction m generalizing n with
   | zero => have := Nat.le_zero.mp hle; subst this; exact h
   | succ k ih =>
@@ -1671,9 +1651,9 @@ KEY REMAINING BLOCKER: absEval_preserves_VCompat_substEnv (below). -/
     3. Prove directly by case analysis on how absEval transforms e -/
 theorem absEval_preserves_VCompat_substEnv
     {n : Nat} {v e : Expr} {fuel : Nat} {ctx : TyCtx} {τ : NfExpr}
-    {γ : List Expr} {lenient : Bool}
+    {γ : List Expr}
     (hv : VCompat n v (e.substEnv γ))
-    (habs : absEval fuel ctx [] e lenient = .ok τ)
+    (habs : absEval fuel ctx [] e = .ok τ)
     : VCompat n v (τ.val.substEnv γ) :=
   sorry
 
@@ -1689,8 +1669,7 @@ PRECONDITIONS:
 
 theorem soundness_open (e : Expr)
     (fuel : Nat) (ctx : TyCtx) (τ : NfExpr)
-    (lenient : Bool)
-    (h_abs : absEval fuel ctx [] e lenient = .ok τ)
+    (h_abs : absEval fuel ctx [] e = .ok τ)
     (n : Nat) (γV γT : List Expr)
     (h_env : FunEnvCompat n γV γT)
     (h_ctx : γT.length = ctx.length)
@@ -1701,7 +1680,7 @@ theorem soundness_open (e : Expr)
   -- SORRY'd for now: self-type semantics change requires proof rework.
   sorry
   /- Original proof disabled during self-type rework:
-  induction e generalizing fuel ctx τ n γV γT v lenient with
+  induction e generalizing fuel ctx τ n γV γT v with
   | bvar k =>
     -- absEval: returns ⟨bvar k⟩ regardless of context
     cases fuel with
@@ -1739,82 +1718,50 @@ theorem soundness_open (e : Expr)
     | zero => simp [absEval] at h_abs
     | succ fk =>
       unfold absEval at h_abs; dsimp only [] at h_abs
-      match h_ann_abs : absEval fk ctx [] ann lenient with
+      match h_ann_abs : absEval fk ctx [] ann with
       | .error _ => simp [h_ann_abs, bind, Except.bind] at h_abs
       | .ok ann' =>
         simp only [h_ann_abs, bind, Except.bind] at h_abs
-        -- Split on lenient to handle the body check condition (!lenient)
-        cases lenient with
-        | false =>
-          simp only [show (!false : Bool) = true from rfl, ite_true] at h_abs
-          match h_body_abs : absEval fk (TyCtx.extend ctx ⟨.mu ann body⟩) [] body true with
-          | .error _ => simp [h_body_abs, bind, Except.bind] at h_abs
-          | .ok body_abs' =>
-            simp only [h_body_abs, bind, Except.bind] at h_abs
-            injection h_abs with hτ; subst hτ
-            -- τ.val = mu ann body, substEnv gives mu (ann.substEnv γT) (body.substEnv (lift γT))
-            simp only [Expr.substEnv] at h_conc ⊢
-            unfold concEval at h_conc
-            injection h_conc with hv; subst hv
-            -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv lift_γV))
-            --                  (mu (ann.substEnv γT) (body.substEnv lift_γT))
-            -- where lift_γX = (.bvar 0) :: γX.map (shift 1 0)
-            cases n with
-            | zero => simp [VCompat]
-            | succ m =>
-              -- Use structural mu disjunct
-              unfold VCompat
-              apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-              refine ⟨ann.substEnv γV, ann.substEnv γT,
-                      body.substEnv ((.bvar 0) :: γV.map (·.shift 1 0)),
-                      body.substEnv ((.bvar 0) :: γT.map (·.shift 1 0)),
-                      rfl, rfl, ?_⟩
-              -- Goal: VCompat m (unfolded_V) (unfolded_T) where
-              --   unfolded_V = (body.substEnv lift_γV).subst 0 (mu (ann.substEnv γV) (body.substEnv lift_γV))
-              --   unfolded_T = (body.substEnv lift_γT).subst 0 (mu (ann.substEnv γT) (body.substEnv lift_γT))
-              -- By substEnv_subst_comp, these equal:
-              --   body.substEnv (mu_V :: γV) and body.substEnv (mu_T :: γT)
-              -- where mu_X = mu (ann.substEnv γX) (body.substEnv lift_γX)
-              have h_closed_body : body.closedAt (ctx.length + 1) = true := by
-                simp [Expr.closedAt] at h_closed; exact h_closed.2
-              have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
-                obtain ⟨hlen, _, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
-              have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
-                rw [← h_ctx] at h_closed_body; exact h_closed_body
-              rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
-                  Expr.substEnv_subst_comp body γT _ h_closed_body_T]
-              -- Goal: VCompat m (body.substEnv (mu_V :: γV)) (body.substEnv (mu_T :: γT))
-              -- BLOCKER: This requires a "VCompat reflexivity under related environments"
-              -- lemma, or joint (fuel, expression) induction. The key issue: ih_body
-              -- (structural IH on body) requires concEval to succeed on body.substEnv(mu_V :: γV),
-              -- but concEval of a mu just returns the mu value — the body is never evaluated.
-              -- See SUGGESTIONS.md "Potential paths forward" and PROGRESS.md.
-              sorry
-        | true =>
-          simp only [show (!true : Bool) = false from rfl, ite_false] at h_abs
-          injection h_abs with hτ; subst hτ
-          simp only [Expr.substEnv] at h_conc ⊢
-          unfold concEval at h_conc
-          injection h_conc with hv; subst hv
-          cases n with
-          | zero => simp [VCompat]
-          | succ m =>
-            unfold VCompat
-            apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
-            refine ⟨ann.substEnv γV, ann.substEnv γT,
-                    body.substEnv ((.bvar 0) :: γV.map (·.shift 1 0)),
-                    body.substEnv ((.bvar 0) :: γT.map (·.shift 1 0)),
-                    rfl, rfl, ?_⟩
-            have h_closed_body : body.closedAt (ctx.length + 1) = true := by
-              simp [Expr.closedAt] at h_closed; exact h_closed.2
-            have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
-              obtain ⟨hlen, _, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
-            have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
-              rw [← h_ctx] at h_closed_body; exact h_closed_body
-            rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
-                Expr.substEnv_subst_comp body γT _ h_closed_body_T]
-            -- Same blocker as lenient=false. See above.
-            sorry
+        -- No body check anymore: absEval just returns ⟨mu ann body⟩
+        injection h_abs with hτ; subst hτ
+        -- τ.val = mu ann body, substEnv gives mu (ann.substEnv γT) (body.substEnv (lift γT))
+        simp only [Expr.substEnv] at h_conc ⊢
+        unfold concEval at h_conc
+        injection h_conc with hv; subst hv
+        -- Goal: VCompat n (mu (ann.substEnv γV) (body.substEnv lift_γV))
+        --                  (mu (ann.substEnv γT) (body.substEnv lift_γT))
+        -- where lift_γX = (.bvar 0) :: γX.map (shift 1 0)
+        cases n with
+        | zero => simp [VCompat]
+        | succ m =>
+          -- Use structural mu disjunct
+          unfold VCompat
+          apply Or.inr; apply Or.inr; apply Or.inr; apply Or.inl
+          refine ⟨ann.substEnv γV, ann.substEnv γT,
+                  body.substEnv ((.bvar 0) :: γV.map (·.shift 1 0)),
+                  body.substEnv ((.bvar 0) :: γT.map (·.shift 1 0)),
+                  rfl, rfl, ?_⟩
+          -- Goal: VCompat m (unfolded_V) (unfolded_T) where
+          --   unfolded_V = (body.substEnv lift_γV).subst 0 (mu (ann.substEnv γV) (body.substEnv lift_γV))
+          --   unfolded_T = (body.substEnv lift_γT).subst 0 (mu (ann.substEnv γT) (body.substEnv lift_γT))
+          -- By substEnv_subst_comp, these equal:
+          --   body.substEnv (mu_V :: γV) and body.substEnv (mu_T :: γT)
+          -- where mu_X = mu (ann.substEnv γX) (body.substEnv lift_γX)
+          have h_closed_body : body.closedAt (ctx.length + 1) = true := by
+            simp [Expr.closedAt] at h_closed; exact h_closed.2
+          have h_closed_body_V : body.closedAt (γV.length + 1) = true := by
+            obtain ⟨hlen, _, _, _⟩ := h_env; rw [← h_ctx, ← hlen] at h_closed_body; exact h_closed_body
+          have h_closed_body_T : body.closedAt (γT.length + 1) = true := by
+            rw [← h_ctx] at h_closed_body; exact h_closed_body
+          rw [Expr.substEnv_subst_comp body γV _ h_closed_body_V,
+              Expr.substEnv_subst_comp body γT _ h_closed_body_T]
+          -- Goal: VCompat m (body.substEnv (mu_V :: γV)) (body.substEnv (mu_T :: γT))
+          -- BLOCKER: This requires a "VCompat reflexivity under related environments"
+          -- lemma, or joint (fuel, expression) induction. The key issue: ih_body
+          -- (structural IH on body) requires concEval to succeed on body.substEnv(mu_V :: γV),
+          -- but concEval of a mu just returns the mu value — the body is never evaluated.
+          -- See SUGGESTIONS.md "Potential paths forward" and PROGRESS.md.
+          sorry
   | lam dom body ih_dom ih_body =>
     -- KEY CASE: the whole point of the fundamental theorem.
     -- absEval: normalizes domain and body under binder
@@ -1823,11 +1770,11 @@ theorem soundness_open (e : Expr)
     | zero => simp [absEval] at h_abs
     | succ fk =>
       unfold absEval at h_abs; dsimp only [] at h_abs
-      match h_dom_abs : absEval fk ctx [] dom lenient with
+      match h_dom_abs : absEval fk ctx [] dom with
       | .error _ => simp [h_dom_abs, bind, Except.bind] at h_abs
       | .ok dom' =>
         simp only [h_dom_abs, bind, Except.bind] at h_abs
-        match h_body_abs : absEval fk (TyCtx.extend ctx dom') [] body lenient with
+        match h_body_abs : absEval fk (TyCtx.extend ctx dom') [] body with
         | .error _ => simp [h_body_abs, bind, Except.bind] at h_abs
         | .ok body' =>
           simp only [h_body_abs, bind, Except.bind] at h_abs
@@ -1872,7 +1819,7 @@ theorem soundness_open (e : Expr)
               -- Build extended environment
               have h_env_ext : FunEnvCompat j (aV :: γV) (aT :: γT) := by
                 exact FunEnvCompat.cons hval_aV hcompat_arg (FunEnvCompat.mono_le h_env (by omega)) haT_cl
-              exact ih_body (max fuel' fk) (TyCtx.extend ctx dom') body' lenient h_abs_max
+              exact ih_body (max fuel' fk) (TyCtx.extend ctx dom') body' h_abs_max
                 j (aV :: γV) (aT :: γT) h_env_ext
                 (by simp [TyCtx.extend, List.length_cons, List.length_map]; omega)
                 (by show body.closedAt ((TyCtx.extend ctx dom').length) = true
@@ -1886,11 +1833,11 @@ theorem soundness_open (e : Expr)
     | zero => simp [absEval] at h_abs
     | succ fk =>
       unfold absEval at h_abs; dsimp only [] at h_abs
-      match h_sigma : absEval fk ctx [] term lenient with
+      match h_sigma : absEval fk ctx [] term with
       | .error _ => simp [h_sigma, bind, Except.bind] at h_abs
       | .ok sigma =>
         simp only [h_sigma, bind, Except.bind] at h_abs
-        match h_tau : absEval fk ctx [] ty lenient with
+        match h_tau : absEval fk ctx [] ty with
         | .error _ => simp [h_tau, bind, Except.bind] at h_abs
         | .ok tau =>
           simp only [h_tau, bind, Except.bind] at h_abs
@@ -1909,7 +1856,7 @@ theorem soundness_open (e : Expr)
               simp [Expr.closedAt] at h_closed; exact h_closed.1
             have h_closed_ty : ty.closedAt ctx.length = true := by
               simp [Expr.closedAt] at h_closed; exact h_closed.2
-            have ih_v_sigma := ih_term fk ctx sigma lenient h_sigma n γV γT h_env h_ctx h_closed_term v h_conc
+            have ih_v_sigma := ih_term fk ctx sigma h_sigma n γV γT h_env h_ctx h_closed_term v h_conc
             -- Bridge from sigma.val.substEnv γT to tau.val.substEnv γT:
             -- 1. subCheckNF_substEnv gives subCheckNF on closed (substituted) terms
             -- 2. VCompat.adequacy bridges via the closed subcheck
@@ -1932,11 +1879,11 @@ theorem soundness_open (e : Expr)
     | zero => simp [absEval] at h_abs
     | succ fk =>
       unfold absEval at h_abs; dsimp only [] at h_abs
-      match hfT : absEval fk ctx [] f lenient with
+      match hfT : absEval fk ctx [] f with
       | .error _ => simp [hfT, bind, Except.bind] at h_abs
       | .ok fT =>
         simp only [hfT, bind, Except.bind] at h_abs
-        match haT : absEval fk ctx [] a lenient with
+        match haT : absEval fk ctx [] a with
         | .error _ => simp [haT, bind, Except.bind] at h_abs
         | .ok aT =>
           simp only [haT, bind, Except.bind] at h_abs
@@ -1951,16 +1898,16 @@ theorem soundness_open (e : Expr)
             | some aV =>
               simp only [hfV, haV] at h_conc
               -- Get IH results
-              have ih_fV := ih_f fk ctx fT lenient hfT n γV γT h_env h_ctx h_closed_f fV hfV
-              have ih_aV := ih_a fk ctx aT lenient haT n γV γT h_env h_ctx h_closed_a aV haV
+              have ih_fV := ih_f fk ctx fT hfT n γV γT h_env h_ctx h_closed_f fV hfV
+              have ih_aV := ih_a fk ctx aT haT n γV γT h_env h_ctx h_closed_a aV haV
               -- Now dispatch on fT.val (absEval's function type)
               match hfT_val : fT.val with
               | .lam dom bodyT =>
                 -- absEval: domain check + beta-reduce
                 simp only [hfT_val] at h_abs
-                by_cases h_dom_check : (subCheckNF fk ctx [] aT.val dom || (lenient && aT.val.isNeutral)) = true
+                by_cases h_dom_check : (subCheckNF fk ctx [] aT.val dom) = true
                 · simp only [h_dom_check, ite_true] at h_abs
-                  -- h_abs : absEval fk ctx [] (bodyT.subst 0 aT.val) lenient = .ok τ
+                  -- h_abs : absEval fk ctx [] (bodyT.subst 0 aT.val) = .ok τ
                   -- Rewrite ih_fV with the known fT.val = lam dom bodyT
                   rw [hfT_val] at ih_fV
                   simp only [Expr.substEnv] at ih_fV
@@ -2077,7 +2024,7 @@ theorem soundness_open (e : Expr)
               | .bvar _ | .app _ _ | .asc _ _ =>
                 -- absEval: neutral function type → structural app
                 simp only [hfT_val] at h_abs
-                by_cases hcall : (isCallableNF ctx fT || lenient) = true
+                by_cases hcall : (isCallableNF ctx fT) = true
                 · simp only [hcall, ite_true] at h_abs
                   injection h_abs with hτ; subst hτ
                   -- τ.val = app fT.val aT.val
@@ -2142,7 +2089,7 @@ theorem soundness
     (h_abs : absEval fuel [] [] e = .ok τ)
     (h_closed : e.closedAt 0 = true)
     : VCompat n v τ.val := by
-  have h := soundness_open e fuel [] τ false h_abs n [] [] (FunEnvCompat.nil n) rfl
+  have h := soundness_open e fuel [] τ h_abs n [] [] (FunEnvCompat.nil n) rfl
     (by simpa using h_closed) v (by rw [Expr.substEnv_nil]; exact h_conc)
   rw [Expr.substEnv_nil] at h
   exact h
