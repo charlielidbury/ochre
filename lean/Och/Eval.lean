@@ -141,23 +141,9 @@ mutual
             absEval fuel ctx seen (body.subst 0 a'.val)
           else .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
         | .mu _ann body =>
-          match _ann, body with
-          | .lam _dom retBody, .lam _ _ =>
-            absEval fuel ctx seen (retBody.subst 0 a'.val)
-          | _, .lam _dom _retBody =>
-            let mu_expr := Expr.mu _ann body
-            if seen.any (fun (a', _) => a' == mu_expr) then
-              .ok (⟨.app mu_expr a'.val⟩, ⟨.type⟩)  -- cycle break: type unknown
-            else
-              let seen' := (mu_expr, mu_expr) :: seen
-              let unfolded := body.subst 0 mu_expr
-              match unfolded with
-              | .lam _dom2 retBody2 =>
-                absEval fuel ctx seen' (retBody2.subst 0 a'.val)
-              | _ =>
-                absEval fuel ctx seen' (.app unfolded a'.val)
-          | _, _ =>
-            .ok (⟨.app (body.subst 0 (Expr.mu _ann body)) a'.val⟩, ⟨.type⟩)
+          -- Fix-style unfold: (μs:A. b) a  →  b[s↦μs:A.b] a
+          -- One unfold per application. Termination via fuel.
+          absEval fuel ctx seen (.app (body.subst 0 (Expr.mu _ann body)) a'.val)
         | .type => .error "Type is not callable"
         | _ =>
           -- Neutral application: use synthesized type of f' for callability
