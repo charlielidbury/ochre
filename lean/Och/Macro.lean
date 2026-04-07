@@ -87,9 +87,9 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.mu $ann' $body')
   | `(och| let $x:ident : $ty:och = $val:och in $body:och) =>
-    let ty' ← expand ctx ty; let val' ← expand ctx val
+    let _ty' ← expand ctx ty; let val' ← expand ctx val
     let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.app (Expr.lam $ty' $body') $val')
+    `(Expr.letE $val' $body')
   | `(och| $x:ident) =>
     let name := x.getId.toString
     match findIdx? ctx name with

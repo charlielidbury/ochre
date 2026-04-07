@@ -143,6 +143,9 @@ mutual
       | .mu ann body  => do
         let (ann', _) ← absEval fuel ctx seen ann muSeen
         .ok (⟨.mu ann body⟩, ann')
+      | .letE val body => do
+        let (val', _) ← absEval fuel ctx seen val muSeen
+        absEval fuel ctx seen (body.subst 0 val'.val) muSeen
       | .app f a      => do
         let (f', τ_f) ← absEval fuel ctx seen f muSeen
         let (a', _) ← absEval fuel ctx seen a muSeen
@@ -331,6 +334,10 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
     | .type => some .type
     | .asc term _ => concEval fuel term  -- runtime: erase ascription
     | .mu _ _ => some e  -- mu is a value (only unrolled when applied)
+    | .letE val body =>
+      match concEval fuel val with
+      | some v => concEval fuel (body.subst 0 v)
+      | none => none
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | some (.lam _dom body), some aVal =>
@@ -359,6 +366,15 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
       simp only [concEval] at h ⊢; exact ih h
     | .mu ann body =>
       simp [concEval] at h ⊢; exact h
+    | .letE val body =>
+      unfold concEval at h ⊢
+      match hv : concEval k val with
+      | none => simp [hv] at h
+      | some vVal =>
+        have hv' := ih hv
+        simp only [hv] at h
+        simp only [hv']
+        exact ih h
     | .app f a =>
       unfold concEval at h ⊢
       match hf : concEval k f with
@@ -375,7 +391,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           | .lam _dom body => exact ih h
           | .mu ann body_mu => exact ih h
           | .type => exact h
-          | .bvar _ | .app _ _ | .asc _ _ => exact h
+          | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ => exact h
 
 /-! ## concEval shape lemmas
 
@@ -406,8 +422,13 @@ theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
         match fVal with
         | .lam _ _ => exact ih h
         | .mu _ _ => exact ih h
-        | .type | .bvar _ | .app _ _ | .asc _ _ =>
+        | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
+    | letE val body =>
+      unfold concEval at h
+      match hv : concEval n val with
+      | none => simp [hv] at h
+      | some vVal => simp only [hv] at h; exact ih h
 
 /-- concEval never produces an ascription at the top level. -/
 theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
@@ -431,8 +452,13 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
         match fVal with
         | .lam _ _ => exact ih h
         | .mu _ _ => exact ih h
-        | .type | .bvar _ | .app _ _ | .asc _ _ =>
+        | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
+    | letE val body =>
+      unfold concEval at h
+      match hv : concEval n val with
+      | none => simp [hv] at h
+      | some vVal => simp only [hv] at h; exact ih h
 
 /-- Concrete normal form: the shape of concEval outputs.
     Values are lam/type/mu (base values) or neutral applications where
@@ -442,7 +468,7 @@ inductive ConcNF : Expr → Prop
   | type : ConcNF .type
   | mu (ann body : Expr) : ConcNF (.mu ann body)
   | app (f a : Expr) : ConcNF f → ConcNF a →
-      (match f with | .lam _ _ | .mu _ _ => False | _ => True) → ConcNF (.app f a)
+      (match f with | .lam _ _ | .mu _ _ | .letE _ _ => False | _ => True) → ConcNF (.app f a)
 
 /-- concEval always produces ConcNF values. -/
 theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
@@ -474,6 +500,12 @@ theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
           injection h with hv; subst hv
           exact ConcNF.app _ _ (ih hf) (ih ha) True.intro
         | .asc t ty => exact absurd hf (by intro h; exact concEval_not_asc h)
+        | .letE _ _ => sorry  -- impossible: concEval never produces letE
+    | letE val body =>
+      unfold concEval at h
+      match hv : concEval n val with
+      | none => simp [hv] at h
+      | some vVal => simp only [hv] at h; exact ih h
 
 /-- ConcNF values are idempotent under concEval: if concEval succeeds on
     a ConcNF value, it returns the same value. This is because ConcNF values
@@ -512,6 +544,7 @@ theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
         match f, h_not_redex with
         | .type, _ | .bvar _, _ | .app _ _, _ | .asc _ _, _ =>
           intro h; injection h with heq; exact heq.symm
+        | .letE _ _, h_abs => exact h_abs.elim
 
 /-- ConcNF implies the old isConcreteVal-or-app pattern: not bvar, not asc. -/
 theorem ConcNF.not_bvar {v : Expr} (h : ConcNF v) : ∀ k, v ≠ .bvar k := by
