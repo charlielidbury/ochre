@@ -123,9 +123,8 @@ private def selfRefFn := och{ μ f:(Type → Type). λx:Type. λP:((f x) → Typ
 -- f alone is fine (mu is a value, no unfolding)
 example : absEvalVal selfRefFn = .ok ⟨selfRefFn⟩ := by native_decide
 
--- f applied diverges: expected to succeed but currently runs out of fuel
--- TODO: fix absEval to handle self-referential domains without diverging
-example : (absEval 500 [] [] (och{ selfRefFn Type })).isOk = true := by sorry -- native_decide diverges
+-- f applied to Type succeeds
+example : (absEval 500 [] [] (och{ selfRefFn Type })).isOk = true := by native_decide
 
 end Tests
 end Std

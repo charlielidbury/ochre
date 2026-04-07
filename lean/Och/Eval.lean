@@ -205,9 +205,11 @@ mutual
         | _, .mu _ann body =>
           let seen' := (a, b) :: seen
           let u := body.subst 0 a
-          match absEval fuel ctx seen' u with
-          | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
-          | .error _ => false
+          let self_intro := match absEval fuel ctx seen' u with
+            | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
+            | .error _ => false
+          if self_intro then true
+          else neutralType fuel ctx seen a b
         | .mu ann body, _ =>
           let seen' := (a, b) :: seen
           let ann_path :=
@@ -542,4 +544,3 @@ theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr
     (h_closed : e.closedAt ctx.length = true)
     : τ.1.val.closedAt ctx.length = true := by
   sorry
-
