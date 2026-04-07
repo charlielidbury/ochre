@@ -106,9 +106,18 @@ mutual
       A term is well-typed iff absEval succeeds (returns some).
 
       The `seen` parameter (from subCheckNF) breaks cycles that arise when
-      domain-checking let-bindings inside mu types. -/
+      domain-checking let-bindings inside mu types.
+
+      The `muSeen` parameter breaks cycles in mu-app normalization: when a
+      mu-function's body contains (self arg) in a domain, normalizing under
+      the binder would re-trigger the same mu-app indefinitely. When we detect
+      a mu-app we're already normalizing, we return it as a neutral application
+      instead of unfolding. This is sound because it only loses information
+      (the neutral term's type is looked up from the mu annotation, which is
+      always a valid over-approximation). -/
   def absEval (fuel : Nat) (ctx : TyCtx) (seen : List (Expr × Expr))
-      (e : Expr) : Except String (NfExpr × NfExpr) :=
+      (e : Expr) (muSeen : List (Expr × Expr) := [])
+      : Except String (NfExpr × NfExpr) :=
     match fuel with
     | 0 => .error "out of fuel"
     | fuel + 1 =>
@@ -119,31 +128,42 @@ mutual
           | none => ⟨.bvar k⟩  -- out-of-scope: type is self (will fail callability)
         .ok (⟨.bvar k⟩, ty)
       | .lam dom body => do
-        let (dom', _) ← absEval fuel ctx seen dom
-        let (body', _) ← absEval fuel (TyCtx.extend ctx dom') seen body
+        let (dom', _) ← absEval fuel ctx seen dom muSeen
+        let (body', _) ← absEval fuel (TyCtx.extend ctx dom') seen body muSeen
         let v := ⟨.lam dom'.val body'.val⟩
         .ok (v, v)  -- self-typing: terms = types
       | .type         => .ok (⟨.type⟩, ⟨.type⟩)
       | .asc term ty  => do
-        let (sigma, _) ← absEval fuel ctx seen term
-        let (tau, _) ← absEval fuel ctx seen ty
+        let (sigma, _) ← absEval fuel ctx seen term muSeen
+        let (tau, _) ← absEval fuel ctx seen ty muSeen
         if subCheckNF fuel ctx seen sigma.val tau.val then .ok (tau, tau)
         else .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
       | .mu ann body  => do
-        let (ann', _) ← absEval fuel ctx seen ann
+        let (ann', _) ← absEval fuel ctx seen ann muSeen
         .ok (⟨.mu ann body⟩, ann')
       | .app f a      => do
-        let (f', τ_f) ← absEval fuel ctx seen f
-        let (a', _) ← absEval fuel ctx seen a
+        let (f', τ_f) ← absEval fuel ctx seen f muSeen
+        let (a', _) ← absEval fuel ctx seen a muSeen
         match f'.val with
         | .lam dom body =>
           if subCheckNF fuel ctx seen a'.val dom then
-            absEval fuel ctx seen (body.subst 0 a'.val)
+            absEval fuel ctx seen (body.subst 0 a'.val) muSeen
           else .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
         | .mu _ann body =>
-          -- Fix-style unfold: (μs:A. b) a  →  b[s↦μs:A.b] a
-          -- One unfold per application. Termination via fuel.
-          absEval fuel ctx seen (.app (body.subst 0 (Expr.mu _ann body)) a'.val)
+          -- Check muSeen to break cycles in mu-app normalization.
+          -- If we've already seen this (mu, arg) pair, return as neutral
+          -- to avoid infinite unfolding.
+          if muSeen.any (fun (m, a2) => Expr.mu _ann body == m && a'.val == a2) then
+            -- Treat as neutral application: use annotation for return type
+            match τ_f.val with
+            | .lam _dom retTy =>
+              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
+            | _ => .error s!"not callable (mu cycle): {repr f'}"
+          else
+            -- Fix-style unfold: (μs:A. b) a  →  b[s↦μs:A.b] a
+            -- Record this mu-app in muSeen before recursing.
+            let muSeen' := (Expr.mu _ann body, a'.val) :: muSeen
+            absEval fuel ctx seen (.app (body.subst 0 (Expr.mu _ann body)) a'.val) muSeen'
         | .type => .error "Type is not callable"
         | _ =>
           -- Neutral application: use synthesized type of f' for callability

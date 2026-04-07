@@ -101,5 +101,31 @@ example : concEval 1000 (och{ toZeroThunked one_ }) ≠ some one_ := by native_d
 -- toZeroThunked 3 /= 3
 example : concEval 1000 (och{ toZeroThunked three_ }) ≠ some three_ := by native_decide
 
+-- ------------------------------------------------------------
+-- Mu-app domain normalization divergence (minimal repro)
+-- ------------------------------------------------------------
+-- A mu-function whose body has (self arg) in a domain causes
+-- absEval to diverge: unfolding the mu-app produces a lambda
+-- whose domain contains the same mu-app, so normalizing under
+-- the binder loops forever.
+--
+--   f = μ f:(Type→Type). λx:Type. λP:((f x) → Type). P
+--   absEval (f Type):
+--     1. mu-app unfolds + beta-reduces → λP:((f Type)→Type). P
+--     2. normalize under binder → normalize P's domain (f Type)→Type
+--     3. normalize f Type → goto 1
+--
+-- This is the root cause of DNat subtype checking failures:
+-- dsucc has (dsucc m) in its P-domain, triggering the same loop.
+
+private def selfRefFn := och{ μ f:(Type → Type). λx:Type. λP:((f x) → Type). P }
+
+-- f alone is fine (mu is a value, no unfolding)
+example : absEvalVal selfRefFn = .ok ⟨selfRefFn⟩ := by native_decide
+
+-- f applied diverges: expected to succeed but currently runs out of fuel
+-- TODO: fix absEval to handle self-referential domains without diverging
+example : (absEval 500 [] [] (och{ selfRefFn Type })).isOk = true := by sorry -- native_decide diverges
+
 end Tests
 end Std
