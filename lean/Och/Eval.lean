@@ -136,8 +136,10 @@ mutual
       | .asc term ty  => do
         let (sigma, _) ← absEval fuel ctx seen term muSeen
         let (tau, _) ← absEval fuel ctx seen ty muSeen
-        if subCheckNF fuel ctx seen sigma.val tau.val then .ok (tau, tau)
-        else .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
+        match subCheckNF fuel ctx seen sigma.val tau.val with
+        | .ok true => .ok (tau, tau)
+        | .ok false => .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
+        | .error e => .error s!"ascription check: {e}"
       | .mu ann body  => do
         let (ann', _) ← absEval fuel ctx seen ann muSeen
         .ok (⟨.mu ann body⟩, ann')
@@ -146,9 +148,10 @@ mutual
         let (a', _) ← absEval fuel ctx seen a muSeen
         match f'.val with
         | .lam dom body =>
-          if subCheckNF fuel ctx seen a'.val dom then
-            absEval fuel ctx seen (body.subst 0 a'.val) muSeen
-          else .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
+          match subCheckNF fuel ctx seen a'.val dom with
+          | .ok true => absEval fuel ctx seen (body.subst 0 a'.val) muSeen
+          | .ok false => .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
+          | .error e => .error s!"domain check: {e}"
         | .mu _ann body =>
           -- Check muSeen to break cycles in mu-app normalization.
           -- If we've already seen this (mu, arg) pair, return as neutral
@@ -185,49 +188,75 @@ mutual
       ctx: type context (positional list of domain types for bound variables).
       seen: assumed subtyping pairs for equi-recursive termination.
 
+      Returns:
+      - `.ok true`  — proved a ⊑ b
+      - `.ok false` — definitively not a subtype
+      - `.error msg` — indeterminate (out of fuel, normalization failure)
+
       Includes a variable rule: when the LHS is a bound variable, its context
       entry is looked up and the check recurses. This handles multi-hop type
       chains (e.g. b:a, a:not, not:Bool→Bool) naturally via recursion. -/
   def subCheckNF (fuel : Nat) (ctx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Bool :=
+      (seen : List (Expr × Expr)) (a b : Expr) : Except String Bool :=
     match fuel with
-    | 0 => false
+    | 0 => .error "subCheckNF: out of fuel"
     | fuel + 1 =>
-      if a == b then true
-      else if seen.any (fun (a', b') => a == a' && b == b') then true
+      if a == b then .ok true
+      else if seen.any (fun (a', b') => a == a' && b == b') then .ok true
       else match b with
-      | .type => true
+      | .type => .ok true
       | _ =>
         match a, b with
-        | .lam domA bodyA, .lam domB bodyB =>
-          subCheckNF fuel ctx [] domB domA
-          && subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB
+        | .lam domA bodyA, .lam domB bodyB => do
+          let contra ← subCheckNF fuel ctx [] domB domA
+          if !contra then return false
+          subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB
         | _, .mu _ann body =>
           let seen' := (a, b) :: seen
           let u := body.subst 0 a
           let self_intro := match absEval fuel ctx seen' u with
             | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
-            | .error _ => false
-          if self_intro then true
-          else neutralType fuel ctx seen a b
+            | .error e => .error e
+          match self_intro with
+          | .ok true => .ok true
+          | _ => match neutralType fuel ctx seen a b with
+            | .ok true => .ok true
+            | nt => match self_intro with
+              | .error e => .error e
+              | _ => nt
         | .mu ann body, _ =>
           let seen' := (a, b) :: seen
           let ann_path :=
             if body != .bvar 0 then
               match absEval fuel ctx seen' ann with
               | .ok (ann', _) => subCheckNF fuel ctx seen' ann'.val b
-              | .error _ => false
-            else false
-          if ann_path then true
-          else
+              | .error e => .error e
+            else .ok false
+          match ann_path with
+          | .ok true => .ok true
+          | _ =>
             let u := body.subst 0 (.mu ann body)
-            match absEval fuel ctx seen' u with
-            | .ok (u', _) => subCheckNF fuel ctx seen u'.val b
-            | .error _ => false
-        | .app f1 a1, .app f2 a2 =>
-          if subCheckNF fuel ctx [] f1 f2 && subCheckNF fuel ctx [] a1 a2
-          then true
-          else neutralType fuel ctx seen a b
+            let unfold_path := match absEval fuel ctx seen' u with
+              | .ok (u', _) => subCheckNF fuel ctx seen u'.val b
+              | .error e => .error e
+            match unfold_path with
+            | .ok true => .ok true
+            | _ => match ann_path, unfold_path with
+              | .error e, _ => .error e
+              | _, .error e => .error e
+              | _, _ => .ok false
+        | .app f1 a1, .app f2 a2 => do
+          let structural := do
+            let fOk ← subCheckNF fuel ctx [] f1 f2
+            if !fOk then return false
+            subCheckNF fuel ctx [] a1 a2
+          match structural with
+          | .ok true => .ok true
+          | _ => match neutralType fuel ctx seen a b with
+            | .ok true => .ok true
+            | nt => match structural with
+              | .error e => .error e
+              | _ => nt
         | _, _ => neutralType fuel ctx seen a b
   termination_by fuel
 
@@ -235,15 +264,15 @@ mutual
       check that against b. Handles bvar (context lookup) and app (return
       type computation) with multi-hop chasing via fuel-bounded recursion. -/
   private def neutralType (fuel : Nat) (ctx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Bool :=
+      (seen : List (Expr × Expr)) (a b : Expr) : Except String Bool :=
     match fuel with
-    | 0 => false
+    | 0 => .error "neutralType: out of fuel"
     | fuel + 1 =>
       match a with
       | .bvar k =>
         match ctx.get? k with
         | some ty => subCheckNF fuel ctx seen ty.val b
-        | none => false
+        | none => .ok false
       | .app f arg =>
         match neutralType fuel ctx seen f (.lam .type .type) with  -- dummy: just need the type
         | _ =>
@@ -260,11 +289,11 @@ mutual
               | .lam _dom retTy =>
                 let resultTy := retTy.subst 0 arg
                 subCheckNF fuel ctx seen resultTy b
-              | _ => false
-            | _ => false
-          | .error _ => false
+              | _ => .ok false
+            | _ => .ok false
+          | .error e => .error e
       | .mu ann _ => subCheckNF fuel ctx seen ann b
-      | _ => false
+      | _ => .ok false
   termination_by fuel
 end
 
@@ -276,11 +305,13 @@ def absEvalVal (e : Expr) (fuel : Nat := 10000) : Except String NfExpr :=
 /-! ## Decidable subtyping -/
 
 /-- Decidable subtyping check. Normalizes both sides via absEval, then
-    compares structurally. -/
-def subCheck (fuel : Nat) (a b : Expr) : Bool :=
+    compares structurally. Returns `.ok true` (subtype), `.ok false`
+    (definitively not), or `.error` (indeterminate — out of fuel, etc.). -/
+def subCheck (fuel : Nat) (a b : Expr) : Except String Bool :=
   match absEval fuel [] [] a, absEval fuel [] [] b with
   | .ok (a', _), .ok (b', _) => subCheckNF fuel [] [] a'.val b'.val
-  | _, _ => false
+  | .error e, _ => .error s!"subCheck lhs: {e}"
+  | _, .error e => .error s!"subCheck rhs: {e}"
 
 /-! ## Concrete evaluators -/
 
@@ -493,7 +524,7 @@ theorem ConcNF.not_asc {v : Expr} (h : ConcNF v) : ∀ t ty, v ≠ .asc t ty := 
 
 theorem subCheckNF_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {a b : Expr}
-    (h : subCheckNF n ctx seen a b = true) : subCheckNF (n + 1) ctx seen a b = true := by
+    (h : subCheckNF n ctx seen a b = .ok true) : subCheckNF (n + 1) ctx seen a b = .ok true := by
   sorry
 
 theorem absEval_fuel_mono {n : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
@@ -518,18 +549,10 @@ theorem subCheckNF_ctx_irrelevant {fuel : Nat} {ctx ctx' : TyCtx} {d : Nat}
     : subCheckNF fuel ctx seen a b = subCheckNF fuel ctx' seen a b := by
   sorry
 
-theorem absEval_ctx_irrelevant {fuel : Nat} {ctx ctx' : TyCtx} {d : Nat}
-    {seen : List (Expr × Expr)} {e : Expr}
-    (he : e.closedAt d = true)
-    (hctx : ∀ i, i < d → ctx.get? i = ctx'.get? i)
-    (hctx_wf : ∀ i (v : NfExpr), ctx.get? i = some v → i < d → v.val.closedAt d = true)
-    : absEval fuel ctx seen e = absEval fuel ctx' seen e := by
-  sorry
-
 /-- Fuel monotonicity with ≤ for subCheckNF. -/
 theorem subCheckNF_fuel_mono_le {n m : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {a b : Expr}
-    (h : subCheckNF n ctx seen a b = true) (hle : n ≤ m) : subCheckNF m ctx seen a b = true := by
+    (h : subCheckNF n ctx seen a b = .ok true) (hle : n ≤ m) : subCheckNF m ctx seen a b = .ok true := by
   induction m generalizing n with
   | zero => have := Nat.le_zero.mp hle; subst this; exact h
   | succ k ih =>
@@ -537,6 +560,14 @@ theorem subCheckNF_fuel_mono_le {n m : Nat} {ctx : TyCtx} {seen : List (Expr × 
     · subst heq; exact h
     · have hlt : n ≤ k := by omega
       exact subCheckNF_fuel_mono (ih h hlt)
+
+theorem absEval_ctx_irrelevant {fuel : Nat} {ctx ctx' : TyCtx} {d : Nat}
+    {seen : List (Expr × Expr)} {e : Expr}
+    (he : e.closedAt d = true)
+    (hctx : ∀ i, i < d → ctx.get? i = ctx'.get? i)
+    (hctx_wf : ∀ i (v : NfExpr), ctx.get? i = some v → i < d → v.val.closedAt d = true)
+    : absEval fuel ctx seen e = absEval fuel ctx' seen e := by
+  sorry
 
 theorem absEval_preserves_closedAt {fuel : Nat} {ctx : TyCtx} {seen : List (Expr × Expr)}
     {e : Expr} {τ : NfExpr × NfExpr}

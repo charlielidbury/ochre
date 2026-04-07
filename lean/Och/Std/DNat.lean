@@ -113,21 +113,21 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- Need to investigate performance optimization for self-type intro on
 -- complex mu bodies.
 
-example : subCheck 200 dzero dNat = true := by sorry -- native_decide (too slow)
-example : subCheck 200 done_ dNat = true := by sorry -- native_decide (too slow)
-example : subCheck 200 dtwo dNat = true := by sorry -- native_decide (too slow)
-example : subCheck 200 dthree dNat = true := by sorry -- native_decide (too slow)
+example : subCheck 200 dzero dNat = .ok true := by sorry -- native_decide (too slow)
+example : subCheck 200 done_ dNat = .ok true := by sorry -- native_decide (too slow)
+example : subCheck 200 dtwo dNat = .ok true := by sorry -- native_decide (too slow)
+example : subCheck 200 dthree dNat = .ok true := by sorry -- native_decide (too slow)
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : subCheck 200 dNat dzero = false := by sorry -- native_decide (too slow)
-example : subCheck 200 Std.true_ dNat = false := by sorry -- native_decide (too slow)
+example : subCheck 200 dNat dzero = .ok false := by sorry -- native_decide (too slow)
+example : subCheck 200 Std.true_ dNat = .ok false := by sorry -- native_decide (too slow)
 
 -- TODO: MAKE THIS TEST PASS (`= false`)
 -- dzero is NOT a subtype of done_ (they are different values)
 -- Blocked on mu application bug: absEval corrupts done_'s normal form
 -- (dangling self-ref), causing the checker to spuriously accept this.
-example : subCheck 200 dzero done_ = true := by sorry -- native_decide (too slow)
+example : subCheck 200 dzero done_ = .ok true := by sorry -- native_decide (too slow)
 
 -- ── Negative computation tests ──────────────────────────────
 

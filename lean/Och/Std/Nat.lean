@@ -142,34 +142,34 @@ example : concEval 200 (och{ isZero_ (succ_ zero_) }) ≠ some Std.true_ := by n
 -- ------------------------------------------------------------
 
 -- Church numerals are subtypes of Nat
-example : subCheck 200 zero_ Nat_ = true := by native_decide
-example : subCheck 200 one_ Nat_ = true := by native_decide
-example : subCheck 200 three_ Nat_ = true := by native_decide
-example : subCheck 200 six_ Nat_ = true := by native_decide
+example : subCheck 200 zero_ Nat_ = .ok true := by native_decide
+example : subCheck 200 one_ Nat_ = .ok true := by native_decide
+example : subCheck 200 three_ Nat_ = .ok true := by native_decide
+example : subCheck 200 six_ Nat_ = .ok true := by native_decide
 
 -- succ : Nat → Nat
-example : subCheck 200 succ_ NatToNat = true := by native_decide
+example : subCheck 200 succ_ NatToNat = .ok true := by native_decide
 -- add : Nat → Nat → Nat
-example : subCheck 200 add_ (och{ Nat_ → NatToNat }) = true := by native_decide
+example : subCheck 200 add_ (och{ Nat_ → NatToNat }) = .ok true := by native_decide
 -- isZero : Nat → Bool
-example : subCheck 200 isZero_ (och{ Nat_ → Std.Bool }) = true := by native_decide
+example : subCheck 200 isZero_ (och{ Nat_ → Std.Bool }) = .ok true := by native_decide
 -- double : Nat → Nat
-example : subCheck 200 double_ NatToNat = true := by native_decide
+example : subCheck 200 double_ NatToNat = .ok true := by native_decide
 -- pred : Nat → Nat
-example : subCheck 1000 pred_ NatToNat = true := by native_decide
+example : subCheck 1000 pred_ NatToNat = .ok true := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (negative)
 -- ------------------------------------------------------------
 
 -- true is not a Nat
-example : subCheck 200 Std.true_ Nat_ = false := by native_decide
+example : subCheck 200 Std.true_ Nat_ = .ok false := by native_decide
 -- three is not a subtype of two (different values)
-example : subCheck 200 three_ two_ = false := by native_decide
+example : subCheck 200 three_ two_ = .ok false := by native_decide
 -- Nat is not a subtype of zero (it's wider)
-example : subCheck 200 Nat_ zero_ = false := by native_decide
+example : subCheck 200 Nat_ zero_ = .ok false := by native_decide
 -- succ is not a Nat (it's a function)
-example : subCheck 200 succ_ Nat_ = false := by native_decide
+example : subCheck 200 succ_ Nat_ = .ok false := by native_decide
 
 end Tests
 end Std

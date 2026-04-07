@@ -43,10 +43,10 @@ private def testVec2 := och{ mkVec Nat_ two_ (Pair one_ (Pair two_ unit_)) }
 -- ── Positive subtype checks ──────────────────────────────────
 
 -- mkVec Nat 1 [0] ⊑ Vec Nat
-example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = true := by native_decide
+example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- mkVec Nat 2 [1,2] ⊑ Vec Nat
-example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = true := by native_decide
+example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -59,10 +59,10 @@ example : absEvalVal (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
 -- ── Negative subtype checks ─────────────────────────────────
 
 -- Vec Nat is not a subtype of Nat (it's a different type)
-example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = false := by native_decide
+example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
 
 -- A Nat is not a Vec Nat
-example : subCheck 1000 zero_ (och{ Vec Nat_ }) = false := by native_decide
+example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
@@ -116,13 +116,14 @@ section AppendVecTests
 -- the type system can't propagate that refinement.
 -- Previously hidden by annotation-trust path that skipped body evaluation entirely.
 
--- appendVec : Vec T → Vec T → Vec T  (EXPECTED: true)
+-- appendVec : Vec T → Vec T → Vec T  (EXPECTED: .ok true)
+-- Currently errors: domain check fails because absEval can't refine n1 in branches.
 example : subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
-  = false := by native_decide
+  ≠ .ok true := by native_decide
 
--- appendVec_wrong should NOT typecheck  (EXPECTED: false — currently also false, but for wrong reason)
+-- appendVec_wrong should NOT typecheck  (EXPECTED: ≠ .ok true — currently also fails, but for wrong reason)
 example : subCheck 5000 appendVec_wrong (och{ λT:Type. Vec T → Vec T → Vec T })
-  = false := by native_decide
+  ≠ .ok true := by native_decide
 
 -- ── Concrete appendVec ──────────────────────────────────────
 
@@ -130,9 +131,10 @@ private def vec1 := och{ mkVec Nat_ two_ (Pair one_ (Pair two_ unit_)) }
 private def vec2 := och{ mkVec Nat_ one_ (Pair three_ unit_) }
 private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 
--- Concrete result ⊑ Vec Nat  (EXPECTED: true)
+-- Concrete result ⊑ Vec Nat  (EXPECTED: .ok true)
+-- Currently errors: same dependent refinement issue as appendVec.
 example : subCheck 5000 vecResult (och{ Vec Nat_ })
-  = false := by native_decide
+  ≠ .ok true := by native_decide
 
 -- Concrete result: unpack and check length is nonzero (isZero = false)
 example : concEval 10000 (och{

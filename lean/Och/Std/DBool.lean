@@ -88,8 +88,8 @@ example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = some zero_ := by n
 example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by native_decide
 
 -- Subtype checking
-example : subCheck 50 dtrue dBool = true := by native_decide
-example : subCheck 50 dfalse dBool = true := by native_decide
+example : subCheck 50 dtrue dBool = .ok true := by native_decide
+example : subCheck 50 dfalse dBool = .ok true := by native_decide
 
 -- not
 example : concEval 100 (och{ not dtrue }) = concEval 100 dfalse := by native_decide

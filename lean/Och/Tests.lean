@@ -24,9 +24,9 @@ private def Not' := och{ λX:Bool. X Bool false_ true_ }
 example : absEvalVal (och{ Not' true_ }) = .ok ⟨false_⟩ := by native_decide
 example : absEvalVal (och{ Not' false_ }) = .ok ⟨true_⟩ := by native_decide
 example : absEvalVal (och{ Not' Bool }) = .ok ⟨Bool⟩ := by native_decide
-example : subCheck 1000 false_ true_ = false := by native_decide
-example : subCheck 1000 (och{ Not' true_ }) Bool = true := by native_decide
-example : subCheck 1000 (och{ Not' false_ }) Bool = true := by native_decide
+example : subCheck 1000 false_ true_ = .ok false := by native_decide
+example : subCheck 1000 (och{ Not' true_ }) Bool = .ok true := by native_decide
+example : subCheck 1000 (och{ Not' false_ }) Bool = .ok true := by native_decide
 
 -- ============================================================
 -- §6.2 Abstract instantiation (ascription-based type-level tests)
@@ -38,12 +38,12 @@ example : subCheck 1000 (och{ Not' false_ }) Bool = true := by native_decide
 -- Abstract Nat: add (... : Nat) (... : Nat) ⊑ Nat
 example : subCheck 1000
   (och{ add_ (zero_ : Nat_) (zero_ : Nat_) })
-  Nat_ = true := by native_decide
+  Nat_ = .ok true := by native_decide
 
 -- succ (... : Nat) ⊑ Nat
 example : subCheck 1000
   (och{ succ_ (zero_ : Nat_) })
-  Nat_ = true := by native_decide
+  Nat_ = .ok true := by native_decide
 
 -- isZero (succ (... : Nat)) = false (precisely!)
 example : absEvalVal
@@ -52,12 +52,12 @@ example : absEvalVal
 -- isZero (... : Nat) ⊑ Bool
 example : subCheck 1000
   (och{ isZero_ (zero_ : Nat_) })
-  Bool = true := by native_decide
+  Bool = .ok true := by native_decide
 
 -- double (... : Nat) ⊑ Nat
 example : subCheck 1000
   (och{ double_ (zero_ : Nat_) })
-  Nat_ = true := by native_decide
+  Nat_ = .ok true := by native_decide
 
 -- ============================================================
 -- §6.2 Abstract vector instantiation
@@ -73,7 +73,7 @@ example : absEvalVal (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n
 -- Rewrapped abstract vector ⊑ Vec Nat
 example : subCheck 1000
   (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:Nat_. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
-  (och{ Vec Nat_ }) = true := by native_decide
+  (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ============================================================
 -- Subtyping transitivity tests
@@ -85,13 +85,13 @@ example : subCheck 1000
 -- returns false (the non-productive fixpoint can't prove it's a function type).
 
 -- Type ⊑ mu Type (bvar 0): still holds (self-intro is valid)
-example : subCheckNF 100 [] [] Expr.type (.mu .type (.bvar 0)) = true := by native_decide
+example : subCheckNF 100 [] [] Expr.type (.mu .type (.bvar 0)) = .ok true := by native_decide
 
--- mu Type (bvar 0) ⊑ lam Type (bvar 0): now correctly FALSE (was spuriously true)
-example : subCheckNF 100 [] [] (.mu .type (.bvar 0)) (.lam .type (.bvar 0)) = false := by native_decide
+-- mu Type (bvar 0) ⊑ lam Type (bvar 0): not provable (mu unfolds to itself, exhausts fuel)
+example : subCheckNF 100 [] [] (.mu .type (.bvar 0)) (.lam .type (.bvar 0)) ≠ .ok true := by native_decide
 
 -- Type ⊑ lam Type (bvar 0): false (Type is not a function type)
-example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = false := by native_decide
+example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = .ok false := by native_decide
 
 -- Transitivity instance: the old a ⊑ b ∧ b ⊑ c ∧ ¬(a ⊑ c) is gone because b ⊑ c is now false
 
@@ -101,8 +101,8 @@ example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = false := by na
 
 -- Helper: check transitivity for a triple (a, b, c) with given fuel
 private def checkTrans (fuel : Nat) (a b c : Expr) : Bool :=
-  if subCheckNF fuel [] [] a b && subCheckNF fuel [] [] b c then
-    subCheckNF fuel [] [] a c
+  if subCheckNF fuel [] [] a b == .ok true && subCheckNF fuel [] [] b c == .ok true then
+    subCheckNF fuel [] [] a c == .ok true
   else true  -- vacuously true if a⊄b or b⊄c
 
 -- Small CLOSED expression generators for exhaustive testing.

@@ -56,20 +56,20 @@ example : absEvalVal fixId = .ok ⟨fixId⟩ := by native_decide
 -- ------------------------------------------------------------
 
 -- fixId : Nat -> Nat
-example : subCheck 1000 fixId NatToNat = true := by native_decide
+example : subCheck 1000 fixId NatToNat = .ok true := by native_decide
 
 -- toZero : Nat -> Nat (works abstractly)
-example : subCheck 1000 toZero NatToNat = true := by native_decide
+example : subCheck 1000 toZero NatToNat = .ok true := by native_decide
 
 -- toZeroThunked : Nat -> Nat
-example : subCheck 1000 toZeroThunked NatToNat = true := by native_decide
+example : subCheck 1000 toZeroThunked NatToNat = .ok true := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (negative)
 -- ------------------------------------------------------------
 
 -- fixId is not a Nat (it's a function)
-example : subCheck 1000 fixId Nat_ = false := by native_decide
+example : subCheck 1000 fixId Nat_ = .ok false := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (positive) -- concEval

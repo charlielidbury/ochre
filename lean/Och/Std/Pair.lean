@@ -53,31 +53,31 @@ example : concEval 100
 -- ── Positive subtype checks ─────────────────────────────────
 
 -- Pair 1 2 : Pair Nat Nat
-example : subCheck 100 p12 (och{ Pair Nat_ Nat_ }) = true := by native_decide
+example : subCheck 100 p12 (och{ Pair Nat_ Nat_ }) = .ok true := by native_decide
 
 -- Pair true false <: Pair Bool Bool  (value subtypes type)
 example : subCheck 100
   (och{ Pair true_ false_ })
   (och{ Pair Bool Bool })
-  = true := by native_decide
+  = .ok true := by native_decide
 
 -- fst preserves precise type info: fst (Pair true true) <: true
 example : subCheck 100
   (och{ fst_ (Pair true_ true_) })
   true_
-  = true := by native_decide
+  = .ok true := by native_decide
 
 -- fst_ : Pair Type Type → Type
 example : subCheck 100
   fst_
   (och{ Pair Nat_ Nat_ → Nat_ })
-  = true := by native_decide
+  = .ok true := by native_decide
 
 -- snd_ : Pair Type Type → Type
 example : subCheck 100
   snd_
   (och{ Pair Nat_ Nat_ → Nat_ })
-  = true := by native_decide
+  = .ok true := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 
@@ -94,16 +94,16 @@ example : concEval 100
 -- ── Negative subtype checks ─────────────────────────────────
 
 -- A pair of Nats is not a Bool
-example : subCheck 100 p12 Bool = false := by native_decide
+example : subCheck 100 p12 Bool = .ok false := by native_decide
 
 -- fst_ is not a Nat
-example : subCheck 100 fst_ Nat_ = false := by native_decide
+example : subCheck 100 fst_ Nat_ = .ok false := by native_decide
 
 -- fst does not lose precision: fst (Pair true true) is NOT false
 example : subCheck 100
   (och{ fst_ (Pair true_ true_) })
   false_
-  = false := by native_decide
+  = .ok false := by native_decide
 
 end Tests
 end Std

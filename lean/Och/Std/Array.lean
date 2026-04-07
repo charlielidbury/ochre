@@ -65,15 +65,15 @@ example : absEvalVal (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native
 -- ── Positive subtype checks ────────────────────────────────
 
 -- testArr1 ⊑ Array 1 Nat
-example : subCheck 1000 testArr1 (och{ Array_ one_ Nat_ }) = true := by native_decide
+example : subCheck 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
 
 -- testArr2 ⊑ Array 2 Nat
-example : subCheck 1000 testArr2 (och{ Array_ two_ Nat_ }) = true := by native_decide
+example : subCheck 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
 -- unit ⊄ Array 1 Nat (wrong length)
-example : subCheck 1000 unit_ (och{ Array_ one_ Nat_ }) = false := by native_decide
+example : subCheck 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
 
 end Tests
 
@@ -108,7 +108,7 @@ example : concEval 5000 (och{ fst_ appended }) ≠ concEval 5000 two_ := by nati
 -- appendArrays : T → n1 → n2 → Array n1 T → Array n2 T → Array (add n1 n2) T
 example : subCheck 5000 appendArrays
   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
-  = true := by native_decide
+  = .ok true := by native_decide
 
 end AppendArraysTests
 end Std

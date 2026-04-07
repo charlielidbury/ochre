@@ -101,23 +101,23 @@ theorem Expr.beq_refl (e : Expr) : (e == e) = true := by
 
 /-- subCheckNF is reflexive: any expression is a subtype of itself.
     Follows from the BEq check `if a == b then true`. -/
-theorem subCheckNF_refl (e : Expr) : subCheckNF 1 [] [] e e = true := by
+theorem subCheckNF_refl (e : Expr) : subCheckNF 1 [] [] e e = .ok true := by
   unfold subCheckNF
   simp [Expr.beq_refl]
 
 /-- When subCheckNF succeeds for lam ⊑ lam (not by reflexivity),
     the body check also succeeds. -/
 theorem subCheckNF_lam_lam_body {fuel : Nat} {ctx : TyCtx} {dS bS dT bT : Expr}
-    (h : subCheckNF (fuel + 1) ctx [] (Expr.lam dS bS) (Expr.lam dT bT) = true)
+    (h : subCheckNF (fuel + 1) ctx [] (Expr.lam dS bS) (Expr.lam dT bT) = .ok true)
     (h_neq : Expr.lam dS bS ≠ Expr.lam dT bT) :
-    ∃ fuel' ctx', subCheckNF fuel' ctx' [] bS bT = true := by
+    ∃ fuel' ctx', subCheckNF fuel' ctx' [] bS bT = .ok true := by
   sorry
 
 /-- subCheckNF of (lam ...) against a non-equal, non-type, non-lam, non-mu
     target with empty seen returns false. -/
 theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : TyCtx}
     {dom body b : Expr}
-    (h : subCheckNF fuel ctx [] (Expr.lam dom body) b = true)
+    (h : subCheckNF fuel ctx [] (Expr.lam dom body) b = .ok true)
     (h_neq : Expr.lam dom body ≠ b)
     (h_not_type : b ≠ Expr.type)
     (h_not_lam : ∀ d b', b ≠ Expr.lam d b')
@@ -127,15 +127,15 @@ theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : TyCtx}
 /-- When subCheckNF succeeds for mu ⊑ mu (not by reflexivity),
     the normalized body check also succeeds. -/
 theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
-    (h : subCheckNF (fuel + 1) ctx [] (Expr.mu annS bodyS) (Expr.mu annT bodyT) = true)
+    (h : subCheckNF (fuel + 1) ctx [] (Expr.mu annS bodyS) (Expr.mu annT bodyT) = .ok true)
     (h_neq : Expr.mu annS bodyS ≠ Expr.mu annT bodyT) :
-    ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = true := by
+    ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = .ok true := by
   exact ⟨1, [], Expr.type, Expr.type, subCheckNF_refl Expr.type⟩
 
 /-- When subCheckNF succeeds with .type on the left against a non-.type target
     with empty seen, the target must be .mu. -/
 theorem subCheckNF_type_left_target {fuel : Nat} {ctx : TyCtx} {τ : Expr}
-    (h : subCheckNF fuel ctx [] Expr.type τ = true) (h_neq : τ ≠ Expr.type) :
+    (h : subCheckNF fuel ctx [] Expr.type τ = .ok true) (h_neq : τ ≠ Expr.type) :
     ∃ ann body, τ = Expr.mu ann body := by
   sorry
 
