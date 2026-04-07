@@ -42,25 +42,25 @@ open Expr
 -- ── Positive computation tests ─────────────────────────────
 
 -- Array 0 Nat = Unit
-example : absEval 1000 [] [] (och{ Array_ zero_ Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
+example : absEvalVal (och{ Array_ zero_ Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
 
 -- Pair 0 unit, head it back out
 private def testArr1 := och{ Pair zero_ unit_ }
 
 -- head testArr1 = 0
-example : absEval 1000 [] [] (och{ fst_ testArr1 }) = .ok ⟨zero_⟩ := by native_decide
+example : absEvalVal (och{ fst_ testArr1 }) = .ok ⟨zero_⟩ := by native_decide
 
 -- tail testArr1 = unit
-example : absEval 1000 [] [] (och{ snd_ testArr1 }) = .ok ⟨unit_⟩ := by native_decide
+example : absEvalVal (och{ snd_ testArr1 }) = .ok ⟨unit_⟩ := by native_decide
 
 -- testArr2 = Pair 1 (Pair 2 unit)
 private def testArr2 := och{ Pair one_ (Pair two_ unit_) }
 
 -- head testArr2 = 1
-example : absEval 1000 [] [] (och{ fst_ testArr2 }) = .ok ⟨one_⟩ := by native_decide
+example : absEvalVal (och{ fst_ testArr2 }) = .ok ⟨one_⟩ := by native_decide
 
 -- head (tail testArr2) = 2
-example : absEval 1000 [] [] (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native_decide
+example : absEvalVal (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 
