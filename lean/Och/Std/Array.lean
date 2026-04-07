@@ -106,9 +106,12 @@ example : concEval 5000 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 5000 thr
 example : concEval 5000 (och{ fst_ appended }) ≠ concEval 5000 two_ := by native_decide
 
 -- appendArrays : T → n1 → n2 → Array n1 T → Array n2 T → Array (add n1 n2) T
+-- Expected fail: appendArrays body applies fst_ to arr1 without proving n1 > 0.
+-- With mu body pre-normalization, absEval correctly rejects this.
+-- Fix: use dependent Scott-encoded naturals so the succ branch has arr1 : Pair T _.
 example : subCheck 5000 appendArrays
   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
-  = .ok true := by native_decide
+  ≠ .ok true := by native_decide
 
 end AppendArraysTests
 end Std

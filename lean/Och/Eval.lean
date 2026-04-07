@@ -142,7 +142,8 @@ mutual
         | .error e => .error s!"ascription check: {e}"
       | .mu ann body  => do
         let (ann', _) ← absEval fuel ctx seen ann muSeen
-        .ok (⟨.mu ann body⟩, ann')
+        let (body', _) ← absEval fuel (TyCtx.extend ctx ann') seen body muSeen
+        .ok (⟨.mu ann'.val body'.val⟩, ann')
       | .letE val body => do
         let (val', _) ← absEval fuel ctx seen val muSeen
         absEval fuel ctx seen (body.subst 0 val'.val) muSeen
