@@ -466,12 +466,15 @@ private noncomputable def evalPreservation_aux :
               have hf_sub : Sub [] (.lam D₁ body₁) (.lam D R) :=
                 ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
               have ⟨hDD₁, hbody₁R⟩ := sub_lam_inv hf_sub
-              -- CBV gap: we have Sub [] (body₁.subst 0 a) (R.subst 0 a) from CBN reasoning
-              -- but eval computes body₁.subst 0 a' where eval m a = some a'.
-              -- We need Sub [] (body₁.subst 0 a') (R.subst 0 a) or equivalent.
-              -- Strategy: get Sub [] a' D, then use subst_lemma for a' to get
-              -- Sub [] (body₁.subst 0 a') (R.subst 0 a'), then need R.subst 0 a' ~ R.subst 0 a.
-              -- THIS IS THE CBV GAP - sorry for now
+              -- CBV GAP: We have Sub [D] body₁ R and Sub [] a D.
+              -- The subst_lemma gives Sub [] (body₁.subst 0 a) (R.subst 0 a).
+              -- But eval computed body₁.subst 0 a' (where eval m a = some a').
+              -- We need to bridge from a to a'. This requires either:
+              --   (1) eval_preserves_sub_left: Sub [] a D → eval m a = some a' → Sub [] a' D
+              --       (FALSE for ill-typed ascriptions under refl)
+              --   (2) eval-subst commutation: eval of body.subst 0 a' = eval of body.subst 0 a
+              --       (FALSE because lambda bodies contain unevaluated subterms)
+              -- Both approaches fail. See small-step CBV below for a working approach.
               sorry
 
             | .var k =>
@@ -500,5 +503,106 @@ noncomputable def evalPreservation
     (he : eval fuel e = some v_e) (hτ : eval fuel_τ τ = some v_τ)
     : Sub [] v_e v_τ :=
   evalPreservation_aux (fuel + fuel_τ) e τ hsub fuel fuel_τ v_e v_τ (Nat.le_refl _) he hτ
+
+-- ============================================================
+-- CBN evaluator (for comparison / CBV soundness via CBN)
+-- ============================================================
+
+/-- Call-by-name evaluator: same as eval but does NOT evaluate arguments before substitution. -/
+def evalCBN (fuel : Nat) (e : Expr) : Option Expr :=
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match e with
+    | .var n => some (.var n)
+    | .top => some .top
+    | .lam dom body => some (.lam dom body)
+    | .app f a => do
+      let f' ← evalCBN fuel f
+      match f' with
+      | .lam _dom body => evalCBN fuel (body.subst 0 a)  -- substitute unevaluated a
+      | _ => some (.app f' a)  -- stuck app with unevaluated a
+    | .asc e _ty => evalCBN fuel e
+    | .mu _ann body => evalCBN fuel (body.subst 0 (.mu _ann body))
+
+-- ============================================================
+-- Small-step CBV semantics (exploratory)
+-- ============================================================
+
+/-! ## Small-step CBV: Analysis
+
+We explored small-step CBV subject reduction as an alternative to big-step.
+The beta rule fires only when the argument is already a value, so the
+`body.subst 0 a` in the beta step matches `R.subst 0 a` in the [App] rule.
+However, the appR case (stepping the argument) still has the CBV gap:
+when `a →cbv a'`, the Sub rule has `R.subst 0 a` but we need `R.subst 0 a'`.
+
+This is a fundamental issue with dependent application rules under CBV:
+the return type `R.subst 0 a` changes when `a` changes. The standard
+solution in dependent type theory is a conversion rule (definitional equality),
+which Och's Sub relation does not have.
+
+Additionally, the `refl` rule (`Sub [] e e`) is problematic for ALL step cases:
+stepping `e` to `e'` requires `Sub [] e' e`, which is NOT provable in general
+(especially for ascription erasure and mu unfolding).
+-/
+
+/-- Small-step call-by-value reduction. -/
+inductive StepCBV : Expr → Expr → Type where
+  | appL {f f' a : Expr} : StepCBV f f' → StepCBV (.app f a) (.app f' a)
+  | appR {f a a' : Expr} : Value f → StepCBV a a' → StepCBV (.app f a) (.app f a')
+  | beta {D body a : Expr} : Value a → StepCBV (.app (.lam D body) a) (body.subst 0 a)
+  | asc {e ty : Expr} : StepCBV (.asc e ty) e
+  | mu {ann body : Expr} : StepCBV (.mu ann body) (body.subst 0 (.mu ann body))
+
+/-- Subject reduction for beta: Sub [] (app (lam D body) a) τ → Value a → Sub [] (body.subst 0 a) τ.
+    This is proved by induction on the Sub derivation size (to handle refl via unfolding). -/
+private noncomputable def subjectReduction_beta_aux :
+    (bound : Nat) → {D body a τ : Expr} →
+    (hsub : Sub [] (.app (.lam D body) a) τ) →
+    hsub.size ≤ bound →
+    Value a →
+    Sub [] (body.subst 0 a) τ
+  | 0, _, _, _, _, hsub, hle, _ => absurd hle (by have := hsub.size_pos; omega)
+  | bound + 1, D, body, a, τ, hsub, hle, hval => by
+    cases hsub with
+    | refl =>
+      -- τ = app (lam D body) a. Need Sub [] (body.subst 0 a) (app (lam D body) a).
+      -- Via [App] on the RHS: Sub [] (lam D body) (lam D' R) for some D', R
+      -- This requires typing info we don't have.
+      -- The refl case is genuinely unprovable without additional hypotheses.
+      sorry
+    | top => exact Sub.top [] _
+    | app _ _ _ _ D' R hfD' haD' hRb =>
+      -- hfD' : Sub [] (lam D body) (lam D' R)
+      -- haD' : Sub [] a D'
+      -- hRb  : Sub [] (R.subst 0 a) τ
+      have ⟨_, hbody_R⟩ := sub_lam_inv hfD'
+      -- hbody_R : Sub [D'] body R
+      have hsubst := Sub.subst_lemma hbody_R haD'
+      -- hsubst : Sub [] (body.subst 0 a) (R.subst 0 a)
+      exact Sub.trans hsubst hRb
+    | ascR _ _ e₂ τ₂ heτ₂ hae₂ =>
+      have h := subjectReduction_beta_aux bound hae₂ (by simp [Sub.size] at hle ⊢; omega) hval
+      exact Sub.ascR _ _ e₂ τ₂ heτ₂ h
+
+noncomputable def subjectReduction_beta {D body a τ : Expr}
+    (hsub : Sub [] (.app (.lam D body) a) τ)
+    (hval : Value a) : Sub [] (body.subst 0 a) τ :=
+  subjectReduction_beta_aux hsub.size hsub (Nat.le_refl _) hval
+
+/-- Subject reduction for ascription erasure — works for non-refl cases. -/
+noncomputable def subjectReduction_asc_ascL {e ty τ : Expr}
+    (heτ : Sub [] e ty) (hτb : Sub [] ty τ) : Sub [] e τ :=
+  Sub.trans heτ hτb
+
+/-- Subject reduction for mu unfolding — works for non-refl cases. -/
+noncomputable def subjectReduction_mu {A b τ : Expr}
+    (hAτ : Sub [] A τ) (hbA : Sub (A :: []) b (A.shift 0 1)) : Sub [] (b.subst 0 (.mu A b)) τ := by
+  have hmuA : Sub [] (.mu A b) A := Sub.mu [] A b A (Sub.refl [] A) hbA
+  have hbody_sub : Sub [] (b.subst 0 (.mu A b)) A := by
+    have h1 := Sub.subst_lemma hbA hmuA
+    rw [Expr.subst_shift_cancel_zero] at h1; exact h1
+  exact Sub.trans hbody_sub hAτ
 
 end Och.Simple
