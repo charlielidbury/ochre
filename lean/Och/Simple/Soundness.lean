@@ -1,5 +1,6 @@
 import Och.Simple.Syntax
 import Och.Simple.Subtype
+import Och.Simple.Eval
 import Och.Simple.Properties
 
 /-!
@@ -97,5 +98,202 @@ noncomputable def semanticSubst {Γ : Ctx} {e τ : Expr} {γ : List Expr}
   | @cons v T γ' Γ' hcompat' hv ih =>
     show Sub [] (closingSubst γ' (e.subst 0 v)) (closingSubst γ' (τ.subst 0 v))
     exact ih (Sub.subst_lemma hsub hv)
+
+-- ============================================================
+-- Eval preservation (Soundness Part 2)
+-- ============================================================
+
+-- Helper: eval of a lambda returns itself
+theorem eval_lam (fuel : Nat) (D body : Expr) (h : fuel > 0) :
+    eval fuel (.lam D body) = some (.lam D body) := by
+  cases fuel with
+  | zero => omega
+  | succ n => simp [eval]
+
+-- Helper: eval of top returns itself
+theorem eval_top (fuel : Nat) (h : fuel > 0) :
+    eval fuel .top = some .top := by
+  cases fuel with
+  | zero => omega
+  | succ n => simp [eval]
+
+-- Helper: eval of var returns itself
+theorem eval_var (fuel : Nat) (k : Nat) (h : fuel > 0) :
+    eval fuel (.var k) = some (.var k) := by
+  cases fuel with
+  | zero => omega
+  | succ n => simp [eval]
+
+-- Helper: eval of asc erases the ascription
+theorem eval_asc_decompose {fuel : Nat} {e ty v : Expr}
+    (he : eval (fuel + 1) (.asc e ty) = some v) :
+    eval fuel e = some v := by
+  simp [eval] at he; exact he
+
+-- Fuel monotonicity: if eval succeeds at fuel n, it succeeds at fuel n+k with the same result
+theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
+    (h : eval fuel e = some v) (k : Nat) :
+    eval (fuel + k) e = some v := by
+  induction fuel generalizing e v k with
+  | zero => simp [eval] at h
+  | succ n ih =>
+    have hrw : n + 1 + k = (n + k) + 1 := by omega
+    cases e with
+    | var m =>
+      simp [eval] at h; subst h
+      rw [hrw]; simp [eval]
+    | top =>
+      simp [eval] at h; subst h
+      rw [hrw]; simp [eval]
+    | lam dom body =>
+      simp [eval] at h; subst h
+      rw [hrw]; simp [eval]
+    | asc e ty =>
+      have h' : eval n e = some v := by simp [eval] at h; exact h
+      have := ih e v h' k
+      rw [hrw]; simp [eval]; exact this
+    | app f a =>
+      simp [eval, bind, Option.bind] at h
+      cases hf : eval n f with
+      | none => simp [hf] at h
+      | some f' =>
+        cases ha : eval n a with
+        | none => simp [hf, ha] at h
+        | some a' =>
+          simp [hf, ha] at h
+          have hf' := ih f f' hf k
+          have ha' := ih a a' ha k
+          rw [hrw]; simp [eval, bind, Option.bind, hf', ha']
+          match hm : f' with
+          | .lam dom body =>
+            simp [hm] at h; simp; exact ih (body.subst 0 a') v h k
+          | .var k' => simp [hm] at h ⊢; exact h
+          | .top => simp [hm] at h ⊢; exact h
+          | .app g b => simp [hm] at h ⊢; exact h
+          | .asc e' t' => simp [hm] at h ⊢; exact h
+
+-- eval results satisfy the Value predicate
+theorem eval_produces_value {fuel : Nat} {e v : Expr}
+    (h : eval fuel e = some v) : Value v := by
+  induction fuel generalizing e v with
+  | zero => simp [eval] at h
+  | succ n ih =>
+    cases e with
+    | var k => simp [eval] at h; subst h; exact Value.var k
+    | top => simp [eval] at h; subst h; exact Value.top
+    | lam D body => simp [eval] at h; subst h; exact Value.lam D body
+    | asc e ty => simp [eval] at h; exact ih h
+    | app f a =>
+      simp [eval, bind, Option.bind] at h
+      cases hf : eval n f with
+      | none => simp [hf] at h
+      | some f' =>
+        cases ha : eval n a with
+        | none => simp [hf, ha] at h
+        | some a' =>
+          simp [hf, ha] at h
+          match hm : f' with
+          | .lam dom body => simp [hm] at h; exact ih h
+          | .var k =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.var k) a' (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
+          | .top =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp .top a' (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
+          | .app g b =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.app g b) a' (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+          | .asc e' t' =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.asc e' t') a' (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+
+-- Inversion: Sub Γ (lam A b₁) (lam B b₂) implies Sub Γ B A and Sub (B :: Γ) b₁ b₂
+noncomputable def sub_lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
+    (h : Sub Γ (.lam A b₁) (.lam B b₂)) : Sub Γ B A × Sub (B :: Γ) b₁ b₂ := by
+  cases h with
+  | refl =>
+    exact ⟨Sub.refl _ _, Sub.refl _ _⟩
+  | lam _ _ _ _ _ hBA hbody =>
+    exact ⟨hBA, hbody⟩
+
+-- ============================================================
+-- Eval preservation
+-- ============================================================
+
+/-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
+    values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`.
+
+    Proved by induction on the Sub derivation. All cases are handled except
+    [App], which requires connecting the typing-level beta reduction
+    (R.subst 0 a) with the evaluator-level beta reduction (body.subst 0 a'). -/
+noncomputable def evalPreservation {e τ : Expr}
+    (hsub : Sub [] e τ) (fuel : Nat) (v_e v_τ : Expr)
+    (he : eval fuel e = some v_e) (hτ : eval fuel τ = some v_τ)
+    : Sub [] v_e v_τ := by
+  -- We can't do `induction hsub` directly because the context is fixed at [].
+  -- Instead, we generalize e and τ and do cases on hsub.
+  -- Actually, let's just do cases — hsub is a Sub [] e τ, we case-split on the rule.
+  cases hsub with
+  | refl _ a =>
+    -- e = τ = a, so v_e = v_τ
+    rw [he] at hτ; cases hτ
+    exact Sub.refl [] v_e
+  | top _ a =>
+    -- τ = top
+    cases fuel with
+    | zero => simp [eval] at hτ
+    | succ n =>
+      simp [eval] at hτ; subst hτ
+      exact Sub.top [] v_e
+  | var _ x _ _ hget _ =>
+    -- Impossible: empty context has no bindings
+    simp [Ctx.get?, List.get?] at hget
+  | lam _ A B b₁ b₂ hBA hbody =>
+    -- e = lam A b₁, τ = lam B b₂
+    -- Both evaluate to themselves (at fuel > 0)
+    cases fuel with
+    | zero => simp [eval] at he
+    | succ n =>
+      simp [eval] at he hτ
+      subst he; subst hτ
+      exact Sub.lam [] A B b₁ b₂ hBA hbody
+  | ascL _ e' τ' b he'τ' hτ'b =>
+    -- e = asc e' τ', eval strips ascription
+    cases fuel with
+    | zero => simp [eval] at he
+    | succ n =>
+      simp [eval] at he
+      -- he : eval n e' = some v_e
+      -- Use transitivity: Sub [] e' b, then recurse
+      have he' : eval (n + 1) e' = some v_e := eval_mono e' n v_e he 1
+      exact evalPreservation (Sub.trans he'τ' hτ'b) (n + 1) v_e v_τ he' hτ
+  | ascR _ a e' τ' he'τ' hae' =>
+    -- τ = asc e' τ', eval strips ascription
+    cases fuel with
+    | zero => simp [eval] at hτ
+    | succ n =>
+      simp [eval] at hτ
+      -- hτ : eval n e' = some v_τ
+      have hτ' : eval (n + 1) e' = some v_τ := eval_mono e' n v_τ hτ 1
+      exact evalPreservation hae' (n + 1) v_e v_τ he hτ'
+  | app _ f a b D R hfD haD hRb =>
+    -- e = app f a, τ = b
+    -- eval (app f a): evaluate f to f', a to a',
+    -- if f' is lam then beta-reduce, otherwise stuck app.
+    --
+    -- The typing derivation tells us:
+    --   Sub [] f (lam D R)    — f is callable
+    --   Sub [] a D            — argument matches domain
+    --   Sub [] (R.subst 0 a) b — return type after substitution ⊑ target
+    --
+    -- Key difficulty: the evaluator beta-reduces with body.subst 0 a'
+    -- (where body comes from f's value, a' is a's value), but the typing
+    -- uses R.subst 0 a. Connecting these requires:
+    -- 1. Showing f evaluates to some lam D₁ body₁
+    -- 2. Relating body₁ to R (via Sub [] (lam D₁ body₁) (lam D R))
+    -- 3. Showing body₁.subst 0 a' ⊑ R.subst 0 a (semantic substitution)
+    -- Step 3 is the crux and may require a generalized eval preservation
+    -- that works under binders.
+    sorry
 
 end Och.Simple
