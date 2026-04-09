@@ -61,14 +61,15 @@ noncomputable def semanticSubst {Γ : Ctx} {e τ : Expr} {γ : List Expr}
 
 -- Helper lemmas for eval
 
-/-- One-step unfolding of eval for app. -/
+/-- One-step unfolding of eval for app (call-by-name). -/
 private theorem eval_app_unfold (fuel : Nat) (f a : Expr) :
     eval (fuel + 1) (Expr.app f a) =
     (do let f' ← eval fuel f
-        let a' ← eval fuel a
         match f' with
-        | .lam _dom body => eval fuel (body.subst 0 a')
-        | _ => some (.app f' a')) := by
+        | .lam _dom body => eval fuel (body.subst 0 a)
+        | _ =>
+          let a' ← eval fuel a
+          some (.app f' a')) := by
   rfl
 
 /-- Fuel monotonicity: if eval succeeds with less fuel, it succeeds with more. -/
@@ -91,16 +92,24 @@ theorem eval_mono {e v : Expr} : (fuel : Nat) →
       | none => rw [hf] at h; simp at h
       | some f' =>
         rw [hf] at h; rw [eval_mono fuel hf]
-        cases ha : eval fuel a with
-        | none => rw [ha] at h; simp at h
-        | some a' =>
-          rw [ha] at h; rw [eval_mono fuel ha]
-          cases f' with
-          | lam dom body => exact eval_mono fuel h
-          | var k => simpa using h
-          | top => simpa using h
-          | app g b => simpa using h
-          | asc e' ty => simpa using h
+        cases f' with
+        | lam dom body => exact eval_mono fuel h
+        | var k =>
+          cases ha : eval fuel a with
+          | none => rw [ha] at h; simp at h
+          | some a' => rw [ha] at h; rw [eval_mono fuel ha]; simpa using h
+        | top =>
+          cases ha : eval fuel a with
+          | none => rw [ha] at h; simp at h
+          | some a' => rw [ha] at h; rw [eval_mono fuel ha]; simpa using h
+        | app g b =>
+          cases ha : eval fuel a with
+          | none => rw [ha] at h; simp at h
+          | some a' => rw [ha] at h; rw [eval_mono fuel ha]; simpa using h
+        | asc e' ty =>
+          cases ha : eval fuel a with
+          | none => rw [ha] at h; simp at h
+          | some a' => rw [ha] at h; rw [eval_mono fuel ha]; simpa using h
 
 /-- Fuel monotonicity generalized: adding any amount of fuel preserves eval results. -/
 theorem eval_mono_add {e v : Expr} (fuel extra : Nat)
@@ -118,10 +127,11 @@ theorem eval_mono_add {e v : Expr} (fuel extra : Nat)
     - [Var]: vacuous (empty context has no variables)
     - [Lam]: both sides are lambda values, eval is identity, use original derivation
     - [Asc-R]: eval erases ascription on τ side, use IH + fuel monotonicity
+    - [Beta-R]: call-by-name makes this trivial — eval of app (lam D body) b
+      reduces to eval (body.subst 0 b), matching the unevaluated arg in habody
 
     Sorry'd cases (fundamental difficulties):
-    - [App]: requires Sub-inversion or logical-relations argument (blocked by trans)
-    - [Beta-R]: requires relating eval'd and unevaluated arguments
+    - [App]: requires lambda inversion on Sub [] f' (lam D R), blocked by trans
     - [Asc-L]: intermediate type may not evaluate with available fuel
     - [Trans]: intermediate term may not evaluate (needs normalization theorem) -/
 noncomputable def evalPreservation {e τ : Expr}
@@ -158,15 +168,32 @@ where
         subst hΓ
         exact Sub.lam [] A B b₁ b₂ hBA hbody
     | @app Γ f a b D R hfD haD hRb ihfD ihaD ihRb =>
-      -- DIFFICULTY: We need Sub-inversion to extract the lambda structure of f's
-      -- evaluated form, but this is impossible with trans as a constructor.
-      -- A logical-relations / reducibility-candidates approach would be needed.
+      -- With call-by-name, eval (app f a) substitutes unevaluated `a`, which matches
+      -- the `a` in hRb : Sub Γ (R.subst 0 a) b. However, we still need lambda
+      -- inversion on Sub [] f' (lam D R) to extract Sub [D] body' R, which is
+      -- blocked by trans as a constructor. A logical-relations approach would be needed.
       sorry
     | @betaR Γ a D body b hbD habody ihbD ihabody =>
-      -- DIFFICULTY: τ = app (lam D body) b evaluates by substituting eval'd b into body,
-      -- but habody : Sub Γ a (body.subst 0 b) uses the unevaluated b.
-      -- Relating these requires a normalization/confluence argument.
-      sorry
+      -- τ = app (lam D body) b
+      -- With call-by-name: eval (fuel+1) (app (lam D body) b)
+      --   = eval fuel (lam D body) >>= match with lam _ body => eval fuel (body.subst 0 b)
+      --   = eval fuel (body.subst 0 b)
+      -- So hτ gives us eval of body.subst 0 b = some v_τ (after peeling fuel)
+      -- IH on habody: Sub [] a (body.subst 0 b) with eval a = v_e, eval (body.subst 0 b) = v_τ
+      match fuel with
+      | 0 => simp [eval] at hτ
+      | n + 1 =>
+        -- hτ : eval (n+1) (app (lam D body) b) = some v_τ
+        rw [eval_app_unfold] at hτ
+        -- After unfolding: eval n (lam D body) >>= ... = some v_τ
+        -- eval n (lam D body) = some (lam D body) for n ≥ 1, but we need n ≥ 1
+        -- Actually eval 0 (lam D body) = none, so handle that
+        cases n with
+        | zero => simp [eval] at hτ
+        | succ m =>
+          simp only [eval] at hτ
+          -- Now hτ : eval (m+1) (body.subst 0 b) = some v_τ
+          exact ihabody hΓ (m + 2) v_e v_τ he (eval_mono_add (m + 1) 1 hτ)
     | @ascL Γ e' ty b heτ hτb iheτ ihτb =>
       -- e = asc e' ty, so eval strips the ascription: eval fuel e = eval (fuel-1) e'
       -- DIFFICULTY: we'd need eval fuel ty to succeed to use the IH for heτ,
