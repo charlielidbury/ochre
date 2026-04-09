@@ -67,5 +67,16 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ A c →
       Sub (A :: Γ) b (A.shift 0 1) →
       Sub Γ (.mu A b) c
+  /-- [Mu-R]: self-type intro on the RHS.
+      To show `a ⊑ μA.b`, we need BOTH:
+      1. `a ⊑ A` (satisfies the annotation/interface)
+      2. `a ⊑ b[0 := μA.b]` (satisfies the body with self = the mu type itself)
+      Using self = μA.b (instead of a) makes transitivity provable:
+      trans(X, muR) works because body[μA.b] doesn't depend on a.
+      The annotation check enables trans(muR, mu) to cut on A. -/
+  | muR (Γ : Ctx) (a A b : Expr) :
+      Sub Γ a A →
+      Sub Γ a (b.subst 0 (.mu A b)) →
+      Sub Γ a (.mu A b)
 
 end Och.Simple

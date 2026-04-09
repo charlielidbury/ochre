@@ -423,6 +423,16 @@ private noncomputable def evalPreservation_aux :
           have h1 := Sub.subst_lemma hbA hmuA; rw [Expr.subst_shift_cancel_zero] at h1; exact h1
         exact ih _ _ (Sub.trans hbody_sub hAc) m fuel_τ _ _ (by omega) he hτ
 
+    | muR _ _ A b haA hab_body =>
+      -- τ = μA.body. eval unfolds mu.
+      cases fuel_τ with
+      | zero => simp [eval] at hτ
+      | succ m =>
+        simp [eval] at hτ
+        -- hab_body : Sub [] e (b.subst 0 (.mu A b))
+        -- hτ : eval m (b.subst 0 (.mu A b)) = some v_τ
+        exact ih _ _ hab_body fuel m _ _ (by omega) he hτ
+
     | app _ f a _ D R hfD haD hRb =>
       cases fuel with
       | zero => simp [eval] at he
