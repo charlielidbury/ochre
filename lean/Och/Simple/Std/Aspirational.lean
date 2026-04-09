@@ -29,7 +29,7 @@ Each aspirational test is commented out with:
 ## Metric
 
 Count of aspirational tests that pass = progress measure.
-Current: 0 aspirational tests pass.
+Current: 1 aspirational test passes (C1: CBV eval reduces inner applications).
 -/
 
 set_option autoImplicit false
@@ -301,10 +301,10 @@ example : ev (.app (.app (.app (.app REFL_EQ .top) x42) (soch{ λ(_ : ⊤). ⊤ 
 -- ============================================================
 -- Category A (Sub.muR):    8 tests (A1-A8)
 -- Category B (BetaR):      5 tests (B1-B5)
--- Category C (CBV):        3 tests (C1-C3)
+-- Category C (CBV):        1 remaining (C2-C3; C1 now passes with CBV eval!)
 -- Category D (Recursive):  4 tests (D1-D4)
 -- Category E (Larger):     3 aspirational + many passing eval tests
--- Total aspirational:     23 tests
+-- Total aspirational:     21 tests (was 23; C1 flipped, C3 reclassified)
 -- Total passing eval:     ~20 tests (E1-E7 eval tests all pass)
 
 end Och.Simple.Std.Aspirational

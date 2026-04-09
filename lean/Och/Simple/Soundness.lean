@@ -505,27 +505,6 @@ noncomputable def evalPreservation
   evalPreservation_aux (fuel + fuel_τ) e τ hsub fuel fuel_τ v_e v_τ (Nat.le_refl _) he hτ
 
 -- ============================================================
--- CBN evaluator (for comparison / CBV soundness via CBN)
--- ============================================================
-
-/-- Call-by-name evaluator: same as eval but does NOT evaluate arguments before substitution. -/
-def evalCBN (fuel : Nat) (e : Expr) : Option Expr :=
-  match fuel with
-  | 0 => none
-  | fuel + 1 =>
-    match e with
-    | .var n => some (.var n)
-    | .top => some .top
-    | .lam dom body => some (.lam dom body)
-    | .app f a => do
-      let f' ← evalCBN fuel f
-      match f' with
-      | .lam _dom body => evalCBN fuel (body.subst 0 a)  -- substitute unevaluated a
-      | _ => some (.app f' a)  -- stuck app with unevaluated a
-    | .asc e _ty => evalCBN fuel e
-    | .mu _ann body => evalCBN fuel (body.subst 0 (.mu _ann body))
-
--- ============================================================
 -- Small-step CBV semantics (exploratory)
 -- ============================================================
 
