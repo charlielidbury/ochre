@@ -162,16 +162,21 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
       | none => simp [hf] at h
       | some f' =>
         simp [hf] at h
-        have hf' := ih f f' hf k
-        rw [hrw]; simp [eval, bind, Option.bind, hf']
-        match hm : f' with
-        | .lam dom body =>
-          simp [hm] at h; simp; exact ih (body.subst 0 a) v h k
-        | .var k' => simp [hm] at h ⊢; exact h
-        | .top => simp [hm] at h ⊢; exact h
-        | .app g b => simp [hm] at h ⊢; exact h
-        | .asc e' t' => simp [hm] at h ⊢; exact h
-        | .mu ann' body' => simp [hm] at h ⊢; exact h
+        cases ha : eval n a with
+        | none => simp [ha] at h
+        | some a' =>
+          simp [ha] at h
+          have hf' := ih f f' hf k
+          have ha' := ih a a' ha k
+          rw [hrw]; simp [eval, bind, Option.bind, hf', ha']
+          match hm : f' with
+          | .lam dom body =>
+            simp [hm] at h; simp; exact ih (body.subst 0 a') v h k
+          | .var k' => simp [hm] at h ⊢; exact h
+          | .top => simp [hm] at h ⊢; exact h
+          | .app g b => simp [hm] at h ⊢; exact h
+          | .asc e' t' => simp [hm] at h ⊢; exact h
+          | .mu ann' body' => simp [hm] at h ⊢; exact h
 
 -- eval results satisfy the Value predicate
 -- (Note: with lazy evaluation, stuck apps contain unevaluated arguments,
@@ -193,23 +198,27 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
       | none => simp [hf] at h
       | some f' =>
         simp [hf] at h
-        match hm : f' with
-        | .lam dom body => simp [hm] at h; exact ih h
-        | .var k =>
-          simp [hm] at h; subst h
-          exact Value.stuckApp (.var k) a (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
-        | .top =>
-          simp [hm] at h; subst h
-          exact Value.stuckApp .top a (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
-        | .app g b =>
-          simp [hm] at h; subst h
-          exact Value.stuckApp (.app g b) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
-        | .asc e' t' =>
-          simp [hm] at h; subst h
-          exact Value.stuckApp (.asc e' t') a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
-        | .mu ann body =>
-          simp [hm] at h; subst h
-          exact Value.stuckApp (.mu ann body) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+        cases ha : eval n a with
+        | none => simp [ha] at h
+        | some a' =>
+          simp [ha] at h
+          match hm : f' with
+          | .lam dom body => simp [hm] at h; exact ih h
+          | .var k =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.var k) a' (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
+          | .top =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp .top a' (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
+          | .app g b =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.app g b) a' (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+          | .asc e' t' =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.asc e' t') a' (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+          | .mu ann body =>
+            simp [hm] at h; subst h
+            exact Value.stuckApp (.mu ann body) a' (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
 
 -- Inversion: Sub Γ (lam A b₁) (lam B b₂) implies Sub Γ B A and Sub (B :: Γ) b₁ b₂
 noncomputable def sub_lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
@@ -258,23 +267,31 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
       | none => simp [hf] at h
       | some f' =>
         simp [hf] at h
-        match hm : f' with
-        | .lam dom body =>
-          simp [hm] at h
-          exact eval_mono v n v (ih h) 1
-        | .var k =>
-          simp [hm] at h; subst h
-          simp [eval, bind, Option.bind, eval_var n k (eval_pos hf)]
-        | .top =>
-          simp [hm] at h; subst h
-          simp [eval, bind, Option.bind, eval_top n (eval_pos hf)]
-        | .app g b =>
-          simp [hm] at h; subst h
-          simp [eval, bind, Option.bind, ih hf]
-        | .asc e' t' =>
-          simp [hm] at h; subst h; exact nomatch (eval_produces_value hf)
-        | .mu ann' body' =>
-          simp [hm] at h; subst h; exact nomatch (eval_produces_value hf)
+        cases ha : eval n a with
+        | none => simp [ha] at h
+        | some a' =>
+          simp [ha] at h
+          match hm : f' with
+          | .lam dom body =>
+            simp [hm] at h
+            exact eval_mono v n v (ih h) 1
+          | .var k =>
+            simp [hm] at h; subst h
+            have hpos := eval_pos hf
+            have ha' := eval_mono a' n a' (ih ha) 1
+            rw [show n + 1 = (n + 1) from rfl] at ha'
+            simp [eval, bind, Option.bind, eval_var (n) k hpos, ih ha]
+          | .top =>
+            simp [hm] at h; subst h
+            have hpos := eval_pos hf
+            simp [eval, bind, Option.bind, eval_top (n) hpos, ih ha]
+          | .app g b =>
+            simp [hm] at h; subst h
+            simp [eval, bind, Option.bind, ih hf, ih ha]
+          | .asc e' t' =>
+            simp [hm] at h; subst h; exact nomatch (eval_produces_value hf)
+          | .mu ann' body' =>
+            simp [hm] at h; subst h; exact nomatch (eval_produces_value hf)
 
 -- An expression is an "eval result" if some eval produced it.
 def IsEvalResult (v : Expr) : Prop := ∃ n e, eval n e = some v
@@ -304,17 +321,21 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
       | none => simp [hf] at h
       | some f'' =>
         simp [hf] at h
-        match hm : f'' with
-        | .lam dom body =>
-          simp [hm] at h; exact ih h
-        | .var k | .top | .app g c =>
-          simp [hm] at h
-          obtain ⟨rfl, rfl⟩ := h
-          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
-        | .asc e' t' =>
-          subst hm; exact nomatch (eval_produces_value hf)
-        | .mu ann body =>
-          subst hm; exact nomatch (eval_produces_value hf)
+        cases ha : eval n a' with
+        | none => simp [ha] at h
+        | some a'' =>
+          simp [ha] at h
+          match hm : f'' with
+          | .lam dom body =>
+            simp [hm] at h; exact ih h
+          | .var k | .top | .app g c =>
+            simp [hm] at h
+            obtain ⟨rfl, rfl⟩ := h
+            exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
+          | .asc e' t' =>
+            subst hm; exact nomatch (eval_produces_value hf)
+          | .mu ann body =>
+            subst hm; exact nomatch (eval_produces_value hf)
 
 -- Key lemma: Sub [] v (lam D R) where v is an eval result implies v is a lam.
 -- Auxiliary with size bound, proved by recursion on bound.
@@ -432,36 +453,43 @@ private noncomputable def evalPreservation_aux :
         | none => simp [hf_eval] at he
         | some f' =>
           simp [hf_eval] at he
-          match hm_f : f' with
-          | .lam D₁ body₁ =>
-            simp [hm_f] at he
-            have hm_pos : m ≥ 1 := eval_pos hf_eval
-            have hfuel_τ_pos : fuel_τ ≥ 1 := eval_pos hτ
-            have hlam_eval1 : eval 1 (.lam D R) = some (.lam D R) := eval_lam 1 D R (by omega)
-            have hf_sub : Sub [] (.lam D₁ body₁) (.lam D R) :=
-              ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
-            have ⟨hDD₁, hbody₁R⟩ := sub_lam_inv hf_sub
-            have hsubst : Sub [] (body₁.subst 0 a) (R.subst 0 a) :=
-              Sub.subst_lemma hbody₁R haD
-            have hsub_body := Sub.trans hsubst hRb
-            exact ih _ _ hsub_body m fuel_τ _ _ (by omega) he hτ
+          cases ha_eval : eval m a with
+          | none => simp [ha_eval] at he
+          | some a' =>
+            simp [ha_eval] at he
+            match hm_f : f' with
+            | .lam D₁ body₁ =>
+              simp [hm_f] at he
+              have hm_pos : m ≥ 1 := eval_pos hf_eval
+              have hfuel_τ_pos : fuel_τ ≥ 1 := eval_pos hτ
+              have hlam_eval1 : eval 1 (.lam D R) = some (.lam D R) := eval_lam 1 D R (by omega)
+              have hf_sub : Sub [] (.lam D₁ body₁) (.lam D R) :=
+                ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
+              have ⟨hDD₁, hbody₁R⟩ := sub_lam_inv hf_sub
+              -- CBV gap: we have Sub [] (body₁.subst 0 a) (R.subst 0 a) from CBN reasoning
+              -- but eval computes body₁.subst 0 a' where eval m a = some a'.
+              -- We need Sub [] (body₁.subst 0 a') (R.subst 0 a) or equivalent.
+              -- Strategy: get Sub [] a' D, then use subst_lemma for a' to get
+              -- Sub [] (body₁.subst 0 a') (R.subst 0 a'), then need R.subst 0 a' ~ R.subst 0 a.
+              -- THIS IS THE CBV GAP - sorry for now
+              sorry
 
-          | .var k =>
-            simp [hm_f] at he; subst he
-            have _ : fuel_τ ≥ 1 := eval_pos hτ
-            have hf_sub := ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
-            cases hf_sub with | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
-          | .top =>
-            simp [hm_f] at he; subst he
-            have _ : fuel_τ ≥ 1 := eval_pos hτ
-            exact nomatch ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
-          | .app g c =>
-            simp [hm_f] at he; subst he
-            have _ : fuel_τ ≥ 1 := eval_pos hτ
-            have hf_sub := ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
-            exact (eval_result_sub_lam_app_absurd hf_sub ⟨m, _, hf_eval⟩).elim
-          | .asc e' t' => exact nomatch (eval_produces_value hf_eval)
-          | .mu ann body => exact nomatch (eval_produces_value hf_eval)
+            | .var k =>
+              simp [hm_f] at he; subst he
+              have _ : fuel_τ ≥ 1 := eval_pos hτ
+              have hf_sub := ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
+              cases hf_sub with | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
+            | .top =>
+              simp [hm_f] at he; subst he
+              have _ : fuel_τ ≥ 1 := eval_pos hτ
+              exact nomatch ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
+            | .app g c =>
+              simp [hm_f] at he; subst he
+              have _ : fuel_τ ≥ 1 := eval_pos hτ
+              have hf_sub := ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
+              exact (eval_result_sub_lam_app_absurd hf_sub ⟨m, _, hf_eval⟩).elim
+            | .asc e' t' => exact nomatch (eval_produces_value hf_eval)
+            | .mu ann body => exact nomatch (eval_produces_value hf_eval)
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/
