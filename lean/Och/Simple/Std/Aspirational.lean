@@ -140,23 +140,24 @@ example : ev (.app (.app (.app (.app SUCC ZERO) .top) x99) (soch{ λ(x : ⊤). x
 
 -- C1: SUCC ZERO with stuck successor evaluates differently in CBN vs CBV
 -- In CBN: f (ZERO T z f) -- the ZERO app stays unevaluated
--- In CBV: f z -- the inner application would be reduced first
--- This test documents the CBN behavior:
+-- In CBV: f z -- the inner application IS reduced (ASPIRATIONAL: PASSED!)
+-- This was the aspirational test — now passes with CBV eval:
 example : ev (.app (.app (.app (.app SUCC ZERO) .top) x99) x42)
-  = some (.app x42 (.app (.app (.app ZERO .top) x99) x42)) := rfl
--- ASPIRATIONAL (CBV): the inner ZERO application would reduce
--- def ev_cbv := ... -- hypothetical CBV evaluator
--- example : ev_cbv (SUCC ZERO applied) = some (app x42 x99)
+  = some (.app x42 x99) := rfl
 
 -- C2: ADD ONE ONE with stuck args
 -- CBN leaves inner applications unreduced
 -- CBV would reduce them
 -- ASPIRATIONAL: CBV evaluator that matches CBN on total programs
 
--- C3: toZero_bad diverges in CBN because both branches are evaluated
--- In a CBV language with proper if-then-else, only one branch would execute
--- ASPIRATIONAL: CBV with proper conditionals
--- example : ev_cbv (toZero_bad ZERO) = some ZERO
+-- C3: toZero_bad diverges in CBV because ALL arguments are evaluated (strict)
+-- In CBN this terminated because only the selected branch was evaluated.
+-- In CBV, both branches are evaluated before ISZERO selects one, so `self ZERO`
+-- in the else branch causes infinite recursion.
+-- This is expected: CBV requires explicit thunking (see toZero in Mu.lean).
+-- NOTE: The original aspirational goal was "CBV with proper conditionals".
+-- With a proper if-then-else (not Church-encoded), this would work.
+-- example : ev_cbv_with_builtins (toZero_bad ZERO) = some ZERO
 
 -- ============================================================
 -- Category D: Recursive types/functions

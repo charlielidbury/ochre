@@ -84,9 +84,10 @@ private def idFn : Expr := soch{ λ(x : ⊤). x }
 example : ev (.app (.app (.app (.app SUCC ZERO) .top) (.var 99)) idFn)
   = some (.var 99) := rfl
 
--- SUCC ZERO with stuck f: f applied to (ZERO T z f)
+-- SUCC ZERO with stuck f: f applied to z (CBV evaluates inner application)
+-- (In CBN this was: f (ZERO T z f) — the inner app stayed unevaluated)
 example : ev (.app (.app (.app (.app SUCC ZERO) .top) (.var 99)) (.var 42))
-  = some (.app (.var 42) (.app (.app (.app ZERO .top) (.var 99)) (.var 42))) := rfl
+  = some (.app (.var 42) (.var 99)) := rfl
 
 -- ADD ZERO ONE T z f -> ONE T z f -> f z
 example : ev (.app (.app (.app (.app (.app ADD ZERO) ONE) .top) (.var 99)) (.var 42))

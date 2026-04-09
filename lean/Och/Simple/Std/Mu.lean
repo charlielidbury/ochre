@@ -86,12 +86,12 @@ example : eval 50 OMEGA = none := by native_decide
 example : eval 1 FIX = none := rfl
 example : eval 100 FIX = none := rfl
 
--- toZero_bad with ZERO: in CBN the self-call is in the "else" branch,
--- but ISZERO ZERO returns TRUE, so it selects the "then" branch (ZERO).
--- Whether this diverges depends on how deep the evaluation goes.
--- With enough fuel it may terminate (CBN only evaluates the selected branch).
--- Let's just check it produces something or nothing at various fuels:
-example : (eval 200 (.app toZero_bad ZERO)).isSome = true := rfl
+-- toZero_bad with ZERO: in CBN this terminated because only the selected branch
+-- was evaluated. In CBV, ALL arguments are evaluated before the function call,
+-- so `self ZERO` in the "else" branch is evaluated even when not needed.
+-- This causes divergence — the classic CBN vs CBV difference.
+-- (CBN: terminates; CBV: diverges)
+example : eval 200 (.app toZero_bad ZERO) = none := by native_decide
 
 -- toZero (thunked) terminates: toZero ZERO = ZERO
 example : (ev (soch{ toZero ZERO })).isSome = true := rfl
