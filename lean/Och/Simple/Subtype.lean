@@ -78,5 +78,12 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ a A →
       Sub Γ a (b.subst 0 (.mu A b)) →
       Sub Γ a (.mu A b)
+  /-- [Mu-Unfold-L]: unfold μ on the LHS.
+      `μA.body ⊑ c` if body is well-typed (`body ⊑ A↑` in context `A::Γ`)
+      and the unfolded body `body[0 := μA.body] ⊑ c`. -/
+  | muUnfoldL (Γ : Ctx) (A body c : Expr) :
+      Sub (A :: Γ) body (A.shift 0 1) →
+      Sub Γ (body.subst 0 (.mu A body)) c →
+      Sub Γ (.mu A body) c
 
 end Och.Simple

@@ -361,6 +361,14 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     rw [Expr.subst_shift_hi b' 0 n 1 (.mu A b') (by omega)] at ihab'
     simp only [shift] at ihab'
     exact Sub.muR _ _ _ _ (ihaA n) ihab'
+  | @muUnfoldL Γ' A body c' _hwf _hunf ihwf ihunf =>
+    show Sub _ ((Expr.mu A body).shift n 1) _; simp only [shift]
+    have hwf' := ihwf (n + 1)
+    rw [Expr.shift_shift_comm A 0 n 1 1 (by omega)] at hwf'
+    have hunf' := ihunf n
+    rw [Expr.subst_shift_hi body 0 n 1 (.mu A body) (by omega)] at hunf'
+    simp only [shift] at hunf'
+    exact Sub.muUnfoldL _ _ _ _ hwf' hunf'
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
 noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
@@ -429,6 +437,7 @@ def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
   | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .mu _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .muR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .muUnfoldL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
 
 /-- Every derivation has positive size. -/
 theorem Sub.size_pos {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : 0 < h.size := by
@@ -586,6 +595,13 @@ private noncomputable def transNarrowInner
       | .mu _ A body _ hAb hbodyA =>
         exact Sub.mu _ A body c (trans_n Γ A b c hAb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega)) hbodyA
+      | .muUnfoldL _ A body _ hwf hunf =>
+        -- a = μA.body, have wf and body[μA.body] ⊑ b
+        -- Use muUnfoldL: need wf (have) and body[μA.body] ⊑ c
+        -- Trans on body[μA.body] ⊑ b ⊑ c, same cut b, smaller size
+        exact Sub.muUnfoldL _ A body c hwf
+          (trans_n Γ _ b c hunf hbc hcplx (by
+            simp [Sub.size] at hle ⊢; omega))
       | .muR _ _ A body haA hab_body =>
         -- b = μA.body. Now case-split on hbc (what eliminates μA.body on LHS?)
         match hbc with
@@ -596,7 +612,14 @@ private noncomputable def transNarrowInner
           -- A has strictly smaller complexity than μA.body
           exact trans_lo Γ a A c
             (by simp [Expr.complexity] at hcplx ⊢; omega) haA hAc
-        -- var, app, ascL are structurally impossible since b = μA.body
+        | .muUnfoldL _ .(A) .(body) _ hwf hunf =>
+          -- trans(muR, muUnfoldL): a ⊑ μA.body ⊑ c
+          -- muR gives: a ⊑ A (haA), a ⊑ body[μA.body] (hab_body)
+          -- muUnfoldL gives: body ⊑ A↑ (hwf), body[μA.body] ⊑ c (hunf)
+          -- KEY: a ⊑ body[μA.body] and body[μA.body] ⊑ c
+          -- But cut = body[μA.body] can have LARGER complexity than μA.body.
+          -- HARD CASE — sorry for now
+          sorry
         | .ascR _ _ e₂ τ₂ heτ₂ hae₂ =>
           exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
             (Sub.muR _ _ A body haA hab_body) hae₂ hcplx
@@ -708,7 +731,14 @@ private noncomputable def transNarrowInner
           simp [Sub.size] at hle ⊢; omega)
         have hab_body' := narrow_n Γ_pre Γ_suf B C a (body_mu.subst 0 (.mu A_mu body_mu)) hCB hab_body hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        exact Sub.muR _ _ A_mu body_mu haA' hab_body'⟩
+        exact Sub.muR _ _ A_mu body_mu haA' hab_body'
+      | .muUnfoldL _ A_mu body_mu _ hwf hunf =>
+        have hwf' : Sub ((A_mu :: Γ_pre) ++ C :: Γ_suf) body_mu (A_mu.shift 0 1) :=
+          narrow_n (A_mu :: Γ_pre) Γ_suf B C body_mu (A_mu.shift 0 1) hCB hwf hBcplx (by
+            simp [Sub.size] at hle ⊢; omega)
+        have hunf' := narrow_n Γ_pre Γ_suf B C (body_mu.subst 0 (.mu A_mu body_mu)) b hCB hunf hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        exact Sub.muUnfoldL _ A_mu body_mu b hwf' hunf'⟩
 
 -- 6c. Outer induction (on cut-formula complexity)
 
@@ -952,6 +982,25 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
     simp only [subst, hshift] at hss
     rw [← hss] at ihab'
     exact Sub.muR _ _ _ _ ihaA' ihab'
+  | @muUnfoldL Γ'' A body c' _hwf _hunf ihwf ihunf =>
+    show Sub _ ((Expr.mu A body).subst Δ.length (v.shift 0 Δ.length)) _
+    simp only [subst]
+    have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
+      rw [Expr.shift_add]; congr 1; omega
+    rw [hshift]
+    have hwf' := ihwf (A :: Δ) (by rw [hctx]; simp [List.cons_append]) hv
+    simp only [List.length_cons] at hwf'
+    change Sub ((A.subst Δ.length (v.shift 0 Δ.length)) :: substCtx Δ v ++ Γ) _ _ at hwf'
+    have hann_eq : (A.shift 0 1).subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)) =
+        (A.subst Δ.length (v.shift 0 Δ.length)).shift 0 1 := by
+      rw [Expr.subst_shift_lo A Δ.length 0 1 (v.shift 0 Δ.length) (by omega)]
+      congr 1; rw [Expr.shift_add]; congr 1; omega
+    simp only [hann_eq] at hwf'
+    have ihunf' := ihunf Δ hctx hv
+    have hss := Expr.subst_subst body 0 Δ.length (.mu A body) (v.shift 0 Δ.length) (by omega)
+    simp only [subst, hshift] at hss
+    rw [← hss] at ihunf'
+    exact Sub.muUnfoldL _ _ _ _ hwf' ihunf'
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
 noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}
