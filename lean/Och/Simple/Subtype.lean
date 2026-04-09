@@ -28,7 +28,7 @@ def get? (Γ : Ctx) (n : Nat) : Option Expr :=
 end Ctx
 
 /-- The subtype relation: `Sub Γ a b` means `Γ ⊢ a ⊑ b`. -/
-inductive Sub : Ctx → Expr → Expr → Prop where
+inductive Sub : Ctx → Expr → Expr → Type where
   /-- [Refl]: `Γ ⊢ a ⊑ a` -/
   | refl (Γ : Ctx) (a : Expr) :
       Sub Γ a a

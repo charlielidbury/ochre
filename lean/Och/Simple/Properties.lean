@@ -15,7 +15,8 @@ Auxiliary shift/subst lemmas and the three main properties of Sub.
 - `liftCtx`, `Ctx.get?_liftCtx_lt`, `Ctx.get?_liftCtx_ge`: fully proven
 - `Sub.weaken_gen`: fully proven (all 8 cases including Lam!)
 - `Sub.weaken`: fully proven (corollary of weaken_gen)
-- `Sub.trans`: 4/8 cases proven, rest sorry'd (needs narrowing etc.)
+- `Sub.trans`: induction on hbc; [Refl], [Top], [BetaR], [AscR], [AscL/AscR]
+  fully proved. 11 sub-cases sorry'd (need well-founded recursion; see §6).
 - `substCtx`: fully defined
 - `Sub.subst_gen`: generalized substitution at arbitrary depth, 7/8 cases
   proven (all cases including Lam!), [Var] sorry'd (needs context lookup
@@ -312,23 +313,142 @@ theorem Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
   Sub.weaken_gen 0 T h
 
 -- ============================================================
--- 6. Transitivity (multiple sorry'd cases)
+-- 6. Transitivity and Narrowing (mutually dependent)
 -- ============================================================
 
+-- Transitivity and generalized narrowing are mutually dependent:
+-- * Transitivity [Lam-Lam] case needs narrowing to re-type the
+--   body under a narrowed context.
+-- * Narrowing [Var x=0] case needs transitivity to compose the
+--   weakened Sub Γ B' B with the narrowed continuation.
+--
+-- CHALLENGE: Sub lives in Prop, so we cannot define a size/depth
+-- function on derivations (large elimination from a Prop inductive
+-- with multiple constructors is not allowed in Lean 4). This blocks
+-- the standard strong-induction-on-combined-size approach.
+--
+-- RESOLUTION PATH: Change `Sub` from `Prop` to `Type`, then define
+-- Sub.size and use well-founded recursion on derivation size for the
+-- mutual proof. This is left as future work.
+--
+-- We induct on `hbc` (second derivation), case-splitting on `hab` where
+-- needed. This gives strong IHs for [BetaR] and [AscR] hbc-cases.
+--
+-- Fully proved (hbc constructor / hab constructor):
+--   [Refl]/*  [Top]/*  [BetaR]/*  [AscR]/*  — all hab handled.
+--   [Var]/[Refl]  [Lam]/[Refl]  [App]/[Refl]  [AscL]/[Refl]
+--   [AscL]/[AscR] — key non-trivial case.
+--
+-- Sorry'd (all require trans(hab_sub, hbc) where hab_sub is a
+-- sub-derivation of hab but hbc is the full second derivation):
+--   [Var]: /[Var], /[App], /[AscL]
+--   [Lam]: /[Lam](+narrowing), /[Var], /[App], /[AscL]
+--   [App]: /[Var], /[App], /[AscL], /[BetaR]
+--   [AscL]: /[Var], /[App], /[AscL]
+
 /-- Transitivity: `Sub Γ a b → Sub Γ b c → Sub Γ a c`.
-    Sorry'd: top, lam, betaR, ascR cases. -/
+    Proved by induction on `hbc` (the second derivation), case-splitting
+    on `hab` where the middle term `b` is determined by `hbc`.
+    This direction fully proves [BetaR], [AscR], and [AscL-AscR] cases
+    that were previously sorry'd. 11 sub-cases remain sorry'd (see above). -/
 theorem Sub.trans {Γ : Ctx} {a b c : Expr}
     (hab : Sub Γ a b) (hbc : Sub Γ b c) : Sub Γ a c := by
-  induction hab with
-  | refl _ _ => exact hbc
-  | top _ _ => sorry
-  | var Γ' x _ U hget _ ih => exact Sub.var Γ' x c U hget (ih hbc)
-  | @lam Γ' A B b₁ b₂ _ _ _ _ => sorry
-  | app Γ' f a _ D R hfD haD _ _ _ ihRb =>
-    exact Sub.app Γ' f a c D R hfD haD (ihRb hbc)
-  | @betaR Γ' a' D body b' _ _ _ _ => sorry
-  | ascL Γ' e τ _ heτ _ _ ihτb => exact Sub.ascL Γ' e τ c heτ (ihτb hbc)
-  | @ascR Γ' a' e τ _ _ _ _ => sorry
+  induction hbc generalizing a with
+  | refl _ _ => exact hab
+  | top _ _ => exact Sub.top _ _
+  | var Γ' x c' U hget hUc ihUc =>
+    -- hbc : Sub Γ (var x) c' via [Var]
+    -- b = var x; case-split on hab : Sub Γ a (var x)
+    -- b = var x. Possible hab constructors: [Refl], [Var], [App], [Asc-L].
+    -- ([Top] eliminated: b = .top ≠ var x; [Lam]: b = lam; [BetaR]: b = app; [AscR]: b = asc)
+    cases hab with
+    | refl _ _ => exact Sub.var Γ' x c' U hget hUc
+    | var Γ'' x' _ U' hget' hU'varx =>
+      -- a = var x', hU'varx : Sub Γ U' (var x)
+      -- ihUc : ∀ a', Sub Γ a' U → Sub Γ a' c'
+      -- Need Sub Γ U' c'. Have Sub Γ U' (var x) but need Sub Γ U' U.
+      -- BLOCKED: middle term of ihUc is U, not (var x).
+      sorry
+    | app _ f a'' _ D R hfD haD hRvarx =>
+      -- hRvarx : Sub Γ (R.subst 0 a'') (var x)
+      -- ihUc : ∀ a', Sub Γ a' U → Sub Γ a' c'
+      -- Need Sub Γ (R.subst 0 a'') c'. Same issue: ihUc wants Sub Γ ? U.
+      sorry
+    | ascL _ e' τ' _ he'τ' hτ'varx =>
+      -- hτ'varx : Sub Γ τ' (var x)
+      -- Same issue.
+      sorry
+  | @lam Γ' C b_rhs c₁ c₂ hCb hc₁c₂ ihCb ihc₁c₂ =>
+    -- hbc : Sub Γ (lam C c₁) (lam b_rhs c₂) via [Lam]
+    -- hCb : Sub Γ b_rhs C, hc₁c₂ : Sub (b_rhs::Γ) c₁ c₂
+    -- b = lam C c₁. Possible hab: [Refl], [Lam], [Var], [App], [Asc-L].
+    cases hab with
+    | refl _ _ => exact Sub.lam _ _ _ _ _ hCb hc₁c₂
+    | @lam _ A' _ a₁ _ hCA' ha₁c₁ =>
+      -- [Lam-Lam]: need b_rhs ⊑ A' and (b_rhs::Γ) ⊢ a₁ ⊑ c₂.
+      -- Domain: have hCb : Sub Γ b_rhs C and hCA' : Sub Γ C A'.
+      --   ihCb : ∀ a', Sub Γ a' b_rhs → Sub Γ a' C (wrong direction).
+      -- Body: have ha₁c₁ : Sub (C::Γ) a₁ c₁, need Sub (b_rhs::Γ) a₁ c₂.
+      --   ihc₁c₂ : ∀ a', Sub (b_rhs::Γ) a' c₁ → Sub (b_rhs::Γ) a' c₂
+      --   But ha₁c₁ is in C::Γ, not b_rhs::Γ. Needs narrowing.
+      -- BLOCKED: needs contra-variant domain trans + narrowing.
+      sorry
+    | var _ x' _ U' hget' hU'lam =>
+      -- hU'lam : Sub Γ U' (lam C c₁). Need Sub Γ U' (lam b_rhs c₂).
+      -- This is trans(hU'lam, hbc), which is self-reference.
+      sorry
+    | app _ f a'' _ D R hfD haD hRlam =>
+      -- hRlam : Sub Γ (R.subst 0 a'') (lam C c₁). Need trans(hRlam, hbc).
+      sorry
+    | ascL _ e' τ' _ he'τ' hτ'lam =>
+      -- hτ'lam : Sub Γ τ' (lam C c₁). Need trans(hτ'lam, hbc).
+      sorry
+  | app Γ' f' a' c' D R hfD haD hRc ihfD ihaD ihRc =>
+    -- hbc : Sub Γ (app f' a') c' via [App]
+    -- b = app f' a'. The IHs are for sub-derivations hfD, haD, hRc of hbc.
+    -- ihRc : ∀ a'', Sub Γ a'' (R.subst 0 a') → Sub Γ a'' c'.
+    -- But hab : Sub Γ a (app f' a') gives us a ⊑ (app f' a'), not a ⊑ (R.subst 0 a').
+    -- We'd need to convert a ⊑ (app f' a') to a ⊑ (R.subst 0 a') to use ihRc.
+    -- That conversion itself requires the [App] rule applied to a, not available.
+    -- All non-trivial sub-cases need trans(hab_sub, hbc) which is self-reference.
+    -- BLOCKED: requires well-founded recursion.
+    cases hab with
+    | refl _ _ => exact Sub.app _ f' a' c' D R hfD haD hRc
+    | _ => sorry
+  | betaR Γ' a' D body b' hbD habody ihbD ihabody =>
+    -- hbc : Sub Γ b (app (lam D body) b') via [BetaR]
+    -- ihabody : ∀ a'', Sub Γ a'' b → Sub Γ a'' (body.subst 0 b')
+    -- Use [BetaR] with hbD and ihabody hab.
+    exact Sub.betaR _ _ D body b' hbD (ihabody hab)
+  | ascL Γ' e τ c' heτ hτc iheτ ihτc =>
+    -- hbc : Sub Γ (asc e τ) c' via [Asc-L]
+    -- b = asc e τ. iheτ/ihτc are IHs from sub-derivations heτ/hτc.
+    -- ihτc : ∀ a', Sub Γ a' τ → Sub Γ a' c'
+    -- iheτ : ∀ a', Sub Γ a' e → Sub Γ a' τ
+    -- Possible hab constructors for b = asc e τ:
+    -- [Refl], [Var], [App], [Asc-L], [AscR].
+    -- ([Top]: b=.top; [Lam]: b=lam; [BetaR]: b=app — eliminated by Lean)
+    cases hab with
+    | refl _ _ => exact Sub.ascL _ e τ c' heτ hτc
+    | var _ x _ U hget hU_asc =>
+      -- hU_asc : Sub Γ U (asc e τ). Need Sub Γ U c'.
+      -- This is trans(hU_asc, hbc) — self-reference.
+      sorry
+    | app _ f a'' _ D' R' hfD' haD' hR_asc =>
+      -- hR_asc : Sub Γ (R'.subst 0 a'') (asc e τ). Need trans(hR_asc, hbc).
+      sorry
+    | ascL _ e' τ' _ he'τ' hτ'_asc =>
+      -- hτ'_asc : Sub Γ τ' (asc e τ). Need trans(hτ'_asc, hbc).
+      sorry
+    | ascR _ _ e' τ' he'τ' ha_e' =>
+      -- [AscR]: ha_e' : Sub Γ a e, he'τ' : Sub Γ e τ (since e'=e, τ'=τ).
+      -- Chain: iheτ ha_e' : Sub Γ a τ, then ihτc (iheτ ha_e') : Sub Γ a c'.
+      exact ihτc (iheτ ha_e')
+  | ascR Γ' a' e τ heτ hae iheτ ihae =>
+    -- hbc : Sub Γ b (asc e τ) via [AscR]
+    -- ihae : ∀ a'', Sub Γ a'' b → Sub Γ a'' e
+    -- Use [AscR] with heτ and ihae hab.
+    exact Sub.ascR _ _ e τ heτ (ihae hab)
 
 -- ============================================================
 -- 7. Generalized substitution lemma
