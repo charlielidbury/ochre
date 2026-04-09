@@ -20,7 +20,7 @@ namespace Och.Simple
 open Expr
 
 -- ============================================================
--- 1. Shift lemmas (fully proven)
+-- 1. Shift lemmas
 -- ============================================================
 
 theorem Expr.shift_add (e : Expr) (c n₁ n₂ : Nat) :
@@ -103,11 +103,7 @@ theorem Expr.subst_shift_hi (e : Expr) (n c d : Nat) (v : Expr) (h : n ≤ c) :
     (e.subst n v).shift c d = (e.shift (c + 1) d).subst n (v.shift c d) := by
   induction e generalizing n c v with
   | var k =>
-    -- LHS: ((var k).subst n v).shift c d
-    -- RHS: ((var k).shift (c+1) d).subst n (v.shift c d)
-    -- Compute LHS:
     have lhs_eq : (Expr.var k).subst n v = if k == n then v else if k > n then Expr.var (k - 1) else Expr.var k := by simp [subst]
-    -- Compute RHS shift:
     have rhs_shift : (Expr.var k).shift (c + 1) d = if k < c + 1 then Expr.var k else Expr.var (k + d) := by simp [shift]
     rw [lhs_eq, rhs_shift]
     by_cases hkn : k = n
@@ -222,7 +218,7 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
     exact ihb (m + 1) (n + 1) (u.shift 0 1) (w.shift 0 1) (by omega)
 
 -- ============================================================
--- 4. Context lookup lemmas (fully proven)
+-- 4. Context lookup lemmas
 -- ============================================================
 
 theorem Ctx.get?_cons_zero (Γ : Ctx) (T : Expr) :
@@ -239,7 +235,7 @@ theorem Ctx.get?_cons_succ (Γ : Ctx) (T : Expr) (n : Nat) :
     rw [Expr.shift_add]; congr 1; omega
 
 -- ============================================================
--- 5. Generalized weakening (fully proven)
+-- 5. Generalized weakening
 -- ============================================================
 
 /-- Insert binding T at position n in context Γ, shifting stored types to account for the new binding. -/
@@ -380,7 +376,6 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ ((Expr.mu A b').shift n 1) _; simp only [shift]
     have hdom := ihAc n
     have hbody := ihbA (n + 1)
-    -- Need: A.shift 0 1 shifted at (n+1) = (A.shift n 1).shift 0 1
     rw [Expr.shift_shift_comm A 0 n 1 1 (by omega)] at hbody
     exact Sub.mu _ _ _ _ hdom hbody
 
@@ -551,11 +546,9 @@ private noncomputable def transNarrowInner
   | n + 1 =>
     let ⟨trans_n, narrow_n⟩ := transNarrowInner trans_lo n
     ⟨fun Γ a b c hab hbc hcplx hle => by
-      -- ==================== TRANS at (m, n+1) ====================
+      -- === TRANS at (m, n+1) ===
       match hab with
-      -- [Refl]: a = b
       | .refl _ _ => exact hbc
-      -- [Top]: b = ⊤. Case-split on hbc : Sub Γ ⊤ c
       | .top _ _ =>
         match hbc with
         | .refl _ _ => exact Sub.top _ _
@@ -563,32 +556,24 @@ private noncomputable def transNarrowInner
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
-      -- [Var]: a = var x, hUb : Sub Γ U b
       | .var _ x _ U hget hUb =>
-        have hUc := trans_n Γ U b c hUb hbc hcplx (by
-          simp [Sub.size] at hle ⊢; omega)
-        exact Sub.var _ x c U hget hUc
-      -- [App]: a = app f a', hRb : Sub Γ (R.subst 0 a') b
+        exact Sub.var _ x c U hget (trans_n Γ U b c hUb hbc hcplx (by
+          simp [Sub.size] at hle ⊢; omega))
       | .app _ f a' _ D R hfD haD hRb =>
-        have hRc := trans_n Γ _ b c hRb hbc hcplx (by
-          simp [Sub.size] at hle ⊢; omega)
-        exact Sub.app _ f a' c D R hfD haD hRc
-      -- [Lam]: a = lam A body_a, b = lam B body_b
+        exact Sub.app _ f a' c D R hfD haD (trans_n Γ _ b c hRb hbc hcplx (by
+          simp [Sub.size] at hle ⊢; omega))
       | .lam _ A B body_a body_b hBA hbody_ab =>
         match hbc with
         | .refl _ _ => exact Sub.lam _ A B body_a body_b hBA hbody_ab
         | .top _ _ => exact Sub.top _ _
         | .lam _ .(B) C .(body_b) body_c hCB hbody_bc =>
-          -- b = lam B body_b, complexity = 1 + B.complexity + body_b.complexity
-          -- Domain: trans(hCB, hBA) with cut B — strictly smaller complexity
+          -- Domain: cut on B (strictly smaller complexity)
           have hCA := trans_lo Γ C B A
             (by simp [Expr.complexity] at hcplx ⊢; omega) hCB hBA
-          -- Body: narrow hbody_ab from B::Γ to C::Γ, then trans with cut body_b
-          -- Use narrow_gen with Γ_pre = [], Γ_suf = Γ
+          -- Body: narrow from B::Γ to C::Γ, then cut on body_b (smaller complexity)
           have hbody_narrow := narrow_n [] Γ B C body_a body_b hCB hbody_ab
             (by simp [Expr.complexity] at hcplx; omega) (by
             simp [Sub.size] at hle ⊢; omega)
-          -- body_b.complexity < (lam B body_b).complexity — use trans_lo!
           have hbody_ac := trans_lo (C :: Γ) body_a body_b body_c
             (by simp [Expr.complexity] at hcplx ⊢; omega) hbody_narrow hbody_bc
           exact Sub.lam _ A C body_a body_c hCA hbody_ac
@@ -596,27 +581,20 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-      -- [Mu]: a = mu A body, hAb : Sub Γ A b, hbodyA : Sub (A::Γ) body (A.shift 0 1)
       | .mu _ A body _ hAb hbodyA =>
-        have hAc := trans_n Γ A b c hAb hbc hcplx (by
-          simp [Sub.size] at hle ⊢; omega)
-        exact Sub.mu _ A body c hAc hbodyA
-      -- [Asc-L]: a = asc e τ, heτ : Sub Γ e τ, hτb : Sub Γ τ b
+        exact Sub.mu _ A body c (trans_n Γ A b c hAb hbc hcplx (by
+          simp [Sub.size] at hle ⊢; omega)) hbodyA
       | .ascL _ e τ _ heτ hτb =>
-        have hτc := trans_n Γ τ b c hτb hbc hcplx (by
-          simp [Sub.size] at hle ⊢; omega)
-        exact Sub.ascL _ e τ c heτ hτc
-      -- [Asc-R]: b = asc e τ
+        exact Sub.ascL _ e τ c heτ (trans_n Γ τ b c hτb hbc hcplx (by
+          simp [Sub.size] at hle ⊢; omega))
       | .ascR _ _ e τ heτ hae =>
         match hbc with
         | .refl _ _ => exact Sub.ascR _ _ e τ heτ hae
         | .top _ _ => exact Sub.top _ _
         | .ascL _ _ _ _ heτ' hτc =>
-          -- b = asc e τ, complexity = 1 + e.complexity + τ.complexity
-          -- trans(hae, heτ') with cut e — strictly smaller complexity
+          -- Cut on e then τ (both strictly smaller complexity)
           have haτ := trans_lo Γ a e τ
             (by simp [Expr.complexity] at hcplx ⊢; omega) hae heτ'
-          -- trans(haτ, hτc) with cut τ — strictly smaller complexity
           exact trans_lo Γ a τ c
             (by simp [Expr.complexity] at hcplx ⊢; omega) haτ hτc
         | .ascR _ _ e₂ τ₂ heτ₂ hae₂ =>
@@ -624,49 +602,40 @@ private noncomputable def transNarrowInner
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
     ,
-    -- ==================== NARROW_GEN at (m, n+1) ====================
+    -- === NARROW_GEN at (m, n+1) ===
     fun Γ_pre Γ_suf B C a b hCB hab hBcplx hle => by
       match hab with
       | .refl _ _ => exact Sub.refl _ _
       | .top _ _ => exact Sub.top _ _
       | .var _ x _ U hget hUb =>
         by_cases hx_lt : x < Γ_pre.length
-        · -- Variable before narrowing point: unchanged
-          have hget' := Ctx.get?_narrow_lt C hget hx_lt
+        · have hget' := Ctx.get?_narrow_lt C hget hx_lt
           have hUb' := narrow_n Γ_pre Γ_suf B C U b hCB hUb hBcplx (by
             simp [Sub.size] at hle ⊢; omega)
           exact Sub.var _ x b U hget' hUb'
         · by_cases hx_eq : x = Γ_pre.length
-          · -- Variable at narrowing point: type changes from B.shifted to C.shifted
-            subst hx_eq
+          · subst hx_eq
             have hU_eq := Ctx.get?_narrow_eq hget
             subst hU_eq
             have hUb_narrow := narrow_n Γ_pre Γ_suf B C _ b hCB hUb hBcplx (by
               simp [Sub.size] at hle ⊢; omega)
-            -- Weaken hCB into (Γ_pre ++ C :: Γ_suf) via multi-weakening.
-            -- First weaken by C, then prepend Γ_pre.
             have hCB_weak : Sub (Γ_pre ++ C :: Γ_suf) (C.shift 0 (Γ_pre.length + 1)) (B.shift 0 (Γ_pre.length + 1)) := by
-              have h1 := Sub.weaken C hCB  -- Sub (C :: Γ_suf) (C.shift 0 1) (B.shift 0 1)
-              have h2 := Sub.weaken_prepend Γ_pre h1  -- Sub (Γ_pre ++ C :: Γ_suf) ...
+              have h1 := Sub.weaken C hCB
+              have h2 := Sub.weaken_prepend Γ_pre h1
               rw [Expr.shift_add, Expr.shift_add] at h2
               simp only [show Γ_pre.length + 1 = 1 + Γ_pre.length from by omega] at h2 ⊢
               exact h2
             have hCb := trans_lo (Γ_pre ++ C :: Γ_suf) (C.shift 0 (Γ_pre.length + 1)) (B.shift 0 (Γ_pre.length + 1)) b
               (by rw [Expr.shift_complexity]; omega) hCB_weak hUb_narrow
             exact Sub.var _ Γ_pre.length b (C.shift 0 (Γ_pre.length + 1)) Ctx.get?_narrow_eq_new hCb
-          · -- Variable after narrowing point: unchanged
-            have hx_gt : Γ_pre.length < x := by omega
+          · have hx_gt : Γ_pre.length < x := by omega
             have hget' := Ctx.get?_narrow_gt C hget hx_gt
             have hUb' := narrow_n Γ_pre Γ_suf B C U b hCB hUb hBcplx (by
               simp [Sub.size] at hle ⊢; omega)
             exact Sub.var _ x b U hget' hUb'
       | .lam _ A_lam B_lam body_a body_b hBA hbody =>
-        -- hBA : Sub (Γ_pre ++ B :: Γ_suf) B_lam A_lam
-        -- hbody : Sub (B_lam :: (Γ_pre ++ B :: Γ_suf)) body_a body_b
         have hBA' := narrow_n Γ_pre Γ_suf B C B_lam A_lam hCB hBA hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        -- B_lam :: (Γ_pre ++ B :: Γ_suf) is definitionally (B_lam :: Γ_pre) ++ B :: Γ_suf
-        -- Use narrow_n with Γ_pre' = B_lam :: Γ_pre
         have hbody' : Sub ((B_lam :: Γ_pre) ++ C :: Γ_suf) body_a body_b :=
           narrow_n (B_lam :: Γ_pre) Γ_suf B C body_a body_b hCB hbody hBcplx (by
             simp [Sub.size] at hle ⊢; omega)
@@ -694,9 +663,6 @@ private noncomputable def transNarrowInner
       | .mu _ A_mu body_mu _ hAc hbodyA =>
         have hAc' := narrow_n Γ_pre Γ_suf B C A_mu b hCB hAc hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        -- hbodyA : Sub (A_mu :: (Γ_pre ++ B :: Γ_suf)) body_mu (A_mu.shift 0 1)
-        -- Need: Sub (A_mu :: (Γ_pre ++ C :: Γ_suf)) body_mu (A_mu.shift 0 1)
-        -- Use narrow_n with Γ_pre' = A_mu :: Γ_pre
         have hbodyA' : Sub ((A_mu :: Γ_pre) ++ C :: Γ_suf) body_mu (A_mu.shift 0 1) :=
           narrow_n (A_mu :: Γ_pre) Γ_suf B C body_mu (A_mu.shift 0 1) hCB hbodyA hBcplx (by
             simp [Sub.size] at hle ⊢; omega)
@@ -769,10 +735,7 @@ theorem Ctx.get?_substCtx_lt {Δ : Ctx} {T : Expr} {Γ : Ctx} (v : Expr) {x : Na
       | some W =>
         simp only [hΔ, Option.map, Option.some.injEq] at hget
         have ihx := ih (by rw [hΔ]) (by omega)
-        -- goal: Ctx.get? (substCtx (A :: Δ) v ++ Γ) (x+1) = some (U.subst (A :: Δ).length (v.shift 0 (A :: Δ).length))
-        -- substCtx (A :: Δ) v = (A.subst ...) :: substCtx Δ v (by def)
         simp only [substCtx, List.cons_append, List.length_cons]
-        -- Now goal has: Ctx.get? ((A.subst ...) :: substCtx Δ v ++ Γ) (x + 1) = ...
         rw [Ctx.get?_cons_succ, ihx]; simp only [Option.map, Option.some.injEq]
         rw [← hget]
         have := Expr.subst_shift_lo W Δ.length 0 1 (v.shift 0 Δ.length) (by omega)
@@ -806,15 +769,11 @@ theorem Ctx.get?_substCtx_ge {Δ : Ctx} {T : Expr} {Γ : Ctx} (v : Expr) {x : Na
     Ctx.get? (substCtx Δ v ++ Γ) (x - 1) = some (U.subst Δ.length (v.shift 0 Δ.length)) := by
   induction Δ generalizing x U with
   | nil =>
-    -- Δ = [], substCtx [] v = [], so substCtx Δ v ++ Γ = Γ
-    -- x > 0, hget : Ctx.get? (T :: Γ) x = some U
     simp only [List.nil_append, List.length_nil] at hx
     simp only [substCtx, List.nil_append, List.length_nil]
     cases x with
     | zero => omega
     | succ x =>
-      -- goal: Ctx.get? Γ (x+1-1) = some (U.subst 0 (shift 0 0 v))
-      -- x+1-1 = x, shift 0 0 v = v
       simp only [Nat.add_sub_cancel, Expr.shift_zero]
       simp only [List.nil_append] at hget
       rw [Ctx.get?_cons_succ] at hget
@@ -827,10 +786,7 @@ theorem Ctx.get?_substCtx_ge {Δ : Ctx} {T : Expr} {Γ : Ctx} (v : Expr) {x : Na
     cases x with
     | zero => omega
     | succ x =>
-      -- x+1 > (A :: Δ).length = Δ.length + 1, so x ≥ Δ.length + 1, i.e. Δ.length < x
       simp only [List.cons_append, List.length_cons] at hx
-      -- Goal: (substCtx (A :: Δ) v ++ Γ).get? (x + 1 - 1) = ...
-      -- x + 1 - 1 = x
       show Ctx.get? (substCtx (A :: Δ) v ++ Γ) x = some (U.subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)))
       simp only [List.cons_append] at hget
       rw [Ctx.get?_cons_succ] at hget
@@ -839,23 +795,13 @@ theorem Ctx.get?_substCtx_ge {Δ : Ctx} {T : Expr} {Γ : Ctx} (v : Expr) {x : Na
       | some W =>
         simp only [hΔ, Option.map, Option.some.injEq] at hget
         simp only [substCtx, List.cons_append, List.length_cons]
-        -- goal: Ctx.get? ((A.subst ...) :: substCtx Δ v ++ Γ) x = ...
         cases x with
-        | zero =>
-          -- x = 0, but Δ.length < 0 from hx is impossible when Δ nonempty
-          -- Actually hx says Δ.length + 1 < 0 + 1 i.e. Δ.length < 0, possible only if Δ = []
-          -- Then Δ.length = 0, not < 0. Actually hx says Δ.length < x = 0, i.e. Δ.length = 0... wait
-          -- After `simp ... at hx`, hx : Δ.length + 1 < x + 1, with x = 0: Δ.length < 0. Contradiction.
-          omega
+        | zero => omega
         | succ x' =>
-          -- x = x' + 1, goal has (x'+1+1-1) = x'+1
           show Ctx.get? (substCtx (A :: Δ) v ++ Γ) (x' + 1) = some (U.subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)))
           simp only [substCtx, List.cons_append, List.length_cons]
           rw [Ctx.get?_cons_succ]
-          have hxΔ : Δ.length < x' + 1 := by omega
-          have ihx := ih (by rw [hΔ]) hxΔ
-          -- ihx : (substCtx Δ v ++ Γ).get? (x'+1-1) = some (W.subst Δ.length (shift 0 Δ.length v))
-          -- x'+1-1 = x'
+          have ihx := ih (by rw [hΔ]) (by omega)
           simp only [Nat.add_sub_cancel] at ihx
           rw [ihx]; simp only [Option.map, Option.some.injEq]
           rw [← hget]
@@ -885,16 +831,13 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
       have ihUb' := ihUb Δ rfl hv
       exact Sub.var _ x _ _ hget' ihUb'
     · by_cases hx_eq : x = Δ.length
-      · -- x = |Δ|: variable refers to T
-        subst hx_eq
+      · subst hx_eq
         simp only [beq_self_eq_true, ite_true]
         have hU_eq := Ctx.get?_append_eq hget
         subst hU_eq
         have ihUb' := ihUb Δ rfl hv
         have hkey : (T.shift 0 (Δ.length + 1)).subst Δ.length (v.shift 0 Δ.length) = T.shift 0 Δ.length := by
           have h1 : T.shift 0 (Δ.length + 1) = (T.shift 0 Δ.length).shift Δ.length 1 := by
-            -- shift_shift_comm with c₁=0, c₂=0, n₁=|Δ|, n₂=1:
-            -- (T.shift 0 |Δ|).shift |Δ| 1 = (T.shift 0 1).shift 0 |Δ|
             have := Expr.shift_shift_comm T 0 0 Δ.length 1 (by omega)
             simp only [Nat.zero_add] at this
             rw [this, Expr.shift_add]
@@ -903,24 +846,17 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
         have hv_weak := Sub.weaken_prepend (substCtx Δ v) hv
         rw [substCtx_length] at hv_weak
         exact Sub.trans hv_weak ihUb'
-      · -- x > |Δ|: variable is past T in Γ
-        have hx_gt : x > Δ.length := by omega
+      · have hx_gt : x > Δ.length := by omega
         simp only [show (x == Δ.length) = false from by rw [beq_eq_false_iff_ne]; omega, ite_false,
                    show x > Δ.length from hx_gt, ite_true]
         have hget' := Ctx.get?_substCtx_ge v hget hx_gt
         have ihUb' := ihUb Δ rfl hv
         exact Sub.var _ (x - 1) _ _ hget' ihUb'
   | @lam Γ'' A B b₁ b₂ _hBA _hbody ihBA ihbody =>
-    -- Domain: IH with same Δ
     have hdom := ihBA Δ hctx hv
-    -- Body: Sub (B :: Γ'') b₁ b₂ where Γ'' = Δ ++ T :: Γ
-    -- So B :: Γ'' = (B :: Δ) ++ T :: Γ
     have hbody' := ihbody (B :: Δ) (by rw [hctx]; simp [List.cons_append]) hv
-    -- Simplify: (B :: Δ).length = Δ.length + 1
     simp only [List.length_cons] at hbody'
-    -- substCtx (B :: Δ) v unfolds by definition
     change Sub ((B.subst Δ.length (v.shift 0 Δ.length)) :: substCtx Δ v ++ Γ) _ _ at hbody'
-    -- Construct the lam subtype
     show Sub _ ((Expr.lam A b₁).subst Δ.length (v.shift 0 Δ.length))
                ((Expr.lam B b₂).subst Δ.length (v.shift 0 Δ.length))
     unfold subst
@@ -933,12 +869,10 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
     simp only [subst]
     have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
       rw [Expr.shift_add]; congr 1; omega
-    -- ihfD gives Sub ... f.subst ((lam D R).subst n w); unfold subst on lam
     have ihfD' := ihfD Δ hctx hv
     simp only [subst] at ihfD'
     rw [hshift] at ihfD'
     have ihRb' := ihRb Δ hctx hv
-    -- Rewrite (R.subst 0 a').subst n w using subst_subst
     have hss := Expr.subst_subst R 0 Δ.length a' (v.shift 0 Δ.length) (by omega)
     rw [← hss] at ihRb'
     rw [hshift] at ihRb'
@@ -957,14 +891,9 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
     have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
       rw [Expr.shift_add]; congr 1; omega
     rw [hshift]
-    -- Domain: IH with same Δ
     have hdom := ihAc Δ hctx hv
-    -- Body: Sub (A :: Γ'') body (A.shift 0 1) where Γ'' = Δ ++ T :: Γ
-    -- So A :: Γ'' = (A :: Δ) ++ T :: Γ
     have hbody' := ihbA (A :: Δ) (by rw [hctx]; simp [List.cons_append]) hv
     simp only [List.length_cons] at hbody'
-    -- hbody' has (shift 0 1 A).subst ... but Sub.mu expects shift 0 1 (A.subst ...)
-    -- These are equal by subst_shift_lo
     change Sub ((A.subst Δ.length (v.shift 0 Δ.length)) :: substCtx Δ v ++ Γ) _ _ at hbody'
     have hann_eq : (A.shift 0 1).subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)) =
         (A.subst Δ.length (v.shift 0 Δ.length)).shift 0 1 := by
