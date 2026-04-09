@@ -336,6 +336,8 @@ private noncomputable def eval_result_sub_lam_not_app :
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | mu _ _ _ _ _ _ =>
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
+      | muUnfoldL _ _ _ _ _ =>
+        obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | @app _ g c _ D'' R'' hgD'' hcD'' hR''D' =>
         rename_i haD_inner hRb_inner
         let rebuilt := Sub.app [] g c (.lam D' R') D'' R'' hgD'' hcD'' hR''D'
@@ -422,6 +424,29 @@ private noncomputable def evalPreservation_aux :
         have hbody_sub : Sub [] (b.subst 0 (.mu A b)) A := by
           have h1 := Sub.subst_lemma hbA hmuA; rw [Expr.subst_shift_cancel_zero] at h1; exact h1
         exact ih _ _ (Sub.trans hbody_sub hAc) m fuel_τ _ _ (by omega) he hτ
+
+    | muUnfoldL _ A b _ hUnfold =>
+      -- e = mu A b, eval unfolds to b.subst 0 (mu A b)
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m =>
+        simp [eval] at he
+        -- he : eval m (b.subst 0 (mu A b)) = some v_e
+        -- hUnfold : Sub [] (b.subst 0 (mu A b)) τ
+        exact ih _ _ hUnfold m fuel_τ _ _ (by omega) he hτ
+
+    | muR _ _ A b hBody =>
+      -- τ = mu A b, eval unfolds to b.subst 0 (mu A b)
+      cases fuel_τ with
+      | zero => simp [eval] at hτ
+      | succ m =>
+        simp [eval] at hτ
+        -- hτ : eval m (b.subst 0 (mu A b)) = some v_τ
+        -- hBody : Sub [] e (b.subst 0 e)
+        -- We need: Sub [] v_e v_τ
+        -- Problem: we have e ⊑ b.subst 0 e, not e ⊑ b.subst 0 (mu A b)
+        -- This is a fundamental challenge — the substituted term differs
+        sorry
 
     | app _ f a _ D R hfD haD hRb =>
       cases fuel with
