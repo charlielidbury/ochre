@@ -254,44 +254,31 @@ theorem Ctx.get?_liftCtx_lt {Γ : Ctx} {x : Nat} {U : Expr}
   | succ n ih =>
     match Γ with
     | [] =>
-      -- Ctx.get? [] x can never be some
       cases x with
       | zero => simp [Ctx.get?] at hget
       | succ x => simp [Ctx.get?] at hget
     | A :: Γ =>
       cases x with
       | zero =>
-        -- Ctx.get? (A :: Γ) 0 = some (A.shift 0 1) by get?_cons_zero
-        -- liftCtx (n+1) T (A :: Γ) = (A.shift n 1) :: liftCtx n T Γ
-        -- Ctx.get? ((A.shift n 1) :: liftCtx n T Γ) 0 = some ((A.shift n 1).shift 0 1)
         simp only [liftCtx]
         rw [Ctx.get?_cons_zero] at hget ⊢
         simp only [Option.some.injEq] at hget ⊢
         rw [← hget]
-        -- goal: (A.shift n 1).shift 0 1 = (A.shift 0 1).shift (n+1) 1
         exact (Expr.shift_shift_comm A 0 n 1 1 (by omega)).symm
       | succ x =>
-        -- liftCtx (n+1) T (A :: Γ) = (A.shift n 1) :: liftCtx n T Γ
         simp only [liftCtx]
         rw [Ctx.get?_cons_succ] at hget ⊢
-        -- hget: (Ctx.get? Γ x).map (shift 0 1) = some U
-        -- goal: (Ctx.get? (liftCtx n T Γ) x).map (shift 0 1) = some (U.shift (n+1) 1)
         cases hΓ : Ctx.get? Γ x with
         | none => simp [hΓ] at hget
         | some W =>
           simp only [hΓ, Option.map, Option.some.injEq] at hget ⊢
-          -- hget: W.shift 0 1 = U
-          -- IH: Ctx.get? (liftCtx n T Γ) x = some (W.shift n 1)
           have him := @ih Γ x W (by rw [hΓ]) (by omega)
           cases hL : Ctx.get? (liftCtx n T Γ) x with
           | none => rw [hL] at him; simp at him
           | some W' =>
             rw [hL] at him; simp only [Option.some.injEq] at him
             simp only [hL, Option.map, Option.some.injEq]
-            -- him: W' = W.shift n 1
-            -- goal: W'.shift 0 1 = U.shift (n+1) 1
             rw [← hget, him]
-            -- goal: (W.shift n 1).shift 0 1 = (W.shift 0 1).shift (n+1) 1
             exact (Expr.shift_shift_comm W 0 n 1 1 (by omega)).symm
 
 /-- If `Ctx.get? Γ x = some U` and `x ≥ n`, then `Ctx.get? (liftCtx n T Γ) (x+1) = some (U.shift n 1)`.
@@ -301,7 +288,6 @@ theorem Ctx.get?_liftCtx_ge {Γ : Ctx} {x : Nat} {U : Expr}
     Ctx.get? (liftCtx n T Γ) (x + 1) = some (U.shift n 1) := by
   induction n generalizing Γ x U with
   | zero =>
-    -- liftCtx 0 T Γ = T :: Γ
     simp only [liftCtx]
     rw [Ctx.get?_cons_succ]
     rw [hget]; simp only [Option.map]
@@ -315,19 +301,13 @@ theorem Ctx.get?_liftCtx_ge {Γ : Ctx} {x : Nat} {U : Expr}
       cases x with
       | zero => omega
       | succ x =>
-        -- liftCtx (n+1) T (A :: Γ) = (A.shift n 1) :: liftCtx n T Γ
         simp only [liftCtx]
-        -- Need: Ctx.get? ((A.shift n 1) :: liftCtx n T Γ) (x+2) = some (U.shift (n+1) 1)
         rw [Ctx.get?_cons_succ] at hget ⊢
-        -- hget: (Ctx.get? Γ x).map (shift 0 1) = some U
-        -- goal: (Ctx.get? (liftCtx n T Γ) (x+1)).map (shift 0 1) = some (U.shift (n+1) 1)
         cases hΓ : Ctx.get? Γ x with
         | none => simp [hΓ] at hget
         | some W =>
           simp only [hΓ, Option.map, Option.some.injEq] at hget ⊢
-          -- hget: W.shift 0 1 = U
           have him := @ih Γ x W (by rw [hΓ]) (by omega)
-          -- him: Ctx.get? (liftCtx n T Γ) (x+1) = some (W.shift n 1)
           cases hL : Ctx.get? (liftCtx n T Γ) (x + 1) with
           | none => rw [hL] at him; simp at him
           | some W' =>
@@ -347,13 +327,11 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ ((Expr.var x).shift n 1) _
     simp only [shift]
     by_cases hxn : x < n
-    · -- x < n: variable before insertion point
-      simp only [hxn, ite_true]
+    · simp only [hxn, ite_true]
       exact Sub.var _ x _ (U.shift n 1)
         (Ctx.get?_liftCtx_lt n T hget hxn)
         (ih n)
-    · -- x ≥ n: variable after insertion point
-      simp only [hxn, ite_false]
+    · simp only [hxn, ite_false]
       exact Sub.var _ (x + 1) _ (U.shift n 1)
         (Ctx.get?_liftCtx_ge n T hget (by omega))
         (ih n)
@@ -361,7 +339,6 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ (Expr.lam (A.shift n 1) (b₁.shift (n+1) 1)) (Expr.lam (B.shift n 1) (b₂.shift (n+1) 1))
     have hdom := ihBA n
     have hbody := ihb₁b₂ (n + 1)
-    -- KEY: liftCtx (n+1) T (B::Γ') = (B.shift n 1) :: liftCtx n T Γ' by definition!
     exact Sub.lam _ _ _ _ _ hdom hbody
   | @app Γ' f a b' D R _ _ _ ihfD ihaD ihRb =>
     show Sub _ ((Expr.app f a).shift n 1) _; simp only [shift]
