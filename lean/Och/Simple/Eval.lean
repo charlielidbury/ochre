@@ -33,23 +33,21 @@ def eval (fuel : Nat) (e : Expr) : Option Expr :=
     | .var n => some (.var n)
     | .top => some .top
     | .lam dom body => some (.lam dom body)
-    | .mu ann body => some (.mu ann body)  -- mu is a value
     | .app f a => do
       let f' ← eval fuel f
       match f' with
       | .lam _dom body => eval fuel (body.subst 0 a)
-      | .mu _ann body => eval fuel (body.subst 0 (.mu _ann body) |>.app a)
       | _ => some (.app f' a)
     | .asc e _ty => eval fuel e
+    | .mu _ann body => eval fuel (body.subst 0 (.mu _ann body))
 
 /-- A value is an expression that the evaluator returns as-is
     (i.e., it is in weak head normal form). -/
 inductive Value : Expr → Prop where
   | top : Value .top
   | lam : (dom body : Expr) → Value (.lam dom body)
-  | mu : (ann body : Expr) → Value (.mu ann body)
   | var : (n : Nat) → Value (.var n)
-  | stuckApp : (f a : Expr) → (¬ ∃ d b, f = .lam d b) → (¬ ∃ a' b, f = .mu a' b) → Value (.app f a)
+  | stuckApp : (f a : Expr) → (¬ ∃ d b, f = .lam d b) → Value (.app f a)
 
 -- ============================================================
 -- Tests

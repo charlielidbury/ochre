@@ -62,8 +62,7 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ e τ →
       Sub Γ a e →
       Sub Γ a (.asc e τ)
-  /-- [Mu]: `Γ ⊢ μs:A. b ⊑ c` if `A ⊑ c` and `A::Γ ⊢ b ⊑ A.shift 0 1` (self-consistency).
-      The annotation subtypes the target, and the body is well-typed assuming self has type A. -/
+  /-- [Mu]: `Γ ⊢ μA. b ⊑ c` if `Γ ⊢ A ⊑ c` and `A :: Γ ⊢ b ⊑ A↑`. -/
   | mu (Γ : Ctx) (A b c : Expr) :
       Sub Γ A c →
       Sub (A :: Γ) b (A.shift 0 1) →

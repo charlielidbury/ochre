@@ -15,6 +15,7 @@ binding context, otherwise as Lean-level references.
 term ::=
   | x                          -- bound variable or Lean-level splice
   | λ(x : term). term          -- lambda
+  | μ(x : term). term          -- mu (self-reference)
   | (term : term)              -- ascription
   | term term                  -- application (left-associative)
   | term → term                -- arrow (right-assoc, sugar for λ_:A. B)
@@ -39,6 +40,7 @@ syntax:50  soch:50 soch:51                             : soch
 syntax:30  soch:31 " → " soch:30                       : soch
 syntax:10  "λ" "(" ident ":" soch ")" "." soch:10     : soch
 syntax:10  "λ" "(" "_" ":" soch ")" "." soch:10       : soch
+syntax:10  "μ" "(" ident ":" soch ")" "." soch:10     : soch
 
 syntax "soch{" soch "}" : term
 
@@ -77,6 +79,10 @@ partial def expand (ctx : List String) (stx : TSyntax `soch) : MacroM (TSyntax `
     let dom' ← expand ctx dom
     let body' ← expand ("_" :: ctx) body
     `(Och.Simple.Expr.lam $dom' $body')
+  | `(soch| μ ($x:ident : $ann:soch) . $body:soch) =>
+    let ann' ← expand ctx ann
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Och.Simple.Expr.mu $ann' $body')
   | `(soch| $x:ident) =>
     let name := x.getId.toString
     match findIdx? ctx name with

@@ -1,9 +1,9 @@
 /-!
 # Simple Och Syntax (de Bruijn indices)
 
-A simplified core calculus with six term forms: variables, lambdas,
-application, ascription, top, and mu (self-reference). Terms and types
-share a single syntactic category.
+A simplified core calculus with five term forms: variables, lambdas,
+application, ascription, and top. No μ, no let. Terms and types share
+a single syntactic category.
 -/
 
 set_option autoImplicit false
@@ -18,7 +18,7 @@ namespace Och.Simple
       | e₁ e₂         — application
       | (e : τ)        — ascription
       | ⊤              — top type / universe
-      | μτ. e          — self-reference (bvar 0 in body = self)
+      | μτ. e          — self-reference (annotation + body, bvar 0 = self)
 -/
 inductive Expr where
   | var : Nat → Expr
