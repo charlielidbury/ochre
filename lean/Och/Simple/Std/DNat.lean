@@ -122,30 +122,37 @@ example : Sub [] dzero .top :=
     (Sub.top [.top] _)
 
 -- ============================================================
--- ASPIRATIONAL: Category A — Self-type intro (needs Sub.muR)
+-- Category A: Self-type intro (via Sub.muR)
 -- ============================================================
 
--- ASPIRATIONAL: dzero <= dNat
--- Requires Sub.muR rule. After unfolding mu on the RHS:
---   dzero <= body[dNat := dzero]
--- = dzero <= λP:(dzero->T). λz:(P dzero). λs:(λpred:T. P (dsucc pred)). P dzero
--- This should be provable because dzero's body selects z : P dzero.
--- Flip condition: Add Sub.muR rule
--- example : Sub [] dzero dNat := ...
+-- dzero <= dNat via muR + muUnfoldL + structural Lam comparison.
+-- Same pattern as dtrue <= dBool: dzero selects the z : P dzero branch,
+-- and after substituting dNat := dzero, the return type P dNat becomes P dzero.
+noncomputable def dzero_sub_dNat : Sub [] dzero dNat :=
+  Sub.muR [] dzero .top _ (
+    Sub.muUnfoldL [] .top _ _ (
+      Sub.lam [] _ _ _ _
+        (Sub.refl [] _)
+        (Sub.lam _ _ _ _ _
+          (Sub.refl _ _)
+          (Sub.lam _ _ _ _ _
+            (Sub.top _ _)
+            (Sub.var _ 1 _ _ rfl (Sub.refl _ _))
+          )
+        )
+    )
+  )
 
 -- ASPIRATIONAL: done_ <= dNat
--- Same mechanism, needs Sub.muR + possibly BetaR for dsucc application
--- Flip condition: Sub.muR
+-- done_ = dsucc dzero = app dsucc dzero
+-- This requires [App] to derive (dsucc dzero) ⊑ dNat.
+-- The complication: dsucc is a mu-wrapped function, so we need to
+-- unfold it and show the result types match.
+-- This likely requires BetaR or transitivity through the unfolded form.
 -- example : Sub [] done_ dNat := ...
 
 -- ASPIRATIONAL: dtwo <= dNat
--- Flip condition: Sub.muR
+-- Flip condition: same as done_ but with additional level
 -- example : Sub [] dtwo dNat := ...
-
--- ASPIRATIONAL: dependent elimination
--- Given dzero <= dNat and a motive P : dNat -> T with P dzero = NAT, P (dsucc n) = BOOL,
--- we could type: dzero P zero_val succ_fn : NAT
--- Flip condition: Sub.muR + BetaR
--- example : Sub [] (dzero_applied_to_depMotive) NAT := ...
 
 end Och.Simple.Std

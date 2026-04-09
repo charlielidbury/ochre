@@ -54,23 +54,14 @@ private def x99 : Expr := .var 99
 -- There is NO rule for a <= mu(A).b (self-type intro on the RIGHT).
 -- Adding Sub.muR would enable these.
 
--- A1: dtrue <= dBool
--- ASPIRATIONAL: needs Sub.muR
--- After unfolding mu on RHS: dtrue <= body[dBool := dtrue]
--- = dtrue <= λP:(dtrue->T). λt:(P dtrue). λf:(P dfalse). P dtrue
--- This is provable because dtrue selects t : P dtrue.
--- Flip condition: Add Sub.muR rule to Subtype.lean
--- example : Sub [] dtrue dBool := ...
+-- A1: dtrue <= dBool — PROVED (see Std/DBool.lean: dtrue_sub_dBool)
+example : Sub [] dtrue dBool := dtrue_sub_dBool
 
--- A2: dfalse <= dBool
--- ASPIRATIONAL: needs Sub.muR
--- Flip condition: Add Sub.muR
--- example : Sub [] dfalse dBool := ...
+-- A2: dfalse <= dBool — PROVED (see Std/DBool.lean: dfalse_sub_dBool)
+example : Sub [] dfalse dBool := dfalse_sub_dBool
 
--- A3: dzero <= dNat
--- ASPIRATIONAL: needs Sub.muR
--- Flip condition: Add Sub.muR
--- example : Sub [] dzero dNat := ...
+-- A3: dzero <= dNat — PROVED (see Std/DNat.lean: dzero_sub_dNat)
+example : Sub [] dzero dNat := dzero_sub_dNat
 
 -- A4: done_ <= dNat (dsucc dzero <= dNat)
 -- ASPIRATIONAL: needs Sub.muR + possibly transitivity through dsucc

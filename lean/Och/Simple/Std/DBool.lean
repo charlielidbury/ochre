@@ -116,29 +116,45 @@ example : Sub [] dfalse .top :=
     (Sub.top [.top] _)
 
 -- ============================================================
--- ASPIRATIONAL: Category A — Self-type intro (needs Sub.muR)
+-- Category A: Self-type intro (via Sub.muR)
 -- ============================================================
 
--- ASPIRATIONAL: dtrue <= dBool
--- This requires a Sub.muR rule (self-type intro on the RHS).
--- Currently Sub.mu only handles mu on the LEFT.
--- To derive: dtrue <= mu(dBool:T). body
--- We would need: dtrue <= body[dBool := dtrue]
--- which after substitution becomes:
---   dtrue <= λP:(dtrue->T). λt:(P dtrue). λf:(P dfalse). P dtrue
--- This is provable because dtrue's body matches this structure.
--- Flip condition: Add Sub.muR rule to Subtype.lean
--- example : Sub [] dtrue dBool := ...
+-- dtrue <= dBool via muR + muUnfoldL + structural Lam comparison
+-- After unfolding: both sides are lambdas with matching structure.
+-- The key insight: dtrue selects its 2nd arg (t : P dtrue), and
+-- dBool's return type is P dBool — after substituting dBool := dtrue,
+-- this becomes P dtrue, which matches.
+noncomputable def dtrue_sub_dBool : Sub [] dtrue dBool :=
+  Sub.muR [] dtrue .top _ (
+    Sub.muUnfoldL [] .top _ _ (
+      Sub.lam [] _ _ _ _
+        (Sub.refl [] _)
+        (Sub.lam _ _ _ _ _
+          (Sub.refl _ _)
+          (Sub.lam _ _ _ _ _
+            (Sub.top _ _)
+            (Sub.var _ 1 _ _ rfl (Sub.refl _ _))
+          )
+        )
+    )
+  )
 
--- ASPIRATIONAL: dfalse <= dBool
--- Same mechanism as above but for dfalse.
--- Flip condition: Add Sub.muR rule
--- example : Sub [] dfalse dBool := ...
-
--- ASPIRATIONAL: dependent elimination with typed motive
--- Given dtrue <= dBool and a motive P : dBool -> T,
--- we could type the elimination dtrue P t f : P dtrue
--- Flip condition: Sub.muR + possible BetaR for type computation
--- example : Sub [] (dtrue_applied_to_depMotive) depMotiveResult := ...
+-- dfalse <= dBool via the same strategy.
+-- dfalse selects its 3rd arg (f : P dfalse), and after substituting
+-- dBool := dfalse, the return type P dBool becomes P dfalse, which matches.
+noncomputable def dfalse_sub_dBool : Sub [] dfalse dBool :=
+  Sub.muR [] dfalse .top _ (
+    Sub.muUnfoldL [] .top _ _ (
+      Sub.lam [] _ _ _ _
+        (Sub.refl [] _)
+        (Sub.lam _ _ _ _ _
+          (Sub.top _ _)
+          (Sub.lam _ _ _ _ _
+            (Sub.refl _ _)
+            (Sub.var _ 0 _ _ rfl (Sub.refl _ _))
+          )
+        )
+    )
+  )
 
 end Och.Simple.Std
