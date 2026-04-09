@@ -278,22 +278,81 @@ noncomputable def evalPreservation {e τ : Expr}
       exact evalPreservation hae' (n + 1) v_e v_τ he hτ'
   | app _ f a b D R hfD haD hRb =>
     -- e = app f a, τ = b
-    -- eval (app f a): evaluate f to f', a to a',
-    -- if f' is lam then beta-reduce, otherwise stuck app.
-    --
-    -- The typing derivation tells us:
-    --   Sub [] f (lam D R)    — f is callable
-    --   Sub [] a D            — argument matches domain
-    --   Sub [] (R.subst 0 a) b — return type after substitution ⊑ target
-    --
-    -- Key difficulty: the evaluator beta-reduces with body.subst 0 a'
-    -- (where body comes from f's value, a' is a's value), but the typing
-    -- uses R.subst 0 a. Connecting these requires:
-    -- 1. Showing f evaluates to some lam D₁ body₁
-    -- 2. Relating body₁ to R (via Sub [] (lam D₁ body₁) (lam D R))
-    -- 3. Showing body₁.subst 0 a' ⊑ R.subst 0 a (semantic substitution)
-    -- Step 3 is the crux and may require a generalized eval preservation
-    -- that works under binders.
-    sorry
+    -- Decompose the eval of (app f a)
+    cases fuel with
+    | zero => simp [eval] at he
+    | succ n =>
+      simp [eval, bind, Option.bind] at he
+      cases hf_eval : eval n f with
+      | none => simp [hf_eval] at he
+      | some f' =>
+        cases ha_eval : eval n a with
+        | none => simp [hf_eval, ha_eval] at he
+        | some a' =>
+          simp [hf_eval, ha_eval] at he
+          -- n > 0 because eval n f = some f' (eval 0 always returns none)
+          have hn_pos : n > 0 := by
+            cases n with
+            | zero => simp [eval] at hf_eval
+            | succ m => omega
+          -- By evalPreservation on f: Sub [] f' (lam D R)
+          -- (lam D R is already a value, evals to itself)
+          have hf_lam_eval : eval n (.lam D R) = some (.lam D R) :=
+            eval_lam n D R hn_pos
+          have hf_sub : Sub [] f' (.lam D R) :=
+            evalPreservation hfD n f' (.lam D R) hf_eval hf_lam_eval
+          -- Case split on f'
+          cases f' with
+          | lam D₁ body₁ =>
+            simp at he
+            -- he : eval n (body₁.subst 0 a') = some v_e
+            -- hf_sub : Sub [] (lam D₁ body₁) (lam D R)
+            -- By lambda inversion: Sub [] D D₁ and Sub [D] body₁ R
+            have ⟨hDD₁, hbody₁R⟩ := sub_lam_inv hf_sub
+            -- What we CAN derive:
+            --   Sub [D] body₁ R     (from lam_inv)
+            --   Sub [] a D          (given as haD)
+            --   Sub.subst_lemma hbody₁R haD : Sub [] (body₁.subst 0 a) (R.subst 0 a)
+            --   Sub.trans (above) hRb : Sub [] (body₁.subst 0 a) b
+            --
+            -- What the evaluator computed:
+            --   eval n (body₁.subst 0 a') = some v_e   (where a' = eval n a)
+            --   eval (n+1) b = some v_τ
+            --
+            -- THE GAP: We have Sub [] (body₁.subst 0 a) b, but the evaluator
+            -- beta-reduced with a' (the evaluated form of a), not a itself.
+            -- To close this case we need one of:
+            --   (A) An "eval-subst commutation" lemma showing
+            --       eval(body.subst 0 a') = eval(body.subst 0 a) when eval a = a'.
+            --       This is a standard CBV property but requires a non-trivial proof
+            --       by induction on eval, showing that pre-evaluating the substituted
+            --       term doesn't change the final result.
+            --   (B) Sub [] a' D (so subst_lemma gives Sub [] (body₁.subst 0 a') (R.subst 0 a'))
+            --       PLUS a way to connect R.subst 0 a' back to b (which is typed via R.subst 0 a).
+            --       This still needs eval-subst commutation for the R.subst 0 a' ⊑ b step.
+            sorry
+          | var k =>
+            -- f' = var k, stuck app: v_e = app (var k) a'
+            simp at he; subst he
+            -- hf_sub : Sub [] (var k) (lam D R) — contradiction at empty context
+            -- Only possible constructor is [Var] which requires non-empty context
+            cases hf_sub with
+            | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
+          | top =>
+            -- f' = top, stuck app: v_e = app top a'
+            simp at he; subst he
+            -- hf_sub : Sub [] top (lam D R) — no constructor applies
+            exact nomatch hf_sub
+          | app g c =>
+            -- f' = app g c (stuck application)
+            simp at he; subst he
+            -- hf_sub : Sub [] (app g c) (lam D R) is possible via [App] rule.
+            -- v_e = app (app g c) a'
+            -- Same fundamental difficulty as the lam case, compounded by stuck app.
+            sorry
+          | asc e' t' =>
+            -- eval never returns an ascription — contradiction
+            -- Value only has constructors for top, lam, var, stuckApp (app _ _)
+            exact nomatch (eval_produces_value hf_eval)
 
 end Och.Simple
