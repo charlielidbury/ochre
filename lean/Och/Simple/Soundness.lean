@@ -110,6 +110,13 @@ theorem eval_lam (fuel : Nat) (D body : Expr) (h : fuel > 0) :
   | zero => omega
   | succ n => simp [eval]
 
+-- Helper: eval of mu returns itself
+theorem eval_mu (fuel : Nat) (ann body : Expr) (h : fuel > 0) :
+    eval fuel (.mu ann body) = some (.mu ann body) := by
+  cases fuel with
+  | zero => omega
+  | succ n => simp [eval]
+
 -- Helper: eval of top returns itself
 theorem eval_top (fuel : Nat) (h : fuel > 0) :
     eval fuel .top = some .top := by
@@ -148,6 +155,9 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
     | lam dom body =>
       simp [eval] at h; subst h
       rw [hrw]; simp [eval]
+    | mu ann body =>
+      simp [eval] at h; subst h
+      rw [hrw]; simp [eval]
     | asc e ty =>
       have h' : eval n e = some v := by simp [eval] at h; exact h
       have := ih e v h' k
@@ -163,6 +173,8 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
         match hm : f' with
         | .lam dom body =>
           simp [hm] at h; simp; exact ih (body.subst 0 a) v h k
+        | .mu ann body =>
+          simp [hm] at h; simp; exact ih (body.subst 0 (.mu ann body) |>.app a) v h k
         | .var k' => simp [hm] at h ⊢; exact h
         | .top => simp [hm] at h ⊢; exact h
         | .app g b => simp [hm] at h ⊢; exact h
@@ -180,6 +192,7 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
     | var k => simp [eval] at h; subst h; exact Value.var k
     | top => simp [eval] at h; subst h; exact Value.top
     | lam D body => simp [eval] at h; subst h; exact Value.lam D body
+    | mu ann body => simp [eval] at h; subst h; exact Value.mu ann body
     | asc e ty => simp [eval] at h; exact ih h
     | app f a =>
       simp [eval, bind, Option.bind] at h
@@ -189,18 +202,19 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
         simp [hf] at h
         match hm : f' with
         | .lam dom body => simp [hm] at h; exact ih h
+        | .mu ann body => simp [hm] at h; exact ih h
         | .var k =>
           simp [hm] at h; subst h
-          exact Value.stuckApp (.var k) a (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
+          exact Value.stuckApp (.var k) a (by intro ⟨d, b, h⟩; exact Expr.noConfusion h) (by intro ⟨a', b, h⟩; exact Expr.noConfusion h)
         | .top =>
           simp [hm] at h; subst h
-          exact Value.stuckApp .top a (by intro ⟨d, b, h⟩; exact Expr.noConfusion h)
+          exact Value.stuckApp .top a (by intro ⟨d, b, h⟩; exact Expr.noConfusion h) (by intro ⟨a', b, h⟩; exact Expr.noConfusion h)
         | .app g b =>
           simp [hm] at h; subst h
-          exact Value.stuckApp (.app g b) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+          exact Value.stuckApp (.app g b) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h) (by intro ⟨a', b', h⟩; exact Expr.noConfusion h)
         | .asc e' t' =>
           simp [hm] at h; subst h
-          exact Value.stuckApp (.asc e' t') a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+          exact Value.stuckApp (.asc e' t') a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h) (by intro ⟨a', b', h⟩; exact Expr.noConfusion h)
 
 -- Inversion: Sub Γ (lam A b₁) (lam B b₂) implies Sub Γ B A and Sub (B :: Γ) b₁ b₂
 noncomputable def sub_lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
@@ -235,11 +249,10 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
     | var k => simp [eval] at h; subst h; simp [eval]
     | top => simp [eval] at h; subst h; simp [eval]
     | lam D body => simp [eval] at h; subst h; simp [eval]
+    | mu ann body => simp [eval] at h; subst h; simp [eval]
     | asc e ty =>
       simp [eval] at h
-      -- eval n e = some v, by IH eval n v = some v
       have hv := ih h
-      -- eval (n+1) v = some v by eval_mono
       exact eval_mono v n v hv 1
     | app f a =>
       simp [eval, bind, Option.bind] at h
@@ -250,13 +263,14 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
         match hm : f' with
         | .lam dom body =>
           simp [hm] at h
-          -- eval n (body.subst 0 a) = some v. IH gives eval n v = some v.
+          have hv := ih h
+          exact eval_mono v n v hv 1
+        | .mu ann body =>
+          simp [hm] at h
           have hv := ih h
           exact eval_mono v n v hv 1
         | .var k =>
           simp [hm] at h; subst h
-          -- v = app (var k) a. eval (n+1) (app (var k) a):
-          -- eval n (var k) = some (var k) (need n ≥ 1)
           have hn_pos : n ≥ 1 := eval_pos hf
           simp [eval, bind, Option.bind, eval_var n k hn_pos]
         | .top =>
@@ -265,14 +279,10 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
           simp [eval, bind, Option.bind, eval_top n hn_pos]
         | .app g b =>
           simp [hm] at h; subst h
-          -- v = app (app g b) a. eval (n+1) (app (app g b) a):
-          -- need eval n (app g b) = some (app g b).
-          -- We know eval n f = some (app g b), so by IH: eval n (app g b) = some (app g b).
           have hgb := ih hf
           simp [eval, bind, Option.bind, hgb]
         | .asc e' t' =>
           simp [hm] at h; subst h
-          -- v = app (asc e' t') a. But eval never returns asc.
           exact nomatch (eval_produces_value hf)
 
 -- An expression is an "eval result" if some eval produced it.
@@ -282,10 +292,10 @@ def IsEvalResult (v : Expr) : Prop := ∃ n e, eval n e = some v
 theorem eval_is_eval_result {n : Nat} {e v : Expr} (h : eval n e = some v) :
     IsEvalResult v := ⟨n, e, h⟩
 
--- If eval produces an app (f a), then f is an eval result and not a lam.
+-- If eval produces an app (f a), then f is an eval result and not a lam/mu.
 theorem eval_app_head_result {n : Nat} {e f a : Expr}
     (h : eval n e = some (.app f a)) :
-    IsEvalResult f ∧ (¬ ∃ d b, f = .lam d b) := by
+    IsEvalResult f ∧ (¬ ∃ d b, f = .lam d b) ∧ (¬ ∃ a' b, f = .mu a' b) := by
   induction n generalizing e with
   | zero => simp [eval] at h
   | succ n ih =>
@@ -293,6 +303,7 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
     | var k => simp [eval] at h
     | top => simp [eval] at h
     | lam D body => simp [eval] at h
+    | mu ann body => simp [eval] at h
     | asc e ty =>
       simp [eval] at h; exact ih h
     | app f' a' =>
@@ -304,20 +315,21 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
         match hm : f'' with
         | .lam dom body =>
           simp [hm] at h; exact ih h
+        | .mu ann body =>
+          simp [hm] at h; exact ih h
         | .var k =>
           simp [hm] at h
           obtain ⟨rfl, rfl⟩ := h
-          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
+          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h, by intro ⟨a', b, h⟩; exact Expr.noConfusion h⟩
         | .top =>
           simp [hm] at h
           obtain ⟨rfl, rfl⟩ := h
-          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
+          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h, by intro ⟨a', b, h⟩; exact Expr.noConfusion h⟩
         | .app g c =>
           simp [hm] at h
           obtain ⟨rfl, rfl⟩ := h
-          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
+          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h, by intro ⟨a', b, h⟩; exact Expr.noConfusion h⟩
         | .asc e' t' =>
-          -- eval never produces asc
           subst hm
           exact nomatch (eval_produces_value hf)
 
@@ -334,7 +346,7 @@ private noncomputable def eval_result_sub_lam_not_app :
     | @app _ f_head a_arg _ D' R' hfD' _ _ =>
       -- hfD' : Sub [] f_head (lam D' R'). f_head is the head of the eval result.
       obtain ⟨n, e, he⟩ := heval
-      obtain ⟨hf_eval, hf_not_lam⟩ := eval_app_head_result he
+      obtain ⟨hf_eval, hf_not_lam, hf_not_mu⟩ := eval_app_head_result he
       -- We need to case-split on f_head. But f_head is in the context as a variable.
       -- Use cases on the Sub derivation hfD' to proceed.
       -- First: can hfD' be [Refl]? Then f_head = lam D' R'. Contradicts hf_not_lam.
@@ -348,6 +360,9 @@ private noncomputable def eval_result_sub_lam_not_app :
       | refl => exact absurd ⟨D', R', rfl⟩ hf_not_lam
       | lam _ _ _ _ _ _ _ => exact absurd ⟨_, _, rfl⟩ hf_not_lam
       | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
+      | mu _ _ _ _ _ _ =>
+        -- f_head = mu. Contradicts hf_not_mu.
+        exact absurd ⟨_, _, rfl⟩ hf_not_mu
       | ascL _ _ _ _ _ _ =>
         -- f_head = asc e' τ'. But eval never produces asc.
         obtain ⟨n', e', he'⟩ := hf_eval
@@ -420,6 +435,16 @@ private noncomputable def evalPreservation_aux :
       rw [hτ'] at hτ; cases hτ
       exact Sub.lam [] A B b₁ b₂ hBA hbody
 
+    | mu _ A b c hAc hbA =>
+      -- e = mu A b, τ = c. mu is a value, so v_e = mu A b.
+      -- ISSUE: We need Sub [] (.mu A b) v_τ, but we only know Sub [] A c
+      -- and eval fuel_τ c = some v_τ. To get Sub [] A v_τ we'd need to
+      -- evaluate A, but we don't have fuel for A in our hypothesis.
+      -- This is a fundamental gap: mu introduces a type annotation (A) that
+      -- is NOT evaluated by the eval of (.mu A b), so eval preservation
+      -- can't relate A to the eval result of c.
+      sorry
+
     | ascL _ _ _ _ heτ hτb =>
       -- e = asc e' τ'. eval strips ascription.
       cases fuel with
@@ -459,6 +484,18 @@ private noncomputable def evalPreservation_aux :
               Sub.subst_lemma hbody₁R haD
             have hsub_body := Sub.trans hsubst hRb
             exact ih _ _ hsub_body m fuel_τ _ _ (by omega) he hτ
+
+          | .mu ann body₁ =>
+            -- f' = mu ann body₁. Eval unfolds: (body₁.subst 0 (mu ann body₁)).app a
+            simp [hm_f] at he
+            -- Similar to lam case but mu unfolding is more complex.
+            -- We know Sub [] (mu ann body₁) (lam D R) from eval preservation.
+            -- By the mu rule, this means Sub [] ann (lam D R) and body check.
+            -- Then ann ⊑ (lam D R), so ann is a function type.
+            -- But the eval unfolds the mu differently from how [App] extracts D and R.
+            -- This case is fundamentally hard because mu unfolding doesn't align
+            -- with the [App] rule's extraction of domain/return type.
+            sorry
 
           | .var k =>
             simp [hm_f] at he; subst he

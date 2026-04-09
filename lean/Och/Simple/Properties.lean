@@ -50,6 +50,7 @@ theorem Expr.shift_add (e : Expr) (c n₁ n₂ : Nat) :
   | app _ _ ihf iha => simp only [shift]; congr 1; exact ihf c; exact iha c
   | asc _ _ ihe iht => simp only [shift]; congr 1; exact ihe c; exact iht c
   | top => rfl
+  | mu _ _ iha ihb => simp only [shift]; congr 1; exact iha c; exact ihb (c + 1)
 
 theorem Expr.shift_shift_comm (e : Expr) (c₁ c₂ n₁ n₂ : Nat) (h : c₁ ≤ c₂) :
     (e.shift c₁ n₁).shift (c₂ + n₁) n₂ = (e.shift c₂ n₂).shift c₁ n₁ := by
@@ -69,6 +70,9 @@ theorem Expr.shift_shift_comm (e : Expr) (c₁ c₂ n₁ n₂ : Nat) (h : c₁ �
   | app _ _ ihf iha => simp only [shift]; congr 1; exact ihf c₁ c₂ h; exact iha c₁ c₂ h
   | asc _ _ ihe iht => simp only [shift]; congr 1; exact ihe c₁ c₂ h; exact iht c₁ c₂ h
   | top => rfl
+  | mu _ _ iha ihb =>
+    simp only [shift]; congr 1; exact iha c₁ c₂ h
+    rw [show c₂ + n₁ + 1 = (c₂ + 1) + n₁ from by omega]; exact ihb (c₁ + 1) (c₂ + 1) (by omega)
 
 -- ============================================================
 -- 2. Shift-Subst interaction
@@ -104,6 +108,11 @@ theorem Expr.subst_shift_lo (e : Expr) (n c d : Nat) (v : Expr) (h : c ≤ n) :
   | app _ _ ihf iha => simp only [subst, shift]; congr 1; exact ihf n c v h; exact iha n c v h
   | asc _ _ ihe iht => simp only [subst, shift]; congr 1; exact ihe n c v h; exact iht n c v h
   | top => rfl
+  | mu _ _ ihd ihb =>
+    simp only [subst, shift]; congr 1; exact ihd n c v h
+    have := ihb (n + 1) (c + 1) (v.shift 0 1) (by omega)
+    rw [show n + 1 + d = (n + d) + 1 from by omega] at this; rw [this]; congr 1
+    exact Expr.shift_shift_comm v 0 c 1 d (by omega)
 
 theorem Expr.subst_shift_hi (e : Expr) (n c d : Nat) (v : Expr) (h : n ≤ c) :
     (e.subst n v).shift c d = (e.shift (c + 1) d).subst n (v.shift c d) := by
@@ -143,6 +152,11 @@ theorem Expr.subst_shift_hi (e : Expr) (n c d : Nat) (v : Expr) (h : n ≤ c) :
   | app _ _ ihf iha => simp only [subst, shift]; congr 1; exact ihf n c v h; exact iha n c v h
   | asc _ _ ihe iht => simp only [subst, shift]; congr 1; exact ihe n c v h; exact iht n c v h
   | top => rfl
+  | mu _ _ ihd ihb =>
+    simp only [subst, shift]; congr 1; exact ihd n c v h
+    have := ihb (n + 1) (c + 1) (v.shift 0 1) (by omega)
+    rw [show c + 1 + 1 = (c + 1) + 1 from by omega] at this; rw [this]; congr 1
+    exact Expr.shift_shift_comm v 0 c 1 d (by omega)
 
 theorem Expr.subst_shift_zero (R a : Expr) (d : Nat) :
     (R.subst 0 a).shift 0 d = (R.shift 1 d).subst 0 (a.shift 0 d) :=
@@ -244,6 +258,14 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
   | app _ _ ihf iha => simp only [subst]; congr 1; exact ihf m n u w h; exact iha m n u w h
   | asc _ _ ihe iht => simp only [subst]; congr 1; exact ihe m n u w h; exact iht m n u w h
   | top => rfl
+  | mu _ _ ihd ihb =>
+    simp only [subst]; congr 1; exact ihd m n u w h
+    have hw : (w.shift m 1).shift 0 1 = (w.shift 0 1).shift (m + 1) 1 :=
+      (Expr.shift_shift_comm w 0 m 1 1 (by omega)).symm
+    have hu : (u.subst n w).shift 0 1 = (u.shift 0 1).subst (n + 1) (w.shift 0 1) :=
+      Expr.subst_shift_lo u n 0 1 w (by omega)
+    rw [show n + 1 + 1 = (n + 1) + 1 from by omega, hw, hu]
+    exact ihb (m + 1) (n + 1) (u.shift 0 1) (w.shift 0 1) (by omega)
 
 -- ============================================================
 -- 4. Context lookup lemmas (fully proven)
@@ -400,6 +422,11 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ ((Expr.asc e τ).shift n 1) _; simp only [shift]; exact Sub.ascL _ _ _ _ (iheτ n) (ihτb n)
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).shift n 1); simp only [shift]; exact Sub.ascR _ _ _ _ (iheτ n) (ihaτ n)
+  | @mu Γ' A b' c _hAc _hbA ihAc ihbA =>
+    show Sub _ ((Expr.mu A b').shift n 1) (c.shift n 1); simp only [shift]
+    have ihbA' := ihbA (n + 1)
+    rw [Expr.shift_shift_comm A 0 n 1 1 (by omega)] at ihbA'
+    exact Sub.mu _ _ _ _ (ihAc n) ihbA'
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
 noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
@@ -456,6 +483,7 @@ def Expr.complexity : Expr → Nat
   | .lam d b => 1 + d.complexity + b.complexity
   | .app f a => 1 + f.complexity + a.complexity
   | .asc e t => 1 + e.complexity + t.complexity
+  | .mu a b => 1 + a.complexity + b.complexity
 
 /-- Shifting preserves complexity — shift only changes variable indices, not structure. -/
 theorem Expr.shift_complexity (e : Expr) (c n : Nat) : (e.shift c n).complexity = e.complexity := by
@@ -465,6 +493,7 @@ theorem Expr.shift_complexity (e : Expr) (c n : Nat) : (e.shift c n).complexity 
   | app f a ihf iha => simp [shift, complexity, ihf c, iha c]
   | asc e t ihe iht => simp [shift, complexity, ihe c, iht c]
   | top => rfl
+  | mu a b iha ihb => simp [shift, complexity, iha c, ihb (c+1)]
 
 -- 6a. Sub.size — derivation size for well-founded recursion
 
@@ -477,6 +506,7 @@ def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
   | .app _ _ _ _ _ _ h1 h2 h3 => 1 + h1.size + h2.size + h3.size
   | .ascL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .mu _ _ _ _ h1 h2 => 1 + h1.size + h2.size
 
 /-- Every derivation has positive size. -/
 theorem Sub.size_pos {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : 0 < h.size := by
@@ -623,6 +653,10 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
+      -- [Mu]: a = mu A body, hAb' : Sub Γ A b, hbodyA : Sub (A::Γ) body (A.shift 0 1)
+      | .mu _ A body _ hAb' hbodyA =>
+        exact Sub.mu _ A body c (trans_n Γ A b c hAb' hbc hcplx (by
+          simp [Sub.size] at hle ⊢; omega)) hbodyA
       -- [Asc-L]: a = asc e τ, heτ : Sub Γ e τ, hτb : Sub Γ τ b
       | .ascL _ e τ _ heτ hτb =>
         have hτc := trans_n Γ τ b c hτb hbc hcplx (by
@@ -712,7 +746,15 @@ private noncomputable def transNarrowInner
           simp [Sub.size] at hle ⊢; omega)
         have hae' := narrow_n Γ_pre Γ_suf B C a e hCB hae hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        exact Sub.ascR _ _ e τ heτ' hae'⟩
+        exact Sub.ascR _ _ e τ heτ' hae'
+      | .mu _ A_mu b_mu _ hAb hbA =>
+        have hAb' := narrow_n Γ_pre Γ_suf B C A_mu b hCB hAb hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        -- hbA : Sub (A_mu :: (Γ_pre ++ B :: Γ_suf)) b_mu (A_mu.shift 0 1)
+        -- = Sub ((A_mu :: Γ_pre) ++ B :: Γ_suf) b_mu (A_mu.shift 0 1)
+        have hbA' := narrow_n (A_mu :: Γ_pre) Γ_suf B C b_mu (A_mu.shift 0 1) hCB hbA hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        exact Sub.mu _ A_mu b_mu b hAb' hbA'⟩
 
 -- 6c. Outer induction (on cut-formula complexity)
 
@@ -970,6 +1012,22 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]; exact Sub.ascR _ _ _ _ (iheτ Δ hctx hv) (ihaτ Δ hctx hv)
+  | @mu Γ'' A b' c _hAc _hbA ihAc ihbA =>
+    have hAc' := ihAc Δ hctx hv
+    -- Body IH: substitute in the body check, using (A :: Δ) as the extended prefix
+    have hbA' := ihbA (A :: Δ) (by rw [hctx]; simp [List.cons_append]) hv
+    simp only [List.length_cons] at hbA'
+    change Sub ((A.subst Δ.length (v.shift 0 Δ.length)) :: substCtx Δ v ++ Γ) _ _ at hbA'
+    -- Align the shift in the body and the RHS
+    have hv_shift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
+      rw [Expr.shift_add]; congr 1; omega
+    have hkey : (A.shift 0 1).subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)) =
+        (A.subst Δ.length (v.shift 0 Δ.length)).shift 0 1 := by
+      rw [Expr.subst_shift_lo A Δ.length 0 1 (v.shift 0 Δ.length) (by omega), hv_shift]
+    rw [hkey] at hbA'
+    -- Also rewrite the body term to use the composed shift
+    rw [← hv_shift] at hbA'
+    exact Sub.mu _ _ _ _ hAc' hbA'
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
 noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}
