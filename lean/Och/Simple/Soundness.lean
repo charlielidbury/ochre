@@ -365,7 +365,6 @@ private noncomputable def evalPreservation_aux :
     have : fuel = 0 := by omega
     subst this; simp [eval] at he
   | n + 1 => fun e τ hsub fuel fuel_τ v_e v_τ hbound he hτ => by
-    -- IH: the theorem holds for any total fuel ≤ n
     let ih := evalPreservation_aux n
     cases hsub with
     | refl =>

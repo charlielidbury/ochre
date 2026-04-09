@@ -733,9 +733,6 @@ theorem Ctx.get?_append_eq {Δ : Ctx} {T : Expr} {Γ : Ctx} {U : Expr}
     | some W =>
       simp only [hΔ, Option.map, Option.some.injEq] at hget
       have ihW := ih (by rw [hΔ])
-      -- ihW : W = T.shift 0 (Δ.length + 1)
-      -- hget : W.shift 0 1 = U
-      -- goal: U = T.shift 0 ((A :: Δ).length + 1)
       rw [← hget, ihW]
       simp only [List.length_cons]
       rw [Expr.shift_add]; congr 1; omega
