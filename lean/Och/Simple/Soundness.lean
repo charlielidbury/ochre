@@ -35,7 +35,7 @@ def closingSubst : List Expr → Expr → Expr
 -- ============================================================
 
 /-- Top is closed under any substitution. -/
-theorem closingSubst_top : (γ : List Expr) → closingSubst γ .top = .top
+@[simp] theorem closingSubst_top : (γ : List Expr) → closingSubst γ .top = .top
   | [] => rfl
   | _ :: rest => by
     show closingSubst rest (Expr.subst .top 0 _) = .top
@@ -261,34 +261,20 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
         match hm : f' with
         | .lam dom body =>
           simp [hm] at h
-          -- eval n (body.subst 0 a) = some v. IH gives eval n v = some v.
-          have hv := ih h
-          exact eval_mono v n v hv 1
+          exact eval_mono v n v (ih h) 1
         | .var k =>
           simp [hm] at h; subst h
-          -- v = app (var k) a. eval (n+1) (app (var k) a):
-          -- eval n (var k) = some (var k) (need n ≥ 1)
-          have hn_pos : n ≥ 1 := eval_pos hf
-          simp [eval, bind, Option.bind, eval_var n k hn_pos]
+          simp [eval, bind, Option.bind, eval_var n k (eval_pos hf)]
         | .top =>
           simp [hm] at h; subst h
-          have hn_pos : n ≥ 1 := eval_pos hf
-          simp [eval, bind, Option.bind, eval_top n hn_pos]
+          simp [eval, bind, Option.bind, eval_top n (eval_pos hf)]
         | .app g b =>
           simp [hm] at h; subst h
-          -- v = app (app g b) a. eval (n+1) (app (app g b) a):
-          -- need eval n (app g b) = some (app g b).
-          -- We know eval n f = some (app g b), so by IH: eval n (app g b) = some (app g b).
-          have hgb := ih hf
-          simp [eval, bind, Option.bind, hgb]
+          simp [eval, bind, Option.bind, ih hf]
         | .asc e' t' =>
-          simp [hm] at h; subst h
-          -- v = app (asc e' t') a. But eval never returns asc.
-          exact nomatch (eval_produces_value hf)
+          simp [hm] at h; subst h; exact nomatch (eval_produces_value hf)
         | .mu ann' body' =>
-          simp [hm] at h; subst h
-          -- eval never returns mu either.
-          exact nomatch (eval_produces_value hf)
+          simp [hm] at h; subst h; exact nomatch (eval_produces_value hf)
 
 -- An expression is an "eval result" if some eval produced it.
 def IsEvalResult (v : Expr) : Prop := ∃ n e, eval n e = some v
@@ -321,26 +307,14 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
         match hm : f'' with
         | .lam dom body =>
           simp [hm] at h; exact ih h
-        | .var k =>
-          simp [hm] at h
-          obtain ⟨rfl, rfl⟩ := h
-          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
-        | .top =>
-          simp [hm] at h
-          obtain ⟨rfl, rfl⟩ := h
-          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
-        | .app g c =>
+        | .var k | .top | .app g c =>
           simp [hm] at h
           obtain ⟨rfl, rfl⟩ := h
           exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
         | .asc e' t' =>
-          -- eval never produces asc
-          subst hm
-          exact nomatch (eval_produces_value hf)
+          subst hm; exact nomatch (eval_produces_value hf)
         | .mu ann body =>
-          -- eval never produces mu
-          subst hm
-          exact nomatch (eval_produces_value hf)
+          subst hm; exact nomatch (eval_produces_value hf)
 
 -- Key lemma: Sub [] v (lam D R) where v is an eval result implies v is a lam.
 -- Auxiliary with size bound, proved by recursion on bound.
@@ -350,42 +324,20 @@ private noncomputable def eval_result_sub_lam_not_app :
     IsEvalResult (.app f a) → hsub.size ≤ bound → False
   | 0 => fun hsub _ hle => absurd hle (by have := hsub.size_pos; omega)
   | bound + 1 => fun hsub heval hle => by
-    -- hsub : Sub [] (app f a) (lam D R). Only [App] can produce this.
     cases hsub with
     | @app _ f_head a_arg _ D' R' hfD' _ _ =>
-      -- hfD' : Sub [] f_head (lam D' R'). f_head is the head of the eval result.
       obtain ⟨n, e, he⟩ := heval
       obtain ⟨hf_eval, hf_not_lam⟩ := eval_app_head_result he
-      -- We need to case-split on f_head. But f_head is in the context as a variable.
-      -- Use cases on the Sub derivation hfD' to proceed.
-      -- First: can hfD' be [Refl]? Then f_head = lam D' R'. Contradicts hf_not_lam.
-      -- Can hfD' be [Lam]? Then f_head is a lam. Contradicts hf_not_lam.
-      -- Can hfD' be [Top]? Then target = top, not lam. Impossible.
-      -- Can hfD' be [Var]? Context is []. Impossible.
-      -- Can hfD' be [Asc-L]? Then f_head = asc e' τ'. Eval never produces asc. Contradiction.
-      -- Can hfD' be [Asc-R]? Then target = asc e' τ', not lam. Impossible.
-      -- Can hfD' be [App]? Then f_head = app g c. f_head is eval result. IH.
       cases hfD' with
       | refl => exact absurd ⟨D', R', rfl⟩ hf_not_lam
       | lam _ _ _ _ _ _ _ => exact absurd ⟨_, _, rfl⟩ hf_not_lam
       | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
       | ascL _ _ _ _ _ _ =>
-        -- f_head = asc e' τ'. But eval never produces asc.
-        obtain ⟨n', e', he'⟩ := hf_eval
-        exact nomatch (eval_produces_value he')
+        obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | mu _ _ _ _ _ _ =>
-        -- f_head = mu ann body. But eval never produces mu.
-        obtain ⟨n', e', he'⟩ := hf_eval
-        exact nomatch (eval_produces_value he')
+        obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | @app _ g c _ D'' R'' hgD'' hcD'' hR''D' =>
-        -- f_head = app g c. Reconstruct Sub [] (app g c) (lam D' R').
-        have hfD'_rebuilt : Sub [] (.app g c) (.lam D' R') :=
-          Sub.app [] g c (.lam D' R') D'' R'' hgD'' hcD'' hR''D'
         rename_i haD_inner hRb_inner
-        have haD_pos := haD_inner.size_pos
-        have hRb_pos := hRb_inner.size_pos
-        -- The rebuilt derivation has the same structure, just reassembled.
-        -- Its size is definitionally equal to the sum of its parts.
         let rebuilt := Sub.app [] g c (.lam D' R') D'' R'' hgD'' hcD'' hR''D'
         suffices h : rebuilt.size ≤ bound from
           eval_result_sub_lam_not_app bound rebuilt hf_eval h
@@ -413,7 +365,6 @@ private noncomputable def evalPreservation_aux :
     have : fuel = 0 := by omega
     subst this; simp [eval] at he
   | n + 1 => fun e τ hsub fuel fuel_τ v_e v_τ hbound he hτ => by
-    -- IH: the theorem holds for any total fuel ≤ n
     let ih := evalPreservation_aux n
     cases hsub with
     | refl =>
@@ -462,31 +413,17 @@ private noncomputable def evalPreservation_aux :
         exact ih _ _ hae fuel m _ _ (by omega) he hτ
 
     | mu _ A b _ hAc hbA =>
-      -- e = .mu A b, τ = c (the fourth argument to Sub.mu)
-      -- eval fuel (.mu A b) = eval (fuel-1) (b.subst 0 (.mu A b))
       cases fuel with
       | zero => simp [eval] at he
       | succ m =>
         simp [eval] at he
-        -- he : eval m (b.subst 0 (.mu A b)) = some v_e
-        -- Strategy: derive Sub [] (.mu A b) A, then Sub [] (b.subst 0 (.mu A b)) A,
-        -- then Sub [] (b.subst 0 (.mu A b)) c by trans with hAc
-        -- Then use IH.
-        -- Step 1: Sub [] (.mu A b) A via Sub.mu with c=A, hAc=refl, hbA=hbA
+        -- Unfold mu: derive Sub [] (b.subst 0 (mu A b)) c via mu-A-trans chain
         have hmuA : Sub [] (.mu A b) A := Sub.mu [] A b A (Sub.refl [] A) hbA
-        -- Step 2: Sub [] (b.subst 0 (.mu A b)) (A.shift 0 1).subst 0 (.mu A b)
-        --       = Sub [] (b.subst 0 (.mu A b)) A  (by shift-subst cancellation)
         have hbody_sub : Sub [] (b.subst 0 (.mu A b)) A := by
-          have h1 := Sub.subst_lemma hbA hmuA
-          rw [Expr.subst_shift_cancel_zero] at h1
-          exact h1
-        -- Step 3: Sub [] (b.subst 0 (.mu A b)) c by trans
-        have hsub_unfolded : Sub [] (b.subst 0 (.mu A b)) _ := Sub.trans hbody_sub hAc
-        -- Step 4: IH on (b.subst 0 (.mu A b)) with fuel m (< fuel = m+1)
-        exact ih _ _ hsub_unfolded m fuel_τ _ _ (by omega) he hτ
+          have h1 := Sub.subst_lemma hbA hmuA; rw [Expr.subst_shift_cancel_zero] at h1; exact h1
+        exact ih _ _ (Sub.trans hbody_sub hAc) m fuel_τ _ _ (by omega) he hτ
 
     | app _ f a _ D R hfD haD hRb =>
-      -- e = app f a, τ = b (the fourth argument)
       cases fuel with
       | zero => simp [eval] at he
       | succ m =>
@@ -511,37 +448,20 @@ private noncomputable def evalPreservation_aux :
 
           | .var k =>
             simp [hm_f] at he; subst he
-            have hm_pos : m ≥ 1 := eval_pos hf_eval
-            have hfuel_τ_pos : fuel_τ ≥ 1 := eval_pos hτ
-            have hlam_eval1 : eval 1 (.lam D R) = some (.lam D R) := eval_lam 1 D R (by omega)
-            have hf_sub : Sub [] (.var k) (.lam D R) :=
-              ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
-            cases hf_sub with
-            | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
-
+            have _ : fuel_τ ≥ 1 := eval_pos hτ
+            have hf_sub := ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
+            cases hf_sub with | var _ _ _ _ hget _ => simp [Ctx.get?, List.get?] at hget
           | .top =>
             simp [hm_f] at he; subst he
-            have hm_pos : m ≥ 1 := eval_pos hf_eval
-            have hfuel_τ_pos : fuel_τ ≥ 1 := eval_pos hτ
-            have hlam_eval1 : eval 1 (.lam D R) = some (.lam D R) := eval_lam 1 D R (by omega)
-            have hf_sub : Sub [] .top (.lam D R) :=
-              ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
-            exact nomatch hf_sub
-
+            have _ : fuel_τ ≥ 1 := eval_pos hτ
+            exact nomatch ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
           | .app g c =>
             simp [hm_f] at he; subst he
-            have hm_pos : m ≥ 1 := eval_pos hf_eval
-            have hfuel_τ_pos : fuel_τ ≥ 1 := eval_pos hτ
-            have hlam_eval1 : eval 1 (.lam D R) = some (.lam D R) := eval_lam 1 D R (by omega)
-            have hf_sub : Sub [] (.app g c) (.lam D R) :=
-              ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
+            have _ : fuel_τ ≥ 1 := eval_pos hτ
+            have hf_sub := ih _ _ hfD m 1 _ _ (by omega) hf_eval (eval_lam 1 D R (by omega))
             exact (eval_result_sub_lam_app_absurd hf_sub ⟨m, _, hf_eval⟩).elim
-
-          | .asc e' t' =>
-            exact nomatch (eval_produces_value hf_eval)
-
-          | .mu ann body =>
-            exact nomatch (eval_produces_value hf_eval)
+          | .asc e' t' => exact nomatch (eval_produces_value hf_eval)
+          | .mu ann body => exact nomatch (eval_produces_value hf_eval)
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/

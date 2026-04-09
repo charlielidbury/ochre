@@ -62,7 +62,7 @@ def subst (e : Expr) (target : Nat) (replacement : Expr) : Expr :=
         (body.subst (target + 1) (replacement.shift 0 1))
 
 /-- Shifting by 0 is the identity. -/
-theorem shift_zero (e : Expr) (c : Nat) : e.shift c 0 = e := by
+@[simp] theorem shift_zero (e : Expr) (c : Nat) : e.shift c 0 = e := by
   induction e generalizing c with
   | var k =>
     unfold shift
@@ -82,7 +82,7 @@ theorem shift_zero (e : Expr) (c : Nat) : e.shift c 0 = e := by
 /-- Shifting by 1 at cutoff `c` then substituting at `c` cancels out.
     After shifting, there are no `var c`'s in the result, so the
     substitution value is never used. -/
-theorem subst_shift_cancel (e : Expr) (c : Nat) (s : Expr)
+@[simp] theorem subst_shift_cancel (e : Expr) (c : Nat) (s : Expr)
     : (e.shift c 1).subst c s = e := by
   induction e generalizing c s with
   | var k =>
@@ -119,7 +119,7 @@ theorem subst_shift_cancel (e : Expr) (c : Nat) (s : Expr)
     exact ⟨ih_ann c s, ih_body (c + 1) (s.shift 0 1)⟩
 
 /-- Common case: shift by 1 at cutoff 0, then subst at 0 cancels. -/
-theorem subst_shift_cancel_zero (e : Expr) (s : Expr)
+@[simp] theorem subst_shift_cancel_zero (e : Expr) (s : Expr)
     : (e.shift 0 1).subst 0 s = e :=
   subst_shift_cancel e 0 s
 
