@@ -118,102 +118,85 @@ theorem eval_mono_add {e v : Expr} (fuel extra : Nat)
   | zero => simp; exact h
   | succ n ih => rw [Nat.add_succ]; exact eval_mono _ ih
 
-/-- Eval preservation: if `Sub [] e τ` and both `e` and `τ` evaluate to values,
-    then `Sub [] v_e v_τ`.
+-- Helper: extract eval of body.subst from CBN eval of app (lam D body) barg.
+private theorem eval_betaR_type {D body barg v : Expr} {k : Nat}
+    (hτ : eval (k + 2) (.app (.lam D body) barg) = some v)
+    : eval (k + 1) (body.subst 0 barg) = some v := by
+  rw [eval_app_unfold] at hτ; simp only [eval] at hτ; exact hτ
 
-    Proved cases:
-    - [Refl]: v_e = v_τ since e = τ
-    - [Top]: v_τ = top, result by Sub.top
-    - [Var]: vacuous (empty context has no variables)
-    - [Lam]: both sides are lambda values, eval is identity, use original derivation
-    - [Asc-R]: eval erases ascription on τ side, use IH + fuel monotonicity
-    - [Beta-R]: call-by-name makes this trivial — eval of app (lam D body) b
-      reduces to eval (body.subst 0 b), matching the unevaluated arg in habody
+/-- Eval preservation (inner): structural recursion on `m ≥ fuel + fuel_τ`,
+    then case analysis on the Sub derivation. This allows [AscL] to build a
+    new Sub.trans derivation and recurse at smaller fuel.
 
-    Sorry'd cases (fundamental difficulties):
-    - [App]: requires lambda inversion on Sub [] f' (lam D R), blocked by trans
-    - [Asc-L]: intermediate type may not evaluate with available fuel
-    - [Trans]: intermediate term may not evaluate (needs normalization theorem) -/
-noncomputable def evalPreservation {e τ : Expr}
-    (hsub : Sub [] e τ) (fuel : Nat)
+    Proved cases: [Refl], [Top], [Var], [Lam], [BetaR], [Asc-L], [Asc-R].
+    Sorry'd: [App] (needs lambda inversion through trans), [Trans] (needs normalization). -/
+noncomputable def evalPreservation_go
+    (m : Nat) {e τ : Expr}
+    (hsub : Sub ([] : Ctx) e τ)
+    (fuel fuel_τ : Nat)
     (v_e v_τ : Expr)
-    (he : eval fuel e = some v_e) (hτ : eval fuel τ = some v_τ)
+    (hm : fuel + fuel_τ ≤ m)
+    (he : eval fuel e = some v_e) (hτ : eval fuel_τ τ = some v_τ)
     : Sub [] v_e v_τ :=
-  evalPreservation_aux hsub rfl fuel v_e v_τ he hτ
-where
-  /-- Helper with generalized context equality for induction. -/
-  evalPreservation_aux {Γ : Ctx} {e τ : Expr}
-      (hsub : Sub Γ e τ) (hΓ : Γ = []) (fuel : Nat)
-      (v_e v_τ : Expr)
-      (he : eval fuel e = some v_e) (hτ : eval fuel τ = some v_τ)
-      : Sub [] v_e v_τ := by
-    induction hsub generalizing fuel v_e v_τ with
-    | refl _ a =>
-      have : v_e = v_τ := by rw [he] at hτ; exact Option.some.inj hτ
-      subst this; exact Sub.refl _ _
-    | top _ a =>
-      match fuel with
-      | 0 => simp [eval] at hτ
-      | n + 1 =>
-        simp [eval] at hτ
-        rw [← hτ]; exact Sub.top _ _
-    | var Γ x b T hget hTb ih =>
-      subst hΓ; simp [Ctx.get?] at hget
-    | @lam Γ A B b₁ b₂ hBA hbody ihBA ihbody =>
-      match fuel with
-      | 0 => simp [eval] at he
-      | n + 1 =>
-        simp [eval] at he hτ
-        rw [← he, ← hτ]
-        subst hΓ
-        exact Sub.lam [] A B b₁ b₂ hBA hbody
-    | @app Γ f a b D R hfD haD hRb ihfD ihaD ihRb =>
-      -- With call-by-name, eval (app f a) substitutes unevaluated `a`, which matches
-      -- the `a` in hRb : Sub Γ (R.subst 0 a) b. However, we still need lambda
-      -- inversion on Sub [] f' (lam D R) to extract Sub [D] body' R, which is
-      -- blocked by trans as a constructor. A logical-relations approach would be needed.
+  match m with
+  | 0 =>
+    have : fuel = 0 := by omega
+    absurd (this ▸ he) (by simp [eval])
+  | m' + 1 =>
+    match hsub with
+    | .refl _ a =>
+      have he' := eval_mono_add fuel fuel_τ he
+      have hτ' := eval_mono_add fuel_τ fuel hτ
+      have hτ'' : eval (fuel + fuel_τ) a = some v_τ := by rw [Nat.add_comm] at hτ'; exact hτ'
+      have heq : v_e = v_τ := by rw [he'] at hτ''; exact Option.some.inj hτ''
+      heq ▸ Sub.refl _ _
+    | .top _ a =>
+      match fuel_τ, hτ with
+      | 0, hτ => absurd hτ (by simp [eval])
+      | n + 1, hτ =>
+        have hvτ : v_τ = .top := by simp [eval] at hτ; exact hτ.symm
+        hvτ ▸ Sub.top _ _
+    | .var _ x _ T hget _ =>
+      absurd hget (by simp [Ctx.get?])
+    | .lam _ A B b₁ b₂ hBA hbody =>
+      match fuel, fuel_τ, he, hτ with
+      | 0, _, he, _ => absurd he (by simp [eval])
+      | _, 0, _, hτ => absurd hτ (by simp [eval])
+      | n + 1, k + 1, he, hτ =>
+        have hve : v_e = .lam A b₁ := by simp [eval] at he; exact he.symm
+        have hvτ : v_τ = .lam B b₂ := by simp [eval] at hτ; exact hτ.symm
+        hve ▸ hvτ ▸ Sub.lam [] A B b₁ b₂ hBA hbody
+    | .app _ f a b D R hfD haD hRb =>
+      -- [App]: Requires lambda inversion through trans chains.
       sorry
-    | @betaR Γ a D body b hbD habody ihbD ihabody =>
-      -- τ = app (lam D body) b
-      -- With call-by-name: eval (fuel+1) (app (lam D body) b)
-      --   = eval fuel (lam D body) >>= match with lam _ body => eval fuel (body.subst 0 b)
-      --   = eval fuel (body.subst 0 b)
-      -- So hτ gives us eval of body.subst 0 b = some v_τ (after peeling fuel)
-      -- IH on habody: Sub [] a (body.subst 0 b) with eval a = v_e, eval (body.subst 0 b) = v_τ
-      match fuel with
-      | 0 => simp [eval] at hτ
-      | n + 1 =>
-        -- hτ : eval (n+1) (app (lam D body) b) = some v_τ
-        rw [eval_app_unfold] at hτ
-        -- After unfolding: eval n (lam D body) >>= ... = some v_τ
-        -- eval n (lam D body) = some (lam D body) for n ≥ 1, but we need n ≥ 1
-        -- Actually eval 0 (lam D body) = none, so handle that
-        cases n with
-        | zero => simp [eval] at hτ
-        | succ m =>
-          simp only [eval] at hτ
-          -- Now hτ : eval (m+1) (body.subst 0 b) = some v_τ
-          exact ihabody hΓ (m + 2) v_e v_τ he (eval_mono_add (m + 1) 1 hτ)
-    | @ascL Γ e' ty b heτ hτb iheτ ihτb =>
-      -- e = asc e' ty, so eval strips the ascription: eval fuel e = eval (fuel-1) e'
-      -- DIFFICULTY: we'd need eval fuel ty to succeed to use the IH for heτ,
-      -- but the intermediate type `ty` may not evaluate with available fuel (or at all).
+    | .betaR _ a D body barg hbD habody =>
+      match fuel_τ, hτ with
+      | 0, hτ => absurd hτ (by simp [eval])
+      | 1, hτ => absurd hτ (by simp [eval])
+      | k + 2, hτ =>
+        have hτ' := eval_betaR_type hτ
+        evalPreservation_go m' habody fuel (k + 1) v_e v_τ (by omega) he hτ'
+    | .ascL _ ei ti b heTy hTyB =>
+      match fuel, he with
+      | 0, he => absurd he (by simp [eval])
+      | n + 1, he =>
+        have he' : eval n ei = some v_e := by simp only [eval] at he; exact he
+        evalPreservation_go m' (Sub.trans _ ei ti b heTy hTyB) n fuel_τ v_e v_τ (by omega) he' hτ
+    | .ascR _ a ei ti heTy hAE =>
+      match fuel_τ, hτ with
+      | 0, hτ => absurd hτ (by simp [eval])
+      | n + 1, hτ =>
+        have hτ' : eval n ei = some v_τ := by simp only [eval] at hτ; exact hτ
+        evalPreservation_go m' hAE fuel n v_e v_τ (by omega) he hτ'
+    | .trans _ a mid c hab hbc =>
+      -- Need eval of intermediate term. Requires normalization theorem.
       sorry
-    | @ascR Γ a e' ty heτ hae iheτ ihae =>
-      -- τ = asc e' ty, so eval strips the ascription: eval fuel τ = eval (fuel-1) e'
-      match fuel with
-      | 0 => simp [eval] at hτ
-      | n + 1 =>
-        simp only [eval] at hτ
-        -- hτ : eval n e' = some v_τ
-        -- he : eval (n+1) a = some v_e
-        -- hae : Sub Γ a e', use IH with fuel monotonicity
-        exact ihae hΓ (n + 1) v_e v_τ he (eval_mono n hτ)
-    | @trans Γ a b c hab hbc ihab ihbc =>
-      -- DIFFICULTY: To chain the two IHs we need eval fuel b = some v_b for some v_b,
-      -- i.e., the intermediate term b must evaluate successfully.
-      -- This requires a normalization theorem (all well-typed terms evaluate)
-      -- which we don't have yet.
-      sorry
+
+noncomputable def evalPreservation {e τ : Expr}
+    (hsub : Sub [] e τ) (fuel fuel_τ : Nat)
+    (v_e v_τ : Expr)
+    (he : eval fuel e = some v_e) (hτ : eval fuel_τ τ = some v_τ)
+    : Sub [] v_e v_τ :=
+  evalPreservation_go (fuel + fuel_τ) hsub fuel fuel_τ v_e v_τ (Nat.le_refl _) he hτ
 
 end Och.Simple
