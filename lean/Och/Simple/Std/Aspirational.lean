@@ -55,13 +55,13 @@ private def x99 : Expr := .var 99
 -- Adding Sub.muR would enable these.
 
 -- A1: dtrue <= dBool — PROVED (see Std/DBool.lean: dtrue_sub_dBool)
-example : Sub [] dtrue dBool := dtrue_sub_dBool
+noncomputable example : Sub [] dtrue dBool := dtrue_sub_dBool
 
 -- A2: dfalse <= dBool — PROVED (see Std/DBool.lean: dfalse_sub_dBool)
-example : Sub [] dfalse dBool := dfalse_sub_dBool
+noncomputable example : Sub [] dfalse dBool := dfalse_sub_dBool
 
 -- A3: dzero <= dNat — PROVED (see Std/DNat.lean: dzero_sub_dNat)
-example : Sub [] dzero dNat := dzero_sub_dNat
+noncomputable example : Sub [] dzero dNat := dzero_sub_dNat
 
 -- A4: done_ <= dNat (dsucc dzero <= dNat)
 -- ASPIRATIONAL: needs Sub.muR + possibly transitivity through dsucc

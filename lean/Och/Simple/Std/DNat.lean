@@ -129,8 +129,9 @@ example : Sub [] dzero .top :=
 -- Same pattern as dtrue <= dBool: dzero selects the z : P dzero branch,
 -- and after substituting dNat := dzero, the return type P dNat becomes P dzero.
 noncomputable def dzero_sub_dNat : Sub [] dzero dNat :=
-  Sub.muR [] dzero .top _ (
-    Sub.muUnfoldL [] .top _ _ (
+  Sub.muR [] dzero .top _
+    (Sub.top [] dzero)  -- dzero ⊑ top (annotation check)
+    (Sub.muUnfoldL [] .top _ _ (
       Sub.lam [] _ _ _ _
         (Sub.refl [] _)
         (Sub.lam _ _ _ _ _

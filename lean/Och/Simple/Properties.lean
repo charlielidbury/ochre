@@ -361,11 +361,12 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     rw [Expr.subst_shift_hi b' 0 n 1 (.mu A b') (by omega)] at ih'
     simp only [shift] at ih'
     exact Sub.muUnfoldL _ _ _ _ ih'
-  | @muR Γ' a' A b' _h ih =>
+  | @muR Γ' a' A b' _hA _hBody ihA ihBody =>
     show Sub _ _ ((Expr.mu A b').shift n 1); simp only [shift]
-    have ih' := ih n
-    rw [Expr.subst_shift_hi b' 0 n 1 a' (by omega)] at ih'
-    exact Sub.muR _ _ _ _ ih'
+    have ihA' := ihA n
+    have ihBody' := ihBody n
+    rw [Expr.subst_shift_hi b' 0 n 1 a' (by omega)] at ihBody'
+    exact Sub.muR _ _ _ _ ihA' ihBody'
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
 noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
@@ -434,7 +435,7 @@ def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
   | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .mu _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .muUnfoldL _ _ _ _ h => 1 + h.size
-  | .muR _ _ _ _ h => 1 + h.size
+  | .muR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
 
 /-- Every derivation has positive size. -/
 theorem Sub.size_pos {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : 0 < h.size := by
@@ -546,8 +547,10 @@ private noncomputable def transNarrowInner
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A body hBody =>
-          -- SORRY: trans(top, muR) — need a ⊑ body.subst 0 a from top ⊑ body.subst 0 top
+        | .muR _ _ A body hAnn hBody =>
+          -- SORRY: trans(top, muR) — b = top, c = mu A body
+          -- hAnn: top ⊑ A (but A.complexity may exceed the bound m)
+          -- Can't cut on A since top.complexity = 0 doesn't bound A.complexity
           sorry
       | .var _ x _ U hget hUb =>
         exact Sub.var _ x c U hget (trans_n Γ U b c hUb hbc hcplx (by
@@ -574,8 +577,10 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A_mu body_mu hBody =>
-          -- SORRY: trans(lam, muR) — need lam A body_a ⊑ body_mu.subst 0 (lam A body_a)
+        | .muR _ _ A_mu body_mu hAnn hBody =>
+          -- b = lam B body_b, hbc: lam B body_b ⊑ mu A_mu body_mu via muR
+          -- hAnn: lam B body_b ⊑ A_mu. By trans_n: lam A body_a ⊑ A_mu.
+          -- Then need body_mu.subst 0 (lam A body_a) — hard
           sorry
       | .mu _ A body _ hAb hbodyA =>
         exact Sub.mu _ A body c (trans_n Γ A b c hAb hbc hcplx (by
@@ -587,30 +592,31 @@ private noncomputable def transNarrowInner
         -- Problem: b.subst 0 (mu A b) can have larger complexity than mu A b
         exact Sub.muUnfoldL _ A body c (trans_n Γ _ b c hUnfold hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega))
-      | .muR _ _ A body hBody =>
-        -- muR: a ⊑ body.subst 0 a, and we need a ⊑ mu A body ⊑ c
-        -- This is: a ⊑ mu A body, then mu A body ⊑ c
-        -- But matching hbc is the key — what rules can derive mu A body ⊑ c?
+      | .muR _ _ A body hAnn hBody =>
+        -- muR: a ⊑ A (hAnn) and a ⊑ body.subst 0 a (hBody), b = mu A body
+        -- For any hbc, we can extract a ⊑ c by cutting through A.
+        -- trans_lo works because A.complexity < (mu A body).complexity = b.complexity ≤ m
         match hbc with
-        | .refl _ _ => exact Sub.muR _ _ A body hBody
+        | .refl _ _ => exact Sub.muR _ _ A body hAnn hBody
         | .top _ _ => exact Sub.top _ _
-        | .mu _ .(A) .(body) _ hAc hbodyA =>
-          -- mu A body ⊑ c via annotation: A ⊑ c.
-          -- We have a ⊑ body.subst 0 a. We need a ⊑ c.
-          -- Use: a ⊑ body.subst 0 a, body.subst 0 a ⊑ A (from hbodyA + subst?), A ⊑ c
-          -- This is the hard case — substitution inflates complexity.
-          sorry
+        | .mu _ .(A) .(body) _ hAc _hbodyA =>
+          -- a ⊑ A (hAnn), A ⊑ c (hAc). Cut on A (strictly smaller complexity).
+          exact trans_lo Γ a A c
+            (by simp [Expr.complexity] at hcplx ⊢; omega) hAnn hAc
         | .muUnfoldL _ .(A) .(body) _ hUnfold =>
-          -- mu A body ⊑ c via unfolding: body.subst 0 (mu A body) ⊑ c
-          -- We have a ⊑ body.subst 0 a (from muR), and body.subst 0 (mu A body) ⊑ c
-          -- This is fundamentally hard: we need to connect body.subst 0 a to body.subst 0 (mu A body)
+          -- SORRY: trans(muR, muUnfoldL) — can't connect body.subst 0 a to body.subst 0 (mu A body)
           sorry
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
-            (Sub.muR _ _ A body hBody) hae hcplx
-            (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A₂ body₂ hBody₂ =>
-          -- SORRY: trans(muR, muR) — double muR
+            (Sub.muR _ _ A body hAnn hBody) hae hcplx
+            (by simp only [Sub.size] at hle ⊢; omega))
+        | .muR _ _ A₂ body₂ hA₂ hBody₂ =>
+          -- trans(muR, muR): b = mu A body, c = mu A₂ body₂
+          -- Have: a ⊑ A (hAnn), mu A body ⊑ A₂ (hA₂), mu A body ⊑ body₂.subst 0 (mu A body) (hBody₂)
+          -- Need: a ⊑ mu A₂ body₂
+          -- Use muR: need a ⊑ A₂ and a ⊑ body₂.subst 0 a
+          -- For a ⊑ A₂: a ⊑ A (hAnn), then... A ⊑ A₂? Not directly available.
+          -- Use inner trans: a ⊑ mu A body ⊑ A₂
           sorry
       | .ascL _ e τ _ heτ hτb =>
         exact Sub.ascL _ e τ c heτ (trans_n Γ τ b c hτb hbc hcplx (by
@@ -629,8 +635,9 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A_mu body_mu hBody =>
-          -- SORRY: trans(ascR, muR) — need a ⊑ body_mu.subst 0 a from (asc e τ) ⊑ body_mu.subst 0 (asc e τ)
+        | .muR _ _ A_mu body_mu hAnn hBody =>
+          -- b = asc e τ, hbc: asc e τ ⊑ mu A_mu body_mu via muR
+          -- hAnn: asc e τ ⊑ A_mu
           sorry
     ,
     -- === NARROW_GEN at (m, n+1) ===
@@ -702,10 +709,12 @@ private noncomputable def transNarrowInner
         have hUnfold' := narrow_n Γ_pre Γ_suf B C (body_mu.subst 0 (.mu A_mu body_mu)) b hCB hUnfold hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
         exact Sub.muUnfoldL _ A_mu body_mu b hUnfold'
-      | .muR _ _ A_mu body_mu hBody =>
+      | .muR _ _ A_mu body_mu hAnn hBody =>
+        have hAnn' := narrow_n Γ_pre Γ_suf B C a A_mu hCB hAnn hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
         have hBody' := narrow_n Γ_pre Γ_suf B C a (body_mu.subst 0 a) hCB hBody hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        exact Sub.muR _ _ A_mu body_mu hBody'⟩
+        exact Sub.muR _ _ A_mu body_mu hAnn' hBody'⟩
 
 -- 6c. Outer induction (on cut-formula complexity)
 
@@ -950,19 +959,18 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
     simp only [subst, hshift] at hss
     rw [← hss] at ih'
     exact Sub.muUnfoldL _ _ _ _ ih'
-  | @muR Γ'' a' A body _h ih =>
+  | @muR Γ'' a' A body _hA _hBody ihA ihBody =>
     show Sub _ _ ((Expr.mu A body).subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]
     have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
       rw [Expr.shift_add]; congr 1; omega
     rw [hshift]
-    have ih' := ih Δ hctx hv
-    -- Need: (body.subst 0 a').subst Δ.length (v.shift 0 Δ.length)
-    --     = (body.subst (Δ.length+1) (v.shift 0 (Δ.length+1))).subst 0 (a'.subst ...)
+    have ihA' := ihA Δ hctx hv
+    have ihBody' := ihBody Δ hctx hv
     have hss := Expr.subst_subst body 0 Δ.length a' (v.shift 0 Δ.length) (by omega)
     simp only [subst, hshift] at hss
-    rw [← hss] at ih'
-    exact Sub.muR _ _ _ _ ih'
+    rw [← hss] at ihBody'
+    exact Sub.muR _ _ _ _ ihA' ihBody'
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
 noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}

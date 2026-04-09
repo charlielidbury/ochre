@@ -125,8 +125,9 @@ example : Sub [] dfalse .top :=
 -- dBool's return type is P dBool — after substituting dBool := dtrue,
 -- this becomes P dtrue, which matches.
 noncomputable def dtrue_sub_dBool : Sub [] dtrue dBool :=
-  Sub.muR [] dtrue .top _ (
-    Sub.muUnfoldL [] .top _ _ (
+  Sub.muR [] dtrue .top _
+    (Sub.top [] dtrue)  -- dtrue ⊑ top (annotation check)
+    (Sub.muUnfoldL [] .top _ _ (
       Sub.lam [] _ _ _ _
         (Sub.refl [] _)
         (Sub.lam _ _ _ _ _
@@ -136,15 +137,15 @@ noncomputable def dtrue_sub_dBool : Sub [] dtrue dBool :=
             (Sub.var _ 1 _ _ rfl (Sub.refl _ _))
           )
         )
-    )
-  )
+    ))
 
 -- dfalse <= dBool via the same strategy.
 -- dfalse selects its 3rd arg (f : P dfalse), and after substituting
 -- dBool := dfalse, the return type P dBool becomes P dfalse, which matches.
 noncomputable def dfalse_sub_dBool : Sub [] dfalse dBool :=
-  Sub.muR [] dfalse .top _ (
-    Sub.muUnfoldL [] .top _ _ (
+  Sub.muR [] dfalse .top _
+    (Sub.top [] dfalse)  -- dfalse ⊑ top (annotation check)
+    (Sub.muUnfoldL [] .top _ _ (
       Sub.lam [] _ _ _ _
         (Sub.refl [] _)
         (Sub.lam _ _ _ _ _
@@ -154,7 +155,6 @@ noncomputable def dfalse_sub_dBool : Sub [] dfalse dBool :=
             (Sub.var _ 0 _ _ rfl (Sub.refl _ _))
           )
         )
-    )
-  )
+    ))
 
 end Och.Simple.Std

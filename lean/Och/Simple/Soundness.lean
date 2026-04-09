@@ -435,17 +435,17 @@ private noncomputable def evalPreservation_aux :
         -- hUnfold : Sub [] (b.subst 0 (mu A b)) τ
         exact ih _ _ hUnfold m fuel_τ _ _ (by omega) he hτ
 
-    | muR _ _ A b hBody =>
+    | muR _ _ A b hAnn hBody =>
       -- τ = mu A b, eval unfolds to b.subst 0 (mu A b)
+      -- hAnn : Sub [] e A, hBody : Sub [] e (b.subst 0 e)
       cases fuel_τ with
       | zero => simp [eval] at hτ
       | succ m =>
         simp [eval] at hτ
         -- hτ : eval m (b.subst 0 (mu A b)) = some v_τ
-        -- hBody : Sub [] e (b.subst 0 e)
-        -- We need: Sub [] v_e v_τ
-        -- Problem: we have e ⊑ b.subst 0 e, not e ⊑ b.subst 0 (mu A b)
-        -- This is a fundamental challenge — the substituted term differs
+        -- With the annotation check, we can use the mu rule:
+        -- mu A b ⊑ A (via Sub.mu), so e ⊑ A ⊑ ...
+        -- But we still need e ⊑ b.subst 0 (mu A b), not e ⊑ b.subst 0 e
         sorry
 
     | app _ f a _ D R hfD haD hRb =>

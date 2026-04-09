@@ -71,8 +71,13 @@ inductive Sub : Ctx → Expr → Expr → Type where
   | muUnfoldL (Γ : Ctx) (A b c : Expr) :
       Sub Γ (b.subst 0 (.mu A b)) c →
       Sub Γ (.mu A b) c
-  /-- [Mu-R]: unfold μ on the RHS (self-type intro) -/
+  /-- [Mu-R]: self-type intro on the RHS.
+      To show `a ⊑ μA.b`, we need BOTH:
+      1. `a ⊑ A` (satisfies the annotation/interface)
+      2. `a ⊑ b[0 := a]` (satisfies the body with self = a)
+      The annotation check enables transitivity: trans(muR, mu) can cut on A. -/
   | muR (Γ : Ctx) (a A b : Expr) :
+      Sub Γ a A →
       Sub Γ a (b.subst 0 a) →
       Sub Γ a (.mu A b)
 
