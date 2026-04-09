@@ -156,9 +156,79 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
     (e.subst m u).subst n w := by
   induction e generalizing m n u w with
   | var k =>
-    -- Provable by exhaustive case analysis on k vs m, k vs n+1.
-    -- Requires subst_shift_cancel and careful Nat arithmetic.
-    sorry
+    -- We need: ((var k).subst (n+1) (w.shift m 1)).subst m (u.subst n w)
+    --        = ((var k).subst m u).subst n w
+    -- Case analysis on k vs n+1, k vs m.
+    by_cases hkn1 : k = n + 1
+    · -- Case k = n+1: LHS = w, RHS = w
+      subst hkn1
+      show ((var (n+1)).subst (n+1) (w.shift m 1)).subst m (u.subst n w)
+         = ((var (n+1)).subst m u).subst n w
+      -- LHS step 1: (var (n+1)).subst (n+1) (w.shift m 1) = w.shift m 1
+      simp only [subst, beq_iff_eq, show n + 1 = n + 1 from rfl, ite_true]
+      -- LHS step 2: (w.shift m 1).subst m (u.subst n w) = w
+      rw [Expr.subst_shift_cancel w m (u.subst n w)]
+      -- RHS step 1: (var (n+1)).subst m u: n+1 ≠ m, n+1 > m → var n
+      simp only [subst, beq_iff_eq, show ¬ (n + 1 = m) from by omega, ite_false,
+                  show n + 1 > m from by omega, ite_true,
+                  show n + 1 - 1 = n from by omega]
+      -- RHS step 2 was already handled by the simp above
+    · by_cases hkn1g : k > n + 1
+      · -- Case k > n+1: both sides give var (k-2)
+        show ((var k).subst (n+1) (w.shift m 1)).subst m (u.subst n w)
+           = ((var k).subst m u).subst n w
+        -- LHS step 1: k > n+1, so var (k-1)
+        simp only [subst, beq_iff_eq, show ¬ (k = n + 1) from hkn1, ite_false,
+                    show k > n + 1 from hkn1g, ite_true]
+        -- LHS step 2: k-1 > m (since k > n+1 ≥ m+1, so k-1 ≥ m+1 > m), so var (k-1-1)
+        simp only [subst, beq_iff_eq, show ¬ (k - 1 = m) from by omega,
+                    ite_false, show k - 1 > m from by omega, ite_true]
+        -- RHS step 1: k > m, so var (k-1)
+        simp only [subst, beq_iff_eq, show ¬ (k = m) from by omega,
+                    ite_false, show k > m from by omega, ite_true]
+        -- RHS step 2: k-1 > n, so var (k-1-1)
+        simp only [subst, beq_iff_eq, show ¬ (k - 1 = n) from by omega,
+                    ite_false, show k - 1 > n from by omega, ite_true]
+      · -- k ≤ n, so k < n+1. Hence (var k).subst (n+1) ... = var k
+        have hklen : k ≤ n := by omega
+        show ((var k).subst (n+1) (w.shift m 1)).subst m (u.subst n w)
+           = ((var k).subst m u).subst n w
+        -- LHS step 1: k ≠ n+1 and ¬(k > n+1), so var k
+        simp only [subst, beq_iff_eq, show ¬ (k = n + 1) from by omega, ite_false,
+                    show ¬ (k > n + 1) from by omega, ite_false]
+        by_cases hkm : k = m
+        · -- Case k = m: LHS = u.subst n w, RHS = u.subst n w
+          subst hkm
+          -- LHS: (var k).subst k (u.subst n w) = u.subst n w
+          simp only [subst, beq_iff_eq, show k = k from rfl, ite_true]
+        · by_cases hkmg : k > m
+          · -- Case m < k ≤ n
+            -- LHS: (var k).subst m (u.subst n w): k > m, so var (k-1)
+            simp only [subst, beq_iff_eq, show ¬ (k = m) from hkm, ite_false,
+                        show k > m from hkmg, ite_true]
+            -- RHS step 1: (var k).subst m u: k > m, so var (k-1)
+            -- RHS step 2: (var (k-1)).subst n w: k-1 < n, so var (k-1)
+            -- Need to show: var (k-1) = (var (k-1)).subst n w
+            -- k > m ≥ 0, so k ≥ 1. k ≤ n, so k-1 ≤ n-1 < n.
+            -- Also k > m and m < k, so k ≥ m+1, k-1 ≥ m.
+            -- Careful: the simp above should have already simplified the LHS.
+            -- After simp on LHS, goal is: var (k-1) = ((var k).subst m u).subst n w
+            -- Need to simplify RHS
+            simp only [subst, beq_iff_eq, show ¬ (k = m) from hkm, ite_false,
+                        show k > m from hkmg, ite_true,
+                        show ¬ (k - 1 = n) from by omega, ite_false,
+                        show ¬ (k - 1 > n) from by omega, ite_false]
+          · -- Case k < m: both sides give var k
+            have hklm : k < m := by omega
+            -- LHS: (var k).subst m (u.subst n w): k < m, so var k
+            simp only [subst, beq_iff_eq, show ¬ (k = m) from hkm, ite_false,
+                        show ¬ (k > m) from by omega, ite_false]
+            -- RHS: (var k).subst m u: k < m, so var k
+            --       (var k).subst n w: k < m ≤ n, so var k
+            simp only [subst, beq_iff_eq, show ¬ (k = m) from hkm, ite_false,
+                        show ¬ (k > m) from by omega, ite_false,
+                        show ¬ (k = n) from by omega, ite_false,
+                        show ¬ (k > n) from by omega, ite_false]
   | lam _ _ ihd ihb =>
     simp only [subst]; congr 1; exact ihd m n u w h
     have hw : (w.shift m 1).shift 0 1 = (w.shift 0 1).shift (m + 1) 1 :=
@@ -433,7 +503,27 @@ theorem Expr.subst_shift_cancel_n (e : Expr) (n : Nat) (w : Expr) :
 theorem Ctx.get?_append_lt {Δ : Ctx} {T : Expr} {Γ : Ctx} {x : Nat} {U : Expr}
     (hget : Ctx.get? (Δ ++ T :: Γ) x = some U) (hx : x < Δ.length) :
     ∃ U', List.get? Δ x = some U' ∧ U = U'.shift 0 (x + 1) := by
-  sorry
+  induction Δ generalizing x U with
+  | nil => simp at hx
+  | cons A Δ' ih =>
+    cases x with
+    | zero =>
+      simp only [List.cons_append] at hget
+      rw [Ctx.get?_cons_zero] at hget
+      simp only [Option.some.injEq] at hget
+      exact ⟨A, rfl, hget.symm⟩
+    | succ x =>
+      simp only [List.cons_append] at hget
+      rw [Ctx.get?_cons_succ] at hget
+      cases hinner : Ctx.get? (Δ' ++ T :: Γ) x with
+      | none => rw [hinner] at hget; simp at hget
+      | some W =>
+        rw [hinner] at hget; simp only [Option.map, Option.some.injEq] at hget
+        have hxlt : x < Δ'.length := by simp [List.length] at hx; omega
+        have ⟨U', hU'get, hU'eq⟩ := ih hinner hxlt
+        refine ⟨U', ?_, ?_⟩
+        · simp only [List.get?_cons_succ]; exact hU'get
+        · rw [← hget, hU'eq, Expr.shift_add]; congr 1; omega
 
 /-- Context lookup in Δ ++ T :: Γ when x = |Δ|: result is T shifted. -/
 theorem Ctx.get?_append_eq {Δ : Ctx} {T : Expr} {Γ : Ctx} {U : Expr}
@@ -467,7 +557,40 @@ theorem Ctx.get?_append_eq {Δ : Ctx} {T : Expr} {Γ : Ctx} {U : Expr}
 theorem Ctx.get?_append_gt {Δ : Ctx} {T : Expr} {Γ : Ctx} {x : Nat} {U : Expr}
     (hget : Ctx.get? (Δ ++ T :: Γ) x = some U) (hx : x > Δ.length) :
     ∃ U', List.get? Γ (x - Δ.length - 1) = some U' ∧ U = U'.shift 0 (x + 1) := by
-  sorry
+  induction Δ generalizing x U with
+  | nil =>
+    simp only [List.nil_append, List.length_nil, Nat.sub_zero] at hget hx ⊢
+    obtain ⟨x', rfl⟩ : ∃ x', x = x' + 1 := ⟨x - 1, by omega⟩
+    simp only [Nat.add_sub_cancel]
+    -- hget : Ctx.get? (T :: Γ) (x' + 1) = some U
+    rw [Ctx.get?_cons_succ] at hget
+    -- hget : (Ctx.get? Γ x').map (Expr.shift 0 1) = some U
+    cases hΓ : Ctx.get? Γ x' with
+    | none => rw [hΓ] at hget; simp at hget
+    | some W =>
+      rw [hΓ] at hget; simp only [Option.map, Option.some.injEq] at hget
+      -- hget : W.shift 0 1 = U, W = Ctx.get? Γ x' applied
+      -- W comes from Ctx.get?: W = W'.shift 0 (x'+1) for some W' in List.get? Γ x'
+      simp only [Ctx.get?] at hΓ
+      -- hΓ now in terms of List.get? / getElem?
+      split at hΓ
+      · rename_i W' hraw
+        simp only [Option.some.injEq] at hΓ
+        exact ⟨W', hraw, by rw [← hget, ← hΓ, Expr.shift_add]; congr 1; omega⟩
+      · exact absurd hΓ (by simp)
+  | cons A Δ' ih =>
+    simp only [List.cons_append, List.length_cons] at hget hx ⊢
+    obtain ⟨x', rfl⟩ : ∃ x', x = x' + 1 := ⟨x - 1, by omega⟩
+    rw [Ctx.get?_cons_succ] at hget
+    cases hinner : Ctx.get? (Δ' ++ T :: Γ) x' with
+    | none => rw [hinner] at hget; simp at hget
+    | some W =>
+      rw [hinner] at hget; simp only [Option.map, Option.some.injEq] at hget
+      have ⟨U', hU'get, hU'eq⟩ := ih hinner (by omega)
+      refine ⟨U', ?_, ?_⟩
+      · have : x' + 1 - (Δ'.length + 1) - 1 = x' - Δ'.length - 1 := by omega
+        rw [this]; exact hU'get
+      · rw [← hget, hU'eq, Expr.shift_add]; congr 1; omega
 
 
 -- ============================================================
@@ -486,6 +609,74 @@ theorem substCtx_length (Δ : Ctx) (v : Expr) : (substCtx Δ v).length = Δ.leng
   induction Δ with
   | nil => rfl
   | cons A rest ih => simp [substCtx, ih]
+
+/-- Context lookup in substCtx Δ v ++ Γ at x < |Δ|:
+    If `Ctx.get? (Δ ++ T :: Γ) x = some U` and `x < |Δ|`, then
+    `Ctx.get? (substCtx Δ v ++ Γ) x = some (U.subst |Δ| (v.shift 0 |Δ|))`. -/
+theorem Ctx.get?_substCtx_lt {Δ : Ctx} {T v : Expr} {Γ : Ctx} {x : Nat} {U : Expr}
+    (hget : Ctx.get? (Δ ++ T :: Γ) x = some U) (hx : x < Δ.length) :
+    Ctx.get? (substCtx Δ v ++ Γ) x = some (U.subst Δ.length (v.shift 0 Δ.length)) := by
+  induction Δ generalizing x U with
+  | nil => simp at hx
+  | cons A rest ih =>
+    cases x with
+    | zero =>
+      simp only [substCtx, List.cons_append] at hget ⊢
+      rw [Ctx.get?_cons_zero] at hget
+      rw [Ctx.get?_cons_zero]
+      simp only [Option.some.injEq] at hget ⊢
+      rw [← hget]
+      simp only [List.length_cons]
+      -- shift 0 1 (subst A rest.length (shift 0 rest.length v)) =
+      -- subst (shift 0 1 A) (rest.length + 1) (shift 0 (rest.length + 1) v)
+      have := Expr.subst_shift_lo A rest.length 0 1 (shift 0 rest.length v) (by omega)
+      simp only [Nat.zero_add] at this
+      rw [this]; congr 1
+      rw [Expr.shift_add]; congr 1; omega
+    | succ x =>
+      simp only [substCtx, List.cons_append, List.length_cons] at hget ⊢
+      rw [Ctx.get?_cons_succ] at hget ⊢
+      cases hinner : Ctx.get? (rest ++ T :: Γ) x with
+      | none => rw [hinner] at hget; simp at hget
+      | some W =>
+        rw [hinner] at hget; simp only [Option.map, Option.some.injEq] at hget
+        have hx' : x < rest.length := by simp [List.length] at hx; omega
+        have ihm := ih hinner hx'
+        cases hlook : Ctx.get? (substCtx rest v ++ Γ) x with
+        | none => rw [hlook] at ihm; simp at ihm
+        | some W' =>
+          rw [hlook] at ihm; simp only [Option.some.injEq] at ihm
+          simp only [hlook, Option.map, Option.some.injEq]
+          rw [← hget, ihm]
+          have := Expr.subst_shift_lo W rest.length 0 1 (shift 0 rest.length v) (by omega)
+          simp only [Nat.zero_add] at this
+          rw [this]; congr 1
+          rw [Expr.shift_add]; congr 1; omega
+
+/-- Context lookup in substCtx Δ v ++ Γ at x ≥ |Δ|:
+    If `List.get? Γ (x - |Δ|) = some U'`, then
+    `Ctx.get? (substCtx Δ v ++ Γ) x = some (U'.shift 0 (x + 1))`. -/
+theorem Ctx.get?_substCtx_ge {Δ : Ctx} {v : Expr} {Γ : Ctx} {x : Nat}
+    (hx : x ≥ Δ.length) (U' : Expr) (hU' : List.get? Γ (x - Δ.length) = some U') :
+    Ctx.get? (substCtx Δ v ++ Γ) x = some (U'.shift 0 (x + 1)) := by
+  induction Δ generalizing x with
+  | nil =>
+    simp only [substCtx, List.nil_append, List.length_nil, Nat.sub_zero] at hU' ⊢
+    simp only [Ctx.get?, hU']
+  | cons A rest ih =>
+    cases x with
+    | zero => simp at hx
+    | succ x =>
+      simp only [substCtx, List.cons_append, List.length_cons]
+      rw [Ctx.get?_cons_succ]
+      have hx' : x ≥ rest.length := by simp [List.length] at hx; omega
+      have hU'eq : List.get? Γ (x - rest.length) = some U' := by
+        have : x + 1 - (rest.length + 1) = x - rest.length := by omega
+        simp only [List.length_cons] at hU'
+        rw [← this]; exact hU'
+      have ihm := ih hx' hU'eq
+      rw [ihm]; simp only [Option.map]
+      congr 1; rw [Expr.shift_add]; congr 1; omega
 
 /-- Generalized substitution lemma: substitute at arbitrary depth.
     Given `Sub (Δ ++ T :: Γ) a b` and `Sub Γ v T`, we can substitute out the
@@ -532,15 +723,81 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
         simp [hne, hng]
         -- After subst, var x stays as var x
         -- Need: Sub (substCtx Δ v ++ Γ) (var x) (b'.subst ...)
-        -- The IH gives Sub on U.subst, we'd need to relate var x to U.subst via context lookup
-        sorry
+        -- Use Sub.var with the context lookup lemma
+        have hlookup := @Ctx.get?_substCtx_lt Δ T v Γ x U hget hxlt
+        have ih := ihUb Δ rfl hv
+        exact Sub.var _ x _ _ hlookup ih
       · -- x > |Δ|: variable in Γ (past T)
         have hne : (x == Δ.length) = false := by simp [beq_iff_eq]; omega
         have hgt : x > Δ.length := by omega
         simp [hne, hgt]
         -- After subst, var x becomes var (x - 1)
         -- Need: Sub (substCtx Δ v ++ Γ) (var (x - 1)) (b'.subst ...)
-        sorry
+        -- Use the context lookup lemma for x > |Δ|
+        have hexists := Ctx.get?_append_gt hget hgt
+        -- We can't use obtain/cases since we're in Type, not Prop
+        -- Instead, unfold Ctx.get? directly
+        -- U = U'.shift 0 (x+1) for some U' in Γ at position x-|Δ|-1
+        -- Context lookup: Ctx.get? (substCtx Δ v ++ Γ) (x-1)
+        -- Since x-1 ≥ |Δ|, this looks into Γ at position x-1-|Δ| = x-|Δ|-1
+        have hx1ge : x - 1 ≥ Δ.length := by omega
+        -- Get the raw entry from Γ
+        -- From hget, we know List.get? (Δ ++ T :: Γ) x = some U_raw
+        -- with U = U_raw.shift 0 (x+1). Since x > |Δ|, the raw entry is in Γ.
+        -- Ctx.get? unfolds to matching on List.get?
+        simp only [Ctx.get?] at hget
+        -- hget now is about List.get? and shift
+        -- Build the lookup in substCtx Δ v ++ Γ
+        have ih := ihUb Δ rfl hv
+        -- For x > |Δ|: (var x).subst |Δ| (...) = var (x-1)  [already simplified]
+        -- U.subst |Δ| (...) = (shift 0 (x+1) U_raw).subst |Δ| (...)
+        -- where U_raw = List.get? (Δ ++ T :: Γ) x
+        -- We need to show this equals the shifted raw entry from Γ
+        -- Let's work with List.get? directly
+        -- Since x > |Δ|, List.get? (Δ ++ T :: Γ) x accesses T :: Γ at position x - |Δ|
+        -- x - |Δ| > 0, so it accesses Γ at position x - |Δ| - 1
+        -- Meanwhile, List.get? (substCtx Δ v ++ Γ) (x-1) for x-1 ≥ |substCtx Δ v| = |Δ|
+        -- accesses Γ at position x-1-|Δ| = x-|Δ|-1. Same position.
+        -- So the raw entries match. Then Ctx.get? shifts by x+1 vs x respectively.
+        -- And U.subst = (raw.shift 0 (x+1)).subst |Δ| v' should cancel to raw.shift 0 x
+        -- by subst_shift_cancel_n.
+        -- Direct approach: use Ctx.get?_substCtx_ge with the raw entry
+        -- First get the raw Γ entry
+        -- hget is now: match List.get? (Δ ++ T :: Γ) x with | some T => some ... | none => none = some U
+        split at hget
+        · rename_i U_raw hraw
+          simp only [Option.some.injEq] at hget
+          -- hget : shift 0 (x+1) U_raw = U
+          -- U_raw is in Δ ++ T :: Γ at position x. Since x > |Δ|, it's in T :: Γ at x-|Δ|.
+          -- x-|Δ| > 0, so it's Γ at x-|Δ|-1.
+          -- We need List.get? Γ (x-|Δ|-1) = some U_raw
+          have hraw_Γ : List.get? Γ (x - Δ.length - 1) = some U_raw := by
+            have h1 : List.get? (Δ ++ T :: Γ) x = some U_raw := hraw
+            rw [@List.get?_append_right Expr Δ (T :: Γ) x (by omega)] at h1
+            -- h1 : (T :: Γ).get? (x - Δ.length) = some U_raw
+            have h3 : x - Δ.length = (x - Δ.length - 1) + 1 := by omega
+            rw [h3] at h1
+            -- h1 : (T :: Γ).get? ((x - Δ.length - 1) + 1) = some U_raw
+            simp only [List.get?_cons_succ] at h1
+            exact h1
+          -- Context lookup at x-1 in substCtx Δ v ++ Γ
+          have hlookup := @Ctx.get?_substCtx_ge Δ v Γ (x - 1) hx1ge U_raw (by
+            have : x - 1 - Δ.length = x - Δ.length - 1 := by omega
+            rw [this]; exact hraw_Γ)
+          have hx1shift : (x - 1) + 1 = x := by omega
+          rw [hx1shift] at hlookup
+          -- hlookup : Ctx.get? (substCtx Δ v ++ Γ) (x-1) = some (U_raw.shift 0 x)
+          -- ih : Sub _ (U.subst |Δ| (v.shift 0 |Δ|)) (b'.subst ...)
+          -- Rewrite U = shift 0 (x+1) U_raw
+          rw [← hget] at ih
+          -- (shift 0 (x+1) U_raw).subst |Δ| (v.shift 0 |Δ|) = U_raw.shift 0 x
+          have hcancel : (shift 0 (x + 1) U_raw).subst Δ.length (v.shift 0 Δ.length) = shift 0 x U_raw := by
+            have hsplit : shift 0 (x + 1) U_raw = shift 0 (Δ.length + 1) (shift 0 (x - Δ.length) U_raw) := by
+              rw [Expr.shift_add]; congr 1; omega
+            rw [hsplit, Expr.subst_shift_cancel_n _ Δ.length _, Expr.shift_add]; congr 1; omega
+          rw [hcancel] at ih
+          exact Sub.var _ (x - 1) _ _ hlookup ih
+        · simp at hget
   | @lam Γ'' A B b₁ b₂ _hBA _hbody ihBA ihbody =>
     -- Domain: IH with same Δ
     have hdom := ihBA Δ hctx hv
