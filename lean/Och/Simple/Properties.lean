@@ -23,7 +23,7 @@ open Expr
 -- 1. Shift lemmas
 -- ============================================================
 
-theorem Expr.shift_add (e : Expr) (c n₁ n₂ : Nat) :
+@[simp] theorem Expr.shift_add (e : Expr) (c n₁ n₂ : Nat) :
     (e.shift c n₂).shift c n₁ = e.shift c (n₁ + n₂) := by
   induction e generalizing c with
   | var k =>
@@ -365,7 +365,7 @@ noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
 noncomputable def Sub.weaken_prepend {Γ : Ctx} {a b : Expr}
     (Δ : Ctx) (h : Sub Γ a b) : Sub (Δ ++ Γ) (a.shift 0 Δ.length) (b.shift 0 Δ.length) := by
   induction Δ with
-  | nil => simp [Expr.shift_zero]; exact h
+  | nil => simp; exact h
   | cons T Δ ih =>
     simp only [List.cons_append, List.length_cons]
     have h1 := Sub.weaken T ih
@@ -401,7 +401,7 @@ def Expr.complexity : Expr → Nat
   | .mu ann body => 1 + ann.complexity + body.complexity
 
 /-- Shifting preserves complexity — shift only changes variable indices, not structure. -/
-theorem Expr.shift_complexity (e : Expr) (c n : Nat) : (e.shift c n).complexity = e.complexity := by
+@[simp] theorem Expr.shift_complexity (e : Expr) (c n : Nat) : (e.shift c n).complexity = e.complexity := by
   induction e generalizing c with
   | var k => simp [shift, complexity]; split <;> simp [complexity]
   | lam d b ihd ihb => simp [shift, complexity, ihd c, ihb (c+1)]
@@ -680,7 +680,7 @@ def substCtx : Ctx → Expr → Ctx
   | A :: rest, v => (A.subst rest.length (v.shift 0 rest.length)) :: substCtx rest v
 
 /-- substCtx preserves length. -/
-theorem substCtx_length (Δ : Ctx) (v : Expr) : (substCtx Δ v).length = Δ.length := by
+@[simp] theorem substCtx_length (Δ : Ctx) (v : Expr) : (substCtx Δ v).length = Δ.length := by
   induction Δ with
   | nil => simp [substCtx]
   | cons A Δ ih => simp [substCtx, ih]
