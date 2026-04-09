@@ -52,11 +52,6 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ a D →
       Sub Γ (R.subst 0 a) b →
       Sub Γ (.app f a) b
-  /-- [Beta-R]: `Γ ⊢ a ⊑ (λD. body) b` if `b ⊑ D` and `a ⊑ body[0 := b]`. -/
-  | betaR (Γ : Ctx) (a D body b : Expr) :
-      Sub Γ b D →
-      Sub Γ a (body.subst 0 b) →
-      Sub Γ a (.app (.lam D body) b)
   /-- [Asc-L]: `Γ ⊢ (e : τ) ⊑ b` if `e ⊑ τ` and `τ ⊑ b`. -/
   | ascL (Γ : Ctx) (e τ b : Expr) :
       Sub Γ e τ →
