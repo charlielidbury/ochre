@@ -5,8 +5,7 @@ import Och.Simple.Properties
 # Soundness of the algorithmic checker
 
 Proves:
-1. `synth_sound`: if `synth fuel seen Γ e = some τ`, then `Sub Γ e τ`
-2. `check_sound`: if `check fuel [] Γ a b = some true`, then `Sub Γ a b`
+- `check_sound`: if `check fuel [] Γ a b = some true`, then `Sub Γ a b`
 
 The `check` function uses a `seen` set for cycle detection in the muR rule.
 When the seen set fires (cycle detected), soundness relies on a coinductive
@@ -15,59 +14,128 @@ applies to calls with an empty seen set.
 
 ## Remaining sorrys
 
-- [App]: complex multi-strategy branch involving synth (pre-existing)
-- [Cycle detection / SeenValid]: coinductive reasoning for seen set validity
-- Synth soundness gaps for app/asc/mu-lam cases (pre-existing)
+Only **2** sorrys remain, both for the coinductive cycle detection cases:
+- `a = lam ..., b = mu ...` with cycle detection
+- `a = top, b = mu ...` with cycle detection
 
-## What was fixed
+Both arise from `check`'s `seen`-set short-circuit in the `_, .mu Ab bodyB`
+branch of its definition, and require a coinductive soundness argument for
+`SeenValid`-style reasoning.
+
+## Closed sorrys (this commit)
+
+- **6 app-case sorrys in `check_sound_aux`**: for each `b` constructor
+  (`var`, `lam`, `app`, `asc`, `mu`), the `a = .app f arg` case is proved
+  by matching on `synth f` and the subsequent `check f (lam D R)`,
+  `check arg D`, `check (R[0 := arg]) b` calls, delegating the fall-through
+  `tryUnfolded` path to the helper `check_app_tryUnfolded_sound`.
+- **3 synth soundness sorrys (`.app`, `.asc`, `.mu (.lam _ _)`)**: these
+  are **unprovable as stated** because `synth` intentionally trusts
+  annotations without verification. Since `check_sound_aux` does not depend
+  on `synth_sound`, the theorem has been removed (see the block comment in
+  place of the old definition).
+
+## Prior fixes
 
 - The mu annotation shortcut now checks BOTH `A ⊑ b` AND `body ⊑ A↑`,
-  matching the `Sub.mu` rule exactly. This eliminates the previous
+  matching the `Sub.mu` rule exactly. This eliminated the previous
   "annotation trust" sorrys (4 instances).
 -/
 
 set_option autoImplicit false
-set_option maxHeartbeats 3200000
+set_option maxHeartbeats 12800000
 
 namespace Och.Simple
 
 open Expr
 
 -- ============================================================
--- Synth soundness
+-- Synth soundness (removed)
 -- ============================================================
 
-/-- If `synth fuel seen Γ e = some τ`, then `Sub Γ e τ`. -/
-noncomputable def synth_sound :
-    (fuel : Nat) → (seen : List (Expr × Expr)) → (Γ : Ctx) → (e τ : Expr) →
-    synth fuel seen Γ e = some τ → Sub Γ e τ
-  | 0, _, _, _, _, h => by simp [synth] at h
-  | fuel + 1, _, Γ, .var x, τ, h => by
-    simp [synth] at h
-    exact Sub.var Γ x τ τ h (Sub.refl Γ τ)
-  | fuel + 1, _, _, .lam D body, _, h => by
-    simp [synth] at h; subst h
-    exact Sub.refl _ (.lam D body)
-  | fuel + 1, _, _, .app _ _, _, _ => by sorry
-  | fuel + 1, _, _, .asc _ _, _, _ => by sorry
-  | fuel + 1, _, Γ, .mu (.lam _ _) _, _, _ => by sorry
-  | fuel + 1, seen, Γ, .mu (.var k) body, τ, h => by
-    simp [synth] at h
-    exact Sub.muUnfoldL Γ _ body τ (synth_sound fuel seen Γ _ τ h)
-  | fuel + 1, seen, Γ, .mu (.app f a) body, τ, h => by
-    simp [synth] at h
-    exact Sub.muUnfoldL Γ _ body τ (synth_sound fuel seen Γ _ τ h)
-  | fuel + 1, seen, Γ, .mu (.asc e ty) body, τ, h => by
-    simp [synth] at h
-    exact Sub.muUnfoldL Γ _ body τ (synth_sound fuel seen Γ _ τ h)
-  | fuel + 1, seen, Γ, .mu .top body, τ, h => by
-    simp [synth] at h
-    exact Sub.muUnfoldL Γ _ body τ (synth_sound fuel seen Γ _ τ h)
-  | fuel + 1, seen, Γ, .mu (.mu ann body') body, τ, h => by
-    simp [synth] at h
-    exact Sub.muUnfoldL Γ _ body τ (synth_sound fuel seen Γ _ τ h)
-  | fuel + 1, _, _, .top, _, h => by
-    simp [synth] at h; subst h; exact Sub.refl _ .top
+/-!
+`synth_sound` as previously stated — "if `synth fuel seen Γ e = some τ` then
+`Sub Γ e τ`" — is **unprovable as a standalone lemma**. The `synth` function
+intentionally trusts annotations without verification:
+
+- For `.app f a`, synth returns `R[0 := a]` from `synth f = lam D R` without
+  checking `a ⊑ D`.
+- For `.asc e τ`, synth returns `τ` without checking `e ⊑ τ`.
+- For `.mu (lam D R) body`, synth returns `lam D R` without checking that
+  `body` actually inhabits the annotation.
+
+The mu-unfolding recursive cases reduce to these three unprovable cases after
+one step (e.g. `synth (mu A body)` for non-lam `A` recurses on
+`body[0 := mu A body]`, which may be an `app`/`asc`/`mu-lam`).
+
+Since `check_sound_aux` does not rely on `synth_sound` (it re-verifies all
+premises via its own recursive `check` calls in the app branch), `synth_sound`
+is unnecessary and has been removed.
+-/
+
+-- ============================================================
+-- Helpers for the app case of check_sound_aux
+-- ============================================================
+
+/-- If the inner `tryWithDR`-style match returns `some true`, we can build `Sub.app`. -/
+private noncomputable def check_app_tryWithDR_sound
+    (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (f arg b D R : Expr)
+    (ih : ∀ (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr),
+      check fuel seen Γ a b = some true → Sub Γ a b)
+    (h : (match check fuel seen Γ f (.lam D R) with
+      | some true =>
+        match check fuel seen Γ arg D with
+        | some true => check fuel seen Γ (R.subst 0 arg) b
+        | other => other
+      | other => other) = some true) : Sub Γ (.app f arg) b := by
+  match hf : check fuel seen Γ f (.lam D R) with
+  | some true =>
+    simp only [hf] at h
+    match ha : check fuel seen Γ arg D with
+    | some true =>
+      simp only [ha] at h
+      exact Sub.app Γ f arg b D R (ih _ _ _ _ hf) (ih _ _ _ _ ha) (ih _ _ _ _ h)
+    | some false => simp only [ha] at h; simp at h
+    | none => simp only [ha] at h; simp at h
+  | some false => simp only [hf] at h; simp at h
+  | none => simp only [hf] at h; simp at h
+
+/-- If the `tryUnfolded` branch (LHS is `μ`, synth unfolds it, then try app) returns
+    `some true`, we can build `Sub.app`. -/
+private noncomputable def check_app_tryUnfolded_sound
+    (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (f arg b : Expr)
+    (ih : ∀ (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr),
+      check fuel seen Γ a b = some true → Sub Γ a b)
+    (h : (match f with
+      | .mu _A bodyF =>
+        match synth fuel seen Γ (bodyF.subst 0 f) with
+        | some (.lam D R) =>
+          match check fuel seen Γ f (.lam D R) with
+          | some true =>
+            match check fuel seen Γ arg D with
+            | some true => check fuel seen Γ (R.subst 0 arg) b
+            | other => other
+          | other => other
+        | _ => some false
+      | _ => some false) = some true) : Sub Γ (.app f arg) b := by
+  match f with
+  | .mu A bodyF =>
+    simp only at h
+    match hsyn : synth fuel seen Γ (bodyF.subst 0 (.mu A bodyF)) with
+    | some (.lam D R) =>
+      simp only [hsyn] at h
+      exact check_app_tryWithDR_sound fuel seen Γ (.mu A bodyF) arg b D R ih h
+    | some (.var _) => simp only [hsyn] at h; simp at h
+    | some (.app _ _) => simp only [hsyn] at h; simp at h
+    | some (.asc _ _) => simp only [hsyn] at h; simp at h
+    | some (.mu _ _) => simp only [hsyn] at h; simp at h
+    | some .top => simp only [hsyn] at h; simp at h
+    | none => simp only [hsyn] at h; simp at h
+  | .var _ => simp at h
+  | .lam _ _ => simp at h
+  | .app _ _ => simp at h
+  | .asc _ _ => simp at h
+  | .top => simp at h
 
 -- ============================================================
 -- Check soundness (for empty seen set)
@@ -105,7 +173,40 @@ noncomputable def check_sound_aux : (fuel : Nat) → (seen : List (Expr × Expr)
             exact Sub.var Γ x (.var bx) T hget (ih seen Γ T (.var bx) h)
           | none => rw [hget] at h; simp at h
         | lam A body₁ => simp at h
-        | app f arg => sorry
+        | app f arg =>
+          simp only [Bool.false_eq_true, ↓reduceIte] at h
+          match hs : synth fuel seen Γ f with
+          | some (.lam D R) =>
+            simp only [hs] at h
+            match hf : check fuel seen Γ f (.lam D R) with
+            | some true =>
+              simp only [hf] at h
+              match ha : check fuel seen Γ arg D with
+              | some true =>
+                simp only [ha] at h
+                match hr : check fuel seen Γ (R.subst 0 arg) (.var bx) with
+                | some true =>
+                  simp only [hr] at h
+                  exact Sub.app Γ f arg _ D R
+                    (ih _ _ _ _ hf) (ih _ _ _ _ ha) (ih _ _ _ _ hr)
+                | some false =>
+                  simp only [hr] at h
+                  exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+                | none => simp only [hr] at h; simp at h
+              | some false =>
+                simp only [ha] at h
+                exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+              | none => simp only [ha] at h; simp at h
+            | some false =>
+              simp only [hf] at h
+              exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+            | none => simp only [hf] at h; simp at h
+          | some (.var _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.app _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.asc _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.mu _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some .top => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | none => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
         | asc e τ =>
           simp at h
           match heτ : check fuel seen Γ e τ with
@@ -155,7 +256,40 @@ noncomputable def check_sound_aux : (fuel : Nat) → (seen : List (Expr × Expr)
             exact Sub.lam Γ A B body₁ body₂ (ih seen Γ B A hdom) (ih seen (B :: Γ) body₁ body₂ h)
           | some false => rw [hdom] at h; simp at h
           | none => rw [hdom] at h; simp at h
-        | app f arg => sorry
+        | app f arg =>
+          simp only [Bool.false_eq_true, ↓reduceIte] at h
+          match hs : synth fuel seen Γ f with
+          | some (.lam D R) =>
+            simp only [hs] at h
+            match hf : check fuel seen Γ f (.lam D R) with
+            | some true =>
+              simp only [hf] at h
+              match ha : check fuel seen Γ arg D with
+              | some true =>
+                simp only [ha] at h
+                match hr : check fuel seen Γ (R.subst 0 arg) (.lam B body₂) with
+                | some true =>
+                  simp only [hr] at h
+                  exact Sub.app Γ f arg _ D R
+                    (ih _ _ _ _ hf) (ih _ _ _ _ ha) (ih _ _ _ _ hr)
+                | some false =>
+                  simp only [hr] at h
+                  exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+                | none => simp only [hr] at h; simp at h
+              | some false =>
+                simp only [ha] at h
+                exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+              | none => simp only [ha] at h; simp at h
+            | some false =>
+              simp only [hf] at h
+              exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+            | none => simp only [hf] at h; simp at h
+          | some (.var _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.app _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.asc _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.mu _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some .top => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | none => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
         | asc e τ =>
           simp at h
           match heτ : check fuel seen Γ e τ with
@@ -198,7 +332,40 @@ noncomputable def check_sound_aux : (fuel : Nat) → (seen : List (Expr × Expr)
             exact Sub.var Γ x _ T hget (ih seen Γ T _ h)
           | none => rw [hget] at h; simp at h
         | lam _ _ => simp at h
-        | app f arg => sorry
+        | app f arg =>
+          simp only [Bool.false_eq_true, ↓reduceIte] at h
+          match hs : synth fuel seen Γ f with
+          | some (.lam D R) =>
+            simp only [hs] at h
+            match hf : check fuel seen Γ f (.lam D R) with
+            | some true =>
+              simp only [hf] at h
+              match ha : check fuel seen Γ arg D with
+              | some true =>
+                simp only [ha] at h
+                match hr : check fuel seen Γ (R.subst 0 arg) (.app bf ba) with
+                | some true =>
+                  simp only [hr] at h
+                  exact Sub.app Γ f arg _ D R
+                    (ih _ _ _ _ hf) (ih _ _ _ _ ha) (ih _ _ _ _ hr)
+                | some false =>
+                  simp only [hr] at h
+                  exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+                | none => simp only [hr] at h; simp at h
+              | some false =>
+                simp only [ha] at h
+                exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+              | none => simp only [ha] at h; simp at h
+            | some false =>
+              simp only [hf] at h
+              exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+            | none => simp only [hf] at h; simp at h
+          | some (.var _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.app _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.asc _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.mu _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some .top => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | none => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
         | asc e τ =>
           simp at h
           match heτ : check fuel seen Γ e τ with
@@ -250,7 +417,40 @@ noncomputable def check_sound_aux : (fuel : Nat) → (seen : List (Expr × Expr)
             exact Sub.ascR Γ (.lam domain₁ body₁) be bτ (ih seen Γ be bτ heτ) (ih seen Γ _ be h)
           | some false => rw [heτ] at h; simp at h
           | none => rw [heτ] at h; simp at h
-        | app f arg => sorry
+        | app f arg =>
+          simp only [Bool.false_eq_true, ↓reduceIte] at h
+          match hs : synth fuel seen Γ f with
+          | some (.lam D R) =>
+            simp only [hs] at h
+            match hf : check fuel seen Γ f (.lam D R) with
+            | some true =>
+              simp only [hf] at h
+              match ha : check fuel seen Γ arg D with
+              | some true =>
+                simp only [ha] at h
+                match hr : check fuel seen Γ (R.subst 0 arg) (.asc be bτ) with
+                | some true =>
+                  simp only [hr] at h
+                  exact Sub.app Γ f arg _ D R
+                    (ih _ _ _ _ hf) (ih _ _ _ _ ha) (ih _ _ _ _ hr)
+                | some false =>
+                  simp only [hr] at h
+                  exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+                | none => simp only [hr] at h; simp at h
+              | some false =>
+                simp only [ha] at h
+                exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+              | none => simp only [ha] at h; simp at h
+            | some false =>
+              simp only [hf] at h
+              exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+            | none => simp only [hf] at h; simp at h
+          | some (.var _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.app _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.asc _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.mu _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some .top => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | none => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
         | asc e τ =>
           simp at h
           match heτ : check fuel seen Γ e τ with
@@ -306,7 +506,40 @@ noncomputable def check_sound_aux : (fuel : Nat) → (seen : List (Expr × Expr)
         | lam domain₁ body₁ =>
           -- a=lam, b=mu: muR with cycle detection
           sorry
-        | app f arg => sorry
+        | app f arg =>
+          simp only [Bool.false_eq_true, ↓reduceIte] at h
+          match hs : synth fuel seen Γ f with
+          | some (.lam D R) =>
+            simp only [hs] at h
+            match hf : check fuel seen Γ f (.lam D R) with
+            | some true =>
+              simp only [hf] at h
+              match ha : check fuel seen Γ arg D with
+              | some true =>
+                simp only [ha] at h
+                match hr : check fuel seen Γ (R.subst 0 arg) (.mu Ab bodyB) with
+                | some true =>
+                  simp only [hr] at h
+                  exact Sub.app Γ f arg _ D R
+                    (ih _ _ _ _ hf) (ih _ _ _ _ ha) (ih _ _ _ _ hr)
+                | some false =>
+                  simp only [hr] at h
+                  exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+                | none => simp only [hr] at h; simp at h
+              | some false =>
+                simp only [ha] at h
+                exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+              | none => simp only [ha] at h; simp at h
+            | some false =>
+              simp only [hf] at h
+              exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+            | none => simp only [hf] at h; simp at h
+          | some (.var _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.app _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.asc _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some (.mu _ _) => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | some .top => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
+          | none => simp only [hs] at h; exact check_app_tryUnfolded_sound fuel seen Γ f arg _ ih h
         | asc e τ =>
           simp at h
           match heτ : check fuel seen Γ e τ with
