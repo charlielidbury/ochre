@@ -66,7 +66,7 @@ inductive Compatible : List Expr → Ctx → Prop where
     if `eval n (closingSubst γ e) = some v_e` and
        `eval n (closingSubst γ τ) = some v_τ`,
     then `∅ ⊢ v_e ⊑ v_τ`. -/
-theorem soundness
+noncomputable def soundness
     (Γ : Ctx) (e τ : Expr) (γ : List Expr) (fuel : Nat)
     (hsub : Sub Γ e τ)
     (hcompat : Compatible γ Γ)
@@ -82,7 +82,7 @@ theorem soundness
 
 /-- Special case: [Top] — if `Γ ⊢ e ⊑ ⊤`, then the conclusion is
     `∅ ⊢ v_e ⊑ ⊤`, which holds by `Sub.top`. -/
-theorem soundness_top
+noncomputable def soundness_top
     (Γ : Ctx) (e : Expr) (γ : List Expr) (fuel : Nat)
     (hcompat : Compatible γ Γ)
     (v_e v_τ : Expr)
@@ -112,7 +112,7 @@ where
     where both `v_e` and `v_τ` come from evaluating the same closed term.
     If both succeed with the same fuel, they produce the same value,
     so the result follows by `Sub.refl`. -/
-theorem soundness_refl
+noncomputable def soundness_refl
     (Γ : Ctx) (e : Expr) (γ : List Expr) (fuel : Nat)
     (hcompat : Compatible γ Γ)
     (v_e v_τ : Expr)

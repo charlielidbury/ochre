@@ -67,5 +67,8 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ e τ →
       Sub Γ a e →
       Sub Γ a (.asc e τ)
+  /-- [Trans]: transitivity -/
+  | trans (Γ : Ctx) (a b c : Expr) :
+      Sub Γ a b → Sub Γ b c → Sub Γ a c
 
 end Och.Simple

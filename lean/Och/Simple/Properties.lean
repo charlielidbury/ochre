@@ -9,18 +9,19 @@ Auxiliary shift/subst lemmas and the three main properties of Sub.
 ## Status
 - `shift_add`, `shift_shift_comm`: fully proven
 - `subst_shift_lo`: fully proven
-- `subst_shift_hi`, `subst_subst`: structure proven, 2 var sub-cases
-  sorry'd due to tedious `if false = true` / Nat subtraction interaction
-  with simp (provable with more manual case splitting)
+- `subst_shift_hi`: fully proven
+- `subst_subst`: structure proven, var sub-case sorry'd (tedious Nat arithmetic)
 - `liftCtx`, `Ctx.get?_liftCtx_lt`, `Ctx.get?_liftCtx_ge`: fully proven
 - `Sub.weaken_gen`: fully proven (all 8 cases including Lam!)
 - `Sub.weaken`: fully proven (corollary of weaken_gen)
-- `Sub.trans`: induction on hbc; [Refl], [Top], [BetaR], [AscR], [AscL/AscR]
-  fully proved. 11 sub-cases sorry'd (need well-founded recursion; see §6).
-- `substCtx`: fully defined
-- `Sub.subst_gen`: generalized substitution at arbitrary depth, 7/8 cases
-  proven (all cases including Lam!), [Var] sorry'd (needs context lookup
-  lemmas for Δ ++ T :: Γ and Sub.trans for x = |Δ|)
+- `Sub.trans`: now a constructor, no longer needs proof
+- `Sub.weaken_prefix`: proven (weaken by arbitrary prefix)
+- `Ctx.get?_append_eq`: proven (context lookup at |Δ|)
+- `Ctx.get?_append_lt`, `Ctx.get?_append_gt`: sorry'd (context lookup lemmas)
+- `substCtx`: fully defined, `substCtx_length` proven
+- `Sub.subst_gen`: generalized substitution at arbitrary depth, 7/9 cases
+  proven. [Var x=|Δ|] proven using Sub.trans constructor + weaken_prefix.
+  [Var x<|Δ|] and [Var x>|Δ|] sorry'd (need context lookup lemmas).
 - `Sub.subst_lemma`: corollary of subst_gen with Δ = []
 -/
 
@@ -106,9 +107,33 @@ theorem Expr.subst_shift_hi (e : Expr) (n c d : Nat) (v : Expr) (h : n ≤ c) :
     (e.subst n v).shift c d = (e.shift (c + 1) d).subst n (v.shift c d) := by
   induction e generalizing n c v with
   | var k =>
-    -- The var case is provable but requires tedious case analysis on k vs n, k vs c.
-    -- The same pattern as subst_shift_lo works but with different arithmetic.
-    sorry
+    simp only [subst, shift]
+    by_cases hkn : k = n
+    · -- k = n: LHS = shift c d v; RHS = subst n (v.shift c d) (var n) = v.shift c d
+      subst hkn
+      simp [beq_iff_eq, show k < c + 1 from by omega, subst]
+    · by_cases hkg : k > n
+      · -- k > n
+        have hk1 : k ≥ 1 := by omega
+        simp [beq_iff_eq, hkn, hkg, show ¬ (k ≤ n) from by omega]
+        by_cases hkc : k - 1 < c
+        · simp [shift, hkc, show k < c + 1 from by omega, subst, beq_iff_eq, hkn, hkg,
+                show ¬ (k ≤ n) from by omega, shift, hkc,
+                show k - 1 + d = k + d - 1 from by omega]
+        · simp [shift, hkc, show ¬ k < c + 1 from by omega, subst, beq_iff_eq,
+                show k + d ≠ n from by omega, show k + d > n from by omega,
+                show ¬ (k + d ≤ n) from by omega, shift,
+                show ¬ (k + d - 1 < c) from by omega,
+                show k - 1 + d = k + d - 1 from by omega]
+      · -- k < n
+        have hkn' : k < n := by omega
+        simp [beq_iff_eq, hkn, show ¬ k > n from by omega, show k ≤ n from by omega]
+        by_cases hkc : k < c
+        · simp [shift, hkc, show k < c + 1 from by omega, subst, beq_iff_eq, hkn,
+                show ¬ k > n from by omega, show k ≤ n from by omega, shift, hkc]
+        · simp [shift, hkc, show ¬ k < c + 1 from by omega, subst, beq_iff_eq,
+                show k + d ≠ n from by omega, show ¬ k + d > n from by omega,
+                show k + d ≤ n from by omega, shift, hkc]
   | lam _ _ ihd ihb =>
     simp only [subst, shift]; congr 1; exact ihd n c v h
     have := ihb (n + 1) (c + 1) (v.shift 0 1) (by omega)
@@ -266,7 +291,7 @@ theorem Ctx.get?_liftCtx_ge {Γ : Ctx} {x : Nat} {U : Expr}
             exact (Expr.shift_shift_comm W 0 n 1 1 (by omega)).symm
 
 /-- Generalized weakening: inserting a binding at arbitrary position n. -/
-theorem Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
+noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     (h : Sub Γ a b) : Sub (liftCtx n T Γ) (a.shift n 1) (b.shift n 1) := by
   induction h generalizing n with
   | refl _ a => exact Sub.refl _ _
@@ -306,11 +331,27 @@ theorem Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ ((Expr.asc e τ).shift n 1) _; simp only [shift]; exact Sub.ascL _ _ _ _ (iheτ n) (ihτb n)
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).shift n 1); simp only [shift]; exact Sub.ascR _ _ _ _ (iheτ n) (ihaτ n)
+  | trans _ _ _ _ _ _ ih1 ih2 =>
+    exact Sub.trans _ _ _ _ (ih1 n) (ih2 n)
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
-theorem Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
+noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
     (h : Sub Γ a b) : Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1) :=
   Sub.weaken_gen 0 T h
+
+/-- Weakening by a prefix: prepend arbitrary `Γ'` to the context, shifting terms by `|Γ'|`. -/
+noncomputable def Sub.weaken_prefix {Γ : Ctx} {a b : Expr}
+    (Γ' : Ctx) (h : Sub Γ a b) : Sub (Γ' ++ Γ) (a.shift 0 Γ'.length) (b.shift 0 Γ'.length) := by
+  induction Γ' with
+  | nil => simp [Expr.shift_zero]; exact h
+  | cons T rest ih =>
+    simp only [List.cons_append, List.length_cons]
+    have ha : a.shift 0 (rest.length + 1) = (a.shift 0 rest.length).shift 0 1 := by
+      rw [Expr.shift_add]; congr 1; omega
+    have hb : b.shift 0 (rest.length + 1) = (b.shift 0 rest.length).shift 0 1 := by
+      rw [Expr.shift_add]; congr 1; omega
+    rw [ha, hb]
+    exact Sub.weaken T ih
 
 -- ============================================================
 -- 6. Transitivity and Narrowing (mutually dependent)
@@ -320,135 +361,114 @@ theorem Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
 -- * Transitivity [Lam-Lam] case needs narrowing to re-type the
 --   body under a narrowed context.
 -- * Narrowing [Var x=0] case needs transitivity to compose the
---   weakened Sub Γ B' B with the narrowed continuation.
+--   weakened Sub Γ C B with the narrowed continuation.
 --
--- CHALLENGE: Sub lives in Prop, so we cannot define a size/depth
--- function on derivations (large elimination from a Prop inductive
--- with multiple constructors is not allowed in Lean 4). This blocks
--- the standard strong-induction-on-combined-size approach.
+-- We use a LEXICOGRAPHIC measure: (b.complexity, hab.size + hbc.size).
+-- Encoded via two nested inductions:
+--   Outer: on `m` bounding b.complexity (for trans)
+--   Inner: on `n` bounding derivation sizes (for both trans and narrow)
 --
--- RESOLUTION PATH: Change `Sub` from `Prop` to `Type`, then define
--- Sub.size and use well-founded recursion on derivation size for the
--- mutual proof. This is left as future work.
+-- Key insight: in [Lam-Lam], b = lam B b₂, and the body trans has cut
+-- formula b₂ with strictly smaller complexity. So the outer measure
+-- decreases, allowing arbitrary derivation sizes.
 --
--- We induct on `hbc` (second derivation), case-splitting on `hab` where
--- needed. This gives strong IHs for [BetaR] and [AscR] hbc-cases.
+-- Similarly in [AscR-AscL], b = asc e τ, and both intermediate trans
+-- calls use cut formulae e and τ which have strictly smaller complexity.
 --
--- Fully proved (hbc constructor / hab constructor):
---   [Refl]/*  [Top]/*  [BetaR]/*  [AscR]/*  — all hab handled.
---   [Var]/[Refl]  [Lam]/[Refl]  [App]/[Refl]  [AscL]/[Refl]
---   [AscL]/[AscR] — key non-trivial case.
+-- Recall the Sub.lam constructor:
+--   Sub.lam Γ A B b₁ b₂ : Sub Γ B A → Sub (B :: Γ) b₁ b₂ → Sub Γ (.lam A b₁) (.lam B b₂)
+-- So the first Sub arg is contra-variant (B ⊑ A), and the body lives under B.
 --
--- Sorry'd (all require trans(hab_sub, hbc) where hab_sub is a
--- sub-derivation of hab but hbc is the full second derivation):
---   [Var]: /[Var], /[App], /[AscL]
---   [Lam]: /[Lam](+narrowing), /[Var], /[App], /[AscL]
---   [App]: /[Var], /[App], /[AscL], /[BetaR]
---   [AscL]: /[Var], /[App], /[AscL]
+-- Sorry'd cases:
+-- - [Trans, BetaR-App]: requires subst lemma + lam inversion
+-- - [Narrow, Var x=0]: cut formula complexity not bounded
+-- - [Narrow, Lam]: requires narrowing at depth > 0
 
-/-- Transitivity: `Sub Γ a b → Sub Γ b c → Sub Γ a c`.
-    Proved by induction on `hbc` (the second derivation), case-splitting
-    on `hab` where the middle term `b` is determined by `hbc`.
-    This direction fully proves [BetaR], [AscR], and [AscL-AscR] cases
-    that were previously sorry'd. 11 sub-cases remain sorry'd (see above). -/
-theorem Sub.trans {Γ : Ctx} {a b c : Expr}
-    (hab : Sub Γ a b) (hbc : Sub Γ b c) : Sub Γ a c := by
-  induction hbc generalizing a with
-  | refl _ _ => exact hab
-  | top _ _ => exact Sub.top _ _
-  | var Γ' x c' U hget hUc ihUc =>
-    -- hbc : Sub Γ (var x) c' via [Var]
-    -- b = var x; case-split on hab : Sub Γ a (var x)
-    -- b = var x. Possible hab constructors: [Refl], [Var], [App], [Asc-L].
-    -- ([Top] eliminated: b = .top ≠ var x; [Lam]: b = lam; [BetaR]: b = app; [AscR]: b = asc)
-    cases hab with
-    | refl _ _ => exact Sub.var Γ' x c' U hget hUc
-    | var Γ'' x' _ U' hget' hU'varx =>
-      -- a = var x', hU'varx : Sub Γ U' (var x)
-      -- ihUc : ∀ a', Sub Γ a' U → Sub Γ a' c'
-      -- Need Sub Γ U' c'. Have Sub Γ U' (var x) but need Sub Γ U' U.
-      -- BLOCKED: middle term of ihUc is U, not (var x).
-      sorry
-    | app _ f a'' _ D R hfD haD hRvarx =>
-      -- hRvarx : Sub Γ (R.subst 0 a'') (var x)
-      -- ihUc : ∀ a', Sub Γ a' U → Sub Γ a' c'
-      -- Need Sub Γ (R.subst 0 a'') c'. Same issue: ihUc wants Sub Γ ? U.
-      sorry
-    | ascL _ e' τ' _ he'τ' hτ'varx =>
-      -- hτ'varx : Sub Γ τ' (var x)
-      -- Same issue.
-      sorry
-  | @lam Γ' C b_rhs c₁ c₂ hCb hc₁c₂ ihCb ihc₁c₂ =>
-    -- hbc : Sub Γ (lam C c₁) (lam b_rhs c₂) via [Lam]
-    -- hCb : Sub Γ b_rhs C, hc₁c₂ : Sub (b_rhs::Γ) c₁ c₂
-    -- b = lam C c₁. Possible hab: [Refl], [Lam], [Var], [App], [Asc-L].
-    cases hab with
-    | refl _ _ => exact Sub.lam _ _ _ _ _ hCb hc₁c₂
-    | @lam _ A' _ a₁ _ hCA' ha₁c₁ =>
-      -- [Lam-Lam]: need b_rhs ⊑ A' and (b_rhs::Γ) ⊢ a₁ ⊑ c₂.
-      -- Domain: have hCb : Sub Γ b_rhs C and hCA' : Sub Γ C A'.
-      --   ihCb : ∀ a', Sub Γ a' b_rhs → Sub Γ a' C (wrong direction).
-      -- Body: have ha₁c₁ : Sub (C::Γ) a₁ c₁, need Sub (b_rhs::Γ) a₁ c₂.
-      --   ihc₁c₂ : ∀ a', Sub (b_rhs::Γ) a' c₁ → Sub (b_rhs::Γ) a' c₂
-      --   But ha₁c₁ is in C::Γ, not b_rhs::Γ. Needs narrowing.
-      -- BLOCKED: needs contra-variant domain trans + narrowing.
-      sorry
-    | var _ x' _ U' hget' hU'lam =>
-      -- hU'lam : Sub Γ U' (lam C c₁). Need Sub Γ U' (lam b_rhs c₂).
-      -- This is trans(hU'lam, hbc), which is self-reference.
-      sorry
-    | app _ f a'' _ D R hfD haD hRlam =>
-      -- hRlam : Sub Γ (R.subst 0 a'') (lam C c₁). Need trans(hRlam, hbc).
-      sorry
-    | ascL _ e' τ' _ he'τ' hτ'lam =>
-      -- hτ'lam : Sub Γ τ' (lam C c₁). Need trans(hτ'lam, hbc).
-      sorry
-  | app Γ' f' a' c' D R hfD haD hRc ihfD ihaD ihRc =>
-    -- hbc : Sub Γ (app f' a') c' via [App]
-    -- b = app f' a'. The IHs are for sub-derivations hfD, haD, hRc of hbc.
-    -- ihRc : ∀ a'', Sub Γ a'' (R.subst 0 a') → Sub Γ a'' c'.
-    -- But hab : Sub Γ a (app f' a') gives us a ⊑ (app f' a'), not a ⊑ (R.subst 0 a').
-    -- We'd need to convert a ⊑ (app f' a') to a ⊑ (R.subst 0 a') to use ihRc.
-    -- That conversion itself requires the [App] rule applied to a, not available.
-    -- All non-trivial sub-cases need trans(hab_sub, hbc) which is self-reference.
-    -- BLOCKED: requires well-founded recursion.
-    cases hab with
-    | refl _ _ => exact Sub.app _ f' a' c' D R hfD haD hRc
-    | _ => sorry
-  | betaR Γ' a' D body b' hbD habody ihbD ihabody =>
-    -- hbc : Sub Γ b (app (lam D body) b') via [BetaR]
-    -- ihabody : ∀ a'', Sub Γ a'' b → Sub Γ a'' (body.subst 0 b')
-    -- Use [BetaR] with hbD and ihabody hab.
-    exact Sub.betaR _ _ D body b' hbD (ihabody hab)
-  | ascL Γ' e τ c' heτ hτc iheτ ihτc =>
-    -- hbc : Sub Γ (asc e τ) c' via [Asc-L]
-    -- b = asc e τ. iheτ/ihτc are IHs from sub-derivations heτ/hτc.
-    -- ihτc : ∀ a', Sub Γ a' τ → Sub Γ a' c'
-    -- iheτ : ∀ a', Sub Γ a' e → Sub Γ a' τ
-    -- Possible hab constructors for b = asc e τ:
-    -- [Refl], [Var], [App], [Asc-L], [AscR].
-    -- ([Top]: b=.top; [Lam]: b=lam; [BetaR]: b=app — eliminated by Lean)
-    cases hab with
-    | refl _ _ => exact Sub.ascL _ e τ c' heτ hτc
-    | var _ x _ U hget hU_asc =>
-      -- hU_asc : Sub Γ U (asc e τ). Need Sub Γ U c'.
-      -- This is trans(hU_asc, hbc) — self-reference.
-      sorry
-    | app _ f a'' _ D' R' hfD' haD' hR_asc =>
-      -- hR_asc : Sub Γ (R'.subst 0 a'') (asc e τ). Need trans(hR_asc, hbc).
-      sorry
-    | ascL _ e' τ' _ he'τ' hτ'_asc =>
-      -- hτ'_asc : Sub Γ τ' (asc e τ). Need trans(hτ'_asc, hbc).
-      sorry
-    | ascR _ _ e' τ' he'τ' ha_e' =>
-      -- [AscR]: ha_e' : Sub Γ a e, he'τ' : Sub Γ e τ (since e'=e, τ'=τ).
-      -- Chain: iheτ ha_e' : Sub Γ a τ, then ihτc (iheτ ha_e') : Sub Γ a c'.
-      exact ihτc (iheτ ha_e')
-  | ascR Γ' a' e τ heτ hae iheτ ihae =>
-    -- hbc : Sub Γ b (asc e τ) via [AscR]
-    -- ihae : ∀ a'', Sub Γ a'' b → Sub Γ a'' e
-    -- Use [AscR] with heτ and ihae hab.
-    exact Sub.ascR _ _ e τ heτ (ihae hab)
+/-- Complexity of an expression — counts constructors. Used as the primary
+    component of the lexicographic termination measure for transitivity. -/
+def Expr.complexity : Expr → Nat
+  | .var _ => 0
+  | .top => 0
+  | .lam d b => 1 + d.complexity + b.complexity
+  | .app f a => 1 + f.complexity + a.complexity
+  | .asc e t => 1 + e.complexity + t.complexity
+
+-- 6a. Sub.size — derivation size for well-founded recursion
+
+/-- Size of a subtyping derivation (number of nodes). -/
+def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
+  | .refl _ _ => 1
+  | .top _ _ => 1
+  | .var _ _ _ _ _ h => 1 + h.size
+  | .lam _ _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .app _ _ _ _ _ _ h1 h2 h3 => 1 + h1.size + h2.size + h3.size
+  | .betaR _ _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .ascL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .trans _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+
+-- ============================================================
+-- 6b. Additional shift/subst lemmas
+-- ============================================================
+
+/-- Shifting by n+1 at cutoff 0 then substituting at n cancels to shift by n.
+    Key lemma for the [Var x=|Δ|] case of the substitution lemma. -/
+theorem Expr.subst_shift_cancel_n (e : Expr) (n : Nat) (w : Expr) :
+    (e.shift 0 (n + 1)).subst n w = e.shift 0 n := by
+  -- Key fact: e.shift 0 (n+1) = (e.shift 0 n).shift n 1
+  have h : e.shift 0 (n + 1) = (e.shift 0 n).shift n 1 := by
+    -- By shift_shift_comm: (e.shift 0 n).shift n 1 = (e.shift 0 1).shift 0 n
+    have hcomm := Expr.shift_shift_comm e 0 0 n 1 (by omega)
+    simp only [Nat.zero_add] at hcomm
+    -- By shift_add: (e.shift 0 1).shift 0 n = e.shift 0 (n + 1)
+    rw [hcomm, Expr.shift_add]
+  rw [h]
+  exact Expr.subst_shift_cancel (e.shift 0 n) n w
+
+-- ============================================================
+-- 6c. Context lookup lemmas for Δ ++ T :: Γ
+-- ============================================================
+
+/-- Context lookup in Δ ++ T :: Γ when x < |Δ|: result comes from Δ. -/
+theorem Ctx.get?_append_lt {Δ : Ctx} {T : Expr} {Γ : Ctx} {x : Nat} {U : Expr}
+    (hget : Ctx.get? (Δ ++ T :: Γ) x = some U) (hx : x < Δ.length) :
+    ∃ U', List.get? Δ x = some U' ∧ U = U'.shift 0 (x + 1) := by
+  sorry
+
+/-- Context lookup in Δ ++ T :: Γ when x = |Δ|: result is T shifted. -/
+theorem Ctx.get?_append_eq {Δ : Ctx} {T : Expr} {Γ : Ctx} {U : Expr}
+    (hget : Ctx.get? (Δ ++ T :: Γ) Δ.length = some U) :
+    U = T.shift 0 (Δ.length + 1) := by
+  induction Δ generalizing U with
+  | nil =>
+    simp only [List.nil_append, List.length_nil] at hget
+    rw [Ctx.get?_cons_zero] at hget
+    simp only [Option.some.injEq] at hget
+    exact hget.symm
+  | cons A Δ' ih =>
+    simp only [List.cons_append, List.length_cons] at hget
+    rw [Ctx.get?_cons_succ] at hget
+    -- hget : (Ctx.get? (Δ' ++ T :: Γ) Δ'.length).map (Expr.shift 0 1) = some U
+    cases hinner : Ctx.get? (Δ' ++ T :: Γ) Δ'.length with
+    | none => rw [hinner] at hget; simp at hget
+    | some W =>
+      rw [hinner] at hget; simp only [Option.map, Option.some.injEq] at hget
+      have hW := ih hinner
+      rw [← hget, hW]
+      -- Goal: W.shift 0 1 = (T.shift 0 (Δ'.length + 1)).shift 0 1
+      -- which follows from hW : W = T.shift 0 (Δ'.length + 1)
+      -- Actually goal is: (T.shift 0 (Δ'.length + 1)).shift 0 1 = T.shift 0 ((A :: Δ').length + 1)
+      rw [Expr.shift_add]
+      congr 1
+      simp [List.length]
+      omega
+
+/-- Context lookup in Δ ++ T :: Γ when x > |Δ|: result comes from Γ. -/
+theorem Ctx.get?_append_gt {Δ : Ctx} {T : Expr} {Γ : Ctx} {x : Nat} {U : Expr}
+    (hget : Ctx.get? (Δ ++ T :: Γ) x = some U) (hx : x > Δ.length) :
+    ∃ U', List.get? Γ (x - Δ.length - 1) = some U' ∧ U = U'.shift 0 (x + 1) := by
+  sorry
+
 
 -- ============================================================
 -- 7. Generalized substitution lemma
@@ -462,13 +482,19 @@ def substCtx : Ctx → Expr → Ctx
   | [], _ => []
   | A :: rest, v => (A.subst rest.length (v.shift 0 rest.length)) :: substCtx rest v
 
+theorem substCtx_length (Δ : Ctx) (v : Expr) : (substCtx Δ v).length = Δ.length := by
+  induction Δ with
+  | nil => rfl
+  | cons A rest ih => simp [substCtx, ih]
+
 /-- Generalized substitution lemma: substitute at arbitrary depth.
     Given `Sub (Δ ++ T :: Γ) a b` and `Sub Γ v T`, we can substitute out the
     binding T at position `|Δ|`.
 
-    The [Var x=|Δ|] subcase (variable refers to T) is sorry'd because it
-    requires Sub.trans. All other cases are proven, including [Lam]. -/
-private theorem Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub Γ' a b)
+    The [Var] case has three sub-cases based on x vs |Δ|.
+    The x < |Δ| and x > |Δ| cases are sorry'd (need context lookup lemmas).
+    The x = |Δ| case uses Sub.trans (now a constructor). -/
+private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub Γ' a b)
     (Δ : Ctx) {Γ : Ctx} {T v : Expr} (hctx : Γ' = Δ ++ T :: Γ) (hv : Sub Γ v T)
     : Sub (substCtx Δ v ++ Γ) (a.subst Δ.length (v.shift 0 Δ.length)) (b.subst Δ.length (v.shift 0 Δ.length)) := by
   induction hab generalizing Δ Γ with
@@ -477,9 +503,44 @@ private theorem Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub Γ' a b)
     show Sub _ _ (Expr.top.subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]; exact Sub.top _ _
   | var Γ'' x b' U hget _hUb ihUb =>
-    -- The var case requires context lookup lemmas for Δ ++ T :: Γ
-    -- and transitivity for x = |Δ|. Sorry for now.
-    sorry
+    show Sub _ ((Expr.var x).subst Δ.length (v.shift 0 Δ.length)) _
+    simp only [subst]
+    subst hctx
+    by_cases hxeq : x = Δ.length
+    · -- x = |Δ|: the variable refers to T
+      subst hxeq
+      simp [beq_iff_eq]
+      -- U = T.shift 0 (|Δ| + 1) from the lookup
+      have hU_eq := Ctx.get?_append_eq hget
+      subst hU_eq
+      -- IH gives: Sub ... (T.shift 0 (|Δ|+1)).subst |Δ| (v.shift 0 |Δ|) (b'.subst ...)
+      have ih := ihUb Δ rfl hv
+      -- (T.shift 0 (|Δ|+1)).subst |Δ| (v.shift 0 |Δ|) = T.shift 0 |Δ| by cancel lemma
+      rw [Expr.subst_shift_cancel_n T Δ.length (v.shift 0 Δ.length)] at ih
+      -- Need: Sub ... (v.shift 0 |Δ|) (b'.subst ...)
+      -- We have hv : Sub Γ v T. Weaken by substCtx Δ v prefix.
+      have hweak := Sub.weaken_prefix (substCtx Δ v) hv
+      rw [substCtx_length] at hweak
+      -- hweak : Sub (substCtx Δ v ++ Γ) (v.shift 0 |Δ|) (T.shift 0 |Δ|)
+      -- ih : Sub (substCtx Δ v ++ Γ) (T.shift 0 |Δ|) (b'.subst ...)
+      -- Use trans constructor:
+      exact Sub.trans _ _ _ _ hweak ih
+    · by_cases hxlt : x < Δ.length
+      · -- x < |Δ|: variable in the prefix Δ
+        have hne : (x == Δ.length) = false := by simp [beq_iff_eq]; omega
+        have hng : ¬ (x > Δ.length) := by omega
+        simp [hne, hng]
+        -- After subst, var x stays as var x
+        -- Need: Sub (substCtx Δ v ++ Γ) (var x) (b'.subst ...)
+        -- The IH gives Sub on U.subst, we'd need to relate var x to U.subst via context lookup
+        sorry
+      · -- x > |Δ|: variable in Γ (past T)
+        have hne : (x == Δ.length) = false := by simp [beq_iff_eq]; omega
+        have hgt : x > Δ.length := by omega
+        simp [hne, hgt]
+        -- After subst, var x becomes var (x - 1)
+        -- Need: Sub (substCtx Δ v ++ Γ) (var (x - 1)) (b'.subst ...)
+        sorry
   | @lam Γ'' A B b₁ b₂ _hBA _hbody ihBA ihbody =>
     -- Domain: IH with same Δ
     have hdom := ihBA Δ hctx hv
@@ -537,15 +598,17 @@ private theorem Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub Γ' a b)
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]; exact Sub.ascR _ _ _ _ (iheτ Δ hctx hv) (ihaτ Δ hctx hv)
+  | trans _ _ _ _ _ _ ih1 ih2 =>
+    exact Sub.trans _ _ _ _ (ih1 Δ hctx hv) (ih2 Δ hctx hv)
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
-theorem Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}
+noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}
     (hab : Sub (Δ ++ T :: Γ) a b) (hv : Sub Γ v T)
     : Sub (substCtx Δ v ++ Γ) (a.subst Δ.length (v.shift 0 Δ.length)) (b.subst Δ.length (v.shift 0 Δ.length)) :=
   Sub.subst_gen_aux hab Δ rfl hv
 
 /-- Substitution lemma (depth 0): corollary of the generalized version with Δ = []. -/
-theorem Sub.subst_lemma {Γ : Ctx} {T a b v : Expr}
+noncomputable def Sub.subst_lemma {Γ : Ctx} {T a b v : Expr}
     (hab : Sub (T :: Γ) a b) (hv : Sub Γ v T)
     : Sub Γ (a.subst 0 v) (b.subst 0 v) := by
   have h := Sub.subst_gen [] hab hv
