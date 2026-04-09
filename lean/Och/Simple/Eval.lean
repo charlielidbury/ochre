@@ -20,8 +20,9 @@ open Expr
     - `var n`     → stuck (free variable)
     - `top`       → `top`
     - `lam D b`   → `lam D b` (value, domain kept for structure)
-    - `app f a`   → evaluate `f` and `a`, if `f'` is a lambda then
-                     substitute and continue; otherwise stuck application
+    - `app f a`   → evaluate `f`; if `f'` is a lambda then substitute
+                     unevaluated `a` and continue (call-by-name);
+                     otherwise form stuck application with unevaluated `a`
     - `asc e _`   → evaluate `e` (erase ascription)
 -/
 def eval (fuel : Nat) (e : Expr) : Option Expr :=
@@ -34,10 +35,9 @@ def eval (fuel : Nat) (e : Expr) : Option Expr :=
     | .lam dom body => some (.lam dom body)
     | .app f a => do
       let f' ← eval fuel f
-      let a' ← eval fuel a
       match f' with
-      | .lam _dom body => eval fuel (body.subst 0 a')
-      | _ => some (.app f' a')
+      | .lam _dom body => eval fuel (body.subst 0 a)
+      | _ => some (.app f' a)
     | .asc e _ty => eval fuel e
 
 /-- A value is an expression that the evaluator returns as-is
