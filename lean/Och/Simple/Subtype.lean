@@ -62,10 +62,10 @@ inductive Sub : Ctx → Expr → Expr → Prop where
       Sub Γ e τ →
       Sub Γ τ b →
       Sub Γ (.asc e τ) b
-  /-- [Asc-R]: `Γ ⊢ a ⊑ (e : τ)` if `e ⊑ τ` and `a ⊑ τ`. -/
+  /-- [Asc-R]: `Γ ⊢ a ⊑ (e : τ)` if `e ⊑ τ` and `a ⊑ e`. -/
   | ascR (Γ : Ctx) (a e τ : Expr) :
       Sub Γ e τ →
-      Sub Γ a τ →
+      Sub Γ a e →
       Sub Γ a (.asc e τ)
 
 end Och.Simple

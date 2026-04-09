@@ -57,7 +57,7 @@ Single relation: a is a subtype of b in context Γ.
 [Asc-R]
 Γ ⊢ a ⊑ (e : τ)
   Γ ⊢ e ⊑ τ                    -- validate ascription
-  Γ ⊢ a ⊑ τ                    -- reduce to type
+  Γ ⊢ a ⊑ e                    -- check against the value, not the type
 ```
 
 Notes:
@@ -163,3 +163,32 @@ Note: `(e : τ)` returns the **value** of e concretely, but returns **τ** abstr
 **Statement:** If `Γ ⊢ e ⊑ τ` and `γ ⊨ Γ`, then `∅ ⊢ v ⊑ t` where `γ ⊢ e → v` and `γ ⊢ τ → t`.
 
 In words: if the abstract system accepts `e ⊑ τ`, then for every concrete environment consistent with Γ, the concrete value of e is a subtype of the concrete value of τ.
+
+### Proof sketch (by induction on `Γ ⊢ e ⊑ τ`)
+
+**Prerequisites** (proved separately):
+- *Substitution lemma*: If `T::Γ ⊢ a ⊑ b` and `Γ ⊢ v ⊑ T`, then `Γ ⊢ a[0:=v] ⊑ b[0:=v]`.
+- *Transitivity*: If `Γ ⊢ a ⊑ b` and `Γ ⊢ b ⊑ c`, then `Γ ⊢ a ⊑ c`.
+
+**[Refl]** `e = τ`. Both sides evaluate to the same closed expression. Result follows by ⊑-reflexivity on closed values.
+
+**[Top]** `τ = ⊤`. Concretely, ⊤ → ⊤. Need `v ⊑ ⊤`, which holds by [Top].
+
+**[Var]** `e = x`, `Γ(x) = T`, `Γ ⊢ T ⊑ τ`. Concretely, `γ(x)` is the value. By compatibility, `γ(x) ⊑ γ(T)`. By IH on `T ⊑ τ`, `γ(T) ⊑ γ(τ)`. By transitivity, `γ(x) ⊑ γ(τ)`. ✓
+
+**[Lam]** `e = λA.b₁`, `τ = λB.b₂`, with `B ⊑ A` and `B::Γ ⊢ b₁ ⊑ b₂`. Concretely, both evaluate to lambdas (closures). Need to show the concrete lambda from e is ⊑ the concrete lambda from τ. This means: for any argument `v ⊑ γ(B)`, applying the first gives a result ⊑ applying the second. This follows from the IH on `b₁ ⊑ b₂` with the environment extended by v. ✓
+
+**[App]** `e = f a`, with `f ⊑ λD.R`, `a ⊑ D`, `R[0:=a] ⊑ τ`. This is the key case.
+- By IH on `f ⊑ λD.R`: `γ(f) ⊑ γ(λD.R)`. So `γ(f)` is a lambda that's ⊑ `λγ(D).γ(R)`.
+- By IH on `a ⊑ D`: `γ(a) ⊑ γ(D)`.
+- Concretely, `γ(f a)` applies `γ(f)` to `γ(a)`. Since `γ(f) = λD₁.body₁` with `λD₁.body₁ ⊑ λγ(D).γ(R)`, we know (by [Lam] inversion): `γ(D) ⊑ D₁` and `body₁ ⊑ γ(R)` in context `γ(D)`.
+- By transitivity on domains: `γ(a) ⊑ γ(D) ⊑ D₁`, so the application is valid.
+- The result is `body₁[γ(a)]`. By the substitution lemma on `body₁ ⊑ γ(R)`: `body₁[γ(a)] ⊑ γ(R)[γ(a)]`.
+- By IH on `R[0:=a] ⊑ τ`: `γ(R[0:=a]) ⊑ γ(τ)`. And `γ(R[0:=a]) = γ(R)[γ(a)]` (substitution commutation).
+- By transitivity: `body₁[γ(a)] ⊑ γ(R)[γ(a)] ⊑ γ(τ)`. ✓
+
+**[Beta-R]** `τ = (λD.body) b`, with `b ⊑ D` and `e ⊑ body[0:=b]`. Concretely, `γ(τ)` evaluates the application, producing `γ(body)[γ(b)]`. By IH on `e ⊑ body[0:=b]`: `γ(e) ⊑ γ(body[0:=b]) = γ(body)[γ(b)] = γ(τ)`. ✓
+
+**[Asc-L]** `e = (e':τ')`, with `e' ⊑ τ'` and `τ' ⊑ τ`. Concretely, `(e':τ') → γ(e')` (ascription erased). By IH: `γ(e') ⊑ γ(τ')` and `γ(τ') ⊑ γ(τ)`. By transitivity: `γ(e') ⊑ γ(τ)`. ✓
+
+**[Asc-R]** `τ = (e':τ')`, with `e' ⊑ τ'` and `e ⊑ e'`. Concretely, `(e':τ') → γ(e')` (ascription erased). By IH on `e ⊑ e'`: `γ(e) ⊑ γ(e') = γ(τ)`. ✓
