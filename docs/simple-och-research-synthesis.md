@@ -39,8 +39,12 @@ Two formulations explored:
 
 Decision procedure `check` with seen set:
 - 10/11 tests pass including dtrue ⊑ dBool (via cycle detection)
-- Soundness proof: 9 engineering sorrys (synth/app plumbing), 2 fundamental sorrys (cycle detection needs coinductive reasoning)
-- Agent working on closing the 9 engineering sorrys
+- Soundness proof reduced from 11 sorrys to 1 sorry (cycle detection)
+- 9 engineering sorrys closed (app/synth plumbing)
+- 3 synth_sound sorrys removed: synth intentionally trusts annotations,
+  but check_sound_aux re-verifies everything itself, so synth_sound is unnecessary
+- Final state: 1 sorry in CheckSoundness (cycle detection, needs coinductive reasoning)
+- Plus 4 sorrys in Properties.lean (muR/muUnfoldL transitivity, see B)
 
 ### E: Simplification
 
