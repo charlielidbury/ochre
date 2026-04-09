@@ -35,11 +35,11 @@ inductive Sub : Ctx → Expr → Expr → Prop where
   /-- [Top]: `Γ ⊢ a ⊑ ⊤` -/
   | top (Γ : Ctx) (a : Expr) :
       Sub Γ a .top
-  /-- [Var]: If `x : T ∈ Γ`, then `Γ ⊢ M ⊑ N` follows from `Γ ⊢ M[x := T] ⊑ N`. -/
-  | var (Γ : Ctx) (M N : Expr) (x : Nat) (T : Expr) :
+  /-- [Var]: `Γ ⊢ x ⊑ b` if `Γ(x) = T` and `Γ ⊢ T ⊑ b`. -/
+  | var (Γ : Ctx) (x : Nat) (b T : Expr) :
       Γ.get? x = some T →
-      Sub Γ (M.subst x T) N →
-      Sub Γ M N
+      Sub Γ T b →
+      Sub Γ (.var x) b
   /-- [Lam]: `Γ ⊢ λA. b₁ ⊑ λB. b₂` if `Γ ⊢ B ⊑ A` and `B :: Γ ⊢ b₁ ⊑ b₂`. -/
   | lam (Γ : Ctx) (A B b₁ b₂ : Expr) :
       Sub Γ B A →

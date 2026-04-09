@@ -29,9 +29,9 @@ Single relation: a is a subtype of b in context Γ.
 Γ ⊢ a ⊑ ⊤
 
 [Var]
-Γ ⊢ M ⊑ N
-  x : T ∈ Γ
-  Γ ⊢ M[x := T] ⊑ N
+Γ ⊢ x ⊑ b
+  Γ(x) = T
+  Γ ⊢ T ⊑ b
 
 [Lam]
 Γ ⊢ λx:A. b₁ ⊑ λx:B. b₂
@@ -61,7 +61,7 @@ Single relation: a is a subtype of b in context Γ.
 ```
 
 Notes:
-- **[Var]** only substitutes in the LHS. Substituting in the RHS would widen the bound, which is unsound. Beta reduction and ascription reduction are meaning-preserving, so they are safe on both sides.
+- **[Var]** only unfolds variables on the LHS. The RHS stays opaque — widening the bound would be unsound. [App] handles decomposition of nested applications down to the head variable, so bare-variable [Var] suffices.
 - **[App]** checks `f ⊑ λx:D. R` to determine callability and extract the domain/return type. D and R are existentially quantified — determined by whatever lambda f reduces to via [Var], [App], [Asc-L], or [Refl]. This is type synthesis embedded in subtyping.
 - **[Asc]** erases the term, keeping the type.
 - **Well-formedness** is not checked separately. The system is a checker: you always check a program against a type, e.g. `∅ ⊢ program ⊑ expected_type`.
