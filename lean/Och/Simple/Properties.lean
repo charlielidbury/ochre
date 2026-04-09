@@ -548,9 +548,15 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
         | .muR _ _ A body hAnn hBody =>
-          -- SORRY: trans(top, muR) — b = top, c = mu A body
-          -- hAnn: top ⊑ A (but A.complexity may exceed the bound m)
-          -- Can't cut on A since top.complexity = 0 doesn't bound A.complexity
+          -- CASE: trans(top, muR)
+          -- hab: Sub Γ a .top (via top), hbc: Sub Γ .top (.mu A body) (via muR)
+          -- hAnn: Sub Γ .top A, hBody: Sub Γ .top (body.subst 0 .top)
+          -- Goal: Sub Γ a (.mu A body)
+          -- Via muR: need (1) Sub Γ a A and (2) Sub Γ a (body.subst 0 a).
+          -- (1) is obtainable: trans_n(Sub.top Γ a, hAnn) cuts on .top with smaller size. ✓
+          -- (2) is STUCK: trans_n(Sub.top Γ a, hBody) gives Sub Γ a (body.subst 0 .top),
+          --     but muR needs body.subst 0 a. SUBSTITUTION MISMATCH.
+          -- Status: believed TRUE, unprovable with current induction (needs sub-monotonicity).
           sorry
       | .var _ x _ U hget hUb =>
         exact Sub.var _ x c U hget (trans_n Γ U b c hUb hbc hcplx (by
@@ -578,9 +584,18 @@ private noncomputable def transNarrowInner
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .muR _ _ A_mu body_mu hAnn hBody =>
-          -- b = lam B body_b, hbc: lam B body_b ⊑ mu A_mu body_mu via muR
-          -- hAnn: lam B body_b ⊑ A_mu. By trans_n: lam A body_a ⊑ A_mu.
-          -- Then need body_mu.subst 0 (lam A body_a) — hard
+          -- CASE: trans(lam, muR)
+          -- hab: Sub Γ (.lam A body_a) (.lam B body_b) (via lam)
+          -- hbc: Sub Γ (.lam B body_b) (.mu A_mu body_mu) (via muR)
+          -- hAnn: Sub Γ (.lam B body_b) A_mu
+          -- hBody: Sub Γ (.lam B body_b) (body_mu.subst 0 (.lam B body_b))
+          -- Goal: Sub Γ (.lam A body_a) (.mu A_mu body_mu)
+          -- Via muR: need (1) Sub Γ (.lam A body_a) A_mu
+          --          and  (2) Sub Γ (.lam A body_a) (body_mu.subst 0 (.lam A body_a))
+          -- (1): trans_n(hab, hAnn) cuts on (.lam B body_b) with smaller sizes. ✓
+          -- (2): trans_n(hab, hBody) gives Sub Γ (.lam A body_a) (body_mu.subst 0 (.lam B body_b)),
+          --      but muR needs body_mu.subst 0 (.lam A body_a). SUBSTITUTION MISMATCH.
+          -- Status: believed TRUE, unprovable with current induction (needs sub-monotonicity).
           sorry
       | .mu _ A body _ hAb hbodyA =>
         exact Sub.mu _ A body c (trans_n Γ A b c hAb hbc hcplx (by
@@ -604,19 +619,35 @@ private noncomputable def transNarrowInner
           exact trans_lo Γ a A c
             (by simp [Expr.complexity] at hcplx ⊢; omega) hAnn hAc
         | .muUnfoldL _ .(A) .(body) _ hUnfold =>
-          -- SORRY: trans(muR, muUnfoldL) — can't connect body.subst 0 a to body.subst 0 (mu A body)
+          -- CASE: trans(muR, muUnfoldL)
+          -- hab: Sub Γ a (.mu A body) via muR, with hAnn: a ⊑ A, hBody: a ⊑ body.subst 0 a
+          -- hbc: Sub Γ (.mu A body) c via muUnfoldL, with hUnfold: body.subst 0 (.mu A body) ⊑ c
+          -- Goal: Sub Γ a c
+          -- Strategy: chain a ⊑ body.subst 0 a ⊑ body.subst 0 (.mu A body) ⊑ c
+          -- The middle step needs: body.subst 0 a ⊑ body.subst 0 (.mu A body)
+          -- This requires "substitution covariance": from a ⊑ (.mu A body) derive
+          -- body.subst 0 a ⊑ body.subst 0 (.mu A body). But substitution is NOT
+          -- covariant due to contravariant positions (e.g., lam domains).
+          -- Status: believed TRUE, unprovable with current induction (needs sub-monotonicity).
           sorry
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.muR _ _ A body hAnn hBody) hae hcplx
             (by simp only [Sub.size] at hle ⊢; omega))
         | .muR _ _ A₂ body₂ hA₂ hBody₂ =>
-          -- trans(muR, muR): b = mu A body, c = mu A₂ body₂
-          -- Have: a ⊑ A (hAnn), mu A body ⊑ A₂ (hA₂), mu A body ⊑ body₂.subst 0 (mu A body) (hBody₂)
-          -- Need: a ⊑ mu A₂ body₂
-          -- Use muR: need a ⊑ A₂ and a ⊑ body₂.subst 0 a
-          -- For a ⊑ A₂: a ⊑ A (hAnn), then... A ⊑ A₂? Not directly available.
-          -- Use inner trans: a ⊑ mu A body ⊑ A₂
+          -- CASE: trans(muR, muR)
+          -- hab: Sub Γ a (.mu A body) via muR, with hAnn: a ⊑ A, hBody: a ⊑ body.subst 0 a
+          -- hbc: Sub Γ (.mu A body) (.mu A₂ body₂) via muR
+          -- hA₂: Sub Γ (.mu A body) A₂, hBody₂: Sub Γ (.mu A body) (body₂.subst 0 (.mu A body))
+          -- Goal: Sub Γ a (.mu A₂ body₂)
+          -- Via muR: need (1) Sub Γ a A₂ and (2) Sub Γ a (body₂.subst 0 a)
+          -- (1): trans_n(muR(a,A,body), hA₂) cuts on (.mu A body) with smaller sizes. ✓
+          have haA₂ := trans_n Γ a (.mu A body) A₂
+            (Sub.muR _ _ A body hAnn hBody) hA₂ hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          -- (2): trans_n(muR(a,A,body), hBody₂) gives Sub Γ a (body₂.subst 0 (.mu A body)),
+          --      but muR needs body₂.subst 0 a. SUBSTITUTION MISMATCH.
+          -- Status: believed TRUE, unprovable with current induction (needs sub-monotonicity).
           sorry
       | .ascL _ e τ _ heτ hτb =>
         exact Sub.ascL _ e τ c heτ (trans_n Γ τ b c hτb hbc hcplx (by
@@ -636,8 +667,18 @@ private noncomputable def transNarrowInner
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .muR _ _ A_mu body_mu hAnn hBody =>
-          -- b = asc e τ, hbc: asc e τ ⊑ mu A_mu body_mu via muR
-          -- hAnn: asc e τ ⊑ A_mu
+          -- CASE: trans(ascR, muR)
+          -- hab: Sub Γ a (.asc e τ) via ascR, with heτ: e ⊑ τ, hae: a ⊑ e
+          -- hbc: Sub Γ (.asc e τ) (.mu A_mu body_mu) via muR
+          -- hAnn: Sub Γ (.asc e τ) A_mu
+          -- hBody: Sub Γ (.asc e τ) (body_mu.subst 0 (.asc e τ))
+          -- Goal: Sub Γ a (.mu A_mu body_mu)
+          -- Via muR: need (1) Sub Γ a A_mu
+          --          and  (2) Sub Γ a (body_mu.subst 0 a)
+          -- (1): trans_n(hab, hAnn) cuts on (.asc e τ) with smaller sizes. ✓
+          -- (2): trans_n(hab, hBody) gives Sub Γ a (body_mu.subst 0 (.asc e τ)),
+          --      but muR needs body_mu.subst 0 a. SUBSTITUTION MISMATCH.
+          -- Status: believed TRUE, unprovable with current induction (needs sub-monotonicity).
           sorry
     ,
     -- === NARROW_GEN at (m, n+1) ===
