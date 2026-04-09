@@ -156,8 +156,6 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
     (e.subst m u).subst n w := by
   induction e generalizing m n u w with
   | var k =>
-    -- LHS: ((var k).subst (n+1) (w.shift m 1)).subst m (u.subst n w)
-    -- RHS: ((var k).subst m u).subst n w
     have lhs_subst1 : (Expr.var k).subst (n + 1) (w.shift m 1) =
       if k == n + 1 then w.shift m 1 else if k > n + 1 then Expr.var (k - 1) else Expr.var k := by simp [subst]
     have rhs_subst1 : (Expr.var k).subst m u =
@@ -174,30 +172,8 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
     · simp only [show (k == n + 1) = false from by rw [beq_eq_false_iff_ne]; exact hkn1,
                   Bool.false_eq_true, ite_false]
       by_cases hkn1_gt : k > n + 1
-      · simp only [hkn1_gt, ite_true]
-        -- LHS: (var (k-1)).subst m (u.subst n w); k-1 ≠ m (since k > n+1 ≥ m+1, k-1 ≥ n+1 > m when n ≥ m)
-        -- wait, k-1 ≥ n+1 > n ≥ m, so k-1 > m. So LHS = var (k-1-1)
-        -- Then .subst m (u.subst n w): k-1-1 could be = m if k = m+2
-        -- Actually no, k > n+1 and m ≤ n, so k ≥ n+2 ≥ m+2, k-1 ≥ m+1 > m, k-1-1 ≥ m
-        -- k-1-1 = m iff k = m+2. Since k ≥ n+2 and m ≤ n, m+2 ≤ n+2 ≤ k. So k-1-1 ≥ m.
-        -- If k = m+2: k-1-1 = m, beq is true.
-        -- Hmm this is getting complicated. Let me use a different strategy.
-        -- Actually, k-1 > m means k-1 ≥ m+1, so k ≥ m+2, k-1-1 ≥ m. But k-1-1 could equal m.
-        -- Let's just compute more carefully.
-        -- LHS inner: (var (k-1)).subst m (u.subst n w)
-        --   k-1 ≠ m (k > n+1, n ≥ m, so k ≥ n+2 ≥ m+2, k-1 ≥ m+1 > m... wait, k-1 could be m+1, not = m)
-        --   Actually k-1 > m always: k > n+1 ≥ m+1, so k-1 ≥ m+1 > m. So k-1 ≠ m and k-1 > m.
-        --   Result: var (k-1-1)
-        -- LHS outer: (var (k-1-1)).subst m (u.subst n w)  -- WAIT, the outer subst was already done
-        -- No wait, the structure is: ((var k).subst (n+1) (w.shift m 1)).subst m (u.subst n w)
-        -- = (var (k-1)).subst m (u.subst n w) [since k > n+1, k ≠ n+1]
-        -- Now k-1 > m (as argued), k-1 ≠ m, so result = var (k-1-1)
-        -- RHS: ((var k).subst m u).subst n w
-        -- k > m (k > n+1 ≥ m+1 > m), k ≠ m, so = (var (k-1)).subst n w
-        -- k-1 > n (k > n+1 means k-1 ≥ n+1 > n), k-1 ≠ n (k-1 ≥ n+1 > n), so = var (k-1-1)
-        -- Both sides are var (k-1-1). ✓
-        -- But actually k - 1 - 1 in Lean Nat might be weird. k > n+1 means k ≥ n+2 ≥ 2, so k-1 ≥ 1, k-1-1 ≥ 0. OK.
-        simp only [subst,
+      · -- k > n+1: both sides reduce to var (k-1-1)
+        simp only [hkn1_gt, ite_true, subst,
           show (k - 1 == m) = false from by rw [beq_eq_false_iff_ne]; omega,
           show (k == m) = false from by rw [beq_eq_false_iff_ne]; omega,
           show (k - 1 == n) = false from by rw [beq_eq_false_iff_ne]; omega,
@@ -205,28 +181,21 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
           show k - 1 > m from by omega, ite_true,
           show k > m from by omega, ite_true,
           show k - 1 > n from by omega, ite_true]
-        -- Goal: var (k - 1 - 1) = var (k - 1 - 1)  -- but Lean might represent differently
-        -- Actually LHS subst gave var ((k-1) - 1) and RHS gave var ((k-1) - 1), should be identical
-      · simp only [hkn1_gt, ite_false]
+      · -- k ≤ n+1, k ≠ n+1: so k ≤ n
+        simp only [hkn1_gt, ite_false]
         by_cases hkm : k = m
         · subst hkm
           simp only [beq_self_eq_true, ite_true, subst, beq_self_eq_true, ite_true]
-        · -- k ≠ m, k ≤ n
-          -- LHS has (var k).subst m (u.subst n w): since k ≠ m
-          -- RHS has (if (k == m) then u else if k > m then var (k-1) else var k).subst n w
-          -- Need to simplify (k == m) on both sides first
-          simp only [show (k == m) = false from by rw [beq_eq_false_iff_ne]; exact hkm,
+        · simp only [show (k == m) = false from by rw [beq_eq_false_iff_ne]; exact hkm,
                       Bool.false_eq_true, ite_false]
           by_cases hkm_gt : k > m
-          · -- k > m: LHS = var (k-1), RHS = (var (k-1)).subst n w = var (k-1) since k-1 < n
-            simp only [hkm_gt, ite_true, subst,
+          · simp only [hkm_gt, ite_true, subst,
               show (k == m) = false from by rw [beq_eq_false_iff_ne]; exact hkm,
               show (k - 1 == n) = false from by rw [beq_eq_false_iff_ne]; omega,
               Bool.false_eq_true, ite_false,
               show k > m from hkm_gt, ite_true,
               show ¬ (k - 1 > n) from by omega, ite_false]
-          · -- k < m
-            simp only [hkm_gt, ite_false, subst,
+          · simp only [hkm_gt, ite_false, subst,
               show (k == m) = false from by rw [beq_eq_false_iff_ne]; exact hkm,
               show (k == n) = false from by rw [beq_eq_false_iff_ne]; omega,
               Bool.false_eq_true, ite_false,
@@ -437,30 +406,17 @@ noncomputable def Sub.weaken_prepend {Γ : Ctx} {a b : Expr}
 -- 6. Transitivity and Narrowing (mutually dependent)
 -- ============================================================
 
--- Transitivity and generalized narrowing are mutually dependent:
--- * Transitivity [Lam-Lam] case needs narrowing to re-type the
---   body under a narrowed context.
--- * Narrowing [Var x=0] case needs transitivity to compose the
---   weakened Sub Γ C B with the narrowed continuation.
+-- Transitivity and narrowing are mutually recursive:
+-- * Trans [Lam-Lam] needs narrowing to re-type the body.
+-- * Narrow [Var at boundary] needs transitivity to compose weakened bounds.
 --
--- We use a LEXICOGRAPHIC measure: (b.complexity, hab.size + hbc.size).
--- Encoded via two nested inductions:
---   Outer: on `m` bounding b.complexity (for trans)
---   Inner: on `n` bounding derivation sizes (for both trans and narrow)
+-- Termination uses a LEXICOGRAPHIC measure: (b.complexity, derivation sizes).
+-- Outer induction on b.complexity; inner on hab.size + hbc.size.
 --
--- Key insight: in [Lam-Lam], b = lam B b₂, and the body trans has cut
--- formula b₂ with strictly smaller complexity. So the outer measure
--- decreases, allowing arbitrary derivation sizes.
---
--- Similarly in [AscR-AscL], b = asc e τ, and both intermediate trans
--- calls use cut formulae e and τ which have strictly smaller complexity.
---
--- Recall the Sub.lam constructor:
---   Sub.lam Γ A B b₁ b₂ : Sub Γ B A → Sub (B :: Γ) b₁ b₂ → Sub Γ (.lam A b₁) (.lam B b₂)
--- So the first Sub arg is contra-variant (B ⊑ A), and the body lives under B.
---
--- BetaR removed from Sub, eliminating the BetaR-App sorry.
--- Narrow generalized to arbitrary depth via Γ_pre prefix, closing Narrow Lam.
+-- NOTE: mutual/termination_by was attempted but doesn't work here because
+-- narrow calls trans at the same complexity with potentially larger sizes
+-- (due to weakening). The two-level nesting is required: the outer level
+-- gives trans at strictly smaller complexity unlimited sizes.
 
 /-- Complexity of an expression — counts constructors. Used as the primary
     component of the lexicographic termination measure for transitivity. -/
@@ -763,13 +719,7 @@ private noncomputable def transOuter : (m : Nat) →
       let ⟨tr, _⟩ := transNarrowInner trans_lo' (hab.size + hbc.size)
       tr Γ a b c hab hbc hcplx (Nat.le_refl _)
 
-/-- Transitivity: `Sub Γ a b → Sub Γ b c → Sub Γ a c`.
-    Proved via lexicographic induction on (b.complexity, hab.size + hbc.size).
-    The [Lam-Lam] and [AscR-AscL] cases are fully handled because the
-    cut formula's complexity strictly decreases. Narrow generalized to
-    arbitrary depth via Γ_pre prefix, closing [Narrow Lam].
-    Remaining sorry: [Narrow Var x=|Γ_pre|] needs weakening of hCB into
-    the full context Γ_pre ++ C :: Γ_suf. -/
+/-- Transitivity: `Sub Γ a b → Sub Γ b c → Sub Γ a c`. -/
 noncomputable def Sub.trans {Γ : Ctx} {a b c : Expr}
     (hab : Sub Γ a b) (hbc : Sub Γ b c) : Sub Γ a c :=
   transOuter b.complexity Γ a b c (Nat.le_refl _) hab hbc
