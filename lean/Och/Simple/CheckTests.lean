@@ -21,8 +21,8 @@ namespace Och.Simple.CheckTests
 
 open Och.Simple Expr Std
 
-private def ck (a b : Expr) : Option Bool := check 100 [] a b
-private def ckG (Γ : Ctx) (a b : Expr) : Option Bool := check 100 Γ a b
+private def ck (a b : Expr) : Option Bool := check 100 [] [] a b
+private def ckG (Γ : Ctx) (a b : Expr) : Option Bool := check 100 [] Γ a b
 
 /-- ID = λb:BOOL. (b BOOL TRUE FALSE : BOOL) -/
 private def ID : Expr := .lam BOOL (.asc (.app (.app (.app (.var 0) BOOL) TRUE) FALSE) BOOL)
@@ -178,7 +178,7 @@ example : ck dzero dNat = some true := rfl
 -- dsucc has annotation ⊤→⊤ which loses dependent return type info.
 -- The unfolded body contains dsucc applications inside types (P (dsucc pred))
 -- which need beta-reduction to compare against dNat's structure.
-#eval check 500 [] done_ dNat  -- some false
+#eval check 500 [] [] done_ dNat  -- some false
 
 end CategoryA
 
@@ -206,15 +206,15 @@ end Negative
 section FuelTests
 
 -- TRUE ⊑ BOOL needs how much fuel?
-#eval check 1 [] TRUE BOOL
-#eval check 5 [] TRUE BOOL
-#eval check 10 [] TRUE BOOL
+#eval check 1 [] [] TRUE BOOL
+#eval check 5 [] [] TRUE BOOL
+#eval check 10 [] [] TRUE BOOL
 
 -- ID ⊑ (BOOL → BOOL)
-#eval check 5 [] ID (.lam BOOL BOOL)
-#eval check 10 [] ID (.lam BOOL BOOL)
-#eval check 20 [] ID (.lam BOOL BOOL)
-#eval check 50 [] ID (.lam BOOL BOOL)
+#eval check 5 [] [] ID (.lam BOOL BOOL)
+#eval check 10 [] [] ID (.lam BOOL BOOL)
+#eval check 20 [] [] ID (.lam BOOL BOOL)
+#eval check 50 [] [] ID (.lam BOOL BOOL)
 
 end FuelTests
 
@@ -224,17 +224,17 @@ end FuelTests
 
 #eval do
   let tests : List (String × Option Bool) := [
-    ("TRUE ⊑ BOOL", check 200 [] TRUE BOOL),
-    ("FALSE ⊑ BOOL", check 200 [] FALSE BOOL),
-    ("ZERO ⊑ NAT", check 200 [] ZERO NAT),
-    ("ONE ⊑ NAT", check 200 [] ONE NAT),
-    ("ID ⊑ (BOOL→BOOL)", check 200 [] ID (.lam BOOL BOOL)),
-    ("SELF_ID ⊑ (⊤→⊤)", check 200 [] SELF_ID (.lam .top .top)),
-    ("DIVERGE ⊑ (⊤→⊤)", check 200 [] DIVERGE (.lam .top .top)),
-    ("dtrue ⊑ dBool", check 200 [] dtrue dBool),
-    ("dfalse ⊑ dBool", check 200 [] dfalse dBool),
-    ("dzero ⊑ dNat", check 200 [] dzero dNat),
-    ("done_ ⊑ dNat", check 200 [] done_ dNat)
+    ("TRUE ⊑ BOOL", check 200 [] [] TRUE BOOL),
+    ("FALSE ⊑ BOOL", check 200 [] [] FALSE BOOL),
+    ("ZERO ⊑ NAT", check 200 [] [] ZERO NAT),
+    ("ONE ⊑ NAT", check 200 [] [] ONE NAT),
+    ("ID ⊑ (BOOL→BOOL)", check 200 [] [] ID (.lam BOOL BOOL)),
+    ("SELF_ID ⊑ (⊤→⊤)", check 200 [] [] SELF_ID (.lam .top .top)),
+    ("DIVERGE ⊑ (⊤→⊤)", check 200 [] [] DIVERGE (.lam .top .top)),
+    ("dtrue ⊑ dBool", check 200 [] [] dtrue dBool),
+    ("dfalse ⊑ dBool", check 200 [] [] dfalse dBool),
+    ("dzero ⊑ dNat", check 200 [] [] dzero dNat),
+    ("done_ ⊑ dNat", check 200 [] [] done_ dNat)
   ]
   let mut result : String := ""
   for (name, r) in tests do
