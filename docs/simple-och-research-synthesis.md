@@ -37,16 +37,32 @@ without checking body well-typedness. Fix: check `body ⊑ A↑` too.
 175 lines removed. `termination_by` confirmed incompatible with transitivity
 proof (narrow calls trans at same complexity with larger sizes from weakening).
 
+## Key Architectural Insight (2026-04-10 overnight)
+
+**Self-types are inherently circular.** `dtrue ⊑ dBool` requires
+`dtrue ⊑ dBool` inside its own proof (via contravariant domain check).
+This makes inductive Sub fundamentally incapable of self-type intro.
+
+The full Och handles this with a **seen set** (cycle detection) in
+the algorithmic checker. The declarative system needs either:
+- Coinductive Sub (infinite proof trees)
+- Step-indexed Sub (approximate at depth k)
+- Algorithmic approach with proven soundness
+
+**Current approach:** algorithmic checker with seen set, proving
+it sound via step-indexed or coinductive argument.
+
 ## Open Questions
 
-1. **muR transitivity**: Step-indexed LR or coinductive argument needed.
-   Currently being researched.
+1. **Algorithm soundness for self-types**: The check function accepts
+   dtrue ⊑ dBool via cycle detection. Proving this is sound requires
+   showing the cycle-break assumptions are valid.
 
-2. **BetaR recovery**: Would need normalization-based transitivity.
-   Currently blocked on (1) — same fundamental issue.
+2. **BetaR recovery**: Same substitution-inflation issue as muUnfoldL.
 
-3. **Full Och parity**: Missing BetaR, seen set for μ cycles,
-   type synthesis. See delta analysis below.
+3. **muR transitivity**: 5 edge cases with substitution covariance.
+   Alternative muR (self=μA.body) has zero sorrys but doesn't enable
+   self-types. The circularity IS the self-type mechanism.
 
 ## Delta to Full Och
 
