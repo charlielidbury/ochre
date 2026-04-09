@@ -4,27 +4,12 @@ import Och.Simple.Subtype
 /-!
 # Properties of the Sub relation
 
-Auxiliary shift/subst lemmas and the three main properties of Sub.
+Auxiliary shift/subst lemmas and the three main properties:
 
-## Status
-- `shift_add`, `shift_shift_comm`: fully proven
-- `subst_shift_lo`: fully proven
-- `subst_shift_hi`, `subst_subst`: structure proven, 2 var sub-cases
-  sorry'd due to tedious `if false = true` / Nat subtraction interaction
-  with simp (provable with more manual case splitting)
-- `liftCtx`, `Ctx.get?_liftCtx_lt`, `Ctx.get?_liftCtx_ge`: fully proven
-- `Sub.weaken_gen`: fully proven (all 7 cases including Lam!)
-- `Sub.weaken`: fully proven (corollary of weaken_gen)
-- `Sub.weaken_prepend`: fully proven (multi-weakening by prepending a prefix)
-- `Sub.trans`: FULLY PROVEN — lexicographic induction on
-  (b.complexity, hab.size + hbc.size) via mutual trans+narrow_gen.
-  BetaR removed from Sub. Narrow generalized to arbitrary depth via
-  Γ_pre prefix, closing all cases. Zero sorrys in transitivity proof.
-- `substCtx`: fully defined
-- `Sub.subst_gen`: generalized substitution at arbitrary depth, 6/7 cases
-  proven (all cases including Lam!), [Var] sorry'd (needs context lookup
-  lemmas for Δ ++ T :: Γ and Sub.trans for x = |Δ|)
-- `Sub.subst_lemma`: corollary of subst_gen with Δ = []
+1. **Weakening** (`Sub.weaken_gen`): inserting a binding preserves Sub.
+2. **Transitivity** (`Sub.trans`): lexicographic induction on
+   (b.complexity, derivation sizes), mutually with generalized narrowing.
+3. **Substitution** (`Sub.subst_gen`): substituting out a binding preserves Sub.
 -/
 
 set_option autoImplicit false

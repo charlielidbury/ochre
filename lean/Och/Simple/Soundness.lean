@@ -35,7 +35,7 @@ def closingSubst : List Expr → Expr → Expr
 -- ============================================================
 
 /-- Top is closed under any substitution. -/
-theorem closingSubst_top : (γ : List Expr) → closingSubst γ .top = .top
+@[simp] theorem closingSubst_top : (γ : List Expr) → closingSubst γ .top = .top
   | [] => rfl
   | _ :: rest => by
     show closingSubst rest (Expr.subst .top 0 _) = .top
