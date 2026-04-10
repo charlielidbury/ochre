@@ -49,6 +49,8 @@ def synthLam (fuel : Nat) (Γ : Ctx) (e : Expr) : Option (Expr × Expr) :=
         if subCheck fuel Γ a' D'' then synthLam fuel Γ (R''.subst 0 a')
         else none
     | .top => none
+    -- `.mu` is unsupported by the structural checker; always fail.
+    | .mu _ _ => none
 
 /-- Decide `Sub Γ a b` up to the supplied `fuel`.
 
@@ -92,6 +94,8 @@ def subCheckStep (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
       | some (D, R) =>
         subCheck fuel Γ arg D && subCheck fuel Γ (R.subst 0 arg) b
     | .top => false
+    -- `.mu` on either side is unsupported by the structural checker; fail.
+    | .mu _ _ => false
 
 end  -- mutual
 
@@ -158,6 +162,7 @@ noncomputable def synthLam_sound :
           exact Sub.app Γ f a (.lam D R) D'' R'' hf_sub ha_sub hR_sub
         · rw [if_neg hcheck] at h; simp at h
     | top => simp [synthLam] at h
+    | mu _ _ => simp [synthLam] at h
 
 /-- `subCheck` soundness: if `subCheck fuel Γ a b = true` then `Sub Γ a b`. -/
 noncomputable def subCheck_sound :
@@ -239,6 +244,9 @@ noncomputable def subCheckStep_sound :
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
   | top =>
     subst hb
     exfalso; apply htop; simp
@@ -287,6 +295,9 @@ noncomputable def subCheckStep_sound :
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
   | app f_b a_b =>
     subst hb
     first | (exact Bool.noConfusion h) | (simp only at h)
@@ -326,6 +337,53 @@ noncomputable def subCheckStep_sound :
           subCheck_sound fuel Γ (R.subst 0 arg) (.app f_b a_b) h2
         exact Sub.app Γ f arg (.app f_b a_b) D R hf_sub ha_sub hR_sub
     | top =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+  | mu annb bodyb =>
+    -- subCheckStep always returns false when b is a μ — contradiction.
+    subst hb
+    cases ha : a with
+    | asc e τ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      obtain ⟨h1, h2⟩ := bool_and_split h
+      have hs1 : Sub Γ e τ := subCheck_sound fuel Γ e τ h1
+      have hs2 : Sub Γ τ (.mu annb bodyb) := subCheck_sound fuel Γ τ (.mu annb bodyb) h2
+      exact Sub.ascL Γ e τ (.mu annb bodyb) hs1 hs2
+    | var x_a =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      cases hget : Γ.get? x_a with
+      | none => rw [hget] at h; simp at h
+      | some T =>
+        rw [hget] at h
+        have hs : Sub Γ T (.mu annb bodyb) := subCheck_sound fuel Γ T (.mu annb bodyb) h
+        exact Sub.var Γ x_a (.mu annb bodyb) T hget hs
+    | lam _ _ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+    | app f arg =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      cases hsy : synthLam fuel Γ f with
+      | none => rw [hsy] at h; simp at h
+      | some p =>
+        obtain ⟨D, R⟩ := p
+        rw [hsy] at h
+        first | (exact Bool.noConfusion h) | (simp only at h)
+        obtain ⟨h1, h2⟩ := bool_and_split h
+        have hf_sub : Sub Γ f (.lam D R) := synthLam_sound fuel Γ f D R hsy
+        have ha_sub : Sub Γ arg D := subCheck_sound fuel Γ arg D h1
+        have hR_sub : Sub Γ (R.subst 0 arg) (.mu annb bodyb) :=
+          subCheck_sound fuel Γ (R.subst 0 arg) (.mu annb bodyb) h2
+        exact Sub.app Γ f arg (.mu annb bodyb) D R hf_sub ha_sub hR_sub
+    | top =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
 

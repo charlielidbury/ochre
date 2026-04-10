@@ -62,5 +62,14 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ e τ →
       Sub Γ a e →
       Sub Γ a (.asc e τ)
+  /-- [Iota-Intro]: `Γ ⊢ a ⊑ μA.b` if `a ⊑ A` and `a ⊑ b[0 := μA.b]`.
+      Uses the "fixed self-reference" formulation where the self-binder is
+      instantiated with the self-type itself. This formulation is the one
+      that admits a clean inductive transitivity proof for covariant
+      self-types (see Precise.lean for discussion). -/
+  | iotaIntro (Γ : Ctx) (a A b : Expr) :
+      Sub Γ a A →
+      Sub Γ a (b.subst 0 (.mu A b)) →
+      Sub Γ a (.mu A b)
 
 end Och.Simple

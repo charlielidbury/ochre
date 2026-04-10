@@ -148,6 +148,9 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
     | lam dom body =>
       simp [eval] at h; subst h
       rw [hrw]; simp [eval]
+    | mu ann body =>
+      simp [eval] at h; subst h
+      rw [hrw]; simp [eval]
     | asc e ty =>
       have h' : eval n e = some v := by simp [eval] at h; exact h
       have := ih e v h' k
@@ -167,6 +170,7 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
         | .top => simp [hm] at h ⊢; exact h
         | .app g b => simp [hm] at h ⊢; exact h
         | .asc e' t' => simp [hm] at h ⊢; exact h
+        | .mu ann body => simp [hm] at h ⊢; exact h
 
 -- eval results satisfy the Value predicate
 -- (Note: with lazy evaluation, stuck apps contain unevaluated arguments,
@@ -180,6 +184,7 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
     | var k => simp [eval] at h; subst h; exact Value.var k
     | top => simp [eval] at h; subst h; exact Value.top
     | lam D body => simp [eval] at h; subst h; exact Value.lam D body
+    | mu ann body => simp [eval] at h; subst h; exact Value.mu ann body
     | asc e ty => simp [eval] at h; exact ih h
     | app f a =>
       simp [eval, bind, Option.bind] at h
@@ -201,6 +206,9 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
         | .asc e' t' =>
           simp [hm] at h; subst h
           exact Value.stuckApp (.asc e' t') a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+        | .mu ann body =>
+          simp [hm] at h; subst h
+          exact Value.stuckApp (.mu ann body) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
 
 -- Inversion: Sub Γ (lam A b₁) (lam B b₂) implies Sub Γ B A and Sub (B :: Γ) b₁ b₂
 noncomputable def sub_lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
@@ -235,6 +243,7 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
     | var k => simp [eval] at h; subst h; simp [eval]
     | top => simp [eval] at h; subst h; simp [eval]
     | lam D body => simp [eval] at h; subst h; simp [eval]
+    | mu ann body => simp [eval] at h; subst h; simp [eval]
     | asc e ty =>
       simp [eval] at h
       -- eval n e = some v, by IH eval n v = some v
@@ -274,6 +283,10 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
           simp [hm] at h; subst h
           -- v = app (asc e' t') a. But eval never returns asc.
           exact nomatch (eval_produces_value hf)
+        | .mu ann body =>
+          simp [hm] at h; subst h
+          have hmu := ih hf
+          simp [eval, bind, Option.bind, hmu]
 
 -- An expression is an "eval result" if some eval produced it.
 def IsEvalResult (v : Expr) : Prop := ∃ n e, eval n e = some v
@@ -293,6 +306,7 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
     | var k => simp [eval] at h
     | top => simp [eval] at h
     | lam D body => simp [eval] at h
+    | mu ann body => simp [eval] at h
     | asc e ty =>
       simp [eval] at h; exact ih h
     | app f' a' =>
@@ -320,6 +334,10 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
           -- eval never produces asc
           subst hm
           exact nomatch (eval_produces_value hf)
+        | .mu ann body =>
+          simp [hm] at h
+          obtain ⟨rfl, rfl⟩ := h
+          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
 
 -- Key lemma: Sub [] v (lam D R) where v is an eval result implies v is a lam.
 -- Auxiliary with size bound, proved by recursion on bound.
@@ -372,6 +390,91 @@ noncomputable def eval_result_sub_lam_app_absurd
     {f a D R : Expr} (hsub : Sub [] (.app f a) (.lam D R))
     (heval : IsEvalResult (.app f a)) : False :=
   eval_result_sub_lam_not_app hsub.size hsub heval (Nat.le_refl _)
+
+-- ============================================================
+-- LHS-eval preservation for mu-type targets
+-- ============================================================
+
+/-- LHS eval preservation specialised to `.mu` targets: if `[] ⊢ e ⊑ .mu A body`
+    and `eval fuel e = some v_e`, then `[] ⊢ v_e ⊑ .mu A body`.
+
+    Proved by induction on fuel with case analysis on `e`. The recursion does
+    not depend on any RHS-eval (which wouldn't reduce since `.mu` is a value),
+    resolving the issue where the main `evalPreservation_aux` cannot easily
+    handle iotaIntro targets.
+
+    Fully proven for `e ∈ { var, top, lam, mu }` (value cases, trivially) and
+    for `e = asc e' ty` when the outer rule is `ascL` (peel-and-recurse).
+
+    Residual sorries:
+    1.  The `asc`/`iotaIntro` sub-case — when iotaIntro is applied to an
+        ascription. Resolving this requires an LHS-eval lemma for arbitrary
+        RHS (not just .mu), to handle the `a ⊑ A` premise of iotaIntro.
+    2.  The `app` case — reducing the beta-redex and reassembling the derivation
+        parallels `evalPreservation_aux`'s app case but requires mutual recursion
+        with `evalPreservation_aux`. -/
+private noncomputable def subLhsEval_mu :
+    (bound : Nat) → (fuel : Nat) → fuel ≤ bound → (e A body : Expr) →
+    (hsub : Sub [] e (.mu A body)) → (v_e : Expr) →
+    eval fuel e = some v_e → Sub [] v_e (.mu A body)
+  | 0, fuel, hbnd, _, _, _, _, _, he => by
+    have : fuel = 0 := by omega
+    subst this; simp [eval] at he
+  | bound + 1, fuel, hbnd, e, A, body, hsub, v_e, he => by
+    let ih := subLhsEval_mu bound
+    match e, he with
+    | .var k, he =>
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m => simp [eval] at he; subst he; exact hsub
+    | .top, he =>
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m => simp [eval] at he; subst he; exact hsub
+    | .lam D body_l, he =>
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m => simp [eval] at he; subst he; exact hsub
+    | .mu ann body_m, he =>
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m => simp [eval] at he; subst he; exact hsub
+    | .asc e' ty, he =>
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m =>
+        have he' : eval m e' = some v_e := by simp [eval] at he; exact he
+        -- Invert hsub. Viable rules: ascL (strip ascription and recurse), iotaIntro
+        -- (rebuild at v_e after recursing on iota premises). refl/top/ascR are auto-
+        -- eliminated because their RHS shape doesn't match .mu.
+        cases hsub with
+        | ascL _ _ _ _ heτ hτb =>
+          -- heτ : Sub [] e' ty; hτb : Sub [] ty (.mu A body)
+          -- Compose to Sub [] e' (.mu A body), then recurse on e' at fuel m.
+          exact ih m (by omega) e' A body (Sub.trans heτ hτb) v_e he'
+        | iotaIntro _ _ A' body' hiA hiBody =>
+          -- hsub's RHS is .mu A body so A' = A, body' = body (enforced by dependent types).
+          -- Premises hiA : Sub [] (.asc e' ty) A, hiBody : Sub [] (.asc e' ty) (body.subst 0 (.mu A body)).
+          -- We want Sub [] v_e (.mu A body) where eval (succ m) (asc e' ty) = eval m e' = v_e.
+          -- Reconstruct via iotaIntro at v_e: need Sub [] v_e A and Sub [] v_e (body.subst 0 (.mu A body)).
+          -- We can get Sub [] v_e via ih applied to... wait, ih produces Sub [] v_e (.mu A body),
+          -- not Sub [] v_e A. We need a different path for the hiA premise.
+          -- We use Sub.trans: hiA : Sub [] (asc e' ty) A. Use ascL inversion? hsub is iotaIntro,
+          -- not ascL. So we need a different mechanism: prove Sub [] v_e (asc e' ty) by refl-ish?
+          -- Actually the simplest move: rebuild the original Sub via iotaIntro and recurse.
+          -- But that doesn't reduce fuel.
+          -- Genuine solution: recursively call ih on hiBody (which has the same .mu RHS structure!)
+          -- hiBody : Sub [] (asc e' ty) (body.subst 0 (.mu A body))
+          -- The RHS here is NOT a .mu — it's body.subst. So we can't recurse via this same helper.
+          -- Document as residual. (This is exercised when an ascription is asked to inhabit a μ-type.)
+          sorry
+    | .app f a, he =>
+      -- The `.app` case would require access to evalPreservation_aux (to infer f evaluates
+      -- to a lambda) or a mutual-recursion setup. For the core IotaIntro use-case
+      -- (direct lambdas/mus checked against mu types) this case is not exercised.
+      -- Documented as a residual obligation; the application-on-LHS case of iotaIntro
+      -- requires reducing the beta-redex and reassembling the derivation.
+      sorry
 
 -- ============================================================
 -- Eval preservation
@@ -490,6 +593,29 @@ private noncomputable def evalPreservation_aux :
 
           | .asc e' t' =>
             exact nomatch (eval_produces_value hf_eval)
+
+          | .mu ann' body' =>
+            simp [hm_f] at he; subst he
+            have hm_pos : m ≥ 1 := eval_pos hf_eval
+            have hfuel_τ_pos : fuel_τ ≥ 1 := eval_pos hτ
+            have hlam_eval1 : eval 1 (.lam D R) = some (.lam D R) := eval_lam 1 D R (by omega)
+            have hf_sub : Sub [] (.mu ann' body') (.lam D R) :=
+              ih _ _ hfD m 1 _ _ (by omega) hf_eval hlam_eval1
+            -- Sub [] (.mu _ _) (.lam _ _) is uninhabited: mu can only appear as RHS of
+            -- Sub (via refl, top, ascR, iotaIntro), and their RHS shapes don't match lam.
+            cases hf_sub
+
+    | iotaIntro _ _ A body hiA hiBody =>
+      -- τ = .mu A body. Eval of .mu returns itself as a value.
+      have hpos_τ : fuel_τ ≥ 1 := eval_pos hτ
+      have hmu_eval : eval fuel_τ (.mu A body) = some (.mu A body) := by
+        cases fuel_τ with
+        | zero => omega
+        | succ k => simp [eval]
+      rw [hmu_eval] at hτ; cases hτ
+      -- Delegate to subLhsEval_mu: it handles LHS eval with a value RHS.
+      exact subLhsEval_mu fuel fuel (Nat.le_refl _) e A body
+        (Sub.iotaIntro _ _ A body hiA hiBody) v_e he
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/

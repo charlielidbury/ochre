@@ -50,6 +50,7 @@ theorem Expr.shift_add (e : Expr) (c n₁ n₂ : Nat) :
   | app _ _ ihf iha => simp only [shift]; congr 1; exact ihf c; exact iha c
   | asc _ _ ihe iht => simp only [shift]; congr 1; exact ihe c; exact iht c
   | top => rfl
+  | mu _ _ iha ihb => simp only [shift]; congr 1; exact iha c; exact ihb (c + 1)
 
 theorem Expr.shift_shift_comm (e : Expr) (c₁ c₂ n₁ n₂ : Nat) (h : c₁ ≤ c₂) :
     (e.shift c₁ n₁).shift (c₂ + n₁) n₂ = (e.shift c₂ n₂).shift c₁ n₁ := by
@@ -69,6 +70,9 @@ theorem Expr.shift_shift_comm (e : Expr) (c₁ c₂ n₁ n₂ : Nat) (h : c₁ �
   | app _ _ ihf iha => simp only [shift]; congr 1; exact ihf c₁ c₂ h; exact iha c₁ c₂ h
   | asc _ _ ihe iht => simp only [shift]; congr 1; exact ihe c₁ c₂ h; exact iht c₁ c₂ h
   | top => rfl
+  | mu _ _ iha ihb =>
+    simp only [shift]; congr 1; exact iha c₁ c₂ h
+    rw [show c₂ + n₁ + 1 = (c₂ + 1) + n₁ from by omega]; exact ihb (c₁ + 1) (c₂ + 1) (by omega)
 
 -- ============================================================
 -- 2. Shift-Subst interaction
@@ -104,6 +108,11 @@ theorem Expr.subst_shift_lo (e : Expr) (n c d : Nat) (v : Expr) (h : c ≤ n) :
   | app _ _ ihf iha => simp only [subst, shift]; congr 1; exact ihf n c v h; exact iha n c v h
   | asc _ _ ihe iht => simp only [subst, shift]; congr 1; exact ihe n c v h; exact iht n c v h
   | top => rfl
+  | mu _ _ iha ihb =>
+    simp only [subst, shift]; congr 1; exact iha n c v h
+    have := ihb (n + 1) (c + 1) (v.shift 0 1) (by omega)
+    rw [show n + 1 + d = (n + d) + 1 from by omega] at this; rw [this]; congr 1
+    exact Expr.shift_shift_comm v 0 c 1 d (by omega)
 
 theorem Expr.subst_shift_hi (e : Expr) (n c d : Nat) (v : Expr) (h : n ≤ c) :
     (e.subst n v).shift c d = (e.shift (c + 1) d).subst n (v.shift c d) := by
@@ -143,6 +152,11 @@ theorem Expr.subst_shift_hi (e : Expr) (n c d : Nat) (v : Expr) (h : n ≤ c) :
   | app _ _ ihf iha => simp only [subst, shift]; congr 1; exact ihf n c v h; exact iha n c v h
   | asc _ _ ihe iht => simp only [subst, shift]; congr 1; exact ihe n c v h; exact iht n c v h
   | top => rfl
+  | mu _ _ iha ihb =>
+    simp only [subst, shift]; congr 1; exact iha n c v h
+    have := ihb (n + 1) (c + 1) (v.shift 0 1) (by omega)
+    rw [show c + 1 + 1 = (c + 1) + 1 from by omega] at this; rw [this]; congr 1
+    exact Expr.shift_shift_comm v 0 c 1 d (by omega)
 
 theorem Expr.subst_shift_zero (R a : Expr) (d : Nat) :
     (R.subst 0 a).shift 0 d = (R.shift 1 d).subst 0 (a.shift 0 d) :=
@@ -244,6 +258,14 @@ theorem Expr.subst_subst (e : Expr) (m n : Nat) (u w : Expr) (h : m ≤ n) :
   | app _ _ ihf iha => simp only [subst]; congr 1; exact ihf m n u w h; exact iha m n u w h
   | asc _ _ ihe iht => simp only [subst]; congr 1; exact ihe m n u w h; exact iht m n u w h
   | top => rfl
+  | mu _ _ iha ihb =>
+    simp only [subst]; congr 1; exact iha m n u w h
+    have hw : (w.shift m 1).shift 0 1 = (w.shift 0 1).shift (m + 1) 1 :=
+      (Expr.shift_shift_comm w 0 m 1 1 (by omega)).symm
+    have hu : (u.subst n w).shift 0 1 = (u.shift 0 1).subst (n + 1) (w.shift 0 1) :=
+      Expr.subst_shift_lo u n 0 1 w (by omega)
+    rw [show n + 1 + 1 = (n + 1) + 1 from by omega, hw, hu]
+    exact ihb (m + 1) (n + 1) (u.shift 0 1) (w.shift 0 1) (by omega)
 
 -- ============================================================
 -- 4. Context lookup lemmas (fully proven)
@@ -400,6 +422,19 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ ((Expr.asc e τ).shift n 1) _; simp only [shift]; exact Sub.ascL _ _ _ _ (iheτ n) (ihτb n)
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).shift n 1); simp only [shift]; exact Sub.ascR _ _ _ _ (iheτ n) (ihaτ n)
+  | @iotaIntro Γ' a' A' b' _hA _hBody ihA ihBody =>
+    show Sub _ (a'.shift n 1) ((Expr.mu A' b').shift n 1)
+    simp only [shift]
+    have ihA' := ihA n
+    have ihBody' := ihBody n
+    -- ihBody' : Sub (liftCtx n T Γ') (a'.shift n 1) ((b'.subst 0 (.mu A' b')).shift n 1)
+    -- Goal needs: Sub ... (a'.shift n 1) ((b'.shift (n+1) 1).subst 0 (.mu (A'.shift n 1) (b'.shift (n+1) 1)))
+    have hcomm : (b'.subst 0 (.mu A' b')).shift n 1 =
+        (b'.shift (n+1) 1).subst 0 (.mu (A'.shift n 1) (b'.shift (n+1) 1)) := by
+      rw [Expr.subst_shift_hi b' 0 n 1 (.mu A' b') (by omega)]
+      rfl
+    rw [hcomm] at ihBody'
+    exact Sub.iotaIntro _ (a'.shift n 1) (A'.shift n 1) (b'.shift (n+1) 1) ihA' ihBody'
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
 noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
@@ -456,6 +491,7 @@ def Expr.complexity : Expr → Nat
   | .lam d b => 1 + d.complexity + b.complexity
   | .app f a => 1 + f.complexity + a.complexity
   | .asc e t => 1 + e.complexity + t.complexity
+  | .mu a b => 1 + a.complexity + b.complexity
 
 /-- Shifting preserves complexity — shift only changes variable indices, not structure. -/
 theorem Expr.shift_complexity (e : Expr) (c n : Nat) : (e.shift c n).complexity = e.complexity := by
@@ -465,6 +501,7 @@ theorem Expr.shift_complexity (e : Expr) (c n : Nat) : (e.shift c n).complexity 
   | app f a ihf iha => simp [shift, complexity, ihf c, iha c]
   | asc e t ihe iht => simp [shift, complexity, ihe c, iht c]
   | top => rfl
+  | mu a b iha ihb => simp [shift, complexity, iha c, ihb (c+1)]
 
 -- 6a. Sub.size — derivation size for well-founded recursion
 
@@ -477,6 +514,7 @@ def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
   | .app _ _ _ _ _ _ h1 h2 h3 => 1 + h1.size + h2.size + h3.size
   | .ascL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .iotaIntro _ _ _ _ h1 h2 => 1 + h1.size + h2.size
 
 /-- Every derivation has positive size. -/
 theorem Sub.size_pos {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : 0 < h.size := by
@@ -590,6 +628,12 @@ private noncomputable def transNarrowInner
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
+        | .iotaIntro _ _ A' body' hbcA hbcBody =>
+          have hA' := trans_n Γ a _ A' (Sub.top _ _) hbcA hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          have hBody' := trans_n Γ a _ _ (Sub.top _ _) hbcBody hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          exact Sub.iotaIntro _ a A' body' hA' hBody'
       -- [Var]: a = var x, hUb : Sub Γ U b
       | .var _ x _ U hget hUb =>
         have hUc := trans_n Γ U b c hUb hbc hcplx (by
@@ -623,6 +667,14 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
+        | .iotaIntro _ _ A' body' hbcA hbcBody =>
+          have hA' := trans_n Γ _ _ A'
+            (Sub.lam _ A B body_a body_b hBA hbody_ab) hbcA hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          have hBody' := trans_n Γ _ _ _
+            (Sub.lam _ A B body_a body_b hBA hbody_ab) hbcBody hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          exact Sub.iotaIntro _ _ A' body' hA' hBody'
       -- [Asc-L]: a = asc e τ, heτ : Sub Γ e τ, hτb : Sub Γ τ b
       | .ascL _ e τ _ heτ hτb =>
         have hτc := trans_n Γ τ b c hτb hbc hcplx (by
@@ -645,6 +697,34 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
+        | .iotaIntro _ _ A' body' hbcA hbcBody =>
+          have hA' := trans_n Γ _ _ A'
+            (Sub.ascR _ a e τ heτ hae) hbcA hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          have hBody' := trans_n Γ _ _ _
+            (Sub.ascR _ a e τ heτ hae) hbcBody hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          exact Sub.iotaIntro _ _ A' body' hA' hBody'
+      -- [Iota-Intro]: b = mu A_mu body_mu
+      | .iotaIntro _ _ A_mu body_mu habA habBody =>
+        match hbc with
+        | .refl _ _ => exact Sub.iotaIntro _ a A_mu body_mu habA habBody
+        | .top _ _ => exact Sub.top _ _
+        | .ascR _ _ e τ heτ hae =>
+          exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
+            (Sub.iotaIntro _ a A_mu body_mu habA habBody) hae hcplx
+            (by simp [Sub.size] at hle ⊢; omega))
+        | .iotaIntro _ _ A' body' hbcA hbcBody =>
+          -- hab: a ⊑ μA_mu.body_mu from habA (a ⊑ A_mu) and habBody (a ⊑ body_mu[μA_mu.body_mu])
+          -- hbc: μA_mu.body_mu ⊑ μA'.body' from hbcA (μ... ⊑ A') and hbcBody (μ... ⊑ body'[μA'.body'])
+          -- goal: a ⊑ μA'.body'
+          have hA' := trans_n Γ _ _ A'
+            (Sub.iotaIntro _ a A_mu body_mu habA habBody) hbcA hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          have hBody' := trans_n Γ _ _ _
+            (Sub.iotaIntro _ a A_mu body_mu habA habBody) hbcBody hcplx
+            (by simp [Sub.size] at hle ⊢; omega)
+          exact Sub.iotaIntro _ a A' body' hA' hBody'
     ,
     -- ==================== NARROW_GEN at (m, n+1) ====================
     fun Γ_pre Γ_suf B C a b hCB hab hBcplx hle => by
@@ -712,7 +792,13 @@ private noncomputable def transNarrowInner
           simp [Sub.size] at hle ⊢; omega)
         have hae' := narrow_n Γ_pre Γ_suf B C a e hCB hae hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        exact Sub.ascR _ _ e τ heτ' hae'⟩
+        exact Sub.ascR _ _ e τ heτ' hae'
+      | .iotaIntro _ _ A_mu body_mu hA_mu hBody_mu =>
+        have hA' := narrow_n Γ_pre Γ_suf B C a A_mu hCB hA_mu hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        have hBody' := narrow_n Γ_pre Γ_suf B C a (body_mu.subst 0 (.mu A_mu body_mu)) hCB hBody_mu hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        exact Sub.iotaIntro _ a A_mu body_mu hA' hBody'⟩
 
 -- 6c. Outer induction (on cut-formula complexity)
 
@@ -970,6 +1056,25 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]; exact Sub.ascR _ _ _ _ (iheτ Δ hctx hv) (ihaτ Δ hctx hv)
+  | @iotaIntro Γ'' a' A_mu body_mu _hA _hBody ihA ihBody =>
+    show Sub _ (a'.subst Δ.length (v.shift 0 Δ.length))
+               ((Expr.mu A_mu body_mu).subst Δ.length (v.shift 0 Δ.length))
+    simp only [subst]
+    have hA' := ihA Δ hctx hv
+    have hBody' := ihBody Δ hctx hv
+    -- hBody' : Sub ... (a'.subst k v') ((body_mu.subst 0 (.mu A_mu body_mu)).subst k v')
+    -- subst_subst with m=0, n=Δ.length, u=.mu A_mu body_mu, w=v.shift 0 Δ.length
+    have hss := Expr.subst_subst body_mu 0 Δ.length (.mu A_mu body_mu) (v.shift 0 Δ.length) (by omega)
+    -- hss: (body_mu.subst (Δ.length + 1) ((v.shift 0 Δ.length).shift 0 1)).subst 0
+    --       ((.mu A_mu body_mu).subst Δ.length (v.shift 0 Δ.length))
+    --      = (body_mu.subst 0 (.mu A_mu body_mu)).subst Δ.length (v.shift 0 Δ.length)
+    rw [← hss] at hBody'
+    -- Unfold the inner .mu subst to match the goal shape
+    simp only [subst] at hBody'
+    -- hBody' now has the form matching the iotaIntro premise for the goal body
+    exact Sub.iotaIntro _ _
+      (A_mu.subst Δ.length (v.shift 0 Δ.length))
+      (body_mu.subst (Δ.length + 1) ((v.shift 0 Δ.length).shift 0 1)) hA' hBody'
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
 noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}

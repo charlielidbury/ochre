@@ -376,4 +376,103 @@ example : Sub [] (.lam .top (.var 0)) (.lam (.lam .top .top) (.var 0)) :=
     (Sub.top [] (.lam .top .top))
     (Sub.refl [.lam .top .top] (.var 0))
 
+-- ============================================================
+-- D) IotaIntro — self-types with covariant occurrences
+-- ============================================================
+
+/-!
+These tests exercise the [Iota-Intro] rule for types that use the
+self-reference only in covariant positions. In such cases, the fixed
+self-reference formulation (where the self-binder is instantiated with
+μA.b itself) collapses the obligations to reflexivity after substitution.
+-/
+
+-- [Iota-Intro] trivial case: ⊤ ⊑ μ⊤. ⊤
+-- The body ⊤ is closed (self-variable unused), so body[0 := μ⊤. ⊤] = ⊤.
+-- Both premises close by [Refl] (for ⊤ ⊑ ⊤) and [Top] (for ⊤ ⊑ ⊤).
+example : Sub [] Expr.top (.mu .top .top) :=
+  Sub.iotaIntro [] .top .top .top
+    (Sub.refl [] .top)
+    (show Sub [] Expr.top ((Expr.top).subst 0 (.mu .top .top)) by
+      simp [Expr.subst]; exact Sub.refl [] .top)
+
+-- [Iota-Intro] where self appears covariantly: μ⊤. self (where self = var 0)
+-- The body is `var 0`, which under substitution becomes μ⊤. var 0 itself.
+-- So given some `a` with `a ⊑ ⊤` and `a ⊑ μ⊤. (var 0)`, we can conclude `a ⊑ μ⊤. (var 0)`.
+-- The second premise is itself the goal — so this is a fixed-point form that
+-- IotaIntro can derive reflexively only when the value already inhabits the type.
+-- We use `.top` as the witness, which is NOT in the type (it should be rejected),
+-- so instead we test with the type being `μ⊤. ⊤` (degenerate).
+-- A more interesting test: covariant body `lam X self` — the "wrap" pattern.
+
+-- Wrap = μ⊤. (⊤ → self)    -- a function from ⊤ to the self-type itself
+-- encoded as: μ .top (.lam .top (.var 1))
+-- The body has self = var 0, but under the outer λ binder it becomes var 1.
+-- Under the μ-binder, self is at index 0; inside the inner lambda, self is at index 1.
+private def Wrap : Expr := .mu .top (.lam .top (.var 1))
+
+-- Under IotaIntro, to check `v ⊑ Wrap` we need:
+--   1) v ⊑ ⊤ (always, by [Top])
+--   2) v ⊑ (.lam .top (.var 1)).subst 0 Wrap
+--      = .lam .top ((.var 1).subst 1 (Wrap.shift 0 1))
+--      = .lam .top (Wrap.shift 0 1)
+-- Actually let's compute: (.var 1).subst 1 (Wrap.shift 0 1) = Wrap.shift 0 1
+-- (since 1 == 1). So the target becomes .lam .top (Wrap.shift 0 1).
+-- For `v = .lam .top Wrap`... hmm the shift complicates things.
+-- Let's take a simpler example.
+
+-- Degenerate covariant self-type: μself. ⊤
+-- Body doesn't mention self. So body[μ] = ⊤.
+example : Sub [] Expr.top (.mu .top .top) :=
+  Sub.iotaIntro [] .top .top .top
+    (Sub.top [] .top)
+    (show Sub [] Expr.top ((Expr.top).subst 0 (.mu .top .top)) from by
+      simp [Expr.subst]; exact Sub.refl [] .top)
+
+-- Another degenerate case: μself. ⊤, with a lambda witness
+example : Sub [] (.lam .top .top) (.mu .top .top) :=
+  Sub.iotaIntro [] (.lam .top .top) .top .top
+    (Sub.top [] (.lam .top .top))
+    (show Sub [] (.lam .top .top) ((Expr.top).subst 0 (.mu .top .top)) from by
+      simp [Expr.subst]; exact Sub.top [] _)
+
+-- μself. self where self = var 0. The body is var 0.
+-- Under substitution, body[0 := μ.(var 0)] = μ.(var 0) itself.
+-- So `a ⊑ μself. self` iff `a ⊑ μself. self` — pure fixed point.
+-- Demonstrates that IotaIntro here is vacuous without a prior witness.
+-- To actually derive this for some `a`, we'd need `a ⊑ μself. self` as a premise
+-- (which is exactly what we're trying to prove). So this example is *not* provable
+-- from scratch; it illustrates the fixed-point nature.
+
+-- μself. (self → ⊤)  — types of "things that take self as input"
+-- Body: .lam (.var 0) .top.  After subst: .lam (.mu self (lam self top)) .top
+-- where the body's .var 0 (referring to the μ-binder) is replaced with the μ itself.
+-- This is a covariant-in-top self-type; the body ⊤ doesn't mention self.
+-- Checking `.lam (.mu...) .top ⊑ this μ-type` becomes:
+--   premise 1: .lam ... .top ⊑ .top  → [Top]
+--   premise 2: .lam ... .top ⊑ .lam (.mu ...) .top  → [Refl]
+private def SelfToTop : Expr := .mu .top (.lam (.var 0) .top)
+
+-- The witness is essentially "λ(_ : SelfToTop). ⊤" which lives at the right type
+-- after the self-binder is instantiated with SelfToTop itself.
+example : Sub [] (.lam SelfToTop .top) SelfToTop := by
+  -- By [Iota-Intro]: need
+  --   (a) (.lam SelfToTop .top) ⊑ .top
+  --   (b) (.lam SelfToTop .top) ⊑ ((.lam (.var 0) .top).subst 0 SelfToTop)
+  -- Compute (b): (.lam (.var 0) .top).subst 0 SelfToTop
+  --   = .lam ((.var 0).subst 0 SelfToTop) ((.top).subst 1 (SelfToTop.shift 0 1))
+  --   = .lam SelfToTop .top
+  -- So (b) becomes (.lam SelfToTop .top) ⊑ (.lam SelfToTop .top), closable by [Refl].
+  apply Sub.iotaIntro _ (.lam SelfToTop .top) .top (.lam (.var 0) .top)
+  · exact Sub.top _ _
+  · show Sub [] (.lam SelfToTop .top) ((Expr.lam (.var 0) .top).subst 0 SelfToTop)
+    -- The subst should reduce to .lam SelfToTop .top
+    have hcompute : ((Expr.lam (.var 0) .top).subst 0 SelfToTop) = .lam SelfToTop .top := by
+      simp [Expr.subst, Expr.shift]
+    rw [hcompute]
+    exact Sub.refl _ _
+
+-- Check that the self-type is also an IotaIntro subtype of itself trivially via [Refl]
+example : Sub [] SelfToTop SelfToTop := Sub.refl _ _
+
 end Och.Simple.Tests
