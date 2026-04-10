@@ -68,6 +68,23 @@ self-types via that route either.
 **Finding:** Successfully merged μ to main. The μ-not-a-value design (always unfold)
 aligns eval with Sub.mu, making soundness work.
 
+### research-iota-elim
+**Question:** Can we crack the IotaElim circularity for self-types?
+**Finding:** Added head-iota equi-recursive rules (iotaIntro, iotaR, iotaL).
+Mechanically derives `dtrue3 ⊑ dBool3` (Church-dependent Bool) via structural
+rules. **BUT soundness/transitivity NOT verified.**
+
+### research-iota-trans
+**Question:** Can transitivity be proved for the iota rules?
+**Finding:** NO for contravariant self-references. Identified exactly 3 obstructed
+trans cases (iotaIntro × iotaL, iotaIntro × iotaIntro, iotaR × iotaIntro).
+Tried fusion (iotaIntroD) — moves the problem doesn't solve it. The fundamental
+obstacle is substitution monotonicity for contravariant positions.
+
+**Recommendation:** Self-types via inductive Sub seem genuinely impossible for
+the contravariant case. Need either seen-set algorithmic, syntactic positivity
+restriction, or step-indexed/coinductive metatheory.
+
 ## Architecturally validated findings
 
 1. **Inductive Sub has a fundamental "principal type" issue** with the existential
