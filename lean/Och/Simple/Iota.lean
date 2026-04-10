@@ -663,22 +663,54 @@ precision for a purely syntactic rule.
    For iso-recursive (with explicit fold/unfold), no. Simple Och is closer
    to equi-recursive, so this should be fine.
 
-2. **Transitivity and decidability.** Transitivity is NOT proven for
-   `JSub`. The concern: can a chain like `a ⊑ iota.body[0 := a] ⊑ ...`
-   nontrivially fail to compose? A lexicographic termination argument on
-   `(iota count in b, normal form of a/b, derivation size)` may work.
+2. **Transitivity — the next hard problem.** Transitivity is NOT proven
+   for `JSub`. A concrete concern: consider a chain
+   `a ⊑ ι.body` (via iotaIntro producing `a ⊑ body[0 := a]`)
+   composed with
+   `ι.body ⊑ c` (via iotaL from `body[0 := ι.body] ⊑ c`).
 
-3. **`Sub.trans` for JSub** — might require adjusting the measure since
-   iotaL/iotaR add new reduction-like steps.
+   The two sub-derivations work with DIFFERENT substitutions in `body`:
+   one substitutes the value `a`, the other substitutes `ι.body` itself.
+   Directly composing them is not obvious. Candidate resolutions:
 
-4. **Interaction with Narrowing** — unclear whether narrowing lemma
-   holds unchanged.
+   a. **Substitution lemma up to equivalence.** Prove that if `a ⊑ ι.body`
+      then `body[0 := a] ⊑ body[0 := ι.body]` or vice versa (substitution
+      covariance). This plus transitivity in the smaller measure might
+      compose.
+
+   b. **Measure on iota count.** Use a lexicographic measure
+      `(iotas_in_b, cut_formula_complexity, derivation_size)`. Each
+      iotaIntro/iotaL decrement the iota count in the cut formula. This
+      might work if we can show iota unfolding doesn't *increase* the
+      iota count in a controlled way.
+
+   c. **Weak transitivity / algorithmic formulation.** Give up full
+      transitivity as a derivable lemma and instead prove it is
+      admissible in a carefully-constructed algorithmic presentation
+      that already has built-in closure.
+
+3. **Interaction with Narrowing** — unclear whether narrowing lemma
+   holds unchanged. The `iotaL` case in narrowing probably just recurses
+   (no variable lookup involved), so it may be mechanical.
+
+4. **Weakening** — should be straightforward; `iotaL`/`iotaR`/`iotaIntro`
+   all just recursively weaken their premises. Worth checking.
 
 5. **Completeness vs. algorithmic presentation** — an algorithmic
    decision procedure needs a termination argument on the iota unfolds.
    A "seen set" approach could work: if you encounter `ι.body` on the
    LHS you've already unfolded, you fail (or succeed with some closing
    condition). This is post-soundness work.
+
+6. **The iotaL vs iotaIntro asymmetry.** It feels slightly odd that the
+   LHS uses equi-recursive unfolding (the iota) while the RHS uses
+   precise unfolding (the value). Is there a unified rule? Candidate:
+
+   `[IotaMatch] body_LHS[0 := a] ⊑ body_RHS[0 := a] → a ⊑ ι. body_RHS`
+   when `a` has head `ι. body_LHS`.
+
+   This fuses iotaIntro+iotaL into one step. Worth exploring but not
+   done here.
 
 ### Comparison to previous agent's work
 
