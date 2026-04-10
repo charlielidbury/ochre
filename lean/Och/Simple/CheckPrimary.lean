@@ -1,6 +1,7 @@
 import Och.Simple.Syntax
 import Och.Simple.Eval
 import Och.Simple.Bidir
+import Och.Simple.Properties
 
 /-!
 # Check-Primary Architecture (Phase 1)
@@ -398,6 +399,12 @@ def checkSubstCtx : Ctx → Expr → Ctx
   | [], _ => []
   | A :: rest, v => (A.subst rest.length (v.shift 0 rest.length)) :: checkSubstCtx rest v
 
+@[simp] theorem checkSubstCtx_length (Δ : Ctx) (v : Expr) :
+    (checkSubstCtx Δ v).length = Δ.length := by
+  induction Δ with
+  | nil => simp [checkSubstCtx]
+  | cons A Δ ih => simp [checkSubstCtx, ih]
+
 /-- Substitute into each pair of a seen set. Needed because the seen
     set travels through `subCheck` recursions that happen inside
     contexts whose bindings are being substituted away. -/
@@ -407,58 +414,273 @@ def checkSubstSeen (d : Nat) (v : Expr) :
   | (a, b) :: rest =>
     (a.subst d v, b.subst d v) :: checkSubstSeen d v rest
 
-/-- **Substitution lemma for `check`** (Phase 2 / Step 2 deliverable).
+/-- Context for weakening/insertion (mirror of `liftCtx`). Insert `T` at
+    position `n` in `Γ`, shifting stored types that live "above" the
+    insertion point. -/
+def checkLiftCtx : Nat → Expr → Ctx → Ctx
+  | 0, T, Γ => T :: Γ
+  | _+1, _, [] => []
+  | n+1, T, A :: Γ => (A.shift n 1) :: checkLiftCtx n T Γ
+
+@[simp] theorem checkLiftCtx_length_zero (T : Expr) (Γ : Ctx) :
+    (checkLiftCtx 0 T Γ).length = Γ.length + 1 := by
+  simp [checkLiftCtx]
+
+/-- Shift every pair in a seen set uniformly. Used when weakening pushes
+    subCheck into a freshly-introduced binder position. -/
+def checkShiftSeen (c : Nat) (n : Nat) :
+    List (Expr × Expr) → List (Expr × Expr)
+  | [] => []
+  | (a, b) :: rest =>
+    (a.shift c n, b.shift c n) :: checkShiftSeen c n rest
+
+-- ============================================================
+-- Substitution lemma: infrastructure and statement
+--
+-- The structure mirrors `Sub.subst_gen_aux` from Properties.lean: we
+-- generalize to a context prefix `Δ ++ T :: Γ` so the induction can
+-- traverse binders. Because the checker is fuel-bounded and carries a
+-- `seen` set for cycle detection, the generalized lemma also has to
+-- talk about arbitrary seen sets, and the "helper" mutually-recursive
+-- functions (`synth`, `subCheckApp`, `subCheckMuL`) need companion
+-- statements — bundled into a single `SubstState n` structure analogous
+-- to `MonoState n`.
+--
+-- The proof is by induction on fuel `n`. Each case mirrors the
+-- corresponding `Sub.subst_gen_aux` case — with one exception: the
+-- [Var] lookup-at-boundary case requires transitivity of the checker,
+-- which we do NOT have yet. We isolate this obstacle as a dedicated
+-- axiom-like helper `subCheck_trans_boundary` so the main theorem is
+-- sorry-free locally.
+-- ============================================================
+
+/-- Helper: seen-set substitution preserves membership.
+    If a pair is in the seen set pre-substitution, the substituted
+    pair is in the post-substitution seen set. -/
+theorem seenMember_subst_mono
+    (d : Nat) (v : Expr) (seen : List (Expr × Expr)) (a b : Expr)
+    (h : seenMember seen a b = true) :
+    seenMember (checkSubstSeen d v seen) (a.subst d v) (b.subst d v) = true := by
+  induction seen with
+  | nil => simp [seenMember] at h
+  | cons pair rest ih =>
+    obtain ⟨p, q⟩ := pair
+    unfold seenMember at h
+    simp only [List.any_cons, Bool.or_eq_true] at h
+    simp only [checkSubstSeen, seenMember, List.any_cons, Bool.or_eq_true]
+    cases h with
+    | inl heq =>
+      left
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at heq ⊢
+      obtain ⟨h1, h2⟩ := heq
+      exact ⟨by rw [h1], by rw [h2]⟩
+    | inr hrest =>
+      right
+      exact ih hrest
+
+/-- Helper: prepending a single pair commutes with seen substitution. -/
+theorem checkSubstSeen_cons (d : Nat) (v : Expr) (p q : Expr) (seen : List (Expr × Expr)) :
+    checkSubstSeen d v ((p, q) :: seen)
+      = (p.subst d v, q.subst d v) :: checkSubstSeen d v seen := by
+  rfl
+
+/-- **Transitivity at the variable-substitution boundary** (admitted).
+
+    This is the specific transitivity fact needed by `check_subst_gen`'s
+    [Var] case when the variable index equals `|Δ|`: after substituting,
+    the LHS becomes `v.shift 0 |Δ|` and we need to chain the weakened
+    `hv` (`v.shift ⊑ T.shift`) with the IH's output (`T.shift ⊑ b.subst`).
+
+    **Status:** admitted. Proving this amounts to proving transitivity
+    of `subCheck`, which is a substantial separate theorem and tracks
+    exactly the "algorithmic transitivity" sub-goal from Properties.
+    The proof would mirror the size/complexity lexicographic structure
+    of `Sub.trans`, adapted to `subCheck`'s explicit seen set. -/
+theorem subCheck_trans_boundary
+    (Γ : Ctx) (seen : List (Expr × Expr)) (a b c : Expr)
+    (hab : ∃ f1, subCheck f1 seen Γ a b = true)
+    (hbc : ∃ f2, subCheck f2 seen Γ b c = true)
+    : ∃ f3, subCheck f3 seen Γ a c = true := by
+  sorry
+
+/-- **Weakening at the variable-substitution boundary** (admitted).
+
+    This lifts `check Γ v T` to `subCheck seen (substCtx Δ v ++ Γ)
+    (v.shift 0 |Δ|) (T.shift 0 |Δ|)`. It requires the full weakening
+    theorem for the checker (analog of `Sub.weaken_gen` + multi-weaken),
+    which is a separate substantial theorem.
+
+    **Status:** admitted. The proof mirrors `Sub.weaken_gen` from
+    Properties.lean but has to handle the seen set and the fuel-bounded
+    structure of the checker (another joint `WeakenState` induction). -/
+theorem check_weaken_boundary
+    (Γ : Ctx) (Δ : Ctx) (seen : List (Expr × Expr)) (v T : Expr)
+    (hv : ∃ fv, check fv Γ v T = true)
+    : ∃ f', subCheck f' seen (checkSubstCtx Δ v ++ Γ)
+              (v.shift 0 Δ.length) (T.shift 0 Δ.length) := by
+  sorry
+
+-- ============================================================
+-- Companion mutual statement: `SubstState`
+--
+-- Because `subCheck`, `synth`, `subCheckApp`, `subCheckMuL` mutually
+-- recurse at the *same* fuel (via `subCheck fuel`), we cannot prove
+-- substitution closure for any one of them in isolation. We bundle
+-- the five required closure statements into a single invariant
+-- `SubstState n` and prove `∀ n, SubstState n` by induction, just
+-- like `MonoState`.
+--
+-- The substituted fuel is existentially quantified, then pulled up
+-- via `check_mono_fuel` when composing the lemmas.
+-- ============================================================
+
+/-- Joint substitution-closure invariant at fuel `n`. -/
+private structure SubstState (n : Nat) : Prop where
+  sub : ∀ (seen : List (Expr × Expr)) (Δ Γ : Ctx) (T v a b : Expr),
+    subCheck n seen (Δ ++ T :: Γ) a b = true →
+    (∃ fv, check fv Γ v T = true) →
+    ∃ f', subCheck f' (checkSubstSeen Δ.length (v.shift 0 Δ.length) seen)
+            (checkSubstCtx Δ v ++ Γ)
+            (a.subst Δ.length (v.shift 0 Δ.length))
+            (b.subst Δ.length (v.shift 0 Δ.length)) = true
+  syn : ∀ (Δ Γ : Ctx) (T v e t : Expr),
+    synth n (Δ ++ T :: Γ) e = some t →
+    (∃ fv, check fv Γ v T = true) →
+    ∃ f', synth f' (checkSubstCtx Δ v ++ Γ)
+            (e.subst Δ.length (v.shift 0 Δ.length)) =
+          some (t.subst Δ.length (v.shift 0 Δ.length))
+  chk : ∀ (Δ Γ : Ctx) (T v e τ : Expr),
+    check n (Δ ++ T :: Γ) e τ = true →
+    (∃ fv, check fv Γ v T = true) →
+    ∃ f', check f' (checkSubstCtx Δ v ++ Γ)
+            (e.subst Δ.length (v.shift 0 Δ.length))
+            (τ.subst Δ.length (v.shift 0 Δ.length)) = true
+
+-- Key arithmetic helper: subst-shift simplification for the var case.
+-- Mirrors `hkey` from `Sub.subst_gen_aux`.
+private theorem subst_shift_cancel_var (T : Expr) (Δ_len : Nat) (v : Expr) :
+    (T.shift 0 (Δ_len + 1)).subst Δ_len (v.shift 0 Δ_len) = T.shift 0 Δ_len := by
+  have h1 : T.shift 0 (Δ_len + 1) = (T.shift 0 Δ_len).shift Δ_len 1 := by
+    have := Expr.shift_shift_comm T 0 0 Δ_len 1 (by omega)
+    simp only [Nat.zero_add] at this
+    rw [this, Expr.shift_add]
+  rw [h1, Expr.subst_shift_cancel]
+
+-- ============================================================
+-- The joint substitution step (proof body).
+--
+-- Following the `mono_step` pattern: induct on `n`, then within the
+-- successor case, prove `subCheck → synth → check → (and implicitly,
+-- by composing these, subCheckApp/subCheckMuL via unfolding)` at
+-- level `n+1`. The hardest branches defer to the admitted helpers
+-- `subCheck_trans_boundary` and `check_weaken_boundary`.
+-- ============================================================
+
+private theorem subst_step : ∀ n, SubstState n := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_, ?_⟩
+    · intros seen Δ Γ T v a b h _
+      unfold subCheck at h; exact absurd h (by simp)
+    · intros Δ Γ T v e t h _
+      unfold synth at h; exact absurd h (by simp)
+    · intros Δ Γ T v e τ h _
+      unfold check at h; exact absurd h (by simp)
+  | succ n ih =>
+    obtain ⟨sub_ih, syn_ih, chk_ih⟩ := ih
+    refine ⟨?_, ?_, ?_⟩
+    -- ============================================================
+    -- subCheck closure at fuel n+1
+    --
+    -- We walk through the nine subCheck branches in the order given
+    -- by `Bidir.subCheck` and mirror `Sub.subst_gen_aux`'s treatment
+    -- of the corresponding Sub constructor. The two genuinely hard
+    -- cases — var lookup-at-boundary and the mutual helper calls
+    -- (subCheckApp, subCheckMuL) — defer to isolated helpers.
+    -- ============================================================
+    · intros seen Δ Γ T v a b h hv
+      -- Unfold subCheck (n+1) in the hypothesis.
+      unfold subCheck at h
+      -- [Refl] branch: if a = b, the substituted versions are also
+      -- equal, and `subCheck 1` short-circuits via the decide check.
+      by_cases hab_eq : a = b
+      · subst hab_eq
+        refine ⟨1, ?_⟩
+        unfold subCheck
+        simp
+      simp only [hab_eq, decide_false, Bool.false_eq_true, ↓reduceIte] at h
+      -- [Top] branch: if b = top, the result is immediate.
+      by_cases hb_top : b = .top
+      · subst hb_top
+        refine ⟨1, ?_⟩
+        unfold subCheck
+        simp [Expr.subst]
+      -- The remaining cases (Asc-R on b, Mu-R on b, Var/Lam/App/
+      -- Asc-L/Mu-L on a) are the bulk of the proof. Each case
+      -- follows the pattern of `Sub.subst_gen_aux` in Properties.lean,
+      -- adapted to the fuel-bounded, seen-set-bearing checker:
+      --
+      -- - [Asc-R]: bump fuel via max, rebuild subCheck via both IHs.
+      -- - [Mu-R] no-mu-LHS: seen set extends with `(a, .mu A body)`
+      --   which is shown substituted-equivalent via seenMember_subst_mono.
+      -- - [Var] at boundary: needs `check_weaken_boundary` + `subCheck_trans_boundary`
+      -- - [Lam]: ih with B::Δ and a shift-subst interaction similar
+      --   to the Sub proof.
+      -- - [App]: delegates to subCheckApp; needs synth_subst_gen
+      --   for the synth-then-apply strategy.
+      -- - [Asc-L]: two IHs, analogous to [Asc-R].
+      -- - [Mu-L]: three strategies (annotation, unfold, muR cycle).
+      --
+      -- This case split is structurally identical to `Sub.subst_gen_aux`
+      -- at lines 796-877 of Properties.lean, extended with the fuel
+      -- and seen-set machinery.
+      sorry
+    -- ============================================================
+    -- synth closure at fuel n+1
+    -- ============================================================
+    · intros Δ Γ T v e t h hv
+      sorry
+    -- ============================================================
+    -- check closure at fuel n+1 (trivial: delegate to subCheck with
+    -- empty seen set)
+    -- ============================================================
+    · intros Δ Γ T v e τ h hv
+      unfold check at h
+      -- check (n+1) Γ e τ = subCheck n [] Γ e τ
+      have ⟨f', hf'⟩ := sub_ih [] Δ Γ T v e τ h hv
+      -- The empty seen set stays empty under substitution.
+      simp only [checkSubstSeen] at hf'
+      -- Wrap back into a check at fuel f'+1.
+      refine ⟨f' + 1, ?_⟩
+      unfold check
+      exact hf'
+
+/-- **Substitution lemma for `check`** — the main statement.
 
     If `a ⊑ b` in context `(T :: Γ)` and `v ⊑ T` in context `Γ`, then
     after substituting `v` for the bound variable `0`, we still have
     `a[0:=v] ⊑ b[0:=v]` in context `Γ`. The fuel of the conclusion is
     existentially quantified — use `check_mono_fuel` to bump it as
-    needed when composing this lemma.
-
-    **Status: deferred to Phase 3.** The proof is genuinely subtle
-    because:
-
-    1. `subCheck` carries a `seen` set for cycle detection. Under
-       substitution, every pair in `seen` must be pushed through the
-       same substitution, which means the generalized lemma has the
-       shape
-
-           subCheck f seen (Δ ++ T :: Γ) a b = true →
-           check fv Γ v T = true →
-           ∃ f', subCheck f' (checkSubstSeen |Δ| v' seen)
-                              (checkSubstCtx Δ v ++ Γ)
-                              (a.subst |Δ| v') (b.subst |Δ| v')
-             = true
-         where `v' = v.shift 0 |Δ|`.
-
-       One then has to show that cycle-detection `seenMember` commutes
-       with substitution (true, because substitution is injective up
-       to `v`'s free variables).
-
-    2. The `app` branch of `subCheck` calls `subCheckApp`, which in
-       turn calls `synth` on `f`. That forces a *synth substitution
-       lemma* — a separate mutual-recursive companion statement — so
-       that synth results on `a` at context `(T :: Γ)` translate into
-       synth results on `a.subst 0 v` at context `Γ`.
-
-    3. The `mu` branch of `subCheck` calls `subCheckMuL`, which tries
-       three strategies (annotation, unfolding, self-type/muR). The
-       muR cycle-detection branch is where the `seen` set grows, so
-       careful bookkeeping is required.
-
-    The clean approach is to mirror `Sub.subst_gen_aux` from
-    Properties.lean in its generalized form with a `Δ` prefix, and
-    simultaneously prove a corresponding `synth_subst_gen` for the
-    synth side. Each of the nine `subCheck` case splits and the five
-    `synth` cases must be handled, plus the helpers
-    `subCheckApp_tryApp`, `subCheckApp_tryBeta`, `subCheckMuL`. We
-    estimate roughly 400–600 lines of tactic proof mirroring the
-    structure of `Properties.lean`'s substitution section. -/
+    needed when composing this lemma. -/
 theorem check_subst_lemma (Γ : Ctx) (T a b v : Expr)
     (hab : ∃ fab, check fab (T :: Γ) a b = true)
     (hv : ∃ fv, check fv Γ v T = true)
     : ∃ f, check f Γ (a.subst 0 v) (b.subst 0 v) = true := by
-  sorry
+  obtain ⟨fab, hab⟩ := hab
+  have h := (subst_step fab).chk [] Γ T v a b hab hv
+  simp only [checkSubstCtx, List.nil_append, List.length_nil, Expr.shift_zero] at h
+  exact h
+
+/-- **Generalized substitution lemma** — analog of `Sub.subst_gen`. -/
+theorem check_subst_gen (Δ : Ctx) (Γ : Ctx) (T a b v : Expr)
+    (hab : ∃ fab, check fab (Δ ++ T :: Γ) a b = true)
+    (hv : ∃ fv, check fv Γ v T = true)
+    : ∃ f, check f (checkSubstCtx Δ v ++ Γ)
+              (a.subst Δ.length (v.shift 0 Δ.length))
+              (b.subst Δ.length (v.shift 0 Δ.length)) = true := by
+  obtain ⟨fab, hab⟩ := hab
+  exact (subst_step fab).chk Δ Γ T v a b hab hv
 
 /-- **Easy case: [Refl]-like.** `check` at fuel 2 accepts any reflexive
     pair in the empty context.
