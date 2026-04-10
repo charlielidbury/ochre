@@ -336,6 +336,10 @@ private noncomputable def eval_result_sub_lam_not_app :
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | mu _ _ _ _ _ _ =>
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
+      | muUnfoldL _ _ _ _ _ =>
+        -- muUnfoldL requires f to be `mu A body`, but hf_eval tells us
+        -- `eval n' e = some f`, and eval never produces a mu as a value.
+        obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | @app _ g c _ D'' R'' hgD'' hcD'' hR''D' =>
         rename_i haD_inner hRb_inner
         let rebuilt := Sub.app [] g c (.lam D' R') D'' R'' hgD'' hcD'' hR''D'
@@ -462,6 +466,24 @@ private noncomputable def evalPreservation_aux :
             exact (eval_result_sub_lam_app_absurd hf_sub ⟨m, _, hf_eval⟩).elim
           | .asc e' t' => exact nomatch (eval_produces_value hf_eval)
           | .mu ann body => exact nomatch (eval_produces_value hf_eval)
+
+    | muUnfoldL _ A body _ hBody =>
+      -- e = mu A body. eval unfolds one step to body.subst 0 (mu A body).
+      -- hBody : Sub [] (body.subst 0 (mu A body)) τ, so recurse.
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m =>
+        simp [eval] at he
+        exact ih _ _ hBody m fuel_τ _ _ (by omega) he hτ
+
+    | muR _ _ A body hA hBody =>
+      -- τ = mu A body. CYCLE DETECTION SORRY:
+      -- We have hA : Sub [] e A and hBody : Sub [] e (body.subst 0 e).
+      -- eval on τ (a mu) unfolds to body.subst 0 (mu A body).
+      -- The needed conclusion requires coinductive reasoning about
+      -- `Sub v_e v_τ` where v_τ = eval of the unfolded body.
+      -- This is the canonical coinductive gap for self-type intro.
+      sorry
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/
