@@ -336,9 +336,7 @@ private noncomputable def eval_result_sub_lam_not_app :
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | mu _ _ _ _ _ _ =>
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
-      | muUnfoldL _ _ _ _ _ =>
-        -- muUnfoldL requires f to be `mu A body`, but hf_eval tells us
-        -- `eval n' e = some f`, and eval never produces a mu as a value.
+      | muUnfoldL _ _ _ _ _ _ =>
         obtain ⟨n', e', he'⟩ := hf_eval; exact nomatch (eval_produces_value he')
       | @app _ g c _ D'' R'' hgD'' hcD'' hR''D' =>
         rename_i haD_inner hRb_inner
@@ -467,23 +465,23 @@ private noncomputable def evalPreservation_aux :
           | .asc e' t' => exact nomatch (eval_produces_value hf_eval)
           | .mu ann body => exact nomatch (eval_produces_value hf_eval)
 
-    | muUnfoldL _ A body _ hBody =>
-      -- e = mu A body. eval unfolds one step to body.subst 0 (mu A body).
-      -- hBody : Sub [] (body.subst 0 (mu A body)) τ, so recurse.
+    | muR _ _ A b haA hab_body =>
+      -- τ = μA.b. eval on τ (a μ) unfolds to b.subst 0 (.mu A b).
+      -- With the NEW expressive muR rule, hab_body : Sub [] e (b.subst 0 e),
+      -- which mentions the subject `e`, not `.mu A b`. Eval of τ unfolds to
+      -- `b.subst 0 (.mu A b)`, so we cannot directly recurse with hab_body.
+      -- This is the same deep problem as trans(X, muR) in Properties.lean.
+      -- The resolution requires step-indexed semantics: see Och/Simple/SubN.lean.
+      exact sorry
+    | muUnfoldL _ A b _ _hbA hunfold =>
+      -- e = μA.b. eval on e unfolds to b.subst 0 (.mu A b). We have
+      -- hunfold : Sub [] (b.subst 0 (.mu A b)) τ, which is exactly what we need
+      -- to recurse, after peeling off one eval step of e.
       cases fuel with
       | zero => simp [eval] at he
-      | succ m =>
+      | succ k =>
         simp [eval] at he
-        exact ih _ _ hBody m fuel_τ _ _ (by omega) he hτ
-
-    | muR _ _ A body hA hBody =>
-      -- τ = mu A body. CYCLE DETECTION SORRY:
-      -- We have hA : Sub [] e A and hBody : Sub [] e (body.subst 0 e).
-      -- eval on τ (a mu) unfolds to body.subst 0 (mu A body).
-      -- The needed conclusion requires coinductive reasoning about
-      -- `Sub v_e v_τ` where v_τ = eval of the unfolded body.
-      -- This is the canonical coinductive gap for self-type intro.
-      sorry
+        exact ih _ _ hunfold k fuel_τ _ _ (by omega) he hτ
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/

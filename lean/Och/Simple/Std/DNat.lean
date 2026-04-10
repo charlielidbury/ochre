@@ -122,16 +122,35 @@ example : Sub [] dzero .top :=
     (Sub.top [.top] _)
 
 -- ============================================================
--- ASPIRATIONAL: Category A — Self-type intro (needs Sub.muR)
+-- Self-type intro via Sub.muR (expressive form, self = subject)
 -- ============================================================
 
--- ASPIRATIONAL: dzero <= dNat
--- Requires Sub.muR rule. After unfolding mu on the RHS:
---   dzero <= body[dNat := dzero]
--- = dzero <= λP:(dzero->T). λz:(P dzero). λs:(λpred:T. P (dsucc pred)). P dzero
--- This should be provable because dzero's body selects z : P dzero.
--- Flip condition: Add Sub.muR rule
--- example : Sub [] dzero dNat := ...
+-- Sub [] dzero dNat via expressive muR + muUnfoldL.
+-- Strategy mirrors dtrue ⊑ dBool:
+--   1. Sub.muR: dzero ⊑ ⊤ (annotation, by top) and dzero ⊑ dNat.body[0:=dzero]
+--   2. muUnfoldL on dzero to get dzero's unfolded body
+--   3. Compare the lam-lam-lam structures: dzero's body selects `z : P dzero`
+--      as the result, and dNat.body[0:=dzero] expects exactly `P dzero` at
+--      that position. The RHS's `s` argument (the λpred.P (dsucc pred)) is
+--      more specific, so contravariantly the LHS's `⊤` absorbs it.
+example : Sub [] dzero dNat := by
+  show Sub [] (.mu .top _) (.mu .top _)
+  apply Sub.muR _ _ .top _
+  · exact Sub.top [] dzero
+  · apply Sub.muUnfoldL _ .top _
+    · exact Sub.top _ _
+    · show Sub [] _ _
+      apply Sub.lam
+      · exact Sub.refl _ _
+      · apply Sub.lam
+        · exact Sub.refl _ _
+        · apply Sub.lam
+          · -- contravariant: RHS_s_domain ⊑ ⊤
+            exact Sub.top _ _
+          · -- Goal: var 1 ⊑ app (var 2) dzero
+            apply Sub.var _ 1 _ (.app (.var 2) dzero)
+            · rfl
+            · exact Sub.refl _ _
 
 -- ASPIRATIONAL: done_ <= dNat
 -- Same mechanism, needs Sub.muR + possibly BetaR for dsucc application

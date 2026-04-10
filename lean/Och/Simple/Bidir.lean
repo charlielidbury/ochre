@@ -39,7 +39,8 @@ Follows the algorithmic `Sub` judgment closely, with a `seen` set tracking
 `synth_sound : synth fuel Γ e = some τ → Sub Γ e τ`
 
 Both theorems use the declarative `Sub` from `Subtype.lean`, which now
-includes `muR` and `muUnfoldL`. Cycle-detection cases in `subCheck` are
+includes `muR` (self-type intro with self = subject, the EXPRESSIVE form)
+and `muUnfoldL` (LHS unfolding). Cycle-detection cases in `subCheck` are
 discharged via the declarative `muR` rule.
 
 These theorems are not yet formalized in Lean; a blueprint exists in the
@@ -182,6 +183,9 @@ mutual
       | .asc e τ, _ =>
         subCheck fuel seen Γ e τ && subCheck fuel seen Γ τ b
       -- [Mu-L]: try annotation strategy, unfold, and (if RHS is mu too) muR
+      -- Both the algorithmic checker here and declarative Sub.muR use the
+      -- expressive form (self := subject). See Subtype.lean for the
+      -- declarative rule.
       | .mu A body, _ =>
         -- Strategy 1: muL annotation — A ⊑ b and body ⊑ A↑
         (subCheck fuel seen Γ A b && subCheck fuel seen (A :: Γ) body (A.shift 0 1))
@@ -200,7 +204,8 @@ mutual
       -- [Asc-R]: ascription on RHS
       | _, .asc e τ =>
         subCheck fuel seen Γ e τ && subCheck fuel seen Γ a e
-      -- [Mu-R]: self-type intro on RHS, with cycle detection
+      -- [Mu-R]: self-type intro on RHS, with cycle detection.
+      -- Uses self := a (the subject), matching declarative Sub.muR.
       | _, .mu A body =>
         if seenMember seen a (.mu A body) then
           true  -- Cycle: coinductive assumption

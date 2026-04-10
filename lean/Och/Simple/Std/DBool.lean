@@ -116,24 +116,98 @@ example : Sub [] dfalse .top :=
     (Sub.top [.top] _)
 
 -- ============================================================
--- ASPIRATIONAL: Category A — Self-type intro (needs Sub.muR)
+-- Self-type intro via Sub.muR (expressive form, self = subject)
 -- ============================================================
 
--- ASPIRATIONAL: dtrue <= dBool
--- This requires a Sub.muR rule (self-type intro on the RHS).
--- Currently Sub.mu only handles mu on the LEFT.
--- To derive: dtrue <= mu(dBool:T). body
--- We would need: dtrue <= body[dBool := dtrue]
--- which after substitution becomes:
---   dtrue <= λP:(dtrue->T). λt:(P dtrue). λf:(P dfalse). P dtrue
--- This is provable because dtrue's body matches this structure.
--- Flip condition: Add Sub.muR rule to Subtype.lean
--- example : Sub [] dtrue dBool := ...
+-- Sanity check: trivial muR — top ⊑ μ(⊤). ⊤
+-- Using the expressive muR with self = .top: needs .top ⊑ ⊤ and .top ⊑ ⊤[0:=.top] = ⊤.
+example : Sub [] .top (.mu .top .top) :=
+  Sub.muR [] .top .top .top
+    (Sub.top [] .top)
+    (Sub.top [] .top)
 
--- ASPIRATIONAL: dfalse <= dBool
--- Same mechanism as above but for dfalse.
--- Flip condition: Add Sub.muR rule
--- example : Sub [] dfalse dBool := ...
+-- ── Sub [] dtrue dBool via expressive muR + muUnfoldL ────
+-- Strategy:
+--   1. Outer: Sub.muR dtrue dBool. Needs dtrue ⊑ ⊤ (annotation) and
+--      dtrue ⊑ dBool.body[0 := dtrue]. dBool.body[0 := dtrue] =
+--        λ(dtrue→⊤). λ(app (var 0) dtrue). λ(app (var 1) dfalse).
+--          (app (var 2) dtrue)
+--   2. For the body premise: muUnfoldL on dtrue, giving dtrue's unfolded
+--      body = λ(dtrue→⊤). λ(app (var 0) dtrue). λ⊤. (var 1)
+--      and the well-typedness premise b ⊑ ⊤ (shifted), trivial by top.
+--   3. Compare the two lam-lam-lam structures: domains match at each
+--      layer, then the innermost lam has LHS domain ⊤ vs RHS domain
+--      (app (var 1) dfalse) — contravariant, needs RHS ⊑ ⊤ (by top).
+--      The innermost body compares (var 1) vs (app (var 2) dtrue).
+--      By Sub.var, var 1 has type E.shift 0 2 = (app (var 2) dtrue), so
+--      refl closes it.
+example : Sub [] dtrue dBool := by
+  -- Unfold the definitions (requires Lean to compute them).
+  show Sub [] (.mu .top _) (.mu .top _)
+  apply Sub.muR _ _ .top _
+  · exact Sub.top [] dtrue
+  · -- Need: Sub [] dtrue (dBool.body.subst 0 dtrue)
+    -- dtrue = .mu .top dtrue_body. Use muUnfoldL.
+    apply Sub.muUnfoldL _ .top _
+    · -- body ⊑ ⊤.shift in .top :: []
+      exact Sub.top _ _
+    · -- dtrue_body[0 := dtrue] ⊑ dBool.body[0 := dtrue]
+      -- Both sides are closed lambdas. Compare structurally.
+      show Sub [] _ _
+      -- Outer λ: dtrue → ⊤ on both sides
+      apply Sub.lam
+      · exact Sub.refl _ _
+      · -- Under [dtrue → ⊤]:
+        -- LHS: λ(app (var 0) dtrue). λ⊤. (var 1)
+        -- RHS: λ(app (var 0) dtrue). λ(app (var 1) dfalse). (app (var 2) dtrue)
+        apply Sub.lam
+        · exact Sub.refl _ _
+        · -- Under [app (var 0) dtrue; dtrue → ⊤]:
+          -- LHS: λ⊤. (var 1)
+          -- RHS: λ(app (var 1) dfalse). (app (var 2) dtrue)
+          apply Sub.lam
+          · -- contravariant domain: (app (var 1) dfalse) ⊑ ⊤
+            exact Sub.top _ _
+          · -- Under [app (var 1) dfalse; app (var 0) dtrue; dtrue → ⊤]:
+            -- Goal: var 1 ⊑ app (var 2) dtrue
+            -- var 1 has type (app (var 0) dtrue).shift 0 2 = app (var 2) dtrue
+            apply Sub.var _ 1 _ (.app (.var 2) dtrue)
+            · -- Ctx.get? proof
+              show Ctx.get? _ 1 = some _
+              -- Compute Ctx.get?
+              rfl
+            · exact Sub.refl _ _
+
+-- ── Sub [] dfalse dBool via expressive muR + muUnfoldL ────
+-- Symmetric to dtrue ⊑ dBool. dfalse differs: its body has λ⊤ in the
+-- "t" position (not "f"). The key insight: the var `f` (var 0 inside
+-- the innermost λ) has type (app (var 1) dfalse) = (P dfalse), matching
+-- the dBool.body[0:=dfalse] third-arg position.
+example : Sub [] dfalse dBool := by
+  show Sub [] (.mu .top _) (.mu .top _)
+  apply Sub.muR _ _ .top _
+  · exact Sub.top [] dfalse
+  · apply Sub.muUnfoldL _ .top _
+    · exact Sub.top _ _
+    · -- dfalse_body[0:=dfalse] ⊑ dBool.body[0:=dfalse]
+      -- dfalse_body = λ(dfalse→⊤). λ⊤. λ(app (var 1) dfalse). (var 0)
+      -- After subst 0 dfalse (closed): same structure with dfalse values
+      -- dBool.body[0:=dfalse] = λ(dfalse→⊤). λ(app (var 0) dtrue). λ(app (var 1) dfalse). (app (var 2) dfalse)
+      show Sub [] _ _
+      apply Sub.lam
+      · exact Sub.refl _ _                        -- dfalse → ⊤  matches
+      · apply Sub.lam
+        · -- LHS domain: ⊤, RHS domain: (app (var 0) dtrue)
+          -- contravariant: (app (var 0) dtrue) ⊑ ⊤
+          exact Sub.top _ _
+        · apply Sub.lam
+          · -- (app (var 1) dfalse) ⊑ (app (var 1) dfalse) — refl
+            exact Sub.refl _ _
+          · -- Goal: var 0 ⊑ (app (var 2) dfalse)
+            -- var 0 has type (app (var 1) dfalse).shift 0 1 = app (var 2) dfalse
+            apply Sub.var _ 0 _ (.app (.var 2) dfalse)
+            · rfl
+            · exact Sub.refl _ _
 
 -- ASPIRATIONAL: dependent elimination with typed motive
 -- Given dtrue <= dBool and a motive P : dBool -> T,

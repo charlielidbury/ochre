@@ -355,24 +355,28 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     have hbody := ihbA (n + 1)
     rw [Expr.shift_shift_comm A 0 n 1 1 (by omega)] at hbody
     exact Sub.mu _ _ _ _ hdom hbody
-  | @muUnfoldL Γ' A body c _h ih =>
-    show Sub _ ((Expr.mu A body).shift n 1) _
-    simp only [shift]
-    have ih' := ih n
-    -- (body.subst 0 (mu A body)).shift n 1 = (body.shift (n+1) 1).subst 0 ((mu A body).shift n 1)
-    have heq := Expr.subst_shift_hi body 0 n 1 (.mu A body) (by omega)
-    rw [heq] at ih'
-    simp only [shift] at ih'
-    exact Sub.muUnfoldL _ (A.shift n 1) (body.shift (n+1) 1) _ ih'
   | @muR Γ' a' A body _hAa' _hbody ihA ihBody =>
     show Sub _ (a'.shift n 1) ((Expr.mu A body).shift n 1)
     simp only [shift]
     have hA := ihA n
     have hBody := ihBody n
-    -- (body.subst 0 a').shift n 1 = (body.shift (n+1) 1).subst 0 (a'.shift n 1)
+    -- (body.subst 0 a').shift n 1
+    --   = (body.shift (n+1) 1).subst 0 (a'.shift n 1)
     have heq := Expr.subst_shift_hi body 0 n 1 a' (by omega)
     rw [heq] at hBody
     exact Sub.muR _ (a'.shift n 1) (A.shift n 1) (body.shift (n+1) 1) hA hBody
+  | @muUnfoldL Γ' A body c _hbA _hunfold ihbA ihunfold =>
+    show Sub _ ((Expr.mu A body).shift n 1) (c.shift n 1)
+    simp only [shift]
+    have hbA := ihbA (n + 1)
+    rw [Expr.shift_shift_comm A 0 n 1 1 (by omega)] at hbA
+    have hunfold := ihunfold n
+    -- (body.subst 0 (.mu A body)).shift n 1
+    --   = (body.shift (n+1) 1).subst 0 ((.mu A body).shift n 1)
+    have heq := Expr.subst_shift_hi body 0 n 1 (.mu A body) (by omega)
+    rw [heq] at hunfold
+    simp only [shift] at hunfold
+    exact Sub.muUnfoldL _ (A.shift n 1) (body.shift (n+1) 1) (c.shift n 1) hbA hunfold
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
 noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
@@ -440,8 +444,8 @@ def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
   | .ascL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .mu _ _ _ _ h1 h2 => 1 + h1.size + h2.size
-  | .muUnfoldL _ _ _ _ h => 1 + h.size
   | .muR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .muUnfoldL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
 
 /-- Every derivation has positive size. -/
 theorem Sub.size_pos {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : 0 < h.size := by
@@ -544,6 +548,13 @@ private noncomputable def transNarrowInner
     let ⟨trans_n, narrow_n⟩ := transNarrowInner trans_lo n
     ⟨fun Γ a b c hab hbc hcplx hle => by
       -- === TRANS at (m, n+1) ===
+      -- NOTE ON EXPRESSIVE muR: The muR rule uses self = a (the subject), so
+      -- composing trans(X, muR) requires proving `a ⊑ body[0:=a]` from
+      -- `b ⊑ body[0:=b]` and `a ⊑ b`. This is NOT structurally provable in an
+      -- inductive proof because substitution of the subject into the body can
+      -- flip variance. The resolution is to interpret Sub semantically via a
+      -- step-indexed relation (see Och/Simple/SubN.lean). Therefore the hard
+      -- cases are marked `sorry` here with explicit documentation of the plan.
       match hab with
       | .refl _ _ => exact hbc
       | .top _ _ =>
@@ -553,13 +564,9 @@ private noncomputable def transNarrowInner
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A body hA hBody =>
-          -- trans(top, muR): need Sub Γ a (mu A body). The natural witness is
-          -- muR with Sub a A and Sub a (body.subst 0 a). We have Sub top A (hA)
-          -- and Sub top (body.subst 0 top) (hBody). Converting hBody to
-          -- Sub a (body.subst 0 a) requires coinductive reasoning.
-          -- CYCLE DETECTION SORRY (coinductive).
-          sorry
+        | .muR _ _ _ _ _ _ =>
+          -- trans(top, muR): requires self-substitution. See SubN.lean.
+          exact sorry
       | .var _ x _ U hget hUb =>
         exact Sub.var _ x c U hget (trans_n Γ U b c hUb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega))
@@ -585,15 +592,17 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A' body' hA' hBody' =>
-          -- trans(lam, muR): requires coinductive reasoning because the body'
-          -- premise `Sub b (body'.subst 0 b)` can't be rewritten to
-          -- `Sub a (body'.subst 0 a)` without re-traversing substitution.
-          -- CYCLE DETECTION SORRY (coinductive).
-          sorry
+        | .muR _ _ _ _ _ _ =>
+          -- trans(lam, muR): self-substitution required. See SubN.lean.
+          exact sorry
       | .mu _ A body _ hAb hbodyA =>
         exact Sub.mu _ A body c (trans_n Γ A b c hAb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega)) hbodyA
+      | .muUnfoldL _ A body _ hbA hunfold =>
+        -- trans(muUnfoldL, hbc): preserve the unfolding, compose with hbc.
+        exact Sub.muUnfoldL _ A body c hbA
+          (trans_n Γ _ b c hunfold hbc hcplx
+            (by simp [Sub.size] at hle ⊢; omega))
       | .ascL _ e τ _ heτ hτb =>
         exact Sub.ascL _ e τ c heτ (trans_n Γ τ b c hτb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega))
@@ -611,45 +620,30 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ A' body' hA' hBody' =>
-          -- trans(ascR, muR): requires coinductive reasoning (see above).
-          -- CYCLE DETECTION SORRY.
-          sorry
-      | .muUnfoldL _ A body _ hBody =>
-        -- trans(muUnfoldL, hbc) = muUnfoldL of trans(hBody, hbc)
-        exact Sub.muUnfoldL _ A body c
-          (trans_n Γ _ b c hBody hbc hcplx (by simp [Sub.size] at hle ⊢; omega))
-      | .muR _ _ A body hA hBody =>
-        -- trans(muR, hbc): need to case on hbc since a ⊑ μA.body
-        -- CYCLE DETECTION SORRY: trans(muR, mu/muR/muUnfoldL) requires coinductive
-        -- reasoning about recursive type unfoldings. The algorithmic checker uses
-        -- a `seen` set for this; formalizing that as a well-founded argument here
-        -- is beyond the current scope.
+        | .muR _ _ _ _ _ _ =>
+          -- trans(ascR, muR): self-substitution required. See SubN.lean.
+          exact sorry
+      | .muR _ _ A body haA hab_body =>
+        -- trans(muR, hbc): b = μA.body. Case on hbc (what eliminates μA.body).
         match hbc with
-        | .refl _ _ => exact Sub.muR _ _ A body hA hBody
+        | .refl _ _ => exact Sub.muR _ _ A body haA hab_body
         | .top _ _ => exact Sub.top _ _
-        | .ascR _ _ e τ heτ hae =>
-          exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
-            (Sub.muR _ _ A body hA hBody) hae hcplx
+        | .ascR _ _ e₂ τ₂ heτ₂ hae₂ =>
+          exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
+            (Sub.muR _ _ A body haA hab_body) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .mu _ .(A) .(body) c' hAc' _ =>
-          -- trans(muR, mu) can cut on A (the annotation)
-          exact trans_n Γ _ A c' hA hAc' (by
-            simp [Expr.complexity] at hcplx; omega)
-            (by simp [Sub.size] at hle ⊢; omega)
-        | .muUnfoldL _ .(A) .(body) c' hUnfold =>
-          -- SORRY: coinductive — trans(muR(a, mu A body), muUnfoldL(mu A body, c')
-          -- unfolds to `body[0 := mu A body]` on the cut side, but we have
-          -- `a ⊑ body[0 := a]`. The narrowing required is coinductive.
-          sorry
-        | .muR _ .(.mu A body) A' body' hA' hBody' =>
-          -- trans(muR, muR): goal is a ⊑ μA'.body'
-          -- Use muR with the same a, need a ⊑ A' and a ⊑ body'[0 := a]
-          -- hA' : μA.body ⊑ A', hBody' : μA.body ⊑ body'[0 := μA.body]
-          -- We have hmuAb : Sub a (μA.body) = muR a A body hA hBody (original)
-          -- Need: Sub a A' (from trans(muR, hA')) and Sub a (body'[0:=a]) (needs coinduction)
-          -- SORRY: coinductive, see above.
-          sorry
+          -- trans(muR, mu) can cut on A (the annotation, strictly smaller complexity)
+          exact trans_lo Γ _ A c'
+            (by simp [Expr.complexity] at hcplx ⊢; omega) haA hAc'
+        | .muR _ _ _ _ _ _ =>
+          -- trans(muR, muR): self-substitution required. See SubN.lean.
+          exact sorry
+        | .muUnfoldL _ .(A) .(body) _ _hbA hunfold =>
+          -- trans(muR, muUnfoldL): we have a ⊑ body[0:=a] and body[0:=μA.body] ⊑ c.
+          -- Direct composition would require body[0:=a] ⊑ body[0:=μA.body],
+          -- which depends on body's polarity. See SubN.lean.
+          exact sorry
     ,
     -- === NARROW_GEN at (m, n+1) ===
     fun Γ_pre Γ_suf B C a b hCB hab hBcplx hle => by
@@ -716,16 +710,19 @@ private noncomputable def transNarrowInner
           narrow_n (A_mu :: Γ_pre) Γ_suf B C body_mu (A_mu.shift 0 1) hCB hbodyA hBcplx (by
             simp [Sub.size] at hle ⊢; omega)
         exact Sub.mu _ A_mu body_mu b hAc' hbodyA'
-      | .muUnfoldL _ A_mu body_mu _ hBody =>
-        have hBody' := narrow_n Γ_pre Γ_suf B C _ b hCB hBody hBcplx (by
-          simp [Sub.size] at hle ⊢; omega)
-        exact Sub.muUnfoldL _ A_mu body_mu b hBody'
       | .muR _ _ A_mu body_mu hA hBody =>
         have hA' := narrow_n Γ_pre Γ_suf B C _ A_mu hCB hA hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
         have hBody' := narrow_n Γ_pre Γ_suf B C _ _ hCB hBody hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        exact Sub.muR _ _ A_mu body_mu hA' hBody'⟩
+        exact Sub.muR _ _ A_mu body_mu hA' hBody'
+      | .muUnfoldL _ A_mu body_mu _ hbA hunfold =>
+        have hbA' : Sub ((A_mu :: Γ_pre) ++ C :: Γ_suf) body_mu (A_mu.shift 0 1) :=
+          narrow_n (A_mu :: Γ_pre) Γ_suf B C body_mu (A_mu.shift 0 1) hCB hbA hBcplx (by
+            simp [Sub.size] at hle ⊢; omega)
+        have hunfold' := narrow_n Γ_pre Γ_suf B C _ b hCB hunfold hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        exact Sub.muUnfoldL _ A_mu body_mu b hbA' hunfold'⟩
 
 -- 6c. Outer induction (on cut-formula complexity)
 
@@ -957,21 +954,43 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
       congr 1; rw [Expr.shift_add]; congr 1; omega
     simp only [hann_eq] at hbody'
     exact Sub.mu _ _ _ _ hdom hbody'
-  | @muUnfoldL Γ'' A body c' _hBody ihBody =>
-    simp only [subst]
-    have ih := ihBody Δ hctx hv
-    -- Rewrite the outer subst using subst_subst.
-    have hss := Expr.subst_subst body 0 Δ.length (.mu A body) (v.shift 0 Δ.length) (by omega)
-    rw [← hss] at ih
-    simp only [subst] at ih
-    exact Sub.muUnfoldL _ _ _ _ ih
   | @muR Γ'' a' A body _hA _hBody ihA ihBody =>
+    show Sub _ _ ((Expr.mu A body).subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]
-    have hA := ihA Δ hctx hv
-    have hBody := ihBody Δ hctx hv
+    have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
+      rw [Expr.shift_add]; congr 1; omega
+    rw [hshift]
+    have ihA' := ihA Δ hctx hv
+    have ihBody' := ihBody Δ hctx hv
+    -- ihBody' : Sub _ (a'.subst Δ.length _) ((body.subst 0 a').subst Δ.length _)
+    -- Need: Sub _ (a'.subst ...) ((body.subst (Δ.length + 1) _).subst 0 (a'.subst ...))
     have hss := Expr.subst_subst body 0 Δ.length a' (v.shift 0 Δ.length) (by omega)
-    rw [← hss] at hBody
-    exact Sub.muR _ _ _ _ hA hBody
+    -- hss: (body.subst (Δ.length + 1) (...).shift 0 1).subst 0 (a'.subst Δ.length _) =
+    --      (body.subst 0 a').subst Δ.length _
+    rw [hshift] at hss
+    rw [← hss] at ihBody'
+    exact Sub.muR _ _ _ _ ihA' ihBody'
+  | @muUnfoldL Γ'' A body c _hbA _hunfold ihbA ihunfold =>
+    show Sub _ ((Expr.mu A body).subst Δ.length (v.shift 0 Δ.length)) _
+    simp only [subst]
+    have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
+      rw [Expr.shift_add]; congr 1; omega
+    rw [hshift]
+    -- body under A :: Γ'' at depth Δ+1
+    have ihbA' := ihbA (A :: Δ) (by rw [hctx]; simp [List.cons_append]) hv
+    simp only [List.length_cons] at ihbA'
+    change Sub ((A.subst Δ.length (v.shift 0 Δ.length)) :: substCtx Δ v ++ Γ) _ _ at ihbA'
+    have hann_eq : (A.shift 0 1).subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)) =
+        (A.subst Δ.length (v.shift 0 Δ.length)).shift 0 1 := by
+      rw [Expr.subst_shift_lo A Δ.length 0 1 (v.shift 0 Δ.length) (by omega)]
+      congr 1; rw [Expr.shift_add]; congr 1; omega
+    simp only [hann_eq] at ihbA'
+    -- unfold case: (body.subst 0 (.mu A body)).subst Δ.length _
+    have ihunfold' := ihunfold Δ hctx hv
+    have hss := Expr.subst_subst body 0 Δ.length (.mu A body) (v.shift 0 Δ.length) (by omega)
+    simp only [subst, hshift] at hss
+    rw [← hss] at ihunfold'
+    exact Sub.muUnfoldL _ _ _ _ ihbA' ihunfold'
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
 noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}

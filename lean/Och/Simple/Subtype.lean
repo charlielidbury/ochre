@@ -67,18 +67,35 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ A c →
       Sub (A :: Γ) b (A.shift 0 1) →
       Sub Γ (.mu A b) c
-  /-- [mu-unfold-L]: unfold μ on the LHS. -/
-  | muUnfoldL (Γ : Ctx) (A b c : Expr) :
-      Sub Γ (b.subst 0 (.mu A b)) c →
-      Sub Γ (.mu A b) c
-  /-- [Mu-R]: self-type intro on the RHS.
+  /-- [Mu-R]: self-type intro on the RHS (EXPRESSIVE form).
       To show `a ⊑ μA.b`, we need BOTH:
       1. `a ⊑ A` (satisfies the annotation/interface)
-      2. `a ⊑ b[0 := a]` (satisfies the body with self = a)
-      The annotation check enables transitivity: trans(muR, mu) can cut on A. -/
+      2. `a ⊑ b[0 := a]` (satisfies the body with self = the subject itself)
+
+      This is the "Fu-Stump selfIntro" rule applied to subtyping. It is
+      strictly more expressive than the weaker form `a ⊑ b[0 := μA.b]` and
+      is required for deriving `dtrue ⊑ dBool` (the body instance of dBool
+      with self := dtrue matches exactly dtrue's structure).
+
+      Transitivity of this rule is non-trivial: `trans(X, muR)` cannot be
+      proved structurally because the premise `a ⊑ body[0 := a]` is
+      contravariant in the subject. See docs/research/equi-recursive-subtyping-lit-review.md
+      for a survey. The resolution is to interpret `Sub` semantically via a
+      step-indexed relation (see `Och/Simple/SubN.lean`). -/
   | muR (Γ : Ctx) (a A b : Expr) :
       Sub Γ a A →
       Sub Γ a (b.subst 0 a) →
       Sub Γ a (.mu A b)
+  /-- [Mu-Unfold-L]: unfold a μ-type on the left to its body.
+      `Γ ⊢ μA.b ⊑ c` if `A :: Γ ⊢ b ⊑ A↑` (well-typedness of the body)
+      and `Γ ⊢ b[0 := μA.b] ⊑ c` (unfolded body is a subtype of c).
+
+      The well-typedness premise `b ⊑ A↑` ensures the body respects the
+      annotation — this is needed so that `Sub.trans` can compose cleanly
+      in the `trans(muR, muUnfoldL)` case. -/
+  | muUnfoldL (Γ : Ctx) (A b c : Expr) :
+      Sub (A :: Γ) b (A.shift 0 1) →
+      Sub Γ (b.subst 0 (.mu A b)) c →
+      Sub Γ (.mu A b) c
 
 end Och.Simple
