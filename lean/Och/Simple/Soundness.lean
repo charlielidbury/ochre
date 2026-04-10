@@ -152,6 +152,10 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
       have h' : eval n e = some v := by simp [eval] at h; exact h
       have := ih e v h' k
       rw [hrw]; simp [eval]; exact this
+    | mu ann body =>
+      have h' : eval n (body.subst 0 (.mu ann body)) = some v := by simp [eval] at h; exact h
+      have := ih _ v h' k
+      rw [hrw]; simp [eval]; exact this
     | app f a =>
       simp [eval, bind, Option.bind] at h
       cases hf : eval n f with
@@ -167,6 +171,7 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
         | .top => simp [hm] at h ⊢; exact h
         | .app g b => simp [hm] at h ⊢; exact h
         | .asc e' t' => simp [hm] at h ⊢; exact h
+        | .mu ann' body' => simp [hm] at h ⊢; exact h
 
 -- eval results satisfy the Value predicate
 -- (Note: with lazy evaluation, stuck apps contain unevaluated arguments,
@@ -181,6 +186,7 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
     | top => simp [eval] at h; subst h; exact Value.top
     | lam D body => simp [eval] at h; subst h; exact Value.lam D body
     | asc e ty => simp [eval] at h; exact ih h
+    | mu ann body => simp [eval] at h; exact ih h
     | app f a =>
       simp [eval, bind, Option.bind] at h
       cases hf : eval n f with
@@ -201,6 +207,9 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
         | .asc e' t' =>
           simp [hm] at h; subst h
           exact Value.stuckApp (.asc e' t') a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+        | .mu ann body =>
+          simp [hm] at h; subst h
+          exact Value.stuckApp (.mu ann body) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
 
 -- Inversion: Sub Γ (lam A b₁) (lam B b₂) implies Sub Γ B A and Sub (B :: Γ) b₁ b₂
 noncomputable def sub_lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
@@ -241,6 +250,10 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
       have hv := ih h
       -- eval (n+1) v = some v by eval_mono
       exact eval_mono v n v hv 1
+    | mu ann body =>
+      simp [eval] at h
+      have hv := ih h
+      exact eval_mono v n v hv 1
     | app f a =>
       simp [eval, bind, Option.bind] at h
       cases hf : eval n f with
@@ -274,6 +287,10 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
           simp [hm] at h; subst h
           -- v = app (asc e' t') a. But eval never returns asc.
           exact nomatch (eval_produces_value hf)
+        | .mu ann' body' =>
+          simp [hm] at h; subst h
+          -- eval never returns mu either.
+          exact nomatch (eval_produces_value hf)
 
 -- An expression is an "eval result" if some eval produced it.
 def IsEvalResult (v : Expr) : Prop := ∃ n e, eval n e = some v
@@ -294,6 +311,8 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
     | top => simp [eval] at h
     | lam D body => simp [eval] at h
     | asc e ty =>
+      simp [eval] at h; exact ih h
+    | mu ann body =>
       simp [eval] at h; exact ih h
     | app f' a' =>
       simp [eval, bind, Option.bind] at h
@@ -318,6 +337,10 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
           exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
         | .asc e' t' =>
           -- eval never produces asc
+          subst hm
+          exact nomatch (eval_produces_value hf)
+        | .mu ann body =>
+          -- eval never produces mu
           subst hm
           exact nomatch (eval_produces_value hf)
 
@@ -366,6 +389,10 @@ private noncomputable def eval_result_sub_lam_not_app :
           eval_result_sub_lam_not_app bound rebuilt hf_eval h
         show 1 + hgD''.size + hcD''.size + hR''D'.size ≤ bound
         simp [Sub.size] at hle; omega
+      | mu _ _ _ _ _ _ =>
+        -- f_head = mu ann body. But eval never produces mu.
+        obtain ⟨n', e', he'⟩ := hf_eval
+        exact nomatch (eval_produces_value he')
 
 -- Wrapper: Sub [] (app f a) (lam D R) with eval result is impossible
 noncomputable def eval_result_sub_lam_app_absurd
@@ -436,6 +463,30 @@ private noncomputable def evalPreservation_aux :
         simp [eval] at hτ
         exact ih _ _ hae fuel m _ _ (by omega) he hτ
 
+    | mu _ A b _ hAc hbA =>
+      -- e = .mu A b, τ = c (the fourth argument to Sub.mu)
+      -- eval fuel (.mu A b) = eval (fuel-1) (b.subst 0 (.mu A b))
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m =>
+        simp [eval] at he
+        -- he : eval m (b.subst 0 (.mu A b)) = some v_e
+        -- Strategy: derive Sub [] (.mu A b) A, then Sub [] (b.subst 0 (.mu A b)) A,
+        -- then Sub [] (b.subst 0 (.mu A b)) c by trans with hAc
+        -- Then use IH.
+        -- Step 1: Sub [] (.mu A b) A via Sub.mu with c=A, hAc=refl, hbA=hbA
+        have hmuA : Sub [] (.mu A b) A := Sub.mu [] A b A (Sub.refl [] A) hbA
+        -- Step 2: Sub [] (b.subst 0 (.mu A b)) (A.shift 0 1).subst 0 (.mu A b)
+        --       = Sub [] (b.subst 0 (.mu A b)) A  (by shift-subst cancellation)
+        have hbody_sub : Sub [] (b.subst 0 (.mu A b)) A := by
+          have h1 := Sub.subst_lemma hbA hmuA
+          rw [Expr.subst_shift_cancel_zero] at h1
+          exact h1
+        -- Step 3: Sub [] (b.subst 0 (.mu A b)) c by trans
+        have hsub_unfolded : Sub [] (b.subst 0 (.mu A b)) _ := Sub.trans hbody_sub hAc
+        -- Step 4: IH on (b.subst 0 (.mu A b)) with fuel m (< fuel = m+1)
+        exact ih _ _ hsub_unfolded m fuel_τ _ _ (by omega) he hτ
+
     | app _ f a _ D R hfD haD hRb =>
       -- e = app f a, τ = b (the fourth argument)
       cases fuel with
@@ -489,6 +540,9 @@ private noncomputable def evalPreservation_aux :
             exact (eval_result_sub_lam_app_absurd hf_sub ⟨m, _, hf_eval⟩).elim
 
           | .asc e' t' =>
+            exact nomatch (eval_produces_value hf_eval)
+
+          | .mu ann body =>
             exact nomatch (eval_produces_value hf_eval)
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
