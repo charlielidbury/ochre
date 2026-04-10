@@ -39,7 +39,6 @@ def eval (fuel : Nat) (e : Expr) : Option Expr :=
       | .lam _dom body => eval fuel (body.subst 0 a)
       | _ => some (.app f' a)
     | .asc e _ty => eval fuel e
-    | .mu _ann body => eval fuel (body.subst 0 (.mu _ann body))
 
 /-- A value is an expression that the evaluator returns as-is
     (i.e., it is in weak head normal form). -/

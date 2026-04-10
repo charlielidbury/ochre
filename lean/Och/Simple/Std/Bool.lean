@@ -1,4 +1,4 @@
-import Och.Simple.Macro
+import Och.Simple.Syntax
 import Och.Simple.Subtype
 import Och.Simple.Eval
 
@@ -6,9 +6,9 @@ import Och.Simple.Eval
 # Church-encoded Booleans for Simple Och
 
 ```
-BOOL  = λt:T. λa:t. λb:t. t
-TRUE  = λt:T. λa:t. λb:t. a
-FALSE = λt:T. λa:t. λb:t. b
+BOOL  = λt:⊤. λa:t. λb:t. t
+TRUE  = λt:⊤. λa:t. λb:t. a
+FALSE = λt:⊤. λa:t. λb:t. b
 ```
 -/
 
@@ -22,140 +22,127 @@ open Och.Simple Expr
 -- Definitions
 -- ============================================================
 
-/-- BOOL = λt:T. λa:t. λb:t. t -/
-def BOOL : Expr := soch{ λ(t : ⊤). λ(a : t). λ(b : t). t }
+/-- BOOL = λt:⊤. λa:t. λb:t. t -/
+def BOOL : Expr := .lam .top (.lam (.var 0) (.lam (.var 1) (.var 2)))
 
-/-- TRUE = λt:T. λa:t. λb:t. a -/
-def TRUE : Expr := soch{ λ(t : ⊤). λ(a : t). λ(b : t). a }
+/-- TRUE = λt:⊤. λa:t. λb:t. a -/
+def TRUE : Expr := .lam .top (.lam (.var 0) (.lam (.var 1) (.var 1)))
 
-/-- FALSE = λt:T. λa:t. λb:t. b -/
-def FALSE : Expr := soch{ λ(t : ⊤). λ(a : t). λ(b : t). b }
+/-- FALSE = λt:⊤. λa:t. λb:t. b -/
+def FALSE : Expr := .lam .top (.lam (.var 0) (.lam (.var 1) (.var 0)))
 
-/-- IF = λb:BOOL. λt:T. λa:t. λb':t. b t a b' -/
-def IF : Expr := soch{ λ(b : BOOL). λ(t : ⊤). λ(a : t). λ(b' : t). b t a b' }
+/-- IF = λb:BOOL. λt:⊤. λa:t. λb':t. b t a b'
+    At depth 4: b=3, t=2, a=1, b'=0 -/
+def IF : Expr :=
+  .lam BOOL (.lam .top (.lam (.var 0) (.lam (.var 1)
+    (.app (.app (.app (.var 3) (.var 2)) (.var 1)) (.var 0)))))
 
 /-- NOT = λb:BOOL. b BOOL FALSE TRUE -/
-def NOT : Expr := soch{ λ(b : BOOL). b BOOL FALSE TRUE }
+def NOT : Expr :=
+  .lam BOOL (.app (.app (.app (.var 0) BOOL) FALSE) TRUE)
 
-/-- AND = λa:BOOL. λb:BOOL. a BOOL b FALSE -/
-def AND : Expr := soch{ λ(a : BOOL). λ(b : BOOL). a BOOL b FALSE }
+/-- AND = λa:BOOL. λb:BOOL. a BOOL b FALSE
+    At depth 2: a=1, b=0 -/
+def AND : Expr :=
+  .lam BOOL (.lam BOOL (.app (.app (.app (.var 1) BOOL) (.var 0)) FALSE))
 
-/-- OR = λa:BOOL. λb:BOOL. a BOOL TRUE b -/
-def OR : Expr := soch{ λ(a : BOOL). λ(b : BOOL). a BOOL TRUE b }
-
-/-- XOR = λa:BOOL. λb:BOOL. a BOOL (NOT b) b -/
-def XOR : Expr := soch{ λ(a : BOOL). λ(b : BOOL). a BOOL (NOT b) b }
-
-/-- IMPLIES = λa:BOOL. λb:BOOL. OR (NOT a) b -/
-def IMPLIES : Expr := soch{ λ(a : BOOL). λ(b : BOOL). OR (NOT a) b }
+/-- OR = λa:BOOL. λb:BOOL. a BOOL TRUE b
+    At depth 2: a=1, b=0 -/
+def OR : Expr :=
+  .lam BOOL (.lam BOOL (.app (.app (.app (.var 1) BOOL) TRUE) (.var 0)))
 
 -- ============================================================
 -- Evaluation tests
 -- ============================================================
 
-private def ev (e : Expr) : Option Expr := eval 200 e
+private def ev (e : Expr) : Option Expr := eval 100 e
 
--- Basic elimination
-example : ev (soch{ TRUE ⊤ }) = some (soch{ λ(a : ⊤). λ(b : ⊤). a }) := rfl
-example : ev (soch{ FALSE ⊤ }) = some (soch{ λ(a : ⊤). λ(b : ⊤). b }) := rfl
-
--- TRUE T x y -> x
+-- TRUE ⊤ x y → x
 example : ev (.app (.app (.app TRUE .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
 
--- FALSE T x y -> y
+-- FALSE ⊤ x y → y
 example : ev (.app (.app (.app FALSE .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
 
--- IF TRUE T x y -> x
+-- IF TRUE ⊤ x y → x
 example : ev (.app (.app (.app (.app IF TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
 
--- IF FALSE T x y -> y
+-- IF FALSE ⊤ x y → y
 example : ev (.app (.app (.app (.app IF FALSE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
 
--- NOT TRUE applied -> FALSE behavior
+-- NOT TRUE → FALSE (evaluated: NOT TRUE ⊤ x y → y)
 example : ev (.app (.app (.app (.app NOT TRUE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
 
--- NOT FALSE applied -> TRUE behavior
+-- NOT FALSE → TRUE (evaluated: NOT FALSE ⊤ x y → x)
 example : ev (.app (.app (.app (.app NOT FALSE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
 
--- AND truth table
+-- AND TRUE TRUE → TRUE (evaluated with ⊤ x y → x)
 example : ev (.app (.app (.app (.app (.app AND TRUE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
+
+-- AND TRUE FALSE → FALSE (evaluated with ⊤ x y → y)
 example : ev (.app (.app (.app (.app (.app AND TRUE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
+
+-- AND FALSE TRUE → FALSE
 example : ev (.app (.app (.app (.app (.app AND FALSE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
+
+-- AND FALSE FALSE → FALSE
 example : ev (.app (.app (.app (.app (.app AND FALSE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
 
--- OR truth table
+-- OR TRUE TRUE → TRUE
 example : ev (.app (.app (.app (.app (.app OR TRUE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
+
+-- OR TRUE FALSE → TRUE
 example : ev (.app (.app (.app (.app (.app OR TRUE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
+
+-- OR FALSE TRUE → TRUE
 example : ev (.app (.app (.app (.app (.app OR FALSE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
+
+-- OR FALSE FALSE → FALSE
 example : ev (.app (.app (.app (.app (.app OR FALSE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
-
--- XOR truth table
-example : ev (.app (.app (.app (.app (.app XOR TRUE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
-example : ev (.app (.app (.app (.app (.app XOR TRUE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
-example : ev (.app (.app (.app (.app (.app XOR FALSE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
-example : ev (.app (.app (.app (.app (.app XOR FALSE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
-
--- IMPLIES truth table: a => b = OR (NOT a) b
-example : ev (.app (.app (.app (.app (.app IMPLIES TRUE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
-example : ev (.app (.app (.app (.app (.app IMPLIES TRUE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 99) := rfl
-example : ev (.app (.app (.app (.app (.app IMPLIES FALSE) TRUE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
-example : ev (.app (.app (.app (.app (.app IMPLIES FALSE) FALSE) .top) (.var 42)) (.var 99)) = some (.var 42) := rfl
 
 -- ============================================================
 -- Subtype derivations
 -- ============================================================
 
--- Helper: construct TRUE <= BOOL proof in any context (reusable)
-def trueSub (G : Ctx) : Sub G TRUE BOOL :=
-  Sub.lam G .top .top
+-- Helper: construct TRUE ⊑ BOOL proof in any context (reusable)
+private def trueSub (Γ : Ctx) : Sub Γ TRUE BOOL :=
+  Sub.lam Γ .top .top
     (.lam (.var 0) (.lam (.var 1) (.var 1)))
     (.lam (.var 0) (.lam (.var 1) (.var 2)))
-    (Sub.refl G .top)
-    (Sub.lam (.top :: G) (.var 0) (.var 0)
+    (Sub.refl Γ .top)
+    (Sub.lam (.top :: Γ) (.var 0) (.var 0)
       (.lam (.var 1) (.var 1))
       (.lam (.var 1) (.var 2))
-      (Sub.refl (.top :: G) (.var 0))
-      (Sub.lam (.var 0 :: .top :: G) (.var 1) (.var 1)
+      (Sub.refl (.top :: Γ) (.var 0))
+      (Sub.lam (.var 0 :: .top :: Γ) (.var 1) (.var 1)
         (.var 1)
         (.var 2)
-        (Sub.refl (.var 0 :: .top :: G) (.var 1))
-        (Sub.var (.var 1 :: .var 0 :: .top :: G) 1 (.var 2) (.var 2)
+        (Sub.refl (.var 0 :: .top :: Γ) (.var 1))
+        (Sub.var (.var 1 :: .var 0 :: .top :: Γ) 1 (.var 2) (.var 2)
           rfl
-          (Sub.refl (.var 1 :: .var 0 :: .top :: G) (.var 2)))))
+          (Sub.refl (.var 1 :: .var 0 :: .top :: Γ) (.var 2)))))
 
-/-- TRUE <= BOOL -/
+/-- TRUE ⊑ BOOL -/
 example : Sub [] TRUE BOOL := trueSub []
 
--- Helper: construct FALSE <= BOOL proof in any context
-def falseSub (G : Ctx) : Sub G FALSE BOOL :=
-  Sub.lam G .top .top
+-- Helper: construct FALSE ⊑ BOOL proof in any context
+private def falseSub (Γ : Ctx) : Sub Γ FALSE BOOL :=
+  Sub.lam Γ .top .top
     (.lam (.var 0) (.lam (.var 1) (.var 0)))
     (.lam (.var 0) (.lam (.var 1) (.var 2)))
-    (Sub.refl G .top)
-    (Sub.lam (.top :: G) (.var 0) (.var 0)
+    (Sub.refl Γ .top)
+    (Sub.lam (.top :: Γ) (.var 0) (.var 0)
       (.lam (.var 1) (.var 0))
       (.lam (.var 1) (.var 2))
-      (Sub.refl (.top :: G) (.var 0))
-      (Sub.lam (.var 0 :: .top :: G) (.var 1) (.var 1)
+      (Sub.refl (.top :: Γ) (.var 0))
+      (Sub.lam (.var 0 :: .top :: Γ) (.var 1) (.var 1)
         (.var 0)
         (.var 2)
-        (Sub.refl (.var 0 :: .top :: G) (.var 1))
-        (Sub.var (.var 1 :: .var 0 :: .top :: G) 0 (.var 2) (.var 2)
+        (Sub.refl (.var 0 :: .top :: Γ) (.var 1))
+        (Sub.var (.var 1 :: .var 0 :: .top :: Γ) 0 (.var 2) (.var 2)
           rfl
-          (Sub.refl (.var 1 :: .var 0 :: .top :: G) (.var 2)))))
+          (Sub.refl (.var 1 :: .var 0 :: .top :: Γ) (.var 2)))))
 
-/-- FALSE <= BOOL -/
+/-- FALSE ⊑ BOOL -/
 example : Sub [] FALSE BOOL := falseSub []
-
-/-- BOOL <= T -/
-example : Sub [] BOOL .top := Sub.top [] BOOL
-
-/-- (TRUE : BOOL) <= BOOL via Asc-L -/
-example : Sub [] (.asc TRUE BOOL) BOOL :=
-  Sub.ascL [] TRUE BOOL BOOL (trueSub []) (Sub.refl [] BOOL)
-
-/-- TRUE <= (TRUE : BOOL) via Asc-R -/
-example : Sub [] TRUE (.asc TRUE BOOL) :=
-  Sub.ascR [] TRUE TRUE BOOL (trueSub []) (Sub.refl [] TRUE)
 
 end Och.Simple.Std

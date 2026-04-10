@@ -18,7 +18,6 @@ namespace Och.Simple
       | e₁ e₂         — application
       | (e : τ)        — ascription
       | ⊤              — top type / universe
-      | μτ. e          — self-reference (annotation + body, bvar 0 = self)
 -/
 inductive Expr where
   | var : Nat → Expr
@@ -26,7 +25,6 @@ inductive Expr where
   | app : Expr → Expr → Expr
   | asc : (e : Expr) → (ty : Expr) → Expr
   | top : Expr
-  | mu : (annotation : Expr) → (body : Expr) → Expr
 deriving Inhabited, DecidableEq, Repr
 
 namespace Expr
@@ -39,7 +37,6 @@ def shift (cutoff amount : Nat) : Expr → Expr
   | .app f a => .app (shift cutoff amount f) (shift cutoff amount a)
   | .asc e ty => .asc (shift cutoff amount e) (shift cutoff amount ty)
   | .top => .top
-  | .mu ann body => .mu (shift cutoff amount ann) (shift (cutoff + 1) amount body)
 
 /-- Substitute: replace `var target` with `replacement` in `e`.
     Variables above `target` are decremented by 1 (the binder at `target`
@@ -57,12 +54,9 @@ def subst (e : Expr) (target : Nat) (replacement : Expr) : Expr :=
   | .app f a => .app (f.subst target replacement) (a.subst target replacement)
   | .asc e ty => .asc (e.subst target replacement) (ty.subst target replacement)
   | .top => .top
-  | .mu ann body =>
-    .mu (ann.subst target replacement)
-        (body.subst (target + 1) (replacement.shift 0 1))
 
 /-- Shifting by 0 is the identity. -/
-@[simp] theorem shift_zero (e : Expr) (c : Nat) : e.shift c 0 = e := by
+theorem shift_zero (e : Expr) (c : Nat) : e.shift c 0 = e := by
   induction e generalizing c with
   | var k =>
     unfold shift
@@ -76,13 +70,11 @@ def subst (e : Expr) (target : Nat) (replacement : Expr) : Expr :=
   | asc e ty ih_e ih_ty =>
     unfold shift; congr 1; exact ih_e c; exact ih_ty c
   | top => rfl
-  | mu ann body ih_ann ih_body =>
-    unfold shift; congr 1; exact ih_ann c; exact ih_body (c + 1)
 
 /-- Shifting by 1 at cutoff `c` then substituting at `c` cancels out.
     After shifting, there are no `var c`'s in the result, so the
     substitution value is never used. -/
-@[simp] theorem subst_shift_cancel (e : Expr) (c : Nat) (s : Expr)
+theorem subst_shift_cancel (e : Expr) (c : Nat) (s : Expr)
     : (e.shift c 1).subst c s = e := by
   induction e generalizing c s with
   | var k =>
@@ -113,13 +105,9 @@ def subst (e : Expr) (target : Nat) (replacement : Expr) : Expr :=
     simp only [Expr.asc.injEq]
     exact ⟨ih_e c s, ih_ty c s⟩
   | top => rfl
-  | mu ann body ih_ann ih_body =>
-    unfold shift; unfold subst
-    simp only [Expr.mu.injEq]
-    exact ⟨ih_ann c s, ih_body (c + 1) (s.shift 0 1)⟩
 
 /-- Common case: shift by 1 at cutoff 0, then subst at 0 cancels. -/
-@[simp] theorem subst_shift_cancel_zero (e : Expr) (s : Expr)
+theorem subst_shift_cancel_zero (e : Expr) (s : Expr)
     : (e.shift 0 1).subst 0 s = e :=
   subst_shift_cancel e 0 s
 
