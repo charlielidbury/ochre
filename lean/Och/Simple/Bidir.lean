@@ -41,6 +41,36 @@ Follows the algorithmic `Sub` judgment closely, with a `seen` set tracking
 Both theorems use the declarative `Sub` from `Subtype.lean`, which now
 includes `muR` and `muUnfoldL`. Cycle-detection cases in `subCheck` are
 discharged via the declarative `muR` rule.
+
+These theorems are not yet formalized in Lean; a blueprint exists in the
+research-D branch (`Och/Simple/CheckSoundness.lean`) — about 700 LOC with
+two coinductive sorries for the `seen`-set firing cases.
+
+## Well-formedness enables CBV
+
+The bidirectional checker enforces well-formedness via `synth`, which
+rejects garbage like `(var 42 : var 99)` (the ascription's `var 99` type
+would not synthesize in an empty context). This is a crucial property
+for CBV soundness.
+
+With well-formed terms:
+- Every ascription `(e : τ)` has `τ` synthesizable and `e` checkable
+  against `τ`, so evaluation of `e` is guaranteed to produce a value
+  satisfying `τ` (preservation).
+- Every application `f a` has `f` synthesizing to `.lam D R` with `a`
+  checkable against `D`, so CBV reduction of `a` first is safe —
+  the resulting value still satisfies `D`.
+- Every `μA. b` has `b` checkable against `A↑` in `A :: Γ`, so the
+  unfolded body (with self = the mu itself) still satisfies `A`.
+
+Under CBN (our current evaluator), these invariants hold trivially
+because arguments are passed unreduced. Under CBV, the checker's
+well-formedness would guarantee that argument reduction preserves
+subtyping, making "well-typed CBV evaluation never gets stuck" provable.
+
+This CBV soundness theorem is NOT implemented in this file — CBN is
+retained for now. But the bidirectional checker here is the crucial
+prerequisite that makes CBV tractable to formalize in future work.
 -/
 
 set_option autoImplicit false
@@ -137,12 +167,15 @@ mutual
             subCheck fuel seen Γ (R.subst 0 arg) b
           | _ => false
         -- Strategy B: beta-reduce — unfold a mu head, or substitute a lambda head.
+        -- Eagerly beta-reduce when the unfolded mu body is a lambda to save fuel.
         let tryBeta : Bool :=
           match f with
           | .lam _ body => subCheck fuel seen Γ (body.subst 0 arg) b
           | .mu A bodyF =>
-            -- unfold mu: `.app (bodyF.subst 0 (mu A bodyF)) arg` then recurse
-            subCheck fuel seen Γ (.app (bodyF.subst 0 (.mu A bodyF)) arg) b
+            let unfolded := bodyF.subst 0 (.mu A bodyF)
+            match unfolded with
+            | .lam _ body => subCheck fuel seen Γ (body.subst 0 arg) b
+            | _ => subCheck fuel seen Γ (.app unfolded arg) b
           | _ => false
         tryApp || tryBeta
       -- [Asc-L]: ascription on LHS
