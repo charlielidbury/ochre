@@ -485,6 +485,130 @@ example (Γ : PCtx) : JSub Γ dtrue dBool := by
   · exact JSub.top _ _
 
 -- ============================================================
+-- Test 4: richer dBool with P : self → ⊤ pattern
+-- ============================================================
+
+/-!
+### Test 4 — dBool with an actual `P` predicate
+
+```
+dBool2 = ι self. (self → ⊤) → (self → ⊤)
+dtrue2 = ι self. λk:(self → ⊤). λx:self. k x
+```
+
+This is closer to the real Cedille encoding: the outer lam binds `P`
+(a predicate on self), the inner lam binds `x` (an element of self),
+and the body applies `P` to `x`. Both sides are iotas; the LHS body
+really does something with both arguments.
+
+This exercises:
+- iotaIntro (value substitution on RHS)
+- iotaL (equi-rec unfolding of LHS iota)
+- lam on two nested lambdas
+- refl on the shifted `dtrue2` (domains match after both substitutions)
+- top on the body (`k x ⊑ ⊤`)
+-/
+
+def dBool2 : PExpr :=
+  .iota (.lam (.lam (.var 0) .top) (.lam (.var 1) .top))
+
+def dtrue2 : PExpr :=
+  .iota (.lam (.lam (.var 0) .top) (.lam (.var 1) (.app (.var 1) (.var 0))))
+
+/-- Test 4: dtrue2 ⊑ dBool2 — richer dBool pattern with a real predicate. -/
+example (Γ : PCtx) : JSub Γ dtrue2 dBool2 := by
+  -- Step 1: iotaIntro
+  apply JSub.iotaIntro Γ dtrue2 (.lam (.lam (.var 0) .top) (.lam (.var 1) .top))
+  -- Goal: JSub Γ dtrue2 ((...).subst 0 dtrue2)
+  --     = JSub Γ dtrue2 (.lam (.lam dtrue2 .top) (.lam (dtrue2.shift 0 1) .top))
+  show JSub Γ dtrue2
+    (.lam (.lam dtrue2 .top) (.lam (dtrue2.shift 0 1) .top))
+  -- Step 2: iotaL
+  apply JSub.iotaL Γ
+    (.lam (.lam (.var 0) .top) (.lam (.var 1) (.app (.var 1) (.var 0))))
+  -- Goal after subst: the LHS becomes
+  --   .lam (.lam dtrue2 .top) (.lam (dtrue2.shift 0 1) (.app (.var 1) (.var 0)))
+  show JSub Γ
+    (.lam (.lam dtrue2 .top) (.lam (dtrue2.shift 0 1) (.app (.var 1) (.var 0))))
+    (.lam (.lam dtrue2 .top) (.lam (dtrue2.shift 0 1) .top))
+  -- Step 3: outer lam
+  apply JSub.lam Γ (.lam dtrue2 .top) (.lam dtrue2 .top)
+  · exact JSub.refl Γ (.lam dtrue2 .top)
+  -- Step 4: inner lam
+  apply JSub.lam ((.lam dtrue2 .top) :: Γ)
+    (dtrue2.shift 0 1) (dtrue2.shift 0 1)
+  · exact JSub.refl _ (dtrue2.shift 0 1)
+  -- Step 5: top closes the body
+  exact JSub.top _ _
+
+-- ============================================================
+-- Test 5: faithful dBool with P self -> P self (real Church/Cedille)
+-- ============================================================
+
+/-!
+### Test 5 — faithful dBool with `P self → P self` and uses iotaIntro's
+precision
+
+```
+dBool3 = ι self. ∀P:(self → ⊤). P self → P self
+dtrue3 = ι self. λP:(self → ⊤). λp:(P self). p
+```
+
+This is THE canonical Church-dependent Bool structure (minus dfalse,
+which we elide for brevity). Both sides are iotas; both reference `self`
+under `P` (a predicate), so the `iotaIntro` value substitution is
+essential for making `P self` on the RHS match `P self` on the LHS
+after unfolding.
+
+We close this WITHOUT DefEq using the same three-rule combo: iotaIntro,
+iotaL, and structural rules (lam, var, refl, top). The `var` rule
+discharges the body with `p : P dtrue3` against `P dtrue3` by
+reflexivity on the context lookup.
+-/
+
+def dBool3 : PExpr :=
+  .iota (.lam (.lam (.var 0) .top)
+    (.lam (.app (.var 0) (.var 1)) (.app (.var 1) (.var 2))))
+
+def dtrue3 : PExpr :=
+  .iota (.lam (.lam (.var 0) .top)
+    (.lam (.app (.var 0) (.var 1)) (.var 0)))
+
+/-- Test 5: dtrue3 ⊑ dBool3 — the canonical Church-dependent Bool. -/
+example (Γ : PCtx) : JSub Γ dtrue3 dBool3 := by
+  apply JSub.iotaIntro Γ dtrue3
+    (.lam (.lam (.var 0) .top)
+      (.lam (.app (.var 0) (.var 1)) (.app (.var 1) (.var 2))))
+  show JSub Γ dtrue3
+    (.lam (.lam dtrue3 .top)
+      (.lam (.app (.var 0) (dtrue3.shift 0 1))
+        (.app (.var 1) (dtrue3.shift 0 2))))
+  apply JSub.iotaL Γ
+    (.lam (.lam (.var 0) .top)
+      (.lam (.app (.var 0) (.var 1)) (.var 0)))
+  show JSub Γ
+    (.lam (.lam dtrue3 .top)
+      (.lam (.app (.var 0) (dtrue3.shift 0 1)) (.var 0)))
+    (.lam (.lam dtrue3 .top)
+      (.lam (.app (.var 0) (dtrue3.shift 0 1))
+        (.app (.var 1) (dtrue3.shift 0 2))))
+  -- Outer lam (P : dtrue3 → ⊤)
+  apply JSub.lam Γ (.lam dtrue3 .top) (.lam dtrue3 .top)
+  · exact JSub.refl Γ (.lam dtrue3 .top)
+  -- Inner lam (p : P dtrue3)
+  apply JSub.lam ((.lam dtrue3 .top) :: Γ)
+    (.app (.var 0) (dtrue3.shift 0 1))
+    (.app (.var 0) (dtrue3.shift 0 1))
+  · exact JSub.refl _ _
+  -- Body: JSub [p:P dt, P:dt→⊤, Γ] (.var 0) (.app (.var 1) (dtrue3.shift 0 2))
+  -- Use [var] with T := the RHS (the context lookup gives exactly this).
+  apply JSub.var _ 0 _ (.app (.var 1) (dtrue3.shift 0 2))
+  · -- Γ.get? 0 lookup: innermost entry is (.app (.var 0) (dtrue3.shift 0 1)),
+    -- shifted by 0+1=1 → (.app (.var 1) (dtrue3.shift 0 2))
+    rfl
+  · exact JSub.refl _ _
+
+-- ============================================================
 -- Summary
 -- ============================================================
 
