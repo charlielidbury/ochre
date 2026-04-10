@@ -36,8 +36,20 @@ case is straightforward — produce a Sub.betaR derivation.
 
 ## Q4: For the precise interpretation, which formulation should we commit to?
 
-The research-precise agent is exploring multiple options. After it reports back,
-we'll have a recommendation.
+**Finding (research-precise agent):** The circularity breaker is VALUE SUBSTITUTION,
+not definitional equality. Cedille-style `[IotaIntro]` substitutes the value being
+checked into the self-type body, collapsing recursive goals to Refl.
 
-**Default decision (no user input):** Pick whichever works experimentally. Document
-the others in the graveyard.
+**This handles COVARIANT self-types** (where self appears only in covariant positions).
+**Contravariant self-references still produce productive cycles** (like dBool where
+self is in the lambda domain `P : self → ⊤`).
+
+**Status of dtrue ⊑ dBool:** Needs BOTH `[IotaIntro]` and `[IotaElim]`. The elim
+rule has a circular well-typedness side condition that's the main open question.
+
+**Files:** `Och/Simple/Precise.lean` and `Och/Simple/DefEq.lean` on research-precise
+branch. 2 documented sorrys (one oracle, one open case).
+
+**Default decision:** Pursue the IotaIntro approach for covariant self-types. The
+contravariant case (dBool) is still open and might genuinely require coinduction.
+Worth implementing IotaIntro fully for the cases it handles.
