@@ -43,12 +43,16 @@ inductive CheckCompat : (fuel : Nat) → List Expr → Ctx → Type where
   | nil (fuel : Nat) : CheckCompat fuel [] []
   | cons {fuel : Nat} {v T : Expr} {γ : List Expr} {Γ : Ctx} :
       CheckCompat fuel γ Γ →
-      subCheck fuel Γ v T = true →
+      subCheck fuel [] Γ v T = true →
       CheckCompat fuel (v :: γ) (T :: Γ)
 
 -- ============================================================
 -- Converting check compatibility → Sub compatibility
 -- ============================================================
+
+/-- Empty `seen` is always justified (vacuous). -/
+private def emptySeenJustified (Γ : Ctx) : SeenJustified [] Γ :=
+  fun _ hp => by simp [seenMem] at hp
 
 /-- Every checker-compatible environment is also `Compatible` in the Sub sense. -/
 noncomputable def Compatible_of_CheckCompat :
@@ -57,7 +61,7 @@ noncomputable def Compatible_of_CheckCompat :
   | _, _, _, .nil _ => Compatible.nil
   | _, _, _, .cons hrest hv =>
     Compatible.cons (Compatible_of_CheckCompat hrest)
-      (subCheck_sound _ _ _ _ hv)
+      (subCheck_sound _ _ _ _ _ (emptySeenJustified _) hv)
 
 -- ============================================================
 -- Main soundness theorem
@@ -76,13 +80,13 @@ noncomputable def Compatible_of_CheckCompat :
     needed (out of scope for this baseline). -/
 noncomputable def soundness_sub
     {fuel_chk : Nat} {Γ : Ctx} {e τ : Expr} {γ : List Expr}
-    (hcheck : subCheck fuel_chk Γ e τ = true)
+    (hcheck : subCheck fuel_chk [] Γ e τ = true)
     (hcompat : CheckCompat fuel_chk γ Γ)
     {fuel_e fuel_τ : Nat} {v_e v_τ : Expr}
     (he : eval fuel_e (closingSubst γ e) = some v_e)
     (hτ : eval fuel_τ (closingSubst γ τ) = some v_τ)
     : Sub [] v_e v_τ :=
-  let hsub : Sub Γ e τ := subCheck_sound fuel_chk Γ e τ hcheck
+  let hsub : Sub Γ e τ := subCheck_sound fuel_chk [] Γ e τ (emptySeenJustified _) hcheck
   let hcompat' : Compatible γ Γ := Compatible_of_CheckCompat hcompat
   let hsub_closed : Sub [] (closingSubst γ e) (closingSubst γ τ) :=
     semanticSubst hsub hcompat'

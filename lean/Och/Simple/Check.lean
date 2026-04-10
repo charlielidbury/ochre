@@ -1,23 +1,45 @@
 import Och.Simple.Syntax
 import Och.Simple.Subtype
 import Och.Simple.Eval
+import Och.Simple.Macro
 
 /-!
-# Bidirectional Subtype Checker for Simple Och (no μ)
+# Bidirectional Subtype Checker for Simple Och (with μ)
 
-A fuel-indexed, decidable checker for the subtype relation `Sub`. Because the
-Simple Och calculus has no μ, there are no cycles. Fuel guarantees termination
-and is decremented on every recursive call.
+A fuel-indexed checker for the subtype relation `Sub`, extended with
+cycle-detection support for μ on either side.
 
 ## Structure
 
 - `synthLam fuel Γ e` : `Option (Expr × Expr)`
   Synthesizes a function type for `e`: if it returns `some (D, R)` then
-  `Sub Γ e (.lam D R)` holds.
-- `subCheck fuel Γ a b` : `Bool`
-  Decides `Sub Γ a b`.
+  `Sub Γ e (.lam D R)` holds. For `e = μA.body`, applies the inductive
+  Sub.mu rule: checks `body ⊑ A↑` and synthesises on `A`.
+- `subCheck fuel seen Γ a b` : `Bool`
+  Decides `Sub Γ a b`. The `seen` list records pairs `(a, b)` that are
+  already being checked on the stack — when encountered again we break the
+  cycle and return `true`.
 
-Soundness is proven in `synthLam_sound` and `subCheck_sound`.
+## μ cases (in `subCheck`)
+
+- `b = μA.body` (a ≠ b): unfold RHS and recurse with `(a, b)` added to seen.
+  The cycle-break case appeals to `seen` justification.
+- `a = μA.body` (b ≠ μ): unfold LHS and recurse with `(a, b)` added to seen.
+- `a = b` is caught by [Refl] before the μ-check.
+
+## Soundness
+
+Soundness (`subCheck_sound` / `synthLam_sound`) holds modulo a known gap on
+the cycle-break (muR / muL) cases. The cycle-break needs to construct a
+`Sub Γ a (μA.body)` value purely from a recursive call that itself relies
+on assuming `Sub Γ a (μA.body)`. The inductive `Sub` has no muR rule, so
+this is genuinely circular without coinductive / step-indexed / logical-
+relation machinery. It is sorry'd here and discussed inline.
+
+Concretely: 5 sorrys remain in this file, one per (a-shape, b-shape) cycle
+case. They are isolated to the cycle-break branches; all other rules (Refl,
+Top, Var, Lam-Lam, App, Asc-L, Asc-R, mu via the inductive Sub.mu) have
+fully constructive soundness proofs.
 -/
 
 set_option autoImplicit false
@@ -26,10 +48,16 @@ namespace Och.Simple
 
 open Expr
 
+/-- Decidable membership in a list of (Expr × Expr). -/
+def seenMem (p : Expr × Expr) : List (Expr × Expr) → Bool
+  | [] => false
+  | q :: rest => (p.1 == q.1 && p.2 == q.2) || seenMem p rest
+
 mutual
 
 /-- Synthesize a "function type" for `e`: returns `some (D, R)` such that
-    `Sub Γ e (.lam D R)` is derivable (see `synthLam_sound`). -/
+    `Sub Γ e (.lam D R)` is derivable (see `synthLam_sound`).
+    When `e = μA.body`, the μ is unfolded. -/
 def synthLam (fuel : Nat) (Γ : Ctx) (e : Expr) : Option (Expr × Expr) :=
   match fuel with
   | 0 => none
@@ -41,67 +69,94 @@ def synthLam (fuel : Nat) (Γ : Ctx) (e : Expr) : Option (Expr × Expr) :=
       | none => none
       | some T => synthLam fuel Γ T
     | .asc e' τ =>
-      if subCheck fuel Γ e' τ then synthLam fuel Γ τ else none
+      if subCheck fuel [] Γ e' τ then synthLam fuel Γ τ else none
     | .app f' a' =>
       match synthLam fuel Γ f' with
       | none => none
       | some (D'', R'') =>
-        if subCheck fuel Γ a' D'' then synthLam fuel Γ (R''.subst 0 a')
+        if subCheck fuel [] Γ a' D'' then synthLam fuel Γ (R''.subst 0 a')
         else none
     | .top => none
+    | .mu A body =>
+      -- Use Sub.mu: synthesize on A, and check body ⊑ A↑ in extended ctx.
+      if subCheck fuel [] (A :: Γ) body (A.shift 0 1) then synthLam fuel Γ A
+      else none
 
 /-- Decide `Sub Γ a b` up to the supplied `fuel`.
 
     The dispatch is structured to make soundness easy to prove: the rules are
-    tried in a deterministic order (Refl → Top → Asc-R → Asc-L → Var → Lam → App)
-    with non-overlapping conditions. -/
-def subCheck (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
+    tried in a deterministic order (Refl → Top → muR → Asc-R → Asc-L → Var →
+    Lam → App → muL) with non-overlapping conditions. -/
+def subCheck (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr) : Bool :=
   match fuel with
   | 0 => false
   | fuel + 1 =>
     if a == b then true  -- [Refl]
     else if b == .top then true  -- [Top]
     else
-      subCheckStep fuel Γ a b
+      match b with
+      -- [muR] / cycle detection: try unfolding RHS first
+      | .mu A body =>
+        if seenMem (a, .mu A body) seen then true
+        else subCheck fuel ((a, .mu A body) :: seen) Γ a (body.subst 0 (.mu A body))
+      | _ =>
+        match a with
+        -- [muL] / cycle detection: try unfolding LHS too
+        | .mu A body =>
+          if seenMem (.mu A body, b) seen then true
+          else subCheck fuel ((.mu A body, b) :: seen) Γ (body.subst 0 (.mu A body)) b
+        | _ => subCheckStep fuel seen Γ a b
 
-/-- Post-Refl/Top dispatcher. Factored out so that the soundness proof can
-    pattern-match uniformly on the shape of `a` / `b`. -/
-def subCheckStep (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
+/-- Post-Refl/Top/muR dispatcher. Factored out so the soundness proof can
+    pattern-match uniformly on the shape of `a` / `b`. At entry, `b` is not μ. -/
+def subCheckStep (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr) : Bool :=
   match b with
   -- [Asc-R]: a ⊑ (e : τ)
-  | .asc e τ => subCheck fuel Γ e τ && subCheck fuel Γ a e
+  | .asc e τ => subCheck fuel seen Γ e τ && subCheck fuel seen Γ a e
+  -- b = μ is handled before subCheckStep is called — return false here
+  -- so the soundness proof has a clean unreachable case.
+  | .mu _ _ => false
   | _ =>
     match a with
     -- [Asc-L]: (e : τ) ⊑ b
-    | .asc e τ => subCheck fuel Γ e τ && subCheck fuel Γ τ b
+    | .asc e τ => subCheck fuel seen Γ e τ && subCheck fuel seen Γ τ b
     -- [Var]
     | .var x =>
       match Γ.get? x with
       | none => false
-      | some T => subCheck fuel Γ T b
+      | some T => subCheck fuel seen Γ T b
     -- [Lam] — only fires when b is also a lam
     | .lam A₁ b₁ =>
       match b with
       | .lam A₂ b₂ =>
-        subCheck fuel Γ A₂ A₁ && subCheck fuel (A₂ :: Γ) b₁ b₂
+        -- Clear seen when entering a binder: seen entries refer to Γ.
+        subCheck fuel seen Γ A₂ A₁ && subCheck fuel [] (A₂ :: Γ) b₁ b₂
       | _ => false
     -- [App]
     | .app f arg =>
       match synthLam fuel Γ f with
       | none => false
       | some (D, R) =>
-        subCheck fuel Γ arg D && subCheck fuel Γ (R.subst 0 arg) b
+        subCheck fuel seen Γ arg D && subCheck fuel seen Γ (R.subst 0 arg) b
     | .top => false
+    -- a = μ is handled upstream by subCheck — return false here.
+    | .mu _ _ => false
 
 end  -- mutual
 
-/-- Top-level `check` (alias for `subCheck`). -/
+/-- Top-level `check` (alias for `subCheck` with empty `seen`). -/
 def check (fuel : Nat) (Γ : Ctx) (e τ : Expr) : Bool :=
-  subCheck fuel Γ e τ
+  subCheck fuel [] Γ e τ
 
 -- ============================================================
 -- Soundness: subCheck and synthLam are sound w.r.t. the inductive Sub
 -- ============================================================
+
+/-- Justification for an entry in the `seen` set: we assume the entry is a
+    derivable subtyping judgement. In the full soundness theorem this is
+    discharged by the outer caller (see `CheckSoundness.lean`). -/
+def SeenJustified (seen : List (Expr × Expr)) (Γ : Ctx) : Type :=
+  ∀ p, seenMem p seen = true → Sub Γ p.1 p.2
 
 -- Helper: destructing conjunction from Bool.and_eq_true
 private theorem bool_and_split {x y : Bool} (h : (x && y) = true) : x = true ∧ y = true := by
@@ -135,9 +190,10 @@ noncomputable def synthLam_sound :
         exact Sub.var Γ x (.lam D R) T hget ih
     | asc e' τ =>
       simp only [synthLam] at h
-      by_cases hcheck : subCheck fuel Γ e' τ = true
+      by_cases hcheck : subCheck fuel [] Γ e' τ = true
       · rw [if_pos hcheck] at h
-        have hsub_eτ : Sub Γ e' τ := subCheck_sound fuel Γ e' τ hcheck
+        have hsub_eτ : Sub Γ e' τ := subCheck_sound fuel [] Γ e' τ
+          (fun _ hp => by simp [seenMem] at hp) hcheck
         have ih : Sub Γ τ (.lam D R) := synthLam_sound fuel Γ τ D R h
         exact Sub.ascL Γ e' τ (.lam D R) hsub_eτ ih
       · rw [if_neg hcheck] at h; simp at h
@@ -149,23 +205,38 @@ noncomputable def synthLam_sound :
         obtain ⟨D'', R''⟩ := p
         rw [hf] at h
         first | (exact Bool.noConfusion h) | (simp only at h)
-        by_cases hcheck : subCheck fuel Γ a D'' = true
+        by_cases hcheck : subCheck fuel [] Γ a D'' = true
         · rw [if_pos hcheck] at h
           have hf_sub : Sub Γ f (.lam D'' R'') := synthLam_sound fuel Γ f D'' R'' hf
-          have ha_sub : Sub Γ a D'' := subCheck_sound fuel Γ a D'' hcheck
+          have ha_sub : Sub Γ a D'' := subCheck_sound fuel [] Γ a D''
+            (fun _ hp => by simp [seenMem] at hp) hcheck
           have hR_sub : Sub Γ (R''.subst 0 a) (.lam D R) :=
             synthLam_sound fuel Γ (R''.subst 0 a) D R h
           exact Sub.app Γ f a (.lam D R) D'' R'' hf_sub ha_sub hR_sub
         · rw [if_neg hcheck] at h; simp at h
     | top => simp [synthLam] at h
+    | mu A body =>
+      -- synthLam unfolds via Sub.mu: requires Sub Γ A (lam D R) and
+      -- Sub (A::Γ) body (A.shift 0 1).
+      simp only [synthLam] at h
+      by_cases hck : subCheck fuel [] (A :: Γ) body (A.shift 0 1) = true
+      · rw [if_pos hck] at h
+        have hbody_sub : Sub (A :: Γ) body (A.shift 0 1) :=
+          subCheck_sound fuel [] (A :: Γ) body (A.shift 0 1)
+            (fun _ hp => by simp [seenMem] at hp) hck
+        have hA_sub : Sub Γ A (.lam D R) := synthLam_sound fuel Γ A D R h
+        exact Sub.mu Γ A body (.lam D R) hA_sub hbody_sub
+      · rw [if_neg hck] at h; simp at h
 
-/-- `subCheck` soundness: if `subCheck fuel Γ a b = true` then `Sub Γ a b`. -/
+/-- `subCheck` soundness: if `subCheck fuel seen Γ a b = true` and every
+    entry of `seen` is justified, then `Sub Γ a b`. -/
 noncomputable def subCheck_sound :
-    (fuel : Nat) → (Γ : Ctx) → (a b : Expr) →
-    subCheck fuel Γ a b = true → Sub Γ a b
-  | 0, _, _, _, h => by simp [subCheck] at h
-  | fuel + 1, Γ, a, b, h => by
-    simp only [subCheck] at h
+    (fuel : Nat) → (seen : List (Expr × Expr)) → (Γ : Ctx) → (a b : Expr) →
+    SeenJustified seen Γ →
+    subCheck fuel seen Γ a b = true → Sub Γ a b
+  | 0, _, _, _, _, _, h => by simp [subCheck] at h
+  | fuel + 1, seen, Γ, a, b, hjust, h => by
+    unfold subCheck at h
     by_cases heq : (a == b) = true
     · have : a = b := beq_iff_eq.mp heq
       subst this
@@ -176,27 +247,73 @@ noncomputable def subCheck_sound :
         subst this
         exact Sub.top Γ a
       · rw [if_neg htop] at h
-        -- Now h : subCheckStep (fuel+1) Γ a b = true
-        -- Note: we still have fuel+1 as the fuel parameter because subCheck
-        -- unfolded once and called subCheckStep with its same fuel.
-        exact subCheckStep_sound fuel Γ a b htop h
+        cases hb : b with
+        | mu A body =>
+          subst hb
+          simp only at h
+          by_cases hseen : seenMem (a, .mu A body) seen = true
+          · rw [if_pos hseen] at h
+            exact hjust (a, .mu A body) hseen
+          · rw [if_neg hseen] at h
+            -- THE muR GAP. See header comment for details.
+            sorry
+        | top => subst hb; exfalso; apply htop; simp
+        | var x_b =>
+          subst hb; simp only at h
+          cases ha : a with
+          | mu A body =>
+            subst ha; simp only at h
+            by_cases hseen : seenMem (.mu A body, .var x_b) seen = true
+            · rw [if_pos hseen] at h; exact hjust _ hseen
+            · rw [if_neg hseen] at h
+              sorry  -- muL gap
+          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+        | lam A_b b_b =>
+          subst hb; simp only at h
+          cases ha : a with
+          | mu A body =>
+            subst ha; simp only at h
+            by_cases hseen : seenMem (.mu A body, .lam A_b b_b) seen = true
+            · rw [if_pos hseen] at h; exact hjust _ hseen
+            · rw [if_neg hseen] at h
+              sorry  -- muL gap
+          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+        | app f_b a_b =>
+          subst hb; simp only at h
+          cases ha : a with
+          | mu A body =>
+            subst ha; simp only at h
+            by_cases hseen : seenMem (.mu A body, .app f_b a_b) seen = true
+            · rw [if_pos hseen] at h; exact hjust _ hseen
+            · rw [if_neg hseen] at h
+              sorry  -- muL gap
+          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+        | asc e τ =>
+          subst hb; simp only at h
+          cases ha : a with
+          | mu A body =>
+            subst ha; simp only at h
+            by_cases hseen : seenMem (.mu A body, .asc e τ) seen = true
+            · rw [if_pos hseen] at h; exact hjust _ hseen
+            · rw [if_neg hseen] at h
+              sorry  -- muL gap
+          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
 
-/-- `subCheckStep` soundness. `htop : ¬(b == .top)` is needed because
-    `subCheckStep` doesn't handle Top — that's dispatched in `subCheck`. -/
+/-- `subCheckStep` soundness. At entry, `b` is not μ and not ⊤. -/
 noncomputable def subCheckStep_sound :
-    (fuel : Nat) → (Γ : Ctx) → (a b : Expr) →
+    (fuel : Nat) → (seen : List (Expr × Expr)) → (Γ : Ctx) → (a b : Expr) →
+    SeenJustified seen Γ →
     ¬ (b == .top) = true →
-    subCheckStep fuel Γ a b = true → Sub Γ a b := by
-  intro fuel Γ a b htop h
+    subCheckStep fuel seen Γ a b = true → Sub Γ a b := by
+  intro fuel seen Γ a b hjust htop h
   unfold subCheckStep at h
-  -- Case analysis: is b an asc?
   cases hb : b with
   | asc e τ =>
     subst hb
     first | (exact Bool.noConfusion h) | (simp only at h)
     obtain ⟨h1, h2⟩ := bool_and_split h
-    have hs1 : Sub Γ e τ := subCheck_sound fuel Γ e τ h1
-    have hs2 : Sub Γ a e := subCheck_sound fuel Γ a e h2
+    have hs1 : Sub Γ e τ := subCheck_sound fuel seen Γ e τ hjust h1
+    have hs2 : Sub Γ a e := subCheck_sound fuel seen Γ a e hjust h2
     exact Sub.ascR Γ a e τ hs1 hs2
   | var x_b =>
     subst hb
@@ -206,8 +323,8 @@ noncomputable def subCheckStep_sound :
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
       obtain ⟨h1, h2⟩ := bool_and_split h
-      have hs1 : Sub Γ e τ := subCheck_sound fuel Γ e τ h1
-      have hs2 : Sub Γ τ (.var x_b) := subCheck_sound fuel Γ τ (.var x_b) h2
+      have hs1 : Sub Γ e τ := subCheck_sound fuel seen Γ e τ hjust h1
+      have hs2 : Sub Γ τ (.var x_b) := subCheck_sound fuel seen Γ τ (.var x_b) hjust h2
       exact Sub.ascL Γ e τ (.var x_b) hs1 hs2
     | var x_a =>
       subst ha
@@ -216,7 +333,7 @@ noncomputable def subCheckStep_sound :
       | none => rw [hget] at h; simp at h
       | some T =>
         rw [hget] at h
-        have hs : Sub Γ T (.var x_b) := subCheck_sound fuel Γ T (.var x_b) h
+        have hs : Sub Γ T (.var x_b) := subCheck_sound fuel seen Γ T (.var x_b) hjust h
         exact Sub.var Γ x_a (.var x_b) T hget hs
     | lam A₁ b₁ =>
       subst ha
@@ -232,13 +349,16 @@ noncomputable def subCheckStep_sound :
         first | (exact Bool.noConfusion h) | (simp only at h)
         obtain ⟨h1, h2⟩ := bool_and_split h
         have hf_sub : Sub Γ f (.lam D R) := synthLam_sound fuel Γ f D R hsy
-        have ha_sub : Sub Γ arg D := subCheck_sound fuel Γ arg D h1
+        have ha_sub : Sub Γ arg D := subCheck_sound fuel seen Γ arg D hjust h1
         have hR_sub : Sub Γ (R.subst 0 arg) (.var x_b) :=
-          subCheck_sound fuel Γ (R.subst 0 arg) (.var x_b) h2
+          subCheck_sound fuel seen Γ (R.subst 0 arg) (.var x_b) hjust h2
         exact Sub.app Γ f arg (.var x_b) D R hf_sub ha_sub hR_sub
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
+      subst ha
+      simp at h
   | top =>
     subst hb
     exfalso; apply htop; simp
@@ -250,8 +370,8 @@ noncomputable def subCheckStep_sound :
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
       obtain ⟨h1, h2⟩ := bool_and_split h
-      have hs1 : Sub Γ e τ := subCheck_sound fuel Γ e τ h1
-      have hs2 : Sub Γ τ (.lam A₂ b₂) := subCheck_sound fuel Γ τ (.lam A₂ b₂) h2
+      have hs1 : Sub Γ e τ := subCheck_sound fuel seen Γ e τ hjust h1
+      have hs2 : Sub Γ τ (.lam A₂ b₂) := subCheck_sound fuel seen Γ τ (.lam A₂ b₂) hjust h2
       exact Sub.ascL Γ e τ (.lam A₂ b₂) hs1 hs2
     | var x_a =>
       subst ha
@@ -260,14 +380,17 @@ noncomputable def subCheckStep_sound :
       | none => rw [hget] at h; simp at h
       | some T =>
         rw [hget] at h
-        have hs : Sub Γ T (.lam A₂ b₂) := subCheck_sound fuel Γ T (.lam A₂ b₂) h
+        have hs : Sub Γ T (.lam A₂ b₂) := subCheck_sound fuel seen Γ T (.lam A₂ b₂) hjust h
         exact Sub.var Γ x_a (.lam A₂ b₂) T hget hs
     | lam A₁ b₁ =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
       obtain ⟨h1, h2⟩ := bool_and_split h
-      have hs1 : Sub Γ A₂ A₁ := subCheck_sound fuel Γ A₂ A₁ h1
-      have hs2 : Sub (A₂ :: Γ) b₁ b₂ := subCheck_sound fuel (A₂ :: Γ) b₁ b₂ h2
+      have hs1 : Sub Γ A₂ A₁ := subCheck_sound fuel seen Γ A₂ A₁ hjust h1
+      -- Body uses fresh empty seen (cleared on context extension).
+      have hjust' : SeenJustified [] (A₂ :: Γ) := fun _ hp => by simp [seenMem] at hp
+      have hs2 : Sub (A₂ :: Γ) b₁ b₂ :=
+        subCheck_sound fuel [] (A₂ :: Γ) b₁ b₂ hjust' h2
       exact Sub.lam Γ A₁ A₂ b₁ b₂ hs1 hs2
     | app f arg =>
       subst ha
@@ -280,13 +403,16 @@ noncomputable def subCheckStep_sound :
         first | (exact Bool.noConfusion h) | (simp only at h)
         obtain ⟨h1, h2⟩ := bool_and_split h
         have hf_sub : Sub Γ f (.lam D R) := synthLam_sound fuel Γ f D R hsy
-        have ha_sub : Sub Γ arg D := subCheck_sound fuel Γ arg D h1
+        have ha_sub : Sub Γ arg D := subCheck_sound fuel seen Γ arg D hjust h1
         have hR_sub : Sub Γ (R.subst 0 arg) (.lam A₂ b₂) :=
-          subCheck_sound fuel Γ (R.subst 0 arg) (.lam A₂ b₂) h2
+          subCheck_sound fuel seen Γ (R.subst 0 arg) (.lam A₂ b₂) hjust h2
         exact Sub.app Γ f arg (.lam A₂ b₂) D R hf_sub ha_sub hR_sub
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
+      subst ha
+      simp at h
   | app f_b a_b =>
     subst hb
     first | (exact Bool.noConfusion h) | (simp only at h)
@@ -295,8 +421,8 @@ noncomputable def subCheckStep_sound :
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
       obtain ⟨h1, h2⟩ := bool_and_split h
-      have hs1 : Sub Γ e τ := subCheck_sound fuel Γ e τ h1
-      have hs2 : Sub Γ τ (.app f_b a_b) := subCheck_sound fuel Γ τ (.app f_b a_b) h2
+      have hs1 : Sub Γ e τ := subCheck_sound fuel seen Γ e τ hjust h1
+      have hs2 : Sub Γ τ (.app f_b a_b) := subCheck_sound fuel seen Γ τ (.app f_b a_b) hjust h2
       exact Sub.ascL Γ e τ (.app f_b a_b) hs1 hs2
     | var x_a =>
       subst ha
@@ -305,7 +431,7 @@ noncomputable def subCheckStep_sound :
       | none => rw [hget] at h; simp at h
       | some T =>
         rw [hget] at h
-        have hs : Sub Γ T (.app f_b a_b) := subCheck_sound fuel Γ T (.app f_b a_b) h
+        have hs : Sub Γ T (.app f_b a_b) := subCheck_sound fuel seen Γ T (.app f_b a_b) hjust h
         exact Sub.var Γ x_a (.app f_b a_b) T hget hs
     | lam A₁ b₁ =>
       subst ha
@@ -321,13 +447,20 @@ noncomputable def subCheckStep_sound :
         first | (exact Bool.noConfusion h) | (simp only at h)
         obtain ⟨h1, h2⟩ := bool_and_split h
         have hf_sub : Sub Γ f (.lam D R) := synthLam_sound fuel Γ f D R hsy
-        have ha_sub : Sub Γ arg D := subCheck_sound fuel Γ arg D h1
+        have ha_sub : Sub Γ arg D := subCheck_sound fuel seen Γ arg D hjust h1
         have hR_sub : Sub Γ (R.subst 0 arg) (.app f_b a_b) :=
-          subCheck_sound fuel Γ (R.subst 0 arg) (.app f_b a_b) h2
+          subCheck_sound fuel seen Γ (R.subst 0 arg) (.app f_b a_b) hjust h2
         exact Sub.app Γ f arg (.app f_b a_b) D R hf_sub ha_sub hR_sub
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | mu _ _ =>
+      subst ha
+      simp at h
+  | mu _ _ =>
+    -- subCheckStep returns false when b = μ (handled upstream by subCheck).
+    subst hb
+    simp at h
 
 end  -- mutual soundness
 
@@ -360,6 +493,37 @@ example : check 10 [.top] (.var 0) .top = true := by native_decide
 -- Lambda contravariance
 example : check 10 [] (.lam .top (.var 0)) (.lam (.lam .top .top) (.var 0)) = true := by
   native_decide
+
+-- μ tests
+-- μ on the LEFT — uses Sub.mu (the inductive rule):
+-- μ(s : ⊤). ⊤ ⊑ ⊤
+example : check 10 [] (.mu .top .top) .top = true := by native_decide
+
+-- μ on the RIGHT (cycle detection):
+-- ⊤ ⊑ μ(s : ⊤). ⊤   (unfolds to ⊤ ⊑ ⊤ via [Refl])
+example : check 10 [] .top (.mu .top .top) = true := by native_decide
+
+-- Cycle break: μ(s : ⊤). s ⊑ μ(s : ⊤). s — refl handles this
+example : check 10 [] (.mu .top (.var 0)) (.mu .top (.var 0)) = true := by native_decide
+
+-- A non-trivial cycle: ⊤ ⊑ μ(s : ⊤). s — unfolds to ⊤ ⊑ μs.s, cycle hit, true
+example : check 10 [] .top (.mu .top (.var 0)) = true := by native_decide
+
+-- ── Dependent booleans: dtrue ⊑ dBool ───────────────────────────────
+-- The dependent-boolean encoding (dtrue, dfalse, dBool) is the canonical
+-- "self-typed" example. With this checker's cycle detection it does NOT yet
+-- verify, because the recursive descent into lambda bodies generates fresh
+-- subgoals that never match the seen cycle (the seen set tracks the outer
+-- pair but inner subgoals are alpha-/structurally distinct).
+--
+-- A working dependent-boolean check requires either
+-- (a) structural cycle detection up to alpha-equivalence over ALL recursive
+--     subgoals (not just the top-level pair), OR
+-- (b) a coinductive/step-indexed treatment of μ-on-the-right.
+-- Both are deferred to follow-up work.
+--
+-- The simpler μ-on-the-right cases below DO work via the current cycle
+-- detection: when the unfolded form matches an existing seen entry directly.
 
 end Tests
 
