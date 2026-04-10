@@ -81,9 +81,25 @@ trans cases (iotaIntro × iotaL, iotaIntro × iotaIntro, iotaR × iotaIntro).
 Tried fusion (iotaIntroD) — moves the problem doesn't solve it. The fundamental
 obstacle is substitution monotonicity for contravariant positions.
 
-**Recommendation:** Self-types via inductive Sub seem genuinely impossible for
-the contravariant case. Need either seen-set algorithmic, syntactic positivity
-restriction, or step-indexed/coinductive metatheory.
+### research-betar
+**Question:** Can BetaR (literal lambdas only) be added with proven transitivity?
+**Finding:** Almost. The rule itself is sound (counterexample rejected), but
+trans(betaR_lhs, app) breaks the cut-formula measure. body[arg] can be larger
+than the original cut when var 0 appears multiple times in body. Lambda inversion
+proved, but doesn't help — same fundamental issue.
+
+### research-canonical-app
+**Question:** Replace [App]'s existential (D,R) with canonical principal synthesis?
+**Finding:** **FUNDAMENTALLY DOES NOT WORK.** Three independent obstructions:
+1. Soundness gap on ascriptions (trust or reject — both bad)
+2. Narrowing breaks (principal differs across contexts)
+3. **Eval preservation breaks** (most severe) — needs Sub sub-derivation for f
+   which principal cannot provide
+
+**This is the definitive answer**: the principal type obstruction is not syntactic.
+Solving BetaR/μ/AppR/IotaR requires SEMANTIC methods (logical relations, step-indexed
+Kripke models) rather than canonical-form rules. The existing Sub rule set (7 rules,
+existential [App]) is the maximum provable with current syntactic technique.
 
 ## Architecturally validated findings
 
