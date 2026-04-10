@@ -17,29 +17,63 @@ cycle-detection support for μ on either side.
   Sub.mu rule: checks `body ⊑ A↑` and synthesises on `A`.
 - `subCheck fuel seen Γ a b` : `Bool`
   Decides `Sub Γ a b`. The `seen` list records pairs `(a, b)` that are
-  already being checked on the stack — when encountered again we break the
-  cycle and return `true`.
+  already being checked on the stack. **At every entry point** we first
+  consult `seen` — if `(a, b) ∈ seen`, return `true` immediately
+  (cycle break). Then we proceed by fuel-indexed structural recursion.
 
 ## μ cases (in `subCheck`)
 
 - `b = μA.body` (a ≠ b): unfold RHS and recurse with `(a, b)` added to seen.
   The cycle-break case appeals to `seen` justification.
 - `a = μA.body` (b ≠ μ): unfold LHS and recurse with `(a, b)` added to seen.
-- `a = b` is caught by [Refl] before the μ-check.
+- `a = b` is caught by [Refl] (after the seen check).
 
 ## Soundness
 
 Soundness (`subCheck_sound` / `synthLam_sound`) holds modulo a known gap on
-the cycle-break (muR / muL) cases. The cycle-break needs to construct a
-`Sub Γ a (μA.body)` value purely from a recursive call that itself relies
-on assuming `Sub Γ a (μA.body)`. The inductive `Sub` has no muR rule, so
-this is genuinely circular without coinductive / step-indexed / logical-
-relation machinery. It is sorry'd here and discussed inline.
+the cycle-break cases. When a recursive call is short-circuited because
+`(a, b) ∈ seen`, soundness assumes that the ENTRY in `seen` is itself
+justified — but justifying it requires the very `Sub Γ a b` we are trying
+to prove. The inductive `Sub` has no coinductive rule, so this is
+genuinely circular without coinductive / step-indexed / logical-relation
+machinery. It is `sorry`'d here and discussed inline.
 
 Concretely: 5 sorrys remain in this file, one per (a-shape, b-shape) cycle
-case. They are isolated to the cycle-break branches; all other rules (Refl,
-Top, Var, Lam-Lam, App, Asc-L, Asc-R, mu via the inductive Sub.mu) have
-fully constructive soundness proofs.
+break case. They are isolated to the cycle-break branches; all other
+rules (Refl, Top, Var, Lam-Lam, App, Asc-L, Asc-R, mu via the inductive
+Sub.mu) have fully constructive soundness proofs.
+
+## What this checker does NOT yet handle: `dtrue ⊑ dBool`
+
+The dependent-boolean encoding (dtrue, dfalse, dBool) is the canonical
+"self-typed" example. With this checker it does NOT yet verify, but the
+blocker is **NOT cycle detection** — the cycle is already caught
+correctly. The blocker is a missing inductive rule. Detailed diagnosis:
+
+1. muR unfolds dBool, then muL unfolds dtrue: we reach `dtrueU ⊑ dBoolU`
+   which is a lam-lam comparison.
+2. The Lam contravariant chain on the parameter types eventually reaches
+   `dtrue ⊑ dBool` again — and the seen set DOES catch this. (Verified
+   directly: pre-loading seen with `(dtrue, dBool)` makes
+   `subCheck dtrue dBool` return true.)
+3. The BLOCKER is the BODY check (in extended context, with seen cleared).
+   It reaches the subgoal `t ⊑ P dBool` where `t : P dtrue` and
+   `P : dBool→⊤`. Both sides reduce to `⊤`, but the inductive `Sub` has
+   only an [App] rule that reduces apps on the LEFT — there is no
+   [Beta-R] / [App-R] rule that lets us reduce `app f a` on the RIGHT.
+   We get stuck at `⊤ ⊑ P dBool`, which has no derivation.
+
+Unblocking dtrue ⊑ dBool therefore requires extending `Sub` with the
+symmetric dual of `Sub.app`:
+
+    | appR : Sub Γ g (.lam D R) → Sub Γ b D → Sub Γ a (R.subst 0 b) →
+             Sub Γ a (.app g b)
+
+and updating `subCheckStep`, `Properties.lean` (weaken_gen, narrow,
+trans, subst_gen) and `Soundness.lean` (semanticSubst, evalPreservation).
+That extension is left as follow-up work. The seen-set machinery in this
+file is therefore necessary but not sufficient for the dependent-bool
+encoding.
 -/
 
 set_option autoImplicit false
@@ -85,9 +119,16 @@ def synthLam (fuel : Nat) (Γ : Ctx) (e : Expr) : Option (Expr × Expr) :=
 /-- Decide `Sub Γ a b` up to the supplied `fuel`.
 
     The dispatch is structured to make soundness easy to prove: the rules are
-    tried in a deterministic order (Refl → Top → muR → Asc-R → Asc-L → Var →
-    Lam → App → muL) with non-overlapping conditions. -/
+    tried in a deterministic order (Seen → Refl → Top → muR → Asc-R → Asc-L
+    → Var → Lam → App → muL) with non-overlapping conditions.
+
+    The `seen` set is consulted FIRST at every entry point. This catches
+    cycles that emerge after several layers of structural recursion (e.g.
+    `dtrue ⊑ dBool` arising as the contravariant subgoal of a deeper
+    Lam–Lam comparison). -/
 def subCheck (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr) : Bool :=
+  if seenMem (a, b) seen then true  -- [Cycle] — unconditional cycle break
+  else
   match fuel with
   | 0 => false
   | fuel + 1 =>
@@ -95,16 +136,15 @@ def subCheck (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr) :
     else if b == .top then true  -- [Top]
     else
       match b with
-      -- [muR] / cycle detection: try unfolding RHS first
+      -- [muR]: unfold RHS first, recording the goal so deeper recursion can
+      -- detect a cycle back to this exact subgoal.
       | .mu A body =>
-        if seenMem (a, .mu A body) seen then true
-        else subCheck fuel ((a, .mu A body) :: seen) Γ a (body.subst 0 (.mu A body))
+        subCheck fuel ((a, .mu A body) :: seen) Γ a (body.subst 0 (.mu A body))
       | _ =>
         match a with
-        -- [muL] / cycle detection: try unfolding LHS too
+        -- [muL]: unfold LHS too.
         | .mu A body =>
-          if seenMem (.mu A body, b) seen then true
-          else subCheck fuel ((.mu A body, b) :: seen) Γ (body.subst 0 (.mu A body)) b
+          subCheck fuel ((.mu A body, b) :: seen) Γ (body.subst 0 (.mu A body)) b
         | _ => subCheckStep fuel seen Γ a b
 
 /-- Post-Refl/Top/muR dispatcher. Factored out so the soundness proof can
@@ -229,75 +269,77 @@ noncomputable def synthLam_sound :
       · rw [if_neg hck] at h; simp at h
 
 /-- `subCheck` soundness: if `subCheck fuel seen Γ a b = true` and every
-    entry of `seen` is justified, then `Sub Γ a b`. -/
+    entry of `seen` is justified, then `Sub Γ a b`.
+
+    The top-level `seen` check is dispatched first. If it fires, we appeal
+    to `hjust` directly. Otherwise we proceed by fuel-induction as before.
+-/
 noncomputable def subCheck_sound :
     (fuel : Nat) → (seen : List (Expr × Expr)) → (Γ : Ctx) → (a b : Expr) →
     SeenJustified seen Γ →
     subCheck fuel seen Γ a b = true → Sub Γ a b
-  | 0, _, _, _, _, _, h => by simp [subCheck] at h
+  | 0, seen, Γ, a, b, hjust, h => by
+    unfold subCheck at h
+    by_cases hseen : seenMem (a, b) seen = true
+    · exact hjust (a, b) hseen
+    · rw [if_neg hseen] at h; simp at h
   | fuel + 1, seen, Γ, a, b, hjust, h => by
     unfold subCheck at h
-    by_cases heq : (a == b) = true
-    · have : a = b := beq_iff_eq.mp heq
-      subst this
-      exact Sub.refl Γ a
-    · rw [if_neg heq] at h
-      by_cases htop : (b == .top) = true
-      · have : b = .top := beq_iff_eq.mp htop
+    by_cases hseen0 : seenMem (a, b) seen = true
+    · exact hjust (a, b) hseen0
+    · rw [if_neg hseen0] at h
+      simp only at h
+      by_cases heq : (a == b) = true
+      · have : a = b := beq_iff_eq.mp heq
         subst this
-        exact Sub.top Γ a
-      · rw [if_neg htop] at h
-        cases hb : b with
-        | mu A body =>
-          subst hb
-          simp only at h
-          by_cases hseen : seenMem (a, .mu A body) seen = true
-          · rw [if_pos hseen] at h
-            exact hjust (a, .mu A body) hseen
-          · rw [if_neg hseen] at h
-            -- THE muR GAP. See header comment for details.
+        exact Sub.refl Γ a
+      · rw [if_neg heq] at h
+        by_cases htop : (b == .top) = true
+        · have : b = .top := beq_iff_eq.mp htop
+          subst this
+          exact Sub.top Γ a
+        · rw [if_neg htop] at h
+          cases hb : b with
+          | mu A body =>
+            subst hb
+            simp only at h
+            -- THE muR GAP: we have descended via muR, but the recursive
+            -- subCheck call (with `(a, μA.body)` added to seen) returned
+            -- true. To produce a `Sub Γ a (μA.body)`, we would need to
+            -- extract from that recursive call a witness — but the
+            -- recursive call may itself appeal to the seen entry we just
+            -- added (coinductive break). Sound only modulo this gap.
             sorry
-        | top => subst hb; exfalso; apply htop; simp
-        | var x_b =>
-          subst hb; simp only at h
-          cases ha : a with
-          | mu A body =>
-            subst ha; simp only at h
-            by_cases hseen : seenMem (.mu A body, .var x_b) seen = true
-            · rw [if_pos hseen] at h; exact hjust _ hseen
-            · rw [if_neg hseen] at h
+          | top => subst hb; exfalso; apply htop; simp
+          | var x_b =>
+            subst hb; simp only at h
+            cases ha : a with
+            | mu A body =>
+              subst ha; simp only at h
+              -- muL cycle-break gap (analogous to muR above).
+              sorry
+            | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+          | lam A_b b_b =>
+            subst hb; simp only at h
+            cases ha : a with
+            | mu A body =>
+              subst ha; simp only at h
               sorry  -- muL gap
-          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
-        | lam A_b b_b =>
-          subst hb; simp only at h
-          cases ha : a with
-          | mu A body =>
-            subst ha; simp only at h
-            by_cases hseen : seenMem (.mu A body, .lam A_b b_b) seen = true
-            · rw [if_pos hseen] at h; exact hjust _ hseen
-            · rw [if_neg hseen] at h
+            | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+          | app f_b a_b =>
+            subst hb; simp only at h
+            cases ha : a with
+            | mu A body =>
+              subst ha; simp only at h
               sorry  -- muL gap
-          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
-        | app f_b a_b =>
-          subst hb; simp only at h
-          cases ha : a with
-          | mu A body =>
-            subst ha; simp only at h
-            by_cases hseen : seenMem (.mu A body, .app f_b a_b) seen = true
-            · rw [if_pos hseen] at h; exact hjust _ hseen
-            · rw [if_neg hseen] at h
+            | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+          | asc e τ =>
+            subst hb; simp only at h
+            cases ha : a with
+            | mu A body =>
+              subst ha; simp only at h
               sorry  -- muL gap
-          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
-        | asc e τ =>
-          subst hb; simp only at h
-          cases ha : a with
-          | mu A body =>
-            subst ha; simp only at h
-            by_cases hseen : seenMem (.mu A body, .asc e τ) seen = true
-            · rw [if_pos hseen] at h; exact hjust _ hseen
-            · rw [if_neg hseen] at h
-              sorry  -- muL gap
-          | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
+            | _ => subst ha; exact subCheckStep_sound fuel seen Γ _ _ hjust htop h
 
 /-- `subCheckStep` soundness. At entry, `b` is not μ and not ⊤. -/
 noncomputable def subCheckStep_sound :
@@ -512,18 +554,32 @@ example : check 10 [] .top (.mu .top (.var 0)) = true := by native_decide
 -- ── Dependent booleans: dtrue ⊑ dBool ───────────────────────────────
 -- The dependent-boolean encoding (dtrue, dfalse, dBool) is the canonical
 -- "self-typed" example. With this checker's cycle detection it does NOT yet
--- verify, because the recursive descent into lambda bodies generates fresh
--- subgoals that never match the seen cycle (the seen set tracks the outer
--- pair but inner subgoals are alpha-/structurally distinct).
+-- verify — but the blocker is NOT cycle detection. Diagnosis:
 --
--- A working dependent-boolean check requires either
--- (a) structural cycle detection up to alpha-equivalence over ALL recursive
---     subgoals (not just the top-level pair), OR
--- (b) a coinductive/step-indexed treatment of μ-on-the-right.
--- Both are deferred to follow-up work.
+-- 1. After muR/muL unfold both sides, we reach the lam-lam comparison
+--    `dtrueU ⊑ dBoolU`. The CONTRAVARIANT chain on domain types reaches
+--    the original goal `dtrue ⊑ dBool`, which the seen set DOES catch
+--    correctly. (Verified directly: with seen pre-loaded with
+--    `(dtrue, dBool)`, `subCheck` returns `true` on `dtrue ⊑ dBool`.)
 --
--- The simpler μ-on-the-right cases below DO work via the current cycle
--- detection: when the unfolded form matches an existing seen entry directly.
+-- 2. The BLOCKER is the BODY check, which clears `seen` (because the
+--    context grows) and reaches the subgoal
+--        `t ⊑ P dBool`     where `t : P dtrue` and `P : dBool→⊤`.
+--    Both sides reduce to `⊤`, but the inductive `Sub` in `Subtype.lean`
+--    has only an [App] rule that reduces apps on the LEFT — there is no
+--    [Beta-R] / [App-R] rule that lets us reduce `app f a` on the RIGHT.
+--    So we get stuck at `⊤ ⊑ P dBool` which has no derivation under the
+--    current rule set.
+--
+-- Unblocking dtrue ⊑ dBool therefore requires extending `Sub` with
+--    | appR : Sub Γ g (.lam D R) → Sub Γ b D → Sub Γ a (R.subst 0 b) →
+--             Sub Γ a (.app g b)
+-- and updating `subCheckStep`, `Properties.lean` (weaken_gen, narrow,
+-- trans, subst_gen) and `Soundness.lean` (semanticSubst, evalPreservation)
+-- accordingly. That extension is left as follow-up work — see
+-- `docs/ideas/` for design notes.
+--
+-- The simpler μ-on-the-right cases below DO work via cycle detection.
 
 end Tests
 
