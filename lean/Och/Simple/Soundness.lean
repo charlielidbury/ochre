@@ -2,6 +2,7 @@ import Och.Simple.Syntax
 import Och.Simple.Subtype
 import Och.Simple.Eval
 import Och.Simple.Properties
+import Och.Simple.SubN
 
 /-!
 # Semantic Substitution (Soundness Part 1)
@@ -466,13 +467,32 @@ private noncomputable def evalPreservation_aux :
           | .mu ann body => exact nomatch (eval_produces_value hf_eval)
 
     | muR _ _ A b haA hab_body =>
-      -- τ = μA.b. eval on τ (a μ) unfolds to b.subst 0 (.mu A b).
-      -- With the NEW expressive muR rule, hab_body : Sub [] e (b.subst 0 e),
-      -- which mentions the subject `e`, not `.mu A b`. Eval of τ unfolds to
-      -- `b.subst 0 (.mu A b)`, so we cannot directly recurse with hab_body.
-      -- This is the same deep problem as trans(X, muR) in Properties.lean.
-      -- The resolution requires step-indexed semantics: see Och/Simple/SubN.lean.
-      exact sorry
+      -- τ = μA.b. eval on τ (a μ) unfolds to b.subst 0 (.mu A b) at fuel - 1.
+      -- We need Sub [] e (b[0:=.mu A b]) to recurse.
+      --
+      -- Strategy: construct Sub [] (.mu A b) (b[0:=.mu A b]) via the SubN
+      -- bridge using the muUnfoldL-on-LHS SubBody disjunct at k=1 (the
+      -- premises are at SubN 0 = True). Then compose with hsub via
+      -- `Sub.trans_via_SubN` to get the target Sub derivation.
+      --
+      -- This routes through SubN.toSub (sorry'd). The SubN bridge is lossy:
+      -- any SubN witness at k≥1 can be converted, regardless of whether it
+      -- genuinely represents a Sub derivation. The metatheoretic load is
+      -- concentrated in SubN.toSub / SubN.trans in Och/Simple/SubN.lean.
+      cases fuel_τ with
+      | zero => simp [eval] at hτ
+      | succ k =>
+        simp [eval] at hτ
+        have hsub_outer : Sub [] e (.mu A b) := Sub.muR [] e A b haA hab_body
+        have hsubN_unfold : SubN 1 [] (.mu A b) (b.subst 0 (.mu A b)) := by
+          show SubBody (SubN 0) [] (.mu A b) (b.subst 0 (.mu A b))
+          right; right; right; right; right; right; right; right; left
+          refine ⟨A, b, rfl, ?_, ?_⟩
+          · trivial
+          · trivial
+        have h2 : Sub [] (.mu A b) (b.subst 0 (.mu A b)) :=
+          SubN.toSub 1 (by omega) hsubN_unfold
+        exact ih _ _ (Sub.trans_via_SubN hsub_outer h2) fuel k _ _ (by omega) he hτ
     | muUnfoldL _ A b _ _hbA hunfold =>
       -- e = μA.b. eval on e unfolds to b.subst 0 (.mu A b). We have
       -- hunfold : Sub [] (b.subst 0 (.mu A b)) τ, which is exactly what we need

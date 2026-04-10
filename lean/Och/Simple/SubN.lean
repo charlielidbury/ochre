@@ -97,11 +97,40 @@ def SubN : Nat → Ctx → Expr → Expr → Prop
     This is the standard step-indexed "monotonicity in steps" lemma. -/
 theorem SubN.downward : (k : Nat) → (Γ : Ctx) → (a b : Expr) →
     SubN (k + 1) Γ a b → SubN k Γ a b := by
-  -- Plan: by strong induction on k. At k = 0, SubN 0 is True so vacuous.
-  -- At k+1, unfold SubBody and show each case is preserved by IH.
-  -- Each disjunct uses the SubN k premises; applying the IH at k-1 (which
-  -- is the "deeper" recursive level) downgrades them to SubN (k-1).
-  sorry
+  intro k
+  induction k with
+  | zero => intro _ _ _ _; trivial
+  | succ k ih =>
+    intro Γ a b h
+    -- h : SubN (k+2) Γ a b, i.e. SubBody (SubN (k+1)) Γ a b
+    -- goal : SubN (k+1) Γ a b, i.e. SubBody (SubN k) Γ a b
+    show SubBody (SubN k) Γ a b
+    rcases h with heq | htop | ⟨x, T, hax, hget, hTb⟩
+      | ⟨A₁, b₁, A₂, b₂, hax, hbx, hA, hb⟩
+      | ⟨f, a', D, Rl, hax, hfD, haD, hR⟩
+      | ⟨e, τ, hax, heτ, hτb⟩
+      | ⟨e, τ, hbx, heτ, hae⟩
+      | ⟨A, body, hax, hAb, hbody⟩
+      | ⟨A, body, hax, hbody, hunfold⟩
+      | ⟨A, body, hbx, haA, haBody⟩
+    · left; exact heq
+    · right; left; exact htop
+    · right; right; left
+      exact ⟨x, T, hax, hget, ih Γ T b hTb⟩
+    · right; right; right; left
+      exact ⟨A₁, b₁, A₂, b₂, hax, hbx, ih Γ A₂ A₁ hA, ih (A₂ :: Γ) b₁ b₂ hb⟩
+    · right; right; right; right; left
+      exact ⟨f, a', D, Rl, hax, ih Γ f (.lam D Rl) hfD, ih Γ a' D haD, ih Γ (Rl.subst 0 a') b hR⟩
+    · right; right; right; right; right; left
+      exact ⟨e, τ, hax, ih Γ e τ heτ, ih Γ τ b hτb⟩
+    · right; right; right; right; right; right; left
+      exact ⟨e, τ, hbx, ih Γ e τ heτ, ih Γ a e hae⟩
+    · right; right; right; right; right; right; right; left
+      exact ⟨A, body, hax, ih Γ A b hAb, ih (A :: Γ) body (A.shift 0 1) hbody⟩
+    · right; right; right; right; right; right; right; right; left
+      exact ⟨A, body, hax, ih (A :: Γ) body (A.shift 0 1) hbody, ih Γ (body.subst 0 (.mu A body)) b hunfold⟩
+    · right; right; right; right; right; right; right; right; right
+      exact ⟨A, body, hbx, ih Γ a A haA, ih Γ a (body.subst 0 a) haBody⟩
 
 /-- Reflexivity of SubN at every step index.
     Plan: by induction on k. At k = 0, vacuous. At k+1, use the first
@@ -125,48 +154,40 @@ theorem SubN.top : (k : Nat) → (Γ : Ctx) → (a : Expr) → SubN k Γ a .top 
     show SubBody (SubN k) Γ a .top
     right; left; rfl
 
-/-- Transitivity of SubN. This is the main lemma motivating step-indexing.
+/-- Transitivity of SubN.
 
-    **Plan (by induction on k):**
+    **Status**: genuinely blocked in its most general form. See the detailed
+    note below. Concentrating all the remaining difficulty into this single
+    `sorry` is the point of this file — Properties.lean's transitivity sorrys
+    can then be discharged by `Sub.toSubN` / `SubN.trans` / (back to Sub),
+    provided the downstream conversion holds.
 
-    * `k = 0`: vacuous (both premises are `True`).
+    **Why this is hard**: By induction on `k`, the induction step reduces to
+    composing SubBody disjuncts. For most disjunct pairings this is routine.
+    The obstacle is the muR-on-RHS case:
+      `hab : SubN (k+1) Γ a b'` and
+      `hbc : SubN (k+1) Γ b' (μA.body)` via muR, decomposing to
+        `SubN k Γ b' A` and `SubN k Γ b' (body[0:=b'])`.
+    Goal `SubN (k+1) Γ a (μA.body)` via muR requires both
+      `SubN k Γ a A` (OK: composes via IH) and
+      `SubN k Γ a (body[0:=a])` (HARD).
+    The latter requires replacing `b'` with `a` inside `body[0:=·]`. This is
+    a substitution compatibility lemma, which is FALSE in general because
+    `body` may use its self-reference (var 0) contravariantly. Concretely, if
+    `body = .lam (.var 0) .top`, then `body[0:=a] = .lam a .top` and
+    `body[0:=b'] = .lam b' .top`; the lam rule requires `b' ⊑ a` for the
+    contravariant domain, which we only have as `a ⊑ b'`.
 
-    * `k + 1`: case-split on the SubBody disjuncts that `hab` and `hbc` choose.
-      For each combination, construct the appropriate SubBody witness for
-      `SubN (k+1) Γ a c`. The recursive calls go through `SubN k` (using the
-      IH) for all composition.
-
-      The muR-on-RHS case is:
-        `hab : SubN (k+1) Γ a b'`
-        `hbc : SubN (k+1) Γ b' (μA.body)`, decomposing to
-              `SubN k Γ b' A ∧ SubN k Γ b' (body.subst 0 b')`.
-      Goal: `SubN (k+1) Γ a (μA.body)`, i.e., `SubN k Γ a A ∧ SubN k Γ a (body.subst 0 a)`.
-
-      For `SubN k Γ a A`: apply `downward` to `hab`, compose with `SubN k Γ b' A`
-      via IH transitivity.
-
-      For `SubN k Γ a (body.subst 0 a)`: this is where the real work happens.
-      We need to show that `a` satisfies the body with self=a. The key insight
-      (Ahmed/Appel-McAllester) is that step-indexed equivalence of `a` and `b'`
-      at step `k` means they are interchangeable in all contexts at step `k`.
-      Formally, we need a substitution-compatibility lemma at `SubN k`:
-        `SubN k Γ a b' → SubN k Γ b' (e.subst 0 b') → SubN k Γ a (e.subst 0 a)`
-      for any open expression `e` (under `A :: Γ`).
-
-    This substitution-compatibility lemma is itself proved by induction on
-    `k`, mutually with transitivity. It is the core of the step-indexed
-    argument. We leave it as a `sorry` with this plan for now.
--/
+    The Fu-Stump (2014) metatheory handles expressive self-types via erasure
+    to System Fω, NOT via step-indexing. The step-indexed approach of Ahmed
+    (2006) handles only the WEAK form of muR (self = μA.b). Closing this
+    sorry requires either (a) an erasure/semantic argument, (b) a stronger
+    syntactic restriction on the bodies of μ types that arise in practice, or
+    (c) a different SubN definition (e.g., coinductive bisimulation via
+    Iris-in-Lean). -/
 theorem SubN.trans : (k : Nat) → (Γ : Ctx) → (a b c : Expr) →
     SubN k Γ a b → SubN k Γ b c → SubN k Γ a c := by
-  intro k Γ a b c hab hbc
-  cases k with
-  | zero => trivial
-  | succ k =>
-    -- Full case analysis on SubBody disjuncts of hab and hbc.
-    -- We sketch the structure; the interesting disjuncts are muR on RHS
-    -- and muUnfoldL on LHS.
-    sorry
+  sorry
 
 /-- The "true" subtyping relation is Sub at all step indices. -/
 def Sub_si (Γ : Ctx) (a b : Expr) : Prop := ∀ k, SubN k Γ a b
@@ -192,16 +213,98 @@ end Sub_si
     level — though note that SubN → Sub is NOT proved, and does not hold
     in general; this bridge is one-way). -/
 theorem Sub.toSubN : {Γ : Ctx} → {a b : Expr} → Sub Γ a b → (k : Nat) → SubN k Γ a b := by
-  intro Γ a b h k
-  cases k with
-  | zero => trivial
-  | succ k =>
-    -- By induction on the Sub derivation. Each constructor maps to the
-    -- corresponding SubBody disjunct. Recursive calls use SubN k via IH.
-    sorry
+  intro Γ a b h
+  induction h with
+  | refl Γ a =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k => show SubBody (SubN k) Γ a a; left; rfl
+  | top Γ a =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k => show SubBody (SubN k) Γ a .top; right; left; rfl
+  | var Γ x b T hget _ ih =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ (.var x) b
+      right; right; left
+      exact ⟨x, T, rfl, hget, ih k⟩
+  | lam Γ A B b₁ b₂ _ _ ihBA ihbody =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ (.lam A b₁) (.lam B b₂)
+      right; right; right; left
+      exact ⟨A, b₁, B, b₂, rfl, rfl, ihBA k, ihbody k⟩
+  | app Γ f a b D R _ _ _ ihfD ihaD ihRb =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ (.app f a) b
+      right; right; right; right; left
+      exact ⟨f, a, D, R, rfl, ihfD k, ihaD k, ihRb k⟩
+  | ascL Γ e τ b _ _ iheτ ihτb =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ (.asc e τ) b
+      right; right; right; right; right; left
+      exact ⟨e, τ, rfl, iheτ k, ihτb k⟩
+  | ascR Γ a e τ _ _ iheτ ihae =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ a (.asc e τ)
+      right; right; right; right; right; right; left
+      exact ⟨e, τ, rfl, iheτ k, ihae k⟩
+  | mu Γ A body c _ _ ihAc ihbodyA =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ (.mu A body) c
+      right; right; right; right; right; right; right; left
+      exact ⟨A, body, rfl, ihAc k, ihbodyA k⟩
+  | muR Γ a A body _ _ ihaA ihaBody =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ a (.mu A body)
+      right; right; right; right; right; right; right; right; right
+      exact ⟨A, body, rfl, ihaA k, ihaBody k⟩
+  | muUnfoldL Γ A body c _ _ ihbA ihunfold =>
+    intro k; cases k with
+    | zero => trivial
+    | succ k =>
+      show SubBody (SubN k) Γ (.mu A body) c
+      right; right; right; right; right; right; right; right; left
+      exact ⟨A, body, rfl, ihbA k, ihunfold k⟩
 
 /-- Derived: `Sub` entails `Sub_si`. -/
 theorem Sub.toSub_si {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : Sub_si Γ a b :=
   Sub.toSubN h
+
+/-- **BRIDGE** (companion sorry): convert a step-indexed witness back to an
+    inductive `Sub` derivation.
+
+    In the step-indexed subtyping literature, this direction is typically NOT
+    provable in general (step-indexed logical relations are sound but not
+    complete w.r.t. syntactic subtyping). The challenge is that SubN is
+    Prop-valued and lossy — it encodes existence of a structural path but
+    does not retain enough data to reconstruct a `Sub` derivation tree.
+
+    **Status**: companion sorry to `SubN.trans`. Together these two sorries
+    concentrate the remaining metatheoretic load: closing either (a) `SubN.trans`
+    with a substitution compatibility argument, or (b) `SubN.toSub` with a
+    proof-relevant version of SubN, would discharge the 7 transitivity / eval
+    preservation sorries that otherwise pollute Properties.lean and
+    Soundness.lean.
+
+    The parameter `k : Nat` and hypothesis are here for flexibility; the
+    actual proof (when unblocked) may need `k` large, or need SubN redefined
+    as `Type` rather than `Prop`. -/
+noncomputable def SubN.toSub {Γ : Ctx} {a b : Expr} (k : Nat)
+    (_hk : k ≥ 1) (h : SubN k Γ a b) : Sub Γ a b := by
+  sorry
 
 end Och.Simple

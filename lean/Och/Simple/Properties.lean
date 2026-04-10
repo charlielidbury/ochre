@@ -1,5 +1,6 @@
 import Och.Simple.Syntax
 import Och.Simple.Subtype
+import Och.Simple.SubN
 
 /-!
 # Properties of the Sub relation
@@ -529,6 +530,13 @@ theorem Ctx.get?_narrow_gt {Γ_pre Γ_suf : Ctx} {B : Expr} (C : Expr) {x : Nat}
   simp only [Ctx.get?] at hget ⊢
   rw [← List.get?_narrow_gt_raw (B := B) (C := C) hx]; exact hget
 
+/-- Trans via the SubN bridge. Used to discharge the hard trans(X, muR) cases
+    in `transNarrowInner`. Concentrates the difficulty into the two sorrys in
+    SubN.lean (`SubN.trans` and `SubN.toSub`). -/
+noncomputable def Sub.trans_via_SubN {Γ : Ctx} {a b c : Expr}
+    (hab : Sub Γ a b) (hbc : Sub Γ b c) : Sub Γ a c :=
+  SubN.toSub 1 (by omega) (SubN.trans 1 Γ a b c (Sub.toSubN hab 1) (Sub.toSubN hbc 1))
+
 private noncomputable def transNarrowInner
     {m : Nat}
     (trans_lo : ∀ (Γ : Ctx) (a b c : Expr), b.complexity < m →
@@ -564,9 +572,11 @@ private noncomputable def transNarrowInner
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ _ _ _ _ =>
-          -- trans(top, muR): requires self-substitution. See SubN.lean.
-          exact sorry
+        | .muR _ _ _ _ h1 h2 =>
+          -- trans(top, muR): requires self-substitution. Discharged via the
+          -- SubN bridge (which concentrates the difficulty into SubN.trans and
+          -- SubN.toSub). See Och/Simple/SubN.lean.
+          exact Sub.trans_via_SubN (Sub.top _ _) (Sub.muR _ _ _ _ h1 h2)
       | .var _ x _ U hget hUb =>
         exact Sub.var _ x c U hget (trans_n Γ U b c hUb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega))
@@ -592,9 +602,11 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ _ _ _ _ =>
-          -- trans(lam, muR): self-substitution required. See SubN.lean.
-          exact sorry
+        | .muR _ _ _ _ h1 h2 =>
+          -- trans(lam, muR): self-substitution required. Discharged via SubN bridge.
+          exact Sub.trans_via_SubN
+            (Sub.lam _ A B body_a body_b hBA hbody_ab)
+            (Sub.muR _ _ _ _ h1 h2)
       | .mu _ A body _ hAb hbodyA =>
         exact Sub.mu _ A body c (trans_n Γ A b c hAb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega)) hbodyA
@@ -620,9 +632,9 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
-        | .muR _ _ _ _ _ _ =>
-          -- trans(ascR, muR): self-substitution required. See SubN.lean.
-          exact sorry
+        | .muR _ _ _ _ h1 h2 =>
+          -- trans(ascR, muR): self-substitution required. Discharged via SubN bridge.
+          exact Sub.trans_via_SubN (Sub.ascR _ _ e τ heτ hae) (Sub.muR _ _ _ _ h1 h2)
       | .muR _ _ A body haA hab_body =>
         -- trans(muR, hbc): b = μA.body. Case on hbc (what eliminates μA.body).
         match hbc with
@@ -636,14 +648,16 @@ private noncomputable def transNarrowInner
           -- trans(muR, mu) can cut on A (the annotation, strictly smaller complexity)
           exact trans_lo Γ _ A c'
             (by simp [Expr.complexity] at hcplx ⊢; omega) haA hAc'
-        | .muR _ _ _ _ _ _ =>
-          -- trans(muR, muR): self-substitution required. See SubN.lean.
-          exact sorry
+        | .muR _ _ _ _ h1 h2 =>
+          -- trans(muR, muR): self-substitution required. Discharged via SubN bridge.
+          -- Reconstruct hbc locally so its type uses fresh-only vars.
+          exact Sub.trans_via_SubN (Sub.muR _ _ _ _ haA hab_body) (Sub.muR _ _ _ _ h1 h2)
         | .muUnfoldL _ .(A) .(body) _ _hbA hunfold =>
           -- trans(muR, muUnfoldL): we have a ⊑ body[0:=a] and body[0:=μA.body] ⊑ c.
-          -- Direct composition would require body[0:=a] ⊑ body[0:=μA.body],
-          -- which depends on body's polarity. See SubN.lean.
-          exact sorry
+          -- Discharged via SubN bridge (body polarity resolves in SubN.trans).
+          exact Sub.trans_via_SubN
+            (Sub.muR _ _ _ _ haA hab_body)
+            (Sub.muUnfoldL _ _ _ _ _hbA hunfold)
     ,
     -- === NARROW_GEN at (m, n+1) ===
     fun Γ_pre Γ_suf B C a b hCB hab hBcplx hle => by
