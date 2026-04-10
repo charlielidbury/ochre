@@ -113,7 +113,7 @@ Proof.
       + reflexivity. }
 
     (** The state [join_state] is more abstract than the state at the end of the if branch. *)
-    { simpl_state. apply leq_branching_singleton.
+    { apply leq_branching_singleton. simpl_state.
       eapply prove_leq_symbolic.
       { eapply Leq_Reborrow_MutBorrow_Abs
           with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive)
@@ -156,7 +156,7 @@ Proof.
       + reflexivity. }
 
     (** The state [join_state] is more abstract than the state at the end of the else branch. *)
-    { simpl_state. apply leq_branching_singleton.
+    { apply leq_branching_singleton. simpl_state.
       eapply prove_leq_symbolic.
       { eapply Leq_Reborrow_MutBorrow_Abs
           with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive)
