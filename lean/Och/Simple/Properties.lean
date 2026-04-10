@@ -571,6 +571,32 @@ theorem Ctx.get?_narrow_gt {Γ_pre Γ_suf : Ctx} {B : Expr} (C : Expr) {x : Nat}
   simp only [Ctx.get?] at hget ⊢
   rw [← List.get?_narrow_gt_raw (B := B) (C := C) hx]; exact hget
 
+-- ============================================================
+-- Lambda inversion (useful for trans of BetaR-App case)
+-- ============================================================
+
+/-- Lambda inversion: if `Γ ⊢ λA.b₁ ⊑ λB.b₂` then `Γ ⊢ B ⊑ A` and `B :: Γ ⊢ b₁ ⊑ b₂`.
+    Only [Refl] and [Lam] can produce a `Sub` with both sides lambda literals —
+    all other rules require different shapes on LHS or RHS. -/
+noncomputable def Sub.lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
+    (h : Sub Γ (.lam A b₁) (.lam B b₂))
+    : Sub Γ B A × Sub (B :: Γ) b₁ b₂ := by
+  generalize hla : (Expr.lam A b₁) = la at h
+  generalize hlb : (Expr.lam B b₂) = lb at h
+  match h with
+  | .refl _ _ =>
+    -- la = lb, i.e. lam A b₁ = lam B b₂, so A = B and b₁ = b₂
+    have heq : Expr.lam A b₁ = Expr.lam B b₂ := hla.trans hlb.symm
+    injection heq with hA hb
+    subst hA; subst hb
+    exact ⟨Sub.refl _ _, Sub.refl _ _⟩
+  | .lam _ A' B' b₁' b₂' hBA hbody =>
+    -- lam A' b₁' = lam A b₁ and lam B' b₂' = lam B b₂
+    injection hla with hA1 hb1
+    injection hlb with hA2 hb2
+    subst hA1; subst hb1; subst hA2; subst hb2
+    exact ⟨hBA, hbody⟩
+
 private noncomputable def transNarrowInner
     {m : Nat}
     (trans_lo : ∀ (Γ : Ctx) (a b c : Expr), b.complexity < m →
@@ -665,21 +691,29 @@ private noncomputable def transNarrowInner
           -- hfD' : Sub Γ (λD.body) (λD'.R'), haD' : arg ⊑ D', hR'c : R'[arg] ⊑ c
           -- habody : a ⊑ body[arg]. We need Sub Γ a c.
           --
-          -- Path: a ⊑ body[arg] ⊑ R'[arg] ⊑ c (via subst_lemma + hR'c).
-          -- The middle step requires subst_lemma on hbody (inverted from hfD')
-          -- applied to haD', giving body[arg] ⊑ R'[arg].
+          -- Invert hfD' via Sub.lam_inv to obtain:
+          --   hdom : Sub Γ D' D
+          --   hbody_r : Sub (D' :: Γ) body R'
+          -- then compose along: a ⊑ body[arg] ⊑ R'[arg] ⊑ c.
           --
-          -- The problem: neither the cut formula body[arg] nor R'[arg] has
-          -- bounded complexity w.r.t. the original cut b = (λD.body) arg,
-          -- because `body.subst 0 arg` can duplicate arg (when var 0 appears
-          -- multiple times in body). The lex measure (cut complexity, size)
-          -- does not strictly decrease, so we cannot recurse via trans_n or
-          -- trans_lo.
+          -- The middle step `body[arg] ⊑ R'[arg]` comes from Sub.subst_lemma
+          -- applied to hbody_r with haD'. But subst_lemma is defined AFTER
+          -- Sub.trans and uses it internally, so invoking it here creates a
+          -- circular dependency that cannot be resolved inside transNarrowInner.
           --
-          -- A full fix requires restructuring the induction (e.g., adding
-          -- beta-redex count to the measure, or mutually recursing with
-          -- subst_lemma). This is deferred — the sound checker and the
-          -- other trans cases already enable the key use cases.
+          -- Furthermore, even with a mutual definition, the lex measure
+          -- (cut complexity, derivation size) does not strictly decrease:
+          --   body[arg].complexity = body.complexity + k·arg.complexity
+          -- where k = number of var-0 occurrences in body (at depth 0). For
+          -- k ≥ 2 (e.g. body = var 0 · var 0), body[arg] can be arbitrarily
+          -- more complex than the original cut ((λD.body) arg).
+          --
+          -- The `Sub.lam_inv` lemma above is the structural building block
+          -- this case needs; the remaining obstacle is the measure itself.
+          -- See docs/research-graveyard.md §1-2 for the underlying "principal
+          -- type" issue that makes this genuinely hard — a full fix likely
+          -- requires either a semantic (logical relations) argument or
+          -- replacing [App]'s existential (D, R) with canonical synthesis.
           sorry
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
