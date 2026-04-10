@@ -128,21 +128,260 @@ theorem soundness
 -- evidence that the approach is viable.
 -- ============================================================
 
-/-- Fuel monotonicity of `subCheck` (statement only, full proof deferred).
-    Intuitively, giving the checker more fuel never turns a `true` into a
-    `false`. Needed for the (∃ fuel, …) existentials to compose. -/
+-- ============================================================
+-- Joint fuel monotonicity: synth, check, subCheck, subCheckApp, subCheckMuL
+--
+-- These five functions are defined by mutual well-founded recursion on
+-- `fuel`. Proving monotonicity of any one of them individually does not
+-- work, because `subCheckApp`/`subCheckMuL` recurse into `subCheck` and
+-- `synth` at the SAME fuel (they don't decrement); that is the reason the
+-- monotonicity proof is packaged as a single joint statement.
+--
+-- `mono_step n` says: each of the five functions takes any successful
+-- answer at fuel `n` to the same answer at fuel `n + 1`. The proof is by
+-- induction on `n`. Within the successor case we must order the sub-
+-- lemmas so that later ones can invoke earlier ones at the **current**
+-- level (`n + 1 → n + 2`), not just the IH (`n → n + 1`):
+--
+--   1. `subCheck`  — needs only IH.
+--   2. `synth`     — needs only IH.
+--   3. `check`     — trivially from IH's `subCheck`.
+--   4. `subCheckApp` — calls `synth`/`subCheck` at the same fuel, so
+--                     needs the just-proved `synth`/`subCheck` mono at
+--                     level n + 1 → n + 2 (not IH).
+--   5. `subCheckMuL` — calls `subCheck` at the same fuel, so likewise
+--                     needs the just-proved level n + 1 → n + 2 mono.
+-- ============================================================
+
+/-- Joint monotonicity step: all five mutually-recursive functions turn a
+    success at fuel `n` into the same success at fuel `n + 1`. -/
+private structure MonoState (n : Nat) : Prop where
+  sub : ∀ seen Γ a b, subCheck n seen Γ a b = true → subCheck (n+1) seen Γ a b = true
+  syn : ∀ Γ e t, synth n Γ e = some t → synth (n+1) Γ e = some t
+  chk : ∀ Γ e τ, check n Γ e τ = true → check (n+1) Γ e τ = true
+  app : ∀ seen Γ f a b, subCheckApp n seen Γ f a b = true → subCheckApp (n+1) seen Γ f a b = true
+  muL : ∀ seen Γ A bd b, subCheckMuL n seen Γ A bd b = true → subCheckMuL (n+1) seen Γ A bd b = true
+
+/-- At fuel 0, `subCheckApp` always returns `false` because every branch
+    eventually calls `subCheck 0 = false` or looks at `synth 0 = none`. -/
+private theorem subCheckApp_zero_false (seen : List (Expr × Expr)) (Γ : Ctx) (f arg b : Expr) :
+    subCheckApp 0 seen Γ f arg b = false := by
+  unfold subCheckApp subCheckApp_tryApp subCheckApp_tryBeta
+  cases f with
+  | lam _ _ => simp [subCheck, synth]
+  | mu A bodyF => simp only [synth]; split <;> simp [subCheck]
+  | _ => simp [synth]
+
+private theorem mono_step : ∀ n, MonoState n := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    · intros seen Γ a b h
+      unfold subCheck at h; exact absurd h (by simp)
+    · intros Γ e t h
+      unfold synth at h; exact absurd h (by simp)
+    · intros Γ e τ h
+      unfold check at h; exact absurd h (by simp)
+    · intros seen Γ f arg b h
+      rw [subCheckApp_zero_false] at h
+      exact absurd h (by simp)
+    · -- At fuel 0, the only way subCheckMuL succeeds is via the
+      -- cycle-detection `seenMember` branch (the three recursive subCheck
+      -- calls all fail at fuel 0). That branch is always accessible, so
+      -- it also succeeds at fuel 1.
+      intros seen Γ A body b h
+      unfold subCheckMuL at h ⊢
+      simp only [subCheck, Bool.and_false, Bool.false_or, Bool.or_false] at h
+      cases b with
+      | mu A' body' =>
+        by_cases hs : seenMember seen (.mu A body) (.mu A' body') = true
+        · simp [hs]
+        · simp only [hs, Bool.false_eq_true, ↓reduceIte] at h
+      | _ => simp at h
+  | succ n ih =>
+    obtain ⟨P, Q, R, S, T⟩ := ih
+    -- Step 1: subCheck (n+1) → subCheck (n+2). Uses only IH.
+    have new_sub : ∀ seen Γ a b,
+        subCheck (n+1) seen Γ a b = true → subCheck (n+2) seen Γ a b = true := by
+      intros seen Γ a b h
+      unfold subCheck at h ⊢
+      by_cases hab : a = b
+      · simp [hab]
+      simp only [hab, decide_false, Bool.false_eq_true, ↓reduceIte] at h ⊢
+      split at h
+      · exact h
+      · rw [Bool.and_eq_true] at h ⊢
+        exact ⟨P _ _ _ _ h.1, P _ _ _ _ h.2⟩
+      · split at h
+        · exact T _ _ _ _ _ h
+        · split at h
+          · rename_i hs; simp [hs]
+          · rename_i hs; simp only [hs, Bool.false_eq_true, ↓reduceIte]
+            rw [Bool.and_eq_true] at h ⊢
+            exact ⟨P _ _ _ _ h.1, P _ _ _ _ h.2⟩
+      · split at h
+        · split at h
+          · exact P _ _ _ _ h
+          · exact absurd h (by simp)
+        · split at h
+          · rw [Bool.and_eq_true] at h ⊢
+            exact ⟨P _ _ _ _ h.1, P _ _ _ _ h.2⟩
+          · exact absurd h (by simp)
+        · exact S _ _ _ _ _ h
+        · rw [Bool.and_eq_true] at h ⊢
+          exact ⟨P _ _ _ _ h.1, P _ _ _ _ h.2⟩
+        · exact T _ _ _ _ _ h
+        · exact absurd h (by simp)
+    -- Step 2: synth (n+1) → synth (n+2). Uses only IH.
+    have new_syn : ∀ Γ e t,
+        synth (n+1) Γ e = some t → synth (n+2) Γ e = some t := by
+      intros Γ e t h
+      unfold synth at h ⊢
+      cases e with
+      | top => exact h
+      | var x => exact h
+      | lam D body =>
+        simp only at h ⊢
+        cases h1 : synth n Γ D with
+        | none => simp [h1] at h
+        | some _ =>
+          cases h2 : synth n (D :: Γ) body with
+          | none => simp [h1, h2] at h
+          | some _ =>
+            rw [Q _ _ _ h1, Q _ _ _ h2]
+            simp [h1, h2] at h
+            simp; exact h
+      | asc ee τ =>
+        simp only at h ⊢
+        cases h1 : synth n Γ τ with
+        | none => simp [h1] at h
+        | some _ =>
+          rw [Q _ _ _ h1]
+          simp [h1] at h
+          by_cases hc : check n Γ ee τ = true
+          · rw [R _ _ _ hc]; simp; simp [hc] at h; exact h
+          · simp [hc] at h
+      | app f a =>
+        simp only at h ⊢
+        cases h1 : synth n Γ f with
+        | none => simp [h1] at h
+        | some val =>
+          rw [Q _ _ _ h1]
+          simp [h1] at h
+          cases val with
+          | lam D Rs =>
+            simp only at h ⊢
+            by_cases hc : check n Γ a D = true
+            · rw [R _ _ _ hc]; simp; simp [hc] at h; exact h
+            · simp [hc] at h
+          | _ => exact absurd h (by simp)
+      | mu A body =>
+        simp only at h ⊢
+        cases h1 : synth n Γ A with
+        | none => simp [h1] at h
+        | some _ =>
+          rw [Q _ _ _ h1]
+          simp [h1] at h
+          by_cases hc : check n (A :: Γ) body (A.shift 0 1) = true
+          · rw [R _ _ _ hc]; simp; simp [hc] at h; exact h
+          · simp [hc] at h
+    -- Step 3: check is trivially subCheck one fuel below.
+    have new_chk : ∀ Γ e τ,
+        check (n+1) Γ e τ = true → check (n+2) Γ e τ = true := by
+      intros Γ e τ h
+      unfold check at h ⊢
+      exact P _ _ _ _ h
+    -- Step 4: subCheckApp uses new_syn/new_sub (SAME level).
+    have new_app : ∀ seen Γ f a b,
+        subCheckApp (n+1) seen Γ f a b = true →
+        subCheckApp (n+2) seen Γ f a b = true := by
+      intros seen Γ f arg b h
+      unfold subCheckApp at h ⊢
+      rw [Bool.or_eq_true] at h ⊢
+      cases h with
+      | inl h =>
+        left
+        unfold subCheckApp_tryApp at h ⊢
+        cases h1 : synth (n+1) Γ f with
+        | none => rw [h1] at h; exact absurd h (by simp)
+        | some val =>
+          rw [h1] at h; rw [new_syn _ _ _ h1]
+          cases val with
+          | lam D Rs =>
+            simp only at h ⊢
+            rw [Bool.and_eq_true, Bool.and_eq_true] at h ⊢
+            exact ⟨⟨new_sub _ _ _ _ h.1.1, new_sub _ _ _ _ h.1.2⟩, new_sub _ _ _ _ h.2⟩
+          | _ => exact absurd h (by simp)
+      | inr h =>
+        right
+        unfold subCheckApp_tryBeta at h ⊢
+        cases f with
+        | lam _ body => exact new_sub _ _ _ _ h
+        | mu A bodyF =>
+          simp only at h ⊢
+          split at h
+          · exact new_sub _ _ _ _ h
+          · exact new_sub _ _ _ _ h
+        | _ => exact absurd h (by simp)
+    -- Step 5: subCheckMuL uses new_sub (SAME level).
+    have new_muL : ∀ seen Γ A bd b,
+        subCheckMuL (n+1) seen Γ A bd b = true →
+        subCheckMuL (n+2) seen Γ A bd b = true := by
+      intros seen Γ A body b h
+      unfold subCheckMuL at h ⊢
+      rw [Bool.or_eq_true, Bool.or_eq_true] at h ⊢
+      cases h with
+      | inl h =>
+        cases h with
+        | inl h =>
+          left; left
+          rw [Bool.and_eq_true] at h ⊢
+          exact ⟨new_sub _ _ _ _ h.1, new_sub _ _ _ _ h.2⟩
+        | inr h =>
+          left; right
+          exact new_sub _ _ _ _ h
+      | inr h =>
+        right
+        split at h
+        · rename_i A' body'
+          by_cases hs : seenMember seen (.mu A body) (.mu A' body') = true
+          · simp [hs]
+          · simp only [hs, Bool.false_eq_true, ↓reduceIte] at h
+            simp only [hs, Bool.false_eq_true, ↓reduceIte]
+            rw [Bool.and_eq_true] at h ⊢
+            exact ⟨new_sub _ _ _ _ h.1, new_sub _ _ _ _ h.2⟩
+        · exact absurd h (by simp)
+    exact ⟨new_sub, new_syn, new_chk, new_app, new_muL⟩
+
+/-- Fuel monotonicity of `subCheck`. Giving the checker more fuel never
+    turns a `true` into a `false`. Proved by iterating the single-step
+    monotonicity `mono_step`. -/
 theorem subCheck_mono_fuel
     (fuel fuel' : Nat) (seen : List (Expr × Expr)) (Γ : Ctx) (a b : Expr)
     (h : subCheck fuel seen Γ a b = true) (hle : fuel ≤ fuel') :
     subCheck fuel' seen Γ a b = true := by
-  sorry
+  induction hle with
+  | refl => exact h
+  | step _ ih => exact (mono_step _).sub _ _ _ _ ih
 
 /-- Fuel monotonicity of `check`. -/
 theorem check_mono_fuel
     (fuel fuel' : Nat) (Γ : Ctx) (e τ : Expr)
     (h : check fuel Γ e τ = true) (hle : fuel ≤ fuel') :
     check fuel' Γ e τ = true := by
-  sorry
+  induction hle with
+  | refl => exact h
+  | step _ ih => exact (mono_step _).chk _ _ _ ih
+
+/-- Fuel monotonicity of `synth`. -/
+theorem synth_mono_fuel
+    (fuel fuel' : Nat) (Γ : Ctx) (e t : Expr)
+    (h : synth fuel Γ e = some t) (hle : fuel ≤ fuel') :
+    synth fuel' Γ e = some t := by
+  induction hle with
+  | refl => exact h
+  | step _ ih => exact (mono_step _).syn _ _ _ ih
 
 /-- **Easy case: [Refl]-like.** `check` at fuel 2 accepts any reflexive
     pair in the empty context.

@@ -96,29 +96,36 @@ mutual
     | 0 => false
     | fuel + 1 => subCheck fuel [] Γ e τ
 
+  /-- [App] helper strategy A: synth-then-apply. Factored out so the
+      equation compiler can generate an unfold theorem (a single match
+      inside `subCheckApp` that inspected both `synth fuel Γ f` and `f`
+      causes overlap that blocks codegen). -/
+  def subCheckApp_tryApp (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx)
+      (f arg b : Expr) : Bool :=
+    match synth fuel Γ f with
+    | some (.lam D R) =>
+      subCheck fuel seen Γ f (.lam D R) &&
+      subCheck fuel seen Γ arg D &&
+      subCheck fuel seen Γ (R.subst 0 arg) b
+    | _ => false
+
+  /-- [App] helper strategy B: beta-reduce the head (unfold μ or substitute λ). -/
+  def subCheckApp_tryBeta (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx)
+      (f arg b : Expr) : Bool :=
+    match f with
+    | .lam _ body => subCheck fuel seen Γ (body.subst 0 arg) b
+    | .mu A bodyF =>
+      let unfolded := bodyF.subst 0 (.mu A bodyF)
+      match unfolded with
+      | .lam _ body => subCheck fuel seen Γ (body.subst 0 arg) b
+      | _ => subCheck fuel seen Γ (.app unfolded arg) b
+    | _ => false
+
   /-- [App] rule helper: LHS is `.app f arg`. Tries (A) synth-then-apply
       and (B) beta-reduction of the head. -/
   def subCheckApp (fuel : Nat) (seen : List (Expr × Expr)) (Γ : Ctx)
       (f arg b : Expr) : Bool :=
-    -- Strategy A: synth the head, then apply [App] directly.
-    let tryApp : Bool :=
-      match synth fuel Γ f with
-      | some (.lam D R) =>
-        subCheck fuel seen Γ f (.lam D R) &&
-        subCheck fuel seen Γ arg D &&
-        subCheck fuel seen Γ (R.subst 0 arg) b
-      | _ => false
-    -- Strategy B: beta-reduce the head (unfold μ or substitute λ).
-    let tryBeta : Bool :=
-      match f with
-      | .lam _ body => subCheck fuel seen Γ (body.subst 0 arg) b
-      | .mu A bodyF =>
-        let unfolded := bodyF.subst 0 (.mu A bodyF)
-        match unfolded with
-        | .lam _ body => subCheck fuel seen Γ (body.subst 0 arg) b
-        | _ => subCheck fuel seen Γ (.app unfolded arg) b
-      | _ => false
-    tryApp || tryBeta
+    subCheckApp_tryApp fuel seen Γ f arg b || subCheckApp_tryBeta fuel seen Γ f arg b
 
   /-- [Mu-L] rule helper: LHS is `.mu A body`. Tries (1) annotation,
       (2) unfolding, and (3) — when RHS is also a μ — muR with cycle
