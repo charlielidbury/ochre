@@ -2,6 +2,42 @@
 
 Questions for the user when they're back. In the meantime, agents proceed with best judgment.
 
+## Q5 (CRITICAL): How to handle the "principal type" obstruction?
+
+**Status:** Multiple agents have confirmed this is a fundamental wall. ANY rule
+that puts a substituted term on the RHS of subtyping (BetaR, AppR, Mu-R, IotaR)
+breaks the cut-formula transitivity proof. The substituted body's complexity can
+be arbitrarily larger than the original cut formula because var-0 can appear
+multiple times in body, duplicating arg.
+
+**The two architectural options:**
+
+**Option A: Canonical synthesis for [App]**
+Replace the existential `(D, R)` in [App] with a deterministic `principal(f)`
+function that returns f's CANONICAL function type. For literal lambdas, this is
+trivial: `principal(λD.body) = (D, body)`. For variables, look up Γ. For
+applications, recurse.
+
+The idea: with no existential, transitivity composes deterministically. The
+"different paths pick different witnesses" problem disappears.
+
+**Cost:** Requires re-proving everything for the new [App] rule. The principal
+type might not exist for some terms (e.g., applications of variables of type ⊤).
+Need to handle the partial case carefully.
+
+**Option B: Semantic proof via logical relations**
+Define a Kripke model where types are interpreted as sets of values, and prove
+soundness via the semantic interpretation. Avoid the syntactic cut-elimination
+proof entirely.
+
+**Cost:** Substantial Lean machinery. Step-indexing or coinductive types needed
+for self-types.
+
+**Default decision (no user input):** Try Option A first because it's more
+incremental. If it doesn't work, fall back to Option B.
+
+
+
 ## Q1: After [BetaR] lands, should it support variable-headed apps too?
 
 [BetaR] (restricted) only fires when the function is a literal lambda. Variable-headed
