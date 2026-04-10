@@ -491,6 +491,30 @@ private noncomputable def evalPreservation_aux :
           | .asc e' t' =>
             exact nomatch (eval_produces_value hf_eval)
 
+    | betaR _ a' D body arg _harg habody =>
+      -- τ = (λD.body) arg. eval reduces it: ((λD.body) arg) → body[arg] → v_τ
+      -- habody : Sub [] e (body[arg]). Recurse via ih with smaller fuel_τ.
+      cases fuel_τ with
+      | zero => simp [eval] at hτ
+      | succ m_τ =>
+        cases m_τ with
+        | zero =>
+          -- eval 1 ((λD.body) arg): eval 0 (λD.body) = none. Fails.
+          simp [eval, bind, Option.bind] at hτ
+        | succ m_τ' =>
+          -- hτ : eval (m_τ' + 2) ((λD.body) arg) = some v_τ
+          -- = do let f' ← eval (m_τ' + 1) (λD.body)
+          --      ... f' = λD.body ... eval (m_τ' + 1) (body.subst 0 arg)
+          have hbody_eval : eval (m_τ' + 1) (body.subst 0 arg) = some v_τ := by
+            have h1 : eval (m_τ' + 1) (.lam D body) = some (.lam D body) := by
+              simp [eval]
+            show eval (m_τ' + 1) (body.subst 0 arg) = some v_τ
+            have : eval (m_τ' + 1 + 1) (.app (.lam D body) arg) = some v_τ := hτ
+            rw [show m_τ' + 1 + 1 = (m_τ' + 1) + 1 from rfl] at this
+            simp only [eval, bind, Option.bind, h1] at this
+            exact this
+          exact ih _ _ habody fuel (m_τ' + 1) _ _ (by omega) he hbody_eval
+
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/
 noncomputable def evalPreservation

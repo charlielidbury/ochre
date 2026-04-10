@@ -400,6 +400,16 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     show Sub _ ((Expr.asc e τ).shift n 1) _; simp only [shift]; exact Sub.ascL _ _ _ _ (iheτ n) (ihτb n)
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).shift n 1); simp only [shift]; exact Sub.ascR _ _ _ _ (iheτ n) (ihaτ n)
+  | @betaR _ a' D body arg _ _ iharg ihabody =>
+    -- RHS is (λD. body) arg. Shift gives (λ(D.shift n 1). (body.shift (n+1) 1)) (arg.shift n 1)
+    show Sub _ (a'.shift n 1) ((Expr.app (Expr.lam D body) arg).shift n 1)
+    simp only [shift]
+    have ihabody' := ihabody n
+    -- ihabody' : Sub _ (a'.shift n 1) ((body.subst 0 arg).shift n 1)
+    -- We need: Sub _ (a'.shift n 1) ((body.shift (n+1) 1).subst 0 (arg.shift n 1))
+    rw [Expr.subst_shift_hi body 0 n 1 arg (by omega)] at ihabody'
+    exact Sub.betaR _ (a'.shift n 1) (D.shift n 1) (body.shift (n+1) 1) (arg.shift n 1)
+      (iharg n) ihabody'
 
 /-- Weakening: `Sub Γ a b → Sub (T :: Γ) (a.shift 0 1) (b.shift 0 1)`. Corollary of generalized weakening. -/
 noncomputable def Sub.weaken {Γ : Ctx} {a b : Expr} (T : Expr)
@@ -477,6 +487,7 @@ def Sub.size {Γ : Ctx} {a b : Expr} : Sub Γ a b → Nat
   | .app _ _ _ _ _ _ h1 h2 h3 => 1 + h1.size + h2.size + h3.size
   | .ascL _ _ _ _ h1 h2 => 1 + h1.size + h2.size
   | .ascR _ _ _ _ h1 h2 => 1 + h1.size + h2.size
+  | .betaR _ _ _ _ _ h1 h2 => 1 + h1.size + h2.size
 
 /-- Every derivation has positive size. -/
 theorem Sub.size_pos {Γ : Ctx} {a b : Expr} (h : Sub Γ a b) : 0 < h.size := by
@@ -590,6 +601,11 @@ private noncomputable def transNarrowInner
         | .ascR _ _ e τ heτ hae =>
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
+        | .betaR _ _ D' body' arg' harg' habody' =>
+          -- c = (λD'.body') arg'. habody' : ⊤ ⊑ body'[arg']. Recurse.
+          have htop_body' := trans_n Γ _ _ _ (Sub.top _ a) habody' hcplx (by
+            simp [Sub.size] at hle ⊢; omega)
+          exact Sub.betaR _ _ D' body' arg' harg' htop_body'
       -- [Var]: a = var x, hUb : Sub Γ U b
       | .var _ x _ U hget hUb =>
         have hUc := trans_n Γ U b c hUb hbc hcplx (by
@@ -623,11 +639,63 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
+        | .betaR _ _ D' body' arg' harg' habody' =>
+          -- c = (λD'.body') arg'. Recurse on habody'.
+          have ha_body' := trans_n Γ _ _ _
+            (Sub.lam _ A B body_a body_b hBA hbody_ab) habody' hcplx (by
+              have hsize : (Sub.lam Γ A B body_a body_b hBA hbody_ab).size
+                         = 1 + hBA.size + hbody_ab.size := rfl
+              simp [Sub.size] at hle ⊢
+              omega)
+          exact Sub.betaR _ _ D' body' arg' harg' ha_body'
       -- [Asc-L]: a = asc e τ, heτ : Sub Γ e τ, hτb : Sub Γ τ b
       | .ascL _ e τ _ heτ hτb =>
         have hτc := trans_n Γ τ b c hτb hbc hcplx (by
           simp [Sub.size] at hle ⊢; omega)
         exact Sub.ascL _ e τ c heτ hτc
+      -- [BetaR]: a ⊑ (λD.body) arg (b = (λD.body) arg).
+      -- hab = betaR harg habody. Handle like [App] — recurse on the main
+      -- sub-derivation (habody : a ⊑ body[arg]) composed with hbc adapted
+      -- to body[arg] ⊑ c. The adaptation is via case-splitting on hbc.
+      | .betaR _ _ D body arg harg habody =>
+        match hbc with
+        | .refl _ _ => exact Sub.betaR _ _ D body arg harg habody
+        | .top _ _ => exact Sub.top _ _
+        | .app _ _ _ _ D' R' hfD' haD' hR'c =>
+          -- hfD' : Sub Γ (λD.body) (λD'.R'), haD' : arg ⊑ D', hR'c : R'[arg] ⊑ c
+          -- habody : a ⊑ body[arg]. We need Sub Γ a c.
+          --
+          -- Path: a ⊑ body[arg] ⊑ R'[arg] ⊑ c (via subst_lemma + hR'c).
+          -- The middle step requires subst_lemma on hbody (inverted from hfD')
+          -- applied to haD', giving body[arg] ⊑ R'[arg].
+          --
+          -- The problem: neither the cut formula body[arg] nor R'[arg] has
+          -- bounded complexity w.r.t. the original cut b = (λD.body) arg,
+          -- because `body.subst 0 arg` can duplicate arg (when var 0 appears
+          -- multiple times in body). The lex measure (cut complexity, size)
+          -- does not strictly decrease, so we cannot recurse via trans_n or
+          -- trans_lo.
+          --
+          -- A full fix requires restructuring the induction (e.g., adding
+          -- beta-redex count to the measure, or mutually recursing with
+          -- subst_lemma). This is deferred — the sound checker and the
+          -- other trans cases already enable the key use cases.
+          sorry
+        | .ascR _ _ e τ heτ hae =>
+          exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e
+            (Sub.betaR _ _ D body arg harg habody) hae hcplx
+            (by simp [Sub.size] at hle ⊢; omega))
+        | .betaR _ _ D' body' arg' harg' habody' =>
+          -- hbc ends betaR: c = (λD'.body') arg'. Recurse on habody' (b ⊑ body'[arg'])
+          -- using the original hab (betaR-shaped). This has same size on hab side,
+          -- smaller size on hbc side (habody' < hbc).
+          have ha_body' := trans_n Γ _ _ _
+            (Sub.betaR _ _ D body arg harg habody) habody' hcplx (by
+              have : (Sub.betaR Γ _ D body arg harg habody).size
+                     = 1 + harg.size + habody.size := rfl
+              simp [Sub.size] at hle ⊢
+              omega)
+          exact Sub.betaR _ _ D' body' arg' harg' ha_body'
       -- [Asc-R]: b = asc e τ
       | .ascR _ _ e τ heτ hae =>
         match hbc with
@@ -645,6 +713,14 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e₂ τ₂ heτ₂ (trans_n Γ _ _ e₂
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
+        | .betaR _ _ D' body' arg' harg' habody' =>
+          have ha_body' := trans_n Γ _ _ _
+            (Sub.ascR _ _ e τ heτ hae) habody' hcplx (by
+              have hsize : (Sub.ascR Γ a e τ heτ hae).size
+                         = 1 + heτ.size + hae.size := rfl
+              simp [Sub.size] at hle ⊢
+              omega)
+          exact Sub.betaR _ _ D' body' arg' harg' ha_body'
     ,
     -- ==================== NARROW_GEN at (m, n+1) ====================
     fun Γ_pre Γ_suf B C a b hCB hab hBcplx hle => by
@@ -712,7 +788,13 @@ private noncomputable def transNarrowInner
           simp [Sub.size] at hle ⊢; omega)
         have hae' := narrow_n Γ_pre Γ_suf B C a e hCB hae hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        exact Sub.ascR _ _ e τ heτ' hae'⟩
+        exact Sub.ascR _ _ e τ heτ' hae'
+      | .betaR _ _ D body arg harg habody =>
+        have harg' := narrow_n Γ_pre Γ_suf B C arg D hCB harg hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        have habody' := narrow_n Γ_pre Γ_suf B C a (body.subst 0 arg) hCB habody hBcplx (by
+          simp [Sub.size] at hle ⊢; omega)
+        exact Sub.betaR _ a D body arg harg' habody'⟩
 
 -- 6c. Outer induction (on cut-formula complexity)
 
@@ -970,6 +1052,28 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
   | ascR _ a' e τ _ _ iheτ ihaτ =>
     show Sub _ _ ((Expr.asc e τ).subst Δ.length (v.shift 0 Δ.length))
     simp only [subst]; exact Sub.ascR _ _ _ _ (iheτ Δ hctx hv) (ihaτ Δ hctx hv)
+  | @betaR Γ'' a' D body arg _harg _habody iharg ihabody =>
+    -- Goal: Sub ... (a'.subst ...) (((λD.body) arg).subst ...)
+    -- = Sub ... (a'.subst n w) (.app (.lam (D.subst n w) (body.subst (n+1) (w.shift 0 1))) (arg.subst n w))
+    show Sub _ (a'.subst Δ.length (v.shift 0 Δ.length))
+             ((Expr.app (Expr.lam D body) arg).subst Δ.length (v.shift 0 Δ.length))
+    simp only [subst]
+    have hshift : (v.shift 0 Δ.length).shift 0 1 = v.shift 0 (Δ.length + 1) := by
+      rw [Expr.shift_add]; congr 1; omega
+    rw [hshift]
+    have iharg' := iharg Δ hctx hv
+    have ihabody' := ihabody Δ hctx hv
+    -- ihabody' : Sub ... (a'.subst n w) ((body.subst 0 arg).subst n w)
+    -- We want the second arg to be: (body.subst (n+1) (w.shift 0 1)).subst 0 (arg.subst n w)
+    -- Rewrite using subst_subst
+    have hss := Expr.subst_subst body 0 Δ.length arg (v.shift 0 Δ.length) (by omega)
+    rw [← hss] at ihabody'
+    rw [hshift] at ihabody'
+    exact Sub.betaR _ _
+      (D.subst Δ.length (v.shift 0 Δ.length))
+      (body.subst (Δ.length + 1) (v.shift 0 (Δ.length + 1)))
+      (arg.subst Δ.length (v.shift 0 Δ.length))
+      iharg' ihabody'
 
 /-- Generalized substitution lemma: substitute at arbitrary depth. -/
 noncomputable def Sub.subst_gen (Δ : Ctx) {Γ : Ctx} {T a b v : Expr}

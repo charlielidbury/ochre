@@ -62,5 +62,13 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ e τ →
       Sub Γ a e →
       Sub Γ a (.asc e τ)
+  /-- [Beta-R]: `Γ ⊢ a ⊑ (λD. body) arg` if `arg ⊑ D` and `a ⊑ body[arg]`.
+      The RHS must be a *literal* lambda applied to an argument — the domain
+      `D` and `body` are syntactically determined, not existentially chosen.
+      This enables type-level beta reduction. -/
+  | betaR (Γ : Ctx) (a D body arg : Expr) :
+      Sub Γ arg D →
+      Sub Γ a (body.subst 0 arg) →
+      Sub Γ a (.app (.lam D body) arg)
 
 end Och.Simple

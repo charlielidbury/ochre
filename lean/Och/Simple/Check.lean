@@ -67,6 +67,19 @@ def subCheck (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
 /-- Post-Refl/Top dispatcher. Factored out so that the soundness proof can
     pattern-match uniformly on the shape of `a` / `b`. -/
 def subCheckStep (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
+  -- [Beta-R]: if b = (λD. body) arg, try beta-reducing the RHS first.
+  -- This enables type-level computation. If the beta-reduced check succeeds,
+  -- we're done; otherwise fall through to normal dispatch.
+  match b with
+  | .app (.lam D body) arg =>
+    if subCheck fuel Γ arg D && subCheck fuel Γ a (body.subst 0 arg) then true
+    else subCheckMain fuel Γ a (.app (.lam D body) arg)
+  | _ => subCheckMain fuel Γ a b
+
+/-- Main dispatcher (the original subCheckStep minus [BetaR]).
+    Tries rules based on `a` / `b` shape in the deterministic order
+    (AscR → AscL → Var → Lam → App). -/
+def subCheckMain (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
   match b with
   -- [Asc-R]: a ⊑ (e : τ)
   | .asc e τ => subCheck fuel Γ e τ && subCheck fuel Γ a e
@@ -189,6 +202,61 @@ noncomputable def subCheckStep_sound :
     subCheckStep fuel Γ a b = true → Sub Γ a b := by
   intro fuel Γ a b htop h
   unfold subCheckStep at h
+  -- First: if b = app (lam D body) arg, the [BetaR] branch runs first.
+  match hb_beta : b with
+  | .app (.lam D body) arg =>
+    subst hb_beta
+    simp only at h
+    by_cases hb_chk : (subCheck fuel Γ arg D && subCheck fuel Γ a (body.subst 0 arg)) = true
+    · -- [BetaR] path succeeded
+      obtain ⟨h1, h2⟩ := bool_and_split hb_chk
+      have hsarg : Sub Γ arg D := subCheck_sound fuel Γ arg D h1
+      have hsabody : Sub Γ a (body.subst 0 arg) :=
+        subCheck_sound fuel Γ a (body.subst 0 arg) h2
+      exact Sub.betaR Γ a D body arg hsarg hsabody
+    · -- [BetaR] path failed — fall through to subCheckMain
+      rw [if_neg hb_chk] at h
+      exact subCheckMain_sound fuel Γ a (.app (.lam D body) arg) (by
+        intro htop'; apply htop; exact htop') h
+  | .var x_b =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.var x_b) htop h
+  | .top =>
+    subst hb_beta
+    exfalso; apply htop; simp
+  | .lam A₂ b₂ =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.lam A₂ b₂) htop h
+  | .app (.var x) arg =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.app (.var x) arg) htop h
+  | .app (.app f1 f2) arg =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.app (.app f1 f2) arg) htop h
+  | .app (.asc e τ) arg =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.app (.asc e τ) arg) htop h
+  | .app .top arg =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.app .top arg) htop h
+  | .asc e τ =>
+    subst hb_beta
+    simp only at h
+    exact subCheckMain_sound fuel Γ a (.asc e τ) htop h
+
+/-- Soundness of `subCheckMain` — the non-BetaR dispatcher. -/
+noncomputable def subCheckMain_sound :
+    (fuel : Nat) → (Γ : Ctx) → (a b : Expr) →
+    ¬ (b == .top) = true →
+    subCheckMain fuel Γ a b = true → Sub Γ a b := by
+  intro fuel Γ a b htop h
+  unfold subCheckMain at h
   -- Case analysis: is b an asc?
   cases hb : b with
   | asc e τ =>
@@ -360,6 +428,20 @@ example : check 10 [.top] (.var 0) .top = true := by native_decide
 -- Lambda contravariance
 example : check 10 [] (.lam .top (.var 0)) (.lam (.lam .top .top) (.var 0)) = true := by
   native_decide
+
+-- [BetaR]: ⊤ ⊑ (λa:⊤. ⊤) ⊤, reduces to ⊤ ⊑ ⊤.
+example : check 10 [] .top (.app (.lam .top .top) .top) = true := by native_decide
+
+-- [BetaR]: ⊤ ⊑ (λa:⊤. a) ⊤, reduces to ⊤ ⊑ ⊤.
+example : check 10 [] .top (.app (.lam .top (.var 0)) .top) = true := by native_decide
+
+-- [BetaR]: TRUE ⊑ (λa:⊤. a) TRUE, reduces to TRUE ⊑ TRUE.
+example : check 20 [] TRUE (.app (.lam .top (.var 0)) TRUE) = true := by native_decide
+
+-- [BetaR] negative: ⊤ ⊑ (λa:⊤. λb:a. b) ⊤, reduces to ⊤ ⊑ (λ⊤. var 0).
+-- Cannot derive (⊤ is not a lambda). Should fail.
+example : check 20 [] .top
+  (.app (.lam .top (.lam (.var 0) (.var 0))) .top) = false := by native_decide
 
 end Tests
 
