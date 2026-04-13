@@ -81,35 +81,23 @@ Proof.
   eexists.
   eapply eval_seq_unit.
   (** Evaluation of the computation << x <= y >>. The result is stored in the temporary variable [cond]. *)
-  { eapply assign_no_anon; [ | apply Store_no_anon].
-    - econstructor.
-      + econstructor. eval_var. constructor. constructor. constructor.
-      + econstructor. eval_var. constructor. constructor. constructor.
-      + constructor.
-    - eval_var. constructor.
-    - compute_done.
-    - compute_done.
-    - apply store_compatible_types_nil.
+  { eapply assign_no_anon.
+    { refine (try_compute (compute_eval_rv _ _) _ _ _). reflexivity. }
+    { refine (try_compute (compute_eval_store_no_anon _ _) _ _ _). reflexivity. }
   }
-  simpl_state. eapply eval_seq_unit.
+  simpl_state.
 
   (** Evaluation of the conditional. *)
+  eapply eval_seq_unit.
   { eapply LLBC_sharp_IfThenElse_Symbolic with (B := {[rUnit := join_state]});
       [ | eapply LLBC_sharp_Weaken_Postcondition..].
-    { econstructor. eval_var. constructor. econstructor. constructor. }
+    { refine (try_compute (compute_eval_op _ _) _ _ _). reflexivity. }
 
     (** Evaluation of the if branch. *)
-    { eapply assign_no_anon; [ | apply Store_no_anon].
-      + apply Eval_mut_borrow with (l := lx).
-        * eval_var. constructor.
-        * compute_done.
-        * compute_done.
-        * compute_done.
-        * constructor.
-      + eval_var. constructor.
-      + compute_done.
-      + compute_done.
-      + apply store_compatible_types_nil. }
+    { eapply assign_no_anon.
+      { refine (try_compute (compute_borrow_mut lx _ _) _ _ _). reflexivity. }
+      { refine (try_compute (compute_eval_store_no_anon _ _) _ _ _). reflexivity. }
+    }
 
     (** The state [join_state] is more abstract than the state at the end of the if branch. *)
     { apply leq_branching_singleton. unfold branching_state. simpl_map. simpl_state.
@@ -138,19 +126,13 @@ Proof.
       reflexivity. }
 
     (** Evaluation of the else branch. *)
-    { eapply assign_no_anon; [ | apply Store_no_anon].
-      + apply Eval_mut_borrow with (l := ly).
-        * eval_var. constructor.
-        * compute_done.
-        * compute_done.
-        * compute_done.
-        * constructor.
-      + eval_var. constructor.
-      + compute_done.
-      + compute_done.
-      + apply store_compatible_types_nil. }
+    { eapply assign_no_anon.
+      { refine (try_compute (compute_borrow_mut ly _ _) _ _ _). reflexivity. }
+      { refine (try_compute (compute_eval_store_no_anon _ _) _ _ _). reflexivity. }
+    }
 
     (** The state [join_state] is more abstract than the state at the end of the else branch. *)
+    (* TODO: computation procedures for relation steps. *)
     { apply leq_branching_singleton. unfold branching_state. simpl_map. simpl_state.
       eapply prove_leq_symbolic.
       { eapply Leq_Reborrow_MutBorrow_Abs
@@ -178,23 +160,16 @@ Proof.
 
   (* Execution of the line << *z += 1 >> *)
   eapply eval_seq_unit.
-  { eapply assign_no_anon; [ | apply Store_no_anon].
-    - econstructor.
-      + eapply Eval_copy.
-        * eval_var. repeat econstructor || easy.
-        * constructor. constructor.
-      + apply Eval_IntConst.
-      + constructor.
-    - eval_var. repeat econstructor || easy.
-    - compute_done.
-    - compute_done.
-    - eapply store_compatible_types_borrow; constructor.
+  { eapply assign_no_anon.
+    { refine (try_compute (compute_eval_rv _ _) _ _ _). reflexivity. }
+    { refine (try_compute (compute_eval_store_no_anon _ _) _ _ _). reflexivity. }
   }
   simpl_state.
 
   (** In order to access the variable << x >>, we must perform reorganizations in order to end the loan [lx.] *)
   eapply LLBC_sharp_E_Reorg.
   { etransitivity.
+    (* TODO: computation procedures for reorganization steps. *)
     (** Ending the loan [lz] ... *)
     { constructor.
       eapply Reorg_end_borrow_m_in_abstraction
@@ -232,13 +207,7 @@ Proof.
   simpl_state.
 
   (** Execution of the line << x += 2 >> *)
-  eapply assign_no_anon; [ | apply Store_no_anon].
-  - econstructor.
-    + eapply Eval_copy; [eval_var | ]; constructor. constructor.
-    + constructor.
-    + constructor.
-  - eval_var. constructor.
-  - compute_done.
-  - compute_done.
-  - apply store_compatible_types_nil.
+  eapply assign_no_anon.
+  { refine (try_compute (compute_eval_rv _ _) _ _ _). reflexivity. }
+  { refine (try_compute (compute_eval_store_no_anon _ _) _ _ _). reflexivity. }
 Qed.
