@@ -5,7 +5,6 @@ From stdpp Require Import decidable pmap.
 Require Import base PathToSubtree SimulationUtils lang.
 Require Import LLBC_sharp_states LLBC_sharp_relations LLBC_sharp_semantics LLBC_sharp_exec_utils.
 
-
 Open Scope option_monad_scope.
 (** The program we execute is:
 <<
@@ -113,7 +112,7 @@ Proof.
       + reflexivity. }
 
     (** The state [join_state] is more abstract than the state at the end of the if branch. *)
-    { apply leq_branching_singleton. simpl_state.
+    { apply leq_branching_singleton. unfold branching_state. simpl_map. simpl_state.
       eapply prove_leq_symbolic.
       { eapply Leq_Reborrow_MutBorrow_Abs
           with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive)
@@ -156,7 +155,7 @@ Proof.
       + reflexivity. }
 
     (** The state [join_state] is more abstract than the state at the end of the else branch. *)
-    { apply leq_branching_singleton. simpl_state.
+    { apply leq_branching_singleton. unfold branching_state. simpl_map. simpl_state.
       eapply prove_leq_symbolic.
       { eapply Leq_Reborrow_MutBorrow_Abs
           with (sp := (encode_var z, [])) (l1 := lz) (i := 1%positive)

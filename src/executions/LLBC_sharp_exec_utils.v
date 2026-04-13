@@ -106,11 +106,16 @@ Proof.
   - exact eval_stmt_r.
 Qed.
 
-Lemma leq_branching_singleton r Sl Sr :
-  leq_symbolic Sl Sr -> leq_branching {[r := Sl]} {[r := Sr]}.
+Lemma leq_branching_singleton S r B :
+  match lookup r B with
+  | Some Sr => leq_symbolic S Sr
+  | None => False
+  end ->
+  leq_branching {[r := S]} B.
 Proof.
-  intros ? r'. destruct (decide (r' = r)) as [-> | ].
-  - simpl_map. constructor; assumption.
+  intros H. destruct (lookup r B) as [Sr | ] eqn:get_Sr; [ | contradiction].
+  intros r'. destruct (decide (r = r')) as [<- | ].
+  - simpl_map. constructor. assumption.
   - unfold branching_state. simpl_map. constructor.
 Qed.
 
