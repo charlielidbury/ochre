@@ -81,15 +81,15 @@ Proof.
   eexists.
   eapply eval_seq_unit.
   (** Evaluation of the computation << x <= y >>. The result is stored in the temporary variable [cond]. *)
-  { eapply LLBC_sharp_E_Assign; [ | apply Store with (a := 1%positive)].
+  { eapply assign_no_anon; [ | apply Store_no_anon].
     - econstructor.
       + econstructor. eval_var. constructor. constructor. constructor.
       + econstructor. eval_var. constructor. constructor. constructor.
       + constructor.
     - eval_var. constructor.
-    - apply decide_not_contains_outer_loan_correct. reflexivity.
+    - compute_done.
+    - compute_done.
     - apply store_compatible_types_nil.
-    - reflexivity.
   }
   simpl_state. eapply eval_seq_unit.
 
@@ -99,7 +99,7 @@ Proof.
     { econstructor. eval_var. constructor. econstructor. constructor. }
 
     (** Evaluation of the if branch. *)
-    { eapply LLBC_sharp_E_Assign; [ | apply Store with (a := 2%positive)].
+    { eapply assign_no_anon; [ | apply Store_no_anon].
       + apply Eval_mut_borrow with (l := lx).
         * eval_var. constructor.
         * compute_done.
@@ -107,9 +107,9 @@ Proof.
         * compute_done.
         * constructor.
       + eval_var. constructor.
-      + apply decide_not_contains_outer_loan_correct. constructor.
-      + apply store_compatible_types_nil.
-      + reflexivity. }
+      + compute_done.
+      + compute_done.
+      + apply store_compatible_types_nil. }
 
     (** The state [join_state] is more abstract than the state at the end of the if branch. *)
     { apply leq_branching_singleton. unfold branching_state. simpl_map. simpl_state.
@@ -135,14 +135,10 @@ Proof.
       eapply prove_leq_symbolic; [constructor | ].
       { eapply Leq_ToSymbolic with (sp := (encode_var z, [0])). constructor. all: compute_done. }
       simpl_state.
-      eapply prove_leq_symbolic; [constructor | ].
-      { remove_anon 1%positive. apply Leq_RemoveAnon. all: compute_done. }
-      eapply prove_leq_symbolic; [constructor | ].
-      { remove_anon 2%positive. apply Leq_RemoveAnon. all: compute_done. }
       reflexivity. }
 
     (** Evaluation of the else branch. *)
-    { eapply LLBC_sharp_E_Assign; [ | apply Store with (a := 2%positive)].
+    { eapply assign_no_anon; [ | apply Store_no_anon].
       + apply Eval_mut_borrow with (l := ly).
         * eval_var. constructor.
         * compute_done.
@@ -150,9 +146,9 @@ Proof.
         * compute_done.
         * constructor.
       + eval_var. constructor.
-      + apply decide_not_contains_outer_loan_correct. constructor.
-      + apply store_compatible_types_nil.
-      + reflexivity. }
+      + compute_done.
+      + compute_done.
+      + apply store_compatible_types_nil. }
 
     (** The state [join_state] is more abstract than the state at the end of the else branch. *)
     { apply leq_branching_singleton. unfold branching_state. simpl_map. simpl_state.
@@ -177,18 +173,12 @@ Proof.
       simpl_state.
       eapply prove_leq_symbolic; [constructor | ].
       { eapply Leq_ToSymbolic with (sp := (encode_var z, [0])); [constructor | compute_done..]. }
-      simpl_state.
-      eapply prove_leq_symbolic; [constructor | ].
-      { remove_anon 1%positive. apply Leq_RemoveAnon. all: compute_done. }
-      simpl_state.
-      eapply prove_leq_symbolic; [constructor | ].
-      { remove_anon 2%positive. apply Leq_RemoveAnon. all: compute_done. }
       reflexivity. }
   }
 
   (* Execution of the line << *z += 1 >> *)
   eapply eval_seq_unit.
-  { eapply LLBC_sharp_E_Assign; [ | apply Store with (a := 1%positive)].
+  { eapply assign_no_anon; [ | apply Store_no_anon].
     - econstructor.
       + eapply Eval_copy.
         * eval_var. repeat econstructor || easy.
@@ -196,9 +186,9 @@ Proof.
       + apply Eval_IntConst.
       + constructor.
     - eval_var. repeat econstructor || easy.
-    - cbn. apply decide_not_contains_outer_loan_correct. reflexivity.
+    - compute_done.
+    - compute_done.
     - eapply store_compatible_types_borrow; constructor.
-    - reflexivity.
   }
   simpl_state.
 
@@ -242,13 +232,13 @@ Proof.
   simpl_state.
 
   (** Execution of the line << x += 2 >> *)
-  eapply LLBC_sharp_E_Assign; [ | apply Store with (a := 5%positive)].
+  eapply assign_no_anon; [ | apply Store_no_anon].
   - econstructor.
     + eapply Eval_copy; [eval_var | ]; constructor. constructor.
     + constructor.
     + constructor.
   - eval_var. constructor.
-  - apply decide_not_contains_outer_loan_correct. reflexivity.
+  - compute_done.
+  - compute_done.
   - apply store_compatible_types_nil.
-  - reflexivity.
 Qed.

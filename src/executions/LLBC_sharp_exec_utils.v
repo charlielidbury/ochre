@@ -93,6 +93,7 @@ Proof.
   exists ty. split; assumption.
 Qed.
 
+(** * Derived rules and helping lemmas. *)
 Lemma eval_seq_unit S0 S1 B2 stmt_l stmt_r
   (eval_stmt_l : S0 |-# stmt_l ~> {[rUnit := S1]})
   (eval_stmt_r : S1 |-# stmt_r ~> B2) :
@@ -117,6 +118,33 @@ Proof.
   intros r'. destruct (decide (r = r')) as [<- | ].
   - simpl_map. constructor. assumption.
   - unfold branching_state. simpl_map. constructor.
+Qed.
+
+Variant store_no_anon (p : place) : LLBC_sharp_val * LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+| Store_no_anon v S (sp : spath)
+    (eval_p : S |-{p} p =>^{Mut} sp)
+    (no_loan : not_contains_loan (S.[sp]))
+    (no_borrow : not_contains_borrow (S.[sp]))
+    (Hstore_type : store_compatible_types S sp v) :
+    store_no_anon p (v, S) (S.[sp <- v])
+.
+
+Lemma assign_no_anon S vS' S'' p rv
+  (eval_rv : S |-{rv} rv => vS') (Hstore : store_no_anon p vS' S'') :
+  S |-# ASSIGN p <- rv ~> {[rUnit := S'']}.
+Proof.
+  destruct Hstore as [? S']. destruct (exists_fresh_anon S') as (a & fresh_a).
+  eapply LLBC_sharp_Weaken_Postcondition.
+  { eapply LLBC_sharp_E_Assign.
+    - exact eval_rv.
+    - apply Store with (a := a).
+      + exact eval_p.
+      + not_contains_outer.
+      + exact Hstore_type.
+      + exact fresh_a. }
+  { apply leq_branching_singleton. simpl_map.
+    eapply prove_leq_symbolic; [ | reflexivity]. constructor.
+    apply Leq_RemoveAnon; auto with spath. }
 Qed.
 
 (** * Pretty-printing of states. *)
