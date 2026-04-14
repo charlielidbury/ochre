@@ -27,21 +27,8 @@ Proof.
   - exact eval_stmt_l.
   - reflexivity.
   - (* TODO: lemma? *)
-    intros r. unfold branching_state. rewrite delete_singleton, lookup_empty. constructor.
+    intros r. unfold branching_state. rewrite delete_singleton_eq, lookup_empty. constructor.
   - exact eval_stmt_r.
-Qed.
-
-Lemma leq_branching_singleton S r B :
-  match lookup r B with
-  | Some Sr => leq_symbolic S Sr
-  | None => False
-  end ->
-  leq_branching {[r := S]} B.
-Proof.
-  intros H. destruct (lookup r B) as [Sr | ] eqn:get_Sr; [ | contradiction].
-  intros r'. destruct (decide (r = r')) as [<- | ].
-  - simpl_map. constructor. assumption.
-  - unfold branching_state. simpl_map. constructor.
 Qed.
 
 Variant store_no_anon (p : place) : LLBC_sharp_val * LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
@@ -66,7 +53,7 @@ Proof.
       + not_contains_outer.
       + exact Hstore_type.
       + exact fresh_a. }
-  { apply leq_branching_singleton. simpl_map.
+  { apply leq_singleton. simpl_map.
     eapply prove_leq_symbolic; [ | reflexivity]. constructor.
     apply Leq_RemoveAnon; auto with spath. }
 Qed.

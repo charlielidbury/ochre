@@ -247,7 +247,7 @@ Section Map_sum.
   Proof. intros. unfold map_sum. rewrite map_fold_insert_L; [reflexivity | lia | assumption]. Qed.
 
   Corollary map_sum_delete m k x : lookup k m = Some x -> map_sum m = weight x + map_sum (delete k m).
-  Proof. intros G%insert_delete. rewrite<- G at 1. apply map_sum_insert, lookup_delete. Qed.
+  Proof. intros G%insert_delete_id. rewrite<- G at 1. apply map_sum_insert, lookup_delete_eq. Qed.
 
   Lemma map_sum_non_zero m : map_sum m > 0 -> exists k x, lookup k m = Some x /\ weight x > 0.
   Proof.
@@ -255,7 +255,7 @@ Section Map_sum.
     - rewrite map_fold_empty. lia.
     - rewrite map_sum_insert by assumption. destruct (weight x) eqn:?.
       + intros (k' & y & ? & ?)%IHm. exists k', y. rewrite lookup_insert_ne by congruence. auto.
-      + eexists k, _. rewrite lookup_insert. split; [reflexivity | lia].
+      + eexists k, _. rewrite lookup_insert_eq. split; [reflexivity | lia].
   Qed.
 
   Corollary map_sum_zero m : (forall k x, lookup k m = Some x -> weight x = 0) -> map_sum m = 0.
@@ -270,10 +270,10 @@ Section Map_sum.
     forall i j x y, lookup i m = Some x -> lookup j m = Some y -> weight x > 0 -> weight y > 0 -> i = j.
   Proof.
     intros sum_one i j. destruct (decide (i = j)); [auto | ].
-    intros ? ? delete_i%insert_delete. rewrite <-delete_i in *.
-    rewrite lookup_insert_ne by assumption. intros delete_j%insert_delete.
+    intros ? ? delete_i%insert_delete_id. rewrite <-delete_i in *.
+    rewrite lookup_insert_ne by assumption. intros delete_j%insert_delete_id.
     rewrite <-delete_j, !map_sum_insert in sum_one
-     by (rewrite ?lookup_insert_ne, ?lookup_delete_ne by auto; apply lookup_delete).
+     by (rewrite ?lookup_insert_ne, ?lookup_delete_ne by auto; apply lookup_delete_eq).
     lia.
   Qed.
 
@@ -335,15 +335,7 @@ Proof.
     simplify_option.
 Qed.
 
-(* TODO: move in std++. *)
-(* TODO: upgrade std++ and replace with [alter_id']. *)
-Lemma map_alter_not_in_domain `{FinMap K M} `(m : M V) k f :
-  lookup k m = None -> alter f k m = m.
-Proof.
-  intros ?. apply map_eq. intros k'.
-  destruct (decide (k = k')) as [<- | ]; simplify_map_eq; reflexivity.
-Qed.
-
+(* TODO: when std++ 1.14 is released, remove this lemma. *)
 Lemma size_kmap `{FinMap K1 M1} `{FinMap K2 M2} {A} f (m : M1 A) :
   Inj eq eq f -> size (kmap (M2 := M2) f m) = size m.
 Proof.
@@ -467,7 +459,7 @@ Section SumMaps.
     delete (encode_inr k) (sum_maps m0 m1) = sum_maps m0 (delete k m1).
   Proof.
     unfold sum_maps. rewrite delete_union. f_equal.
-    - apply delete_notin. autorewrite with core. reflexivity.
+    - apply delete_id. autorewrite with core. reflexivity.
     - symmetry. apply kmap_delete. typeclasses eauto.
   Qed.
 
@@ -547,9 +539,9 @@ Section Flatten.
     alter f (i, j) (flatten Ms) = flatten (alter (alter f j) i Ms).
   Proof.
     induction Ms as [ | k x Ms ? _ IHm] using map_first_key_ind.
-    - rewrite !map_alter_not_in_domain by now simpl_map. reflexivity.
+    - rewrite !alter_id' by now simpl_map. reflexivity.
     - destruct (decide (i = k)) as [<- | ].
-      + rewrite alter_insert.
+      + rewrite alter_insert_eq.
         rewrite !flatten_insert by assumption.
         unfold union, map_union. rewrite alter_union_with_l.
         * now rewrite kmap_alter by typeclasses eauto.
@@ -557,7 +549,7 @@ Section Flatten.
         * intros ? ?. rewrite lookup_None_flatten; easy.
       + rewrite alter_insert_ne by assumption. rewrite !flatten_insert by now simpl_map.
         unfold union, map_union. rewrite alter_union_with by reflexivity. rewrite IHm.
-        rewrite map_alter_not_in_domain.
+        rewrite alter_id'.
         * reflexivity.
         * rewrite eq_None_not_Some.
           intros (? & ? & _)%lookup_kmap_is_Some; [congruence | typeclasses eauto].
@@ -577,13 +569,13 @@ Section Flatten.
   Qed.
 End Flatten.
 
-(* TODO: should be in std++ *)
+(* TODO: when std++ is released, delete this function. *)
 Lemma size_alter {K V M} `{H : FinMap K M} (m : M V) f k : size (alter f k m) = size m.
 Proof.
   destruct (lookup k m) eqn:EQN.
-  - apply insert_delete in EQN. rewrite <-EQN, alter_insert.
+  - apply insert_delete_id in EQN. rewrite <-EQN, alter_insert_eq.
     rewrite !map_size_insert_None by now simpl_map. reflexivity.
-  - rewrite map_alter_not_in_domain by assumption. reflexivity.
+  - rewrite alter_id' by assumption. reflexivity.
 Qed.
 
 (** * Partial key maps, permutations and equivalences. *)
@@ -615,7 +607,7 @@ Section PKMap.
   Proof.
     intros G ?. unfold pkmap. apply map_fold_insert_L.
     - unfold insert_permuted_key. intros j1 j2 ? ? ? diff_j. autodestruct. autodestruct. intros.
-      apply insert_commute. intros ?. apply diff_j. eapply G; [auto | congruence].
+      apply insert_insert_ne. intros ?. apply diff_j. eapply G; [auto | congruence].
     - assumption.
   Qed.
 
@@ -652,10 +644,10 @@ Section PKMap.
     partial_inj f -> f i = Some j -> pkmap f (delete i m) = delete j (pkmap f m).
   Proof.
     intros ? G. destruct (lookup i m) as [x | ] eqn:EQN.
-    - apply insert_delete in EQN. rewrite <-EQN at 2. rewrite pkmap_insert by now simpl_map.
-      unfold insert_permuted_key. rewrite G. symmetry. apply delete_insert.
+    - apply insert_delete_id in EQN. rewrite <-EQN at 2. rewrite pkmap_insert by now simpl_map.
+      unfold insert_permuted_key. rewrite G. symmetry. apply delete_insert_id.
       erewrite lookup_pkmap by eassumption. simpl_map. reflexivity.
-    - rewrite delete_notin by assumption. symmetry. apply delete_notin.
+    - rewrite delete_id by assumption. symmetry. apply delete_id.
       erewrite lookup_pkmap; eassumption.
   Qed.
 
@@ -670,7 +662,7 @@ Section PKMap.
         -- rewrite fmap_insert. f_equal. exact IHm.
         -- exact IHm.
       * intros ? ? ? ? ? diff ? ?. unfold insert_permuted_key. autodestruct. autodestruct.
-        intros. rewrite insert_commute; [reflexivity | ].
+        intros. rewrite insert_insert_ne; [reflexivity | ].
         intros ?. apply diff, inj_f; [auto | congruence].
       * rewrite lookup_fmap, k_fresh. reflexivity.
   Qed.
@@ -812,10 +804,10 @@ Section PKMap.
     map_inj (insert i j p) -> lookup i m = Some v -> lookup i p = None ->
     apply_permutation (insert i j p) m = insert j v (apply_permutation p (delete i m)).
   Proof.
-    intros ? <-%insert_delete.
-    rewrite delete_insert by now simpl_map. etransitivity.
+    intros ? <-%insert_delete_id.
+    rewrite delete_insert_id by now simpl_map. etransitivity.
     + apply apply_permutation_insert; simpl_map; eauto.
-    + rewrite delete_insert by assumption. reflexivity.
+    + rewrite delete_insert_id by assumption. reflexivity.
   Qed.
 
   Lemma map_inj_delete m i : map_inj m -> map_inj (delete i m).
@@ -983,7 +975,7 @@ Section PKMap.
     exists (insert i j p). split; [split | ].
     - assumption.
     - setoid_rewrite lookup_insert_is_Some. firstorder.
-    - erewrite apply_permutation_insert by now simpl_map. rewrite delete_insert; [reflexivity | ].
+    - erewrite apply_permutation_insert by now simpl_map. rewrite delete_insert_id; [reflexivity | ].
       rewrite eq_None_not_Some, eq_dom, get_i. auto.
   Qed.
 
@@ -1007,10 +999,10 @@ Section PKMap.
   Lemma lookup_Some_invert_permutation p i j (inj_p : map_inj p) :
     lookup i p = Some j -> lookup j (invert_permutation p) = Some i.
   Proof.
-    intros G%insert_delete. unfold invert_permutation. rewrite <-G.
+    intros G%insert_delete_id. unfold invert_permutation. rewrite <-G.
     rewrite map_fold_insert_L.
     - simpl_map. reflexivity.
-    - rewrite G. intros ? ? ? ? ? diff. intros. apply insert_commute. intros ?. apply diff.
+    - rewrite G. intros ? ? ? ? ? diff. intros. apply insert_insert_ne. intros ?. apply diff.
       eapply inj_p; eassumption.
     - simpl_map. reflexivity.
   Qed.
@@ -1033,7 +1025,7 @@ Section PKMap.
       apply map_inj_insert.
       + intros i G. apply invert_permutation_lookup_Some in G.
         rewrite k_fresh in G. eapply is_Some_None, G.
-      + apply IHm. erewrite <-delete_insert by eassumption. apply map_inj_delete. exact Hinj.
+      + apply IHm. erewrite <-delete_insert_id by eassumption. apply map_inj_delete. exact Hinj.
   Qed.
 
   Lemma dom_invert_permutation : forall m, map_inj m -> dom (invert_permutation m) = map_img m.
@@ -1042,7 +1034,7 @@ Section PKMap.
     - rewrite invert_permutation_empty, dom_empty_L, map_img_empty_L. reflexivity.
     - intros inj_m. unfold invert_permutation. rewrite map_fold_insert_first_key by assumption.
       rewrite dom_insert_L. rewrite map_img_insert_notin_L by assumption. f_equal.
-      apply IHm. eapply map_inj_delete in inj_m. rewrite delete_insert in inj_m by assumption.
+      apply IHm. eapply map_inj_delete in inj_m. rewrite delete_insert_id in inj_m by assumption.
       exact inj_m.
   Qed.
 
@@ -1077,7 +1069,7 @@ Section PKMap.
       erewrite map_compose_insert_Some by (simpl_map; reflexivity). f_equal.
       rewrite map_compose_notin.
       + apply IHp. apply (map_inj_delete _ k) in p_inj.
-        rewrite delete_insert in p_inj by assumption. exact p_inj.
+        rewrite delete_insert_id in p_inj by assumption. exact p_inj.
       + intros i ?. replace i with k in *; [congruence | ].
         eapply p_inj; [simpl_map; reflexivity | | reflexivity].
         destruct (decide (i = k)) as [<- | ]; simpl_map; reflexivity.
@@ -1178,7 +1170,7 @@ Section UnionMaps.
       + exists pC. split; [assumption | ].
         erewrite apply_permutation_insert by eassumption.
         rewrite apply_permutation_insert with (j := j') in IHunion by now simpl_map.
-        rewrite delete_insert in IHunion by assumption.
+        rewrite delete_insert_id in IHunion by assumption.
         apply UnionInsert with (j := j'); [ | now apply lookup_pkmap_None | ]; assumption.
   Qed.
 
@@ -1199,11 +1191,11 @@ Section UnionMaps.
       { rewrite eq_None_not_Some. destruct perm_pB as (_ & ->). rewrite i_notin. auto. }
       destruct (exist_fresh (map_img (SA := Pset) pB)) as (i' & Hi').
       rewrite not_elem_of_map_img in Hi'.
-      erewrite <-(delete_insert B) in perm_pB by eassumption.
+      erewrite <-(delete_insert_id B) in perm_pB by eassumption.
       eapply is_permutation_insert in perm_pB; [ | simpl_map; eauto..].
       eexists _, _. split; [exact perm_pA | ]. split; [exact perm_pB | ].
       erewrite apply_permutation_insert; [ | apply perm_pB | simpl_map; eauto..].
-      rewrite delete_insert by assumption.
+      rewrite delete_insert_id by assumption.
       econstructor; [eauto using lookup_pkmap_None.. | ].
       rewrite <-apply_permutation_insert; assumption.
   Qed.
@@ -1232,18 +1224,18 @@ Section UnionMaps.
       + assert (y = x).
         { apply (f_equal (lookup i)) in EQN. simpl_map. congruence. }
         assert (m'1 = m1).
-        { apply (f_equal (delete i)) in EQN. now rewrite !delete_insert in EQN by assumption. }
+        { apply (f_equal (delete i)) in EQN. now rewrite !delete_insert_id in EQN by assumption. }
         subst. exists j. split; assumption.
       + specialize (IH (delete i' m1)).
         destruct IH as (j' & union_ind & ?).
-        { apply (f_equal (delete i')) in EQN. rewrite delete_insert in EQN by assumption.
+        { apply (f_equal (delete i')) in EQN. rewrite delete_insert_id in EQN by assumption.
           rewrite <-delete_insert_ne by congruence. exact EQN. }
         { simpl_map. assumption. }
         assert (j <> j'). { intros <-. simpl_map. discriminate. }
         exists j'. split.
-        * assert (lookup i' m1 = Some y) as <-%insert_delete.
+        * assert (lookup i' m1 = Some y) as <-%insert_delete_id.
           { apply (f_equal (lookup i')) in EQN. now simpl_map. }
-          rewrite insert_commute in union_ind by congruence.
+          rewrite insert_insert_ne in union_ind by congruence.
           econstructor; [ | | exact union_ind]; now simpl_map.
         * simpl_map. assumption.
   Qed.
@@ -1261,13 +1253,13 @@ Section UnionMaps.
   Proof.
     remember (insert k v X) as X' eqn:EQN. revert X k v EQN.
     induction H; intros X k v ->.
-    - intros ?. rewrite delete_insert by assumption. constructor.
+    - intros ?. rewrite delete_insert_id by assumption. constructor.
     - intros ?.
       assert (k <> j). { intros <-. simpl_map. discriminate. }
       simpl_map.
       eapply UnionInsert with (j := j); [assumption.. | ].
       eapply IHunion_maps.
-      + rewrite insert_commute by congruence. reflexivity.
+      + rewrite insert_insert_ne by congruence. reflexivity.
       + simpl_map. assumption.
   Qed.
 
@@ -1277,12 +1269,12 @@ Section UnionMaps.
     intros G. induction H as [ | ? ? ? ? j ? ? ? Hunion].
     - constructor.
     - assert (j <> k).
-      { intros <-. eapply union_contains_left in Hunion; [ | apply lookup_insert].
+      { intros <-. eapply union_contains_left in Hunion; [ | apply lookup_insert_eq].
         congruence. }
       apply UnionInsert with (j := j).
       + simpl_map. assumption.
       + assumption.
-      + rewrite insert_commute by congruence. auto.
+      + rewrite insert_insert_ne by congruence. auto.
   Qed.
 
   Lemma union_contains C i x (Hunion : union_maps A B C) :
@@ -1293,7 +1285,7 @@ Section UnionMaps.
     - auto.
     - destruct (IH H) as [ | (j & ? & Hunion')].
       + destruct (decide (i = j')) as [<- | ].
-        * right. exists i'. simpl_map. rewrite delete_insert by assumption.
+        * right. exists i'. simpl_map. rewrite delete_insert_id by assumption.
           split; [assumption | ]. eapply union_maps_delete_l; eassumption.
         * simpl_map. auto.
       + right. exists j. assert (i' <> j) by congruence. simpl_map. split; [reflexivity | ].
@@ -1371,7 +1363,7 @@ Proof.
     intros. eapply IHunion_maps.
     + eassumption.
     + apply UnionInsert with (j := k); simpl_map; [easy.. | ].
-      rewrite insert_delete; assumption.
+      rewrite insert_delete_id; assumption.
     + assumption.
 Qed.
 
@@ -1391,15 +1383,7 @@ Proof.
         intros ?. apply (not_elem_of_map_img_1 (SA := Pset)). assumption.
 Qed.
 
-(* TODO: should be a part of std++ *)
-(* TODO: use the lemma [alter_alt_Some] of std++. *)
-Lemma alter_insert_delete {K M A} `{FinMap K M} (m : M A) (k : K) (a : A) (f : A -> A) :
-  lookup k m = Some a -> alter f k m = insert k (f a) (delete k m).
-Proof.
-  intros G. apply map_eq. intros k'.
-  destruct (decide (k' = k)) as [-> | ]; simpl_map; reflexivity.
-Qed.
-
+(* TODO: when std++ 1.14 is released, delete this function. *)
 Lemma kmap_compose {A B C V} `{FinMap A MA} `{FinMap B MB} `{FinMap C MC}
   (m : MA V) (f : A -> B) (g : B -> C) :
   Inj eq eq f -> Inj eq eq g -> kmap (M2 := MC) g (kmap (M2 := MB) f m) = kmap (compose g f) m.

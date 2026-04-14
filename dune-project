@@ -10,5 +10,5 @@
  (synopsis "Formalization of the LLBC model for the Rust programming language")
  (depends
    (rocq (>= 9.0))
-   (coq-stdpp (>= 1.11)))
+   (rocq-stdpp (= 1.13)))
 )

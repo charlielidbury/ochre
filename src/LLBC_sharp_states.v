@@ -212,10 +212,10 @@ Next Obligation.
       reflexivity.
     + cbn. rewrite decode'_is_Some in G.
       rewrite <-H, <-G, <-sum_maps_alter_inr, <-sum_maps_alter_inl. reflexivity.
-    + symmetry. apply map_alter_not_in_domain. rewrite <-H, sum_maps_lookup_l.
+    + symmetry. apply alter_id'. rewrite <-H, sum_maps_lookup_l.
       now apply sum_maps_lookup_None.
   - cbn. rewrite decode'_is_Some in H. rewrite <-H,  sum_maps_alter_inr, alter_flatten. reflexivity.
-  - symmetry. apply map_alter_not_in_domain, sum_maps_lookup_None. assumption.
+  - symmetry. apply alter_id', sum_maps_lookup_None. assumption.
 Qed.
 Next Obligation. reflexivity. Qed.
 Next Obligation.
@@ -542,7 +542,7 @@ Proof.
     + rewrite map_fold_empty in H. set_solver.
     + rewrite map_fold_insert_first_key, elem_of_union in H by assumption. destruct H as [H | H].
       * rewrite elem_of_loan_set_val in H. destruct H as (q & H).
-        exists (i, q). rewrite fst_pair, lookup_insert. assumption.
+        exists (i, q). rewrite fst_pair, lookup_insert_eq. assumption.
       * specialize (IH H). destruct IH as (p & IH). exists p.
         rewrite lookup_insert_ne; [exact IH | ].
         intros ->. rewrite i_fresh in IH. discriminate.
@@ -555,8 +555,8 @@ Qed.
 Lemma loan_set_val_subset_eq_loan_set_state S i v :
   get_at_accessor S i = Some v -> subseteq (loan_set_val v) (loan_set_state S).
 Proof.
-  intros H%insert_delete. unfold loan_set_state. rewrite <-H.
-  rewrite map_fold_insert_L; [set_solver.. | apply lookup_delete ].
+  intros H%insert_delete_id. unfold loan_set_state. rewrite <-H.
+  rewrite map_fold_insert_L; [set_solver.. | apply lookup_delete_eq ].
 Qed.
 
 Record accessor_permutation := {
@@ -907,14 +907,14 @@ Hint Resolve anon_not_in_abstraction : spath.
 
 Lemma add_abstraction_commute S i j A B :
   i <> j -> S,,, i |-> A,,, j |-> B = S,,, j |-> B,,, i |-> A.
-Proof. intros ?. unfold add_abstraction. cbn. f_equal. apply insert_commute. congruence. Qed.
+Proof. intros ?. unfold add_abstraction. cbn. f_equal. apply insert_insert_ne. congruence. Qed.
 
 Lemma get_at_accessor_add_abstraction S i j A :
   get_at_accessor (S,,, i |-> A) (encode_abstraction (i, j)) = lookup j A.
 Proof.
   unfold get_map, encode_abstraction. cbn.
   rewrite sum_maps_lookup_r.
-  rewrite <-insert_delete_insert, flatten_insert by now simpl_map.
+  rewrite <-insert_delete_eq, flatten_insert by now simpl_map.
   rewrite lookup_union_l.
   - rewrite lookup_kmap by typeclasses eauto. reflexivity.
   - apply lookup_None_flatten. simpl_map. reflexivity.
@@ -944,14 +944,14 @@ Lemma add_remove_abstraction i A S (H : lookup i (abstractions S) = Some A) :
   (remove_abstraction i S),,, i |-> A = S.
 Proof.
   unfold add_abstraction, remove_abstraction.
-  destruct S. cbn. f_equal. apply insert_delete in H. exact H.
+  destruct S. cbn. f_equal. apply insert_delete_id in H. exact H.
 Qed.
 
 Lemma remove_add_abstraction i A S (H : fresh_abstraction S i) :
   remove_abstraction i (S,,, i |-> A) = S.
 Proof.
   unfold add_abstraction, remove_abstraction.
-  destruct S. cbn. f_equal. apply delete_insert. assumption.
+  destruct S. cbn. f_equal. apply delete_insert_id. assumption.
 Qed.
 
 Lemma remove_add_abstraction_ne i j A S :
@@ -962,14 +962,14 @@ Proof.
 Qed.
 
 Lemma add_remove_add_abstraction S i A : (remove_abstraction i S),,, i |-> A = S,,, i |-> A.
-Proof. unfold add_abstraction, remove_abstraction. cbn. f_equal. apply insert_delete_insert. Qed.
+Proof. unfold add_abstraction, remove_abstraction. cbn. f_equal. apply insert_delete_eq. Qed.
 
 Lemma get_at_accessor_add_abstraction_notin S i A x (H : ~in_abstraction i x) :
   get_at_accessor (S,,, i |-> A) x = get_at_accessor S x.
 Proof.
   destruct (lookup i (abstractions S)) eqn:EQN.
   - apply add_remove_abstraction in EQN. rewrite<- EQN at 2. rewrite <-add_remove_add_abstraction.
-    rewrite !_get_at_accessor_add_abstraction_notin; auto; apply lookup_delete.
+    rewrite !_get_at_accessor_add_abstraction_notin; auto; apply lookup_delete_eq.
   - apply _get_at_accessor_add_abstraction_notin; assumption.
 Qed.
 
@@ -993,9 +993,9 @@ Proof.
   intros ?. unfold sset. apply state_eq_ext.
   - apply map_eq. intros x.
     destruct (decide (fst p = x)) as [<- | ].
-    + rewrite get_map_alter, lookup_alter.
+    + rewrite get_map_alter, lookup_alter_eq.
       rewrite !get_at_accessor_add_abstraction_notin by assumption.
-      rewrite get_map_alter, lookup_alter. reflexivity.
+      rewrite get_map_alter, lookup_alter_eq. reflexivity.
     + rewrite get_map_alter, lookup_alter_ne by auto.
       destruct (decide (in_abstraction i x)) as [(j & ->) | ].
       * rewrite !get_at_accessor_add_abstraction. reflexivity.
@@ -1007,7 +1007,7 @@ Qed.
 Lemma sset_add_abstraction S i j A p v :
   (S,,, i |-> A).[(encode_abstraction (i, j), p) <- v] = S,,, i |-> (alter (vset p v) j A).
 Proof.
-  unfold add_abstraction, encode_abstraction. cbn. rewrite decode'_encode, alter_insert.
+  unfold add_abstraction, encode_abstraction. cbn. rewrite decode'_encode, alter_insert_eq.
   reflexivity.
 Qed.
 
@@ -1062,11 +1062,11 @@ Lemma abstractions_remove_abstraction_value S i j :
 Proof.
   unfold remove_abstraction_value. cbn.
   apply map_eq. intros (a & b). destruct (decide (i = a)) as [<- | ].
-  - rewrite lookup_flatten. rewrite lookup_alter.
+  - rewrite lookup_flatten. rewrite lookup_alter_eq.
     rewrite option_fmap_bind.
     destruct (decide (j = b)) as [<- | ].
-    + rewrite lookup_delete.
-      erewrite option_bind_ext_fun by (intros ?; apply lookup_delete).
+    + rewrite lookup_delete_eq.
+      erewrite option_bind_ext_fun by (intros ?; apply lookup_delete_eq).
       destruct (lookup i (abstractions S)); reflexivity.
     + rewrite lookup_delete_ne by congruence. rewrite lookup_flatten.
       apply option_bind_ext_fun. intros ?. apply lookup_delete_ne. assumption.
@@ -1142,7 +1142,7 @@ Lemma remove_abstraction_value_commute S i j i' j' :
   remove_abstraction_value (remove_abstraction_value S i' j') i j.
 Proof.
   apply state_eq_ext.
-  - rewrite !get_map_remove_abstraction_value. apply delete_commute.
+  - rewrite !get_map_remove_abstraction_value. apply delete_delete.
   - rewrite !get_extra_remove_abstraction_value. reflexivity.
 Qed.
 
@@ -1363,12 +1363,11 @@ Lemma add_anons_delete S i A v S' :
   lookup i A = None -> add_anons S (insert i v A) S' ->
   exists a, fresh_anon S a /\ add_anons (S,, a |-> v) A S'.
 Proof.
-  intros ? H. inversion H as [? ? ? Hunion]; subst.
-  apply union_maps_insert_r_l in Hunion; [ | assumption].
+  intros i_fresh H. inversion H as [? ? ? Hunion]; subst.
+  apply union_maps_insert_r_l in Hunion; [ | exact i_fresh].
   destruct Hunion as (a & G & fresh_a).
   exists a. unfold fresh_anon. rewrite get_at_anon. split; [assumption | ].
-  replace (insert _ _ _) with (anons (S,, a |-> v)) in G by reflexivity.
-  apply AddAnons in G. exact G.
+  refine (AddAnons (S,, a |-> v) _ _ G).
 Qed.
 
 Lemma add_anons_insert S A S' i v a :
@@ -1393,7 +1392,7 @@ Qed.
 Lemma add_anons_singleton S i v S' : add_anons S (singletonM i v) S' ->
   exists a, fresh_anon S a /\ S' = S,, a |-> v.
 Proof.
-  intros (a & fresh_a & H)%add_anons_delete; [ | now simpl_map].
+  intros (a & fresh_a & H)%(add_anons_delete _ i _ v); [ | now simpl_map].
   exists a. split; [assumption | ]. apply add_anons_empty in H. congruence.
 Qed.
 
@@ -1638,7 +1637,7 @@ Proof.
   - intros ?. split; [assumption | constructor].
   - intros (? & G)%lookup_delete_Some. specialize (IHremove_loans G).
     destruct IHremove_loans as (? & IHremove_loans). split; [assumption | ].
-    rewrite delete_commute. econstructor; simpl_map; eauto.
+    rewrite delete_delete. econstructor; simpl_map; eauto.
 Qed.
 
 Lemma remove_loans_contains_right A B A' B' i v (H : remove_loans A B A' B') :
@@ -1649,7 +1648,7 @@ Proof.
   - intros ?. split; [assumption | constructor].
   - intros (? & G)%lookup_delete_Some. specialize (IHremove_loans G).
     destruct IHremove_loans as (? & IHremove_loans). split; [assumption | ].
-    rewrite delete_commute. econstructor; simpl_map; eauto.
+    rewrite delete_delete. econstructor; simpl_map; eauto.
 Qed.
 
 Lemma merge_abstractions_contains A B C i v :
@@ -1662,7 +1661,7 @@ Proof.
   - left. eapply remove_loans_contains_left in Hremove; [ | eassumption].
     destruct Hremove. split; [assumption | ].
     econstructor. eexists. split; [eassumption | ].
-    eapply union_maps_delete_l; [rewrite insert_delete; eassumption | simpl_map; reflexivity].
+    eapply union_maps_delete_l; [rewrite insert_delete_id; eassumption | simpl_map; reflexivity].
   - right. exists j. eapply remove_loans_contains_right in Hremove; [ | eassumption].
     destruct Hremove. split; [assumption | ]. econstructor. eauto.
 Qed.
@@ -1695,11 +1694,11 @@ Lemma add_anon_remove_anon S a v :
   lookup (anon_accessor a) (get_map S) = Some v -> (remove_anon a S),, a |-> v = S.
 Proof.
   intros ?. destruct S. unfold add_anon, remove_anon. cbn. f_equal.
-  apply insert_delete. rewrite get_at_anon in H. exact H.
+  apply insert_delete_id. rewrite get_at_anon in H. exact H.
 Qed.
 
 Lemma remove_anon_is_fresh S a : fresh_anon (remove_anon a S) a.
-Proof. unfold fresh_anon. rewrite get_at_anon. apply lookup_delete. Qed.
+Proof. unfold fresh_anon. rewrite get_at_anon. apply lookup_delete_eq. Qed.
 
 Lemma exists_add_anons S A : exists S', add_anons S A S'.
 Proof.
@@ -1790,7 +1789,7 @@ Proof.
   - left. split; [reflexivity | ]. split.
     + destruct S, S'. unfold add_abstraction in H. cbn in * |-. f_equal; [congruence.. | ].
       apply (f_equal abstractions) in H. apply (f_equal (delete i)) in H. cbn in H.
-      rewrite !delete_insert in H by assumption. exact H.
+      rewrite !delete_insert_id in H by assumption. exact H.
     + apply (f_equal abstractions), (f_equal (lookup i)) in H. cbn in H. simpl_map. congruence.
   - right. split; [assumption | ]. exists (remove_abstraction j S). split.
     + symmetry. apply add_remove_abstraction.
@@ -2764,7 +2763,7 @@ Qed.
 Lemma loan_set_sget S p : subseteq (loan_set_val (S.[p])) (loan_set_state S).
 Proof.
   destruct (decidable_valid_spath S p) as [(w & get_w & H) | ].
-  - apply insert_delete in get_w. unfold loan_set_state, sget. rewrite <-get_w at 1 2.
+  - apply insert_delete_id in get_w. unfold loan_set_state, sget. rewrite <-get_w at 1 2.
     simpl_map. rewrite !map_fold_insert_L by (simpl_map; auto; set_solver).
     pose proof (loan_set_vget _ _ H). set_solver.
   - rewrite sget_invalid by assumption. set_solver.
@@ -2784,8 +2783,8 @@ Lemma loan_set_sset S p v :
   subseteq (loan_set_state (S.[p <- v])) (union (loan_set_state S) (loan_set_val v)).
 Proof.
   destruct (decidable_valid_spath S p) as [(w & get_w & H) | ].
-  - apply insert_delete in get_w. unfold loan_set_state, sset.
-    rewrite get_map_alter. rewrite <-get_w at 1 2. rewrite alter_insert.
+  - apply insert_delete_id in get_w. unfold loan_set_state, sset.
+    rewrite get_map_alter. rewrite <-get_w at 1 2. rewrite alter_insert_eq.
     rewrite !map_fold_insert_L by (simpl_map; auto; set_solver).
     pose proof (loan_set_vset _ _ v H). set_solver.
   - rewrite sset_invalid by assumption. set_solver.
@@ -2841,9 +2840,9 @@ Proof.
   unfold sset. apply state_eq_ext.
   - rewrite get_map_alter, !get_map_rename_state, get_map_alter.
     destruct (get_at_accessor S (fst sp)) eqn:EQN.
-    + erewrite !alter_insert_delete by (simpl_map; reflexivity).
-      rewrite fmap_insert, fmap_delete, vset_rename_value. reflexivity.
-    + rewrite !map_alter_not_in_domain; simpl_map; rewrite ?EQN; reflexivity.
+    + erewrite !alter_alt_Some by (simpl_map; reflexivity).
+      rewrite fmap_insert, vset_rename_value. reflexivity.
+    + rewrite !alter_id'; simpl_map; rewrite ?EQN; reflexivity.
   - rewrite get_extra_alter, !get_extra_rename_state, get_extra_alter. reflexivity.
 Qed.
 
@@ -2990,10 +2989,10 @@ Proof.
   - pose proof (eq_dom a) as (_ & (b & G)). { cbn. simpl_map. easy. }
     exists b. repeat split.
     + unfold add_anon_perm, remove_anon_perm. destruct perm as (perm & ?). destruct perm.
-      cbn. rewrite insert_delete; easy.
+      cbn. rewrite insert_delete_id; easy.
     + unfold fresh_anon. rewrite get_at_anon. cbn.
       replace (anons S) with (delete a (anons (S,, a |-> v))).
-      2: { cbn. rewrite delete_insert by now rewrite <-get_at_anon. reflexivity. }
+      2: { cbn. rewrite delete_insert_id by now rewrite <-get_at_anon. reflexivity. }
       erewrite fmap_delete, apply_permutation_delete by eassumption. simpl_map. reflexivity.
     + set_solver.
 Qed.
@@ -3231,13 +3230,13 @@ Proof.
   split; [split; split | ].
   - assumption.
   - replace (abstractions S) with (delete i (abstractions (S,,, i |-> A))).
-    2: { cbn. now rewrite delete_insert. }
+    2: { cbn. now rewrite delete_insert_id. }
     apply map_Forall2_delete. assumption.
   - assumption.
   - set_solver.
   - specialize (H i). cbn in H. simpl_map. inversion H. eexists. split; [eassumption | split].
     + unfold add_abstraction_perm, remove_abstraction_perm, add_abstraction_accessor_permutation.
-      cbn. rewrite insert_delete by congruence.
+      cbn. rewrite insert_delete_id by congruence.
       destruct perm as (perm & ?). destruct perm. reflexivity.
     + set_solver.
 Qed.
@@ -3266,7 +3265,7 @@ Proof.
   - cbn. unfold loan_set_state in *. rewrite get_map_remove_abstraction_value.
     destruct (get_at_accessor S (encode_abstraction (i, j))) eqn:?.
     + erewrite map_fold_delete_L in G; set_solver.
-    + rewrite delete_notin by assumption. exact G.
+    + rewrite delete_id by assumption. exact G.
 Qed.
 
 Lemma remove_abstraction_value_permutation_accessor perm i j acc acc':
@@ -3393,8 +3392,8 @@ Proof.
     rewrite get_map_remove_abstraction_value in * |-. set_solver.
   - destruct perm as (perm & ?). destruct perm.
     unfold remove_abstraction_value_perm, add_abstraction_value_perm. cbn in *.
-    f_equal. f_equal. rewrite <-alter_compose. symmetry. apply alter_id.
-    rewrite <-get_p. intros ? [=<-]. apply delete_insert.
+    f_equal. f_equal. rewrite alter_alter_eq. symmetry. apply alter_id.
+    rewrite <-get_p. intros ? [=<-]. apply delete_insert_id.
     rewrite eq_None_not_Some. destruct p_perm as (_ & ->). simpl_map. auto.
   - cbn. rewrite map_lookup_zip_with. simpl_map. cbn.
     erewrite lookup_pkmap.
@@ -3434,13 +3433,13 @@ Proof.
     eapply is_permutation_insert in perm_A', perm_B'; [ | auto..].
     specialize (IH _ _ perm_A' perm_B'). edestruct IH as (pA & pB & perm_A & perm_B & IH').
     exists pA, pB. split; [assumption | ]. split; [assumption | ].
-    erewrite <-(insert_delete A') in IH'; [ | eassumption].
-    erewrite <-(insert_delete B') in IH'; [ | eassumption].
+    erewrite <-(insert_delete_id A') in IH'; [ | eassumption].
+    erewrite <-(insert_delete_id B') in IH'; [ | eassumption].
     erewrite !apply_permutation_insert in IH' by
       (try apply perm_A'; try apply perm_B'; now simpl_map).
-    rewrite !delete_insert in IH' by assumption.
+    rewrite !delete_insert_id in IH' by assumption.
     eapply Remove_MutLoan with (i := i') (j := j') in IH'; [ | simpl_map; reflexivity..].
-    rewrite !delete_insert in IH' by auto using lookup_pkmap_None.
+    rewrite !delete_insert_id in IH' by auto using lookup_pkmap_None.
     exact IH'.
 Qed.
 
@@ -3693,7 +3692,7 @@ Hint Rewrite @sweight_add_anon using auto with weight : weight.
 Lemma remove_abstraction_value_add_abstraction S i j A :
   remove_abstraction_value (S,,, i |-> A) i j = S,,, i |-> (delete j A).
 Proof.
-  unfold add_abstraction, remove_abstraction_value. cbn. f_equal. apply alter_insert.
+  unfold add_abstraction, remove_abstraction_value. cbn. f_equal. apply alter_insert_eq.
 Qed.
 
 Lemma remove_abstraction_value_add_abstraction_ne S i i' j A (H : i <> i') :

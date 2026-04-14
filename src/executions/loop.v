@@ -159,7 +159,7 @@ Proof.
 
     (** The invariant is satisfied when breaking from the loop. *)
     (** We only need to unitialize the binding << cond |-> true >> *)
-    { apply leq_branching_singleton. unfold B_inv. simpl_map.
+    { apply leq_singleton. unfold B_inv. simpl_map.
       eexists. split; [reflexivity | ].
       refine (try_compute (compute_uninitialize_value (encode_var cond, []) _) _ _ _).
       reflexivity. }
@@ -189,7 +189,7 @@ Proof.
       apply LLBC_sharp_E_Continue. }
 
     (** The invariant is satisfied when continuing the loop. *)
-    { apply leq_branching_singleton. unfold B_inv. simpl_map.
+    { apply leq_singleton. unfold B_inv. simpl_map.
       (** Unitializing the binding << cond |-> false >>. *)
       eapply prove_leq_symbolic; [ | ].
       { refine (try_compute (compute_uninitialize_value (encode_var cond, []) _) _ _ _).
@@ -209,7 +209,7 @@ Proof.
         eexists _, _. split.
         { eapply Remove_MutLoan with (i := 2%positive) (j := 1%positive).
           apply Remove_nothing. simpl_map. reflexivity. simpl_map. reflexivity. }
-        { rewrite delete_insert by reflexivity. rewrite delete_insert_ne by discriminate.
+        { rewrite delete_insert_id by reflexivity. rewrite delete_insert_ne by discriminate.
           apply UnionInsert with (j := 2%positive); [reflexivity.. | ].
           apply UnionEmpty.
         }

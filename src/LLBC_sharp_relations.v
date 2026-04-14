@@ -753,3 +753,62 @@ Variant option_is_join :
 
 Definition is_join (B0 B1 Bjoin : branching_state) :=
   forall r, option_is_join (lookup r B0) (lookup r B1) (lookup r Bjoin).
+
+(** Lemmas about [leq_branching] and [is_join] *)
+Lemma leq_singleton S r B :
+  match lookup r B with
+  | Some Sr => leq_symbolic S Sr
+  | None => False
+  end ->
+  leq_branching {[r := S]} B.
+Proof.
+  intros H. destruct (lookup r B) as [Sr | ] eqn:get_Sr; [ | contradiction].
+  intros r'. destruct (decide (r = r')) as [<- | ]; unfold branching_state in *.
+  - simpl_map. constructor. assumption.
+  - simpl_map. constructor.
+Qed.
+
+Lemma leq_branching_delete r0 Sl Sr :
+  leq_branching Sl Sr -> leq_branching (delete r0 Sl) (delete r0 Sr).
+Proof.
+  intros H r. specialize (H r). unfold branching_state.
+  destruct (decide (r0 = r)) as [<- | ]; simpl_map; [constructor | assumption].
+Qed.
+
+Lemma leq_is_join_l Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Bl Bjoin.
+Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
+Hint Resolve leq_is_join_l : spath.
+
+Lemma leq_is_join_r Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Br Bjoin.
+Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
+Hint Resolve leq_is_join_r : spath.
+
+(** If [Bup] is an upper bound of two states [B0] and [B1], it is not necessarily a join. Indeed, there may exist tokens [r] such that [lookup r B0] (respectively [lookup r B1]) is None, but [lookup r Bup] is different from [lookup r B1] (respectively [lookup r B0]).
+
+   We need to "compute" a join by choosing for each tag [r] a value among [lookup r B0],  [lookup r B1] and [lookup r Bup]. *)
+Definition compute_option_join (oSl oSr : option LLBC_sharp_state) default :=
+  match oSl, oSr with
+  | None, _ => oSr
+  | _, None => oSl
+  | _, _ => Some default
+  end.
+
+Definition compute_join (B0 B1 Bup : branching_state) : branching_state :=
+  map_imap (fun r => compute_option_join (lookup r B0) (lookup r B1)) Bup.
+
+Lemma exists_join_state B0 B1 Bup
+  (Hleq_0 : leq_branching B0 Bup) (Hleq_1 : leq_branching B1 Bup) :
+  let Bjoin := compute_join B0 B1 Bup in
+  is_join B0 B1 Bjoin /\ leq_branching Bjoin Bup.
+Proof.
+  intros Bjoin. unfold Bjoin. split.
+  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
+    specialize (Hleq_0 r). specialize (Hleq_1 r).
+    destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
+    all: try destruct oSr; constructor; assumption.
+  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
+    specialize (Hleq_0 r). specialize (Hleq_1 r).
+    unfold compute_option_join.
+    destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
+    all: try destruct oSr; constructor; assumption || reflexivity.
+Qed.

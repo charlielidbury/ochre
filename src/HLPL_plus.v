@@ -151,7 +151,7 @@ Next Obligation.
   - rewrite decode'_is_Some in H.
     destruct s; cbn; rewrite <-H; symmetry;
       first [apply sum_maps_alter_inl | apply sum_maps_alter_inr].
-  - symmetry. apply map_alter_not_in_domain, sum_maps_lookup_None. assumption.
+  - symmetry. apply alter_id', sum_maps_lookup_None. assumption.
 Qed.
 (* What are the two following obligations? *)
 Next Obligation. discriminate. Qed.

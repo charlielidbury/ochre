@@ -1000,7 +1000,7 @@ Section GetSetPath.
     valid_spath S p -> S.[p +++ q <- v].[p] = S.[p].[[q <- v]].
   Proof.
     intros (w & Hget & Hvalid). unfold sget, sset. cbn.
-    rewrite get_map_alter, lookup_alter, Hget. apply vset_vget_prefix. assumption.
+    rewrite get_map_alter, lookup_alter_eq, Hget. apply vset_vget_prefix. assumption.
   Qed.
 
   Lemma sset_sget_equal S p v : valid_spath S p -> S.[p <- v].[p] = v.
@@ -1024,7 +1024,7 @@ Section GetSetPath.
   Proof.
     unfold sget. intros [Hdiff | (<- & Hdisj)].
     - rewrite get_at_accessor_sset_disj by assumption. reflexivity.
-    - unfold sset. rewrite get_map_alter, lookup_alter.
+    - unfold sset. rewrite get_map_alter, lookup_alter_eq.
       destruct (get_at_accessor S (fst p)).
       + cbn. apply vset_vget_disj. assumption.
       + reflexivity.
@@ -1037,7 +1037,7 @@ Section GetSetPath.
   Proof.
     unfold sset, sget. intro Hstrict_prefix.
     assert (fst p = fst q) as ->. { destruct Hstrict_prefix as (? & ? & <-). reflexivity. }
-    rewrite get_map_alter, lookup_alter.
+    rewrite get_map_alter, lookup_alter_eq.
     destruct (get_at_accessor S (fst q)).
     - apply get_node_vset_vget_strict_prefix.
       destruct Hstrict_prefix as (? & ? & <-). eexists _, _. reflexivity.
@@ -1065,8 +1065,8 @@ Section GetSetPath.
     S.[p <- x].[p +++ q <- y] = S.[p <- x.[[q <- y]]].
   Proof.
     autounfold. cbn. apply state_eq_ext.
-    - rewrite !get_map_alter, <-alter_compose. apply alter_ext.
-      intros ? _. apply vset_twice_prefix_left.
+    - rewrite !get_map_alter, alter_alter_eq.
+      apply alter_ext. intros ? _. apply vset_twice_prefix_left.
     - rewrite !get_extra_alter. reflexivity.
   Qed.
 
@@ -1090,8 +1090,8 @@ Section GetSetPath.
   Proof.
     intros Hdisj. unfold sset. apply state_eq_ext.
     - rewrite !get_map_alter. destruct Hdisj as [ | (<- & Hdisj)].
-      + now apply alter_commute.
-      + rewrite<- !alter_compose. apply alter_ext.
+      + now apply alter_alter_ne.
+      + rewrite !alter_alter_eq. apply alter_ext.
         intros ? _. now apply vset_twice_disj_commute.
     - rewrite !get_extra_alter. reflexivity.
   Qed.
@@ -1149,7 +1149,7 @@ Section GetSetPath.
     prefix p q -> valid_spath S p -> valid_spath (S.[q <- v]) p.
   Proof.
     intros (r & <-) (w & get_S_p & ?). exists (w.[[snd p ++ r <- v]]). split.
-    - autounfold. cbn. rewrite get_map_alter, lookup_alter, get_S_p. reflexivity.
+    - autounfold. cbn. rewrite get_map_alter, lookup_alter_eq, get_S_p. reflexivity.
     - apply vset_prefix_right_valid. assumption.
   Qed.
 
@@ -1165,7 +1165,7 @@ Section GetSetPath.
       destruct Hdisj as [ | (<- & ?)].
       + exists w. split; [ | assumption]. now rewrite get_map_alter, lookup_alter_ne.
       + exists (w.[[snd q <- v]]). split.
-        * rewrite get_map_alter, lookup_alter. simplify_option.
+        * rewrite get_map_alter, lookup_alter_eq. simplify_option.
         * apply vset_disj_valid; assumption.
   Qed.
 
@@ -1220,7 +1220,7 @@ Section GetSetPath.
   Proof.
     unfold fresh_anon. rewrite get_map_add_anon. split.
     - intros G. assert (anon_accessor a <> anon_accessor b).
-      { intros Heq. rewrite Heq in G. rewrite lookup_insert in G. discriminate. }
+      { intros Heq. rewrite Heq in G. rewrite lookup_insert_eq in G. discriminate. }
       rewrite lookup_insert_ne in G by assumption. auto.
     - intros (? & ?). rewrite lookup_insert_ne; assumption.
   Qed.
@@ -1241,7 +1241,7 @@ Section GetSetPath.
     a <> b -> S,, a |-> v,, b |-> w = S,, b |-> w,, a |-> v.
   Proof.
     intros ?. apply state_eq_ext.
-    - rewrite !get_map_add_anon. apply insert_commute, anon_accessor_diff. congruence.
+    - rewrite !get_map_add_anon. apply insert_insert_ne, anon_accessor_diff. congruence.
     - rewrite !get_extra_add_anon. reflexivity.
   Qed.
 
@@ -1262,12 +1262,12 @@ Section GetSetPath.
     fst p = anon_accessor a -> (S,, a |-> v).[p <- w] = S,, a |-> v.[[snd p <- w]].
   Proof.
     unfold sset. intros ->. apply state_eq_ext.
-    - rewrite get_map_alter, !get_map_add_anon, alter_insert. reflexivity.
+    - rewrite get_map_alter, !get_map_add_anon, alter_insert_eq. reflexivity.
     - rewrite get_extra_alter, !get_extra_add_anon. reflexivity.
   Qed.
 
   Lemma sget_anon (S : state) a v p : fst p = anon_accessor a -> (S,, a |-> v).[p] = v.[[snd p]].
-  Proof. unfold sget. intros ->. rewrite get_map_add_anon, lookup_insert. reflexivity. Qed.
+  Proof. unfold sget. intros ->. rewrite get_map_add_anon, lookup_insert_eq. reflexivity. Qed.
 
   Lemma disj_spath_add_anon S a p q :
     fresh_anon S a -> valid_spath S p -> disj p (anon_accessor a, q).
@@ -1286,7 +1286,7 @@ Section GetSetPath.
 
   Lemma valid_spath_anon S a v p : valid_vpath v p -> valid_spath (S,, a |-> v) (anon_accessor a, p).
   Proof.
-    intro. exists v. split; [ | assumption]. rewrite get_map_add_anon, lookup_insert.
+    intro. exists v. split; [ | assumption]. rewrite get_map_add_anon, lookup_insert_eq.
     reflexivity.
   Qed.
 
@@ -1298,7 +1298,7 @@ Section GetSetPath.
     unfold valid_spath. intros valid_p.
     destruct (decide (fst p = anon_accessor a)) as [Heq_p_a | ].
     - right. split; [assumption | ]. rewrite Heq_p_a in valid_p.
-      rewrite get_map_add_anon, lookup_insert in valid_p.
+      rewrite get_map_add_anon, lookup_insert_eq in valid_p.
       destruct valid_p as (? & Heq_v & ?). inversion Heq_v. assumption.
     - left. split; [assumption | ].
       rewrite get_map_add_anon, lookup_insert_ne in valid_p by auto. exact valid_p.
@@ -1782,15 +1782,15 @@ Section GetSetPath.
   Proof.
     intros (w & get_S_p & ?). autounfold.
     rewrite get_S_p.
-    rewrite get_map_alter. apply insert_delete in get_S_p. rewrite <-get_S_p.
-    rewrite alter_insert. rewrite !map_sum_insert by apply lookup_delete.
+    rewrite get_map_alter. apply insert_delete_id in get_S_p. rewrite <-get_S_p.
+    rewrite alter_insert_eq. rewrite !map_sum_insert by apply lookup_delete_eq.
     rewrite Nat2Z.inj_add, vweight_vset by assumption. lia.
   Qed.
 
   Lemma weight_sget_le S p : valid_spath S p -> vweight_ (S.[p]) <= sweight S.
   Proof.
     intros (w & get_S_p & ?%weight_vget_le). autounfold. rewrite get_S_p.
-    apply insert_delete in get_S_p. rewrite <-get_S_p, map_sum_insert by apply lookup_delete. lia.
+    apply insert_delete_id in get_S_p. rewrite <-get_S_p, map_sum_insert by apply lookup_delete_eq. lia.
   Qed.
 
   Corollary weight_sget_node_le S p : valid_spath S p -> weight (get_node (S.[p])) <= sweight S.
@@ -1828,7 +1828,7 @@ Section GetSetPath.
     intros G. unfold fresh_anon.
     destruct (get_at_accessor S (anon_accessor a)) eqn:EQN; [ | reflexivity].
     exfalso. apply G. unfold anons_set.
-    apply insert_delete in EQN. rewrite <-EQN, map_fold_insert_L.
+    apply insert_delete_id in EQN. rewrite <-EQN, map_fold_insert_L.
     - unfold maybe_add_anon. rewrite anon_accessor_inj. set_solver.
     - unfold maybe_add_anon. intros. destruct accessor_anon; destruct accessor_anon; set_solver.
     - simpl_map. reflexivity.
@@ -1853,7 +1853,7 @@ Section GetSetPath.
     - apply state_eq_ext.
       + apply (f_equal get_map) in eq_add_anon. rewrite !get_map_add_anon in eq_add_anon.
         apply (f_equal (delete (anon_accessor a))) in eq_add_anon.
-        rewrite !delete_insert in eq_add_anon; assumption.
+        rewrite !delete_insert_id in eq_add_anon; assumption.
       + apply (f_equal get_extra) in eq_add_anon. rewrite !get_extra_add_anon in eq_add_anon.
         exact eq_add_anon.
     - apply (f_equal (fun S => S.[(anon_accessor a, [])])) in eq_add_anon.

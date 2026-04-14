@@ -1,7 +1,7 @@
 (** * Mechanized_LLBC.Simulation_LLBC_sharp_LLBC_plus : Proof of simulation between LLBC# and LLBC+. *)
 From Stdlib Require Import List.
 Import ListNotations.
-From stdpp Require Import fin_map_dom.
+From stdpp Require Import fin_map_dom pmap.
 Require Import base OptionMonad SimulationUtils PathToSubtree lang.
 Require Import LLBC_sharp_states LLBC_sharp_relations LLBC_sharp_semantics.
 
@@ -1190,7 +1190,7 @@ Proof.
     rewrite loan_set_borrow. pose proof (loan_set_sget S pi). set_solver.
   - rewrite rename_state_sset by (setoid_rewrite dom_insert_L; apply union_subseteq_l).
     rewrite rename_loan_id_borrow. cbn [rename_value].
-    unfold rename_loan_id. setoid_rewrite lookup_insert.
+    unfold rename_loan_id. setoid_rewrite lookup_insert_eq.
     rewrite <-rename_state_sget. replace (rename_state _ S) with S; auto.
     erewrite rename_state_subset, rename_state_identity.
     + reflexivity.
@@ -1994,9 +1994,9 @@ Lemma size_abstraction_remove_abstraction_value S i j :
 Proof.
   unfold abstractions, remove_abstraction_value. destruct S as [? ? abs]. cbn.
   destruct (lookup i abs) eqn:H.
-  - apply insert_delete in H. rewrite <-H. rewrite alter_insert.
+  - apply insert_delete_id in H. rewrite <-H. rewrite alter_insert_eq.
     rewrite !map_size_insert. reflexivity.
-  - pose proof (delete_notin _ _ H) as <-. rewrite map_alter_not_in_domain; now simpl_map.
+  - pose proof (delete_id _ _ H) as <-. rewrite alter_id'; now simpl_map.
 Qed.
 
 Hint Rewrite size_abstractions_sset : weight.
@@ -2172,7 +2172,7 @@ Proof.
     + exists S0_anons; easy.
   - clear Hadd_anons.
     destruct IH as (n & S1 & ? & ? & S1_anons & ? & Hadd_anons).
-    rewrite <-(insert_delete _ _ _ HB') in Hadd_anons.
+    rewrite <-(insert_delete_id _ _ _ HB') in Hadd_anons.
     eapply add_anons_delete in Hadd_anons; [ | simpl_map; reflexivity].
     destruct Hadd_anons as (a & fresh_a%fresh_anon_add_abstraction & Hadd_anons).
     eexists (1 + n), _.
@@ -2239,7 +2239,7 @@ Lemma add_anons_abstraction_set S B j v w q S' :
     S''.[(anon_accessor a, q)] = w.[[q]].
 Proof.
   unfold abstraction_set. intros Hadd_anons get_w ?.
-  erewrite alter_insert_delete in Hadd_anons by exact get_w.
+  erewrite alter_alt_Some, <-insert_delete_eq in Hadd_anons by exact get_w.
   apply add_anons_delete in Hadd_anons; [ | now simpl_map].
   destruct Hadd_anons as (a & fresh_a & Hadd_anons).
   assert (valid_vpath (w .[[ q <- v]]) q) by now apply vset_same_valid.
@@ -2253,10 +2253,22 @@ Proof.
   rewrite vset_twice_equal, vset_same in Hadd_anons.
   rewrite add_anons_alt in Hadd_anons.
   eapply AddAnons_insert in Hadd_anons; [ | now simpl_map | assumption].
-  rewrite insert_delete, <-add_anons_alt in Hadd_anons by assumption.
+  rewrite insert_delete_id, <-add_anons_alt in Hadd_anons by assumption.
   eexists _, a. split; [exact Hadd_anons | ].
   rewrite sset_sget_equal by assumption. autorewrite with spath. rewrite <-get_S'_v.
   autorewrite with spath. auto.
+Qed.
+
+Lemma not_contains_loan_abstraction_alter (A : Pmap LLBC_sharp_val) j p v w :
+  lookup j A = Some v ->
+  not_contains_loan (v.[[p]]) ->
+  map_Forall (fun _ => not_contains_loan) (alter (vset p w) j A) ->
+  map_Forall (fun _ => not_contains_loan) A.
+Proof.
+  intros get_v ?.
+  rewrite (alter_alt_Some _ _ _ _ get_v), <-insert_delete_eq, <-(insert_delete_id _ _ _ get_v).
+  rewrite !map_Forall_insert, delete_insert_id by now simpl_map.
+  intros (? & ?). split; [ | assumption]. not_contains.
 Qed.
 
 Lemma reorg_local_preservation n :
@@ -2557,7 +2569,7 @@ Proof.
            { (* typed values are unary for the moment. When we deal with more general types values, a commutation lemma will be necessary. *)
              inversion type_borrow; cbn; lia. }
            apply reflexive_eq.
-           rewrite delete_insert_ne, delete_singleton by congruence. reflexivity.
+           rewrite delete_insert_ne, delete_singleton_eq by congruence. reflexivity.
         (* The abstraction H does not contain loans, we can eliminate this case. *)
         -- apply lookup_singleton_Some in get_loan. destruct get_loan. discriminate.
       * autorewrite with spath in * |-. reorg_step.
@@ -2740,13 +2752,7 @@ Proof.
         destruct Hadd_anons as (S'' & a & Hadd_anons & -> & get_S''_a_q).
         reorg_step.
         { apply Reorg_end_abstraction. eassumption.
-          (* Note: should be a lemma. *)
-          unfold abstraction_set in A_no_loans.
-          erewrite alter_insert_delete in A_no_loans by eassumption.
-          erewrite <-insert_delete by eassumption.
-          rewrite map_Forall_insert in A_no_loans |- * by now simpl_map.
-          destruct A_no_loans. split; [not_contains | assumption].
-          eassumption. }
+          eapply not_contains_loan_abstraction_alter; eassumption. eassumption. }
         reorg_done. eapply leq_n_step.
         { apply Leq_ToSymbolic_n; rewrite get_S''_a_q; eassumption. }
         { rewrite get_S''_a_q. reflexivity. }
@@ -3028,58 +3034,6 @@ Proof.
 Qed.
 
 (** * Simulation proofs for statement evaluation. *)
-Lemma leq_singleton r Sl Sr : leq_symbolic Sl Sr -> leq_branching {[r := Sl]} {[r := Sr]}.
-Proof.
-  intros H r'. destruct (decide (r = r')) as [<- | ].
-  - simpl_map. constructor. assumption.
-  - unfold branching_state. simpl_map. constructor.
-Qed.
-
-Lemma leq_branching_delete r0 Sl Sr :
-  leq_branching Sl Sr -> leq_branching (delete r0 Sl) (delete r0 Sr).
-Proof.
-  intros H r. specialize (H r). unfold branching_state.
-  destruct (decide (r0 = r)) as [<- | ]; simpl_map; [constructor | assumption].
-Qed.
-
-Lemma leq_is_join_l Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Bl Bjoin.
-Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
-Hint Resolve leq_is_join_l : spath.
-
-Lemma leq_is_join_r Bl Br Bjoin : is_join Bl Br Bjoin -> leq_branching Br Bjoin.
-Proof. intros H r. specialize (H r). inversion H; constructor; [reflexivity | assumption]. Qed.
-Hint Resolve leq_is_join_r : spath.
-
-(** If [Bup] is an upper bound of two states [B0] and [B1], it is not necessarily a join. Indeed, there may exist tokens [r] such that [lookup r B0] (respectively [lookup r B1]) is None, but [lookup r Bup] is different from [lookup r B1] (respectively [lookup r B0]).
-
-   We need to "compute" a join by choosing for each tag [r] a value among [lookup r B0],  [lookup r B1] and [lookup r Bup]. *)
-Definition compute_option_join (oSl oSr : option LLBC_sharp_state) default :=
-  match oSl, oSr with
-  | None, _ => oSr
-  | _, None => oSl
-  | _, _ => Some default
-  end.
-
-Definition compute_join (B0 B1 Bup : branching_state) : branching_state :=
-  map_imap (fun r => compute_option_join (lookup r B0) (lookup r B1)) Bup.
-
-Lemma exists_join_state B0 B1 Bup
-  (Hleq_0 : leq_branching B0 Bup) (Hleq_1 : leq_branching B1 Bup) :
-  let Bjoin := compute_join B0 B1 Bup in
-  is_join B0 B1 Bjoin /\ leq_branching Bjoin Bup.
-Proof.
-  intros Bjoin. unfold Bjoin. split.
-  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
-    specialize (Hleq_0 r). specialize (Hleq_1 r).
-    destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
-    all: try destruct oSr; constructor; assumption.
-  - intros r. setoid_rewrite map_lookup_imap. fold branching_state.
-    specialize (Hleq_0 r). specialize (Hleq_1 r).
-    unfold compute_option_join.
-    destruct Hleq_0 as [oSr | ]; inversion Hleq_1; subst.
-    all: try destruct oSr; constructor; assumption || reflexivity.
-Qed.
-
 (** The LLBC+ rules [LLBC_plus_E_Seq_Unit_Propagate], [LLBC_plus_IfThenElse_Symbolic] and [LLBC_plus_E_Loop_Continue] require exhibiting a "join state" of two states [B0] and [B1]. Square diagrams that involve these rules are tricky, because it is required to prove that the states [B0] and [B1] are related to the final state [Br], but these states are only determined at the execution of the rule.
 
    This tactic simplifies these square diagrams. It operates like this:
@@ -3265,7 +3219,7 @@ Proof.
   rewrite Hcontinue in Hleq_S.
   destruct (lookup r Bl) as [Sl | ] eqn:EQN.
   - inversion Hleq_S; subst. eauto.
-  - rewrite (delete_notin _ _ EQN) in Hleq_B. auto.
+  - rewrite (delete_id _ _ EQN) in Hleq_B. auto.
 Qed.
 
 Lemma stmt_preserves_LLBC_sharp_rel n s :

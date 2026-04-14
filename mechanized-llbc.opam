@@ -6,7 +6,7 @@ authors: ["Alban Reynaud Michez" "Vincent Rébiscoul"]
 depends: [
   "dune" {>= "3.21"}
   "rocq" {>= "9.0"}
-  "coq-stdpp" {>= "1.11"}
+  "rocq-stdpp" {= "1.13"}
   "odoc" {with-doc}
 ]
 build: [
