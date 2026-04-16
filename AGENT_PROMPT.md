@@ -1,213 +1,233 @@
 # Agent Prompt
 
-## The big picture
+## Ochre and Och
 
-You are building **Ochre** — a systems theorem prover, roughly Rust + Dependent
-Types. Read `docs/what-is-ochre.md` for the full vision.
+You are building **Ochre**, a systems theorem prover — roughly Rust + dependent
+types with a novel subtyping + abstract-interpretation core. Read
+`docs/what-is-ochre.md` for the full vision.
 
-Ochre's type system has a known soundness bug. The current plan of attack is to
-build **Och**, a minimal pure calculus that isolates the core semantic idea, and
-prove it sound before scaling back up. Read `docs/what-is-och.md` for why this
-staging exists, and `docs/why-och-matters-for-ochre.md` for exactly how Och
-feeds into Ochre.
+Ochre's type system rests on one idea we're still validating: **terms and types
+share a single syntactic category, and typechecking is evaluation in "abstract"
+mode**. To stress-test this, we build **Och** — a minimal calculus that
+isolates the idea. Read `docs/what-is-och.md` and
+`docs/why-och-matters-for-ochre.md` for how Och feeds Ochre.
 
-Och's core idea: terms and types share a single syntax. Types are just
-"approximate programs." Compilation is evaluation in abstract mode. Runtime is
-evaluation in concrete mode. The ONLY difference is the ascription case:
-`(e : τ)` takes `e` concretely and `τ` abstractly. Whether this dual
-interpretation is sound is the central research question.
+Och is a **core calculus**. Its value is its smallness and clarity. **Simplicity
+and beauty are first-class priorities here**, not stylistic preferences. If two
+designs both work, the smaller / cleaner / more obviously-right one wins. Do not
+hoard complexity on the hope it pays off later.
 
-## The goal: prove soundness
+## The arc
 
-Och is feature-complete. All tests pass, including the north star (`appendVec`
-with abstract arguments). The goal now is to **prove soundness** — eliminate
-every `sorry` in the Lean codebase.
+The project has two phases:
 
-The soundness theorem (Soundness.lean:233) states: if `concEval` and `absEval`
-both succeed on a term, their outputs are VCompat (value-type compatible) at
-all step levels. There are 10 `sorry`s remaining. See **SUGGESTIONS.md** for
-the dependency chain and priority order.
+1. **Phase 1 (NOW)**: Redefine the abstract interpretation so the test suite
+   passes honestly. Tests are sorry'd out as `sorry` with a `TODO[mega-loop]`
+   marker. Your job is to pick a marker, make the abstract interpretation
+   handle the case, and commit.
+2. **Phase 2 (LATER — not yet)**: Prove soundness of the resulting system.
 
-## Context to read
+**You are in Phase 1.** Do not start proving anything. Soundness-proof work is
+wasted effort while the definitions are still shifting. When the phase changes,
+this prompt will change.
 
-Read these for context (in this order):
-1. `SUGGESTIONS.md` — the sorry dependency chain and proof roadmap
-2. `PROGRESS.md` — current state and sorry inventory
-3. `lean/Och/Soundness.lean` — the VCompat relation and soundness theorem
-4. `lean/Och/Eval.lean` — absEval, concEval, subCheckNF definitions
-5. `lean/Och/Subtyping.lean` — subtyping relations and helper lemmas
+**But soundness still matters now.** The system has to be sound in the end.
+Phase 2 can't recover from unsoundness you introduce now — it can only discover
+it, painfully, after weeks of work. So while you should not write formal
+proofs, you should absolutely reason informally: before adding a rule, changing
+absEval, or introducing a new constructor, think through (in your own head,
+with napkin-math-level rigour) why the change preserves soundness. "Is there a
+term this new rule would let me inhabit that shouldn't be inhabited?" "Does
+this absEval step widen a type in a way that could be exploited later?" If
+you can't convince yourself informally, don't commit the change — even if it
+makes a test pass. A test-passing system with a hand-wavy soundness hole is
+worse than a test-failing system that's obviously sound, because the former
+hides its rot.
 
-Then run `git log -5` (with full messages, NOT `--oneline`) to see where things
-stand. Previous agents communicate through detailed commit messages.
+## What you do, concretely
 
-## Your identity
+1. `grep -rn "TODO\[mega-loop\]" lean/` to see open markers.
+2. Pick ONE marker. The right one is usually the most central (its fix
+   unblocks others), the simplest, or the one that exposes the most about
+   what's wrong. Don't cherry-pick the easiest for optics.
+3. **Sense-check the test before you work on it.** Is it even the right
+   assertion? If it's testing something the language shouldn't support, say
+   so. Removing a misguided test with a clear justification is a more valuable
+   outcome than forcing it to pass.
+4. Fix the abstract interpretation / subtyping / syntax to make the case
+   work. **Prefer redesign over patching.** If the existing shape doesn't
+   handle the case cleanly, restructure it. Do not add special cases, escape
+   hatches, or lenient modes.
+5. Commit with a detailed message and an `Agent-ID: <id>` trailer. Update
+   `PROGRESS.md` so the next agent knows where you left off.
+6. `lake build` must pass before you finish.
 
-You were told your agent ID in the first message. Include it in all your commit
-messages (as an `Agent-ID: <your-id>` trailer) so decisions can be traced back
-to you.
+## Core principles (non-negotiable)
 
-## Your memory will be wiped
+**Skepticism before action.** Before you touch a proof obligation, a
+definition, or a test, ask: is this thing even correct? Can you construct a
+counterexample? Can you simplify? Agents have previously burned whole sessions
+forcing broken proofs. Do not be that agent. Identifying that a theorem is
+false, or that a test is wrong, is **more valuable** than closing it — because
+it redirects everything downstream.
 
-When this session ends, you lose all context. The next agent starts fresh with
-only the repo contents and git history. Therefore:
+**Simplicity is the goal.** Och is small by design. If you're adding a
+constructor, a rule, a helper field, a special case, a mode flag — prove to
+yourself it's necessary before writing it. If the alternative is a small
+redesign, the redesign wins. Beauty is load-bearing here: Och exists precisely
+to be the smallest place where we can be sure the idea works. Complexity
+dilutes that.
 
-- **Commit messages are your voice to future agents.** Explain not just WHAT you
-  changed but WHY. If you tried something that didn't work, say so.
-- **Update `PROGRESS.md`** at the end of your session with what you did,
-  what's next, and any blockers.
-- **Update `DECISION-LOG.md`** if you made a significant design decision.
-- **If something is confusing or surprising, write it down.** The next agent
-  won't have your context.
+**Gut things out, don't tweak.** Where the system's shape is wrong, fix the
+shape. Do not patch around it. A 300-line rewrite that makes the whole system
+cleaner beats a 20-line band-aid. You are expected to be willing to throw away
+significant chunks of existing code when the structure is off. This is a
+directive, not a liberty.
 
-## The Lean project
+**High agency, no workarounds.** If what you need doesn't exist, build it. If
+closing a test needs a refactor three files away first, do that first. If the
+right thing is three hours of groundwork followed by a five-line fix, do the
+three hours. "Sort of" closing a test, or `lenient := true` flags, or skipping
+the hard case, are all disallowed — they poison the foundation.
 
-The project is in `lean/`. It contains:
-- `Och/Syntax.lean` — term representation (de Bruijn indices)
-- `Och/Eval.lean` — concrete eval, abstract eval, subCheckNF (mutual)
-- `Och/Subtyping.lean` — inductive subtyping relations + subCheckNF lemmas
-- `Och/Soundness.lean` — VCompat logical relation + soundness theorem
-- `Och/Tests.lean` — acceptance tests (DO NOT weaken)
-- `Std/*.lean` — standard library (Church-encoded types with inline tests)
+**Do the hard case first.** When solving by case analysis, tackle the hardest
+case first. If it fails, the easy cases don't matter. If it succeeds, the easy
+cases are usually mechanical.
 
-Run `cd lean && lake build` to see the current state.
+**Commit messages are your voice to future agents.** Explain WHY, not just
+WHAT. If you tried something that didn't work, say so. Agents may run
+`claude-ask <your-agent-id> "..."` later to interrogate your reasoning — write
+commits that will answer those questions.
 
-## What to do
+## The system
 
-**Current top priority: Phase 0 (mu definition-site checking).** absEval
-must soundly analyze mu bodies at definition site. This is blocking ALL
-remaining sorrys. Do NOT work on proving sorrys until Phase 0 is resolved —
-the definitions will likely change, invalidating proof work. See
-SUGGESTIONS.md Phase 0 for the full context, what's been tried, and ideas
-to explore.
+Och has one syntactic category for both terms and types. `Expr` has:
 
-Once Phase 0 is resolved, pick the highest priority sorry from
-SUGGESTIONS.md, work on it, commit, and finish.
+- `var n` — de Bruijn variable
+- `λ(D). b` — domain-annotated lambda; `D` is the parameter's type
+- `f a` — application
+- `(e : τ)` — ascription
+- `⊤` — top
+- `ι(x:A). b` — self-type. A value `v` at type `ι x:A. b` has type `b[x := v]`.
+  This is what enables dependent elimination (Cedille-style).
+- `fix(x). b` — recursive type. Equi-recursive: `fix x. b` unfolds to
+  `b[x := fix x. b]` during subtyping.
 
-**Before you start proving, sense-check the statement.** Read the theorem,
-think about what it claims, and try to construct a counterexample or identify
-why the preconditions might be unsatisfiable. If it passes your sanity check,
-commit to the proof. This prevents tunnel vision — an agent that burns its
-whole session forcing a broken proof is less useful than one that realizes
-the statement is wrong early.
+**Concrete semantics** (runtime, call-by-name): the usual substitution-based
+evaluator. Lambdas and `⊤` are values; application does β; ascription strips
+its annotation (the runtime doesn't care about types).
 
-If a higher-priority sorry is blocked or you discover something wrong with the
-theorem statement, that's fine — document it and move to the next one, or fix
-the statement.
+**Abstract semantics** (typechecking, `absEval`): the same evaluator as
+concrete, with exactly one behavioural difference. At `(e : τ)`, concrete
+evaluates `e` and abstract evaluates `τ`. Everything else — lambda, app, var,
+`⊤` — evaluates identically in both modes. *Typechecking is literally running
+the program in abstract mode.* This is the central conceit; see
+`docs/what-is-och.md` for why it matters and
+`docs/why-och-matters-for-ochre.md` for why it has to work.
 
-The most productive thing you can do might be:
-- **Disproving a theorem statement** — finding a counterexample or showing
-  preconditions are unsatisfiable. This is the most valuable outcome because
-  it redirects all future work.
-- Proving a sorry
-- Making partial progress on a sorry and documenting what's left
-- Realizing a definition needs to change and writing up why
+**Subtyping `⊑`** is the one declarative relation. `e ⊑ τ` encodes "e has type
+τ", "τ₁ is a subtype of τ₂", and "these two types are convertible" — no
+separate typing judgment. The rules are: refl; top (`a ⊑ ⊤`); variable lookup;
+lambda (contravariant domain, covariant body); application (composing with a
+callable function type); ascription-left/right; ι-intro (value-substitution:
+`a ⊑ ι x:A. b` if `a ⊑ A` ∧ `a ⊑ b[x := a]`); fix-unfold (equi-recursive, both
+sides). Subtyping must be transitive — the language bends to make this true.
 
-If you find yourself stuck for more than a few minutes, stop. Commit what you
-have, document the blocker clearly in PROGRESS.md, and finish. A well-documented
-dead end is progress.
+**The checker** is the algorithmic decision procedure for `⊑`, implemented as
+`subCheckNF` on top of `absEval`. It uses a seen-set for cycle detection on
+self-types. This is the module you are most likely to be modifying.
 
-Whatever you do, run `lake build` to verify, commit with a descriptive message
-and your agent ID, and update PROGRESS.md before your session ends.
+When picking ι vs fix for a type definition: "do I need the value to appear
+in its own type?" → `ι`. "Is this just a self-referential type with no
+dependent-elim need?" → `fix`. Both can be combined by nesting; they are
+orthogonal.
 
 ## Critical constraints
 
-- **Tests.lean pins expressiveness.** You can change Syntax, Eval, Subtyping
-  freely, but the tests must pass. If a test doesn't pass, fix the definitions,
-  not the test. The only acceptable test changes are adapting to renamed
-  constructors or adding more tests.
+**Do not weaken tests.** Tests marked `TODO[mega-loop]` are sorry'd
+intentionally. Your job is to remove the sorry by making the assertion
+genuinely hold — not by relaxing what it asserts. If you *remove* a test, the
+commit message must explain why the test was wrong, not why closing it was
+hard.
 
-- **Subtyping must be transitive.** If `a ⊑ b` and `b ⊑ c` then `a ⊑ c`
-  must hold. This is a deep requirement of the language, not negotiable.
-  If you encounter transitivity failure, fix `subCheckNF` or the underlying
-  definitions — do NOT work around it or redesign VCompat to avoid needing
-  transitivity. The language must bend to make transitivity true.
+**Do not resurrect lenient modes.** The previous iteration had a
+`lenient : Bool` parameter in absEval that silently accepted stuck
+applications. It is gone. Do not reintroduce it or its equivalents
+("optimistic check", "skip on neutral", etc.). Abstract interpretation must
+handle stuck cases correctly, not by trusting.
 
-- **absEval must reject unsound mu definitions at definition site.** When
-  absEval encounters `mu ann body`, it must do enough analysis to guarantee
-  the body is consistent with the annotation. Without this, the soundness
-  proof has no information about the body — the IH for soundness_open
-  can't fire, adequacy_gen can't trust annotations, and every downstream
-  usage is blocked. This is the root cause of all "annotation-trust" sorrys.
-  The specific mechanism is up to you — binding self to the annotation type
-  (like lam binds its parameter to the domain) is one approach, but it has
-  known issues (see SUGGESTIONS.md Phase 0). Find a way that works for the
-  actual programs in the test suite. The goal is non-negotiable: a mu that
-  passes absEval must be provably sound.
+**Subtyping must be transitive.** If `a ⊑ b` and `b ⊑ c` then `a ⊑ c`. The
+*language* bends to make this true; transitivity is not negotiable.
 
-- **No trivial solutions.** Do not achieve soundness by making the language
-  weaker. Read `docs/why-och-matters-for-ochre.md` for what "going off track"
-  looks like. Specifically:
-  - `succ 2` must have precise type `3`
-  - `true ⊑ Bool` must hold (not just syntactic equality)
-  - Transparent functions must propagate precision
-  - Ascription must genuinely lose information
+**Do not achieve success by making Och less powerful.** Read
+`docs/why-och-matters-for-ochre.md`. Specifically:
+- `succ 2` must have the precise type `3`
+- `dtrue ⊑ DBool` must hold (not only syntactic equality)
+- Transparent functions must propagate precision
+- Ascription must genuinely lose information
 
-- **The dual-interpretation of ascription is the key research question.**
-  Runtime takes the lhs of `(e : τ)`, compile-time takes the rhs. Compilation
-  is just running in abstract mode. This is unusual and might be unsound —
-  figuring out whether it works is the whole point.
+**Do not touch `lean/Och/Simple/`.** Simple Och is a proven-sound reference
+system for the metatheory. It has zero sorrys and must stay that way. Full Och
+(`lean/Och/` outside `Simple/`) is where you work.
 
-- **Sorry freely, compile always.** `lake build` must pass. Use `sorry` for
-  broken proofs. A compiling codebase with sorrys is infinitely more useful
-  than a broken one.
+**Always `lake build`.** The codebase must compile. `sorry` is allowed for
+proofs; broken syntax is not.
 
-- **Never weaken a precondition without a witness test.** If you change a
-  theorem's precondition (e.g. WellTyped) to make a proof go through, you
-  MUST verify the precondition is still satisfiable for a real program. Add
-  a `native_decide` test like:
-  ```lean
-  example : WellTyped testFuel [] some_real_program = true := by native_decide
-  ```
-  A sorry-free proof with unsatisfiable preconditions is **worse** than a
-  sorry'd proof with satisfiable ones — the former gives false confidence.
-  This mistake has already happened once. Do not repeat it.
+## Read before you work
 
-## What success looks like
+In this order:
+1. `PROGRESS.md` — current state, open markers, known pitfalls
+2. `docs/what-is-och.md`, `docs/why-och-matters-for-ochre.md` — the
+   "don't go off-track" references
+3. `docs/research-graveyard.md` — branches that hit walls, what was tried,
+   what failed. Read before reinventing.
+4. `lean/Och/Syntax.lean`, `lean/Och/Subtyping.lean` — current syntax and
+   rule set
+5. `lean/Och/Eval.lean` — the abstract interpreter (`absEval`) and checker
+   (`subCheckNF`). This is where most of your work happens.
+6. `git log -15` (with full messages, not `--oneline`) — what previous agents
+   did and why
 
-The ultimate goal is a provably sound type system for Ochre. The current
-milestone is Och with ALL of these simultaneously:
+If something in these docs contradicts this prompt, the docs might be stale.
+Trust the prompt and update the doc, or flag it.
 
-1. `lake build` passing with no `sorry`
-2. Soundness proven (the main theorem in Soundness.lean)
-3. All tests passing, including abstract appendVec
-4. **The soundness theorem is non-vacuously true for the milestone programs**
+## Your identity
 
-Point 4 is critical. A sorry-free soundness theorem whose preconditions
-can't be satisfied is vacuously true and proves nothing. The preconditions
-must be satisfiable for real programs — verified by `native_decide` witness
-tests. Zero sorrys is not the goal; a meaningful theorem is the goal.
+You were given your agent ID in the first message. Include `Agent-ID: <id>` as
+a trailer in every commit.
 
-This is an extremely ambitious goal. You will not finish in one session. Your
-job is to make one solid step forward and hand off clearly to the next agent.
+## If you get stuck
 
-## Installing Lean (if needed)
+If you've been stuck for ~15 minutes, stop pushing. Commit what you have
+(even partial), document the blocker clearly in `PROGRESS.md`, and finish.
+A well-documented dead end is progress — the next agent can re-attempt armed
+with your findings.
 
+Valuable outcomes, ranked:
+1. A test closed with a clean, non-weakening fix
+2. A test removed with a correct justification (it was testing the wrong thing)
+3. A partial fix with a clear "next step" in PROGRESS.md
+4. A well-documented dead end identifying what's actually hard
+
+## Lean
+
+Run `cd lean && lake build` to check the codebase compiles.
+
+If `lake` is not on your path:
 ```bash
 export PATH="$HOME/.elan/bin:$PATH"
 ```
-If that doesn't work:
+If elan itself is missing:
 ```bash
 curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
 export PATH="$HOME/.elan/bin:$PATH"
 ```
 
-## Working style
+## Success
 
-- **Scope tightly.** Pick one sorry. Work on it. Commit. Hand off.
-- **Do the hard cases first.** When proving a theorem by case analysis, identify
-  the hardest case and tackle it first. If the hard case fails, the easy cases
-  don't matter. If the hard case succeeds, the easy cases are usually mechanical.
-- Think before you code. If a proof isn't going through, consider whether the
-  definitions are right, not just whether you can force the proof.
-- **Question theorem statements, not just proofs.** Before working on a proof,
-  ask: "Are the preconditions satisfiable for real programs?" If you can't
-  construct a witness, the theorem may be vacuously true. Identifying a vacuous
-  theorem is more valuable than proving it.
-- Read the git log to understand what previous agents have done.
-- If you change a fundamental definition, explain WHY in your commit message.
-- Small, correct steps are better than large, broken ones.
-- Remember: Och exists to serve Ochre. Every choice should be evaluated against
-  whether it moves toward a sound Ochre, not just a sound Och in isolation.
-- **Before you finish:** update PROGRESS.md with exactly what the next agent
-  needs to know to pick up where you left off. Be specific — file names, line
-  numbers, what you tried, what worked, what didn't.
+Phase 1 is done when every `TODO[mega-loop]` marker is closed without
+weakening, `lake build` passes, and the test suite asserts exactly what it
+should assert — no more, no less. The Och core calculus should feel
+obviously-right: small, beautiful, surprising only in its simplicity. If
+closing all markers has produced a sprawling, special-cased system, you have
+failed even if every test passes. Go simpler.

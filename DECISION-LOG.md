@@ -5,6 +5,46 @@ decided, WHY, and what alternatives were considered.
 
 ---
 
+## 2026-04-16: Split bundled `μ` into separate `ι` and `fix`
+
+**Agents:** a27af1e65ebbe752d (full Och rewrite), ae69c738316f74ee5 + a1acb27814dafabf2 (Simple Och exploration)
+
+**What:** Full Och's `Expr.mu (ann : Expr) (body : Expr)` is replaced by two
+constructors:
+- `Expr.iota (ann : Expr) (body : Expr)` — self-type. Intro rule uses
+  value-substitution (Cedille-style): `a ⊑ ι A. b` if `a ⊑ A` ∧ `a ⊑ b[x := a]`.
+- `Expr.fix (ann : Expr) (body : Expr)` — recursive binder. Equi-recursive:
+  `fix A. b` unfolds to `b[x := fix A. b]` on both sides of `⊑`.
+
+**Why:** Bundled `μ` was doing two jobs (dependent-elim self-typing AND
+recursive structure) with one rule set, and the overlap caused persistent
+transitivity walls. The Simple Och exploration on `research-iota-fix-split`
+showed the split is structurally clean: each binder gets a narrower, well-
+understood rule set. The split does NOT resolve the `dtrue ⊑ dBool`
+obstruction on its own (that needs a separate β-conversion / DefEq rule),
+but it unblocks reasoning about the two concepts independently.
+
+**Alternatives considered:**
+- Keep bundled `μ`: proof walls persisted across every extension attempt
+  (BetaR, AppR, Mu-R, IotaR) — all hit the same cut-formula inflation.
+- Fixed-self ι: tried first, found to be semantically equivalent to the old
+  `Sub.mu` — voided the usefulness. Rejected.
+- Value-substitution ι only (no fix): doesn't express recursive types
+  (List, Stream) which full Och needs.
+
+---
+
+## Historical decisions (VCompat era, pre-rewrite)
+
+The entries below are from the pre-split VCompat / soundness-proof era
+(April 2026). They describe decisions about a codebase that has since been
+substantially restructured. **Do not treat these as current guidance** —
+the definitions they reference (bundled `μ`, `lenient` mode, VCompat's
+mu-* disjuncts, etc.) no longer exist. They are retained as history for
+agents investigating why particular design choices were made before.
+
+---
+
 ## 2026-04-05: Replace isConcreteVal with ConcNF in VCompat semantic lam
 
 **Agent:** ochre-20260405-091658
