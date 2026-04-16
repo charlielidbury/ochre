@@ -7,7 +7,11 @@ been split into separate `ι` (self-type) and `fix` (recursive type)
 constructors. `lake build` compiles. Simple Och (`lean/Och/Simple/`) is
 untouched and remains the proven-sound metatheory reference.
 
-**41 → 3 `TODO[mega-loop]` markers** over 2026-04-16. DBool.lean and
+**41 → 3 `TODO[mega-loop]` markers** over 2026-04-16. An NbE
+evaluator (`lean/Och/NbE.lean`) now exists alongside `absEval` and
+handles all the cases that fan out under eager substitution
+(`done_/dtwo/dthree`, `Array_ dthree`); the remaining work is
+plumbing it into `subCheckNF`. DBool.lean and
 Array.lean are fully closed (zero `sorry`). The appendVec north-star
 test (`appendVec ⊑ T → Vec T → Vec T → Vec T`) and the abstract
 `appendArrays` typing both pass. The remaining six markers cluster
@@ -325,7 +329,34 @@ Four parallel forks, one per remaining obstacle:
     doesn't blow it up. (b) means obstacle 3 is sequenced after
     obstacle 1.
 
-6 → 3 markers. **All three remaining markers reduce to the NbE
+6 → 3 markers.
+
+### Agent phase1-nbe-foundation, 2026-04-16
+
+Implemented `lean/Och/NbE.lean`: a closure-based NbE evaluator
+(`Val`/`Neutral`/`Closure`, `eval`/`vapp`/`quote`, `nf`/`nfIn`).
+Recursive heads (fix/ι) unfold by environment extension instead
+of term substitution; a neutral argument blocks the unfold (same
+gate as absEval), and a small per-chain `unf` bound stops the
+`(dsucc m)→Type` self-reference in done_'s annotation. `quote`
+opens closures with a fresh neutral and re-evaluates at `unf=1`,
+so the self-reference reads back as a single stuck application
+rather than 32 nested ones.
+
+`NbETests.lean` validates: `nf` terminates on `dNat/done_/dtwo/
+dthree` (where `absEval` either fans out or produces non-canonical
+forms), `Array_ dthree Nat_` reduces to `Pair Nat (Pair Nat (Pair
+Nat Unit))` (where `absEval` hangs), and `nf done_ = nf (dsucc
+dzero)` (canonicity). All by `native_decide`. No changes to
+`absEval`/`subCheckNF`; purely additive.
+
+Next step: replace `subCheckNF`'s internal `absEval` calls with
+`NbE.nfIn` (or, cleaner, rewrite `subCheckNF` to compare `Val`s
+directly so closures stay un-quoted). Once that lands, `done_ ⊑
+dNat` should close, the β domain check can be restored, and
+`appendVec_wrong`/`vecResult` follow.
+
+**All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
 needs the β-site domain check restored, which is blocked on the
