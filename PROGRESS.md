@@ -7,9 +7,46 @@ been split into separate `ι` (self-type) and `fix` (recursive type)
 constructors. `lake build` compiles. Simple Och (`lean/Och/Simple/`) is
 untouched and remains the proven-sound metatheory reference.
 
-`dtrue ⊑ dBool` does not currently pass under the new rule set. This is
-expected — it's the central aspirational test. See AGENT_PROMPT.md for
-rules of engagement.
+**`dtrue ⊑ dBool` and `dfalse ⊑ dBool` now pass**, along with the negative
+`dBool ⊑ dtrue = false` and the full DBool concEval suite (21 examples,
+zero `sorry`). See the agent log entry below for what changed and what's
+next (DNat still hits the fuel ceiling).
+
+### Agent phase1-coinductive-seen, 2026-04-16
+
+Picked: `dtrue ⊑ dBool` (the central marker).
+
+Found that `subCheckNF` was already accepting it — but only because the
+`[fix-ann]` RHS rule (`a ⊑ fix A. body ← a ⊑ A`) made *every* term a subtype
+of *every* `fix Type. _`, including `Nat_ ⊑ dBool` and `dBool ⊑ dtrue`. The
+annotation `A` is the *type* of the recursion variable, not an upper bound
+on the fixpoint, so this rule was unsound and masked the real obstruction.
+
+Removing it exposed the actual gap: the recursive `dtrue ⊑ dBool` subgoal
+that reappears in contravariant domain position couldn't be discharged
+because `lam`/`app` reset the coinductive assumption set to `[]`. The fix
+is the standard Brandt-Henglein discipline:
+
+  - `seen` is threaded through `lam`/`app` instead of reset.
+  - Only *productive* steps (fix-unfold, ι-unfold, iotaIntro) extend `seen`.
+  - Annotation-widening steps inherit `seen` but never extend it; the
+    `.iota`/`.fix` arms in `neutralType` (which silently re-introduced
+    ann-widening with the inherited `seen`) are removed.
+  - A new `[unfoldIotaL]` arm peels `ι` on the left so `ι_dtrue ⊑ M`
+    reduces to its body instead of dead-ending at the annotation.
+  - Degenerate `ι A. self` / `fix A. self` (body = `bvar 0`) skip the
+    unfold path so they don't close trivially via the assumption set.
+
+After this, all 21 DBool examples close by `native_decide`, including the
+negatives (`dBool ⊑ dtrue`, `dtrue ⊑ dfalse`, `dfalse ⊑ dtrue` all
+`= .ok false`). `Nat_ ⊑ dBool` and `Type ⊑ dBool` are correctly rejected.
+
+Next obvious target: `dzero ⊑ dNat` runs out of fuel at 200. The DNat
+encoding has a Scott-style eliminator whose successor case applies the
+predecessor, so unfolding generates much larger terms than DBool. Likely
+needs either a sharing-aware `seen` lookup (current `==` is structural on
+the unfolded terms) or a smarter unfold strategy that doesn't substitute
+the full fixpoint into the successor branch.
 
 ## Open `TODO[mega-loop]` markers
 

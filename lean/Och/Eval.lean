@@ -231,9 +231,9 @@ mutual
       | _ =>
         match a, b with
         | .lam domA bodyA, .lam domB bodyB => do
-          let contra ← subCheckNF fuel ctx [] domB domA
+          let contra ← subCheckNF fuel ctx seen domB domA
           if !contra then return false
-          subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB
+          subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) seen bodyA bodyB
         | _, .iota _ann body =>
           -- iotaIntro (value-sub, Cedille-style):
           --   a ⊑ ι A. body  ←  a ⊑ A  ∧  a ⊑ body[0 := a]
@@ -256,73 +256,78 @@ mutual
               | .error e => .error e
               | _ => nt
         | _, .fix ann body =>
-          -- RHS fix rules:
-          --   [fix-ann]    : a ⊑ fix A. body  ←  a ⊑ A
+          -- RHS fix rule:
           --   [unfoldFixR] : a ⊑ fix A. body  ←  a ⊑ body[0 := fix A. body]
+          -- The annotation A is the type of the recursion variable, not an
+          -- upper bound on inhabitants — the previous [fix-ann] shortcut
+          -- (a ⊑ A → a ⊑ fix A. body) collapsed every recursive type with
+          -- a Type-kinded annotation into a universal supertype.
           let seen' := (a, b) :: seen
-          let ann_path := match absEval fuel ctx seen' ann with
-            | .ok (ann', _) => subCheckNF fuel ctx seen' a ann'.val
+          let u := body.subst 0 (.fix ann body)
+          let unfold_path := match absEval fuel ctx seen' u with
+            | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
             | .error e => .error e
-          match ann_path with
+          match unfold_path with
           | .ok true => .ok true
-          | _ =>
-            let u := body.subst 0 (.fix ann body)
-            let unfold_path := match absEval fuel ctx seen' u with
-              | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
-              | .error e => .error e
-            match unfold_path with
+          | _ => match neutralType fuel ctx seen a b with
             | .ok true => .ok true
-            | _ => match neutralType fuel ctx seen a b with
-              | .ok true => .ok true
-              | nt => match ann_path, unfold_path with
-                | .error e, _ => .error e
-                | _, .error e => .error e
-                | _, _ => nt
+            | nt => match unfold_path with
+              | .error e => .error e
+              | _ => nt
         | .fix ann body, _ =>
           -- LHS fix rules:
-          --   [fix-ann-L]    : fix A. body ⊑ c  ←  A ⊑ c  (widening via ann)
           --   [unfoldFixL]   : fix A. body ⊑ c  ←  body[0 := fix A. body] ⊑ c
+          --   [fix-ann-L]    : fix A. body ⊑ c  ←  A ⊑ c
+          -- Only the productive unfold extends `seen`; ann-widening must not,
+          -- otherwise the widened goal can cycle back via the assumption set.
           let seen' := (a, b) :: seen
-          let ann_path :=
-            if body != .bvar 0 then
-              match absEval fuel ctx seen' ann with
-              | .ok (ann', _) => subCheckNF fuel ctx seen' ann'.val b
-              | .error e => .error e
-            else .ok false
-          match ann_path with
+          let unfold_path :=
+            if body == .bvar 0 then .ok false else
+            let u := body.subst 0 (.fix ann body)
+            match absEval fuel ctx seen' u with
+            | .ok (u', _) => subCheckNF fuel ctx seen' u'.val b
+            | .error e => .error e
+          match unfold_path with
           | .ok true => .ok true
           | _ =>
-            let u := body.subst 0 (.fix ann body)
-            let unfold_path := match absEval fuel ctx seen' u with
-              | .ok (u', _) => subCheckNF fuel ctx seen u'.val b
-              | .error e => .error e
-            match unfold_path with
+            let ann_path :=
+              if body != .bvar 0 then
+                match absEval fuel ctx seen ann with
+                | .ok (ann', _) => subCheckNF fuel ctx seen ann'.val b
+                | .error e => .error e
+              else .ok false
+            match ann_path with
             | .ok true => .ok true
-            | _ => match ann_path, unfold_path with
+            | _ => match unfold_path, ann_path with
               | .error e, _ => .error e
               | _, .error e => .error e
               | _, _ => .ok false
-        | .iota ann body, _ =>
-          -- LHS iota: a value at ι A. body has type body[0 := value].
-          -- But as a term-as-type on the left, the widest type we can
-          -- narrow to is the annotation A.
-          -- Rule: ι A. body ⊑ c  ←  A ⊑ c
+        | .iota _ann body, _ =>
+          -- LHS iota rules:
+          --   [unfoldIotaL]  : ι A. body ⊑ c  ←  body[0 := ι A. body] ⊑ c
+          --   [iota-ann-L]   : ι A. body ⊑ c  ←  A ⊑ c
+          -- Same seen-discipline as fix-L: only the unfold is productive,
+          -- and only when the body isn't bare `self` (which would unfold
+          -- to itself and close trivially via the assumption set).
           let seen' := (a, b) :: seen
-          match absEval fuel ctx seen' ann with
-          | .ok (ann', _) =>
-            match subCheckNF fuel ctx seen' ann'.val b with
+          let unfold_path :=
+            if body == .bvar 0 then .ok false else
+            let u := body.subst 0 a
+            match absEval fuel ctx seen' u with
+            | .ok (u', _) => subCheckNF fuel ctx seen' u'.val b
+            | .error e => .error e
+          match unfold_path with
+          | .ok true => .ok true
+          | _ => match neutralType fuel ctx seen a b with
             | .ok true => .ok true
-            | nt => match neutralType fuel ctx seen a b with
-              | .ok true => .ok true
-              | nt2 => match nt with
-                | .error _ => nt
-                | _ => nt2
-          | .error e => .error e
+            | nt => match unfold_path with
+              | .error e => .error e
+              | _ => nt
         | .app f1 a1, .app f2 a2 => do
           let structural := do
-            let fOk ← subCheckNF fuel ctx [] f1 f2
+            let fOk ← subCheckNF fuel ctx seen f1 f2
             if !fOk then return false
-            subCheckNF fuel ctx [] a1 a2
+            subCheckNF fuel ctx seen a1 a2
           match structural with
           | .ok true => .ok true
           | _ => match neutralType fuel ctx seen a b with
@@ -372,8 +377,6 @@ mutual
               | _ => .ok false
             | _ => .ok false
           | .error e => .error e
-      | .iota ann _ => subCheckNF fuel ctx seen ann b
-      | .fix ann _ => subCheckNF fuel ctx seen ann b
       | _ => .ok false
   termination_by fuel
 end

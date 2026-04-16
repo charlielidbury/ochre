@@ -39,10 +39,10 @@ inductive Subtype' : Expr → Expr → Prop where
   | unfold_fix_L {ann body c : Expr} :
       Subtype' (body.subst 0 (.fix ann body)) c →
       Subtype' (.fix ann body) c
-  /-- [fix-ann]: `a ⊑ fix A. body` if `a ⊑ A` (annotation widening). -/
-  | fix_ann {a ann body : Expr} :
-      Subtype' a ann → Subtype' a (.fix ann body)
-  /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`. -/
+  /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`.
+      The previous `[fix-ann]` (`a ⊑ A → a ⊑ fix A. body`) was removed:
+      `A` is the type of the recursion variable, not an upper bound on
+      the fixpoint, so with `A = Type` it admitted `Nat ⊑ dBool`. -/
   | unfold_fix_R {a ann body : Expr} :
       Subtype' a (body.subst 0 (.fix ann body)) →
       Subtype' a (.fix ann body)
