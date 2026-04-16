@@ -127,14 +127,17 @@ private def smallExprs : List Expr :=
     .iota .type .type              -- ιType. Type
   ]
 
--- TODO[mega-loop]: transitivity exhaustive search — previously passed on μ;
--- the rule set for ι/fix is weaker (no self_intro-style dual-sided closure)
--- so some triples that used to be vacuously true (b ⊄ c returns false)
--- may now have b ⊑ c with new unfolding rules. Re-run and record.
+-- Transitivity exhaustive search on smallExprs. Closed by the removal of the
+-- unsound RHS `fix_ann` rule (`a ⊑ fix A. body ← a ⊑ A`) which produced four
+-- concrete counterexamples in this table, e.g.
+--   a = λx:Type. λy:Type. y,  b = fix x:(Type→Type). λy:Type. y,
+--   c = ι x:Type. λy:Type. y
+-- where a⊑b passed via fix_ann (a⊑Type→Type by top-on-body), b⊑c passed via
+-- unfoldFixR, but a⊑c correctly fails. Transitivity now holds exhaustively.
 example : (smallExprs.all fun a =>
            smallExprs.all fun b =>
            smallExprs.all fun c =>
-           checkTrans 50 a b c) = true := by sorry
+           checkTrans 50 a b c) = true := by native_decide
 
 -- Extended test with Std library types
 private def stdExprs : List Expr :=
@@ -147,11 +150,13 @@ private def stdExprs : List Expr :=
     .lam Bool Bool                 -- Bool → Bool (constant)
   ]
 
--- TODO[mega-loop]: transitivity exhaustive search (Std types). Same as above.
+-- Transitivity exhaustive search on stdExprs. Closed by the same fix_ann
+-- removal: without the unsound `a ⊑ fix A. body ← a ⊑ A` rule, no spurious
+-- triples arise across the Std library types.
 example : (stdExprs.all fun a =>
            stdExprs.all fun b =>
            stdExprs.all fun c =>
-           checkTrans 200 a b c) = true := by sorry
+           checkTrans 200 a b c) = true := by native_decide
 
 -- Edge cases: nested binders and self-referential patterns
 private def edgeExprs : List Expr :=
@@ -168,11 +173,13 @@ private def edgeExprs : List Expr :=
     .app (.fix .type (.lam .type (.bvar 0))) .type  -- apply fix to Type
   ]
 
--- TODO[mega-loop]: transitivity exhaustive search on edge patterns.
+-- Transitivity exhaustive search on edge patterns. Closed by the fix_ann
+-- removal (same reason as above); these edge patterns include several
+-- fix/ι nestings that specifically stressed the unsound RHS rule.
 example : (edgeExprs.all fun a =>
            edgeExprs.all fun b =>
            edgeExprs.all fun c =>
-           checkTrans 100 a b c) = true := by sorry
+           checkTrans 100 a b c) = true := by native_decide
 
 -- ============================================================
 -- closedAt 0 witness tests for soundness theorem precondition

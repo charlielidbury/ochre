@@ -29,6 +29,57 @@ file names, markers closed, definitions changed.
 
 ---
 
+### ochre-20260416-175614 (2026-04-16)
+
+**Removed unsound RHS `fix_ann` rule; closed 3 transitivity markers.**
+
+The rule `a ⊑ fix A. body  ←  a ⊑ A` (ann_path in `_, .fix` case of
+`subCheckNF`, constructor `fix_ann` in `Subtype'`) was unsound: `fix A. body`
+is narrower than its annotation A (values must additionally unfold-match the
+body), so A-membership doesn't imply fix-membership. Concrete counterexample
+found by exhaustive search on smallExprs:
+
+  a = λx:Type. λy:Type. y
+  b = fix x:(Type→Type). λy:Type. y
+  c = ι x:Type. λy:Type. y
+
+Under the old rules: a⊑b via fix_ann (a⊑Type→Type by top-on-body),
+b⊑c via unfoldFixR, but a⊑c correctly fails. **Transitivity violation.**
+Three identical-shape triples existed in the smallExprs table; similar ones
+in stdExprs/edgeExprs. After removal, all three `TODO[mega-loop]`
+transitivity markers in `Och/Tests.lean` (lines 130, 150, 171) now close
+via `native_decide`.
+
+Files: `Och/Eval.lean` (subCheckNF RHS fix case simplified to unfold-only;
+neutralType still handles ann-based widening without polluting the seen
+memo), `Och/Subtyping.lean` (drop `fix_ann` constructor; unfold-only on RHS),
+`Och/Tests.lean` (3 markers closed with native_decide, comments updated to
+explain the fix).
+
+**Did NOT fix the deeper DBool subtyping wall.** The negative test
+`subCheck 50 dBool dtrue = .ok false` still spuriously returns `.ok true`.
+Trace: unfold_fix_R + iotaIntro reduces the goal to `dBool ⊑ lam_t'`, which
+cycles through `.iota, _` (LHS ann widening on dBool's iota) + `.fix, _`
+(LHS unfold) back to the same pair and closes via seen memoization. This
+same cycle is ALSO what makes the positive `dtrue ⊑ dBool` close, so
+removing LHS ann-widening from the main flow (tested in this session)
+breaks positive cases without fixing the negative. Distinguishing the two
+requires either (a) a new semantic mechanism in the checker that doesn't
+just rely on syntactic cycle detection, or (b) a change to the DBool
+encoding so the negative case fails structurally. Both are research-level.
+Matches graveyard: "Self-types (dtrue ⊑ dBool) are inherently circular —
+need cycle detection OR coinductive Sub OR step-indexed LR".
+
+**Incidental finding (not acted on):** the DBool concEval markers at
+lines 116, 119, 126, 127, 134, 135, 161, 162, 165-168, 175-184 are all
+closable via `native_decide` (they were defensively sorry'd by the
+e08bce9 encoding switch, not genuinely obstructed). Left for a follow-up
+to keep this commit focused on the substantive soundness fix.
+
+`lake build` passes. Marker count: 41 → 38 (Tests.lean: 5 → 2).
+
+---
+
 ### phase1-array-dnat-swap (2026-04-14)
 
 **Encoding swap, not a marker close.** Replaced Church-Nat-indexed Array_

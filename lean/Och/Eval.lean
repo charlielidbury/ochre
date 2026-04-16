@@ -256,28 +256,30 @@ mutual
               | .error e => .error e
               | _ => nt
         | _, .fix ann body =>
-          -- RHS fix rules:
-          --   [fix-ann]    : a ⊑ fix A. body  ←  a ⊑ A
+          -- RHS fix rule:
           --   [unfoldFixR] : a ⊑ fix A. body  ←  a ⊑ body[0 := fix A. body]
+          -- NOTE: an RHS annotation rule `a ⊑ fix A. body  ←  a ⊑ A` would be
+          -- UNSOUND: `fix A. body` is narrower than its annotation A (values
+          -- in the fix must additionally unfold-match the body), so membership
+          -- in A does not imply membership in the fix. Before removing this
+          -- rule we had a concrete transitivity counterexample where
+          --   a = λx:Type.λy:Type.y,
+          --   b = fix x:(Type→Type). λy:Type.y,
+          --   c = ι x:Type. λy:Type.y
+          -- gave a⊑b via fix_ann (a⊑Type→Type by top on the cov body) and
+          -- b⊑c via unfoldFixR, but a⊑c correctly fails.
           let seen' := (a, b) :: seen
-          let ann_path := match absEval fuel ctx seen' ann with
-            | .ok (ann', _) => subCheckNF fuel ctx seen' a ann'.val
+          let u := body.subst 0 (.fix ann body)
+          let unfold_path := match absEval fuel ctx seen' u with
+            | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
             | .error e => .error e
-          match ann_path with
+          match unfold_path with
           | .ok true => .ok true
-          | _ =>
-            let u := body.subst 0 (.fix ann body)
-            let unfold_path := match absEval fuel ctx seen' u with
-              | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
-              | .error e => .error e
-            match unfold_path with
+          | _ => match neutralType fuel ctx seen a b with
             | .ok true => .ok true
-            | _ => match neutralType fuel ctx seen a b with
-              | .ok true => .ok true
-              | nt => match ann_path, unfold_path with
-                | .error e, _ => .error e
-                | _, .error e => .error e
-                | _, _ => nt
+            | nt => match unfold_path with
+              | .error e => .error e
+              | _ => nt
         | .fix ann body, _ =>
           -- LHS fix rules:
           --   [fix-ann-L]    : fix A. body ⊑ c  ←  A ⊑ c  (widening via ann)
