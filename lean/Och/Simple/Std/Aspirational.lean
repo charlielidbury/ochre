@@ -68,7 +68,7 @@ private def x₉₉ : Expr := .var 99
 -- example : Sub [] (soch{ ADD ONE TWO }) NAT := sorry  -- needs BetaR
 
 -- Evaluation confirms these compute correctly at the value level:
-example : ev (.app (.app (.app (.app SUCC ZERO) .top) x₉₉) (soch{ λ(x : ⊤). x }))
+example : ev (soch{ SUCC ZERO ⊤ x₉₉ (λ(x : ⊤). x) })
   = some x₉₉ := rfl
 
 -- But we cannot express "SUCC ZERO ⊑ NAT" in the subtype relation without BetaR.
