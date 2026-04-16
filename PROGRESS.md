@@ -309,12 +309,30 @@ Four parallel forks, one per remaining obstacle:
     (its projections need the domain in normal form). Confirms
     NbE.
 
-  obstacle3-domcheck: still running (neutralType domain check for
-    appendVec_wrong).
+  obstacle3-domcheck: neutralType domain check fails on both
+    correctness and performance. The ill-typed
+    `appendArrays T n1 n1 arr1 arr2` is fully β-reduced during
+    absEval (no β-site check since loop 5), so by the time
+    neutralType sees the application the mismatch is erased — only
+    the consistent-with-wrong-indices return type
+    `Array_ (dadd n1 n1) T` survives. And the extra `arg ⊑ dom`
+    check at every neutral spine is multiplicative in nesting
+    depth (appendArrays/appendVec hang at fuel ≥100). The domain
+    obligation has to be captured at the β site *before*
+    substitution; either (a) absEval annotates each β with a
+    deferred obligation subCheckNF collects later, or (b) restore
+    the β-site check once obstacle 1 is fixed so `done_ ⊑ dNat`
+    doesn't blow it up. (b) means obstacle 3 is sequenced after
+    obstacle 1.
 
-6 → 3 markers. Remaining: DNat done_/dtwo/dthree ⊑ dNat (NbE),
-Vec appendVec_wrong (obstacle3 fork pending), Vec vecResult ⊑
-Vec Nat (dthree fan-out, same as DNat).
+6 → 3 markers. **All three remaining markers reduce to the NbE
+root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
+are the dNat-self-substitution fan-out directly; `appendVec_wrong`
+needs the β-site domain check restored, which is blocked on the
+same fan-out. Once an NbE/closure evaluator (or any normaliser
+whose NF is canonical and where substitution doesn't copy) lands,
+the β-site domain check can come back, and all three should close
+together.
 
 ### Agent phase1-bounded-domcheck-deadend, 2026-04-16
 
