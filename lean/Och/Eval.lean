@@ -168,25 +168,30 @@ mutual
           -- but under binders both the ι/fix term and the arg pick up
           -- de-Bruijn shifts on every recursive descent, so the syntactic
           -- `==` never fires and absEval diverges (this is what made
-          -- `absEvalVal dNat` non-terminating). Length-based cutoff:
-          -- allow one unfold, then treat the application as stuck. The
-          -- structural recursion is handled by subCheckNF's L/R rules
-          -- instead, where the seen-set discipline is sound.
+          -- `absEvalVal dNat` non-terminating). One unfold then stuck.
+          -- When the head's recorded type isn't an arrow we can't
+          -- compute a precise return type, so fall back to `Type`
+          -- rather than erroring (subCheckNF only consumes the value,
+          -- not the type). subCheckNF's L/R rules handle the structural
+          -- recursion soundly. The depth bound has to stay at 1: at 2+
+          -- the normalised dNat term roughly doubles, which feeds into
+          -- subCheckNF's seen-set `==` comparisons and makes
+          -- `dzero ⊑ dNat` blow up.
           if muSeen.length > 0 then
-            match τ_f.val with
-            | .lam _dom retTy =>
-              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .error s!"not callable (iota cycle): {repr f'}"
+            let retTy := match τ_f.val with
+              | .lam _dom retTy => retTy.subst 0 a'.val
+              | _ => .type
+            .ok (⟨.app f'.val a'.val⟩, ⟨retTy⟩)
           else
             let muSeen' := (Expr.iota _ann body, a'.val) :: muSeen
             absEval fuel ctx seen (.app (body.subst 0 (Expr.iota _ann body)) a'.val) muSeen'
         | .fix _ann body =>
           -- (fix A. b) a  →  b[self := fix A. b] a
           if muSeen.length > 0 then
-            match τ_f.val with
-            | .lam _dom retTy =>
-              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .error s!"not callable (fix cycle): {repr f'}"
+            let retTy := match τ_f.val with
+              | .lam _dom retTy => retTy.subst 0 a'.val
+              | _ => .type
+            .ok (⟨.app f'.val a'.val⟩, ⟨retTy⟩)
           else
             let muSeen' := (Expr.fix _ann body, a'.val) :: muSeen
             absEval fuel ctx seen (.app (body.subst 0 (Expr.fix _ann body)) a'.val) muSeen'
@@ -203,15 +208,24 @@ mutual
             match unfolded with
             | .lam _dom retTy =>
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .error s!"not callable: {repr f'}"
+            | _ => .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
           | .fix _ann body =>
             -- fix type in function position: unfold to get return type
             let unfolded := body.subst 0 f'.val
             match unfolded with
             | .lam _dom retTy =>
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .error s!"not callable: {repr f'}"
-          | _ => .error s!"not callable: {repr f'}"
+            | _ => .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
+          | _ =>
+            -- Stuck application (e.g. an ι/fix that hit the muSeen
+            -- cutoff above) being applied again. We can't recover a
+            -- precise return type, so fall back to `Type`. subCheckNF
+            -- only consumes the value, not the type, so this loses
+            -- precision in inferred types but keeps normalisation
+            -- total — previously this hard-errored, which made
+            -- `Array_ dzero T` and `Vec T` impossible to even
+            -- evaluate.
+            .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
   termination_by fuel
 
   /-- Structural subtype check on normalized terms.

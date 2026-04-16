@@ -73,6 +73,27 @@ guard to fix-R that the verifier flagged.
 26 → 25 markers (3 examples closed, 1 negative test corrected from
 spurious-true to correct-false).
 
+### Agent phase1-trans-exhaustive, 2026-04-16
+
+Picked: the three `checkTrans` exhaustive transitivity searches in
+Tests.lean (smallExprs/stdExprs/edgeExprs). They were sorried after the
+μ → ι/fix split because the rule set changed; under the seen-discipline
+rework (loop above) all 9³ + 11³ + 11³ triples now satisfy
+`a ⊑ b ∧ b ⊑ c → a ⊑ c` with no counterexample.
+
+Also made absEval total on stuck recursive heads: when the muSeen
+cutoff fires (or any neutral-spine head can't be typed as an arrow) the
+catch-all now returns the stuck application with placeholder type
+`Type` instead of erroring with "not callable". This doesn't yet unlock
+`Array_ dzero T = Unit_` because the inner β domain check `dzero ⊑ dNat`
+sees a *different* normal form of dNat (normalised at non-empty muSeen
+inside the fix-Array unfold) than the standalone check does — absEval's
+normal form is muSeen-dependent, so it isn't canonical. The Array/Vec
+wall is therefore the same NbE/closure-representation problem already
+flagged for `done_ ⊑ dNat`, just one indirection deeper.
+
+25 → 22 markers (3 transitivity examples closed).
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.

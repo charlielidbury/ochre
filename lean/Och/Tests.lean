@@ -127,14 +127,14 @@ private def smallExprs : List Expr :=
     .iota .type .type              -- ιType. Type
   ]
 
--- TODO[mega-loop]: transitivity exhaustive search — previously passed on μ;
--- the rule set for ι/fix is weaker (no self_intro-style dual-sided closure)
--- so some triples that used to be vacuously true (b ⊄ c returns false)
--- may now have b ⊑ c with new unfolding rules. Re-run and record.
+-- Transitivity exhaustive search. The seen-set discipline rework
+-- (productive-only extension, threaded through lam/app) plus the
+-- removal of fix-ann/neutralType ann-widening leaves no triple where
+-- a ⊑ b ∧ b ⊑ c but a ⊄ c on these expression sets.
 example : (smallExprs.all fun a =>
            smallExprs.all fun b =>
            smallExprs.all fun c =>
-           checkTrans 50 a b c) = true := by sorry
+           checkTrans 50 a b c) = true := by native_decide
 
 -- Extended test with Std library types
 private def stdExprs : List Expr :=
@@ -147,11 +147,10 @@ private def stdExprs : List Expr :=
     .lam Bool Bool                 -- Bool → Bool (constant)
   ]
 
--- TODO[mega-loop]: transitivity exhaustive search (Std types). Same as above.
 example : (stdExprs.all fun a =>
            stdExprs.all fun b =>
            stdExprs.all fun c =>
-           checkTrans 200 a b c) = true := by sorry
+           checkTrans 200 a b c) = true := by native_decide
 
 -- Edge cases: nested binders and self-referential patterns
 private def edgeExprs : List Expr :=
@@ -168,11 +167,10 @@ private def edgeExprs : List Expr :=
     .app (.fix .type (.lam .type (.bvar 0))) .type  -- apply fix to Type
   ]
 
--- TODO[mega-loop]: transitivity exhaustive search on edge patterns.
 example : (edgeExprs.all fun a =>
            edgeExprs.all fun b =>
            edgeExprs.all fun c =>
-           checkTrans 100 a b c) = true := by sorry
+           checkTrans 100 a b c) = true := by native_decide
 
 -- ============================================================
 -- closedAt 0 witness tests for soundness theorem precondition
