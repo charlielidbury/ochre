@@ -108,19 +108,25 @@ inductive Sub : Ctx → Expr → Expr → Type where
       Sub Γ e τ →
       Sub Γ a e →
       Sub Γ a (.asc e τ)
-  /-- [Iota-Intro]: `Γ ⊢ a ⊑ ι A. b` if `a ⊑ A` and `a ⊑ b[0 := ι A. b]`.
-      Uses the "fixed self-reference" formulation where the self-binder is
-      instantiated with the iota itself (NOT the value `a`). This is the
-      formulation that admits a clean inductive transitivity proof (the
-      cut formula `ι A. b` is preserved across iotaIntro × iotaIntro
-      trans cases).
+  /-- [Iota-Intro]: `Γ ⊢ a ⊑ ι A. b` if `a ⊑ A` and `a ⊑ b[0 := a]`.
+      Uses the Cedille-style "value-substitution" formulation where the
+      self-binder is instantiated with the *value* `a` (NOT the iota type
+      itself). This is what makes self-types actually dependent: `v : P v`
+      is derivable because the value literally appears in its own type.
 
-      Limitations: covariant self-references close via substitution →
-      reflexivity chains; contravariant self-references still produce
-      productive cycles that need cycle detection. -/
+      Tradeoff: the transitivity `iotaIntro × iotaIntro` case is NOT
+      closable in general. Given `hab: a ⊑ ι A body` with `a ⊑ body[0:=a]`,
+      and `hbc: ι A body ⊑ ι A' body'` with `(ι A body) ⊑ body'[0:=ι A body]`,
+      to build `a ⊑ ι A' body'` we'd need `a ⊑ body'[0:=a]`. But composing
+      gives `a ⊑ body'[0:=ι A body]`, which has the wrong self-substitution.
+      For *covariant* self-occurrences on the whiteboard Bool example, this
+      specific trans case may still be constructible via the underlying
+      Sub between `a` and `ι A body` — but we haven't proven it generally.
+      See `docs/research/iota-fix-split.md` section "Value-substitution
+      attempt" for the detailed analysis. -/
   | iotaIntro (Γ : Ctx) (a A b : Expr) :
       Sub Γ a A →
-      Sub Γ a (b.subst 0 (.iota A b)) →
+      Sub Γ a (b.subst 0 a) →
       Sub Γ a (.iota A b)
   /-- [Fix-Ann]: `Γ ⊢ a ⊑ fix A. b` if `a ⊑ A`. A weak, annotation-only
       rule: a value is at a fix-type if it has the annotation type.

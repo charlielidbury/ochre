@@ -3,9 +3,18 @@ import Och.Simple.Subtype
 import Och.Simple.Properties
 
 /-!
-# Challenge: `dtrue ⊑ Bool` via split ι / fix
+# Challenge: `dtrue ⊑ Bool` via split ι / fix (VALUE-SUB attempt)
 
-This file explores the whiteboard target:
+This file explores the whiteboard target under the **value-substitution**
+iotaIntro rule:
+
+```
+iotaIntro:  a ⊑ ι A. b   ←   a ⊑ A   ∧   a ⊑ b[0 := a]
+```
+
+(Contrast: the prior "fixed-self" attempt substituted the iota itself.
+See `docs/research/iota-fix-split.md` for the analysis of why fixed-self
+is transitively safe but does not yield true self-types.)
 
 ```
 cBool = λA:⊤. A → A → A
@@ -17,61 +26,61 @@ dtrue = true
 
 Goal: `Sub [] dtrue Bool`.
 
-## Status: the target theorem is NOT closable in Simple Och + ι/fix
-  alone.
+## Status: STILL NOT closable under value-sub.
 
-The obstruction is NOT related to ι/fix or self-types. It is a
-general [App] obstruction: the contravariant-position
-`(P true) ⊑ cBool→⊤` that appears during [Lam] decomposition of
-`dtrue` against Bool's body requires showing
+The obstruction is unchanged from the fixed-self attempt. The
+contravariant wall surfaces BEFORE the `P self` self-reference is
+decomposed, and value-sub only affects the deepest `P self` position.
 
-    (app P true) ⊑ (cBool→⊤)
+### What value-sub changes (and what it doesn't)
 
-where `P : cBool → ⊤` in context. [App] decomposition yields a
-residual `⊤ ⊑ (cBool→⊤)`, which is false (⊤ is top, not bottom).
+After `Sub.iotaIntro`, the body leg becomes
+`dtrue ⊑ BoolBody.subst 0 dtrue`, where `BoolBody.subst 0 dtrue`
+substitutes `dtrue` for the self-var at every depth (shifted
+appropriately). Crucially:
 
-Informally, applying a function `P : cBool→⊤` to `true` "should"
-beta-reduce to `⊤`, giving `⊤ ⊑ cBool→⊤` — still false. The issue
-is that `⊤` cannot be narrowed to a specific function type.
+* The `P true` and `P false` domains use `var 0` / `var 1` which refer
+  to `P` (the first lambda binder), NOT to self.
+* Only the body position `app (var 2) (var 3)` contains a self-ref
+  (var 3 shifts to self = 0 at the iota level). After `subst 0 dtrue`,
+  this becomes `app (var 2) dtrue`.
 
-This obstruction would block any structurally-minded inductive
-subtype system. It would require a `[BetaL]` / `[DefEq]` rule (to
-beta-reduce on the LHS) PLUS a weakening rule that allows widening
-from a specific type to ⊤ — but that's already [Top], which goes
-the wrong way.
+So `BoolBody.subst 0 dtrue =
+  λP:cBoolToTop. λ(app P cTrue). λ(app P cFalse). (app P dtrue)`
+(modulo de Bruijn indices).
 
-The conclusion is that the ι/fix split IS a clean design, but by
-itself does NOT enable this particular theorem. See
-`docs/research/iota-fix-split.md` for the detailed writeup.
+Checking `dtrue ⊑ BoolBody.subst 0 dtrue` by [Lam] decomposition
+reaches, at depth 2, the contravariant domain check
+`app (var 0) cTrue ⊑ var 0`, where `var 0 = cBoolToTop = cBool→⊤`.
+[App] decomposition yields the residual `⊤ ⊑ cBool→⊤`, which is
+false under the 7 base rules.
 
-## What this file demonstrates
+**This is the same [App] wall the fixed-self attempt hit.** Value-sub
+does not help because the wall is not on a self-position.
 
-We prove a related but simpler theorem:
+## What we prove here
 
-    `Sub [] true (.iota cBool (var 0))`
+* `cTrue_sub_cBool`: the standard Church-Bool subtyping.
+* `cTrue_sub_iota_trivial`: `cTrue ⊑ ι ⊤. cBool` — a no-self iota
+  where the body leg becomes `cTrue ⊑ cBool.subst 0 cTrue = cBool`.
+* `dtrue_sub_Bool`: sorry'd with a detailed diagnosis at the exact
+  obstruction point.
 
-i.e., `true ⊑ ι self:cBool. self`. This is the trivial self-type
-where the body is just `self`. After [IotaIntro] unfolding:
+## Why the prior (fixed-self) and this (value-sub) attempts converge
 
-    true ⊑ cBool          (covariant ann, standard Church Bool proof)
-    true ⊑ (var 0).subst 0 (.iota cBool (var 0)) = ι cBool. (var 0)
+Both rules require discharging a body-leg obligation that, for the
+whiteboard encoding, is identical modulo which term fills a single
+position (var 3 / self). Both derivations hit the [App] wall on
+the preceding `app P cTrue ⊑ cBool→⊤` check, which has nothing to do
+with self. Thus:
 
-The second goal cycles to the original goal, so this is still
-not closable inductively. But it isolates the cycle to the ι
-rule specifically.
+* fixed-self: cut-measure safe, trans closes, but wall at [App].
+* value-sub: cut-measure broken for general trans(iotaIntro, iotaIntro),
+  body leg has value-sub flavour — but still wall at [App].
 
-We ALSO prove:
-
-    `Sub [] true (.iota ⊤ cBool)`
-
-i.e., `true ⊑ ι self:⊤. cBool`. Here the body is `cBool` (self
-is never used). After [IotaIntro]:
-
-    true ⊑ ⊤              (trivial [Top])
-    true ⊑ cBool.subst 0 (.iota ⊤ cBool) = cBool  (since cBool closed)
-
-Both legs close. This demonstrates the iotaIntro rule works on
-trivial "non-self-referential" iotas.
+The conclusion stands: to close `dtrue ⊑ Bool`, we need a rule that
+unblocks the domain check `app P cTrue ⊑ cBool→⊤`, not a change to
+the iota substitution semantics.
 -/
 
 set_option autoImplicit false
@@ -130,36 +139,16 @@ noncomputable def cTrue_sub_cBool : Sub [] cTrue cBool := by
 -- ============================================================
 
 /-- Trivial iota where body is closed (doesn't use self).
-    `Sub [] cTrue (ι ⊤. cBool)`. Via [IotaIntro]:
+    `Sub [] cTrue (ι ⊤. cBool)`. Via value-sub [IotaIntro]:
     - `cTrue ⊑ ⊤`  (by [Top])
-    - `cTrue ⊑ cBool.subst 0 (ι ⊤. cBool) = cBool` (since cBool is closed). -/
+    - `cTrue ⊑ cBool.subst 0 cTrue = cBool` (since cBool is closed). -/
 noncomputable def cTrue_sub_iota_trivial : Sub [] cTrue (.iota .top cBool) := by
   apply Sub.iotaIntro [] cTrue .top cBool
   · exact Sub.top _ _
-  · -- goal: Sub [] cTrue (cBool.subst 0 (.iota .top cBool))
-    -- cBool is closed, so subst is identity (well, need subst to leave cBool alone)
-    -- cBool has no bvar 0 at top, but has bvar 0,1,2 inside its lambdas
-    -- Since we subst at target 0 with the iota as replacement, the inner bvar 0's
-    -- are at different depths. But cBool is closed — all its bvars are bound by
-    -- its own lambdas. Let me compute...
-    -- cBool = lam top (lam (var 0) (lam (var 1) (var 2)))
-    -- subst 0 X walks in. First lam: subst 0 X on top is top. Body: subst 1 X_shifted.
-    -- Inside the outer lam, under depth 1, we subst 1. But cBool's body has var 0
-    -- (referring to the outer lam binding) and var 1/2 referring higher.
-    -- Need to compute cBool.subst 0 X where X is closed. Result should = cBool
-    -- (since cBool's bvars are all captured by its own lambdas, no free bvar 0).
-    show Sub [] cTrue (cBool.subst 0 (.iota .top cBool))
-    -- Lean should compute this via rfl — if not, we use a helper.
-    -- Use subst_shift_cancel: if cBool has no free vars at 0, subst leaves it alone.
-    -- Actually cBool as written is `.lam top (.lam (var 0) (.lam (var 1) (var 2)))`.
-    -- When we subst 0 X, we get:
-    --   .lam (top.subst 0 X) ((.lam (var 0) (.lam (var 1) (var 2))).subst 1 X_s)
-    -- = .lam top (.lam ((var 0).subst 1 X_s) ((.lam (var 1) (var 2)).subst 2 X_ss))
-    -- var 0.subst 1 X_s: 0 < 1, so stays var 0.
-    -- (lam (var 1) (var 2)).subst 2 X_ss = .lam ((var 1).subst 2 X_ss) ((var 2).subst 3 ...)
-    -- var 1 < 2, stays var 1. var 2 < 3, stays var 2.
-    -- So the whole thing equals cBool.
-    have : cBool.subst 0 (.iota .top cBool) = cBool := by rfl
+  · -- goal: Sub [] cTrue (cBool.subst 0 cTrue)
+    -- cBool is closed (no free vars), so subst-any-value returns cBool.
+    show Sub [] cTrue (cBool.subst 0 cTrue)
+    have : cBool.subst 0 cTrue = cBool := by rfl
     rw [this]
     exact cTrue_sub_cBool
 
@@ -167,60 +156,96 @@ noncomputable def cTrue_sub_iota_trivial : Sub [] cTrue (.iota .top cBool) := by
 -- The target theorem: `Sub [] dtrue Bool` — NOT PROVABLE
 -- ============================================================
 
-/-- The target theorem. NOT PROVABLE with just [IotaIntro] + the base 7 rules.
+/-- The target theorem under value-sub iotaIntro.
 
-    The body leg requires closing the subtyping goal
+    After `Sub.iotaIntro` the body leg becomes
 
-        cTrue ⊑ BoolBody.subst 0 Bool
+        dtrue ⊑ BoolBody.subst 0 dtrue
 
-    Under outermost [Lam], this reduces (under `cBoolToTop :: []`) to
+    where (computing the substitution with `dtrue` = cTrue, a closed term)
 
-        cTrue's 2nd-lambda body ⊑ RHS's 2nd-lambda body
+        BoolBody.subst 0 dtrue =
+          .lam cBoolToTop
+            (.lam (app (var 0) cTrue)
+              (.lam (app (var 1) cFalse)
+                (app (var 2) dtrue)))
 
-    which has a contravariant domain check of the form
+    (cBoolToTop/cTrue/cFalse are closed so shifts/subs leave them alone;
+    only the deepest `var 3` — the iota self-ref at depth 3 — is
+    replaced by `dtrue` shifted by 3, which equals `dtrue` since it's
+    closed.)
 
-        app (var 0) cTrue ⊑ (var 0)
+    [Lam] decomposes the outermost lambda: contra domain `cBoolToTop ⊑ .top`
+    closes by [Top]; body goes under `[cBoolToTop]`.
 
-    in context `[cBoolToTop]`. Under [App] on LHS:
+    Second [Lam]: contra domain `app (var 0) cTrue ⊑ var 0` in context
+    `[cBoolToTop]`. Here `var 0 = cBoolToTop = .lam cBool .top`. Via
+    [App] on LHS:
 
-        (var 0) ⊑ λD.R  ∧  cTrue ⊑ D  ∧  R[0 := cTrue] ⊑ (var 0)
+      * `var 0 ⊑ .lam D R` via [Var] gives `D = cBool`, `R = .top`.
+      * `cTrue ⊑ cBool` — ok.
+      * `.top ⊑ var 0` (= `.top ⊑ cBoolToTop = cBool→⊤`) — FALSE.
 
-    With [Var] giving (var 0) ⊑ cBoolToTop = (λ_:cBool. ⊤), we get
-    D = cBool, R = ⊤, and then
+    Value-sub does NOT help: this wall is in the contravariant domain
+    check of the second lambda, where no self-reference participates.
+    Value-sub only affects the body at depth 3 (`P self`).
 
-        ⊤ ⊑ (var 0) = cBoolToTop = cBool → ⊤
-
-    which is FALSE (Top is top, not bottom).
-
-    This is NOT a self-type issue — [IotaIntro] substitutes correctly.
-    The issue is a missing "Beta" / "DefEq" rule that would let us
-    reduce `(λ_:cBool. ⊤) cTrue` to `⊤` BEFORE the [Lam] check, so the
-    contravariant domain check becomes `⊤ ⊑ cBool→⊤` (still false via
-    structural rules, but potentially handleable by a special rule).
-
-    We leave this as a sorry documenting the gap.
-
-    Below we build out as much of the derivation as we can, to put the
-    sorry at the exact obstruction point. The partial derivation covers:
-    - [Iota-Intro] top frame
-    - annotation leg (dtrue ⊑ cBool)
-    - start of body leg (sorry'd at the sub-step where [Lam] would
-      reach the unsatisfiable contravariant check). -/
+    We close everything we can and sorry at the exact obstruction. -/
 noncomputable def dtrue_sub_Bool : Sub [] dtrue Bool := by
-  -- Step 1: use [Iota-Intro] with annotation cBool and body BoolBody.
+  -- Step 1: [IotaIntro] (value-sub). Ann leg = cBool check. Body leg below.
   apply Sub.iotaIntro [] dtrue cBool
     (.lam cBoolToTop
       (.lam (.app (.var 0) cTrue)
         (.lam (.app (.var 1) cFalse)
           (.app (.var 2) (.var 3)))))
-  · -- Annotation leg: dtrue ⊑ cBool. Proved above.
+  · -- Annotation leg: dtrue ⊑ cBool.
     exact cTrue_sub_cBool
-  · -- Body leg: dtrue ⊑ BoolBody.subst 0 Bool.
-    -- BoolBody.subst 0 Bool reduces to:
-    --   .lam cBoolToTop (.lam (app 0 cTrue) (.lam (app 1 cFalse) (app 2 Bool)))
-    -- (shifts on closed cBoolToTop/cTrue/cFalse/Bool are identity)
-    sorry  -- OBSTRUCTION: [Lam] decomposition reaches `(app 0 cTrue) ⊑ (var 0)`
-           -- at the 2nd level, requiring ⊤ ⊑ cBool→⊤ which is false.
-           -- See the doc comment above and `docs/research/iota-fix-split.md`.
+  · -- Body leg: dtrue ⊑ BoolBody.subst 0 dtrue.
+    -- Compute what BoolBody.subst 0 dtrue reduces to.
+    show Sub [] dtrue
+      ((Expr.lam cBoolToTop
+          (.lam (.app (.var 0) cTrue)
+            (.lam (.app (.var 1) cFalse)
+              (.app (.var 2) (.var 3))))).subst 0 dtrue)
+    -- By definitional reduction on subst (cBoolToTop/cTrue/cFalse/dtrue
+    -- are all closed; their shifts are identity), the RHS evaluates to:
+    --   .lam cBoolToTop (.lam (app (var 0) cTrue) (.lam (app (var 1) cFalse) (app (var 2) dtrue)))
+    have hreduce : (Expr.lam cBoolToTop
+        (.lam (.app (.var 0) cTrue)
+          (.lam (.app (.var 1) cFalse)
+            (.app (.var 2) (.var 3))))).subst 0 dtrue =
+        (.lam cBoolToTop
+          (.lam (.app (.var 0) cTrue)
+            (.lam (.app (.var 1) cFalse)
+              (.app (.var 2) dtrue)))) := by rfl
+    rw [hreduce]
+    -- Now: dtrue ⊑ .lam cBoolToTop (.lam (app 0 cTrue) (.lam (app 1 cFalse) (app 2 dtrue)))
+    -- dtrue = cTrue = .lam .top (.lam (.var 0) (.lam (.var 1) (.var 1)))
+    -- First [Lam]: contra cBoolToTop ⊑ .top  (Top); body under cBoolToTop.
+    apply Sub.lam [] .top cBoolToTop
+      (.lam (.var 0) (.lam (.var 1) (.var 1)))
+      (.lam (.app (.var 0) cTrue) (.lam (.app (.var 1) cFalse) (.app (.var 2) dtrue)))
+    · exact Sub.top _ _
+    -- Second [Lam]: contra `app (var 0) cTrue ⊑ var 0` in [cBoolToTop].
+    apply Sub.lam [cBoolToTop] (.var 0) (.app (.var 0) cTrue)
+      (.lam (.var 1) (.var 1))
+      (.lam (.app (.var 1) cFalse) (.app (.var 2) dtrue))
+    · -- *** OBSTRUCTION ***
+      -- Goal: Sub [cBoolToTop] (.app (.var 0) cTrue) (.var 0).
+      -- Via [App] on LHS: need (var 0) ⊑ (.lam D R), cTrue ⊑ D, R.subst 0 cTrue ⊑ var 0.
+      -- [Var] gives (var 0) ⊑ cBoolToTop (shifted = itself) = .lam cBool .top.
+      -- So D = cBool, R = .top. Then R.subst 0 cTrue = .top.
+      -- Final: .top ⊑ var 0 = .top ⊑ cBoolToTop = .top ⊑ (.lam cBool .top).
+      -- [Top] says a ⊑ top, not top ⊑ arrow. No base rule closes this.
+      -- Value-sub doesn't help: the self-ref (var 3) is at a deeper
+      -- position, not in this domain check.
+      sorry
+    -- (The body-leg sub-steps would close if we could get past this;
+    -- in particular at depth 3, after value-sub, the LHS and RHS
+    -- positions under `app P cTrue` / `app P cFalse` decompositions
+    -- would rely on the same obstruction in a different spot, plus a
+    -- reflexive match at `app (var 2) dtrue` since both sides there
+    -- would unify to cTrue / dtrue. But we never reach that point.)
+    sorry
 
 end Och.Simple.Challenge

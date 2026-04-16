@@ -449,10 +449,10 @@ noncomputable def Sub.weaken_gen {Γ : Ctx} {a b : Expr} (n : Nat) (T : Expr)
     simp only [shift]
     have ihA' := ihA n
     have ihBody' := ihBody n
-    have hcomm : (b'.subst 0 (.iota A' b')).shift n 1 =
-        (b'.shift (n+1) 1).subst 0 (.iota (A'.shift n 1) (b'.shift (n+1) 1)) := by
-      rw [Expr.subst_shift_hi b' 0 n 1 (.iota A' b') (by omega)]
-      rfl
+    -- Value-sub: body is substituted with `a'`, not with the iota itself.
+    have hcomm : (b'.subst 0 a').shift n 1 =
+        (b'.shift (n+1) 1).subst 0 (a'.shift n 1) := by
+      rw [Expr.subst_shift_hi b' 0 n 1 a' (by omega)]
     rw [hcomm] at ihBody'
     exact Sub.iotaIntro _ (a'.shift n 1) (A'.shift n 1) (b'.shift (n+1) 1) ihA' ihBody'
   | @fixAnn Γ'' a' A' b' _hA ihA =>
@@ -669,15 +669,10 @@ private noncomputable def transNarrowInner
           exact Sub.ascR _ _ e τ heτ (trans_n Γ _ _ e (Sub.top _ _) hae
             hcplx (by simp [Sub.size] at hle ⊢; omega))
         | .iotaIntro _ _ A' body' hbcA hbcBody =>
-          -- b = top, hbc: Sub Γ top (iota A' body'). Goal: Sub Γ a (iota A' body').
-          -- hbcA: Sub Γ top A', hbcBody: Sub Γ top (body'.subst 0 (iota A' body'))
-          -- Use iotaIntro on a: need Sub Γ a A' and Sub Γ a (body'.subst 0 iota).
-          -- Since Sub Γ a top (by hab = top), compose with hbcA and hbcBody.
-          have hA' := trans_n Γ a _ A' (Sub.top _ _) hbcA hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          have hBody' := trans_n Γ a _ _ (Sub.top _ _) hbcBody hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          exact Sub.iotaIntro _ a A' body' hA' hBody'
+          -- VALUE-SUB OBSTRUCTION: hbcBody : Sub Γ top (body'.subst 0 top).
+          -- We need Sub Γ a (body'.subst 0 a). Composing via trans gives
+          -- Sub Γ a (body'.subst 0 top), wrong self-substitution.
+          sorry
         | .fixAnn _ _ A' body' hbcA =>
           have hA' := trans_n Γ a _ A' (Sub.top _ _) hbcA hcplx
             (by simp [Sub.size] at hle ⊢; omega)
@@ -716,13 +711,11 @@ private noncomputable def transNarrowInner
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .iotaIntro _ _ A' body' hbcA hbcBody =>
-          have hA' := trans_n Γ _ _ A'
-            (Sub.lam _ A B body_a body_b hBA hbody_ab) hbcA hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          have hBody' := trans_n Γ _ _ _
-            (Sub.lam _ A B body_a body_b hBA hbody_ab) hbcBody hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          exact Sub.iotaIntro _ _ A' body' hA' hBody'
+          -- VALUE-SUB OBSTRUCTION (see iotaIntro-as-RHS comment above):
+          -- hbcBody's substitution uses the cut formula (lam A body_a),
+          -- but we need body'.subst 0 a where a = lam A body_a; these
+          -- differ and cannot be bridged without further machinery.
+          sorry
         | .fixAnn _ _ A' body' hbcA =>
           have hA' := trans_n Γ _ _ A'
             (Sub.lam _ A B body_a body_b hBA hbody_ab) hbcA hcplx
@@ -751,13 +744,8 @@ private noncomputable def transNarrowInner
             (Sub.ascR _ _ e τ heτ hae) hae₂ hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .iotaIntro _ _ A' body' hbcA hbcBody =>
-          have hA' := trans_n Γ _ _ A'
-            (Sub.ascR _ a e τ heτ hae) hbcA hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          have hBody' := trans_n Γ _ _ _
-            (Sub.ascR _ a e τ heτ hae) hbcBody hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          exact Sub.iotaIntro _ _ A' body' hA' hBody'
+          -- VALUE-SUB OBSTRUCTION: same as iotaIntro-as-hbc above.
+          sorry
         | .fixAnn _ _ A' body' hbcA =>
           have hA' := trans_n Γ _ _ A'
             (Sub.ascR _ a e τ heτ hae) hbcA hcplx
@@ -773,15 +761,13 @@ private noncomputable def transNarrowInner
             (Sub.iotaIntro _ a A_mu body_mu habA habBody) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .iotaIntro _ _ A' body' hbcA hbcBody =>
-          -- Both sides are iotaIntro. b = iota A_mu body_mu is the cut.
-          -- We need a ⊑ iota A' body'. Rebuild via iotaIntro on the goal RHS.
-          have hA' := trans_n Γ _ _ A'
-            (Sub.iotaIntro _ a A_mu body_mu habA habBody) hbcA hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          have hBody' := trans_n Γ _ _ _
-            (Sub.iotaIntro _ a A_mu body_mu habA habBody) hbcBody hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          exact Sub.iotaIntro _ a A' body' hA' hBody'
+          -- VALUE-SUB: the key obstruction.
+          -- hbcBody : Sub Γ (iota A_mu body_mu) (body'.subst 0 (iota A_mu body_mu))
+          -- We need Sub Γ a (body'.subst 0 a) for the reconstructed iotaIntro.
+          -- Composition gives Sub Γ a (body'.subst 0 (iota A_mu body_mu)), NOT
+          -- Sub Γ a (body'.subst 0 a). This is the core reason value-sub
+          -- iotaIntro's transitivity doesn't close inductively.
+          sorry
         | .fixAnn _ _ A' body' hbcA =>
           have hA' := trans_n Γ _ _ A'
             (Sub.iotaIntro _ a A_mu body_mu habA habBody) hbcA hcplx
@@ -797,13 +783,8 @@ private noncomputable def transNarrowInner
             (Sub.fixAnn _ a A_fix body_fix habA) hae hcplx
             (by simp [Sub.size] at hle ⊢; omega))
         | .iotaIntro _ _ A' body' hbcA hbcBody =>
-          have hA' := trans_n Γ _ _ A'
-            (Sub.fixAnn _ a A_fix body_fix habA) hbcA hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          have hBody' := trans_n Γ _ _ _
-            (Sub.fixAnn _ a A_fix body_fix habA) hbcBody hcplx
-            (by simp [Sub.size] at hle ⊢; omega)
-          exact Sub.iotaIntro _ _ A' body' hA' hBody'
+          -- VALUE-SUB OBSTRUCTION: same as iotaIntro-as-hbc cases above.
+          sorry
         | .fixAnn _ _ A' body' hbcA =>
           have hA' := trans_n Γ _ _ A'
             (Sub.fixAnn _ a A_fix body_fix habA) hbcA hcplx
@@ -897,7 +878,8 @@ private noncomputable def transNarrowInner
       | .iotaIntro _ _ A_mu body_mu hA_mu hBody_mu =>
         have hA' := narrow_n Γ_pre Γ_suf B C a A_mu hCB hA_mu hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
-        have hBody' := narrow_n Γ_pre Γ_suf B C a (body_mu.subst 0 (.iota A_mu body_mu)) hCB hBody_mu hBcplx (by
+        -- Value-sub: body leg is Sub ... a (body_mu.subst 0 a)
+        have hBody' := narrow_n Γ_pre Γ_suf B C a (body_mu.subst 0 a) hCB hBody_mu hBcplx (by
           simp [Sub.size] at hle ⊢; omega)
         exact Sub.iotaIntro _ a A_mu body_mu hA' hBody'
       | .fixAnn _ _ A_fix body_fix hA_fix =>
@@ -1171,9 +1153,10 @@ private noncomputable def Sub.subst_gen_aux {Γ' : Ctx} {a b : Expr} (hab : Sub 
     simp only [subst]
     have hA' := ihA Δ hctx hv
     have hBody' := ihBody Δ hctx hv
-    have hss := Expr.subst_subst body_mu 0 Δ.length (.iota A_mu body_mu) (v.shift 0 Δ.length) (by omega)
+    -- Value-sub: the body leg has `body_mu.subst 0 a'`. After outer subst,
+    -- we commute the two substitutions via subst_subst.
+    have hss := Expr.subst_subst body_mu 0 Δ.length a' (v.shift 0 Δ.length) (by omega)
     rw [← hss] at hBody'
-    simp only [subst] at hBody'
     exact Sub.iotaIntro _ _
       (A_mu.subst Δ.length (v.shift 0 Δ.length))
       (body_mu.subst (Δ.length + 1) ((v.shift 0 Δ.length).shift 0 1)) hA' hBody'

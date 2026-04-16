@@ -120,9 +120,22 @@ This is a MISSING BETA / DefEq obstruction in the baseline 7 rules, not
 a self-type problem. Splitting ι from fix doesn't help. See
 `docs/research/iota-fix-split.md` for full writeup.
 
-**Recommendation**: DO NOT merge to main. Complexity increase without
-payoff. Keep branch for reference. Investigate [BetaL] / [DefEq]
-independently before revisiting ι/fix split.
+**Value-sub follow-up (same branch)**: swapped iotaIntro's premise from
+fixed-self `b.subst 0 (.iota A b)` to Cedille-style value-sub
+`b.subst 0 a`. This is the semantically correct self-type rule (gives
+`v : P v` dependent elim). Trans closes in the baseline (fixed-self)
+version because the cut formula `ι A b` is invariant; value-sub breaks
+this (the self-substitution value changes from `b_cut` to `a`). 6 new
+sorrys appear in `iotaIntro × iotaIntro` family of trans cases.
+**Target theorem still doesn't close** — the contravariant wall is
+unchanged because it sits on `app P cTrue ⊑ cBool→⊤` (pre-self-ref)
+not on any position affected by the iota body substitution. Value-sub
+only affects the deepest `P self → P v` position at depth 3, which is
+never reached. Confirms: this is an [App] wall, not an iota wall.
+
+**Recommendation**: DO NOT merge to main (either fixed-self or value-sub).
+Complexity increase without payoff. Keep branch for reference.
+Investigate [BetaL] / [DefEq] independently before revisiting ι/fix split.
 
 ## Architecturally validated findings
 

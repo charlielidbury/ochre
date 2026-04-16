@@ -339,3 +339,175 @@ The **1 metatheory sorry** in Properties is the only one that's
 fundamental to the split. The Soundness sorrys are fixable with work
 (not attempted here due to scope). The Challenge sorry is the honest
 finding: the target theorem is blocked on a different wall.
+
+---
+
+## Value-substitution attempt (follow-up)
+
+After the initial fixed-self implementation above, we also tried the
+Cedille-style **value-substitution** formulation:
+
+```
+iotaIntro:  a ⊑ ι A. b   ←   a ⊑ A   ∧   a ⊑ b[0 := a]
+```
+
+Rationale: the fixed-self rule substitutes the iota *type* into its own
+body, which makes it effectively equi-recursive unfolding — not
+self-typing. Only value-substitution yields `v : P v` style dependent
+eliminations. `research-precise` proved value-sub closes inductively
+for covariant self-occurrences, and Bool's self occurs covariantly in
+`P self`, so on paper value-sub should work for the whiteboard Bool.
+
+### What changed
+
+* `Subtype.lean`: `iotaIntro`'s second premise changed from
+  `Sub Γ a (b.subst 0 (.iota A b))` to `Sub Γ a (b.subst 0 a)`.
+* `Properties.lean`:
+  * `weaken_gen.iotaIntro`: shift-commutes on `b.subst 0 a` (simpler
+    than the fixed-self form because there's no iota-reconstruction
+    needed).
+  * `narrow_gen.iotaIntro`: `body_mu.subst 0 a` instead of
+    `body_mu.subst 0 (.iota ...)`.
+  * `subst_gen_aux.iotaIntro`: uses `subst_subst` on `body_mu.subst 0 a'`
+    to commute the two substitutions.
+  * **6 transitivity cases for `iotaIntro` as RHS became sorrys**:
+    all cases of trans with `hbc = iotaIntro(hbcA, hbcBody)` where
+    `hbcBody : Sub Γ b_cut (body'.subst 0 b_cut)`. Composing with
+    `hab : Sub Γ a b_cut` gives `Sub Γ a (body'.subst 0 b_cut)`, but
+    the value-sub iotaIntro needs `Sub Γ a (body'.subst 0 a)`. The
+    self-substitution value changes from `b_cut` to `a`, which has no
+    inductive bridge.
+* `Challenge.lean`: body leg of `dtrue ⊑ Bool` now unfolds to
+  `dtrue ⊑ BoolBody.subst 0 dtrue` (value-sub form).
+
+### Transitivity cut-measure analysis for value-sub
+
+Goal of trans: given `hab : Sub Γ a b_cut` and `hbc : Sub Γ b_cut c`,
+build `Sub Γ a c`. The lex measure is `(b_cut.complexity, sizes)`.
+
+For `iotaIntro × iotaIntro`:
+* `b_cut = ι A_mu. body_mu`, complexity `1 + A_mu.cplx + body_mu.cplx`.
+* hab's body leg: `Sub Γ a (body_mu.subst 0 a)` — cut `body_mu.subst 0 a`
+  has complexity `body_mu.cplx + k·a.cplx` where `k` = number of free
+  self-refs in body_mu (shift-invariance of complexity). If `a` is
+  complex and self occurs multiply, this cut can be much larger than
+  `b_cut`.
+* **Shrinkage requires `a.complexity · k < 1 + A_mu.complexity`**, i.e.
+  the LHS value must be "smaller" than the iota's annotation. This is
+  an **admissibility condition**, not a structural decrease.
+
+For the whiteboard `dtrue ⊑ Bool`:
+* `dtrue.complexity = cTrue.complexity = 4` (3 lams + 1 nested var).
+* `cBool.complexity = 4` as well.
+* `BoolBody` has **one** self-occurrence at the deepest position, so
+  `k = 1`. Then `dtrue.cplx · 1 = 4 < 1 + cBool.cplx = 5`. ✓ Borderline!
+  So the cut-measure **would shrink** for this specific case. But the
+  general rule isn't structurally safe.
+
+### Does the derivation close?
+
+**No.** The obstruction is unchanged from fixed-self.
+
+After `Sub.iotaIntro` the body leg is
+`dtrue ⊑ BoolBody.subst 0 dtrue`. Computing:
+
+```
+BoolBody.subst 0 dtrue =
+  .lam cBoolToTop
+    (.lam (app (var 0) cTrue)
+      (.lam (app (var 1) cFalse)
+        (app (var 2) dtrue)))   -- was (var 3), self-ref → dtrue
+```
+
+Only the `var 3 = self` position at depth 3 is affected by the
+value-sub. Every other position (`var 0`, `var 1` in the domain
+annotations) refers to lambda binders, not self.
+
+Second [Lam] decomposition reaches the contravariant domain check
+`app (var 0) cTrue ⊑ var 0` in context `[cBoolToTop]`. Here `var 0`
+looks up `cBoolToTop = cBool → ⊤`. Via [App] on the LHS:
+
+```
+(var 0) ⊑ λD. R    (via [Var]: D = cBool, R = ⊤)
+cTrue ⊑ cBool      ✓
+R[0 := cTrue] = ⊤ ⊑ var 0 = cBoolToTop   -- FALSE
+```
+
+**This is exactly the same wall the fixed-self attempt hit.** The
+obstruction is not in any self-position; it is in the [App]
+decomposition of `P cTrue` against `cBoolToTop`, which requires
+showing `⊤ ⊑ cBool → ⊤` (top isn't a subtype of an arrow).
+
+### Comparison to the prior (fixed-self) obstruction
+
+| Aspect | Fixed-self | Value-sub |
+|---|---|---|
+| Trans metatheory | All closes, 0 sorrys (for iota) | 6 sorrys on `iotaIntro × iotaIntro` family |
+| Cut-measure | Structurally safe (cut = iota preserved) | Conditional on `a.cplx < 1 + A.cplx` per self-ref |
+| Whiteboard goal | Body leg forms `dtrue ⊑ BoolBody.subst 0 Bool`, same [App] wall | Body leg forms `dtrue ⊑ BoolBody.subst 0 dtrue`, **same** [App] wall |
+| Self-typing semantics | Equi-recursive unfolding (no real dep elim) | True value substitution (`v : P v` derivable *in principle*) |
+
+The obstruction is identical. Value-sub makes the body-leg substitution
+"correct" semantically but does not reach the contravariant wall.
+
+### What value-sub *would* close (counterfactual)
+
+If we could somehow close the `⊤ ⊑ cBoolToTop` wall (e.g. via a
+structural-eta rule or beta-reduction LHS), value-sub would then reach
+the deepest body position `app (var 2) dtrue`. The LHS at that depth
+would also be `var 1` (referring to `t` binder, dtrue is the first arg
+of cTrue = `λA.λt.λf. t`). The RHS would be `app (var 2) dtrue`.
+[Var] on the LHS gives type `(app (var 1) cTrue).shift 0 1 = app (var 2) cTrue`
+in context `[app (var 1) cFalse, app (var 0) cTrue, cBoolToTop]`.
+
+We'd then need `app (var 2) cTrue ⊑ app (var 2) dtrue`. By [App]:
+* `var 2 ⊑ λD. R` — same domain/codomain.
+* `cTrue ⊑ D` — ok.
+* `R.subst 0 cTrue ⊑ app (var 2) dtrue` — requires knowing what R is.
+
+So even at the deepest position, more machinery is needed. But this is
+a DIFFERENT wall (dependent-app covariance) and was not reachable
+under fixed-self either (fixed-self has its own `BoolBody.subst 0 Bool`
+where the deepest position is `app (var 2) Bool` — distinct from
+`app (var 2) cTrue` on the LHS).
+
+### Verdict on value-sub
+
+Value-sub is the **semantically correct** self-type rule but:
+
+1. Its transitivity breaks inductively (6 sorrys) — needs coinduction
+   or a seen-set, as `research-precise`'s analysis predicted.
+2. It does not unblock `dtrue ⊑ Bool` because the structural [App]
+   wall sits in front of any self-reference.
+
+**Recommendation**: do NOT merge value-sub iotaIntro into main either.
+The ι/fix split (fixed-self or value-sub) is orthogonal to the real
+obstruction for the Bool whiteboard example. The next experiment
+should focus on the [App] wall directly (e.g. a `[BetaL]` rule, a
+codomain-equality rule, or a semantic logical-relation approach) and
+see whether any of *those* unblock the domain check — then layer
+iotaIntro (preferably value-sub for semantics) on top.
+
+### Files modified in the value-sub pass
+
+* `lean/Och/Simple/Subtype.lean`: iotaIntro premise changed.
+* `lean/Och/Simple/Properties.lean`:
+  * weaken/narrow/subst cases for iotaIntro adjusted.
+  * 6 trans cases (iotaIntro as hbc) changed to sorrys.
+* `lean/Och/Simple/Challenge.lean`:
+  * `cTrue_sub_iota_trivial`: substitution formula updated, still closes.
+  * `dtrue_sub_Bool`: body leg reduced via value-sub, derivation
+    pushed to the exact obstruction point (second [Lam]'s contra
+    domain check), then sorry.
+
+### Sorry inventory (value-sub pass)
+
+| File | Line | What | Why |
+|------|------|------|-----|
+| Properties.lean | ~641 (1 decl, 7 sorries inside) | `iotaIntro × iotaIntro` family (6 sorries) + `fixAnn × unfoldFixL` (1 sorry) | Value-sub cut substitutes different values on the two sides; generically unbridgeable |
+| Soundness.lean | ~413, ~425, ~433 | iota/fix eval preservation cases | Unchanged from fixed-self pass |
+| Challenge.lean | ~242, ~249 | `dtrue ⊑ Bool` partial derivation | [App] contravariant wall, not value-sub related |
+
+Total Simple metatheory sorries: **7** (up from 1 in fixed-self pass)
+plus 3 Soundness sorrys (same as before). The whiteboard goal is no
+closer to provable.
