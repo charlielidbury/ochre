@@ -54,8 +54,10 @@ private def testVec2 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
 -- evaluated ι form so the existential pack typechecks.
 example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
 
--- TODO[mega-loop]: mkVec Nat 2 [1,2] ⊑ Vec Nat — same obstructions as above.
-example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by sorry
+-- mkVec Nat 2 [1,2] ⊑ Vec Nat — same mechanism as testVec1. Array_ dtwo Nat
+-- reduces to Pair Nat (Pair Nat Unit), then testVec2's sigma lines up
+-- with Vec's sigma via the stuck-head re-eval rule.
+example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -88,8 +90,8 @@ example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨dtwo⟩ := by
   native_decide
 
--- TODO[mega-loop]: unpack vec2 → length ≠ done_. Same absEval obstruction.
-example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨done_⟩ := by sorry
+-- unpack vec2 → length ≠ done_. Same mechanism as unpack vec1 ≠ dtwo.
+example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨done_⟩ := by native_decide
 
 end Tests
 
