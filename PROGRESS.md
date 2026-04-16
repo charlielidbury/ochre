@@ -29,6 +29,102 @@ file names, markers closed, definitions changed.
 
 ---
 
+### ochre-20260416-184333 (2026-04-16)
+
+**Dead end: structural `.fix,.fix` / `.iota,.iota` rules don't close the
+DBool wall.**
+
+Attempted option (b) from the 182337 trace: add structural rules that
+fire when both sides have matching outer fix/iota head with equal
+annotations, descending into bodies under a shared `self` binder. This
+is the direct analogue of the inductive `fix_body` / `iota_body` rules
+in `Subtype'`. Placed BEFORE the existing `_,.fix` / `_,.iota` /
+`.fix,_` / `.iota,_` existential rules in `subCheckNF`.
+
+Two variants tried, neither closed any marker:
+
+**Variant 1 (structural-only, no fallback):** broke transitivity
+exhaustive tests on `smallExprs` / `edgeExprs`. Concrete counterexample:
+
+    a = ι Type. (λy:Type. y)
+    b = Type
+    c = ι Type. (bvar 0)
+
+where `a ⊑ b` via top, `b ⊑ c` via iotaIntro (body[0:=Type]=Type,
+refl), but the new structural `.iota,.iota` on `a ⊑ c` descends to
+`(λy:Type. y) ⊑ (bvar 0)` under a `self:Type` binder, which
+structurally fails (lam ⊄ bvar via neutralType). iotaIntro would have
+succeeded: body_c[0:=a] = (bvar 0)[0:=a] = a, then a ⊑ a refl. So
+structural is strictly weaker than iotaIntro for the `body = bvar 0`
+self-loop case.
+
+**Variant 2 (try structural first, fall back to existential on
+false/error):** transitivity passed, but `dBool ⊑ dtrue` still returns
+`.ok true` (the spurious closure). Once structural descent bottoms out
+at a mismatch somewhere deep in the motive chain, the fallback invokes
+iotaIntro + LHS ann widening, which re-enter the same unsound seen-set
+cycle documented in the 182337 trace.
+
+**Why the seen-set cycle is fundamentally unsound-but-indistinguishable:**
+
+A seen entry `(a, b)` is a *coinductive hypothesis*: "assume a ⊑ b
+during this proof, and show all the premises using that hypothesis."
+Coinduction is sound only if uses of the hypothesis are *guarded* —
+separated from its addition by at least one structural step (one that
+strictly reduces the syntactic size of the pair).
+
+The DBool unsound closure adds `(LHS_fix, lam)` to seen during a
+`.fix,_` unfold (existential, not structural), then consults it 1–2
+existential steps later during `.iota,_` LHS widening. No structural
+step intervenes. This is not guarded coinduction.
+
+BUT: sound closures *also* use pure-existential chains. E.g.
+`Type ⊑ fix Type (bvar 0)` closes via `_,.fix` unfoldFixR → the
+unfolded body is literally `fix Type (bvar 0)` itself → re-encounter
+via seen. No structural step either, yet this is sound because
+`fix Type (bvar 0) ≡ Type` semantically. The existing algorithm can't
+tell the two cases apart from shape alone.
+
+**What the next agent should know:**
+
+- Structural rules alone aren't enough — need a way to distinguish
+  sound productivity from unsound spinning. The four options from the
+  182337 trace stand: productivity-aware seen (depth-stamped),
+  eager structural descent with compatible-shape gating, DBool
+  re-encoding to make the negative case fail structurally, or
+  coinductive `Subtype'` reformulation.
+- A hybrid worth trying: structural `.fix,.fix`/`.iota,.iota` *plus*
+  special-case handling of `body = bvar 0` (for both fix and iota),
+  where the RHS is semantically the annotation and `a ⊑ fix/ι A.
+  (bvar 0)` reduces to `a ⊑ A`. That might give enough coverage to
+  drop the existential fallback and avoid the cycle. Untested in this
+  session.
+- Experimenting with removing the seen-set consult entirely requires a
+  full `lake build` run; previous attempt in this session hung and was
+  killed. Expectation: breaks sound pure-existential closures like
+  `Type ⊑ fix Type (bvar 0)` (fuel-loops to `.error`) unless paired
+  with the `body = bvar 0` special case above.
+- **DNat-side reality check:** `absEval 5000 [] [] Std.dzero` stack-
+  overflows in `Expr.shift` (not fuel exhaustion — interpreter stack
+  depth). Any DNat marker work will need to first make `absEval` handle
+  the iota-nested-let structure without blowing stack, or rewrite
+  `TyCtx.extend` to avoid repeated full-expression shifts on every
+  binder descent.
+- **Incidental:** `lean/Och/Std/DNat.lean:137` has a test-assertion bug.
+  Comment says "dzero should NOT be a subtype of done_" (expected
+  `.ok false`) but the assertion reads `= .ok true`. Left as-is because
+  `subCheck` currently returns `.error "out of fuel"` on this pair —
+  fixing the assertion alone doesn't close the marker, and touching
+  the assertion while leaving the sorry seemed to add noise without
+  substance.
+
+`lake build` passes (clean revert — no Eval.lean changes landed).
+Marker count unchanged at 27.
+
+Agent-ID: ochre-20260416-184333
+
+---
+
 ### ochre-20260416-182337 (2026-04-16)
 
 **Closed 18 DBool concEval markers via native_decide.**
