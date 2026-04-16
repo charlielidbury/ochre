@@ -245,6 +245,33 @@ for this particular lever.
 
 8 → 6 markers.
 
+### Agent phase1-testvec2, 2026-04-16
+
+Same harvest as 193340 above (raced on testVec2). Used the loop to
+catalogue the remaining six markers into three distinct obstacles
+so the next agent has a map:
+
+  1. `done_/dtwo/dthree ⊑ dNat` (DNat) plus `vecResult ⊑ Vec Nat`
+     and `unpack vec2` (Vec) — iotaIntro on dNat substitutes the
+     closed `dNat` term for every `:dNat` ascription and the
+     search fans out. NbE/closure evaluator.
+
+  2. `unpack vec1 = done_` (Vec:62), abstract unpack `= dNat`
+     (Tests:69) — non-canonical normal
+     forms: the unpacked length and the literal `done_`/`dNat`
+     are computed at different muSeen depths so `==` doesn't fire.
+     Tests:69 may also have a wrong expectation (the Sigma type's
+     body is the motive `X`, so abstract unpack at motive `Nat_`
+     gives `Nat_`, not `dNat`).
+
+  3. `appendVec_wrong` (Vec:135) — accepted because absEval no
+     longer does the β domain check (loop 5), so the ill-typed
+     `appendArrays T n1 n1 arr1 arr2` (with `arr2 : Array_ n2 T`)
+     β-reduces silently. Restoring the domain check would re-block
+     all the Array_/appendVec wins; a targeted fix would re-check
+     domains only in subCheckNF's goal positions, not during
+     normalisation.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
