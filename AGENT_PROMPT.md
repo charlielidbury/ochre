@@ -110,8 +110,14 @@ Och has one syntactic category for both terms and types. `Expr` has:
 - `⊤` — top
 - `ι(x:A). b` — self-type. A value `v` at type `ι x:A. b` has type `b[x := v]`.
   This is what enables dependent elimination (Cedille-style).
-- `fix(x). b` — recursive type. Equi-recursive: `fix x. b` unfolds to
-  `b[x := fix x. b]` during subtyping.
+- `fix(x:A). b` — recursive type. Equi-recursive: `fix x:A. b` unfolds to
+  `b[x := fix x:A. b]` during subtyping.
+
+The annotation `A` on each binder is a widening bound (used by rules like
+`a ⊑ ι x:A. b ⟹ a ⊑ A`). **The annotations may be unnecessary** —
+Cedille's ι has no annotation, and `fix`'s annotation only matters for
+the optional widening rule. If removing an annotation simplifies the
+system, do it. See `SUGGESTIONS.md` for discussion.
 
 **Concrete semantics** (runtime, call-by-name): the usual substitution-based
 evaluator. Lambdas and `⊤` are values; application does β; ascription strips

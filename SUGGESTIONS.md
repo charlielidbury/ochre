@@ -15,6 +15,37 @@ their own target based on what's most central, most revealing, or most
 likely to unblock others — not what's easiest. If you find a priority
 ordering worth recording, add it here.
 
+## Possible simplifications (gut-out territory)
+
+The μ→ι+fix split retained annotations on both binders: `ι x:A. b` and
+`fix x:A. b`. It's plausible that one or both annotations are unnecessary
+cruft.
+
+- **ι's annotation.** Currently the `iotaIntro` rule has two premises:
+  `a ⊑ ι x:A. b` iff `a ⊑ A` ∧ `a ⊑ b[x := a]`. The `a ⊑ A` premise is a
+  widening bound — it says "the value being self-typed also fits the
+  annotation". Cedille's ι has no such annotation; the self-typing rule
+  is just `a ⊑ ι x. b` iff `a ⊑ b[x := a]`. If this simpler form works,
+  the annotation is dead weight.
+
+- **fix's annotation.** Used by `fixAnn`: `fix x:A. b ⊑ c` via `A ⊑ c`.
+  Equi-recursive unfold (`unfoldFixL`, `unfoldFixR`) does not touch the
+  annotation. If we drop `fixAnn` (which exists only for convenience —
+  you can always express the widening via explicit ascription), the
+  annotation has no role.
+
+**If you find that removing either annotation simplifies the encoding or
+closes a `TODO[mega-loop]` marker, do it.** This is exactly the kind of
+gut-out the prompt asks for: if dead weight is load-bearing only because
+we added it, cut it. Updating every ι/fix site to match is mechanical.
+Smaller core wins.
+
+Counter-point to be aware of: the annotations do offer *local documentation*
+— `fix self:(dNat → dNat). body` tells the reader what recursive function
+this is without having to derive it from the body. If annotations are
+removed, make sure nothing critical relied on them for type-inference
+heuristics in the checker.
+
 ## Phase 2 (not active yet — do not start)
 
 The soundness proof is Phase 2 work. Do not touch this until Phase 1 is
