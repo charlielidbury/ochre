@@ -10,6 +10,9 @@ The current focus is on proving out the metatheory via the construction and anal
 - PROGRESS.md, DECISION-LOG.md - Internal logs of what happened for agents/you to co-ordinate across sessions.
 - AGENT_PROMPT.md - The prompt given to the agents/you working on this project (agents/you are often made by the ./loop.sh script)
 
+# Building / Tooling
+Everything is built via the Nix flake at the repo root. Use `nix develop` to get a shell with Lean, Rust nightly, Agda and OCaml pinned to the right versions, then run `lake build` / `cargo build` as normal. Use `nix build .#och-lean` or `nix build .#compiler` for reproducible CI-style builds. Do not install elan/rustup manually.
+
 # Git Context
 Agents/you are prompted into putting what they did and their rational into commit messages in great detail. This is often the most efficient way to figure out **why** something was done or to get more details about something unclear.
 

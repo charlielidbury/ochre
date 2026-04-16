@@ -225,18 +225,25 @@ Valuable outcomes, ranked:
 3. A partial fix with a clear "next step" in PROGRESS.md
 4. A well-documented dead end identifying what's actually hard and why
 
-## Lean
+## Tooling
 
-Run `cd lean && lake build` to check the codebase compiles.
+All toolchains (Lean, Rust nightly, Agda, OCaml) are provided via Nix.
+Enter the dev shell once at the start of your session:
 
-If `lake` is not on your path:
 ```bash
-export PATH="$HOME/.elan/bin:$PATH"
+nix develop
 ```
-If elan itself is missing:
+
+Inside the shell, run `cd lean && lake build` to check the codebase
+compiles. The Lean version is pinned by `lean/lean-toolchain` and
+supplied by the flake — do **not** install elan or run `rustup`; if
+`lake` or `cargo` is missing you are not inside `nix develop`.
+
+To build artefacts reproducibly without a shell:
+
 ```bash
-curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
-export PATH="$HOME/.elan/bin:$PATH"
+nix build .#och-lean   # type-check the Och formalisation
+nix build .#compiler   # build the Rust compiler
 ```
 
 ## Success
