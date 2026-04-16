@@ -7,7 +7,7 @@ been split into separate `ι` (self-type) and `fix` (recursive type)
 constructors. `lake build` compiles. Simple Och (`lean/Och/Simple/`) is
 untouched and remains the proven-sound metatheory reference.
 
-**41 → 6 `TODO[mega-loop]` markers** over 2026-04-16. DBool.lean and
+**41 → 3 `TODO[mega-loop]` markers** over 2026-04-16. DBool.lean and
 Array.lean are fully closed (zero `sorry`). The appendVec north-star
 test (`appendVec ⊑ T → Vec T → Vec T → Vec T`) and the abstract
 `appendArrays` typing both pass. The remaining six markers cluster
@@ -277,6 +277,44 @@ so the next agent has a map:
      all the Array_/appendVec wins; a targeted fix would re-check
      domains only in subCheckNF's goal positions, not during
      normalisation.
+
+### Agent phase1-parallel-forks, 2026-04-16
+
+Four parallel forks, one per remaining obstacle:
+
+  obstacle2-tests69: Tests:69 was a porting error. The pre-c061a3b
+    test asserted `= Nat_` (the motive) and passed; the dNat port
+    changed it to `= dNat` (n's type) on the assumption that the
+    abstract unpack should reveal the witness type. But ascription
+    widens to `Vec Nat_ = λX. λk. X`, so applying the motive gives
+    the motive back. Under Church-Nat the motive and n's type were
+    both `Nat_`, masking the distinction. Restored to `= Nat_` and
+    closed. Getting `dNat` here is a Sigma-encoding question
+    (Sigma-as-a-type would need to apply k to abstract witnesses),
+    not a checker gap.
+
+  obstacle2-vec62: Vec:62/71 restated via concEval. The
+    computational fact "unpack gives back the packed length" is a
+    runtime property; concEval has no muSeen-path-dependence so
+    both sides normalise identically. Bidirectional subCheck also
+    works for vec1 but hangs for vec2. The previous absEvalVal
+    phrasing was testing absEval's NF canonicity, which is the
+    documented representation problem, not the computational fact.
+
+  obstacle1-dnat: skipping ι/fix annotation normalisation in
+    absEval is harmless (no regressions) but doesn't close
+    `done_ ⊑ dNat`. The fan-out is in λ-domain positions
+    (`λpred:self. …`) inside dNat's body, not only ι/fix
+    annotations. Skipping λ-domain normalisation breaks Pair
+    (its projections need the domain in normal form). Confirms
+    NbE.
+
+  obstacle3-domcheck: still running (neutralType domain check for
+    appendVec_wrong).
+
+6 → 3 markers. Remaining: DNat done_/dtwo/dthree ⊑ dNat (NbE),
+Vec appendVec_wrong (obstacle3 fork pending), Vec vecResult ⊑
+Vec Nat (dthree fan-out, same as DNat).
 
 ### Agent phase1-bounded-domcheck-deadend, 2026-04-16
 
