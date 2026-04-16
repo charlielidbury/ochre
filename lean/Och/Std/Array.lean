@@ -110,16 +110,38 @@ def dadd := och{
       n (λ_:dNat. dNat) m (λpred:dNat. dsucc (dadd pred m))
 }
 
--- Precisely typed, fix-recursive, thunked branches.
--- Concatenates Array_ n1 T and Array_ n2 T into Array_ (dadd n1 n2) T.
+-- Concatenates Array_ n1 T and Array_ n2 T into Array_ (dadd n1 n2) T,
+-- using the dependent eliminator on n1.
+--
+-- Shape (the whiteboard version):
+--
+--   appendArrays T n1 n2 arr1 arr2 =
+--     n1  -- apply dNat dependent eliminator
+--       (λn:dNat. Array_ n T → Array_ (dadd n n2) T)    -- dependent motive
+--       (λarr:(Array_ dzero T). arr2)                    -- zero case
+--       (λpred:dNat. λarr:(Array_ (dsucc pred) T).       -- succ case
+--          Pair (fst_ arr) (self T pred n2 (snd_ arr) arr2))
+--       arr1                                              -- apply result to arr1
+--
+-- Eliminator result type: `P n1 = Array_ n1 T → Array_ (dadd n1 n2) T`.
+-- Applying that result to `arr1 : Array_ n1 T` yields `Array_ (dadd n1 n2) T`.
+--
+-- Scott dNat has no IH in the succ case, so the recursive call to
+-- `self` is threaded explicitly via the outer `fix`. The motive is what
+-- makes this actually dependent — the previous version used a constant
+-- `Unit_ → Type` motive and drove the branches with `unit_`, which is
+-- non-dependent and only type-checks when abstract eval silently admits
+-- stuck DNat applications. That path no longer exists; the whiteboard
+-- dependent motive is the target shape.
 def appendArrays := och{
   fix self:(λT:Type. λn1:dNat. λn2:dNat. Array_ n1 T → Array_ n2 T → Array_ (dadd n1 n2) T).
     λT:Type. λn1:dNat. λn2:dNat. λarr1:(Array_ n1 T). λarr2:(Array_ n2 T).
-      disZero n1
-        (Unit_ → Type)
-        (λ_:Unit_. arr2)
-        (λ_:Unit_. Pair (fst_ arr1) (self T (dpred n1) n2 (snd_ arr1) arr2))
-        unit_
+      n1
+        (λn:dNat. Array_ n T → Array_ (dadd n n2) T)
+        (λarr:(Array_ dzero T). arr2)
+        (λpred:dNat. λarr:(Array_ (dsucc pred) T).
+          Pair (fst_ arr) (self T pred n2 (snd_ arr) arr2))
+        arr1
 }
 
 section AppendArraysTests
