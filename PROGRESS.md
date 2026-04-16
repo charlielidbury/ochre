@@ -29,6 +29,76 @@ file names, markers closed, definitions changed.
 
 ---
 
+### ochre-20260416-182337 (2026-04-16)
+
+**Closed 18 DBool concEval markers via native_decide.**
+
+Previous agent (175614) flagged these as defensively sorry'd after the
+e08bce9 encoding switch but likely closable. Verified all pass:
+
+- `dtrue P t f = t`, `dfalse P t f = f` (2)
+- `dbcase dtrue/dfalse` (2)
+- `dtrue/dfalse depMotive zero_ true_` (2)
+- `not dtrue/dfalse` identities (2)
+- `and` table (4)
+- Negative `≠` checks: dtrue/dfalse selects right arg, not-involution,
+  and-asymmetry (6)
+
+Runtime reduction through `fix`/`ι` wrappers works correctly: fix unfolds
+at head-of-app, ι unfolds its self-ref via body.subst 0 iota, then the
+lambdas beta-reduce normally. concEval's implementation at Eval.lean
+matches the whiteboard.
+
+**Did NOT close DBool subtype markers (lines 145, 148, 154).** The
+positive `dtrue ⊑ dBool` and `dfalse ⊑ dBool` DO close via native_decide
+under the current algorithm, but via the SAME unsound seen-set cycle
+that makes the negative `dBool ⊑ dtrue` spuriously return .ok true.
+Closing the positives would hide that the algorithm cannot distinguish
+them and suggest the wall is only about the negative case. Leaving all
+three sorry'd keeps the picture honest.
+
+Detailed cycle trace (for the next agent attempting the wall):
+
+Both sides are `fix B:Type. ι self:B. body_X`. For either direction,
+the algorithm:
+1. `_, .fix` rule unfolds RHS → `a ⊑ ι self:(outer_fix). body_X_substd`.
+2. `_, .iota` rule does iotaIntro → `a ⊑ body_X_substd[self := a]` which
+   simplifies to a lam.
+3. `.fix, _` on LHS: ann_path (Type ⊑ lam) fails, unfold_path produces
+   `ι self:(LHS_fix). body_LHS_substd` ⊑ lam.
+4. `.iota, _` on that iota widens to its ann (= LHS_fix), checks
+   `LHS_fix ⊑ lam` — now `(LHS_fix, lam)` is in seen from step 3's seen'.
+5. `.fix, _` on LHS_fix: ann_path again fails, unfold_path reproduces
+   `ι self:(LHS_fix). body_LHS_substd` ⊑ lam.
+6. Pattern `(ι_LHS_substd, lam)` was added to seen at step 4. Seen
+   short-circuits → `.ok true`.
+
+The cycle closure at step 6 happens REGARDLESS of whether the lambdas
+would actually structurally match. If we could force structural lam
+descent (iotaIntro-on-LHS, substituting LHS iota into its own body
+before comparing to RHS lam), the negative case's `(P dfalse) ⊑ Type`
+contravariant check on λf would fail (Type ⊑ neutral-app ≠ top), while
+the positive case's `(P dfalse) ⊑ Type` is in the other direction via
+`top` and succeeds. But LHS-iota-self-unfolding (`ι A. B ⊑ c ←
+B[0 := ι A. B] ⊑ c`) is only sound when B is monotone in self, and
+dBool's body has self in invariant position (`P self`).
+
+Options for the next agent:
+(a) Productivity-aware seen set: only close cycles when structural
+    progress has occurred between encounters. Distinguishes "cycle via
+    widening" from "cycle via structural descent."
+(b) Eager structural descent when shapes are compatible: when `_, .iota`
+    or `_, .fix` fires and LHS also has the matching outer shape,
+    try structural iota_body/fix_body first before iotaIntro/unfold.
+(c) A DBool encoding change that makes the negative case fail
+    structurally (at a shallower depth than the unsound cycle closes).
+(d) Coinductive Subtype' reformulation + algorithm restricted to GFP.
+
+`lake build` passes. Marker count: TODO[mega-loop] comments 38 → 27.
+Sorry count dropped by 18.
+
+---
+
 ### ochre-20260416-175614 (2026-04-16)
 
 **Removed unsound RHS `fix_ann` rule; closed 3 transitivity markers.**

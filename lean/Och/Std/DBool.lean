@@ -110,29 +110,29 @@ section Tests
 -- work because fix/ι wrappers don't change runtime reduction.
 -- -----------------------------------------------------------
 
--- TODO[mega-loop]: dtrue P t f = t. If concEval doesn't yet unfold fix/ι
--- at the head of an application, this will need the runtime semantics
--- to handle the new binders correctly.
-example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) = some zero_ := by sorry
+-- dtrue P t f = t. Runtime reduction through fix/ι wrappers works: fix
+-- unfolds at head-of-app, then ι unfolds its self-ref, then the lams
+-- beta-reduce normally.
+example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) = some zero_ := by native_decide
 
--- TODO[mega-loop]: dfalse P t f = f
-example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) = some one_ := by sorry
+-- dfalse P t f = f
+example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) = some one_ := by native_decide
 
--- TODO[mega-loop]: non-dependent case analysis via dbcase
+-- Non-dependent case analysis via dbcase.
 private def dbcase := och{
   λb:dBool. b (λ_:dBool. Nat_) zero_ one_
 }
 
-example : concEval 50 (och{ dbcase dtrue }) = some zero_ := by sorry
-example : concEval 50 (och{ dbcase dfalse }) = some one_ := by sorry
+example : concEval 50 (och{ dbcase dtrue }) = some zero_ := by native_decide
+example : concEval 50 (och{ dbcase dfalse }) = some one_ := by native_decide
 
--- TODO[mega-loop]: dependent elimination. depMotive picks Nat for true, Bool for false.
+-- Dependent elimination. depMotive picks Nat for true, Bool for false.
 private def depMotive := och{
   λb:dBool. b (λ_:dBool. Type) Nat_ Bool
 }
 
-example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = some zero_ := by sorry
-example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by sorry
+example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = some zero_ := by native_decide
+example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by native_decide
 
 -- -----------------------------------------------------------
 -- Subtyping: the aspirational core. All sorried until the
@@ -157,31 +157,31 @@ example : subCheck 50 dBool dtrue = .ok false := by sorry
 -- Operations (not / and). Depend on the subtyping above.
 -- -----------------------------------------------------------
 
--- TODO[mega-loop]: not dtrue = dfalse (computationally)
-example : concEval 100 (och{ not dtrue }) = concEval 100 dfalse := by sorry
-example : concEval 100 (och{ not dfalse }) = concEval 100 dtrue := by sorry
+-- not dtrue = dfalse (computationally)
+example : concEval 100 (och{ not dtrue }) = concEval 100 dfalse := by native_decide
+example : concEval 100 (och{ not dfalse }) = concEval 100 dtrue := by native_decide
 
--- TODO[mega-loop]: and table
-example : concEval 100 (och{ and dtrue dtrue }) = concEval 100 dtrue := by sorry
-example : concEval 100 (och{ and dtrue dfalse }) = concEval 100 dfalse := by sorry
-example : concEval 100 (och{ and dfalse dtrue }) = concEval 100 dfalse := by sorry
-example : concEval 100 (och{ and dfalse dfalse }) = concEval 100 dfalse := by sorry
+-- And table.
+example : concEval 100 (och{ and dtrue dtrue }) = concEval 100 dtrue := by native_decide
+example : concEval 100 (och{ and dtrue dfalse }) = concEval 100 dfalse := by native_decide
+example : concEval 100 (och{ and dfalse dtrue }) = concEval 100 dfalse := by native_decide
+example : concEval 100 (och{ and dfalse dfalse }) = concEval 100 dfalse := by native_decide
 
 -- -----------------------------------------------------------
 -- Negative / sanity checks
 -- -----------------------------------------------------------
 
--- TODO[mega-loop]: dtrue selects first arg, not second
-example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) ≠ some one_ := by sorry
--- TODO[mega-loop]: dfalse selects second arg, not first
-example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) ≠ some zero_ := by sorry
--- TODO[mega-loop]: not is an involution, so not true ≠ true
-example : concEval 100 (och{ not dtrue }) ≠ concEval 100 dtrue := by sorry
--- TODO[mega-loop]: not dfalse ≠ dfalse
-example : concEval 100 (och{ not dfalse }) ≠ concEval 100 dfalse := by sorry
--- TODO[mega-loop]: and is not commutative-on-false
-example : concEval 100 (och{ and dfalse dtrue }) ≠ concEval 100 dtrue := by sorry
-example : concEval 100 (och{ and dtrue dfalse }) ≠ concEval 100 dtrue := by sorry
+-- dtrue selects first arg, not second.
+example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) ≠ some one_ := by native_decide
+-- dfalse selects second arg, not first.
+example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) ≠ some zero_ := by native_decide
+-- not is an involution, so not true ≠ true.
+example : concEval 100 (och{ not dtrue }) ≠ concEval 100 dtrue := by native_decide
+-- not dfalse ≠ dfalse.
+example : concEval 100 (och{ not dfalse }) ≠ concEval 100 dfalse := by native_decide
+-- And is not commutative-on-false.
+example : concEval 100 (och{ and dfalse dtrue }) ≠ concEval 100 dtrue := by native_decide
+example : concEval 100 (och{ and dtrue dfalse }) ≠ concEval 100 dtrue := by native_decide
 
 end Tests
 end Std
