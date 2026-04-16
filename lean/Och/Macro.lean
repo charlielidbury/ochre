@@ -16,7 +16,8 @@ are compile-time errors, eliminating the silent-999 sentinel bug.
 term ::=
   | x                          -- bound variable or Lean-level splice
   | λx:term. term              -- lambda
-  | μx:term. term              -- mu (self-reference)
+  | ιx:term. term              -- iota / self-type binder
+  | fix x:term. term           -- recursive binder
   | (term : term)              -- ascription
   | term term                  -- application (left-associative)
   | term → term                -- arrow (right-assoc, sugar for λ_:A. B)
@@ -42,7 +43,8 @@ syntax:50  och:50 och:51                            : och
 syntax:30  och:31 " → " och:30                      : och
 syntax:10  "λ" ident ":" och "." och:10             : och
 syntax:10  "λ" "_" ":" och "." och:10               : och
-syntax:10  "μ" ident ":" och "." och:10             : och
+syntax:10  "ι" ident ":" och "." och:10             : och
+syntax:10  "fix" ident ":" och "." och:10           : och
 syntax:10  "let" ident ":" och "=" och "in" och:10  : och
 
 syntax "och{" och "}" : term
@@ -82,10 +84,14 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     let dom' ← expand ctx dom
     let body' ← expand ("_" :: ctx) body
     `(Expr.lam $dom' $body')
-  | `(och| μ $x:ident : $ann:och . $body:och) =>
+  | `(och| ι $x:ident : $ann:och . $body:och) =>
     let ann' ← expand ctx ann
     let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.mu $ann' $body')
+    `(Expr.iota $ann' $body')
+  | `(och| fix $x:ident : $ann:och . $body:och) =>
+    let ann' ← expand ctx ann
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Expr.fix $ann' $body')
   | `(och| let $x:ident : $ty:och = $val:och in $body:och) =>
     let _ty' ← expand ctx ty; let val' ← expand ctx val
     let body' ← expand (x.getId.toString :: ctx) body

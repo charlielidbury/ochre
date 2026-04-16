@@ -35,18 +35,27 @@ def VCompat : Nat → Expr → Expr → Prop
           ∀ (fuel : Nat) rv, concEval fuel (bodyV.subst 0 aV) = some rv →
           VCompat j rv (bodyT.subst 0 aT))
     ∨ (∃ annV annT bodyV bodyT,
-        v = .mu annV bodyV ∧ τ = .mu annT bodyT ∧
-        VCompat n (bodyV.subst 0 (.mu annV bodyV)) (bodyT.subst 0 (.mu annV bodyV)))
+        v = .iota annV bodyV ∧ τ = .iota annT bodyT ∧
+        VCompat n (bodyV.subst 0 (.iota annV bodyV)) (bodyT.subst 0 (.iota annV bodyV)))
+    ∨ (∃ annV annT bodyV bodyT,
+        v = .fix annV bodyV ∧ τ = .fix annT bodyT ∧
+        VCompat n (bodyV.subst 0 (.fix annV bodyV)) (bodyT.subst 0 (.fix annV bodyV)))
     ∨ (∃ ann body,
-        τ = .mu ann body ∧
+        τ = .iota ann body ∧
         VCompat n v (body.subst 0 v))
+    ∨ (∃ ann body,
+        τ = .fix ann body ∧
+        VCompat n v (body.subst 0 (.fix ann body)))
     ∨ (∃ ann body, ∃ (nfuel : Nat) (nctx : TyCtx) (nseen : List (Expr × Expr)) (u' : NfExpr × NfExpr),
-        τ = .mu ann body ∧
+        τ = .iota ann body ∧
         absEval nfuel nctx nseen (body.subst 0 v) = .ok u' ∧
         VCompat n v u'.1.val)
     ∨ (∃ ann body,
-        v = .mu ann body ∧
-        VCompat n (body.subst 0 (.mu ann body)) τ)
+        v = .iota ann body ∧
+        VCompat n (body.subst 0 (.iota ann body)) τ)
+    ∨ (∃ ann body,
+        v = .fix ann body ∧
+        VCompat n (body.subst 0 (.fix ann body)) τ)
     ∨ (∃ fV fT aV aT,
         v = .app fV aV ∧ τ = .app fT aT ∧
         VCompat n fV fT ∧ VCompat n aV aT)

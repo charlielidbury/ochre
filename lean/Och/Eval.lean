@@ -140,10 +140,16 @@ mutual
         | .ok true => .ok (tau, tau)
         | .ok false => .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
         | .error e => .error s!"ascription check: {e}"
-      | .mu ann body  => do
+      | .iota ann body => do
         let (ann', _) ← absEval fuel ctx seen ann muSeen
         let (body', _) ← absEval fuel (TyCtx.extend ctx ann') seen body muSeen
-        .ok (⟨.mu ann'.val body'.val⟩, ann')
+        -- An iota value is its own type (self-typing); synthesized type
+        -- is the annotation (weak/non-self type).
+        .ok (⟨.iota ann'.val body'.val⟩, ann')
+      | .fix ann body  => do
+        let (ann', _) ← absEval fuel ctx seen ann muSeen
+        let (body', _) ← absEval fuel (TyCtx.extend ctx ann') seen body muSeen
+        .ok (⟨.fix ann'.val body'.val⟩, ann')
       | .letE val body => do
         let (val', _) ← absEval fuel ctx seen val muSeen
         absEval fuel ctx seen (body.subst 0 val'.val) muSeen
@@ -156,21 +162,27 @@ mutual
           | .ok true => absEval fuel ctx seen (body.subst 0 a'.val) muSeen
           | .ok false => .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
           | .error e => .error s!"domain check: {e}"
-        | .mu _ann body =>
-          -- Check muSeen to break cycles in mu-app normalization.
-          -- If we've already seen this (mu, arg) pair, return as neutral
-          -- to avoid infinite unfolding.
-          if muSeen.any (fun (m, a2) => Expr.mu _ann body == m && a'.val == a2) then
-            -- Treat as neutral application: use annotation for return type
+        | .iota _ann body =>
+          -- (ι A. b) a  →  b[self := ι A. b] a  (self-type unfolding)
+          -- Check muSeen to break cycles (same cycle-detection as mu used).
+          if muSeen.any (fun (m, a2) => Expr.iota _ann body == m && a'.val == a2) then
             match τ_f.val with
             | .lam _dom retTy =>
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .error s!"not callable (mu cycle): {repr f'}"
+            | _ => .error s!"not callable (iota cycle): {repr f'}"
           else
-            -- Fix-style unfold: (μs:A. b) a  →  b[s↦μs:A.b] a
-            -- Record this mu-app in muSeen before recursing.
-            let muSeen' := (Expr.mu _ann body, a'.val) :: muSeen
-            absEval fuel ctx seen (.app (body.subst 0 (Expr.mu _ann body)) a'.val) muSeen'
+            let muSeen' := (Expr.iota _ann body, a'.val) :: muSeen
+            absEval fuel ctx seen (.app (body.subst 0 (Expr.iota _ann body)) a'.val) muSeen'
+        | .fix _ann body =>
+          -- (fix A. b) a  →  b[self := fix A. b] a  (recursive unfolding)
+          if muSeen.any (fun (m, a2) => Expr.fix _ann body == m && a'.val == a2) then
+            match τ_f.val with
+            | .lam _dom retTy =>
+              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
+            | _ => .error s!"not callable (fix cycle): {repr f'}"
+          else
+            let muSeen' := (Expr.fix _ann body, a'.val) :: muSeen
+            absEval fuel ctx seen (.app (body.subst 0 (Expr.fix _ann body)) a'.val) muSeen'
         | .type => .error "Type is not callable"
         | _ =>
           -- Neutral application: use synthesized type of f' for callability
@@ -178,8 +190,15 @@ mutual
           match τ_f.val with
           | .lam _dom retTy =>
             .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-          | .mu _ann body =>
-            -- mu type in function position: unfold to get return type
+          | .iota _ann body =>
+            -- iota type in function position: unfold to get return type
+            let unfolded := body.subst 0 f'.val
+            match unfolded with
+            | .lam _dom retTy =>
+              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
+            | _ => .error s!"not callable: {repr f'}"
+          | .fix _ann body =>
+            -- fix type in function position: unfold to get return type
             let unfolded := body.subst 0 f'.val
             match unfolded with
             | .lam _dom retTy =>
@@ -215,7 +234,15 @@ mutual
           let contra ← subCheckNF fuel ctx [] domB domA
           if !contra then return false
           subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) [] bodyA bodyB
-        | _, .mu _ann body =>
+        | _, .iota _ann body =>
+          -- iotaIntro (value-sub, Cedille-style):
+          --   a ⊑ ι A. body  ←  a ⊑ A  ∧  a ⊑ body[0 := a]
+          -- The seen set records (a, ι A. body) so that recursive checks
+          -- of a against body[0 := a] (which structurally contain ι A. body
+          -- after unfolding subexpressions) terminate. The annotation path
+          -- `a ⊑ A` is represented by the subCheckNF call on the body
+          -- eventually bottoming out at that comparison naturally; we also
+          -- try neutralType as a fallback.
           let seen' := (a, b) :: seen
           let u := body.subst 0 a
           let self_intro := match absEval fuel ctx seen' u with
@@ -228,7 +255,33 @@ mutual
             | nt => match self_intro with
               | .error e => .error e
               | _ => nt
-        | .mu ann body, _ =>
+        | _, .fix ann body =>
+          -- RHS fix rules:
+          --   [fix-ann]    : a ⊑ fix A. body  ←  a ⊑ A
+          --   [unfoldFixR] : a ⊑ fix A. body  ←  a ⊑ body[0 := fix A. body]
+          let seen' := (a, b) :: seen
+          let ann_path := match absEval fuel ctx seen' ann with
+            | .ok (ann', _) => subCheckNF fuel ctx seen' a ann'.val
+            | .error e => .error e
+          match ann_path with
+          | .ok true => .ok true
+          | _ =>
+            let u := body.subst 0 (.fix ann body)
+            let unfold_path := match absEval fuel ctx seen' u with
+              | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
+              | .error e => .error e
+            match unfold_path with
+            | .ok true => .ok true
+            | _ => match neutralType fuel ctx seen a b with
+              | .ok true => .ok true
+              | nt => match ann_path, unfold_path with
+                | .error e, _ => .error e
+                | _, .error e => .error e
+                | _, _ => nt
+        | .fix ann body, _ =>
+          -- LHS fix rules:
+          --   [fix-ann-L]    : fix A. body ⊑ c  ←  A ⊑ c  (widening via ann)
+          --   [unfoldFixL]   : fix A. body ⊑ c  ←  body[0 := fix A. body] ⊑ c
           let seen' := (a, b) :: seen
           let ann_path :=
             if body != .bvar 0 then
@@ -239,7 +292,7 @@ mutual
           match ann_path with
           | .ok true => .ok true
           | _ =>
-            let u := body.subst 0 (.mu ann body)
+            let u := body.subst 0 (.fix ann body)
             let unfold_path := match absEval fuel ctx seen' u with
               | .ok (u', _) => subCheckNF fuel ctx seen u'.val b
               | .error e => .error e
@@ -249,6 +302,22 @@ mutual
               | .error e, _ => .error e
               | _, .error e => .error e
               | _, _ => .ok false
+        | .iota ann body, _ =>
+          -- LHS iota: a value at ι A. body has type body[0 := value].
+          -- But as a term-as-type on the left, the widest type we can
+          -- narrow to is the annotation A.
+          -- Rule: ι A. body ⊑ c  ←  A ⊑ c
+          let seen' := (a, b) :: seen
+          match absEval fuel ctx seen' ann with
+          | .ok (ann', _) =>
+            match subCheckNF fuel ctx seen' ann'.val b with
+            | .ok true => .ok true
+            | nt => match neutralType fuel ctx seen a b with
+              | .ok true => .ok true
+              | nt2 => match nt with
+                | .error _ => nt
+                | _ => nt2
+          | .error e => .error e
         | .app f1 a1, .app f2 a2 => do
           let structural := do
             let fOk ← subCheckNF fuel ctx [] f1 f2
@@ -287,7 +356,14 @@ mutual
             | .lam _dom retTy =>
               let resultTy := retTy.subst 0 arg
               subCheckNF fuel ctx seen resultTy b
-            | .mu _ann body =>
+            | .iota _ann body =>
+              let unfolded := body.subst 0 f
+              match unfolded with
+              | .lam _dom retTy =>
+                let resultTy := retTy.subst 0 arg
+                subCheckNF fuel ctx seen resultTy b
+              | _ => .ok false
+            | .fix _ann body =>
               let unfolded := body.subst 0 f
               match unfolded with
               | .lam _dom retTy =>
@@ -296,7 +372,8 @@ mutual
               | _ => .ok false
             | _ => .ok false
           | .error e => .error e
-      | .mu ann _ => subCheckNF fuel ctx seen ann b
+      | .iota ann _ => subCheckNF fuel ctx seen ann b
+      | .fix ann _ => subCheckNF fuel ctx seen ann b
       | _ => .ok false
   termination_by fuel
 end
@@ -334,7 +411,8 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
     | .lam _ _ => some e  -- lambda is a VALUE — body not evaluated
     | .type => some .type
     | .asc term _ => concEval fuel term  -- runtime: erase ascription
-    | .mu _ _ => some e  -- mu is a value (only unrolled when applied)
+    | .iota _ _ => some e  -- iota is a value (only unrolled when applied)
+    | .fix _ _ => some e   -- fix is a value (only unrolled when applied)
     | .letE val body =>
       match concEval fuel val with
       | some v => concEval fuel (body.subst 0 v)
@@ -344,9 +422,12 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
       | some (.lam _dom body), some aVal =>
         -- Beta-reduce via substitution
         concEval fuel (body.subst 0 aVal)
-      | some (.mu ann body), some aVal =>
-        -- mu in function position: unroll self-reference, then re-apply
-        concEval fuel (.app (body.subst 0 (.mu ann body)) aVal)
+      | some (.iota ann body), some aVal =>
+        -- iota in function position: unroll self-reference, then re-apply
+        concEval fuel (.app (body.subst 0 (.iota ann body)) aVal)
+      | some (.fix ann body), some aVal =>
+        -- fix in function position: unroll self-reference, then re-apply
+        concEval fuel (.app (body.subst 0 (.fix ann body)) aVal)
       | some fVal, some aVal => some (.app fVal aVal)
       | _, _ => none
 
@@ -365,7 +446,9 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
       simp [concEval] at h ⊢; exact h
     | .asc term _ =>
       simp only [concEval] at h ⊢; exact ih h
-    | .mu ann body =>
+    | .iota ann body =>
+      simp [concEval] at h ⊢; exact h
+    | .fix ann body =>
       simp [concEval] at h ⊢; exact h
     | .letE val body =>
       unfold concEval at h ⊢
@@ -390,7 +473,8 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           simp only [hf', ha']
           match fv with
           | .lam _dom body => exact ih h
-          | .mu ann body_mu => exact ih h
+          | .iota ann body_mu => exact ih h
+          | .fix ann body_mu => exact ih h
           | .type => exact h
           | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ => exact h
 
@@ -412,7 +496,8 @@ theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
     | lam => simp [concEval] at h
     | type => simp [concEval] at h
     | asc term _ => unfold concEval at h; exact ih h
-    | mu => simp [concEval] at h
+    | iota => simp [concEval] at h
+    | fix => simp [concEval] at h
     | app f a =>
       unfold concEval at h
       match hf : concEval n f, ha : concEval n a with
@@ -422,7 +507,8 @@ theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
         simp only [hf, ha] at h
         match fVal with
         | .lam _ _ => exact ih h
-        | .mu _ _ => exact ih h
+        | .iota _ _ => exact ih h
+        | .fix _ _ => exact ih h
         | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
     | letE val body =>
@@ -442,7 +528,8 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
     | lam => simp [concEval] at h
     | type => simp [concEval] at h
     | asc term _ => unfold concEval at h; exact ih h
-    | mu => simp [concEval] at h
+    | iota => simp [concEval] at h
+    | fix => simp [concEval] at h
     | app f a =>
       unfold concEval at h
       match hf : concEval n f, ha : concEval n a with
@@ -452,7 +539,8 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
         simp only [hf, ha] at h
         match fVal with
         | .lam _ _ => exact ih h
-        | .mu _ _ => exact ih h
+        | .iota _ _ => exact ih h
+        | .fix _ _ => exact ih h
         | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
     | letE val body =>
@@ -462,14 +550,15 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
       | some vVal => simp only [hv] at h; exact ih h
 
 /-- Concrete normal form: the shape of concEval outputs.
-    Values are lam/type/mu (base values) or neutral applications where
-    the function is not lam/mu (not a redex) and sub-expressions are ConcNF. -/
+    Values are lam/type/iota/fix (base values) or neutral applications where
+    the function is not lam/iota/fix (not a redex) and sub-expressions are ConcNF. -/
 inductive ConcNF : Expr → Prop
   | lam (dom body : Expr) : ConcNF (.lam dom body)
   | type : ConcNF .type
-  | mu (ann body : Expr) : ConcNF (.mu ann body)
+  | iota (ann body : Expr) : ConcNF (.iota ann body)
+  | fix (ann body : Expr) : ConcNF (.fix ann body)
   | app (f a : Expr) : ConcNF f → ConcNF a →
-      (match f with | .lam _ _ | .mu _ _ | .letE _ _ => False | _ => True) → ConcNF (.app f a)
+      (match f with | .lam _ _ | .iota _ _ | .fix _ _ | .letE _ _ => False | _ => True) → ConcNF (.app f a)
 
 /-- concEval always produces ConcNF values. -/
 theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
@@ -482,7 +571,8 @@ theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
     | lam dom body => simp [concEval] at h; subst h; exact .lam dom body
     | type => simp [concEval] at h; subst h; exact .type
     | asc term _ => unfold concEval at h; exact ih h
-    | mu ann body => simp [concEval] at h; subst h; exact .mu ann body
+    | iota ann body => simp [concEval] at h; subst h; exact .iota ann body
+    | fix ann body => simp [concEval] at h; subst h; exact .fix ann body
     | app f a =>
       unfold concEval at h
       match hf : concEval n f, ha : concEval n a with
@@ -492,7 +582,8 @@ theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
         simp only [hf, ha] at h
         match hfv : fVal with
         | .lam _ _ => exact ih h
-        | .mu _ _ => exact ih h
+        | .iota _ _ => exact ih h
+        | .fix _ _ => exact ih h
         | .type =>
           injection h with hv; subst hv
           exact ConcNF.app _ _ ConcNF.type (ih ha) True.intro
@@ -522,7 +613,11 @@ theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
     cases fuel with
     | zero => simp [concEval] at h
     | succ n => simp [concEval] at h; exact h.symm
-  | mu ann body =>
+  | iota ann body =>
+    cases fuel with
+    | zero => simp [concEval] at h
+    | succ n => simp [concEval] at h; exact h.symm
+  | fix ann body =>
     cases fuel with
     | zero => simp [concEval] at h
     | succ n => simp [concEval] at h; exact h.symm
@@ -539,8 +634,9 @@ theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
         have hf_eq : fVal = f := ih_f hcf
         have ha_eq : aVal = a := ih_a hca
         rw [hf_eq, ha_eq] at h
-        -- f is not lam or mu (by h_not_redex), so the neutral app case fires
-        -- We need to show v' = app f a given h about concEval's match on f
+        -- f is not lam, iota, or fix (by h_not_redex), so the neutral app
+        -- case fires. We need to show v' = app f a given h about concEval's
+        -- match on f.
         revert h
         match f, h_not_redex with
         | .type, _ | .bvar _, _ | .app _ _, _ | .asc _ _, _ =>

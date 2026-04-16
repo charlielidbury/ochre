@@ -26,12 +26,29 @@ inductive Subtype' : Expr → Expr → Prop where
       Subtype' body₂ body₁ → Subtype' (.lam dom body₂) (.lam dom body₁)
   | app_cong {f₁ f₂ a₁ a₂ : Expr} :
       Subtype' f₂ f₁ → Subtype' a₂ a₁ → Subtype' (.app f₂ a₂) (.app f₁ a₁)
-  | mu_body {ann body₁ body₂ : Expr} :
-      Subtype' body₂ body₁ → Subtype' (.mu ann body₂) (.mu ann body₁)
-  | self_intro {a : Expr} {ann body : Expr} :
-      Subtype' a (body.subst 0 a) → Subtype' a (.mu ann body)
+  | iota_body {ann body₁ body₂ : Expr} :
+      Subtype' body₂ body₁ → Subtype' (.iota ann body₂) (.iota ann body₁)
+  | fix_body {ann body₁ body₂ : Expr} :
+      Subtype' body₂ body₁ → Subtype' (.fix ann body₂) (.fix ann body₁)
+  /-- iotaIntro (value-sub, Cedille-style). -/
+  | iota_intro {a : Expr} {ann body : Expr} :
+      Subtype' a ann →
+      Subtype' a (body.subst 0 a) →
+      Subtype' a (.iota ann body)
+  /-- [unfoldFixL]: `fix A. body ⊑ c` if `body[self := fix A. body] ⊑ c`. -/
+  | unfold_fix_L {ann body c : Expr} :
+      Subtype' (body.subst 0 (.fix ann body)) c →
+      Subtype' (.fix ann body) c
+  /-- [fix-ann]: `a ⊑ fix A. body` if `a ⊑ A` (annotation widening). -/
+  | fix_ann {a ann body : Expr} :
+      Subtype' a ann → Subtype' a (.fix ann body)
+  /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`. -/
+  | unfold_fix_R {a ann body : Expr} :
+      Subtype' a (body.subst 0 (.fix ann body)) →
+      Subtype' a (.fix ann body)
 
-/-- SubtypeCore: Subtype' without self_intro. Used for monotonicity/soundness. -/
+/-- SubtypeCore: Subtype' without iota_intro / fix unfolding. Used for
+    monotonicity/soundness. -/
 inductive SubtypeCore : Expr → Expr → Prop where
   | refl (e : Expr) : SubtypeCore e e
   | top (e : Expr) : SubtypeCore e .type
@@ -39,8 +56,10 @@ inductive SubtypeCore : Expr → Expr → Prop where
       SubtypeCore body₂ body₁ → SubtypeCore (.lam dom body₂) (.lam dom body₁)
   | app_cong {f₁ f₂ a₁ a₂ : Expr} :
       SubtypeCore f₂ f₁ → SubtypeCore a₂ a₁ → SubtypeCore (.app f₂ a₂) (.app f₁ a₁)
-  | mu_body {ann body₁ body₂ : Expr} :
-      SubtypeCore body₂ body₁ → SubtypeCore (.mu ann body₂) (.mu ann body₁)
+  | iota_body {ann body₁ body₂ : Expr} :
+      SubtypeCore body₂ body₁ → SubtypeCore (.iota ann body₂) (.iota ann body₁)
+  | fix_body {ann body₁ body₂ : Expr} :
+      SubtypeCore body₂ body₁ → SubtypeCore (.fix ann body₂) (.fix ann body₁)
 
 /-- SubtypeCore is preserved under shifting: if a ⊑ b then shift d c a ⊑ shift d c b. -/
 theorem SubtypeCore.shift_preserve {a b : Expr} (h : SubtypeCore a b) (d c : Nat) :
@@ -50,7 +69,8 @@ theorem SubtypeCore.shift_preserve {a b : Expr} (h : SubtypeCore a b) (d c : Nat
   | top e => simp [Expr.shift]; exact .top (e.shift d c)
   | lam_body _ ih => simp [Expr.shift]; exact .lam_body (ih (c + 1))
   | app_cong _ _ ihf iha => simp [Expr.shift]; exact .app_cong (ihf c) (iha c)
-  | mu_body _ ih => simp [Expr.shift]; exact .mu_body (ih (c + 1))
+  | iota_body _ ih => simp [Expr.shift]; exact .iota_body (ih (c + 1))
+  | fix_body _ ih => simp [Expr.shift]; exact .fix_body (ih (c + 1))
 
 theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) : Subtype' a b := by
   induction h with
@@ -58,7 +78,8 @@ theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) : Subtype' a b
   | top e => exact .top e
   | lam_body _ ih => exact .lam_body ih
   | app_cong _ _ ihf iha => exact .app_cong ihf iha
-  | mu_body _ ih => exact .mu_body ih
+  | iota_body _ ih => exact .iota_body ih
+  | fix_body _ ih => exact .fix_body ih
 
 theorem SubtypeCore.lam_rhs_shape {dom body : Expr} {e : Expr}
     (h : SubtypeCore e (.lam dom body)) :
@@ -67,12 +88,19 @@ theorem SubtypeCore.lam_rhs_shape {dom body : Expr} {e : Expr}
   | refl => exact ⟨body, rfl, .refl body⟩
   | lam_body h => exact ⟨_, rfl, h⟩
 
-theorem SubtypeCore.mu_rhs_shape {ann body : Expr} {e : Expr}
-    (h : SubtypeCore e (.mu ann body)) :
-    ∃ body', e = .mu ann body' ∧ SubtypeCore body' body := by
+theorem SubtypeCore.iota_rhs_shape {ann body : Expr} {e : Expr}
+    (h : SubtypeCore e (.iota ann body)) :
+    ∃ body', e = .iota ann body' ∧ SubtypeCore body' body := by
   cases h with
   | refl => exact ⟨body, rfl, .refl body⟩
-  | mu_body h => exact ⟨_, rfl, h⟩
+  | iota_body h => exact ⟨_, rfl, h⟩
+
+theorem SubtypeCore.fix_rhs_shape {ann body : Expr} {e : Expr}
+    (h : SubtypeCore e (.fix ann body)) :
+    ∃ body', e = .fix ann body' ∧ SubtypeCore body' body := by
+  cases h with
+  | refl => exact ⟨body, rfl, .refl body⟩
+  | fix_body h => exact ⟨_, rfl, h⟩
 
 theorem SubtypeCore.trans : {a b c : Expr} → SubtypeCore a b → SubtypeCore b c → SubtypeCore a c := by
   intro a b c p q
@@ -87,10 +115,14 @@ theorem SubtypeCore.trans : {a b c : Expr} → SubtypeCore a b → SubtypeCore b
     cases p with
     | refl => exact .app_cong h2f h2a
     | app_cong h1f h1a => exact .app_cong (ihf h1f) (iha h1a)
-  | mu_body h2 ih =>
+  | iota_body h2 ih =>
     cases p with
-    | refl => exact .mu_body h2
-    | mu_body h1 => exact .mu_body (ih h1)
+    | refl => exact .iota_body h2
+    | iota_body h1 => exact .iota_body (ih h1)
+  | fix_body h2 ih =>
+    cases p with
+    | refl => exact .fix_body h2
+    | fix_body h1 => exact .fix_body (ih h1)
 
 theorem Subtype'.trans : {a b c : Expr} → Subtype' a b → Subtype' b c → Subtype' a c := by
   sorry
@@ -113,30 +145,39 @@ theorem subCheckNF_lam_lam_body {fuel : Nat} {ctx : TyCtx} {dS bS dT bT : Expr}
     ∃ fuel' ctx', subCheckNF fuel' ctx' [] bS bT = .ok true := by
   sorry
 
-/-- subCheckNF of (lam ...) against a non-equal, non-type, non-lam, non-mu
-    target with empty seen returns false. -/
+/-- subCheckNF of (lam ...) against a non-equal, non-type, non-lam, non-iota,
+    non-fix target with empty seen returns false. -/
 theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : TyCtx}
     {dom body b : Expr}
     (h : subCheckNF fuel ctx [] (Expr.lam dom body) b = .ok true)
     (h_neq : Expr.lam dom body ≠ b)
     (h_not_type : b ≠ Expr.type)
     (h_not_lam : ∀ d b', b ≠ Expr.lam d b')
-    (h_not_mu : ∀ a b', b ≠ Expr.mu a b') : False := by
+    (h_not_iota : ∀ a b', b ≠ Expr.iota a b')
+    (h_not_fix : ∀ a b', b ≠ Expr.fix a b') : False := by
   sorry
 
-/-- When subCheckNF succeeds for mu ⊑ mu (not by reflexivity),
+/-- When subCheckNF succeeds for iota ⊑ iota (not by reflexivity),
     the normalized body check also succeeds. -/
-theorem subCheckNF_mu_mu_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
-    (h : subCheckNF (fuel + 1) ctx [] (Expr.mu annS bodyS) (Expr.mu annT bodyT) = .ok true)
-    (h_neq : Expr.mu annS bodyS ≠ Expr.mu annT bodyT) :
+theorem subCheckNF_iota_iota_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
+    (h : subCheckNF (fuel + 1) ctx [] (Expr.iota annS bodyS) (Expr.iota annT bodyT) = .ok true)
+    (h_neq : Expr.iota annS bodyS ≠ Expr.iota annT bodyT) :
+    ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = .ok true := by
+  exact ⟨1, [], Expr.type, Expr.type, subCheckNF_refl Expr.type⟩
+
+/-- When subCheckNF succeeds for fix ⊑ fix (not by reflexivity),
+    the normalized body check also succeeds. -/
+theorem subCheckNF_fix_fix_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
+    (h : subCheckNF (fuel + 1) ctx [] (Expr.fix annS bodyS) (Expr.fix annT bodyT) = .ok true)
+    (h_neq : Expr.fix annS bodyS ≠ Expr.fix annT bodyT) :
     ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = .ok true := by
   exact ⟨1, [], Expr.type, Expr.type, subCheckNF_refl Expr.type⟩
 
 /-- When subCheckNF succeeds with .type on the left against a non-.type target
-    with empty seen, the target must be .mu. -/
+    with empty seen, the target must be .iota or .fix. -/
 theorem subCheckNF_type_left_target {fuel : Nat} {ctx : TyCtx} {τ : Expr}
     (h : subCheckNF fuel ctx [] Expr.type τ = .ok true) (h_neq : τ ≠ Expr.type) :
-    ∃ ann body, τ = Expr.mu ann body := by
+    (∃ ann body, τ = Expr.iota ann body) ∨ (∃ ann body, τ = Expr.fix ann body) := by
   sorry
 
 /-! ### subCheckNF properties and known issues
