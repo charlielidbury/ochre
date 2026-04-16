@@ -198,8 +198,29 @@ noncomputable def cTrue_sub_iota_trivial : Sub [] cTrue (.iota .top cBool) := by
     contravariant domain check becomes `⊤ ⊑ cBool→⊤` (still false via
     structural rules, but potentially handleable by a special rule).
 
-    We leave this as a sorry documenting the gap. -/
+    We leave this as a sorry documenting the gap.
+
+    Below we build out as much of the derivation as we can, to put the
+    sorry at the exact obstruction point. The partial derivation covers:
+    - [Iota-Intro] top frame
+    - annotation leg (dtrue ⊑ cBool)
+    - start of body leg (sorry'd at the sub-step where [Lam] would
+      reach the unsatisfiable contravariant check). -/
 noncomputable def dtrue_sub_Bool : Sub [] dtrue Bool := by
-  sorry
+  -- Step 1: use [Iota-Intro] with annotation cBool and body BoolBody.
+  apply Sub.iotaIntro [] dtrue cBool
+    (.lam cBoolToTop
+      (.lam (.app (.var 0) cTrue)
+        (.lam (.app (.var 1) cFalse)
+          (.app (.var 2) (.var 3)))))
+  · -- Annotation leg: dtrue ⊑ cBool. Proved above.
+    exact cTrue_sub_cBool
+  · -- Body leg: dtrue ⊑ BoolBody.subst 0 Bool.
+    -- BoolBody.subst 0 Bool reduces to:
+    --   .lam cBoolToTop (.lam (app 0 cTrue) (.lam (app 1 cFalse) (app 2 Bool)))
+    -- (shifts on closed cBoolToTop/cTrue/cFalse/Bool are identity)
+    sorry  -- OBSTRUCTION: [Lam] decomposition reaches `(app 0 cTrue) ⊑ (var 0)`
+           -- at the 2nd level, requiring ⊤ ⊑ cBool→⊤ which is false.
+           -- See the doc comment above and `docs/research/iota-fix-split.md`.
 
 end Och.Simple.Challenge
