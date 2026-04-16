@@ -47,12 +47,12 @@ private def testVec2 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
 
 -- ── Positive subtype checks ──────────────────────────────────
 
--- TODO[mega-loop]: mkVec Nat 1 [0] ⊑ Vec Nat — requires Array_ over DNat
--- (a fix applied to a dNat constructor) to reduce through DNat's eliminator,
--- plus dNat introduction (done_ ⊑ dNat). Under Church-Nat this test passed
--- because abstract-interp silently handed-waved over stuck Church-Nat
--- applications; under DNat the checker has to actually do the work.
-example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by sorry
+-- mkVec Nat 1 [0] ⊑ Vec Nat. Array_ done_ Nat reduces to Pair Nat Unit
+-- now that absEval β-reduces unconditionally and the closed-head muSeen
+-- `==` catches the dsucc self-reference; the stuck-recursive-head
+-- re-eval rule in subCheckNF then equates the muSeen-cut form with the
+-- evaluated ι form so the existential pack typechecks.
+example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- TODO[mega-loop]: mkVec Nat 2 [1,2] ⊑ Vec Nat — same obstructions as above.
 example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by sorry

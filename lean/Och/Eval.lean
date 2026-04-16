@@ -311,6 +311,28 @@ mutual
             | nt => match unfold_path with
               | .error e => .error e
               | _ => nt
+        | _, .app (.fix _annR bodyR) argR =>
+          -- RHS is a stuck recursive application (absEval's muSeen
+          -- cutoff left it un-unfolded). Unfold it once here so the
+          -- two muSeen-dependent normal forms of the same term can
+          -- meet — without this, e.g., `done_NF ⊑ (dsucc dzero)` in
+          -- contravariant position falls through to neutralType
+          -- which widens to `dNat` and rejects.
+          let seen' := (a, b) :: seen
+          let u := .app (bodyR.subst 0 (.fix _annR bodyR)) argR
+          match absEval fuel ctx seen' u with
+          | .ok (u', _) =>
+            if u'.val == b then neutralType fuel ctx seen a b
+            else subCheckNF fuel ctx seen' a u'.val
+          | .error e => .error e
+        | _, .app (.iota _annR bodyR) argR =>
+          let seen' := (a, b) :: seen
+          let u := .app (bodyR.subst 0 (.iota _annR bodyR)) argR
+          match absEval fuel ctx seen' u with
+          | .ok (u', _) =>
+            if u'.val == b then neutralType fuel ctx seen a b
+            else subCheckNF fuel ctx seen' a u'.val
+          | .error e => .error e
         | .fix ann body, _ =>
           -- LHS fix rules:
           --   [unfoldFixL]   : fix A. body ⊑ c  ←  body[0 := fix A. body] ⊑ c
@@ -389,6 +411,25 @@ mutual
         | some ty => subCheckNF fuel ctx seen ty.val b
         | none => .ok false
       | .app f arg =>
+        -- A recursive head here means absEval's muSeen cutoff left
+        -- the application stuck — it's not a *neutral* (bvar-headed)
+        -- term. Unfold it once and let subCheckNF compare the
+        -- evaluated form; the seen-set handles cycles. Without this
+        -- the type-widening below collapses, e.g., `(dsucc dzero)`
+        -- to `dNat ⊑ b` which is far too coarse.
+        let unfoldHead : Option Expr := match f with
+          | .fix _ann body => some (.app (body.subst 0 f) arg)
+          | .iota _ann body => some (.app (body.subst 0 f) arg)
+          | _ => none
+        match unfoldHead with
+        | some u =>
+          let seen' := (a, b) :: seen
+          match absEval fuel ctx seen' u with
+          | .ok (u', _) =>
+            if u'.val == a then .ok false
+            else subCheckNF fuel ctx seen' u'.val b
+          | .error e => .error e
+        | none =>
         match neutralType fuel ctx seen f (.lam .type .type) with  -- dummy: just need the type
         | _ =>
           -- Compute the type of (f arg) by synthesizing f's type

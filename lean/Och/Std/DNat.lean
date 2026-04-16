@@ -118,16 +118,15 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
 example : subCheck 200 dzero dNat = .ok true := by native_decide
 
--- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. These now return
--- `.ok false` (incompleteness, not unsoundness): done_NF's type
--- annotation contains the muSeen-cut stuck application
--- `(dsucc dzero)`, while iotaIntro substitutes the *evaluated*
--- `done_NF` (an ι value) for `self` on the dNat side, so the two
--- normal forms of the same term meet in contravariant position and
--- subCheckNF can't equate them. The fix is either an NbE/closure
--- evaluator (so normal forms are canonical regardless of muSeen
--- path) or a subCheckNF rule that re-evaluates a stuck recursive
--- application head before falling through to neutralType.
+-- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. The stuck-recursive-head
+-- re-eval rule lets subCheckNF unfold the muSeen-cut `(dsucc dzero)`
+-- in done_NF's type annotation, but each unfold substitutes the
+-- closed `dNat` term for the next ι-self and the search fans out
+-- before the seen-set can close it (`.ok false` at fuel ≤150,
+-- exponential at 200). The remaining gap is that iotaIntro on
+-- `dNat` substitutes done_NF for *every* `:dNat` ascription in the
+-- body — an NbE/closure evaluator (so substitution doesn't copy)
+-- is still the right fix.
 example : subCheck 200 done_ dNat = .ok true := by sorry
 example : subCheck 200 dtwo dNat = .ok true := by sorry
 example : subCheck 200 dthree dNat = .ok true := by sorry

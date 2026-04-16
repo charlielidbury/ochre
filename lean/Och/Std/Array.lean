@@ -162,15 +162,13 @@ example : concEval 5000 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 5000 thr
 example : concEval 5000 (och{ fst_ appended }) ≠ concEval 5000 two_ := by native_decide
 
 -- appendArrays : T → n1 → n2 → Array n1 T → Array n2 T → Array (dadd n1 n2) T
--- TODO[mega-loop]: under DNat, the body's `fst_ arr1` in the succ branch
--- should statically refine to Pair T (Array_ pred T) via the DNat eliminator,
--- so this SHOULD ultimately return .ok true. It currently does not, because
--- (a) DNat subtyping itself is part of the mega-loop, and (b) the self-type
--- cascade through fix + ι hasn't been proven out yet. Stated as the positive
--- assertion once fixed.
+-- The stuck-recursive-head re-eval rule in subCheckNF lets the
+-- `(Array_ pred T)` and `(dadd n m)` apps inside the body be unfolded
+-- on demand instead of falling through to neutralType's type-widening
+-- (which collapsed them to `Type` and lost all index information).
 example : subCheck 5000 appendArrays
   (och{ λT:Type. λn1:dNat. λn2:dNat. Array_ n1 T → Array_ n2 T → Array_ (dadd n1 n2) T })
-  = .ok true := by sorry
+  = .ok true := by native_decide
 
 end AppendArraysTests
 end Std

@@ -166,6 +166,36 @@ through to neutralType.
 
 19 → 14 markers (5 closed, 2 new positive Array_ tests added).
 
+### Agent phase1-stuck-head-reeval, 2026-04-16
+
+Picked: `testVec1 ⊑ Vec Nat` and the `appendArrays` typing assertion.
+
+Added a stuck-recursive-head re-evaluation rule to subCheckNF: when
+either side is `app f arg` with `f = .fix/.iota` (i.e. absEval's
+muSeen cutoff left a recursive head un-unfolded — *not* a genuinely
+neutral bvar-headed term), unfold it once and recurse with the
+seen-set extended. This sits in two places: a dedicated `_, .app
+(.fix/.iota …) _` arm right after `unfoldFixR` (so it fires before
+the LHS `.fix/.iota` arms — needed for transitivity over edgeExprs),
+and inside `neutralType`'s `.app` arm for the LHS direction. Without
+this the type-widening fallback collapsed `(dsucc dzero)` to `dNat`
+and `(Array_ pred T)` / `(dadd n m)` to `Type`, losing all index
+information.
+
+Closes:
+  Vec.lean:    testVec1 ⊑ Vec Nat
+  Array.lean:  appendArrays ⊑ (T → n → m → Array n T → Array m T
+                                 → Array (dadd n m) T)
+               — Array.lean now has zero `sorry`.
+
+`done_ ⊑ dNat` is still open: the re-eval rule lets subCheckNF
+explore further than before (`.ok false` at fuel ≤150, exponential
+at 200) but iotaIntro on dNat still substitutes the closed `dNat`
+term for every `:dNat` ascription, so the search fans out before
+seen can close it. Same NbE/closure-representation fix as before.
+
+14 → 12 markers.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
