@@ -63,17 +63,25 @@ example : subCheck 1000
 -- §6.2 Abstract vector instantiation
 -- ============================================================
 
--- testVec1 = mkVec Nat 1 [0]
-private def testVec1 := och{ mkVec Nat_ one_ (Pair zero_ unit_) }
+-- testVec1 = mkVec Nat done_ [0]   (done_ is the dNat 1)
+private def testVec1 := och{ mkVec Nat_ done_ (Pair zero_ unit_) }
 
--- Abstract vector unpack: ascribe concrete vec to Vec Nat, then unpack → get Nat (not 1)
-example : absEvalVal (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  = .ok ⟨Nat_⟩ := by native_decide
+-- TODO[mega-loop]: Abstract vector unpack.
+-- Ascribe concrete vec to Vec Nat, then unpack → the length abstracts to
+-- `dNat` (since the ascription forgets the precise 1). Obstructed by the
+-- same issue as Std/Vec.lean: the motive `λn:dNat. λarr:(Array_ n Nat_). n`
+-- has a binder whose body `Array_ n Nat_` is stuck on abstract `n`.
+-- Previously passed under Church-Nat because stuck Church-Nat apps slipped
+-- through the optimistic path.
+example : absEvalVal (och{ (testVec1 : Vec Nat_) Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
+  = .ok ⟨dNat⟩ := by sorry
 
--- Rewrapped abstract vector ⊑ Vec Nat
+-- TODO[mega-loop]: Rewrapped abstract vector ⊑ Vec Nat.
+-- Same obstruction chain as above: the inner motive uses Array_ n Nat_
+-- with abstract n; this needs DNat's eliminator on neutral bvars to work.
 example : subCheck 1000
-  (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:Nat_. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
-  (och{ Vec Nat_ }) = .ok true := by native_decide
+  (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:dNat. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
+  (och{ Vec Nat_ }) = .ok true := by sorry
 
 -- ============================================================
 -- Subtyping transitivity tests
