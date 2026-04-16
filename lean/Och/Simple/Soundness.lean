@@ -167,6 +167,17 @@ theorem eval_mono (e : Expr) (fuel : Nat) (v : Expr)
         | .top => simp [hm] at h ⊢; exact h
         | .app g b => simp [hm] at h ⊢; exact h
         | .asc e' t' => simp [hm] at h ⊢; exact h
+        | .iota ann body => simp [hm] at h ⊢; exact h
+        | .fix ann body => simp [hm] at h ⊢; exact h
+    | iota ann body =>
+      simp [eval] at h; subst h
+      rw [hrw]; simp [eval]
+    | fix ann body =>
+      -- fix unfolds on eval: body.subst 0 (fix ann body)
+      -- eval (n+1) (fix ann body) = eval n (body.subst 0 (fix ann body))
+      simp [eval] at h
+      have := ih (body.subst 0 (.fix ann body)) v h k
+      rw [hrw]; simp [eval]; exact this
 
 -- eval results satisfy the Value predicate
 -- (Note: with lazy evaluation, stuck apps contain unevaluated arguments,
@@ -181,6 +192,11 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
     | top => simp [eval] at h; subst h; exact Value.top
     | lam D body => simp [eval] at h; subst h; exact Value.lam D body
     | asc e ty => simp [eval] at h; exact ih h
+    | iota ann body => simp [eval] at h; subst h; exact Value.iota ann body
+    | fix ann body =>
+      -- fix unfolds; the result is whatever the unfolding evals to
+      simp [eval] at h
+      exact ih h
     | app f a =>
       simp [eval, bind, Option.bind] at h
       cases hf : eval n f with
@@ -201,6 +217,13 @@ theorem eval_produces_value {fuel : Nat} {e v : Expr}
         | .asc e' t' =>
           simp [hm] at h; subst h
           exact Value.stuckApp (.asc e' t') a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+        | .iota ann body =>
+          simp [hm] at h; subst h
+          exact Value.stuckApp (.iota ann body) a (by intro ⟨d, b', h⟩; exact Expr.noConfusion h)
+        | .fix ann body =>
+          -- eval never produces fix (fix always unfolds)
+          subst hm
+          exact nomatch (ih hf)
 
 -- Inversion: Sub Γ (lam A b₁) (lam B b₂) implies Sub Γ B A and Sub (B :: Γ) b₁ b₂
 noncomputable def sub_lam_inv {Γ : Ctx} {A B b₁ b₂ : Expr}
@@ -235,6 +258,11 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
     | var k => simp [eval] at h; subst h; simp [eval]
     | top => simp [eval] at h; subst h; simp [eval]
     | lam D body => simp [eval] at h; subst h; simp [eval]
+    | iota ann body => simp [eval] at h; subst h; simp [eval]
+    | fix ann body =>
+      simp [eval] at h
+      have hv := ih h
+      exact eval_mono v n v hv 1
     | asc e ty =>
       simp [eval] at h
       -- eval n e = some v, by IH eval n v = some v
@@ -274,6 +302,14 @@ theorem eval_idempotent {fuel : Nat} {e v : Expr}
           simp [hm] at h; subst h
           -- v = app (asc e' t') a. But eval never returns asc.
           exact nomatch (eval_produces_value hf)
+        | .iota ann body =>
+          simp [hm] at h; subst h
+          -- v = app (iota ann body) a. eval n (iota ann body) = some (iota ann body).
+          have hi := ih hf
+          simp [eval, bind, Option.bind, hi]
+        | .fix ann body =>
+          subst hm
+          exact nomatch (eval_produces_value hf)
 
 -- An expression is an "eval result" if some eval produced it.
 def IsEvalResult (v : Expr) : Prop := ∃ n e, eval n e = some v
@@ -293,6 +329,8 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
     | var k => simp [eval] at h
     | top => simp [eval] at h
     | lam D body => simp [eval] at h
+    | iota _ _ => simp [eval] at h
+    | fix _ _ => simp [eval] at h; exact ih h
     | asc e ty =>
       simp [eval] at h; exact ih h
     | app f' a' =>
@@ -318,6 +356,13 @@ theorem eval_app_head_result {n : Nat} {e f a : Expr}
           exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
         | .asc e' t' =>
           -- eval never produces asc
+          subst hm
+          exact nomatch (eval_produces_value hf)
+        | .iota ann body =>
+          simp [hm] at h
+          obtain ⟨rfl, rfl⟩ := h
+          exact ⟨⟨n, f', hf⟩, by intro ⟨d, b, h⟩; exact Expr.noConfusion h⟩
+        | .fix ann body =>
           subst hm
           exact nomatch (eval_produces_value hf)
 
@@ -366,6 +411,10 @@ private noncomputable def eval_result_sub_lam_not_app :
           eval_result_sub_lam_not_app bound rebuilt hf_eval h
         show 1 + hgD''.size + hcD''.size + hR''D'.size ≤ bound
         simp [Sub.size] at hle; omega
+      | unfoldFixL _ _ _ _ _ =>
+        -- f_head = fix _ _. eval never produces fix.
+        obtain ⟨n', e', he'⟩ := hf_eval
+        exact nomatch (eval_produces_value he')
 
 -- Wrapper: Sub [] (app f a) (lam D R) with eval result is impossible
 noncomputable def eval_result_sub_lam_app_absurd
@@ -490,6 +539,43 @@ private noncomputable def evalPreservation_aux :
 
           | .asc e' t' =>
             exact nomatch (eval_produces_value hf_eval)
+
+          | .iota ann body =>
+            -- f' = iota ann body. iota is a value (stuck in app).
+            -- The app stays stuck: v_e = app (iota ann body) a.
+            -- We need Sub [] v_τ for v_e. Derived from f ⊑ lam D R via IH — but
+            -- Sub [] (iota ann body) (lam D R) is only produced by refl (impossible)
+            -- or by iotaIntro/... which has target iota, not lam. Impossible via the
+            -- Sub.iotaIntro rule (target is iota, not lam). So such a Sub must come
+            -- from [Refl] or similar, but types don't match. This case is impossible
+            -- modulo an inversion lemma we don't have yet.
+            sorry
+
+          | .fix ann body =>
+            -- eval never produces fix
+            exact nomatch (eval_produces_value hf_eval)
+
+    | @iotaIntro _ _ _ _ hA hBody =>
+      -- τ = iota A' body'. eval fuel_τ (iota A' body') = some (iota A' body').
+      -- v_τ = iota A' body'.
+      -- e can evaluate to anything; we need Sub [] v_e (iota A' body').
+      -- The natural construction: iotaIntro on v_e via hA and hBody composed with
+      -- evaluation of e. This requires a "Sub is closed under eval" lemma for LHS,
+      -- which is nontrivial when RHS is iota.
+      sorry
+
+    | @fixAnn _ _ A' body' hA =>
+      -- τ = fix A' body'. eval fuel_τ τ = eval fuel_τ (body'.subst 0 (fix A' body'))
+      -- (fix unfolds on eval), so v_τ is the final iteration's value.
+      sorry
+
+    | @unfoldFixL _ A' body' _ hUnf =>
+      -- e = fix A' body'. eval fuel e = eval (fuel-1) (body'.subst 0 (fix A' body'))
+      cases fuel with
+      | zero => simp [eval] at he
+      | succ m =>
+        simp [eval] at he
+        exact ih _ _ hUnf m fuel_τ _ _ (by omega) he hτ
 
 /-- **Eval preservation**: If `[] ⊢ e ⊑ τ` and both `e` and `τ` evaluate to
     values `v_e` and `v_τ`, then `[] ⊢ v_e ⊑ v_τ`. -/

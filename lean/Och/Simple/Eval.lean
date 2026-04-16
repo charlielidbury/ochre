@@ -39,6 +39,11 @@ def eval (fuel : Nat) (e : Expr) : Option Expr :=
       | .lam _dom body => eval fuel (body.subst 0 a)
       | _ => some (.app f' a)
     | .asc e _ty => eval fuel e
+    -- iota: self-type, behaves as a value (annotation + body preserved)
+    | .iota ann body => some (.iota ann body)
+    -- fix: recursive binder. Equi-recursive — unfold on eval to match
+    -- the Sub.unfoldFixL rule (fix is not a value).
+    | .fix ann body => eval fuel (body.subst 0 (.fix ann body))
 
 /-- A value is an expression that the evaluator returns as-is
     (i.e., it is in weak head normal form). -/
@@ -47,6 +52,7 @@ inductive Value : Expr → Prop where
   | lam : (dom body : Expr) → Value (.lam dom body)
   | var : (n : Nat) → Value (.var n)
   | stuckApp : (f a : Expr) → (¬ ∃ d b, f = .lam d b) → Value (.app f a)
+  | iota : (ann body : Expr) → Value (.iota ann body)
 
 -- ============================================================
 -- Tests

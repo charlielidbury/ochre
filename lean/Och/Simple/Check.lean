@@ -49,6 +49,8 @@ def synthLam (fuel : Nat) (Γ : Ctx) (e : Expr) : Option (Expr × Expr) :=
         if subCheck fuel Γ a' D'' then synthLam fuel Γ (R''.subst 0 a')
         else none
     | .top => none
+    | .iota _ _ => none   -- iota is not directly a function
+    | .fix _ _ => none    -- fix is not directly a function (would need unfolding)
 
 /-- Decide `Sub Γ a b` up to the supplied `fuel`.
 
@@ -92,6 +94,9 @@ def subCheckStep (fuel : Nat) (Γ : Ctx) (a b : Expr) : Bool :=
       | some (D, R) =>
         subCheck fuel Γ arg D && subCheck fuel Γ (R.subst 0 arg) b
     | .top => false
+    -- iota and fix: checker does not handle them (would need iotaIntro/unfoldFix rules)
+    | .iota _ _ => false
+    | .fix _ _ => false
 
 end  -- mutual
 
@@ -158,6 +163,8 @@ noncomputable def synthLam_sound :
           exact Sub.app Γ f a (.lam D R) D'' R'' hf_sub ha_sub hR_sub
         · rw [if_neg hcheck] at h; simp at h
     | top => simp [synthLam] at h
+    | iota _ _ => simp [synthLam] at h
+    | fix _ _ => simp [synthLam] at h
 
 /-- `subCheck` soundness: if `subCheck fuel Γ a b = true` then `Sub Γ a b`. -/
 noncomputable def subCheck_sound :
@@ -198,6 +205,75 @@ noncomputable def subCheckStep_sound :
     have hs1 : Sub Γ e τ := subCheck_sound fuel Γ e τ h1
     have hs2 : Sub Γ a e := subCheck_sound fuel Γ a e h2
     exact Sub.ascR Γ a e τ hs1 hs2
+  | iota ann_b body_b =>
+    -- b = iota _, subCheckStep returns false for any a (checker doesn't support)
+    subst hb
+    cases ha : a with
+    | asc e τ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      obtain ⟨h1, h2⟩ := bool_and_split h
+      exact Sub.ascL Γ e τ _ (subCheck_sound fuel Γ e τ h1) (subCheck_sound fuel Γ τ _ h2)
+    | var x =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      cases hget : Γ.get? x with
+      | none => rw [hget] at h; simp at h
+      | some T =>
+        rw [hget] at h
+        exact Sub.var Γ x _ T hget (subCheck_sound fuel Γ T _ h)
+    | lam _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | app f arg =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      cases hsy : synthLam fuel Γ f with
+      | none => rw [hsy] at h; simp at h
+      | some p =>
+        obtain ⟨D, R⟩ := p
+        rw [hsy] at h
+        first | (exact Bool.noConfusion h) | (simp only at h)
+        obtain ⟨h1, h2⟩ := bool_and_split h
+        exact Sub.app Γ f arg _ D R
+          (synthLam_sound fuel Γ f D R hsy)
+          (subCheck_sound fuel Γ arg D h1)
+          (subCheck_sound fuel Γ _ _ h2)
+    | top => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | iota _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | fix _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+  | fix ann_b body_b =>
+    subst hb
+    cases ha : a with
+    | asc e τ =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      obtain ⟨h1, h2⟩ := bool_and_split h
+      exact Sub.ascL Γ e τ _ (subCheck_sound fuel Γ e τ h1) (subCheck_sound fuel Γ τ _ h2)
+    | var x =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      cases hget : Γ.get? x with
+      | none => rw [hget] at h; simp at h
+      | some T =>
+        rw [hget] at h
+        exact Sub.var Γ x _ T hget (subCheck_sound fuel Γ T _ h)
+    | lam _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | app f arg =>
+      subst ha
+      first | (exact Bool.noConfusion h) | (simp only at h)
+      cases hsy : synthLam fuel Γ f with
+      | none => rw [hsy] at h; simp at h
+      | some p =>
+        obtain ⟨D, R⟩ := p
+        rw [hsy] at h
+        first | (exact Bool.noConfusion h) | (simp only at h)
+        obtain ⟨h1, h2⟩ := bool_and_split h
+        exact Sub.app Γ f arg _ D R
+          (synthLam_sound fuel Γ f D R hsy)
+          (subCheck_sound fuel Γ arg D h1)
+          (subCheck_sound fuel Γ _ _ h2)
+    | top => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | iota _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | fix _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
   | var x_b =>
     subst hb
     first | (exact Bool.noConfusion h) | (simp only at h)
@@ -239,6 +315,8 @@ noncomputable def subCheckStep_sound :
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | iota _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | fix _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
   | top =>
     subst hb
     exfalso; apply htop; simp
@@ -287,6 +365,8 @@ noncomputable def subCheckStep_sound :
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | iota _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | fix _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
   | app f_b a_b =>
     subst hb
     first | (exact Bool.noConfusion h) | (simp only at h)
@@ -328,6 +408,8 @@ noncomputable def subCheckStep_sound :
     | top =>
       subst ha
       first | (exact Bool.noConfusion h) | (simp only at h)
+    | iota _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
+    | fix _ _ => subst ha; first | (exact Bool.noConfusion h) | (simp only at h)
 
 end  -- mutual soundness
 
