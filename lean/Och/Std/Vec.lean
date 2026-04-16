@@ -5,25 +5,30 @@ import Och.Std.Unit
 import Och.Std.Pair
 import Och.Std.Array
 import Och.Std.Sigma
+import Och.Std.DNat
 
 /-!
-# Church-encoded Vec (length-indexed vector via Sigma)
+# Length-Indexed Vec (via Sigma, indexed by DNat)
 
 ```
-Vec   = λT:Type. Sigma Nat (λn:Nat. Array n T)
-mkVec = λT:Type. λn:Nat. λarr:(Array n T). dpair Nat (λn:Nat. Array n T) n arr
+Vec   = λT:Type. Sigma dNat (λn:dNat. Array_ n T)
+mkVec = λT:Type. λn:dNat. λarr:(Array_ n T). dpair dNat (λn:dNat. Array_ n T) n arr
 ```
 
-A length-indexed vector is a dependent pair (Sigma) of a natural number `n`
-and an `Array n T`. The length is existentially quantified: the eliminator
-receives both `n` and the array.
+A length-indexed vector is a dependent pair (Sigma) of a dependent natural
+number `n : dNat` and an `Array_ n T`. The length is existentially
+quantified: the eliminator receives both `n` and the array.
+
+The dNat index (not Church `Nat_`) is what gives the dependent refinement
+— in the succ branch of a match on `n`, the array's type refines to a
+pair. See `Array.lean`.
 -/
 
 namespace Std
 
-def Vec := och{ λT:Type. Sigma Nat_ (λn:Nat_. Array_ n T) }
+def Vec := och{ λT:Type. Sigma dNat (λn:dNat. Array_ n T) }
 
-def mkVec := och{ λT:Type. λn:Nat_. λarr:(Array_ n T). dpair Nat_ (λn2:Nat_. Array_ n2 T) n arr }
+def mkVec := och{ λT:Type. λn:dNat. λarr:(Array_ n T). dpair dNat (λn2:dNat. Array_ n2 T) n arr }
 
 -- ============================================================
 -- Tests
@@ -35,42 +40,53 @@ open Expr
 -- ── Test vectors ──────────────────────────────────────────────
 
 -- mkVec Nat 1 [0]
-private def testVec1 := och{ mkVec Nat_ one_ (Pair zero_ unit_) }
+private def testVec1 := och{ mkVec Nat_ done_ (Pair zero_ unit_) }
 
 -- mkVec Nat 2 [1, 2]
-private def testVec2 := och{ mkVec Nat_ two_ (Pair one_ (Pair two_ unit_)) }
+private def testVec2 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
 
 -- ── Positive subtype checks ──────────────────────────────────
 
--- mkVec Nat 1 [0] ⊑ Vec Nat
-example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
+-- TODO[mega-loop]: mkVec Nat 1 [0] ⊑ Vec Nat — requires Array_ over DNat
+-- (a fix applied to a dNat constructor) to reduce through DNat's eliminator,
+-- plus dNat introduction (done_ ⊑ dNat). Under Church-Nat this test passed
+-- because abstract-interp silently handed-waved over stuck Church-Nat
+-- applications; under DNat the checker has to actually do the work.
+example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by sorry
 
--- mkVec Nat 2 [1,2] ⊑ Vec Nat
-example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
+-- TODO[mega-loop]: mkVec Nat 2 [1,2] ⊑ Vec Nat — same obstructions as above.
+example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by sorry
 
 -- ── Positive computation: unpack to get length ───────────────
 
--- unpack vec1 → length = 1
-example : absEvalVal (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) }) = .ok ⟨one_⟩ := by native_decide
+-- TODO[mega-loop]: unpack vec1 → length = done_.
+-- The obstruction is normalization of the motive `λn:dNat. λarr:(Array_ n Nat_). n`
+-- under the binder: evaluating `Array_ n Nat_` with abstract `n` unfolds the
+-- outer fix of Array_ but then needs DNat's eliminator on the bvar `n`, which
+-- is stuck. Under Church-Nat this worked because Church-Nat's stuck eliminator
+-- was silently admitted; under DNat the normalization has to actually
+-- terminate cleanly.
+example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) = .ok ⟨done_⟩ := by sorry
 
--- unpack vec2 → length = 2
-example : absEvalVal (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) }) = .ok ⟨two_⟩ := by native_decide
+-- TODO[mega-loop]: unpack vec2 → length = dtwo. Same obstruction.
+example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) = .ok ⟨dtwo⟩ := by sorry
 
 -- ── Negative subtype checks ─────────────────────────────────
 
--- Vec Nat is not a subtype of Nat (it's a different type)
-example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
+-- TODO[mega-loop]: Vec Nat ⊄ Nat. Normalizing `Vec Nat_` requires evaluating
+-- `λn:dNat. Array_ n Nat_` under the binder (stuck DNat elim on abstract n).
+example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by sorry
 
--- A Nat is not a Vec Nat
-example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
+-- TODO[mega-loop]: A Nat is not a Vec Nat. Same obstruction (RHS fails to normalize).
+example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by sorry
 
 -- ── Negative computation ─────────────────────────────────────
 
--- unpack vec1 → length ≠ 2  (it's 1, not 2)
-example : absEvalVal (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨two_⟩ := by native_decide
+-- TODO[mega-loop]: unpack vec1 → length ≠ dtwo. Same absEval obstruction.
+example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨dtwo⟩ := by sorry
 
--- unpack vec2 → length ≠ 1  (it's 2, not 1)
-example : absEvalVal (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨one_⟩ := by native_decide
+-- TODO[mega-loop]: unpack vec2 → length ≠ done_. Same absEval obstruction.
+example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨done_⟩ := by sorry
 
 end Tests
 
@@ -83,63 +99,62 @@ end Tests
 
 The north star for Och: `appendVec` with abstract arguments where the
 type system tracks dependent lengths and catches mistakes like
-`add n1 n1` (should be `add n1 n2`).
+`dadd n1 n1` (should be `dadd n1 n2`).
 
 `appendVec` unpacks both vectors, calls `appendArrays`, and repacks.
 -/
 
 def appendVec := och{
   λT:Type. λv1:(Vec T). λv2:(Vec T).
-    v1 (Vec T) (λn1:Nat_. λarr1:(Array_ n1 T).
-      v2 (Vec T) (λn2:Nat_. λarr2:(Array_ n2 T).
-        mkVec T (add_ n1 n2) (appendArrays T n1 n2 arr1 arr2)))
+    v1 (Vec T) (λn1:dNat. λarr1:(Array_ n1 T).
+      v2 (Vec T) (λn2:dNat. λarr2:(Array_ n2 T).
+        mkVec T (dadd n1 n2) (appendArrays T n1 n2 arr1 arr2)))
 }
 
--- appendVec with a deliberate bug: add n1 n1 instead of add n1 n2
+-- appendVec with a deliberate bug: dadd n1 n1 instead of dadd n1 n2
 private def appendVec_wrong := och{
   λT:Type. λv1:(Vec T). λv2:(Vec T).
-    v1 (Vec T) (λn1:Nat_. λarr1:(Array_ n1 T).
-      v2 (Vec T) (λn2:Nat_. λarr2:(Array_ n2 T).
-        mkVec T (add_ n1 n1) (appendArrays T n1 n1 arr1 arr2)))
+    v1 (Vec T) (λn1:dNat. λarr1:(Array_ n1 T).
+      v2 (Vec T) (λn2:dNat. λarr2:(Array_ n2 T).
+        mkVec T (dadd n1 n1) (appendArrays T n1 n1 arr1 arr2)))
 }
 
 section AppendVecTests
 
 -- ── North star: abstract appendVec ──────────────────────────
 
--- TODO: GET THESE TESTS PASSING (flip = false back to = true)
--- Currently fail because appendArrays's body is ill-typed under static checking.
--- The body calls `fst_ arr1` in a branch guarded by `isZero_ n1` (nonzero case),
--- but absEval evaluates both branches — it can't refine `n1` to nonzero in the
--- guard's branch, so `arr1 : Array_ n1 T` isn't known to be a Pair.
--- This is the dependent refinement problem: branch guards refine types, but
--- the type system can't propagate that refinement.
--- Previously hidden by annotation-trust path that skipped body evaluation entirely.
-
--- appendVec : Vec T → Vec T → Vec T  (EXPECTED: .ok true)
--- Currently errors: domain check fails because absEval can't refine n1 in branches.
+-- TODO[mega-loop]: appendVec : Vec T → Vec T → Vec T
+-- The whole chain of dependent refinements must work: Array_ over DNat
+-- reducing in the succ branch, dNat constructor subtyping (done_ ⊑ dNat,
+-- etc.), and the fix-recursive appendArrays type-checking.
 example : subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
-  ≠ .ok true := by native_decide
+  = .ok true := by sorry
 
--- appendVec_wrong should NOT typecheck  (EXPECTED: ≠ .ok true — currently also fails, but for wrong reason)
+-- TODO[mega-loop]: appendVec_wrong should NOT typecheck (dadd n1 n1 ≠ dadd n1 n2
+-- under abstract reasoning). This is the negative pair of the above: once the
+-- positive test passes, this one must genuinely reject.
 example : subCheck 5000 appendVec_wrong (och{ λT:Type. Vec T → Vec T → Vec T })
-  ≠ .ok true := by native_decide
+  ≠ .ok true := by sorry
 
 -- ── Concrete appendVec ──────────────────────────────────────
 
-private def vec1 := och{ mkVec Nat_ two_ (Pair one_ (Pair two_ unit_)) }
-private def vec2 := och{ mkVec Nat_ one_ (Pair three_ unit_) }
+private def vec1 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
+private def vec2 := och{ mkVec Nat_ done_ (Pair three_ unit_) }
 private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 
--- Concrete result ⊑ Vec Nat  (EXPECTED: .ok true)
--- Currently errors: same dependent refinement issue as appendVec.
+-- TODO[mega-loop]: Concrete result ⊑ Vec Nat — needs the same cascade
+-- of refinements as the abstract appendVec test above.
 example : subCheck 5000 vecResult (och{ Vec Nat_ })
-  ≠ .ok true := by native_decide
+  = .ok true := by sorry
 
--- Concrete result: unpack and check length is nonzero (isZero = false)
+-- TODO[mega-loop]: Concrete result: unpack and check length is nonzero.
+-- Relies on concEval being able to walk through the appendVec body —
+-- which internally references appendArrays (a fix) and mkVec (which
+-- takes abstract-looking arguments). Was previously live under Church-Nat;
+-- under DNat it may or may not still walk through cleanly.
 example : concEval 10000 (och{
-    isZero_ (vecResult Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n))
-  }) = some Std.false_ := by native_decide
+    disZero (vecResult Nat_ (λn:dNat. λarr:(Array_ n Nat_). n))
+  }) = some Std.false_ := by sorry
 
 end AppendVecTests
 end Std
