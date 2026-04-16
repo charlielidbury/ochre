@@ -2,6 +2,7 @@ import Och.Syntax
 import Och.Eval
 import Och.NbE
 import Och.NbETests
+import Och.SubCheckVal
 import Och.Subtyping
 import Och.Soundness
 import Och.Tests
