@@ -350,11 +350,26 @@ Nat Unit))` (where `absEval` hangs), and `nf done_ = nf (dsucc
 dzero)` (canonicity). All by `native_decide`. No changes to
 `absEval`/`subCheckNF`; purely additive.
 
-Next step: replace `subCheckNF`'s internal `absEval` calls with
-`NbE.nfIn` (or, cleaner, rewrite `subCheckNF` to compare `Val`s
-directly so closures stay un-quoted). Once that lands, `done_ ⊑
-dNat` should close, the β domain check can be restored, and
-`appendVec_wrong`/`vecResult` follow.
+Tried the naive integration (swap `subCheckNF`'s ~7 `absEval`
+calls for `NbE.nfInE`/`nfSubstE`). Doesn't help: `subCheckNF`
+works on `Expr`, so each NbE call has to *quote* the result back
+to syntax, and the next call re-evaluates that quoted form. The
+quote/eval round-trip defeats the sharing — a `Val` closure that
+points at `done_val` once becomes an `Expr` with the full
+`done_NF` term inlined at every position, and re-evaluating that
+re-creates the recursion at a different `unf` depth so `==`
+misses. It also makes Vec.lean's existing `native_decide` tests
+slower (the quoted forms are larger than absEval's). Reverted.
+
+The *right* integration is `subCheckVal : Val → Val → Bool` —
+compare in the semantic domain so closures stay un-quoted.
+`iotaIntro` becomes "open the RHS ι closure with the LHS Val in
+the env"; `lam-lam` opens both closures with the same fresh
+neutral; the seen-set holds `(Val × Val)` pairs (which need
+`BEq Val`, derivable once `Closure` compares its `Expr` body and
+`Env` structurally). `nfSubstE` is in `NbE.lean` as the entry
+point that does env-extension instead of `body.subst 0 a`, ready
+for whoever picks this up.
 
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
