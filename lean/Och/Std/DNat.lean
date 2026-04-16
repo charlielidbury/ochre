@@ -118,23 +118,25 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
 example : subCheck 200 dzero dNat = .ok true := by native_decide
 
--- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. The dsucc-headed cases
--- blow up: iotaIntro substitutes the LHS for `self` in dNat's body,
--- and after let-inlining the dsucc' fix is unfolded once, leaving the
--- closed `dNat` term at every type ascription. The next iota-L unfold
--- then substitutes that closed `dNat` for its own self-reference,
--- squaring the term size on each descent. Likely wants an NbE /
--- closure representation so substitution doesn't copy. dNat ⊄ dzero
--- below has the same blowup (the search must exhaust the unfold path
--- before it can answer no).
+-- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. These now return
+-- `.ok false` (incompleteness, not unsoundness): done_NF's type
+-- annotation contains the muSeen-cut stuck application
+-- `(dsucc dzero)`, while iotaIntro substitutes the *evaluated*
+-- `done_NF` (an ι value) for `self` on the dNat side, so the two
+-- normal forms of the same term meet in contravariant position and
+-- subCheckNF can't equate them. The fix is either an NbE/closure
+-- evaluator (so normal forms are canonical regardless of muSeen
+-- path) or a subCheckNF rule that re-evaluates a stuck recursive
+-- application head before falling through to neutralType.
 example : subCheck 200 done_ dNat = .ok true := by sorry
 example : subCheck 200 dtwo dNat = .ok true := by sorry
 example : subCheck 200 dthree dNat = .ok true := by sorry
 
 -- ── Negative subtype checks ─────────────────────────────────
 
--- TODO[mega-loop]: dNat ⊄ dzero — same term-blowup as done_ ⊑ dNat above.
-example : subCheck 200 dNat dzero = .ok false := by sorry
+-- dNat ⊄ dzero: dNat's eliminator demands both branches, dzero only
+-- the zero branch.
+example : subCheck 200 dNat dzero = .ok false := by native_decide
 
 -- true_ ⊄ dNat: the Church boolean has the wrong shape.
 example : subCheck 200 Std.true_ dNat = .ok false := by native_decide

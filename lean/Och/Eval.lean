@@ -157,11 +157,16 @@ mutual
         let (f', τ_f) ← absEval fuel ctx seen f muSeen
         let (a', _) ← absEval fuel ctx seen a muSeen
         match f'.val with
-        | .lam dom body =>
-          match subCheckNF fuel ctx seen a'.val dom with
-          | .ok true => absEval fuel ctx seen (body.subst 0 a'.val) muSeen
-          | .ok false => .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
-          | .error e => .error s!"domain check: {e}"
+        | .lam _dom body =>
+          -- β-reduce unconditionally. The previous domain check
+          -- `a' ⊑ dom` made absEval double as a type checker, which
+          -- forced `Array_ done_` → `(λn:dNat. …) done_` to discharge
+          -- `done_ ⊑ dNat` *during normalisation* — exactly the goal
+          -- subCheckNF was being called to set up. β is type-blind;
+          -- subCheckNF only consumes the value, and ill-typed
+          -- applications are still caught by subCheckNF itself when
+          -- they appear in a goal position.
+          absEval fuel ctx seen (body.subst 0 a'.val) muSeen
         | .iota _ann body =>
           -- (ι A. b) a  →  b[self := ι A. b] a
           -- Termination: a recursive head applied to a *neutral* arg
@@ -176,7 +181,9 @@ mutual
           -- recorded type isn't an arrow we fall back to `Type` for the
           -- result type rather than erroring — subCheckNF only consumes
           -- the value.
-          if a'.val.hasNeutralHead || muSeen.length >= 16 then
+          if a'.val.hasNeutralHead
+             || muSeen.any (fun (m, _) => Expr.iota _ann body == m)
+             || muSeen.length >= 16 then
             let retTy := match τ_f.val with
               | .lam _dom retTy => retTy.subst 0 a'.val
               | _ => .type
@@ -186,7 +193,15 @@ mutual
             absEval fuel ctx seen (.app (body.subst 0 (Expr.iota _ann body)) a'.val) muSeen'
         | .fix _ann body =>
           -- (fix A. b) a  →  b[self := fix A. b] a
-          if a'.val.hasNeutralHead || muSeen.length >= 16 then
+          -- Three-way termination gate (see comment on the ι case
+          -- above): neutral arg (open recursion), syntactic recurrence
+          -- of a *closed* recursive head (the type-ascription
+          -- `(dsucc m)→Type` cycle in the dNat encoding — closed terms
+          -- don't shift so `==` fires), and a depth backstop for
+          -- anything else.
+          if a'.val.hasNeutralHead
+             || muSeen.any (fun (m, _) => Expr.fix _ann body == m)
+             || muSeen.length >= 16 then
             let retTy := match τ_f.val with
               | .lam _dom retTy => retTy.subst 0 a'.val
               | _ => .type

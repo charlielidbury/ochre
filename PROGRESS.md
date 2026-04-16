@@ -123,6 +123,49 @@ blocked by the `done_ ⊑ dNat` domain-check blowup inside the β step.
 
 22 → 19 markers (Array_ dzero = Unit, Vec Nat ⊄ Nat, Nat ⊄ Vec Nat).
 
+### Agent phase1-drop-domain-check, 2026-04-16
+
+Picked: the four remaining `Array_ done_/dtwo` markers (Array.lean) and
+`dNat ⊄ dzero`.
+
+Two absEval changes:
+
+  1. β-reduce unconditionally. The `(λx:A. b) v` arm previously did a
+     `subCheckNF v A` domain check before substituting, which forced
+     `(λn:dNat. …) done_` (inside the Array_ unfold) to discharge
+     `done_ ⊑ dNat` *during normalisation* — exactly the goal
+     subCheckNF was being called to set up. β is type-blind and the
+     subCheckNF caller only consumes the value, so dropping the check
+     loses inferred-type precision but unblocks normalisation.
+
+  2. Re-add the syntactic head-`==` muSeen check alongside the
+     neutral-arg gate. After dropping the domain check, normalising
+     `Array_ dtwo` exposes the `(dsucc m) → Type` self-reference in
+     dsucc's body: m gets the *value* `done_NF`, the neutral-arg gate
+     doesn't fire, and the depth-16 backstop alone makes the term grow
+     ~16×. The closed top-level `dsucc` doesn't shift under binders,
+     so head-`==` against muSeen fires after one unfold and stops it
+     cleanly.
+
+Closes Array.lean: testArr1 ⊑ Array_ done_ Nat, testArr2 ⊑ Array_ dtwo
+Nat, unit_ ⊄ Array_ done_ Nat, the (Array_ (dsucc dzero) Nat).isOk
+smoke test, plus two new positive `Array_ done_/dtwo` reduction
+checks. Closes DNat.lean: dNat ⊄ dzero.
+
+Known incompleteness introduced: `done_ ⊑ dNat` (and dtwo, dthree)
+now return `.ok false` instead of timing out. The head-`==` cutoff
+leaves a stuck `(dsucc dzero)` inside done_NF's type annotation,
+while iotaIntro on the dNat side substitutes the *evaluated* done_NF
+(an ι value) for `self`; the two non-canonical normal forms of the
+same term then meet in contravariant position and subCheckNF can't
+equate them. This is incompleteness (a valid subtype rejected), not
+unsoundness. Documented in the in-file TODO; the obvious fix is
+either canonical NbE normal forms or a subCheckNF rule that
+re-evaluates a stuck recursive-head application before falling
+through to neutralType.
+
+19 → 14 markers (5 closed, 2 new positive Array_ tests added).
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.

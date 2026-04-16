@@ -79,25 +79,27 @@ example : absEvalVal (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native
 
 -- ── Positive subtype checks ────────────────────────────────
 
--- TODO[mega-loop]: testArr1 ⊑ Array_ done_ Nat
--- Requires Array_ (dsucc dzero) Nat to reduce to Pair Nat Unit, which in turn
--- needs DNat's dependent eliminator + fix-unfold to compose correctly.
-example : subCheck 1000 testArr1 (och{ Array_ done_ Nat_ }) = .ok true := by sorry
+-- testArr1 ⊑ Array_ done_ Nat. Array_ done_ Nat reduces to Pair Nat Unit
+-- now that absEval β-reduces unconditionally (no domain check) and the
+-- closed-head muSeen `==` catches the `(dsucc m)→Type` self-reference
+-- after one unfold; then it's just Pair zero_ unit_ ⊑ Pair Nat Unit.
+example : subCheck 1000 testArr1 (och{ Array_ done_ Nat_ }) = .ok true := by native_decide
 
--- TODO[mega-loop]: testArr2 ⊑ Array_ dtwo Nat
-example : subCheck 1000 testArr2 (och{ Array_ dtwo Nat_ }) = .ok true := by sorry
+example : subCheck 1000 testArr2 (och{ Array_ dtwo Nat_ }) = .ok true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
--- TODO[mega-loop]: unit ⊄ Array_ done_ Nat (wrong length)
--- Under the Church-Nat encoding this passed trivially (stuck app treated as ⊤);
--- under DNat with a working eliminator it should genuinely reject.
-example : subCheck 1000 unit_ (och{ Array_ done_ Nat_ }) = .ok false := by sorry
+-- unit ⊄ Array_ done_ Nat (wrong shape — Pair Nat Unit needs a pair).
+example : subCheck 1000 unit_ (och{ Array_ done_ Nat_ }) = .ok false := by native_decide
 
 -- ── Smoke: Array_ applied with abstract-friendly DNat index ───
 
--- TODO[mega-loop]: Array_ (dsucc dzero) T = Pair T Unit
-example : (absEval 1000 [] [] (och{ Array_ (dsucc dzero) Nat_ })).isOk = true := by sorry
+example : (absEval 1000 [] [] (och{ Array_ (dsucc dzero) Nat_ })).isOk = true := by native_decide
+
+example : absEvalVal (och{ Array_ done_ Nat_ }) = absEvalVal (och{ Pair Nat_ Unit_ }) := by
+  native_decide
+example : absEvalVal (och{ Array_ dtwo Nat_ })
+        = absEvalVal (och{ Pair Nat_ (Pair Nat_ Unit_) }) := by native_decide
 
 end Tests
 
