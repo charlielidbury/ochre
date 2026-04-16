@@ -53,8 +53,11 @@ open Expr
 
 -- ── Positive computation tests ─────────────────────────────
 
--- TODO[mega-loop]: Array_ dzero T = Unit (reduces via DNat eliminator + fix unfold)
-example : absEvalVal (och{ Array_ dzero Nat_ }) = .ok ⟨Unit_⟩ := by sorry
+-- Array_ dzero T = Unit. absEval unfolds the Array_ fix (concrete arg
+-- dzero), then the dzero ι (concrete motive); the recursive
+-- `Array_ pred T` in the successor branch stays stuck because `pred`
+-- is a bvar.
+example : absEvalVal (och{ Array_ dzero Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
 
 -- Pair 0 unit, head it back out
 private def testArr1 := och{ Pair zero_ unit_ }

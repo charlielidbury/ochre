@@ -94,6 +94,35 @@ flagged for `done_ ⊑ dNat`, just one indirection deeper.
 
 25 → 22 markers (3 transitivity examples closed).
 
+### Agent phase1-neutral-head-gate, 2026-04-16
+
+Picked: `Array_ dzero Nat_ = Unit_` (Array.lean) and the `Vec Nat_`
+normalisation tests, all of which cited "stuck DNat elim on abstract n"
+— exactly the absEval recursive-head problem.
+
+The previous depth-1 muSeen cutoff stopped *every* recursive-head
+application after one unfold, which prevented `Array_` (a fix) from
+unfolding and *then* its argument `dzero` (an ι) from unfolding in the
+same chain. Bumping the depth bound made `dzero ⊑ dNat` blow up, so
+that's not the lever.
+
+The actual termination criterion is the *argument*, not the depth: a
+recursive head applied to a *neutral* (bvar-headed spine) cannot make
+progress — the eliminator is stuck on an abstract scrutinee — whereas
+applied to a *value* it consumes one constructor layer per unfold and
+terminates as long as the value is finite. Added
+`Expr.hasNeutralHead` and gated the ι/fix-in-app unfold on
+`!arg.hasNeutralHead` (with a high muSeen depth bound kept only for
+the degenerate `(fix f. f) v` case).
+
+After this `Array_ dzero Nat_` reduces to `Unit_` (the recursive
+`Array_ pred T` in the successor branch stays stuck because `pred` is
+a bvar), and `Vec Nat_` normalises (so its negative subtyping tests
+close). Everything that uses `done_/dtwo` as a concrete index is still
+blocked by the `done_ ⊑ dNat` domain-check blowup inside the β step.
+
+22 → 19 markers (Array_ dzero = Unit, Vec Nat ⊄ Nat, Nat ⊄ Vec Nat).
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.

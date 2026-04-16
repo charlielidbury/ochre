@@ -164,20 +164,19 @@ mutual
           | .error e => .error s!"domain check: {e}"
         | .iota _ann body =>
           -- (ι A. b) a  →  b[self := ι A. b] a
-          -- Cycle detection on muSeen used to compare (term, arg) pairs,
-          -- but under binders both the ι/fix term and the arg pick up
-          -- de-Bruijn shifts on every recursive descent, so the syntactic
-          -- `==` never fires and absEval diverges (this is what made
-          -- `absEvalVal dNat` non-terminating). One unfold then stuck.
-          -- When the head's recorded type isn't an arrow we can't
-          -- compute a precise return type, so fall back to `Type`
-          -- rather than erroring (subCheckNF only consumes the value,
-          -- not the type). subCheckNF's L/R rules handle the structural
-          -- recursion soundly. The depth bound has to stay at 1: at 2+
-          -- the normalised dNat term roughly doubles, which feeds into
-          -- subCheckNF's seen-set `==` comparisons and makes
-          -- `dzero ⊑ dNat` blow up.
-          if muSeen.length > 0 then
+          -- Termination: a recursive head applied to a *neutral* arg
+          -- (bvar-headed spine) cannot make computational progress —
+          -- the eliminator is stuck on the abstract scrutinee. This is
+          -- exactly the case that diverged before (`(dsucc' pred)` under
+          -- binders, where each unfold de-Bruijn-shifts the bvar so the
+          -- old syntactic muSeen `==` never fires). On a *value* arg the
+          -- unfold consumes one constructor layer, so it terminates as
+          -- long as the value is finite; muSeen still bounds the chain
+          -- to catch the degenerate `(fix f. f) v` case. When the head's
+          -- recorded type isn't an arrow we fall back to `Type` for the
+          -- result type rather than erroring — subCheckNF only consumes
+          -- the value.
+          if a'.val.hasNeutralHead || muSeen.length >= 16 then
             let retTy := match τ_f.val with
               | .lam _dom retTy => retTy.subst 0 a'.val
               | _ => .type
@@ -187,7 +186,7 @@ mutual
             absEval fuel ctx seen (.app (body.subst 0 (Expr.iota _ann body)) a'.val) muSeen'
         | .fix _ann body =>
           -- (fix A. b) a  →  b[self := fix A. b] a
-          if muSeen.length > 0 then
+          if a'.val.hasNeutralHead || muSeen.length >= 16 then
             let retTy := match τ_f.val with
               | .lam _dom retTy => retTy.subst 0 a'.val
               | _ => .type

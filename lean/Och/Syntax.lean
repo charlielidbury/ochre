@@ -104,6 +104,15 @@ def isNeutral : Expr → Bool
   | .app _ _ => true
   | _ => false
 
+/-- True iff the application spine bottoms out at a `bvar`. After
+    `absEval`, this distinguishes a genuinely stuck term (variable
+    head, no further reduction possible) from a value or a
+    cycle-cut recursive head. -/
+def hasNeutralHead : Expr → Bool
+  | .bvar _ => true
+  | .app f _ => hasNeutralHead f
+  | _ => false
+
 /-- Shift free variables with index ≥ c up by d. Used when going under
     binders to adjust indices for the new binding depth. -/
 def shift (d c : Nat) : Expr → Expr

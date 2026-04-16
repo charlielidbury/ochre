@@ -73,12 +73,14 @@ example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
 
 -- ── Negative subtype checks ─────────────────────────────────
 
--- TODO[mega-loop]: Vec Nat ⊄ Nat. Normalizing `Vec Nat_` requires evaluating
--- `λn:dNat. Array_ n Nat_` under the binder (stuck DNat elim on abstract n).
-example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by sorry
+-- Vec Nat ⊄ Nat. Normalising `Vec Nat_` evaluates `λn:dNat. Array_ n Nat_`
+-- under the binder; absEval now leaves `Array_ n` (and the inner DNat
+-- eliminator on the bvar `n`) as a stuck application instead of
+-- diverging, so the comparison terminates.
+example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
 
--- TODO[mega-loop]: A Nat is not a Vec Nat. Same obstruction (RHS fails to normalize).
-example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by sorry
+-- A Nat is not a Vec Nat. Same path.
+example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
