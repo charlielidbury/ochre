@@ -3,6 +3,7 @@ import Och.Eval
 import Och.Std.Nat
 import Och.Std.Unit
 import Och.Std.Pair
+import Och.Std.DNat
 
 /-!
 # Church-encoded Length-Indexed Arrays
@@ -114,4 +115,48 @@ example : subCheck 5000 appendArrays
   ≠ .ok true := by native_decide
 
 end AppendArraysTests
+
+-- ============================================================
+-- Array over DNat (dependent-Nat indexed arrays)
+-- ============================================================
+
+/-!
+The "real" Array the language wants: indexed by the dependent Nat `dNat`,
+not the Church nat `Nat_`. The payoff is that in the `succ pred` branch of
+a pattern match, the array's type refines to `Pair T (Array_dnat pred T)`,
+so `fst_ arr1` becomes well-typed without a runtime guard.
+
+The current DNat eliminator is Scott-style (no automatic induction). We
+therefore tie the recursive knot manually with `fix`:
+
+    Array_dnat = fix A:(dNat → Type → Type). λn:dNat. λT:Type.
+      n (λ_:dNat. Type) Unit_ (λpred:dNat. Pair T (A pred T))
+
+On `dzero`, the motive-applied-to-`dzero` branch returns `Unit_`.
+On `dsucc pred`, it returns `Pair T (A pred T)` — the recursive call picks
+up the tail's type.
+
+TODO[mega-loop]: the current DNat encoding (Scott-style elimination) may
+not be ideal for this; the research doc suggests a Church-with-ι encoding
+that gives free dependent elimination. The definition below is a direct
+port using the existing DNat; correctness under the new checker is not yet
+verified.
+-/
+def Array_dnat := och{
+  fix Arr:(dNat → Type → Type).
+    λn:dNat. λT:Type.
+      n (λ_:dNat. Type) Unit_ (λpred:dNat. Pair T (Arr pred T))
+}
+
+section ArrayDNatTests
+
+-- TODO[mega-loop]: Array_dnat dzero T = Unit (reduces via DNat eliminator)
+example : (absEval 1000 [] [] (och{ Array_dnat dzero Nat_ })).isOk = true := by
+  sorry
+
+-- TODO[mega-loop]: Array_dnat (dsucc dzero) T = Pair T Unit
+example : (absEval 1000 [] [] (och{ Array_dnat (dsucc dzero) Nat_ })).isOk = true := by
+  sorry
+
+end ArrayDNatTests
 end Std
