@@ -59,7 +59,9 @@ hides its rot.
    handle the case cleanly, restructure it. Do not add special cases, escape
    hatches, or lenient modes.
 5. Commit with a detailed message and an `Agent-ID: <id>` trailer. Update
-   `PROGRESS.md` so the next agent knows where you left off.
+   `PROGRESS.md` so the next agent knows where you left off. **Push the
+   commit immediately** (`git push`) — partial progress and dead-end
+   findings are only useful to the next agent if they're on the remote.
 6. `lake build` must pass before you finish.
 
 ## Core principles (non-negotiable)
