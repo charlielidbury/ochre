@@ -204,16 +204,26 @@ a trailer in every commit.
 
 ## If you get stuck
 
-If you've been stuck for ~15 minutes, stop pushing. Commit what you have
-(even partial), document the blocker clearly in `PROGRESS.md`, and finish.
-A well-documented dead end is progress — the next agent can re-attempt armed
+Don't quit on difficulty alone — these problems are hard, and an hour of
+apparent lack of progress on something genuinely substantive is often
+still productive work. Keep going as long as you're making real progress,
+even if slow.
+
+The exception is when you've proven to yourself that the current approach
+is **guaranteed** to be a dead end — not "hard", but actually impossible
+with the current shape of the system. When that happens, stop pushing,
+step back, and consider whether the problem needs a different angle (a
+redesign elsewhere, a different encoding, a rule change). Commit what
+you have even if partial, document the blocker clearly in `PROGRESS.md`
+with the specific reason the approach fails, and finish. A well-
+documented dead end is progress — the next agent can re-attempt armed
 with your findings.
 
 Valuable outcomes, ranked:
 1. A test closed with a clean, non-weakening fix
 2. A test removed with a correct justification (it was testing the wrong thing)
 3. A partial fix with a clear "next step" in PROGRESS.md
-4. A well-documented dead end identifying what's actually hard
+4. A well-documented dead end identifying what's actually hard and why
 
 ## Lean
 
