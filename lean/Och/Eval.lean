@@ -318,24 +318,18 @@ mutual
             | nt => match unfold_path with
               | .error e => .error e
               | _ => nt
-        | _, .app (.fix _annR bodyR) argR =>
+        | _, .app (.fix ..) _ | _, .app (.iota ..) _ =>
           -- RHS is a stuck recursive application (absEval's muSeen
-          -- cutoff left it un-unfolded). Unfold it once here so the
-          -- two muSeen-dependent normal forms of the same term can
-          -- meet — without this, e.g., `done_NF ⊑ (dsucc dzero)` in
-          -- contravariant position falls through to neutralType
-          -- which widens to `dNat` and rejects.
+          -- cutoff left it un-unfolded). Re-evaluate it at fresh
+          -- muSeen so the result lines up with absEval's canonical
+          -- one-unfold normal form. Crucially do NOT pre-unfold the
+          -- head here: doing so would put the result one level
+          -- deeper than absEval's natural cutoff, so e.g. the
+          -- re-evaluated `(dsucc dzero)` would have its own stuck
+          -- app at depth 2 while the LHS `done_NF` (computed by the
+          -- subCheck wrapper) has it at depth 1, and `==` misses.
           let seen' := (a, b) :: seen
-          let u := .app (bodyR.subst 0 (.fix _annR bodyR)) argR
-          match absEval fuel ctx seen' u with
-          | .ok (u', _) =>
-            if u'.val == b then neutralType fuel ctx seen a b
-            else subCheckNF fuel ctx seen' a u'.val
-          | .error e => .error e
-        | _, .app (.iota _annR bodyR) argR =>
-          let seen' := (a, b) :: seen
-          let u := .app (bodyR.subst 0 (.iota _annR bodyR)) argR
-          match absEval fuel ctx seen' u with
+          match absEval fuel ctx seen' b with
           | .ok (u', _) =>
             if u'.val == b then neutralType fuel ctx seen a b
             else subCheckNF fuel ctx seen' a u'.val
@@ -423,20 +417,19 @@ mutual
         -- term. Unfold it once and let subCheckNF compare the
         -- evaluated form; the seen-set handles cycles. Without this
         -- the type-widening below collapses, e.g., `(dsucc dzero)`
-        -- to `dNat ⊑ b` which is far too coarse.
-        let unfoldHead : Option Expr := match f with
-          | .fix _ann body => some (.app (body.subst 0 f) arg)
-          | .iota _ann body => some (.app (body.subst 0 f) arg)
-          | _ => none
-        match unfoldHead with
-        | some u =>
+        -- to `dNat ⊑ b` which is far too coarse. Re-evaluate at
+        -- fresh muSeen *without* pre-unfolding the head, so the
+        -- result lines up with absEval's canonical one-unfold NF
+        -- (see the corresponding RHS arm in subCheckNF).
+        let isRecHead := match f with | .fix .. | .iota .. => true | _ => false
+        if isRecHead then
           let seen' := (a, b) :: seen
-          match absEval fuel ctx seen' u with
+          match absEval fuel ctx seen' a with
           | .ok (u', _) =>
             if u'.val == a then .ok false
             else subCheckNF fuel ctx seen' u'.val b
           | .error e => .error e
-        | none =>
+        else
         match neutralType fuel ctx seen f (.lam .type .type) with  -- dummy: just need the type
         | _ =>
           -- Compute the type of (f arg) by synthesizing f's type
