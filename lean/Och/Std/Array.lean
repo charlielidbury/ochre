@@ -81,10 +81,10 @@ end Tests
 -- appendArrays
 -- ============================================================
 
--- Precisely typed, mu-recursive, thunked branches.
+-- Precisely typed, fix-recursive, thunked branches.
 -- Concatenates Array_ n1 T and Array_ n2 T into Array_ (add_ n1 n2) T.
 def appendArrays := och{
-  μ self:(λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T).
+  fix self:(λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T).
     λT:Type. λn1:Nat_. λn2:Nat_. λarr1:(Array_ n1 T). λarr2:(Array_ n2 T).
       isZero_ n1
         (Unit_ → Type)

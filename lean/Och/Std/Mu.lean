@@ -4,14 +4,18 @@ import Och.Std.Nat
 import Och.Std.Unit
 
 /-!
-# Mu (general recursion) examples
+# Fix (general recursion) examples
 
 ```
 NatToNat     = λn:Nat. Nat
-fixId        = mu self:NatToNat. λn:Nat. n
-toZero       = mu self:NatToNat. λn:Nat. isZero n Nat zero (self zero)
-toZeroThunked = mu self:NatToNat. λn:Nat. (isZero n UnitToNat (λ_. zero) (λ_. self zero)) unit
+fixId        = fix self:NatToNat. λn:Nat. n
+toZero       = fix self:NatToNat. λn:Nat. isZero n Nat zero (self zero)
+toZeroThunked = fix self:NatToNat. λn:Nat. (isZero n UnitToNat (λ_. zero) (λ_. self zero)) unit
 ```
+
+All definitions use `fix` (not `ι`): the self-reference is for actual
+recursion (calling oneself on a smaller argument), not for dependent
+elimination.
 
 `fixId` is the identity on Nat defined as a fixpoint.
 `toZero` works abstractly but diverges concretely (non-thunked branches).
@@ -27,15 +31,15 @@ namespace Std
 def NatToNat := och{ Nat_ → Nat_ }
 
 -- id via fixpoint
-def fixId := och{ μ self:NatToNat. λn:Nat_. n }
+def fixId := och{ fix self:NatToNat. λn:Nat_. n }
 
 -- toZero (non-thunked, only works abstractly)
-def toZero := och{ μ self:NatToNat. λn:Nat_. isZero_ n Nat_ zero_ (self zero_) }
+def toZero := och{ fix self:NatToNat. λn:Nat_. isZero_ n Nat_ zero_ (self zero_) }
 
 -- toZeroThunked (thunked branches, works concretely)
 private def UnitToNat := och{ Unit_ → Nat_ }
 
-def toZeroThunked := och{ μ self:NatToNat. λn:Nat_. isZero_ n UnitToNat (λ_:Unit_. zero_) (λ_:Unit_. self zero_) unit_ }
+def toZeroThunked := och{ fix self:NatToNat. λn:Nat_. isZero_ n UnitToNat (λ_:Unit_. zero_) (λ_:Unit_. self zero_) unit_ }
 
 -- ============================================================
 -- Tests
@@ -109,18 +113,18 @@ example : concEval 1000 (och{ toZeroThunked three_ }) ≠ some three_ := by nati
 -- whose domain contains the same mu-app, so normalizing under
 -- the binder loops forever.
 --
---   f = μ f:(Type→Type). λx:Type. λP:((f x) → Type). P
+--   f = fix f:(Type→Type). λx:Type. λP:((f x) → Type). P
 --   absEval (f Type):
---     1. mu-app unfolds + beta-reduces → λP:((f Type)→Type). P
+--     1. fix-app unfolds + beta-reduces → λP:((f Type)→Type). P
 --     2. normalize under binder → normalize P's domain (f Type)→Type
 --     3. normalize f Type → goto 1
 --
 -- This is the root cause of DNat subtype checking failures:
 -- dsucc has (dsucc m) in its P-domain, triggering the same loop.
 
-private def selfRefFn := och{ μ f:(Type → Type). λx:Type. λP:((f x) → Type). P }
+private def selfRefFn := och{ fix f:(Type → Type). λx:Type. λP:((f x) → Type). P }
 
--- f alone is fine (mu is a value, no unfolding)
+-- f alone is fine (fix is a value, no unfolding)
 example : absEvalVal selfRefFn = .ok ⟨selfRefFn⟩ := by native_decide
 
 -- f applied to Type succeeds

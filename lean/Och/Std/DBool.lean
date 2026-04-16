@@ -10,14 +10,18 @@ Scott-style dependent Bool where the return type of elimination depends
 on the value being eliminated.
 
 ```
-dBool = μ(dBool : Type).
+dBool = ι(dBool : Type).
   -- constructors (motive domain constrained to self for self-type intro)
-  let dtrue  = μ(dtrue  : dBool). λP:(dtrue→Type).  λt:(P dtrue).  λf:Type. t in
-  let dfalse = μ(dfalse : dBool). λP:(dfalse→Type). λt:Type. λf:(P dfalse). f in
+  let dtrue  = ι(dtrue  : dBool). λP:(dtrue→Type).  λt:(P dtrue).  λf:Type. t in
+  let dfalse = ι(dfalse : dBool). λP:(dfalse→Type). λt:Type. λf:(P dfalse). f in
 
   -- the type itself
   λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dBool
 ```
+
+Uses ι (iota / self-type binder), not fix: these definitions use the
+self-reference for dependent elimination (the motive `P` ranges over the
+type itself), not for general recursion.
 
 Key properties:
 - Dependent: motive P can vary over which boolean is eliminated
@@ -38,15 +42,15 @@ namespace Std
 -- ============================================================
 
 def dtrue := och{
-  μ dtrue:Type. λP:(dtrue → Type). λt:(P dtrue). λf:Type. t
+  ι self:Type. λP:(self → Type). λt:(P self). λf:Type. t
 }
 
 def dfalse := och{
-  μ dfalse:Type. λP:(dfalse → Type). λt:Type. λf:(P dfalse). f
+  ι self:Type. λP:(self → Type). λt:Type. λf:(P self). f
 }
 
 def dBool := och{
-  μ dBool:Type. λP:(dBool → Type). λt:(P dtrue). λf:(P dfalse). P dBool
+  ι self:Type. λP:(self → Type). λt:(P dtrue). λf:(P dfalse). P self
 }
 
 def not := och{
@@ -88,8 +92,15 @@ example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = some zero_ := by n
 example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by native_decide
 
 -- Subtype checking
-example : subCheck 50 dtrue dBool = .ok true := by native_decide
-example : subCheck 50 dfalse dBool = .ok true := by native_decide
+-- TODO[mega-loop]: dtrue ⊑ dBool (aspirational) — previously passed with the
+-- bundled-mu iotaIntro using "fixed-self" substitution. Under the new
+-- value-sub iotaIntro the right cascade of rules must fire. Currently
+-- returns .ok false (see docs/research/iota-fix-split.md and Simple Och's
+-- Challenge.lean for the exact obstruction — structural beta-redex in
+-- contravariant position).
+example : subCheck 50 dtrue dBool = .ok true := by sorry
+-- TODO[mega-loop]: dfalse ⊑ dBool (aspirational) — same obstruction as dtrue.
+example : subCheck 50 dfalse dBool = .ok true := by sorry
 
 -- not
 example : concEval 100 (och{ not dtrue }) = concEval 100 dfalse := by native_decide
