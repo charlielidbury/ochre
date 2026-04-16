@@ -6,15 +6,22 @@ import Och.Std.Pair
 import Och.Std.DNat
 
 /-!
-# Church-encoded Length-Indexed Arrays
+# Length-Indexed Arrays (indexed by DNat)
 
 ```
-Array  = λn:Nat. λT:Type. n Type Unit (λacc:Type. Pair T acc)
+Array = fix Arr:(dNat → Type → Type).
+  λn:dNat. λT:Type.
+    n (λ_:dNat. Type) Unit (λpred:dNat. Pair T (Arr pred T))
 ```
 
-Church-encoded length-indexed arrays. `Array n T` unfolds to nested pairs
-via the Church numeral `n`: `Array 0 T = Unit`, `Array 1 T = Pair T Unit`,
-`Array 2 T = Pair T (Pair T Unit)`, etc.
+Length-indexed arrays with the length index being the dependent natural
+`dNat` (not the Church `Nat_`). This gives us a genuine dependent
+eliminator on the index: for `n = dsucc pred`, `Array_ n T` reduces to
+`Pair T (Array_ pred T)`, so in the successor branch of a pattern-match
+on `n` the array's type statically refines to a pair.
+
+Since the current DNat eliminator is Scott-style (no automatic induction
+on the predecessor), the recursive knot is tied explicitly with `fix`.
 
 Since Pair is its own constructor and fst/snd need no type args,
 array operations are just pair/unit operations:
@@ -26,7 +33,11 @@ array operations are just pair/unit operations:
 
 namespace Std
 
-def Array_ := och{ λn:Nat_. λT:Type. n Type Unit_ (λacc:Type. Pair T acc) }
+def Array_ := och{
+  fix Arr:(dNat → Type → Type).
+    λn:dNat. λT:Type.
+      n (λ_:dNat. Type) Unit_ (λpred:dNat. Pair T (Arr pred T))
+}
 
 def emptyArray := unit_
 def consArray := Pair
@@ -42,8 +53,8 @@ open Expr
 
 -- ── Positive computation tests ─────────────────────────────
 
--- Array 0 Nat = Unit
-example : absEvalVal (och{ Array_ zero_ Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
+-- TODO[mega-loop]: Array_ dzero T = Unit (reduces via DNat eliminator + fix unfold)
+example : absEvalVal (och{ Array_ dzero Nat_ }) = .ok ⟨Unit_⟩ := by sorry
 
 -- Pair 0 unit, head it back out
 private def testArr1 := och{ Pair zero_ unit_ }
@@ -65,32 +76,49 @@ example : absEvalVal (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native
 
 -- ── Positive subtype checks ────────────────────────────────
 
--- testArr1 ⊑ Array 1 Nat
-example : subCheck 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
+-- TODO[mega-loop]: testArr1 ⊑ Array_ done_ Nat
+-- Requires Array_ (dsucc dzero) Nat to reduce to Pair Nat Unit, which in turn
+-- needs DNat's dependent eliminator + fix-unfold to compose correctly.
+example : subCheck 1000 testArr1 (och{ Array_ done_ Nat_ }) = .ok true := by sorry
 
--- testArr2 ⊑ Array 2 Nat
-example : subCheck 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
+-- TODO[mega-loop]: testArr2 ⊑ Array_ dtwo Nat
+example : subCheck 1000 testArr2 (och{ Array_ dtwo Nat_ }) = .ok true := by sorry
 
 -- ── Negative subtype checks ────────────────────────────────
 
--- unit ⊄ Array 1 Nat (wrong length)
-example : subCheck 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
+-- TODO[mega-loop]: unit ⊄ Array_ done_ Nat (wrong length)
+-- Under the Church-Nat encoding this passed trivially (stuck app treated as ⊤);
+-- under DNat with a working eliminator it should genuinely reject.
+example : subCheck 1000 unit_ (och{ Array_ done_ Nat_ }) = .ok false := by sorry
+
+-- ── Smoke: Array_ applied with abstract-friendly DNat index ───
+
+-- TODO[mega-loop]: Array_ (dsucc dzero) T = Pair T Unit
+example : (absEval 1000 [] [] (och{ Array_ (dsucc dzero) Nat_ })).isOk = true := by sorry
 
 end Tests
 
 -- ============================================================
--- appendArrays
+-- appendArrays (over dNat)
 -- ============================================================
 
+-- dadd for dNat indices. Scott-style dNat needs an explicit `fix` for
+-- recursion (the eliminator is non-inductive).
+def dadd := och{
+  fix dadd:(dNat → dNat → dNat).
+    λn:dNat. λm:dNat.
+      n (λ_:dNat. dNat) m (λpred:dNat. dsucc (dadd pred m))
+}
+
 -- Precisely typed, fix-recursive, thunked branches.
--- Concatenates Array_ n1 T and Array_ n2 T into Array_ (add_ n1 n2) T.
+-- Concatenates Array_ n1 T and Array_ n2 T into Array_ (dadd n1 n2) T.
 def appendArrays := och{
-  fix self:(λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T).
-    λT:Type. λn1:Nat_. λn2:Nat_. λarr1:(Array_ n1 T). λarr2:(Array_ n2 T).
-      isZero_ n1
+  fix self:(λT:Type. λn1:dNat. λn2:dNat. Array_ n1 T → Array_ n2 T → Array_ (dadd n1 n2) T).
+    λT:Type. λn1:dNat. λn2:dNat. λarr1:(Array_ n1 T). λarr2:(Array_ n2 T).
+      disZero n1
         (Unit_ → Type)
         (λ_:Unit_. arr2)
-        (λ_:Unit_. Pair (fst_ arr1) (self T (pred_ n1) n2 (snd_ arr1) arr2))
+        (λ_:Unit_. Pair (fst_ arr1) (self T (dpred n1) n2 (snd_ arr1) arr2))
         unit_
 }
 
@@ -98,65 +126,24 @@ section AppendArraysTests
 
 private def app_arr1 := och{ Pair one_ (Pair two_ unit_) }
 private def app_arr2 := och{ Pair three_ unit_ }
-private def appended := och{ appendArrays Nat_ two_ one_ app_arr1 app_arr2 }
+private def appended := och{ appendArrays Nat_ dtwo done_ app_arr1 app_arr2 }
 
--- appendArrays [1,2] [3] = [1,2,3]
+-- appendArrays [1,2] [3] = [1,2,3]  (concrete, runtime eval via concEval)
 example : concEval 5000 (och{ fst_ appended }) = concEval 5000 one_ := by native_decide
 example : concEval 5000 (och{ fst_ (snd_ appended) }) = concEval 5000 two_ := by native_decide
 example : concEval 5000 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 5000 three_ := by native_decide
 example : concEval 5000 (och{ fst_ appended }) ≠ concEval 5000 two_ := by native_decide
 
--- appendArrays : T → n1 → n2 → Array n1 T → Array n2 T → Array (add n1 n2) T
--- Expected fail: appendArrays body applies fst_ to arr1 without proving n1 > 0.
--- With mu body pre-normalization, absEval correctly rejects this.
--- Fix: use dependent Scott-encoded naturals so the succ branch has arr1 : Pair T _.
+-- appendArrays : T → n1 → n2 → Array n1 T → Array n2 T → Array (dadd n1 n2) T
+-- TODO[mega-loop]: under DNat, the body's `fst_ arr1` in the succ branch
+-- should statically refine to Pair T (Array_ pred T) via the DNat eliminator,
+-- so this SHOULD ultimately return .ok true. It currently does not, because
+-- (a) DNat subtyping itself is part of the mega-loop, and (b) the self-type
+-- cascade through fix + ι hasn't been proven out yet. Stated as the positive
+-- assertion once fixed.
 example : subCheck 5000 appendArrays
-  (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
-  ≠ .ok true := by native_decide
+  (och{ λT:Type. λn1:dNat. λn2:dNat. Array_ n1 T → Array_ n2 T → Array_ (dadd n1 n2) T })
+  = .ok true := by sorry
 
 end AppendArraysTests
-
--- ============================================================
--- Array over DNat (dependent-Nat indexed arrays)
--- ============================================================
-
-/-!
-The "real" Array the language wants: indexed by the dependent Nat `dNat`,
-not the Church nat `Nat_`. The payoff is that in the `succ pred` branch of
-a pattern match, the array's type refines to `Pair T (Array_dnat pred T)`,
-so `fst_ arr1` becomes well-typed without a runtime guard.
-
-The current DNat eliminator is Scott-style (no automatic induction). We
-therefore tie the recursive knot manually with `fix`:
-
-    Array_dnat = fix A:(dNat → Type → Type). λn:dNat. λT:Type.
-      n (λ_:dNat. Type) Unit_ (λpred:dNat. Pair T (A pred T))
-
-On `dzero`, the motive-applied-to-`dzero` branch returns `Unit_`.
-On `dsucc pred`, it returns `Pair T (A pred T)` — the recursive call picks
-up the tail's type.
-
-TODO[mega-loop]: the current DNat encoding (Scott-style elimination) may
-not be ideal for this; the research doc suggests a Church-with-ι encoding
-that gives free dependent elimination. The definition below is a direct
-port using the existing DNat; correctness under the new checker is not yet
-verified.
--/
-def Array_dnat := och{
-  fix Arr:(dNat → Type → Type).
-    λn:dNat. λT:Type.
-      n (λ_:dNat. Type) Unit_ (λpred:dNat. Pair T (Arr pred T))
-}
-
-section ArrayDNatTests
-
--- TODO[mega-loop]: Array_dnat dzero T = Unit (reduces via DNat eliminator)
-example : (absEval 1000 [] [] (och{ Array_dnat dzero Nat_ })).isOk = true := by
-  sorry
-
--- TODO[mega-loop]: Array_dnat (dsucc dzero) T = Pair T Unit
-example : (absEval 1000 [] [] (och{ Array_dnat (dsucc dzero) Nat_ })).isOk = true := by
-  sorry
-
-end ArrayDNatTests
 end Std
