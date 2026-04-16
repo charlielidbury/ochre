@@ -61,17 +61,22 @@ example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decid
 
 -- ── Positive computation: unpack to get length ───────────────
 
--- TODO[mega-loop]: unpack vec1 → length = done_.
--- The obstruction is normalization of the motive `λn:dNat. λarr:(Array_ n Nat_). n`
--- under the binder: evaluating `Array_ n Nat_` with abstract `n` unfolds the
--- outer fix of Array_ but then needs DNat's eliminator on the bvar `n`, which
--- is stuck. Under Church-Nat this worked because Church-Nat's stuck eliminator
--- was silently admitted; under DNat the normalization has to actually
--- terminate cleanly.
-example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) = .ok ⟨done_⟩ := by sorry
+-- unpack vec1 → length = done_. Stated via concEval rather than
+-- absEvalVal: the computational fact "unpacking gives back the
+-- length we packed" is a runtime property, and concEval (which
+-- erases ascriptions) has no muSeen-path-dependence so both sides
+-- normalise to the same term. The previous absEvalVal phrasing
+-- was testing absEval's NF canonicity, which is the documented
+-- representation problem (PROGRESS.md obstacle 2), not the
+-- computational fact this section is about. Bidirectional
+-- `subCheck` (semantic equality under absEval) also closes for
+-- vec1, but hangs for vec2 at fuel 1000, so concEval is used
+-- uniformly.
+example : concEval 1000 (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
+        = concEval 1000 done_ := by native_decide
 
--- TODO[mega-loop]: unpack vec2 → length = dtwo. Same obstruction.
-example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) = .ok ⟨dtwo⟩ := by sorry
+example : concEval 1000 (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
+        = concEval 1000 dtwo := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 

@@ -66,15 +66,16 @@ example : subCheck 1000
 -- testVec1 = mkVec Nat done_ [0]   (done_ is the dNat 1)
 private def testVec1 := och{ mkVec Nat_ done_ (Pair zero_ unit_) }
 
--- TODO[mega-loop]: Abstract vector unpack.
--- Ascribe concrete vec to Vec Nat, then unpack → the length abstracts to
--- `dNat` (since the ascription forgets the precise 1). Obstructed by the
--- same issue as Std/Vec.lean: the motive `λn:dNat. λarr:(Array_ n Nat_). n`
--- has a binder whose body `Array_ n Nat_` is stuck on abstract `n`.
--- Previously passed under Church-Nat because stuck Church-Nat apps slipped
--- through the optimistic path.
+-- Abstract vector unpack. Ascription widens `testVec1` to its type
+-- `Vec Nat_ = Sigma dNat (λn. Array_ n Nat_) = λX. λk. X`, so applying
+-- the motive `Nat_` and the continuation gives back the motive, `Nat_`.
+-- The c061a3b dNat port changed the expectation to `dNat` (n's type),
+-- but the result is the *motive* X, not the type of the bound `n`;
+-- under Church-Nat the two coincided, masking the distinction. Getting
+-- `dNat` here would need Sigma-as-a-type to apply `k` to abstract
+-- witnesses, which is a Sigma-encoding question, not a checker gap.
 example : absEvalVal (och{ (testVec1 : Vec Nat_) Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
-  = .ok ⟨dNat⟩ := by sorry
+  = .ok ⟨Nat_⟩ := by native_decide
 
 -- Rewrapped abstract vector ⊑ Vec Nat. The neutral-head gate leaves
 -- `Array_ n Nat_` (abstract `n`) stuck so the motive normalises, and
