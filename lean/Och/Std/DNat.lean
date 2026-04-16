@@ -114,27 +114,37 @@ example : concEval 200 (och{ depElim dzero }) = some zero_ := by native_decide
 example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_decide
 
 -- ── Positive subtype checks ─────────────────────────────────
--- TODO[mega-loop]: these are aspirational — dzero ⊑ dNat etc. are the
--- key dependent-Nat introduction tests. Previously slow (with bundled μ);
--- under ι/fix the checker may behave differently and these should be
--- revisited once the iotaIntro cascade is working.
 
-example : subCheck 200 dzero dNat = .ok true := by sorry
+-- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
+example : subCheck 200 dzero dNat = .ok true := by native_decide
+
+-- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. The dsucc-headed cases
+-- blow up: iotaIntro substitutes the LHS for `self` in dNat's body,
+-- and after let-inlining the dsucc' fix is unfolded once, leaving the
+-- closed `dNat` term at every type ascription. The next iota-L unfold
+-- then substitutes that closed `dNat` for its own self-reference,
+-- squaring the term size on each descent. Likely wants an NbE /
+-- closure representation so substitution doesn't copy. dNat ⊄ dzero
+-- below has the same blowup (the search must exhaust the unfold path
+-- before it can answer no).
 example : subCheck 200 done_ dNat = .ok true := by sorry
 example : subCheck 200 dtwo dNat = .ok true := by sorry
 example : subCheck 200 dthree dNat = .ok true := by sorry
 
 -- ── Negative subtype checks ─────────────────────────────────
 
--- TODO[mega-loop]: verify negative case — dNat ⊄ dzero and true_ ⊄ dNat
+-- TODO[mega-loop]: dNat ⊄ dzero — same term-blowup as done_ ⊑ dNat above.
 example : subCheck 200 dNat dzero = .ok false := by sorry
-example : subCheck 200 Std.true_ dNat = .ok false := by sorry
 
--- TODO[mega-loop]: dzero should NOT be a subtype of done_ (they are
--- different values). Previously blocked on mu-application normalization bug
--- (dangling self-ref). Under ι/fix split, revisit whether this now returns
--- .ok false as expected, or remains .ok true (spuriously).
-example : subCheck 200 dzero done_ = .ok true := by sorry
+-- true_ ⊄ dNat: the Church boolean has the wrong shape.
+example : subCheck 200 Std.true_ dNat = .ok false := by native_decide
+
+-- dzero ⊄ done_. Previously returned `.ok true` because absEval's
+-- muSeen cycle check compared (fix, arg) pairs and the de-Bruijn
+-- shifted argument never matched, so dsucc' kept unfolding until
+-- both sides looked identical. With the length-based muSeen cutoff
+-- this is now correctly rejected.
+example : subCheck 200 dzero done_ = .ok false := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 

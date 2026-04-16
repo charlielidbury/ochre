@@ -163,9 +163,16 @@ mutual
           | .ok false => .error s!"domain check failed: {repr a'} ⊄ {repr dom}"
           | .error e => .error s!"domain check: {e}"
         | .iota _ann body =>
-          -- (ι A. b) a  →  b[self := ι A. b] a  (self-type unfolding)
-          -- Check muSeen to break cycles (same cycle-detection as mu used).
-          if muSeen.any (fun (m, a2) => Expr.iota _ann body == m && a'.val == a2) then
+          -- (ι A. b) a  →  b[self := ι A. b] a
+          -- Cycle detection on muSeen used to compare (term, arg) pairs,
+          -- but under binders both the ι/fix term and the arg pick up
+          -- de-Bruijn shifts on every recursive descent, so the syntactic
+          -- `==` never fires and absEval diverges (this is what made
+          -- `absEvalVal dNat` non-terminating). Length-based cutoff:
+          -- allow one unfold, then treat the application as stuck. The
+          -- structural recursion is handled by subCheckNF's L/R rules
+          -- instead, where the seen-set discipline is sound.
+          if muSeen.length > 0 then
             match τ_f.val with
             | .lam _dom retTy =>
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
@@ -174,8 +181,8 @@ mutual
             let muSeen' := (Expr.iota _ann body, a'.val) :: muSeen
             absEval fuel ctx seen (.app (body.subst 0 (Expr.iota _ann body)) a'.val) muSeen'
         | .fix _ann body =>
-          -- (fix A. b) a  →  b[self := fix A. b] a  (recursive unfolding)
-          if muSeen.any (fun (m, a2) => Expr.fix _ann body == m && a'.val == a2) then
+          -- (fix A. b) a  →  b[self := fix A. b] a
+          if muSeen.length > 0 then
             match τ_f.val with
             | .lam _dom retTy =>
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
@@ -263,8 +270,10 @@ mutual
           -- (a ⊑ A → a ⊑ fix A. body) collapsed every recursive type with
           -- a Type-kinded annotation into a universal supertype.
           let seen' := (a, b) :: seen
-          let u := body.subst 0 (.fix ann body)
-          let unfold_path := match absEval fuel ctx seen' u with
+          let unfold_path :=
+            if body == .bvar 0 then .ok false else
+            let u := body.subst 0 (.fix ann body)
+            match absEval fuel ctx seen' u with
             | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
             | .error e => .error e
           match unfold_path with

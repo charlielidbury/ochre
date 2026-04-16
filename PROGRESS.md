@@ -48,6 +48,31 @@ needs either a sharing-aware `seen` lookup (current `==` is structural on
 the unfolded terms) or a smarter unfold strategy that doesn't substitute
 the full fixpoint into the successor branch.
 
+### Agent phase1-abseval-museen, 2026-04-16
+
+Picked: `dzero ⊑ dNat`.
+
+Root cause was not subCheckNF at all: `absEvalVal dNat` itself diverged
+at any fuel. The `muSeen` cycle check in absEval's app-of-fix/iota arms
+compared `(term, arg)` pairs by `==`, but every recursive descent goes
+under fresh binders, so both the recursive term and its argument pick up
+de-Bruijn shifts and the comparison never fires. Replaced the syntactic
+match with a length-based cutoff (one unfold then stuck); subCheckNF's
+own L/R rules handle the structural recursion soundly from there.
+
+After that, `dzero ⊑ dNat`, `true_ ⊑ dNat = false`, and the previously
+mis-tracked `dzero ⊑ done_ = false` all close at fuel 200. The remaining
+DNat tests (`done_/dtwo/dthree ⊑ dNat` and `dNat ⊑ dzero`) are now
+*reachable* but blow up: iotaIntro substitutes the closed `dNat` term for
+its own self-reference, so each iota-L unfold roughly squares the term
+size. This is a representation problem (eager-substitution de Bruijn),
+not a missing rule — the obvious fix is an NbE/closure-style evaluator
+where substitution is delayed. Also added the missing `body == bvar 0`
+guard to fix-R that the verifier flagged.
+
+26 → 25 markers (3 examples closed, 1 negative test corrected from
+spurious-true to correct-false).
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
