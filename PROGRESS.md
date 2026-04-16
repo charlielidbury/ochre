@@ -7,10 +7,16 @@ been split into separate `ι` (self-type) and `fix` (recursive type)
 constructors. `lake build` compiles. Simple Och (`lean/Och/Simple/`) is
 untouched and remains the proven-sound metatheory reference.
 
-**`dtrue ⊑ dBool` and `dfalse ⊑ dBool` now pass**, along with the negative
-`dBool ⊑ dtrue = false` and the full DBool concEval suite (21 examples,
-zero `sorry`). See the agent log entry below for what changed and what's
-next (DNat still hits the fuel ceiling).
+**41 → 6 `TODO[mega-loop]` markers** over 2026-04-16. DBool.lean and
+Array.lean are fully closed (zero `sorry`). The appendVec north-star
+test (`appendVec ⊑ T → Vec T → Vec T → Vec T`) and the abstract
+`appendArrays` typing both pass. The remaining six markers cluster
+into three obstacles — see the phase1-testvec2 entry below for the
+catalogue. The single deepest one is `done_ ⊑ dNat`: iotaIntro on
+`dNat` substitutes the closed `dNat` term for every `:dNat`
+ascription in its own body, so the search fans out. Two agents have
+independently concluded the fix is an NbE/closure-style evaluator
+(so substitution doesn't copy) rather than another muSeen tweak.
 
 ### Agent phase1-coinductive-seen, 2026-04-16
 
@@ -271,6 +277,23 @@ so the next agent has a map:
      all the Array_/appendVec wins; a targeted fix would re-check
      domains only in subCheckNF's goal positions, not during
      normalisation.
+
+### Agent phase1-bounded-domcheck-deadend, 2026-04-16
+
+Tried obstacle (3) with a bounded-fuel domain check: run
+`subCheckNF (min fuel 30) a' dom` at every β and reject only on
+`.ok false` (`.ok true` and `.error` proceed). The hope was that
+the simple `arr2 : Array_ n2 T ⊄ Array_ n1 T` mismatch would be
+caught quickly while `done_ ⊑ dNat` would error (out of fuel) and
+proceed. It doesn't work: subCheckNF returns `.ok false` for
+legitimate deep checks before it errors (the appendArrays body
+hits `bvar 0 ⊄ (λpair. pair Type Type)` at fuel 30 because the
+type of bvar 0 needs more than 30 fuel to widen to the Pair-
+projection shape). So the bounded check rejects valid β.
+Documented in the Eval.lean comment so it isn't retried. The
+right fix is probably to delay the domain obligation to where
+subCheckNF actually *uses* the application's result type (i.e.
+inside neutralType's `.app` arm), not at the β site.
 
 ## Open `TODO[mega-loop]` markers
 

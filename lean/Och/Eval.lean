@@ -163,9 +163,16 @@ mutual
           -- forced `Array_ done_` → `(λn:dNat. …) done_` to discharge
           -- `done_ ⊑ dNat` *during normalisation* — exactly the goal
           -- subCheckNF was being called to set up. β is type-blind;
-          -- subCheckNF only consumes the value, and ill-typed
-          -- applications are still caught by subCheckNF itself when
-          -- they appear in a goal position.
+          -- subCheckNF only consumes the value. The cost is that
+          -- ill-typed applications *inside* a term (e.g.
+          -- `appendArrays T n1 n1 arr1 arr2` with `arr2 : Array_ n2
+          -- T` in `appendVec_wrong`) β through silently. A bounded-
+          -- fuel domain check was tried (reject only on `.ok false`
+          -- within fuel ≤30) but subCheckNF returns `.ok false` for
+          -- legitimate deep checks before it errors, so that rejects
+          -- valid β too. The right fix is to run the domain check
+          -- only when subCheckNF *needs* to widen the application's
+          -- result type (i.e. in neutralType), not at every β.
           absEval fuel ctx seen (body.subst 0 a'.val) muSeen
         | .iota _ann body =>
           -- (ι A. b) a  →  b[self := ι A. b] a
