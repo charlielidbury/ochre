@@ -101,6 +101,29 @@ Solving BetaR/μ/AppR/IotaR requires SEMANTIC methods (logical relations, step-i
 Kripke models) rather than canonical-form rules. The existing Sub rule set (7 rules,
 existential [App]) is the maximum provable with current syntactic technique.
 
+### research-iota-fix-split
+**Question:** Does splitting bundled μ into separate ι (self-type) and fix
+(recursive binder) unlock the whiteboard `dtrue ⊑ Bool` theorem?
+**Finding:** Split is a clean design — iotaIntro with fixed-self substitution
+proves trans/narrow/subst (from research-iota-impl). fixAnn + unfoldFixL adds
+only 1 sorry (`fixAnn × unfoldFixL` trans: no bridge between annotation-only
+LHS and equi-recursive RHS).
+
+**BUT the target theorem is NOT closable**, and the obstruction is orthogonal
+to ι/fix. It's a structural [App] obstruction: decomposing `dtrue ⊑ Bool`
+via [Iota-Intro] + [Lam] reaches `app P cTrue ⊑ cBool→⊤` (at the
+contravariant domain position of the second Lam, under `P:cBool→⊤` in
+context). Via [App] + [Var] + [Refl], this reduces to `⊤ ⊑ cBool→⊤` —
+false (⊤ is top, not bottom).
+
+This is a MISSING BETA / DefEq obstruction in the baseline 7 rules, not
+a self-type problem. Splitting ι from fix doesn't help. See
+`docs/research/iota-fix-split.md` for full writeup.
+
+**Recommendation**: DO NOT merge to main. Complexity increase without
+payoff. Keep branch for reference. Investigate [BetaL] / [DefEq]
+independently before revisiting ι/fix split.
+
 ## Architecturally validated findings
 
 1. **Inductive Sub has a fundamental "principal type" issue** with the existential
