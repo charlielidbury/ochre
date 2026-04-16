@@ -217,6 +217,34 @@ argument *equality* (not just LHS ⊑ RHS) when the head is opaque.
 
 12 → 8 markers.
 
+### Agent ochre-20260416-193340, 2026-04-16
+
+Pure harvest — no checker changes. Once rebased onto
+phase1-appendvec-northstar, two more Vec markers close at the same
+fuel, via the same stuck-head re-eval mechanism:
+
+  Vec.lean: testVec2 ⊑ Vec Nat  (Array_ dtwo Nat → Pair Nat (Pair Nat
+                                 Unit), sigma lines up)
+            unpack vec2 → length ≠ done_  (symmetric to unpack vec1
+                                 ≠ dtwo)
+
+Separately (earlier in the session, before fetching the remote
+updates): probed the `muSeen.length >= 16` cap as a candidate lever
+for `done_ ⊑ dNat`. Tried adding a `(fix_expr, arg) == muSeen[..]`
+uniqueness check alongside the length cap. done_'s normal form
+shrinks ~10× (21620 → 2285 chars) but `subCheck 200 done_ dNat`
+returns .ok false at fuel 200 where it previously timed out. The
+shorter normal form leaves `(dsucc dzero)` stuck in the λP ann,
+iotaIntro substitutes a fuller `done_` on the dNat side, and the
+contravariant domain check hits structurally-different shapes.
+Reverted — same conclusion phase1-drop-domain-check reached with the
+closed-head `==` variant: muSeen caps are tuned to "do enough unfolds
+to make shapes line up under eager substitution", not to principled
+cycle detection. Documented here so the next agent doesn't re-reach
+for this particular lever.
+
+8 → 6 markers.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
