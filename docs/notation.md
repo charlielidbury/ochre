@@ -45,11 +45,12 @@ C
 
 ## Comments
 
-Comments go immediately after the line, not column-aligned:
+Comments use `//` and go immediately after the line with a single space —
+never column-aligned with whitespace padding:
 
 ```
-C -- some comment
-  A -- another comment
+C // some comment
+  A // another comment
   B
 ```
 

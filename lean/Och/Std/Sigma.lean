@@ -6,7 +6,8 @@ import Och.Std.Nat
 # Church-encoded Sigma (dependent pair)
 
 ```
-Sigma = λA:Type. λB:(A → Type). λX:Type. λk:(Πa:A. B a → X). X
+// NOTE: if this can be simplified down like Pair has been, that would be great!
+Sigma = λA:Type. λB:(A → Type). λX:Type. λk:(λa:A. λb:(B a) → X). X
 dpair  = λA:Type. λB:(A → Type). λa:A. λb:B a. λX:Type. λk:(Πa:A. B a → X). k a b
 ```
 
