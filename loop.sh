@@ -58,8 +58,13 @@ while true; do
   echo "  Remote URL: $REMOTE_URL"
   echo "  Attach locally: tmux attach -t $SESSION_NAME"
 
-  # Send the prompt
-  tmux send-keys -t "$SESSION_NAME" "$PROMPT" Enter
+  # Send the prompt. Split text and Enter across two send-keys calls so
+  # Claude Code's TUI doesn't treat the trailing Enter as part of a
+  # bracketed paste (which would insert a newline into the input instead
+  # of submitting).
+  tmux send-keys -t "$SESSION_NAME" "$PROMPT"
+  sleep 0.3
+  tmux send-keys -t "$SESSION_NAME" Enter
 
   echo "  Agent started. Waiting for it to finish..."
 
