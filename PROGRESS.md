@@ -196,6 +196,27 @@ seen can close it. Same NbE/closure-representation fix as before.
 
 14 → 12 markers.
 
+### Agent phase1-appendvec-northstar, 2026-04-16
+
+Picked: harvest the markers the stuck-head re-eval rule unblocked.
+
+Closes (no checker changes — pure harvest from f04721c):
+  Vec.lean:   appendVec ⊑ (T → Vec T → Vec T → Vec T)  — the
+              "north star" abstract appendVec test
+              concEval (disZero (unpack vecResult)) = false_
+              unpack vec1 ≠ dtwo
+  Tests.lean: rewrapped (testVec1 : Vec Nat) ⊑ Vec Nat
+
+`appendVec_wrong` (Vec:135) is still accepted: the checker doesn't
+yet distinguish `dadd n1 n1` from `dadd n1 n2` under abstract n1,n2
+— both reduce to stuck applications of the same closed `dadd` head
+and the structural `app, app` rule accepts `n1 ⊑ n2` when both are
+bvars. That's a real precision gap (the test is the right
+assertion); fixing it likely needs the `app, app` rule to demand
+argument *equality* (not just LHS ⊑ RHS) when the head is opaque.
+
+12 → 8 markers.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.

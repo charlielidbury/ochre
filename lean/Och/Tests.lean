@@ -76,12 +76,12 @@ private def testVec1 := och{ mkVec Nat_ done_ (Pair zero_ unit_) }
 example : absEvalVal (och{ (testVec1 : Vec Nat_) Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
   = .ok ⟨dNat⟩ := by sorry
 
--- TODO[mega-loop]: Rewrapped abstract vector ⊑ Vec Nat.
--- Same obstruction chain as above: the inner motive uses Array_ n Nat_
--- with abstract n; this needs DNat's eliminator on neutral bvars to work.
+-- Rewrapped abstract vector ⊑ Vec Nat. The neutral-head gate leaves
+-- `Array_ n Nat_` (abstract `n`) stuck so the motive normalises, and
+-- the stuck-head re-eval rule lets the existential repack.
 example : subCheck 1000
   (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:dNat. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
-  (och{ Vec Nat_ }) = .ok true := by sorry
+  (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ============================================================
 -- Subtyping transitivity tests

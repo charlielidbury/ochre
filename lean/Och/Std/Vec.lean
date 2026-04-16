@@ -84,8 +84,9 @@ example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
--- TODO[mega-loop]: unpack vec1 → length ≠ dtwo. Same absEval obstruction.
-example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨dtwo⟩ := by sorry
+-- unpack vec1 → length ≠ dtwo.
+example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨dtwo⟩ := by
+  native_decide
 
 -- TODO[mega-loop]: unpack vec2 → length ≠ done_. Same absEval obstruction.
 example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨done_⟩ := by sorry
@@ -125,12 +126,12 @@ section AppendVecTests
 
 -- ── North star: abstract appendVec ──────────────────────────
 
--- TODO[mega-loop]: appendVec : Vec T → Vec T → Vec T
--- The whole chain of dependent refinements must work: Array_ over DNat
--- reducing in the succ branch, dNat constructor subtyping (done_ ⊑ dNat,
--- etc.), and the fix-recursive appendArrays type-checking.
+-- appendVec : Vec T → Vec T → Vec T. The full chain works:
+-- Array_ over DNat reduces (neutral-head gate leaves `Array_ n` stuck
+-- on the abstract `n`), the recursive appendArrays type-checks via
+-- the stuck-head re-eval rule, and the existential pack closes.
 example : subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
-  = .ok true := by sorry
+  = .ok true := by native_decide
 
 -- TODO[mega-loop]: appendVec_wrong should NOT typecheck (dadd n1 n1 ≠ dadd n1 n2
 -- under abstract reasoning). This is the negative pair of the above: once the
@@ -149,14 +150,12 @@ private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 example : subCheck 5000 vecResult (och{ Vec Nat_ })
   = .ok true := by sorry
 
--- TODO[mega-loop]: Concrete result: unpack and check length is nonzero.
--- Relies on concEval being able to walk through the appendVec body —
--- which internally references appendArrays (a fix) and mkVec (which
--- takes abstract-looking arguments). Was previously live under Church-Nat;
--- under DNat it may or may not still walk through cleanly.
+-- Concrete result: unpack and check length is nonzero. concEval walks
+-- through appendVec, appendArrays (a fix), mkVec, dadd, and disZero
+-- to compute the actual length (dthree), then disZero dthree → false_.
 example : concEval 10000 (och{
     disZero (vecResult Nat_ (λn:dNat. λarr:(Array_ n Nat_). n))
-  }) = some Std.false_ := by sorry
+  }) = some Std.false_ := by native_decide
 
 end AppendVecTests
 end Std
