@@ -878,13 +878,6 @@ theorem R_resp_Equiv {n d v e e'}
         obtain ⟨ann, body, heqFix, hRr⟩ := hcl n' hn' r hopen hne
         exact ⟨ann, body, Equiv.trans (Equiv.symm heq) heqFix, hRr⟩
 
-/-- Downward closure for `REnv`. -/
-theorem REnv_mono {n m d ρ ρe} (hle : m ≤ n) (h : REnv n d ρ ρe) :
-    REnv m d ρ ρe :=
-  ⟨h.1, fun k v hk =>
-    let ⟨e, he, hR⟩ := h.2 k v hk
-    ⟨e, he, R_mono hle hR⟩⟩
-
 /-- Extending a realised environment with a realised pair. -/
 theorem REnv_cons {n d ρ ρe v e}
     (henv : REnv n d ρ ρe) (hv : R n d v e) :

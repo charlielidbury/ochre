@@ -5,6 +5,7 @@ import Och.Std.Pair
 import Och.Std.Nat
 import Och.Std.Bool
 import Och.Std.DBool
+import Och.Std.DNat
 import Och.Std.Unit
 
 /-!
@@ -302,6 +303,37 @@ concrete task.
 | A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
 | A6 | lam-lam pushed `domA` (incomplete) | **resolved** | push target `domB` |
 | A7 | `.fix/.iota,_` no productivity guard | **resolved** | `a' == a → false`; R-side `→ true` |
+
+## Divergence sweep: zero across 576 pairs
+
+After A1/A5/A6/A7, the legacy `subCheckNF` and `NbE.subCheck`
+agree on the full 24-term corpus (constructors of every shape:
+type/lam/app/iota/fix/letE/asc/bvar via the Std encodings).
+This is the regression guard against future arm-level
+divergence; any new disagreement is either a bug in one
+checker or a fuel-sensitivity that should be investigated.
+-/
+
+private def sweepCorpus : List Expr := [
+  .type, zero_, Nat_, Bool, true_, dtrue, dBool, dNat, done_,
+  dzero, Unit_, unit_, .iota Nat_ .type, .iota .type Nat_,
+  .iota .type (.bvar 0), .fix .type Nat_, .fix .type (.bvar 0),
+  och{ Nat_ → Nat_ }, och{ zero_ → Nat_ }, och{ Nat_ → zero_ },
+  och{ λx:Nat_. x }, och{ λx:zero_. zero_ },
+  och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ }
+]
+
+private def checkersAgree : Bool := Id.run do
+  for a in sweepCorpus do
+    for b in sweepCorpus do
+      if (subCheck 400 a b).toOption != (NbE.subCheck 400 a b).toOption then
+        return false
+  return true
+
+theorem divergenceSweep_zero : checkersAgree = true := by
+  native_decide
+
+/-!
 
 A1/A3/A5 concern the *algorithm*; A2 is a design choice; A4
 concerns the *declarative* side. All four addressable items
