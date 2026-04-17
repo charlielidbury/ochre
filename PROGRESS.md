@@ -713,6 +713,38 @@ variants; two neutral struct/ascent). Each maps to existing
 the algorithm took. The quote bridge (`SubV_to_Subtype'`) is
 the substantive remaining work.
 
+### Mutual reflection block; subCheckNeutral/neutralAscent fully proven (5862916f)
+
+`SoundnessProof.lean` restructured into a 5-theorem mutual
+block (`subCheckVal_subV`, `subCheckValMatch_subV`,
+`subCheckNeutral_subN`, `neutralAscent_subV`,
+`synthNeutral_synthN`) with `(fuel, tag)` termination
+mirroring the algorithm. Key technique: `split` after a
+`do`-block desugars binds positionally NOT in source-pattern
+order, so the pattern is `split` (no `next`) → `rename_i` on
+bind results → `simp [bind, Except.bind, pure]` → repeat.
+
+  - `subCheckNeutral_subN`: **4/4 arms proven**.
+  - `neutralAscent_subV`: **3/3 arms proven** (`.app` via
+    `cases` on synthesised type instead of `split` to avoid
+    binding-order brittleness).
+  - `synthNeutral_synthN`: 2/3 (`.var`, `.app`; `.stuckRec`
+    sorried — two-level match on f/ann).
+  - `subCheckValMatch_subV`: **12/15 arms proven**. The
+    disjunctive `_,.stuckRec`/`.stuckRec,_`/two neutral arms
+    closed; ι-ι/fix-fix/stuckRec² (structural-OR-fallback)
+    sorried with per-branch decomposition documented.
+
+`SubV` extended with `iota_struct`/`fix_struct`/
+`stuckRec_struct`. Legacy `Eval.lean` fuel-mono scaffolded
+as a combined 3-conjunct Nat-induction (zero case proven;
+succ arms documented but sorried — off critical path).
+
+**Sorry-bearing declarations: 15** (clean build count). On
+the soundness critical path: 6 (3 SoundnessProof + 3 target
+theorems). Off-path: 9 (5 Eval legacy + 4 Subtyping legacy).
+The `subCheckVal → SubV` direction is ~80% done.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
