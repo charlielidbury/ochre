@@ -6,7 +6,7 @@ Require Import LLBC_sharp_states LLBC_sharp_relations.
 (** * Semantics of LLBC## *)
 Inductive eval_proj (S : LLBC_sharp_state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
-| Eval_Deref_MutBorrow q l
+| E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
     (get_q : get_node (S.[q]) = borrowC^m(l)) :
     eval_proj S perm Deref q (q +++ [0])
@@ -15,8 +15,8 @@ Inductive eval_proj (S : LLBC_sharp_state) perm : proj -> spath -> spath -> Prop
 (* TODO: eval_path represents a computation, that evaluates and accumulate the result over [...] *)
 Inductive eval_path (S : LLBC_sharp_state) perm : path -> spath -> spath -> Prop :=
 (* Corresponds to R-Base and W-Base in the article. *)
-| Eval_nil pi : eval_path S perm [] pi pi
-| Eval_cons proj P p q r
+| E_Path_Nil pi : eval_path S perm [] pi pi
+| E_Path_Proj proj P p q r
     (Heval_proj : eval_proj S perm proj p q) (Heval_path : eval_path S perm P q r) :
     eval_path S perm (proj :: P) p r.
 
@@ -60,12 +60,12 @@ Inductive copy_val : LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
 Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
 Variant eval_operand : operand -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
-| Eval_IntConst S n : S |-{op} Const (IntConst n) => (LLBC_sharp_int n, S)
-| Eval_BoolConst S b : S |-{op} Const (BoolConst b) => (LLBC_sharp_bool b, S)
-| Eval_copy S (p : place) pi v
+| E_IntConst S n : S |-{op} Const (IntConst n) => (LLBC_sharp_int n, S)
+| E_BoolConst S b : S |-{op} Const (BoolConst b) => (LLBC_sharp_bool b, S)
+| E_Copy S (p : place) pi v
     (Heval_place : eval_place S Imm p pi) (Hcopy_val : copy_val (S.[pi]) v) :
     S |-{op} Copy p => (v, S)
-| Eval_move S (p : place) pi (Heval : eval_place S Mov p pi)
+| E_Move S (p : place) pi (Heval : eval_place S Mov p pi)
     (move_no_loan : not_contains_loan (S.[pi])) (move_no_bot : not_contains_bot (S.[pi])) :
     S |-{op} Move p => (S.[pi], S.[pi <- bot])
 where "S |-{op} op => r" := (eval_operand op S r) : llbc_sharp_scope.
@@ -73,35 +73,35 @@ where "S |-{op} op => r" := (eval_operand op S r) : llbc_sharp_scope.
 Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> LLBC_sharp_val -> LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
-  | Eval_add_int_int m n :
+  | E_Add_int_int m n :
       eval_binary_op BAdd (LLBC_sharp_int m) (LLBC_sharp_int n) (LLBC_sharp_int (m + n))
-  | Eval_add_int_symbolic m :
+  | E_Add_int_symbolic m :
       eval_binary_op BAdd (LLBC_sharp_int m) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT)
-  | Eval_add_symbolic_int n :
+  | E_Add_symbolic_int n :
       eval_binary_op BAdd (LLBC_sharp_symbolic intT) (LLBC_sharp_int n) (LLBC_sharp_symbolic intT)
-  | Eval_add_symbolic_symbolic :
+  | E_Add_symbolic_symbolic :
       eval_binary_op BAdd (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT)
-  | Eval_le_int_int m n :
+  | E_Le_int_int m n :
       eval_binary_op BLe (LLBC_sharp_int m) (LLBC_sharp_int n) (LLBC_sharp_bool (m <=? n))
-  | Eval_le_int_symbolic m :
+  | E_Le_int_symbolic m :
       eval_binary_op BLe (LLBC_sharp_int m) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic boolT)
-  | Eval_le_symbolic_int n :
+  | E_Le_symbolic_int n :
       eval_binary_op BLe (LLBC_sharp_symbolic intT) (LLBC_sharp_int n) (LLBC_sharp_symbolic boolT)
-  | Eval_le_symbolic_symbolic :
+  | E_Le_symbolic_symbolic :
       eval_binary_op BLe (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic boolT)
 .
 
 Variant eval_rvalue : rvalue -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
-  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
+  | E_Use op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
-  | Eval_bin_op S S' S'' binop op_0 op_1 v0 v1 w
+  | E_BinOp S S' S'' binop op_0 op_1 v0 v1 w
       (eval_op_0 : S |-{op} op_0 => (v0, S')) (eval_op_1 : S' |-{op} op_1 => (v1, S''))
       (Hbinop : eval_binary_op binop v0 v1 w) :
       S |-{rv} (BinaryOp binop op_0 op_1) => (w, S'')
   (* Note: with a typing judgement on LLBC, and with a well-typedness invariant, the type
    * [ty] could be obtained from the type of the place p, and the well-typedness of
    * [S.[pi]] could be derived from the well-typedness of [S]. *)
-  | Eval_mut_borrow S p pi l ty (eval_p : S |-{p} p =>^{Mut} pi)
+  | E_MutBorrow S p pi l ty (eval_p : S |-{p} p =>^{Mut} pi)
       (borrow_no_loan : not_contains_loan (S.[pi]))
       (borrow_no_bot : not_contains_bot (S.[pi]))
       (fresh_l : is_fresh l S)
@@ -114,7 +114,7 @@ where "S |-{rv} rv => r" := (eval_rvalue rv S r) : llbc_sharp_scope.
  *)
 Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
 (* Ends a borrow when it's not in an abstraction: *)
-| Reorg_end_borrow_m S (p q : spath) l ty
+| Reorg_End_MutBorrow S (p q : spath) l ty
     (get_loan : get_node (S.[p]) = loanC^m(ty, l)) (get_borrow : get_node (S.[q]) = borrowC^m(l))
     (type_borrow : is_of_type ty (S.[q +++ [0] ]))
     (Hno_loan : not_contains_loan (S.[q +++ [0] ])) (Hnot_in_borrow : not_in_borrow S q)
@@ -124,7 +124,7 @@ Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
     reorg S (S.[p <- (S.[q +++ [0] ])].[q <- bot])
 (* Ends a borrow when it's in an abstraction: *)
 (* The value that is transferred back, S.[q +++ [0]], has to be of integer type. *)
-| Reorg_end_borrow_m_in_abstraction S q i' j' l ty
+| Reorg_End_MutBorrow_in_abstraction S q i' j' l ty
     (get_loan : abstraction_element S i' j' = Some (loan^m(ty, l)))
     (get_borrow : get_node (S.[q]) = borrowC^m(l))
     (type_borrow : is_of_type ty (S.[q +++ [0] ]))
@@ -132,7 +132,7 @@ Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
     (borrow_not_in_abstraction : not_in_abstraction q) :
     reorg S ((remove_abstraction_value S i' j').[q <- bot])
 (* q refers to a path in abstraction A, at index j. *)
-| Reorg_end_abstraction S i' A' S'
+| Reorg_End_Abstraction S i' A' S'
     (fresh_i' : fresh_abstraction S i')
     (A_no_loans : map_Forall (fun _ => not_contains_loan) A')
     (Hadd_anons : add_anons S A' S') : reorg (S,,, i' |-> A') S'

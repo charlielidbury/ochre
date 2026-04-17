@@ -92,16 +92,16 @@ Proof.
   unfold compute_eval_proj. do 2 autodestruct.
   - intros -> ?. destruct (decide (_ = _)).
     + discriminate.
-    + intros [=<-]. eapply Eval_Deref_MutBorrow; eassumption.
+    + intros [=<-]. eapply E_Deref_MutBorrow; eassumption.
 Qed.
 
 Definition compute_eval_path S perm P : forall p, option {q | eval_path S perm P p q}.
 Proof.
   induction P as [ | proj P IHP]; intros p.
-  - apply Some. exists p. apply Eval_nil.
+  - apply Some. exists p. apply E_Path_Nil.
   - destruct (compute_eval_proj S perm proj p) as [q | ] eqn:compute_proj; [ | exact None].
     destruct (IHP q) as [(r & eval_rec) | ]; [ | exact None].
-    apply Some. exists r. apply Eval_cons with (q := q).
+    apply Some. exists r. apply E_Path_Proj with (q := q).
     + apply compute_eval_proj_correct, compute_proj.
     + exact eval_rec.
 Defined.
@@ -153,9 +153,9 @@ Definition compute_eval_op S : forall op, option {v | S |-{op} op => v}.
 Proof.
   intros [ [n | b] | p | p].
   (* Case [IntConst n] *)
-  - apply Some. eexists. apply Eval_IntConst.
+  - apply Some. eexists. apply E_IntConst.
   (* Case [BoolConst b] *)
-  - apply Some. eexists. apply Eval_BoolConst.
+  - apply Some. eexists. apply E_BoolConst.
   (* Case [Move p] *)
   - destruct (compute_eval_place S Mov p) as [(sp & eval_p) | ]; [ | exact None].
     destruct (decide (not_contains_loan (S.[sp]))); [ | exact None].
@@ -191,7 +191,7 @@ Proof.
   intros [op | bin_op op_l op_r | p].
   (* Case [Use op] *)
   - destruct (compute_eval_op S op) as [(vS & ?) | ]; [ | exact None].
-    apply Some. exists vS. apply Eval_just. assumption.
+    apply Some. exists vS. apply E_Use. assumption.
   (* Case [BinaryOp b op0 op1] *)
   - destruct (compute_eval_op S op_l) as [((v_0 & S_1) & ?) | ]; [ | exact None].
     destruct (compute_eval_op S_1 op_r) as [((v_1 & S_2) & ?) | ]; [ | exact None].
@@ -223,7 +223,7 @@ Proof.
   destruct (decide (is_fresh l S)); [ | exact None].
   destruct (compute_type (S.[q])) as [ty | ] eqn:EQN; [ | exact None].
   apply compute_type_correct in EQN.
-  apply Some. eexists. apply Eval_mut_borrow with (l := l); eassumption.
+  apply Some. eexists. apply E_MutBorrow with (l := l); eassumption.
 Defined.
 
 Instance EqDecision_type : EqDecision LLBC_type.

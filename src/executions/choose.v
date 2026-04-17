@@ -172,7 +172,7 @@ Proof.
     (* TODO: computation procedures for reorganization steps. *)
     (** Ending the loan [lz] ... *)
     { constructor.
-      eapply Reorg_end_borrow_m_in_abstraction
+      eapply Reorg_End_MutBorrow_in_abstraction
         with (i' := 1%positive) (j' := 3%positive) (q := (encode_var 3%positive, [])).
       - reflexivity.
       - reflexivity.
@@ -183,7 +183,7 @@ Proof.
     simpl_state. etransitivity.
     (** ... so that we could end the region abstraction ... *)
     { constructor.
-      remove_abstraction 1%positive. apply Reorg_end_abstraction.
+      remove_abstraction 1%positive. apply Reorg_End_Abstraction.
       - reflexivity.
       - compute_done.
       - constructor. cbn. apply UnionInsert with (j := 2%positive); [reflexivity.. | ].
@@ -193,7 +193,7 @@ Proof.
     simpl_state.
     (** ... so that we could end the loan [lx]. *)
     { constructor.
-      eapply Reorg_end_borrow_m with (p := (encode_var 1%positive, []))
+      eapply Reorg_End_MutBorrow with (p := (encode_var 1%positive, []))
                                      (q := (encode_anon 2%positive, [])).
       - reflexivity.
       - reflexivity.

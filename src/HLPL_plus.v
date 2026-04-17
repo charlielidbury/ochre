@@ -208,12 +208,12 @@ Hint Rewrite sget_loc' : spath.
  *)
 Variant eval_proj (S : HLPL_plus_state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
-| Eval_Deref_MutBorrow q l
+| E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
     (get_q : get_node (S.[q]) = borrowC^m(l)) :
     eval_proj S perm Deref q (q +++ [0])
 (* Coresponds to R-Deref-Ptr-Loc and W-Deref-Ptr-Loc in the article. *)
-| Eval_Deref_Ptr_Locs q q' l
+| E_Deref_Ptr_Loc q q' l
     (Hperm : perm <> Mov)
     (get_q : get_node (S.[q]) = ptrC(l)) (get_q' : get_node (S.[q']) = locC(l)) :
     eval_proj S perm Deref q q'
@@ -221,7 +221,7 @@ Variant eval_proj (S : HLPL_plus_state) perm : proj -> spath -> spath -> Prop :=
 
 Variant eval_loc (S : HLPL_plus_state) perm : spath -> spath -> Prop :=
 (* Coresponds to R-Loc and W-Loc in the article. *)
-| Eval_Loc q l
+| E_Loc q l
     (Hperm : perm <> Mov) (get_q : get_node (S.[q]) = locC(l)) :
     eval_loc S perm q (q +++ [0])
 .
@@ -230,11 +230,11 @@ Variant eval_loc (S : HLPL_plus_state) perm : spath -> spath -> Prop :=
    obtain a spath pi1, then we have the proprety eval_path S perm P pi0 pi1. *)
 Inductive eval_path (S : HLPL_plus_state) perm : path -> spath -> spath -> Prop :=
 (* Corresponds to R-Base and W-Base in the article. *)
-| Eval_nil pi : eval_path S perm [] pi pi
-| Eval_cons proj P p q r
+| E_Path_Nil pi : eval_path S perm [] pi pi
+| E_Path_Proj proj P p q r
     (Heval_proj : eval_proj S perm proj p q) (Heval_path : eval_path S perm P q r) :
     eval_path S perm (proj :: P) p r
-| Eval_path_loc P p q r
+| E_Path_Loc P p q r
     (Heval_loc : eval_loc S perm  p q) (Heval_path_rec : eval_path S perm P q r) :
     eval_path S perm P p r
 .
@@ -329,12 +329,12 @@ Inductive copy_val : HLPL_plus_val -> HLPL_plus_val -> Prop :=
 Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
 Variant eval_operand : operand -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
-| Eval_IntConst S n : S |-{op} Const (IntConst n) => (HLPL_plus_int n, S)
-| Eval_BoolConst S b : S |-{op} Const (BoolConst b) => (HLPL_plus_bool b, S)
-| Eval_copy S (p : place) pi v
+| E_IntConst S n : S |-{op} Const (IntConst n) => (HLPL_plus_int n, S)
+| E_BoolConst S b : S |-{op} Const (BoolConst b) => (HLPL_plus_bool b, S)
+| E_Copy S (p : place) pi v
     (Heval_place : eval_place S Imm p pi) (Hcopy_val : copy_val (S.[pi]) v) :
     S |-{op} Copy p => (v, S)
-| Eval_move S (p : place) pi : eval_place S Mov p pi ->
+| E_Move S (p : place) pi : eval_place S Mov p pi ->
     not_contains_loan (S.[pi]) -> not_contains_loc (S.[pi]) -> not_contains_bot (S.[pi]) ->
     S |-{op} Move p => (S.[pi], S.[pi <- bot])
 where "S |-{op} op => r" := (eval_operand op S r).
@@ -342,24 +342,24 @@ where "S |-{op} op => r" := (eval_operand op S r).
 Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> HLPL_plus_val -> HLPL_plus_val -> HLPL_plus_val -> Prop :=
-  | Eval_add m n :
+  | E_Add m n :
       eval_binary_op BAdd (HLPL_plus_int m) (HLPL_plus_int n) (HLPL_plus_int (m + n))
-  | Eval_le m n :
+  | E_Le m n :
       eval_binary_op BLe (HLPL_plus_int m) (HLPL_plus_int n) (HLPL_plus_bool (m <=? n))
 .
 
 Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
-  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
+  | E_Use op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | Eval_binary_op S S' S'' binop op_0 op_1 v0 v1 w
       (eval_op_0 : S |-{op} op_0 => (v0, S'))
       (eval_op_1 : S' |-{op} op_1 => (v1, S''))
       (Hbinop : eval_binary_op binop v0 v1 w) :
       S |-{rv} (BinaryOp binop op_0 op_1) => (w, S'')
-  | Eval_pointer_loc S p pi l
+  | E_Pointer_Loc S p pi l
       (Heval_place : S |-{p} p =>^{Mut} pi)
       (Hloc : get_node (S.[pi]) = locC(l)) : S |-{rv} &mut p => (ptr(l), S)
-  | Eval_pointer_no_loc S p pi l
+  | E_Pointer_Fresh S p pi l
       (Heval_place : S |-{p} p =>^{Mut} pi)
       (* This hypothesis is not necessary for the proof of preservation of HLPL+, but it is
          useful in that it can help us eliminate cases. *)
@@ -369,7 +369,7 @@ Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_st
 where "S |-{rv} rv => r" := (eval_rvalue rv S r).
 
 Inductive reorg : HLPL_plus_state -> HLPL_plus_state -> Prop :=
-| Reorg_end_borrow_m S (p q : spath) l :
+| Reorg_End_MutBorrow S (p q : spath) l :
     disj p q -> get_node (S.[p]) = loanC^m(l) -> get_node (S.[q]) = borrowC^m(l) ->
     not_contains_loan (S.[q +++ [0] ]) -> not_in_borrow S q ->
     reorg S (S.[p <- (S.[q +++ [0] ])].[q <- bot])
@@ -401,20 +401,20 @@ Variant store (p : place) : HLPL_plus_val * HLPL_plus_state -> HLPL_plus_state -
 Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
 
 Inductive eval_stmt : statement -> flow_token -> HLPL_plus_state -> HLPL_plus_state -> Prop :=
-  | Eval_nop S : S |-{stmt} Nop => rUnit, S
-  | Eval_seq_unit S0 S1 S2 stmt_l stmt_r r (eval_stmt_l : S0 |-{stmt} stmt_l => rUnit, S1)
+  | E_Nop S : S |-{stmt} Nop => rUnit, S
+  | E_Seq_Unit S0 S1 S2 stmt_l stmt_r r (eval_stmt_l : S0 |-{stmt} stmt_l => rUnit, S1)
       (eval_stmt_r : S1 |-{stmt} stmt_r => r, S2) :  S0 |-{stmt} stmt_l;; stmt_r => r, S2
-  | Eval_seq_panic S0 S1 stmt_l stmt_r (eval_stmt_l : S0 |-{stmt} stmt_l => rPanic, S1) :
+  | E_Seq_Propagate S0 S1 stmt_l stmt_r (eval_stmt_l : S0 |-{stmt} stmt_l => rPanic, S1) :
       S0 |-{stmt} stmt_l;; stmt_r => rPanic, S1
-  | Eval_assign S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
+  | E_Assign S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
       S |-{stmt} ASSIGN p <- rv => rUnit, S''
-  | Eval_reorg S0 S1 S2 stmt r (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => r, S2) :
+  | E_Reorg S0 S1 S2 stmt r (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => r, S2) :
       S0 |-{stmt} stmt => r, S2
-  | Eval_if_true S S' S'' cond stmt_if stmt_else r
+  | E_IfThenElse_T S S' S'' cond stmt_if stmt_else r
       (eval_cond : S |-{op} cond => (HLPL_plus_bool true, S')) :
       S' |-{stmt} stmt_if => r, S'' ->
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
-  | Eval_if_false S S' S'' cond stmt_if stmt_else r
+  | E_IfThenElse_F S S' S'' cond stmt_if stmt_else r
       (eval_cond : S |-{op} cond => (HLPL_plus_bool false, S')) :
       S' |-{stmt} stmt_else => r, S'' ->
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
@@ -584,8 +584,8 @@ Lemma eval_path_app S perm P Q p q r :
 Proof.
   induction 1.
   - auto.
-  - intros ?. cbn. eapply Eval_cons; eauto.
-  - intros ?. eapply Eval_path_loc; eauto.
+  - intros ?. cbn. eapply E_Path_Proj; eauto.
+  - intros ?. eapply E_Path_Loc; eauto.
 Qed.
 
 Lemma eval_path_preservation Sl Sr perm P R
@@ -607,7 +607,7 @@ Proof.
     edestruct IHHeval_path as (pi_l'' & ? & ?); [eassumption | ].
     exists pi_l''. split.
     + eassumption.
-    + eapply Eval_path_loc; eassumption.
+    + eapply E_Path_Loc; eassumption.
 Qed.
 
 (* This lemma is use to prove preservation of place evaluation for a relation rule Sl < Sr.
@@ -661,47 +661,47 @@ Proof.
   - right. eauto with spath.
   - rewrite !sset_preserves_vars_dom. reflexivity.
   - intros ? pi_r ? eval_pi_r. destruct eval_pi_r.
-    (* Case Eval_Deref_MutBorrow: *)
+    (* Case E_Deref_MutBorrow: *)
     + intros ? [(r & -> & ->) | (-> & ?) ].
       (* pi_r is in the mutable loan and pi_l is in the loc *)
       * execution_step.
-        { eapply Eval_cons.
-          { eapply Eval_Deref_MutBorrow; autorewrite with spath; eassumption. }
-          apply Eval_nil. }
+        { eapply E_Path_Proj.
+          { eapply E_Deref_MutBorrow; autorewrite with spath; eassumption. }
+          apply E_Path_Nil. }
         left. exists (r ++ [0]). autorewrite with spath. split; reflexivity.
       * destruct (decidable_spath_eq sp_borrow q) as [<- | ].
         -- execution_step.
-           ++ eapply Eval_cons.
-              { eapply Eval_Deref_Ptr_Locs with (q' := sp_loan).
+           ++ eapply E_Path_Proj.
+              { eapply E_Deref_Ptr_Loc with (q' := sp_loan).
                 assumption. all: autorewrite with spath; reflexivity. }
-              eapply Eval_path_loc.
+              eapply E_Path_Loc.
               { econstructor; autorewrite with spath; easy. }
-              apply Eval_nil.
+              apply E_Path_Nil.
            ++ left. exists []. split; reflexivity.
         -- assert (~prefix sp_borrow q) by solve_comp.
            execution_step.
-           ++ eapply Eval_cons.
-              { eapply Eval_Deref_MutBorrow; autorewrite with spath; eassumption. }
-              apply Eval_nil.
+           ++ eapply E_Path_Proj.
+              { eapply E_Deref_MutBorrow; autorewrite with spath; eassumption. }
+              apply E_Path_Nil.
            ++ right. split; [reflexivity | solve_comp].
-    (* Case Eval_Deref_Ptr_Locs: *)
+    (* Case E_Deref_Ptr_Loc: *)
     + intros q_l H.
       assert (get_at_q_l : get_node (S_l.[q_l]) = ptrC(l)).
       { unfold S_l. destruct H as [(r & -> & ->) | (-> & ?)]; autorewrite with spath; assumption. }
       destruct (decidable_prefix (sp_borrow +++ [0]) q') as [(r & <-) | ].
       * autorewrite with spath in *. exists (sp_loan +++ [0] ++ r). split.
         -- left. eexists. eauto.
-        -- eapply Eval_cons.
-           ++ eapply Eval_Deref_Ptr_Locs with (q' := sp_loan +++ [0] ++ r);
+        -- eapply E_Path_Proj.
+           ++ eapply E_Deref_Ptr_Loc with (q' := sp_loan +++ [0] ++ r);
                 [assumption | exact get_at_q_l | ].
               autorewrite with spath. assumption.
-           ++ apply Eval_nil.
+           ++ apply E_Path_Nil.
       * exists q'. split.
         -- right. split; [reflexivity | solve_comp].
-        -- eapply Eval_cons.
-           { eapply Eval_Deref_Ptr_Locs with (q' := q'); [assumption | exact get_at_q_l | ].
+        -- eapply E_Path_Proj.
+           { eapply E_Deref_Ptr_Loc with (q' := q'); [assumption | exact get_at_q_l | ].
              autorewrite with spath. assumption. }
-           apply Eval_nil.
+           apply E_Path_Nil.
   - intros pi_r ? eval_pi_r. destruct eval_pi_r. intros ? [(r & -> & ->) | (-> & ?)].
     + execution_step.
       * econstructor; autorewrite with spath; eassumption.
@@ -987,7 +987,7 @@ Proof.
   intros ? ? Heval. destruct Heval.
   (* rv = just op *)
   - apply operand_preserves_HLPL_plus_rel in Heval_op. intros ? ?%rt_step.
-    firstorder using Eval_just.
+    firstorder using E_Use.
 
   - intros Sl Hle. apply operand_preserves_HLPL_plus_rel in eval_op_0, eval_op_1.
     destruct Hbinop.
@@ -1013,7 +1013,7 @@ Proof.
       destruct rel_pi_l_pi_r as [ (r & -> & ->) | (-> & ?)].
       (* Case 1: the place p is under the borrow. *)
       * execution_step.
-        { eapply Eval_pointer_loc. eassumption. autorewrite with spath. eassumption. }
+        { eapply E_Pointer_Loc. eassumption. autorewrite with spath. eassumption. }
         leq_step_right.
         { apply Leq_MutBorrow_To_Ptr with (sp_loan := sp_loan) (sp_borrow := sp_borrow).
           assumption. all: autorewrite with spath; eassumption. }
@@ -1021,7 +1021,7 @@ Proof.
         reflexivity.
       (* Case 2: the place p is not under the borrow. *)
       * execution_step.
-        { eapply Eval_pointer_loc. eassumption. autorewrite with spath. eassumption. }
+        { eapply E_Pointer_Loc. eassumption. autorewrite with spath. eassumption. }
         leq_step_right.
         { apply Leq_MutBorrow_To_Ptr with (sp_loan := sp_loan) (sp_borrow := sp_borrow).
           assumption. all: autorewrite with spath; eassumption. }
@@ -1034,7 +1034,7 @@ Proof.
       destruct rel_pi_l_pi_r as [ (r & -> & ->) | (-> & ?)].
       (* Case 1: the place p is under sp_borrow. *)
       * execution_step.
-        { apply Eval_pointer_no_loc with (l := l). eassumption.
+        { apply E_Pointer_Fresh with (l := l). eassumption.
           all: autorewrite with spath. assumption. not_contains. }
         leq_step_right.
          { apply Leq_MutBorrow_To_Ptr. eassumption. all: autorewrite with spath; eassumption. }
@@ -1044,7 +1044,7 @@ Proof.
       * assert (disj pi sp_loan) by solve_comp.
         destruct (decidable_prefix pi sp_borrow) as [(r & <-) | ].
         -- execution_step.
-           { apply Eval_pointer_no_loc with (l := l). eassumption.
+           { apply E_Pointer_Fresh with (l := l). eassumption.
              autorewrite with spath. all: autounfold with spath; not_contains. }
            leq_step_right.
            { apply Leq_MutBorrow_To_Ptr with (sp_loan := sp_loan) (sp_borrow := pi +++ [0] ++ r).
@@ -1053,7 +1053,7 @@ Proof.
            states_eq.
         -- assert (disj pi sp_borrow) by solve_comp.
            execution_step.
-           { apply Eval_pointer_no_loc with (l := l). eassumption.
+           { apply E_Pointer_Fresh with (l := l). eassumption.
              autorewrite with spath. assumption. all: autounfold with spath; not_contains. }
            leq_step_right.
            { apply Leq_MutBorrow_To_Ptr with (sp_loan := sp_loan) (sp_borrow := sp_borrow).
@@ -1160,7 +1160,7 @@ Proof.
           -- rewrite get_q'. constructor. }
     econstructor; [ | eapply IH, eval_proj_valid]; eassumption.
   - destruct Heval_loc. autorewrite with spath in get_q.
-    eapply Eval_path_loc; [ | apply IHG; validity].
+    eapply E_Path_Loc; [ | apply IHG; validity].
     econstructor; autorewrite with spath; eassumption.
 Qed.
 
@@ -1425,7 +1425,7 @@ Proof.
   { apply leq_base_preserves_wf_r. }
   { apply reorg_preserves_well_formedness. }
   intros Sr Sr' WF_Sr reorg_Sr_Sr'. destruct reorg_Sr_Sr'.
-  (* Case Reorg_end_borrow_m: *)
+  (* Case Reorg_End_MutBorrow: *)
   - intros ? Hle. destruct Hle.
     + destruct (decide (l = l0)) as [<- | ].
       (* Case 1: l = l0. By well-formedness, that means that the loan that we end at p is the loan
@@ -1455,7 +1455,7 @@ Proof.
         -- assert (prefix (q +++ [0]) sp_borrow) as (r & <-) by solve_comp.
            autorewrite with spath in *.
            reorg_step.
-           { eapply Reorg_end_borrow_m with (p := p) (q := q).
+           { eapply Reorg_End_MutBorrow with (p := p) (q := q).
              assumption. all: autorewrite with spath. eassumption. assumption.
              not_contains. auto with spath. }
            reorg_done.
@@ -1469,7 +1469,7 @@ Proof.
            ++ assert (prefix (sp_borrow +++ [0]) p) as (r & <-) by solve_comp.
               rewrite<- (app_spath_vpath_assoc sp_borrow [0] r) in * |-.
               reorg_step.
-              { eapply Reorg_end_borrow_m with (p := sp_loan +++ [0] ++ r) (q := q).
+              { eapply Reorg_End_MutBorrow with (p := sp_loan +++ [0] ++ r) (q := q).
                 solve_comp. all: autorewrite with spath. eassumption.
                 assumption. assumption. auto with spath. }
               reorg_done.
@@ -1481,7 +1481,7 @@ Proof.
            *)
            ++ assert (disj sp_borrow p) by solve_comp.
               reorg_step.
-              { eapply Reorg_end_borrow_m with (p := p) (q := q).
+              { eapply Reorg_End_MutBorrow with (p := p) (q := q).
                 assumption. all: autorewrite with spath. eassumption.
                 assumption. assumption. auto with spath. }
               reorg_done.
@@ -1615,11 +1615,11 @@ Proof.
     destruct IHHeval1 as (Sl' & ? & ?).
     edestruct IHHeval2 as (Sl'' & ? & ?);
       [eauto using stmt_preserves_well_formedness | eassumption | ].
-    exists Sl''. split; [assumption | ]. eapply Eval_seq_unit; eassumption.
+    exists Sl''. split; [assumption | ]. eapply E_Seq_Unit; eassumption.
   - specialize (IHHeval WF_Sr _ Hle).
     destruct IHHeval as (Sl' & ? & ?).
     exists Sl'. split; [assumption | ].
-    apply Eval_seq_panic. assumption.
+    apply E_Seq_Propagate. assumption.
   - pose proof (_eval_rv := eval_rv). apply rvalue_preserves_HLPL_plus_rel in _eval_rv.
     destruct (_eval_rv _ Hle) as (vSl' & leq_vSl_vS' & eval_Sl).
     apply store_preserves_HLPL_plus_rel in Hstore.
@@ -1632,17 +1632,17 @@ Proof.
     destruct (Hreorg _ Hle) as (Sl1 & leq_Sl1 & reorg_Sl1).
     edestruct IHHeval as (Sl2 & leq_Sl2 & eval_in_Sl2); [ assumption | eassumption | ].
     exists Sl2. split; [assumption | ].
-    apply Eval_reorg with (S1 := Sl1); assumption.
+    apply E_Reorg with (S1 := Sl1); assumption.
   - assert (well_formed S') by eauto using operand_preserves_well_formedness'.
     apply operand_preserves_HLPL_plus_rel in eval_cond.
     edestruct eval_cond as ((vl & S'l) & Hleq' & eval_cond_l); [eassumption | ].
     apply leq_val_state_bool in Hleq'. destruct Hleq' as (-> & Hleq').
     edestruct IHHeval as (S''l & ? & ?); [eassumption.. | ].
-    exists S''l. split; [eassumption | ]. eapply Eval_if_true; eassumption.
+    exists S''l. split; [eassumption | ]. eapply E_IfThenElse_T; eassumption.
   - assert (well_formed S') by eauto using operand_preserves_well_formedness'.
     apply operand_preserves_HLPL_plus_rel in eval_cond.
     edestruct eval_cond as ((vl & S'l) & Hleq' & eval_cond_l); [eassumption | ].
     apply leq_val_state_bool in Hleq'. destruct Hleq' as (-> & Hleq').
     edestruct IHHeval as (S''l & ? & ?); [eassumption.. | ].
-    exists S''l. split; [eassumption | ]. eapply Eval_if_false; eassumption.
+    exists S''l. split; [eassumption | ]. eapply E_IfThenElse_F; eassumption.
 Qed.
