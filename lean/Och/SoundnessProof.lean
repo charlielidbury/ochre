@@ -810,7 +810,36 @@ implies realisation at every smaller one. By induction on
 restricting to `n' ≤ m ≤ n` is direct. -/
 theorem R_mono {n m d v e} (hle : m ≤ n) (h : R n d v e) :
     R m d v e := by
-  sorry
+  induction m generalizing n d v e with
+  | zero => unfold R; trivial
+  | succ k ih =>
+    -- m = k+1 ≤ n, so n = n'+1 with k ≤ n'.
+    match n, hle with
+    | n'+1, hle =>
+      have hk : k ≤ n' := Nat.le_of_succ_le_succ hle
+      unfold R at h ⊢
+      refine ⟨h.1, ?_⟩
+      -- The constructor conjunct: each `∀ n'' ≤ k` instance
+      -- discharges via h.2 at `n'' ≤ n'` (since k ≤ n').
+      match v, h with
+      | .lam _dV cl, ⟨_, hlam⟩ =>
+          intro n'' hn'' v' e' hR r hopen
+          exact hlam n'' (Nat.le_trans hn'' hk) v' e' hR r hopen
+      | .iota _aV cl, ⟨_, hiota⟩ =>
+          intro n'' hn'' r hopen hne
+          exact hiota n'' (Nat.le_trans hn'' hk) r hopen hne
+      | .«fix» _aV cl, ⟨_, hfix⟩ =>
+          intro n'' hn'' r hopen hne
+          exact hfix n'' (Nat.le_trans hn'' hk) r hopen hne
+      | .type, _ => trivial
+      | .neutral _, _ => trivial
+
+theorem REnv_mono {n m d ρ ρe} (hle : m ≤ n) (h : REnv n d ρ ρe) :
+    REnv m d ρ ρe := by
+  refine ⟨h.1, ?_⟩
+  intro k v hk
+  obtain ⟨e, he, hR⟩ := h.2 k v hk
+  exact ⟨e, he, R_mono hle hR⟩
 
 /-- **Fundamental lemma** (NbE soundness, eval direction).
 Evaluating `body` under a realised environment, at *any*
@@ -850,6 +879,31 @@ theorem R_quote_equiv {n d v e}
       obtain ⟨⟨e'', hq'', heqv⟩, _⟩ := h
       rw [hq] at hq''; cases hq''; exact heqv
 
+/-- A fresh neutral at level `lvl < d` quotes to `bvar
+(d-1-lvl)`. Forward direction; the inversion is
+`quoteNeutral_var` below. -/
+private theorem quote_neutral_var_fwd {d lvl : Nat} (hlt : lvl < d) :
+    quote fuelω d (.neutral (.var lvl)) = some (.bvar (d - 1 - lvl)) := by
+  -- fuelω = 100000 = 99999 + 1; fuelω - 1 = 99999 = 99998 + 1
+  show quote (99999 + 1) d (.neutral (.var lvl)) = _
+  unfold quote
+  show quoteNeutral (99998 + 1) d (.var lvl) = _
+  unfold quoteNeutral
+  simp [hlt]
+
+theorem R_zero {d v e} : R 0 d v e := by unfold R; trivial
+
+/-- A fresh neutral variable realises the corresponding
+de-Bruijn-indexed bvar at every step index. -/
+theorem R_neutral_var {m d lvl : Nat} (hlt : lvl < d) :
+    R m d (.neutral (.var lvl)) (.bvar (d - 1 - lvl)) := by
+  cases m with
+  | zero => exact R_zero
+  | succ m' =>
+      unfold R
+      exact ⟨⟨.bvar (d - 1 - lvl), quote_neutral_var_fwd hlt,
+              Equiv.refl _⟩, trivial⟩
+
 /-- The identity environment realises itself: each `ρ[k]` is
 `.neutral (.var (d-1-k))` which quotes to `.bvar k`, and
 `ρe[k] = .bvar k`. -/
@@ -857,7 +911,36 @@ theorem REnv_id (m d : Nat) :
     REnv m d
       ((List.range d).reverse.map (fun lvl => Val.neutral (.var lvl)))
       ((List.range d).map .bvar) := by
-  sorry
+  constructor
+  · simp only [List.length_map, List.length_reverse, List.length_range]
+  · intro k v hk
+    simp only [List.get?_eq_getElem?] at *
+    rw [List.getElem?_map] at hk
+    -- k < d, so reverse[k]? = some (d-1-k).
+    rcases Nat.lt_or_ge k d with hkd | hkd
+    · have hrev : (List.range d).reverse[k]? = some (d - 1 - k) := by
+        rw [List.getElem?_reverse
+              (by simp only [List.length_range]; exact hkd),
+            List.length_range,
+            List.getElem?_range (by omega)]
+      rw [hrev] at hk
+      simp only [Option.map_some', Option.some.injEq] at hk
+      refine ⟨.bvar k, ?_, ?_⟩
+      · simp only [List.get?_eq_getElem?, List.getElem?_map,
+                   List.getElem?_range hkd, Option.map_some']
+      · subst hk
+        have hdk : d - 1 - k < d := Nat.lt_of_le_of_lt (Nat.sub_le _ _)
+          (Nat.sub_lt (Nat.lt_of_le_of_lt (Nat.zero_le k) hkd) Nat.one_pos)
+        have hr := R_neutral_var (m := m) (d := d) (lvl := d - 1 - k) hdk
+        have heq : d - 1 - (d - 1 - k) = k := by omega
+        simp only [heq] at hr
+        exact hr
+    · -- k ≥ d: ρ[k]? = none, contradiction.
+      exfalso
+      have : (List.range d).reverse[k]? = none := by
+        apply List.getElem?_eq_none
+        simp only [List.length_reverse, List.length_range]; omega
+      rw [this] at hk; simp at hk
 
 /-- **Unf-irrelevance modulo `Subtype'`**: evaluating the
 same expression at the same fuel/env but different `unf`
