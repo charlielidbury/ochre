@@ -61,7 +61,7 @@ mutual
   /-- Subtype check in the Val domain. `tyCtx[k]` is the type of
       `.var k` (de Bruijn level). `seen` is the coinductive
       assumption set. -/
-  partial def subCheckVal (fuel : Nat) (tyCtx : TyCtx)
+  def subCheckVal (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Val × Val)) (a b : Val) : Except String Bool :=
     let depth := tyCtx.size
     match fuel with
@@ -206,11 +206,12 @@ mutual
         | _, .neutral _ => .ok false
         | .type, _ => .ok false
         | _, .type => .ok true
+  termination_by fuel
 
   /-- Compare two neutral spines structurally: same head variable
       and pointwise-equal arguments (both directions, since an
       opaque head isn't known to be monotone). -/
-  partial def subCheckNeutral (fuel : Nat) (tyCtx : TyCtx)
+  def subCheckNeutral (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Val × Val)) (a b : Neutral) : Except String Bool :=
     match fuel with
     | 0 => .error "subCheckNeutral: out of fuel"
@@ -248,11 +249,12 @@ mutual
           if !arg then return false
           subCheckVal fuel tyCtx seen aB aA
       | _, _ => .ok false
+  termination_by fuel
 
   /-- Type ascent for a neutral on the LHS: synthesise its type
       from `tyCtx` and check `type ⊑ b`. Sound because every value
       `v : T` satisfies `{v} ⊑ T`. -/
-  partial def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
+  def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Val × Val)) (a : Neutral) (b : Val)
       : Except String Bool :=
     match fuel with
@@ -279,9 +281,10 @@ mutual
           | some a' =>
               if a' == .neutral a then .ok false
               else subCheckVal fuel tyCtx seen' a' b
+  termination_by fuel
 
   /-- Synthesise the type of a neutral. -/
-  partial def synthNeutral (fuel : Nat) (tyCtx : TyCtx)
+  def synthNeutral (fuel : Nat) (tyCtx : TyCtx)
       (n : Neutral) : Except String (Option Val) :=
     match fuel with
     | 0 => .error "synthNeutral: out of fuel"
@@ -302,6 +305,7 @@ mutual
               | .lam _dom cl => .ok (cl.open fuel arg)
               | _ => .ok (some ann)
           | _ => .ok none
+  termination_by fuel
 end
 
 /-- Top-level entry: evaluate both sides to Vals, then compare. -/

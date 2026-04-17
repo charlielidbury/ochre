@@ -101,12 +101,61 @@ inductive Subtype' : Ctx → Expr → Expr → Prop where
   | unfold_fix_R {Γ a ann body} :
       Subtype' Γ a (body.subst 0 (.fix ann body)) →
       Subtype' Γ a (.fix ann body)
+  /-- β-conversion on the left. The algorithm normalises before
+  comparing; declaratively, a β-redex on either side may be
+  contracted. This (with `trans`) makes `Subtype'` closed under
+  β-equivalence. -/
+  | beta_L {Γ dom body arg b} :
+      Subtype' Γ (body.subst 0 arg) b →
+      Subtype' Γ (.app (.lam dom body) arg) b
+  | beta_R {Γ a dom body arg} :
+      Subtype' Γ a (body.subst 0 arg) →
+      Subtype' Γ a (.app (.lam dom body) arg)
+  /-- let-conversion (`let x = v in e ↝ e[x:=v]`). -/
+  | letE_L {Γ val body b} :
+      Subtype' Γ (body.subst 0 val) b →
+      Subtype' Γ (.letE val body) b
+  | letE_R {Γ a val body} :
+      Subtype' Γ a (body.subst 0 val) →
+      Subtype' Γ a (.letE val body)
+  /-- Ascription is computationally transparent. -/
+  | asc_L {Γ e τ b} :
+      Subtype' Γ e b → Subtype' Γ (.asc e τ) b
+  | asc_R {Γ a e τ} :
+      Subtype' Γ a e → Subtype' Γ a (.asc e τ)
 
 /-- The old same-domain rule is derivable. -/
 theorem Subtype'.lam_body {Γ dom body₁ body₂}
     (h : Subtype' (dom :: Γ) body₂ body₁) :
     Subtype' Γ (.lam dom body₂) (.lam dom body₁) :=
   .lam (.refl dom) h
+
+/-- Head congruence: derivable from `app_cong` with reflexive
+arg. Lets β/let/asc-conversion fire under an application spine
+via `trans`. -/
+theorem Subtype'.app_head {Γ f f' a}
+    (h : Subtype' Γ f f') : Subtype' Γ (.app f a) (.app f' a) :=
+  .app_cong h (.refl a) (.refl a)
+
+/-- Multi-step head reduction under a spine, then continue. The
+common pattern when the head is `(λx. …) v w …`. -/
+theorem Subtype'.beta_head {Γ dom body arg a c}
+    (h : Subtype' Γ (.app (body.subst 0 arg) a) c) :
+    Subtype' Γ (.app (.app (.lam dom body) arg) a) c :=
+  .trans (.app_head (.beta_L (.refl _))) h
+
+/-- Π-elimination (type-ascent through application). If `f`
+inhabits a Π-type and we apply it, the result inhabits the
+instantiated codomain. Derivable: `f a ⊑ (Πx:dom. cod) a` by
+`app_head`, then `(Πx:dom. cod) a ⊑ cod[a]` by `beta_L`,
+compose via `trans`. The domain check `a ⊑ dom` is *not* a
+premise — declaratively, β is type-blind (SoundnessAudit A3);
+the algorithmic `typeCheck` enforces it separately. -/
+theorem Subtype'.app_ascent {Γ f a dom cod}
+    (hf : Subtype' Γ f (.lam dom cod)) :
+    Subtype' Γ (.app f a) (cod.subst 0 a) :=
+  .trans (.app_head hf) (.beta_L (.refl _))
+
 
 /-- SubtypeCore: Subtype' without iota_intro / fix unfolding. Used for
     monotonicity/soundness. -/

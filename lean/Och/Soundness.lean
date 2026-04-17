@@ -151,6 +151,30 @@ example : Subtype' [] unit_ Unit_ := by
   apply Subtype'.lam_body
   exact Subtype'.bvar (k := 0) (τ := .bvar 0) rfl
 
+/-- β-conversion: `(λx:Nat_. x) zero_ ⊑ Nat_` reduces via
+`beta_L` to the `zero_ ⊑ Nat_` witness above. -/
+example : Subtype' [] (.app (.lam Nat_ (.bvar 0)) zero_) Nat_ := by
+  apply Subtype'.beta_L
+  apply Subtype'.lam_body; apply Subtype'.lam_body; apply Subtype'.lam_body
+  exact Subtype'.bvar (k := 1) (τ := .bvar 0) rfl
+
+/-- `one_ ⊑ Nat_` (Church 1). Body is `s z ⊑ X` under
+`Γ = [s:X→X, z:X, X:Type]`. Derives via `app_ascent`: `s` has
+Π-type `X→X` from `.bvar`, so `s z` has the codomain `X`. -/
+example : Subtype' [] one_ Nat_ := by
+  apply Subtype'.lam_body
+  apply Subtype'.lam_body
+  apply Subtype'.lam_body
+  -- Γ = [.lam (.bvar 1) (.bvar 2), .bvar 0, .type]
+  -- bvar 0 (=s) ⊑ Γ[0].shift 1 0 ; Γ[0] = `.lam (bvar 1) (bvar 2)`
+  -- shift 1 0 → `.lam (bvar 2) (bvar 3)`. Then app_ascent with
+  -- a := bvar 1 (=z) gives `(bvar 3).subst 0 (bvar 1) = bvar 2`.
+  have hs := Subtype'.bvar (Γ := [.lam (.bvar 1) (.bvar 2), .bvar 0, .type])
+                           (k := 0) (τ := .lam (.bvar 1) (.bvar 2)) rfl
+  have ha := Subtype'.app_ascent (a := .bvar 1) hs
+  simp only [Expr.shift, Expr.subst, Expr.shift] at ha
+  exact ha
+
 end Witnesses
 
 end Och.Soundness
