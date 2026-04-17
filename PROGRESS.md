@@ -1,31 +1,41 @@
 # Progress
 
-## Current state (2026-04-16)
+## Current state (2026-04-18)
 
-**Phase 1 complete.** All 41 `TODO[mega-loop]` markers closed; zero
-`sorry` in `Och/Std/` or `Och/Tests.lean`. `lake build` compiles.
+**Phase 1 complete and verified** (f2ba74a). 41 → 0 markers; 0 sorries
+in `Och/Std/` or `Och/Tests.lean`.
 
-The Och core now has *three* checkers:
-  - `subCheckNF` (Eval.lean) — original Expr-domain prototype.
-    Handles DBool/Array/done_ but fans out on dtwo+ (no sharing).
-  - `NbE.subCheck` (SubCheckVal.lean) — Val-domain via closures.
-    Handles all dNat numerals + vecResult. Used directly by the
-    tests `subCheckNF` can't reach.
-  - `NbE.typeCheck` (TyCheck.lean) — bidirectional, with a domain
-    check at every `.app`. The only checker that rejects
-    `appendVec_wrong` (the others normalise first, β'ing the
-    ill-typed inner application away).
+**Phase 2 (soundness) ~60%.** Eight audit findings A1–A8 in
+`SoundnessAudit.lean`; six resolved (A1 covariant-app, A4 inductive
+Subtype', A5 iotaIntro annotation, A6 lam-domain, A7 fix-self
+productivity, A8 asc transparency), two by-design (A2 type-in-type,
+A3 β-blind subCheck → use typeCheck). Divergence sweep: 0/676. The
+algorithm is sound modulo type-in-type.
 
-Simple Och (`lean/Och/Simple/`) remains the proven-sound
-metatheory reference. The full-Och Soundness.lean is intentionally
-empty — populating it is the Phase 2 work, for which `typeCheck` +
-`subCheckVal` (not `subCheckNF`) are the algorithms to verify.
+Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
+  - `subCheckVal → SubV`: **fully proven** (axioms `propext`/
+    `Quot.sound` only, verified PASS), all 15 match arms + all 4
+    helper-function reflections in `SoundnessProof.lean`.
+  - `SubV → Subtype'`: 5/15 cases proven (hyp/refl/top + neutral_*);
+    10 closure-opening cases gated on `quote_open_subst`, which
+    derives from `eval_unf_equiv`, which derives from `eval_realises`.
+  - `eval_realises` (the fundamental lemma of the step-indexed
+    logical relation `R`): `.type`/`.bvar` closed; `.lam` Kripke,
+    `.app` per-fV split, `.fix`/`.iota` Kripke all threaded with
+    leaf sorries. ~15 helper lemmas proven (`R_mono`, `REnv_id`,
+    `REnv_take`, `closedAt_bvarBound`, `Equiv.*`, `quote_fuel_mono`
+    family, `substEnv_closedAt_irrel`, `eval_env_take`).
 
-What got us here, in order: coinductive seen-set discipline →
-removed unsound `[fix-ann]` → neutral-head gate → dropped β domain
-check → NbE evaluator → subCheckVal → `fix N. ι self.` encoding
-for dNat → stuckRec-stuckRec structural arms → bidirectional
-`typeCheck`. See the per-agent entries below for traces.
+Three checkers: `subCheckNF` (legacy Expr-domain), `NbE.subCheck`
+(Val-domain, the soundness target), `NbE.typeCheck` (bidirectional).
+The two algorithmic checkers agree on all 676 corpus pairs.
+
+Simple Och (`lean/Och/Simple/`) remains the proven-sound reference.
+Phase 1 path: coinductive seen-set → removed `[fix-ann]` →
+neutral-head gate → NbE evaluator → subCheckVal → `fix N. ι self.`
+dNat encoding → stuckRec structural arms → bidirectional `typeCheck`.
+Phase 2 path: SoundnessAudit → A1/A5/A6/A7/A8 fixes → seen-indexed
+Subtype' → SubV reflection → step-indexed `R` → fundamental lemma.
 
 ### Agent phase1-coinductive-seen, 2026-04-16
 
