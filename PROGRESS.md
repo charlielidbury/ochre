@@ -7,11 +7,15 @@ been split into separate `ι` (self-type) and `fix` (recursive type)
 constructors. `lake build` compiles. Simple Och (`lean/Och/Simple/`) is
 untouched and remains the proven-sound metatheory reference.
 
-**41 → 3 `TODO[mega-loop]` markers** over 2026-04-16. An NbE
-evaluator (`lean/Och/NbE.lean`) now exists alongside `absEval` and
-handles all the cases that fan out under eager substitution
-(`done_/dtwo/dthree`, `Array_ dthree`); the remaining work is
-plumbing it into `subCheckNF`. DBool.lean and
+**41 → 3 `TODO[mega-loop]` markers** over 2026-04-16. NbE
+evaluator + `subCheckVal` (Val-domain checker) are in place. The
+remaining `done_/dtwo/dthree ⊑ dNat` failure is the *encoding*,
+not the checker: dNat uses `ι` alone (no `fix` wrapper), so
+`λpred:dNat-self` becomes `λpred:done_` after iotaIntro and the
+contravariant check requires `dNat ⊑ done_`. dBool was fixed in
+e08bce9 to `fix B:Type. ι self:B. …` (separate type/value
+binders); dNat needs the same treatment. See the
+phase1-subcheckval entry and DNat.lean's TODO for the trace. DBool.lean and
 Array.lean are fully closed (zero `sorry`). The appendVec north-star
 test (`appendVec ⊑ T → Vec T → Vec T → Vec T`) and the abstract
 `appendArrays` typing both pass. The remaining six markers cluster
@@ -370,6 +374,37 @@ neutral; the seen-set holds `(Val × Val)` pairs (which need
 `Env` structurally). `nfSubstE` is in `NbE.lean` as the entry
 point that does env-extension instead of `body.subst 0 a`, ready
 for whoever picks this up.
+
+### Agent phase1-subcheckval, 2026-04-17
+
+`done_ ⊑ dNat` is the *encoding*, not the checker. Trace under
+subCheckVal (no fan-out, search completes):
+
+  done_'s λs domain  = `λpred:dNat-closed. P (dsucc pred)`
+  dNat[done_]'s λs   = `λpred:done_. P (dsucc'[done_] pred)`
+                       (dNat's `λpred:bvar0` → `λpred:done_`)
+
+  contra needs `dNat-closed ⊑ done_` — correctly false. And
+  semantically: done_ calls `s dzero`, but a dNat[done_]-caller's
+  `s` expects `pred:done_`, and `dzero ⊄ done_`. So done_ does
+  not satisfy dNat's self-type under this encoding + standard
+  function subtyping.
+
+dBool (e08bce9) uses `fix B:Type. ι self:B. …` — B (fix) is the
+*type* binder, stable under iotaIntro; self (ι) is the *value*
+binder, substituted. dNat conflates them. The fix: wrap dNat in
+`fix N:Type. ι self:N. …`, use `N` for all type ascriptions
+(`λm:N`, `λpred:N`, `dsucc':(N→N)`), keep `self` only for the
+final `P self`. Then iotaIntro substitutes self → done_ but the
+λpred annotation stays `:N` (= dNat after fix-unfold), and the
+contra `dNat ⊑ dNat` is reflexive.
+
+This is an encoding change, not a checker change. Once dNat
+matches dBool's pattern, `done_ ⊑ dNat` should close under the
+*existing* subCheckNF (same path as `dtrue ⊑ dBool` in loop 1).
+The earlier "NbE root cause" diagnosis below was the fan-out
+*symptom*; subCheckVal removed the fan-out and exposed the
+underlying encoding mismatch.
 
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`

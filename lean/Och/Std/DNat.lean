@@ -118,15 +118,22 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
 example : subCheck 200 dzero dNat = .ok true := by native_decide
 
--- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. The stuck-recursive-head
--- re-eval rule lets subCheckNF unfold the muSeen-cut `(dsucc dzero)`
--- in done_NF's type annotation, but each unfold substitutes the
--- closed `dNat` term for the next ι-self and the search fans out
--- before the seen-set can close it (`.ok false` at fuel ≤150,
--- exponential at 200). The remaining gap is that iotaIntro on
--- `dNat` substitutes done_NF for *every* `:dNat` ascription in the
--- body — an NbE/closure evaluator (so substitution doesn't copy)
--- is still the right fix.
+-- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. With NbE.subCheckVal
+-- (no fan-out) the answer is `.ok false` — and the trace shows
+-- this is the *encoding*, not the checker. dNat's `λpred:dNat`
+-- uses the ι-self bvar, so iotaIntro substitutes it to
+-- `λpred:done_`. But done_'s body calls `s dzero`, and the
+-- caller's `s` (typed at dNat[done_]'s λs domain) expects
+-- `pred:done_` — yet `dzero ⊄ done_`. So done_ genuinely doesn't
+-- satisfy dNat's self-type under standard function subtyping.
+--
+-- Compare dBool (e08bce9): `fix B:Type. ι self:B. … λP:(B→Type) …`
+-- separates the *type* binder B (fix) from the *value* binder
+-- self (ι). iotaIntro substitutes self; B stays B (= dBool after
+-- fix-unfold). dNat conflates them — its `λpred:bvar0` should be
+-- `λpred:B` (the type), not `λpred:self` (the value). The fix is
+-- to wrap dNat in `fix N:Type. ι self:N. …` and use `N` for type
+-- ascriptions and `self` only for `P self` at the end.
 example : subCheck 200 done_ dNat = .ok true := by sorry
 example : subCheck 200 dtwo dNat = .ok true := by sorry
 example : subCheck 200 dthree dNat = .ok true := by sorry
