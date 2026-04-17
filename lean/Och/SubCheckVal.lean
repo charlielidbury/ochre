@@ -163,17 +163,30 @@ abbrev TyCtx := Array Val
 mutual
   /-- Subtype check in the Val domain. `tyCtx[k]` is the type of
       `.var k` (de Bruijn level). `seen` is the coinductive
-      assumption set. -/
+      assumption set.
+
+      Factored: the three guards live here; the per-shape
+      match lives in `subCheckValMatch` so soundness proofs
+      can unfold `subCheckVal` at default heartbeats. -/
   def subCheckVal (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Val × Val)) (a b : Val) : Except String Bool :=
-    let depth := tyCtx.size
     match fuel with
     | 0 => .error "subCheckVal: out of fuel"
     | fuel + 1 =>
       if a == b then .ok true
       else if seen.any (fun (a', b') => a == a' && b == b') then .ok true
       else if b == .type then .ok true
-      else
+      else subCheckValMatch fuel tyCtx seen a b
+  termination_by (fuel, 0)
+
+  /-- The per-shape match arms of `subCheckVal`, factored out
+  so each can be reasoned about in isolation. Called with the
+  *post-decrement* fuel; recursive `subCheckVal fuel` calls
+  here are at the same fuel (subCheckVal will decrement
+  again). Termination is `(fuel, 1)` lex `(fuel, 0)`. -/
+  def subCheckValMatch (fuel : Nat) (tyCtx : TyCtx)
+      (seen : List (Val × Val)) (a b : Val) : Except String Bool :=
+    let depth := tyCtx.size
         match a, b with
         | .lam domA clA, .lam domB clB => do
             let contra ← subCheckVal fuel tyCtx seen domB domA
@@ -324,7 +337,7 @@ mutual
         | _, .neutral _ => .ok false
         | .type, _ => .ok false
         | _, .type => .ok true
-  termination_by fuel
+  termination_by (fuel, 1)
 
   /-- Compare two neutral spines structurally: same head variable
       and pointwise-equal arguments (both directions, since an
@@ -367,7 +380,7 @@ mutual
           if !arg then return false
           subCheckVal fuel tyCtx seen aB aA
       | _, _ => .ok false
-  termination_by fuel
+  termination_by (fuel, 0)
 
   /-- Type ascent for a neutral on the LHS: synthesise its type
       from `tyCtx` and check `type ⊑ b`. Sound because every value
@@ -399,7 +412,7 @@ mutual
           | some a' =>
               if a' == .neutral a then .ok false
               else subCheckVal fuel tyCtx seen' a' b
-  termination_by fuel
+  termination_by (fuel, 0)
 
   /-- Synthesise the type of a neutral. -/
   def synthNeutral (fuel : Nat) (tyCtx : TyCtx)
@@ -423,7 +436,7 @@ mutual
               | .lam _dom cl => .ok (cl.open fuel arg)
               | _ => .ok (some ann)
           | _ => .ok none
-  termination_by fuel
+  termination_by (fuel, 0)
 end
 
 /-- Top-level entry: evaluate both sides to Vals, then compare. -/

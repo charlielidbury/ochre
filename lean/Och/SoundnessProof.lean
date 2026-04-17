@@ -149,24 +149,126 @@ theorem seen_any_mem {S : List (Val × Val)} {a b : Val}
   cases eq_of_beq hy
   exact hmem
 
-set_option maxHeartbeats 4000000
+/-- Lift a fuelled closure opening to the large fixed budget.
+`Closure.open_fuel_mono` is now proven in SubCheckVal.lean. -/
+theorem Closure.openω_of_open {cl : Closure} {v r : Val} {n : Nat}
+    (hn : n ≤ fuelω) (h : cl.open n v = some r) :
+    cl.openω v = some r :=
+  Closure.open_fuel_mono hn h
 
-/-- The succ-body of `subCheckVal` is large enough that
-unfolding needs ~2-4M heartbeats. Refactoring `subCheckVal`
-to factor out the match arms into a separate
-`subCheckValMatch` would let it unfold at default heartbeats
-(and is the cleaner long-term fix), but is deferred to avoid
-conflicting with the val-beq-nonpartial worktree fork.
+theorem Closure.openω_of_openFresh {cl : Closure} {r : Val}
+    {n depth : Nat} (hn : n ≤ fuelω)
+    (h : cl.openFresh n depth = some r) :
+    cl.openω (.neutral (.var depth)) = some r :=
+  Closure.openω_of_open hn h
 
-Guard order (from the source): `a == b`, then `seen.any`,
-then `b == .type`, then the match. -/
+/-- Per-arm proof for `subCheckValMatch`. Takes the IH for
+`subCheckVal` at `fuel` (the post-decrement value) as a
+hypothesis. -/
+theorem subCheckValMatch_subV
+    {fuel : Nat} {Γ : TyCtx} {S : List (Val × Val)} {a b : Val}
+    (hfuel : fuel ≤ fuelω)
+    (ih : ∀ {Γ' S' a' b'},
+            subCheckVal fuel Γ' S' a' b' = .ok true → SubV S' Γ' a' b')
+    (h : subCheckValMatch fuel Γ S a b = .ok true) :
+    SubV S Γ a b := by
+  unfold subCheckValMatch at h
+  simp only [] at h
+  split at h
+  -- lam-lam
+  · next domA clA domB clB =>
+    -- Case on each sub-computation BEFORE simping `h`, so `h`
+    -- reduces to the final recursive call directly.
+    rcases hcontra : subCheckVal fuel Γ S domB domA with _ | contra
+    · simp_all [bind, Except.bind]
+    cases contra with
+    | false => simp_all [bind, Except.bind, pure, Except.pure]
+    | true =>
+    rcases hbA : clA.openFresh fuel Γ.size with _ | bA
+    · simp_all [bind, Except.bind, pure, Except.pure]
+    rcases hbB : clB.openFresh fuel Γ.size with _ | bB
+    · simp_all [bind, Except.bind, pure, Except.pure]
+    simp only [hcontra, hbA, hbB, bind, Except.bind, pure,
+               Except.pure, Bool.not_true, Bool.false_eq_true,
+               ↓reduceIte] at h
+    exact SubV.lam
+      (Closure.openω_of_openFresh hfuel hbA)
+      (Closure.openω_of_openFresh hfuel hbB)
+      (ih hcontra) (ih h)
+  -- iota-iota: structural OR iotaIntro fallback
+  · sorry
+  -- fix-fix: structural OR unfoldFixR fallback
+  · sorry
+  -- _, .iota
+  · next a' ann clB hNotIota =>
+    simp only [bind, Except.bind] at h
+    split at h
+    · next _ => simp at h
+    next okAnn hokAnn =>
+    cases hc : okAnn with
+    | false => rw [hc] at h; simp at h
+    | true =>
+    rw [hc] at h hokAnn; simp only [Bool.not_true, Bool.false_eq_true,
+      ↓reduceIte] at h
+    split at h
+    · next _ => simp at h
+    next bodyB' hopen =>
+    exact SubV.iota_intro
+      (Closure.openω_of_open hfuel hopen)
+      (ih hokAnn) (ih h)
+  -- _, .fix
+  · next a' ann clB hNotFix =>
+    split at h
+    · next _ => simp at h
+    next b' hopen =>
+    exact SubV.unfold_fix_R
+      (Closure.openω_of_open hfuel hopen)
+      (ih h)
+  -- stuckRec, stuckRec
+  · sorry
+  -- _, .neutral .stuckRec
+  · sorry
+  -- .fix, _
+  · next ann clA c hNotR =>
+    split at h
+    · next _ => simp at h
+    next a' hopen =>
+    exact SubV.unfold_fix_L
+      (Closure.openω_of_open hfuel hopen)
+      (ih h)
+  -- .iota, _
+  · next ann clA c hNotR =>
+    split at h
+    · next _ => simp at h
+    next a' hopen =>
+    exact SubV.unfold_iota_L
+      (Closure.openω_of_open hfuel hopen)
+      (ih h)
+  -- .neutral .stuckRec, _
+  · sorry
+  -- .neutral, .neutral
+  · sorry
+  -- .neutral, _
+  · sorry
+  -- _, .neutral _
+  · simp at h
+  -- .type, _
+  · simp at h
+  -- _, .type
+  · exact SubV.top
+
+/-- After factoring into `subCheckValMatch`, the guards
+unfold at default heartbeats and the match arms are handled
+by `subCheckValMatch_subV`. -/
 theorem subCheckVal_subV
     {fuel : Nat} {Γ : TyCtx} {S : List (Val × Val)} {a b : Val}
+    (hfuel : fuel ≤ fuelω)
     (h : subCheckVal fuel Γ S a b = .ok true) :
     SubV S Γ a b := by
   induction fuel generalizing Γ S a b with
   | zero => unfold subCheckVal at h; simp at h
   | succ fuel ih =>
+    have hfuel' : fuel ≤ fuelω := Nat.le_of_succ_le hfuel
     unfold subCheckVal at h
     simp only [] at h
     -- Guard 1: `a == b`
@@ -178,26 +280,8 @@ theorem subCheckVal_subV
     -- Guard 3: `b == .type`
     split at h
     · next hbt => exact (eq_of_beq hbt) ▸ SubV.top
-    -- Match arms: each returns `.ok true` only via recursive
-    -- `subCheckVal` calls; `ih` gives `SubV` for those, and
-    -- the matching constructor combines them. ~12 cases.
-    sorry
-
-set_option maxHeartbeats 200000
-
-/-!
-## Supporting lemmas the match arms need
-
-Each is mechanical given the right induction; recorded so
-the next session can attack them in isolation.
--/
-
-/-- Lift a fuelled closure opening to the large fixed budget.
-`Closure.open_fuel_mono` is now proven in SubCheckVal.lean. -/
-theorem Closure.openω_of_open {cl : Closure} {v r : Val} {n : Nat}
-    (hn : n ≤ fuelω) (h : cl.open n v = some r) :
-    cl.openω v = some r :=
-  Closure.open_fuel_mono hn h
+    -- Match arms
+    exact subCheckValMatch_subV hfuel' (fun hr => ih hfuel' hr) h
 
 /-- Bridge to the Expr-level relation. Each `SubV` constructor
 maps to a `Subtype'` constructor on the quoted forms; the
