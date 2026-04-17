@@ -870,6 +870,35 @@ proven or derived from it. Sorry-bearing declarations: 21
 (+4 from stating `R_mono`/`eval_realises`/`REnv_id`/the
 3-motive bridge block; `eval_unf_equiv` no longer counts).
 
+### A8; eval_realises .lam/.app/.fix/.iota merged (5862916f)
+
+**A8** (unsound vs concEval): both evaluators returned `τ`
+for `.asc t τ`, accepting `Nat_ ⊑ (zero_:Nat_)`. But
+`(zero_:Nat_)` computes to `zero_` (concEval, Subtype'.asc_*),
+and `Nat_ ⊄ zero_` — subject reduction fails. Found by the
+`.asc` case of `eval_realises`. Fix: both evaluators return
+`t`. `Std/Id.lean`'s §6.4 "widening via asc" tests updated
+(the widening *intent* lives in `typeCheck`'s annotation
+handling, not the value evaluator). Divergence corpus
+extended to 26×26=676 with `.asc` terms; still zero.
+
+`eval_realises` two-fork merge:
+  - **R stabilised**: ∀-form base (`∀ e', quote = e' →
+    Equiv e' e`), `d`-depth lam-Kripke, `n'<n` fix/iota-Kripke.
+  - **Closed**: `.type`, `.bvar`. `.lam` Kripke mostly closed
+    (REnv_take + ihm at n'). `.app` split per fV (`.lam`/
+    `.neutral` structured). `.fix`/`.iota` Kripke threaded.
+  - **Proven helpers** (cumulative): `R_mono`, `REnv_id`,
+    `R_quote_equiv`, `REnv_mono`, `REnv_cons`, `R_resp_Equiv`,
+    `REnv_take`, `closedAt_bvarBound`, `Closure.mk'_body_closed`,
+    `Equiv.lam`/`.app`/`.beta`, `quote_fuel_mono` family.
+  - **Open helpers**: `substEnv_closedAt_irrel`,
+    `R_depth_lift`, `REnv_lift`, `eval_env_take`.
+  - **5 post-merge re-thread sorries**: cross-fork `ihm`
+    signature mismatches (argument-order plumbing).
+
+**8 audit findings (A1–A8), 6 resolved.**
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
