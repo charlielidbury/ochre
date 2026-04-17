@@ -140,6 +140,113 @@ mutual
   termination_by fuel
 end
 
+/-!
+## Fuel monotonicity for eval/vapp
+
+If evaluation succeeds at fuel `n`, it succeeds with the same
+result at any `m ≥ n`. The `unf` parameter is held fixed (it
+threads through `eval` unchanged and only decrements inside a
+single `vapp` chain, never across the `n ≤ m` bridge).
+
+Equation lemmas for the `succ` case so the proof can step
+through one fuel layer without whnf'ing the whole body.
+-/
+
+theorem eval_zero {unf ρ e} : eval 0 unf ρ e = none := by
+  unfold eval; rfl
+theorem vapp_zero {unf f a} : vapp 0 unf f a = none := by
+  unfold vapp; rfl
+
+theorem eval_vapp_fuel_mono :
+    ∀ n,
+    (∀ {m unf ρ e v}, n ≤ m →
+        eval n unf ρ e = some v → eval m unf ρ e = some v) ∧
+    (∀ {m unf f a v}, n ≤ m →
+        vapp n unf f a = some v → vapp m unf f a = some v) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · intro _ _ _ _ _ _ h; rw [eval_zero] at h; cases h
+    · intro _ _ _ _ _ _ h; rw [vapp_zero] at h; cases h
+  | succ n ih =>
+    obtain ⟨ihe, ihv⟩ := ih
+    refine ⟨?_, ?_⟩
+    -- eval (n+1) → eval m
+    · intro m unf ρ e v hle h
+      obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
+        ⟨m - 1, (Nat.succ_pred_eq_of_pos
+                  (Nat.lt_of_lt_of_le n.succ_pos hle)).symm⟩
+      have hle' : n ≤ m' := Nat.le_of_succ_le_succ hle
+      unfold eval at h ⊢
+      cases e with
+      | type => exact h
+      | bvar => exact h
+      | lam dom body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨dom', hdom, hv⟩ := h
+          exact ⟨dom', ihe hle' hdom, hv⟩
+      | iota ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨ann', hann, hv⟩ := h
+          exact ⟨ann', ihe hle' hann, hv⟩
+      | «fix» ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨ann', hann, hv⟩ := h
+          exact ⟨ann', ihe hle' hann, hv⟩
+      | app fn ar =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨f', hf, a', ha, hv⟩ := h
+          exact ⟨f', ihe hle' hf, a', ihe hle' ha, ihv hle' hv⟩
+      | letE val body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨v', hv', hb⟩ := h
+          exact ⟨v', ihe hle' hv', ihe hle' hb⟩
+      | asc t ty => exact ihe hle' h
+    -- vapp (n+1) → vapp m
+    · intro m unf f a v hle h
+      obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
+        ⟨m - 1, (Nat.succ_pred_eq_of_pos
+                  (Nat.lt_of_lt_of_le n.succ_pos hle)).symm⟩
+      have hle' : n ≤ m' := Nat.le_of_succ_le_succ hle
+      unfold vapp at h ⊢
+      cases f with
+      | lam d cl =>
+          obtain ⟨body, env⟩ := cl
+          exact ihe hle' h
+      | iota ann cl =>
+          obtain ⟨body, env⟩ := cl
+          dsimp only at h ⊢
+          by_cases hc : (a.isNeutral || unf == 0) = true
+          · simp only [hc, ↓reduceIte] at h ⊢; exact h
+          · simp only [Bool.not_eq_true] at hc
+            simp only [hc, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+            obtain ⟨f', hf, hv⟩ := h
+            exact ⟨f', ihe hle' hf, ihv hle' hv⟩
+      | «fix» ann cl =>
+          obtain ⟨body, env⟩ := cl
+          dsimp only at h ⊢
+          by_cases hc : (a.isNeutral || unf == 0) = true
+          · simp only [hc, ↓reduceIte] at h ⊢; exact h
+          · simp only [Bool.not_eq_true] at hc
+            simp only [hc, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+            obtain ⟨f', hf, hv⟩ := h
+            exact ⟨f', ihe hle' hf, ihv hle' hv⟩
+      | neutral => exact h
+      | type => exact h
+
+theorem eval_fuel_mono {n m unf ρ e v}
+    (hle : n ≤ m) (h : eval n unf ρ e = some v) :
+    eval m unf ρ e = some v :=
+  (eval_vapp_fuel_mono n).1 hle h
+
+theorem vapp_fuel_mono {n m unf f a v}
+    (hle : n ≤ m) (h : vapp n unf f a = some v) :
+    vapp m unf f a = some v :=
+  (eval_vapp_fuel_mono n).2 hle h
+
 mutual
   /-- Read a value back to an expression. `depth` is the number of
       binders opened so far (= the next fresh de Bruijn level). -/

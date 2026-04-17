@@ -140,6 +140,22 @@ def Closure.open (fuel : Nat) (cl : Closure) (v : Val) : Option Val :=
 def Closure.openFresh (fuel depth : Nat) (cl : Closure) : Option Val :=
   cl.open fuel (.neutral (.var depth))
 
+/-- Fuel monotonicity for closure opening: if `open` succeeds
+at fuel `n`, it succeeds with the same result at any `m ≥ n`.
+Direct consequence of `eval_fuel_mono`. Used by
+`subCheckVal_subV` to lift each arm's `cl.open fuel` result
+to the fuel-erased `cl.openω`. -/
+theorem Closure.open_fuel_mono {cl : Closure} {v r : Val} {n m : Nat}
+    (hle : n ≤ m) (h : cl.open n v = some r) :
+    cl.open m v = some r :=
+  eval_fuel_mono hle h
+
+theorem Closure.openFresh_fuel_mono {cl : Closure} {r : Val}
+    {n m depth : Nat}
+    (hle : n ≤ m) (h : cl.openFresh n depth = some r) :
+    cl.openFresh m depth = some r :=
+  Closure.open_fuel_mono hle h
+
 /-- Type context indexed by de Bruijn *level*: `tyCtx[k]` is the
     type of the fresh neutral `.var k`. -/
 abbrev TyCtx := Array Val
