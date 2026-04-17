@@ -305,6 +305,102 @@ mutual
   termination_by fuel
 end
 
+theorem quote_zero {depth v} : quote 0 depth v = none := by
+  unfold quote; rfl
+theorem quoteClosure_zero {depth cl} :
+    quoteClosure 0 depth cl = none := by
+  unfold quoteClosure; rfl
+theorem quoteNeutral_zero {depth n} :
+    quoteNeutral 0 depth n = none := by
+  unfold quoteNeutral; rfl
+
+/-- Fuel monotonicity for the `quote` family. Same combined-
+induction pattern as `eval_vapp_fuel_mono`. -/
+theorem quote_quoteClosure_quoteNeutral_fuel_mono :
+    ∀ n,
+    (∀ {m depth v e}, n ≤ m →
+        quote n depth v = some e → quote m depth v = some e) ∧
+    (∀ {m depth cl e}, n ≤ m →
+        quoteClosure n depth cl = some e →
+        quoteClosure m depth cl = some e) ∧
+    (∀ {m depth ne e}, n ≤ m →
+        quoteNeutral n depth ne = some e →
+        quoteNeutral m depth ne = some e) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_, ?_⟩
+    · intro _ _ _ _ _ h; rw [quote_zero] at h; cases h
+    · intro _ _ _ _ _ h; rw [quoteClosure_zero] at h; cases h
+    · intro _ _ _ _ _ h; rw [quoteNeutral_zero] at h; cases h
+  | succ n ih =>
+    obtain ⟨ihq, ihc, ihn⟩ := ih
+    refine ⟨?_, ?_, ?_⟩
+    -- quote
+    · intro m depth v e hle h
+      obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
+        ⟨m - 1, (Nat.succ_pred_eq_of_pos
+                  (Nat.lt_of_lt_of_le n.succ_pos hle)).symm⟩
+      have hle' : n ≤ m' := Nat.le_of_succ_le_succ hle
+      unfold quote at h ⊢
+      cases v with
+      | type => exact h
+      | neutral ne => exact ihn hle' h
+      | lam dom cl =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨d', hd, b', hb, he⟩ := h
+          exact ⟨d', ihq hle' hd, b', ihc hle' hb, he⟩
+      | iota ann cl =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨a', ha, b', hb, he⟩ := h
+          exact ⟨a', ihq hle' ha, b', ihc hle' hb, he⟩
+      | «fix» ann cl =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨a', ha, b', hb, he⟩ := h
+          exact ⟨a', ihq hle' ha, b', ihc hle' hb, he⟩
+    -- quoteClosure
+    · intro m depth cl e hle h
+      obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
+        ⟨m - 1, (Nat.succ_pred_eq_of_pos
+                  (Nat.lt_of_lt_of_le n.succ_pos hle)).symm⟩
+      have hle' : n ≤ m' := Nat.le_of_succ_le_succ hle
+      unfold quoteClosure at h ⊢
+      simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+      obtain ⟨v, hev, hq⟩ := h
+      exact ⟨v, eval_fuel_mono hle' hev, ihq hle' hq⟩
+    -- quoteNeutral
+    · intro m depth ne e hle h
+      obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
+        ⟨m - 1, (Nat.succ_pred_eq_of_pos
+                  (Nat.lt_of_lt_of_le n.succ_pos hle)).symm⟩
+      have hle' : n ≤ m' := Nat.le_of_succ_le_succ hle
+      unfold quoteNeutral at h ⊢
+      cases ne with
+      | var => exact h
+      | app n' v =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨f', hf, a', ha, he⟩ := h
+          exact ⟨f', ihn hle' hf, a', ihq hle' ha, he⟩
+      | stuckRec f a =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨f', hf, a', ha, he⟩ := h
+          exact ⟨f', ihq hle' hf, a', ihq hle' ha, he⟩
+
+theorem quote_fuel_mono {n m depth v e}
+    (hle : n ≤ m) (h : quote n depth v = some e) :
+    quote m depth v = some e :=
+  (quote_quoteClosure_quoteNeutral_fuel_mono n).1 hle h
+
+theorem quoteClosure_fuel_mono {n m depth cl e}
+    (hle : n ≤ m) (h : quoteClosure n depth cl = some e) :
+    quoteClosure m depth cl = some e :=
+  (quote_quoteClosure_quoteNeutral_fuel_mono n).2.1 hle h
+
+theorem quoteNeutral_fuel_mono {n m depth ne e}
+    (hle : n ≤ m) (h : quoteNeutral n depth ne = some e) :
+    quoteNeutral m depth ne = some e :=
+  (quote_quoteClosure_quoteNeutral_fuel_mono n).2.2 hle h
+
 /-- Normalize a closed expression. -/
 def nf (fuel : Nat) (e : Expr) : Option Expr := do
   let v ← eval fuel unfBound [] e

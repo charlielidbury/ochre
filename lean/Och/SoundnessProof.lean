@@ -677,25 +677,105 @@ quotes each piece. Three lemmas factor the work:
     `Γ.push`/`(p :: S)`).
 -/
 
+/-!
+### The unf-mismatch blocker
+
+`Closure.openω cl v = eval fuelω 4 (v :: cl.env) cl.body`
+(unf = **4**), but `quoteClosure (n+1) d cl` evaluates the
+body at unf = **1** before quoting. So even when `v` is the
+fresh neutral `.var d`, the two evaluations can differ
+whenever `cl.body` contains a *closed* recursive
+application (e.g. `Array_ done_` captured in the env): at
+unf=4 it unfolds three times, at unf=1 once. Hence
+`quote (d+1) (cl.openω fresh) ≠ quoteClosure d cl` in
+general — the directive's hoped-for `rfl` does not hold.
+
+What does hold is that the two `eval` results are related
+by repeated fix/iota unfolds, which `Subtype'.unfold_fix_*`
+/`unfold_iota_L` capture. The precise sub-lemma:
+-/
+
+/-- **Unf-irrelevance modulo `Subtype'`**: evaluating the
+same expression at the same fuel/env but different `unf`
+budgets gives values whose quotes are `Subtype'`-equivalent.
+This is the *core* of NbE correctness for Och: the only
+non-determinism in `eval` is how many fix/ι layers unfold,
+and each unfold is a `Subtype'.unfold_*` step.
+
+Proof sketch: mutual induction on `n` over `eval`/`vapp`.
+Every arm preserves the relation except `vapp`'s `.fix`/
+`.iota` cases, which at `unf₁ > 0 = unf₂` produce an
+unfolded body vs. a `.stuckRec`. Their quotes differ by
+exactly one `unfold_fix_L/R` step, so are
+`Subtype'`-equivalent. The hard part is threading the
+relation through the recursive `eval` of the unfolded body
+— that's where a logical relation `R d v e` (indexed by
+depth and env) is needed instead of plain equivalence on
+quotes. -/
+theorem eval_unf_equiv {n unf₁ unf₂ ρ e v₁ v₂ depth e₁ e₂}
+    (h₁ : eval n unf₁ ρ e = some v₁)
+    (h₂ : eval n unf₂ ρ e = some v₂)
+    (hq₁ : quote n depth v₁ = some e₁)
+    (hq₂ : quote n depth v₂ = some e₂) :
+    ∀ {S Γe}, Subtype' S Γe e₁ e₂ ∧ Subtype' S Γe e₂ e₁ := by
+  sorry
+
+/-- **Fresh-case correspondence, conditional on unf-
+agreement.** When the unf=1 and unf=4 evaluations of the
+closure body under a fresh variable agree (which holds
+whenever the body has no closed recursive applications in
+scope — in particular for every Std encoding that puts the
+recursive call under a binder), `quoteClosure` and
+`quote ∘ openω` give *equal* results modulo fuel.
+
+This is the `SubV.lam` bridge case's exact need; the
+unconditional version follows from `eval_unf_equiv`. -/
+theorem quoteClosure_eq_quote_openω_fresh {cl : Closure}
+    {depth : Nat} {r : Val} {bodye : Expr}
+    (hopen : cl.openω (.neutral (.var depth)) = some r)
+    (hqcl : quoteClosure fuelω depth cl = some bodye)
+    -- The unf-agreement hypothesis. Discharged by
+    -- `eval_unf_equiv` once that's proven; for now callers
+    -- supply it (or sorry it) per closure.
+    (hunf : eval (fuelω - 1) 1
+              (.neutral (.var depth) :: cl.env) cl.body
+            = eval fuelω 4
+              (.neutral (.var depth) :: cl.env) cl.body) :
+    quote fuelω (depth + 1) r = some bodye := by
+  -- `cl.openω fresh = eval fuelω 4 (fresh :: env) body = some r`
+  unfold Closure.openω Closure.open at hopen
+  -- `quoteClosure fuelω d cl`: at fuelω = (fuelω-1)+1, the
+  -- body is `do v ← eval (fuelω-1) 1 …; quote (fuelω-1) (d+1) v`.
+  have hfω : fuelω = (fuelω - 1) + 1 := rfl
+  rw [hfω] at hqcl; unfold quoteClosure at hqcl
+  simp only [Option.bind_eq_bind, Option.bind_eq_some] at hqcl
+  obtain ⟨v', hev', hq'⟩ := hqcl
+  -- By the unf-agreement hypothesis, the unf=1 eval (giving
+  -- v') equals the unf=4 eval (giving r). So v' = r.
+  rw [hunf] at hev'
+  rw [hev'] at hopen; cases hopen
+  -- Now hq' : quote (fuelω-1) (d+1) r = some bodye. Lift to
+  -- fuelω via `quote_fuel_mono`.
+  exact quote_fuel_mono (Nat.sub_le _ _) hq'
+
 /-- Quoting commutes with closure-opening up to `Subtype'`'s
 β-conversion: opening `cl` with `v` and quoting gives an Expr
 β-equivalent to substituting `quote v` into the closure's
 quoted body. This is the standard NbE correctness theorem
-(soundness direction), specialised to one closure-open. The
-proof is a logical relation between `Val` and `Expr` indexed
-by the eval environment; it's the substantive remaining
-obligation. -/
+(soundness direction), specialised to one closure-open.
+
+Reduces to `eval_unf_equiv` (for the unf=1↔4 mismatch
+between `quoteClosure` and `Closure.openω`) plus a
+substitution lemma `quote (eval (v::ρ) body) ≡β
+(quote (eval (fresh::ρ) body)).subst 0 (quote v)` — the
+classic NbE soundness statement. Both halves need the same
+logical relation; recorded as one obligation. -/
 theorem quote_open_subst {cl : Closure} {v r : Val}
     {depth : Nat} {ve re bodye : Expr}
     (hopen : cl.openω v = some r)
     (hqv : quote fuelω depth v = some ve)
     (hqbody : quoteClosure fuelω depth cl = some bodye)
     (hqr : quote fuelω depth r = some re) :
-    -- `re` is what you get by evaluating; `bodye.subst 0 ve`
-    -- is the syntactic substitution. They are β-equivalent,
-    -- which `Subtype'` captures via `beta_L`/`beta_R` +
-    -- `trans`. We state both directions so the bridge can
-    -- use whichever the constructor needs.
     ∀ {S Γe}, Subtype' S Γe re (bodye.subst 0 ve) ∧
               Subtype' S Γe (bodye.subst 0 ve) re := by
   sorry
