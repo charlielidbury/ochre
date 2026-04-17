@@ -100,10 +100,17 @@ mutual
         SubV S Γ a (.«fix» ann clB)
     | unfold_fix_L {S Γ ann clA bA c} :
         clA.openω (.«fix» ann clA) = some bA →
+        -- Productivity (A7): without this, body = `.bvar 0`
+        -- gives `bA = a` and the recursive premise closes by
+        -- `.hyp`, deriving `(fix self. self) ⊑ c` for every c
+        -- — unsound (`⊤ ⊄ c` for c ≠ ⊤). The R-side
+        -- `unfold_fix_R` needs no guard (`a ⊑ ⊤` is true).
+        bA ≠ .«fix» ann clA →
         SubV ((.«fix» ann clA, c) :: S) Γ bA c →
         SubV S Γ (.«fix» ann clA) c
     | unfold_iota_L {S Γ ann clA bA c} :
         clA.openω (.iota ann clA) = some bA →
+        bA ≠ .iota ann clA →
         SubV ((.iota ann clA, c) :: S) Γ bA c →
         SubV S Γ (.iota ann clA) c
     | neutral_struct {S Γ nA nB} :
@@ -113,14 +120,27 @@ mutual
         SynthN Γ nA τ →
         SubV S Γ τ b →
         SubV S Γ (.neutral nA) b
-    | revapp_R {S Γ a b b'} :
-        b' ≠ b →
-        SubV ((a, b) :: S) Γ a b' →
-        SubV S Γ a b
-    | revapp_L {S Γ a a' c} :
-        a' ≠ a →
-        SubV ((a, c) :: S) Γ a' c →
-        SubV S Γ a c
+    | revapp_R {S Γ a f arg b'} :
+        -- The algorithm only reaches re-application when the
+        -- RHS is a stuck recursive head; `b'` is the result
+        -- of forcing one more unfold via `vappω`. WITHOUT this
+        -- premise (just `b' ≠ b → … → SubV S Γ a b`) the
+        -- constructor lets `b'` be arbitrary — instantiating
+        -- `b' := .type` and discharging the recursive premise
+        -- by `.top` made `SubV S Γ a b` hold for *every* a, b
+        -- (bughunt-lite, 5-0). The `vappω` premise ties `b'`
+        -- to `f arg`'s one-step unfold, matching exactly what
+        -- the proof at `subCheckValMatch_subV`'s stuckRec arms
+        -- already binds as `hvapp` and discards.
+        vappω f arg = some b' →
+        b' ≠ .neutral (.stuckRec f arg) →
+        SubV ((a, .neutral (.stuckRec f arg)) :: S) Γ a b' →
+        SubV S Γ a (.neutral (.stuckRec f arg))
+    | revapp_L {S Γ f arg a' c} :
+        vappω f arg = some a' →
+        a' ≠ .neutral (.stuckRec f arg) →
+        SubV ((.neutral (.stuckRec f arg), c) :: S) Γ a' c →
+        SubV S Γ (.neutral (.stuckRec f arg)) c
 
   /-- Val-level neutral congruence (mirrors `subCheckNeutral`). -/
   inductive SubN : List (Val × Val) → TyCtx → Neutral → Neutral → Prop where
@@ -184,6 +204,12 @@ theorem Closure.openω_of_open {cl : Closure} {v r : Val} {n : Nat}
     (hn : n ≤ fuelω) (h : cl.open n v = some r) :
     cl.openω v = some r :=
   Closure.open_fuel_mono hn h
+
+/-- Lift a fuelled re-application to the large fixed budget. -/
+theorem vappω_of_vapp {f arg r : Val} {n : Nat}
+    (hn : n ≤ fuelω) (h : vapp n 4 f arg = some r) :
+    vappω f arg = some r :=
+  vapp_fuel_mono hn h
 
 theorem Closure.openω_of_openFresh {cl : Closure} {r : Val}
     {n depth : Nat} (hn : n ≤ fuelω)
@@ -399,11 +425,13 @@ theorem subCheckValMatch_subV
         · simp at h  -- a' == a → .ok false
         rename_i hbeqL
         exact SubV.revapp_L
+          (vappω_of_vapp hfuel hvappL)
           (Val.ne_of_beq_false (by simpa using hbeqL))
           (ih h)
       · -- b' ≠ b: revapp_R
         rename_i hbeqR
         exact SubV.revapp_R
+          (vappω_of_vapp hfuel hvappR)
           (Val.ne_of_beq_false (by simpa using hbeqR))
           (ih h)
   -- _, .neutral .stuckRec: re-vapp R
@@ -414,6 +442,7 @@ theorem subCheckValMatch_subV
     · simp at h
     rename_i hbeq
     exact SubV.revapp_R
+      (vappω_of_vapp hfuel hvapp)
       (Val.ne_of_beq_false (by simpa using hbeq))
       (ih h)
   -- .fix, _
@@ -421,16 +450,24 @@ theorem subCheckValMatch_subV
     split at h
     · next _ => simp at h
     next a' hopen =>
+    split at h
+    · simp at h
+    next hbeq =>
     exact SubV.unfold_fix_L
       (Closure.openω_of_open hfuel hopen)
+      (Val.ne_of_beq_false (by simpa using hbeq))
       (ih h)
   -- .iota, _
   · next ann clA c hNotR =>
     split at h
     · next _ => simp at h
     next a' hopen =>
+    split at h
+    · simp at h
+    next hbeq =>
     exact SubV.unfold_iota_L
       (Closure.openω_of_open hfuel hopen)
+      (Val.ne_of_beq_false (by simpa using hbeq))
       (ih h)
   -- .neutral .stuckRec, _ : re-vapp L
   · split at h
@@ -442,6 +479,7 @@ theorem subCheckValMatch_subV
     · simp at h
     rename_i hbeq
     exact SubV.revapp_L
+      (vappω_of_vapp hfuel hvapp)
       (Val.ne_of_beq_false (by simpa using hbeq))
       (ih h)
   -- .neutral, .neutral: subCheckNeutral OR neutralAscent
@@ -589,6 +627,7 @@ theorem neutralAscent_subV
       · simp at h
       rename_i hbeq
       exact SubV.revapp_L
+        (vappω_of_vapp hfuel' hvapp)
         (Val.ne_of_beq_false (by simpa using hbeq))
         (_ihV h)
 termination_by (fuel, 0)
@@ -848,8 +887,8 @@ theorem SubV_to_Subtype'
       -- `quote_open_subst` bridges `re ↔ bodye.subst 0 ae`.
       sorry
   | unfold_fix_R hoB hbody => sorry
-  | unfold_fix_L hoA hbody => sorry
-  | unfold_iota_L hoA hbody => sorry
+  | unfold_fix_L hoA hne hbody => sorry
+  | unfold_iota_L hoA hne hbody => sorry
   | iota_struct hoA hoB hann hbody => sorry
   | fix_struct hoA hoB hann hbody => sorry
   | stuckRec_struct h1 h2 h3 h4 => sorry
@@ -861,11 +900,14 @@ theorem SubV_to_Subtype'
       -- `SynthN_to_Subtype'_bvar`: synthN.var → Subtype'.bvar
       -- at the right index; .app/.stuckRec → app_ascent.
       sorry
-  | revapp_R hne hbody =>
-      -- b' is the re-vapp result; quote b' β-relates to
-      -- quote b via the unfold step. Subtype'.trans + the
-      -- relevant unfold rule.
+  | revapp_R hvapp hne hbody =>
+      -- b' = vappω f arg (one forced unfold of the stuck
+      -- recursive head). quote b' relates to quote b
+      -- (= `.app (quote f) (quote arg)`) by exactly one
+      -- `Subtype'.unfold_*` step (since vapp at unf>0
+      -- unfolds the fix/iota once). Then `Subtype'.trans`
+      -- with IH on hbody.
       sorry
-  | revapp_L hne hbody => sorry
+  | revapp_L hvapp hne hbody => sorry
 
 end NbE

@@ -231,8 +231,13 @@ mutual
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
             | _ => .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
           | .fix _ann body =>
-            -- fix type in function position: unfold to get return type
-            let unfolded := body.subst 0 f'.val
+            -- fix type in function position: unfold the *type*
+            -- (`fix X. body ≡ body[X := fix X. body]`), not the
+            -- inhabitant. Previously copy-pasted from the `.iota`
+            -- arm above (where substituting the inhabitant *is*
+            -- the ι-elim rule); for `.fix` the binder is the type
+            -- variable. Caught by bughunt-lite (5-0).
+            let unfolded := body.subst 0 τ_f.val
             match unfolded with
             | .lam _dom retTy =>
               .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
@@ -310,7 +315,14 @@ mutual
           -- a Type-kinded annotation into a universal supertype.
           let seen' := (a, b) :: seen
           let unfold_path :=
-            if body == .bvar 0 then .ok false else
+            -- `fix self. self ≡ ⊤` under gfp semantics, so
+            -- `X ⊑ fix self. self` is *true* for any X. The
+            -- previous `→ .ok false` was incomplete
+            -- (SoundnessAudit A7, R-side); the L-side guards
+            -- below correctly reject `fix self. self ⊑ X`
+            -- (since `⊤ ⊄ X` for X ≠ Type, and X = Type is
+            -- caught by the `b == .type` guard earlier).
+            if body == .bvar 0 then .ok true else
             let u := body.subst 0 (.fix ann body)
             match absEval fuel ctx seen' u with
             | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
@@ -458,7 +470,9 @@ mutual
                 subCheckNF fuel ctx seen resultTy b
               | _ => .ok false
             | .fix _ann body =>
-              let unfolded := body.subst 0 f
+              -- Same as the absEval `.app` arm above: unfold the
+              -- *type*, not the inhabitant `f`.
+              let unfolded := body.subst 0 τ_f.val
               match unfolded with
               | .lam _dom retTy =>
                 let resultTy := retTy.subst 0 arg

@@ -320,12 +320,24 @@ mutual
             let seen' := (a, b) :: seen
             match clA.open fuel a with
             | none => .error "subCheckVal: fixL open"
-            | some a' => subCheckVal fuel tyCtx seen' a' b
+            | some a' =>
+                -- Productivity guard (SoundnessAudit A7): if the
+                -- body is just `self`, the unfold returns `a`
+                -- unchanged and the seen' check would
+                -- coinductively accept `(fix A. self) ⊑ b` for
+                -- *every* b. The same `a' == a` guard the
+                -- stuckRec-L arm uses applies here. (No guard on
+                -- the R-side `_, .fix`: `X ⊑ fix self. self` is
+                -- `X ⊑ ⊤`, which *is* coinductively true.)
+                if a' == a then .ok false
+                else subCheckVal fuel tyCtx seen' a' b
         | .iota _ann clA, _ =>
             let seen' := (a, b) :: seen
             match clA.open fuel a with
             | none => .error "subCheckVal: iotaL open"
-            | some a' => subCheckVal fuel tyCtx seen' a' b
+            | some a' =>
+                if a' == a then .ok false
+                else subCheckVal fuel tyCtx seen' a' b
         | .neutral (.stuckRec f arg), _ =>
             let seen' := (a, b) :: seen
             match vapp fuel 4 f arg with
@@ -356,12 +368,13 @@ mutual
       match a, b with
       | .var l1, .var l2 => .ok (l1 == l2)
       | .app n1 v1, .app n2 v2 => do
-          -- Covariant on arguments to match subCheckNF's `.app, .app`
-          -- arm. Bidirectional (`v1 ≡ v2`) would be sound for opaque
-          -- heads but is too strict for Phase 1 — it rejects
-          -- `Pair zero_ unit_ ⊑ Pair Nat_ Unit_` because
-          -- `Unit_ ⊄ unit_`. The soundness audit (Phase 2) should
-          -- revisit this with a type-directed monotonicity check.
+          -- Bidirectional on arguments (`v1 ≡ v2`): a neutral
+          -- head can use its argument at any variance
+          -- (SoundnessAudit A1). The pre-A1 covariant version
+          -- accepted `Pair zero_ unit_ ⊑ Pair Nat_ Unit_` via
+          -- this arm, which violated substitution; the `Pair`
+          -- re-encoding now derives that judgment soundly via
+          -- contra²-covariance instead.
           let hd ← subCheckNeutral fuel tyCtx seen n1 n2
           if !hd then return false
           -- Arguments must be *equivalent*, not merely sub-

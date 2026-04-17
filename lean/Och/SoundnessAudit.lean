@@ -204,6 +204,45 @@ theorem a6_checkerAgreement :
   native_decide
 
 /-!
+## A7: `.fix,_`/`.iota,_` lacked productivity guard — RESOLVED
+
+**Was**: NbE.subCheck's L-side fix/iota-unfold arms opened the
+closure with `a` (the LHS itself) and recursed on `a' ⊑ b`
+under `seen' = (a,b) :: seen`. When the body is bare `self`
+(= `.bvar 0`), opening returns `a` unchanged, so the
+recursion is `a ⊑ b` with `(a,b) ∈ seen'` — coinductively
+accepted. Hence `(fix A. self) ⊑ X` and `(ι self:A. self) ⊑
+X` were `.ok true` for *every* X. Found by the systematic
+divergence sweep (subCheckNF has explicit `body == .bvar 0`
+guards that reject this).
+
+**Fix**: add `if a' == a then .ok false` after the open,
+matching the existing stuckRec-L arm. Equirecursively
+`fix self. self ≡ ⊤`, so `⊤ ⊑ X` is false for X ≠ ⊤
+(and X = ⊤ = `.type` is caught by the `b == .type` guard).
+
+The R-side `_, .fix` was already correct in NbE (the
+coinductive accept of `X ⊑ ⊤` is *right*); subCheckNF's
+R-side `body == .bvar 0 → false` was conversely *incomplete*
+and is now `→ true`.
+-/
+
+private def fixSelf : Expr := .fix .type (.bvar 0)
+private def iotaSelf : Expr := .iota .type (.bvar 0)
+
+theorem a7_lhs_rejected :
+    subCheck 200 fixSelf Nat_ = .ok false ∧
+    NbE.subCheck 200 fixSelf Nat_ = .ok false ∧
+    subCheck 200 iotaSelf Nat_ = .ok false ∧
+    NbE.subCheck 200 iotaSelf Nat_ = .ok false := by
+  native_decide
+
+theorem a7_rhs_accepted :
+    subCheck 200 Nat_ fixSelf = .ok true ∧
+    NbE.subCheck 200 Nat_ fixSelf = .ok true := by
+  native_decide
+
+/-!
 ## A4: Inductive `Subtype'` is incomplete for equirecursion
 
 Not an *algorithm* unsoundness — the algorithm is correct here
@@ -262,6 +301,7 @@ concrete task.
 | A4 | inductive `Subtype'` incomplete | **resolved** | seen-indexed (`.hyp` rule) |
 | A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
 | A6 | lam-lam pushed `domA` (incomplete) | **resolved** | push target `domB` |
+| A7 | `.fix/.iota,_` no productivity guard | **resolved** | `a' == a → false`; R-side `→ true` |
 
 A1/A3/A5 concern the *algorithm*; A2 is a design choice; A4
 concerns the *declarative* side. All four addressable items
