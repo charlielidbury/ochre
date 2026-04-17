@@ -168,6 +168,15 @@ theorem a5_recursiveCaseStillWorks :
     NbE.subCheck 200 dtrue dBool = .ok true := by
   native_decide
 
+/-- Regression for the ι-ι path: NbE's `.iota, .iota` arm has
+its own iotaIntro fallback (after the structural comparison
+fails) which initially skipped the annotation premise too,
+letting the two checkers diverge. Both must agree. -/
+theorem a5_iotaIotaPath :
+    subCheck 200 (.iota .type .type) (.iota Nat_ .type) = .ok false ∧
+    NbE.subCheck 200 (.iota .type .type) (.iota Nat_ .type) = .ok false := by
+  native_decide
+
 /-!
 ## A4: Inductive `Subtype'` is incomplete for equirecursion
 
@@ -224,15 +233,19 @@ concrete task.
 | A1 | covariant neutral-app | **resolved** | bidirectional + re-encoded Pair |
 | A2 | `_ ⊑ Type` | open (Girard) | universe levels, or accept as axiom |
 | A3 | β type-blind | mitigated | use `typeCheck` as the entry point |
-| A4 | inductive `Subtype'` incomplete | open | seen-indexed or step-indexed gfp |
-| A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen |
+| A4 | inductive `Subtype'` incomplete | **resolved** | seen-indexed (`.hyp` rule) |
+| A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
 
 A1/A3/A5 concern the *algorithm*; A2 is a design choice; A4
-concerns the *declarative* side. With A1 + A5 fixed and A4
-addressed, every algorithmic arm maps to a sound declarative
-rule and `subCheckVal_sound` becomes provable arm-by-arm by
-fuel induction (subCheckVal, eval, and quote are now all
-non-partial).
+concerns the *declarative* side. All four addressable items
+are now resolved: every algorithmic arm maps to a declarative
+constructor, the algorithmic seen-set has a declarative
+counterpart (`.hyp`), and the entire stack (subCheckVal, eval,
+quote) is non-partial. The `dtrue ⊑ dBool` annotation-premise
+witness in `Soundness.lean` confirms `.hyp` closes the cycle
+that previously had no finite derivation. The
+`subCheckVal_sound` proof can now be attempted by fuel
+induction.
 -/
 
 end SoundnessAudit

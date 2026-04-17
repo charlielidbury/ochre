@@ -99,8 +99,14 @@ mutual
               subCheckVal fuel (tyCtx.push annB) seen' bodyA bodyB
             match structural with
             | .ok true => .ok true
-            | _ =>
-              match clB.open fuel a with
+            | _ => do
+              -- iotaIntro fallback: BOTH premises (A5). Without
+              -- this the ι-ι path bypassed the annotation check
+              -- that the `_, .iota` arm enforces, so the two
+              -- checkers diverged on `ι:Type.Type ⊑ ι:Nat_.Type`.
+              let okAnn ← subCheckVal fuel tyCtx seen' a annB
+              if !okAnn then .ok false
+              else match clB.open fuel a with
               | none => .error "subCheckVal: iotaIntro open"
               | some bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
         | .fix annA clA, .fix annB clB =>

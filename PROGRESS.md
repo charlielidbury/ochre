@@ -612,6 +612,31 @@ relation has every constructor needed; the one remaining gap
 (A4: coinductive encoding) is the last prerequisite for
 `subCheckVal_sound`.
 
+### A5 ι-ι gap closed; A4 seen-indexed Subtype' (5862916f)
+
+Verifier FAIL on d1275ab: NbE.subCheck's `.iota,.iota`
+structural arm has its own iotaIntro fallback that skipped
+the annotation premise, so `(ι:Type.Type) ⊑ (ι:Nat_.Type)`
+returned `.ok true` from NbE but `.ok false` from subCheckNF
+— the two checkers diverged. Fixed: the ι-ι fallback now
+checks `a ⊑ annB` first (same as the `_, .iota` arm).
+Regression `a5_iotaIotaPath` locked into SoundnessAudit.
+
+`Subtype'` is now seen-indexed: `Seen → Ctx → Expr → Expr →
+Prop` with `.hyp : (a,b) ∈ S → Subtype' S Γ a b`. The four
+productive rules (`iota_intro`, three `unfold_*`) extend `S`
+before recursing; everything else threads it. `Subtype'.weaken`
+proven (seen-monotone). The `dtrue ⊑ dBool` witness in
+Soundness.lean has its annotation premise closed via
+`.hyp (List.Mem.tail _ (List.Mem.head _))` — the cycle that
+previously had no finite derivation now closes in one step.
+
+**All five audit items resolved or accepted.** Algorithm sound
+modulo type-in-type. Every arm maps to a declarative
+constructor; the seen-set has a declarative counterpart;
+the whole stack is non-partial. `subCheckVal_sound` is now a
+matter of fuel induction with no architectural blockers.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
