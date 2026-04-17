@@ -25,91 +25,69 @@ namespace SoundnessAudit
 open Std
 
 /-!
-## A1: Covariant neutral-app congruence is unsound
+## A1: Covariant neutral-app congruence — RESOLVED
 
-`subCheckNeutral`'s `.app, .app` arm (and the analogous
-`.stuckRec, .stuckRec` arm) compares arguments *covariantly*:
-`n a ⊑ n b` whenever `a ⊑ b`. This was changed from bidirectional
-in commit 4ca113b to make `Pair zero_ unit_ ⊑ Pair Nat_ Unit_`
-(and hence `testArr1 ⊑ Array_ done_ Nat_`) pass.
+**Was**: `subCheckNeutral`'s `.app, .app` arm (and the analogous
+`.stuckRec, .stuckRec` arms) compared arguments *covariantly*:
+`n a ⊑ n b` whenever `a ⊑ b`. With the old `Pair l r = λk. k l r`
+encoding, this gave `Pair zero_ unit_ ⊑ Pair Nat_ Unit_` via
+`k zero_ unit_ ⊑ k Nat_ Unit_` — but eliminating with
+`kContra = λn. λu. n → Unit_` β-reduced both sides to
+`zero_ → Unit_` and `Nat_ → Unit_`, which are *not* related.
+Substitution-principle violation.
 
-But a neutral head `n` can use its argument at *any* variance.
-The substitution principle says `a ⊑ b → C[a] ⊑ C[b]` for any
-context `C`; taking `C = (· kContra)` where `kContra` is
-contravariant in its first argument refutes this.
+**Fix** (this commit):
+  - `subCheckNeutral` and `subCheckVal`'s neutral-app arms now
+    require *equivalence* (`a ⊑ b ∧ b ⊑ a`), not just `a ⊑ b`.
+    Same in `subCheckNF`'s `.app, .app` arm.
+  - `Pair` re-encoded as `λA. λB. λX. λk:(A→B→X). X` (parametric
+    body) with a separate `pair_ A B a b = λX. λk. k a b`
+    constructor. `pair_ A B a b ⊑ Pair A B` now holds via
+    *type-ascent* through `k` (synth `k a b : X`, then `X ⊑ X`)
+    rather than congruence.
+
+The new `Pair` is *soundly* covariant: `A ⊑ A' ∧ B ⊑ B' → Pair
+A B ⊑ Pair A' B'` because A, B occur only contravariantly in
+`k`'s domain (contra² = covariant) and the body `X` doesn't
+mention them.
 -/
 
-private def kContra := och{ λn:Nat_. λu:Unit_. n → Unit_ }
-
-/-- The checker accepts `Pair zero_ unit_ ⊑ Pair Nat_ Unit_`.
-
-After β, both sides are `λk:(... → Type). k <l> <r>`, and the
-body comparison `k zero_ unit_ ⊑ k Nat_ Unit_` goes through the
-covariant `.app, .app` arm (k is a fresh neutral). -/
-theorem a1_accepts :
-    subCheck 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
-      = .ok true ∧
-    NbE.subCheck 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
-      = .ok true := by
-  native_decide
-
-/-- Yet eliminating both sides with `kContra` is *rejected*.
-
-`(Pair zero_ unit_) kContra` β-reduces to `zero_ → Unit_`;
-`(Pair Nat_ Unit_) kContra` to `Nat_ → Unit_`. The checker
-correctly says `zero_ → Unit_ ⊄ Nat_ → Unit_` (contravariant
-domain needs `Nat_ ⊑ zero_`). -/
-theorem a1_witness :
-    subCheck 200 (och{ (Pair zero_ unit_) kContra })
-                 (och{ (Pair Nat_  Unit_) kContra })
+/-- Bidirectional rule: a fresh neutral applied to non-equivalent
+args is *not* congruent. With the old covariant rule this was
+`true`; now it's `false`. -/
+theorem a1_ruleFixed :
+    subCheck 200
+      (och{ λk:(Nat_ → Type). k zero_ })
+      (och{ λk:(Nat_ → Type). k Nat_  })
       = .ok false ∧
-    NbE.subCheck 200 (och{ (Pair zero_ unit_) kContra })
-                     (och{ (Pair Nat_  Unit_) kContra })
+    NbE.subCheck 200
+      (och{ λk:(Nat_ → Type). k zero_ })
+      (och{ λk:(Nat_ → Type). k Nat_  })
       = .ok false := by
   native_decide
 
-/-!
-`a1_accepts` and `a1_witness` together violate the substitution
-principle: if `bad ⊑ Good` then for every well-typed `C`,
-`C[bad] ⊑ C[Good]`. Here `C = (· kContra)` and `kContra` *is*
-well-typed at the LHS's k-domain `(zero_ → unit_ → Type)` — its
-declared domain `(Nat_ → Unit_ → Type)` is a subtype.
+/-- The new `Pair` is soundly covariant: the substitution
+principle holds at `kContra` (both sides reduce to
+`λk:(... → kContra). kContra`, which are contra²-related). -/
+private def kContra := och{ λn:Nat_. λu:Unit_. n → Unit_ }
 
-### Affected tests
+theorem a1_substitutionHolds :
+    subCheck 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
+      = .ok true ∧
+    subCheck 200 (och{ (Pair zero_ unit_) kContra })
+                 (och{ (Pair Nat_  Unit_) kContra })
+      = .ok true := by
+  native_decide
 
-The covariant rule is load-bearing for:
-  - `Pair.lean:56` — `Pair one_ two_ ⊑ Pair Nat_ Nat_`
-  - `Pair.lean:59` — `Pair true_ false_ ⊑ Pair Bool Bool`
-  - `Array.lean:86` — `testArr1 ⊑ Array_ done_ Nat_`
-  - `Array.lean:88` — `testArr2 ⊑ Array_ dtwo Nat_`
-
-Pair.lean's doc comment (line 17) names this as the intended
-mechanism: "Subtyping via app congruence gives `Pair true false
-<: Pair Bool Bool`." So the unsoundness is by design, not by
-accident.
-
-### Options
-
-1. **Restore bidirectional** (`a ⊑ b ∧ b ⊑ a` for neutral args).
-   Sound, but the four tests above become false. Pair would need
-   a separate value constructor, e.g. `pair_ A B a b = λk. k a b`
-   with `pair_ ⊑ Πl. Πr. l → r → Pair l r` proven via type-ascent
-   (the k-codomain `k l r` is reached by ascending through `k`'s
-   declared type, not by congruence). `Array_` would build on
-   that.
-
-2. **Variance tracking**. Annotate each neutral head with how it
-   uses its argument; allow covariance only when the head is
-   provably covariant. Heavy: needs a polarity analysis pass.
-
-3. **Quote-and-compare**. Replace the structural arm with
-   `quote a == quote b` (definitional equality only). Same effect
-   as (1) for the tests, simpler to state.
-
-(1) is the standard fix and matches what `Sigma`/`dpair` already
-do (Vec.lean's `mkVec` goes through type-ascent, not congruence,
-which is why `vecResult ⊑ Vec Nat` doesn't hit this).
--/
+/-- And the constructor inhabits the type via ascent. -/
+theorem a1_pairAscent :
+    subCheck 200 (och{ pair_ Nat_ Unit_ zero_ unit_ })
+                 (och{ Pair Nat_ Unit_ })
+      = .ok true ∧
+    NbE.subCheck 200 (och{ pair_ Nat_ Unit_ zero_ unit_ })
+                     (och{ Pair Nat_ Unit_ })
+      = .ok true := by
+  native_decide
 
 /-!
 ## A2: Type-in-type
@@ -164,14 +142,14 @@ theorem a3_typeCheckCatches :
 
 | # | Rule | Status | Fix |
 |---|------|--------|-----|
-| A1 | covariant neutral-app | unsound | bidirectional + re-encode Pair |
-| A2 | `_ ⊑ Type` | unsound (Girard) | universe levels, or accept as axiom |
-| A3 | β type-blind | unsound for `subCheck` | use `typeCheck` as the entry point |
+| A1 | covariant neutral-app | **resolved** | bidirectional + re-encoded Pair |
+| A2 | `_ ⊑ Type` | open (Girard) | universe levels, or accept as axiom |
+| A3 | β type-blind | mitigated | use `typeCheck` as the entry point |
 
 All other subCheckVal arms (refl, seen, lam-lam, iotaIntro,
 fix-unfold, neutralAscent) follow standard sound rules. The
-Phase-2 soundness theorem should target `typeCheck` with the
-A1 fix applied and A2 either stratified or assumed.
+Phase-2 soundness theorem targets `typeCheck` with A2 either
+stratified or assumed.
 -/
 
 end SoundnessAudit

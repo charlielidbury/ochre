@@ -64,7 +64,7 @@ example : subCheck 1000
 -- ============================================================
 
 -- testVec1 = mkVec Nat done_ [0]   (done_ is the dNat 1)
-private def testVec1 := och{ mkVec Nat_ done_ (Pair zero_ unit_) }
+private def testVec1 := och{ mkVec Nat_ done_ (pair_ Nat_ Unit_ zero_ unit_) }
 
 -- Abstract vector unpack. Ascription widens `testVec1` to its type
 -- `Vec Nat_ = Sigma dNat (λn. Array_ n Nat_) = λX. λk. X`, so applying

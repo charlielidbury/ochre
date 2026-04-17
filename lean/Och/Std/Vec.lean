@@ -41,10 +41,11 @@ open Expr
 -- ── Test vectors ──────────────────────────────────────────────
 
 -- mkVec Nat 1 [0]
-private def testVec1 := och{ mkVec Nat_ done_ (Pair zero_ unit_) }
+private def testVec1 := och{ mkVec Nat_ done_ (pair_ Nat_ Unit_ zero_ unit_) }
 
 -- mkVec Nat 2 [1, 2]
-private def testVec2 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
+private def testVec2 := och{ mkVec Nat_ dtwo
+  (pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)) }
 
 -- ── Positive subtype checks ──────────────────────────────────
 
@@ -161,8 +162,9 @@ example : NbE.typeCheck 5000 appendVec
 
 -- ── Concrete appendVec ──────────────────────────────────────
 
-private def vec1 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
-private def vec2 := och{ mkVec Nat_ done_ (Pair three_ unit_) }
+private def vec1 := och{ mkVec Nat_ dtwo
+  (pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)) }
+private def vec2 := och{ mkVec Nat_ done_ (pair_ Nat_ Unit_ three_ unit_) }
 private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 
 -- Concrete result ⊑ Vec Nat. subCheckNF fans out here for the

@@ -384,10 +384,17 @@ mutual
               | .error e => .error e
               | _ => nt
         | .app f1 a1, .app f2 a2 => do
+          -- Structural congruence for stuck applications.
+          -- Arguments must be *equivalent* (both directions),
+          -- not merely sub-related: a neutral head can use its
+          -- argument at any variance, so covariant comparison
+          -- is unsound (SoundnessAudit A1).
           let structural := do
             let fOk ← subCheckNF fuel ctx seen f1 f2
             if !fOk then return false
-            subCheckNF fuel ctx seen a1 a2
+            let aFwd ← subCheckNF fuel ctx seen a1 a2
+            if !aFwd then return false
+            subCheckNF fuel ctx seen a2 a1
           match structural with
           | .ok true => .ok true
           | _ => match neutralType fuel ctx seen a b with

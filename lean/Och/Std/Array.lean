@@ -23,10 +23,11 @@ on `n` the array's type statically refines to a pair.
 Since the current DNat eliminator is Scott-style (no automatic induction
 on the predecessor), the recursive knot is tied explicitly with `fix`.
 
-Since Pair is its own constructor and fst/snd need no type args,
-array operations are just pair/unit operations:
+Array operations are pair/unit operations. Note `pair_` (the value
+constructor) takes the component *types* explicitly, so cons needs
+the element type and the tail's `Array_` type:
 - empty array: `unit_`
-- cons: `Pair x rest`
+- cons: `pair_ T (Array_ pred T) x rest`
 - head: `fst_ arr`
 - tail: `snd_ arr`
 -/
@@ -40,7 +41,6 @@ def Array_ := och{
 }
 
 def emptyArray := unit_
-def consArray := Pair
 def headArray := fst_
 def tailArray := snd_
 
@@ -59,8 +59,8 @@ open Expr
 -- is a bvar.
 example : absEvalVal (och{ Array_ dzero Nat_ }) = .ok ⟨Unit_⟩ := by native_decide
 
--- Pair 0 unit, head it back out
-private def testArr1 := och{ Pair zero_ unit_ }
+-- pair_ Nat Unit 0 unit, head it back out
+private def testArr1 := och{ pair_ Nat_ Unit_ zero_ unit_ }
 
 -- head testArr1 = 0
 example : absEvalVal (och{ fst_ testArr1 }) = .ok ⟨zero_⟩ := by native_decide
@@ -68,8 +68,10 @@ example : absEvalVal (och{ fst_ testArr1 }) = .ok ⟨zero_⟩ := by native_decid
 -- tail testArr1 = unit
 example : absEvalVal (och{ snd_ testArr1 }) = .ok ⟨unit_⟩ := by native_decide
 
--- testArr2 = Pair 1 (Pair 2 unit)
-private def testArr2 := och{ Pair one_ (Pair two_ unit_) }
+-- testArr2 = [1, 2]
+private def testArr2 := och{
+  pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
+}
 
 -- head testArr2 = 1
 example : absEvalVal (och{ fst_ testArr2 }) = .ok ⟨one_⟩ := by native_decide
@@ -79,10 +81,11 @@ example : absEvalVal (och{ fst_ (snd_ testArr2) }) = .ok ⟨two_⟩ := by native
 
 -- ── Positive subtype checks ────────────────────────────────
 
--- testArr1 ⊑ Array_ done_ Nat. Array_ done_ Nat reduces to Pair Nat Unit
--- now that absEval β-reduces unconditionally (no domain check) and the
--- closed-head muSeen `==` catches the `(dsucc m)→Type` self-reference
--- after one unfold; then it's just Pair zero_ unit_ ⊑ Pair Nat Unit.
+-- testArr1 ⊑ Array_ done_ Nat. Array_ done_ Nat reduces to
+-- Pair Nat Unit; `pair_ Nat Unit zero_ unit_ ⊑ Pair Nat Unit`
+-- holds via type-ascent through the `k` continuation (k a b
+-- has type X), not via the (now-bidirectional) neutral-app
+-- congruence rule.
 example : subCheck 1000 testArr1 (och{ Array_ done_ Nat_ }) = .ok true := by native_decide
 
 example : subCheck 1000 testArr2 (och{ Array_ dtwo Nat_ }) = .ok true := by native_decide
@@ -145,14 +148,17 @@ def appendArrays := och{
         (λn:dNat. Array_ n T → Array_ (dadd n n2) T)
         (λarr:(Array_ dzero T). arr2)
         (λpred:dNat. λarr:(Array_ (dsucc pred) T).
-          Pair (fst_ arr) (self T pred n2 (snd_ arr) arr2))
+          pair_ T (Array_ (dadd pred n2) T)
+            (fst_ arr) (self T pred n2 (snd_ arr) arr2))
         arr1
 }
 
 section AppendArraysTests
 
-private def app_arr1 := och{ Pair one_ (Pair two_ unit_) }
-private def app_arr2 := och{ Pair three_ unit_ }
+private def app_arr1 := och{
+  pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
+}
+private def app_arr2 := och{ pair_ Nat_ Unit_ three_ unit_ }
 private def appended := och{ appendArrays Nat_ dtwo done_ app_arr1 app_arr2 }
 
 -- appendArrays [1,2] [3] = [1,2,3]  (concrete, runtime eval via concEval)

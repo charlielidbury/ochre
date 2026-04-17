@@ -525,6 +525,29 @@ DECISION-LOG entry sketches the path. The other arms of
 `subCheckVal` (refl, seen, lam-lam, iotaIntro, fix-unfold,
 neutralAscent) follow standard sound rules.
 
+### A1 fixed: bidirectional neutral-app + new Pair encoding (5862916f)
+
+`subCheckNeutral`/`subCheckVal`/`subCheckNF`'s neutral-app arms
+now require argument *equivalence* (`a ⊑ b ∧ b ⊑ a`). The
+closure-canonicity case (DNat dtwo/dthree) and the appendVec
+return-type comparison both still pass — they were always
+equivalences, not strict subtypes.
+
+`Pair` re-encoded as `λA. λB. λX. λk:(A→B→X). X` (parametric
+body); separate `pair_ A B a b = λX. λk. k a b` constructor.
+`pair_ … ⊑ Pair A B` via type-ascent through `k` (synth
+`k a b : X`). The new Pair is *soundly* covariant in A, B
+(contra² on k's domain). All Pair/Array/Vec value-construction
+sites updated to `pair_ A B a b`. fst_/snd_ stay monomorphic at
+`Pair Type Type` (any Pair coerces via type-in-type).
+
+Build green; markers/Std-sorries stay at 0. SoundnessAudit's
+A1 section now records the fix as `a1_ruleFixed` /
+`a1_substitutionHolds` / `a1_pairAscent`. Two open items
+remain: A2 (type-in-type, accepted as model axiom) and A3
+(β-blind subCheck, mitigated by `typeCheck`). The arms-by-arms
+soundness proof can now begin.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`

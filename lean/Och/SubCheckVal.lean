@@ -145,9 +145,16 @@ mutual
             -- closure-canonicity gap), args covariantly.
             let seen' := (a, b) :: seen
             let structural := do
+              -- Heads and args must each be *equivalent* (A1):
+              -- the recursive head may use its argument at any
+              -- variance.
               let hd ← subCheckVal fuel tyCtx seen' fA fB
               if !hd then return false
-              subCheckVal fuel tyCtx seen' aA aB
+              let hd' ← subCheckVal fuel tyCtx seen' fB fA
+              if !hd' then return false
+              let arg ← subCheckVal fuel tyCtx seen' aA aB
+              if !arg then return false
+              subCheckVal fuel tyCtx seen' aB aA
             match structural with
             | .ok true => .ok true
             | _ =>
@@ -219,16 +226,27 @@ mutual
           -- revisit this with a type-directed monotonicity check.
           let hd ← subCheckNeutral fuel tyCtx seen n1 n2
           if !hd then return false
-          subCheckVal fuel tyCtx seen v1 v2
+          -- Arguments must be *equivalent*, not merely sub-
+          -- related: a neutral head can use its argument at any
+          -- variance (SoundnessAudit A1). This is the standard
+          -- congruence rule for stuck applications.
+          let fwd ← subCheckVal fuel tyCtx seen v1 v2
+          if !fwd then return false
+          subCheckVal fuel tyCtx seen v2 v1
       | .stuckRec fA aA, .stuckRec fB aB => do
-          -- Same closure-canonicity normalisation as the
-          -- subCheckVal arm of the same shape, exposed here so
-          -- it composes under `.app, .app` (e.g. comparing
+          -- Closure-canonicity normalisation, exposed here so it
+          -- composes under `.app, .app` (e.g. comparing
           -- `Array_ (dadd n1 n2) T` against itself when the two
           -- `dadd`/`Array_` closures came via different paths).
+          -- Heads and args must each be *equivalent*; a recursive
+          -- type can use its index at any variance (A1).
           let hd ← subCheckVal fuel tyCtx seen fA fB
           if !hd then return false
-          subCheckVal fuel tyCtx seen aA aB
+          let hd' ← subCheckVal fuel tyCtx seen fB fA
+          if !hd' then return false
+          let arg ← subCheckVal fuel tyCtx seen aA aB
+          if !arg then return false
+          subCheckVal fuel tyCtx seen aB aA
       | _, _ => .ok false
 
   /-- Type ascent for a neutral on the LHS: synthesise its type
