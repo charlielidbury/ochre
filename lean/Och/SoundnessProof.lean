@@ -955,95 +955,286 @@ theorem quote_open_subst {cl : Closure} {v r : Val}
               Subtype' S Γe (bodye.subst 0 ve) re := by
   sorry
 
+/-!
+### Quote shape lemmas
+
+Inversion lemmas for `quote`/`quoteNeutral` on each Val/Neutral
+constructor. These let the bridge proof extract the quoted
+sub-components when matching on a `SubV`/`SubN` constructor.
+-/
+
+private theorem fuelω_succ : fuelω = (fuelω - 1) + 1 := rfl
+
+theorem quote_type {d : Nat} : quote fuelω d .type = some .type := by
+  rw [fuelω_succ, quote.eq_2]
+
+theorem quote_neutral {d : Nat} {n : Neutral} {e : Expr}
+    (h : quote fuelω d (.neutral n) = some e) :
+    quoteNeutral (fuelω - 1) d n = some e := by
+  rw [fuelω_succ, quote.eq_3] at h; exact h
+
+theorem quoteNeutral_var {d k : Nat} {e : Expr}
+    (h : quoteNeutral fuelω d (.var k) = some e) :
+    k < d ∧ e = .bvar (d - 1 - k) := by
+  rw [fuelω_succ, quoteNeutral.eq_2] at h
+  split at h
+  · next hlt => exact ⟨hlt, (Option.some.injEq .. ▸ h).symm⟩
+  · exact absurd h (by simp)
+
+theorem quoteNeutral_app {d : Nat} {n : Neutral} {v : Val} {e : Expr}
+    (h : quoteNeutral fuelω d (.app n v) = some e) :
+    ∃ ne ve, quoteNeutral (fuelω - 1) d n = some ne ∧
+             quote (fuelω - 1) d v = some ve ∧
+             e = .app ne ve := by
+  rw [fuelω_succ, quoteNeutral.eq_3] at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some,
+             Option.some.injEq] at h
+  obtain ⟨ne, hne, ve, hve, heq⟩ := h
+  exact ⟨ne, ve, hne, hve, heq.symm⟩
+
+theorem quoteNeutral_stuckRec {d : Nat} {f a : Val} {e : Expr}
+    (h : quoteNeutral fuelω d (.stuckRec f a) = some e) :
+    ∃ fe ae, quote (fuelω - 1) d f = some fe ∧
+             quote (fuelω - 1) d a = some ae ∧
+             e = .app fe ae := by
+  rw [fuelω_succ, quoteNeutral.eq_4] at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some,
+             Option.some.injEq] at h
+  obtain ⟨fe, hfe, ae, hae, heq⟩ := h
+  exact ⟨fe, ae, hfe, hae, heq.symm⟩
+
+/-- Lift `quoteNeutral` from `fuelω - 1` to `fuelω`. -/
+theorem quoteNeutralω {d : Nat} {n : Neutral} {e : Expr}
+    (h : quoteNeutral (fuelω - 1) d n = some e) :
+    quoteNeutral fuelω d n = some e :=
+  quoteNeutral_fuel_mono (Nat.sub_le _ _) h
+
+/-- Lift `quote` from `fuelω - 1` to `fuelω`. -/
+theorem quoteω {d : Nat} {v : Val} {e : Expr}
+    (h : quote (fuelω - 1) d v = some e) :
+    quote fuelω d v = some e :=
+  quote_fuel_mono (Nat.sub_le _ _) h
+
+/-!
+### Hypothesis bundles
+-/
+
+/-- The seen-set quotes into `Se`. -/
+abbrev QuotesSeen (S : List (Val × Val)) (Γ : TyCtx) (Se : Seen) : Prop :=
+  ∀ p ∈ S, ∃ pe ∈ Se,
+    quote fuelω Γ.size p.1 = some pe.1 ∧
+    quote fuelω Γ.size p.2 = some pe.2
+
+/-- The type context quotes into `Γe` at matching de Bruijn
+indices. `Γ` is level-indexed (`Γ[k]` = type of `.var k`);
+`Γe` is index-indexed (`Γe[i]` = type of `.bvar i`). -/
+abbrev QuotesCtx (Γ : TyCtx) (Γe : Ctx) : Prop :=
+  ∀ k τ, Γ[k]? = some τ →
+    ∃ τe, Γe.get? (Γ.size - 1 - k) = some τe ∧
+          quote fuelω (k + 1) τ = some τe
+
+/-!
+### The mutual bridge
+
+Three theorems proven by simultaneous structural recursion
+on `SubV`/`SubN`/`SynthN`, using the joint recursor
+`SubV.rec`. Each motive packages the quote hypotheses; the
+recursor supplies one IH per recursive premise.
+-/
+
+/-- `SubN`'s bridge: quoted neutral spines are
+`Subtype'`-related via `.refl` (var) or `.app_cong` (app /
+stuckRec, with arg equivalence). -/
+theorem SubN_to_Subtype'
+    {S Γ nA nB} (h : SubN S Γ nA nB)
+    {Se Γe ae be}
+    (hS : QuotesSeen S Γ Se) (hΓ : QuotesCtx Γ Γe)
+    (ha : quoteNeutral fuelω Γ.size nA = some ae)
+    (hb : quoteNeutral fuelω Γ.size nB = some be) :
+    Subtype' Se Γe ae be := by
+  -- The motives for the joint recursor.
+  let MV := fun S Γ a b (_ : SubV S Γ a b) =>
+    ∀ {Se Γe ae be}, QuotesSeen S Γ Se → QuotesCtx Γ Γe →
+      quote fuelω Γ.size a = some ae →
+      quote fuelω Γ.size b = some be →
+      Subtype' Se Γe ae be
+  let MN := fun S Γ nA nB (_ : SubN S Γ nA nB) =>
+    ∀ {Se Γe ae be}, QuotesSeen S Γ Se → QuotesCtx Γ Γe →
+      quoteNeutral fuelω Γ.size nA = some ae →
+      quoteNeutral fuelω Γ.size nB = some be →
+      Subtype' Se Γe ae be
+  let MS := fun Γ n τ (_ : SynthN Γ n τ) =>
+    ∀ {Se Γe ne τe}, QuotesCtx Γ Γe →
+      quoteNeutral fuelω Γ.size n = some ne →
+      quote fuelω Γ.size τ = some τe →
+      Subtype' Se Γe ne τe
+  refine (@SubN.rec MV MN MS
+    -- ===== SubV cases =====
+    -- hyp
+    (fun {S Γ a b} hin {Se Γe ae be} hS _hΓ ha hb => by
+      obtain ⟨⟨pe1, pe2⟩, hpe, hq1, hq2⟩ := hS _ hin
+      simp only at hq1 hq2
+      rw [ha] at hq1; rw [hb] at hq2
+      cases hq1; cases hq2; exact .hyp hpe)
+    -- refl
+    (fun {S Γ a} {Se Γe ae be} _hS _hΓ ha hb => by
+      rw [ha] at hb; cases hb; exact .refl ae)
+    -- top
+    (fun {S Γ a} {Se Γe ae be} _hS _hΓ _ha hb => by
+      rw [quote_type] at hb; cases hb; exact .top ae)
+    -- lam — needs eval_unf_equiv for the unf=1↔4 mismatch.
+    -- IHs `ihD` (dom) and `ihB` (body at Γ.push domB) are
+    -- now available; once `quoteClosure_eq_quote_openω_fresh`
+    -- becomes unconditional this case closes via
+    -- `Subtype'.lam (ihD …) (ihB …)`.
+    (fun _ _ _ _ _ihD _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- iota_struct — same shape as lam (open with fresh).
+    (fun _ _ _ _ _ihA _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- fix_struct
+    (fun _ _ _ _ _ihA _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- stuckRec_struct — IHs ih1..ih4 give bidirectional
+    -- equivalence on heads/args; quoted as `.app fe ae` on
+    -- both sides → `.app_cong`. Needs `quote_open_subst` for
+    -- the head if f is a closure-bearing Val (it isn't —
+    -- stuckRec heads are .fix/.iota, quoted via quoteClosure
+    -- which hits the unf mismatch).
+    (fun _ _ _ _ _ih1 _ih2 _ih3 _ih4 {_ _ _ _} _ _ _ _ => by sorry)
+    -- iota_intro — needs quote_open_subst.
+    (fun _ _ _ _ihA _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- unfold_fix_R — needs quote_open_subst.
+    (fun _ _ _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- unfold_fix_L — needs quote_open_subst.
+    (fun _ _ _ _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- unfold_iota_L
+    (fun _ _ _ _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- neutral_struct: hand off to MN's IH directly.
+    (fun {S Γ nA nB} _hN ihN {Se Γe ae be} hS hΓ ha hb => by
+      exact ihN hS hΓ (quoteNeutralω (quote_neutral ha))
+                      (quoteNeutralω (quote_neutral hb)))
+    -- neutral_ascent: SynthN gives `ne ⊑ τe` (via MS's IH);
+    -- SubV gives `τe ⊑ be` (via MV's IH); compose by `.trans`.
+    (fun {S Γ nA τ b} _hsynth _hsub ihS ihV
+         {Se Γe ae be} hS hΓ ha hb => by
+      -- Quote τ at depth Γ.size; if it fails the chain
+      -- can't proceed — but synthN guarantees τ is a Val
+      -- in scope, and quote at fuelω is total on
+      -- well-scoped Vals. We don't have that totality
+      -- lemma yet, so case on the option.
+      rcases hτ : quote fuelω Γ.size τ with _ | τe
+      · -- quote τ = none. The MS IH still requires a τe;
+        -- without quote-totality this branch is stuck.
+        sorry
+      · exact .trans
+          (ihS hΓ (quoteNeutralω (quote_neutral ha)) hτ)
+          (ihV hS hΓ hτ hb))
+    -- revapp_R — needs eval_unf_equiv (vappω is one forced
+    -- unfold; quoted b' relates to quoted b by one
+    -- `unfold_*` step).
+    (fun _ _ _ _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- revapp_L
+    (fun _ _ _ _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- ===== SubN cases =====
+    -- var: both quote to `.bvar (d-1-k)`; refl.
+    (fun {S Γ k} {Se Γe ae be} _hS _hΓ ha hb => by
+      obtain ⟨_, heqA⟩ := quoteNeutral_var ha
+      obtain ⟨_, heqB⟩ := quoteNeutral_var hb
+      subst heqA heqB; exact .refl _)
+    -- app: IH on heads (MN) + IHs on args both ways (MV)
+    -- → `.app_cong`.
+    (fun {S Γ n1 n2 v1 v2} _hn _hv1 _hv2 ihN ihV1 ihV2
+         {Se Γe ae be} hS hΓ ha hb => by
+      obtain ⟨n1e, v1e, hn1, hv1, heqA⟩ := quoteNeutral_app ha
+      obtain ⟨n2e, v2e, hn2, hv2, heqB⟩ := quoteNeutral_app hb
+      subst heqA heqB
+      exact .app_cong
+        (ihN hS hΓ (quoteNeutralω hn1) (quoteNeutralω hn2))
+        (ihV1 hS hΓ (quoteω hv1) (quoteω hv2))
+        (ihV2 hS hΓ (quoteω hv2) (quoteω hv1)))
+    -- stuckRec: both quote to `.app fe ae`. IHs on f, a
+    -- (both directions, MV) → `.app_cong` with the head
+    -- itself by `.app_cong` again (since `quote (.fix..)`
+    -- is an Expr, comparing two of them via the V-IH).
+    (fun {S Γ fA aA fB aB} _h1 _h2 _h3 _h4 ih1 _ih2 ih3 ih4
+         {Se Γe ae be} hS hΓ ha hb => by
+      obtain ⟨fAe, aAe, hfA, haA, heqA⟩ := quoteNeutral_stuckRec ha
+      obtain ⟨fBe, aBe, hfB, haB, heqB⟩ := quoteNeutral_stuckRec hb
+      subst heqA heqB
+      -- `.stuckRec f a` quotes to `.app fe ae` (one app
+      -- node). So `.app fAe aAe ⊑ .app fBe aBe` via one
+      -- `app_cong`: head `fAe ⊑ fBe` (ih1) + arg equiv
+      -- `aAe ⊑ aBe ∧ aBe ⊑ aAe` (ih3, ih4).
+      exact .app_cong
+        (ih1 hS hΓ (quoteω hfA) (quoteω hfB))
+        (ih3 hS hΓ (quoteω haA) (quoteω haB))
+        (ih4 hS hΓ (quoteω haB) (quoteω haA)))
+    -- ===== SynthN cases =====
+    -- var: Γ[k] = τ. quoteNeutral .var k = .bvar (d-1-k).
+    -- hΓ gives Γe[d-1-k] = τe with quote τ at depth k+1.
+    -- Need Subtype' .. (.bvar (d-1-k)) τe. By `.bvar` rule
+    -- with shift… but `Subtype'.bvar` gives `bvar i ⊑
+    -- (Γe[i]).shift (i+1) 0`, and we want `bvar i ⊑ τe`
+    -- where τe was quoted at depth k+1 ≠ d. Depth mismatch:
+    -- `hΓ` quotes τ at depth `k+1` but the goal needs it at
+    -- depth `d = Γ.size`. This is the level↔index
+    -- bookkeeping; needs a quote-shift lemma.
+    (fun {Γ k τ} _hk {Se Γe ne τe} _hΓ _hn _hτ => by sorry)
+    -- app: IH gives ne' ⊑ (.lam dome cle)e; need
+    -- `.app ne' ve ⊑ τe` where τe = quote(cl.openω v).
+    -- `app_ascent` + `quote_open_subst`.
+    (fun _ _ _ihS {_ _ _ _} _ _ _ => by sorry)
+    -- stuckRecFix / stuckRecIota / *Ann: same shape as app.
+    (fun _ _ {_ _ _ _} _ _ _ => by sorry)
+    (fun _ _ {_ _ _ _} _ _ _ => by sorry)
+    (fun _ {_ _ _ _} _ _ _ => by sorry)
+    (fun _ {_ _ _ _} _ _ _ => by sorry)
+    S Γ nA nB h) hS hΓ ha hb
+
+/-- `SynthN`'s bridge: a neutral inhabits its synthesised
+type. Same recursor application; this entry just projects
+the `MS` motive. -/
+theorem SynthN_to_Subtype'
+    {Γ n τ} (h : SynthN Γ n τ)
+    {Se Γe ne τe}
+    (hΓ : QuotesCtx Γ Γe)
+    (hn : quoteNeutral fuelω Γ.size n = some ne)
+    (hτ : quote fuelω Γ.size τ = some τe) :
+    Subtype' Se Γe ne τe := by
+  -- Reuse the SubN bridge's recursor application by going
+  -- through a trivial SubN derivation isn't possible; just
+  -- call the recursor directly here too. For now, sorried —
+  -- it's the same 24 cases as above with the MS motive
+  -- projected. Once `SubN_to_Subtype'` is fully closed, this
+  -- becomes a copy with `@SynthN.rec` instead of `@SubN.rec`.
+  sorry
+
 /-- Bridge to the Expr-level relation. Each `SubV` constructor
 maps to a `Subtype'` constructor on the quoted forms.
 
 `hS` says every seen-pair quotes into `Se`; `hΓ` says every
 context entry quotes into `Γe` at the right de Bruijn index;
-`ha`/`hb` quote the goal's endpoints. The induction is on
-the `SubV` derivation; the closure-opening cases use
-`quote_open_subst`. -/
+`ha`/`hb` quote the goal's endpoints. -/
 theorem SubV_to_Subtype'
     {S Γ a b} (h : SubV S Γ a b)
     {Se : List (Expr × Expr)} {Γe : Ctx} {ae be : Expr}
-    (hS : ∀ p ∈ S, ∃ pe ∈ Se,
-            quote fuelω Γ.size p.1 = some pe.1 ∧
-            quote fuelω Γ.size p.2 = some pe.2)
-    (hΓ : ∀ k τ, Γ[k]? = some τ →
-            ∃ τe, Γe.get? (Γ.size - 1 - k) = some τe ∧
-                  quote fuelω (k+1) τ = some τe)
+    (hS : QuotesSeen S Γ Se)
+    (hΓ : QuotesCtx Γ Γe)
     (ha : quote fuelω Γ.size a = some ae)
     (hb : quote fuelω Γ.size b = some be) :
     Subtype' Se Γe ae be := by
-  -- `SubV` is mutually inductive with `SubN`/`SynthN`, so
-  -- `induction` rejects it (multiple motives). The full
-  -- proof needs a *mutual* bridge — `SubV_to_Subtype'`,
-  -- `SubN_to_Subtype'`, `SynthN_to_Subtype'_bvar` — using
-  -- the joint recursor `SubV.rec`. For now, the three
-  -- non-recursive constructors are dispatched by `cases`;
-  -- the recursive ones need the mutual structure plus
-  -- `quote_open_subst` and are sorried with the per-case
-  -- plan documented.
-  cases h with
-  | hyp hin =>
-      -- (a, b) ∈ S; hS gives a quoted pair in Se whose
-      -- components are ae, be (by uniqueness of quote).
-      obtain ⟨⟨pe1, pe2⟩, hpe, hq1, hq2⟩ := hS _ hin
-      simp only at hq1 hq2
-      rw [ha] at hq1; rw [hb] at hq2
-      cases hq1; cases hq2
-      exact .hyp hpe
-  | refl =>
-      rw [ha] at hb; cases hb
-      exact .refl ae
-  | top =>
-      -- b = .type; quote .type = some .type at any depth.
-      have : be = .type := by
-        have hf : fuelω = fuelω.pred + 1 := rfl
-        rw [hf] at hb; unfold quote at hb
-        injection hb with hb; exact hb.symm
-      exact this ▸ .top ae
-  | lam hoA hoB hd hbody =>
-      -- ae = .lam domAe bodyAe, be = .lam domBe bodyBe via
-      -- quote-shape. IH on hd → `domBe ⊑ domAe`; IH on hbody
-      -- (at Γ.push domB, depth+1) → `bodyAe ⊑ bodyBe` under
-      -- `domBe :: Γe`. Subtype'.lam matches directly (after
-      -- the A6 fix both push `domB`). The body
-      -- correspondence needs `quote_open_subst` to relate
-      -- `quote (cl.openω fresh)` to `quoteClosure cl` —
-      -- but for fresh = .var Γ.size, opening with fresh and
-      -- quoting at depth+1 *is* `quoteClosure` (by
-      -- definition), so this case may close without the
-      -- general lemma.
-      sorry
-  | iota_intro hoB hann hbody =>
-      -- Subtype'.iota_intro needs `ae ⊑ anne` and
-      -- `ae ⊑ bodye.subst 0 ae`. IH on hbody (at S') gives
-      -- `ae ⊑ re` where re = quote(opened body);
-      -- `quote_open_subst` bridges `re ↔ bodye.subst 0 ae`.
-      sorry
-  | unfold_fix_R hoB hbody => sorry
-  | unfold_fix_L hoA hne hbody => sorry
-  | unfold_iota_L hoA hne hbody => sorry
-  | iota_struct hoA hoB hann hbody => sorry
-  | fix_struct hoA hoB hann hbody => sorry
-  | stuckRec_struct h1 h2 h3 h4 => sorry
-  | neutral_struct hN =>
-      -- `SubN_to_Subtype'`: the quoted neutral spines are
-      -- `app_cong`-related with arg equivalence.
-      sorry
-  | neutral_ascent hsynth hsub =>
-      -- `SynthN_to_Subtype'_bvar`: synthN.var → Subtype'.bvar
-      -- at the right index; .app/.stuckRec → app_ascent.
-      sorry
-  | revapp_R hvapp hne hbody =>
-      -- b' = vappω f arg (one forced unfold of the stuck
-      -- recursive head). quote b' relates to quote b
-      -- (= `.app (quote f) (quote arg)`) by exactly one
-      -- `Subtype'.unfold_*` step (since vapp at unf>0
-      -- unfolds the fix/iota once). Then `Subtype'.trans`
-      -- with IH on hbody.
-      sorry
-  | revapp_L hvapp hne hbody => sorry
+  -- Same recursor application as `SubN_to_Subtype'`, but
+  -- projecting the `MV` motive at the end (`@SubV.rec`
+  -- instead of `@SubN.rec`). The 24 case-handlers are
+  -- identical; rather than duplicate ~150 lines, this
+  -- delegates to a single shared application once the
+  -- closure-opening cases close. Until then, sorried with
+  -- the per-case status mirroring `SubN_to_Subtype'`:
+  --   PROVEN: hyp, refl, top, neutral_struct (full), SubN.var,
+  --           SubN.app, SubN.stuckRec, neutral_ascent (mod
+  --           quote-totality)
+  --   GATED on eval_unf_equiv: lam, iota_struct, fix_struct,
+  --           stuckRec_struct, iota_intro, unfold_fix_R/L,
+  --           unfold_iota_L, revapp_R/L, SynthN.app/stuckRec*
+  --   GATED on quote-shift: SynthN.var
+  sorry
 
 end NbE
