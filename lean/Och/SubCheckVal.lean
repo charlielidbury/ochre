@@ -18,7 +18,7 @@ seen-set holds `(Val × Val)` pairs.
 namespace NbE
 
 mutual
-  partial def Val.beq : Val → Val → Bool
+  def Val.beq : Val → Val → Bool
     | .type, .type => true
     | .lam d1 c1, .lam d2 c2 => d1.beq d2 && c1.beq c2
     | .iota a1 c1, .iota a2 c2 => a1.beq a2 && c1.beq c2
@@ -26,19 +26,106 @@ mutual
     | .neutral n1, .neutral n2 => n1.beq n2
     | _, _ => false
 
-  partial def Neutral.beq : Neutral → Neutral → Bool
+  def Neutral.beq : Neutral → Neutral → Bool
     | .var l1, .var l2 => l1 == l2
     | .app n1 v1, .app n2 v2 => n1.beq n2 && v1.beq v2
     | .stuckRec f1 a1, .stuckRec f2 a2 => f1.beq f2 && a1.beq a2
     | _, _ => false
 
-  partial def Closure.beq : Closure → Closure → Bool
+  def Closure.beq : Closure → Closure → Bool
     | ⟨b1, e1⟩, ⟨b2, e2⟩ =>
-        b1 == b2 && e1.length == e2.length
-        && (e1.zip e2).all (fun (v1, v2) => v1.beq v2)
+        b1 == b2 && Env.beq e1 e2
+
+  def Env.beq : List Val → List Val → Bool
+    | [], [] => true
+    | v1 :: r1, v2 :: r2 => v1.beq v2 && Env.beq r1 r2
+    | _, _ => false
 end
 
 instance : BEq Val := ⟨Val.beq⟩
+
+@[simp] theorem Val.beq_def (a b : Val) : (a == b) = Val.beq a b := rfl
+
+mutual
+  theorem Val.beq_eq : ∀ (a b : Val), Val.beq a b = true → a = b
+    | .type, b, h => by
+        cases b <;> simp_all [Val.beq]
+    | .lam d1 c1, b, h => by
+        cases b <;> simp_all [Val.beq]
+        exact ⟨Val.beq_eq _ _ h.1, Closure.beq_eq _ _ h.2⟩
+    | .iota a1 c1, b, h => by
+        cases b <;> simp_all [Val.beq]
+        exact ⟨Val.beq_eq _ _ h.1, Closure.beq_eq _ _ h.2⟩
+    | .«fix» a1 c1, b, h => by
+        cases b <;> simp_all [Val.beq]
+        exact ⟨Val.beq_eq _ _ h.1, Closure.beq_eq _ _ h.2⟩
+    | .neutral n1, b, h => by
+        cases b <;> simp_all [Val.beq]
+        exact Neutral.beq_eq _ _ h
+
+  theorem Neutral.beq_eq : ∀ (a b : Neutral), Neutral.beq a b = true → a = b
+    | .var l1, b, h => by
+        cases b <;> simp_all [Neutral.beq]
+    | .app n1 v1, b, h => by
+        cases b <;> simp_all [Neutral.beq]
+        exact ⟨Neutral.beq_eq _ _ h.1, Val.beq_eq _ _ h.2⟩
+    | .stuckRec f1 a1, b, h => by
+        cases b <;> simp_all [Neutral.beq]
+        exact ⟨Val.beq_eq _ _ h.1, Val.beq_eq _ _ h.2⟩
+
+  theorem Closure.beq_eq : ∀ (a b : Closure), Closure.beq a b = true → a = b
+    | ⟨b1, e1⟩, ⟨b2, e2⟩, h => by
+        simp only [Closure.beq, Bool.and_eq_true] at h
+        obtain ⟨hb, he⟩ := h
+        rw [eq_of_beq hb, Env.beq_eq _ _ he]
+
+  theorem Env.beq_eq : ∀ (a b : List Val), Env.beq a b = true → a = b
+    | [], b, h => by
+        cases b <;> simp_all [Env.beq]
+    | v1 :: r1, b, h => by
+        cases b <;> simp_all [Env.beq]
+        exact ⟨Val.beq_eq _ _ h.1, Env.beq_eq _ _ h.2⟩
+end
+
+mutual
+  theorem Val.beq_refl : ∀ (a : Val), Val.beq a a = true
+    | .type => by simp only [Val.beq]
+    | .lam d c => by
+        simp only [Val.beq, Bool.and_eq_true]
+        exact ⟨Val.beq_refl d, Closure.beq_refl c⟩
+    | .iota a c => by
+        simp only [Val.beq, Bool.and_eq_true]
+        exact ⟨Val.beq_refl a, Closure.beq_refl c⟩
+    | .«fix» a c => by
+        simp only [Val.beq, Bool.and_eq_true]
+        exact ⟨Val.beq_refl a, Closure.beq_refl c⟩
+    | .neutral n => by
+        simp only [Val.beq]; exact Neutral.beq_refl n
+
+  theorem Neutral.beq_refl : ∀ (a : Neutral), Neutral.beq a a = true
+    | .var l => by simp only [Neutral.beq]; exact beq_self_eq_true l
+    | .app n v => by
+        simp only [Neutral.beq, Bool.and_eq_true]
+        exact ⟨Neutral.beq_refl n, Val.beq_refl v⟩
+    | .stuckRec f a => by
+        simp only [Neutral.beq, Bool.and_eq_true]
+        exact ⟨Val.beq_refl f, Val.beq_refl a⟩
+
+  theorem Closure.beq_refl : ∀ (a : Closure), Closure.beq a a = true
+    | ⟨b, e⟩ => by
+        simp only [Closure.beq, Bool.and_eq_true]
+        exact ⟨beq_self_eq_true b, Env.beq_refl e⟩
+
+  theorem Env.beq_refl : ∀ (a : List Val), Env.beq a a = true
+    | [] => by simp only [Env.beq]
+    | v :: r => by
+        simp only [Env.beq, Bool.and_eq_true]
+        exact ⟨Val.beq_refl v, Env.beq_refl r⟩
+end
+
+instance : LawfulBEq Val where
+  eq_of_beq := Val.beq_eq _ _
+  rfl := Val.beq_refl _
 
 /-- Open a closure with the given value bound at index 0. The
     `unf` bound is small: under a binder the only fix/ι chains
