@@ -61,7 +61,12 @@ mutual
         clA.openω (.neutral (.var Γ.size)) = some bA →
         clB.openω (.neutral (.var Γ.size)) = some bB →
         SubV S Γ domB domA →
-        SubV S (Γ.push domB) bA bB →
+        -- The algorithm pushes `domA` (LHS domain) — see
+        -- SubCheckVal.lean:82. `Subtype'.lam` pushes the
+        -- *target* domain `domB`. The discrepancy is bridged
+        -- in `SubV_to_Subtype'` via `Subtype'.weaken`-on-Γ
+        -- (a Γ-monotonicity lemma, not yet stated).
+        SubV S (Γ.push domA) bA bB →
         SubV S Γ (.lam domA clA) (.lam domB clB)
     | iota_intro {S Γ a ann clB bB} :
         clB.openω a = some bB →
@@ -139,45 +144,54 @@ we take the stronger `beq → Eq` as a working assumption;
 weakening it is future work. -/
 axiom Val.beq_eq_ax {a b : Val} : (a == b) = true → a = b
 
-/-- Membership decision: the `seen.any (· == (a,b))` guard. -/
+/-- Membership decision: the `seen.any` guard. The algorithm
+checks `a == a' && b == b'` (line 71); reflect into `∈`. -/
 theorem seen_any_mem {S : List (Val × Val)} {a b : Val}
-    (h : S.any (fun p => p.1 == a && p.2 == b) = true) :
+    (h : (S.any fun (a', b') => a == a' && b == b') = true) :
     (a, b) ∈ S := by
   rw [List.any_eq_true] at h
   obtain ⟨⟨x, y⟩, hmem, heq⟩ := h
   simp only [Bool.and_eq_true] at heq
   obtain ⟨hx, hy⟩ := heq
-  rw [Val.beq_eq_ax hx, Val.beq_eq_ax hy] at hmem
+  cases Val.beq_eq_ax hx
+  cases Val.beq_eq_ax hy
   exact hmem
 
+set_option maxHeartbeats 4000000
+
+/-- The succ-body of `subCheckVal` is large enough that
+unfolding needs ~2-4M heartbeats. Refactoring `subCheckVal`
+to factor out the match arms into a separate
+`subCheckValMatch` would let it unfold at default heartbeats
+(and is the cleaner long-term fix), but is deferred to avoid
+conflicting with the val-beq-nonpartial worktree fork.
+
+Guard order (from the source): `a == b`, then `seen.any`,
+then `b == .type`, then the match. -/
 theorem subCheckVal_subV
     {fuel : Nat} {Γ : TyCtx} {S : List (Val × Val)} {a b : Val}
     (h : subCheckVal fuel Γ S a b = .ok true) :
     SubV S Γ a b := by
-  -- Fuel induction. The `succ` body of `subCheckVal` is large
-  -- enough that `unfold` + `simp` exhausts Lean's heartbeat
-  -- budget; the proof needs per-guard equation lemmas
-  -- (`subCheckVal_succ_guard_refl`, `…_top`, `…_seen`,
-  -- `…_match`) that expose one branch at a time without
-  -- whnf'ing the whole body. Those lemmas are themselves
-  -- gated on `Val.beq` being non-partial (currently
-  -- `partial def`, so it doesn't unfold). The parallel-lemma
-  -- forks below address both prerequisites; until they land
-  -- this is the proof skeleton:
-  --
-  --   induction fuel generalizing Γ S a b with
-  --   | zero => simp [subCheckVal] at h
-  --   | succ fuel ih =>
-  --     rw [subCheckVal_succ_eq] at h
-  --     split at h  -- guard 1: a == b
-  --     · exact (Val.beq_eq …) ▸ .refl
-  --     split at h  -- guard 2: b == .type
-  --     · exact … ▸ .top
-  --     split at h  -- guard 3: seen
-  --     · exact .hyp (seen_any_mem …)
-  --     -- match arms via `ih` + `Closure.open_fuel_mono`
-  --     …
-  sorry
+  induction fuel generalizing Γ S a b with
+  | zero => unfold subCheckVal at h; simp at h
+  | succ fuel ih =>
+    unfold subCheckVal at h
+    simp only [] at h
+    -- Guard 1: `a == b`
+    split at h
+    · next hab => exact (Val.beq_eq_ax hab) ▸ SubV.refl
+    -- Guard 2: `seen.any`
+    split at h
+    · next hseen => exact SubV.hyp (seen_any_mem hseen)
+    -- Guard 3: `b == .type`
+    split at h
+    · next hbt => exact (Val.beq_eq_ax hbt) ▸ SubV.top
+    -- Match arms: each returns `.ok true` only via recursive
+    -- `subCheckVal` calls; `ih` gives `SubV` for those, and
+    -- the matching constructor combines them. ~12 cases.
+    sorry
+
+set_option maxHeartbeats 200000
 
 /-!
 ## Supporting lemmas the match arms need
