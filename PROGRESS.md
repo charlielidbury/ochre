@@ -637,6 +637,43 @@ constructor; the seen-set has a declarative counterpart;
 the whole stack is non-partial. `subCheckVal_sound` is now a
 matter of fuel induction with no architectural blockers.
 
+### `subCheckVal_subV` guard arms proven; supporting lemmas closed (5862916f)
+
+Three parallel worktree forks, all landed:
+
+  1. **`Val.beq` non-partial + `LawfulBEq`** (81d7935): the
+     `partial` came from `Closure.beq`'s
+     `(e1.zip e2).all (Val.beq …)` hiding the recursion in a
+     higher-order arg; replaced with explicit `Env.beq` in
+     the same mutual block. `beq_eq`/`beq_refl` proven by
+     mutual structural induction; `LawfulBEq Val` instance.
+
+  2. **`eval`/`vapp` fuel monotonicity** (45277e3): combined
+     Nat-induction proving both halves; `unf` held fixed
+     (only decrements within a vapp chain, never across the
+     n→m bridge). `Closure.open_fuel_mono` is a one-liner.
+
+  3. **`dtrue ⊑ dBool` body premise fully closed** (d0b6070):
+     the flagship coinductive derivation. `unfold_fix_R` →
+     `iota_intro` (annotation via `.hyp`) → `unfold_fix_L` →
+     `unfold_iota_L` → `lam`³, with the contravariant
+     P-domain closing via `.hyp` at seen[3], the t-domain
+     via `app_cong` with `dtrue ≡ ι_dtrue` (each direction
+     one fix-unfold), the f-domain via `.top`, and the body
+     `t ⊑ P dtrue` via `.bvar`. Every `Subtype'` constructor
+     exercised; no sorry.
+
+`SoundnessProof.lean`: the `SubV` Val-level relation +
+`subCheckVal_subV` proof. Guard arms (refl via `eq_of_beq`,
+hyp via `seen_any_mem`, top) closed by fuel induction at
+`maxHeartbeats 4M` (the succ-body is too large for default
+unfold; refactoring `subCheckVal` to factor out the match
+is the cleaner long-term fix). The match arms remain
+sorried (each is `ih` + constructor + `openω_of_open`).
+
+**No axioms** in the proven path: `Val.beq_eq_ax` removed.
+Build green; 0 markers, 0 Std/Tests sorries.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
