@@ -259,13 +259,79 @@ theorem subCheckValMatch_subV
       (Closure.openω_of_openFresh hfuel hbA)
       (Closure.openω_of_openFresh hfuel hbB)
       (ih hcontra) (ih h)
-  -- iota-iota: structural OR iotaIntro fallback. Both branches
-  -- map to SubV constructors (iota_struct / iota_intro), but
-  -- the do-block decomposition is doubled (one for structural,
-  -- one for fallback). Defer to a helper:
-  · sorry
-  -- fix-fix: structural OR unfoldFixR fallback (same shape)
-  · sorry
+  -- iota-iota: structural OR iotaIntro fallback.
+  · next annA clA annB clB =>
+    -- Outer `match structural with | .ok true => … | _ => …`
+    split at h
+    · -- structural = .ok true → SubV.iota_struct
+      rename_i hstruct
+      rcases hannOk :
+          subCheckVal fuel Γ
+            ((.iota annA clA, .iota annB clB) :: S) annA annB
+        with _ | annOk
+      · simp_all [bind, Except.bind]
+      cases annOk with
+      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | true =>
+      rcases hbA : clA.openFresh fuel Γ.size with _ | bA
+      · simp_all [bind, Except.bind, pure, Except.pure]
+      rcases hbB : clB.openFresh fuel Γ.size with _ | bB
+      · simp_all [bind, Except.bind, pure, Except.pure]
+      simp only [hannOk, hbA, hbB, bind, Except.bind, pure,
+                 Except.pure, Bool.not_true, Bool.false_eq_true,
+                 ↓reduceIte] at hstruct
+      exact SubV.iota_struct
+        (Closure.openω_of_openFresh hfuel hbA)
+        (Closure.openω_of_openFresh hfuel hbB)
+        (ih hannOk) (ih hstruct)
+    · -- fallback fired → SubV.iota_intro (same as `_, .iota`)
+      simp only [bind, Except.bind] at h
+      split at h
+      · simp at h
+      rename_i okAnn hokAnn
+      cases hc : okAnn with
+      | false => rw [hc] at h; simp at h
+      | true =>
+      rw [hc] at h hokAnn
+      simp only [Bool.not_true, Bool.false_eq_true,
+                 ↓reduceIte] at h
+      split at h
+      · simp at h
+      rename_i bodyB' hopen
+      exact SubV.iota_intro
+        (Closure.openω_of_open hfuel hopen)
+        (ih hokAnn) (ih h)
+  -- fix-fix: structural OR unfoldFixR fallback (same shape).
+  · next annA clA annB clB =>
+    split at h
+    · -- structural = .ok true → SubV.fix_struct
+      rename_i hstruct
+      rcases hannOk :
+          subCheckVal fuel Γ
+            ((.«fix» annA clA, .«fix» annB clB) :: S) annA annB
+        with _ | annOk
+      · simp_all [bind, Except.bind]
+      cases annOk with
+      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | true =>
+      rcases hbA : clA.openFresh fuel Γ.size with _ | bA
+      · simp_all [bind, Except.bind, pure, Except.pure]
+      rcases hbB : clB.openFresh fuel Γ.size with _ | bB
+      · simp_all [bind, Except.bind, pure, Except.pure]
+      simp only [hannOk, hbA, hbB, bind, Except.bind, pure,
+                 Except.pure, Bool.not_true, Bool.false_eq_true,
+                 ↓reduceIte] at hstruct
+      exact SubV.fix_struct
+        (Closure.openω_of_openFresh hfuel hbA)
+        (Closure.openω_of_openFresh hfuel hbB)
+        (ih hannOk) (ih hstruct)
+    · -- fallback fired → SubV.unfold_fix_R (same as `_, .fix`)
+      split at h
+      · simp at h
+      rename_i b' hopen
+      exact SubV.unfold_fix_R
+        (Closure.openω_of_open hfuel hopen)
+        (ih h)
   -- _, .iota
   · next a' ann clB hNotIota =>
     simp only [bind, Except.bind] at h
@@ -292,7 +358,56 @@ theorem subCheckValMatch_subV
       (Closure.openω_of_open hfuel hopen)
       (ih h)
   -- stuckRec, stuckRec: structural OR re-vapp on either side
-  · sorry
+  · next fA aA fB aB =>
+    split at h
+    · -- structural = .ok true → SubV.stuckRec_struct
+      rename_i hstruct
+      rcases h1 : subCheckVal fuel Γ
+          ((.neutral (.stuckRec fA aA),
+            .neutral (.stuckRec fB aB)) :: S) fA fB with _ | r1
+      · simp_all [bind, Except.bind]
+      cases r1 with
+      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | true =>
+      rcases h2 : subCheckVal fuel Γ
+          ((.neutral (.stuckRec fA aA),
+            .neutral (.stuckRec fB aB)) :: S) fB fA with _ | r2
+      · simp_all [bind, Except.bind, pure, Except.pure]
+      cases r2 with
+      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | true =>
+      rcases h3 : subCheckVal fuel Γ
+          ((.neutral (.stuckRec fA aA),
+            .neutral (.stuckRec fB aB)) :: S) aA aB with _ | r3
+      · simp_all [bind, Except.bind, pure, Except.pure]
+      cases r3 with
+      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | true =>
+      simp only [h1, h2, h3, bind, Except.bind, pure,
+                 Except.pure, Bool.not_true, Bool.false_eq_true,
+                 ↓reduceIte] at hstruct
+      exact SubV.stuckRec_struct (ih h1) (ih h2) (ih h3) (ih hstruct)
+    · -- fallback: re-vapp RHS, then maybe LHS
+      split at h
+      · simp at h  -- vapp fB aB = none → .error
+      rename_i b' hvappR
+      split at h
+      · -- b' == b: try LHS
+        rename_i hbeqR
+        split at h
+        · simp at h  -- vapp fA aA = none → .error
+        rename_i a' hvappL
+        split at h
+        · simp at h  -- a' == a → .ok false
+        rename_i hbeqL
+        exact SubV.revapp_L
+          (Val.ne_of_beq_false (by simpa using hbeqL))
+          (ih h)
+      · -- b' ≠ b: revapp_R
+        rename_i hbeqR
+        exact SubV.revapp_R
+          (Val.ne_of_beq_false (by simpa using hbeqR))
+          (ih h)
   -- _, .neutral .stuckRec: re-vapp R
   · split at h
     · simp at h
@@ -517,9 +632,33 @@ theorem synthNeutral_synthN
       | _ => simp [hn'ty', hn'tyV] at h
     -- .stuckRec f arg
     next =>
-      -- Two layers: match on f (fix/iota/other), then on ann
-      -- (lam/other). Each path leads to a SynthN constructor.
-      sorry
+      -- Outer match on `f`: the or-pattern `.fix ann _ | .iota
+      -- ann _` produces two split cases plus the `_` catch-all.
+      split at h
+      · -- f = .fix ann cl; inner match on ann
+        rename_i ann cl
+        split at h
+        · -- ann = .lam dom cl'; result = .ok (cl'.open fuel arg)
+          rename_i dom cl'
+          simp only [Except.ok.injEq] at h
+          exact SynthN.stuckRecFix rfl (Closure.openω_of_open hfuel' h)
+        · -- ann ≠ .lam; result = .ok (some ann); so τ = ann
+          rename_i hnotlam
+          simp only [Except.ok.injEq, Option.some.injEq] at h
+          exact h ▸ SynthN.stuckRecFixAnn
+            (fun d c heq => hnotlam d c heq)
+      · -- f = .iota ann cl; same shape
+        rename_i ann cl
+        split at h
+        · rename_i dom cl'
+          simp only [Except.ok.injEq] at h
+          exact SynthN.stuckRecIota rfl (Closure.openω_of_open hfuel' h)
+        · rename_i hnotlam
+          simp only [Except.ok.injEq, Option.some.injEq] at h
+          exact h ▸ SynthN.stuckRecIotaAnn
+            (fun d c heq => hnotlam d c heq)
+      · -- f = other; result = .ok none; impossible since h : … = some τ
+        simp at h
 termination_by (fuel, 0)
 
 end
