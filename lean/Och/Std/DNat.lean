@@ -18,12 +18,18 @@ dNat = ι(dNat : Type).
 ```
 
 Split rationale:
-- `dNat` / `dzero` use `ι` (iota) — the self-reference in each of these
-  definitions is used for dependent elimination (the motive P ranges over
-  the type itself), not for recursion.
-- `dsucc` uses `fix` — `dsucc` appears in its own body applied to the
-  predecessor argument (`P (dsucc pred)`). This is genuine recursion on the
-  constructor term.
+- `dNat` uses `fix N:Type. ι self:N. …` (matching dBool, e08bce9). The
+  outer `fix` binds the *type* `N`, used in every type ascription
+  (`λm:N`, `λpred:N`, `dsucc:(N→N)`); the inner `ι` binds the *value*
+  `self`, used only in the final `P self`. iotaIntro substitutes `self`
+  (so `P self` becomes `P done_` when checking `done_ ⊑ dNat`), but `N`
+  stays `N` (= dNat after fix-unfold), so `λpred:N` doesn't
+  over-specialise. Under the previous ι-only encoding, `λpred:bvar0`
+  became `λpred:done_` after iotaIntro and the contravariant check
+  required `dNat ⊑ done_` — making `done_ ⊑ dNat` unsatisfiable.
+- `dzero` uses `ι` alone — its self-reference is for the motive domain
+  (`λP:(dzero→Type)`), not type ascriptions on other binders.
+- `dsucc` uses `fix` — genuine recursion on the constructor term.
 
 Key design:
 - Each constructor constrains P's domain to ITSELF (not dNat). This is
@@ -45,11 +51,11 @@ namespace Std
 -- ============================================================
 
 def dNat := och{
-  ι dNat:Type.
-    let dzero : dNat = ι dzero:dNat. λP:(dzero → Type). λz:(P dzero). λs:Type. z in
-    let dsucc : (dNat → dNat) = fix dsucc:(dNat → dNat).
-      λm:dNat. λP:((dsucc m) → Type). λz:Type. λs:(λpred:dNat. P (dsucc pred)). s m in
-    λP:(dNat → Type). λz:(P dzero). λs:(λpred:dNat. P (dsucc pred)). P dNat
+  fix N:Type. ι self:N.
+    let dzero : N = ι dzero:N. λP:(dzero → Type). λz:(P dzero). λs:Type. z in
+    let dsucc : (N → N) = fix dsucc:(N → N).
+      λm:N. λP:((dsucc m) → Type). λz:Type. λs:(λpred:N. P (dsucc pred)). s m in
+    λP:(N → Type). λz:(P dzero). λs:(λpred:N. P (dsucc pred)). P self
 }
 
 def dzero := och{
@@ -118,23 +124,22 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
 example : subCheck 200 dzero dNat = .ok true := by native_decide
 
--- TODO[mega-loop]: done_/dtwo/dthree ⊑ dNat. With NbE.subCheckVal
--- (no fan-out) the answer is `.ok false` — and the trace shows
--- this is the *encoding*, not the checker. dNat's `λpred:dNat`
--- uses the ι-self bvar, so iotaIntro substitutes it to
--- `λpred:done_`. But done_'s body calls `s dzero`, and the
--- caller's `s` (typed at dNat[done_]'s λs domain) expects
--- `pred:done_` — yet `dzero ⊄ done_`. So done_ genuinely doesn't
--- satisfy dNat's self-type under standard function subtyping.
---
--- Compare dBool (e08bce9): `fix B:Type. ι self:B. … λP:(B→Type) …`
--- separates the *type* binder B (fix) from the *value* binder
--- self (ι). iotaIntro substitutes self; B stays B (= dBool after
--- fix-unfold). dNat conflates them — its `λpred:bvar0` should be
--- `λpred:B` (the type), not `λpred:self` (the value). The fix is
--- to wrap dNat in `fix N:Type. ι self:N. …` and use `N` for type
--- ascriptions and `self` only for `P self` at the end.
-example : subCheck 200 done_ dNat = .ok true := by sorry
+-- done_ ⊑ dNat. Closed by wrapping dNat in `fix N:Type. ι self:N.
+-- …` (matching dBool's e08bce9 pattern): the *type* binder N is
+-- stable under iotaIntro, so `λpred:N` stays `λpred:dNat` after
+-- substituting `self := done_`, and the contravariant check is
+-- reflexive. Under the previous ι-only encoding, `λpred:bvar0`
+-- became `λpred:done_` and the contra needed `dNat ⊑ done_`,
+-- which is correctly false — done_ would call `s dzero` but the
+-- caller's `s` would expect `pred:done_`, and `dzero ⊄ done_`.
+example : subCheck 200 done_ dNat = .ok true := by native_decide
+
+-- TODO[mega-loop]: dtwo/dthree ⊑ dNat. The fix+ι encoding makes
+-- these *correct* (same path as done_) but subCheckNF still
+-- fans out: each dsucc layer adds another closed-`dNat`
+-- substitution into the unfold path. Under NbE.subCheckVal
+-- (closures share the substituend) these should be tractable;
+-- the integration is the remaining work.
 example : subCheck 200 dtwo dNat = .ok true := by sorry
 example : subCheck 200 dthree dNat = .ok true := by sorry
 

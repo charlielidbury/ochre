@@ -406,6 +406,16 @@ The earlier "NbE root cause" diagnosis below was the fan-out
 *symptom*; subCheckVal removed the fan-out and exposed the
 underlying encoding mismatch.
 
+**Confirmed**: with `dNat = fix N:Type. ι self:N. …`,
+`subCheck 200 done_ dNat = .ok true` under the existing
+subCheckNF. All prior tests still pass (build green, no
+regressions in DBool/Array/Vec/Tests/NbETests). `dtwo/dthree`
+are now *correct* (the contra is reflexive) but subCheckNF
+still fans out on them — that's the genuine NbE-integration
+work, now decoupled from the encoding question. `vecResult`
+(which uses dthree) and `appendVec_wrong` (β-domain-check)
+likewise.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
