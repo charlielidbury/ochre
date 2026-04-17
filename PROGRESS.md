@@ -2,29 +2,30 @@
 
 ## Current state (2026-04-16)
 
-Phase 1 active. Full Och was just restructured: the bundled `μ` binder has
-been split into separate `ι` (self-type) and `fix` (recursive type)
-constructors. `lake build` compiles. Simple Och (`lean/Och/Simple/`) is
-untouched and remains the proven-sound metatheory reference.
+**Phase 1 complete.** All 41 `TODO[mega-loop]` markers closed; zero
+`sorry` in `Och/Std/` or `Och/Tests.lean`. `lake build` compiles.
 
-**41 → 3 `TODO[mega-loop]` markers** over 2026-04-16. NbE
-evaluator + `subCheckVal` (Val-domain checker) are in place. The
-remaining `done_/dtwo/dthree ⊑ dNat` failure is the *encoding*,
-not the checker: dNat uses `ι` alone (no `fix` wrapper), so
-`λpred:dNat-self` becomes `λpred:done_` after iotaIntro and the
-contravariant check requires `dNat ⊑ done_`. dBool was fixed in
-e08bce9 to `fix B:Type. ι self:B. …` (separate type/value
-binders); dNat needs the same treatment. See the
-phase1-subcheckval entry and DNat.lean's TODO for the trace. DBool.lean and
-Array.lean are fully closed (zero `sorry`). The appendVec north-star
-test (`appendVec ⊑ T → Vec T → Vec T → Vec T`) and the abstract
-`appendArrays` typing both pass. The remaining six markers cluster
-into three obstacles — see the phase1-testvec2 entry below for the
-catalogue. The single deepest one is `done_ ⊑ dNat`: iotaIntro on
-`dNat` substitutes the closed `dNat` term for every `:dNat`
-ascription in its own body, so the search fans out. Two agents have
-independently concluded the fix is an NbE/closure-style evaluator
-(so substitution doesn't copy) rather than another muSeen tweak.
+The Och core now has *three* checkers:
+  - `subCheckNF` (Eval.lean) — original Expr-domain prototype.
+    Handles DBool/Array/done_ but fans out on dtwo+ (no sharing).
+  - `NbE.subCheck` (SubCheckVal.lean) — Val-domain via closures.
+    Handles all dNat numerals + vecResult. Used directly by the
+    tests `subCheckNF` can't reach.
+  - `NbE.typeCheck` (TyCheck.lean) — bidirectional, with a domain
+    check at every `.app`. The only checker that rejects
+    `appendVec_wrong` (the others normalise first, β'ing the
+    ill-typed inner application away).
+
+Simple Och (`lean/Och/Simple/`) remains the proven-sound
+metatheory reference. The full-Och Soundness.lean is intentionally
+empty — populating it is the Phase 2 work, for which `typeCheck` +
+`subCheckVal` (not `subCheckNF`) are the algorithms to verify.
+
+What got us here, in order: coinductive seen-set discipline →
+removed unsound `[fix-ann]` → neutral-head gate → dropped β domain
+check → NbE evaluator → subCheckVal → `fix N. ι self.` encoding
+for dNat → stuckRec-stuckRec structural arms → bidirectional
+`typeCheck`. See the per-agent entries below for traces.
 
 ### Agent phase1-coinductive-seen, 2026-04-16
 
@@ -454,6 +455,53 @@ the β-domain-check restored in the typing evaluator.
 
 **Markers: 2 → 1. Std sorries: 2 → 1.** Last marker:
 appendVec_wrong.
+
+### TyCheck.lean: bidirectional pass; appendVec_wrong closed (5862916f)
+
+Two separate experiments confirmed the β-domain-check cannot
+live inside `absEval`/`subCheckNF`:
+
+  1. **beta-restore worktree**: full-fuel lenient check hangs
+     (every β through `Array_` triggers a `done_ ⊑ dNat`
+     side-goal, which itself β's through `Array_`, …). At fuel
+     ≤64 it returns spurious `.ok false` for legitimate `Array_
+     done_` — 7 Array.lean regressions.
+  2. **Targeted gate** (only on neutral-headed args): regresses
+     `appendArrays` typing because `arr ⊑ Pair Type Type`
+     ascends through the muSeen-gated `Array_ (dsucc pred) T`
+     to `Type`, losing the `Pair T (Array_ pred T)` reduct.
+
+Both fail for the same architectural reason: the domain check
+calls `subCheckNF` which calls `absEval` which calls the domain
+check. The standard escape is a *separate* bidirectional pass
+that walks the syntactic term, doing one domain check per
+`.app`, with NbE supplying conversion as a black box.
+
+`Och/TyCheck.lean` implements this:
+  - `tyInfer`/`tyCheck` mutual; `whnfPi` unfolds fix/iota to
+    expose Π heads (substituting the inhabitant for ι-self).
+  - `.fix`/`.iota` are black boxes of their annotation — the
+    pass does not recurse into bodies, so the unprovable
+    `Array_ (dsucc pred) T ⊑ Pair Type Type` cast inside
+    `appendArrays` never surfaces.
+  - β fast-path for `.app (.lam ..) a` and `.app (.letE ..) a`
+    avoids the quote-codomain round-trip when the head is an
+    inlined helper (`mkVec`, `dpair`).
+
+Fixing this exposed two `subCheckVal` gaps:
+  - `synthNeutral .stuckRec f arg` returned `f`'s annotation,
+    not `(annotation of f) arg` — wrong arity. Fixed.
+  - `subCheckNeutral` had no `.stuckRec, .stuckRec` arm, so
+    `Array_ (dadd n1 n2) T` from two paths (appendArrays' return
+    annotation vs mkVec's domain via the quote codomain) failed
+    even though their `quote`s are *identical Exprs*. Same
+    structural fix as the subCheckVal arm.
+
+`typeCheck appendVec τ = .ok true`; `typeCheck appendVec_wrong τ
+= .error "arg ⊄ dom at fix·5 (arg=?0)"` — rejected exactly at
+the 5th argument of the inner `appendArrays` call.
+
+**Markers: 1 → 0. Std sorries: 1 → 0. PHASE 1 COMPLETE.**
 
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`

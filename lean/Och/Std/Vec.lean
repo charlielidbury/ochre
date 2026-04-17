@@ -1,5 +1,6 @@
 import Och.Macro
 import Och.Eval
+import Och.TyCheck
 import Och.Std.Nat
 import Och.Std.Unit
 import Och.Std.Pair
@@ -140,11 +141,23 @@ section AppendVecTests
 example : subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
   = .ok true := by native_decide
 
--- TODO[mega-loop]: appendVec_wrong should NOT typecheck (dadd n1 n1 ≠ dadd n1 n2
--- under abstract reasoning). This is the negative pair of the above: once the
--- positive test passes, this one must genuinely reject.
-example : subCheck 5000 appendVec_wrong (och{ λT:Type. Vec T → Vec T → Vec T })
-  ≠ .ok true := by sorry
+-- appendVec_wrong should NOT typecheck (the inner `appendArrays
+-- T n1 n1 arr1 arr2` passes `arr2 : Array_ n2 T` where the 5th
+-- parameter — after substituting `n1` for the 3rd — expects
+-- `Array_ n1 T`). Neither `subCheckNF` nor `NbE.subCheck` can
+-- catch this: both normalise first (β is type-blind) and then
+-- compare normal forms, by which point the ill-typed inner
+-- application has already β'd through. The bidirectional
+-- `NbE.typeCheck` walks the *syntactic* term and runs the domain
+-- check at each application, so it sees the bad argument before
+-- β erases it. Paired with the positive check below so the pass
+-- isn't simply over-rejecting.
+example : (NbE.typeCheck 5000 appendVec_wrong
+            (och{ λT:Type. Vec T → Vec T → Vec T })).isOk
+  = false := by native_decide
+example : NbE.typeCheck 5000 appendVec
+            (och{ λT:Type. Vec T → Vec T → Vec T })
+  = .ok true := by native_decide
 
 -- ── Concrete appendVec ──────────────────────────────────────
 

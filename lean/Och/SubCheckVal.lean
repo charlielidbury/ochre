@@ -220,6 +220,15 @@ mutual
           let hd ← subCheckNeutral fuel tyCtx seen n1 n2
           if !hd then return false
           subCheckVal fuel tyCtx seen v1 v2
+      | .stuckRec fA aA, .stuckRec fB aB => do
+          -- Same closure-canonicity normalisation as the
+          -- subCheckVal arm of the same shape, exposed here so
+          -- it composes under `.app, .app` (e.g. comparing
+          -- `Array_ (dadd n1 n2) T` against itself when the two
+          -- `dadd`/`Array_` closures came via different paths).
+          let hd ← subCheckVal fuel tyCtx seen fA fB
+          if !hd then return false
+          subCheckVal fuel tyCtx seen aA aB
       | _, _ => .ok false
 
   /-- Type ascent for a neutral on the LHS: synthesise its type
@@ -265,10 +274,15 @@ mutual
           match (← synthNeutral fuel tyCtx n') with
           | some (.lam _dom cl) => .ok (cl.open fuel arg)
           | _ => .ok none
-      | .stuckRec f _arg =>
-          -- A recursive head's type is its annotation.
+      | .stuckRec f arg =>
+          -- `stuckRec f arg` denotes `f arg`; its type is `f`'s
+          -- annotation applied to `arg` (one Π-elim), not the bare
+          -- annotation.
           match f with
-          | .fix ann _ | .iota ann _ => .ok (some ann)
+          | .fix ann _ | .iota ann _ =>
+              match ann with
+              | .lam _dom cl => .ok (cl.open fuel arg)
+              | _ => .ok (some ann)
           | _ => .ok none
 end
 
