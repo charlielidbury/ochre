@@ -48,7 +48,7 @@ Close Scope stdpp_scope.
 (** Note that we have to introduce a temporary variable [cond] to store the result of the comparison. *)
 Definition f :=
   ASSIGN (b, []) <- &mut (a, []) ;;
-  ASSIGN (i, []) <- Just (Const (IntConst 0)) ;;
+  ASSIGN (i, []) <- Use (Const (IntConst 0)) ;;
   LOOP {{
     ASSIGN (cond, []) <- BinaryOp BLe (Copy (n, [])) (Copy (i, [])) ;;
     IF Copy (cond, []) {{

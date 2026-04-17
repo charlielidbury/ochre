@@ -92,7 +92,7 @@ Variant eval_binary_op : BinOp -> LLBC_sharp_val -> LLBC_sharp_val -> LLBC_sharp
 .
 
 Variant eval_rvalue : rvalue -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
-  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Just op) => vS'
+  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | Eval_bin_op S S' S'' binop op_0 op_1 v0 v1 w
       (eval_op_0 : S |-{op} op_0 => (v0, S')) (eval_op_1 : S' |-{op} op_1 => (v1, S''))

@@ -267,7 +267,7 @@ Variant eval_binary_op : BinOp -> LLBC_val -> LLBC_val -> LLBC_val -> Prop :=
 .
 
 Variant eval_rvalue : rvalue -> LLBC_state -> (LLBC_val * LLBC_state) -> Prop :=
-  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Just op) => vS'
+  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | Eval_binary_op S S' S'' binop op_l op_r vl vr w :
       (S |-{op} op_l => (vl, S')) ->
@@ -344,12 +344,12 @@ Notation b := 2%positive.
 Notation c := 3%positive.
 Notation d := 4%positive.
 Definition main : statement :=
-  ASSIGN (a, []) <- Just (Const (IntConst 1983)) ;;
-  ASSIGN (b, []) <- Just (Const (IntConst 1986)) ;;
+  ASSIGN (a, []) <- Use (Const (IntConst 1983)) ;;
+  ASSIGN (b, []) <- Use (Const (IntConst 1986)) ;;
   ASSIGN (c, []) <- &mut (a, []) ;;
   ASSIGN (d, []) <- &mut (c, [Deref]) ;;
   ASSIGN (c, []) <- &mut (b, []) ;;
-  ASSIGN (d, [Deref]) <- Just (Const (IntConst 58)) ;;
+  ASSIGN (d, [Deref]) <- Use (Const (IntConst 58)) ;;
   Nop
 .
 (** Note: the line << c = &mut b >> overwrites a loan, but as it is an outer loan, it does

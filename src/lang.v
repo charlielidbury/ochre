@@ -37,7 +37,7 @@ Variant BinOp :=
 | BLe.
 
 Variant rvalue :=
-| Just (op : operand)
+| Use (op : operand)
 | BinaryOp (b : BinOp) (op_l : operand) (op_r : operand)
 | BorrowMut (p : place).
 
@@ -68,8 +68,8 @@ Notation "'LOOP'  {{  body  }}" := (Loop body) (at level 90).
 Local Open Scope positive_scope.
 Check (&mut (1, nil)).
 Check (ASSIGN (2, nil) <- &mut (1, nil)).
-Check (ASSIGN (1, nil) <- Just (Const (IntConst 3))).
-Check (ASSIGN (1, nil) <- Just (Const (IntConst 3)) ;; ((ASSIGN (2, nil) <- &mut (1, nil)) ;; Panic)).
+Check (ASSIGN (1, nil) <- Use (Const (IntConst 3))).
+Check (ASSIGN (1, nil) <- Use (Const (IntConst 3)) ;; ((ASSIGN (2, nil) <- &mut (1, nil)) ;; Panic)).
 Check (IF (Const (BoolConst true)) {{ Panic }} ELSE {{ Nop }}).
 
 (* These definitions are not part of the grammar, but they are common for several (all?) semantics of the LLBC. *)

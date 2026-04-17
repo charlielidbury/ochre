@@ -189,7 +189,7 @@ Proof. unfold compute_eval_bin_op. simplify_option; constructor. Qed.
 Definition compute_eval_rv S : forall rv, option {v | S |-{rv} rv => v}.
 Proof.
   intros [op | bin_op op_l op_r | p].
-  (* Case [Just op] *)
+  (* Case [Use op] *)
   - destruct (compute_eval_op S op) as [(vS & ?) | ]; [ | exact None].
     apply Some. exists vS. apply Eval_just. assumption.
   (* Case [BinaryOp b op0 op1] *)

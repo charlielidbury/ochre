@@ -349,7 +349,7 @@ Variant eval_binary_op : BinOp -> HLPL_plus_val -> HLPL_plus_val -> HLPL_plus_va
 .
 
 Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
-  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Just op) => vS'
+  | Eval_just op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | Eval_binary_op S S' S'' binop op_0 op_1 v0 v1 w
       (eval_op_0 : S |-{op} op_0 => (v0, S'))
