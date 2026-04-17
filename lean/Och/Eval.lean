@@ -276,18 +276,22 @@ mutual
           let contra ← subCheckNF fuel ctx seen domB domA
           if !contra then return false
           subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) seen bodyA bodyB
-        | _, .iota _ann body =>
+        | _, .iota ann body =>
           -- iotaIntro (value-sub, Cedille-style):
           --   a ⊑ ι A. body  ←  a ⊑ A  ∧  a ⊑ body[0 := a]
-          -- The seen set records (a, ι A. body) so that recursive checks
-          -- of a against body[0 := a] (which structurally contain ι A. body
-          -- after unfolding subexpressions) terminate. The annotation path
-          -- `a ⊑ A` is represented by the subCheckNF call on the body
-          -- eventually bottoming out at that comparison naturally; we also
-          -- try neutralType as a fallback.
+          -- BOTH premises checked (SoundnessAudit A5: skipping
+          -- the annotation accepts `dtrue ⊑ ι self:Nat_. Type`
+          -- even though `dtrue ⊄ Nat_`). The seen set records
+          -- (a, ι A. body) before either, so when A is the
+          -- enclosing fix-bound type (the `fix B. ι self:B. …`
+          -- pattern), the annotation check `a ⊑ B` recurses to
+          -- `a ⊑ ι …` and closes coinductively via seen'.
           let seen' := (a, b) :: seen
           let u := body.subst 0 a
-          let self_intro := match absEval fuel ctx seen' u with
+          let self_intro := do
+            let okAnn ← subCheckNF fuel ctx seen' a ann
+            if !okAnn then return false
+            match absEval fuel ctx seen' u with
             | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
             | .error e => .error e
           match self_intro with

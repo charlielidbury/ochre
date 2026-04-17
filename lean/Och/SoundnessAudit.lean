@@ -4,6 +4,7 @@ import Och.Eval
 import Och.Std.Pair
 import Och.Std.Nat
 import Och.Std.Bool
+import Och.Std.DBool
 import Och.Std.Unit
 
 /-!
@@ -138,6 +139,84 @@ theorem a3_typeCheckCatches :
   native_decide
 
 /-!
+## A5: iotaIntro skipped the annotation check — RESOLVED
+
+**Was**: both checkers' `_, .iota ann body` arm checked only
+`a ⊑ body[self:=a]`, ignoring `a ⊑ ann`. So `dtrue ⊑ ι
+self:Nat_. Type` was accepted (the body `Type` is `top`)
+despite `dtrue ⊄ Nat_` — the ι-type's "intersection with the
+annotation" semantics was lost.
+
+**Fix** (this commit): both checkers now require `a ⊑ ann ∧
+a ⊑ body[self:=a]`, with `seen` extended *before* the
+annotation check so the `fix B. ι self:B. …` pattern (where
+`ann` is the recursive type itself) closes coinductively. The
+declarative `Subtype'.iota_intro` already had both premises,
+so this brings the algorithm in line.
+-/
+
+private def constrainedI := och{ ι self:Nat_. Type }
+
+theorem a5_annotationChecked :
+    subCheck 200 dtrue constrainedI = .ok false ∧
+    NbE.subCheck 200 dtrue constrainedI = .ok false := by
+  native_decide
+
+/-- And the legitimate recursive case still closes via seen. -/
+theorem a5_recursiveCaseStillWorks :
+    subCheck 200 dtrue dBool = .ok true ∧
+    NbE.subCheck 200 dtrue dBool = .ok true := by
+  native_decide
+
+/-!
+## A4: Inductive `Subtype'` is incomplete for equirecursion
+
+Not an *algorithm* unsoundness — the algorithm is correct here
+— but a gap in the *declarative* relation that makes
+`subCheckVal_sound` unprovable as stated.
+
+`dtrue ⊑ dBool` is accepted by both checkers (it's the very
+first DBool test). But every attempted `Subtype'` derivation
+loops: after `unfold_fix_R` + `iota_intro` + `unfold_fix_L` +
+`unfold_iota_L`, the goal becomes the lam-lam comparison
+
+  `λP:(dtrue→Type). … ⊑ λP:(dBool→Type). …`
+
+whose contravariant domain premise needs `dtrue ⊑ dBool`
+again. The algorithm closes this coinductively via the
+seen-set; the inductive `Subtype'` cannot.
+-/
+
+theorem a4_algorithmAccepts :
+    subCheck 200 dtrue dBool = .ok true ∧
+    NbE.subCheck 200 dtrue dBool = .ok true := by
+  native_decide
+
+/-!
+### Fix
+
+The declarative relation must be the *greatest* fixpoint of
+its rules (Amadio-Cardelli, Brandt-Henglein), not the least.
+Three encodings:
+
+  (a) **Seen-indexed** (`Subtype' seen Γ a b`): mirror the
+      algorithm. Add `(a, b) ∈ seen → Subtype' seen Γ a b`;
+      every rule that recurses on a *non-structurally-smaller*
+      goal (the four `unfold_*` and `iota_intro`) extends
+      `seen`. `subCheckVal_sound` then goes by simultaneous
+      induction on fuel and `seen`-monotonicity.
+  (b) **Step-indexed** (`Subtype'ₙ`): `Subtype'₀` is `⊤`;
+      `Subtype'ₙ₊₁` requires premises at level `n`. The gfp is
+      `∀ n, Subtype'ₙ`. Maps cleanly to the algorithm's `fuel`.
+  (c) **Companion / parameterised coinduction**: heavyweight,
+      not needed here.
+
+(a) is closest to the algorithm and to the existing `Simple/`
+proof; (b) is closest to the eventual semantic model
+(step-indexed logical relations). Either suffices for
+`subCheckVal_sound`. Soundness.lean records this as the next
+concrete task.
+
 ## Summary
 
 | # | Rule | Status | Fix |
@@ -145,11 +224,15 @@ theorem a3_typeCheckCatches :
 | A1 | covariant neutral-app | **resolved** | bidirectional + re-encoded Pair |
 | A2 | `_ ⊑ Type` | open (Girard) | universe levels, or accept as axiom |
 | A3 | β type-blind | mitigated | use `typeCheck` as the entry point |
+| A4 | inductive `Subtype'` incomplete | open | seen-indexed or step-indexed gfp |
+| A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen |
 
-All other subCheckVal arms (refl, seen, lam-lam, iotaIntro,
-fix-unfold, neutralAscent) follow standard sound rules. The
-Phase-2 soundness theorem targets `typeCheck` with A2 either
-stratified or assumed.
+A1/A3/A5 concern the *algorithm*; A2 is a design choice; A4
+concerns the *declarative* side. With A1 + A5 fixed and A4
+addressed, every algorithmic arm maps to a sound declarative
+rule and `subCheckVal_sound` becomes provable arm-by-arm by
+fuel induction (subCheckVal, eval, and quote are now all
+non-partial).
 -/
 
 end SoundnessAudit

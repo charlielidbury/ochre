@@ -119,12 +119,21 @@ mutual
               match clB.open fuel b with
               | none => .error "subCheckVal: fixR open"
               | some b' => subCheckVal fuel tyCtx seen' a b'
-        | _, .iota _ann clB =>
-            -- iotaIntro: open the RHS ι with the LHS value as `self`.
-            -- This is the key sharing step — `a` is bound by reference
-            -- in the environment, not copied into every `:self` slot.
+        | _, .iota ann clB => do
+            -- iotaIntro: a ⊑ ι self:A. body ← a ⊑ A ∧ a ⊑
+            -- body[self:=a]. BOTH premises (SoundnessAudit A5:
+            -- skipping `a ⊑ A` accepted `dtrue ⊑ ι self:Nat_.
+            -- Type` despite `dtrue ⊄ Nat_`). seen' is extended
+            -- first so the annotation check closes
+            -- coinductively when A is the enclosing recursive
+            -- type (`fix B. ι self:B. …`). Opening the body
+            -- with `a` as `self` is the key sharing step — `a`
+            -- is bound by reference, not copied into every
+            -- `:self` slot.
             let seen' := (a, b) :: seen
-            match clB.open fuel a with
+            let okAnn ← subCheckVal fuel tyCtx seen' a ann
+            if !okAnn then .ok false
+            else match clB.open fuel a with
             | none => .error "subCheckVal: iotaIntro open"
             | some bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
         | _, .fix _ann clB =>

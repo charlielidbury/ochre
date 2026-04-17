@@ -572,6 +572,46 @@ The remaining gap (β-conversion rule) is documented inline.
 Next: prove `subCheckVal_sound` arm-by-arm; the lam-lam,
 fix-unfold, and bvar arms now have direct constructors.
 
+### β-conversion + four hand-derivations + non-partial subCheckVal (5862916f)
+
+`Subtype'` gained `beta_L/R`, `letE_L/R`, `asc_L/R`; derived
+`app_head`, `beta_head`, `app_ascent`. Hand-derivations for
+`(λx.x) zero_ ⊑ Nat_` and `one_ ⊑ Nat_` (via app_ascent).
+`subCheckVal` & co. made non-partial (`termination_by fuel`).
+
+### A4/A5 found; A5 fixed; NbE made non-partial (5862916f)
+
+**A4**: inductive `Subtype'` is incomplete for equirecursion.
+Tracing `dtrue ⊑ dBool` declaratively: after fix/iota unfolds
+the lam-lam contravariant domain needs `dtrue ⊑ dBool` again.
+The algorithm closes this via the seen-set; the inductive
+relation cannot. Documented with three fix options
+(seen-indexed / step-indexed / parameterised coinduction);
+seen-indexed is closest to both the algorithm and Simple/'s
+proof structure.
+
+**A5**: both checkers' iotaIntro arm skipped the `a ⊑ ann`
+premise, accepting `dtrue ⊑ ι self:Nat_. Type` despite
+`dtrue ⊄ Nat_`. Fixed: both checkers now require `a ⊑ ann ∧
+a ⊑ body[self:=a]`, with seen extended *before* the
+annotation check so `fix B. ι self:B. …` closes coinductively.
+Verified: constrained-ι rejected; dtrue⊑dBool, done_⊑dNat,
+all DBool/DNat/Array/Vec/Tests still pass. The declarative
+`Subtype'.iota_intro` already had both premises, so this
+brings the algorithm in line with the relation.
+
+**NbE termination**: eval/vapp/quote/quoteClosure/quoteNeutral
+all made non-partial (`termination_by fuel`; quoteClosure
+gained a fuel match). Full build green. Combined with
+non-partial subCheckVal, the entire algorithmic stack now
+unfolds in proofs.
+
+**Phase-2 status**: 5 audit findings (A1, A5 fixed; A2 axiom;
+A3 mitigated; A4 open). Algorithm sound modulo A2/A4. Declarative
+relation has every constructor needed; the one remaining gap
+(A4: coinductive encoding) is the last prerequisite for
+`subCheckVal_sound`.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`

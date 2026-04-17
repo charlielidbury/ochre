@@ -89,7 +89,7 @@ mutual
       structure so the chain is linear, and a small bound suffices
       to compute through any concrete dNat numeral while stopping
       the `(dsucc m)→Type` self-reference in done_'s annotation. -/
-  partial def eval (fuel unf : Nat) (env : Env) (e : Expr) : Option Val :=
+  def eval (fuel unf : Nat) (env : Env) (e : Expr) : Option Val :=
     match fuel with
     | 0 => none
     | fuel + 1 =>
@@ -114,8 +114,9 @@ mutual
           eval fuel unf (v' :: env) body
       | .asc _t ty =>
           eval fuel unf env ty
+  termination_by fuel
 
-  partial def vapp (fuel unf : Nat) (f a : Val) : Option Val :=
+  def vapp (fuel unf : Nat) (f a : Val) : Option Val :=
     match fuel with
     | 0 => none
     | fuel + 1 =>
@@ -136,12 +137,13 @@ mutual
             vapp fuel (unf - 1) f' a
       | .neutral n => some (.neutral (.app n a))
       | .type => some (.neutral (.stuckRec f a))
+  termination_by fuel
 end
 
 mutual
   /-- Read a value back to an expression. `depth` is the number of
       binders opened so far (= the next fresh de Bruijn level). -/
-  partial def quote (fuel depth : Nat) (v : Val) : Option Expr :=
+  def quote (fuel depth : Nat) (v : Val) : Option Expr :=
     match fuel with
     | 0 => none
     | fuel + 1 =>
@@ -160,20 +162,25 @@ mutual
           let ann' ← quote fuel depth ann
           let body' ← quoteClosure fuel depth cl
           some (.fix ann' body')
+  termination_by fuel
 
-  partial def quoteClosure (fuel depth : Nat) (cl : Closure) : Option Expr := do
-    let bv := Val.neutral (.var depth)
-    -- Opening a closure under a *neutral* fresh variable: any
-    -- recursive-head application to that variable is stuck by
-    -- the `a.isNeutral` gate, so the unfold bound here only
-    -- matters for *closed* recursive applications captured in
-    -- the environment. Use a small bound so the self-referential
-    -- type annotations (e.g. `(dsucc m)→Type` in done_) terminate
-    -- after one round.
-    let v ← eval fuel 1 (bv :: cl.env) cl.body
-    quote fuel (depth + 1) v
+  def quoteClosure (fuel depth : Nat) (cl : Closure) : Option Expr :=
+    match fuel with
+    | 0 => none
+    | fuel + 1 => do
+      let bv := Val.neutral (.var depth)
+      -- Opening a closure under a *neutral* fresh variable: any
+      -- recursive-head application to that variable is stuck by
+      -- the `a.isNeutral` gate, so the unfold bound here only
+      -- matters for *closed* recursive applications captured in
+      -- the environment. Use a small bound so the self-referential
+      -- type annotations (e.g. `(dsucc m)→Type` in done_) terminate
+      -- after one round.
+      let v ← eval fuel 1 (bv :: cl.env) cl.body
+      quote fuel (depth + 1) v
+  termination_by fuel
 
-  partial def quoteNeutral (fuel depth : Nat) (n : Neutral) : Option Expr :=
+  def quoteNeutral (fuel depth : Nat) (n : Neutral) : Option Expr :=
     match fuel with
     | 0 => none
     | fuel + 1 =>
@@ -188,6 +195,7 @@ mutual
           let f' ← quote fuel depth f
           let a' ← quote fuel depth a
           some (.app f' a')
+  termination_by fuel
 end
 
 /-- Normalize a closed expression. -/
