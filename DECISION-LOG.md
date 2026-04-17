@@ -414,3 +414,44 @@ components), not the mu types that the seen set tracks.
 (all 4 VCompat sub-cases). Also prepares the lam-lam case for future work.
 Fuel_mono proof required minor update (changing `seen` to `[]` in `show`
 clauses).
+
+## 2026-04-16: Phase 2 soundness audit — three gaps identified
+
+`lean/Och/SoundnessAudit.lean` records each as a `native_decide`
+theorem about the *current* checker behaviour, paired with a
+witness that the behaviour is wrong. Fixing a gap will make the
+file fail to compile, prompting an update.
+
+**A1 — covariant neutral-app congruence.** `subCheckNeutral`'s
+`.app, .app` arm (and the `.stuckRec, .stuckRec` arms in both
+`subCheckNeutral` and `subCheckVal`) accept `n a ⊑ n b` whenever
+`a ⊑ b`. Sound only if `n` is covariant in its argument, which
+isn't tracked. Concrete witness: `Pair zero_ unit_ ⊑ Pair Nat_
+Unit_` is accepted, but eliminating both with `λn. λu. n → Unit_`
+gives `zero_ → Unit_ ⊄ Nat_ → Unit_` — substitution-principle
+violation. This is *by design* (Pair.lean's doc names "app
+congruence" as the mechanism); the design is unsound. Fix:
+restore bidirectional comparison; re-encode `Pair` with a
+separate value constructor (like `dpair`/`Sigma`) so concrete
+pairs inhabit `Pair A B` via type-ascent rather than congruence.
+Affected tests: Pair.lean:56/59, Array.lean:86/88.
+
+**A2 — type-in-type.** `_ ⊑ Type → true`. Admits Girard's
+paradox. Almost certainly intentional (Pair.lean's `fst_`/`snd_`
+rely on it). Fix is universe stratification (mechanical but
+invasive) or accepting Type:Type as a model axiom. The Phase-2
+theorem should be stated modulo this.
+
+**A3 — β is type-blind.** `subCheckNF`/`NbE.subCheck` normalise
+first, so `(λn:Nat_. n) Bool ⊑ Bool` is accepted. `NbE.typeCheck`
+(TyCheck.lean) catches it. The Phase-2 theorem should target
+`typeCheck`, not `subCheck`.
+
+**Decision**: The Phase-2 soundness statement is
+
+> `NbE.typeCheck fuel e τ = .ok true → ⟦e⟧ ∈ ⟦τ⟧`
+
+with A1 fixed (bidirectional neutral args, Pair re-encoded) and
+A2 taken as a model axiom (`⟦Type⟧ = universe of all values`).
+The architecture follows `Och/Simple/CheckSoundness.lean`:
+algorithmic → declarative `Subtype'` → semantic model.

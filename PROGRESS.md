@@ -503,6 +503,28 @@ the 5th argument of the inner `appendArrays` call.
 
 **Markers: 1 → 0. Std sorries: 1 → 0. PHASE 1 COMPLETE.**
 
+### Phase 2 begins: SoundnessAudit.lean (5862916f)
+
+Three soundness gaps identified and recorded as executable
+`native_decide` witnesses in `Och/SoundnessAudit.lean`:
+
+  - **A1**: covariant neutral-app congruence (the `Pair a b ⊑
+    Pair A B` mechanism) violates substitution. Witness:
+    `Pair zero_ unit_ ⊑ Pair Nat_ Unit_` accepted; eliminating
+    with `λn. λu. n→Unit_` gives `zero_→Unit_ ⊄ Nat_→Unit_`.
+  - **A2**: type-in-type (`_ ⊑ Type`). Intentional, but admits
+    Girard's paradox; the soundness theorem must work modulo
+    this.
+  - **A3**: subCheck β is type-blind (`(λn:Nat_. n) Bool ⊑
+    Bool` accepted). `typeCheck` catches it.
+
+A1 is the actionable one: fixing it requires reverting to
+bidirectional neutral-arg comparison and re-encoding `Pair`
+(and hence `Array_`) with a separate value constructor. The
+DECISION-LOG entry sketches the path. The other arms of
+`subCheckVal` (refl, seen, lam-lam, iotaIntro, fix-unfold,
+neutralAscent) follow standard sound rules.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
