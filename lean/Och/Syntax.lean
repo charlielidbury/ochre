@@ -740,7 +740,18 @@ theorem shift_subst_comm_gen (e : Expr) (j d : Nat) (t : Expr) :
           shift_shift_same t 1 (d + 1) 0, show 1 + (d + 1) = d + 1 + 1 from by omega,
           show j + d + 1 = j + (d + 1) from by omega]
       exact ih_body j (d + 1)
-  | letE val body ih_val ih_body => sorry
+  | letE val body ih_val ih_body =>
+    show Expr.letE ((shift 1 d val).subst (j + d + 1) (t.shift (d + 1) 0))
+                 ((shift 1 (d + 1) body).subst (j + d + 2) ((t.shift (d + 1) 0).shift 1 0))
+       = Expr.letE ((val.subst (j + d) (t.shift d 0)).shift 1 d)
+                 ((body.subst (j + d + 1) ((t.shift d 0).shift 1 0)).shift 1 (d + 1))
+    congr 1
+    · exact ih_val j d
+    · rw [show j + d + 2 = j + (d + 1) + 1 from by omega,
+          shift_shift_same t 1 d 0, show 1 + d = d + 1 from by omega,
+          shift_shift_same t 1 (d + 1) 0, show 1 + (d + 1) = d + 1 + 1 from by omega,
+          show j + d + 1 = j + (d + 1) from by omega]
+      exact ih_body j (d + 1)
 
 /-- Shift-subst commutation at cutoff 0: the standard de Bruijn lemma.
     Corollary of the generalized version at d=0. -/
@@ -888,7 +899,23 @@ theorem substEnv_subst_comp_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
             = liftEnvN (c + 1) (s :: γ) from by simp [liftEnvN],
         shift_succ]
       exact ih_body (c + 1) (by rw [show c + 1 + γ.length + 1 = c + γ.length + 1 + 1 from by omega]; exact h_body)
-  | letE val body ih_val ih_body => sorry
+  | letE val body ih_val ih_body =>
+    simp [closedAt, Bool.and_eq_true] at h
+    obtain ⟨h_val, h_body⟩ := h
+    show Expr.letE
+      ((val.substEnv (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0)))).subst c (s.shift c 0))
+      ((body.substEnv ((.bvar 0) :: (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0))).map (·.shift 1 0))).subst (c + 1) ((s.shift c 0).shift 1 0))
+    = Expr.letE
+      (val.substEnv (liftEnvN c (s :: γ)))
+      (body.substEnv ((.bvar 0) :: (liftEnvN c (s :: γ)).map (·.shift 1 0)))
+    congr 1
+    · exact ih_val c h_val
+    · rw [show (.bvar 0 :: (liftEnvN c ((.bvar 0) :: γ.map (·.shift 1 0))).map (·.shift 1 0))
+            = liftEnvN (c + 1) ((.bvar 0) :: γ.map (·.shift 1 0)) from by simp [liftEnvN],
+        show (.bvar 0 :: (liftEnvN c (s :: γ)).map (·.shift 1 0))
+            = liftEnvN (c + 1) (s :: γ) from by simp [liftEnvN],
+        shift_succ]
+      exact ih_body (c + 1) (by rw [show c + 1 + γ.length + 1 = c + γ.length + 1 + 1 from by omega]; exact h_body)
 
 /-- Composition lemma at depth 0: the key lemma for the fundamental theorem.
     `(e.substEnv (bvar 0 :: γ.map shift)).subst 0 s = e.substEnv (s :: γ)`
@@ -982,7 +1009,20 @@ theorem shift_substEnv_liftEnvN (s : Expr) (c d : Nat) (γ : List Expr)
             = liftEnvN (d + 1) γ from by simp [liftEnvN],
           show c + d + 1 = c + (d + 1) from by omega]
       exact ih_body c (d + 1) (by rw [show d + 1 + γ.length = d + γ.length + 1 from by omega]; exact hs.2)
-  | letE val body ih_val ih_body => sorry
+  | letE val body ih_val ih_body =>
+    simp [closedAt, Bool.and_eq_true] at hs
+    show Expr.letE ((val.shift c d).substEnv (liftEnvN (c + d) γ))
+                 ((body.shift c (d + 1)).substEnv ((.bvar 0) :: (liftEnvN (c + d) γ).map (·.shift 1 0)))
+       = Expr.letE ((val.substEnv (liftEnvN d γ)).shift c d)
+                 ((body.substEnv ((.bvar 0) :: (liftEnvN d γ).map (·.shift 1 0))).shift c (d + 1))
+    congr 1
+    · exact ih_val c d hs.1
+    · rw [show (.bvar 0 :: (liftEnvN (c + d) γ).map (·.shift 1 0))
+            = liftEnvN (c + d + 1) γ from by simp [liftEnvN],
+          show (.bvar 0 :: (liftEnvN d γ).map (·.shift 1 0))
+            = liftEnvN (d + 1) γ from by simp [liftEnvN],
+          show c + d + 1 = c + (d + 1) from by omega]
+      exact ih_body c (d + 1) (by rw [show d + 1 + γ.length = d + γ.length + 1 from by omega]; exact hs.2)
   | app f a ih_f ih_a =>
     simp [closedAt, Bool.and_eq_true] at hs
     show Expr.app ((f.shift c d).substEnv (liftEnvN (c + d) γ))
@@ -1117,7 +1157,20 @@ theorem subst_substEnv_comm_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
             = liftEnvN (c + 1) (s.substEnv γ :: γ) from by simp [liftEnvN],
         shift_succ]
       exact ih_body (c + 1) (by rw [show c + 1 + γ.length + 1 = c + γ.length + 1 + 1 from by omega]; exact he.2)
-  | letE val body ih_val ih_body => sorry
+  | letE val body ih_val ih_body =>
+    simp [closedAt, Bool.and_eq_true] at he
+    show Expr.letE ((val.subst c (s.shift c 0)).substEnv (liftEnvN c γ))
+                 ((body.subst (c+1) ((s.shift c 0).shift 1 0)).substEnv ((.bvar 0) :: (liftEnvN c γ).map (·.shift 1 0)))
+       = Expr.letE (val.substEnv (liftEnvN c (s.substEnv γ :: γ)))
+                 (body.substEnv ((.bvar 0) :: (liftEnvN c (s.substEnv γ :: γ)).map (·.shift 1 0)))
+    congr 1
+    · exact ih_val c he.1
+    · rw [show (.bvar 0 :: (liftEnvN c γ).map (·.shift 1 0)) = liftEnvN (c + 1) γ
+        from by simp [liftEnvN],
+        show (.bvar 0 :: (liftEnvN c (s.substEnv γ :: γ)).map (·.shift 1 0))
+            = liftEnvN (c + 1) (s.substEnv γ :: γ) from by simp [liftEnvN],
+        shift_succ]
+      exact ih_body (c + 1) (by rw [show c + 1 + γ.length + 1 = c + γ.length + 1 + 1 from by omega]; exact he.2)
 
 /-- Reverse composition at depth 0:
     `(e.subst 0 s).substEnv γ = e.substEnv (s.substEnv γ :: γ)`.
