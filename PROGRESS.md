@@ -745,6 +745,30 @@ the soundness critical path: 6 (3 SoundnessProof + 3 target
 theorems). Off-path: 9 (5 Eval legacy + 4 Subtyping legacy).
 The `subCheckVal → SubV` direction is ~80% done.
 
+### `subCheckVal → SubV` complete (5862916f, ef386b3)
+
+The 3 structural-OR-fallback arms (ι-ι, fix-fix, stuckRec²)
+and `synthN.stuckRec` closed. ι-ι/fix-fix: `split` on the
+outer `match structural with` exposes `hstruct` via
+`rename_i`; structural side → `SubV.iota_struct`/`fix_struct`
+via `ih` on annOk + openFresh + body; wildcard side reuses
+the proven `_, .iota`/`_, .fix` fallback pattern. stuckRec²:
+4 bidirectional checks → `stuckRec_struct`; fallback nests
+two `vapp` + beq splits → `revapp_R`/`revapp_L`/`.ok false`-
+contradiction. `synthN.stuckRec`: nested split on the
+`match f with` or-pattern + `match ann with` → the four
+`SynthN.stuckRec*` constructors.
+
+**The mutual reflection block has zero sorry.** Every arm
+of `subCheckVal`/`subCheckValMatch`/`subCheckNeutral`/
+`neutralAscent`/`synthNeutral` reflects into a `SubV`/`SubN`/
+`SynthN` constructor by fuel induction, with no axioms
+beyond `propext`/`Quot.sound` (from `LawfulBEq Val`).
+
+**Sorry-bearing declarations: 13.** Critical path: **4**
+(`SubV_to_Subtype'` quote bridge + 3 target theorems).
+Off-path: 9 (legacy `subCheckNF`).
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
