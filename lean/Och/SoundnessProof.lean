@@ -61,12 +61,10 @@ mutual
         clA.openω (.neutral (.var Γ.size)) = some bA →
         clB.openω (.neutral (.var Γ.size)) = some bB →
         SubV S Γ domB domA →
-        -- The algorithm pushes `domA` (LHS domain) — see
-        -- SubCheckVal.lean:82. `Subtype'.lam` pushes the
-        -- *target* domain `domB`. The discrepancy is bridged
-        -- in `SubV_to_Subtype'` via `Subtype'.weaken`-on-Γ
-        -- (a Γ-monotonicity lemma, not yet stated).
-        SubV S (Γ.push domA) bA bB →
+        -- Push the *target* domain (domB), matching both the
+        -- algorithm (SubCheckVal.lean lam-lam arm, after the
+        -- A6 fix) and `Subtype'.lam`.
+        SubV S (Γ.push domB) bA bB →
         SubV S Γ (.lam domA clA) (.lam domB clB)
     | iota_struct {S Γ annA annB clA clB bA bB} :
         clA.openω (.neutral (.var Γ.size)) = some bA →
@@ -753,11 +751,15 @@ theorem SubV_to_Subtype'
   | lam hoA hoB hd hbody =>
       -- ae = .lam domAe bodyAe, be = .lam domBe bodyBe via
       -- quote-shape. IH on hd → `domBe ⊑ domAe`; IH on hbody
-      -- (at Γ.push domA, depth+1) → `bodyAe ⊑ bodyBe`.
-      -- Subtype'.lam wants `domBe :: Γe`; IH gives
-      -- `domAe :: Γe`. Bridging needs Γe-narrowing
-      -- (`Subtype'.narrow : domBe ⊑ domAe → Subtype' S
-      -- (domAe::Γ) x y → Subtype' S (domBe::Γ) x y`).
+      -- (at Γ.push domB, depth+1) → `bodyAe ⊑ bodyBe` under
+      -- `domBe :: Γe`. Subtype'.lam matches directly (after
+      -- the A6 fix both push `domB`). The body
+      -- correspondence needs `quote_open_subst` to relate
+      -- `quote (cl.openω fresh)` to `quoteClosure cl` —
+      -- but for fresh = .var Γ.size, opening with fresh and
+      -- quoting at depth+1 *is* `quoteClosure` (by
+      -- definition), so this case may close without the
+      -- general lemma.
       sorry
   | iota_intro hoB hann hbody =>
       -- Subtype'.iota_intro needs `ae ⊑ anne` and

@@ -178,6 +178,32 @@ theorem a5_iotaIotaPath :
   native_decide
 
 /-!
+## A6: lam-lam pushed `domA` not `domB` — RESOLVED
+
+**Was**: NbE.subCheck's lam-lam arm pushed the *source*
+domain `domA` into `tyCtx`. The fresh variable's ascent type
+was therefore `domA`, so a subterm in `bodyB` needing
+`fresh : domB` ascended via `domA ⊑ domB` — the *wrong*
+direction. `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` was rejected
+by `NbE.subCheck` but accepted by `subCheckNF` (which uses
+`Subtype'.lam`'s convention). An incompleteness, not an
+unsoundness, but a checker divergence.
+
+**Fix**: push `domB` (the target domain). With `domB ⊑ domA`,
+`fresh : domB` ascends to `domB ⊑ domA` for bodyA's needs and
+`domB ⊑ domB` for bodyB's — both directions covered. This
+also matches `Subtype'.lam`, so `SubV.lam` no longer needs
+the Γ-narrowing bridge.
+-/
+
+theorem a6_checkerAgreement :
+    subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
+      = .ok true ∧
+    NbE.subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
+      = .ok true := by
+  native_decide
+
+/-!
 ## A4: Inductive `Subtype'` is incomplete for equirecursion
 
 Not an *algorithm* unsoundness — the algorithm is correct here
@@ -235,6 +261,7 @@ concrete task.
 | A3 | β type-blind | mitigated | use `typeCheck` as the entry point |
 | A4 | inductive `Subtype'` incomplete | **resolved** | seen-indexed (`.hyp` rule) |
 | A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
+| A6 | lam-lam pushed `domA` (incomplete) | **resolved** | push target `domB` |
 
 A1/A3/A5 concern the *algorithm*; A2 is a design choice; A4
 concerns the *declarative* side. All four addressable items

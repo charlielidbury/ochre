@@ -212,6 +212,37 @@ theorem Subtype'.beta_head {S Γ dom body arg a c}
     Subtype' S Γ (.app (.app (.lam dom body) arg) a) c :=
   .trans (.app_head (.beta_L (.refl _))) h
 
+/-- Shift respects subtyping (needed for `narrow`'s `.bvar`
+case). The proof is by induction on the derivation; each
+constructor commutes with `shift` since `shift` is a
+homomorphism on `Expr` and `subst` (the substitution lemmas
+in `Syntax.lean`, now sorry-free). -/
+theorem Subtype'.shift_preserve {S Γ a b} (d c : Nat)
+    (h : Subtype' S Γ a b) :
+    Subtype' (S.map (fun (x, y) => (x.shift d c, y.shift d c)))
+             (Γ.map (·.shift d c)) (a.shift d c) (b.shift d c) := by
+  sorry
+
+/-- Context narrowing: replacing a context entry with a
+subtype preserves derivations. Bridges the algorithm's
+lam-lam arm (which pushes the LHS domain `domA`) and
+`Subtype'.lam` (which pushes the target domain `domB`):
+since `domB ⊑ domA`, any judgment derived under `domA :: Γ`
+also derives under `domB :: Γ`.
+
+Proof sketch: induction on `h`. The interesting case is
+`.bvar (k := 0)`, whose conclusion `bvar 0 ⊑ domA.shift 1 0`
+becomes `bvar 0 ⊑ domB.shift 1 0` under the new context
+(by `.bvar`); lift to the original conclusion via
+`shift_preserve hd` + `trans`. For `k > 0` the context entry
+is unchanged. The binder cases (`lam`/`iota_body`/`fix_body`)
+recurse with the narrowed entry one level deeper. -/
+theorem Subtype'.narrow {S Γ domA domB x y}
+    (hd : Subtype' S Γ domB domA)
+    (h : Subtype' S (domA :: Γ) x y) :
+    Subtype' S (domB :: Γ) x y := by
+  sorry
+
 /-- Π-elimination (type-ascent through application). If `f`
 inhabits a Π-type and we apply it, the result inhabits the
 instantiated codomain. Derivable: `f a ⊑ (Πx:dom. cod) a` by
