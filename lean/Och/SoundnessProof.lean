@@ -663,11 +663,53 @@ termination_by (fuel, 0)
 
 end
 
+/-!
+## The quote bridge
+
+`SubV` is over `Val`s; `Subtype'` is over `Expr`s. The bridge
+quotes each piece. Three lemmas factor the work:
+
+  - `quote_lam`/`quote_iota`/`quote_fix` (shape lemmas):
+    `quote (.lam d c) = some e → ∃ de be, e = .lam de be ∧ …`
+  - `quote_open` (NbE correctness): the quoted body of a
+    closure opened with `v` is β-related to the substituted
+    quote. This is the substantive lemma; everything else
+    is bookkeeping.
+  - Context/seen quoting respects extension (for the IH at
+    `Γ.push`/`(p :: S)`).
+-/
+
+/-- Quoting commutes with closure-opening up to `Subtype'`'s
+β-conversion: opening `cl` with `v` and quoting gives an Expr
+β-equivalent to substituting `quote v` into the closure's
+quoted body. This is the standard NbE correctness theorem
+(soundness direction), specialised to one closure-open. The
+proof is a logical relation between `Val` and `Expr` indexed
+by the eval environment; it's the substantive remaining
+obligation. -/
+theorem quote_open_subst {cl : Closure} {v r : Val}
+    {depth : Nat} {ve re bodye : Expr}
+    (hopen : cl.openω v = some r)
+    (hqv : quote fuelω depth v = some ve)
+    (hqbody : quoteClosure fuelω depth cl = some bodye)
+    (hqr : quote fuelω depth r = some re) :
+    -- `re` is what you get by evaluating; `bodye.subst 0 ve`
+    -- is the syntactic substitution. They are β-equivalent,
+    -- which `Subtype'` captures via `beta_L`/`beta_R` +
+    -- `trans`. We state both directions so the bridge can
+    -- use whichever the constructor needs.
+    ∀ {S Γe}, Subtype' S Γe re (bodye.subst 0 ve) ∧
+              Subtype' S Γe (bodye.subst 0 ve) re := by
+  sorry
+
 /-- Bridge to the Expr-level relation. Each `SubV` constructor
-maps to a `Subtype'` constructor on the quoted forms; the
-substantive content is that `quote` commutes with closure
-opening (`quote (cl.openω v) = (quote-cl-body).subst 0
-(quote v)` modulo de Bruijn level/index conversion). -/
+maps to a `Subtype'` constructor on the quoted forms.
+
+`hS` says every seen-pair quotes into `Se`; `hΓ` says every
+context entry quotes into `Γe` at the right de Bruijn index;
+`ha`/`hb` quote the goal's endpoints. The induction is on
+the `SubV` derivation; the closure-opening cases use
+`quote_open_subst`. -/
 theorem SubV_to_Subtype'
     {S Γ a b} (h : SubV S Γ a b)
     {Se : List (Expr × Expr)} {Γe : Ctx} {ae be : Expr}
@@ -680,6 +722,68 @@ theorem SubV_to_Subtype'
     (ha : quote fuelω Γ.size a = some ae)
     (hb : quote fuelω Γ.size b = some be) :
     Subtype' Se Γe ae be := by
-  sorry
+  -- `SubV` is mutually inductive with `SubN`/`SynthN`, so
+  -- `induction` rejects it (multiple motives). The full
+  -- proof needs a *mutual* bridge — `SubV_to_Subtype'`,
+  -- `SubN_to_Subtype'`, `SynthN_to_Subtype'_bvar` — using
+  -- the joint recursor `SubV.rec`. For now, the three
+  -- non-recursive constructors are dispatched by `cases`;
+  -- the recursive ones need the mutual structure plus
+  -- `quote_open_subst` and are sorried with the per-case
+  -- plan documented.
+  cases h with
+  | hyp hin =>
+      -- (a, b) ∈ S; hS gives a quoted pair in Se whose
+      -- components are ae, be (by uniqueness of quote).
+      obtain ⟨⟨pe1, pe2⟩, hpe, hq1, hq2⟩ := hS _ hin
+      simp only at hq1 hq2
+      rw [ha] at hq1; rw [hb] at hq2
+      cases hq1; cases hq2
+      exact .hyp hpe
+  | refl =>
+      rw [ha] at hb; cases hb
+      exact .refl ae
+  | top =>
+      -- b = .type; quote .type = some .type at any depth.
+      have : be = .type := by
+        have hf : fuelω = fuelω.pred + 1 := rfl
+        rw [hf] at hb; unfold quote at hb
+        injection hb with hb; exact hb.symm
+      exact this ▸ .top ae
+  | lam hoA hoB hd hbody =>
+      -- ae = .lam domAe bodyAe, be = .lam domBe bodyBe via
+      -- quote-shape. IH on hd → `domBe ⊑ domAe`; IH on hbody
+      -- (at Γ.push domA, depth+1) → `bodyAe ⊑ bodyBe`.
+      -- Subtype'.lam wants `domBe :: Γe`; IH gives
+      -- `domAe :: Γe`. Bridging needs Γe-narrowing
+      -- (`Subtype'.narrow : domBe ⊑ domAe → Subtype' S
+      -- (domAe::Γ) x y → Subtype' S (domBe::Γ) x y`).
+      sorry
+  | iota_intro hoB hann hbody =>
+      -- Subtype'.iota_intro needs `ae ⊑ anne` and
+      -- `ae ⊑ bodye.subst 0 ae`. IH on hbody (at S') gives
+      -- `ae ⊑ re` where re = quote(opened body);
+      -- `quote_open_subst` bridges `re ↔ bodye.subst 0 ae`.
+      sorry
+  | unfold_fix_R hoB hbody => sorry
+  | unfold_fix_L hoA hbody => sorry
+  | unfold_iota_L hoA hbody => sorry
+  | iota_struct hoA hoB hann hbody => sorry
+  | fix_struct hoA hoB hann hbody => sorry
+  | stuckRec_struct h1 h2 h3 h4 => sorry
+  | neutral_struct hN =>
+      -- `SubN_to_Subtype'`: the quoted neutral spines are
+      -- `app_cong`-related with arg equivalence.
+      sorry
+  | neutral_ascent hsynth hsub =>
+      -- `SynthN_to_Subtype'_bvar`: synthN.var → Subtype'.bvar
+      -- at the right index; .app/.stuckRec → app_ascent.
+      sorry
+  | revapp_R hne hbody =>
+      -- b' is the re-vapp result; quote b' β-relates to
+      -- quote b via the unfold step. Subtype'.trans + the
+      -- relevant unfold rule.
+      sorry
+  | revapp_L hne hbody => sorry
 
 end NbE

@@ -769,6 +769,36 @@ beyond `propext`/`Quot.sound` (from `LawfulBEq Val`).
 (`SubV_to_Subtype'` quote bridge + 3 target theorems).
 Off-path: 9 (legacy `subCheckNF`).
 
+Verified PASS: all five reflection theorems depend only on
+`propext`/`Quot.sound`; no `sorryAx`, no `Classical.choice`,
+no `ofReduceBool`. 258 native_decide tests; refactor is
+semantics-preserving.
+
+### Quote bridge: 3 non-recursive cases proven; NbE-correctness lemma stated (5862916f)
+
+`SubV_to_Subtype'` is over a mutual inductive (`SubV`/`SubN`/
+`SynthN`), so `induction` rejects it (multiple motives). For
+now the three non-recursive constructors are dispatched by
+`cases`: `.hyp` → `Subtype'.hyp` via `hS` + quote-uniqueness;
+`.refl` → `.refl` (quote functional); `.top` → `.top`
+(quote .type = .type). The 12 recursive cases each need the
+mutual recursor plus two supporting lemmas, both stated:
+
+  - `quote_open_subst` (the NbE correctness theorem):
+    `quote (cl.openω v)` is `Subtype'`-β-equivalent to
+    `(quoteClosure cl).subst 0 (quote v)`. This is the
+    substantive remaining obligation; the standard proof
+    is a logical relation between `Val` and `Expr` indexed
+    by the eval environment.
+  - `Subtype'.narrow` (Γ-monotonicity): `domB ⊑ domA →
+    Subtype' S (domA::Γ) x y → Subtype' S (domB::Γ) x y`.
+    Bridges the algorithm pushing `domA` vs `Subtype'.lam`
+    pushing `domB`.
+
+**Sorry-bearing declarations: 14** (+1 from stating
+`quote_open_subst` explicitly). Critical path: **5** (2
+SoundnessProof + 3 target theorems).
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
