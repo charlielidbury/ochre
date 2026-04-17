@@ -945,69 +945,360 @@ theorem Closure.mk'_body_closed (body : Expr) (ρ : Env)
   simp only [List.length_take]
   exact Expr.closedAt_mono (closedAt_bvarBound body) (by omega)
 
+private theorem substEnv_bvar_eq (γ : List Expr) (k : Nat) :
+    Expr.substEnv γ (.bvar k) = (γ[k]?).getD (.bvar k) := by
+  simp only [Expr.substEnv]
+  by_cases h : k < γ.length
+  · rw [if_pos h, List.getElem?_eq_getElem h, Option.getD_some]
+    exact List.getElem!_of_getElem? (List.getElem?_eq_getElem h)
+  · rw [if_neg h, List.getElem?_eq_none (Nat.le_of_not_lt h),
+        Option.getD_none]
+
+/-- General env-irrelevance for `substEnv`: if `e.closedAt j`
+and the two environments agree on indices `< j`, the
+substitution results agree. -/
+theorem substEnv_agree {e : Expr} :
+    ∀ {j : Nat}, e.closedAt j = true →
+    ∀ {γ₁ γ₂ : List Expr}, (∀ k, k < j → γ₁[k]? = γ₂[k]?) →
+    e.substEnv γ₁ = e.substEnv γ₂ := by
+  induction e with
+  | bvar k =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, decide_eq_true_eq] at hcl
+    rw [substEnv_bvar_eq, substEnv_bvar_eq, hagree k hcl]
+  | type => intros; rfl
+  | lam dom body ihd ihb =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv]
+    congr 1
+    · exact ihd hcl.1 hagree
+    · refine ihb hcl.2 ?_
+      intro k hk
+      cases k with
+      | zero => simp
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map]
+        rw [hagree m (by omega)]
+  | iota ann body iha ihb =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv]
+    congr 1
+    · exact iha hcl.1 hagree
+    · refine ihb hcl.2 ?_
+      intro k hk
+      cases k with
+      | zero => simp
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map]
+        rw [hagree m (by omega)]
+  | fix ann body iha ihb =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv]
+    congr 1
+    · exact iha hcl.1 hagree
+    · refine ihb hcl.2 ?_
+      intro k hk
+      cases k with
+      | zero => simp
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map]
+        rw [hagree m (by omega)]
+  | letE val body ihv ihb =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv]
+    congr 1
+    · exact ihv hcl.1 hagree
+    · refine ihb hcl.2 ?_
+      intro k hk
+      cases k with
+      | zero => simp
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map]
+        rw [hagree m (by omega)]
+  | app f a ihf iha =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv]
+    congr 1
+    · exact ihf hcl.1 hagree
+    · exact iha hcl.2 hagree
+  | asc t ty iht ihy =>
+    intro j hcl γ₁ γ₂ hagree
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv]
+    congr 1
+    · exact iht hcl.1 hagree
+    · exact ihy hcl.2 hagree
+
 /-- `substEnv` only depends on the prefix of the environment
 that the term can reach. With `e.closedAt (j+1)` and
 `ρe.take j = ρe'`, substituting under `x :: ρe'` gives the
-same result as under `x :: ρe`. (Both trimming and extension
-of unreachable entries are irrelevant.) -/
+same result as under `x :: ρe`. Corollary of
+`substEnv_agree`. -/
 theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     (hcl : e.closedAt (j+1) = true)
     {x : Expr} {ρe ρe' : List Expr}
     (hpfx : ρe' = ρe.take j) :
     e.substEnv (x :: ρe') = e.substEnv (x :: ρe) := by
-  -- By induction on `e`; the `.bvar k` case has `k < j+1` so
-  -- `k = 0` (→ `x`) or `k-1 < j` (→ `ρe'[k-1]` = `ρe[k-1]` by
-  -- `getElem?_take`). The binder cases recurse with the
-  -- lifted env (which preserves the take-prefix). Mechanical;
-  -- needs the same closedness threading as
-  -- `substEnv_subst_comp_gen` in Syntax.lean.
+  refine substEnv_agree hcl ?_
+  intro k hk
+  cases k with
+  | zero => simp
+  | succ m =>
+    simp only [List.getElem?_cons_succ]
+    subst hpfx
+    rw [List.getElem?_take, if_pos (by omega : m < j)]
+
+/-- Quoting a value at the next depth shifts the result by
+one — provided quoting at the current depth already
+succeeds (which guarantees every `.var k` neutral has
+`k < d`, so re-quoting at `d+1` maps `k ↦ d-k` instead of
+`d-1-k`, i.e. each bvar index increments).
+
+By mutual induction on `quote`/`quoteClosure`/
+`quoteNeutral` over `fuelω`. The `.var k` case:
+`quoteNeutral d (.var k) = some (.bvar (d-1-k))` requires
+`k < d`; at `d+1` it's `.bvar (d-k)` = `.bvar ((d-1-k)+1)`
+= `(.bvar (d-1-k)).shift 1 0`. Closure cases recurse via
+`quoteClosure` at `depth+1` (so the inner depth shift
+threads). Sorried — the mutual recursion makes this a
+~50-line case analysis; recorded as the precise obligation
+`R_depth_lift` reduces to. -/
+theorem quote_depth_shift {d v e}
+    (hq : quote fuelω d v = some e) :
+    quote fuelω (d + 1) v = some (e.shift 1 0) := by
   sorry
 
-/-- A value that only references levels `< d` realises the
-shifted expression at depth `d+1`. The base conjunct uses
-that `quote` at a higher depth on a value with no level-`d`
-free vars produces the shift of the depth-`d` quote. The
-constructor clauses recurse at `d+1` so the depth shift
-threads through.
+/-- `Equiv` respects `shift`. Reduces to
+`Subtype'.shift_preserve` (Subtyping.lean), whose
+*statement* is currently flagged as too naive (the context
+shift is non-uniform across entries). Once that's fixed
+this is `fun {S Γe} => ⟨shift_preserve _ _ h.1,
+shift_preserve _ _ h.2⟩` instantiated at the right context
+mapping. -/
+theorem Equiv.shift {e₁ e₂ : Expr} (h : Equiv e₁ e₂) :
+    Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
+  sorry
 
-This together with `REnv_lift` lets the `.lam` case build
-the inner-depth `REnv` from the outer-depth one. -/
+/-- Realisation lifts to the next depth, given the value
+already quotes at the current depth (which is the implicit
+"all `.var` levels `< d`" side-condition). Combines
+`quote_depth_shift` (for the base conjunct) with the
+constructor clauses recursing at `d+1`.
+
+`R`'s constructor clauses (`.lam`/`.fix`/`.iota`) all
+quantify over results of `cl.openω`, which are values at
+the *same* depth `d`; so the IH applies uniformly. The
+side-condition `hq` for the recursive value `r` follows
+from `quote_depth_shift` on the *closure body*'s quote (the
+opened value's quote at `d` is determined by the body
+under `fresh d`). -/
 theorem R_depth_lift {n d v e}
+    {qe : Expr} (hq : quote fuelω d v = some qe)
     (h : R n d v e) :
     R n (d + 1) v (e.shift 1 0) := by
-  -- Needs `quote_depth_shift : quote fuelω (d+1) v =
-  -- (quote fuelω d v).map (·.shift 1 0)` (when v's free
-  -- vars are at levels < d), then induction on n
-  -- threading the constructor clauses. Mechanical given
-  -- the quote lemma; sorried for now.
-  sorry
+  induction n generalizing d v e qe with
+  | zero => simp only [R]
+  | succ k ihk =>
+    unfold R at h ⊢
+    refine ⟨?base, ?ctor⟩
+    case base =>
+      intro e' hq'
+      rw [quote_depth_shift hq] at hq'
+      cases hq'
+      exact Equiv.shift (h.1 qe hq)
+    case ctor =>
+      -- Each constructor's Kripke clause quantifies over
+      -- `n' ≤ k`, `r` (open result), and gives
+      -- `R n' d r (...)`. We need `R n' (d+1) r
+      -- ((...).shift 1 0)`. Apply `ihk` at `n'` — but `ihk`
+      -- is for the *current* `n = k+1`'s predecessor, and
+      -- the Kripke `n' ≤ k` already gives a smaller index.
+      -- Use `R_mono` to drop to `n'+1 ≤ k+1` then `ihk`?
+      -- The clean route is induction on `n` *strong* (so
+      -- ihk applies at any `n' < k+1`), but `R_mono`
+      -- already gives downward closure, so:
+      --   from `R n' d r X`, get `R (n'+0) d r X`, want
+      --   `R n' (d+1) r (X.shift 1 0)`.
+      -- This is exactly the statement at index `n'`, not
+      -- derivable from `ihk` (which is at index `k`).
+      -- Hence strong induction is needed; or restate the
+      -- lemma with `∀ n' ≤ n` baked in. Both are
+      -- mechanical reshufflings; sorried with the
+      -- structure clear.
+      sorry
 
-/-- Lifting a realised environment under one binder: each
-entry is depth-shifted, and a fresh variable realises
-`.bvar 0` at the front. Proof: head via `R_neutral_var`
-(at level `d`, depth `d+1`, quotes to `.bvar 0`); tail via
-`R_depth_lift` on each `henv.2` entry. Sorried pending
-`R_depth_lift`. -/
+/-- A fresh `.var d` realises `.bvar 0` at depth `d+1`. -/
+theorem R_fresh_bvar0 (n d : Nat) :
+    R n (d + 1) (.neutral (.var d)) (.bvar 0) := by
+  cases n with
+  | zero => simp only [R]
+  | succ k =>
+    unfold R
+    refine ⟨?_, True.intro⟩
+    intro e' hq
+    -- quote (d+1) (.neutral (.var d)) = quoteNeutral … =
+    -- if d < d+1 then some (.bvar (d+1-1-d)) = some (.bvar 0)
+    have heq : e' = .bvar 0 := by
+      have hf : fuelω = (fuelω - 1) + 1 := rfl
+      rw [hf] at hq
+      unfold quote at hq
+      simp only [] at hq
+      have hf' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+      rw [hf'] at hq
+      unfold quoteNeutral at hq
+      simp only [Nat.lt_succ_self, if_true, Nat.add_sub_cancel,
+                 Nat.sub_self, Option.some.injEq] at hq
+      exact hq.symm
+    subst heq
+    exact fun {_ _} => ⟨.refl _, .refl _⟩
+
+/-- Lifting a realised environment under one binder: a
+fresh `.var d` realises `.bvar 0` at the head; each tail
+entry depth-lifts via `R_depth_lift`. Requires that each
+existing entry quotes at the current depth (the
+`R_depth_lift` side-condition). -/
 theorem REnv_lift {n d ρ ρe}
-    (henv : REnv n d ρ ρe) :
+    (henv : REnv n d ρ ρe)
+    (hquotes : ∀ (k : Nat) (v : Val),
+        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe) :
     REnv n (d + 1)
       (Val.neutral (.var d) :: ρ)
       (.bvar 0 :: ρe.map (·.shift 1 0)) := by
-  sorry
+  refine ⟨by simp [henv.1], ?_⟩
+  intro k v hk
+  cases k with
+  | zero =>
+      simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+      exact ⟨.bvar 0, by simp, hk ▸ R_fresh_bvar0 n d⟩
+  | succ m =>
+      simp only [List.getElem?_cons_succ] at hk
+      obtain ⟨e, he, hR⟩ := henv.2 m v hk
+      obtain ⟨qe, hqe⟩ := hquotes m v hk
+      refine ⟨e.shift 1 0, ?_, R_depth_lift hqe hR⟩
+      have he' : ρe[m]? = some e := by
+        rw [← List.get?_eq_getElem?]; exact he
+      simp [List.getElem?_map, he']
+
+/-- Two lists agreeing on indices `< j` have equal `take j`. -/
+private theorem List.take_eq_of_agree {α} {ρ₁ ρ₂ : List α} {j : Nat}
+    (hagree : ∀ k, k < j → ρ₁[k]? = ρ₂[k]?) :
+    ρ₁.take j = ρ₂.take j := by
+  apply List.ext_getElem?
+  intro k
+  rw [List.getElem?_take, List.getElem?_take]
+  by_cases hk : k < j
+  · rw [if_pos hk, if_pos hk, hagree k hk]
+  · rw [if_neg hk, if_neg hk]
+
+/-- General env-irrelevance for `eval`: if the two
+environments agree on every index the body can reach
+(`< bvarBound body`), evaluation gives the same result.
+
+By induction on `fuel` (eval's recursion), generalising the
+body and both envs. The `.lam`/`.iota`/`.fix` cases use
+`Closure.mk'`'s trimming together with `take_eq_of_agree`;
+`.letE` extends both envs with the same value and recurses
+at `bvarBound body ≤ bvarBound (.letE …) + 1`. -/
+theorem eval_env_agree :
+    ∀ {fuel unf : Nat} {body : Expr} {ρ₁ ρ₂ : Env},
+      (∀ k, k < bvarBound body → ρ₁[k]? = ρ₂[k]?) →
+      eval fuel unf ρ₁ body = eval fuel unf ρ₂ body := by
+  intro fuel
+  induction fuel with
+  | zero => intros; simp [eval_zero]
+  | succ n ih =>
+    intro unf body ρ₁ ρ₂ hagree
+    unfold eval
+    cases body with
+    | type => rfl
+    | bvar k =>
+        simp only []
+        exact hagree k (by simp [bvarBound])
+    | lam dom bdy =>
+        simp only [bvarBound] at hagree
+        simp only [Option.bind_eq_bind]
+        have hd := ih (body := dom) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
+              (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
+        rw [hd]
+        have hcl : Closure.mk' bdy ρ₁ = Closure.mk' bdy ρ₂ := by
+          simp only [Closure.mk']
+          congr 1
+          exact List.take_eq_of_agree
+            (fun k hk => hagree k
+              (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
+        rw [hcl]
+    | iota ann bdy =>
+        simp only [bvarBound] at hagree
+        simp only [Option.bind_eq_bind]
+        have hd := ih (body := ann) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
+              (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
+        rw [hd]
+        have hcl : Closure.mk' bdy ρ₁ = Closure.mk' bdy ρ₂ := by
+          simp only [Closure.mk']
+          congr 1
+          exact List.take_eq_of_agree
+            (fun k hk => hagree k
+              (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
+        rw [hcl]
+    | «fix» ann bdy =>
+        simp only [bvarBound] at hagree
+        simp only [Option.bind_eq_bind]
+        have hd := ih (body := ann) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
+              (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
+        rw [hd]
+        have hcl : Closure.mk' bdy ρ₁ = Closure.mk' bdy ρ₂ := by
+          simp only [Closure.mk']
+          congr 1
+          exact List.take_eq_of_agree
+            (fun k hk => hagree k
+              (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
+        rw [hcl]
+    | app f a =>
+        simp only [bvarBound] at hagree
+        simp only [Option.bind_eq_bind]
+        have hf := ih (body := f) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
+              (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
+        have ha := ih (body := a) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
+              (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
+        rw [hf, ha]
+    | letE v bdy =>
+        simp only [bvarBound] at hagree
+        simp only [Option.bind_eq_bind]
+        have hv' := ih (body := v) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
+              (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
+        rw [hv']
+        match hv : eval n unf ρ₂ v with
+        | none => simp [hv]
+        | some vV =>
+            simp only [hv, Option.some_bind]
+            apply ih
+            intro k hk
+            cases k with
+            | zero => simp
+            | succ m =>
+                simp only [List.getElem?_cons_succ]
+                exact hagree m (by omega)
+    | asc t _ty =>
+        simp only [bvarBound] at hagree
+        simp only []
+        exact ih (body := t)
+          (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
 
 /-- `eval` is insensitive to env entries beyond
 `bvarBound body`: trimming `ρ` to that prefix gives the
-same result. Justifies treating `Closure.mk' body ρ`'s
-trimmed env as equivalent to the full `ρ` for the
-fundamental lemma. -/
+same result. Corollary of `eval_env_agree`. -/
 theorem eval_env_take {fuel unf : Nat} {ρ : Env} {body : Expr}
     (hclosed : bvarBound body ≤ ρ.length) :
     eval fuel unf (ρ.take (bvarBound body)) body
       = eval fuel unf ρ body := by
-  -- By induction on body / fuel: every `.bvar k` lookup
-  -- with `k < bvarBound body` succeeds in both envs (the
-  -- trimmed one has exactly that prefix). Sorried.
-  sorry
+  apply eval_env_agree
+  intro k hk
+  rw [List.getElem?_take, if_pos hk]
 
 /-- `Equiv` is a congruence under `.lam`. The body premise
 of `Subtype'.lam` is at `(domB :: Γ)`; `Equiv` quantifies
