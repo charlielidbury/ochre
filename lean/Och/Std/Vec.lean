@@ -152,10 +152,11 @@ private def vec1 := och{ mkVec Nat_ dtwo (Pair one_ (Pair two_ unit_)) }
 private def vec2 := och{ mkVec Nat_ done_ (Pair three_ unit_) }
 private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 
--- TODO[mega-loop]: Concrete result ⊑ Vec Nat — needs the same cascade
--- of refinements as the abstract appendVec test above.
-example : subCheck 5000 vecResult (och{ Vec Nat_ })
-  = .ok true := by sorry
+-- Concrete result ⊑ Vec Nat. subCheckNF fans out here for the
+-- same reason as `dtwo/dthree ⊑ dNat` (the result has length
+-- dthree). NbE.subCheck handles it at fuel 400.
+example : NbE.subCheck 400 vecResult (och{ Vec Nat_ })
+  = .ok true := by native_decide
 
 -- Concrete result: unpack and check length is nonzero. concEval walks
 -- through appendVec, appendArrays (a fix), mkVec, dadd, and disZero
