@@ -799,6 +799,47 @@ mutual recursor plus two supporting lemmas, both stated:
 `quote_open_subst` explicitly). Critical path: **5** (2
 SoundnessProof + 3 target theorems).
 
+### A6/A7 + bughunt-lite findings; quote_fuel_mono (5862916f)
+
+Three parallel probes (divergence-sweep, quote-open-attack,
+bughunt-lite) ran concurrently and found:
+
+  - **A6** (incomplete): NbE's lam-lam pushed `domA` (source)
+    not `domB` (target), rejecting `(λx:Nat_. x) ⊑
+    (λx:zero_. zero_)` while subCheckNF accepted. Fixed →
+    push domB; both checkers agree. Also brings SubV.lam in
+    line with Subtype'.lam (no Γ-narrowing needed for the
+    bridge's `.lam` case).
+  - **A7** (unsound): NbE's `.fix,_`/`.iota,_` arms accepted
+    `(fix self. self) ⊑ X` for any X via the seen-cycle
+    (body=bvar0 → open returns `a` → seen' fires).
+    Productivity guard `a' == a → false` added; subCheckNF's
+    R-side `body == .bvar 0 → false` flipped to `→ true`
+    (`X ⊑ ⊤` is true). Both checkers agree on all 8 probes.
+  - **Bughunt-lite (3 confirmed at 5-0)**: (1) SubV.revapp_R/L
+    lacked `vappω` premise — `b'` could be `.type`, making
+    SubV trivially inhabited. Premise added + threaded. (2)
+    legacy absEval/neutralType `.fix` arms substituted the
+    inhabitant instead of the type. (3) stale comment.
+
+`SubV.unfold_fix_L`/`unfold_iota_L` gained the same
+productivity premise as the algorithm (without it, body=
+bvar0 + .hyp derived ⊤⊑c via the relation too).
+
+`quote_fuel_mono`/`quoteClosure_fuel_mono`/
+`quoteNeutral_fuel_mono` proven (NbE.lean). `eval_unf_equiv`
+stated as the precise NbE-correctness obligation;
+`quoteClosure_eq_quote_openω_fresh` proven conditional on it.
+
+**SoundnessAudit: 7 findings (A1–A7), 5 resolved.** The
+algorithm is sound modulo type-in-type. `subCheckVal → SubV`
+remains fully proven (the SubV constructor changes were
+absorbed by threading evidence the proof already had).
+
+**Sorry-bearing declarations: 17** (+3 from stating
+`narrow`/`shift_preserve`/`eval_unf_equiv` precisely).
+Critical path: **6** (3 SoundnessProof + 3 target theorems).
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
