@@ -734,30 +734,166 @@ by repeated fix/iota unfolds, which `Subtype'.unfold_fix_*`
 /`unfold_iota_L` capture. The precise sub-lemma:
 -/
 
+/-!
+### Logical relation for NbE correctness
+
+The standard NbE soundness proof factors through a
+*realisability* relation between semantic values and source
+expressions. We use a step-indexed version (the `.lam`
+clause quantifies over smaller indices, so the definition
+terminates by recursion on the step count).
+-/
+
+/-- `Subtype'`-equivalence: both directions, in every
+seen/context. This is the equational theory the bridge
+targets. -/
+def Equiv (e₁ e₂ : Expr) : Prop :=
+  ∀ {S : Seen} {Γe : Ctx}, Subtype' S Γe e₁ e₂ ∧ Subtype' S Γe e₂ e₁
+
+namespace Equiv
+  theorem refl (e : Expr) : Equiv e e := fun {_ _} => ⟨.refl e, .refl e⟩
+  theorem symm {e₁ e₂} (h : Equiv e₁ e₂) : Equiv e₂ e₁ :=
+    fun {_ _} => ⟨h.2, h.1⟩
+  theorem trans {e₁ e₂ e₃} (h₁ : Equiv e₁ e₂) (h₂ : Equiv e₂ e₃) :
+      Equiv e₁ e₃ :=
+    fun {_ _} => ⟨.trans h₁.1 h₂.1, .trans h₂.2 h₁.2⟩
+end Equiv
+
+/-- Step-indexed logical relation: `R n d v e` means "at step
+index `n` and depth `d`, the value `v` realises the
+expression `e`".
+
+The base conjunct (`v` quotes to something `Equiv e`) is
+what `R_quote_equiv` extracts. The constructor-specific
+conjunct is what the fundamental lemma's `.app`/`.fix`/
+`.iota` cases consume: a `.lam` is realised iff applying it
+to any (smaller-index-)realised argument gives a realised
+result; a `.fix`/`.iota` iff its one-step unfold is realised.
+
+Downward closure (`R (n+1) → R n`) holds because the binder
+clauses quantify over *all* `n' ≤ n`, not just `n` exactly;
+this is the standard step-indexed setup (Appel-McAllester).
+The whole definition recurses on the first argument. -/
+def R : Nat → Nat → Val → Expr → Prop
+  | 0, _, _, _ => True
+  | n+1, d, v, e =>
+      (∃ e', quote fuelω d v = some e' ∧ Equiv e' e) ∧
+      (match v with
+        | .lam _dV cl =>
+            ∀ n', n' ≤ n → ∀ v' e', R n' d v' e' →
+              ∀ r, cl.openω v' = some r →
+                ∃ dom body, Equiv e (.lam dom body) ∧
+                  R n' (d + 1) r (body.subst 0 e')
+        | .iota _aV cl =>
+            ∀ n', n' ≤ n →
+              ∀ r, cl.openω (.iota _aV cl) = some r →
+                r ≠ .iota _aV cl →
+                ∃ ann body, Equiv e (.iota ann body) ∧
+                  R n' d r (body.subst 0 e)
+        | .«fix» _aV cl =>
+            ∀ n', n' ≤ n →
+              ∀ r, cl.openω (.«fix» _aV cl) = some r →
+                r ≠ .«fix» _aV cl →
+                ∃ ann body, Equiv e (.fix ann body) ∧
+                  R n' d r (body.subst 0 (.fix ann body))
+        | .type | .neutral _ => True)
+
+/-- An environment `ρ` realises an expression-environment
+`ρe` at index `n`, depth `d`. -/
+def REnv (n d : Nat) (ρ : Env) (ρe : List Expr) : Prop :=
+  ρ.length = ρe.length ∧
+  ∀ k v, ρ[k]? = some v → ∃ e, ρe.get? k = some e ∧ R n d v e
+
+/-- Downward closure: realisation at a larger step index
+implies realisation at every smaller one. By induction on
+`n`; the binder clauses are already `∀ n' ≤ n`-quantified so
+restricting to `n' ≤ m ≤ n` is direct. -/
+theorem R_mono {n m d v e} (hle : m ≤ n) (h : R n d v e) :
+    R m d v e := by
+  sorry
+
+/-- **Fundamental lemma** (NbE soundness, eval direction).
+Evaluating `body` under a realised environment, at *any*
+`unf` budget, gives a value realising `body.substEnv ρe`.
+The `unf`-independence is the whole point: `vapp`'s
+`.fix`/`.iota` arms either unfold (using one `unf`) or
+return `.stuckRec`; both realise the same source expression
+(the unfolded body via the `.fix`/`.iota` clause of `R`; the
+stuckRec via the `.neutral` clause + `quote .stuckRec =
+.app (quote f) (quote a)` which is `Equiv` to the unfolded
+form by `Subtype'.unfold_*`).
+
+Proof: induction on the step index `m`, with inner
+case-split on `body`. The `.app` case uses the `.lam`/
+`.fix`/`.iota` clauses of `R` on the head's IH (at index
+`m`) instantiated with the argument's IH (at index `m' ≤ m`
+via `R_mono`). The `.lam`/`.iota`/`.fix` cases of `body`
+build the constructor clause directly (the closure body is
+the original `body` Expr, so `cl.openω v'` re-evaluates it
+under the extended env — apply IH at the smaller index). -/
+theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
+    (heval : eval fuel unf ρ body = some v)
+    {m d : Nat} {ρe : List Expr}
+    (henv : REnv m d ρ ρe) :
+    R m d v (body.substEnv ρe) := by
+  sorry
+
+/-- The base conjunct of `R` at any nonzero index. -/
+theorem R_quote_equiv {n d v e}
+    (hn : 0 < n) (h : R n d v e)
+    {e' : Expr} (hq : quote fuelω d v = some e') :
+    Equiv e' e := by
+  cases n with
+  | zero => omega
+  | succ m =>
+      unfold R at h
+      obtain ⟨⟨e'', hq'', heqv⟩, _⟩ := h
+      rw [hq] at hq''; cases hq''; exact heqv
+
+/-- The identity environment realises itself: each `ρ[k]` is
+`.neutral (.var (d-1-k))` which quotes to `.bvar k`, and
+`ρe[k] = .bvar k`. -/
+theorem REnv_id (m d : Nat) :
+    REnv m d
+      ((List.range d).reverse.map (fun lvl => Val.neutral (.var lvl)))
+      ((List.range d).map .bvar) := by
+  sorry
+
 /-- **Unf-irrelevance modulo `Subtype'`**: evaluating the
 same expression at the same fuel/env but different `unf`
 budgets gives values whose quotes are `Subtype'`-equivalent.
-This is the *core* of NbE correctness for Och: the only
-non-determinism in `eval` is how many fix/ι layers unfold,
-and each unfold is a `Subtype'.unfold_*` step.
 
-Proof sketch: mutual induction on `n` over `eval`/`vapp`.
-Every arm preserves the relation except `vapp`'s `.fix`/
-`.iota` cases, which at `unf₁ > 0 = unf₂` produce an
-unfolded body vs. a `.stuckRec`. Their quotes differ by
-exactly one `unfold_fix_L/R` step, so are
-`Subtype'`-equivalent. The hard part is threading the
-relation through the recursive `eval` of the unfolded body
-— that's where a logical relation `R d v e` (indexed by
-depth and env) is needed instead of plain equivalence on
-quotes. -/
+Now derived from the fundamental lemma: both evaluations
+realise the *same* source expression `e.substEnv ρe`
+(`eval_realises` is `unf`-independent), so both quotes are
+`Equiv` to it (`R_quote_equiv`), hence `Equiv` to each other
+(`Equiv.trans` ∘ `Equiv.symm`). The remaining obligation is
+`eval_realises` itself.
+
+The `hρe` hypothesis says the evaluation environment is
+realisable at the given depth (each `ρ[k]` quotes). The
+bridge always supplies such an environment (built from
+fresh neutrals via the `hΓ` correspondence). -/
 theorem eval_unf_equiv {n unf₁ unf₂ ρ e v₁ v₂ depth e₁ e₂}
+    (hn : n ≤ fuelω)
+    {ρe : List Expr} (hρe : REnv 1 depth ρ ρe)
     (h₁ : eval n unf₁ ρ e = some v₁)
     (h₂ : eval n unf₂ ρ e = some v₂)
     (hq₁ : quote n depth v₁ = some e₁)
     (hq₂ : quote n depth v₂ = some e₂) :
     ∀ {S Γe}, Subtype' S Γe e₁ e₂ ∧ Subtype' S Γe e₂ e₁ := by
-  sorry
+  have hq₁' := quote_fuel_mono hn hq₁
+  have hq₂' := quote_fuel_mono hn hq₂
+  -- Both evaluations realise `e.substEnv ρe` at step index 1
+  -- (the fundamental lemma is `unf`-agnostic).
+  have r₁ := eval_realises h₁ (m := 1) (d := depth) hρe
+  have r₂ := eval_realises h₂ (m := 1) (d := depth) hρe
+  -- Both quotes are `Equiv` to that common target.
+  have eq₁ : Equiv e₁ (e.substEnv ρe) := R_quote_equiv Nat.one_pos r₁ hq₁'
+  have eq₂ : Equiv e₂ (e.substEnv ρe) := R_quote_equiv Nat.one_pos r₂ hq₂'
+  -- Compose: e₁ ≡ target ≡ e₂.
+  intro S Γe
+  exact ⟨.trans (eq₁.1) (eq₂.2), .trans (eq₂.1) (eq₁.2)⟩
 
 /-- **Fresh-case correspondence, conditional on unf-
 agreement.** When the unf=1 and unf=4 evaluations of the
