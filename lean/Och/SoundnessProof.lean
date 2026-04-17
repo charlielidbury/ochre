@@ -135,17 +135,9 @@ proved here; the match arms (lam-lam, iota, fix, neutral) are
 sorried with the supporting-lemma they need recorded below.
 -/
 
-/-- `Val.beq` is at least sound: equal `Val`s yield the same
-`SubV`-class. We don't need full `beq → Eq` (which would
-require closure-env canonicity); it suffices that beq-equal
-values are inter-substitutable in `SubV`, which `.refl` gives
-once we know `a = b` *up to* `SubV`. For the guard-arm proof
-we take the stronger `beq → Eq` as a working assumption;
-weakening it is future work. -/
-axiom Val.beq_eq_ax {a b : Val} : (a == b) = true → a = b
-
 /-- Membership decision: the `seen.any` guard. The algorithm
-checks `a == a' && b == b'` (line 71); reflect into `∈`. -/
+checks `a == a' && b == b'` (line 71); reflect into `∈` via
+the `LawfulBEq Val` instance. -/
 theorem seen_any_mem {S : List (Val × Val)} {a b : Val}
     (h : (S.any fun (a', b') => a == a' && b == b') = true) :
     (a, b) ∈ S := by
@@ -153,8 +145,8 @@ theorem seen_any_mem {S : List (Val × Val)} {a b : Val}
   obtain ⟨⟨x, y⟩, hmem, heq⟩ := h
   simp only [Bool.and_eq_true] at heq
   obtain ⟨hx, hy⟩ := heq
-  cases Val.beq_eq_ax hx
-  cases Val.beq_eq_ax hy
+  cases eq_of_beq hx
+  cases eq_of_beq hy
   exact hmem
 
 set_option maxHeartbeats 4000000
@@ -179,13 +171,13 @@ theorem subCheckVal_subV
     simp only [] at h
     -- Guard 1: `a == b`
     split at h
-    · next hab => exact (Val.beq_eq_ax hab) ▸ SubV.refl
+    · next hab => exact (eq_of_beq hab) ▸ SubV.refl
     -- Guard 2: `seen.any`
     split at h
     · next hseen => exact SubV.hyp (seen_any_mem hseen)
     -- Guard 3: `b == .type`
     split at h
-    · next hbt => exact (Val.beq_eq_ax hbt) ▸ SubV.top
+    · next hbt => exact (eq_of_beq hbt) ▸ SubV.top
     -- Match arms: each returns `.ok true` only via recursive
     -- `subCheckVal` calls; `ih` gives `SubV` for those, and
     -- the matching constructor combines them. ~12 cases.
@@ -200,15 +192,12 @@ Each is mechanical given the right induction; recorded so
 the next session can attack them in isolation.
 -/
 
-/-- Fuel monotonicity for `eval`/`vapp`: if a closure opens at
-fuel `n`, it opens with the same result at any `m ≥ n`. Needed
-so each match arm's `cl.open fuel` can be lifted to `cl.openω`.
-The proof is a straightforward mutual induction on `eval`/
-`vapp` (both now non-partial, so this is structural). -/
-theorem Closure.open_fuel_mono {cl : Closure} {v r : Val} {n m : Nat}
-    (hle : n ≤ m) (h : cl.open n v = some r) :
-    cl.open m v = some r := by
-  sorry
+/-- Lift a fuelled closure opening to the large fixed budget.
+`Closure.open_fuel_mono` is now proven in SubCheckVal.lean. -/
+theorem Closure.openω_of_open {cl : Closure} {v r : Val} {n : Nat}
+    (hn : n ≤ fuelω) (h : cl.open n v = some r) :
+    cl.openω v = some r :=
+  Closure.open_fuel_mono hn h
 
 /-- Bridge to the Expr-level relation. Each `SubV` constructor
 maps to a `Subtype'` constructor on the quoted forms; the
