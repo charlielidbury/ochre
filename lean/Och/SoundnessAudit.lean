@@ -230,6 +230,18 @@ and is now `→ true`.
 
 private def fixSelf : Expr := .fix .type (.bvar 0)
 private def iotaSelf : Expr := .iota .type (.bvar 0)
+private def ascZN : Expr := .asc zero_ Nat_
+
+/-- A8: ascription is computationally transparent. `(zero_ :
+Nat_) ≡ zero_`, so `(zero_:Nat_) ⊑ zero_` and `Nat_ ⊄
+(zero_:Nat_)`. Previously both checkers evaluated `.asc t τ`
+to `τ`, accepting `Nat_ ⊑ (zero_:Nat_)` (= `Nat_ ⊑ Nat_`). -/
+theorem a8_ascTransparent :
+    subCheck 200 ascZN zero_ = .ok true ∧
+    NbE.subCheck 200 ascZN zero_ = .ok true ∧
+    subCheck 200 Nat_ ascZN = .ok false ∧
+    NbE.subCheck 200 Nat_ ascZN = .ok false := by
+  native_decide
 
 theorem a7_lhs_rejected :
     subCheck 200 fixSelf Nat_ = .ok false ∧
@@ -303,6 +315,7 @@ concrete task.
 | A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
 | A6 | lam-lam pushed `domA` (incomplete) | **resolved** | push target `domB` |
 | A7 | `.fix/.iota,_` no productivity guard | **resolved** | `a' == a → false`; R-side `→ true` |
+| A8 | `.asc t τ` evaluated to `τ` | **resolved** | evaluate `t`; keep ascription check |
 
 ## Divergence sweep: zero across 576 pairs
 
@@ -320,7 +333,8 @@ private def sweepCorpus : List Expr := [
   .iota .type (.bvar 0), .fix .type Nat_, .fix .type (.bvar 0),
   och{ Nat_ → Nat_ }, och{ zero_ → Nat_ }, och{ Nat_ → zero_ },
   och{ λx:Nat_. x }, och{ λx:zero_. zero_ },
-  och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ }
+  och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
+  .asc zero_ Nat_, .asc Nat_ .type
 ]
 
 private def checkersAgree : Bool := Id.run do

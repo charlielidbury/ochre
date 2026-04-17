@@ -1,5 +1,6 @@
 import Och.Macro
 import Och.Eval
+import Och.TyCheck
 import Och.Std.Bool
 import Och.Std.Nat
 
@@ -12,8 +13,18 @@ idAscribed = λT:Type. λx:T. (x : T)
 ```
 
 These exist to test *transparency*: `id` preserves the precise singleton
-type of its argument, while `idAscribed` widens it to the declared type
-via the ascription.
+type of its argument; `idAscribed` *also* preserves it after the A8 fix
+(SoundnessAudit) — ascription is computationally transparent, so the
+*value* of `(x : T)` is `x`, while its *type* is `T`. Previously
+`absEval` returned `(T, T)`, making `absEvalVal idAscribed … = T` and
+`concEval idAscribed … = three_` disagree on the same term, which
+breaks subject reduction (`Nat_ ⊑ (zero_ : Nat_)` was accepted, but
+`(zero_ : Nat_)` computes to `zero_` and `Nat_ ⊄ zero_`).
+
+The widening *intent* (lose precision via ascription) is now expressed
+by checking the *type* component, not the value: `idAscribed T x : T`,
+whereas `id T x : x` (the singleton). See the type-component tests
+below.
 -/
 
 namespace Std
@@ -41,9 +52,20 @@ private def fuel : Nat := 50
 example : absEvalVal (och{ id_ Nat_ three_ })
   = .ok ⟨three_⟩ := by native_decide
 
--- idAscribed Nat 3 should have type Nat (ascription loses precision). §6.4
+-- After A8, idAscribed normalises identically to id_ (the
+-- ascription is computationally transparent and absEval
+-- normalises lambda bodies). The previous "widening via asc"
+-- was unsound: it accepted `Nat_ ⊑ (zero_ : Nat_)`, but
+-- `(zero_ : Nat_)` computes to `zero_` and `Nat_ ⊄ zero_`
+-- (subject reduction fails). Widening is now expressed via
+-- `NbE.typeCheck` (which keeps the annotation as the *expected
+-- type* without conflating it with the value), not via the
+-- value-level evaluator.
 example : absEvalVal (och{ idAscribed Nat_ three_ })
-  = .ok ⟨Nat_⟩ := by native_decide
+  = .ok ⟨three_⟩ := by native_decide
+
+example : absEvalVal (och{ idAscribed Nat_ three_ })
+  = absEvalVal (och{ id_ Nat_ three_ }) := by native_decide
 
 -- ----------------------------------------------------------
 -- Transparency: absEval (negative)
@@ -53,9 +75,12 @@ example : absEvalVal (och{ idAscribed Nat_ three_ })
 example : absEvalVal (och{ id_ Nat_ three_ })
   ≠ .ok ⟨Nat_⟩ := by native_decide
 
--- idAscribed Nat 3 should NOT equal three — precision is lost
-example : absEvalVal (och{ idAscribed Nat_ three_ })
-  ≠ .ok ⟨three_⟩ := by native_decide
+-- The §6.4 widening intent now lives in `NbE.typeCheck`: the
+-- ascription gives `idAscribed Nat_ three_` the *checked* type
+-- `Nat_`, while `id_ Nat_ three_` synthesises the singleton
+-- `three_`. (Checked via tyInfer's `.asc` arm, which returns τ.)
+example : NbE.typeCheck 200 (och{ idAscribed Nat_ three_ }) Nat_
+  = .ok true := by native_decide
 
 -- ----------------------------------------------------------
 -- Computation: concEval (positive)

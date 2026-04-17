@@ -112,8 +112,14 @@ mutual
       | .letE v body => do
           let v' ← eval fuel unf env v
           eval fuel unf (v' :: env) body
-      | .asc _t ty =>
-          eval fuel unf env ty
+      | .asc t _ty =>
+          -- Ascription is computationally transparent: `(t : τ)`
+          -- evaluates to `t` (matching `concEval` and
+          -- `Subtype'.asc_L/R`). Previously evaluated `τ`, so
+          -- `Nat_ ⊑ (zero_ : Nat_)` was accepted (= `Nat_ ⊑
+          -- Nat_`); declaratively that's `Nat_ ⊑ zero_`, false.
+          -- (SoundnessAudit A8.)
+          eval fuel unf env t
   termination_by fuel
 
   def vapp (fuel unf : Nat) (f a : Val) : Option Val :=

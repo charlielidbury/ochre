@@ -137,7 +137,11 @@ mutual
         let (sigma, _) ← absEval fuel ctx seen term muSeen
         let (tau, _) ← absEval fuel ctx seen ty muSeen
         match subCheckNF fuel ctx seen sigma.val tau.val with
-        | .ok true => .ok (tau, tau)
+        -- (A8) value is the *term*, type is the *annotation*.
+        -- Previously `(tau, tau)`, conflating "abstract τ" with
+        -- the computational value. The ascription is checked;
+        -- the value is `t`. Matches concEval and Subtype'.asc_*.
+        | .ok true => .ok (sigma, tau)
         | .ok false => .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
         | .error e => .error s!"ascription check: {e}"
       | .iota ann body => do
