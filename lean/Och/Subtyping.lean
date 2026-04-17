@@ -25,12 +25,25 @@ so looking up `.bvar k` yields a type that must be shifted by
 `k+1` to be valid at the current depth. -/
 abbrev Ctx := List Expr
 
-/-- Declarative subtyping relation. `Subtype' Γ a b` means
-`Γ ⊢ a ⊑ b`.
+/-- Coinductive hypotheses: `(a, b) ∈ S` means the goal `a ⊑ b`
+may be assumed — it's an ancestor in the derivation tree,
+encountered at a productive fix/iota unfold. This is the
+Brandt-Henglein device for equirecursive subtyping
+(SoundnessAudit A4); the algorithmic seen-set is its direct
+realisation. -/
+abbrev Seen := List (Expr × Expr)
+
+/-- Declarative subtyping relation. `Subtype' S Γ a b` means
+`Γ ⊢ a ⊑ b` assuming every pair in `S` coinductively.
 
 Brought into sync with the algorithmic checker after the
 SoundnessAudit pass:
 
+  - `hyp`: an ancestor goal `(a, b) ∈ S` may be assumed. Only
+    the *productive* rules (`iota_intro`, the three `unfold_*`)
+    extend `S`, so `.hyp` cannot close a goal that hasn't
+    passed through at least one such guard — the standard
+    Brandt-Henglein productivity condition (A4).
   - `app_cong` requires argument *equivalence* (`a₂ ⊑ a₁ ∧ a₁
     ⊑ a₂`), not just `a₂ ⊑ a₁` — a neutral head can use its
     argument at any variance (A1).
@@ -42,106 +55,161 @@ SoundnessAudit pass:
   - `trans` is an explicit constructor. With equirecursive
     fix-unfold, transitivity is not obviously admissible
     (the unfold rules don't decrease a syntactic measure), so
-    it's taken as primitive. The algorithmic seen-set
-    discipline is the coinductive counterpart.
+    it's taken as primitive.
+  - β/let/asc-conversion rules so the relation is closed under
+    head reduction (the algorithm normalises before comparing).
 
-**Known gaps** (Phase-2 TODO, recorded in Soundness.lean):
-
-  - No β-conversion rule. The algorithm normalises before
-    comparing; the declarative relation should be quotiented
-    by β (e.g. `conv : a ↝β a' → Subtype' a' b → Subtype' a b`).
-    For now, soundness goes via `quote`d normal forms.
+The "real" subtyping judgment is `Subtype' [] Γ a b` (empty
+hypothesis set). A non-empty `S` arises only inside a
+derivation, mirroring the algorithm's seen-set growth.
 -/
-inductive Subtype' : Ctx → Expr → Expr → Prop where
-  | refl {Γ} (e : Expr) : Subtype' Γ e e
-  | top {Γ} (e : Expr) : Subtype' Γ e .type
-  | trans {Γ a b c} :
-      Subtype' Γ a b → Subtype' Γ b c → Subtype' Γ a c
+inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
+  /-- Coinductive hypothesis: an ancestor goal in `S` may be
+  assumed. Only the productive rules extend `S`. -/
+  | hyp {S Γ a b} : (a, b) ∈ S → Subtype' S Γ a b
+  | refl {S Γ} (e : Expr) : Subtype' S Γ e e
+  | top {S Γ} (e : Expr) : Subtype' S Γ e .type
+  | trans {S Γ a b c} :
+      Subtype' S Γ a b → Subtype' S Γ b c → Subtype' S Γ a c
   /-- Variable rule: `.bvar k` has the type recorded in the
   context, shifted to the current depth. This is what the
   algorithm's `neutralAscent` realises. -/
-  | bvar {Γ : Ctx} {k : Nat} {τ : Expr} :
+  | bvar {S} {Γ : Ctx} {k : Nat} {τ : Expr} :
       Γ.get? k = some τ →
-      Subtype' Γ (.bvar k) (τ.shift (k+1) 0)
+      Subtype' S Γ (.bvar k) (τ.shift (k+1) 0)
   /-- Function subtyping: contravariant domain, covariant body
   (under the *target* domain — a caller supplies a `domB`, which
   the function may treat as the wider `domA`). -/
-  | lam {Γ domA domB bodyA bodyB} :
-      Subtype' Γ domB domA →
-      Subtype' (domB :: Γ) bodyA bodyB →
-      Subtype' Γ (.lam domA bodyA) (.lam domB bodyB)
+  | lam {S Γ domA domB bodyA bodyB} :
+      Subtype' S Γ domB domA →
+      Subtype' S (domB :: Γ) bodyA bodyB →
+      Subtype' S Γ (.lam domA bodyA) (.lam domB bodyB)
   /-- Stuck-application congruence: arguments must be
   *equivalent* (both directions). See SoundnessAudit A1. -/
-  | app_cong {Γ f₁ f₂ a₁ a₂} :
-      Subtype' Γ f₂ f₁ → Subtype' Γ a₂ a₁ → Subtype' Γ a₁ a₂ →
-      Subtype' Γ (.app f₂ a₂) (.app f₁ a₁)
-  | iota_body {Γ ann body₁ body₂} :
-      Subtype' (ann :: Γ) body₂ body₁ →
-      Subtype' Γ (.iota ann body₂) (.iota ann body₁)
-  | fix_body {Γ ann body₁ body₂} :
-      Subtype' (ann :: Γ) body₂ body₁ →
-      Subtype' Γ (.fix ann body₂) (.fix ann body₁)
-  /-- iotaIntro (value-sub, Cedille-style). -/
-  | iota_intro {Γ a ann body} :
-      Subtype' Γ a ann →
-      Subtype' Γ a (body.subst 0 a) →
-      Subtype' Γ a (.iota ann body)
-  /-- [unfoldIotaL]: `ι A. body ⊑ c` if its one-step unfolding is. -/
-  | unfold_iota_L {Γ ann body c} :
-      Subtype' Γ (body.subst 0 (.iota ann body)) c →
-      Subtype' Γ (.iota ann body) c
+  | app_cong {S Γ f₁ f₂ a₁ a₂} :
+      Subtype' S Γ f₂ f₁ → Subtype' S Γ a₂ a₁ → Subtype' S Γ a₁ a₂ →
+      Subtype' S Γ (.app f₂ a₂) (.app f₁ a₁)
+  | iota_body {S Γ ann body₁ body₂} :
+      Subtype' S (ann :: Γ) body₂ body₁ →
+      Subtype' S Γ (.iota ann body₂) (.iota ann body₁)
+  | fix_body {S Γ ann body₁ body₂} :
+      Subtype' S (ann :: Γ) body₂ body₁ →
+      Subtype' S Γ (.fix ann body₂) (.fix ann body₁)
+  /-- iotaIntro (value-sub, Cedille-style). The goal is added
+  to `S` before recursing — both premises may use it. -/
+  | iota_intro {S Γ a ann body} :
+      Subtype' ((a, .iota ann body) :: S) Γ a ann →
+      Subtype' ((a, .iota ann body) :: S) Γ a (body.subst 0 a) →
+      Subtype' S Γ a (.iota ann body)
+  /-- [unfoldIotaL]: `ι A. body ⊑ c` if its one-step unfolding
+  is. The goal is added to `S` (productive unfold). -/
+  | unfold_iota_L {S Γ ann body c} :
+      Subtype' ((.iota ann body, c) :: S) Γ
+        (body.subst 0 (.iota ann body)) c →
+      Subtype' S Γ (.iota ann body) c
   /-- [unfoldFixL]: `fix A. body ⊑ c` if `body[self := fix A. body] ⊑ c`. -/
-  | unfold_fix_L {Γ ann body c} :
-      Subtype' Γ (body.subst 0 (.fix ann body)) c →
-      Subtype' Γ (.fix ann body) c
+  | unfold_fix_L {S Γ ann body c} :
+      Subtype' ((.fix ann body, c) :: S) Γ
+        (body.subst 0 (.fix ann body)) c →
+      Subtype' S Γ (.fix ann body) c
   /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`.
       The previous `[fix-ann]` (`a ⊑ A → a ⊑ fix A. body`) was removed:
       `A` is the type of the recursion variable, not an upper bound on
       the fixpoint, so with `A = Type` it admitted `Nat ⊑ dBool`. -/
-  | unfold_fix_R {Γ a ann body} :
-      Subtype' Γ a (body.subst 0 (.fix ann body)) →
-      Subtype' Γ a (.fix ann body)
+  | unfold_fix_R {S Γ a ann body} :
+      Subtype' ((a, .fix ann body) :: S) Γ
+        a (body.subst 0 (.fix ann body)) →
+      Subtype' S Γ a (.fix ann body)
   /-- β-conversion on the left. The algorithm normalises before
   comparing; declaratively, a β-redex on either side may be
   contracted. This (with `trans`) makes `Subtype'` closed under
   β-equivalence. -/
-  | beta_L {Γ dom body arg b} :
-      Subtype' Γ (body.subst 0 arg) b →
-      Subtype' Γ (.app (.lam dom body) arg) b
-  | beta_R {Γ a dom body arg} :
-      Subtype' Γ a (body.subst 0 arg) →
-      Subtype' Γ a (.app (.lam dom body) arg)
+  | beta_L {S Γ dom body arg b} :
+      Subtype' S Γ (body.subst 0 arg) b →
+      Subtype' S Γ (.app (.lam dom body) arg) b
+  | beta_R {S Γ a dom body arg} :
+      Subtype' S Γ a (body.subst 0 arg) →
+      Subtype' S Γ a (.app (.lam dom body) arg)
   /-- let-conversion (`let x = v in e ↝ e[x:=v]`). -/
-  | letE_L {Γ val body b} :
-      Subtype' Γ (body.subst 0 val) b →
-      Subtype' Γ (.letE val body) b
-  | letE_R {Γ a val body} :
-      Subtype' Γ a (body.subst 0 val) →
-      Subtype' Γ a (.letE val body)
+  | letE_L {S Γ val body b} :
+      Subtype' S Γ (body.subst 0 val) b →
+      Subtype' S Γ (.letE val body) b
+  | letE_R {S Γ a val body} :
+      Subtype' S Γ a (body.subst 0 val) →
+      Subtype' S Γ a (.letE val body)
   /-- Ascription is computationally transparent. -/
-  | asc_L {Γ e τ b} :
-      Subtype' Γ e b → Subtype' Γ (.asc e τ) b
-  | asc_R {Γ a e τ} :
-      Subtype' Γ a e → Subtype' Γ a (.asc e τ)
+  | asc_L {S Γ e τ b} :
+      Subtype' S Γ e b → Subtype' S Γ (.asc e τ) b
+  | asc_R {S Γ a e τ} :
+      Subtype' S Γ a e → Subtype' S Γ a (.asc e τ)
+
+/-- Hypothesis-set weakening: a derivation under `S` is also a
+derivation under any superset `S'`. (Adding hypotheses can
+only help.) The `subCheckVal_sound` proof uses this to thread
+the algorithmic seen-set into the declarative one. -/
+theorem Subtype'.weaken {S S' Γ a b}
+    (hsub : ∀ p, p ∈ S → p ∈ S') (h : Subtype' S Γ a b) :
+    Subtype' S' Γ a b := by
+  induction h generalizing S' with
+  | hyp hin => exact .hyp (hsub _ hin)
+  | refl e => exact .refl e
+  | top e => exact .top e
+  | trans _ _ ih1 ih2 => exact .trans (ih1 hsub) (ih2 hsub)
+  | bvar h => exact .bvar h
+  | lam _ _ ihd ihb => exact .lam (ihd hsub) (ihb hsub)
+  | app_cong _ _ _ ihf iha iha' =>
+      exact .app_cong (ihf hsub) (iha hsub) (iha' hsub)
+  | iota_body _ ih => exact .iota_body (ih hsub)
+  | fix_body _ ih => exact .fix_body (ih hsub)
+  | iota_intro _ _ ih1 ih2 =>
+      refine .iota_intro (ih1 ?_) (ih2 ?_) <;>
+      · intro p hp
+        cases hp with
+        | head => exact List.mem_cons_self ..
+        | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
+  | unfold_iota_L _ ih =>
+      refine .unfold_iota_L (ih ?_)
+      intro p hp
+      cases hp with
+      | head => exact List.mem_cons_self ..
+      | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
+  | unfold_fix_L _ ih =>
+      refine .unfold_fix_L (ih ?_)
+      intro p hp
+      cases hp with
+      | head => exact List.mem_cons_self ..
+      | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
+  | unfold_fix_R _ ih =>
+      refine .unfold_fix_R (ih ?_)
+      intro p hp
+      cases hp with
+      | head => exact List.mem_cons_self ..
+      | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
+  | beta_L _ ih => exact .beta_L (ih hsub)
+  | beta_R _ ih => exact .beta_R (ih hsub)
+  | letE_L _ ih => exact .letE_L (ih hsub)
+  | letE_R _ ih => exact .letE_R (ih hsub)
+  | asc_L _ ih => exact .asc_L (ih hsub)
+  | asc_R _ ih => exact .asc_R (ih hsub)
 
 /-- The old same-domain rule is derivable. -/
-theorem Subtype'.lam_body {Γ dom body₁ body₂}
-    (h : Subtype' (dom :: Γ) body₂ body₁) :
-    Subtype' Γ (.lam dom body₂) (.lam dom body₁) :=
+theorem Subtype'.lam_body {S Γ dom body₁ body₂}
+    (h : Subtype' S (dom :: Γ) body₂ body₁) :
+    Subtype' S Γ (.lam dom body₂) (.lam dom body₁) :=
   .lam (.refl dom) h
 
 /-- Head congruence: derivable from `app_cong` with reflexive
 arg. Lets β/let/asc-conversion fire under an application spine
 via `trans`. -/
-theorem Subtype'.app_head {Γ f f' a}
-    (h : Subtype' Γ f f') : Subtype' Γ (.app f a) (.app f' a) :=
+theorem Subtype'.app_head {S Γ f f' a}
+    (h : Subtype' S Γ f f') : Subtype' S Γ (.app f a) (.app f' a) :=
   .app_cong h (.refl a) (.refl a)
 
 /-- Multi-step head reduction under a spine, then continue. The
 common pattern when the head is `(λx. …) v w …`. -/
-theorem Subtype'.beta_head {Γ dom body arg a c}
-    (h : Subtype' Γ (.app (body.subst 0 arg) a) c) :
-    Subtype' Γ (.app (.app (.lam dom body) arg) a) c :=
+theorem Subtype'.beta_head {S Γ dom body arg a c}
+    (h : Subtype' S Γ (.app (body.subst 0 arg) a) c) :
+    Subtype' S Γ (.app (.app (.lam dom body) arg) a) c :=
   .trans (.app_head (.beta_L (.refl _))) h
 
 /-- Π-elimination (type-ascent through application). If `f`
@@ -151,9 +219,9 @@ instantiated codomain. Derivable: `f a ⊑ (Πx:dom. cod) a` by
 compose via `trans`. The domain check `a ⊑ dom` is *not* a
 premise — declaratively, β is type-blind (SoundnessAudit A3);
 the algorithmic `typeCheck` enforces it separately. -/
-theorem Subtype'.app_ascent {Γ f a dom cod}
-    (hf : Subtype' Γ f (.lam dom cod)) :
-    Subtype' Γ (.app f a) (cod.subst 0 a) :=
+theorem Subtype'.app_ascent {S Γ f a dom cod}
+    (hf : Subtype' S Γ f (.lam dom cod)) :
+    Subtype' S Γ (.app f a) (cod.subst 0 a) :=
   .trans (.app_head hf) (.beta_L (.refl _))
 
 
@@ -185,15 +253,15 @@ theorem SubtypeCore.shift_preserve {a b : Expr} (h : SubtypeCore a b) (d c : Nat
   | fix_body _ ih => simp [Expr.shift]; exact .fix_body (ih (c + 1))
 
 theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) :
-    ∀ Γ, Subtype' Γ a b := by
+    ∀ S Γ, Subtype' S Γ a b := by
   induction h with
-  | refl e => exact fun _ => .refl e
-  | top e => exact fun _ => .top e
-  | lam_body _ ih => exact fun Γ => .lam_body (ih _)
+  | refl e => exact fun _ _ => .refl e
+  | top e => exact fun _ _ => .top e
+  | lam_body _ ih => exact fun S Γ => .lam_body (ih S _)
   | app_cong _ _ _ ihf iha iha' =>
-      exact fun Γ => .app_cong (ihf Γ) (iha Γ) (iha' Γ)
-  | iota_body _ ih => exact fun Γ => .iota_body (ih _)
-  | fix_body _ ih => exact fun Γ => .fix_body (ih _)
+      exact fun S Γ => .app_cong (ihf S Γ) (iha S Γ) (iha' S Γ)
+  | iota_body _ ih => exact fun S Γ => .iota_body (ih S _)
+  | fix_body _ ih => exact fun S Γ => .fix_body (ih S _)
 
 theorem SubtypeCore.lam_rhs_shape {dom body : Expr} {e : Expr}
     (h : SubtypeCore e (.lam dom body)) :

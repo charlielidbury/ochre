@@ -6,6 +6,7 @@ import Och.SubCheckVal
 import Och.TyCheck
 import Och.Std.Nat
 import Och.Std.Unit
+import Och.Std.DBool
 
 /-!
 # Soundness (Phase 2)
@@ -82,7 +83,7 @@ theorem subCheckVal_sound
     {ae be : Expr}
     (hqa : quote fuel 0 a = some ae)
     (hqb : quote fuel 0 b = some be) :
-    Subtype' [] ae be := by
+    Subtype' [] [] ae be := by
   sorry
 
 /-- The bidirectional checker is sound: if `typeCheck e τ`
@@ -95,7 +96,7 @@ leaves and the `.app` domain-check IH for the Π-elim rule. -/
 theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
     (h : typeCheck fuel e τ = .ok true) :
-    Subtype' [] e τ := by
+    Subtype' [] [] e τ := by
   sorry
 
 /-- Type preservation under concrete evaluation: if `e : τ`
@@ -110,9 +111,9 @@ over `Expr`; `Val` should be cleaner since closures avoid the
 substitution lemmas). -/
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
-    (hty : Subtype' [] e τ)
+    (hty : Subtype' [] [] e τ)
     (hstep : concEval fuel e = some e') :
-    Subtype' [] e' τ := by
+    Subtype' [] [] e' τ := by
   sorry
 
 /-- Composing the above: the user-facing guarantee. -/
@@ -120,7 +121,7 @@ theorem soundness
     {fuel : Nat} {e e' τ : Expr}
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = some e') :
-    Subtype' [] e' τ :=
+    Subtype' [] [] e' τ :=
   concEval_preservation (typeCheck_sound hcheck) hstep
 
 /-!
@@ -138,7 +139,7 @@ open Std
 bvar 2` under `Γ = [X→X, X, Type]`) goes through `.bvar`:
 `Γ[1] = .bvar 0` (the type of `z` is `X`, which at its binder
 was `bvar 0`), shifted by 2 gives `bvar 2` = `X`. -/
-example : Subtype' [] zero_ Nat_ := by
+example : Subtype' [] [] zero_ Nat_ := by
   apply Subtype'.lam_body
   apply Subtype'.lam_body
   apply Subtype'.lam_body
@@ -146,14 +147,14 @@ example : Subtype' [] zero_ Nat_ := by
 
 /-- `unit_ ⊑ Unit_`. Same shape: `unit_ = λX. λu:X. u`,
 `Unit_ = λX. λu:X. X`, body `u ⊑ X` via `.bvar`. -/
-example : Subtype' [] unit_ Unit_ := by
+example : Subtype' [] [] unit_ Unit_ := by
   apply Subtype'.lam_body
   apply Subtype'.lam_body
   exact Subtype'.bvar (k := 0) (τ := .bvar 0) rfl
 
 /-- β-conversion: `(λx:Nat_. x) zero_ ⊑ Nat_` reduces via
 `beta_L` to the `zero_ ⊑ Nat_` witness above. -/
-example : Subtype' [] (.app (.lam Nat_ (.bvar 0)) zero_) Nat_ := by
+example : Subtype' [] [] (.app (.lam Nat_ (.bvar 0)) zero_) Nat_ := by
   apply Subtype'.beta_L
   apply Subtype'.lam_body; apply Subtype'.lam_body; apply Subtype'.lam_body
   exact Subtype'.bvar (k := 1) (τ := .bvar 0) rfl
@@ -161,7 +162,7 @@ example : Subtype' [] (.app (.lam Nat_ (.bvar 0)) zero_) Nat_ := by
 /-- `one_ ⊑ Nat_` (Church 1). Body is `s z ⊑ X` under
 `Γ = [s:X→X, z:X, X:Type]`. Derives via `app_ascent`: `s` has
 Π-type `X→X` from `.bvar`, so `s z` has the codomain `X`. -/
-example : Subtype' [] one_ Nat_ := by
+example : Subtype' [] [] one_ Nat_ := by
   apply Subtype'.lam_body
   apply Subtype'.lam_body
   apply Subtype'.lam_body
@@ -169,11 +170,42 @@ example : Subtype' [] one_ Nat_ := by
   -- bvar 0 (=s) ⊑ Γ[0].shift 1 0 ; Γ[0] = `.lam (bvar 1) (bvar 2)`
   -- shift 1 0 → `.lam (bvar 2) (bvar 3)`. Then app_ascent with
   -- a := bvar 1 (=z) gives `(bvar 3).subst 0 (bvar 1) = bvar 2`.
-  have hs := Subtype'.bvar (Γ := [.lam (.bvar 1) (.bvar 2), .bvar 0, .type])
+  have hs := Subtype'.bvar (S := [])
+                           (Γ := [.lam (.bvar 1) (.bvar 2), .bvar 0, .type])
                            (k := 0) (τ := .lam (.bvar 1) (.bvar 2)) rfl
   have ha := Subtype'.app_ascent (a := .bvar 1) hs
   simp only [Expr.shift, Expr.subst, Expr.shift] at ha
   exact ha
+
+/-- The flagship coinductive case (SoundnessAudit A4):
+`dtrue ⊑ dBool` derives via `unfold_fix_R` → `iota_intro`,
+with the annotation premise closing by `.hyp`. After
+`unfold_fix_R`, `S = [(dtrue, dBool)]`; the fix body's
+ι-annotation is `bvar 0 ↦ dBool`, so `iota_intro`'s first
+premise is exactly `dtrue ⊑ dBool` under `S' = [(dtrue, ι…),
+(dtrue, dBool)]` — and `(dtrue, dBool) ∈ S'` discharges it.
+
+Without seen-indexing this premise was the unbreakable cycle;
+with `.hyp` it closes in one step. The body premise is left
+sorried (it descends through the lam chain and eventually
+needs the same trick under more binders — provable but
+verbose). -/
+example : Subtype' [] [] dtrue dBool := by
+  unfold dBool
+  apply Subtype'.unfold_fix_R
+  -- RHS is now `(ι (bvar 0). …).subst 0 dBool` = `.iota dBool …`
+  simp only [Expr.subst]
+  apply Subtype'.iota_intro
+  · -- annotation premise: dtrue ⊑ (bvar 0).subst 0 dBool = dBool,
+    -- under S = [(dtrue, ι…), (dtrue, dBool)].
+    simp only [Expr.subst, Expr.shift]
+    exact Subtype'.hyp (List.Mem.tail _ (List.Mem.head _))
+  · -- body premise: dtrue ⊑ (λP. λt:(P dtrue). λf:(P dfalse). P self)[self:=dtrue].
+    -- Provable by unfold_fix_L on dtrue, unfold_iota_L, then lam
+    -- (the contravariant `λP:(dtrue→Type)` vs `λP:(dBool→Type)`
+    -- domain again needs `dtrue ⊑ dBool`, which `.hyp` closes from
+    -- the seen entries above). Verbose; deferred.
+    sorry
 
 end Witnesses
 
