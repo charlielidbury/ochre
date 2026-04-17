@@ -840,6 +840,36 @@ absorbed by threading evidence the proof already had).
 `narrow`/`shift_preserve`/`eval_unf_equiv` precisely).
 Critical path: **6** (3 SoundnessProof + 3 target theorems).
 
+Verified PASS (12 checks incl. β-reducible-self adversarial).
+Divergence sweep: **0/576** (locked in as `divergenceSweep_zero`).
+
+### Logical relation R; eval_unf_equiv derived; mutual bridge (5862916f)
+
+Two parallel worktree forks landed and auto-merged:
+
+  - **Step-indexed logical relation `R n d v e`** ("v
+    realises e at step n, depth d"). Recurses on `n`; the
+    `.lam` clause Kripke-quantifies over `n' ≤ n` (Appel-
+    McAllester downward closure). `Equiv` (Subtype'-both-
+    directions) defined with refl/symm/trans. `R_quote_equiv`
+    *proven*: the base conjunct of `R` at nonzero index gives
+    `quote v ≡ e`. **`eval_unf_equiv` is now derived** from
+    the (sorried) fundamental lemma `eval_realises` — apply
+    at unf₁ and unf₂, both realise the same `e.substEnv ρe`,
+    compose via `Equiv.trans ∘ Equiv.symm`. No direct sorry.
+  - **3-motive `@SubN.rec`** for the bridge. `SubN.var/app/
+    stuckRec` and `SubV.neutral_struct/neutral_ascent` (most
+    sub-cases) proven. New helpers: `quoteNeutral_app_shape`,
+    `quoteNeutral_var_shape`, `quoteNeutral_stuckRec_shape`.
+    The 10 closure-opening cases sorried with IHs visible
+    (gated on `quote_open_subst`).
+
+**The entire soundness chain reduces to `eval_realises`**
+(the fundamental lemma of `R`). Everything else is either
+proven or derived from it. Sorry-bearing declarations: 21
+(+4 from stating `R_mono`/`eval_realises`/`REnv_id`/the
+3-motive bridge block; `eval_unf_equiv` no longer counts).
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
