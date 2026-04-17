@@ -674,6 +674,45 @@ sorried (each is `ih` + constructor + `openω_of_open`).
 **No axioms** in the proven path: `Val.beq_eq_ax` removed.
 Build green; 0 markers, 0 Std/Tests sorries.
 
+### subCheckVal factored; 8 match arms proven; pre-existing sorries swept (5862916f)
+
+Two more parallel-fork landings plus mainline cleanup:
+
+  - **`subCheckVal` refactor** (77ac3da): match arms factored
+    into `subCheckValMatch` (lex `(fuel, tag)` termination).
+    `subCheckVal_subV` now runs at *default* heartbeats —
+    `set_option maxHeartbeats` removed.
+  - **8 match arms closed** in `subCheckValMatch_subV`:
+    lam-lam, `_,.iota`, `_,.fix`, `.fix,_`, `.iota,_`, plus
+    three trivial leaves (`_,.neutral`/`.type,_`/`_,.type`).
+    Pattern: `rcases` each sub-result before simping `h`,
+    then `ih` + matching `SubV` constructor +
+    `Closure.openω_of_open(Fresh)`. Added `hfuel : fuel ≤
+    fuelω` premise for the lift.
+  - **Pre-existing sorries swept**: `Syntax.lean` 4 → 0
+    (the `.letE` cases of the four substitution lemmas; same
+    binder pattern as the preceding `.fix` case). `Eval.lean`
+    7 → 6 (`concEval_not_letE` added, mirroring
+    `concEval_not_asc`).
+
+**Sorry inventory** (excluding `Och/Simple/` and Std/Tests
+which are at 0):
+
+| File | Count | On critical path? |
+|---|---|---|
+| `Syntax.lean` | 0 | — |
+| `Eval.lean` | 6 | no (legacy `subCheckNF` fuel-mono) |
+| `Subtyping.lean` | 4 | no (legacy `subCheckNF` shape) |
+| `SoundnessProof.lean` | 8 | yes (7 match arms + quote bridge) |
+| `Soundness.lean` | 3 | yes (target theorems, compose above) |
+
+The 7 remaining match arms are the disjunctive ones (ι-ι and
+fix-fix structural-OR-fallback; three stuckRec re-vapp
+variants; two neutral struct/ascent). Each maps to existing
+`SubV` constructors but needs case-splits on which branch
+the algorithm took. The quote bridge (`SubV_to_Subtype'`) is
+the substantive remaining work.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`

@@ -641,6 +641,37 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
       | none => simp [hv] at h
       | some vVal => simp only [hv] at h; exact ih h
 
+theorem concEval_not_letE {fuel : Nat} {e v body : Expr}
+    (h : concEval fuel e = some (.letE v body)) : False := by
+  induction fuel generalizing e with
+  | zero => simp [concEval] at h
+  | succ n ih =>
+    cases e with
+    | bvar => simp [concEval] at h
+    | lam => simp [concEval] at h
+    | type => simp [concEval] at h
+    | asc term _ => unfold concEval at h; exact ih h
+    | iota => simp [concEval] at h
+    | fix => simp [concEval] at h
+    | app f a =>
+      unfold concEval at h
+      match hf : concEval n f, ha : concEval n a with
+      | none, _ => simp [hf] at h
+      | some _, none => simp [hf, ha] at h
+      | some fVal, some aVal =>
+        simp only [hf, ha] at h
+        match fVal with
+        | .lam _ _ => exact ih h
+        | .iota _ _ => exact ih h
+        | .fix _ _ => exact ih h
+        | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
+          injection h with h; cases h
+    | letE val body' =>
+      unfold concEval at h
+      match hv : concEval n val with
+      | none => simp [hv] at h
+      | some vVal => simp only [hv] at h; exact ih h
+
 /-- Concrete normal form: the shape of concEval outputs.
     Values are lam/type/iota/fix (base values) or neutral applications where
     the function is not lam/iota/fix (not a redex) and sub-expressions are ConcNF. -/
@@ -684,7 +715,7 @@ theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
           injection h with hv; subst hv
           exact ConcNF.app _ _ (ih hf) (ih ha) True.intro
         | .asc t ty => exact absurd hf (by intro h; exact concEval_not_asc h)
-        | .letE _ _ => sorry  -- impossible: concEval never produces letE
+        | .letE _ _ => exact absurd hf (by intro h; exact concEval_not_letE h)
     | letE val body =>
       unfold concEval at h
       match hv : concEval n val with
