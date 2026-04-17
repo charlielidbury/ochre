@@ -216,7 +216,19 @@ theorem Subtype'.beta_head {S Γ dom body arg a c}
 case). The proof is by induction on the derivation; each
 constructor commutes with `shift` since `shift` is a
 homomorphism on `Expr` and `subst` (the substitution lemmas
-in `Syntax.lean`, now sorry-free). -/
+in `Syntax.lean`, now sorry-free).
+
+NOTE: the statement as written is too naive — `Γ`'s entries
+are at *staggered* depths (entry `k` has its bvars relative
+to the context at position `k+1` onward), so a uniform
+`(·.shift d c)` over `Γ` is wrong; each entry needs cutoff
+`c` adjusted by its position. The correct statement maps
+`Γ[k]` to `Γ[k].shift d (c - k - 1)` (or equivalently
+threads the cutoff through the binder constructors). Since
+this lemma is only needed for `narrow`, which after A6 is
+only needed for the bridge's `iota_struct`/`fix_struct`
+cases (themselves gated on `quote_open_subst`), fixing the
+statement is deferred until those cases are reached. -/
 theorem Subtype'.shift_preserve {S Γ a b} (d c : Nat)
     (h : Subtype' S Γ a b) :
     Subtype' (S.map (fun (x, y) => (x.shift d c, y.shift d c)))
