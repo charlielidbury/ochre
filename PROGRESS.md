@@ -548,6 +548,30 @@ remain: A2 (type-in-type, accepted as model axiom) and A3
 (β-blind subCheck, mitigated by `typeCheck`). The arms-by-arms
 soundness proof can now begin.
 
+Verifier (12 checks, 6 adversarial probes): PASS. The old
+unsound encoding is rejected even if reverted; equivalent-
+but-not-syntactic args still accepted; ~2.15× DNat slowdown
+from bidirectional doubling but no fuel exhaustion.
+
+### Subtype' context-indexed; first hand-derivations (5862916f)
+
+`Subtype'` is now `Ctx → Expr → Expr → Prop` with a `.bvar`
+rule (`Γ[k] = τ → Γ ⊢ bvar k ⊑ τ.shift (k+1) 0`) realising
+type-ascent declaratively. `lam`/`iota_body`/`fix_body` push
+the binder's domain onto Γ. `SubtypeCore.toSubtype'` now
+quantifies over Γ.
+
+Two hand-built derivations in Soundness.lean confirm the
+constructors suffice: `Subtype' [] zero_ Nat_` and
+`Subtype' [] unit_ Unit_`, both via three `lam_body` then one
+`bvar` (the body `z ⊑ X` is exactly `Γ[1] = bvar 0` shifted).
+This is the smallest end-to-end witness that the declarative
+relation matches the algorithm.
+
+The remaining gap (β-conversion rule) is documented inline.
+Next: prove `subCheckVal_sound` arm-by-arm; the lam-lam,
+fix-unfold, and bvar arms now have direct constructors.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`

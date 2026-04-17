@@ -18,7 +18,15 @@ their proofs, plus theorems about subCheckNF.
 
 open Expr
 
-/-- Declarative subtyping relation. `Subtype' a b` means `a ⊑ b`.
+/-- Typing context: `Ctx[k]` is the declared type of `.bvar k`.
+Stored in de Bruijn-index order (`Ctx[0]` = innermost binder).
+Each entry's free bvars are relative to the *enclosing* context,
+so looking up `.bvar k` yields a type that must be shifted by
+`k+1` to be valid at the current depth. -/
+abbrev Ctx := List Expr
+
+/-- Declarative subtyping relation. `Subtype' Γ a b` means
+`Γ ⊢ a ⊑ b`.
 
 Brought into sync with the algorithmic checker after the
 SoundnessAudit pass:
@@ -39,61 +47,65 @@ SoundnessAudit pass:
 
 **Known gaps** (Phase-2 TODO, recorded in Soundness.lean):
 
-  - Not context-indexed. The algorithm's `neutralAscent` rule
-    (`Γ(x) = τ → x ⊑ τ`) has no declarative counterpart here.
-    A context-indexed `Subtype' Γ a b` is the eventual target;
-    until then, soundness is stated for *closed* terms.
   - No β-conversion rule. The algorithm normalises before
     comparing; the declarative relation should be quotiented
     by β (e.g. `conv : a ↝β a' → Subtype' a' b → Subtype' a b`).
     For now, soundness goes via `quote`d normal forms.
 -/
-inductive Subtype' : Expr → Expr → Prop where
-  | refl (e : Expr) : Subtype' e e
-  | top (e : Expr) : Subtype' e .type
-  | trans {a b c : Expr} :
-      Subtype' a b → Subtype' b c → Subtype' a c
+inductive Subtype' : Ctx → Expr → Expr → Prop where
+  | refl {Γ} (e : Expr) : Subtype' Γ e e
+  | top {Γ} (e : Expr) : Subtype' Γ e .type
+  | trans {Γ a b c} :
+      Subtype' Γ a b → Subtype' Γ b c → Subtype' Γ a c
+  /-- Variable rule: `.bvar k` has the type recorded in the
+  context, shifted to the current depth. This is what the
+  algorithm's `neutralAscent` realises. -/
+  | bvar {Γ : Ctx} {k : Nat} {τ : Expr} :
+      Γ.get? k = some τ →
+      Subtype' Γ (.bvar k) (τ.shift (k+1) 0)
   /-- Function subtyping: contravariant domain, covariant body
   (under the *target* domain — a caller supplies a `domB`, which
   the function may treat as the wider `domA`). -/
-  | lam {domA domB bodyA bodyB : Expr} :
-      Subtype' domB domA →
-      Subtype' bodyA bodyB →
-      Subtype' (.lam domA bodyA) (.lam domB bodyB)
+  | lam {Γ domA domB bodyA bodyB} :
+      Subtype' Γ domB domA →
+      Subtype' (domB :: Γ) bodyA bodyB →
+      Subtype' Γ (.lam domA bodyA) (.lam domB bodyB)
   /-- Stuck-application congruence: arguments must be
   *equivalent* (both directions). See SoundnessAudit A1. -/
-  | app_cong {f₁ f₂ a₁ a₂ : Expr} :
-      Subtype' f₂ f₁ → Subtype' a₂ a₁ → Subtype' a₁ a₂ →
-      Subtype' (.app f₂ a₂) (.app f₁ a₁)
-  | iota_body {ann body₁ body₂ : Expr} :
-      Subtype' body₂ body₁ → Subtype' (.iota ann body₂) (.iota ann body₁)
-  | fix_body {ann body₁ body₂ : Expr} :
-      Subtype' body₂ body₁ → Subtype' (.fix ann body₂) (.fix ann body₁)
+  | app_cong {Γ f₁ f₂ a₁ a₂} :
+      Subtype' Γ f₂ f₁ → Subtype' Γ a₂ a₁ → Subtype' Γ a₁ a₂ →
+      Subtype' Γ (.app f₂ a₂) (.app f₁ a₁)
+  | iota_body {Γ ann body₁ body₂} :
+      Subtype' (ann :: Γ) body₂ body₁ →
+      Subtype' Γ (.iota ann body₂) (.iota ann body₁)
+  | fix_body {Γ ann body₁ body₂} :
+      Subtype' (ann :: Γ) body₂ body₁ →
+      Subtype' Γ (.fix ann body₂) (.fix ann body₁)
   /-- iotaIntro (value-sub, Cedille-style). -/
-  | iota_intro {a : Expr} {ann body : Expr} :
-      Subtype' a ann →
-      Subtype' a (body.subst 0 a) →
-      Subtype' a (.iota ann body)
+  | iota_intro {Γ a ann body} :
+      Subtype' Γ a ann →
+      Subtype' Γ a (body.subst 0 a) →
+      Subtype' Γ a (.iota ann body)
   /-- [unfoldIotaL]: `ι A. body ⊑ c` if its one-step unfolding is. -/
-  | unfold_iota_L {ann body c : Expr} :
-      Subtype' (body.subst 0 (.iota ann body)) c →
-      Subtype' (.iota ann body) c
+  | unfold_iota_L {Γ ann body c} :
+      Subtype' Γ (body.subst 0 (.iota ann body)) c →
+      Subtype' Γ (.iota ann body) c
   /-- [unfoldFixL]: `fix A. body ⊑ c` if `body[self := fix A. body] ⊑ c`. -/
-  | unfold_fix_L {ann body c : Expr} :
-      Subtype' (body.subst 0 (.fix ann body)) c →
-      Subtype' (.fix ann body) c
+  | unfold_fix_L {Γ ann body c} :
+      Subtype' Γ (body.subst 0 (.fix ann body)) c →
+      Subtype' Γ (.fix ann body) c
   /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`.
       The previous `[fix-ann]` (`a ⊑ A → a ⊑ fix A. body`) was removed:
       `A` is the type of the recursion variable, not an upper bound on
       the fixpoint, so with `A = Type` it admitted `Nat ⊑ dBool`. -/
-  | unfold_fix_R {a ann body : Expr} :
-      Subtype' a (body.subst 0 (.fix ann body)) →
-      Subtype' a (.fix ann body)
+  | unfold_fix_R {Γ a ann body} :
+      Subtype' Γ a (body.subst 0 (.fix ann body)) →
+      Subtype' Γ a (.fix ann body)
 
 /-- The old same-domain rule is derivable. -/
-theorem Subtype'.lam_body {dom body₁ body₂ : Expr}
-    (h : Subtype' body₂ body₁) :
-    Subtype' (.lam dom body₂) (.lam dom body₁) :=
+theorem Subtype'.lam_body {Γ dom body₁ body₂}
+    (h : Subtype' (dom :: Γ) body₂ body₁) :
+    Subtype' Γ (.lam dom body₂) (.lam dom body₁) :=
   .lam (.refl dom) h
 
 /-- SubtypeCore: Subtype' without iota_intro / fix unfolding. Used for
@@ -123,14 +135,16 @@ theorem SubtypeCore.shift_preserve {a b : Expr} (h : SubtypeCore a b) (d c : Nat
   | iota_body _ ih => simp [Expr.shift]; exact .iota_body (ih (c + 1))
   | fix_body _ ih => simp [Expr.shift]; exact .fix_body (ih (c + 1))
 
-theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) : Subtype' a b := by
+theorem SubtypeCore.toSubtype' {a b : Expr} (h : SubtypeCore a b) :
+    ∀ Γ, Subtype' Γ a b := by
   induction h with
-  | refl e => exact .refl e
-  | top e => exact .top e
-  | lam_body _ ih => exact .lam_body ih
-  | app_cong _ _ _ ihf iha iha' => exact .app_cong ihf iha iha'
-  | iota_body _ ih => exact .iota_body ih
-  | fix_body _ ih => exact .fix_body ih
+  | refl e => exact fun _ => .refl e
+  | top e => exact fun _ => .top e
+  | lam_body _ ih => exact fun Γ => .lam_body (ih _)
+  | app_cong _ _ _ ihf iha iha' =>
+      exact fun Γ => .app_cong (ihf Γ) (iha Γ) (iha' Γ)
+  | iota_body _ ih => exact fun Γ => .iota_body (ih _)
+  | fix_body _ ih => exact fun Γ => .fix_body (ih _)
 
 theorem SubtypeCore.lam_rhs_shape {dom body : Expr} {e : Expr}
     (h : SubtypeCore e (.lam dom body)) :

@@ -4,6 +4,8 @@ import Och.Subtyping
 import Och.NbE
 import Och.SubCheckVal
 import Och.TyCheck
+import Och.Std.Nat
+import Och.Std.Unit
 
 /-!
 # Soundness (Phase 2)
@@ -43,10 +45,12 @@ modulo de Bruijn level/index bookkeeping.
   variant would index `Subtype'` and the model by a level.
   Deferred — Och is a core calculus, not a foundation.
 
-- **`Subtype'` is stale**: it predates the ι/fix split and
-  lacks several arms the algorithm uses (contravariant lam,
-  iotaIntro, fix-unfold-L, neutral-ascent). Syncing it is the
-  first concrete task.
+- **`Subtype'` synced** (fb53b4c): now context-indexed
+  (`Subtype' Γ a b`), with `lam` (contravariant domain),
+  `app_cong` (arg equivalence), `unfold_iota_L`, explicit
+  `trans`, and the `bvar` rule for type-ascent. The witnesses
+  below confirm the constructors suffice for the simplest
+  positive examples.
 
 - **Coinduction**: the seen-set discipline is Brandt-Henglein
   style. The declarative counterpart is a coinductive
@@ -78,7 +82,7 @@ theorem subCheckVal_sound
     {ae be : Expr}
     (hqa : quote fuel 0 a = some ae)
     (hqb : quote fuel 0 b = some be) :
-    Subtype' ae be := by
+    Subtype' [] ae be := by
   sorry
 
 /-- The bidirectional checker is sound: if `typeCheck e τ`
@@ -91,7 +95,7 @@ leaves and the `.app` domain-check IH for the Π-elim rule. -/
 theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
     (h : typeCheck fuel e τ = .ok true) :
-    Subtype' e τ := by
+    Subtype' [] e τ := by
   sorry
 
 /-- Type preservation under concrete evaluation: if `e : τ`
@@ -106,9 +110,9 @@ over `Expr`; `Val` should be cleaner since closures avoid the
 substitution lemmas). -/
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
-    (hty : Subtype' e τ)
+    (hty : Subtype' [] e τ)
     (hstep : concEval fuel e = some e') :
-    Subtype' e' τ := by
+    Subtype' [] e' τ := by
   sorry
 
 /-- Composing the above: the user-facing guarantee. -/
@@ -116,7 +120,37 @@ theorem soundness
     {fuel : Nat} {e e' τ : Expr}
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = some e') :
-    Subtype' e' τ :=
+    Subtype' [] e' τ :=
   concEval_preservation (typeCheck_sound hcheck) hstep
+
+/-!
+## Witnesses
+
+Hand-built `Subtype'` derivations for the simplest positive
+tests, demonstrating the constructors are sufficient (i.e. the
+algorithm's `.ok true` corresponds to a derivation).
+-/
+
+section Witnesses
+open Std
+
+/-- `zero_ ⊑ Nat_`. The body comparison `z ⊑ X` (= `bvar 1 ⊑
+bvar 2` under `Γ = [X→X, X, Type]`) goes through `.bvar`:
+`Γ[1] = .bvar 0` (the type of `z` is `X`, which at its binder
+was `bvar 0`), shifted by 2 gives `bvar 2` = `X`. -/
+example : Subtype' [] zero_ Nat_ := by
+  apply Subtype'.lam_body
+  apply Subtype'.lam_body
+  apply Subtype'.lam_body
+  exact Subtype'.bvar (k := 1) (τ := .bvar 0) rfl
+
+/-- `unit_ ⊑ Unit_`. Same shape: `unit_ = λX. λu:X. u`,
+`Unit_ = λX. λu:X. X`, body `u ⊑ X` via `.bvar`. -/
+example : Subtype' [] unit_ Unit_ := by
+  apply Subtype'.lam_body
+  apply Subtype'.lam_body
+  exact Subtype'.bvar (k := 0) (τ := .bvar 0) rfl
+
+end Witnesses
 
 end Och.Soundness
