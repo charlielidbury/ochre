@@ -107,6 +107,8 @@ example : subCheck 200
 
 example : subCheck 100 fst_ Nat_ = .ok false := by native_decide
 
+example : subCheck 100 p12 Bool = .ok false := by native_decide
+
 example : subCheck 100
     (och{ fst_ (pair_ Bool Bool true_ true_) }) false_
   = .ok false := by native_decide
