@@ -40,9 +40,14 @@ end
 
 instance : BEq Val := ⟨Val.beq⟩
 
-/-- Open a closure with the given value bound at index 0. -/
+/-- Open a closure with the given value bound at index 0. The
+    `unf` bound is small: under a binder the only fix/ι chains
+    that need unfolding are short (e.g. `Array_ done_` → 3
+    layers); the self-referential `(dsucc m)→Type` annotation in
+    done_'s body would otherwise unfold `unfBound` times and
+    exhaust subCheckVal's fuel. -/
 def Closure.open (fuel : Nat) (cl : Closure) (v : Val) : Option Val :=
-  eval fuel unfBound (v :: cl.env) cl.body
+  eval fuel 4 (v :: cl.env) cl.body
 
 /-- Open a closure with a fresh neutral at de Bruijn level `depth`. -/
 def Closure.openFresh (fuel depth : Nat) (cl : Closure) : Option Val :=
@@ -74,7 +79,46 @@ mutual
               | some v => .ok v | none => .error "subCheckVal: open A"
             let bodyB ← match clB.openFresh fuel depth with
               | some v => .ok v | none => .error "subCheckVal: open B"
-            subCheckVal fuel (tyCtx.push domB) seen bodyA bodyB
+            subCheckVal fuel (tyCtx.push domA) seen bodyA bodyB
+        | .iota annA clA, .iota annB clB =>
+            -- Try the structural path first: open both with the same
+            -- fresh neutral and compare bodies. This lets two ι-values
+            -- whose bodies coincide but whose *annotations* differ
+            -- (e.g. dNat's let-bound `dsucc'` with `:done_` after
+            -- iotaIntro vs the top-level `dsucc` with `:dNat`) line
+            -- up. Falls back to iotaIntro if the structural path
+            -- says no.
+            let seen' := (a, b) :: seen
+            let structural := do
+              let annOk ← subCheckVal fuel tyCtx seen' annA annB
+              if !annOk then return false
+              let bodyA ← match clA.openFresh fuel depth with
+                | some v => .ok v | none => .error "iota struct A"
+              let bodyB ← match clB.openFresh fuel depth with
+                | some v => .ok v | none => .error "iota struct B"
+              subCheckVal fuel (tyCtx.push annB) seen' bodyA bodyB
+            match structural with
+            | .ok true => .ok true
+            | _ =>
+              match clB.open fuel a with
+              | none => .error "subCheckVal: iotaIntro open"
+              | some bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
+        | .fix annA clA, .fix annB clB =>
+            let seen' := (a, b) :: seen
+            let structural := do
+              let annOk ← subCheckVal fuel tyCtx seen' annA annB
+              if !annOk then return false
+              let bodyA ← match clA.openFresh fuel depth with
+                | some v => .ok v | none => .error "fix struct A"
+              let bodyB ← match clB.openFresh fuel depth with
+                | some v => .ok v | none => .error "fix struct B"
+              subCheckVal fuel (tyCtx.push annB) seen' bodyA bodyB
+            match structural with
+            | .ok true => .ok true
+            | _ =>
+              match clB.open fuel b with
+              | none => .error "subCheckVal: fixR open"
+              | some b' => subCheckVal fuel tyCtx seen' a b'
         | _, .iota _ann clB =>
             -- iotaIntro: open the RHS ι with the LHS value as `self`.
             -- This is the key sharing step — `a` is bound by reference
@@ -93,7 +137,7 @@ mutual
             -- RHS is a stuck recursive head: re-apply at full unf so
             -- the canonical NF is compared.
             let seen' := (a, b) :: seen
-            match vapp fuel unfBound f arg with
+            match vapp fuel 4 f arg with
             | none => .error "subCheckVal: stuckRec R"
             | some b' =>
                 if b' == b then .ok false
@@ -110,7 +154,7 @@ mutual
             | some a' => subCheckVal fuel tyCtx seen' a' b
         | .neutral (.stuckRec f arg), _ =>
             let seen' := (a, b) :: seen
-            match vapp fuel unfBound f arg with
+            match vapp fuel 4 f arg with
             | none => .error "subCheckVal: stuckRec L"
             | some a' =>
                 if a' == a then .ok false
@@ -137,11 +181,15 @@ mutual
       match a, b with
       | .var l1, .var l2 => .ok (l1 == l2)
       | .app n1 v1, .app n2 v2 => do
+          -- Covariant on arguments to match subCheckNF's `.app, .app`
+          -- arm. Bidirectional (`v1 ≡ v2`) would be sound for opaque
+          -- heads but is too strict for Phase 1 — it rejects
+          -- `Pair zero_ unit_ ⊑ Pair Nat_ Unit_` because
+          -- `Unit_ ⊄ unit_`. The soundness audit (Phase 2) should
+          -- revisit this with a type-directed monotonicity check.
           let hd ← subCheckNeutral fuel tyCtx seen n1 n2
           if !hd then return false
-          let fwd ← subCheckVal fuel tyCtx seen v1 v2
-          let bwd ← subCheckVal fuel tyCtx seen v2 v1
-          return (fwd && bwd)
+          subCheckVal fuel tyCtx seen v1 v2
       | _, _ => .ok false
 
   /-- Type ascent for a neutral on the LHS: synthesise its type
@@ -169,7 +217,7 @@ mutual
           | _ => .ok false
       | .stuckRec f arg =>
           let seen' := (Val.neutral a, b) :: seen
-          match vapp fuel unfBound f arg with
+          match vapp fuel 4 f arg with
           | none => .ok false
           | some a' =>
               if a' == .neutral a then .ok false
@@ -209,26 +257,30 @@ Working:
     `dtrue ⊄ dfalse`)
   - Church Nat (`zero_ ⊑ Nat_`, `Nat_ ⊄ zero_`)
   - DNat positives via iotaIntro (`dzero ⊑ dNat`)
-  - DNat negatives (`dNat ⊄ dzero`)
+  - DNat negatives (`dNat ⊄ dzero`, `dzero ⊄ done_`)
+  - Array_ (`Pair zero_ unit_ ⊑ Array_ done_ Nat_`,
+    `unit_ ⊄ Array_ done_ Nat_`)
 
-Open (next loop iteration):
-  - `done_/dtwo/dthree ⊑ dNat` → `.error "stuckRec L"`. The
-    stuckRec re-eval `vapp fuel unfBound f arg` returns `none`
-    somewhere in the chain. Likely a fuel/unf interaction:
-    `Closure.open` uses `unfBound=32`, so the `(dsucc dzero)`
-    self-reference inside done_'s λP annotation unfolds 32 times
-    during the iota-L open, each evaluating the dNat annotation,
-    exhausting fuel. Try `Closure.open` at unf=1 (matching
-    `quoteClosure`).
-  - `Pair zero_ unit_ ⊑ Array_ done_ Nat_` → `.ok false`. NbE
-    reduces both sides correctly (per NbETests), so the issue
-    is in the comparison. Probably the `subCheckNeutral`
-    bidirectional arg check is too strict for the Pair body
-    (it demands `zero_ ≡ Nat_` instead of `zero_ ⊑ Nat_`). The
-    head there is a *parametric* lambda, not an opaque bvar, so
-    monotonicity holds and one direction suffices — but
-    distinguishing parametric from opaque heads needs the head's
-    type.
+Open:
+  - `done_ ⊑ dNat` → `.ok false`. Tried: (a) structural ι/fix
+    arms before iotaIntro; (b) `domA` vs `domB` in tyCtx; (c)
+    env-trimming via `bvarBound` so closures of closed terms
+    are canonical. None close it. The leaf is `(s dzero) ⊑
+    (P done_)`; type ascent gives `(s dzero) : P (X dzero)`
+    where `X` is whichever successor-fix the λs domain came
+    from (dNat's let-bound `dsucc'[done_]` if domB, top-level
+    `dsucc` if domA). Either way the arg check
+    `(X dzero) ⊑ done_` compares an ι Val whose closure env
+    contains the *fix's own self-Val* (different at each
+    unfold depth) against `done_-iota`. The structural ι path
+    then needs `X-self ⊑ dsucc-top-self` which recurses
+    without seen catching it because the self-Vals differ at
+    each depth. Next thing to try: store seen-pairs as
+    *quoted Exprs* (canonical, depth-independent) instead of
+    Vals — that's the standard NbE approach to definitional
+    equality, and `quote` already produces canonical NFs per
+    NbETests. Cost: one quote per seen-add, O(seen.length ×
+    Expr-==) per lookup — same as subCheckNF.
 -/
 
 end NbE

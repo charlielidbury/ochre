@@ -51,6 +51,27 @@ end
 
 abbrev Env := List Val
 
+/-- The smallest `n` such that `closedAt n e` — i.e., one more
+    than the maximum free bvar index in `e` (or `0` if closed).
+    Used to trim closure environments to only the entries the
+    body can actually reach, so `Closure.beq` doesn't miss on
+    irrelevant env tails (e.g. two evaluations of the closed
+    `dNat` term at different ambient envs). -/
+def bvarBound : Expr → Nat
+  | .bvar k => k + 1
+  | .type => 0
+  | .lam dom body => max (bvarBound dom) (bvarBound body - 1)
+  | .iota ann body | .fix ann body | .letE ann body =>
+      max (bvarBound ann) (bvarBound body - 1)
+  | .app f a => max (bvarBound f) (bvarBound a)
+  | .asc t ty => max (bvarBound t) (bvarBound ty)
+
+/-- Build a closure, trimming `env` to the prefix `body` can
+    actually reach once opened. `bvar 0` in `body` is bound by
+    the open itself; `bvar (k+1)` reaches `env[k]`. -/
+def Closure.mk' (body : Expr) (env : Env) : Closure :=
+  ⟨body, env.take (bvarBound body - 1)⟩
+
 def Val.isNeutral : Val → Bool
   | .neutral _ => true
   | _ => false
@@ -77,13 +98,13 @@ mutual
       | .bvar k => env[k]?
       | .lam dom body => do
           let dom' ← eval fuel unf env dom
-          some (.lam dom' ⟨body, env⟩)
+          some (.lam dom' (.mk' body env))
       | .iota ann body => do
           let ann' ← eval fuel unf env ann
-          some (.iota ann' ⟨body, env⟩)
+          some (.iota ann' (.mk' body env))
       | .fix ann body => do
           let ann' ← eval fuel unf env ann
-          some (.fix ann' ⟨body, env⟩)
+          some (.fix ann' (.mk' body env))
       | .app f a => do
           let f' ← eval fuel unf env f
           let a' ← eval fuel unf env a
