@@ -444,6 +444,17 @@ NbE.subCheck) to lock in semantic agreement with subCheckNF.
 appendVec_wrong (β-domain-check) and vecResult (dthree
 cascade).
 
+### vecResult closed via NbE.subCheck (5862916f)
+
+`NbE.subCheck 400 vecResult (Vec Nat) = .ok true`. Same root
+cause as dtwo/dthree (vecResult has length dthree); same fix.
+Verified that NbE.subCheck *accepts* appendVec_wrong (it has
+no domain check during β), so the last marker genuinely needs
+the β-domain-check restored in the typing evaluator.
+
+**Markers: 2 → 1. Std sorries: 2 → 1.** Last marker:
+appendVec_wrong.
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`
