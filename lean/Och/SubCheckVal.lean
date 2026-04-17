@@ -133,6 +133,36 @@ mutual
             match clB.open fuel b with
             | none => .error "subCheckVal: fixR open"
             | some b' => subCheckVal fuel tyCtx seen' a b'
+        | .neutral (.stuckRec fA aA), .neutral (.stuckRec fB aB) =>
+            -- Both sides are recursive heads stuck on a neutral
+            -- argument. The same recursive function can appear via
+            -- two non-`beq` closures (e.g. the let-bound `dsucc`
+            -- inside dNat's body — domain `N` resolved from env —
+            -- vs the top-level `dsucc` — domain a closed `dNat`
+            -- Expr). Re-vapp can't progress (both args neutral), so
+            -- compare structurally: heads via the `.fix,.fix` arm
+            -- (which η-opens with a shared fresh, normalising the
+            -- closure-canonicity gap), args covariantly.
+            let seen' := (a, b) :: seen
+            let structural := do
+              let hd ← subCheckVal fuel tyCtx seen' fA fB
+              if !hd then return false
+              subCheckVal fuel tyCtx seen' aA aB
+            match structural with
+            | .ok true => .ok true
+            | _ =>
+              -- One side may still unfold (e.g. arg is a stuckRec
+              -- that itself progresses).
+              match vapp fuel 4 fB aB with
+              | none => .error "subCheckVal: stuckRec R"
+              | some b' =>
+                if b' == b then
+                  match vapp fuel 4 fA aA with
+                  | none => .error "subCheckVal: stuckRec L"
+                  | some a' =>
+                    if a' == a then .ok false
+                    else subCheckVal fuel tyCtx seen' a' b
+                else subCheckVal fuel tyCtx seen' a b'
         | _, .neutral (.stuckRec f arg) =>
             -- RHS is a stuck recursive head: re-apply at full unf so
             -- the canonical NF is compared.
@@ -256,31 +286,31 @@ Working:
   - DBool (`dtrue ⊑ dBool`, `dfalse ⊑ dBool`, `dBool ⊄ dtrue`,
     `dtrue ⊄ dfalse`)
   - Church Nat (`zero_ ⊑ Nat_`, `Nat_ ⊄ zero_`)
-  - DNat positives via iotaIntro (`dzero ⊑ dNat`)
-  - DNat negatives (`dNat ⊄ dzero`, `dzero ⊄ done_`)
+  - DNat (`dzero/done_/dtwo/dthree ⊑ dNat`, `dNat ⊄ dzero`,
+    `dzero ⊄ done_`) — see DNat.lean
   - Array_ (`Pair zero_ unit_ ⊑ Array_ done_ Nat_`,
     `unit_ ⊄ Array_ done_ Nat_`)
 
+The earlier `done_ ⊑ dNat → .ok false` failure was an artefact
+of the *encoding*: the original `ι dNat:Type. … λpred:bvar0 …`
+form let iotaIntro specialise the `pred` binder's type, forcing
+an unsatisfiable `dNat ⊑ done_` in contravariant position. With
+dNat re-encoded as `fix N:Type. ι self:N. …` (commit a58f476),
+the type binder `N` is fix-bound and stable under iotaIntro.
+
+That exposed a residual closure-canonicity gap: the let-bound
+`dsucc` inside dNat's body and the top-level `dsucc` denote the
+same function but live in non-`beq` closures (one resolves `N`
+from env, the other from a closed Expr). The stuckRec-stuckRec
+structural arm resolves this by recursing through `.fix,.fix`,
+which η-opens both with a shared fresh and so normalises away
+the env difference.
+
 Open:
-  - `done_ ⊑ dNat` → `.ok false`. Tried: (a) structural ι/fix
-    arms before iotaIntro; (b) `domA` vs `domB` in tyCtx; (c)
-    env-trimming via `bvarBound` so closures of closed terms
-    are canonical. None close it. The leaf is `(s dzero) ⊑
-    (P done_)`; type ascent gives `(s dzero) : P (X dzero)`
-    where `X` is whichever successor-fix the λs domain came
-    from (dNat's let-bound `dsucc'[done_]` if domB, top-level
-    `dsucc` if domA). Either way the arg check
-    `(X dzero) ⊑ done_` compares an ι Val whose closure env
-    contains the *fix's own self-Val* (different at each
-    unfold depth) against `done_-iota`. The structural ι path
-    then needs `X-self ⊑ dsucc-top-self` which recurses
-    without seen catching it because the self-Vals differ at
-    each depth. Next thing to try: store seen-pairs as
-    *quoted Exprs* (canonical, depth-independent) instead of
-    Vals — that's the standard NbE approach to definitional
-    equality, and `quote` already produces canonical NFs per
-    NbETests. Cost: one quote per seen-add, O(seen.length ×
-    Expr-==) per lookup — same as subCheckNF.
+  - Vec/Sigma (`vecResult ⊑ Vec Nat`) — untested under this
+    checker. The Sigma encoding goes through ι, so iotaIntro
+    should fire; whether type-ascent through `unpack` works is
+    the question.
 -/
 
 end NbE

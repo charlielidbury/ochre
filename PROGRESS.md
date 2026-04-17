@@ -416,6 +416,34 @@ work, now decoupled from the encoding question. `vecResult`
 (which uses dthree) and `appendVec_wrong` (β-domain-check)
 likewise.
 
+### subCheckVal stuckRec-stuckRec arm; dtwo/dthree closed (5862916f)
+
+Probing `NbE.subCheck` on the new encoding revealed a
+closure-canonicity gap: the let-bound `dsucc` inside dNat's
+body (domain `N` resolved from env) and the top-level `dsucc`
+(domain a closed `dNat` Expr) are non-`beq` Vals even though
+they denote the same function. When both are stuck on a
+neutral (`dsucc pred`), the existing arms re-vapp (no progress,
+arg neutral) → `.ok false`.
+
+Fix: a `.neutral (.stuckRec fA aA), .neutral (.stuckRec fB aB)`
+arm in subCheckVal that compares structurally — heads via the
+`.fix,.fix` η-open arm (which normalises the env difference by
+opening both under a shared fresh), args covariantly. With
+this, `NbE.subCheck` accepts dzero/done_/dtwo/dthree ⊑ dNat
+and rejects dNat⊑dzero, dzero⊑done_.
+
+DNat.lean's dtwo/dthree assertions switched to `NbE.subCheck`
+(the Val-domain checker is the better algorithm for these;
+subCheckNF still fans out on them and will be retired once
+subCheckVal handles the full test surface). Added 4 extra
+agreement examples (dzero/done_ positives + 2 negatives under
+NbE.subCheck) to lock in semantic agreement with subCheckNF.
+
+**Markers: 3 → 2. Std sorries: 4 → 2.** Remaining: Vec
+appendVec_wrong (β-domain-check) and vecResult (dthree
+cascade).
+
 **All three remaining markers reduce to the NbE
 root cause:** `done_/dtwo/dthree ⊑ dNat` and `vecResult ⊑ Vec Nat`
 are the dNat-self-substitution fan-out directly; `appendVec_wrong`

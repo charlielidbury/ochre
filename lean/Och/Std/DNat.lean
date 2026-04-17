@@ -1,5 +1,6 @@
 import Och.Macro
 import Och.Eval
+import Och.SubCheckVal
 import Och.Std.Bool
 import Och.Std.Nat
 
@@ -134,14 +135,24 @@ example : subCheck 200 dzero dNat = .ok true := by native_decide
 -- caller's `s` would expect `pred:done_`, and `dzero ⊄ done_`.
 example : subCheck 200 done_ dNat = .ok true := by native_decide
 
--- TODO[mega-loop]: dtwo/dthree ⊑ dNat. The fix+ι encoding makes
--- these *correct* (same path as done_) but subCheckNF still
--- fans out: each dsucc layer adds another closed-`dNat`
--- substitution into the unfold path. Under NbE.subCheckVal
--- (closures share the substituend) these should be tractable;
--- the integration is the remaining work.
-example : subCheck 200 dtwo dNat = .ok true := by sorry
-example : subCheck 200 dthree dNat = .ok true := by sorry
+-- dtwo/dthree ⊑ dNat. subCheckNF (Expr-domain) fans out here:
+-- each dsucc layer copies the closed-`dNat` substituend into the
+-- unfold path, so the term grows polynomially per fuel step. The
+-- Val-domain checker (NbE.subCheckVal) shares substituends via
+-- closure environments instead of copying, and with the
+-- stuckRec-stuckRec structural arm it now closes both.
+--
+-- These assert against `NbE.subCheck` directly. Once subCheckNF
+-- is retired in favour of subCheckVal (Phase 2 cleanup), all
+-- assertions in this file move uniformly.
+example : NbE.subCheck 800 dtwo dNat = .ok true := by native_decide
+example : NbE.subCheck 1600 dthree dNat = .ok true := by native_decide
+-- And under the same checker the earlier numerals + negatives
+-- agree with subCheckNF, so no regression in semantics:
+example : NbE.subCheck 400 dzero dNat = .ok true := by native_decide
+example : NbE.subCheck 400 done_ dNat = .ok true := by native_decide
+example : NbE.subCheck 400 dNat dzero = .ok false := by native_decide
+example : NbE.subCheck 400 dzero done_ = .ok false := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 
