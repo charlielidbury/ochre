@@ -1293,27 +1293,34 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
               have hRfV' : R (k+1) d (.neutral nf)
                              (f.substEnv ρe) := hfVc ▸ hRfV
               unfold R at hRfV' hRaV
-              -- (post-merge) base conjunct is now `∀ e', quote
-              -- … → Equiv e' e` (fix-iota fork's ∀-form), so the
-              -- `obtain ⟨⟨fe',hqf,hef⟩,_⟩` destructure no longer
-              -- applies. Re-thread: take `hef := hRfV'.1 fe' hqf`
-              -- after obtaining `hqf` from a quote-totality lemma
-              -- on `.neutral` (which always quotes).
-              sorry
-            /-
-              obtain ⟨⟨fe', hqf, hef⟩, _⟩ := hRfV'
-              obtain ⟨⟨ae', hqa, hea⟩, _⟩ := hRaV
-              -- `quote (.neutral nf)` reduces to
-              -- `quoteNeutral nf`; need to extract that
-              -- `quoteNeutral fuelω-1 d nf = some fe'`-ish
-              -- so the `.app` quote assembles. This is the
-              -- `quote_neutral` shape lemma already proven
-              -- in this file. The full assembly is
-              -- mechanical bookkeeping over `quote`'s
-              -- `.neutral`/`.app` arms; sorried to keep the
-              -- structure visible.
-              sorry
-            -/
+              -- ∀-form base: receive e' and the quote witness,
+              -- decompose `quote (.neutral (.app nf aV))` into
+              -- `.app ne ve`, then apply hRfV'.1 / hRaV.1.
+              intro e' hq
+              -- Two unfold steps: quote→quoteNeutral (fuelω-1),
+              -- then quoteNeutral .app → bind (fuelω-2).
+              have hfω : fuelω = (fuelω - 1) + 1 := rfl
+              rw [hfω] at hq; unfold quote at hq
+              have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+              rw [hfω'] at hq; unfold quoteNeutral at hq
+              simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                         Option.some.injEq] at hq
+              obtain ⟨ne, hne, ve, hve, heq⟩ := hq
+              subst heq
+              -- Lift the sub-quotes back to fuelω.
+              have hqf : quote fuelω d (.neutral nf) = some ne := by
+                rw [hfω]; unfold quote
+                exact quoteNeutral_fuel_mono (by omega) hne
+              have hqa : quote fuelω d aV = some ve :=
+                quote_fuel_mono (by omega) hve
+              have hef : Equiv ne (f.substEnv ρe) := hRfV'.1 ne hqf
+              have hea : Equiv ve (a.substEnv ρe) := hRaV.1 ve hqa
+              -- `Equiv.app` (defined with `intro S Γe`) produces
+              -- an instantiated pair, not a universal; build the
+              -- `∀ {S Γe}` form directly so it matches the goal.
+              intro S Γe
+              exact ⟨.app_cong hef.1 hea.1 hea.2,
+                     .app_cong hef.2 hea.2 hea.1⟩
           | .lam dV ⟨lbody, lenv⟩, hvapp =>
               -- vapp (.lam …) aV = eval fuel' (aV :: lenv)
               -- lbody. Use R's Kripke clause on `hRfV` at
@@ -1415,11 +1422,14 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             -- the self-binding.
             have hRself : R k d (.iota annV cl)
                             (Expr.substEnv ρe (.iota ann bExpr)) := by
-              -- (post-merge) `ihm` from the lam-app fork has a
-              -- different argument order than the fix-iota
-              -- fork's version expected here. Re-thread once
-              -- the strong-induction signature is settled.
-              sorry
+              -- ihm at m' = k < k+1, on the original .iota eval.
+              have heval' : eval (fuel+1) unf ρ (.iota ann bExpr)
+                            = some (.iota annV cl) := by
+                unfold eval
+                simp only [Option.bind_eq_bind, Option.bind_eq_some]
+                exact ⟨annV, hann, rfl⟩
+              exact ihm k (Nat.lt_succ_self k) heval'
+                        (REnv_mono (Nat.le_succ k) henv)
             rw [hsubst] at hRself
             -- Trimmed env (cl.env = ρ.take (bvarBound bExpr - 1))
             -- realises the corresponding ρe-prefix.
@@ -1436,9 +1446,9 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
                 eval fuelω 4 (.iota annV cl :: cl.env) bExpr
                   = some r := hopen
             -- IH_m on bExpr under the extended env, fuel=fuelω.
-            -- (post-merge) ihm signature mismatch.
-            have hRr : R k d r (Expr.substEnv (.iota anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
-              sorry
+            have hRr : R k d r (Expr.substEnv
+                (.iota anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
+              ihm k (Nat.lt_succ_self k) hopen' henv_ext
             -- R_mono to n' ≤ k.
             have hRr' := R_mono hn' hRr
             -- Goal-Expr rewrite: `bExpr.substEnv (selfE ::
@@ -1485,8 +1495,13 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             -- IH_m on `.fix ann bExpr` at index k.
             have hRself : R k d (.«fix» annV cl)
                             (Expr.substEnv ρe (.fix ann bExpr)) := by
-              -- (post-merge) ihm signature mismatch.
-              sorry
+              have heval' : eval (fuel+1) unf ρ (.fix ann bExpr)
+                            = some (.«fix» annV cl) := by
+                unfold eval
+                simp only [Option.bind_eq_bind, Option.bind_eq_some]
+                exact ⟨annV, hann, rfl⟩
+              exact ihm k (Nat.lt_succ_self k) heval'
+                        (REnv_mono (Nat.le_succ k) henv)
             rw [hsubst] at hRself
             have henv_trim : REnv k d cl.env
                                (ρe.take (bvarBound bExpr - 1)) :=
@@ -1497,9 +1512,9 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             have hopen' :
                 eval fuelω 4 (.«fix» annV cl :: cl.env) bExpr
                   = some r := hopen
-            -- (post-merge) ihm signature mismatch.
-            have hRr : R k d r (Expr.substEnv (.fix anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
-              sorry
+            have hRr : R k d r (Expr.substEnv
+                (.fix anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
+              ihm k (Nat.lt_succ_self k) hopen' henv_ext
             have hRr' := R_mono hn' hRr
             -- Same substEnv-rewrite leaf as `.iota`.
             refine R_resp_Equiv ?_ hRr'
