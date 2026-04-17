@@ -224,11 +224,13 @@ theorem Subtype'.shift_preserve {S Γ a b} (d c : Nat)
   sorry
 
 /-- Context narrowing: replacing a context entry with a
-subtype preserves derivations. Bridges the algorithm's
-lam-lam arm (which pushes the LHS domain `domA`) and
-`Subtype'.lam` (which pushes the target domain `domB`):
-since `domB ⊑ domA`, any judgment derived under `domA :: Γ`
-also derives under `domB :: Γ`.
+subtype preserves derivations. After A6 (the algorithm's
+lam-lam arm now pushes `domB`, matching `Subtype'.lam`)
+this is no longer needed for the bridge's `.lam` case, but
+it remains useful for `iota_struct`/`fix_struct` (where the
+algorithm allows `annA ≠ annB` while `Subtype'.iota_body`
+requires the same `ann`) and is a standard metatheoretic
+property.
 
 Proof sketch: induction on `h`. The interesting case is
 `.bvar (k := 0)`, whose conclusion `bvar 0 ⊑ domA.shift 1 0`
