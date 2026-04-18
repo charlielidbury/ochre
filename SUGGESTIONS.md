@@ -22,14 +22,29 @@ unblocks the most.
    (one-step-unfold respects `R`). After (1), these may
    become direct from the new IH shape.
 
-3. **`Subtype'.ctx_extend`** (the one open case of
-   `narrow_at`): pushing a binder past a seen-set entry. The
-   seen-set Exprs are *closed* (they come from `quote` at
-   depth 0), so the shift is the identity — but the
-   `QuotesSeen` invariant doesn't currently say that. Either
-   add `∀ p ∈ S, closedAt 0 p.1 ∧ closedAt 0 p.2` to
-   `QuotesSeen`, or restate `narrow_at` over closed-seen
-   only.
+3. **`Subtype'` congruence constructors** (Subtyping.lean):
+   add `.iota_cong`/`.fix_cong`/`.letE_cong` to the inductive
+   (vary both annotation/value *and* body). These are
+   admissible (derivable from `.iota_intro`/`.unfold_*`/
+   `.letE_*` at extended seen-sets) so adding them as
+   constructors is sound; having them makes
+   `Equiv.subst_resp` close by direct structural induction
+   on `e`, which in turn closes `R_resp_Equiv`'s `.iota`/
+   `.fix` arms, `eval_realises`'s `.letE`-Kripke, and
+   `concEval_refines`'s `.letE`/`.app` — five sorries for
+   one constructor addition. (The existing `.iota_body`/
+   `.fix_body` only vary the body with the *same* ann.)
+
+3b. **`ctx_extend_at` binder cases** (Subtyping.lean,
+   3 sorries inside `narrow_at`): the body-IH gives `S.map
+   shift_{c+1}` but the goal needs `S.map shift_c`. These
+   coincide under `Seen.Closed S`, but `.iota_intro`/
+   `.unfold_*` extend `S` with non-closed pairs. Two routes:
+   (a) depth-tag each seen-set entry so `narrow_at` knows
+   which cutoff to shift each pair at; (b) change
+   `.iota_intro`/`.unfold_*` to record the *closed*
+   `(quote a, quote b)` pair instead of the open one. Route
+   (b) is closer to what the algorithm does.
 
 4. **`quote_open_subst`** (closure-opening commutes with
    substitution): derives from `eval_unf_equiv` (already
