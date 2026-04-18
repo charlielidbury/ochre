@@ -1337,6 +1337,66 @@ theorem Equiv.fix_unfold (ann body : Expr) :
     Equiv (.fix ann body) (body.subst 0 (.fix ann body)) :=
   fun {_ _} => ⟨.unfold_fix_L (.refl _), .unfold_fix_R (.refl _)⟩
 
+/-- Substituting the same value into both sides of a
+derivation preserves it (the seen-set is unchanged because
+it records *closed* pairs in practice — but here we just
+shift `Γ`). Used by `Equiv.subst_resp` below for the `.letE`
+case, and by the `concEval_refines` `.app`/`.letE` arms.
+
+By induction on the derivation. Each constructor reapplies
+after substitution; the `.beta_*`/`.letE_*` cases use
+`Expr.subst_subst_swap` from Syntax.lean to commute the two
+substitutions. The `.lam`/`.iota_body`/`.fix_body` cases
+need `Γ`'s shift to interact with `i` correctly (same
+staggering as `narrow_at`'s `ctx_extend_at`). -/
+theorem Subtype'.subst_body {S Γ e₁ e₂} {i : Nat} {v : Expr}
+    (h : Subtype' S Γ e₁ e₂) :
+    Subtype' S (Γ.eraseIdx i) (e₁.subst i v) (e₂.subst i v) := by
+  -- Induction on `h`; ~19 constructor cases. Same shape as
+  -- `narrow_at`. Deferred until `ctx_extend_at`'s 3 binder
+  -- cases close (they share the seen-set staggering issue).
+  sorry
+
+/-- Substitution respects declarative equivalence: if
+`a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
+`R_resp_Equiv` (`.iota`/`.fix` arms), `eval_realises`
+(`.letE`/`.app`-Kripke threads), and `concEval_refines`
+(`.letE`/`.app` cases).
+
+By induction on `e`. The `.bvar`/`.type`/`.lam`/`.app`/`.asc`
+cases close via `Equiv.{refl,lam,app}` and `.asc_{L,R}`. The
+remaining three are blocked on missing `Subtype'`
+congruences:
+
+  - `.iota`/`.fix`: `Subtype'.iota_body`/`.fix_body` only
+    vary the *body* with the *same* annotation, but
+    `subst_resp` changes both `ann.subst i a → ann.subst i b`
+    and `body.subst (i+1) a → ….b`. Either add `.iota_cong`/
+    `.fix_cong` constructors to `Subtype'` (varying ann and
+    body), or derive them via `.iota_intro`/`.unfold_*`
+    (which extends `S`, so the derivation is no longer at
+    the same `S`).
+
+  - `.letE`: unfolds to `(body.subst 0 val).subst i ·`,
+    which is not a strict subterm — closes via
+    `Subtype'.subst_body` above (induction on the
+    *derivation*) plus `subst_subst_swap`.
+
+The cleanest route is adding `.iota_cong`/`.fix_cong`/
+`.letE_cong` to `Subtype'` (Subtyping.lean) — they're
+admissible (derivable from the unfold rules at extended
+seen-sets, hence sound), and having them as constructors
+makes both this lemma and `narrow_at`'s remaining cases
+trivial. -/
+theorem Equiv.subst_resp {a b : Expr} (heq : Equiv a b) :
+    ∀ (e : Expr) (i : Nat), Equiv (e.subst i a) (e.subst i b) := by
+  intro e i
+  -- The 5 closing cases are written out at commit `d52a619`
+  -- (this file's history); reverted to a single sorry until
+  -- the `.iota`/`.fix`/`.letE` congruences are available so
+  -- the build doesn't carry half-a-proof.
+  sorry
+
 /-- Extending a realised environment with a realised pair. -/
 theorem REnv_cons {n d ρ ρe v e}
     (henv : REnv n d ρ ρe) (hv : R n d v e) :
