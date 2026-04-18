@@ -95,6 +95,30 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
   | fix_body {S Γ ann body₁ body₂} :
       Subtype' S (ann :: Γ) body₂ body₁ →
       Subtype' S Γ (.fix ann body₂) (.fix ann body₁)
+  /-- Full ι-congruence (varying both annotation and body).
+  Matches `SubV.iota_struct` and the algorithm's `.iota,.iota`
+  structural arm: covariant on annotation, body at the target
+  annotation. The same-annotation `.iota_body` is the special
+  case `iota_cong (.refl _)`. Needed for `Equiv.subst_resp`
+  (the existing `.iota_body` fixes the annotation, but
+  substituting into `.iota ann body` changes both). -/
+  | iota_cong {S Γ ann₁ ann₂ body₁ body₂} :
+      Subtype' S Γ ann₁ ann₂ →
+      Subtype' S (ann₂ :: Γ) body₁ body₂ →
+      Subtype' S Γ (.iota ann₁ body₁) (.iota ann₂ body₂)
+  | fix_cong {S Γ ann₁ ann₂ body₁ body₂} :
+      Subtype' S Γ ann₁ ann₂ →
+      Subtype' S (ann₂ :: Γ) body₁ body₂ →
+      Subtype' S Γ (.fix ann₁ body₁) (.fix ann₂ body₂)
+  /-- letE-congruence. Admissible via `.letE_L (.letE_R …)` +
+  `subst_body` + `subst_resp`; having it as a constructor
+  breaks the circularity in `Equiv.subst_resp`'s `.letE`
+  case. The body is at `(val₂ :: Γ)` so `.bvar 0` ascends to
+  the (target) bound value — singleton typing of the let. -/
+  | letE_cong {S Γ val₁ val₂ body₁ body₂} :
+      Subtype' S Γ val₁ val₂ →
+      Subtype' S (val₂ :: Γ) body₁ body₂ →
+      Subtype' S Γ (.letE val₁ body₁) (.letE val₂ body₂)
   /-- iotaIntro (value-sub, Cedille-style). The goal is added
   to `S` before recursing — both premises may use it. -/
   | iota_intro {S Γ a ann body} :
@@ -161,6 +185,9 @@ theorem Subtype'.weaken {S S' Γ a b}
       exact .app_cong (ihf hsub) (iha hsub) (iha' hsub)
   | iota_body _ ih => exact .iota_body (ih hsub)
   | fix_body _ ih => exact .fix_body (ih hsub)
+  | iota_cong _ _ ihA ihB => exact .iota_cong (ihA hsub) (ihB hsub)
+  | fix_cong _ _ ihA ihB => exact .fix_cong (ihA hsub) (ihB hsub)
+  | letE_cong _ _ ihV ihB => exact .letE_cong (ihV hsub) (ihB hsub)
   | iota_intro _ _ ih1 ih2 =>
       refine .iota_intro (ih1 ?_) (ih2 ?_) <;>
       · intro p hp
@@ -431,6 +458,36 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
                List.cons_append] at hb
     -- Same seen-cutoff mismatch as `.lam`.
     sorry
+  | @iota_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
+    intro Γpfx hpfx
+    subst hpfx
+    simp only [Expr.shift]
+    refine .iota_cong (ihA Γpfx rfl) ?_
+    have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
+    simp only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] at hb
+    -- Same seen-cutoff mismatch as `.lam`.
+    sorry
+  | @fix_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
+    intro Γpfx hpfx
+    subst hpfx
+    simp only [Expr.shift]
+    refine .fix_cong (ihA Γpfx rfl) ?_
+    have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
+    simp only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] at hb
+    -- Same seen-cutoff mismatch as `.lam`.
+    sorry
+  | @letE_cong S' Γ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
+    intro Γpfx hpfx
+    subst hpfx
+    simp only [Expr.shift]
+    refine .letE_cong (ihV Γpfx rfl) ?_
+    have hb := ihB (v₂ :: Γpfx) (List.cons_append .. ▸ rfl)
+    simp only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] at hb
+    -- Same seen-cutoff mismatch as `.lam`.
+    sorry
   | @iota_intro S' Γ' a' ann body _ _ ih1 ih2 =>
     intro Γpfx hpfx
     subst hpfx
@@ -610,6 +667,21 @@ theorem Subtype'.narrow_at {S₀ Γ domA domB}
       subst hΔ
       exact .fix_body
         (ih (ann :: Γ') (List.cons_append .. ▸ rfl) hsub)
+  | @iota_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
+      intro Γ' hΔ hsub
+      subst hΔ
+      exact .iota_cong (ihA Γ' rfl hsub)
+        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl) hsub)
+  | @fix_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
+      intro Γ' hΔ hsub
+      subst hΔ
+      exact .fix_cong (ihA Γ' rfl hsub)
+        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl) hsub)
+  | @letE_cong S' Δ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
+      intro Γ' hΔ hsub
+      subst hΔ
+      exact .letE_cong (ihV Γ' rfl hsub)
+        (ihB (v₂ :: Γ') (List.cons_append .. ▸ rfl) hsub)
   | iota_intro _ _ ih1 ih2 =>
       intro Γ' hΔ hsub
       exact .iota_intro
