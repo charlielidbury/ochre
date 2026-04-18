@@ -774,16 +774,56 @@ namespace Equiv
     intro S Γe
     exact ⟨.app_cong hf.1 ha.1 ha.2, .app_cong hf.2 ha.2 ha.1⟩
 
-  /-- `Equiv` respects `shift`. Reduces to
-  `Subtype'.shift_preserve` (Subtyping.lean), whose
-  *statement* is currently flagged as too naive (the context
-  shift is non-uniform across entries). Once that's fixed
-  this is `fun {S Γe} => ⟨shift_preserve _ _ h.1,
-  shift_preserve _ _ h.2⟩` instantiated at the right context
-  mapping. -/
+  /-- `Equiv` respects `shift`.
+
+  For any *nonempty* target context `τ :: Γ₀`, instantiate
+  `h` at `([], Γ₀)`, lift via `Subtype'.ctx_extend [τ]` (the
+  empty seen-set is trivially `Closed`), and `weaken` to the
+  caller's `S`. This routes `Equiv.shift` through
+  `ctx_extend_at` — so its `sorryAx` is exactly the six
+  binder-case sorries there (the seen-cutoff obstruction;
+  DECISION-LOG 2026-04-18), shared with `Subtype'.narrow`.
+
+  The empty-context case (`Γ' = []`) is the irreducible
+  residual: `ctx_extend` can only *extend* a context, never
+  produce `[]`. A direct induction on the derivation at
+  `Subtype' [] [] e₁ e₂` hits the same wall — `.iota_intro`
+  inside extends the seen-set with a depth-0 pair, and a
+  `.lam` body under that needs the pair shifted at two
+  different cutoffs. None of routes (a)/(b)/(c) avoid this
+  without touching `Subtype'`. -/
   theorem shift {e₁ e₂ : Expr} (h : Equiv e₁ e₂) :
       Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
-    sorry
+    intro S' Γ'
+    have hSc : Seen.Closed ([] : Seen) := by
+      intro p hp; cases hp
+    have lift : ∀ (τ : Expr) (Γ₀ : Ctx),
+        Subtype' S' (τ :: Γ₀) (e₁.shift 1 0) (e₂.shift 1 0) ∧
+        Subtype' S' (τ :: Γ₀) (e₂.shift 1 0) (e₁.shift 1 0) := by
+      intro τ Γ₀
+      have h₁ := (h (S := []) (Γe := Γ₀)).1
+      have h₂ := (h (S := []) (Γe := Γ₀)).2
+      have l₁ := Subtype'.ctx_extend (Γ := Γ₀) [τ] hSc h₁
+      have l₂ := Subtype'.ctx_extend (Γ := Γ₀) [τ] hSc h₂
+      simp only [List.length_singleton, List.singleton_append]
+        at l₁ l₂
+      exact ⟨l₁.weaken (fun _ hp => absurd hp (List.not_mem_nil _)),
+             l₂.weaken (fun _ hp => absurd hp (List.not_mem_nil _))⟩
+    cases Γ' with
+    | cons τ Γ₀ => exact lift τ Γ₀
+    | nil =>
+      -- At `Γ' = []` there is no smaller context to lift
+      -- *from*; this is the same seen-cutoff residual as
+      -- `ctx_extend_at`'s six binder cases (Subtyping.lean
+      -- 308). All call sites of `Equiv.shift` are inside
+      -- `subst_resp`'s binder arms, which then feed the
+      -- result to `Equiv.lam`/`.iota_cong`/`.fix_cong`/
+      -- `.letE_cong` — each of which instantiates the body
+      -- premise at a *cons* context. So this branch is
+      -- believed unreachable from the proof chain; a
+      -- `Subtype'` redesign (DECISION-LOG routes a/b) would
+      -- close it together with `ctx_extend_at`.
+      sorry
 
   /-- Substitution respects declarative equivalence: if
   `a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
