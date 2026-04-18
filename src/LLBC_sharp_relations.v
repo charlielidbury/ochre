@@ -11,10 +11,10 @@ Require Import base OptionMonad PathToSubtree SimulationUtils lang LLBC_sharp_st
 Variant to_abs : LLBC_sharp_val -> Pmap LLBC_sharp_val -> Prop :=
 | ToAbs_MutReborrow l0 l1 kb kl ty (Hk : kb <> kl) :
     to_abs (borrow^m(l0, loan^m(ty, l1)))
-           ({[kb := (borrow^m(l0, LLBC_sharp_symbolic ty)); kl := loan^m(ty, l1)]})%stdpp
+           ({[kb := (borrow^m(l0, VSymbolic ty)); kl := loan^m(ty, l1)]})%stdpp
 | ToAbs_MutBorrow l v k ty (Htype : is_of_type ty v)
     (v_no_loan : not_contains_loan v) (v_no_borrow : not_contains_borrow v) :
-    to_abs (borrow^m(l, v)) ({[k := (borrow^m(l, LLBC_sharp_symbolic ty))]})%stdpp
+    to_abs (borrow^m(l, v)) ({[k := (borrow^m(l, VSymbolic ty))]})%stdpp
 .
 
 Definition measure S := sweight (fun _ => 1) S + size (abstractions S).
@@ -23,7 +23,7 @@ Notation abs_measure S := (map_sum (vweight (fun _ => 1)) S).
 Variant leq_state_base_n : nat -> LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
 | Leq_ToSymbolic_n S sp ty (Htype : is_of_type ty (S.[sp]))
     (no_loan : not_contains_loan (S.[sp])) (no_borrow : not_contains_borrow (S.[sp])) :
-    leq_state_base_n (vweight (fun _ => 1) (S.[sp])) S (S.[sp <- LLBC_sharp_symbolic ty])
+    leq_state_base_n (vweight (fun _ => 1) (S.[sp])) S (S.[sp <- VSymbolic ty])
 | Leq_ToAbs_n S a i v A
     (fresh_a : fresh_anon S a)
     (fresh_i : fresh_abstraction S i)
@@ -58,7 +58,7 @@ Variant leq_state_base_n : nat -> LLBC_sharp_state -> LLBC_sharp_state -> Prop :
 | Leq_Reborrow_MutBorrow_n (S : LLBC_sharp_state) (sp : spath) (l0 l1 : loan_id) (a : anon) ty
     (fresh_l1 : is_fresh l1 S)
     (fresh_a : fresh_anon S a)
-    (get_borrow_l0 : get_node (S.[sp]) = borrowC^m(l0))
+    (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0))
     (sp_not_in_abstraction : not_in_abstraction sp)
     (Htype : is_of_type ty (S.[sp +++ [0] ])) :
     leq_state_base_n 0 S ((rename_mut_borrow S sp l1),, a |-> borrow^m(l0, loan^m(ty, l1)))
@@ -78,7 +78,7 @@ Variant leq_state_base : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
  * to a symbolic value for the moment. *)
 | Leq_ToSymbolic S sp ty (Htype : is_of_type ty (S.[sp]))
     (no_loan : not_contains_loan (S.[sp])) (no_borrow : not_contains_borrow (S.[sp])) :
-    leq_state_base S (S.[sp <- LLBC_sharp_symbolic ty])
+    leq_state_base S (S.[sp <- VSymbolic ty])
 | Leq_ToAbs S a i v A
     (fresh_a : fresh_anon S a)
     (fresh_i : fresh_abstraction S i)
@@ -114,7 +114,7 @@ Variant leq_state_base : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
 | Leq_Reborrow_MutBorrow (S : LLBC_sharp_state) (sp : spath) (l0 l1 : loan_id) (a : anon) ty
     (fresh_l1 : is_fresh l1 S)
     (fresh_a : fresh_anon S a)
-    (get_borrow_l0 : get_node (S.[sp]) = borrowC^m(l0))
+    (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0))
     (sp_not_in_abstraction : not_in_abstraction sp)
     (Htype : is_of_type ty (S.[sp +++ [0] ])) :
     leq_state_base S ((rename_mut_borrow S sp l1),, a |-> borrow^m(l0, loan^m(ty, l1)))
@@ -201,7 +201,7 @@ Proof. intros. rewrite loan_set_id_empty by assumption. apply empty_subseteq. Qe
 Hint Resolve loan_set_no_loan_borrow : spath.
 
 Lemma loan_set_symbolic_subseteq ty (perm : loan_id_map) :
-  subseteq (loan_set_val (LLBC_sharp_symbolic ty)) (dom perm).
+  subseteq (loan_set_val (VSymbolic ty)) (dom perm).
 Proof. apply empty_subseteq. Qed.
 Hint Resolve loan_set_symbolic_subseteq : spath.
 
@@ -648,11 +648,11 @@ Lemma Leq_Reborrow_MutBorrow_Abs S sp l0 l1 i kb kl ty
     (fresh_l1 : is_fresh l1 S)
     (fresh_i : fresh_abstraction S i)
     (sp_not_in_abstraction : not_in_abstraction sp)
-    (get_borrow_l0 : get_node (S.[sp]) = borrowC^m(l0))
+    (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0))
     (Hk : kb <> kl)
     (Htype : is_of_type ty (S.[sp +++ [0] ])):
     leq_state_base^* S (S.[sp <- borrow^m(l1, S.[sp +++ [0] ])],,,
-                        i |-> {[kb := (borrow^m(l0, LLBC_sharp_symbolic ty));
+                        i |-> {[kb := (borrow^m(l0, VSymbolic ty));
                                 kl := loan^m(ty, l1)]}%stdpp).
 Proof.
   destruct (exists_fresh_anon S) as (a & fresh_a).
@@ -672,7 +672,7 @@ Lemma Leq_Fresh_MutLoan_Abs S sp l' i k ty
     (no_borrow : not_contains_borrow (S.[sp]))
     (Htype : is_of_type ty (S.[sp])) :
     leq_state_base^* S (S.[sp <- loan^m(ty, l')],,,
-                        i |-> {[k := borrow^m(l', LLBC_sharp_symbolic ty)]}%stdpp).
+                        i |-> {[k := borrow^m(l', VSymbolic ty)]}%stdpp).
 Proof.
   destruct (exists_fresh_anon S) as (a & fresh_a).
   etransitivity.

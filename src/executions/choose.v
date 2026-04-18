@@ -46,8 +46,8 @@ Open Scope stdpp.
 (** We execute the function [f] on the most general state. The arguments << x >> and << y >> are initialized as symbolic values, while the local variables are uninitialized. *)
 Definition init_state := {|
   vars := {[
-    x := LLBC_sharp_symbolic intT;
-    y := LLBC_sharp_symbolic intT;
+    x := VSymbolic TInt;
+    y := VSymbolic TInt;
     z := bot;
     cond := bot
   ]};
@@ -64,16 +64,16 @@ Definition A : positive := 1.
 (** The join state at the end of the conditional. *)
 Definition join_state : LLBC_sharp_state := {|
   vars := {[
-    x := loan^m(intT, lx);
-    y := loan^m(intT, ly);
-    z := borrow^m(lz, LLBC_sharp_symbolic intT);
-    cond := LLBC_sharp_symbolic boolT
+    x := loan^m(TInt, lx);
+    y := loan^m(TInt, ly);
+    z := borrow^m(lz, VSymbolic TInt);
+    cond := VSymbolic TBool
   ]};
   anons := empty;
   abstractions := {[
-    A := {[1%positive := borrow^m(lx, LLBC_sharp_symbolic intT);
-           2%positive := borrow^m(ly, LLBC_sharp_symbolic intT);
-           3%positive := loan^m(intT, lz)]} ]}
+    A := {[1%positive := borrow^m(lx, VSymbolic TInt);
+           2%positive := borrow^m(ly, VSymbolic TInt);
+           3%positive := loan^m(TInt, lz)]} ]}
 |}.
 
 Lemma safe_f : exists end_state, init_state |-# f ~> end_state.

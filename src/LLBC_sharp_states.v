@@ -17,84 +17,79 @@ Require Import OptionMonad.
     - Checking that a symbolic value of type T abstracts a value of type T.
     - Checking that we a loan [loan^m(ty, t)] obtains a value back, it is a value of type T. *)
 Inductive LLBC_type :=
-| intT
-| boolT
+| TInt
+| TBool
 .
 
 (** * Definition of LLBC## values and states. *)
 Inductive LLBC_sharp_val :=
-| LLBC_sharp_bot
-| LLBC_sharp_int (n : nat) (* TODO: use Aeneas integer types? *)
-| LLBC_sharp_bool (b : bool)
+| VBottom
+| VInt (n : nat) (* TODO: use Aeneas integer types? *)
+| VBool (b : bool)
 (* Note: we must add a type parameter in mutable loans, because when we end a mutable loan in a
  * region abstraction, we must ensure that the type of the borrow we end corresponds.
  * However, this creates the issue that now, every mutable loan is typed, even mutable loans out
  * of abstractions.
  * Probably we should remove all dynamic typing, and implement a static type checking, as well as a
  * well-typedness predicate and an invariance proof. *)
-| LLBC_sharp_mut_loan (ty : LLBC_type) (l : loan_id)
-| LLBC_sharp_mut_borrow (l : loan_id) (v : LLBC_sharp_val)
-(*
-| LLBC_sharp_shr_loan (l : loan_id) (v : LLBC_sharp_val)
-| LLBC_sharp_shr_borrow (l : loan_id)
- *)
-(* | LLBC_sharp_pair (v0 : LLBC_sharp_val) (v1 : LLBC_sharp_val) *)
+| VMutLoan (ty : LLBC_type) (l : loan_id)
+| VMutBorrow (l : loan_id) (v : LLBC_sharp_val)
 (* Note: symbolic values should be parameterized by a type, when we introduce other datatypes than
    integers. *)
-| LLBC_sharp_symbolic (ty : LLBC_type)
+| VSymbolic (ty : LLBC_type)
 .
 
 Variant LLBC_sharp_nodes :=
-| LLBC_sharp_botC
-| LLBC_sharp_intC (n : nat)
-| LLBC_sharp_boolC (b : bool)
-| LLBC_sharp_mut_loanC (ty : LLBC_type) (l : loan_id)
-| LLBC_sharp_mut_borrowC (l : loan_id)
-| LLBC_sharp_symbolicC (ty : LLBC_type)
+| NBottom
+| NInt (n : nat)
+| NBool (b : bool)
+| NMutLoan (ty : LLBC_type) (l : loan_id)
+| NMutBorrow (l : loan_id)
+| NSymbolic (ty : LLBC_type)
 .
 
 Instance EqDecision_LLBC_sharp_nodes : EqDecision LLBC_sharp_nodes.
 Proof. unfold RelDecision, Decision. repeat decide equality. Defined.
 
 Definition LLBC_sharp_arity c := match c with
-| LLBC_sharp_botC => 0
-| LLBC_sharp_intC _ => 0
-| LLBC_sharp_boolC _ => 0
-| LLBC_sharp_mut_loanC _ _ => 0
-| LLBC_sharp_mut_borrowC _ => 1
-| LLBC_sharp_symbolicC _ => 0
+| NBottom => 0
+| NInt _ => 0
+| NBool _ => 0
+| NMutLoan _ _ => 0
+| NMutBorrow _ => 1
+| NSymbolic _ => 0
 end.
 
 Definition LLBC_sharp_get_node v := match v with
-| LLBC_sharp_bot => LLBC_sharp_botC
-| LLBC_sharp_int n => LLBC_sharp_intC n
-| LLBC_sharp_bool b => LLBC_sharp_boolC b
-| LLBC_sharp_mut_loan ty l => LLBC_sharp_mut_loanC ty l
-| LLBC_sharp_mut_borrow l _ => LLBC_sharp_mut_borrowC l
-| LLBC_sharp_symbolic ty => LLBC_sharp_symbolicC ty
+| VBottom => NBottom
+| VInt n => NInt n
+| VBool b => NBool b
+| VMutLoan ty l => NMutLoan ty l
+| VMutBorrow l _ => NMutBorrow l
+| VSymbolic ty => NSymbolic ty
 end.
 
 Definition LLBC_sharp_children v := match v with
-| LLBC_sharp_bot => []
-| LLBC_sharp_int _ => []
-| LLBC_sharp_bool _ => []
-| LLBC_sharp_mut_loan _ _ => []
-| LLBC_sharp_mut_borrow _ v => [v]
-| LLBC_sharp_symbolic ty => []
+| VBottom => []
+| VInt _ => []
+| VBool _ => []
+| VMutLoan _ _ => []
+| VMutBorrow _ v => [v]
+| VSymbolic ty => []
 end.
 
 Definition LLBC_sharp_fold c vs := match c, vs with
-| LLBC_sharp_intC n, [] => LLBC_sharp_int n
-| LLBC_sharp_boolC b, [] => LLBC_sharp_bool b
-| LLBC_sharp_mut_loanC ty l, [] => LLBC_sharp_mut_loan ty l
-| LLBC_sharp_mut_borrowC l, [v] => LLBC_sharp_mut_borrow l v
-| LLBC_sharp_symbolicC ty, [] => LLBC_sharp_symbolic ty
-| _, _ => LLBC_sharp_bot
+| NInt n, [] => VInt n
+| NBool b, [] => VBool b
+| NMutLoan ty l, [] => VMutLoan ty l
+| NMutBorrow l, [v] => VMutBorrow l v
+| NSymbolic ty, [] => VSymbolic ty
+| _, _ => VBottom
 end.
 
 Fixpoint LLBC_sharp_weight node_weight v :=
   match v with
-  | LLBC_sharp_mut_borrow l v => node_weight (LLBC_sharp_mut_borrowC l) + LLBC_sharp_weight node_weight v
+  | VMutBorrow l v => node_weight (NMutBorrow l) + LLBC_sharp_weight node_weight v
   | v => node_weight (LLBC_sharp_get_node v)
 end.
 
@@ -104,7 +99,7 @@ Program Instance ValueLLBC_sharp : Value LLBC_sharp_val LLBC_sharp_nodes := {
   children := LLBC_sharp_children;
   fold_value := LLBC_sharp_fold;
   vweight := LLBC_sharp_weight;
-  bot := LLBC_sharp_bot;
+  bot := VBottom;
 }.
 Next Obligation. destruct v; reflexivity. Qed.
 Next Obligation.
@@ -270,26 +265,26 @@ Delimit Scope llbc_sharp_scope with llbc_sharp.
 Reserved Notation "'loan^m' ( ty , l )" (at level 0).
 Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next level).
 
-Reserved Notation "'botC'" (at level 0).
-Reserved Notation "'loanC^m'( ty , l )" (at level 0).
-Reserved Notation "'borrow^m' ( l )" (at level 0, l at next level).
-Reserved Notation "'locC' ( l , )" (at level 0, l at next level). (* TODO: unused in LLBC_sharp.v *)
-Reserved Notation "'ptrC' ( l )" (at level 0). (* TODO: unused in LLBC_sharp.v *)
+Reserved Notation "'nbot'" (at level 0).
+Reserved Notation "'nloan^m'( ty , l )" (at level 0).
+Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
+Reserved Notation "'nloc' ( l , )" (at level 0, l at next level). (* TODO: unused in LLBC_sharp.v *)
+Reserved Notation "'nptr' ( l )" (at level 0). (* TODO: unused in LLBC_sharp.v *)
 
-(* Notation "'bot'" := LLBC_sharp_bot: llbc_sharp_scope. *)
-Notation "'loan^m' ( ty , l )" := (LLBC_sharp_mut_loan ty l) : llbc_sharp_scope.
-Notation "'borrow^m' ( l  , v )" := (LLBC_sharp_mut_borrow l v) : llbc_sharp_scope.
+(* Notation "'bot'" := VBottom: llbc_sharp_scope. *)
+Notation "'loan^m' ( ty , l )" := (VMutLoan ty l) : llbc_sharp_scope.
+Notation "'borrow^m' ( l  , v )" := (VMutBorrow l v) : llbc_sharp_scope.
 
-Notation "'botC'" := LLBC_sharp_botC: llbc_sharp_scope.
-Notation "'loanC^m' ( ty , l )" := (LLBC_sharp_mut_loanC ty l) : llbc_sharp_scope.
-Notation "'borrowC^m' ( l )" := (LLBC_sharp_mut_borrowC l) : llbc_sharp_scope.
+Notation "'nbot'" := NBottom: llbc_sharp_scope.
+Notation "'nloan^m' ( ty , l )" := (NMutLoan ty l) : llbc_sharp_scope.
+Notation "'nborrow^m' ( l )" := (NMutBorrow l) : llbc_sharp_scope.
 
 (* Bind Scope llbc_sharp_scope with LLBC_sharp_val. *)
 Open Scope llbc_sharp_scope.
 
 (** Definitions of LLBC## operations. *)
 Variant is_loan : LLBC_sharp_nodes -> Prop :=
-| IsLoan_MutLoan ty l : is_loan (loanC^m(ty, l)).
+| IsLoan_MutLoan ty l : is_loan (nloan^m(ty, l)).
 Hint Constructors is_loan : spath.
 Definition not_contains_loan := not_value_contains is_loan.
 Hint Unfold not_contains_loan : spath.
@@ -300,7 +295,7 @@ Lemma is_loan_valid S sp : is_loan (get_node (S.[sp])) -> valid_spath S sp.
 Proof. intros H. apply valid_get_node_sget_not_bot. destruct H; discriminate. Qed.
 
 Variant is_borrow : LLBC_sharp_nodes -> Prop :=
-| IsLoan_MutBorrow l : is_borrow (borrowC^m(l)).
+| IsLoan_MutBorrow l : is_borrow (nborrow^m(l)).
 Hint Constructors is_borrow : spath.
 Definition not_contains_borrow := not_value_contains is_borrow.
 Hint Unfold not_contains_borrow : spath.
@@ -308,9 +303,9 @@ Hint Extern 0 (is_borrow (get_node borrow^m(_, _))) => constructor : spath.
 Hint Extern 0 (~is_borrow _) => intro; easy : spath.
 
 Definition not_contains_bot v :=
-  (not_value_contains (fun c => c = botC) v).
+  (not_value_contains (fun c => c = nbot) v).
 Hint Unfold not_contains_bot : spath.
-Hint Extern 0 (_ <> botC) => discriminate : spath.
+Hint Extern 0 (_ <> nbot) => discriminate : spath.
 
 Lemma not_contains_bot_valid S sp : not_contains_bot (S.[sp]) -> valid_spath S sp.
 Proof.
@@ -320,13 +315,13 @@ Qed.
 Hint Resolve not_contains_bot_valid : spath.
 
 Variant is_symbolic : LLBC_sharp_nodes -> Prop :=
-| IsSymbolic_Symbolic ty : is_symbolic (LLBC_sharp_symbolicC ty).
+| IsSymbolic_Symbolic ty : is_symbolic (NSymbolic ty).
 Definition not_contains_symbolic v := (not_value_contains is_symbolic v).
 Hint Unfold not_contains_symbolic : spath.
 Hint Extern 0 (~is_symbolic _) => intro; easy : spath.
 
 Variant is_mut_borrow : LLBC_sharp_nodes -> Prop :=
-| IsMutBorrow_MutBorrow l : is_mut_borrow (borrowC^m(l)).
+| IsMutBorrow_MutBorrow l : is_mut_borrow (nborrow^m(l)).
 Notation not_contains_outer_loan := (not_contains_outer is_mut_borrow is_loan).
 
 Notation not_in_borrow := (no_ancestor is_mut_borrow).
@@ -357,10 +352,10 @@ Notation rename_mut_borrow_val v vp l := (v.[[vp <- borrow^m(l, v.[[vp ++ [0] ]]
 
 (* [is_of_type ty v] asserts that the value v is initialized (not bot) and of type ty. *)
 Variant is_of_type : LLBC_type -> LLBC_sharp_val -> Prop :=
-| Is_of_type_symbolic ty : is_of_type ty (LLBC_sharp_symbolic ty)
+| Is_of_type_symbolic ty : is_of_type ty (VSymbolic ty)
 | Is_of_type_mut_loan ty l : is_of_type ty (loan^m(ty, l))
-| Is_of_type_integer n : is_of_type intT (LLBC_sharp_int n)
-| Is_of_type_bool b : is_of_type boolT (LLBC_sharp_bool b)
+| Is_of_type_integer n : is_of_type TInt (VInt n)
+| Is_of_type_bool b : is_of_type TBool (VBool b)
 .
 
 (* We want to assert that storing a value in a path preserves the type. However, we do not have a
@@ -384,8 +379,8 @@ Variant add_anons : LLBC_sharp_state -> Pmap LLBC_sharp_val -> LLBC_sharp_state 
 
 Definition get_loan_id c :=
   match c with
-  | loanC^m(ty, l) => Some l
-  | borrowC^m(l) => Some l
+  | nloan^m(ty, l) => Some l
+  | nborrow^m(l) => Some l
   | _ => None
   end.
 
@@ -398,7 +393,7 @@ Inductive remove_loans A B : Pmap LLBC_sharp_val -> Pmap LLBC_sharp_val-> Prop :
   | Remove_nothing : remove_loans A B A B
   | Remove_MutLoan A' B' i j l ty (H : remove_loans A B A' B') :
       lookup i A' = Some (loan^m(ty, l)) ->
-      lookup j B' = Some (borrow^m(l, LLBC_sharp_symbolic ty)) ->
+      lookup j B' = Some (borrow^m(l, VSymbolic ty)) ->
       remove_loans A B (delete i A') (delete j B')
 .
 
@@ -422,8 +417,8 @@ Definition rename_loan_id (m : loan_id_map) (l : loan_id) :=
 
 Definition rename_node (m : loan_id_map) (n : LLBC_sharp_nodes) :=
   match n with
-  | borrowC^m(l) => borrowC^m(rename_loan_id m l)
-  | loanC^m(ty, l) => loanC^m(ty, rename_loan_id m l)
+  | nborrow^m(l) => nborrow^m(rename_loan_id m l)
+  | nloan^m(ty, l) => nloan^m(ty, rename_loan_id m l)
   | _ => n
   end.
 
@@ -1257,7 +1252,7 @@ Qed.
 
 Hint Extern 0 (is_mut_borrow (get_node (?S.[?sp]))) =>
   lazymatch goal with
-  | H : get_node (?S.[?sp]) = borrowC^m(_) |- is_mut_borrow (get_node (?S.[?sp])) =>
+  | H : get_node (?S.[?sp]) = nborrow^m(_) |- is_mut_borrow (get_node (?S.[?sp])) =>
       rewrite H; constructor
   end : spath.
 Hint Rewrite get_node_rename_mut_borrow using eauto with spath; fail : spath.
@@ -1277,7 +1272,7 @@ Qed.
 Hint Rewrite sget_reborrow_mut_borrow_not_prefix using eauto with spath; fail : spath.
 
 Lemma valid_spath_rename_mut_borrow S p q l0 l1
-  (H : get_node (S.[p]) = borrowC^m(l0)) :
+  (H : get_node (S.[p]) = nborrow^m(l0)) :
   valid_spath (rename_mut_borrow S p l1) q <-> valid_spath S q.
 Proof.
   split.
@@ -1311,7 +1306,7 @@ Qed.
 Hint Rewrite sset_reborrow_mut_borrow_not_prefix using solve_comp; fail : spath.
 
 Lemma not_contains_rename_mut_borrow S p q l0 l1 P :
-  get_node (S.[p]) = borrowC^m(l0) -> ~P (borrowC^m(l0)) ->
+  get_node (S.[p]) = nborrow^m(l0) -> ~P (nborrow^m(l0)) ->
   not_value_contains P ((rename_mut_borrow S p l1).[q]) -> not_value_contains P (S.[q]).
 Proof.
   destruct (decidable_valid_spath S q) as [valid_q | ].
@@ -1335,7 +1330,7 @@ Proof.
 Qed.
 
 Lemma is_fresh_rename_mut_borrow S p l l0 l1 :
-  get_node (S.[p]) = borrowC^m(l0) -> l <> l0 ->
+  get_node (S.[p]) = nborrow^m(l0) -> l <> l0 ->
   is_fresh l (rename_mut_borrow S p l1) -> is_fresh l S.
 Proof.
   intros get_l0 Hdiff fresh_l q valid_q. destruct (decidable_spath_eq p q) as [<- | ].
@@ -1345,7 +1340,7 @@ Proof.
 Qed.
 
 Lemma not_in_borrow_rename_mut_borrow S p q l0 l1 :
-  get_node (S.[p]) = borrowC^m(l0) ->
+  get_node (S.[p]) = nborrow^m(l0) ->
   not_in_borrow (rename_mut_borrow S p l1) q -> not_in_borrow S q.
 Proof.
   intros ? H r ?. apply H.
@@ -1669,7 +1664,7 @@ Qed.
 Lemma remove_loans_elem_right A B A' B' i :
   remove_loans A B A' B' ->
   lookup i B = lookup i B' \/
-  exists l ty, lookup i B = Some (borrow^m(l, LLBC_sharp_symbolic ty)).
+  exists l ty, lookup i B = Some (borrow^m(l, VSymbolic ty)).
 Proof.
   intros H. induction H.
   - left. reflexivity.
@@ -1744,21 +1739,21 @@ Proof.
     eexists. split; [eassumption | ]. split; [ | assumption]. eauto using AddAnons_insert.
 Qed.
 
-Lemma vweight_bot weight : vweight weight bot = weight botC.
+Lemma vweight_bot weight : vweight weight bot = weight nbot.
 Proof. reflexivity. Qed.
 Hint Rewrite vweight_bot : weight.
 
 Lemma vweight_symbolic weight ty :
-  vweight weight (LLBC_sharp_symbolic ty) = weight (LLBC_sharp_symbolicC ty).
+  vweight weight (VSymbolic ty) = weight (NSymbolic ty).
 Proof. reflexivity. Qed.
 Hint Rewrite vweight_symbolic : weight.
 
-Lemma vweight_mut_loan weight ty l : vweight weight loan^m(ty, l) = weight loanC^m(ty, l).
+Lemma vweight_mut_loan weight ty l : vweight weight loan^m(ty, l) = weight nloan^m(ty, l).
 Proof. reflexivity. Qed.
 Hint Rewrite vweight_mut_loan : weight.
 
 Lemma vweight_mut_borrow weight l v :
-  vweight weight borrow^m(l, v) = weight borrowC^m(l) + vweight weight v.
+  vweight weight borrow^m(l, v) = weight nborrow^m(l) + vweight weight v.
 Proof. reflexivity. Qed.
 Hint Rewrite vweight_mut_borrow : weight.
 
@@ -1875,7 +1870,7 @@ Qed.
  * that the invalid value [bot] is of any type. For the moment, there is no reason to do that.
  * *)
 Lemma is_of_type_does_not_contain_bot ty v :
-  is_of_type ty v -> not_value_contains (fun c => c = botC) v.
+  is_of_type ty v -> not_value_contains (fun c => c = nbot) v.
 Proof. destruct v; inversion 1; now apply not_value_contains_zeroary. Qed.
 Hint Resolve is_of_type_does_not_contain_bot : spath.
 
@@ -1928,7 +1923,7 @@ Qed.
 (* Note: with type on borrows, we could just apply the theorems [is_of_type_sset_rev] and
  * [is_of_type_sset_rev]. *)
 Lemma _is_of_type_rename_mut_borrow_val v p l0 l1 ty :
-  get_node (v.[[p]]) = borrowC^m(l0) -> is_of_type ty v ->
+  get_node (v.[[p]]) = nborrow^m(l0) -> is_of_type ty v ->
   is_of_type ty (v.[[p <- borrow^m(l1, v.[[p ++ [0] ]])]]).
 Proof.
   intros get_borrow Htype. assert (valid_vpath v p) as H by validity.
@@ -1937,7 +1932,7 @@ Proof.
 Qed.
 
 Lemma is_of_type_rename_mut_borrow_val v p l0 l1 ty :
-  get_node (v.[[p]]) = borrowC^m(l0) ->
+  get_node (v.[[p]]) = nborrow^m(l0) ->
   is_of_type ty (rename_mut_borrow_val v p l1) ->
   is_of_type ty v.
 Proof.
@@ -1951,7 +1946,7 @@ Proof.
 Qed.
 
 Lemma is_of_type_rename_mut_borrow S p q l0 l1 ty
-  (get_l0 : get_node (S.[p]) = borrowC^m(l0))
+  (get_l0 : get_node (S.[p]) = nborrow^m(l0))
   (Htype : is_of_type ty ((rename_mut_borrow S p l1).[q])) :
   is_of_type ty (S.[q]).
 Proof.
@@ -1981,7 +1976,7 @@ Proof.
 Qed.
 
 Lemma store_compatible_types_vset_symbolic S p v q ty :
-  store_compatible_types S p (v.[[q <- LLBC_sharp_symbolic ty]]) ->
+  store_compatible_types S p (v.[[q <- VSymbolic ty]]) ->
   is_of_type ty (v.[[q]]) -> store_compatible_types S p v.
 Proof.
   intros H G p0 Hprefix get_mut_borrow.
@@ -2059,7 +2054,7 @@ Proof.
 Qed.
 
 Lemma store_compatible_types_rename_mut_borrow_val S p q v l0 l1 :
-  get_node (v.[[q]]) = borrowC^m(l0) ->
+  get_node (v.[[q]]) = nborrow^m(l0) ->
   store_compatible_types S p (rename_mut_borrow_val v q l1) ->
   store_compatible_types S p v.
 Proof.
@@ -2070,7 +2065,7 @@ Proof.
 Qed.
 
 Lemma store_compatible_types_rename_mut_borrow S p q v l0 l1 :
-  get_node (S.[q]) = borrowC^m(l0) ->
+  get_node (S.[q]) = nborrow^m(l0) ->
   store_compatible_types (rename_mut_borrow S q l1) p v ->
   store_compatible_types S p v.
 Proof.

@@ -14,64 +14,59 @@ From Stdlib Require Bool.
 
 (** * Definition of LLBC values and states. *)
 Inductive LLBC_val :=
-| LLBC_bot
-| LLBC_int (n : nat) (* TODO: use Aeneas integer types? *)
-| LLBC_bool (b : bool)
-| LLBC_mut_loan (l : loan_id)
-| LLBC_mut_borrow (l : loan_id) (v : LLBC_val)
-(*
-| LLBC_shr_loan (l : loan_id) (v : LLBC_val)
-| LLBC_shr_borrow (l : loan_id)
- *)
-(* | LLBC_pair (v0 : LLBC_val) (v1 : LLBC_val) *)
+| VBottom
+| VInt (n : nat) (* TODO: use Aeneas integer types? *)
+| VBool (b : bool)
+| VMutLoan (l : loan_id)
+| VMutBorrow (l : loan_id) (v : LLBC_val)
 .
 
 Variant LLBC_nodes :=
-| LLBC_botC
-| LLBC_intC (n : nat)
-| LLBC_boolC (b : bool)
-| LLBC_mut_loanC (l : loan_id)
-| LLBC_mut_borrowC (l : loan_id)
+| NBottom
+| NInt (n : nat)
+| NBool (b : bool)
+| NMutLoan (l : loan_id)
+| NMutBorrow (l : loan_id)
 .
 
 Instance EqDecision_LLBC_nodes : EqDecision LLBC_nodes.
 Proof. unfold RelDecision, Decision. repeat decide equality. Defined.
 
 Definition LLBC_arity c := match c with
-| LLBC_botC => 0
-| LLBC_intC _ => 0
-| LLBC_boolC _ => 0
-| LLBC_mut_loanC _ => 0
-| LLBC_mut_borrowC _ => 1
+| NBottom => 0
+| NInt _ => 0
+| NBool _ => 0
+| NMutLoan _ => 0
+| NMutBorrow _ => 1
 end.
 
 Definition LLBC_get_node v := match v with
-| LLBC_bot => LLBC_botC
-| LLBC_int n => LLBC_intC n
-| LLBC_bool b => LLBC_boolC b
-| LLBC_mut_loan l => LLBC_mut_loanC l
-| LLBC_mut_borrow l _ => LLBC_mut_borrowC l
+| VBottom => NBottom
+| VInt n => NInt n
+| VBool b => NBool b
+| VMutLoan l => NMutLoan l
+| VMutBorrow l _ => NMutBorrow l
 end.
 
 Definition LLBC_children v := match v with
-| LLBC_bot => []
-| LLBC_int _ => []
-| LLBC_bool _ => []
-| LLBC_mut_loan _ => []
-| LLBC_mut_borrow _ v => [v]
+| VBottom => []
+| VInt _ => []
+| VBool _ => []
+| VMutLoan _ => []
+| VMutBorrow _ v => [v]
 end.
 
 Definition LLBC_fold c vs := match c, vs with
-| LLBC_intC n, [] => LLBC_int n
-| LLBC_boolC b, [] => LLBC_bool b
-| LLBC_mut_loanC l, [] => LLBC_mut_loan l
-| LLBC_mut_borrowC l, [v] => LLBC_mut_borrow l v
-| _, _ => LLBC_bot
+| NInt n, [] => VInt n
+| NBool b, [] => VBool b
+| NMutLoan l, [] => VMutLoan l
+| NMutBorrow l, [v] => VMutBorrow l v
+| _, _ => VBottom
 end.
 
 Fixpoint LLBC_weight node_weight v :=
   match v with
-  | LLBC_mut_borrow l v => node_weight (LLBC_mut_borrowC l) + LLBC_weight node_weight v
+  | VMutBorrow l v => node_weight (NMutBorrow l) + LLBC_weight node_weight v
   | v => node_weight (LLBC_get_node v)
 end.
 
@@ -81,7 +76,7 @@ Program Instance ValueLLBC : Value LLBC_val LLBC_nodes := {
   children := LLBC_children;
   fold_value := LLBC_fold;
   vweight := LLBC_weight;
-  bot := LLBC_bot;
+  bot := VBottom;
 }.
 Next Obligation. destruct v; reflexivity. Qed.
 Next Obligation.
@@ -152,19 +147,19 @@ Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next
 Reserved Notation "'loc' ( l , v )" (at level 0, l at next level, v at next level). (* TODO: unused in LLBC.v *)
 Reserved Notation "'ptr' ( l )" (at level 0). (* TODO: unused in LLBC.v *)
 
-Reserved Notation "'botC'" (at level 0).
-Reserved Notation "'loanC^m'( l )" (at level 0).
-Reserved Notation "'borrow^m' ( l )" (at level 0, l at next level).
-Reserved Notation "'locC' ( l , )" (at level 0, l at next level). (* TODO: unused in LLBC.v *)
-Reserved Notation "'ptrC' ( l )" (at level 0). (* TODO: unused in LLBC.v *)
+Reserved Notation "'nbot'" (at level 0).
+Reserved Notation "'nloan^m'( l )" (at level 0).
+Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
+Reserved Notation "'nloc' ( l , )" (at level 0, l at next level). (* TODO: unused in LLBC.v *)
+Reserved Notation "'nptr' ( l )" (at level 0). (* TODO: unused in LLBC.v *)
 
-(* Notation "'bot'" := LLBC_bot: llbc_scope. *)
-Notation "'loan^m' ( l )" := (LLBC_mut_loan l) : llbc_scope.
-Notation "'borrow^m' ( l  , v )" := (LLBC_mut_borrow l v) : llbc_scope.
+(* Notation "'bot'" := VBottom: llbc_scope. *)
+Notation "'loan^m' ( l )" := (VMutLoan l) : llbc_scope.
+Notation "'borrow^m' ( l  , v )" := (VMutBorrow l v) : llbc_scope.
 
-Notation "'botC'" := LLBC_botC: llbc_scope.
-Notation "'loanC^m' ( l )" := (LLBC_mut_loanC l) : llbc_scope.
-Notation "'borrowC^m' ( l )" := (LLBC_mut_borrowC l) : llbc_scope.
+Notation "'nbot'" := NBottom: llbc_scope.
+Notation "'nloan^m' ( l )" := (NMutLoan l) : llbc_scope.
+Notation "'nborrow^m' ( l )" := (NMutBorrow l) : llbc_scope.
 
 (* Bind Scope llbc_scope with LLBC_val. *)
 Open Scope llbc_scope.
@@ -174,7 +169,7 @@ Inductive eval_proj (S : LLBC_state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
-    (get_q : get_node (S.[q]) = borrowC^m(l)) :
+    (get_q : get_node (S.[q]) = nborrow^m(l)) :
     eval_proj S perm Deref q (q +++ [0])
 .
 
@@ -214,33 +209,33 @@ Proof. destruct H as (? & ?). eapply eval_path_valid; eassumption. Qed.
 Hint Resolve eval_place_valid : spath.
 
 Variant is_loan : LLBC_nodes -> Prop :=
-| IsLoan_MutLoan l : is_loan (loanC^m(l)).
+| IsLoan_MutLoan l : is_loan (nloan^m(l)).
 Hint Constructors is_loan : spath.
 Definition not_contains_loan := not_value_contains is_loan.
 Hint Unfold not_contains_loan : spath.
 Hint Extern 0 (~is_loan _) => intro; easy : spath.
 
 Definition not_contains_bot v :=
-  (not_value_contains (fun c => c = botC) v).
+  (not_value_contains (fun c => c = nbot) v).
 Hint Unfold not_contains_bot : spath.
-Hint Extern 0 (_ <> botC) => discriminate : spath.
+Hint Extern 0 (_ <> nbot) => discriminate : spath.
 
 Variant is_mut_borrow : LLBC_nodes -> Prop :=
-| IsMutBorrow_MutBorrow l : is_mut_borrow (borrowC^m(l)).
+| IsMutBorrow_MutBorrow l : is_mut_borrow (nborrow^m(l)).
 Notation not_contains_outer_loan := (not_contains_outer is_mut_borrow is_loan).
 
-Lemma loan_is_not_bot x : is_loan x -> x <> botC. Proof. intros [ ]; discriminate. Qed.
+Lemma loan_is_not_bot x : is_loan x -> x <> nbot. Proof. intros [ ]; discriminate. Qed.
 
 Inductive copy_val : LLBC_val -> LLBC_val -> Prop :=
-| Copy_val_int (n : nat) : copy_val (LLBC_int n) (LLBC_int n)
-| Copy_val_bool (b : bool) : copy_val (LLBC_bool b) (LLBC_bool b)
+| Copy_val_int (n : nat) : copy_val (VInt n) (VInt n)
+| Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 .
 
 Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
 Variant eval_operand : operand -> LLBC_state -> (LLBC_val * LLBC_state) -> Prop :=
-| E_IntConst S n : S |-{op} Const (IntConst n) => (LLBC_int n, S)
-| E_BoolConst S n : S |-{op} Const (IntConst n) => (LLBC_int n, S)
+| E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
+| E_BoolConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_Copy S (p : place) pi v
     (Heval_place : eval_place S Imm p pi) (Hcopy_val : copy_val (S.[pi]) v) :
     S |-{op} Copy p => (v, S)
@@ -251,8 +246,8 @@ where "S |-{op} op => r" := (eval_operand op S r).
 
 Definition get_loan_id c :=
   match c with
-  | loanC^m(l) => Some l
-  | borrowC^m(l) => Some l
+  | nloan^m(l) => Some l
+  | nborrow^m(l) => Some l
   | _ => None
   end.
 
@@ -261,9 +256,9 @@ Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> LLBC_val -> LLBC_val -> LLBC_val -> Prop :=
   | E_Add m n :
-      eval_binary_op BAdd (LLBC_int m) (LLBC_int n) (LLBC_int (m + n))
+      eval_binary_op BAdd (VInt m) (VInt n) (VInt (m + n))
   | E_Le m n :
-      eval_binary_op BLe (LLBC_int m) (LLBC_int n) (LLBC_bool (m <=? n))
+      eval_binary_op BLe (VInt m) (VInt n) (VBool (m <=? n))
 .
 
 Variant eval_rvalue : rvalue -> LLBC_state -> (LLBC_val * LLBC_state) -> Prop :=
@@ -284,7 +279,7 @@ Definition not_in_borrow (S : LLBC_state) p :=
 
 Inductive reorg : LLBC_state -> LLBC_state -> Prop :=
 | Reorg_End_MutBorrow S (p q : spath) l :
-    disj p q -> get_node (S.[p]) = loanC^m(l) -> get_node (S.[q]) = borrowC^m(l) ->
+    disj p q -> get_node (S.[p]) = nloan^m(l) -> get_node (S.[q]) = nborrow^m(l) ->
     not_contains_loan (S.[q +++ [0] ]) -> not_in_borrow S q ->
     reorg S (S.[p <- (S.[q +++ [0] ])].[q <- bot])
 .
@@ -314,11 +309,11 @@ Inductive eval_stmt : statement -> flow_token -> LLBC_state -> LLBC_state -> Pro
   | E_Assign S vS' S'' p rv : (S |-{rv} rv => vS') -> store p vS' S'' ->
       S |-{stmt} ASSIGN p <- rv => rUnit, S''
   | E_IfThenElse_T S S' S'' cond stmt_if stmt_else r
-      (eval_cond : S |-{op} cond => (LLBC_bool true, S')) :
+      (eval_cond : S |-{op} cond => (VBool true, S')) :
       S' |-{stmt} stmt_if => r, S'' ->
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
   | E_IfThenElse_F S S' S'' cond stmt_if stmt_else r
-      (eval_cond : S |-{op} cond => (LLBC_bool false, S')) :
+      (eval_cond : S |-{op} cond => (VBool false, S')) :
       S' |-{stmt} stmt_else => r, S'' ->
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
   | E_Reorg S0 S1 S2 stmt r (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => r, S2) :
@@ -436,7 +431,7 @@ Section Eval_LLBC_program.
 
   Lemma safe_main :
     exists end_state, eval_stmt main rUnit init_state end_state /\
-      exists pi, eval_place end_state Imm ((a, []) : place) pi /\ end_state.[pi] = LLBC_int 58.
+      exists pi, eval_place end_state Imm ((a, []) : place) pi /\ end_state.[pi] = VInt 58.
   Proof.
     eexists. split. {
       eapply E_Seq_Unit.

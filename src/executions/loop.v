@@ -67,8 +67,8 @@ Open Scope stdpp.
 (** We execute the function [f] on the most general state. The arguments << x >> and << y >> are initialized as symbolic values, while the local variables are uninitialized. *)
 Definition init_state := {|
   vars := {[
-    a := LLBC_sharp_symbolic intT;
-    n := LLBC_sharp_symbolic intT;
+    a := VSymbolic TInt;
+    n := VSymbolic TInt;
     b := bot;
     i := bot;
     cond := bot
@@ -86,16 +86,16 @@ Definition A : positive := 1.
 (** The loop invariant. *)
 Definition S_inv : LLBC_sharp_state := {|
   vars := {[
-    a := loan^m(intT, l0);
-    b := borrow^m(l1, LLBC_sharp_symbolic intT);
-    i := LLBC_sharp_symbolic intT;
-    n := LLBC_sharp_symbolic intT;
+    a := loan^m(TInt, l0);
+    b := borrow^m(l1, VSymbolic TInt);
+    i := VSymbolic TInt;
+    n := VSymbolic TInt;
     cond := bot
   ]};
   anons := empty;
   abstractions := {[
-    A := {[1%positive := borrow^m(l0, LLBC_sharp_symbolic intT);
-           2%positive := loan^m(intT, l1)]} ]}
+    A := {[1%positive := borrow^m(l0, VSymbolic TInt);
+           2%positive := loan^m(TInt, l1)]} ]}
 |}.
 
 Definition B_inv : branching_state := {[rBreak := S_inv; rContinue := S_inv]}.
@@ -103,7 +103,6 @@ Definition B_inv : branching_state := {[rBreak := S_inv; rContinue := S_inv]}.
 Lemma safe_f : exists end_state, init_state |-# f ~> end_state.
 Proof.
   eexists.
-  Set Printing All. unfold init_state. simpl_state.
   (** Evaluation of the assignment << b = &mut a >> *)
   eapply eval_seq_unit.
   { eapply assign_no_anon.

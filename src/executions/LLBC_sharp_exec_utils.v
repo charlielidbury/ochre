@@ -81,7 +81,7 @@ Proof. intros ? ?. unfold Decision. repeat decide equality. Defined.
 
 Definition compute_eval_proj S perm proj p : option spath :=
   match get_node (S.[p]), proj with
-  | borrowC^m(l), Deref =>
+  | nborrow^m(l), Deref =>
       if (decide (perm = Mov)) then None else Some (p +++ [0])
   | _, _ => None
   end.
@@ -135,9 +135,9 @@ Proof. apply decidable_not_state_contains. unfold is_loan_id. solve_decision. De
 
 Fixpoint compute_copy_val v :=
   match v with
-  | LLBC_sharp_int n => Some v
-  | LLBC_sharp_bool b => Some v
-  | LLBC_sharp_symbolic ty => Some v
+  | VInt n => Some v
+  | VBool b => Some v
+  | VSymbolic ty => Some v
   | _ => None
   end.
 
@@ -171,14 +171,14 @@ Defined.
 
 Definition compute_eval_bin_op bin_op v0 v1 :=
   match bin_op, v0, v1 with
-  | BAdd, LLBC_sharp_int m, LLBC_sharp_int n => Some (LLBC_sharp_int (m + n))
-  | BAdd, LLBC_sharp_int _, LLBC_sharp_symbolic intT
-  | BAdd, LLBC_sharp_symbolic intT, LLBC_sharp_int _
-  | BAdd, LLBC_sharp_symbolic intT, LLBC_sharp_symbolic intT => Some (LLBC_sharp_symbolic intT)
-  | BLe, LLBC_sharp_int m, LLBC_sharp_int n => Some (LLBC_sharp_bool (m <=? n))
-  | BLe, LLBC_sharp_int _, LLBC_sharp_symbolic intT
-  | BLe, LLBC_sharp_symbolic intT, LLBC_sharp_int _
-  | BLe, LLBC_sharp_symbolic intT, LLBC_sharp_symbolic intT => Some (LLBC_sharp_symbolic boolT)
+  | BAdd, VInt m, VInt n => Some (VInt (m + n))
+  | BAdd, VInt _, VSymbolic TInt
+  | BAdd, VSymbolic TInt, VInt _
+  | BAdd, VSymbolic TInt, VSymbolic TInt => Some (VSymbolic TInt)
+  | BLe, VInt m, VInt n => Some (VBool (m <=? n))
+  | BLe, VInt _, VSymbolic TInt
+  | BLe, VSymbolic TInt, VInt _
+  | BLe, VSymbolic TInt, VSymbolic TInt => Some (VSymbolic TBool)
   | _, _, _ => None
   end.
 
@@ -205,9 +205,9 @@ Defined.
 
 Fixpoint compute_type v :=
   match v with
-  | LLBC_sharp_int n => Some intT
-  | LLBC_sharp_bool b => Some boolT
-  | LLBC_sharp_symbolic ty => Some ty
+  | VInt n => Some TInt
+  | VBool b => Some TBool
+  | VSymbolic ty => Some ty
   | loan^m(ty, l) => Some ty
   | _ => None
   end.

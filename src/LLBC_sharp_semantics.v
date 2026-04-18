@@ -8,7 +8,7 @@ Inductive eval_proj (S : LLBC_sharp_state) perm : proj -> spath -> spath -> Prop
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
-    (get_q : get_node (S.[q]) = borrowC^m(l)) :
+    (get_q : get_node (S.[q]) = nborrow^m(l)) :
     eval_proj S perm Deref q (q +++ [0])
 .
 
@@ -51,17 +51,17 @@ Hint Resolve eval_place_valid : spath.
 Definition copiable (ty : LLBC_type) := True.
 
 Inductive copy_val : LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
-| Copy_val_int (n : nat) : copy_val (LLBC_sharp_int n) (LLBC_sharp_int n)
-| Copy_val_bool (b : bool) : copy_val (LLBC_sharp_bool b) (LLBC_sharp_bool b)
+| Copy_val_int (n : nat) : copy_val (VInt n) (VInt n)
+| Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 | Copy_val_symbolic ty : copiable ty ->
-    copy_val (LLBC_sharp_symbolic ty) (LLBC_sharp_symbolic ty)
+    copy_val (VSymbolic ty) (VSymbolic ty)
 .
 
 Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
 Variant eval_operand : operand -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
-| E_IntConst S n : S |-{op} Const (IntConst n) => (LLBC_sharp_int n, S)
-| E_BoolConst S b : S |-{op} Const (BoolConst b) => (LLBC_sharp_bool b, S)
+| E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
+| E_BoolConst S b : S |-{op} Const (BoolConst b) => (VBool b, S)
 | E_Copy S (p : place) pi v
     (Heval_place : eval_place S Imm p pi) (Hcopy_val : copy_val (S.[pi]) v) :
     S |-{op} Copy p => (v, S)
@@ -74,21 +74,21 @@ Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> LLBC_sharp_val -> LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
   | E_Add_int_int m n :
-      eval_binary_op BAdd (LLBC_sharp_int m) (LLBC_sharp_int n) (LLBC_sharp_int (m + n))
+      eval_binary_op BAdd (VInt m) (VInt n) (VInt (m + n))
   | E_Add_int_symbolic m :
-      eval_binary_op BAdd (LLBC_sharp_int m) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT)
+      eval_binary_op BAdd (VInt m) (VSymbolic TInt) (VSymbolic TInt)
   | E_Add_symbolic_int n :
-      eval_binary_op BAdd (LLBC_sharp_symbolic intT) (LLBC_sharp_int n) (LLBC_sharp_symbolic intT)
+      eval_binary_op BAdd (VSymbolic TInt) (VInt n) (VSymbolic TInt)
   | E_Add_symbolic_symbolic :
-      eval_binary_op BAdd (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT)
+      eval_binary_op BAdd (VSymbolic TInt) (VSymbolic TInt) (VSymbolic TInt)
   | E_Le_int_int m n :
-      eval_binary_op BLe (LLBC_sharp_int m) (LLBC_sharp_int n) (LLBC_sharp_bool (m <=? n))
+      eval_binary_op BLe (VInt m) (VInt n) (VBool (m <=? n))
   | E_Le_int_symbolic m :
-      eval_binary_op BLe (LLBC_sharp_int m) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic boolT)
+      eval_binary_op BLe (VInt m) (VSymbolic TInt) (VSymbolic TBool)
   | E_Le_symbolic_int n :
-      eval_binary_op BLe (LLBC_sharp_symbolic intT) (LLBC_sharp_int n) (LLBC_sharp_symbolic boolT)
+      eval_binary_op BLe (VSymbolic TInt) (VInt n) (VSymbolic TBool)
   | E_Le_symbolic_symbolic :
-      eval_binary_op BLe (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic intT) (LLBC_sharp_symbolic boolT)
+      eval_binary_op BLe (VSymbolic TInt) (VSymbolic TInt) (VSymbolic TBool)
 .
 
 Variant eval_rvalue : rvalue -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
@@ -115,7 +115,7 @@ where "S |-{rv} rv => r" := (eval_rvalue rv S r) : llbc_sharp_scope.
 Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
 (* Ends a borrow when it's not in an abstraction: *)
 | Reorg_End_MutBorrow S (p q : spath) l ty
-    (get_loan : get_node (S.[p]) = loanC^m(ty, l)) (get_borrow : get_node (S.[q]) = borrowC^m(l))
+    (get_loan : get_node (S.[p]) = nloan^m(ty, l)) (get_borrow : get_node (S.[q]) = nborrow^m(l))
     (type_borrow : is_of_type ty (S.[q +++ [0] ]))
     (Hno_loan : not_contains_loan (S.[q +++ [0] ])) (Hnot_in_borrow : not_in_borrow S q)
     (Hdisj : disj p q)
@@ -126,7 +126,7 @@ Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
 (* The value that is transferred back, S.[q +++ [0]], has to be of integer type. *)
 | Reorg_End_MutBorrow_in_abstraction S q i' j' l ty
     (get_loan : abstraction_element S i' j' = Some (loan^m(ty, l)))
-    (get_borrow : get_node (S.[q]) = borrowC^m(l))
+    (get_borrow : get_node (S.[q]) = nborrow^m(l))
     (type_borrow : is_of_type ty (S.[q +++ [0] ]))
     (Hno_loan : not_contains_loan (S.[q +++ [0] ])) (Hnot_in_borrow : not_in_borrow S q)
     (borrow_not_in_abstraction : not_in_abstraction q) :
@@ -172,17 +172,17 @@ Inductive LLBC_plus_eval_stmt : nat -> statement -> LLBC_sharp_state -> branchin
   | LLBC_plus_E_Assign n S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
       S |-{stmt} ASSIGN p <- rv ~>{1 + n} {[rUnit := S'']}
   | LLBC_plus_E_IfThenElse_T n S S' B_if cond stmt_if stmt_else
-      (eval_cond : S |-{op} cond => (LLBC_sharp_bool true, S'))
+      (eval_cond : S |-{op} cond => (VBool true, S'))
       (Heval_if_branch : S' |-{stmt} stmt_if ~>{1 + n} B_if) :
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~>{1 + n} B_if
   | LLBC_plus_E_IfThenElse_F n S S' B_else cond stmt_if stmt_else
-      (eval_cond : S |-{op} cond => (LLBC_sharp_bool false, S'))
+      (eval_cond : S |-{op} cond => (VBool false, S'))
       (Heval_else_branch : S' |-{stmt} stmt_else ~>{1 + n} B_else) :
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~>{1 + n} B_else
   (* Note: in the ICFP'24 article, the symbolic value is replaced by a concrete boolean in each
      branch. We cannot do that as symbolic values are currently not named. *)
   | LLBC_plus_IfThenElse_Symbolic n S S' B_if B_else B_join cond stmt_if stmt_else
-      (eval_cond : S |-{op} cond => (LLBC_sharp_symbolic boolT, S'))
+      (eval_cond : S |-{op} cond => (VSymbolic TBool, S'))
       (Heval_if_branch : S' |-{stmt} stmt_if ~>{1 + n} B_if)
       (Heval_else_branch : S' |-{stmt} stmt_else ~>{1 + n} B_else)
       (His_join : is_join B_if B_else B_join) :
@@ -225,17 +225,17 @@ Inductive LLBC_sharp_eval_stmt : statement -> LLBC_sharp_state -> branching_stat
   | LLBC_sharp_E_Assign S vS' S'' p rv (eval_rv : S |-{rv} rv => vS') (Hstore : store p vS' S'') :
       S |-# ASSIGN p <- rv ~> {[rUnit := S'']}
   | LLBC_sharp_E_IfThenElse_T S S' B_if cond stmt_if stmt_else
-      (eval_cond : S |-{op} cond => (LLBC_sharp_bool true, S'))
+      (eval_cond : S |-{op} cond => (VBool true, S'))
       (Heval_if_branch : S' |-# stmt_if ~> B_if) :
       S |-# (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~> B_if
   | LLBC_sharp_E_IfThenElse_F S S' B_else cond stmt_if stmt_else
-      (eval_cond : S |-{op} cond => (LLBC_sharp_bool false, S'))
+      (eval_cond : S |-{op} cond => (VBool false, S'))
       (Heval_else_branch : S' |-# stmt_else ~> B_else) :
       S |-# (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~> B_else
   (* Note: in the ICFP'24 article, the symbolic value is replaced by a concrete boolean in each
      branch. We cannot do that as symbolic values are currently not named. *)
   | LLBC_sharp_IfThenElse_Symbolic S S' B cond stmt_if stmt_else
-      (eval_cond : S |-{op} cond => (LLBC_sharp_symbolic boolT, S'))
+      (eval_cond : S |-{op} cond => (VSymbolic TBool, S'))
       (Heval_if_branch : S' |-# stmt_if ~> B)
       (Heval_else_branch : S' |-# stmt_else ~> B) :
       S |-# (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) ~> B

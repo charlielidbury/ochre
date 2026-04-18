@@ -17,77 +17,72 @@ Require Import SimulationUtils.
 
 (** * Definition of HLPL+ values and states. *)
 Inductive HLPL_plus_val :=
-| HLPL_plus_bot
-| HLPL_plus_int (n : nat) (* TODO: use Aeneas integer types? *)
-| HLPL_plus_bool (b : bool)
-| HLPL_plus_mut_loan (l : loan_id)
-| HLPL_plus_mut_borrow (l : loan_id) (v : HLPL_plus_val)
-(*
-| HLPL_plus_shr_loan (l : loan_id) (v : HLPL_plus_val)
-| HLPL_plus_shr_borrow (l : loan_id)
- *)
-| HLPL_plus_loc (l : loan_id) (v : HLPL_plus_val)
-| HLPL_plus_ptr (l : loan_id)
-(* | HLPL_plus_pair (v0 : HLPL_plus_val) (v1 : HLPL_plus_val) *)
+| VBottom
+| VInt (n : nat) (* TODO: use Aeneas integer types? *)
+| VBool (b : bool)
+| VMutLoan (l : loan_id)
+| VMutBorrow (l : loan_id) (v : HLPL_plus_val)
+| VLoc (l : loan_id) (v : HLPL_plus_val)
+| VPtr (l : loan_id)
 .
 
 Variant HLPL_plus_nodes :=
-| HLPL_plus_botC
-| HLPL_plus_intC (n : nat)
-| HLPL_plus_boolC (b : bool)
-| HLPL_plus_mut_loanC (l : loan_id)
-| HLPL_plus_mut_borrowC (l : loan_id)
-| HLPL_plus_locC (l : loan_id)
-| HLPL_plus_ptrC (l : loan_id)
+| NBottom
+| NInt (n : nat)
+| NBool (b : bool)
+| NMutLoan (l : loan_id)
+| NMutBorrow (l : loan_id)
+| NLoc (l : loan_id)
+| NPtr (l : loan_id)
 .
 
 Instance EqDec_HLPL_plus_nodes : EqDecision HLPL_plus_nodes.
 Proof. unfold EqDecision, Decision. repeat decide equality. Qed.
 
 Definition HLPL_plus_arity c := match c with
-| HLPL_plus_botC => 0
-| HLPL_plus_intC _ => 0
-| HLPL_plus_boolC _ => 0
-| HLPL_plus_mut_loanC _ => 0
-| HLPL_plus_mut_borrowC _ => 1
-| HLPL_plus_locC _ => 1
-| HLPL_plus_ptrC _ => 0
+| NBottom => 0
+| NInt _ => 0
+| NBool _ => 0
+| NMutLoan _ => 0
+| NMutBorrow _ => 1
+| NLoc _ => 1
+| NPtr _ => 0
 end.
 
 Definition HLPL_plus_get_node v := match v with
-| HLPL_plus_bot => HLPL_plus_botC
-| HLPL_plus_int n => HLPL_plus_intC n
-| HLPL_plus_bool b => HLPL_plus_boolC b
-| HLPL_plus_mut_loan l => HLPL_plus_mut_loanC l
-| HLPL_plus_mut_borrow l _ => HLPL_plus_mut_borrowC l
-| HLPL_plus_loc l _ => HLPL_plus_locC l
-| HLPL_plus_ptr l => HLPL_plus_ptrC l
+| VBottom => NBottom
+| VInt n => NInt n
+| VBool b => NBool b
+| VMutLoan l => NMutLoan l
+| VMutBorrow l _ => NMutBorrow l
+| VLoc l _ => NLoc l
+| VPtr l => NPtr l
 end.
 
 Definition HLPL_plus_children v := match v with
-| HLPL_plus_bot => []
-| HLPL_plus_int _ => []
-| HLPL_plus_bool _ => []
-| HLPL_plus_mut_loan _ => []
-| HLPL_plus_mut_borrow _ v => [v]
-| HLPL_plus_loc _ v => [v]
-| HLPL_plus_ptr l => []
+| VBottom => []
+| VInt _ => []
+| VBool _ => []
+| VMutLoan _ => []
+| VMutBorrow _ v => [v]
+| VLoc _ v => [v]
+| VPtr l => []
 end.
 
 Definition HLPL_plus_fold c vs := match c, vs with
-| HLPL_plus_intC n, [] => HLPL_plus_int n
-| HLPL_plus_boolC b, [] => HLPL_plus_bool b
-| HLPL_plus_mut_loanC l, [] => HLPL_plus_mut_loan l
-| HLPL_plus_mut_borrowC l, [v] => HLPL_plus_mut_borrow l v
-| HLPL_plus_locC l, [v] => HLPL_plus_loc l v
-| HLPL_plus_ptrC l, [] => HLPL_plus_ptr l
-| _, _ => HLPL_plus_bot
+| NInt n, [] => VInt n
+| NBool b, [] => VBool b
+| NMutLoan l, [] => VMutLoan l
+| NMutBorrow l, [v] => VMutBorrow l v
+| NLoc l, [v] => VLoc l v
+| NPtr l, [] => VPtr l
+| _, _ => VBottom
 end.
 
 Fixpoint HLPL_plus_weight node_weight v :=
   match v with
-  | HLPL_plus_mut_borrow l v => node_weight (HLPL_plus_mut_borrowC l) + HLPL_plus_weight node_weight v
-  | HLPL_plus_loc l v => node_weight (HLPL_plus_locC l) + HLPL_plus_weight node_weight v
+  | VMutBorrow l v => node_weight (NMutBorrow l) + HLPL_plus_weight node_weight v
+  | VLoc l v => node_weight (NLoc l) + HLPL_plus_weight node_weight v
   | v => node_weight (HLPL_plus_get_node v)
 end.
 
@@ -97,7 +92,7 @@ Program Instance ValueHLPL : Value HLPL_plus_val HLPL_plus_nodes := {
   children := HLPL_plus_children;
   fold_value := HLPL_plus_fold;
   vweight := HLPL_plus_weight;
-  bot := HLPL_plus_bot;
+  bot := VBottom;
 }.
 Next Obligation. destruct v; reflexivity. Qed.
 Next Obligation.
@@ -173,23 +168,23 @@ Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next
 Reserved Notation "'loc' ( l , v )" (at level 0, l at next level, v at next level).
 Reserved Notation "'ptr' ( l )" (at level 0).
 
-Reserved Notation "'botC'" (at level 0).
-Reserved Notation "'loanC^m'( l )" (at level 0).
-Reserved Notation "'borrow^m' ( l )" (at level 0, l at next level).
-Reserved Notation "'locC' ( l , )" (at level 0, l at next level).
-Reserved Notation "'ptrC' ( l )" (at level 0).
+Reserved Notation "'nbot'" (at level 0).
+Reserved Notation "'nloan^m'( l )" (at level 0).
+Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
+Reserved Notation "'nloc' ( l , )" (at level 0, l at next level).
+Reserved Notation "'nptr' ( l )" (at level 0).
 
-(* Notation "'bot'" := HLPL_plus_bot: hlpl_plus_scope. *)
-Notation "'loan^m' ( l )" := (HLPL_plus_mut_loan l) : hlpl_plus_scope.
-Notation "'borrow^m' ( l  , v )" := (HLPL_plus_mut_borrow l v) : hlpl_plus_scope.
-Notation "'loc' ( l , v )" := (HLPL_plus_loc l v) : hlpl_plus_scope.
-Notation "'ptr' ( l )" := (HLPL_plus_ptr l) : hlpl_plus_scope.
+(* Notation "'bot'" := VBottom: hlpl_plus_scope. *)
+Notation "'loan^m' ( l )" := (VMutLoan l) : hlpl_plus_scope.
+Notation "'borrow^m' ( l  , v )" := (VMutBorrow l v) : hlpl_plus_scope.
+Notation "'loc' ( l , v )" := (VLoc l v) : hlpl_plus_scope.
+Notation "'ptr' ( l )" := (VPtr l) : hlpl_plus_scope.
 
-Notation "'botC'" := HLPL_plus_botC: hlpl_plus_scope.
-Notation "'loanC^m' ( l )" := (HLPL_plus_mut_loanC l) : hlpl_plus_scope.
-Notation "'borrowC^m' ( l )" := (HLPL_plus_mut_borrowC l) : hlpl_plus_scope.
-Notation "'locC' ( l )" := (HLPL_plus_locC l) : hlpl_plus_scope.
-Notation "'ptrC' ( l )" := (HLPL_plus_ptrC l) : hlpl_plus_scope.
+Notation "'nbot'" := NBottom: hlpl_plus_scope.
+Notation "'nloan^m' ( l )" := (NMutLoan l) : hlpl_plus_scope.
+Notation "'nborrow^m' ( l )" := (NMutBorrow l) : hlpl_plus_scope.
+Notation "'nloc' ( l )" := (NLoc l) : hlpl_plus_scope.
+Notation "'nptr' ( l )" := (NPtr l) : hlpl_plus_scope.
 
 (* Bind Scope hlpl_plus_scope with HLPL_plus_val. *)
 Open Scope hlpl_plus_scope.
@@ -210,19 +205,19 @@ Variant eval_proj (S : HLPL_plus_state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
-    (get_q : get_node (S.[q]) = borrowC^m(l)) :
+    (get_q : get_node (S.[q]) = nborrow^m(l)) :
     eval_proj S perm Deref q (q +++ [0])
 (* Coresponds to R-Deref-Ptr-Loc and W-Deref-Ptr-Loc in the article. *)
 | E_Deref_Ptr_Loc q q' l
     (Hperm : perm <> Mov)
-    (get_q : get_node (S.[q]) = ptrC(l)) (get_q' : get_node (S.[q']) = locC(l)) :
+    (get_q : get_node (S.[q]) = nptr(l)) (get_q' : get_node (S.[q']) = nloc(l)) :
     eval_proj S perm Deref q q'
 .
 
 Variant eval_loc (S : HLPL_plus_state) perm : spath -> spath -> Prop :=
 (* Coresponds to R-Loc and W-Loc in the article. *)
 | E_Loc q l
-    (Hperm : perm <> Mov) (get_q : get_node (S.[q]) = locC(l)) :
+    (Hperm : perm <> Mov) (get_q : get_node (S.[q]) = nloc(l)) :
     eval_loc S perm q (q +++ [0])
 .
 
@@ -263,42 +258,42 @@ Proof. destruct H as (? & ?). eapply eval_path_valid; eassumption. Qed.
 Hint Resolve eval_place_valid : spath.
 
 Variant is_loan : HLPL_plus_nodes -> Prop :=
-| IsLoan_MutLoan l : is_loan (loanC^m(l)).
+| IsLoan_MutLoan l : is_loan (nloan^m(l)).
 Hint Constructors is_loan : spath.
 Definition not_contains_loan := not_value_contains is_loan.
 Hint Unfold not_contains_loan : spath.
 Hint Extern 0 (~is_loan _) => intro; easy : spath.
 
 Variant is_loc : HLPL_plus_nodes -> Prop :=
-| IsLoc_Loc l : is_loc (locC(l)).
+| IsLoc_Loc l : is_loc (nloc(l)).
 Definition not_contains_loc := not_value_contains is_loc.
 Hint Unfold not_contains_loc : spath.
 Hint Extern 0 (~is_loc _) => intro; easy : spath.
 
 Definition not_contains_bot v :=
-  (not_value_contains (fun c => c = botC) v).
+  (not_value_contains (fun c => c = nbot) v).
 Hint Unfold not_contains_bot : spath.
-Hint Extern 0 (_ <> botC) => discriminate : spath.
+Hint Extern 0 (_ <> nbot) => discriminate : spath.
 
 Variant is_mut_borrow : HLPL_plus_nodes -> Prop :=
-| IsMutBorrow_MutBorrow l : is_mut_borrow (borrowC^m(l)).
+| IsMutBorrow_MutBorrow l : is_mut_borrow (nborrow^m(l)).
 Notation not_contains_outer_loan := (not_contains_outer is_mut_borrow is_loan).
 Notation not_contains_outer_loc := (not_contains_outer is_mut_borrow is_loc).
 
 Notation not_in_borrow := (no_ancestor is_mut_borrow).
 
 Variant is_borrow : HLPL_plus_nodes -> Prop :=
-| IsBorrow_MutBorrow l : is_borrow (borrowC^m(l)).
+| IsBorrow_MutBorrow l : is_borrow (nborrow^m(l)).
 Definition not_contains_borrow := not_value_contains is_borrow.
 Hint Unfold not_contains_borrow : spath.
 Hint Extern 0 (~is_borrow _) => intro; easy : spath.
 
 Definition get_loan_id c :=
   match c with
-  | loanC^m(l) => Some l
-  | borrowC^m(l) => Some l
-  | locC(l) => Some l
-  | ptrC(l) => Some l
+  | nloan^m(l) => Some l
+  | nborrow^m(l) => Some l
+  | nloc(l) => Some l
+  | nptr(l) => Some l
   | _ => None
   end.
 
@@ -321,16 +316,16 @@ Hint Extern 0 (get_loan_id _ <> Some ?l) =>
    end : spath.
 
 Inductive copy_val : HLPL_plus_val -> HLPL_plus_val -> Prop :=
-| Copy_val_int (n : nat) : copy_val (HLPL_plus_int n) (HLPL_plus_int n)
-| Copy_val_bool (b : bool) : copy_val (HLPL_plus_bool b) (HLPL_plus_bool b)
+| Copy_val_int (n : nat) : copy_val (VInt n) (VInt n)
+| Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 | Copy_ptr l : copy_val (ptr(l)) (ptr(l))
 | Copy_loc l v w : copy_val v w -> copy_val (loc(l, v)) w.
 
 Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
 Variant eval_operand : operand -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
-| E_IntConst S n : S |-{op} Const (IntConst n) => (HLPL_plus_int n, S)
-| E_BoolConst S b : S |-{op} Const (BoolConst b) => (HLPL_plus_bool b, S)
+| E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
+| E_BoolConst S b : S |-{op} Const (BoolConst b) => (VBool b, S)
 | E_Copy S (p : place) pi v
     (Heval_place : eval_place S Imm p pi) (Hcopy_val : copy_val (S.[pi]) v) :
     S |-{op} Copy p => (v, S)
@@ -343,9 +338,9 @@ Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> HLPL_plus_val -> HLPL_plus_val -> HLPL_plus_val -> Prop :=
   | E_Add m n :
-      eval_binary_op BAdd (HLPL_plus_int m) (HLPL_plus_int n) (HLPL_plus_int (m + n))
+      eval_binary_op BAdd (VInt m) (VInt n) (VInt (m + n))
   | E_Le m n :
-      eval_binary_op BLe (HLPL_plus_int m) (HLPL_plus_int n) (HLPL_plus_bool (m <=? n))
+      eval_binary_op BLe (VInt m) (VInt n) (VBool (m <=? n))
 .
 
 Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
@@ -358,7 +353,7 @@ Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_st
       S |-{rv} (BinaryOp binop op_0 op_1) => (w, S'')
   | E_Pointer_Loc S p pi l
       (Heval_place : S |-{p} p =>^{Mut} pi)
-      (Hloc : get_node (S.[pi]) = locC(l)) : S |-{rv} &mut p => (ptr(l), S)
+      (Hloc : get_node (S.[pi]) = nloc(l)) : S |-{rv} &mut p => (ptr(l), S)
   | E_Pointer_Fresh S p pi l
       (Heval_place : S |-{p} p =>^{Mut} pi)
       (* This hypothesis is not necessary for the proof of preservation of HLPL+, but it is
@@ -370,19 +365,19 @@ where "S |-{rv} rv => r" := (eval_rvalue rv S r).
 
 Inductive reorg : HLPL_plus_state -> HLPL_plus_state -> Prop :=
 | Reorg_End_MutBorrow S (p q : spath) l :
-    disj p q -> get_node (S.[p]) = loanC^m(l) -> get_node (S.[q]) = borrowC^m(l) ->
+    disj p q -> get_node (S.[p]) = nloan^m(l) -> get_node (S.[q]) = nborrow^m(l) ->
     not_contains_loan (S.[q +++ [0] ]) -> not_in_borrow S q ->
     reorg S (S.[p <- (S.[q +++ [0] ])].[q <- bot])
 | Reorg_end_ptr S (p : spath) l :
-    get_node (S.[p]) = ptrC(l) -> (*not_in_borrow S p ->*) reorg S (S.[p <- bot])
+    get_node (S.[p]) = nptr(l) -> (*not_in_borrow S p ->*) reorg S (S.[p <- bot])
 | Reorg_end_loc S (p : spath) l :
-    get_node (S.[p]) = locC(l) -> not_state_contains (eq ptrC(l)) S ->
+    get_node (S.[p]) = nloc(l) -> not_state_contains (eq nptr(l)) S ->
     reorg S (S.[p <- S.[p +++ [0] ] ])
 .
 
-(* Automatically resolving the goals of the form `ptrC(l) <> _`, used to prove the condition
-   `not_state_contains (eq ptrC(l)) S` of the rule Reorg_end_loc. *)
-Hint Extern 0 (ptrC( _ ) <> _) => discriminate : spath.
+(* Automatically resolving the goals of the form `nptr(l) <> _`, used to prove the condition
+   `not_state_contains (eq nptr(l)) S` of the rule Reorg_end_loc. *)
+Hint Extern 0 (nptr( _ ) <> _) => discriminate : spath.
 
 (* This operation realizes the second half of an assignment p <- rv, once the rvalue v has been
  * evaluated to a pair (v, S). *)
@@ -411,37 +406,37 @@ Inductive eval_stmt : statement -> flow_token -> HLPL_plus_state -> HLPL_plus_st
   | E_Reorg S0 S1 S2 stmt r (Hreorg : reorg^* S0 S1) (Heval : S1 |-{stmt} stmt => r, S2) :
       S0 |-{stmt} stmt => r, S2
   | E_IfThenElse_T S S' S'' cond stmt_if stmt_else r
-      (eval_cond : S |-{op} cond => (HLPL_plus_bool true, S')) :
+      (eval_cond : S |-{op} cond => (VBool true, S')) :
       S' |-{stmt} stmt_if => r, S'' ->
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
   | E_IfThenElse_F S S' S'' cond stmt_if stmt_else r
-      (eval_cond : S |-{op} cond => (HLPL_plus_bool false, S')) :
+      (eval_cond : S |-{op} cond => (VBool false, S')) :
       S' |-{stmt} stmt_else => r, S'' ->
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
 where "S |-{stmt} stmt => r , S'" := (eval_stmt stmt r S S').
 
 Inductive leq_base : HLPL_plus_state -> HLPL_plus_state -> Prop :=
 | Leq_MutBorrow_To_Ptr S l sp_loan sp_borrow (Hdisj : disj sp_loan sp_borrow)
-    (HS_loan : get_node (S.[sp_loan]) = loanC^m(l))
-    (HS_borrow : get_node (S.[sp_borrow]) = borrowC^m(l)) :
+    (HS_loan : get_node (S.[sp_loan]) = nloan^m(l))
+    (HS_borrow : get_node (S.[sp_borrow]) = nborrow^m(l)) :
     leq_base (S.[sp_loan <- loc(l, S.[sp_borrow +++ [0] ])].[sp_borrow <- ptr(l)]) S.
 
 (** ** Well-formedness property. *)
 Record well_formed (S : HLPL_plus_state) : Prop := {
-  at_most_one_mut_borrow l : at_most_one_node (borrowC^m(l)) S;
-  at_most_one_mut_loan l : at_most_one_node (loanC^m(l)) S;
-  at_most_one_loc l : at_most_one_node (locC(l)) S;
-  no_mut_loan_ptr l p : get_node (S.[p]) = loanC^m(l) -> not_state_contains (eq ptrC(l)) S;
-  no_mut_loan_loc l p : get_node (S.[p]) = loanC^m(l) -> not_state_contains (eq locC(l)) S;
+  at_most_one_mut_borrow l : at_most_one_node (nborrow^m(l)) S;
+  at_most_one_mut_loan l : at_most_one_node (nloan^m(l)) S;
+  at_most_one_loc l : at_most_one_node (nloc(l)) S;
+  no_mut_loan_ptr l p : get_node (S.[p]) = nloan^m(l) -> not_state_contains (eq nptr(l)) S;
+  no_mut_loan_loc l p : get_node (S.[p]) = nloan^m(l) -> not_state_contains (eq nloc(l)) S;
 }.
 
 Notation scount c S := (sweight (indicator c) S).
 
 (** To automate well-formedness proofs, we use an equivalent linear property. *)
 Record well_formed_alt (S : HLPL_plus_state) l : Prop := {
-  at_most_one_mut_borrow_alt : scount (borrowC^m(l)) S <= 1;
-  no_mut_loan_loc_alt : scount (loanC^m(l)) S + scount (locC(l)) S <= 1;
-  no_mut_loan_ptr_alt : scount (loanC^m(l)) S > 0 -> scount (ptrC(l)) S <= 0;
+  at_most_one_mut_borrow_alt : scount (nborrow^m(l)) S <= 1;
+  no_mut_loan_loc_alt : scount (nloan^m(l)) S + scount (nloc(l)) S <= 1;
+  no_mut_loan_ptr_alt : scount (nloan^m(l)) S > 0 -> scount (nptr(l)) S <= 0;
 }.
 
 Lemma well_formedness_equiv S : well_formed S <-> forall l, well_formed_alt S l.
@@ -455,10 +450,10 @@ Proof.
       rewrite decide_at_most_one_node in at_most_one_loc0; [ | discriminate ].
       apply Nat.le_1_r in at_most_one_mut_loan0. destruct (at_most_one_mut_loan0).
       * lia.
-      * assert (scount loanC^m(l) S > 0) as (p & ? & ?%indicator_non_zero)%sweight_non_zero by lia.
+      * assert (scount nloan^m(l) S > 0) as (p & ? & ?%indicator_non_zero)%sweight_non_zero by lia.
         specialize (no_mut_loan_loc0 l p).
         apply not_state_contains_implies_weight_zero
-          with (weight := indicator (locC(l))) in no_mut_loan_loc0;
+          with (weight := indicator (nloc(l))) in no_mut_loan_loc0;
           [lia | apply indicator_non_zero | auto].
     + intros (p & _ & H%indicator_non_zero)%sweight_non_zero.
       symmetry in H. specialize (no_mut_loan_ptr0 _ _ H).
@@ -470,40 +465,40 @@ Proof.
     + apply decide_at_most_one_node; [discriminate | ]. lia.
     + intros p Hp.
       assert (valid_p : valid_spath S p) by validity.
-      apply weight_sget_node_le with (weight := indicator (loanC^m(l))) in valid_p.
+      apply weight_sget_node_le with (weight := indicator (nloan^m(l))) in valid_p.
       rewrite Hp in valid_p. autorewrite with weight in valid_p.
       intros q valid_q Hq.
-      apply weight_sget_node_le with (weight := indicator (ptrC(l))) in valid_q.
+      apply weight_sget_node_le with (weight := indicator (nptr(l))) in valid_q.
       rewrite <-Hq in valid_q. autorewrite with weight in valid_q.
       lia.
     + intros p H.
       assert (valid_p : valid_spath S p) by validity.
-      apply weight_sget_node_le with (weight := indicator (loanC^m(l))) in valid_p.
+      apply weight_sget_node_le with (weight := indicator (nloan^m(l))) in valid_p.
       rewrite H, indicator_same in valid_p.
-      assert (scount (locC(l)) S = 0) by lia.
+      assert (scount (nloc(l)) S = 0) by lia.
       intros q valid_q Hq.
-      apply weight_sget_node_le with (weight := indicator (locC(l))) in valid_q.
+      apply weight_sget_node_le with (weight := indicator (nloc(l))) in valid_q.
       autorewrite with weight in valid_q. lia.
 Qed.
 
 (** Rewriting lemmas for weight computation. *)
 (* Note: would it be possible to use [cbn [weight]] instead? *)
 Lemma vweight_loc weight l v :
-  vweight weight (loc(l, v)) = weight (locC(l)) + vweight weight v.
+  vweight weight (loc(l, v)) = weight (nloc(l)) + vweight weight v.
 Proof. reflexivity. Qed.
 
-Lemma vweight_ptr weight l : vweight weight (ptr(l)) = weight (ptrC(l)).
+Lemma vweight_ptr weight l : vweight weight (ptr(l)) = weight (nptr(l)).
 Proof. reflexivity. Qed.
 
 Lemma vweight_int weight n :
-  vweight weight (HLPL_plus_int n) = weight (HLPL_plus_intC n).
+  vweight weight (VInt n) = weight (NInt n).
 Proof. reflexivity. Qed.
 
 Lemma vweight_bool weight b :
-  vweight weight (HLPL_plus_bool b) = weight (HLPL_plus_boolC b).
+  vweight weight (VBool b) = weight (NBool b).
 Proof. reflexivity. Qed.
 
-Lemma vweight_bot weight : vweight weight bot = weight (botC).
+Lemma vweight_bot weight : vweight weight bot = weight (nbot).
 Proof. reflexivity. Qed.
 
 Hint Rewrite vweight_loc : weight.
@@ -567,7 +562,7 @@ Ltac not_contains_outer :=
       apply not_contains_outer_vset;
         [not_contains_outer | exact H]
   | no_outer_loan : not_contains_outer_loan (?S.[?q]),
-    loan_at_q : get_node (?S.[?q +++ ?p]) = loanC^m(?l)
+    loan_at_q : get_node (?S.[?q +++ ?p]) = nloan^m(?l)
     |- not_contains_outer _ ?P (?S.[?q].[[?p <- ?w]]) =>
     apply not_contains_outer_vset_in_borrow;
      [ not_contains_outer |
@@ -650,8 +645,8 @@ Definition rel_MutBorrow_to_Ptr sp_loan sp_borrow p q :=
 Lemma eval_place_mut_borrow_to_ptr perm p S_r l0 sp_loan sp_borrow :
   let S_l := (S_r.[sp_loan <- loc(l0, S_r.[sp_borrow +++ [0] ])].[sp_borrow <- ptr(l0)]) in
   disj sp_loan sp_borrow ->
-  get_node (S_r.[sp_loan]) = loanC^m(l0) ->
-  get_node (S_r.[sp_borrow]) = borrowC^m(l0) ->
+  get_node (S_r.[sp_loan]) = nloan^m(l0) ->
+  get_node (S_r.[sp_borrow]) = nborrow^m(l0) ->
   forall pi_r, eval_place S_r perm p pi_r ->
   exists pi_l, rel_MutBorrow_to_Ptr sp_loan sp_borrow pi_l pi_r /\
     eval_place S_l perm p pi_l.
@@ -686,7 +681,7 @@ Proof.
            ++ right. split; [reflexivity | solve_comp].
     (* Case E_Deref_Ptr_Loc: *)
     + intros q_l H.
-      assert (get_at_q_l : get_node (S_l.[q_l]) = ptrC(l)).
+      assert (get_at_q_l : get_node (S_l.[q_l]) = nptr(l)).
       { unfold S_l. destruct H as [(r & -> & ->) | (-> & ?)]; autorewrite with spath; assumption. }
       destruct (decidable_prefix (sp_borrow +++ [0]) q') as [(r & <-) | ].
       * autorewrite with spath in *. exists (sp_loan +++ [0] ++ r). split.
@@ -751,8 +746,8 @@ Ltac leq_step_right :=
 Ltac eval_place_preservation :=
   lazymatch goal with
   | eval_p_in_Sr : ?Sr |-{p} ?p =>^{Mov} ?pi,
-    _ : get_node (?Sr.[?sp_loan]) = loanC^m (?l),
-    _ : get_node (?Sr.[?sp_borrow]) = borrowC^m(?l) |- _ =>
+    _ : get_node (?Sr.[?sp_loan]) = nloan^m (?l),
+    _ : get_node (?Sr.[?sp_borrow]) = nborrow^m(?l) |- _ =>
       let eval_p_in_Sl := fresh "eval_p_in_Sl" in
       let sp_borrow_not_prefix := fresh "sp_borrow_not_prefix" in
       let valid_p := fresh "valid_p" in
@@ -764,8 +759,8 @@ Ltac eval_place_preservation :=
       destruct eval_p_in_Sr as (eval_p_in_Sl & sp_borrow_not_prefix)
   | eval_p_in_Sr : ?Sr |-{p} ?p =>^{ _ } ?pi_r,
     Hdisj : disj ?sp_loan ?sp_borrow,
-    HSr_loan : get_node (?Sr.[?sp_loan]) = loanC^m (?l),
-    HSr_borrow : get_node (?Sr.[?sp_borrow]) = borrowC^m(?l) |- _ =>
+    HSr_loan : get_node (?Sr.[?sp_loan]) = nloan^m (?l),
+    HSr_borrow : get_node (?Sr.[?sp_borrow]) = nborrow^m(?l) |- _ =>
       let pi_l := fresh "pi_l" in
       let eval_p_in_Sl := fresh "eval_p_in_Sl" in
       let rel_pi_l_pi_r := fresh "rel_pi_l_pi_r" in
@@ -907,7 +902,7 @@ Proof.
     * weight_inequality.
     * weight_inequality.
     * assert (valid_p : valid_spath S p) by validity.
-      pose proof (weight_sget_node_le (indicator (ptrC(l))) _ _ valid_p) as G.
+      pose proof (weight_sget_node_le (indicator (nptr(l))) _ _ valid_p) as G.
       rewrite get_S_p in G. cbn in G. autorewrite with weight in G.
       destruct (decide (l = l0)) as [<- | ]; weight_inequality.
   + apply (f_equal (vget [0])) in get_S_p. autorewrite with spath in get_S_p.
@@ -959,13 +954,13 @@ Proof.
 Qed.
 
 Corollary leq_val_state_integer vl n Sl Sr :
-  (leq_val_state_base leq_base)^* (vl, Sl) (HLPL_plus_int n, Sr) ->
-  vl = HLPL_plus_int n /\ leq_base^* Sl Sr.
+  (leq_val_state_base leq_base)^* (vl, Sl) (VInt n, Sr) ->
+  vl = VInt n /\ leq_base^* Sl Sr.
 Proof. apply leq_val_state_constant; autounfold with spath; not_contains. Qed.
 
 Corollary leq_val_state_bool vl b Sl Sr :
-  (leq_val_state_base leq_base)^* (vl, Sl) (HLPL_plus_bool b, Sr) ->
-  vl = HLPL_plus_bool b /\ leq_base^* Sl Sr.
+  (leq_val_state_base leq_base)^* (vl, Sl) (VBool b, Sr) ->
+  vl = VBool b /\ leq_base^* Sl Sr.
 Proof. apply leq_val_state_constant; autounfold with spath; not_contains. Qed.
 
 Lemma leq_base_implies_leq_val_state_base Sl Sr v :
@@ -1070,7 +1065,7 @@ Proof.
   specialize (WF l). inversion WF as [? ? ? WF'].
   destruct (exists_fresh_anon S) as (a & a_fresh).
   destruct (WF' a a_fresh). autorewrite with weight in * |-.
-  apply not_value_contains_weight with (weight := indicator (locC(l))) in no_loc;
+  apply not_value_contains_weight with (weight := indicator (nloc(l))) in no_loc;
     [ | intros ? <-%indicator_non_zero; constructor].
   split; weight_inequality.
 Qed.
@@ -1104,7 +1099,7 @@ Proof.
     intros l0. specialize (eval_op_1 l0). destruct eval_op_1.
     destruct Hbinop; split; weight_inequality.
   - apply eval_place_valid in Heval_place.
-    apply weight_sget_node_le with (weight := indicator (locC(l))) in Heval_place.
+    apply weight_sget_node_le with (weight := indicator (nloc(l))) in Heval_place.
     rewrite Hloc, indicator_same in Heval_place.
     constructor. intros ? ?. rewrite well_formedness_equiv in *.
     intros l0. specialize (WF l0). destruct WF. split.
@@ -1112,10 +1107,10 @@ Proof.
     + weight_inequality.
     + destruct (decide (l = l0)) as [<- | ]; weight_inequality.
   - apply eval_place_valid in Heval_place.
-    assert (scount (locC(l)) S = 0).
+    assert (scount (nloc(l)) S = 0).
     { eapply not_state_contains_implies_weight_zero; [ | exact H].
       intros ? <-%indicator_non_zero. constructor. }
-    assert (scount (loanC^m(l)) S = 0).
+    assert (scount (nloan^m(l)) S = 0).
     { eapply not_state_contains_implies_weight_zero; [ | exact H].
       intros ? <-%indicator_non_zero. constructor. }
     constructor. intros ? ?. rewrite well_formedness_equiv in *.
@@ -1383,7 +1378,7 @@ Proof.
   - split.
     + weight_inequality.
     + weight_inequality.
-    + apply not_state_contains_implies_weight_zero with (weight := (indicator ptrC(l0))) in H0;
+    + apply not_state_contains_implies_weight_zero with (weight := (indicator nptr(l0))) in H0;
        [ | intro; apply indicator_non_zero].
        destruct (decide (l = l0)) as [<- | ]; weight_inequality.
 Qed.
@@ -1398,20 +1393,20 @@ Proof. intro Hreorg. induction Hreorg; eauto using reorg_preserves_well_formedne
  *)
 Definition measure_node c :=
   match c with
-  | loanC^m(_) => 2
-  | borrowC^m(_) => 1
-  | locC(_) => 1
-  | ptrC(_) => 1
+  | nloan^m(_) => 2
+  | nborrow^m(_) => 1
+  | nloc(_) => 1
+  | nptr(_) => 1
   | _ => 0
   end.
 
-Lemma measure_mut_loan l : measure_node loanC^m(l) = 2. Proof. reflexivity. Qed.
+Lemma measure_mut_loan l : measure_node nloan^m(l) = 2. Proof. reflexivity. Qed.
 Hint Rewrite measure_mut_loan : weight.
-Lemma measure_mut_borrow l : measure_node borrowC^m(l) = 1. Proof. reflexivity. Qed.
+Lemma measure_mut_borrow l : measure_node nborrow^m(l) = 1. Proof. reflexivity. Qed.
 Hint Rewrite measure_mut_borrow : weight.
-Lemma measure_loc l : measure_node locC(l) = 1. Proof. reflexivity. Qed.
+Lemma measure_loc l : measure_node nloc(l) = 1. Proof. reflexivity. Qed.
 Hint Rewrite measure_loc : weight.
-Lemma measure_ptr l : measure_node ptrC(l) = 1. Proof. reflexivity. Qed.
+Lemma measure_ptr l : measure_node nptr(l) = 1. Proof. reflexivity. Qed.
 Hint Rewrite measure_ptr : weight.
 Lemma measure_bot : vweight measure_node bot = 0. Proof. reflexivity. Qed.
 Hint Rewrite measure_bot : weight.
@@ -1442,7 +1437,7 @@ Proof.
         reorg_step.
         { eapply Reorg_end_loc with (p := sp_loan).
           autorewrite with spath. reflexivity.
-          assert (not_state_contains (eq ptrC(l)) S).
+          assert (not_state_contains (eq nptr(l)) S).
           { eapply no_mut_loan_ptr. eassumption. rewrite HS_loan. reflexivity. }
           autorewrite with spath. not_contains. }
         reorg_done.

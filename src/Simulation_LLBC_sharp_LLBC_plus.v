@@ -55,7 +55,7 @@ Proof. reflexivity. Qed.
 
 Lemma eval_place_ToSymbolic S sp p pi ty perm
   (Htype : is_of_type ty (S.[sp]))
-  (H : (S.[sp <- LLBC_sharp_symbolic ty]) |-{p} p =>^{perm} pi) :
+  (H : (S.[sp <- VSymbolic ty]) |-{p} p =>^{perm} pi) :
   S |-{p} p =>^{perm} pi /\ ~strict_prefix sp pi.
 Proof.
   pose proof (valid_pi := H). apply eval_place_valid in valid_pi.
@@ -218,7 +218,7 @@ Proof.
 Qed.
 
 Lemma eval_place_Reborrow_MutBorrow S sp l0 l1 a perm p ty
-    (get_borrow_l0 : get_node (S.[sp]) = borrowC^m(l0)) pi_r :
+    (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0)) pi_r :
   (S.[sp <- borrow^m(l1, S.[sp +++ [0] ])],, a |-> borrow^m(l0, loan^m(ty, l1))) |-{p} p =>^{perm} pi_r ->
   exists pi_l, rel_change_anon a pi_l pi_r /\ S |-{p} p =>^{perm} pi_l.
 Proof.
@@ -236,7 +236,7 @@ Proof.
 Qed.
 
 Lemma eval_place_Reborrow_MutBorrow_Mov S sp l0 l1 a p ty
-    (get_borrow_l0 : get_node (S.[sp]) = borrowC^m(l0)) pi_r :
+    (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0)) pi_r :
   (S.[sp <- borrow^m(l1, S.[sp +++ [0] ])],, a |-> borrow^m(l0, loan^m(ty, l1))) |-{p} p =>^{Mov} pi_r ->
   exists pi_l, rel_change_anon_not_in_spath sp a pi_l pi_r /\ S |-{p} p =>^{Mov} pi_l.
 Proof.
@@ -297,7 +297,7 @@ Ltac eval_place_preservation :=
 
   (* Case ToSymbolic: *)
   | Htype : (is_of_type ?ty (?S.[?sp])),
-    H : (?S.[?sp <- LLBC_sharp_symbolic ?ty]) |-{p} ?p =>^{?perm} ?pi |- _ =>
+    H : (?S.[?sp <- VSymbolic ?ty]) |-{p} ?p =>^{?perm} ?pi |- _ =>
         apply (eval_place_ToSymbolic _ _ _ _ _ _ Htype) in H;
         destruct H as (eval_p_in_Sl & ?)
 
@@ -513,11 +513,11 @@ Ltac leq_val_state_add_anon :=
 Lemma copy_val_to_symbolic v w p ty (valid_p : valid_vpath v p)
   (no_mut_loan : not_contains_loan v)
   (Htype : is_of_type ty (v.[[p]]))
-  (Hcopy_val : copy_val (v.[[p <- LLBC_sharp_symbolic ty]]) w) :
-  exists w0 q, copy_val v w0 /\ w = w0.[[q <- LLBC_sharp_symbolic ty]] /\
+  (Hcopy_val : copy_val (v.[[p <- VSymbolic ty]]) w) :
+  exists w0 q, copy_val v w0 /\ w = w0.[[q <- VSymbolic ty]] /\
                is_of_type ty (w0.[[q]]).
 Proof.
-  remember (v.[[p <- LLBC_sharp_symbolic ty]]) eqn:EQN. induction Hcopy_val.
+  remember (v.[[p <- VSymbolic ty]]) eqn:EQN. induction Hcopy_val.
   - exfalso. symmetry in EQN. assert (p = []) as ->; [ | discriminate].
     eapply vset_is_zeroary; [eassumption | now rewrite EQN].
   - exfalso. symmetry in EQN. assert (p = []) as ->; [ | discriminate].
@@ -983,22 +983,22 @@ Qed.
 
 (** * Simulation proofs for rvalue evaluation. *)
 Lemma integer_zeroary v :
-  not_contains_loan v -> is_of_type intT v -> arity (get_node v) = 0.
+  not_contains_loan v -> is_of_type TInt v -> arity (get_node v) = 0.
 Proof. intros ? H. inversion H; reflexivity. Qed.
 
-Lemma integer_does_not_contain_borrow v : is_of_type intT v -> not_contains_borrow v.
+Lemma integer_does_not_contain_borrow v : is_of_type TInt v -> not_contains_borrow v.
 Proof. inversion 1; not_contains. Qed.
 Hint Resolve integer_does_not_contain_borrow : spath.
 
-Lemma boolean_does_not_contain_borrow v : is_of_type boolT v -> not_contains_borrow v.
+Lemma boolean_does_not_contain_borrow v : is_of_type TBool v -> not_contains_borrow v.
 Proof. inversion 1; not_contains. Qed.
 Hint Resolve boolean_does_not_contain_borrow : spath.
 
 Lemma leq_val_state_base_integer vl Sl vr Sr :
   leq_val_state_base leq_state_base (vl, Sl) (vr, Sr) ->
-  is_of_type intT vr -> not_contains_loan vr ->
+  is_of_type TInt vr -> not_contains_loan vr ->
   (vl = vr /\ leq_state_base Sl Sr) \/
-  (is_of_type intT vl /\ not_contains_loan vl /\ vr = LLBC_sharp_symbolic intT /\ Sl = Sr).
+  (is_of_type TInt vl /\ not_contains_loan vl /\ vr = VSymbolic TInt /\ Sl = Sr).
 Proof.
   destruct (exists_fresh_anon2 Sl Sr) as (a & fresh_a_l & fresh_a_r).
   intros H vr_is_int no_loan.
@@ -1050,11 +1050,11 @@ Qed.
 Definition leq_integer_state (vSl vSr : LLBC_sharp_val * LLBC_sharp_state) :=
   let (vl, Sl) := vSl in
   let (vr, Sr) := vSr in
-  (vl = vr \/ is_of_type intT vl /\ not_contains_loan vl /\ vr = LLBC_sharp_symbolic intT) /\ leq_state_base^* Sl Sr.
+  (vl = vr \/ is_of_type TInt vl /\ not_contains_loan vl /\ vr = VSymbolic TInt) /\ leq_state_base^* Sl Sr.
 
 Lemma leq_val_state_integer vSl vSr :
   (leq_val_state_base leq_state_base)^* vSl vSr ->
-  is_of_type intT (fst vSr) -> not_contains_loan (fst vSr) -> leq_integer_state vSl vSr.
+  is_of_type TInt (fst vSr) -> not_contains_loan (fst vSr) -> leq_integer_state vSl vSr.
 Proof.
   intros H Htype no_loan.
   induction H as [(v & S) | (vl & Sl) (vm & Sm) (vr & Sr) ? ? leq_step]
@@ -1083,7 +1083,7 @@ Proof.
 Qed.
 
 Lemma add_is_integer v0 v1 w (H : eval_binary_op BAdd v0 v1 w) :
-  is_of_type intT v0 /\ is_of_type intT v1 /\ is_of_type intT w.
+  is_of_type TInt v0 /\ is_of_type TInt v1 /\ is_of_type TInt w.
 Proof. inversion H; repeat split; constructor. Qed.
 
 Lemma add_no_loan v0 v1 w (H : eval_binary_op BAdd v0 v1 w) :
@@ -1091,7 +1091,7 @@ Lemma add_no_loan v0 v1 w (H : eval_binary_op BAdd v0 v1 w) :
 Proof. inversion H; repeat split; not_contains. Qed.
 
 Lemma le_is_bool v0 v1 w (H : eval_binary_op BLe v0 v1 w) :
-  is_of_type intT v0 /\ is_of_type intT v1 /\ is_of_type boolT w.
+  is_of_type TInt v0 /\ is_of_type TInt v1 /\ is_of_type TBool w.
 Proof. inversion H; repeat split; constructor. Qed.
 
 Lemma le_no_loan v0 v1 w (H : eval_binary_op BLe v0 v1 w) :
@@ -1138,7 +1138,7 @@ Qed.
 
 Lemma binop_integers v0 v1 binop :
   not_contains_loan v0 -> not_contains_loan v1 ->
-  is_of_type intT v0 -> is_of_type intT v1 -> exists w, eval_binary_op binop v0 v1 w.
+  is_of_type TInt v0 -> is_of_type TInt v1 -> exists w, eval_binary_op binop v0 v1 w.
 Proof.
   intros v0_no_loan v1_no_loan H G.
   destruct v0; inversion H; destruct v1; inversion G.
@@ -1238,7 +1238,7 @@ Proof.
         { apply Leq_ToSymbolic with (sp := (anon_accessor a, [])).
           all: autorewrite with spath; eauto with spath. }
         { autorewrite with spath. reflexivity. }
-        replace w with (LLBC_sharp_symbolic intT) by now inversion Hbinop.
+        replace w with (VSymbolic TInt) by now inversion Hbinop.
         apply leq_base_implies_leq_val_state_base; eauto with spath.
       * assert (exists wl, eval_binary_op BAdd v0l v1 wl) as (wl & Hwl)
           by now apply binop_integers.
@@ -1249,7 +1249,7 @@ Proof.
         { apply Leq_ToSymbolic with (sp := (anon_accessor a, [])).
           all: autorewrite with spath; eauto with spath. }
         { autorewrite with spath. reflexivity. }
-        replace w with (LLBC_sharp_symbolic intT) by now inversion Hbinop.
+        replace w with (VSymbolic TInt) by now inversion Hbinop.
         apply leq_base_implies_leq_val_state_base; eauto with spath.
       * assert (exists wl, eval_binary_op BAdd v0l v1l wl) as (wl & Hwl)
           by now apply binop_integers.
@@ -1260,7 +1260,7 @@ Proof.
         { apply Leq_ToSymbolic with (sp := (anon_accessor a, [])).
           all: autorewrite with spath; eauto with spath. }
         { autorewrite with spath. reflexivity. }
-        replace w with (LLBC_sharp_symbolic intT) by now inversion Hbinop.
+        replace w with (VSymbolic TInt) by now inversion Hbinop.
         apply leq_base_implies_leq_val_state_base; eauto with spath.
     + destruct (le_is_bool _ _ _ Hbinop) as (? & ? & ?).
       destruct (le_no_loan _ _ _ Hbinop) as (? & ? & ?).
@@ -1281,7 +1281,7 @@ Proof.
         { apply Leq_ToSymbolic with (sp := (anon_accessor a, [])).
           all: autorewrite with spath; eauto with spath. }
         { autorewrite with spath. reflexivity. }
-        replace w with (LLBC_sharp_symbolic boolT) by now inversion Hbinop.
+        replace w with (VSymbolic TBool) by now inversion Hbinop.
         apply leq_base_implies_leq_val_state_base; eauto with spath; not_contains.
       * assert (exists wl, eval_binary_op BLe v0l v1 wl) as (wl & Hwl)
           by now apply binop_integers.
@@ -1292,7 +1292,7 @@ Proof.
         { apply Leq_ToSymbolic with (sp := (anon_accessor a, [])).
           all: autorewrite with spath; eauto with spath. }
         { autorewrite with spath. reflexivity. }
-        replace w with (LLBC_sharp_symbolic boolT) by now inversion Hbinop.
+        replace w with (VSymbolic TBool) by now inversion Hbinop.
         apply leq_base_implies_leq_val_state_base; eauto with spath; not_contains.
       * assert (exists wl, eval_binary_op BLe v0l v1l wl) as (wl & Hwl)
           by now apply binop_integers.
@@ -1303,7 +1303,7 @@ Proof.
         { apply Leq_ToSymbolic with (sp := (anon_accessor a, [])).
           all: autorewrite with spath; eauto with spath. }
         { autorewrite with spath. reflexivity. }
-        replace w with (LLBC_sharp_symbolic boolT) by now inversion Hbinop.
+        replace w with (VSymbolic TBool) by now inversion Hbinop.
         apply leq_base_implies_leq_val_state_base; eauto with spath; not_contains.
 
   - destruct Hleq.
@@ -1601,7 +1601,7 @@ Proof.
 Qed.
 
 Lemma not_contains_outer_loan_rename_mut_borrow S sp l0 l1 sp_store :
-  get_node (S.[sp]) = borrowC^m(l0) ->
+  get_node (S.[sp]) = nborrow^m(l0) ->
   not_contains_outer_loan (rename_mut_borrow S sp l1.[sp_store]) ->
   not_contains_outer_loan (S.[sp_store]).
 Proof.
@@ -2069,33 +2069,33 @@ Proof.
 Qed.
 
 (** Lemmas used to prove the local commutation between leq_state_base and reorg: *)
-Lemma vget_borrow l v p c : get_node (borrow^m(l, v).[[p]]) = c -> c <> botC ->
-  p = [] /\ borrowC^m(l) = c \/ exists q, p = [0] ++ q /\ get_node (v.[[q]]) = c.
+Lemma vget_borrow l v p c : get_node (borrow^m(l, v).[[p]]) = c -> c <> nbot ->
+  p = [] /\ nborrow^m(l) = c \/ exists q, p = [0] ++ q /\ get_node (v.[[q]]) = c.
 Proof.
   intros H G. destruct p as [ | [ | ] q].
   - left. auto.
   - right. exists q. auto.
   - exfalso. eapply G. rewrite <-H, vget_cons. cbn. rewrite nth_error_nil.
-    replace botC with (get_node bot) by reflexivity. f_equal. exact (vget_bot q).
+    replace nbot with (get_node bot) by reflexivity. f_equal. exact (vget_bot q).
 Qed.
 
 (* This variant is used for the commutation of the rule Leq_Reborrow_MutBorrow_n with the ending of
  * a borrow. *)
 Lemma vget_borrow_loan l0 l1 p c ty :
-  get_node (borrow^m(l0, loan^m(ty, l1)).[[p]]) = c -> c <> botC ->
-  p = [] /\ borrowC^m(l0) = c \/ p = [0] /\ loanC^m(ty, l1) = c.
+  get_node (borrow^m(l0, loan^m(ty, l1)).[[p]]) = c -> c <> nbot ->
+  p = [] /\ nborrow^m(l0) = c \/ p = [0] /\ nloan^m(ty, l1) = c.
 Proof.
   intros H G. apply vget_borrow in H; [ | assumption]. destruct H as [ | (q & -> & H)].
   - left. assumption.
   - right. destruct q.
     + auto.
     + exfalso. apply G. rewrite <-H. cbn. rewrite nth_error_nil.
-      replace botC with (get_node bot) by reflexivity. f_equal. exact (vget_bot q).
+      replace nbot with (get_node bot) by reflexivity. f_equal. exact (vget_bot q).
 Qed.
 
 (* This lemma is used once, when studying reorganizations and the rule Leq_Fresh_MutLoan. *)
 Lemma fresh_mut_loan_get_loan S l sp a p ty ty' (fresh_l : is_fresh l S) :
-  get_node ((S.[sp <- loan^m(ty, l)],, a |-> borrow^m(l, S.[sp])).[p]) = loanC^m(ty', l) ->
+  get_node ((S.[sp <- loan^m(ty, l)],, a |-> borrow^m(l, S.[sp])).[p]) = nloan^m(ty', l) ->
   p = sp.
 Proof.
   intros get_loan. destruct (decide (fst p = anon_accessor a)) as [H | ].
@@ -2114,8 +2114,8 @@ Proof.
 Qed.
 
 Lemma get_borrow_rename_mut_borrow S p l l0 q :
-  get_node ((rename_mut_borrow S p l).[q]) = borrowC^m(l) -> is_fresh l S ->
-  get_node (S.[p]) = borrowC^m(l0) -> p = q.
+  get_node ((rename_mut_borrow S p l).[q]) = nborrow^m(l) -> is_fresh l S ->
+  get_node (S.[p]) = nborrow^m(l0) -> p = q.
 Proof.
   intros get_borrow fresh_l ?. destruct (decidable_spath_eq p q); [assumption | ].
   exfalso. autorewrite with spath in get_borrow.
@@ -3068,18 +3068,18 @@ Ltac execution_join_state :=
 Definition leq_boolean_state leq (vSl vSr : LLBC_sharp_val * LLBC_sharp_state) :=
   let (vl, Sl) := vSl in
   let (vr, Sr) := vSr in
-  (vl = vr \/ is_of_type boolT vl /\ not_contains_loan vl /\ vr = LLBC_sharp_symbolic boolT) /\
+  (vl = vr \/ is_of_type TBool vl /\ not_contains_loan vl /\ vr = VSymbolic TBool) /\
   leq Sl Sr.
 
 Lemma boolean_zeroary v :
-  not_contains_loan v -> is_of_type boolT v -> arity (get_node v) = 0.
+  not_contains_loan v -> is_of_type TBool v -> arity (get_node v) = 0.
 Proof. intros ? H. inversion H; reflexivity. Qed.
 
 Lemma leq_val_state_base_boolean vl Sl vr Sr :
   leq_val_state_base leq_state_base (vl, Sl) (vr, Sr) ->
-  is_of_type boolT vr -> not_contains_loan vr ->
+  is_of_type TBool vr -> not_contains_loan vr ->
   (vl = vr /\ leq_state_base Sl Sr) \/
-  (is_of_type boolT vl /\ not_contains_loan vl /\ vr = LLBC_sharp_symbolic boolT /\ Sl = Sr).
+  (is_of_type TBool vl /\ not_contains_loan vl /\ vr = VSymbolic TBool /\ Sl = Sr).
 Proof.
   destruct (exists_fresh_anon2 Sl Sr) as (a & fresh_a_l & fresh_a_r).
   intros H vr_is_int no_loan.
@@ -3130,7 +3130,7 @@ Qed.
 
 Lemma _leq_val_state_boolean vl Sl vr Sr :
   (leq_val_state_base leq_state_base)^* (vl, Sl) (vr, Sr) ->
-  is_of_type boolT vr -> not_contains_loan vr ->
+  is_of_type TBool vr -> not_contains_loan vr ->
   leq_boolean_state (leq_state_base^*) (vl, Sl) (vr, Sr).
 Proof.
   intros H Htype no_loan.
@@ -3149,7 +3149,7 @@ Proof.
 Qed.
 
 Lemma leq_val_state_boolean vl Sl vr Sr :
-  leq_val_state (vl, Sl) (vr, Sr) -> is_of_type boolT vr -> not_contains_loan vr ->
+  leq_val_state (vl, Sl) (vr, Sr) -> is_of_type TBool vr -> not_contains_loan vr ->
   leq_boolean_state leq_symbolic (vl, Sl) (vr, Sr).
 Proof.
   intros ((v'r & S'r) & Hequiv & Hleq) Htype no_loan.
@@ -3159,7 +3159,7 @@ Proof.
   - split.
     + exact Hv.
     + eexists. split; [ | exact Hleq]. exists perm. auto.
-  (* This ugly case could be simply resolved with a hypothesis [is_of_type boolT vl]. *)
+  (* This ugly case could be simply resolved with a hypothesis [is_of_type TBool vl]. *)
   - destruct Hv as [<- | (type_vl & no_loan_l & ->)].
     + destruct vl; inversion Htype; subst; try reflexivity.
       exfalso. eapply no_loan; constructor.
@@ -3168,7 +3168,7 @@ Proof.
 Qed.
 
 Lemma leq_val_state_concrete_boolean b vl Sl Sr :
-  leq_val_state (vl, Sl) (LLBC_sharp_bool b, Sr) -> vl = LLBC_sharp_bool b /\ leq_symbolic Sl Sr.
+  leq_val_state (vl, Sl) (VBool b, Sr) -> vl = VBool b /\ leq_symbolic Sl Sr.
 Proof.
   intros (Hvl & Hleq)%leq_val_state_boolean.
   - split; [ | exact Hleq]. destruct Hvl as [ | (_ & _ & [=])]. assumption.
@@ -3177,8 +3177,8 @@ Proof.
 Qed.
 
 Lemma leq_val_state_symbolic_boolean vl Sl Sr :
-  leq_val_state (vl, Sl) (LLBC_sharp_symbolic boolT, Sr) ->
-  ((exists b, vl = LLBC_sharp_bool b) \/ vl = LLBC_sharp_symbolic boolT) /\ leq_symbolic Sl Sr.
+  leq_val_state (vl, Sl) (VSymbolic TBool, Sr) ->
+  ((exists b, vl = VBool b) \/ vl = VSymbolic TBool) /\ leq_symbolic Sl Sr.
 Proof.
   intros (Hvl & Hleq)%leq_val_state_boolean.
   - split; [ | exact Hleq]. destruct Hvl as [ | (Htype & no_loan & _)]; auto.
