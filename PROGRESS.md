@@ -25,13 +25,13 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
   - `SubV → Subtype'`: 5/15 cases proven (hyp/refl/top + neutral_*);
     10 closure-opening cases gated on `quote_open_subst`, which
     derives from `eval_unf_equiv`, which derives from `eval_realises`.
-    The lam case will additionally need `Subtype'.narrow_head`
+    The lam case will additionally need `Subtype'.narrow`
     (`SubV.lam` is at `domA`, `Subtype'.lam` at `domB`).
   - `Subtype'.narrow_at` (position-`k` context narrowing): 18/19
     constructor cases **proven**; the one open case is `ctx_extend`
     (the seen-set entries' Exprs are *closed*, so the extend is the
     identity, but stating that needs a closedness invariant on `S`).
-    `narrow` and `narrow_head` derive from `narrow_at`.
+    `narrow` derives from `narrow_at`.
   - `eval_realises` (the fundamental lemma of the step-indexed
     logical relation `R`): `.type`/`.bvar` closed; `.lam` Kripke,
     `.fix`/`.iota` Kripke threaded; `.app` per-`vf` split — `.lam`
@@ -1001,7 +1001,7 @@ on top:
 
 - `438931b` → `d45f2d9`: `Subtype'.narrow_at` (position-`k`
   context narrowing) proven for 18/19 constructor cases;
-  `narrow` and the head-only `narrow_head` derive from it.
+  `narrow` derives from it.
   The one open case is `ctx_extend` — pushing a binder past
   a seen-set entry; the entries' Exprs are closed so this is
   morally the identity, but stating that needs a closedness

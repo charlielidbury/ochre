@@ -2363,7 +2363,7 @@ theorem SubN_to_Subtype'
     -- IHs `ihD` (dom) and `ihB` (body at Γ.push domA) are
     -- available; once `quoteClosure_eq_quote_openω_fresh`
     -- becomes unconditional this case closes via
-    -- `Subtype'.lam (ihD …) (Subtype'.narrow_head (ihD …)
+    -- `Subtype'.lam (ihD …) (Subtype'.narrow (ihD …)
     -- (ihB …))` — `SubV.lam` is at `domA`, `Subtype'.lam` at
     -- `domB`, so the body IH needs head-narrowing along
     -- `domB ⊑ domA` before it slots in. (A6, DECISION-LOG.)

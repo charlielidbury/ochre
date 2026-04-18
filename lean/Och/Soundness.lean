@@ -80,7 +80,7 @@ The proof factors as `subCheckVal → SubV → Subtype'`:
 `subCheckVal_subV` is the algorithm-reflection step (fully
 proven) and `SubV_to_Subtype'` is the readback bridge
 (sorried in its closure-opening cases pending
-`quote_open_subst` + `narrow_head`; see SoundnessProof). -/
+`quote_open_subst` + `narrow`; see SoundnessProof). -/
 theorem subCheckVal_sound
     {fuel : Nat} {a b : Val}
     (hfuel : fuel ≤ fuelω)

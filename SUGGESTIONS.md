@@ -39,7 +39,7 @@ unblocks the most.
 5. **`SubV_to_Subtype'` closure-opening cases** (10 of
    them): each is `quote_open_subst` + the case's specific
    `Subtype'` constructor. The `lam` case additionally needs
-   `narrow_head` (← (3)).
+   `narrow` (← (3)).
 
 6. **`typeCheck_sound`**: induction on `e`, with each
    `tyCheck` arm calling `subCheckVal` and applying
