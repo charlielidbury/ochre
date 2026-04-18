@@ -759,6 +759,90 @@ namespace Equiv
   theorem trans {e₁ e₂ e₃} (h₁ : Equiv e₁ e₂) (h₂ : Equiv e₂ e₃) :
       Equiv e₁ e₃ :=
     fun {_ _} => ⟨.trans h₁.1 h₂.1, .trans h₂.2 h₁.2⟩
+
+  theorem lam {dom₁ dom₂ body₁ body₂ : Expr}
+      (hd : Equiv dom₁ dom₂) (hb : Equiv body₁ body₂) :
+      Equiv (.lam dom₁ body₁) (.lam dom₂ body₂) := by
+    intro S Γe
+    exact ⟨.lam hd.2 hb.1, .lam hd.1 hb.2⟩
+
+  /-- `Equiv` is a congruence under `.app` (both arguments
+  must be equivalent — A1). -/
+  theorem app {f₁ f₂ a₁ a₂ : Expr}
+      (hf : Equiv f₁ f₂) (ha : Equiv a₁ a₂) :
+      Equiv (.app f₁ a₁) (.app f₂ a₂) := by
+    intro S Γe
+    exact ⟨.app_cong hf.1 ha.1 ha.2, .app_cong hf.2 ha.2 ha.1⟩
+
+  /-- `Equiv` respects `shift`. Reduces to
+  `Subtype'.shift_preserve` (Subtyping.lean), whose
+  *statement* is currently flagged as too naive (the context
+  shift is non-uniform across entries). Once that's fixed
+  this is `fun {S Γe} => ⟨shift_preserve _ _ h.1,
+  shift_preserve _ _ h.2⟩` instantiated at the right context
+  mapping. -/
+  theorem shift {e₁ e₂ : Expr} (h : Equiv e₁ e₂) :
+      Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
+    sorry
+
+  /-- Substitution respects declarative equivalence: if
+  `a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
+  `R_resp_Equiv` (`.iota` arm), `eval_realises`
+  (`.letE`/`.app`-Kripke threads), and `concEval_refines`
+  (`.letE`/`.app` cases).
+
+  By induction on `e`, generalising over the substituted
+  pair (the binder cases shift it). All eight constructors
+  close via the corresponding `Subtype'` congruence (`.lam`/
+  `.app_cong`/`.iota_cong`/`.fix_cong`/`.letE_cong`/`.asc_*`).
+  Inherits `sorryAx` only from `Equiv.shift`. -/
+  theorem subst_resp :
+      ∀ (e : Expr) {a b : Expr}, Equiv a b → ∀ (i : Nat),
+      Equiv (e.subst i a) (e.subst i b) := by
+    intro e
+    induction e with
+    | bvar k =>
+      intro a b heq i
+      simp only [Expr.subst]
+      split
+      · exact heq
+      · split <;> exact Equiv.refl _
+    | type =>
+      intro _ _ _ _
+      simp only [Expr.subst]; exact Equiv.refl _
+    | lam dom body ihD ihB =>
+      intro a b heq i
+      simp only [Expr.subst]
+      exact Equiv.lam (ihD heq i)
+        (ihB (Equiv.shift heq) (i + 1))
+    | app f x ihF ihX =>
+      intro a b heq i
+      simp only [Expr.subst]
+      exact Equiv.app (ihF heq i) (ihX heq i)
+    | asc t ty ihT _ =>
+      intro a b heq i
+      simp only [Expr.subst]
+      exact fun {S Γ} =>
+        ⟨.asc_L (.asc_R (ihT heq i).1),
+         .asc_L (.asc_R (ihT heq i).2)⟩
+    | iota ann body ihA ihB =>
+      intro a b heq i
+      simp only [Expr.subst]
+      intro S Γ
+      exact ⟨.iota_cong (ihA heq i).1 (ihB (Equiv.shift heq) (i + 1)).1,
+             .iota_cong (ihA heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
+    | «fix» ann body ihA ihB =>
+      intro a b heq i
+      simp only [Expr.subst]
+      intro S Γ
+      exact ⟨.fix_cong (ihA heq i).1 (ihB (Equiv.shift heq) (i + 1)).1,
+             .fix_cong (ihA heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
+    | letE val body ihV ihB =>
+      intro a b heq i
+      simp only [Expr.subst]
+      intro S Γ
+      exact ⟨.letE_cong (ihV heq i).1 (ihB (Equiv.shift heq) (i + 1)).1,
+             .letE_cong (ihV heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
 end Equiv
 
 /-- Step-indexed logical relation: `R n d v e` means "at step
@@ -869,9 +953,9 @@ calls have `e` only in `Equiv`-position (lam: `Equiv e
 (iota), where the IH at smaller index applies. -/
 theorem R_resp_Equiv {n d v e e'}
     (heq : Equiv e e') (h : R n d v e) : R n d v e' := by
-  induction n generalizing d v e e' with
-  | zero => unfold R; trivial
-  | succ k ih =>
+  match n, h with
+  | 0, _ => unfold R; trivial
+  | k+1, h =>
     unfold R at h ⊢
     obtain ⟨hbase, hcl⟩ := h
     refine ⟨fun qe hq => Equiv.trans (hbase qe hq) heq, ?_⟩
@@ -887,16 +971,19 @@ theorem R_resp_Equiv {n d v e e'}
         intro n' hn' fuel' unf' r hopen hne
         obtain ⟨ann, body, heqIota, hRr⟩ :=
           hcl n' hn' fuel' unf' r hopen hne
-        -- hRr : R n' d r (body.subst 0 e). Want body.subst 0 e'.
-        -- Needs `Equiv (body.subst 0 e) (body.subst 0 e')` —
-        -- substitution-congruence over Equiv (Equiv.subst_resp).
+        -- hRr : R n' d r (body.subst 0 e); want body.subst 0 e'.
+        -- `subst_resp` gives the bridging Equiv; recurse at the
+        -- strictly-smaller index n' ≤ k < k+1.
+        have hlt : n' < k + 1 := Nat.lt_succ_of_le hn'
         exact ⟨ann, body, Equiv.trans (Equiv.symm heq) heqIota,
-               by sorry⟩
+               R_resp_Equiv (Equiv.subst_resp body heq 0) hRr⟩
     | «fix» aV cl =>
         intro n' hn' fuel' unf' r hopen hne
         obtain ⟨ann, body, heqFix, hRr⟩ :=
           hcl n' hn' fuel' unf' r hopen hne
         exact ⟨ann, body, Equiv.trans (Equiv.symm heq) heqFix, hRr⟩
+termination_by n
+decreasing_by exact hlt
 
 /-- A prefix of a realised environment is realised (used for
 `Closure.mk'`'s env-trimming, which keeps only the first
@@ -1077,17 +1164,6 @@ threads). Sorried — the mutual recursion makes this a
 theorem quote_depth_shift {d v e}
     (hq : quote fuelω d v = some e) :
     quote fuelω (d + 1) v = some (e.shift 1 0) := by
-  sorry
-
-/-- `Equiv` respects `shift`. Reduces to
-`Subtype'.shift_preserve` (Subtyping.lean), whose
-*statement* is currently flagged as too naive (the context
-shift is non-uniform across entries). Once that's fixed
-this is `fun {S Γe} => ⟨shift_preserve _ _ h.1,
-shift_preserve _ _ h.2⟩` instantiated at the right context
-mapping. -/
-theorem Equiv.shift {e₁ e₂ : Expr} (h : Equiv e₁ e₂) :
-    Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
   sorry
 
 /-- Realisation lifts to the next depth, given the value
@@ -1307,23 +1383,6 @@ theorem eval_env_take {fuel unf : Nat} {ρ : Env} {body : Expr} :
   intro k hk
   rw [List.getElem?_take, if_pos hk]
 
-/-- `Equiv` is a congruence under `.lam`. The body premise
-of `Subtype'.lam` is at `(domB :: Γ)`; `Equiv` quantifies
-over *every* context, so instantiate there directly. -/
-theorem Equiv.lam {dom₁ dom₂ body₁ body₂ : Expr}
-    (hd : Equiv dom₁ dom₂) (hb : Equiv body₁ body₂) :
-    Equiv (.lam dom₁ body₁) (.lam dom₂ body₂) := by
-  intro S Γe
-  exact ⟨.lam hd.2 hb.1, .lam hd.1 hb.2⟩
-
-/-- `Equiv` is a congruence under `.app` (both arguments
-must be equivalent — A1). -/
-theorem Equiv.app {f₁ f₂ a₁ a₂ : Expr}
-    (hf : Equiv f₁ f₂) (ha : Equiv a₁ a₂) :
-    Equiv (.app f₁ a₁) (.app f₂ a₂) := by
-  intro S Γe
-  exact ⟨.app_cong hf.1 ha.1 ha.2, .app_cong hf.2 ha.2 ha.1⟩
-
 /-- One β-step is an `Equiv`. -/
 theorem Equiv.beta (dom body arg : Expr) :
     Equiv (.app (.lam dom body) arg) (body.subst 0 arg) :=
@@ -1336,66 +1395,6 @@ seen-set). -/
 theorem Equiv.fix_unfold (ann body : Expr) :
     Equiv (.fix ann body) (body.subst 0 (.fix ann body)) :=
   fun {_ _} => ⟨.unfold_fix_L (.refl _), .unfold_fix_R (.refl _)⟩
-
-/-- Substituting the same value into both sides of a
-derivation preserves it (the seen-set is unchanged because
-it records *closed* pairs in practice — but here we just
-shift `Γ`). Used by `Equiv.subst_resp` below for the `.letE`
-case, and by the `concEval_refines` `.app`/`.letE` arms.
-
-By induction on the derivation. Each constructor reapplies
-after substitution; the `.beta_*`/`.letE_*` cases use
-`Expr.subst_subst_swap` from Syntax.lean to commute the two
-substitutions. The `.lam`/`.iota_body`/`.fix_body` cases
-need `Γ`'s shift to interact with `i` correctly (same
-staggering as `narrow_at`'s `ctx_extend_at`). -/
-theorem Subtype'.subst_body {S Γ e₁ e₂} {i : Nat} {v : Expr}
-    (h : Subtype' S Γ e₁ e₂) :
-    Subtype' S (Γ.eraseIdx i) (e₁.subst i v) (e₂.subst i v) := by
-  -- Induction on `h`; ~19 constructor cases. Same shape as
-  -- `narrow_at`. Deferred until `ctx_extend_at`'s 3 binder
-  -- cases close (they share the seen-set staggering issue).
-  sorry
-
-/-- Substitution respects declarative equivalence: if
-`a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
-`R_resp_Equiv` (`.iota`/`.fix` arms), `eval_realises`
-(`.letE`/`.app`-Kripke threads), and `concEval_refines`
-(`.letE`/`.app` cases).
-
-By induction on `e`. The `.bvar`/`.type`/`.lam`/`.app`/`.asc`
-cases close via `Equiv.{refl,lam,app}` and `.asc_{L,R}`. The
-remaining three are blocked on missing `Subtype'`
-congruences:
-
-  - `.iota`/`.fix`: `Subtype'.iota_body`/`.fix_body` only
-    vary the *body* with the *same* annotation, but
-    `subst_resp` changes both `ann.subst i a → ann.subst i b`
-    and `body.subst (i+1) a → ….b`. Either add `.iota_cong`/
-    `.fix_cong` constructors to `Subtype'` (varying ann and
-    body), or derive them via `.iota_intro`/`.unfold_*`
-    (which extends `S`, so the derivation is no longer at
-    the same `S`).
-
-  - `.letE`: unfolds to `(body.subst 0 val).subst i ·`,
-    which is not a strict subterm — closes via
-    `Subtype'.subst_body` above (induction on the
-    *derivation*) plus `subst_subst_swap`.
-
-The cleanest route is adding `.iota_cong`/`.fix_cong`/
-`.letE_cong` to `Subtype'` (Subtyping.lean) — they're
-admissible (derivable from the unfold rules at extended
-seen-sets, hence sound), and having them as constructors
-makes both this lemma and `narrow_at`'s remaining cases
-trivial. -/
-theorem Equiv.subst_resp {a b : Expr} (heq : Equiv a b) :
-    ∀ (e : Expr) (i : Nat), Equiv (e.subst i a) (e.subst i b) := by
-  intro e i
-  -- The 5 closing cases are written out at commit `d52a619`
-  -- (this file's history); reverted to a single sorry until
-  -- the `.iota`/`.fix`/`.letE` congruences are available so
-  -- the build doesn't carry half-a-proof.
-  sorry
 
 /-- Extending a realised environment with a realised pair. -/
 theorem REnv_cons {n d ρ ρe v e}
