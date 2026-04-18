@@ -110,17 +110,53 @@ theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
   rw [Expr.substEnv_nil] at hr
   exact R_quote_equiv Nat.one_pos hr hq
 
-/-- Quote-totality on closed eval-images: every value
-produced by `eval` at the empty environment quotes back
-within `fuelω`. Should follow from a `Val`-size induction
-using `Closure.mk'_body_closed` to bound the recursive
-`quoteClosure` re-evaluation; the bound is roughly
-`size(v) ≤ fuel · size(e)`, which is well under `fuelω`
-for any practical `fuel`. -/
+/-- Quote-totality, inductive form: every value produced by
+`eval` from an environment whose entries are themselves
+`fuelω`-quotable at the current depth is `fuelω`-quotable.
+
+This is the NbE-adequacy totality direction. The obstacle
+is `quoteClosure`: it re-evaluates `cl.body` at fuel
+`fuelω−1` with a fresh neutral consed onto `cl.env`, then
+quotes the result at `depth+1`. So the IH needs to apply
+to that *new* eval call (at a different fuel and a deeper
+depth). Two sub-obligations:
+
+  (a) Env entries quotable at `d` are also quotable at
+      `d+1` — i.e., `quote_depth_lift` (every `.var l` in
+      a value reachable from a depth-`d` env satisfies
+      `l < d`, hence `l < d+1`). Stated separately below.
+
+  (b) The inner `eval (fuelω−1) 1 (fresh :: cl.env)
+      cl.body` succeeds. `cl.body` is a sub-Expr of the
+      original `e` (via `Closure.mk'`), and `cl.env` is a
+      prefix of the env at the closure's creation point.
+      The bound is `fuelω ≥ fuel + Expr.size e` (each
+      quote-layer adds at most `size body + 1` to the
+      fuel needed); stated as `quoteClosure_total` below.
+
+Both reduce to a `Val.maxLevel`/`Val.qfuel` measure that
+doesn't yet exist; the closed-term specialisation
+`quote_total_on_eval` derives from this with the env
+hypothesis vacuously satisfied. -/
+theorem eval_quotable {fuel unf d : Nat} {ρ : Env} {e : Expr} {v : Val}
+    (hρ : ∀ w ∈ ρ, ∃ we, quote fuelω d w = some we)
+    (heval : eval fuel unf ρ e = some v) :
+    ∃ ve, quote fuelω d v = some ve := by
+  -- By induction on `fuel`, then on `e`. Each constructive
+  -- arm of `eval` either returns an env entry (`hρ`),
+  -- builds one constructor on top of an IH result (`.lam`/
+  -- `.iota`/`.fix` — the closure case is (b) above), or
+  -- recurses (`.letE`/`.app`/`.asc` — IH at extended/same
+  -- env). The closure case is the only non-IH leaf.
+  sorry
+
+/-- Quote-totality on closed eval-images: specialises
+`eval_quotable` at the empty environment (env hypothesis
+vacuous). -/
 theorem quote_total_on_eval {fuel unf : Nat} {e : Expr} {v : Val}
     (heval : eval fuel unf [] e = some v) :
-    ∃ ve, quote fuelω 0 v = some ve := by
-  sorry
+    ∃ ve, quote fuelω 0 v = some ve :=
+  eval_quotable (fun _ hw => absurd hw (List.not_mem_nil _)) heval
 
 /-- `whnfPi` is sound in the right-to-left direction: each
 `.fix`/`.iota` step is one declarative unfold
@@ -277,14 +313,47 @@ theorem tyCheck_sound_closed
       -- `tyCheckFallback_sound_closed` directly.
       sorry
     -- .letE val body
-    · -- `tyInfer val; tyCheck body expected (under push)`.
-      -- Needs the open form for the body IH; then
-      -- `.letE_L` from the body's result. The `.letE_L`
-      -- premise is at `body.subst 0 val`, while the IH
-      -- gives `body ⊑ τ` *under* `[val]` — the gap is
-      -- exactly `Subtype'.subst_intro` (opening a context
-      -- entry into a substitution), which is the standard
-      -- de-Bruijn substitution lemma.
+    · -- After A9 (`a2c82ae`), the arm is:
+      --   `valTy? ← tyInfer fuel #[] [] val;
+      --    valV   ← eval fuel _ [] val;
+      --    valTy  := match valTy? with
+      --      | none   => valV
+      --      | some t => if (tyCheck fuel #[] [] val t) then t else valV;
+      --    tyCheck fuel #[valTy] [valV] body τV`.
+      --
+      -- The `okV` verification step (`tyCheck val t` at the
+      -- empty context, fuel decremented) does NOT fit this
+      -- closed-form IH because the IH wants an *Expr* `τ₀`
+      -- with `eval … τ₀ = some t`, and `t` came from
+      -- `tyInfer` (a `Val`) — there is no source Expr. The
+      -- open form `tyCheck_sound_open` should take the
+      -- expected type as `(τV : Val) (τe : Expr)
+      -- (hq : quote fuelω d τV = some τe)` instead, so the
+      -- conclusion is `Subtype' Se Γe e τe` and `t`'s `te`
+      -- (from `tyInfer_sound_closed`) slots in directly.
+      --
+      -- The body call is at `Γ = #[valTy]`, `ρ = [valV]`,
+      -- so the closed IH is unavailable regardless. The
+      -- open-form residual:
+      --   `Subtype' [] [valTye] body τe` (open IH at the
+      --     extended context, where `valTye = quote valTy`)
+      --   then `Subtype'.subst_body` (induction-on-derivation
+      --     substituting `val` for the head context entry):
+      --   `Subtype' [] [] (body.subst 0 val) τe`
+      --   then `.letE_L`: `Subtype' [] [] (.letE val body) τe`
+      --   then `.trans` with `eval_quote_equiv_closed hτV`'s
+      --     `τe ⊑ τ`.
+      --
+      -- `Subtype'.subst_body` is the lemma the parent removed
+      -- at `5169447` (subsumed by the new `*_cong`
+      -- constructors for `Equiv.subst_resp`'s purposes), but
+      -- this case needs the *one-direction* form
+      --   `Subtype' S (A :: Γ) M N → Subtype' S Γ
+      --     (M.subst 0 a) (N.subst 0 a)` (for `a ⊑ A`).
+      -- That is the standard substitution lemma; same shape
+      -- as `narrow_at`/`ctx_extend_at` (induction on the
+      -- derivation, binder cases shift, `.bvar 0` uses the
+      -- `a ⊑ A` premise).
       sorry
     -- .asc e0 τ0
     · next e0 τ0 =>
@@ -356,53 +425,129 @@ theorem typeCheck_sound
   · next τV hτV => exact tyCheck_sound_closed hfuel hτV h
   · simp_all
 
-/-- `concEval` produces a declarative refinement of its input.
-With `Subtype'.trans`, this gives subject reduction
-(`concEval_preservation` below).
+/-- One let-step is an `Equiv`. Both directions are single
+`Subtype'` constructors with a `.refl` premise. -/
+private theorem letE_unfold_equiv (val body : Expr) :
+    Equiv (.letE val body) (body.subst 0 val) :=
+  fun {_ _} => ⟨.letE_L (.refl _), .letE_R (.refl _)⟩
 
-The value cases (`.lam`/`.type`/`.iota`/`.fix`) close by
-`.refl`; `.asc` by `.asc_R ∘ ih`. The `.letE` and `.app`
-cases need `Subtype'.subst_resp_equiv : Equiv a b →
-Equiv (e.subst i a) (e.subst i b)` — substitution respects
-declarative equivalence — to bridge `body.subst 0 v'` (what
-`concEval` produces) and `body.subst 0 v` (what `.letE_R`/
-`.beta_R` expect). That lemma is a straightforward
-induction on `e` once `concEval_equiv` (both directions of
-this lemma) is available, but it lives in `Subtyping.lean`;
-deferred until the `ctx_extend` fork lands so the file
-isn't touched concurrently. -/
-theorem concEval_refines
+/-- One asc-erase is an `Equiv`. -/
+private theorem asc_erase_equiv (t ty : Expr) :
+    Equiv (.asc t ty) t :=
+  fun {_ _} => ⟨.asc_L (.refl _), .asc_R (.refl _)⟩
+
+/-- One `.iota`-unfold step is an `Equiv`. The forward
+direction is `.unfold_iota_L (.refl _)`. The backward
+direction goes via `.iota_intro`, whose *first* premise
+(`body[self↦ι] ⊑ ann`) is not refl — it says the unfolded
+form inhabits the annotation, which holds for *well-formed*
+iotas but is not derivable from the iota Expr alone. The
+second premise closes coinductively (`.hyp` at the extended
+seen-set, then `subst_resp`).
+
+So this lemma reduces to: every `.iota ann body` that
+appears as a `concEval` result has `body[self↦ι] ⊑ ann`.
+For `concEval_equiv` below that's vacuously true if the
+input was `typeCheck`-accepted (the `tyCheck` `.iota` arm
+verifies it via `subCheckVal`), but `concEval_equiv` is
+stated unconditionally on the input, so this stays
+sorried. The `.fix` analogue (`Equiv.fix_unfold`,
+SoundnessProof.lean) has both directions as single
+constructors — fix is symmetric where iota is not. -/
+private theorem iota_unfold_equiv (ann body : Expr) :
+    Equiv (.iota ann body) (body.subst 0 (.iota ann body)) := by
+  refine fun {S Γ} => ⟨.unfold_iota_L (.refl _), ?_⟩
+  -- `body[self↦ι] ⊑ ι` at `S`. Via `.iota_intro` (extends `S`):
+  --   premise 1: `body[ι] ⊑ ann` at `S' := (body[ι], ι) :: S`.
+  --     ← residual; needs the iota to be well-annotated.
+  --   premise 2: `body[ι] ⊑ body[body[ι]]` at `S'`.
+  --     ← `(Equiv.subst_resp body … 0).1` from
+  --       `Equiv ι body[ι]` at `S'`, whose backward half is
+  --       `.hyp (head)` and forward half is
+  --       `Subtype'.weaken … (.unfold_iota_L .refl)`.
+  sorry
+
+/-- `concEval` produces a declarative *equivalent* of its
+input (both directions). With `Equiv.subst_resp` (no leaf
+sorry, SoundnessProof.lean) the `.letE` and `.app` cases
+that previously needed only the forward direction now get
+both from the IH. The `.app`-with-`.iota`-head case is the
+sole residual, reducing to `iota_unfold_equiv` above.
+
+`concEval_refines` (the forward half) and
+`concEval_preservation` derive directly. -/
+theorem concEval_equiv
     {fuel : Nat} {e e' : Expr}
     (hstep : concEval fuel e = some e') :
-    ∀ {S Γ}, Subtype' S Γ e' e := by
+    Equiv e' e := by
+  -- (Tactic-mode `match e` here makes the `Equiv`-def goal
+  -- mis-elaborate against `Equiv.*` lemmas; `cases e` does
+  -- not. Lean 4.16 quirk.)
   induction fuel generalizing e e' with
   | zero => simp [concEval] at hstep
   | succ n ih =>
-    intro S Γ
-    match e, hstep with
-    | .bvar _, h => simp [concEval] at h
-    | .lam _ _, h | .type, h | .iota _ _, h | .fix _ _, h =>
-      simp only [concEval, Option.some.injEq] at h
-      exact h ▸ .refl _
-    | .asc t _ty, h =>
-      simp only [concEval] at h
-      exact .asc_R (ih h)
-    | .letE v body, h =>
-      simp only [concEval] at h
-      -- `v' ← concEval n v; e' ← concEval n (body.subst 0 v')`.
-      -- IH₂ gives `e' ⊑ body.subst 0 v'`; need
-      -- `body.subst 0 v' ⊑ body.subst 0 v` from IH₁ (`v' ⊑ v`)
-      -- via `subst_resp_equiv`, then `.letE_R`.
-      sorry
-    | .app f a, h =>
-      simp only [concEval] at h
-      -- Splits on `concEval n f` (`.lam`/`.iota`/`.fix`/other);
-      -- each constructive head needs `subst_resp_equiv` for the
-      -- argument; the residual `.app fVal aVal` head is
-      -- `.app_cong (ih …) (ih …) (sorry : a ⊑ a')` — the third
-      -- `app_cong` premise is the *converse* refinement, which
-      -- needs the `e ⊑ e'` direction of `concEval_equiv`.
-      sorry
+    cases e with
+    | bvar _ => simp [concEval] at hstep
+    | type =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | lam _ _ =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | iota _ _ =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | «fix» _ _ =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | asc t ty =>
+      simp only [concEval] at hstep
+      exact Equiv.trans (ih hstep) (Equiv.symm (asc_erase_equiv t ty))
+    | letE val body =>
+      simp only [concEval] at hstep
+      split at hstep
+      · next v' hval =>
+        exact Equiv.trans (ih hstep)
+          (Equiv.trans (Equiv.subst_resp body (ih hval) 0)
+            (Equiv.symm (letE_unfold_equiv val body)))
+      · simp at hstep
+    | app f a =>
+      simp only [concEval] at hstep
+      split at hstep
+      -- .lam head: β
+      · next dom fbody a' hf ha =>
+        exact Equiv.trans (ih hstep)
+          (Equiv.trans (Equiv.subst_resp fbody (ih ha) 0)
+            (Equiv.trans (Equiv.symm (Equiv.beta dom fbody a))
+              (Equiv.app (ih hf) (Equiv.refl a))))
+      -- .iota head: needs `iota_unfold_equiv` (sorried above)
+      · next ann ibody a' hf ha =>
+        exact Equiv.trans (ih hstep)
+          (Equiv.app
+            (Equiv.trans (Equiv.symm (iota_unfold_equiv ann ibody))
+                         (ih hf))
+            (ih ha))
+      -- .fix head: `Equiv.fix_unfold` (proven, SoundnessProof)
+      · next ann fbody' a' hf ha =>
+        exact Equiv.trans (ih hstep)
+          (Equiv.app
+            (Equiv.trans (Equiv.symm (Equiv.fix_unfold ann fbody'))
+                         (ih hf))
+            (ih ha))
+      -- other head: just `.app_cong`
+      · next fVal a' _ _ _ hf ha =>
+        simp only [Option.some.injEq] at hstep; subst hstep
+        exact Equiv.app (ih hf) (ih ha)
+      -- failure cases
+      · simp_all
+
+/-- The forward-only half, kept for callers that don't need
+the equivalence. Now derived. -/
+theorem concEval_refines
+    {fuel : Nat} {e e' : Expr}
+    (hstep : concEval fuel e = some e') :
+    ∀ {S Γ}, Subtype' S Γ e' e :=
+  fun {_ _} => (concEval_equiv hstep).1
 
 /-- Type preservation under concrete evaluation: if `e ⊑ τ`
 declaratively and `concEval e ⇓ e'`, then `e' ⊑ τ`. Direct
