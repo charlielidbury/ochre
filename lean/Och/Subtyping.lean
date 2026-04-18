@@ -522,21 +522,6 @@ theorem subCheckNF_lam_impossible {fuel : Nat} {ctx : TyCtx}
     (h_not_fix : ∀ a b', b ≠ Expr.fix a b') : False := by
   sorry
 
-/-- When subCheckNF succeeds for iota ⊑ iota (not by reflexivity),
-    the normalized body check also succeeds. -/
-theorem subCheckNF_iota_iota_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
-    (h : subCheckNF (fuel + 1) ctx [] (Expr.iota annS bodyS) (Expr.iota annT bodyT) = .ok true)
-    (h_neq : Expr.iota annS bodyS ≠ Expr.iota annT bodyT) :
-    ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = .ok true := by
-  exact ⟨1, [], Expr.type, Expr.type, subCheckNF_refl Expr.type⟩
-
-/-- When subCheckNF succeeds for fix ⊑ fix (not by reflexivity),
-    the normalized body check also succeeds. -/
-theorem subCheckNF_fix_fix_body {fuel : Nat} {ctx : TyCtx} {annS bodyS annT bodyT : Expr}
-    (h : subCheckNF (fuel + 1) ctx [] (Expr.fix annS bodyS) (Expr.fix annT bodyT) = .ok true)
-    (h_neq : Expr.fix annS bodyS ≠ Expr.fix annT bodyT) :
-    ∃ fuel' ctx' bodyS' bodyT', subCheckNF fuel' ctx' [] bodyS' bodyT' = .ok true := by
-  exact ⟨1, [], Expr.type, Expr.type, subCheckNF_refl Expr.type⟩
 
 /-- When subCheckNF succeeds with .type on the left against a non-.type target
     with empty seen, the target must be .iota or .fix. -/

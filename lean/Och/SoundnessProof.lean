@@ -1293,9 +1293,10 @@ theorem eval_env_agree :
 
 /-- `eval` is insensitive to env entries beyond
 `bvarBound body`: trimming `ρ` to that prefix gives the
-same result. Corollary of `eval_env_agree`. -/
-theorem eval_env_take {fuel unf : Nat} {ρ : Env} {body : Expr}
-    (hclosed : bvarBound body ≤ ρ.length) :
+same result. Corollary of `eval_env_agree`. (Holds without
+`bvarBound body ≤ ρ.length`: when `ρ` is shorter, `take` is
+the identity.) -/
+theorem eval_env_take {fuel unf : Nat} {ρ : Env} {body : Expr} :
     eval fuel unf (ρ.take (bvarBound body)) body
       = eval fuel unf ρ body := by
   apply eval_env_agree
