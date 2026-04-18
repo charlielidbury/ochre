@@ -1,6 +1,58 @@
 # Suggestions
 
-## Phase 1 (current)
+## Phase 2 — soundness proof (current)
+
+The dependency order, bottom-up. Work near the bottom
+unblocks the most.
+
+1. **Restate `R`'s Kripke clause as ∀-`unf`-quantified, add
+   `m ≤ fuel` to `eval_realises`.** Recommendation from the
+   `.app`-head fork: the inner `vapp` recursion in the
+   `.fix`/`.iota` head sub-cases is currently *out of IH
+   range* because the IH is at one specific `unf`. Making
+   the Kripke clause `∀ unf' ≤ unf` (instead of fixed `unf`)
+   and threading `m ≤ fuel` through `eval_realises` brings
+   it in. This is a *statement* change to `R` and probably
+   a one-shot edit + re-thread of the existing cases; do it
+   *before* trying to close the four named obligations.
+
+2. **`eval_realises` `.fix`/`.iota`-head obligations**:
+   `vapp_open_eq` (vapp of an unfolded fix is vapp of
+   body[self↦fix]); `R_resp_iota_unfold`/`R_resp_fix_unfold`
+   (one-step-unfold respects `R`). After (1), these may
+   become direct from the new IH shape.
+
+3. **`Subtype'.ctx_extend`** (the one open case of
+   `narrow_at`): pushing a binder past a seen-set entry. The
+   seen-set Exprs are *closed* (they come from `quote` at
+   depth 0), so the shift is the identity — but the
+   `QuotesSeen` invariant doesn't currently say that. Either
+   add `∀ p ∈ S, closedAt 0 p.1 ∧ closedAt 0 p.2` to
+   `QuotesSeen`, or restate `narrow_at` over closed-seen
+   only.
+
+4. **`quote_open_subst`** (closure-opening commutes with
+   substitution): derives from `eval_unf_equiv` (already
+   derived from `eval_realises`). Once (1)+(2) close
+   `eval_realises`, this should follow.
+
+5. **`SubV_to_Subtype'` closure-opening cases** (10 of
+   them): each is `quote_open_subst` + the case's specific
+   `Subtype'` constructor. The `lam` case additionally needs
+   `narrow_head` (← (3)).
+
+6. **`typeCheck_sound`**: induction on `e`, with each
+   `tyCheck` arm calling `subCheckVal` and applying
+   `subCheckVal_sound` (already wired).
+
+7. **`concEval_preservation`**: adequacy of `R` —
+   `eval_realises` at the term level + `R_quote_equiv`.
+
+The legacy `subCheckNF` (Eval.lean) fuel-mono scaffold
+sorries are *off the critical path* — they only matter for
+the legacy-checker divergence sweep, not for NbE soundness.
+
+## Phase 1 (done — 0 markers)
 
 Pick a `TODO[mega-loop]` marker from the test suite:
 
