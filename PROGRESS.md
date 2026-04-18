@@ -1033,6 +1033,15 @@ sorries (`typeCheck_sound`, `concEval_preservation`).
 Sorry-using declarations (clean build at d4b7259): Eval 5,
 Subtyping 6, SoundnessProof 9, Soundness 2.
 
+### Eval.lean dead-scaffold removal (5862916f, 2026-04-18)
+
+The legacy-`subCheckNF` fuel-mono scaffold
+(`absEval_subCheckNF_neutralType_fuel_mono` from `f82fbfc`)
+and four `*_preserves_closedAt`/`*_ctx_irrelevant` lemmas
+(`851b67b`) had zero callers and were sorried since
+introduction. Removed; doc marker points back to `f82fbfc`.
+Eval.lean: 5 → 0 sorries. Total: 22 → 17.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
