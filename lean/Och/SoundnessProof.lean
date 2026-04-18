@@ -1651,27 +1651,274 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
               -- `eval_unf_equiv` and the bridge — supply
               -- `m = 1 ≤ fuelω` trivially).
               sorry
-          | .iota _aV' _cl, hvapp =>
-              -- vapp on `.iota`: gates on
-              -- `aV.isNeutral || unf == 0`; if true →
-              -- `.stuckRec`; else unfolds and recurses.
-              -- The other fork is handling `.iota`/`.fix`
-              -- Expr cases; the same R-clause structure
-              -- applies here. Same step-index discipline as
-              -- the `.lam`-fV case once the unfold result
-              -- is `.lam`.
-              sorry
-          | .«fix» _aV' _cl, hvapp =>
-              sorry
+          | .iota annV ⟨lbody, lenv⟩, hvapp =>
+              -- vapp (.iota …) aV: gates on `aV.isNeutral ||
+              -- unf == 0`; stuck → .stuckRec; else unfolds
+              -- and recursively vapps.
+              have hRfV' : R (k+1) d
+                  (.iota annV ⟨lbody, lenv⟩) (f.substEnv ρe) :=
+                hfVc ▸ hRfV
+              by_cases hcond : (aV.isNeutral || unf == 0) = true
+              · -- STUCK: v = .neutral (.stuckRec fV aV).
+                simp only [hcond, ↓reduceIte,
+                           Option.some.injEq] at hvapp
+                subst hvapp
+                unfold R
+                refine ⟨?_, trivial⟩
+                -- quote (.neutral (.stuckRec fV aV))
+                --   = .app (quote fV) (quote aV).
+                intro e' hq
+                have hfω : fuelω = (fuelω - 1) + 1 := rfl
+                rw [hfω] at hq; unfold quote at hq
+                have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+                rw [hfω'] at hq; unfold quoteNeutral at hq
+                simp only [Option.bind_eq_bind,
+                  Option.bind_eq_some, Option.some.injEq] at hq
+                obtain ⟨ne, hne, ve, hve, heq⟩ := hq
+                subst heq
+                have hqf : quote fuelω d
+                    (.iota annV ⟨lbody, lenv⟩) = some ne :=
+                  quote_fuel_mono (by omega) hne
+                have hqa : quote fuelω d aV = some ve :=
+                  quote_fuel_mono (by omega) hve
+                unfold R at hRfV' hRaV
+                have hef : Equiv ne (f.substEnv ρe) :=
+                  hRfV'.1 ne hqf
+                have hea : Equiv ve (a.substEnv ρe) :=
+                  hRaV.1 ve hqa
+                intro S Γe
+                exact ⟨.app_cong hef.1 hea.1 hea.2,
+                       .app_cong hef.2 hea.2 hea.1⟩
+              · -- UNFOLD: eval fuel' (unf-1) (fV :: lenv)
+                --   lbody = some f'; vapp fuel' (unf-1) f' aV
+                --   = some v.
+                simp only [hcond, Bool.false_eq_true,
+                           ↓reduceIte] at hvapp
+                rcases hf' : eval fuel' (unf - 1)
+                    (.iota annV ⟨lbody, lenv⟩ :: lenv) lbody
+                  with _ | f'
+                · exact absurd hvapp (by simp [hf'])
+                rw [hf'] at hvapp
+                -- hvapp : vapp fuel' (unf-1) f' aV = some v.
+                --
+                -- R's ι-Kripke clause is stated against
+                -- `cl.openω fV` (= eval fuelω 4 …), but `hf'`
+                -- is at fuel' / unf-1. **OBSTRUCTION (a)**:
+                -- eval is not unf-determinate in general
+                -- (`vapp` inside the body could see different
+                -- unf), so cannot lift `hf'` to `openω`
+                -- directly. Either (i) restate R's ι/fix
+                -- clause as `∀ unf' r, eval fuelω unf'
+                -- (self :: env) body = some r → …` so the
+                -- algorithm's actual unf threads through, or
+                -- (ii) prove `eval_body_unf_irrel` for closure
+                -- bodies (holds when body has no β-redex with
+                -- a recursive head — true for all Och Std
+                -- encodings, not generically).
+                have h_open_at_unf :
+                    Closure.openω ⟨lbody, lenv⟩
+                      (.iota annV ⟨lbody, lenv⟩) = some f' := by
+                  -- Wants: eval fuel' (unf-1) … = some f'
+                  --   ⊢ eval fuelω 4 … = some f'.
+                  -- fuel-mono lifts fuel'→fuelω at *fixed*
+                  -- unf; the unf-1→4 step is the gap.
+                  sorry
+                -- **OBSTRUCTION (b)**: R's clause has the
+                -- productivity premise `r ≠ fV`. If lbody =
+                -- `.bvar 0`, f' = fV and the inner vapp is the
+                -- same call at unf-1; after `unf` decrements to
+                -- 0, the stuck branch fires. So unproductive ι
+                -- is provable by induction on `unf` (each step
+                -- preserves the goal, base = stuck branch).
+                -- Threading that needs `unf` in a strong-IH or
+                -- a separate `vapp_realises` lemma.
+                have h_productive :
+                    f' ≠ .iota annV ⟨lbody, lenv⟩ := by sorry
+                -- Use the ι-Kripke clause at n' := k.
+                unfold R at hRfV'
+                obtain ⟨ann', body', heqf, hRf'⟩ :=
+                  hRfV'.2 k (Nat.le_refl k) f'
+                    h_open_at_unf h_productive
+                -- hRf' : R k d f' (body'.subst 0 fe)
+                -- heqf : Equiv fe (.iota ann' body')
+                -- ι-unfold: `(.iota ann body) ≡ body.subst 0
+                -- (.iota ann body)` via Subtype'.unfold_iota_L
+                -- (one direction) + iota_intro (other), so
+                -- `fe ≡ body'.subst 0 fe` (via heqf and a
+                -- substitution congruence). Hence `.app
+                -- (body'.subst 0 fe) ae ≡ .app fe ae`.
+                have h_iota_unfold_equiv :
+                    Equiv (body'.subst 0 (f.substEnv ρe))
+                          (f.substEnv ρe) := by
+                  -- Needs `Equiv.subst_resp` (subst preserves
+                  -- Equiv on the substituend) plus
+                  -- `Equiv.iota_unfold : .iota a b ≡
+                  -- b.subst 0 (.iota a b)` — neither stated yet.
+                  sorry
+                -- **OBSTRUCTION (c)**: recurse on the inner
+                -- vapp. Want: `R k d f' fe' → R (k+1) d aV ae
+                -- → vapp fuel' (unf-1) f' aV = some v →
+                -- R k d v (.app fe' ae)`. This is the
+                -- `.app`-fV case at one fewer step-index *and*
+                -- one fewer unf — i.e. it asks for the
+                -- `.app`-vapp logic to be a separate mutual
+                -- lemma `vapp_realises` inducting on `unf` (or
+                -- `(fuel', unf)` lex), so the inner call is
+                -- structurally smaller. The current
+                -- fuel-strong-IH `ihf` doesn't reach it (vapp
+                -- at fuel' isn't an `eval` premise).
+                have h_inner_vapp :
+                    R k d v (.app (body'.subst 0 (f.substEnv ρe))
+                                  (a.substEnv ρe)) := by
+                  -- Available: hRf' (R k d f' …), hRaV
+                  -- (R (k+1) d aV ae), hvapp (vapp … = some v).
+                  sorry
+                -- Combine: R_resp_Equiv along
+                -- `Equiv.app h_iota_unfold_equiv (Equiv.refl _)`.
+                have hRk : R k d v
+                    (.app (f.substEnv ρe) (a.substEnv ρe)) :=
+                  R_resp_Equiv
+                    (Equiv.app h_iota_unfold_equiv (Equiv.refl _))
+                    h_inner_vapp
+                -- **OBSTRUCTION (d)**: step-index k → k+1.
+                -- Same as the `.lam`-fV case: each vapp-step
+                -- consumes one Kripke step, so the result is
+                -- at index k, not k+1. The fix is the `m ≤
+                -- fuel` hypothesis (then the goal at the inner
+                -- eval is at m-1 = k). With that hypothesis,
+                -- this `sorry` becomes `hRk` after the goal's
+                -- index drops.
+                have h_step_index :
+                    R (k+1) d v (.app (f.substEnv ρe)
+                                      (a.substEnv ρe)) := by
+                  -- have only `hRk : R k d v …`. R is anti-
+                  -- monotone in the step index, so this is
+                  -- false in general; needs the `m ≤ fuel`
+                  -- restatement.
+                  sorry
+                exact h_step_index
+          | .«fix» annV ⟨lbody, lenv⟩, hvapp =>
+              -- Same shape as `.iota`-fV; only the Kripke
+              -- clause's substituend differs (`body.subst 0
+              -- (.fix ann body)` vs `body.subst 0 fe`).
+              have hRfV' : R (k+1) d
+                  (.«fix» annV ⟨lbody, lenv⟩) (f.substEnv ρe) :=
+                hfVc ▸ hRfV
+              by_cases hcond : (aV.isNeutral || unf == 0) = true
+              · -- STUCK: v = .neutral (.stuckRec fV aV).
+                simp only [hcond, ↓reduceIte,
+                           Option.some.injEq] at hvapp
+                subst hvapp
+                unfold R
+                refine ⟨?_, trivial⟩
+                intro e' hq
+                have hfω : fuelω = (fuelω - 1) + 1 := rfl
+                rw [hfω] at hq; unfold quote at hq
+                have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+                rw [hfω'] at hq; unfold quoteNeutral at hq
+                simp only [Option.bind_eq_bind,
+                  Option.bind_eq_some, Option.some.injEq] at hq
+                obtain ⟨ne, hne, ve, hve, heq⟩ := hq
+                subst heq
+                have hqf : quote fuelω d
+                    (.«fix» annV ⟨lbody, lenv⟩) = some ne :=
+                  quote_fuel_mono (by omega) hne
+                have hqa : quote fuelω d aV = some ve :=
+                  quote_fuel_mono (by omega) hve
+                unfold R at hRfV' hRaV
+                have hef : Equiv ne (f.substEnv ρe) :=
+                  hRfV'.1 ne hqf
+                have hea : Equiv ve (a.substEnv ρe) :=
+                  hRaV.1 ve hqa
+                intro S Γe
+                exact ⟨.app_cong hef.1 hea.1 hea.2,
+                       .app_cong hef.2 hea.2 hea.1⟩
+              · -- UNFOLD.
+                simp only [hcond, Bool.false_eq_true,
+                           ↓reduceIte] at hvapp
+                rcases hf' : eval fuel' (unf - 1)
+                    (.«fix» annV ⟨lbody, lenv⟩ :: lenv) lbody
+                  with _ | f'
+                · exact absurd hvapp (by simp [hf'])
+                rw [hf'] at hvapp
+                -- hvapp : vapp fuel' (unf-1) f' aV = some v.
+                have h_open_at_unf :
+                    Closure.openω ⟨lbody, lenv⟩
+                      (.«fix» annV ⟨lbody, lenv⟩) = some f' := by
+                  -- OBSTRUCTION (a): same unf-mismatch as ι.
+                  sorry
+                have h_productive :
+                    f' ≠ .«fix» annV ⟨lbody, lenv⟩ := by
+                  -- OBSTRUCTION (b).
+                  sorry
+                unfold R at hRfV'
+                obtain ⟨ann', body', heqf, hRf'⟩ :=
+                  hRfV'.2 k (Nat.le_refl k) f'
+                    h_open_at_unf h_productive
+                -- hRf' : R k d f' (body'.subst 0
+                --   (.fix ann' body'))
+                -- fix-unfold: `.fix A b ≡ b.subst 0 (.fix A b)`
+                -- via Subtype'.unfold_fix_L/R.
+                have h_fix_unfold_equiv :
+                    Equiv (body'.subst 0 (.fix ann' body'))
+                          (f.substEnv ρe) := by
+                  -- `Equiv.fix_unfold : .fix a b ≡
+                  -- b.subst 0 (.fix a b)` from
+                  -- `Subtype'.unfold_fix_L/R (refl _)` (both
+                  -- extend S, so the seen-set premise
+                  -- `(.fix a b, .fix a b) ∈ S` holds
+                  -- via `.hyp`/`.refl` after one step). Not yet
+                  -- stated. Then trans with `heqf.symm`.
+                  sorry
+                have h_inner_vapp :
+                    R k d v (.app (body'.subst 0 (.fix ann' body'))
+                                  (a.substEnv ρe)) := by
+                  -- OBSTRUCTION (c): same `vapp_realises`
+                  -- recursion as ι.
+                  sorry
+                have hRk : R k d v
+                    (.app (f.substEnv ρe) (a.substEnv ρe)) :=
+                  R_resp_Equiv
+                    (Equiv.app h_fix_unfold_equiv (Equiv.refl _))
+                    h_inner_vapp
+                -- OBSTRUCTION (d): step-index k → k+1.
+                have h_step_index :
+                    R (k+1) d v (.app (f.substEnv ρe)
+                                      (a.substEnv ρe)) := by
+                  sorry
+                exact h_step_index
           | .type, hvapp =>
               -- vapp .type aV = .neutral (.stuckRec .type aV).
               -- Degenerate (only reachable if `f.substEnv ρe
-              -- ≡ Type`, i.e. ill-typed application). Base
-              -- conjunct via `quote .stuckRec = .app
-              -- (quote .type) (quote aV) = .app .type ae'`,
-              -- and `.app .type ae ≡ .app fe ae` needs
-              -- `Equiv .type fe` from `hRfV`.
-              sorry
+              -- ≡ Type`, i.e. ill-typed application). Same
+              -- proof as the stuck branches above.
+              simp only [Option.some.injEq] at hvapp
+              subst hvapp
+              have hRfV' : R (k+1) d .type (f.substEnv ρe) :=
+                hfVc ▸ hRfV
+              unfold R
+              refine ⟨?_, trivial⟩
+              intro e' hq
+              have hfω : fuelω = (fuelω - 1) + 1 := rfl
+              rw [hfω] at hq; unfold quote at hq
+              have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+              rw [hfω'] at hq; unfold quoteNeutral at hq
+              simp only [Option.bind_eq_bind,
+                Option.bind_eq_some, Option.some.injEq] at hq
+              obtain ⟨ne, hne, ve, hve, heq⟩ := hq
+              subst heq
+              have hqf : quote fuelω d .type = some ne :=
+                quote_fuel_mono (by omega) hne
+              have hqa : quote fuelω d aV = some ve :=
+                quote_fuel_mono (by omega) hve
+              unfold R at hRfV' hRaV
+              have hef : Equiv ne (f.substEnv ρe) :=
+                hRfV'.1 ne hqf
+              have hea : Equiv ve (a.substEnv ρe) :=
+                hRaV.1 ve hqa
+              intro S Γe
+              exact ⟨.app_cong hef.1 hea.1 hea.2,
+                     .app_cong hef.2 hea.2 hea.1⟩
       | iota ann bExpr =>
           -- eval (.iota ann bExpr): eval ann → annV;
           -- v = .iota annV (Closure.mk' bExpr ρ).
