@@ -1096,6 +1096,44 @@ session start). All four target theorems
 `concEval_preservation`/`soundness`) wired through with no
 direct sorry.
 
+### unfold_iota_R; concEval_equiv 8/8; A9 leak paths closed (5862916f, 2026-04-18)
+
+Verifier on `c5914db` found two more A9 leaks: `tyInfer`'s
+own `.letE` arm and the `.app (.letE …) a` let-floating
+arm both consult `tyInfer val` without verifying. Same fix
+as `tyCheck`'s `.letE` (verify via `tyCheck val valTy`,
+fall back to singleton). `appendVec` still accepts;
+`a9_fixIotaBodyChecked` now five witness conjuncts.
+
+Removed `Subtype'.shift_preserve` (wrongly-stated, subsumed
+by `ctx_extend_at`, no callers): Subtyping 2 → 1.
+
+Two more forks integrated:
+- **equiv-shift** (`equiv-shift-fork`): `Equiv.shift`'s
+  cons-Γ case wired through `Subtype'.ctx_extend [τ]` —
+  consolidates `Equiv.shift` and `ctx_extend_at` into the
+  same depth-tagged-seen root cause (DECISION-LOG route a).
+- **soundness-bundle** (`soundness-bundle-fork`):
+  `concEval_equiv` (both directions) proven 7/8 head
+  shapes; `concEval_refines` and `quote_total_on_eval`
+  derived from it and `eval_quotable` resp. Found: `match`
+  on `Equiv`-typed goals eagerly instantiates implicits;
+  use `cases` instead.
+
+Added `Subtype'.unfold_iota_R` (symmetric to
+`unfold_fix_R`; `iota_intro` is the strictly-stronger
+algorithmic form). With it, `Equiv.iota_unfold` is a
+one-liner; `concEval_equiv`'s `.app .iota` head closes
+(now 8/8). Soundness 5 → 4.
+
+**Sorry counts at `d19f092`**: Eval 0, Subtyping 1,
+SoundnessProof 8, Soundness 4. Total **13**. Reduces to
+four root obligations: depth-tagged seen-set
+(`ctx_extend_at` + `Equiv.shift`); `eval_realises`
+recursion-boundary leaves; `eval_quotable` Val-size
+measure; open-Γ generalisation of `tyCheck`/`tyInfer`/
+`whnfPi_sound`.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
