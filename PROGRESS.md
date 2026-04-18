@@ -19,9 +19,13 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
   - `subCheckVal → SubV`: **fully proven** (axioms `propext`/
     `Quot.sound` only, verified PASS), all 15 match arms + all 4
     helper-function reflections in `SoundnessProof.lean`.
-  - `subCheckVal_sound` **wired**: composes the above with
-    `SubV_to_Subtype'` (Soundness.lean now imports SoundnessProof);
-    its remaining sorries are exactly `SubV_to_Subtype'`'s.
+  - **All three target theorems wired** (Soundness.lean):
+    `subCheckVal_sound = SubV_to_Subtype' ∘ subCheckVal_subV`;
+    `typeCheck_sound = tyCheck_sound_closed ∘ subCheckVal_sound`;
+    `concEval_preservation = .trans ∘ concEval_refines`;
+    `soundness` composes the latter two. None of the four has a
+    direct `sorry`; the remaining 17 sorries are in named
+    supporting lemmas.
   - `SubV → Subtype'`: 5/15 cases proven (hyp/refl/top + neutral_*);
     10 closure-opening cases gated on `quote_open_subst`, which
     derives from `eval_unf_equiv`, which derives from `eval_realises`.
