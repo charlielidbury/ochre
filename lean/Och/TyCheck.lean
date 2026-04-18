@@ -154,7 +154,13 @@ mutual
           let valTy? ← tyInfer fuel Γ ρ val
           let some valV := eval fuel unfBound ρ val
             | .error "tyInfer: let val eval"
-          let valTy := valTy?.getD valV
+          -- A9: verify the inferred binder type (see `tyCheck`'s
+          -- `.letE` arm for the rationale).
+          let valTy ← match valTy? with
+            | none => pure valV
+            | some t => do
+              let okV ← tyCheck fuel Γ ρ val t
+              pure (if okV then t else valV)
           tyInfer fuel (Γ.push valTy) (valV :: ρ) (.app fbody (a.shift 1 0))
       | .app f a => do
           let fTy? ← tyInfer fuel Γ ρ f
@@ -184,8 +190,14 @@ mutual
           -- to using its *value* as the binder type (Och lets
           -- types be values; in practice the only un-annotated
           -- let-bindings in Std are type aliases like `let N =
-          -- dNat in …`, where this is exactly right).
-          let valTy := valTy?.getD valV
+          -- dNat in …`, where this is exactly right). A9: verify
+          -- the inferred binder type when present (see
+          -- `tyCheck`'s `.letE` arm for the rationale).
+          let valTy ← match valTy? with
+            | none => pure valV
+            | some t => do
+              let okV ← tyCheck fuel Γ ρ val t
+              pure (if okV then t else valV)
           tyInfer fuel (Γ.push valTy) (valV :: ρ) body
   termination_by (fuel, 0)
 

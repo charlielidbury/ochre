@@ -360,6 +360,9 @@ theorem a9_fixIotaBodyChecked :
       = .ok false ∧
     NbE.typeCheck 200 (.app (.fix Nat_ unit_) zero_) Nat_
       = .ok false ∧
+    NbE.typeCheck 200
+      (.app (.letE (.fix (och{Nat_ → Nat_}) unit_) (.bvar 0)) zero_)
+      Nat_ = .ok false ∧
     -- positive controls: a *well-formed* fix still checks,
     -- and the let-bound ill-formed fix checks at its *actual*
     -- type (the value unfolds to `unit_`):
