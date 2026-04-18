@@ -494,6 +494,249 @@ theorem closedAt_mono {e : Expr} {n m : Nat} (h : e.closedAt n = true) (hnm : n 
     simp [closedAt, Bool.and_eq_true] at h ⊢
     exact ⟨ih_val h.1 hnm, ih_body h.2 (by omega)⟩
 
+/-- Shifting at a cutoff `c` past where all bvars live is the
+identity. Used by `Subtype'.ctx_extend` for the `.hyp` case
+(seen-set entries are closed, so context-extension shifts
+don't touch them). -/
+theorem shift_of_closedAt {e : Expr} :
+    ∀ {n}, e.closedAt n = true → ∀ d {c}, n ≤ c → e.shift d c = e := by
+  induction e with
+  | bvar k =>
+    intro n h d c hc
+    simp only [closedAt, decide_eq_true_eq] at h
+    simp only [shift, if_pos (Nat.lt_of_lt_of_le h hc)]
+  | type => intros; rfl
+  | lam dom body ihd ihb =>
+    intro n h d c hc
+    simp only [closedAt, Bool.and_eq_true] at h
+    simp only [shift, ihd h.1 d hc,
+               ihb h.2 d (Nat.succ_le_succ hc)]
+  | app f a ihf iha =>
+    intro n h d c hc
+    simp only [closedAt, Bool.and_eq_true] at h
+    simp only [shift, ihf h.1 d hc, iha h.2 d hc]
+  | asc t ty iht ihty =>
+    intro n h d c hc
+    simp only [closedAt, Bool.and_eq_true] at h
+    simp only [shift, iht h.1 d hc, ihty h.2 d hc]
+  | iota ann body iha ihb =>
+    intro n h d c hc
+    simp only [closedAt, Bool.and_eq_true] at h
+    simp only [shift, iha h.1 d hc,
+               ihb h.2 d (Nat.succ_le_succ hc)]
+  | fix ann body iha ihb =>
+    intro n h d c hc
+    simp only [closedAt, Bool.and_eq_true] at h
+    simp only [shift, iha h.1 d hc,
+               ihb h.2 d (Nat.succ_le_succ hc)]
+  | letE v body ihv ihb =>
+    intro n h d c hc
+    simp only [closedAt, Bool.and_eq_true] at h
+    simp only [shift, ihv h.1 d hc,
+               ihb h.2 d (Nat.succ_le_succ hc)]
+
+/-- Commuting two shifts at staggered cutoffs: shifting by
+`k` at cutoff `c₀` then by `d` at cutoff `c₀+c+k` equals
+shifting by `d` at `c₀+c` then by `k` at `c₀`. The lower
+shift's cutoff `c₀` is generalised so the binder cases
+recurse at `c₀+1`. Used by `subst_shift_swap_gen`'s
+`bvar k=j` case (with `c₀=0`). -/
+theorem shift_shift_comm_at (e : Expr) (d c k : Nat) :
+    ∀ c₀, (e.shift k c₀).shift d (c₀ + c + k)
+        = (e.shift d (c₀ + c)).shift k c₀ := by
+  induction e with
+  | bvar n =>
+    intro c₀
+    simp only [shift]
+    by_cases h₀ : n < c₀
+    · simp [h₀, show n < c₀ + c from by omega,
+            show n < c₀ + c + k from by omega, shift]
+    · simp only [if_neg h₀]
+      by_cases h₁ : n < c₀ + c
+      · simp [h₁, show n + k < c₀ + c + k from by omega,
+              shift, h₀]
+      · simp [h₁, show ¬ n + k < c₀ + c + k from by omega,
+              shift, show ¬ n + d < c₀ from by omega]
+        omega
+  | type => intro; rfl
+  | lam dom body ihd ihb =>
+    intro c₀; simp only [shift]; congr 1
+    · exact ihd c₀
+    · have := ihb (c₀ + 1)
+      rw [show c₀ + 1 + c = c₀ + c + 1 from by omega,
+          show c₀ + c + 1 + k = c₀ + c + k + 1 from by omega] at this
+      exact this
+  | app f a ihf iha =>
+    intro c₀; simp only [shift]; congr 1
+    · exact ihf c₀
+    · exact iha c₀
+  | asc t ty iht ihty =>
+    intro c₀; simp only [shift]; congr 1
+    · exact iht c₀
+    · exact ihty c₀
+  | iota ann body iha ihb =>
+    intro c₀; simp only [shift]; congr 1
+    · exact iha c₀
+    · have := ihb (c₀ + 1)
+      rw [show c₀ + 1 + c = c₀ + c + 1 from by omega,
+          show c₀ + c + 1 + k = c₀ + c + k + 1 from by omega] at this
+      exact this
+  | fix ann body iha ihb =>
+    intro c₀; simp only [shift]; congr 1
+    · exact iha c₀
+    · have := ihb (c₀ + 1)
+      rw [show c₀ + 1 + c = c₀ + c + 1 from by omega,
+          show c₀ + c + 1 + k = c₀ + c + k + 1 from by omega] at this
+      exact this
+  | letE v body ihv ihb =>
+    intro c₀; simp only [shift]; congr 1
+    · exact ihv c₀
+    · have := ihb (c₀ + 1)
+      rw [show c₀ + 1 + c = c₀ + c + 1 from by omega,
+          show c₀ + c + 1 + k = c₀ + c + k + 1 from by omega] at this
+      exact this
+
+theorem shift_shift_comm_gen (e : Expr) (d c k : Nat) :
+    (e.shift k 0).shift d (c + k) = (e.shift d c).shift k 0 := by
+  have := shift_shift_comm_at e d c k 0; simpa using this
+
+/-- Generalised shift composition: when `c₀ ≤ c ≤ c₀ + d₂`,
+the second shift's cutoff `c` lies in the gap created by
+the first shift, so it sees no bvars there and is
+equivalent to shifting at `c₀`. Specialises to
+`shift_shift_same` (`c = c₀`) and `shift_shift`
+(`c = c₀ + d₂`). Used by `Subtype'.ctx_extend_at`'s `.bvar`
+case where `Γpfx.length ≤ k+1` lets the outer cutoff
+collapse. -/
+theorem shift_shift_between (e : Expr) (d₁ d₂ c₀ c : Nat)
+    (h₁ : c₀ ≤ c) (h₂ : c ≤ c₀ + d₂) :
+    (e.shift d₂ c₀).shift d₁ c = e.shift (d₁ + d₂) c₀ := by
+  induction e generalizing c₀ c with
+  | bvar k =>
+    simp only [shift]
+    by_cases hk : k < c₀
+    · simp [hk, show k < c from Nat.lt_of_lt_of_le hk h₁, shift]
+    · simp only [if_neg hk, shift,
+        if_neg (show ¬ k + d₂ < c from by omega),
+        Nat.add_assoc, Nat.add_comm d₂ d₁]
+  | type => rfl
+  | lam dom body ihd ihb =>
+    simp only [shift]; congr 1
+    · exact ihd c₀ c h₁ h₂
+    · exact ihb (c₀+1) (c+1) (by omega) (by omega)
+  | app f a ihf iha =>
+    simp only [shift]; congr 1
+    · exact ihf c₀ c h₁ h₂
+    · exact iha c₀ c h₁ h₂
+  | asc t ty iht ihty =>
+    simp only [shift]; congr 1
+    · exact iht c₀ c h₁ h₂
+    · exact ihty c₀ c h₁ h₂
+  | iota ann body iha ihb =>
+    simp only [shift]; congr 1
+    · exact iha c₀ c h₁ h₂
+    · exact ihb (c₀+1) (c+1) (by omega) (by omega)
+  | fix ann body iha ihb =>
+    simp only [shift]; congr 1
+    · exact iha c₀ c h₁ h₂
+    · exact ihb (c₀+1) (c+1) (by omega) (by omega)
+  | letE v body ihv ihb =>
+    simp only [shift]; congr 1
+    · exact ihv c₀ c h₁ h₂
+    · exact ihb (c₀+1) (c+1) (by omega) (by omega)
+
+/-- Substitution at `j` commutes with shift at cutoff
+`c+j`: `(e[j := s.shift j 0]).shift d (c+j)
+= (e.shift d (c+j+1))[j := (s.shift d c).shift j 0]`.
+Standard de Bruijn weakening-vs-β lemma; `e` lives under
+`j+1` binders relative to the depth where `s` and the
+cutoff `c` are stated. Specialised at `j=0` as
+`subst_shift_swap` for `Subtype'.ctx_extend_at`. -/
+theorem subst_shift_swap_gen (e s : Expr) (d c : Nat) :
+    ∀ j, (e.subst j (s.shift j 0)).shift d (c + j)
+       = (e.shift d (c + j + 1)).subst j ((s.shift d c).shift j 0) := by
+  induction e with
+  | bvar k =>
+    intro j
+    rcases Nat.lt_trichotomy k j with hlt | heq | hgt
+    · have h1 : (k == j) = false := by simp; omega
+      have h2 : ¬ k > j := by omega
+      simp only [subst, h1, Bool.false_eq_true, if_false, h2,
+                 shift,
+                 if_pos (show k < c + j from by omega),
+                 if_pos (show k < c + j + 1 from by omega)]
+    · subst heq
+      simp only [subst, show (k == k) = true from beq_self_eq_true k,
+                 if_true, shift,
+                 if_pos (show k < c + k + 1 from by omega)]
+      exact shift_shift_comm_gen s d c k
+    · have h1 : (k == j) = false := by simp; omega
+      simp only [subst, h1, Bool.false_eq_true, if_false,
+                 if_pos hgt, shift]
+      by_cases hck : k < c + j + 1
+      · simp only [if_pos hck,
+                   if_pos (show k - 1 < c + j from by omega),
+                   subst, h1, Bool.false_eq_true, if_false,
+                   if_pos hgt]
+      · simp only [if_neg hck,
+                   if_neg (show ¬ k - 1 < c + j from by omega),
+                   subst,
+                   show (k + d == j) = false from by simp; omega,
+                   Bool.false_eq_true, if_false,
+                   if_pos (show k + d > j from by omega)]
+        congr 1; omega
+  | type => intro; rfl
+  | lam dom body ihd ihb =>
+    intro j
+    simp only [subst, shift]
+    congr 1
+    · exact ihd j
+    · have := ihb (j + 1)
+      simpa only [shift_succ,
+        show c + (j + 1) = c + j + 1 from by omega] using this
+  | app f a ihf iha =>
+    intro j; simp only [subst, shift]; congr 1
+    · exact ihf j
+    · exact iha j
+  | asc t ty iht ihty =>
+    intro j; simp only [subst, shift]; congr 1
+    · exact iht j
+    · exact ihty j
+  | iota ann body iha ihb =>
+    intro j
+    simp only [subst, shift]
+    congr 1
+    · exact iha j
+    · have := ihb (j + 1)
+      simpa only [shift_succ,
+        show c + (j + 1) = c + j + 1 from by omega] using this
+  | fix ann body iha ihb =>
+    intro j
+    simp only [subst, shift]
+    congr 1
+    · exact iha j
+    · have := ihb (j + 1)
+      simpa only [shift_succ,
+        show c + (j + 1) = c + j + 1 from by omega] using this
+  | letE v body ihv ihb =>
+    intro j
+    simp only [subst, shift]
+    congr 1
+    · exact ihv j
+    · have := ihb (j + 1)
+      simpa only [shift_succ,
+        show c + (j + 1) = c + j + 1 from by omega] using this
+
+/-- `(e[0:=s]).shift d c = (e.shift d (c+1))[0 := s.shift d c]`.
+Used by `Subtype'.ctx_extend_at` for the `subst`-using
+constructors (`.iota_intro`, `.unfold_*`, `.beta_*`,
+`.letE_*`). -/
+theorem subst_shift_swap (e s : Expr) (d c : Nat) :
+    (e.subst 0 s).shift d c
+    = (e.shift d (c + 1)).subst 0 (s.shift d c) := by
+  have := subst_shift_swap_gen e s d c 0
+  simpa using this
+
 /-- Substitution preserves closedAt (generalized over subst position j).
     closedAt (j+n+1) e ∧ closedAt (j+n) s → closedAt (j+n) (e.subst j s)
     Standard de Bruijn lemma. Uses shift_closedAt for the lam/mu binder cases
