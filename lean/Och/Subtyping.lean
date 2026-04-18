@@ -235,27 +235,159 @@ theorem Subtype'.shift_preserve {S Γ a b} (d c : Nat)
              (Γ.map (·.shift d c)) (a.shift d c) (b.shift d c) := by
   sorry
 
-/-- Context narrowing: replacing a context entry with a
-subtype preserves derivations. After A6 (the algorithm's
-lam-lam arm now pushes `domB`, matching `Subtype'.lam`)
-this is no longer needed for the bridge's `.lam` case, but
-it remains useful for `iota_struct`/`fix_struct` (where the
-algorithm allows `annA ≠ annB` while `Subtype'.iota_body`
-requires the same `ann`) and is a standard metatheoretic
-property.
+/-- Context-extension respects subtyping: a derivation at `Γ`
+lifts to one at `Δ ++ Γ` after shifting both sides past the
+`Δ.length` new binders.
 
-Proof sketch: induction on `h`. The interesting case is
-`.bvar (k := 0)`, whose conclusion `bvar 0 ⊑ domA.shift 1 0`
-becomes `bvar 0 ⊑ domB.shift 1 0` under the new context
-(by `.bvar`); lift to the original conclusion via
-`shift_preserve hd` + `trans`. For `k > 0` the context entry
-is unchanged. The binder cases (`lam`/`iota_body`/`fix_body`)
-recurse with the narrowed entry one level deeper. -/
+This is the supporting lemma for `narrow_at`'s `.bvar` case
+(where `k = Γ'.length`). The proof would be by induction on
+`h`; every constructor commutes with `shift` (via the
+`Syntax.lean` substitution lemmas) *except* `.hyp`, whose
+`(a, b) ∈ S` premise does not survive shifting `a, b` unless
+`S` is shifted too. So this lemma is only valid when `h`
+either does not use `.hyp`, or `S`'s pairs are closed (so
+`shift` is the identity on them). For the `SubV → Subtype'`
+bridge's `.lam` case, the relevant `hd` is the contravariant
+domain premise, which the algorithm derives at the *outer*
+seen-set — so its `.hyp` uses are for pairs that are closed
+at depth `Γ.length`. A side condition `∀ p ∈ S, p.1.closedAt
+Γ.length ∧ p.2.closedAt Γ.length` would suffice; deferred
+until the bridge's `.lam` case is reached. -/
+theorem Subtype'.ctx_extend {S Γ a b} (Δ : Ctx)
+    (h : Subtype' S Γ a b) :
+    Subtype' S (Δ ++ Γ) (a.shift Δ.length 0) (b.shift Δ.length 0) := by
+  sorry
+
+/-- Looking up the same prefix position in `Γ' ++ A :: Γ` and
+`Γ' ++ B :: Γ` gives the same result when the position is in
+the prefix or strictly past the head; only `k = Γ'.length`
+sees the changed entry. -/
+private theorem List.get?_append_replace_ne
+    {α} {Γ' : List α} {A B : α} {Γ : List α} {k : Nat} {τ : α}
+    (hk : k ≠ Γ'.length)
+    (hget : (Γ' ++ A :: Γ).get? k = some τ) :
+    (Γ' ++ B :: Γ).get? k = some τ := by
+  simp only [List.get?_eq_getElem?] at hget ⊢
+  rcases Nat.lt_or_ge k Γ'.length with hlt | hge
+  · rwa [List.getElem?_append_left hlt] at hget ⊢
+  · have hgt : Γ'.length < k := Nat.lt_of_le_of_ne hge (Ne.symm hk)
+    rw [List.getElem?_append_right (Nat.le_of_lt hgt)] at hget ⊢
+    have h1 : 1 ≤ k - Γ'.length := Nat.le_sub_of_add_le (by omega)
+    obtain ⟨j, hj⟩ := Nat.exists_eq_add_of_le h1
+    rw [hj, Nat.add_comm] at hget ⊢
+    simpa using hget
+
+private theorem List.get?_append_replace_eq
+    {α} {Γ' : List α} {A B : α} {Γ : List α} {τ : α}
+    (hget : (Γ' ++ A :: Γ).get? Γ'.length = some τ) :
+    τ = A ∧ (Γ' ++ B :: Γ).get? Γ'.length = some B := by
+  simp only [List.get?_eq_getElem?,
+             List.getElem?_append_right (Nat.le_refl _),
+             Nat.sub_self, List.getElem?_cons_zero,
+             Option.some.injEq] at hget ⊢
+  exact ⟨hget.symm, trivial⟩
+
+/-- General context narrowing at an arbitrary depth: replacing
+the entry at position `Γ'.length` (i.e., the head of the
+`domA :: Γ` suffix) with a subtype `domB ⊑ domA` preserves
+derivations. The prefix `Γ'` is the stack of binders
+introduced *after* the narrowed one; the head-only
+`Subtype'.narrow` is `Γ' := []`.
+
+Proof: induction on `h`. The `Γ'`-prefix and the equation
+`Δ = Γ' ++ domA :: Γ` are generalised so the binder-introducing
+constructors (`.lam`/`.iota_body`/`.fix_body`) can recurse at
+`(_ :: Γ')`. The `S`-extending constructors weaken `hd` via
+`Subtype'.weaken`. The only case that does not close
+mechanically is `.bvar` at `k = Γ'.length`, which needs
+`ctx_extend` to lift the contravariant premise `hd` to the
+extended context. -/
+theorem Subtype'.narrow_at {Γ domA domB} :
+    ∀ {S Δ x y}, Subtype' S Δ x y →
+    ∀ Γ', Δ = Γ' ++ domA :: Γ →
+    Subtype' S Γ domB domA →
+    Subtype' S (Γ' ++ domB :: Γ) x y := by
+  intro S Δ x y h
+  induction h with
+  | hyp hin => exact fun _ _ _ => .hyp hin
+  | refl e => exact fun _ _ _ => .refl e
+  | top e => exact fun _ _ _ => .top e
+  | trans _ _ ih1 ih2 =>
+      exact fun Γ' hΔ hd => .trans (ih1 Γ' hΔ hd) (ih2 Γ' hΔ hd)
+  | @bvar S' Δ' k τ hget =>
+      intro Γ' hΔ hd
+      subst hΔ
+      by_cases hk : k = Γ'.length
+      · -- k = Γ'.length: the narrowed entry. `τ = domA`; new
+        -- context gives `domB`. Bridge via `.trans` + lifted
+        -- `hd`.
+        subst hk
+        obtain ⟨hτ, hgetB⟩ :=
+          List.get?_append_replace_eq (B := domB) hget
+        subst hτ
+        refine .trans (.bvar hgetB) ?_
+        -- Goal:
+        --   ⊢ domB.shift (Γ'.length+1) 0 ⊑ domA.shift (Γ'.length+1) 0
+        --     at S', (Γ' ++ domB :: Γ)
+        -- Have: hd : domB ⊑ domA at S', Γ. Lift via
+        -- `ctx_extend (Γ' ++ [domB])` (length = Γ'.length + 1).
+        have hext := ctx_extend (Γ' ++ [domB]) hd
+        simpa [List.length_append, List.append_assoc,
+               List.singleton_append, List.cons_append] using hext
+      · -- k ≠ Γ'.length: the looked-up entry is in Γ' (k < |Γ'|)
+        -- or in Γ (k > |Γ'|), unchanged. Direct `.bvar`.
+        exact .bvar (List.get?_append_replace_ne hk hget)
+  | @lam S' Δ' dA dB bA bB _ _ ihd ihb =>
+      intro Γ' hΔ hd
+      subst hΔ
+      exact .lam (ihd Γ' rfl hd)
+        (ihb (dB :: Γ') (List.cons_append .. ▸ rfl) hd)
+  | app_cong _ _ _ ihf iha iha' =>
+      exact fun Γ' hΔ hd =>
+        .app_cong (ihf Γ' hΔ hd) (iha Γ' hΔ hd) (iha' Γ' hΔ hd)
+  | @iota_body S' Δ' ann b₁ b₂ _ ih =>
+      intro Γ' hΔ hd
+      subst hΔ
+      exact .iota_body (ih (ann :: Γ') (List.cons_append .. ▸ rfl) hd)
+  | @fix_body S' Δ' ann b₁ b₂ _ ih =>
+      intro Γ' hΔ hd
+      subst hΔ
+      exact .fix_body (ih (ann :: Γ') (List.cons_append .. ▸ rfl) hd)
+  | iota_intro _ _ ih1 ih2 =>
+      intro Γ' hΔ hd
+      exact .iota_intro
+        (ih1 Γ' hΔ (hd.weaken fun _ hp => List.mem_cons_of_mem _ hp))
+        (ih2 Γ' hΔ (hd.weaken fun _ hp => List.mem_cons_of_mem _ hp))
+  | unfold_iota_L _ ih =>
+      intro Γ' hΔ hd
+      exact .unfold_iota_L
+        (ih Γ' hΔ (hd.weaken (fun _ hp => List.mem_cons_of_mem _ hp)))
+  | unfold_fix_L _ ih =>
+      intro Γ' hΔ hd
+      exact .unfold_fix_L
+        (ih Γ' hΔ (hd.weaken (fun _ hp => List.mem_cons_of_mem _ hp)))
+  | unfold_fix_R _ ih =>
+      intro Γ' hΔ hd
+      exact .unfold_fix_R
+        (ih Γ' hΔ (hd.weaken (fun _ hp => List.mem_cons_of_mem _ hp)))
+  | beta_L _ ih => exact fun Γ' hΔ hd => .beta_L (ih Γ' hΔ hd)
+  | beta_R _ ih => exact fun Γ' hΔ hd => .beta_R (ih Γ' hΔ hd)
+  | letE_L _ ih => exact fun Γ' hΔ hd => .letE_L (ih Γ' hΔ hd)
+  | letE_R _ ih => exact fun Γ' hΔ hd => .letE_R (ih Γ' hΔ hd)
+  | asc_L _ ih => exact fun Γ' hΔ hd => .asc_L (ih Γ' hΔ hd)
+  | asc_R _ ih => exact fun Γ' hΔ hd => .asc_R (ih Γ' hΔ hd)
+
+/-- Head-position context narrowing: replacing `Γ`'s innermost
+binder type `domA` with a subtype `domB ⊑ domA` preserves
+derivations. After the A6 revert (DECISION-LOG 2026-04-18) the
+algorithm's `.lam,.lam` arm pushes `domA` while `Subtype'.lam`
+pushes `domB`, so the `SubV → Subtype'` bridge's `.lam` case
+needs exactly this. Specialises `narrow_at` with `Γ' := []`. -/
 theorem Subtype'.narrow {S Γ domA domB x y}
     (hd : Subtype' S Γ domB domA)
     (h : Subtype' S (domA :: Γ) x y) :
-    Subtype' S (domB :: Γ) x y := by
-  sorry
+    Subtype' S (domB :: Γ) x y :=
+  narrow_at h [] rfl hd
 
 /-- Π-elimination (type-ascent through application). If `f`
 inhabits a Π-type and we apply it, the result inhabits the
