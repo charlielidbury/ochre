@@ -1046,6 +1046,55 @@ and four `*_preserves_closedAt`/`*_ctx_irrelevant` lemmas
 introduction. Removed; doc marker points back to `f82fbfc`.
 Eval.lean: 5 → 0 sorries. Total: 22 → 17.
 
+### Six-fork integration; A9 found and fixed (5862916f, 2026-04-18)
+
+Six worktree forks integrated (one parked). Tags pushed at
+each fork commit for traceability.
+
+- **R-Kripke restate** (`r-kripke-restate-fork`): `R`'s
+  Kripke clauses now ∀-`fuel'`/`unf'`-quantified; 4
+  `eval_realises` leaf sorries closed.
+- **TyCheck de-partialised** (`tycheck-departialise-fork`):
+  `tyInfer`/`tyCheck`/`tyCheckFallback`/`whnfPi` now total
+  via `(fuel, tag)` lex; `unfold tyCheck` works.
+- **`tyCheck_sound_closed` structured**
+  (`tycheck-sound-induct-fork`): mutual `(fuel, tag)`
+  induction. `tyCheckFallback_sound_closed` and
+  `tyCheck`'s `.asc`/catch-all arms **proven**;
+  `quote_total_on_eval`/`whnfPi_sound`/
+  `tyInfer_sound_closed` stated. Found A9.
+- **`Subtype'` congruence constructors**
+  (`subtype-cong-ctors-fork`): `.iota_cong`/`.fix_cong`/
+  `.letE_cong` added (vary both ann and body).
+  `Equiv.subst_resp` and `R_resp_Equiv` **proven**;
+  `Subtype'.subst_body` removed (subsumed). SoundnessProof
+  11 → 8.
+- **`ctx_extend_at` deepened** (`ctx-extend-fork`): 16/19
+  cases proven; the 3 binder cases need depth-tagged seen
+  entries (or `Subtype'`'s `.iota_intro`/`.unfold_*` to
+  record closed pairs). 5 shift/subst lemmas added to
+  Syntax.lean (all proven).
+- **`SubtypeCore` removed**: 4 dead legacy-checker sorries.
+  Subtyping 6 → 2.
+
+**A9** (`tyInfer` trusted fix/ι annotation): `typeCheck
+(.fix Nat_ unit_) Nat_` was `.ok true`. Fixed by a
+`.fix`/`.iota` arm in `tyCheck` that does
+`subCheckVal (eval e) expected` directly (bypasses the
+annotation-trusting `tyInfer` path; sound via
+`subCheckVal_sound`). Two earlier attempts (body-check
+inside `tyInfer`; `.ok none` on body-check failure) both
+regressed `appendVec` because nested-fix annotations are
+opaque neutrals. `tyCheck_sound_closed`'s new arm is
+proven; SoundnessAudit gains `a9_fixIotaBodyChecked`.
+
+**Sorry counts at `c5914db`**: Eval 0, Subtyping 2,
+SoundnessProof 8, Soundness 5. Total **15** (from 22 at
+session start). All four target theorems
+(`subCheckVal_sound`/`typeCheck_sound`/
+`concEval_preservation`/`soundness`) wired through with no
+direct sorry.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
