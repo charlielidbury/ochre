@@ -33,10 +33,23 @@ witness), so the Phase-2 soundness theorem is unaffected.
 the lam case. `divergenceSweep` now whitelists the one A6
 divergence and asserts NbE only ever *under*-accepts.
 
-**Plan**: mask unreferenced closure-env entries with a
-canonical placeholder (so `Val.beq` identifies
-`dsucc_local` across fresh-opens), then re-enable `domB`.
-A worktree fork is exploring this.
+**Plan revised**: a worktree fork (`6a0d2bf`) implemented
+closure-env masking (replace unreferenced env slots with
+`.type`) and confirmed it makes `dtwo ⊑ dNat` fast under
+`domB` — but **not** `dthree`. The residual cause: `dNat`'s
+`s`-domain `λpred:N. P (dsucc_local pred)` references the
+inner `let`-bound `dsucc_local` (closure body `bvar 3`,
+env `[…, vNat]`), while the input numeral's `s`-domain
+references the *top-level* `dsucc` (closure body = the
+closed `dNat` Expr, env `[]`). These are semantically equal
+but structurally distinct *bodies*, not envs; A1's
+bidirectional `.app,.app` then recurses into `dsucc_local m
+⊑⊒ dsucc m` at every numeral layer. Fixing this needs
+quote-based closure canonicalisation (or a quote-based
+seen-check), which is the option (b) we rejected for cost.
+So `domA` stands; `domB` is a post-Phase-2 completeness
+project. The masking work is parked on
+`worktree-agent-a459bdf1`.
 
 **Alternatives considered**: (a) per-index env trim — what
 `Closure.mk'` already does; insufficient since it keeps

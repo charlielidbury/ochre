@@ -4,6 +4,7 @@ import Och.Subtyping
 import Och.NbE
 import Och.SubCheckVal
 import Och.TyCheck
+import Och.SoundnessProof
 import Och.Std.Nat
 import Och.Std.Unit
 import Och.Std.DBool
@@ -75,16 +76,25 @@ work (e.g. `concEval`-preservation) can quantify over them.
 relation. Stated over closed terms; the open-term version
 threads `Γ` and a level-to-index map.
 
-This requires `Subtype'` to be brought in sync with
-`subCheckVal` first (it currently lacks several arms). -/
+The proof factors as `subCheckVal → SubV → Subtype'`:
+`subCheckVal_subV` is the algorithm-reflection step (fully
+proven) and `SubV_to_Subtype'` is the readback bridge
+(sorried in its closure-opening cases pending
+`quote_open_subst` + `narrow_head`; see SoundnessProof). -/
 theorem subCheckVal_sound
     {fuel : Nat} {a b : Val}
+    (hfuel : fuel ≤ fuelω)
     (h : subCheckVal fuel #[] [] a b = .ok true)
     {ae be : Expr}
     (hqa : quote fuel 0 a = some ae)
     (hqb : quote fuel 0 b = some be) :
-    Subtype' [] [] ae be := by
-  sorry
+    Subtype' [] [] ae be :=
+  SubV_to_Subtype'
+    (subCheckVal_subV hfuel h)
+    (fun _ hp => absurd hp (List.not_mem_nil _))
+    (fun _ _ hk => by simp at hk)
+    (by simpa using quote_fuel_mono hfuel hqa)
+    (by simpa using quote_fuel_mono hfuel hqb)
 
 /-- The bidirectional checker is sound: if `typeCheck e τ`
 accepts then `e` is well-typed at `τ` in the declarative system.
