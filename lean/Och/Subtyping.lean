@@ -239,27 +239,12 @@ theorem Subtype'.beta_head {S Γ dom body arg a c}
     Subtype' S Γ (.app (.app (.lam dom body) arg) a) c :=
   .trans (.app_head (.beta_L (.refl _))) h
 
-/-- Shift respects subtyping (needed for `narrow`'s `.bvar`
-case). The proof is by induction on the derivation; each
-constructor commutes with `shift` since `shift` is a
-homomorphism on `Expr` and `subst` (the substitution lemmas
-in `Syntax.lean`, now sorry-free).
-
-NOTE: the statement as written is too naive — `Γ`'s entries
-are at *staggered* depths (entry `k` has its bvars relative
-to the context at position `k+1` onward), so a uniform
-`(·.shift d c)` over `Γ` is wrong; each entry needs cutoff
-`c` adjusted by its position. The correct statement maps
-`Γ[k]` to `Γ[k].shift d (c - k - 1)` (or equivalently
-threads the cutoff through the binder constructors). Since
-the bridge's narrowing uses go through `narrow_at` (which
-needs the much weaker `ctx_extend` below, not full
-`shift_preserve`), fixing this statement is deferred. -/
-theorem Subtype'.shift_preserve {S Γ a b} (d c : Nat)
-    (h : Subtype' S Γ a b) :
-    Subtype' (S.map (fun (x, y) => (x.shift d c, y.shift d c)))
-             (Γ.map (·.shift d c)) (a.shift d c) (b.shift d c) := by
-  sorry
+-- `Subtype'.shift_preserve` removed: its uniform-cutoff
+-- statement was wrong (Γ entries are at staggered depths;
+-- entry `k` needs cutoff `c - k - 1`). The correct form is
+-- `ctx_extend_at` below, which is what `narrow_at` actually
+-- uses. `Equiv.shift` (SoundnessProof.lean) states the
+-- `∀ Γ`-quantified version it needs locally.
 
 /-- All seen-set entries are fully closed (no free bvars).
 Used by `narrow_at` so the `.bvar`-case's `ctx_extend` can
