@@ -58,6 +58,56 @@ seen-list `Val.beq` walks the full numeral Expr at each
 check), not a `domA`-vs-`domB` symptom; `native_decide` at
 fuel 1600 handles it in the ~5 min DNat build.
 
+## 2026-04-18 — `ctx_extend_at` binder cases need a `Subtype'`-seen redesign
+
+`Subtype'.narrow_at` (and `Equiv.shift`, same shape) is
+proven for 16/19 cases; the three open binder cases all
+hit the same wall: the body IH gives the seen-set shifted
+at cutoff `c+1`, the goal needs it at cutoff `c`, and these
+only coincide when the seen entries are closed — but
+`.iota_intro`/`.unfold_fix_*`/`.unfold_iota_L` extend the
+seen-set with the *current* `(a, b)` pair, which lives at
+depth `|Γ|`.
+
+**Why this matters**: `narrow_head` is what bridges
+`SubV.lam` (at `Γ.push domA`) to `Subtype'.lam` (at
+`domB :: Γ`), so until it closes the `subCheckVal_sound`
+chain has `sorryAx` from this one place.
+
+**Three routes** (none yet committed to):
+
+(a) **Depth-tag the seen-set**: change `Seen` from
+`List (Expr × Expr)` to `List (Nat × Expr × Expr)`;
+`.iota_intro` records `(|Γ|, a, b)`; `.hyp` shifts the
+recorded depth back. Then `ctx_extend_at`'s shift on `S`
+is per-entry at the entry's recorded cutoff. Invasive
+(every seen-touching constructor changes), but the
+algorithm already does this implicitly (its seen entries
+are `Val × Val` with neutrals at known depths).
+
+(b) **Closed-pair recording**: change `.iota_intro`/
+`.unfold_*` to record `(a.subst…, b.subst…)` closed at
+depth 0 (i.e., the entry as it would appear at the empty
+context). Then `Seen.Closed S` is preserved through the
+induction. Requires a "close at Γ" operation on Exprs and
+proofs that the algorithm's `quote` produces the same
+closed pairs.
+
+(c) **Don't generalise — prove `narrow_head` directly**
+without the cutoff-`c` generalisation. The induction on
+`Subtype' S (A :: Γ) M N` keeps `S` fixed; the binder cases
+recurse at `S` (unshifted) and a deeper `Γ`. The `.hyp`
+case is then trivial (S unchanged). The `.bvar 0` case
+needs `Subtype'.weaken` of `h_BA : Subtype' S Γ B A` to
+`B :: Γ`, which is `ctx_extend_at` at cutoff 0 — so this
+recurses into the same problem unless `weaken` is proven
+separately for the head-only case.
+
+(c) is closest to what the bridge actually needs and
+avoids touching `Subtype'`. (a) is most principled.
+Deferred until either an `Equiv.shift` fork or a fresh
+look establishes which is least disruptive.
+
 **Alternatives considered**: (a) per-index env trim — what
 `Closure.mk'` already does; insufficient since it keeps
 gaps. (b) Quote-then-compare for the seen check — would
