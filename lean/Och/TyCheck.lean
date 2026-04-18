@@ -57,7 +57,7 @@ private def spineSummary : Expr → Nat → String
 For `.fix ann cl`, the self is the fix itself (μ-unfold). For
 `.iota ann cl`, the self is the *inhabitant* `inhab` whose type
 we're computing — `n : ι self. B` means `n : B[self:=n]`. -/
-partial def whnfPi (fuel : Nat) (inhab : Val) (ty : Val) : Option Val :=
+def whnfPi (fuel : Nat) (inhab : Val) (ty : Val) : Option Val :=
   go unfBound ty
 where
   go : Nat → Val → Option Val
@@ -78,7 +78,7 @@ mutual
   - `.ok none` — `e` is well-typed but no principal type was
     found (the caller falls back to value-level conversion).
   - `.ok (some τ)` — `e : τ`. -/
-  partial def tyInfer (fuel : Nat) (Γ : TyEnv) (ρ : Env)
+  def tyInfer (fuel : Nat) (Γ : TyEnv) (ρ : Env)
       (e : Expr) : Except String (Option Val) :=
     match fuel with
     | 0 => .error "tyInfer: out of fuel"
@@ -177,9 +177,10 @@ mutual
           -- dNat in …`, where this is exactly right).
           let valTy := valTy?.getD valV
           tyInfer fuel (Γ.push valTy) (valV :: ρ) body
+  termination_by (fuel, 0)
 
   /-- Check `e` against `expected`. -/
-  partial def tyCheck (fuel : Nat) (Γ : TyEnv) (ρ : Env)
+  def tyCheck (fuel : Nat) (Γ : TyEnv) (ρ : Env)
       (e : Expr) (expected : Val) : Except String Bool :=
     match fuel with
     | 0 => .error "tyCheck: out of fuel"
@@ -200,7 +201,7 @@ mutual
               | none => .error "tyCheck: expected codomain open"
               | some expBody =>
                   tyCheck fuel (Γ.push expDom) (fresh :: ρ) body expBody
-          | _ => fallback (fuel + 1)
+          | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
       | .letE val body => do
           let valTy? ← tyInfer fuel Γ ρ val
           let some valV := eval fuel unfBound ρ val
@@ -213,21 +214,31 @@ mutual
           let okInner ← tyCheck fuel Γ ρ e' τV
           if !okInner then return false
           subCheckVal fuel Γ [] τV expected
-      | _ => fallback (fuel + 1)
-  where
-    fallback (fuel' : Nat) : Except String Bool := do
-      let eTy? ← tyInfer fuel' Γ ρ e
-      match eTy? with
-      | some eTy => subCheckVal fuel' Γ [] eTy expected
-      | none =>
-          -- No principal type: fall back to evaluating the term
-          -- itself and comparing as a value (handles `.type` and
-          -- forms whose type isn't locally determined). This is
-          -- what `NbE.subCheck` does, so it is at least as
-          -- permissive on well-typed inputs.
-          let some eV := eval fuel' unfBound ρ e
-            | .error "tyCheck: fallback eval"
-          subCheckVal fuel' Γ [] eV expected
+      | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
+  termination_by (fuel, 2)
+
+  /-- Fallback path of `tyCheck`: infer a type for `e` and
+  compare against `expected` via `subCheckVal`; if no
+  principal type, evaluate `e` itself and compare as a
+  value. Lifted into the mutual block (was a `where`
+  helper) so the `tyCheck (n+1) → tyCheckFallback (n+1) →
+  tyInfer (n+1)` chain is visible to the termination
+  checker (decreases tag at each step). -/
+  def tyCheckFallback (fuel : Nat) (Γ : TyEnv) (ρ : Env)
+      (e : Expr) (expected : Val) : Except String Bool := do
+    let eTy? ← tyInfer fuel Γ ρ e
+    match eTy? with
+    | some eTy => subCheckVal fuel Γ [] eTy expected
+    | none =>
+        -- No principal type: fall back to evaluating the term
+        -- itself and comparing as a value (handles `.type` and
+        -- forms whose type isn't locally determined). This is
+        -- what `NbE.subCheck` does, so it is at least as
+        -- permissive on well-typed inputs.
+        let some eV := eval fuel unfBound ρ e
+          | .error "tyCheck: fallback eval"
+        subCheckVal fuel Γ [] eV expected
+  termination_by (fuel, 1)
 end
 
 /-- Top-level entry: type-check closed `e` against closed `τ`. -/
@@ -235,5 +246,17 @@ def typeCheck (fuel : Nat) (e τ : Expr) : Except String Bool := do
   let some τV := eval fuel unfBound [] τ
     | .error "typeCheck: τ eval"
   tyCheck fuel #[] [] e τV
+
+-- De-partialised: confirm `unfold` works on each (was
+-- `partial def`, so unfold previously failed and
+-- `tyCheck_sound_closed` could not proceed).
+example : tyCheck 1 #[] [] .type .type
+        = tyCheck 1 #[] [] .type .type := by
+  unfold tyCheck; rfl
+example : tyInfer 1 #[] [] .type
+        = tyInfer 1 #[] [] .type := by
+  unfold tyInfer; rfl
+example : whnfPi 1 .type .type = whnfPi 1 .type .type := by
+  unfold whnfPi whnfPi.go; rfl
 
 end NbE
