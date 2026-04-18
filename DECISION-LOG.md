@@ -48,8 +48,15 @@ bidirectional `.app,.app` then recurses into `dsucc_local m
 quote-based closure canonicalisation (or a quote-based
 seen-check), which is the option (b) we rejected for cost.
 So `domA` stands; `domB` is a post-Phase-2 completeness
-project. The masking work is parked on
-`worktree-agent-a459bdf1`.
+project. The masking work is parked on tag
+`a6-closure-mask-experiment` (`6a0d2bf`).
+
+Verifier note: `#eval NbE.subCheck 200 dthree dNat` still
+times out under `domA`, and *also* at the `77ac3da`
+pre-A6 baseline. So that is interpreter overhead (the
+seen-list `Val.beq` walks the full numeral Expr at each
+check), not a `domA`-vs-`domB` symptom; `native_decide` at
+fuel 1600 handles it in the ~5 min DNat build.
 
 **Alternatives considered**: (a) per-index env trim — what
 `Closure.mk'` already does; insufficient since it keeps

@@ -333,18 +333,20 @@ concrete task.
 | A3 | β type-blind | mitigated | use `typeCheck` as the entry point |
 | A4 | inductive `Subtype'` incomplete | **resolved** | seen-indexed (`.hyp` rule) |
 | A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
-| A6 | lam-lam pushed `domA` (incomplete) | **resolved** | push target `domB` |
+| A6 | lam-lam pushed `domA` (incomplete) | **deferred** | `domB` blows up on dNat (closure-body mismatch); `domA` is sound |
 | A7 | `.fix/.iota,_` no productivity guard | **resolved** | `a' == a → false`; R-side `→ true` |
 | A8 | `.asc t τ` evaluated to `τ` | **resolved** | evaluate `t`; keep ascription check |
 
-## Divergence sweep: zero across 576 pairs
+## Divergence sweep: only A6 across 676 pairs
 
-After A1/A5/A6/A7, the legacy `subCheckNF` and `NbE.subCheck`
-agree on the full 24-term corpus (constructors of every shape:
-type/lam/app/iota/fix/letE/asc/bvar via the Std encodings).
-This is the regression guard against future arm-level
-divergence; any new disagreement is either a bug in one
-checker or a fuel-sensitivity that should be investigated.
+After A1/A5/A7, the legacy `subCheckNF` and `NbE.subCheck`
+agree on 675/676 of the 26-term corpus (constructors of
+every shape: type/lam/app/iota/fix/letE/asc/bvar via the
+Std encodings). The one divergence is the A6 witness, where
+NbE *under*-accepts; `divergenceSweep_onlyA6` asserts every
+divergence is in `a6KnownIncompleteness` and has NbE
+rejecting + legacy accepting, so any future NbE-over-accept
+or unlisted divergence fails the sweep.
 -/
 
 private def sweepCorpus : List Expr := [

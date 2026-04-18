@@ -225,10 +225,9 @@ to the context at position `k+1` onward), so a uniform
 `c` adjusted by its position. The correct statement maps
 `Γ[k]` to `Γ[k].shift d (c - k - 1)` (or equivalently
 threads the cutoff through the binder constructors). Since
-this lemma is only needed for `narrow`, which after A6 is
-only needed for the bridge's `iota_struct`/`fix_struct`
-cases (themselves gated on `quote_open_subst`), fixing the
-statement is deferred until those cases are reached. -/
+the bridge's narrowing uses go through `narrow_at` (which
+needs the much weaker `ctx_extend` below, not full
+`shift_preserve`), fixing this statement is deferred. -/
 theorem Subtype'.shift_preserve {S Γ a b} (d c : Nat)
     (h : Subtype' S Γ a b) :
     Subtype' (S.map (fun (x, y) => (x.shift d c, y.shift d c)))
