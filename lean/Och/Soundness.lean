@@ -319,8 +319,24 @@ theorem tyCheck_sound_closed
             exact .asc_L (.trans h_e0_τ0
               (.trans hτ0_τ0e (.trans hsub hτe_τ)))
       · simp_all
-    -- catch-all → tyCheckFallback
-    · exact tyCheckFallback_sound_closed hfuel hτV h
+    -- .fix _ _ and .iota _ _ (A9 arm: eval-then-subCheckVal),
+    -- then catch-all → tyCheckFallback. The fix/iota cases:
+    -- `subCheckVal_sound` + `eval_quote_equiv_closed` on both
+    -- sides + `.trans`²; same proof for both, so `first | … |`.
+    all_goals first
+    | exact tyCheckFallback_sound_closed hfuel hτV h
+    | (rename_i ann body
+       split at h
+       · rename_i eV hev
+         obtain ⟨τe, hqτV⟩ := quote_total_on_eval hτV
+         obtain ⟨ee, hqeV⟩ := quote_total_on_eval hev
+         have hsub := subCheckVal_sound hfuel' h hqeV hqτV
+         have he_ee := (eval_quote_equiv_closed hev hqeV
+           (S := []) (Γe := [])).2
+         have hτe_τ := (eval_quote_equiv_closed hτV hqτV
+           (S := []) (Γe := [])).1
+         exact .trans he_ee (.trans hsub hτe_τ)
+       · simp_all)
 termination_by (fuel, 2)
 
 end

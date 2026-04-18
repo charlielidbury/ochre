@@ -324,6 +324,33 @@ proof; (b) is closest to the eventual semantic model
 `subCheckVal_sound`. Soundness.lean records this as the next
 concrete task.
 
+/-!
+## A9: tyInfer trusted `.fix`/`.iota` annotation — RESOLVED
+
+**Was**: `tyInfer`'s `.fix ann body` / `.iota ann body` arm
+returned `eval ann` directly without checking the body. So
+`tyInfer (fix x:Nat_. unit_) = .ok Nat_`, and `typeCheck`
+(via `tyCheckFallback → tyInfer → subCheckVal Nat_ Nat_`)
+accepted `fix x:Nat_. unit_` at `Nat_` even though
+`unit_ : Unit_ ⋢ Nat_`. A genuine soundness hole, found
+while structuring `tyInfer_sound_closed` (Soundness.lean) —
+the `.fix`/`.iota` case had no premise to discharge.
+
+**Fix**: the arm now also runs `tyCheck (Γ.push annV)
+(fresh :: ρ) body annV` (the standard fix/iota formation
+rule: `self : ann ⊢ body : ann`). With the body check in
+place, `tyInfer_sound_closed`'s `.fix`/`.iota` case has
+the IH it needs.
+-/
+
+/-- Pre-fix, both lines below were `.ok true`. -/
+theorem a9_fixIotaBodyChecked :
+    (NbE.typeCheck 200 (.fix Nat_ unit_) Nat_).isOk = false ∧
+    (NbE.typeCheck 200 (.iota Nat_ unit_) Nat_).isOk = false ∧
+    -- positive control: a *well-formed* fix still checks.
+    NbE.typeCheck 200 (.fix Nat_ zero_) Nat_ = .ok true := by
+  native_decide
+
 ## Summary
 
 | # | Rule | Status | Fix |
@@ -336,6 +363,7 @@ concrete task.
 | A6 | lam-lam pushed `domA` (incomplete) | **deferred** | `domB` blows up on dNat (closure-body mismatch); `domA` is sound |
 | A7 | `.fix/.iota,_` no productivity guard | **resolved** | `a' == a → false`; R-side `→ true` |
 | A8 | `.asc t τ` evaluated to `τ` | **resolved** | evaluate `t`; keep ascription check |
+| A9 | `tyInfer` trusted fix/ι annotation | **resolved** | check `body : ann` under `self : ann` |
 
 ## Divergence sweep: only A6 across 676 pairs
 

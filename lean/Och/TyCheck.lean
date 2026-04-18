@@ -98,6 +98,18 @@ mutual
             .error s!"tyInfer: ascription {repr τ} rejected"
           else .ok (some τV)
       | .fix ann _ | .iota ann _ =>
+          -- The annotation is the *claimed* type. Returning it
+          -- here is what lets `.app`-chains with fix heads (e.g.
+          -- `dadd n m`, `appendArrays …`) infer through. It is
+          -- *not* sound on its own for the final accept —
+          -- `(fix x:Nat. unit_)` would yield `Nat` here even
+          -- though the body has type `Unit`. A9: `tyCheck`'s
+          -- `.fix`/`.iota` arm therefore bypasses
+          -- `tyCheckFallback`'s tyInfer-path and checks
+          -- `eval e ⊑ expected` directly (which unfolds the fix
+          -- and exposes the body). `tyInfer_sound_closed` for
+          -- this case is correspondingly stated as a property of
+          -- the *value*, not the annotation.
           match eval fuel unfBound ρ ann with
           | none => .error "tyInfer: fix/iota ann eval"
           | some annV => .ok (some annV)
@@ -214,6 +226,19 @@ mutual
           let okInner ← tyCheck fuel Γ ρ e' τV
           if !okInner then return false
           subCheckVal fuel Γ [] τV expected
+      | .fix _ _ | .iota _ _ => do
+          -- A9: bypass `tyCheckFallback`'s tyInfer path here
+          -- because `tyInfer` returns the *annotation* for
+          -- fix/ι (which is what `.app`-chains need), but the
+          -- annotation alone is not the term's type unless the
+          -- body is well-formed. Checking `eval e ⊑ expected`
+          -- via `subCheckVal` unfolds the fix/ι and exposes the
+          -- body, so `(fix x:Nat. unit_) ⊑ Nat` correctly fails
+          -- (`unit_ ⊑ Nat_body` is false). Sound by
+          -- `subCheckVal_sound`. SoundnessAudit A9.
+          let some eV := eval fuel unfBound ρ e
+            | .error "tyCheck: fix/iota eval"
+          subCheckVal fuel Γ [] eV expected
       | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
   termination_by (fuel, 2)
 
