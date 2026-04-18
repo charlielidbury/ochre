@@ -19,13 +19,29 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
   - `subCheckVal → SubV`: **fully proven** (axioms `propext`/
     `Quot.sound` only, verified PASS), all 15 match arms + all 4
     helper-function reflections in `SoundnessProof.lean`.
+  - `subCheckVal_sound` **wired**: composes the above with
+    `SubV_to_Subtype'` (Soundness.lean now imports SoundnessProof);
+    its remaining sorries are exactly `SubV_to_Subtype'`'s.
   - `SubV → Subtype'`: 5/15 cases proven (hyp/refl/top + neutral_*);
     10 closure-opening cases gated on `quote_open_subst`, which
     derives from `eval_unf_equiv`, which derives from `eval_realises`.
+    The lam case will additionally need `Subtype'.narrow_head`
+    (`SubV.lam` is at `domA`, `Subtype'.lam` at `domB`).
+  - `Subtype'.narrow_at` (position-`k` context narrowing): 18/19
+    constructor cases **proven**; the one open case is `ctx_extend`
+    (the seen-set entries' Exprs are *closed*, so the extend is the
+    identity, but stating that needs a closedness invariant on `S`).
+    `narrow` and `narrow_head` derive from `narrow_at`.
   - `eval_realises` (the fundamental lemma of the step-indexed
     logical relation `R`): `.type`/`.bvar` closed; `.lam` Kripke,
-    `.app` per-fV split, `.fix`/`.iota` Kripke all threaded with
-    leaf sorries. ~15 helper lemmas proven (`R_mono`, `REnv_id`,
+    `.fix`/`.iota` Kripke threaded; `.app` per-`vf` split — `.lam`
+    head closed, `.type`/stuck heads closed, `.fix`/`.iota` heads
+    threaded down to four named lemmas: (a) `vapp` of unfolded
+    `.fix` is `vapp` of body-with-self-substituted; (b)
+    `R_resp_iota_unfold`; (c) symmetric for `.fix`; (d) a
+    well-founded trick or, more cleanly, restate `R`'s Kripke
+    clause as ∀-`unf`-quantified and add `m ≤ fuel` to
+    `eval_realises`. ~15 helper lemmas proven (`R_mono`, `REnv_id`,
     `REnv_take`, `closedAt_bvarBound`, `Equiv.*`, `quote_fuel_mono`
     family, `substEnv_closedAt_irrel`, `eval_env_take`).
 
@@ -976,6 +992,46 @@ A worktree fork is implementing the principled fix —
 mask unreferenced closure-env entries with a canonical
 placeholder so `Val.beq` identifies `dsucc_local` across
 fresh-opens — after which `domB` can come back.
+
+### Three forks integrated; subCheckVal_sound wired (5862916f, 2026-04-18)
+
+`70307d5` clean-builds in 580 s (fresh worktree, no oleans);
+the DNat hang is gone. Cherry-picked two of the three forks
+on top:
+
+- `438931b` → `d45f2d9`: `Subtype'.narrow_at` (position-`k`
+  context narrowing) proven for 18/19 constructor cases;
+  `narrow` and the head-only `narrow_head` derive from it.
+  The one open case is `ctx_extend` — pushing a binder past
+  a seen-set entry; the entries' Exprs are closed so this is
+  morally the identity, but stating that needs a closedness
+  invariant on `S`.
+- `fb8164a` → `b668959`: `eval_realises` `.app` head sub-cases
+  threaded — `.lam` head closed (was already), `.type`/stuck
+  heads closed (new), `.fix`/`.iota` heads down to four named
+  obligations: `vapp_open_eq` (vapp of an unfolded fix is
+  vapp of body[self↦fix]), `R_resp_iota_unfold`,
+  `R_resp_fix_unfold`, and a recursion-shape fix
+  (recommendation: ∀-`unf`-quantify `R`'s Kripke clause and
+  add `m ≤ fuel` to `eval_realises` so the inner `vapp` call
+  is in IH range).
+- Closure-mask fork (`6a0d2bf`, tagged
+  `a6-closure-mask-experiment`): NOT cherry-picked. Env
+  masking makes `dtwo ⊑ dNat` fast under `domB` but not
+  `dthree`; the residual mismatch is in closure *bodies*
+  (inner-let `dsucc_local` body is `bvar 3`, top-level
+  `dsucc` body is the closed `dNat` Expr), so `domB` would
+  need quote-based canonicalisation. `domA` stands;
+  DECISION-LOG updated.
+
+`subCheckVal_sound` (`Och.Soundness`) is now a direct term:
+`SubV_to_Subtype' ∘ subCheckVal_subV` with the empty-context
+quote premises discharged vacuously and `quote_fuel_mono`
+lifting the user-supplied fuel. Soundness.lean: 3 → 2 direct
+sorries (`typeCheck_sound`, `concEval_preservation`).
+
+Sorry-using declarations (clean build at d4b7259): Eval 5,
+Subtyping 6, SoundnessProof 9, Soundness 2.
 
 ## Open `TODO[mega-loop]` markers
 
