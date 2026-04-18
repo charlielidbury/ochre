@@ -179,29 +179,49 @@ theorem a5_iotaIotaPath :
   native_decide
 
 /-!
-## A6: lam-lam pushed `domA` not `domB` — RESOLVED
+## A6: lam-lam pushes `domA` not `domB` — DEFERRED
 
-**Was**: NbE.subCheck's lam-lam arm pushed the *source*
-domain `domA` into `tyCtx`. The fresh variable's ascent type
-was therefore `domA`, so a subterm in `bodyB` needing
-`fresh : domB` ascended via `domA ⊑ domB` — the *wrong*
-direction. `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` was rejected
-by `NbE.subCheck` but accepted by `subCheckNF` (which uses
-`Subtype'.lam`'s convention). An incompleteness, not an
-unsoundness, but a checker divergence.
+NbE.subCheck's lam-lam arm pushes the *source* domain
+`domA` into `tyCtx`. With `domA`, a subterm in `bodyB`
+needing `fresh : domB` ascends via `domA ⊑ domB` — the wrong
+direction — so `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` is rejected
+by `NbE.subCheck` but accepted by `subCheckNF`. This is an
+**incompleteness**, not an unsoundness; the soundness proof
+goes through with `domA`.
 
-**Fix**: push `domB` (the target domain). With `domB ⊑ domA`,
-`fresh : domB` ascends to `domB ⊑ domA` for bodyA's needs and
-`domB ⊑ domB` for bodyB's — both directions covered. This
-also matches `Subtype'.lam`, so `SubV.lam` no longer needs
-the Γ-narrowing bridge.
+**Why not `domB`**: pushing `domB` (which matches
+`Subtype'.lam` and is more complete) causes the seen-list to
+miss on recursive types whose inner-`let` closures capture
+an unused fresh `self` — `Closure.mk'`'s `.take`-trim keeps
+env entries between index 0 and the highest-referenced
+index, so `dNat`'s `dsucc_local` keeps `[dzero, fresh@d, N]`
+even though its body only references `N`. Each structural
+ι-open at depth `d` then yields a structurally-distinct
+`dsucc_local`, `domB` references it, the seen-check (`==`)
+never fires, and `dtwo ⊑ dNat` goes exponential (>15 min at
+fuel 200, vs <1 s with `domA`).
+
+**Plan**: replace unused closure-env entries with a
+canonical placeholder so `Val.beq` identifies them across
+fresh-opens; then re-enable `domB`. Until then, `SubV.lam`
+pushes `domA` and `SubV → Subtype'` will need `narrow`.
 -/
 
-theorem a6_checkerAgreement :
+/-- Both checkers are *sound* on the witness; only `subCheckNF`
+is *complete*. -/
+theorem a6_soundOnWitness :
     subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
       = .ok true ∧
     NbE.subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
-      = .ok true := by
+      = .ok false := by
+  native_decide
+
+/-- The `domB` blowup, witnessed: with `domA`, `dtwo ⊑ dNat`
+closes well within fuel 200. (At `domB` this query did not
+terminate within 15 minutes; that's not directly testable
+here, but is the regression that pins `domA`.) -/
+theorem a6_dtwoFastWithDomA :
+    NbE.subCheck 200 dtwo dNat = .ok true := by
   native_decide
 
 /-!
@@ -337,14 +357,31 @@ private def sweepCorpus : List Expr := [
   .asc zero_ Nat_, .asc Nat_ .type
 ]
 
-private def checkersAgree : Bool := Id.run do
+/-- Pairs where `subCheckNF` accepts and `NbE.subCheck` rejects,
+all explained by A6 (`domA` push is incomplete). NbE is the
+soundness target; these are not soundness bugs. -/
+private def a6KnownIncompleteness : List (Expr × Expr) := [
+  (och{ λx:Nat_. x }, och{ λx:zero_. zero_ })
+]
+
+private def checkerDivergences : List (Expr × Expr) := Id.run do
+  let mut out := []
   for a in sweepCorpus do
     for b in sweepCorpus do
       if (subCheck 400 a b).toOption != (NbE.subCheck 400 a b).toOption then
-        return false
-  return true
+        out := (a, b) :: out
+  return out
 
-theorem divergenceSweep_zero : checkersAgree = true := by
+/-- Every observed divergence is a documented A6 incompleteness:
+`subCheckNF` accepts, `NbE.subCheck` rejects, and the pair is
+in `a6KnownIncompleteness`. (NbE *accepting* something
+`subCheckNF` rejects would be a *soundness* concern; that
+direction is empty.) -/
+theorem divergenceSweep_onlyA6 :
+    checkerDivergences.all (fun (a, b) =>
+      a6KnownIncompleteness.contains (a, b) &&
+      (subCheck 400 a b).toOption == some true &&
+      (NbE.subCheck 400 a b).toOption == some false) := by
   native_decide
 
 /-!

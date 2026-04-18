@@ -195,13 +195,16 @@ mutual
               | some v => .ok v | none => .error "subCheckVal: open A"
             let bodyB ← match clB.openFresh fuel depth with
               | some v => .ok v | none => .error "subCheckVal: open B"
-            -- Push the *target* domain (domB), not domA: the
-            -- fresh variable's ascent type must be the smaller
-            -- one so subterms in bodyB that need `fresh : domB`
-            -- can ascend reflexively. Pushing domA made
-            -- `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` fail
-            -- (SoundnessAudit A6) and diverge from subCheckNF.
-            subCheckVal fuel (tyCtx.push domB) seen bodyA bodyB
+            -- A6: pushing `domB` here is more *complete* (the
+            -- fresh variable's ascent type would be the smaller
+            -- one, so `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` would
+            -- pass) but causes seen-list misses on recursive
+            -- types whose inner-let closures capture an unused
+            -- fresh `self` (e.g., `dNat`'s `dsucc_local`),
+            -- making the check go exponential. We push `domA`
+            -- (sound; merely incomplete) until closure-env
+            -- masking lands. SoundnessAudit A6 / DECISION-LOG.
+            subCheckVal fuel (tyCtx.push domA) seen bodyA bodyB
         | .iota annA clA, .iota annB clB =>
             -- Try the structural path first: open both with the same
             -- fresh neutral and compare bodies. This lets two ι-values

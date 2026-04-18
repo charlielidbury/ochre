@@ -6,11 +6,14 @@
 in `Och/Std/` or `Och/Tests.lean`.
 
 **Phase 2 (soundness) ~60%.** Eight audit findings A1–A8 in
-`SoundnessAudit.lean`; six resolved (A1 covariant-app, A4 inductive
-Subtype', A5 iotaIntro annotation, A6 lam-domain, A7 fix-self
-productivity, A8 asc transparency), two by-design (A2 type-in-type,
-A3 β-blind subCheck → use typeCheck). Divergence sweep: 0/676. The
-algorithm is sound modulo type-in-type.
+`SoundnessAudit.lean`; five resolved (A1 covariant-app, A4 inductive
+Subtype', A5 iotaIntro annotation, A7 fix-self productivity, A8 asc
+transparency), one *deferred* (A6 lam-domain — pushing `domB` is more
+complete but causes seen-list misses on dNat-style nested fixes;
+`domA` is sound, see DECISION-LOG 2026-04-18), two by-design (A2
+type-in-type, A3 β-blind subCheck → use typeCheck). Divergence
+sweep: 1/676, the A6 witness, NbE under-accepts. The algorithm is
+sound modulo type-in-type.
 
 Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
   - `subCheckVal → SubV`: **fully proven** (axioms `propext`/
@@ -28,7 +31,8 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
 
 Three checkers: `subCheckNF` (legacy Expr-domain), `NbE.subCheck`
 (Val-domain, the soundness target), `NbE.typeCheck` (bidirectional).
-The two algorithmic checkers agree on all 676 corpus pairs.
+The two algorithmic checkers agree on 675/676 corpus pairs; the one
+divergence is the A6 incompleteness (NbE rejects, legacy accepts).
 
 Simple Och (`lean/Och/Simple/`) remains the proven-sound reference.
 Phase 1 path: coinductive seen-set → removed `[fix-ann]` →
@@ -934,6 +938,44 @@ Documented in the Eval.lean comment so it isn't retried. The
 right fix is probably to delay the domain obligation to where
 subCheckNF actually *uses* the application's result type (i.e.
 inside neutralType's `.app` arm), not at the β site.
+
+### A6 reverted to `domA`; DNat build hang root-caused (5862916f, 2026-04-18)
+
+Verifier FAIL on `cebb1b0`: clean `lake build` hung at
+`Och.Std.DNat` (RSS frozen ~708 MB, >25 min). Bisected the
+27 commits since the last clean DNat build (`047e59f`,
+277 s); the `972db66` PASS verdict had been on cached oleans.
+Three-way parallel bisect (`81d7935`/`77ac3da`/`f2684c9`) plus
+revert-isolation (`revA6`/`revA7`/`revBoth`) pinned it to
+`f2684c9` (A6: `tyCtx.push domA → domB`).
+
+The mechanism: `dNat`'s inner `let dsucc = fix …` evaluates to
+a `.fix` whose closure env (after `Closure.mk'`'s `.take`-trim)
+is `[dzero, fresh_self@d, vNat]`. The body never references
+env[1], but `.take (bvarBound − 1)` keeps it because `N` at
+index 2 forces `take 3`. So each structural ι-open at depth
+`d` yields a structurally-distinct `dsucc_local`. With `domB`
+(taken from `dNat`'s side, hence referencing `dsucc_local`),
+neutral-ascent synthesises types containing it; the seen-list
+`==` never matches; `dtwo ⊑ dNat` goes exponential. With
+`domA` (taken from the input `dtwo`, whose closures contain
+no fresh vars) the seen-list works. `#eval NbE.subCheck 170
+dtwo dNat`: instant at `domA`, >60 s at `domB`.
+
+A6 was an *incompleteness* fix (`(λx:Nat_. x) ⊑ (λx:zero_.
+zero_)`), not a soundness one — so reverting it leaves the
+Phase-2 theorem statement unchanged. Reverted `domB → domA`
+in `subCheckValMatch`; mirrored in `SubV.lam`; updated
+SoundnessAudit A6 to DEFERRED with `a6_dtwoFastWithDomA`
+regression; divergence sweep now whitelists the A6 pair and
+asserts NbE only ever *under*-accepts. The bridge `SubV.lam →
+Subtype'.lam` will need `Subtype'.narrow` (already stated,
+sorried). DECISION-LOG entry added.
+
+A worktree fork is implementing the principled fix —
+mask unreferenced closure-env entries with a canonical
+placeholder so `Val.beq` identifies `dsucc_local` across
+fresh-opens — after which `domB` can come back.
 
 ## Open `TODO[mega-loop]` markers
 

@@ -61,10 +61,12 @@ mutual
         clA.openω (.neutral (.var Γ.size)) = some bA →
         clB.openω (.neutral (.var Γ.size)) = some bB →
         SubV S Γ domB domA →
-        -- Push the *target* domain (domB), matching both the
-        -- algorithm (SubCheckVal.lean lam-lam arm, after the
-        -- A6 fix) and `Subtype'.lam`.
-        SubV S (Γ.push domB) bA bB →
+        -- Push `domA`, matching the algorithm (SubCheckVal.lean
+        -- lam-lam arm). `Subtype'.lam` pushes `domB`; the
+        -- `SubV → Subtype'` bridge will need `Subtype'.narrow`
+        -- here. A6 / DECISION-LOG: `domB` is more complete but
+        -- causes seen-list misses on dNat-style nested fixes.
+        SubV S (Γ.push domA) bA bB →
         SubV S Γ (.lam domA clA) (.lam domB clB)
     | iota_struct {S Γ annA annB clA clB bA bB} :
         clA.openω (.neutral (.var Γ.size)) = some bA →
@@ -2110,10 +2112,13 @@ theorem SubN_to_Subtype'
     (fun {S Γ a} {Se Γe ae be} _hS _hΓ _ha hb => by
       rw [quote_type] at hb; cases hb; exact .top ae)
     -- lam — needs eval_unf_equiv for the unf=1↔4 mismatch.
-    -- IHs `ihD` (dom) and `ihB` (body at Γ.push domB) are
-    -- now available; once `quoteClosure_eq_quote_openω_fresh`
+    -- IHs `ihD` (dom) and `ihB` (body at Γ.push domA) are
+    -- available; once `quoteClosure_eq_quote_openω_fresh`
     -- becomes unconditional this case closes via
-    -- `Subtype'.lam (ihD …) (ihB …)`.
+    -- `Subtype'.lam (ihD …) (Subtype'.narrow_head (ihD …)
+    -- (ihB …))` — `SubV.lam` is at `domA`, `Subtype'.lam` at
+    -- `domB`, so the body IH needs head-narrowing along
+    -- `domB ⊑ domA` before it slots in. (A6, DECISION-LOG.)
     (fun _ _ _ _ _ihD _ihB {_ _ _ _} _ _ _ _ => by sorry)
     -- iota_struct — same shape as lam (open with fresh).
     (fun _ _ _ _ _ihA _ihB {_ _ _ _} _ _ _ _ => by sorry)

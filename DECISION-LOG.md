@@ -3,6 +3,49 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-18 — A6 reverted to `domA` (algorithmic blowup)
+
+`subCheckValMatch`'s `.lam,.lam` arm pushes the *source*
+domain `domA` into `tyCtx`, not the target `domB`.
+
+**Why**: `domB` is more *complete* (so `(λx:Nat_. x) ⊑
+(λx:zero_. zero_)` would pass) and matches `Subtype'.lam`,
+but it makes `dthree ⊑ dNat` non-terminating in practice.
+The cause is upstream of A6: `Closure.mk'` trims env to
+`[0 .. max-referenced-index]`, so `dNat`'s inner-`let`
+`dsucc_local` keeps `[dzero, fresh_self@d, vNat]` even though
+its body never references env[1]. Each structural ι-open at
+depth `d` therefore gives a structurally-distinct
+`dsucc_local`; with `domB` (which references it via `s`'s
+domain) the seen-list `==` check never fires and the
+algorithm goes exponential. With `domA` (taken from the
+*input* lambda, whose closures don't contain fresh vars) the
+seen-list works as intended.
+
+The clean build at `f2684c9` (first `domB` commit) only
+"passed" the verifier on cached oleans; a clean rebuild
+hangs at `Och.Std.DNat`.
+
+**Status**: `domA` is *sound* (just incomplete on the A6
+witness), so the Phase-2 soundness theorem is unaffected.
+`SubV.lam` mirrors the algorithm at `Γ.push domA`; the
+`SubV → Subtype'` bridge will need `Subtype'.narrow` for
+the lam case. `divergenceSweep` now whitelists the one A6
+divergence and asserts NbE only ever *under*-accepts.
+
+**Plan**: mask unreferenced closure-env entries with a
+canonical placeholder (so `Val.beq` identifies
+`dsucc_local` across fresh-opens), then re-enable `domB`.
+A worktree fork is exploring this.
+
+**Alternatives considered**: (a) per-index env trim — what
+`Closure.mk'` already does; insufficient since it keeps
+gaps. (b) Quote-then-compare for the seen check — would
+work but is O(quote) per check and breaks `LawfulBEq`.
+(c) Two type contexts (domA for LHS-ascent, domB for
+RHS-ascent) — there is no RHS-ascent in the current
+algorithm, so this degenerates to (status quo).
+
 ---
 
 ## 2026-04-16: Split bundled `μ` into separate `ι` and `fix`
