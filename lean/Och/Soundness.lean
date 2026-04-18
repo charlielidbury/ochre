@@ -96,18 +96,104 @@ theorem subCheckVal_sound
     (by simpa using quote_fuel_mono hfuel hqa)
     (by simpa using quote_fuel_mono hfuel hqb)
 
-/-- The bidirectional checker is sound: if `typeCheck e τ`
-accepts then `e` is well-typed at `τ` in the declarative system.
+/-- Closed-term NbE correctness: evaluating then quoting a
+closed term gives something `Subtype'`-equivalent to the
+original. Specialises `eval_realises` + `R_quote_equiv` at
+the empty environment. -/
+theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
+    (heval : eval fuel unf [] e = some v)
+    {e' : Expr} (hq : quote fuelω 0 v = some e')
+    {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := by
+  have henv : REnv 1 0 [] [] :=
+    ⟨rfl, fun _ _ hk => by simp at hk⟩
+  have hr : R 1 0 v (e.substEnv []) := eval_realises heval henv
+  rw [Expr.substEnv_nil] at hr
+  exact R_quote_equiv Nat.one_pos hr hq
 
-Bridges `tyCheck` (which operates on a `Val` expected type) to
-the Expr-level `Subtype'` via `eval`/`quote`. The proof goes by
-induction on `e`, using `subCheckVal_sound` for the conversion
-leaves and the `.app` domain-check IH for the Π-elim rule. -/
+/-- Soundness of `tyCheck` at the empty context, with the
+expected type given as the original *expression* `τ` (not
+just its value): if `tyCheck e τV` succeeds where
+`τV = eval τ`, then `e ⊑ τ` declaratively.
+
+**Blocking obstacle**: `tyCheck`/`tyInfer` (TyCheck.lean)
+are `partial def`, so cannot be unfolded in proofs.
+Closing this needs them de-partialised first.
+`termination_by (fuel, tag)` lex (tyCheck tag=1, tyInfer
+tag=0) should work: every recursive call either decrements
+fuel or, in `tyCheck → fallback → tyInfer` at the same
+fuel, decrements tag. The `where fallback` helper may need
+inlining or moving into the mutual block for Lean's
+termination checker to see this. `whnfPi` is also
+`partial` but its inner `go` decrements an `unfBound`
+counter, so `termination_by n` (the counter) suffices
+there.
+
+After de-partialising, the proof is by mutual fuel-
+induction with the companion
+
+  `tyInfer_sound : tyInfer fuel #[] [] e = .ok (some τV) →
+   quote fuelω 0 τV = some τe → Subtype' [] [] e τe`
+
+with these per-arm obligations:
+
+  - **fallback `some` path** (`tyInfer e → eTy; subCheckVal
+    eTy τV`): `tyInfer_sound` gives `e ⊑ quote eTy`;
+    `subCheckVal_sound` gives `quote eTy ⊑ quote τV`;
+    `eval_quote_equiv_closed` on `τ` gives `quote τV ⊑ τ`;
+    chain via `.trans`. Needs *quote-totality on eval
+    results* (`eval … e = some v → quote fuelω 0 v = some
+    _`) to obtain `quote eTy`/`quote τV`; this is the NbE
+    adequacy lemma — `eval`-images at depth 0 are closed
+    and quotable in `fuelω`.
+  - **fallback `none` path** (`subCheckVal eV τV`):
+    `subCheckVal_sound` gives `quote eV ⊑ quote τV`;
+    `eval_quote_equiv_closed` on `e` gives `e ⊑ quote eV`
+    and on `τ` gives `quote τV ⊑ τ`; `.trans`×2.
+  - **`.lam` arm**: `subCheckVal expDom domV` + recursive
+    `tyCheck body expBody` → `Subtype'.lam`. Needs
+    `whnfPi`-correctness: `whnfPi … expected = .lam d cl
+    → expected ≡ .lam d cl` (each `.fix`/`.iota` step is
+    `Subtype'.unfold_fix_*`/`unfold_iota_L`). The body IH
+    is at non-empty `Γ`, so the closed-form statement here
+    needs generalising to arbitrary `Γ`/`ρ` with a
+    `QuotesCtx Γ Γe`-style invariant (mirroring
+    `subCheckVal_sound`'s open form).
+  - **`.letE`/`.asc` arms**: recurse + `.letE_L`/`.asc_L`.
+
+`tyInfer_sound`'s substantive case is `.app f a`: IH on
+`f` gives `f ⊑ .lam (quote dom) (quoteClosure cl)`;
+`tyCheck_sound` on `a` gives `a ⊑ quote dom`; the result
+type `cl.open aV` quotes to `(quoteClosure cl).subst 0
+(quote aV)`, and `quote aV ≡ a` via
+`eval_quote_equiv_closed`; assemble via Π-elim
+(`Subtype'.app_ascent`). -/
+theorem tyCheck_sound_closed
+    {fuel : Nat} {e τ : Expr} {τV : Val}
+    (hfuel : fuel ≤ fuelω)
+    (hτV : eval fuel unfBound [] τ = some τV)
+    (h : tyCheck fuel #[] [] e τV = .ok true) :
+    Subtype' [] [] e τ := by
+  -- Cannot proceed: `tyCheck` is `partial def`. After
+  -- de-partialising TyCheck.lean, the induction goes here
+  -- (per-arm structure documented above). Until then this
+  -- single sorry stands for the full mutual induction +
+  -- the quote-totality and whnfPi-correctness sub-lemmas.
+  sorry
+
+/-- The bidirectional checker is sound: if `typeCheck e τ`
+accepts then `e ⊑ τ` declaratively.
+
+`typeCheck` evaluates `τ` to `τV`, then runs `tyCheck` at
+`τV`; `tyCheck_sound_closed` does the rest. -/
 theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
+    (hfuel : fuel ≤ fuelω)
     (h : typeCheck fuel e τ = .ok true) :
     Subtype' [] [] e τ := by
-  sorry
+  unfold typeCheck at h
+  split at h
+  · next τV hτV => exact tyCheck_sound_closed hfuel hτV h
+  · simp_all
 
 /-- Type preservation under concrete evaluation: if `e : τ`
 declaratively and `concEval` steps `e` to `e'`, then `e' : τ`.
@@ -129,10 +215,11 @@ theorem concEval_preservation
 /-- Composing the above: the user-facing guarantee. -/
 theorem soundness
     {fuel : Nat} {e e' τ : Expr}
+    (hfuel : fuel ≤ fuelω)
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = some e') :
     Subtype' [] [] e' τ :=
-  concEval_preservation (typeCheck_sound hcheck) hstep
+  concEval_preservation (typeCheck_sound hfuel hcheck) hstep
 
 /-!
 ## Witnesses
