@@ -195,22 +195,63 @@ theorem typeCheck_sound
   · next τV hτV => exact tyCheck_sound_closed hfuel hτV h
   · simp_all
 
-/-- Type preservation under concrete evaluation: if `e : τ`
-declaratively and `concEval` steps `e` to `e'`, then `e' : τ`.
+/-- `concEval` produces a declarative refinement of its input.
+With `Subtype'.trans`, this gives subject reduction
+(`concEval_preservation` below).
 
-This is the part that depends on the *semantic* model. For
-`Simple/` it's a syntactic subject-reduction proof; for full
-Och the equirecursive types make the inductive measure subtle.
-The intended approach is step-indexed logical relations over
-`Val` (the previous `VCompat` attempt grew unwieldy by working
-over `Expr`; `Val` should be cleaner since closures avoid the
-substitution lemmas). -/
+The value cases (`.lam`/`.type`/`.iota`/`.fix`) close by
+`.refl`; `.asc` by `.asc_R ∘ ih`. The `.letE` and `.app`
+cases need `Subtype'.subst_resp_equiv : Equiv a b →
+Equiv (e.subst i a) (e.subst i b)` — substitution respects
+declarative equivalence — to bridge `body.subst 0 v'` (what
+`concEval` produces) and `body.subst 0 v` (what `.letE_R`/
+`.beta_R` expect). That lemma is a straightforward
+induction on `e` once `concEval_equiv` (both directions of
+this lemma) is available, but it lives in `Subtyping.lean`;
+deferred until the `ctx_extend` fork lands so the file
+isn't touched concurrently. -/
+theorem concEval_refines
+    {fuel : Nat} {e e' : Expr}
+    (hstep : concEval fuel e = some e') :
+    ∀ {S Γ}, Subtype' S Γ e' e := by
+  induction fuel generalizing e e' with
+  | zero => simp [concEval] at hstep
+  | succ n ih =>
+    intro S Γ
+    match e, hstep with
+    | .bvar _, h => simp [concEval] at h
+    | .lam _ _, h | .type, h | .iota _ _, h | .fix _ _, h =>
+      simp only [concEval, Option.some.injEq] at h
+      exact h ▸ .refl _
+    | .asc t _ty, h =>
+      simp only [concEval] at h
+      exact .asc_R (ih h)
+    | .letE v body, h =>
+      simp only [concEval] at h
+      -- `v' ← concEval n v; e' ← concEval n (body.subst 0 v')`.
+      -- IH₂ gives `e' ⊑ body.subst 0 v'`; need
+      -- `body.subst 0 v' ⊑ body.subst 0 v` from IH₁ (`v' ⊑ v`)
+      -- via `subst_resp_equiv`, then `.letE_R`.
+      sorry
+    | .app f a, h =>
+      simp only [concEval] at h
+      -- Splits on `concEval n f` (`.lam`/`.iota`/`.fix`/other);
+      -- each constructive head needs `subst_resp_equiv` for the
+      -- argument; the residual `.app fVal aVal` head is
+      -- `.app_cong (ih …) (ih …) (sorry : a ⊑ a')` — the third
+      -- `app_cong` premise is the *converse* refinement, which
+      -- needs the `e ⊑ e'` direction of `concEval_equiv`.
+      sorry
+
+/-- Type preservation under concrete evaluation: if `e ⊑ τ`
+declaratively and `concEval e ⇓ e'`, then `e' ⊑ τ`. Direct
+from `concEval_refines` and transitivity. -/
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
     (hty : Subtype' [] [] e τ)
     (hstep : concEval fuel e = some e') :
-    Subtype' [] [] e' τ := by
-  sorry
+    Subtype' [] [] e' τ :=
+  .trans (concEval_refines hstep) hty
 
 /-- Composing the above: the user-facing guarantee. -/
 theorem soundness
