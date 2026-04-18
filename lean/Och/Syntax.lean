@@ -429,6 +429,24 @@ def closedAt (n : Nat) : Expr → Bool
   | .fix ann body => closedAt n ann && closedAt (n + 1) body
   | .letE val body => closedAt n val && closedAt (n + 1) body
 
+/-- `usesBvar e i` is true iff `e` actually contains `.bvar i`
+    (modulo binder depth). Unlike `closedAt`, this is precise:
+    `closedAt` only bounds the *maximum* free index, so an
+    expression that references bvar 0 and bvar 2 but not bvar 1
+    has `closedAt 3` but `usesBvar · 1 = false`. Used by
+    `Closure.mk'` to mask captured env entries the closure body
+    can never reach, so structural `Val.beq` identifies closures
+    that differ only in dead env slots. -/
+def usesBvar : Expr → Nat → Bool
+  | .bvar k, i => k == i
+  | .type, _ => false
+  | .lam dom body, i => dom.usesBvar i || body.usesBvar (i + 1)
+  | .app f a, i => f.usesBvar i || a.usesBvar i
+  | .asc t ty, i => t.usesBvar i || ty.usesBvar i
+  | .iota ann body, i => ann.usesBvar i || body.usesBvar (i + 1)
+  | .fix ann body, i => ann.usesBvar i || body.usesBvar (i + 1)
+  | .letE val body, i => val.usesBvar i || body.usesBvar (i + 1)
+
 /-- Shifting preserves closedAt: if e has free vars < n, then
     e.shift d c has free vars < n + d (for c ≤ n). -/
 theorem shift_closedAt (e : Expr) (n d c : Nat) (hc : c ≤ n)

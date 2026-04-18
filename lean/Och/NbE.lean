@@ -66,11 +66,33 @@ def bvarBound : Expr → Nat
   | .app f a => max (bvarBound f) (bvarBound a)
   | .asc t ty => max (bvarBound t) (bvarBound ty)
 
+/-- Mask env entries the body never references with `.type`.
+    `env[j]` is reached by `bvar (j+1)` in `body` (since `bvar 0`
+    is the binder itself). Replacing dead slots with a fixed
+    value lets structural `Val.beq` identify closures that
+    differ only in irrelevant captured locals — e.g. dNat's
+    inner `let dsucc = …` captures the outer ι's fresh `self`
+    even though its body never uses it, so each structural
+    open at a different depth would otherwise produce a
+    distinct `Val`, defeating the seen-set. -/
+def Closure.maskEnv (body : Expr) : Nat → Env → Env
+  | _, [] => []
+  | j, v :: rest =>
+      (if body.usesBvar j then v else .type) ::
+        maskEnv body (j + 1) rest
+
+@[simp] theorem Closure.maskEnv_length (body : Expr) (j : Nat) (ρ : Env) :
+    (Closure.maskEnv body j ρ).length = ρ.length := by
+  induction ρ generalizing j with
+  | nil => rfl
+  | cons v rest ih => simp [maskEnv, ih]
+
 /-- Build a closure, trimming `env` to the prefix `body` can
-    actually reach once opened. `bvar 0` in `body` is bound by
-    the open itself; `bvar (k+1)` reaches `env[k]`. -/
+    actually reach once opened, then masking dead slots within
+    that prefix. `bvar 0` in `body` is bound by the open itself;
+    `bvar (k+1)` reaches `env[k]`. -/
 def Closure.mk' (body : Expr) (env : Env) : Closure :=
-  ⟨body, env.take (bvarBound body - 1)⟩
+  ⟨body, Closure.maskEnv body 1 (env.take (bvarBound body - 1))⟩
 
 def Val.isNeutral : Val → Bool
   | .neutral _ => true

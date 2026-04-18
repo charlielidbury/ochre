@@ -942,8 +942,22 @@ theorem Closure.mk'_body_closed (body : Expr) (ρ : Env)
     (hρ : bvarBound body ≤ ρ.length + 1) :
     body.closedAt ((Closure.mk' body ρ).env.length + 1) = true := by
   unfold Closure.mk'
-  simp only [List.length_take]
+  simp only [Closure.maskEnv_length, List.length_take]
   exact Expr.closedAt_mono (closedAt_bvarBound body) (by omega)
+
+/-- Masking dead env slots is invisible to `eval` of the same
+body under an extra binder: `body` only references `bvar 0`
+(the prepended `v`) and indices `i+1` for which
+`body.usesBvar (i+1) = true`, which are exactly the slots
+`maskEnv body 1` leaves alone. Follows from `eval_env_agree`
+(the per-index agreement form) once that's stated for
+`usesBvar` rather than `bvarBound`. Sorried pending that
+companion lemma; currently only used inside the
+already-sorried `eval_realises` `.lam`/`.iota`/`.fix` cases. -/
+theorem eval_cons_maskEnv {fuel unf body v ρ} :
+    eval fuel unf (v :: Closure.maskEnv body 1 ρ) body
+    = eval fuel unf (v :: ρ) body := by
+  sorry
 
 private theorem substEnv_bvar_eq (γ : List Expr) (k : Nat) :
     Expr.substEnv γ (.bvar k) = (γ[k]?).getD (.bvar k) := by
@@ -1227,7 +1241,7 @@ theorem eval_env_agree :
         rw [hd]
         have hcl : Closure.mk' bdy ρ₁ = Closure.mk' bdy ρ₂ := by
           simp only [Closure.mk']
-          congr 1
+          congr 2
           exact List.take_eq_of_agree
             (fun k hk => hagree k
               (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
@@ -1240,7 +1254,7 @@ theorem eval_env_agree :
         rw [hd]
         have hcl : Closure.mk' bdy ρ₁ = Closure.mk' bdy ρ₂ := by
           simp only [Closure.mk']
-          congr 1
+          congr 2
           exact List.take_eq_of_agree
             (fun k hk => hagree k
               (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
@@ -1253,7 +1267,7 @@ theorem eval_env_agree :
         rw [hd]
         have hcl : Closure.mk' bdy ρ₁ = Closure.mk' bdy ρ₂ := by
           simp only [Closure.mk']
-          congr 1
+          congr 2
           exact List.take_eq_of_agree
             (fun k hk => hagree k
               (Nat.lt_of_lt_of_le hk (Nat.le_max_right _ _)))
@@ -1517,6 +1531,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             --   eval fuelω 4 (v' :: ρ.take (bvarBound bExpr - 1)) bExpr`.
             unfold Closure.openω Closure.open Closure.mk' at hopen
             simp only [] at hopen
+            rw [eval_cons_maskEnv] at hopen
             -- `REnv n' d (v' :: ρ.take j) (e' :: ρe.take j)`:
             --   `REnv_mono` drops `henv` from `k+1` to `n'`;
             --   `REnv_take` trims to `j`; `REnv_cons` adds
@@ -1722,20 +1737,28 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
               exact ihm k (Nat.lt_succ_self k) heval'
                         (REnv_mono (Nat.le_succ k) henv)
             rw [hsubst] at hRself
-            -- Trimmed env (cl.env = ρ.take (bvarBound bExpr - 1))
-            -- realises the corresponding ρe-prefix.
-            have henv_trim : REnv k d cl.env
+            -- Trimmed env realises the corresponding ρe-prefix.
+            -- After closure-masking, `cl.env = maskEnv bExpr 1
+            -- (ρ.take j)`; we work at the unmasked `ρ.take j`
+            -- and bridge `hopen` via `eval_cons_maskEnv`.
+            let ρtrim := ρ.take (bvarBound bExpr - 1)
+            have henv_trim : REnv k d ρtrim
                                (ρe.take (bvarBound bExpr - 1)) :=
               REnv_take _ (REnv_mono (Nat.le_succ k) henv)
-            -- Extended env: (self :: cl.env) realises
+            -- Extended env: (self :: ρtrim) realises
             -- (.iota anne bode :: ρe.take …).
             have henv_ext :=
               REnv_cons (v := .iota annV cl)
                         (e := .iota anne bode) henv_trim hRself
             -- hopen unfolds to an `eval` we can feed to IH_m.
             have hopen' :
-                eval fuelω 4 (.iota annV cl :: cl.env) bExpr
+                eval fuelω 4 (.iota annV cl :: ρtrim) bExpr
+                  = some r := by
+              have h : eval fuelω 4 (.iota annV cl :: cl.env) bExpr
                   = some r := hopen
+              simp only [cl, Closure.mk'] at h
+              rw [eval_cons_maskEnv] at h
+              exact h
             -- IH_m on bExpr under the extended env, fuel=fuelω.
             have hRr : R k d r (Expr.substEnv
                 (.iota anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
@@ -1794,15 +1817,21 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
               exact ihm k (Nat.lt_succ_self k) heval'
                         (REnv_mono (Nat.le_succ k) henv)
             rw [hsubst] at hRself
-            have henv_trim : REnv k d cl.env
+            let ρtrim := ρ.take (bvarBound bExpr - 1)
+            have henv_trim : REnv k d ρtrim
                                (ρe.take (bvarBound bExpr - 1)) :=
               REnv_take _ (REnv_mono (Nat.le_succ k) henv)
             have henv_ext :=
               REnv_cons (v := .«fix» annV cl)
                         (e := .fix anne bode) henv_trim hRself
             have hopen' :
-                eval fuelω 4 (.«fix» annV cl :: cl.env) bExpr
+                eval fuelω 4 (.«fix» annV cl :: ρtrim) bExpr
+                  = some r := by
+              have h : eval fuelω 4 (.«fix» annV cl :: cl.env) bExpr
                   = some r := hopen
+              simp only [cl, Closure.mk'] at h
+              rw [eval_cons_maskEnv] at h
+              exact h
             have hRr : R k d r (Expr.substEnv
                 (.fix anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
               ihm k (Nat.lt_succ_self k) hopen' henv_ext
