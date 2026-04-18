@@ -1066,7 +1066,8 @@ each fork commit for traceability.
 - **`Subtype'` congruence constructors**
   (`subtype-cong-ctors-fork`): `.iota_cong`/`.fix_cong`/
   `.letE_cong` added (vary both ann and body).
-  `Equiv.subst_resp` and `R_resp_Equiv` **proven**;
+  `Equiv.subst_resp` and `R_resp_Equiv` closed (no leaf
+  `sorry`; both reduce to the pre-existing `Equiv.shift`);
   `Subtype'.subst_body` removed (subsumed). SoundnessProof
   11 → 8.
 - **`ctx_extend_at` deepened** (`ctx-extend-fork`): 16/19

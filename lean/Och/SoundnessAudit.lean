@@ -336,20 +336,40 @@ accepted `fix x:Nat_. unit_` at `Nat_` even though
 while structuring `tyInfer_sound_closed` (Soundness.lean) —
 the `.fix`/`.iota` case had no premise to discharge.
 
-**Fix**: the arm now also runs `tyCheck (Γ.push annV)
-(fresh :: ρ) body annV` (the standard fix/iota formation
-rule: `self : ann ⊢ body : ann`). With the body check in
-place, `tyInfer_sound_closed`'s `.fix`/`.iota` case has
-the IH it needs.
+**Fix**: a `.fix`/`.iota` arm in `tyCheck` that checks
+`subCheckVal (eval e) expected` directly (bypassing the
+annotation-trusting `tyInfer` path). `tyCheck`'s `.letE`
+arm, which consults `tyInfer val` to get the binder type,
+now also verifies `tyCheck val valTy` (which routes through
+the new `.fix`/`.iota` arm) before trusting it. `tyInfer`
+itself is unchanged — `.app`-chains with fix heads
+(`dadd n m`, `appendArrays …`) need it to return the
+annotation so the head's domain/codomain can be computed,
+and adding a verification step there regressed `appendVec`
+in two attempts (a recursive body-check via `tyCheck`
+cascades; a self-`subCheckVal` check fails on nested-fix
+annotations that are fresh neutrals).
 -/
 
-/-- Pre-fix, both lines below were `.ok true`. -/
+/-- Pre-fix, the four false-lines below were `.ok true`. -/
 theorem a9_fixIotaBodyChecked :
-    (NbE.typeCheck 200 (.fix Nat_ unit_) Nat_).isOk = false ∧
-    (NbE.typeCheck 200 (.iota Nat_ unit_) Nat_).isOk = false ∧
-    -- positive control: a *well-formed* fix still checks.
-    NbE.typeCheck 200 (.fix Nat_ zero_) Nat_ = .ok true := by
+    NbE.typeCheck 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
+    NbE.typeCheck 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
+    -- The `.letE`/`.app`-head paths:
+    NbE.typeCheck 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Nat_
+      = .ok false ∧
+    NbE.typeCheck 200 (.app (.fix Nat_ unit_) zero_) Nat_
+      = .ok false ∧
+    -- positive controls: a *well-formed* fix still checks,
+    -- and the let-bound ill-formed fix checks at its *actual*
+    -- type (the value unfolds to `unit_`):
+    NbE.typeCheck 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
+    NbE.typeCheck 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Unit_
+      = .ok true := by
   native_decide
+-- Regression for nested-fix-annotation programs (`appendVec`)
+-- lives in `Och/Std/Vec.lean:159` — two earlier A9 attempts
+-- broke it, so it's the canary.
 
 ## Summary
 

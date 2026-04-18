@@ -98,18 +98,16 @@ mutual
             .error s!"tyInfer: ascription {repr τ} rejected"
           else .ok (some τV)
       | .fix ann _ | .iota ann _ =>
-          -- The annotation is the *claimed* type. Returning it
-          -- here is what lets `.app`-chains with fix heads (e.g.
-          -- `dadd n m`, `appendArrays …`) infer through. It is
-          -- *not* sound on its own for the final accept —
-          -- `(fix x:Nat. unit_)` would yield `Nat` here even
-          -- though the body has type `Unit`. A9: `tyCheck`'s
-          -- `.fix`/`.iota` arm therefore bypasses
-          -- `tyCheckFallback`'s tyInfer-path and checks
-          -- `eval e ⊑ expected` directly (which unfolds the fix
-          -- and exposes the body). `tyInfer_sound_closed` for
-          -- this case is correspondingly stated as a property of
-          -- the *value*, not the annotation.
+          -- A9: the annotation is the *claimed* type, returned
+          -- so `.app`-chains with fix heads (`dadd n m`,
+          -- `appendArrays …`) can infer through. It is *not*
+          -- sound on its own — `(fix x:Nat. unit_)` yields `Nat`
+          -- here even though the body has type `Unit`. Callers
+          -- that need a verified type must go through
+          -- `tyCheck`'s `.fix`/`.iota` arm (which checks
+          -- `subCheckVal (eval e) expected`); the `.letE` arm
+          -- of `tyCheck` does exactly that after consulting
+          -- `tyInfer val`. SoundnessAudit A9.
           match eval fuel unfBound ρ ann with
           | none => .error "tyInfer: fix/iota ann eval"
           | some annV => .ok (some annV)
@@ -218,7 +216,18 @@ mutual
           let valTy? ← tyInfer fuel Γ ρ val
           let some valV := eval fuel unfBound ρ val
             | .error "tyCheck: let val eval"
-          let valTy := valTy?.getD valV
+          -- A9: `tyInfer`'s fix/ι arm returns the *annotation*,
+          -- which is only sound if the body is well-formed.
+          -- Verify via `tyCheck val valTy` (which, for fix/ι,
+          -- hits the eval-then-`subCheckVal` arm below). On
+          -- failure, fall back to `valV` itself as the binder
+          -- type — the same singleton-style binding as the
+          -- `valTy? = none` path.
+          let valTy ← match valTy? with
+            | none => pure valV
+            | some t => do
+              let okV ← tyCheck fuel Γ ρ val t
+              pure (if okV then t else valV)
           tyCheck fuel (Γ.push valTy) (valV :: ρ) body expected
       | .asc e' τ => do
           let some τV := eval fuel unfBound ρ τ
