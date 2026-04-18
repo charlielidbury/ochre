@@ -131,6 +131,18 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
       Subtype' ((.iota ann body, c) :: S) Γ
         (body.subst 0 (.iota ann body)) c →
       Subtype' S Γ (.iota ann body) c
+  /-- [unfoldIotaR]: `a ⊑ ι A. body` if `a ⊑ body[self := ι A. body]`.
+  Symmetric to `unfold_iota_L`; together they give
+  `ι A. body ≡ body[self := ι A. body]` (the ι fixpoint
+  equation). `iota_intro` is the *algorithmic* form (it
+  additionally checks `a ⊑ A`, which the algorithm needs
+  for the seen-set discipline) but is strictly stronger
+  than this rule; both are sound since semantically
+  `ι A. body` *is* its one-step unfolding. -/
+  | unfold_iota_R {S Γ a ann body} :
+      Subtype' ((a, .iota ann body) :: S) Γ
+        a (body.subst 0 (.iota ann body)) →
+      Subtype' S Γ a (.iota ann body)
   /-- [unfoldFixL]: `fix A. body ⊑ c` if `body[self := fix A. body] ⊑ c`. -/
   | unfold_fix_L {S Γ ann body c} :
       Subtype' ((.fix ann body, c) :: S) Γ
@@ -208,6 +220,12 @@ theorem Subtype'.weaken {S S' Γ a b}
       | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
   | unfold_fix_R _ ih =>
       refine .unfold_fix_R (ih ?_)
+      intro p hp
+      cases hp with
+      | head => exact List.mem_cons_self ..
+      | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
+  | unfold_iota_R _ ih =>
+      refine .unfold_iota_R (ih ?_)
       intro p hp
       cases hp with
       | head => exact List.mem_cons_self ..
@@ -507,6 +525,14 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     have := ih Γpfx rfl
     simpa [List.map_cons, Expr.shift,
            Expr.subst_shift_swap] using this
+  | @unfold_iota_R S' Γ' a' ann body _ ih =>
+    intro Γpfx hpfx
+    subst hpfx
+    simp only [Expr.shift]
+    refine .unfold_iota_R ?_
+    have := ih Γpfx rfl
+    simpa [List.map_cons, Expr.shift,
+           Expr.subst_shift_swap] using this
   | @beta_L S' Γ' dom body arg b' _ ih =>
     intro Γpfx hpfx
     subst hpfx
@@ -683,6 +709,10 @@ theorem Subtype'.narrow_at {S₀ Γ domA domB}
   | unfold_fix_R _ ih =>
       intro Γ' hΔ hsub
       exact .unfold_fix_R
+        (ih Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
+  | unfold_iota_R _ ih =>
+      intro Γ' hΔ hsub
+      exact .unfold_iota_R
         (ih Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
   | beta_L _ ih => exact fun Γ' hΔ hsub => .beta_L (ih Γ' hΔ hsub)
   | beta_R _ ih => exact fun Γ' hΔ hsub => .beta_R (ih Γ' hΔ hsub)

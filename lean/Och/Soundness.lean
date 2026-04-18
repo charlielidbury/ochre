@@ -436,43 +436,19 @@ private theorem asc_erase_equiv (t ty : Expr) :
     Equiv (.asc t ty) t :=
   fun {_ _} => ⟨.asc_L (.refl _), .asc_R (.refl _)⟩
 
-/-- One `.iota`-unfold step is an `Equiv`. The forward
-direction is `.unfold_iota_L (.refl _)`. The backward
-direction goes via `.iota_intro`, whose *first* premise
-(`body[self↦ι] ⊑ ann`) is not refl — it says the unfolded
-form inhabits the annotation, which holds for *well-formed*
-iotas but is not derivable from the iota Expr alone. The
-second premise closes coinductively (`.hyp` at the extended
-seen-set, then `subst_resp`).
-
-So this lemma reduces to: every `.iota ann body` that
-appears as a `concEval` result has `body[self↦ι] ⊑ ann`.
-For `concEval_equiv` below that's vacuously true if the
-input was `typeCheck`-accepted (the `tyCheck` `.iota` arm
-verifies it via `subCheckVal`), but `concEval_equiv` is
-stated unconditionally on the input, so this stays
-sorried. The `.fix` analogue (`Equiv.fix_unfold`,
-SoundnessProof.lean) has both directions as single
-constructors — fix is symmetric where iota is not. -/
-private theorem iota_unfold_equiv (ann body : Expr) :
-    Equiv (.iota ann body) (body.subst 0 (.iota ann body)) := by
-  refine fun {S Γ} => ⟨.unfold_iota_L (.refl _), ?_⟩
-  -- `body[self↦ι] ⊑ ι` at `S`. Via `.iota_intro` (extends `S`):
-  --   premise 1: `body[ι] ⊑ ann` at `S' := (body[ι], ι) :: S`.
-  --     ← residual; needs the iota to be well-annotated.
-  --   premise 2: `body[ι] ⊑ body[body[ι]]` at `S'`.
-  --     ← `(Equiv.subst_resp body … 0).1` from
-  --       `Equiv ι body[ι]` at `S'`, whose backward half is
-  --       `.hyp (head)` and forward half is
-  --       `Subtype'.weaken … (.unfold_iota_L .refl)`.
-  sorry
+-- One `.iota`-unfold step is `NbE.Equiv.iota_unfold`
+-- (SoundnessProof.lean), enabled by `Subtype'.unfold_iota_R`.
+-- The earlier `iota_unfold_equiv` (sorried — its backward
+-- direction went via `.iota_intro` whose `body[ι] ⊑ ann`
+-- premise is not derivable without a well-formedness
+-- assumption) is removed.
 
 /-- `concEval` produces a declarative *equivalent* of its
 input (both directions). With `Equiv.subst_resp` (no leaf
 sorry, SoundnessProof.lean) the `.letE` and `.app` cases
 that previously needed only the forward direction now get
 both from the IH. The `.app`-with-`.iota`-head case is the
-sole residual, reducing to `iota_unfold_equiv` above.
+sole residual, now closed via `Equiv.iota_unfold`.
 
 `concEval_refines` (the forward half) and
 `concEval_preservation` derive directly. -/
@@ -520,11 +496,11 @@ theorem concEval_equiv
           (Equiv.trans (Equiv.subst_resp fbody (ih ha) 0)
             (Equiv.trans (Equiv.symm (Equiv.beta dom fbody a))
               (Equiv.app (ih hf) (Equiv.refl a))))
-      -- .iota head: needs `iota_unfold_equiv` (sorried above)
+      -- .iota head: via `Equiv.iota_unfold`
       · next ann ibody a' hf ha =>
         exact Equiv.trans (ih hstep)
           (Equiv.app
-            (Equiv.trans (Equiv.symm (iota_unfold_equiv ann ibody))
+            (Equiv.trans (Equiv.symm (Equiv.iota_unfold ann ibody))
                          (ih hf))
             (ih ha))
       -- .fix head: `Equiv.fix_unfold` (proven, SoundnessProof)

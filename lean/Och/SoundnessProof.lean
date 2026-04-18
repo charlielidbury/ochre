@@ -1436,6 +1436,12 @@ theorem Equiv.fix_unfold (ann body : Expr) :
     Equiv (.fix ann body) (body.subst 0 (.fix ann body)) :=
   fun {_ _} => ⟨.unfold_fix_L (.refl _), .unfold_fix_R (.refl _)⟩
 
+/-- The ι fixpoint equation, both directions. Symmetric to
+`fix_unfold` now that `Subtype'.unfold_iota_R` exists. -/
+theorem Equiv.iota_unfold (ann body : Expr) :
+    Equiv (.iota ann body) (body.subst 0 (.iota ann body)) :=
+  fun {_ _} => ⟨.unfold_iota_L (.refl _), .unfold_iota_R (.refl _)⟩
+
 /-- Extending a realised environment with a realised pair. -/
 theorem REnv_cons {n d ρ ρe v e}
     (henv : REnv n d ρ ρe) (hv : R n d v e) :
