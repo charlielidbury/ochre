@@ -67,15 +67,22 @@ example : subCheck 1000
 private def testVec1 := och{ mkVec Nat_ done_ (pair_ Nat_ Unit_ zero_ unit_) }
 
 -- Abstract vector unpack. Ascription widens `testVec1` to its type
--- `Vec Nat_ = Sigma dNat (λn. Array_ n Nat_) = λX. λk. X`, so applying
--- the motive `Nat_` and the continuation gives back the motive, `Nat_`.
--- The c061a3b dNat port changed the expectation to `dNat` (n's type),
--- but the result is the *motive* X, not the type of the bound `n`;
--- under Church-Nat the two coincided, masking the distinction. Getting
--- `dNat` here would need Sigma-as-a-type to apply `k` to abstract
--- witnesses, which is a Sigma-encoding question, not a checker gap.
-example : absEvalVal (och{ (testVec1 : Vec Nat_) Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
-  = .ok ⟨Nat_⟩ := by native_decide
+-- After A8, `(testVec1 : Vec Nat_)` evaluates to `testVec1`
+-- (asc is value-transparent), so eliminating with the
+-- continuation `λn. λarr. n` gives the *concrete* length
+-- witness `done_`, not the motive `Nat_`. The pre-A8 test
+-- here asserted `= .ok ⟨Nat_⟩`, relying on the unsound
+-- widening where `(testVec1 : Vec Nat_)` evaluated to the
+-- *type* `Vec Nat_` and `(Vec Nat_) X k = X`. That widening
+-- accepted `Nat_ ⊑ (zero_:Nat_)` (subject-reduction failure;
+-- SoundnessAudit A8). Now we check the result is the
+-- concrete length, and that it inhabits `dNat`.
+example : subCheck 200
+  (och{ (testVec1 : Vec Nat_) dNat (λn:dNat. λarr:(Array_ n Nat_). n) })
+  done_ = .ok true := by native_decide
+example : subCheck 200
+  (och{ (testVec1 : Vec Nat_) dNat (λn:dNat. λarr:(Array_ n Nat_). n) })
+  dNat = .ok true := by native_decide
 
 -- Rewrapped abstract vector ⊑ Vec Nat. The neutral-head gate leaves
 -- `Array_ n Nat_` (abstract `n`) stuck so the motive normalises, and
