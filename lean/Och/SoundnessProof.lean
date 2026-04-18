@@ -1868,12 +1868,15 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
                 -- (body'.subst 0 fe) ae ≡ .app fe ae`.
                 have h_iota_unfold_equiv :
                     Equiv (body'.subst 0 (f.substEnv ρe))
-                          (f.substEnv ρe) := by
-                  -- Needs `Equiv.subst_resp` (subst preserves
-                  -- Equiv on the substituend) plus
-                  -- `Equiv.iota_unfold : .iota a b ≡
-                  -- b.subst 0 (.iota a b)` — neither stated yet.
-                  sorry
+                          (f.substEnv ρe) :=
+                  -- `fe ≡ ι ann' body'` (heqf), so
+                  -- `body'[fe] ≡ body'[ι ann' body']` (subst_resp)
+                  --   `≡ ι ann' body'`         (iota_unfold.symm)
+                  --   `≡ fe`                    (heqf.symm)
+                  Equiv.trans (Equiv.subst_resp body' heqf 0)
+                    (Equiv.trans (Equiv.symm
+                      (Equiv.iota_unfold ann' body'))
+                    (Equiv.symm heqf))
                 -- **OBSTRUCTION (c)**: recurse on the inner
                 -- vapp. Want: `R k d f' fe' → R (k+1) d aV ae
                 -- → vapp fuel' (unf-1) f' aV = some v →
