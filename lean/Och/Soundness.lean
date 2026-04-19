@@ -101,12 +101,14 @@ closed term gives something `Subtype'`-equivalent to the
 original. Specialises `eval_realises` + `R_quote_equiv` at
 the empty environment. -/
 theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
+    (hcl : e.closedAt 0 = true)
     (heval : eval fuel unf [] e = some v)
     {e' : Expr} (hq : quote fuelω 0 v = some e')
     {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := by
   have henv : REnv 1 0 [] [] :=
     ⟨rfl, fun _ _ hk => by simp at hk⟩
-  have hr : R 1 0 v (e.substEnv []) := eval_realises heval henv
+  have hr : R 1 0 v (e.substEnv []) :=
+    eval_realises heval henv (by simpa using hcl)
   rw [Expr.substEnv_nil] at hr
   exact R_quote_equiv Nat.one_pos hr hq
 
@@ -215,30 +217,32 @@ theorem tyInfer_sound_closed
 theorem tyCheckFallback_sound_closed
     {fuel : Nat} {e τ : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
+    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
     (_hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (hτV : eval fuel unfBound [] τ = some τV)
     (h : tyCheckFallback fuel #[] [] e τV = .ok true) :
     Subtype' [] [] e τ := by
   obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
   have hopen := tyCheckFallback_sound_open hfuel OpenCtx.empty
-    (by simpa using hqτV) h
+    (by simpa using hcle) (by simpa using hqτV) h
   exact .trans (Expr.substEnv_nil e ▸ hopen)
-    (eval_quote_equiv_closed hτV hqτV (S := []) (Γe := [])).1
+    (eval_quote_equiv_closed hclτ hτV hqτV (S := []) (Γe := [])).1
 
 /-- Closed-context `tyCheck` soundness, by
 `tyCheck_sound_open` at `OpenCtx.empty`. -/
 theorem tyCheck_sound_closed
     {fuel : Nat} {e τ : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
+    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
     (_hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (hτV : eval fuel unfBound [] τ = some τV)
     (h : tyCheck fuel #[] [] e τV = .ok true) :
     Subtype' [] [] e τ := by
   obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
   have hopen := tyCheck_sound_open hfuel OpenCtx.empty
-    (by simpa using hqτV) h
+    (by simpa using hcle) (by simpa using hqτV) h
   exact .trans (Expr.substEnv_nil e ▸ hopen)
-    (eval_quote_equiv_closed hτV hqτV (S := []) (Γe := [])).1
+    (eval_quote_equiv_closed hclτ hτV hqτV (S := []) (Γe := [])).1
 
 
 /-- The bidirectional checker is sound: if `typeCheck e τ`
@@ -258,13 +262,14 @@ inputs, `by native_decide`. -/
 theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
     (hfuel : fuel ≤ fuelω)
+    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
     (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (h : typeCheck fuel e τ = .ok true) :
     Subtype' [] [] e τ := by
   unfold typeCheck at h
   split at h
   · next τV hτV =>
-      exact tyCheck_sound_closed hfuel hnfe hnfτ hτV h
+      exact tyCheck_sound_closed hfuel hcle hclτ hnfe hnfτ hτV h
   · simp_all
 
 /-- One let-step is an `Equiv`. Both directions are single
@@ -381,11 +386,13 @@ theorem concEval_preservation
 theorem soundness
     {fuel : Nat} {e e' τ : Expr}
     (hfuel : fuel ≤ fuelω)
+    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
     (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = some e') :
     Subtype' [] [] e' τ :=
-  concEval_preservation (typeCheck_sound hfuel hnfe hnfτ hcheck) hstep
+  concEval_preservation
+    (typeCheck_sound hfuel hcle hclτ hnfe hnfτ hcheck) hstep
 
 /-!
 ## Witnesses
