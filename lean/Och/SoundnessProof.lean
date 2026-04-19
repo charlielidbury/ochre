@@ -3116,25 +3116,32 @@ theorem tyInfer_sound_open
     unfold tyInfer at h
     split at h
     -- .bvar k
-    · -- `tyInfer` returns `Γ[Γ.size-1-k]`. The conclusion
-      -- needs `(.bvar k).substEnv ρe ⊑ quote_{Γ.size}
-      -- Γ[Γ.size-1-k]`. From `hctx.hΓ` the entry quotes (at
-      -- depth `Γ.size-1-k`); `quote_depth_shift` lifts to
-      -- depth `Γ.size`, giving `τe.shift (k+1) 0`.
-      -- `Subtype'.bvar` gives `.bvar k ⊑ Γe[k].shift (k+1)
-      -- 0` — which is what we need IF `(.bvar k).substEnv
-      -- ρe = .bvar k`. After `push_fresh` chains `ρe` IS
-      -- `idEnv`-shaped so this holds; after `push_let` it
-      -- is not (`ρe[k]` is a substituted value).
-      -- **Obstruction**: `OpenCtx` needs an additional
-      -- field `hwf : ∀ k w, ρe[k]? = some w → ∃ τe,
-      -- Γe.get? k = some τe ∧ Subtype' [] Γe w (τe.shift
-      -- (k+1) 0)` — i.e., each substituted entry has its
-      -- declared context type. `push_fresh` discharges it
-      -- via `Subtype'.bvar` reflexively; `push_let` via
-      -- `letBinderType_sound_open`'s `hval_le` (which is
-      -- exactly the right shape, modulo `.shift`).
-      sorry
+    · rename_i _e' k _h'
+      simp only [Expr.closedAt, decide_eq_true_eq] at hcl
+      have hlen := hctx.hlen
+      have hk_lt : k < Γ.size := by omega
+      split at h
+      case isFalse => simp_all
+      case isTrue hidx_lt =>
+      simp only [Except.ok.injEq, Option.some.injEq] at h
+      subst h
+      -- τV = Γ[Γ.size-1-k]. From `hctx.hΓ` get its quote
+      -- at depth `Γ.size-1-k` and the matching `Γe[k]`.
+      have hΓk : Γ[Γ.size - 1 - k]? = some Γ[Γ.size - 1 - k] := by
+        simp [Array.getElem?_eq_getElem, hidx_lt]
+      obtain ⟨τe0, hΓe, hqτe0⟩ := hctx.hΓ _ _ hΓk
+      have hidx : Γ.size - 1 - (Γ.size - 1 - k) = k := by omega
+      rw [hidx] at hΓe
+      -- Lift the quote from depth `Γ.size-1-k` to `Γ.size`:
+      have hqτe := quote_depth_shift_n (k+1) hqτe0
+      have hdepth : Γ.size - 1 - k + (k + 1) = Γ.size := by omega
+      rw [hdepth] at hqτe
+      -- The substituted bvar `(.bvar k).substEnv ρe = ρe[k]`
+      -- has its declared type by `hctx.hwf`:
+      refine ⟨τe0.shift (k+1) 0, hqτe, ?_⟩
+      simp only [Expr.substEnv, hcl, ↓reduceIte,
+                 getElem!_pos ρe k hcl]
+      exact hctx.hwf k _ τe0 (List.getElem?_eq_getElem hcl) hΓe
     -- .type
     · simp only [Except.ok.injEq, Option.some.injEq] at h
       subst h
@@ -3207,10 +3214,37 @@ theorem tyInfer_sound_open
       -- `quote_open_subst` — root #2.
       sorry
     -- .letE val body
-    · -- Mirror of `tyCheck_sound_open`'s `.letE` arm:
-      -- `letBinderType_sound_open` gives the binder; IH on
-      -- `body` at `push_let`. Same shift obstruction as
-      -- there.
+    · rename_i _e' val body _h'
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      obtain ⟨hcl_val, hcl_body⟩ := hcl
+      simp only [bind, Except.bind] at h
+      split at h
+      · simp_all
+      next valpair hletB =>
+      obtain ⟨valV, valTy⟩ := valpair
+      -- Mirror of `tyCheck_sound_open`'s `.letE`:
+      have ⟨hev, valTye, hqValTy, hval_le⟩ :=
+        letBinderType_sound_open hfuel' hctx hcl_val hletB
+      have hctx' :=
+        hctx.push_let (val := val) hfuel' hev hcl_val hqValTy hval_le
+      have hIH :=
+        tyInfer_sound_open hfuel' hctx'
+          (by simpa [List.length_map] using hcl_body)
+          h
+      obtain ⟨τe', hqτe', hsub'⟩ := hIH
+      -- `hqτe' : quote_{Γ.size+1} τV = some τe'` and
+      -- `hsub' : (body.substEnv ρe') ⊑ τe'` at
+      -- `(valTye :: Γe)`. Goal needs `quote_{Γ.size} τV` —
+      -- but `τV`'s neutrals reference only levels `<
+      -- Γ.size` (the let-bound entry is concrete `valV`,
+      -- not fresh). So `τe'` should be the shift of some
+      -- `τe` at depth `Γ.size`. Recovering that requires a
+      -- "no-fresh-neutral" side-condition or downshift
+      -- lemma — same `.letE` shift obstruction as
+      -- `tyCheck_sound_open .letE` (route (a) unshift via
+      -- `ctx_extend` inverse). With `τe` in hand, conclude
+      -- via `Subtype'.letE_L` after relating `body.substEnv
+      -- ρe'` to `(.letE val body).substEnv ρe`'s body.
       sorry
 termination_by (fuel, 0)
 
