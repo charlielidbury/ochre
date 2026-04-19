@@ -2713,26 +2713,52 @@ theorem OpenCtx.empty : OpenCtx #[] [] [] [] where
   hρq := fun _ _ hk => by simp at hk
   henv := ⟨rfl, fun _ _ hk => by simp at hk⟩
 
-/-- Open `eval_quotable`. Stated here so the open theorems
-can use it without round-tripping through `Soundness.lean`
-(which imports this file).
-
-Per DECISION-LOG 2026-04-19 (eval-quotable fork), the
-unconditional form is **false** — closures with
-un-evaluated bodies can need arbitrary fuel to quote. The
-correct form takes `(hnf : (nf fuelω e).isSome)` as a side
-condition (see Soundness.lean's `eval_quotable`); the open
-analogue would need each `ρ` entry's source to also have
-an `nf`-witness, which `hρq` already approximates. Left in
-the unconditional form here pending the parent's
-threading of `hnf` through `OpenCtx`. -/
+/-- Open `eval_quotable`, with the `hnfq` side condition
+that makes it provable. The previous `hρ`-only form is
+**false** (DECISION-LOG 2026-04-19): `hρ` is vacuous at
+empty `ρ`, and `eval 2 _ [] (.lam .type huge)` succeeds at
+fuel 2 while `quoteClosure` re-evals `huge` unboundedly.
+With `hnfq` the proof is `eval_fuel_mono`-transport, same
+as `quote_total_on_eval`. -/
 theorem eval_quotable_open {fuel unf d : Nat} {ρ : Env}
     {e : Expr} {v : Val}
-    (hρ : ∀ (k : Nat) (w : Val), ρ[k]? = some w →
-          ∃ we, quote fuelω d w = some we)
+    (hfuel : fuel ≤ fuelω)
+    (hnfq : ((eval fuelω unf ρ e).bind (quote fuelω d)).isSome)
     (heval : eval fuel unf ρ e = some v) :
     ∃ ve, quote fuelω d v = some ve := by
+  rw [eval_fuel_mono hfuel heval] at hnfq
+  simp only [Option.some_bind] at hnfq
+  exact Option.isSome_iff_exists.mp hnfq
+
+/-- The `hnfq` evidence each `OpenCtx.eval_quotes` call site
+needs. This is the open-Γ analogue of the `(nf fuelω
+e).isSome` side condition in `quote_total_on_eval`
+(Soundness.lean) — i.e., "evaluating `e` under `ρ` and
+quoting at depth `Γ.size` succeeds within `fuelω`". It is
+**not** derivable from `OpenCtx` alone (the
+closure-body-fuel counterexample). The closed corollaries
+in `Soundness.lean` thread `hnfe`/`hnfτ` for the
+*top-level* `e` and `τ`; the open form additionally needs
+it for each *type-position sub-expression* (`.asc`'s `τ0`,
+`.letE`'s `val` via `letBinderType`). The proper closing
+threads an `OpenNf`-bundle through each `*_sound_open`
+theorem so each recursive call carries its sub-term's
+evidence; deferred until the bundle shape is fixed (the
+`.lam`/`.letE` arms — currently sorried — determine which
+sub-evals it must cover). -/
+theorem openNf_holds {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
+    {fuel unf e v} (_hfuel : fuel ≤ fuelω)
+    (_heval : eval fuel unf ρ e = some v) :
+    ((eval fuelω unf ρ e).bind (quote fuelω Γ.size)).isSome := by
   sorry
+
+/-- Convenience wrapper: every `eval`-result under an
+`OpenCtx` quotes (modulo `openNf_holds`). -/
+theorem OpenCtx.eval_quotes {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
+    {fuel unf e v} (hfuel : fuel ≤ fuelω)
+    (heval : eval fuel unf ρ e = some v) :
+    ∃ ve, quote fuelω Γ.size v = some ve :=
+  eval_quotable_open hfuel (openNf_holds hctx hfuel heval) heval
 
 /-- Lift each `ρ`-entry's quote-witness to depth `d+1`. -/
 private theorem hρq_lift {d : Nat} {ρ : Env}
@@ -2812,8 +2838,8 @@ via `eval_realises` (giving `R 1 d valV (val.substEnv
 ρe)`), `R_depth_lift` (lifting to `d+1`), `REnv_depth_lift`
 (lifting the tail), and `REnv_cons` (assembling). -/
 theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
-    {fuel unf : Nat} {val : Expr} {valV valTy : Val}
-    {valTye : Expr}
+    {fuel unf : Nat} (hfuel : fuel ≤ fuelω)
+    {val : Expr} {valV valTy : Val} {valTye : Expr}
     (hev : eval fuel unf ρ val = some valV)
     (hqτ : quote fuelω (Γ.size + 1) valTy = some valTye) :
     OpenCtx (Γ.push valTy) (valV :: ρ)
@@ -2827,9 +2853,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     | zero =>
         simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
         subst hk
-        -- valV quotes at d (via eval_quotable_open) → at d+1
-        -- via quote_depth_shift.
-        obtain ⟨qe, hqe⟩ := eval_quotable_open hctx.hρq hev
+        obtain ⟨qe, hqe⟩ := hctx.eval_quotes hfuel hev
         exact ⟨qe.shift 1 0,
           by simpa [Array.size_push] using quote_depth_shift hqe⟩
     | succ m =>
@@ -2837,9 +2861,8 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         have h := hρq_lift (d := Γ.size) hctx.hρq m v hk
         simpa [Array.size_push] using h
   henv := by
-    -- R 1 d valV (val.substEnv ρe), then depth-lift.
     have hRval := eval_realises hev hctx.henv
-    obtain ⟨qe, hqe⟩ := eval_quotable_open hctx.hρq hev
+    obtain ⟨qe, hqe⟩ := hctx.eval_quotes hfuel hev
     have hRval' := R_depth_lift hqe hRval
     have htail := REnv_depth_lift hctx.henv hctx.hρq
     simpa [Array.size_push] using REnv_cons htail hRval'
@@ -2951,8 +2974,7 @@ theorem tyCheckFallback_sound_open
         simp only [] at h
         split at h
         · next eV heV =>
-          obtain ⟨eVe, hqeV⟩ :=
-            eval_quotable_open (d := Γ.size) hctx.hρq heV
+          obtain ⟨eVe, hqeV⟩ := hctx.eval_quotes hfuel heV
           have h_e_eVe := (hctx.eq heV hqeV).2
           have hsub :=
             subCheckVal_sound_open hfuel hctx.hΓ h hqeV hqτ
@@ -3037,8 +3059,7 @@ theorem tyCheck_sound_open
             simp only [Bool.not_true, Bool.false_eq_true,
                        ↓reduceIte, pure, Except.pure,
                        bind, Except.bind] at h
-            obtain ⟨τ0e, hqτ0V⟩ :=
-              eval_quotable_open (d := Γ.size) hctx.hρq hτ0V
+            obtain ⟨τ0e, hqτ0V⟩ := hctx.eval_quotes hfuel' hτ0V
             -- IH (same Γ/ρ): `(e0.substEnv ρe) ⊑ τ0e`.
             have h_e0_τ0e :=
               tyCheck_sound_open hfuel' hctx hqτ0V hinner
@@ -3055,8 +3076,7 @@ theorem tyCheck_sound_open
     | (rename_i ann body
        split at h
        · rename_i eV hev
-         obtain ⟨ee, hqeV⟩ :=
-           eval_quotable_open (d := Γ.size) hctx.hρq hev
+         obtain ⟨ee, hqeV⟩ := hctx.eval_quotes hfuel' hev
          have hsub :=
            subCheckVal_sound_open hfuel' hctx.hΓ h hqeV hqτ
          have he_ee := (hctx.eq hev hqeV).2
