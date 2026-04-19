@@ -3,6 +3,47 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-18: `R` must expose closure environments (root #2 resolution route)
+
+**What:** `R`'s `.lam`/`.iota`/`.fix` clauses change from a pure
+Kripke quantification (`∀ va ea, R n d va ea → R n (d+1) (vapp …) …`)
+to additionally expose the captured environment:
+`∃ ρe', REnv n d cl.env ρe' ∧ Equiv e (.lam … (cl.body.substEnv …))`.
+Termination shifts to `(n, sizeOf v)` lex so `REnv n d cl.env`
+referencing `R n` at sub-Vals is well-founded.
+
+**Why:** Both the "Ahmed-style `R(min m fuel)`" and the
+mutual-`vapp_realises` routes lose exactly one step-index at the
+`.app`/closure boundary (documented at SoundnessProof.lean:1495-1530
+in 92a1bd4). The Kripke clause says "for any future arg, the body
+realises" but discards which `ρ` produced the closure. `eval_realises`
+needs to invoke its fuel-IH on the closure body at `(va :: cl.env)`,
+which requires `REnv n d cl.env ρe'`. With the env exposed,
+`.app .fix/.iota` heads close as `ihf' cl.body (REnv_cons henv' hRa)`
+— no Kripke step, no index loss.
+
+**Alternatives:** (a) Keep Kripke, drop a step-index at `.app`:
+fails because `R 0` is vacuous so the conclusion is too weak.
+(b) Mutual `vapp_realises` recursing on `(fuel, sizeOf)` lex: the
+`vapp` call inside `.fix` unfold consumes one `unf` not one `fuel`,
+so the measure doesn't decrease. (c) Expose `REnv` (chosen).
+
+## 2026-04-18: `QuotesCtx` depth convention is `k`, not `k+1`
+
+**What:** `QuotesCtx Γ Γe` says entry `k` of `Γ` quotes at depth `k`
+(was `k+1`). Ripples: `QuotesCtx.push`, `OpenCtx.push_fresh/push_let`
+all take `hqτ : quote Γ.size τ = some τe` (was `Γ.size+1`).
+
+**Why:** `Γ[k]` was added when `Γ` had size `k`; its Val references
+neutrals at levels `0..k-1`; the canonical depth is `k`. The `k+1`
+convention forced `push_fresh` to produce `(τe.shift 1 0 :: Γe)`
+where `Subtype'.lam`'s body context is `(τe :: Γe)` — an unprovable
+shift bridge. With `k`, `push_fresh` gives `(τe :: Γe)` directly and
+`tyCheck_sound_open .lam` builds `Subtype'.lam hcontra hIH` with no
+shift gymnastics. Also unblocks `SynthN_to_Subtype'.var` (the `hΓ`
+hypothesis now matches `Subtype'.bvar`'s shift count up to
+`quote_depth_shift_n`).
+
 ## 2026-04-19 — `quote_total_on_eval` needs `(nf fuelω e).isSome`
 
 The unconditional form `eval fuel _ [] e = some v →
