@@ -1,31 +1,46 @@
 # Progress
 
-## Current state (2026-04-18)
+## Current state (2026-04-19)
 
 **Phase 1 complete and verified** (f2ba74a). 41 → 0 markers; 0 sorries
 in `Och/Std/` or `Och/Tests.lean`.
 
-**Phase 2 (soundness) ~60%.** Eight audit findings A1–A8 in
-`SoundnessAudit.lean`; five resolved (A1 covariant-app, A4 inductive
+**Phase 2 (soundness) ~70%.** Nine audit findings A1–A9 in
+`SoundnessAudit.lean`; six resolved (A1 covariant-app, A4 inductive
 Subtype', A5 iotaIntro annotation, A7 fix-self productivity, A8 asc
-transparency), one *deferred* (A6 lam-domain — pushing `domB` is more
-complete but causes seen-list misses on dNat-style nested fixes;
-`domA` is sound, see DECISION-LOG 2026-04-18), two by-design (A2
-type-in-type, A3 β-blind subCheck → use typeCheck). Divergence
-sweep: 1/676, the A6 witness, NbE under-accepts. The algorithm is
-sound modulo type-in-type.
+transparency, A9 tyInfer-trusted-fix-annotation), one *deferred* (A6
+lam-domain — pushing `domB` is more complete but causes seen-list
+misses on dNat-style nested fixes; `domA` is sound, see DECISION-LOG
+2026-04-18), two by-design (A2 type-in-type, A3 β-blind subCheck →
+use typeCheck). Legacy `subCheckNF` retired; sweep is NbE-only
+(refl/top/strict/A6-pinned). Algorithm is sound modulo type-in-type.
+
+**Build: clean 71 s** (was 580 s before the `Val.beq` ptrEq fix +
+legacy retirement; DECISION-LOG 2026-04-19). DBool/DNat constructors
+use the very-dependent encoding (no per-constructor `fix B`).
 
 Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
   - `subCheckVal → SubV`: **fully proven** (axioms `propext`/
     `Quot.sound` only, verified PASS), all 15 match arms + all 4
     helper-function reflections in `SoundnessProof.lean`.
-  - **All three target theorems wired** (Soundness.lean):
+  - **All four target theorems wired** (Soundness.lean):
     `subCheckVal_sound = SubV_to_Subtype' ∘ subCheckVal_subV`;
     `typeCheck_sound = tyCheck_sound_closed ∘ subCheckVal_sound`;
     `concEval_preservation = .trans ∘ concEval_refines`;
     `soundness` composes the latter two. None of the four has a
-    direct `sorry`; the remaining 17 sorries are in named
-    supporting lemmas.
+    direct `sorry`. `concEval_equiv` 8/8 head-shapes leaf-sorry-free;
+    `Equiv.iota_unfold` axiom-free.
+  - **13 sorries** (Eval 0, Subtyping 1, SoundnessProof 8,
+    Soundness 4) reduce to four root obligations:
+      1. Depth-tagged seen-set → closes `ctx_extend_at` +
+         `Equiv.shift` → `subst_resp`/`R_resp_Equiv` axiom-clean.
+         (DECISION-LOG 2026-04-18 routes a/b/c.)
+      2. `eval_realises` recursion-boundary leaves → closes
+         `quote_open_subst` → `SubV_to_Subtype'` chain.
+      3. `eval_quotable` Val-size measure → closes
+         `quote_total_on_eval`.
+      4. Open-Γ generalisation of `tyCheck_sound`/`tyInfer_sound`/
+         `whnfPi_sound`.
   - `SubV → Subtype'`: 5/15 cases proven (hyp/refl/top + neutral_*);
     10 closure-opening cases gated on `quote_open_subst`, which
     derives from `eval_unf_equiv`, which derives from `eval_realises`.
