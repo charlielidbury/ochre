@@ -2245,30 +2245,129 @@ theorem quoteClosure_equiv_openω_fresh
   intro S Γe
   exact eval_unf_equiv (Nat.le_refl fuelω) hρe' hclb hev'ω hopen hq'ω hqr
 
+/-- Extract the env-realisation from `R`'s `.lam` clause.
+At step-index `n+1` and `v = .lam dom cl`, the second
+conjunct of `R` is exactly this existential. Used by
+`SubV_to_Subtype'`'s closure cases to obtain `(hρe', hclb)`
+for `quote_open_subst` / `quoteClosure_equiv_openω_fresh`. -/
+theorem R_lam_clause {n d dom cl ea}
+    (hR : R (n+1) d (.lam dom cl) ea) :
+    ∃ ρe' dome,
+      RList (n+1) d cl.env ρe' ∧
+      cl.body.closedAt (ρe'.length + 1) = true ∧
+      Equiv ea (.lam dome
+        (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
+  unfold R at hR; exact hR.2
+
+/-- Extract the env-realisation from `R`'s `.iota` clause. -/
+theorem R_iota_clause {n d ann cl ea}
+    (hR : R (n+1) d (.iota ann cl) ea) :
+    ∃ ρe' anne,
+      RList (n+1) d cl.env ρe' ∧
+      cl.body.closedAt (ρe'.length + 1) = true ∧
+      Equiv ea (.iota anne
+        (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
+  unfold R at hR; exact hR.2
+
+/-- Extract the env-realisation from `R`'s `.fix` clause. -/
+theorem R_fix_clause {n d ann cl ea}
+    (hR : R (n+1) d (.«fix» ann cl) ea) :
+    ∃ ρe' anne,
+      RList (n+1) d cl.env ρe' ∧
+      cl.body.closedAt (ρe'.length + 1) = true ∧
+      Equiv ea (.fix anne
+        (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
+  unfold R at hR; exact hR.2
+
+/-- `Equiv` is a congruence under `.subst i s` in the
+*target* position (compare `Equiv.subst_resp`, which varies
+the *substituend*). Equivalently, `Subtype'` is preserved
+by simultaneous substitution of the same term on both
+sides.
+
+**Route:** induct on the `Subtype'` derivation. Each
+constructor commutes with `.subst i s` (the binder cases
+shift `i`; the `.bvar` case splits on `j ⋚ i`; the
+seen-extender cases use the now-proven `ctx_extend_at` to
+realign the recorded-depth shift). Same shape as
+`Subtyping.lean`'s `weaken`/`narrow_at` — a structural
+substitution lemma. -/
+theorem Equiv.subst_target {e₁ e₂ : Expr}
+    (h : Equiv e₁ e₂) (s : Expr) (i : Nat) :
+    Equiv (e₁.subst i s) (e₂.subst i s) := by
+  -- root #1 application: structural substitution lemma
+  -- for Subtype', mirrors `weaken`. ~30-case induction.
+  sorry
+
 /-- Quoting commutes with closure-opening up to `Subtype'`'s
 β-conversion: opening `cl` with `v` and quoting gives an Expr
 β-equivalent to substituting `quote v` into the closure's
 quoted body. The general-`v` form of
 `quoteClosure_equiv_openω_fresh`.
 
-Once root #2 lands, this derives by:
-  (1) `eval_realises` on `cl.openω v` (i.e., `eval (v::cl.env)
-      cl.body`) gives `R 1 d r (cl.body.substEnv (ve::ρe'))`
-      where `ρe'` realises `cl.env` (from the new R-clause).
-  (2) `eval_realises` on the `quoteClosure` eval gives
-      `bodye ≡ cl.body.substEnv (.bvar 0 :: ρe'.shift)`.
-  (3) `(cl.body.substEnv (.bvar 0 :: ρe'.shift)).subst 0 ve
-       = cl.body.substEnv (ve :: ρe')` by `substEnv_subst_comp`.
-  (4) `R_quote_equiv` on (1) + (2) + (3). -/
+The `(hRv, hρe', hclb, hqenv)` hypotheses are exactly what
+`R`'s `.lam`/`.iota`/`.fix` clause exposes (post root #2):
+at any `SubV_to_Subtype'` closure case with `(hRa : R 1 d
+(.lam dom cl) ea)`, the clause yields `RList 1 d cl.env ρe'`
+(→ `hρe'` via `REnv_of_RList`), `cl.body.closedAt
+(ρe'.length+1)` (= `hclb`); `hRv` is `R 1 d arg ae` from the
+argument's IH; `hqenv` from `OpenCtx.hρq` (each captured
+env entry quotes). -/
 theorem quote_open_subst {cl : Closure} {v r : Val}
-    {depth : Nat} {ve re bodye : Expr}
+    {depth : Nat} {ve re bodye : Expr} {ρe' : List Expr}
     (hopen : cl.openω v = some r)
-    (hqv : quote fuelω depth v = some ve)
     (hqbody : quoteClosure fuelω depth cl = some bodye)
-    (hqr : quote fuelω depth r = some re) :
-    ∀ {S Γe}, Subtype' S Γe re (bodye.subst 0 ve) ∧
-              Subtype' S Γe (bodye.subst 0 ve) re := by
-  sorry
+    (hqr : quote fuelω depth r = some re)
+    (hRv : R 1 depth v ve)
+    (hρe' : REnv 1 depth cl.env ρe')
+    (hclb : cl.body.closedAt (ρe'.length + 1) = true)
+    (hqenv : ∀ (k : Nat) (w : Val), cl.env[k]? = some w →
+             ∃ qe, quote fuelω depth w = some qe) :
+    Equiv re (bodye.subst 0 ve) := by
+  -- (1) `r` realises `cl.body.substEnv (ve::ρe')`.
+  unfold Closure.openω Closure.open at hopen
+  have henv1 : REnv 1 depth (v :: cl.env) (ve :: ρe') :=
+    REnv_cons hρe' hRv
+  have hcl1 : cl.body.closedAt (ve :: ρe').length = true := by
+    simpa using hclb
+  have hRr := eval_realises hopen henv1 hcl1
+  have heqr : Equiv re (cl.body.substEnv (ve :: ρe')) :=
+    R_quote_equiv Nat.one_pos hRr hqr
+  -- (2) `w := eval (fresh::cl.env) cl.body`; `bodye` realises
+  --     `cl.body.substEnv (.bvar 0 :: ρe'.map shift)` via
+  --     `eval_realises` at depth `d+1` (env depth-lifted).
+  rw [show fuelω = (fuelω - 1) + 1 from rfl] at hqbody
+  unfold quoteClosure at hqbody
+  simp only [Option.bind_eq_bind, Option.bind_eq_some] at hqbody
+  obtain ⟨w, hevw, hqw⟩ := hqbody
+  have hevwω := eval_fuel_mono (Nat.sub_le _ _) hevw
+  have hqwω := quote_fuel_mono (Nat.sub_le _ _) hqw
+  have hRfresh : R 1 (depth + 1) (.neutral (.var depth))
+                   (.bvar 0) := by
+    have h := R_neutral_var (m := 1) (d := depth + 1)
+                (lvl := depth) (Nat.lt_succ_self depth)
+    simpa using h
+  have henv2 : REnv 1 (depth + 1)
+      (.neutral (.var depth) :: cl.env)
+      (.bvar 0 :: ρe'.map (·.shift 1 0)) :=
+    REnv_cons (REnv_depth_lift hρe' hqenv) hRfresh
+  have hcl2 : cl.body.closedAt
+      (.bvar 0 :: ρe'.map (·.shift 1 0) : List Expr).length
+        = true := by
+    simpa [List.length_map] using hclb
+  have hRw := eval_realises hevwω henv2 hcl2
+  have heqw : Equiv bodye
+      (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
+    R_quote_equiv Nat.one_pos hRw hqwω
+  -- (3) `substEnv_subst_comp` collapses the fresh-then-subst
+  --     form to the direct (ve :: ρe') form.
+  have hcomp := Expr.substEnv_subst_comp cl.body ρe' ve hclb
+  -- (4) Chain: `re ≡ substEnv (ve::ρe') = X.subst 0 ve ≡
+  --     bodye.subst 0 ve` (via `subst_target` on `heqw`).
+  intro S Γe
+  refine ⟨.trans heqr.1 ?_, .trans ?_ heqr.2⟩
+  · exact hcomp ▸ (heqw.subst_target ve 0).2
+  · exact hcomp ▸ (heqw.subst_target ve 0).1
 
 /-- Multi-step `quote_depth_shift`: quoting at any deeper
 depth `d ≥ k` shifts the result by `d - k`. Iterates the
@@ -2492,34 +2591,44 @@ theorem SubN_to_Subtype'
         ihD hS hΓ (quoteω hdomBe) (quoteω hdomAe)
       refine .lam hcontra ?_
       -- Goal: Subtype' Se (domBe :: Γe) bodyAe bodyBe.
-      -- Plan: ihB at QuotesSeen/QuotesCtx for `Γ.push domA`,
-      -- with body quotes from `quoteClosure_eq_quote_openω_fresh`,
-      -- giving `Subtype' Se' (domAe::Γe) bodyAe bodyBe`; then
-      -- `Subtype'.narrow hSc hcontra` to `(domBe::Γe)`.
-      -- Obstructions:
-      --  (a) `QuotesSeen S (Γ.push domA) Se`: depth changes
-      --      d→d+1, so each pe must shift. With
-      --      `Seen.Closed Se` (root #1), `pe.shift = pe`
-      --      (`Seen.Closed.shift_map_eq`). All callers pass
-      --      `Se = []`; adding `(hSc : Seen.Closed Se)` to
-      --      the bridge signatures is the clean fix.
-      --  (b) `quote_{d+1} bA = bodyAe`: from
-      --      `quoteClosure_eq_quote_openω_fresh hopenA
-      --       (quoteClosureω hclA) hunfA` where `hunfA` is the
-      --      unf=1↔4 *equality* on this closure (root #2,
-      --      stronger than `eval_unf_equiv`'s ≡). The ≡ form
-      --      suffices via `.trans` if we let `bodyAe` and
-      --      `quote_{d+1} bA` differ.
-      --  (c) `Subtype'.narrow` (root #1, `ctx_extend_at`'s
-      --      sorry) for `(domAe::Γe) → (domBe::Γe)`.
-      -- Once (a)–(c) are available:
-      --   have hΓ' := QuotesCtx.push hΓ (quoteω hdomAe)
-      --   have hbA := quoteClosure_eq_quote_openω_fresh
-      --                 hopenA (quoteClosureω hclA) hunfA
-      --   have hbB := … hopenB (quoteClosureω hclB) hunfB
-      --   exact Subtype'.narrow hSc hcontra
-      --     (ihB hS' hΓ' (by simpa [Array.size_push] using hbA)
-      --                  (by simpa [Array.size_push] using hbB))
+      -- ─── Realisability evidence (tier-2 threading) ───
+      -- The bridge needs `R 1 d (.lam domA clA) ?` to extract
+      -- `RList 1 d clA.env ρeA'` via `R_lam_clause`. This is
+      -- not in the motive yet; once threaded from
+      -- `subCheckVal_sound_open` (where `a/b` came from
+      -- `eval`s and `eval_realises` gives it), the case
+      -- closes as below. Until then, take it as a local
+      -- assumption — the *only* remaining obstruction.
+      have hRa : ∃ ea, R 1 Γ.size (.lam domA clA) ea := by
+        -- thread `(hRa)` through `MV` motive +
+        -- `subCheckVal_sound_open` signature; supplied by
+        -- `eval_realises` at the call site.
+        sorry
+      have hRb : ∃ eb, R 1 Γ.size (.lam domB clB) eb := by
+        sorry
+      obtain ⟨_ea, hRa⟩ := hRa
+      obtain ⟨_eb, hRb⟩ := hRb
+      obtain ⟨ρeA', _, hRLA, hclbA, _⟩ := R_lam_clause hRa
+      obtain ⟨ρeB', _, hRLB, hclbB, _⟩ := R_lam_clause hRb
+      -- ─── Body-quote correspondence ───
+      -- `bA = clA.openω fresh@d` (from `hopenA`); want
+      -- `quote_{d+1} bA ≡ bodyAe` (where `bodyAe =
+      -- quoteClosure_d clA`). `quoteClosure_equiv_openω_fresh`
+      -- gives this once we supply the depth-lifted env.
+      -- `ihB` then applies at `(domAe :: Γe)` with the
+      -- body-quotes; `Subtype'.narrow hcontra` shifts to
+      -- `(domBe :: Γe)`.
+      --
+      -- Two residual sub-obligations (vs three before):
+      --  (a) `QuotesSeen` depth-lift at `Γ.push domA`
+      --      (resolved post-Seen-depth-tag: each `pe.1 ≤ d`
+      --      so `Seen.extendEntry 1 d` is the identity on
+      --      already-≤d entries; needs `(hSd : ∀ pe ∈ Se,
+      --      pe.1 ≤ Γ.size)` from the motive — same flavour
+      --      as `(hRa)`).
+      --  (q) `quote_{d+1} bA = some ?` (totality on the
+      --      opened body) — same `(hqenv)`-style obligation
+      --      as `quote_open_subst`.
       sorry)
     -- iota_struct — same shape as lam (open with fresh).
     (fun _ _ _ _ _ihA _ihB {_ _ _ _} _ _ _ _ => by sorry)
