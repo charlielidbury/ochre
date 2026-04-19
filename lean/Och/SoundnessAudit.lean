@@ -303,6 +303,7 @@ proof; (b) is closest to the eventual semantic model
 (step-indexed logical relations). Either suffices for
 `subCheckVal_sound`. Soundness.lean records this as the next
 concrete task.
+-/
 
 /-!
 ## A9: tyInfer trusted `.fix`/`.iota` annotation — RESOLVED
@@ -354,6 +355,7 @@ theorem a9_fixIotaBodyChecked :
 -- lives in `Och/Std/Vec.lean:159` — two earlier A9 attempts
 -- broke it, so it's the canary.
 
+/-!
 ## Summary
 
 | # | Rule | Status | Fix |
