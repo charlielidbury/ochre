@@ -279,6 +279,14 @@ theorem Subtype'.app_head {S Γ f f' a}
     (h : Subtype' S Γ f f') : Subtype' S Γ (.app f a) (.app f' a) :=
   .app_cong h (.refl a) (.refl a)
 
+/-- Application elimination: if `f` inhabits a Π-type, applying
+it lands in the (substituted) codomain. The standard elim rule,
+derived as `app_head hf ; beta_L`. Used by `tyInfer_sound .app`. -/
+theorem Subtype'.app_elim {S Γ f a A B}
+    (hf : Subtype' S Γ f (.lam A B)) :
+    Subtype' S Γ (.app f a) (B.subst 0 a) :=
+  (app_head hf).trans (.beta_L (.refl _))
+
 /-- Multi-step head reduction under a spine, then continue. The
 common pattern when the head is `(λx. …) v w …`. -/
 theorem Subtype'.beta_head {S Γ dom body arg a c}
