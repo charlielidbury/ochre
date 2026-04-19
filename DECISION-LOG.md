@@ -3,6 +3,40 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-19: All three root obligations solved at the definition level
+
+**What:** The three structural obstructions that gated soundness
+since the open-Γ generalisation are each closed by a definition
+change, integrated at `e0384f1`:
+- Root #1 (`ctx_extend_at`): `Seen` depth-tagged → Subtyping.lean
+  is **sorry-free**. `.hyp` self-shifts; `narrow`/`ctx_extend` drop
+  `Seen.Closed`. Commits `8d86c69`+`e0384f1`.
+- Root #2 (`vapp_realises`): `R`'s `.lam`/`.iota`/`.fix` clauses
+  expose `∃ ρe' he, RList (n+1) d cl.env ρe' ∧ closedAt ∧ Equiv …`
+  (well-founded on `(n, sizeOf v)` lex via mutual `RList`).
+  `vapp_realises` proven by `REnv_cons henv' hRa` → mutual
+  `eval_realises` → `R_resp_Equiv`. Commit `293dc13`.
+- Root #3 (`tyInfer .bvar`): `OpenCtx` carries `hwf` (each `ρe[k]`
+  has its declared type) and `hlen`. `push_fresh.hwf` via
+  `Subtype'.bvar`; `push_let.hwf` via `(hval_le)` + `ctx_extend`.
+  Commits `578ad37`+`94483f1`.
+
+**Residual** (~13 declaration sorries): `R_mono.decreasing_by`
+(termination reshuffle, ~10 min); 3 `eval_realises` base-conjuncts
+(quoteClosure correspondence — closes via the new
+`quoteClosure_equiv_openω_fresh`); `quote_open_subst` (4-step route
+documented); `SubV_to_Subtype'` closure cases (need `(hRa)` from
+new R-clause); `whnfPi_sound_open`; `tyInfer .lam/.app/.letE`;
+`openNf_holds` (false; route-(a) `eval_quotes'` overload ready).
+None require further definition changes — all are downstream
+applications of the three solved roots.
+
+**`tyInfer .letE` algorithm gap (noted, not fixed):** the inferred
+type may reference the let-binder, so `quote_{Γ.size}` of it can
+fail. `tyInfer .letE` should `eval`-substitute the binder value
+into the body's inferred type before returning (TyCheck.lean
+change). Per fork `a40bd0da` analysis.
+
 ## 2026-04-18: `Seen.Closed` (route b) ruled out for `ctx_extend_at`; route (a) required
 
 **What:** The `Seen.Closed S` invariant cannot close `ctx_extend_at`'s
