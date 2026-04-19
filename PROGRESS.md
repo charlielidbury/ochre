@@ -1200,6 +1200,47 @@ Six parallel forks. **Clean build: 580 s → 71 s** (8.2×).
 
 13 sorries unchanged.
 
+### Open-Γ generalisation; eval_quotable closed (5862916f, 2026-04-19)
+
+Three soundness-engineering forks on root obligations #3
+and #4. Sorry counts after integration: Subtyping 1 +
+SoundnessProof 13 + Soundness 3 = **17** (temporarily up
+from 13 — the previously-implicit open-Γ obligations are
+now named lemmas; dedup of closed/open forms in flight).
+
+- **`eval_quotable`** (`eval-quotable-fork`, root #3): the
+  unconditional form is **genuinely false** — `eval 2 _ []
+  (.lam .type huge)` succeeds at fuel 2, but `quoteClosure`
+  re-evals `huge` (unbounded). Closed via `(nf fuelω
+  e).isSome` side-condition; the `nf` witness *is* the
+  quote, transported via `eval_fuel_mono`. Axiom-clean
+  `[propext, Quot.sound]`. `quote_total_on_eval` and
+  `nf_asc_term_isSome` proven; `hnfe`/`hnfτ` threaded
+  through `tyCheck_sound_closed` chain. DECISION-LOG
+  2026-04-19. Soundness 4→3.
+
+- **Open-Γ skeleton** (`open-gamma-fork`, root #4):
+  `OpenCtx Γ ρ Γe` bundles `QuotesCtx` + ρ-quotable +
+  eval-quote≡source. `subCheckVal_sound_open`,
+  `tyCheckFallback_sound_open`, and `tyCheck_sound_open`'s
+  `.asc`/`.fix`/`.iota`/catch-all arms **proven** (`.asc`
+  is *shorter* than the closed form — no source-τ
+  round-trip). Closed corollary derives at `OpenCtx.empty`
+  + `substEnv_nil`. SoundnessProof 8→16 (the +8 are the
+  named obligations). **Design finding**: `OpenCtx`'s
+  `hρeq` was too strong for let-bound entries.
+
+- **`OpenCtx` ρe-threading** (`openctx-rhoe-fork`):
+  `OpenCtx Γ ρ Γe ρe` carries the explicit Expr-level
+  substitution. `OpenCtx.push_fresh`/`push_let` **closed**
+  (reduce to `eval_realises` + `R_depth_lift` +
+  `eval_quotable_open`). `QuotesCtx.push` proven
+  axiom-clean. SoundnessProof 16→13.
+
+A dedup fork is replacing the closed `tyCheck_sound_*`
+mutual block in Soundness.lean with corollaries of the
+open forms; target is Soundness 3→0, SoundnessProof ≤13.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
