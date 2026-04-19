@@ -2876,28 +2876,6 @@ theorem whnfPi_sound_open {fuel : Nat}
   -- closed form.
   sorry
 
-/-- Soundness of `letBinderType`: it returns `(valV, valTy)`
-where `valV = eval ρ val` and `valTy` is *some* upper bound
-on `val.substEnv ρe`. -/
-theorem letBinderType_sound_open
-    {fuel : Nat} (hfuel : fuel ≤ fuelω)
-    {Γ : TyCtx} {ρ : Env} {Γe : Ctx} {ρe : List Expr}
-    (hctx : OpenCtx Γ ρ Γe ρe)
-    {val : Expr} {valV valTy : Val}
-    (h : letBinderType fuel Γ ρ val = .ok (valV, valTy)) :
-    eval fuel unfBound ρ val = some valV ∧
-    ∃ valTye, quote fuelω Γ.size valTy = some valTye ∧
-              Subtype' [] Γe (val.substEnv ρe) valTye := by
-  -- Unfold `letBinderType`; case-split on `tyInfer val`'s
-  -- result. The `none` branch: `valTy = valV`,
-  -- `valTye = quote valV`, and `(val.substEnv ρe) ⊑ valTye`
-  -- is the forward direction of `hctx.eq` on `eval val`.
-  -- The `some t` branch with `okV = true`:
-  -- `tyCheck_sound_open hctx … : (val.substEnv ρe) ⊑ te`;
-  -- with `okV = false`: same as `none`. Mutual with
-  -- `tyCheck_sound_open`; tag 3.
-  sorry
-
 mutual
 
 /-- Open-context `tyInfer` soundness. The conclusion bundles
@@ -2922,6 +2900,7 @@ theorem tyInfer_sound_open
     {Γ : TyCtx} {ρ : Env} {Γe : Ctx} {ρe : List Expr}
     (hctx : OpenCtx Γ ρ Γe ρe)
     {e : Expr} {τV : Val}
+    (hcl : e.closedAt ρe.length = true)
     (h : tyInfer fuel Γ ρ e = .ok (some τV)) :
     ∃ τe, quote fuelω Γ.size τV = some τe ∧
           Subtype' [] Γe (e.substEnv ρe) τe := by
@@ -2929,13 +2908,105 @@ theorem tyInfer_sound_open
   | 0, _, h => simp [tyInfer] at h
   | fuel + 1, hfuel, h =>
     have hfuel' : fuel ≤ fuelω := Nat.le_of_succ_le hfuel
-    -- 9 arms; `.bvar`/`.type` close at any `Γ`. The rest
-    -- recurse at extended Γ (`.lam`/`.letE`/`.app`-β/-let)
-    -- or need `quote_open_subst` (`.app` generic). The
-    -- `.fix`/`.iota` arm is the A9 unsoundness — sorried
-    -- with the note above. The `.asc` arm closes via
-    -- `tyCheck_sound_open` (mutual) at the *same* `hctx`.
-    sorry
+    unfold tyInfer at h
+    split at h
+    -- .bvar k
+    · -- `tyInfer` returns `Γ[Γ.size-1-k]`. The conclusion
+      -- needs `(.bvar k).substEnv ρe ⊑ quote_{Γ.size}
+      -- Γ[Γ.size-1-k]`. From `hctx.hΓ` the entry quotes (at
+      -- depth `Γ.size-1-k`); `quote_depth_shift` lifts to
+      -- depth `Γ.size`, giving `τe.shift (k+1) 0`.
+      -- `Subtype'.bvar` gives `.bvar k ⊑ Γe[k].shift (k+1)
+      -- 0` — which is what we need IF `(.bvar k).substEnv
+      -- ρe = .bvar k`. After `push_fresh` chains `ρe` IS
+      -- `idEnv`-shaped so this holds; after `push_let` it
+      -- is not (`ρe[k]` is a substituted value).
+      -- **Obstruction**: `OpenCtx` needs an additional
+      -- field `hwf : ∀ k w, ρe[k]? = some w → ∃ τe,
+      -- Γe.get? k = some τe ∧ Subtype' [] Γe w (τe.shift
+      -- (k+1) 0)` — i.e., each substituted entry has its
+      -- declared context type. `push_fresh` discharges it
+      -- via `Subtype'.bvar` reflexively; `push_let` via
+      -- `letBinderType_sound_open`'s `hval_le` (which is
+      -- exactly the right shape, modulo `.shift`).
+      sorry
+    -- .type
+    · simp only [Except.ok.injEq, Option.some.injEq] at h
+      subst h
+      exact ⟨.type, quote_type,
+        by simpa [Expr.substEnv] using Subtype'.refl Expr.type⟩
+    -- .asc e' τ
+    · rename_i e' τ
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      simp only [bind, Except.bind] at h
+      split at h
+      case h_2 => simp_all
+      case h_1 τV0 hτV0 =>
+      split at h
+      · simp_all
+      next okI hokI =>
+      cases okI with
+      | false => simp_all
+      | true =>
+        simp only [Bool.not_true, Bool.false_eq_true,
+                   ↓reduceIte, Except.ok.injEq,
+                   Option.some.injEq] at h
+        subst h
+        obtain ⟨τe, hqτV⟩ := hctx.eval_quotes hfuel' hτV0
+        have hsub := tyCheck_sound_open hfuel' hctx
+          hcl.1 hqτV hokI
+        exact ⟨τe, hqτV,
+          by simpa [Expr.substEnv] using Subtype'.asc_L hsub⟩
+    -- .fix ann _ and .iota ann _ — the A9 unsoundness.
+    -- `tyInfer` returns `eval ann`, but `(.fix ann body) ⋢
+    -- ann` in general (the body need not inhabit `ann`).
+    -- All callers that need a sound type route through
+    -- `tyCheck`'s `.fix`/`.iota` arm or `letBinderType`
+    -- (both verify); only `tyCheckFallback`'s `some`-path
+    -- consumes this raw — that residual is the documented
+    -- A9 hole. See SoundnessAudit A9.
+    · sorry
+    · sorry
+    -- .lam dom body
+    · -- `tyInfer` recurses at `push_fresh`, then *quotes*
+      -- the body type and re-wraps as
+      -- `.lam domV (Closure.mk' bodyTyE ρ)`. The conclusion
+      -- needs `quote_{Γ.size}` of that closure — i.e.,
+      -- `quoteClosure_{Γ.size} (Closure.mk' bodyTyE ρ)`,
+      -- which re-evaluates `bodyTyE` under `fresh::ρ`.
+      -- That round-trip (`quote ∘ eval ∘ quote ∘ eval`) is
+      -- `quote_open_subst` territory — root #2. The
+      -- `Subtype'` half would be `Subtype'.lam (.refl _)
+      -- hIH` after the IH at `push_fresh`.
+      sorry
+    -- .app (.lam dom body) a — β fast-path.
+    · -- `tyInfer` checks `a` against `domV`, then recurses
+      -- on `body` under `(aV :: ρ)`. The IH applies at
+      -- `hctx.push_let hev_a hcl_a hqdomV` (a let-style
+      -- push, since `aV` is concrete not fresh). Goal then
+      -- needs `Subtype'.beta_L` to relate `(.app (.lam …)
+      -- a).substEnv ρe` to `body.substEnv (aV-realiser ::
+      -- ρe')`. Same `.letE`-arm shift obstruction as
+      -- `tyCheck_sound_open`.
+      sorry
+    -- .app (.letE val fbody) a — let-float.
+    · -- `tyInfer` floats the let out and recurses on
+      -- `(.app fbody (a.shift 1 0))` under `push_let`.
+      -- IH at the floated form; relate back via
+      -- `Subtype'.letE_L` + `app_cong`.
+      sorry
+    -- .app f a — generic.
+    · -- IH on `f` gives `fTy` + quote witness; `whnfPi`
+      -- exposes `.lam dom cl`; `tyCheck` IH on `a`; result
+      -- is `cl.open aV`. Quoting `cl.open aV` is
+      -- `quote_open_subst` — root #2.
+      sorry
+    -- .letE val body
+    · -- Mirror of `tyCheck_sound_open`'s `.letE` arm:
+      -- `letBinderType_sound_open` gives the binder; IH on
+      -- `body` at `push_let`. Same shift obstruction as
+      -- there.
+      sorry
 termination_by (fuel, 0)
 
 /-- Open-context `tyCheckFallback` soundness. Both paths
@@ -2958,7 +3029,7 @@ theorem tyCheckFallback_sound_open
     | some eTy =>
         simp only [] at h
         obtain ⟨eTye, hqeTy, h_e_eTye⟩ :=
-          tyInfer_sound_open hfuel hctx hinfer
+          tyInfer_sound_open hfuel hctx hcl hinfer
         have hsub :=
           subCheckVal_sound_open hfuel hctx.hΓ h hqeTy hqτ
         exact .trans h_e_eTye hsub
@@ -3097,9 +3168,11 @@ theorem tyCheck_sound_open
       --   hletB : letBinderType fuel Γ ρ val = .ok (valV, valTy)
       --   h     : tyCheck fuel (Γ.push valTy) (valV :: ρ)
       --             body τV = .ok true
-      -- `letBinderType_sound_open` (sorried above) yields:
+      -- `letBinderType_sound_open` (mutual, tag 3 — proven
+      -- below) gives the binder's eval + a quoted upper
+      -- bound on its type:
       have ⟨hev, valTye, hqValTy, hval_le⟩ :=
-        letBinderType_sound_open hfuel' hctx hletB
+        letBinderType_sound_open hfuel' hctx hcl_val hletB
       -- Extended context (push_let is proven; with the
       -- `QuotesCtx` depth-`k` convention, `valTye` at depth
       -- `Γ.size` is exactly the head we cons):
@@ -3192,6 +3265,69 @@ theorem tyCheck_sound_open
          exact .trans he_ee hsub
        · simp_all)
 termination_by (fuel, 2)
+
+/-- Soundness of `letBinderType`: it returns `(valV, valTy)`
+where `valV = eval ρ val` and `valTy` quotes to *some* upper
+bound on `val.substEnv ρe`.
+
+The `none` and `okV = false` branches: `valTy = valV`, the
+upper bound is `quote valV` and `(val.substEnv ρe) ⊑
+(quote valV)` is the forward direction of `hctx.eq`. The
+`okV = true` branch: `valTy = t` from `tyInfer`, and
+`tyInfer_sound_open` gives both the quote witness and the
+upper bound. (That call inherits the A9 sorry for `.fix`/
+`.iota`-headed `val`; the algorithm guards this at runtime
+via the `tyCheck` round-trip, but the proof routes through
+`tyInfer_sound_open` which carries the residual.)
+
+Tag 3: called from `tyCheck_sound_open` at `(fuel+1, 2)` →
+`(fuel, 3)`; calls `tyInfer_sound_open` at `(fuel, 0)` and
+`tyCheck_sound_open` at `(fuel, 2)` (unused). -/
+theorem letBinderType_sound_open
+    {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {Γ : TyCtx} {ρ : Env} {Γe : Ctx} {ρe : List Expr}
+    (hctx : OpenCtx Γ ρ Γe ρe)
+    {val : Expr} {valV valTy : Val}
+    (hcl : val.closedAt ρe.length = true)
+    (h : letBinderType fuel Γ ρ val = .ok (valV, valTy)) :
+    eval fuel unfBound ρ val = some valV ∧
+    ∃ valTye, quote fuelω Γ.size valTy = some valTye ∧
+              Subtype' [] Γe (val.substEnv ρe) valTye := by
+  unfold letBinderType at h
+  simp only [bind, Except.bind] at h
+  split at h
+  · simp_all
+  next valTy? hinfer =>
+  split at h
+  case h_2 => simp_all
+  case h_1 valV0 hev =>
+  -- The "fall back to valV" branch (shared by `none` and
+  -- `okV = false`):
+  have hself : eval fuel unfBound ρ val = some valV0 ∧
+      ∃ valTye, quote fuelω Γ.size valV0 = some valTye ∧
+                Subtype' [] Γe (val.substEnv ρe) valTye := by
+    obtain ⟨valVe, hqvalV⟩ := hctx.eval_quotes hfuel hev
+    exact ⟨hev, valVe, hqvalV, (hctx.eq hev hcl hqvalV).2⟩
+  cases valTy? with
+  | none =>
+      simp only [pure, Except.pure, Except.ok.injEq,
+                 Prod.mk.injEq] at h
+      obtain ⟨h1, h2⟩ := h; subst h1 h2; exact hself
+  | some t =>
+      simp only [bind, Except.bind] at h
+      split at h
+      · simp_all
+      next okV hokV =>
+      simp only [pure, Except.pure, Except.ok.injEq,
+                 Prod.mk.injEq] at h
+      obtain ⟨h1, h2⟩ := h; subst h1
+      split at h2
+      · -- okV = true branch: valTy = t
+        subst h2
+        exact ⟨hev, tyInfer_sound_open hfuel hctx hcl hinfer⟩
+      · -- okV = false branch: valTy = valV0
+        subst h2; exact hself
+termination_by (fuel, 3)
 
 end
 

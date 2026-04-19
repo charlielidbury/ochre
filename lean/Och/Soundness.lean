@@ -207,9 +207,11 @@ here.
 theorem tyInfer_sound_closed
     {fuel : Nat} {e : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
+    (hcle : e.closedAt 0 = true)
     (h : tyInfer fuel #[] [] e = .ok (some τV)) :
     ∃ τe, quote fuelω 0 τV = some τe ∧ Subtype' [] [] e τe := by
-  obtain ⟨τe, hqτ, hsub⟩ := tyInfer_sound_open hfuel OpenCtx.empty h
+  obtain ⟨τe, hqτ, hsub⟩ := tyInfer_sound_open hfuel OpenCtx.empty
+    (by simpa using hcle) h
   exact ⟨τe, by simpa using hqτ, Expr.substEnv_nil e ▸ hsub⟩
 
 /-- Closed-context `tyCheckFallback` soundness, by
