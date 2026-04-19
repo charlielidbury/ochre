@@ -2,70 +2,68 @@
 
 ## Phase 2 — soundness proof (current)
 
-The dependency order, bottom-up. Work near the bottom
-unblocks the most.
+`Soundness.lean` is sorry-free; all four target theorems
+wired. **14 sorries** in `SoundnessProof.lean` (13) and
+`Subtyping.lean` (1) reduce to **three root obligations**:
 
-1. **Restate `R`'s Kripke clause as ∀-`unf`-quantified, add
-   `m ≤ fuel` to `eval_realises`.** Recommendation from the
-   `.app`-head fork: the inner `vapp` recursion in the
-   `.fix`/`.iota` head sub-cases is currently *out of IH
-   range* because the IH is at one specific `unf`. Making
-   the Kripke clause `∀ unf' ≤ unf` (instead of fixed `unf`)
-   and threading `m ≤ fuel` through `eval_realises` brings
-   it in. This is a *statement* change to `R` and probably
-   a one-shot edit + re-thread of the existing cases; do it
-   *before* trying to close the four named obligations.
+### Root 1 — depth-tagged seen-set (research)
 
-2. **`eval_realises` `.fix`/`.iota`-head obligations**:
-   `vapp_open_eq` (vapp of an unfolded fix is vapp of
-   body[self↦fix]); `R_resp_iota_unfold`/`R_resp_fix_unfold`
-   (one-step-unfold respects `R`). After (1), these may
-   become direct from the new IH shape.
+`ctx_extend_at`'s 6 binder cases and `Equiv.shift` share
+the same wall: `.iota_intro`/`.unfold_*` extend `S` with
+the current `(a, b)` pair at depth `|Γ|`, and the body IH
+needs `S` shifted at a different cutoff. DECISION-LOG
+2026-04-18 lists three routes; route (a) (depth-tag each
+entry: `Seen := List (Nat × Expr × Expr)`) is most
+principled. This ripples through every `Subtype'`-using
+proof in SoundnessProof, so do it on a stable base.
 
-3. **`Subtype'` congruence constructors** (Subtyping.lean):
-   add `.iota_cong`/`.fix_cong`/`.letE_cong` to the inductive
-   (vary both annotation/value *and* body). These are
-   admissible (derivable from `.iota_intro`/`.unfold_*`/
-   `.letE_*` at extended seen-sets) so adding them as
-   constructors is sound; having them makes
-   `Equiv.subst_resp` close by direct structural induction
-   on `e`, which in turn closes `R_resp_Equiv`'s `.iota`/
-   `.fix` arms, `eval_realises`'s `.letE`-Kripke, and
-   `concEval_refines`'s `.letE`/`.app` — five sorries for
-   one constructor addition. (The existing `.iota_body`/
-   `.fix_body` only vary the body with the *same* ann.)
+Closes: `ctx_extend_at` (Subtyping), `Equiv.shift`
+(SoundnessProof) → `subst_resp`/`R_resp_Equiv` axiom-clean.
 
-3b. **`ctx_extend_at` binder cases** (Subtyping.lean,
-   3 sorries inside `narrow_at`): the body-IH gives `S.map
-   shift_{c+1}` but the goal needs `S.map shift_c`. These
-   coincide under `Seen.Closed S`, but `.iota_intro`/
-   `.unfold_*` extend `S` with non-closed pairs. Two routes:
-   (a) depth-tag each seen-set entry so `narrow_at` knows
-   which cutoff to shift each pair at; (b) change
-   `.iota_intro`/`.unfold_*` to record the *closed*
-   `(quote a, quote b)` pair instead of the open one. Route
-   (b) is closer to what the algorithm does.
+### Root 2 — `eval_realises` recursion boundary (research)
 
-4. **`quote_open_subst`** (closure-opening commutes with
-   substitution): derives from `eval_unf_equiv` (already
-   derived from `eval_realises`). Once (1)+(2) close
-   `eval_realises`, this should follow.
+The `.app`-head-`.fix`/`.iota` sub-cases need to recurse
+on the unfolded head's `vapp`, but `Nat.strongRecOn`'s IH
+doesn't cover that inner call. Two routes (under
+investigation in `eval-realises-boundary` fork):
+(a) `vapp_realises` mutual companion at tag 1;
+(b) Ahmed-style `R (min m fuel)`. Route (a) matches the
+algorithm's `eval`/`vapp` mutual layout.
 
-5. **`SubV_to_Subtype'` closure-opening cases** (10 of
-   them): each is `quote_open_subst` + the case's specific
-   `Subtype'` constructor. The `lam` case additionally needs
-   `narrow` (← (3)).
+Closes: ~4 `eval_realises` leaves → `quote_open_subst` →
+`SubV_to_Subtype'`/`SubN`/`SynthN` closure-opening cases
+→ `subCheckVal_sound` axiom-clean (modulo root 1 for the
+`.lam` case's `narrow`).
 
-6. **`typeCheck_sound`**: induction on `e`, with each
-   `tyCheck` arm calling `subCheckVal` and applying
-   `subCheckVal_sound` (already wired).
+### Root 3 — open-Γ residuals (engineering)
 
-7. **`concEval_preservation`**: adequacy of `R` —
-   `eval_realises` at the term level + `R_quote_equiv`.
+`tyCheck_sound_open` `.lam`/`.letE` arms,
+`whnfPi_sound_open`, `tyInfer_sound_open` (the `.fix`/
+`.iota` arm of which is A9-unprovable as stated — needs
+either restating as a value-property or adding a
+well-formed-fix side condition), `letBinderType_sound_open`,
+`openNf_holds`. The `.lam` arm should slot via
+`OpenCtx.push_fresh` (per `openctx-rhoe-fork`). Under
+investigation in `open-gamma-lam` fork.
 
-The legacy `subCheckNF` (Eval.lean) fuel-mono scaffold
-sorries are *off the critical path* — they only matter for
-the legacy-checker divergence sweep, not for NbE soundness.
+Closes: `typeCheck_sound` axiom-clean (modulo roots 1+2).
+
+### Done
+
+- Root #3-old `eval_quotable` — closed via `(nf fuelω
+  e).isSome` side-condition (`eval-quotable-fork`); the
+  unconditional form is genuinely false (closure body
+  re-eval). `quote_total_on_eval`/`eval_quotable_open`
+  axiom-clean.
+- `R` Kripke ∀-`unf'`-quantified (`r-kripke-restate-fork`).
+- `.iota_cong`/`.fix_cong`/`.letE_cong`/`.unfold_iota_R`
+  constructors; `Equiv.subst_resp`/`R_resp_Equiv`/
+  `concEval_equiv`/`Equiv.iota_unfold` closed.
+- Open-Γ skeleton + `OpenCtx` ρe-threading; `push_fresh`/
+  `push_let`/`QuotesCtx.push`/`subCheckVal_sound_open`/
+  `tyCheckFallback_sound_open` closed.
+- Legacy `subCheckNF` retired; `Val.beq` ptrEq fast-path
+  (clean build 580 s → 71 s).
 
 ## Phase 1 (done — 0 markers)
 
