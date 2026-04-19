@@ -2269,18 +2269,53 @@ theorem quoteClosure_eq_quote_openω_fresh {cl : Closure}
   -- fuelω via `quote_fuel_mono`.
   exact quote_fuel_mono (Nat.sub_le _ _) hq'
 
+/-- **Unconditional** fresh-open correspondence: opening `cl`
+with the fresh neutral and quoting gives an Expr `Equiv` to
+`quoteClosure cl`. Replaces the `(hunf)`-conditional lemma
+above by going through `eval_unf_equiv` (proven, mod
+`eval_realises`).
+
+The `(hρe')` hypothesis is what root #2 (R-restructure)
+exposes: once `R`'s `.lam`/`.iota`/`.fix` clause carries
+`∃ ρe', REnv n d cl.env ρe'`, every `SubV_to_Subtype'`
+closure case has it (the bridge gains `(hRa)/(hRb)`
+realisability hypotheses, supplied by `eval_realises` at
+`subCheckVal_sound_open`'s call site). -/
+theorem quoteClosure_equiv_openω_fresh
+    {cl : Closure} {depth : Nat} {r : Val} {bodye re : Expr}
+    {ρe' : List Expr}
+    (hopen : cl.openω (.neutral (.var depth)) = some r)
+    (hqcl : quoteClosure fuelω depth cl = some bodye)
+    (hqr : quote fuelω (depth + 1) r = some re)
+    (hρe' : REnv 1 (depth + 1)
+              (.neutral (.var depth) :: cl.env) ρe')
+    (hclb : cl.body.closedAt ρe'.length = true) :
+    Equiv bodye re := by
+  unfold Closure.openω Closure.open at hopen
+  have hfω : fuelω = (fuelω - 1) + 1 := rfl
+  rw [hfω] at hqcl; unfold quoteClosure at hqcl
+  simp only [Option.bind_eq_bind, Option.bind_eq_some] at hqcl
+  obtain ⟨v', hev', hq'⟩ := hqcl
+  have hev'ω := eval_fuel_mono (Nat.sub_le _ _) hev'
+  have hq'ω := quote_fuel_mono (Nat.sub_le _ _) hq'
+  intro S Γe
+  exact eval_unf_equiv (Nat.le_refl fuelω) hρe' hclb hev'ω hopen hq'ω hqr
+
 /-- Quoting commutes with closure-opening up to `Subtype'`'s
 β-conversion: opening `cl` with `v` and quoting gives an Expr
 β-equivalent to substituting `quote v` into the closure's
-quoted body. This is the standard NbE correctness theorem
-(soundness direction), specialised to one closure-open.
+quoted body. The general-`v` form of
+`quoteClosure_equiv_openω_fresh`.
 
-Reduces to `eval_unf_equiv` (for the unf=1↔4 mismatch
-between `quoteClosure` and `Closure.openω`) plus a
-substitution lemma `quote (eval (v::ρ) body) ≡β
-(quote (eval (fresh::ρ) body)).subst 0 (quote v)` — the
-classic NbE soundness statement. Both halves need the same
-logical relation; recorded as one obligation. -/
+Once root #2 lands, this derives by:
+  (1) `eval_realises` on `cl.openω v` (i.e., `eval (v::cl.env)
+      cl.body`) gives `R 1 d r (cl.body.substEnv (ve::ρe'))`
+      where `ρe'` realises `cl.env` (from the new R-clause).
+  (2) `eval_realises` on the `quoteClosure` eval gives
+      `bodye ≡ cl.body.substEnv (.bvar 0 :: ρe'.shift)`.
+  (3) `(cl.body.substEnv (.bvar 0 :: ρe'.shift)).subst 0 ve
+       = cl.body.substEnv (ve :: ρe')` by `substEnv_subst_comp`.
+  (4) `R_quote_equiv` on (1) + (2) + (3). -/
 theorem quote_open_subst {cl : Closure} {v r : Val}
     {depth : Nat} {ve re bodye : Expr}
     (hopen : cl.openω v = some r)
