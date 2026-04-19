@@ -50,6 +50,7 @@ syntax:10  "ι" ident "." och:10                     : och
 syntax:10  "fix" ident ":" och "." och:10           : och
 syntax:10  "fix" ident "." och:10                   : och
 syntax:10  "let" ident ":" och "=" och "in" och:10  : och
+syntax:10  "let" ident "=" och "in" och:10           : och
 
 syntax "och{" och "}" : term
 
@@ -107,6 +108,10 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     `(Expr.fix Expr.type $body')
   | `(och| let $x:ident : $ty:och = $val:och in $body:och) =>
     let _ty' ← expand ctx ty; let val' ← expand ctx val
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Expr.letE $val' $body')
+  | `(och| let $x:ident = $val:och in $body:och) =>
+    let val' ← expand ctx val
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.letE $val' $body')
   | `(och| $x:ident) =>
