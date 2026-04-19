@@ -17,7 +17,9 @@ term ::=
   | x                          -- bound variable or Lean-level splice
   | λx:term. term              -- lambda
   | ιx:term. term              -- iota / self-type binder
+  | ιx. term                   --   (annotation-free; defaults to :Type)
   | fix x:term. term           -- recursive binder
+  | fix x. term                --   (annotation-free; defaults to :Type)
   | (term : term)              -- ascription
   | term term                  -- application (left-associative)
   | term → term                -- arrow (right-assoc, sugar for λ_:A. B)
@@ -44,7 +46,9 @@ syntax:30  och:31 " → " och:30                      : och
 syntax:10  "λ" ident ":" och "." och:10             : och
 syntax:10  "λ" "_" ":" och "." och:10               : och
 syntax:10  "ι" ident ":" och "." och:10             : och
+syntax:10  "ι" ident "." och:10                     : och
 syntax:10  "fix" ident ":" och "." och:10           : och
+syntax:10  "fix" ident "." och:10                   : och
 syntax:10  "let" ident ":" och "=" och "in" och:10  : och
 
 syntax "och{" och "}" : term
@@ -88,10 +92,19 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     let ann' ← expand ctx ann
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.iota $ann' $body')
+  | `(och| ι $x:ident . $body:och) =>
+    -- Annotation-free ι: defaults to `Type`. Constructors using
+    -- the very-dependent `P:(self → Type)` encoding don't need
+    -- a meaningful annotation (DBool.lean, commit 38d1031).
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Expr.iota Expr.type $body')
   | `(och| fix $x:ident : $ann:och . $body:och) =>
     let ann' ← expand ctx ann
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.fix $ann' $body')
+  | `(och| fix $x:ident . $body:och) =>
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Expr.fix Expr.type $body')
   | `(och| let $x:ident : $ty:och = $val:och in $body:och) =>
     let _ty' ← expand ctx ty; let val' ← expand ctx val
     let body' ← expand (x.getId.toString :: ctx) body
@@ -107,3 +120,15 @@ end OchMacro
 
 macro_rules
   | `(och{ $body:och }) => OchMacro.expand [] body
+
+-- Smoke tests: annotation-free ι/fix produce *identical* Exprs
+-- to the explicit `:Type` form (so existing encodings can drop
+-- the annotation without changing their compiled `Expr`).
+example : (och{ ι s. λP:(s → Type). P s })
+        = (och{ ι s:Type. λP:(s → Type). P s }) := rfl
+example : (och{ fix r. r }) = (och{ fix r:Type. r }) := rfl
+example : (och{ ι s. λP:(s → Type). λt:(P s). λf:Type. t })
+        = Expr.iota .type
+            (.lam (.lam (.bvar 0) .type)
+              (.lam (.app (.bvar 0) (.bvar 1))
+                (.lam .type (.bvar 1)))) := rfl
