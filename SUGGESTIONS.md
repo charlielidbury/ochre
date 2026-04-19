@@ -2,60 +2,71 @@
 
 ## Phase 2 — soundness proof (current)
 
-`Soundness.lean` is sorry-free; all four target theorems
-wired. **15 sorries** in `SoundnessProof.lean` (14) and
-`Subtyping.lean` (1) reduce to **three root obligations**:
+`Soundness.lean` is sorry-free; `Subtyping.lean` is
+**sorry-free** (post `e0384f1`). All three root
+obligations solved at the definition level (DECISION-LOG
+2026-04-19); remaining sorries in `SoundnessProof.lean` are
+**downstream applications** — no further definition
+changes needed.
 
-### Root 1 — depth-tagged seen-set (research)
+### Tier 1 — direct closures (engineering, ~30 min each)
 
-`ctx_extend_at`'s 6 binder cases and `Equiv.shift` share
-the same wall: `.iota_intro`/`.unfold_*` extend `S` with
-the current `(a, b)` pair at depth `|Γ|`, and the body IH
-needs `S` shifted at a different cutoff. DECISION-LOG
-2026-04-18 lists three routes; route (a) (depth-tag each
-entry: `Seen := List (Nat × Expr × Expr)`) is most
-principled. This ripples through every `Subtype'`-using
-proof in SoundnessProof, so do it on a stable base.
+- `R_mono.decreasing_by`: lift `v` to a top-level
+  positional arg so `decreasing_by` sees `sizeOf v` for the
+  `(n, sizeOf v)` lex measure shared with `R`. Mutual with
+  `RList_mono`.
+- `eval_realises .lam/.iota/.fix` base-conjuncts (3): the
+  new `R`-clause is `∃ ρe' he, RList (n+1) d cl.env ρe' ∧
+  closedAt ∧ Equiv e (.ctor …)`. At each base case
+  `cl.env = ρ` and `henv : REnv n d ρ ρe` is in scope;
+  build the witness directly.
+- `Equiv.shift` nil-Γ: `Subtype'.ctx_extend` no longer
+  needs `Seen.Closed`; the cons-Γ proof routes through it,
+  the nil-Γ residual is the `n=0` shift identity.
 
-Closes: `ctx_extend_at` (Subtyping), `Equiv.shift`
-(SoundnessProof) → `subst_resp`/`R_resp_Equiv` axiom-clean.
+### Tier 2 — bridge threading (engineering, ~1 hr each)
 
-### Root 2 — `R` clauses must expose `REnv` (research → engineering)
+- `quote_open_subst`: 4-step route documented at its
+  docstring (SoundnessProof ~2310). All four pieces
+  (`eval_realises`, `R_quote_equiv`, `substEnv_subst_comp`,
+  `R_resp_Equiv`) are proven post-`293dc13`.
+- `SubV_to_Subtype'` closure cases: add `(hRa : ∃ ea, R 1
+  Γ.size a ea)` / `(hRb)` to bridge motives; extract `RList
+  … cl.env ρe'` from the new `R`-clause; apply
+  `quoteClosure_equiv_openω_fresh` (proven). Callers
+  (`subCheckVal_sound_open`) supply `(hRa)/(hRb)` from
+  `eval_realises`.
+- `openNf_holds` removal: swap 6 `eval_quotes` callers to
+  the proven `eval_quotes'`, threading `(hnfq)` from each
+  caller's available `eval` evidence.
 
-`vapp_realises` (consolidating `.app`'s `.fix`/`.iota` head
-sub-cases) is unprovable under the current Kripke `R`:
-both the mutual route and Ahmed-`R(min)` lose exactly one
-step-index at the closure boundary (SoundnessProof
-1495-1530). Resolution: change `R`'s `.lam`/`.iota`/`.fix`
-clauses to `∃ ρe', REnv n d cl.env ρe' ∧ Equiv …`,
-well-founded on `(n, sizeOf v)` lex. `.app` then applies
-the fuel-IH to `cl.body` directly via `REnv_cons`. In
-flight on `R-restructure` fork.
+### Tier 3 — assembly + algorithm gap
 
-Closes: `vapp_realises` → 3 `eval_realises` leaves →
-`quote_open_subst` → `SubV/SubN/SynthN_to_Subtype'`
-closure cases → `subCheckVal_sound` axiom-clean (modulo
-root 1 for `.lam`'s `narrow`).
-
-### Root 3 — open-Γ residuals (engineering)
-
-`tyCheck_sound_open .lam` is structurally complete
-post-QuotesCtx-depth-`k` fix; gated only on
-`whnfPi_sound_open` (which is gated on root #2 via
-`quote_open_subst`). `letBinderType_sound_open` is
-provable now (mutual tag-3 IH + `hctx.eq`).
-`tyInfer_sound_open`'s non-`.fix/iota` arms are direct
-structural recursions; the `.fix/iota` arm is
-A9-unprovable as stated — restate as
-"`tyInfer e = ok τ → tyCheck e τ = ok true → e ⊑ τ`" or
-add `(hwf : e wellFormedFix)`. `openNf_holds` is false as
-stated — drop it, thread `(hnfq)` through
-`OpenCtx.eval_quotes`'s callers. In flight on
-`open-gamma-residuals` fork.
-
-Closes: `typeCheck_sound` axiom-clean (modulo roots 1+2).
+- `whnfPi_sound_open`: structural induction on `whnfPi`'s
+  unfold loop; each `.fix`/`.iota` step uses
+  `Equiv.fix_unfold`/`Equiv.iota_unfold` (proven) +
+  `quote_open_subst` (tier 2).
+- `tyCheck_sound_open .lam` final assembly: gated on
+  `whnfPi_sound_open`.
+- `tyInfer_sound_open .letE` algorithm gap: the inferred
+  body type may reference the let-binder. Either change
+  `tyInfer .letE` (TyCheck.lean) to substitute before
+  returning, or restate the soundness lemma to quote at
+  depth `Γ.size+1` then `letE_R` it down. Per fork
+  `a40bd0da`.
+- `tyInfer_sound_open .app`: needs an `app_elim`-style step
+  (`f ⊑ Π[A]B → a ⊑ A → f a ⊑ B[a]`) — derive via
+  `.app_cong` + `.beta_R` + `.trans`, or add as a derived
+  rule in Subtyping.lean.
 
 ### Done
+
+- Root #1 (depth-tagged Seen): `ctx_extend_at` closed,
+  Subtyping.lean sorry-free (`8d86c69`).
+- Root #2 (R env-exposure): `vapp_realises` proven
+  (`293dc13`). `R_resp_Equiv` non-recursive.
+- Root #3 (`OpenCtx.hwf`): `tyInfer .bvar` closed,
+  `letBinderType_sound_open` closed (`94483f1`).
 
 - Root #3-old `eval_quotable` — closed via `(nf fuelω
   e).isSome` side-condition (`eval-quotable-fork`); the
