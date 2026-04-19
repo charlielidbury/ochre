@@ -61,15 +61,15 @@ namespace Std
 -- ============================================================
 
 def dtrue := och{
-  ι self:Type. λP:(self → Type). λt:(P self). λf:Type. t
+  ι self. λP:(self → Type). λt:(P self). λf:Type. t
 }
 
 def dfalse := och{
-  ι self:Type. λP:(self → Type). λt:Type. λf:(P self). f
+  ι self. λP:(self → Type). λt:Type. λf:(P self). f
 }
 
 def dBool := och{
-  fix B:Type. ι self:B. λP:(B → Type). λt:(P dtrue). λf:(P dfalse). P self
+  fix B. ι self:B. λP:(B → Type). λt:(P dtrue). λf:(P dfalse). P self
 }
 
 def not := och{

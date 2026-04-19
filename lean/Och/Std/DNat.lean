@@ -63,12 +63,12 @@ annotation is the placeholder `Type`. No reference to `dNat`,
 so it can be defined first and `dNat` can reference it
 directly (no local-let copy needed). -/
 def dzero := och{
-  ι self:Type. λP:(self → Type). λz:(P self). λs:Type. z
+  ι self. λP:(self → Type). λz:(P self). λs:Type. z
 }
 
 def dNat := och{
-  fix N:Type. ι self:N.
-    let dsucc : (N → N) = fix dsucc:(N → N).
+  fix N. ι self:N.
+    let dsucc = fix dsucc:(N → N).
       λm:N. λP:((dsucc m) → Type). λz:Type. λs:(λpred:N. P (dsucc pred)). s m in
     λP:(N → Type). λz:(P dzero). λs:(λpred:N. P (dsucc pred)). P self
 }

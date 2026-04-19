@@ -3,6 +3,80 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-19 — `Val.beq` ptrEq fast-path; legacy `subCheckNF` retired
+
+**Root cause of the ~5 min DNat build**: `Val.beq` walks
+the value DAG as a *tree*. With `unfBound = 32`, `dsucc`'s
+self-applying `(dsucc m)` P-domain creates a 32-deep `.lam`
+tower whose closure envs each reference the predecessor
+numeral, so DAG-as-tree size grows ~33× per level
+(`vthree` = 15.6 M nodes; `vNat` = 63). The DAG itself is
+tiny (eval ~3 ms); 488 `subCheckVal` calls × ~28 `Val.beq`
+guards each tree-walk it. Call counts and seen-list length
+are *constant* across `done_..dthree` — the blowup is
+per-call cost, not call count. (`H1` confirmed; `H2..H4`
+ruled out — see commit `60d4b6d`.)
+
+**Fix**: `unsafe def Val.beqFast` (+ Neutral/Closure/Env
+twins) prefixed with `ptrEq ||`, swapped via
+`@[implemented_by]` so the proven `Val.beq` (and
+`LawfulBEq`/`subCheckVal_subV`) are untouched. `dthree ⊑
+dNat` 322 s → 0.3 s; `dfive` flat at ~330 ms (was
+untestable). Combined with the legacy-checker retirement,
+clean build 580 s → 71 s.
+
+**Why ptrEq is sound here**: `Val` is an inductive (no
+mutable cells), so pointer-equality implies structural
+equality. `@[implemented_by]` is a trusted annotation; the
+*proof* uses the structural `beq`, only `native_decide`/
+`#eval` use the fast path. The risk is the usual one for
+`implemented_by` (a future divergence between `beq` and
+`beqFast` would not be caught by Lean); the `LawfulBEq`
+instance and the `dfive` regression in `PerfProbe.lean`
+are the guards.
+
+**Alternatives considered**: (a) `Hashable Val` + `HashSet`
+seen — would also work, more code, same trust boundary
+(hash collisions). (b) Quote-then-`Expr.beq` for the seen
+check — slower per check, identifies more pairs (the A6
+closure-non-canonicality), but breaks `LawfulBEq`. (c)
+Cap `unfBound` at e.g. 8 — workaround, not a fix.
+
+**Legacy `subCheckNF`/`absEval` retired** in the same
+batch (`6772061`, net −449 lines, Eval.lean 808→339). It
+existed for the divergence sweep, which had found A1–A8
+and was down to the one documented A6 incompleteness. The
+new sweep is NbE-only (`sweep_refl`/`top`/`strict`/
+`a6_pinned`). One test weakened: `appendArrays` at its
+declared type is an A6-family NbE incompleteness; pinned
+in `PerfProbe.lean`.
+
+## 2026-04-19 — DBool/DNat: very-dependent encoding (no per-constructor `fix`)
+
+`dtrue`/`dfalse`/`dzero` are now `ι self. λP:(self →
+Type). …` — no `fix B:Type` wrapper, no forward-reference
+to their type. `dBool`/`dNat` reference them directly.
+
+The `e08bce9` per-constructor `fix B` was a workaround for
+the contravariant motive-domain check not closing
+coinductively. With A4 (seen-indexed `Subtype'`) + A5/A7,
+the very-dependent form goes through directly: after
+`unfold_fix_R` puts `(ctor, Type)` on the seen-list,
+`unfold_iota_L` substitutes `self ↦ ctor` so the motive
+domain becomes `(ctor → Type)`, and the contravariant
+check `Type ⊑ ctor → ctor ⊑ dType` closes via `.hyp`. The
+constructor's `:Type` annotation is a placeholder (the
+motive uses `self`, not the annotation; `Type` makes the
+structural ann-check fail fast so iotaIntro takes over).
+
+`dsucc`'s `fix dsucc:(dNat → dNat)` stays — genuine
+function recursion (`dsucc pred` in the `s`-branch). The
+local-let `dsucc` inside `dNat` also stays
+(closure-non-canonicality; A6).
+
+`ι x.`/`fix x.`/`let x =` macro sugar (`rfl`-identical to
+the `:Type` form) added to make this read naturally.
+
 ## 2026-04-18 — A6 reverted to `domA` (algorithmic blowup)
 
 `subCheckValMatch`'s `.lam,.lam` arm pushes the *source*
