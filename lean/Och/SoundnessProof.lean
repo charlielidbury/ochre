@@ -2291,6 +2291,26 @@ theorem quote_open_subst {cl : Closure} {v r : Val}
               Subtype' S Γe (bodye.subst 0 ve) re := by
   sorry
 
+/-- Multi-step `quote_depth_shift`: quoting at any deeper
+depth `d ≥ k` shifts the result by `d - k`. Iterates the
+one-step lemma; `shift_shift_same` collapses the iterated
+shifts. Used by `SynthN_to_Subtype'.var` to bridge
+`QuotesCtx`'s per-entry depth `k` to the goal's outer depth
+`Γ.size`, where the gap is exactly the `Subtype'.bvar`
+shift amount. -/
+theorem quote_depth_shift_n {k d v e}
+    (hle : k ≤ d) (hq : quote fuelω k v = some e) :
+    quote fuelω d v = some (e.shift (d - k) 0) := by
+  obtain ⟨n, rfl⟩ := Nat.exists_eq_add_of_le hle
+  simp only [Nat.add_sub_cancel_left]
+  clear hle
+  induction n with
+  | zero => simp only [Nat.add_zero, Expr.shift_zero]; exact hq
+  | succ m ih =>
+      have h1 := quote_depth_shift ih
+      rw [Expr.shift_shift_same, Nat.add_comm 1 m] at h1
+      exact h1
+
 /-!
 ### Quote shape lemmas
 
@@ -2350,6 +2370,48 @@ theorem quoteω {d : Nat} {v : Val} {e : Expr}
     (h : quote (fuelω - 1) d v = some e) :
     quote fuelω d v = some e :=
   quote_fuel_mono (Nat.sub_le _ _) h
+
+/-- Lift `quoteClosure` from `fuelω - 1` to `fuelω`. -/
+theorem quoteClosureω {d : Nat} {cl : Closure} {e : Expr}
+    (h : quoteClosure (fuelω - 1) d cl = some e) :
+    quoteClosure fuelω d cl = some e :=
+  quoteClosure_fuel_mono (Nat.sub_le _ _) h
+
+theorem quote_lam {d : Nat} {dom : Val} {cl : Closure} {e : Expr}
+    (h : quote fuelω d (.lam dom cl) = some e) :
+    ∃ dome bodye,
+      quote (fuelω - 1) d dom = some dome ∧
+      quoteClosure (fuelω - 1) d cl = some bodye ∧
+      e = .lam dome bodye := by
+  rw [fuelω_succ] at h; unfold quote at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some,
+             Option.some.injEq] at h
+  obtain ⟨de, hde, be, hbe, heq⟩ := h
+  exact ⟨de, be, hde, hbe, heq.symm⟩
+
+theorem quote_iota {d : Nat} {ann : Val} {cl : Closure} {e : Expr}
+    (h : quote fuelω d (.iota ann cl) = some e) :
+    ∃ anne bodye,
+      quote (fuelω - 1) d ann = some anne ∧
+      quoteClosure (fuelω - 1) d cl = some bodye ∧
+      e = .iota anne bodye := by
+  rw [fuelω_succ] at h; unfold quote at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some,
+             Option.some.injEq] at h
+  obtain ⟨de, hde, be, hbe, heq⟩ := h
+  exact ⟨de, be, hde, hbe, heq.symm⟩
+
+theorem quote_fix {d : Nat} {ann : Val} {cl : Closure} {e : Expr}
+    (h : quote fuelω d (.«fix» ann cl) = some e) :
+    ∃ anne bodye,
+      quote (fuelω - 1) d ann = some anne ∧
+      quoteClosure (fuelω - 1) d cl = some bodye ∧
+      e = .«fix» anne bodye := by
+  rw [fuelω_succ] at h; unfold quote at h
+  simp only [Option.bind_eq_bind, Option.bind_eq_some,
+             Option.some.injEq] at h
+  obtain ⟨de, hde, be, hbe, heq⟩ := h
+  exact ⟨de, be, hde, hbe, heq.symm⟩
 
 /-!
 ### Hypothesis bundles
@@ -2424,15 +2486,49 @@ theorem SubN_to_Subtype'
     -- top
     (fun {S Γ a} {Se Γe ae be} _hS _hΓ _ha hb => by
       rw [quote_type] at hb; cases hb; exact .top ae)
-    -- lam — needs eval_unf_equiv for the unf=1↔4 mismatch.
-    -- IHs `ihD` (dom) and `ihB` (body at Γ.push domA) are
-    -- available; once `quoteClosure_eq_quote_openω_fresh`
-    -- becomes unconditional this case closes via
-    -- `Subtype'.lam (ihD …) (Subtype'.narrow (ihD …)
-    -- (ihB …))` — `SubV.lam` is at `domA`, `Subtype'.lam` at
-    -- `domB`, so the body IH needs head-narrowing along
-    -- `domB ⊑ domA` before it slots in. (A6, DECISION-LOG.)
-    (fun _ _ _ _ _ihD _ihB {_ _ _ _} _ _ _ _ => by sorry)
+    -- lam: decompose via `quote_lam`; domain via `ihD`;
+    -- body via `ihB` at `Γ.push domA` then `Subtype'.narrow`
+    -- to `(domBe :: Γe)`. Three residual obstructions in the
+    -- body sub-goal (see inline).
+    (fun {S Γ domA domB clA clB bA bB}
+         hopenA hopenB _hD _hB ihD ihB
+         {Se Γe ae be} hS hΓ ha hb => by
+      obtain ⟨domAe, bodyAe, hdomAe, hclA, haeq⟩ := quote_lam ha
+      obtain ⟨domBe, bodyBe, hdomBe, hclB, hbeq⟩ := quote_lam hb
+      subst haeq hbeq
+      have hcontra : Subtype' Se Γe domBe domAe :=
+        ihD hS hΓ (quoteω hdomBe) (quoteω hdomAe)
+      refine .lam hcontra ?_
+      -- Goal: Subtype' Se (domBe :: Γe) bodyAe bodyBe.
+      -- Plan: ihB at QuotesSeen/QuotesCtx for `Γ.push domA`,
+      -- with body quotes from `quoteClosure_eq_quote_openω_fresh`,
+      -- giving `Subtype' Se' (domAe::Γe) bodyAe bodyBe`; then
+      -- `Subtype'.narrow hSc hcontra` to `(domBe::Γe)`.
+      -- Obstructions:
+      --  (a) `QuotesSeen S (Γ.push domA) Se`: depth changes
+      --      d→d+1, so each pe must shift. With
+      --      `Seen.Closed Se` (root #1), `pe.shift = pe`
+      --      (`Seen.Closed.shift_map_eq`). All callers pass
+      --      `Se = []`; adding `(hSc : Seen.Closed Se)` to
+      --      the bridge signatures is the clean fix.
+      --  (b) `quote_{d+1} bA = bodyAe`: from
+      --      `quoteClosure_eq_quote_openω_fresh hopenA
+      --       (quoteClosureω hclA) hunfA` where `hunfA` is the
+      --      unf=1↔4 *equality* on this closure (root #2,
+      --      stronger than `eval_unf_equiv`'s ≡). The ≡ form
+      --      suffices via `.trans` if we let `bodyAe` and
+      --      `quote_{d+1} bA` differ.
+      --  (c) `Subtype'.narrow` (root #1, `ctx_extend_at`'s
+      --      sorry) for `(domAe::Γe) → (domBe::Γe)`.
+      -- Once (a)–(c) are available:
+      --   have hΓ' := QuotesCtx.push hΓ (quoteω hdomAe)
+      --   have hbA := quoteClosure_eq_quote_openω_fresh
+      --                 hopenA (quoteClosureω hclA) hunfA
+      --   have hbB := … hopenB (quoteClosureω hclB) hunfB
+      --   exact Subtype'.narrow hSc hcontra
+      --     (ihB hS' hΓ' (by simpa [Array.size_push] using hbA)
+      --                  (by simpa [Array.size_push] using hbB))
+      sorry)
     -- iota_struct — same shape as lam (open with fresh).
     (fun _ _ _ _ _ihA _ihB {_ _ _ _} _ _ _ _ => by sorry)
     -- fix_struct
@@ -2514,15 +2610,20 @@ theorem SubN_to_Subtype'
         (ih4 hS hΓ (quoteω haB) (quoteω haA)))
     -- ===== SynthN cases =====
     -- var: Γ[k] = τ. quoteNeutral .var k = .bvar (d-1-k).
-    -- hΓ gives Γe[d-1-k] = τe with quote τ at depth k+1.
-    -- Need Subtype' .. (.bvar (d-1-k)) τe. By `.bvar` rule
-    -- with shift… but `Subtype'.bvar` gives `bvar i ⊑
-    -- (Γe[i]).shift (i+1) 0`, and we want `bvar i ⊑ τe`
-    -- where τe was quoted at depth k+1 ≠ d. Depth mismatch:
-    -- `hΓ` quotes τ at depth `k+1` but the goal needs it at
-    -- depth `d = Γ.size`. This is the level↔index
-    -- bookkeeping; needs a quote-shift lemma.
-    (fun {Γ k τ} _hk {Se Γe ne τe} _hΓ _hn _hτ => by sorry)
+    -- `QuotesCtx` (depth-k convention) gives Γe[d-1-k] = τe'
+    -- with quote_k τ = τe'. `Subtype'.bvar` gives
+    -- `bvar i ⊑ (Γe[i]).shift (i+1) 0` where i = d-1-k, so
+    -- the shift amount is `d-k`. The goal's `τe = quote_d τ`,
+    -- which by `quote_depth_shift_n` equals
+    -- `τe'.shift (d-k) 0` — exactly the `.bvar` conclusion.
+    (fun {Γ k τ} hk {Se Γe ne τe} hΓ hn hτ => by
+      obtain ⟨hkd, hne⟩ := quoteNeutral_var hn
+      subst hne
+      obtain ⟨τe', hget, hqk⟩ := hΓ k τ hk
+      have hqd := quote_depth_shift_n (Nat.le_of_lt hkd) hqk
+      rw [hτ] at hqd; injection hqd with heq
+      rw [heq, show Γ.size - k = Γ.size - 1 - k + 1 from by omega]
+      exact .bvar hget)
     -- app: IH gives ne' ⊑ (.lam dome cle)e; need
     -- `.app ne' ve ⊑ τe` where τe = quote(cl.openω v).
     -- `app_ascent` + `quote_open_subst`.
