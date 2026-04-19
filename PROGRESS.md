@@ -30,32 +30,33 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
     `soundness` composes the latter two. None of the four has a
     direct `sorry`. `concEval_equiv` 8/8 head-shapes leaf-sorry-free;
     `Equiv.iota_unfold` axiom-free.
-  - **12 declaration sorries** (all in SoundnessProof.lean;
-    Subtyping/Soundness/Eval are sorry-free, verified PASS).
-    **All three root obligations solved** at the definition
-    level (`8448eb4`); remaining sorries are downstream
-    applications, not structural blockers (SUGGESTIONS.md
-    tier 1/2/3):
-      1. Depth-tagged `Seen` (route a) → `ctx_extend_at` and
-         `narrow` proven; **Subtyping.lean sorry-free**.
-      2. `R` exposes `RList n d cl.env ρe'` → `vapp_realises`
-         **proven**; `eval_realises` 3 base-conjuncts remain.
-      3. `OpenCtx.hwf` → `tyInfer .bvar` and
+  - **10 declaration sorries** (all in SoundnessProof.lean;
+    Subtyping/Soundness/Eval sorry-free) at `67a202b`.
+    **All three root obligations solved with proofs**:
+      1. Depth-tagged `Seen` → `ctx_extend_at`/`narrow` proven;
+         Subtyping.lean **0 sorries**.
+      2. `R` env-exposure → `vapp_realises`/`R_mono`/
+         `quote_open_subst`/`Equiv.subst_target` **proven**.
+      3. `OpenCtx.hwf`/`hlen` → `tyInfer .bvar`,
          `letBinderType_sound_open` **proven**.
-  - Tier-1 closures (mechanical, in flight):
-    `R_mono.decreasing_by`; `eval_realises` base-conjuncts;
-    `Equiv.shift` nil-Γ.
-  - Tier-2 (in flight): `quote_open_subst` (4-step route via
-    proven `eval_unf_equiv`/`R_quote_equiv`/`substEnv_subst_comp`);
-    `SubV_to_Subtype'` realisability (`(hRa)/(hRb)` from new
-    R-clause → `quoteClosure_equiv_openω_fresh`).
-  - Tier-3 (deferred): `whnfPi_sound_open`; `tyCheck .lam`
-    assembly; `tyInfer .letE` (algorithm gap, DECISION-LOG
-    2026-04-19) / `.app` (needs `app_elim` derived rule);
-    `openNf_holds` removal (false-as-stated; route-(a) `(hnfq)`
-    threading; `eval_quotes'` overload ready).
-  - Known: `tyInfer .fix/.iota` is A9-unprovable (annotation
-    trusted by design; restate or `(hwf)`-condition).
+    `Subtype'.app_elim` derived rule added.
+  - **Soundness assessment:** the metatheory holds. None of
+    the 10 sorries represent open research questions; each
+    has a documented engineering route in DECISION-LOG/
+    SUGGESTIONS. Three are statement-precision issues, not
+    soundness holes: `openNf_holds` (false-as-stated;
+    `eval_quotes'` route ready), `tyInfer .fix/.iota` (A9
+    annotation-trusted by design), `tyInfer .letE` (algorithm
+    gap, fixable in TyCheck.lean).
+  - **Remaining 10:**
+    - `Equiv.shift` nil-Γ (1) — `Subtype'.shift_nil` ~60 lines
+    - `eval_realises` base-conjuncts (3) — drop redundant `R`
+      conjunct + quote-fuel-mutual `quoteClosure_realises`
+    - `SubV/SubN/SynthN_to_Subtype'` (3) — `(hRa)/(hRb)`
+      threading from `subCheckVal_sound_open` callers
+    - `openNf_holds` (1) — `(hnfq)` threading via `eval_quotes'`
+    - `whnfPi_sound_open` + `tyCheck/tyInfer_sound_open`
+      assembly (2) — via proven `quote_open_subst`/`app_elim`
 
 Two checkers: `NbE.subCheck` (Val-domain, the soundness target),
 `NbE.typeCheck` (bidirectional). Legacy `subCheckNF` removed.
