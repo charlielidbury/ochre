@@ -30,39 +30,35 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
     `soundness` composes the latter two. None of the four has a
     direct `sorry`. `concEval_equiv` 8/8 head-shapes leaf-sorry-free;
     `Equiv.iota_unfold` axiom-free.
-  - **13 sorries** (Eval 0, Subtyping 1, SoundnessProof 8,
-    Soundness 4) reduce to four root obligations:
-      1. Depth-tagged seen-set → closes `ctx_extend_at` +
-         `Equiv.shift` → `subst_resp`/`R_resp_Equiv` axiom-clean.
-         (DECISION-LOG 2026-04-18 routes a/b/c.)
-      2. `eval_realises` recursion-boundary leaves → closes
-         `quote_open_subst` → `SubV_to_Subtype'` chain.
-      3. `eval_quotable` Val-size measure → closes
-         `quote_total_on_eval`.
-      4. Open-Γ generalisation of `tyCheck_sound`/`tyInfer_sound`/
-         `whnfPi_sound`.
-  - `SubV → Subtype'`: 5/15 cases proven (hyp/refl/top + neutral_*);
-    10 closure-opening cases gated on `quote_open_subst`, which
-    derives from `eval_unf_equiv`, which derives from `eval_realises`.
-    The lam case will additionally need `Subtype'.narrow`
-    (`SubV.lam` is at `domA`, `Subtype'.lam` at `domB`).
-  - `Subtype'.narrow_at` (position-`k` context narrowing): 18/19
-    constructor cases **proven**; the one open case is `ctx_extend`
-    (the seen-set entries' Exprs are *closed*, so the extend is the
-    identity, but stating that needs a closedness invariant on `S`).
-    `narrow` derives from `narrow_at`.
-  - `eval_realises` (the fundamental lemma of the step-indexed
-    logical relation `R`): `.type`/`.bvar` closed; `.lam` Kripke,
-    `.fix`/`.iota` Kripke threaded; `.app` per-`vf` split — `.lam`
-    head closed, `.type`/stuck heads closed, `.fix`/`.iota` heads
-    threaded down to four named lemmas: (a) `vapp` of unfolded
-    `.fix` is `vapp` of body-with-self-substituted; (b)
-    `R_resp_iota_unfold`; (c) symmetric for `.fix`; (d) a
-    well-founded trick or, more cleanly, restate `R`'s Kripke
-    clause as ∀-`unf`-quantified and add `m ≤ fuel` to
-    `eval_realises`. ~15 helper lemmas proven (`R_mono`, `REnv_id`,
-    `REnv_take`, `closedAt_bvarBound`, `Equiv.*`, `quote_fuel_mono`
-    family, `substEnv_closedAt_irrel`, `eval_env_take`).
+  - **15 sorries** (Eval 0, Subtyping 1, SoundnessProof 14,
+    Soundness 0) reduce to **three root obligations**:
+      1. `Seen.Closed`/depth-tagged seen → closes `ctx_extend_at`'s
+         6 binder cases + `Equiv.shift`. (DECISION-LOG routes a/b/c.)
+      2. `R`'s `.lam`/`.iota`/`.fix` Kripke clause must expose the
+         closure environment (`∃ ρe', REnv n d cl.env ρe' ∧ …`,
+         well-founded on `(n, sizeOf v)` lex) so `.app`'s unfold
+         branches can apply the fuel-IH directly without the
+         lossy 1-step-index gap. Closes `vapp_realises` →
+         `eval_realises` → `quote_open_subst` → `SubV_to_Subtype'`.
+      3. Open-Γ residuals: `letBinderType_sound_open` (provable
+         now, mutual tag-3 IH); `tyInfer_sound_open` non-`.fix/iota`
+         arms; `whnfPi_sound_open` (gated on root #2 via
+         `quote_open_subst`).
+    Resolved since last update: `quote_total_on_eval` (was root #3)
+    via `(hnf : (nf fuelω e).isSome)` side-condition; `QuotesCtx`
+    depth-`k` convention (was `k+1`) removed `.lam`'s shift bridge.
+  - `SubV → Subtype'`: 5/15 cases proven; 10 closure-opening cases
+    gated on `quote_open_subst` (root #2). `SynthN.var` likely
+    closes via the `QuotesCtx` depth-`k` fix + a multi-step
+    `quote_depth_shift`.
+  - `eval_realises`: post-`hcl`-threading (92a1bd4), 14 leaf sorries
+    consolidated to 3 + `vapp_realises` (root #2). Remaining leaves
+    documented at lines 1495-1530 (SoundnessProof.lean).
+  - `tyCheck_sound_open`: `.asc`/`.fix`/`.iota`/catch-all proven;
+    `.lam` builds `Subtype'.lam hcontra hIH` at the right context
+    (post-QuotesCtx-fix), gated only on `whnfPi_sound_open`/
+    `whnfPi_quotes` (root #2/#3). `.letE` IH constructed via
+    `push_let`, gated on `letE_L`/`R` final assembly.
 
 Three checkers: `subCheckNF` (legacy Expr-domain), `NbE.subCheck`
 (Val-domain, the soundness target), `NbE.typeCheck` (bidirectional).
