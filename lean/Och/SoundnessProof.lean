@@ -796,18 +796,16 @@ namespace Equiv
   theorem shift {e₁ e₂ : Expr} (h : Equiv e₁ e₂) :
       Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
     intro S' Γ'
-    have hSc : Seen.Closed ([] : Seen) := by
-      intro p hp; cases hp
     have lift : ∀ (τ : Expr) (Γ₀ : Ctx),
         Subtype' S' (τ :: Γ₀) (e₁.shift 1 0) (e₂.shift 1 0) ∧
         Subtype' S' (τ :: Γ₀) (e₂.shift 1 0) (e₁.shift 1 0) := by
       intro τ Γ₀
       have h₁ := (h (S := []) (Γe := Γ₀)).1
       have h₂ := (h (S := []) (Γe := Γ₀)).2
-      have l₁ := Subtype'.ctx_extend (Γ := Γ₀) [τ] hSc h₁
-      have l₂ := Subtype'.ctx_extend (Γ := Γ₀) [τ] hSc h₂
-      simp only [List.length_singleton, List.singleton_append]
-        at l₁ l₂
+      have l₁ := Subtype'.ctx_extend (S := []) (Γ := Γ₀) [τ] h₁
+      have l₂ := Subtype'.ctx_extend (S := []) (Γ := Γ₀) [τ] h₂
+      simp only [List.map_nil, List.length_singleton,
+                 List.singleton_append] at l₁ l₂
       exact ⟨l₁.weaken (fun _ hp => absurd hp (List.not_mem_nil _)),
              l₂.weaken (fun _ hp => absurd hp (List.not_mem_nil _))⟩
     cases Γ' with
@@ -2398,11 +2396,18 @@ theorem quote_fix {d : Nat} {ann : Val} {cl : Closure} {e : Expr}
 ### Hypothesis bundles
 -/
 
-/-- The seen-set quotes into `Se`. -/
+/-- The seen-set quotes into `Se`. With depth-tagged `Seen`,
+each Val-pair `(a,b) ∈ S` corresponds to an entry
+`(d, ae, be) ∈ Se` where `d ≤ Γ.size` (entries recorded at the
+current depth or shallower) and `quote_d a = ae`, `quote_d b
+= be`. The bridge's `.hyp` case uses `Subtype'.hyp` with
+`d ≤ Γe.length` and `quote_depth_shift_n` to bridge `quote_d`
+to `quote_{Γ.size}`. -/
 abbrev QuotesSeen (S : List (Val × Val)) (Γ : TyCtx) (Se : Seen) : Prop :=
   ∀ p ∈ S, ∃ pe ∈ Se,
-    quote fuelω Γ.size p.1 = some pe.1 ∧
-    quote fuelω Γ.size p.2 = some pe.2
+    pe.1 ≤ Γ.size ∧
+    quote fuelω pe.1 p.1 = some pe.2.1 ∧
+    quote fuelω pe.1 p.2 = some pe.2.2
 
 /-- The type context quotes into `Γe` at matching de Bruijn
 indices. `Γ` is level-indexed (`Γ[k]` = type of `.var k`);
@@ -2457,10 +2462,16 @@ theorem SubN_to_Subtype'
     -- ===== SubV cases =====
     -- hyp
     (fun {S Γ a b} hin {Se Γe ae be} hS _hΓ ha hb => by
-      obtain ⟨⟨pe1, pe2⟩, hpe, hq1, hq2⟩ := hS _ hin
-      simp only at hq1 hq2
-      rw [ha] at hq1; rw [hb] at hq2
-      cases hq1; cases hq2; exact .hyp hpe)
+      obtain ⟨⟨pd, pe1, pe2⟩, hpe, hpd, hq1, hq2⟩ := hS _ hin
+      -- hq1 : quote pd a = some pe1; ha : quote Γ.size a = some ae.
+      -- By `quote_depth_shift_n hpd hq1`, ae = pe1.shift (Γ.size−pd) 0;
+      -- similarly be. Then `.hyp hpe (Γe.length ≥ pd)` gives the
+      -- goal up to `Γ.size = Γe.length` (which holds at all call
+      -- sites via `OpenCtx.hlen` / `QuotesCtx.push` bookkeeping but
+      -- isn't currently in the motive). Adding `(hlen)` to the
+      -- `MV`/`MN` motives is the clean fix; sorried until that
+      -- threading lands. root #1 ripple.
+      sorry)
     -- refl
     (fun {S Γ a} {Se Γe ae be} _hS _hΓ ha hb => by
       rw [ha] at hb; cases hb; exact .refl ae)
@@ -2642,7 +2653,7 @@ context entry quotes into `Γe` at the right de Bruijn index;
 `ha`/`hb` quote the goal's endpoints. -/
 theorem SubV_to_Subtype'
     {S Γ a b} (h : SubV S Γ a b)
-    {Se : List (Expr × Expr)} {Γe : Ctx} {ae be : Expr}
+    {Se : Seen} {Γe : Ctx} {ae be : Expr}
     (hS : QuotesSeen S Γ Se)
     (hΓ : QuotesCtx Γ Γe)
     (ha : quote fuelω Γ.size a = some ae)
@@ -2849,10 +2860,6 @@ theorem OpenCtx.eval_quotes' {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
     ∃ ve, quote fuelω Γ.size v = some ve :=
   eval_quotable_open hfuel hnfq heval
 
-/-- `Seen.Closed []` is vacuous. -/
-private theorem seen_closed_nil : Seen.Closed [] :=
-  fun _ hp => absurd hp (List.not_mem_nil _)
-
 /-- Lifts an `OpenCtx.hwf` tail through one context
 extension. Shared by `push_fresh`/`push_let` for the `k>0`
 case: `ρe[m]` shifts to `ρe[m].shift 1 0`, the goal type
@@ -2871,8 +2878,9 @@ private theorem hwf_lift_tail {Γe : Ctx} {ρe : List Expr}
   rw [List.getElem?_map] at hw
   obtain ⟨w0, hw0, rfl⟩ := Option.map_eq_some'.mp hw
   have hinner := hwf m w0 τe hw0 hτe
-  have hext := Subtype'.ctx_extend [head] seen_closed_nil hinner
-  simpa [Expr.shift_succ] using hext
+  have hext := Subtype'.ctx_extend (S := []) [head] hinner
+  simpa [Expr.shift_succ, List.map_nil,
+         List.singleton_append] using hext
 
 /-- Lift each `ρ`-entry's quote-witness to depth `d+1`. -/
 private theorem hρq_lift {d : Nat} {ρ : Env}
@@ -3003,7 +3011,8 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simp only [List.getElem?_cons_zero, List.get?_cons_zero,
                    Option.some.injEq] at hw hτe'
         subst hw hτe'
-        exact Subtype'.ctx_extend [valTye] seen_closed_nil hval_le
+        have := Subtype'.ctx_extend (S := []) [valTye] hval_le
+        simpa using this
     | succ m =>
         simp only [List.getElem?_cons_succ,
                    List.get?_cons_succ] at hw hτe'

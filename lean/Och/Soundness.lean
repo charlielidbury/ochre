@@ -495,7 +495,7 @@ example : Subtype' [] [] dtrue dBool := by
   change Subtype' _ [] dtrue dBoolIota
   apply Subtype'.iota_intro
   · -- annotation: dtrue ⊑ dBool, found at S[1]
-    exact Subtype'.hyp (List.Mem.tail _ (List.Mem.head _))
+    exact Subtype'.hyp_here (List.Mem.tail _ (List.Mem.head _))
   · -- body: dtrue ⊑ λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dtrue
     change Subtype' _ [] dtrue bodyRHS
     unfold dtrue
@@ -506,7 +506,7 @@ example : Subtype' [] [] dtrue dBool := by
     apply Subtype'.lam
     · -- (dBool→Type) ⊑ (dtrue→Type): contra dtrue⊑dBool via .hyp at S[2]
       apply Subtype'.lam
-      · exact Subtype'.hyp
+      · exact Subtype'.hyp_here
           (List.Mem.tail _ (List.Mem.tail _ (List.Mem.head _)))
       · exact Subtype'.refl _
     · apply Subtype'.lam
