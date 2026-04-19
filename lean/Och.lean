@@ -9,4 +9,5 @@ import Och.SoundnessProof
 import Och.Subtyping
 import Och.Soundness
 import Och.Tests
+import Och.PropertyTests
 import Och.Std
