@@ -110,53 +110,60 @@ theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
   rw [Expr.substEnv_nil] at hr
   exact R_quote_equiv Nat.one_pos hr hq
 
-/-- Quote-totality, inductive form: every value produced by
-`eval` from an environment whose entries are themselves
-`fuelω`-quotable at the current depth is `fuelω`-quotable.
+/-! ### Quote-totality
 
-This is the NbE-adequacy totality direction. The obstacle
-is `quoteClosure`: it re-evaluates `cl.body` at fuel
-`fuelω−1` with a fresh neutral consed onto `cl.env`, then
-quotes the result at `depth+1`. So the IH needs to apply
-to that *new* eval call (at a different fuel and a deeper
-depth). Two sub-obligations:
+The unconditional form
+`eval fuel unf [] e = some v → ∃ ve, quote fuelω 0 v = some ve`
+is **false**: `eval 2 unf [] (.lam .type huge)` succeeds in
+two fuel regardless of `huge`'s size, but `quoteClosure`
+re-evaluates `huge` under a fresh neutral and that can need
+arbitrarily much fuel. So quote-totality is a *side
+condition on the input*, not a derived property.
 
-  (a) Env entries quotable at `d` are also quotable at
-      `d+1` — i.e., `quote_depth_lift` (every `.var l` in
-      a value reachable from a depth-`d` env satisfies
-      `l < d`, hence `l < d+1`). Stated separately below.
+The natural side condition is `(nf fuelω e).isSome` — `e`
+normalises within `fuelω`. With that, the result is
+immediate via `eval_fuel_mono` (the value at `fuel ≤ fuelω`
+is the same as at `fuelω`, and `nf` says the latter quotes).
+-/
 
-  (b) The inner `eval (fuelω−1) 1 (fresh :: cl.env)
-      cl.body` succeeds. `cl.body` is a sub-Expr of the
-      original `e` (via `Closure.mk'`), and `cl.env` is a
-      prefix of the env at the closure's creation point.
-      The bound is `fuelω ≥ fuel + Expr.size e` (each
-      quote-layer adds at most `size body + 1` to the
-      fuel needed); stated as `quoteClosure_total` below.
+/-- Helper: `(o.bind f).isSome` unpacks to a witness. -/
+private theorem bind_isSome_iff {α β} {o : Option α} {f : α → Option β} :
+    (o.bind f).isSome ↔ ∃ a, o = some a ∧ (f a).isSome := by
+  cases o with
+  | none => simp
+  | some a => simp
 
-Both reduce to a `Val.maxLevel`/`Val.qfuel` measure that
-doesn't yet exist; the closed-term specialisation
-`quote_total_on_eval` derives from this with the env
-hypothesis vacuously satisfied. -/
-theorem eval_quotable {fuel unf d : Nat} {ρ : Env} {e : Expr} {v : Val}
-    (hρ : ∀ w ∈ ρ, ∃ we, quote fuelω d w = some we)
-    (heval : eval fuel unf ρ e = some v) :
-    ∃ ve, quote fuelω d v = some ve := by
-  -- By induction on `fuel`, then on `e`. Each constructive
-  -- arm of `eval` either returns an env entry (`hρ`),
-  -- builds one constructor on top of an IH result (`.lam`/
-  -- `.iota`/`.fix` — the closure case is (b) above), or
-  -- recurses (`.letE`/`.app`/`.asc` — IH at extended/same
-  -- env). The closure case is the only non-IH leaf.
-  sorry
+/-- `nf` of `.asc t τ` succeeds iff `nf` of `t` does (A8:
+ascription is computationally transparent; `eval` peels
+the `.asc` in one fuel step, and `eval_fuel_mono` recovers
+that step). -/
+theorem nf_asc_term_isSome {n : Nat} {t ty : Expr}
+    (hnf : (nf n (.asc t ty)).isSome) :
+    (nf n t).isSome := by
+  match n, hnf with
+  | 0, hnf => simp [nf, eval_zero] at hnf
+  | k + 1, hnf =>
+    unfold nf at hnf ⊢
+    simp only [Option.bind_eq_bind] at hnf ⊢
+    simp only [eval] at hnf
+    obtain ⟨v, hev, hq⟩ := bind_isSome_iff.mp hnf
+    exact bind_isSome_iff.mpr
+      ⟨v, eval_fuel_mono (Nat.le_succ k) hev, hq⟩
 
-/-- Quote-totality on closed eval-images: specialises
-`eval_quotable` at the empty environment (env hypothesis
-vacuous). -/
-theorem quote_total_on_eval {fuel unf : Nat} {e : Expr} {v : Val}
-    (heval : eval fuel unf [] e = some v) :
-    ∃ ve, quote fuelω 0 v = some ve :=
-  eval_quotable (fun _ hw => absurd hw (List.not_mem_nil _)) heval
+/-- Quote-totality, conditional on `nf fuelω e` succeeding.
+With `fuel ≤ fuelω`, `eval fuel … e` and `eval fuelω … e`
+agree (`eval_fuel_mono`), so the `nf` witness directly
+gives the quote. -/
+theorem quote_total_on_eval {fuel : Nat} {e : Expr} {v : Val}
+    (hfuel : fuel ≤ fuelω)
+    (hnf : (nf fuelω e).isSome)
+    (heval : eval fuel unfBound [] e = some v) :
+    ∃ ve, quote fuelω 0 v = some ve := by
+  unfold nf at hnf
+  simp only [Option.bind_eq_bind] at hnf
+  rw [eval_fuel_mono hfuel heval] at hnf
+  simp only [Option.some_bind] at hnf
+  exact Option.isSome_iff_exists.mp hnf
 
 /-- `whnfPi` is sound in the right-to-left direction: each
 `.fix`/`.iota` step is one declarative unfold
@@ -253,10 +260,11 @@ through `subCheckVal_sound` and `eval_quote_equiv_closed`. -/
 theorem tyCheckFallback_sound_closed
     {fuel : Nat} {e τ : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
+    (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (hτV : eval fuel unfBound [] τ = some τV)
     (h : tyCheckFallback fuel #[] [] e τV = .ok true) :
     Subtype' [] [] e τ := by
-  obtain ⟨τe, hqτV⟩ := quote_total_on_eval hτV
+  obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
   have hτe_τ : Subtype' [] [] τe τ :=
     (eval_quote_equiv_closed hτV hqτV).1
   unfold tyCheckFallback at h
@@ -277,7 +285,7 @@ theorem tyCheckFallback_sound_closed
         simp only [] at h
         split at h
         · next eV heV =>
-          obtain ⟨eVe, hqeV⟩ := quote_total_on_eval heV
+          obtain ⟨eVe, hqeV⟩ := quote_total_on_eval hfuel hnfe heV
           have h_e_eVe : Subtype' [] [] e eVe :=
             (eval_quote_equiv_closed heV hqeV).2
           have hsub := subCheckVal_sound hfuel h hqeV hqτV
@@ -291,6 +299,7 @@ termination_by (fuel, 1)
 theorem tyCheck_sound_closed
     {fuel : Nat} {e τ : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
+    (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (hτV : eval fuel unfBound [] τ = some τV)
     (h : tyCheck fuel #[] [] e τV = .ok true) :
     Subtype' [] [] e τ := by
@@ -356,7 +365,7 @@ theorem tyCheck_sound_closed
       -- `a ⊑ A` premise).
       sorry
     -- .asc e0 τ0
-    · next e0 τ0 =>
+    · rename_i e0 τ0 _hprev
       -- `eval τ0 → τ0V; tyCheck e0 τ0V; subCheckVal τ0V τV`.
       -- Both calls at Γ=#[]; closed IH applies.
       split at h
@@ -371,11 +380,28 @@ theorem tyCheck_sound_closed
             simp only [Bool.not_true, Bool.false_eq_true,
                        ↓reduceIte, pure, Except.pure,
                        bind, Except.bind] at h
+            -- `e = .asc e0 τ0`, so `nf fuelω e0` derives
+            -- (asc-transparent). `nf fuelω τ0` does *not* —
+            -- it's the type-position residual. The intended
+            -- top-level hypothesis is the recursive `Quotable
+            -- e := (nf fuelω e).isSome ∧ <Quotable on every
+            -- type-position sub-Expr>`, from which `hnfτ0`
+            -- derives; left as a leaf for the open-Γ
+            -- generalisation pass (which restates the lemma
+            -- with `(τV, τe, quote τV = τe)` instead of
+            -- `(τ, eval τ = τV)` per the `.letE`-arm note,
+            -- making this vacuous).
+            have hnfe0 : (nf fuelω e0).isSome :=
+              nf_asc_term_isSome (ty := τ0) hnfe
+            have hnfτ0 : (nf fuelω τ0).isSome := by sorry
             -- IH on inner check: `e0 ⊑ τ0`.
-            have h_e0_τ0 := tyCheck_sound_closed hfuel' hτ0V hinner
+            have h_e0_τ0 :=
+              tyCheck_sound_closed hfuel' hnfe0 hnfτ0 hτ0V hinner
             -- `subCheckVal τ0V τV` → `quote τ0V ⊑ quote τV`.
-            obtain ⟨τe, hqτV⟩ := quote_total_on_eval hτV
-            obtain ⟨τ0e, hqτ0V⟩ := quote_total_on_eval hτ0V
+            obtain ⟨τe, hqτV⟩ :=
+              quote_total_on_eval hfuel hnfτ hτV
+            obtain ⟨τ0e, hqτ0V⟩ :=
+              quote_total_on_eval hfuel' hnfτ0 hτ0V
             have hsub := subCheckVal_sound hfuel' h hqτ0V hqτV
             -- `eval_quote_equiv_closed`: `τ0 ≡ quote τ0V`,
             -- `quote τV ≡ τ`.
@@ -393,12 +419,12 @@ theorem tyCheck_sound_closed
     -- `subCheckVal_sound` + `eval_quote_equiv_closed` on both
     -- sides + `.trans`²; same proof for both, so `first | … |`.
     all_goals first
-    | exact tyCheckFallback_sound_closed hfuel hτV h
+    | exact tyCheckFallback_sound_closed hfuel hnfe hnfτ hτV h
     | (rename_i ann body
        split at h
        · rename_i eV hev
-         obtain ⟨τe, hqτV⟩ := quote_total_on_eval hτV
-         obtain ⟨ee, hqeV⟩ := quote_total_on_eval hev
+         obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
+         obtain ⟨ee, hqeV⟩ := quote_total_on_eval hfuel' hnfe hev
          have hsub := subCheckVal_sound hfuel' h hqeV hqτV
          have he_ee := (eval_quote_equiv_closed hev hqeV
            (S := []) (Γe := [])).2
@@ -414,15 +440,26 @@ end
 accepts then `e ⊑ τ` declaratively.
 
 `typeCheck` evaluates `τ` to `τV`, then runs `tyCheck` at
-`τV`; `tyCheck_sound_closed` does the rest. -/
+`τV`; `tyCheck_sound_closed` does the rest.
+
+The `hnfe`/`hnfτ` side conditions ("`e` and `τ` normalise
+within `fuelω`") are what the proof needs to relate Vals
+back to Exprs via `quote`. They are *not* derivable from
+`typeCheck` succeeding (a closure body can be arbitrarily
+large independent of the eval-fuel that built it), but
+hold for any term whose syntactic depth is well under
+`fuelω = 100000` — i.e., in practice, always; for concrete
+inputs, `by native_decide`. -/
 theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
     (hfuel : fuel ≤ fuelω)
+    (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (h : typeCheck fuel e τ = .ok true) :
     Subtype' [] [] e τ := by
   unfold typeCheck at h
   split at h
-  · next τV hτV => exact tyCheck_sound_closed hfuel hτV h
+  · next τV hτV =>
+      exact tyCheck_sound_closed hfuel hnfe hnfτ hτV h
   · simp_all
 
 /-- One let-step is an `Equiv`. Both directions are single
@@ -539,10 +576,11 @@ theorem concEval_preservation
 theorem soundness
     {fuel : Nat} {e e' τ : Expr}
     (hfuel : fuel ≤ fuelω)
+    (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = some e') :
     Subtype' [] [] e' τ :=
-  concEval_preservation (typeCheck_sound hfuel hcheck) hstep
+  concEval_preservation (typeCheck_sound hfuel hnfe hnfτ hcheck) hstep
 
 /-!
 ## Witnesses
