@@ -2272,25 +2272,24 @@ theorem R_fix_clause {n d ann cl ea}
         (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
   unfold R at hR; exact hR.2
 
-/-- `Equiv` is a congruence under `.subst i s` in the
+/-- `Equiv` is a congruence under `.subst 0 s` in the
 *target* position (compare `Equiv.subst_resp`, which varies
 the *substituend*). Equivalently, `Subtype'` is preserved
 by simultaneous substitution of the same term on both
 sides.
 
-**Route:** induct on the `Subtype'` derivation. Each
-constructor commutes with `.subst i s` (the binder cases
-shift `i`; the `.bvar` case splits on `j ⋚ i`; the
-seen-extender cases use the now-proven `ctx_extend_at` to
-realign the recorded-depth shift). Same shape as
-`Subtyping.lean`'s `weaken`/`narrow_at` — a structural
-substitution lemma. -/
+Derived without a structural induction: `e.subst 0 s` is
+β-equivalent to `(.lam .type e).app s`, so the goal reduces
+to `Equiv.lam` (target-side congruence under λ) +
+`Equiv.app` + `Equiv.beta`, all proven. -/
 theorem Equiv.subst_target {e₁ e₂ : Expr}
-    (h : Equiv e₁ e₂) (s : Expr) (i : Nat) :
-    Equiv (e₁.subst i s) (e₂.subst i s) := by
-  -- root #1 application: structural substitution lemma
-  -- for Subtype', mirrors `weaken`. ~30-case induction.
-  sorry
+    (h : Equiv e₁ e₂) (s : Expr) :
+    Equiv (e₁.subst 0 s) (e₂.subst 0 s) :=
+  Equiv.trans
+    (Equiv.trans
+      (Equiv.symm (Equiv.beta .type e₁ s))
+      (Equiv.app (Equiv.lam (Equiv.refl _) h) (Equiv.refl s)))
+    (Equiv.beta .type e₂ s)
 
 /-- Quoting commutes with closure-opening up to `Subtype'`'s
 β-conversion: opening `cl` with `v` and quoting gives an Expr
@@ -2359,8 +2358,8 @@ theorem quote_open_subst {cl : Closure} {v r : Val}
   --     bodye.subst 0 ve` (via `subst_target` on `heqw`).
   intro S Γe
   refine ⟨.trans heqr.1 ?_, .trans ?_ heqr.2⟩
-  · exact hcomp ▸ (heqw.subst_target ve 0).2
-  · exact hcomp ▸ (heqw.subst_target ve 0).1
+  · exact hcomp ▸ (heqw.subst_target ve).2
+  · exact hcomp ▸ (heqw.subst_target ve).1
 
 /-- Multi-step `quote_depth_shift`: quoting at any deeper
 depth `d ≥ k` shifts the result by `d - k`. Iterates the
