@@ -2422,11 +2422,17 @@ abbrev QuotesSeen (S : List (Val × Val)) (Γ : TyCtx) (Se : Seen) : Prop :=
 
 /-- The type context quotes into `Γe` at matching de Bruijn
 indices. `Γ` is level-indexed (`Γ[k]` = type of `.var k`);
-`Γe` is index-indexed (`Γe[i]` = type of `.bvar i`). -/
+`Γe` is index-indexed (`Γe[i]` = type of `.bvar i`). The
+quote depth is `k`: entry `k` was *added* when `Γ` had size
+`k`, so its Val's neutrals reference levels `0..k-1` and
+should quote at depth `k` (not `k+1`) to land in the right
+`Γe`-relative slot. (`tyCheck_sound_open`'s `.lam` arm is
+the witness — `Subtype'.lam` extends `Γe` with `domB` at
+index 0, and `domB` is `quote |Γ| domV`.) -/
 abbrev QuotesCtx (Γ : TyCtx) (Γe : Ctx) : Prop :=
   ∀ k τ, Γ[k]? = some τ →
     ∃ τe, Γe.get? (Γ.size - 1 - k) = some τe ∧
-          quote fuelω (k + 1) τ = some τe
+          quote fuelω k τ = some τe
 
 /-!
 ### The mutual bridge
@@ -2806,7 +2812,7 @@ depth is per-entry, not the outer `Γ.size`); only the
 theorem QuotesCtx.push {Γ : TyCtx} {Γe : Ctx}
     (hΓ : QuotesCtx Γ Γe)
     {τ : Val} {τe : Expr}
-    (hqτ : quote fuelω (Γ.size + 1) τ = some τe) :
+    (hqτ : quote fuelω Γ.size τ = some τe) :
     QuotesCtx (Γ.push τ) (τe :: Γe) := by
   intro k τ' hk
   rw [Array.getElem?_push] at hk
@@ -2836,7 +2842,7 @@ lift. Closes via `REnv_lift` (which packages
 tail) and `QuotesCtx.push`. -/
 theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {τ : Val} {τe : Expr}
-    (hqτ : quote fuelω (Γ.size + 1) τ = some τe) :
+    (hqτ : quote fuelω Γ.size τ = some τe) :
     OpenCtx (Γ.push τ) (.neutral (.var Γ.size) :: ρ)
             (τe :: Γe) (.bvar 0 :: ρe.map (·.shift 1 0)) where
   hΓ := QuotesCtx.push hctx.hΓ hqτ
@@ -2868,7 +2874,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {fuel unf : Nat} (hfuel : fuel ≤ fuelω)
     {val : Expr} {valV valTy : Val} {valTye : Expr}
     (hev : eval fuel unf ρ val = some valV)
-    (hqτ : quote fuelω (Γ.size + 1) valTy = some valTye) :
+    (hqτ : quote fuelω Γ.size valTy = some valTye) :
     OpenCtx (Γ.push valTy) (valV :: ρ)
             (valTye :: Γe)
             ((val.substEnv ρe).shift 1 0
@@ -3050,78 +3056,66 @@ theorem tyCheck_sound_open
       case h_1 => simp_all
       case h_2 expBody hopen =>
       -- All algorithm splits done.
-      -- (a) Quote witnesses for the exposed Π-head:
-      have h_lamQuote : ∃ expDome' expBodye,
-          quote fuelω (Γ.size + 1) expDom = some expDome' ∧
+      -- (a) Quote witnesses for the exposed Π-head.
+      --     `expDom` lives at depth `Γ.size` (same context
+      --     as the `.lam` head); `expBody` at `Γ.size + 1`
+      --     (the body's extended context). Both reachable
+      --     from `τV` via `whnfPi`'s .fix/.iota unfolds +
+      --     one closure-open; quote-totality on these is
+      --     exactly what `whnfPi_sound_open` already needs
+      --     (`quote_open_subst` per unfold step). Same
+      --     dependency as obstruction (a) below.
+      have h_lamQuote : ∃ expDome expBodye,
+          quote fuelω Γ.size expDom = some expDome ∧
           quote fuelω (Γ.size + 1) expBody = some expBodye := by
-        -- From `hwhnf` + `hopen`: `expDom`/`expBody` are
-        -- reachable from `τV` by .fix/.iota unfolds + one
-        -- closure-open. Quote-totality on these is exactly
-        -- the obligation `whnfPi_sound_open` already
-        -- depends on (`quote_open_subst` per unfold step).
         sorry
-      obtain ⟨expDome', expBodye, hqDom', hqBody'⟩ := h_lamQuote
-      -- (b) Extended context (`push_fresh` is proven):
-      have hctx' := hctx.push_fresh (τ := expDom) hqDom'
+      obtain ⟨expDome, expBodye, hqDom, hqBody'⟩ := h_lamQuote
+      -- (b) Extended context. With the `QuotesCtx` depth-`k`
+      --     convention, `push_fresh hqDom` gives
+      --     `Γe' = expDome :: Γe` — directly the head
+      --     `Subtype'.lam` expects.
+      have hctx' := hctx.push_fresh (τ := expDom) hqDom
       -- (c) Body IH at the extended context. The `ρe'` from
       --     `push_fresh` is `.bvar 0 :: ρe.map shift` —
       --     **identical** to `(.lam dom body).substEnv ρe`'s
       --     body environment. So the IH's `e.substEnv ρe'`
       --     IS the body of the goal's `.lam`. ✓
-      have hIH : Subtype' [] (expDome' :: Γe)
+      have hIH : Subtype' [] (expDome :: Γe)
           (body.substEnv (.bvar 0 :: ρe.map (·.shift 1 0)))
           expBodye :=
         tyCheck_sound_open hfuel' hctx'
           (by simpa [Array.size_push] using hqBody') h
       -- (d) Contravariant domain at the *outer* depth:
       obtain ⟨dome, hqdomV⟩ := hctx.eval_quotes hfuel' hdomV
-      have h_qexpDom : ∃ expDome,
-          quote fuelω Γ.size expDom = some expDome := by
-        -- depth-Γ.size quote of `expDom`. Same dependency
-        -- as `h_lamQuote` (from `hwhnf`'s output).
-        sorry
-      obtain ⟨expDome, hqDom⟩ := h_qexpDom
       have hcontra : Subtype' [] Γe expDome (dom.substEnv ρe) :=
         .trans
           (subCheckVal_sound_open hfuel' hctx.hΓ hokDom hqDom hqdomV)
           (hctx.eq hdomV hqdomV).1
       -- (e) Assemble. With (a)-(d) in scope:
-      --   hIH    : body[ρe'] ⊑ expBodye  at (expDome' :: Γe)
+      --   hIH    : body[ρe'] ⊑ expBodye  at (expDome :: Γe)
       --   hcontra: expDome ⊑ dom[ρe]     at Γe
-      -- `Subtype'.lam` needs the body at `(expDome :: Γe)`
-      -- (depth-Γ.size head), but `hIH` is at
-      -- `(expDome' :: Γe)` where `expDome' = quote_{Γ.size+1}
-      -- expDom = expDome.shift 1 0` (by `quote_depth_shift`).
-      -- And the conclusion `.lam expDome bodyClE` (where
-      -- `bodyClE = quoteClosure_{Γ.size} expCl`) needs
-      -- relating to `expBodye = quote_{Γ.size+1} expBody`
-      -- via `quoteClosure_eq_quote_openω_fresh` and to `τe`
-      -- via `whnfPi_sound_open`. **Three obstructions remain**:
+      -- so `Subtype'.lam hcontra hIH` gives
+      --   (.lam dom body)[ρe] ⊑ .lam expDome expBodye  at Γe.
+      -- **Two obstructions remain** for the final `.trans`
+      -- to `τe`:
       --
-      -- (a) `whnfPi_quotes`: need `quote_{Γ.size}
-      --     (.lam expDom expCl) = some (.lam expDome
-      --     bodyClE)` and `quote_{Γ.size+1} expBody = some
-      --     bodyClE` (via `quoteClosure_eq_quote_openω_fresh`,
-      --     ← `eval_unf_equiv` ← root #2). Without these,
-      --     can't supply `push_fresh`'s `hqτ` or the IH's
-      --     `hqτ`.
-      -- (b) **`QuotesCtx` depth-(k+1) convention**: by (a),
-      --     `push_fresh`'s `Γe'[0] = expDome.shift 1 0`
-      --     (depth Γ.size+1), but `Subtype'.lam`'s
-      --     `(domB :: Γe)[0] = domB` is at depth `Γ.size`.
-      --     The IH lands at `(expDome.shift :: Γe)`; the
-      --     `.lam` constructor needs `(expDome :: Γe)`.
-      --     Fixing `QuotesCtx` to `quote k τ` (line 2426,
-      --     outside this fork's range) is the clean route;
-      --     it ripples to `SubV_to_Subtype'`'s `SynthN.var`
-      --     case (currently sorried, so likely no proof
-      --     breakage).
-      -- (c) `whnfPi_sound_open` for the final `.trans` from
-      --     `.lam expDome bodyClE` to `τe`.
+      -- (a) `whnfPi_quotes`: relating `expBodye =
+      --     quote_{Γ.size+1} expBody` to the *closure* quote
+      --     `quoteClosure_{Γ.size} expCl` (via
+      --     `quoteClosure_eq_quote_openω_fresh` ←
+      --     `eval_unf_equiv` ← root #2). Without it,
+      --     `h_lamQuote` above stays sorried and the
+      --     `.lam expDome expBodye` we built is not
+      --     definitionally `quote_{Γ.size} (.lam expDom
+      --     expCl)`.
+      -- (c) `whnfPi_sound_open` (sorried at line ~2924) for
+      --     `quote_{Γ.size} (.lam expDom expCl) ⊑ τe`.
       --
-      -- Once (a)+(b)+(c) are available, this arm is
-      -- `Subtype'.lam hcontra hIH |>.trans hwhnf_equiv` —
-      -- ~10 lines.
+      -- Once (a)+(c) land, this is
+      -- `(Subtype'.lam hcontra hIH).trans hwhnf_equiv`.
+      have hpre : Subtype' [] Γe ((Expr.lam dom body).substEnv ρe)
+          (.lam expDome expBodye) := by
+        simpa [Expr.substEnv] using Subtype'.lam hcontra hIH
       sorry
     -- .letE val body
     · -- `next` would mis-bind (the outer `h✝`/`e✝` shadowing
@@ -3139,9 +3133,10 @@ theorem tyCheck_sound_open
       -- `letBinderType_sound_open` (sorried above) yields:
       have ⟨hev, valTye, hqValTy, hval_le⟩ :=
         letBinderType_sound_open hfuel' hctx hletB
-      -- Extended context (push_let is proven):
-      have hctx' := hctx.push_let (val := val) hfuel' hev
-        (quote_depth_shift hqValTy)
+      -- Extended context (push_let is proven; with the
+      -- `QuotesCtx` depth-`k` convention, `valTye` at depth
+      -- `Γ.size` is exactly the head we cons):
+      have hctx' := hctx.push_let (val := val) hfuel' hev hqValTy
       -- IH: body at hctx', expected τV at depth Γ.size+1.
       have hIH :=
         tyCheck_sound_open hfuel' hctx'
