@@ -3,7 +3,7 @@
 ## Phase 2 — soundness proof (current)
 
 `Soundness.lean` is sorry-free; all four target theorems
-wired. **14 sorries** in `SoundnessProof.lean` (13) and
+wired. **15 sorries** in `SoundnessProof.lean` (14) and
 `Subtyping.lean` (1) reduce to **three root obligations**:
 
 ### Root 1 — depth-tagged seen-set (research)
@@ -20,31 +20,38 @@ proof in SoundnessProof, so do it on a stable base.
 Closes: `ctx_extend_at` (Subtyping), `Equiv.shift`
 (SoundnessProof) → `subst_resp`/`R_resp_Equiv` axiom-clean.
 
-### Root 2 — `eval_realises` recursion boundary (research)
+### Root 2 — `R` clauses must expose `REnv` (research → engineering)
 
-The `.app`-head-`.fix`/`.iota` sub-cases need to recurse
-on the unfolded head's `vapp`, but `Nat.strongRecOn`'s IH
-doesn't cover that inner call. Two routes (under
-investigation in `eval-realises-boundary` fork):
-(a) `vapp_realises` mutual companion at tag 1;
-(b) Ahmed-style `R (min m fuel)`. Route (a) matches the
-algorithm's `eval`/`vapp` mutual layout.
+`vapp_realises` (consolidating `.app`'s `.fix`/`.iota` head
+sub-cases) is unprovable under the current Kripke `R`:
+both the mutual route and Ahmed-`R(min)` lose exactly one
+step-index at the closure boundary (SoundnessProof
+1495-1530). Resolution: change `R`'s `.lam`/`.iota`/`.fix`
+clauses to `∃ ρe', REnv n d cl.env ρe' ∧ Equiv …`,
+well-founded on `(n, sizeOf v)` lex. `.app` then applies
+the fuel-IH to `cl.body` directly via `REnv_cons`. In
+flight on `R-restructure` fork.
 
-Closes: ~4 `eval_realises` leaves → `quote_open_subst` →
-`SubV_to_Subtype'`/`SubN`/`SynthN` closure-opening cases
-→ `subCheckVal_sound` axiom-clean (modulo root 1 for the
-`.lam` case's `narrow`).
+Closes: `vapp_realises` → 3 `eval_realises` leaves →
+`quote_open_subst` → `SubV/SubN/SynthN_to_Subtype'`
+closure cases → `subCheckVal_sound` axiom-clean (modulo
+root 1 for `.lam`'s `narrow`).
 
 ### Root 3 — open-Γ residuals (engineering)
 
-`tyCheck_sound_open` `.lam`/`.letE` arms,
-`whnfPi_sound_open`, `tyInfer_sound_open` (the `.fix`/
-`.iota` arm of which is A9-unprovable as stated — needs
-either restating as a value-property or adding a
-well-formed-fix side condition), `letBinderType_sound_open`,
-`openNf_holds`. The `.lam` arm should slot via
-`OpenCtx.push_fresh` (per `openctx-rhoe-fork`). Under
-investigation in `open-gamma-lam` fork.
+`tyCheck_sound_open .lam` is structurally complete
+post-QuotesCtx-depth-`k` fix; gated only on
+`whnfPi_sound_open` (which is gated on root #2 via
+`quote_open_subst`). `letBinderType_sound_open` is
+provable now (mutual tag-3 IH + `hctx.eq`).
+`tyInfer_sound_open`'s non-`.fix/iota` arms are direct
+structural recursions; the `.fix/iota` arm is
+A9-unprovable as stated — restate as
+"`tyInfer e = ok τ → tyCheck e τ = ok true → e ⊑ τ`" or
+add `(hwf : e wellFormedFix)`. `openNf_holds` is false as
+stated — drop it, thread `(hnfq)` through
+`OpenCtx.eval_quotes`'s callers. In flight on
+`open-gamma-residuals` fork.
 
 Closes: `typeCheck_sound` axiom-clean (modulo roots 1+2).
 
