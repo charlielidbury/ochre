@@ -30,41 +30,35 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
     `soundness` composes the latter two. None of the four has a
     direct `sorry`. `concEval_equiv` 8/8 head-shapes leaf-sorry-free;
     `Equiv.iota_unfold` axiom-free.
-  - **13 declaration sorries** (Eval 0, Subtyping 1,
-    SoundnessProof 12, Soundness 0; verified by clean
-    `lake build`) reduce to **three root obligations**:
-      1. `Seen.Closed`/depth-tagged seen → closes `ctx_extend_at`'s
-         6 binder cases + `Equiv.shift`. (DECISION-LOG routes a/b/c.)
-      2. `R`'s `.lam`/`.iota`/`.fix` Kripke clause must expose the
-         closure environment (`∃ ρe', REnv n d cl.env ρe' ∧ …`,
-         well-founded on `(n, sizeOf v)` lex) so `.app`'s unfold
-         branches can apply the fuel-IH directly without the
-         lossy 1-step-index gap. Closes `vapp_realises` →
-         `eval_realises` → `quote_open_subst` → `SubV_to_Subtype'`.
-      3. Open-Γ residuals: `letBinderType_sound_open` (provable
-         now, mutual tag-3 IH); `tyInfer_sound_open` non-`.fix/iota`
-         arms; `whnfPi_sound_open` (gated on root #2 via
-         `quote_open_subst`).
-    Resolved since last update: `quote_total_on_eval` (was root #3)
-    via `(hnf : (nf fuelω e).isSome)` side-condition; `QuotesCtx`
-    depth-`k` convention (was `k+1`) removed `.lam`'s shift bridge.
-  - `SubV → Subtype'`: 5/15 cases proven; 10 closure-opening cases
-    gated on `quote_open_subst` (root #2). `SynthN.var` likely
-    closes via the `QuotesCtx` depth-`k` fix + a multi-step
-    `quote_depth_shift`.
-  - `eval_realises`: post-`hcl`-threading (92a1bd4), 14 leaf sorries
-    consolidated to 3 + `vapp_realises` (root #2). Remaining leaves
-    documented at lines 1495-1530 (SoundnessProof.lean).
-  - `tyCheck_sound_open`: `.asc`/`.fix`/`.iota`/catch-all proven;
-    `.lam` builds `Subtype'.lam hcontra hIH` at the right context
-    (post-QuotesCtx-fix), gated only on `whnfPi_sound_open`/
-    `whnfPi_quotes` (root #2/#3). `.letE` IH constructed via
-    `push_let`, gated on `letE_L`/`R` final assembly.
+  - **12 declaration sorries** (all in SoundnessProof.lean;
+    Subtyping/Soundness/Eval are sorry-free, verified PASS).
+    **All three root obligations solved** at the definition
+    level (`8448eb4`); remaining sorries are downstream
+    applications, not structural blockers (SUGGESTIONS.md
+    tier 1/2/3):
+      1. Depth-tagged `Seen` (route a) → `ctx_extend_at` and
+         `narrow` proven; **Subtyping.lean sorry-free**.
+      2. `R` exposes `RList n d cl.env ρe'` → `vapp_realises`
+         **proven**; `eval_realises` 3 base-conjuncts remain.
+      3. `OpenCtx.hwf` → `tyInfer .bvar` and
+         `letBinderType_sound_open` **proven**.
+  - Tier-1 closures (mechanical, in flight):
+    `R_mono.decreasing_by`; `eval_realises` base-conjuncts;
+    `Equiv.shift` nil-Γ.
+  - Tier-2 (in flight): `quote_open_subst` (4-step route via
+    proven `eval_unf_equiv`/`R_quote_equiv`/`substEnv_subst_comp`);
+    `SubV_to_Subtype'` realisability (`(hRa)/(hRb)` from new
+    R-clause → `quoteClosure_equiv_openω_fresh`).
+  - Tier-3 (deferred): `whnfPi_sound_open`; `tyCheck .lam`
+    assembly; `tyInfer .letE` (algorithm gap, DECISION-LOG
+    2026-04-19) / `.app` (needs `app_elim` derived rule);
+    `openNf_holds` removal (false-as-stated; route-(a) `(hnfq)`
+    threading; `eval_quotes'` overload ready).
+  - Known: `tyInfer .fix/.iota` is A9-unprovable (annotation
+    trusted by design; restate or `(hwf)`-condition).
 
-Three checkers: `subCheckNF` (legacy Expr-domain), `NbE.subCheck`
-(Val-domain, the soundness target), `NbE.typeCheck` (bidirectional).
-The two algorithmic checkers agree on 675/676 corpus pairs; the one
-divergence is the A6 incompleteness (NbE rejects, legacy accepts).
+Two checkers: `NbE.subCheck` (Val-domain, the soundness target),
+`NbE.typeCheck` (bidirectional). Legacy `subCheckNF` removed.
 
 Simple Och (`lean/Och/Simple/`) remains the proven-sound reference.
 Phase 1 path: coinductive seen-set → removed `[fix-ann]` →
