@@ -1,35 +1,37 @@
 import Och.Syntax
 
 /-!
-# Och Evaluation (de Bruijn)
+# Och concrete evaluation
 
-Two evaluators:
-- **`concEval` (concrete/runtime):** Substitution-based CBV for closed terms.
-  Lambdas and mus are values (bodies not evaluated until applied).
-  `(e : τ)` takes the lhs `e`. Mu is only unrolled when applied (mu-app
-  dispatch: substitute self-reference, then re-apply).
-- **`absEval` (abstract/compile-time):** Combined normalizer + type checker.
-  Uses a type context (TyCtx) instead of a value environment. Normalizes under
-  binders, evaluates domains and annotations, validates ascriptions via
-  subCheckNF, and checks callability for neutral applications. A term is
-  well-typed iff absEval succeeds.
+`concEval` is the substitution-based CBV big-step evaluator for closed
+terms. Lambdas and ι/fix binders are values (bodies not evaluated until
+applied). `(e : τ)` erases to `e`. ι/fix unroll only when applied (the
+mu-app dispatch: substitute the self-reference, then re-apply).
 
-## Type Context (absEval)
+This is the *runtime* evaluator targeted by `concEval_preservation` in
+`Soundness.lean`.
 
-The type context is a positional list: `ctx[k]` is the absEval'd domain type
-of bvar k. When entering a lambda binder, we evaluate the domain and extend
-with the evaluated form. The value env is eliminated entirely — with
-mu-as-value, the value env was always the identity mapping (bvar k → bvar k).
+## Legacy checker removed
 
-## Beta-reduction
-
-Both evaluators use substitution for beta-reduction. When a lambda is applied,
-substitute the argument for bvar 0 in the body, then re-evaluate.
+The Expr-domain abstract evaluator (`absEval`/`subCheckNF`/`neutralType`/
+`subCheck`/`absEvalVal`/`NfExpr`/`TyCtx`) was removed at this commit. It
+predated the NbE/Val-domain pipeline and was kept only for the
+divergence sweep in `SoundnessAudit.lean`, which had served its purpose
+(it found A1–A8; the only remaining divergence was the documented A6
+incompleteness). The Phase-2 soundness theorem targets `NbE.subCheckVal`
+(`SubCheckVal.lean`) via `NbE.typeCheck` (`TyCheck.lean`); maintaining a
+parallel checker was a tax with no remaining benefit. The last revision
+with the legacy checker is `38d1031`; the original combined fuel-mono
+scaffold is at `f82fbfc`.
 -/
 
 open Expr
 
-/-! ## Except instances for native_decide -/
+/-! ## Except instances for native_decide
+
+These let `native_decide` discharge goals of the form
+`NbE.subCheck … = .ok true` / `NbE.typeCheck … = .ok true`. Kept here
+because most `Std/` modules import this file. -/
 
 instance {ε : Type} {α : Type} [DecidableEq ε] [DecidableEq α] : DecidableEq (Except ε α) := fun a b =>
   match a, b with
@@ -49,469 +51,14 @@ instance {ε : Type} {α : Type} [Repr ε] [Repr α] : Repr (Except ε α) where
     | .ok a => Repr.addAppParen (".ok " ++ reprPrec a 1) n
     | .error e => Repr.addAppParen (".error " ++ reprPrec e 1) n
 
-/-! ## NfExpr: newtype for absEval output -/
-
-/-- An expression that has been through absEval with some context.
-    Invariants (not enforced by the type system, proved separately):
-    - No `.asc` constructors (ascriptions erased)
-    - No redexes (`.app (.lam ..) ..` does not occur) (normal form)
-    - Well-scoped: all `.bvar k` satisfy `k < ctx.length`
-    - All applications are callable: if `.app f a` occurs and `f`
-      is neutral, then its synthesized type is a function type
-    - All domains and mu annotations are themselves NfExprs
-
-    This is a newtype wrapper around Expr. The safe direction (NfExpr → Expr)
-    is provided via Coe. The unsafe direction (Expr → NfExpr) is only available
-    via absEval, enforcing that NfExpr values are always normalized. -/
-structure NfExpr where
-  val : Expr
-deriving DecidableEq, Repr, Inhabited
-
-instance : BEq NfExpr where beq a b := a.val == b.val
-
-/-- Type context: positional list of absEval'd domain types for bound variables.
-    ctx[k] = absEval'd domain type of bvar k. -/
-abbrev TyCtx := List NfExpr
-
-/-- Extend a type context for a new binder. The domain type `ty` was computed
-    at the outer depth; shift it by 1 so its free variable references are correct
-    at the inner depth. Existing entries are also shifted. -/
-def TyCtx.extend (ctx : TyCtx) (ty : NfExpr) : TyCtx :=
-  ⟨ty.val.shift 1 0⟩ :: ctx.map (fun e => ⟨e.val.shift 1 0⟩)
-
-
-/-! ## absEval + subCheckNF (mutual recursion)
-
-absEval is a bidirectional normalizer + type checker. It returns both the
-normal form and its synthesized type. subCheckNF is the structural subtype
-checker. They are mutually recursive: absEval calls subCheckNF for ascription
-and domain validation, and subCheckNF calls absEval for normalization.
-Both use fuel-based termination with strictly decreasing fuel on mutual calls.
-
-The synthesized type follows bidirectional typing:
-- Variables: type from context lookup
-- Lambdas/Type: self-typing (terms = types)
-- Mu: annotation is the type
-- Ascription: the ascribed type
-- Application: return type from the function's type -/
-
-mutual
-  /-- Abstract evaluation (typing) with normalization under binders.
-
-      Returns (value, type) — the normal form and its synthesized type.
-      Lambda bodies and domains are normalized under the binder. Mu annotations
-      are normalized. Ascriptions are validated via subCheckNF and erased.
-      Lambda domain annotations are checked at application via subCheckNF.
-
-      A term is well-typed iff absEval succeeds (returns some).
-
-      The `seen` parameter (from subCheckNF) breaks cycles that arise when
-      domain-checking let-bindings inside mu types.
-
-      The `muSeen` parameter breaks cycles in mu-app normalization: when a
-      mu-function's body contains (self arg) in a domain, normalizing under
-      the binder would re-trigger the same mu-app indefinitely. When we detect
-      a mu-app we're already normalizing, we return it as a neutral application
-      instead of unfolding. This is sound because it only loses information
-      (the neutral term's type is looked up from the mu annotation, which is
-      always a valid over-approximation). -/
-  def absEval (fuel : Nat) (ctx : TyCtx) (seen : List (Expr × Expr))
-      (e : Expr) (muSeen : List (Expr × Expr) := [])
-      : Except String (NfExpr × NfExpr) :=
-    match fuel with
-    | 0 => .error "out of fuel"
-    | fuel + 1 =>
-      match e with
-      | .bvar k       =>
-        let ty := match ctx.get? k with
-          | some t => t
-          | none => ⟨.bvar k⟩  -- out-of-scope: type is self (will fail callability)
-        .ok (⟨.bvar k⟩, ty)
-      | .lam dom body => do
-        let (dom', _) ← absEval fuel ctx seen dom muSeen
-        let (body', _) ← absEval fuel (TyCtx.extend ctx dom') seen body muSeen
-        let v := ⟨.lam dom'.val body'.val⟩
-        .ok (v, v)  -- self-typing: terms = types
-      | .type         => .ok (⟨.type⟩, ⟨.type⟩)
-      | .asc term ty  => do
-        let (sigma, _) ← absEval fuel ctx seen term muSeen
-        let (tau, _) ← absEval fuel ctx seen ty muSeen
-        match subCheckNF fuel ctx seen sigma.val tau.val with
-        -- (A8) value is the *term*, type is the *annotation*.
-        -- Previously `(tau, tau)`, conflating "abstract τ" with
-        -- the computational value. The ascription is checked;
-        -- the value is `t`. Matches concEval and Subtype'.asc_*.
-        | .ok true => .ok (sigma, tau)
-        | .ok false => .error s!"ascription failed: {repr sigma} ⊄ {repr tau}"
-        | .error e => .error s!"ascription check: {e}"
-      | .iota ann body => do
-        let (ann', _) ← absEval fuel ctx seen ann muSeen
-        let (body', _) ← absEval fuel (TyCtx.extend ctx ann') seen body muSeen
-        -- An iota value is its own type (self-typing); synthesized type
-        -- is the annotation (weak/non-self type).
-        .ok (⟨.iota ann'.val body'.val⟩, ann')
-      | .fix ann body  => do
-        let (ann', _) ← absEval fuel ctx seen ann muSeen
-        let (body', _) ← absEval fuel (TyCtx.extend ctx ann') seen body muSeen
-        .ok (⟨.fix ann'.val body'.val⟩, ann')
-      | .letE val body => do
-        let (val', _) ← absEval fuel ctx seen val muSeen
-        absEval fuel ctx seen (body.subst 0 val'.val) muSeen
-      | .app f a      => do
-        let (f', τ_f) ← absEval fuel ctx seen f muSeen
-        let (a', _) ← absEval fuel ctx seen a muSeen
-        match f'.val with
-        | .lam _dom body =>
-          -- β-reduce unconditionally. The previous domain check
-          -- `a' ⊑ dom` made absEval double as a type checker, which
-          -- forced `Array_ done_` → `(λn:dNat. …) done_` to discharge
-          -- `done_ ⊑ dNat` *during normalisation* — exactly the goal
-          -- subCheckNF was being called to set up. β is type-blind;
-          -- subCheckNF only consumes the value. The cost is that
-          -- ill-typed applications *inside* a term (e.g.
-          -- `appendArrays T n1 n1 arr1 arr2` with `arr2 : Array_ n2
-          -- T` in `appendVec_wrong`) β through silently. A bounded-
-          -- fuel domain check was tried (reject only on `.ok false`
-          -- within fuel ≤30) but subCheckNF returns `.ok false` for
-          -- legitimate deep checks before it errors, so that rejects
-          -- valid β too. The right fix is to run the domain check
-          -- only when subCheckNF *needs* to widen the application's
-          -- result type (i.e. in neutralType), not at every β.
-          absEval fuel ctx seen (body.subst 0 a'.val) muSeen
-        | .iota _ann body =>
-          -- (ι A. b) a  →  b[self := ι A. b] a
-          -- Termination: a recursive head applied to a *neutral* arg
-          -- (bvar-headed spine) cannot make computational progress —
-          -- the eliminator is stuck on the abstract scrutinee. This is
-          -- exactly the case that diverged before (`(dsucc' pred)` under
-          -- binders, where each unfold de-Bruijn-shifts the bvar so the
-          -- old syntactic muSeen `==` never fires). On a *value* arg the
-          -- unfold consumes one constructor layer, so it terminates as
-          -- long as the value is finite; muSeen still bounds the chain
-          -- to catch the degenerate `(fix f. f) v` case. When the head's
-          -- recorded type isn't an arrow we fall back to `Type` for the
-          -- result type rather than erroring — subCheckNF only consumes
-          -- the value.
-          if a'.val.hasNeutralHead
-             || muSeen.any (fun (m, _) => Expr.iota _ann body == m)
-             || muSeen.length >= 16 then
-            let retTy := match τ_f.val with
-              | .lam _dom retTy => retTy.subst 0 a'.val
-              | _ => .type
-            .ok (⟨.app f'.val a'.val⟩, ⟨retTy⟩)
-          else
-            let muSeen' := (Expr.iota _ann body, a'.val) :: muSeen
-            absEval fuel ctx seen (.app (body.subst 0 (Expr.iota _ann body)) a'.val) muSeen'
-        | .fix _ann body =>
-          -- (fix A. b) a  →  b[self := fix A. b] a
-          -- Three-way termination gate (see comment on the ι case
-          -- above): neutral arg (open recursion), syntactic recurrence
-          -- of a *closed* recursive head (the type-ascription
-          -- `(dsucc m)→Type` cycle in the dNat encoding — closed terms
-          -- don't shift so `==` fires), and a depth backstop for
-          -- anything else.
-          if a'.val.hasNeutralHead
-             || muSeen.any (fun (m, _) => Expr.fix _ann body == m)
-             || muSeen.length >= 16 then
-            let retTy := match τ_f.val with
-              | .lam _dom retTy => retTy.subst 0 a'.val
-              | _ => .type
-            .ok (⟨.app f'.val a'.val⟩, ⟨retTy⟩)
-          else
-            let muSeen' := (Expr.fix _ann body, a'.val) :: muSeen
-            absEval fuel ctx seen (.app (body.subst 0 (Expr.fix _ann body)) a'.val) muSeen'
-        | .type => .error "Type is not callable"
-        | _ =>
-          -- Neutral application: use synthesized type of f' for callability
-          -- and return type computation.
-          match τ_f.val with
-          | .lam _dom retTy =>
-            .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-          | .iota _ann body =>
-            -- iota type in function position: unfold to get return type
-            let unfolded := body.subst 0 f'.val
-            match unfolded with
-            | .lam _dom retTy =>
-              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
-          | .fix _ann body =>
-            -- fix type in function position: unfold the *type*
-            -- (`fix X. body ≡ body[X := fix X. body]`), not the
-            -- inhabitant. Previously copy-pasted from the `.iota`
-            -- arm above (where substituting the inhabitant *is*
-            -- the ι-elim rule); for `.fix` the binder is the type
-            -- variable. Caught by bughunt-lite (5-0).
-            let unfolded := body.subst 0 τ_f.val
-            match unfolded with
-            | .lam _dom retTy =>
-              .ok (⟨.app f'.val a'.val⟩, ⟨retTy.subst 0 a'.val⟩)
-            | _ => .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
-          | _ =>
-            -- Stuck application (e.g. an ι/fix that hit the muSeen
-            -- cutoff above) being applied again. We can't recover a
-            -- precise return type, so fall back to `Type`. subCheckNF
-            -- only consumes the value, not the type, so this loses
-            -- precision in inferred types but keeps normalisation
-            -- total — previously this hard-errored, which made
-            -- `Array_ dzero T` and `Vec T` impossible to even
-            -- evaluate.
-            .ok (⟨.app f'.val a'.val⟩, ⟨.type⟩)
-  termination_by fuel
-
-  /-- Structural subtype check on normalized terms.
-      ctx: type context (positional list of domain types for bound variables).
-      seen: assumed subtyping pairs for equi-recursive termination.
-
-      Returns:
-      - `.ok true`  — proved a ⊑ b
-      - `.ok false` — definitively not a subtype
-      - `.error msg` — indeterminate (out of fuel, normalization failure)
-
-      Includes a variable rule: when the LHS is a bound variable, its context
-      entry is looked up and the check recurses. This handles multi-hop type
-      chains (e.g. b:a, a:not, not:Bool→Bool) naturally via recursion. -/
-  def subCheckNF (fuel : Nat) (ctx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Except String Bool :=
-    match fuel with
-    | 0 => .error "subCheckNF: out of fuel"
-    | fuel + 1 =>
-      if a == b then .ok true
-      else if seen.any (fun (a', b') => a == a' && b == b') then .ok true
-      else match b with
-      | .type => .ok true
-      | _ =>
-        match a, b with
-        | .lam domA bodyA, .lam domB bodyB => do
-          let contra ← subCheckNF fuel ctx seen domB domA
-          if !contra then return false
-          subCheckNF fuel (TyCtx.extend ctx ⟨domB⟩) seen bodyA bodyB
-        | _, .iota ann body =>
-          -- iotaIntro (value-sub, Cedille-style):
-          --   a ⊑ ι A. body  ←  a ⊑ A  ∧  a ⊑ body[0 := a]
-          -- BOTH premises checked (SoundnessAudit A5: skipping
-          -- the annotation accepts `dtrue ⊑ ι self:Nat_. Type`
-          -- even though `dtrue ⊄ Nat_`). The seen set records
-          -- (a, ι A. body) before either, so when A is the
-          -- enclosing fix-bound type (the `fix B. ι self:B. …`
-          -- pattern), the annotation check `a ⊑ B` recurses to
-          -- `a ⊑ ι …` and closes coinductively via seen'.
-          let seen' := (a, b) :: seen
-          let u := body.subst 0 a
-          let self_intro := do
-            let okAnn ← subCheckNF fuel ctx seen' a ann
-            if !okAnn then return false
-            match absEval fuel ctx seen' u with
-            | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
-            | .error e => .error e
-          match self_intro with
-          | .ok true => .ok true
-          | _ => match neutralType fuel ctx seen a b with
-            | .ok true => .ok true
-            | nt => match self_intro with
-              | .error e => .error e
-              | _ => nt
-        | _, .fix ann body =>
-          -- RHS fix rule:
-          --   [unfoldFixR] : a ⊑ fix A. body  ←  a ⊑ body[0 := fix A. body]
-          -- The annotation A is the type of the recursion variable, not an
-          -- upper bound on inhabitants — the previous [fix-ann] shortcut
-          -- (a ⊑ A → a ⊑ fix A. body) collapsed every recursive type with
-          -- a Type-kinded annotation into a universal supertype.
-          let seen' := (a, b) :: seen
-          let unfold_path :=
-            -- `fix self. self ≡ ⊤` under gfp semantics, so
-            -- `X ⊑ fix self. self` is *true* for any X. The
-            -- previous `→ .ok false` was incomplete
-            -- (SoundnessAudit A7, R-side); the L-side guards
-            -- below correctly reject `fix self. self ⊑ X`
-            -- (since `⊤ ⊄ X` for X ≠ Type, and X = Type is
-            -- caught by the `b == .type` guard earlier).
-            if body == .bvar 0 then .ok true else
-            let u := body.subst 0 (.fix ann body)
-            match absEval fuel ctx seen' u with
-            | .ok (u', _) => subCheckNF fuel ctx seen' a u'.val
-            | .error e => .error e
-          match unfold_path with
-          | .ok true => .ok true
-          | _ => match neutralType fuel ctx seen a b with
-            | .ok true => .ok true
-            | nt => match unfold_path with
-              | .error e => .error e
-              | _ => nt
-        | _, .app (.fix ..) _ | _, .app (.iota ..) _ =>
-          -- RHS is a stuck recursive application (absEval's muSeen
-          -- cutoff left it un-unfolded). Re-evaluate it at fresh
-          -- muSeen so the result lines up with absEval's canonical
-          -- one-unfold normal form. Crucially do NOT pre-unfold the
-          -- head here: doing so would put the result one level
-          -- deeper than absEval's natural cutoff, so e.g. the
-          -- re-evaluated `(dsucc dzero)` would have its own stuck
-          -- app at depth 2 while the LHS `done_NF` (computed by the
-          -- subCheck wrapper) has it at depth 1, and `==` misses.
-          let seen' := (a, b) :: seen
-          match absEval fuel ctx seen' b with
-          | .ok (u', _) =>
-            if u'.val == b then neutralType fuel ctx seen a b
-            else subCheckNF fuel ctx seen' a u'.val
-          | .error e => .error e
-        | .fix ann body, _ =>
-          -- LHS fix rules:
-          --   [unfoldFixL]   : fix A. body ⊑ c  ←  body[0 := fix A. body] ⊑ c
-          --   [fix-ann-L]    : fix A. body ⊑ c  ←  A ⊑ c
-          -- Only the productive unfold extends `seen`; ann-widening must not,
-          -- otherwise the widened goal can cycle back via the assumption set.
-          let seen' := (a, b) :: seen
-          let unfold_path :=
-            if body == .bvar 0 then .ok false else
-            let u := body.subst 0 (.fix ann body)
-            match absEval fuel ctx seen' u with
-            | .ok (u', _) => subCheckNF fuel ctx seen' u'.val b
-            | .error e => .error e
-          match unfold_path with
-          | .ok true => .ok true
-          | _ =>
-            let ann_path :=
-              if body != .bvar 0 then
-                match absEval fuel ctx seen ann with
-                | .ok (ann', _) => subCheckNF fuel ctx seen ann'.val b
-                | .error e => .error e
-              else .ok false
-            match ann_path with
-            | .ok true => .ok true
-            | _ => match unfold_path, ann_path with
-              | .error e, _ => .error e
-              | _, .error e => .error e
-              | _, _ => .ok false
-        | .iota _ann body, _ =>
-          -- LHS iota rules:
-          --   [unfoldIotaL]  : ι A. body ⊑ c  ←  body[0 := ι A. body] ⊑ c
-          --   [iota-ann-L]   : ι A. body ⊑ c  ←  A ⊑ c
-          -- Same seen-discipline as fix-L: only the unfold is productive,
-          -- and only when the body isn't bare `self` (which would unfold
-          -- to itself and close trivially via the assumption set).
-          let seen' := (a, b) :: seen
-          let unfold_path :=
-            if body == .bvar 0 then .ok false else
-            let u := body.subst 0 a
-            match absEval fuel ctx seen' u with
-            | .ok (u', _) => subCheckNF fuel ctx seen' u'.val b
-            | .error e => .error e
-          match unfold_path with
-          | .ok true => .ok true
-          | _ => match neutralType fuel ctx seen a b with
-            | .ok true => .ok true
-            | nt => match unfold_path with
-              | .error e => .error e
-              | _ => nt
-        | .app f1 a1, .app f2 a2 => do
-          -- Structural congruence for stuck applications.
-          -- Arguments must be *equivalent* (both directions),
-          -- not merely sub-related: a neutral head can use its
-          -- argument at any variance, so covariant comparison
-          -- is unsound (SoundnessAudit A1).
-          let structural := do
-            let fOk ← subCheckNF fuel ctx seen f1 f2
-            if !fOk then return false
-            let aFwd ← subCheckNF fuel ctx seen a1 a2
-            if !aFwd then return false
-            subCheckNF fuel ctx seen a2 a1
-          match structural with
-          | .ok true => .ok true
-          | _ => match neutralType fuel ctx seen a b with
-            | .ok true => .ok true
-            | nt => match structural with
-              | .error e => .error e
-              | _ => nt
-        | _, _ => neutralType fuel ctx seen a b
-  termination_by fuel
-
-  /-- Fallback for subCheckNF: look up the type of a neutral term and
-      check that against b. Handles bvar (context lookup) and app (return
-      type computation) with multi-hop chasing via fuel-bounded recursion. -/
-  private def neutralType (fuel : Nat) (ctx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Except String Bool :=
-    match fuel with
-    | 0 => .error "neutralType: out of fuel"
-    | fuel + 1 =>
-      match a with
-      | .bvar k =>
-        match ctx.get? k with
-        | some ty => subCheckNF fuel ctx seen ty.val b
-        | none => .ok false
-      | .app f arg =>
-        -- A recursive head here means absEval's muSeen cutoff left
-        -- the application stuck — it's not a *neutral* (bvar-headed)
-        -- term. Unfold it once and let subCheckNF compare the
-        -- evaluated form; the seen-set handles cycles. Without this
-        -- the type-widening below collapses, e.g., `(dsucc dzero)`
-        -- to `dNat ⊑ b` which is far too coarse. Re-evaluate at
-        -- fresh muSeen *without* pre-unfolding the head, so the
-        -- result lines up with absEval's canonical one-unfold NF
-        -- (see the corresponding RHS arm in subCheckNF).
-        let isRecHead := match f with | .fix .. | .iota .. => true | _ => false
-        if isRecHead then
-          let seen' := (a, b) :: seen
-          match absEval fuel ctx seen' a with
-          | .ok (u', _) =>
-            if u'.val == a then .ok false
-            else subCheckNF fuel ctx seen' u'.val b
-          | .error e => .error e
-        else
-        match neutralType fuel ctx seen f (.lam .type .type) with  -- dummy: just need the type
-        | _ =>
-          -- Compute the type of (f arg) by synthesizing f's type
-          match absEval fuel ctx seen f with
-          | .ok (_, τ_f) =>
-            match τ_f.val with
-            | .lam _dom retTy =>
-              let resultTy := retTy.subst 0 arg
-              subCheckNF fuel ctx seen resultTy b
-            | .iota _ann body =>
-              let unfolded := body.subst 0 f
-              match unfolded with
-              | .lam _dom retTy =>
-                let resultTy := retTy.subst 0 arg
-                subCheckNF fuel ctx seen resultTy b
-              | _ => .ok false
-            | .fix _ann body =>
-              -- Same as the absEval `.app` arm above: unfold the
-              -- *type*, not the inhabitant `f`.
-              let unfolded := body.subst 0 τ_f.val
-              match unfolded with
-              | .lam _dom retTy =>
-                let resultTy := retTy.subst 0 arg
-                subCheckNF fuel ctx seen resultTy b
-              | _ => .ok false
-            | _ => .ok false
-          | .error e => .error e
-      | _ => .ok false
-  termination_by fuel
-end
-
-/-- Evaluate a closed term and return just the normal form.
-    Convenience wrapper: always uses empty context and seen set. -/
-def absEvalVal (e : Expr) (fuel : Nat := 10000) : Except String NfExpr :=
-  (absEval fuel [] [] e).map (·.1)
-
-/-! ## Decidable subtyping -/
-
-/-- Decidable subtyping check. Normalizes both sides via absEval, then
-    compares structurally. Returns `.ok true` (subtype), `.ok false`
-    (definitively not), or `.error` (indeterminate — out of fuel, etc.). -/
-def subCheck (fuel : Nat) (a b : Expr) : Except String Bool :=
-  match absEval fuel [] [] a, absEval fuel [] [] b with
-  | .ok (a', _), .ok (b', _) => subCheckNF fuel [] [] a'.val b'.val
-  | .error e, _ => .error s!"subCheck lhs: {e}"
-  | _, .error e => .error s!"subCheck rhs: {e}"
-
-/-! ## Concrete evaluators -/
+/-! ## concEval -/
 
 /-- Concrete evaluator. Standard call-by-value lambda calculus with substitution.
 
-    Lambdas and mus are values — their bodies are NOT evaluated until applied.
+    Lambdas and ι/fix are values — their bodies are NOT evaluated until applied.
     Uses substitution for beta-reduction. Operates on closed terms only
-    (free bvars return None). Mu is only unrolled when it appears in function
-    position (mu-app dispatch: substitute self-reference, then re-apply). -/
+    (free bvars return None). ι/fix is only unrolled when it appears in function
+    position (substitute self-reference, then re-apply). -/
 def concEval (fuel : Nat) (e : Expr) : Option Expr :=
   match fuel with
   | 0 => none
@@ -590,10 +137,10 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
 
 /-! ## concEval shape lemmas
 
-concEval never produces bvar or asc at the top level. This is a structural
-invariant: the base cases (lam, type, mu) never produce bvar/asc, and the
-recursive cases (asc-erasure, beta-reduction, mu-unrolling) just propagate
-inner results. The catch-all (neutral app) produces app, not bvar/asc. -/
+concEval never produces bvar/asc/letE at the top level. This is a structural
+invariant: the base cases (lam, type, ι, fix) never produce them, and the
+recursive cases just propagate inner results. The catch-all (neutral app)
+produces app. -/
 
 /-- concEval never produces a bare variable at the top level. -/
 theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
@@ -790,19 +337,3 @@ theorem ConcNF.not_bvar {v : Expr} (h : ConcNF v) : ∀ k, v ≠ .bvar k := by
 
 theorem ConcNF.not_asc {v : Expr} (h : ConcNF v) : ∀ t ty, v ≠ .asc t ty := by
   intro t ty; cases h <;> intro heq <;> cases heq
-
-/-! ## Fuel monotonicity (legacy checker)
-
-The combined `absEval_subCheckNF_neutralType_fuel_mono`
-scaffold and the `absEval_preserves_closedAt`/
-`*_ctx_irrelevant` lemmas were removed in the 2026-04-18
-cleanup: they were unused outside this file, all five
-declarations were sorried, and they concern the *legacy*
-Expr-domain
-checker `subCheckNF`, not the Phase-2 soundness target
-`NbE.subCheckVal`. The NbE-side fuel-monotonicity lives in
-`Och/NbE.lean` (`eval_fuel_mono`/`vapp_fuel_mono`/
-`quote_fuel_mono`) and is fully proven. If legacy
-fuel-mono is ever needed, the deleted scaffold and its
-rationale are at commit `f82fbfc`.
--/

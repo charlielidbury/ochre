@@ -144,7 +144,7 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- ── Positive subtype checks ─────────────────────────────────
 
 -- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
-example : subCheck 200 dzero dNat = .ok true := by native_decide
+example : NbE.subCheck 200 dzero dNat = .ok true := by native_decide
 
 -- done_ ⊑ dNat. Closed by `dNat`'s `fix N:Type. ι self:N. …`
 -- shape: the *type* binder N is
@@ -154,7 +154,7 @@ example : subCheck 200 dzero dNat = .ok true := by native_decide
 -- became `λpred:done_` and the contra needed `dNat ⊑ done_`,
 -- which is correctly false — done_ would call `s dzero` but the
 -- caller's `s` would expect `pred:done_`, and `dzero ⊄ done_`.
-example : subCheck 200 done_ dNat = .ok true := by native_decide
+example : NbE.subCheck 200 done_ dNat = .ok true := by native_decide
 
 -- dtwo/dthree ⊑ dNat. subCheckNF (Expr-domain) fans out here:
 -- each dsucc layer copies the closed-`dNat` substituend into the
@@ -179,17 +179,17 @@ example : NbE.subCheck 400 dzero done_ = .ok false := by native_decide
 
 -- dNat ⊄ dzero: dNat's eliminator demands both branches, dzero only
 -- the zero branch.
-example : subCheck 200 dNat dzero = .ok false := by native_decide
+example : NbE.subCheck 200 dNat dzero = .ok false := by native_decide
 
 -- true_ ⊄ dNat: the Church boolean has the wrong shape.
-example : subCheck 200 Std.true_ dNat = .ok false := by native_decide
+example : NbE.subCheck 200 Std.true_ dNat = .ok false := by native_decide
 
 -- dzero ⊄ done_. Previously returned `.ok true` because absEval's
 -- muSeen cycle check compared (fix, arg) pairs and the de-Bruijn
 -- shifted argument never matched, so dsucc' kept unfolding until
 -- both sides looked identical. With the length-based muSeen cutoff
 -- this is now correctly rejected.
-example : subCheck 200 dzero done_ = .ok false := by native_decide
+example : NbE.subCheck 200 dzero done_ = .ok false := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 

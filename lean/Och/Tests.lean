@@ -1,5 +1,6 @@
 import Och.Syntax
 import Och.Eval
+import Och.SubCheckVal
 import Och.Subtyping
 import Och.Soundness
 import Och.Std
@@ -11,6 +12,12 @@ import Och.Macro
 Cross-cutting tests that span multiple Std modules and don't belong in any
 single file. Includes the Prop 5.2.9 regression test and §6.2 abstract
 instantiation tests.
+
+After the legacy-checker retirement, all tests use `NbE.subCheck` /
+`NbE.nf` / `NbE.typeCheck`. Tests that were specifically about
+`absEval`/`subCheckNF` semantics (the 5.2.9 `absEvalVal Not' Bool = Bool`
+abstract-instantiation case) are translated to `NbE.nf`-equality, which
+gives the same NF on closed terms.
 -/
 
 open Std
@@ -21,12 +28,12 @@ open Std
 
 private def Not' := och{ λX:Bool. X Bool false_ true_ }
 
-example : absEvalVal (och{ Not' true_ }) = .ok ⟨false_⟩ := by native_decide
-example : absEvalVal (och{ Not' false_ }) = .ok ⟨true_⟩ := by native_decide
-example : absEvalVal (och{ Not' Bool }) = .ok ⟨Bool⟩ := by native_decide
-example : subCheck 1000 false_ true_ = .ok false := by native_decide
-example : subCheck 1000 (och{ Not' true_ }) Bool = .ok true := by native_decide
-example : subCheck 1000 (och{ Not' false_ }) Bool = .ok true := by native_decide
+example : NbE.nf 200 (och{ Not' true_ }) = NbE.nf 200 false_ := by native_decide
+example : NbE.nf 200 (och{ Not' false_ }) = NbE.nf 200 true_ := by native_decide
+example : NbE.nf 200 (och{ Not' Bool }) = NbE.nf 200 Bool := by native_decide
+example : NbE.subCheck 1000 false_ true_ = .ok false := by native_decide
+example : NbE.subCheck 1000 (och{ Not' true_ }) Bool = .ok true := by native_decide
+example : NbE.subCheck 1000 (och{ Not' false_ }) Bool = .ok true := by native_decide
 
 -- ============================================================
 -- §6.2 Abstract instantiation (ascription-based type-level tests)
@@ -36,26 +43,26 @@ example : subCheck 1000 (och{ Not' false_ }) Bool = .ok true := by native_decide
 -- produce correct types. They use Std definitions directly.
 
 -- Abstract Nat: add (... : Nat) (... : Nat) ⊑ Nat
-example : subCheck 1000
+example : NbE.subCheck 1000
   (och{ add_ (zero_ : Nat_) (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
 -- succ (... : Nat) ⊑ Nat
-example : subCheck 1000
+example : NbE.subCheck 1000
   (och{ succ_ (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
 -- isZero (succ (... : Nat)) = false (precisely!)
-example : absEvalVal
-  (och{ isZero_ (succ_ (zero_ : Nat_)) }) = .ok ⟨false_⟩ := by native_decide
+example : NbE.nf 200
+  (och{ isZero_ (succ_ (zero_ : Nat_)) }) = NbE.nf 200 false_ := by native_decide
 
 -- isZero (... : Nat) ⊑ Bool
-example : subCheck 1000
+example : NbE.subCheck 1000
   (och{ isZero_ (zero_ : Nat_) })
   Bool = .ok true := by native_decide
 
 -- double (... : Nat) ⊑ Nat
-example : subCheck 1000
+example : NbE.subCheck 1000
   (och{ double_ (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
@@ -77,22 +84,22 @@ private def testVec1 := och{ mkVec Nat_ done_ (pair_ Nat_ Unit_ zero_ unit_) }
 -- accepted `Nat_ ⊑ (zero_:Nat_)` (subject-reduction failure;
 -- SoundnessAudit A8). Now we check the result is the
 -- concrete length, and that it inhabits `dNat`.
-example : subCheck 200
+example : NbE.subCheck 200
   (och{ (testVec1 : Vec Nat_) dNat (λn:dNat. λarr:(Array_ n Nat_). n) })
   done_ = .ok true := by native_decide
-example : subCheck 200
+example : NbE.subCheck 200
   (och{ (testVec1 : Vec Nat_) dNat (λn:dNat. λarr:(Array_ n Nat_). n) })
   dNat = .ok true := by native_decide
 
 -- Rewrapped abstract vector ⊑ Vec Nat. The neutral-head gate leaves
 -- `Array_ n Nat_` (abstract `n`) stuck so the motive normalises, and
 -- the stuck-head re-eval rule lets the existential repack.
-example : subCheck 1000
+example : NbE.subCheck 1000
   (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:dNat. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
   (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ============================================================
--- Subtyping transitivity tests
+-- Subtyping transitivity tests (NbE.subCheck)
 -- ============================================================
 
 -- Previously-known counterexample: Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)
@@ -100,13 +107,14 @@ example : subCheck 1000
 -- applies to both constructors.
 
 -- Type ⊑ ι Type (bvar 0): should hold via iotaIntro (self-intro).
-example : subCheckNF 100 [] [] Expr.type (.iota .type (.bvar 0)) = .ok true := by native_decide
+example : NbE.subCheck 100 Expr.type (.iota .type (.bvar 0)) = .ok true := by native_decide
 
--- ι Type (bvar 0) ⊑ lam Type (bvar 0): not provable (iota unfolds to itself, exhausts fuel)
-example : subCheckNF 100 [] [] (.iota .type (.bvar 0)) (.lam .type (.bvar 0)) ≠ .ok true := by native_decide
+-- ι Type (bvar 0) ⊑ lam Type (bvar 0): not provable
+-- (iota unfolds to itself; A7 productivity guard rejects).
+example : NbE.subCheck 100 (.iota .type (.bvar 0)) (.lam .type (.bvar 0)) ≠ .ok true := by native_decide
 
 -- Type ⊑ lam Type (bvar 0): false (Type is not a function type)
-example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = .ok false := by native_decide
+example : NbE.subCheck 100 Expr.type (.lam .type (.bvar 0)) = .ok false := by native_decide
 
 -- Transitivity instance: the old a ⊑ b ∧ b ⊑ c ∧ ¬(a ⊑ c) is gone because b ⊑ c is now false
 
@@ -116,8 +124,8 @@ example : subCheckNF 100 [] [] Expr.type (.lam .type (.bvar 0)) = .ok false := b
 
 -- Helper: check transitivity for a triple (a, b, c) with given fuel
 private def checkTrans (fuel : Nat) (a b c : Expr) : Bool :=
-  if subCheckNF fuel [] [] a b == .ok true && subCheckNF fuel [] [] b c == .ok true then
-    subCheckNF fuel [] [] a c == .ok true
+  if NbE.subCheck fuel a b == .ok true && NbE.subCheck fuel b c == .ok true then
+    NbE.subCheck fuel a c == .ok true
   else true  -- vacuously true if a⊄b or b⊄c
 
 -- Small CLOSED expression generators for exhaustive testing.
@@ -207,4 +215,3 @@ example : Expr.closedAt 0 (och{ succ_ (zero_ : Nat_) }) = true := by native_deci
 example : Expr.closedAt 0 Nat_ = true := by native_decide
 example : Expr.closedAt 0 succ_ = true := by native_decide
 example : Expr.closedAt 0 (och{ Vec Nat_ }) = true := by native_decide
-

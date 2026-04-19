@@ -1,5 +1,6 @@
 import Och.Macro
 import Och.Eval
+import Och.SubCheckVal
 import Och.Std.Bool
 import Och.Std.Nat
 
@@ -114,17 +115,17 @@ example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by 
 -- the assumption set, ann-widening does not).
 -- -----------------------------------------------------------
 
-example : subCheck 50 dtrue dBool = .ok true := by native_decide
-example : subCheck 50 dfalse dBool = .ok true := by native_decide
+example : NbE.subCheck 50 dtrue dBool = .ok true := by native_decide
+example : NbE.subCheck 50 dfalse dBool = .ok true := by native_decide
 
 -- dBool ⋢ dtrue: dBool's motive demands both P(dtrue) and P(dfalse)
 -- but dtrue only demands P(self), so the body check fails at
 -- `Type ⊑ P dfalse`.
-example : subCheck 50 dBool dtrue = .ok false := by native_decide
+example : NbE.subCheck 50 dBool dtrue = .ok false := by native_decide
 
 -- The constructors are pairwise unrelated.
-example : subCheck 50 dtrue dfalse = .ok false := by native_decide
-example : subCheck 50 dfalse dtrue = .ok false := by native_decide
+example : NbE.subCheck 50 dtrue dfalse = .ok false := by native_decide
+example : NbE.subCheck 50 dfalse dtrue = .ok false := by native_decide
 
 -- -----------------------------------------------------------
 -- Operations (not / and).

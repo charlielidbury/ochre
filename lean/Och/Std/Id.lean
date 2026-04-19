@@ -45,35 +45,35 @@ section Tests
 private def fuel : Nat := 50
 
 -- ----------------------------------------------------------
--- Transparency: absEval (positive)
+-- Transparency: NbE normal-form (positive)
 -- ----------------------------------------------------------
 
--- id Nat 3 should have precise type 3 (transparency preserved). §6.4
-example : absEvalVal (och{ id_ Nat_ three_ })
-  = .ok ⟨three_⟩ := by native_decide
+-- id Nat 3 normalises to 3 (transparency preserved). §6.4
+example : NbE.nf 200 (och{ id_ Nat_ three_ })
+  = NbE.nf 200 three_ := by native_decide
 
 -- After A8, idAscribed normalises identically to id_ (the
--- ascription is computationally transparent and absEval
--- normalises lambda bodies). The previous "widening via asc"
+-- ascription is computationally transparent and NbE
+-- normalises under binders). The previous "widening via asc"
 -- was unsound: it accepted `Nat_ ⊑ (zero_ : Nat_)`, but
 -- `(zero_ : Nat_)` computes to `zero_` and `Nat_ ⊄ zero_`
 -- (subject reduction fails). Widening is now expressed via
 -- `NbE.typeCheck` (which keeps the annotation as the *expected
 -- type* without conflating it with the value), not via the
 -- value-level evaluator.
-example : absEvalVal (och{ idAscribed Nat_ three_ })
-  = .ok ⟨three_⟩ := by native_decide
+example : NbE.nf 200 (och{ idAscribed Nat_ three_ })
+  = NbE.nf 200 three_ := by native_decide
 
-example : absEvalVal (och{ idAscribed Nat_ three_ })
-  = absEvalVal (och{ id_ Nat_ three_ }) := by native_decide
+example : NbE.nf 200 (och{ idAscribed Nat_ three_ })
+  = NbE.nf 200 (och{ id_ Nat_ three_ }) := by native_decide
 
 -- ----------------------------------------------------------
--- Transparency: absEval (negative)
+-- Transparency: NbE (negative)
 -- ----------------------------------------------------------
 
 -- id Nat 3 should NOT equal Nat — it is more precise (singleton 3)
-example : absEvalVal (och{ id_ Nat_ three_ })
-  ≠ .ok ⟨Nat_⟩ := by native_decide
+example : NbE.nf 200 (och{ id_ Nat_ three_ })
+  ≠ NbE.nf 200 Nat_ := by native_decide
 
 -- The §6.4 widening intent now lives in `NbE.typeCheck`: the
 -- ascription gives `idAscribed Nat_ three_` the *checked* type

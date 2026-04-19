@@ -26,7 +26,7 @@ Following `Och/Simple/CheckSoundness.lean`:
   `typeCheck`    `Subtype'`    `⟦·⟧`
 
 The algorithmic side is `NbE.typeCheck` (TyCheck.lean), *not*
-`subCheckNF` — the latter normalises first and so accepts
+`NbE.subCheck` — the latter normalises first and so accepts
 ill-typed inputs (SoundnessAudit A3). `typeCheck` runs the
 domain check at every `.app` syntactically, then defers to
 `subCheckVal` for conversion.

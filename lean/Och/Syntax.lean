@@ -97,17 +97,18 @@ instance : ToString Expr where
   toString e := e.pretty
 
 /-- A neutral expression is one that can't reduce further: a variable
-    or an application whose head is stuck. In absEval output, apps are
-    always neutral (never lam/mu-headed redexes). -/
+    or an application whose head is stuck. In a normal-form Expr
+    (e.g. after `NbE.nf`), apps are always neutral (never
+    lam/ι/fix-headed redexes). -/
 def isNeutral : Expr → Bool
   | .bvar _ => true
   | .app _ _ => true
   | _ => false
 
-/-- True iff the application spine bottoms out at a `bvar`. After
-    `absEval`, this distinguishes a genuinely stuck term (variable
-    head, no further reduction possible) from a value or a
-    cycle-cut recursive head. -/
+/-- True iff the application spine bottoms out at a `bvar`. In a
+    normal form, this distinguishes a genuinely stuck term
+    (variable head, no further reduction possible) from a value
+    or a cycle-cut recursive head. -/
 def hasNeutralHead : Expr → Bool
   | .bvar _ => true
   | .app f _ => hasNeutralHead f
