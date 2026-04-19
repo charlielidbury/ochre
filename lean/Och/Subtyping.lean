@@ -257,6 +257,15 @@ theorem Subtype'.weaken {S S' Γ a b}
   | asc_L _ ih => exact .asc_L (ih hsub)
   | asc_R _ ih => exact .asc_R (ih hsub)
 
+/-- `.hyp` specialised to same-depth use: an entry recorded
+at the *current* depth needs no shift. This is the form
+the algorithmic seen-bridge uses (`subCheckVal_subV` always
+records and uses at the same `Γ`). -/
+theorem Subtype'.hyp_here {S} {Γ : Ctx} {a b}
+    (h : (Γ.length, a, b) ∈ S) : Subtype' S Γ a b := by
+  have := Subtype'.hyp h (Nat.le_refl _)
+  simpa using this
+
 /-- The old same-domain rule is derivable. -/
 theorem Subtype'.lam_body {S Γ dom body₁ body₂}
     (h : Subtype' S (dom :: Γ) body₂ body₁) :
