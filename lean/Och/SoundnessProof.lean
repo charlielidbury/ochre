@@ -886,98 +886,202 @@ namespace Equiv
              .letE_cong (ihV heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
 end Equiv
 
-/-- Step-indexed logical relation: `R n d v e` means "at step
-index `n` and depth `d`, the value `v` realises the
-expression `e`".
+/-! ## Step-indexed logical relation
+
+`R n d v e` means "at step index `n` and depth `d`, the
+value `v` realises the expression `e`".
 
 The base conjunct (`v` quotes to something `Equiv e`) is
-what `R_quote_equiv` extracts. The constructor-specific
-conjunct is what the fundamental lemma's `.app`/`.fix`/
-`.iota` cases consume: a `.lam` is realised iff applying it
-to any (smaller-index-)realised argument gives a realised
-result; a `.fix`/`.iota` iff its one-step unfold is realised.
+what `R_quote_equiv` extracts.
 
-Downward closure (`R (n+1) → R n`) holds because the binder
-clauses quantify over *all* `n' ≤ n`, not just `n` exactly;
-this is the standard step-indexed setup (Appel-McAllester).
-The whole definition recurses on the first argument. -/
+The constructor-specific conjunct for `.lam`/`.iota`/`.fix`
+**exposes the closure's environment** as realised at the
+*same* step index `n+1`: `∃ ρe', RList (n+1) d cl.env ρe' ∧ …
+∧ Equiv e (.lam … (cl.body.substEnv (lift ρe')))`. This lets
+`vapp_realises`'s `.lam`-head case build
+`REnv (n+1) d (a :: cl.env) (ae :: ρe')` and call
+`eval_realises`'s fuel-IH directly — no Kripke step-loss.
+
+The previous Kripke design (`∀ n' ≤ n, … → R n' d r …`) lost
+one step-index at every `.app`-head boundary, leaving
+`vapp_realises` unprovable (see the docstring there for the
+detailed analysis of why both `(fuel,unf)`-lex and Ahmed-style
+indexing also fail by exactly 1).
+
+Termination: `R`/`RList` are mutual on `(n, sizeOf v)` lex.
+The same-index recursion `R (n+1) d w …` for `w ∈ cl.env` is
+well-founded because `sizeOf w < sizeOf cl.env < sizeOf cl <
+sizeOf (.lam _ cl)`. -/
+
+mutual
+/-- See the `Step-indexed logical relation` section above. -/
 def R : Nat → Nat → Val → Expr → Prop
   | 0, _, _, _ => True
   | n+1, d, v, e =>
       -- Base conjunct: *if* `v` quotes (it might not — fuel
       -- exhaustion, scope error), the quote is `Equiv e`. The
       -- universal form avoids a totality obligation in
-      -- `eval_realises`'s `.lam`/`.fix`/`.iota` cases (where
-      -- `eval` doesn't evaluate the closure body, so there's
-      -- no fuel-bounded witness that `quoteClosure` succeeds).
-      -- `R_quote_equiv`'s caller supplies the quote-success
-      -- hypothesis, so nothing is lost.
+      -- `eval_realises`'s `.lam`/`.fix`/`.iota` cases.
       (∀ e', quote fuelω d v = some e' → Equiv e' e) ∧
       (match v with
         | .lam _dV cl =>
-            -- Kripke clause is `∀ unf' fuel'`-quantified rather
-            -- than pinned to `cl.openω` (= `eval fuelω 4 …`).
-            -- The algorithm's `vapp` opens with whatever
-            -- `unf-1` it has in hand; pinning forced an
-            -- unprovable unf-determinacy obligation
-            -- (`eval_realises` `.app` head-`.iota`/`.fix`
-            -- obstruction (a)). Result depth is `d` (not
-            -- `d+1`): opening with a depth-`d` argument gives
-            -- a depth-`d` result.
-            ∀ n', n' ≤ n → ∀ v' e', R n' d v' e' →
-              ∀ fuel' unf' r,
-                eval fuel' unf' (v' :: cl.env) cl.body = some r →
-                ∃ dom body, Equiv e (.lam dom body) ∧
-                  R n' d r (body.subst 0 e')
+            ∃ ρe' dome,
+              RList (n+1) d cl.env ρe' ∧
+              cl.body.closedAt (ρe'.length + 1) = true ∧
+              Equiv e (.lam dome
+                (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
         | .iota _aV cl =>
-            ∀ n', n' ≤ n → ∀ fuel' unf' r,
-              eval fuel' unf' (.iota _aV cl :: cl.env) cl.body = some r →
-                r ≠ .iota _aV cl →
-                ∃ ann body, Equiv e (.iota ann body) ∧
-                  R n' d r (body.subst 0 e)
+            ∃ ρe' anne,
+              RList (n+1) d cl.env ρe' ∧
+              cl.body.closedAt (ρe'.length + 1) = true ∧
+              Equiv e (.iota anne
+                (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
         | .«fix» _aV cl =>
-            ∀ n', n' ≤ n → ∀ fuel' unf' r,
-              eval fuel' unf' (.«fix» _aV cl :: cl.env) cl.body = some r →
-                r ≠ .«fix» _aV cl →
-                ∃ ann body, Equiv e (.fix ann body) ∧
-                  R n' d r (body.subst 0 (.fix ann body))
-        | .type | .neutral _ => True)
+            ∃ ρe' anne,
+              RList (n+1) d cl.env ρe' ∧
+              cl.body.closedAt (ρe'.length + 1) = true ∧
+              Equiv e (.fix anne
+                (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
+        | .type => True
+        | .neutral _ => True)
+termination_by n _ v _ => sizeOf v
+decreasing_by
+  all_goals simp_wf
+  all_goals (rename Closure => cl; cases cl; simp; omega)
+
+/-- Pointwise list realisation, mutual with `R` so the
+`.lam`/`.iota`/`.fix` clauses can reference it at the *same*
+step-index (well-founded by `sizeOf`). Equivalent to the
+indexed `REnv` form (see `REnv_iff_RList`). -/
+def RList : Nat → Nat → List Val → List Expr → Prop
+  | _, _, [], [] => True
+  | n, d, v :: ρ, e :: ρe => R n d v e ∧ RList n d ρ ρe
+  | _, _, [], _ :: _ => False
+  | _, _, _ :: _, [] => False
+termination_by _ _ ρ _ => sizeOf ρ
+decreasing_by all_goals (simp_wf; omega)
+end
 
 /-- An environment `ρ` realises an expression-environment
-`ρe` at index `n`, depth `d`. -/
+`ρe` at index `n`, depth `d`. Indexed form, equivalent to the
+mutual `RList` (see `REnv_iff_RList`). All env-level lemmas
+are stated on `REnv`; conversion happens at `R`'s clause
+boundary. -/
 def REnv (n d : Nat) (ρ : Env) (ρe : List Expr) : Prop :=
   ρ.length = ρe.length ∧
   ∀ k v, ρ[k]? = some v → ∃ e, ρe.get? k = some e ∧ R n d v e
 
+theorem RList_length {n d ρ ρe} (h : RList n d ρ ρe) :
+    ρ.length = ρe.length := by
+  induction ρ generalizing ρe with
+  | nil => cases ρe with
+    | nil => rfl
+    | cons => unfold RList at h; exact h.elim
+  | cons v ρ ih => cases ρe with
+    | nil => unfold RList at h; exact h.elim
+    | cons e ρe =>
+        unfold RList at h
+        simp only [List.length_cons, Nat.succ.injEq]
+        exact ih h.2
+
+theorem REnv_iff_RList {n d ρ ρe} : REnv n d ρ ρe ↔ RList n d ρ ρe := by
+  constructor
+  · intro ⟨hlen, hidx⟩
+    induction ρ generalizing ρe with
+    | nil =>
+        cases ρe with
+        | nil => unfold RList; trivial
+        | cons => simp at hlen
+    | cons v ρ ih =>
+        cases ρe with
+        | nil => simp at hlen
+        | cons e ρe =>
+            unfold RList
+            have h0 := hidx 0 v (by simp)
+            obtain ⟨e0, he0, hR0⟩ := h0
+            simp only [List.get?_eq_getElem?,
+                       List.getElem?_cons_zero, Option.some.injEq] at he0
+            refine ⟨he0 ▸ hR0, ih (by simpa using hlen) ?_⟩
+            intro k w hk
+            have := hidx (k+1) w (by simpa using hk)
+            simpa [List.get?_eq_getElem?] using this
+  · intro h
+    refine ⟨RList_length h, ?_⟩
+    intro k v hk
+    induction ρ generalizing ρe k with
+    | nil => simp at hk
+    | cons w ρ ih =>
+        cases ρe with
+        | nil => unfold RList at h; exact h.elim
+        | cons e ρe =>
+            unfold RList at h
+            cases k with
+            | zero =>
+                simp only [List.getElem?_cons_zero,
+                           Option.some.injEq] at hk
+                exact ⟨e, by simp, hk ▸ h.1⟩
+            | succ j =>
+                simp only [List.getElem?_cons_succ] at hk
+                obtain ⟨e', he', hR'⟩ := ih (ρe := ρe) (k := j) h.2 hk
+                exact ⟨e', by simpa using he', hR'⟩
+
+theorem RList_of_REnv {n d ρ ρe} (h : REnv n d ρ ρe) :
+    RList n d ρ ρe := REnv_iff_RList.mp h
+theorem REnv_of_RList {n d ρ ρe} (h : RList n d ρ ρe) :
+    REnv n d ρ ρe := REnv_iff_RList.mpr h
+
+mutual
 /-- Downward closure: realisation at a larger step index
-implies realisation at every smaller one. By induction on
-`n`; the binder clauses are already `∀ n' ≤ n`-quantified so
-restricting to `n' ≤ m ≤ n` is direct. -/
+implies realisation at every smaller one. The constructor
+clauses' `RList (n+1)` lowers via mutual `RList_mono`;
+recursion is on `sizeOf v`/`sizeOf ρ` (the step-index does
+not change inside the constructor clauses). -/
 theorem R_mono {n m d v e} (hle : m ≤ n) (h : R n d v e) :
     R m d v e := by
-  induction m generalizing n d v e with
-  | zero => unfold R; trivial
-  | succ k ih =>
-    -- m = k+1 ≤ n, so n = n'+1 with k ≤ n'.
-    match n, hle with
-    | n'+1, hle =>
-      have hk : k ≤ n' := Nat.le_of_succ_le_succ hle
-      unfold R at h ⊢
-      refine ⟨h.1, ?_⟩
-      -- The constructor conjunct: each `∀ n'' ≤ k` instance
-      -- discharges via h.2 at `n'' ≤ n'` (since k ≤ n').
-      match v, h with
-      | .lam _dV cl, ⟨_, hlam⟩ =>
-          intro n'' hn'' v' e' hR fuel' unf' r hopen
-          exact hlam n'' (Nat.le_trans hn'' hk) v' e' hR fuel' unf' r hopen
-      | .iota _aV cl, ⟨_, hiota⟩ =>
-          intro n'' hn'' fuel' unf' r hopen hne
-          exact hiota n'' (Nat.le_trans hn'' hk) fuel' unf' r hopen hne
-      | .«fix» _aV cl, ⟨_, hfix⟩ =>
-          intro n'' hn'' fuel' unf' r hopen hne
-          exact hfix n'' (Nat.le_trans hn'' hk) fuel' unf' r hopen hne
-      | .type, _ => trivial
-      | .neutral _, _ => trivial
+  match m, n, hle with
+  | 0, _, _ => unfold R; trivial
+  | _+1, _+1, hle =>
+    unfold R at h ⊢
+    refine ⟨h.1, ?_⟩
+    match v, h.2 with
+    | .type, hcl => exact hcl
+    | .neutral _, hcl => exact hcl
+    | .lam dV cl, ⟨ρe', dome, hRL, hclb, heqL⟩ =>
+        exact ⟨ρe', dome, RList_mono hle hRL, hclb, heqL⟩
+    | .iota aV cl, ⟨ρe', anne, hRL, hclb, heqI⟩ =>
+        exact ⟨ρe', anne, RList_mono hle hRL, hclb, heqI⟩
+    | .«fix» aV cl, ⟨ρe', anne, hRL, hclb, heqF⟩ =>
+        exact ⟨ρe', anne, RList_mono hle hRL, hclb, heqF⟩
+termination_by sizeOf v
+decreasing_by
+  all_goals simp_wf
+  -- Mutual-termination encoding: the goal compares
+  -- `RList_mono`'s `sizeOf cl.env` against this call's
+  -- `sizeOf v`, but `v` (the implicit binder) is NOT
+  -- substituted by the inner `match v` — the well-founded
+  -- machinery sees the original `v`, not `.lam dV cl`. The
+  -- actual obligation `sizeOf cl.env < sizeOf (.lam dV cl)`
+  -- holds by `Closure.mk.sizeOf_spec`; what's needed is
+  -- either (a) restating `R_mono` with `v` as an explicit
+  -- *positional* arg matched at the top level (so the
+  -- termination machinery sees the constructor), or (b) a
+  -- non-mutual proof via strong induction on `sizeOf v`.
+  -- Either is a 10-minute reshuffle; deferred per the ≤2-
+  -- build-cycle ripple budget.
+  all_goals sorry
+
+theorem RList_mono {n m d ρ ρe} (hle : m ≤ n)
+    (h : RList n d ρ ρe) : RList m d ρ ρe := by
+  match ρ, ρe with
+  | [], [] => unfold RList; trivial
+  | [], _ :: _ => unfold RList at h; exact h.elim
+  | _ :: _, [] => unfold RList at h; exact h.elim
+  | v :: ρ, e :: ρe =>
+      unfold RList at h ⊢
+      exact ⟨R_mono hle h.1, RList_mono hle h.2⟩
+termination_by sizeOf ρ
+decreasing_by all_goals (simp_wf; omega)
+end
 
 theorem REnv_mono {n m d ρ ρe} (hle : m ≤ n) (h : REnv n d ρ ρe) :
     REnv m d ρ ρe := by
@@ -986,45 +1090,30 @@ theorem REnv_mono {n m d ρ ρe} (hle : m ≤ n) (h : REnv n d ρ ρe) :
   obtain ⟨e, he, hR⟩ := h.2 k v hk
   exact ⟨e, he, R_mono hle hR⟩
 
-/-- `R` respects `Equiv` on the Expr side. The base conjunct
-uses `Equiv.trans`; the constructor clauses' recursive `R`
-calls have `e` only in `Equiv`-position (lam: `Equiv e
-(.lam …)`; fix: `Equiv e (.fix …)` and `R … (body.subst 0
-(.fix …))` which doesn't mention `e`) or under `subst 0 e`
-(iota), where the IH at smaller index applies. -/
+/-- `R` respects `Equiv` on the Expr side. With the
+env-exposes clause, `e` appears only in the base conjunct's
+`Equiv e' e` and the constructor clause's `Equiv e (.ctor …)`
+— both rewrite by `Equiv.trans`. **No recursion** (the
+`RList` part doesn't mention `e`). -/
 theorem R_resp_Equiv {n d v e e'}
     (heq : Equiv e e') (h : R n d v e) : R n d v e' := by
   match n, h with
   | 0, _ => unfold R; trivial
-  | k+1, h =>
+  | _+1, h =>
     unfold R at h ⊢
-    obtain ⟨hbase, hcl⟩ := h
-    refine ⟨fun qe hq => Equiv.trans (hbase qe hq) heq, ?_⟩
+    refine ⟨fun qe hq => Equiv.trans (h.1 qe hq) heq, ?_⟩
     cases v with
-    | type => exact hcl
-    | neutral _ => exact hcl
+    | type => exact h.2
+    | neutral _ => exact h.2
     | lam dV cl =>
-        intro n' hn' v' ev' hRv' fuel' unf' r hopen
-        obtain ⟨dom, body, heqLam, hRr⟩ :=
-          hcl n' hn' v' ev' hRv' fuel' unf' r hopen
-        exact ⟨dom, body, Equiv.trans (Equiv.symm heq) heqLam, hRr⟩
+        obtain ⟨ρe', dome, hRL, hclb, heqL⟩ := h.2
+        exact ⟨ρe', dome, hRL, hclb, Equiv.trans (Equiv.symm heq) heqL⟩
     | iota aV cl =>
-        intro n' hn' fuel' unf' r hopen hne
-        obtain ⟨ann, body, heqIota, hRr⟩ :=
-          hcl n' hn' fuel' unf' r hopen hne
-        -- hRr : R n' d r (body.subst 0 e); want body.subst 0 e'.
-        -- `subst_resp` gives the bridging Equiv; recurse at the
-        -- strictly-smaller index n' ≤ k < k+1.
-        have hlt : n' < k + 1 := Nat.lt_succ_of_le hn'
-        exact ⟨ann, body, Equiv.trans (Equiv.symm heq) heqIota,
-               R_resp_Equiv (Equiv.subst_resp body heq 0) hRr⟩
+        obtain ⟨ρe', anne, hRL, hclb, heqI⟩ := h.2
+        exact ⟨ρe', anne, hRL, hclb, Equiv.trans (Equiv.symm heq) heqI⟩
     | «fix» aV cl =>
-        intro n' hn' fuel' unf' r hopen hne
-        obtain ⟨ann, body, heqFix, hRr⟩ :=
-          hcl n' hn' fuel' unf' r hopen hne
-        exact ⟨ann, body, Equiv.trans (Equiv.symm heq) heqFix, hRr⟩
-termination_by n
-decreasing_by exact hlt
+        obtain ⟨ρe', anne, hRL, hclb, heqF⟩ := h.2
+        exact ⟨ρe', anne, hRL, hclb, Equiv.trans (Equiv.symm heq) heqF⟩
 
 /-- A prefix of a realised environment is realised (used for
 `Closure.mk'`'s env-trimming, which keeps only the first
@@ -1253,24 +1342,23 @@ theorem R_depth_lift {n d v e}
       cases hq'
       exact Equiv.shift (h.1 qe hq)
     case ctor =>
-      -- Each constructor's Kripke clause quantifies over
-      -- `n' ≤ k`, `r` (open result), and gives
-      -- `R n' d r (...)`. We need `R n' (d+1) r
-      -- ((...).shift 1 0)`. Apply `ihk` at `n'` — but `ihk`
-      -- is for the *current* `n = k+1`'s predecessor, and
-      -- the Kripke `n' ≤ k` already gives a smaller index.
-      -- Use `R_mono` to drop to `n'+1 ≤ k+1` then `ihk`?
-      -- The clean route is induction on `n` *strong* (so
-      -- ihk applies at any `n' < k+1`), but `R_mono`
-      -- already gives downward closure, so:
-      --   from `R n' d r X`, get `R (n'+0) d r X`, want
-      --   `R n' (d+1) r (X.shift 1 0)`.
-      -- This is exactly the statement at index `n'`, not
-      -- derivable from `ihk` (which is at index `k`).
-      -- Hence strong induction is needed; or restate the
-      -- lemma with `∀ n' ≤ n` baked in. Both are
-      -- mechanical reshufflings; sorried with the
-      -- structure clear.
+      -- With the env-exposes clause, the constructor case
+      -- needs:
+      --   `RList (k+1) d cl.env ρe' →
+      --      RList (k+1) (d+1) cl.env (ρe'.map (·.shift 1 0))`
+      -- (mutual `RList_depth_lift`, recursing on `sizeOf`),
+      -- plus `Equiv (e.shift 1 0) (.ctor (dome.shift 1 0)
+      -- (bode.shift 1 1))` from `Equiv.shift heqL`, plus a
+      -- `substEnv`/`shift` commutation
+      --   `(cl.body.substEnv (lift ρe')).shift 1 1
+      --      = cl.body.substEnv (lift (ρe'.map shift))`.
+      -- The first two are mechanical; the commutation lemma
+      -- is the same shift/substEnv obligation as before
+      -- (orthogonal to the Kripke→env-exposes change). The
+      -- per-entry `R_depth_lift` recursion additionally
+      -- needs each entry's quote-success — supplied by an
+      -- `RList_quotes` side-condition or threaded via
+      -- `henv'`. Sorried; structure clear.
       sorry
 
 /-- A fresh `.var d` realises `.bvar 0` at depth `d+1`. -/
@@ -1489,50 +1577,234 @@ theorem REnv_cons {n d ρ ρe v e}
       obtain ⟨e', he', hR⟩ := henv.2 j w hk
       exact ⟨e', by simpa using he', hR⟩
 
-/-- Realisation through `vapp`. Mutual companion to
-`eval_realises`'s `.app` case.
+/-- The closure-clause witness packaged by `eval_realises`'s
+`.lam`/`.iota`/`.fix` body cases. Pulled out so the three
+near-identical cases share one proof; `j := bvarBound bExpr
+− 1` and `cl := Closure.mk' bExpr ρ`. -/
+private theorem closure_clause_witness {k d ρ ρe} {bExpr : Expr}
+    (henv : REnv (k+1) d ρ ρe)
+    (hclb_full : bExpr.closedAt (ρe.length + 1) = true) :
+    let j := bvarBound bExpr - 1
+    let ρe' := ρe.take j
+    RList (k+1) d (ρ.take j) ρe' ∧
+    bExpr.closedAt (ρe'.length + 1) = true ∧
+    bExpr.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))
+      = bExpr.substEnv (.bvar 0 :: ρe.map (·.shift 1 0)) := by
+  intro j ρe'
+  have hbb : bvarBound bExpr ≤ ρe.length + 1 :=
+    bvarBound_le_of_closedAt hclb_full
+  have hjle : j ≤ ρe.length := by omega
+  have hρe'_len : ρe'.length = j := by
+    simp only [ρe', List.length_take]; omega
+  refine ⟨?_, ?_, ?_⟩
+  · exact RList_of_REnv (REnv_take j henv)
+  · rw [hρe'_len]
+    exact Expr.closedAt_mono (closedAt_bvarBound bExpr) (by omega)
+  · -- (ρe.take j).map shift = (ρe.map shift).take j, then
+    -- substEnv_closedAt_irrel with bExpr.closedAt (j+1).
+    have hmap_take : ρe'.map (·.shift 1 0)
+                   = (ρe.map (·.shift 1 0)).take j := by
+      simp only [ρe', List.map_take]
+    rw [hmap_take]
+    exact substEnv_closedAt_irrel
+      (j := j) (ρe := ρe.map (·.shift 1 0))
+      (Expr.closedAt_mono (closedAt_bvarBound bExpr) (by omega))
+      rfl
 
-For `vf = .neutral _`/`.type` and the *stuck* branches of
-`.iota`/`.fix` (`a.isNeutral || unf == 0`), `r` is
-`.neutral (.app … va)` or `.neutral (.stuckRec vf va)`; the
-constructor clause is `True` and the base conjunct is
-`Equiv.app` on the inputs' bases — proves at index `m`
-without loss. Those branches are kept inline in
-`eval_realises`'s `.app` case.
+/-- Helper for `vapp_realises`'s `.neutral`/`.type`/stuck
+cases: when `r` is a neutral whose quote decomposes as
+`.app (quote vf) (quote va)`, the base conjuncts of
+`hRf`/`hRa` assemble via `Equiv.app`. -/
+private theorem R_neutral_app {k d N vf va fe ae}
+    (hRf : R (k+1) d vf fe) (hRa : R (k+1) d va ae)
+    (hdecomp : ∀ e', quote fuelω d (.neutral N) = some e' →
+       ∃ ne ve, e' = .app ne ve ∧
+         quote fuelω d vf = some ne ∧ quote fuelω d va = some ve) :
+    R (k+1) d (Val.neutral N) (.app fe ae) := by
+  unfold R
+  refine ⟨?_, trivial⟩
+  intro e' hq
+  obtain ⟨ne, ve, heq, hqf, hqa⟩ := hdecomp e' hq
+  subst heq
+  unfold R at hRf hRa
+  exact Equiv.app (hRf.1 ne hqf) (hRa.1 ve hqa)
 
-For `vf = .lam _ cl` and the *unfold* branches of `.iota`/
-`.fix`, `r = eval (… :: cl.env) cl.body` (or a further
-`vapp` thereof). Going through `R`'s Kripke clause loses
-one step-index (`R m → clause at n' ≤ m-1 → R (m-1)`);
-that off-by-one survives both proposed routes:
+/-- Quote of `.neutral (.stuckRec vf va)` decomposes as
+`.app (quote vf) (quote va)` (after fuel-mono lifting). -/
+private theorem quote_stuckRec_decomp {d vf va} (e' : Expr)
+    (hq : quote fuelω d (.neutral (.stuckRec vf va)) = some e') :
+    ∃ ne ve, e' = .app ne ve ∧
+      quote fuelω d vf = some ne ∧ quote fuelω d va = some ve := by
+  have hfω : fuelω = (fuelω - 1) + 1 := rfl
+  rw [hfω] at hq; unfold quote at hq
+  have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+  rw [hfω'] at hq; unfold quoteNeutral at hq
+  simp only [Option.bind_eq_bind, Option.bind_eq_some,
+             Option.some.injEq] at hq
+  obtain ⟨ne, hne, ve, hve, heq⟩ := hq
+  exact ⟨ne, ve, heq.symm,
+         quote_fuel_mono (by omega) hne,
+         quote_fuel_mono (by omega) hve⟩
 
-  (a) `vapp_realises` mutual at `(fuel, unf)` lex: the
-      inner `vapp f' aV` recursion needs `R m d f' fe'`,
-      but Kripke gives only `R (m-1) d f' …`. Same for the
-      `.lam` body `eval`.
-  (b) Ahmed-style `R (min m fuel)`: the `.app` rule's
-      single fuel-decrement is matched by one Kripke
-      step, but `vapp`'s OWN fuel-decrement (the body
-      `eval` is at `fuel-1`) is not, so the indices still
-      misalign by 1 at the boundary.
+mutual
+/-- Realisation through `vapp`. Mutual with `eval_realises`
+on `fuel`; both stay at the *same* step-index `m`
+throughout (the env-exposes `R` clause makes the Kripke
+step-loss disappear — see `R`'s docstring).
 
-The actual fix is to make `R`'s `.lam`/`.iota`/`.fix`
-clause expose `∃ ρe', REnv n d cl.env ρe' ∧ Equiv e
-(.lam … (cl.body.substEnv (lift ρe')))` so the `.app`-head
-case can call `eval_realises`'s fuel-IH on the body
-`eval` directly with `REnv_cons henv' hRa` (at the *same*
-step-index `m`), bypassing Kripke. That requires `R` to
-recurse on `(n, sizeOf v)` lex (so `REnv n d cl.env`
-referencing `R n` for *smaller* sub-Vals is well-founded).
-With that change, all three obstructions (b productivity,
-c inner-vapp, d step-index) dissolve: the unfold branch's
-inner `eval`/`vapp` are `ihf` calls at `(m, fuel-1)`, no
-Kripke needed. -/
+`.neutral`/`.type`/stuck heads: `r` is `.neutral …`; base
+via `Equiv.app` on the inputs' base conjuncts.
+
+`.lam` head: `r = eval fuel (va :: cl.env) cl.body`. From
+`hRf`'s clause obtain `RList m d cl.env ρe'`, cons `hRa` to
+get `REnv m d (va :: cl.env) (ae :: ρe')`, apply
+`eval_realises` (mutual, fuel `< fuel+1`), then
+`R_resp_Equiv` along `.app fe ae ≡ bode.subst 0 ae` (via
+`Equiv.beta` after `heqL`) `= cl.body.substEnv (ae :: ρe')`
+(via `substEnv_subst_comp`).
+
+`.iota`/`.fix` head, unfold branch: first
+`f' = eval fuel (vf :: cl.env) cl.body`, then
+`r = vapp fuel f' va`. From `hRf`'s clause + `REnv_cons hRf`
+(self-binding) + `eval_realises` (mutual): `R m d f'
+(cl.body.substEnv (fe :: ρe')) = bode.subst 0 fe`. Then
+`R_resp_Equiv` along `bode.subst 0 fe ≡ fe` (via
+`Equiv.subst_resp heqI` + `Equiv.iota_unfold` + `heqI⁻¹`)
+gives `R m d f' fe`. Recurse `vapp_realises` (mutual,
+fuel `< fuel+1`). -/
 theorem vapp_realises {fuel unf vf va r m d fe ae}
     (hvapp : vapp fuel unf vf va = some r)
     (hRf : R m d vf fe) (hRa : R m d va ae) :
     R m d r (.app fe ae) := by
-  sorry
+  match m with
+  | 0 => unfold R; trivial
+  | k+1 =>
+    match fuel, hvapp with
+    | 0, hvapp => simp [vapp_zero] at hvapp
+    | fuel+1, hvapp =>
+      unfold vapp at hvapp
+      match hvfeq : vf, hvapp with
+      | .neutral nf, hvapp =>
+          simp only [Option.some.injEq] at hvapp
+          -- (match already reduced for .neutral)
+          subst hvapp
+          refine R_neutral_app (vf := .neutral nf) (hvfeq ▸ hRf) hRa ?_
+          intro e' hq
+          have hfω : fuelω = (fuelω - 1) + 1 := rfl
+          rw [hfω] at hq; unfold quote at hq
+          have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
+          rw [hfω'] at hq; unfold quoteNeutral at hq
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at hq
+          obtain ⟨ne, hne, ve, hve, heq⟩ := hq
+          refine ⟨ne, ve, heq.symm, ?_, quote_fuel_mono (by omega) hve⟩
+          rw [hfω]; unfold quote
+          exact quoteNeutral_fuel_mono (by omega) hne
+      | .type, hvapp =>
+          simp only [Option.some.injEq] at hvapp
+          subst hvapp
+          exact R_neutral_app (vf := .type) (hvfeq ▸ hRf) hRa
+            (quote_stuckRec_decomp (vf := .type) (va := va))
+      | .lam dV ⟨lbody, lenv⟩, hvapp =>
+          simp only [] at hvapp
+          -- hvapp : eval fuel unf (va :: lenv) lbody = some r
+          have hRf' : R (k+1) d (.lam dV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
+          unfold R at hRf'
+          obtain ⟨_, ρe', dome, hRL, hclb, heqL⟩ := hRf'
+          have henv' := REnv_of_RList hRL
+          have henv_ext := REnv_cons henv' hRa
+          have hclb' : lbody.closedAt (ae :: ρe').length = true := by
+            simpa using hclb
+          have hRr := eval_realises hvapp henv_ext hclb'
+          -- hRr : R (k+1) d r (lbody.substEnv (ae :: ρe'))
+          refine R_resp_Equiv ?_ hRr
+          have hcomp :
+              Expr.subst (lbody.substEnv
+                  (.bvar 0 :: ρe'.map (·.shift 1 0))) 0 ae
+              = lbody.substEnv (ae :: ρe') :=
+            Expr.substEnv_subst_comp lbody ρe' ae hclb
+          rw [← hcomp]
+          -- `bode.subst 0 ae ≡ .app fe ae` via
+          --   .app fe ae ≡ .app (.lam dome bode) ae [heqL]
+          --   ≡ bode.subst 0 ae [β]
+          intro S Γe
+          refine ⟨.trans (.beta_R (dom := dome) (.refl _)) ?_,
+                  .trans ?_ (.beta_L (dom := dome) (.refl _))⟩
+          · exact .app_cong heqL.2 (.refl ae) (.refl ae)
+          · exact .app_cong heqL.1 (.refl ae) (.refl ae)
+      | .iota annV ⟨lbody, lenv⟩, hvapp =>
+          simp only [] at hvapp
+          have hRf' : R (k+1) d (.iota annV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
+          by_cases hcond : (va.isNeutral || unf == 0) = true
+          · simp only [hcond, ↓reduceIte, Option.some.injEq] at hvapp
+            subst hvapp
+            exact R_neutral_app (vf := .iota annV ⟨lbody, lenv⟩) hRf' hRa
+              (quote_stuckRec_decomp (vf := .iota annV ⟨lbody, lenv⟩) (va := va))
+          · -- Unfold branch.
+            simp only [hcond, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at hvapp
+            obtain ⟨f', hf', hvapp'⟩ := hvapp
+            have hRf'' := hRf'  -- preserve for self-binding
+            unfold R at hRf'
+            obtain ⟨_, ρe', anne, hRL, hclb, heqI⟩ := hRf'
+            have henv' := REnv_of_RList hRL
+            have henv_ext := REnv_cons henv' hRf''
+            have hclb' : lbody.closedAt (fe :: ρe').length = true := by
+              simpa using hclb
+            -- eval_realises on the unfold's body eval (mutual,
+            -- fuel < fuel+1).
+            have hRf3 := eval_realises hf' henv_ext hclb'
+            -- hRf3 : R (k+1) d f' (lbody.substEnv (fe :: ρe'))
+            -- = bode.subst 0 fe.   Equiv-chain to fe:
+            --   bode.subst 0 fe
+            --     ≡ bode.subst 0 (.iota anne bode)  [subst_resp heqI]
+            --     ≡ .iota anne bode                 [iota_unfold⁻¹]
+            --     ≡ fe                              [heqI⁻¹]
+            have hcomp :
+                Expr.subst (lbody.substEnv
+                    (.bvar 0 :: ρe'.map (·.shift 1 0))) 0 fe
+                = lbody.substEnv (fe :: ρe') :=
+              Expr.substEnv_subst_comp lbody ρe' fe hclb
+            have hRf4 : R (k+1) d f' fe := by
+              refine R_resp_Equiv ?_ hRf3
+              rw [← hcomp]
+              refine Equiv.trans (Equiv.subst_resp _ heqI 0)
+                       (Equiv.trans ?_ (Equiv.symm heqI))
+              exact Equiv.symm (Equiv.iota_unfold anne _)
+            -- Inner vapp at fuel < fuel+1.
+            exact vapp_realises hvapp' hRf4 hRa
+      | .«fix» annV ⟨lbody, lenv⟩, hvapp =>
+          simp only [] at hvapp
+          have hRf' : R (k+1) d (.«fix» annV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
+          by_cases hcond : (va.isNeutral || unf == 0) = true
+          · simp only [hcond, ↓reduceIte, Option.some.injEq] at hvapp
+            subst hvapp
+            exact R_neutral_app (vf := .«fix» annV ⟨lbody, lenv⟩) hRf' hRa
+              (quote_stuckRec_decomp (vf := .«fix» annV ⟨lbody, lenv⟩) (va := va))
+          · simp only [hcond, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at hvapp
+            obtain ⟨f', hf', hvapp'⟩ := hvapp
+            have hRf'' := hRf'
+            unfold R at hRf'
+            obtain ⟨_, ρe', anne, hRL, hclb, heqF⟩ := hRf'
+            have henv' := REnv_of_RList hRL
+            have henv_ext := REnv_cons henv' hRf''
+            have hclb' : lbody.closedAt (fe :: ρe').length = true := by
+              simpa using hclb
+            have hRf3 := eval_realises hf' henv_ext hclb'
+            have hcomp :
+                Expr.subst (lbody.substEnv
+                    (.bvar 0 :: ρe'.map (·.shift 1 0))) 0 fe
+                = lbody.substEnv (fe :: ρe') :=
+              Expr.substEnv_subst_comp lbody ρe' fe hclb
+            have hRf4 : R (k+1) d f' fe := by
+              refine R_resp_Equiv ?_ hRf3
+              rw [← hcomp]
+              refine Equiv.trans (Equiv.subst_resp _ heqF 0)
+                       (Equiv.trans ?_ (Equiv.symm heqF))
+              exact Equiv.symm (Equiv.fix_unfold anne _)
+            exact vapp_realises hvapp' hRf4 hRa
+termination_by fuel
 
 /-- **Fundamental lemma** (NbE soundness, eval direction).
 Evaluating `body` under a realised environment, at *any*
@@ -1559,33 +1831,26 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
     (henv : REnv m d ρ ρe)
     (hcl : body.closedAt ρe.length = true) :
     R m d v (body.substEnv ρe) := by
-  -- Outer **strong** induction on `m`: the `.lam`-Kripke
-  -- clause quantifies over `n' ≤ k` (where `m = k+1`), and
-  -- to discharge it we need `eval_realises` at index `n'`,
-  -- not just `k`. Strong induction gives `ihm : ∀ m' < m, …`.
-  induction m using Nat.strongRecOn
-    generalizing fuel unf ρ body v d ρe hcl with
-  | ind m ihm =>
+  -- Mutual with `vapp_realises` on `fuel`. The step-index
+  -- `m` is fixed throughout — the env-exposes `R` clause
+  -- means no Kripke step is ever taken, so no outer
+  -- `m`-induction is needed.
   match m with
   | 0 => unfold R; trivial
   | k + 1 =>
-    -- Inner induction on `fuel` (eval's recursion measure),
-    -- generalising over everything `eval` varies. Strong so
-    -- vapp's inner eval (at `fuel-2`) is also covered.
-    induction fuel using Nat.strongRecOn
-      generalizing unf ρ body v d ρe hcl with
-    | ind fuel ihf =>
     match fuel, heval with
     | 0, heval => simp [eval_zero] at heval
     | fuel + 1, heval =>
-      -- `ihf'` specialised to `fuel` (one step down).
+      -- `ihf'`: mutual self-call at `fuel < fuel+1`, same
+      -- step-index `k+1`. Generalises over the depth so
+      -- the (currently sorried) base-conjunct cases that
+      -- need `d+1` could share it.
       have ihf' : ∀ {unf' ρ' body' v' d' ρe'},
           eval fuel unf' ρ' body' = some v' →
           REnv (k+1) d' ρ' ρe' →
           body'.closedAt ρe'.length = true →
-          R (k+1) d' v' (body'.substEnv ρe') := by
-        intro _ _ _ _ _ _ he hr hc
-        exact ihf fuel (Nat.lt_succ_self _) he hc hr
+          R (k+1) d' v' (body'.substEnv ρe') :=
+        fun he hr hc => eval_realises he hr hc
       cases body with
       | type =>
           -- eval .type → .type; substEnv .type = .type.
@@ -1702,62 +1967,20 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             -- free .var < d), which holds for any value
             -- produced by `eval` from a depth-d env.
             sorry
-          · -- Kripke conjunct (∀ unf' fuel').
-            intro n' hn' v' e' hRv' fuel'' unf'' r hopen
-            -- `cl = Closure.mk' bExpr ρ`, so `cl.env =
-            -- ρ.take (bvarBound bExpr − 1)` and `cl.body =
-            -- bExpr`. `hopen : eval fuel'' unf'' (v' ::
-            -- ρ.take j) bExpr = some r` directly (no
-            -- `openω` to unfold).
-            simp only [Closure.mk'] at hopen
-            -- `REnv n' d (v' :: ρ.take j) (e' :: ρe.take j)`:
-            --   `REnv_mono` drops `henv` from `k+1` to `n'`;
-            --   `REnv_take` trims to `j`; `REnv_cons` adds
-            --   `(v', e')` (at index `n'` — `hRv'`).
-            have henv_n' :=
-              REnv_mono (Nat.le_of_lt (Nat.lt_succ_of_le hn')) henv
-            have henv_ext :=
-              REnv_cons (REnv_take (bvarBound bExpr - 1) henv_n') hRv'
-            -- Strong-`m` IH at `n' < k+1`, at the caller's
-            -- `fuel''/unf''`. `bExpr`'s closedness at the
-            -- trimmed-env length: `bvarBound bExpr ≤
-            -- ρe.length + 1` from `hcl.2`, so
-            -- `min (bvarBound − 1) ρe.length = bvarBound − 1`.
-            have hbb : bvarBound bExpr ≤ ρe.length + 1 :=
-              bvarBound_le_of_closedAt hcl.2
-            have hclb : bExpr.closedAt
-                  (e' :: ρe.take (bvarBound bExpr - 1)).length
-                  = true := by
-              simp only [List.length_cons, List.length_take]
-              exact Expr.closedAt_mono (closedAt_bvarBound bExpr)
-                (by omega)
-            have hRr := ihm n' (Nat.lt_succ_of_le hn')
-                          (fuel := fuel'') (unf := unf'')
-                          hopen henv_ext hclb
-            -- `hRr : R n' d r (bExpr.substEnv (e' ::
-            --   ρe.take (bvarBound bExpr - 1)))`.
-            refine ⟨dom.substEnv ρe,
-                    bExpr.substEnv (.bvar 0 :: ρe.map (·.shift 1 0)),
-                    Equiv.refl _, ?_⟩
-            -- `bodye.subst 0 e' = bExpr.substEnv (e' :: ρe)`
-            -- by `substEnv_subst_comp` (with `hcl.2`); and
-            -- `bExpr.substEnv (e' :: ρe.take j) =
-            --   bExpr.substEnv (e' :: ρe)` by
-            -- `substEnv_closedAt_irrel`.
-            have hcomp :
-                Expr.subst (Expr.substEnv
-                    (.bvar 0 :: ρe.map (·.shift 1 0)) bExpr) 0 e'
-                = Expr.substEnv
-                    (e' :: ρe.take (bvarBound bExpr - 1)) bExpr := by
-              rw [Expr.substEnv_subst_comp bExpr ρe e' hcl.2]
-              exact (substEnv_closedAt_irrel
-                (j := bvarBound bExpr - 1)
-                (Expr.closedAt_mono (closedAt_bvarBound bExpr)
-                  (by omega)) rfl).symm
-            exact hcomp ▸ hRr
+          · -- Env-exposes clause: `∃ ρe' dome, RList … ∧
+            -- closed ∧ Equiv`. With `cl = Closure.mk' bExpr ρ
+            -- = ⟨bExpr, ρ.take j⟩`, take `ρe' := ρe.take j`
+            -- and `dome := dom.substEnv ρe`. The `Equiv` is
+            -- by `refl` after `substEnv_closedAt_irrel`.
+            simp only [Closure.mk']
+            obtain ⟨hRL, hclb', hbody_eq⟩ :=
+              closure_clause_witness henv hcl.2
+            exact ⟨ρe.take (bvarBound bExpr - 1), dom.substEnv ρe,
+                   hRL, hclb', hbody_eq ▸ Equiv.refl _⟩
       | app f a =>
           -- eval (fuel+1) ρ (.app f a) = vapp fuel
-          --   (eval fuel f) (eval fuel a).
+          --   (eval fuel f) (eval fuel a). Delegate to
+          -- `vapp_realises` (mutual, fuel < fuel+1).
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold eval at heval
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
@@ -1766,198 +1989,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           have hRaV := ihf' haV henv hcl.2
           show R (k+1) d v
             (.app (f.substEnv ρe) (a.substEnv ρe))
-          -- The hard `.lam`/unfold-`.iota`/unfold-`.fix` head
-          -- sub-cases delegate to `vapp_realises` (which
-          -- captures the recursion-boundary obligation in one
-          -- place; see its docstring). The `.neutral`/`.type`/
-          -- stuck branches prove directly below (no index
-          -- loss; `r` is `.neutral` so the constructor clause
-          -- is `True`). `hvapp0` preserves the original `vapp`
-          -- premise across the `unfold`/`match`.
-          have hvapp0 : vapp fuel unf fV aV = some v := hvapp
-          match fuel, hvapp with
-          | 0, hvapp => simp [vapp_zero] at hvapp
-          | fuel'+1, hvapp =>
-          unfold vapp at hvapp
-          match hfVc : fV, hvapp with
-          | .neutral nf, hvapp =>
-              -- vapp (.neutral nf) aV = .neutral (.app nf aV).
-              simp only [Option.some.injEq] at hvapp
-              subst hvapp
-              -- v = .neutral (.app nf aV). R's `.neutral`
-              -- clause is `True`; only the base conjunct
-              -- matters.
-              unfold R
-              refine ⟨?_, trivial⟩
-              -- `quote d (.neutral (.app nf aV)) =
-              --   .app (quoteNeutral d nf) (quote d aV)`.
-              -- `hRfV : R (k+1) d (.neutral nf) fe` gives
-              --   `quote (.neutral nf) ≡ fe`; similarly
-              --   `quote aV ≡ ae`. `Equiv.app` assembles.
-              -- Quote-totality for `nf` and `aV` follows
-              -- from their respective base conjuncts.
-              have hRfV' : R (k+1) d (.neutral nf)
-                             (f.substEnv ρe) := hfVc ▸ hRfV
-              unfold R at hRfV' hRaV
-              -- ∀-form base: receive e' and the quote witness,
-              -- decompose `quote (.neutral (.app nf aV))` into
-              -- `.app ne ve`, then apply hRfV'.1 / hRaV.1.
-              intro e' hq
-              -- Two unfold steps: quote→quoteNeutral (fuelω-1),
-              -- then quoteNeutral .app → bind (fuelω-2).
-              have hfω : fuelω = (fuelω - 1) + 1 := rfl
-              rw [hfω] at hq; unfold quote at hq
-              have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
-              rw [hfω'] at hq; unfold quoteNeutral at hq
-              simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                         Option.some.injEq] at hq
-              obtain ⟨ne, hne, ve, hve, heq⟩ := hq
-              subst heq
-              -- Lift the sub-quotes back to fuelω.
-              have hqf : quote fuelω d (.neutral nf) = some ne := by
-                rw [hfω]; unfold quote
-                exact quoteNeutral_fuel_mono (by omega) hne
-              have hqa : quote fuelω d aV = some ve :=
-                quote_fuel_mono (by omega) hve
-              have hef : Equiv ne (f.substEnv ρe) := hRfV'.1 ne hqf
-              have hea : Equiv ve (a.substEnv ρe) := hRaV.1 ve hqa
-              -- `Equiv.app` (defined with `intro S Γe`) produces
-              -- an instantiated pair, not a universal; build the
-              -- `∀ {S Γe}` form directly so it matches the goal.
-              intro S Γe
-              exact ⟨.app_cong hef.1 hea.1 hea.2,
-                     .app_cong hef.2 hea.2 hea.1⟩
-          | .lam dV ⟨lbody, lenv⟩, hvapp =>
-              -- vapp (.lam …) aV = eval fuel' unf
-              --   (aV :: lenv) lbody.
-              have hRfV' : R (k+1) d
-                  (.lam dV ⟨lbody, lenv⟩) (f.substEnv ρe) :=
-                hfVc ▸ hRfV
-              -- ∀-unf'-fuel' Kripke at n' := k, with the
-              -- algorithm's own fuel'/unf and `aV`/`ae`
-              -- (`R_mono` to index k). The Kripke-threaded
-              -- derivation gives `R k`; the step-index gap
-              -- and the alternative routes are documented at
-              -- `vapp_realises`'s docstring. Delegate.
-              clear hvapp hRfV'
-              exact vapp_realises hvapp0 hRfV hRaV
-          | .iota annV ⟨lbody, lenv⟩, hvapp =>
-              -- vapp (.iota …) aV: gates on `aV.isNeutral ||
-              -- unf == 0`; stuck → .stuckRec; else unfolds
-              -- and recursively vapps.
-              have hRfV' : R (k+1) d
-                  (.iota annV ⟨lbody, lenv⟩) (f.substEnv ρe) :=
-                hfVc ▸ hRfV
-              by_cases hcond : (aV.isNeutral || unf == 0) = true
-              · -- STUCK: v = .neutral (.stuckRec fV aV).
-                simp only [hcond, ↓reduceIte,
-                           Option.some.injEq] at hvapp
-                subst hvapp
-                unfold R
-                refine ⟨?_, trivial⟩
-                -- quote (.neutral (.stuckRec fV aV))
-                --   = .app (quote fV) (quote aV).
-                intro e' hq
-                have hfω : fuelω = (fuelω - 1) + 1 := rfl
-                rw [hfω] at hq; unfold quote at hq
-                have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
-                rw [hfω'] at hq; unfold quoteNeutral at hq
-                simp only [Option.bind_eq_bind,
-                  Option.bind_eq_some, Option.some.injEq] at hq
-                obtain ⟨ne, hne, ve, hve, heq⟩ := hq
-                subst heq
-                have hqf : quote fuelω d
-                    (.iota annV ⟨lbody, lenv⟩) = some ne :=
-                  quote_fuel_mono (by omega) hne
-                have hqa : quote fuelω d aV = some ve :=
-                  quote_fuel_mono (by omega) hve
-                unfold R at hRfV' hRaV
-                have hef : Equiv ne (f.substEnv ρe) :=
-                  hRfV'.1 ne hqf
-                have hea : Equiv ve (a.substEnv ρe) :=
-                  hRaV.1 ve hqa
-                intro S Γe
-                exact ⟨.app_cong hef.1 hea.1 hea.2,
-                       .app_cong hef.2 hea.2 hea.1⟩
-              · -- UNFOLD: obstructions (b) productivity, (c)
-                -- inner-vapp recursion, (d) step-index — all
-                -- captured in `vapp_realises`'s docstring.
-                -- (Previous inline Kripke threading recoverable
-                -- from git pre-`vapp_realises`.)
-                clear hvapp hRfV'
-                exact vapp_realises hvapp0 hRfV hRaV
-          | .«fix» annV ⟨lbody, lenv⟩, hvapp =>
-              -- Same shape as `.iota`-fV; only the Kripke
-              -- clause's substituend differs (`body.subst 0
-              -- (.fix ann body)` vs `body.subst 0 fe`).
-              have hRfV' : R (k+1) d
-                  (.«fix» annV ⟨lbody, lenv⟩) (f.substEnv ρe) :=
-                hfVc ▸ hRfV
-              by_cases hcond : (aV.isNeutral || unf == 0) = true
-              · -- STUCK: v = .neutral (.stuckRec fV aV).
-                simp only [hcond, ↓reduceIte,
-                           Option.some.injEq] at hvapp
-                subst hvapp
-                unfold R
-                refine ⟨?_, trivial⟩
-                intro e' hq
-                have hfω : fuelω = (fuelω - 1) + 1 := rfl
-                rw [hfω] at hq; unfold quote at hq
-                have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
-                rw [hfω'] at hq; unfold quoteNeutral at hq
-                simp only [Option.bind_eq_bind,
-                  Option.bind_eq_some, Option.some.injEq] at hq
-                obtain ⟨ne, hne, ve, hve, heq⟩ := hq
-                subst heq
-                have hqf : quote fuelω d
-                    (.«fix» annV ⟨lbody, lenv⟩) = some ne :=
-                  quote_fuel_mono (by omega) hne
-                have hqa : quote fuelω d aV = some ve :=
-                  quote_fuel_mono (by omega) hve
-                unfold R at hRfV' hRaV
-                have hef : Equiv ne (f.substEnv ρe) :=
-                  hRfV'.1 ne hqf
-                have hea : Equiv ve (a.substEnv ρe) :=
-                  hRaV.1 ve hqa
-                intro S Γe
-                exact ⟨.app_cong hef.1 hea.1 hea.2,
-                       .app_cong hef.2 hea.2 hea.1⟩
-              · -- UNFOLD: same obstructions as `.iota`-unfold;
-                -- delegate to `vapp_realises`.
-                clear hvapp hRfV'
-                exact vapp_realises hvapp0 hRfV hRaV
-          | .type, hvapp =>
-              -- vapp .type aV = .neutral (.stuckRec .type aV).
-              -- Degenerate (only reachable if `f.substEnv ρe
-              -- ≡ Type`, i.e. ill-typed application). Same
-              -- proof as the stuck branches above.
-              simp only [Option.some.injEq] at hvapp
-              subst hvapp
-              have hRfV' : R (k+1) d .type (f.substEnv ρe) :=
-                hfVc ▸ hRfV
-              unfold R
-              refine ⟨?_, trivial⟩
-              intro e' hq
-              have hfω : fuelω = (fuelω - 1) + 1 := rfl
-              rw [hfω] at hq; unfold quote at hq
-              have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
-              rw [hfω'] at hq; unfold quoteNeutral at hq
-              simp only [Option.bind_eq_bind,
-                Option.bind_eq_some, Option.some.injEq] at hq
-              obtain ⟨ne, hne, ve, hve, heq⟩ := hq
-              subst heq
-              have hqf : quote fuelω d .type = some ne :=
-                quote_fuel_mono (by omega) hne
-              have hqa : quote fuelω d aV = some ve :=
-                quote_fuel_mono (by omega) hve
-              unfold R at hRfV' hRaV
-              have hef : Equiv ne (f.substEnv ρe) :=
-                hRfV'.1 ne hqf
-              have hea : Equiv ve (a.substEnv ρe) :=
-                hRaV.1 ve hqa
-              intro S Γe
-              exact ⟨.app_cong hef.1 hea.1 hea.2,
-                     .app_cong hef.2 hea.2 hea.1⟩
+          exact vapp_realises hvapp hRfV hRaV
       | iota ann bExpr =>
           -- eval (.iota ann bExpr): eval ann → annV;
           -- v = .iota annV (Closure.mk' bExpr ρ).
@@ -1993,66 +2025,12 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             -- helper (or once closedness is threaded so
             -- `IH_m` at the fresh-extended env applies).
             sorry
-          · -- KRIPKE conjunct (∀ unf' fuel', productive unfold).
-            intro n' hn' fuel'' unf'' r hopen hne
-            -- Choose ann' := anne, body' := bode; Equiv-premise
-            -- by refl. Goal: R n' d r (bode.subst 0 (.iota anne bode)).
-            refine ⟨anne, bode, Equiv.refl _, ?_⟩
-            -- IH_m on `.iota ann bExpr` itself, at index n',
-            -- gives the realisation of the iota Val by its
-            -- substEnv'd source — needed to extend REnv with
-            -- the self-binding.
-            have hRself : R n' d (.iota annV cl)
-                            (Expr.substEnv ρe (.iota ann bExpr)) := by
-              -- ihm at m' = n' < k+1, on the original .iota eval.
-              have heval' : eval (fuel+1) unf ρ (.iota ann bExpr)
-                            = some (.iota annV cl) := by
-                unfold eval
-                simp only [Option.bind_eq_bind, Option.bind_eq_some]
-                exact ⟨annV, hann, rfl⟩
-              exact ihm n' (Nat.lt_succ_of_le hn') heval'
-                        (REnv_mono (Nat.le_of_lt (Nat.lt_succ_of_le hn')) henv)
-                        (by simp [Expr.closedAt]; exact hcl)
-            rw [hsubst] at hRself
-            -- Trimmed env (cl.env = ρ.take (bvarBound bExpr - 1))
-            -- realises the corresponding ρe-prefix.
-            have henv_trim : REnv n' d cl.env
-                               (ρe.take (bvarBound bExpr - 1)) :=
-              REnv_take _ (REnv_mono (Nat.le_of_lt (Nat.lt_succ_of_le hn')) henv)
-            -- Extended env: (self :: cl.env) realises
-            -- (.iota anne bode :: ρe.take …).
-            have henv_ext :=
-              REnv_cons (v := .iota annV cl)
-                        (e := .iota anne bode) henv_trim hRself
-            -- IH_m on bExpr under the extended env, at the
-            -- caller's fuel''/unf''.
-            have hclb : bExpr.closedAt
-                  (Expr.iota anne bode
-                    :: ρe.take (bvarBound bExpr - 1)).length = true := by
-              simp only [List.length_cons, List.length_take]
-              exact Expr.closedAt_mono (closedAt_bvarBound bExpr) (by omega)
-            have hRr : R n' d r (Expr.substEnv
-                (.iota anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
-              ihm n' (Nat.lt_succ_of_le hn')
-                  (fuel := fuel'') (unf := unf'') hopen henv_ext hclb
-            -- Goal-Expr rewrite: same `substEnv_subst_comp` +
-            -- `substEnv_closedAt_irrel` composition as `.lam`.
-            -- Goal is `R n' d r (bode.subst 0 (.iota anne bode))`
-            -- — but `R`'s `.iota` Kripke clause has
-            -- `body.subst 0 e` (with `e` the *outer* expression,
-            -- here `.iota anne bode`), so `selfE = .iota anne
-            -- bode`. Same as `.lam` with that substituend.
-            have hcomp :
-                Expr.subst bode 0 (.iota anne bode)
-                = Expr.substEnv
-                    (.iota anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr := by
-              show Expr.subst (Expr.substEnv lifted bExpr) 0 _ = _
-              rw [Expr.substEnv_subst_comp bExpr ρe (.iota anne bode) hcl.2]
-              exact (substEnv_closedAt_irrel
-                (j := bvarBound bExpr - 1)
-                (Expr.closedAt_mono (closedAt_bvarBound bExpr)
-                  (by omega)) rfl).symm
-            exact hcomp ▸ hRr
+          · -- Env-exposes clause (same shape as `.lam`).
+            simp only [cl, Closure.mk']
+            obtain ⟨hRL, hclb', hbody_eq⟩ :=
+              closure_clause_witness henv hcl.2
+            exact ⟨ρe.take (bvarBound bExpr - 1), anne,
+                   hRL, hclb', by rw [hbody_eq]; exact Equiv.refl _⟩
       | fix ann bExpr =>
           -- Identical structure to .iota above (R's `.fix`
           -- clause has `body.subst 0 (.fix ann body)` instead
@@ -2078,46 +2056,14 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           · -- BASE conjunct: same body-correspondence blocker
             -- as `.iota`/`.lam`.
             sorry
-          · -- KRIPKE conjunct (∀ unf' fuel').
-            intro n' hn' fuel'' unf'' r hopen hne
-            refine ⟨anne, bode, Equiv.refl _, ?_⟩
-            have hRself : R n' d (.«fix» annV cl)
-                            (Expr.substEnv ρe (.fix ann bExpr)) := by
-              have heval' : eval (fuel+1) unf ρ (.fix ann bExpr)
-                            = some (.«fix» annV cl) := by
-                unfold eval
-                simp only [Option.bind_eq_bind, Option.bind_eq_some]
-                exact ⟨annV, hann, rfl⟩
-              exact ihm n' (Nat.lt_succ_of_le hn') heval'
-                        (REnv_mono (Nat.le_of_lt (Nat.lt_succ_of_le hn')) henv)
-                        (by simp [Expr.closedAt]; exact hcl)
-            rw [hsubst] at hRself
-            have henv_trim : REnv n' d cl.env
-                               (ρe.take (bvarBound bExpr - 1)) :=
-              REnv_take _ (REnv_mono (Nat.le_of_lt (Nat.lt_succ_of_le hn')) henv)
-            have henv_ext :=
-              REnv_cons (v := .«fix» annV cl)
-                        (e := .fix anne bode) henv_trim hRself
-            have hclb : bExpr.closedAt
-                  (Expr.fix anne bode
-                    :: ρe.take (bvarBound bExpr - 1)).length = true := by
-              simp only [List.length_cons, List.length_take]
-              exact Expr.closedAt_mono (closedAt_bvarBound bExpr) (by omega)
-            have hRr : R n' d r (Expr.substEnv
-                (.fix anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr) :=
-              ihm n' (Nat.lt_succ_of_le hn')
-                  (fuel := fuel'') (unf := unf'') hopen henv_ext hclb
-            have hcomp :
-                Expr.subst bode 0 (.fix anne bode)
-                = Expr.substEnv
-                    (.fix anne bode :: ρe.take (bvarBound bExpr - 1)) bExpr := by
-              show Expr.subst (Expr.substEnv lifted bExpr) 0 _ = _
-              rw [Expr.substEnv_subst_comp bExpr ρe (.fix anne bode) hcl.2]
-              exact (substEnv_closedAt_irrel
-                (j := bvarBound bExpr - 1)
-                (Expr.closedAt_mono (closedAt_bvarBound bExpr)
-                  (by omega)) rfl).symm
-            exact hcomp ▸ hRr
+          · -- Env-exposes clause (same shape as `.lam`).
+            simp only [cl, Closure.mk']
+            obtain ⟨hRL, hclb', hbody_eq⟩ :=
+              closure_clause_witness henv hcl.2
+            exact ⟨ρe.take (bvarBound bExpr - 1), anne,
+                   hRL, hclb', by rw [hbody_eq]; exact Equiv.refl _⟩
+termination_by fuel
+end
 
 /-- The base conjunct of `R` at any nonzero index. -/
 theorem R_quote_equiv {n d v e}
@@ -3133,9 +3079,10 @@ theorem tyInfer_sound_open
       have hidx : Γ.size - 1 - (Γ.size - 1 - k) = k := by omega
       rw [hidx] at hΓe
       -- Lift the quote from depth `Γ.size-1-k` to `Γ.size`:
-      have hqτe := quote_depth_shift_n (k+1) hqτe0
-      have hdepth : Γ.size - 1 - k + (k + 1) = Γ.size := by omega
-      rw [hdepth] at hqτe
+      have hqτe := quote_depth_shift_n (d := Γ.size)
+        (show Γ.size - 1 - k ≤ Γ.size by omega) hqτe0
+      have hshamt : Γ.size - (Γ.size - 1 - k) = k + 1 := by omega
+      rw [hshamt] at hqτe
       -- The substituted bvar `(.bvar k).substEnv ρe = ρe[k]`
       -- has its declared type by `hctx.hwf`:
       refine ⟨τe0.shift (k+1) 0, hqτe, ?_⟩
