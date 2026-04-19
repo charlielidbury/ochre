@@ -1,5 +1,6 @@
 import Och.Macro
 import Och.Eval
+import Och.SubCheckVal
 import Och.Std.Nat
 import Och.Std.Unit
 
@@ -49,31 +50,31 @@ section Tests
 open Expr
 
 -- ------------------------------------------------------------
--- Abstract evaluation (absEval)
+-- NbE normalisation (was absEval)
 -- ------------------------------------------------------------
 
--- fixId evaluates to itself
-example : absEvalVal fixId = .ok ⟨fixId⟩ := by native_decide
+-- fixId normalises (and to itself, since a closed `.fix` is its own NF)
+example : NbE.nf 200 fixId = some fixId := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (positive)
 -- ------------------------------------------------------------
 
 -- fixId : Nat -> Nat
-example : subCheck 1000 fixId NatToNat = .ok true := by native_decide
+example : NbE.subCheck 1000 fixId NatToNat = .ok true := by native_decide
 
 -- toZero : Nat -> Nat (works abstractly)
-example : subCheck 1000 toZero NatToNat = .ok true := by native_decide
+example : NbE.subCheck 1000 toZero NatToNat = .ok true := by native_decide
 
 -- toZeroThunked : Nat -> Nat
-example : subCheck 1000 toZeroThunked NatToNat = .ok true := by native_decide
+example : NbE.subCheck 1000 toZeroThunked NatToNat = .ok true := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (negative)
 -- ------------------------------------------------------------
 
 -- fixId is not a Nat (it's a function)
-example : subCheck 1000 fixId Nat_ = .ok false := by native_decide
+example : NbE.subCheck 1000 fixId Nat_ = .ok false := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (positive) -- concEval
@@ -125,10 +126,11 @@ example : concEval 1000 (och{ toZeroThunked three_ }) ≠ some three_ := by nati
 private def selfRefFn := och{ fix f:(Type → Type). λx:Type. λP:((f x) → Type). P }
 
 -- f alone is fine (fix is a value, no unfolding)
-example : absEvalVal selfRefFn = .ok ⟨selfRefFn⟩ := by native_decide
+example : NbE.nf 200 selfRefFn = some selfRefFn := by native_decide
 
--- f applied to Type succeeds
-example : (absEval 500 [] [] (och{ selfRefFn Type })).isOk = true := by native_decide
+-- f applied to Type normalises (NbE handles the self-ref-in-domain
+-- case via its `unf` budget; the legacy `absEval` used `muSeen`).
+example : (NbE.nf 500 (och{ selfRefFn Type })).isSome := by native_decide
 
 end Tests
 end Std

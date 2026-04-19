@@ -11,7 +11,7 @@ import Och.Std.Unit
 /-!
 # Phase 2: Soundness audit
 
-Executable witnesses for soundness gaps in the Phase-1 checkers.
+Executable witnesses for soundness gaps in the Phase-1 checker.
 Each `theorem` here is a *true fact about the current algorithm*
 (provable by `native_decide`); the surrounding prose explains why
 that fact is a soundness problem.
@@ -21,6 +21,13 @@ checker's *current behaviour* so that fixing the underlying rule
 will make this file fail to compile — at which point the entry
 should be moved to a "resolved" section with the new behaviour
 asserted instead.
+
+After the legacy `subCheckNF`/`absEval` retirement, all witnesses
+target `NbE.subCheck`/`NbE.typeCheck` only. The original two-checker
+divergence sweep (which found A1/A5/A6/A7/A8) is replaced below by
+NbE-only structural properties (reflexivity, top, the documented A6
+incompleteness witness). The full audit history with both checkers
+is at commit `38d1031`.
 -/
 
 namespace SoundnessAudit
@@ -38,10 +45,9 @@ encoding, this gave `Pair zero_ unit_ ⊑ Pair Nat_ Unit_` via
 `zero_ → Unit_` and `Nat_ → Unit_`, which are *not* related.
 Substitution-principle violation.
 
-**Fix** (this commit):
+**Fix** (047e59f):
   - `subCheckNeutral` and `subCheckVal`'s neutral-app arms now
     require *equivalence* (`a ⊑ b ∧ b ⊑ a`), not just `a ⊑ b`.
-    Same in `subCheckNF`'s `.app, .app` arm.
   - `Pair` re-encoded as `λA. λB. λX. λk:(A→B→X). X` (parametric
     body) with a separate `pair_ A B a b = λX. λk. k a b`
     constructor. `pair_ A B a b ⊑ Pair A B` now holds via
@@ -58,10 +64,6 @@ mention them.
 args is *not* congruent. With the old covariant rule this was
 `true`; now it's `false`. -/
 theorem a1_ruleFixed :
-    subCheck 200
-      (och{ λk:(Nat_ → Type). k zero_ })
-      (och{ λk:(Nat_ → Type). k Nat_  })
-      = .ok false ∧
     NbE.subCheck 200
       (och{ λk:(Nat_ → Type). k zero_ })
       (och{ λk:(Nat_ → Type). k Nat_  })
@@ -74,18 +76,15 @@ principle holds at `kContra` (both sides reduce to
 private def kContra := och{ λn:Nat_. λu:Unit_. n → Unit_ }
 
 theorem a1_substitutionHolds :
-    subCheck 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
+    NbE.subCheck 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
       = .ok true ∧
-    subCheck 200 (och{ (Pair zero_ unit_) kContra })
-                 (och{ (Pair Nat_  Unit_) kContra })
+    NbE.subCheck 200 (och{ (Pair zero_ unit_) kContra })
+                     (och{ (Pair Nat_  Unit_) kContra })
       = .ok true := by
   native_decide
 
 /-- And the constructor inhabits the type via ascent. -/
 theorem a1_pairAscent :
-    subCheck 200 (och{ pair_ Nat_ Unit_ zero_ unit_ })
-                 (och{ Pair Nat_ Unit_ })
-      = .ok true ∧
     NbE.subCheck 200 (och{ pair_ Nat_ Unit_ zero_ unit_ })
                      (och{ Pair Nat_ Unit_ })
       = .ok true := by
@@ -94,14 +93,13 @@ theorem a1_pairAscent :
 /-!
 ## A2: Type-in-type
 
-Both checkers have `_ ⊑ Type → true` (SubCheckVal.lean:72,201;
-Eval.lean's subCheckNF likewise). This is `Type : Type`, which
-admits Girard's paradox.
+The checker has `_ ⊑ Type → true` (SubCheckVal.lean's top guard).
+This is `Type : Type`, which admits Girard's paradox.
 -/
 
 theorem a2_typeInType :
-    subCheck 50 Nat_ .type = .ok true ∧
-    subCheck 50 .type .type = .ok true ∧
+    NbE.subCheck 50 Nat_ .type = .ok true ∧
+    NbE.subCheck 50 .type .type = .ok true ∧
     NbE.subCheck 50 (och{ Nat_ → Type }) .type = .ok true := by
   native_decide
 
@@ -116,21 +114,19 @@ stated *modulo* this: e.g. "subCheckVal is sound for terms whose
 types live at a fixed universe level", or take Type-in-type as
 an axiom of the model.
 
-## A3: absEval β is type-blind
+## A3: NbE eval β is type-blind
 
-`absEval`'s `.lam` β arm (Eval.lean:160) substitutes
-unconditionally, so `subCheckNF` is only meaningful on
-*already-well-typed* inputs. `NbE.eval` likewise. The Phase-1
-fix is `NbE.typeCheck` (TyCheck.lean), which runs the domain
-check syntactically; the Phase-2 statement is therefore
-"`typeCheck e τ = .ok true → e : τ`", not "`subCheck e τ = .ok
-true → e : τ`".
+`NbE.eval`'s `.lam` β arm substitutes unconditionally, so
+`NbE.subCheck` is only meaningful on *already-well-typed*
+inputs. The Phase-1 fix is `NbE.typeCheck` (TyCheck.lean), which
+runs the domain check syntactically; the Phase-2 statement is
+therefore "`typeCheck e τ = .ok true → e : τ`", not
+"`subCheck e τ = .ok true → e : τ`".
 -/
 
 private def illTyped := och{ (λn:Nat_. n) Bool }
 
 theorem a3_subCheckBlind :
-    subCheck 200 illTyped Bool = .ok true ∧
     NbE.subCheck 200 illTyped Bool = .ok true := by
   native_decide
 
@@ -142,13 +138,13 @@ theorem a3_typeCheckCatches :
 /-!
 ## A5: iotaIntro skipped the annotation check — RESOLVED
 
-**Was**: both checkers' `_, .iota ann body` arm checked only
+**Was**: the checker's `_, .iota ann body` arm checked only
 `a ⊑ body[self:=a]`, ignoring `a ⊑ ann`. So `dtrue ⊑ ι
 self:Nat_. Type` was accepted (the body `Type` is `top`)
 despite `dtrue ⊄ Nat_` — the ι-type's "intersection with the
 annotation" semantics was lost.
 
-**Fix** (this commit): both checkers now require `a ⊑ ann ∧
+**Fix** (9a9d198): the checker now requires `a ⊑ ann ∧
 a ⊑ body[self:=a]`, with `seen` extended *before* the
 annotation check so the `fix B. ι self:B. …` pattern (where
 `ann` is the recursive type itself) closes coinductively. The
@@ -159,22 +155,18 @@ so this brings the algorithm in line.
 private def constrainedI := och{ ι self:Nat_. Type }
 
 theorem a5_annotationChecked :
-    subCheck 200 dtrue constrainedI = .ok false ∧
     NbE.subCheck 200 dtrue constrainedI = .ok false := by
   native_decide
 
 /-- And the legitimate recursive case still closes via seen. -/
 theorem a5_recursiveCaseStillWorks :
-    subCheck 200 dtrue dBool = .ok true ∧
     NbE.subCheck 200 dtrue dBool = .ok true := by
   native_decide
 
-/-- Regression for the ι-ι path: NbE's `.iota, .iota` arm has
-its own iotaIntro fallback (after the structural comparison
-fails) which initially skipped the annotation premise too,
-letting the two checkers diverge. Both must agree. -/
+/-- Regression for the ι-ι path: the `.iota, .iota` arm has its
+own iotaIntro fallback (after the structural comparison fails)
+which initially skipped the annotation premise too. -/
 theorem a5_iotaIotaPath :
-    subCheck 200 (.iota .type .type) (.iota Nat_ .type) = .ok false ∧
     NbE.subCheck 200 (.iota .type .type) (.iota Nat_ .type) = .ok false := by
   native_decide
 
@@ -184,8 +176,8 @@ theorem a5_iotaIotaPath :
 NbE.subCheck's lam-lam arm pushes the *source* domain
 `domA` into `tyCtx`. With `domA`, a subterm in `bodyB`
 needing `fresh : domB` ascends via `domA ⊑ domB` — the wrong
-direction — so `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` is rejected
-by `NbE.subCheck` but accepted by `subCheckNF`. This is an
+direction — so `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` is rejected.
+The (now-retired) legacy `subCheckNF` accepted it. This is an
 **incompleteness**, not an unsoundness; the soundness proof
 goes through with `domA`.
 
@@ -207,11 +199,9 @@ fresh-opens; then re-enable `domB`. Until then, `SubV.lam`
 pushes `domA` and `SubV → Subtype'` will need `narrow`.
 -/
 
-/-- Both checkers are *sound* on the witness; only `subCheckNF`
-is *complete*. -/
-theorem a6_soundOnWitness :
-    subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
-      = .ok true ∧
+/-- The A6 incompleteness witness: NbE rejects this query
+even though `Subtype'.lam` (with `domB`) would derive it. -/
+theorem a6_incompletenessWitness :
     NbE.subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
       = .ok false := by
   native_decide
@@ -233,19 +223,15 @@ under `seen' = (a,b) :: seen`. When the body is bare `self`
 (= `.bvar 0`), opening returns `a` unchanged, so the
 recursion is `a ⊑ b` with `(a,b) ∈ seen'` — coinductively
 accepted. Hence `(fix A. self) ⊑ X` and `(ι self:A. self) ⊑
-X` were `.ok true` for *every* X. Found by the systematic
-divergence sweep (subCheckNF has explicit `body == .bvar 0`
-guards that reject this).
+X` were `.ok true` for *every* X.
 
 **Fix**: add `if a' == a then .ok false` after the open,
 matching the existing stuckRec-L arm. Equirecursively
 `fix self. self ≡ ⊤`, so `⊤ ⊑ X` is false for X ≠ ⊤
 (and X = ⊤ = `.type` is caught by the `b == .type` guard).
 
-The R-side `_, .fix` was already correct in NbE (the
-coinductive accept of `X ⊑ ⊤` is *right*); subCheckNF's
-R-side `body == .bvar 0 → false` was conversely *incomplete*
-and is now `→ true`.
+The R-side `_, .fix` was already correct (the coinductive
+accept of `X ⊑ ⊤` is *right*).
 -/
 
 private def fixSelf : Expr := .fix .type (.bvar 0)
@@ -254,24 +240,19 @@ private def ascZN : Expr := .asc zero_ Nat_
 
 /-- A8: ascription is computationally transparent. `(zero_ :
 Nat_) ≡ zero_`, so `(zero_:Nat_) ⊑ zero_` and `Nat_ ⊄
-(zero_:Nat_)`. Previously both checkers evaluated `.asc t τ`
-to `τ`, accepting `Nat_ ⊑ (zero_:Nat_)` (= `Nat_ ⊑ Nat_`). -/
+(zero_:Nat_)`. Previously the checker evaluated `.asc t τ` to
+`τ`, accepting `Nat_ ⊑ (zero_:Nat_)` (= `Nat_ ⊑ Nat_`). -/
 theorem a8_ascTransparent :
-    subCheck 200 ascZN zero_ = .ok true ∧
     NbE.subCheck 200 ascZN zero_ = .ok true ∧
-    subCheck 200 Nat_ ascZN = .ok false ∧
     NbE.subCheck 200 Nat_ ascZN = .ok false := by
   native_decide
 
 theorem a7_lhs_rejected :
-    subCheck 200 fixSelf Nat_ = .ok false ∧
     NbE.subCheck 200 fixSelf Nat_ = .ok false ∧
-    subCheck 200 iotaSelf Nat_ = .ok false ∧
     NbE.subCheck 200 iotaSelf Nat_ = .ok false := by
   native_decide
 
 theorem a7_rhs_accepted :
-    subCheck 200 Nat_ fixSelf = .ok true ∧
     NbE.subCheck 200 Nat_ fixSelf = .ok true := by
   native_decide
 
@@ -282,10 +263,10 @@ Not an *algorithm* unsoundness — the algorithm is correct here
 — but a gap in the *declarative* relation that makes
 `subCheckVal_sound` unprovable as stated.
 
-`dtrue ⊑ dBool` is accepted by both checkers (it's the very
+`dtrue ⊑ dBool` is accepted by the checker (it's the very
 first DBool test). But every attempted `Subtype'` derivation
-loops: after `unfold_fix_R` + `iota_intro` + `unfold_fix_L` +
-`unfold_iota_L`, the goal becomes the lam-lam comparison
+loops: after `unfold_fix_R` + `iota_intro` + `unfold_iota_L`,
+the goal becomes the lam-lam comparison
 
   `λP:(dtrue→Type). … ⊑ λP:(dBool→Type). …`
 
@@ -295,7 +276,6 @@ seen-set; the inductive `Subtype'` cannot.
 -/
 
 theorem a4_algorithmAccepts :
-    subCheck 200 dtrue dBool = .ok true ∧
     NbE.subCheck 200 dtrue dBool = .ok true := by
   native_decide
 
@@ -388,16 +368,19 @@ theorem a9_fixIotaBodyChecked :
 | A8 | `.asc t τ` evaluated to `τ` | **resolved** | evaluate `t`; keep ascription check |
 | A9 | `tyInfer` trusted fix/ι annotation | **resolved** | check `body : ann` under `self : ann` |
 
-## Divergence sweep: only A6 across 676 pairs
+## Property sweep (NbE-only)
 
-After A1/A5/A7, the legacy `subCheckNF` and `NbE.subCheck`
-agree on 675/676 of the 26-term corpus (constructors of
-every shape: type/lam/app/iota/fix/letE/asc/bvar via the
-Std encodings). The one divergence is the A6 witness, where
-NbE *under*-accepts; `divergenceSweep_onlyA6` asserts every
-divergence is in `a6KnownIncompleteness` and has NbE
-rejecting + legacy accepting, so any future NbE-over-accept
-or unlisted divergence fails the sweep.
+The original two-checker divergence sweep is replaced (now that
+the legacy checker is retired) with NbE-only structural
+properties on the same corpus:
+
+- **Reflexivity**: `∀ e ∈ corpus, e ⊑ e`.
+- **Top**: `∀ e ∈ corpus, e ⊑ Type`.
+- **A6 incompleteness pinned**: the one known witness rejects.
+
+A separate `Och/PropertyTests.lean` (added alongside this
+retirement) covers open-Γ, negative, and quote-round-trip
+properties more thoroughly.
 -/
 
 private def sweepCorpus : List Expr := [
@@ -410,31 +393,40 @@ private def sweepCorpus : List Expr := [
   .asc zero_ Nat_, .asc Nat_ .type
 ]
 
-/-- Pairs where `subCheckNF` accepts and `NbE.subCheck` rejects,
-all explained by A6 (`domA` push is incomplete). NbE is the
-soundness target; these are not soundness bugs. -/
-private def a6KnownIncompleteness : List (Expr × Expr) := [
-  (och{ λx:Nat_. x }, och{ λx:zero_. zero_ })
+/-- Reflexivity on the corpus. -/
+theorem sweep_refl :
+    sweepCorpus.all (fun e => NbE.subCheck 400 e e == .ok true) := by
+  native_decide
+
+/-- Everything is ⊑ Type (top). -/
+theorem sweep_top :
+    sweepCorpus.all (fun e => NbE.subCheck 400 e .type == .ok true) := by
+  native_decide
+
+/-- The documented A6 incompleteness witness is the only known
+NbE-rejection of a `Subtype'`-derivable judgment on the corpus.
+Pinned as `.ok false` so re-enabling `domB` (or any other
+completeness improvement) makes this file fail to compile and
+prompts a re-audit. -/
+theorem sweep_a6_pinned :
+    NbE.subCheck 400 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
+      = .ok false := by
+  native_decide
+
+/-- Anti-symmetry probe: for a hand-picked list of strict-subtype
+pairs, `a ⊑ b` holds and `b ⊑ a` does not. (Full anti-symmetry
+on the corpus is not asserted — many corpus pairs are
+incomparable, and equivalent pairs would need an exclusion
+list.) -/
+private def strictPairs : List (Expr × Expr) := [
+  (zero_, Nat_), (true_, Bool), (dtrue, dBool), (done_, dNat),
+  (unit_, Unit_), (Nat_, .type), (och{ Nat_ → Nat_ }, och{ zero_ → Nat_ })
 ]
 
-private def checkerDivergences : List (Expr × Expr) := Id.run do
-  let mut out := []
-  for a in sweepCorpus do
-    for b in sweepCorpus do
-      if (subCheck 400 a b).toOption != (NbE.subCheck 400 a b).toOption then
-        out := (a, b) :: out
-  return out
-
-/-- Every observed divergence is a documented A6 incompleteness:
-`subCheckNF` accepts, `NbE.subCheck` rejects, and the pair is
-in `a6KnownIncompleteness`. (NbE *accepting* something
-`subCheckNF` rejects would be a *soundness* concern; that
-direction is empty.) -/
-theorem divergenceSweep_onlyA6 :
-    checkerDivergences.all (fun (a, b) =>
-      a6KnownIncompleteness.contains (a, b) &&
-      (subCheck 400 a b).toOption == some true &&
-      (NbE.subCheck 400 a b).toOption == some false) := by
+theorem sweep_strict :
+    strictPairs.all (fun (a, b) =>
+      NbE.subCheck 400 a b == .ok true &&
+      NbE.subCheck 400 b a == .ok false) := by
   native_decide
 
 /-!

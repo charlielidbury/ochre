@@ -11,9 +11,10 @@ alpha-equivalent terms are syntactically identical, so body comparison is direct
 
 ## Algorithmic checker
 
-The algorithmic subtype checker `subCheckNF` is defined in Eval.lean (mutual
-with absEval). This file contains the inductive subtyping relations and
-their proofs, plus theorems about subCheckNF.
+The algorithmic subtype checker is `NbE.subCheckVal` (`SubCheckVal.lean`),
+operating on `Val`s produced by the NbE evaluator. The legacy Expr-domain
+`subCheckNF`/`absEval` (formerly in `Eval.lean`) was retired once the
+soundness target moved to the Val domain.
 -/
 
 open Expr
@@ -748,11 +749,10 @@ theorem Subtype'.app_ascent {S Γ f a dom cod}
     Subtype' S Γ (.app f a) (cod.subst 0 a) :=
   .trans (.app_head hf) (.beta_L (.refl _))
 
-/-! ### subCheckNF properties and known issues
+/-! ### Algorithmic-checker properties and known issues
 
-**Transitivity verified** by exhaustive testing on small expressions (including
-all Std library types, nested mus, self-referential patterns). See Tests.lean.
-**Transitivity is NOT YET PROVED** in Lean.
+**Transitivity verified** for `NbE.subCheck` by exhaustive testing on small
+expressions (including all Std library types, nested ι/fix, self-referential
+patterns). See `Tests.lean` (`checkTrans`). **Not yet proved** in Lean.
 
-**subCheckNF_top_universal is FALSE.**
-(.type ⊑ τ does NOT imply v ⊑ τ for all v.) -/
+**top-universal is FALSE.** `.type ⊑ τ` does NOT imply `v ⊑ τ` for all `v`. -/

@@ -1,5 +1,6 @@
 import Och.Macro
 import Och.Eval
+import Och.SubCheckVal
 import Och.Std.Bool
 
 /-!
@@ -93,38 +94,40 @@ example : concEval 1000 (och{ isZero_ (pred_ two_) }) = some Std.false_ := by na
 example : concEval 1000 (och{ isZero_ (pred_ zero_) }) = some Std.true_ := by native_decide
 
 -- ------------------------------------------------------------
--- Computation (positive) — absEval
+-- Computation (positive) — NbE normal-form equality
+-- (was `absEvalVal e = .ok ⟨v⟩`; the legacy checker is retired,
+--  so now `NbE.nf e = NbE.nf v` — both normalise under binders).
 -- ------------------------------------------------------------
 
 -- succ 2 = 3
-example : absEvalVal (och{ succ_ two_ }) = .ok ⟨three_⟩ := by native_decide
+example : NbE.nf 200 (och{ succ_ two_ }) = NbE.nf 200 three_ := by native_decide
 -- add 2 3 = 5
-example : absEvalVal (och{ add_ two_ three_ }) = .ok ⟨five_⟩ := by native_decide
+example : NbE.nf 200 (och{ add_ two_ three_ }) = NbE.nf 200 five_ := by native_decide
 -- isZero 0 = true
-example : absEvalVal (och{ isZero_ zero_ }) = .ok ⟨Std.true_⟩ := by native_decide
+example : NbE.nf 200 (och{ isZero_ zero_ }) = NbE.nf 200 Std.true_ := by native_decide
 -- isZero 3 = false
-example : absEvalVal (och{ isZero_ three_ }) = .ok ⟨Std.false_⟩ := by native_decide
+example : NbE.nf 200 (och{ isZero_ three_ }) = NbE.nf 200 Std.false_ := by native_decide
 -- double 3 = 6
-example : absEvalVal (och{ double_ three_ }) = .ok ⟨six_⟩ := by native_decide
+example : NbE.nf 200 (och{ double_ three_ }) = NbE.nf 200 six_ := by native_decide
 -- pred 3 = 2
-example : absEvalVal (och{ pred_ three_ }) = .ok ⟨two_⟩ := by native_decide
+example : NbE.nf 200 (och{ pred_ three_ }) = NbE.nf 200 two_ := by native_decide
 -- pred 0 = 0
-example : absEvalVal (och{ pred_ zero_ }) = .ok ⟨zero_⟩ := by native_decide
+example : NbE.nf 200 (och{ pred_ zero_ }) = NbE.nf 200 zero_ := by native_decide
 -- pred 1 = 0
-example : absEvalVal (och{ pred_ one_ }) = .ok ⟨zero_⟩ := by native_decide
+example : NbE.nf 200 (och{ pred_ one_ }) = NbE.nf 200 zero_ := by native_decide
 
 -- ------------------------------------------------------------
--- Computation (negative) — absEval
+-- Computation (negative) — NbE
 -- ------------------------------------------------------------
 
 -- add 2 3 ≠ 4
-example : absEvalVal (och{ add_ two_ three_ }) ≠ .ok ⟨four_⟩ := by native_decide
+example : NbE.nf 200 (och{ add_ two_ three_ }) ≠ NbE.nf 200 four_ := by native_decide
 -- succ 2 ≠ 2
-example : absEvalVal (och{ succ_ two_ }) ≠ .ok ⟨two_⟩ := by native_decide
+example : NbE.nf 200 (och{ succ_ two_ }) ≠ NbE.nf 200 two_ := by native_decide
 -- pred 3 ≠ 3
-example : absEvalVal (och{ pred_ three_ }) ≠ .ok ⟨three_⟩ := by native_decide
+example : NbE.nf 200 (och{ pred_ three_ }) ≠ NbE.nf 200 three_ := by native_decide
 -- double 3 ≠ 3
-example : absEvalVal (och{ double_ three_ }) ≠ .ok ⟨three_⟩ := by native_decide
+example : NbE.nf 200 (och{ double_ three_ }) ≠ NbE.nf 200 three_ := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (negative) — concEval
@@ -142,34 +145,34 @@ example : concEval 200 (och{ isZero_ (succ_ zero_) }) ≠ some Std.true_ := by n
 -- ------------------------------------------------------------
 
 -- Church numerals are subtypes of Nat
-example : subCheck 200 zero_ Nat_ = .ok true := by native_decide
-example : subCheck 200 one_ Nat_ = .ok true := by native_decide
-example : subCheck 200 three_ Nat_ = .ok true := by native_decide
-example : subCheck 200 six_ Nat_ = .ok true := by native_decide
+example : NbE.subCheck 200 zero_ Nat_ = .ok true := by native_decide
+example : NbE.subCheck 200 one_ Nat_ = .ok true := by native_decide
+example : NbE.subCheck 200 three_ Nat_ = .ok true := by native_decide
+example : NbE.subCheck 200 six_ Nat_ = .ok true := by native_decide
 
 -- succ : Nat → Nat
-example : subCheck 200 succ_ NatToNat = .ok true := by native_decide
+example : NbE.subCheck 200 succ_ NatToNat = .ok true := by native_decide
 -- add : Nat → Nat → Nat
-example : subCheck 200 add_ (och{ Nat_ → NatToNat }) = .ok true := by native_decide
+example : NbE.subCheck 200 add_ (och{ Nat_ → NatToNat }) = .ok true := by native_decide
 -- isZero : Nat → Bool
-example : subCheck 200 isZero_ (och{ Nat_ → Std.Bool }) = .ok true := by native_decide
+example : NbE.subCheck 200 isZero_ (och{ Nat_ → Std.Bool }) = .ok true := by native_decide
 -- double : Nat → Nat
-example : subCheck 200 double_ NatToNat = .ok true := by native_decide
+example : NbE.subCheck 200 double_ NatToNat = .ok true := by native_decide
 -- pred : Nat → Nat
-example : subCheck 1000 pred_ NatToNat = .ok true := by native_decide
+example : NbE.subCheck 1000 pred_ NatToNat = .ok true := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (negative)
 -- ------------------------------------------------------------
 
 -- true is not a Nat
-example : subCheck 200 Std.true_ Nat_ = .ok false := by native_decide
+example : NbE.subCheck 200 Std.true_ Nat_ = .ok false := by native_decide
 -- three is not a subtype of two (different values)
-example : subCheck 200 three_ two_ = .ok false := by native_decide
+example : NbE.subCheck 200 three_ two_ = .ok false := by native_decide
 -- Nat is not a subtype of zero (it's wider)
-example : subCheck 200 Nat_ zero_ = .ok false := by native_decide
+example : NbE.subCheck 200 Nat_ zero_ = .ok false := by native_decide
 -- succ is not a Nat (it's a function)
-example : subCheck 200 succ_ Nat_ = .ok false := by native_decide
+example : NbE.subCheck 200 succ_ Nat_ = .ok false := by native_decide
 
 end Tests
 end Std

@@ -54,12 +54,12 @@ private def testVec2 := och{ mkVec Nat_ dtwo
 -- `==` catches the dsucc self-reference; the stuck-recursive-head
 -- re-eval rule in subCheckNF then equates the muSeen-cut form with the
 -- evaluated ι form so the existential pack typechecks.
-example : subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : NbE.subCheck 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- mkVec Nat 2 [1,2] ⊑ Vec Nat — same mechanism as testVec1. Array_ dtwo Nat
 -- reduces to Pair Nat (Pair Nat Unit), then testVec2's sigma lines up
 -- with Vec's sigma via the stuck-head re-eval rule.
-example : subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : NbE.subCheck 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -86,19 +86,20 @@ example : concEval 1000 (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n)
 -- under the binder; absEval now leaves `Array_ n` (and the inner DNat
 -- eliminator on the bvar `n`) as a stuck application instead of
 -- diverging, so the comparison terminates.
-example : subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
+example : NbE.subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
 
 -- A Nat is not a Vec Nat. Same path.
-example : subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
+example : NbE.subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
 -- unpack vec1 → length ≠ dtwo.
-example : absEvalVal (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨dtwo⟩ := by
-  native_decide
+example : NbE.nf 400 (och{ testVec1 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
+  ≠ NbE.nf 400 dtwo := by native_decide
 
 -- unpack vec2 → length ≠ done_. Same mechanism as unpack vec1 ≠ dtwo.
-example : absEvalVal (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) }) ≠ .ok ⟨done_⟩ := by native_decide
+example : NbE.nf 400 (och{ testVec2 Nat_ (λn:dNat. λarr:(Array_ n Nat_). n) })
+  ≠ NbE.nf 400 done_ := by native_decide
 
 end Tests
 
@@ -139,7 +140,7 @@ section AppendVecTests
 -- Array_ over DNat reduces (neutral-head gate leaves `Array_ n` stuck
 -- on the abstract `n`), the recursive appendArrays type-checks via
 -- the stuck-head re-eval rule, and the existential pack closes.
-example : subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
+example : NbE.subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
   = .ok true := by native_decide
 
 -- appendVec_wrong should NOT typecheck (the inner `appendArrays
