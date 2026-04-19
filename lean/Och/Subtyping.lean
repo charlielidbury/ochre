@@ -26,13 +26,23 @@ so looking up `.bvar k` yields a type that must be shifted by
 `k+1` to be valid at the current depth. -/
 abbrev Ctx := List Expr
 
-/-- Coinductive hypotheses: `(a, b) ∈ S` means the goal `a ⊑ b`
-may be assumed — it's an ancestor in the derivation tree,
-encountered at a productive fix/iota unfold. This is the
-Brandt-Henglein device for equirecursive subtyping
-(SoundnessAudit A4); the algorithmic seen-set is its direct
-realisation. -/
-abbrev Seen := List (Expr × Expr)
+/-- Coinductive hypotheses: `(d, a, b) ∈ S` means the goal
+`a ⊑ b` was an ancestor in the derivation tree, recorded at
+context depth `d` (the `Γ.length` at that point) by a
+productive fix/iota unfold. The depth tag lets `.hyp` shift
+the entry to the *current* depth on use, so a hypothesis
+recorded under `Γ₀` can be used under any `Γ ⊇ Γ₀` without
+the seen-set itself having to be rewritten through every
+binder. Without the tag, `ctx_extend_at`'s binder cases are
+unprovable (each entry would need a different shift cutoff
+depending on where it's used; see DECISION-LOG 2026-04-18,
+route (a)).
+
+This is the Brandt-Henglein device for equirecursive
+subtyping (SoundnessAudit A4); the algorithmic seen-set is
+its level-domain realisation (entries are `Val × Val`,
+intrinsically depth-independent). -/
+abbrev Seen := List (Nat × Expr × Expr)
 
 /-- Declarative subtyping relation. `Subtype' S Γ a b` means
 `Γ ⊢ a ⊑ b` assuming every pair in `S` coinductively.
@@ -66,8 +76,15 @@ derivation, mirroring the algorithm's seen-set growth.
 -/
 inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
   /-- Coinductive hypothesis: an ancestor goal in `S` may be
-  assumed. Only the productive rules extend `S`. -/
-  | hyp {S Γ a b} : (a, b) ∈ S → Subtype' S Γ a b
+  assumed, shifted from its recorded depth `d` to the
+  current depth `Γ.length`. The `d ≤ Γ.length` premise
+  records that hypotheses are only used at-or-below the
+  point they were introduced. Only the productive rules
+  extend `S`. -/
+  | hyp {S Γ d a b} :
+      (d, a, b) ∈ S → d ≤ Γ.length →
+      Subtype' S Γ (a.shift (Γ.length - d) 0)
+                   (b.shift (Γ.length - d) 0)
   | refl {S Γ} (e : Expr) : Subtype' S Γ e e
   | top {S Γ} (e : Expr) : Subtype' S Γ e .type
   | trans {S Γ a b c} :
@@ -121,15 +138,17 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
       Subtype' S (val₂ :: Γ) body₁ body₂ →
       Subtype' S Γ (.letE val₁ body₁) (.letE val₂ body₂)
   /-- iotaIntro (value-sub, Cedille-style). The goal is added
-  to `S` before recursing — both premises may use it. -/
+  to `S` (tagged with the current depth) before recursing —
+  both premises may use it. -/
   | iota_intro {S Γ a ann body} :
-      Subtype' ((a, .iota ann body) :: S) Γ a ann →
-      Subtype' ((a, .iota ann body) :: S) Γ a (body.subst 0 a) →
+      Subtype' ((Γ.length, a, .iota ann body) :: S) Γ a ann →
+      Subtype' ((Γ.length, a, .iota ann body) :: S) Γ
+        a (body.subst 0 a) →
       Subtype' S Γ a (.iota ann body)
   /-- [unfoldIotaL]: `ι A. body ⊑ c` if its one-step unfolding
   is. The goal is added to `S` (productive unfold). -/
   | unfold_iota_L {S Γ ann body c} :
-      Subtype' ((.iota ann body, c) :: S) Γ
+      Subtype' ((Γ.length, .iota ann body, c) :: S) Γ
         (body.subst 0 (.iota ann body)) c →
       Subtype' S Γ (.iota ann body) c
   /-- [unfoldIotaR]: `a ⊑ ι A. body` if `a ⊑ body[self := ι A. body]`.
@@ -141,12 +160,12 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
   than this rule; both are sound since semantically
   `ι A. body` *is* its one-step unfolding. -/
   | unfold_iota_R {S Γ a ann body} :
-      Subtype' ((a, .iota ann body) :: S) Γ
+      Subtype' ((Γ.length, a, .iota ann body) :: S) Γ
         a (body.subst 0 (.iota ann body)) →
       Subtype' S Γ a (.iota ann body)
   /-- [unfoldFixL]: `fix A. body ⊑ c` if `body[self := fix A. body] ⊑ c`. -/
   | unfold_fix_L {S Γ ann body c} :
-      Subtype' ((.fix ann body, c) :: S) Γ
+      Subtype' ((Γ.length, .fix ann body, c) :: S) Γ
         (body.subst 0 (.fix ann body)) c →
       Subtype' S Γ (.fix ann body) c
   /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`.
@@ -154,7 +173,7 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
       `A` is the type of the recursion variable, not an upper bound on
       the fixpoint, so with `A = Type` it admitted `Nat ⊑ dBool`. -/
   | unfold_fix_R {S Γ a ann body} :
-      Subtype' ((a, .fix ann body) :: S) Γ
+      Subtype' ((Γ.length, a, .fix ann body) :: S) Γ
         a (body.subst 0 (.fix ann body)) →
       Subtype' S Γ a (.fix ann body)
   /-- β-conversion on the left. The algorithm normalises before
@@ -188,7 +207,7 @@ theorem Subtype'.weaken {S S' Γ a b}
     (hsub : ∀ p, p ∈ S → p ∈ S') (h : Subtype' S Γ a b) :
     Subtype' S' Γ a b := by
   induction h generalizing S' with
-  | hyp hin => exact .hyp (hsub _ hin)
+  | hyp hin hle => exact .hyp (hsub _ hin) hle
   | refl e => exact .refl e
   | top e => exact .top e
   | trans _ _ ih1 ih2 => exact .trans (ih1 hsub) (ih2 hsub)
@@ -265,24 +284,46 @@ theorem Subtype'.beta_head {S Γ dom body arg a c}
 -- uses. `Equiv.shift` (SoundnessProof.lean) states the
 -- `∀ Γ`-quantified version it needs locally.
 
-/-- All seen-set entries are fully closed (no free bvars).
-Used by `narrow_at` so the `.bvar`-case's `ctx_extend` can
-unshift the seen-set. -/
-abbrev Seen.Closed (S : Seen) : Prop :=
-  ∀ p ∈ S, p.1.closedAt 0 = true ∧ p.2.closedAt 0 = true
+/-- The per-entry transform `ctx_extend_at` applies to the
+seen-set when inserting `m` new context entries between a
+prefix and a suffix of length `g`: an entry recorded at
+depth `d` becomes recorded at depth `d + m`, with its
+expressions shifted by `m` at cutoff `d - g` (the prefix
+length at the point of recording). Crucially this depends
+only on `m` and `g`, *not* on the current `Γpfx`, so
+`ctx_extend_at`'s binder cases (which grow `Γpfx`) see the
+same map in IH and goal. -/
+def Seen.extendEntry (m g : Nat) :
+    Nat × Expr × Expr → Nat × Expr × Expr :=
+  fun (d, x, y) => (d + m, x.shift m (d - g), y.shift m (d - g))
 
-theorem Seen.Closed.shift_map_eq {S : Seen} (hSc : Seen.Closed S)
-    (d c : Nat) :
-    S.map (fun (x, y) => (x.shift d c, y.shift d c)) = S := by
-  induction S with
-  | nil => rfl
-  | cons p rest ih =>
-    obtain ⟨h1, h2⟩ := hSc p (List.mem_cons_self ..)
-    simp only [List.map_cons,
-      Expr.shift_of_closedAt h1 d (Nat.zero_le _),
-      Expr.shift_of_closedAt h2 d (Nat.zero_le _)]
-    exact congrArg (p :: ·) (ih fun q hq =>
-      hSc q (List.mem_cons_of_mem _ hq))
+/-- The shift-commutation identity behind `ctx_extend_at`'s
+`.hyp` case: shifting from recorded depth `d` to use-depth
+`c+g` (the `.hyp` shift) and *then* shifting by `m` at
+cutoff `c` (the context-extension shift) equals first
+applying `extendEntry`'s per-entry shift (by `m` at cutoff
+`d-g`) and *then* the `.hyp` shift in the extended context.
+Holds for all `d ≤ c+g`; the two regimes `d ≤ g` (entry
+recorded inside the fixed suffix; per-entry cutoff is `0`)
+and `d > g` (entry recorded inside the prefix; per-entry
+cutoff is `d-g > 0`) close via different `shift_shift_*`
+lemmas but both are syntactic. -/
+private theorem Seen.hyp_shift_commute (σ : Expr) (m c g d : Nat)
+    (hd : d ≤ c + g) :
+    (σ.shift (c + g - d) 0).shift m c
+      = (σ.shift m (d - g)).shift (c + g - d) 0 := by
+  by_cases hdg : d ≤ g
+  · have hk : d - g = 0 := Nat.sub_eq_zero_of_le hdg
+    rw [hk,
+        Expr.shift_shift_between σ m (c+g-d) 0 c
+          (Nat.zero_le _) (by omega),
+        Expr.shift_shift_same σ (c+g-d) m 0,
+        Nat.add_comm]
+  · have hdg' : g < d := Nat.lt_of_not_le hdg
+    have hkn : (d - g) + (c + g - d) = c := by omega
+    have h := Expr.shift_shift_comm_gen σ m (d - g) (c + g - d)
+    rw [hkn] at h
+    exact h
 
 /-- Shift each entry of a context *prefix* at the cutoff
 appropriate to its position: entry `i` (which lives at depth
@@ -308,90 +349,58 @@ theorem Ctx.shiftPrefix_cons (τ : Expr) (Γpfx : Ctx) (d : Nat) :
              Nat.succ_sub_one, Nat.sub_zero, Nat.sub_sub,
              Nat.add_comm 1]
 
-/-- General context-extension (de Bruijn weakening), with
-the seen-set's *original* closed layer `S₀` factored out: a
-derivation at `Γpfx ++ Γ` over seen `S₁ ++ S₀` lifts to one
-at `Γpfx.shiftPrefix |Δ| ++ Δ ++ Γ`, with both sides shifted
-by `|Δ|` at cutoff `|Γpfx|`, and the seen-set's *added*
-layer `S₁` shifted at the same cutoff while the closed `S₀`
-is unchanged.
+/-- General context-extension (de Bruijn weakening): a
+derivation at `Γpfx ++ Γ` lifts to one at
+`Γpfx.shiftPrefix |Δ| ++ Δ ++ Γ`, with both endpoints
+shifted by `|Δ|` at cutoff `|Γpfx|`, and each seen-entry
+shifted at *its own* recorded prefix-cutoff via
+`Seen.extendEntry`.
 
-This is the *correct* form of `shift_preserve` (which had
-the wrong staggered-cutoff handling). The proof is by
-induction on `h`, recursing at `(τ :: Γpfx)` for the
-binder-introducing constructors.
-
-**Why the 6 binder cases are sorried**: at `.lam`, the body
-IH instantiates at `Γpfx' := dB :: Γpfx`, giving conclusion
-seen-set `S'.map shift_{c+1}` (where `c = |Γpfx|`); the goal
-needs `S'.map shift_c`. These coincide iff every `p ∈ S'`
-has no free var at index exactly `c`. Threading
-`Seen.Closed S` would close this (closed entries shift to
-themselves at any cutoff) — but `Seen.Closed` is *not*
-preserved through `.iota_intro`/`.unfold_*`, which add the
-current-goal pair `p` at context `Γpfx ++ Γ` (so `p` may
-reference vars `0..c+|Γ|-1`, hence not closed at `c` when
-`|Γ| > 0`). A concrete failing path: original derivation
-`.iota_intro` at `(S₀, Γpfx₀ ++ Γ)` adds `p`, then `.lam`
-below it at `(p :: S₀, Γpfx_lam ++ Γ)`; the `.lam` IH gives
-`(p.shift_{c+1} :: S₀)` and goal needs `(p.shift_c :: S₀)`,
-which differ whenever `p` references the `Γ`-var at index
-`c` (e.g., `p.1 = .bvar c`).
-
-**No fix exists within the current `Subtype'`**. Tried and
-ruled out: (i) `Seen.Closed S` hypothesis — breaks the 5
-seen-extenders. (ii) Per-entry depth-list `Sd : List Nat`
-with `S[i] closedAt Sd[i]` — `.iota_intro` can't supply a
-`d_p ≤ |Γpfx|` at which the new pair is closed (it's only
-closed at `|Γpfx|+|Γ|`). (iii) Quantifying conclusion seen
-`S' ⊇ S.map shift_c` — `.lam` needs `S' ⊇ S.map shift_{c+1}`,
-not given. (iv) Conclusion seen as union over all cutoffs
-`≤ c` — `.lam` needs cutoff `c+1` in the union; growing the
-union breaks `.iota_intro`'s new-pair membership. The root
-issue is `Subtype'.hyp` itself: it uses `(a, b) ∈ S` at
-*any* `Γ` without shifting, so an entry recorded at depth
-`d` and used at depth `d' > d` has its de Bruijn indices
-silently reinterpreted. The lifted derivation needs the
-entry at `.hyp`-use shifted at the *use* cutoff, but the
-seen-set can only hold one shift of it.
-
-**Minimal fix (route (a), DECISION-LOG 2026-04-18)**:
-depth-tag `Seen := List (Nat × Expr × Expr)` and make
-`.hyp`/the 5 seen-extenders depth-aware:
-```
-| hyp : (d, a, b) ∈ S → d ≤ Γ.length →
-    Subtype' S Γ (a.shift (Γ.length - d) 0)
-                 (b.shift (Γ.length - d) 0)
-| iota_intro :
-    Subtype' ((Γ.length, a, .iota ann body) :: S) Γ … →
-    … → Subtype' S Γ a (.iota ann body)
-```
-With this, `ctx_extend_at`'s conclusion seen is
-`S.map (fun (d,x,y) => (d+|Δ|, x.shift |Δ| (d-|Γ|), …))` —
-each entry shifts at *its own* recorded prefix-length, so
-the binder cases' IH and goal seen-sets coincide trivially
-(same `S`, same per-entry shift). This changes 6 of 23
-`Subtype'` constructors and ripples to SoundnessProof.lean
-(`.hyp`/seen-extender uses, `QuotesSeen`, `Seen.Closed`,
-`subCheckVal_subV`'s seen-bridge — est. 15-30 sites). The
-algorithm already does this implicitly: its seen entries
-are level-based `Val × Val`, depth-independent.
-`Equiv.shift`'s nil-Γ case (SoundnessProof.lean) shares
-this obstruction and would close by the same change. -/
+The seen-map depends only on `|Δ|` and `|Γ|` (not `|Γpfx|`),
+so the 6 binder cases — which recurse at `(τ :: Γpfx)` —
+have IH and goal seen-sets that coincide on the nose. This
+is precisely what the depth tag buys: under the old
+untagged `Seen`, the conclusion seen-set was
+`S.map (shift |Δ| |Γpfx|)` and the binder cases were
+unprovable (DECISION-LOG 2026-04-18 route (a)). -/
 theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     ∀ {S ΓA a b}, Subtype' S ΓA a b →
     ∀ Γpfx, ΓA = Γpfx ++ Γ →
     Subtype'
-      (S.map (fun (x, y) => (x.shift Δ.length Γpfx.length,
-                             y.shift Δ.length Γpfx.length)))
+      (S.map (Seen.extendEntry Δ.length Γ.length))
       (Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ)
       (a.shift Δ.length Γpfx.length)
       (b.shift Δ.length Γpfx.length) := by
   intro S ΓA a b h
   induction h with
-  | @hyp S' Γ' a' b' hin =>
-    intro Γpfx _
-    exact .hyp (List.mem_map_of_mem _ hin)
+  | @hyp S' Γ' d a' b' hin hle =>
+    intro Γpfx hpfx
+    subst hpfx
+    -- Mapped entry: `(d+|Δ|, a'.shift |Δ| (d-|Γ|), …) ∈ S'.map f`.
+    have hin' : (d + Δ.length,
+                 a'.shift Δ.length (d - Γ.length),
+                 b'.shift Δ.length (d - Γ.length))
+                ∈ S'.map (Seen.extendEntry Δ.length Γ.length) :=
+      List.mem_map_of_mem _ hin
+    -- `.hyp` at the extended context (length `c+|Δ|+g`):
+    have hle' : d + Δ.length
+        ≤ (Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length := by
+      simp only [List.length_append, Ctx.shiftPrefix_length,
+                 List.length_append] at hle ⊢
+      omega
+    have hb := Subtype'.hyp hin' hle'
+    -- Reduce `.hyp`'s shift amount to `c+g-d` and the goal's
+    -- `|Γpfx ++ Γ|` to `c+g`:
+    simp only [List.length_append, Ctx.shiftPrefix_length] at hb hle ⊢
+    have hlen :
+        Γpfx.length + Δ.length + Γ.length - (d + Δ.length)
+          = Γpfx.length + Γ.length - d := by omega
+    rw [hlen] at hb
+    rw [Seen.hyp_shift_commute a' Δ.length Γpfx.length
+          Γ.length d hle,
+        Seen.hyp_shift_commute b' Δ.length Γpfx.length
+          Γ.length d hle]
+    exact hb
   | refl e => intro Γpfx _; exact .refl _
   | top e => intro Γpfx _; exact .top _
   | trans _ _ ih1 ih2 =>
@@ -429,8 +438,7 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
               = Γpfx.length from by omega] at hcg
         exact hcg.symm
       have hb := Subtype'.bvar
-        (S := S'.map (fun (x, y) => (x.shift Δ.length Γpfx.length,
-                                     y.shift Δ.length Γpfx.length)))
+        (S := S'.map (Seen.extendEntry Δ.length Γ.length))
         hgetN
       rw [hτeq] at hb; exact hb
     · -- `k` is in `Γ`; entry moves to position `k + |Δ|`,
@@ -454,8 +462,7 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
              = k - Γpfx.length from by omega]
         exact hgetT
       have hb := Subtype'.bvar
-        (S := S'.map (fun (x, y) => (x.shift Δ.length Γpfx.length,
-                                     y.shift Δ.length Γpfx.length)))
+        (S := S'.map (Seen.extendEntry Δ.length Γ.length))
         hgetN
       rw [show (τ.shift (k+1) 0).shift Δ.length Γpfx.length
            = τ.shift (k + Δ.length + 1) 0 from by
@@ -469,13 +476,8 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     simp only [Expr.shift]
     refine .lam (ihD Γpfx rfl) ?_
     have hb := ihB (dB :: Γpfx) (List.cons_append .. ▸ rfl)
-    simp only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] at hb
-    -- `hb : Subtype' (S'.map shift_{c+1}) … bA' bB'`; goal
-    -- needs seen `S'.map shift_c`. No `Subtype'`-internal
-    -- bridge exists (see docstring). Requires depth-tagged
-    -- `Seen` (route (a)).
-    sorry
+    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] using hb
   | app_cong _ _ _ ihf iha iha' =>
     intro Γpfx hpfx
     simp only [Expr.shift]
@@ -486,92 +488,123 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     simp only [Expr.shift]
     refine .iota_body ?_
     have hb := ih (ann :: Γpfx) (List.cons_append .. ▸ rfl)
-    simp only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] at hb
-    -- Same seen-cutoff mismatch as `.lam`.
-    sorry
+    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] using hb
   | @fix_body S' Γ' ann b₁ b₂ _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     refine .fix_body ?_
     have hb := ih (ann :: Γpfx) (List.cons_append .. ▸ rfl)
-    simp only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] at hb
-    -- Same seen-cutoff mismatch as `.lam`.
-    sorry
+    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] using hb
   | @iota_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     refine .iota_cong (ihA Γpfx rfl) ?_
     have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-    simp only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] at hb
-    -- Same seen-cutoff mismatch as `.lam`.
-    sorry
+    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] using hb
   | @fix_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     refine .fix_cong (ihA Γpfx rfl) ?_
     have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-    simp only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] at hb
-    -- Same seen-cutoff mismatch as `.lam`.
-    sorry
+    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] using hb
   | @letE_cong S' Γ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     refine .letE_cong (ihV Γpfx rfl) ?_
     have hb := ihB (v₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-    simp only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] at hb
-    -- Same seen-cutoff mismatch as `.lam`.
-    sorry
+    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
+               List.cons_append] using hb
   | @iota_intro S' Γ' a' ann body _ _ ih1 ih2 =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, a', .iota ann body)
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           a'.shift Δ.length Γpfx.length,
+           (Expr.iota ann body).shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
     refine .iota_intro ?_ ?_
     · have := ih1 Γpfx rfl
-      simpa [List.map_cons, Expr.shift] using this
+      simp only [List.map_cons, hhead] at this
+      simpa [Expr.shift] using this
     · have := ih2 Γpfx rfl
-      simpa [List.map_cons, Expr.shift,
-             Expr.subst_shift_swap] using this
+      simp only [List.map_cons, hhead] at this
+      simpa [Expr.shift, Expr.subst_shift_swap] using this
   | @unfold_iota_L S' Γ' ann body c' _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, .iota ann body, c')
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           (Expr.iota ann body).shift Δ.length Γpfx.length,
+           c'.shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
     refine .unfold_iota_L ?_
     have := ih Γpfx rfl
-    simpa [List.map_cons, Expr.shift,
-           Expr.subst_shift_swap] using this
+    simp only [List.map_cons, hhead] at this
+    simpa [Expr.shift, Expr.subst_shift_swap] using this
   | @unfold_fix_L S' Γ' ann body c' _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, .fix ann body, c')
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           (Expr.fix ann body).shift Δ.length Γpfx.length,
+           c'.shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
     refine .unfold_fix_L ?_
     have := ih Γpfx rfl
-    simpa [List.map_cons, Expr.shift,
-           Expr.subst_shift_swap] using this
+    simp only [List.map_cons, hhead] at this
+    simpa [Expr.shift, Expr.subst_shift_swap] using this
   | @unfold_fix_R S' Γ' a' ann body _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, a', .fix ann body)
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           a'.shift Δ.length Γpfx.length,
+           (Expr.fix ann body).shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
     refine .unfold_fix_R ?_
     have := ih Γpfx rfl
-    simpa [List.map_cons, Expr.shift,
-           Expr.subst_shift_swap] using this
+    simp only [List.map_cons, hhead] at this
+    simpa [Expr.shift, Expr.subst_shift_swap] using this
   | @unfold_iota_R S' Γ' a' ann body _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, a', .iota ann body)
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           a'.shift Δ.length Γpfx.length,
+           (Expr.iota ann body).shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
     refine .unfold_iota_R ?_
     have := ih Γpfx rfl
-    simpa [List.map_cons, Expr.shift,
-           Expr.subst_shift_swap] using this
+    simp only [List.map_cons, hhead] at this
+    simpa [Expr.shift, Expr.subst_shift_swap] using this
   | @beta_L S' Γ' dom body arg b' _ ih =>
     intro Γpfx hpfx
     subst hpfx
@@ -611,19 +644,17 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
 
 /-- Context-extension at the bottom (`Γpfx = []`): a
 derivation at `Γ` lifts to one at `Δ ++ Γ`, both sides
-shifted by `|Δ|` at cutoff `0`, seen-set unchanged
-*provided* every seen pair is fully closed (so the shift is
-the identity on them).
-
-`narrow_at` calls this with `Δ := Γ' ++ [domB]` to lift the
-contravariant domain premise `hd` to the inner context. -/
+shifted by `|Δ|` at cutoff `0`. The seen-set is mapped
+through `Seen.extendEntry`; the common case `S = []`
+gives an empty conclusion seen-set, which `narrow_at`'s
+`.bvar` case then weakens to whatever `S` it needs. -/
 theorem Subtype'.ctx_extend {S Γ a b} (Δ : Ctx)
-    (hSc : Seen.Closed S) (h : Subtype' S Γ a b) :
-    Subtype' S (Δ ++ Γ) (a.shift Δ.length 0) (b.shift Δ.length 0) := by
+    (h : Subtype' S Γ a b) :
+    Subtype' (S.map (Seen.extendEntry Δ.length Γ.length))
+      (Δ ++ Γ) (a.shift Δ.length 0) (b.shift Δ.length 0) := by
   have h' := ctx_extend_at (Γ := Γ) Δ h [] rfl
-  simp only [List.length_nil, Ctx.shiftPrefix_nil,
-             List.nil_append] at h'
-  rwa [hSc.shift_map_eq Δ.length 0] at h'
+  simpa only [List.length_nil, Ctx.shiftPrefix_nil,
+              List.nil_append] using h'
 
 /-- Looking up the same prefix position in `Γ' ++ A :: Γ` and
 `Γ' ++ B :: Γ` gives the same result when the position is in
@@ -661,119 +692,143 @@ derivations. The prefix `Γ'` is the stack of binders
 introduced *after* the narrowed one; the head-only
 `Subtype'.narrow` is `Γ' := []`.
 
-The contravariant premise `hd` is over a fixed *closed*
-seen-set `S₀` (with `S₀ ⊆ S`); the `S`-extending
-constructors of `h` (`.iota_intro`/`.unfold_*`) recurse at
-the larger `S` while `hd` and `S₀` stay put. At `.bvar`
-with `k = Γ'.length`, `ctx_extend` lifts `hd` to the
-extended context (its closedness side-condition is
-discharged by `hSc`), then `weaken` from `S₀` to `S`. -/
-theorem Subtype'.narrow_at {S₀ Γ domA domB}
-    (hSc : Seen.Closed S₀)
-    (hd : Subtype' S₀ Γ domB domA) :
+The contravariant premise `hd` is over the *empty*
+seen-set: at `.bvar` with `k = Γ'.length`, `ctx_extend`
+lifts `hd` to the inner context (its conclusion seen-set
+is `[].map _ = []`), then `weaken` from `[]` to `S` is
+vacuous. (The earlier formulation allowed an arbitrary
+closed `S₀ ⊆ S`; with depth-tagged `Seen` the
+"closed-so-shift-is-id" trick no longer applies, and all
+SoundnessProof.lean callers pass `[]` anyway.) -/
+theorem Subtype'.narrow_at {Γ domA domB}
+    (hd : Subtype' [] Γ domB domA) :
     ∀ {S Δ x y}, Subtype' S Δ x y →
     ∀ Γ', Δ = Γ' ++ domA :: Γ →
-    (∀ p ∈ S₀, p ∈ S) →
     Subtype' S (Γ' ++ domB :: Γ) x y := by
   intro S Δ x y h
   induction h with
-  | hyp hin => exact fun _ _ _ => .hyp hin
-  | refl e => exact fun _ _ _ => .refl e
-  | top e => exact fun _ _ _ => .top e
+  | @hyp S' Δ' d a' b' hin hle =>
+      intro Γ' hΔ
+      subst hΔ
+      have hlen : (Γ' ++ domA :: Γ).length
+                  = (Γ' ++ domB :: Γ).length := by simp
+      simp only [hlen]
+      exact .hyp hin (hlen ▸ hle)
+  | refl e => exact fun _ _ => .refl e
+  | top e => exact fun _ _ => .top e
   | trans _ _ ih1 ih2 =>
-      exact fun Γ' hΔ hsub =>
-        .trans (ih1 Γ' hΔ hsub) (ih2 Γ' hΔ hsub)
+      exact fun Γ' hΔ => .trans (ih1 Γ' hΔ) (ih2 Γ' hΔ)
   | @bvar S' Δ' k τ hget =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
       by_cases hk : k = Γ'.length
       · -- k = Γ'.length: the narrowed entry. `τ = domA`; new
         -- context gives `domB`. Bridge via `.trans` + lifted
-        -- `hd` (over the closed `S₀`, then weakened).
+        -- `hd` (over `[]`, then weakened to `S'`).
         subst hk
         obtain ⟨hτ, hgetB⟩ :=
           List.get?_append_replace_eq (B := domB) hget
         subst hτ
         refine .trans (.bvar hgetB) ?_
-        have hext := (ctx_extend (Γ' ++ [domB]) hSc hd).weaken hsub
+        have hext := (ctx_extend (S := []) (Γ' ++ [domB]) hd).weaken
+          (S' := S') (fun p hp => absurd hp (List.not_mem_nil p))
         simpa [List.length_append, List.append_assoc,
                List.singleton_append, List.cons_append] using hext
       · exact .bvar (List.get?_append_replace_ne hk hget)
   | @lam S' Δ' dA dB bA bB _ _ ihd ihb =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
-      exact .lam (ihd Γ' rfl hsub)
-        (ihb (dB :: Γ') (List.cons_append .. ▸ rfl) hsub)
+      exact .lam (ihd Γ' rfl)
+        (ihb (dB :: Γ') (List.cons_append .. ▸ rfl))
   | app_cong _ _ _ ihf iha iha' =>
-      exact fun Γ' hΔ hsub =>
-        .app_cong (ihf Γ' hΔ hsub) (iha Γ' hΔ hsub) (iha' Γ' hΔ hsub)
+      exact fun Γ' hΔ =>
+        .app_cong (ihf Γ' hΔ) (iha Γ' hΔ) (iha' Γ' hΔ)
   | @iota_body S' Δ' ann b₁ b₂ _ ih =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
       exact .iota_body
-        (ih (ann :: Γ') (List.cons_append .. ▸ rfl) hsub)
+        (ih (ann :: Γ') (List.cons_append .. ▸ rfl))
   | @fix_body S' Δ' ann b₁ b₂ _ ih =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
       exact .fix_body
-        (ih (ann :: Γ') (List.cons_append .. ▸ rfl) hsub)
+        (ih (ann :: Γ') (List.cons_append .. ▸ rfl))
   | @iota_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
-      exact .iota_cong (ihA Γ' rfl hsub)
-        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl) hsub)
+      exact .iota_cong (ihA Γ' rfl)
+        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl))
   | @fix_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
-      exact .fix_cong (ihA Γ' rfl hsub)
-        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl) hsub)
+      exact .fix_cong (ihA Γ' rfl)
+        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl))
   | @letE_cong S' Δ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
-      intro Γ' hΔ hsub
+      intro Γ' hΔ
       subst hΔ
-      exact .letE_cong (ihV Γ' rfl hsub)
-        (ihB (v₂ :: Γ') (List.cons_append .. ▸ rfl) hsub)
-  | iota_intro _ _ ih1 ih2 =>
-      intro Γ' hΔ hsub
-      exact .iota_intro
-        (ih1 Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
-        (ih2 Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
-  | unfold_iota_L _ ih =>
-      intro Γ' hΔ hsub
-      exact .unfold_iota_L
-        (ih Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
-  | unfold_fix_L _ ih =>
-      intro Γ' hΔ hsub
-      exact .unfold_fix_L
-        (ih Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
-  | unfold_fix_R _ ih =>
-      intro Γ' hΔ hsub
-      exact .unfold_fix_R
-        (ih Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
-  | unfold_iota_R _ ih =>
-      intro Γ' hΔ hsub
-      exact .unfold_iota_R
-        (ih Γ' hΔ (fun p hp => List.mem_cons_of_mem _ (hsub p hp)))
-  | beta_L _ ih => exact fun Γ' hΔ hsub => .beta_L (ih Γ' hΔ hsub)
-  | beta_R _ ih => exact fun Γ' hΔ hsub => .beta_R (ih Γ' hΔ hsub)
-  | letE_L _ ih => exact fun Γ' hΔ hsub => .letE_L (ih Γ' hΔ hsub)
-  | letE_R _ ih => exact fun Γ' hΔ hsub => .letE_R (ih Γ' hΔ hsub)
-  | asc_L _ ih => exact fun Γ' hΔ hsub => .asc_L (ih Γ' hΔ hsub)
-  | asc_R _ ih => exact fun Γ' hΔ hsub => .asc_R (ih Γ' hΔ hsub)
+      exact .letE_cong (ihV Γ' rfl)
+        (ihB (v₂ :: Γ') (List.cons_append .. ▸ rfl))
+  | @iota_intro S' Δ' a' ann body _ _ ih1 ih2 =>
+      intro Γ' hΔ
+      subst hΔ
+      have hlen : (Γ' ++ domA :: Γ).length
+                  = (Γ' ++ domB :: Γ).length := by simp
+      have h1 := ih1 Γ' rfl
+      have h2 := ih2 Γ' rfl
+      rw [hlen] at h1 h2
+      exact .iota_intro h1 h2
+  | @unfold_iota_L S' Δ' ann body c' _ ih =>
+      intro Γ' hΔ
+      subst hΔ
+      have hlen : (Γ' ++ domA :: Γ).length
+                  = (Γ' ++ domB :: Γ).length := by simp
+      have h1 := ih Γ' rfl
+      rw [hlen] at h1
+      exact .unfold_iota_L h1
+  | @unfold_fix_L S' Δ' ann body c' _ ih =>
+      intro Γ' hΔ
+      subst hΔ
+      have hlen : (Γ' ++ domA :: Γ).length
+                  = (Γ' ++ domB :: Γ).length := by simp
+      have h1 := ih Γ' rfl
+      rw [hlen] at h1
+      exact .unfold_fix_L h1
+  | @unfold_fix_R S' Δ' a' ann body _ ih =>
+      intro Γ' hΔ
+      subst hΔ
+      have hlen : (Γ' ++ domA :: Γ).length
+                  = (Γ' ++ domB :: Γ).length := by simp
+      have h1 := ih Γ' rfl
+      rw [hlen] at h1
+      exact .unfold_fix_R h1
+  | @unfold_iota_R S' Δ' a' ann body _ ih =>
+      intro Γ' hΔ
+      subst hΔ
+      have hlen : (Γ' ++ domA :: Γ).length
+                  = (Γ' ++ domB :: Γ).length := by simp
+      have h1 := ih Γ' rfl
+      rw [hlen] at h1
+      exact .unfold_iota_R h1
+  | beta_L _ ih => exact fun Γ' hΔ => .beta_L (ih Γ' hΔ)
+  | beta_R _ ih => exact fun Γ' hΔ => .beta_R (ih Γ' hΔ)
+  | letE_L _ ih => exact fun Γ' hΔ => .letE_L (ih Γ' hΔ)
+  | letE_R _ ih => exact fun Γ' hΔ => .letE_R (ih Γ' hΔ)
+  | asc_L _ ih => exact fun Γ' hΔ => .asc_L (ih Γ' hΔ)
+  | asc_R _ ih => exact fun Γ' hΔ => .asc_R (ih Γ' hΔ)
 
 /-- Head-position context narrowing: replacing `Γ`'s innermost
 binder type `domA` with a subtype `domB ⊑ domA` preserves
-derivations, provided every `S`-entry is fully closed.
-After the A6 revert (DECISION-LOG 2026-04-18) the
-algorithm's `.lam,.lam` arm pushes `domA` while
+derivations. After the A6 revert (DECISION-LOG 2026-04-18)
+the algorithm's `.lam,.lam` arm pushes `domA` while
 `Subtype'.lam` pushes `domB`, so the `SubV → Subtype'`
-bridge's `.lam` case needs exactly this. Specialises
-`narrow_at` with `Γ' := []`, `S₀ := S`. -/
+bridge's `.lam` case needs exactly this. The `hd` premise
+is at the empty seen-set; `subCheckVal_sound_open` (the
+sole caller, via `SubV_to_Subtype'`) supplies it at `[]`. -/
 theorem Subtype'.narrow {S Γ domA domB x y}
-    (hSc : Seen.Closed S)
-    (hd : Subtype' S Γ domB domA)
+    (hd : Subtype' [] Γ domB domA)
     (h : Subtype' S (domA :: Γ) x y) :
     Subtype' S (domB :: Γ) x y :=
-  narrow_at hSc hd h [] rfl (fun _ hp => hp)
+  narrow_at hd h [] rfl
 
 /-- Π-elimination (type-ascent through application). If `f`
 inhabits a Π-type and we apply it, the result inhabits the
