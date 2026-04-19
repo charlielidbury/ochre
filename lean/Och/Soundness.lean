@@ -599,11 +599,12 @@ example : Subtype' [] [] one_ Nat_ := by
 
 /-!
 The flagship coinductive case (SoundnessAudit A4): `dtrue ⊑ dBool`
-fully derived. The proof uses `change` to step through each
-`subst`/`shift` computation by defeq (Lean's reducer crunches the
-closed substitution; `simp only [Expr.subst]` alone leaves
-half-evaluated `if`/`Nat.add` debris). The intermediate forms are
-named so each `change` is one closed-form-to-closed-form step.
+fully derived. With the very-dependent encoding (no per-constructor
+`fix`), the derivation is shorter than the `e08bce9` form: `dtrue`
+is already an `.iota`, so there's no `.unfold_fix_L` step, and after
+`unfold_iota_L` substitutes `self ↦ dtrue` the LHS `t`-domain is
+already `P dtrue` (matching the RHS by `.refl` — previously it was
+`P dtrueIota` and needed `app_cong` + two fix-unfolds).
 -/
 
 private def dBoolIota : Expr :=
@@ -619,28 +620,22 @@ private def bodyRHS : Expr :=
       (.lam (.app (.bvar 1) dfalse)
         (.app (.bvar 2) dtrue)))
 
-private def dtrueIota : Expr :=
-  .iota dtrue
-    (.lam (.lam dtrue .type)
-      (.lam (.app (.bvar 0) (.bvar 1))
-        (.lam .type (.bvar 1))))
-
 private def dtrueLam : Expr :=
   .lam (.lam dtrue .type)
-    (.lam (.app (.bvar 0) dtrueIota)
+    (.lam (.app (.bvar 0) dtrue)
       (.lam .type (.bvar 1)))
 
-/-- `dtrue ⊑ dBool`. Every `Subtype'` constructor is exercised:
+/-- `dtrue ⊑ dBool`. Constructor path:
 
   `unfold_fix_R` → `iota_intro` (annotation via `.hyp`) →
-  `unfold_fix_L` → `unfold_iota_L` → `lam`³ →
+  `unfold_iota_L` → `lam`³ →
     P-domain contra: `lam`(`.hyp`, `.refl`)
-    t-domain contra: `app_cong`(`.refl`, fix-unfold↔refl, fix-unfold↔refl)
+    t-domain contra: `.refl`         ← was app_cong + 2 fix-unfolds
     f-domain contra: `.top`
     body: `.bvar`
 
-The two `.hyp` uses discharge `dtrue ⊑ dBool` from the seen-set
-(added by the very first `unfold_fix_R`); without seen-indexing
+Both `.hyp` uses discharge `dtrue ⊑ dBool` from the seen-set entry
+added by the very first `unfold_fix_R`; without seen-indexing
 this was the unbreakable cycle. -/
 example : Subtype' [] [] dtrue dBool := by
   unfold dBool
@@ -652,35 +647,23 @@ example : Subtype' [] [] dtrue dBool := by
   · -- body: dtrue ⊑ λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dtrue
     change Subtype' _ [] dtrue bodyRHS
     unfold dtrue
-    apply Subtype'.unfold_fix_L
-    change Subtype' _ [] dtrueIota bodyRHS
-    unfold dtrueIota
     apply Subtype'.unfold_iota_L
     change Subtype' _ [] dtrueLam bodyRHS
-    -- λP:(dtrue→Type). λt:(P dtrueIota). λf:Type. t
+    -- λP:(dtrue→Type). λt:(P dtrue). λf:Type. t
     --   ⊑ λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dtrue
     apply Subtype'.lam
-    · -- (dBool→Type) ⊑ (dtrue→Type): contra dtrue⊑dBool via .hyp at S[3]
+    · -- (dBool→Type) ⊑ (dtrue→Type): contra dtrue⊑dBool via .hyp at S[2]
       apply Subtype'.lam
-      · exact Subtype'.hyp (List.Mem.tail _ (List.Mem.tail _
-                            (List.Mem.tail _ (List.Mem.head _))))
+      · exact Subtype'.hyp
+          (List.Mem.tail _ (List.Mem.tail _ (List.Mem.head _)))
       · exact Subtype'.refl _
     · apply Subtype'.lam
-      · -- (P dtrue) ⊑ (P dtrueIota): app_cong, args dtrue ≡ dtrueIota
-        -- (each direction is one fix-unfold to refl)
-        apply Subtype'.app_cong
-        · exact Subtype'.refl _
-        · unfold dtrue; apply Subtype'.unfold_fix_L
-          change Subtype' _ _ dtrueIota dtrueIota; exact Subtype'.refl _
-        · unfold dtrue; apply Subtype'.unfold_fix_R
-          change Subtype' _ _ dtrueIota dtrueIota; exact Subtype'.refl _
+      · -- (P dtrue) ⊑ (P dtrue): refl
+        exact Subtype'.refl _
       · apply Subtype'.lam
         · -- (P dfalse) ⊑ Type
           exact Subtype'.top _
         · -- t ⊑ P dtrue, i.e. bvar 1 ⊑ (bvar 2) dtrue.
-          -- Γ[1] = `.app (.bvar 0) dtrue`; shift 2 0 → `.app (.bvar 2) dtrue`
-          -- (dtrue closed ⇒ shift no-op). The `show` lets defeq compute
-          -- the shift so `.bvar` matches directly.
           show Subtype' _ _ (.bvar 1) ((Expr.app (.bvar 0) dtrue).shift 2 0)
           exact Subtype'.bvar (k := 1) (τ := .app (.bvar 0) dtrue) rfl
 

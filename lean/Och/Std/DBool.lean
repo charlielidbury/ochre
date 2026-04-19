@@ -4,70 +4,53 @@ import Och.Std.Bool
 import Och.Std.Nat
 
 /-!
-# Dependent Booleans (fix + ι encoding)
+# Dependent Booleans (very-dependent ι encoding)
 
-Scott-style dependent Bool where the motive's domain is pinned via `fix`
-(recursion binder) and the argument in `P self` comes from `ι` (self-type
-binder). Splitting the two self-reference jobs between the two binders is
-what gives this encoding its structural properties.
+Scott-style dependent Bool where the motive's domain is the value
+itself, `P : (self → Type)`. The constructors carry no per-value
+`fix` wrapper and don't reference `dBool`, so there is no
+forward-reference cycle: `dtrue`/`dfalse` are defined first,
+`dBool` references them.
 
 ```
-dtrue  = fix B:Type. ι self:B. λP:(B → Type). λt:(P self). λf:Type.     t
-dfalse = fix B:Type. ι self:B. λP:(B → Type). λt:Type.     λf:(P self). f
+dtrue  = ι self:Type. λP:(self → Type). λt:(P self). λf:Type.     t
+dfalse = ι self:Type. λP:(self → Type). λt:Type.     λf:(P self). f
 dBool  = fix B:Type. ι self:B. λP:(B → Type). λt:(P dtrue). λf:(P dfalse). P self
 ```
 
-## Why this shape
+## How `dtrue ⊑ dBool` closes
 
-The previous encoding put `self` in the motive's domain (`P:(self → Type)`)
-which made the domain check during `[Lam]` descent contravariantly
-problematic — the self-reference there produced the wall documented in
-`docs/research-graveyard.md` (covariant self closable, contravariant
-impossible).
+The constructor's ι annotation is `Type` (a placeholder — the motive
+uses `self`, not the annotation, so any annotation works). When
+checking `dtrue ⊑ dBool`:
 
-This encoding moves the recursive reference used in `P`'s domain into the
-`fix` binder. During subtyping:
-  - structural `fix-body` rule compares bodies with both `B`s as the same
-    variable (bvar 0 after fix descent) — refl-equal, no productive cycle
-  - structural `ι-body` rule compares bodies with both `self`s bound to
-    the same variable
-  - `[Lam]` on the motive gives contravariant `(B → Type) ⊑ (B → Type)` →
-    refl via the bound variable, not a productive cycle
+  1. `_, .fix` unfolds dBool, extending `seen` with `(dtrue, dBool)`.
+  2. `.iota,.iota` structural fails the annotation check
+     (`Type ⊑ dBool` is false), falls to `iotaIntro`.
+  3. `iotaIntro`'s `okAnn` check (`dtrue ⊑ B = dBool`) hits `seen` ✓.
+     RHS body opens with `self ↦ dtrue`.
+  4. `.iota,_` unfolds the LHS with `self ↦ dtrue`, giving
+     `λP:(dtrue → Type). λt:(P dtrue). λf:Type. t`.
+  5. `.lam,.lam` on `P`: contravariant `(dBool → Type) ⊑ (dtrue → Type)`
+     → contravariant `dtrue ⊑ dBool` → hits `seen` ✓.
+  6. `t`-domain `(P dtrue) ⊑ (P dtrue)`: refl. `f`-domain
+     `(P dfalse) ⊑ Type`: top. Body `t ⊑ P dtrue`: ascent via
+     `tyCtx[t] = P dtrue` (domA), refl. ✓
 
-This is strictly more than the previous `ι self:Type. λP:(self → Type). ...`
-version could do. The OUTER wall dissolves.
+The earlier `fix B:Type` per-constructor wrapper (commit `e08bce9`)
+worked around step 5 not closing — at the time, the seen-set was
+reset under binders (pre-A4). With the seen-indexed `Subtype'` and
+the iotaIntro/seen-thread fixes (A4/A5/A7), the very-dependent form
+goes through directly. The constructors are now half the size and
+don't mention any external type.
 
-## What closed it
+## On the ι annotation
 
-The inner `(P dtrue) ⊑ (P self)` wall dissolves once the coinductive
-assumption set (`seen`) is threaded through `lam`/`app` instead of being
-reset to `[]` at every binder. After `iotaIntro` substitutes the LHS for
-`self` on the right and `unfoldFixL`/`unfoldIotaL` peel the LHS, the
-residual `dtrue ⊑ dBool` subgoal in contravariant domain position is
-discharged directly from the assumption set, and the structural
-`app-app` rule lines up the `(P dtrue)` arguments. The body comparison
-that *should* fail for, e.g., `dBool ⊑ dtrue` does fail at the leaf
-`Type ⊑ P dfalse`, so the discipline is not vacuous.
-
-## Note on self-substitution semantics
-
-When the rules fire in different orders different things happen to `self`:
-  - `iotaIntro` (value-sub) fires when the LHS is NOT an ι — it substitutes
-    the LHS value for `self` in the RHS body. After this, `self` is no
-    longer a bound variable in the resulting subtyping goal.
-  - Structural `ι-body` fires when both sides are ι — it compares bodies
-    with `self` remaining as bvar 0 on both sides.
-
-Agents attacking these markers: DO NOT assume `self` is always bvar 0 in
-the body of an ι — after iotaIntro it's been fully substituted and is
-whatever the LHS term is.
-
-## Use site
-
-Usage is `b M t f : M b` where `M : B → Type`. This requires passing `M`
-at type `(B → Type)`, which the subtype system must accept against the
-constructor's declared `(B → Type)` domain via structural fix-unfold
-mechanics.
+`ι` syntactically requires an annotation. For constructors, `Type`
+is the natural choice: it makes the structural-path annotation check
+fail fast (so iotaIntro takes over), and it carries no information
+the algorithm needs. For the *type* `dBool`, the annotation is the
+fix-binder `B`, which is the standard `μ`-pattern.
 -/
 
 namespace Std
@@ -77,11 +60,11 @@ namespace Std
 -- ============================================================
 
 def dtrue := och{
-  fix B:Type. ι self:B. λP:(B → Type). λt:(P self). λf:Type. t
+  ι self:Type. λP:(self → Type). λt:(P self). λf:Type. t
 }
 
 def dfalse := och{
-  fix B:Type. ι self:B. λP:(B → Type). λt:Type. λf:(P self). f
+  ι self:Type. λP:(self → Type). λt:Type. λf:(P self). f
 }
 
 def dBool := och{
