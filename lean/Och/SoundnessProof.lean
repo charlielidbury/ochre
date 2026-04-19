@@ -2728,12 +2728,27 @@ theorem openNf_holds {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
   sorry
 
 /-- Convenience wrapper: every `eval`-result under an
-`OpenCtx` quotes (modulo `openNf_holds`). -/
+`OpenCtx` quotes (modulo `openNf_holds`). DEPRECATED: callers
+should switch to `eval_quotes'` and supply `(hnfq)` directly,
+then delete this and `openNf_holds`. -/
 theorem OpenCtx.eval_quotes {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {fuel unf e v} (hfuel : fuel ≤ fuelω)
     (heval : eval fuel unf ρ e = some v) :
     ∃ ve, quote fuelω Γ.size v = some ve :=
   eval_quotable_open hfuel (openNf_holds hctx hfuel heval) heval
+
+/-- Sorry-free replacement for `eval_quotes`: caller supplies
+the `(hnfq)` evidence directly (route (a) of the `openNf_holds`
+docstring). At `OpenCtx.empty` this is the closed-form `(hnf)`
+the `Soundness.lean` wrappers already thread; under `push_fresh`
+/`push_let`, derive it via one `quoteClosure`/`bind`-step from
+the enclosing call's `(hnfq)`. -/
+theorem OpenCtx.eval_quotes' {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
+    {fuel unf e v} (hfuel : fuel ≤ fuelω)
+    (hnfq : ((eval fuelω unf ρ e).bind (quote fuelω Γ.size)).isSome)
+    (heval : eval fuel unf ρ e = some v) :
+    ∃ ve, quote fuelω Γ.size v = some ve :=
+  eval_quotable_open hfuel hnfq heval
 
 /-- Lift each `ρ`-entry's quote-witness to depth `d+1`. -/
 private theorem hρq_lift {d : Nat} {ρ : Env}
