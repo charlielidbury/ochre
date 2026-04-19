@@ -1241,6 +1241,30 @@ A dedup fork is replacing the closed `tyCheck_sound_*`
 mutual block in Soundness.lean with corollaries of the
 open forms; target is Soundness 3→0, SoundnessProof ≤13.
 
+### Soundness.lean sorry-free; root #3 done (5862916f, 2026-04-19)
+
+Dedup landed (`dedup-closed-open-fork`). The closed
+`whnfPi_sound`/`tyInfer_sound_closed`/
+`tyCheckFallback_sound_closed`/`tyCheck_sound_closed` are
+now four short corollaries of `*_open` at `OpenCtx.empty`
++ `substEnv_nil`. The ~225-line mutual block deleted.
+`eval_quotable_open` proven axiom-clean (the previous
+`hρ`-only statement was also false; the per-call-site
+`hnfq` evidence is the new `openNf_holds` — same shape as
+the threaded `hnfe`/`hnfτ`).
+
+**`Soundness.lean` is sorry-free.** All four target
+theorems plus all closed-context supporting lemmas wired
+through. **14 sorries** (Subtyping 1, SoundnessProof 13).
+Three root obligations remain (root #3 `eval_quotable` is
+done axiom-clean):
+  1. Depth-tagged seen → `ctx_extend_at` + `Equiv.shift`
+  2. `eval_realises` recursion-boundary → cascades to
+     `quote_open_subst` + `SubV_to_Subtype'` chain
+  3. Open-Γ residuals: `whnfPi_sound_open`/
+     `tyInfer_sound_open`/`tyCheck_sound_open` `.lam`/
+     `.letE`/`letBinderType_sound_open`/`openNf_holds`
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.
