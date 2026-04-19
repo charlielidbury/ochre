@@ -3,6 +3,32 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-18: `Seen.Closed` (route b) ruled out for `ctx_extend_at`; route (a) required
+
+**What:** The `Seen.Closed S` invariant cannot close `ctx_extend_at`'s
+6 binder cases. Route (a) — `Seen := List (Nat × Expr × Expr)` with
+`.hyp` shifting from recorded depth to `|Γ|` and the 5 seen-extender
+constructors recording `|Γ|` — is required.
+
+**Why:** `Seen.Closed` is not preserved through `.iota_intro` /
+`.unfold_*`: those constructors add the *current goal pair* to `S`,
+which references `Γ`-vars, so when `|Γ| > 0` the new entry is not
+closed at `|Γpfx|`. Concrete: `.iota_intro` at `Γpfx₀ ++ Γ` adds `p`,
+then `.lam` below it; the IH gives seen `p.shift_{c+1} :: S₀`, the
+goal needs `p.shift_c :: S₀`, which differ when `p` has a var at
+index `c`. Four non-invasive generalisations (per-entry depth-list,
+∀-quantified `S'`, union-over-cutoffs, closed-up-to) all fail because
+`.hyp` uses entries at *arbitrary deeper contexts* without shifting,
+so the lifted seen-set needs each entry at every use-cutoff — a
+`List` can't hold that. Detailed at Subtyping.lean's `ctx_extend_at`
+docstring (commit 26cd686).
+
+**Ripple:** `Subtype'` definition + ~15-30 SoundnessProof.lean sites
+(`.hyp`/seen-extender uses, `QuotesSeen`, `subCheckVal_subV` bridge,
+`Equiv.shift`). All callers pass `S = []` at the top level, so the
+ripple is mechanical. **Deferred** until R-restructure (root #2)
+lands so both definition changes go through SoundnessProof.lean once.
+
 ## 2026-04-18: `R` must expose closure environments (root #2 resolution route)
 
 **What:** `R`'s `.lam`/`.iota`/`.fix` clauses change from a pure
