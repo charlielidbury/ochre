@@ -11,37 +11,44 @@ Scott-style dependent Nat where the return type of elimination depends
 on the value being eliminated.
 
 ```
-dNat = ι(dNat : Type).
-  let dzero = ι(dzero : dNat). λP:(dzero→Type). λz:(P dzero). λs:Type. z in
-  let dsucc = fix(dsucc : dNat→dNat).
-    λm:dNat. λP:((dsucc m)→Type). λz:Type. λs:(λpred:dNat. P (dsucc pred)). s m in
-  λP:(dNat→Type). λz:(P dzero). λs:(λpred:dNat. P (dsucc pred)). P dNat
+dzero = ι self:Type. λP:(self→Type). λz:(P self). λs:Type. z
+dNat  = fix N:Type. ι self:N.
+  let dsucc = fix(dsucc : N→N).
+    λm:N. λP:((dsucc m)→Type). λz:Type. λs:(λpred:N. P (dsucc pred)). s m in
+  λP:(N→Type). λz:(P dzero). λs:(λpred:N. P (dsucc pred)). P self
+dsucc = fix dsucc:(dNat→dNat). λm:dNat. … (same body, with dNat for N)
 ```
 
-Split rationale:
-- `dNat` uses `fix N:Type. ι self:N. …` (matching dBool, e08bce9). The
-  outer `fix` binds the *type* `N`, used in every type ascription
-  (`λm:N`, `λpred:N`, `dsucc:(N→N)`); the inner `ι` binds the *value*
-  `self`, used only in the final `P self`. iotaIntro substitutes `self`
-  (so `P self` becomes `P done_` when checking `done_ ⊑ dNat`), but `N`
-  stays `N` (= dNat after fix-unfold), so `λpred:N` doesn't
-  over-specialise. Under the previous ι-only encoding, `λpred:bvar0`
-  became `λpred:done_` after iotaIntro and the contravariant check
-  required `dNat ⊑ done_` — making `done_ ⊑ dNat` unsatisfiable.
-- `dzero` uses `ι` alone — its self-reference is for the motive domain
-  (`λP:(dzero→Type)`), not type ascriptions on other binders.
-- `dsucc` uses `fix` — genuine recursion on the constructor term.
+Encoding choices:
+- `dzero` is defined *before* `dNat` with the very-dependent
+  motive `P:(self → Type)` and a placeholder annotation `Type`
+  (matching DBool's constructors at `38d1031`). It doesn't
+  reference `dNat`, so `dNat` can reference it directly — the
+  previous local-let copy inside `dNat` is gone.
+- `dNat` uses `fix N:Type. ι self:N. …`. The outer `fix` binds
+  the *type* `N`, used in `λm:N`, `λpred:N`, `dsucc:(N→N)`; the
+  inner `ι` binds the *value* `self`, used only in `P self`.
+  iotaIntro substitutes `self` (so `P self` becomes `P done_`
+  when checking `done_ ⊑ dNat`), but `N` stays `N` (= dNat after
+  fix-unfold), so `λpred:N` doesn't over-specialise.
+- `dsucc` keeps a local-let copy inside `dNat`: its body uses
+  `λpred:N` (the fix-binder), which the top-level `dsucc`
+  (defined after `dNat`) writes as `λpred:dNat`. These are
+  semantically equal but structurally distinct closures
+  (DECISION-LOG 2026-04-18, A6); the local copy is what the
+  seen-list discipline matches against. `dsucc`'s `fix` is
+  genuine function recursion (`s`-branch references
+  `dsucc pred`), not a workaround.
 
 Key design:
-- Each constructor constrains P's domain to ITSELF (not dNat). This is
-  essential for self-type intro: when checking dzero ⊑ dNat, the self-type
-  substitution replaces dNat with dzero in the body, making the P domain
-  check reflexive (dzero→Type ⊑ dzero→Type).
-- dsucc's body references `dsucc` via `fix`-style unfolding so that
-  `P (dsucc pred)` expresses "motive applied to the successor of pred".
-- Usage still works: passing P:(dNat→Type) needs (dNat→Type) ⊑ (dzero→Type),
-  which by contravariance needs dzero ⊑ dNat — exactly what we just proved.
-- dzero has `λs:Type` (s unused, domain is Top for covariance).
+- Each constructor's motive domain is ITSELF (`self → Type`).
+  When checking `dzero ⊑ dNat`, after iotaIntro substitutes
+  `self ↦ dzero` on both sides the P-domain check becomes
+  `(N → Type) ⊑ (dzero → Type)` → contravariant `dzero ⊑ N` →
+  closes via `.hyp` (the seen-set entry from the very first
+  `unfold_fix_R` on `dNat`).
+- `dzero` has `λs:Type` (s unused; domain is Top for covariance).
+- `dsucc m` returns the raw λ-spine (no ι-wrap; probed — fails).
 - The body `s m` has type `P (dsucc m)` — fully dependent.
 -/
 
@@ -51,18 +58,32 @@ namespace Std
 -- Type and constructors
 -- ============================================================
 
+/-- Zero, very-dependent: motive domain is `self` (not `dNat`),
+annotation is the placeholder `Type`. No reference to `dNat`,
+so it can be defined first and `dNat` can reference it
+directly (no local-let copy needed). -/
+def dzero := och{
+  ι self:Type. λP:(self → Type). λz:(P self). λs:Type. z
+}
+
 def dNat := och{
   fix N:Type. ι self:N.
-    let dzero : N = ι dzero:N. λP:(dzero → Type). λz:(P dzero). λs:Type. z in
     let dsucc : (N → N) = fix dsucc:(N → N).
       λm:N. λP:((dsucc m) → Type). λz:Type. λs:(λpred:N. P (dsucc pred)). s m in
     λP:(N → Type). λz:(P dzero). λs:(λpred:N. P (dsucc pred)). P self
 }
 
-def dzero := och{
-  ι dzero:dNat. λP:(dzero → Type). λz:(P dzero). λs:Type. z
-}
-
+/-- Successor. The `fix` here is genuine function recursion
+(`dsucc pred` in the `s`-branch references the function, not
+the result), so it stays. The result is a raw λ-spine — it
+cannot be wrapped in `ι self:Type. …` (probed: `dsuccI dzero
+⊑ dNat` fails because the local `dsucc_local` and an
+ι-wrapped top-level `dsucc` would have structurally different
+result shapes that the seen-list can't identify). The local
+`dsucc` inside `dNat` must also stay: its body uses `λpred:N`
+(the fix-binder), and the closed top-level `dNat` Expr can't
+be substituted there without re-introducing the A6
+closure-non-canonicality blowup. -/
 def dsucc := och{
   fix dsucc:(dNat → dNat).
     λm:dNat. λP:((dsucc m) → Type). λz:Type. λs:(λpred:dNat. P (dsucc pred)). s m
@@ -125,8 +146,8 @@ example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_deci
 -- dzero ⊑ dNat: the direct analogue of dtrue ⊑ dBool.
 example : subCheck 200 dzero dNat = .ok true := by native_decide
 
--- done_ ⊑ dNat. Closed by wrapping dNat in `fix N:Type. ι self:N.
--- …` (matching dBool's e08bce9 pattern): the *type* binder N is
+-- done_ ⊑ dNat. Closed by `dNat`'s `fix N:Type. ι self:N. …`
+-- shape: the *type* binder N is
 -- stable under iotaIntro, so `λpred:N` stays `λpred:dNat` after
 -- substituting `self := done_`, and the contravariant check is
 -- reflexive. Under the previous ι-only encoding, `λpred:bvar0`
