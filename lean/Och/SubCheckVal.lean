@@ -42,6 +42,53 @@ mutual
     | _, _ => false
 end
 
+/-! ### Pointer-equality fast path
+
+`Val.beq` walks the value DAG as a *tree*: a closure env that
+shares a large sub-Val (e.g. `vthree`'s domain tower references
+`vtwo` at every `unfBound` level) is re-traversed at each
+reference. With `unfBound = 32`, `eval dthree`'s tree-size is
+~15.6M nodes even though the DAG is tiny (eval is 3 ms; the
+tree-walk is ~2 s). Each `subCheckVal` call does several `beq`
+guards (`a == b`, `seen.any`, `b == .type`, the A7 productivity
+checks), so the cost compounds to ~5 min for `dthree ⊑ dNat`.
+
+The fast versions below check `ptrEq` first. When two Vals are
+the *same heap object* — which is the common case for shared
+sub-structure (Lean has no copying GC) — the comparison is O(1).
+The `@[implemented_by]` attribute swaps the runtime
+implementation while leaving the structural definition (and
+hence `LawfulBEq Val` and `subCheckVal_subV`) untouched. -/
+
+mutual
+  unsafe def Val.beqFast (a b : Val) : Bool :=
+    ptrEq a b || match a, b with
+    | .type, .type => true
+    | .lam d1 c1, .lam d2 c2 => d1.beqFast d2 && c1.beqFast c2
+    | .iota a1 c1, .iota a2 c2 => a1.beqFast a2 && c1.beqFast c2
+    | .fix a1 c1, .fix a2 c2 => a1.beqFast a2 && c1.beqFast c2
+    | .neutral n1, .neutral n2 => n1.beqFast n2
+    | _, _ => false
+  unsafe def Neutral.beqFast (a b : Neutral) : Bool :=
+    ptrEq a b || match a, b with
+    | .var l1, .var l2 => l1 == l2
+    | .app n1 v1, .app n2 v2 => n1.beqFast n2 && v1.beqFast v2
+    | .stuckRec f1 a1, .stuckRec f2 a2 => f1.beqFast f2 && a1.beqFast a2
+    | _, _ => false
+  unsafe def Closure.beqFast (a b : Closure) : Bool :=
+    ptrEq a b || (a.body == b.body && Env.beqFast a.env b.env)
+  unsafe def Env.beqFast (a b : List Val) : Bool :=
+    ptrEq a b || match a, b with
+    | [], [] => true
+    | v1 :: r1, v2 :: r2 => v1.beqFast v2 && Env.beqFast r1 r2
+    | _, _ => false
+end
+
+attribute [implemented_by Val.beqFast] Val.beq
+attribute [implemented_by Neutral.beqFast] Neutral.beq
+attribute [implemented_by Closure.beqFast] Closure.beq
+attribute [implemented_by Env.beqFast] Env.beq
+
 instance : BEq Val := ⟨Val.beq⟩
 
 @[simp] theorem Val.beq_def (a b : Val) : (a == b) = Val.beq a b := rfl
