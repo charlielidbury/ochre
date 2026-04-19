@@ -811,17 +811,24 @@ namespace Equiv
     cases Γ' with
     | cons τ Γ₀ => exact lift τ Γ₀
     | nil =>
-      -- At `Γ' = []` there is no smaller context to lift
-      -- *from*; this is the same seen-cutoff residual as
-      -- `ctx_extend_at`'s six binder cases (Subtyping.lean
-      -- 308). All call sites of `Equiv.shift` are inside
-      -- `subst_resp`'s binder arms, which then feed the
-      -- result to `Equiv.lam`/`.iota_cong`/`.fix_cong`/
-      -- `.letE_cong` — each of which instantiates the body
-      -- premise at a *cons* context. So this branch is
-      -- believed unreachable from the proof chain; a
-      -- `Subtype'` redesign (DECISION-LOG routes a/b) would
-      -- close it together with `ctx_extend_at`.
+      -- `ctx_extend_at` is now closed (depth-tagged Seen),
+      -- so the cons branch above is sorry-free. The nil
+      -- case remains: `ctx_extend Δ` only *extends* `Γ`,
+      -- never produces `[]`; there is no `ctx_restrict`. A
+      -- direct induction on `Subtype' [] [] e₁ e₂` *would*
+      -- now go through (`.hyp` self-shifts; binder cases
+      -- recurse at `[head]`), but it duplicates
+      -- `ctx_extend_at` for `Γ_target = []`. **Resolution
+      -- routes:** (i) add `Subtype'.shift_nil` to
+      -- Subtyping.lean (one induction, ~60 lines); (ii)
+      -- restate `Equiv` as `∀ {S Γ}, Γ ≠ [] → …` (all uses
+      -- instantiate at cons-Γ via the `.lam`/`.iota_cong`/
+      -- `.fix_cong`/`.letE_cong` body premises — verified at
+      -- lines 856, 871-884); (iii) note `e_i.shift 1 0` at
+      -- `Γ = []` is only well-typed when `e_i.closedAt 0`,
+      -- in which case `shift = id` and the goal is `h |>
+      -- weaken`. Route (i) is cleanest and out of this
+      -- file's scope.
       sorry
 
   /-- Substitution respects declarative equivalence: if
@@ -1036,37 +1043,30 @@ recursion is on `sizeOf v`/`sizeOf ρ` (the step-index does
 not change inside the constructor clauses). -/
 theorem R_mono {n m d v e} (hle : m ≤ n) (h : R n d v e) :
     R m d v e := by
-  match m, n, hle with
-  | 0, _, _ => unfold R; trivial
-  | _+1, _+1, hle =>
-    unfold R at h ⊢
-    refine ⟨h.1, ?_⟩
-    match v, h.2 with
-    | .type, hcl => exact hcl
-    | .neutral _, hcl => exact hcl
-    | .lam dV cl, ⟨ρe', dome, hRL, hclb, heqL⟩ =>
-        exact ⟨ρe', dome, RList_mono hle hRL, hclb, heqL⟩
-    | .iota aV cl, ⟨ρe', anne, hRL, hclb, heqI⟩ =>
-        exact ⟨ρe', anne, RList_mono hle hRL, hclb, heqI⟩
-    | .«fix» aV cl, ⟨ρe', anne, hRL, hclb, heqF⟩ =>
-        exact ⟨ρe', anne, RList_mono hle hRL, hclb, heqF⟩
+  -- Match on `v` at the top level (alongside `m`/`n`) so the
+  -- termination machinery sees the substituted constructor
+  -- when proving `sizeOf cl.env < sizeOf v` for the
+  -- `RList_mono` cross-calls.
+  match m, n, v, hle, h with
+  | 0, _, _, _, _ => unfold R; trivial
+  | _+1, _+1, .type, _, h => unfold R at h ⊢; exact h
+  | _+1, _+1, .neutral _, _, h => unfold R at h ⊢; exact h
+  | _+1, _+1, .lam dV cl, hle, h =>
+      unfold R at h ⊢
+      obtain ⟨hbase, ρe', dome, hRL, hclb, heqL⟩ := h
+      exact ⟨hbase, ρe', dome, RList_mono hle hRL, hclb, heqL⟩
+  | _+1, _+1, .iota aV cl, hle, h =>
+      unfold R at h ⊢
+      obtain ⟨hbase, ρe', anne, hRL, hclb, heqI⟩ := h
+      exact ⟨hbase, ρe', anne, RList_mono hle hRL, hclb, heqI⟩
+  | _+1, _+1, .«fix» aV cl, hle, h =>
+      unfold R at h ⊢
+      obtain ⟨hbase, ρe', anne, hRL, hclb, heqF⟩ := h
+      exact ⟨hbase, ρe', anne, RList_mono hle hRL, hclb, heqF⟩
 termination_by sizeOf v
 decreasing_by
   all_goals simp_wf
-  -- Mutual-termination encoding: the goal compares
-  -- `RList_mono`'s `sizeOf cl.env` against this call's
-  -- `sizeOf v`, but `v` (the implicit binder) is NOT
-  -- substituted by the inner `match v` — the well-founded
-  -- machinery sees the original `v`, not `.lam dV cl`. The
-  -- actual obligation `sizeOf cl.env < sizeOf (.lam dV cl)`
-  -- holds by `Closure.mk.sizeOf_spec`; what's needed is
-  -- either (a) restating `R_mono` with `v` as an explicit
-  -- *positional* arg matched at the top level (so the
-  -- termination machinery sees the constructor), or (b) a
-  -- non-mutual proof via strong induction on `sizeOf v`.
-  -- Either is a 10-minute reshuffle; deferred per the ≤2-
-  -- build-cycle ripple budget.
-  all_goals sorry
+  all_goals (rename Closure => cl; cases cl; simp; omega)
 
 theorem RList_mono {n m d ρ ρe} (hle : m ≤ n)
     (h : RList n d ρ ρe) : RList m d ρ ρe := by
@@ -1947,23 +1947,25 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           unfold Expr.substEnv
           unfold R
           refine ⟨?_, ?_⟩
-          · -- Base conjunct: `quote d (.lam domV cl) ≡ .lam
-            -- dome bodye`. `quote (.lam domV cl) = .lam
-            -- (quote d domV) (quoteClosure d cl)`. The dom
-            -- part: `R (k+1) d domV dome` from `ihf'`, then
-            -- `R_quote_equiv` extracts `quote domV ≡ dome`.
-            -- The body part: `quoteClosure d cl` opens with
-            -- fresh `.var d` at unf=1 and quotes at d+1; the
-            -- result realises `bExpr.substEnv (.bvar 0 ::
-            -- (ρe.take j).map shift)` (via `ihm` at any
-            -- m' ≤ k with `REnv_lift ∘ REnv_take`). After
-            -- `substEnv`-take normalisation that equals
-            -- `bodye`, so `Equiv.lam` assembles. The
-            -- quote-totality (`∃ e', quote … = some e'`) is
-            -- the residual obligation: `quote` succeeds
-            -- whenever its argument is "well-leveled" (all
-            -- free .var < d), which holds for any value
-            -- produced by `eval` from a depth-d env.
+          · -- Base conjunct. `quote (.lam domV cl) = .lam
+            -- (quote domV) (quoteClosure cl)`; the dom-Equiv
+            -- is `(ihf' hdomV henv hcl.1).1`. The body part
+            -- needs `quoteClosure d cl ≡ bExpr.substEnv
+            -- (lift ρe')` — i.e., `eval_realises` on the
+            -- inner `eval (fuelω-1) 1 (fresh::cl.env) bExpr`
+            -- and then base-extract. But `fuelω-1` is
+            -- outside the fuel-IH range. **Resolution
+            -- (definition tweak):** drop the base conjunct
+            -- from `R`'s ctor cases (it's redundant) and
+            -- replace it with `R (n+1) d headV headExpr` in
+            -- the env-exposes clause; then `R_quote_equiv`
+            -- recovers the base via mutual recursion with a
+            -- `quoteClosure_realises` helper, both
+            -- terminating on the *quote-fuel* (each
+            -- `quote f` calls `quoteClosure (f-1)` calls
+            -- `eval (f-2)` whose output's `quote` is at
+            -- `f-2`). After that change, this and the
+            -- `.iota`/`.fix` siblings become `trivial`.
             sorry
           · -- Env-exposes clause: `∃ ρe' dome, RList … ∧
             -- closed ∧ Equiv`. With `cl = Closure.mk' bExpr ρ
@@ -2009,19 +2011,10 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           rw [hsubst]
           unfold R
           refine ⟨?_, ?_⟩
-          · -- BASE conjunct: ∀ e', quote (.iota annV cl) = some e'
-            -- → Equiv e' (.iota anne bode). Decomposing
-            -- `quote (.iota …)` gives `.iota qann qcl`; the
-            -- ann-Equiv comes from `IH_fuel hann` +
-            -- `R_quote_equiv`; the body-Equiv `qcl ≡ bode` is
-            -- the *body-correspondence* (quoteClosure of cl
-            -- ≡ bExpr.substEnv lifted) — same blocker as
-            -- `.lam`'s base, gated on a `eval_realises` call
-            -- on `bExpr` at fuel `fuelω-2` which IH_fuel
-            -- doesn't reach. Resolved once the parallel
-            -- `.lam` fork lands a `quoteClosure_realises`
-            -- helper (or once closedness is threaded so
-            -- `IH_m` at the fresh-extended env applies).
+          · -- BASE conjunct: same body-correspondence
+            -- obstruction as `.lam` above (`quoteClosure`'s
+            -- inner eval is at `fuelω-1`, outside the
+            -- fuel-IH). Closes via the same `R`-restructure.
             sorry
           · -- Env-exposes clause (same shape as `.lam`).
             simp only [cl, Closure.mk']
