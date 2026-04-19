@@ -321,21 +321,63 @@ the wrong staggered-cutoff handling). The proof is by
 induction on `h`, recursing at `(τ :: Γpfx)` for the
 binder-introducing constructors.
 
-`S₀` is closed (so shifting it at any cutoff is the
-identity); `S₁` collects pairs added by `iota_intro` /
-`unfold_*` along the derivation, each at *that point's*
-`Γpfx` depth, so they need shifting at *that point's*
-cutoff. The `.lam`/`.iota_body`/`.fix_body` cases recurse at
-`Γpfx' := head :: Γpfx` (cutoff `c+1`) but with the *same*
-`S₁` — and `S₁`'s entries were added at depths `≤ c`, so
-`S₁.map shift_{c+1} ≠ S₁.map shift_c` in general. Those
-three cases are sorried below; the precise fix is to track
-each `S₁` entry's addition-depth (a depth-tagged seen-set)
-or to observe that for `narrow_at`'s actual use the
-derivation `hd` is over `S₀` *only* (`S₁ = []`), in which
-case the mismatch vanishes — but encoding "the derivation
-never extends `S₀`" as a side-condition is awkward in this
-inductive form. -/
+**Why the 6 binder cases are sorried**: at `.lam`, the body
+IH instantiates at `Γpfx' := dB :: Γpfx`, giving conclusion
+seen-set `S'.map shift_{c+1}` (where `c = |Γpfx|`); the goal
+needs `S'.map shift_c`. These coincide iff every `p ∈ S'`
+has no free var at index exactly `c`. Threading
+`Seen.Closed S` would close this (closed entries shift to
+themselves at any cutoff) — but `Seen.Closed` is *not*
+preserved through `.iota_intro`/`.unfold_*`, which add the
+current-goal pair `p` at context `Γpfx ++ Γ` (so `p` may
+reference vars `0..c+|Γ|-1`, hence not closed at `c` when
+`|Γ| > 0`). A concrete failing path: original derivation
+`.iota_intro` at `(S₀, Γpfx₀ ++ Γ)` adds `p`, then `.lam`
+below it at `(p :: S₀, Γpfx_lam ++ Γ)`; the `.lam` IH gives
+`(p.shift_{c+1} :: S₀)` and goal needs `(p.shift_c :: S₀)`,
+which differ whenever `p` references the `Γ`-var at index
+`c` (e.g., `p.1 = .bvar c`).
+
+**No fix exists within the current `Subtype'`**. Tried and
+ruled out: (i) `Seen.Closed S` hypothesis — breaks the 5
+seen-extenders. (ii) Per-entry depth-list `Sd : List Nat`
+with `S[i] closedAt Sd[i]` — `.iota_intro` can't supply a
+`d_p ≤ |Γpfx|` at which the new pair is closed (it's only
+closed at `|Γpfx|+|Γ|`). (iii) Quantifying conclusion seen
+`S' ⊇ S.map shift_c` — `.lam` needs `S' ⊇ S.map shift_{c+1}`,
+not given. (iv) Conclusion seen as union over all cutoffs
+`≤ c` — `.lam` needs cutoff `c+1` in the union; growing the
+union breaks `.iota_intro`'s new-pair membership. The root
+issue is `Subtype'.hyp` itself: it uses `(a, b) ∈ S` at
+*any* `Γ` without shifting, so an entry recorded at depth
+`d` and used at depth `d' > d` has its de Bruijn indices
+silently reinterpreted. The lifted derivation needs the
+entry at `.hyp`-use shifted at the *use* cutoff, but the
+seen-set can only hold one shift of it.
+
+**Minimal fix (route (a), DECISION-LOG 2026-04-18)**:
+depth-tag `Seen := List (Nat × Expr × Expr)` and make
+`.hyp`/the 5 seen-extenders depth-aware:
+```
+| hyp : (d, a, b) ∈ S → d ≤ Γ.length →
+    Subtype' S Γ (a.shift (Γ.length - d) 0)
+                 (b.shift (Γ.length - d) 0)
+| iota_intro :
+    Subtype' ((Γ.length, a, .iota ann body) :: S) Γ … →
+    … → Subtype' S Γ a (.iota ann body)
+```
+With this, `ctx_extend_at`'s conclusion seen is
+`S.map (fun (d,x,y) => (d+|Δ|, x.shift |Δ| (d-|Γ|), …))` —
+each entry shifts at *its own* recorded prefix-length, so
+the binder cases' IH and goal seen-sets coincide trivially
+(same `S`, same per-entry shift). This changes 6 of 23
+`Subtype'` constructors and ripples to SoundnessProof.lean
+(`.hyp`/seen-extender uses, `QuotesSeen`, `Seen.Closed`,
+`subCheckVal_subV`'s seen-bridge — est. 15-30 sites). The
+algorithm already does this implicitly: its seen entries
+are level-based `Val × Val`, depth-independent.
+`Equiv.shift`'s nil-Γ case (SoundnessProof.lean) shares
+this obstruction and would close by the same change. -/
 theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     ∀ {S ΓA a b}, Subtype' S ΓA a b →
     ∀ Γpfx, ΓA = Γpfx ++ Γ →
@@ -429,14 +471,10 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     have hb := ihB (dB :: Γpfx) (List.cons_append .. ▸ rfl)
     simp only [List.length_cons, Ctx.shiftPrefix_cons,
                List.cons_append] at hb
-    -- `hb` is at seen `S'.map shift_{|Γpfx|+1}`; goal needs
-    -- `S'.map shift_{|Γpfx|}`. These coincide when every
-    -- `S'`-entry is closed at `|Γpfx|` (so neither shift
-    -- moves anything). For `narrow_at`'s use, `S' = S₀`
-    -- with `Seen.Closed S₀`, hence both equal `S₀`. Encoding
-    -- that here would require either threading `Seen.Closed
-    -- S` (which `.iota_intro` etc. break — they add
-    -- non-closed pairs) or depth-tagging seen entries.
+    -- `hb : Subtype' (S'.map shift_{c+1}) … bA' bB'`; goal
+    -- needs seen `S'.map shift_c`. No `Subtype'`-internal
+    -- bridge exists (see docstring). Requires depth-tagged
+    -- `Seen` (route (a)).
     sorry
   | app_cong _ _ _ ihf iha iha' =>
     intro Γpfx hpfx
