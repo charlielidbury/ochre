@@ -10,9 +10,8 @@ ascription in `dNat`'s body). NbE avoids this by evaluating into a
 semantic domain with *closures*: substitution becomes environment
 extension, so the substituend is shared, not copied.
 
-This module is intended to eventually replace `absEval` once it
-handles the full calculus. For now it lives alongside so the existing
-test suite stays green while it's developed.
+This module replaced the substitution-based `absEval` (retired
+2026-04-19); see DECISION-LOG.
 
 References: Abel "NbE: Dependent Types and Impredicativity" (2013);
 Christiansen "Checking Dependent Types with NbE: A Tutorial".

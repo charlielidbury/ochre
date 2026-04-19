@@ -3,12 +3,6 @@ import Och.NbE
 /-!
 # Subtype checking on NbE values
 
-`subCheckNF` in `Eval.lean` works on `Expr` and calls `absEval` to
-normalise after each substitution, which copies the substituend.
-Swapping `absEval` for `NbE.nfInE` doesn't help because each call
-quotes back to `Expr` and the next call re-evaluates the quoted
-form, defeating the closure sharing.
-
 `subCheckVal` works directly on `NbE.Val`. iotaIntro opens the RHS
 ι closure with the *LHS Val* in the environment — one pointer, no
 copy. lam-lam opens both closures with the same fresh neutral. The
