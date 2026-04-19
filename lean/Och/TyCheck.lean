@@ -151,16 +151,7 @@ mutual
       | .app (.letE val fbody) a => do
           -- Let-headed application: float the `let` out so the
           -- arm above (or the generic one) can see the head.
-          let valTy? ← tyInfer fuel Γ ρ val
-          let some valV := eval fuel unfBound ρ val
-            | .error "tyInfer: let val eval"
-          -- A9: verify the inferred binder type (see `tyCheck`'s
-          -- `.letE` arm for the rationale).
-          let valTy ← match valTy? with
-            | none => pure valV
-            | some t => do
-              let okV ← tyCheck fuel Γ ρ val t
-              pure (if okV then t else valV)
+          let (valV, valTy) ← letBinderType fuel Γ ρ val
           tyInfer fuel (Γ.push valTy) (valV :: ρ) (.app fbody (a.shift 1 0))
       | .app f a => do
           let fTy? ← tyInfer fuel Γ ρ f
@@ -183,21 +174,7 @@ mutual
                     | some retTy => .ok (some retTy)
               | _ => .ok none
       | .letE val body => do
-          let valTy? ← tyInfer fuel Γ ρ val
-          let some valV := eval fuel unfBound ρ val
-            | .error "tyInfer: let val eval"
-          -- If the bound value has no principal type, fall back
-          -- to using its *value* as the binder type (Och lets
-          -- types be values; in practice the only un-annotated
-          -- let-bindings in Std are type aliases like `let N =
-          -- dNat in …`, where this is exactly right). A9: verify
-          -- the inferred binder type when present (see
-          -- `tyCheck`'s `.letE` arm for the rationale).
-          let valTy ← match valTy? with
-            | none => pure valV
-            | some t => do
-              let okV ← tyCheck fuel Γ ρ val t
-              pure (if okV then t else valV)
+          let (valV, valTy) ← letBinderType fuel Γ ρ val
           tyInfer fuel (Γ.push valTy) (valV :: ρ) body
   termination_by (fuel, 0)
 
@@ -225,21 +202,7 @@ mutual
                   tyCheck fuel (Γ.push expDom) (fresh :: ρ) body expBody
           | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
       | .letE val body => do
-          let valTy? ← tyInfer fuel Γ ρ val
-          let some valV := eval fuel unfBound ρ val
-            | .error "tyCheck: let val eval"
-          -- A9: `tyInfer`'s fix/ι arm returns the *annotation*,
-          -- which is only sound if the body is well-formed.
-          -- Verify via `tyCheck val valTy` (which, for fix/ι,
-          -- hits the eval-then-`subCheckVal` arm below). On
-          -- failure, fall back to `valV` itself as the binder
-          -- type — the same singleton-style binding as the
-          -- `valTy? = none` path.
-          let valTy ← match valTy? with
-            | none => pure valV
-            | some t => do
-              let okV ← tyCheck fuel Γ ρ val t
-              pure (if okV then t else valV)
+          let (valV, valTy) ← letBinderType fuel Γ ρ val
           tyCheck fuel (Γ.push valTy) (valV :: ρ) body expected
       | .asc e' τ => do
           let some τV := eval fuel unfBound ρ τ
@@ -285,6 +248,38 @@ mutual
           | .error "tyCheck: fallback eval"
         subCheckVal fuel Γ [] eV expected
   termination_by (fuel, 1)
+
+  /-- Compute the binder type and value for a `let val in …`.
+  Returns `(valV, valTy)` where `valV` is the evaluated value
+  (pushed onto `ρ`) and `valTy` is the verified binder type
+  (pushed onto `Γ`).
+
+  If `tyInfer val` produces a type, it is *verified* via
+  `tyCheck val t` before being trusted (A9: `tyInfer`'s fix/ι
+  arm returns the bare annotation, which is only sound if the
+  body is well-formed; the `tyCheck` round-trip routes fix/ι
+  through the eval-then-`subCheckVal` arm). On verification
+  failure or when no type is inferred, the value itself is
+  used as the binder type (singleton-style — Och lets types
+  be values; in practice the only un-annotated let-bindings
+  in Std are type aliases like `let N = dNat in …`, where
+  this is exactly right).
+
+  Tag 3: called from `tyInfer (fuel+1)` [tag 0] and `tyCheck
+  (fuel+1)` [tag 2] at the *decremented* fuel; calls back into
+  `tyInfer fuel`/`tyCheck fuel` at the same fuel, decreasing
+  on tag. -/
+  def letBinderType (fuel : Nat) (Γ : TyEnv) (ρ : Env)
+      (val : Expr) : Except String (Val × Val) := do
+    let valTy? ← tyInfer fuel Γ ρ val
+    let some valV := eval fuel unfBound ρ val
+      | .error "letBinderType: val eval"
+    match valTy? with
+    | none => pure (valV, valV)
+    | some t => do
+      let okV ← tyCheck fuel Γ ρ val t
+      pure (valV, if okV then t else valV)
+  termination_by (fuel, 3)
 end
 
 /-- Top-level entry: type-check closed `e` against closed `τ`. -/
