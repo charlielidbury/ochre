@@ -2779,6 +2779,21 @@ structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx)
   hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
         ∃ we, quote fuelω Γ.size v = some we
   henv : REnv 1 Γ.size ρ ρe
+  /-- All four contexts grow in lockstep (`empty` starts at
+  0; both `push_*` add 1 to each). `tyInfer_sound_open .bvar`
+  needs this to turn `hcl : k < ρe.length` into `k < Γ.size`
+  for the level↔index arithmetic. -/
+  hlen : Γ.size = ρe.length
+  /-- Each substituted entry has its declared context type:
+  `ρe[k] ⊑ Γe[k].shift (k+1) 0`. This is `Subtype'.bvar`'s
+  conclusion, generalised from `.bvar k` to whatever `ρe[k]`
+  realises it. `tyInfer_sound_open .bvar` reads this
+  directly. `push_fresh` discharges `k=0` via `Subtype'.bvar`
+  (the head IS `.bvar 0`); `push_let` via the caller's
+  `hval_le` (the let-bound value's typing). The `k>0` tail
+  lifts via `ctx_extend [head]`. -/
+  hwf : ∀ k w τe, ρe[k]? = some w → Γe.get? k = some τe →
+        Subtype' [] Γe w (τe.shift (k+1) 0)
 
 /-- Derived eval-quote-equiv: evaluating `e` under `ρ` and
 quoting gives something `Equiv` to `e.substEnv ρe`. This
@@ -2796,6 +2811,8 @@ theorem OpenCtx.empty : OpenCtx #[] [] [] [] where
   hΓ := fun _ _ hk => by simp at hk
   hρq := fun _ _ hk => by simp at hk
   henv := ⟨rfl, fun _ _ hk => by simp at hk⟩
+  hlen := rfl
+  hwf := fun _ _ _ hk => by simp at hk
 
 /-- Open `eval_quotable`, with the `hnfq` side condition
 that makes it provable. The previous `hρ`-only form is
@@ -2886,6 +2903,31 @@ theorem OpenCtx.eval_quotes' {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
     ∃ ve, quote fuelω Γ.size v = some ve :=
   eval_quotable_open hfuel hnfq heval
 
+/-- `Seen.Closed []` is vacuous. -/
+private theorem seen_closed_nil : Seen.Closed [] :=
+  fun _ hp => absurd hp (List.not_mem_nil _)
+
+/-- Lifts an `OpenCtx.hwf` tail through one context
+extension. Shared by `push_fresh`/`push_let` for the `k>0`
+case: `ρe[m]` shifts to `ρe[m].shift 1 0`, the goal type
+`Γe[m].shift (m+2) 0 = (Γe[m].shift (m+1) 0).shift 1 0` by
+`shift_succ`, and `ctx_extend [head]` lifts the inner
+derivation. -/
+private theorem hwf_lift_tail {Γe : Ctx} {ρe : List Expr}
+    (hwf : ∀ k w τe, ρe[k]? = some w → Γe.get? k = some τe →
+           Subtype' [] Γe w (τe.shift (k+1) 0))
+    (head : Expr) :
+    ∀ m w τe,
+      (ρe.map (·.shift 1 0))[m]? = some w →
+      Γe.get? m = some τe →
+      Subtype' [] (head :: Γe) w (τe.shift (m+2) 0) := by
+  intro m w τe hw hτe
+  rw [List.getElem?_map] at hw
+  obtain ⟨w0, hw0, rfl⟩ := Option.map_eq_some'.mp hw
+  have hinner := hwf m w0 τe hw0 hτe
+  have hext := Subtype'.ctx_extend [head] seen_closed_nil hinner
+  simpa [Expr.shift_succ] using hext
+
 /-- Lift each `ρ`-entry's quote-witness to depth `d+1`. -/
 private theorem hρq_lift {d : Nat} {ρ : Env}
     (hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
@@ -2955,6 +2997,19 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simpa [Array.size_push] using h
   henv := by
     simpa [Array.size_push] using REnv_lift hctx.henv hctx.hρq
+  hlen := by simp [Array.size_push, List.length_map, hctx.hlen]
+  hwf := by
+    intro k w τe' hw hτe'
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, List.get?_cons_zero,
+                   Option.some.injEq] at hw hτe'
+        subst hw hτe'
+        exact Subtype'.bvar (Γ := τe :: Γe) (k := 0) rfl
+    | succ m =>
+        simp only [List.getElem?_cons_succ,
+                   List.get?_cons_succ] at hw hτe'
+        exact hwf_lift_tail hctx.hwf τe m w τe' hw hτe'
 
 /-- Pushing a `letBinderType`-result preserves the
 invariant. `ρe' = (val.substEnv ρe).shift 1 0 :: ρe.map
@@ -2968,7 +3023,8 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {val : Expr} {valV valTy : Val} {valTye : Expr}
     (hev : eval fuel unf ρ val = some valV)
     (hclv : val.closedAt ρe.length = true)
-    (hqτ : quote fuelω Γ.size valTy = some valTye) :
+    (hqτ : quote fuelω Γ.size valTy = some valTye)
+    (hval_le : Subtype' [] Γe (val.substEnv ρe) valTye) :
     OpenCtx (Γ.push valTy) (valV :: ρ)
             (valTye :: Γe)
             ((val.substEnv ρe).shift 1 0
@@ -2993,6 +3049,19 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     have hRval' := R_depth_lift hqe hRval
     have htail := REnv_depth_lift hctx.henv hctx.hρq
     simpa [Array.size_push] using REnv_cons htail hRval'
+  hlen := by simp [Array.size_push, List.length_map, hctx.hlen]
+  hwf := by
+    intro k w τe' hw hτe'
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, List.get?_cons_zero,
+                   Option.some.injEq] at hw hτe'
+        subst hw hτe'
+        exact Subtype'.ctx_extend [valTye] seen_closed_nil hval_le
+    | succ m =>
+        simp only [List.getElem?_cons_succ,
+                   List.get?_cons_succ] at hw hτe'
+        exact hwf_lift_tail hctx.hwf valTye m w τe' hw hτe'
 
 /-- Open-context `whnfPi_sound`: each unfold step is one
 declarative `.unfold_fix_R`/`.unfold_iota_R`, so the exposed
@@ -3313,7 +3382,7 @@ theorem tyCheck_sound_open
       -- `QuotesCtx` depth-`k` convention, `valTye` at depth
       -- `Γ.size` is exactly the head we cons):
       have hctx' :=
-        hctx.push_let (val := val) hfuel' hev hcl_val hqValTy
+        hctx.push_let (val := val) hfuel' hev hcl_val hqValTy hval_le
       -- IH: body at hctx', expected τV at depth Γ.size+1.
       have hIH :=
         tyCheck_sound_open hfuel' hctx'
