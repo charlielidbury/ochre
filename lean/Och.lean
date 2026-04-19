@@ -10,4 +10,5 @@ import Och.Subtyping
 import Och.Soundness
 import Och.Tests
 import Och.PropertyTests
+import Och.PerfProbe
 import Och.Std

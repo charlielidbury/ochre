@@ -1134,6 +1134,57 @@ recursion-boundary leaves; `eval_quotable` Val-size
 measure; open-Γ generalisation of `tyCheck`/`tyInfer`/
 `whnfPi_sound`.
 
+### Tech-debt sweep + perf root-cause (5862916f, 2026-04-19)
+
+Six parallel forks. **Clean build: 580 s → 71 s** (8.2×).
+
+- **Perf root-cause** (`perf-rootcause-fork`, +48 to
+  SubCheckVal): `Val.beq` walks the value DAG as a *tree*.
+  With `unfBound=32`, `dsucc`'s self-applying P-domain
+  makes `vthree` a 15.6 M-node tree-walk (the DAG is 63
+  nodes; eval is 3 ms). Fix: `unsafe Val.beqFast` with
+  `ptrEq ||` prefix, `@[implemented_by]` so the proven
+  `Val.beq` is unchanged (`subCheckVal_subV` axioms still
+  `[propext, Quot.sound]`). `dthree ⊑ dNat` 322 s →
+  0.3 s (1046×); `dfive` (previously untestable) flat
+  ~330 ms. PerfProbe.lean carries the regression.
+- **Legacy `subCheckNF` retired** (`retire-subchecknf-fork`,
+  net −449 lines, Eval.lean 808→339): the Expr-domain
+  checker existed for the divergence sweep, which had done
+  its job (A1–A8). New SoundnessAudit sweep is NbE-only
+  (`sweep_refl`/`top`/`strict`/`a6_pinned`). One test
+  weakened: `appendArrays` at its declared type is an
+  A6-family NbE incompleteness (legacy accepted via
+  `neutralType` Type-widening); pinned in PerfProbe.lean.
+- **DBool: very-dependent encoding** (`38d1031`):
+  `dtrue`/`dfalse` are now `ι self:Type. λP:(self →
+  Type). …` — no per-constructor `fix B` wrapper. The
+  `e08bce9` workaround predated A4/A5/A7; the
+  very-dependent form now goes through directly. The
+  hand-built `dtrue ⊑ dBool` derivation is shorter
+  (t-domain is `.refl`).
+- **DNat: local-let `dzero` removed**
+  (`dnat-simplify-fork`): top-level `dzero` is
+  very-dependent, `dNat` references it directly.
+  `dsucc_local` stays (genuinely needs `N`). DNat module
+  305 s → 256 s pre-ptrEq → ~3 s post.
+- **Macro sugar** (`macro-sugar-fork`, `ced372c`):
+  `ι x. body`/`fix x. body`/`let x = v in body` desugar to
+  the `:Type`-annotated forms (`rfl`-identical Exprs).
+- **`letBinderType` helper** (`tycheck-helper-fork`, net
+  −5): the three duplicated A9 verification blocks
+  factored into one mutual-block function.
+- **PropertyTests.lean** (`test-additions-fork`, +240, 33
+  tests): open-Γ `subCheckVal` (10), negative subtyping
+  (16), `nf` round-trip + refl/top sweeps (7). Two
+  *findings* pinned: (a) `nf` is not syntactically
+  idempotent (`nf (nf done_) ≠ nf done_` — the
+  `eval_unf_equiv` gap; semantic idempotence holds);
+  (b) open-Γ neutral-vs-concrete is rejected both ways
+  (LHS-only ascent — A6 from a different angle).
+
+13 sorries unchanged.
+
 ## Open `TODO[mega-loop]` markers
 
 Agents should run `grep -rn "TODO\[mega-loop\]" lean/` for the current list.

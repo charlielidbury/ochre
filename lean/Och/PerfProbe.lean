@@ -57,26 +57,14 @@ O(unf-depth × calls), independent of numeral level.
 `grep WellFounded SubCheckVal.c` → 0. The `termination_by (fuel,
 tag)` lex compiles to direct recursion.
 
-## Residual (261 s): legacy `subCheck` in Vec/Array
+## Residual: removed
 
-`Och.Std.Vec` (181 s) and `Och.Std.Array` (43 s) dominate the
-post-fix build. Both use the *legacy* Expr-domain `subCheck`
-(Eval.lean's `subCheckNF` via `absEval`) for several tests:
-
-| test                                    | legacy | NbE |
-|-----------------------------------------|--------|-----|
-| `subCheck 5000 appendVec (λT. Vec T→…)` | 9.8 s  | 8 ms|
-| `subCheck 5000 appendArrays (…)`        | 9.4 s  | —   |
-| `NbE.typeCheck 5000 appendVec (…)`      |   —    |32 ms|
-| `NbE.subCheck 400 vecResult (Vec Nat_)` |   —    |47 ms|
-
-The legacy checker is substitution-based (`absEval` does
-`body.subst 0 arg` at every β), copying the Expr tree per step.
-That is the known limitation NbE was introduced to address; it is
-not fixable without making `absEval` closure-based — i.e., turning
-it into NbE. Migrating these tests to `NbE.subCheck` (the canonical
-checker; agreement covered by `divergenceSweep_onlyA6`) is the
-correct change, not a workaround. (Done in a separate commit.)
+The legacy `subCheckNF`/`absEval` (substitution-based) was
+retired at `6772061`; with both fixes, a fresh-worktree clean
+`lake build` is **71 s** (from 580 s pre-ptrEq, 261 s
+post-ptrEq-pre-retirement). The remaining time is spread
+across `SoundnessProof` (~50 s of proof elaboration) and the
+~60 `native_decide` tests at a few hundred ms each.
 
 ## Coordinator's question: repeated work in `typeCheck`
 
@@ -89,25 +77,22 @@ e.g. `dNat ⊑ dNat`. Post-fix, each such re-derivation hits the
 memo-table would save a few ms but is not load-bearing.
 -/
 
--- Verify NbE.subCheck agrees with legacy on the tests being
--- migrated. The `testArr*`/`testVec*` cases are `private` in
--- their modules, so verified there directly; the public ones:
-section Agreement
+section Regression
 open Std
-example : NbE.subCheck 1000 unit_ (och{ Array_ done_ Nat_ }) = .ok false := by native_decide
-example : NbE.subCheck 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
-example : NbE.subCheck 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
-example : NbE.subCheck 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
-  = .ok true := by native_decide
--- `appendArrays`: NbE.subCheck AND NbE.typeCheck return
--- `.ok false` while legacy `subCheck` returns `.ok true`.
--- This is an NbE incompleteness *outside* the divergence
--- sweep's 26-term corpus (hence not in
--- `a6KnownIncompleteness`). Array:175 must stay on the
--- legacy checker. (Out of scope for this perf fix; flagged
--- for the parent.)
+-- Pre-ptrEq, dthree was the practical ceiling (322 s) and
+-- dfive was untestable. Post-ptrEq, all numerals are flat
+-- ~310-330 ms; dfive is the perf-regression sentinel.
+def dfour := och{ dsucc dthree }
+def dfive := och{ dsucc dfour  }
+example : NbE.subCheck 800 dfive dNat = .ok true := by native_decide
+
+-- `appendArrays` at its declared type: an A6-family
+-- incompleteness (`domA` push gives the wrong ascent type
+-- under the `n1`/`n2` binders). Found independently by the
+-- perf and retire-subchecknf forks; pinned here so any
+-- future `domB` re-enabling or RHS-ascent flips it visibly.
 example : NbE.subCheck 5000 appendArrays
     (och{ λT:Type. λn1:dNat. λn2:dNat.
          Array_ n1 T → Array_ n2 T → Array_ (dadd n1 n2) T })
   = .ok false := by native_decide
-end Agreement
+end Regression
