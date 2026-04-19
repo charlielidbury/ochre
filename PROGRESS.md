@@ -30,8 +30,9 @@ Proof chain: `subCheckVal → SubV → Subtype' → semantic`.
     `soundness` composes the latter two. None of the four has a
     direct `sorry`. `concEval_equiv` 8/8 head-shapes leaf-sorry-free;
     `Equiv.iota_unfold` axiom-free.
-  - **15 sorries** (Eval 0, Subtyping 1, SoundnessProof 14,
-    Soundness 0) reduce to **three root obligations**:
+  - **13 declaration sorries** (Eval 0, Subtyping 1,
+    SoundnessProof 12, Soundness 0; verified by clean
+    `lake build`) reduce to **three root obligations**:
       1. `Seen.Closed`/depth-tagged seen → closes `ctx_extend_at`'s
          6 binder cases + `Equiv.shift`. (DECISION-LOG routes a/b/c.)
       2. `R`'s `.lam`/`.iota`/`.fix` Kripke clause must expose the
