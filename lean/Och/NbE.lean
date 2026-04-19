@@ -411,36 +411,4 @@ def nf (fuel : Nat) (e : Expr) : Option Expr := do
   let v ← eval fuel unfBound [] e
   quote fuel 0 v
 
-/-- Normalize an expression with `ctxLen` free variables. Each becomes
-    a fresh neutral at the corresponding level. -/
-def nfIn (fuel : Nat) (ctxLen : Nat) (e : Expr) : Option Expr := do
-  let env := (List.range ctxLen).reverse.map (fun lvl => Val.neutral (.var lvl))
-  let v ← eval fuel unfBound env e
-  quote fuel ctxLen v
-
-/-- `Except`-flavoured `nfIn` so call sites that currently use
-    `absEval` can swap without changing their error plumbing. -/
-def nfInE (fuel : Nat) (ctxLen : Nat) (e : Expr) : Except String Expr :=
-  match nfIn fuel ctxLen e with
-  | some e' => .ok e'
-  | none => .error "NbE: out of fuel"
-
-/-- Normalize `body` with its `bvar 0` bound to (the value of)
-    `subst`, in a context with `ctxLen` other free variables. The
-    substituend is evaluated once and *shared* via the environment;
-    this is the entry point that avoids the eager-substitution
-    fan-out in `subCheckNF`'s iotaIntro / fix-unfold arms. -/
-def nfSubstE (fuel : Nat) (ctxLen : Nat) (body subst : Expr)
-    : Except String Expr :=
-  let env := (List.range ctxLen).reverse.map (fun lvl => Val.neutral (.var lvl))
-  match eval fuel unfBound env subst with
-  | none => .error "NbE: out of fuel (subst)"
-  | some substVal =>
-    match eval fuel unfBound (substVal :: env) body with
-    | none => .error "NbE: out of fuel (body)"
-    | some bodyVal =>
-      match quote fuel ctxLen bodyVal with
-      | none => .error "NbE: out of fuel (quote)"
-      | some e' => .ok e'
-
 end NbE

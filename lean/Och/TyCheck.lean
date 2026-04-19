@@ -4,16 +4,13 @@ import Och.SubCheckVal
 /-!
 # Bidirectional type inference over the NbE domain
 
-`absEval` (Eval.lean) doubles as a normaliser and a type checker,
-but its β step is type-blind: dropping the domain check was
-necessary to avoid self-reference (`Array_ done_` would otherwise
-need to discharge `done_ ⊑ dNat` *during* the normalisation that
-sets up that very goal — see the long comment in Eval.lean and the
-beta-restore experiment in PROGRESS.md). The cost is that ill-typed
-inner applications β through silently, so neither `subCheckNF` nor
-`NbE.subCheck` can reject `appendVec_wrong` (`appendArrays T n1 n1
-arr1 arr2` with `arr2 : Array_ n2 T` where `Array_ n1 T` is
-expected).
+NbE evaluation (`NbE.eval`) is type-blind at β: dropping the domain
+check was necessary to avoid self-reference (`Array_ done_` would
+otherwise need to discharge `done_ ⊑ dNat` *during* the
+normalisation that sets up that very goal). The cost is that
+ill-typed inner applications β through silently, so `subCheckVal`
+alone can't reject `appendVec_wrong` (`appendArrays T n1 n1 arr1
+arr2` with `arr2 : Array_ n2 T` where `Array_ n1 T` is expected).
 
 This file provides a separate **syntactic** pass that walks the
 unevaluated term and at each `.app f a` checks the argument against
@@ -22,10 +19,9 @@ the function's domain. It is the standard bidirectional architecture
 NbE supplying normalisation and `subCheckVal` supplying conversion.
 
 The pass is *not* mutually recursive with normalisation: it calls
-`NbE.eval` and `subCheckVal` as black boxes. So the self-reference
-that killed the absEval-embedded domain check doesn't arise here —
-`subCheckVal aTy dom` runs on already-evaluated `Val`s with their
-own bounded `unf` budget, independent of the outer term's β path.
+`NbE.eval` and `subCheckVal` as black boxes, so `subCheckVal aTy dom`
+runs on already-evaluated `Val`s with their own bounded `unf` budget,
+independent of the outer term's β path.
 
 A `.fix`/`.iota` is treated as a black box of its annotation; the
 pass does *not* recurse into the body. So `appendArrays` (a fix)
