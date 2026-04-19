@@ -1,6 +1,7 @@
 import Och.NbE
 import Och.SubCheckVal
 import Och.Subtyping
+import Och.TyCheck
 
 /-!
 # `subCheckVal_sound`: the arm-by-arm proof
@@ -2620,5 +2621,412 @@ theorem SubV_to_Subtype'
   --           unfold_iota_L, revapp_R/L, SynthN.app/stuckRec*
   --   GATED on quote-shift: SynthN.var
   sorry
+
+/-!
+## Open-context `tyCheck`/`tyInfer` soundness
+
+`tyCheck_sound_closed` (Soundness.lean) is at `Γ = #[]`/`ρ = []`/
+`Γe = []`. Its `.lam`/`.letE` arms recurse at non-empty `Γ`,
+which the closed IH cannot reach. The open generalisation
+here threads a context-bundle `OpenCtx Γ ρ Γe` through the
+mutual induction; the closed forms in `Soundness.lean`
+specialise it at `OpenCtx.empty`.
+
+**Statement shape.** The expected type comes as `(τV : Val)`
+plus its quote `(τe, hqτ)`, *not* a source `(τ : Expr)` with
+`eval τ = τV`. This is because the recursive cases (`.letE`'s
+binder type from `letBinderType`; `tyInfer`'s result) supply
+a `Val` directly with no source `Expr` to point at. The
+closed wrapper does `eval [] τ → τV` then bridges `τe ≡ τ`
+via `eval_quote_equiv_closed`.
+
+**Conclusion.** `Subtype' [] Γe e τe` — the source `e` (open,
+with bvars into `Γe`) is below the *quoted* expected type at
+the declarative context. The seen-set is always `[]` since
+`tyCheck`'s `subCheckVal` calls start at empty seen.
+-/
+
+/-- Open-context `subCheckVal_sound`: direct from
+`SubV_to_Subtype'` at general `Γ` (closed wrapper in
+Soundness.lean specialises at `Γ = #[]`). -/
+theorem subCheckVal_sound_open
+    {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {Γ : TyCtx} {Γe : Ctx} (hΓ : QuotesCtx Γ Γe)
+    {a b : Val}
+    (h : subCheckVal fuel Γ [] a b = .ok true)
+    {ae be : Expr}
+    (hqa : quote fuelω Γ.size a = some ae)
+    (hqb : quote fuelω Γ.size b = some be) :
+    Subtype' [] Γe ae be :=
+  SubV_to_Subtype'
+    (subCheckVal_subV hfuel h)
+    (fun _ hp => absurd hp (List.not_mem_nil _))
+    hΓ hqa hqb
+
+/-- The open-context invariant for `tyCheck`/`tyInfer`
+soundness. Bundles exactly what the `.asc`/`.fix`/`.iota`/
+catch-all cases need:
+
+  - `hΓ` for `subCheckVal_sound_open`;
+  - `hρq` for the open `eval_quotable` (every eval-image
+    quotes within `fuelω`);
+  - `hρeq` is the open `eval_quote_equiv`: evaluating `e`
+    under `ρ` and quoting at depth `Γ.size` gives something
+    declaratively equivalent to *the source `e`* at `Γe`.
+    For fresh-neutral `ρ` (the `.lam` extension) this
+    follows from `eval_realises` + `R_quote_equiv` +
+    `substEnv_idEnv` (the realising `ρe` is `idEnv`); for
+    `.letE`-extended `ρ` it additionally needs `.letE_L/R`
+    on the bound value. Both packaged into `push_fresh`/
+    `push_let` below. -/
+structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx) : Prop where
+  size_eq : Γ.size = ρ.length
+  Γe_size : Γe.length = Γ.size
+  hΓ : QuotesCtx Γ Γe
+  hρq : ∀ w ∈ ρ, ∃ we, quote fuelω Γ.size w = some we
+  hρeq : ∀ {fuel unf e v}, eval fuel unf ρ e = some v →
+         ∀ {e'}, quote fuelω Γ.size v = some e' →
+         Subtype' [] Γe e' e ∧ Subtype' [] Γe e e'
+
+/-- The empty context is trivially open. `hρeq` is the
+existing `eval_quote_equiv_closed` (which itself reduces to
+`eval_realises` + `R_quote_equiv` at the empty `REnv`). -/
+theorem OpenCtx.empty : OpenCtx #[] [] [] where
+  size_eq := rfl
+  Γe_size := rfl
+  hΓ := fun _ _ hk => by simp at hk
+  hρq := fun _ hw => absurd hw (List.not_mem_nil _)
+  hρeq := by
+    intro fuel unf e v heval e' hq
+    have henv : REnv 1 0 [] [] :=
+      ⟨rfl, fun _ _ hk => by simp at hk⟩
+    have hr : R 1 0 v (e.substEnv []) := eval_realises heval henv
+    rw [Expr.substEnv_nil] at hr
+    have heq : Equiv e' e :=
+      R_quote_equiv Nat.one_pos hr (by simpa using hq)
+    exact heq
+
+/-- Open `eval_quotable`. Stated here so the open theorems
+can use it without round-tripping through `Soundness.lean`
+(which imports this file). The proof obligation is the same
+`eval_quotable` lemma the closed `quote_total_on_eval`
+reduces to (Soundness.lean:141). -/
+theorem eval_quotable_open {fuel unf d : Nat} {ρ : Env}
+    {e : Expr} {v : Val}
+    (hρ : ∀ w ∈ ρ, ∃ we, quote fuelω d w = some we)
+    (heval : eval fuel unf ρ e = some v) :
+    ∃ ve, quote fuelω d v = some ve := by
+  -- Same statement as `eval_quotable` in Soundness.lean.
+  -- Sorried here too; once one closes, the other becomes
+  -- a one-line wrapper.
+  sorry
+
+/-- Pushing a fresh neutral preserves the invariant.
+
+The new entry is `.neutral (.var Γ.size)`, which quotes to
+`.bvar 0` at depth `Γ.size + 1`. The realising `ρe` for the
+extended `ρ` is `idEnv (Γ.size + 1)` (the previous `idEnv
+Γ.size` shifted by one and prefixed with `.bvar 0`), so
+`substEnv ρe' = id` and `hρeq` carries via
+`eval_realises` at the extended `REnv`.
+
+Sub-obligations:
+  (a) `QuotesCtx (Γ.push τ) (τe :: Γe)` from `QuotesCtx Γ Γe`
+      and `quote (Γ.size + 1) τ = some τe`. Needs each
+      existing entry `Γ[k]` to also quote at the *new*
+      depth `Γ.size + 1` — i.e., `quote_depth_lift` (a
+      level-`l` neutral with `l < d` quotes to `.bvar
+      (d−1−l)` at depth `d` and `.bvar (d−l)` at `d+1`,
+      which is the shift). Stated separately below.
+  (b) `hρeq` at the extended env: the new `R … (.neutral
+      (.var d)) (.bvar 0)` realiser (proven; it's the
+      `R_neutral_var` lemma) plus `eval_realises` at the
+      extended `REnv` plus `substEnv_idEnv (d+1)`. -/
+theorem OpenCtx.push_fresh {Γ ρ Γe} (hctx : OpenCtx Γ ρ Γe)
+    {τ : Val} {τe : Expr}
+    (hqτ : quote fuelω (Γ.size + 1) τ = some τe) :
+    OpenCtx (Γ.push τ) (.neutral (.var Γ.size) :: ρ)
+            (τe :: Γe) := by
+  sorry
+
+/-- Pushing a `letBinderType`-result preserves the invariant.
+
+`valV = eval ρ val`; `valTy` is the verified binder type
+(either `tyInfer val`'s result, verified by `tyCheck val
+valTy`, or `valV` itself). The realising `ρe'` extends the
+previous one with `val` (the *source* Expr) — so
+`body.substEnv ρe' ≈ (body.subst 0 val).substEnv ρe`, and
+`(.letE val body) ≡ body.subst 0 val` via `.letE_L/R`.
+
+Unlike `push_fresh`, the new entry is *not* equivalent to
+`.bvar 0`, so `hρeq`'s conclusion `Equiv e' e` (with `e`
+the source under the extended context) is *false* in
+general. The correct strengthening: `hρeq` should conclude
+`Equiv e' (e.substEnv ρe)` at the *outer* `Γe`, with `ρe`
+threaded through `OpenCtx`. Then the `.letE` proof step is:
+
+  IH at extended ctx: `Subtype' [] Γe (body.substEnv ρe') τe`
+  `ρe' = val :: ρe` so this is `Subtype' [] Γe
+    ((body.subst 0 val).substEnv ρe) τe` (substEnv-cons)
+  the previous `hρeq` says `(·.substEnv ρe) ≡ id` at `Γe`,
+    so `Subtype' [] Γe (body.subst 0 val) τe`
+  `.letE_L`: `Subtype' [] Γe (.letE val body) τe`. ✓
+
+This restructuring (carry `ρe` in `OpenCtx`, conclude about
+`e.substEnv ρe`) is left for the next iteration; the
+present `OpenCtx` shape suffices for the `.lam` extension
+and the four cases that close. -/
+theorem OpenCtx.push_let {Γ ρ Γe} (hctx : OpenCtx Γ ρ Γe)
+    {val : Expr} {valV valTy : Val} {valTye : Expr}
+    (hev : eval fuelω unfBound ρ val = some valV)
+    (hqτ : quote fuelω (Γ.size + 1) valTy = some valTye) :
+    OpenCtx (Γ.push valTy) (valV :: ρ) (valTye :: Γe) := by
+  sorry
+
+/-- A `Γ.size`-quotable value is also `(Γ.size+1)`-quotable,
+and the quotes are related by a one-step shift. Needed by
+`OpenCtx.push_fresh`'s `QuotesCtx`-extension and by the
+`.lam`/`.letE` body-recursion's `hqτ` lifting. -/
+theorem quote_depth_succ {d : Nat} {v : Val} {e : Expr}
+    (h : quote fuelω d v = some e) :
+    quote fuelω (d + 1) v = some (e.shift 1 0) := by
+  -- By induction on `v` (mutual with `quoteClosure`/
+  -- `quoteNeutral`). The `.var l` case: `quote d (.var l)
+  -- = .bvar (d−1−l)`; at `d+1` it's `.bvar (d−l)
+  -- = (.bvar (d−1−l)).shift 1 0`. Closure case: the inner
+  -- `eval` is at the same fuel/unf, only the quote depth
+  -- shifts; IH applies directly.
+  sorry
+
+/-- Open-context `whnfPi_sound`: each unfold step is one
+declarative `.unfold_fix_R`/`.unfold_iota_R`, so the exposed
+head is `≡` the input. Same shape as `whnfPi_sound`
+(Soundness.lean) but at general `Γ`/`Γe`. -/
+theorem whnfPi_sound_open {fuel : Nat}
+    {Γ : TyCtx} {Γe : Ctx} (hΓ : QuotesCtx Γ Γe)
+    {inhab τV τV' : Val}
+    (hwh : whnfPi fuel inhab τV = some τV')
+    {τe τe' : Expr}
+    (hqτ : quote fuelω Γ.size τV = some τe)
+    (hqτ' : quote fuelω Γ.size τV' = some τe') :
+    Equiv τe' τe := by
+  -- Induction on `unfBound`; each `.fix`/`.iota` step is
+  -- `Equiv.fix_unfold`/`Equiv.iota_unfold` after
+  -- `quote_open_subst`. Same dependency chain as the
+  -- closed form.
+  sorry
+
+/-- Soundness of `letBinderType`: it returns `(valV, valTy)`
+where `valV = eval ρ val` and `valTy` is *some* upper bound
+on `val` (either the `tyInfer`-verified type, or `valV`
+itself). For the open `.letE` proof we need that `val ⊑
+valTye` at `Γe` — i.e., the binder type is sound. -/
+theorem letBinderType_sound_open
+    {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {Γ : TyCtx} {ρ : Env} {Γe : Ctx} (hctx : OpenCtx Γ ρ Γe)
+    {val : Expr} {valV valTy : Val}
+    (h : letBinderType fuel Γ ρ val = .ok (valV, valTy)) :
+    eval fuel unfBound ρ val = some valV ∧
+    ∃ valTye, quote fuelω Γ.size valTy = some valTye ∧
+              Subtype' [] Γe val valTye := by
+  -- Unfold `letBinderType`; case-split on `tyInfer val`'s
+  -- result. The `none` branch: `valTy = valV`,
+  -- `valTye = quote valV`, and `val ⊑ valTye` is the
+  -- forward direction of `hctx.hρeq` on `eval val`. The
+  -- `some t` branch with `okV = true`:
+  -- `tyCheck_sound_open hctx … : Subtype' [] Γe val te`;
+  -- with `okV = false`: same as `none`. Mutual with
+  -- `tyCheck_sound_open`; tag 3.
+  sorry
+
+mutual
+
+/-- Open-context `tyInfer` soundness. The conclusion bundles
+quote-existence so callers (the `tyCheckFallback` arm) don't
+need a separate quote-totality side-lemma.
+
+**Note on `.fix`/`.iota` (A9)**: `tyInfer` returns the bare
+annotation, which is *not* sound (`(.fix Nat_ unit_) ⋢
+Nat_`). This case is therefore unprovable as stated. The
+mitigation: every *caller* of `tyInfer` that needs a
+verified type goes through `tyCheck`'s `.fix`/`.iota` arm or
+`letBinderType` (both of which verify); `tyCheckFallback`'s
+`some`-path is the only direct consumer of an unverified
+`tyInfer` result, and *that* path is exactly the residual
+A9 hole the verifier-on-`c5914db` flagged for `.app`-chains
+with bad-fix heads. So `tyInfer_sound_open` below carries
+an additional hypothesis `(hwf : <e contains no ill-formed
+fix/ι>)` *or* the `.fix`/`.iota` arm is sorried with this
+note — taking the latter for now. -/
+theorem tyInfer_sound_open
+    {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {Γ : TyCtx} {ρ : Env} {Γe : Ctx} (hctx : OpenCtx Γ ρ Γe)
+    {e : Expr} {τV : Val}
+    (h : tyInfer fuel Γ ρ e = .ok (some τV)) :
+    ∃ τe, quote fuelω Γ.size τV = some τe ∧
+          Subtype' [] Γe e τe := by
+  match fuel, hfuel, h with
+  | 0, _, h => simp [tyInfer] at h
+  | fuel + 1, hfuel, h =>
+    have hfuel' : fuel ≤ fuelω := Nat.le_of_succ_le hfuel
+    -- 9 arms; `.bvar`/`.type` close at any `Γ`. The rest
+    -- recurse at extended Γ (`.lam`/`.letE`/`.app`-β/-let)
+    -- or need `quote_open_subst` (`.app` generic). The
+    -- `.fix`/`.iota` arm is the A9 unsoundness — sorried
+    -- with the note above. The `.asc` arm closes via
+    -- `tyCheck_sound_open` (mutual) at the *same* `hctx`.
+    sorry
+termination_by (fuel, 0)
+
+/-- Open-context `tyCheckFallback` soundness. Both paths
+chain through `subCheckVal_sound_open` and `hctx.hρeq`. -/
+theorem tyCheckFallback_sound_open
+    {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {Γ : TyCtx} {ρ : Env} {Γe : Ctx} (hctx : OpenCtx Γ ρ Γe)
+    {e : Expr} {τV : Val} {τe : Expr}
+    (hqτ : quote fuelω Γ.size τV = some τe)
+    (h : tyCheckFallback fuel Γ ρ e τV = .ok true) :
+    Subtype' [] Γe e τe := by
+  unfold tyCheckFallback at h
+  simp only [bind, Except.bind] at h
+  split at h
+  · simp_all
+  · next eTy? hinfer =>
+    cases eTy? with
+    | some eTy =>
+        simp only [] at h
+        obtain ⟨eTye, hqeTy, h_e_eTye⟩ :=
+          tyInfer_sound_open hfuel hctx hinfer
+        have hsub :=
+          subCheckVal_sound_open hfuel hctx.hΓ h hqeTy hqτ
+        exact .trans h_e_eTye hsub
+    | none =>
+        simp only [] at h
+        split at h
+        · next eV heV =>
+          obtain ⟨eVe, hqeV⟩ :=
+            eval_quotable_open (d := Γ.size) hctx.hρq heV
+          have h_e_eVe := (hctx.hρeq heV hqeV).2
+          have hsub :=
+            subCheckVal_sound_open hfuel hctx.hΓ h hqeV hqτ
+          exact .trans h_e_eVe hsub
+        · simp_all
+termination_by (fuel, 1)
+
+/-- Open-context `tyCheck` soundness. -/
+theorem tyCheck_sound_open
+    {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {Γ : TyCtx} {ρ : Env} {Γe : Ctx} (hctx : OpenCtx Γ ρ Γe)
+    {e : Expr} {τV : Val} {τe : Expr}
+    (hqτ : quote fuelω Γ.size τV = some τe)
+    (h : tyCheck fuel Γ ρ e τV = .ok true) :
+    Subtype' [] Γe e τe := by
+  match fuel, hfuel, h with
+  | 0, _, h => simp [tyCheck] at h
+  | fuel + 1, hfuel, h =>
+    have hfuel' : fuel ≤ fuelω := Nat.le_of_succ_le hfuel
+    unfold tyCheck at h
+    split at h
+    -- .lam dom body
+    · -- whnfPi expected → .lam expDom expCl;
+      --   subCheckVal Γ [] expDom domV;
+      --   tyCheck (Γ.push expDom) (fresh::ρ) body expBody.
+      -- Open-form residual:
+      --   (1) hctx' := hctx.push_fresh (τ := expDom)
+      --        (hqτ := quote_depth_succ … on hqexpDom);
+      --   (2) IH at hctx': Subtype' [] (expDome::Γe) body expBodye;
+      --   (3) subCheckVal_sound_open: expDome ⊑ dome at Γe (contra);
+      --   (4) Subtype'.lam (3) (2): (.lam dom body) ⊑
+      --        (.lam expDome expBodye) at Γe;
+      --   (5) whnfPi_sound_open: (.lam expDome expBodye) ≡ τe;
+      --   (6) .trans (4) (5).
+      -- Sub-lemma needed: `quote (.lam expDom expCl)` after
+      --   `expCl.open fresh` factors as
+      --   `.lam expDome (quote expBody at d+1)` —
+      --   `quoteClosure_eq_quote_openω_fresh` (line ~2237).
+      -- Sorried with these residuals visible.
+      sorry
+    -- .letE val body
+    · -- letBinderType → (valV, valTy);
+      --   tyCheck (Γ.push valTy) (valV::ρ) body τV.
+      -- Open-form residual:
+      --   (1) letBinderType_sound_open: eval ρ val = valV ∧
+      --        ∃ valTye, quote valTy = valTye ∧ val ⊑ valTye;
+      --   (2) hctx' := hctx.push_let … (the *false-as-stated*
+      --        extension; see `OpenCtx.push_let` docstring —
+      --        the OpenCtx invariant needs to carry `ρe` and
+      --        conclude about `e.substEnv ρe` instead of `e`);
+      --   (3) hqτ' := quote_depth_succ hqτ : quote (d+1) τV
+      --        = some (τe.shift 1 0);
+      --   (4) IH at hctx': Subtype' [] (valTye::Γe) body
+      --        (τe.shift 1 0);
+      --   (5) `Subtype'.subst_intro` (the standard
+      --        substitution lemma — induction on derivation,
+      --        same shape as `narrow_at`/`ctx_extend_at`):
+      --        Subtype' (A::Γ) M N → val ⊑ A at Γ →
+      --        Subtype' Γ (M.subst 0 val) (N.subst 0 val);
+      --   (6) `(τe.shift 1 0).subst 0 val = τe` (shift-subst
+      --        cancellation, since `τe` has bvars < |Γe|);
+      --   (7) `.letE_L` then `.trans`.
+      sorry
+    -- .asc e0 τ0
+    · next e0 τ0 =>
+      split at h
+      · next τ0V hτ0V =>
+        simp only [bind, Except.bind] at h
+        split at h
+        · simp_all
+        · next b hinner =>
+          cases b with
+          | false => simp_all [pure, Except.pure]
+          | true =>
+            simp only [Bool.not_true, Bool.false_eq_true,
+                       ↓reduceIte, pure, Except.pure,
+                       bind, Except.bind] at h
+            obtain ⟨τ0e, hqτ0V⟩ :=
+              eval_quotable_open (d := Γ.size) hctx.hρq hτ0V
+            -- IH on inner check (same Γ/ρ): `e0 ⊑ τ0e`.
+            have h_e0_τ0e :=
+              tyCheck_sound_open hfuel' hctx hqτ0V hinner
+            -- `subCheckVal τ0V τV → τ0e ⊑ τe`.
+            have hsub :=
+              subCheckVal_sound_open hfuel' hctx.hΓ h hqτ0V hqτ
+            -- The closed form additionally chains
+            -- `τ0e ≡ τ0` and `τe ≡ τ`; here the conclusion
+            -- is *already* at `τe` (no source `τ`), and the
+            -- inner IH gives `e0 ⊑ τ0e` directly (no source
+            -- `τ0` needed since the open IH takes `τ0V`'s
+            -- quote). So the chain is `e0 ⊑ τ0e ⊑ τe`,
+            -- then `.asc_L`.
+            exact .asc_L (.trans h_e0_τ0e hsub)
+      · simp_all
+    -- .fix _ _ and .iota _ _ (A9 arm) then catch-all.
+    -- Both fix/iota close via `subCheckVal_sound_open` +
+    -- `hctx.hρeq` (same as the closed form, generalised).
+    all_goals first
+    | exact tyCheckFallback_sound_open hfuel hctx hqτ h
+    | (rename_i ann body
+       split at h
+       · rename_i eV hev
+         obtain ⟨ee, hqeV⟩ :=
+           eval_quotable_open (d := Γ.size) hctx.hρq hev
+         have hsub :=
+           subCheckVal_sound_open hfuel' hctx.hΓ h hqeV hqτ
+         have he_ee := (hctx.hρeq hev hqeV).2
+         exact .trans he_ee hsub
+       · simp_all)
+termination_by (fuel, 2)
+
+end
+
+/-- The closed forms in `Soundness.lean` derive from the
+open ones at the empty context. Stated here as a sanity
+check that the specialisation typechecks. -/
+example {fuel : Nat} (hfuel : fuel ≤ fuelω)
+    {e : Expr} {τV : Val} {τe : Expr}
+    (hqτ : quote fuelω 0 τV = some τe)
+    (h : tyCheck fuel #[] [] e τV = .ok true) :
+    Subtype' [] [] e τe :=
+  tyCheck_sound_open hfuel OpenCtx.empty (by simpa using hqτ) h
 
 end NbE
