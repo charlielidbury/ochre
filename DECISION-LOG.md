@@ -3,6 +3,35 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-19 — `quote_total_on_eval` needs `(nf fuelω e).isSome`
+
+The unconditional form `eval fuel _ [] e = some v →
+∃ ve, quote fuelω 0 v = some ve` is **false**: `eval 2 _ []
+(.lam .type huge) = some (.lam .type ⟨huge, []⟩)` succeeds
+at fuel 2 (lambdas don't evaluate their body), but
+`quoteClosure` opens the closure with a fresh neutral and
+re-evaluates `huge`, which can need arbitrary fuel.
+
+**Fix**: add `(hnf : (nf fuelω e).isSome)` as a side
+condition. The `nf` witness *is* `quote (eval e)` at
+`fuelω`; transport via `eval_fuel_mono`. Axiom-clean
+(`[propext, Quot.sound]`). Threaded `hnfe`/`hnfτ` through
+`tyCheckFallback_sound_closed`/`tyCheck_sound_closed`/
+`typeCheck_sound`/`soundness`; for concrete inputs both
+discharge by `native_decide`.
+
+**Why not a Val-size measure**: the natural measure
+`Val.qsize` would need to bound `quoteClosure cl`'s
+`eval [fresh :: cl.env] cl.body` cost, which depends on
+`cl.body` (an arbitrary `Expr`) — there's no useful bound
+in terms of `cl`'s structure alone. The `nf.isSome`
+condition is exactly "the term has a normal form within
+budget", which is the right operational precondition.
+
+The open-Γ form (`eval_quotable_open`, SoundnessProof)
+should take the same shape; deferred until the
+`OpenCtx`-ρe restructure lands.
+
 ## 2026-04-19 — `Val.beq` ptrEq fast-path; legacy `subCheckNF` retired
 
 **Root cause of the ~5 min DNat build**: `Val.beq` walks
