@@ -3,6 +3,37 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-19: `R` base-conjunct is redundant; quote-fuel mutual recovers it
+
+**What:** `R (n+1) d (.lam dV cl) e` carries both the new
+env-exposes conjunct (`∃ ρe' he, RList … ∧ closedAt ∧ Equiv e
+(.lam he (body.substEnv …))`) AND a legacy `quoteClosure`-based
+base conjunct. The latter is unprovable inside `eval_realises`'s
+fuel-IH (`quoteClosure` evaluates at `fuelω-1`, outside the IH).
+
+**Resolution:** Drop the base conjunct from `R`'s definition; add
+`R (n+1) d headV headE` to env-exposes (so the *head* annotation
+is also realised). Recover `quoteClosure d cl ≡ body.substEnv
+(lift ρe')` post-hoc via a `quoteClosure_realises` lemma mutual
+with `R_quote_equiv` on **quote-fuel** (the `fuelω-1` recursion in
+`quote`/`quoteClosure`), not eval-fuel. Each step uses env-exposes
+to know `cl.env` is realised. Per tier-1 fork analysis (`e7b8beb`).
+
+**Closes:** 3 `eval_realises` base-conjunct sorries (lines 1310,
+1328, 1673 at `1df8063`).
+
+## 2026-04-19: `Equiv.shift` nil-Γ via `Subtype'.shift_nil`
+
+**What:** `Equiv.shift`'s cons-Γ case routes through `ctx_extend`
+(now proven). The nil-Γ case can't (nothing to extend). Routes:
+(i) `Subtype'.shift_nil : Subtype' S [] a b → Subtype' S []
+(a.shift n c) (b.shift n c)` — ~60-line structural induction in
+Subtyping.lean; the `.bvar` case is vacuous at `Γ=[]`. (ii) Restate
+`Equiv` quantifying `Γ ≠ []` — verified all callers are at cons-Γ,
+but the conclusion still needs `[]`. (iii) Add `(hcl : a.closedAt 0)`
+hypothesis so `a.shift n c = a` — but `Equiv` doesn't track
+closedness. **Route (i) chosen.**
+
 ## 2026-04-19: All three root obligations solved at the definition level
 
 **What:** The three structural obstructions that gated soundness
