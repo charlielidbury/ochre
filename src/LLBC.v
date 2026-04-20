@@ -13,15 +13,15 @@ Require Import PathToSubtree.
 From Stdlib Require Bool.
 
 (** * Definition of LLBC values and states. *)
-Inductive LLBC_val :=
+Inductive value :=
 | VBottom
 | VInt (n : nat) (* TODO: use Aeneas integer types? *)
 | VBool (b : bool)
 | VMutLoan (l : loan_id)
-| VMutBorrow (l : loan_id) (v : LLBC_val)
+| VMutBorrow (l : loan_id) (v : value)
 .
 
-Variant LLBC_nodes :=
+Variant nodes :=
 | NBottom
 | NInt (n : nat)
 | NBool (b : bool)
@@ -29,7 +29,7 @@ Variant LLBC_nodes :=
 | NMutBorrow (l : loan_id)
 .
 
-Instance EqDecision_LLBC_nodes : EqDecision LLBC_nodes.
+Instance EqDecision_nodes : EqDecision nodes.
 Proof. unfold RelDecision, Decision. repeat decide equality. Defined.
 
 Definition LLBC_arity c := match c with
@@ -70,7 +70,7 @@ Fixpoint LLBC_weight node_weight v :=
   | v => node_weight (LLBC_get_node v)
 end.
 
-Program Instance ValueLLBC : Value LLBC_val LLBC_nodes := {
+Program Instance ValueLLBC : Value value nodes := {
   arity := LLBC_arity;
   get_node := LLBC_get_node;
   children := LLBC_children;
@@ -95,15 +95,15 @@ Qed.
 Next Obligation. reflexivity. Qed.
 Next Obligation. intros ? []; cbn; lia. Qed.
 
-Record LLBC_state := {
-  vars : Pmap LLBC_val;
-  anons : Pmap LLBC_val;
+Record state := {
+  vars : Pmap value;
+  anons : Pmap value;
 }.
 
 Definition encode_var (x : var) := encode (A := var + anon) (inl x).
 Definition encode_anon (a : positive) := encode (A := var + anon) (inr a).
 
-Program Instance IsState : State LLBC_state LLBC_val := {
+Program Instance IsState : State state value := {
   extra := unit;
   get_map S := sum_maps (vars S) (anons S);
   get_extra _ := ();
@@ -161,11 +161,11 @@ Notation "'nbot'" := NBottom: llbc_scope.
 Notation "'nloan^m' ( l )" := (NMutLoan l) : llbc_scope.
 Notation "'nborrow^m' ( l )" := (NMutBorrow l) : llbc_scope.
 
-(* Bind Scope llbc_scope with LLBC_val. *)
+(* Bind Scope llbc_scope with value. *)
 Open Scope llbc_scope.
 
 (** * Semantics of LLBC *)
-Inductive eval_proj (S : LLBC_state) perm : proj -> spath -> spath -> Prop :=
+Inductive eval_proj (S : state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
@@ -174,7 +174,7 @@ Inductive eval_proj (S : LLBC_state) perm : proj -> spath -> spath -> Prop :=
 .
 
 (* TODO: eval_path represents a computation, that evaluates and accumulate the result over [...] *)
-Inductive eval_path (S : LLBC_state) perm : path -> spath -> spath -> Prop :=
+Inductive eval_path (S : state) perm : path -> spath -> spath -> Prop :=
 (* Corresponds to R-Base and W-Base in the article. *)
 | E_Path_Nil pi : eval_path S perm [] pi pi
 | E_Path_Proj proj P p q r
@@ -195,7 +195,7 @@ Proof.
     + destruct (S.[q]); inversion get_q. econstructor; reflexivity || constructor.
 Qed.
 
-Lemma eval_path_valid (s : LLBC_state) P perm q r
+Lemma eval_path_valid (s : state) P perm q r
   (valid_q : valid_spath s q) (eval_q_r : eval_path s perm P q r) :
   valid_spath s r.
 Proof.
@@ -208,7 +208,7 @@ Lemma eval_place_valid s p perm pi (H : eval_place s perm p pi) : valid_spath s 
 Proof. destruct H as (? & ?). eapply eval_path_valid; eassumption. Qed.
 Hint Resolve eval_place_valid : spath.
 
-Variant is_loan : LLBC_nodes -> Prop :=
+Variant is_loan : nodes -> Prop :=
 | IsLoan_MutLoan l : is_loan (nloan^m(l)).
 Hint Constructors is_loan : spath.
 Definition not_contains_loan := not_value_contains is_loan.
@@ -220,20 +220,20 @@ Definition not_contains_bot v :=
 Hint Unfold not_contains_bot : spath.
 Hint Extern 0 (_ <> nbot) => discriminate : spath.
 
-Variant is_mut_borrow : LLBC_nodes -> Prop :=
+Variant is_mut_borrow : nodes -> Prop :=
 | IsMutBorrow_MutBorrow l : is_mut_borrow (nborrow^m(l)).
 Notation not_contains_outer_loan := (not_contains_outer is_mut_borrow is_loan).
 
 Lemma loan_is_not_bot x : is_loan x -> x <> nbot. Proof. intros [ ]; discriminate. Qed.
 
-Inductive copy_val : LLBC_val -> LLBC_val -> Prop :=
+Inductive copy_val : value -> value -> Prop :=
 | Copy_val_int (n : nat) : copy_val (VInt n) (VInt n)
 | Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 .
 
 Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
-Variant eval_operand : operand -> LLBC_state -> (LLBC_val * LLBC_state) -> Prop :=
+Variant eval_operand : operand -> state -> (value * state) -> Prop :=
 | E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_BoolConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_Copy S (p : place) pi v
@@ -254,14 +254,14 @@ Definition get_loan_id c :=
 Notation is_fresh l S := (not_state_contains (fun c => get_loan_id c = Some l) S).
 Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
-Variant eval_binary_op : BinOp -> LLBC_val -> LLBC_val -> LLBC_val -> Prop :=
+Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
   | E_Add m n :
       eval_binary_op BAdd (VInt m) (VInt n) (VInt (m + n))
   | E_Le m n :
       eval_binary_op BLe (VInt m) (VInt n) (VBool (m <=? n))
 .
 
-Variant eval_rvalue : rvalue -> LLBC_state -> (LLBC_val * LLBC_state) -> Prop :=
+Variant eval_rvalue : rvalue -> state -> (value * state) -> Prop :=
   | E_Use op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | Eval_binary_op S S' S'' binop op_l op_r vl vr w :
@@ -274,10 +274,10 @@ Variant eval_rvalue : rvalue -> LLBC_state -> (LLBC_val * LLBC_state) -> Prop :=
       S |-{rv} (&mut p) => (borrow^m(l, S.[pi]), S.[pi <- loan^m(l)])
 where "S |-{rv} rv => r" := (eval_rvalue rv S r).
 
-Definition not_in_borrow (S : LLBC_state) p :=
+Definition not_in_borrow (S : state) p :=
   forall q, prefix q p -> is_mut_borrow (get_node (S.[q])) -> q = p.
 
-Inductive reorg : LLBC_state -> LLBC_state -> Prop :=
+Inductive reorg : state -> state -> Prop :=
 | Reorg_End_MutBorrow S (p q : spath) l :
     disj p q -> get_node (S.[p]) = nloan^m(l) -> get_node (S.[q]) = nborrow^m(l) ->
     not_contains_loan (S.[q +++ [0] ]) -> not_in_borrow S q ->
@@ -286,7 +286,7 @@ Inductive reorg : LLBC_state -> LLBC_state -> Prop :=
 
 (* This operation realizes the second half of an assignment p <- rv, once the rvalue v has been
  * evaluated to a pair (v, S). *)
-Variant store (p : place) : LLBC_val * LLBC_state -> LLBC_state -> Prop :=
+Variant store (p : place) : value * state -> state -> Prop :=
 | Store v S (sp : spath) (a : anon)
   (eval_p : (S,, a |-> v) |-{p} p =>^{Mut} sp)
   (no_outer_loan : not_contains_outer_loan (S.[sp])) :
@@ -299,7 +299,7 @@ Variant store (p : place) : LLBC_val * LLBC_state -> LLBC_state -> Prop :=
 *)
 Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
 
-Inductive eval_stmt : statement -> flow_token -> LLBC_state -> LLBC_state -> Prop :=
+Inductive eval_stmt : statement -> flow_token -> state -> state -> Prop :=
   | E_Nop S : S |-{stmt} Nop => rUnit, S
   | E_Panic S : S |-{stmt} Panic => rPanic, S
   | E_Seq_Unit S0 S1 S2 stmt_l stmt_r r (eval_stmt_l : S0 |-{stmt} stmt_l => rUnit, S1)

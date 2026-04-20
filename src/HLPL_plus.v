@@ -16,17 +16,17 @@ Local Open Scope option_monad_scope.
 Require Import SimulationUtils.
 
 (** * Definition of HLPL+ values and states. *)
-Inductive HLPL_plus_val :=
+Inductive value :=
 | VBottom
 | VInt (n : nat) (* TODO: use Aeneas integer types? *)
 | VBool (b : bool)
 | VMutLoan (l : loan_id)
-| VMutBorrow (l : loan_id) (v : HLPL_plus_val)
-| VLoc (l : loan_id) (v : HLPL_plus_val)
+| VMutBorrow (l : loan_id) (v : value)
+| VLoc (l : loan_id) (v : value)
 | VPtr (l : loan_id)
 .
 
-Variant HLPL_plus_nodes :=
+Variant nodes :=
 | NBottom
 | NInt (n : nat)
 | NBool (b : bool)
@@ -36,7 +36,7 @@ Variant HLPL_plus_nodes :=
 | NPtr (l : loan_id)
 .
 
-Instance EqDec_HLPL_plus_nodes : EqDecision HLPL_plus_nodes.
+Instance EqDec_nodes : EqDecision nodes.
 Proof. unfold EqDecision, Decision. repeat decide equality. Qed.
 
 Definition HLPL_plus_arity c := match c with
@@ -86,7 +86,7 @@ Fixpoint HLPL_plus_weight node_weight v :=
   | v => node_weight (HLPL_plus_get_node v)
 end.
 
-Program Instance ValueHLPL : Value HLPL_plus_val HLPL_plus_nodes := {
+Program Instance ValueHLPL : Value value nodes := {
   arity := HLPL_plus_arity;
   get_node := HLPL_plus_get_node;
   children := HLPL_plus_children;
@@ -113,15 +113,15 @@ Qed.
 Next Obligation. reflexivity. Qed.
 Next Obligation. intros ? []; unfold HLPL_plus_children; cbn; lia. Qed.
 
-Record HLPL_plus_state := {
-  vars : Pmap HLPL_plus_val;
-  anons : Pmap HLPL_plus_val;
+Record state := {
+  vars : Pmap value;
+  anons : Pmap value;
 }.
 
 Definition encode_var (x : var) := encode (A := var + anon) (inl x).
 Definition encode_anon (a : positive) := encode (A := var + anon) (inr a).
 
-Program Instance IsState : State HLPL_plus_state HLPL_plus_val (H := ValueHLPL) := {
+Program Instance IsState : State state value (H := ValueHLPL) := {
   extra := unit;
   get_map S := sum_maps (vars S) (anons S);
   get_extra _ := ();
@@ -186,7 +186,7 @@ Notation "'nborrow^m' ( l )" := (NMutBorrow l) : hlpl_plus_scope.
 Notation "'nloc' ( l )" := (NLoc l) : hlpl_plus_scope.
 Notation "'nptr' ( l )" := (NPtr l) : hlpl_plus_scope.
 
-(* Bind Scope hlpl_plus_scope with HLPL_plus_val. *)
+(* Bind Scope hlpl_plus_scope with value. *)
 Open Scope hlpl_plus_scope.
 
 Lemma sget_loc l v p : (loc(l, v)).[[ [0] ++  p]] = v.[[p]].
@@ -201,7 +201,7 @@ Hint Rewrite sget_loc' : spath.
  * field access) on spath pi0, on a state S and given a permission perm.
  * If this projection is successful, then we have eval_proj S perm p pi0 pi1.
  *)
-Variant eval_proj (S : HLPL_plus_state) perm : proj -> spath -> spath -> Prop :=
+Variant eval_proj (S : state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
@@ -214,7 +214,7 @@ Variant eval_proj (S : HLPL_plus_state) perm : proj -> spath -> spath -> Prop :=
     eval_proj S perm Deref q q'
 .
 
-Variant eval_loc (S : HLPL_plus_state) perm : spath -> spath -> Prop :=
+Variant eval_loc (S : state) perm : spath -> spath -> Prop :=
 (* Coresponds to R-Loc and W-Loc in the article. *)
 | E_Loc q l
     (Hperm : perm <> Mov) (get_q : get_node (S.[q]) = nloc(l)) :
@@ -223,7 +223,7 @@ Variant eval_loc (S : HLPL_plus_state) perm : spath -> spath -> Prop :=
 
 (* Let pi0 be a spath. If by successfully applying the projections in P (with permission perm) we
    obtain a spath pi1, then we have the proprety eval_path S perm P pi0 pi1. *)
-Inductive eval_path (S : HLPL_plus_state) perm : path -> spath -> spath -> Prop :=
+Inductive eval_path (S : state) perm : path -> spath -> spath -> Prop :=
 (* Corresponds to R-Base and W-Base in the article. *)
 | E_Path_Nil pi : eval_path S perm [] pi pi
 | E_Path_Proj proj P p q r
@@ -243,7 +243,7 @@ Local Notation "S  |-{p}  p =>^{ perm } pi" := (eval_place S perm p pi) (at leve
 Lemma eval_proj_valid S perm proj q r (H : eval_proj S perm proj q r) : valid_spath S r.
 Proof. destruct H; validity. Qed.
 
-Lemma eval_path_valid (s : HLPL_plus_state) P perm q r
+Lemma eval_path_valid (s : state) P perm q r
   (valid_q : valid_spath s q) (eval_q_r : eval_path s perm P q r) :
   valid_spath s r.
 Proof.
@@ -257,14 +257,14 @@ Lemma eval_place_valid s p perm pi (H : eval_place s perm p pi) : valid_spath s 
 Proof. destruct H as (? & ?). eapply eval_path_valid; eassumption. Qed.
 Hint Resolve eval_place_valid : spath.
 
-Variant is_loan : HLPL_plus_nodes -> Prop :=
+Variant is_loan : nodes -> Prop :=
 | IsLoan_MutLoan l : is_loan (nloan^m(l)).
 Hint Constructors is_loan : spath.
 Definition not_contains_loan := not_value_contains is_loan.
 Hint Unfold not_contains_loan : spath.
 Hint Extern 0 (~is_loan _) => intro; easy : spath.
 
-Variant is_loc : HLPL_plus_nodes -> Prop :=
+Variant is_loc : nodes -> Prop :=
 | IsLoc_Loc l : is_loc (nloc(l)).
 Definition not_contains_loc := not_value_contains is_loc.
 Hint Unfold not_contains_loc : spath.
@@ -275,14 +275,14 @@ Definition not_contains_bot v :=
 Hint Unfold not_contains_bot : spath.
 Hint Extern 0 (_ <> nbot) => discriminate : spath.
 
-Variant is_mut_borrow : HLPL_plus_nodes -> Prop :=
+Variant is_mut_borrow : nodes -> Prop :=
 | IsMutBorrow_MutBorrow l : is_mut_borrow (nborrow^m(l)).
 Notation not_contains_outer_loan := (not_contains_outer is_mut_borrow is_loan).
 Notation not_contains_outer_loc := (not_contains_outer is_mut_borrow is_loc).
 
 Notation not_in_borrow := (no_ancestor is_mut_borrow).
 
-Variant is_borrow : HLPL_plus_nodes -> Prop :=
+Variant is_borrow : nodes -> Prop :=
 | IsBorrow_MutBorrow l : is_borrow (nborrow^m(l)).
 Definition not_contains_borrow := not_value_contains is_borrow.
 Hint Unfold not_contains_borrow : spath.
@@ -299,7 +299,7 @@ Definition get_loan_id c :=
 
 Notation is_fresh l S := (not_state_contains (fun c => get_loan_id c = Some l) S).
 
-Lemma is_fresh_loan_id_neq (S : HLPL_plus_state) l0 l1 (p : spath) :
+Lemma is_fresh_loan_id_neq (S : state) l0 l1 (p : spath) :
   get_loan_id (get_node (S.[p])) = Some l0 -> is_fresh l1 S -> l0 <> l1.
 Proof.
   intros get_p Hfresh <-. eapply Hfresh; [ | exact get_p].
@@ -315,7 +315,7 @@ Hint Extern 0 (get_loan_id _ <> Some ?l) =>
       reflexivity
    end : spath.
 
-Inductive copy_val : HLPL_plus_val -> HLPL_plus_val -> Prop :=
+Inductive copy_val : value -> value -> Prop :=
 | Copy_val_int (n : nat) : copy_val (VInt n) (VInt n)
 | Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 | Copy_ptr l : copy_val (ptr(l)) (ptr(l))
@@ -323,7 +323,7 @@ Inductive copy_val : HLPL_plus_val -> HLPL_plus_val -> Prop :=
 
 Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
-Variant eval_operand : operand -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
+Variant eval_operand : operand -> state -> (value * state) -> Prop :=
 | E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_BoolConst S b : S |-{op} Const (BoolConst b) => (VBool b, S)
 | E_Copy S (p : place) pi v
@@ -336,14 +336,14 @@ where "S |-{op} op => r" := (eval_operand op S r).
 
 Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
-Variant eval_binary_op : BinOp -> HLPL_plus_val -> HLPL_plus_val -> HLPL_plus_val -> Prop :=
+Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
   | E_Add m n :
       eval_binary_op BAdd (VInt m) (VInt n) (VInt (m + n))
   | E_Le m n :
       eval_binary_op BLe (VInt m) (VInt n) (VBool (m <=? n))
 .
 
-Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_state) -> Prop :=
+Variant eval_rvalue : rvalue -> state -> (value * state) -> Prop :=
   | E_Use op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | Eval_binary_op S S' S'' binop op_0 op_1 v0 v1 w
@@ -363,7 +363,7 @@ Variant eval_rvalue : rvalue -> HLPL_plus_state -> (HLPL_plus_val * HLPL_plus_st
       S |-{rv} (&mut p) => (ptr(l), (S.[pi <- loc(l, S.[pi])]))
 where "S |-{rv} rv => r" := (eval_rvalue rv S r).
 
-Inductive reorg : HLPL_plus_state -> HLPL_plus_state -> Prop :=
+Inductive reorg : state -> state -> Prop :=
 | Reorg_End_MutBorrow S (p q : spath) l :
     disj p q -> get_node (S.[p]) = nloan^m(l) -> get_node (S.[q]) = nborrow^m(l) ->
     not_contains_loan (S.[q +++ [0] ]) -> not_in_borrow S q ->
@@ -381,7 +381,7 @@ Hint Extern 0 (nptr( _ ) <> _) => discriminate : spath.
 
 (* This operation realizes the second half of an assignment p <- rv, once the rvalue v has been
  * evaluated to a pair (v, S). *)
-Variant store (p : place) : HLPL_plus_val * HLPL_plus_state -> HLPL_plus_state -> Prop :=
+Variant store (p : place) : value * state -> state -> Prop :=
 | Store v S (sp : spath) (a : anon)
   (eval_p : (S,, a |-> v) |-{p} p =>^{Mut} sp)
   (no_outer_loc : not_contains_outer_loc (S.[sp]))
@@ -395,7 +395,7 @@ Variant store (p : place) : HLPL_plus_val * HLPL_plus_state -> HLPL_plus_state -
 *)
 Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
 
-Inductive eval_stmt : statement -> flow_token -> HLPL_plus_state -> HLPL_plus_state -> Prop :=
+Inductive eval_stmt : statement -> flow_token -> state -> state -> Prop :=
   | E_Nop S : S |-{stmt} Nop => rUnit, S
   | E_Seq_Unit S0 S1 S2 stmt_l stmt_r r (eval_stmt_l : S0 |-{stmt} stmt_l => rUnit, S1)
       (eval_stmt_r : S1 |-{stmt} stmt_r => r, S2) :  S0 |-{stmt} stmt_l;; stmt_r => r, S2
@@ -415,14 +415,14 @@ Inductive eval_stmt : statement -> flow_token -> HLPL_plus_state -> HLPL_plus_st
       S |-{stmt} (IF cond {{ stmt_if }} ELSE {{ stmt_else }}) => r, S''
 where "S |-{stmt} stmt => r , S'" := (eval_stmt stmt r S S').
 
-Inductive leq_base : HLPL_plus_state -> HLPL_plus_state -> Prop :=
+Inductive leq_base : state -> state -> Prop :=
 | Leq_MutBorrow_To_Ptr S l sp_loan sp_borrow (Hdisj : disj sp_loan sp_borrow)
     (HS_loan : get_node (S.[sp_loan]) = nloan^m(l))
     (HS_borrow : get_node (S.[sp_borrow]) = nborrow^m(l)) :
     leq_base (S.[sp_loan <- loc(l, S.[sp_borrow +++ [0] ])].[sp_borrow <- ptr(l)]) S.
 
 (** ** Well-formedness property. *)
-Record well_formed (S : HLPL_plus_state) : Prop := {
+Record well_formed (S : state) : Prop := {
   at_most_one_mut_borrow l : at_most_one_node (nborrow^m(l)) S;
   at_most_one_mut_loan l : at_most_one_node (nloan^m(l)) S;
   at_most_one_loc l : at_most_one_node (nloc(l)) S;
@@ -433,7 +433,7 @@ Record well_formed (S : HLPL_plus_state) : Prop := {
 Notation scount c S := (sweight (indicator c) S).
 
 (** To automate well-formedness proofs, we use an equivalent linear property. *)
-Record well_formed_alt (S : HLPL_plus_state) l : Prop := {
+Record well_formed_alt (S : state) l : Prop := {
   at_most_one_mut_borrow_alt : scount (nborrow^m(l)) S <= 1;
   no_mut_loan_loc_alt : scount (nloan^m(l)) S + scount (nloc(l)) S <= 1;
   no_mut_loan_ptr_alt : scount (nloan^m(l)) S > 0 -> scount (nptr(l)) S <= 0;
@@ -873,11 +873,11 @@ Proof.
 Qed.
 
 (* TODO: move in base.v *)
-Inductive well_formed_state_value : HLPL_plus_val * HLPL_plus_state -> Prop :=
+Inductive well_formed_state_value : value * state -> Prop :=
   | WF_vS v S (WF : forall a, fresh_anon S a -> well_formed (S,, a |-> v)) :
       well_formed_state_value (v, S).
 
-Inductive well_formed_alt_state_value : HLPL_plus_val * HLPL_plus_state -> loan_id -> Prop :=
+Inductive well_formed_alt_state_value : value * state -> loan_id -> Prop :=
   | WF_alt_vS v S l (WF : forall a, fresh_anon S a -> well_formed_alt (S,, a |-> v) l) :
       well_formed_alt_state_value (v, S) l.
 
@@ -1164,7 +1164,7 @@ Qed.
     [(v0, S0) < (v1, S1) < ... < (vn, Sn)].
     Then, we prove that for each [(vi, Si)], the value [vi] does not contain any loan. *)
 (* TODO: the name is really similar to leq_val_state_base. *)
-Definition leq_val_state_base' (vSl vSr : HLPL_plus_val * HLPL_plus_state) : Prop :=
+Definition leq_val_state_base' (vSl vSr : value * state) : Prop :=
   leq_val_state_base leq_base vSl vSr /\ not_contains_loan (fst vSr) /\ not_contains_loc (fst vSr).
 
 Lemma leq_base_does_not_insert_loan_loc vSl vSr :
@@ -1196,7 +1196,7 @@ Proof.
       destruct EQN as (_ & <-). auto with spath.
 Qed.
 
-Lemma leq_val_state_no_loan_right (vSl vSr : HLPL_plus_val * HLPL_plus_state) :
+Lemma leq_val_state_no_loan_right (vSl vSr : value * state) :
   (leq_val_state_base leq_base)^* vSl vSr -> not_contains_loan (fst vSr) -> not_contains_loc (fst vSr)
   -> leq_val_state_base'^* vSl vSr.
 Proof.
