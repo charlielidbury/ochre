@@ -31,7 +31,7 @@ Proof.
   - exact eval_stmt_r.
 Qed.
 
-Variant store_no_anon (p : place) : LLBC_sharp_val * LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+Variant store_no_anon (p : place) : value * state -> state -> Prop :=
 | Store_no_anon v S (sp : spath)
     (eval_p : S |-{p} p =>^{Mut} sp)
     (no_loan : not_contains_loan (S.[sp]))
@@ -450,7 +450,7 @@ Ltac simpl_state_eq :=
   end
 .
 
-Lemma simpl_state_rel (A : Type) (R : LLBC_sharp_state -> A -> Prop) a S S' :
+Lemma simpl_state_rel (A : Type) (R : state -> A -> Prop) a S S' :
   pretty_print_state S = S' -> R S' a -> R S a.
 Proof. rewrite pretty_print_state_correct. congruence. Qed.
 

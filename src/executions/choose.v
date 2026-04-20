@@ -62,7 +62,7 @@ Definition lz : loan_id := 3%positive.
 Definition A : positive := 1.
 
 (** The join state at the end of the conditional. *)
-Definition join_state : LLBC_sharp_state := {|
+Definition join_state : state := {|
   vars := {[
     x := loan^m(TInt, lx);
     y := loan^m(TInt, ly);

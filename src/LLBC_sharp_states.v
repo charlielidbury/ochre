@@ -22,7 +22,7 @@ Inductive LLBC_type :=
 .
 
 (** * Definition of LLBC## values and states. *)
-Inductive LLBC_sharp_val :=
+Inductive value :=
 | VBottom
 | VInt (n : nat) (* TODO: use Aeneas integer types? *)
 | VBool (b : bool)
@@ -33,13 +33,13 @@ Inductive LLBC_sharp_val :=
  * Probably we should remove all dynamic typing, and implement a static type checking, as well as a
  * well-typedness predicate and an invariance proof. *)
 | VMutLoan (ty : LLBC_type) (l : loan_id)
-| VMutBorrow (l : loan_id) (v : LLBC_sharp_val)
+| VMutBorrow (l : loan_id) (v : value)
 (* Note: symbolic values should be parameterized by a type, when we introduce other datatypes than
    integers. *)
 | VSymbolic (ty : LLBC_type)
 .
 
-Variant LLBC_sharp_nodes :=
+Variant nodes :=
 | NBottom
 | NInt (n : nat)
 | NBool (b : bool)
@@ -48,7 +48,7 @@ Variant LLBC_sharp_nodes :=
 | NSymbolic (ty : LLBC_type)
 .
 
-Instance EqDecision_LLBC_sharp_nodes : EqDecision LLBC_sharp_nodes.
+Instance EqDecision_nodes : EqDecision nodes.
 Proof. unfold RelDecision, Decision. repeat decide equality. Defined.
 
 Definition LLBC_sharp_arity c := match c with
@@ -93,7 +93,7 @@ Fixpoint LLBC_sharp_weight node_weight v :=
   | v => node_weight (LLBC_sharp_get_node v)
 end.
 
-Program Instance ValueLLBC_sharp : Value LLBC_sharp_val LLBC_sharp_nodes := {
+Program Instance ValueLLBC_sharp : Value value nodes := {
   arity := LLBC_sharp_arity;
   get_node := LLBC_sharp_get_node;
   children := LLBC_sharp_children;
@@ -118,16 +118,16 @@ Qed.
 Next Obligation. reflexivity. Qed.
 Next Obligation. intros ? []; cbn; lia. Qed.
 
-Record LLBC_sharp_state := {
-  vars : Pmap LLBC_sharp_val;
-  anons : Pmap LLBC_sharp_val;
-  abstractions : Pmap (Pmap LLBC_sharp_val);
+Record state := {
+  vars : Pmap value;
+  anons : Pmap value;
+  abstractions : Pmap (Pmap value);
 }.
 
 (** A symbolic execution abstracts all executions, from all branches. A "branching state" [B] is a partial map. It can associate a control-flow token [r] (break, continue, panic...) to symbolic state [S] that is more general than all the computations that terminate with [r]. This maps is partial, because if no computation terminates on [r], we have [lookup r B = None].
 
    Note: in the ICFP'24 article, Ho et al. propose a more general notion of branching state. These states are simply sets of pairs [(r, S)] (with [r] a control-flow token and [S] a symbolic state). This allows duplication, and it may be more practical for panic management. The following definition could change in the future. *)
-Definition branching_state := gmap flow_token LLBC_sharp_state.
+Definition branching_state := gmap flow_token state.
 
 Definition encode_var (x : var) :=
   encode (A := _ + positive * positive) (inl (encode (A := _ + anon) (inl x))).
@@ -146,7 +146,7 @@ Proof.
   rewrite !decode'_encode in H. congruence.
 Qed.
 
-Program Instance IsState : State LLBC_sharp_state LLBC_sharp_val := {
+Program Instance IsState : State state value := {
   get_map S := sum_maps (sum_maps (vars S) (anons S)) (flatten (abstractions S));
 
   (* The flatten function in not injective. For example, [R] and [R<[A := empty]>] have the same
@@ -279,11 +279,11 @@ Notation "'nbot'" := NBottom: llbc_sharp_scope.
 Notation "'nloan^m' ( ty , l )" := (NMutLoan ty l) : llbc_sharp_scope.
 Notation "'nborrow^m' ( l )" := (NMutBorrow l) : llbc_sharp_scope.
 
-(* Bind Scope llbc_sharp_scope with LLBC_sharp_val. *)
+(* Bind Scope llbc_sharp_scope with value. *)
 Open Scope llbc_sharp_scope.
 
 (** Definitions of LLBC## operations. *)
-Variant is_loan : LLBC_sharp_nodes -> Prop :=
+Variant is_loan : nodes -> Prop :=
 | IsLoan_MutLoan ty l : is_loan (nloan^m(ty, l)).
 Hint Constructors is_loan : spath.
 Definition not_contains_loan := not_value_contains is_loan.
@@ -294,7 +294,7 @@ Hint Extern 0 (~is_loan _) => intro; easy : spath.
 Lemma is_loan_valid S sp : is_loan (get_node (S.[sp])) -> valid_spath S sp.
 Proof. intros H. apply valid_get_node_sget_not_bot. destruct H; discriminate. Qed.
 
-Variant is_borrow : LLBC_sharp_nodes -> Prop :=
+Variant is_borrow : nodes -> Prop :=
 | IsLoan_MutBorrow l : is_borrow (nborrow^m(l)).
 Hint Constructors is_borrow : spath.
 Definition not_contains_borrow := not_value_contains is_borrow.
@@ -314,13 +314,13 @@ Proof.
 Qed.
 Hint Resolve not_contains_bot_valid : spath.
 
-Variant is_symbolic : LLBC_sharp_nodes -> Prop :=
+Variant is_symbolic : nodes -> Prop :=
 | IsSymbolic_Symbolic ty : is_symbolic (NSymbolic ty).
 Definition not_contains_symbolic v := (not_value_contains is_symbolic v).
 Hint Unfold not_contains_symbolic : spath.
 Hint Extern 0 (~is_symbolic _) => intro; easy : spath.
 
-Variant is_mut_borrow : LLBC_sharp_nodes -> Prop :=
+Variant is_mut_borrow : nodes -> Prop :=
 | IsMutBorrow_MutBorrow l : is_mut_borrow (nborrow^m(l)).
 Notation not_contains_outer_loan := (not_contains_outer is_mut_borrow is_loan).
 
@@ -351,7 +351,7 @@ Notation rename_mut_borrow_val v vp l := (v.[[vp <- borrow^m(l, v.[[vp ++ [0] ]]
   (vp in scope list_scope).
 
 (* [is_of_type ty v] asserts that the value v is initialized (not bot) and of type ty. *)
-Variant is_of_type : LLBC_type -> LLBC_sharp_val -> Prop :=
+Variant is_of_type : LLBC_type -> value -> Prop :=
 | Is_of_type_symbolic ty : is_of_type ty (VSymbolic ty)
 | Is_of_type_mut_loan ty l : is_of_type ty (loan^m(ty, l))
 | Is_of_type_integer n : is_of_type TInt (VInt n)
@@ -372,7 +372,7 @@ Definition store_compatible_types S p v :=
 (* [add_anons S A S'] : when we end an abstraction region A, we need to add its values as anonymous
  * binding in a state S. The property [add_anons S A S'] relates this state S and this
  * abstraction A to a state S' with anonymous bindings added. *)
-Variant add_anons : LLBC_sharp_state -> Pmap LLBC_sharp_val -> LLBC_sharp_state -> Prop :=
+Variant add_anons : state -> Pmap value -> state -> Prop :=
   | AddAnons S A anons' : union_maps (anons S) A anons' ->
       add_anons S A {|vars := vars S; anons := anons'; abstractions := abstractions S|}
 .
@@ -389,7 +389,7 @@ Notation is_fresh l S := (not_state_contains (is_loan_id l) S).
 Hint Extern 0 (~is_loan_id _ _) => unfold is_loan_id; cbn; congruence : spath.
 Hint Extern 0 (is_loan_id _ _) => reflexivity : spath.
 
-Inductive remove_loans A B : Pmap LLBC_sharp_val -> Pmap LLBC_sharp_val-> Prop :=
+Inductive remove_loans A B : Pmap value -> Pmap value-> Prop :=
   | Remove_nothing : remove_loans A B A B
   | Remove_MutLoan A' B' i j l ty (H : remove_loans A B A' B') :
       lookup i A' = Some (loan^m(ty, l)) ->
@@ -415,14 +415,14 @@ Definition rename_loan_id (m : loan_id_map) (l : loan_id) :=
   | None => l
   end.
 
-Definition rename_node (m : loan_id_map) (n : LLBC_sharp_nodes) :=
+Definition rename_node (m : loan_id_map) (n : nodes) :=
   match n with
   | nborrow^m(l) => nborrow^m(rename_loan_id m l)
   | nloan^m(ty, l) => nloan^m(ty, rename_loan_id m l)
   | _ => n
   end.
 
-Fixpoint rename_value (m : loan_id_map) (v : LLBC_sharp_val) :=
+Fixpoint rename_value (m : loan_id_map) (v : value) :=
   match v with
   | borrow^m(l, w) => borrow^m(rename_loan_id m l, rename_value m w)
   | loan^m(ty, l) => loan^m(ty, rename_loan_id m l)
@@ -861,7 +861,7 @@ Proof.
   - reflexivity.
 Qed.
 
-Definition equiv_val_state (vS0 vS1 : LLBC_sharp_val * LLBC_sharp_state) :=
+Definition equiv_val_state (vS0 vS1 : value * state) :=
   let (v0, S0) := vS0 in
   let (v1, S1) := vS1 in
   exists perm, is_state_equivalence perm S0 /\
@@ -1392,7 +1392,7 @@ Proof.
 Qed.
 
 (* An alternative definition of add_anon. *)
-Inductive add_anons' : LLBC_sharp_state -> Pmap LLBC_sharp_val -> LLBC_sharp_state -> Prop :=
+Inductive add_anons' : state -> Pmap value -> state -> Prop :=
   | AddAnons_empty S : add_anons' S empty S
   | AddAnons_insert S A S' a i v :
       lookup i A = None -> fresh_anon S a -> add_anons' (S,, a |-> v) A S' ->
@@ -1759,17 +1759,17 @@ Hint Rewrite vweight_mut_borrow : weight.
 
 (* We cannot automatically rewrite map_sum_empty. Is it because of typeclasses?
  * Thus, we crate an alternative. *)
-Lemma abstraction_sum_empty (weight : LLBC_sharp_val -> nat) : map_sum weight (M := Pmap) empty = 0.
+Lemma abstraction_sum_empty (weight : value -> nat) : map_sum weight (M := Pmap) empty = 0.
 Proof. apply map_sum_empty. Qed.
 Hint Rewrite abstraction_sum_empty : weight.
 
-Lemma abstraction_sum_insert weight i v (A : Pmap LLBC_sharp_val) :
+Lemma abstraction_sum_insert weight i v (A : Pmap value) :
   lookup i A = None -> map_sum weight (insert i v A) = weight v + map_sum weight A.
 Proof. apply map_sum_insert. Qed.
 Hint Rewrite abstraction_sum_insert using auto : weight.
 
 Lemma abstraction_sum_singleton weight i v :
-  map_sum weight (singletonM (M := Pmap LLBC_sharp_val) i v) = weight v.
+  map_sum weight (singletonM (M := Pmap value) i v) = weight v.
 Proof.
   unfold singletonM, map_singleton.
   rewrite abstraction_sum_insert, abstraction_sum_empty by apply lookup_empty. lia.
@@ -1847,7 +1847,7 @@ Proof.
 Qed.
 
 (* For an abstraction A, set the vpath p at index i to v. *)
-Definition abstraction_set j p v (A : Pmap LLBC_sharp_val) := alter (vset p v) j A.
+Definition abstraction_set j p v (A : Pmap value) := alter (vset p v) j A.
 
 Lemma eq_sset_add_abstraction S S' sp i j A w
   (fresh_i : fresh_abstraction S' i) (sp_in_abstraction : fst sp = encode_abstraction (i, j))
@@ -3002,7 +3002,7 @@ Corollary equiv_states_fresh_abstraction S S' i :
   equiv_states S S' -> fresh_abstraction S i -> fresh_abstraction S' i.
 Proof. intros (? & ? & ->). apply permutation_fresh_abstraction. Qed.
 
-Definition loan_set_abstraction (A : Pmap LLBC_sharp_val) : Pset :=
+Definition loan_set_abstraction (A : Pmap value) : Pset :=
   map_fold (fun _ v L => union (loan_set_val v) L) empty A.
 
 Lemma loan_set_abstraction_union A B (H : map_disjoint A B) :

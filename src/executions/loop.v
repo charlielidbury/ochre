@@ -84,7 +84,7 @@ Definition l2 : loan_id := 3%positive.
 Definition A : positive := 1.
 
 (** The loop invariant. *)
-Definition S_inv : LLBC_sharp_state := {|
+Definition S_inv : state := {|
   vars := {[
     a := loan^m(TInt, l0);
     b := borrow^m(l1, VSymbolic TInt);

@@ -4,7 +4,7 @@ Require Import base OptionMonad PathToSubtree SimulationUtils lang.
 Require Import LLBC_sharp_states LLBC_sharp_relations.
 
 (** * Semantics of LLBC## *)
-Inductive eval_proj (S : LLBC_sharp_state) perm : proj -> spath -> spath -> Prop :=
+Inductive eval_proj (S : state) perm : proj -> spath -> spath -> Prop :=
 (* Coresponds to R-Deref-MutBorrow and W-Deref-MutBorrow in the article. *)
 | E_Deref_MutBorrow q l
     (Hperm : perm <> Mov)
@@ -13,7 +13,7 @@ Inductive eval_proj (S : LLBC_sharp_state) perm : proj -> spath -> spath -> Prop
 .
 
 (* TODO: eval_path represents a computation, that evaluates and accumulate the result over [...] *)
-Inductive eval_path (S : LLBC_sharp_state) perm : path -> spath -> spath -> Prop :=
+Inductive eval_path (S : state) perm : path -> spath -> spath -> Prop :=
 (* Corresponds to R-Base and W-Base in the article. *)
 | E_Path_Nil pi : eval_path S perm [] pi pi
 | E_Path_Proj proj P p q r
@@ -35,7 +35,7 @@ Proof.
     + destruct (S.[q]); inversion get_q. econstructor; reflexivity || constructor.
 Qed.
 
-Lemma eval_path_valid (s : LLBC_sharp_state) P perm q r
+Lemma eval_path_valid (s : state) P perm q r
   (valid_q : valid_spath s q) (eval_q_r : eval_path s perm P q r) :
   valid_spath s r.
 Proof.
@@ -50,7 +50,7 @@ Hint Resolve eval_place_valid : spath.
 
 Definition copiable (ty : LLBC_type) := True.
 
-Inductive copy_val : LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
+Inductive copy_val : value -> value -> Prop :=
 | Copy_val_int (n : nat) : copy_val (VInt n) (VInt n)
 | Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 | Copy_val_symbolic ty : copiable ty ->
@@ -59,7 +59,7 @@ Inductive copy_val : LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
 
 Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 
-Variant eval_operand : operand -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
+Variant eval_operand : operand -> state -> (value * state) -> Prop :=
 | E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_BoolConst S b : S |-{op} Const (BoolConst b) => (VBool b, S)
 | E_Copy S (p : place) pi v
@@ -72,7 +72,7 @@ where "S |-{op} op => r" := (eval_operand op S r) : llbc_sharp_scope.
 
 Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
-Variant eval_binary_op : BinOp -> LLBC_sharp_val -> LLBC_sharp_val -> LLBC_sharp_val -> Prop :=
+Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
   | E_Add_int_int m n :
       eval_binary_op BAdd (VInt m) (VInt n) (VInt (m + n))
   | E_Add_int_symbolic m :
@@ -91,7 +91,7 @@ Variant eval_binary_op : BinOp -> LLBC_sharp_val -> LLBC_sharp_val -> LLBC_sharp
       eval_binary_op BLe (VSymbolic TInt) (VSymbolic TInt) (VSymbolic TBool)
 .
 
-Variant eval_rvalue : rvalue -> LLBC_sharp_state -> (LLBC_sharp_val * LLBC_sharp_state) -> Prop :=
+Variant eval_rvalue : rvalue -> state -> (value * state) -> Prop :=
   | E_Use op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
   | E_BinOp S S' S'' binop op_0 op_1 v0 v1 w
@@ -112,7 +112,7 @@ where "S |-{rv} rv => r" := (eval_rvalue rv S r) : llbc_sharp_scope.
 (* Note: we use the variable names i' and j' instead of i and j that are used for leq_state_base.
  * We are also using the name A' instead of A, B or C for the region abstractions.
  *)
-Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+Variant reorg : state -> state -> Prop :=
 (* Ends a borrow when it's not in an abstraction: *)
 | Reorg_End_MutBorrow S (p q : spath) l ty
     (get_loan : get_node (S.[p]) = nloan^m(ty, l)) (get_borrow : get_node (S.[q]) = nborrow^m(l))
@@ -140,7 +140,7 @@ Variant reorg : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
 
 (* This operation realizes the second half of an assignment p <- rv, once the rvalue v has been
  * evaluated to a pair (v, S). *)
-Variant store (p : place) : LLBC_sharp_val * LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+Variant store (p : place) : value * state -> state -> Prop :=
 | Store v S (sp : spath) (a : anon)
   (eval_p : S |-{p} p =>^{Mut} sp)
   (no_outer_loan : not_contains_outer_loan (S.[sp]))
@@ -154,7 +154,7 @@ Reserved Notation "S  |-{stmt}  stmt  ~>{ n }  B" (at level 50).
 (** We simply need to rename the tags of each branch. *)
 Definition end_loop (B : branching_state) : branching_state := pkmap end_loop_tag B.
 
-Inductive LLBC_plus_eval_stmt : nat -> statement -> LLBC_sharp_state -> branching_state -> Prop :=
+Inductive LLBC_plus_eval_stmt : nat -> statement -> state -> branching_state -> Prop :=
   | LLBC_plus_E_Step_Zero s S : S |-{stmt} s ~>{0} empty
   | LLBC_plus_E_Nop n S : S |-{stmt} Nop ~>{1 + n} {[rUnit := S]}
   | LLBC_plus_E_Panic n S : S |-{stmt} Panic ~>{1 + n} {[rPanic := S]}
@@ -208,7 +208,7 @@ where "S |-{stmt} stmt ~>{ n } B" := (LLBC_plus_eval_stmt n stmt S B) : llbc_sha
 
 Global Reserved Notation "S  |-#  stmt  ~>  B" (at level 50).
 
-Inductive LLBC_sharp_eval_stmt : statement -> LLBC_sharp_state -> branching_state -> Prop :=
+Inductive LLBC_sharp_eval_stmt : statement -> state -> branching_state -> Prop :=
   | LLBC_sharp_E_Nop S : S |-# Nop ~> {[rUnit := S]}
   | LLBC_sharp_E_Panic S : S |-# Panic ~> {[rPanic := S]}
   | LLBC_sharp_E_Break S : S |-# Break ~> {[rBreak := S]}

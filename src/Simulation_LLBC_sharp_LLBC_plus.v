@@ -1047,7 +1047,7 @@ Proof.
   - process_state_eq. left. split; [reflexivity | ]. constructor. assumption.
 Qed.
 
-Definition leq_integer_state (vSl vSr : LLBC_sharp_val * LLBC_sharp_state) :=
+Definition leq_integer_state (vSl vSr : value * state) :=
   let (vl, Sl) := vSl in
   let (vr, Sr) := vSr in
   (vl = vr \/ is_of_type TInt vl /\ not_contains_loan vl /\ vr = VSymbolic TInt) /\ leq_state_base^* Sl Sr.
@@ -2122,7 +2122,7 @@ Proof.
   eapply fresh_l; [ | rewrite get_borrow; reflexivity]. validity.
 Qed.
 
-Inductive add_anonymous_bots : nat -> LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+Inductive add_anonymous_bots : nat -> state -> state -> Prop :=
   | Add_no_bots S : add_anonymous_bots 0 S S
   | Add_anonymous_bot n S a S' :
       add_anonymous_bots n S S' -> fresh_anon S' a ->
@@ -2259,7 +2259,7 @@ Proof.
   autorewrite with spath. auto.
 Qed.
 
-Lemma not_contains_loan_abstraction_alter (A : Pmap LLBC_sharp_val) j p v w :
+Lemma not_contains_loan_abstraction_alter (A : Pmap value) j p v w :
   lookup j A = Some v ->
   not_contains_loan (v.[[p]]) ->
   map_Forall (fun _ => not_contains_loan) (alter (vset p w) j A) ->
@@ -3065,7 +3065,7 @@ Ltac execution_join_state :=
      - sigma_{A + B}
  *)
 (* TODO: rewrite the lemma [leq_val_state_integer] accordingly. *)
-Definition leq_boolean_state leq (vSl vSr : LLBC_sharp_val * LLBC_sharp_state) :=
+Definition leq_boolean_state leq (vSl vSr : value * state) :=
   let (vl, Sl) := vSl in
   let (vr, Sr) := vSr in
   (vl = vr \/ is_of_type TBool vl /\ not_contains_loan vl /\ vr = VSymbolic TBool) /\

@@ -8,7 +8,7 @@ Require Import base OptionMonad PathToSubtree SimulationUtils lang LLBC_sharp_st
  * - borrow^m l0 (loan^m l1)
  * Consequently, a single region abstraction is created.
  *)
-Variant to_abs : LLBC_sharp_val -> Pmap LLBC_sharp_val -> Prop :=
+Variant to_abs : value -> Pmap value -> Prop :=
 | ToAbs_MutReborrow l0 l1 kb kl ty (Hk : kb <> kl) :
     to_abs (borrow^m(l0, loan^m(ty, l1)))
            ({[kb := (borrow^m(l0, VSymbolic ty)); kl := loan^m(ty, l1)]})%stdpp
@@ -20,7 +20,7 @@ Variant to_abs : LLBC_sharp_val -> Pmap LLBC_sharp_val -> Prop :=
 Definition measure S := sweight (fun _ => 1) S + size (abstractions S).
 Notation abs_measure S := (map_sum (vweight (fun _ => 1)) S).
 
-Variant leq_state_base_n : nat -> LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+Variant leq_state_base_n : nat -> state -> state -> Prop :=
 | Leq_ToSymbolic_n S sp ty (Htype : is_of_type ty (S.[sp]))
     (no_loan : not_contains_loan (S.[sp])) (no_borrow : not_contains_borrow (S.[sp])) :
     leq_state_base_n (vweight (fun _ => 1) (S.[sp])) S (S.[sp <- VSymbolic ty])
@@ -55,7 +55,7 @@ Variant leq_state_base_n : nat -> LLBC_sharp_state -> LLBC_sharp_state -> Prop :
     (sp_not_in_abstraction : not_in_abstraction sp)
     (Htype : is_of_type ty (S.[sp])) :
     leq_state_base_n 0 S (S.[sp <- loan^m(ty, l')],, a |-> borrow^m(l', S.[sp]))
-| Leq_Reborrow_MutBorrow_n (S : LLBC_sharp_state) (sp : spath) (l0 l1 : loan_id) (a : anon) ty
+| Leq_Reborrow_MutBorrow_n (S : state) (sp : spath) (l0 l1 : loan_id) (a : anon) ty
     (fresh_l1 : is_fresh l1 S)
     (fresh_a : fresh_anon S a)
     (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0))
@@ -73,7 +73,7 @@ Variant leq_state_base_n : nat -> LLBC_sharp_state -> LLBC_sharp_state -> Prop :
 (* Note: the definition is duplicated in [leq_state_base_n].
  * Perhaps we should only define leq_state_base_n, and define [leq_state_base Sl Sr] as
  * [exists n, leq_state_base_n n Sl Sr]. *)
-Variant leq_state_base : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
+Variant leq_state_base : state -> state -> Prop :=
 (* Contrary to the article, symbolic values should be typed. Thus, only an integer can be converted
  * to a symbolic value for the moment. *)
 | Leq_ToSymbolic S sp ty (Htype : is_of_type ty (S.[sp]))
@@ -111,7 +111,7 @@ Variant leq_state_base : LLBC_sharp_state -> LLBC_sharp_state -> Prop :=
     (sp_not_in_abstraction : not_in_abstraction sp)
     (Htype : is_of_type ty (S.[sp])) :
     leq_state_base S (S.[sp <- loan^m(ty, l')],, a |-> borrow^m(l', S.[sp]))
-| Leq_Reborrow_MutBorrow (S : LLBC_sharp_state) (sp : spath) (l0 l1 : loan_id) (a : anon) ty
+| Leq_Reborrow_MutBorrow (S : state) (sp : spath) (l0 l1 : loan_id) (a : anon) ty
     (fresh_l1 : is_fresh l1 S)
     (fresh_a : fresh_anon S a)
     (get_borrow_l0 : get_node (S.[sp]) = nborrow^m(l0))
@@ -481,7 +481,7 @@ Proof.
     apply Leq_AnonValue. auto with spath.
 Qed.
 
-Definition equiv_val_state_up_to_loan_renaming (vS0 vS1 : LLBC_sharp_val * LLBC_sharp_state) :=
+Definition equiv_val_state_up_to_loan_renaming (vS0 vS1 : value * state) :=
   let (v0, S0) := vS0 in
   let (v1, S1) := vS1 in
   exists perm, valid_loan_id_names perm S0 /\
@@ -710,7 +710,7 @@ Qed.
 (** A branching state [Br] is more general than a branching state [Bl] if for any token [r], if [Bl] maps a control-flow token [r] to a symbolic state [Sl] ([lookup r Bl = Some Sl]), then [Br] maps [r] to a more general state [Sr] ([lookup r Br = Some Sr] and [leq_symbolic Sl Sr]).
 
    Note that the domain of [Br] can be bigger than the domain of [Bl]. There can be computations that terminate on a token [r] that are abstracted by [Bl] but not [Br]. *)
-Variant leq_option_symbolic : relation (option LLBC_sharp_state) :=
+Variant leq_option_symbolic : relation (option state) :=
   | LeqNone oSr : leq_option_symbolic None oSr
   | LeqSome Sl Sr : leq_symbolic Sl Sr -> leq_option_symbolic (Some Sl) (Some Sr).
 
@@ -744,7 +744,7 @@ Qed.
    The second condition is here to ensure that LLBC is a stable subset of LLBC#. In particular, the join of a state [B = {[r := S]}] and the empty state can only be [B].
  *)
 Variant option_is_join :
-  option LLBC_sharp_state -> option LLBC_sharp_state -> option LLBC_sharp_state -> Prop :=
+  option state -> option state -> option state -> Prop :=
   | UpperBound_None_None : option_is_join None None None
   | UpperBound_Some_None S0 : option_is_join (Some S0) None (Some S0)
   | UpperBound_None_Some S1 : option_is_join None (Some S1) (Some S1)
@@ -786,7 +786,7 @@ Hint Resolve leq_is_join_r : spath.
 (** If [Bup] is an upper bound of two states [B0] and [B1], it is not necessarily a join. Indeed, there may exist tokens [r] such that [lookup r B0] (respectively [lookup r B1]) is None, but [lookup r Bup] is different from [lookup r B1] (respectively [lookup r B0]).
 
    We need to "compute" a join by choosing for each tag [r] a value among [lookup r B0],  [lookup r B1] and [lookup r Bup]. *)
-Definition compute_option_join (oSl oSr : option LLBC_sharp_state) default :=
+Definition compute_option_join (oSl oSr : option state) default :=
   match oSl, oSr with
   | None, _ => oSr
   | _, None => oSl
