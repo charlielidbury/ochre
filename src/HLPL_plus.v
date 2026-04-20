@@ -162,18 +162,6 @@ Proof. unfold get_map, encode_var. cbn. apply sum_maps_lookup_l. Qed.
 Declare Scope hlpl_plus_scope.
 Delimit Scope hlpl_plus_scope with hlpl_plus.
 
-(* TODO: set every priority to 0? *)
-Reserved Notation "'loan^m' ( l )" (at level 0).
-Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next level).
-Reserved Notation "'loc' ( l , v )" (at level 0, l at next level, v at next level).
-Reserved Notation "'ptr' ( l )" (at level 0).
-
-Reserved Notation "'nbot'" (at level 0).
-Reserved Notation "'nloan^m'( l )" (at level 0).
-Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
-Reserved Notation "'nloc' ( l , )" (at level 0, l at next level).
-Reserved Notation "'nptr' ( l )" (at level 0).
-
 (* Notation "'bot'" := VBottom: hlpl_plus_scope. *)
 Notation "'loan^m' ( l )" := (VMutLoan l) : hlpl_plus_scope.
 Notation "'borrow^m' ( l  , v )" := (VMutBorrow l v) : hlpl_plus_scope.
@@ -321,8 +309,6 @@ Inductive copy_val : value -> value -> Prop :=
 | Copy_ptr l : copy_val (ptr(l)) (ptr(l))
 | Copy_loc l v w : copy_val v w -> copy_val (loc(l, v)) w.
 
-Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
-
 Variant eval_operand : operand -> state -> (value * state) -> Prop :=
 | E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_BoolConst S b : S |-{op} Const (BoolConst b) => (VBool b, S)
@@ -333,8 +319,6 @@ Variant eval_operand : operand -> state -> (value * state) -> Prop :=
     not_contains_loan (S.[pi]) -> not_contains_loc (S.[pi]) -> not_contains_bot (S.[pi]) ->
     S |-{op} Move p => (S.[pi], S.[pi <- bot])
 where "S |-{op} op => r" := (eval_operand op S r).
-
-Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
   | E_Add m n :
@@ -389,10 +373,7 @@ Variant store (p : place) : value * state -> state -> Prop :=
   fresh_anon S a -> store p (v, S) (S.[sp <- v],, a |-> S.[sp])
 .
 
-(* When introducing non-terminating features (loops or recursivity), the signature of the relation
-   is going to be:
-   HLPL_plus_state -> statement -> nat -> Option (flow_token * HLPL_plus_state) -> Prop
-*)
+(* TODO: take fuel into account and delete this notation. *)
 Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
 
 Inductive eval_stmt : statement -> flow_token -> state -> state -> Prop :=

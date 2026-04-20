@@ -55,6 +55,11 @@ Inductive statement :=
 .
 
 
+(* These definitions are not part of the grammar, but they are common for several (all?) semantics of the LLBC. *)
+Definition loan_id := positive.
+
+Variant permission := Imm | Mut | Mov.
+
 (* TODO: notation scope. *)
 (* TODO: this notation conflicts with a stdpp notation. *)
 Notation "s0 ;; s1" := (Seq s0 s1)
@@ -65,17 +70,23 @@ Notation "'IF'  op  {{  stmt_if  }}  'ELSE'  {{  stmt_else  }}" := (SwitchBool o
   (at level 90).
 Notation "'LOOP'  {{  body  }}" := (Loop body) (at level 90).
 
-Local Open Scope positive_scope.
-Check (&mut (1, nil)).
-Check (ASSIGN (2, nil) <- &mut (1, nil)).
-Check (ASSIGN (1, nil) <- Use (Const (IntConst 3))).
-Check (ASSIGN (1, nil) <- Use (Const (IntConst 3)) ;; ((ASSIGN (2, nil) <- &mut (1, nil)) ;; Panic)).
-Check (IF (Const (BoolConst true)) {{ Panic }} ELSE {{ Nop }}).
+Reserved Notation "'loan^m' ( l )" (at level 0).
+Reserved Notation "'loan^m' ( ty , l )" (at level 0).
+Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next level).
+Reserved Notation "'loc' ( l , v )" (at level 0, l at next level, v at next level).
+Reserved Notation "'ptr' ( l )" (at level 0).
 
-(* These definitions are not part of the grammar, but they are common for several (all?) semantics of the LLBC. *)
-Definition loan_id := positive.
+Reserved Notation "'nbot'" (at level 0).
+Reserved Notation "'nloan^m'( ty , l )" (at level 0).
+Reserved Notation "'nloan^m'( l )" (at level 0).
+Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
+Reserved Notation "'nloc' ( l )" (at level 0, l at next level).
+Reserved Notation "'nptr' ( l )" (at level 0).
 
-Variant permission := Imm | Mut | Mov.
+Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
+Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
+Reserved Notation "S  |-{stmt}  stmt  ~>{ n }  B" (at level 50).
+Global Reserved Notation "S  |-#  stmt  ~>  B" (at level 50).
 
 (** LLBC is a langage with non-local control-flow management, with the << break >>, << continue >>, << panic >> and << return >> keywords. As such, statements yield a *control-flow token*, that determines the continuation of the computation. *)
 Variant flow_token : Set :=

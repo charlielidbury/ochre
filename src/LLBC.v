@@ -140,19 +140,6 @@ Next Obligation. intros. unfold encode_anon. reflexivity. Qed.
 Declare Scope llbc_scope.
 Delimit Scope llbc_scope with llbc.
 
-(* TODO: move? *)
-(* TODO: set every priority to 0? *)
-Reserved Notation "'loan^m' ( l )" (at level 0).
-Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next level).
-Reserved Notation "'loc' ( l , v )" (at level 0, l at next level, v at next level). (* TODO: unused in LLBC.v *)
-Reserved Notation "'ptr' ( l )" (at level 0). (* TODO: unused in LLBC.v *)
-
-Reserved Notation "'nbot'" (at level 0).
-Reserved Notation "'nloan^m'( l )" (at level 0).
-Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
-Reserved Notation "'nloc' ( l , )" (at level 0, l at next level). (* TODO: unused in LLBC.v *)
-Reserved Notation "'nptr' ( l )" (at level 0). (* TODO: unused in LLBC.v *)
-
 (* Notation "'bot'" := VBottom: llbc_scope. *)
 Notation "'loan^m' ( l )" := (VMutLoan l) : llbc_scope.
 Notation "'borrow^m' ( l  , v )" := (VMutBorrow l v) : llbc_scope.
@@ -231,8 +218,6 @@ Inductive copy_val : value -> value -> Prop :=
 | Copy_val_bool (b : bool) : copy_val (VBool b) (VBool b)
 .
 
-Local Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
-
 Variant eval_operand : operand -> state -> (value * state) -> Prop :=
 | E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_BoolConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
@@ -252,7 +237,6 @@ Definition get_loan_id c :=
   end.
 
 Notation is_fresh l S := (not_state_contains (fun c => get_loan_id c = Some l) S).
-Local Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
   | E_Add m n :
@@ -293,10 +277,7 @@ Variant store (p : place) : value * state -> state -> Prop :=
   fresh_anon S a -> store p (v, S) (S.[sp <- v],, a |-> S.[sp])
 .
 
-(* When introducing non-terminating features (loops or recursivity), the signature of the relation
-   is going to be:
-   LLBC_state -> statement -> nat -> Option (flow_token * LLBC_state) -> Prop
-*)
+(* TODO: take fuel into account and delete this notation. *)
 Reserved Notation "S  |-{stmt}  stmt  =>  r , S'" (at level 50).
 
 Inductive eval_stmt : statement -> flow_token -> state -> state -> Prop :=

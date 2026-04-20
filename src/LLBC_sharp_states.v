@@ -260,17 +260,6 @@ Qed.
 Declare Scope llbc_sharp_scope.
 Delimit Scope llbc_sharp_scope with llbc_sharp.
 
-(* TODO: move? *)
-(* TODO: set every priority to 0? *)
-Reserved Notation "'loan^m' ( ty , l )" (at level 0).
-Reserved Notation "'borrow^m' ( l , v )" (at level 0, l at next level, v at next level).
-
-Reserved Notation "'nbot'" (at level 0).
-Reserved Notation "'nloan^m'( ty , l )" (at level 0).
-Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
-Reserved Notation "'nloc' ( l , )" (at level 0, l at next level). (* TODO: unused in LLBC_sharp.v *)
-Reserved Notation "'nptr' ( l )" (at level 0). (* TODO: unused in LLBC_sharp.v *)
-
 (* Notation "'bot'" := VBottom: llbc_sharp_scope. *)
 Notation "'loan^m' ( ty , l )" := (VMutLoan ty l) : llbc_sharp_scope.
 Notation "'borrow^m' ( l  , v )" := (VMutBorrow l v) : llbc_sharp_scope.

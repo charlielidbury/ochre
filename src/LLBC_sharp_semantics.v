@@ -57,8 +57,6 @@ Inductive copy_val : value -> value -> Prop :=
     copy_val (VSymbolic ty) (VSymbolic ty)
 .
 
-Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
-
 Variant eval_operand : operand -> state -> (value * state) -> Prop :=
 | E_IntConst S n : S |-{op} Const (IntConst n) => (VInt n, S)
 | E_BoolConst S b : S |-{op} Const (BoolConst b) => (VBool b, S)
@@ -69,8 +67,6 @@ Variant eval_operand : operand -> state -> (value * state) -> Prop :=
     (move_no_loan : not_contains_loan (S.[pi])) (move_no_bot : not_contains_bot (S.[pi])) :
     S |-{op} Move p => (S.[pi], S.[pi <- bot])
 where "S |-{op} op => r" := (eval_operand op S r) : llbc_sharp_scope.
-
-Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 
 Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
   | E_Add_int_int m n :
@@ -148,8 +144,6 @@ Variant store (p : place) : value * state -> state -> Prop :=
   fresh_anon S a -> store p (v, S) (S.[sp <- v],, a |-> S.[sp])
 .
 
-Reserved Notation "S  |-{stmt}  stmt  ~>{ n }  B" (at level 50).
-
 (** Turning the state at the end of the last iteration of the loop into the state after the loop. *)
 (** We simply need to rename the tags of each branch. *)
 Definition end_loop (B : branching_state) : branching_state := pkmap end_loop_tag B.
@@ -205,8 +199,6 @@ Inductive LLBC_plus_eval_stmt : nat -> statement -> state -> branching_state -> 
       (His_join : is_join (end_loop (delete rContinue B1)) B2 Bend) :
       S |-{stmt} (LOOP {{ body }}) ~>{1 + n} Bend
 where "S |-{stmt} stmt ~>{ n } B" := (LLBC_plus_eval_stmt n stmt S B) : llbc_sharp_scope.
-
-Global Reserved Notation "S  |-#  stmt  ~>  B" (at level 50).
 
 Inductive LLBC_sharp_eval_stmt : statement -> state -> branching_state -> Prop :=
   | LLBC_sharp_E_Nop S : S |-# Nop ~> {[rUnit := S]}
