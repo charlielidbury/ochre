@@ -1043,6 +1043,42 @@ theorem Subtype'.shift_above {S Γ a b} (n : Nat)
     simp only [Expr.shift]
     exact .asc_R (ih hS hΓ)
 
+/-- A trivial consequence of `Subtype'.shift_above`: when both
+endpoints are already closed at `|Γ|`, the shift is the
+identity so the derivation is preserved without inspection.
+
+This is the *useful* specialisation for top-level uses
+(closed terms under empty context) — where the `.hyp` case
+of `shift_above` needs its `wellClosed`/`wellFormed` proofs,
+this direct form just rewrites via `shift_of_closedAt` and
+returns `h` unchanged.
+
+The `Equiv.shift` nil-Γ case is exactly this form: `e₁`, `e₂`
+are closed-at-0 in all observed callers (substituends in
+`concEval_equiv` come from `concEval` of closed terms), so a
+closedness-carrying variant of `Equiv` would make `Equiv.shift`
+trivially provable via this helper. -/
+theorem Subtype'.shift_above_closed {S Γ a b} (n : Nat)
+    (ha : a.closedAt Γ.length = true)
+    (hb : b.closedAt Γ.length = true)
+    (h : Subtype' S Γ a b) :
+    Subtype' S Γ (a.shift n Γ.length) (b.shift n Γ.length) := by
+  rw [Expr.shift_of_closedAt ha n (Nat.le_refl _),
+      Expr.shift_of_closedAt hb n (Nat.le_refl _)]
+  exact h
+
+/-- Specialisation of `shift_above_closed` at `Γ = []`: closed
+terms have trivial shift. This is the theorem `Equiv.shift`'s
+nil-Γ case reduces to, given a closedness-carrying variant of
+`Equiv`. -/
+theorem Subtype'.shift_nil_closed {S a b} (n c : Nat)
+    (ha : a.closedAt 0 = true) (hb : b.closedAt 0 = true)
+    (h : Subtype' S [] a b) :
+    Subtype' S [] (a.shift n c) (b.shift n c) := by
+  rw [Expr.shift_of_closedAt ha n (Nat.zero_le _),
+      Expr.shift_of_closedAt hb n (Nat.zero_le _)]
+  exact h
+
 /-! ### Algorithmic-checker properties and known issues
 
 **Transitivity verified** for `NbE.subCheck` by exhaustive testing on small
