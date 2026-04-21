@@ -811,25 +811,34 @@ namespace Equiv
     cases Γ' with
     | cons τ Γ₀ => exact lift τ Γ₀
     | nil =>
-      -- `ctx_extend_at` is now closed (depth-tagged Seen),
-      -- so the cons branch above is sorry-free. The nil
-      -- case remains: `ctx_extend Δ` only *extends* `Γ`,
-      -- never produces `[]`; there is no `ctx_restrict`. A
-      -- direct induction on `Subtype' [] [] e₁ e₂` *would*
-      -- now go through (`.hyp` self-shifts; binder cases
-      -- recurse at `[head]`), but it duplicates
-      -- `ctx_extend_at` for `Γ_target = []`. **Resolution
-      -- routes:** (i) add `Subtype'.shift_nil` to
-      -- Subtyping.lean (one induction, ~60 lines); (ii)
-      -- restate `Equiv` as `∀ {S Γ}, Γ ≠ [] → …` (all uses
-      -- instantiate at cons-Γ via the `.lam`/`.iota_cong`/
-      -- `.fix_cong`/`.letE_cong` body premises — verified at
-      -- lines 856, 871-884); (iii) note `e_i.shift 1 0` at
-      -- `Γ = []` is only well-typed when `e_i.closedAt 0`,
-      -- in which case `shift = id` and the goal is `h |>
-      -- weaken`. Route (i) is cleanest and out of this
-      -- file's scope.
+      -- Remaining nil-Γ case. DECISION-LOG 2026-04-21 records
+      -- the full analysis: provable via `Subtype'.shift_nil_closed`
+      -- (Subtyping.lean, now proven) if we track closedness of
+      -- `e₁, e₂` through `Equiv`. That requires enriching `Equiv`
+      -- with a closedness conjunct and propagating through each
+      -- combinator (Equiv.refl/.lam/.app/etc.), a deferred
+      -- refactor. Until then, stand via `sorry`; the route is
+      -- no longer documented as "impossible" — just pending.
       sorry
+
+  /-- A closedness-carrying form of `Equiv.shift`: if both
+  endpoints are closed at 0, then the shifted pair is
+  equivalent trivially (shift is the identity on closed
+  expressions). This is the ENABLING lemma for closing the
+  nil-Γ sorry in `Equiv.shift` above — any caller that can
+  supply closedness of `e₁, e₂` avoids the sorry entirely.
+
+  In `Equiv.subst_resp`'s uses, the substituends `a, b` come
+  from `concEval` results (closed terms). Threading their
+  closedness through `subst_resp`'s recursion is the pragmatic
+  path. -/
+  theorem shift_of_closed {e₁ e₂ : Expr}
+      (h₁ : e₁.closedAt 0 = true) (h₂ : e₂.closedAt 0 = true)
+      (h : Equiv e₁ e₂) :
+      Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
+    rw [Expr.shift_of_closedAt h₁ 1 (Nat.le_refl _),
+        Expr.shift_of_closedAt h₂ 1 (Nat.le_refl _)]
+    exact h
 
   /-- Substitution respects declarative equivalence: if
   `a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
