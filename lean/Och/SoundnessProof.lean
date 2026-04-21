@@ -2743,8 +2743,13 @@ theorem SubN_to_Subtype'
     S Γ nA nB h) hS hΓ ha hb
 
 /-- `SynthN`'s bridge: a neutral inhabits its synthesised
-type. Same recursor application; this entry just projects
-the `MS` motive. -/
+type. A direct induction on `h`; the `.var` case closes by
+the same `quote_depth_shift_n` + `Subtype'.bvar` chain as
+the nested `SynthN.var` case inside `SubN_to_Subtype'`. The
+remaining cases (`.app`, `.stuckRec*`, `.stuckRec*Ann`) all
+require `quote_open_subst` for the result-type quote and are
+deferred in lock-step with `SubN_to_Subtype'`'s closure-opening
+cases. -/
 theorem SynthN_to_Subtype'
     {Γ n τ} (h : SynthN Γ n τ)
     {Se Γe ne τe}
@@ -2752,13 +2757,21 @@ theorem SynthN_to_Subtype'
     (hn : quoteNeutral fuelω Γ.size n = some ne)
     (hτ : quote fuelω Γ.size τ = some τe) :
     Subtype' Se Γe ne τe := by
-  -- Reuse the SubN bridge's recursor application by going
-  -- through a trivial SubN derivation isn't possible; just
-  -- call the recursor directly here too. For now, sorried —
-  -- it's the same 24 cases as above with the MS motive
-  -- projected. Once `SubN_to_Subtype'` is fully closed, this
-  -- becomes a copy with `@SynthN.rec` instead of `@SubN.rec`.
-  sorry
+  cases h with
+  | @var Γ k τ hk =>
+    -- Identical to `SubN_to_Subtype'`'s SynthN.var handler.
+    obtain ⟨hkd, hne⟩ := quoteNeutral_var hn
+    subst hne
+    obtain ⟨τe', hget, hqk⟩ := hΓ.2 k τ hk
+    have hqd := quote_depth_shift_n (Nat.le_of_lt hkd) hqk
+    rw [hτ] at hqd; injection hqd with heq
+    rw [heq, show Γ.size - k = Γ.size - 1 - k + 1 from by omega]
+    exact .bvar hget
+  | app _ _ => sorry
+  | stuckRecFix _ _ => sorry
+  | stuckRecIota _ _ => sorry
+  | stuckRecFixAnn _ => sorry
+  | stuckRecIotaAnn _ => sorry
 
 /-- Bridge to the Expr-level relation. Each `SubV` constructor
 maps to a `Subtype'` constructor on the quoted forms.
@@ -2774,21 +2787,53 @@ theorem SubV_to_Subtype'
     (ha : quote fuelω Γ.size a = some ae)
     (hb : quote fuelω Γ.size b = some be) :
     Subtype' Se Γe ae be := by
-  -- Same recursor application as `SubN_to_Subtype'`, but
-  -- projecting the `MV` motive at the end (`@SubV.rec`
-  -- instead of `@SubN.rec`). The 24 case-handlers are
-  -- identical; rather than duplicate ~150 lines, this
-  -- delegates to a single shared application once the
-  -- closure-opening cases close. Until then, sorried with
-  -- the per-case status mirroring `SubN_to_Subtype'`:
-  --   PROVEN: hyp, refl, top, neutral_struct (full), SubN.var,
-  --           SubN.app, SubN.stuckRec, neutral_ascent (mod
-  --           quote-totality)
-  --   GATED on eval_unf_equiv: lam, iota_struct, fix_struct,
-  --           stuckRec_struct, iota_intro, unfold_fix_R/L,
-  --           unfold_iota_L, revapp_R/L, SynthN.app/stuckRec*
-  --   GATED on quote-shift: SynthN.var
-  sorry
+  -- Direct case-split on `h` (mutual inductive, so `induction`
+  -- is not available). The structural guard cases (`hyp`,
+  -- `refl`, `top`, `neutral_struct`) close directly here,
+  -- mirroring the handlers in `SubN_to_Subtype'`. The binder
+  -- and closure-opening cases depend on realisability
+  -- threading (tier 2 per SUGGESTIONS.md); `neutral_ascent`
+  -- needs quote-totality for the synthesised intermediate
+  -- type. -/
+  cases h with
+  | @hyp S Γ a b hin =>
+    -- Same derivation as `SubN_to_Subtype'.hyp`.
+    obtain ⟨⟨pd, pe1, pe2⟩, hpe, hpd, hq1, hq2⟩ := hS _ hin
+    have hlen : Γ.size = Γe.length := hΓ.1
+    have hqa := quote_depth_shift_n hpd hq1
+    have hqb := quote_depth_shift_n hpd hq2
+    rw [hqa] at ha; injection ha with hae
+    rw [hqb] at hb; injection hb with hbe
+    subst hae hbe
+    have hpd' : pd ≤ Γe.length := hlen ▸ hpd
+    have h := Subtype'.hyp (S := Se) (Γ := Γe)
+        (d := pd) (a := pe1) (b := pe2) hpe hpd'
+    rw [hlen]; exact h
+  | refl =>
+    rw [ha] at hb; cases hb; exact .refl ae
+  | top =>
+    rw [quote_type] at hb; cases hb; exact .top ae
+  | neutral_struct hN =>
+    -- Delegate to `SubN_to_Subtype'`. Both `a` and `b` are
+    -- `.neutral`, so `quote` is `quoteNeutral`.
+    exact SubN_to_Subtype' hN hS hΓ
+      (quoteNeutralω (quote_neutral ha))
+      (quoteNeutralω (quote_neutral hb))
+  | neutral_ascent hsynth hsub =>
+    -- Same quote-totality obstruction as `SubN_to_Subtype'`'s
+    -- `neutral_ascent` case: synthesise τe via `SynthN_to_Subtype'`
+    -- (if `τ` quotes), then chain by `.trans`.
+    sorry
+  | lam _ _ _ _ => sorry
+  | iota_struct _ _ _ _ => sorry
+  | fix_struct _ _ _ _ => sorry
+  | stuckRec_struct _ _ _ _ => sorry
+  | iota_intro _ _ _ => sorry
+  | unfold_fix_R _ _ => sorry
+  | unfold_fix_L _ _ _ => sorry
+  | unfold_iota_L _ _ _ => sorry
+  | revapp_R _ _ _ => sorry
+  | revapp_L _ _ _ => sorry
 
 /-!
 ## Open-context `tyCheck`/`tyInfer` soundness
