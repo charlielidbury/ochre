@@ -891,6 +891,158 @@ theorem Seen.wellClosed_cons {d a b S}
   | head => exact ⟨ha, hb⟩
   | tail _ h => exact hS _ _ _ h
 
+/-- A context is well-formed if each entry at position `k` is
+closed at `|Γ|-k-1` — i.e., entry `k` only references Γ
+entries at strictly smaller indices (further in the tail).
+This is the standard de Bruijn context well-formedness
+condition. Under well-formedness, `τ.shift (k+1) 0` is closed
+at `|Γ|`, so an outer shift by `n` at cutoff `|Γ|` is the
+identity — the basis of the `.bvar` case of `Subtype'.shift_above`.
+
+Like `Seen.wellClosed`, this is NOT preserved by all `Subtype'`
+constructors: `.lam`'s body premise at `(dB :: Γ)` requires
+`dB.closedAt |Γ|`, which isn't derivable from `.lam`'s premise
+alone. For derivations rooted at well-scoped source terms (the
+uses this matters for), the invariant holds as a side
+condition the caller maintains. -/
+def Ctx.wellFormed (Γ : Ctx) : Prop :=
+  ∀ k τ, Γ.get? k = some τ → τ.closedAt (Γ.length - k - 1) = true
+
+theorem Ctx.wellFormed_nil : Ctx.wellFormed [] := by
+  intro _ _ h; simp at h
+
+theorem Ctx.wellFormed_cons {τ : Expr} {Γ : Ctx}
+    (hτ : τ.closedAt Γ.length = true) (hΓ : Ctx.wellFormed Γ) :
+    Ctx.wellFormed (τ :: Γ) := by
+  intro k τ' hget
+  cases k with
+  | zero =>
+    simp only [List.get?_cons_zero, Option.some.injEq] at hget
+    subst hget
+    simp only [List.length_cons, Nat.sub_zero, Nat.succ_sub_one]
+    exact hτ
+  | succ m =>
+    simp only [List.get?_cons_succ] at hget
+    have h := hΓ m τ' hget
+    simp only [List.length_cons]
+    have : Γ.length + 1 - (m + 1) - 1 = Γ.length - m - 1 := by omega
+    rw [this]
+    exact h
+
+/-- Shift-above-context: under a well-closed seen-set and a
+well-formed context, shifting both sides of a derivation by
+`n` at cutoff `|Γ|` is the identity (since all expressions
+appearing in a well-formed derivation have no bvars at or
+above `|Γ|`). The utility: the `.hyp` case uses this to
+discharge shifts of hypothesis expressions, and the `.bvar`
+case uses it to show the context entry's shifted form stays
+unchanged.
+
+**Status**: stated; many cases proven; the binder cases
+(`.lam`/`.iota_cong`/`.fix_cong`/`.letE_cong`/`.iota_body`/
+`.fix_body`) require the new binder's domain/annotation to
+preserve `Ctx.wellFormed` under extension, which isn't
+derivable from the `Subtype'` premise alone without a
+closedness assumption on the binder expression. Sorried for
+the binder and productive-unfold cases. Included as
+infrastructure for the route-1 attack on `Equiv.shift` nil-Γ
+(DECISION-LOG 2026-04-21). -/
+theorem Subtype'.shift_above {S Γ a b} (n : Nat)
+    (hS : Seen.wellClosed S)
+    (hΓ : Ctx.wellFormed Γ)
+    (h : Subtype' S Γ a b) :
+    Subtype' S Γ (a.shift n Γ.length) (b.shift n Γ.length) := by
+  induction h with
+  | @hyp S' Γ' d x y hin hle =>
+    -- (d, x, y) ∈ S. hS gives x, y closedAt d.
+    -- h's conclusion: Subtype' S Γ (x.shift (|Γ|-d) 0) (y.shift (|Γ|-d) 0).
+    -- Both sides, after the (|Γ|-d)-shift, are closedAt |Γ|.
+    -- So outer `shift n |Γ|` is identity.
+    obtain ⟨hxcl, hycl⟩ := hS d x y hin
+    have hxcl' : (x.shift (Γ'.length - d) 0).closedAt Γ'.length = true := by
+      have := Expr.shift_closedAt x d (Γ'.length - d) 0 (Nat.zero_le _) hxcl
+      have hk : d + (Γ'.length - d) = Γ'.length := by omega
+      rw [hk] at this; exact this
+    have hycl' : (y.shift (Γ'.length - d) 0).closedAt Γ'.length = true := by
+      have := Expr.shift_closedAt y d (Γ'.length - d) 0 (Nat.zero_le _) hycl
+      have hk : d + (Γ'.length - d) = Γ'.length := by omega
+      rw [hk] at this; exact this
+    rw [Expr.shift_of_closedAt hxcl' n (Nat.le_refl _),
+        Expr.shift_of_closedAt hycl' n (Nat.le_refl _)]
+    exact Subtype'.hyp hin hle
+  | refl e =>
+    exact .refl (e.shift n _)
+  | top e =>
+    simp only [Expr.shift]
+    exact .top (e.shift n _)
+  | trans _ _ ih1 ih2 =>
+    exact .trans (ih1 hS hΓ) (ih2 hS hΓ)
+  | @bvar S' Γ' k τ hget =>
+    -- k < |Γ|. (.bvar k).shift n |Γ| = .bvar k (since k < |Γ|).
+    -- τ is closedAt (|Γ|-k-1) by hΓ, so τ.shift (k+1) 0 is
+    -- closedAt |Γ|, and shift n |Γ| is identity.
+    have hklt : k < Γ'.length := by
+      rw [List.get?_eq_getElem?] at hget
+      exact (List.getElem?_eq_some_iff.mp hget).1
+    simp only [Expr.shift, decide_eq_true_eq, if_pos hklt]
+    have hτcl := hΓ k τ hget
+    have hτshiftcl : (τ.shift (k+1) 0).closedAt Γ'.length = true := by
+      have := Expr.shift_closedAt τ (Γ'.length - k - 1) (k+1) 0
+        (Nat.zero_le _) hτcl
+      have hk : Γ'.length - k - 1 + (k + 1) = Γ'.length := by omega
+      rw [hk] at this; exact this
+    rw [Expr.shift_of_closedAt hτshiftcl n (Nat.le_refl _)]
+    exact Subtype'.bvar hget
+  -- Remaining cases: binder (`.lam`/.iota_*/.fix_*/.letE_cong`)
+  -- and productive-unfold (`.iota_intro`/`.unfold_*`) require
+  -- propagating `Ctx.wellFormed` and `Seen.wellClosed` through
+  -- the recursive premise. This is non-trivial because a
+  -- `.lam`'s domain `dB` isn't provably `closedAt |Γ|` from the
+  -- `Subtype' S Γ dB dA` premise alone — it would need an
+  -- explicit closedness side condition threaded through.
+  -- Sorried for now; the proof skeleton closes once the
+  -- invariant-preservation premises are added.
+  | lam _ _ _ _ => sorry
+  | app_cong _ _ _ ihf iha iha' =>
+    simp only [Expr.shift]
+    exact .app_cong (ihf hS hΓ) (iha hS hΓ) (iha' hS hΓ)
+  | iota_body _ _ => sorry
+  | fix_body _ _ => sorry
+  | iota_cong _ _ _ _ => sorry
+  | fix_cong _ _ _ _ => sorry
+  | letE_cong _ _ _ _ => sorry
+  | iota_intro _ _ _ _ => sorry
+  | unfold_iota_L _ _ => sorry
+  | unfold_fix_L _ _ => sorry
+  | unfold_fix_R _ _ => sorry
+  | unfold_iota_R _ _ => sorry
+  | beta_L _ ih =>
+    simp only [Expr.shift]
+    have := ih hS hΓ
+    rw [Expr.subst_shift_swap] at this
+    exact .beta_L this
+  | beta_R _ ih =>
+    simp only [Expr.shift]
+    have := ih hS hΓ
+    rw [Expr.subst_shift_swap] at this
+    exact .beta_R this
+  | letE_L _ ih =>
+    simp only [Expr.shift]
+    have := ih hS hΓ
+    rw [Expr.subst_shift_swap] at this
+    exact .letE_L this
+  | letE_R _ ih =>
+    simp only [Expr.shift]
+    have := ih hS hΓ
+    rw [Expr.subst_shift_swap] at this
+    exact .letE_R this
+  | asc_L _ ih =>
+    simp only [Expr.shift]
+    exact .asc_L (ih hS hΓ)
+  | asc_R _ ih =>
+    simp only [Expr.shift]
+    exact .asc_R (ih hS hΓ)
+
 /-! ### Algorithmic-checker properties and known issues
 
 **Transitivity verified** for `NbE.subCheck` by exhaustive testing on small
