@@ -3128,6 +3128,103 @@ theorem quoteClosureω {d : Nat} {cl : Closure} {e : Expr}
     quoteClosure fuelω d cl = some e :=
   quoteClosure_fuel_mono (Nat.sub_le _ _) h
 
+/-- **Quoted expressions are closedAt their depth.** Combined mutual
+induction on fuel. Every output of `quote d v` / `quoteClosure d cl`
+/ `quoteNeutral d n` has free bvars bounded by `d` (or `d+1` for
+closure bodies, which are quoted under one fresh binder).
+
+This is a structural property of quote that gives us free
+closedness witnesses everywhere quote succeeds — useful for
+downstream closedness-carrying lemmas. -/
+theorem quote_quoteClosure_quoteNeutral_closedAt :
+    ∀ n,
+    (∀ {d v e}, quote n d v = some e → e.closedAt d = true) ∧
+    (∀ {d cl e}, quoteClosure n d cl = some e → e.closedAt (d+1) = true) ∧
+    (∀ {d ne e}, quoteNeutral n d ne = some e → e.closedAt d = true) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_, ?_⟩ <;> intro <;> intro h <;> simp_all [quote_zero, quoteClosure_zero, quoteNeutral_zero]
+  | succ n ih =>
+    obtain ⟨ihq, ihc, ihn⟩ := ih
+    refine ⟨?_, ?_, ?_⟩
+    · intro d v e h
+      unfold quote at h
+      match v, h with
+      | .type, h =>
+        simp only [Option.some.injEq] at h; subst h
+        simp [Expr.closedAt]
+      | .neutral nne, h =>
+        simp only [] at h
+        exact ihn h
+      | .lam dom cl, h =>
+        simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                   Option.some.injEq] at h
+        obtain ⟨dome, hdome, bodye, hbodye, heq⟩ := h
+        subst heq
+        simp only [Expr.closedAt, Bool.and_eq_true]
+        exact ⟨ihq hdome, ihc hbodye⟩
+      | .iota ann cl, h =>
+        simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                   Option.some.injEq] at h
+        obtain ⟨anne, hanne, bodye, hbodye, heq⟩ := h
+        subst heq
+        simp only [Expr.closedAt, Bool.and_eq_true]
+        exact ⟨ihq hanne, ihc hbodye⟩
+      | .«fix» ann cl, h =>
+        simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                   Option.some.injEq] at h
+        obtain ⟨anne, hanne, bodye, hbodye, heq⟩ := h
+        subst heq
+        simp only [Expr.closedAt, Bool.and_eq_true]
+        exact ⟨ihq hanne, ihc hbodye⟩
+    · intro d cl e h
+      unfold quoteClosure at h
+      simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+      obtain ⟨v, _, hq⟩ := h
+      exact ihq hq
+    · intro d ne e h
+      unfold quoteNeutral at h
+      match ne, h with
+      | .var k, h =>
+        simp only [] at h
+        split at h
+        · next hlt =>
+          simp only [Option.some.injEq] at h; subst h
+          simp only [Expr.closedAt, decide_eq_true_eq]; omega
+        · simp at h
+      | .app n' v, h =>
+        simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                   Option.some.injEq] at h
+        obtain ⟨f, hf, a, ha, heq⟩ := h
+        subst heq
+        simp only [Expr.closedAt, Bool.and_eq_true]
+        exact ⟨ihn hf, ihq ha⟩
+      | .stuckRec f a, h =>
+        simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                   Option.some.injEq] at h
+        obtain ⟨fe, hfe, ae, hae, heq⟩ := h
+        subst heq
+        simp only [Expr.closedAt, Bool.and_eq_true]
+        exact ⟨ihq hfe, ihq hae⟩
+
+/-- Specialisation: `quote` output is `closedAt d`. -/
+theorem quote_closedAt {fuel d v e} (h : quote fuel d v = some e) :
+    e.closedAt d = true :=
+  (quote_quoteClosure_quoteNeutral_closedAt fuel).1 h
+
+/-- Specialisation: `quoteClosure` body output is `closedAt (d+1)`. -/
+theorem quoteClosure_closedAt {fuel d cl e}
+    (h : quoteClosure fuel d cl = some e) :
+    e.closedAt (d+1) = true :=
+  (quote_quoteClosure_quoteNeutral_closedAt fuel).2.1 h
+
+/-- Specialisation: `quoteNeutral` output is `closedAt d`. -/
+theorem quoteNeutral_closedAt {fuel d ne e}
+    (h : quoteNeutral fuel d ne = some e) :
+    e.closedAt d = true :=
+  (quote_quoteClosure_quoteNeutral_closedAt fuel).2.2 h
+
 theorem quote_lam {d : Nat} {dom : Val} {cl : Closure} {e : Expr}
     (h : quote fuelω d (.lam dom cl) = some e) :
     ∃ dome bodye,
