@@ -2,9 +2,37 @@
 
 ## Phase 2 — soundness proof (current)
 
-`Soundness.lean` is sorry-free; `Subtyping.lean` is
-**sorry-free** (post `e0384f1`). All three root
-obligations solved at the definition level (DECISION-LOG
+`Soundness.lean` is sorry-free. `Subtyping.lean` now contains
+`Subtype'.shift_above` (2026-04-21) — the helper lemma for the
+`Equiv.shift` nil-Γ case. 12/23 cases proven including the
+`.hyp` case that was previously characterized as the
+"impossibility wall". The remaining 11 cases (binder and
+productive-unfold) need `Seen.wellClosed` / `Ctx.wellFormed`
+propagation; all cases documented.
+
+**The `Equiv.shift` obstacle reassessed (2026-04-21):** The
+prior claim that route (i) was a "~60-line structural induction"
+was wrong; see DECISION-LOG 2026-04-21 for the full analysis.
+The actual path is:
+
+1. Seen.wellClosed (new, in Subtyping.lean) — invariant on
+   seen-sets; preserved by every productive unfold rule.
+2. Ctx.wellFormed (new, in Subtyping.lean) — standard de Bruijn
+   well-formedness of the context; NOT preserved by `.lam` /
+   `.iota_cong` / etc. without an extra closedness side
+   condition on the binder.
+3. Subtype'.shift_above — 12/23 cases proven. Remaining 11 need
+   #2's propagation, which requires adding closedness premises
+   to the binder constructors of `Subtype'` — an invasive
+   change.
+
+Alternative: restrict `Equiv` to non-empty Γ. All current
+users of `Equiv.shift` access the result at a non-empty
+context (one binder deeper). The catch: `concEval_refines`
+needs the result at Γ=[], requiring a bespoke non-Equiv.shift
+derivation at the top level.
+
+All three root obligations solved at the definition level (DECISION-LOG
 2026-04-19); remaining sorries in `SoundnessProof.lean` are
 **downstream applications** — no further definition
 changes needed.
