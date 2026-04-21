@@ -1592,10 +1592,37 @@ private theorem R_neutral_app {k d N fe ae}
   subst heq
   exact Equiv.app hfEq haEq
 
-/-- Forward declaration for use in `vapp_realises`'s stuckRec
-cases. The full implementation follows the mutual block; we
-introduce a stub here so R_neutral_app call sites can
-reference it. -/
+/-- Extract an `Equiv`-witness between a `Val`'s quote and
+the source `Expr` it realises. For `.type`/`.neutral`, this
+is the base conjunct of `R` directly. For `.lam`/`.iota`/
+`.fix`, the R-refactor (2026-04-21) dropped the base conjunct
+and the quote-correspondence must be re-derived: the plan
+(DECISION-LOG 2026-04-19) is a mutual with
+`quoteClosure_realises` on **quote-fuel**, where each step
+uses the env-exposes clause to build a `REnv` at `d+1` and
+calls `eval_realises` to realise the quoted body.
+
+Defined BEFORE the `eval_realises`/`vapp_realises` mutual so
+`vapp_realises`'s `.stuckRec` branches can reference it in
+the `R_neutral_app`-derived `Equiv ve ae` witness
+construction. The closure cases below are sorried: closing
+them requires either (a) merging all four theorems into one
+giant mutual with a lex `(sizeOf v, quote-fuel, eval-fuel)`
+termination measure, or (b) adding a closedness side
+condition that lets `Equiv.subst_resp_closed` discharge the
+inner substitutions.
+
+All callers in the current codebase:
+- `Soundness.lean:eval_quote_equiv_closed` (closed context).
+- `SoundnessProof.lean:OpenCtx.eq` (open context).
+- `SoundnessProof.lean:vapp_realises` stuckRec branches
+  (4 call sites, indirectly via `R_neutral_app`-style
+  decomposition).
+
+The four `vapp_realises` call sites transitively depend on
+the closure-case sorries only when the stuck argument is a
+closure (which arises in e.g. `vapp (.iota _) (.lam _ _)` at
+`unf=0`). -/
 theorem R_quote_equiv {n d v e}
     (hn : 0 < n) (h : R n d v e)
     {e' : Expr} (hq : quote fuelω d v = some e') :
@@ -1656,7 +1683,18 @@ get `REnv m d (va :: cl.env) (ae :: ρe')`, apply
 `R_resp_Equiv` along `bode.subst 0 fe ≡ fe` (via
 `Equiv.subst_resp heqI` + `Equiv.iota_unfold` + `heqI⁻¹`)
 gives `R m d f' fe`. Recurse `vapp_realises` (mutual,
-fuel `< fuel+1`). -/
+fuel `< fuel+1`).
+
+The `bode.subst 0 fe ≡ fe` step requires `Equiv.subst_resp`
+on `fe ≡ .iota/.fix anne bode`, which was deleted
+2026-04-21 (it depended on `Equiv.shift`'s nil-Γ sorry).
+The closedness-carrying `Equiv.subst_resp_closed` is
+available but needs `fe.closedAt 0 ∧ anne.closedAt 0`,
+which don't hold in open contexts. Hence these two unfold
+sub-sorries remain — they close once either (a) a general
+closedness invariant is threaded through `vapp_realises`,
+or (b) the nil-Γ `Equiv.shift` sorry is closed (e.g. via
+`Subtype'.shift_nil` with `Seen.wellClosed`). -/
 theorem vapp_realises {fuel unf vf va r m d fe ae}
     (hvapp : vapp fuel unf vf va = some r)
     (hRf : R m d vf fe) (hRa : R m d va ae) :
