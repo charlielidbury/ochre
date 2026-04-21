@@ -1,5 +1,26 @@
 # Progress
 
+## 2026-04-21 — Session: R_quote_equiv + vapp iota/fix (agent a516f9da)
+
+**No code changes made.** Extensive investigation documented in
+DECISION-LOG (2026-04-21 "R_quote_equiv closure + vapp iota/fix
+unfold — investigation").
+
+**Key finding:** Both sorries reduce to the same underlying gap —
+shifting Equiv witnesses under binders without closedness (the
+nil-Γ `Equiv.shift` sorry). Every alternative approach (routes a/b,
+alternative Subtype' chains via unfold_iota_R/iota_intro, bypassing
+subst_resp via levelsBelow) ultimately runs into the same wall.
+
+**Declaration sorries remain at 4** (unchanged): depth_lift_bundle,
+R_quote_equiv, vapp/eval_realises mutual, tyInfer_sound_open mutual.
+
+**Shortest path forward** (not attempted in this session, too deep):
+1. Close the nil-Γ `Equiv.shift` sorry via closedness-tracking
+   Equiv + `Subtype'.shift_nil_closed`.
+2. Thread `∀ k, ρe[k]?.closedAt 0` invariants through REnv/OpenCtx
+   and propagate closedness through eval_realises.
+
 ## Current state (2026-04-21)
 
 **3 declaration sorries (down from 10 at session start — 70% reduction).**

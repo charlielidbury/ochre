@@ -2498,9 +2498,64 @@ theorem R_quote_equiv {n d v e}
       | neutral _ =>
           unfold R at h
           exact h e' hq
-      | lam _ _ => sorry
-      | iota _ _ => sorry
-      | «fix» _ _ => sorry
+      | lam dV cl =>
+          -- Unfold quote: e' = .lam dom' body' with
+          --   quote (fuelω-1) d dV = some dom' and
+          --   quoteClosure (fuelω-1) d cl = some body'.
+          have hfω : fuelω = (fuelω - 1) + 1 := rfl
+          rw [hfω] at hq
+          unfold quote at hq
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at hq
+          obtain ⟨dom', hdom', body', hbody', heq'⟩ := hq
+          subst heq'
+          -- Unfold R: ∃ ρe' dome, R (m+1) d dV dome ∧
+          --   RList (m+1) d cl.env ρe' ∧ closed ∧
+          --   Equiv e (.lam dome bodyE).
+          unfold R at h
+          obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
+          -- Lift dV's quote to fuelω.
+          have hdom'_ω : quote fuelω d dV = some dom' :=
+            quote_fuel_mono (by omega) hdom'
+          -- Recursive call on dV (smaller sizeOf).
+          have hEd : Equiv dom' dome :=
+            R_quote_equiv (Nat.succ_pos _) hRd hdom'_ω
+          -- The body case requires `Equiv body' bodyE` where
+          --   bodyE = cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)).
+          -- body' comes from quoteClosure's inner eval + quote.
+          -- Proving this needs `quoteClosure_realises` in a mutual
+          -- with R_quote_equiv (blocked — see DECISION-LOG 2026-04-21).
+          sorry
+      | iota aV cl =>
+          have hfω : fuelω = (fuelω - 1) + 1 := rfl
+          rw [hfω] at hq
+          unfold quote at hq
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at hq
+          obtain ⟨ann', hann', body', hbody', heq'⟩ := hq
+          subst heq'
+          unfold R at h
+          obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
+          have hann'_ω : quote fuelω d aV = some ann' :=
+            quote_fuel_mono (by omega) hann'
+          have hEa : Equiv ann' anne :=
+            R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
+          sorry
+      | «fix» aV cl =>
+          have hfω : fuelω = (fuelω - 1) + 1 := rfl
+          rw [hfω] at hq
+          unfold quote at hq
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at hq
+          obtain ⟨ann', hann', body', hbody', heq'⟩ := hq
+          subst heq'
+          unfold R at h
+          obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
+          have hann'_ω : quote fuelω d aV = some ann' :=
+            quote_fuel_mono (by omega) hann'
+          have hEa : Equiv ann' anne :=
+            R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
+          sorry
 
 /-- Quote of `.neutral (.stuckRec vf va)` decomposes as
 `.app (quote vf) (quote va)` (after fuel-mono lifting). -/
