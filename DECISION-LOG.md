@@ -57,6 +57,126 @@ that close once the structural sorries above are resolved.
 `concEval_preservation`, `concEval_equiv_closed` all still
 depend only on `[propext, Quot.sound]` — the sorries are not
 on the critical soundness path.
+
+## 2026-04-21: R_quote_equiv closure + vapp iota/fix unfold — investigation (agent a516f9da)
+
+**What:** Extended analysis of the two residual sorries. Attempted
+routes (a) giant mutual and (b) closedness side condition. Both
+routes hit infrastructure obstacles.
+
+### Route (a) — giant mutual with `quoteClosure_realises`
+
+Planned cycle:
+`R_quote_equiv` (.lam/.iota/.fix on `sizeOf v`)
+  → `quoteClosure_realises` (decreases quote-fuel)
+  → `eval_realises` (same fuel-mutual as today)
+  → `R_quote_equiv` (on sub-values — `sizeOf` decrease).
+
+**Obstacle identified:** `quoteClosure_realises` needs `REnv (m+1)
+(d+1) (.neutral (.var d) :: cl.env) (.bvar 0 :: ρe'.map (·.shift 1
+0))` to call `eval_realises`. The head is `R_fresh_bvar0` ✓. The
+tail requires `RList (m+1) (d+1) cl.env (ρe'.map (·.shift 1 0))`
+— depth-lifted from `RList (m+1) d cl.env ρe'`.
+
+`R_depth_lift` (in `depth_lift_bundle`) takes as a precondition
+`quote fuelω d v = some qe`, i.e. **quotability of each env entry
+at depth `d`**. This quotability is NOT provided by R nor by `hq :
+quote fuelω d (.lam dV cl) = some e'` (quote on a closure doesn't
+recurse through `cl.env`; it goes `quoteClosure → eval → quote` on
+the inner eval result, bypassing the env entries).
+
+**Options to supply quotability:**
+1. Strengthen R's closure clauses to include `∀ k w, cl.env[k]? =
+   some w → ∃ we, quote fuelω d w = some we`. Propagate through
+   `eval_realises`'s .lam/.iota/.fix cases. Requires `eval ρ e =
+   some v → env-quotable-of-ρ → v-env-quotable` as a new lemma.
+   **Moderate-high complexity.**
+2. Strengthen R with `v.levelsBelow d` instead. `v.levelsBelow d`
+   is preserved through `eval_levelsBelow` (proven). But
+   `R_depth_lift` still uses `quote fuelω d v = some qe`, not
+   `v.levelsBelow d` — would need a new `R_depth_lift_levels`
+   variant, which itself requires `quote_levelsBelow` (quote →
+   levelsBelow, potentially provable but NOT existing today).
+
+Attempted route (a) with option (2) analyzed; the `R_depth_lift_
+levels`-style theorem for the `.type` case reduces to
+`Subtype' Γ' .type (e.shift 1 0)` given `Subtype' Γ .type e`,
+which is `Equiv.shift` (still sorried at nil-Γ).
+
+**Net:** Route (a) is NOT closable without either (i) strengthening
+R with quotability/levelsBelow invariants AND threading through
+all R-producing theorems, OR (ii) closing the nil-Γ `Equiv.shift`
+sorry. Both are substantial separate workstreams.
+
+### Route (b) — closedness side condition
+
+Add `e.closedAt d = true` (or `e.closedAt 0 = true`) as a hypothesis
+to R_quote_equiv.
+
+**Obstacle identified:** For the `.lam` case, we need `Equiv (.lam
+dom' body') (.lam dome bodyE)` via `Equiv.lam`, which requires
+`Equiv dom' dome` (recursive R_quote_equiv on dV) and `Equiv body'
+bodyE`. Recursion on `dV` needs `dome.closedAt d`. The hypothesis
+`e.closedAt d` does NOT give us `dome.closedAt d` because Equiv
+doesn't preserve closedness (Equiv e (.lam dome bodyE) doesn't
+imply `.lam dome bodyE` is closed).
+
+Additionally, `OpenCtx.eq` has `hcl : e.closedAt ρe.length` (closed
+under the env, not at 0). The closure-case substituends inside the
+body are at arbitrary depth within open contexts — closedness at
+0 doesn't hold.
+
+**Net:** Route (b) requires either (i) enriching R itself with
+closedness conjuncts (so `dome.closedAt d` is exposed), OR
+(ii) extending `OpenCtx` invariants to carry ρe-entry closedness
+and propagate to `e.substEnv ρe` closedness. Both touch many
+call sites.
+
+### vapp_realises iota/fix unfold — specific sorry analysis
+
+Target: `Equiv (bode.subst 0 fe) fe` where `heqI : Equiv fe
+(.iota anne bode)`.
+
+Attempted alternative chains (NOT needing Equiv.subst_resp):
+- Via `unfold_iota_R`: transforms `a ⊑ body.subst 0 (.iota ...)`
+  into `a ⊑ .iota ...`. We need the REVERSE direction (inversion),
+  which is NOT a rule — would require proof-level reasoning on
+  Subtype' derivations.
+- Via `iota_intro`: requires proving `bode.subst 0 fe ⊑ anne` AND
+  `bode.subst 0 fe ⊑ bode.subst 0 (bode.subst 0 fe)` — both
+  structurally deeper substitutions that don't simplify.
+- Via `trans` with intermediate `.iota anne bode`: gives
+  `bode.subst 0 fe ⊑ .iota anne bode → bode.subst 0 fe ⊑ fe` by
+  `heqI.2`. The first hop `bode.subst 0 fe ⊑ .iota anne bode` via
+  `unfold_iota_R` requires `bode.subst 0 fe ⊑ bode.subst 0 (.iota
+  anne bode)` — back to subst-congruence.
+
+**`subst_resp_closed` usability:** Requires `fe.closedAt 0` AND
+`(.iota anne bode).closedAt 0`. In open contexts (used by
+`OpenCtx.eq`), `fe = .iota annE (bExpr.substEnv (lift ρe))` which
+is NOT closed at 0 when ρe has free variables.
+
+**Net:** vapp iota/fix unfold sorries structurally require either
+(a) the nil-Γ `Equiv.shift` sorry closed, OR (b) closedness
+invariants threaded through REnv/OpenCtx/R.
+
+### Conclusion
+
+Both sorries (R_quote_equiv closures, vapp iota/fix unfold) are
+blocked on the SAME underlying gap: the inability to shift Equiv
+witnesses under binders without closedness (Equiv.shift nil-Γ sorry).
+
+**Shortest path forward** (avoiding this dead end):
+1. Close the nil-Γ `Equiv.shift` sorry (via closedness-tracking
+   Equiv + `Subtype'.shift_nil_closed`), OR
+2. Strengthen REnv/OpenCtx with `∀ k e_k, ρe[k]?.closedAt 0`
+   invariants and propagate closedness through eval_realises.
+
+Both are multi-session refactors. This session's sorries REMAIN
+in place pending that work. Agent C's target (whatever it is)
+is unblocked to the extent it doesn't depend on R_quote_equiv's
+closure cases — which it may or may not.
+
 ## 2026-04-21: `depth_lift_bundle` — partial infrastructure; step 5 blocked by cutoff-mismatch (agent a800598a)
 
 **What:** Attacked `depth_lift_bundle` (the last single-sorry bundle for
