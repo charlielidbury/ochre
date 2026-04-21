@@ -1883,7 +1883,219 @@ theorem Closure.envLevelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
              Closure.envLevelsBelow_mono hle ws h.2⟩
 end
 
+/-!
+### Cutoff-parametrised depth shift for `quote`
 
+A one-step quote-depth-shift, but generalised with a cutoff `c`
+on the expression-level shift so the closure case's body
+(recursing one binder deeper) can cleanly pass a larger cutoff.
+
+At `c = 0`: the Val shift `v.shiftLvl (d-0) = v.shiftLvl d` is a
+no-op whenever `v.levelsBelow d` holds (true for any `v` coming
+out of a successful `quote n d v = some _`), so the shape reduces
+to `quote (d+1) v = some (e.shift 1 0)` — the existing
+`quote_depth_shift`.
+
+At `c+1` (used inside the closure body, one binder deeper): the
+recursive IH supplies `quote (d+2) (v.shiftLvl (d-c)) =
+some (e.shift 1 (c+1))`, exactly matching the post-`eval_shiftLvl`
+body state.
+
+Proof is by induction on fuel, combined over the three quote
+families. -/
+theorem quote_quoteClosure_quoteNeutral_depth_shift :
+    ∀ n,
+    (∀ {c d v e}, c ≤ d → quote n d v = some e →
+        quote n (d+1) (v.shiftLvl (d-c)) = some (e.shift 1 c)) ∧
+    (∀ {c d cl e}, c ≤ d → quoteClosure n d cl = some e →
+        quoteClosure n (d+1) (cl.shiftLvl (d-c))
+          = some (e.shift 1 (c+1))) ∧
+    (∀ {c d ne e}, c ≤ d → quoteNeutral n d ne = some e →
+        quoteNeutral n (d+1) (ne.shiftLvl (d-c))
+          = some (e.shift 1 c)) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_, ?_⟩
+    · intro _ _ _ _ _ h; rw [quote_zero] at h; cases h
+    · intro _ _ _ _ _ h; rw [quoteClosure_zero] at h; cases h
+    · intro _ _ _ _ _ h; rw [quoteNeutral_zero] at h; cases h
+  | succ n ih =>
+    obtain ⟨ihq, ihc, ihne⟩ := ih
+    refine ⟨?_, ?_, ?_⟩
+    -- quote
+    · intro c d v e hle h
+      unfold quote at h
+      cases v with
+      | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.shiftLvl quote
+          rfl
+      | neutral ne =>
+          unfold Val.shiftLvl quote
+          exact ihne hle h
+      | lam dom cl =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at h
+          obtain ⟨dom', hdom, body', hbody, he⟩ := h
+          subst he
+          unfold Val.shiftLvl quote
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq]
+          refine ⟨dom'.shift 1 c, ihq hle hdom,
+                  body'.shift 1 (c+1), ihc hle hbody, ?_⟩
+          rfl
+      | iota ann cl =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at h
+          obtain ⟨ann', hann, body', hbody, he⟩ := h
+          subst he
+          unfold Val.shiftLvl quote
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq]
+          refine ⟨ann'.shift 1 c, ihq hle hann,
+                  body'.shift 1 (c+1), ihc hle hbody, ?_⟩
+          rfl
+      | «fix» ann cl =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at h
+          obtain ⟨ann', hann, body', hbody, he⟩ := h
+          subst he
+          unfold Val.shiftLvl quote
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq]
+          refine ⟨ann'.shift 1 c, ihq hle hann,
+                  body'.shift 1 (c+1), ihc hle hbody, ?_⟩
+          rfl
+    -- quoteClosure
+    · intro c d cl e hle h
+      -- unfold quoteClosure; get eval + inner quote
+      unfold quoteClosure at h
+      simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+      obtain ⟨v, hev, hq⟩ := h
+      -- Apply eval_shiftLvl with cutoff (d - c)
+      have hev' :
+          eval n 1
+            ((Val.neutral (.var d) :: cl.env).map
+              (Val.shiftLvl (d - c)))
+            cl.body = some (v.shiftLvl (d - c)) :=
+        eval_shiftLvl hev
+      -- Rewrite the mapped env into the shifted closure env
+      -- plus the shifted fresh head `.var (d+1)`.
+      have hfresh : (Val.neutral (.var d)).shiftLvl (d - c) =
+                    Val.neutral (.var (d + 1)) := by
+        unfold Val.shiftLvl Neutral.shiftLvl
+        have : ¬ d < d - c := by omega
+        simp [this]
+      have henvmap :
+          cl.env.map (Val.shiftLvl (d - c))
+            = (cl.shiftLvl (d - c)).env := by
+        obtain ⟨body, env⟩ := cl
+        unfold Closure.shiftLvl
+        simp [Closure.envShiftLvl_eq_map]
+      -- body of shifted closure equals original body
+      have hbody : (cl.shiftLvl (d - c)).body = cl.body := by
+        obtain ⟨body, env⟩ := cl; unfold Closure.shiftLvl; rfl
+      -- Assemble the new quoteClosure at depth d+1
+      unfold quoteClosure
+      simp only [Option.bind_eq_bind, Option.bind_eq_some]
+      refine ⟨v.shiftLvl (d - c), ?_, ?_⟩
+      · -- eval: rewrite to the shifted closure's env + fresh (d+1)
+        have heq :
+            (Val.neutral (.var d) :: cl.env).map
+              (Val.shiftLvl (d - c))
+            = Val.neutral (.var (d+1))
+                :: (cl.shiftLvl (d-c)).env := by
+          rw [List.map_cons, hfresh, henvmap]
+        rw [heq] at hev'
+        rw [hbody]
+        exact hev'
+      · -- quote at depth (d+1)+1 = d+2, cutoff (c+1)
+        have hle' : c + 1 ≤ d + 1 := Nat.succ_le_succ hle
+        have hsub : (d + 1) - (c + 1) = d - c := by omega
+        have := ihq (c := c + 1) (d := d + 1) hle' hq
+        rw [hsub] at this
+        exact this
+    -- quoteNeutral
+    · intro c d ne e hle h
+      unfold quoteNeutral at h
+      cases ne with
+      | var k =>
+          simp only [] at h
+          split at h
+          · next hk =>
+              simp only [Option.some.injEq] at h
+              subst h
+              -- Case: k < d → e = .bvar (d-1-k)
+              unfold Neutral.shiftLvl quoteNeutral
+              by_cases hkc : k < d - c
+              · -- k < d - c: .var k unchanged;
+                -- bvar (d-1-k) ≥ c so shift adds 1.
+                simp only [hkc, if_true]
+                have hklt : k < d + 1 := Nat.lt_succ_of_lt hk
+                simp only [hklt, if_true]
+                -- Goal: some (.bvar (d+1-1-k)) = some ((.bvar (d-1-k)).shift 1 c)
+                -- (.bvar (d-1-k)).shift 1 c: since d-1-k ≥ c, → .bvar (d-k).
+                show some (Expr.bvar (d + 1 - 1 - k))
+                   = some ((Expr.bvar (d - 1 - k)).shift 1 c)
+                have hge : ¬ d - 1 - k < c := by omega
+                show some (Expr.bvar (d + 1 - 1 - k))
+                   = some (if d - 1 - k < c then Expr.bvar (d - 1 - k)
+                           else Expr.bvar (d - 1 - k + 1))
+                rw [if_neg hge]
+                congr 2; omega
+              · -- k ≥ d - c: .var k → .var (k+1);
+                -- bvar (d-1-k) < c so shift unchanged.
+                simp only [hkc, if_false]
+                have hklt : k + 1 < d + 1 := Nat.succ_lt_succ hk
+                simp only [hklt, if_true]
+                show some (Expr.bvar (d + 1 - 1 - (k + 1)))
+                   = some ((Expr.bvar (d - 1 - k)).shift 1 c)
+                have hlt : d - 1 - k < c := by omega
+                show some (Expr.bvar (d + 1 - 1 - (k + 1)))
+                   = some (if d - 1 - k < c then Expr.bvar (d - 1 - k)
+                           else Expr.bvar (d - 1 - k + 1))
+                rw [if_pos hlt]
+                congr 2; omega
+          · cases h
+      | app n' v =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at h
+          obtain ⟨f', hf, a', ha, he⟩ := h
+          subst he
+          unfold Neutral.shiftLvl quoteNeutral
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq]
+          refine ⟨f'.shift 1 c, ihne hle hf,
+                  a'.shift 1 c, ihq hle ha, ?_⟩
+          rfl
+      | stuckRec f a =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq] at h
+          obtain ⟨f', hf, a', ha, he⟩ := h
+          subst he
+          unfold Neutral.shiftLvl quoteNeutral
+          simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                     Option.some.injEq]
+          refine ⟨f'.shift 1 c, ihq hle hf,
+                  a'.shift 1 c, ihq hle ha, ?_⟩
+          rfl
+
+/-- One-step `quote_depth_shift` (cutoff c = 0), specialised to
+take `Val.levelsBelow d v` as a side condition so the Val shift
+collapses to the identity. The side condition is discharged by
+callers via `eval_levelsBelow`. -/
+theorem quote_depth_shift_of_levelsBelow {fuel d v e}
+    (hlvl : Val.levelsBelow d v)
+    (hq : quote fuel d v = some e) :
+    quote fuel (d+1) v = some (e.shift 1 0) := by
+  have hle : (0 : Nat) ≤ d := Nat.zero_le _
+  have hsub : d - 0 = d := Nat.sub_zero d
+  have hgen :=
+    (quote_quoteClosure_quoteNeutral_depth_shift fuel).1 hle hq
+  rw [hsub] at hgen
+  rwa [Val.shiftLvl_of_levelsBelow v d hlvl] at hgen
 
 /-- Bundled depth-lift + realisation obligations.
 
