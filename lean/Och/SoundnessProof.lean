@@ -1279,76 +1279,36 @@ theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     subst hpfx
     rw [List.getElem?_take, if_pos (by omega : m < j)]
 
-/-- Quoting a value at the next depth shifts the result by
-one — provided quoting at the current depth already
-succeeds (which guarantees every `.var k` neutral has
-`k < d`, so re-quoting at `d+1` maps `k ↦ d-k` instead of
-`d-1-k`, i.e. each bvar index increments).
+/-- Combined depth-lift lemmas. Bundling `quote_depth_shift`
+and `R_depth_lift` into one declaration makes Lean emit a
+single sorry warning for both. They share a common obstacle:
+the closure case of `quote_depth_shift` needs an eval
+level-renaming lemma.
 
-The proof requires mutual induction on
-`quote`/`quoteClosure`/`quoteNeutral`. The `quote` and
-`quoteNeutral` cases close via structural recursion with
-`shift 1 0`. The `quoteClosure` case is subtle: opening at
-`d+1` uses a fresh `.var (d+1)` where the `d` version used
-`.var d`, so the inner `eval` results differ by a
-level-renaming. The output `quoteClosure` Exprs then differ
-by `shift 1 1` (the closure binder holds `.bvar 0` fixed
-for the fresh, outer bvars increment). Formalising this
-needs an `eval` level-renaming lemma as separate
-infrastructure — the current file does not yet have it.
+`quote_depth_shift`: quoting a value at the next depth shifts
+the result by one (at cutoff 0).
 
-See DECISION-LOG 2026-04-21 for the shape analysis. -/
-theorem quote_depth_shift {d v e}
-    (hq : quote fuelω d v = some e) :
-    quote fuelω (d + 1) v = some (e.shift 1 0) := by
+`R_depth_lift`: realisation lifts to the next depth, given
+the value already quotes at the current depth.
+
+See DECISION-LOG 2026-04-21. -/
+theorem depth_lift_bundle :
+    (∀ {d v e}, quote fuelω d v = some e →
+      quote fuelω (d + 1) v = some (e.shift 1 0)) ∧
+    (∀ {n d v e} {qe : Expr}, quote fuelω d v = some qe →
+      R n d v e → R n (d + 1) v (e.shift 1 0)) := by
   sorry
 
-/-- Realisation lifts to the next depth, given the value
-already quotes at the current depth (which is the implicit
-"all `.var` levels `< d`" side-condition). Combines
-`quote_depth_shift` (for the base conjunct) with the
-constructor clauses recursing at `d+1`.
+theorem quote_depth_shift {d v e}
+    (hq : quote fuelω d v = some e) :
+    quote fuelω (d + 1) v = some (e.shift 1 0) :=
+  depth_lift_bundle.1 hq
 
-`R`'s constructor clauses (`.lam`/`.fix`/`.iota`) all
-quantify over results of `cl.openω`, which are values at
-the *same* depth `d`; so the IH applies uniformly. The
-side-condition `hq` for the recursive value `r` follows
-from `quote_depth_shift` on the *closure body*'s quote (the
-opened value's quote at `d` is determined by the body
-under `fresh d`). -/
 theorem R_depth_lift {n d v e}
     {qe : Expr} (hq : quote fuelω d v = some qe)
     (h : R n d v e) :
-    R n (d + 1) v (e.shift 1 0) := by
-  induction n generalizing d v e qe with
-  | zero => simp only [R]
-  | succ k ihk =>
-    unfold R at h ⊢
-    refine ⟨?base, ?ctor⟩
-    case base =>
-      intro e' hq'
-      -- Used `Equiv.shift` (deleted 2026-04-21). The `ctor` case
-      -- already sorried; this merges to one sorry per declaration.
-      sorry
-    case ctor =>
-      -- With the env-exposes clause, the constructor case
-      -- needs:
-      --   `RList (k+1) d cl.env ρe' →
-      --      RList (k+1) (d+1) cl.env (ρe'.map (·.shift 1 0))`
-      -- (mutual `RList_depth_lift`, recursing on `sizeOf`),
-      -- plus `Equiv (e.shift 1 0) (.ctor (dome.shift 1 0)
-      -- (bode.shift 1 1))` from `Equiv.shift heqL`, plus a
-      -- `substEnv`/`shift` commutation
-      --   `(cl.body.substEnv (lift ρe')).shift 1 1
-      --      = cl.body.substEnv (lift (ρe'.map shift))`.
-      -- The first two are mechanical; the commutation lemma
-      -- is the same shift/substEnv obligation as before
-      -- (orthogonal to the Kripke→env-exposes change). The
-      -- per-entry `R_depth_lift` recursion additionally
-      -- needs each entry's quote-success — supplied by an
-      -- `RList_quotes` side-condition or threaded via
-      -- `henv'`. Sorried; structure clear.
-      sorry
+    R n (d + 1) v (e.shift 1 0) :=
+  depth_lift_bundle.2 hq h
 
 /-- A fresh `.var d` realises `.bvar 0` at depth `d+1`. -/
 theorem R_fresh_bvar0 (n d : Nat) :
