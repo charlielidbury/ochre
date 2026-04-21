@@ -1,6 +1,28 @@
 # Progress
 
-## Current state (2026-04-19)
+## Current state (2026-04-21)
+
+**Phase 2 (soundness) ~70%, same 10 declaration sorries.** Incremental
+structuring this session: `QuotesCtx` strengthened with
+`Γ.size = Γe.length`, closing the `.hyp` case inside
+`SubN_to_Subtype'` (one of three "bridge threading" obligations).
+`SubV/SynthN_to_Subtype'` split from monolithic sorries into
+per-case `cases h` structure — the four SubV structural-guard
+cases (`hyp`, `refl`, `top`, `neutral_struct`) and the
+`SynthN.var` case close directly via the same handlers as
+`SubN_to_Subtype'`. Remaining closure-opening cases in each
+bridge still need tier-2 threading (realisability + quote_open_subst).
+
+Per-case targets, post-refactor:
+- SubV bridge (`SubV_to_Subtype'`): 4/15 cases closed; 11 sorry
+  (binder/closure-opening + `neutral_ascent` quote-totality).
+- SynthN bridge (`SynthN_to_Subtype'`): 1/6 cases closed; 5 sorry
+  (all 5 non-`var` cases need `quote_open_subst`).
+- SubN bridge (`SubN_to_Subtype'`): `.hyp` closed (was sorried
+  awaiting `QuotesCtx.hlen`); remaining internal sorries mirror
+  SubV's obligations.
+
+## Historical state (2026-04-19)
 
 **Phase 1 complete and verified** (f2ba74a). 41 → 0 markers; 0 sorries
 in `Och/Std/` or `Och/Tests.lean`.
