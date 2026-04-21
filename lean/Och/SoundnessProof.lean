@@ -2097,99 +2097,29 @@ theorem quote_depth_shift_of_levelsBelow {fuel d v e}
   rw [hsub] at hgen
   rwa [Val.shiftLvl_of_levelsBelow v d hlvl] at hgen
 
-/-- Bundled depth-lift + realisation obligations.
+/-- **Closed form** of `quote_depth_shift`: with a
+`Val.levelsBelow d v` witness, quoting at deeper depth `d+1`
+produces the shifted expression. The levelsBelow witness is
+discharged at callers via the `OpenCtx.hρlvl` invariant (which
+is in turn maintained across `push_*` via `eval_levelsBelow`).
 
-## Proof plan (2026-04-21 agent a800598a session, in progress)
-
-The closure case of conjunct 1 needs an **eval level-renaming**
-lemma. Substantial infrastructure is now in place (steps 1-4, 6
-below are fully proven and axiom-free); the remaining obstacle is
-step 5 (`quote_shiftLvl`), specifically the closure branch's
-cutoff mismatch — see "Remaining obstacle" below.
-
-### Infrastructure (PROVEN)
-
-1. `Val.shiftLvl c v` — shift every neutral-var level `≥ c` up
-   by 1. (Above.) Plus Neutral / Closure variants + helper
-   `Closure.envShiftLvl` for List.map.
-2. `Val.levelsBelow d v` — every neutral-var level in `v` is `< d`.
-   (Above.) Plus Neutral / Closure variants + envLevelsBelow.
-3. `Val.shiftLvl_of_levelsBelow` — `v.levelsBelow c → v.shiftLvl
-   c = v` (no-op on values with small levels). Plus Neutral /
-   Closure / envShiftLvl_of_envLevelsBelow variants.
-4. `eval_shiftLvl` — `eval ρ e = some v →
-   eval (ρ.map (·.shiftLvl c)) e = some (v.shiftLvl c)`. Full
-   combined induction on fuel, vapp included.
-6. `eval_levelsBelow` — `eval ρ e = some v →
-   envLevelsBelow d ρ → v.levelsBelow d`. Preserves the bound
-   through all eval/vapp cases.
-
-Plus `Val.levelsBelow_mono`, `Neutral.levelsBelow_mono`,
-`Closure.levelsBelow_mono`, `Closure.envLevelsBelow_mono`,
-`Closure.envLevelsBelow_take` and the getElem?/of_getElem?
-bridge lemmas for `Closure.envLevelsBelow`.
-
-### Remaining obstacle: step 5 (quote_shiftLvl)
-
-Attempted statement:
-```
-∀ n, (∀ {d v e}, Val.levelsBelow d v → quote n d v = some e →
-          quote n (d+1) v = some (e.shift 1 0)) ∧
-     (∀ {d cl e}, Closure.levelsBelow d cl →
-          quoteClosure n d cl = some e →
-          quoteClosure n (d+1) cl = some (e.shift 1 1)) ∧
-     (∀ {d ne e}, Neutral.levelsBelow d ne →
-          quoteNeutral n d ne = some e →
-          quoteNeutral n (d+1) ne = some (e.shift 1 0))
-```
-
-Within the closure case at depth d:
-  eval (.var d :: cl.env) body = some v,
-  quote (d+1) v = some e
-and we need `quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`.
-
-Using `eval_shiftLvl` (c := d) we correctly derive
-`eval (.var (d+1) :: cl.env) body = some (v.shiftLvl d)`
-(using (3) on cl.env via `Closure.levelsBelow d cl` to eliminate
-the env's own shiftLvl).
-
-But the IH gives `quote (d+2) v = some (e.shift 1 0)` — NOT
-`quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`. The cutoff
-mismatch (0 vs 1) reflects the fact that `.var d` in v quotes at
-`d+1` to `.bvar 0` (the binder), while shifted to `.var (d+1)`
-in `v.shiftLvl d` quotes at `d+2` ALSO to `.bvar 0` — so bvar 0
-is preserved, other bvars +1. That's `.shift 1 1`, not `.shift
-1 0`.
-
-Resolving this requires a separate mutual induction with the
-generalised claim
-  `quote n d v = some e → quote n (d+k+1) (v.shiftLvl d)
-    = some (e.shift 1 k)`
-for arbitrary k. The shift cutoff on the Expr side tracks the
-"binder depth" offset; the Val shift cutoff tracks the "original
-depth". [TODO]
-
-Conjunct 2 (R_depth_lift) additionally needs structural induction
-on R (termination on sizeOf v). [TODO]
-
-See DECISION-LOG 2026-04-21. -/
-theorem depth_lift_bundle :
-    (∀ {d v e}, quote fuelω d v = some e →
-      quote fuelω (d + 1) v = some (e.shift 1 0)) ∧
-    (∀ {n d v e} {qe : Expr}, quote fuelω d v = some qe →
-      R n d v e → R n (d + 1) v (e.shift 1 0)) := by
-  sorry
-
+Delegates to `quote_depth_shift_of_levelsBelow`. -/
 theorem quote_depth_shift {d v e}
+    (hlvl : Val.levelsBelow d v)
     (hq : quote fuelω d v = some e) :
     quote fuelω (d + 1) v = some (e.shift 1 0) :=
-  depth_lift_bundle.1 hq
+  quote_depth_shift_of_levelsBelow hlvl hq
 
+/-- **Depth-lift of R** with `Val.levelsBelow d v` side
+condition. Still open (mutual with R + sizeOf structural
+induction, plus closedness for the `Equiv.shift` base
+conjunct) — see DECISION-LOG 2026-04-21. -/
 theorem R_depth_lift {n d v e}
-    {qe : Expr} (hq : quote fuelω d v = some qe)
+    {qe : Expr} (hlvl : Val.levelsBelow d v)
+    (hq : quote fuelω d v = some qe)
     (h : R n d v e) :
-    R n (d + 1) v (e.shift 1 0) :=
-  depth_lift_bundle.2 hq h
+    R n (d + 1) v (e.shift 1 0) := by
+  sorry
 
 /-- A fresh `.var d` realises `.bvar 0` at depth `d+1`. -/
 theorem R_fresh_bvar0 (n d : Nat) :
@@ -2216,17 +2146,22 @@ theorem R_fresh_bvar0 (n d : Nat) :
 /-- Depth-lifting a realised environment (no head push):
 each entry's realiser shifts up by one. Used by
 `REnv_lift` (which then conses a fresh) and by
-`OpenCtx.push_let` (which conses a concrete value). -/
+`OpenCtx.push_let` (which conses a concrete value).
+
+Now carries a `levelsBelow d` hypothesis on each ρ entry (for
+`R_depth_lift`). Callers discharge via `OpenCtx.hρlvl`. -/
 theorem REnv_depth_lift {n d ρ ρe}
     (henv : REnv n d ρ ρe)
     (hquotes : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe) :
+        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
+    (hρlvl : ∀ (k : Nat) (v : Val),
+        ρ[k]? = some v → Val.levelsBelow d v) :
     REnv n (d + 1) ρ (ρe.map (·.shift 1 0)) := by
   refine ⟨by simp [henv.1], ?_⟩
   intro m v hk
   obtain ⟨e, he, hR⟩ := henv.2 m v hk
   obtain ⟨qe, hqe⟩ := hquotes m v hk
-  refine ⟨e.shift 1 0, ?_, R_depth_lift hqe hR⟩
+  refine ⟨e.shift 1 0, ?_, R_depth_lift (hρlvl m v hk) hqe hR⟩
   have he' : ρe[m]? = some e := by
     rw [← List.get?_eq_getElem?]; exact he
   simp [List.getElem?_map, he']
@@ -2237,11 +2172,13 @@ depth-lifts via `REnv_depth_lift`. -/
 theorem REnv_lift {n d ρ ρe}
     (henv : REnv n d ρ ρe)
     (hquotes : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe) :
+        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
+    (hρlvl : ∀ (k : Nat) (v : Val),
+        ρ[k]? = some v → Val.levelsBelow d v) :
     REnv n (d + 1)
       (Val.neutral (.var d) :: ρ)
       (.bvar 0 :: ρe.map (·.shift 1 0)) := by
-  have htail := REnv_depth_lift henv hquotes
+  have htail := REnv_depth_lift henv hquotes hρlvl
   refine ⟨by simp [htail.1], ?_⟩
   intro k v hk
   cases k with
@@ -3065,6 +3002,7 @@ shifts. Used by `SynthN_to_Subtype'.var` to bridge
 `Γ.size`, where the gap is exactly the `Subtype'.bvar`
 shift amount. -/
 theorem quote_depth_shift_n {k d v e}
+    (hlvl : Val.levelsBelow k v)
     (hle : k ≤ d) (hq : quote fuelω k v = some e) :
     quote fuelω d v = some (e.shift (d - k) 0) := by
   obtain ⟨n, rfl⟩ := Nat.exists_eq_add_of_le hle
@@ -3073,7 +3011,11 @@ theorem quote_depth_shift_n {k d v e}
   induction n with
   | zero => simp only [Nat.add_zero, Expr.shift_zero]; exact hq
   | succ m ih =>
-      have h1 := quote_depth_shift ih
+      -- Each step uses `levelsBelow (k + m)` which follows from
+      -- `levelsBelow k` by monotonicity.
+      have hlvl_m : Val.levelsBelow (k + m) v :=
+        Val.levelsBelow_mono (by omega) v hlvl
+      have h1 := quote_depth_shift hlvl_m ih
       rw [Expr.shift_shift_same, Nat.add_comm 1 m] at h1
       exact h1
 
@@ -3213,9 +3155,10 @@ explicit in `QuotesCtx` lets the `.hyp` case of
 shift amount and `Subtype'.hyp`'s `Γe.length` shift amount. -/
 abbrev QuotesCtx (Γ : TyCtx) (Γe : Ctx) : Prop :=
   Γ.size = Γe.length ∧
-  ∀ k τ, Γ[k]? = some τ →
+  (∀ k τ, Γ[k]? = some τ →
     ∃ τe, Γe.get? (Γ.size - 1 - k) = some τe ∧
-          quote fuelω k τ = some τe
+          quote fuelω k τ = some τe) ∧
+  (∀ k τ, Γ[k]? = some τ → Val.levelsBelow k τ)
 
 /-!
 ### The mutual bridge
@@ -3290,6 +3233,15 @@ structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx)
   hΓ : QuotesCtx Γ Γe
   hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
         ∃ we, quote fuelω Γ.size v = some we
+  /-- Levelbound invariant: every entry of `ρ` has neutral-var
+  levels `< Γ.size`. Maintained by `push_fresh` (new head
+  `.var Γ.size` has level `Γ.size < Γ.size+1`) and by
+  `push_let` (new head `valV` from `eval ρ val` has levels
+  `< Γ.size` by `eval_levelsBelow`, then `< Γ.size+1` by mono).
+  Used by `quote_depth_shift` at call sites (via
+  `hρlvl_lift`). -/
+  hρlvl : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+          Val.levelsBelow Γ.size v
   henv : REnv 1 Γ.size ρ ρe
   /-- All four contexts grow in lockstep (`empty` starts at
   0; both `push_*` add 1 to each). `tyInfer_sound_open .bvar`
@@ -3320,8 +3272,9 @@ theorem OpenCtx.eq {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
 
 /-- The empty context is trivially open. `ρe = []`. -/
 theorem OpenCtx.empty : OpenCtx #[] [] [] [] where
-  hΓ := ⟨rfl, fun _ _ hk => by simp at hk⟩
+  hΓ := ⟨rfl, fun _ _ hk => by simp at hk, fun _ _ hk => by simp at hk⟩
   hρq := fun _ _ hk => by simp at hk
+  hρlvl := fun _ _ hk => by simp at hk
   henv := ⟨rfl, fun _ _ hk => by simp at hk⟩
   hlen := rfl
   hwf := fun _ _ _ hk => by simp at hk
@@ -3391,12 +3344,24 @@ private theorem hwf_lift_tail {Γe : Ctx} {ρe : List Expr}
 /-- Lift each `ρ`-entry's quote-witness to depth `d+1`. -/
 private theorem hρq_lift {d : Nat} {ρ : Env}
     (hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
-           ∃ we, quote fuelω d v = some we) :
+           ∃ we, quote fuelω d v = some we)
+    (hρlvl : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+             Val.levelsBelow d v) :
     ∀ (k : Nat) (v : Val), ρ[k]? = some v →
     ∃ we, quote fuelω (d + 1) v = some we := by
   intro k v hk
   obtain ⟨we, hwe⟩ := hρq k v hk
-  exact ⟨we.shift 1 0, quote_depth_shift hwe⟩
+  exact ⟨we.shift 1 0, quote_depth_shift (hρlvl k v hk) hwe⟩
+
+/-- `hρlvl`-lift companion: lift each ρ-entry's `levelsBelow d`
+to `levelsBelow (d+1)` (by monotonicity). -/
+private theorem hρlvl_lift {d : Nat} {ρ : Env}
+    (hρlvl : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+             Val.levelsBelow d v) :
+    ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+    Val.levelsBelow (d + 1) v := by
+  intro k v hk
+  exact Val.levelsBelow_mono (Nat.le_succ _) v (hρlvl k v hk)
 
 /-- `QuotesCtx` extension under `Γ.push`. The new head
 `Γ'[d] = τ` quotes at `d+1` to `Γe'[0] = τe` (given). Each
@@ -3407,9 +3372,10 @@ depth is per-entry, not the outer `Γ.size`); only the
 theorem QuotesCtx.push {Γ : TyCtx} {Γe : Ctx}
     (hΓ : QuotesCtx Γ Γe)
     {τ : Val} {τe : Expr}
-    (hqτ : quote fuelω Γ.size τ = some τe) :
+    (hqτ : quote fuelω Γ.size τ = some τe)
+    (hτlvl : Val.levelsBelow Γ.size τ) :
     QuotesCtx (Γ.push τ) (τe :: Γe) := by
-  refine ⟨?hlen, ?hquote⟩
+  refine ⟨?hlen, ?hquote, ?hlvl⟩
   case hlen => simp [Array.size_push, hΓ.1]
   case hquote =>
     intro k τ' hk
@@ -3424,7 +3390,7 @@ theorem QuotesCtx.push {Γ : TyCtx} {Γe : Ctx}
       rw [this]; rfl
     · -- k ≠ Γ.size: old entry, Γ[k]? = some τ'.
       rename_i hk_ne
-      obtain ⟨τe', hτe', hqτ'⟩ := hΓ.2 k τ' hk
+      obtain ⟨τe', hτe', hqτ'⟩ := hΓ.2.1 k τ' hk
       refine ⟨τe', ?_, hqτ'⟩
       have hk_lt : k < Γ.size :=
         (Array.getElem?_eq_some_iff.mp hk).1
@@ -3432,6 +3398,15 @@ theorem QuotesCtx.push {Γ : TyCtx} {Γe : Ctx}
                 = (Γ.size - 1 - k) + 1 := by
         simp only [Array.size_push]; omega
       rw [hidx]; simpa using hτe'
+  case hlvl =>
+    intro k τ' hk
+    rw [Array.getElem?_push] at hk
+    split at hk
+    · rename_i hk_eq
+      cases hk
+      exact hk_eq ▸ hτlvl
+    · rename_i hk_ne
+      exact hΓ.2.2 k τ' hk
 
 /-- Pushing a fresh neutral preserves the invariant.
 `ρe' = .bvar 0 :: ρe.map shift` — the standard de-Bruijn
@@ -3440,10 +3415,11 @@ lift. Closes via `REnv_lift` (which packages
 tail) and `QuotesCtx.push`. -/
 theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {τ : Val} {τe : Expr}
-    (hqτ : quote fuelω Γ.size τ = some τe) :
+    (hqτ : quote fuelω Γ.size τ = some τe)
+    (hτlvl : Val.levelsBelow Γ.size τ) :
     OpenCtx (Γ.push τ) (.neutral (.var Γ.size) :: ρ)
             (τe :: Γe) (.bvar 0 :: ρe.map (·.shift 1 0)) where
-  hΓ := QuotesCtx.push hctx.hΓ hqτ
+  hΓ := QuotesCtx.push hctx.hΓ hqτ hτlvl
   hρq := by
     intro k v hk
     cases k with
@@ -3456,10 +3432,25 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
                (Nat.lt_succ_self _)⟩
     | succ m =>
         simp only [List.getElem?_cons_succ] at hk
-        have h := hρq_lift (d := Γ.size) hctx.hρq m v hk
+        have h := hρq_lift (d := Γ.size) hctx.hρq hctx.hρlvl m v hk
+        simpa [Array.size_push] using h
+  hρlvl := by
+    intro k v hk
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        -- .neutral (.var Γ.size) has level Γ.size < Γ.size+1
+        simp only [Array.size_push]
+        unfold Val.levelsBelow Neutral.levelsBelow
+        exact Nat.lt_succ_self _
+    | succ m =>
+        simp only [List.getElem?_cons_succ] at hk
+        have h := hρlvl_lift (d := Γ.size) hctx.hρlvl m v hk
         simpa [Array.size_push] using h
   henv := by
-    simpa [Array.size_push] using REnv_lift hctx.henv hctx.hρq
+    simpa [Array.size_push] using
+      REnv_lift hctx.henv hctx.hρq hctx.hρlvl
   hlen := by simp [Array.size_push, List.length_map, hctx.hlen]
   hwf := by
     intro k w τe' hw hτe'
@@ -3488,12 +3479,13 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     (hnfq : ((eval fuelω unf ρ val).bind (quote fuelω Γ.size)).isSome)
     (hclv : val.closedAt ρe.length = true)
     (hqτ : quote fuelω Γ.size valTy = some valTye)
+    (hτlvl : Val.levelsBelow Γ.size valTy)
     (hval_le : Subtype' [] Γe (val.substEnv ρe) valTye) :
     OpenCtx (Γ.push valTy) (valV :: ρ)
             (valTye :: Γe)
             ((val.substEnv ρe).shift 1 0
               :: ρe.map (·.shift 1 0)) where
-  hΓ := QuotesCtx.push hctx.hΓ hqτ
+  hΓ := QuotesCtx.push hctx.hΓ hqτ hτlvl
   hρq := by
     intro k v hk
     cases k with
@@ -3501,17 +3493,50 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
         subst hk
         obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
+        -- Derive levelsBelow Γ.size for valV from eval_levelsBelow:
+        have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
+          Closure.envLevelsBelow_of_getElem? (fun k v hk =>
+            hctx.hρlvl k v (by rw [List.get?_eq_getElem?] at hk; exact hk))
+        have hevω := eval_fuel_mono hfuel hev
+        have hvlvl : Val.levelsBelow Γ.size valV :=
+          eval_levelsBelow hevω henvLvl
         exact ⟨qe.shift 1 0,
-          by simpa [Array.size_push] using quote_depth_shift hqe⟩
+          by simpa [Array.size_push] using
+             quote_depth_shift hvlvl hqe⟩
     | succ m =>
         simp only [List.getElem?_cons_succ] at hk
-        have h := hρq_lift (d := Γ.size) hctx.hρq m v hk
+        have h := hρq_lift (d := Γ.size) hctx.hρq hctx.hρlvl m v hk
+        simpa [Array.size_push] using h
+  hρlvl := by
+    intro k v hk
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
+          Closure.envLevelsBelow_of_getElem? (fun k v hk =>
+            hctx.hρlvl k v (by rw [List.get?_eq_getElem?] at hk; exact hk))
+        have hevω := eval_fuel_mono hfuel hev
+        have hvlvl : Val.levelsBelow Γ.size valV :=
+          eval_levelsBelow hevω henvLvl
+        simpa [Array.size_push] using
+          Val.levelsBelow_mono (Nat.le_succ _) valV hvlvl
+    | succ m =>
+        simp only [List.getElem?_cons_succ] at hk
+        have h := hρlvl_lift (d := Γ.size) hctx.hρlvl m v hk
         simpa [Array.size_push] using h
   henv := by
     have hRval := eval_realises hev hctx.henv hclv
     obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
-    have hRval' := R_depth_lift hqe hRval
-    have htail := REnv_depth_lift hctx.henv hctx.hρq
+    -- Derive levelsBelow Γ.size for valV (for R_depth_lift):
+    have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
+      Closure.envLevelsBelow_of_getElem? (fun k v hk =>
+        hctx.hρlvl k v (by rw [List.get?_eq_getElem?] at hk; exact hk))
+    have hevω := eval_fuel_mono hfuel hev
+    have hvlvl : Val.levelsBelow Γ.size valV :=
+      eval_levelsBelow hevω henvLvl
+    have hRval' := R_depth_lift hvlvl hqe hRval
+    have htail := REnv_depth_lift hctx.henv hctx.hρq hctx.hρlvl
     simpa [Array.size_push] using REnv_cons htail hRval'
   hlen := by simp [Array.size_push, List.length_map, hctx.hlen]
   hwf := by
@@ -3584,11 +3609,13 @@ theorem tyInfer_sound_open
       -- at depth `Γ.size-1-k` and the matching `Γe[k]`.
       have hΓk : Γ[Γ.size - 1 - k]? = some Γ[Γ.size - 1 - k] := by
         simp [Array.getElem?_eq_getElem, hidx_lt]
-      obtain ⟨τe0, hΓe, hqτe0⟩ := hctx.hΓ.2 _ _ hΓk
+      obtain ⟨τe0, hΓe, hqτe0⟩ := hctx.hΓ.2.1 _ _ hΓk
+      have hτlvl : Val.levelsBelow (Γ.size - 1 - k) _ :=
+        hctx.hΓ.2.2 _ _ hΓk
       have hidx : Γ.size - 1 - (Γ.size - 1 - k) = k := by omega
       rw [hidx] at hΓe
       -- Lift the quote from depth `Γ.size-1-k` to `Γ.size`:
-      have hqτe := quote_depth_shift_n (d := Γ.size)
+      have hqτe := quote_depth_shift_n (d := Γ.size) hτlvl
         (show Γ.size - 1 - k ≤ Γ.size by omega) hqτe0
       have hshamt : Γ.size - (Γ.size - 1 - k) = k + 1 := by omega
       rw [hshamt] at hqτe
@@ -3682,7 +3709,8 @@ theorem tyInfer_sound_open
       have ⟨hev, valTye, hqValTy, hval_le⟩ :=
         letBinderType_sound_open hfuel' hctx (by sorry) hcl_val hletB
       have hctx' :=
-        hctx.push_let (val := val) hfuel' hev (by sorry) hcl_val hqValTy hval_le
+        hctx.push_let (val := val) hfuel' hev (by sorry) hcl_val
+          hqValTy (by sorry) hval_le
       have hIH :=
         tyInfer_sound_open hfuel' hctx'
           (by simpa [List.length_map] using hcl_body)
@@ -3802,7 +3830,7 @@ theorem tyCheck_sound_open
       --     convention, `push_fresh hqDom` gives
       --     `Γe' = expDome :: Γe` — directly the head
       --     `Subtype'.lam` expects.
-      have hctx' := hctx.push_fresh (τ := expDom) hqDom
+      have hctx' := hctx.push_fresh (τ := expDom) hqDom (by sorry)
       -- (c) Body IH at the extended context. The `ρe'` from
       --     `push_fresh` is `.bvar 0 :: ρe.map shift` —
       --     **identical** to `(.lam dom body).substEnv ρe`'s
@@ -3867,12 +3895,17 @@ theorem tyCheck_sound_open
       -- `QuotesCtx` depth-`k` convention, `valTye` at depth
       -- `Γ.size` is exactly the head we cons):
       have hctx' :=
-        hctx.push_let (val := val) hfuel' hev (by sorry) hcl_val hqValTy hval_le
+        hctx.push_let (val := val) hfuel' hev (by sorry) hcl_val
+          hqValTy (by sorry) hval_le
       -- IH: body at hctx', expected τV at depth Γ.size+1.
       have hIH :=
         tyCheck_sound_open hfuel' hctx'
           (by simpa [List.length_map] using hcl_body)
-          (by simpa [Array.size_push] using quote_depth_shift hqτ)
+          (by
+            -- Inside already-sorried section; levelsBelow of τV
+            -- would be threaded via hctx-invariant from caller.
+            simpa [Array.size_push] using
+              quote_depth_shift (by sorry : Val.levelsBelow Γ.size τV) hqτ)
           h
       -- Goal: Subtype' [] Γe
       --   (.letE (val.substEnv ρe)
