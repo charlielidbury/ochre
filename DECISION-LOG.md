@@ -3,6 +3,79 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-21: Structural blocker confirmed — all 4 remaining declaration sorries reduce to nil-Γ Equiv.shift
+
+After Agent A2's levelsBelow refactor landed (95f0022) and Agent E
+added RList_depth_lift (f011754), the remaining 4 declaration
+sorries were analysed. All four ultimately reduce to the same
+obstruction:
+
+**Blocker:** `Equiv.shift` at `Γ=[]` requires `shift 1 0` applied
+to arbitrary (possibly open) expressions. Without closedness of
+both endpoints, this is structurally unprovable because:
+- At `Γ=[]`, `Subtype' S [] (e.shift 1 0) _` introduces free
+  bvars that no `.bvar` rule can discharge.
+- `ctx_extend_at` requires a non-empty Δ to extend into — at
+  Γ'=[], there's nowhere to extend.
+- `shift_of_closed` only works when `e.closedAt 0 = true`, which
+  doesn't hold for ρe entries at intermediate depths (they have
+  free bvars < d for d > 0).
+
+**Sorry reductions:**
+
+1. `R_depth_lift` (2130): needs `Equiv (e.shift 1 0) (e'.shift 1 0)`
+   for the `.type`/`.neutral` and `.lam`/`.iota`/`.fix` (final
+   Equiv conjunct) cases. Reduces to Equiv.shift.
+
+2. `R_quote_equiv` closure cases (2467): each needs
+   `Equiv body' bodyE` where `bodyE` has a shifted env. Reduces
+   to `quoteClosure_realises` + mutual recursion on quote-fuel,
+   and the env-shift step needs Equiv.shift.
+
+3. `vapp_realises` iota/fix unfold (2594): needs `Equiv.subst_resp`
+   (deleted) on `heqI : fe ≡ .iota anne bode`. The closedness-
+   carrying `Equiv.subst_resp_closed` requires `fe.closedAt 0 ∧
+   anne.closedAt 0`, which don't hold in open contexts. Reduces
+   to: either thread closedness through REnv (refactor), or use
+   Equiv.shift.
+
+4. `tyInfer_sound_open` (3626): mutual block with internal
+   `by sorry` for A9 (known issue: tyInfer returns bare .fix/.iota
+   annotation, not sound) + other internal sorries threading
+   through eval_quotes'. A9 is a calculus-design issue, not a
+   proof blocker.
+
+**Paths forward:**
+- **(A) Closedness-tracking R:** add `e.closedAt d = true`
+  invariant to R's .lam/.iota/.fix env-exposes clauses. Then
+  R_depth_lift's shift at cutoff d becomes identity (via
+  shift_of_closedAt at d = Γ.length). But requires proving
+  closedness preservation through all R construction sites.
+- **(B) Closedness-tracking Equiv:** refactor Equiv to carry
+  closedness witnesses, making Equiv.shift provable directly.
+  Invasive.
+- **(C) Alternative subst_resp path:** prove subst_resp using
+  unfold_iota_L/R rules + structural recursion without going
+  through Equiv.shift. Unclear if feasible.
+
+**Status:** Both Agent E (R_depth_lift) and Agent F (vapp iota/fix)
+sub-agents stalled (stream watchdog timeout at 600s). Agent E
+committed partial progress (RList_depth_lift). Agent F's worktree
+branch `agent-vapp-iota-fix` was created but no work pushed.
+
+Session net progress:
+- Started: 10 declaration sorries.
+- Ended: 4 declaration sorries (R_depth_lift, R_quote_equiv,
+  vapp_realises, tyInfer_sound_open).
+- Infrastructure added (proven, reusable): Val.shiftLvl,
+  Val.levelsBelow, eval_shiftLvl, eval_levelsBelow,
+  Closure.envShiftLvl, shiftLvl_of_levelsBelow,
+  quote_quoteClosure_quoteNeutral_depth_shift cutoff-mutual,
+  quote_depth_shift_of_levelsBelow, RList_depth_lift,
+  OpenCtx.hρlvl + hΓ.levelsBelow invariants.
+
+Further progress requires deciding between paths A/B/C.
+
 ## 2026-04-21: R refactor landed — base conjunct dropped for closures; R_quote_equiv closure cases left as residual sorry
 
 **What:** Implemented the R restructure per the 2026-04-19 plan.
