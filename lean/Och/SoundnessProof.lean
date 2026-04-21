@@ -2067,19 +2067,7 @@ private theorem quote_neutral_var_fwd {d lvl : Nat} (hlt : lvl < d) :
   unfold quoteNeutral
   simp [hlt]
 
-theorem R_zero {d v e} : R 0 d v e := by unfold R; trivial
-
-/-- A fresh neutral variable realises the corresponding
-de-Bruijn-indexed bvar at every step index. -/
-theorem R_neutral_var {m d lvl : Nat} (hlt : lvl < d) :
-    R m d (.neutral (.var lvl)) (.bvar (d - 1 - lvl)) := by
-  cases m with
-  | zero => exact R_zero
-  | succ m' =>
-      unfold R
-      refine ⟨fun e' hq => ?_, trivial⟩
-      rw [quote_neutral_var_fwd hlt] at hq
-      cases hq; exact Equiv.refl _
+-- `R_zero` and `R_neutral_var` deleted 2026-04-21: unused.
 
 -- `REnv_id`, `eval_unf_equiv`, `quoteClosure_eq_quote_openω_fresh`,
 -- `quoteClosure_equiv_openω_fresh` all deleted 2026-04-21:
