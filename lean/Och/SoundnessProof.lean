@@ -2081,150 +2081,11 @@ theorem R_neutral_var {m d lvl : Nat} (hlt : lvl < d) :
       rw [quote_neutral_var_fwd hlt] at hq
       cases hq; exact Equiv.refl _
 
-/-- The identity environment realises itself: each `ρ[k]` is
-`.neutral (.var (d-1-k))` which quotes to `.bvar k`, and
-`ρe[k] = .bvar k`. -/
-theorem REnv_id (m d : Nat) :
-    REnv m d
-      ((List.range d).reverse.map (fun lvl => Val.neutral (.var lvl)))
-      ((List.range d).map .bvar) := by
-  constructor
-  · simp only [List.length_map, List.length_reverse, List.length_range]
-  · intro k v hk
-    simp only [List.get?_eq_getElem?] at *
-    rw [List.getElem?_map] at hk
-    -- k < d, so reverse[k]? = some (d-1-k).
-    rcases Nat.lt_or_ge k d with hkd | hkd
-    · have hrev : (List.range d).reverse[k]? = some (d - 1 - k) := by
-        rw [List.getElem?_reverse
-              (by simp only [List.length_range]; exact hkd),
-            List.length_range,
-            List.getElem?_range (by omega)]
-      rw [hrev] at hk
-      simp only [Option.map_some', Option.some.injEq] at hk
-      refine ⟨.bvar k, ?_, ?_⟩
-      · simp only [List.get?_eq_getElem?, List.getElem?_map,
-                   List.getElem?_range hkd, Option.map_some']
-      · subst hk
-        have hdk : d - 1 - k < d := Nat.lt_of_le_of_lt (Nat.sub_le _ _)
-          (Nat.sub_lt (Nat.lt_of_le_of_lt (Nat.zero_le k) hkd) Nat.one_pos)
-        have hr := R_neutral_var (m := m) (d := d) (lvl := d - 1 - k) hdk
-        have heq : d - 1 - (d - 1 - k) = k := by omega
-        simp only [heq] at hr
-        exact hr
-    · -- k ≥ d: ρ[k]? = none, contradiction.
-      exfalso
-      have : (List.range d).reverse[k]? = none := by
-        apply List.getElem?_eq_none
-        simp only [List.length_reverse, List.length_range]; omega
-      rw [this] at hk; simp at hk
-
-/-- **Unf-irrelevance modulo `Subtype'`**: evaluating the
-same expression at the same fuel/env but different `unf`
-budgets gives values whose quotes are `Subtype'`-equivalent.
-
-Now derived from the fundamental lemma: both evaluations
-realise the *same* source expression `e.substEnv ρe`
-(`eval_realises` is `unf`-independent), so both quotes are
-`Equiv` to it (`R_quote_equiv`), hence `Equiv` to each other
-(`Equiv.trans` ∘ `Equiv.symm`). The remaining obligation is
-`eval_realises` itself.
-
-The `hρe` hypothesis says the evaluation environment is
-realisable at the given depth (each `ρ[k]` quotes). The
-bridge always supplies such an environment (built from
-fresh neutrals via the `hΓ` correspondence). -/
-theorem eval_unf_equiv {n unf₁ unf₂ ρ e v₁ v₂ depth e₁ e₂}
-    (hn : n ≤ fuelω)
-    {ρe : List Expr} (hρe : REnv 1 depth ρ ρe)
-    (hcl : e.closedAt ρe.length = true)
-    (h₁ : eval n unf₁ ρ e = some v₁)
-    (h₂ : eval n unf₂ ρ e = some v₂)
-    (hq₁ : quote n depth v₁ = some e₁)
-    (hq₂ : quote n depth v₂ = some e₂) :
-    ∀ {S Γe}, Subtype' S Γe e₁ e₂ ∧ Subtype' S Γe e₂ e₁ := by
-  have hq₁' := quote_fuel_mono hn hq₁
-  have hq₂' := quote_fuel_mono hn hq₂
-  -- Both evaluations realise `e.substEnv ρe` at step index 1
-  -- (the fundamental lemma is `unf`-agnostic).
-  have r₁ := eval_realises h₁ (m := 1) (d := depth) hρe hcl
-  have r₂ := eval_realises h₂ (m := 1) (d := depth) hρe hcl
-  -- Both quotes are `Equiv` to that common target.
-  have eq₁ : Equiv e₁ (e.substEnv ρe) := R_quote_equiv Nat.one_pos r₁ hq₁'
-  have eq₂ : Equiv e₂ (e.substEnv ρe) := R_quote_equiv Nat.one_pos r₂ hq₂'
-  -- Compose: e₁ ≡ target ≡ e₂.
-  intro S Γe
-  exact ⟨.trans (eq₁.1) (eq₂.2), .trans (eq₂.1) (eq₁.2)⟩
-
-/-- **Fresh-case correspondence, conditional on unf-
-agreement.** When the unf=1 and unf=4 evaluations of the
-closure body under a fresh variable agree (which holds
-whenever the body has no closed recursive applications in
-scope — in particular for every Std encoding that puts the
-recursive call under a binder), `quoteClosure` and
-`quote ∘ openω` give *equal* results modulo fuel.
-
-This is the `SubV.lam` bridge case's exact need; the
-unconditional version follows from `eval_unf_equiv`. -/
-theorem quoteClosure_eq_quote_openω_fresh {cl : Closure}
-    {depth : Nat} {r : Val} {bodye : Expr}
-    (hopen : cl.openω (.neutral (.var depth)) = some r)
-    (hqcl : quoteClosure fuelω depth cl = some bodye)
-    -- The unf-agreement hypothesis. Discharged by
-    -- `eval_unf_equiv` once that's proven; for now callers
-    -- supply it (or sorry it) per closure.
-    (hunf : eval (fuelω - 1) 1
-              (.neutral (.var depth) :: cl.env) cl.body
-            = eval fuelω 4
-              (.neutral (.var depth) :: cl.env) cl.body) :
-    quote fuelω (depth + 1) r = some bodye := by
-  -- `cl.openω fresh = eval fuelω 4 (fresh :: env) body = some r`
-  unfold Closure.openω Closure.open at hopen
-  -- `quoteClosure fuelω d cl`: at fuelω = (fuelω-1)+1, the
-  -- body is `do v ← eval (fuelω-1) 1 …; quote (fuelω-1) (d+1) v`.
-  have hfω : fuelω = (fuelω - 1) + 1 := rfl
-  rw [hfω] at hqcl; unfold quoteClosure at hqcl
-  simp only [Option.bind_eq_bind, Option.bind_eq_some] at hqcl
-  obtain ⟨v', hev', hq'⟩ := hqcl
-  -- By the unf-agreement hypothesis, the unf=1 eval (giving
-  -- v') equals the unf=4 eval (giving r). So v' = r.
-  rw [hunf] at hev'
-  rw [hev'] at hopen; cases hopen
-  -- Now hq' : quote (fuelω-1) (d+1) r = some bodye. Lift to
-  -- fuelω via `quote_fuel_mono`.
-  exact quote_fuel_mono (Nat.sub_le _ _) hq'
-
-/-- **Unconditional** fresh-open correspondence: opening `cl`
-with the fresh neutral and quoting gives an Expr `Equiv` to
-`quoteClosure cl`. Replaces the `(hunf)`-conditional lemma
-above by going through `eval_unf_equiv` (proven, mod
-`eval_realises`).
-
-The `(hρe')` hypothesis is what root #2 (R-restructure)
-exposes: once `R`'s `.lam`/`.iota`/`.fix` clause carries
-`∃ ρe', REnv n d cl.env ρe'`, every `SubV_to_Subtype'`
-closure case has it (the bridge gains `(hRa)/(hRb)`
-realisability hypotheses, supplied by `eval_realises` at
-`subCheckVal_sound_open`'s call site). -/
-theorem quoteClosure_equiv_openω_fresh
-    {cl : Closure} {depth : Nat} {r : Val} {bodye re : Expr}
-    {ρe' : List Expr}
-    (hopen : cl.openω (.neutral (.var depth)) = some r)
-    (hqcl : quoteClosure fuelω depth cl = some bodye)
-    (hqr : quote fuelω (depth + 1) r = some re)
-    (hρe' : REnv 1 (depth + 1)
-              (.neutral (.var depth) :: cl.env) ρe')
-    (hclb : cl.body.closedAt ρe'.length = true) :
-    Equiv bodye re := by
-  unfold Closure.openω Closure.open at hopen
-  have hfω : fuelω = (fuelω - 1) + 1 := rfl
-  rw [hfω] at hqcl; unfold quoteClosure at hqcl
-  simp only [Option.bind_eq_bind, Option.bind_eq_some] at hqcl
-  obtain ⟨v', hev', hq'⟩ := hqcl
-  have hev'ω := eval_fuel_mono (Nat.sub_le _ _) hev'
-  have hq'ω := quote_fuel_mono (Nat.sub_le _ _) hq'
-  intro S Γe
-  exact eval_unf_equiv (Nat.le_refl fuelω) hρe' hclb hev'ω hopen hq'ω hqr
+-- `REnv_id`, `eval_unf_equiv`, `quoteClosure_eq_quote_openω_fresh`,
+-- `quoteClosure_equiv_openω_fresh` all deleted 2026-04-21:
+-- unused dead code (only mentioned in comments). Latter three
+-- depended transitively on eval_realises' sorried base conjuncts,
+-- so deletion also shrinks sorryAx-dependent code.
 
 /-- Extract the env-realisation from `R`'s `.lam` clause.
 At step-index `n+1` and `v = .lam dom cl`, the second
@@ -2260,94 +2121,11 @@ theorem R_fix_clause {n d ann cl ea}
         (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
   unfold R at hR; exact hR.2
 
-/-- `Equiv` is a congruence under `.subst 0 s` in the
-*target* position (compare `Equiv.subst_resp`, which varies
-the *substituend*). Equivalently, `Subtype'` is preserved
-by simultaneous substitution of the same term on both
-sides.
-
-Derived without a structural induction: `e.subst 0 s` is
-β-equivalent to `(.lam .type e).app s`, so the goal reduces
-to `Equiv.lam` (target-side congruence under λ) +
-`Equiv.app` + `Equiv.beta`, all proven. -/
-theorem Equiv.subst_target {e₁ e₂ : Expr}
-    (h : Equiv e₁ e₂) (s : Expr) :
-    Equiv (e₁.subst 0 s) (e₂.subst 0 s) :=
-  Equiv.trans
-    (Equiv.trans
-      (Equiv.symm (Equiv.beta .type e₁ s))
-      (Equiv.app (Equiv.lam (Equiv.refl _) h) (Equiv.refl s)))
-    (Equiv.beta .type e₂ s)
-
-/-- Quoting commutes with closure-opening up to `Subtype'`'s
-β-conversion: opening `cl` with `v` and quoting gives an Expr
-β-equivalent to substituting `quote v` into the closure's
-quoted body. The general-`v` form of
-`quoteClosure_equiv_openω_fresh`.
-
-The `(hRv, hρe', hclb, hqenv)` hypotheses are exactly what
-`R`'s `.lam`/`.iota`/`.fix` clause exposes (post root #2):
-at any `SubV_to_Subtype'` closure case with `(hRa : R 1 d
-(.lam dom cl) ea)`, the clause yields `RList 1 d cl.env ρe'`
-(→ `hρe'` via `REnv_of_RList`), `cl.body.closedAt
-(ρe'.length+1)` (= `hclb`); `hRv` is `R 1 d arg ae` from the
-argument's IH; `hqenv` from `OpenCtx.hρq` (each captured
-env entry quotes). -/
-theorem quote_open_subst {cl : Closure} {v r : Val}
-    {depth : Nat} {ve re bodye : Expr} {ρe' : List Expr}
-    (hopen : cl.openω v = some r)
-    (hqbody : quoteClosure fuelω depth cl = some bodye)
-    (hqr : quote fuelω depth r = some re)
-    (hRv : R 1 depth v ve)
-    (hρe' : REnv 1 depth cl.env ρe')
-    (hclb : cl.body.closedAt (ρe'.length + 1) = true)
-    (hqenv : ∀ (k : Nat) (w : Val), cl.env[k]? = some w →
-             ∃ qe, quote fuelω depth w = some qe) :
-    Equiv re (bodye.subst 0 ve) := by
-  -- (1) `r` realises `cl.body.substEnv (ve::ρe')`.
-  unfold Closure.openω Closure.open at hopen
-  have henv1 : REnv 1 depth (v :: cl.env) (ve :: ρe') :=
-    REnv_cons hρe' hRv
-  have hcl1 : cl.body.closedAt (ve :: ρe').length = true := by
-    simpa using hclb
-  have hRr := eval_realises hopen henv1 hcl1
-  have heqr : Equiv re (cl.body.substEnv (ve :: ρe')) :=
-    R_quote_equiv Nat.one_pos hRr hqr
-  -- (2) `w := eval (fresh::cl.env) cl.body`; `bodye` realises
-  --     `cl.body.substEnv (.bvar 0 :: ρe'.map shift)` via
-  --     `eval_realises` at depth `d+1` (env depth-lifted).
-  rw [show fuelω = (fuelω - 1) + 1 from rfl] at hqbody
-  unfold quoteClosure at hqbody
-  simp only [Option.bind_eq_bind, Option.bind_eq_some] at hqbody
-  obtain ⟨w, hevw, hqw⟩ := hqbody
-  have hevwω := eval_fuel_mono (Nat.sub_le _ _) hevw
-  have hqwω := quote_fuel_mono (Nat.sub_le _ _) hqw
-  have hRfresh : R 1 (depth + 1) (.neutral (.var depth))
-                   (.bvar 0) := by
-    have h := R_neutral_var (m := 1) (d := depth + 1)
-                (lvl := depth) (Nat.lt_succ_self depth)
-    simpa using h
-  have henv2 : REnv 1 (depth + 1)
-      (.neutral (.var depth) :: cl.env)
-      (.bvar 0 :: ρe'.map (·.shift 1 0)) :=
-    REnv_cons (REnv_depth_lift hρe' hqenv) hRfresh
-  have hcl2 : cl.body.closedAt
-      (.bvar 0 :: ρe'.map (·.shift 1 0) : List Expr).length
-        = true := by
-    simpa [List.length_map] using hclb
-  have hRw := eval_realises hevwω henv2 hcl2
-  have heqw : Equiv bodye
-      (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
-    R_quote_equiv Nat.one_pos hRw hqwω
-  -- (3) `substEnv_subst_comp` collapses the fresh-then-subst
-  --     form to the direct (ve :: ρe') form.
-  have hcomp := Expr.substEnv_subst_comp cl.body ρe' ve hclb
-  -- (4) Chain: `re ≡ substEnv (ve::ρe') = X.subst 0 ve ≡
-  --     bodye.subst 0 ve` (via `subst_target` on `heqw`).
-  intro S Γe
-  refine ⟨.trans heqr.1 ?_, .trans ?_ heqr.2⟩
-  · exact hcomp ▸ (heqw.subst_target ve).2
-  · exact hcomp ▸ (heqw.subst_target ve).1
+-- `Equiv.subst_target` and `quote_open_subst` deleted 2026-04-21:
+-- both unused after whnfPi_fix_unfold_equiv was deleted. They
+-- were deep infrastructure for the closure-quoting chain that
+-- depended transitively on eval_realises' sorried base conjuncts.
+-- If future work re-introduces the chain, they can be re-derived.
 
 /-- Multi-step `quote_depth_shift`: quoting at any deeper
 depth `d ≥ k` shifts the result by `d - k`. Iterates the
@@ -2887,42 +2665,13 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
                    List.get?_cons_succ] at hw hτe'
         exact hwf_lift_tail hctx.hwf valTye m w τe' hw hτe'
 
-/-- Building-block helper: one `.fix` unfold step is
-declaratively equivalent to the input. Used by any caller
-that has sufficient realisability evidence for the fix's
-closure environment.
-
-Proof uses `quote_open_subst` + `Equiv.fix_unfold`. -/
-theorem whnfPi_fix_unfold_equiv {fuel : Nat} (hfuel : fuel ≤ fuelω)
-    {Γ : TyCtx} {Γe : Ctx} (_hΓ : QuotesCtx Γ Γe)
-    {ann : Val} {cl : Closure}
-    {v' : Val} (hopen : cl.open fuel (.fix ann cl) = some v')
-    {τe : Expr} (hqτ : quote fuelω Γ.size (.fix ann cl) = some τe)
-    {re : Expr} (hqr : quote fuelω Γ.size v' = some re)
-    (hR : R 1 Γ.size (.fix ann cl) τe)
-    (hqenv : ∀ (k : Nat) (w : Val), cl.env[k]? = some w →
-             ∃ qe, quote fuelω Γ.size w = some qe) :
-    Equiv re τe := by
-  obtain ⟨anne, bodye, _hanne, hbodye, heq⟩ := quote_fix hqτ
-  have hopenω : cl.openω (.fix ann cl) = some v' :=
-    Closure.openω_of_open hfuel hopen
-  have hbodyeω : quoteClosure fuelω Γ.size cl = some bodye := quoteClosureω hbodye
-  obtain ⟨ρe', _anne', hRL, hclb, _heqF⟩ := R_fix_clause hR
-  have hρe' := REnv_of_RList hRL
-  have hqos : Equiv re (bodye.subst 0 τe) :=
-    quote_open_subst hopenω hbodyeω hqr hR hρe' hclb hqenv
-  subst heq
-  have hfu : Equiv (Expr.fix anne bodye) (bodye.subst 0 (.fix anne bodye)) :=
-    Equiv.fix_unfold anne bodye
-  intro S Γe'
-  exact ⟨.trans (hqos).1 (Equiv.symm hfu).1,
-         .trans (Equiv.symm hfu).2 (hqos).2⟩
-
--- whnfPi_go_sound_open / whnfPi_sound_open / whnfPi_sound (in
--- Soundness.lean) were unused dead code; deleted 2026-04-21.
--- The `whnfPi_fix_unfold_equiv` above captures the genuinely
--- useful content — one unfold step's equivalence — and is
--- exported for callers that need it.
+-- whnfPi_fix_unfold_equiv, whnfPi_go_sound_open,
+-- whnfPi_sound_open, whnfPi_sound (in Soundness.lean) all
+-- deleted 2026-04-21. The fix_unfold_equiv building block
+-- transitively depended on quote_open_subst's sorry chain
+-- (via eval_realises); nothing in the current proof chain uses
+-- it, and if future work needs it it can be re-derived with
+-- fewer sorries once eval_realises is closed.
 
 mutual
 
