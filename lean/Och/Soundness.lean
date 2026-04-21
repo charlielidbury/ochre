@@ -193,33 +193,10 @@ SoundnessProof.lean), so they're not threaded through
 here.
 -/
 
-/-- Closed-context `tyInfer` soundness, by
-`tyInfer_sound_open` at `OpenCtx.empty`. -/
-theorem tyInfer_sound_closed
-    {fuel : Nat} {e : Expr} {τV : Val}
-    (hfuel : fuel ≤ fuelω)
-    (hcle : e.closedAt 0 = true)
-    (h : tyInfer fuel #[] [] e = .ok (some τV)) :
-    ∃ τe, quote fuelω 0 τV = some τe ∧ Subtype' [] [] e τe := by
-  obtain ⟨τe, hqτ, hsub⟩ := tyInfer_sound_open hfuel OpenCtx.empty
-    (by simpa using hcle) h
-  exact ⟨τe, by simpa using hqτ, Expr.substEnv_nil e ▸ hsub⟩
-
-/-- Closed-context `tyCheckFallback` soundness, by
-`tyCheckFallback_sound_open` at `OpenCtx.empty`. -/
-theorem tyCheckFallback_sound_closed
-    {fuel : Nat} {e τ : Expr} {τV : Val}
-    (hfuel : fuel ≤ fuelω)
-    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (_hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
-    (hτV : eval fuel unfBound [] τ = some τV)
-    (h : tyCheckFallback fuel #[] [] e τV = .ok true) :
-    Subtype' [] [] e τ := by
-  obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
-  have hopen := tyCheckFallback_sound_open hfuel OpenCtx.empty
-    (by simpa using hcle) (by simpa using hqτV) h
-  exact .trans (Expr.substEnv_nil e ▸ hopen)
-    (eval_quote_equiv_closed hclτ hτV hqτV (S := []) (Γe := [])).1
+-- `tyInfer_sound_closed` and `tyCheckFallback_sound_closed`
+-- were unused wrappers — deleted 2026-04-21. The composite
+-- `tyCheck_sound_closed` + `typeCheck_sound` chain below is the
+-- sole soundness entry point.
 
 /-- Closed-context `tyCheck` soundness, by
 `tyCheck_sound_open` at `OpenCtx.empty`. -/
