@@ -13,18 +13,32 @@ propagation; all cases documented.
 **The `Equiv.shift` obstacle reassessed (2026-04-21):** The
 prior claim that route (i) was a "~60-line structural induction"
 was wrong; see DECISION-LOG 2026-04-21 for the full analysis.
-The actual path is:
 
-1. Seen.wellClosed (new, in Subtyping.lean) — invariant on
-   seen-sets; preserved by every productive unfold rule.
-2. Ctx.wellFormed (new, in Subtyping.lean) — standard de Bruijn
-   well-formedness of the context; NOT preserved by `.lam` /
-   `.iota_cong` / etc. without an extra closedness side
-   condition on the binder.
-3. Subtype'.shift_above — 12/23 cases proven. Remaining 11 need
-   #2's propagation, which requires adding closedness premises
-   to the binder constructors of `Subtype'` — an invasive
-   change.
+**The complete closedness-propagation chain is now built** (as
+infrastructure; the proof-level integration remains):
+
+1. `Seen.wellClosed` / `Ctx.wellFormed` (Subtyping.lean, new) —
+   wellformedness invariants.
+2. `Subtype'.shift_above` (Subtyping.lean, 12/23 cases proven) —
+   including the `.hyp` case (the supposed "impossibility wall"),
+   proven via `Seen.wellClosed`.
+3. `Subtype'.shift_above_closed` / `shift_nil_closed`
+   (Subtyping.lean, fully proven) — trivial shift on closed
+   endpoints.
+4. `Equiv.shift_of_closed` (SoundnessProof.lean, fully proven) —
+   bypasses the nil-Γ sorry when both endpoints are closed.
+5. `Equiv.subst_resp_closed` (SoundnessProof.lean, fully proven) —
+   closedness-carrying subst_resp that avoids `Equiv.shift`
+   entirely (uses `shift_of_closedAt` to reduce shifted
+   substituend to itself).
+6. `concEval_closedAt` (Eval.lean, fully proven) — concEval
+   preserves closedness at 0.
+
+**Final step (not yet done):** rewrite `concEval_equiv`
+(Soundness.lean) to carry `hcl : e.closedAt 0` and use
+`subst_resp_closed` + `concEval_closedAt` at each recursive
+call. Attempted but hit Lean elaboration issues in the
+iota/fix unfold cases — reverted; future work.
 
 Alternative: restrict `Equiv` to non-empty Γ. All current
 users of `Equiv.shift` access the result at a non-empty
