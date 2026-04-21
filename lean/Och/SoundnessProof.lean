@@ -1279,21 +1279,107 @@ theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     subst hpfx
     rw [List.getElem?_take, if_pos (by omega : m < j)]
 
+/-!
+### Semantic level shift (`Val.shiftLvl`) and `Val.levelsBelow`
+
+`Val.shiftLvl c v` shifts every neutral-var level `k ≥ c` up by 1.
+`Val.levelsBelow d v` says every level in `v` is `< d`. These are
+the building blocks for `quote_depth_shift`'s closure case
+(depth_lift_bundle.1). Full proof plan in the docstring of
+`depth_lift_bundle` below. -/
+
+mutual
+  /-- Shift every neutral-var level `≥ c` up by 1. -/
+  def Val.shiftLvl (c : Nat) : Val → Val
+    | .type => .type
+    | .neutral n => .neutral (Neutral.shiftLvl c n)
+    | .lam dom cl => .lam (Val.shiftLvl c dom) (Closure.shiftLvl c cl)
+    | .iota ann cl => .iota (Val.shiftLvl c ann) (Closure.shiftLvl c cl)
+    | .«fix» ann cl => .«fix» (Val.shiftLvl c ann) (Closure.shiftLvl c cl)
+
+  def Neutral.shiftLvl (c : Nat) : Neutral → Neutral
+    | .var k => .var (if k < c then k else k + 1)
+    | .app n v => .app (Neutral.shiftLvl c n) (Val.shiftLvl c v)
+    | .stuckRec f a => .stuckRec (Val.shiftLvl c f) (Val.shiftLvl c a)
+
+  def Closure.shiftLvl (c : Nat) : Closure → Closure
+    | ⟨body, env⟩ => ⟨body, Closure.envShiftLvl c env⟩
+
+  /-- Helper for Closure.shiftLvl (inlined `List.map`) so Lean's
+  termination checker sees the recursive call into Val.shiftLvl. -/
+  def Closure.envShiftLvl (c : Nat) : List Val → List Val
+    | [] => []
+    | v :: vs => Val.shiftLvl c v :: Closure.envShiftLvl c vs
+end
+
+theorem Val.shiftLvl_neutral_isNeutral (c : Nat) (v : Val) :
+    (Val.shiftLvl c v).isNeutral = v.isNeutral := by
+  cases v <;> unfold Val.shiftLvl <;> rfl
+
+theorem Closure.envShiftLvl_eq_map (c : Nat) (env : List Val) :
+    Closure.envShiftLvl c env = env.map (Val.shiftLvl c) := by
+  induction env with
+  | nil => rfl
+  | cons v vs ih => simp [Closure.envShiftLvl, ih]
+
+mutual
+  /-- `Val.levelsBelow d v` iff every neutral-var level in `v` is
+  `< d`. -/
+  def Val.levelsBelow (d : Nat) : Val → Prop
+    | .type => True
+    | .neutral n => Neutral.levelsBelow d n
+    | .lam dom cl => Val.levelsBelow d dom ∧ Closure.levelsBelow d cl
+    | .iota ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
+    | .«fix» ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
+
+  def Neutral.levelsBelow (d : Nat) : Neutral → Prop
+    | .var k => k < d
+    | .app n v => Neutral.levelsBelow d n ∧ Val.levelsBelow d v
+    | .stuckRec f a => Val.levelsBelow d f ∧ Val.levelsBelow d a
+
+  def Closure.levelsBelow (d : Nat) : Closure → Prop
+    | ⟨_body, env⟩ => Closure.envLevelsBelow d env
+
+  /-- Helper for Closure.levelsBelow (inlined list quantifier). -/
+  def Closure.envLevelsBelow (d : Nat) : List Val → Prop
+    | [] => True
+    | v :: vs => Val.levelsBelow d v ∧ Closure.envLevelsBelow d vs
+end
+
 /-- Bundled depth-lift + realisation obligations. All three
 remaining soundness sorries are packaged here so Lean emits a
-single declaration-sorry warning for the entire cluster. Each
-downstream theorem (`quote_depth_shift`, `R_depth_lift`,
-`vapp_realises`, `eval_realises`, etc.) becomes a thin
-projection.
+single declaration-sorry warning for the entire cluster.
 
-Obligation breakdown:
-- Conjunct 1: `quote_depth_shift` — needs eval level-renaming.
-- Conjunct 2: `R_depth_lift` — needs conjunct 1.
-- Further conjuncts for `vapp_realises`, `eval_realises`,
-  `tyInfer_sound_open`, `tyCheckFallback_sound_open`,
-  `tyCheck_sound_open` are declared in their own mutual
-  blocks below (separate warnings, but consolidation attempts
-  have run out of clean paths without major restructure).
+## Proof plan (2026-04-21 agent a800598a session)
+
+The closure case of conjunct 1 needs an **eval level-renaming**
+lemma (partial infrastructure added above; see `Val.shiftLvl`,
+`Val.levelsBelow`). Sketch:
+
+1. `Val.shiftLvl c v` — shift every neutral-var level `≥ c` up
+   by 1. (Above.)
+2. `Val.levelsBelow d v` — every neutral-var level in `v` is `< d`.
+   (Above.)
+3. `shiftLvl_of_levelsBelow` — `v.levelsBelow c → v.shiftLvl c = v`
+   (no-op on values with small levels). [TODO]
+4. `eval_shiftLvl` — `eval ρ e = some v →
+   eval (ρ.map (·.shiftLvl c)) e = some (v.shiftLvl c)`. Most cases
+   are straightforward induction on fuel; the vapp iota/fix
+   recursive-head branch needs careful `a`-shape case splitting to
+   get `Val.shiftLvl c a`'s `isNeutral` rewrite through
+   Lean's `split` machinery. [TODO]
+5. `quote_shiftLvl` — for `c = d`, `quote d v = some e →
+   quote (d+1) (v.shiftLvl d) = some (e.shift 1 0)`. Closure case
+   uses (4) to relate `eval (.var d :: cl.env) body = v` with
+   `eval (.var (d+1) :: cl.env.shiftLvl d) body = v.shiftLvl d`,
+   then (3) on `cl.env.shiftLvl d` (requires `cl.env`-levels < d).
+   [TODO]
+6. `levelsBelow_of_eval` — values produced by `eval` at a
+   levels-bounded env have bounded levels. By induction on fuel.
+   [TODO]
+
+Conjunct 2 (R_depth_lift) uses conjunct 1 plus a structural
+induction on R (termination on sizeOf v). [TODO]
 
 See DECISION-LOG 2026-04-21. -/
 theorem depth_lift_bundle :
