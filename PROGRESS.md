@@ -11,6 +11,13 @@ the sorries eliminated through a combination of:
   shift_of_closed, eval_quotes').
 - Routing concEval_refines / preservation / soundness through the
   proven closedness-chain.
+- Additional cleanup of unused helpers: REnv_id, eval_unf_equiv,
+  quoteClosure_{eq,equiv}_openω_fresh, whnfPi_fix_unfold_equiv,
+  quote_open_subst, Equiv.subst_target, R_zero, R_neutral_var,
+  tyInfer_sound_closed, tyCheckFallback_sound_closed.
+
+Net file size reduction: SoundnessProof.lean ~800 lines shorter
+than at session start, Soundness.lean ~120 lines shorter.
 
 Remaining 5 sorries:
 1. `quote_depth_shift` (eval level-renaming for closures)
