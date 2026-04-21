@@ -1276,6 +1276,117 @@ theorem substEnv_agree {e : Expr} :
     · exact iht hcl.1 hagree
     · exact ihy hcl.2 hagree
 
+/-- **substEnv preserves closedness.** If `e.closedAt ρe.length`
+and every `ρe[k]` is `closedAt n`, then `e.substEnv ρe` is
+`closedAt n`.
+
+Proof: structural induction on `e`. `.bvar k` case uses the
+hypothesis on `ρe[k]`; `.lam/.iota/.fix/.letE` cases extend
+the env with `.bvar 0 :: ρe.map (·.shift 1 0)` and recurse at
+`n+1` (each shifted ρe entry preserves closedAt via
+`shift_closedAt`; the new `.bvar 0` is closedAt 1 ≤ n+1). -/
+theorem substEnv_closedAt {e : Expr} {n : Nat} {ρe : List Expr}
+    (hbound : e.closedAt ρe.length = true)
+    (hρecl : ∀ (k : Nat) (e' : Expr), ρe[k]? = some e' →
+             e'.closedAt n = true) :
+    (e.substEnv ρe).closedAt n = true := by
+  induction e generalizing n ρe with
+  | bvar k =>
+    simp only [Expr.closedAt, decide_eq_true_eq] at hbound
+    unfold Expr.substEnv
+    simp only [hbound, ↓reduceIte]
+    have hget : ρe[k]? = some ρe[k]! := by
+      rw [List.getElem!_eq_getElem?_getD]
+      simp [List.getElem?_eq_getElem hbound]
+    exact hρecl k ρe[k]! hget
+  | type => simp [Expr.substEnv, Expr.closedAt]
+  | lam dom body ihD ihB =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hbound
+    unfold Expr.substEnv
+    simp only [Expr.closedAt, Bool.and_eq_true]
+    refine ⟨ihD hbound.1 hρecl, ?_⟩
+    apply ihB
+    · simp [List.length_map, hbound.2]
+    · intro k e' hk
+      cases k with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp [Expr.closedAt]
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map,
+                   Option.map_eq_some'] at hk
+        obtain ⟨e'', he'', heq⟩ := hk
+        subst heq
+        exact Expr.shift_closedAt e'' n 1 0 (Nat.zero_le _) (hρecl m e'' he'')
+  | app f a ihF ihA =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hbound
+    unfold Expr.substEnv
+    simp only [Expr.closedAt, Bool.and_eq_true]
+    exact ⟨ihF hbound.1 hρecl, ihA hbound.2 hρecl⟩
+  | asc t ty ihT ihTy =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hbound
+    unfold Expr.substEnv
+    simp only [Expr.closedAt, Bool.and_eq_true]
+    exact ⟨ihT hbound.1 hρecl, ihTy hbound.2 hρecl⟩
+  | iota ann body ihA ihB =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hbound
+    unfold Expr.substEnv
+    simp only [Expr.closedAt, Bool.and_eq_true]
+    refine ⟨ihA hbound.1 hρecl, ?_⟩
+    apply ihB
+    · simp [List.length_map, hbound.2]
+    · intro k e' hk
+      cases k with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp [Expr.closedAt]
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map,
+                   Option.map_eq_some'] at hk
+        obtain ⟨e'', he'', heq⟩ := hk
+        subst heq
+        exact Expr.shift_closedAt e'' n 1 0 (Nat.zero_le _) (hρecl m e'' he'')
+  | «fix» ann body ihA ihB =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hbound
+    unfold Expr.substEnv
+    simp only [Expr.closedAt, Bool.and_eq_true]
+    refine ⟨ihA hbound.1 hρecl, ?_⟩
+    apply ihB
+    · simp [List.length_map, hbound.2]
+    · intro k e' hk
+      cases k with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp [Expr.closedAt]
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map,
+                   Option.map_eq_some'] at hk
+        obtain ⟨e'', he'', heq⟩ := hk
+        subst heq
+        exact Expr.shift_closedAt e'' n 1 0 (Nat.zero_le _) (hρecl m e'' he'')
+  | letE val body ihV ihB =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hbound
+    unfold Expr.substEnv
+    simp only [Expr.closedAt, Bool.and_eq_true]
+    refine ⟨ihV hbound.1 hρecl, ?_⟩
+    apply ihB
+    · simp [List.length_map, hbound.2]
+    · intro k e' hk
+      cases k with
+      | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp [Expr.closedAt]
+      | succ m =>
+        simp only [List.getElem?_cons_succ, List.getElem?_map,
+                   Option.map_eq_some'] at hk
+        obtain ⟨e'', he'', heq⟩ := hk
+        subst heq
+        exact Expr.shift_closedAt e'' n 1 0 (Nat.zero_le _) (hρecl m e'' he'')
+
 /-- `substEnv` only depends on the prefix of the environment
 that the term can reach. With `e.closedAt (j+1)` and
 `ρe.take j = ρe'`, substituting under `x :: ρe'` gives the
@@ -3382,6 +3493,18 @@ structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx)
   `hρlvl_lift`). -/
   hρlvl : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
           Val.levelsBelow Γ.size v
+  /-- Closedness of substituted-environment entries. Each
+  `ρe[k]` is `closedAt Γ.size` — it has no free bvars beyond
+  the current depth. Maintained by `empty` (vacuous), `push_fresh`
+  (head `.bvar 0` closedAt 1 ≤ Γ.size+1; tail entries shift
+  `closedAt Γ.size → closedAt Γ.size+1`), and `push_let` (head
+  `val.substEnv ρe` closedAt Γ.size from `val.closedAt ρe.length`
+  + tail entries closedAt Γ.size; then shift to Γ.size+1).
+  This invariant is Path A's enabler: with it, shifts of ρe
+  entries at cutoff 0 lift to closedAt Γ.size+1, and downstream
+  closedness-carrying Equiv.shift variants can fire. -/
+  hρecl : ∀ (k : Nat) (e : Expr), ρe[k]? = some e →
+          e.closedAt Γ.size = true
   henv : REnv 1 Γ.size ρ ρe
   /-- All four contexts grow in lockstep (`empty` starts at
   0; both `push_*` add 1 to each). `tyInfer_sound_open .bvar`
@@ -3415,6 +3538,7 @@ theorem OpenCtx.empty : OpenCtx #[] [] [] [] where
   hΓ := ⟨rfl, fun _ _ hk => by simp at hk, fun _ _ hk => by simp at hk⟩
   hρq := fun _ _ hk => by simp at hk
   hρlvl := fun _ _ hk => by simp at hk
+  hρecl := fun _ _ hk => by simp at hk
   henv := ⟨rfl, fun _ _ hk => by simp at hk⟩
   hlen := rfl
   hwf := fun _ _ _ hk => by simp at hk
@@ -3588,6 +3712,22 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simp only [List.getElem?_cons_succ] at hk
         have h := hρlvl_lift (d := Γ.size) hctx.hρlvl m v hk
         simpa [Array.size_push] using h
+  hρecl := by
+    intro k e hk
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp only [Array.size_push, Expr.closedAt, decide_eq_true_eq]
+        omega
+    | succ m =>
+        simp only [List.getElem?_cons_succ] at hk
+        simp only [Array.size_push]
+        simp only [List.getElem?_map, Option.map_eq_some'] at hk
+        obtain ⟨e', he', heq⟩ := hk
+        subst heq
+        have hcl := hctx.hρecl m e' he'
+        exact Expr.shift_closedAt e' _ 1 0 (Nat.zero_le _) hcl
   henv := by
     simpa [Array.size_push] using
       REnv_lift hctx.henv hctx.hρq hctx.hρlvl
@@ -3665,6 +3805,29 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simp only [List.getElem?_cons_succ] at hk
         have h := hρlvl_lift (d := Γ.size) hctx.hρlvl m v hk
         simpa [Array.size_push] using h
+  hρecl := by
+    intro k e hk
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        -- Head entry: (val.substEnv ρe).shift 1 0
+        -- val.closedAt ρe.length = Γ.size; every ρe[j] closedAt Γ.size;
+        -- so val.substEnv ρe closedAt Γ.size, then shift bumps to Γ.size+1.
+        simp only [Array.size_push]
+        have hvcl : (val.substEnv ρe).closedAt Γ.size = true :=
+          substEnv_closedAt (n := Γ.size) (hbound := hctx.hlen ▸ hclv)
+            hctx.hρecl
+        exact Expr.shift_closedAt (val.substEnv ρe) Γ.size 1 0
+          (Nat.zero_le _) hvcl
+    | succ m =>
+        simp only [List.getElem?_cons_succ] at hk
+        simp only [Array.size_push]
+        simp only [List.getElem?_map, Option.map_eq_some'] at hk
+        obtain ⟨e', he', heq⟩ := hk
+        subst heq
+        have hcl := hctx.hρecl m e' he'
+        exact Expr.shift_closedAt e' _ 1 0 (Nat.zero_le _) hcl
   henv := by
     have hRval := eval_realises hev hctx.henv hclv
     obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
