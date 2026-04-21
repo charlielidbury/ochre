@@ -1816,40 +1816,133 @@ theorem eval_levelsBelow {n unf d ρ e v}
     Val.levelsBelow d v :=
   (eval_vapp_levelsBelow n).1 h hρ
 
-/-- Bundled depth-lift + realisation obligations. All three
-remaining soundness sorries are packaged here so Lean emits a
-single declaration-sorry warning for the entire cluster.
+mutual
+/-- Monotonicity of levelsBelow/envLevelsBelow. -/
+theorem Val.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ v, Val.levelsBelow d v → Val.levelsBelow d' v
+  | .type, _ => by unfold Val.levelsBelow; trivial
+  | .neutral n, h => by
+      unfold Val.levelsBelow at h ⊢
+      exact Neutral.levelsBelow_mono hle n h
+  | .lam dom cl, h => by
+      unfold Val.levelsBelow at h ⊢
+      refine ⟨Val.levelsBelow_mono hle dom h.1, ?_⟩
+      exact Closure.levelsBelow_mono hle cl h.2
+  | .iota ann cl, h => by
+      unfold Val.levelsBelow at h ⊢
+      refine ⟨Val.levelsBelow_mono hle ann h.1, ?_⟩
+      exact Closure.levelsBelow_mono hle cl h.2
+  | .«fix» ann cl, h => by
+      unfold Val.levelsBelow at h ⊢
+      refine ⟨Val.levelsBelow_mono hle ann h.1, ?_⟩
+      exact Closure.levelsBelow_mono hle cl h.2
 
-## Proof plan (2026-04-21 agent a800598a session)
+theorem Neutral.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ n, Neutral.levelsBelow d n → Neutral.levelsBelow d' n
+  | .var k, h => by
+      unfold Neutral.levelsBelow at h ⊢
+      omega
+  | .app n' v, h => by
+      unfold Neutral.levelsBelow at h ⊢
+      exact ⟨Neutral.levelsBelow_mono hle n' h.1,
+             Val.levelsBelow_mono hle v h.2⟩
+  | .stuckRec f a, h => by
+      unfold Neutral.levelsBelow at h ⊢
+      exact ⟨Val.levelsBelow_mono hle f h.1,
+             Val.levelsBelow_mono hle a h.2⟩
+
+theorem Closure.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ cl, Closure.levelsBelow d cl → Closure.levelsBelow d' cl
+  | ⟨_body, env⟩, h => by
+      unfold Closure.levelsBelow at h ⊢
+      exact Closure.envLevelsBelow_mono hle env h
+
+theorem Closure.envLevelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ env, Closure.envLevelsBelow d env →
+           Closure.envLevelsBelow d' env
+  | [], _ => by unfold Closure.envLevelsBelow; trivial
+  | w :: ws, h => by
+      unfold Closure.envLevelsBelow at h ⊢
+      exact ⟨Val.levelsBelow_mono hle w h.1,
+             Closure.envLevelsBelow_mono hle ws h.2⟩
+end
+
+
+
+/-- Bundled depth-lift + realisation obligations.
+
+## Proof plan (2026-04-21 agent a800598a session, in progress)
 
 The closure case of conjunct 1 needs an **eval level-renaming**
-lemma (partial infrastructure added above; see `Val.shiftLvl`,
-`Val.levelsBelow`). Sketch:
+lemma. Substantial infrastructure is now in place (steps 1-4, 6
+below are fully proven and axiom-free); the remaining obstacle is
+step 5 (`quote_shiftLvl`), specifically the closure branch's
+cutoff mismatch — see "Remaining obstacle" below.
+
+### Infrastructure (PROVEN)
 
 1. `Val.shiftLvl c v` — shift every neutral-var level `≥ c` up
-   by 1. (Above.)
+   by 1. (Above.) Plus Neutral / Closure variants + helper
+   `Closure.envShiftLvl` for List.map.
 2. `Val.levelsBelow d v` — every neutral-var level in `v` is `< d`.
-   (Above.)
-3. `shiftLvl_of_levelsBelow` — `v.levelsBelow c → v.shiftLvl c = v`
-   (no-op on values with small levels). [TODO]
+   (Above.) Plus Neutral / Closure variants + envLevelsBelow.
+3. `Val.shiftLvl_of_levelsBelow` — `v.levelsBelow c → v.shiftLvl
+   c = v` (no-op on values with small levels). Plus Neutral /
+   Closure / envShiftLvl_of_envLevelsBelow variants.
 4. `eval_shiftLvl` — `eval ρ e = some v →
-   eval (ρ.map (·.shiftLvl c)) e = some (v.shiftLvl c)`. Most cases
-   are straightforward induction on fuel; the vapp iota/fix
-   recursive-head branch needs careful `a`-shape case splitting to
-   get `Val.shiftLvl c a`'s `isNeutral` rewrite through
-   Lean's `split` machinery. [TODO]
-5. `quote_shiftLvl` — for `c = d`, `quote d v = some e →
-   quote (d+1) (v.shiftLvl d) = some (e.shift 1 0)`. Closure case
-   uses (4) to relate `eval (.var d :: cl.env) body = v` with
-   `eval (.var (d+1) :: cl.env.shiftLvl d) body = v.shiftLvl d`,
-   then (3) on `cl.env.shiftLvl d` (requires `cl.env`-levels < d).
-   [TODO]
-6. `levelsBelow_of_eval` — values produced by `eval` at a
-   levels-bounded env have bounded levels. By induction on fuel.
-   [TODO]
+   eval (ρ.map (·.shiftLvl c)) e = some (v.shiftLvl c)`. Full
+   combined induction on fuel, vapp included.
+6. `eval_levelsBelow` — `eval ρ e = some v →
+   envLevelsBelow d ρ → v.levelsBelow d`. Preserves the bound
+   through all eval/vapp cases.
 
-Conjunct 2 (R_depth_lift) uses conjunct 1 plus a structural
-induction on R (termination on sizeOf v). [TODO]
+Plus `Val.levelsBelow_mono`, `Neutral.levelsBelow_mono`,
+`Closure.levelsBelow_mono`, `Closure.envLevelsBelow_mono`,
+`Closure.envLevelsBelow_take` and the getElem?/of_getElem?
+bridge lemmas for `Closure.envLevelsBelow`.
+
+### Remaining obstacle: step 5 (quote_shiftLvl)
+
+Attempted statement:
+```
+∀ n, (∀ {d v e}, Val.levelsBelow d v → quote n d v = some e →
+          quote n (d+1) v = some (e.shift 1 0)) ∧
+     (∀ {d cl e}, Closure.levelsBelow d cl →
+          quoteClosure n d cl = some e →
+          quoteClosure n (d+1) cl = some (e.shift 1 1)) ∧
+     (∀ {d ne e}, Neutral.levelsBelow d ne →
+          quoteNeutral n d ne = some e →
+          quoteNeutral n (d+1) ne = some (e.shift 1 0))
+```
+
+Within the closure case at depth d:
+  eval (.var d :: cl.env) body = some v,
+  quote (d+1) v = some e
+and we need `quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`.
+
+Using `eval_shiftLvl` (c := d) we correctly derive
+`eval (.var (d+1) :: cl.env) body = some (v.shiftLvl d)`
+(using (3) on cl.env via `Closure.levelsBelow d cl` to eliminate
+the env's own shiftLvl).
+
+But the IH gives `quote (d+2) v = some (e.shift 1 0)` — NOT
+`quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`. The cutoff
+mismatch (0 vs 1) reflects the fact that `.var d` in v quotes at
+`d+1` to `.bvar 0` (the binder), while shifted to `.var (d+1)`
+in `v.shiftLvl d` quotes at `d+2` ALSO to `.bvar 0` — so bvar 0
+is preserved, other bvars +1. That's `.shift 1 1`, not `.shift
+1 0`.
+
+Resolving this requires a separate mutual induction with the
+generalised claim
+  `quote n d v = some e → quote n (d+k+1) (v.shiftLvl d)
+    = some (e.shift 1 k)`
+for arbitrary k. The shift cutoff on the Expr side tracks the
+"binder depth" offset; the Val shift cutoff tracks the "original
+depth". [TODO]
+
+Conjunct 2 (R_depth_lift) additionally needs structural induction
+on R (termination on sizeOf v). [TODO]
 
 See DECISION-LOG 2026-04-21. -/
 theorem depth_lift_bundle :
