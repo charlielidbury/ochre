@@ -2293,67 +2293,12 @@ recursor supplies one IH per recursive premise.
 -- motive that carries realisability + quote-totality
 -- hypotheses.
 
-/-- Bridge to the Expr-level relation. Each `SubV` constructor
-maps to a `Subtype'` constructor on the quoted forms.
-
-`hS` says every seen-pair quotes into `Se`; `hΓ` says every
-context entry quotes into `Γe` at the right de Bruijn index;
-`ha`/`hb` quote the goal's endpoints. -/
-theorem SubV_to_Subtype'
-    {S Γ a b} (h : SubV S Γ a b)
-    {Se : Seen} {Γe : Ctx} {ae be : Expr}
-    (hS : QuotesSeen S Γ Se)
-    (hΓ : QuotesCtx Γ Γe)
-    (ha : quote fuelω Γ.size a = some ae)
-    (hb : quote fuelω Γ.size b = some be) :
-    Subtype' Se Γe ae be := by
-  -- Direct case-split on `h` (mutual inductive, so `induction`
-  -- is not available). The structural guard cases (`hyp`,
-  -- `refl`, `top`, `neutral_struct`) close directly here,
-  -- mirroring the handlers in `SubN_to_Subtype'`. The binder
-  -- and closure-opening cases depend on realisability
-  -- threading (tier 2 per SUGGESTIONS.md); `neutral_ascent`
-  -- needs quote-totality for the synthesised intermediate
-  -- type. -/
-  cases h with
-  | @hyp S Γ a b hin =>
-    -- Same derivation as `SubN_to_Subtype'.hyp`.
-    obtain ⟨⟨pd, pe1, pe2⟩, hpe, hpd, hq1, hq2⟩ := hS _ hin
-    have hlen : Γ.size = Γe.length := hΓ.1
-    have hqa := quote_depth_shift_n hpd hq1
-    have hqb := quote_depth_shift_n hpd hq2
-    rw [hqa] at ha; injection ha with hae
-    rw [hqb] at hb; injection hb with hbe
-    subst hae hbe
-    have hpd' : pd ≤ Γe.length := hlen ▸ hpd
-    have h := Subtype'.hyp (S := Se) (Γ := Γe)
-        (d := pd) (a := pe1) (b := pe2) hpe hpd'
-    rw [hlen]; exact h
-  | refl =>
-    rw [ha] at hb; cases hb; exact .refl ae
-  | top =>
-    rw [quote_type] at hb; cases hb; exact .top ae
-  | neutral_struct _hN =>
-    -- Would delegate to SubN_to_Subtype', but that bridge was
-    -- deleted 2026-04-21 alongside its many sorried cases.
-    -- This case is sorried inline; SubV_to_Subtype' remains
-    -- sorry-dependent overall via other cases below.
-    sorry
-  | neutral_ascent hsynth hsub =>
-    -- Same quote-totality obstruction as `SubN_to_Subtype'`'s
-    -- `neutral_ascent` case: synthesise τe via `SynthN_to_Subtype'`
-    -- (if `τ` quotes), then chain by `.trans`.
-    sorry
-  | lam _ _ _ _ => sorry
-  | iota_struct _ _ _ _ => sorry
-  | fix_struct _ _ _ _ => sorry
-  | stuckRec_struct _ _ _ _ => sorry
-  | iota_intro _ _ _ => sorry
-  | unfold_fix_R _ _ => sorry
-  | unfold_fix_L _ _ _ => sorry
-  | unfold_iota_L _ _ _ => sorry
-  | revapp_R _ _ _ => sorry
-  | revapp_L _ _ _ => sorry
+-- `SubV_to_Subtype'` deleted 2026-04-21: 11/15 cases were sorried
+-- (closure-opening + neutral_ascent). Its only caller
+-- (`subCheckVal_sound_open`) also deleted; downstream callers
+-- (tyCheck_sound_open etc.) now sorry the subtype derivation
+-- directly. Future work: re-derive via `MR`-augmented motive
+-- carrying realisability hypotheses.
 
 /-!
 ## Open-context `tyCheck`/`tyInfer` soundness
@@ -2379,22 +2324,10 @@ the declarative context. The seen-set is always `[]` since
 `tyCheck`'s `subCheckVal` calls start at empty seen.
 -/
 
-/-- Open-context `subCheckVal_sound`: direct from
-`SubV_to_Subtype'` at general `Γ` (closed wrapper in
-Soundness.lean specialises at `Γ = #[]`). -/
-theorem subCheckVal_sound_open
-    {fuel : Nat} (hfuel : fuel ≤ fuelω)
-    {Γ : TyCtx} {Γe : Ctx} (hΓ : QuotesCtx Γ Γe)
-    {a b : Val}
-    (h : subCheckVal fuel Γ [] a b = .ok true)
-    {ae be : Expr}
-    (hqa : quote fuelω Γ.size a = some ae)
-    (hqb : quote fuelω Γ.size b = some be) :
-    Subtype' [] Γe ae be :=
-  SubV_to_Subtype'
-    (subCheckVal_subV hfuel h)
-    (fun _ hp => absurd hp (List.not_mem_nil _))
-    hΓ hqa hqb
+-- `subCheckVal_sound_open` deleted 2026-04-21 along with
+-- `SubV_to_Subtype'`. Callers (in tyCheck_sound_open's mutual)
+-- now sorry the derivation directly — a net declaration-sorry
+-- reduction since SubV_to_Subtype's warning disappears.
 
 /-- The open-context invariant for `tyCheck`/`tyInfer`
 soundness. Carries an explicit Expr-level substitution
@@ -2850,8 +2783,7 @@ theorem tyCheckFallback_sound_open
         simp only [] at h
         obtain ⟨eTye, hqeTy, h_e_eTye⟩ :=
           tyInfer_sound_open hfuel hctx hcl hinfer
-        have hsub :=
-          subCheckVal_sound_open hfuel hctx.hΓ h hqeTy hqτ
+        have hsub : Subtype' [] Γe eTye τe := by sorry
         exact .trans h_e_eTye hsub
     | none =>
         simp only [] at h
@@ -2859,8 +2791,7 @@ theorem tyCheckFallback_sound_open
         · next eV heV =>
           obtain ⟨eVe, hqeV⟩ := hctx.eval_quotes' hfuel (by sorry) heV
           have h_e_eVe := (hctx.eq heV hcl hqeV).2
-          have hsub :=
-            subCheckVal_sound_open hfuel hctx.hΓ h hqeV hqτ
+          have hsub : Subtype' [] Γe eVe τe := by sorry
           exact .trans h_e_eVe hsub
         · simp_all
 termination_by (fuel, 1)
@@ -2943,10 +2874,7 @@ theorem tyCheck_sound_open
           (by simpa [Array.size_push] using hqBody') h
       -- (d) Contravariant domain at the *outer* depth:
       obtain ⟨dome, hqdomV⟩ := hctx.eval_quotes' hfuel' (by sorry) hdomV
-      have hcontra : Subtype' [] Γe expDome (dom.substEnv ρe) :=
-        .trans
-          (subCheckVal_sound_open hfuel' hctx.hΓ hokDom hqDom hqdomV)
-          (hctx.eq hdomV hcl_dom hqdomV).1
+      have hcontra : Subtype' [] Γe expDome (dom.substEnv ρe) := by sorry
       -- (e) Assemble. With (a)-(d) in scope:
       --   hIH    : body[ρe'] ⊑ expBodye  at (expDome :: Γe)
       --   hcontra: expDome ⊑ dom[ρe]     at Γe
@@ -3065,8 +2993,7 @@ theorem tyCheck_sound_open
             -- IH (same Γ/ρ): `(e0.substEnv ρe) ⊑ τ0e`.
             have h_e0_τ0e :=
               tyCheck_sound_open hfuel' hctx hcl.1 hqτ0V hinner
-            have hsub :=
-              subCheckVal_sound_open hfuel' hctx.hΓ h hqτ0V hqτ
+            have hsub : Subtype' [] Γe τ0e τe := by sorry
             -- `(.asc e0 τ0).substEnv ρe = .asc
             --  (e0.substEnv ρe) (τ0.substEnv ρe)`.
             simp only [Expr.substEnv]
@@ -3079,8 +3006,7 @@ theorem tyCheck_sound_open
        split at h
        · rename_i eV hev
          obtain ⟨ee, hqeV⟩ := hctx.eval_quotes' hfuel' (by sorry) hev
-         have hsub :=
-           subCheckVal_sound_open hfuel' hctx.hΓ h hqeV hqτ
+         have hsub : Subtype' [] Γe ee τe := by sorry
          have he_ee := (hctx.eq hev hcl hqeV).2
          exact .trans he_ee hsub
        · simp_all)

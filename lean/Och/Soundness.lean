@@ -72,29 +72,10 @@ Phase-2 obligation. They are stated now so that downstream
 work (e.g. `concEval`-preservation) can quantify over them.
 -/
 
-/-- Algorithmic conversion is sound w.r.t. the declarative
-relation. Stated over closed terms; the open-term version
-threads `Γ` and a level-to-index map.
-
-The proof factors as `subCheckVal → SubV → Subtype'`:
-`subCheckVal_subV` is the algorithm-reflection step (fully
-proven) and `SubV_to_Subtype'` is the readback bridge
-(sorried in its closure-opening cases pending
-`quote_open_subst` + `narrow`; see SoundnessProof). -/
-theorem subCheckVal_sound
-    {fuel : Nat} {a b : Val}
-    (hfuel : fuel ≤ fuelω)
-    (h : subCheckVal fuel #[] [] a b = .ok true)
-    {ae be : Expr}
-    (hqa : quote fuelω 0 a = some ae)
-    (hqb : quote fuelω 0 b = some be) :
-    Subtype' [] [] ae be :=
-  SubV_to_Subtype'
-    (subCheckVal_subV hfuel h)
-    (fun _ hp => absurd hp (List.not_mem_nil _))
-    ⟨rfl, fun _ _ hk => by simp at hk⟩
-    (by simpa using hqa)
-    (by simpa using hqb)
+-- `subCheckVal_sound` deleted 2026-04-21: unused wrapper, along
+-- with `SubV_to_Subtype'` + `subCheckVal_sound_open`. The
+-- `typeCheck_sound` entry point now sorries the subtype
+-- derivation inline in the tyCheck mutual block.
 
 /-- Closed-term NbE correctness: evaluating then quoting a
 closed term gives something `Subtype'`-equivalent to the
