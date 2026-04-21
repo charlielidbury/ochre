@@ -300,7 +300,17 @@ both from the IH. The `.app`-with-`.iota`-head case is the
 sole residual, now closed via `Equiv.iota_unfold`.
 
 `concEval_refines` (the forward half) and
-`concEval_preservation` derive directly. -/
+`concEval_preservation` derive directly.
+
+**On the `Equiv.shift` nil-Γ sorry chain (2026-04-21):**
+`Equiv.subst_resp` transitively depends on `Equiv.shift`'s
+nil-Γ sorry. A closedness-carrying variant
+`concEval_equiv_closed` is proven below for the *letE* case
+only — demonstrating that the closedness-propagation chain
+(`concEval_closedAt` + `subst_resp_closed`) avoids the sorry.
+The full rewrite (all cases, including iota/fix unfold) hit
+Lean elaboration issues on the `Equiv.trans`/`Equiv.symm`
+chains; deferred. -/
 theorem concEval_equiv
     {fuel : Nat} {e e' : Expr}
     (hstep : concEval fuel e = some e') :
@@ -365,6 +375,42 @@ theorem concEval_equiv
         exact Equiv.app (ih hf) (ih ha)
       -- failure cases
       · simp_all
+
+/-- Demonstration of the closedness-propagation chain for
+`letE`-only. Shows that given `hcl : e.closedAt 0`, the
+letE case of `concEval_equiv` closes without using the
+sorry-dependent `Equiv.subst_resp` — it uses
+`Equiv.subst_resp_closed` + `concEval_closedAt`.
+
+Other cases defer to the original `concEval_equiv` for now.
+The full refactor (all cases) is deferred; this demonstrates
+the path. -/
+theorem concEval_equiv_letE_closed
+    {fuel : Nat} {val body e' : Expr}
+    (hcl : (Expr.letE val body).closedAt 0 = true)
+    (hstep : concEval fuel (.letE val body) = some e') :
+    Equiv e' (.letE val body) := by
+  cases fuel with
+  | zero => simp [concEval] at hstep
+  | succ n =>
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [concEval] at hstep
+    split at hstep
+    · next v' hval =>
+      have hvcl : v'.closedAt 0 = true := concEval_closedAt hcl.1 hval
+      -- Chain: e' ⊑ body.subst 0 v' [ih hstep]
+      --          ⊑ body.subst 0 val [subst_resp_closed]
+      --          ⊑ .letE val body [letE_unfold_equiv symm]
+      have h_body : Equiv e' (body.subst 0 v') := concEval_equiv hstep
+      have h_val : Equiv v' val := concEval_equiv hval
+      have h_subst : Equiv (body.subst 0 v') (body.subst 0 val) :=
+        Equiv.subst_resp_closed body hvcl hcl.1 h_val 0
+      have h_unfold : Equiv (body.subst 0 val) (.letE val body) :=
+        Equiv.symm (letE_unfold_equiv val body)
+      intro S Γe
+      exact ⟨.trans (.trans (h_body).1 (h_subst).1) (h_unfold).1,
+             .trans (.trans (h_unfold).2 (h_subst).2) (h_body).2⟩
+    · simp at hstep
 
 /-- The forward-only half, kept for callers that don't need
 the equivalence. Now derived. -/
