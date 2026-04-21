@@ -1346,6 +1346,100 @@ mutual
     | v :: vs => Val.levelsBelow d v ∧ Closure.envLevelsBelow d vs
 end
 
+/-- `envLevelsBelow` ↔ "every entry has `levelsBelow`". -/
+theorem Closure.envLevelsBelow_getElem?
+    {d : Nat} {env : List Val}
+    (h : Closure.envLevelsBelow d env)
+    {k : Nat} {v : Val} (hk : env[k]? = some v) :
+    Val.levelsBelow d v := by
+  induction env generalizing k with
+  | nil => simp at hk
+  | cons w ws ih =>
+      cases k with
+      | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+          subst hk
+          unfold Closure.envLevelsBelow at h
+          exact h.1
+      | succ m =>
+          simp only [List.getElem?_cons_succ] at hk
+          unfold Closure.envLevelsBelow at h
+          exact ih h.2 hk
+
+theorem Closure.envLevelsBelow_of_getElem?
+    {d : Nat} {env : List Val}
+    (h : ∀ (k : Nat) (v : Val),
+      List.get? env k = some v → Val.levelsBelow d v) :
+    Closure.envLevelsBelow d env := by
+  induction env with
+  | nil => unfold Closure.envLevelsBelow; trivial
+  | cons w ws ih =>
+      unfold Closure.envLevelsBelow
+      refine ⟨h 0 w rfl, ih ?_⟩
+      intro k v hk
+      have := h (k+1) v
+      simp only [List.get?_cons_succ] at this
+      exact this hk
+
+mutual
+/-- Shift is a no-op when levels are already below the cutoff.
+Joint mutual theorem on Val / Neutral / Closure, proved by
+structural recursion on sizeOf. -/
+theorem Val.shiftLvl_of_levelsBelow :
+    ∀ (v : Val) (c : Nat),
+    Val.levelsBelow c v → Val.shiftLvl c v = v
+  | .type, _, _ => rfl
+  | .neutral n, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congrArg _ (Neutral.shiftLvl_of_levelsBelow n c h)
+  | .lam dom cl, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow dom c h.1))
+                  (Closure.shiftLvl_of_levelsBelow cl c h.2)
+  | .iota ann cl, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow ann c h.1))
+                  (Closure.shiftLvl_of_levelsBelow cl c h.2)
+  | .«fix» ann cl, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow ann c h.1))
+                  (Closure.shiftLvl_of_levelsBelow cl c h.2)
+
+theorem Neutral.shiftLvl_of_levelsBelow :
+    ∀ (n : Neutral) (c : Nat),
+    Neutral.levelsBelow c n → Neutral.shiftLvl c n = n
+  | .var _, _, h => by
+      unfold Neutral.shiftLvl Neutral.levelsBelow at *
+      simp [h]
+  | .app n' v, c, h => by
+      unfold Neutral.shiftLvl Neutral.levelsBelow at *
+      exact congr (congrArg _ (Neutral.shiftLvl_of_levelsBelow n' c h.1))
+                  (Val.shiftLvl_of_levelsBelow v c h.2)
+  | .stuckRec f a, c, h => by
+      unfold Neutral.shiftLvl Neutral.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow f c h.1))
+                  (Val.shiftLvl_of_levelsBelow a c h.2)
+
+theorem Closure.shiftLvl_of_levelsBelow :
+    ∀ (cl : Closure) (c : Nat),
+    Closure.levelsBelow c cl → Closure.shiftLvl c cl = cl
+  | ⟨body, env⟩, c, h => by
+      change Closure.envLevelsBelow c env at h
+      show (⟨body, Closure.envShiftLvl c env⟩ : Closure) = ⟨body, env⟩
+      congr 1
+      exact Closure.envShiftLvl_of_envLevelsBelow env c h
+
+theorem Closure.envShiftLvl_of_envLevelsBelow :
+    ∀ (env : List Val) (c : Nat),
+    Closure.envLevelsBelow c env → Closure.envShiftLvl c env = env
+  | [], _, _ => rfl
+  | w :: ws, c, h => by
+      unfold Closure.envShiftLvl Closure.envLevelsBelow at *
+      exact congr
+        (congrArg _ (Val.shiftLvl_of_levelsBelow w c h.1))
+        (Closure.envShiftLvl_of_envLevelsBelow ws c h.2)
+end
+
 /-- Bundled depth-lift + realisation obligations. All three
 remaining soundness sorries are packaged here so Lean emits a
 single declaration-sorry warning for the entire cluster.
