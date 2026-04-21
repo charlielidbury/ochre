@@ -1,0 +1,13 @@
+import Och.Soundness
+#print axioms Och.Soundness.soundness
+#print axioms Och.Soundness.typeCheck_sound
+#print axioms Och.Soundness.concEval_equiv_closed
+#print axioms Och.Soundness.concEval_preservation
+#print axioms Och.Soundness.eval_quote_equiv_closed
+#print axioms NbE.R_depth_lift
+#print axioms NbE.R_quote_equiv
+#print axioms NbE.vapp_realises
+#print axioms NbE.eval_realises
+#print axioms NbE.tyCheck_sound_open
+#print axioms NbE.tyInfer_sound_open
+#print axioms NbE.quote_depth_shift
