@@ -2,7 +2,17 @@
 
 ## Current state (2026-04-21)
 
-**4 declaration sorries (down from 10 at session start).** Half
+**3 declaration sorries (down from 10 at session start — 70% reduction).**
+
+Final remaining:
+1. `depth_lift_bundle` (bundled `quote_depth_shift` + `R_depth_lift`)
+   — blocked on eval level-renaming.
+2. `vapp_realises` / `eval_realises` mutual — blocked on R
+   definition change (base-conjunct removal + quoteClosure_realises
+   via quote-fuel mutual).
+3. `tyInfer_sound_open` / `tyCheckFallback_sound_open` /
+   `tyCheck_sound_open` mutual — blocked on the SubV_to_Subtype'
+   replacement (tier-2 realisability-threaded bridge). Half
 the sorries eliminated through a combination of:
 - Deleting dead sorry-ridden theorems (SynthN_to_Subtype',
   SubN_to_Subtype', whnfPi_sound chain, openNf_holds, Equiv.shift,
