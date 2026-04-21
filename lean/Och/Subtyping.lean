@@ -859,6 +859,38 @@ theorem Subtype'.app_ascent {S Γ f a dom cod}
     Subtype' S Γ (.app f a) (cod.subst 0 a) :=
   .trans (.app_head hf) (.beta_L (.refl _))
 
+/-- Well-closedness invariant for a seen-set: every entry's
+expressions are closed at their recorded depth. This is the
+natural invariant on `S` throughout a derivation that started
+with `S = []`: every rule that extends `S` (the four
+`unfold_*_{L,R}`, `iota_intro`) records `(|Γ|, a, b)` where
+`a, b` live at `Γ` — hence closed at `|Γ|`. The other rules
+propagate `S` unchanged.
+
+`wellClosed` is needed for `Subtype'.shift_above` (below): its
+`.hyp` case at the shifted form requires the recorded `x, y`
+to be closed at their recorded depth, so that after the
+`.hyp` rule's built-in `(|Γ|-d)`-shift they land at depth
+`|Γ|` and the outer `shift n |Γ|` is identity.
+
+This invariant is what `Equiv.shift`'s nil-Γ case (`SoundnessProof.lean`)
+ultimately needs; see DECISION-LOG 2026-04-21 for the
+threading plan. -/
+def Seen.wellClosed (S : Seen) : Prop :=
+  ∀ d a b, (d, a, b) ∈ S → a.closedAt d = true ∧ b.closedAt d = true
+
+theorem Seen.wellClosed_nil : Seen.wellClosed [] := by
+  intro _ _ _ h; exact absurd h (List.not_mem_nil _)
+
+theorem Seen.wellClosed_cons {d a b S}
+    (ha : a.closedAt d = true) (hb : b.closedAt d = true)
+    (hS : Seen.wellClosed S) :
+    Seen.wellClosed ((d, a, b) :: S) := by
+  intro d' a' b' hmem
+  cases hmem with
+  | head => exact ⟨ha, hb⟩
+  | tail _ h => exact hS _ _ _ h
+
 /-! ### Algorithmic-checker properties and known issues
 
 **Transitivity verified** for `NbE.subCheck` by exhaustive testing on small
