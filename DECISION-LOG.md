@@ -3,6 +3,76 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-21: `Equiv.shift` nil-Γ: route (i) is genuinely harder than the docstring suggests
+
+**What (reassessment of 2026-04-19 entry below):** Route (i) —
+`Subtype'.shift_nil : Subtype' S [] a b → Subtype' S [] (a.shift n c)
+(b.shift n c)` — is **not** a ~60-line structural induction. The
+`.hyp` case at `Γ = []` is genuinely unsound *as stated* for
+arbitrary `S`: from `Subtype' S [] a b` via `.hyp` with
+`(0, x, y) ∈ S`, we have `a = x`, `b = y` (shift-by-0). We need
+`Subtype' S [] (x.shift n 0) (y.shift n 0)`. If `x` has a free
+bvar, `.hyp` on `(0, x, y)` doesn't give the shifted form — it
+gives the unshifted — and no other constructor produces
+`(x.shift n 0) ⊑ (y.shift n 0)` without a matching S entry.
+
+The `.bvar` case being "vacuous at Γ=[]" is correct, but it's
+the `.hyp` case that's the wall, not `.bvar`.
+
+**Three ways forward, none 60 lines:**
+
+1. **`Seen.wellClosed` invariant.** Track `∀ (d, x, y) ∈ S,
+   x.closedAt d ∧ y.closedAt d`. Then `.hyp` case: `x`, `y` closed
+   at d means `x.shift (|Γ|-d) 0` is closed at `|Γ|`, so shift at
+   cutoff `|Γ|` is identity — conclusion = input. The invariant is
+   preserved by every Subtype' constructor (productive rules add
+   `(|Γ|, a, b)` at current depth; `a, b` live in `Γ`, closed at
+   `|Γ|`). This makes `shift_nilS` provable at any `Γ`, but requires
+   threading `wellClosed` through every user.
+
+2. **`Ctx.wellFormed` invariant + `shift_in_place`.** At any `Γ`,
+   shift by `n` at cutoff `|Γ|` (above the context). Needs `Γ`
+   entries closed at their position (τ at index `k` closedAt
+   `|Γ|-k-1`) to discharge the `.bvar` case. Again an invariant
+   to thread.
+
+3. **Restrict `Equiv` to non-empty `Γ`.** All callers of
+   `Equiv.shift` (subst_resp's lam/iota/fix/letE branches; R_depth_lift
+   base-conjunct) compose into larger `Equiv.lam` /
+   `Equiv.iota_cong` / etc. forms whose `.2` access happens at
+   `dom :: Γ` — always non-empty. But `concEval_refines` uses
+   `(concEval_equiv hstep).1` at `Γ = []` for `concEval_preservation`,
+   which would break unless concEval_equiv is re-derived without
+   going through `Equiv.shift` at the top.
+
+**Trace argument for route 3 (key insight):** Inside
+`concEval_equiv`'s letE/app cases, `Equiv.subst_resp body heq 0`
+is instantiated at `(S=[], Γ=[])`. `subst_resp` recurses on
+`body`; at each binder level it wraps the inner Equiv in
+`Equiv.lam`/`Equiv.iota_cong`/etc., whose `.1`/`.2` access the
+body at `dom :: outerΓ`. At `bvar i` case, `subst_resp` returns
+`heq` directly — so `heq` is accessed at `(S, Γ)` that `subst_resp`
+was instantiated at, wrapped in the enclosing binders. The
+*outermost* subst_resp is called at `Γ=[]`, but the `Equiv.shift
+heq` inside is always one binder level deeper, hence non-empty.
+
+So **Equiv.shift is never actually accessed at Γ=[] in any
+current caller's usage pattern**. The sorryAx exists only because
+Lean requires a total proof of `Equiv (e₁.shift 1 0) (e₂.shift 1 0)`
+regardless of how its `.1` is used.
+
+**Cleanest fix: route 3** — add `Γ ≠ []` hypothesis to
+`Equiv.shift`, verify at each use site, and produce
+`concEval_refines_closed : Subtype' [] [] e' e` as a separate
+bespoke proof at Γ=[] (the only place it's needed). Not
+trivially small: concEval_equiv's proof has ~60 lines of case
+analysis that would need duplication for the closed variant.
+
+**Decision:** NOT yet chosen. Route 1 is most general but
+invasive; route 3 is local but duplicates proof. Both take a
+day's work — neither is a ~60-line structural induction. The
+prior entry below understates this.
+
 ## 2026-04-19: `R` base-conjunct is redundant; quote-fuel mutual recovers it
 
 **What:** `R (n+1) d (.lam dV cl) e` carries both the new
