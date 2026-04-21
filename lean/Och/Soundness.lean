@@ -376,41 +376,163 @@ theorem concEval_equiv
       -- failure cases
       · simp_all
 
-/-- Demonstration of the closedness-propagation chain for
-`letE`-only. Shows that given `hcl : e.closedAt 0`, the
-letE case of `concEval_equiv` closes without using the
-sorry-dependent `Equiv.subst_resp` — it uses
-`Equiv.subst_resp_closed` + `concEval_closedAt`.
-
-Other cases defer to the original `concEval_equiv` for now.
-The full refactor (all cases) is deferred; this demonstrates
-the path. -/
-theorem concEval_equiv_letE_closed
-    {fuel : Nat} {val body e' : Expr}
-    (hcl : (Expr.letE val body).closedAt 0 = true)
-    (hstep : concEval fuel (.letE val body) = some e') :
-    Equiv e' (.letE val body) := by
-  cases fuel with
+/-- Full closedness-carrying `concEval_equiv`. Uses the
+closedness-propagation chain (`concEval_closedAt` +
+`Equiv.subst_resp_closed`) to avoid the `Equiv.shift` nil-Γ
+sorry chain in `subst_resp`. Uses `intro S Γe` + direct
+`Subtype'` destructuring to work around the Lean 4.16
+Equiv.trans elaboration quirk. -/
+theorem concEval_equiv_closed
+    {fuel : Nat} {e e' : Expr}
+    (hcl : e.closedAt 0 = true)
+    (hstep : concEval fuel e = some e') :
+    Equiv e' e := by
+  induction fuel generalizing e e' with
   | zero => simp [concEval] at hstep
-  | succ n =>
-    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-    simp only [concEval] at hstep
-    split at hstep
-    · next v' hval =>
-      have hvcl : v'.closedAt 0 = true := concEval_closedAt hcl.1 hval
-      -- Chain: e' ⊑ body.subst 0 v' [ih hstep]
-      --          ⊑ body.subst 0 val [subst_resp_closed]
-      --          ⊑ .letE val body [letE_unfold_equiv symm]
-      have h_body : Equiv e' (body.subst 0 v') := concEval_equiv hstep
-      have h_val : Equiv v' val := concEval_equiv hval
-      have h_subst : Equiv (body.subst 0 v') (body.subst 0 val) :=
-        Equiv.subst_resp_closed body hvcl hcl.1 h_val 0
-      have h_unfold : Equiv (body.subst 0 val) (.letE val body) :=
-        Equiv.symm (letE_unfold_equiv val body)
+  | succ n ih =>
+    cases e with
+    | bvar _ => simp [concEval] at hstep
+    | type =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | lam _ _ =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | iota _ _ =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | «fix» _ _ =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
+    | asc t ty =>
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      simp only [concEval] at hstep
+      have h_t : Equiv e' t := ih hcl.1 hstep
+      have h_unfold : Equiv t (.asc t ty) :=
+        Equiv.symm (asc_erase_equiv t ty)
       intro S Γe
-      exact ⟨.trans (.trans (h_body).1 (h_subst).1) (h_unfold).1,
-             .trans (.trans (h_unfold).2 (h_subst).2) (h_body).2⟩
-    · simp at hstep
+      exact ⟨.trans (h_t).1 (h_unfold).1,
+             .trans (h_unfold).2 (h_t).2⟩
+    | letE val body =>
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      simp only [concEval] at hstep
+      split at hstep
+      · next v' hval =>
+        have hvcl : v'.closedAt 0 = true := concEval_closedAt hcl.1 hval
+        have hsubcl : (body.subst 0 v').closedAt 0 = true := by
+          have := Expr.subst_closedAt_gen body 0 0 v'
+            (by simpa using hcl.2) (by simpa using hvcl)
+          simpa using this
+        have h_body : Equiv e' (body.subst 0 v') := ih hsubcl hstep
+        have h_val : Equiv v' val := ih hcl.1 hval
+        have h_subst : Equiv (body.subst 0 v') (body.subst 0 val) :=
+          Equiv.subst_resp_closed body hvcl hcl.1 h_val 0
+        have h_unfold : Equiv (body.subst 0 val) (.letE val body) :=
+          Equiv.symm (letE_unfold_equiv val body)
+        intro S Γe
+        exact ⟨.trans (.trans (h_body).1 (h_subst).1) (h_unfold).1,
+               .trans (.trans (h_unfold).2 (h_subst).2) (h_body).2⟩
+      · simp at hstep
+    | app f a =>
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      simp only [concEval] at hstep
+      split at hstep
+      -- .lam head: β
+      · next dom fbody a' hf ha =>
+        have hfvcl : (Expr.lam dom fbody).closedAt 0 = true :=
+          concEval_closedAt hcl.1 hf
+        have havcl : a'.closedAt 0 = true := concEval_closedAt hcl.2 ha
+        simp only [Expr.closedAt, Bool.and_eq_true] at hfvcl
+        have hsubcl : (fbody.subst 0 a').closedAt 0 = true := by
+          have := Expr.subst_closedAt_gen fbody 0 0 a'
+            (by simpa using hfvcl.2) (by simpa using havcl)
+          simpa using this
+        have h_body : Equiv e' (fbody.subst 0 a') := ih hsubcl hstep
+        have h_a : Equiv a' a := ih hcl.2 ha
+        have h_subst : Equiv (fbody.subst 0 a') (fbody.subst 0 a) :=
+          Equiv.subst_resp_closed fbody havcl hcl.2 h_a 0
+        have h_beta : Equiv (fbody.subst 0 a) (.app (.lam dom fbody) a) :=
+          Equiv.symm (Equiv.beta dom fbody a)
+        have h_f : Equiv (.lam dom fbody) f := ih hcl.1 hf
+        -- combine: e' ⊑ fbody.subst 0 a' ⊑ fbody.subst 0 a
+        --            ⊑ .app (.lam dom fbody) a ⊑ .app f a
+        intro S Γe
+        refine ⟨?_, ?_⟩
+        · exact .trans (.trans (.trans h_body.1 h_subst.1) h_beta.1)
+            (.app_cong h_f.1 (.refl a) (.refl a))
+        · exact .trans (.app_cong h_f.2 (.refl a) (.refl a))
+            (.trans h_beta.2 (.trans h_subst.2 h_body.2))
+      -- .iota head: via Equiv.iota_unfold
+      · next ann ibody a' hf ha =>
+        have hfvcl : (Expr.iota ann ibody).closedAt 0 = true :=
+          concEval_closedAt hcl.1 hf
+        have havcl : a'.closedAt 0 = true := concEval_closedAt hcl.2 ha
+        -- Closedness of the substituted body:
+        simp only [Expr.closedAt, Bool.and_eq_true] at hfvcl
+        have hsubcl : (ibody.subst 0 (.iota ann ibody)).closedAt 0 = true := by
+          have hIota : (Expr.iota ann ibody).closedAt 0 = true := by
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨hfvcl.1, hfvcl.2⟩
+          have := Expr.subst_closedAt_gen ibody 0 0 (.iota ann ibody)
+            (by simpa using hfvcl.2) (by simpa using hIota)
+          simpa using this
+        have hAppCl : (Expr.app (ibody.subst 0 (.iota ann ibody)) a').closedAt 0 = true := by
+          simp only [Expr.closedAt, Bool.and_eq_true]
+          exact ⟨hsubcl, havcl⟩
+        have h_body : Equiv e' (.app (ibody.subst 0 (.iota ann ibody)) a') :=
+          ih hAppCl hstep
+        have h_f : Equiv (.iota ann ibody) f := ih hcl.1 hf
+        have h_a : Equiv a' a := ih hcl.2 ha
+        have h_unfold : Equiv (ibody.subst 0 (.iota ann ibody)) (.iota ann ibody) :=
+          Equiv.symm (Equiv.iota_unfold ann ibody)
+        -- Chain: e' ⊑ .app (ibody[ι]) a' ⊑ .app (.iota ann ibody) a'
+        --        ⊑ .app f a
+        intro S Γe
+        refine ⟨?_, ?_⟩
+        · exact .trans h_body.1
+            (.app_cong (.trans h_unfold.1 h_f.1) h_a.1 h_a.2)
+        · exact .trans
+            (.app_cong (.trans h_f.2 h_unfold.2) h_a.2 h_a.1)
+            h_body.2
+      -- .fix head: via Equiv.fix_unfold
+      · next ann fbody' a' hf ha =>
+        have hfvcl : (Expr.fix ann fbody').closedAt 0 = true :=
+          concEval_closedAt hcl.1 hf
+        have havcl : a'.closedAt 0 = true := concEval_closedAt hcl.2 ha
+        simp only [Expr.closedAt, Bool.and_eq_true] at hfvcl
+        have hsubcl : (fbody'.subst 0 (.fix ann fbody')).closedAt 0 = true := by
+          have hFix : (Expr.fix ann fbody').closedAt 0 = true := by
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨hfvcl.1, hfvcl.2⟩
+          have := Expr.subst_closedAt_gen fbody' 0 0 (.fix ann fbody')
+            (by simpa using hfvcl.2) (by simpa using hFix)
+          simpa using this
+        have hAppCl : (Expr.app (fbody'.subst 0 (.fix ann fbody')) a').closedAt 0 = true := by
+          simp only [Expr.closedAt, Bool.and_eq_true]
+          exact ⟨hsubcl, havcl⟩
+        have h_body : Equiv e' (.app (fbody'.subst 0 (.fix ann fbody')) a') :=
+          ih hAppCl hstep
+        have h_f : Equiv (.fix ann fbody') f := ih hcl.1 hf
+        have h_a : Equiv a' a := ih hcl.2 ha
+        have h_unfold : Equiv (fbody'.subst 0 (.fix ann fbody')) (.fix ann fbody') :=
+          Equiv.symm (Equiv.fix_unfold ann fbody')
+        intro S Γe
+        refine ⟨?_, ?_⟩
+        · exact .trans h_body.1
+            (.app_cong (.trans h_unfold.1 h_f.1) h_a.1 h_a.2)
+        · exact .trans
+            (.app_cong (.trans h_f.2 h_unfold.2) h_a.2 h_a.1)
+            h_body.2
+      -- other head: just .app_cong
+      · next fVal a' _ _ _ hf ha =>
+        simp only [Option.some.injEq] at hstep; subst hstep
+        have h_f : Equiv fVal f := ih hcl.1 hf
+        have h_a : Equiv a' a := ih hcl.2 ha
+        intro S Γe
+        exact ⟨.app_cong h_f.1 h_a.1 h_a.2,
+               .app_cong h_f.2 h_a.2 h_a.1⟩
+      -- failure cases
+      · simp_all
 
 /-- The forward-only half, kept for callers that don't need
 the equivalence. Now derived. -/
