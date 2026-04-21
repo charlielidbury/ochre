@@ -1656,6 +1656,166 @@ theorem vapp_shiftLvl {n unf c f a v}
     vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c) :=
   (eval_vapp_shiftLvl n).2 h
 
+/-!
+### `eval` preserves `Val.levelsBelow`
+
+If every entry of ρ has `levelsBelow d`, then `eval ρ e = some v`
+implies `v.levelsBelow d`. Proved by induction on fuel.
+-/
+
+/-- Taking a prefix preserves envLevelsBelow. -/
+theorem Closure.envLevelsBelow_take
+    {d : Nat} {env : List Val} (h : Closure.envLevelsBelow d env) (n : Nat) :
+    Closure.envLevelsBelow d (env.take n) := by
+  induction env generalizing n with
+  | nil => cases n <;> unfold Closure.envLevelsBelow <;> trivial
+  | cons w ws ih =>
+      cases n with
+      | zero => unfold Closure.envLevelsBelow; trivial
+      | succ m =>
+          unfold Closure.envLevelsBelow at h
+          simp only [List.take_succ_cons]
+          unfold Closure.envLevelsBelow
+          exact ⟨h.1, ih h.2 m⟩
+
+theorem eval_vapp_levelsBelow :
+    ∀ n,
+    (∀ {unf d ρ e v}, eval n unf ρ e = some v →
+      Closure.envLevelsBelow d ρ → Val.levelsBelow d v) ∧
+    (∀ {unf d f a v}, vapp n unf f a = some v →
+      Val.levelsBelow d f → Val.levelsBelow d a → Val.levelsBelow d v) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · intros _ _ _ _ _ h; rw [eval_zero] at h; cases h
+    · intros _ _ _ _ _ h; rw [vapp_zero] at h; cases h
+  | succ k ih =>
+    obtain ⟨ihe, ihv⟩ := ih
+    refine ⟨?_, ?_⟩
+    -- eval (k+1)
+    · intro unf d ρ e v h hρ
+      unfold eval at h
+      cases e with
+      | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow; trivial
+      | bvar j =>
+          simp only [] at h
+          exact Closure.envLevelsBelow_getElem? hρ h
+      | lam dom body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨dom', hdom, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          unfold Val.levelsBelow
+          refine ⟨ihe hdom hρ, ?_⟩
+          unfold Closure.levelsBelow Closure.mk'
+          exact Closure.envLevelsBelow_take hρ _
+      | iota ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          unfold Val.levelsBelow
+          refine ⟨ihe hann hρ, ?_⟩
+          unfold Closure.levelsBelow Closure.mk'
+          exact Closure.envLevelsBelow_take hρ _
+      | «fix» ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          unfold Val.levelsBelow
+          refine ⟨ihe hann hρ, ?_⟩
+          unfold Closure.levelsBelow Closure.mk'
+          exact Closure.envLevelsBelow_take hρ _
+      | app f a =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨f', hf, a', ha, hv⟩ := h
+          exact ihv hv (ihe hf hρ) (ihe ha hρ)
+      | letE val body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨v', hv', hb⟩ := h
+          have hρ' : Closure.envLevelsBelow d (v' :: ρ) := by
+            unfold Closure.envLevelsBelow
+            exact ⟨ihe hv' hρ, hρ⟩
+          exact ihe hb hρ'
+      | asc t _ =>
+          simp only [] at h
+          exact ihe h hρ
+    -- vapp (k+1)
+    · intro unf d f a v h hf ha
+      unfold vapp at h
+      cases hfeq : f with
+      | neutral nf =>
+          subst hfeq
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow Neutral.levelsBelow
+          exact ⟨hf, ha⟩
+      | type =>
+          subst hfeq
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow Neutral.levelsBelow
+          exact ⟨hf, ha⟩
+      | lam dom cl =>
+          subst hfeq
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          unfold Val.levelsBelow Closure.levelsBelow at hf
+          have hρ' : Closure.envLevelsBelow d (a :: env) := by
+            unfold Closure.envLevelsBelow
+            exact ⟨ha, hf.2⟩
+          exact ihe h hρ'
+      | iota ann cl =>
+          subst hfeq
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte, Option.some.injEq] at h
+            subst h
+            unfold Val.levelsBelow Neutral.levelsBelow
+            exact ⟨hf, ha⟩
+          · simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h
+            obtain ⟨f', hfe, hv⟩ := h
+            unfold Val.levelsBelow Closure.levelsBelow at hf
+            have hρ' : Closure.envLevelsBelow d
+                (Val.iota ann ⟨body, env⟩ :: env) := by
+              unfold Closure.envLevelsBelow
+              refine ⟨?_, hf.2⟩
+              unfold Val.levelsBelow
+              exact ⟨hf.1, hf.2⟩
+            exact ihv hv (ihe hfe hρ') ha
+      | fix ann cl =>
+          subst hfeq
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte, Option.some.injEq] at h
+            subst h
+            unfold Val.levelsBelow Neutral.levelsBelow
+            exact ⟨hf, ha⟩
+          · simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h
+            obtain ⟨f', hfe, hv⟩ := h
+            unfold Val.levelsBelow Closure.levelsBelow at hf
+            have hρ' : Closure.envLevelsBelow d
+                (Val.«fix» ann ⟨body, env⟩ :: env) := by
+              unfold Closure.envLevelsBelow
+              refine ⟨?_, hf.2⟩
+              unfold Val.levelsBelow
+              exact ⟨hf.1, hf.2⟩
+            exact ihv hv (ihe hfe hρ') ha
+
+theorem eval_levelsBelow {n unf d ρ e v}
+    (h : eval n unf ρ e = some v) (hρ : Closure.envLevelsBelow d ρ) :
+    Val.levelsBelow d v :=
+  (eval_vapp_levelsBelow n).1 h hρ
+
 /-- Bundled depth-lift + realisation obligations. All three
 remaining soundness sorries are packaged here so Lean emits a
 single declaration-sorry warning for the entire cluster.
