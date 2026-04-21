@@ -92,7 +92,7 @@ theorem subCheckVal_sound
   SubV_to_Subtype'
     (subCheckVal_subV hfuel h)
     (fun _ hp => absurd hp (List.not_mem_nil _))
-    (fun _ _ hk => by simp at hk)
+    ⟨rfl, fun _ _ hk => by simp at hk⟩
     (by simpa using hqa)
     (by simpa using hqb)
 
@@ -179,7 +179,7 @@ theorem whnfPi_sound {fuel : Nat} {inhab τV τV' : Val}
     ∀ {S Γe}, Subtype' S Γe τe' τe := by
   have heq : Equiv τe' τe :=
     whnfPi_sound_open (Γ := #[]) (Γe := [])
-      (fun _ _ hk => by simp at hk) hwh
+      ⟨rfl, fun _ _ hk => by simp at hk⟩ hwh
       (by simpa using hqτ) (by simpa using hqτ')
   exact fun {_ _} => heq.1
 

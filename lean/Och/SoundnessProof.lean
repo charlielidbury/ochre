@@ -949,7 +949,7 @@ def R : Nat → Nat → Val → Expr → Prop
                 (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
         | .type => True
         | .neutral _ => True)
-termination_by n _ v _ => sizeOf v
+termination_by _ _ v _ => sizeOf v
 decreasing_by
   all_goals simp_wf
   all_goals (rename Closure => cl; cases cl; simp; omega)
@@ -2508,8 +2508,15 @@ quote depth is `k`: entry `k` was *added* when `Γ` had size
 should quote at depth `k` (not `k+1`) to land in the right
 `Γe`-relative slot. (`tyCheck_sound_open`'s `.lam` arm is
 the witness — `Subtype'.lam` extends `Γe` with `domB` at
-index 0, and `domB` is `quote |Γ| domV`.) -/
+index 0, and `domB` is `quote |Γ| domV`.)
+
+The `Γ.size = Γe.length` conjunct is the length invariant
+that `OpenCtx.hlen` maintains at the top level. Making it
+explicit in `QuotesCtx` lets the `.hyp` case of
+`SubN_to_Subtype'` rewrite between the motive's `Γ.size`
+shift amount and `Subtype'.hyp`'s `Γe.length` shift amount. -/
 abbrev QuotesCtx (Γ : TyCtx) (Γe : Ctx) : Prop :=
+  Γ.size = Γe.length ∧
   ∀ k τ, Γ[k]? = some τ →
     ∃ τe, Γe.get? (Γ.size - 1 - k) = some τe ∧
           quote fuelω k τ = some τe
@@ -2552,17 +2559,24 @@ theorem SubN_to_Subtype'
   refine (@SubN.rec MV MN MS
     -- ===== SubV cases =====
     -- hyp
-    (fun {S Γ a b} hin {Se Γe ae be} hS _hΓ ha hb => by
+    (fun {S Γ a b} hin {Se Γe ae be} hS hΓ ha hb => by
       obtain ⟨⟨pd, pe1, pe2⟩, hpe, hpd, hq1, hq2⟩ := hS _ hin
       -- hq1 : quote pd a = some pe1; ha : quote Γ.size a = some ae.
       -- By `quote_depth_shift_n hpd hq1`, ae = pe1.shift (Γ.size−pd) 0;
-      -- similarly be. Then `.hyp hpe (Γe.length ≥ pd)` gives the
-      -- goal up to `Γ.size = Γe.length` (which holds at all call
-      -- sites via `OpenCtx.hlen` / `QuotesCtx.push` bookkeeping but
-      -- isn't currently in the motive). Adding `(hlen)` to the
-      -- `MV`/`MN` motives is the clean fix; sorried until that
-      -- threading lands. root #1 ripple.
-      sorry)
+      -- similarly be. The `.hyp` constructor at `Γe` gives the
+      -- shift at `(Γe.length − pd)`; `hΓ.1 : Γ.size = Γe.length`
+      -- bridges the two shift amounts. Depth-tagged Seen (root #1)
+      -- + QuotesCtx.hlen conjunct together close this case.
+      have hlen : Γ.size = Γe.length := hΓ.1
+      have hqa := quote_depth_shift_n hpd hq1
+      have hqb := quote_depth_shift_n hpd hq2
+      rw [hqa] at ha; injection ha with hae
+      rw [hqb] at hb; injection hb with hbe
+      subst hae hbe
+      have hpd' : pd ≤ Γe.length := hlen ▸ hpd
+      have h := Subtype'.hyp (S := Se) (Γ := Γe)
+          (d := pd) (a := pe1) (b := pe2) hpe hpd'
+      rw [hlen]; exact h)
     -- refl
     (fun {S Γ a} {Se Γe ae be} _hS _hΓ ha hb => by
       rw [ha] at hb; cases hb; exact .refl ae)
@@ -2712,7 +2726,7 @@ theorem SubN_to_Subtype'
     (fun {Γ k τ} hk {Se Γe ne τe} hΓ hn hτ => by
       obtain ⟨hkd, hne⟩ := quoteNeutral_var hn
       subst hne
-      obtain ⟨τe', hget, hqk⟩ := hΓ k τ hk
+      obtain ⟨τe', hget, hqk⟩ := hΓ.2 k τ hk
       have hqd := quote_depth_shift_n (Nat.le_of_lt hkd) hqk
       rw [hτ] at hqd; injection hqd with heq
       rw [heq, show Γ.size - k = Γ.size - 1 - k + 1 from by omega]
@@ -2866,7 +2880,7 @@ theorem OpenCtx.eq {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
 
 /-- The empty context is trivially open. `ρe = []`. -/
 theorem OpenCtx.empty : OpenCtx #[] [] [] [] where
-  hΓ := fun _ _ hk => by simp at hk
+  hΓ := ⟨rfl, fun _ _ hk => by simp at hk⟩
   hρq := fun _ _ hk => by simp at hk
   henv := ⟨rfl, fun _ _ hk => by simp at hk⟩
   hlen := rfl
@@ -3004,26 +3018,29 @@ theorem QuotesCtx.push {Γ : TyCtx} {Γe : Ctx}
     {τ : Val} {τe : Expr}
     (hqτ : quote fuelω Γ.size τ = some τe) :
     QuotesCtx (Γ.push τ) (τe :: Γe) := by
-  intro k τ' hk
-  rw [Array.getElem?_push] at hk
-  split at hk
-  · -- k = Γ.size: new head.
-    rename_i hk_eq
-    cases hk
-    refine ⟨τe, ?_, hk_eq ▸ hqτ⟩
-    have : (Γ.push τ).size - 1 - k = 0 := by
-      simp only [Array.size_push]; omega
-    rw [this]; rfl
-  · -- k ≠ Γ.size: old entry, Γ[k]? = some τ'.
-    rename_i hk_ne
-    obtain ⟨τe', hτe', hqτ'⟩ := hΓ k τ' hk
-    refine ⟨τe', ?_, hqτ'⟩
-    have hk_lt : k < Γ.size :=
-      (Array.getElem?_eq_some_iff.mp hk).1
-    have hidx : (Γ.push τ).size - 1 - k
-              = (Γ.size - 1 - k) + 1 := by
-      simp only [Array.size_push]; omega
-    rw [hidx]; simpa using hτe'
+  refine ⟨?hlen, ?hquote⟩
+  case hlen => simp [Array.size_push, hΓ.1]
+  case hquote =>
+    intro k τ' hk
+    rw [Array.getElem?_push] at hk
+    split at hk
+    · -- k = Γ.size: new head.
+      rename_i hk_eq
+      cases hk
+      refine ⟨τe, ?_, hk_eq ▸ hqτ⟩
+      have : (Γ.push τ).size - 1 - k = 0 := by
+        simp only [Array.size_push]; omega
+      rw [this]; rfl
+    · -- k ≠ Γ.size: old entry, Γ[k]? = some τ'.
+      rename_i hk_ne
+      obtain ⟨τe', hτe', hqτ'⟩ := hΓ.2 k τ' hk
+      refine ⟨τe', ?_, hqτ'⟩
+      have hk_lt : k < Γ.size :=
+        (Array.getElem?_eq_some_iff.mp hk).1
+      have hidx : (Γ.push τ).size - 1 - k
+                = (Γ.size - 1 - k) + 1 := by
+        simp only [Array.size_push]; omega
+      rw [hidx]; simpa using hτe'
 
 /-- Pushing a fresh neutral preserves the invariant.
 `ρe' = .bvar 0 :: ρe.map shift` — the standard de-Bruijn
@@ -3185,7 +3202,7 @@ theorem tyInfer_sound_open
       -- at depth `Γ.size-1-k` and the matching `Γe[k]`.
       have hΓk : Γ[Γ.size - 1 - k]? = some Γ[Γ.size - 1 - k] := by
         simp [Array.getElem?_eq_getElem, hidx_lt]
-      obtain ⟨τe0, hΓe, hqτe0⟩ := hctx.hΓ _ _ hΓk
+      obtain ⟨τe0, hΓe, hqτe0⟩ := hctx.hΓ.2 _ _ hΓk
       have hidx : Γ.size - 1 - (Γ.size - 1 - k) = k := by omega
       rw [hidx] at hΓe
       -- Lift the quote from depth `Γ.size-1-k` to `Γ.size`:
