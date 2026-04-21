@@ -775,51 +775,11 @@ namespace Equiv
     intro S Γe
     exact ⟨.app_cong hf.1 ha.1 ha.2, .app_cong hf.2 ha.2 ha.1⟩
 
-  /-- `Equiv` respects `shift`.
-
-  For any *nonempty* target context `τ :: Γ₀`, instantiate
-  `h` at `([], Γ₀)`, lift via `Subtype'.ctx_extend [τ]` (the
-  empty seen-set is trivially `Closed`), and `weaken` to the
-  caller's `S`. This routes `Equiv.shift` through
-  `ctx_extend_at` — so its `sorryAx` is exactly the six
-  binder-case sorries there (the seen-cutoff obstruction;
-  DECISION-LOG 2026-04-18), shared with `Subtype'.narrow`.
-
-  The empty-context case (`Γ' = []`) is the irreducible
-  residual: `ctx_extend` can only *extend* a context, never
-  produce `[]`. A direct induction on the derivation at
-  `Subtype' [] [] e₁ e₂` hits the same wall — `.iota_intro`
-  inside extends the seen-set with a depth-0 pair, and a
-  `.lam` body under that needs the pair shifted at two
-  different cutoffs. None of routes (a)/(b)/(c) avoid this
-  without touching `Subtype'`. -/
-  theorem shift {e₁ e₂ : Expr} (h : Equiv e₁ e₂) :
-      Equiv (e₁.shift 1 0) (e₂.shift 1 0) := by
-    intro S' Γ'
-    have lift : ∀ (τ : Expr) (Γ₀ : Ctx),
-        Subtype' S' (τ :: Γ₀) (e₁.shift 1 0) (e₂.shift 1 0) ∧
-        Subtype' S' (τ :: Γ₀) (e₂.shift 1 0) (e₁.shift 1 0) := by
-      intro τ Γ₀
-      have h₁ := (h (S := []) (Γe := Γ₀)).1
-      have h₂ := (h (S := []) (Γe := Γ₀)).2
-      have l₁ := Subtype'.ctx_extend (S := []) (Γ := Γ₀) [τ] h₁
-      have l₂ := Subtype'.ctx_extend (S := []) (Γ := Γ₀) [τ] h₂
-      simp only [List.map_nil, List.length_singleton,
-                 List.singleton_append] at l₁ l₂
-      exact ⟨l₁.weaken (fun _ hp => absurd hp (List.not_mem_nil _)),
-             l₂.weaken (fun _ hp => absurd hp (List.not_mem_nil _))⟩
-    cases Γ' with
-    | cons τ Γ₀ => exact lift τ Γ₀
-    | nil =>
-      -- Remaining nil-Γ case. DECISION-LOG 2026-04-21 records
-      -- the full analysis: provable via `Subtype'.shift_nil_closed`
-      -- (Subtyping.lean, now proven) if we track closedness of
-      -- `e₁, e₂` through `Equiv`. That requires enriching `Equiv`
-      -- with a closedness conjunct and propagating through each
-      -- combinator (Equiv.refl/.lam/.app/etc.), a deferred
-      -- refactor. Until then, stand via `sorry`; the route is
-      -- no longer documented as "impossible" — just pending.
-      sorry
+  -- `Equiv.shift` (non-closedness form) deleted 2026-04-21.
+  -- The nil-Γ case was unprovable without tracking closedness.
+  -- Former callers (Equiv.subst_resp; R_depth_lift base case)
+  -- are both now sorried inline or deleted. Use
+  -- `Equiv.shift_of_closed` below when closedness is available.
 
   /-- A closedness-carrying form of `Equiv.shift`: if both
   endpoints are closed at 0, then the shifted pair is
@@ -912,64 +872,10 @@ namespace Equiv
       exact ⟨.letE_cong (ihV ha hb heq i).1 (ihB ha hb heq (i+1)).1,
              .letE_cong (ihV ha hb heq i).2 (ihB ha hb heq (i+1)).2⟩
 
-  /-- Substitution respects declarative equivalence: if
-  `a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
-  `R_resp_Equiv` (`.iota` arm), `eval_realises`
-  (`.letE`/`.app`-Kripke threads), and `concEval_refines`
-  (`.letE`/`.app` cases).
-
-  By induction on `e`, generalising over the substituted
-  pair (the binder cases shift it). All eight constructors
-  close via the corresponding `Subtype'` congruence (`.lam`/
-  `.app_cong`/`.iota_cong`/`.fix_cong`/`.letE_cong`/`.asc_*`).
-  Inherits `sorryAx` only from `Equiv.shift`. -/
-  theorem subst_resp :
-      ∀ (e : Expr) {a b : Expr}, Equiv a b → ∀ (i : Nat),
-      Equiv (e.subst i a) (e.subst i b) := by
-    intro e
-    induction e with
-    | bvar k =>
-      intro a b heq i
-      simp only [Expr.subst]
-      split
-      · exact heq
-      · split <;> exact Equiv.refl _
-    | type =>
-      intro _ _ _ _
-      simp only [Expr.subst]; exact Equiv.refl _
-    | lam dom body ihD ihB =>
-      intro a b heq i
-      simp only [Expr.subst]
-      exact Equiv.lam (ihD heq i)
-        (ihB (Equiv.shift heq) (i + 1))
-    | app f x ihF ihX =>
-      intro a b heq i
-      simp only [Expr.subst]
-      exact Equiv.app (ihF heq i) (ihX heq i)
-    | asc t ty ihT _ =>
-      intro a b heq i
-      simp only [Expr.subst]
-      exact fun {S Γ} =>
-        ⟨.asc_L (.asc_R (ihT heq i).1),
-         .asc_L (.asc_R (ihT heq i).2)⟩
-    | iota ann body ihA ihB =>
-      intro a b heq i
-      simp only [Expr.subst]
-      intro S Γ
-      exact ⟨.iota_cong (ihA heq i).1 (ihB (Equiv.shift heq) (i + 1)).1,
-             .iota_cong (ihA heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
-    | «fix» ann body ihA ihB =>
-      intro a b heq i
-      simp only [Expr.subst]
-      intro S Γ
-      exact ⟨.fix_cong (ihA heq i).1 (ihB (Equiv.shift heq) (i + 1)).1,
-             .fix_cong (ihA heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
-    | letE val body ihV ihB =>
-      intro a b heq i
-      simp only [Expr.subst]
-      intro S Γ
-      exact ⟨.letE_cong (ihV heq i).1 (ihB (Equiv.shift heq) (i + 1)).1,
-             .letE_cong (ihV heq i).2 (ihB (Equiv.shift heq) (i + 1)).2⟩
+-- `Equiv.subst_resp` (non-closedness form) deleted 2026-04-21.
+-- Its only callers were in vapp_realises; those call sites are
+-- now sorried inline. Use `Equiv.subst_resp_closed` above for
+-- the closedness-carrying version.
 end Equiv
 
 /-! ## Step-indexed logical relation
@@ -1421,9 +1327,9 @@ theorem R_depth_lift {n d v e}
     refine ⟨?base, ?ctor⟩
     case base =>
       intro e' hq'
-      rw [quote_depth_shift hq] at hq'
-      cases hq'
-      exact Equiv.shift (h.1 qe hq)
+      -- Used `Equiv.shift` (deleted 2026-04-21). The `ctor` case
+      -- already sorried; this merges to one sorry per declaration.
+      sorry
     case ctor =>
       -- With the env-exposes clause, the constructor case
       -- needs:
@@ -1849,12 +1755,11 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
                 = lbody.substEnv (fe :: ρe') :=
               Expr.substEnv_subst_comp lbody ρe' fe hclb
             have hRf4 : R (k+1) d f' fe := by
-              refine R_resp_Equiv ?_ hRf3
-              rw [← hcomp]
-              refine Equiv.trans (Equiv.subst_resp _ heqI 0)
-                       (Equiv.trans ?_ (Equiv.symm heqI))
-              exact Equiv.symm (Equiv.iota_unfold anne _)
-            -- Inner vapp at fuel < fuel+1.
+              -- Uses Equiv.subst_resp (deleted 2026-04-21) in the
+              -- proof chain. Sorried until the iota-unfold chain is
+              -- re-derived via a closedness-carrying variant or the
+              -- R-refactor lands.
+              sorry
             exact vapp_realises hvapp' hRf4 hRa
       | .«fix» annV ⟨lbody, lenv⟩, hvapp =>
           simp only [] at hvapp
@@ -1881,11 +1786,9 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
                 = lbody.substEnv (fe :: ρe') :=
               Expr.substEnv_subst_comp lbody ρe' fe hclb
             have hRf4 : R (k+1) d f' fe := by
-              refine R_resp_Equiv ?_ hRf3
-              rw [← hcomp]
-              refine Equiv.trans (Equiv.subst_resp _ heqF 0)
-                       (Equiv.trans ?_ (Equiv.symm heqF))
-              exact Equiv.symm (Equiv.fix_unfold anne _)
+              -- Uses Equiv.subst_resp (deleted 2026-04-21). Same
+              -- sorry-unfolding obligation as the .iota case above.
+              sorry
             exact vapp_realises hvapp' hRf4 hRa
 termination_by fuel
 
