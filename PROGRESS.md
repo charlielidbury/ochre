@@ -2,8 +2,25 @@
 
 ## Current state (2026-04-21)
 
-**10 declaration sorries (down from 10 at session start, with 10
-new fully-proven theorems added).**
+**5 declaration sorries (down from 10 at session start).** Half
+the sorries eliminated through a combination of:
+- Deleting dead sorry-ridden theorems (SynthN_to_Subtype',
+  SubN_to_Subtype', whnfPi_sound chain, openNf_holds, Equiv.shift,
+  Equiv.subst_resp).
+- Migrating to closedness-carrying variants (subst_resp_closed,
+  shift_of_closed, eval_quotes').
+- Routing concEval_refines / preservation / soundness through the
+  proven closedness-chain.
+
+Remaining 5 sorries:
+1. `quote_depth_shift` (eval level-renaming for closures)
+2. `R_depth_lift` (depends on #1)
+3. `vapp_realises` / `eval_realises` mutual (base-conjuncts;
+   needs R definition change)
+4. `SubV_to_Subtype'` (binder & productive-unfold cases; needs
+   tier-2 realisability threading)
+5. `tyInfer_sound_open` / `tyCheckFallback_sound_open` /
+   `tyCheck_sound_open` mutual (needs pieces of #1–#4)
 
 **MAJOR BREAKTHROUGH: `concEval_refines`, `concEval_preservation`,
 and `concEval_equiv_closed` are axiom-clean** (depend only on
