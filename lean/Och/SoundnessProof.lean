@@ -3008,71 +3008,22 @@ theorem eval_quotable_open {fuel unf d : Nat} {ρ : Env}
   simp only [Option.some_bind] at hnfq
   exact Option.isSome_iff_exists.mp hnfq
 
-/-- The `hnfq` evidence each `OpenCtx.eval_quotes` call site
-needs. This is the open-Γ analogue of the `(nf fuelω
-e).isSome` side condition in `quote_total_on_eval`
-(Soundness.lean) — i.e., "evaluating `e` under `ρ` and
-quoting at depth `Γ.size` succeeds within `fuelω`". It is
-**not** derivable from `OpenCtx` alone (the
-closure-body-fuel counterexample applies at every `Γ`/`ρ`,
-not just the empty one — `eval 2 unf ρ (.lam .type huge)`
-succeeds at fuel 2 while `quoteClosure` re-evals `huge`
-unboundedly).
+/-- Sorry-free quote-totality wrapper: caller supplies the
+`(hnfq)` witness directly (route (a) — per-call hypothesis).
 
-**This statement is false.** The intended use-pattern was:
-at `OpenCtx.empty`, derive from caller's `hnfe`; under
-`push_fresh`, derive from caller's evidence for the
-enclosing `.lam` (one `quoteClosure` step). But neither
-the caller's `hnfe` nor the enclosing-lam evidence is in
-scope here. The right shape is one of:
+At `OpenCtx.empty`, this is the closed-form `(hnf)` the
+`Soundness.lean` wrappers already thread; under `push_fresh`
+/`push_let`, derive it via one `quoteClosure`/`bind`-step
+from the enclosing call's `(hnfq)`.
 
-  (a) **Per-call hypothesis**: change every `*_sound_open`
-      to take `(hnfq : ((eval fuelω unfBound ρ
-      e).bind (quote fuelω Γ.size)).isSome)` for its own
-      `e`, and discharge the recursive call's hypothesis by
-      one `quote`/`quoteClosure`-step from it. The closed
-      wrappers in `Soundness.lean` already pass `hnfe`/
-      `hnfτ` at the top, so this is "thread it through".
-      Each binder case (`.lam`/`.letE`) needs `hnfq_body`
-      derived from `hnfq_lam` via the `quoteClosure`-step;
-      `.asc` needs `hnfq_τ0` derived from … nothing (the
-      ascription type is not a sub-eval of `e` — same
-      `.asc`-residual the closed `tyCheck_sound_closed`
-      already has).
-
-  (b) **`OpenNf`-bundle in `OpenCtx`**: add `hnfρ : ∀ k v,
-      ρ[k]? = some v → quote fuelω Γ.size v ≠ none` to the
-      structure (almost what `hρq` already says — could
-      strengthen `hρq` and drop this).
-
-Route (a) is the same shape as `quote_total_on_eval`'s
-`hnf` threading; cleanest. Until then, this `sorry` stands
-for "all `OpenCtx.eval_quotes` call sites have evidence
-the caller could have threaded". -/
-theorem openNf_holds {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
-    {fuel unf e v} (_hfuel : fuel ≤ fuelω)
-    (_heval : eval fuel unf ρ e = some v) :
-    ((eval fuelω unf ρ e).bind (quote fuelω Γ.size)).isSome := by
-  -- False as stated; see docstring. The route-(a) restructure
-  -- replaces this with a per-call hypothesis.
-  sorry
-
-/-- Convenience wrapper: every `eval`-result under an
-`OpenCtx` quotes (modulo `openNf_holds`). DEPRECATED: callers
-should switch to `eval_quotes'` and supply `(hnfq)` directly,
-then delete this and `openNf_holds`. -/
-theorem OpenCtx.eval_quotes {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
-    {fuel unf e v} (hfuel : fuel ≤ fuelω)
-    (heval : eval fuel unf ρ e = some v) :
-    ∃ ve, quote fuelω Γ.size v = some ve :=
-  eval_quotable_open hfuel (openNf_holds hctx hfuel heval) heval
-
-/-- Sorry-free replacement for `eval_quotes`: caller supplies
-the `(hnfq)` evidence directly (route (a) of the `openNf_holds`
-docstring). At `OpenCtx.empty` this is the closed-form `(hnf)`
-the `Soundness.lean` wrappers already thread; under `push_fresh`
-/`push_let`, derive it via one `quoteClosure`/`bind`-step from
-the enclosing call's `(hnfq)`. -/
+The original `openNf_holds` + `OpenCtx.eval_quotes`
+(non-primed) were deleted 2026-04-21. `openNf_holds` was
+false as stated (`eval 2 _ [] (.lam .type huge)` counterexample:
+eval succeeds at fuel 2 regardless of `huge`'s size, but
+`quoteClosure` re-evals `huge` unboundedly). All call sites
+now use `eval_quotes'` with the witness either threaded from
+the top-level `hnfe` / `hnfτ` or supplied via `by sorry` at
+sites inside already-sorried theorems. -/
 theorem OpenCtx.eval_quotes' {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
     {fuel unf e v} (hfuel : fuel ≤ fuelω)
     (hnfq : ((eval fuelω unf ρ e).bind (quote fuelω Γ.size)).isSome)
@@ -3199,6 +3150,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {fuel unf : Nat} (hfuel : fuel ≤ fuelω)
     {val : Expr} {valV valTy : Val} {valTye : Expr}
     (hev : eval fuel unf ρ val = some valV)
+    (hnfq : ((eval fuelω unf ρ val).bind (quote fuelω Γ.size)).isSome)
     (hclv : val.closedAt ρe.length = true)
     (hqτ : quote fuelω Γ.size valTy = some valTye)
     (hval_le : Subtype' [] Γe (val.substEnv ρe) valTye) :
@@ -3213,7 +3165,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     | zero =>
         simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
         subst hk
-        obtain ⟨qe, hqe⟩ := hctx.eval_quotes hfuel hev
+        obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
         exact ⟨qe.shift 1 0,
           by simpa [Array.size_push] using quote_depth_shift hqe⟩
     | succ m =>
@@ -3222,7 +3174,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simpa [Array.size_push] using h
   henv := by
     have hRval := eval_realises hev hctx.henv hclv
-    obtain ⟨qe, hqe⟩ := hctx.eval_quotes hfuel hev
+    obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
     have hRval' := R_depth_lift hqe hRval
     have htail := REnv_depth_lift hctx.henv hctx.hρq
     simpa [Array.size_push] using REnv_cons htail hRval'
@@ -3362,7 +3314,7 @@ theorem tyInfer_sound_open
                    ↓reduceIte, Except.ok.injEq,
                    Option.some.injEq] at h
         subst h
-        obtain ⟨τe, hqτV⟩ := hctx.eval_quotes hfuel' hτV0
+        obtain ⟨τe, hqτV⟩ := hctx.eval_quotes' hfuel' (by sorry) hτV0
         have hsub := tyCheck_sound_open hfuel' hctx
           hcl.1 hqτV hokI
         exact ⟨τe, hqτV,
@@ -3422,9 +3374,9 @@ theorem tyInfer_sound_open
       obtain ⟨valV, valTy⟩ := valpair
       -- Mirror of `tyCheck_sound_open`'s `.letE`:
       have ⟨hev, valTye, hqValTy, hval_le⟩ :=
-        letBinderType_sound_open hfuel' hctx hcl_val hletB
+        letBinderType_sound_open hfuel' hctx (by sorry) hcl_val hletB
       have hctx' :=
-        hctx.push_let (val := val) hfuel' hev hcl_val hqValTy hval_le
+        hctx.push_let (val := val) hfuel' hev (by sorry) hcl_val hqValTy hval_le
       have hIH :=
         tyInfer_sound_open hfuel' hctx'
           (by simpa [List.length_map] using hcl_body)
@@ -3474,7 +3426,7 @@ theorem tyCheckFallback_sound_open
         simp only [] at h
         split at h
         · next eV heV =>
-          obtain ⟨eVe, hqeV⟩ := hctx.eval_quotes hfuel heV
+          obtain ⟨eVe, hqeV⟩ := hctx.eval_quotes' hfuel (by sorry) heV
           have h_e_eVe := (hctx.eq heV hcl hqeV).2
           have hsub :=
             subCheckVal_sound_open hfuel hctx.hΓ h hqeV hqτ
@@ -3559,7 +3511,7 @@ theorem tyCheck_sound_open
           (by simpa [List.length_map] using hcl_body)
           (by simpa [Array.size_push] using hqBody') h
       -- (d) Contravariant domain at the *outer* depth:
-      obtain ⟨dome, hqdomV⟩ := hctx.eval_quotes hfuel' hdomV
+      obtain ⟨dome, hqdomV⟩ := hctx.eval_quotes' hfuel' (by sorry) hdomV
       have hcontra : Subtype' [] Γe expDome (dom.substEnv ρe) :=
         .trans
           (subCheckVal_sound_open hfuel' hctx.hΓ hokDom hqDom hqdomV)
@@ -3609,12 +3561,12 @@ theorem tyCheck_sound_open
       -- below) gives the binder's eval + a quoted upper
       -- bound on its type:
       have ⟨hev, valTye, hqValTy, hval_le⟩ :=
-        letBinderType_sound_open hfuel' hctx hcl_val hletB
+        letBinderType_sound_open hfuel' hctx (by sorry) hcl_val hletB
       -- Extended context (push_let is proven; with the
       -- `QuotesCtx` depth-`k` convention, `valTye` at depth
       -- `Γ.size` is exactly the head we cons):
       have hctx' :=
-        hctx.push_let (val := val) hfuel' hev hcl_val hqValTy hval_le
+        hctx.push_let (val := val) hfuel' hev (by sorry) hcl_val hqValTy hval_le
       -- IH: body at hctx', expected τV at depth Γ.size+1.
       have hIH :=
         tyCheck_sound_open hfuel' hctx'
@@ -3678,7 +3630,7 @@ theorem tyCheck_sound_open
                        ↓reduceIte, pure, Except.pure,
                        bind, Except.bind] at h
             simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-            obtain ⟨τ0e, hqτ0V⟩ := hctx.eval_quotes hfuel' hτ0V
+            obtain ⟨τ0e, hqτ0V⟩ := hctx.eval_quotes' hfuel' (by sorry) hτ0V
             -- IH (same Γ/ρ): `(e0.substEnv ρe) ⊑ τ0e`.
             have h_e0_τ0e :=
               tyCheck_sound_open hfuel' hctx hcl.1 hqτ0V hinner
@@ -3695,7 +3647,7 @@ theorem tyCheck_sound_open
     | (rename_i ann body
        split at h
        · rename_i eV hev
-         obtain ⟨ee, hqeV⟩ := hctx.eval_quotes hfuel' hev
+         obtain ⟨ee, hqeV⟩ := hctx.eval_quotes' hfuel' (by sorry) hev
          have hsub :=
            subCheckVal_sound_open hfuel' hctx.hΓ h hqeV hqτ
          have he_ee := (hctx.eq hev hcl hqeV).2
@@ -3725,6 +3677,7 @@ theorem letBinderType_sound_open
     {Γ : TyCtx} {ρ : Env} {Γe : Ctx} {ρe : List Expr}
     (hctx : OpenCtx Γ ρ Γe ρe)
     {val : Expr} {valV valTy : Val}
+    (hnfq : ((eval fuelω unfBound ρ val).bind (quote fuelω Γ.size)).isSome)
     (hcl : val.closedAt ρe.length = true)
     (h : letBinderType fuel Γ ρ val = .ok (valV, valTy)) :
     eval fuel unfBound ρ val = some valV ∧
@@ -3743,7 +3696,7 @@ theorem letBinderType_sound_open
   have hself : eval fuel unfBound ρ val = some valV0 ∧
       ∃ valTye, quote fuelω Γ.size valV0 = some valTye ∧
                 Subtype' [] Γe (val.substEnv ρe) valTye := by
-    obtain ⟨valVe, hqvalV⟩ := hctx.eval_quotes hfuel hev
+    obtain ⟨valVe, hqvalV⟩ := hctx.eval_quotes' hfuel hnfq hev
     exact ⟨hev, valVe, hqvalV, (hctx.eq hev hcl hqvalV).2⟩
   cases valTy? with
   | none =>
