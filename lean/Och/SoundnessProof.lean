@@ -840,6 +840,78 @@ namespace Equiv
         Expr.shift_of_closedAt h₂ 1 (Nat.le_refl _)]
     exact h
 
+  /-- A closedness-carrying `subst_resp`: when substituends are
+  closed at 0, the shift under binders is the identity and the
+  proof avoids `Equiv.shift` (still sorried at nil-Γ) entirely.
+
+  In practice, this is ALL the uses. `concEval_equiv`
+  substituends come from `concEval` results (closed by
+  construction). So this closedness-carrying form is the
+  usable version; the general `subst_resp` below remains for
+  full generality but depends on the nil-Γ sorry.
+
+  The critical insight: `body.subst (i+1) (a.shift 1 0) =
+  body.subst (i+1) a` when `a.closedAt 0`. So the recursive
+  body call doesn't need the shifted substituend's Equiv — it
+  uses the original `heq` directly, avoiding `Equiv.shift`. -/
+  theorem subst_resp_closed :
+      ∀ (e : Expr) {a b : Expr},
+      a.closedAt 0 = true → b.closedAt 0 = true →
+      Equiv a b → ∀ (i : Nat),
+      Equiv (e.subst i a) (e.subst i b) := by
+    intro e
+    induction e with
+    | bvar k =>
+      intro a b _ha _hb heq i
+      simp only [Expr.subst]
+      split
+      · exact heq
+      · split <;> exact Equiv.refl _
+    | type =>
+      intro _ _ _ _ _ _
+      simp only [Expr.subst]; exact Equiv.refl _
+    | lam dom body ihD ihB =>
+      intro a b ha hb heq i
+      simp only [Expr.subst]
+      -- Key trick: since a, b closedAt 0, their shift is identity.
+      rw [Expr.shift_of_closedAt ha 1 (Nat.zero_le _),
+          Expr.shift_of_closedAt hb 1 (Nat.zero_le _)]
+      exact Equiv.lam (ihD ha hb heq i) (ihB ha hb heq (i+1))
+    | app f x ihF ihX =>
+      intro a b ha hb heq i
+      simp only [Expr.subst]
+      exact Equiv.app (ihF ha hb heq i) (ihX ha hb heq i)
+    | asc t ty ihT _ =>
+      intro a b ha hb heq i
+      simp only [Expr.subst]
+      exact fun {S Γ} =>
+        ⟨.asc_L (.asc_R (ihT ha hb heq i).1),
+         .asc_L (.asc_R (ihT ha hb heq i).2)⟩
+    | iota ann body ihA ihB =>
+      intro a b ha hb heq i
+      simp only [Expr.subst]
+      rw [Expr.shift_of_closedAt ha 1 (Nat.zero_le _),
+          Expr.shift_of_closedAt hb 1 (Nat.zero_le _)]
+      intro S Γ
+      exact ⟨.iota_cong (ihA ha hb heq i).1 (ihB ha hb heq (i+1)).1,
+             .iota_cong (ihA ha hb heq i).2 (ihB ha hb heq (i+1)).2⟩
+    | «fix» ann body ihA ihB =>
+      intro a b ha hb heq i
+      simp only [Expr.subst]
+      rw [Expr.shift_of_closedAt ha 1 (Nat.zero_le _),
+          Expr.shift_of_closedAt hb 1 (Nat.zero_le _)]
+      intro S Γ
+      exact ⟨.fix_cong (ihA ha hb heq i).1 (ihB ha hb heq (i+1)).1,
+             .fix_cong (ihA ha hb heq i).2 (ihB ha hb heq (i+1)).2⟩
+    | letE val body ihV ihB =>
+      intro a b ha hb heq i
+      simp only [Expr.subst]
+      rw [Expr.shift_of_closedAt ha 1 (Nat.zero_le _),
+          Expr.shift_of_closedAt hb 1 (Nat.zero_le _)]
+      intro S Γ
+      exact ⟨.letE_cong (ihV ha hb heq i).1 (ihB ha hb heq (i+1)).1,
+             .letE_cong (ihV ha hb heq i).2 (ihB ha hb heq (i+1)).2⟩
+
   /-- Substitution respects declarative equivalence: if
   `a ≡ b` then `e[i ↦ a] ≡ e[i ↦ b]` for any `e`. Needed at
   `R_resp_Equiv` (`.iota` arm), `eval_realises`
