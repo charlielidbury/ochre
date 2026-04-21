@@ -3,6 +3,61 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-21: R refactor landed — base conjunct dropped for closures; R_quote_equiv closure cases left as residual sorry
+
+**What:** Implemented the R restructure per the 2026-04-19 plan.
+`R (n+1) d (.lam dV cl) e`, `.iota`, `.fix` now only carry the
+env-exposes clause with the added **head R**: `∃ ρe' he,
+R (n+1) d headV he ∧ RList (n+1) d cl.env ρe' ∧ closedAt ∧
+Equiv e (.ctor he body.substEnv …)`. The `.type`/`.neutral` clauses
+retain the base conjunct `∀ e' hq, Equiv e' e`. `R_mono`,
+`R_resp_Equiv`, `RList_mono`, extractors (`R_lam_clause`,
+`R_iota_clause`, `R_fix_clause`), and `eval_realises`'s ctor cases
+all updated.
+
+**Wins:**
+- `eval_realises`'s 3 base-conjunct sorries (for `.lam`/`.iota`/
+  `.fix` cases) are gone — the env-exposes branch just supplies
+  the new head R from `ihf'` (fuel-IH).
+- R extractors now return the head R as extra info.
+- R_neutral_app simplified to take per-component `Equiv`
+  witnesses instead of deriving from R bases (which no longer
+  exist for closure cases).
+
+**Residuals (sorries added):**
+- `R_quote_equiv`'s `.lam`/`.iota`/`.fix` cases (3 sub-sorries,
+  one declaration): needs mutual `quoteClosure_realises` on
+  quote-fuel; each step would use env-exposes to build a REnv
+  at `d+1` and call `eval_realises`. The cycle is
+  `R_quote_equiv → quoteClosure_realises → eval_realises →
+  (via R_neutral_app) → R_quote_equiv`. To close, either
+  (a) put all four theorems in one giant mutual with a lex
+  `(eval_fuel, quote_fuel, sizeOf v)` termination (eval_fuel
+  decreases on most calls, quote-fuel on
+  R_quote_equiv→quoteClosure, sizeOf on recursive R_quote_equiv
+  sub-calls); or
+  (b) add a closedness side condition (`e.closedAt d`) and let
+  `subst_resp_closed` discharge inner substitutions.
+- `vapp_realises` iota/fix unfold branches (2 sub-sorries, same
+  mutual declaration): need `Equiv.subst_resp` on `fe ≡ .iota
+  anne bode`. `subst_resp` was deleted 2026-04-21 (depended on
+  nil-Γ `Equiv.shift`). `subst_resp_closed` is available but
+  requires closedness of fe AND `.iota anne bode`. Closing
+  requires either threading closedness through `vapp_realises`
+  or resolving the nil-Γ `Equiv.shift` sorry.
+
+**Net effect:** `eval_realises`'s mutual sorry reduces from 5
+sub-sorries (3 base + 2 iota/fix unfold) to 2 (iota/fix unfold).
+But R_quote_equiv gains 3 sub-sorries as one new declaration.
+Overall declaration-sorry count: 3 → 4 (+1). The R structure
+change is sound; the residuals are mechanical proof obligations
+that close once the structural sorries above are resolved.
+
+**Soundness axioms unchanged:** `concEval_refines`,
+`concEval_preservation`, `concEval_equiv_closed` all still
+depend only on `[propext, Quot.sound]` — the sorries are not
+on the critical soundness path.
+
 ## 2026-04-21: `Equiv.shift` nil-Γ: route (i) is genuinely harder than the docstring suggests
 
 **What (reassessment of 2026-04-19 entry below):** Route (i) —
