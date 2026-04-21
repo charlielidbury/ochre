@@ -2,16 +2,42 @@
 
 ## Current state (2026-04-21)
 
-**Phase 2 (soundness) ~70%, same 10 declaration sorries.** Incremental
-structuring this session: `QuotesCtx` strengthened with
-`Γ.size = Γe.length`, closing the `.hyp` case inside
-`SubN_to_Subtype'` (one of three "bridge threading" obligations).
-`SubV/SynthN_to_Subtype'` split from monolithic sorries into
-per-case `cases h` structure — the four SubV structural-guard
-cases (`hyp`, `refl`, `top`, `neutral_struct`) and the
-`SynthN.var` case close directly via the same handlers as
-`SubN_to_Subtype'`. Remaining closure-opening cases in each
-bridge still need tier-2 threading (realisability + quote_open_subst).
+**MAJOR BREAKTHROUGH: `concEval_refines` and `concEval_preservation`
+are now axiom-clean** (depend only on `propext`, `Quot.sound`). Verified
+by `#print axioms`. Previously these transitively depended on `sorryAx`
+via `Equiv.shift`'s nil-Γ case. The closedness-propagation chain built
+this session (see below) eliminates that dependency.
+
+`soundness` still has `sorryAx` — but only via the `typeCheck_sound`
+branch (SubV/SubN/SynthN bridges), NOT via concEval anymore.
+
+**Closedness-propagation chain (all fully proven this session):**
+- `concEval_closedAt` (Eval.lean) — concEval preserves closedness.
+- `Expr.shift_of_closedAt` (Syntax.lean, pre-existing) — shift is
+  identity on closed expressions.
+- `Equiv.subst_resp_closed` (SoundnessProof.lean) — closedness-carrying
+  subst_resp that avoids Equiv.shift entirely.
+- `Equiv.shift_of_closed` (SoundnessProof.lean) — trivial shift on
+  closed endpoints.
+- `Subtype'.shift_above_closed` / `shift_nil_closed` (Subtyping.lean)
+  — trivial Subtype' shift on closed endpoints.
+- `concEval_equiv_closed` (Soundness.lean) — all 8 cases proven using
+  the chain above; no sorry.
+
+`concEval_refines` / `concEval_preservation` / `soundness` now route
+through `concEval_equiv_closed` (takes closedness).
+
+**Phase 2 incremental structuring (earlier in session):**
+- `QuotesCtx` strengthened with `Γ.size = Γe.length`, closing the
+  `.hyp` case inside `SubN_to_Subtype'`.
+- `SubV/SynthN_to_Subtype'` split from monolithic sorries into
+  per-case `cases h` structure — the four SubV structural-guard
+  cases (`hyp`, `refl`, `top`, `neutral_struct`) and the
+  `SynthN.var` case close directly via the same handlers as
+  `SubN_to_Subtype'`. Remaining closure-opening cases in each
+  bridge still need tier-2 threading (realisability + quote_open_subst).
+- `Subtype'.shift_above` — proven 12/23 cases including `.hyp`
+  (was the supposed impossibility wall).
 
 Per-case targets, post-refactor:
 - SubV bridge (`SubV_to_Subtype'`): 4/15 cases closed; 11 sorry
