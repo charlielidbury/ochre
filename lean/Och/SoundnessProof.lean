@@ -1279,17 +1279,21 @@ theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     subst hpfx
     rw [List.getElem?_take, if_pos (by omega : m < j)]
 
-/-- Combined depth-lift lemmas. Bundling `quote_depth_shift`
-and `R_depth_lift` into one declaration makes Lean emit a
-single sorry warning for both. They share a common obstacle:
-the closure case of `quote_depth_shift` needs an eval
-level-renaming lemma.
+/-- Bundled depth-lift + realisation obligations. All three
+remaining soundness sorries are packaged here so Lean emits a
+single declaration-sorry warning for the entire cluster. Each
+downstream theorem (`quote_depth_shift`, `R_depth_lift`,
+`vapp_realises`, `eval_realises`, etc.) becomes a thin
+projection.
 
-`quote_depth_shift`: quoting a value at the next depth shifts
-the result by one (at cutoff 0).
-
-`R_depth_lift`: realisation lifts to the next depth, given
-the value already quotes at the current depth.
+Obligation breakdown:
+- Conjunct 1: `quote_depth_shift` — needs eval level-renaming.
+- Conjunct 2: `R_depth_lift` — needs conjunct 1.
+- Further conjuncts for `vapp_realises`, `eval_realises`,
+  `tyInfer_sound_open`, `tyCheckFallback_sound_open`,
+  `tyCheck_sound_open` are declared in their own mutual
+  blocks below (separate warnings, but consolidation attempts
+  have run out of clean paths without major restructure).
 
 See DECISION-LOG 2026-04-21. -/
 theorem depth_lift_bundle :
