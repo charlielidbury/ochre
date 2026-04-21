@@ -929,119 +929,63 @@ theorem Ctx.wellFormed_cons {τ : Expr} {Γ : Ctx}
     rw [this]
     exact h
 
-/-- Shift-above-context: under a well-closed seen-set and a
-well-formed context, shifting both sides of a derivation by
-`n` at cutoff `|Γ|` is the identity (since all expressions
-appearing in a well-formed derivation have no bvars at or
-above `|Γ|`). The utility: the `.hyp` case uses this to
-discharge shifts of hypothesis expressions, and the `.bvar`
-case uses it to show the context entry's shifted form stays
-unchanged.
+/-- The `.hyp` case of the generalised shift-above-context
+lemma — the supposed "impossibility wall" of `Equiv.shift`'s
+nil-Γ — is actually provable as a standalone lemma using
+`Seen.wellClosed`. Given
+a hypothesis application at depth d, the recorded pair (x, y)
+is closed at d by `wellClosed`; after the `.hyp` rule's
+built-in (|Γ|-d)-shift, both sides are closed at |Γ|, so an
+outer `shift n |Γ|` is the identity. This demonstrates the
+closedness-propagation route is sound; the full
+`shift_above` theorem requires wellformedness propagation
+through `.lam` / productive-unfold cases, which needs
+closedness side-conditions on binder rules (an invasive
+Subtype' schema change).
 
-**Status**: stated; many cases proven; the binder cases
-(`.lam`/`.iota_cong`/`.fix_cong`/`.letE_cong`/`.iota_body`/
-`.fix_body`) require the new binder's domain/annotation to
-preserve `Ctx.wellFormed` under extension, which isn't
-derivable from the `Subtype'` premise alone without a
-closedness assumption on the binder expression. Sorried for
-the binder and productive-unfold cases. Included as
-infrastructure for the route-1 attack on `Equiv.shift` nil-Γ
-(DECISION-LOG 2026-04-21). -/
-theorem Subtype'.shift_above {S Γ a b} (n : Nat)
+The `shift_above_closed` / `shift_nil_closed` variants below
+are the practical versions for callers that supply closedness
+directly. -/
+theorem Subtype'.hyp_shift_above {S Γ d x y n}
     (hS : Seen.wellClosed S)
+    (hin : (d, x, y) ∈ S) (hle : d ≤ Γ.length) :
+    Subtype' S Γ
+      ((x.shift (Γ.length - d) 0).shift n Γ.length)
+      ((y.shift (Γ.length - d) 0).shift n Γ.length) := by
+  obtain ⟨hxcl, hycl⟩ := hS d x y hin
+  have hxcl' : (x.shift (Γ.length - d) 0).closedAt Γ.length = true := by
+    have := Expr.shift_closedAt x d (Γ.length - d) 0 (Nat.zero_le _) hxcl
+    have hk : d + (Γ.length - d) = Γ.length := by omega
+    rw [hk] at this; exact this
+  have hycl' : (y.shift (Γ.length - d) 0).closedAt Γ.length = true := by
+    have := Expr.shift_closedAt y d (Γ.length - d) 0 (Nat.zero_le _) hycl
+    have hk : d + (Γ.length - d) = Γ.length := by omega
+    rw [hk] at this; exact this
+  rw [Expr.shift_of_closedAt hxcl' n (Nat.le_refl _),
+      Expr.shift_of_closedAt hycl' n (Nat.le_refl _)]
+  exact Subtype'.hyp hin hle
+
+/-- The `.bvar` case of `shift_above`, standalone. Under
+`Ctx.wellFormed`, `τ` at position `k` is closed at
+`(|Γ|-k-1)`; after the `.bvar` rule's `(k+1)`-shift, it's
+closed at `|Γ|`, so an outer `shift n |Γ|` is identity. -/
+theorem Subtype'.bvar_shift_above {S Γ k τ n}
     (hΓ : Ctx.wellFormed Γ)
-    (h : Subtype' S Γ a b) :
-    Subtype' S Γ (a.shift n Γ.length) (b.shift n Γ.length) := by
-  induction h with
-  | @hyp S' Γ' d x y hin hle =>
-    -- (d, x, y) ∈ S. hS gives x, y closedAt d.
-    -- h's conclusion: Subtype' S Γ (x.shift (|Γ|-d) 0) (y.shift (|Γ|-d) 0).
-    -- Both sides, after the (|Γ|-d)-shift, are closedAt |Γ|.
-    -- So outer `shift n |Γ|` is identity.
-    obtain ⟨hxcl, hycl⟩ := hS d x y hin
-    have hxcl' : (x.shift (Γ'.length - d) 0).closedAt Γ'.length = true := by
-      have := Expr.shift_closedAt x d (Γ'.length - d) 0 (Nat.zero_le _) hxcl
-      have hk : d + (Γ'.length - d) = Γ'.length := by omega
-      rw [hk] at this; exact this
-    have hycl' : (y.shift (Γ'.length - d) 0).closedAt Γ'.length = true := by
-      have := Expr.shift_closedAt y d (Γ'.length - d) 0 (Nat.zero_le _) hycl
-      have hk : d + (Γ'.length - d) = Γ'.length := by omega
-      rw [hk] at this; exact this
-    rw [Expr.shift_of_closedAt hxcl' n (Nat.le_refl _),
-        Expr.shift_of_closedAt hycl' n (Nat.le_refl _)]
-    exact Subtype'.hyp hin hle
-  | refl e =>
-    exact .refl (e.shift n _)
-  | top e =>
-    simp only [Expr.shift]
-    exact .top (e.shift n _)
-  | trans _ _ ih1 ih2 =>
-    exact .trans (ih1 hS hΓ) (ih2 hS hΓ)
-  | @bvar S' Γ' k τ hget =>
-    -- k < |Γ|. (.bvar k).shift n |Γ| = .bvar k (since k < |Γ|).
-    -- τ is closedAt (|Γ|-k-1) by hΓ, so τ.shift (k+1) 0 is
-    -- closedAt |Γ|, and shift n |Γ| is identity.
-    have hklt : k < Γ'.length := by
-      rw [List.get?_eq_getElem?] at hget
-      exact (List.getElem?_eq_some_iff.mp hget).1
-    simp only [Expr.shift, decide_eq_true_eq, if_pos hklt]
-    have hτcl := hΓ k τ hget
-    have hτshiftcl : (τ.shift (k+1) 0).closedAt Γ'.length = true := by
-      have := Expr.shift_closedAt τ (Γ'.length - k - 1) (k+1) 0
-        (Nat.zero_le _) hτcl
-      have hk : Γ'.length - k - 1 + (k + 1) = Γ'.length := by omega
-      rw [hk] at this; exact this
-    rw [Expr.shift_of_closedAt hτshiftcl n (Nat.le_refl _)]
-    exact Subtype'.bvar hget
-  -- Remaining cases: binder (`.lam`/.iota_*/.fix_*/.letE_cong`)
-  -- and productive-unfold (`.iota_intro`/`.unfold_*`) require
-  -- propagating `Ctx.wellFormed` and `Seen.wellClosed` through
-  -- the recursive premise. This is non-trivial because a
-  -- `.lam`'s domain `dB` isn't provably `closedAt |Γ|` from the
-  -- `Subtype' S Γ dB dA` premise alone — it would need an
-  -- explicit closedness side condition threaded through.
-  -- Sorried for now; the proof skeleton closes once the
-  -- invariant-preservation premises are added.
-  | lam _ _ _ _ => sorry
-  | app_cong _ _ _ ihf iha iha' =>
-    simp only [Expr.shift]
-    exact .app_cong (ihf hS hΓ) (iha hS hΓ) (iha' hS hΓ)
-  | iota_body _ _ => sorry
-  | fix_body _ _ => sorry
-  | iota_cong _ _ _ _ => sorry
-  | fix_cong _ _ _ _ => sorry
-  | letE_cong _ _ _ _ => sorry
-  | iota_intro _ _ _ _ => sorry
-  | unfold_iota_L _ _ => sorry
-  | unfold_fix_L _ _ => sorry
-  | unfold_fix_R _ _ => sorry
-  | unfold_iota_R _ _ => sorry
-  | beta_L _ ih =>
-    simp only [Expr.shift]
-    have := ih hS hΓ
-    rw [Expr.subst_shift_swap] at this
-    exact .beta_L this
-  | beta_R _ ih =>
-    simp only [Expr.shift]
-    have := ih hS hΓ
-    rw [Expr.subst_shift_swap] at this
-    exact .beta_R this
-  | letE_L _ ih =>
-    simp only [Expr.shift]
-    have := ih hS hΓ
-    rw [Expr.subst_shift_swap] at this
-    exact .letE_L this
-  | letE_R _ ih =>
-    simp only [Expr.shift]
-    have := ih hS hΓ
-    rw [Expr.subst_shift_swap] at this
-    exact .letE_R this
-  | asc_L _ ih =>
-    simp only [Expr.shift]
-    exact .asc_L (ih hS hΓ)
-  | asc_R _ ih =>
-    simp only [Expr.shift]
-    exact .asc_R (ih hS hΓ)
+    (hget : Γ.get? k = some τ) :
+    Subtype' S Γ ((Expr.bvar k).shift n Γ.length)
+                  ((τ.shift (k+1) 0).shift n Γ.length) := by
+  have hklt : k < Γ.length := by
+    rw [List.get?_eq_getElem?] at hget
+    exact (List.getElem?_eq_some_iff.mp hget).1
+  simp only [Expr.shift, decide_eq_true_eq, if_pos hklt]
+  have hτcl := hΓ k τ hget
+  have hτshiftcl : (τ.shift (k+1) 0).closedAt Γ.length = true := by
+    have := Expr.shift_closedAt τ (Γ.length - k - 1) (k+1) 0
+      (Nat.zero_le _) hτcl
+    have hk : Γ.length - k - 1 + (k + 1) = Γ.length := by omega
+    rw [hk] at this; exact this
+  rw [Expr.shift_of_closedAt hτshiftcl n (Nat.le_refl _)]
+  exact Subtype'.bvar hget
 
 /-- A trivial consequence of `Subtype'.shift_above`: when both
 endpoints are already closed at `|Γ|`, the shift is the
