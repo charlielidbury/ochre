@@ -1298,15 +1298,19 @@ succeeds (which guarantees every `.var k` neutral has
 `k < d`, so re-quoting at `d+1` maps `k ↦ d-k` instead of
 `d-1-k`, i.e. each bvar index increments).
 
-By mutual induction on `quote`/`quoteClosure`/
-`quoteNeutral` over `fuelω`. The `.var k` case:
-`quoteNeutral d (.var k) = some (.bvar (d-1-k))` requires
-`k < d`; at `d+1` it's `.bvar (d-k)` = `.bvar ((d-1-k)+1)`
-= `(.bvar (d-1-k)).shift 1 0`. Closure cases recurse via
-`quoteClosure` at `depth+1` (so the inner depth shift
-threads). Sorried — the mutual recursion makes this a
-~50-line case analysis; recorded as the precise obligation
-`R_depth_lift` reduces to. -/
+The proof requires mutual induction on
+`quote`/`quoteClosure`/`quoteNeutral`. The `quote` and
+`quoteNeutral` cases close via structural recursion with
+`shift 1 0`. The `quoteClosure` case is subtle: opening at
+`d+1` uses a fresh `.var (d+1)` where the `d` version used
+`.var d`, so the inner `eval` results differ by a
+level-renaming. The output `quoteClosure` Exprs then differ
+by `shift 1 1` (the closure binder holds `.bvar 0` fixed
+for the fresh, outer bvars increment). Formalising this
+needs an `eval` level-renaming lemma as separate
+infrastructure — the current file does not yet have it.
+
+See DECISION-LOG 2026-04-21 for the shape analysis. -/
 theorem quote_depth_shift {d v e}
     (hq : quote fuelω d v = some e) :
     quote fuelω (d + 1) v = some (e.shift 1 0) := by
