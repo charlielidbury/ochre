@@ -2827,36 +2827,11 @@ theorem SubN_to_Subtype'
     (fun _ {_ _ _ _} _ _ _ => by sorry)
     S Γ nA nB h) hS hΓ ha hb
 
-/-- `SynthN`'s bridge: a neutral inhabits its synthesised
-type. A direct induction on `h`; the `.var` case closes by
-the same `quote_depth_shift_n` + `Subtype'.bvar` chain as
-the nested `SynthN.var` case inside `SubN_to_Subtype'`. The
-remaining cases (`.app`, `.stuckRec*`, `.stuckRec*Ann`) all
-require `quote_open_subst` for the result-type quote and are
-deferred in lock-step with `SubN_to_Subtype'`'s closure-opening
-cases. -/
-theorem SynthN_to_Subtype'
-    {Γ n τ} (h : SynthN Γ n τ)
-    {Se Γe ne τe}
-    (hΓ : QuotesCtx Γ Γe)
-    (hn : quoteNeutral fuelω Γ.size n = some ne)
-    (hτ : quote fuelω Γ.size τ = some τe) :
-    Subtype' Se Γe ne τe := by
-  cases h with
-  | @var Γ k τ hk =>
-    -- Identical to `SubN_to_Subtype'`'s SynthN.var handler.
-    obtain ⟨hkd, hne⟩ := quoteNeutral_var hn
-    subst hne
-    obtain ⟨τe', hget, hqk⟩ := hΓ.2 k τ hk
-    have hqd := quote_depth_shift_n (Nat.le_of_lt hkd) hqk
-    rw [hτ] at hqd; injection hqd with heq
-    rw [heq, show Γ.size - k = Γ.size - 1 - k + 1 from by omega]
-    exact .bvar hget
-  | app _ _ => sorry
-  | stuckRecFix _ _ => sorry
-  | stuckRecIota _ _ => sorry
-  | stuckRecFixAnn _ => sorry
-  | stuckRecIotaAnn _ => sorry
+-- `SynthN_to_Subtype'` deleted 2026-04-21: was never called
+-- externally. The `.var` case is handled inline inside
+-- `SubN_to_Subtype'`'s joint-recursor invocation for `SynthN`
+-- motive projection. Any future external need can re-derive
+-- from that.
 
 /-- Bridge to the Expr-level relation. Each `SubV` constructor
 maps to a `Subtype'` constructor on the quoted forms.
