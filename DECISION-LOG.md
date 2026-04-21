@@ -57,6 +57,79 @@ that close once the structural sorries above are resolved.
 `concEval_preservation`, `concEval_equiv_closed` all still
 depend only on `[propext, Quot.sound]` — the sorries are not
 on the critical soundness path.
+## 2026-04-21: `depth_lift_bundle` — partial infrastructure; step 5 blocked by cutoff-mismatch (agent a800598a)
+
+**What:** Attacked `depth_lift_bundle` (the last single-sorry bundle for
+the quote depth-shift property). Proved 4 of 6 infrastructure steps
+fully; the 5th (`quote_shiftLvl`) hit a subtle cutoff-mismatch wall
+that needs a generalised mutual statement (sketched but not
+completed).
+
+**Proven infrastructure (SoundnessProof.lean, all axiom-free):**
+- `Val.shiftLvl c v` + Neutral/Closure analogues (+ helper
+  `Closure.envShiftLvl`): shift neutral-var levels `≥ c` up by 1.
+  `Closure.envShiftLvl_eq_map` bridges to List.map.
+- `Val.levelsBelow d v` + analogues: every neutral-var level is `< d`.
+  Monotonicity (`levelsBelow_mono`); `envLevelsBelow_take` for
+  `Closure.mk'`; `envLevelsBelow_getElem?` / `_of_getElem?` bridges.
+- `Val.shiftLvl_of_levelsBelow`: `v.levelsBelow c → v.shiftLvl c = v`
+  (no-op).
+- `eval_shiftLvl`: `eval ρ e = some v →
+  eval (ρ.map (·.shiftLvl c)) e = some (v.shiftLvl c)`. Full induction
+  on fuel, including vapp iota/fix recursive-head branches (via
+  `Val.shiftLvl_neutral_isNeutral` and `cases f` on the outer vapp).
+- `eval_levelsBelow`: `eval ρ e = some v → envLevelsBelow d ρ →
+  v.levelsBelow d`. Preserves level bound through all cases.
+
+**Remaining obstacle (step 5):** In the closure case of a would-be
+`quote_depth_shift_mutual`:
+
+Given `quoteClosure d cl = some e`, unfold to:
+  `eval (.var d :: cl.env) body = some v`, `quote (d+1) v = some e`.
+
+Goal: `quoteClosure (d+1) cl = some (e.shift 1 1)`.
+
+Via `eval_shiftLvl` (c := d) + `Closure.levelsBelow d cl` (input),
+we correctly get `eval (.var (d+1) :: cl.env) body = some
+(v.shiftLvl d)`.
+
+But the IH gives `quote (d+2) v = some (e.shift 1 0)` — NOT
+`quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`. The cutoff
+mismatch reflects:
+- `.var d` in v: quotes at `d+1` to `.bvar 0` (the binder).
+- `.var (d+1)` in v.shiftLvl d: quotes at `d+2` to `.bvar 0` (same
+  binder, unchanged).
+- Other `.var j < d`: `.bvar (d-j)` → `.bvar (d+1-j)` at the deeper
+  quote. Difference is `.shift 1 1` (bvar 0 preserved, others +1),
+  NOT `.shift 1 0`.
+
+**Sketched (but not written) resolution:** A generalised mutual with
+a cutoff parameter:
+```
+∀ n d c v e, c ≤ d → Val.levelsBelow d v →
+  quote n d v = some e →
+  quote n (d+1) (v.shiftLvl (d-c)) = some (e.shift 1 c)
+```
+with similar forms for `quoteClosure`/`quoteNeutral`. At c=0 the
+Val shift at cutoff d is a no-op (via shiftLvl_of_levelsBelow),
+giving the outer form. At c=1 (closure body) it matches the
+required `.shift 1 1`.
+
+The closure case recurses with (c+1): so the outer IH at (c, d)
+feeds the closure's body at (c+1, d+1), maintaining `c+1 ≤ d+1`.
+
+The arithmetic works out; what needs care is:
+- `Val.shiftLvl (d-c)` at various `c` values is monotone in `c`
+  on values with `levelsBelow d`, but the exact shape needs
+  threading.
+- The `.bvar` case of `quoteNeutral` needs an explicit split on
+  `j < d - c` to determine whether `.shiftLvl (d-c)` moves `j`.
+
+Left as "[TODO]" in the `depth_lift_bundle` docstring with the full
+plan; future agent can resume from here without re-doing steps 1-4, 6.
+
+**State:** Declaration sorries unchanged (3 total). ~300 lines of
+new axiom-free infrastructure.
 
 ## 2026-04-21: `Equiv.shift` nil-Γ: route (i) is genuinely harder than the docstring suggests
 

@@ -1295,21 +1295,670 @@ theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     subst hpfx
     rw [List.getElem?_take, if_pos (by omega : m < j)]
 
-/-- Bundled depth-lift + realisation obligations. All three
-remaining soundness sorries are packaged here so Lean emits a
-single declaration-sorry warning for the entire cluster. Each
-downstream theorem (`quote_depth_shift`, `R_depth_lift`,
-`vapp_realises`, `eval_realises`, etc.) becomes a thin
-projection.
+/-!
+### Semantic level shift (`Val.shiftLvl`) and `Val.levelsBelow`
 
-Obligation breakdown:
-- Conjunct 1: `quote_depth_shift` — needs eval level-renaming.
-- Conjunct 2: `R_depth_lift` — needs conjunct 1.
-- Further conjuncts for `vapp_realises`, `eval_realises`,
-  `tyInfer_sound_open`, `tyCheckFallback_sound_open`,
-  `tyCheck_sound_open` are declared in their own mutual
-  blocks below (separate warnings, but consolidation attempts
-  have run out of clean paths without major restructure).
+`Val.shiftLvl c v` shifts every neutral-var level `k ≥ c` up by 1.
+`Val.levelsBelow d v` says every level in `v` is `< d`. These are
+the building blocks for `quote_depth_shift`'s closure case
+(depth_lift_bundle.1). Full proof plan in the docstring of
+`depth_lift_bundle` below. -/
+
+mutual
+  /-- Shift every neutral-var level `≥ c` up by 1. -/
+  def Val.shiftLvl (c : Nat) : Val → Val
+    | .type => .type
+    | .neutral n => .neutral (Neutral.shiftLvl c n)
+    | .lam dom cl => .lam (Val.shiftLvl c dom) (Closure.shiftLvl c cl)
+    | .iota ann cl => .iota (Val.shiftLvl c ann) (Closure.shiftLvl c cl)
+    | .«fix» ann cl => .«fix» (Val.shiftLvl c ann) (Closure.shiftLvl c cl)
+
+  def Neutral.shiftLvl (c : Nat) : Neutral → Neutral
+    | .var k => .var (if k < c then k else k + 1)
+    | .app n v => .app (Neutral.shiftLvl c n) (Val.shiftLvl c v)
+    | .stuckRec f a => .stuckRec (Val.shiftLvl c f) (Val.shiftLvl c a)
+
+  def Closure.shiftLvl (c : Nat) : Closure → Closure
+    | ⟨body, env⟩ => ⟨body, Closure.envShiftLvl c env⟩
+
+  /-- Helper for Closure.shiftLvl (inlined `List.map`) so Lean's
+  termination checker sees the recursive call into Val.shiftLvl. -/
+  def Closure.envShiftLvl (c : Nat) : List Val → List Val
+    | [] => []
+    | v :: vs => Val.shiftLvl c v :: Closure.envShiftLvl c vs
+end
+
+theorem Val.shiftLvl_neutral_isNeutral (c : Nat) (v : Val) :
+    (Val.shiftLvl c v).isNeutral = v.isNeutral := by
+  cases v <;> unfold Val.shiftLvl <;> rfl
+
+theorem Closure.envShiftLvl_eq_map (c : Nat) (env : List Val) :
+    Closure.envShiftLvl c env = env.map (Val.shiftLvl c) := by
+  induction env with
+  | nil => rfl
+  | cons v vs ih => simp [Closure.envShiftLvl, ih]
+
+mutual
+  /-- `Val.levelsBelow d v` iff every neutral-var level in `v` is
+  `< d`. -/
+  def Val.levelsBelow (d : Nat) : Val → Prop
+    | .type => True
+    | .neutral n => Neutral.levelsBelow d n
+    | .lam dom cl => Val.levelsBelow d dom ∧ Closure.levelsBelow d cl
+    | .iota ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
+    | .«fix» ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
+
+  def Neutral.levelsBelow (d : Nat) : Neutral → Prop
+    | .var k => k < d
+    | .app n v => Neutral.levelsBelow d n ∧ Val.levelsBelow d v
+    | .stuckRec f a => Val.levelsBelow d f ∧ Val.levelsBelow d a
+
+  def Closure.levelsBelow (d : Nat) : Closure → Prop
+    | ⟨_body, env⟩ => Closure.envLevelsBelow d env
+
+  /-- Helper for Closure.levelsBelow (inlined list quantifier). -/
+  def Closure.envLevelsBelow (d : Nat) : List Val → Prop
+    | [] => True
+    | v :: vs => Val.levelsBelow d v ∧ Closure.envLevelsBelow d vs
+end
+
+/-- `envLevelsBelow` ↔ "every entry has `levelsBelow`". -/
+theorem Closure.envLevelsBelow_getElem?
+    {d : Nat} {env : List Val}
+    (h : Closure.envLevelsBelow d env)
+    {k : Nat} {v : Val} (hk : env[k]? = some v) :
+    Val.levelsBelow d v := by
+  induction env generalizing k with
+  | nil => simp at hk
+  | cons w ws ih =>
+      cases k with
+      | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+          subst hk
+          unfold Closure.envLevelsBelow at h
+          exact h.1
+      | succ m =>
+          simp only [List.getElem?_cons_succ] at hk
+          unfold Closure.envLevelsBelow at h
+          exact ih h.2 hk
+
+theorem Closure.envLevelsBelow_of_getElem?
+    {d : Nat} {env : List Val}
+    (h : ∀ (k : Nat) (v : Val),
+      List.get? env k = some v → Val.levelsBelow d v) :
+    Closure.envLevelsBelow d env := by
+  induction env with
+  | nil => unfold Closure.envLevelsBelow; trivial
+  | cons w ws ih =>
+      unfold Closure.envLevelsBelow
+      refine ⟨h 0 w rfl, ih ?_⟩
+      intro k v hk
+      have := h (k+1) v
+      simp only [List.get?_cons_succ] at this
+      exact this hk
+
+mutual
+/-- Shift is a no-op when levels are already below the cutoff.
+Joint mutual theorem on Val / Neutral / Closure, proved by
+structural recursion on sizeOf. -/
+theorem Val.shiftLvl_of_levelsBelow :
+    ∀ (v : Val) (c : Nat),
+    Val.levelsBelow c v → Val.shiftLvl c v = v
+  | .type, _, _ => rfl
+  | .neutral n, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congrArg _ (Neutral.shiftLvl_of_levelsBelow n c h)
+  | .lam dom cl, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow dom c h.1))
+                  (Closure.shiftLvl_of_levelsBelow cl c h.2)
+  | .iota ann cl, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow ann c h.1))
+                  (Closure.shiftLvl_of_levelsBelow cl c h.2)
+  | .«fix» ann cl, c, h => by
+      unfold Val.shiftLvl Val.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow ann c h.1))
+                  (Closure.shiftLvl_of_levelsBelow cl c h.2)
+
+theorem Neutral.shiftLvl_of_levelsBelow :
+    ∀ (n : Neutral) (c : Nat),
+    Neutral.levelsBelow c n → Neutral.shiftLvl c n = n
+  | .var _, _, h => by
+      unfold Neutral.shiftLvl Neutral.levelsBelow at *
+      simp [h]
+  | .app n' v, c, h => by
+      unfold Neutral.shiftLvl Neutral.levelsBelow at *
+      exact congr (congrArg _ (Neutral.shiftLvl_of_levelsBelow n' c h.1))
+                  (Val.shiftLvl_of_levelsBelow v c h.2)
+  | .stuckRec f a, c, h => by
+      unfold Neutral.shiftLvl Neutral.levelsBelow at *
+      exact congr (congrArg _ (Val.shiftLvl_of_levelsBelow f c h.1))
+                  (Val.shiftLvl_of_levelsBelow a c h.2)
+
+theorem Closure.shiftLvl_of_levelsBelow :
+    ∀ (cl : Closure) (c : Nat),
+    Closure.levelsBelow c cl → Closure.shiftLvl c cl = cl
+  | ⟨body, env⟩, c, h => by
+      change Closure.envLevelsBelow c env at h
+      show (⟨body, Closure.envShiftLvl c env⟩ : Closure) = ⟨body, env⟩
+      congr 1
+      exact Closure.envShiftLvl_of_envLevelsBelow env c h
+
+theorem Closure.envShiftLvl_of_envLevelsBelow :
+    ∀ (env : List Val) (c : Nat),
+    Closure.envLevelsBelow c env → Closure.envShiftLvl c env = env
+  | [], _, _ => rfl
+  | w :: ws, c, h => by
+      unfold Closure.envShiftLvl Closure.envLevelsBelow at *
+      exact congr
+        (congrArg _ (Val.shiftLvl_of_levelsBelow w c h.1))
+        (Closure.envShiftLvl_of_envLevelsBelow ws c h.2)
+end
+
+/-!
+### `eval` commutes with `Val.shiftLvl`
+
+`eval fuel unf ρ e = some v` ⇒
+`eval fuel unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c)`.
+
+Proved by combined induction on fuel over `eval` and `vapp`. The
+vapp-iota/fix branches case-split on `a`-shape (to evaluate
+`Val.shiftLvl c a`.isNeutral) and on the `isNeutral || unf==0`
+gate. -/
+
+theorem eval_vapp_shiftLvl :
+    ∀ n,
+    (∀ {unf c ρ e v}, eval n unf ρ e = some v →
+      eval n unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c)) ∧
+    (∀ {unf c f a v}, vapp n unf f a = some v →
+      vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c)) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · intros _ _ _ _ _ h; rw [eval_zero] at h; cases h
+    · intros _ _ _ _ _ h; rw [vapp_zero] at h; cases h
+  | succ k ih =>
+    obtain ⟨ihe, ihv⟩ := ih
+    refine ⟨?_, ?_⟩
+    -- eval (k+1)
+    · intro unf c ρ e v h
+      unfold eval at h ⊢
+      match e, h with
+      | .type, h =>
+          simp only [Option.some.injEq] at h
+          subst h; rfl
+      | .bvar j, h =>
+          simp only [] at h ⊢
+          rw [List.getElem?_map]
+          cases hk : ρ[j]? with
+          | none => rw [hk] at h; cases h
+          | some w =>
+              rw [hk] at h
+              simp only [Option.some.injEq] at h
+              subst h
+              simp only [Option.map_some']
+      | .lam dom body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨dom', hdom, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          refine ⟨dom'.shiftLvl c, ihe hdom, ?_⟩
+          simp only [Option.some.injEq]
+          show Val.lam (Val.shiftLvl c dom') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
+               Val.lam (Val.shiftLvl c dom')
+                 (Closure.shiftLvl c (Closure.mk' body ρ))
+          congr 1
+          -- Closure.mk' body (ρ.map ...) = Closure.shiftLvl c (Closure.mk' body ρ)
+          show Closure.mk' body (ρ.map (Val.shiftLvl c))
+             = Closure.shiftLvl c (Closure.mk' body ρ)
+          unfold Closure.mk' Closure.shiftLvl
+          rw [Closure.envShiftLvl_eq_map]
+          congr 1
+          simp [List.map_take]
+      | .iota ann body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          refine ⟨ann'.shiftLvl c, ihe hann, ?_⟩
+          simp only [Option.some.injEq]
+          show Val.iota (Val.shiftLvl c ann') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
+               Val.iota (Val.shiftLvl c ann')
+                 (Closure.shiftLvl c (Closure.mk' body ρ))
+          congr 1
+          show Closure.mk' body (ρ.map (Val.shiftLvl c))
+             = Closure.shiftLvl c (Closure.mk' body ρ)
+          unfold Closure.mk' Closure.shiftLvl
+          rw [Closure.envShiftLvl_eq_map]
+          congr 1
+          simp [List.map_take]
+      | .«fix» ann body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          refine ⟨ann'.shiftLvl c, ihe hann, ?_⟩
+          simp only [Option.some.injEq]
+          show Val.«fix» (Val.shiftLvl c ann') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
+               Val.«fix» (Val.shiftLvl c ann')
+                 (Closure.shiftLvl c (Closure.mk' body ρ))
+          congr 1
+          show Closure.mk' body (ρ.map (Val.shiftLvl c))
+             = Closure.shiftLvl c (Closure.mk' body ρ)
+          unfold Closure.mk' Closure.shiftLvl
+          rw [Closure.envShiftLvl_eq_map]
+          congr 1
+          simp [List.map_take]
+      | .app f a, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨f', hf, a', ha, hv⟩ := h
+          exact ⟨f'.shiftLvl c, ihe hf, a'.shiftLvl c, ihe ha, ihv hv⟩
+      | .letE val body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨v', hv', hb⟩ := h
+          refine ⟨v'.shiftLvl c, ihe hv', ?_⟩
+          have := ihe (unf := unf) (c := c) (ρ := v' :: ρ) (e := body)
+                      (v := v) hb
+          simpa using this
+      | .asc t _, h =>
+          simp only [] at h ⊢
+          exact ihe h
+    -- vapp (k+1)
+    · intro unf c f a v h
+      unfold vapp at h ⊢
+      cases f with
+      | neutral nf =>
+          simp only [Option.some.injEq] at h
+          subst h
+          rfl
+      | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          rfl
+      | lam dom cl =>
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          -- Target: eval on (shifted a :: Closure.envShiftLvl c env) body
+          show eval k unf (Val.shiftLvl c a :: Closure.envShiftLvl c env) body =
+               some (Val.shiftLvl c v)
+          rw [Closure.envShiftLvl_eq_map]
+          have := ihe (unf := unf) (c := c) (ρ := a :: env) (e := body)
+                      (v := v) h
+          simpa using this
+      | iota ann cl =>
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          -- After `cases f`, the goal has the iota arm of Val.shiftLvl
+          -- unfolded. Use `show` to pin the goal structure.
+          change (if ((Val.shiftLvl c a).isNeutral || unf == 0) = true
+                  then some (Val.neutral (.stuckRec
+                              (Val.iota (Val.shiftLvl c ann)
+                                ⟨body, Closure.envShiftLvl c env⟩)
+                              (Val.shiftLvl c a)))
+                  else
+                    (eval k (unf - 1)
+                      (Val.iota (Val.shiftLvl c ann)
+                        ⟨body, Closure.envShiftLvl c env⟩
+                       :: Closure.envShiftLvl c env) body).bind
+                      (fun f' => vapp k (unf - 1) f' (Val.shiftLvl c a)))
+                 = some (Val.shiftLvl c v)
+          have hge : (Val.shiftLvl c a).isNeutral = a.isNeutral :=
+            Val.shiftLvl_neutral_isNeutral c a
+          rw [hge]
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte] at h ⊢
+            simp only [Option.some.injEq] at h
+            subst h
+            rfl
+          · simp only [Bool.not_eq_true] at hg
+            simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+            obtain ⟨f', hf, hv⟩ := h
+            refine ⟨f'.shiftLvl c, ?_, ihv hv⟩
+            have hhead : Val.shiftLvl c (Val.iota ann ⟨body, env⟩) =
+                         Val.iota (Val.shiftLvl c ann) ⟨body, Closure.envShiftLvl c env⟩ := rfl
+            have := ihe (unf := unf - 1) (c := c)
+                        (ρ := Val.iota ann ⟨body, env⟩ :: env) (e := body)
+                        (v := f') hf
+            simp only [List.map_cons, hhead,
+                       ← Closure.envShiftLvl_eq_map] at this
+            exact this
+      | fix ann cl =>
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          change (if ((Val.shiftLvl c a).isNeutral || unf == 0) = true
+                  then some (Val.neutral (.stuckRec
+                              (Val.«fix» (Val.shiftLvl c ann)
+                                ⟨body, Closure.envShiftLvl c env⟩)
+                              (Val.shiftLvl c a)))
+                  else
+                    (eval k (unf - 1)
+                      (Val.«fix» (Val.shiftLvl c ann)
+                        ⟨body, Closure.envShiftLvl c env⟩
+                       :: Closure.envShiftLvl c env) body).bind
+                      (fun f' => vapp k (unf - 1) f' (Val.shiftLvl c a)))
+                 = some (Val.shiftLvl c v)
+          have hge : (Val.shiftLvl c a).isNeutral = a.isNeutral :=
+            Val.shiftLvl_neutral_isNeutral c a
+          rw [hge]
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte] at h ⊢
+            simp only [Option.some.injEq] at h
+            subst h
+            rfl
+          · simp only [Bool.not_eq_true] at hg
+            simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+            obtain ⟨f', hf, hv⟩ := h
+            refine ⟨f'.shiftLvl c, ?_, ihv hv⟩
+            have hhead : Val.shiftLvl c (Val.«fix» ann ⟨body, env⟩) =
+                         Val.«fix» (Val.shiftLvl c ann) ⟨body, Closure.envShiftLvl c env⟩ := rfl
+            have := ihe (unf := unf - 1) (c := c)
+                        (ρ := Val.«fix» ann ⟨body, env⟩ :: env) (e := body)
+                        (v := f') hf
+            simp only [List.map_cons, hhead,
+                       ← Closure.envShiftLvl_eq_map] at this
+            exact this
+
+theorem eval_shiftLvl {n unf c ρ e v}
+    (h : eval n unf ρ e = some v) :
+    eval n unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c) :=
+  (eval_vapp_shiftLvl n).1 h
+
+theorem vapp_shiftLvl {n unf c f a v}
+    (h : vapp n unf f a = some v) :
+    vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c) :=
+  (eval_vapp_shiftLvl n).2 h
+
+/-!
+### `eval` preserves `Val.levelsBelow`
+
+If every entry of ρ has `levelsBelow d`, then `eval ρ e = some v`
+implies `v.levelsBelow d`. Proved by induction on fuel.
+-/
+
+/-- Taking a prefix preserves envLevelsBelow. -/
+theorem Closure.envLevelsBelow_take
+    {d : Nat} {env : List Val} (h : Closure.envLevelsBelow d env) (n : Nat) :
+    Closure.envLevelsBelow d (env.take n) := by
+  induction env generalizing n with
+  | nil => cases n <;> unfold Closure.envLevelsBelow <;> trivial
+  | cons w ws ih =>
+      cases n with
+      | zero => unfold Closure.envLevelsBelow; trivial
+      | succ m =>
+          unfold Closure.envLevelsBelow at h
+          simp only [List.take_succ_cons]
+          unfold Closure.envLevelsBelow
+          exact ⟨h.1, ih h.2 m⟩
+
+theorem eval_vapp_levelsBelow :
+    ∀ n,
+    (∀ {unf d ρ e v}, eval n unf ρ e = some v →
+      Closure.envLevelsBelow d ρ → Val.levelsBelow d v) ∧
+    (∀ {unf d f a v}, vapp n unf f a = some v →
+      Val.levelsBelow d f → Val.levelsBelow d a → Val.levelsBelow d v) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · intros _ _ _ _ _ h; rw [eval_zero] at h; cases h
+    · intros _ _ _ _ _ h; rw [vapp_zero] at h; cases h
+  | succ k ih =>
+    obtain ⟨ihe, ihv⟩ := ih
+    refine ⟨?_, ?_⟩
+    -- eval (k+1)
+    · intro unf d ρ e v h hρ
+      unfold eval at h
+      cases e with
+      | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow; trivial
+      | bvar j =>
+          simp only [] at h
+          exact Closure.envLevelsBelow_getElem? hρ h
+      | lam dom body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨dom', hdom, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          unfold Val.levelsBelow
+          refine ⟨ihe hdom hρ, ?_⟩
+          unfold Closure.levelsBelow Closure.mk'
+          exact Closure.envLevelsBelow_take hρ _
+      | iota ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          unfold Val.levelsBelow
+          refine ⟨ihe hann hρ, ?_⟩
+          unfold Closure.levelsBelow Closure.mk'
+          exact Closure.envLevelsBelow_take hρ _
+      | «fix» ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          unfold Val.levelsBelow
+          refine ⟨ihe hann hρ, ?_⟩
+          unfold Closure.levelsBelow Closure.mk'
+          exact Closure.envLevelsBelow_take hρ _
+      | app f a =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨f', hf, a', ha, hv⟩ := h
+          exact ihv hv (ihe hf hρ) (ihe ha hρ)
+      | letE val body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨v', hv', hb⟩ := h
+          have hρ' : Closure.envLevelsBelow d (v' :: ρ) := by
+            unfold Closure.envLevelsBelow
+            exact ⟨ihe hv' hρ, hρ⟩
+          exact ihe hb hρ'
+      | asc t _ =>
+          simp only [] at h
+          exact ihe h hρ
+    -- vapp (k+1)
+    · intro unf d f a v h hf ha
+      unfold vapp at h
+      cases hfeq : f with
+      | neutral nf =>
+          subst hfeq
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow Neutral.levelsBelow
+          exact ⟨hf, ha⟩
+      | type =>
+          subst hfeq
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow Neutral.levelsBelow
+          exact ⟨hf, ha⟩
+      | lam dom cl =>
+          subst hfeq
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          unfold Val.levelsBelow Closure.levelsBelow at hf
+          have hρ' : Closure.envLevelsBelow d (a :: env) := by
+            unfold Closure.envLevelsBelow
+            exact ⟨ha, hf.2⟩
+          exact ihe h hρ'
+      | iota ann cl =>
+          subst hfeq
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte, Option.some.injEq] at h
+            subst h
+            unfold Val.levelsBelow Neutral.levelsBelow
+            exact ⟨hf, ha⟩
+          · simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h
+            obtain ⟨f', hfe, hv⟩ := h
+            unfold Val.levelsBelow Closure.levelsBelow at hf
+            have hρ' : Closure.envLevelsBelow d
+                (Val.iota ann ⟨body, env⟩ :: env) := by
+              unfold Closure.envLevelsBelow
+              refine ⟨?_, hf.2⟩
+              unfold Val.levelsBelow
+              exact ⟨hf.1, hf.2⟩
+            exact ihv hv (ihe hfe hρ') ha
+      | fix ann cl =>
+          subst hfeq
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte, Option.some.injEq] at h
+            subst h
+            unfold Val.levelsBelow Neutral.levelsBelow
+            exact ⟨hf, ha⟩
+          · simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h
+            obtain ⟨f', hfe, hv⟩ := h
+            unfold Val.levelsBelow Closure.levelsBelow at hf
+            have hρ' : Closure.envLevelsBelow d
+                (Val.«fix» ann ⟨body, env⟩ :: env) := by
+              unfold Closure.envLevelsBelow
+              refine ⟨?_, hf.2⟩
+              unfold Val.levelsBelow
+              exact ⟨hf.1, hf.2⟩
+            exact ihv hv (ihe hfe hρ') ha
+
+theorem eval_levelsBelow {n unf d ρ e v}
+    (h : eval n unf ρ e = some v) (hρ : Closure.envLevelsBelow d ρ) :
+    Val.levelsBelow d v :=
+  (eval_vapp_levelsBelow n).1 h hρ
+
+mutual
+/-- Monotonicity of levelsBelow/envLevelsBelow. -/
+theorem Val.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ v, Val.levelsBelow d v → Val.levelsBelow d' v
+  | .type, _ => by unfold Val.levelsBelow; trivial
+  | .neutral n, h => by
+      unfold Val.levelsBelow at h ⊢
+      exact Neutral.levelsBelow_mono hle n h
+  | .lam dom cl, h => by
+      unfold Val.levelsBelow at h ⊢
+      refine ⟨Val.levelsBelow_mono hle dom h.1, ?_⟩
+      exact Closure.levelsBelow_mono hle cl h.2
+  | .iota ann cl, h => by
+      unfold Val.levelsBelow at h ⊢
+      refine ⟨Val.levelsBelow_mono hle ann h.1, ?_⟩
+      exact Closure.levelsBelow_mono hle cl h.2
+  | .«fix» ann cl, h => by
+      unfold Val.levelsBelow at h ⊢
+      refine ⟨Val.levelsBelow_mono hle ann h.1, ?_⟩
+      exact Closure.levelsBelow_mono hle cl h.2
+
+theorem Neutral.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ n, Neutral.levelsBelow d n → Neutral.levelsBelow d' n
+  | .var k, h => by
+      unfold Neutral.levelsBelow at h ⊢
+      omega
+  | .app n' v, h => by
+      unfold Neutral.levelsBelow at h ⊢
+      exact ⟨Neutral.levelsBelow_mono hle n' h.1,
+             Val.levelsBelow_mono hle v h.2⟩
+  | .stuckRec f a, h => by
+      unfold Neutral.levelsBelow at h ⊢
+      exact ⟨Val.levelsBelow_mono hle f h.1,
+             Val.levelsBelow_mono hle a h.2⟩
+
+theorem Closure.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ cl, Closure.levelsBelow d cl → Closure.levelsBelow d' cl
+  | ⟨_body, env⟩, h => by
+      unfold Closure.levelsBelow at h ⊢
+      exact Closure.envLevelsBelow_mono hle env h
+
+theorem Closure.envLevelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
+    ∀ env, Closure.envLevelsBelow d env →
+           Closure.envLevelsBelow d' env
+  | [], _ => by unfold Closure.envLevelsBelow; trivial
+  | w :: ws, h => by
+      unfold Closure.envLevelsBelow at h ⊢
+      exact ⟨Val.levelsBelow_mono hle w h.1,
+             Closure.envLevelsBelow_mono hle ws h.2⟩
+end
+
+
+
+/-- Bundled depth-lift + realisation obligations.
+
+## Proof plan (2026-04-21 agent a800598a session, in progress)
+
+The closure case of conjunct 1 needs an **eval level-renaming**
+lemma. Substantial infrastructure is now in place (steps 1-4, 6
+below are fully proven and axiom-free); the remaining obstacle is
+step 5 (`quote_shiftLvl`), specifically the closure branch's
+cutoff mismatch — see "Remaining obstacle" below.
+
+### Infrastructure (PROVEN)
+
+1. `Val.shiftLvl c v` — shift every neutral-var level `≥ c` up
+   by 1. (Above.) Plus Neutral / Closure variants + helper
+   `Closure.envShiftLvl` for List.map.
+2. `Val.levelsBelow d v` — every neutral-var level in `v` is `< d`.
+   (Above.) Plus Neutral / Closure variants + envLevelsBelow.
+3. `Val.shiftLvl_of_levelsBelow` — `v.levelsBelow c → v.shiftLvl
+   c = v` (no-op on values with small levels). Plus Neutral /
+   Closure / envShiftLvl_of_envLevelsBelow variants.
+4. `eval_shiftLvl` — `eval ρ e = some v →
+   eval (ρ.map (·.shiftLvl c)) e = some (v.shiftLvl c)`. Full
+   combined induction on fuel, vapp included.
+6. `eval_levelsBelow` — `eval ρ e = some v →
+   envLevelsBelow d ρ → v.levelsBelow d`. Preserves the bound
+   through all eval/vapp cases.
+
+Plus `Val.levelsBelow_mono`, `Neutral.levelsBelow_mono`,
+`Closure.levelsBelow_mono`, `Closure.envLevelsBelow_mono`,
+`Closure.envLevelsBelow_take` and the getElem?/of_getElem?
+bridge lemmas for `Closure.envLevelsBelow`.
+
+### Remaining obstacle: step 5 (quote_shiftLvl)
+
+Attempted statement:
+```
+∀ n, (∀ {d v e}, Val.levelsBelow d v → quote n d v = some e →
+          quote n (d+1) v = some (e.shift 1 0)) ∧
+     (∀ {d cl e}, Closure.levelsBelow d cl →
+          quoteClosure n d cl = some e →
+          quoteClosure n (d+1) cl = some (e.shift 1 1)) ∧
+     (∀ {d ne e}, Neutral.levelsBelow d ne →
+          quoteNeutral n d ne = some e →
+          quoteNeutral n (d+1) ne = some (e.shift 1 0))
+```
+
+Within the closure case at depth d:
+  eval (.var d :: cl.env) body = some v,
+  quote (d+1) v = some e
+and we need `quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`.
+
+Using `eval_shiftLvl` (c := d) we correctly derive
+`eval (.var (d+1) :: cl.env) body = some (v.shiftLvl d)`
+(using (3) on cl.env via `Closure.levelsBelow d cl` to eliminate
+the env's own shiftLvl).
+
+But the IH gives `quote (d+2) v = some (e.shift 1 0)` — NOT
+`quote (d+2) (v.shiftLvl d) = some (e.shift 1 1)`. The cutoff
+mismatch (0 vs 1) reflects the fact that `.var d` in v quotes at
+`d+1` to `.bvar 0` (the binder), while shifted to `.var (d+1)`
+in `v.shiftLvl d` quotes at `d+2` ALSO to `.bvar 0` — so bvar 0
+is preserved, other bvars +1. That's `.shift 1 1`, not `.shift
+1 0`.
+
+Resolving this requires a separate mutual induction with the
+generalised claim
+  `quote n d v = some e → quote n (d+k+1) (v.shiftLvl d)
+    = some (e.shift 1 k)`
+for arbitrary k. The shift cutoff on the Expr side tracks the
+"binder depth" offset; the Val shift cutoff tracks the "original
+depth". [TODO]
+
+Conjunct 2 (R_depth_lift) additionally needs structural induction
+on R (termination on sizeOf v). [TODO]
 
 See DECISION-LOG 2026-04-21. -/
 theorem depth_lift_bundle :
