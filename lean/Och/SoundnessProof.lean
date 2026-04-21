@@ -1577,12 +1577,36 @@ private theorem closure_clause_witness {k d ρ ρe} {bExpr : Expr}
       (Expr.closedAt_mono (closedAt_bvarBound bExpr) (by omega))
       rfl
 
+/-- The quote-realisation conclusion extracted from `R` at
+any nonzero index. For `.type`/`.neutral` this is the base
+conjunct directly. For `.lam`/`.iota`/`.fix`, the R-refactor
+(2026-04-21) dropped the base conjunct; the quote-equivalence
+is recovered post-hoc via mutual recursion with
+`quoteClosure_realises` on **quote-fuel**. The closure cases
+are sorried here — see DECISION-LOG 2026-04-19 and the task
+notes on the next agent. -/
+theorem R_quote_equiv {n d v e}
+    (hn : 0 < n) (h : R n d v e)
+    {e' : Expr} (hq : quote fuelω d v = some e') :
+    Equiv e' e := by
+  cases n with
+  | zero => omega
+  | succ m =>
+      cases v with
+      | type =>
+          unfold R at h
+          exact h e' hq
+      | neutral _ =>
+          unfold R at h
+          exact h e' hq
+      | lam _ _ => sorry
+      | iota _ _ => sorry
+      | «fix» _ _ => sorry
+
 /-- Helper for `vapp_realises`'s `.neutral`/`.type`/stuck
 cases: assembles the `R (k+1) d (.neutral N) (.app fe ae)`
 conclusion from per-component Equiv-witnesses. Callers supply
-`hfEq`/`haEq` directly — this avoids circularity with
-`R_quote_equiv` (which is defined in a later mutual that
-needs `eval_realises`). -/
+`hfEq`/`haEq` directly. -/
 private theorem R_neutral_app {k d N fe ae}
     (hdecomp : ∀ e', quote fuelω d (.neutral N) = some e' →
        ∃ ne ve, e' = .app ne ve ∧
@@ -1653,8 +1677,10 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           simp only [Option.some.injEq] at hvapp
           -- (match already reduced for .neutral)
           subst hvapp
-          refine R_neutral_app (vf := .neutral nf) (hvfeq ▸ hRf) hRa ?_
+          have hRfN : R (k+1) d (.neutral nf) fe := hvfeq ▸ hRf
+          refine R_neutral_app (N := .app nf va) (fe := fe) (ae := ae) ?_
           intro e' hq
+          -- Decompose: quote (.neutral (.app nf va)) = .app (quoteNeutral nf) (quote va).
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq; unfold quote at hq
           have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
@@ -1662,14 +1688,26 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           simp only [Option.bind_eq_bind, Option.bind_eq_some,
                      Option.some.injEq] at hq
           obtain ⟨ne, hne, ve, hve, heq⟩ := hq
-          refine ⟨ne, ve, heq.symm, ?_, quote_fuel_mono (by omega) hve⟩
-          rw [hfω]; unfold quote
-          exact quoteNeutral_fuel_mono (by omega) hne
+          refine ⟨ne, ve, heq.symm, ?_, ?_⟩
+          · -- Equiv ne fe. Use R base conjunct on .neutral nf.
+            unfold R at hRfN
+            apply hRfN
+            rw [hfω]; unfold quote
+            exact quoteNeutral_fuel_mono (by omega) hne
+          · -- Equiv ve ae. Use R_quote_equiv on hRa.
+            exact R_quote_equiv (Nat.succ_pos _) hRa
+              (quote_fuel_mono (by omega) hve)
       | .type, hvapp =>
           simp only [Option.some.injEq] at hvapp
           subst hvapp
-          exact R_neutral_app (vf := .type) (hvfeq ▸ hRf) hRa
-            (quote_stuckRec_decomp (vf := .type) (va := va))
+          have hRfT : R (k+1) d .type fe := hvfeq ▸ hRf
+          refine R_neutral_app (N := .stuckRec .type va) (fe := fe) (ae := ae) ?_
+          intro e' hq
+          obtain ⟨ne, ve, heq, hqf, hqa⟩ :=
+            quote_stuckRec_decomp (vf := .type) (va := va) e' hq
+          refine ⟨ne, ve, heq, ?_, ?_⟩
+          · unfold R at hRfT; exact hRfT ne hqf
+          · exact R_quote_equiv (Nat.succ_pos _) hRa hqa
       | .lam dV ⟨lbody, lenv⟩, hvapp =>
           simp only [] at hvapp
           -- hvapp : eval fuel unf (va :: lenv) lbody = some r
@@ -1703,8 +1741,16 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           by_cases hcond : (va.isNeutral || unf == 0) = true
           · simp only [hcond, ↓reduceIte, Option.some.injEq] at hvapp
             subst hvapp
-            exact R_neutral_app (vf := .iota annV ⟨lbody, lenv⟩) hRf' hRa
-              (quote_stuckRec_decomp (vf := .iota annV ⟨lbody, lenv⟩) (va := va))
+            refine R_neutral_app
+              (N := .stuckRec (.iota annV ⟨lbody, lenv⟩) va)
+              (fe := fe) (ae := ae) ?_
+            intro e' hq
+            obtain ⟨ne, ve, heq, hqf, hqa⟩ :=
+              quote_stuckRec_decomp
+                (vf := .iota annV ⟨lbody, lenv⟩) (va := va) e' hq
+            refine ⟨ne, ve, heq, ?_, ?_⟩
+            · exact R_quote_equiv (Nat.succ_pos _) hRf' hqf
+            · exact R_quote_equiv (Nat.succ_pos _) hRa hqa
           · -- Unfold branch.
             simp only [hcond, Bool.false_eq_true, ↓reduceIte,
                        Option.bind_eq_bind, Option.bind_eq_some] at hvapp
@@ -1744,8 +1790,16 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           by_cases hcond : (va.isNeutral || unf == 0) = true
           · simp only [hcond, ↓reduceIte, Option.some.injEq] at hvapp
             subst hvapp
-            exact R_neutral_app (vf := .«fix» annV ⟨lbody, lenv⟩) hRf' hRa
-              (quote_stuckRec_decomp (vf := .«fix» annV ⟨lbody, lenv⟩) (va := va))
+            refine R_neutral_app
+              (N := .stuckRec (.«fix» annV ⟨lbody, lenv⟩) va)
+              (fe := fe) (ae := ae) ?_
+            intro e' hq
+            obtain ⟨ne, ve, heq, hqf, hqa⟩ :=
+              quote_stuckRec_decomp
+                (vf := .«fix» annV ⟨lbody, lenv⟩) (va := va) e' hq
+            refine ⟨ne, ve, heq, ?_, ?_⟩
+            · exact R_quote_equiv (Nat.succ_pos _) hRf' hqf
+            · exact R_quote_equiv (Nat.succ_pos _) hRa hqa
           · simp only [hcond, Bool.false_eq_true, ↓reduceIte,
                        Option.bind_eq_bind, Option.bind_eq_some] at hvapp
             obtain ⟨f', hf', hvapp'⟩ := hvapp
@@ -1821,7 +1875,12 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           cases heval
           show R (k+1) d .type (Expr.substEnv ρe .type)
           unfold Expr.substEnv R
-          trivial
+          intro e' hq
+          have hqt : quote fuelω d .type = some .type := by
+            have hf : fuelω = (fuelω - 1) + 1 := rfl
+            rw [hf]; unfold quote; rfl
+          rw [hqt] at hq; cases hq
+          exact fun {_ _} => ⟨.refl _, .refl _⟩
       | bvar j =>
           -- eval (.bvar j) = ρ[j]?. REnv gives R (k+1) d ρ[j] ρe[j].
           unfold eval at heval; simp only [] at heval
@@ -1985,17 +2044,6 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
                  hRann, hRL, hclb', by rw [hbody_eq]; exact Equiv.refl _⟩
 termination_by fuel
 end
-
-/-- The base conjunct of `R` at any nonzero index. -/
-theorem R_quote_equiv {n d v e}
-    (hn : 0 < n) (h : R n d v e)
-    {e' : Expr} (hq : quote fuelω d v = some e') :
-    Equiv e' e := by
-  cases n with
-  | zero => omega
-  | succ m =>
-      unfold R at h
-      exact h.1 e' hq
 
 /-- A fresh neutral at level `lvl < d` quotes to `bvar
 (d-1-lvl)`. Forward direction; the inversion is
