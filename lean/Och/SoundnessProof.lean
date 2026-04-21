@@ -1577,14 +1577,25 @@ private theorem closure_clause_witness {k d ρ ρe} {bExpr : Expr}
       (Expr.closedAt_mono (closedAt_bvarBound bExpr) (by omega))
       rfl
 
-/-- The quote-realisation conclusion extracted from `R` at
-any nonzero index. For `.type`/`.neutral` this is the base
-conjunct directly. For `.lam`/`.iota`/`.fix`, the R-refactor
-(2026-04-21) dropped the base conjunct; the quote-equivalence
-is recovered post-hoc via mutual recursion with
-`quoteClosure_realises` on **quote-fuel**. The closure cases
-are sorried here — see DECISION-LOG 2026-04-19 and the task
-notes on the next agent. -/
+/-- Helper for `vapp_realises`'s `.neutral`/`.type`/stuck
+cases: assembles the `R (k+1) d (.neutral N) (.app fe ae)`
+conclusion from per-component Equiv-witnesses. Callers supply
+`hfEq`/`haEq` directly. -/
+private theorem R_neutral_app {k d N fe ae}
+    (hdecomp : ∀ e', quote fuelω d (.neutral N) = some e' →
+       ∃ ne ve, e' = .app ne ve ∧
+         Equiv ne fe ∧ Equiv ve ae) :
+    R (k+1) d (Val.neutral N) (.app fe ae) := by
+  unfold R
+  intro e' hq
+  obtain ⟨ne, ve, heq, hfEq, haEq⟩ := hdecomp e' hq
+  subst heq
+  exact Equiv.app hfEq haEq
+
+/-- Forward declaration for use in `vapp_realises`'s stuckRec
+cases. The full implementation follows the mutual block; we
+introduce a stub here so R_neutral_app call sites can
+reference it. -/
 theorem R_quote_equiv {n d v e}
     (hn : 0 < n) (h : R n d v e)
     {e' : Expr} (hq : quote fuelω d v = some e') :
@@ -1602,21 +1613,6 @@ theorem R_quote_equiv {n d v e}
       | lam _ _ => sorry
       | iota _ _ => sorry
       | «fix» _ _ => sorry
-
-/-- Helper for `vapp_realises`'s `.neutral`/`.type`/stuck
-cases: assembles the `R (k+1) d (.neutral N) (.app fe ae)`
-conclusion from per-component Equiv-witnesses. Callers supply
-`hfEq`/`haEq` directly. -/
-private theorem R_neutral_app {k d N fe ae}
-    (hdecomp : ∀ e', quote fuelω d (.neutral N) = some e' →
-       ∃ ne ve, e' = .app ne ve ∧
-         Equiv ne fe ∧ Equiv ve ae) :
-    R (k+1) d (Val.neutral N) (.app fe ae) := by
-  unfold R
-  intro e' hq
-  obtain ⟨ne, ve, heq, hfEq, haEq⟩ := hdecomp e' hq
-  subst heq
-  exact Equiv.app hfEq haEq
 
 /-- Quote of `.neutral (.stuckRec vf va)` decomposes as
 `.app (quote vf) (quote va)` (after fuel-mono lifting). -/
