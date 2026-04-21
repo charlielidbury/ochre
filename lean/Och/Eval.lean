@@ -90,6 +90,132 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
 
 /-! ## Fuel monotonicity -/
 
+/-- `concEval` preserves closedness: evaluating a closed term
+produces a closed term. Needed to thread closedness through the
+`concEval_equiv` → `Equiv.subst_resp_closed` chain, which is
+the pragmatic route for closing `Equiv.shift`'s nil-Γ sorry
+(see DECISION-LOG 2026-04-21).
+
+Proof by induction on fuel + case on `e`. Uses
+`Expr.subst_closedAt_gen` at `j=0, n=0` for the β/let-binder
+cases to show `(body.subst 0 v).closedAt 0` from
+`body.closedAt 1` and `v.closedAt 0`. -/
+theorem concEval_closedAt {n : Nat} {e v : Expr}
+    (hcl : e.closedAt 0 = true)
+    (h : concEval n e = some v) : v.closedAt 0 = true := by
+  induction n generalizing e v with
+  | zero => simp [concEval] at h
+  | succ k ih =>
+    match e, hcl, h with
+    | .bvar _, _, h => simp [concEval] at h
+    | .type, _, h =>
+      simp only [concEval, Option.some.injEq] at h
+      subst h; rfl
+    | .lam dom body, hcl, h =>
+      simp only [concEval, Option.some.injEq] at h
+      subst h; exact hcl
+    | .iota ann body, hcl, h =>
+      simp only [concEval, Option.some.injEq] at h
+      subst h; exact hcl
+    | .fix ann body, hcl, h =>
+      simp only [concEval, Option.some.injEq] at h
+      subst h; exact hcl
+    | .asc t ty, hcl, h =>
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      simp only [concEval] at h
+      exact ih hcl.1 h
+    | .letE val body, hcl, h =>
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      unfold concEval at h
+      match hvEv : concEval k val with
+      | none => simp [hvEv] at h
+      | some v' =>
+        simp only [hvEv] at h
+        have hv'cl := ih hcl.1 hvEv
+        have hsub : (body.subst 0 v').closedAt 0 = true := by
+          have := Expr.subst_closedAt_gen body 0 0 v'
+            (by simpa using hcl.2) (by simpa using hv'cl)
+          simpa using this
+        exact ih hsub h
+    | .app f a, hcl, h =>
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      unfold concEval at h
+      match hfEv : concEval k f, haEv : concEval k a with
+      | none, _ => simp [hfEv] at h
+      | some _, none => simp [hfEv, haEv] at h
+      | some fv, some av =>
+        have hfcl := ih hcl.1 hfEv
+        have hacl := ih hcl.2 haEv
+        simp only [hfEv, haEv] at h
+        match fv, hfcl with
+        | .lam _dom body, hfcl =>
+          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
+          have hsub : (body.subst 0 av).closedAt 0 = true := by
+            have := Expr.subst_closedAt_gen body 0 0 av
+              (by simpa using hfcl.2) (by simpa using hacl)
+            simpa using this
+          exact ih hsub h
+        | .iota ann body, hfcl =>
+          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
+          have hbodycl : body.closedAt 1 = true := by simpa using hfcl.2
+          have hsub : (body.subst 0 (.iota ann body)).closedAt 0 = true := by
+            have hIota : (Expr.iota ann body).closedAt 0 = true := by
+              simp only [Expr.closedAt, Bool.and_eq_true]
+              exact ⟨hfcl.1, hbodycl⟩
+            have := Expr.subst_closedAt_gen body 0 0 (.iota ann body)
+              (by simpa using hbodycl) (by simpa using hIota)
+            simpa using this
+          have hApp : (Expr.app (body.subst 0 (.iota ann body)) av).closedAt 0 = true := by
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨hsub, hacl⟩
+          exact ih hApp h
+        | .fix ann body, hfcl =>
+          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
+          have hbodycl : body.closedAt 1 = true := by simpa using hfcl.2
+          have hsub : (body.subst 0 (.fix ann body)).closedAt 0 = true := by
+            have hFix : (Expr.fix ann body).closedAt 0 = true := by
+              simp only [Expr.closedAt, Bool.and_eq_true]
+              exact ⟨hfcl.1, hbodycl⟩
+            have := Expr.subst_closedAt_gen body 0 0 (.fix ann body)
+              (by simpa using hbodycl) (by simpa using hFix)
+            simpa using this
+          have hApp : (Expr.app (body.subst 0 (.fix ann body)) av).closedAt 0 = true := by
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨hsub, hacl⟩
+          exact ih hApp h
+        | .type, _ =>
+          simp only [Option.some.injEq] at h
+          subst h
+          show (Expr.app .type av).closedAt 0 = true
+          rw [show (Expr.app .type av).closedAt 0 =
+              ((Expr.type).closedAt 0 && av.closedAt 0) from rfl]
+          simp [hacl, Expr.closedAt]
+        | .bvar _, hfcl =>
+          -- concEval never produces bvar from a closed term
+          simp only [Expr.closedAt, decide_eq_true_eq] at hfcl
+          omega
+        | .app f' a', hfcl =>
+          simp only [Option.some.injEq] at h
+          subst h
+          show (Expr.app (Expr.app f' a') av).closedAt 0 = true
+          rw [show (Expr.app (Expr.app f' a') av).closedAt 0 =
+              ((Expr.app f' a').closedAt 0 && av.closedAt 0) from rfl]
+          simp [hfcl, hacl]
+        | .asc t ty, hfcl =>
+          simp only [Option.some.injEq] at h
+          subst h
+          show (Expr.app (Expr.asc t ty) av).closedAt 0 = true
+          rw [show (Expr.app (Expr.asc t ty) av).closedAt 0 =
+              ((Expr.asc t ty).closedAt 0 && av.closedAt 0) from rfl]
+          simp [hfcl, hacl]
+        | .letE vv b, hfcl =>
+          simp only [Option.some.injEq] at h
+          subst h
+          show (Expr.app (Expr.letE vv b) av).closedAt 0 = true
+          rw [show (Expr.app (Expr.letE vv b) av).closedAt 0 =
+              ((Expr.letE vv b).closedAt 0 && av.closedAt 0) from rfl]
+          simp [hfcl, hacl]
+
 theorem concEval_fuel_mono {n : Nat} {e v : Expr}
     (h : concEval n e = some v) : concEval (n + 1) e = some v := by
   induction n generalizing e v with
