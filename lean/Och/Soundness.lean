@@ -292,96 +292,19 @@ private theorem asc_erase_equiv (t ty : Expr) :
 -- premise is not derivable without a well-formedness
 -- assumption) is removed.
 
-/-- `concEval` produces a declarative *equivalent* of its
-input (both directions). With `Equiv.subst_resp` (no leaf
-sorry, SoundnessProof.lean) the `.letE` and `.app` cases
-that previously needed only the forward direction now get
-both from the IH. The `.app`-with-`.iota`-head case is the
-sole residual, now closed via `Equiv.iota_unfold`.
+/-- The original `concEval_equiv` (without closedness hypothesis)
+was deleted 2026-04-21 — it depended transitively on the
+`Equiv.shift` nil-Γ sorry via `Equiv.subst_resp` and was no
+longer used on the soundness critical path.
+`concEval_equiv_closed` below is the replacement;
+`concEval_refines` / `concEval_preservation` / `soundness`
+route through it.
 
-`concEval_refines` (the forward half) and
-`concEval_preservation` derive directly.
-
-**On the `Equiv.shift` nil-Γ sorry chain (2026-04-21):**
-`Equiv.subst_resp` transitively depends on `Equiv.shift`'s
-nil-Γ sorry. A closedness-carrying variant
-`concEval_equiv_closed` is proven below for the *letE* case
-only — demonstrating that the closedness-propagation chain
-(`concEval_closedAt` + `subst_resp_closed`) avoids the sorry.
-The full rewrite (all cases, including iota/fix unfold) hit
-Lean elaboration issues on the `Equiv.trans`/`Equiv.symm`
-chains; deferred. -/
-theorem concEval_equiv
-    {fuel : Nat} {e e' : Expr}
-    (hstep : concEval fuel e = some e') :
-    Equiv e' e := by
-  -- (Tactic-mode `match e` here makes the `Equiv`-def goal
-  -- mis-elaborate against `Equiv.*` lemmas; `cases e` does
-  -- not. Lean 4.16 quirk.)
-  induction fuel generalizing e e' with
-  | zero => simp [concEval] at hstep
-  | succ n ih =>
-    cases e with
-    | bvar _ => simp [concEval] at hstep
-    | type =>
-      simp only [concEval, Option.some.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | lam _ _ =>
-      simp only [concEval, Option.some.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | iota _ _ =>
-      simp only [concEval, Option.some.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | «fix» _ _ =>
-      simp only [concEval, Option.some.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | asc t ty =>
-      simp only [concEval] at hstep
-      exact Equiv.trans (ih hstep) (Equiv.symm (asc_erase_equiv t ty))
-    | letE val body =>
-      simp only [concEval] at hstep
-      split at hstep
-      · next v' hval =>
-        exact Equiv.trans (ih hstep)
-          (Equiv.trans (Equiv.subst_resp body (ih hval) 0)
-            (Equiv.symm (letE_unfold_equiv val body)))
-      · simp at hstep
-    | app f a =>
-      simp only [concEval] at hstep
-      split at hstep
-      -- .lam head: β
-      · next dom fbody a' hf ha =>
-        exact Equiv.trans (ih hstep)
-          (Equiv.trans (Equiv.subst_resp fbody (ih ha) 0)
-            (Equiv.trans (Equiv.symm (Equiv.beta dom fbody a))
-              (Equiv.app (ih hf) (Equiv.refl a))))
-      -- .iota head: via `Equiv.iota_unfold`
-      · next ann ibody a' hf ha =>
-        exact Equiv.trans (ih hstep)
-          (Equiv.app
-            (Equiv.trans (Equiv.symm (Equiv.iota_unfold ann ibody))
-                         (ih hf))
-            (ih ha))
-      -- .fix head: `Equiv.fix_unfold` (proven, SoundnessProof)
-      · next ann fbody' a' hf ha =>
-        exact Equiv.trans (ih hstep)
-          (Equiv.app
-            (Equiv.trans (Equiv.symm (Equiv.fix_unfold ann fbody'))
-                         (ih hf))
-            (ih ha))
-      -- other head: just `.app_cong`
-      · next fVal a' _ _ _ hf ha =>
-        simp only [Option.some.injEq] at hstep; subst hstep
-        exact Equiv.app (ih hf) (ih ha)
-      -- failure cases
-      · simp_all
-
-/-- Full closedness-carrying `concEval_equiv`. Uses the
-closedness-propagation chain (`concEval_closedAt` +
-`Equiv.subst_resp_closed`) to avoid the `Equiv.shift` nil-Γ
-sorry chain in `subst_resp`. Uses `intro S Γe` + direct
-`Subtype'` destructuring to work around the Lean 4.16
-Equiv.trans elaboration quirk. -/
+The closedness-propagation chain (`concEval_closedAt` +
+`Equiv.subst_resp_closed`) avoids the `Equiv.shift` nil-Γ
+sorry entirely. Uses `intro S Γe` + direct `Subtype'`
+destructuring to work around the Lean 4.16 Equiv.trans
+elaboration quirk. -/
 theorem concEval_equiv_closed
     {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
