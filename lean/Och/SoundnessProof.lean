@@ -1440,6 +1440,222 @@ theorem Closure.envShiftLvl_of_envLevelsBelow :
         (Closure.envShiftLvl_of_envLevelsBelow ws c h.2)
 end
 
+/-!
+### `eval` commutes with `Val.shiftLvl`
+
+`eval fuel unf ρ e = some v` ⇒
+`eval fuel unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c)`.
+
+Proved by combined induction on fuel over `eval` and `vapp`. The
+vapp-iota/fix branches case-split on `a`-shape (to evaluate
+`Val.shiftLvl c a`.isNeutral) and on the `isNeutral || unf==0`
+gate. -/
+
+theorem eval_vapp_shiftLvl :
+    ∀ n,
+    (∀ {unf c ρ e v}, eval n unf ρ e = some v →
+      eval n unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c)) ∧
+    (∀ {unf c f a v}, vapp n unf f a = some v →
+      vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c)) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · intros _ _ _ _ _ h; rw [eval_zero] at h; cases h
+    · intros _ _ _ _ _ h; rw [vapp_zero] at h; cases h
+  | succ k ih =>
+    obtain ⟨ihe, ihv⟩ := ih
+    refine ⟨?_, ?_⟩
+    -- eval (k+1)
+    · intro unf c ρ e v h
+      unfold eval at h ⊢
+      match e, h with
+      | .type, h =>
+          simp only [Option.some.injEq] at h
+          subst h; rfl
+      | .bvar j, h =>
+          simp only [] at h ⊢
+          rw [List.getElem?_map]
+          cases hk : ρ[j]? with
+          | none => rw [hk] at h; cases h
+          | some w =>
+              rw [hk] at h
+              simp only [Option.some.injEq] at h
+              subst h
+              simp only [Option.map_some']
+      | .lam dom body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨dom', hdom, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          refine ⟨dom'.shiftLvl c, ihe hdom, ?_⟩
+          simp only [Option.some.injEq]
+          show Val.lam (Val.shiftLvl c dom') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
+               Val.lam (Val.shiftLvl c dom')
+                 (Closure.shiftLvl c (Closure.mk' body ρ))
+          congr 1
+          -- Closure.mk' body (ρ.map ...) = Closure.shiftLvl c (Closure.mk' body ρ)
+          show Closure.mk' body (ρ.map (Val.shiftLvl c))
+             = Closure.shiftLvl c (Closure.mk' body ρ)
+          unfold Closure.mk' Closure.shiftLvl
+          rw [Closure.envShiftLvl_eq_map]
+          congr 1
+          simp [List.map_take]
+      | .iota ann body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          refine ⟨ann'.shiftLvl c, ihe hann, ?_⟩
+          simp only [Option.some.injEq]
+          show Val.iota (Val.shiftLvl c ann') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
+               Val.iota (Val.shiftLvl c ann')
+                 (Closure.shiftLvl c (Closure.mk' body ρ))
+          congr 1
+          show Closure.mk' body (ρ.map (Val.shiftLvl c))
+             = Closure.shiftLvl c (Closure.mk' body ρ)
+          unfold Closure.mk' Closure.shiftLvl
+          rw [Closure.envShiftLvl_eq_map]
+          congr 1
+          simp [List.map_take]
+      | .«fix» ann body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          refine ⟨ann'.shiftLvl c, ihe hann, ?_⟩
+          simp only [Option.some.injEq]
+          show Val.«fix» (Val.shiftLvl c ann') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
+               Val.«fix» (Val.shiftLvl c ann')
+                 (Closure.shiftLvl c (Closure.mk' body ρ))
+          congr 1
+          show Closure.mk' body (ρ.map (Val.shiftLvl c))
+             = Closure.shiftLvl c (Closure.mk' body ρ)
+          unfold Closure.mk' Closure.shiftLvl
+          rw [Closure.envShiftLvl_eq_map]
+          congr 1
+          simp [List.map_take]
+      | .app f a, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨f', hf, a', ha, hv⟩ := h
+          exact ⟨f'.shiftLvl c, ihe hf, a'.shiftLvl c, ihe ha, ihv hv⟩
+      | .letE val body, h =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          obtain ⟨v', hv', hb⟩ := h
+          refine ⟨v'.shiftLvl c, ihe hv', ?_⟩
+          have := ihe (unf := unf) (c := c) (ρ := v' :: ρ) (e := body)
+                      (v := v) hb
+          simpa using this
+      | .asc t _, h =>
+          simp only [] at h ⊢
+          exact ihe h
+    -- vapp (k+1)
+    · intro unf c f a v h
+      unfold vapp at h ⊢
+      cases f with
+      | neutral nf =>
+          simp only [Option.some.injEq] at h
+          subst h
+          rfl
+      | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          rfl
+      | lam dom cl =>
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          -- Target: eval on (shifted a :: Closure.envShiftLvl c env) body
+          show eval k unf (Val.shiftLvl c a :: Closure.envShiftLvl c env) body =
+               some (Val.shiftLvl c v)
+          rw [Closure.envShiftLvl_eq_map]
+          have := ihe (unf := unf) (c := c) (ρ := a :: env) (e := body)
+                      (v := v) h
+          simpa using this
+      | iota ann cl =>
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          -- After `cases f`, the goal has the iota arm of Val.shiftLvl
+          -- unfolded. Use `show` to pin the goal structure.
+          change (if ((Val.shiftLvl c a).isNeutral || unf == 0) = true
+                  then some (Val.neutral (.stuckRec
+                              (Val.iota (Val.shiftLvl c ann)
+                                ⟨body, Closure.envShiftLvl c env⟩)
+                              (Val.shiftLvl c a)))
+                  else
+                    (eval k (unf - 1)
+                      (Val.iota (Val.shiftLvl c ann)
+                        ⟨body, Closure.envShiftLvl c env⟩
+                       :: Closure.envShiftLvl c env) body).bind
+                      (fun f' => vapp k (unf - 1) f' (Val.shiftLvl c a)))
+                 = some (Val.shiftLvl c v)
+          have hge : (Val.shiftLvl c a).isNeutral = a.isNeutral :=
+            Val.shiftLvl_neutral_isNeutral c a
+          rw [hge]
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte] at h ⊢
+            simp only [Option.some.injEq] at h
+            subst h
+            rfl
+          · simp only [Bool.not_eq_true] at hg
+            simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+            obtain ⟨f', hf, hv⟩ := h
+            refine ⟨f'.shiftLvl c, ?_, ihv hv⟩
+            have hhead : Val.shiftLvl c (Val.iota ann ⟨body, env⟩) =
+                         Val.iota (Val.shiftLvl c ann) ⟨body, Closure.envShiftLvl c env⟩ := rfl
+            have := ihe (unf := unf - 1) (c := c)
+                        (ρ := Val.iota ann ⟨body, env⟩ :: env) (e := body)
+                        (v := f') hf
+            simp only [List.map_cons, hhead,
+                       ← Closure.envShiftLvl_eq_map] at this
+            exact this
+      | fix ann cl =>
+          obtain ⟨body, env⟩ := cl
+          simp only at h
+          change (if ((Val.shiftLvl c a).isNeutral || unf == 0) = true
+                  then some (Val.neutral (.stuckRec
+                              (Val.«fix» (Val.shiftLvl c ann)
+                                ⟨body, Closure.envShiftLvl c env⟩)
+                              (Val.shiftLvl c a)))
+                  else
+                    (eval k (unf - 1)
+                      (Val.«fix» (Val.shiftLvl c ann)
+                        ⟨body, Closure.envShiftLvl c env⟩
+                       :: Closure.envShiftLvl c env) body).bind
+                      (fun f' => vapp k (unf - 1) f' (Val.shiftLvl c a)))
+                 = some (Val.shiftLvl c v)
+          have hge : (Val.shiftLvl c a).isNeutral = a.isNeutral :=
+            Val.shiftLvl_neutral_isNeutral c a
+          rw [hge]
+          by_cases hg : (a.isNeutral || unf == 0) = true
+          · simp only [hg, ↓reduceIte] at h ⊢
+            simp only [Option.some.injEq] at h
+            subst h
+            rfl
+          · simp only [Bool.not_eq_true] at hg
+            simp only [hg, Bool.false_eq_true, ↓reduceIte,
+                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+            obtain ⟨f', hf, hv⟩ := h
+            refine ⟨f'.shiftLvl c, ?_, ihv hv⟩
+            have hhead : Val.shiftLvl c (Val.«fix» ann ⟨body, env⟩) =
+                         Val.«fix» (Val.shiftLvl c ann) ⟨body, Closure.envShiftLvl c env⟩ := rfl
+            have := ihe (unf := unf - 1) (c := c)
+                        (ρ := Val.«fix» ann ⟨body, env⟩ :: env) (e := body)
+                        (v := f') hf
+            simp only [List.map_cons, hhead,
+                       ← Closure.envShiftLvl_eq_map] at this
+            exact this
+
+theorem eval_shiftLvl {n unf c ρ e v}
+    (h : eval n unf ρ e = some v) :
+    eval n unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c) :=
+  (eval_vapp_shiftLvl n).1 h
+
+theorem vapp_shiftLvl {n unf c f a v}
+    (h : vapp n unf f a = some v) :
+    vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c) :=
+  (eval_vapp_shiftLvl n).2 h
+
 /-- Bundled depth-lift + realisation obligations. All three
 remaining soundness sorries are packaged here so Lean emits a
 single declaration-sorry warning for the entire cluster.
