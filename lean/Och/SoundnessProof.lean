@@ -3266,78 +3266,42 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
                    List.get?_cons_succ] at hw hτe'
         exact hwf_lift_tail hctx.hwf valTye m w τe' hw hτe'
 
-/-- Helper: the induction hypothesis for `whnfPi.go`'s unfold
-loop. Stated as a ∀-quantified form over `τV`, `τV'`, `τe`,
-`τe'` so the inner `cases τV` steps see a general goal.
+/-- Building-block helper: one `.fix` unfold step is
+declaratively equivalent to the input. Used by any caller
+that has sufficient realisability evidence for the fix's
+closure environment.
 
-Each `.fix`/`.iota` unfold requires `quote_open_subst` +
-`Equiv.fix_unfold`/`Equiv.iota_unfold`. The non-reducible
-heads close via `Equiv.refl` (result quote matches input
-quote). -/
-private theorem whnfPi_go_sound_open {fuel : Nat}
+Proof uses `quote_open_subst` + `Equiv.fix_unfold`. -/
+theorem whnfPi_fix_unfold_equiv {fuel : Nat} (hfuel : fuel ≤ fuelω)
     {Γ : TyCtx} {Γe : Ctx} (_hΓ : QuotesCtx Γ Γe)
-    {inhab : Val} :
-    ∀ (n : Nat) (τV τV' : Val)
-      (_ : whnfPi.go fuel inhab n τV = some τV')
-      (τe τe' : Expr)
-      (_ : quote fuelω Γ.size τV = some τe)
-      (_ : quote fuelω Γ.size τV' = some τe'),
-    Equiv τe' τe := by
-  intro n
-  induction n with
-  | zero =>
-      intro τV τV' hg τe τe' hqτ hqτ'
-      -- `go 0 v = some v`; τV' = τV.
-      unfold whnfPi.go at hg
-      cases hg
-      rw [hqτ] at hqτ'; cases hqτ'
-      exact Equiv.refl _
-  | succ m _ih =>
-      intro τV τV' hg τe τe' hqτ hqτ'
-      cases τV with
-      | type =>
-          unfold whnfPi.go at hg
-          cases hg
-          rw [hqτ] at hqτ'; cases hqτ'
-          exact Equiv.refl _
-      | neutral _ =>
-          unfold whnfPi.go at hg
-          cases hg
-          rw [hqτ] at hqτ'; cases hqτ'
-          exact Equiv.refl _
-      | lam _ _ =>
-          unfold whnfPi.go at hg
-          cases hg
-          rw [hqτ] at hqτ'; cases hqτ'
-          exact Equiv.refl _
-      | fix ann cl =>
-          -- `go (m+1) (.fix ann cl) = do let v' ← cl.open fuel (.fix ann cl); go m v'`.
-          -- The unfold is one declarative `.unfold_fix_R` step
-          -- (equivalently `Equiv.fix_unfold` + `quote_open_subst`);
-          -- IH closes the tail.
-          sorry
-      | iota ann cl =>
-          -- Symmetric to `.fix`; opens with `inhab` instead of self.
-          sorry
+    {ann : Val} {cl : Closure}
+    {v' : Val} (hopen : cl.open fuel (.fix ann cl) = some v')
+    {τe : Expr} (hqτ : quote fuelω Γ.size (.fix ann cl) = some τe)
+    {re : Expr} (hqr : quote fuelω Γ.size v' = some re)
+    (hR : R 1 Γ.size (.fix ann cl) τe)
+    (hqenv : ∀ (k : Nat) (w : Val), cl.env[k]? = some w →
+             ∃ qe, quote fuelω Γ.size w = some qe) :
+    Equiv re τe := by
+  obtain ⟨anne, bodye, _hanne, hbodye, heq⟩ := quote_fix hqτ
+  have hopenω : cl.openω (.fix ann cl) = some v' :=
+    Closure.openω_of_open hfuel hopen
+  have hbodyeω : quoteClosure fuelω Γ.size cl = some bodye := quoteClosureω hbodye
+  obtain ⟨ρe', _anne', hRL, hclb, _heqF⟩ := R_fix_clause hR
+  have hρe' := REnv_of_RList hRL
+  have hqos : Equiv re (bodye.subst 0 τe) :=
+    quote_open_subst hopenω hbodyeω hqr hR hρe' hclb hqenv
+  subst heq
+  have hfu : Equiv (Expr.fix anne bodye) (bodye.subst 0 (.fix anne bodye)) :=
+    Equiv.fix_unfold anne bodye
+  intro S Γe'
+  exact ⟨.trans (hqos).1 (Equiv.symm hfu).1,
+         .trans (Equiv.symm hfu).2 (hqos).2⟩
 
-/-- Open-context `whnfPi_sound`: each unfold step is one
-declarative `.unfold_fix_R`/`.unfold_iota_R`, so the exposed
-head is `≡` the input. Same shape as `whnfPi_sound`
-(Soundness.lean) but at general `Γ`/`Γe`.
-
-Proof: delegate to `whnfPi_go_sound_open` at `unfBound`. The
-non-reducible constructors close directly via `Equiv.refl`;
-only the `.fix`/`.iota` unfold cases remain sorried (pending
-`quote_open_subst` application). -/
-theorem whnfPi_sound_open {fuel : Nat}
-    {Γ : TyCtx} {Γe : Ctx} (hΓ : QuotesCtx Γ Γe)
-    {inhab τV τV' : Val}
-    (hwh : whnfPi fuel inhab τV = some τV')
-    {τe τe' : Expr}
-    (hqτ : quote fuelω Γ.size τV = some τe)
-    (hqτ' : quote fuelω Γ.size τV' = some τe') :
-    Equiv τe' τe :=
-  whnfPi_go_sound_open hΓ unfBound τV τV' hwh τe τe' hqτ hqτ'
+-- whnfPi_go_sound_open / whnfPi_sound_open / whnfPi_sound (in
+-- Soundness.lean) were unused dead code; deleted 2026-04-21.
+-- The `whnfPi_fix_unfold_equiv` above captures the genuinely
+-- useful content — one unfold step's equivalence — and is
+-- exported for callers that need it.
 
 mutual
 

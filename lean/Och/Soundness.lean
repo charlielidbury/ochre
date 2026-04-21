@@ -167,21 +167,12 @@ theorem quote_total_on_eval {fuel : Nat} {e : Expr} {v : Val}
   simp only [Option.some_bind] at hnf
   exact Option.isSome_iff_exists.mp hnf
 
-/-- `whnfPi` is sound: each `.fix`/`.iota` step is one
-declarative unfold, so the exposed head is `Equiv` to the
-input. Closed-context corollary of `whnfPi_sound_open`
-(SoundnessProof.lean) at `Γ = #[]`/`hΓ` vacuous. -/
-theorem whnfPi_sound {fuel : Nat} {inhab τV τV' : Val}
-    (hwh : whnfPi fuel inhab τV = some τV')
-    {τe τe' : Expr}
-    (hqτ : quote fuelω 0 τV = some τe)
-    (hqτ' : quote fuelω 0 τV' = some τe') :
-    ∀ {S Γe}, Subtype' S Γe τe' τe := by
-  have heq : Equiv τe' τe :=
-    whnfPi_sound_open (Γ := #[]) (Γe := [])
-      ⟨rfl, fun _ _ hk => by simp at hk⟩ hwh
-      (by simpa using hqτ) (by simpa using hqτ')
-  exact fun {_ _} => heq.1
+-- `whnfPi_sound` removed 2026-04-21: previously a wrapper
+-- around `whnfPi_sound_open` (itself a wrapper over
+-- `whnfPi_go_sound_open`), never used. The genuinely useful
+-- lemma `whnfPi_fix_unfold_equiv` remains in SoundnessProof.lean
+-- for future tyCheck/tyInfer uses that need to justify a single
+-- unfold step declaratively.
 
 /-!
 ### `tyCheck`/`tyInfer` soundness (closed corollaries)
