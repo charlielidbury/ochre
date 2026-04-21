@@ -535,22 +535,26 @@ theorem concEval_equiv_closed
       · simp_all
 
 /-- The forward-only half, kept for callers that don't need
-the equivalence. Now derived. -/
+the equivalence. Now derived via `concEval_equiv_closed`
+(takes closedness), which avoids the `Equiv.shift` nil-Γ
+sorry. -/
 theorem concEval_refines
     {fuel : Nat} {e e' : Expr}
+    (hcl : e.closedAt 0 = true)
     (hstep : concEval fuel e = some e') :
     ∀ {S Γ}, Subtype' S Γ e' e :=
-  fun {_ _} => (concEval_equiv hstep).1
+  fun {_ _} => (concEval_equiv_closed hcl hstep).1
 
 /-- Type preservation under concrete evaluation: if `e ⊑ τ`
 declaratively and `concEval e ⇓ e'`, then `e' ⊑ τ`. Direct
 from `concEval_refines` and transitivity. -/
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
+    (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)
     (hstep : concEval fuel e = some e') :
     Subtype' [] [] e' τ :=
-  .trans (concEval_refines hstep) hty
+  .trans (concEval_refines hcl hstep) hty
 
 /-- Composing the above: the user-facing guarantee. -/
 theorem soundness
@@ -561,7 +565,7 @@ theorem soundness
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = some e') :
     Subtype' [] [] e' τ :=
-  concEval_preservation
+  concEval_preservation hcle
     (typeCheck_sound hfuel hcle hclτ hnfe hnfτ hcheck) hstep
 
 /-!
