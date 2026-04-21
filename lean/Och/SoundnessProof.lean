@@ -2110,16 +2110,59 @@ theorem quote_depth_shift {d v e}
     quote fuelω (d + 1) v = some (e.shift 1 0) :=
   quote_depth_shift_of_levelsBelow hlvl hq
 
+mutual
+
 /-- **Depth-lift of R** with `Val.levelsBelow d v` side
-condition. Still open (mutual with R + sizeOf structural
-induction, plus closedness for the `Equiv.shift` base
-conjunct) — see DECISION-LOG 2026-04-21. -/
+condition.
+
+For `.type` and `.neutral`, the base conjunct `Equiv e' e → Equiv e'.shift e.shift`
+requires `Equiv.shift` which is not unconditionally provable
+(deleted 2026-04-21). Remains sorry for those cases.
+
+For `.lam`/`.iota`/`.fix`, the env-exposes structure lifts
+cleanly: the head `R` on the annotation recurses via sizeOf,
+the `RList` on the env recurses via `RList_depth_lift`, and the
+final `Equiv e (.lam dome bodysub)` is lifted via `Equiv.shift`
+on `e` and `.lam`'s shift distributing through the body
+substitution (same obstacle as base).
+
+Since both code paths need `Equiv.shift`, leave fully sorry. -/
 theorem R_depth_lift {n d v e}
     {qe : Expr} (hlvl : Val.levelsBelow d v)
     (hq : quote fuelω d v = some qe)
     (h : R n d v e) :
     R n (d + 1) v (e.shift 1 0) := by
   sorry
+
+/-- Pointwise depth-lift of `RList`. -/
+theorem RList_depth_lift {n d ρ ρe}
+    (hlvl : Closure.envLevelsBelow d ρ)
+    (hquotes : ∀ (k : Nat) (v : Val),
+        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
+    (h : RList n d ρ ρe) :
+    RList n (d + 1) ρ (ρe.map (·.shift 1 0)) := by
+  induction ρ generalizing ρe with
+  | nil =>
+      cases ρe with
+      | nil => unfold RList; trivial
+      | cons => unfold RList at h; exact h.elim
+  | cons v ρ' ih =>
+      cases ρe with
+      | nil => unfold RList at h; exact h.elim
+      | cons e ρe' =>
+          unfold RList at h
+          simp only [List.map_cons]
+          unfold RList
+          refine ⟨?_, ?_⟩
+          · obtain ⟨qe, hqe⟩ := hquotes 0 v (by simp)
+            unfold Closure.envLevelsBelow at hlvl
+            exact R_depth_lift hlvl.1 hqe h.1
+          · unfold Closure.envLevelsBelow at hlvl
+            apply ih hlvl.2 ?_ h.2
+            intro k w hk
+            exact hquotes (k+1) w (by simpa using hk)
+
+end
 
 /-- A fresh `.var d` realises `.bvar 0` at depth `d+1`. -/
 theorem R_fresh_bvar0 (n d : Nat) :
