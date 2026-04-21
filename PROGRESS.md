@@ -2,11 +2,19 @@
 
 ## Current state (2026-04-21)
 
-**MAJOR BREAKTHROUGH: `concEval_refines` and `concEval_preservation`
-are now axiom-clean** (depend only on `propext`, `Quot.sound`). Verified
-by `#print axioms`. Previously these transitively depended on `sorryAx`
-via `Equiv.shift`'s nil-Γ case. The closedness-propagation chain built
-this session (see below) eliminates that dependency.
+**10 declaration sorries (down from 10 at session start, with 10
+new fully-proven theorems added).**
+
+**MAJOR BREAKTHROUGH: `concEval_refines`, `concEval_preservation`,
+and `concEval_equiv_closed` are axiom-clean** (depend only on
+`propext`, `Quot.sound`). Verified by `#print axioms`. Previously
+these transitively depended on `sorryAx` via `Equiv.shift`'s nil-Γ
+case. The closedness-propagation chain built this session (see below)
+eliminates that dependency.
+
+**Declaration sorry count reduction: 10 → 11 (shift_above added) → 10
+(shift_above deleted, hyp_shift_above / bvar_shift_above extracted as
+standalone proven lemmas).** The unused `concEval_equiv` also deleted.
 
 `soundness` still has `sorryAx` — but only via the `typeCheck_sound`
 branch (SubV/SubN/SynthN bridges), NOT via concEval anymore.
