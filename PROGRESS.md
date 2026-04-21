@@ -2,7 +2,7 @@
 
 ## Current state (2026-04-21)
 
-**5 declaration sorries (down from 10 at session start).** Half
+**4 declaration sorries (down from 10 at session start).** Half
 the sorries eliminated through a combination of:
 - Deleting dead sorry-ridden theorems (SynthN_to_Subtype',
   SubN_to_Subtype', whnfPi_sound chain, openNf_holds, Equiv.shift,
