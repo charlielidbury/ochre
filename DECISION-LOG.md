@@ -3,6 +3,46 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-22: vapp iota/fix UNFOLD branches need quote-witness on eval-output
+
+Investigation of `eval_vapp_preserves_fullyQuotable`: closing the
+recursive vapp chain after an iota/fix unfold requires `∃ qf', quote
+fuelω d f' = some qf'` where `f' = eval k (unf-1) (f :: cl.env)
+cl.body`. This quote witness is not derivable from the current
+hypotheses.
+
+Three directions investigated, all blocked:
+- **Strengthen conclusion** to include `∃ qv, quote fuelω d v = some
+  qv`. Requires proving quote succeeds on eval output. For closure
+  outputs (.lam/.iota/.fix) this needs `quoteClosure` to succeed, which
+  requires fuelω-bounded eval+quote on cl.body — circular with the
+  theorem we're proving.
+- **Prove `Val.fullyQuotable d v → ∃ qv, quote fuelω d v = some qv`**
+  as a standalone lemma. Blocked on closure case: proving quoteClosure
+  succeeds requires showing eval on cl.body under (bv :: cl.env) always
+  succeeds with fuelω, which is a termination/fuel-cap issue.
+- **Drop quote-witness hypotheses** from the theorem entirely. Blocked
+  on vapp `.lam` (need to extend env with `a`, which requires `∃ qa,
+  quote d a = some qa` per `envFullyQuotable`) and vapp iota/fix
+  unfold (need `∃ qf, quote d f = some qf` to extend env with `f`).
+
+Positive progress this session:
+- Strengthened `Closure.fullyQuotable` to carry `body.closedAt
+  (env.length + 1) = true`. This closes vapp's `.lam` case outright.
+- Closed stuck branches of vapp's `.iota`/`.fix` (neutrals).
+
+**Root cause**: The `envFullyQuotable` predicate requires per-entry
+quote witnesses because `RList_depth_lift` needs them for recursive
+`R_depth_lift` calls. Eval, however, doesn't produce quote witnesses
+on its outputs — they'd require proving quoteClosure success, which
+is mutual with eval success in closure-containing outputs.
+
+**Proposed next direction**: add `envLevelsBelow` + `envFullyQuotable`
+on `cl.env` AS PART OF R's closure-clause data. Then R_quote_equiv's
+closure cases can supply them to RList_depth_lift via
+quoteClosure_realises's proof. Construction in eval_realises would
+need eval to preserve these — which is the current blocker.
+
 ## 2026-04-21: R_depth_lift closure blocker is RECURSIVE (requires Val-global quotability)
 
 Second-iteration finding: the "quote witnesses for cl.env" problem is
