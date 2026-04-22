@@ -2981,37 +2981,46 @@ private theorem R_neutral_app {k d N fe ae}
   obtain ⟨ha12, ha21⟩ := haEq hd
   exact ⟨.app_cong hf12 ha12 ha21, .app_cong hf21 ha21 ha12⟩
 
-/-- Extract an `Equiv`-witness between a `Val`'s quote and
-the source `Expr` it realises. For `.type`/`.neutral`, this
-is the base conjunct of `R` directly. For `.lam`/`.iota`/
-`.fix`, the R-refactor (2026-04-21) dropped the base conjunct
-and the quote-correspondence must be re-derived: the plan
-(DECISION-LOG 2026-04-19) is a mutual with
-`quoteClosure_realises` on **quote-fuel**, where each step
-uses the env-exposes clause to build a `REnv` at `d+1` and
-calls `eval_realises` to realise the quoted body.
+/-- **quoteClosure-realisation**: when `quoteClosure fuel d cl`
+succeeds with result `body'`, and the closure's env is realised
+by `ρe'` via `RList`, and the closure body is closed at
+`ρe'.length + 1`, then `body'` is equivalent at depth `d+1` to
+`cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))`.
+
+This is the consolidated sorry factored out from R_quote_equiv's
+.lam/.iota/.fix closure cases (now proven modulo this helper).
+Closing this single sorry discharges all three closure cases of
+R_quote_equiv in one go.
+
+**Blocker**: body-level Equiv is the NbE fundamental correspondence
+on closures — body' = quote (d+1) (eval v_body), bodyE = substEnv
+cl.body. These are equivalent via eval_realises + R_quote_equiv at
+d+1 (mutual), but REnv at d+1 requires R_depth_lift on cl.env
+entries, circularly blocked on the recursive `Val.fullyQuotable`
+invariant (see DECISION-LOG). -/
+theorem quoteClosure_realises {d : Nat} {cl : Closure} {body' : Expr}
+    {m : Nat} {ρe' : List Expr}
+    (_hq : quoteClosure fuelω d cl = some body')
+    (_hRL : RList m d cl.env ρe')
+    (_hclb : cl.body.closedAt (ρe'.length + 1) = true) :
+    Equiv_c (d+1) body'
+      (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
+  sorry
+
+/-- Extract an `Equiv_c d`-witness between a `Val`'s quote and
+the source `Expr` it realises. For `.type`/`.neutral`, this is
+the base conjunct of `R` directly. For `.lam`/`.iota`/`.fix`,
+closure cases delegate to `quoteClosure_realises` (consolidated
+sorry; see that theorem's docstring).
 
 Defined BEFORE the `eval_realises`/`vapp_realises` mutual so
-`vapp_realises`'s `.stuckRec` branches can reference it in
-the `R_neutral_app`-derived `Equiv ve ae` witness
-construction. The closure cases below are sorried: closing
-them requires either (a) merging all four theorems into one
-giant mutual with a lex `(sizeOf v, quote-fuel, eval-fuel)`
-termination measure, or (b) adding a closedness side
-condition that lets `Equiv.subst_resp_closed` discharge the
-inner substitutions.
+`vapp_realises`'s `.stuckRec` branches can reference it in the
+`R_neutral_app`-derived witness construction.
 
 All callers in the current codebase:
 - `Soundness.lean:eval_quote_equiv_closed` (closed context).
 - `SoundnessProof.lean:OpenCtx.eq` (open context).
-- `SoundnessProof.lean:vapp_realises` stuckRec branches
-  (4 call sites, indirectly via `R_neutral_app`-style
-  decomposition).
-
-The four `vapp_realises` call sites transitively depend on
-the closure-case sorries only when the stuck argument is a
-closure (which arises in e.g. `vapp (.iota _) (.lam _ _)` at
-`unf=0`). -/
+- `SoundnessProof.lean:vapp_realises` stuckRec branches. -/
 theorem R_quote_equiv {n d v e}
     (hn : 0 < n) (h : R n d v e)
     {e' : Expr} (hq : quote fuelω d v = some e') :
@@ -3027,9 +3036,6 @@ theorem R_quote_equiv {n d v e}
           unfold R at h
           exact h e' hq
       | lam dV cl =>
-          -- Unfold quote: e' = .lam dom' body' with
-          --   quote (fuelω-1) d dV = some dom' and
-          --   quoteClosure (fuelω-1) d cl = some body'.
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq
           unfold quote at hq
@@ -3037,23 +3043,28 @@ theorem R_quote_equiv {n d v e}
                      Option.some.injEq] at hq
           obtain ⟨dom', hdom', body', hbody', heq'⟩ := hq
           subst heq'
-          -- Unfold R: ∃ ρe' dome, R (m+1) d dV dome ∧
-          --   RList (m+1) d cl.env ρe' ∧ closed ∧
-          --   Equiv e (.lam dome bodyE).
           unfold R at h
           obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
-          -- Lift dV's quote to fuelω.
           have hdom'_ω : quote fuelω d dV = some dom' :=
             quote_fuel_mono (by omega) hdom'
-          -- Recursive call on dV (smaller sizeOf).
+          have hbody'_ω : quoteClosure fuelω d cl = some body' :=
+            quoteClosure_fuel_mono (by omega) hbody'
           have hEd : Equiv_c d dom' dome :=
             R_quote_equiv (Nat.succ_pos _) hRd hdom'_ω
-          -- The body case requires `Equiv body' bodyE` where
-          --   bodyE = cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)).
-          -- body' comes from quoteClosure's inner eval + quote.
-          -- Proving this needs `quoteClosure_realises` in a mutual
-          -- with R_quote_equiv (blocked — see DECISION-LOG 2026-04-21).
-          sorry
+          have hEb : Equiv_c (d+1) body'
+              (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
+            quoteClosure_realises hbody'_ω hRL hclb
+          -- Goal: Equiv_c d (.lam dom' body') e. Chain via lam_cong + heqL.
+          have step1 : Equiv_c d (.lam dom' body')
+              (.lam dome (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) :=
+            Equiv_c.lam_cong hEd hEb
+          have step2 : Equiv_c d
+              (.lam dome (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) e :=
+            Equiv_c.symm heqL
+          intro S Γe hd
+          obtain ⟨h12, h21⟩ := step1 hd
+          obtain ⟨h34, h43⟩ := step2 hd
+          exact ⟨.trans h12 h34, .trans h43 h21⟩
       | iota aV cl =>
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq
@@ -3066,9 +3077,23 @@ theorem R_quote_equiv {n d v e}
           obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
           have hann'_ω : quote fuelω d aV = some ann' :=
             quote_fuel_mono (by omega) hann'
+          have hbody'_ω : quoteClosure fuelω d cl = some body' :=
+            quoteClosure_fuel_mono (by omega) hbody'
           have hEa : Equiv_c d ann' anne :=
             R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
-          sorry
+          have hEb : Equiv_c (d+1) body'
+              (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
+            quoteClosure_realises hbody'_ω hRL hclb
+          have step1 : Equiv_c d (.iota ann' body')
+              (.iota anne (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) :=
+            Equiv_c.iota_cong hEa hEb
+          have step2 : Equiv_c d
+              (.iota anne (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) e :=
+            Equiv_c.symm heqI
+          intro S Γe hd
+          obtain ⟨h12, h21⟩ := step1 hd
+          obtain ⟨h34, h43⟩ := step2 hd
+          exact ⟨.trans h12 h34, .trans h43 h21⟩
       | «fix» aV cl =>
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq
@@ -3081,9 +3106,23 @@ theorem R_quote_equiv {n d v e}
           obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
           have hann'_ω : quote fuelω d aV = some ann' :=
             quote_fuel_mono (by omega) hann'
+          have hbody'_ω : quoteClosure fuelω d cl = some body' :=
+            quoteClosure_fuel_mono (by omega) hbody'
           have hEa : Equiv_c d ann' anne :=
             R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
-          sorry
+          have hEb : Equiv_c (d+1) body'
+              (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
+            quoteClosure_realises hbody'_ω hRL hclb
+          have step1 : Equiv_c d (.fix ann' body')
+              (.fix anne (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) :=
+            Equiv_c.fix_cong hEa hEb
+          have step2 : Equiv_c d
+              (.fix anne (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) e :=
+            Equiv_c.symm heqF
+          intro S Γe hd
+          obtain ⟨h12, h21⟩ := step1 hd
+          obtain ⟨h34, h43⟩ := step2 hd
+          exact ⟨.trans h12 h34, .trans h43 h21⟩
 
 /-- Quote of `.neutral (.stuckRec vf va)` decomposes as
 `.app (quote vf) (quote va)` (after fuel-mono lifting). -/
