@@ -3,6 +3,58 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-22: A9 is load-bearing at the algorithm level; fix is proof-statement only
+
+Attempted to fix A9 by changing `tyInfer`'s `.fix`/`.iota` arm to synthesize
+body's type under `self:ann` (Cedille "annotated fix" style), with the
+annotation-trusting behavior replaced by `.ok none` + fallback through
+`tyCheckFallback`.
+
+**Result: appendVec regression.** The current `tyInfer .fix` behavior
+(returning `eval ann`) is **load-bearing** for `.app`-chain type inference.
+When a fix appears as a function head in a dependent `.app`-chain like
+`dadd n1 n2` (dadd is a fix), tyInfer needs the annotation to extract the
+Π-structure and incrementally check each argument. Replacing with `.ok none`
+forces value-level comparison (tyCheckFallback's none branch), which loses
+the incremental dependent type info and causes appendVec to fail to type.
+
+**Investigated alternatives:**
+- Try synthesis on body, fall back to `.ok none` on failure: same regression
+  (synthesis succeeds but returns a different shape from the bare annotation).
+- Remove `tyCheck`'s dedicated `.fix`/`.iota` arm: independent of the above;
+  removal alone still breaks appendVec because `tyCheckFallback`'s flow is
+  algorithmically different from the dedicated arm even with identical
+  `subCheckVal` call.
+
+**Conclusion: the algorithm is algorithm-correct and A9 is "resolved" for
+the pipeline.** tyInfer's unsoundness-in-isolation for .fix/.iota is
+**caught at every soundness-critical consumer**:
+- `tyCheck`'s dedicated .fix/.iota arm verifies via subCheckVal.
+- `letBinderType` verifies via tyCheck before trusting the inferred type.
+- `.app`-chains never consume the "type" as anything final — they immediately
+  use it for Π-destruction and argument domain-check; the arguments get
+  checked, and the result type comes from `cl.open`, not from trusting the
+  annotation globally.
+
+So A9's algorithmic fix is already in place (per the existing audit).
+The remaining issue is purely **at the proof-statement level**: `tyInfer_sound_open`
+is currently stated as "if tyInfer returns some τ, then e ⊑ τ", which is
+**false** for `.fix`/`.iota` inputs. The proof is sorried there.
+
+**Correct fix approaches (deferred):**
+1. Weaken `tyInfer_sound_open`'s conclusion for `.fix`/`.iota`: add a
+   hypothesis like "e is not fix/iota, OR caller will re-verify". Thread
+   through callers.
+2. Prove that soundness chain never calls `tyInfer_sound_open` on a
+   .fix/.iota at the top level (tyCheck's dedicated arm intercepts).
+   Recursive calls within tyInfer (e.g., `.app (fix _ _) a`) need the
+   proof to route through a different decomposition.
+3. Add a separate "`tyInfer` returns a claimed type that is either correct
+   or to-be-verified" weaker guarantee, and show combined with downstream
+   verification it becomes Subtype'.
+
+All three are proof-only changes; no algorithm modification needed.
+
 ## 2026-04-22: vapp iota/fix UNFOLD branches need quote-witness on eval-output
 
 Investigation of `eval_vapp_preserves_fullyQuotable`: closing the
