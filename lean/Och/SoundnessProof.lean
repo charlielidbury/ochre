@@ -2508,13 +2508,22 @@ theorem R_depth_lift {n d v e}
         obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
         exact ⟨hab, hba⟩
     | lam dV cl =>
-        -- Env-exposes case: requires mutual structural recursion + substEnv-shift
-        -- commutation. Deferred — see DECISION-LOG 2026-04-21.
+        -- Env-exposes case. Structure:
+        -- 1. Extract ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ from h.
+        -- 2. From hq's unfolding, get quote of dV at d.
+        -- 3. Recurse R_depth_lift on dV (smaller sizeOf).
+        -- 4. RList_depth_lift on cl.env → ρe'.map shift at d+1.
+        --    (Requires hquotes for cl.env entries — not directly
+        --    available; blocks this case.)
+        -- 5. Equiv_c.shift on heqL, use substEnv_shift_comm to
+        --    match the target form.
+        -- Blocker: step 4 needs cl.env entry quote witnesses.
+        -- Add a `hquotes_env` parameter to R_depth_lift or prove
+        -- a lemma that RList preserves under depth lift without
+        -- requiring per-entry quotes (hard).
         sorry
-    | iota aV cl =>
-        sorry
-    | «fix» aV cl =>
-        sorry
+    | iota aV cl => sorry
+    | «fix» aV cl => sorry
 
 /-- Pointwise depth-lift of `RList`. -/
 theorem RList_depth_lift {n d ρ ρe}
