@@ -3578,12 +3578,22 @@ This is the consolidated sorry factored out from R_quote_equiv's
 Closing this single sorry discharges all three closure cases of
 R_quote_equiv in one go.
 
-**Blocker**: body-level Equiv is the NbE fundamental correspondence
-on closures — body' = quote (d+1) (eval v_body), bodyE = substEnv
-cl.body. These are equivalent via eval_realises + R_quote_equiv at
-d+1 (mutual), but REnv at d+1 requires R_depth_lift on cl.env
-entries, circularly blocked on the recursive `Val.fullyQuotable`
-invariant (see DECISION-LOG). -/
+**2026-04-22 progress**: signature now takes `hlvl : envLevelsBelow d
+cl.env` + `hfq : envFullyQuotable d cl.env` (both derived by
+R_quote_equiv's callers from R's refactored closure clause).
+
+**Proof sketch now unblocked at the invariant level**:
+1. Unpack quoteClosure: ∃ v, eval fuelω 1 (bv :: cl.env) cl.body = some v
+   ∧ quote fuelω (d+1) v = some body'.
+2. Build REnv m (d+1) (bv :: cl.env) (.bvar 0 :: ρe'.map shift) via
+   RList_depth_lift hlvl hfq hRL + R_fresh_bvar0.
+3. Apply eval_realises: R m (d+1) v (cl.body.substEnv ...).
+4. Apply R_quote_equiv at step m on v: Equiv_c (d+1) body' ... ∎
+
+**Still blocking**: forward-ref — quoteClosure_realises is declared
+BEFORE eval_realises/R_quote_equiv. Closing this requires moving them
+into a single mutual block with proper lex termination (step, fuel,
+Val size). Deferred. -/
 theorem quoteClosure_realises {d : Nat} {cl : Closure} {body' : Expr}
     {m : Nat} {ρe' : List Expr}
     (_hq : quoteClosure fuelω d cl = some body')
