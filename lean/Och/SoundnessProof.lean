@@ -897,6 +897,7 @@ provability of shift without any closedness side condition.
 terms) no information is lost. For internal uses (R's closure
 clauses at depth `d ≥ 1`), `Equiv_c d` is enough because
 all downstream consumers use it at a `Γe` of length `d`. -/
+@[reducible]
 def Equiv_c (d : Nat) (e₁ e₂ : Expr) : Prop :=
   ∀ {S : Seen} {Γe : Ctx}, d ≤ Γe.length →
     Subtype' S Γe e₁ e₂ ∧ Subtype' S Γe e₂ e₁
@@ -2338,26 +2339,66 @@ theorem quote_depth_shift {d v e}
 mutual
 
 /-- **Depth-lift of R** with `Val.levelsBelow d v` side
-condition.
+condition. After the R/Equiv_c refactor (commit b5f0fd8), R's
+clauses carry `Equiv_c d`, which admits a `shift` to `Equiv_c (d+1)`
+without any closedness assumption.
 
-For `.type` and `.neutral`, the base conjunct `Equiv e' e → Equiv e'.shift e.shift`
-requires `Equiv.shift` which is not unconditionally provable
-(deleted 2026-04-21). Remains sorry for those cases.
-
-For `.lam`/`.iota`/`.fix`, the env-exposes structure lifts
-cleanly: the head `R` on the annotation recurses via sizeOf,
-the `RList` on the env recurses via `RList_depth_lift`, and the
-final `Equiv e (.lam dome bodysub)` is lifted via `Equiv.shift`
-on `e` and `.lam`'s shift distributing through the body
-substitution (same obstacle as base).
-
-Since both code paths need `Equiv.shift`, leave fully sorry. -/
+Cases:
+- `.type`/`.neutral`: base conjunct `∀ qe' hq', Equiv_c d qe' e`.
+  At d+1, quote produces `qe'.shift 1 0` via `quote_depth_shift`,
+  and `Equiv_c.shift` lifts `Equiv_c d qe' e` to
+  `Equiv_c (d+1) (qe'.shift 1 0) (e.shift 1 0)`.
+- `.lam`/`.iota`/`.fix`: env-exposes existentials lift via recursion
+  on the head `R` (smaller `sizeOf v`), `RList_depth_lift` for the
+  body env, and `Equiv_c.shift` for the final conjunct — modulo
+  a substEnv-shift commutation lemma to match the target shape
+  (currently still sorry for closure cases; see helper below). -/
 theorem R_depth_lift {n d v e}
     {qe : Expr} (hlvl : Val.levelsBelow d v)
     (hq : quote fuelω d v = some qe)
     (h : R n d v e) :
     R n (d + 1) v (e.shift 1 0) := by
-  sorry
+  match n, h with
+  | 0, _ => unfold R; trivial
+  | k+1, h =>
+    cases hv : v with
+    | type =>
+        subst hv
+        unfold R at h ⊢
+        intro qe'' hq''
+        have hqt : quote fuelω (d+1) .type = some .type := by
+          have hf : fuelω = (fuelω - 1) + 1 := rfl
+          rw [hf]; unfold quote; rfl
+        have hqd : quote fuelω d .type = some .type := by
+          have hf : fuelω = (fuelω - 1) + 1 := rfl
+          rw [hf]; unfold quote; rfl
+        rw [hqt] at hq''
+        cases hq''
+        have h' : Equiv_c d .type e := h .type hqd
+        intro S Γe hd
+        obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
+        exact ⟨hab, hba⟩
+    | neutral nN =>
+        subst hv
+        unfold R at h ⊢
+        intro qe'' hq''
+        have hshifted := quote_depth_shift_of_levelsBelow hlvl hq
+        have heq : qe'' = qe.shift 1 0 := by
+          rw [hshifted] at hq''
+          exact Option.some.inj hq''.symm
+        subst heq
+        have h' : Equiv_c d qe e := h qe hq
+        intro S Γe hd
+        obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
+        exact ⟨hab, hba⟩
+    | lam dV cl =>
+        -- Env-exposes case: requires mutual structural recursion + substEnv-shift
+        -- commutation. Deferred — see DECISION-LOG 2026-04-21.
+        sorry
+    | iota aV cl =>
+        sorry
+    | «fix» aV cl =>
+        sorry
 
 /-- Pointwise depth-lift of `RList`. -/
 theorem RList_depth_lift {n d ρ ρe}
