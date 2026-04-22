@@ -51,6 +51,39 @@ All three root obligations solved at the definition level (DECISION-LOG
 **downstream applications** — no further definition
 changes needed.
 
+### Tier 0 — R-clause refactor for quoteClosure_realises (large, ~2-3 hrs)
+
+Add `envLevelsBelow d cl.env` + `envFullyQuotable d cl.env` to R's
+.lam/.iota/.fix clauses so `quoteClosure_realises` can supply them to
+`RList_depth_lift` + `eval_realises` at depth d+1.
+
+**Prep done (2026-04-22, commit ea5409b):** Val.levelsBelow +
+Val.fullyQuotable defs moved before R.
+
+**Remaining work:**
+1. Move `Val.fullyQuotable_mono` + `Closure.envFullyQuotable_mono` +
+   their transitive deps (`quote_depth_shift_n`,
+   `Val.levelsBelow_of_fullyQuotable`) before R_depth_lift's mutual
+   block (currently at line 2862). These are all currently after
+   R_depth_lift and create a forward-ref cascade. Alternatively, inline
+   mono via local helper.
+2. Add the two conjuncts to R's closure clauses.
+3. Update 18 destructuring sites (search `obtain ⟨ρe',.*hclb`).
+4. Update 5 construction sites (R_mono, R_resp_Equiv, R_resp_Equiv_c,
+   R_depth_lift .lam/.iota/.fix, eval_realises .lam/.iota/.fix).
+5. Strengthen `quoteClosure_realises` signature to take the 2 new
+   hypotheses.
+6. Prove `quoteClosure_realises` via eval_realises at d+1 + R_quote_equiv
+   at d+1. **Termination concern**: R_quote_equiv currently uses
+   structural recursion on Val; may need to restructure to
+   well-founded induction on step-index so the mutual call at d+1 on
+   eval-output `v` (not structural sub-Val) terminates.
+
+Closing this unblocks quoteClosure_realises (1 of 3 declaration
+sorries), and likely enables closing the remaining sorries in
+`eval_vapp_preserves_fullyQuotable` (the vapp iota/fix unfold case
+needs the same machinery).
+
 ### Tier 1 — direct closures (engineering, ~30 min each)
 
 - `R_mono.decreasing_by`: lift `v` to a top-level
