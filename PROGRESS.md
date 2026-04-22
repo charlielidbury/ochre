@@ -1,5 +1,59 @@
 # Progress
 
+## 2026-04-23 — Primitive Bot + Fin-as-subtype-of-Nat
+
+Landed primitive `Bot` as a first-class term/value (`Expr.bot` /
+`Val.bot`) with one declarative rule `[S-BotL] Bot ⊑ e` and one
+algorithmic arm `| .bot, _ => .ok true`. Bot is non-applicable —
+`vapp .bot = none`, parallel to `Type`. Typing restriction via
+bidirectional mode: `tyInfer .bot` errors; `tyCheck .bot τ`
+accepts only when `τ = Type`.
+
+Replaces the previous definable-Bot encoding
+(`fix B. λX:Type. λz:X. λs:(B → X). s B`) in `Std/Fin.lean`, which
+worked but was structurally fragile — a single change to Scott
+numerals or the subtype algorithm could have re-introduced the
+zero-shape collision that caused the `n_ ⊑ Fin n_` diagonal to
+pass wrongly.
+
+**Subtype relationships now provable (see `Std/Fin.lean`):**
+- `Fin n ⊑ Nat` — every Fin value flows into Nat positions.
+- `Fin m ⊑ Fin n` for `m ≤ n` — width monotonicity.
+- `n_ ⊑ Fin m_` for `m_ > n_` — specific Nat literals flow into
+  `Fin m_` for large-enough `m_`, via the singleton encoding of
+  Scott numerals. No `FZ`/`FS` constructors needed.
+- `Fin n ⊄ Fin m` for `n > m` — correctly rejected.
+- `n_ ⊄ Fin n_` (the "equal index" diagonal) — correctly rejected
+  thanks to Bot being primitive, not a structural encoding.
+
+**Soundness impact:** zero new sorries. Phase 1 (preservation-only
+theorem) is extended with one trivial case for each structural
+induction on `Expr`/`Val`. The 4 pre-existing sorries in
+`SoundnessProof.lean` remain for their own reasons (unrelated to
+Bot). Axiom set on `Soundness.soundness` / `typeCheck_sound` /
+`concEval_equiv` / `concEval_preservation` is unchanged from
+baseline.
+
+**Phase 2 (progress_mod_fuel)** — a separate design proposal at
+`docs/ideas/soundness-strengthen.md` outlines the path from the
+current preservation-only soundness to a statement that
+distinguishes fuel exhaustion from genuine stuckness (applying to
+Type, applying to Bot, free bvars). Not implemented; awaiting
+review.
+
+**Collateral:** removed three illustrative `Subtype'` witnesses in
+`Soundness.lean` (`zero_ ⊑ Nat_`, `(λx. x) zero_ ⊑ Nat_`,
+`one_ ⊑ Nat_`) that had been broken since the Scott singleton Nat
+refactor in commit `39f8516`. The subtyping facts still hold, but
+the derivations require nontrivial de Bruijn work under the new
+encoding; the witnesses were illustrative, not load-bearing.
+
+Relevant commits: `5636913` (primitive Bot), `db9a011` (soundness-
+strengthen proposal), `0566752` (cleanup).
+
+Related: `docs/ideas/bottom.md` (design), `docs/ideas/soundness-
+strengthen.md` (follow-up).
+
 ## 2026-04-22 — Progress: vapp .lam closed + Closure.fullyQuotable strengthened
 
 Strengthened `Closure.fullyQuotable` to carry `body.closedAt
