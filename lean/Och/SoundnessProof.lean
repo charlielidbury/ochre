@@ -2476,7 +2476,23 @@ theorem eval_vapp_preserves_fullyQuotable :
           exact ihe h hρ hcl.1
     · intro unf d f a v h hf ha hqf hqa
       -- vapp cases
-      sorry
+      unfold vapp at h
+      cases hfeq : f with
+      | neutral nf =>
+          subst hfeq
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.fullyQuotable Neutral.fullyQuotable
+          exact ⟨hf, ha⟩
+      | type =>
+          subst hfeq
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.fullyQuotable Neutral.fullyQuotable
+          exact ⟨hf, ha⟩
+      | lam dom cl => sorry
+      | iota ann cl => sorry
+      | fix ann cl => sorry
 
 /-- Specialisation for push_let: given hρ's envFullyQuotable, eval
 preserves fullyQuotable on val result. -/
