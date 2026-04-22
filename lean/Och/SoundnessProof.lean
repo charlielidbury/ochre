@@ -3823,7 +3823,14 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           have henv_ext := REnv_cons henv' hRa
           have hclb' : lbody.closedAt (ae :: ρe').length = true := by
             simpa using hclb
-          have hRr := eval_realises hvapp henv_ext hclb'
+          have henvLvl_ext : Closure.envLevelsBelow d (va :: lenv) := by
+            refine ⟨?_, _hlvl_cl_env⟩
+            sorry -- need Val.levelsBelow d va; add as vapp_realises hyp
+          have henvFq_ext : Closure.envFullyQuotable d (va :: lenv) := by
+            refine ⟨⟨?_, ?_⟩, _hfq_cl_env⟩
+            · sorry -- Val.fullyQuotable d va
+            · sorry -- ∃ qa, quote fuelω d va = some qa
+          have hRr := eval_realises hvapp henv_ext henvLvl_ext henvFq_ext hclb'
           -- hRr : R (k+1) d r (lbody.substEnv (ae :: ρe'))
           refine R_resp_Equiv_c ?_ hRr
           have hcomp :
@@ -3870,9 +3877,18 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             have henv_ext := REnv_cons henv' hRf''
             have hclb' : lbody.closedAt (fe :: ρe').length = true := by
               simpa using hclb
+            have henvLvl_ext :
+                Closure.envLevelsBelow d (Val.iota annV ⟨lbody, lenv⟩ :: lenv) := by
+              refine ⟨?_, _hlvl_cl_env⟩
+              sorry -- Val.levelsBelow d (.iota annV …); add as hyp
+            have henvFq_ext :
+                Closure.envFullyQuotable d (Val.iota annV ⟨lbody, lenv⟩ :: lenv) := by
+              refine ⟨⟨?_, ?_⟩, _hfq_cl_env⟩
+              · sorry -- Val.fullyQuotable d (.iota annV …)
+              · sorry -- ∃ qf, quote fuelω d (.iota annV …) = some qf
             -- eval_realises on the unfold's body eval (mutual,
             -- fuel < fuel+1).
-            have hRf3 := eval_realises hf' henv_ext hclb'
+            have hRf3 := eval_realises hf' henv_ext henvLvl_ext henvFq_ext hclb'
             -- hRf3 : R (k+1) d f' (lbody.substEnv (fe :: ρe'))
             -- Rewrite via hcomp, then `R_resp_Equiv` with the
             -- iota-unfold Equiv chain:
@@ -3931,7 +3947,16 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             have henv_ext := REnv_cons henv' hRf''
             have hclb' : lbody.closedAt (fe :: ρe').length = true := by
               simpa using hclb
-            have hRf3 := eval_realises hf' henv_ext hclb'
+            have henvLvl_ext :
+                Closure.envLevelsBelow d (Val.«fix» annV ⟨lbody, lenv⟩ :: lenv) := by
+              refine ⟨?_, _hlvl_cl_env⟩
+              sorry
+            have henvFq_ext :
+                Closure.envFullyQuotable d (Val.«fix» annV ⟨lbody, lenv⟩ :: lenv) := by
+              refine ⟨⟨?_, ?_⟩, _hfq_cl_env⟩
+              · sorry
+              · sorry
+            have hRf3 := eval_realises hf' henv_ext henvLvl_ext henvFq_ext hclb'
             have hcomp :
                 Expr.subst (lbody.substEnv
                     (.bvar 0 :: ρe'.map (·.shift 1 0))) 0 fe
@@ -3978,6 +4003,8 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
     (heval : eval fuel unf ρ body = some v)
     {m d : Nat} {ρe : List Expr}
     (henv : REnv m d ρ ρe)
+    (henvLvl : Closure.envLevelsBelow d ρ)
+    (henvFq : Closure.envFullyQuotable d ρ)
     (hcl : body.closedAt ρe.length = true) :
     R m d v (body.substEnv ρe) := by
   -- Mutual with `vapp_realises` on `fuel`. The step-index
@@ -3997,9 +4024,11 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
       have ihf' : ∀ {unf' ρ' body' v' d' ρe'},
           eval fuel unf' ρ' body' = some v' →
           REnv (k+1) d' ρ' ρe' →
+          Closure.envLevelsBelow d' ρ' →
+          Closure.envFullyQuotable d' ρ' →
           body'.closedAt ρe'.length = true →
           R (k+1) d' v' (body'.substEnv ρe') :=
-        fun he hr hc => eval_realises he hr hc
+        fun he hr hl hf hc => eval_realises he hr hl hf hc
       cases body with
       | type =>
           -- eval .type → .type; substEnv .type = .type.
@@ -4035,7 +4064,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           -- pre-A8 `eval ty` arm).
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold eval at heval; simp only [] at heval
-          have hRt := ihf' heval henv hcl.1
+          have hRt := ihf' heval henv henvLvl henvFq hcl.1
           unfold Expr.substEnv
           -- Goal: R (k+1) d v (.asc te tye); have R (k+1) d v te.
           -- `te ≡ .asc te tye` by `.asc_R`/`.asc_L (refl)`.
@@ -4049,12 +4078,19 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
           obtain ⟨vV, hvV, hbody⟩ := heval
           -- IH_fuel on val: R (k+1) d vV (val.substEnv ρe).
-          have hRvV := ihf' hvV henv hcl.1
+          have hRvV := ihf' hvV henv henvLvl henvFq hcl.1
           -- Extended env realises (val.substEnv ρe :: ρe).
           have henv' := REnv_cons henv hRvV
           -- IH_fuel on bExpr at the extended env:
           --   R (k+1) d v (bExpr.substEnv (val.substEnv ρe :: ρe)).
-          have hRbody := ihf' hbody henv' (by simpa using hcl.2)
+          have henvLvl' : Closure.envLevelsBelow d (vV :: ρ) := by
+            refine ⟨?_, henvLvl⟩
+            exact eval_levelsBelow hvV henvLvl
+          have henvFq' : Closure.envFullyQuotable d (vV :: ρ) := by
+            -- Need fullyQuotable + quote on vV; same core blocker as
+            -- eval_vapp_preserves_fullyQuotable's eval .letE case.
+            sorry
+          have hRbody := ihf' hbody henv' henvLvl' henvFq' (by simpa using hcl.2)
           -- substEnv .letE = .letE (val.substEnv ρe)
           --   (bExpr.substEnv (lift ρe)). And by
           -- substEnv_subst_comp, `(bExpr.substEnv (lift ρe))
@@ -4104,16 +4140,14 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           -- `ihf' hdomV henv hcl.1`. `Equiv` is `refl` after
           -- `substEnv_closedAt_irrel`.
           simp only [Closure.mk']
-          have hRdom := ihf' hdomV henv hcl.1
+          have hRdom := ihf' hdomV henv henvLvl henvFq hcl.1
           obtain ⟨hRL, hclb', hbody_eq⟩ :=
             closure_clause_witness henv hcl.2
           refine ⟨ρe.take (bvarBound bExpr - 1), dom.substEnv ρe,
-                  hRdom, hRL, hclb', ?_, ?_,
+                  hRdom, hRL, hclb',
+                  Closure.envLevelsBelow_take henvLvl _,
+                  Closure.envFullyQuotable_take henvFq _,
                   hbody_eq ▸ Equiv_c.refl _ _⟩
-          · -- envLevelsBelow d (ρ.take j): need envLvl on ρ in scope
-            sorry
-          · -- envFullyQuotable d (ρ.take j): same
-            sorry
       | app f a =>
           -- eval (fuel+1) ρ (.app f a) = vapp fuel
           --   (eval fuel f) (eval fuel a). Delegate to
@@ -4122,8 +4156,8 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           unfold eval at heval
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
           obtain ⟨fV, hfV, aV, haV, hvapp⟩ := heval
-          have hRfV := ihf' hfV henv hcl.1
-          have hRaV := ihf' haV henv hcl.2
+          have hRfV := ihf' hfV henv henvLvl henvFq hcl.1
+          have hRaV := ihf' haV henv henvLvl henvFq hcl.2
           show R (k+1) d v
             (.app (f.substEnv ρe) (a.substEnv ρe))
           exact vapp_realises hvapp hRfV hRaV
@@ -4149,14 +4183,14 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           unfold R
           -- Env-exposes clause (same shape as `.lam`).
           simp only [cl, Closure.mk']
-          have hRann := ihf' hann henv hcl.1
+          have hRann := ihf' hann henv henvLvl henvFq hcl.1
           obtain ⟨hRL, hclb', hbody_eq⟩ :=
             closure_clause_witness henv hcl.2
           refine ⟨ρe.take (bvarBound bExpr - 1), anne,
-                  hRann, hRL, hclb', ?_, ?_,
+                  hRann, hRL, hclb',
+                  Closure.envLevelsBelow_take henvLvl _,
+                  Closure.envFullyQuotable_take henvFq _,
                   by rw [hbody_eq]; exact Equiv_c.refl _ _⟩
-          · sorry
-          · sorry
       | fix ann bExpr =>
           -- Identical structure to .iota above.
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
@@ -4177,14 +4211,14 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           rw [hsubst]
           unfold R
           simp only [cl, Closure.mk']
-          have hRann := ihf' hann henv hcl.1
+          have hRann := ihf' hann henv henvLvl henvFq hcl.1
           obtain ⟨hRL, hclb', hbody_eq⟩ :=
             closure_clause_witness henv hcl.2
           refine ⟨ρe.take (bvarBound bExpr - 1), anne,
-                  hRann, hRL, hclb', ?_, ?_,
+                  hRann, hRL, hclb',
+                  Closure.envLevelsBelow_take henvLvl _,
+                  Closure.envFullyQuotable_take henvFq _,
                   by rw [hbody_eq]; exact Equiv_c.refl _ _⟩
-          · sorry
-          · sorry
 termination_by fuel
 end
 
@@ -4627,8 +4661,16 @@ theorem OpenCtx.eq {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {e'} (hq : quote fuelω Γ.size v = some e') :
     Subtype' [] Γe e' (e.substEnv ρe) ∧
     Subtype' [] Γe (e.substEnv ρe) e' := by
+  have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
+    Closure.envLevelsBelow_of_getElem? (fun k v hk =>
+      hctx.hρlvl k v (by rw [List.get?_eq_getElem?] at hk; exact hk))
+  have henvFq : Closure.envFullyQuotable Γ.size ρ :=
+    Closure.envFullyQuotable_of_getElem?
+      (fun k v hk => hctx.hρq k v hk)
+      (fun k v hk => hctx.hρfq k v hk)
   have heq : Equiv_c Γ.size e' (e.substEnv ρe) :=
-    R_quote_equiv Nat.one_pos (eval_realises heval hctx.henv hcl) hq
+    R_quote_equiv Nat.one_pos
+      (eval_realises heval hctx.henv henvLvl henvFq hcl) hq
   exact heq (Nat.le_of_eq hctx.hΓ.1)
 
 /-- The empty context is trivially open. `ρe = []`. -/
@@ -4961,20 +5003,18 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simp only [Array.size_push]
         exact Val.fullyQuotable_mono (Nat.le_succ _) v (hctx.hρfq m v hk)
   henv := by
-    have hRval := eval_realises hev hctx.henv hclv
-    obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
-    -- Derive levelsBelow Γ.size for valV (for R_depth_lift):
     have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
       Closure.envLevelsBelow_of_getElem? (fun k v hk =>
         hctx.hρlvl k v (by rw [List.get?_eq_getElem?] at hk; exact hk))
-    have hevω := eval_fuel_mono hfuel hev
-    have hvlvl : Val.levelsBelow Γ.size valV :=
-      eval_levelsBelow hevω henvLvl
-    -- fullyQuotable on valV via eval_preserves_fullyQuotable.
     have hρenv : Closure.envFullyQuotable Γ.size ρ :=
       Closure.envFullyQuotable_of_getElem?
         (fun k v hk => hctx.hρq k v hk)
         (fun k v hk => hctx.hρfq k v hk)
+    have hRval := eval_realises hev hctx.henv henvLvl hρenv hclv
+    obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
+    have hevω := eval_fuel_mono hfuel hev
+    have hvlvl : Val.levelsBelow Γ.size valV :=
+      eval_levelsBelow hevω henvLvl
     have hlen_eq : ρ.length = ρe.length := hctx.henv.1
     have hclv' : val.closedAt ρ.length = true := hlen_eq ▸ hclv
     have hvfq : Val.fullyQuotable Γ.size valV :=

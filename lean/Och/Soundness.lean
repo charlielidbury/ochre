@@ -88,8 +88,12 @@ theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
     {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := by
   have henv : REnv 1 0 [] [] :=
     ⟨rfl, fun _ _ hk => by simp at hk⟩
+  have henvLvl : Closure.envLevelsBelow 0 [] := by
+    unfold Closure.envLevelsBelow; trivial
+  have henvFq : Closure.envFullyQuotable 0 [] := by
+    unfold Closure.envFullyQuotable; trivial
   have hr : R 1 0 v (e.substEnv []) :=
-    eval_realises heval henv (by simpa using hcl)
+    eval_realises heval henv henvLvl henvFq (by simpa using hcl)
   rw [Expr.substEnv_nil] at hr
   -- R_quote_equiv returns Equiv_c 0; coerce to Equiv via to_Equiv_zero.
   exact Equiv_c.to_Equiv_zero (R_quote_equiv Nat.one_pos hr hq)
