@@ -3,6 +3,48 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-23: Autonomy mode — no yielding, track decisions retrospectively
+
+User directive: "never yield for judgement" while they're AFK. Pick something
+and try. Each autonomous decision point should be noted here so they can
+review and roll back retrospectively.
+
+Also decided: finish the preservation-only soundness proof first (close 4
+sorries in SoundnessProof.lean) before touching concEval's return type for
+progress_mod_fuel (Phase 2). User explicitly chose Option 1 from the two
+alternatives:
+  - Option 1: finish weak proof, then strengthen. Chosen for a shippable
+    intermediate artifact and a known-good refactor baseline.
+  - Option 2: strengthen first, then prove. Bundles two hard things.
+
+Decision log for autonomous work in this session is at
+`docs/ideas/autonomous-log.md` (running stream; consult for details).
+
+## 2026-04-23: Primitive Bot replaces definable-Bot in Std.Fin
+
+Context: the definable `Bot = fix B. λX:Type. λz:X. λs:(B → X). s B` in
+Std.Fin worked but was fragile — the `s B` body was hand-tuned to avoid
+structural collision with `zero_`, and any change to Scott numerals or the
+subtype algorithm could have re-introduced the collision.
+
+Decision: add primitive `Expr.bot` / `Val.bot` as first-class constructors,
+with one declarative rule `[S-BotL] Bot ⊑ e` and one algorithmic arm
+`| .bot, _ => .ok true`. Bot is non-applicable — `vapp .bot = none`,
+parallel to `Type`. Typing restriction via bidirectional mode:
+`tyInfer .bot` errors; `tyCheck .bot τ` accepts only when `τ = Type`.
+
+Rejected: "Bot absorbs" vapp rule (`.bot, _ => some .bot`). No mainstream
+language with subtyping has this — DOT, Rust `!`, Scala Nothing all
+ensure Bot is uninhabited at runtime rather than absorbing at elimination.
+The absorbing form hides stuckness inside a formally-valid value, which
+is wrong in spirit even when technically preservation-consistent.
+
+Phase 2 (progress_mod_fuel) split into a separate proposal at
+`docs/ideas/soundness-strengthen.md`.
+
+Implemented in commits `5636913` (primitive Bot), `0566752` (cleanup),
+`2b45724` (progress note), `21ed116` (sorry-closure plan).
+
 ## 2026-04-22: A9 is load-bearing at the algorithm level; fix is proof-statement only
 
 Attempted to fix A9 by changing `tyInfer`'s `.fix`/`.iota` arm to synthesize
