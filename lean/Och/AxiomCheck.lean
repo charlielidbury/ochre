@@ -14,3 +14,4 @@ import Och.Soundness
 #print axioms NbE.Equiv_c.shift
 #print axioms NbE.Equiv_c.trans
 #print axioms NbE.Equiv_c.of_Equiv
+#print axioms NbE.substEnv_shift_comm

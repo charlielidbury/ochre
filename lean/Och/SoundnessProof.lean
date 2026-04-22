@@ -1521,13 +1521,121 @@ theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     subst hpfx
     rw [List.getElem?_take, if_pos (by omega : m < j)]
 
--- **substEnv-shift commutation** (needed by R_depth_lift's closure
--- cases) is documented in DECISION-LOG 2026-04-21. Not yet proved.
--- Key observation: the specific form needed is:
---   (substEnv (.bvar 0 :: γ.map (·.shift 1 0)) body).shift 1 1
---   = substEnv (.bvar 0 :: (γ.map (·.shift 1 0)).map (·.shift 1 0)) body
--- This works because γ.map (·.shift 1 0) entries have no free bvar 0,
--- so shift 1 0 and shift 1 1 coincide on them.
+/-- **substEnv-shift commutation**:
+`(substEnv γ body).shift 1 c = substEnv (γ.map (·.shift 1 c)) body`
+when `body.closedAt γ.length = true`.
+
+Proof: structural induction on body. Binder cases (.lam/.iota/.fix/.letE)
+recurse at `c+1` with γ extended by `.bvar 0 :: γ.map (·.shift 1 0)`.
+The inductive step requires `shift_shift_comm_gen` to line up the
+env-shift forms through the binder transition. -/
+theorem substEnv_shift_comm : ∀ (body : Expr) (γ : List Expr) (c : Nat),
+    body.closedAt γ.length = true →
+    (Expr.substEnv γ body).shift 1 c
+      = Expr.substEnv (γ.map (·.shift 1 c)) body := by
+  intro body
+  induction body with
+  | bvar k =>
+    intro γ c hcl
+    simp only [Expr.closedAt, decide_eq_true_eq] at hcl
+    simp only [Expr.substEnv, List.length_map, hcl, ↓reduceIte]
+    rw [List.getElem!_eq_getElem?_getD, List.getElem!_eq_getElem?_getD,
+        List.getElem?_eq_getElem hcl,
+        List.getElem?_map, List.getElem?_eq_getElem hcl]
+    simp
+  | type =>
+    intro γ c _hcl
+    simp only [Expr.substEnv, Expr.shift]
+  | lam dom body ihD ihB =>
+    intro γ c hcl
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    have hcl_body : body.closedAt ((.bvar 0 :: γ.map (·.shift 1 0)).length) = true := by
+      simpa [List.length_map] using hcl.2
+    have hD := ihD γ c hcl.1
+    have hB := ihB (.bvar 0 :: γ.map (·.shift 1 0)) (c+1) hcl_body
+    simp only [Expr.substEnv, Expr.shift]
+    rw [hD, hB]
+    -- Goal now: .lam _ (substEnv LHS-env body) = .lam _ (substEnv RHS-env body).
+    congr 1
+    -- Goal: substEnv LHS-env body = substEnv RHS-env body.
+    congr 1
+    -- Goal: LHS-env = RHS-env where both are .bvar 0 :: ...
+    simp only [List.map_cons, Expr.shift, decide_eq_true_eq,
+               show (0 : Nat) < c + 1 from Nat.succ_pos _, ↓reduceIte]
+    rw [List.map_map, List.map_map]
+    -- Goal: .bvar 0 :: γ.map (f ∘ g) = .bvar 0 :: γ.map (g' ∘ f')
+    refine congrArg (List.cons (Expr.bvar 0)) ?_
+    apply List.map_congr_left
+    intro e _he
+    simp only [Function.comp]
+    exact Expr.shift_shift_comm_gen e 1 c 1
+  | app f a ihF ihA =>
+    intro γ c hcl
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv, Expr.shift]
+    rw [ihF γ c hcl.1, ihA γ c hcl.2]
+  | asc t ty ihT ihTy =>
+    intro γ c hcl
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    simp only [Expr.substEnv, Expr.shift]
+    rw [ihT γ c hcl.1, ihTy γ c hcl.2]
+  | iota ann body ihA ihB =>
+    intro γ c hcl
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    have hcl_body : body.closedAt ((.bvar 0 :: γ.map (·.shift 1 0)).length) = true := by
+      simpa [List.length_map] using hcl.2
+    have hA := ihA γ c hcl.1
+    have hB := ihB (.bvar 0 :: γ.map (·.shift 1 0)) (c+1) hcl_body
+    simp only [Expr.substEnv, Expr.shift]
+    rw [hA, hB]
+    congr 1
+    congr 1
+    simp only [List.map_cons, Expr.shift, decide_eq_true_eq,
+               show (0 : Nat) < c + 1 from Nat.succ_pos _, ↓reduceIte]
+    rw [List.map_map, List.map_map]
+    refine congrArg (List.cons (Expr.bvar 0)) ?_
+    apply List.map_congr_left
+    intro e _he
+    simp only [Function.comp]
+    exact Expr.shift_shift_comm_gen e 1 c 1
+  | «fix» ann body ihA ihB =>
+    intro γ c hcl
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    have hcl_body : body.closedAt ((.bvar 0 :: γ.map (·.shift 1 0)).length) = true := by
+      simpa [List.length_map] using hcl.2
+    have hA := ihA γ c hcl.1
+    have hB := ihB (.bvar 0 :: γ.map (·.shift 1 0)) (c+1) hcl_body
+    simp only [Expr.substEnv, Expr.shift]
+    rw [hA, hB]
+    congr 1
+    congr 1
+    simp only [List.map_cons, Expr.shift, decide_eq_true_eq,
+               show (0 : Nat) < c + 1 from Nat.succ_pos _, ↓reduceIte]
+    rw [List.map_map, List.map_map]
+    refine congrArg (List.cons (Expr.bvar 0)) ?_
+    apply List.map_congr_left
+    intro e _he
+    simp only [Function.comp]
+    exact Expr.shift_shift_comm_gen e 1 c 1
+  | letE val body ihV ihB =>
+    intro γ c hcl
+    simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+    have hcl_body : body.closedAt ((.bvar 0 :: γ.map (·.shift 1 0)).length) = true := by
+      simpa [List.length_map] using hcl.2
+    have hV := ihV γ c hcl.1
+    have hB := ihB (.bvar 0 :: γ.map (·.shift 1 0)) (c+1) hcl_body
+    simp only [Expr.substEnv, Expr.shift]
+    rw [hV, hB]
+    congr 1
+    congr 1
+    simp only [List.map_cons, Expr.shift, decide_eq_true_eq,
+               show (0 : Nat) < c + 1 from Nat.succ_pos _, ↓reduceIte]
+    rw [List.map_map, List.map_map]
+    refine congrArg (List.cons (Expr.bvar 0)) ?_
+    apply List.map_congr_left
+    intro e _he
+    simp only [Function.comp]
+    exact Expr.shift_shift_comm_gen e 1 c 1
 
 /-!
 ### Semantic level shift (`Val.shiftLvl`) and `Val.levelsBelow`
