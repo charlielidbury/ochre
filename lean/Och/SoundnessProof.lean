@@ -1878,7 +1878,8 @@ mutual
     | .stuckRec f a => Val.fullyQuotable d f ∧ Val.fullyQuotable d a
 
   def Closure.fullyQuotable (d : Nat) : Closure → Prop
-    | ⟨_body, env⟩ => Closure.envFullyQuotable d env
+    | ⟨body, env⟩ =>
+        body.closedAt (env.length + 1) = true ∧ Closure.envFullyQuotable d env
 
   /-- Each env entry is fully quotable AND has a concrete quote
   witness at `d`. The quote witness is what RList_depth_lift's
@@ -2437,7 +2438,8 @@ theorem eval_vapp_preserves_fullyQuotable :
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold Val.fullyQuotable
           refine ⟨ihe hdom hρ hcl.1, ?_⟩
-          unfold Closure.fullyQuotable Closure.mk'
+          refine ⟨Closure.mk'_body_closed body ρ
+                    (bvarBound_le_of_closedAt hcl.2), ?_⟩
           exact Closure.envFullyQuotable_take hρ _
       | iota ann body =>
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
@@ -2447,7 +2449,8 @@ theorem eval_vapp_preserves_fullyQuotable :
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold Val.fullyQuotable
           refine ⟨ihe hann hρ hcl.1, ?_⟩
-          unfold Closure.fullyQuotable Closure.mk'
+          refine ⟨Closure.mk'_body_closed body ρ
+                    (bvarBound_le_of_closedAt hcl.2), ?_⟩
           exact Closure.envFullyQuotable_take hρ _
       | «fix» ann body =>
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
@@ -2457,7 +2460,8 @@ theorem eval_vapp_preserves_fullyQuotable :
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold Val.fullyQuotable
           refine ⟨ihe hann hρ hcl.1, ?_⟩
-          unfold Closure.fullyQuotable Closure.mk'
+          refine ⟨Closure.mk'_body_closed body ρ
+                    (bvarBound_le_of_closedAt hcl.2), ?_⟩
           exact Closure.envFullyQuotable_take hρ _
       | app f a =>
           -- vapp case: need quote witnesses on f, a. Not derivable
@@ -2490,9 +2494,49 @@ theorem eval_vapp_preserves_fullyQuotable :
           subst h
           unfold Val.fullyQuotable Neutral.fullyQuotable
           exact ⟨hf, ha⟩
-      | lam dom cl => sorry
-      | iota ann cl => sorry
-      | fix ann cl => sorry
+      | lam dom cl =>
+          subst hfeq
+          have hf' := hf
+          unfold Val.fullyQuotable at hf'
+          obtain ⟨_hfdom, hfcl⟩ := hf'
+          -- Unwrap the Closure structure to expose body/env.
+          cases hcleq : cl with
+          | mk body env =>
+            subst hcleq
+            unfold Closure.fullyQuotable at hfcl
+            obtain ⟨hfbody, hfenv⟩ := hfcl
+            -- vapp = eval k unf (a :: env) body
+            have hρ' : Closure.envFullyQuotable d (a :: env) := by
+              unfold Closure.envFullyQuotable
+              exact ⟨⟨ha, hqa⟩, hfenv⟩
+            have hcl' : body.closedAt ((a :: env).length) = true := by
+              simp only [List.length_cons]; exact hfbody
+            exact ihe h hρ' hcl'
+      | iota ann cl =>
+          subst hfeq
+          cases hcleq : cl with
+          | mk body env =>
+            subst hcleq
+            by_cases hng : a.isNeutral || unf == 0
+            · simp only [hng, ↓reduceIte, Option.some.injEq] at h
+              subst h
+              unfold Val.fullyQuotable Neutral.fullyQuotable
+              exact ⟨hf, ha⟩
+            · -- Unfold branch: recursive vapp on eval-produced `f'`
+              -- requires quote witness on `f'` (not available from
+              -- eval alone). Deferred.
+              sorry
+      | fix ann cl =>
+          subst hfeq
+          cases hcleq : cl with
+          | mk body env =>
+            subst hcleq
+            by_cases hng : a.isNeutral || unf == 0
+            · simp only [hng, ↓reduceIte, Option.some.injEq] at h
+              subst h
+              unfold Val.fullyQuotable Neutral.fullyQuotable
+              exact ⟨hf, ha⟩
+            · sorry
 
 /-- Specialisation for push_let: given hρ's envFullyQuotable, eval
 preserves fullyQuotable on val result. -/
@@ -2854,9 +2898,9 @@ theorem R_depth_lift {n d v e}
       have hfq_dV : Val.fullyQuotable d dV := by
         unfold Val.fullyQuotable at hfq; exact hfq.1
       have hfq_cl : Closure.envFullyQuotable d cl.env := by
-        unfold Val.fullyQuotable at hfq
+        unfold Val.fullyQuotable Closure.fullyQuotable at hfq
         obtain ⟨_, hfq2⟩ := hfq
-        cases cl with | _ => exact hfq2
+        cases cl with | _ => exact hfq2.2
       have hlvl_dV : Val.levelsBelow d dV := by
         unfold Val.levelsBelow at hlvl; exact hlvl.1
       have hlvl_cl : Closure.envLevelsBelow d cl.env := by
@@ -2922,9 +2966,9 @@ theorem R_depth_lift {n d v e}
       have hfq_aV : Val.fullyQuotable d aV := by
         unfold Val.fullyQuotable at hfq; exact hfq.1
       have hfq_cl : Closure.envFullyQuotable d cl.env := by
-        unfold Val.fullyQuotable at hfq
+        unfold Val.fullyQuotable Closure.fullyQuotable at hfq
         obtain ⟨_, hfq2⟩ := hfq
-        cases cl with | _ => exact hfq2
+        cases cl with | _ => exact hfq2.2
       have hlvl_aV : Val.levelsBelow d aV := by
         unfold Val.levelsBelow at hlvl; exact hlvl.1
       have hlvl_cl : Closure.envLevelsBelow d cl.env := by
@@ -2988,9 +3032,9 @@ theorem R_depth_lift {n d v e}
       have hfq_aV : Val.fullyQuotable d aV := by
         unfold Val.fullyQuotable at hfq; exact hfq.1
       have hfq_cl : Closure.envFullyQuotable d cl.env := by
-        unfold Val.fullyQuotable at hfq
+        unfold Val.fullyQuotable Closure.fullyQuotable at hfq
         obtain ⟨_, hfq2⟩ := hfq
-        cases cl with | _ => exact hfq2
+        cases cl with | _ => exact hfq2.2
       have hlvl_aV : Val.levelsBelow d aV := by
         unfold Val.levelsBelow at hlvl; exact hlvl.1
       have hlvl_cl : Closure.envLevelsBelow d cl.env := by
@@ -4260,7 +4304,7 @@ theorem Closure.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (cl : Closure),
     Closure.fullyQuotable d cl → Closure.levelsBelow d cl
   | d, ⟨_body, env⟩, h => by
       unfold Closure.fullyQuotable at h; unfold Closure.levelsBelow
-      exact Closure.envLevelsBelow_of_envFullyQuotable d env h
+      exact Closure.envLevelsBelow_of_envFullyQuotable d env h.2
 
 theorem Closure.envLevelsBelow_of_envFullyQuotable : ∀ (d : Nat) (env : List Val),
     Closure.envFullyQuotable d env → Closure.envLevelsBelow d env
@@ -4311,7 +4355,7 @@ theorem Closure.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
     ∀ (cl : Closure), Closure.fullyQuotable d cl → Closure.fullyQuotable d' cl
   | _, _, hle, ⟨_body, env⟩, h => by
       unfold Closure.fullyQuotable at h ⊢
-      exact Closure.envFullyQuotable_mono hle env h
+      exact ⟨h.1, Closure.envFullyQuotable_mono hle env h.2⟩
 
 theorem Closure.envFullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
     ∀ (env : List Val), Closure.envFullyQuotable d env →
