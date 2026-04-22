@@ -1521,6 +1521,14 @@ theorem substEnv_closedAt_irrel {e : Expr} {j : Nat}
     subst hpfx
     rw [List.getElem?_take, if_pos (by omega : m < j)]
 
+-- **substEnv-shift commutation** (needed by R_depth_lift's closure
+-- cases) is documented in DECISION-LOG 2026-04-21. Not yet proved.
+-- Key observation: the specific form needed is:
+--   (substEnv (.bvar 0 :: γ.map (·.shift 1 0)) body).shift 1 1
+--   = substEnv (.bvar 0 :: (γ.map (·.shift 1 0)).map (·.shift 1 0)) body
+-- This works because γ.map (·.shift 1 0) entries have no free bvar 0,
+-- so shift 1 0 and shift 1 1 coincide on them.
+
 /-!
 ### Semantic level shift (`Val.shiftLvl`) and `Val.levelsBelow`
 
