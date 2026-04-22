@@ -1144,6 +1144,69 @@ for the head annotation is well-founded because
 `sizeOf w < sizeOf cl.env < sizeOf cl < sizeOf (.lam _ cl)`,
 and `sizeOf headV < sizeOf (.lam headV cl)`. -/
 
+-- Val.levelsBelow / Val.fullyQuotable: defined here (before R)
+-- so R's closure clauses can reference envLevelsBelow /
+-- envFullyQuotable as invariants. Moved up 2026-04-22 as
+-- prep for quoteClosure_realises refactor.
+mutual
+  /-- `Val.levelsBelow d v` iff every neutral-var level in `v` is
+  `< d`. -/
+  def Val.levelsBelow (d : Nat) : Val → Prop
+    | .type => True
+    | .neutral n => Neutral.levelsBelow d n
+    | .lam dom cl => Val.levelsBelow d dom ∧ Closure.levelsBelow d cl
+    | .iota ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
+    | .«fix» ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
+
+  def Neutral.levelsBelow (d : Nat) : Neutral → Prop
+    | .var k => k < d
+    | .app n v => Neutral.levelsBelow d n ∧ Val.levelsBelow d v
+    | .stuckRec f a => Val.levelsBelow d f ∧ Val.levelsBelow d a
+
+  def Closure.levelsBelow (d : Nat) : Closure → Prop
+    | ⟨_body, env⟩ => Closure.envLevelsBelow d env
+
+  /-- Helper for Closure.levelsBelow (inlined list quantifier). -/
+  def Closure.envLevelsBelow (d : Nat) : List Val → Prop
+    | [] => True
+    | v :: vs => Val.levelsBelow d v ∧ Closure.envLevelsBelow d vs
+end
+
+/-! ### `Val.fullyQuotable`: recursive quotability through closure envs.
+
+`Val.fullyQuotable d v` says: `v` is quotable at depth `d` AND every
+Val reachable via `v`'s transitive closure-environments is quotable
+at depth `d`. This is the invariant needed by R_depth_lift's closure
+cases: when RList_depth_lift recurses into each `cl.env` entry, it
+needs a quote witness for that entry, and if the entry is itself a
+closure, quote witnesses for ITS env, and so on. -/
+mutual
+  def Val.fullyQuotable (d : Nat) : Val → Prop
+    | .type => True
+    | .neutral n => Neutral.fullyQuotable d n
+    | .lam dom cl => Val.fullyQuotable d dom ∧ Closure.fullyQuotable d cl
+    | .iota ann cl => Val.fullyQuotable d ann ∧ Closure.fullyQuotable d cl
+    | .«fix» ann cl => Val.fullyQuotable d ann ∧ Closure.fullyQuotable d cl
+
+  def Neutral.fullyQuotable (d : Nat) : Neutral → Prop
+    | .var k => k < d
+    | .app n v => Neutral.fullyQuotable d n ∧ Val.fullyQuotable d v
+    | .stuckRec f a => Val.fullyQuotable d f ∧ Val.fullyQuotable d a
+
+  def Closure.fullyQuotable (d : Nat) : Closure → Prop
+    | ⟨body, env⟩ =>
+        body.closedAt (env.length + 1) = true ∧ Closure.envFullyQuotable d env
+
+  /-- Each env entry is fully quotable AND has a concrete quote
+  witness at `d`. The quote witness is what RList_depth_lift's
+  recursive R_depth_lift call needs. -/
+  def Closure.envFullyQuotable (d : Nat) : List Val → Prop
+    | [] => True
+    | v :: vs =>
+      (Val.fullyQuotable d v ∧ (∃ qe, quote fuelω d v = some qe)) ∧
+      Closure.envFullyQuotable d vs
+end
+
 mutual
 /-- See the `Step-indexed logical relation` section above. -/
 def R : Nat → Nat → Val → Expr → Prop
@@ -1831,65 +1894,6 @@ theorem Closure.envShiftLvl_eq_map (c : Nat) (env : List Val) :
   induction env with
   | nil => rfl
   | cons v vs ih => simp [Closure.envShiftLvl, ih]
-
-mutual
-  /-- `Val.levelsBelow d v` iff every neutral-var level in `v` is
-  `< d`. -/
-  def Val.levelsBelow (d : Nat) : Val → Prop
-    | .type => True
-    | .neutral n => Neutral.levelsBelow d n
-    | .lam dom cl => Val.levelsBelow d dom ∧ Closure.levelsBelow d cl
-    | .iota ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
-    | .«fix» ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
-
-  def Neutral.levelsBelow (d : Nat) : Neutral → Prop
-    | .var k => k < d
-    | .app n v => Neutral.levelsBelow d n ∧ Val.levelsBelow d v
-    | .stuckRec f a => Val.levelsBelow d f ∧ Val.levelsBelow d a
-
-  def Closure.levelsBelow (d : Nat) : Closure → Prop
-    | ⟨_body, env⟩ => Closure.envLevelsBelow d env
-
-  /-- Helper for Closure.levelsBelow (inlined list quantifier). -/
-  def Closure.envLevelsBelow (d : Nat) : List Val → Prop
-    | [] => True
-    | v :: vs => Val.levelsBelow d v ∧ Closure.envLevelsBelow d vs
-end
-
-/-! ### `Val.fullyQuotable`: recursive quotability through closure envs.
-
-`Val.fullyQuotable d v` says: `v` is quotable at depth `d` AND every
-Val reachable via `v`'s transitive closure-environments is quotable
-at depth `d`. This is the invariant needed by R_depth_lift's closure
-cases: when RList_depth_lift recurses into each `cl.env` entry, it
-needs a quote witness for that entry, and if the entry is itself a
-closure, quote witnesses for ITS env, and so on. -/
-mutual
-  def Val.fullyQuotable (d : Nat) : Val → Prop
-    | .type => True
-    | .neutral n => Neutral.fullyQuotable d n
-    | .lam dom cl => Val.fullyQuotable d dom ∧ Closure.fullyQuotable d cl
-    | .iota ann cl => Val.fullyQuotable d ann ∧ Closure.fullyQuotable d cl
-    | .«fix» ann cl => Val.fullyQuotable d ann ∧ Closure.fullyQuotable d cl
-
-  def Neutral.fullyQuotable (d : Nat) : Neutral → Prop
-    | .var k => k < d
-    | .app n v => Neutral.fullyQuotable d n ∧ Val.fullyQuotable d v
-    | .stuckRec f a => Val.fullyQuotable d f ∧ Val.fullyQuotable d a
-
-  def Closure.fullyQuotable (d : Nat) : Closure → Prop
-    | ⟨body, env⟩ =>
-        body.closedAt (env.length + 1) = true ∧ Closure.envFullyQuotable d env
-
-  /-- Each env entry is fully quotable AND has a concrete quote
-  witness at `d`. The quote witness is what RList_depth_lift's
-  recursive R_depth_lift call needs. -/
-  def Closure.envFullyQuotable (d : Nat) : List Val → Prop
-    | [] => True
-    | v :: vs =>
-      (Val.fullyQuotable d v ∧ (∃ qe, quote fuelω d v = some qe)) ∧
-      Closure.envFullyQuotable d vs
-end
 
 /-- `envLevelsBelow` ↔ "every entry has `levelsBelow`". -/
 theorem Closure.envLevelsBelow_getElem?
