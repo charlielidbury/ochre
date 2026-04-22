@@ -144,6 +144,9 @@ mutual
         a' ≠ .neutral (.stuckRec f arg) →
         SubV ((.neutral (.stuckRec f arg), c) :: S) Γ a' c →
         SubV S Γ (.neutral (.stuckRec f arg)) c
+    /-- [S-BotL]: Bot ⊑ anything. Val-level mirror of
+        `Subtype'.bot_L`. See `docs/ideas/bottom.md`. -/
+    | bot_L {S Γ b} : SubV S Γ .bot b
 
   /-- Val-level neutral congruence (mirrors `subCheckNeutral`). -/
   inductive SubN : List (Val × Val) → TyCtx → Neutral → Neutral → Prop where
@@ -268,6 +271,8 @@ theorem subCheckValMatch_subV
   unfold subCheckValMatch at h
   simp only [] at h
   split at h
+  -- .bot, _ → SubV.bot_L (high-priority arm; see spec)
+  · exact SubV.bot_L
   -- lam-lam
   · next domA clA domB clB =>
     rcases hcontra : subCheckVal fuel Γ S domB domA with _ | contra
@@ -498,6 +503,8 @@ theorem subCheckValMatch_subV
   · simp at h
   -- _, .type
   · exact SubV.top
+  -- _, _ catch-all (spec: exhaustiveness; always .ok false)
+  · simp at h
 termination_by (fuel, 1)
 
 theorem subCheckNeutral_subN
@@ -830,6 +837,9 @@ namespace Equiv
     | type =>
       intro _ _ _ _ _ _
       simp only [Expr.subst]; exact Equiv.refl _
+    | bot =>
+      intro _ _ _ _ _ _
+      simp only [Expr.subst]; exact Equiv.refl _
     | lam dom body ihD ihB =>
       intro a b ha hb heq i
       simp only [Expr.subst]
@@ -1045,6 +1055,9 @@ namespace Equiv_c
     | type =>
       unfold Expr.subst
       exact Equiv_c.refl _ _
+    | bot =>
+      unfold Expr.subst
+      exact Equiv_c.refl _ _
     | lam dom body ihD ihB =>
       unfold Expr.subst
       intro S Γ hd
@@ -1153,6 +1166,7 @@ mutual
   `< d`. -/
   def Val.levelsBelow (d : Nat) : Val → Prop
     | .type => True
+    | .bot => True
     | .neutral n => Neutral.levelsBelow d n
     | .lam dom cl => Val.levelsBelow d dom ∧ Closure.levelsBelow d cl
     | .iota ann cl => Val.levelsBelow d ann ∧ Closure.levelsBelow d cl
@@ -1183,6 +1197,7 @@ closure, quote witnesses for ITS env, and so on. -/
 mutual
   def Val.fullyQuotable (d : Nat) : Val → Prop
     | .type => True
+    | .bot => True
     | .neutral n => Neutral.fullyQuotable d n
     | .lam dom cl => Val.fullyQuotable d dom ∧ Closure.fullyQuotable d cl
     | .iota ann cl => Val.fullyQuotable d ann ∧ Closure.fullyQuotable d cl
@@ -1248,12 +1263,13 @@ def R : Nat → Nat → Val → Expr → Prop
               Closure.envFullyQuotable d cl.env ∧
               Equiv_c d e (.fix anne
                 (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
-        -- `.type`/`.neutral` keep the base conjunct: quoting
+        -- `.type`/`.bot`/`.neutral` keep the base conjunct: quoting
         -- them doesn't recurse into environments, so the
         -- correspondence is provable inside `eval_realises`'s
         -- fuel-IH directly. Uses Equiv_c d (depth-parametrised
         -- Equiv) so R_depth_lift can close via Equiv_c.shift.
         | .type => ∀ e', quote fuelω d v = some e' → Equiv_c d e' e
+        | .bot => ∀ e', quote fuelω d v = some e' → Equiv_c d e' e
         | .neutral _ => ∀ e', quote fuelω d v = some e' → Equiv_c d e' e
 termination_by _ _ v _ => sizeOf v
 decreasing_by
@@ -1358,6 +1374,7 @@ theorem R_mono {n m d v e} (hle : m ≤ n) (h : R n d v e) :
   match m, n, v, hle, h with
   | 0, _, _, _, _ => unfold R; trivial
   | _+1, _+1, .type, _, h => unfold R at h ⊢; exact h
+  | _+1, _+1, .bot, _, h => unfold R at h ⊢; exact h
   | _+1, _+1, .neutral _, _, h => unfold R at h ⊢; exact h
   | _+1, _+1, .lam dV cl, hle, h =>
       unfold R at h ⊢
@@ -1415,6 +1432,8 @@ theorem R_resp_Equiv {n d v e e'}
     cases v with
     | type => exact fun qe hq =>
         Equiv_c.trans (h qe hq) (Equiv_c.of_Equiv heq)
+    | bot => exact fun qe hq =>
+        Equiv_c.trans (h qe hq) (Equiv_c.of_Equiv heq)
     | neutral _ => exact fun qe hq =>
         Equiv_c.trans (h qe hq) (Equiv_c.of_Equiv heq)
     | lam dV cl =>
@@ -1443,6 +1462,8 @@ theorem R_resp_Equiv_c {n d v e e'}
     unfold R at h ⊢
     cases v with
     | type => exact fun qe hq =>
+        Equiv_c.trans (h qe hq) heq
+    | bot => exact fun qe hq =>
         Equiv_c.trans (h qe hq) heq
     | neutral _ => exact fun qe hq =>
         Equiv_c.trans (h qe hq) heq
@@ -1478,6 +1499,7 @@ theorem closedAt_bvarBound (e : Expr) : e.closedAt (bvarBound e) = true := by
   induction e with
   | bvar k => simp [Expr.closedAt, bvarBound]
   | type => simp [Expr.closedAt, bvarBound]
+  | bot => simp [Expr.closedAt, bvarBound]
   | lam dom body ihd ihb =>
       simp only [Expr.closedAt, bvarBound, Bool.and_eq_true]
       exact ⟨Expr.closedAt_mono ihd (Nat.le_max_left _ _),
@@ -1511,6 +1533,7 @@ theorem bvarBound_le_of_closedAt {e : Expr} {n : Nat}
   | bvar k => simp only [Expr.closedAt, decide_eq_true_eq] at h
               simp only [bvarBound]; omega
   | type => simp [bvarBound]
+  | bot => simp [bvarBound]
   | lam d b ihd ihb | iota d b ihd ihb | «fix» d b ihd ihb
   | letE d b ihd ihb =>
       simp only [Expr.closedAt, Bool.and_eq_true] at h
@@ -1552,6 +1575,7 @@ theorem substEnv_agree {e : Expr} :
     simp only [Expr.closedAt, decide_eq_true_eq] at hcl
     rw [substEnv_bvar_eq, substEnv_bvar_eq, hagree k hcl]
   | type => intros; rfl
+  | bot => intros; rfl
   | lam dom body ihd ihb =>
     intro j hcl γ₁ γ₂ hagree
     simp only [Expr.closedAt, Bool.and_eq_true] at hcl
@@ -1643,6 +1667,7 @@ theorem substEnv_closedAt {e : Expr} {n : Nat} {ρe : List Expr}
       simp [List.getElem?_eq_getElem hbound]
     exact hρecl k ρe[k]! hget
   | type => simp [Expr.substEnv, Expr.closedAt]
+  | bot => simp [Expr.substEnv, Expr.closedAt]
   | lam dom body ihD ihB =>
     simp only [Expr.closedAt, Bool.and_eq_true] at hbound
     unfold Expr.substEnv
@@ -1774,6 +1799,9 @@ theorem substEnv_shift_comm : ∀ (body : Expr) (γ : List Expr) (c : Nat),
   | type =>
     intro γ c _hcl
     simp only [Expr.substEnv, Expr.shift]
+  | bot =>
+    intro γ c _hcl
+    simp only [Expr.substEnv, Expr.shift]
   | lam dom body ihD ihB =>
     intro γ c hcl
     simp only [Expr.closedAt, Bool.and_eq_true] at hcl
@@ -1878,6 +1906,7 @@ mutual
   /-- Shift every neutral-var level `≥ c` up by 1. -/
   def Val.shiftLvl (c : Nat) : Val → Val
     | .type => .type
+    | .bot => .bot
     | .neutral n => .neutral (Neutral.shiftLvl c n)
     | .lam dom cl => .lam (Val.shiftLvl c dom) (Closure.shiftLvl c cl)
     | .iota ann cl => .iota (Val.shiftLvl c ann) (Closure.shiftLvl c cl)
@@ -1951,6 +1980,7 @@ theorem Val.shiftLvl_of_levelsBelow :
     ∀ (v : Val) (c : Nat),
     Val.levelsBelow c v → Val.shiftLvl c v = v
   | .type, _, _ => rfl
+  | .bot, _, _ => rfl
   | .neutral n, c, h => by
       unfold Val.shiftLvl Val.levelsBelow at *
       exact congrArg _ (Neutral.shiftLvl_of_levelsBelow n c h)
@@ -2033,6 +2063,9 @@ theorem eval_vapp_shiftLvl :
       unfold eval at h ⊢
       match e, h with
       | .type, h =>
+          simp only [Option.some.injEq] at h
+          subst h; rfl
+      | .bot, h =>
           simp only [Option.some.injEq] at h
           subst h; rfl
       | .bvar j, h =>
@@ -2123,6 +2156,9 @@ theorem eval_vapp_shiftLvl :
           simp only [Option.some.injEq] at h
           subst h
           rfl
+      | bot =>
+          -- vapp .bot _ = none, so h : none = some v is unsatisfiable.
+          exact absurd h (by simp)
       | lam dom cl =>
           obtain ⟨body, env⟩ := cl
           simp only at h
@@ -2297,6 +2333,10 @@ theorem eval_vapp_levelsBelow :
           simp only [Option.some.injEq] at h
           subst h
           unfold Val.levelsBelow; trivial
+      | bot =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.levelsBelow; trivial
       | bvar j =>
           simp only [] at h
           exact Closure.envLevelsBelow_getElem? hρ h
@@ -2357,6 +2397,10 @@ theorem eval_vapp_levelsBelow :
           subst h
           unfold Val.levelsBelow Neutral.levelsBelow
           exact ⟨hf, ha⟩
+      | bot =>
+          -- vapp .bot _ = none, h : none = some v is unsatisfiable.
+          subst hfeq
+          exact absurd h (by simp)
       | lam dom cl =>
           subst hfeq
           obtain ⟨body, env⟩ := cl
@@ -2443,6 +2487,10 @@ theorem eval_vapp_preserves_fullyQuotable :
           simp only [Option.some.injEq] at h
           subst h
           unfold Val.fullyQuotable; trivial
+      | bot =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.fullyQuotable; trivial
       | bvar j =>
           simp only [] at h
           have := Closure.envFullyQuotable_getElem? hρ h
@@ -2511,6 +2559,10 @@ theorem eval_vapp_preserves_fullyQuotable :
           subst h
           unfold Val.fullyQuotable Neutral.fullyQuotable
           exact ⟨hf, ha⟩
+      | bot =>
+          -- vapp .bot _ = none, h : none = some v is unsatisfiable.
+          subst hfeq
+          exact absurd h (by simp)
       | lam dom cl =>
           subst hfeq
           have hf' := hf
@@ -2586,6 +2638,7 @@ mutual
 theorem Val.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
     ∀ v, Val.levelsBelow d v → Val.levelsBelow d' v
   | .type, _ => by unfold Val.levelsBelow; trivial
+  | .bot, _ => by unfold Val.levelsBelow; trivial
   | .neutral n, h => by
       unfold Val.levelsBelow at h ⊢
       exact Neutral.levelsBelow_mono hle n h
@@ -2677,6 +2730,11 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
       unfold quote at h
       cases v with
       | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.shiftLvl quote
+          rfl
+      | bot =>
           simp only [Option.some.injEq] at h
           subst h
           unfold Val.shiftLvl quote
@@ -2889,6 +2947,7 @@ mutual
 theorem Val.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (v : Val),
     Val.fullyQuotable d v → Val.levelsBelow d v
   | _, .type, _ => by unfold Val.levelsBelow; trivial
+  | _, .bot, _ => by unfold Val.levelsBelow; trivial
   | d, .neutral n, h => by
       unfold Val.fullyQuotable at h
       unfold Val.levelsBelow
@@ -2944,6 +3003,7 @@ mutual
 theorem Val.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
     ∀ (v : Val), Val.fullyQuotable d v → Val.fullyQuotable d' v
   | _, _, _, .type, _ => by unfold Val.fullyQuotable; trivial
+  | _, _, _, .bot, _ => by unfold Val.fullyQuotable; trivial
   | _, _, hle, .neutral n, h => by
       unfold Val.fullyQuotable at h ⊢
       exact Neutral.fullyQuotable_mono hle n h
@@ -3030,6 +3090,21 @@ theorem R_depth_lift {n d v e}
       rw [hqt] at hq''
       cases hq''
       have h' : Equiv_c d Expr.type e := h Expr.type hqd
+      intro S Γe hd
+      obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
+      exact ⟨hab, hba⟩
+  | k+1, .bot, _, _, _, h =>
+      unfold R at h ⊢
+      intro qe'' hq''
+      have hqt : quote fuelω (d+1) Val.bot = some Expr.bot := by
+        have hf : fuelω = (fuelω - 1) + 1 := rfl
+        rw [hf]; unfold quote; rfl
+      have hqd : quote fuelω d Val.bot = some Expr.bot := by
+        have hf : fuelω = (fuelω - 1) + 1 := rfl
+        rw [hf]; unfold quote; rfl
+      rw [hqt] at hq''
+      cases hq''
+      have h' : Equiv_c d Expr.bot e := h Expr.bot hqd
       intro S Γe hd
       obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
       exact ⟨hab, hba⟩
@@ -3394,6 +3469,7 @@ theorem eval_env_agree :
     unfold eval
     cases body with
     | type => rfl
+    | bot => rfl
     | bvar k =>
         simp only []
         exact hagree k (by simp [bvarBound])
@@ -3628,6 +3704,9 @@ theorem R_quote_equiv {n d v e}
   | succ m =>
       cases v with
       | type =>
+          unfold R at h
+          exact h e' hq
+      | bot =>
           unfold R at h
           exact h e' hq
       | neutral _ =>
@@ -4052,6 +4131,18 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
             rw [hf]; unfold quote; rfl
           rw [hqt] at hq; cases hq
           exact fun {_ _} _ => ⟨.refl _, .refl _⟩
+      | bot =>
+          -- eval .bot → .bot; substEnv .bot = .bot. Analogous to .type.
+          unfold eval at heval; simp only [] at heval
+          cases heval
+          show R (k+1) d .bot (Expr.substEnv ρe .bot)
+          unfold Expr.substEnv R
+          intro e' hq
+          have hqt : quote fuelω d .bot = some .bot := by
+            have hf : fuelω = (fuelω - 1) + 1 := rfl
+            rw [hf]; unfold quote; rfl
+          rw [hqt] at hq; cases hq
+          exact fun {_ _} _ => ⟨.refl _, .refl _⟩
       | bvar j =>
           -- eval (.bvar j) = ρ[j]?. REnv gives R (k+1) d ρ[j] ρe[j].
           unfold eval at heval; simp only [] at heval
@@ -4315,10 +4406,13 @@ private theorem fuelω_succ : fuelω = (fuelω - 1) + 1 := rfl
 theorem quote_type {d : Nat} : quote fuelω d .type = some .type := by
   rw [fuelω_succ, quote.eq_2]
 
+theorem quote_bot {d : Nat} : quote fuelω d .bot = some .bot := by
+  rw [fuelω_succ, quote.eq_3]
+
 theorem quote_neutral {d : Nat} {n : Neutral} {e : Expr}
     (h : quote fuelω d (.neutral n) = some e) :
     quoteNeutral (fuelω - 1) d n = some e := by
-  rw [fuelω_succ, quote.eq_3] at h; exact h
+  rw [fuelω_succ, quote.eq_4] at h; exact h
 
 theorem quoteNeutral_var {d k : Nat} {e : Expr}
     (h : quoteNeutral fuelω d (.var k) = some e) :
@@ -4392,6 +4486,9 @@ theorem quote_quoteClosure_quoteNeutral_closedAt :
       unfold quote at h
       match v, h with
       | .type, h =>
+        simp only [Option.some.injEq] at h; subst h
+        simp [Expr.closedAt]
+      | .bot, h =>
         simp only [Option.some.injEq] at h; subst h
         simp [Expr.closedAt]
       | .neutral nne, h =>
@@ -5124,6 +5221,8 @@ theorem tyInfer_sound_open
       subst h
       exact ⟨.type, quote_type,
         by simpa [Expr.substEnv] using Subtype'.refl Expr.type⟩
+    -- .bot: tyInfer returns .error, contradicting h.
+    · simp_all
     -- .asc e' τ
     · rename_i e' τ
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
@@ -5468,9 +5567,22 @@ theorem tyCheck_sound_open
             simp only [Expr.substEnv]
             exact .asc_L (.trans h_e0_τ0e hsub)
       · simp_all
-    -- .fix _ _ and .iota _ _ (A9 arm) then catch-all.
+    -- .fix _ _ and .iota _ _ (A9 arm), .bot arm, then catch-all.
     all_goals first
     | exact tyCheckFallback_sound_open hfuel hctx hcl hqτ h
+    | -- .bot arm: tyCheck .bot expected = .ok true iff expected = .type.
+      -- In that case, τV = .type and τe = .type, so the goal reduces to
+      -- `Subtype' [] Γe .bot .type`, discharged by `.bot_L` (Bot is
+      -- universal lower bound).
+      (split at h
+       · -- expected = .type: derive Subtype' _ _ .bot τe via .bot_L.
+         -- `hqτ : quote _ .type = .type` forces `τe = .type`, but we
+         -- don't need that — `.bot_L` closes for any τe.
+         show Subtype' [] Γe ((Expr.bot).substEnv ρe) τe
+         simp only [Expr.substEnv]
+         exact Subtype'.bot_L
+       · -- expected ≠ .type: falls through to tyCheckFallback.
+         exact tyCheckFallback_sound_open hfuel hctx hcl hqτ h)
     | (rename_i ann body
        split at h
        · rename_i eV hev

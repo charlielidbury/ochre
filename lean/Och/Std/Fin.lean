@@ -1,6 +1,7 @@
 import Och.Macro
 import Och.Eval
 import Och.SubCheckVal
+import Och.TyCheck
 import Och.Std.Nat
 
 /-!
@@ -14,11 +15,10 @@ takes a `Fin p`.
 
 ```
 Nat = fix N. λX:Type. λz:X. λs:(N → X). X
-Bot = fix B. λX:Type. λz:X. λs:(B → X). z    -- Nat-shaped bottom
 
 Fin = fix F:(Nat → Type). λn:Nat.
   n Type
-    Bot                                       -- Fin zero
+    Bot                                       -- Fin zero (primitive!)
     (λp:Nat. λX:Type. λz:X. λs:(F p → X). X)  -- Fin (succ p)
 ```
 
@@ -26,8 +26,8 @@ Fin = fix F:(Nat → Type). λn:Nat.
 
 - **`Fin n ⊑ Nat`** — every Fin value is a Nat. The contra chain
   `Fin (succ p) ⊑ Nat` → `F p ⊑ Nat` recurses on the predecessor and
-  bottoms at `Bot ⊑ Nat`, which holds because `Bot` is shape-matched
-  to `Nat` (fix + same three-argument Scott body, body returns `z`).
+  bottoms at `Bot ⊑ Nat`, which holds by `[S-BotL]` (Bot is the
+  universal lower bound).
 - **`Fin m ⊑ Fin n` for `m ≤ n`** — width-monotonicity. Fin is
   literally "values less than n" as a subset, so smaller-indexed Fins
   embed into larger ones.
@@ -48,17 +48,14 @@ subsumption does the work.
 - **`n_ ⊄ Fin m_` for `n_ > m_`** — a specific numeral that exceeds
   the bound is rejected.
 
-## Bot encoding: a self-recursing body to break the zero-collision
+## Bot as primitive
 
-Bot is `fix B. λX:Type. λz:X. λs:(B → X). s B` — the body `s B` feeds
-the fix itself into its own eliminator, an infinite self-recursion.
-This is load-bearing: an earlier version with body `z` (structurally
-identical to `zero_`'s body) made `zero_ ⊑ Bot` pass algorithmically,
-which cascaded into the `n_ ⊑ Fin n_` diagonal all passing wrongly.
-The `s B` body has no terminating Scott-numeral match, so the
-collision is broken, while `Bot ⊑ Nat` still closes because the
-contra recursion lets seen-set coinduction fire and the body `s B`
-type-ascends to `X` through `s : Bot → X`.
+`Bot` is now a primitive of the core calculus (`Expr.bot`), with the
+declarative `[S-BotL]` rule `Bot ⊑ e` and a single algorithmic arm
+`| .bot, _ => .ok true`. This replaces the previous definable
+`fix B. λX:Type. λz:X. λs:(B → X). s B` hack, which worked but was
+fragile to changes in Scott numerals or the subtype algorithm.
+See `docs/ideas/bottom.md`.
 -/
 
 namespace Std
@@ -67,19 +64,13 @@ namespace Std
 -- Bottom (for the Fin zero branch)
 -- ============================================================
 
-/-- Bot: Nat-shaped so `Bot ⊑ Nat` closes, but with a self-referential
-body `s B` that distinguishes it structurally from `zero_` (whose body
-is just `z`).
+/-- Bot: primitive bottom type. `Bot ⊑ e` for every `e` via `[S-BotL]`.
 
-An earlier version used body `z` and ran into the "off-by-one"
-diagonal — `zero_ ⊑ Bot` closed algorithmically because both sides
-had the same shape, which then cascaded to `n_ ⊑ Fin n_` all passing
-wrongly. Changing the body to `s B` — the fix self-reference fed back
-into its own eliminator — forces an infinite recursion that no
-terminating Scott numeral's body matches, while `Bot ⊑ Nat` still
-closes via seen-set coinduction on the contra chain (the body check
-passes by type-ascent through `s`). -/
-def Bot := och{ fix B. λX:Type. λz:X. λs:(B → X). s B }
+Previously encoded definably as
+`fix B. λX:Type. λz:X. λs:(B → X). s B`; the primitive version
+removes the fragility of that encoding (structural collisions with
+other Scott-shaped values under subtype changes). -/
+def «Bot» := och{ Bot }
 
 -- ============================================================
 -- Fin type and constructors
@@ -144,6 +135,33 @@ example : NbE.subCheck 2000 one_ (och{ Fin zero_ }) = .ok false := by native_dec
 example : NbE.subCheck 2000 zero_ (och{ Fin zero_ }) = .ok false := by native_decide
 example : NbE.subCheck 2000 one_  (och{ Fin one_  }) = .ok false := by native_decide
 example : NbE.subCheck 2000 two_  (och{ Fin two_  }) = .ok false := by native_decide
+
+-- ============================================================
+-- Primitive Bot: dedicated tests (docs/ideas/bottom.md)
+-- ============================================================
+
+-- Bot ⊑ everything ([S-BotL])
+example : NbE.subCheck 200 «Bot» Nat_                    = .ok true := by native_decide
+example : NbE.subCheck 200 «Bot» Std.Bool                = .ok true := by native_decide
+example : NbE.subCheck 200 «Bot» (och{ Fin three_ })     = .ok true := by native_decide
+example : NbE.subCheck 200 «Bot» Expr.type               = .ok true := by native_decide
+-- Refl (via the S-BotL arm, which fires before structural)
+example : NbE.subCheck 200 «Bot» «Bot»                   = .ok true := by native_decide
+-- Only Bot ⊑ Bot on the RHS (no dual `_, .bot => .ok false` rule;
+-- rejection emerges from fall-through)
+example : NbE.subCheck 200 Nat_     «Bot»                = .ok false := by native_decide
+example : NbE.subCheck 200 zero_    «Bot»                = .ok false := by native_decide
+example : NbE.subCheck 200 Expr.type «Bot»               = .ok false := by native_decide
+
+-- Bidirectional restriction: tyCheck accepts Bot at type `Type`;
+-- rejects it at a non-Type type. (The rejection at non-Type types
+-- emerges as `.error` via the tyInfer fallback, not `.ok false` —
+-- tyInfer errors on `.bot`, and tyCheckFallback propagates that.)
+example : NbE.typeCheck 200 (och{ Bot }) Expr.type = .ok true := by native_decide
+example : (NbE.typeCheck 200 (och{ Bot }) Nat_).isOk = false := by native_decide
+
+-- tyInfer rejects Bot as a value (no synthesized type).
+example : (NbE.tyInfer 200 #[] [] (och{ Bot })).isOk = false := by native_decide
 
 end Tests
 

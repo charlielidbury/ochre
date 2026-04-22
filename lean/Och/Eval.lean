@@ -67,6 +67,7 @@ def concEval (fuel : Nat) (e : Expr) : Option Expr :=
     | .bvar _ => none  -- free variable = stuck (expects closed terms)
     | .lam _ _ => some e  -- lambda is a VALUE — body not evaluated
     | .type => some .type
+    | .bot => some .bot  -- Bot is a value (self-evaluating, like Type)
     | .asc term _ => concEval fuel term  -- runtime: erase ascription
     | .iota _ _ => some e  -- iota is a value (only unrolled when applied)
     | .fix _ _ => some e   -- fix is a value (only unrolled when applied)
@@ -109,6 +110,9 @@ theorem concEval_closedAt {n : Nat} {e v : Expr}
     match e, hcl, h with
     | .bvar _, _, h => simp [concEval] at h
     | .type, _, h =>
+      simp only [concEval, Option.some.injEq] at h
+      subst h; rfl
+    | .bot, _, h =>
       simp only [concEval, Option.some.injEq] at h
       subst h; rfl
     | .lam dom body, hcl, h =>
@@ -190,6 +194,13 @@ theorem concEval_closedAt {n : Nat} {e v : Expr}
           rw [show (Expr.app .type av).closedAt 0 =
               ((Expr.type).closedAt 0 && av.closedAt 0) from rfl]
           simp [hacl, Expr.closedAt]
+        | .bot, _ =>
+          simp only [Option.some.injEq] at h
+          subst h
+          show (Expr.app .bot av).closedAt 0 = true
+          rw [show (Expr.app .bot av).closedAt 0 =
+              ((Expr.bot).closedAt 0 && av.closedAt 0) from rfl]
+          simp [hacl, Expr.closedAt]
         | .bvar _, hfcl =>
           -- concEval never produces bvar from a closed term
           simp only [Expr.closedAt, decide_eq_true_eq] at hfcl
@@ -227,6 +238,8 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
       simp [concEval] at h ⊢; exact h
     | .type =>
       simp [concEval] at h ⊢; exact h
+    | .bot =>
+      simp [concEval] at h ⊢; exact h
     | .asc term _ =>
       simp only [concEval] at h ⊢; exact ih h
     | .iota ann body =>
@@ -259,6 +272,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
           | .iota ann body_mu => exact ih h
           | .fix ann body_mu => exact ih h
           | .type => exact h
+          | .bot => exact h
           | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ => exact h
 
 /-! ## concEval shape lemmas
@@ -278,6 +292,7 @@ theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
     | bvar => simp [concEval] at h
     | lam => simp [concEval] at h
     | type => simp [concEval] at h
+    | bot => simp [concEval] at h
     | asc term _ => unfold concEval at h; exact ih h
     | iota => simp [concEval] at h
     | fix => simp [concEval] at h
@@ -292,7 +307,7 @@ theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
         | .lam _ _ => exact ih h
         | .iota _ _ => exact ih h
         | .fix _ _ => exact ih h
-        | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
+        | .type | .bot | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
     | letE val body =>
       unfold concEval at h
@@ -310,6 +325,7 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
     | bvar => simp [concEval] at h
     | lam => simp [concEval] at h
     | type => simp [concEval] at h
+    | bot => simp [concEval] at h
     | asc term _ => unfold concEval at h; exact ih h
     | iota => simp [concEval] at h
     | fix => simp [concEval] at h
@@ -324,7 +340,7 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
         | .lam _ _ => exact ih h
         | .iota _ _ => exact ih h
         | .fix _ _ => exact ih h
-        | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
+        | .type | .bot | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
     | letE val body =>
       unfold concEval at h
@@ -341,6 +357,7 @@ theorem concEval_not_letE {fuel : Nat} {e v body : Expr}
     | bvar => simp [concEval] at h
     | lam => simp [concEval] at h
     | type => simp [concEval] at h
+    | bot => simp [concEval] at h
     | asc term _ => unfold concEval at h; exact ih h
     | iota => simp [concEval] at h
     | fix => simp [concEval] at h
@@ -355,7 +372,7 @@ theorem concEval_not_letE {fuel : Nat} {e v body : Expr}
         | .lam _ _ => exact ih h
         | .iota _ _ => exact ih h
         | .fix _ _ => exact ih h
-        | .type | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
+        | .type | .bot | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
           injection h with h; cases h
     | letE val body' =>
       unfold concEval at h
@@ -369,6 +386,7 @@ theorem concEval_not_letE {fuel : Nat} {e v body : Expr}
 inductive ConcNF : Expr → Prop
   | lam (dom body : Expr) : ConcNF (.lam dom body)
   | type : ConcNF .type
+  | bot : ConcNF .bot
   | iota (ann body : Expr) : ConcNF (.iota ann body)
   | fix (ann body : Expr) : ConcNF (.fix ann body)
   | app (f a : Expr) : ConcNF f → ConcNF a →
@@ -384,6 +402,7 @@ theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
     | bvar => simp [concEval] at h
     | lam dom body => simp [concEval] at h; subst h; exact .lam dom body
     | type => simp [concEval] at h; subst h; exact .type
+    | bot => simp [concEval] at h; subst h; exact .bot
     | asc term _ => unfold concEval at h; exact ih h
     | iota ann body => simp [concEval] at h; subst h; exact .iota ann body
     | fix ann body => simp [concEval] at h; subst h; exact .fix ann body
@@ -401,6 +420,9 @@ theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
         | .type =>
           injection h with hv; subst hv
           exact ConcNF.app _ _ ConcNF.type (ih ha) True.intro
+        | .bot =>
+          injection h with hv; subst hv
+          exact ConcNF.app _ _ ConcNF.bot (ih ha) True.intro
         | .bvar k => exact absurd hf (by intro h; exact concEval_not_bvar h)
         | .app f1 a1 =>
           injection h with hv; subst hv
@@ -424,6 +446,10 @@ theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
     | zero => simp [concEval] at h
     | succ n => simp [concEval] at h; exact h.symm
   | type =>
+    cases fuel with
+    | zero => simp [concEval] at h
+    | succ n => simp [concEval] at h; exact h.symm
+  | bot =>
     cases fuel with
     | zero => simp [concEval] at h
     | succ n => simp [concEval] at h; exact h.symm
@@ -453,7 +479,7 @@ theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
         -- match on f.
         revert h
         match f, h_not_redex with
-        | .type, _ | .bvar _, _ | .app _ _, _ | .asc _ _, _ =>
+        | .type, _ | .bot, _ | .bvar _, _ | .app _ _, _ | .asc _ _, _ =>
           intro h; injection h with heq; exact heq.symm
         | .letE _ _, h_abs => exact h_abs.elim
 

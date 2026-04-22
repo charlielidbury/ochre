@@ -198,6 +198,10 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
       Subtype' S Γ e b → Subtype' S Γ (.asc e τ) b
   | asc_R {S Γ a e τ} :
       Subtype' S Γ a e → Subtype' S Γ a (.asc e τ)
+  /-- `[S-BotL]`: Bot is the universal lower bound. `Bot ⊑ e` for
+      every `e`. No matching `bot_R` rule — Bot is only ⊑ Bot, and
+      that's `[S-Refl]`. See `docs/ideas/bottom.md`. -/
+  | bot_L {S Γ e} : Subtype' S Γ .bot e
 
 /-- Hypothesis-set weakening: a derivation under `S` is also a
 derivation under any superset `S'`. (Adding hypotheses can
@@ -256,6 +260,7 @@ theorem Subtype'.weaken {S S' Γ a b}
   | letE_R _ ih => exact .letE_R (ih hsub)
   | asc_L _ ih => exact .asc_L (ih hsub)
   | asc_R _ ih => exact .asc_R (ih hsub)
+  | bot_L => exact .bot_L
 
 /-- `.hyp` specialised to same-depth use: an entry recorded
 at the *current* depth needs no shift. This is the form
@@ -658,6 +663,10 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     intro Γpfx hpfx
     simp only [Expr.shift]
     exact .asc_R (ih Γpfx hpfx)
+  | bot_L =>
+    intro Γpfx _
+    simp only [Expr.shift]
+    exact .bot_L
 
 /-- Context-extension at the bottom (`Γpfx = []`): a
 derivation at `Γ` lifts to one at `Δ ++ Γ`, both sides
@@ -832,6 +841,7 @@ theorem Subtype'.narrow_at {Γ domA domB}
   | letE_R _ ih => exact fun Γ' hΔ => .letE_R (ih Γ' hΔ)
   | asc_L _ ih => exact fun Γ' hΔ => .asc_L (ih Γ' hΔ)
   | asc_R _ ih => exact fun Γ' hΔ => .asc_R (ih Γ' hΔ)
+  | bot_L => exact fun _ _ => .bot_L
 
 /-- Head-position context narrowing: replacing `Γ`'s innermost
 binder type `domA` with a subtype `domB ⊑ domA` preserves

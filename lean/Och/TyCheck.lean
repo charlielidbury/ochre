@@ -47,6 +47,7 @@ private def spineSummary : Expr → Nat → String
   | .letE .., n => s!"let·{n}"
   | .asc .., n => s!"asc·{n}"
   | .type, n => s!"Type·{n}"
+  | .bot, n => s!"Bot·{n}"
 
 /-- Unfold a fix/iota wrapper to expose a `.lam` head.
 
@@ -65,6 +66,9 @@ where
   | n+1, .iota _ cl => do
       let v' ← cl.open fuel inhab
       go n v'
+  -- Bot is not a Π head (it's non-applicable). Return `none` so
+  -- callers treat it as "no Π exposed" — see `docs/ideas/bottom.md`.
+  | _, .bot => none
   | _, v => some v
 
 mutual
@@ -86,6 +90,10 @@ mutual
           else
             .error s!"tyInfer: unbound bvar {k}"
       | .type => .ok (some .type)
+      | .bot =>
+          -- Bot has no synthesized type. It can only appear in checking
+          -- mode against `Type`. See `docs/ideas/bottom.md`.
+          .error "tyInfer: Bot has no synthesized type; use as annotation"
       | .asc e' τ => do
           let some τV := eval fuel unfBound ρ τ
             | .error "tyInfer: asc τ eval"
@@ -219,6 +227,15 @@ mutual
           let some eV := eval fuel unfBound ρ e
             | .error "tyCheck: fix/iota eval"
           subCheckVal fuel Γ [] eV expected
+      | .bot =>
+          -- Bot is acceptable only at `Val.type` — the bidirectional
+          -- proxy for "used as a type, not a value". Other shapes
+          -- fall through to the fallback, which goes via tyInfer,
+          -- which errors — so the check rejects. See
+          -- `docs/ideas/bottom.md`.
+          match expected with
+          | .type => .ok true
+          | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
       | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
   termination_by (fuel, 2)
 

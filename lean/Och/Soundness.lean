@@ -272,6 +272,9 @@ theorem concEval_equiv_closed
     | type =>
       simp only [concEval, Option.some.injEq] at hstep
       subst hstep; exact Equiv.refl _
+    | bot =>
+      simp only [concEval, Option.some.injEq] at hstep
+      subst hstep; exact Equiv.refl _
     | lam _ _ =>
       simp only [concEval, Option.some.injEq] at hstep
       subst hstep; exact Equiv.refl _

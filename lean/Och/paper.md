@@ -84,6 +84,7 @@ The term language (source: [lean/Och/Syntax.lean](Syntax.lean#L38)) is
 ```
 e, τ ::= x                   // variable
        | Type                // universe / top
+       | Bot                 // primitive bottom (universal lower bound)
        | λ(x : τ). e         // lambda
        | e₁ e₂               // application
        | ι(self : τ). e      // self-type binder
@@ -167,6 +168,16 @@ is erased at evaluation ([E-Asc]), matching the declarative rules `asc_L`/`asc_R
 (SoundnessAudit A8). The dispatch on ι/fix heads is realised in
 [Eval.lean](Eval.lean#L82).
 
+**Bot is a self-evaluating value.** Like `Type`, `Bot` evaluates to
+itself via `[E-Val]` and has no corresponding `vapp` arm — the
+`.lam`/`.iota`/`.fix`/`.neutral` dispatch in `vapp` doesn't cover `.bot`,
+so applying an argument to Bot is *stuck* (parallel to `Type`-application).
+This is intentional: Bot is a type, not a callable. The typing discipline
+must ensure well-typed programs never reach `Bot a` at runtime; under the
+bidirectional restriction (§6) this should not arise in practice. A formal
+progress-style theorem is deferred to `progress_mod_fuel` (see §7 and
+[`docs/ideas/soundness-strengthen.md`](../../docs/ideas/soundness-strengthen.md)).
+
 This is the **operational specification** of the language. The algorithmic
 type-checker is connected to it via
 [`concEval_equiv`](Soundness.lean#L304) and
@@ -229,7 +240,7 @@ knowing which category a rule belongs to predicts its shape.
 
 | Category                     | Purpose                                                                    | Rules                                                                              | Extends `S`? |
 | ---------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | :----------: |
-| Structural (§3.1)            | Plumbing: compose, lookup, without inspecting constructors on either side  | `S-Refl`, `S-Top`, `S-Trans`, `S-Hyp`, `S-Var`                                     | no           |
+| Structural (§3.1)            | Plumbing: compose, lookup, without inspecting constructors on either side  | `S-Refl`, `S-Top`, `S-BotL`, `S-Trans`, `S-Hyp`, `S-Var`                           | no           |
 | Congruence (§3.2)            | Match constructor on both sides; reduce to sub-obligations with variance   | `S-Lam`, `S-App-Cong`, `S-Iota-Cong`, `S-Fix-Cong`, `S-LetE-Cong`                  | no           |
 | Productive unfolding (§3.3)  | Unfold a recursive binder (ι/fix); extend `S`; enable coinductive closure  | `S-Iota-Intro`, `S-Unfold-Iota-L`, `S-Unfold-Iota-R`, `S-Unfold-Fix-L`, `S-Unfold-Fix-R` | **yes**  |
 | Conversion (§3.4)            | Close under head reduction so algorithmic NbE is sound                     | `S-Beta-L/R`, `S-Let-L/R`, `S-Asc-L/R`                                             | no           |
@@ -265,6 +276,9 @@ S ; Γ ⊢ e ⊑ e
 [S-Top]
 S ; Γ ⊢ e ⊑ Type
 
+[S-BotL]                      // Bot is the universal lower bound
+S ; Γ ⊢ Bot ⊑ e
+
 [S-Trans]                     // explicit constructor — see note below
 S ; Γ ⊢ a ⊑ c
   S ; Γ ⊢ a ⊑ b
@@ -277,6 +291,14 @@ S ; Γ ⊢ a ⊑ b                //    productive rule
 [S-Var]                       // variable's declared type
 S ; Γ ⊢ x ⊑ Γ(x)
 ```
+
+**Ex falso via subsumption.** There is no dedicated "absurd" eliminator
+(no Coq-style `False.elim`). If `a ⊑ Bot` is derivable, then `a ⊑ e` for
+every `e` via `[S-Trans]` on `[S-BotL]`. The "contradiction" discharge is
+subsumption alone. This matches the DOT tradition: Bot inhabits every
+type trivially in subtyping, so any term whose type is already `Bot`
+flows into any expected type without further ceremony. See
+[`docs/ideas/bottom.md`](../../docs/ideas/bottom.md) for design rationale.
 
 **Why `[S-Trans]` is a constructor, not a derived theorem.** In a normal
 simply-typed subtyping relation, transitivity is admissible: a standard
@@ -815,6 +837,14 @@ mirrors §3 but with these algorithmic adaptations:
 - **StuckRec** arms cross-unfold until one side steps (the seen-set and
   productivity gate prevent divergence).
 - The **top** rule (`_ ⊑ Type`) is an early fast path.
+- The **bot** rule (`.bot, _ => .ok true`) is realised as a single
+  high-priority match arm — it fires before any structural / neutral /
+  ascent arm so `Bot ⊑ anything` closes immediately without traversal.
+  No dual `_, .bot => .ok false` arm; rejection of `X ⊑ Bot` (for
+  non-Bot `X`) emerges from fall-through. Contrast with `.type`: both
+  are lattice extrema, but Type appears as an *accept* on the RHS
+  (`_ ⊑ Type`), while Bot appears as an *accept* on the LHS
+  (`Bot ⊑ _`). See `docs/ideas/bottom.md`.
 
 Soundness of this algorithm against the declarative relation is
 [`subCheckVal_sound`](Soundness.lean#L84): if `subCheckVal` returns
@@ -898,6 +928,20 @@ synthesises `Nat` even though the body has type `Unit`. Callers that need
 a verified type must route through `tyCheck` (§6.2), which uses
 `subCheckVal` to compare the *unfolded* fix/ι against the expected type
 ([TyCheck.lean:209](TyCheck.lean#L209)).
+
+**Bot in the bidirectional mode.** `tyInfer .bot` returns `.error` —
+Bot has no synthesized type. `tyCheck .bot expected` succeeds **only
+when `expected = Val.type`**; at any other expected type it falls through
+to the fallback (which goes via `tyInfer`, which errors). This piggybacks
+on Och's existing bidirectional mode as a *proxy* for a term/type
+stratum: "checking at `Val.type` ≈ used as a type"; "checking at
+anything else ≈ used as a value." The proxy leaks under type-in-type
+(e.g. `(λX:Type. X) Bot` evaluates to `Val.bot` at type `Type`), but
+benignly: `Val.bot` cannot be ascribed at a non-Type type, cannot be
+passed to a non-Type-expecting function, and the only thing it *can*
+do (appear as an annotation elsewhere) is equivalent to writing `Bot`
+directly. `whnfPi fuel inhab .bot = none` — Bot is not a Π head. See
+`docs/ideas/bottom.md` for the full design.
 
 ### 6.2 Checking
 
@@ -1180,6 +1224,19 @@ Each has a documented engineering route (see
 [`DECISION-LOG.md`](../../DECISION-LOG.md)); none are open research
 questions. The metatheory is believed to hold; what remains is
 engineering to discharge the ten.
+
+**Phase 1 vs Phase 2 for Bot.** The native `Bot` primitive landed
+without re-opening any sorry. Phase 1 (this one): add `Expr.bot`,
+extend all structural predicates, add `[S-BotL]` declaratively and
+the `.bot, _ => .ok true` algorithmic arm, verify no regression on
+the Std test battery. The existing preservation-only `soundness`
+theorem is unaffected — Bot-application's stuckness returns `none`
+and vacuously satisfies the preservation implication. Phase 2 —
+strengthening to `progress_mod_fuel` so well-typed programs
+*cannot* stuck at runtime — requires refactoring `concEval`'s return
+type to distinguish fuel exhaustion from stuckness; see
+[`docs/ideas/soundness-strengthen.md`](../../docs/ideas/soundness-strengthen.md)
+for the separate proposal. This is not part of Phase 1.
 
 ## Appendix A. Declarative typing (derived)
 

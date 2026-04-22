@@ -14,6 +14,7 @@ namespace NbE
 mutual
   def Val.beq : Val → Val → Bool
     | .type, .type => true
+    | .bot, .bot => true
     | .lam d1 c1, .lam d2 c2 => d1.beq d2 && c1.beq c2
     | .iota a1 c1, .iota a2 c2 => a1.beq a2 && c1.beq c2
     | .fix a1 c1, .fix a2 c2 => a1.beq a2 && c1.beq c2
@@ -58,6 +59,7 @@ mutual
   unsafe def Val.beqFast (a b : Val) : Bool :=
     ptrEq a b || match a, b with
     | .type, .type => true
+    | .bot, .bot => true
     | .lam d1 c1, .lam d2 c2 => d1.beqFast d2 && c1.beqFast c2
     | .iota a1 c1, .iota a2 c2 => a1.beqFast a2 && c1.beqFast c2
     | .fix a1 c1, .fix a2 c2 => a1.beqFast a2 && c1.beqFast c2
@@ -90,6 +92,8 @@ instance : BEq Val := ⟨Val.beq⟩
 mutual
   theorem Val.beq_eq : ∀ (a b : Val), Val.beq a b = true → a = b
     | .type, b, h => by
+        cases b <;> simp_all [Val.beq]
+    | .bot, b, h => by
         cases b <;> simp_all [Val.beq]
     | .lam d1 c1, b, h => by
         cases b <;> simp_all [Val.beq]
@@ -131,6 +135,7 @@ end
 mutual
   theorem Val.beq_refl : ∀ (a : Val), Val.beq a a = true
     | .type => by simp only [Val.beq]
+    | .bot => by simp only [Val.beq]
     | .lam d c => by
         simp only [Val.beq, Bool.and_eq_true]
         exact ⟨Val.beq_refl d, Closure.beq_refl c⟩
@@ -229,6 +234,10 @@ mutual
       (seen : List (Val × Val)) (a b : Val) : Except String Bool :=
     let depth := tyCtx.size
         match a, b with
+        -- Bot ⊑ anything ([S-BotL]). High priority so it short-circuits
+        -- before any structural/neutral arm. No dual `_, .bot` arm —
+        -- rejection emerges from fall-through (spec: docs/ideas/bottom.md).
+        | .bot, _ => .ok true
         | .lam domA clA, .lam domB clB => do
             let contra ← subCheckVal fuel tyCtx seen domB domA
             if !contra then return false
@@ -399,6 +408,12 @@ mutual
         | _, .neutral _ => .ok false
         | .type, _ => .ok false
         | _, .type => .ok true
+        -- Exhaustiveness catch-all: rejection for shapes not matched
+        -- above (notably `(_, .bot)` pairs except `(.bot, .bot)` which
+        -- is already handled by the high-priority `.bot, _` arm).
+        -- Keeping as a single catch-all rather than per-shape rejection
+        -- (spec: docs/ideas/bottom.md).
+        | _, _ => .ok false
   termination_by (fuel, 1)
 
   /-- Compare two neutral spines structurally: same head variable

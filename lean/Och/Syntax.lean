@@ -41,6 +41,11 @@ inductive Expr where
   | app    : Expr → Expr → Expr
   | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
+  /-- Primitive bottom type. Empty set; `Bot ⊑ e` for every `e`
+      (the `[S-BotL]` declarative rule, §3.1). Self-evaluating like
+      `Type`; application onto `Bot` has no reduction rule (stuck),
+      matching the existing `Type` treatment. See `docs/ideas/bottom.md`. -/
+  | bot    : Expr
   /-- `ι A. b` = iota / self-type binder (Cedille-style).
       Bound occurrence (the "self") is bvar 0 in `b`.
       Annotation `A` states the weak (non-self) type that the value inhabits. -/
@@ -67,6 +72,7 @@ private def nameAt (idx : Nat) : String :=
 def pretty (e : Expr) (names : List String := []) (prec : Nat := 0) : String :=
   match e with
   | .type => "Type"
+  | .bot => "Bot"
   | .bvar k => names.get? k |>.getD s!"?{k}"
   | .asc term ty =>
     s!"({term.pretty names 0} : {ty.pretty names 0})"
@@ -122,6 +128,7 @@ def shift (d c : Nat) : Expr → Expr
   | .app f a => .app (shift d c f) (shift d c a)
   | .asc term ty => .asc (shift d c term) (shift d c ty)
   | .type => .type
+  | .bot => .bot
   | .iota ann body => .iota (shift d c ann) (shift d (c + 1) body)
   | .fix ann body => .fix (shift d c ann) (shift d (c + 1) body)
   | .letE val body => .letE (shift d c val) (shift d (c + 1) body)
@@ -139,6 +146,7 @@ def subst (e : Expr) (j : Nat) (s : Expr) : Expr :=
   | .app f a => .app (f.subst j s) (a.subst j s)
   | .asc term ty => .asc (term.subst j s) (ty.subst j s)
   | .type => .type
+  | .bot => .bot
   | .iota ann body => .iota (ann.subst j s) (body.subst (j + 1) (s.shift 1 0))
   | .fix ann body => .fix (ann.subst j s) (body.subst (j + 1) (s.shift 1 0))
   | .letE val body => .letE (val.subst j s) (body.subst (j + 1) (s.shift 1 0))
@@ -180,6 +188,7 @@ theorem shift_subst_cancel_gen (e : Expr) (c : Nat) (s : Expr)
     simp only [Expr.asc.injEq]
     exact ⟨ih_t c s, ih_y c s⟩
   | type => rfl
+  | bot => rfl
   | iota ann body ih_ann ih_body =>
     unfold shift; unfold subst
     simp only [Expr.iota.injEq]
@@ -220,6 +229,7 @@ def substEnv (γ : List Expr) : Expr → Expr
   | .app f a => .app (substEnv γ f) (substEnv γ a)
   | .asc term ty => .asc (substEnv γ term) (substEnv γ ty)
   | .type => .type
+  | .bot => .bot
   | .iota ann body =>
     .iota (substEnv γ ann) (substEnv ((.bvar 0) :: γ.map (·.shift 1 0)) body)
   | .fix ann body =>
@@ -283,6 +293,7 @@ theorem substEnv_idEnv (n : Nat) (e : Expr) : substEnv (idEnv n) e = e := by
     · exact ih_t n
     · exact ih_y n
   | type => rfl
+  | bot => rfl
   | iota ann body ih_ann ih_body =>
     simp only [substEnv, lift_idEnv]
     congr 1
@@ -319,6 +330,7 @@ theorem substEnv_nil (e : Expr) : substEnv [] e = e :=
     show Expr.asc (t.shift 0 c) (y.shift 0 c) = .asc t y
     congr 1; exact ih_t c; exact ih_y c
   | type => rfl
+  | bot => rfl
   | iota a b ih_a ih_b =>
     show Expr.iota (a.shift 0 c) (b.shift 0 (c+1)) = .iota a b
     congr 1; exact ih_a c; exact ih_b (c+1)
@@ -357,6 +369,7 @@ theorem shift_shift (e : Expr) (d1 d2 c : Nat) :
          .asc (t.shift (d1+d2) c) (y.shift (d1+d2) c)
     congr 1; exact ih_t c; exact ih_y c
   | type => rfl
+  | bot => rfl
   | iota ann body ih_ann ih_body =>
     show Expr.iota ((ann.shift d2 c).shift d1 (c+d2)) ((body.shift d2 (c+1)).shift d1 (c+d2+1)) =
          .iota (ann.shift (d1+d2) c) (body.shift (d1+d2) (c+1))
@@ -399,6 +412,7 @@ theorem shift_shift_same (e : Expr) (d1 d2 c : Nat) :
          .asc (t.shift (d1+d2) c) (y.shift (d1+d2) c)
     congr 1; exact ih_t c; exact ih_y c
   | type => rfl
+  | bot => rfl
   | iota ann body ih_ann ih_body =>
     show Expr.iota ((ann.shift d2 c).shift d1 c) ((body.shift d2 (c+1)).shift d1 (c+1)) =
          .iota (ann.shift (d1+d2) c) (body.shift (d1+d2) (c+1))
@@ -426,6 +440,7 @@ def closedAt (n : Nat) : Expr → Bool
   | .app f a => closedAt n f && closedAt n a
   | .asc term ty => closedAt n term && closedAt n ty
   | .type => true
+  | .bot => true
   | .iota ann body => closedAt n ann && closedAt (n + 1) body
   | .fix ann body => closedAt n ann && closedAt (n + 1) body
   | .letE val body => closedAt n val && closedAt (n + 1) body
@@ -454,6 +469,7 @@ theorem shift_closedAt (e : Expr) (n d c : Nat) (hc : c ≤ n)
     simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
     exact ⟨ih_t n c hc h.1, ih_y n c hc h.2⟩
   | type => simp [shift, closedAt]
+  | bot => simp [shift, closedAt]
   | iota ann body ih_ann ih_body =>
     simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
     refine ⟨ih_ann n c hc h.1, ?_⟩
@@ -485,6 +501,7 @@ theorem closedAt_mono {e : Expr} {n m : Nat} (h : e.closedAt n = true) (hnm : n 
     simp [closedAt, Bool.and_eq_true] at h ⊢
     exact ⟨ih_t h.1 hnm, ih_y h.2 hnm⟩
   | type => simp [closedAt]
+  | bot => simp [closedAt]
   | iota ann body ih_ann ih_body =>
     simp [closedAt, Bool.and_eq_true] at h ⊢
     exact ⟨ih_ann h.1 hnm, ih_body h.2 (by omega)⟩
@@ -507,6 +524,7 @@ theorem shift_of_closedAt {e : Expr} :
     simp only [closedAt, decide_eq_true_eq] at h
     simp only [shift, if_pos (Nat.lt_of_lt_of_le h hc)]
   | type => intros; rfl
+  | bot => intros; rfl
   | lam dom body ihd ihb =>
     intro n h d c hc
     simp only [closedAt, Bool.and_eq_true] at h
@@ -560,6 +578,7 @@ theorem shift_shift_comm_at (e : Expr) (d c k : Nat) :
               shift, show ¬ n + d < c₀ from by omega]
         omega
   | type => intro; rfl
+  | bot => intro; rfl
   | lam dom body ihd ihb =>
     intro c₀; simp only [shift]; congr 1
     · exact ihd c₀
@@ -621,6 +640,7 @@ theorem shift_shift_between (e : Expr) (d₁ d₂ c₀ c : Nat)
         if_neg (show ¬ k + d₂ < c from by omega),
         Nat.add_assoc, Nat.add_comm d₂ d₁]
   | type => rfl
+  | bot => rfl
   | lam dom body ihd ihb =>
     simp only [shift]; congr 1
     · exact ihd c₀ c h₁ h₂
@@ -687,6 +707,7 @@ theorem subst_shift_swap_gen (e s : Expr) (d c : Nat) :
                    if_pos (show k + d > j from by omega)]
         congr 1; omega
   | type => intro; rfl
+  | bot => intro; rfl
   | lam dom body ihd ihb =>
     intro j
     simp only [subst, shift]
@@ -761,6 +782,7 @@ theorem subst_closedAt_gen (e : Expr) (j n : Nat) (s : Expr)
       · -- k < j (since k ≠ j and ¬(k > j)): result is bvar k, need k < j + n
         simp [hgt, closedAt, decide_eq_true_eq]; omega
   | type => simp [subst, closedAt]
+  | bot => simp [subst, closedAt]
   | lam dom body ih_dom ih_body =>
     simp only [closedAt, Bool.and_eq_true] at he
     obtain ⟨he_dom, he_body⟩ := he
@@ -936,6 +958,7 @@ theorem shift_subst_comm_gen (e : Expr) (j d : Nat) (t : Expr) :
                 show ¬(k + 1 > j + d + 1) from by omega]
           unfold shift; simp [show ¬(k < d) from hd]
   | type => rfl
+  | bot => rfl
   | lam dom body ih_dom ih_body =>
     show Expr.lam ((shift 1 d dom).subst (j + d + 1) (t.shift (d + 1) 0))
                   ((shift 1 (d + 1) body).subst (j + d + 2) ((t.shift (d + 1) 0).shift 1 0))
@@ -1072,6 +1095,7 @@ theorem substEnv_subst_comp_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
     = e.substEnv (liftEnvN c (s :: γ)) := by
   induction e generalizing c with
   | type => rfl
+  | bot => rfl
   | bvar k =>
     simp [closedAt] at h
     unfold substEnv
@@ -1185,6 +1209,7 @@ theorem shift_substEnv_liftEnvN (s : Expr) (c d : Nat) (γ : List Expr)
     : (s.shift c d).substEnv (liftEnvN (c + d) γ) = (s.substEnv (liftEnvN d γ)).shift c d := by
   induction s generalizing c d with
   | type => rfl
+  | bot => rfl
   | bvar k =>
     simp [closedAt] at hs
     simp only [shift]
@@ -1292,6 +1317,7 @@ theorem subst_substEnv_comm_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
     = e.substEnv (liftEnvN c (s.substEnv γ :: γ)) := by
   induction e generalizing c with
   | type => rfl
+  | bot => rfl
   | bvar k =>
     simp [closedAt] at he
     by_cases hk_eq : k = c
@@ -1439,6 +1465,7 @@ theorem substEnv_closedAt (e : Expr) (γ : List Expr) (d : Nat)
     simp [substEnv, he, ite_true]
     exact hγ k he
   | type => simp [substEnv, closedAt]
+  | bot => simp [substEnv, closedAt]
   | app f a ih_f ih_a =>
     simp [closedAt, Bool.and_eq_true] at he
     simp [substEnv, closedAt, Bool.and_eq_true]

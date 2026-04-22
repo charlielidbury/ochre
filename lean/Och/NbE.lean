@@ -26,6 +26,9 @@ mutual
       shifting. -/
   inductive Val where
     | type    : Val
+    /-- Primitive bottom value. Self-evaluating (like `type`);
+        non-applicable (no `vapp` arm). Corresponds to `Expr.bot`. -/
+    | bot     : Val
     | lam     : Val → Closure → Val
     | iota    : Val → Closure → Val
     | «fix»   : Val → Closure → Val
@@ -59,6 +62,7 @@ abbrev Env := List Val
 def bvarBound : Expr → Nat
   | .bvar k => k + 1
   | .type => 0
+  | .bot => 0
   | .lam dom body => max (bvarBound dom) (bvarBound body - 1)
   | .iota ann body | .fix ann body | .letE ann body =>
       max (bvarBound ann) (bvarBound body - 1)
@@ -94,6 +98,7 @@ mutual
     | fuel + 1 =>
       match e with
       | .type => some .type
+      | .bot => some .bot
       | .bvar k => env[k]?
       | .lam dom body => do
           let dom' ← eval fuel unf env dom
@@ -142,6 +147,11 @@ mutual
             vapp fuel (unf - 1) f' a
       | .neutral n => some (.neutral (.app n a))
       | .type => some (.neutral (.stuckRec f a))
+      -- Bot is non-applicable (spec: Bot is a type; applying a value to it
+      -- makes no sense). No arm for `.bot` above, so this branch is the
+      -- exhaustiveness fallback, and `vapp .bot a = none` — stuck.
+      -- See `docs/ideas/bottom.md`.
+      | .bot => none
   termination_by fuel
 end
 
@@ -186,6 +196,7 @@ theorem eval_vapp_fuel_mono :
       unfold eval at h ⊢
       cases e with
       | type => exact h
+      | bot => exact h
       | bvar => exact h
       | lam dom body =>
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
@@ -241,6 +252,7 @@ theorem eval_vapp_fuel_mono :
             exact ⟨f', ihe hle' hf, ihv hle' hv⟩
       | neutral => exact h
       | type => exact h
+      | bot => exact h
 
 theorem eval_fuel_mono {n m unf ρ e v}
     (hle : n ≤ m) (h : eval n unf ρ e = some v) :
@@ -261,6 +273,7 @@ mutual
     | fuel + 1 =>
       match v with
       | .type => some .type
+      | .bot => some .bot
       | .neutral n => quoteNeutral fuel depth n
       | .lam dom cl => do
           let dom' ← quote fuel depth dom
@@ -350,6 +363,7 @@ theorem quote_quoteClosure_quoteNeutral_fuel_mono :
       unfold quote at h ⊢
       cases v with
       | type => exact h
+      | bot => exact h
       | neutral ne => exact ihn hle' h
       | lam dom cl =>
           simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
