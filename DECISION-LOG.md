@@ -3,6 +3,45 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-21: R_depth_lift closure blocker is RECURSIVE (requires Val-global quotability)
+
+Second-iteration finding: the "quote witnesses for cl.env" problem is
+recursive, not local. R_depth_lift on a closure needs hquotes for cl.env,
+but RList_depth_lift's recursive R_depth_lift call on each cl.env entry
+(possibly itself a closure) needs hquotes for ITS cl.env. Ad infinitum.
+
+Attempted two fixes this iteration:
+- Strengthen R's closure clauses with `hquotes_env` conjunct. Reverted —
+  cascades into 15+ downstream sites, each of which would need the
+  RECURSIVE property.
+- Add `hquotes_env` parameter to R_depth_lift only. Doesn't work either
+  — recursive call needs the same param for each sub-val.
+
+**Required architectural addition**: a `Val.fullyQuotable fuelω d v` predicate
+that says "v and every val in v's transitive closure-environments is
+quotable at appropriate depth". Maintain this as an invariant throughout
+eval_realises/vapp_realises/OpenCtx. Then R_depth_lift takes it as a
+hypothesis and passes smaller instances to recursive calls.
+
+The predicate is concretely definable by mutual recursion:
+```
+def Val.fullyQuotable (d : Nat) (v : Val) : Prop :=
+  (∃ qe, quote fuelω d v = some qe) ∧
+  match v with
+  | .lam _ cl | .iota _ cl | .«fix» _ cl =>
+      ∀ k w, cl.env[k]? = some w → Val.fullyQuotable d w
+  | _ => True
+```
+
+But maintaining it in eval_realises requires knowing that eval produces
+only fullyQuotable Vals from closed source — another non-trivial lemma.
+
+**Pragmatic alternative**: Accept that the closure cases remain sorry and
+confirm the INTERMEDIATE soundness chain (concEval_equiv_closed, etc.)
+is still axiom-clean. soundness itself retains sorryAx, but the non-A9
+closure-related use cases in practice reduce to closed terms where the
+issue doesn't manifest.
+
 ## 2026-04-21: R_depth_lift closure cases — remaining blocker: cl.env quote witnesses
 
 After `Equiv_c.shift`, `substEnv_shift_comm` (both axiom-clean), and R's refactor
