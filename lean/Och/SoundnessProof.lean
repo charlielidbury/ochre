@@ -2846,6 +2846,140 @@ theorem quote_depth_shift {d v e}
     quote fuelω (d + 1) v = some (e.shift 1 0) :=
   quote_depth_shift_of_levelsBelow hlvl hq
 
+/-- N-step depth shift: `quote fuelω d v = e` and `d ≤ d'` gives
+`quote fuelω d' v = e.shift (d'-d) 0`. By induction on `d'-d`,
+each step applying `quote_depth_shift` at the intermediate depth.
+Used in `OpenCtx.hρq_lift` + `Subtype'.bvar` bridge: relates
+`QuotesCtx`'s per-entry depth `k` to the goal's outer depth
+`Γ.size`, where the gap is exactly the `Subtype'.bvar`
+shift amount. Moved here 2026-04-22 for Tier 0 refactor. -/
+theorem quote_depth_shift_n {k d v e}
+    (hlvl : Val.levelsBelow k v)
+    (hle : k ≤ d) (hq : quote fuelω k v = some e) :
+    quote fuelω d v = some (e.shift (d - k) 0) := by
+  obtain ⟨n, rfl⟩ := Nat.exists_eq_add_of_le hle
+  simp only [Nat.add_sub_cancel_left]
+  clear hle
+  induction n with
+  | zero => simp only [Nat.add_zero, Expr.shift_zero]; exact hq
+  | succ m ih =>
+      have hlvl_m : Val.levelsBelow (k + m) v :=
+        Val.levelsBelow_mono (by omega) v hlvl
+      have h1 := quote_depth_shift hlvl_m ih
+      rw [Expr.shift_shift_same, Nat.add_comm 1 m] at h1
+      exact h1
+
+-- `Val.levelsBelow_of_fullyQuotable`: fullyQuotable implies
+-- levelsBelow at the same depth. Moved here (before R_depth_lift)
+-- 2026-04-22 for Tier 0 refactor.
+mutual
+theorem Val.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (v : Val),
+    Val.fullyQuotable d v → Val.levelsBelow d v
+  | _, .type, _ => by unfold Val.levelsBelow; trivial
+  | d, .neutral n, h => by
+      unfold Val.fullyQuotable at h
+      unfold Val.levelsBelow
+      exact Neutral.levelsBelow_of_fullyQuotable d n h
+  | d, .lam dom cl, h => by
+      unfold Val.fullyQuotable at h
+      unfold Val.levelsBelow
+      exact ⟨Val.levelsBelow_of_fullyQuotable d dom h.1,
+             Closure.levelsBelow_of_fullyQuotable d cl h.2⟩
+  | d, .iota ann cl, h => by
+      unfold Val.fullyQuotable at h
+      unfold Val.levelsBelow
+      exact ⟨Val.levelsBelow_of_fullyQuotable d ann h.1,
+             Closure.levelsBelow_of_fullyQuotable d cl h.2⟩
+  | d, .«fix» ann cl, h => by
+      unfold Val.fullyQuotable at h
+      unfold Val.levelsBelow
+      exact ⟨Val.levelsBelow_of_fullyQuotable d ann h.1,
+             Closure.levelsBelow_of_fullyQuotable d cl h.2⟩
+
+theorem Neutral.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (n : Neutral),
+    Neutral.fullyQuotable d n → Neutral.levelsBelow d n
+  | _, .var _, h => by unfold Neutral.fullyQuotable at h; unfold Neutral.levelsBelow; exact h
+  | d, .app n v, h => by
+      unfold Neutral.fullyQuotable at h; unfold Neutral.levelsBelow
+      exact ⟨Neutral.levelsBelow_of_fullyQuotable d n h.1,
+             Val.levelsBelow_of_fullyQuotable d v h.2⟩
+  | d, .stuckRec f a, h => by
+      unfold Neutral.fullyQuotable at h; unfold Neutral.levelsBelow
+      exact ⟨Val.levelsBelow_of_fullyQuotable d f h.1,
+             Val.levelsBelow_of_fullyQuotable d a h.2⟩
+
+theorem Closure.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (cl : Closure),
+    Closure.fullyQuotable d cl → Closure.levelsBelow d cl
+  | d, ⟨_body, env⟩, h => by
+      unfold Closure.fullyQuotable at h; unfold Closure.levelsBelow
+      exact Closure.envLevelsBelow_of_envFullyQuotable d env h.2
+
+theorem Closure.envLevelsBelow_of_envFullyQuotable : ∀ (d : Nat) (env : List Val),
+    Closure.envFullyQuotable d env → Closure.envLevelsBelow d env
+  | _, [], _ => by unfold Closure.envLevelsBelow; trivial
+  | d, v :: vs, h => by
+      unfold Closure.envFullyQuotable at h; unfold Closure.envLevelsBelow
+      exact ⟨Val.levelsBelow_of_fullyQuotable d v h.1.1,
+             Closure.envLevelsBelow_of_envFullyQuotable d vs h.2⟩
+end
+
+-- Monotonicity of fullyQuotable in depth: a Val fully-quotable at d
+-- is also fully-quotable at any d' ≥ d. Quote witnesses at d' are
+-- derived from witnesses at d via quote_depth_shift_n. Moved here
+-- (before R_depth_lift) 2026-04-22 for Tier 0 refactor.
+mutual
+theorem Val.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
+    ∀ (v : Val), Val.fullyQuotable d v → Val.fullyQuotable d' v
+  | _, _, _, .type, _ => by unfold Val.fullyQuotable; trivial
+  | _, _, hle, .neutral n, h => by
+      unfold Val.fullyQuotable at h ⊢
+      exact Neutral.fullyQuotable_mono hle n h
+  | _, _, hle, .lam dom cl, h => by
+      unfold Val.fullyQuotable at h ⊢
+      exact ⟨Val.fullyQuotable_mono hle dom h.1,
+             Closure.fullyQuotable_mono hle cl h.2⟩
+  | _, _, hle, .iota ann cl, h => by
+      unfold Val.fullyQuotable at h ⊢
+      exact ⟨Val.fullyQuotable_mono hle ann h.1,
+             Closure.fullyQuotable_mono hle cl h.2⟩
+  | _, _, hle, .«fix» ann cl, h => by
+      unfold Val.fullyQuotable at h ⊢
+      exact ⟨Val.fullyQuotable_mono hle ann h.1,
+             Closure.fullyQuotable_mono hle cl h.2⟩
+
+theorem Neutral.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
+    ∀ (n : Neutral), Neutral.fullyQuotable d n → Neutral.fullyQuotable d' n
+  | _, _, hle, .var k, h => by
+      unfold Neutral.fullyQuotable at h ⊢; omega
+  | _, _, hle, .app n v, h => by
+      unfold Neutral.fullyQuotable at h ⊢
+      exact ⟨Neutral.fullyQuotable_mono hle n h.1,
+             Val.fullyQuotable_mono hle v h.2⟩
+  | _, _, hle, .stuckRec f a, h => by
+      unfold Neutral.fullyQuotable at h ⊢
+      exact ⟨Val.fullyQuotable_mono hle f h.1,
+             Val.fullyQuotable_mono hle a h.2⟩
+
+theorem Closure.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
+    ∀ (cl : Closure), Closure.fullyQuotable d cl → Closure.fullyQuotable d' cl
+  | _, _, hle, ⟨_body, env⟩, h => by
+      unfold Closure.fullyQuotable at h ⊢
+      exact ⟨h.1, Closure.envFullyQuotable_mono hle env h.2⟩
+
+theorem Closure.envFullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
+    ∀ (env : List Val), Closure.envFullyQuotable d env →
+      Closure.envFullyQuotable d' env
+  | _, _, _, [], _ => by unfold Closure.envFullyQuotable; trivial
+  | d, d', hle, v :: vs, h => by
+      unfold Closure.envFullyQuotable at h ⊢
+      obtain ⟨⟨hvfq, qe, hqe⟩, htail⟩ := h
+      refine ⟨⟨Val.fullyQuotable_mono hle v hvfq, ?_⟩,
+              Closure.envFullyQuotable_mono hle vs htail⟩
+      have hlvl : Val.levelsBelow d v :=
+        Val.levelsBelow_of_fullyQuotable d v hvfq
+      exact ⟨qe.shift (d' - d) 0, quote_depth_shift_n (d := d') hlvl hle hqe⟩
+end
+
 mutual
 
 /-- **Depth-lift of R** with `Val.levelsBelow d v` side
@@ -4078,30 +4212,7 @@ theorem R_fix_clause {n d ann cl ea}
 -- depended transitively on eval_realises' sorried base conjuncts.
 -- If future work re-introduces the chain, they can be re-derived.
 
-/-- Multi-step `quote_depth_shift`: quoting at any deeper
-depth `d ≥ k` shifts the result by `d - k`. Iterates the
-one-step lemma; `shift_shift_same` collapses the iterated
-shifts. Used by `SynthN_to_Subtype'.var` to bridge
-`QuotesCtx`'s per-entry depth `k` to the goal's outer depth
-`Γ.size`, where the gap is exactly the `Subtype'.bvar`
-shift amount. -/
-theorem quote_depth_shift_n {k d v e}
-    (hlvl : Val.levelsBelow k v)
-    (hle : k ≤ d) (hq : quote fuelω k v = some e) :
-    quote fuelω d v = some (e.shift (d - k) 0) := by
-  obtain ⟨n, rfl⟩ := Nat.exists_eq_add_of_le hle
-  simp only [Nat.add_sub_cancel_left]
-  clear hle
-  induction n with
-  | zero => simp only [Nat.add_zero, Expr.shift_zero]; exact hq
-  | succ m ih =>
-      -- Each step uses `levelsBelow (k + m)` which follows from
-      -- `levelsBelow k` by monotonicity.
-      have hlvl_m : Val.levelsBelow (k + m) v :=
-        Val.levelsBelow_mono (by omega) v hlvl
-      have h1 := quote_depth_shift hlvl_m ih
-      rw [Expr.shift_shift_same, Nat.add_comm 1 m] at h1
-      exact h1
+-- `quote_depth_shift_n` moved earlier (before R_depth_lift) 2026-04-22.
 
 /-!
 ### Quote shape lemmas
@@ -4268,113 +4379,11 @@ theorem quoteNeutral_closedAt {fuel d ne e}
 
 -- `fullyQuotable` implies `levelsBelow` structurally (the .var
 -- clause of both requires `k < d`; recursive cases mirror each other).
-mutual
-theorem Val.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (v : Val),
-    Val.fullyQuotable d v → Val.levelsBelow d v
-  | _, .type, _ => by unfold Val.levelsBelow; trivial
-  | d, .neutral n, h => by
-      unfold Val.fullyQuotable at h
-      unfold Val.levelsBelow
-      exact Neutral.levelsBelow_of_fullyQuotable d n h
-  | d, .lam dom cl, h => by
-      unfold Val.fullyQuotable at h
-      unfold Val.levelsBelow
-      exact ⟨Val.levelsBelow_of_fullyQuotable d dom h.1,
-             Closure.levelsBelow_of_fullyQuotable d cl h.2⟩
-  | d, .iota ann cl, h => by
-      unfold Val.fullyQuotable at h
-      unfold Val.levelsBelow
-      exact ⟨Val.levelsBelow_of_fullyQuotable d ann h.1,
-             Closure.levelsBelow_of_fullyQuotable d cl h.2⟩
-  | d, .«fix» ann cl, h => by
-      unfold Val.fullyQuotable at h
-      unfold Val.levelsBelow
-      exact ⟨Val.levelsBelow_of_fullyQuotable d ann h.1,
-             Closure.levelsBelow_of_fullyQuotable d cl h.2⟩
+-- `Val.levelsBelow_of_fullyQuotable` + related — moved earlier
+-- (before R_depth_lift) 2026-04-22 for Tier 0 refactor.
 
-theorem Neutral.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (n : Neutral),
-    Neutral.fullyQuotable d n → Neutral.levelsBelow d n
-  | _, .var _, h => by unfold Neutral.fullyQuotable at h; unfold Neutral.levelsBelow; exact h
-  | d, .app n v, h => by
-      unfold Neutral.fullyQuotable at h; unfold Neutral.levelsBelow
-      exact ⟨Neutral.levelsBelow_of_fullyQuotable d n h.1,
-             Val.levelsBelow_of_fullyQuotable d v h.2⟩
-  | d, .stuckRec f a, h => by
-      unfold Neutral.fullyQuotable at h; unfold Neutral.levelsBelow
-      exact ⟨Val.levelsBelow_of_fullyQuotable d f h.1,
-             Val.levelsBelow_of_fullyQuotable d a h.2⟩
-
-theorem Closure.levelsBelow_of_fullyQuotable : ∀ (d : Nat) (cl : Closure),
-    Closure.fullyQuotable d cl → Closure.levelsBelow d cl
-  | d, ⟨_body, env⟩, h => by
-      unfold Closure.fullyQuotable at h; unfold Closure.levelsBelow
-      exact Closure.envLevelsBelow_of_envFullyQuotable d env h.2
-
-theorem Closure.envLevelsBelow_of_envFullyQuotable : ∀ (d : Nat) (env : List Val),
-    Closure.envFullyQuotable d env → Closure.envLevelsBelow d env
-  | _, [], _ => by unfold Closure.envLevelsBelow; trivial
-  | d, v :: vs, h => by
-      unfold Closure.envFullyQuotable at h; unfold Closure.envLevelsBelow
-      exact ⟨Val.levelsBelow_of_fullyQuotable d v h.1.1,
-             Closure.envLevelsBelow_of_envFullyQuotable d vs h.2⟩
-end
-
--- Monotonicity of fullyQuotable in depth: a Val fully-quotable at d
--- is also fully-quotable at any d' ≥ d. Quote witnesses at d' are
--- derived from witnesses at d via quote_depth_shift_n.
-mutual
-theorem Val.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
-    ∀ (v : Val), Val.fullyQuotable d v → Val.fullyQuotable d' v
-  | _, _, _, .type, _ => by unfold Val.fullyQuotable; trivial
-  | _, _, hle, .neutral n, h => by
-      unfold Val.fullyQuotable at h ⊢
-      exact Neutral.fullyQuotable_mono hle n h
-  | _, _, hle, .lam dom cl, h => by
-      unfold Val.fullyQuotable at h ⊢
-      exact ⟨Val.fullyQuotable_mono hle dom h.1,
-             Closure.fullyQuotable_mono hle cl h.2⟩
-  | _, _, hle, .iota ann cl, h => by
-      unfold Val.fullyQuotable at h ⊢
-      exact ⟨Val.fullyQuotable_mono hle ann h.1,
-             Closure.fullyQuotable_mono hle cl h.2⟩
-  | _, _, hle, .«fix» ann cl, h => by
-      unfold Val.fullyQuotable at h ⊢
-      exact ⟨Val.fullyQuotable_mono hle ann h.1,
-             Closure.fullyQuotable_mono hle cl h.2⟩
-
-theorem Neutral.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
-    ∀ (n : Neutral), Neutral.fullyQuotable d n → Neutral.fullyQuotable d' n
-  | _, _, hle, .var k, h => by
-      unfold Neutral.fullyQuotable at h ⊢; omega
-  | _, _, hle, .app n v, h => by
-      unfold Neutral.fullyQuotable at h ⊢
-      exact ⟨Neutral.fullyQuotable_mono hle n h.1,
-             Val.fullyQuotable_mono hle v h.2⟩
-  | _, _, hle, .stuckRec f a, h => by
-      unfold Neutral.fullyQuotable at h ⊢
-      exact ⟨Val.fullyQuotable_mono hle f h.1,
-             Val.fullyQuotable_mono hle a h.2⟩
-
-theorem Closure.fullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
-    ∀ (cl : Closure), Closure.fullyQuotable d cl → Closure.fullyQuotable d' cl
-  | _, _, hle, ⟨_body, env⟩, h => by
-      unfold Closure.fullyQuotable at h ⊢
-      exact ⟨h.1, Closure.envFullyQuotable_mono hle env h.2⟩
-
-theorem Closure.envFullyQuotable_mono : ∀ {d d' : Nat}, d ≤ d' →
-    ∀ (env : List Val), Closure.envFullyQuotable d env →
-      Closure.envFullyQuotable d' env
-  | _, _, _, [], _ => by unfold Closure.envFullyQuotable; trivial
-  | d, d', hle, v :: vs, h => by
-      unfold Closure.envFullyQuotable at h ⊢
-      obtain ⟨⟨hvfq, qe, hqe⟩, htail⟩ := h
-      refine ⟨⟨Val.fullyQuotable_mono hle v hvfq, ?_⟩,
-              Closure.envFullyQuotable_mono hle vs htail⟩
-      -- Quote witness at d' via quote_depth_shift_n.
-      have hlvl : Val.levelsBelow d v :=
-        Val.levelsBelow_of_fullyQuotable d v hvfq
-      exact ⟨qe.shift (d' - d) 0, quote_depth_shift_n (d := d') hlvl hle hqe⟩
-end
+-- `Val.fullyQuotable_mono` + related — moved earlier (before
+-- R_depth_lift) 2026-04-22 for Tier 0 refactor.
 
 theorem quote_lam {d : Nat} {dom : Val} {cl : Closure} {e : Expr}
     (h : quote fuelω d (.lam dom cl) = some e) :
