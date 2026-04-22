@@ -3,6 +3,62 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-22: Task 1 (eval_vapp_preserves_fullyQuotable strengthening) — confirmed blocked on closure circularity
+
+Attempted the strengthening approach documented in
+`docs/ideas/sorry-closure-plan.md` Task 1. Multiple variants
+explored, all hit the same fundamental blocker:
+
+**Core issue**: strengthening the theorem's conclusion to carry
+`∃ qv, quote fuelω d v = some qv` requires producing a quote
+witness on eval outputs. For closure-valued outputs
+(`.lam`/`.iota`/`.fix`), this requires `quoteClosure` to succeed,
+which requires `eval fuelω 1 (bv :: env) body` to succeed. This
+inner eval is mutual with the theorem being proven, hence circular.
+
+**Variants explored** (all blocked):
+
+1. **Threaded `hnfq` hypothesis on the main theorem**: `((eval fuelω
+   unf ρ e).bind (quote fuelω d)).isSome` provides a quote witness on
+   the OUTPUT v, but NOT on intermediate vals in `.app`/`.letE`
+   sub-calls. For `.app f a` at fuelω, the outer hnfq tells us the
+   final vapp output quotes; it does NOT constrain quote on f' or a'.
+   So `ihv` cannot be invoked.
+
+2. **Strengthened `Val.fullyQuotable` to bundle quote witness on
+   closure cases**: pre-bundles the quote witness, making
+   `fullyQuotable_has_quote` trivial for closures. But producers
+   (the theorem's `.lam/.iota/.fix` construction cases) must then
+   provide the bundled witness — circular for the same reason.
+
+3. **`fullyQuotable_has_quote` as standalone helper**: as predicted
+   by decision-log 2026-04-22, not provable for closure cases
+   without additional hypotheses. The `Closure.fullyQuotable`
+   predicate says `body.closedAt (env.length+1)` but nothing about
+   eval-terminates-at-fuelω; OCH is untyped at this layer so raw
+   β-reduction loops are possible (`(λx.x x)(λx.x x)` analogs).
+
+4. **Parametric-fuel + sizeOf bound**: pass `sizeOf v + 1 ≤ fuel`
+   as precondition. Works for neutrals but fails to prove closure
+   cases, and the `sizeOf v ≤ 99999` bound itself is unprovable
+   universally (closures can carry arbitrarily large bodies).
+
+**Conclusion**: Task 1 as specified requires either (a) a
+fundamentally different proof architecture (e.g. concEval-based
+closed-term reduction à la Phase 2) or (b) a weakening of the
+sorry-closure plan acceptance criteria to allow a helper-sorry
+for the closure-output case.
+
+Recommended deferral: proceed with Tasks 2-4 under the weaker
+assumption that `eval_vapp_preserves_fullyQuotable` remains
+sorried, or adopt Phase 2's `progress_mod_fuel` path directly
+(which obviates the need for this specific preservation
+theorem).
+
+Session work: reverted all attempted changes; no net edit to
+`SoundnessProof.lean`. Baseline sorry count is unchanged:
+4 declaration-level sorries at lines 2463, 3673, 3858, 5174.
+
 ## 2026-04-23: Autonomy mode — no yielding, track decisions retrospectively
 
 User directive: "never yield for judgement" while they're AFK. Pick something
