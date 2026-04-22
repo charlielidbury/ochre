@@ -878,6 +878,85 @@ namespace Equiv
 -- the closedness-carrying version.
 end Equiv
 
+/-! ### Depth-parametrised Equiv (`Equiv_c`)
+
+`Equiv_c d e₁ e₂` says `e₁ ⊑ e₂` and `e₂ ⊑ e₁` at every
+context `Γ` of length **at least** `d`. This is strictly
+weaker than `Equiv` (which requires `|Γ| ≥ 0` = all `Γ`,
+including `[]`).
+
+**Why it exists:** `Equiv.shift` at `Γ = []` is unprovable
+without closedness of both endpoints (the structural blocker
+documented in DECISION-LOG 2026-04-21). But at `Γ ≠ []`, the
+shift follows from `Subtype'.ctx_extend`, which is already
+proven. `Equiv_c d` excludes `Γ = []` for `d ≥ 1`, restoring
+provability of shift without any closedness side condition.
+
+`Equiv_c 0` coincides with `Equiv` (both quantify over all
+`Γ`), so at the top-level soundness chain (`Γe = []`, closed
+terms) no information is lost. For internal uses (R's closure
+clauses at depth `d ≥ 1`), `Equiv_c d` is enough because
+all downstream consumers use it at a `Γe` of length `d`. -/
+def Equiv_c (d : Nat) (e₁ e₂ : Expr) : Prop :=
+  ∀ {S : Seen} {Γe : Ctx}, d ≤ Γe.length →
+    Subtype' S Γe e₁ e₂ ∧ Subtype' S Γe e₂ e₁
+
+namespace Equiv_c
+  theorem refl (d : Nat) (e : Expr) : Equiv_c d e e :=
+    fun {_ _} _ => ⟨.refl e, .refl e⟩
+
+  theorem symm {d e₁ e₂} (h : Equiv_c d e₁ e₂) : Equiv_c d e₂ e₁ :=
+    fun {_ _} hd => ⟨(h hd).2, (h hd).1⟩
+
+  theorem trans {d e₁ e₂ e₃}
+      (h₁ : Equiv_c d e₁ e₂) (h₂ : Equiv_c d e₂ e₃) :
+      Equiv_c d e₁ e₃ :=
+    fun {_ _} hd => ⟨.trans (h₁ hd).1 (h₂ hd).1,
+                     .trans (h₂ hd).2 (h₁ hd).2⟩
+
+  /-- `Equiv` coerces to `Equiv_c d` for any `d`. Since `Equiv`
+  quantifies over all `Γ` and `Equiv_c d` only over those with
+  `|Γ| ≥ d`, the coercion is immediate. -/
+  theorem of_Equiv {d e₁ e₂} (h : Equiv e₁ e₂) : Equiv_c d e₁ e₂ :=
+    fun {_ _} _ => h
+
+  /-- At `d = 0`, `Equiv_c 0` coincides with `Equiv`. -/
+  theorem to_Equiv_zero {e₁ e₂} (h : Equiv_c 0 e₁ e₂) : Equiv e₁ e₂ :=
+    fun {_ _} => h (Nat.zero_le _)
+
+  /-- **Key shift lemma** — the whole point of `Equiv_c`. At
+  output depth `d+1`, the shifted equivalence holds at every
+  `Γ` of length `≥ d+1` (which excludes `Γ = []` for `d ≥ 0`).
+
+  Proof: for `Γ` with `|Γ| ≥ d+1 ≥ 1`, decompose `Γ = head :: tail`
+  with `|tail| ≥ d`. Apply the input `Equiv_c d` at `tail` to
+  get `Subtype' S tail e₁ e₂`, then lift via `Subtype'.ctx_extend`
+  with `Δ = [head]` to get the shifted pair at `[head] ++ tail = Γ`.
+
+  No closedness side condition — the shift is paid for by
+  restricting the output quantifier to non-empty-Γ cases. -/
+  theorem shift {d e₁ e₂} (h : Equiv_c d e₁ e₂) :
+      Equiv_c (d+1) (e₁.shift 1 0) (e₂.shift 1 0) := by
+    intro S Γ hd
+    -- |Γ| ≥ d+1, so Γ ≠ [].
+    match Γ, hd with
+    | head :: tail, hd =>
+      have htail_len : d ≤ tail.length := by
+        simp only [List.length_cons] at hd; omega
+      have ⟨h12, h21⟩ := h (S := []) (Γe := tail) htail_len
+      have h12' := Subtype'.ctx_extend (S := []) [head] h12
+      have h21' := Subtype'.ctx_extend (S := []) [head] h21
+      -- ctx_extend output context = [head] ++ tail = head :: tail.
+      simp only [List.length_cons, List.length_nil, Nat.zero_add,
+                 List.nil_append, List.cons_append] at h12' h21'
+      -- S is mapped via Seen.extendEntry 1 tail.length. For
+      -- our uses with S = [], this is fine; for general S we
+      -- weaken from [] to S.
+      refine ⟨Subtype'.weaken ?_ h12', Subtype'.weaken ?_ h21'⟩
+      all_goals (intro _ hmem; simp [List.map_nil] at hmem)
+
+end Equiv_c
+
 /-! ## Step-indexed logical relation
 
 `R n d v e` means "at step index `n` and depth `d`, the

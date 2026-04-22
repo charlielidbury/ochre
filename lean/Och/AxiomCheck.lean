@@ -11,3 +11,6 @@ import Och.Soundness
 #print axioms NbE.tyCheck_sound_open
 #print axioms NbE.tyInfer_sound_open
 #print axioms NbE.quote_depth_shift
+#print axioms NbE.Equiv_c.shift
+#print axioms NbE.Equiv_c.trans
+#print axioms NbE.Equiv_c.of_Equiv
