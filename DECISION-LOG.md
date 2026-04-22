@@ -3,6 +3,47 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-21: Path A breakthrough — Equiv_c d sidesteps the nil-Γ obstruction
+
+Added `Equiv_c d e₁ e₂ := ∀ {S Γ}, d ≤ |Γ| → Subtype' S Γ e₁ e₂ ∧ symm` as a
+depth-parametrised variant of Equiv. Key new primitive **`Equiv_c.shift`**:
+
+```lean
+Equiv_c d e₁ e₂ → Equiv_c (d+1) (e₁.shift 1 0) (e₂.shift 1 0)
+```
+
+**Proven axiom-clean, no closedness side condition.** The nil-Γ obstruction
+is avoided by paying with a tighter output quantifier (|Γ'| ≥ d+1 ≥ 1
+excludes Γ'=[]). `Subtype'.ctx_extend` with Δ = [head] handles every
+non-empty case uniformly.
+
+`Equiv_c 0` coincides with `Equiv` (via `to_Equiv_zero`), so the top-level
+soundness chain loses nothing. Coercion `Equiv → Equiv_c d` is free via
+`of_Equiv`.
+
+**Remaining work (Path A step 3):** refactor R's .lam/.iota/.fix/.type/
+.neutral clauses to use `Equiv_c d` instead of `Equiv`. Cascading updates:
+- R_resp_Equiv: compose Equiv input via of_Equiv + Equiv_c.trans.
+- R_neutral_app: output as Equiv_c d.
+- R_fresh_bvar0: use Equiv_c.refl.
+- R_quote_equiv return type: Equiv_c d (was Equiv).
+- All R_quote_equiv consumers: OpenCtx.eq, eval_quote_equiv_closed,
+  vapp_realises stuckRec branches. Each uses Equiv_c d at Γe of length d,
+  which satisfies |Γe| ≥ d.
+- eval_realises construction sites (4 for .asc/.letE/.lam/.iota/.fix):
+  wrap final Equiv in `Equiv_c.of_Equiv` to upgrade to Equiv_c d.
+
+Estimated ~30 error sites in SoundnessProof.lean to fix. Attempted this
+iteration, hit scope limit mid-refactor, reverted R def. Infrastructure
+(Equiv_c + shift + basic combinators) landed in commit 826d2b1.
+
+Once R uses Equiv_c d, R_depth_lift's 5 cases close:
+- .type/.neutral: `Equiv_c.shift` on the base conjunct's Equiv_c d.
+- .lam/.iota/.fix: depth-lift existentials (dome, ρe'), then
+  `Equiv_c.shift` on heqL/I/F, plus a substEnv-shift commutation lemma
+  `(body.substEnv (.bvar 0 :: ρe.map shift)).shift 1 1 =
+   body.substEnv (.bvar 0 :: (ρe.map shift).map shift)`.
+
 ## 2026-04-21: Structural blocker confirmed — all 4 remaining declaration sorries reduce to nil-Γ Equiv.shift
 
 After Agent A2's levelsBelow refactor landed (95f0022) and Agent E
