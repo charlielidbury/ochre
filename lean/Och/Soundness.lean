@@ -91,7 +91,8 @@ theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
   have hr : R 1 0 v (e.substEnv []) :=
     eval_realises heval henv (by simpa using hcl)
   rw [Expr.substEnv_nil] at hr
-  exact R_quote_equiv Nat.one_pos hr hq
+  -- R_quote_equiv returns Equiv_c 0; coerce to Equiv via to_Equiv_zero.
+  exact Equiv_c.to_Equiv_zero (R_quote_equiv Nat.one_pos hr hq)
 
 /-! ### Quote-totality
 
