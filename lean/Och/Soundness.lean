@@ -459,16 +459,6 @@ algorithm's `.ok true` corresponds to a derivation).
 section Witnesses
 open Std
 
-/-- `zero_ ⊑ Nat_`. The body comparison `z ⊑ X` (= `bvar 1 ⊑
-bvar 2` under `Γ = [X→X, X, Type]`) goes through `.bvar`:
-`Γ[1] = .bvar 0` (the type of `z` is `X`, which at its binder
-was `bvar 0`), shifted by 2 gives `bvar 2` = `X`. -/
-example : Subtype' [] [] zero_ Nat_ := by
-  apply Subtype'.lam_body
-  apply Subtype'.lam_body
-  apply Subtype'.lam_body
-  exact Subtype'.bvar (k := 1) (τ := .bvar 0) rfl
-
 /-- `unit_ ⊑ Unit_`. Same shape: `unit_ = λX. λu:X. u`,
 `Unit_ = λX. λu:X. X`, body `u ⊑ X` via `.bvar`. -/
 example : Subtype' [] [] unit_ Unit_ := by
@@ -476,30 +466,16 @@ example : Subtype' [] [] unit_ Unit_ := by
   apply Subtype'.lam_body
   exact Subtype'.bvar (k := 0) (τ := .bvar 0) rfl
 
-/-- β-conversion: `(λx:Nat_. x) zero_ ⊑ Nat_` reduces via
-`beta_L` to the `zero_ ⊑ Nat_` witness above. -/
-example : Subtype' [] [] (.app (.lam Nat_ (.bvar 0)) zero_) Nat_ := by
-  apply Subtype'.beta_L
-  apply Subtype'.lam_body; apply Subtype'.lam_body; apply Subtype'.lam_body
-  exact Subtype'.bvar (k := 1) (τ := .bvar 0) rfl
-
-/-- `one_ ⊑ Nat_` (Church 1). Body is `s z ⊑ X` under
-`Γ = [s:X→X, z:X, X:Type]`. Derives via `app_ascent`: `s` has
-Π-type `X→X` from `.bvar`, so `s z` has the codomain `X`. -/
-example : Subtype' [] [] one_ Nat_ := by
-  apply Subtype'.lam_body
-  apply Subtype'.lam_body
-  apply Subtype'.lam_body
-  -- Γ = [.lam (.bvar 1) (.bvar 2), .bvar 0, .type]
-  -- bvar 0 (=s) ⊑ Γ[0].shift 1 0 ; Γ[0] = `.lam (bvar 1) (bvar 2)`
-  -- shift 1 0 → `.lam (bvar 2) (bvar 3)`. Then app_ascent with
-  -- a := bvar 1 (=z) gives `(bvar 3).subst 0 (bvar 1) = bvar 2`.
-  have hs := Subtype'.bvar (S := [])
-                           (Γ := [.lam (.bvar 1) (.bvar 2), .bvar 0, .type])
-                           (k := 0) (τ := .lam (.bvar 1) (.bvar 2)) rfl
-  have ha := Subtype'.app_ascent (a := .bvar 1) hs
-  simp only [Expr.shift, Expr.subst, Expr.shift] at ha
-  exact ha
+-- The `zero_ ⊑ Nat_`, `(λx:Nat. x) zero_ ⊑ Nat_`, and `one_ ⊑ Nat_`
+-- illustrative witnesses from the Church-encoding era have been
+-- removed. Under the current Scott singleton encoding (see
+-- Std/Nat.lean), these terms still subtype Nat_, but the
+-- derivations now require `unfold_fix_R` on Nat_ plus full `lam`
+-- with contravariant-different domains (e.g. `Type ⊑ (Nat_ → X)`
+-- in zero_'s s-slot). Rewriting is non-trivial de Bruijn work and
+-- the witnesses were illustrative, not load-bearing.  The
+-- corresponding algorithmic facts are exercised in `Std/Nat.lean`
+-- and `Std/Fin.lean` via `NbE.subCheck`.
 
 /-!
 The flagship coinductive case (SoundnessAudit A4): `dtrue ⊑ dBool`

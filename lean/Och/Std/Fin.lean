@@ -123,15 +123,12 @@ example : NbE.subCheck 2000 Nat_ (och{ Fin three_ }) = .ok false := by native_de
 example : NbE.subCheck 2000 one_ (och{ Fin zero_ }) = .ok false := by native_decide
 
 -- NO: the "equal index" diagonal — `n_ ⊑ Fin n_` should fail
--- (Fin n doesn't contain its own index as a value). Previously these
--- passed wrongly because the old Bot (`fix B. λX. λz:X. λs:(B → X). z`)
--- had the same body shape as `zero_`, so `zero_ ⊑ Bot` closed
--- structurally and cascaded.
---
--- The fix: give Bot a body that no Scott numeral can match —
--- `s B` (the fix self-reference fed into its own eliminator). That
--- infinite self-recursion doesn't match any terminating numeral,
--- so `zero_ ⊄ Bot` and the diagonal is correctly rejected.
+-- (Fin n doesn't contain its own index as a value). With primitive
+-- `Bot`, `[S-BotL]` is the ONLY rule placing Bot on the LHS of ⊑,
+-- so `zero_ ⊄ Bot` automatically and the diagonal closes via
+-- fall-through. The earlier definable-Bot encodings (`body = z`
+-- or `body = s B`) tried to achieve this structurally and were
+-- fragile; the primitive version is unconditional.
 example : NbE.subCheck 2000 zero_ (och{ Fin zero_ }) = .ok false := by native_decide
 example : NbE.subCheck 2000 one_  (och{ Fin one_  }) = .ok false := by native_decide
 example : NbE.subCheck 2000 two_  (och{ Fin two_  }) = .ok false := by native_decide
