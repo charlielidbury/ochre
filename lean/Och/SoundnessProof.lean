@@ -2360,6 +2360,42 @@ theorem eval_levelsBelow {n unf d ρ e v}
     Val.levelsBelow d v :=
   (eval_vapp_levelsBelow n).1 h hρ
 
+/-- **eval preserves Val.fullyQuotable**: if ρ's entries are all
+fully-quotable (i.e., `Closure.envFullyQuotable d ρ`), then the
+eval result `v` is also fully-quotable at `d`.
+
+Standalone sorry-helper pending full proof. The proof mirrors
+`eval_vapp_levelsBelow` — mutual induction on fuel with vapp
+preservation. The non-trivial step: vapp's `.lam` head builds
+an extended env `a :: cl.env`, which needs `envFullyQuotable`
+on `a :: cl.env`. The `cl.env` part is from `f`'s fullyQuotable;
+the head `a` needs both `Val.fullyQuotable d a` AND a quote
+witness on `a`. The quote witness can be threaded from `hnfq`
+at the top-level caller (via `eval_quotes'`), or as an
+additional hypothesis pending a fuller architectural design. -/
+theorem eval_preserves_fullyQuotable {n unf d ρ e v}
+    (_heval : eval n unf ρ e = some v)
+    (_hρ : Closure.envFullyQuotable d ρ)
+    (_hcl : e.closedAt ρ.length = true) :
+    Val.fullyQuotable d v := sorry
+
+/-- Convert per-entry `hρq` + `hρfq` hypotheses into `envFullyQuotable`. -/
+theorem Closure.envFullyQuotable_of_getElem? {d : Nat} {ρ : List Val}
+    (hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+           ∃ qe, quote fuelω d v = some qe)
+    (hρfq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+            Val.fullyQuotable d v) :
+    Closure.envFullyQuotable d ρ := by
+  induction ρ with
+  | nil => unfold Closure.envFullyQuotable; trivial
+  | cons v vs ih =>
+    unfold Closure.envFullyQuotable
+    refine ⟨⟨hρfq 0 v ?_, hρq 0 v ?_⟩, ih ?_ ?_⟩
+    · simp
+    · simp
+    · intro k w hk; exact hρq (k+1) w (by simpa using hk)
+    · intro k w hk; exact hρfq (k+1) w (by simpa using hk)
+
 mutual
 /-- Monotonicity of levelsBelow/envLevelsBelow. -/
 theorem Val.levelsBelow_mono {d d' : Nat} (hle : d ≤ d') :
@@ -4685,8 +4721,16 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
         subst hk
         simp only [Array.size_push]
-        -- Head valV: need eval-preserves-fullyQuotable theorem.
-        sorry
+        -- Head valV: use eval_preserves_fullyQuotable.
+        have hρenv : Closure.envFullyQuotable Γ.size ρ :=
+          Closure.envFullyQuotable_of_getElem?
+            (fun k v hk => hctx.hρq k v hk)
+            (fun k v hk => hctx.hρfq k v hk)
+        have hlen_eq : ρ.length = ρe.length := hctx.henv.1
+        have hclv' : val.closedAt ρ.length = true := hlen_eq ▸ hclv
+        have hvfq : Val.fullyQuotable Γ.size valV :=
+          eval_preserves_fullyQuotable hev hρenv hclv'
+        exact Val.fullyQuotable_mono (Nat.le_succ _) valV hvfq
     | succ m =>
         simp only [List.getElem?_cons_succ] at hk
         simp only [Array.size_push]
@@ -4701,8 +4745,15 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     have hevω := eval_fuel_mono hfuel hev
     have hvlvl : Val.levelsBelow Γ.size valV :=
       eval_levelsBelow hevω henvLvl
-    -- fullyQuotable on valV — eval preserves it (sorry for now).
-    have hvfq : Val.fullyQuotable Γ.size valV := by sorry
+    -- fullyQuotable on valV via eval_preserves_fullyQuotable.
+    have hρenv : Closure.envFullyQuotable Γ.size ρ :=
+      Closure.envFullyQuotable_of_getElem?
+        (fun k v hk => hctx.hρq k v hk)
+        (fun k v hk => hctx.hρfq k v hk)
+    have hlen_eq : ρ.length = ρe.length := hctx.henv.1
+    have hclv' : val.closedAt ρ.length = true := hlen_eq ▸ hclv
+    have hvfq : Val.fullyQuotable Γ.size valV :=
+      eval_preserves_fullyQuotable hev hρenv hclv'
     have hRval' := R_depth_lift hvlvl hvfq hqe hRval
     have htail := REnv_depth_lift hctx.henv hctx.hρq hctx.hρlvl hctx.hρfq
     simpa [Array.size_push] using REnv_cons htail hRval'
