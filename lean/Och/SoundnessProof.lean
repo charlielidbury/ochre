@@ -2657,87 +2657,268 @@ Cases:
   (currently still sorry for closure cases; see helper below). -/
 theorem R_depth_lift {n d v e}
     {qe : Expr} (hlvl : Val.levelsBelow d v)
+    (hfq : Val.fullyQuotable d v)
     (hq : quote fuelω d v = some qe)
     (h : R n d v e) :
     R n (d + 1) v (e.shift 1 0) := by
-  match n, h with
-  | 0, _ => unfold R; trivial
-  | k+1, h =>
-    cases hv : v with
-    | type =>
-        subst hv
-        unfold R at h ⊢
-        intro qe'' hq''
-        have hqt : quote fuelω (d+1) .type = some .type := by
-          have hf : fuelω = (fuelω - 1) + 1 := rfl
-          rw [hf]; unfold quote; rfl
-        have hqd : quote fuelω d .type = some .type := by
-          have hf : fuelω = (fuelω - 1) + 1 := rfl
-          rw [hf]; unfold quote; rfl
-        rw [hqt] at hq''
-        cases hq''
-        have h' : Equiv_c d .type e := h .type hqd
-        intro S Γe hd
-        obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
-        exact ⟨hab, hba⟩
-    | neutral nN =>
-        subst hv
-        unfold R at h ⊢
-        intro qe'' hq''
-        have hshifted := quote_depth_shift_of_levelsBelow hlvl hq
-        have heq : qe'' = qe.shift 1 0 := by
-          rw [hshifted] at hq''
-          exact Option.some.inj hq''.symm
-        subst heq
-        have h' : Equiv_c d qe e := h qe hq
-        intro S Γe hd
-        obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
-        exact ⟨hab, hba⟩
-    | lam dV cl =>
-        -- Env-exposes case. Structure:
-        -- 1. Extract ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ from h.
-        -- 2. From hq's unfolding, get quote of dV at d.
-        -- 3. Recurse R_depth_lift on dV (smaller sizeOf).
-        -- 4. RList_depth_lift on cl.env → ρe'.map shift at d+1.
-        --    (Requires hquotes for cl.env entries — not directly
-        --    available; blocks this case.)
-        -- 5. Equiv_c.shift on heqL, use substEnv_shift_comm to
-        --    match the target form.
-        -- Blocker: step 4 needs cl.env entry quote witnesses.
-        -- Add a `hquotes_env` parameter to R_depth_lift or prove
-        -- a lemma that RList preserves under depth lift without
-        -- requiring per-entry quotes (hard).
-        sorry
-    | iota aV cl => sorry
-    | «fix» aV cl => sorry
+  match n, v, hlvl, hfq, hq, h with
+  | 0, _, _, _, _, _ => unfold R; trivial
+  | k+1, .type, _, _, _, h =>
+      unfold R at h ⊢
+      intro qe'' hq''
+      have hqt : quote fuelω (d+1) Val.type = some Expr.type := by
+        have hf : fuelω = (fuelω - 1) + 1 := rfl
+        rw [hf]; unfold quote; rfl
+      have hqd : quote fuelω d Val.type = some Expr.type := by
+        have hf : fuelω = (fuelω - 1) + 1 := rfl
+        rw [hf]; unfold quote; rfl
+      rw [hqt] at hq''
+      cases hq''
+      have h' : Equiv_c d Expr.type e := h Expr.type hqd
+      intro S Γe hd
+      obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
+      exact ⟨hab, hba⟩
+  | k+1, .neutral nN, hlvl, _, hq, h =>
+      unfold R at h ⊢
+      intro qe'' hq''
+      have hshifted := quote_depth_shift_of_levelsBelow hlvl hq
+      have heq : qe'' = qe.shift 1 0 := by
+        rw [hshifted] at hq''
+        exact Option.some.inj hq''.symm
+      subst heq
+      have h' : Equiv_c d qe e := h qe hq
+      intro S Γe hd
+      obtain ⟨hab, hba⟩ := Equiv_c.shift h' hd
+      exact ⟨hab, hba⟩
+  | k+1, .lam dV cl, hlvl, hfq, hq, h =>
+      have hfq_dV : Val.fullyQuotable d dV := by
+        unfold Val.fullyQuotable at hfq; exact hfq.1
+      have hfq_cl : Closure.envFullyQuotable d cl.env := by
+        unfold Val.fullyQuotable at hfq
+        obtain ⟨_, hfq2⟩ := hfq
+        cases cl with | _ => exact hfq2
+      have hlvl_dV : Val.levelsBelow d dV := by
+        unfold Val.levelsBelow at hlvl; exact hlvl.1
+      have hlvl_cl : Closure.envLevelsBelow d cl.env := by
+        unfold Val.levelsBelow at hlvl
+        obtain ⟨_, hlvl2⟩ := hlvl
+        cases cl with | _ => exact hlvl2
+      unfold R at h
+      obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
+      have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
+      rw [hfω_eq] at hq
+      unfold quote at hq
+      simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                 Option.some.injEq] at hq
+      obtain ⟨dom', hdom', _body', _hbody', _⟩ := hq
+      have hdom'_ω : quote fuelω d dV = some dom' :=
+        quote_fuel_mono (by omega) hdom'
+      have hRd' : R (k+1) (d+1) dV (dome.shift 1 0) :=
+        R_depth_lift hlvl_dV hfq_dV hdom'_ω hRd
+      have hRL' : RList (k+1) (d+1) cl.env (ρe'.map (·.shift 1 0)) :=
+        RList_depth_lift hlvl_cl hfq_cl hRL
+      have hclb' :
+          cl.body.closedAt ((ρe'.map (·.shift 1 0)).length + 1) = true := by
+        rw [List.length_map]; exact hclb
+      have heqL' : Equiv_c (d+1) (e.shift 1 0)
+          ((Expr.lam dome
+            (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0) :=
+        Equiv_c.shift heqL
+      have hsubst_comm :
+          (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))).shift 1 1
+          = cl.body.substEnv
+              ((.bvar 0 :: ρe'.map (·.shift 1 0)).map (·.shift 1 1)) := by
+        apply substEnv_shift_comm
+        simp [List.length_map]; exact hclb
+      have htail_eq : (.bvar 0 :: ρe'.map (·.shift 1 0)).map (·.shift 1 1)
+          = .bvar 0 :: (ρe'.map (·.shift 1 0)).map (·.shift 1 0) := by
+        simp only [List.map_cons, Expr.shift, decide_eq_true_eq, Nat.lt_one_iff,
+                   ↓reduceIte]
+        congr 1
+        rw [List.map_map, List.map_map]
+        apply List.map_congr_left
+        intro e _he
+        simp only [Function.comp]
+        have := Expr.shift_shift_comm_gen e 1 0 1
+        simpa using this
+      unfold R
+      refine ⟨ρe'.map (·.shift 1 0), dome.shift 1 0,
+              hRd', hRL', hclb', ?_⟩
+      have target_rewrite :
+          (Expr.lam dome
+            (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0
+          = Expr.lam (dome.shift 1 0)
+              (cl.body.substEnv
+                (.bvar 0 :: (ρe'.map (·.shift 1 0)).map (·.shift 1 0))) := by
+        show Expr.lam (dome.shift 1 0)
+            ((cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))).shift 1 1)
+          = Expr.lam (dome.shift 1 0) _
+        congr 1
+        rw [hsubst_comm, htail_eq]
+      rw [target_rewrite] at heqL'
+      intro S Γ hd
+      exact heqL' hd
+  | k+1, .iota aV cl, hlvl, hfq, hq, h =>
+      have hfq_aV : Val.fullyQuotable d aV := by
+        unfold Val.fullyQuotable at hfq; exact hfq.1
+      have hfq_cl : Closure.envFullyQuotable d cl.env := by
+        unfold Val.fullyQuotable at hfq
+        obtain ⟨_, hfq2⟩ := hfq
+        cases cl with | _ => exact hfq2
+      have hlvl_aV : Val.levelsBelow d aV := by
+        unfold Val.levelsBelow at hlvl; exact hlvl.1
+      have hlvl_cl : Closure.envLevelsBelow d cl.env := by
+        unfold Val.levelsBelow at hlvl
+        obtain ⟨_, hlvl2⟩ := hlvl
+        cases cl with | _ => exact hlvl2
+      unfold R at h
+      obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
+      have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
+      rw [hfω_eq] at hq
+      unfold quote at hq
+      simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                 Option.some.injEq] at hq
+      obtain ⟨ann', hann', _body', _hbody', _⟩ := hq
+      have hann'_ω : quote fuelω d aV = some ann' :=
+        quote_fuel_mono (by omega) hann'
+      have hRa' : R (k+1) (d+1) aV (anne.shift 1 0) :=
+        R_depth_lift hlvl_aV hfq_aV hann'_ω hRa
+      have hRL' : RList (k+1) (d+1) cl.env (ρe'.map (·.shift 1 0)) :=
+        RList_depth_lift hlvl_cl hfq_cl hRL
+      have hclb' :
+          cl.body.closedAt ((ρe'.map (·.shift 1 0)).length + 1) = true := by
+        rw [List.length_map]; exact hclb
+      have heqI' : Equiv_c (d+1) (e.shift 1 0)
+          ((Expr.iota anne
+            (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0) :=
+        Equiv_c.shift heqI
+      have hsubst_comm :
+          (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))).shift 1 1
+          = cl.body.substEnv
+              ((.bvar 0 :: ρe'.map (·.shift 1 0)).map (·.shift 1 1)) := by
+        apply substEnv_shift_comm
+        simp [List.length_map]; exact hclb
+      have htail_eq : (.bvar 0 :: ρe'.map (·.shift 1 0)).map (·.shift 1 1)
+          = .bvar 0 :: (ρe'.map (·.shift 1 0)).map (·.shift 1 0) := by
+        simp only [List.map_cons, Expr.shift, decide_eq_true_eq, Nat.lt_one_iff,
+                   ↓reduceIte]
+        congr 1
+        rw [List.map_map, List.map_map]
+        apply List.map_congr_left
+        intro e _he
+        simp only [Function.comp]
+        have := Expr.shift_shift_comm_gen e 1 0 1
+        simpa using this
+      unfold R
+      refine ⟨ρe'.map (·.shift 1 0), anne.shift 1 0,
+              hRa', hRL', hclb', ?_⟩
+      have target_rewrite :
+          (Expr.iota anne
+            (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0
+          = Expr.iota (anne.shift 1 0)
+              (cl.body.substEnv
+                (.bvar 0 :: (ρe'.map (·.shift 1 0)).map (·.shift 1 0))) := by
+        show Expr.iota (anne.shift 1 0) _ = Expr.iota (anne.shift 1 0) _
+        congr 1
+        rw [hsubst_comm, htail_eq]
+      rw [target_rewrite] at heqI'
+      intro S Γ hd
+      exact heqI' hd
+  | k+1, .«fix» aV cl, hlvl, hfq, hq, h =>
+      have hfq_aV : Val.fullyQuotable d aV := by
+        unfold Val.fullyQuotable at hfq; exact hfq.1
+      have hfq_cl : Closure.envFullyQuotable d cl.env := by
+        unfold Val.fullyQuotable at hfq
+        obtain ⟨_, hfq2⟩ := hfq
+        cases cl with | _ => exact hfq2
+      have hlvl_aV : Val.levelsBelow d aV := by
+        unfold Val.levelsBelow at hlvl; exact hlvl.1
+      have hlvl_cl : Closure.envLevelsBelow d cl.env := by
+        unfold Val.levelsBelow at hlvl
+        obtain ⟨_, hlvl2⟩ := hlvl
+        cases cl with | _ => exact hlvl2
+      unfold R at h
+      obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
+      have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
+      rw [hfω_eq] at hq
+      unfold quote at hq
+      simp only [Option.bind_eq_bind, Option.bind_eq_some,
+                 Option.some.injEq] at hq
+      obtain ⟨ann', hann', _body', _hbody', _⟩ := hq
+      have hann'_ω : quote fuelω d aV = some ann' :=
+        quote_fuel_mono (by omega) hann'
+      have hRa' : R (k+1) (d+1) aV (anne.shift 1 0) :=
+        R_depth_lift hlvl_aV hfq_aV hann'_ω hRa
+      have hRL' : RList (k+1) (d+1) cl.env (ρe'.map (·.shift 1 0)) :=
+        RList_depth_lift hlvl_cl hfq_cl hRL
+      have hclb' :
+          cl.body.closedAt ((ρe'.map (·.shift 1 0)).length + 1) = true := by
+        rw [List.length_map]; exact hclb
+      have heqF' : Equiv_c (d+1) (e.shift 1 0)
+          ((Expr.fix anne
+            (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0) :=
+        Equiv_c.shift heqF
+      have hsubst_comm :
+          (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))).shift 1 1
+          = cl.body.substEnv
+              ((.bvar 0 :: ρe'.map (·.shift 1 0)).map (·.shift 1 1)) := by
+        apply substEnv_shift_comm
+        simp [List.length_map]; exact hclb
+      have htail_eq : (.bvar 0 :: ρe'.map (·.shift 1 0)).map (·.shift 1 1)
+          = .bvar 0 :: (ρe'.map (·.shift 1 0)).map (·.shift 1 0) := by
+        simp only [List.map_cons, Expr.shift, decide_eq_true_eq, Nat.lt_one_iff,
+                   ↓reduceIte]
+        congr 1
+        rw [List.map_map, List.map_map]
+        apply List.map_congr_left
+        intro e _he
+        simp only [Function.comp]
+        have := Expr.shift_shift_comm_gen e 1 0 1
+        simpa using this
+      unfold R
+      refine ⟨ρe'.map (·.shift 1 0), anne.shift 1 0,
+              hRa', hRL', hclb', ?_⟩
+      have target_rewrite :
+          (Expr.fix anne
+            (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0
+          = Expr.fix (anne.shift 1 0)
+              (cl.body.substEnv
+                (.bvar 0 :: (ρe'.map (·.shift 1 0)).map (·.shift 1 0))) := by
+        show Expr.fix (anne.shift 1 0) _ = Expr.fix (anne.shift 1 0) _
+        congr 1
+        rw [hsubst_comm, htail_eq]
+      rw [target_rewrite] at heqF'
+      intro S Γ hd
+      exact heqF' hd
+termination_by sizeOf v
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | omega
+    | (rename Closure => cl; cases cl; simp; omega)
 
-/-- Pointwise depth-lift of `RList`. -/
+/-- Pointwise depth-lift of `RList`. Uses `Closure.envFullyQuotable`
+which provides both quote witnesses and levelsBelow recursively. -/
 theorem RList_depth_lift {n d ρ ρe}
     (hlvl : Closure.envLevelsBelow d ρ)
-    (hquotes : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
+    (hfq : Closure.envFullyQuotable d ρ)
     (h : RList n d ρ ρe) :
     RList n (d + 1) ρ (ρe.map (·.shift 1 0)) := by
-  induction ρ generalizing ρe with
-  | nil =>
-      cases ρe with
-      | nil => unfold RList; trivial
-      | cons => unfold RList at h; exact h.elim
-  | cons v ρ' ih =>
-      cases ρe with
-      | nil => unfold RList at h; exact h.elim
-      | cons e ρe' =>
-          unfold RList at h
-          simp only [List.map_cons]
-          unfold RList
-          refine ⟨?_, ?_⟩
-          · obtain ⟨qe, hqe⟩ := hquotes 0 v (by simp)
-            unfold Closure.envLevelsBelow at hlvl
-            exact R_depth_lift hlvl.1 hqe h.1
-          · unfold Closure.envLevelsBelow at hlvl
-            apply ih hlvl.2 ?_ h.2
-            intro k w hk
-            exact hquotes (k+1) w (by simpa using hk)
+  match ρ, ρe, hlvl, hfq, h with
+  | [], [], _, _, _ => unfold RList; trivial
+  | [], _ :: _, _, _, h => unfold RList at h; exact h.elim
+  | _ :: _, [], _, _, h => unfold RList at h; exact h.elim
+  | v :: ρ', e :: ρe', hlvl, hfq, h =>
+      unfold RList at h
+      unfold Closure.envLevelsBelow at hlvl
+      unfold Closure.envFullyQuotable at hfq
+      simp only [List.map_cons]
+      unfold RList
+      refine ⟨?_, ?_⟩
+      · obtain ⟨qe, hqe⟩ := hfq.1.2
+        exact R_depth_lift hlvl.1 hfq.1.1 hqe h.1
+      · exact RList_depth_lift hlvl.2 hfq.2 h.2
+termination_by sizeOf ρ
 
 end
 
@@ -2775,13 +2956,15 @@ theorem REnv_depth_lift {n d ρ ρe}
     (hquotes : ∀ (k : Nat) (v : Val),
         ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
     (hρlvl : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → Val.levelsBelow d v) :
+        ρ[k]? = some v → Val.levelsBelow d v)
+    (hρfq : ∀ (k : Nat) (v : Val),
+        ρ[k]? = some v → Val.fullyQuotable d v) :
     REnv n (d + 1) ρ (ρe.map (·.shift 1 0)) := by
   refine ⟨by simp [henv.1], ?_⟩
   intro m v hk
   obtain ⟨e, he, hR⟩ := henv.2 m v hk
   obtain ⟨qe, hqe⟩ := hquotes m v hk
-  refine ⟨e.shift 1 0, ?_, R_depth_lift (hρlvl m v hk) hqe hR⟩
+  refine ⟨e.shift 1 0, ?_, R_depth_lift (hρlvl m v hk) (hρfq m v hk) hqe hR⟩
   have he' : ρe[m]? = some e := by
     rw [← List.get?_eq_getElem?]; exact he
   simp [List.getElem?_map, he']
@@ -2794,11 +2977,13 @@ theorem REnv_lift {n d ρ ρe}
     (hquotes : ∀ (k : Nat) (v : Val),
         ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
     (hρlvl : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → Val.levelsBelow d v) :
+        ρ[k]? = some v → Val.levelsBelow d v)
+    (hρfq : ∀ (k : Nat) (v : Val),
+        ρ[k]? = some v → Val.fullyQuotable d v) :
     REnv n (d + 1)
       (Val.neutral (.var d) :: ρ)
       (.bvar 0 :: ρe.map (·.shift 1 0)) := by
-  have htail := REnv_depth_lift henv hquotes hρlvl
+  have htail := REnv_depth_lift henv hquotes hρlvl hρfq
   refine ⟨by simp [htail.1], ?_⟩
   intro k v hk
   cases k with
@@ -4152,6 +4337,9 @@ structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx)
   closedness-carrying Equiv.shift variants can fire. -/
   hρecl : ∀ (k : Nat) (e : Expr), ρe[k]? = some e →
           e.closedAt Γ.size = true
+  /-- Recursive full quotability for each ρ entry. -/
+  hρfq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
+         Val.fullyQuotable Γ.size v
   henv : REnv 1 Γ.size ρ ρe
   /-- All four contexts grow in lockstep (`empty` starts at
   0; both `push_*` add 1 to each). `tyInfer_sound_open .bvar`
@@ -4188,6 +4376,7 @@ theorem OpenCtx.empty : OpenCtx #[] [] [] [] where
   hρq := fun _ _ hk => by simp at hk
   hρlvl := fun _ _ hk => by simp at hk
   hρecl := fun _ _ hk => by simp at hk
+  hρfq := fun _ _ hk => by simp at hk
   henv := ⟨rfl, fun _ _ hk => by simp at hk⟩
   hlen := rfl
   hwf := fun _ _ _ hk => by simp at hk
@@ -4377,9 +4566,21 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         subst heq
         have hcl := hctx.hρecl m e' he'
         exact Expr.shift_closedAt e' _ 1 0 (Nat.zero_le _) hcl
+  hρfq := by
+    intro k v hk
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp only [Array.size_push, Val.fullyQuotable, Neutral.fullyQuotable]
+        omega
+    | succ m =>
+        simp only [List.getElem?_cons_succ] at hk
+        simp only [Array.size_push]
+        exact Val.fullyQuotable_mono (Nat.le_succ _) v (hctx.hρfq m v hk)
   henv := by
     simpa [Array.size_push] using
-      REnv_lift hctx.henv hctx.hρq hctx.hρlvl
+      REnv_lift hctx.henv hctx.hρq hctx.hρlvl hctx.hρfq
   hlen := by simp [Array.size_push, List.length_map, hctx.hlen]
   hwf := by
     intro k w τe' hw hτe'
@@ -4477,6 +4678,19 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
         subst heq
         have hcl := hctx.hρecl m e' he'
         exact Expr.shift_closedAt e' _ 1 0 (Nat.zero_le _) hcl
+  hρfq := by
+    intro k v hk
+    cases k with
+    | zero =>
+        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        subst hk
+        simp only [Array.size_push]
+        -- Head valV: need eval-preserves-fullyQuotable theorem.
+        sorry
+    | succ m =>
+        simp only [List.getElem?_cons_succ] at hk
+        simp only [Array.size_push]
+        exact Val.fullyQuotable_mono (Nat.le_succ _) v (hctx.hρfq m v hk)
   henv := by
     have hRval := eval_realises hev hctx.henv hclv
     obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
@@ -4487,8 +4701,10 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     have hevω := eval_fuel_mono hfuel hev
     have hvlvl : Val.levelsBelow Γ.size valV :=
       eval_levelsBelow hevω henvLvl
-    have hRval' := R_depth_lift hvlvl hqe hRval
-    have htail := REnv_depth_lift hctx.henv hctx.hρq hctx.hρlvl
+    -- fullyQuotable on valV — eval preserves it (sorry for now).
+    have hvfq : Val.fullyQuotable Γ.size valV := by sorry
+    have hRval' := R_depth_lift hvlvl hvfq hqe hRval
+    have htail := REnv_depth_lift hctx.henv hctx.hρq hctx.hρlvl hctx.hρfq
     simpa [Array.size_push] using REnv_cons htail hRval'
   hlen := by simp [Array.size_push, List.length_map, hctx.hlen]
   hwf := by
