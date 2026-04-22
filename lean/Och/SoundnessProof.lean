@@ -2222,6 +2222,40 @@ theorem Closure.envLevelsBelow_take
           unfold Closure.envLevelsBelow
           exact ⟨h.1, ih h.2 m⟩
 
+/-- `envFullyQuotable` is preserved by `List.take`. -/
+theorem Closure.envFullyQuotable_take
+    {d : Nat} {env : List Val} (h : Closure.envFullyQuotable d env) (n : Nat) :
+    Closure.envFullyQuotable d (env.take n) := by
+  induction env generalizing n with
+  | nil => cases n <;> unfold Closure.envFullyQuotable <;> trivial
+  | cons w ws ih =>
+      cases n with
+      | zero => unfold Closure.envFullyQuotable; trivial
+      | succ m =>
+          unfold Closure.envFullyQuotable at h
+          simp only [List.take_succ_cons]
+          unfold Closure.envFullyQuotable
+          exact ⟨h.1, ih h.2 m⟩
+
+/-- From `envFullyQuotable`, get fullyQuotable + quote witness for a
+specific entry. -/
+theorem Closure.envFullyQuotable_getElem?
+    {d : Nat} {env : List Val} (h : Closure.envFullyQuotable d env)
+    {k : Nat} {v : Val} (hk : env[k]? = some v) :
+    Val.fullyQuotable d v ∧ ∃ qe, quote fuelω d v = some qe := by
+  induction env generalizing k with
+  | nil => simp at hk
+  | cons w ws ih =>
+      unfold Closure.envFullyQuotable at h
+      cases k with
+      | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+          subst hk
+          exact h.1
+      | succ m =>
+          simp only [List.getElem?_cons_succ] at hk
+          exact ih h.2 hk
+
 theorem eval_vapp_levelsBelow :
     ∀ n,
     (∀ {unf d ρ e v}, eval n unf ρ e = some v →
@@ -2360,24 +2394,98 @@ theorem eval_levelsBelow {n unf d ρ e v}
     Val.levelsBelow d v :=
   (eval_vapp_levelsBelow n).1 h hρ
 
-/-- **eval preserves Val.fullyQuotable**: if ρ's entries are all
-fully-quotable (i.e., `Closure.envFullyQuotable d ρ`), then the
-eval result `v` is also fully-quotable at `d`.
+/-- **eval + vapp preserve Val.fullyQuotable**: mutual statement.
+Takes quote witnesses for input `a` (for vapp's `.lam` head) and on
+`f` (for `.iota`/`.fix` unfold). These quote witnesses are
+supplied from the caller's chain via `eval_quotable_open`. -/
+theorem eval_vapp_preserves_fullyQuotable :
+    ∀ n,
+    (∀ {unf d ρ e v}, eval n unf ρ e = some v →
+      Closure.envFullyQuotable d ρ →
+      e.closedAt ρ.length = true →
+      Val.fullyQuotable d v) ∧
+    (∀ {unf d f a v}, vapp n unf f a = some v →
+      Val.fullyQuotable d f → Val.fullyQuotable d a →
+      (∃ qf, quote fuelω d f = some qf) →
+      (∃ qa, quote fuelω d a = some qa) →
+      Val.fullyQuotable d v) := by
+  intro n
+  induction n with
+  | zero =>
+    refine ⟨?_, ?_⟩
+    · intros _ _ _ _ _ h; rw [eval_zero] at h; cases h
+    · intros _ _ _ _ _ h; rw [vapp_zero] at h; cases h
+  | succ k ih =>
+    obtain ⟨ihe, ihv⟩ := ih
+    refine ⟨?_, ?_⟩
+    · intro unf d ρ e v h hρ hcl
+      unfold eval at h
+      cases e with
+      | type =>
+          simp only [Option.some.injEq] at h
+          subst h
+          unfold Val.fullyQuotable; trivial
+      | bvar j =>
+          simp only [] at h
+          have := Closure.envFullyQuotable_getElem? hρ h
+          exact this.1
+      | lam dom body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨dom', hdom, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+          unfold Val.fullyQuotable
+          refine ⟨ihe hdom hρ hcl.1, ?_⟩
+          unfold Closure.fullyQuotable Closure.mk'
+          exact Closure.envFullyQuotable_take hρ _
+      | iota ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+          unfold Val.fullyQuotable
+          refine ⟨ihe hann hρ hcl.1, ?_⟩
+          unfold Closure.fullyQuotable Closure.mk'
+          exact Closure.envFullyQuotable_take hρ _
+      | «fix» ann body =>
+          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          obtain ⟨ann', hann, hv⟩ := h
+          simp only [Option.some.injEq] at hv
+          subst hv
+          simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+          unfold Val.fullyQuotable
+          refine ⟨ihe hann hρ hcl.1, ?_⟩
+          unfold Closure.fullyQuotable Closure.mk'
+          exact Closure.envFullyQuotable_take hρ _
+      | app f a =>
+          -- vapp case: need quote witnesses on f, a. Not derivable
+          -- from envFullyQuotable alone. DEFERRED — requires threading
+          -- hnfq hypothesis to obtain quote witnesses on intermediate
+          -- vals.
+          sorry
+      | letE val body =>
+          -- letE extends env: need (eval val) to have fullyQuotable
+          -- AND quote witness. Fullyquotable from ihe, but quote witness
+          -- not directly available. Same issue as .app.
+          sorry
+      | asc t _ =>
+          simp only [] at h
+          simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+          exact ihe h hρ hcl.1
+    · intro unf d f a v h hf ha hqf hqa
+      -- vapp cases
+      sorry
 
-Standalone sorry-helper pending full proof. The proof mirrors
-`eval_vapp_levelsBelow` — mutual induction on fuel with vapp
-preservation. The non-trivial step: vapp's `.lam` head builds
-an extended env `a :: cl.env`, which needs `envFullyQuotable`
-on `a :: cl.env`. The `cl.env` part is from `f`'s fullyQuotable;
-the head `a` needs both `Val.fullyQuotable d a` AND a quote
-witness on `a`. The quote witness can be threaded from `hnfq`
-at the top-level caller (via `eval_quotes'`), or as an
-additional hypothesis pending a fuller architectural design. -/
+/-- Specialisation for push_let: given hρ's envFullyQuotable, eval
+preserves fullyQuotable on val result. -/
 theorem eval_preserves_fullyQuotable {n unf d ρ e v}
-    (_heval : eval n unf ρ e = some v)
-    (_hρ : Closure.envFullyQuotable d ρ)
-    (_hcl : e.closedAt ρ.length = true) :
-    Val.fullyQuotable d v := sorry
+    (heval : eval n unf ρ e = some v)
+    (hρ : Closure.envFullyQuotable d ρ)
+    (hcl : e.closedAt ρ.length = true) :
+    Val.fullyQuotable d v :=
+  (eval_vapp_preserves_fullyQuotable n).1 heval hρ hcl
 
 /-- Convert per-entry `hρq` + `hρfq` hypotheses into `envFullyQuotable`. -/
 theorem Closure.envFullyQuotable_of_getElem? {d : Nat} {ρ : List Val}
