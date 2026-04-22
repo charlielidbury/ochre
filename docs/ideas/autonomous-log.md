@@ -10,6 +10,45 @@ roll back** if they disagree.
 
 ---
 
+## 2026-04-23 — Task 1 confirmed blocked; pivoting to Task 3 (skip ahead)
+
+**Context.** Task 1 (strengthen `eval_vapp_preserves_fullyQuotable`
+with quote witness) was dispatched and returned blocked. Subagent
+explored four proof variants, all hitting the same circularity:
+producing a quote witness for closure-valued eval outputs requires
+`eval fuelω` on the closure body to succeed, which is mutual with
+the theorem being proved, and untyped β-reduction can loop
+(`(λx.x x)(λx.x x)`-analogs). Subagent's DECISION-LOG entry
+`e0af543` documents all four attempts.
+
+**Decision.** Skip Task 1; proceed to Task 3 (`quoteClosure_realises`)
+out of plan order because Task 3 does NOT depend on Task 1's
+strengthening — Task 3's `quoteClosure` hypothesis directly gives
+`eval … = some v ∧ quote … = some body'`, so the quote witness is
+built in to the hypothesis.
+
+**Rationale for not yielding.** User directive is explicit: keep
+pushing. Task 3 is independently tractable even with Task 1 blocked.
+Tasks 2 and 4 (Category A) DO depend on Task 1's route — they're
+parked until Task 3 is known.
+
+**Rollback.** If Task 3 also blocks, stop and report. User can
+choose between (a) accepting 4 sorries remain open under Phase 1 and
+pivoting to Phase 2 refactor, or (b) exploring alternative
+decompositions (e.g., restrict proofs to closed-at-zero inputs only,
+carry `hnfe`-style quote witnesses at every recursion step).
+
+**Open question.** Task 2's sorries likely have the same
+closure-quote-witness blocker as Task 1 if approached by
+"strengthen eval conclusions". A possible alternate angle: add the
+quote witnesses as EXPLICIT hypotheses to `vapp_realises` /
+`eval_realises`, shift the burden to callers, and let the top-level
+callers supply them from their own context (which has `hnfe`
+available). Whether this terminates cleanly is uncertain; deferring
+until after Task 3 to see how the landscape looks.
+
+---
+
 ## 2026-04-23 — Sorry-closure plan is written without pressure-testing
 
 **Decision.** `docs/ideas/sorry-closure-plan.md` lays out a four-task
