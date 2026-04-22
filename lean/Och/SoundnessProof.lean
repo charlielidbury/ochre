@@ -3197,12 +3197,25 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
                 = lbody.substEnv (fe :: ρe') :=
               Expr.substEnv_subst_comp lbody ρe' fe hclb
             have hRf4 : R (k+1) d f' fe := by
-              -- The original plan uses Equiv.subst_resp (deleted)
-              -- on `heqI : fe ≡ .iota anne bode`. After R
-              -- refactor we still need the same pivot — kept
-              -- sorried for now; the closedness-carrying
-              -- alternative is TODO.
-              sorry
+              -- Chain: bode.subst 0 fe ≡ bode.subst 0 (.iota anne bode)
+              --                     [via Equiv_c.subst_resp on heqI]
+              --        ≡ .iota anne bode  [via Equiv.iota_unfold reversed]
+              --        ≡ fe               [via heqI reversed]
+              let bode := lbody.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))
+              have step1 : Equiv_c d (bode.subst 0 fe)
+                  (bode.subst 0 (.iota anne bode)) :=
+                Equiv_c.subst_resp bode heqI 0
+              have step2 : Equiv_c d (bode.subst 0 (.iota anne bode))
+                  (.iota anne bode) :=
+                Equiv_c.of_Equiv (Equiv.symm (Equiv.iota_unfold anne bode))
+              have step3 : Equiv_c d (.iota anne bode) fe :=
+                Equiv_c.symm heqI
+              have hEq : Equiv_c d (bode.subst 0 fe) fe :=
+                Equiv_c.trans (Equiv_c.trans step1 step2) step3
+              -- hRf3 : R (k+1) d f' (lbody.substEnv (fe :: ρe'))
+              --     = R (k+1) d f' (bode.subst 0 fe) via hcomp reversed.
+              rw [← hcomp] at hRf3
+              exact R_resp_Equiv_c hEq hRf3
             exact vapp_realises hvapp' hRf4 hRa
       | .«fix» annV ⟨lbody, lenv⟩, hvapp =>
           simp only [] at hvapp
@@ -3237,9 +3250,20 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
                 = lbody.substEnv (fe :: ρe') :=
               Expr.substEnv_subst_comp lbody ρe' fe hclb
             have hRf4 : R (k+1) d f' fe := by
-              -- Same subst_resp-on-fe issue as the .iota case
-              -- above; kept sorried.
-              sorry
+              -- Same chain as .iota, with .fix_unfold instead of .iota_unfold.
+              let bode := lbody.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))
+              have step1 : Equiv_c d (bode.subst 0 fe)
+                  (bode.subst 0 (.fix anne bode)) :=
+                Equiv_c.subst_resp bode heqF 0
+              have step2 : Equiv_c d (bode.subst 0 (.fix anne bode))
+                  (.fix anne bode) :=
+                Equiv_c.of_Equiv (Equiv.symm (Equiv.fix_unfold anne bode))
+              have step3 : Equiv_c d (.fix anne bode) fe :=
+                Equiv_c.symm heqF
+              have hEq : Equiv_c d (bode.subst 0 fe) fe :=
+                Equiv_c.trans (Equiv_c.trans step1 step2) step3
+              rw [← hcomp] at hRf3
+              exact R_resp_Equiv_c hEq hRf3
             exact vapp_realises hvapp' hRf4 hRa
 termination_by fuel
 
