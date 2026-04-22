@@ -222,6 +222,23 @@ relation now does too.
 The "real" subtyping judgment is `∅ ; Γ ⊢ a ⊑ b` (empty hypothesis set);
 non-empty `S` arises only inside a derivation.
 
+### Rule taxonomy
+
+The rules fall into four categories. Each serves a distinct purpose;
+knowing which category a rule belongs to predicts its shape.
+
+| Category                     | Purpose                                                                    | Rules                                                                              | Extends `S`? |
+| ---------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | :----------: |
+| Structural (§3.1)            | Plumbing: compose, lookup, without inspecting constructors on either side  | `S-Refl`, `S-Top`, `S-Trans`, `S-Hyp`, `S-Var`                                     | no           |
+| Congruence (§3.2)            | Match constructor on both sides; reduce to sub-obligations with variance   | `S-Lam`, `S-App-Cong`, `S-Iota-Cong`, `S-Fix-Cong`, `S-LetE-Cong`                  | no           |
+| Productive unfolding (§3.3)  | Unfold a recursive binder (ι/fix); extend `S`; enable coinductive closure  | `S-Iota-Intro`, `S-Unfold-Iota-L`, `S-Unfold-Iota-R`, `S-Unfold-Fix-L`, `S-Unfold-Fix-R` | **yes**  |
+| Conversion (§3.4)            | Close under head reduction so algorithmic NbE is sound                     | `S-Beta-L/R`, `S-Let-L/R`, `S-Asc-L/R`                                             | no           |
+
+The `S`-extension column matters: `S-Hyp` can only fire against
+entries that some ancestor productive rule installed, so any path to
+`S-Hyp` must cross an unfold — the productivity requirement made
+mechanical.
+
 > **Formalisation aside.** In the Lean sources, `S` is
 > `List (Nat × Expr × Expr)` — each entry is depth-tagged with the
 > `|Γ|` at which it was recorded, and `.hyp` shifts the entry's free
@@ -385,6 +402,56 @@ the weaker sibling of `iota_intro` (same conclusion, no annotation
 premise) required to close `Equiv.iota_unfold` and therefore
 `concEval_equiv`'s `.app`-with-`.iota`-head case.
 
+**Worked example: `dtrue ⊑ dBool`.** With
+
+```
+dtrue := ι(self : Type).      λ(P : self → Type). λ(t : P self). λ(f : Type). t
+dBool := fix(B : Type). ι(self : B). λ(P : B    → Type). λ(t : P dtrue). λ(f : P dfalse). P self
+```
+
+the subtyping check `∅ ; Γ ⊢ dtrue ⊑ dBool` loops through a
+contravariant domain: `dBool`'s motive parameter is `P : dBool → Type`,
+while `dtrue`'s is `P : self → Type` where `self` is the inhabitant —
+ultimately `dtrue`. So the `[S-Lam]` contravariant premise for the
+`P` binder demands `dBool ⊑ dtrue`… which needs the original
+relationship back. Without the seen set this loops forever; with it,
+the productive unfold at the top installs `(dtrue, dBool)` into `S`,
+and the loop closes via `[S-Hyp]`:
+
+Read top-down (conclusion first, premises indented beneath — the
+same convention as every rule in this document). Rule annotations
+are in comments; `S₁ = {(dtrue, dBool)}`.
+
+```
+∅ ; Γ ⊢ dtrue ⊑ dBool                              // root goal
+  // [S-Unfold-Fix-R]  — records (dtrue, dBool) in S. Let S₁ = that.
+  S₁ ; Γ ⊢ dtrue ⊑ ι(self : dBool). λ(P : dBool → Type).
+                                    λ(t : P dtrue).
+                                    λ(f : P dfalse).
+                                    P self
+    // [S-Iota-Intro]  — annotation and body premises both inherit S₁.
+    //
+    // Annotation premise:
+    S₁ ; Γ ⊢ dtrue ⊑ dBool                         // the root goal reappears!
+      // [S-Hyp]  (dtrue, dBool) ∈ S₁  ✓ closes
+    //
+    // Body premise (sketch, after [self ↦ dtrue] substitution):
+    S₁ ; Γ ⊢ dtrue ⊑ λ(P : dBool → Type).
+                     λ(t : P dtrue).
+                     λ(f : P dfalse).
+                     P dtrue
+      // Further structural reduction via [S-Lam] etc.
+      // Any path that re-encounters dtrue ⊑ dBool — e.g. the
+      // contravariant P-domain premise (dBool → Type) ⊑ (dtrue → Type)
+      // — closes via [S-Hyp] the same way.
+```
+
+Both branches of `[S-Iota-Intro]` find the root goal waiting in `S₁`
+and close via `[S-Hyp]`. This is the Brandt–Henglein discipline in
+action: recursion in the subtyping judgment is legal *only across a
+productive unfold*, so non-productive loops (e.g. reflexivity-by-loop)
+cannot sneak through.
+
 ### 3.4 Conversion
 
 The algorithm normalises before comparing, so the declarative relation must
@@ -455,6 +522,36 @@ argument physically into every occurrence in the body. This blew up
 on dependent types: on `done_ ⊑ dNat`, `iotaIntro` substitutes the
 normal form of `done_` for every `self`-ascription in `dNat`'s body,
 and the term fan-out became exponential in the depth of self-references.
+
+Concretely, imagine a body `b` that references its bound variable `x`
+in `k` positions, and a substituend `T` of size `|T|`:
+
+```
+  Substitution-based (absEval):              Closure-based (NbE):
+  ══════════════════════════════             ════════════════════════
+
+     let x = T in b                              let x = T in b
+             │                                           │
+         [substitute]                           [bind x in env]
+             │                                           │
+             ▼                                           ▼
+
+     b[x ↦ T]                                    { body = b,
+                                                   env  = [x ↦ T] }
+       │ │ │
+       ▼ ▼ ▼
+      ┌─┐┌─┐┌─┐                                  ┌─┐   (single T; k pointers
+      │T││T││T│     ← T copied k times           │T│    from occurrences of x
+      └─┘└─┘└─┘                                  └─┘    refer to the same node)
+                                                 ▲ ▲ ▲
+                                                 └─┴─┘
+     size = k · |T| + O(|b|)                     size = |T| + O(|b|) + k ptrs
+```
+
+With nesting, the copies compound: three levels of `let` with `k`
+uses each gives `k³` copies under substitution, but still one shared
+copy under closures.
+
 The closure-based NbE replaces each substitution with an *environment
 extension* — the substituend is bound to a variable and shared across
 all its uses, not copied. The NbE evaluator was introduced in
@@ -561,6 +658,21 @@ binder, which requires evaluating the body in an extended environment.
 The normalisation function [`NbE.nf`](NbE.lean#L410) is literally
 `quote ∘ eval`; the rest of §4.2 is the machinery that makes that
 composition well-defined.
+
+```mermaid
+flowchart LR
+    eval(["eval<br/>Expr → Val"])
+    vapp(["vapp<br/>Val · Val → Val"])
+    quote(["quote<br/>Val → Expr"])
+
+    eval -->|"on .app:<br/>vapp the spine"| vapp
+    vapp -->|"λ/ι/fix head:<br/>eval cl.body in extended env"| eval
+    quote -->|"on a closure:<br/>eval body under fresh free var"| eval
+
+    nf[["nf = quote ∘ eval"]]
+    nf -.-> eval
+    nf -.-> quote
+```
 
 A fuel parameter is threaded through each of the three for
 termination but elided below; an unfolding budget `unf` bounds how
@@ -842,6 +954,35 @@ before any concrete argument exists.
 Three soundness theorems ([lean/Och/Soundness.lean](Soundness.lean))
 link the concrete semantics (§2), the declarative subtyping (§3), and
 the algorithmic checker (§§4–6).
+
+```mermaid
+flowchart LR
+    subgraph algo["Algorithmic world"]
+        tc["∅ ; ∅ ⊢ e ⇐ τ"]
+        ce["e ⇓ e'"]
+        tc --> ce
+    end
+    subgraph decl["Declarative world (Subtype')"]
+        r1["∅ ; ∅ ⊢ e ⊑ τ"]
+        r2["∅ ; ∅ ⊢ e' ⊑ τ"]
+        r1 -->|"concEval_preservation"| r2
+    end
+    tc -.->|"typeCheck_sound"| r1
+    ce -.->|"concEval_preservation<br/>(same theorem, different view)"| r2
+    tc ==>|"soundness (composed)"| r2
+
+    classDef algoStyle fill:#fef3c7,stroke:#92400e
+    classDef declStyle fill:#dbeafe,stroke:#1e40af
+    class tc,ce algoStyle
+    class r1,r2 declStyle
+```
+
+The algorithmic world (what actually runs) sits on the left; the
+declarative world (what the subtyping rules of §3 mean) sits on the
+right. Each soundness theorem is an arrow crossing between the two.
+`soundness` is the composition: the end-to-end guarantee that
+type-checking and then concrete-evaluating produces a term that still
+satisfies the declared type declaratively.
 
 **Subtyping soundness.**
 [`subCheckVal_sound`](Soundness.lean#L84) — if the algorithm accepts two
