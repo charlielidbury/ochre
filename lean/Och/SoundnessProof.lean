@@ -921,6 +921,13 @@ namespace Equiv_c
   theorem of_Equiv {d e₁ e₂} (h : Equiv e₁ e₂) : Equiv_c d e₁ e₂ :=
     fun {_ _} _ => h
 
+  /-- `Equiv_c` is monotone in `d`: a smaller `d` yields a stronger
+  statement (quantifies over more `Γ`), so `Equiv_c d → Equiv_c d'`
+  for `d ≤ d'`. -/
+  theorem mono {d d' e₁ e₂} (hle : d ≤ d')
+      (h : Equiv_c d e₁ e₂) : Equiv_c d' e₁ e₂ :=
+    fun {_ _} hd' => h (Nat.le_trans hle hd')
+
   /-- At `d = 0`, `Equiv_c 0` coincides with `Equiv`. -/
   theorem to_Equiv_zero {e₁ e₂} (h : Equiv_c 0 e₁ e₂) : Equiv e₁ e₂ :=
     fun {_ _} => h (Nat.zero_le _)
