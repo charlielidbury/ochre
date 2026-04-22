@@ -51,38 +51,46 @@ All three root obligations solved at the definition level (DECISION-LOG
 **downstream applications** — no further definition
 changes needed.
 
-### Tier 0 — R-clause refactor for quoteClosure_realises (large, ~2-3 hrs)
+### Tier 0 — R-clause refactor for quoteClosure_realises (in progress)
 
 Add `envLevelsBelow d cl.env` + `envFullyQuotable d cl.env` to R's
 .lam/.iota/.fix clauses so `quoteClosure_realises` can supply them to
 `RList_depth_lift` + `eval_realises` at depth d+1.
 
-**Prep done (2026-04-22, commit ea5409b):** Val.levelsBelow +
-Val.fullyQuotable defs moved before R.
+**Done (2026-04-22):**
+- Commit ea5409b: Val.levelsBelow + Val.fullyQuotable defs moved
+  before R.
+- Commit 012437e: Val.fullyQuotable_mono +
+  Closure.envFullyQuotable_mono + quote_depth_shift_n moved before
+  R_depth_lift.
+- Commit 1067bdd: Two conjuncts added to R's closure clauses; 18
+  destructuring + 5 construction sites updated.
+- Commit 860da51: eval_realises signature gains envLevelsBelow +
+  envFullyQuotable hypotheses; internal sites closed via
+  envLevelsBelow_take / envFullyQuotable_take; external callers
+  (OpenCtx.eq, push_let, Soundness.lean) supply via
+  `_of_getElem?` constructors.
 
-**Remaining work:**
-1. Move `Val.fullyQuotable_mono` + `Closure.envFullyQuotable_mono` +
-   their transitive deps (`quote_depth_shift_n`,
-   `Val.levelsBelow_of_fullyQuotable`) before R_depth_lift's mutual
-   block (currently at line 2862). These are all currently after
-   R_depth_lift and create a forward-ref cascade. Alternatively, inline
-   mono via local helper.
-2. Add the two conjuncts to R's closure clauses.
-3. Update 18 destructuring sites (search `obtain ⟨ρe',.*hclb`).
-4. Update 5 construction sites (R_mono, R_resp_Equiv, R_resp_Equiv_c,
-   R_depth_lift .lam/.iota/.fix, eval_realises .lam/.iota/.fix).
-5. Strengthen `quoteClosure_realises` signature to take the 2 new
-   hypotheses.
-6. Prove `quoteClosure_realises` via eval_realises at d+1 + R_quote_equiv
-   at d+1. **Termination concern**: R_quote_equiv currently uses
-   structural recursion on Val; may need to restructure to
-   well-founded induction on step-index so the mutual call at d+1 on
-   eval-output `v` (not structural sub-Val) terminates.
-
-Closing this unblocks quoteClosure_realises (1 of 3 declaration
-sorries), and likely enables closing the remaining sorries in
-`eval_vapp_preserves_fullyQuotable` (the vapp iota/fix unfold case
-needs the same machinery).
+**Remaining (sorry count: 4 — 1 net increase from prior 3):**
+1. vapp_realises has new internal sorries (pulled into sorryAx via
+   mutual eval_realises): 4 spots in .lam/.iota/.fix cases needing
+   `Val.levelsBelow d va`, `Val.fullyQuotable d va`, and quote
+   witness when extending eval env. Same issue for `vf` in iota/fix
+   unfold branches. Fix: add these as hypotheses to vapp_realises
+   signature, update all callers.
+2. eval_realises .letE internal sorry: need Val.fullyQuotable +
+   quote-witness on the evaluated `val`. Same core blocker as
+   `eval_vapp_preserves_fullyQuotable`.
+3. quoteClosure_realises proof: now has right hypotheses but body
+   needs eval_realises + R_quote_equiv at d+1. Cannot be expressed
+   with current forward-ref layout (quoteClosure_realises defined
+   BEFORE eval_realises). Options:
+   - Big mutual block: quoteClosure_realises + R_quote_equiv +
+     eval_realises + vapp_realises, with lexicographic (step, Val)
+     termination.
+   - Move quoteClosure_realises after eval_realises; then find
+     another non-circular path for R_quote_equiv's closure cases.
+4. tyInfer_sound_open internal sorries + A9 known-issue (unchanged).
 
 ### Tier 1 — direct closures (engineering, ~30 min each)
 
