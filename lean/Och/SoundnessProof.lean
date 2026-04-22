@@ -1218,10 +1218,16 @@ def R : Nat → Nat → Val → Expr → Prop
             -- `.lam`/`.iota`/`.fix` (DECISION-LOG 2026-04-19).
             -- Recovered post-hoc by `R_quote_equiv` + mutual
             -- `quoteClosure_realises` on quote-fuel.
+            --
+            -- 2026-04-22: envLevelsBelow + envFullyQuotable
+            -- carried so quoteClosure_realises can invoke
+            -- RList_depth_lift + eval_realises at d+1.
             ∃ ρe' dome,
               R (n+1) d dV dome ∧
               RList (n+1) d cl.env ρe' ∧
               cl.body.closedAt (ρe'.length + 1) = true ∧
+              Closure.envLevelsBelow d cl.env ∧
+              Closure.envFullyQuotable d cl.env ∧
               Equiv_c d e (.lam dome
                 (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
         | .iota aV cl =>
@@ -1229,6 +1235,8 @@ def R : Nat → Nat → Val → Expr → Prop
               R (n+1) d aV anne ∧
               RList (n+1) d cl.env ρe' ∧
               cl.body.closedAt (ρe'.length + 1) = true ∧
+              Closure.envLevelsBelow d cl.env ∧
+              Closure.envFullyQuotable d cl.env ∧
               Equiv_c d e (.iota anne
                 (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
         | .«fix» aV cl =>
@@ -1236,6 +1244,8 @@ def R : Nat → Nat → Val → Expr → Prop
               R (n+1) d aV anne ∧
               RList (n+1) d cl.env ρe' ∧
               cl.body.closedAt (ρe'.length + 1) = true ∧
+              Closure.envLevelsBelow d cl.env ∧
+              Closure.envFullyQuotable d cl.env ∧
               Equiv_c d e (.fix anne
                 (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))))
         -- `.type`/`.neutral` keep the base conjunct: quoting
@@ -1351,16 +1361,19 @@ theorem R_mono {n m d v e} (hle : m ≤ n) (h : R n d v e) :
   | _+1, _+1, .neutral _, _, h => unfold R at h ⊢; exact h
   | _+1, _+1, .lam dV cl, hle, h =>
       unfold R at h ⊢
-      obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
-      exact ⟨ρe', dome, R_mono hle hRd, RList_mono hle hRL, hclb, heqL⟩
+      obtain ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqL⟩ := h
+      exact ⟨ρe', dome, R_mono hle hRd, RList_mono hle hRL, hclb,
+             hlvl_cl_env, hfq_cl_env, heqL⟩
   | _+1, _+1, .iota aV cl, hle, h =>
       unfold R at h ⊢
-      obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
-      exact ⟨ρe', anne, R_mono hle hRa, RList_mono hle hRL, hclb, heqI⟩
+      obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqI⟩ := h
+      exact ⟨ρe', anne, R_mono hle hRa, RList_mono hle hRL, hclb,
+             hlvl_cl_env, hfq_cl_env, heqI⟩
   | _+1, _+1, .«fix» aV cl, hle, h =>
       unfold R at h ⊢
-      obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
-      exact ⟨ρe', anne, R_mono hle hRa, RList_mono hle hRL, hclb, heqF⟩
+      obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqF⟩ := h
+      exact ⟨ρe', anne, R_mono hle hRa, RList_mono hle hRL, hclb,
+             hlvl_cl_env, hfq_cl_env, heqF⟩
 termination_by sizeOf v
 decreasing_by
   all_goals simp_wf
@@ -1405,16 +1418,16 @@ theorem R_resp_Equiv {n d v e e'}
     | neutral _ => exact fun qe hq =>
         Equiv_c.trans (h qe hq) (Equiv_c.of_Equiv heq)
     | lam dV cl =>
-        obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
-        exact ⟨ρe', dome, hRd, hRL, hclb,
+        obtain ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqL⟩ := h
+        exact ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env,
           Equiv_c.trans (Equiv_c.of_Equiv (Equiv.symm heq)) heqL⟩
     | iota aV cl =>
-        obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
-        exact ⟨ρe', anne, hRa, hRL, hclb,
+        obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqI⟩ := h
+        exact ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env,
           Equiv_c.trans (Equiv_c.of_Equiv (Equiv.symm heq)) heqI⟩
     | «fix» aV cl =>
-        obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
-        exact ⟨ρe', anne, hRa, hRL, hclb,
+        obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqF⟩ := h
+        exact ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env,
           Equiv_c.trans (Equiv_c.of_Equiv (Equiv.symm heq)) heqF⟩
 
 /-- Depth-parametrised variant of `R_resp_Equiv`: accepts
@@ -1434,16 +1447,16 @@ theorem R_resp_Equiv_c {n d v e e'}
     | neutral _ => exact fun qe hq =>
         Equiv_c.trans (h qe hq) heq
     | lam dV cl =>
-        obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
-        exact ⟨ρe', dome, hRd, hRL, hclb,
+        obtain ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqL⟩ := h
+        exact ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env,
           Equiv_c.trans (Equiv_c.symm heq) heqL⟩
     | iota aV cl =>
-        obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
-        exact ⟨ρe', anne, hRa, hRL, hclb,
+        obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqI⟩ := h
+        exact ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env,
           Equiv_c.trans (Equiv_c.symm heq) heqI⟩
     | «fix» aV cl =>
-        obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
-        exact ⟨ρe', anne, hRa, hRL, hclb,
+        obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqF⟩ := h
+        exact ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env,
           Equiv_c.trans (Equiv_c.symm heq) heqF⟩
 
 /-- A prefix of a realised environment is realised (used for
@@ -3046,7 +3059,7 @@ theorem R_depth_lift {n d v e}
         obtain ⟨_, hlvl2⟩ := hlvl
         cases cl with | _ => exact hlvl2
       unfold R at h
-      obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
+      obtain ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqL⟩ := h
       have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
       rw [hfω_eq] at hq
       unfold quote at hq
@@ -3083,9 +3096,13 @@ theorem R_depth_lift {n d v e}
         simp only [Function.comp]
         have := Expr.shift_shift_comm_gen e 1 0 1
         simpa using this
+      have hlvl_cl_d1 : Closure.envLevelsBelow (d+1) cl.env :=
+        Closure.envLevelsBelow_mono (Nat.le_succ d) _ hlvl_cl
+      have hfq_cl_d1 : Closure.envFullyQuotable (d+1) cl.env :=
+        Closure.envFullyQuotable_mono (Nat.le_succ d) _ hfq_cl
       unfold R
       refine ⟨ρe'.map (·.shift 1 0), dome.shift 1 0,
-              hRd', hRL', hclb', ?_⟩
+              hRd', hRL', hclb', hlvl_cl_d1, hfq_cl_d1, ?_⟩
       have target_rewrite :
           (Expr.lam dome
             (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0
@@ -3114,7 +3131,7 @@ theorem R_depth_lift {n d v e}
         obtain ⟨_, hlvl2⟩ := hlvl
         cases cl with | _ => exact hlvl2
       unfold R at h
-      obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
+      obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqI⟩ := h
       have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
       rw [hfω_eq] at hq
       unfold quote at hq
@@ -3151,9 +3168,13 @@ theorem R_depth_lift {n d v e}
         simp only [Function.comp]
         have := Expr.shift_shift_comm_gen e 1 0 1
         simpa using this
+      have hlvl_cl_d1 : Closure.envLevelsBelow (d+1) cl.env :=
+        Closure.envLevelsBelow_mono (Nat.le_succ d) _ hlvl_cl
+      have hfq_cl_d1 : Closure.envFullyQuotable (d+1) cl.env :=
+        Closure.envFullyQuotable_mono (Nat.le_succ d) _ hfq_cl
       unfold R
       refine ⟨ρe'.map (·.shift 1 0), anne.shift 1 0,
-              hRa', hRL', hclb', ?_⟩
+              hRa', hRL', hclb', hlvl_cl_d1, hfq_cl_d1, ?_⟩
       have target_rewrite :
           (Expr.iota anne
             (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0
@@ -3180,7 +3201,7 @@ theorem R_depth_lift {n d v e}
         obtain ⟨_, hlvl2⟩ := hlvl
         cases cl with | _ => exact hlvl2
       unfold R at h
-      obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
+      obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqF⟩ := h
       have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
       rw [hfω_eq] at hq
       unfold quote at hq
@@ -3217,9 +3238,13 @@ theorem R_depth_lift {n d v e}
         simp only [Function.comp]
         have := Expr.shift_shift_comm_gen e 1 0 1
         simpa using this
+      have hlvl_cl_d1 : Closure.envLevelsBelow (d+1) cl.env :=
+        Closure.envLevelsBelow_mono (Nat.le_succ d) _ hlvl_cl
+      have hfq_cl_d1 : Closure.envFullyQuotable (d+1) cl.env :=
+        Closure.envFullyQuotable_mono (Nat.le_succ d) _ hfq_cl
       unfold R
       refine ⟨ρe'.map (·.shift 1 0), anne.shift 1 0,
-              hRa', hRL', hclb', ?_⟩
+              hRa', hRL', hclb', hlvl_cl_d1, hfq_cl_d1, ?_⟩
       have target_rewrite :
           (Expr.fix anne
             (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))).shift 1 0
@@ -3563,7 +3588,9 @@ theorem quoteClosure_realises {d : Nat} {cl : Closure} {body' : Expr}
     {m : Nat} {ρe' : List Expr}
     (_hq : quoteClosure fuelω d cl = some body')
     (_hRL : RList m d cl.env ρe')
-    (_hclb : cl.body.closedAt (ρe'.length + 1) = true) :
+    (_hclb : cl.body.closedAt (ρe'.length + 1) = true)
+    (_hlvl : Closure.envLevelsBelow d cl.env)
+    (_hfq : Closure.envFullyQuotable d cl.env) :
     Equiv_c (d+1) body'
       (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
   sorry
@@ -3605,7 +3632,7 @@ theorem R_quote_equiv {n d v e}
           obtain ⟨dom', hdom', body', hbody', heq'⟩ := hq
           subst heq'
           unfold R at h
-          obtain ⟨ρe', dome, hRd, hRL, hclb, heqL⟩ := h
+          obtain ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqL⟩ := h
           have hdom'_ω : quote fuelω d dV = some dom' :=
             quote_fuel_mono (by omega) hdom'
           have hbody'_ω : quoteClosure fuelω d cl = some body' :=
@@ -3614,7 +3641,7 @@ theorem R_quote_equiv {n d v e}
             R_quote_equiv (Nat.succ_pos _) hRd hdom'_ω
           have hEb : Equiv_c (d+1) body'
               (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
-            quoteClosure_realises hbody'_ω hRL hclb
+            quoteClosure_realises hbody'_ω hRL hclb hlvl_cl_env hfq_cl_env
           -- Goal: Equiv_c d (.lam dom' body') e. Chain via lam_cong + heqL.
           have step1 : Equiv_c d (.lam dom' body')
               (.lam dome (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) :=
@@ -3635,7 +3662,7 @@ theorem R_quote_equiv {n d v e}
           obtain ⟨ann', hann', body', hbody', heq'⟩ := hq
           subst heq'
           unfold R at h
-          obtain ⟨ρe', anne, hRa, hRL, hclb, heqI⟩ := h
+          obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqI⟩ := h
           have hann'_ω : quote fuelω d aV = some ann' :=
             quote_fuel_mono (by omega) hann'
           have hbody'_ω : quoteClosure fuelω d cl = some body' :=
@@ -3644,7 +3671,7 @@ theorem R_quote_equiv {n d v e}
             R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
           have hEb : Equiv_c (d+1) body'
               (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
-            quoteClosure_realises hbody'_ω hRL hclb
+            quoteClosure_realises hbody'_ω hRL hclb hlvl_cl_env hfq_cl_env
           have step1 : Equiv_c d (.iota ann' body')
               (.iota anne (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) :=
             Equiv_c.iota_cong hEa hEb
@@ -3664,7 +3691,7 @@ theorem R_quote_equiv {n d v e}
           obtain ⟨ann', hann', body', hbody', heq'⟩ := hq
           subst heq'
           unfold R at h
-          obtain ⟨ρe', anne, hRa, hRL, hclb, heqF⟩ := h
+          obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqF⟩ := h
           have hann'_ω : quote fuelω d aV = some ann' :=
             quote_fuel_mono (by omega) hann'
           have hbody'_ω : quoteClosure fuelω d cl = some body' :=
@@ -3673,7 +3700,7 @@ theorem R_quote_equiv {n d v e}
             R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
           have hEb : Equiv_c (d+1) body'
               (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0))) :=
-            quoteClosure_realises hbody'_ω hRL hclb
+            quoteClosure_realises hbody'_ω hRL hclb hlvl_cl_env hfq_cl_env
           have step1 : Equiv_c d (.fix ann' body')
               (.fix anne (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) :=
             Equiv_c.fix_cong hEa hEb
@@ -3791,7 +3818,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           -- hvapp : eval fuel unf (va :: lenv) lbody = some r
           have hRf' : R (k+1) d (.lam dV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
           unfold R at hRf'
-          obtain ⟨ρe', dome, _hRd, hRL, hclb, heqL⟩ := hRf'
+          obtain ⟨ρe', dome, _hRd, hRL, hclb, _hlvl_cl_env, _hfq_cl_env, heqL⟩ := hRf'
           have henv' := REnv_of_RList hRL
           have henv_ext := REnv_cons henv' hRa
           have hclb' : lbody.closedAt (ae :: ρe').length = true := by
@@ -3838,7 +3865,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             obtain ⟨f', hf', hvapp'⟩ := hvapp
             have hRf'' := hRf'  -- preserve for self-binding
             unfold R at hRf'
-            obtain ⟨ρe', anne, _hRa_head, hRL, hclb, heqI⟩ := hRf'
+            obtain ⟨ρe', anne, _hRa_head, hRL, hclb, _hlvl_cl_env, _hfq_cl_env, heqI⟩ := hRf'
             have henv' := REnv_of_RList hRL
             have henv_ext := REnv_cons henv' hRf''
             have hclb' : lbody.closedAt (fe :: ρe').length = true := by
@@ -3899,7 +3926,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             obtain ⟨f', hf', hvapp'⟩ := hvapp
             have hRf'' := hRf'
             unfold R at hRf'
-            obtain ⟨ρe', anne, _hRa_head, hRL, hclb, heqF⟩ := hRf'
+            obtain ⟨ρe', anne, _hRa_head, hRL, hclb, _hlvl_cl_env, _hfq_cl_env, heqF⟩ := hRf'
             have henv' := REnv_of_RList hRL
             have henv_ext := REnv_cons henv' hRf''
             have hclb' : lbody.closedAt (fe :: ρe').length = true := by
@@ -4080,8 +4107,13 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           have hRdom := ihf' hdomV henv hcl.1
           obtain ⟨hRL, hclb', hbody_eq⟩ :=
             closure_clause_witness henv hcl.2
-          exact ⟨ρe.take (bvarBound bExpr - 1), dom.substEnv ρe,
-                 hRdom, hRL, hclb', hbody_eq ▸ Equiv_c.refl _ _⟩
+          refine ⟨ρe.take (bvarBound bExpr - 1), dom.substEnv ρe,
+                  hRdom, hRL, hclb', ?_, ?_,
+                  hbody_eq ▸ Equiv_c.refl _ _⟩
+          · -- envLevelsBelow d (ρ.take j): need envLvl on ρ in scope
+            sorry
+          · -- envFullyQuotable d (ρ.take j): same
+            sorry
       | app f a =>
           -- eval (fuel+1) ρ (.app f a) = vapp fuel
           --   (eval fuel f) (eval fuel a). Delegate to
@@ -4120,8 +4152,11 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           have hRann := ihf' hann henv hcl.1
           obtain ⟨hRL, hclb', hbody_eq⟩ :=
             closure_clause_witness henv hcl.2
-          exact ⟨ρe.take (bvarBound bExpr - 1), anne,
-                 hRann, hRL, hclb', by rw [hbody_eq]; exact Equiv_c.refl _ _⟩
+          refine ⟨ρe.take (bvarBound bExpr - 1), anne,
+                  hRann, hRL, hclb', ?_, ?_,
+                  by rw [hbody_eq]; exact Equiv_c.refl _ _⟩
+          · sorry
+          · sorry
       | fix ann bExpr =>
           -- Identical structure to .iota above.
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
@@ -4145,8 +4180,11 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           have hRann := ihf' hann henv hcl.1
           obtain ⟨hRL, hclb', hbody_eq⟩ :=
             closure_clause_witness henv hcl.2
-          exact ⟨ρe.take (bvarBound bExpr - 1), anne,
-                 hRann, hRL, hclb', by rw [hbody_eq]; exact Equiv_c.refl _ _⟩
+          refine ⟨ρe.take (bvarBound bExpr - 1), anne,
+                  hRann, hRL, hclb', ?_, ?_,
+                  by rw [hbody_eq]; exact Equiv_c.refl _ _⟩
+          · sorry
+          · sorry
 termination_by fuel
 end
 
@@ -4180,6 +4218,8 @@ theorem R_lam_clause {n d dom cl ea}
       R (n+1) d dom dome ∧
       RList (n+1) d cl.env ρe' ∧
       cl.body.closedAt (ρe'.length + 1) = true ∧
+      Closure.envLevelsBelow d cl.env ∧
+      Closure.envFullyQuotable d cl.env ∧
       Equiv_c d ea (.lam dome
         (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
   unfold R at hR; exact hR
@@ -4191,6 +4231,8 @@ theorem R_iota_clause {n d ann cl ea}
       R (n+1) d ann anne ∧
       RList (n+1) d cl.env ρe' ∧
       cl.body.closedAt (ρe'.length + 1) = true ∧
+      Closure.envLevelsBelow d cl.env ∧
+      Closure.envFullyQuotable d cl.env ∧
       Equiv_c d ea (.iota anne
         (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
   unfold R at hR; exact hR
@@ -4202,6 +4244,8 @@ theorem R_fix_clause {n d ann cl ea}
       R (n+1) d ann anne ∧
       RList (n+1) d cl.env ρe' ∧
       cl.body.closedAt (ρe'.length + 1) = true ∧
+      Closure.envLevelsBelow d cl.env ∧
+      Closure.envFullyQuotable d cl.env ∧
       Equiv_c d ea (.fix anne
         (cl.body.substEnv (.bvar 0 :: ρe'.map (·.shift 1 0)))) := by
   unfold R at hR; exact hR
