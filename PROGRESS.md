@@ -1,5 +1,30 @@
 # Progress
 
+## 2026-04-22 — Milestone: R_depth_lift AXIOM-CLEAN
+
+Closed all three closure cases (.lam/.iota/.fix) of R_depth_lift via
+`Val.fullyQuotable` threading. `NbE.R_depth_lift` axioms are now
+`[propext, Classical.choice, Quot.sound]` — no sorryAx.
+
+**Key enablers (commits 75824f7, 315d3e1, 61a5fb9):**
+- `Val.fullyQuotable` predicate (mutual w/ Neutral/Closure/envFullyQuotable).
+- `Val.fullyQuotable_mono` + `Val.levelsBelow_of_fullyQuotable`.
+- Top-level `match n, v, hlvl, hfq, hq, h with` (mirroring R_mono)
+  lets Lean's termination checker see the substituted v constructor.
+- `hρfq` field added to OpenCtx, REnv_depth_lift, REnv_lift, RList_depth_lift.
+- OpenCtx.empty/push_fresh discharge hρfq (empty vacuous; push_fresh uses mono).
+
+**Declaration sorry migration:**
+- R_depth_lift: CLOSED (was the flagship blocker).
+- OpenCtx.push_let: NEW sorry — hρfq head + hvfq both need
+  `eval_preserves_fullyQuotable` (next target).
+- quoteClosure_realises: unchanged.
+- tyInfer_sound_open: unchanged.
+
+Count still 3, but the blocker moved to a named theorem
+(`eval_preserves_fullyQuotable`) that's provable by induction on
+eval fuel (similar to eval_levelsBelow).
+
 ## 2026-04-21 (late) — Milestone: vapp_realises closed (4 → 3 declaration sorries)
 
 Path A (closedness-tracking via `Equiv_c d`) fully executed, closing
