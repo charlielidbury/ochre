@@ -3,6 +3,46 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-04-21: R_depth_lift closure cases — remaining blocker: cl.env quote witnesses
+
+After `Equiv_c.shift`, `substEnv_shift_comm` (both axiom-clean), and R's refactor
+to `Equiv_c d`, the R_depth_lift closure cases (.lam/.iota/.fix) need one more
+piece: quote witnesses for each entry of `cl.env` to drive RList_depth_lift's
+recursion.
+
+The outer `hq : quote fuelω d (.lam dV cl) = some qe` does NOT imply `∀ w ∈
+cl.env, ∃ qe, quote fuelω d w = some qe`. Counterexample: a closure where
+`cl.body = .type` (ignores env) and `cl.env = [huge_unquotable_closure]`. The
+outer quote succeeds (just returns `.lam _ .type`), but the env entry can't be
+quoted independently.
+
+**Attempted fixes:**
+
+1. Strengthen R's closure clauses with `∀ k w, cl.env[k]? = some w → ∃ qe,
+   quote fuelω d w = some qe`. Compiles R but breaks ~15 downstream sites
+   (R_resp_Equiv, R_resp_Equiv_c, R_{lam,iota,fix}_clause extractors,
+   eval_realises's .lam/.iota/.fix construction, R_quote_equiv closure cases,
+   vapp_realises .lam/.iota/.fix stuckRec branches). Reverted.
+
+2. Add `hquotes_env` parameter to R_depth_lift only, threading from call
+   sites. REnv_depth_lift can supply it (from its own hquotes). But RList_depth_lift
+   calling R_depth_lift needs hquotes_env threaded too. The chain ultimately
+   requires OpenCtx-like quote witnesses for every sub-sub-environment of any
+   Val in ρe — a strictly structural ascension that's hard to close without
+   deeper architectural change.
+
+3. Prove that `Val.levelsBelow d v` implies quotability via fuelω. False in
+   general: a closure body can be arbitrarily deep beyond fuelω.
+
+**Recommended path forward:** option 1 executed systematically, NOT
+incrementally. The refactor is ~100 line edits total; an hour of focused
+work. All the reasoning is local (each downstream site provides the new
+hquotes conjunct from its own context's available quote witnesses).
+
+Meanwhile, `substEnv_shift_comm` is done (commit 5a0cc37) and the R_depth_lift
+.type/.neutral cases are closed (commit 5acfba7). The remaining closure
+cases are fully blocked on option 1's execution.
+
 ## 2026-04-21: Path A breakthrough — Equiv_c d sidesteps the nil-Γ obstruction
 
 Added `Equiv_c d e₁ e₂ := ∀ {S Γ}, d ≤ |Γ| → Subtype' S Γ e₁ e₂ ∧ symm` as a
