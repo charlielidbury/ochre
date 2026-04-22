@@ -1,5 +1,36 @@
 # Progress
 
+## 2026-04-22 — Progress: vapp .lam closed + Closure.fullyQuotable strengthened
+
+Strengthened `Closure.fullyQuotable` to carry `body.closedAt
+(env.length + 1) = true` alongside `envFullyQuotable`. This closes the
+`vapp .lam` case of `eval_vapp_preserves_fullyQuotable`: given a
+`.lam dom cl` head and arg `a`, we have everything needed to apply
+the eval IH on `cl.body` under `a :: cl.env` (closedness from the
+new conjunct, envFullyQuotable from the existing one, head entry
+fullyQuotable + quote from `ha`/`hqa` hypotheses).
+
+Also closed the stuck branches of vapp's `.iota`/`.fix` cases
+(producing `.neutral (.stuckRec f a)` from `hf`/`ha` directly).
+
+**Remaining internal sorries in `eval_vapp_preserves_fullyQuotable`:**
+- eval `.app f a`: needs quote witnesses on intermediate vals (not
+  derivable from envFullyQuotable alone)
+- eval `.letE val body`: same issue as `.app`
+- vapp `.iota`/`.fix` unfold branches: recursive vapp call needs
+  quote witness on eval-produced `f'`, not derivable from current
+  hypotheses
+
+The root blocker is identical to what blocks `quoteClosure_realises`:
+`Val.fullyQuotable d v` does not easily imply `∃ qv, quote fuelω d v
+= some qv` because it requires proving eval success on closure bodies
+(mutual with eval).
+
+**Declaration sorries still at 3** — internal structure is cleaner but
+the core gap (quote-witness-from-fullyQuotable) remains open.
+
+Commit: 1595679.
+
 ## 2026-04-22 — Milestone: R_depth_lift AXIOM-CLEAN
 
 Closed all three closure cases (.lam/.iota/.fix) of R_depth_lift via
