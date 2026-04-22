@@ -956,6 +956,97 @@ namespace Equiv_c
       refine ⟨Subtype'.weaken ?_ h12', Subtype'.weaken ?_ h21'⟩
       all_goals (intro _ hmem; simp [List.map_nil] at hmem)
 
+  /-- **Equiv_c.subst_resp**: substitution congruence for `Equiv_c`.
+  Given `Equiv_c d a b`, for any `body` and position `i`,
+  `Equiv_c d (body.subst i a) (body.subst i b)`.
+
+  The key insight: when descending under a binder (.lam/.iota/.fix/.letE),
+  the inner call substitutes `a.shift 1 0` vs `b.shift 1 0` at position
+  `i+1`. By `Equiv_c.shift`, these are `Equiv_c (d+1)` — exactly what's
+  needed at the extended context.
+
+  Proof: structural induction on body. No closedness side condition —
+  `Equiv_c.shift` paid for the shift at binder crossings. -/
+  theorem subst_resp (body : Expr) {d a b}
+      (heq : Equiv_c d a b) (i : Nat) :
+      Equiv_c d (body.subst i a) (body.subst i b) := by
+    induction body generalizing d a b i with
+    | bvar k =>
+      unfold Expr.subst
+      split
+      · -- k = i: subst gives a / b.
+        exact heq
+      · split
+        · -- k > i after adjustment: subst gives .bvar (k-1).
+          exact Equiv_c.refl _ _
+        · -- k ≠ i: subst gives .bvar k.
+          exact Equiv_c.refl _ _
+    | type =>
+      unfold Expr.subst
+      exact Equiv_c.refl _ _
+    | lam dom body ihD ihB =>
+      unfold Expr.subst
+      intro S Γ hd
+      obtain ⟨hd12, hd21⟩ := ihD heq i hd
+      -- Under the .lam binder, we're at (dom_b.subst i b :: Γ), length ≥ d+1.
+      -- Apply ihB with substituend (a.shift 1 0) vs (b.shift 1 0), position i+1,
+      -- at depth d+1.
+      have heq' : Equiv_c (d+1) (a.shift 1 0) (b.shift 1 0) := Equiv_c.shift heq
+      have hle : d+1 ≤ (dom.subst i b :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨hb12, hb21⟩ := ihB heq' (i+1) hle
+      have hle' : d+1 ≤ (dom.subst i a :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨hb12', hb21'⟩ := ihB heq' (i+1) hle'
+      refine ⟨.lam hd21 hb12, .lam hd12 hb21'⟩
+    | app f x ihF ihX =>
+      unfold Expr.subst
+      intro S Γ hd
+      obtain ⟨hf12, hf21⟩ := ihF heq i hd
+      obtain ⟨hx12, hx21⟩ := ihX heq i hd
+      refine ⟨.app_cong hf12 hx12 hx21, .app_cong hf21 hx21 hx12⟩
+    | asc t ty ihT _ihTy =>
+      unfold Expr.subst
+      intro S Γ hd
+      obtain ⟨ht12, ht21⟩ := ihT heq i hd
+      refine ⟨.asc_L (.asc_R ht12), .asc_L (.asc_R ht21)⟩
+    | iota ann body ihA ihB =>
+      unfold Expr.subst
+      intro S Γ hd
+      obtain ⟨ha12, ha21⟩ := ihA heq i hd
+      have heq' : Equiv_c (d+1) (a.shift 1 0) (b.shift 1 0) := Equiv_c.shift heq
+      have hle : d+1 ≤ (ann.subst i b :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨hb12, _hb21⟩ := ihB heq' (i+1) hle
+      have hle' : d+1 ≤ (ann.subst i a :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨_hb12', hb21'⟩ := ihB heq' (i+1) hle'
+      refine ⟨.iota_cong ha12 hb12, .iota_cong ha21 hb21'⟩
+    | «fix» ann body ihA ihB =>
+      unfold Expr.subst
+      intro S Γ hd
+      obtain ⟨ha12, ha21⟩ := ihA heq i hd
+      have heq' : Equiv_c (d+1) (a.shift 1 0) (b.shift 1 0) := Equiv_c.shift heq
+      have hle : d+1 ≤ (ann.subst i b :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨hb12, _hb21⟩ := ihB heq' (i+1) hle
+      have hle' : d+1 ≤ (ann.subst i a :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨_hb12', hb21'⟩ := ihB heq' (i+1) hle'
+      refine ⟨.fix_cong ha12 hb12, .fix_cong ha21 hb21'⟩
+    | letE val body ihV ihB =>
+      unfold Expr.subst
+      intro S Γ hd
+      obtain ⟨hv12, hv21⟩ := ihV heq i hd
+      have heq' : Equiv_c (d+1) (a.shift 1 0) (b.shift 1 0) := Equiv_c.shift heq
+      have hle : d+1 ≤ (val.subst i b :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨hb12, _hb21⟩ := ihB heq' (i+1) hle
+      have hle' : d+1 ≤ (val.subst i a :: Γ).length := by
+        simp only [List.length_cons]; omega
+      obtain ⟨_hb12', hb21'⟩ := ihB heq' (i+1) hle'
+      refine ⟨.letE_cong hv12 hb12, .letE_cong hv21 hb21'⟩
+
 end Equiv_c
 
 /-! ## Step-indexed logical relation
