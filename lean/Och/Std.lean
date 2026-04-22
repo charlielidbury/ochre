@@ -7,5 +7,7 @@ import Och.Std.Pair
 import Och.Std.Sigma
 import Och.Std.Array
 import Och.Std.Vec
+import Och.Std.DFin
+import Och.Std.Fin
 import Och.Std.Id
 import Och.Std.Mu
