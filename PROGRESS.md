@@ -1,5 +1,33 @@
 # Progress
 
+## 2026-04-21 (late) — Milestone: vapp_realises closed (4 → 3 declaration sorries)
+
+Path A (closedness-tracking via `Equiv_c d`) fully executed, closing
+`vapp_realises` entirely. First sorry decrease since the 10→4
+reduction at session start.
+
+**Axiom-clean infrastructure added this session:**
+- `Equiv_c d` + combinators (refl/symm/trans/of_Equiv/to_Equiv_zero/mono)
+- `Equiv_c.shift` — the nil-Γ-obstruction-killer (no closedness needed)
+- `Equiv_c.subst_resp` — substitution congruence without closedness
+- `Equiv_c.{lam,iota,fix,app}_cong` — congruence lemmas
+- `substEnv_shift_comm` — substitution-shift commutation
+- `quote_closedAt` + variants
+- `OpenCtx.hρecl` invariant + `substEnv_closedAt`
+
+**Theorems closed:**
+- R refactored to use Equiv_c d throughout
+- R_depth_lift `.type` and `.neutral` cases closed
+- vapp_realises iota/fix unfold cases closed (via Equiv_c.subst_resp
+  + Equiv.iota_unfold/fix_unfold chain)
+
+**Remaining 3 declaration sorries:**
+- R_depth_lift closure cases: blocked on recursive `Val.fullyQuotable`
+  invariant (per-entry quote witnesses on cl.env at arbitrary depth).
+- R_quote_equiv closure cases: needs mutual `quoteClosure_realises`
+  on quote-fuel (routes through R_depth_lift for env lifting).
+- tyInfer_sound_open internal sorries + A9 known-issue.
+
 ## 2026-04-21 — Session: R_quote_equiv + vapp iota/fix (agent a516f9da)
 
 **No code changes made.** Extensive investigation documented in
