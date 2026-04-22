@@ -928,6 +928,60 @@ namespace Equiv_c
       (h : Equiv_c d e₁ e₂) : Equiv_c d' e₁ e₂ :=
     fun {_ _} hd' => h (Nat.le_trans hle hd')
 
+  /-- `.lam` congruence: contravariant domain, covariant body under
+  depth-lifted environment. -/
+  theorem lam_cong {d domA domB bodyA bodyB}
+      (hd : Equiv_c d domA domB) (hb : Equiv_c (d+1) bodyA bodyB) :
+      Equiv_c d (.lam domA bodyA) (.lam domB bodyB) := by
+    intro S Γ hd_le
+    have hd_le1 : d+1 ≤ (domB :: Γ).length := by
+      simp only [List.length_cons]; omega
+    have hd_le1' : d+1 ≤ (domA :: Γ).length := by
+      simp only [List.length_cons]; omega
+    obtain ⟨hd12, hd21⟩ := hd hd_le
+    obtain ⟨hb12, _⟩ := hb hd_le1
+    obtain ⟨_, hb21'⟩ := hb hd_le1'
+    exact ⟨.lam hd21 hb12, .lam hd12 hb21'⟩
+
+  /-- `.iota` congruence: covariant annotation, covariant body. -/
+  theorem iota_cong {d ann₁ ann₂ body₁ body₂}
+      (ha : Equiv_c d ann₁ ann₂)
+      (hb : Equiv_c (d+1) body₁ body₂) :
+      Equiv_c d (.iota ann₁ body₁) (.iota ann₂ body₂) := by
+    intro S Γ hd_le
+    have hd_le1 : d+1 ≤ (ann₂ :: Γ).length := by
+      simp only [List.length_cons]; omega
+    have hd_le1' : d+1 ≤ (ann₁ :: Γ).length := by
+      simp only [List.length_cons]; omega
+    obtain ⟨ha12, ha21⟩ := ha hd_le
+    obtain ⟨hb12, _⟩ := hb hd_le1
+    obtain ⟨_, hb21'⟩ := hb hd_le1'
+    exact ⟨.iota_cong ha12 hb12, .iota_cong ha21 hb21'⟩
+
+  /-- `.fix` congruence: covariant annotation, covariant body. -/
+  theorem fix_cong {d ann₁ ann₂ body₁ body₂}
+      (ha : Equiv_c d ann₁ ann₂)
+      (hb : Equiv_c (d+1) body₁ body₂) :
+      Equiv_c d (.fix ann₁ body₁) (.fix ann₂ body₂) := by
+    intro S Γ hd_le
+    have hd_le1 : d+1 ≤ (ann₂ :: Γ).length := by
+      simp only [List.length_cons]; omega
+    have hd_le1' : d+1 ≤ (ann₁ :: Γ).length := by
+      simp only [List.length_cons]; omega
+    obtain ⟨ha12, ha21⟩ := ha hd_le
+    obtain ⟨hb12, _⟩ := hb hd_le1
+    obtain ⟨_, hb21'⟩ := hb hd_le1'
+    exact ⟨.fix_cong ha12 hb12, .fix_cong ha21 hb21'⟩
+
+  /-- `.app` congruence. -/
+  theorem app_cong {d f₁ f₂ a₁ a₂}
+      (hf : Equiv_c d f₁ f₂) (ha : Equiv_c d a₁ a₂) :
+      Equiv_c d (.app f₁ a₁) (.app f₂ a₂) := by
+    intro S Γ hd_le
+    obtain ⟨hf12, hf21⟩ := hf hd_le
+    obtain ⟨ha12, ha21⟩ := ha hd_le
+    exact ⟨.app_cong hf12 ha12 ha21, .app_cong hf21 ha21 ha12⟩
+
   /-- At `d = 0`, `Equiv_c 0` coincides with `Equiv`. -/
   theorem to_Equiv_zero {e₁ e₂} (h : Equiv_c 0 e₁ e₂) : Equiv e₁ e₂ :=
     fun {_ _} => h (Nat.zero_le _)
