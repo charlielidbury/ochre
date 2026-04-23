@@ -1211,19 +1211,61 @@ by `tyCheck` and consumed by `concEval` — is being investigated; see
 
 ### 7.2 Axiom status
 
-**(2026-04-21).** All four theorems above —
-`typeCheck_sound`, `concEval_equiv`, `concEval_preservation`, and
-`soundness` — are stated and have no direct `sorry`, but
-`#print axioms` on each reports `sorryAx` in the transitive closure.
-Ten sorries remain, all in [`SoundnessProof.lean`](SoundnessProof.lean):
-`Equiv.shift` nil-Γ; three `eval_realises` base-conjuncts; three
-`Sub*_to_Subtype'` threading gaps; `openNf_holds`; and the
-`whnfPi_sound_open` + `tyCheck/tyInfer_sound_open` assembly.
-Each has a documented engineering route (see
-[`PROGRESS.md`](../../PROGRESS.md) and
-[`DECISION-LOG.md`](../../DECISION-LOG.md)); none are open research
-questions. The metatheory is believed to hold; what remains is
-engineering to discharge the ten.
+**(2026-04-23 update).** `typeCheck_sound`, `concEval_equiv`,
+`concEval_preservation`, `soundness` are stated with no direct
+`sorry`, but `#print axioms` reports `sorryAx` in the transitive
+closure. Four declaration-level sorries remain in
+[`SoundnessProof.lean`](SoundnessProof.lean) —
+`eval_vapp_preserves_fullyQuotable`, `quoteClosure_realises`,
+`vapp_realises`, and `tyInfer_sound_open`. An earlier assessment
+(2026-04-21) characterised all remaining sorries as "engineering
+routes, none research questions." That assessment has been
+**falsified** for two of the four.
+
+- **`eval_vapp_preserves_fullyQuotable` is formally impossible to
+  strengthen** (without typing-with-normalization invariants). The
+  implication `Val.fullyQuotable d v → ∃ q, quote fuelω d v =
+  some q` reduces to the Halting Problem for untyped λ-calculus
+  via an explicit Ω-combinator closure counterexample. See
+  [`docs/ideas/quote-witness-feasibility.md`](../../docs/ideas/quote-witness-feasibility.md).
+  This is a **fundamental limit of non-total OCH**, not
+  engineering.
+
+- **`quoteClosure_realises` is blocked** at the mutual-block level:
+  Lean's termination checker rejects every lex measure tested for
+  the `R_quote_equiv`-closure-case inline; the post-mutual route
+  cascades `sorryAx` via pre-mutual `R_quote_equiv`'s own closure
+  cases.
+
+- **`vapp_realises` and `tyInfer_sound_open` Category A** depend on
+  the impossibility above — they inherit its blockers.
+
+- **`tyInfer_sound_open` Category B** would close given a
+  ~300–500 LOC `Subtype'.unshift_head` structural-induction proof
+  (substitution-based; plan documented in
+  [`Subtyping.lean`](Subtyping.lean)). Tractable engineering, not
+  research, but beyond single-session subagent budgets to date.
+
+- **`tyInfer_sound_open` Category C (A9)** is intentionally sorried
+  — the algorithm is correct, the proof statement is the bug. See
+  DECISION-LOG 2026-04-22.
+
+**The honest reading**: the residual sorries map OCH's non-totality
+boundary. §7.1 already states Och does not aim to prove
+termination / progress; the fullyQuotable-quote-termination
+implication is a concrete instance of that non-goal. Closing the
+declaration-level sorries against current preservation-only
+soundness is not engineering work in the general case — it requires
+either (a) accepting the boundary as OCH's design, (b) pursuing
+[Option 1.75: a typed NbE fundamental lemma](../../docs/ideas/quote-witness-feasibility.md)
+(2–4 week research-scale effort), or (c) the orthogonal Phase 2
+`progress_mod_fuel` refactor
+([`soundness-strengthen.md`](../../docs/ideas/soundness-strengthen.md)),
+which has independent value but does NOT subsume the closure-eval
+divergence issue.
+
+Full post-mortem at
+[`docs/ideas/sorry-closure-plan.md`](../../docs/ideas/sorry-closure-plan.md).
 
 **Phase 1 vs Phase 2 for Bot.** The native `Bot` primitive landed
 without re-opening any sorry. Phase 1 (this one): add `Expr.bot`,
