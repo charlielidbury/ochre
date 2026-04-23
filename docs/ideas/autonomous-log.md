@@ -242,3 +242,52 @@ and Std/Fin.lean via NbE.subCheck.
 **Rollback.** If the user wants the witnesses restored, they can
 be hand-rewritten (~30 lines each). The commit diff preserves the
 removed code in git history.
+
+## 2026-04-23 — Task 4B blocked on shift-inverse + quote-witness
+
+**Decision.** All four Category B sub-sorries in
+`tyInfer_sound_open` (.app β-fast, .app let-float, .app generic,
+.letE) left sorried; no code changes, only comment expansions that
+explicitly record what was probed and why it fell short.
+
+**Why.**
+- `.app β-fast` / `.app let-float` / `.letE` all reduce to the
+  **same** cross-cutting UNSHIFT obstruction: the IH from
+  `OpenCtx.push_let` delivers `Subtype'` at context `(X :: Γe)`
+  with `ρe' = (a.substEnv ρe).shift 1 0 :: ρe.map shift` and quote
+  at depth `Γ.size+1`. Bridging back to the outer `Γe` / `Γ.size`
+  needs `Subtype' (X :: Γ) (a.shift 1 0) (b.shift 1 0) → Subtype' Γ
+  a b`, which is the **inverse** of `Subtype'.ctx_extend`. Proving
+  it requires induction over the `Subtype'` derivation (cross-
+  cutting structural theorem). Task 4B's scope explicitly forbids
+  changes to `Subtype'` / `OpenCtx` structure.
+- `.app generic` needs a quote witness for `cl.open aV` at
+  `Γ.size`, which is Task 1 / `eval_vapp_preserves_fullyQuotable`
+  territory — proven **formally impossible** on closure heads in
+  `docs/ideas/quote-witness-feasibility.md` (Halting-reduction
+  argument).
+- For `.letE`, a restatement to quote at `Γ.size+1` then `letE_R`
+  down was probed. It would change the theorem signature, breaking
+  `tyCheckFallback_sound_open` and `Soundness.lean` wrappers, and
+  rippling into `OpenCtx.hlen` convention. Rejected.
+
+**Outcome.** Task 4B delivers 0/4 closed sub-sorries. The
+documentation commit makes the blockers explicit so the next agent
+doesn't re-discover them. Build green, axiom set unchanged
+(sorryAx on `typeCheck_sound` / `soundness` retained via existing
+open sorries).
+
+**Rollback.** N/A — no code changed. If someone wants to attempt
+the UNSHIFT lemma anyway, it's a ~100-line structural induction
+over `Subtype'` with careful treatment of `bvar` (shift vs. non-
+shift) and the `Seen` set. That's a tier-3 effort on its own.
+
+**Next.** Every tractable path from the sorry-closure-plan is now
+blocked (Task 1 impossible, Task 3 blocked on termination + cascading
+sorryAx, Tasks 2/4A dependent on Task 1, Task 4B blocked on cross-
+cutting Subtype' inversion). The Och metatheory is at a natural
+pause point. Productive directions from here probably involve
+either (a) accepting the shift convention as a permanent cost and
+designing a new soundness route that doesn't rely on a flat
+`Subtype'` unshift, or (b) pivoting to the Agda port or a different
+metatheory experiment.
