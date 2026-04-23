@@ -1,5 +1,63 @@
 # Progress
 
+## 2026-04-23 — Phase 1 sorry-closure: blocked; boundary documented
+
+After landing primitive Bot and the Fin-as-subtype-of-Nat work, I
+attempted to close the 4 remaining declaration-level sorries in
+`SoundnessProof.lean` per the plan in
+`docs/ideas/sorry-closure-plan.md`. Four subagent attempts, all
+blocked:
+
+| Task | Status | Blocker |
+|---|---|---|
+| 1 (`eval_vapp_preserves_fullyQuotable`) | **formally impossible** | Halting Problem reduction via Ω-combinator closure |
+| 3 (`quoteClosure_realises`) | blocked | Lean termination checker + cascading sorryAx |
+| 2 (`vapp_realises`) | depends on Task 1 | inherits impossibility |
+| 4A (hnfq witnesses) | depends on Task 1 | inherits impossibility |
+| 4B (Subtype' derivations) | partially blocked | needs `Subtype'.unshift_head` lemma (~500 LOC) |
+| 4C (A9) | intentionally sorried | DECISION-LOG 2026-04-22 |
+
+Research note `docs/ideas/quote-witness-feasibility.md` documents
+the formal impossibility proof for Task 1's goal. The key
+observation: `Val.fullyQuotable d v` does NOT imply
+`∃ q, quote fuelω d v = some q` because closure bodies can encode
+Ω-combinators that diverge. Phase 2's `progress_mod_fuel` does
+NOT subsume this — Phase 2 is about `concEval` stuckness,
+different layer.
+
+### What was accomplished
+
+- `docs/ideas/quote-witness-feasibility.md`: formal impossibility
+  research note.
+- `docs/ideas/autonomous-log.md`: running decision log.
+- `docs/ideas/sorry-closure-plan.md`: attempted plan + full
+  post-mortem.
+- In-file documentation of blockers in `SoundnessProof.lean`,
+  `Subtyping.lean`, and on each sub-sorry site.
+- `Subtype'.unshift_trivial`: stepping-stone lemma proven
+  (cutoff-|Γ| variant, trivial via `shift_of_closedAt`).
+
+### What did not happen
+
+- No declaration-level sorry closed. Baseline unchanged at 4
+  (or 3 if we don't count A9's two, which are intentional).
+- No new axioms introduced; no regressions.
+
+### The four recommended paths forward
+
+Full analysis at `docs/ideas/sorry-closure-plan.md` §"Recommended
+next steps":
+
+- **(a) Accept as-is.** Treat the 4 sorries as OCH's
+  non-totality boundary documented formally.
+- **(b) Phase 2 (progress_mod_fuel) for its own merits.** Doesn't
+  close these sorries but has orthogonal value.
+- **(c) Option 1.75 — typed NbE.** 2–4 weeks research-scale
+  effort; only option that actually closes these sorries.
+- **(d) One more Category-B push.** Tractable ~500 LOC UNSHIFT
+  lemma work; closes 3 of 4 B sub-sorries internally but doesn't
+  move declaration-sorry count.
+
 ## 2026-04-23 — Primitive Bot + Fin-as-subtype-of-Nat
 
 Landed primitive `Bot` as a first-class term/value (`Expr.bot` /
