@@ -42,10 +42,10 @@ lemma) so this is sound.
 def fuelω : Nat := 100000
 
 def Closure.openω (cl : Closure) (v : Val) : Option Val :=
-  cl.open fuelω v
+  (cl.open fuelω v).toOption
 
 def vappω (f a : Val) : Option Val :=
-  vapp fuelω 4 f a
+  (vapp fuelω 4 f a).toOption
 
 /-!
 ## The Val-level relation
@@ -205,23 +205,53 @@ theorem seen_any_mem {S : List (Val × Val)} {a b : Val}
   exact hmem
 
 /-- Lift a fuelled closure opening to the large fixed budget.
-`Closure.open_fuel_mono` is now proven in SubCheckVal.lean. -/
+`Closure.open_fuel_mono` is now proven in SubCheckVal.lean.
+Post-Outcome-migration (2026-04-23): `cl.open` returns `Outcome Val`;
+`openω` projects to `Option Val` via `.toOption` to preserve the
+2-case API proofs in this file are written against. -/
 theorem Closure.openω_of_open {cl : Closure} {v r : Val} {n : Nat}
-    (hn : n ≤ fuelω) (h : cl.open n v = some r) :
-    cl.openω v = some r :=
-  Closure.open_fuel_mono hn h
+    (hn : n ≤ fuelω) (h : cl.open n v = .ok r) :
+    cl.openω v = some r := by
+  unfold Closure.openω
+  rw [Closure.open_fuel_mono hn h]
+  rfl
 
 /-- Lift a fuelled re-application to the large fixed budget. -/
 theorem vappω_of_vapp {f arg r : Val} {n : Nat}
-    (hn : n ≤ fuelω) (h : vapp n 4 f arg = some r) :
-    vappω f arg = some r :=
-  vapp_fuel_mono hn h
+    (hn : n ≤ fuelω) (h : vapp n 4 f arg = .ok r) :
+    vappω f arg = some r := by
+  unfold vappω
+  rw [vapp_fuel_mono hn h]
+  rfl
+
+/-- Lift a `toOption`-filtered `cl.open` to the fuelω budget.
+`synthNeutral` in SubCheckVal returns `.ok (cl.open fuel arg).toOption`
+so witnesses arrive in the form `(cl.open n arg).toOption = some r`. -/
+theorem openω_of_toOption {cl : Closure} {v r : Val} {n : Nat}
+    (hn : n ≤ fuelω) (h : (cl.open n v).toOption = some r) :
+    cl.openω v = some r := by
+  unfold Outcome.toOption at h
+  split at h
+  · rename_i v' heq
+    injection h with h
+    subst h
+    exact Closure.openω_of_open hn heq
+  all_goals simp at h
 
 theorem Closure.openω_of_openFresh {cl : Closure} {r : Val}
     {n depth : Nat} (hn : n ≤ fuelω)
-    (h : cl.openFresh n depth = some r) :
-    cl.openω (.neutral (.var depth)) = some r :=
-  Closure.openω_of_open hn h
+    (h : cl.openFresh n depth = .ok r) :
+    cl.openω (.neutral (.var depth)) = some r := by
+  -- `openFresh` is `Except String`-valued, collapsing `.outOfFuel`
+  -- and `.error` into `.error`. From `= .ok r`, the underlying
+  -- `cl.open` must have returned `.ok r` (neither error branch).
+  unfold Closure.openFresh at h
+  split at h
+  · rename_i heq
+    injection h with h
+    subst h
+    exact Closure.openω_of_open hn heq
+  all_goals simp_all
 
 /-- BEq-disequality reflection (needed for the re-vapp arms'
 `if b' == b then .ok false else …` discrimination). -/
@@ -327,8 +357,7 @@ theorem subCheckValMatch_subV
       rw [hc] at h hokAnn
       simp only [Bool.not_true, Bool.false_eq_true,
                  ↓reduceIte] at h
-      split at h
-      · simp at h
+      split at h <;> try exact Except.noConfusion h
       rename_i bodyB' hopen
       exact SubV.iota_intro
         (Closure.openω_of_open hfuel hopen)
@@ -358,8 +387,7 @@ theorem subCheckValMatch_subV
         (Closure.openω_of_openFresh hfuel hbB)
         (ih hannOk) (ih hstruct)
     · -- fallback fired → SubV.unfold_fix_R (same as `_, .fix`)
-      split at h
-      · simp at h
+      split at h <;> try exact Except.noConfusion h
       rename_i b' hopen
       exact SubV.unfold_fix_R
         (Closure.openω_of_open hfuel hopen)
@@ -375,17 +403,15 @@ theorem subCheckValMatch_subV
     | true =>
     rw [hc] at h hokAnn; simp only [Bool.not_true, Bool.false_eq_true,
       ↓reduceIte] at h
-    split at h
-    · next _ => simp at h
-    next bodyB' hopen =>
+    split at h <;> try exact Except.noConfusion h
+    rename_i bodyB' hopen
     exact SubV.iota_intro
       (Closure.openω_of_open hfuel hopen)
       (ih hokAnn) (ih h)
   -- _, .fix
   · next a' ann clB hNotFix =>
-    split at h
-    · next _ => simp at h
-    next b' hopen =>
+    split at h <;> try exact Except.noConfusion h
+    rename_i b' hopen
     exact SubV.unfold_fix_R
       (Closure.openω_of_open hfuel hopen)
       (ih h)
@@ -420,14 +446,12 @@ theorem subCheckValMatch_subV
                  ↓reduceIte] at hstruct
       exact SubV.stuckRec_struct (ih h1) (ih h2) (ih h3) (ih hstruct)
     · -- fallback: re-vapp RHS, then maybe LHS
-      split at h
-      · simp at h  -- vapp fB aB = none → .error
+      split at h <;> try exact Except.noConfusion h
       rename_i b' hvappR
       split at h
       · -- b' == b: try LHS
         rename_i hbeqR
-        split at h
-        · simp at h  -- vapp fA aA = none → .error
+        split at h <;> try exact Except.noConfusion h
         rename_i a' hvappL
         split at h
         · simp at h  -- a' == a → .ok false
@@ -443,8 +467,7 @@ theorem subCheckValMatch_subV
           (Val.ne_of_beq_false (by simpa using hbeqR))
           (ih h)
   -- _, .neutral .stuckRec: re-vapp R
-  · split at h
-    · simp at h
+  · split at h <;> try exact Except.noConfusion h
     rename_i b' hvapp
     split at h
     · simp at h
@@ -455,9 +478,8 @@ theorem subCheckValMatch_subV
       (ih h)
   -- .fix, _
   · next ann clA c hNotR =>
-    split at h
-    · next _ => simp at h
-    next a' hopen =>
+    split at h <;> try exact Except.noConfusion h
+    rename_i a' hopen
     split at h
     · simp at h
     next hbeq =>
@@ -467,9 +489,8 @@ theorem subCheckValMatch_subV
       (ih h)
   -- .iota, _
   · next ann clA c hNotR =>
-    split at h
-    · next _ => simp at h
-    next a' hopen =>
+    split at h <;> try exact Except.noConfusion h
+    rename_i a' hopen
     split at h
     · simp at h
     next hbeq =>
@@ -478,11 +499,10 @@ theorem subCheckValMatch_subV
       (Val.ne_of_beq_false (by simpa using hbeq))
       (ih h)
   -- .neutral .stuckRec, _ : re-vapp L
-  · split at h
-    · simp at h
+  · split at h <;> try exact Except.noConfusion h
     rename_i a' hvapp
     -- The stuckRec components are auto-named by split; extract
-    -- via the structure of `hvapp : vapp fuel 4 ?f ?arg = some a'`.
+    -- via the structure of `hvapp : vapp fuel 4 ?f ?arg = .ok a'`.
     split at h
     · simp at h
     rename_i hbeq
@@ -627,10 +647,16 @@ theorem neutralAscent_subV
                   (Closure.openω_of_open hfuel' hopen))
             (_ihV h)
         next => simp at h
+        next => simp at h
       | _ => simp [hn'ty', hn'tyV] at h
     -- .stuckRec f arg
     next =>
+      -- neutralAscent's stuckRec arm is 3-case (.outOfFuel/.error → .ok false)
+      -- not using revapp like subCheckVal's stuckRec arm. After split there
+      -- are 3 outcomes of `vapp`; the `.outOfFuel` and `.error` cases resolve
+      -- directly to `h : .ok false = .ok true` which simp refutes.
       split at h
+      · simp at h
       · simp at h
       rename_i a' hvapp
       split at h
@@ -675,7 +701,7 @@ theorem synthNeutral_synthN
         simp only [hn'ty', hn'tyV, Except.ok.injEq] at h
         exact SynthN.app
           (_ihS (by rw [hn'ty, hn'ty', hn'tyV]))
-          (Closure.openω_of_open hfuel' h)
+          (openω_of_toOption hfuel' h)
       | _ => simp [hn'ty', hn'tyV] at h
     -- .stuckRec f arg
     next =>
@@ -688,10 +714,10 @@ theorem synthNeutral_synthN
         · -- ann = .lam dom cl'; result = .ok (cl'.open fuel arg)
           rename_i dom cl'
           simp only [Except.ok.injEq] at h
-          exact SynthN.stuckRecFix rfl (Closure.openω_of_open hfuel' h)
+          exact SynthN.stuckRecFix rfl (openω_of_toOption hfuel' h)
         · -- ann ≠ .lam; result = .ok (some ann); so τ = ann
           rename_i hnotlam
-          simp only [Except.ok.injEq, Option.some.injEq] at h
+          simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
           exact h ▸ SynthN.stuckRecFixAnn
             (fun d c heq => hnotlam d c heq)
       · -- f = .iota ann cl; same shape
@@ -699,9 +725,9 @@ theorem synthNeutral_synthN
         split at h
         · rename_i dom cl'
           simp only [Except.ok.injEq] at h
-          exact SynthN.stuckRecIota rfl (Closure.openω_of_open hfuel' h)
+          exact SynthN.stuckRecIota rfl (openω_of_toOption hfuel' h)
         · rename_i hnotlam
-          simp only [Except.ok.injEq, Option.some.injEq] at h
+          simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
           exact h ▸ SynthN.stuckRecIotaAnn
             (fun d c heq => hnotlam d c heq)
       · -- f = other; result = .ok none; impossible since h : … = some τ
@@ -717,7 +743,7 @@ end
 quotes each piece. Three lemmas factor the work:
 
   - `quote_lam`/`quote_iota`/`quote_fix` (shape lemmas):
-    `quote (.lam d c) = some e → ∃ de be, e = .lam de be ∧ …`
+    `quote (.lam d c) = .ok e → ∃ de be, e = .lam de be ∧ …`
   - `quote_open` (NbE correctness): the quoted body of a
     closure opened with `v` is β-related to the substituted
     quote. This is the substantive lemma; everything else
@@ -1137,7 +1163,7 @@ R (n+1) d headV he ∧ RList (n+1) d cl.env ρe' ∧ …
 `REnv (n+1) d (a :: cl.env) (ae :: ρe')` and call
 `eval_realises`'s fuel-IH directly — no Kripke step-loss.
 
-The former *base conjunct* (`∀ e', quote fuelω d v = some e'
+The former *base conjunct* (`∀ e', quote fuelω d v = .ok e'
 → Equiv e' e`) was dropped 2026-04-21: it's unprovable inside
 `eval_realises`'s fuel-IH (`quoteClosure`'s inner eval is at
 `fuelω-1`, outside the IH). Recovered post-hoc as the
@@ -1218,7 +1244,7 @@ mutual
   def Closure.envFullyQuotable (d : Nat) : List Val → Prop
     | [] => True
     | v :: vs =>
-      (Val.fullyQuotable d v ∧ (∃ qe, quote fuelω d v = some qe)) ∧
+      (Val.fullyQuotable d v ∧ (∃ qe, quote fuelω d v = .ok qe)) ∧
       Closure.envFullyQuotable d vs
 end
 
@@ -1268,9 +1294,9 @@ def R : Nat → Nat → Val → Expr → Prop
         -- correspondence is provable inside `eval_realises`'s
         -- fuel-IH directly. Uses Equiv_c d (depth-parametrised
         -- Equiv) so R_depth_lift can close via Equiv_c.shift.
-        | .type => ∀ e', quote fuelω d v = some e' → Equiv_c d e' e
-        | .bot => ∀ e', quote fuelω d v = some e' → Equiv_c d e' e
-        | .neutral _ => ∀ e', quote fuelω d v = some e' → Equiv_c d e' e
+        | .type => ∀ e', quote fuelω d v = .ok e' → Equiv_c d e' e
+        | .bot => ∀ e', quote fuelω d v = .ok e' → Equiv_c d e' e
+        | .neutral _ => ∀ e', quote fuelω d v = .ok e' → Equiv_c d e' e
 termination_by _ _ v _ => sizeOf v
 decreasing_by
   all_goals simp_wf
@@ -1329,7 +1355,7 @@ theorem REnv_iff_RList {n d ρ ρe} : REnv n d ρ ρe ↔ RList n d ρ ρe := by
             have h0 := hidx 0 v (by simp)
             obtain ⟨e0, he0, hR0⟩ := h0
             simp only [List.get?_eq_getElem?,
-                       List.getElem?_cons_zero, Option.some.injEq] at he0
+                       List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at he0
             refine ⟨he0 ▸ hR0, ih (by simpa using hlen) ?_⟩
             intro k w hk
             have := hidx (k+1) w (by simpa using hk)
@@ -1347,7 +1373,7 @@ theorem REnv_iff_RList {n d ρ ρe} : REnv n d ρ ρe ↔ RList n d ρ ρe := by
             cases k with
             | zero =>
                 simp only [List.getElem?_cons_zero,
-                           Option.some.injEq] at hk
+                           Option.some.injEq, Outcome.ok.injEq] at hk
                 exact ⟨e, by simp, hk ▸ h.1⟩
             | succ j =>
                 simp only [List.getElem?_cons_succ] at hk
@@ -1678,7 +1704,7 @@ theorem substEnv_closedAt {e : Expr} {n : Nat} {ρe : List Expr}
     · intro k e' hk
       cases k with
       | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp [Expr.closedAt]
       | succ m =>
@@ -1707,7 +1733,7 @@ theorem substEnv_closedAt {e : Expr} {n : Nat} {ρe : List Expr}
     · intro k e' hk
       cases k with
       | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp [Expr.closedAt]
       | succ m =>
@@ -1726,7 +1752,7 @@ theorem substEnv_closedAt {e : Expr} {n : Nat} {ρe : List Expr}
     · intro k e' hk
       cases k with
       | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp [Expr.closedAt]
       | succ m =>
@@ -1745,7 +1771,7 @@ theorem substEnv_closedAt {e : Expr} {n : Nat} {ρe : List Expr}
     · intro k e' hk
       cases k with
       | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp [Expr.closedAt]
       | succ m =>
@@ -1948,7 +1974,7 @@ theorem Closure.envLevelsBelow_getElem?
   | cons w ws ih =>
       cases k with
       | zero =>
-          simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+          simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
           subst hk
           unfold Closure.envLevelsBelow at h
           exact h.1
@@ -2035,8 +2061,8 @@ end
 /-!
 ### `eval` commutes with `Val.shiftLvl`
 
-`eval fuel unf ρ e = some v` ⇒
-`eval fuel unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c)`.
+`eval fuel unf ρ e = .ok v` ⇒
+`eval fuel unf (ρ.map (Val.shiftLvl c)) e = .ok (v.shiftLvl c)`.
 
 Proved by combined induction on fuel over `eval` and `vapp`. The
 vapp-iota/fix branches case-split on `a`-shape (to evaluate
@@ -2045,10 +2071,10 @@ gate. -/
 
 theorem eval_vapp_shiftLvl :
     ∀ n,
-    (∀ {unf c ρ e v}, eval n unf ρ e = some v →
-      eval n unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c)) ∧
-    (∀ {unf c f a v}, vapp n unf f a = some v →
-      vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c)) := by
+    (∀ {unf c ρ e v}, eval n unf ρ e = .ok v →
+      eval n unf (ρ.map (Val.shiftLvl c)) e = .ok (v.shiftLvl c)) ∧
+    (∀ {unf c f a v}, vapp n unf f a = .ok v →
+      vapp n unf (f.shiftLvl c) (a.shiftLvl c) = .ok (v.shiftLvl c)) := by
   intro n
   induction n with
   | zero =>
@@ -2063,10 +2089,10 @@ theorem eval_vapp_shiftLvl :
       unfold eval at h ⊢
       match e, h with
       | .type, h =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h; rfl
       | .bot, h =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h; rfl
       | .bvar j, h =>
           simp only [] at h ⊢
@@ -2075,16 +2101,16 @@ theorem eval_vapp_shiftLvl :
           | none => rw [hk] at h; cases h
           | some w =>
               rw [hk] at h
-              simp only [Option.some.injEq] at h
+              simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
               subst h
               simp only [Option.map_some']
       | .lam dom body, h =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          simp only [Outcome.bind_eq_ok] at h ⊢
           obtain ⟨dom', hdom, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           refine ⟨dom'.shiftLvl c, ihe hdom, ?_⟩
-          simp only [Option.some.injEq]
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq]
           show Val.lam (Val.shiftLvl c dom') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
                Val.lam (Val.shiftLvl c dom')
                  (Closure.shiftLvl c (Closure.mk' body ρ))
@@ -2097,12 +2123,12 @@ theorem eval_vapp_shiftLvl :
           congr 1
           simp [List.map_take]
       | .iota ann body, h =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          simp only [Outcome.bind_eq_ok] at h ⊢
           obtain ⟨ann', hann, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           refine ⟨ann'.shiftLvl c, ihe hann, ?_⟩
-          simp only [Option.some.injEq]
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq]
           show Val.iota (Val.shiftLvl c ann') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
                Val.iota (Val.shiftLvl c ann')
                  (Closure.shiftLvl c (Closure.mk' body ρ))
@@ -2114,12 +2140,12 @@ theorem eval_vapp_shiftLvl :
           congr 1
           simp [List.map_take]
       | .«fix» ann body, h =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          simp only [Outcome.bind_eq_ok] at h ⊢
           obtain ⟨ann', hann, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           refine ⟨ann'.shiftLvl c, ihe hann, ?_⟩
-          simp only [Option.some.injEq]
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq]
           show Val.«fix» (Val.shiftLvl c ann') (Closure.mk' body (ρ.map (Val.shiftLvl c))) =
                Val.«fix» (Val.shiftLvl c ann')
                  (Closure.shiftLvl c (Closure.mk' body ρ))
@@ -2131,11 +2157,11 @@ theorem eval_vapp_shiftLvl :
           congr 1
           simp [List.map_take]
       | .app f a, h =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          simp only [Outcome.bind_eq_ok] at h ⊢
           obtain ⟨f', hf, a', ha, hv⟩ := h
           exact ⟨f'.shiftLvl c, ihe hf, a'.shiftLvl c, ihe ha, ihv hv⟩
       | .letE val body, h =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+          simp only [Outcome.bind_eq_ok] at h ⊢
           obtain ⟨v', hv', hb⟩ := h
           refine ⟨v'.shiftLvl c, ihe hv', ?_⟩
           have := ihe (unf := unf) (c := c) (ρ := v' :: ρ) (e := body)
@@ -2149,11 +2175,11 @@ theorem eval_vapp_shiftLvl :
       unfold vapp at h ⊢
       cases f with
       | neutral nf =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           rfl
       | type =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           rfl
       | bot =>
@@ -2163,8 +2189,7 @@ theorem eval_vapp_shiftLvl :
           obtain ⟨body, env⟩ := cl
           simp only at h
           -- Target: eval on (shifted a :: Closure.envShiftLvl c env) body
-          show eval k unf (Val.shiftLvl c a :: Closure.envShiftLvl c env) body =
-               some (Val.shiftLvl c v)
+          show eval k unf (Val.shiftLvl c a :: Closure.envShiftLvl c env) body = .ok (Val.shiftLvl c v)
           rw [Closure.envShiftLvl_eq_map]
           have := ihe (unf := unf) (c := c) (ρ := a :: env) (e := body)
                       (v := v) h
@@ -2175,7 +2200,7 @@ theorem eval_vapp_shiftLvl :
           -- After `cases f`, the goal has the iota arm of Val.shiftLvl
           -- unfolded. Use `show` to pin the goal structure.
           change (if ((Val.shiftLvl c a).isNeutral || unf == 0) = true
-                  then some (Val.neutral (.stuckRec
+                  then .ok (Val.neutral (.stuckRec
                               (Val.iota (Val.shiftLvl c ann)
                                 ⟨body, Closure.envShiftLvl c env⟩)
                               (Val.shiftLvl c a)))
@@ -2183,20 +2208,20 @@ theorem eval_vapp_shiftLvl :
                     (eval k (unf - 1)
                       (Val.iota (Val.shiftLvl c ann)
                         ⟨body, Closure.envShiftLvl c env⟩
-                       :: Closure.envShiftLvl c env) body).bind
+                       :: Closure.envShiftLvl c env) body) >>=
                       (fun f' => vapp k (unf - 1) f' (Val.shiftLvl c a)))
-                 = some (Val.shiftLvl c v)
+                 = .ok (Val.shiftLvl c v)
           have hge : (Val.shiftLvl c a).isNeutral = a.isNeutral :=
             Val.shiftLvl_neutral_isNeutral c a
           rw [hge]
           by_cases hg : (a.isNeutral || unf == 0) = true
           · simp only [hg, ↓reduceIte] at h ⊢
-            simp only [Option.some.injEq] at h
+            simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
             subst h
             rfl
           · simp only [Bool.not_eq_true] at hg
             simp only [hg, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+                       Outcome.bind_eq_ok] at h ⊢
             obtain ⟨f', hf, hv⟩ := h
             refine ⟨f'.shiftLvl c, ?_, ihv hv⟩
             have hhead : Val.shiftLvl c (Val.iota ann ⟨body, env⟩) =
@@ -2211,7 +2236,7 @@ theorem eval_vapp_shiftLvl :
           obtain ⟨body, env⟩ := cl
           simp only at h
           change (if ((Val.shiftLvl c a).isNeutral || unf == 0) = true
-                  then some (Val.neutral (.stuckRec
+                  then .ok (Val.neutral (.stuckRec
                               (Val.«fix» (Val.shiftLvl c ann)
                                 ⟨body, Closure.envShiftLvl c env⟩)
                               (Val.shiftLvl c a)))
@@ -2219,20 +2244,20 @@ theorem eval_vapp_shiftLvl :
                     (eval k (unf - 1)
                       (Val.«fix» (Val.shiftLvl c ann)
                         ⟨body, Closure.envShiftLvl c env⟩
-                       :: Closure.envShiftLvl c env) body).bind
+                       :: Closure.envShiftLvl c env) body) >>=
                       (fun f' => vapp k (unf - 1) f' (Val.shiftLvl c a)))
-                 = some (Val.shiftLvl c v)
+                 = .ok (Val.shiftLvl c v)
           have hge : (Val.shiftLvl c a).isNeutral = a.isNeutral :=
             Val.shiftLvl_neutral_isNeutral c a
           rw [hge]
           by_cases hg : (a.isNeutral || unf == 0) = true
           · simp only [hg, ↓reduceIte] at h ⊢
-            simp only [Option.some.injEq] at h
+            simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
             subst h
             rfl
           · simp only [Bool.not_eq_true] at hg
             simp only [hg, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
+                       Outcome.bind_eq_ok] at h ⊢
             obtain ⟨f', hf, hv⟩ := h
             refine ⟨f'.shiftLvl c, ?_, ihv hv⟩
             have hhead : Val.shiftLvl c (Val.«fix» ann ⟨body, env⟩) =
@@ -2245,19 +2270,19 @@ theorem eval_vapp_shiftLvl :
             exact this
 
 theorem eval_shiftLvl {n unf c ρ e v}
-    (h : eval n unf ρ e = some v) :
-    eval n unf (ρ.map (Val.shiftLvl c)) e = some (v.shiftLvl c) :=
+    (h : eval n unf ρ e = .ok v) :
+    eval n unf (ρ.map (Val.shiftLvl c)) e = .ok (v.shiftLvl c) :=
   (eval_vapp_shiftLvl n).1 h
 
 theorem vapp_shiftLvl {n unf c f a v}
-    (h : vapp n unf f a = some v) :
-    vapp n unf (f.shiftLvl c) (a.shiftLvl c) = some (v.shiftLvl c) :=
+    (h : vapp n unf f a = .ok v) :
+    vapp n unf (f.shiftLvl c) (a.shiftLvl c) = .ok (v.shiftLvl c) :=
   (eval_vapp_shiftLvl n).2 h
 
 /-!
 ### `eval` preserves `Val.levelsBelow`
 
-If every entry of ρ has `levelsBelow d`, then `eval ρ e = some v`
+If every entry of ρ has `levelsBelow d`, then `eval ρ e = .ok v`
 implies `v.levelsBelow d`. Proved by induction on fuel.
 -/
 
@@ -2296,14 +2321,14 @@ specific entry. -/
 theorem Closure.envFullyQuotable_getElem?
     {d : Nat} {env : List Val} (h : Closure.envFullyQuotable d env)
     {k : Nat} {v : Val} (hk : env[k]? = some v) :
-    Val.fullyQuotable d v ∧ ∃ qe, quote fuelω d v = some qe := by
+    Val.fullyQuotable d v ∧ ∃ qe, quote fuelω d v = .ok qe := by
   induction env generalizing k with
   | nil => simp at hk
   | cons w ws ih =>
       unfold Closure.envFullyQuotable at h
       cases k with
       | zero =>
-          simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+          simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
           subst hk
           exact h.1
       | succ m =>
@@ -2312,9 +2337,9 @@ theorem Closure.envFullyQuotable_getElem?
 
 theorem eval_vapp_levelsBelow :
     ∀ n,
-    (∀ {unf d ρ e v}, eval n unf ρ e = some v →
+    (∀ {unf d ρ e v}, eval n unf ρ e = .ok v →
       Closure.envLevelsBelow d ρ → Val.levelsBelow d v) ∧
-    (∀ {unf d f a v}, vapp n unf f a = some v →
+    (∀ {unf d f a v}, vapp n unf f a = .ok v →
       Val.levelsBelow d f → Val.levelsBelow d a → Val.levelsBelow d v) := by
   intro n
   induction n with
@@ -2330,49 +2355,56 @@ theorem eval_vapp_levelsBelow :
       unfold eval at h
       cases e with
       | type =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.levelsBelow; trivial
       | bot =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.levelsBelow; trivial
       | bvar j =>
           simp only [] at h
-          exact Closure.envLevelsBelow_getElem? hρ h
+          -- `h : (match ρ[j]? with | some v => .ok v | none => .error _) = .ok v`
+          -- Extract ρ[j]? = some v.
+          split at h
+          · rename_i v' hk
+            injection h with h
+            subst h
+            exact Closure.envLevelsBelow_getElem? hρ hk
+          · simp at h
       | lam dom body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨dom', hdom, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           unfold Val.levelsBelow
           refine ⟨ihe hdom hρ, ?_⟩
           unfold Closure.levelsBelow Closure.mk'
           exact Closure.envLevelsBelow_take hρ _
       | iota ann body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨ann', hann, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           unfold Val.levelsBelow
           refine ⟨ihe hann hρ, ?_⟩
           unfold Closure.levelsBelow Closure.mk'
           exact Closure.envLevelsBelow_take hρ _
       | «fix» ann body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨ann', hann, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           unfold Val.levelsBelow
           refine ⟨ihe hann hρ, ?_⟩
           unfold Closure.levelsBelow Closure.mk'
           exact Closure.envLevelsBelow_take hρ _
       | app f a =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨f', hf, a', ha, hv⟩ := h
           exact ihv hv (ihe hf hρ) (ihe ha hρ)
       | letE val body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨v', hv', hb⟩ := h
           have hρ' : Closure.envLevelsBelow d (v' :: ρ) := by
             unfold Closure.envLevelsBelow
@@ -2387,13 +2419,13 @@ theorem eval_vapp_levelsBelow :
       cases hfeq : f with
       | neutral nf =>
           subst hfeq
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.levelsBelow Neutral.levelsBelow
           exact ⟨hf, ha⟩
       | type =>
           subst hfeq
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.levelsBelow Neutral.levelsBelow
           exact ⟨hf, ha⟩
@@ -2415,12 +2447,12 @@ theorem eval_vapp_levelsBelow :
           obtain ⟨body, env⟩ := cl
           simp only at h
           by_cases hg : (a.isNeutral || unf == 0) = true
-          · simp only [hg, ↓reduceIte, Option.some.injEq] at h
+          · simp only [hg, ↓reduceIte, Option.some.injEq, Outcome.ok.injEq] at h
             subst h
             unfold Val.levelsBelow Neutral.levelsBelow
             exact ⟨hf, ha⟩
           · simp only [hg, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at h
+                       Outcome.bind_eq_ok] at h
             obtain ⟨f', hfe, hv⟩ := h
             unfold Val.levelsBelow Closure.levelsBelow at hf
             have hρ' : Closure.envLevelsBelow d
@@ -2435,12 +2467,12 @@ theorem eval_vapp_levelsBelow :
           obtain ⟨body, env⟩ := cl
           simp only at h
           by_cases hg : (a.isNeutral || unf == 0) = true
-          · simp only [hg, ↓reduceIte, Option.some.injEq] at h
+          · simp only [hg, ↓reduceIte, Option.some.injEq, Outcome.ok.injEq] at h
             subst h
             unfold Val.levelsBelow Neutral.levelsBelow
             exact ⟨hf, ha⟩
           · simp only [hg, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at h
+                       Outcome.bind_eq_ok] at h
             obtain ⟨f', hfe, hv⟩ := h
             unfold Val.levelsBelow Closure.levelsBelow at hf
             have hρ' : Closure.envLevelsBelow d
@@ -2452,7 +2484,7 @@ theorem eval_vapp_levelsBelow :
             exact ihv hv (ihe hfe hρ') ha
 
 theorem eval_levelsBelow {n unf d ρ e v}
-    (h : eval n unf ρ e = some v) (hρ : Closure.envLevelsBelow d ρ) :
+    (h : eval n unf ρ e = .ok v) (hρ : Closure.envLevelsBelow d ρ) :
     Val.levelsBelow d v :=
   (eval_vapp_levelsBelow n).1 h hρ
 
@@ -2462,14 +2494,14 @@ Takes quote witnesses for input `a` (for vapp's `.lam` head) and on
 supplied from the caller's chain via `eval_quotable_open`. -/
 theorem eval_vapp_preserves_fullyQuotable :
     ∀ n,
-    (∀ {unf d ρ e v}, eval n unf ρ e = some v →
+    (∀ {unf d ρ e v}, eval n unf ρ e = .ok v →
       Closure.envFullyQuotable d ρ →
       e.closedAt ρ.length = true →
       Val.fullyQuotable d v) ∧
-    (∀ {unf d f a v}, vapp n unf f a = some v →
+    (∀ {unf d f a v}, vapp n unf f a = .ok v →
       Val.fullyQuotable d f → Val.fullyQuotable d a →
-      (∃ qf, quote fuelω d f = some qf) →
-      (∃ qa, quote fuelω d a = some qa) →
+      (∃ qf, quote fuelω d f = .ok qf) →
+      (∃ qa, quote fuelω d a = .ok qa) →
       Val.fullyQuotable d v) := by
   intro n
   induction n with
@@ -2484,21 +2516,25 @@ theorem eval_vapp_preserves_fullyQuotable :
       unfold eval at h
       cases e with
       | type =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.fullyQuotable; trivial
       | bot =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.fullyQuotable; trivial
       | bvar j =>
           simp only [] at h
-          have := Closure.envFullyQuotable_getElem? hρ h
-          exact this.1
+          split at h
+          · rename_i v' hk
+            injection h with h
+            subst h
+            exact (Closure.envFullyQuotable_getElem? hρ hk).1
+          · simp at h
       | lam dom body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨dom', hdom, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold Val.fullyQuotable
@@ -2507,9 +2543,9 @@ theorem eval_vapp_preserves_fullyQuotable :
                     (bvarBound_le_of_closedAt hcl.2), ?_⟩
           exact Closure.envFullyQuotable_take hρ _
       | iota ann body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨ann', hann, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold Val.fullyQuotable
@@ -2518,9 +2554,9 @@ theorem eval_vapp_preserves_fullyQuotable :
                     (bvarBound_le_of_closedAt hcl.2), ?_⟩
           exact Closure.envFullyQuotable_take hρ _
       | «fix» ann body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+          simp only [Outcome.bind_eq_ok] at h
           obtain ⟨ann', hann, hv⟩ := h
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold Val.fullyQuotable
@@ -2549,13 +2585,13 @@ theorem eval_vapp_preserves_fullyQuotable :
       cases hfeq : f with
       | neutral nf =>
           subst hfeq
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.fullyQuotable Neutral.fullyQuotable
           exact ⟨hf, ha⟩
       | type =>
           subst hfeq
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.fullyQuotable Neutral.fullyQuotable
           exact ⟨hf, ha⟩
@@ -2587,7 +2623,7 @@ theorem eval_vapp_preserves_fullyQuotable :
           | mk body env =>
             subst hcleq
             by_cases hng : a.isNeutral || unf == 0
-            · simp only [hng, ↓reduceIte, Option.some.injEq] at h
+            · simp only [hng, ↓reduceIte, Option.some.injEq, Outcome.ok.injEq] at h
               subst h
               unfold Val.fullyQuotable Neutral.fullyQuotable
               exact ⟨hf, ha⟩
@@ -2601,7 +2637,7 @@ theorem eval_vapp_preserves_fullyQuotable :
           | mk body env =>
             subst hcleq
             by_cases hng : a.isNeutral || unf == 0
-            · simp only [hng, ↓reduceIte, Option.some.injEq] at h
+            · simp only [hng, ↓reduceIte, Option.some.injEq, Outcome.ok.injEq] at h
               subst h
               unfold Val.fullyQuotable Neutral.fullyQuotable
               exact ⟨hf, ha⟩
@@ -2610,7 +2646,7 @@ theorem eval_vapp_preserves_fullyQuotable :
 /-- Specialisation for push_let: given hρ's envFullyQuotable, eval
 preserves fullyQuotable on val result. -/
 theorem eval_preserves_fullyQuotable {n unf d ρ e v}
-    (heval : eval n unf ρ e = some v)
+    (heval : eval n unf ρ e = .ok v)
     (hρ : Closure.envFullyQuotable d ρ)
     (hcl : e.closedAt ρ.length = true) :
     Val.fullyQuotable d v :=
@@ -2619,7 +2655,7 @@ theorem eval_preserves_fullyQuotable {n unf d ρ e v}
 /-- Convert per-entry `hρq` + `hρfq` hypotheses into `envFullyQuotable`. -/
 theorem Closure.envFullyQuotable_of_getElem? {d : Nat} {ρ : List Val}
     (hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
-           ∃ qe, quote fuelω d v = some qe)
+           ∃ qe, quote fuelω d v = .ok qe)
     (hρfq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
             Val.fullyQuotable d v) :
     Closure.envFullyQuotable d ρ := by
@@ -2694,8 +2730,8 @@ on the expression-level shift so the closure case's body
 
 At `c = 0`: the Val shift `v.shiftLvl (d-0) = v.shiftLvl d` is a
 no-op whenever `v.levelsBelow d` holds (true for any `v` coming
-out of a successful `quote n d v = some _`), so the shape reduces
-to `quote (d+1) v = some (e.shift 1 0)` — the existing
+out of a successful `quote n d v = .ok _`), so the shape reduces
+to `quote (d+1) v = .ok (e.shift 1 0)` — the existing
 `quote_depth_shift`.
 
 At `c+1` (used inside the closure body, one binder deeper): the
@@ -2707,14 +2743,14 @@ Proof is by induction on fuel, combined over the three quote
 families. -/
 theorem quote_quoteClosure_quoteNeutral_depth_shift :
     ∀ n,
-    (∀ {c d v e}, c ≤ d → quote n d v = some e →
-        quote n (d+1) (v.shiftLvl (d-c)) = some (e.shift 1 c)) ∧
-    (∀ {c d cl e}, c ≤ d → quoteClosure n d cl = some e →
+    (∀ {c d v e}, c ≤ d → quote n d v = .ok e →
+        quote n (d+1) (v.shiftLvl (d-c)) = .ok (e.shift 1 c)) ∧
+    (∀ {c d cl e}, c ≤ d → quoteClosure n d cl = .ok e →
         quoteClosure n (d+1) (cl.shiftLvl (d-c))
-          = some (e.shift 1 (c+1))) ∧
-    (∀ {c d ne e}, c ≤ d → quoteNeutral n d ne = some e →
+          = .ok (e.shift 1 (c+1))) ∧
+    (∀ {c d ne e}, c ≤ d → quoteNeutral n d ne = .ok e →
         quoteNeutral n (d+1) (ne.shiftLvl (d-c))
-          = some (e.shift 1 c)) := by
+          = .ok (e.shift 1 c)) := by
   intro n
   induction n with
   | zero =>
@@ -2730,12 +2766,12 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
       unfold quote at h
       cases v with
       | type =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.shiftLvl quote
           rfl
       | bot =>
-          simp only [Option.some.injEq] at h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
           subst h
           unfold Val.shiftLvl quote
           rfl
@@ -2743,35 +2779,35 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
           unfold Val.shiftLvl quote
           exact ihne hle h
       | lam dom cl =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at h
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at h
           obtain ⟨dom', hdom, body', hbody, he⟩ := h
           subst he
           unfold Val.shiftLvl quote
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq]
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq]
           refine ⟨dom'.shift 1 c, ihq hle hdom,
                   body'.shift 1 (c+1), ihc hle hbody, ?_⟩
           rfl
       | iota ann cl =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at h
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at h
           obtain ⟨ann', hann, body', hbody, he⟩ := h
           subst he
           unfold Val.shiftLvl quote
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq]
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq]
           refine ⟨ann'.shift 1 c, ihq hle hann,
                   body'.shift 1 (c+1), ihc hle hbody, ?_⟩
           rfl
       | «fix» ann cl =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at h
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at h
           obtain ⟨ann', hann, body', hbody, he⟩ := h
           subst he
           unfold Val.shiftLvl quote
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq]
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq]
           refine ⟨ann'.shift 1 c, ihq hle hann,
                   body'.shift 1 (c+1), ihc hle hbody, ?_⟩
           rfl
@@ -2779,14 +2815,14 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
     · intro c d cl e hle h
       -- unfold quoteClosure; get eval + inner quote
       unfold quoteClosure at h
-      simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+      simp only [Outcome.bind_eq_ok] at h
       obtain ⟨v, hev, hq⟩ := h
       -- Apply eval_shiftLvl with cutoff (d - c)
       have hev' :
           eval n 1
             ((Val.neutral (.var d) :: cl.env).map
               (Val.shiftLvl (d - c)))
-            cl.body = some (v.shiftLvl (d - c)) :=
+            cl.body = .ok (v.shiftLvl (d - c)) :=
         eval_shiftLvl hev
       -- Rewrite the mapped env into the shifted closure env
       -- plus the shifted fresh head `.var (d+1)`.
@@ -2806,7 +2842,7 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
         obtain ⟨body, env⟩ := cl; unfold Closure.shiftLvl; rfl
       -- Assemble the new quoteClosure at depth d+1
       unfold quoteClosure
-      simp only [Option.bind_eq_bind, Option.bind_eq_some]
+      simp only [Outcome.bind_eq_ok]
       refine ⟨v.shiftLvl (d - c), ?_, ?_⟩
       · -- eval: rewrite to the shifted closure's env + fresh (d+1)
         have heq :
@@ -2832,7 +2868,7 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
           simp only [] at h
           split at h
           · next hk =>
-              simp only [Option.some.injEq] at h
+              simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h
               subst h
               -- Case: k < d → e = .bvar (d-1-k)
               unfold Neutral.shiftLvl quoteNeutral
@@ -2842,13 +2878,13 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
                 simp only [hkc, if_true]
                 have hklt : k < d + 1 := Nat.lt_succ_of_lt hk
                 simp only [hklt, if_true]
-                -- Goal: some (.bvar (d+1-1-k)) = some ((.bvar (d-1-k)).shift 1 c)
+                -- Goal: .ok (.bvar (d+1-1-k)) = .ok ((.bvar (d-1-k)).shift 1 c)
                 -- (.bvar (d-1-k)).shift 1 c: since d-1-k ≥ c, → .bvar (d-k).
-                show some (Expr.bvar (d + 1 - 1 - k))
-                   = some ((Expr.bvar (d - 1 - k)).shift 1 c)
+                show (.ok (Expr.bvar (d + 1 - 1 - k)) : Outcome Expr)
+                   = .ok ((Expr.bvar (d - 1 - k)).shift 1 c)
                 have hge : ¬ d - 1 - k < c := by omega
-                show some (Expr.bvar (d + 1 - 1 - k))
-                   = some (if d - 1 - k < c then Expr.bvar (d - 1 - k)
+                show (.ok (Expr.bvar (d + 1 - 1 - k)) : Outcome Expr)
+                   = .ok (if d - 1 - k < c then Expr.bvar (d - 1 - k)
                            else Expr.bvar (d - 1 - k + 1))
                 rw [if_neg hge]
                 congr 2; omega
@@ -2857,34 +2893,34 @@ theorem quote_quoteClosure_quoteNeutral_depth_shift :
                 simp only [hkc, if_false]
                 have hklt : k + 1 < d + 1 := Nat.succ_lt_succ hk
                 simp only [hklt, if_true]
-                show some (Expr.bvar (d + 1 - 1 - (k + 1)))
-                   = some ((Expr.bvar (d - 1 - k)).shift 1 c)
+                show (.ok (Expr.bvar (d + 1 - 1 - (k + 1))) : Outcome Expr)
+                   = .ok ((Expr.bvar (d - 1 - k)).shift 1 c)
                 have hlt : d - 1 - k < c := by omega
-                show some (Expr.bvar (d + 1 - 1 - (k + 1)))
-                   = some (if d - 1 - k < c then Expr.bvar (d - 1 - k)
+                show (.ok (Expr.bvar (d + 1 - 1 - (k + 1))) : Outcome Expr)
+                   = .ok (if d - 1 - k < c then Expr.bvar (d - 1 - k)
                            else Expr.bvar (d - 1 - k + 1))
                 rw [if_pos hlt]
                 congr 2; omega
           · cases h
       | app n' v =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at h
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at h
           obtain ⟨f', hf, a', ha, he⟩ := h
           subst he
           unfold Neutral.shiftLvl quoteNeutral
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq]
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq]
           refine ⟨f'.shift 1 c, ihne hle hf,
                   a'.shift 1 c, ihq hle ha, ?_⟩
           rfl
       | stuckRec f a =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at h
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at h
           obtain ⟨f', hf, a', ha, he⟩ := h
           subst he
           unfold Neutral.shiftLvl quoteNeutral
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq]
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq]
           refine ⟨f'.shift 1 c, ihq hle hf,
                   a'.shift 1 c, ihq hle ha, ?_⟩
           rfl
@@ -2895,8 +2931,8 @@ collapses to the identity. The side condition is discharged by
 callers via `eval_levelsBelow`. -/
 theorem quote_depth_shift_of_levelsBelow {fuel d v e}
     (hlvl : Val.levelsBelow d v)
-    (hq : quote fuel d v = some e) :
-    quote fuel (d+1) v = some (e.shift 1 0) := by
+    (hq : quote fuel d v = .ok e) :
+    quote fuel (d+1) v = .ok (e.shift 1 0) := by
   have hle : (0 : Nat) ≤ d := Nat.zero_le _
   have hsub : d - 0 = d := Nat.sub_zero d
   have hgen :=
@@ -2913,8 +2949,8 @@ is in turn maintained across `push_*` via `eval_levelsBelow`).
 Delegates to `quote_depth_shift_of_levelsBelow`. -/
 theorem quote_depth_shift {d v e}
     (hlvl : Val.levelsBelow d v)
-    (hq : quote fuelω d v = some e) :
-    quote fuelω (d + 1) v = some (e.shift 1 0) :=
+    (hq : quote fuelω d v = .ok e) :
+    quote fuelω (d + 1) v = .ok (e.shift 1 0) :=
   quote_depth_shift_of_levelsBelow hlvl hq
 
 /-- N-step depth shift: `quote fuelω d v = e` and `d ≤ d'` gives
@@ -2926,8 +2962,8 @@ Used in `OpenCtx.hρq_lift` + `Subtype'.bvar` bridge: relates
 shift amount. Moved here 2026-04-22 for Tier 0 refactor. -/
 theorem quote_depth_shift_n {k d v e}
     (hlvl : Val.levelsBelow k v)
-    (hle : k ≤ d) (hq : quote fuelω k v = some e) :
-    quote fuelω d v = some (e.shift (d - k) 0) := by
+    (hle : k ≤ d) (hq : quote fuelω k v = .ok e) :
+    quote fuelω d v = .ok (e.shift (d - k) 0) := by
   obtain ⟨n, rfl⟩ := Nat.exists_eq_add_of_le hle
   simp only [Nat.add_sub_cancel_left]
   clear hle
@@ -3073,7 +3109,7 @@ Cases:
 theorem R_depth_lift {n d v e}
     {qe : Expr} (hlvl : Val.levelsBelow d v)
     (hfq : Val.fullyQuotable d v)
-    (hq : quote fuelω d v = some qe)
+    (hq : quote fuelω d v = .ok qe)
     (h : R n d v e) :
     R n (d + 1) v (e.shift 1 0) := by
   match n, v, hlvl, hfq, hq, h with
@@ -3081,10 +3117,10 @@ theorem R_depth_lift {n d v e}
   | k+1, .type, _, _, _, h =>
       unfold R at h ⊢
       intro qe'' hq''
-      have hqt : quote fuelω (d+1) Val.type = some Expr.type := by
+      have hqt : quote fuelω (d+1) Val.type = .ok Expr.type := by
         have hf : fuelω = (fuelω - 1) + 1 := rfl
         rw [hf]; unfold quote; rfl
-      have hqd : quote fuelω d Val.type = some Expr.type := by
+      have hqd : quote fuelω d Val.type = .ok Expr.type := by
         have hf : fuelω = (fuelω - 1) + 1 := rfl
         rw [hf]; unfold quote; rfl
       rw [hqt] at hq''
@@ -3096,10 +3132,10 @@ theorem R_depth_lift {n d v e}
   | k+1, .bot, _, _, _, h =>
       unfold R at h ⊢
       intro qe'' hq''
-      have hqt : quote fuelω (d+1) Val.bot = some Expr.bot := by
+      have hqt : quote fuelω (d+1) Val.bot = .ok Expr.bot := by
         have hf : fuelω = (fuelω - 1) + 1 := rfl
         rw [hf]; unfold quote; rfl
-      have hqd : quote fuelω d Val.bot = some Expr.bot := by
+      have hqd : quote fuelω d Val.bot = .ok Expr.bot := by
         have hf : fuelω = (fuelω - 1) + 1 := rfl
         rw [hf]; unfold quote; rfl
       rw [hqt] at hq''
@@ -3114,7 +3150,7 @@ theorem R_depth_lift {n d v e}
       have hshifted := quote_depth_shift_of_levelsBelow hlvl hq
       have heq : qe'' = qe.shift 1 0 := by
         rw [hshifted] at hq''
-        exact Option.some.inj hq''.symm
+        exact (Outcome.ok.inj hq''.symm : _)
       subst heq
       have h' : Equiv_c d qe e := h qe hq
       intro S Γe hd
@@ -3138,10 +3174,10 @@ theorem R_depth_lift {n d v e}
       have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
       rw [hfω_eq] at hq
       unfold quote at hq
-      simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                 Option.some.injEq] at hq
+      simp only [Outcome.bind_eq_ok,
+                 Option.some.injEq, Outcome.ok.injEq] at hq
       obtain ⟨dom', hdom', _body', _hbody', _⟩ := hq
-      have hdom'_ω : quote fuelω d dV = some dom' :=
+      have hdom'_ω : quote fuelω d dV = .ok dom' :=
         quote_fuel_mono (by omega) hdom'
       have hRd' : R (k+1) (d+1) dV (dome.shift 1 0) :=
         R_depth_lift hlvl_dV hfq_dV hdom'_ω hRd
@@ -3210,10 +3246,10 @@ theorem R_depth_lift {n d v e}
       have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
       rw [hfω_eq] at hq
       unfold quote at hq
-      simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                 Option.some.injEq] at hq
+      simp only [Outcome.bind_eq_ok,
+                 Option.some.injEq, Outcome.ok.injEq] at hq
       obtain ⟨ann', hann', _body', _hbody', _⟩ := hq
-      have hann'_ω : quote fuelω d aV = some ann' :=
+      have hann'_ω : quote fuelω d aV = .ok ann' :=
         quote_fuel_mono (by omega) hann'
       have hRa' : R (k+1) (d+1) aV (anne.shift 1 0) :=
         R_depth_lift hlvl_aV hfq_aV hann'_ω hRa
@@ -3280,10 +3316,10 @@ theorem R_depth_lift {n d v e}
       have hfω_eq : fuelω = (fuelω - 1) + 1 := rfl
       rw [hfω_eq] at hq
       unfold quote at hq
-      simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                 Option.some.injEq] at hq
+      simp only [Outcome.bind_eq_ok,
+                 Option.some.injEq, Outcome.ok.injEq] at hq
       obtain ⟨ann', hann', _body', _hbody', _⟩ := hq
-      have hann'_ω : quote fuelω d aV = some ann' :=
+      have hann'_ω : quote fuelω d aV = .ok ann' :=
         quote_fuel_mono (by omega) hann'
       have hRa' : R (k+1) (d+1) aV (anne.shift 1 0) :=
         R_depth_lift hlvl_aV hfq_aV hann'_ω hRa
@@ -3381,7 +3417,7 @@ theorem R_fresh_bvar0 (n d : Nat) :
       rw [hf'] at hq
       unfold quoteNeutral at hq
       simp only [Nat.lt_succ_self, if_true, Nat.add_sub_cancel,
-                 Nat.sub_self, Option.some.injEq] at hq
+                 Nat.sub_self, Option.some.injEq, Outcome.ok.injEq] at hq
       exact hq.symm
     subst heq
     exact fun {_ _} _ => ⟨.refl _, .refl _⟩
@@ -3396,7 +3432,7 @@ Now carries a `levelsBelow d` hypothesis on each ρ entry (for
 theorem REnv_depth_lift {n d ρ ρe}
     (henv : REnv n d ρ ρe)
     (hquotes : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
+        ρ[k]? = some v → ∃ qe, quote fuelω d v = .ok qe)
     (hρlvl : ∀ (k : Nat) (v : Val),
         ρ[k]? = some v → Val.levelsBelow d v)
     (hρfq : ∀ (k : Nat) (v : Val),
@@ -3417,7 +3453,7 @@ depth-lifts via `REnv_depth_lift`. -/
 theorem REnv_lift {n d ρ ρe}
     (henv : REnv n d ρ ρe)
     (hquotes : ∀ (k : Nat) (v : Val),
-        ρ[k]? = some v → ∃ qe, quote fuelω d v = some qe)
+        ρ[k]? = some v → ∃ qe, quote fuelω d v = .ok qe)
     (hρlvl : ∀ (k : Nat) (v : Val),
         ρ[k]? = some v → Val.levelsBelow d v)
     (hρfq : ∀ (k : Nat) (v : Val),
@@ -3430,7 +3466,7 @@ theorem REnv_lift {n d ρ ρe}
   intro k v hk
   cases k with
   | zero =>
-      simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+      simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
       exact ⟨.bvar 0, by simp, hk ▸ R_fresh_bvar0 n d⟩
   | succ m =>
       simp only [List.getElem?_cons_succ] at hk
@@ -3472,10 +3508,10 @@ theorem eval_env_agree :
     | bot => rfl
     | bvar k =>
         simp only []
-        exact hagree k (by simp [bvarBound])
+        rw [hagree k (by simp [bvarBound])]
     | lam dom bdy =>
         simp only [bvarBound] at hagree
-        simp only [Option.bind_eq_bind]
+        simp only [bind, Monad.toBind]
         have hd := ih (body := dom) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
               (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
         rw [hd]
@@ -3488,7 +3524,7 @@ theorem eval_env_agree :
         rw [hcl]
     | iota ann bdy =>
         simp only [bvarBound] at hagree
-        simp only [Option.bind_eq_bind]
+        simp only [bind, Monad.toBind]
         have hd := ih (body := ann) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
               (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
         rw [hd]
@@ -3501,7 +3537,7 @@ theorem eval_env_agree :
         rw [hcl]
     | «fix» ann bdy =>
         simp only [bvarBound] at hagree
-        simp only [Option.bind_eq_bind]
+        simp only [bind, Monad.toBind]
         have hd := ih (body := ann) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
               (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
         rw [hd]
@@ -3514,7 +3550,7 @@ theorem eval_env_agree :
         rw [hcl]
     | app f a =>
         simp only [bvarBound] at hagree
-        simp only [Option.bind_eq_bind]
+        simp only [bind, Monad.toBind]
         have hf := ih (body := f) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
               (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
         have ha := ih (body := a) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
@@ -3522,14 +3558,15 @@ theorem eval_env_agree :
         rw [hf, ha]
     | letE v bdy =>
         simp only [bvarBound] at hagree
-        simp only [Option.bind_eq_bind]
+        simp only [bind, Monad.toBind]
         have hv' := ih (body := v) (unf := unf) (ρ₁ := ρ₁) (ρ₂ := ρ₂)
               (fun k hk => hagree k (Nat.lt_of_lt_of_le hk (Nat.le_max_left _ _)))
         rw [hv']
         match hv : eval n unf ρ₂ v with
-        | none => simp [hv]
-        | some vV =>
-            simp only [hv, Option.some_bind]
+        | .outOfFuel => simp [hv]
+        | .error _ => simp [hv]
+        | .ok vV =>
+            simp only [hv, Outcome.ok_bind]
             apply ih
             intro k hk
             cases k with
@@ -3582,7 +3619,7 @@ theorem REnv_cons {n d ρ ρe v e}
   intro k w hk
   cases k with
   | zero =>
-      simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+      simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
       exact ⟨e, by simp, hk ▸ hv⟩
   | succ j =>
       simp only [List.getElem?_cons_succ] at hk
@@ -3628,7 +3665,7 @@ cases: assembles the `R (k+1) d (.neutral N) (.app fe ae)`
 conclusion from per-component Equiv-witnesses. Callers supply
 `hfEq`/`haEq` directly. -/
 private theorem R_neutral_app {k d N fe ae}
-    (hdecomp : ∀ e', quote fuelω d (.neutral N) = some e' →
+    (hdecomp : ∀ e', quote fuelω d (.neutral N) = .ok e' →
        ∃ ne ve, e' = .app ne ve ∧
          Equiv_c d ne fe ∧ Equiv_c d ve ae) :
     R (k+1) d (Val.neutral N) (.app fe ae) := by
@@ -3659,8 +3696,8 @@ cl.env` + `hfq : envFullyQuotable d cl.env` (both derived by
 R_quote_equiv's callers from R's refactored closure clause).
 
 **Proof sketch now unblocked at the invariant level**:
-1. Unpack quoteClosure: ∃ v, eval fuelω 1 (bv :: cl.env) cl.body = some v
-   ∧ quote fuelω (d+1) v = some body'.
+1. Unpack quoteClosure: ∃ v, eval fuelω 1 (bv :: cl.env) cl.body = .ok v
+   ∧ quote fuelω (d+1) v = .ok body'.
 2. Build REnv m (d+1) (bv :: cl.env) (.bvar 0 :: ρe'.map shift) via
    RList_depth_lift hlvl hfq hRL + R_fresh_bvar0.
 3. Apply eval_realises: R m (d+1) v (cl.body.substEnv ...).
@@ -3701,7 +3738,7 @@ different proof architecture (e.g., a logical relation indexed by
 TYPE shape rather than step-index). -/
 theorem quoteClosure_realises {d : Nat} {cl : Closure} {body' : Expr}
     {m : Nat} {ρe' : List Expr}
-    (_hq : quoteClosure fuelω d cl = some body')
+    (_hq : quoteClosure fuelω d cl = .ok body')
     (_hRL : RList m d cl.env ρe')
     (_hclb : cl.body.closedAt (ρe'.length + 1) = true)
     (_hlvl : Closure.envLevelsBelow d cl.env)
@@ -3726,7 +3763,7 @@ All callers in the current codebase:
 - `SoundnessProof.lean:vapp_realises` stuckRec branches. -/
 theorem R_quote_equiv {n d v e}
     (hn : 0 < n) (h : R n d v e)
-    {e' : Expr} (hq : quote fuelω d v = some e') :
+    {e' : Expr} (hq : quote fuelω d v = .ok e') :
     Equiv_c d e' e := by
   cases n with
   | zero => omega
@@ -3745,15 +3782,15 @@ theorem R_quote_equiv {n d v e}
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq
           unfold quote at hq
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at hq
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at hq
           obtain ⟨dom', hdom', body', hbody', heq'⟩ := hq
           subst heq'
           unfold R at h
           obtain ⟨ρe', dome, hRd, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqL⟩ := h
-          have hdom'_ω : quote fuelω d dV = some dom' :=
+          have hdom'_ω : quote fuelω d dV = .ok dom' :=
             quote_fuel_mono (by omega) hdom'
-          have hbody'_ω : quoteClosure fuelω d cl = some body' :=
+          have hbody'_ω : quoteClosure fuelω d cl = .ok body' :=
             quoteClosure_fuel_mono (by omega) hbody'
           have hEd : Equiv_c d dom' dome :=
             R_quote_equiv (Nat.succ_pos _) hRd hdom'_ω
@@ -3775,15 +3812,15 @@ theorem R_quote_equiv {n d v e}
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq
           unfold quote at hq
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at hq
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at hq
           obtain ⟨ann', hann', body', hbody', heq'⟩ := hq
           subst heq'
           unfold R at h
           obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqI⟩ := h
-          have hann'_ω : quote fuelω d aV = some ann' :=
+          have hann'_ω : quote fuelω d aV = .ok ann' :=
             quote_fuel_mono (by omega) hann'
-          have hbody'_ω : quoteClosure fuelω d cl = some body' :=
+          have hbody'_ω : quoteClosure fuelω d cl = .ok body' :=
             quoteClosure_fuel_mono (by omega) hbody'
           have hEa : Equiv_c d ann' anne :=
             R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
@@ -3804,15 +3841,15 @@ theorem R_quote_equiv {n d v e}
           have hfω : fuelω = (fuelω - 1) + 1 := rfl
           rw [hfω] at hq
           unfold quote at hq
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at hq
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at hq
           obtain ⟨ann', hann', body', hbody', heq'⟩ := hq
           subst heq'
           unfold R at h
           obtain ⟨ρe', anne, hRa, hRL, hclb, hlvl_cl_env, hfq_cl_env, heqF⟩ := h
-          have hann'_ω : quote fuelω d aV = some ann' :=
+          have hann'_ω : quote fuelω d aV = .ok ann' :=
             quote_fuel_mono (by omega) hann'
-          have hbody'_ω : quoteClosure fuelω d cl = some body' :=
+          have hbody'_ω : quoteClosure fuelω d cl = .ok body' :=
             quoteClosure_fuel_mono (by omega) hbody'
           have hEa : Equiv_c d ann' anne :=
             R_quote_equiv (Nat.succ_pos _) hRa hann'_ω
@@ -3833,15 +3870,15 @@ theorem R_quote_equiv {n d v e}
 /-- Quote of `.neutral (.stuckRec vf va)` decomposes as
 `.app (quote vf) (quote va)` (after fuel-mono lifting). -/
 private theorem quote_stuckRec_decomp {d vf va} (e' : Expr)
-    (hq : quote fuelω d (.neutral (.stuckRec vf va)) = some e') :
+    (hq : quote fuelω d (.neutral (.stuckRec vf va)) = .ok e') :
     ∃ ne ve, e' = .app ne ve ∧
-      quote fuelω d vf = some ne ∧ quote fuelω d va = some ve := by
+      quote fuelω d vf = .ok ne ∧ quote fuelω d va = .ok ve := by
   have hfω : fuelω = (fuelω - 1) + 1 := rfl
   rw [hfω] at hq; unfold quote at hq
   have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
   rw [hfω'] at hq; unfold quoteNeutral at hq
-  simp only [Option.bind_eq_bind, Option.bind_eq_some,
-             Option.some.injEq] at hq
+  simp only [Outcome.bind_eq_ok,
+             Option.some.injEq, Outcome.ok.injEq] at hq
   obtain ⟨ne, hne, ve, hve, heq⟩ := hq
   exact ⟨ne, ve, heq.symm,
          quote_fuel_mono (by omega) hne,
@@ -3885,7 +3922,7 @@ closedness invariant is threaded through `vapp_realises`,
 or (b) the nil-Γ `Equiv.shift` sorry is closed (e.g. via
 `Subtype'.shift_nil` with `Seen.wellClosed`). -/
 theorem vapp_realises {fuel unf vf va r m d fe ae}
-    (hvapp : vapp fuel unf vf va = some r)
+    (hvapp : vapp fuel unf vf va = .ok r)
     (hRf : R m d vf fe) (hRa : R m d va ae) :
     R m d r (.app fe ae) := by
   match m with
@@ -3897,7 +3934,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
       unfold vapp at hvapp
       match hvfeq : vf, hvapp with
       | .neutral nf, hvapp =>
-          simp only [Option.some.injEq] at hvapp
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hvapp
           -- (match already reduced for .neutral)
           subst hvapp
           have hRfN : R (k+1) d (.neutral nf) fe := hvfeq ▸ hRf
@@ -3908,8 +3945,8 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           rw [hfω] at hq; unfold quote at hq
           have hfω' : fuelω - 1 = (fuelω - 2) + 1 := rfl
           rw [hfω'] at hq; unfold quoteNeutral at hq
-          simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                     Option.some.injEq] at hq
+          simp only [Outcome.bind_eq_ok,
+                     Option.some.injEq, Outcome.ok.injEq] at hq
           obtain ⟨ne, hne, ve, hve, heq⟩ := hq
           refine ⟨ne, ve, heq.symm, ?_, ?_⟩
           · -- Equiv ne fe. Use R base conjunct on .neutral nf.
@@ -3921,7 +3958,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             exact R_quote_equiv (Nat.succ_pos _) hRa
               (quote_fuel_mono (by omega) hve)
       | .type, hvapp =>
-          simp only [Option.some.injEq] at hvapp
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hvapp
           subst hvapp
           have hRfT : R (k+1) d .type fe := hvfeq ▸ hRf
           refine R_neutral_app (N := .stuckRec .type va) (fe := fe) (ae := ae) ?_
@@ -3933,7 +3970,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           · exact R_quote_equiv (Nat.succ_pos _) hRa hqa
       | .lam dV ⟨lbody, lenv⟩, hvapp =>
           simp only [] at hvapp
-          -- hvapp : eval fuel unf (va :: lenv) lbody = some r
+          -- hvapp : eval fuel unf (va :: lenv) lbody = .ok r
           have hRf' : R (k+1) d (.lam dV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
           unfold R at hRf'
           obtain ⟨ρe', dome, _hRd, hRL, hclb, _hlvl_cl_env, _hfq_cl_env, heqL⟩ := hRf'
@@ -3947,7 +3984,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           have henvFq_ext : Closure.envFullyQuotable d (va :: lenv) := by
             refine ⟨⟨?_, ?_⟩, _hfq_cl_env⟩
             · sorry -- Val.fullyQuotable d va
-            · sorry -- ∃ qa, quote fuelω d va = some qa
+            · sorry -- ∃ qa, quote fuelω d va = .ok qa
           have hRr := eval_realises hvapp henv_ext henvLvl_ext henvFq_ext hclb'
           -- hRr : R (k+1) d r (lbody.substEnv (ae :: ρe'))
           refine R_resp_Equiv_c ?_ hRr
@@ -3972,7 +4009,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           simp only [] at hvapp
           have hRf' : R (k+1) d (.iota annV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
           by_cases hcond : (va.isNeutral || unf == 0) = true
-          · simp only [hcond, ↓reduceIte, Option.some.injEq] at hvapp
+          · simp only [hcond, ↓reduceIte, Option.some.injEq, Outcome.ok.injEq] at hvapp
             subst hvapp
             refine R_neutral_app
               (N := .stuckRec (.iota annV ⟨lbody, lenv⟩) va)
@@ -3986,7 +4023,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             · exact R_quote_equiv (Nat.succ_pos _) hRa hqa
           · -- Unfold branch.
             simp only [hcond, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at hvapp
+                       Outcome.bind_eq_ok] at hvapp
             obtain ⟨f', hf', hvapp'⟩ := hvapp
             have hRf'' := hRf'  -- preserve for self-binding
             unfold R at hRf'
@@ -4003,7 +4040,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
                 Closure.envFullyQuotable d (Val.iota annV ⟨lbody, lenv⟩ :: lenv) := by
               refine ⟨⟨?_, ?_⟩, _hfq_cl_env⟩
               · sorry -- Val.fullyQuotable d (.iota annV …)
-              · sorry -- ∃ qf, quote fuelω d (.iota annV …) = some qf
+              · sorry -- ∃ qf, quote fuelω d (.iota annV …) = .ok qf
             -- eval_realises on the unfold's body eval (mutual,
             -- fuel < fuel+1).
             have hRf3 := eval_realises hf' henv_ext henvLvl_ext henvFq_ext hclb'
@@ -4043,7 +4080,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
           simp only [] at hvapp
           have hRf' : R (k+1) d (.«fix» annV ⟨lbody, lenv⟩) fe := hvfeq ▸ hRf
           by_cases hcond : (va.isNeutral || unf == 0) = true
-          · simp only [hcond, ↓reduceIte, Option.some.injEq] at hvapp
+          · simp only [hcond, ↓reduceIte, Option.some.injEq, Outcome.ok.injEq] at hvapp
             subst hvapp
             refine R_neutral_app
               (N := .stuckRec (.«fix» annV ⟨lbody, lenv⟩) va)
@@ -4056,7 +4093,7 @@ theorem vapp_realises {fuel unf vf va r m d fe ae}
             · exact R_quote_equiv (Nat.succ_pos _) hRf' hqf
             · exact R_quote_equiv (Nat.succ_pos _) hRa hqa
           · simp only [hcond, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at hvapp
+                       Outcome.bind_eq_ok] at hvapp
             obtain ⟨f', hf', hvapp'⟩ := hvapp
             have hRf'' := hRf'
             unfold R at hRf'
@@ -4118,7 +4155,7 @@ build the constructor clause directly (the closure body is
 the original `body` Expr, so `cl.openω v'` re-evaluates it
 under the extended env — apply IH at the smaller index). -/
 theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
-    (heval : eval fuel unf ρ body = some v)
+    (heval : eval fuel unf ρ body = .ok v)
     {m d : Nat} {ρe : List Expr}
     (henv : REnv m d ρ ρe)
     (henvLvl : Closure.envLevelsBelow d ρ)
@@ -4140,7 +4177,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
       -- the (currently sorried) base-conjunct cases that
       -- need `d+1` could share it.
       have ihf' : ∀ {unf' ρ' body' v' d' ρe'},
-          eval fuel unf' ρ' body' = some v' →
+          eval fuel unf' ρ' body' = .ok v' →
           REnv (k+1) d' ρ' ρe' →
           Closure.envLevelsBelow d' ρ' →
           Closure.envFullyQuotable d' ρ' →
@@ -4155,7 +4192,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           show R (k+1) d .type (Expr.substEnv ρe .type)
           unfold Expr.substEnv R
           intro e' hq
-          have hqt : quote fuelω d .type = some .type := by
+          have hqt : quote fuelω d .type = .ok .type := by
             have hf : fuelω = (fuelω - 1) + 1 := rfl
             rw [hf]; unfold quote; rfl
           rw [hqt] at hq; cases hq
@@ -4167,7 +4204,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           show R (k+1) d .bot (Expr.substEnv ρe .bot)
           unfold Expr.substEnv R
           intro e' hq
-          have hqt : quote fuelω d .bot = some .bot := by
+          have hqt : quote fuelω d .bot = .ok .bot := by
             have hf : fuelω = (fuelω - 1) + 1 := rfl
             rw [hf]; unfold quote; rfl
           rw [hqt] at hq; cases hq
@@ -4175,7 +4212,14 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
       | bvar j =>
           -- eval (.bvar j) = ρ[j]?. REnv gives R (k+1) d ρ[j] ρe[j].
           unfold eval at heval; simp only [] at heval
-          obtain ⟨e', he', hR⟩ := henv.2 j v heval
+          -- Convert heval (match on ρ[j]?) into ρ[j]? = some v.
+          have heval' : ρ[j]? = some v := by
+            split at heval
+            · rename_i v' hk
+              injection heval with heval
+              subst heval; exact hk
+            · simp at heval
+          obtain ⟨e', he', hR⟩ := henv.2 j v heval'
           -- substEnv (.bvar j) = ρe[j]! (when j < ρe.length).
           show R (k+1) d v (Expr.substEnv ρe (.bvar j))
           unfold Expr.substEnv
@@ -4205,7 +4249,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           -- eval (vV :: ρ) bExpr → v.
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold eval at heval
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
+          simp only [Outcome.bind_eq_ok] at heval
           obtain ⟨vV, hvV, hbody⟩ := heval
           -- IH_fuel on val: R (k+1) d vV (val.substEnv ρe).
           have hRvV := ihf' hvV henv henvLvl henvFq hcl.1
@@ -4255,9 +4299,9 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           --   .lam (eval fuel ρ dom) (Closure.mk' bExpr ρ).
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold eval at heval
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
+          simp only [Outcome.bind_eq_ok] at heval
           obtain ⟨domV, hdomV, hv⟩ := heval
-          simp only [Option.some.injEq] at hv
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at hv
           subst hv
           -- v = .lam domV (Closure.mk' bExpr ρ)
           -- Closure.mk' bExpr ρ = ⟨bExpr, ρ.take (bvarBound bExpr - 1)⟩
@@ -4284,7 +4328,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           -- `vapp_realises` (mutual, fuel < fuel+1).
           simp only [Expr.closedAt, Bool.and_eq_true] at hcl
           unfold eval at heval
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
+          simp only [Outcome.bind_eq_ok] at heval
           obtain ⟨fV, hfV, aV, haV, hvapp⟩ := heval
           have hRfV := ihf' hfV henv henvLvl henvFq hcl.1
           have hRaV := ihf' haV henv henvLvl henvFq hcl.2
@@ -4298,7 +4342,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           have hbb : bvarBound bExpr ≤ ρe.length + 1 :=
             bvarBound_le_of_closedAt hcl.2
           unfold eval at heval
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
+          simp only [Outcome.bind_eq_ok] at heval
           obtain ⟨annV, hann, hv⟩ := heval
           cases hv
           let cl := Closure.mk' bExpr ρ
@@ -4327,7 +4371,7 @@ theorem eval_realises {fuel unf : Nat} {ρ : Env} {body : Expr} {v : Val}
           have hbb : bvarBound bExpr ≤ ρe.length + 1 :=
             bvarBound_le_of_closedAt hcl.2
           unfold eval at heval
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at heval
+          simp only [Outcome.bind_eq_ok] at heval
           obtain ⟨annV, hann, hv⟩ := heval
           cases hv
           let cl := Closure.mk' bExpr ρ
@@ -4356,7 +4400,7 @@ end
 (d-1-lvl)`. Forward direction; the inversion is
 `quoteNeutral_var` below. -/
 private theorem quote_neutral_var_fwd {d lvl : Nat} (hlt : lvl < d) :
-    quote fuelω d (.neutral (.var lvl)) = some (.bvar (d - 1 - lvl)) := by
+    quote fuelω d (.neutral (.var lvl)) = .ok (.bvar (d - 1 - lvl)) := by
   -- fuelω = 100000 = 99999 + 1; fuelω - 1 = 99999 = 99998 + 1
   show quote (99999 + 1) d (.neutral (.var lvl)) = _
   unfold quote
@@ -4432,63 +4476,63 @@ sub-components when matching on a `SubV`/`SubN` constructor.
 
 private theorem fuelω_succ : fuelω = (fuelω - 1) + 1 := rfl
 
-theorem quote_type {d : Nat} : quote fuelω d .type = some .type := by
+theorem quote_type {d : Nat} : quote fuelω d .type = .ok .type := by
   rw [fuelω_succ, quote.eq_2]
 
-theorem quote_bot {d : Nat} : quote fuelω d .bot = some .bot := by
+theorem quote_bot {d : Nat} : quote fuelω d .bot = .ok .bot := by
   rw [fuelω_succ, quote.eq_3]
 
 theorem quote_neutral {d : Nat} {n : Neutral} {e : Expr}
-    (h : quote fuelω d (.neutral n) = some e) :
-    quoteNeutral (fuelω - 1) d n = some e := by
+    (h : quote fuelω d (.neutral n) = .ok e) :
+    quoteNeutral (fuelω - 1) d n = .ok e := by
   rw [fuelω_succ, quote.eq_4] at h; exact h
 
 theorem quoteNeutral_var {d k : Nat} {e : Expr}
-    (h : quoteNeutral fuelω d (.var k) = some e) :
+    (h : quoteNeutral fuelω d (.var k) = .ok e) :
     k < d ∧ e = .bvar (d - 1 - k) := by
   rw [fuelω_succ, quoteNeutral.eq_2] at h
   split at h
-  · next hlt => exact ⟨hlt, (Option.some.injEq .. ▸ h).symm⟩
+  · next hlt => exact ⟨hlt, (Outcome.ok.inj h).symm⟩
   · exact absurd h (by simp)
 
 theorem quoteNeutral_app {d : Nat} {n : Neutral} {v : Val} {e : Expr}
-    (h : quoteNeutral fuelω d (.app n v) = some e) :
-    ∃ ne ve, quoteNeutral (fuelω - 1) d n = some ne ∧
-             quote (fuelω - 1) d v = some ve ∧
+    (h : quoteNeutral fuelω d (.app n v) = .ok e) :
+    ∃ ne ve, quoteNeutral (fuelω - 1) d n = .ok ne ∧
+             quote (fuelω - 1) d v = .ok ve ∧
              e = .app ne ve := by
   rw [fuelω_succ, quoteNeutral.eq_3] at h
-  simp only [Option.bind_eq_bind, Option.bind_eq_some,
-             Option.some.injEq] at h
+  simp only [Outcome.bind_eq_ok,
+             Option.some.injEq, Outcome.ok.injEq] at h
   obtain ⟨ne, hne, ve, hve, heq⟩ := h
   exact ⟨ne, ve, hne, hve, heq.symm⟩
 
 theorem quoteNeutral_stuckRec {d : Nat} {f a : Val} {e : Expr}
-    (h : quoteNeutral fuelω d (.stuckRec f a) = some e) :
-    ∃ fe ae, quote (fuelω - 1) d f = some fe ∧
-             quote (fuelω - 1) d a = some ae ∧
+    (h : quoteNeutral fuelω d (.stuckRec f a) = .ok e) :
+    ∃ fe ae, quote (fuelω - 1) d f = .ok fe ∧
+             quote (fuelω - 1) d a = .ok ae ∧
              e = .app fe ae := by
   rw [fuelω_succ, quoteNeutral.eq_4] at h
-  simp only [Option.bind_eq_bind, Option.bind_eq_some,
-             Option.some.injEq] at h
+  simp only [Outcome.bind_eq_ok,
+             Option.some.injEq, Outcome.ok.injEq] at h
   obtain ⟨fe, hfe, ae, hae, heq⟩ := h
   exact ⟨fe, ae, hfe, hae, heq.symm⟩
 
 /-- Lift `quoteNeutral` from `fuelω - 1` to `fuelω`. -/
 theorem quoteNeutralω {d : Nat} {n : Neutral} {e : Expr}
-    (h : quoteNeutral (fuelω - 1) d n = some e) :
-    quoteNeutral fuelω d n = some e :=
+    (h : quoteNeutral (fuelω - 1) d n = .ok e) :
+    quoteNeutral fuelω d n = .ok e :=
   quoteNeutral_fuel_mono (Nat.sub_le _ _) h
 
 /-- Lift `quote` from `fuelω - 1` to `fuelω`. -/
 theorem quoteω {d : Nat} {v : Val} {e : Expr}
-    (h : quote (fuelω - 1) d v = some e) :
-    quote fuelω d v = some e :=
+    (h : quote (fuelω - 1) d v = .ok e) :
+    quote fuelω d v = .ok e :=
   quote_fuel_mono (Nat.sub_le _ _) h
 
 /-- Lift `quoteClosure` from `fuelω - 1` to `fuelω`. -/
 theorem quoteClosureω {d : Nat} {cl : Closure} {e : Expr}
-    (h : quoteClosure (fuelω - 1) d cl = some e) :
-    quoteClosure fuelω d cl = some e :=
+    (h : quoteClosure (fuelω - 1) d cl = .ok e) :
+    quoteClosure fuelω d cl = .ok e :=
   quoteClosure_fuel_mono (Nat.sub_le _ _) h
 
 /-- **Quoted expressions are closedAt their depth.** Combined mutual
@@ -4501,9 +4545,9 @@ closedness witnesses everywhere quote succeeds — useful for
 downstream closedness-carrying lemmas. -/
 theorem quote_quoteClosure_quoteNeutral_closedAt :
     ∀ n,
-    (∀ {d v e}, quote n d v = some e → e.closedAt d = true) ∧
-    (∀ {d cl e}, quoteClosure n d cl = some e → e.closedAt (d+1) = true) ∧
-    (∀ {d ne e}, quoteNeutral n d ne = some e → e.closedAt d = true) := by
+    (∀ {d v e}, quote n d v = .ok e → e.closedAt d = true) ∧
+    (∀ {d cl e}, quoteClosure n d cl = .ok e → e.closedAt (d+1) = true) ∧
+    (∀ {d ne e}, quoteNeutral n d ne = .ok e → e.closedAt d = true) := by
   intro n
   induction n with
   | zero =>
@@ -4515,38 +4559,38 @@ theorem quote_quoteClosure_quoteNeutral_closedAt :
       unfold quote at h
       match v, h with
       | .type, h =>
-        simp only [Option.some.injEq] at h; subst h
+        simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h; subst h
         simp [Expr.closedAt]
       | .bot, h =>
-        simp only [Option.some.injEq] at h; subst h
+        simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h; subst h
         simp [Expr.closedAt]
       | .neutral nne, h =>
         simp only [] at h
         exact ihn h
       | .lam dom cl, h =>
-        simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                   Option.some.injEq] at h
+        simp only [Outcome.bind_eq_ok,
+                   Option.some.injEq, Outcome.ok.injEq] at h
         obtain ⟨dome, hdome, bodye, hbodye, heq⟩ := h
         subst heq
         simp only [Expr.closedAt, Bool.and_eq_true]
         exact ⟨ihq hdome, ihc hbodye⟩
       | .iota ann cl, h =>
-        simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                   Option.some.injEq] at h
+        simp only [Outcome.bind_eq_ok,
+                   Option.some.injEq, Outcome.ok.injEq] at h
         obtain ⟨anne, hanne, bodye, hbodye, heq⟩ := h
         subst heq
         simp only [Expr.closedAt, Bool.and_eq_true]
         exact ⟨ihq hanne, ihc hbodye⟩
       | .«fix» ann cl, h =>
-        simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                   Option.some.injEq] at h
+        simp only [Outcome.bind_eq_ok,
+                   Option.some.injEq, Outcome.ok.injEq] at h
         obtain ⟨anne, hanne, bodye, hbodye, heq⟩ := h
         subst heq
         simp only [Expr.closedAt, Bool.and_eq_true]
         exact ⟨ihq hanne, ihc hbodye⟩
     · intro d cl e h
       unfold quoteClosure at h
-      simp only [Option.bind_eq_bind, Option.bind_eq_some] at h
+      simp only [Outcome.bind_eq_ok] at h
       obtain ⟨v, _, hq⟩ := h
       exact ihq hq
     · intro d ne e h
@@ -4556,38 +4600,38 @@ theorem quote_quoteClosure_quoteNeutral_closedAt :
         simp only [] at h
         split at h
         · next hlt =>
-          simp only [Option.some.injEq] at h; subst h
+          simp only [Option.some.injEq, Outcome.ok.injEq, Outcome.ok.injEq] at h; subst h
           simp only [Expr.closedAt, decide_eq_true_eq]; omega
         · simp at h
       | .app n' v, h =>
-        simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                   Option.some.injEq] at h
+        simp only [Outcome.bind_eq_ok,
+                   Option.some.injEq, Outcome.ok.injEq] at h
         obtain ⟨f, hf, a, ha, heq⟩ := h
         subst heq
         simp only [Expr.closedAt, Bool.and_eq_true]
         exact ⟨ihn hf, ihq ha⟩
       | .stuckRec f a, h =>
-        simp only [Option.bind_eq_bind, Option.bind_eq_some,
-                   Option.some.injEq] at h
+        simp only [Outcome.bind_eq_ok,
+                   Option.some.injEq, Outcome.ok.injEq] at h
         obtain ⟨fe, hfe, ae, hae, heq⟩ := h
         subst heq
         simp only [Expr.closedAt, Bool.and_eq_true]
         exact ⟨ihq hfe, ihq hae⟩
 
 /-- Specialisation: `quote` output is `closedAt d`. -/
-theorem quote_closedAt {fuel d v e} (h : quote fuel d v = some e) :
+theorem quote_closedAt {fuel d v e} (h : quote fuel d v = .ok e) :
     e.closedAt d = true :=
   (quote_quoteClosure_quoteNeutral_closedAt fuel).1 h
 
 /-- Specialisation: `quoteClosure` body output is `closedAt (d+1)`. -/
 theorem quoteClosure_closedAt {fuel d cl e}
-    (h : quoteClosure fuel d cl = some e) :
+    (h : quoteClosure fuel d cl = .ok e) :
     e.closedAt (d+1) = true :=
   (quote_quoteClosure_quoteNeutral_closedAt fuel).2.1 h
 
 /-- Specialisation: `quoteNeutral` output is `closedAt d`. -/
 theorem quoteNeutral_closedAt {fuel d ne e}
-    (h : quoteNeutral fuel d ne = some e) :
+    (h : quoteNeutral fuel d ne = .ok e) :
     e.closedAt d = true :=
   (quote_quoteClosure_quoteNeutral_closedAt fuel).2.2 h
 
@@ -4600,38 +4644,38 @@ theorem quoteNeutral_closedAt {fuel d ne e}
 -- R_depth_lift) 2026-04-22 for Tier 0 refactor.
 
 theorem quote_lam {d : Nat} {dom : Val} {cl : Closure} {e : Expr}
-    (h : quote fuelω d (.lam dom cl) = some e) :
+    (h : quote fuelω d (.lam dom cl) = .ok e) :
     ∃ dome bodye,
-      quote (fuelω - 1) d dom = some dome ∧
-      quoteClosure (fuelω - 1) d cl = some bodye ∧
+      quote (fuelω - 1) d dom = .ok dome ∧
+      quoteClosure (fuelω - 1) d cl = .ok bodye ∧
       e = .lam dome bodye := by
   rw [fuelω_succ] at h; unfold quote at h
-  simp only [Option.bind_eq_bind, Option.bind_eq_some,
-             Option.some.injEq] at h
+  simp only [Outcome.bind_eq_ok,
+             Option.some.injEq, Outcome.ok.injEq] at h
   obtain ⟨de, hde, be, hbe, heq⟩ := h
   exact ⟨de, be, hde, hbe, heq.symm⟩
 
 theorem quote_iota {d : Nat} {ann : Val} {cl : Closure} {e : Expr}
-    (h : quote fuelω d (.iota ann cl) = some e) :
+    (h : quote fuelω d (.iota ann cl) = .ok e) :
     ∃ anne bodye,
-      quote (fuelω - 1) d ann = some anne ∧
-      quoteClosure (fuelω - 1) d cl = some bodye ∧
+      quote (fuelω - 1) d ann = .ok anne ∧
+      quoteClosure (fuelω - 1) d cl = .ok bodye ∧
       e = .iota anne bodye := by
   rw [fuelω_succ] at h; unfold quote at h
-  simp only [Option.bind_eq_bind, Option.bind_eq_some,
-             Option.some.injEq] at h
+  simp only [Outcome.bind_eq_ok,
+             Option.some.injEq, Outcome.ok.injEq] at h
   obtain ⟨de, hde, be, hbe, heq⟩ := h
   exact ⟨de, be, hde, hbe, heq.symm⟩
 
 theorem quote_fix {d : Nat} {ann : Val} {cl : Closure} {e : Expr}
-    (h : quote fuelω d (.«fix» ann cl) = some e) :
+    (h : quote fuelω d (.«fix» ann cl) = .ok e) :
     ∃ anne bodye,
-      quote (fuelω - 1) d ann = some anne ∧
-      quoteClosure (fuelω - 1) d cl = some bodye ∧
+      quote (fuelω - 1) d ann = .ok anne ∧
+      quoteClosure (fuelω - 1) d cl = .ok bodye ∧
       e = .«fix» anne bodye := by
   rw [fuelω_succ] at h; unfold quote at h
-  simp only [Option.bind_eq_bind, Option.bind_eq_some,
-             Option.some.injEq] at h
+  simp only [Outcome.bind_eq_ok,
+             Option.some.injEq, Outcome.ok.injEq] at h
   obtain ⟨de, hde, be, hbe, heq⟩ := h
   exact ⟨de, be, hde, hbe, heq.symm⟩
 
@@ -4649,8 +4693,8 @@ to `quote_{Γ.size}`. -/
 abbrev QuotesSeen (S : List (Val × Val)) (Γ : TyCtx) (Se : Seen) : Prop :=
   ∀ p ∈ S, ∃ pe ∈ Se,
     pe.1 ≤ Γ.size ∧
-    quote fuelω pe.1 p.1 = some pe.2.1 ∧
-    quote fuelω pe.1 p.2 = some pe.2.2
+    quote fuelω pe.1 p.1 = .ok pe.2.1 ∧
+    quote fuelω pe.1 p.2 = .ok pe.2.2
 
 /-- The type context quotes into `Γe` at matching de Bruijn
 indices. `Γ` is level-indexed (`Γ[k]` = type of `.var k`);
@@ -4671,7 +4715,7 @@ abbrev QuotesCtx (Γ : TyCtx) (Γe : Ctx) : Prop :=
   Γ.size = Γe.length ∧
   (∀ k τ, Γ[k]? = some τ →
     ∃ τe, Γe.get? (Γ.size - 1 - k) = some τe ∧
-          quote fuelω k τ = some τe) ∧
+          quote fuelω k τ = .ok τe) ∧
   (∀ k τ, Γ[k]? = some τ → Val.levelsBelow k τ)
 
 /-!
@@ -4746,7 +4790,7 @@ structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx)
     (ρe : List Expr) : Prop where
   hΓ : QuotesCtx Γ Γe
   hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
-        ∃ we, quote fuelω Γ.size v = some we
+        ∃ we, quote fuelω Γ.size v = .ok we
   /-- Levelbound invariant: every entry of `ρ` has neutral-var
   levels `< Γ.size`. Maintained by `push_fresh` (new head
   `.var Γ.size` has level `Γ.size < Γ.size+1`) and by
@@ -4792,9 +4836,9 @@ structure OpenCtx (Γ : TyCtx) (ρ : Env) (Γe : Ctx)
 quoting gives something `Equiv` to `e.substEnv ρe`. This
 is the open form of `eval_quote_equiv_closed`. -/
 theorem OpenCtx.eq {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
-    {fuel unf e v} (heval : eval fuel unf ρ e = some v)
+    {fuel unf e v} (heval : eval fuel unf ρ e = .ok v)
     (hcl : e.closedAt ρe.length = true)
-    {e'} (hq : quote fuelω Γ.size v = some e') :
+    {e'} (hq : quote fuelω Γ.size v = .ok e') :
     Subtype' [] Γe e' (e.substEnv ρe) ∧
     Subtype' [] Γe (e.substEnv ρe) e' := by
   have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
@@ -4830,12 +4874,16 @@ as `quote_total_on_eval`. -/
 theorem eval_quotable_open {fuel unf d : Nat} {ρ : Env}
     {e : Expr} {v : Val}
     (hfuel : fuel ≤ fuelω)
-    (hnfq : ((eval fuelω unf ρ e).bind (quote fuelω d)).isSome)
-    (heval : eval fuel unf ρ e = some v) :
-    ∃ ve, quote fuelω d v = some ve := by
+    (hnfq : ((eval fuelω unf ρ e) >>= (quote fuelω d)).isOk)
+    (heval : eval fuel unf ρ e = .ok v) :
+    ∃ ve, quote fuelω d v = .ok ve := by
   rw [eval_fuel_mono hfuel heval] at hnfq
-  simp only [Option.some_bind] at hnfq
-  exact Option.isSome_iff_exists.mp hnfq
+  simp only [Outcome.ok_bind] at hnfq
+  -- hnfq : (quote fuelω d v).isOk; pick the ok payload.
+  cases h : quote fuelω d v with
+  | ok e' => exact ⟨e', rfl⟩
+  | outOfFuel => rw [h] at hnfq; simp [Outcome.isOk] at hnfq
+  | error _ => rw [h] at hnfq; simp [Outcome.isOk] at hnfq
 
 /-- Sorry-free quote-totality wrapper: caller supplies the
 `(hnfq)` witness directly (route (a) — per-call hypothesis).
@@ -4855,9 +4903,9 @@ the top-level `hnfe` / `hnfτ` or supplied via `by sorry` at
 sites inside already-sorried theorems. -/
 theorem OpenCtx.eval_quotes' {Γ ρ Γe ρe} (_hctx : OpenCtx Γ ρ Γe ρe)
     {fuel unf e v} (hfuel : fuel ≤ fuelω)
-    (hnfq : ((eval fuelω unf ρ e).bind (quote fuelω Γ.size)).isSome)
-    (heval : eval fuel unf ρ e = some v) :
-    ∃ ve, quote fuelω Γ.size v = some ve :=
+    (hnfq : ((eval fuelω unf ρ e) >>= (quote fuelω Γ.size)).isOk)
+    (heval : eval fuel unf ρ e = .ok v) :
+    ∃ ve, quote fuelω Γ.size v = .ok ve :=
   eval_quotable_open hfuel hnfq heval
 
 /-- Lifts an `OpenCtx.hwf` tail through one context
@@ -4885,11 +4933,11 @@ private theorem hwf_lift_tail {Γe : Ctx} {ρe : List Expr}
 /-- Lift each `ρ`-entry's quote-witness to depth `d+1`. -/
 private theorem hρq_lift {d : Nat} {ρ : Env}
     (hρq : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
-           ∃ we, quote fuelω d v = some we)
+           ∃ we, quote fuelω d v = .ok we)
     (hρlvl : ∀ (k : Nat) (v : Val), ρ[k]? = some v →
              Val.levelsBelow d v) :
     ∀ (k : Nat) (v : Val), ρ[k]? = some v →
-    ∃ we, quote fuelω (d + 1) v = some we := by
+    ∃ we, quote fuelω (d + 1) v = .ok we := by
   intro k v hk
   obtain ⟨we, hwe⟩ := hρq k v hk
   exact ⟨we.shift 1 0, quote_depth_shift (hρlvl k v hk) hwe⟩
@@ -4913,7 +4961,7 @@ depth is per-entry, not the outer `Γ.size`); only the
 theorem QuotesCtx.push {Γ : TyCtx} {Γe : Ctx}
     (hΓ : QuotesCtx Γ Γe)
     {τ : Val} {τe : Expr}
-    (hqτ : quote fuelω Γ.size τ = some τe)
+    (hqτ : quote fuelω Γ.size τ = .ok τe)
     (hτlvl : Val.levelsBelow Γ.size τ) :
     QuotesCtx (Γ.push τ) (τe :: Γe) := by
   refine ⟨?hlen, ?hquote, ?hlvl⟩
@@ -4956,7 +5004,7 @@ lift. Closes via `REnv_lift` (which packages
 tail) and `QuotesCtx.push`. -/
 theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {τ : Val} {τe : Expr}
-    (hqτ : quote fuelω Γ.size τ = some τe)
+    (hqτ : quote fuelω Γ.size τ = .ok τe)
     (hτlvl : Val.levelsBelow Γ.size τ) :
     OpenCtx (Γ.push τ) (.neutral (.var Γ.size) :: ρ)
             (τe :: Γe) (.bvar 0 :: ρe.map (·.shift 1 0)) where
@@ -4965,7 +5013,7 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k v hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         exact ⟨.bvar 0,
           by simpa [Array.size_push] using
@@ -4979,7 +5027,7 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k v hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         -- .neutral (.var Γ.size) has level Γ.size < Γ.size+1
         simp only [Array.size_push]
@@ -4993,7 +5041,7 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k e hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp only [Array.size_push, Expr.closedAt, decide_eq_true_eq]
         omega
@@ -5009,7 +5057,7 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k v hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp only [Array.size_push, Val.fullyQuotable, Neutral.fullyQuotable]
         omega
@@ -5026,7 +5074,7 @@ theorem OpenCtx.push_fresh {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     cases k with
     | zero =>
         simp only [List.getElem?_cons_zero, List.get?_cons_zero,
-                   Option.some.injEq] at hw hτe'
+                   Option.some.injEq, Outcome.ok.injEq] at hw hτe'
         subst hw hτe'
         exact Subtype'.bvar (Γ := τe :: Γe) (k := 0) rfl
     | succ m =>
@@ -5044,10 +5092,10 @@ via `eval_realises` (giving `R 1 d valV (val.substEnv
 theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     {fuel unf : Nat} (hfuel : fuel ≤ fuelω)
     {val : Expr} {valV valTy : Val} {valTye : Expr}
-    (hev : eval fuel unf ρ val = some valV)
-    (hnfq : ((eval fuelω unf ρ val).bind (quote fuelω Γ.size)).isSome)
+    (hev : eval fuel unf ρ val = .ok valV)
+    (hnfq : ((eval fuelω unf ρ val) >>= (quote fuelω Γ.size)).isOk)
     (hclv : val.closedAt ρe.length = true)
-    (hqτ : quote fuelω Γ.size valTy = some valTye)
+    (hqτ : quote fuelω Γ.size valTy = .ok valTye)
     (hτlvl : Val.levelsBelow Γ.size valTy)
     (hval_le : Subtype' [] Γe (val.substEnv ρe) valTye) :
     OpenCtx (Γ.push valTy) (valV :: ρ)
@@ -5059,7 +5107,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k v hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         obtain ⟨qe, hqe⟩ := hctx.eval_quotes' hfuel hnfq hev
         -- Derive levelsBelow Γ.size for valV from eval_levelsBelow:
@@ -5080,7 +5128,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k v hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         have henvLvl : Closure.envLevelsBelow Γ.size ρ :=
           Closure.envLevelsBelow_of_getElem? (fun k v hk =>
@@ -5098,7 +5146,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k e hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         -- Head entry: (val.substEnv ρe).shift 1 0
         -- val.closedAt ρe.length = Γ.size; every ρe[j] closedAt Γ.size;
@@ -5121,7 +5169,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     intro k v hk
     cases k with
     | zero =>
-        simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+        simp only [List.getElem?_cons_zero, Option.some.injEq, Outcome.ok.injEq] at hk
         subst hk
         simp only [Array.size_push]
         -- Head valV: use eval_preserves_fullyQuotable.
@@ -5164,7 +5212,7 @@ theorem OpenCtx.push_let {Γ ρ Γe ρe} (hctx : OpenCtx Γ ρ Γe ρe)
     cases k with
     | zero =>
         simp only [List.getElem?_cons_zero, List.get?_cons_zero,
-                   Option.some.injEq] at hw hτe'
+                   Option.some.injEq, Outcome.ok.injEq] at hw hτe'
         subst hw hτe'
         have := Subtype'.ctx_extend (S := []) [valTye] hval_le
         simpa using this
@@ -5207,7 +5255,7 @@ theorem tyInfer_sound_open
     {e : Expr} {τV : Val}
     (hcl : e.closedAt ρe.length = true)
     (h : tyInfer fuel Γ ρ e = .ok (some τV)) :
-    ∃ τe, quote fuelω Γ.size τV = some τe ∧
+    ∃ τe, quote fuelω Γ.size τV = .ok τe ∧
           Subtype' [] Γe (e.substEnv ρe) τe := by
   match fuel, hfuel, h with
   | 0, _, h => simp [tyInfer] at h
@@ -5223,7 +5271,7 @@ theorem tyInfer_sound_open
       split at h
       case isFalse => simp_all
       case isTrue hidx_lt =>
-      simp only [Except.ok.injEq, Option.some.injEq] at h
+      simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
       subst h
       -- τV = Γ[Γ.size-1-k]. From `hctx.hΓ` get its quote
       -- at depth `Γ.size-1-k` and the matching `Γe[k]`.
@@ -5246,7 +5294,7 @@ theorem tyInfer_sound_open
                  getElem!_pos ρe k hcl]
       exact hctx.hwf k _ τe0 (List.getElem?_eq_getElem hcl) hΓe
     -- .type
-    · simp only [Except.ok.injEq, Option.some.injEq] at h
+    · simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
       subst h
       exact ⟨.type, quote_type,
         by simpa [Expr.substEnv] using Subtype'.refl Expr.type⟩
@@ -5256,9 +5304,8 @@ theorem tyInfer_sound_open
     · rename_i e' τ
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       simp only [bind, Except.bind] at h
-      split at h
-      case h_2 => simp_all
-      case h_1 τV0 hτV0 =>
+      split at h <;> try exact Except.noConfusion h
+      rename_i τV0 hτV0
       split at h
       · simp_all
       next okI hokI =>
@@ -5267,7 +5314,7 @@ theorem tyInfer_sound_open
       | true =>
         simp only [Bool.not_true, Bool.false_eq_true,
                    ↓reduceIte, Except.ok.injEq,
-                   Option.some.injEq] at h
+                   Option.some.injEq, Outcome.ok.injEq] at h
         subst h
         obtain ⟨τe, hqτV⟩ := hctx.eval_quotes' hfuel' (by sorry) hτV0
         have hsub := tyCheck_sound_open hfuel' hctx
@@ -5344,7 +5391,7 @@ theorem tyInfer_sound_open
       -- `app_elim := .trans (app_cong hf (.refl a) (.refl a))
       -- (.beta_L (.refl _))` assembling the Subtype'
       -- skeleton, the outer conclusion requires `quote
-      -- fuelω Γ.size (cl.open aV) = some τe`. `cl.open aV`
+      -- fuelω Γ.size (cl.open aV) = .ok τe`. `cl.open aV`
       -- re-evaluates the closure body under `aV :: cl.env`;
       -- quoting that result is exactly Task 1's
       -- `quote_open_subst` / `eval_vapp_preserves_fullyQuotable`
@@ -5373,7 +5420,7 @@ theorem tyInfer_sound_open
           (by simpa [List.length_map] using hcl_body)
           h
       obtain ⟨τe', hqτe', hsub'⟩ := hIH
-      -- `hqτe' : quote_{Γ.size+1} τV = some τe'` and
+      -- `hqτe' : quote_{Γ.size+1} τV = .ok τe'` and
       -- `hsub' : (body.substEnv ρe') ⊑ τe'` at
       -- `(valTye :: Γe)`. Goal needs `quote_{Γ.size} τV` —
       -- but `τV`'s neutrals reference only levels `<
@@ -5417,7 +5464,7 @@ theorem tyCheckFallback_sound_open
     (hctx : OpenCtx Γ ρ Γe ρe)
     {e : Expr} {τV : Val} {τe : Expr}
     (hcl : e.closedAt ρe.length = true)
-    (hqτ : quote fuelω Γ.size τV = some τe)
+    (hqτ : quote fuelω Γ.size τV = .ok τe)
     (h : tyCheckFallback fuel Γ ρ e τV = .ok true) :
     Subtype' [] Γe (e.substEnv ρe) τe := by
   unfold tyCheckFallback at h
@@ -5453,7 +5500,7 @@ theorem tyCheck_sound_open
     (hctx : OpenCtx Γ ρ Γe ρe)
     {e : Expr} {τV : Val} {τe : Expr}
     (hcl : e.closedAt ρe.length = true)
-    (hqτ : quote fuelω Γ.size τV = some τe)
+    (hqτ : quote fuelω Γ.size τV = .ok τe)
     (h : tyCheck fuel Γ ρ e τV = .ok true) :
     Subtype' [] Γe (e.substEnv ρe) τe := by
   match fuel, hfuel, h with
@@ -5466,9 +5513,8 @@ theorem tyCheck_sound_open
     · rename_i _e' dom body _h'
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       obtain ⟨hcl_dom, hcl_body⟩ := hcl
-      split at h
-      case h_2 => simp_all
-      case h_1 domV hdomV =>
+      split at h <;> try exact Except.noConfusion h
+      rename_i domV hdomV
       simp only [] at h  -- inline `let fresh := …`
       split at h
       case h_2 _ _ =>
@@ -5485,9 +5531,8 @@ theorem tyCheck_sound_open
       | true =>
       simp only [Bool.not_true, Bool.false_eq_true,
                  ↓reduceIte, pure, Except.pure] at h
-      split at h
-      case h_1 => simp_all
-      case h_2 expBody hopen =>
+      split at h <;> try exact Except.noConfusion h
+      rename_i expBody hopen
       -- All algorithm splits done.
       -- (a) Quote witnesses for the exposed Π-head.
       --     `expDom` lives at depth `Γ.size` (same context
@@ -5499,8 +5544,8 @@ theorem tyCheck_sound_open
       --     (`quote_open_subst` per unfold step). Same
       --     dependency as obstruction (a) below.
       have h_lamQuote : ∃ expDome expBodye,
-          quote fuelω Γ.size expDom = some expDome ∧
-          quote fuelω (Γ.size + 1) expBody = some expBodye := by
+          quote fuelω Γ.size expDom = .ok expDome ∧
+          quote fuelω (Γ.size + 1) expBody = .ok expBodye := by
         sorry
       obtain ⟨expDome, expBodye, hqDom, hqBody'⟩ := h_lamQuote
       -- (b) Extended context. With the `QuotesCtx` depth-`k`
@@ -5650,7 +5695,7 @@ theorem tyCheck_sound_open
             --  (e0.substEnv ρe) (τ0.substEnv ρe)`.
             simp only [Expr.substEnv]
             exact .asc_L (.trans h_e0_τ0e hsub)
-      · simp_all
+      all_goals (exfalso; simp_all [bind, Except.bind])
     -- .fix _ _ and .iota _ _ (A9 arm), .bot arm, then catch-all.
     all_goals first
     | exact tyCheckFallback_sound_open hfuel hctx hcl hqτ h
@@ -5674,7 +5719,7 @@ theorem tyCheck_sound_open
          have hsub : Subtype' [] Γe ee τe := by sorry
          have he_ee := (hctx.eq hev hcl hqeV).2
          exact .trans he_ee hsub
-       · simp_all)
+       all_goals (exfalso; simp_all [bind, Except.bind]))
 termination_by (fuel, 2)
 
 /-- Soundness of `letBinderType`: it returns `(valV, valTy)`
@@ -5699,11 +5744,11 @@ theorem letBinderType_sound_open
     {Γ : TyCtx} {ρ : Env} {Γe : Ctx} {ρe : List Expr}
     (hctx : OpenCtx Γ ρ Γe ρe)
     {val : Expr} {valV valTy : Val}
-    (hnfq : ((eval fuelω unfBound ρ val).bind (quote fuelω Γ.size)).isSome)
+    (hnfq : ((eval fuelω unfBound ρ val) >>= (quote fuelω Γ.size)).isOk)
     (hcl : val.closedAt ρe.length = true)
     (h : letBinderType fuel Γ ρ val = .ok (valV, valTy)) :
-    eval fuel unfBound ρ val = some valV ∧
-    ∃ valTye, quote fuelω Γ.size valTy = some valTye ∧
+    eval fuel unfBound ρ val = .ok valV ∧
+    ∃ valTye, quote fuelω Γ.size valTy = .ok valTye ∧
               Subtype' [] Γe (val.substEnv ρe) valTye := by
   unfold letBinderType at h
   simp only [bind, Except.bind] at h
@@ -5715,8 +5760,8 @@ theorem letBinderType_sound_open
   case h_1 valV0 hev =>
   -- The "fall back to valV" branch (shared by `none` and
   -- `okV = false`):
-  have hself : eval fuel unfBound ρ val = some valV0 ∧
-      ∃ valTye, quote fuelω Γ.size valV0 = some valTye ∧
+  have hself : eval fuel unfBound ρ val = .ok valV0 ∧
+      ∃ valTye, quote fuelω Γ.size valV0 = .ok valTye ∧
                 Subtype' [] Γe (val.substEnv ρe) valTye := by
     obtain ⟨valVe, hqvalV⟩ := hctx.eval_quotes' hfuel hnfq hev
     exact ⟨hev, valVe, hqvalV, (hctx.eq hev hcl hqvalV).2⟩
@@ -5750,7 +5795,7 @@ well-scopedness of `e`. -/
 example {fuel : Nat} (hfuel : fuel ≤ fuelω)
     {e : Expr} {τV : Val} {τe : Expr}
     (hcl0 : e.closedAt 0 = true)
-    (hqτ : quote fuelω 0 τV = some τe)
+    (hqτ : quote fuelω 0 τV = .ok τe)
     (h : tyCheck fuel #[] [] e τV = .ok true) :
     Subtype' [] [] e τe := by
   have := tyCheck_sound_open hfuel OpenCtx.empty

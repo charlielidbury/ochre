@@ -154,4 +154,12 @@ instance {α : Type u} [BEq α] : BEq (Outcome α) where
 
 @[simp] theorem pure_eq_ok {α : Type u} (a : α) : (pure a : Outcome α) = .ok a := rfl
 
+/-- Bind-unfold: `x >>= f = .ok v` iff there's an intermediate
+`a` with `x = .ok a` and `f a = .ok v`. Mirrors
+`Option.bind_eq_some`. -/
+@[simp] theorem bind_eq_ok {α β : Type u} (x : Outcome α)
+    (f : α → Outcome β) (v : β) :
+    (x >>= f) = .ok v ↔ ∃ a, x = .ok a ∧ f a = .ok v := by
+  cases x <;> simp [bind, Monad.toBind]
+
 end Outcome

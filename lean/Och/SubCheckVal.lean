@@ -182,9 +182,15 @@ instance : LawfulBEq Val where
 def Closure.open (fuel : Nat) (cl : Closure) (v : Val) : Outcome Val :=
   eval fuel 4 (v :: cl.env) cl.body
 
-/-- Open a closure with a fresh neutral at de Bruijn level `depth`. -/
-def Closure.openFresh (fuel depth : Nat) (cl : Closure) : Outcome Val :=
-  cl.open fuel (.neutral (.var depth))
+/-- Open a closure with a fresh neutral at de Bruijn level `depth`.
+Returns `Except String Val` (not `Outcome Val`) to preserve the
+2-case pattern the SoundnessProof proofs branch on. `.outOfFuel`
+collapses to `.error "out of fuel"` here. -/
+def Closure.openFresh (fuel depth : Nat) (cl : Closure) : Except String Val :=
+  match cl.open fuel (.neutral (.var depth)) with
+  | .ok v => .ok v
+  | .outOfFuel => .error "Closure.openFresh: out of fuel"
+  | .error s => .error s
 
 /-- `Option`-valued projection of `Closure.open`. Retains the
 legacy API that `subCheckVal` and SoundnessProof are written
@@ -209,8 +215,11 @@ theorem Closure.open_fuel_mono {cl : Closure} {v r : Val} {n m : Nat}
 theorem Closure.openFresh_fuel_mono {cl : Closure} {r : Val}
     {n m depth : Nat}
     (hle : n ≤ m) (h : cl.openFresh n depth = .ok r) :
-    cl.openFresh m depth = .ok r :=
-  Closure.open_fuel_mono hle h
+    cl.openFresh m depth = .ok r := by
+  unfold Closure.openFresh at h ⊢
+  split at h <;> simp_all
+  rename_i heq
+  rw [Closure.open_fuel_mono hle heq]
 
 /-- `Option`-valued projection of `vapp`. -/
 def vappOpt (fuel unf : Nat) (f a : Val) : Option Val :=
@@ -264,12 +273,8 @@ mutual
         | .lam domA clA, .lam domB clB => do
             let contra ← subCheckVal fuel tyCtx seen domB domA
             if !contra then return false
-            let bodyA ← match clA.openFresh fuel depth with
-              | .ok v => .ok v | .outOfFuel => .error "subCheckVal: open A (OOF)"
-              | .error s => .error s
-            let bodyB ← match clB.openFresh fuel depth with
-              | .ok v => .ok v | .outOfFuel => .error "subCheckVal: open B (OOF)"
-              | .error s => .error s
+            let bodyA ← clA.openFresh fuel depth
+            let bodyB ← clB.openFresh fuel depth
             -- A6: pushing `domB` here is more *complete* (the
             -- fresh variable's ascent type would be the smaller
             -- one, so `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` would
@@ -292,10 +297,8 @@ mutual
             let structural := do
               let annOk ← subCheckVal fuel tyCtx seen' annA annB
               if !annOk then return false
-              let bodyA ← match clA.openFresh fuel depth with
-                | .ok v => .ok v | _ => .error "iota struct A"
-              let bodyB ← match clB.openFresh fuel depth with
-                | .ok v => .ok v | _ => .error "iota struct B"
+              let bodyA ← clA.openFresh fuel depth
+              let bodyB ← clB.openFresh fuel depth
               subCheckVal fuel (tyCtx.push annB) seen' bodyA bodyB
             match structural with
             | .ok true => .ok true
@@ -307,18 +310,16 @@ mutual
               let okAnn ← subCheckVal fuel tyCtx seen' a annB
               if !okAnn then .ok false
               else match clB.open fuel a with
+              | .ok bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
               | .outOfFuel => .error "subCheckVal: iotaIntro open (OOF)"
               | .error s => .error s
-              | .ok bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
         | .fix annA clA, .fix annB clB =>
             let seen' := (a, b) :: seen
             let structural := do
               let annOk ← subCheckVal fuel tyCtx seen' annA annB
               if !annOk then return false
-              let bodyA ← match clA.openFresh fuel depth with
-                | .ok v => .ok v | _ => .error "fix struct A"
-              let bodyB ← match clB.openFresh fuel depth with
-                | .ok v => .ok v | _ => .error "fix struct B"
+              let bodyA ← clA.openFresh fuel depth
+              let bodyB ← clB.openFresh fuel depth
               subCheckVal fuel (tyCtx.push annB) seen' bodyA bodyB
             match structural with
             | .ok true => .ok true
