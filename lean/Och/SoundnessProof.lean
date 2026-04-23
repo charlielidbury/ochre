@@ -3666,10 +3666,39 @@ R_quote_equiv's callers from R's refactored closure clause).
 3. Apply eval_realises: R m (d+1) v (cl.body.substEnv ...).
 4. Apply R_quote_equiv at step m on v: Equiv_c (d+1) body' ... ∎
 
-**Still blocking**: forward-ref — quoteClosure_realises is declared
-BEFORE eval_realises/R_quote_equiv. Closing this requires moving them
-into a single mutual block with proper lex termination (step, fuel,
-Val size). Deferred. -/
+**Still blocking (2026-04-22, Task 3 attempt)**: Routes A and B
+both fail on structural grounds.
+
+* **Route A** (inline into R_quote_equiv's closure cases, joint
+  mutual): inlining requires R_quote_equiv to call eval_realises
+  on `cl.body`, forcing R_quote_equiv into the
+  eval/vapp mutual. The closure case then recurses
+  R_quote_equiv on `v'` (eval output); `sizeOf v'` has no
+  structural relation to `sizeOf (.lam dV cl)`. Any lex measure
+  `(fuel, sizeOf v)` fails the vapp(F_v) → R_quote_equiv(fuelω-2)
+  → eval_realises(fuelω-2) cycle, because it requires
+  F_v > fuelω-2 for arbitrary user fuel. Generalising
+  R_quote_equiv on a quote-fuel parameter makes the INTRA-call
+  recursion decrease but doesn't fix the cross-function crossover.
+
+* **Route B** (post-mutual): post-mutual `quoteClosure_realises`
+  uses eval_realises + R_quote_equiv. But step 4 recurses
+  R_quote_equiv on the eval-output `v`, which can be
+  `.lam/.iota/.fix`. Pre-mutual R_quote_equiv's closure cases
+  delegate to this theorem (circular). Breaking the cycle requires
+  re-entering the mutual (Route A, blocked above) or inlining
+  closure logic into vapp_realises (same termination obstacle).
+
+* **Independent finding**: vapp_realises's `.stuckRec` branches
+  call R_quote_equiv on closure-valued heads (`.iota/.fix`). So
+  closing Task 3 cleanly would also close a sorry inside
+  vapp_realises — an inter-task coupling not anticipated.
+
+**Conclusion**: leaving sorried per Route C. Any future fix likely
+needs a restructured well-founded relation (e.g., a unified
+quote-fuel + eval-fuel + step-index measure) or a fundamentally
+different proof architecture (e.g., a logical relation indexed by
+TYPE shape rather than step-index). -/
 theorem quoteClosure_realises {d : Nat} {cl : Closure} {body' : Expr}
     {m : Nat} {ρe' : List Expr}
     (_hq : quoteClosure fuelω d cl = some body')
