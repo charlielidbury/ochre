@@ -5306,22 +5306,21 @@ theorem tyInfer_sound_open
       -- ρe')`. Same `.letE`-arm shift obstruction as
       -- `tyCheck_sound_open`.
       --
-      -- Category B attempt (2026-04-23): the IH from
-      -- `push_let` delivers Subtype' at context
-      -- `(domTye :: Γe)` with `ρe' = (a.substEnv ρe).shift
-      -- 1 0 :: ρe.map shift` and quote at depth `Γ.size+1`.
-      -- Bridging back to the outer `Γe` / `Γ.size` needs an
-      -- UNSHIFT lemma `Subtype' (X :: Γ) (a.shift 1 0)
-      -- (b.shift 1 0) → Subtype' Γ a b`, which is the
-      -- inverse of `Subtype'.ctx_extend` — a cross-cutting
-      -- structural lemma (requires induction over the
-      -- `Subtype'` derivation). Per sorry-closure-plan Task
-      -- 4B's scope boundary ("if any sub-sorry requires
-      -- changes to `Subtype'`'s constructors or the
-      -- `OpenCtx` structure, STOP"), left sorried. A design
-      -- fix would be to change `push_let`'s `ρe'` to avoid
-      -- shifting, which ripples through `QuotesCtx` depth
-      -- indexing.
+      -- Category B attempt (2026-04-23, revisited
+      -- 2026-04-22): the IH from `push_let` delivers
+      -- Subtype' at context `(domTye :: Γe)` with
+      -- `ρe' = (a.substEnv ρe).shift 1 0 :: ρe.map shift`
+      -- and quote at depth `Γ.size+1`. Bridging back to the
+      -- outer `Γe` / `Γ.size` needs the UNSHIFT lemma at
+      -- cutoff 0: `Subtype' (X :: Γ) (a.shift 1 0)
+      -- (b.shift 1 0) → Subtype' Γ a b` (under endpoint
+      -- closedness). See `Subtype'.unshift_head`
+      -- documentation in `Subtyping.lean` (~line 1045) for
+      -- the proof plan — roughly a 300–500 LOC substitution
+      -- lemma over every `Subtype'` constructor, with
+      -- seen-set depth rewiring for productive rules and
+      -- `.hyp`. Out of scope for a single session; left
+      -- sorried.
       sorry
     -- .app (.letE val fbody) a — let-float.
     · -- `tyInfer` floats the let out and recurses on
@@ -5329,12 +5328,11 @@ theorem tyInfer_sound_open
       -- IH at the floated form; relate back via
       -- `Subtype'.letE_L` + `app_cong`.
       --
-      -- Category B attempt (2026-04-23): same UNSHIFT
-      -- obstruction as the β fast-path above — the IH's
-      -- `push_let` delivers at `Γ.size+1` depth with shifts
-      -- baked into `ρe'`. `letE_L + app_cong` would assemble
-      -- the Subtype' skeleton, but not bridge the depth /
-      -- context mismatch. Left sorried per Task 4B scope.
+      -- Same UNSHIFT obstruction as the β fast-path above.
+      -- `letE_L + app_cong` assembles the Subtype' skeleton,
+      -- but cannot bridge the depth / context mismatch
+      -- without `Subtype'.unshift_head` (see Subtyping.lean
+      -- docstring for proof plan). Left sorried.
       sorry
     -- .app f a — generic.
     · -- IH on `f` gives `fTy` + quote witness; `whnfPi`
@@ -5389,25 +5387,23 @@ theorem tyInfer_sound_open
       -- via `Subtype'.letE_L` after relating `body.substEnv
       -- ρe'` to `(.letE val body).substEnv ρe`'s body.
       --
-      -- Category B attempt (2026-04-23): two directions
-      -- probed:
+      -- Category B attempt (2026-04-23, revisited 2026-04-22):
+      -- two directions probed:
       --   (1) Direct downshift: derive `Val.levelsBelow
       --       Γ.size τV` as an extra invariant on
       --       `tyInfer`, get `τe` via `eval_quotes'`, use
       --       `quote_depth_shift` determinism to conclude
       --       `τe' = τe.shift 1 0`. Then the Subtype' side
-      --       still needs the UNSHIFT lemma `Subtype' (X ::
-      --       Γ) (a.shift 1 0) (b.shift 1 0) → Subtype' Γ a
-      --       b` to strip the context/term shift from the
-      --       IH — inverse of `ctx_extend`, a cross-cutting
-      --       structural theorem.
+      --       still needs the UNSHIFT lemma
+      --       `Subtype'.unshift_head` (see Subtyping.lean
+      --       docstring for the 300–500 LOC proof plan).
       --   (2) Restatement to quote at `Γ.size+1` then
       --       `letE_R` down: would change the theorem
       --       signature, breaking `tyCheckFallback_sound_open`
       --       and `Soundness.lean` wrappers. Ripples into
       --       `OpenCtx.hlen` convention.
       -- Both routes hit structural boundaries (Subtype'
-      -- inversion / OpenCtx indexing) outside Task 4B's
+      -- inversion / OpenCtx indexing) outside a single-session
       -- scope. Left sorried; same blocker as
       -- `tyCheck_sound_open`'s `.letE` arm at line ~5573.
       sorry
