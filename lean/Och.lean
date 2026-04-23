@@ -1,4 +1,5 @@
 import Och.Syntax
+import Och.Outcome
 import Och.Eval
 import Och.NbE
 import Och.NbETests
