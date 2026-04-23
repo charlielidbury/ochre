@@ -83,8 +83,8 @@ original. Specialises `eval_realises` + `R_quote_equiv` at
 the empty environment. -/
 theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
     (hcl : e.closedAt 0 = true)
-    (heval : eval fuel unf [] e = some v)
-    {e' : Expr} (hq : quote fuelω 0 v = some e')
+    (heval : eval fuel unf [] e = .ok v)
+    {e' : Expr} (hq : quote fuelω 0 v = .ok e')
     {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := by
   have henv : REnv 1 0 [] [] :=
     ⟨rfl, fun _ _ hk => by simp at hk⟩
@@ -101,38 +101,38 @@ theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
 /-! ### Quote-totality
 
 The unconditional form
-`eval fuel unf [] e = some v → ∃ ve, quote fuelω 0 v = some ve`
+`eval fuel unf [] e = .ok v → ∃ ve, quote fuelω 0 v = .ok ve`
 is **false**: `eval 2 unf [] (.lam .type huge)` succeeds in
 two fuel regardless of `huge`'s size, but `quoteClosure`
 re-evaluates `huge` under a fresh neutral and that can need
 arbitrarily much fuel. So quote-totality is a *side
 condition on the input*, not a derived property.
 
-The natural side condition is `(nf fuelω e).isSome` — `e`
+The natural side condition is `(nf fuelω e).isOk` — `e`
 normalises within `fuelω`. With that, the result is
 immediate via `eval_fuel_mono` (the value at `fuel ≤ fuelω`
 is the same as at `fuelω`, and `nf` says the latter quotes).
 -/
 
-/-- Helper: `(o.bind f).isSome` unpacks to a witness. -/
-private theorem bind_isSome_iff {α β} {o : Option α} {f : α → Option β} :
-    (o.bind f).isSome ↔ ∃ a, o = some a ∧ (f a).isSome := by
+/-- Helper: `(o >>= f).isOk` unpacks to a witness (Outcome version). -/
+private theorem bind_isSome_iff {α β} {o : Outcome α} {f : α → Outcome β} :
+    (o >>= f).isOk ↔ ∃ a, o = .ok a ∧ (f a).isOk := by
   cases o with
-  | none => simp
-  | some a => simp
+  | ok a => simp [Outcome.isOk]
+  | outOfFuel => simp [Outcome.isOk]
+  | error _ => simp [Outcome.isOk]
 
 /-- `nf` of `.asc t τ` succeeds iff `nf` of `t` does (A8:
 ascription is computationally transparent; `eval` peels
 the `.asc` in one fuel step, and `eval_fuel_mono` recovers
 that step). -/
 theorem nf_asc_term_isSome {n : Nat} {t ty : Expr}
-    (hnf : (nf n (.asc t ty)).isSome) :
-    (nf n t).isSome := by
+    (hnf : (nf n (.asc t ty)).isOk) :
+    (nf n t).isOk := by
   match n, hnf with
-  | 0, hnf => simp [nf, eval_zero] at hnf
+  | 0, hnf => simp [nf, eval_zero, Outcome.isOk] at hnf
   | k + 1, hnf =>
     unfold nf at hnf ⊢
-    simp only [Option.bind_eq_bind] at hnf ⊢
     simp only [eval] at hnf
     obtain ⟨v, hev, hq⟩ := bind_isSome_iff.mp hnf
     exact bind_isSome_iff.mpr
@@ -144,14 +144,16 @@ agree (`eval_fuel_mono`), so the `nf` witness directly
 gives the quote. -/
 theorem quote_total_on_eval {fuel : Nat} {e : Expr} {v : Val}
     (hfuel : fuel ≤ fuelω)
-    (hnf : (nf fuelω e).isSome)
-    (heval : eval fuel unfBound [] e = some v) :
-    ∃ ve, quote fuelω 0 v = some ve := by
+    (hnf : (nf fuelω e).isOk)
+    (heval : eval fuel unfBound [] e = .ok v) :
+    ∃ ve, quote fuelω 0 v = .ok ve := by
   unfold nf at hnf
-  simp only [Option.bind_eq_bind] at hnf
   rw [eval_fuel_mono hfuel heval] at hnf
-  simp only [Option.some_bind] at hnf
-  exact Option.isSome_iff_exists.mp hnf
+  simp only [Outcome.ok_bind] at hnf
+  cases h : quote fuelω 0 v with
+  | ok e' => exact ⟨e', rfl⟩
+  | outOfFuel => rw [h] at hnf; simp [Outcome.isOk] at hnf
+  | error _ => rw [h] at hnf; simp [Outcome.isOk] at hnf
 
 -- `whnfPi_sound` removed 2026-04-21: previously a wrapper
 -- around `whnfPi_sound_open` (itself a wrapper over
@@ -190,8 +192,8 @@ theorem tyCheck_sound_closed
     {fuel : Nat} {e τ : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
     (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (_hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
-    (hτV : eval fuel unfBound [] τ = some τV)
+    (_hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
+    (hτV : eval fuel unfBound [] τ = .ok τV)
     (h : tyCheck fuel #[] [] e τV = .ok true) :
     Subtype' [] [] e τ := by
   obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
@@ -219,14 +221,15 @@ theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
     (hfuel : fuel ≤ fuelω)
     (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
+    (hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
     (h : typeCheck fuel e τ = .ok true) :
     Subtype' [] [] e τ := by
   unfold typeCheck at h
+  simp only [bind, Except.bind] at h
   split at h
   · next τV hτV =>
       exact tyCheck_sound_closed hfuel hcle hclτ hnfe hnfτ hτV h
-  · simp_all
+  all_goals simp_all
 
 /-- One let-step is an `Equiv`. Both directions are single
 `Subtype'` constructors with a `.refl` premise. -/
@@ -262,7 +265,7 @@ elaboration quirk. -/
 theorem concEval_equiv_closed
     {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
-    (hstep : concEval fuel e = some e') :
+    (hstep : concEval fuel e = .ok e') :
     Equiv e' e := by
   induction fuel generalizing e e' with
   | zero => simp [concEval] at hstep
@@ -270,19 +273,19 @@ theorem concEval_equiv_closed
     cases e with
     | bvar _ => simp [concEval] at hstep
     | type =>
-      simp only [concEval, Option.some.injEq] at hstep
+      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
       subst hstep; exact Equiv.refl _
     | bot =>
-      simp only [concEval, Option.some.injEq] at hstep
+      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
       subst hstep; exact Equiv.refl _
     | lam _ _ =>
-      simp only [concEval, Option.some.injEq] at hstep
+      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
       subst hstep; exact Equiv.refl _
     | iota _ _ =>
-      simp only [concEval, Option.some.injEq] at hstep
+      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
       subst hstep; exact Equiv.refl _
     | «fix» _ _ =>
-      simp only [concEval, Option.some.injEq] at hstep
+      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
       subst hstep; exact Equiv.refl _
     | asc t ty =>
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
@@ -312,7 +315,7 @@ theorem concEval_equiv_closed
         intro S Γe
         exact ⟨.trans (.trans (h_body).1 (h_subst).1) (h_unfold).1,
                .trans (.trans (h_unfold).2 (h_subst).2) (h_body).2⟩
-      · simp at hstep
+      all_goals simp at hstep
     | app f a =>
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       simp only [concEval] at hstep
@@ -405,14 +408,14 @@ theorem concEval_equiv_closed
             h_body.2
       -- other head: just .app_cong
       · next fVal a' _ _ _ hf ha =>
-        simp only [Option.some.injEq] at hstep; subst hstep
+        simp only [Option.some.injEq, Outcome.ok.injEq] at hstep; subst hstep
         have h_f : Equiv fVal f := ih hcl.1 hf
         have h_a : Equiv a' a := ih hcl.2 ha
         intro S Γe
         exact ⟨.app_cong h_f.1 h_a.1 h_a.2,
                .app_cong h_f.2 h_a.2 h_a.1⟩
-      -- failure cases
-      · simp_all
+      -- failure cases: all collapse to hstep = .outOfFuel/.error = .ok e' (absurd)
+      all_goals simp_all
 
 /-- The forward-only half, kept for callers that don't need
 the equivalence. Now derived via `concEval_equiv_closed`
@@ -421,7 +424,7 @@ sorry. -/
 theorem concEval_refines
     {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
-    (hstep : concEval fuel e = some e') :
+    (hstep : concEval fuel e = .ok e') :
     ∀ {S Γ}, Subtype' S Γ e' e :=
   fun {_ _} => (concEval_equiv_closed hcl hstep).1
 
@@ -432,7 +435,7 @@ theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)
-    (hstep : concEval fuel e = some e') :
+    (hstep : concEval fuel e = .ok e') :
     Subtype' [] [] e' τ :=
   .trans (concEval_refines hcl hstep) hty
 
@@ -441,9 +444,9 @@ theorem soundness
     {fuel : Nat} {e e' τ : Expr}
     (hfuel : fuel ≤ fuelω)
     (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (hnfe : (nf fuelω e).isSome) (hnfτ : (nf fuelω τ).isSome)
+    (hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
     (hcheck : typeCheck fuel e τ = .ok true)
-    (hstep : concEval fuel e = some e') :
+    (hstep : concEval fuel e = .ok e') :
     Subtype' [] [] e' τ :=
   concEval_preservation hcle
     (typeCheck_sound hfuel hcle hclτ hnfe hnfτ hcheck) hstep
