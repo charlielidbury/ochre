@@ -10,6 +10,55 @@ roll back** if they disagree.
 
 ---
 
+## 2026-04-23 — Task 3 also blocked; Phase 1 boundary confirmed
+
+**Context.** Dispatched Task 3 (`quoteClosure_realises`) under the
+`hnfq`-threading architecture. Subagent explored both Route A
+(inline into `R_quote_equiv`'s mutual, new lex termination measure)
+and Route B (post-mutual theorem). Both failed.
+
+**Findings (commit `f8f435e`):**
+
+- *Route A*: Lean's termination checker rejects the lex measure
+  `(fuel, sizeOf v)` for the closure case, because `R_quote_equiv`
+  recurses on `v'` (eval output) whose `sizeOf` has no structural
+  relation to the original Val. No lex tuple bridges
+  `vapp → R_quote_equiv → eval_realises` fuel crossover.
+- *Route B*: post-mutual proof needs `R_quote_equiv` on the eval
+  output `v`, which can be closure-valued. Pre-mutual
+  `R_quote_equiv`'s closure cases are sorried — cascading sorryAx,
+  not axiom-clean.
+- *New finding*: `vapp_realises`'s `.stuckRec` branches also call
+  `R_quote_equiv` on closure-valued heads. Task 2 is now known to
+  have inter-task coupling with Task 3's blocker.
+
+**Net situation.** All four declaration-level sorries in
+`SoundnessProof.lean` are structurally blocked under Option 1:
+
+| Task | Target | Status |
+|---|---|---|
+| 1 | `eval_vapp_preserves_fullyQuotable` | formally impossible (Halting reduction) |
+| 2 | `vapp_realises` | depends on Task 1 + blocked Task 3 interaction |
+| 3 | `quoteClosure_realises` | termination + cascading sorryAx |
+| 4C | `tyInfer_sound_open` A9 | intentionally sorried (DECISION-LOG 2026-04-22) |
+| 4A | `tyInfer_sound_open` hnfq | depends on Task 1 |
+| 4B | `tyInfer_sound_open` Subtype' | possibly closable independently |
+
+**Decision.** Dispatch Task 4 Category B as the remaining tractable
+item. If it closes, we have partial Phase 1 progress (some local
+sorries become theorems) even though the declaration-level sorry
+count stays at 4. If it also blocks, Phase 1 is fully confirmed
+infeasible and user needs to pick Phase 2 / Option 1.75 path.
+
+**Rollback path for user.** If user wants to commit to Option 1.75
+(typed NbE, Abel-style fundamental lemma, estimated 2-4 weeks
+research-scale work), that's the architecturally correct next step
+based on the data. Alternatively: accept the 4 sorries as
+permanent documentation of OCH's non-total boundary (consistent
+with `paper.md §7.1`'s stated non-goal of normalization).
+
+---
+
 ## 2026-04-23 — Research: Task 1 goal is formally impossible + Phase 2 doesn't fix it
 
 **Context.** Dispatched a research probe (per user directive "tackle
