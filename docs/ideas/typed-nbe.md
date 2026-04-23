@@ -30,11 +30,38 @@ is the canonical reference; we'd adapt for OCH's type-in-type + fix
 setting.
 
 **Key observation.** Classical reducibility candidates prove
-termination for a *total* calculus. OCH is non-total (type-in-type,
-unrestricted fix). So we can't expect a termination-in-the-large
-result. What we CAN hope for: a reducibility predicate that captures
-exactly the fragment where `quote` terminates at fuelω. Types flow
-through the predicate; Ω-analog terms are excluded.
+termination for a *total* calculus — the canonical form is `RC τ v
+iff v terminates at τ`, and the fundamental lemma gives RC on all
+well-typed outputs, hence strong normalization.
+
+**This doesn't port to OCH.** OCH is non-total: `fix x:A. x`
+typechecks at any A, and the Ω-combinator typechecks via recursive
+types (`x : fix X. X → X`). So OCH has well-typed closed terms that
+diverge under eval. A fundamental lemma "typeCheck ⟹ RC" combined
+with "RC ⟹ terminates" would imply "typeCheck ⟹ terminates,"
+which is **false** for OCH. The classical vision cannot be
+faithfully ported.
+
+**What can be ported.** Three weaker variants, in descending honesty:
+
+1. **Step-indexed RC_n τ v** meaning "v's quote succeeds within
+   some fuel tied to n." Fundamental lemma: "typeCheck n e τ ⟹
+   result is in RC_n τ." Not a termination result in the large,
+   but sufficient for the specific sorry (which is parametric in
+   fuel anyway). This is probably the right target.
+
+2. **RC restricted to a terminating fragment.** Define RC so that
+   recursive-type-inhabiting `fix` values are excluded. Fundamental
+   lemma covers only expressions that avoid those features. Closes
+   the sorry for the fragment, not in general. Essentially
+   importing Coq's total fragment into OCH's framework.
+
+3. **"RC = quote-terminates"** trivially restates the sorry.
+   Research note already showed this predicate is not preserved
+   by eval/vapp without further structure. Dead end.
+
+The rest of this document sketches (1), step-indexed RC, as the
+most workable target.
 
 ## The sketch
 
