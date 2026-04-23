@@ -1071,45 +1071,56 @@ theorem Subtype'.unshift_trivial {S Γ X a b}
       Expr.shift_of_closedAt hb 1 (Nat.le_refl _)] at h
   exact h
 
-/-! **UNSHIFT at cutoff 0, head-position** (blocker for
-`tyInfer_sound_open`'s `.letE`/`.app β`/`.app let-float` arms).
+/-! ### UNSHIFT at cutoff 0, head-position
 
-Statement: if `a`, `b` are closed at `|Γ|`, then a derivation at
-`(X :: Γ)` of `(a.shift 1 0) ⊑ (b.shift 1 0)` pushes back to a
-derivation at `Γ` of `a ⊑ b`.
+The key lemma needed by `tyInfer_sound_open`'s `.letE`/`.app β`/
+`.app let-float` arms:
 
-**Not yet closed in this branch.** The cleanest syntactic route
-is via a substitution lemma for `Subtype'` (substitute `.bot` for
-`.bvar 0` throughout the derivation; `(a.shift 1 0)[0 := .bot] = a`
-by `shift_subst_cancel`; `.bvar 0 ⊑ X.shift 1 0` reduces via
-`.bot_L`). That substitution lemma is a large structural
-induction over ~24 `Subtype'` constructors:
+```
+  Subtype' [] (X :: Γ) (a.shift 1 0) (b.shift 1 0) →
+  Subtype' [] Γ a b
+```
 
-- Shape-inversion cases (`.refl`, `.top`, `.bot_L`, `.bvar k` with
-  `k ≥ 1`, `.lam`, `.iota_body`, `.fix_body`, `.iota_cong`,
-  `.fix_cong`, `.letE_cong`, `.app_cong`, `.asc_L`, `.asc_R`):
-  mechanical.
-- Productive rules (`.iota_intro`, the four `.unfold_*`): the
-  seen-set `S` is consed with `(|Γ'|, a', b')`; under subst, this
-  becomes `(|Γ|, a'[0:=s], b'[0:=s])`. Depth-tag adjustment must
-  be propagated through `.hyp`.
-- `.hyp`: the hypothesis at depth `d` is used with shift
-  `|Γ'| - d`. After subst, the shift becomes `|Γ| - d'`, where
-  `d'` is the subst'd depth tag. The shift-subst commutation
-  mirrors `Seen.hyp_shift_commute` but in the inverse direction.
-- `.trans c`: the intermediate `c` is arbitrary. Under subst 0 s,
-  it becomes `c[0 := s]`, and the two sub-derivations are provable
-  by IH. Tractable via subst (unlike direct UNSHIFT-by-structure).
-- `.beta_L`, `.beta_R`, `.letE_L`, `.letE_R`: subst-shift swap
-  arithmetic via `subst_shift_swap`.
+**Strategy**: substitute `.bot` for `.bvar 0` throughout the
+derivation. Key facts:
+- `.bot` contains no bvars, so `.bot.shift n c = .bot`.
+- `.bvar 0 ⊑ X.shift 1 0` becomes, after subst, `.bot ⊑ X`, which
+  holds by `.bot_L`.
+- `(e.shift 1 0).subst 0 .bot = e` by `shift_subst_cancel`.
 
-Estimated 300–500 LOC when finished. The semantic route (via
-realisability `R`) is also open but requires embedding the
-declarative relation in the model, which is non-trivial and
-independently unlanded.
+**Seen-set handling**. The substitution lemma needs a uniform
+seen-set transform `seenSubstBot g`: entries with `d ≤ g` stay
+unchanged (their `.hyp` shift `g+1 - d ≥ 1` absorbs one
+subst-cancel cleanly); entries with `d = g+1` decrement and get
+their `a`, `b` substituted. Productive rules (`iota_intro`,
+`unfold_*`) maintain this invariant.
 
-Documented here so the `SoundnessProof.lean` call sites know the
-proof obligation they're waiting on. -/
+**Binder generalisation**. Binder cases (`.lam`, iota/fix body
+rules, `letE_cong`, `iota_intro` producing body subst, the four
+`unfold_*` rules' body substitution arithmetic) require
+recursing at `(dB :: X :: Γ)` where the inner IH would need
+substitution at position 1 (not 0). This necessitates a
+prefix-generalised form:
+
+```
+  Subtype' S (Γpfx ++ X :: Γ) a b →
+  Subtype' (S.map (seenSubstBot (|Γpfx| + |Γ|))) (Γpfx.substPrefix ++ Γ)
+    (a.subst |Γpfx| .bot) (b.subst |Γpfx| .bot)
+```
+
+where `Γpfx.substPrefix` substitutes each entry of the prefix at
+its own depth-of-record (analogous to `Ctx.shiftPrefix` for
+`ctx_extend_at`).
+
+**Scope estimate**. ~300–500 LOC structural induction over 24
+`Subtype'` constructors, with shift-subst arithmetic in `.hyp`
+(mirroring `Seen.hyp_shift_commute` in the substitution
+direction) and seen-set depth-tag rewiring in productive rules.
+
+**Not proven in this branch.** Four prior subagent sessions
+attempted variants of this and documented progressive
+infrastructure; none closed the lemma. Disposition: see
+`docs/ideas/sorry-closure-plan.md` (post-mortem section). -/
 
 /-! ### Algorithmic-checker properties and known issues
 
