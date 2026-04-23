@@ -88,19 +88,19 @@ example : NbE.typeCheck 200 (och{ idAscribed Nat_ three_ }) Nat_
 
 -- id Nat 3 = 3 (identity computes correctly)
 example : concEval fuel (och{ id_ Nat_ three_ })
-  = some three_ := by native_decide
+  = .ok three_ := by native_decide
 
 -- id Nat 0 = 0
 example : concEval fuel (och{ id_ Nat_ zero_ })
-  = some zero_ := by native_decide
+  = .ok zero_ := by native_decide
 
 -- idAscribed Nat 3 = 3 (concrete evaluation is still precise)
 example : concEval fuel (och{ idAscribed Nat_ three_ })
-  = some three_ := by native_decide
+  = .ok three_ := by native_decide
 
 -- id Bool true = true  (works on other types too)
 example : concEval fuel (och{ id_ Bool true_ })
-  = some true_ := by native_decide
+  = .ok true_ := by native_decide
 
 end Tests
 end Std

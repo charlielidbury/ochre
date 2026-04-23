@@ -85,12 +85,12 @@ private def NatToNat := och{ Nat_ → Nat_ }
 
 -- ── Positive: computation via concEval ──
 
-example : concEval 200 (och{ isZero_ zero_ }) = some Std.true_ := by native_decide
-example : concEval 200 (och{ isZero_ three_ }) = some Std.false_ := by native_decide
-example : concEval 200 (och{ isZero_ (succ_ two_) }) = some Std.false_ := by native_decide
-example : concEval 1000 (och{ isZero_ (pred_ one_) }) = some Std.true_ := by native_decide
-example : concEval 1000 (och{ isZero_ (pred_ two_) }) = some Std.false_ := by native_decide
-example : concEval 1000 (och{ isZero_ (pred_ zero_) }) = some Std.true_ := by native_decide
+example : concEval 200 (och{ isZero_ zero_ }) = .ok Std.true_ := by native_decide
+example : concEval 200 (och{ isZero_ three_ }) = .ok Std.false_ := by native_decide
+example : concEval 200 (och{ isZero_ (succ_ two_) }) = .ok Std.false_ := by native_decide
+example : concEval 1000 (och{ isZero_ (pred_ one_) }) = .ok Std.true_ := by native_decide
+example : concEval 1000 (och{ isZero_ (pred_ two_) }) = .ok Std.false_ := by native_decide
+example : concEval 1000 (och{ isZero_ (pred_ zero_) }) = .ok Std.true_ := by native_decide
 
 -- ── Positive: NbE normal-form equality ──
 

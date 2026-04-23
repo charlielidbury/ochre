@@ -91,23 +91,23 @@ section Tests
 -- in head position so the Church-style bodies reduce as before.
 -- -----------------------------------------------------------
 
-example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) = some zero_ := by native_decide
-example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) = some one_ := by native_decide
+example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) = .ok zero_ := by native_decide
+example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) = .ok one_ := by native_decide
 
 private def dbcase := och{
   λb:dBool. b (λ_:dBool. Nat_) zero_ one_
 }
 
-example : concEval 50 (och{ dbcase dtrue }) = some zero_ := by native_decide
-example : concEval 50 (och{ dbcase dfalse }) = some one_ := by native_decide
+example : concEval 50 (och{ dbcase dtrue }) = .ok zero_ := by native_decide
+example : concEval 50 (och{ dbcase dfalse }) = .ok one_ := by native_decide
 
 -- Dependent elimination. depMotive picks Nat for true, Bool for false.
 private def depMotive := och{
   λb:dBool. b (λ_:dBool. Type) Nat_ Bool
 }
 
-example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = some zero_ := by native_decide
-example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = some true_ := by native_decide
+example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = .ok zero_ := by native_decide
+example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = .ok true_ := by native_decide
 
 -- -----------------------------------------------------------
 -- Subtyping: the central aspirational tests. Closed via the
@@ -143,8 +143,8 @@ example : concEval 100 (och{ and dfalse dfalse }) = concEval 100 dfalse := by na
 -- Negative / sanity checks
 -- -----------------------------------------------------------
 
-example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) ≠ some one_ := by native_decide
-example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) ≠ some zero_ := by native_decide
+example : concEval 50 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) ≠ .ok one_ := by native_decide
+example : concEval 50 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) ≠ .ok zero_ := by native_decide
 example : concEval 100 (och{ not dtrue }) ≠ concEval 100 dtrue := by native_decide
 example : concEval 100 (och{ not dfalse }) ≠ concEval 100 dfalse := by native_decide
 example : concEval 100 (och{ and dfalse dtrue }) ≠ concEval 100 dtrue := by native_decide

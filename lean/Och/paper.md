@@ -995,38 +995,98 @@ before any concrete argument exists.
 
 ## 7. Metatheory
 
-Three soundness theorems ([lean/Och/Soundness.lean](Soundness.lean))
-link the concrete semantics (§2), the declarative subtyping (§3), and
-the algorithmic checker (§§4–6).
+Soundness theorems ([lean/Och/Soundness.lean](Soundness.lean)) link
+the concrete semantics (§2), the declarative subtyping (§3), and the
+algorithmic checker (§§4–6). The diagram below unifies three views:
+the external soundness claim, the internal algorithmic relations, and
+the declarative / intermediate relations the proofs route through.
 
 ```mermaid
-flowchart LR
-    subgraph algo["Algorithmic world"]
-        tc["∅ ; ∅ ⊢ e ⇐ τ"]
-        ce["e ⇓ e'"]
-        tc --> ce
+flowchart TB
+    subgraph algo["Algorithmic world (runs): NbE + concEval"]
+        direction TB
+        typ["∅ ; ∅ ⊢ e ⇐ τ<br/>(entry; §6)"]
+        tinf["Γ ; ρ ⊢ e ⇒ τ<br/>(synthesise)"]
+        tchk["Γ ; ρ ⊢ e ⇐ τ<br/>(check)"]
+        nev["ρ ⊢ e ⇒ v<br/>(NbE eval; §4)"]
+        vap["f · a ⇒ v<br/>(vapp)"]
+        qt["v ↓ e<br/>(quote)"]
+        scv["S ; Γ ⊢ a ⊑ᵥ b<br/>(subCheckVal; §5)"]
+        ce["e ⇓ e'<br/>(concEval; §2)"]
+        typ -->|"eval τ to τV,<br/>delegate to check mode"| tchk
+        tchk -.->|"if can't check,<br/>synthesise and compare"| tinf
+        tchk -->|"eval annotations<br/>(domain, expected)"| nev
+        tchk -->|"synthed ⊑ᵥ expected"| scv
+        tinf -->|"eval annotations,<br/>app heads, let values"| nev
+        nev -->|"reduce .app / unfold .iota·.fix"| vap
+        scv -->|"emit Expr for Subtype'"| qt
     end
-    subgraph decl["Declarative world (Subtype')"]
-        r1["∅ ; ∅ ⊢ e ⊑ τ"]
-        r2["∅ ; ∅ ⊢ e' ⊑ τ"]
-        r1 -->|"concEval_preservation"| r2
+
+    subgraph decl["Declarative world (§3): ⊑ and companions"]
+        direction TB
+        st["S ; Γ ⊢ a ⊑ b<br/>(declarative ⊑)"]
+        subv["SubV<br/>(algorithm reflection)"]
+        eqc["e₁ ≡_d e₂<br/>(Equiv_c: ⊑ both ways<br/>at depth d)"]
+        rr["v ∼_d e<br/>(R: Val realises Expr<br/>at depth d)"]
+        subv -->|"SubV_to_Subtype':<br/>reflection → declarative"| st
+        rr -->|"R_quote_equiv:<br/>quote the realiser"| eqc
+        eqc -->|"take one direction<br/>(fst or snd of pair)"| st
     end
-    tc -.->|"typeCheck_sound"| r1
-    ce -.->|"concEval_preservation<br/>(same theorem, different view)"| r2
-    tc ==>|"soundness (composed)"| r2
+
+    scv  -.->|"subCheckVal_subV:<br/>algorithm accepts → SubV holds"| subv
+    nev  -.->|"eval_realises:<br/>eval output realises source"| rr
+    vap  -.->|"vapp_realises:<br/>vapp output realises .app"| rr
+    typ  -.->|"typeCheck_sound:<br/>accept → declarative ⊑"| st
+    ce   -.->|"concEval_equiv_closed:<br/>e ⇓ e' → e ≡ e'"| eqc
+    ce   -.->|"concEval_preservation:<br/>composes with typeCheck_sound"| st
+    typ  ==>|"soundness (composed<br/>with concEval result)"| st
 
     classDef algoStyle fill:#fef3c7,stroke:#92400e
     classDef declStyle fill:#dbeafe,stroke:#1e40af
-    class tc,ce algoStyle
-    class r1,r2 declStyle
+    class typ,tchk,tinf,nev,vap,qt,scv,ce algoStyle
+    class st,subv,eqc,rr declStyle
 ```
 
-The algorithmic world (what actually runs) sits on the left; the
-declarative world (what the subtyping rules of §3 mean) sits on the
-right. Each soundness theorem is an arrow crossing between the two.
-`soundness` is the composition: the end-to-end guarantee that
-type-checking and then concrete-evaluating produces a term that still
-satisfies the declared type declaratively.
+Reading guide:
+
+- **Algorithmic world (yellow)**: what actually runs. `typeCheck` is
+  the user-facing entry. It dispatches to the bidirectional pair
+  `tyInfer ⇒` (synthesise a type) and `tyCheck ⇐` (check against a
+  given type), which in turn call `NbE eval` for Val-level computation,
+  `vapp` for Val-level application, and `subCheckVal` for subtype
+  comparison between Vals (which uses `quote` to close proof
+  obligations back to Expr). `concEval` runs separately as the
+  big-step Expr-level evaluator.
+- **Declarative world (blue)**: the formal semantics. `Subtype'` is
+  the derivation relation (§3). `SubV` mirrors `subCheckVal`'s
+  match-arms 1-to-1 and bridges back to `Subtype'` via
+  `SubV_to_Subtype'`. `Equiv_c d e₁ e₂` is `Subtype'` in both
+  directions at depth d. `R m d v e` (realisation) connects a Val
+  to the Expr it represents at step index m and depth d.
+- **Solid arrows** inside each subgraph are call / derivation
+  dependencies (typeCheck calls tyCheck calls NbE eval; SubV refines
+  Subtype'; Equiv_c decomposes to Subtype'; etc.).
+- **Dashed arrows** between the two worlds are *soundness theorems*:
+  each says "algorithm says OK ⟹ declarative derivation exists."
+  Every declaration-level sorry in `SoundnessProof.lean` lives on one
+  of these dashed arrows.
+- **The heavy arrow `soundness (composed)`** is the user-level
+  composition: "if `typeCheck e τ` accepted AND `concEval e` produced
+  some e', then e' declaratively subtypes τ." It goes through
+  `typeCheck_sound` + `concEval_preservation` under the hood.
+
+`concEval_equiv_closed` sits separately: it establishes declarative
+equivalence between `e` and `e'` via one-step rules (β, ι-unfold,
+fix-unfold, asc-erase) independently of typing. `concEval_preservation`
+composes it with `typeCheck_sound` to land on `Subtype'`.
+
+The blocked Phase 1 sorries (per
+`docs/ideas/sorry-closure-plan.md`) all live on the `eval_realises` /
+`vapp_realises` / `R_quote_equiv` / `typeCheck_sound` dashed arrows —
+specifically at points where these theorems need a `quote`-succeeds
+witness on intermediate closure values. The research note
+`docs/ideas/quote-witness-feasibility.md` proves that witness cannot
+be derived structurally in untyped OCH.
 
 **Subtyping soundness.**
 [`subCheckVal_sound`](Soundness.lean#L84) — if the algorithm accepts two

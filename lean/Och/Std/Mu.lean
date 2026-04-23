@@ -54,7 +54,7 @@ open Expr
 -- ------------------------------------------------------------
 
 -- fixId normalises (and to itself, since a closed `.fix` is its own NF)
-example : NbE.nf 200 fixId = some fixId := by native_decide
+example : NbE.nf 200 fixId = .ok fixId := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (positive)
@@ -83,30 +83,30 @@ example : NbE.subCheck 1000 fixId Nat_ = .ok false := by native_decide
 -- ------------------------------------------------------------
 
 -- fixId 3 = 3
-example : concEval 1000 (och{ fixId three_ }) = some three_ := by native_decide
+example : concEval 1000 (och{ fixId three_ }) = .ok three_ := by native_decide
 -- fixId 0 = 0
-example : concEval 1000 (och{ fixId zero_ }) = some zero_ := by native_decide
+example : concEval 1000 (och{ fixId zero_ }) = .ok zero_ := by native_decide
 
 -- toZeroThunked 0 = 0
-example : concEval 1000 (och{ toZeroThunked zero_ }) = some zero_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked zero_ }) = .ok zero_ := by native_decide
 -- toZeroThunked 1 = 0
-example : concEval 1000 (och{ toZeroThunked one_ }) = some zero_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked one_ }) = .ok zero_ := by native_decide
 -- toZeroThunked 2 = 0
-example : concEval 1000 (och{ toZeroThunked two_ }) = some zero_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked two_ }) = .ok zero_ := by native_decide
 -- toZeroThunked 3 = 0
-example : concEval 1000 (och{ toZeroThunked three_ }) = some zero_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked three_ }) = .ok zero_ := by native_decide
 
 -- Compose: toZeroThunked (add 2 1) = 0
-example : concEval 1000 (och{ toZeroThunked (add_ two_ one_) }) = some zero_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked (add_ two_ one_) }) = .ok zero_ := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (negative) -- concEval
 -- ------------------------------------------------------------
 
 -- toZeroThunked 1 /= 1
-example : concEval 1000 (och{ toZeroThunked one_ }) ≠ some one_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked one_ }) ≠ .ok one_ := by native_decide
 -- toZeroThunked 3 /= 3
-example : concEval 1000 (och{ toZeroThunked three_ }) ≠ some three_ := by native_decide
+example : concEval 1000 (och{ toZeroThunked three_ }) ≠ .ok three_ := by native_decide
 
 -- ------------------------------------------------------------
 -- Mu-app domain normalization divergence (minimal repro)
@@ -128,11 +128,11 @@ example : concEval 1000 (och{ toZeroThunked three_ }) ≠ some three_ := by nati
 private def selfRefFn := och{ fix f:(Type → Type). λx:Type. λP:((f x) → Type). P }
 
 -- f alone is fine (fix is a value, no unfolding)
-example : NbE.nf 200 selfRefFn = some selfRefFn := by native_decide
+example : NbE.nf 200 selfRefFn = .ok selfRefFn := by native_decide
 
 -- f applied to Type normalises (NbE handles the self-ref-in-domain
 -- case via its `unf` budget; the legacy `absEval` used `muSeen`).
-example : (NbE.nf 500 (och{ selfRefFn Type })).isSome := by native_decide
+example : (NbE.nf 500 (och{ selfRefFn Type })).isOk := by native_decide
 
 end Tests
 end Std

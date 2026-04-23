@@ -36,10 +36,10 @@ def or := och{ λa:Bool. λb:Bool. a Bool true_ b }
 section Tests
 
 -- true X t f = t
-example : concEval 50 (och{ true_ Bool true_ false_ }) = some true_ := by native_decide
+example : concEval 50 (och{ true_ Bool true_ false_ }) = .ok true_ := by native_decide
 
 -- false X t f = f
-example : concEval 50 (och{ false_ Bool true_ false_ }) = some false_ := by native_decide
+example : concEval 50 (och{ false_ Bool true_ false_ }) = .ok false_ := by native_decide
 
 -- not true = false
 example : concEval 50 (och{ not' true_ }) = concEval 50 false_ := by native_decide
@@ -77,9 +77,9 @@ example : NbE.subCheck 50 or (och{ Bool → Bool }) = .ok false := by native_dec
 
 -- computation (negative)
 -- true selects first arg, not second
-example : concEval 50 (och{ true_ Bool true_ false_ }) ≠ some false_ := by native_decide
+example : concEval 50 (och{ true_ Bool true_ false_ }) ≠ .ok false_ := by native_decide
 -- false selects second arg, not first
-example : concEval 50 (och{ false_ Bool true_ false_ }) ≠ some true_ := by native_decide
+example : concEval 50 (och{ false_ Bool true_ false_ }) ≠ .ok true_ := by native_decide
 -- not true ≠ true
 example : concEval 50 (och{ not' true_ }) ≠ concEval 50 true_ := by native_decide
 -- and false true ≠ true

@@ -98,7 +98,7 @@ example : NbE.subCheck 1000 unit_ (och{ Array_ done_ Nat_ }) = .ok false := by n
 
 -- ── Smoke: Array_ applied with abstract-friendly DNat index ───
 
-example : (NbE.nf 1000 (och{ Array_ (dsucc dzero) Nat_ })).isSome := by native_decide
+example : (NbE.nf 1000 (och{ Array_ (dsucc dzero) Nat_ })).isOk := by native_decide
 
 example : NbE.nf 400 (och{ Array_ done_ Nat_ }) = NbE.nf 400 (och{ Pair Nat_ Unit_ }) := by
   native_decide

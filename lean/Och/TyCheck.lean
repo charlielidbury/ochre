@@ -31,6 +31,14 @@ which holds operationally but not via type-ascent — never surfaces.
 Recursing into fix bodies is future work (it needs the body checked
 against the annotation under a self-hypothesis, i.e. the standard
 fixpoint typing rule).
+
+Note (2026-04-23): `tyInfer` / `tyCheck` retain `Except String α`
+return types rather than migrating to `Outcome α`; the proofs in
+`SoundnessProof.lean` (`tyInfer_sound_open` / `tyCheck_sound_open`)
+are written against the two-constructor pattern. A compatibility
+bridge converts from the `Outcome`-returning `eval`/`quote`/`open`
+helpers they call. Future work: unify the return types once the
+SoundnessProof surgery is less expensive.
 -/
 
 namespace NbE
@@ -60,12 +68,14 @@ where
   go : Nat → Val → Option Val
   | 0, v => some v
   | _+1, v@(.lam ..) => some v
-  | n+1, v@(.fix _ cl) => do
-      let v' ← cl.open fuel v
-      go n v'
-  | n+1, .iota _ cl => do
-      let v' ← cl.open fuel inhab
-      go n v'
+  | n+1, v@(.fix _ cl) =>
+      match cl.open fuel v with
+      | .ok v' => go n v'
+      | _ => none
+  | n+1, .iota _ cl =>
+      match cl.open fuel inhab with
+      | .ok v' => go n v'
+      | _ => none
   -- Bot is not a Π head (it's non-applicable). Return `none` so
   -- callers treat it as "no Π exposed" — see `docs/ideas/bottom.md`.
   | _, .bot => none
@@ -95,8 +105,10 @@ mutual
           -- mode against `Type`. See `docs/ideas/bottom.md`.
           .error "tyInfer: Bot has no synthesized type; use as annotation"
       | .asc e' τ => do
-          let some τV := eval fuel unfBound ρ τ
-            | .error "tyInfer: asc τ eval"
+          let τV ← match eval fuel unfBound ρ τ with
+            | .ok v => .ok v
+            | .outOfFuel => .error "tyInfer: asc τ eval (OOF)"
+            | .error s => .error s
           let okInner ← tyCheck fuel Γ ρ e' τV
           if !okInner then
             .error s!"tyInfer: ascription {repr τ} rejected"
@@ -113,11 +125,13 @@ mutual
           -- of `tyCheck` does exactly that after consulting
           -- `tyInfer val`. SoundnessAudit A9.
           match eval fuel unfBound ρ ann with
-          | none => .error "tyInfer: fix/iota ann eval"
-          | some annV => .ok (some annV)
+          | .outOfFuel => .error "tyInfer: fix/iota ann eval (OOF)"
+          | .error s => .error s
+          | .ok annV => .ok (some annV)
       | .lam dom body => do
-          let some domV := eval fuel unfBound ρ dom
-            | .error "tyInfer: lam dom eval"
+          let domV ← match eval fuel unfBound ρ dom with
+            | .ok v => .ok v
+            | _ => .error "tyInfer: lam dom eval"
           let fresh := Val.neutral (.var Γ.size)
           let bodyTy? ← tyInfer fuel (Γ.push domV) (fresh :: ρ) body
           match bodyTy? with
@@ -128,9 +142,9 @@ mutual
             -- depth `Γ.size + 1` so the fresh binder becomes bvar 0
             -- and outer levels line up with `ρ`.
             match quote fuel (Γ.size + 1) bodyTy with
-            | none => .ok none
-            | some bodyTyE =>
+            | .ok bodyTyE =>
                 .ok (some (.lam domV (Closure.mk' bodyTyE ρ)))
+            | _ => .ok none
       | .app (.lam dom body) a => do
           -- β fast-path: an immediately-applied lambda. Och has
           -- no top-level definitions, so every reference to a
@@ -143,14 +157,16 @@ mutual
           -- (the reified closure isn't `beq` to the source one).
           -- Instead just check the argument against the domain
           -- and recurse into the body with the argument bound.
-          let some domV := eval fuel unfBound ρ dom
-            | .error "tyInfer: β dom eval"
+          let domV ← match eval fuel unfBound ρ dom with
+            | .ok v => .ok v
+            | _ => .error "tyInfer: β dom eval"
           let okArg ← tyCheck fuel Γ ρ a domV
           if !okArg then
             .error s!"tyInfer: β arg ⊄ dom at {spineSummary e 0} (arg={spineSummary a 0}, |Γ|={Γ.size})"
           else
-            let some aV := eval fuel unfBound ρ a
-              | .error "tyInfer: β arg eval"
+            let aV ← match eval fuel unfBound ρ a with
+              | .ok v => .ok v
+              | _ => .error "tyInfer: β arg eval"
             tyInfer fuel (Γ.push domV) (aV :: ρ) body
       | .app (.letE val fbody) a => do
           -- Let-headed application: float the `let` out so the
@@ -162,8 +178,9 @@ mutual
           match fTy? with
           | none => .ok none
           | some fTy =>
-              let some fV := eval fuel unfBound ρ f
-                | .error "tyInfer: app head eval"
+              let fV ← match eval fuel unfBound ρ f with
+                | .ok v => .ok v
+                | _ => .error "tyInfer: app head eval"
               match whnfPi fuel fV fTy with
               | some (.lam dom cl) => do
                   -- Domain check: the whole point of the pass.
@@ -171,11 +188,12 @@ mutual
                   if !okArg then
                     .error s!"tyInfer: arg ⊄ dom at {spineSummary e 0} (arg={spineSummary a 0}, |Γ|={Γ.size})"
                   else
-                    let some aV := eval fuel unfBound ρ a
-                      | .error "tyInfer: arg eval"
+                    let aV ← match eval fuel unfBound ρ a with
+                      | .ok v => .ok v
+                      | _ => .error "tyInfer: arg eval"
                     match cl.open fuel aV with
-                    | none => .error "tyInfer: codomain open"
-                    | some retTy => .ok (some retTy)
+                    | .ok retTy => .ok (some retTy)
+                    | _ => .error "tyInfer: codomain open"
               | _ => .ok none
       | .letE val body => do
           let (valV, valTy) ← letBinderType fuel Γ ρ val
@@ -190,8 +208,9 @@ mutual
     | fuel + 1 =>
       match e with
       | .lam dom body => do
-          let some domV := eval fuel unfBound ρ dom
-            | .error "tyCheck: lam dom eval"
+          let domV ← match eval fuel unfBound ρ dom with
+            | .ok v => .ok v
+            | _ => .error "tyCheck: lam dom eval"
           -- Try to expose a Π head on the expected type. The
           -- inhabitant for ι-unfold is a fresh neutral of type
           -- `expected` (we're checking the term against it).
@@ -201,16 +220,17 @@ mutual
               let okDom ← subCheckVal fuel Γ [] expDom domV
               if !okDom then return false
               match expCl.open fuel fresh with
-              | none => .error "tyCheck: expected codomain open"
-              | some expBody =>
+              | .ok expBody =>
                   tyCheck fuel (Γ.push expDom) (fresh :: ρ) body expBody
+              | _ => .error "tyCheck: expected codomain open"
           | _ => tyCheckFallback (fuel + 1) Γ ρ e expected
       | .letE val body => do
           let (valV, valTy) ← letBinderType fuel Γ ρ val
           tyCheck fuel (Γ.push valTy) (valV :: ρ) body expected
       | .asc e' τ => do
-          let some τV := eval fuel unfBound ρ τ
-            | .error "tyCheck: asc τ eval"
+          let τV ← match eval fuel unfBound ρ τ with
+            | .ok v => .ok v
+            | _ => .error "tyCheck: asc τ eval"
           let okInner ← tyCheck fuel Γ ρ e' τV
           if !okInner then return false
           subCheckVal fuel Γ [] τV expected
@@ -224,8 +244,9 @@ mutual
           -- body, so `(fix x:Nat. unit_) ⊑ Nat` correctly fails
           -- (`unit_ ⊑ Nat_body` is false). Sound by
           -- `subCheckVal_sound`. SoundnessAudit A9.
-          let some eV := eval fuel unfBound ρ e
-            | .error "tyCheck: fix/iota eval"
+          let eV ← match eval fuel unfBound ρ e with
+            | .ok v => .ok v
+            | _ => .error "tyCheck: fix/iota eval"
           subCheckVal fuel Γ [] eV expected
       | .bot =>
           -- Bot is acceptable only at `Val.type` — the bidirectional
@@ -257,8 +278,9 @@ mutual
         -- forms whose type isn't locally determined). This is
         -- what `NbE.subCheck` does, so it is at least as
         -- permissive on well-typed inputs.
-        let some eV := eval fuel unfBound ρ e
-          | .error "tyCheck: fallback eval"
+        let eV ← match eval fuel unfBound ρ e with
+          | .ok v => .ok v
+          | _ => .error "tyCheck: fallback eval"
         subCheckVal fuel Γ [] eV expected
   termination_by (fuel, 1)
 
@@ -285,8 +307,9 @@ mutual
   def letBinderType (fuel : Nat) (Γ : TyEnv) (ρ : Env)
       (val : Expr) : Except String (Val × Val) := do
     let valTy? ← tyInfer fuel Γ ρ val
-    let some valV := eval fuel unfBound ρ val
-      | .error "letBinderType: val eval"
+    let valV ← match eval fuel unfBound ρ val with
+      | .ok v => .ok v
+      | _ => .error "letBinderType: val eval"
     match valTy? with
     | none => pure (valV, valV)
     | some t => do
@@ -297,8 +320,9 @@ end
 
 /-- Top-level entry: type-check closed `e` against closed `τ`. -/
 def typeCheck (fuel : Nat) (e τ : Expr) : Except String Bool := do
-  let some τV := eval fuel unfBound [] τ
-    | .error "typeCheck: τ eval"
+  let τV ← match eval fuel unfBound [] τ with
+    | .ok v => .ok v
+    | _ => .error "typeCheck: τ eval"
   tyCheck fuel #[] [] e τV
 
 -- De-partialised: confirm `unfold` works on each (was

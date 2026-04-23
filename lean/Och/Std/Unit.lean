@@ -26,7 +26,7 @@ def unit_ := och{ λX:Type. λx:X. x }
 section Tests
 
 -- unit X x = x  (applying unit to a type and a value returns the value)
-example : concEval 50 (och{ unit_ Unit_ unit_ }) = some unit_ := by native_decide
+example : concEval 50 (och{ unit_ Unit_ unit_ }) = .ok unit_ := by native_decide
 
 -- subtype checking (positive)
 example : NbE.subCheck 50 unit_ Unit_ = .ok true := by native_decide
@@ -40,7 +40,7 @@ example : NbE.subCheck 50 .type Unit_ = .ok false := by native_decide
 
 -- computation (negative)
 -- unit selects its argument, not something else
-example : concEval 50 (och{ unit_ Unit_ unit_ }) ≠ some Unit_ := by native_decide
+example : concEval 50 (och{ unit_ Unit_ unit_ }) ≠ .ok Unit_ := by native_decide
 
 end Tests
 end Std

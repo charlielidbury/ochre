@@ -115,9 +115,9 @@ section Tests
 
 -- ── Positive computation tests (concEval) ───────────────────
 
-example : concEval 200 (och{ disZero dzero }) = some Std.true_ := by native_decide
-example : concEval 200 (och{ disZero done_ }) = some Std.false_ := by native_decide
-example : concEval 200 (och{ disZero dtwo }) = some Std.false_ := by native_decide
+example : concEval 200 (och{ disZero dzero }) = .ok Std.true_ := by native_decide
+example : concEval 200 (och{ disZero done_ }) = .ok Std.false_ := by native_decide
+example : concEval 200 (och{ disZero dtwo }) = .ok Std.false_ := by native_decide
 
 example : concEval 200 (och{ dpred dzero }) = concEval 200 dzero := by native_decide
 example : concEval 200 (och{ dpred done_ }) = concEval 200 dzero := by native_decide
@@ -138,8 +138,8 @@ private def depElim := och{
   λn:dNat. n depMotive zero_ (λpred:dNat. Std.true_)
 }
 
-example : concEval 200 (och{ depElim dzero }) = some zero_ := by native_decide
-example : concEval 200 (och{ depElim done_ }) = some Std.true_ := by native_decide
+example : concEval 200 (och{ depElim dzero }) = .ok zero_ := by native_decide
+example : concEval 200 (och{ depElim done_ }) = .ok Std.true_ := by native_decide
 
 -- ── Positive subtype checks ─────────────────────────────────
 
@@ -193,11 +193,11 @@ example : NbE.subCheck 200 dzero done_ = .ok false := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 
-example : concEval 200 (och{ disZero dzero }) ≠ some Std.false_ := by native_decide
-example : concEval 200 (och{ disZero done_ }) ≠ some Std.true_ := by native_decide
+example : concEval 200 (och{ disZero dzero }) ≠ .ok Std.false_ := by native_decide
+example : concEval 200 (och{ disZero done_ }) ≠ .ok Std.true_ := by native_decide
 example : concEval 200 (och{ dpred dtwo }) ≠ concEval 200 dzero := by native_decide
-example : concEval 200 (och{ depElim dzero }) ≠ some Std.true_ := by native_decide
-example : concEval 200 (och{ depElim done_ }) ≠ some zero_ := by native_decide
+example : concEval 200 (och{ depElim dzero }) ≠ .ok Std.true_ := by native_decide
+example : concEval 200 (och{ depElim done_ }) ≠ .ok zero_ := by native_decide
 
 end Tests
 end Std

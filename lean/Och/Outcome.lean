@@ -92,6 +92,13 @@ def getD {α : Type u} (default : α) : Outcome α → α
   | .ok a => a
   | _ => default
 
+/-- Extract the value; panics if not `.ok`. Used primarily in test
+sites where failure means a bug in the test setup. -/
+def get! {α : Type u} [Inhabited α] : Outcome α → α
+  | .ok a => a
+  | .outOfFuel => panic! "Outcome.get!: outOfFuel"
+  | .error s => panic! s!"Outcome.get!: error: {s}"
+
 /-- Map the error message. -/
 def mapError {α : Type u} (f : String → String) : Outcome α → Outcome α
   | .error s => .error (f s)
@@ -102,6 +109,15 @@ def mapError {α : Type u} (f : String → String) : Outcome α → Outcome α
 def toOption {α : Type u} : Outcome α → Option α
   | .ok a => some a
   | _ => none
+
+/-- Convert to an `Except String α`, discarding the distinction
+between `.outOfFuel` and `.error`. `.outOfFuel` becomes
+`.error "out of fuel"`. Used by the legacy-Except `subCheckVal`
+family to consume `Outcome`-valued `eval`/`vapp`/`open` results. -/
+def toExcept {α : Type u} (fuelMsg : String := "out of fuel") : Outcome α → Except String α
+  | .ok a => .ok a
+  | .outOfFuel => .error fuelMsg
+  | .error s => .error s
 
 /-- Decidable equality on outcomes with decidable payloads. -/
 instance {α : Type u} [DecidableEq α] : DecidableEq (Outcome α) := fun a b =>

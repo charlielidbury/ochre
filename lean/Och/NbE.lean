@@ -1,4 +1,5 @@
 import Och.Syntax
+import Och.Outcome
 
 /-!
 # Normalization by Evaluation for Och
@@ -15,6 +16,14 @@ This module replaced the substitution-based `absEval` (retired
 
 References: Abel "NbE: Dependent Types and Impredicativity" (2013);
 Christiansen "Checking Dependent Types with NbE: A Tutorial".
+
+## Return-type note (2026-04-23)
+
+`eval`/`vapp`/`quote` return `Outcome Val`/`Outcome Expr`: `.outOfFuel`
+is the benign fuel-exhaustion case (a retry with more fuel may
+succeed); `.error msg` is a genuine stuckness signal (e.g. `vapp .bot`
+— Bot is non-applicable). Migrated from `Option` 2026-04-23; see
+`docs/ideas/outcome-migration.md` (if extant) or the paper §7.1.
 -/
 
 namespace NbE
@@ -92,23 +101,26 @@ mutual
       structure so the chain is linear, and a small bound suffices
       to compute through any concrete dNat numeral while stopping
       the `(dsucc m)→Type` self-reference in done_'s annotation. -/
-  def eval (fuel unf : Nat) (env : Env) (e : Expr) : Option Val :=
+  def eval (fuel unf : Nat) (env : Env) (e : Expr) : Outcome Val :=
     match fuel with
-    | 0 => none
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match e with
-      | .type => some .type
-      | .bot => some .bot
-      | .bvar k => env[k]?
+      | .type => .ok .type
+      | .bot => .ok .bot
+      | .bvar k =>
+          match env[k]? with
+          | some v => .ok v
+          | none => .error s!"eval: unbound bvar {k}"
       | .lam dom body => do
           let dom' ← eval fuel unf env dom
-          some (.lam dom' (.mk' body env))
+          .ok (.lam dom' (.mk' body env))
       | .iota ann body => do
           let ann' ← eval fuel unf env ann
-          some (.iota ann' (.mk' body env))
+          .ok (.iota ann' (.mk' body env))
       | .fix ann body => do
           let ann' ← eval fuel unf env ann
-          some (.fix ann' (.mk' body env))
+          .ok (.fix ann' (.mk' body env))
       | .app f a => do
           let f' ← eval fuel unf env f
           let a' ← eval fuel unf env a
@@ -126,32 +138,32 @@ mutual
           eval fuel unf env t
   termination_by fuel
 
-  def vapp (fuel unf : Nat) (f a : Val) : Option Val :=
+  def vapp (fuel unf : Nat) (f a : Val) : Outcome Val :=
     match fuel with
-    | 0 => none
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match f with
       | .lam _dom ⟨body, env⟩ =>
           eval fuel unf (a :: env) body
       | .iota _ann ⟨body, env⟩ =>
           if a.isNeutral || unf == 0 then
-            some (.neutral (.stuckRec f a))
+            .ok (.neutral (.stuckRec f a))
           else do
             let f' ← eval fuel (unf - 1) (f :: env) body
             vapp fuel (unf - 1) f' a
       | .fix _ann ⟨body, env⟩ =>
           if a.isNeutral || unf == 0 then
-            some (.neutral (.stuckRec f a))
+            .ok (.neutral (.stuckRec f a))
           else do
             let f' ← eval fuel (unf - 1) (f :: env) body
             vapp fuel (unf - 1) f' a
-      | .neutral n => some (.neutral (.app n a))
-      | .type => some (.neutral (.stuckRec f a))
+      | .neutral n => .ok (.neutral (.app n a))
+      | .type => .ok (.neutral (.stuckRec f a))
       -- Bot is non-applicable (spec: Bot is a type; applying a value to it
       -- makes no sense). No arm for `.bot` above, so this branch is the
-      -- exhaustiveness fallback, and `vapp .bot a = none` — stuck.
-      -- See `docs/ideas/bottom.md`.
-      | .bot => none
+      -- exhaustiveness fallback, and `vapp .bot a = .error` — stuck,
+      -- not out-of-fuel. See `docs/ideas/bottom.md`.
+      | .bot => .error "vapp: Bot is non-applicable"
   termination_by fuel
 end
 
@@ -165,19 +177,25 @@ single `vapp` chain, never across the `n ≤ m` bridge).
 
 Equation lemmas for the `succ` case so the proof can step
 through one fuel layer without whnf'ing the whole body.
+
+Note: fuel-monotonicity is stated only for the `.ok`
+successful case. `.error` results do NOT grow monotonically
+under fuel — they reflect semantic stuckness, not fuel
+exhaustion. This is exactly the point of distinguishing the
+two.
 -/
 
-theorem eval_zero {unf ρ e} : eval 0 unf ρ e = none := by
+theorem eval_zero {unf ρ e} : eval 0 unf ρ e = .outOfFuel := by
   unfold eval; rfl
-theorem vapp_zero {unf f a} : vapp 0 unf f a = none := by
+theorem vapp_zero {unf f a} : vapp 0 unf f a = .outOfFuel := by
   unfold vapp; rfl
 
 theorem eval_vapp_fuel_mono :
     ∀ n,
     (∀ {m unf ρ e v}, n ≤ m →
-        eval n unf ρ e = some v → eval m unf ρ e = some v) ∧
+        eval n unf ρ e = .ok v → eval m unf ρ e = .ok v) ∧
     (∀ {m unf f a v}, n ≤ m →
-        vapp n unf f a = some v → vapp m unf f a = some v) := by
+        vapp n unf f a = .ok v → vapp m unf f a = .ok v) := by
   intro n
   induction n with
   | zero =>
@@ -199,25 +217,47 @@ theorem eval_vapp_fuel_mono :
       | bot => exact h
       | bvar => exact h
       | lam dom body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨dom', hdom, hv⟩ := h
-          exact ⟨dom', ihe hle' hdom, hv⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next dom' hdom =>
+              rw [ihe hle' hdom]; exact h
+          · cases h
+          · cases h
       | iota ann body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨ann', hann, hv⟩ := h
-          exact ⟨ann', ihe hle' hann, hv⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next ann' hann =>
+              rw [ihe hle' hann]; exact h
+          · cases h
+          · cases h
       | «fix» ann body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨ann', hann, hv⟩ := h
-          exact ⟨ann', ihe hle' hann, hv⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next ann' hann =>
+              rw [ihe hle' hann]; exact h
+          · cases h
+          · cases h
       | app fn ar =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨f', hf, a', ha, hv⟩ := h
-          exact ⟨f', ihe hle' hf, a', ihe hle' ha, ihv hle' hv⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next f' hf =>
+              rw [ihe hle' hf]
+              split at h
+              · next a' ha =>
+                  rw [ihe hle' ha]
+                  exact ihv hle' h
+              · cases h
+              · cases h
+          · cases h
+          · cases h
       | letE val body =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨v', hv', hb⟩ := h
-          exact ⟨v', ihe hle' hv', ihe hle' hb⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next v' hv =>
+              rw [ihe hle' hv]
+              exact ihe hle' h
+          · cases h
+          · cases h
       | asc t ty => exact ihe hle' h
     -- vapp (n+1) → vapp m
     · intro m unf f a v hle h
@@ -237,9 +277,12 @@ theorem eval_vapp_fuel_mono :
           · simp only [hc, ↓reduceIte] at h ⊢; exact h
           · simp only [Bool.not_eq_true] at hc
             simp only [hc, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-            obtain ⟨f', hf, hv⟩ := h
-            exact ⟨f', ihe hle' hf, ihv hle' hv⟩
+                       bind, Outcome.bind_def] at h ⊢
+            split at h
+            · next f' hf =>
+                rw [ihe hle' hf]; exact ihv hle' h
+            · cases h
+            · cases h
       | «fix» ann cl =>
           obtain ⟨body, env⟩ := cl
           dsimp only at h ⊢
@@ -247,51 +290,54 @@ theorem eval_vapp_fuel_mono :
           · simp only [hc, ↓reduceIte] at h ⊢; exact h
           · simp only [Bool.not_eq_true] at hc
             simp only [hc, Bool.false_eq_true, ↓reduceIte,
-                       Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-            obtain ⟨f', hf, hv⟩ := h
-            exact ⟨f', ihe hle' hf, ihv hle' hv⟩
+                       bind, Outcome.bind_def] at h ⊢
+            split at h
+            · next f' hf =>
+                rw [ihe hle' hf]; exact ihv hle' h
+            · cases h
+            · cases h
       | neutral => exact h
       | type => exact h
       | bot => exact h
 
 theorem eval_fuel_mono {n m unf ρ e v}
-    (hle : n ≤ m) (h : eval n unf ρ e = some v) :
-    eval m unf ρ e = some v :=
+    (hle : n ≤ m) (h : eval n unf ρ e = .ok v) :
+    eval m unf ρ e = .ok v :=
   (eval_vapp_fuel_mono n).1 hle h
 
 theorem vapp_fuel_mono {n m unf f a v}
-    (hle : n ≤ m) (h : vapp n unf f a = some v) :
-    vapp m unf f a = some v :=
+    (hle : n ≤ m) (h : vapp n unf f a = .ok v) :
+    vapp m unf f a = .ok v :=
   (eval_vapp_fuel_mono n).2 hle h
 
 mutual
   /-- Read a value back to an expression. `depth` is the number of
       binders opened so far (= the next fresh de Bruijn level). -/
-  def quote (fuel depth : Nat) (v : Val) : Option Expr :=
+  def quote (fuel depth : Nat) (v : Val) : Outcome Expr :=
     match fuel with
-    | 0 => none
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match v with
-      | .type => some .type
-      | .bot => some .bot
+      | .type => .ok .type
+      | .bot => .ok .bot
       | .neutral n => quoteNeutral fuel depth n
       | .lam dom cl => do
           let dom' ← quote fuel depth dom
           let body' ← quoteClosure fuel depth cl
-          some (.lam dom' body')
+          .ok (.lam dom' body')
       | .iota ann cl => do
           let ann' ← quote fuel depth ann
           let body' ← quoteClosure fuel depth cl
-          some (.iota ann' body')
+          .ok (.iota ann' body')
       | .fix ann cl => do
           let ann' ← quote fuel depth ann
           let body' ← quoteClosure fuel depth cl
-          some (.fix ann' body')
+          .ok (.fix ann' body')
   termination_by fuel
 
-  def quoteClosure (fuel depth : Nat) (cl : Closure) : Option Expr :=
+  def quoteClosure (fuel depth : Nat) (cl : Closure) : Outcome Expr :=
     match fuel with
-    | 0 => none
+    | 0 => .outOfFuel
     | fuel + 1 => do
       let bv := Val.neutral (.var depth)
       -- Opening a closure under a *neutral* fresh variable: any
@@ -305,31 +351,32 @@ mutual
       quote fuel (depth + 1) v
   termination_by fuel
 
-  def quoteNeutral (fuel depth : Nat) (n : Neutral) : Option Expr :=
+  def quoteNeutral (fuel depth : Nat) (n : Neutral) : Outcome Expr :=
     match fuel with
-    | 0 => none
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match n with
       | .var level =>
-          if level < depth then some (.bvar (depth - 1 - level)) else none
+          if level < depth then .ok (.bvar (depth - 1 - level))
+          else .error s!"quoteNeutral: level {level} out of depth {depth}"
       | .app n' v => do
           let f ← quoteNeutral fuel depth n'
           let a ← quote fuel depth v
-          some (.app f a)
+          .ok (.app f a)
       | .stuckRec f a => do
           let f' ← quote fuel depth f
           let a' ← quote fuel depth a
-          some (.app f' a')
+          .ok (.app f' a')
   termination_by fuel
 end
 
-theorem quote_zero {depth v} : quote 0 depth v = none := by
+theorem quote_zero {depth v} : quote 0 depth v = .outOfFuel := by
   unfold quote; rfl
 theorem quoteClosure_zero {depth cl} :
-    quoteClosure 0 depth cl = none := by
+    quoteClosure 0 depth cl = .outOfFuel := by
   unfold quoteClosure; rfl
 theorem quoteNeutral_zero {depth n} :
-    quoteNeutral 0 depth n = none := by
+    quoteNeutral 0 depth n = .outOfFuel := by
   unfold quoteNeutral; rfl
 
 /-- Fuel monotonicity for the `quote` family. Same combined-
@@ -337,13 +384,13 @@ induction pattern as `eval_vapp_fuel_mono`. -/
 theorem quote_quoteClosure_quoteNeutral_fuel_mono :
     ∀ n,
     (∀ {m depth v e}, n ≤ m →
-        quote n depth v = some e → quote m depth v = some e) ∧
+        quote n depth v = .ok e → quote m depth v = .ok e) ∧
     (∀ {m depth cl e}, n ≤ m →
-        quoteClosure n depth cl = some e →
-        quoteClosure m depth cl = some e) ∧
+        quoteClosure n depth cl = .ok e →
+        quoteClosure m depth cl = .ok e) ∧
     (∀ {m depth ne e}, n ≤ m →
-        quoteNeutral n depth ne = some e →
-        quoteNeutral m depth ne = some e) := by
+        quoteNeutral n depth ne = .ok e →
+        quoteNeutral m depth ne = .ok e) := by
   intro n
   induction n with
   | zero =>
@@ -366,17 +413,41 @@ theorem quote_quoteClosure_quoteNeutral_fuel_mono :
       | bot => exact h
       | neutral ne => exact ihn hle' h
       | lam dom cl =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨d', hd, b', hb, he⟩ := h
-          exact ⟨d', ihq hle' hd, b', ihc hle' hb, he⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next d' hd =>
+              rw [ihq hle' hd]
+              split at h
+              · next b' hb =>
+                  rw [ihc hle' hb]; exact h
+              · cases h
+              · cases h
+          · cases h
+          · cases h
       | iota ann cl =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨a', ha, b', hb, he⟩ := h
-          exact ⟨a', ihq hle' ha, b', ihc hle' hb, he⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next a' ha =>
+              rw [ihq hle' ha]
+              split at h
+              · next b' hb =>
+                  rw [ihc hle' hb]; exact h
+              · cases h
+              · cases h
+          · cases h
+          · cases h
       | «fix» ann cl =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨a', ha, b', hb, he⟩ := h
-          exact ⟨a', ihq hle' ha, b', ihc hle' hb, he⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next a' ha =>
+              rw [ihq hle' ha]
+              split at h
+              · next b' hb =>
+                  rw [ihc hle' hb]; exact h
+              · cases h
+              · cases h
+          · cases h
+          · cases h
     -- quoteClosure
     · intro m depth cl e hle h
       obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
@@ -384,9 +455,13 @@ theorem quote_quoteClosure_quoteNeutral_fuel_mono :
                   (Nat.lt_of_lt_of_le n.succ_pos hle)).symm⟩
       have hle' : n ≤ m' := Nat.le_of_succ_le_succ hle
       unfold quoteClosure at h ⊢
-      simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-      obtain ⟨v, hev, hq⟩ := h
-      exact ⟨v, eval_fuel_mono hle' hev, ihq hle' hq⟩
+      simp only [bind, Outcome.bind_def] at h ⊢
+      split at h
+      · next v hev =>
+          rw [eval_fuel_mono hle' hev]
+          exact ihq hle' h
+      · cases h
+      · cases h
     -- quoteNeutral
     · intro m depth ne e hle h
       obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 :=
@@ -397,31 +472,47 @@ theorem quote_quoteClosure_quoteNeutral_fuel_mono :
       cases ne with
       | var => exact h
       | app n' v =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨f', hf, a', ha, he⟩ := h
-          exact ⟨f', ihn hle' hf, a', ihq hle' ha, he⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next f' hf =>
+              rw [ihn hle' hf]
+              split at h
+              · next a' ha =>
+                  rw [ihq hle' ha]; exact h
+              · cases h
+              · cases h
+          · cases h
+          · cases h
       | stuckRec f a =>
-          simp only [Option.bind_eq_bind, Option.bind_eq_some] at h ⊢
-          obtain ⟨f', hf, a', ha, he⟩ := h
-          exact ⟨f', ihq hle' hf, a', ihq hle' ha, he⟩
+          simp only [bind, Outcome.bind_def] at h ⊢
+          split at h
+          · next f' hf =>
+              rw [ihq hle' hf]
+              split at h
+              · next a' ha =>
+                  rw [ihq hle' ha]; exact h
+              · cases h
+              · cases h
+          · cases h
+          · cases h
 
 theorem quote_fuel_mono {n m depth v e}
-    (hle : n ≤ m) (h : quote n depth v = some e) :
-    quote m depth v = some e :=
+    (hle : n ≤ m) (h : quote n depth v = .ok e) :
+    quote m depth v = .ok e :=
   (quote_quoteClosure_quoteNeutral_fuel_mono n).1 hle h
 
 theorem quoteClosure_fuel_mono {n m depth cl e}
-    (hle : n ≤ m) (h : quoteClosure n depth cl = some e) :
-    quoteClosure m depth cl = some e :=
+    (hle : n ≤ m) (h : quoteClosure n depth cl = .ok e) :
+    quoteClosure m depth cl = .ok e :=
   (quote_quoteClosure_quoteNeutral_fuel_mono n).2.1 hle h
 
 theorem quoteNeutral_fuel_mono {n m depth ne e}
-    (hle : n ≤ m) (h : quoteNeutral n depth ne = some e) :
-    quoteNeutral m depth ne = some e :=
+    (hle : n ≤ m) (h : quoteNeutral n depth ne = .ok e) :
+    quoteNeutral m depth ne = .ok e :=
   (quote_quoteClosure_quoteNeutral_fuel_mono n).2.2 hle h
 
 /-- Normalize a closed expression. -/
-def nf (fuel : Nat) (e : Expr) : Option Expr := do
+def nf (fuel : Nat) (e : Expr) : Outcome Expr := do
   let v ← eval fuel unfBound [] e
   quote fuel 0 v
 

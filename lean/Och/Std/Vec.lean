@@ -179,7 +179,7 @@ example : NbE.subCheck 400 vecResult (och{ Vec Nat_ })
 -- to compute the actual length (dthree), then disZero dthree → false_.
 example : concEval 10000 (och{
     disZero (vecResult Nat_ (λn:dNat. λarr:(Array_ n Nat_). n))
-  }) = some Std.false_ := by native_decide
+  }) = .ok Std.false_ := by native_decide
 
 end AppendVecTests
 end Std

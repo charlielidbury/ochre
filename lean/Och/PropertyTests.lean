@@ -176,23 +176,23 @@ private def rtCorpus : List Expr := [
 
 /-- Each corpus term normalises within fuel 400. -/
 theorem rt_nf_total :
-    rtCorpus.all (fun e => (nf 400 e).isSome) = true := by
+    rtCorpus.all (fun e => (nf 400 e).isOk) = true := by
   native_decide
 
 /-- Forward: `nf e ⊑ e` for every corpus term. -/
 theorem rt_forward :
     rtCorpus.all (fun e =>
       match nf 400 e with
-      | some e' => NbE.subCheck 400 e' e == .ok true
-      | none => false) = true := by
+      | .ok e' => NbE.subCheck 400 e' e == .ok true
+      | _ => false) = true := by
   native_decide
 
 /-- Backward: `e ⊑ nf e` for every corpus term. -/
 theorem rt_backward :
     rtCorpus.all (fun e =>
       match nf 400 e with
-      | some e' => NbE.subCheck 400 e e' == .ok true
-      | none => false) = true := by
+      | .ok e' => NbE.subCheck 400 e e' == .ok true
+      | _ => false) = true := by
   native_decide
 
 /-- **Finding**: syntactic idempotence (`nf (nf e) = nf e`) does
@@ -206,18 +206,18 @@ two are *semantically* equivalent (subCheck both directions
 theorem rt_nf_idempotent_equiv :
     rtCorpus.all (fun e =>
       match nf 400 e with
-      | some e' =>
+      | .ok e' =>
         match nf 400 e' with
-        | some e'' =>
+        | .ok e'' =>
           NbE.subCheck 400 e' e'' == .ok true &&
           NbE.subCheck 400 e'' e' == .ok true
-        | none => false
-      | none => false) = true := by
+        | _ => false
+      | _ => false) = true := by
   native_decide
 
 /-- The non-idempotent witness, pinned so it doesn't silently
 flip if `quoteClosure`'s `unf` changes. -/
-example : (nf 400 done_).bind (nf 400 ·) ≠ nf 400 done_ := by
+example : (nf 400 done_) >>= (nf 400 ·) ≠ nf 400 done_ := by
   native_decide
 
 end RoundTrip
