@@ -1033,6 +1033,84 @@ theorem Subtype'.shift_nil_closed {S a b} (n c : Nat)
       Expr.shift_of_closedAt hb n (Nat.zero_le _)]
   exact h
 
+/-! ### Unshift (context shrink at head, via closed-endpoint cutoff)
+
+The UNSHIFT lemma at `Γ.length` cutoff is trivial: if `a`, `b`
+are closed at `Γ.length`, then `a.shift 1 Γ.length = a` and
+similarly for `b`, so a derivation at `(X :: Γ)` of
+`a.shift 1 Γ.length ⊑ b.shift 1 Γ.length` (which is just `a ⊑ b`)
+is immediately a derivation at `(X :: Γ)` of `a ⊑ b` — but that's
+the shape at `(X :: Γ)`, not `Γ`. What's needed is **context narrowing
+without type change**.
+
+For the closed-endpoint case, the `.bvar k` rule in any sub-derivation
+never uses `k = 0` to look up `X` — because `a`, `b` don't mention
+`.bvar 0` (after the hypothetical shift). But internal `.trans`
+steps or binder-crossing can introduce intermediate terms that DO
+reference the head binder.
+
+**Current status**: the full structural UNSHIFT lemma is not yet
+closed. What's available below is the `closedAt`-cutoff variant
+(`shift_at_length_closed`), which covers the statement at cutoff
+`Γ.length` — a different (more trivial) statement than the cutoff-0
+form `tyInfer_sound_open` actually needs. Documented as
+`sorry`-free blocker pending substitution lemma for `Subtype'`.
+-/
+
+/-- When `a, b` are closed at `Γ.length`, shifting at cutoff
+`Γ.length` is the identity, so the statement trivially reduces
+to the input derivation at `(X :: Γ)`. This is the cutoff-`|Γ|`
+variant of UNSHIFT — NOT the cutoff-0 variant `tyInfer_sound_open`
+needs for its `.letE`/`.app β`/`.app let-float` arms. -/
+theorem Subtype'.unshift_trivial {S Γ X a b}
+    (ha : a.closedAt Γ.length = true)
+    (hb : b.closedAt Γ.length = true)
+    (h : Subtype' S (X :: Γ) (a.shift 1 Γ.length) (b.shift 1 Γ.length)) :
+    Subtype' S (X :: Γ) a b := by
+  rw [Expr.shift_of_closedAt ha 1 (Nat.le_refl _),
+      Expr.shift_of_closedAt hb 1 (Nat.le_refl _)] at h
+  exact h
+
+/-! **UNSHIFT at cutoff 0, head-position** (blocker for
+`tyInfer_sound_open`'s `.letE`/`.app β`/`.app let-float` arms).
+
+Statement: if `a`, `b` are closed at `|Γ|`, then a derivation at
+`(X :: Γ)` of `(a.shift 1 0) ⊑ (b.shift 1 0)` pushes back to a
+derivation at `Γ` of `a ⊑ b`.
+
+**Not yet closed in this branch.** The cleanest syntactic route
+is via a substitution lemma for `Subtype'` (substitute `.bot` for
+`.bvar 0` throughout the derivation; `(a.shift 1 0)[0 := .bot] = a`
+by `shift_subst_cancel`; `.bvar 0 ⊑ X.shift 1 0` reduces via
+`.bot_L`). That substitution lemma is a large structural
+induction over ~24 `Subtype'` constructors:
+
+- Shape-inversion cases (`.refl`, `.top`, `.bot_L`, `.bvar k` with
+  `k ≥ 1`, `.lam`, `.iota_body`, `.fix_body`, `.iota_cong`,
+  `.fix_cong`, `.letE_cong`, `.app_cong`, `.asc_L`, `.asc_R`):
+  mechanical.
+- Productive rules (`.iota_intro`, the four `.unfold_*`): the
+  seen-set `S` is consed with `(|Γ'|, a', b')`; under subst, this
+  becomes `(|Γ|, a'[0:=s], b'[0:=s])`. Depth-tag adjustment must
+  be propagated through `.hyp`.
+- `.hyp`: the hypothesis at depth `d` is used with shift
+  `|Γ'| - d`. After subst, the shift becomes `|Γ| - d'`, where
+  `d'` is the subst'd depth tag. The shift-subst commutation
+  mirrors `Seen.hyp_shift_commute` but in the inverse direction.
+- `.trans c`: the intermediate `c` is arbitrary. Under subst 0 s,
+  it becomes `c[0 := s]`, and the two sub-derivations are provable
+  by IH. Tractable via subst (unlike direct UNSHIFT-by-structure).
+- `.beta_L`, `.beta_R`, `.letE_L`, `.letE_R`: subst-shift swap
+  arithmetic via `subst_shift_swap`.
+
+Estimated 300–500 LOC when finished. The semantic route (via
+realisability `R`) is also open but requires embedding the
+declarative relation in the model, which is non-trivial and
+independently unlanded.
+
+Documented here so the `SoundnessProof.lean` call sites know the
+proof obligation they're waiting on. -/
+
 /-! ### Algorithmic-checker properties and known issues
 
 **Transitivity verified** for `NbE.subCheck` by exhaustive testing on small
