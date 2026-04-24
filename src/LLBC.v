@@ -248,7 +248,7 @@ Variant eval_binary_op : BinOp -> value -> value -> value -> Prop :=
 Variant eval_rvalue : rvalue -> state -> (value * state) -> Prop :=
   | E_Use op S vS' (Heval_op : S |-{op} op => vS') : S |-{rv} (Use op) => vS'
   (* For the moment, the only operation is the natural sum. *)
-  | Eval_binary_op S S' S'' binop op_l op_r vl vr w :
+  | E_BinOp S S' S'' binop op_l op_r vl vr w :
       (S |-{op} op_l => (vl, S')) ->
       (S' |-{op} op_r => (vr, S'')) ->
       eval_binary_op binop vl vr w ->
