@@ -224,12 +224,22 @@ unsafe def Closure.openImpl (fuel : Nat) (cl : Closure) (v : Val) : Outcome Val 
         return .ok r'
     | other => return other
 
+/-- Alternative: use the cheaper `ShareCommon.shareCommon'`
+primitive (no persistent state, just one-shot max-sharing
+within the argument tree). Less canonical across calls but
+zero per-call state overhead. -/
+unsafe def Closure.openImplQuick (fuel : Nat) (cl : Closure) (v : Val) : Outcome Val :=
+  match eval fuel 4 (v :: cl.env) cl.body with
+  | .ok r => .ok (ShareCommon.shareCommon' r)
+  | other => other
+
 -- Disabled 2026-04-24: shareCommon's per-call overhead exceeds the
 -- downstream ptrEq savings for the Nat_-chain benchmarks (two_ ⊑ Nat_
 -- at fuel 800: ~23s with shareCommon vs ~18s without). Left as
 -- infrastructure for future memo work — see
 -- `docs/ideas/subcheck-perf.md` post-mortem.
 -- attribute [implemented_by Closure.openImpl] Closure.open
+-- attribute [implemented_by Closure.openImplQuick] Closure.open
 
 /-- Open a closure with a fresh neutral at de Bruijn level `depth`.
 Returns `Outcome Val`; `.outOfFuel` and `.error` are distinguished.
