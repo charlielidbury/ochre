@@ -1,4 +1,4 @@
-# Subtype-checker performance: design and plan
+# Subtype-checker performance: investigation + post-mortem (2026-04-24)
 
 ## Context
 
@@ -24,191 +24,156 @@ The gap is **redundant work inside `subCheckVal`**: the same
 semantic sub-judgment gets re-derived from scratch along many
 paths.
 
-## Inventory of redundant-work sources
+## Initial hypothesis
 
-### Source 1 — `Closure.open` re-evaluates body on every call
+1. **Closure.open re-evaluates body on every call.** Each `.iota`
+   or `.fix` unfold via `Closure.open` runs `eval fuel 4 (v ::
+   cl.env) cl.body`, producing a fresh `Val` tree — structurally
+   identical across paths but pointer-distinct.
+2. This breaks `Val.beqFast`'s `ptrEq` fast-path, so downstream
+   `a == b` / `seen.any` guards degrade from O(1) to O(|val|).
 
-Every time `subCheckVal` hits a `.iota` or `.fix` on either
-side, it calls `clB.open fuel a` (iotaIntro / fix-unfoldR) or
-`openFresh` (structural both-sides path). Each call runs
-`eval fuel 4 (v :: cl.env) cl.body` — evaluating the **entire**
-body from scratch, producing a fresh `Val` tree.
+**Expected fix:** memoize `Closure.open` by pointer identity, or
+hash-cons the Val trees so structurally-equal Vals become
+pointer-equal.
 
-With Nat_'s body containing `let succ_ = fix succ_:(N→N). λm:N.
-λP:((succ_ m) → Type). …`, each unfold re-walks the whole
-let-chain and constructs the nested `.fix`/`.lam` Vals.
+## What was tried
 
-**Redundancy**: when the same `(cl, v)` pair reappears along
-different recursion paths, we redo identical work. The result
-is a pure function of `(cl, v)`, so memoization is sound.
+### Attempt 1 — Array-backed ptrEq cache on `Closure.open`
 
-### Source 2 — `vapp` re-evaluates recursive body on every call
+`initialize closureOpenCache : IO.Ref (Array (Closure × Val ×
+Val))` + unsafe `@[implemented_by]` lookup via `ptrEq`.
 
-`vapp fuel unf (.fix _ cl) a` unfolds by `eval fuel (unf-1) (f ::
-env) body` then `vapp f' a`. Same as Source 1 but for recursive
-heads. For `succ_ m` with a concrete `m`, this fully unfolds
-succ_'s body and produces a `.lam` value. Repeated calls with
-the same `(f, a)` redo all of this.
+**Result:** 0 cache hits for `one_ ⊑ Nat_` at fuel 200 (207k
+calls). Diagnostic: every `(cl, v)` pair has unique pointer
+identity. Fresh `Val` allocations by internal `eval` never
+match previously-cached entries via ptrEq.
 
-### Source 3 — `.iota, .iota` tries structural before iotaIntro
+### Attempt 2 — Structural (beq) linear-scan cache
 
-The structural arm runs `openFresh` on both sides and recursively
-`subCheckVal`s. If structural fails, the whole structural subtree
-was wasted and we fall through to iotaIntro (which does its
-*own* `clB.open fuel a`).
+Fall back to `Val.beqFast` (ptrEq fast-path + structural
+fallback) when ptrEq misses.
 
-For `three_ ⊑ Nat_`, the annotations are different (`.type` vs
-`Nat_`), so structural always fails at the annotation check —
-the `openFresh`s inside the `do` block never fire (they're behind
-`if !annOk then return false`). Good.
+**Result:** linear-scan cost dominates — cache grows to 125k
+entries, each lookup is O(|cache|) × O(|val|). Net: slower
+than no cache.
 
-But when annotations *do* match (e.g. in deeper iota-iota
-comparisons derived from the same recursive type), structural
-succeeds sometimes and fails other times, and the `openFresh`
-work is redundant with iotaIntro's `clB.open` work.
+### Attempt 3 — `ShareCommon.State` persistent hash-consing
 
-### Source 4 — `subCheckVal` doesn't memoize `true` results across calls
+Pipe `Closure.open` results through
+`ShareCommon.State.shareCommon` (threaded through a global
+`IO.Ref`). After sharing, structurally-equal results become
+pointer-equal.
 
-`seen.any (fun (a', b') => a == a' && b == b')` is *path-local*
-cycle detection. Once a sub-judgment `a' ⊑ b'` has been proven
-true under seen set S, and we later hit `a ⊑ b` with `a == a'`
-and `b == b'` at some seen set S' ⊇ S, we re-derive from scratch.
+**Verification that hash-consing works:** yes. Two separate
+evaluations of `Nat_` become pointer-equal after passing through
+the shared state. Confirmed by a `native_decide` test.
 
-With sharing / pointer-eq on Val, "same sub-judgment" can be
-detected in O(1). Caching across the whole `subCheck` call would
-cut the O(n²)/O(n³) blowup down to O(n) in the number of
-distinct `(a, b)` pairs.
+**Result on `two_ ⊑ Nat_` at fuel 800:** ~23s with shareCommon
+vs ~18s without. **Net slowdown, not speedup.** The per-call
+overhead of `State.shareCommon` exceeds the downstream ptrEq
+savings.
 
-### Source 5 — annotation re-checks in iotaIntro + fix-unfold
+### Attempt 4 — Cross-call `subCheckVal` successful-result cache
 
-Both the `.iota, .iota` structural path and the iotaIntro
-fallback call `subCheckVal seen' a ann` (the "okAnn" guard
-— A5). When iotaIntro closes via seen, this is already one
-step; but any non-trivial annotation check duplicates work.
+Introduce pure-identity `cacheHit a b : Bool := false` and
+`cacheInsert a b r : Outcome Bool := r` with
+`@[implemented_by]` impls that consult a global cache; insert
+in the `subCheckVal` body.
 
-## Proposed fixes
+Soundness: if the algorithm ever returns `.ok true` for `(a, b)`
+under any seen, then `a ⊑ b` holds declaratively (by
+`subCheckVal_sound`); so a cached-true is safe to replay in any
+context, regardless of the current seen set.
 
-### Fix 1 (highest leverage): memoize `Closure.open` and `vapp`
+**Result:** again no effective cache hits when keyed on ptrEq.
+With structural `Val.beqFast` keying, linear scan is slow.
+Overall wall-clock unchanged — ~23s on `two_ ⊑ Nat_` at fuel
+800.
 
-Cache `(cl, v) → result` for `Closure.open` and `(f, a) → result`
-for `vapp`. Both are pure deterministic functions (modulo fuel
-success/failure).
+## Conclusion / root-cause reanalysis
 
-**Implementation sketch**: thread a mutable cache through the
-algorithm via `IO.Ref` and `unsafeIO`. The pure `Closure.open` /
-`vapp` definitions are unchanged; a `@[implemented_by]` wrapper
-provides the memoized runtime version.
+The expected cache-hits never materialize because **the sub-
+problems explored along different recursion paths are genuinely
+different**: different `seen` sets, different unfold depths,
+different fresh-neutral levels. `Closure.open`'s input `(cl, v)`
+pair has `v` sourced from the caller's `(a, b)` variables,
+which mutate along each path.
 
-**Soundness**: memoization of pure deterministic functions does
-not change observable semantics. Proofs in `SoundnessProof.lean`
-that reason about `Closure.open` / `vapp` are untouched
-(the underlying definition is unchanged).
+ShareCommon *does* canonicalize to pointer-equal results, but:
 
-**Expected improvement**: each `(cl, v)` pair evaluated once
-instead of O(n) times. `three_ ⊑ Nat_` drops from ~50k fuel
-to ~500.
+1. The `(a, b)` pairs passed to `subCheckVal` itself aren't run
+   through shareCommon — they originate from `subCheckVal`'s own
+   local recursion, not from `Closure.open`'s output.
+2. Even when `bodyB' ← clB.open fuel a` produces a
+   canonicalized `bodyB'`, the NEXT recursion's pattern-match
+   decomposes it into `.fix ann cl2`, and `ann` / `cl2` have
+   their own pointer identities that may or may not be shared
+   across paths.
 
-### Fix 2: memoize `subCheckVal` on successful results
+The 50k-fuel cost for `three_ ⊑ Nat_` appears to be **genuine
+algorithmic work**, not cache-missable redundancy. The
+recursion tree is wide (each layer of `succ_` opens a new ι
+with a fresh singleton annotation, and the contra on the
+singleton re-invokes `subCheckVal` on the predecessor chain).
 
-Cache `(a, b) → true` results across the whole subCheckVal call.
+## What would actually move the needle
 
-**Subtlety — seen-set soundness**: a cached true was derived
-with some seen set S. Reusing it at a different seen set S'
-is sound only when S ⊆ S' (or when the true didn't depend on
-seen — too hard to track). In practice, within a single top-
-level `subCheck` call, the seen set used to derive a cache
-entry is a prefix of the current path's seen, but *sibling
-paths* may have added different entries.
+1. **Redesign the singleton-tightened `succ_` encoding** to
+   avoid the deep contra chain. Option A gave us the Fin-as-Nat
+   subsumption, but at this fuel cost. Perhaps a different
+   encoding (e.g. Option F' with a smart `Fin succ = Fin pred
+   + {n}` split) could retain the subsumption with a flatter
+   derivation.
 
-**Conservative solution**: Only cache results derived with
-`seen = []`. An entry at `seen = []` is unconditionally
-valid (no assumptions).
+2. **Make `subCheckVal` iterative instead of recursive**, with
+   an explicit worklist and a structural-hash memo. The current
+   recursive shape forces each sub-problem to inherit the full
+   seen list and decrement fuel; an iterative version could
+   share state more efficiently.
 
-**Better solution**: Cache `(a, b, |seen|) → true`. Since
-the path's seen is append-only within a recursive subtree,
-and the size monotonically increases, restricting cache
-lookups to `current_seen_size ≥ cached_size` ensures the
-cached derivation's seen-set is a prefix of (or equal to) the
-current seen. This is sound IF cached entries are *only*
-produced by deeper calls (which add to seen, not remove).
+3. **Use typed NbE** (Option 1.75 per
+   `docs/ideas/typed-nbe.md`). Typed normalization could prune
+   many sub-problems that the current checker re-explores. This
+   is a ~2–4-week effort and has wider metatheoretic
+   implications.
 
-Given the implementation complexity, start with the
-conservative `seen = []` version.
+4. **Give up on `five_ ⊑ Nat_` at high fuel as a test target.**
+   The intrinsic cost of Option A is O(n) per numeral layer.
+   Three_ is the ceiling where the cost is manageable. For
+   practical Ochre code, very-precise singleton types rarely
+   get used at n > 3 — the user coerces to `Nat_` first.
 
-**Expected improvement**: cuts cross-subtree duplication in
-the subtype derivation. Complements Fix 1.
+## Infrastructure that was kept
 
-### Fix 3: drop `.iota, .iota` structural when annotations mismatch
+- `lean/Och/MemoRefs.lean`: declares `shareState` (a persistent
+  `ShareCommon.State` ref). Available for reuse if future memo
+  work needs cross-call hash-consing.
+- `lean/Och/SubCheckVal.lean`: `Closure.openImpl` — a
+  hash-consed variant of `Closure.open`. Currently **not**
+  attached via `@[implemented_by]` (commented out) because the
+  `State.shareCommon` per-call overhead exceeds downstream
+  savings at measured workloads. Re-enable if a cheaper
+  canonicalization primitive becomes available.
 
-Before trying structural (which includes the `openFresh` work),
-check whether `annA == annB` cheaply (ptrEq / structural).
-If they differ, skip structural and go straight to iotaIntro.
+## Tests that did NOT become tractable
 
-**Soundness**: iotaIntro is always a valid fallback; skipping
-structural only loses *completeness* if structural would have
-succeeded. Structural only succeeds when annotations match
-(the `annOk` guard requires `annA ⊑ annB`, and for most cases
-— ι-nested-in-fix-unfold — `annA == annB`), so this is safe.
+These remain commented out in the source:
 
-Actually, even current code tries structural always. Keeping
-structural but skipping the `openFresh` work when it's known
-to fail is equivalent.
+- `PerfProbe.lean`: `five_ ⊑ Nat_` at fuel 6400 (intractable).
+- `DFin.lean`: `two_ ⊑ Fin three_` at fuel 16000 (intractable).
+- `DFin.lean`: `two_ ⊑ Fin two_ = .ok false` at fuel 16000
+  (intractable).
+- `DFin.lean`: `three_ ⊑ Fin two_ = .ok false` at fuel 16000
+  (intractable).
+- `Array.lean`: `appendArrays` at its declared type (A6-family
+  incompleteness, not a perf issue).
+- `DNat.lean`: `add_`/`double_` concEval tests (5000+ fuel).
 
-Lower priority than Fix 1 (which subsumes the cost).
+## Soundness delta
 
-### Fix 4: share fresh-neutral values across arm entries
-
-Inside one `subCheckVal` call, when we hit a `.lam, .lam`, we
-create `.neutral (.var depth)` for the body-opening. If the same
-`depth` appears later in a sibling branch, we can share the
-`.neutral` value (not construct fresh). This is a micro-
-optimization; ptrEq-on-neutral is already cheap since the
-structural comparison checks just `l1 == l2`.
-
-**Low priority.**
-
-## Phased plan
-
-1. **Phase A (this doc + Fix 1)**: implement memoized
-   `Closure.open` / `vapp` via `@[implemented_by]` + `IO.Ref`.
-   Measure on `three_/four_/five_ ⊑ Nat_` and
-   `two_/three_ ⊑ Fin n`. Uncomment commented-out tests
-   that start passing.
-
-2. **Phase B (Fix 2)**: subCheckVal `seen=[]`-only memoization
-   if Phase A leaves residual quadratic behavior.
-
-3. **Phase C (Fix 3 if needed)**: annotation-mismatch
-   skip in iota-iota structural.
-
-Post-mortem + commit after each phase. Use test-based
-benchmarks: uncomment previously-disabled regressions in
-`lean/Och/Std/DNat.lean`, `DFin.lean`, `Array.lean` and
-`PerfProbe.lean` as proof of improvement.
-
-## Soundness constraints
-
-- Preserve `subCheckVal_subV` at `SoundnessProof.lean:268`.
-- Preserve the four open declaration-sorries (Phase 1 boundary
-  per `docs/ideas/sorry-closure-plan.md`).
-- Do not change `Outcome`-shape of any return type.
-- Do not alter `Closure.open` / `vapp` pure definitions —
-  all changes go through `@[implemented_by]`-attached
-  unsafe runtime variants, leaving proof-side definitions
-  untouched.
-
-## Tests that should start passing after Phase A
-
-- `example : NbE.subCheck 6400 five_ Nat_ = .ok true`
-  (currently commented in `PerfProbe.lean`).
-- `example : NbE.subCheck 16000 two_ (och{ Fin three_ }) =
-  .ok true` (currently commented in `DFin.lean`).
-- `example : NbE.subCheck 16000 three_ (och{ Fin two_ }) =
-  .ok false` (currently commented in `DFin.lean`).
-- `example : NbE.subCheck 16000 two_ (och{ Fin two_ }) =
-  .ok false` (currently commented).
-- `concEval` tests in `DNat.lean` and `Array.lean` (commented
-  out for compile time) may or may not — `vapp`/`eval`
-  memoization helps `subCheck`, but `concEval` is a different
-  evaluator that does substitution. See Fix 6 (not in this
-  plan) for extending memoization to concEval.
+None — `subCheckVal`'s pure definition and proofs in
+`SoundnessProof.lean` are unchanged. The `@[implemented_by]`
+attribute was attached and detached without affecting the
+kernel-level definition. The four open declaration-level
+sorries in `SoundnessProof.lean` remain unaffected.
