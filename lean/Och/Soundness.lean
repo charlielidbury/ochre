@@ -225,7 +225,7 @@ theorem typeCheck_sound
     (h : typeCheck fuel e τ = .ok true) :
     Subtype' [] [] e τ := by
   unfold typeCheck at h
-  simp only [bind, Except.bind] at h
+  simp only [bind, Outcome.bind_def] at h
   split at h
   · next τV hτV =>
       exact tyCheck_sound_closed hfuel hcle hclτ hnfe hnfτ hτV h

@@ -242,16 +242,11 @@ theorem Closure.openω_of_openFresh {cl : Closure} {r : Val}
     {n depth : Nat} (hn : n ≤ fuelω)
     (h : cl.openFresh n depth = .ok r) :
     cl.openω (.neutral (.var depth)) = some r := by
-  -- `openFresh` is `Except String`-valued, collapsing `.outOfFuel`
-  -- and `.error` into `.error`. From `= .ok r`, the underlying
-  -- `cl.open` must have returned `.ok r` (neither error branch).
+  -- `openFresh` is `Outcome Val`-valued (post-2026-04-23 migration);
+  -- it's definitionally `cl.open fuel (.var depth)`, so from `= .ok r`
+  -- the underlying `cl.open` returns `.ok r`.
   unfold Closure.openFresh at h
-  split at h
-  · rename_i heq
-    injection h with h
-    subst h
-    exact Closure.openω_of_open hn heq
-  all_goals simp_all
+  exact Closure.openω_of_open hn h
 
 /-- BEq-disequality reflection (needed for the re-vapp arms'
 `if b' == b then .ok false else …` discrimination). -/
@@ -305,17 +300,20 @@ theorem subCheckValMatch_subV
   · exact SubV.bot_L
   -- lam-lam
   · next domA clA domB clB =>
-    rcases hcontra : subCheckVal fuel Γ S domB domA with _ | contra
-    · simp_all [bind, Except.bind]
+    rcases hcontra : subCheckVal fuel Γ S domB domA with contra | _ | _
+    case outOfFuel => simp_all [bind, Outcome.bind_def]
+    case error => simp_all [bind, Outcome.bind_def]
     cases contra with
-    | false => simp_all [bind, Except.bind, pure, Except.pure]
+    | false => simp_all [bind, Outcome.bind_def, pure]
     | true =>
-    rcases hbA : clA.openFresh fuel Γ.size with _ | bA
-    · simp_all [bind, Except.bind, pure, Except.pure]
-    rcases hbB : clB.openFresh fuel Γ.size with _ | bB
-    · simp_all [bind, Except.bind, pure, Except.pure]
-    simp only [hcontra, hbA, hbB, bind, Except.bind, pure,
-               Except.pure, Bool.not_true, Bool.false_eq_true,
+    rcases hbA : clA.openFresh fuel Γ.size with bA | _ | _
+    case outOfFuel => simp_all [bind, Outcome.bind_def, pure]
+    case error => simp_all [bind, Outcome.bind_def, pure]
+    rcases hbB : clB.openFresh fuel Γ.size with bB | _ | _
+    case outOfFuel => simp_all [bind, Outcome.bind_def, pure]
+    case error => simp_all [bind, Outcome.bind_def, pure]
+    simp only [hcontra, hbA, hbB, bind, Outcome.bind_def, pure,
+               Bool.not_true, Bool.false_eq_true,
                ↓reduceIte] at h
     exact SubV.lam
       (Closure.openω_of_openFresh hfuel hbA)
@@ -330,34 +328,36 @@ theorem subCheckValMatch_subV
       rcases hannOk :
           subCheckVal fuel Γ
             ((.iota annA clA, .iota annB clB) :: S) annA annB
-        with _ | annOk
-      · simp_all [bind, Except.bind]
+        with annOk | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def]; done)
       cases annOk with
-      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | false => simp_all [bind, Outcome.bind_def, pure]
       | true =>
-      rcases hbA : clA.openFresh fuel Γ.size with _ | bA
-      · simp_all [bind, Except.bind, pure, Except.pure]
-      rcases hbB : clB.openFresh fuel Γ.size with _ | bB
-      · simp_all [bind, Except.bind, pure, Except.pure]
-      simp only [hannOk, hbA, hbB, bind, Except.bind, pure,
-                 Except.pure, Bool.not_true, Bool.false_eq_true,
+      rcases hbA : clA.openFresh fuel Γ.size with bA | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def, pure]; done)
+      rcases hbB : clB.openFresh fuel Γ.size with bB | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def, pure]; done)
+      simp only [hannOk, hbA, hbB, bind, Outcome.bind_def, pure,
+                 Bool.not_true, Bool.false_eq_true,
                  ↓reduceIte] at hstruct
       exact SubV.iota_struct
         (Closure.openω_of_openFresh hfuel hbA)
         (Closure.openω_of_openFresh hfuel hbB)
         (ih hannOk) (ih hstruct)
     · -- fallback fired → SubV.iota_intro (same as `_, .iota`)
-      simp only [bind, Except.bind] at h
-      split at h
-      · simp at h
-      rename_i okAnn hokAnn
+      simp only [bind, Outcome.bind_def] at h
+      rcases hokAnn :
+          subCheckVal fuel Γ ((.iota annA clA, .iota annB clB) :: S)
+            (.iota annA clA) annB with okAnn | _ | _
+      all_goals try (simp_all; done)
+      rw [hokAnn] at h
       cases hc : okAnn with
       | false => rw [hc] at h; simp at h
       | true =>
       rw [hc] at h hokAnn
       simp only [Bool.not_true, Bool.false_eq_true,
-                 ↓reduceIte] at h
-      split at h <;> try exact Except.noConfusion h
+                 ↓reduceIte, bind, Outcome.bind_def] at h
+      split at h <;> try exact Outcome.noConfusion h
       rename_i bodyB' hopen
       exact SubV.iota_intro
         (Closure.openω_of_open hfuel hopen)
@@ -370,47 +370,51 @@ theorem subCheckValMatch_subV
       rcases hannOk :
           subCheckVal fuel Γ
             ((.«fix» annA clA, .«fix» annB clB) :: S) annA annB
-        with _ | annOk
-      · simp_all [bind, Except.bind]
+        with annOk | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def]; done)
       cases annOk with
-      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | false => simp_all [bind, Outcome.bind_def, pure]
       | true =>
-      rcases hbA : clA.openFresh fuel Γ.size with _ | bA
-      · simp_all [bind, Except.bind, pure, Except.pure]
-      rcases hbB : clB.openFresh fuel Γ.size with _ | bB
-      · simp_all [bind, Except.bind, pure, Except.pure]
-      simp only [hannOk, hbA, hbB, bind, Except.bind, pure,
-                 Except.pure, Bool.not_true, Bool.false_eq_true,
+      rcases hbA : clA.openFresh fuel Γ.size with bA | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def, pure]; done)
+      rcases hbB : clB.openFresh fuel Γ.size with bB | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def, pure]; done)
+      simp only [hannOk, hbA, hbB, bind, Outcome.bind_def, pure,
+                 Bool.not_true, Bool.false_eq_true,
                  ↓reduceIte] at hstruct
       exact SubV.fix_struct
         (Closure.openω_of_openFresh hfuel hbA)
         (Closure.openω_of_openFresh hfuel hbB)
         (ih hannOk) (ih hstruct)
     · -- fallback fired → SubV.unfold_fix_R (same as `_, .fix`)
-      split at h <;> try exact Except.noConfusion h
+      simp only [bind, Outcome.bind_def] at h
+      split at h <;> try exact Outcome.noConfusion h
       rename_i b' hopen
       exact SubV.unfold_fix_R
         (Closure.openω_of_open hfuel hopen)
         (ih h)
   -- _, .iota
   · next a' ann clB hNotIota =>
-    simp only [bind, Except.bind] at h
-    split at h
-    · next _ => simp at h
-    next okAnn hokAnn =>
+    simp only [bind, Outcome.bind_def] at h
+    rcases hokAnn :
+        subCheckVal fuel Γ ((a, .iota a' ann) :: S) a a' with okAnn | _ | _
+    all_goals try (simp_all; done)
+    rw [hokAnn] at h
     cases hc : okAnn with
     | false => rw [hc] at h; simp at h
     | true =>
-    rw [hc] at h hokAnn; simp only [Bool.not_true, Bool.false_eq_true,
-      ↓reduceIte] at h
-    split at h <;> try exact Except.noConfusion h
+    rw [hc] at h hokAnn
+    simp only [Bool.not_true, Bool.false_eq_true,
+               ↓reduceIte, bind, Outcome.bind_def] at h
+    split at h <;> try exact Outcome.noConfusion h
     rename_i bodyB' hopen
     exact SubV.iota_intro
       (Closure.openω_of_open hfuel hopen)
       (ih hokAnn) (ih h)
   -- _, .fix
   · next a' ann clB hNotFix =>
-    split at h <;> try exact Except.noConfusion h
+    simp only [bind, Outcome.bind_def] at h
+    split at h <;> try exact Outcome.noConfusion h
     rename_i b' hopen
     exact SubV.unfold_fix_R
       (Closure.openω_of_open hfuel hopen)
@@ -422,36 +426,37 @@ theorem subCheckValMatch_subV
       rename_i hstruct
       rcases h1 : subCheckVal fuel Γ
           ((.neutral (.stuckRec fA aA),
-            .neutral (.stuckRec fB aB)) :: S) fA fB with _ | r1
-      · simp_all [bind, Except.bind]
+            .neutral (.stuckRec fB aB)) :: S) fA fB with r1 | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def]; done)
       cases r1 with
-      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | false => simp_all [bind, Outcome.bind_def, pure]
       | true =>
       rcases h2 : subCheckVal fuel Γ
           ((.neutral (.stuckRec fA aA),
-            .neutral (.stuckRec fB aB)) :: S) fB fA with _ | r2
-      · simp_all [bind, Except.bind, pure, Except.pure]
+            .neutral (.stuckRec fB aB)) :: S) fB fA with r2 | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def, pure]; done)
       cases r2 with
-      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | false => simp_all [bind, Outcome.bind_def, pure]
       | true =>
       rcases h3 : subCheckVal fuel Γ
           ((.neutral (.stuckRec fA aA),
-            .neutral (.stuckRec fB aB)) :: S) aA aB with _ | r3
-      · simp_all [bind, Except.bind, pure, Except.pure]
+            .neutral (.stuckRec fB aB)) :: S) aA aB with r3 | _ | _
+      all_goals try (simp_all [bind, Outcome.bind_def, pure]; done)
       cases r3 with
-      | false => simp_all [bind, Except.bind, pure, Except.pure]
+      | false => simp_all [bind, Outcome.bind_def, pure]
       | true =>
-      simp only [h1, h2, h3, bind, Except.bind, pure,
-                 Except.pure, Bool.not_true, Bool.false_eq_true,
+      simp only [h1, h2, h3, bind, Outcome.bind_def, pure,
+                 Bool.not_true, Bool.false_eq_true,
                  ↓reduceIte] at hstruct
       exact SubV.stuckRec_struct (ih h1) (ih h2) (ih h3) (ih hstruct)
     · -- fallback: re-vapp RHS, then maybe LHS
-      split at h <;> try exact Except.noConfusion h
+      simp only [bind, Outcome.bind_def] at h
+      split at h <;> try exact Outcome.noConfusion h
       rename_i b' hvappR
       split at h
       · -- b' == b: try LHS
         rename_i hbeqR
-        split at h <;> try exact Except.noConfusion h
+        split at h <;> try exact Outcome.noConfusion h
         rename_i a' hvappL
         split at h
         · simp at h  -- a' == a → .ok false
@@ -467,7 +472,8 @@ theorem subCheckValMatch_subV
           (Val.ne_of_beq_false (by simpa using hbeqR))
           (ih h)
   -- _, .neutral .stuckRec: re-vapp R
-  · split at h <;> try exact Except.noConfusion h
+  · simp only [bind, Outcome.bind_def] at h
+    split at h <;> try exact Outcome.noConfusion h
     rename_i b' hvapp
     split at h
     · simp at h
@@ -478,7 +484,8 @@ theorem subCheckValMatch_subV
       (ih h)
   -- .fix, _
   · next ann clA c hNotR =>
-    split at h <;> try exact Except.noConfusion h
+    simp only [bind, Outcome.bind_def] at h
+    split at h <;> try exact Outcome.noConfusion h
     rename_i a' hopen
     split at h
     · simp at h
@@ -489,7 +496,8 @@ theorem subCheckValMatch_subV
       (ih h)
   -- .iota, _
   · next ann clA c hNotR =>
-    split at h <;> try exact Except.noConfusion h
+    simp only [bind, Outcome.bind_def] at h
+    split at h <;> try exact Outcome.noConfusion h
     rename_i a' hopen
     split at h
     · simp at h
@@ -499,7 +507,8 @@ theorem subCheckValMatch_subV
       (Val.ne_of_beq_false (by simpa using hbeq))
       (ih h)
   -- .neutral .stuckRec, _ : re-vapp L
-  · split at h <;> try exact Except.noConfusion h
+  · simp only [bind, Outcome.bind_def] at h
+    split at h <;> try exact Outcome.noConfusion h
     rename_i a' hvapp
     -- The stuckRec components are auto-named by split; extract
     -- via the structure of `hvapp : vapp fuel 4 ?f ?arg = .ok a'`.
@@ -547,26 +556,27 @@ theorem subCheckNeutral_subN
     split at h
     -- .var, .var
     next l1 l2 =>
-      simp only [Except.ok.injEq] at h
+      simp only [Outcome.ok.injEq] at h
       exact (eq_of_beq h) ▸ SubN.var
     -- .app, .app: don't bind pattern vars; `split` through the
     -- do-block instead. Each `split` on a `bind` introduces the
     -- intermediate result; the impossible branches close by
     -- `simp_all`.
     next =>
-      simp only [bind, Except.bind, pure, Except.pure] at h
-      split at h
-      · simp at h
-      rename_i hd hhd
+      simp only [bind, Outcome.bind_def, pure] at h
+      rcases hhd : subCheckNeutral fuel Γ S _ _ with hd | _ | _
+      case outOfFuel => rw [hhd] at h; simp at h
+      case error => rw [hhd] at h; simp at h
+      rw [hhd] at h
       cases hd with
       | false => simp at h
       | true =>
       simp only [Bool.not_true, Bool.false_eq_true,
-                 ↓reduceIte, bind, Except.bind, pure,
-                 Except.pure] at h
-      split at h
-      · simp at h
-      rename_i fwd hfwd
+                 ↓reduceIte, bind, Outcome.bind_def, pure] at h
+      rcases hfwd : subCheckVal fuel Γ S _ _ with fwd | _ | _
+      case outOfFuel => rw [hfwd] at h; simp at h
+      case error => rw [hfwd] at h; simp at h
+      rw [hfwd] at h
       cases fwd with
       | false => simp at h
       | true =>
@@ -575,26 +585,29 @@ theorem subCheckNeutral_subN
       exact SubN.app (_ihN hhd) (_ihV hfwd) (_ihV h)
     -- .stuckRec, .stuckRec
     next =>
-      simp only [bind, Except.bind, pure, Except.pure] at h
-      split at h
-      · simp at h
-      rename_i r1 h1
+      simp only [bind, Outcome.bind_def, pure] at h
+      rcases h1 : subCheckVal fuel Γ S _ _ with r1 | _ | _
+      case outOfFuel => rw [h1] at h; simp at h
+      case error => rw [h1] at h; simp at h
+      rw [h1] at h
       cases r1 with
       | false => simp at h
       | true =>
       simp only [Bool.not_true, Bool.false_eq_true, ↓reduceIte,
-                 bind, Except.bind, pure, Except.pure] at h
-      split at h
-      · simp at h
-      rename_i r2 h2
+                 bind, Outcome.bind_def, pure] at h
+      rcases h2 : subCheckVal fuel Γ S _ _ with r2 | _ | _
+      case outOfFuel => rw [h2] at h; simp at h
+      case error => rw [h2] at h; simp at h
+      rw [h2] at h
       cases r2 with
       | false => simp at h
       | true =>
       simp only [Bool.not_true, Bool.false_eq_true, ↓reduceIte,
-                 bind, Except.bind, pure, Except.pure] at h
-      split at h
-      · simp at h
-      rename_i r3 h3
+                 bind, Outcome.bind_def, pure] at h
+      rcases h3 : subCheckVal fuel Γ S _ _ with r3 | _ | _
+      case outOfFuel => rw [h3] at h; simp at h
+      case error => rw [h3] at h; simp at h
+      rw [h3] at h
       cases r3 with
       | false => simp at h
       | true =>
@@ -630,16 +643,17 @@ theorem neutralAscent_subV
       next => simp at h
     -- .app n arg
     next =>
-      simp only [bind, Except.bind] at h
-      split at h
-      · simp at h
-      rename_i n'ty hn'ty
+      simp only [bind, Outcome.bind_def] at h
+      rcases hn'ty : synthNeutral fuel Γ _ with n'ty | _ | _
+      case outOfFuel => rw [hn'ty] at h; simp at h
+      case error => rw [hn'ty] at h; simp at h
+      rw [hn'ty] at h
       cases hn'ty' : n'ty with
       | none => simp [hn'ty'] at h
       | some n'tyV =>
       cases hn'tyV : n'tyV with
       | lam dom cl =>
-        simp only [hn'ty', hn'tyV] at h
+        simp only [hn'ty', hn'tyV, bind, Outcome.bind_def] at h
         split at h
         next retTy hopen =>
           exact SubV.neutral_ascent
@@ -685,20 +699,21 @@ theorem synthNeutral_synthN
     split at h
     -- .var lvl
     next lvl =>
-      simp only [Except.ok.injEq] at h
+      simp only [Outcome.ok.injEq] at h
       exact SynthN.var h
     -- .app n' arg
     next =>
-      simp only [bind, Except.bind] at h
-      split at h
-      · simp at h
-      rename_i n'ty hn'ty
+      simp only [bind, Outcome.bind_def] at h
+      rcases hn'ty : synthNeutral fuel Γ _ with n'ty | _ | _
+      case outOfFuel => rw [hn'ty] at h; simp at h
+      case error => rw [hn'ty] at h; simp at h
+      rw [hn'ty] at h
       cases hn'ty' : n'ty with
       | none => simp [hn'ty'] at h
       | some n'tyV =>
       cases hn'tyV : n'tyV with
       | lam dom cl =>
-        simp only [hn'ty', hn'tyV, Except.ok.injEq] at h
+        simp only [hn'ty', hn'tyV, Outcome.ok.injEq] at h
         exact SynthN.app
           (_ihS (by rw [hn'ty, hn'ty', hn'tyV]))
           (openω_of_toOption hfuel' h)
@@ -713,21 +728,21 @@ theorem synthNeutral_synthN
         split at h
         · -- ann = .lam dom cl'; result = .ok (cl'.open fuel arg)
           rename_i dom cl'
-          simp only [Except.ok.injEq] at h
+          simp only [Outcome.ok.injEq] at h
           exact SynthN.stuckRecFix rfl (openω_of_toOption hfuel' h)
         · -- ann ≠ .lam; result = .ok (some ann); so τ = ann
           rename_i hnotlam
-          simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
+          simp only [Outcome.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
           exact h ▸ SynthN.stuckRecFixAnn
             (fun d c heq => hnotlam d c heq)
       · -- f = .iota ann cl; same shape
         rename_i ann cl
         split at h
         · rename_i dom cl'
-          simp only [Except.ok.injEq] at h
+          simp only [Outcome.ok.injEq] at h
           exact SynthN.stuckRecIota rfl (openω_of_toOption hfuel' h)
         · rename_i hnotlam
-          simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
+          simp only [Outcome.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
           exact h ▸ SynthN.stuckRecIotaAnn
             (fun d c heq => hnotlam d c heq)
       · -- f = other; result = .ok none; impossible since h : … = some τ
@@ -5271,7 +5286,7 @@ theorem tyInfer_sound_open
       split at h
       case isFalse => simp_all
       case isTrue hidx_lt =>
-      simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
+      simp only [Outcome.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
       subst h
       -- τV = Γ[Γ.size-1-k]. From `hctx.hΓ` get its quote
       -- at depth `Γ.size-1-k` and the matching `Γe[k]`.
@@ -5294,7 +5309,7 @@ theorem tyInfer_sound_open
                  getElem!_pos ρe k hcl]
       exact hctx.hwf k _ τe0 (List.getElem?_eq_getElem hcl) hΓe
     -- .type
-    · simp only [Except.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
+    · simp only [Outcome.ok.injEq, Option.some.injEq, Outcome.ok.injEq] at h
       subst h
       exact ⟨.type, quote_type,
         by simpa [Expr.substEnv] using Subtype'.refl Expr.type⟩
@@ -5303,24 +5318,25 @@ theorem tyInfer_sound_open
     -- .asc e' τ
     · rename_i e' τ
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      simp only [bind, Except.bind] at h
-      split at h <;> try exact Except.noConfusion h
+      simp only [bind, Outcome.bind_def] at h
+      split at h <;> try exact Outcome.noConfusion h
       rename_i τV0 hτV0
       split at h
-      · simp_all
-      next okI hokI =>
-      cases okI with
-      | false => simp_all
-      | true =>
-        simp only [Bool.not_true, Bool.false_eq_true,
-                   ↓reduceIte, Except.ok.injEq,
-                   Option.some.injEq, Outcome.ok.injEq] at h
-        subst h
-        obtain ⟨τe, hqτV⟩ := hctx.eval_quotes' hfuel' (by sorry) hτV0
-        have hsub := tyCheck_sound_open hfuel' hctx
-          hcl.1 hqτV hokI
-        exact ⟨τe, hqτV,
-          by simpa [Expr.substEnv] using Subtype'.asc_L hsub⟩
+      · next okI hokI =>
+        cases okI with
+        | false => simp at h
+        | true =>
+          simp only [Bool.not_true, Bool.false_eq_true,
+                     ↓reduceIte, Outcome.ok.injEq,
+                     Option.some.injEq, Outcome.ok.injEq] at h
+          subst h
+          obtain ⟨τe, hqτV⟩ := hctx.eval_quotes' hfuel' (by sorry) hτV0
+          have hsub := tyCheck_sound_open hfuel' hctx
+            hcl.1 hqτV hokI
+          exact ⟨τe, hqτV,
+            by simpa [Expr.substEnv] using Subtype'.asc_L hsub⟩
+      · simp at h
+      · simp at h
     -- .fix ann _ and .iota ann _ — the A9 unsoundness.
     -- `tyInfer` returns `eval ann`, but `(.fix ann body) ⋢
     -- ann` in general (the body need not inhabit `ann`).
@@ -5404,9 +5420,10 @@ theorem tyInfer_sound_open
     · rename_i _e' val body _h'
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       obtain ⟨hcl_val, hcl_body⟩ := hcl
-      simp only [bind, Except.bind] at h
+      simp only [bind, Outcome.bind_def] at h
       split at h
-      · simp_all
+      case h_2 => simp at h
+      case h_3 => simp at h
       next valpair hletB =>
       obtain ⟨valV, valTy⟩ := valpair
       -- Mirror of `tyCheck_sound_open`'s `.letE`:
@@ -5468,9 +5485,8 @@ theorem tyCheckFallback_sound_open
     (h : tyCheckFallback fuel Γ ρ e τV = .ok true) :
     Subtype' [] Γe (e.substEnv ρe) τe := by
   unfold tyCheckFallback at h
-  simp only [bind, Except.bind] at h
+  simp only [bind, Outcome.bind_def] at h
   split at h
-  · simp_all
   · next eTy? hinfer =>
     cases eTy? with
     | some eTy =>
@@ -5480,7 +5496,7 @@ theorem tyCheckFallback_sound_open
         have hsub : Subtype' [] Γe eTye τe := by sorry
         exact .trans h_e_eTye hsub
     | none =>
-        simp only [] at h
+        simp only [bind, Outcome.bind_def] at h
         split at h
         · next eV heV =>
           obtain ⟨eVe, hqeV⟩ := hctx.eval_quotes' hfuel (by sorry) heV
@@ -5488,6 +5504,9 @@ theorem tyCheckFallback_sound_open
           have hsub : Subtype' [] Γe eVe τe := by sorry
           exact .trans h_e_eVe hsub
         · simp_all
+        · simp_all
+  · simp_all
+  · simp_all
 termination_by (fuel, 1)
 
 /-- Open-context `tyCheck` soundness. Conclusion is at
@@ -5513,25 +5532,25 @@ theorem tyCheck_sound_open
     · rename_i _e' dom body _h'
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       obtain ⟨hcl_dom, hcl_body⟩ := hcl
-      split at h <;> try exact Except.noConfusion h
+      simp only [bind, Outcome.bind_def] at h
+      split at h <;> try exact Outcome.noConfusion h
       rename_i domV hdomV
-      simp only [] at h  -- inline `let fresh := …`
       split at h
       case h_2 _ _ =>
         exact tyCheckFallback_sound_open hfuel hctx
           (by simpa [Expr.closedAt] using ⟨hcl_dom, hcl_body⟩)
           hqτ h
       case h_1 expDom expCl hwhnf =>
-      simp only [bind, Except.bind] at h
-      split at h
-      · simp_all
-      rename_i okDom hokDom
+      rcases hokDom : subCheckVal fuel Γ [] expDom domV with okDom | _ | _
+      case outOfFuel => rw [hokDom] at h; simp at h
+      case error => rw [hokDom] at h; simp at h
+      rw [hokDom] at h
       cases okDom with
-      | false => simp_all [pure, Except.pure]
+      | false => simp at h
       | true =>
       simp only [Bool.not_true, Bool.false_eq_true,
-                 ↓reduceIte, pure, Except.pure] at h
-      split at h <;> try exact Except.noConfusion h
+                 ↓reduceIte, pure, bind, Outcome.bind_def] at h
+      split at h <;> try exact Outcome.noConfusion h
       rename_i expBody hopen
       -- All algorithm splits done.
       -- (a) Quote witnesses for the exposed Π-head.
@@ -5599,9 +5618,10 @@ theorem tyCheck_sound_open
       rename_i _e' val body _h'
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       obtain ⟨hcl_val, hcl_body⟩ := hcl
-      simp only [bind, Except.bind] at h
+      simp only [bind, Outcome.bind_def] at h
       split at h
-      · simp_all
+      case h_2 => simp at h
+      case h_3 => simp at h
       next valpair hletB =>
       obtain ⟨valV, valTy⟩ := valpair
       -- In scope:
@@ -5673,18 +5693,16 @@ theorem tyCheck_sound_open
       sorry
     -- .asc e0 τ0
     · next e0 τ0 =>
+      simp only [bind, Outcome.bind_def] at h
       split at h
       · next τ0V hτ0V =>
-        simp only [bind, Except.bind] at h
         split at h
-        · simp_all
         · next b hinner =>
           cases b with
-          | false => simp_all [pure, Except.pure]
+          | false => simp at h
           | true =>
             simp only [Bool.not_true, Bool.false_eq_true,
-                       ↓reduceIte, pure, Except.pure,
-                       bind, Except.bind] at h
+                       ↓reduceIte, pure] at h
             simp only [Expr.closedAt, Bool.and_eq_true] at hcl
             obtain ⟨τ0e, hqτ0V⟩ := hctx.eval_quotes' hfuel' (by sorry) hτ0V
             -- IH (same Γ/ρ): `(e0.substEnv ρe) ⊑ τ0e`.
@@ -5695,7 +5713,8 @@ theorem tyCheck_sound_open
             --  (e0.substEnv ρe) (τ0.substEnv ρe)`.
             simp only [Expr.substEnv]
             exact .asc_L (.trans h_e0_τ0e hsub)
-      all_goals (exfalso; simp_all [bind, Except.bind])
+        all_goals (exfalso; simp_all)
+      all_goals (exfalso; simp_all)
     -- .fix _ _ and .iota _ _ (A9 arm), .bot arm, then catch-all.
     all_goals first
     | exact tyCheckFallback_sound_open hfuel hctx hcl hqτ h
@@ -5713,13 +5732,14 @@ theorem tyCheck_sound_open
        · -- expected ≠ .type: falls through to tyCheckFallback.
          exact tyCheckFallback_sound_open hfuel hctx hcl hqτ h)
     | (rename_i ann body
+       simp only [bind, Outcome.bind_def] at h
        split at h
        · rename_i eV hev
          obtain ⟨ee, hqeV⟩ := hctx.eval_quotes' hfuel' (by sorry) hev
          have hsub : Subtype' [] Γe ee τe := by sorry
          have he_ee := (hctx.eq hev hcl hqeV).2
          exact .trans he_ee hsub
-       all_goals (exfalso; simp_all [bind, Except.bind]))
+       all_goals (exfalso; simp_all [bind, Outcome.bind_def]))
 termination_by (fuel, 2)
 
 /-- Soundness of `letBinderType`: it returns `(valV, valTy)`
@@ -5751,12 +5771,14 @@ theorem letBinderType_sound_open
     ∃ valTye, quote fuelω Γ.size valTy = .ok valTye ∧
               Subtype' [] Γe (val.substEnv ρe) valTye := by
   unfold letBinderType at h
-  simp only [bind, Except.bind] at h
+  simp only [bind, Outcome.bind_def] at h
   split at h
-  · simp_all
+  case h_2 => simp at h
+  case h_3 => simp at h
   next valTy? hinfer =>
   split at h
-  case h_2 => simp_all
+  case h_2 => simp at h
+  case h_3 => simp at h
   case h_1 valV0 hev =>
   -- The "fall back to valV" branch (shared by `none` and
   -- `okV = false`):
@@ -5767,15 +5789,16 @@ theorem letBinderType_sound_open
     exact ⟨hev, valVe, hqvalV, (hctx.eq hev hcl hqvalV).2⟩
   cases valTy? with
   | none =>
-      simp only [pure, Except.pure, Except.ok.injEq,
+      simp only [pure, Outcome.ok.injEq,
                  Prod.mk.injEq] at h
       obtain ⟨h1, h2⟩ := h; subst h1 h2; exact hself
   | some t =>
-      simp only [bind, Except.bind] at h
+      simp only [bind, Outcome.bind_def] at h
       split at h
-      · simp_all
+      case h_2 => simp at h
+      case h_3 => simp at h
       next okV hokV =>
-      simp only [pure, Except.pure, Except.ok.injEq,
+      simp only [pure, Outcome.ok.injEq,
                  Prod.mk.injEq] at h
       obtain ⟨h1, h2⟩ := h; subst h1
       split at h2

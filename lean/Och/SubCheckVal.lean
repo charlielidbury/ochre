@@ -183,14 +183,11 @@ def Closure.open (fuel : Nat) (cl : Closure) (v : Val) : Outcome Val :=
   eval fuel 4 (v :: cl.env) cl.body
 
 /-- Open a closure with a fresh neutral at de Bruijn level `depth`.
-Returns `Except String Val` (not `Outcome Val`) to preserve the
-2-case pattern the SoundnessProof proofs branch on. `.outOfFuel`
-collapses to `.error "out of fuel"` here. -/
-def Closure.openFresh (fuel depth : Nat) (cl : Closure) : Except String Val :=
-  match cl.open fuel (.neutral (.var depth)) with
-  | .ok v => .ok v
-  | .outOfFuel => .error "Closure.openFresh: out of fuel"
-  | .error s => .error s
+Returns `Outcome Val`; `.outOfFuel` and `.error` are distinguished.
+(Was `Except String Val` pre-2026-04-23 migration; the proofs in
+`SoundnessProof.lean` now branch on the 3-case `Outcome` shape.) -/
+def Closure.openFresh (fuel depth : Nat) (cl : Closure) : Outcome Val :=
+  cl.open fuel (.neutral (.var depth))
 
 /-- `Option`-valued projection of `Closure.open`. Retains the
 legacy API that `subCheckVal` and SoundnessProof are written
@@ -217,9 +214,7 @@ theorem Closure.openFresh_fuel_mono {cl : Closure} {r : Val}
     (hle : n ≤ m) (h : cl.openFresh n depth = .ok r) :
     cl.openFresh m depth = .ok r := by
   unfold Closure.openFresh at h ⊢
-  split at h <;> simp_all
-  rename_i heq
-  rw [Closure.open_fuel_mono hle heq]
+  exact Closure.open_fuel_mono hle h
 
 /-- `Option`-valued projection of `vapp`. -/
 def vappOpt (fuel unf : Nat) (f a : Val) : Option Val :=
@@ -238,18 +233,14 @@ mutual
       match lives in `subCheckValMatch` so soundness proofs
       can unfold `subCheckVal` at default heartbeats.
 
-      Note: `subCheckVal` retains `Except String Bool` as its
-      return type (rather than migrating to `Outcome Bool`
-      along with eval/vapp/quote) to preserve the extensive
-      SoundnessProof proofs that branch on `.error`/`.ok`.
-      The `.outOfFuel` distinction from `Outcome` collapses
-      back to `.error "out of fuel"` at this layer — still
-      the same information the original code carried. See
-      `docs/ideas/outcome-migration.md` / Phase-2 roadmap. -/
+      Returns `Outcome Bool` (post-2026-04-23 migration):
+      `.ok true` / `.ok false` carry the verdict, `.outOfFuel`
+      signals fuel exhaustion (recoverable), `.error s` signals
+      a genuine failure (non-recoverable). -/
   def subCheckVal (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Val × Val)) (a b : Val) : Except String Bool :=
+      (seen : List (Val × Val)) (a b : Val) : Outcome Bool :=
     match fuel with
-    | 0 => .error "subCheckVal: out of fuel"
+    | 0 => .outOfFuel
     | fuel + 1 =>
       if a == b then .ok true
       else if seen.any (fun (a', b') => a == a' && b == b') then .ok true
@@ -263,7 +254,7 @@ mutual
   here are at the same fuel (subCheckVal will decrement
   again). Termination is `(fuel, 1)` lex `(fuel, 0)`. -/
   def subCheckValMatch (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Val × Val)) (a b : Val) : Except String Bool :=
+      (seen : List (Val × Val)) (a b : Val) : Outcome Bool :=
     let depth := tyCtx.size
         match a, b with
         -- Bot ⊑ anything ([S-BotL]). High priority so it short-circuits
@@ -309,10 +300,9 @@ mutual
               -- checkers diverged on `ι:Type.Type ⊑ ι:Nat_.Type`.
               let okAnn ← subCheckVal fuel tyCtx seen' a annB
               if !okAnn then .ok false
-              else match clB.open fuel a with
-              | .ok bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
-              | .outOfFuel => .error "subCheckVal: iotaIntro open (OOF)"
-              | .error s => .error s
+              else do
+                let bodyB' ← clB.open fuel a
+                subCheckVal fuel tyCtx seen' a bodyB'
         | .fix annA clA, .fix annB clB =>
             let seen' := (a, b) :: seen
             let structural := do
@@ -323,11 +313,9 @@ mutual
               subCheckVal fuel (tyCtx.push annB) seen' bodyA bodyB
             match structural with
             | .ok true => .ok true
-            | _ =>
-              match clB.open fuel b with
-              | .outOfFuel => .error "subCheckVal: fixR open (OOF)"
-              | .error s => .error s
-              | .ok b' => subCheckVal fuel tyCtx seen' a b'
+            | _ => do
+              let b' ← clB.open fuel b
+              subCheckVal fuel tyCtx seen' a b'
         | _, .iota ann clB => do
             -- iotaIntro: a ⊑ ι self:A. body ← a ⊑ A ∧ a ⊑
             -- body[self:=a]. BOTH premises (SoundnessAudit A5:
@@ -342,17 +330,14 @@ mutual
             let seen' := (a, b) :: seen
             let okAnn ← subCheckVal fuel tyCtx seen' a ann
             if !okAnn then .ok false
-            else match clB.open fuel a with
-            | .outOfFuel => .error "subCheckVal: iotaIntro open (OOF)"
-            | .error s => .error s
-            | .ok bodyB' => subCheckVal fuel tyCtx seen' a bodyB'
-        | _, .fix _ann clB =>
+            else do
+              let bodyB' ← clB.open fuel a
+              subCheckVal fuel tyCtx seen' a bodyB'
+        | _, .fix _ann clB => do
             -- unfoldFixR: open the RHS fix with itself as `self`.
             let seen' := (a, b) :: seen
-            match clB.open fuel b with
-            | .outOfFuel => .error "subCheckVal: fixR open (OOF)"
-            | .error s => .error s
-            | .ok b' => subCheckVal fuel tyCtx seen' a b'
+            let b' ← clB.open fuel b
+            subCheckVal fuel tyCtx seen' a b'
         | .neutral (.stuckRec fA aA), .neutral (.stuckRec fB aB) =>
             -- Both sides are recursive heads stuck on a neutral
             -- argument. The same recursive function can appear via
@@ -377,63 +362,45 @@ mutual
               subCheckVal fuel tyCtx seen' aB aA
             match structural with
             | .ok true => .ok true
-            | _ =>
+            | _ => do
               -- One side may still unfold (e.g. arg is a stuckRec
               -- that itself progresses).
-              match vapp fuel 4 fB aB with
-              | .outOfFuel => .error "subCheckVal: stuckRec R (OOF)"
-              | .error s => .error s
-              | .ok b' =>
-                if b' == b then
-                  match vapp fuel 4 fA aA with
-                  | .outOfFuel => .error "subCheckVal: stuckRec L (OOF)"
-                  | .error s => .error s
-                  | .ok a' =>
-                    if a' == a then .ok false
-                    else subCheckVal fuel tyCtx seen' a' b
-                else subCheckVal fuel tyCtx seen' a b'
-        | _, .neutral (.stuckRec f arg) =>
+              let b' ← vapp fuel 4 fB aB
+              if b' == b then do
+                let a' ← vapp fuel 4 fA aA
+                if a' == a then .ok false
+                else subCheckVal fuel tyCtx seen' a' b
+              else subCheckVal fuel tyCtx seen' a b'
+        | _, .neutral (.stuckRec f arg) => do
             -- RHS is a stuck recursive head: re-apply at full unf so
             -- the canonical NF is compared.
             let seen' := (a, b) :: seen
-            match vapp fuel 4 f arg with
-            | .outOfFuel => .error "subCheckVal: stuckRec R (OOF)"
-            | .error s => .error s
-            | .ok b' =>
-                if b' == b then .ok false
-                else subCheckVal fuel tyCtx seen' a b'
-        | .fix _ann clA, _ =>
+            let b' ← vapp fuel 4 f arg
+            if b' == b then .ok false
+            else subCheckVal fuel tyCtx seen' a b'
+        | .fix _ann clA, _ => do
             let seen' := (a, b) :: seen
-            match clA.open fuel a with
-            | .outOfFuel => .error "subCheckVal: fixL open (OOF)"
-            | .error s => .error s
-            | .ok a' =>
-                -- Productivity guard (SoundnessAudit A7): if the
-                -- body is just `self`, the unfold returns `a`
-                -- unchanged and the seen' check would
-                -- coinductively accept `(fix A. self) ⊑ b` for
-                -- *every* b. The same `a' == a` guard the
-                -- stuckRec-L arm uses applies here. (No guard on
-                -- the R-side `_, .fix`: `X ⊑ fix self. self` is
-                -- `X ⊑ ⊤`, which *is* coinductively true.)
-                if a' == a then .ok false
-                else subCheckVal fuel tyCtx seen' a' b
-        | .iota _ann clA, _ =>
+            let a' ← clA.open fuel a
+            -- Productivity guard (SoundnessAudit A7): if the
+            -- body is just `self`, the unfold returns `a`
+            -- unchanged and the seen' check would
+            -- coinductively accept `(fix A. self) ⊑ b` for
+            -- *every* b. The same `a' == a` guard the
+            -- stuckRec-L arm uses applies here. (No guard on
+            -- the R-side `_, .fix`: `X ⊑ fix self. self` is
+            -- `X ⊑ ⊤`, which *is* coinductively true.)
+            if a' == a then .ok false
+            else subCheckVal fuel tyCtx seen' a' b
+        | .iota _ann clA, _ => do
             let seen' := (a, b) :: seen
-            match clA.open fuel a with
-            | .outOfFuel => .error "subCheckVal: iotaL open (OOF)"
-            | .error s => .error s
-            | .ok a' =>
-                if a' == a then .ok false
-                else subCheckVal fuel tyCtx seen' a' b
-        | .neutral (.stuckRec f arg), _ =>
+            let a' ← clA.open fuel a
+            if a' == a then .ok false
+            else subCheckVal fuel tyCtx seen' a' b
+        | .neutral (.stuckRec f arg), _ => do
             let seen' := (a, b) :: seen
-            match vapp fuel 4 f arg with
-            | .outOfFuel => .error "subCheckVal: stuckRec L (OOF)"
-            | .error s => .error s
-            | .ok a' =>
-                if a' == a then .ok false
-                else subCheckVal fuel tyCtx seen' a' b
+            let a' ← vapp fuel 4 f arg
+            if a' == a then .ok false
+            else subCheckVal fuel tyCtx seen' a' b
         | .neutral nA, .neutral nB => do
             -- Try structural first; if that fails, fall through to
             -- type-ascent on the LHS.
@@ -456,9 +423,9 @@ mutual
       and pointwise-equal arguments (both directions, since an
       opaque head isn't known to be monotone). -/
   def subCheckNeutral (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Val × Val)) (a b : Neutral) : Except String Bool :=
+      (seen : List (Val × Val)) (a b : Neutral) : Outcome Bool :=
     match fuel with
-    | 0 => .error "subCheckNeutral: out of fuel"
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match a, b with
       | .var l1, .var l2 => .ok (l1 == l2)
@@ -501,9 +468,9 @@ mutual
       `v : T` satisfies `{v} ⊑ T`. -/
   def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Val × Val)) (a : Neutral) (b : Val)
-      : Except String Bool :=
+      : Outcome Bool :=
     match fuel with
-    | 0 => .error "neutralAscent: out of fuel"
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match a with
       | .var lvl =>
@@ -514,11 +481,9 @@ mutual
           -- Type of `n arg`: synthesise type of `n`, must be an
           -- arrow `λx:_. retTy`; result type is retTy with x ↦ arg.
           match (← synthNeutral fuel tyCtx n) with
-          | some (.lam _dom cl) =>
-              match cl.open fuel arg with
-              | .ok retTy => subCheckVal fuel tyCtx seen retTy b
-              | .outOfFuel => .error "neutralAscent: retTy open (OOF)"
-              | .error s => .error s
+          | some (.lam _dom cl) => do
+              let retTy ← cl.open fuel arg
+              subCheckVal fuel tyCtx seen retTy b
           | _ => .ok false
       | .stuckRec f arg =>
           let seen' := (Val.neutral a, b) :: seen
@@ -530,11 +495,14 @@ mutual
               else subCheckVal fuel tyCtx seen' a' b
   termination_by (fuel, 0)
 
-  /-- Synthesise the type of a neutral. -/
+  /-- Synthesise the type of a neutral. Returns `Outcome (Option
+  Val)`: `.ok (some τ)` = type found, `.ok none` = well-formed but
+  no principal type, `.outOfFuel`/`.error` = fuel or genuine
+  failure. -/
   def synthNeutral (fuel : Nat) (tyCtx : TyCtx)
-      (n : Neutral) : Except String (Option Val) :=
+      (n : Neutral) : Outcome (Option Val) :=
     match fuel with
-    | 0 => .error "synthNeutral: out of fuel"
+    | 0 => .outOfFuel
     | fuel + 1 =>
       match n with
       | .var lvl => .ok tyCtx[lvl]?
@@ -556,13 +524,10 @@ mutual
 end
 
 /-- Top-level entry: evaluate both sides to Vals, then compare. -/
-def subCheck (fuel : Nat) (a b : Expr) : Except String Bool :=
-  match eval fuel unfBound [] a, eval fuel unfBound [] b with
-  | .ok a', .ok b' => subCheckVal fuel #[] [] a' b'
-  | .outOfFuel, _ => .error "subCheck lhs: NbE out of fuel"
-  | _, .outOfFuel => .error "subCheck rhs: NbE out of fuel"
-  | .error s, _ => .error s!"subCheck lhs: {s}"
-  | _, .error s => .error s!"subCheck rhs: {s}"
+def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
+  let a' ← eval fuel unfBound [] a
+  let b' ← eval fuel unfBound [] b
+  subCheckVal fuel #[] [] a' b'
 
 /-!
 ## Status
