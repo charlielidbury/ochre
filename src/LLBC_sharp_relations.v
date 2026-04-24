@@ -1,6 +1,6 @@
 (** * Mechanized_LLBC.LLBC_sharp_relations : Definition of the abstraction relations for LLBC# *)
 From stdpp Require Import pmap gmap.
-Require Import base OptionMonad PathToSubtree SimulationUtils lang LLBC_sharp_states.
+Require Import base OptionMonad PathToSubtree SimulationUtils lang Symbolic_states.
 
 (* A version of to-abs that is limited compared to the paper. Currently, we can only turn into a
  * region abstraction a value of the form:

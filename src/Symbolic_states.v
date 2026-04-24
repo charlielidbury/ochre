@@ -1,4 +1,4 @@
-(** * Mechanized_LLBC.LLBC_sharp_states : Definition of LLBC# states. *)
+(** * Mechanized_LLBC.Symbolic_states : Definition of LLBC# states. *)
 Require Import base.
 Require Import lang.
 Require Import SimulationUtils.

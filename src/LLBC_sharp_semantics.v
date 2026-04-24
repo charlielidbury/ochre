@@ -1,7 +1,7 @@
 (** * Mechanized_LLBC.LLBC_sharp_semantics : Semantics of LLBC+ and LLBC#. *)
 From stdpp Require Import pmap gmap.
 Require Import base OptionMonad PathToSubtree SimulationUtils lang.
-Require Import LLBC_sharp_states LLBC_sharp_relations.
+Require Import Symbolic_states LLBC_sharp_relations.
 
 (** * Semantics of LLBC## *)
 Inductive eval_proj (S : state) perm : proj -> spath -> spath -> Prop :=
