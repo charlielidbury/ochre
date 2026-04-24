@@ -14,29 +14,31 @@ namespace NbE.Tests
 open Std
 
 -- Termination on the recursive types that used to fan out.
-example : (NbE.nf 200 dNat).isOk := by native_decide
-example : (NbE.nf 200 done_).isOk := by native_decide
-example : (NbE.nf 200 dtwo).isOk := by native_decide
-example : (NbE.nf 1000 dthree).isOk := by native_decide
+example : (NbE.nf 200 Nat_).isOk := by native_decide
+example : (NbE.nf 200 one_).isOk := by native_decide
+example : (NbE.nf 200 two_).isOk := by native_decide
+example : (NbE.nf 1000 three_).isOk := by native_decide
 
--- Identity on the non-recursive standard library.
-example : NbE.nf 200 Nat_ = .ok Nat_ := by native_decide
+-- Identity on the non-recursive standard library. Under the unified
+-- Nat_, NF of Nat_ is no longer literal-equal to Nat_ (the fix+ι
+-- wrappers expand); asserted only as isOk.
+example : (NbE.nf 200 Nat_).isOk := by native_decide
 example : NbE.nf 200 Std.Bool = .ok Std.Bool := by native_decide
 example : (NbE.nf 200 dtrue).isOk := by native_decide
 example : (NbE.nf 200 dBool).isOk := by native_decide
 
 -- Array_ at concrete indices reduces to the right Pair shape.
-example : NbE.nf 1000 (och{ Array_ dzero Nat_ }) = .ok Unit_ := by native_decide
-example : NbE.nf 1000 (och{ Array_ done_ Nat_ })
+example : NbE.nf 1000 (och{ Array_ zero_ Nat_ }) = .ok Unit_ := by native_decide
+example : NbE.nf 1000 (och{ Array_ one_ Nat_ })
         = NbE.nf 1000 (och{ Pair Nat_ Unit_ }) := by native_decide
-example : NbE.nf 1000 (och{ Array_ dtwo Nat_ })
+example : NbE.nf 1000 (och{ Array_ two_ Nat_ })
         = NbE.nf 1000 (och{ Pair Nat_ (Pair Nat_ Unit_) }) := by native_decide
-example : NbE.nf 1000 (och{ Array_ dthree Nat_ })
+example : NbE.nf 1000 (och{ Array_ three_ Nat_ })
         = NbE.nf 1000 (och{ Pair Nat_ (Pair Nat_ (Pair Nat_ Unit_)) }) := by
   native_decide
 
--- Canonicity sanity: `done_` and `dsucc dzero` are the same term,
+-- Canonicity sanity: `one_` and `succ_ zero_` are the same term,
 -- so their normal forms must agree exactly.
-example : NbE.nf 200 done_ = NbE.nf 200 (och{ dsucc dzero }) := by native_decide
+example : NbE.nf 200 one_ = NbE.nf 200 (och{ succ_ zero_ }) := by native_decide
 
 end NbE.Tests

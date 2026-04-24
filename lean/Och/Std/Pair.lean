@@ -1,7 +1,7 @@
 import Och.Macro
 import Och.Eval
 import Och.SubCheckVal
-import Och.Std.Nat
+import Och.Std.DNat
 import Och.Std.Bool
 import Och.Std.Unit
 
@@ -60,8 +60,10 @@ example : concEval 100 (och{ snd_ p12 }) = concEval 100 two_ := by
 
 -- ── Positive subtype checks ─────────────────────────────────
 
--- pair_ Nat Nat 1 2 : Pair Nat Nat (via type-ascent through k)
-example : NbE.subCheck 100 p12 (och{ Pair Nat_ Nat_ }) = .ok true := by
+-- pair_ Nat Nat 1 2 : Pair Nat Nat (via type-ascent through k).
+-- Under the unified Nat_ (dNat-style), the subsumption `two_ ⊑ Nat_`
+-- on k's second argument needs more fuel (was fuel 100 on Scott Nat).
+example : NbE.subCheck 1000 p12 (och{ Pair Nat_ Nat_ }) = .ok true := by
   native_decide
 
 -- pair_ Bool Bool true false : Pair Bool Bool
@@ -108,7 +110,7 @@ example : NbE.subCheck 200
 
 example : NbE.subCheck 100 fst_ Nat_ = .ok false := by native_decide
 
-example : NbE.subCheck 100 p12 Bool = .ok false := by native_decide
+example : NbE.subCheck 1000 p12 Bool = .ok false := by native_decide
 
 example : NbE.subCheck 100
     (och{ fst_ (pair_ Bool Bool true_ true_) }) false_

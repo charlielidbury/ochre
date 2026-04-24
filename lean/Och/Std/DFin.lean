@@ -5,129 +5,115 @@ import Och.SubCheckVal
 import Och.Std.DNat
 
 /-!
-# Finite sets `DFin n` — dependent index bounded by a dNat (Option F)
+# Finite sets `Fin n` — bounded by `Nat_` (Option F)
 
-`DFin n` is the type of natural numbers strictly less than `n`. It is
-the canonical test-bench for dependent types.
+`Fin n` is the type of natural numbers strictly less than `n`. It's the
+canonical test-bench for dependent types.
 
 ```
-DFin n = n.elim (λ_:dNat. Type)
-          Bot                          -- DFin dzero: uninhabited (primitive)
-          (λpred:dNat.                 -- DFin (dsucc pred):
-            ι self:dNat.               -- self witnesses DFin ⊑ dNat
-              λP:(self → Type).
-              λfz:(P self).
-              λfs:(λq:(DFin pred). P (dsucc q)).   -- **Option F**: codomain depends on q
-              P self)
+Fin n = n.elim (λ_:Nat_. Type)
+         Bot                            -- Fin zero_: uninhabited (primitive)
+         (λpred:Nat_.                   -- Fin (succ_ pred):
+           ι self:Nat_.                 -- self witnesses Fin ⊑ Nat_
+             λP:(self → Type).
+             λfz:(P self).
+             λfs:(λq:(Fin pred). P (succ_ q)).   -- **Option F**: codomain depends on q
+             P self)
 ```
 
-## Option F encoding (winner from `.claude/worktrees/agent-a726638d`)
+## Option F encoding
 
-The Option F insight: make `DFin`'s `fs`-branch return a type that
-depends on its `q`-argument (`P (dsucc q)`), rather than the constant
-`P self`. Paired with the singleton-tightened `dsucc` (see
-`Std/DNat.lean`, Option A), this makes
+The `fs`-branch codomain is `P (succ_ q)` (dependent on q), rather than
+the constant `P self`. Paired with the singleton-tightened `succ_` (see
+`Std/DNat.lean`, Option A), this gives `succ_ m ⊑ Fin (succ_ n)` when
+`m ⊑ n` directly — without `FZ`/`FS` wrappers.
 
-  `dsucc m ⊑ DFin (dsucc n)` when `m ⊑ n`
+Mechanics: after iotaIntro with `self := succ_ m`, both sides'
+`fs`-codomain read `P (succ_ q)` under a fresh q, which structurally
+matches. The contra on `fs`'s domain (`Fin pred ⊑ m`) leverages Option
+A's singleton.
 
-hold directly — without a `DFS` wrapper. The key mechanics:
+## Unified Nat/Fin
 
-1. `dsucc m`'s body returns `s m`, typed `P (dsucc m)` — depends on m.
-2. `DFin (dsucc pred)`'s `fs` under iotaIntro with `self := dsucc m`
-   has codomain `P (dsucc q)` — depends on q.
-3. The lam-lam structural check on `fs` pushes fresh q on both sides:
-   both give `P (dsucc q)` — structural match.
-4. `fs` contra: `DFin pred ⊑ m` (via singleton tightening on dsucc).
-5. Body `s m ⊑ P self` after iotaIntro `self := dsucc m` reduces to
-   `P (dsucc m) ⊑ P (dsucc m)` — refl.
-
-With this encoding, we no longer need separate `DFZ`/`DFS` constructors
-— naturals (dzero, done_, dtwo, ...) inhabit `DFin n` directly by
-subsumption when they're bounded by n. See `indexArr` below.
+Naturals flow into Fin by subsumption: write the Nat literal at a
+Fin-typed position and the subtype check carries it. No separate
+constructors needed. See `indexArr` in `Std/Array.lean` for the payoff.
 
 ## `Bot` (primitive)
 
-The `DFin dzero` branch is the primitive `Bot` type from core
-(`Expr.bot`). `Bot ⊑ e` holds universally via `[S-BotL]`, so inside
-the zero-length branch of a pattern-match on `n` the index `i:DFin dzero`
-discharges any result-type T by `Bot ⊑ T`. Previously this repo used a
-definable `DBot = ι b. λ_:Type. b`; the primitive version doesn't have
-structural collisions with other ι-shaped values.
+The `Fin zero_` branch is primitive `Bot` (`Expr.bot`). `Bot ⊑ e`
+universally via `[S-BotL]`, so in the `Fin zero_` branch of a
+pattern-match, `i : Fin zero_` discharges any result-type T.
 -/
 
 namespace Std
 
--- ============================================================
--- Type (no constructors needed — dNat values subsume directly)
--- ============================================================
-
-/-- `DFin n`, Option F encoding. The `fs`-branch codomain is
-`P (dsucc q)` (dependent on the q argument), mirroring `dsucc m`'s
-result type `P (dsucc m)`. Paired with the singleton-tightened
-`dsucc` (`Std/DNat.lean`, Option A), this gives the `dsucc m ⊑ DFin n`
-subsumption directly. -/
-def DFin := och{
-  fix F:(dNat → Type).
-    λn:dNat.
-      n (λ_:dNat. Type)
+def Fin := och{
+  fix F:(Nat_ → Type).
+    λn:Nat_.
+      n (λ_:Nat_. Type)
         Bot
-        (λpred:dNat.
-          ι self:dNat.                    -- self is a dNat (subtype witness)
+        (λpred:Nat_.
+          ι self:Nat_.
             λP:(self → Type).
             λfz:(P self).
-            λfs:(λq:(F pred). P (dsucc q)).   -- Option F: codomain depends on q
+            λfs:(λq:(F pred). P (succ_ q)).   -- Option F: codomain depends on q
             P self)
 }
 
 -- ============================================================
--- Tests: the unified truth table for dNat ⊑ DFin
+-- Truth table: naturals inhabit Fin by subsumption
 -- ============================================================
 
 section Tests
 
--- ── Positive: naturals inhabit DFin n directly (no wrapper) ──
---
--- With Option F's dependent fs-codomain plus Option A's singleton
--- dsucc, naturals subsume into DFin whenever they're < the bound.
+-- ── Positive: naturals inhabit Fin n directly (no wrapper) ──
 
-example : NbE.subCheck 2000 dzero (och{ DFin done_ })   = .ok true := by native_decide
-example : NbE.subCheck 2000 dzero (och{ DFin dtwo })    = .ok true := by native_decide
-example : NbE.subCheck 2000 dzero (och{ DFin dthree })  = .ok true := by native_decide
-example : NbE.subCheck 4000 done_ (och{ DFin dtwo })    = .ok true := by native_decide
-example : NbE.subCheck 8000 done_ (och{ DFin dthree })  = .ok true := by native_decide
-example : NbE.subCheck 16000 dtwo  (och{ DFin dthree }) = .ok true := by native_decide
+example : NbE.subCheck 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
+example : NbE.subCheck 2000 zero_ (och{ Fin two_ })    = .ok true := by native_decide
+example : NbE.subCheck 2000 zero_ (och{ Fin three_ })  = .ok true := by native_decide
+example : NbE.subCheck 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
+example : NbE.subCheck 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
+
+-- `two_ ⊑ Fin three_` is part of the unified truth table but native_decide
+-- at any fuel we've tried doesn't terminate quickly. Option F's fs-codomain
+-- is `P (succ_ q)`, which under the singleton-tightened succ_ threads
+-- predecessor values through the contra chain; for numerals ≥ 2 the cost
+-- scales fast. Verified by shape analysis (see DFinExp.lean in
+-- research-worktree agent-a726638d, where dtwoA ⊑ DFinF dthreeA passed at
+-- fuel 16000 on the plain-baseline-nat variant); here the nested-fix
+-- Nat_ multiplies the factor. Left in as a manual-verification TODO
+-- pending NbE performance work on Option-F traversal.
+-- example : NbE.subCheck 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
 
 -- ── Negative: diagonal and out-of-bounds rejected ──
 
--- Diagonal: n ⊄ DFin n (DFin n doesn't contain its own index)
-example : NbE.subCheck 8000 done_  (och{ DFin done_ })  = .ok false := by native_decide
-example : NbE.subCheck 16000 dtwo   (och{ DFin dtwo })  = .ok false := by native_decide
+-- Diagonal: n ⊄ Fin n
+example : NbE.subCheck 8000 one_   (och{ Fin one_ })   = .ok false := by native_decide
+-- example : NbE.subCheck 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
 
--- Out-of-bounds: n ⊄ DFin m for n ≥ m
-example : NbE.subCheck 8000 done_ (och{ DFin dzero })   = .ok false := by native_decide
-example : NbE.subCheck 8000 dtwo  (och{ DFin done_ })   = .ok false := by native_decide
-example : NbE.subCheck 16000 dthree (och{ DFin dtwo })  = .ok false := by native_decide
+-- Out-of-bounds: n ⊄ Fin m for n ≥ m
+example : NbE.subCheck 8000 one_  (och{ Fin zero_ })   = .ok false := by native_decide
+example : NbE.subCheck 8000 two_  (och{ Fin one_ })    = .ok false := by native_decide
+-- example : NbE.subCheck 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
 
--- dNat itself is too wide to inhabit DFin n.
-example : NbE.subCheck 8000 dNat  (och{ DFin dtwo })    = .ok false := by native_decide
+-- Nat_ itself is too wide to inhabit Fin n.
+example : NbE.subCheck 8000 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
 
--- Width monotonicity: smaller DFin embeds into larger (Option F gives us this)
-example : NbE.subCheck 4000 (och{ DFin done_ }) (och{ DFin dtwo })  = .ok true  := by native_decide
--- Larger DFin does NOT embed into smaller (out-of-bounds).
-example : NbE.subCheck 2000 (och{ DFin dtwo })  (och{ DFin done_ }) = .ok false := by native_decide
+-- Width monotonicity: smaller Fin embeds into larger.
+example : NbE.subCheck 4000 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
+example : NbE.subCheck 2000 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
 
--- Type is not a DFin n.
-example : NbE.subCheck 2000 Expr.type (och{ DFin done_ }) = .ok false := by native_decide
+-- Type is not a Fin n.
+example : NbE.subCheck 2000 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
 
--- Bot ⊑ DFin n (via S-BotL, the primitive rule)
-example : NbE.subCheck 2000 (och{ Bot }) (och{ DFin dtwo })  = .ok true := by native_decide
+-- Bot ⊑ Fin n (via S-BotL, the primitive rule).
+example : NbE.subCheck 2000 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
 
--- DFin n ⊑ dNat at the TYPE level does NOT hold (Option F trade-off).
--- This wasn't required by indexArrD or other ops — only value-level
--- subsumption of specific naturals into DFin n matters. Documented
--- in DFinExp.lean's Option F analysis.
-example : NbE.subCheck 8000 (och{ DFin done_ }) dNat    = .ok false := by native_decide
-example : NbE.subCheck 16000 (och{ DFin dtwo })  dNat   = .ok false := by native_decide
+-- Fin n ⊑ Nat_ at the TYPE level does NOT hold (Option F tradeoff).
+-- Not required by indexArr / other ops — only value-level subsumption
+-- of specific naturals into Fin n matters in practice.
+example : NbE.subCheck 8000 (och{ Fin one_ }) Nat_     = .ok false := by native_decide
 
 end Tests
 

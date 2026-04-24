@@ -5,7 +5,7 @@ import Och.NbE
 import Och.SubCheckVal
 import Och.TyCheck
 import Och.SoundnessProof
-import Och.Std.Nat
+import Och.Std.DNat
 import Och.Std.Unit
 import Och.Std.DBool
 
