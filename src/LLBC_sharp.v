@@ -1,4 +1,4 @@
-(** * Mechanized_LLBC.LLBC_sharp_semantics : Semantics of LLBC+ and LLBC#. *)
+(** * Mechanized_LLBC.LLBC_sharp : Semantics of LLBC+ and LLBC#. *)
 From stdpp Require Import pmap gmap.
 Require Import base OptionMonad PathToSubtree SimulationUtils lang.
 Require Import Symbolic_states Symbolic_relations.

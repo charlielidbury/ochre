@@ -3,7 +3,7 @@ From Stdlib Require Import List.
 Import ListNotations.
 From stdpp Require Import decidable pmap sorting.
 Require Import OptionMonad base PathToSubtree SimulationUtils lang.
-Require Import Symbolic_states Symbolic_relations LLBC_sharp_semantics.
+Require Import Symbolic_states Symbolic_relations LLBC_sharp.
 
 Open Scope option_monad_scope.
 

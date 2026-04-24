@@ -3,7 +3,7 @@ From Stdlib Require Import List.
 Import ListNotations.
 From stdpp Require Import fin_map_dom pmap.
 Require Import base OptionMonad SimulationUtils PathToSubtree lang.
-Require Import Symbolic_states Symbolic_relations LLBC_sharp_semantics.
+Require Import Symbolic_states Symbolic_relations LLBC_sharp.
 
 Local Open Scope llbc_sharp_scope.
 
