@@ -66,10 +66,15 @@ def dzero := och{
   ι self. λP:(self → Type). λz:(P self). λs:Type. z
 }
 
+/-- Singleton-tightened dNat (Option A): the inner `dsucc`'s `s`-branch
+has domain `pred:m` (a singleton type) instead of `pred:N`. This is
+what allows `dsucc m ⊑ DFin (dsucc n)` to close — see `Std/DFin.lean`'s
+Option F encoding. The outer eliminator's s-branch still uses `λpred:N`
+since it accepts any dNat predecessor, not a specific one. -/
 def dNat := och{
   fix N. ι self:N.
     let dsucc = fix dsucc:(N → N).
-      λm:N. λP:((dsucc m) → Type). λz:Type. λs:(λpred:N. P (dsucc pred)). s m in
+      λm:N. λP:((dsucc m) → Type). λz:Type. λs:(λpred:m. P (dsucc pred)). s m in
     λP:(N → Type). λz:(P dzero). λs:(λpred:N. P (dsucc pred)). P self
 }
 
@@ -83,10 +88,15 @@ result shapes that the seen-list can't identify). The local
 `dsucc` inside `dNat` must also stay: its body uses `λpred:N`
 (the fix-binder), and the closed top-level `dNat` Expr can't
 be substituted there without re-introducing the A6
-closure-non-canonicality blowup. -/
+closure-non-canonicality blowup.
+
+Option A singleton tightening: the `s`-branch domain is `pred:m`
+(the specific predecessor value) rather than `pred:dNat` (any Nat).
+This is honest — the body calls `s m` with that exact value —
+and what makes Option F DFin subsumption close. -/
 def dsucc := och{
   fix dsucc:(dNat → dNat).
-    λm:dNat. λP:((dsucc m) → Type). λz:Type. λs:(λpred:dNat. P (dsucc pred)). s m
+    λm:dNat. λP:((dsucc m) → Type). λz:Type. λs:(λpred:m. P (dsucc pred)). s m
 }
 
 def done_ := och{ dsucc dzero }

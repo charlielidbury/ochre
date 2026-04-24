@@ -207,11 +207,15 @@ theorem a6_incompletenessWitness :
   native_decide
 
 /-- The `domB` blowup, witnessed: with `domA`, `dtwo ⊑ dNat`
-closes well within fuel 200. (At `domB` this query did not
+closes well within fuel 800. (At `domB` this query did not
 terminate within 15 minutes; that's not directly testable
-here, but is the regression that pins `domA`.) -/
+here, but is the regression that pins `domA`.) The singleton
+tightening of `dsucc`'s `s`-branch domain (Option A) bumped the
+required fuel from 200 to 800 — structurally more work because
+the contra chain on the singleton `pred:m` threads more numerals
+through. Still orders of magnitude below the `domB` ceiling. -/
 theorem a6_dtwoFastWithDomA :
-    NbE.subCheck 200 dtwo dNat = .ok true := by
+    NbE.subCheck 800 dtwo dNat = .ok true := by
   native_decide
 
 /-!

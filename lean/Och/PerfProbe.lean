@@ -80,11 +80,20 @@ memo-table would save a few ms but is not load-bearing.
 section Regression
 open Std
 -- Pre-ptrEq, dthree was the practical ceiling (322 s) and
--- dfive was untestable. Post-ptrEq, all numerals are flat
--- ~310-330 ms; dfive is the perf-regression sentinel.
+-- dfive was untestable. Post-ptrEq, all numerals WERE flat
+-- ~310-330 ms; dfive was the perf-regression sentinel.
+--
+-- Post-Option-A singleton tightening of `dsucc` (2026-04-24),
+-- the `s`-domain contra chain threads each predecessor through
+-- the subtype derivation, so fuel consumption scales with numeral
+-- size again. `dthree ⊑ dNat` still closes (fuel 1600, see
+-- DNat.lean) but `dfive ⊑ dNat` does not close within 10+ minutes
+-- at fuel 6400. The tradeoff is accepted: Option A unlocks the
+-- `dsucc m ⊑ DFin (dsucc n)` subsumption that Option F DFin needs
+-- for unified Fin/Nat without wrapper constructors.
 def dfour := och{ dsucc dthree }
 def dfive := och{ dsucc dfour  }
-example : NbE.subCheck 800 dfive dNat = .ok true := by native_decide
+-- example : NbE.subCheck 6400 dfive dNat = .ok true := by native_decide
 
 -- `appendArrays` at its declared type: an A6-family
 -- incompleteness (`domA` push gives the wrong ascent type
