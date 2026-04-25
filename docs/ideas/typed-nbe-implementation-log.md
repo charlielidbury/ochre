@@ -4,6 +4,216 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-25 — Pass 3 partial + post-mortem (agent-a9d3158b)
+
+**Two phases of pass 3 landed; the FL body remains. Substantial
+honest progress on the substrate (closed `RC.mono` on `.lam`,
+saturated RC, closed `implies_*` lemmas), but the FL itself and the
+SoundnessProof.lean sorries remain unresolved.**
+
+### What landed
+
+#### Phase 1: `RC.mono` closed via "all-lower-indices" form
+
+The Pass 1 log called out the `.lam` step-indexing problem as the
+central limitation. Two strategies on the table: (a) lex recursion
+on `(τ_size, n)`, (b) Iris-style `▷` modality.
+
+Took option (c) — neither: the **Pitts-Howe / Dreyer-Ahmed-Birkedal
+all-lower-indices form**:
+
+```
+RC (n+1) (.lam dV cl) v := ∀ m, m ≤ n → ∀ a, RC m dV a → ...
+```
+
+The universally-quantified `m ≤ n` makes mono trivial: shrinking
+`n+1` to `m'+1` only restricts the universe of allowed `m`s. Take
+any `m ≤ m'`, by transitivity `m ≤ n`, apply h. No contravariant
+lift needed; no `▷` modality needed.
+
+- Updated `RC.mono` `.lam` case to close cleanly.
+- Updated `RC.lam_intro`/`RC.lam_elim` to take an `(m, hm)` pair.
+- All other RC eliminators/introducers needed `unfold RC` to
+  match the new shape.
+
+Sorry trajectory: TypedNbE.lean 5 → 4. Commit `2a4b0d0`.
+
+#### Phase 2: Saturated RC + `implies_*` projections
+
+Pass 1's TODO comment on `implies_fullyQuotable` said:
+> this corollary needs a stronger RC predicate; refactor pending.
+
+Implemented the refactor: bake `Val.fullyQuotable d v ∧ ∃ q, quote
+fuelω d v = .ok q` into **every** RC clause (including `.type` and
+`.neutral` which were just `True`).
+
+- New signature: `RC : Nat → Nat → Val → Val → Prop` (added depth
+  `d` parameter; required because `Val.fullyQuotable` and `quote`
+  are depth-parametrised).
+- Two new direct-projection theorems:
+  - `RC.fullyQuotable : RC (n+1) d τ v → Val.fullyQuotable d v`
+  - `RC.quote_witness : RC (n+1) d τ v → ∃ q, quote fuelω d v = .ok q`
+- `RC.implies_fullyQuotable` and `RC.implies_quote_terminates`
+  now delegate to the new projections — sorries closed.
+- `RC.lam_intro`/`iota_intro`/`fix_intro` now require the
+  saturation witnesses on `v` as inputs. The FL must produce
+  these for each value it constructs.
+- `RC.type_top`/`neutral_top` similarly take saturation witnesses.
+
+Sorry trajectory: TypedNbE.lean 4 → 2 (subtype_closed, FL body
+remain). Commit `8882494`.
+
+### What did NOT land — the FL body
+
+The fundamental lemma's body would mirror `tyCheck`/`tyInfer`'s
+case-split structure. Each typing rule produces an RC witness for
+its result. With the saturation refactor, **each rule must now
+also produce `Val.fullyQuotable d v` and `∃ q, quote fuelω d v =
+.ok q` witnesses**.
+
+For non-closure forms (.type, .bot, .bvar from realised env), this
+is mechanical: `quote_type`/`quote_bot` are total, env entries
+carry their saturation via `Closure.envFullyQuotable`.
+
+For closure forms (.lam, .iota, .fix outputs of eval), the
+saturation conjunct requires that `quoteClosure fuelω d cl =
+.ok body'` — i.e., that opening the closure with a fresh neutral
+and evaluating the body terminates within fuelω. Whether this
+holds depends on the closure's body structure.
+
+Specifically, `eval` of `.lam dom body` produces
+`v = .lam (eval dom) (Closure.mk' body ρ)`. The saturation conjunct
+on this `v` is:
+
+  Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q
+
+Unpacked:
+  Val.fullyQuotable d (eval dom)              -- structural, closes
+  Closure.fullyQuotable d (Closure.mk' body ρ) -- structural, closes
+  ∃ q, quote fuelω d v = .ok q                  -- HARD
+
+The last conjunct requires `quoteClosure fuelω d` to succeed,
+which requires `eval fuelω 1 (.var d :: env) body` to succeed.
+For an arbitrary OCH `body`, this need not terminate (e.g. body
+= `.fix x:τ. x` has divergence under unf=1).
+
+**This is the core obstacle**: even with typed RC, the saturation
+conjunct on closure outputs requires a *nontrivial termination
+argument* for the closure body's eval at fuelω. This must come
+from the typing derivation, since the type has to constrain the
+body's structure.
+
+The plan is for FL's `.lam` case to feed the body's typed RC up:
+the body inhabits some type, which by FL gives RC, which by the
+saturation conjunct gives a quote witness on the body's eval. But
+this is circular — FL's `.lam` case wants RC of the *closure*
+output, and that RC needs the body's eval-quote, which needs the
+body's RC, which needs... FL of the body. The recursion measure
+must reflect this.
+
+A sound measure exists in principle (induction on the typing
+derivation, which is structurally finite), but the Lean
+formalisation is involved: each FL case is several hundred lines
+of bookkeeping plus the actual reasoning.
+
+**Honest estimate**: 2-4 weeks of focused work to close FL body.
+The pass 1 plan said the same; I confirm this from inside.
+
+### What about the SoundnessProof.lean sorries?
+
+The pass 3 prompt expected the FL to close 4 declaration-level
+sorries in `SoundnessProof.lean`. It cannot, even hypothetically:
+
+1. **`quoteClosure_realises`** (line 3763, full body sorry) — the
+   docstring documents Routes A and B as formally blocked
+   (termination measure failure across mutual cycle). Route C
+   (the current state) keeps the sorry. The FL doesn't help: this
+   is about *quoting* a closure, not about typed RC of one.
+
+2. **`vapp_realises`'s 7 internal sorries** (lines 3998, 4001,
+   4002, 4053, 4057, 4058, 4123, 4127, 4128) — each is of the
+   form "need `Val.levelsBelow d va` / `Val.fullyQuotable d va`
+   / `∃ qa, quote fuelω d va = .ok qa` on the function arg".
+   The sorries' own comments say "add as vapp_realises hyp".
+   Closing them requires *threading* the hypotheses through
+   `vapp_realises`'s signature and recursion sites, plus
+   `eval_realises`'s callers.
+
+   Could be done, but each new hypothesis cascades:
+   - `Val.levelsBelow` is derivable from `eval_levelsBelow` (proven).
+   - `Val.fullyQuotable` is derivable from `eval_preserves_fullyQuotable`
+     IF its 4 internal sorries close (they're documented as
+     formally impossible without typing).
+   - `∃ qa, quote fuelω d va = .ok qa` requires the same
+     quote-termination argument that the FL would provide via
+     RC saturation — but only AFTER FL itself is proven.
+
+3. **`tyInfer_sound_open` 4 sorries** (.fix/.iota A9, .lam quote
+   round-trip, generic .app) — documented as either:
+   - **A9 unsoundness** (.fix/.iota inferring annotation as type)
+     — a known *correctness gap* that's intentionally sorried.
+   - **UNSHIFT-head** (Subtyping.lean docstring) — a 300-500 LOC
+     substitution lemma over every `Subtype'` constructor.
+   - **`quote_open_subst`** (root #2) — Halting-reduction
+     impossible per `quote-witness-feasibility.md`.
+
+4. **`tyCheck_sound_open` sorries** — same UNSHIFT obstructions.
+
+The FL would close ~3 of these with substantial restating, but
+the documented blockers (UNSHIFT, A9, quoteClosure_realises Routes
+A/B) are orthogonal to typed-NbE.
+
+### Net sorry status (as of this entry)
+
+- `lean/Och/TypedNbE.lean`: 5 → 2 (`subtype_closed`, `FL body`).
+- `lean/Och/SoundnessProof.lean`: unchanged from pass 1+2.
+
+### What pass 3 phase 1+2 *enables*
+
+Even without FL, the saturated RC and Phase 1 close-up are
+substrate work that future agents inherit:
+
+- `RC.mono` works for ALL type formers (including `.lam`).
+- `RC` is depth-parametrised so it integrates with the existing
+  `Val.fullyQuotable d v` / `quote fuelω d v` infrastructure
+  without translation layers.
+- `RC.fullyQuotable`/`RC.quote_witness` are direct projections;
+  any future FL proof immediately closes the bridges.
+- The introducers/eliminators correctly thread the
+  saturation witnesses, so future FL cases have a clean API.
+
+### Recommended next steps
+
+1. **FL body**, one rule at a time, in priority order: `.type`/
+   `.bot` → `.bvar` → `.asc`/`.letE` → `.iota`/`.fix` → `.lam`
+   → `.app`. Each case is ~50-200 lines. Allow 2-4 weeks total.
+
+2. **`subtype_closed`**: SubV induction, ~17 cases. Each case is
+   moderate complexity. Allow 1-2 weeks. Should be done in
+   tandem with FL body so the FL can use it for `.asc`-directed
+   conversion.
+
+3. **`vapp_realises` sorry threading**: orthogonal to FL; closes
+   once `eval_vapp_preserves_fullyQuotable`'s 4 internal sorries
+   close. Those need typed RC OR a substitute.
+
+4. Documented blockers (UNSHIFT-head, quoteClosure_realises
+   Routes A/B, A9 unsoundness) need separate post-mortems
+   before any further attempt.
+
+### Final assessment
+
+The Pass 3 prompt's ask — "make `typeCheck_sound` axiom-clean" —
+remains a 2-4 week target, not a single-session deliverable. Pass
+3 phase 1+2 closed 3 of the 5 TypedNbE.lean sorries, with the
+remaining two being the genuinely hard ones. The architectural
+substrate (Pitts-Howe form + saturation) is now correctly shaped
+for the FL proof; the FL body itself is the remaining work.
+
+Build green throughout. AxiomCheck unchanged.
+
+---
+
 ## 2026-04-24 — Pass 2 final (agent-a07e1f43-pass2)
 
 **All seven phases (A-G) addressed; substrate fully wired into
