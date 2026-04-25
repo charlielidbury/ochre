@@ -1271,13 +1271,30 @@ by `tyCheck` and consumed by `concEval` — is being investigated; see
 
 ### 7.2 Axiom status
 
-**(2026-04-23 update).** `typeCheck_sound`, `concEval_equiv`,
+**(2026-04-25 update).** `typeCheck_sound`, `concEval_equiv`,
 `concEval_preservation`, `soundness` are stated with no direct
 `sorry`, but `#print axioms` reports `sorryAx` in the transitive
 closure. Four declaration-level sorries remain in
 [`SoundnessProof.lean`](SoundnessProof.lean) —
 `eval_vapp_preserves_fullyQuotable`, `quoteClosure_realises`,
-`vapp_realises`, and `tyInfer_sound_open`. An earlier assessment
+`vapp_realises`, and `tyInfer_sound_open`.
+
+The typed-NbE substrate ([`TypedNbE.lean`](TypedNbE.lean)) is the
+endorsed long-term path to closing these. Pass 1 (substrate +
+predicate, 2026-04-24), pass 2 (typed-eval + typed conversion check
++ wide test suite migration, 2026-04-24), and pass 3 phase 1+2
+(2026-04-25 — `RC.mono` closed via Pitts-Howe form; saturated RC
+gives `RC.fullyQuotable`/`RC.quote_witness` as direct projections;
+`implies_*` corollaries closed) have landed. The fundamental
+lemma's body remains sorried (a 2-4 week formalization effort),
+along with `subtype_closed` (~17 SubV cases, ~1-2 weeks).
+
+The substrate (`RC.mono`, `RC.fullyQuotable`, `RC.quote_witness`,
+all introducers/eliminators) is **axiom-clean** — `#print axioms`
+shows no `sorryAx` in any of these lemmas. Future FL work
+inherits a fully-verified API.
+
+An earlier assessment
 (2026-04-21) characterised all remaining sorries as "engineering
 routes, none research questions." That assessment has been
 **falsified** for two of the four.
