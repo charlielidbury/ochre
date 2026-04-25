@@ -236,19 +236,9 @@ theorem RC.mono : ∀ (n : Nat) {m d : Nat} {τ v : Val},
         obtain ⟨hSat, uTy, hopen, hRC⟩ := h
         refine ⟨hSat, uTy, hopen, ih hle' hRC⟩
 
-/-- RC is preserved under declarative subtyping (algorithmic SubV
-form). The intuition: if `τ ⊑ τ'` and `v` inhabits `RC τ`, then
-`v` also inhabits `RC τ'` because every "obligation" of `RC τ'` is
-a relaxation of one in `RC τ`. -/
-theorem RC.subtype_closed {n d : Nat} {τ τ' v : Val}
-    (_hsub : SubV [] #[] τ τ')   -- assumes empty seen/Γ for now
-    (h : RC n d τ v) : RC n d τ' v := by
-  -- TODO(typed-nbe): proof body. Induction on SubV; each
-  -- constructor of SubV maps to the corresponding "weakening" of RC.
-  -- The hyp/refl/top cases are immediate; the lam case is
-  -- contravariant on the domain (the hypothesis on the new domain
-  -- discharges via the old via SubV's contra direction).
-  sorry
+-- `RC.subtype_closed` is defined further down in the file, after
+-- the saturation projections (`RC.fullyQuotable`/`RC.quote_witness`)
+-- which the proof depends on.
 
 /-- RC at the universe `.type` requires `v` is fully quotable AND
 has a concrete quote witness at depth `d`. (Saturated form.) -/
@@ -342,6 +332,187 @@ theorem RC.quote_witness {n d : Nat} {τ v : Val} (h : RC (n+1) d τ v) :
   | lam _ _ => exact h.1.2
   | iota _ _ => exact h.1.2
   | «fix» _ _ => exact h.1.2
+
+/-! ### `RC.subtype_closed`
+
+RC is preserved under declarative subtyping (algorithmic SubV form).
+The intuition: if `τ ⊑ τ'` and `v` inhabits `RC τ`, then `v` also
+inhabits `RC τ'` because every "obligation" of `RC τ'` is a
+relaxation of one in `RC τ`.
+
+**Strategy**: prove a more general auxiliary statement
+`RC.subtype_closed_aux` that takes a seen-set hypothesis (every
+`(α, β) ∈ S` already inherits RC across), then derive the
+empty-seen-set case as a corollary.
+
+With the *saturated* RC (post-pass-3 refactor), the RC at
+`.type`/`.neutral` cases reduces to just `Val.fullyQuotable d v ∧
+∃ q, quote fuelω d v = .ok q`, which transfers from any source RC
+via `RC.fullyQuotable` / `RC.quote_witness`. This makes the `top`,
+`neutral_struct`, `revapp_R`, `bot_L`, `stuckRec_struct` cases
+mechanical.
+
+**The hard cases** (`lam`, `iota_struct`, `fix_struct`, `iota_intro`,
+`unfold_fix_*`, `unfold_iota_L`, `revapp_L`, `neutral_ascent`) have
+one or more of the following obstacles:
+
+1. **Body substitution mismatch**: SubV.lam's body premise is
+   `SubV S (Γ.push domA) bA bB` where `bA = clA.openω
+   (.neutral (.var Γ.size))` and `bB = clB.openω (.neutral (.var
+   Γ.size))` are *fresh-opened* bodies. RC at `.lam` requires the
+   bodies opened at *concrete RC-typed arguments* `a`. The bridge
+   needs a substitution lemma "fresh-opened-equivalent →
+   arbitrary-substitution-equivalent" — not yet available.
+
+2. **Seen-set obligation circularity**: cases like `iota_intro`,
+   `unfold_fix_R`, `revapp_R`, `revapp_L` add an entry `(τ, τ')` to
+   the seen-set in the recursive premise. The seen-set hypothesis
+   in our auxiliary requires "for every `(α, β) ∈ S, ∀ v', RC n α
+   v' → RC n β v'" — the new entry's obligation is exactly what we
+   are trying to prove. This is the standard Pitts-Howe / DAB
+   coinduction and would need to be addressed with a stratified
+   step-indexed approach (the seen-set carries obligations at
+   strictly smaller step-index).
+
+3. **iotaIntro / unfold_fix mismatch**: SubV.iota_intro has
+   `clB.openω a = some bB` where `a` is the LHS *type*; RC `.iota`
+   requires `clB.openω v` where `v` is the *value*. These are
+   different unless `a = v` (degenerate). The bridge is nontrivial
+   and requires the typing-derivation structure.
+
+**Status (pass 4)**: easy shape-transfer cases proven (refl, top,
+hyp, bot_L, neutral_struct, stuckRec_struct, revapp_R). Hard cases
+sorried inline with documented obstacles. The single declaration
+sorry remains at 1 (Lean groups all internal sorries under one
+declaration warning).
+-/
+
+/-- Helper: extracting the saturation conjunct from any RC at
+step ≥ 1. -/
+private theorem RC.sat_of_succ {n d : Nat} {τ v : Val}
+    (h : RC (n+1) d τ v) :
+    Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q :=
+  ⟨RC.fullyQuotable h, RC.quote_witness h⟩
+
+/-- Auxiliary form parameterised over the seen-set obligation. The
+top-level `RC.subtype_closed` corollary specialises `S = []`.
+
+`cases hsub` is used instead of `induction hsub` because SubV is
+mutually inductive with SubN/SynthN, and Lean's `induction` tactic
+doesn't directly support mutual inductives without manual motive
+construction. The hard cases — which would need IH access — are
+sorried, so `cases` suffices for the proven cases. -/
+theorem RC.subtype_closed_aux {n d : Nat} :
+    ∀ {S : List (Val × Val)} {Γ : TyCtx} {τ τ' v : Val},
+      (∀ α β, (α, β) ∈ S → ∀ v', RC n d α v' → RC n d β v') →
+      SubV S Γ τ τ' → RC n d τ v → RC n d τ' v := by
+  intro S Γ τ τ' v hS hsub h
+  cases hsub with
+  | hyp hmem =>
+      -- Direct hit: the seen-set hypothesis discharges.
+      exact hS _ _ hmem v h
+  | refl =>
+      -- τ = τ', the source RC suffices.
+      exact h
+  | top =>
+      -- τ' = .type. RC at .type is just the saturation witnesses,
+      -- which we extract from the source RC.
+      cases hn : n with
+      | zero => unfold RC; trivial
+      | succ k =>
+        subst hn
+        unfold RC
+        exact RC.sat_of_succ h
+  | bot_L =>
+      -- LHS is .bot. RC at .bot is False (for n ≥ 1) — impossible
+      -- input. For n = 0 the goal is True trivially.
+      cases hn : n with
+      | zero => subst hn; unfold RC; trivial
+      | succ k =>
+        subst hn
+        unfold RC at h
+        exact False.elim h
+  | neutral_struct _ =>
+      -- τ = .neutral nA, τ' = .neutral nB. RC at .neutral _ is
+      -- just the saturation witnesses (in the saturated form).
+      cases hn : n with
+      | zero => unfold RC; trivial
+      | succ k =>
+        subst hn
+        unfold RC
+        exact RC.sat_of_succ h
+  | neutral_ascent _ _ =>
+      -- τ = .neutral nA. SynthN gives a synthesized type τ_n; the
+      -- subderivation `SubV S Γ τ_n b` could be invoked recursively
+      -- if we had the IH (which `cases` doesn't provide; only
+      -- `induction` does — but `induction` is blocked by the mutual
+      -- inductive). Even with the IH, the bridge "SynthN Γ nA τ →
+      -- RC at .neutral nA → RC at τ" (a SynthN-realises lemma)
+      -- isn't proven yet. Deferred.
+      sorry
+  | lam _ _ _ _ =>
+      -- The function-type case. Body premises are about fresh-
+      -- opened bodies; RC.lam requires bodies opened at arbitrary
+      -- RC-typed arguments. Substitution lemma (fresh-open ⇝
+      -- arbitrary-substitution-equivalence) is needed. Deferred.
+      sorry
+  | iota_struct _ _ _ _ =>
+      -- Body-substitution issue + seen-set circularity. Deferred.
+      sorry
+  | fix_struct _ _ _ _ =>
+      -- Same as iota_struct. Deferred.
+      sorry
+  | iota_intro _ _ _ =>
+      -- LHS-type-vs-value mismatch: the body premise opens clB at
+      -- the LHS *type* a, but RC.iota requires clB opened at the
+      -- *value* v. These don't coincide in general. Deferred.
+      sorry
+  | unfold_fix_R _ _ =>
+      -- τ' = .fix ann clB. RC.fix requires RC at clB.openω
+      -- (.fix ann clB) — exactly what the body premise gives,
+      -- modulo seen-set augmentation. Closing requires the IH on
+      -- the body subderivation (using `induction` not `cases`,
+      -- blocked by mutual). Deferred.
+      sorry
+  | unfold_fix_L _ _ _ =>
+      -- τ = .fix ann clA. Same IH-needs as unfold_fix_R. Deferred.
+      sorry
+  | unfold_iota_L _ _ _ =>
+      -- τ = .iota ann clA. Symmetric to unfold_fix_L. Deferred.
+      sorry
+  | stuckRec_struct _ _ _ _ =>
+      -- Both sides are .neutral (.stuckRec _ _). RC at neutral
+      -- types is just saturation.
+      cases hn : n with
+      | zero => unfold RC; trivial
+      | succ k =>
+        subst hn
+        unfold RC
+        exact RC.sat_of_succ h
+  | revapp_R _ _ _ =>
+      -- τ' = .neutral (.stuckRec f arg). RC at neutral is
+      -- saturation. Transfer from h.
+      cases hn : n with
+      | zero => unfold RC; trivial
+      | succ k =>
+        subst hn
+        unfold RC
+        exact RC.sat_of_succ h
+  | revapp_L _ _ _ =>
+      -- τ = .neutral (.stuckRec f arg). To use the body premise we
+      -- need RC at a' (the vapp-unfolded value). The saturated RC
+      -- at neutral gives only fullyQuotable + quote witness on `v`,
+      -- not RC at the unfolded type. This requires a "vapp-respects
+      -- -RC" lemma. Deferred.
+      sorry
+
+/-- Specialisation of the auxiliary at empty seen-set / context. -/
+theorem RC.subtype_closed {n d : Nat} {τ τ' v : Val}
+    (hsub : SubV [] #[] τ τ')
+    (h : RC n d τ v) : RC n d τ' v := by
+  refine RC.subtype_closed_aux ?_ hsub h
+  intro α β hmem
+  exact (List.not_mem_nil (α, β) hmem).elim
 
 /-! ## Typed eval — pass 2 integration layer
 
