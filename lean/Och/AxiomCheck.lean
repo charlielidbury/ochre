@@ -40,4 +40,9 @@ import Och.TypedNbE
 -- the FL body and subtype_closed are closed.
 #print axioms NbE.RC.subtype_closed_aux
 #print axioms NbE.RC.subtype_closed
-#print axioms NbE.typed_nbe_fundamental
+-- Pass 5: FL signature reformulated to take an open environment.
+-- The closed form is recoverable by specialising at empty Γ/ρ.
+#print axioms NbE.typed_nbe_fundamental_open
+-- Pass 5: typed env realisation lemmas.
+#print axioms NbE.RC_env.nil
+#print axioms NbE.RC_env.cons

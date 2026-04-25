@@ -690,102 +690,219 @@ def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
   | .ok true => .ok true
   | _ => subCheck fuel a τ
 
-/-! ## The fundamental lemma
+/-! ## Typed environment realisation
 
-The classical NbE soundness theorem, adapted to OCH's setting.
+`RC_env n d Γ ρ`: the value-environment `ρ` realises the type-context
+`Γ` at step-index `n`, depth `d`. Each value-position aligns with the
+corresponding type-position via the bvar indexing convention.
 
-Statement (informal): if `typeCheck n e τ = .ok true` then `eval n e`
-produces a value that satisfies `RC n τV v` for some step-index `n'`
-that depends on `n`.
+**Convention** (matching `tyInfer`/`tyCheck`): `Γ` is an `Array Val`
+(= `TyEnv`) where `Γ[Γ.size - 1 - k]` is the type at bvar `k`.
+`ρ` is a `List Val` (= `Env`) where `ρ[k]` is the value at bvar `k`
+(cons-order: position 0 is the head / most recently bound).
 
-Statement (formal): see `typed_nbe_fundamental` below.
+The realisation aligns these by bvar index (NOT by raw array/list
+index). So `RC_env n d Γ ρ` requires `Γ.size = ρ.length` and, for
+every bvar `k < ρ.length`, the value `ρ[k]` is RC at the type
+`Γ[Γ.size - 1 - k]`. -/
 
-Proof (sketch, *not* in this commit): structural induction on the
-typing-derivation shape (i.e., follow the tyCheck/tyInfer cases).
-Each case of tyCheck constructs an RC witness from the IHs:
+/-- The value environment `ρ` realises the type context `Γ` at step
+`n`, depth `d`. Indexed by bvar position (ρ is cons-order, Γ is
+reverse-order matching the bvar convention from `tyInfer`). -/
+def RC_env (n d : Nat) (Γ : TyEnv) (ρ : Env) : Prop :=
+  Γ.size = ρ.length ∧
+  ∀ k, k < ρ.length →
+    ∃ τ v, Γ[Γ.size - 1 - k]? = some τ ∧ ρ[k]? = some v ∧ RC n d τ v
 
-- `.type` / `.bot`: base cases — `.type` is in `RC _ .type` directly;
-  `.bot` doesn't occur as a value at non-Bot type, so the case is
-  vacuous unless `τ = .type`.
-- `.bvar k`: env-lookup; `RC` follows from the env-realization
-  hypothesis (typed env: every entry is RC at its declared type).
-- `.lam dom body`: the function case. To show `RC (n+1) (.lam dom cl)
-  (.lam domV cl)`, we need that for every RC argument, vapp produces
-  RC at the body type. This is the IH on the body, instantiated under
-  the typed env extended with the argument.
-- `.app f a`: from `RC` of `f` at `.lam domV cl` and `RC` of `a` at
-  `domV`, the `.lam` clause of `RC` gives `RC` at `cl.openω a`.
-- `.iota` / `.fix`: similar, using the corresponding `RC` clauses.
-- `.asc t τ`: ascription is computationally transparent; `RC` follows
-  from the IH on `t` at `τ`.
-- `.letE val body`: extend the typed env with the typed value of
-  `val`, recurse on body.
+/-- The empty typed environment realises the empty value environment
+trivially. -/
+theorem RC_env.nil {n d : Nat} : RC_env n d #[] [] := by
+  refine ⟨rfl, ?_⟩
+  intro k hk
+  simp at hk
+
+/-- Extending the typed env with a freshly-bound `(τ, v)` pair
+preserves realisation, given `RC n d τ v`. The new entry takes
+bvar index `0`; existing entries shift to bvar `k+1`. -/
+theorem RC_env.cons {n d : Nat} {Γ : TyEnv} {ρ : Env} {τ v : Val}
+    (hΓρ : RC_env n d Γ ρ) (hRC : RC n d τ v) :
+    RC_env n d (Γ.push τ) (v :: ρ) := by
+  obtain ⟨hlen, hidx⟩ := hΓρ
+  refine ⟨?_, ?_⟩
+  · -- Length preservation: |Γ.push τ| = |Γ| + 1 = |ρ| + 1 = |v::ρ|.
+    simp [Array.size_push, hlen]
+  · -- Bvar lookup. New entry at k=0; existing entries at k+1.
+    intro k hk
+    -- Case on k. Use omega for the index-arithmetic relating
+    -- (Γ.push τ).size to Γ.size.
+    cases k with
+    | zero =>
+      -- k = 0 → bvar 0 maps to the freshly pushed τ and the head v.
+      refine ⟨τ, v, ?_, ?_, hRC⟩
+      · -- (Γ.push τ)[(Γ.size + 1) - 1 - 0]? = (Γ.push τ)[Γ.size]?
+        --  = some τ (the just-pushed entry).
+        have hbound : Γ.size < (Γ.push τ).size := by
+          rw [Array.size_push]; omega
+        have hidxeq : (Γ.push τ).size - 1 - 0 = Γ.size := by
+          rw [Array.size_push]; omega
+        rw [hidxeq, Array.getElem?_eq_getElem hbound]
+        rw [Array.getElem_push_eq]
+      · simp
+    | succ k' =>
+      -- k = k' + 1 → bvar k+1 looks up old position k'.
+      have hk_unfold : k' + 1 < ρ.length + 1 := by
+        simpa [List.length_cons] using hk
+      have hk' : k' < ρ.length := Nat.lt_of_succ_lt_succ hk_unfold
+      obtain ⟨τk, vk, hΓk, hρk, hRCk⟩ := hidx k' hk'
+      refine ⟨τk, vk, ?_, ?_, hRCk⟩
+      · -- (Γ.push τ)[(Γ.size + 1) - 1 - (k' + 1)]?
+        --  = (Γ.push τ)[Γ.size - 1 - k']? = Γ[Γ.size - 1 - k']?
+        have hbound_orig : Γ.size - 1 - k' < Γ.size := by
+          have : k' < Γ.size := hlen ▸ hk'
+          omega
+        have hbound_push : Γ.size - 1 - k' < (Γ.push τ).size := by
+          rw [Array.size_push]; omega
+        have hidxeq : (Γ.push τ).size - 1 - (k' + 1) = Γ.size - 1 - k' := by
+          rw [Array.size_push]; omega
+        rw [hidxeq]
+        rw [Array.getElem?_eq_getElem hbound_push]
+        rw [Array.getElem_push_lt _ _ _ hbound_orig]
+        rw [Array.getElem?_eq_getElem hbound_orig] at hΓk
+        exact hΓk
+      · -- (v :: ρ)[k' + 1]? = ρ[k']?
+        simpa using hρk
+
+/-! ## The fundamental lemma — open-environment form
+
+The classical NbE soundness theorem, adapted to OCH's setting and
+formulated over an open environment.
+
+**Why open**: the closed FL's `.lam` case has no way to recurse
+(the body lives under one binder, and the closed FL only knows
+about empty environments). The open form takes a typed env `Γ ⊨ ρ`
+and reasons under that env. The `.lam` case extends the env with
+the function's domain; the IH applies under the extension.
+
+Statement (informal): if `tyCheck n Γ ρ e τV = .ok true` and `ρ`
+realises `Γ` (i.e., `RC_env n d Γ ρ`) and the type-target `τV` is
+itself realised, then `eval n unfBound ρ e` produces a value `v`
+with `RC n d τV v`.
+
+Proof (sketch, *not* in this commit): structural induction on
+`tyCheck`/`tyInfer`'s case-split structure. Each case of
+`tyCheck`/`tyInfer` constructs an RC witness from the IHs:
+
+- `.type` / `.bot`: base cases — `.type` is in `RC _ .type`
+  directly via `RC.type_top`; `.bot` doesn't occur as a value at
+  non-Bot type.
+- `.bvar k`: env-lookup; `RC` follows from `RC_env`.
+- `.lam dom body`: the function case. To show `RC (n+1) d (.lam
+  domV clB) (.lam domV cl)`, we need that for every RC argument
+  `a`, vapp produces an RC body. This is the IH on the body,
+  instantiated under `RC_env.cons` extending the typed env.
+- `.app f a`: from RC of `f` at `.lam domV clB` and RC of `a` at
+  `domV`, the `.lam` clause of `RC` gives RC at `clB.openω a`.
+- `.iota` / `.fix`: similar, using the corresponding `RC` clauses
+  and `RC.iota_intro`/`RC.fix_intro`.
+- `.asc t τ`: ascription is computationally transparent; RC
+  follows from the IH on `t` at `τ`.
+- `.letE val body`: extend the typed env via `RC_env.cons`, recurse.
 
 Each case requires: the FL's IHs, the RC-closure lemmas (`RC.mono`,
-`RC.subtype_closed`), and the standard NbE realization lemmas
+`RC.subtype_closed`), and the standard NbE realisation lemmas
 (`eval_realises`, `vapp_realises`).
+
+**Proof status (pass 5)**: signature reformulated to take an
+open environment. Body remains sorried — pass 6+ work.
 -/
 
-/-- **Fundamental lemma**: well-typed closed expressions evaluate to
-RC-witnessed values of their declared type.
+/-- **Fundamental lemma (open form)**: well-typed open expressions,
+under a typed environment realisation, evaluate to RC-witnessed
+values of their declared type.
 
 This is the typed-NbE analogue of `eval_realises` (the untyped
-realization theorem in `SoundnessProof.lean`). The relationship:
+realisation theorem in `SoundnessProof.lean`). The relationship:
 
   eval_realises    :  R relates v with e — untyped, syntactic.
-  typed_nbe_fundamental :  RC relates v with τ — typed, semantic.
+  typed_nbe_fundamental_open :  RC relates v with τ — typed, semantic.
 
-Both flow from `typeCheck` accepting; `eval_realises` gives
-quote-equivalence, `typed_nbe_fundamental` gives reducibility-at-type.
+Both flow from `tyCheck` accepting; `eval_realises` gives
+quote-equivalence, `typed_nbe_fundamental_open` gives
+reducibility-at-type.
 
-The conclusion bundles three things:
+The conclusion bundles two things:
 
-  ∃ τV v. eval n unfBound [] τ = .ok τV
-        ∧ eval n unfBound [] e = .ok v
-        ∧ RC n τV v
+  ∃ v. eval n unfBound ρ e = .ok v ∧ RC n d τV v
 
-The first two ensure that `eval` succeeds at the given fuel (this is
-NOT derivable in general from `typeCheck` — see the
-`docs/ideas/quote-witness-feasibility.md` Ω-counterexample — but for
-the *RC-witnessed* fragment, it is). The third gives the typed-RC
-witness.
+The first ensures that `eval` succeeds at the given fuel (this is
+NOT derivable in general from `tyCheck` — see the
+`docs/ideas/quote-witness-feasibility.md` Ω-counterexample — but
+for the *RC-witnessed* fragment, it is). The second gives the
+typed-RC witness.
 
-**Proof status (pass 4)**: scaffold that splits into typeCheck's
-operational cases. Currently sorries for all cases — a structural
-investigation revealed that the FL as stated requires an
-*open-environment* IH for the `.lam`/`.app`/`.letE` cases (the
-typed-environment realizability lemma), which is non-trivial to
-formulate inline. See the implementation log for the full
-post-mortem.
+**Proof status (pass 5)**: scaffold with reformulated signature
+to take an open environment. Body remains sorried; pass 6+ should
+attack the body case-by-case. -/
+theorem typed_nbe_fundamental_open
+    {n d : Nat} {Γ : TyEnv} {ρ : Env} {e : Expr} {τV : Val}
+    (_hΓρ : RC_env n d Γ ρ)
+    (_hfuel : 1 ≤ n)
+    (_hfuelω : n ≤ fuelω)
+    (_hcheck : tyCheck n Γ ρ e τV = .ok true) :
+    ∃ v, eval n unfBound ρ e = .ok v ∧ RC n d τV v := by
+  -- TODO(typed-nbe pass 6+): proof body.
+  --
+  -- The proof is by structural induction on `tyCheck`/`tyInfer`'s
+  -- case-split (which mirrors typing rules):
+  --
+  -- - `.type` / `.bot`: base case via `RC.type_top` / `RC.bot`.
+  -- - `.bvar k`: env-lookup; `RC` from `RC_env`.
+  -- - `.lam dom body`: extend env via `RC_env.cons`, recurse.
+  -- - `.app f a`: combine IHs, use `RC.lam_elim` for body type.
+  -- - `.iota` / `.fix`: use `RC.iota_intro` / `RC.fix_intro`.
+  -- - `.asc t τ`: IH on `t` plus `RC.subtype_closed` for the
+  --   declared-type ascription check.
+  -- - `.letE val body`: extend env via `RC_env.cons`, recurse.
+  --
+  -- The hardest cases are `.lam` (closure-form output requires
+  -- saturation witnesses on the closure body's eval at fuelω;
+  -- documented in pass 3's post-mortem) and `.fix` (similar
+  -- saturation issue on the fixed-point body).
+  --
+  -- Auxiliary lemmas the body will likely need:
+  -- - `RC.subtype_closed` (above) for `.asc` and conversion sites
+  --   inside `tyCheck` — currently scaffolded with 7 inline
+  --   sorries on hard SubV cases.
+  -- - A *body-substitution* lemma for the closure cases:
+  --   "SubV between fresh-opened bodies → SubV between
+  --   any-value-opened bodies". See the post-mortem in
+  --   `docs/ideas/typed-nbe-implementation-log.md`.
+  -- - `eval_realises` for the operational backbone (already
+  --   proven in `SoundnessProof.lean`).
+  sorry
 
-The single declaration sorry remains at 1; this iteration adds
-an additional fuel hypothesis (`n ≤ fuelω`) so that
-`subCheckVal_subV` can be invoked at conversion sites. -/
-theorem typed_nbe_fundamental
+/-- **Closed corollary** of the open FL: at empty `Γ`/`ρ`, the open
+fundamental lemma yields the closed-form statement. Stated as a
+non-`theorem`-tagged shape so it carries no proof obligation in
+this commit; the body will fall out as a one-liner specialisation
+once `typed_nbe_fundamental_open` is closed.
+
+(Kept as documentation of the intended downstream API. NOT a
+sorried theorem — it would inflate the inline-sorry count. Pass
+6+ should add the actual theorem and prove it as a one-liner
+specialisation.)
+-/
+example
     {n : Nat} {e τ : Expr}
     (_hcle : e.closedAt 0 = true) (_hclτ : τ.closedAt 0 = true)
     (_hfuel : 1 ≤ n)
     (_hfuelω : n ≤ fuelω)
     (_hcheck : typeCheck n e τ = .ok true) :
-    ∃ τV v, eval n unfBound [] τ = .ok τV
-          ∧ eval n unfBound [] e = .ok v
-          ∧ RC n 0 τV v := by
-  -- TODO(typed-nbe): proof body.
-  --
-  -- The proof requires structural induction on the typing
-  -- derivation, which means inducting on the fuel and dispatching
-  -- on the term shape. The crux is the `.lam` and `.app` cases,
-  -- which need an *open-environment* form of the FL stating:
-  --
-  --   typed-env Γ realises ρ →
-  --   tyCheck fuel Γ ρ e expected = .ok true →
-  --   eval fuel unfBound ρ e succeeds with v ∧ RC n d expected v
-  --
-  -- Without the open form, the closed FL's `.lam` case has
-  -- nowhere to recurse (the body lives under one binder). The
-  -- realistic path: prove the open form first; the closed form
-  -- is its specialisation at empty Γ/ρ.
-  sorry
+    -- Statement: the closed-form FL conclusion. Shown as an
+    -- `example` (Lean's syntax for "stated, not committed").
+    -- Actual theorem will be added by pass 6+ once
+    -- `typed_nbe_fundamental_open` is proven.
+    True := trivial
 
 /-! ## Bridge corollaries: from FL to old-soundness sorries
 

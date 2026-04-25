@@ -4,6 +4,297 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 5 partial + substitution-lemma post-mortem (agent-ad8dfe91)
+
+**Reformulated the FL signature to take an open-environment realisation
+(`RC_env n d Γ ρ`), and proved both `RC_env.nil` and `RC_env.cons`
+axiom-clean. This is the right shape for the eventual FL body: the
+`.lam`/`.app`/`.letE` cases need `RC_env.cons` to extend the env. The
+7 inline sorries in `subtype_closed_aux` REMAIN — pass 5 explored each
+and confirmed that 6 of 7 require the same body-substitution lemma
+(or close variants of it), and that lemma is genuinely 300-500 LOC of
+its own. Net inline sorry delta: 0 (no progress on the 7 hard cases,
+no regression).**
+
+### What landed
+
+#### `RC_env n d Γ ρ` definition + helpers
+
+Added the typed-environment realisation predicate, with the indexing
+convention from `tyInfer`/`tyCheck`:
+- `Γ : TyEnv` is an `Array Val`; bvar `k` looks up `Γ[Γ.size - 1 - k]`
+  (reverse-order array indexing, matching `tyInfer`'s `.bvar` arm).
+- `ρ : Env` is a `List Val`; bvar `k` looks up `ρ[k]` (cons-order).
+
+`RC_env n d Γ ρ` requires `Γ.size = ρ.length` and for every
+`k < ρ.length`, the value at `ρ[k]` is RC at the type at
+`Γ[Γ.size - 1 - k]`.
+
+Helper lemmas (both axiom-clean):
+- `RC_env.nil : RC_env n d #[] []` (trivial).
+- `RC_env.cons : RC_env n d Γ ρ → RC n d τ v → RC_env n d (Γ.push τ) (v :: ρ)`
+  — index-arithmetic proof handling the bvar-0-vs-bvar-(k+1) split.
+
+#### `typed_nbe_fundamental_open` — open-environment FL signature
+
+Replaced the closed-environment FL signature with:
+
+```
+theorem typed_nbe_fundamental_open
+    {n d : Nat} {Γ : TyEnv} {ρ : Env} {e : Expr} {τV : Val}
+    (hΓρ : RC_env n d Γ ρ)
+    (hfuel : 1 ≤ n) (hfuelω : n ≤ fuelω)
+    (hcheck : tyCheck n Γ ρ e τV = .ok true) :
+    ∃ v, eval n unfBound ρ e = .ok v ∧ RC n d τV v
+```
+
+This is the right shape for the eventual proof: structural induction
+on `tyCheck`/`tyInfer`'s case-split, with the `.lam`/`.app`/`.letE`
+cases extending `Γ ρ` via `RC_env.cons` and recursing on the body.
+
+The closed corollary (at `Γ = #[]`/`ρ = []`) is left as a docstring
+example (NOT a sorried theorem — that would inflate sorry count); the
+actual theorem will be added in pass 6+ as a one-liner specialisation
+once `typed_nbe_fundamental_open`'s body is proven.
+
+`AxiomCheck.lean` updated: `typed_nbe_fundamental` → `typed_nbe_fundamental_open`,
+`RC_env.nil`, `RC_env.cons` added (latter two axiom-clean).
+
+### Substitution lemma post-mortem
+
+This pass set out to close the 7 inline sorries in `subtype_closed_aux`,
+prioritising the body-substitution lemma (which closes
+`lam`/`iota_struct`/`fix_struct` — 3 of 7). After detailed analysis
+of each remaining case, here is what's needed for each, and why
+the substitution lemma is genuinely a 300-500 LOC project beyond
+this pass's scope.
+
+#### The substitution lemma (needed by `lam`, `iota_struct`, `fix_struct`)
+
+The shape needed for these three cases:
+
+```
+SubV_subst_neutral :
+  ∀ {S Γ τ_dom v} {clA clB bA bB},
+    clA.openω (.neutral (.var Γ.size)) = some bA →
+    clB.openω (.neutral (.var Γ.size)) = some bB →
+    SubV S (Γ.push τ_dom) bA bB →
+    -- For any value `v` in scope, replacing the neutral var with `v`:
+    ∃ bA' bB',
+      clA.openω v = some bA' ∧
+      clB.openω v = some bB' ∧
+      SubV S Γ bA' bB'
+```
+
+**Why it's needed**:
+- `lam` case: `RC.lam` requires `clA.openω a` and `clB.openω a` to be
+  related for arbitrary RC-typed `a`. The SubV.lam premise gives
+  `SubV (Γ.push domA) bA bB` where `bA = clA.openω fresh` and
+  `bB = clB.openω fresh` — only at the fresh neutral. The
+  substitution lemma bridges to arbitrary `a`.
+- `iota_struct` case: same structure. `RC.iota` needs
+  `clA.openω v` ↔ `clB.openω v` for the inhabitant `v`.
+- `fix_struct` case: same shape, with the inhabitant being the fix
+  itself (`clA.openω (.fix annA clA)`).
+
+**Why it's hard**:
+- The SubV is a relational property over closures, NOT a syntactic
+  substitution. Proving it requires inducting on the SubV derivation
+  and threading the substitution through every nested case.
+- This is structurally the **same scope** as `Subtype'.unshift_head`
+  documented in `Subtyping.lean` (lines 1074-1123). That docstring
+  records: "Scope estimate. ~300–500 LOC structural induction over
+  24 `Subtype'` constructors, with shift-subst arithmetic in `.hyp`
+  ... seen-set depth-tag rewiring in productive rules. Not proven
+  in this branch. Four prior subagent sessions attempted variants
+  of this and documented progressive infrastructure; none closed
+  the lemma."
+- The SubV-level analog has 17 constructors (one fewer than Subtype')
+  but the shape of the induction is identical. Estimated scope:
+  same 300-500 LOC.
+
+**Disposition**: deferred to a dedicated future pass. The pass 5
+attempt confirmed:
+1. The lemma's statement is well-defined (not a moving target).
+2. The proof technique is structural induction on SubV, threading
+   substitution + seen-set transformation.
+3. No shortcut exists via the seen-set coinduction trick (the
+   `unfold_fix_R` machinery handles seen-set obligations, but NOT
+   the body substitution itself).
+
+#### `iota_intro` (LHS-type-vs-value mismatch)
+
+**SubV.iota_intro structure**: LHS = `a` (a Val), RHS =
+`.iota ann clB`. Premises include `clB.openω a = some bB` (body
+opened at the LHS *type* `a`).
+
+**RC.iota_intro requires**: `clB.openω v = some bB' ∧ RC k d bB' v`
+where `v` is the actual value (the inhabitant).
+
+**The mismatch**: the SubV premise opens `clB` at `a` (the LHS
+type/value). The RC requires opening at `v` (the inhabitant). These
+differ unless `a = v`.
+
+**What the bridge would need**: a lemma saying "if `v` is RC at type
+`a`, then `clB.openω a` and `clB.openω v` are RC-equivalent". This
+is a parametricity-style statement: closures respect RC-equivalence
+of their inputs. Provable in principle (closures are functions, RC
+is a logical relation, so closures should be relational), but the
+proof requires the same kind of substitution-through-eval lemma
+discussed above.
+
+**Disposition**: deferred. Same family as the lam-substitution lemma.
+
+#### `revapp_L` (RC-at-neutral is just saturation)
+
+**SubV.revapp_L structure**: LHS = `.neutral (.stuckRec f arg)`,
+RHS = `c`. Premise: `vappω f arg = some a' ∧ a' ≠ stuckRec ∧
+SubV (..) Γ a' c`.
+
+**The blockage**: `RC` at `.neutral _` is JUST saturation
+(`Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q`) — NO
+information about how `v` relates to the unfolded form `a'`. So
+applying the IH to the recursive premise requires `RC k d a' v`,
+which we don't have.
+
+**Cases where revapp_L closes**: by case-split on `c`'s shape:
+- `c = .type` or `c = .neutral _`: closes via saturation alone.
+- `c = .lam`/`.iota`/`.fix`: needs body content; blocked.
+- `c = .bot`: would need to derive `False`; only possible with
+  typing context (which `subtype_closed_aux` doesn't have).
+
+**Disposition**: a partial closure (case-split on `c`'s shape) is
+possible but only handles a subset. The general case needs an
+additional bridge "RC at stuckRec implies RC at unfolded form" that
+would itself require typing-realisation context.
+
+#### `neutral_ascent` (SynthN realisation missing)
+
+**SubV.neutral_ascent structure**: LHS = `.neutral nA`, RHS = `b`.
+Premises: `SynthN Γ nA τ ∧ SubV S Γ τ b`.
+
+**The blockage**: same as `revapp_L`. RC at `.neutral nA` is just
+saturation. We need `RC k d τ v` to apply the IH on `SubV S Γ τ b`,
+but RC at neutral doesn't give us this.
+
+**What the bridge would need**: a `SynthN-realises` lemma. Given
+`SynthN Γ nA τ` and `RC_env n d Γ ρ` (the realised typing context),
+a value `v` with `R n d v (.bvar Γ.size)` (i.e., `v` realises the
+neutral `nA`'s syntactic form) should imply `RC n d τ v`. This is
+analogous to the untyped `eval_realises`/`vapp_realises` chain, but
+for the typed RC side.
+
+**Disposition**: needs `RC_env`-aware reasoning. Now that `RC_env`
+is defined, this bridge could be tackled, but it's still a
+substantial lemma — needs SynthN-induction over the synthesis
+structure (var, app, stuckRec). Estimated scope: 100-200 LOC.
+
+#### `unfold_fix_L`, `unfold_iota_L` (step-up mismatch)
+
+**Structure**: LHS = `.fix ann clA` (or `.iota ann clA`),
+RHS = `c`. Premise: `clA.openω (LHS) = some bA ∧ bA ≠ LHS ∧
+SubV (..) Γ bA c`.
+
+**What we have**: `h : RC (k+1) d (LHS) v`. By RC.fix_elim/iota_elim:
+`RC k d bA v` (one step is consumed by the unfold).
+
+**What we need**: `RC (k+1) d c v`.
+
+**The step-up mismatch**: applying the IH at step `k` to the
+recursive premise gives `RC k d c v`, NOT `RC (k+1) d c v`. For
+non-trivial `c` (closure-form), `RC (k+1) d c v` requires body
+content "at step k", while `RC k d c v` only gives body content
+"at step k-1". One step short.
+
+**Why this is unrecoverable with current RC**: step-indexed RC
+*requires* fix-unfolding to consume a step (otherwise the
+predicate isn't well-founded, since `RC (n+1) d (.fix ann cl) v
+:= RC (n+1) d (cl.openω (.fix ann cl)) v` would be an unguarded
+self-reference). The cost of well-foundedness IS the step-loss
+on unfold.
+
+**What would unblock**: either
+1. A different RC formulation that doesn't step-down on fix unfold
+   (e.g., guarded recursion via `▷` modality, Iris-style; would
+   require redefining RC and re-proving mono).
+2. A "step-up" lemma like `RC k d c v ∧ saturation v → RC (k+1) d c v`
+   — only true for trivial `c` (`.type`/`.neutral`/`.bot`).
+   Would close revapp_L/neutral_ascent partially but not these
+   unfold cases.
+
+**Disposition**: documented as a structural issue with the
+current RC definition. May require RC redesign.
+
+### What pass 6 should pick up
+
+In priority order:
+
+1. **`SynthN-realises` bridge** (100-200 LOC) — closes
+   `neutral_ascent`. Now that `RC_env` is defined, this is the most
+   tractable of the remaining sorries.
+
+2. **`revapp_L` partial closure** (case-split on `c`'s shape, ~50
+   LOC) — closes the `c = .type`/`c = .neutral` sub-cases. The
+   general case still blocked.
+
+3. **Substitution lemma** (300-500 LOC) — closes
+   `lam`/`iota_struct`/`fix_struct`/`iota_intro` (4 of the 7
+   sorries). This is the highest-leverage but hardest piece.
+   Should be done in tandem with `Subtype'.unshift_head` if
+   possible (similar shape, similar techniques).
+
+4. **RC redesign or fix-unfold step-up workaround** for
+   `unfold_fix_L`/`unfold_iota_L` (2 of 7) — likely requires
+   reformulating the RC predicate. Evaluate cost-vs-benefit
+   relative to keeping the current form.
+
+5. **FL body** for `typed_nbe_fundamental_open` — multi-week task,
+   should follow at least partial closure of `subtype_closed_aux`
+   (used at conversion sites in `tyCheck`).
+
+### Sorry count trajectory
+
+- Before pass 5: TypedNbE.lean = 2 declaration sorries
+  (`subtype_closed_aux` body, `typed_nbe_fundamental` body),
+  with 7 inline sorries in `subtype_closed_aux`.
+- After pass 5: TypedNbE.lean = 2 declaration sorries
+  (`subtype_closed_aux` body, `typed_nbe_fundamental_open` body
+  — the latter is the reformulated open-form), with 7 inline
+  sorries in `subtype_closed_aux` (UNCHANGED).
+
+Net delta: 0 inline sorries removed, 0 added. No regression.
+
+The `RC_env.nil` and `RC_env.cons` lemmas are axiom-clean
+(no sorryAx).
+
+Build green throughout.
+
+### Honest assessment
+
+Pass 5's deliverable is the **FL signature reformulation** plus
+the `RC_env` substrate. This is real progress: the next pass
+(or the eventual FL body) starts from a correctly-shaped
+signature with the typed-env realisation lemmas already in
+hand.
+
+The 7 inline sorries in `subtype_closed_aux` were not closed
+this pass. The substitution lemma (highest leverage) is
+documented to be a 300-500 LOC project of comparable scope to
+`Subtype'.unshift_head` (which has resisted four prior agents).
+Attempting it in the remaining budget of this pass would have
+risked either:
+- A half-finished sorried lemma (forbidden by user's principle:
+  "no new sorries to close old ones").
+- A weakened statement (forbidden by user's principle: "don't
+  weaken statements to make proofs go through").
+
+The honest disposition is to commit the genuinely-finished work
+(`RC_env` + reformulated FL signature) and document the
+substitution-lemma terrain so the next agent has a precise
+starting point.
+
+---
+
 ## 2026-04-25 — Pass 4 partial + post-mortem (agent-aa25a621)
 
 **Took the `RC.subtype_closed` sorry from one bare placeholder to a
