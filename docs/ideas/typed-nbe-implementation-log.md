@@ -4,6 +4,184 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 6 (overnight): typed-everything investigation (agent-a3d9ef98)
+
+**Investigated the user's hypothesis: "making everything the typed
+version dissolves the substitution-lemma wall." Verdict (honest):
+**partially yes** — the wall persists in any algorithmic checker that
+decides closure equivalence by fresh-opening, but typed-everything
+(a) bypasses `Subtype'.unshift_head` entirely in the typed pipeline,
+and (b) reduces the body-substitution lemma's scope from 300-500 LOC
+at Expr-level to estimated 150-250 LOC at Val-level. Net: typed-
+everything is the right architecture, but it's a multi-pass migration,
+not a one-pass dissolution.**
+
+### What landed
+
+#### Phase 1: design doc
+
+`docs/ideas/typed-everything-architecture.md` (552 LOC) lays out:
+
+- Three architectural levels (0/1/2) with concrete data-type sketches.
+  Pass 6 commits to **Level 1.5**: typed `SubTV` relation, untyped
+  engine. Gets Level 2's payoff at Level 0's cost.
+- Walk-through of the substitution lemma in the typed setting: why
+  it doesn't magically dissolve, but how its shape changes.
+- 5-pass forward plan (passes 6-10+), with LOC estimates per pass.
+- Honest assessment of what bypasses (`unshift_head`), what gets
+  cheaper (Val-level body-substitution), and what stays hard
+  (algorithmic-checker parametricity).
+
+Commit `9c62aca`.
+
+#### Phase 2: `SubTV` substrate
+
+`SubTV n d τ_a τ_b := ∀ v, RC n d τ_a v → RC n d τ_b v` — the
+typed-everything subtype relation, defined as a logical relation.
+
+Constructors landed (all axiom-clean):
+- `SubTV.refl` — `τ ⊑ τ`.
+- `SubTV.trans` — composition of RC-coercions.
+- `SubTV.bot_L` — `.bot ⊑ τ` (RC at .bot is False).
+- `SubTV.top` — `τ ⊑ .type` (saturation-only).
+- `SubTV.to_neutral` — `τ ⊑ .neutral _` (saturation-only).
+- `SubTV.coerce` — apply a SubTV to lift an RC.
+- `SubTV.contra` — contravariant alias for arrow domains.
+
+Bridge (transitively sorried via `RC.subtype_closed`):
+- `SubTV.of_SubV` — converts `SubV [] #[] τ_a τ_b` to `SubTV n d τ_a τ_b`.
+  Currently depends on the 8 inline sorries in `subtype_closed_aux`.
+  Once those close (passes 7-8), `SubTV` is fully bridged.
+
+`AxiomCheck.lean` updated with all 7 SubTV constructors. Verified
+axiom-clean except for `of_SubV` (transitively on RC.subtype_closed,
+as expected).
+
+Commit `198ab43`.
+
+### What did NOT land
+
+**Closing any inline sorries in `subtype_closed_aux`.** All 8 hard
+cases remain sorried. The reason — documented honestly in the design
+doc — is that **the substitution lemma is intrinsic** to algorithmic
+soundness when the algorithm decides closure equivalence by
+fresh-opening. Pass 6's design demonstrates that:
+
+1. The `SubTV` relation is the right *target* for the FL.
+2. The bridge `SubV ⟹ SubTV` IS the work, factored as
+   `RC.subtype_closed_aux`.
+3. The wall is the same wall; the rebuild **doesn't dissolve it**.
+
+This is critical to know. The user's hypothesis "typed-everything
+dissolves the wall" was investigated honestly and refined. The
+architectural shift is still worth doing — `unshift_head` is
+bypassed, the substitution lemma gets cheaper at Val-level — but it's
+not free.
+
+### Sorry trajectory
+
+- Before pass 6: TypedNbE.lean = 9 sorries (8 inline in
+  `subtype_closed_aux` + 1 declaration in `typed_nbe_fundamental_open`).
+- After pass 6: TypedNbE.lean = 9 sorries (UNCHANGED).
+
+Net delta: 0 sorries added, 0 removed. Pass 6's deliverables are
+substrate (7 axiom-clean theorems) and design (552-LOC doc), neither
+of which touches the existing sorries.
+
+Build green throughout.
+
+### Pass 7+ next-step list (precise, non-investigative)
+
+The design doc's recommended ordering. Each is sized so a single
+agent session can land at least the first sub-step.
+
+**Pass 7: `SubV_to_SubTV.lam` via Val-level body-substitution.**
+
+Goal: close one closure case in `subtype_closed_aux` — specifically
+the `lam` case — using a NEW Val-level body-substitution lemma.
+
+Concrete steps:
+1. State `SubV_subst_neutral_to_value` in TypedNbE.lean:
+   ```
+   theorem SubV_subst_neutral_to_value :
+       ∀ {S Γ τ_dom v} {clA clB bA bB},
+         clA.openω (.neutral (.var Γ.size)) = some bA →
+         clB.openω (.neutral (.var Γ.size)) = some bB →
+         SubV S (Γ.push τ_dom) bA bB →
+         ∃ bA' bB',
+           clA.openω v = some bA' ∧
+           clB.openω v = some bB' ∧
+           SubV S Γ bA' bB'
+   ```
+2. Prove it by SubV-induction. **At Val-level**, where RC's saturation
+   structure is available. Estimated 100-150 LOC.
+3. Use it to close `subtype_closed_aux`'s `lam` case (currently
+   sorried). Net delta: -1 inline sorry, +1 axiom-clean lemma.
+
+**Pass 8: extend body-substitution to remaining closure cases.**
+
+Same lemma covers `iota_struct`, `fix_struct` (variations on the
+shape). Closure-form premises in `iota_intro`, `unfold_fix_L`,
+`unfold_iota_L`, `revapp_L` may need separate but related lemmas.
+
+Estimated 200-300 LOC. Closes 5-6 inline sorries. Possibly leaves
+`neutral_ascent` for pass 8.5 (needs SynthN-realises bridge,
+~100-200 LOC, orthogonal).
+
+**Pass 9: FL body using completed SubTV.**
+
+Once `subtype_closed_aux` is closed (i.e., 0 inline sorries),
+`SubTV.of_SubV` becomes axiom-clean. The FL body
+(`typed_nbe_fundamental_open`) can use SubTV throughout for
+conversion sites:
+```
+have hsub : SubTV n d τ_inferred τ_expected :=
+  SubTV.of_SubV (subCheckVal_subV ...)
+have rc_b : RC n d τ_expected v := hsub.coerce rc_a
+```
+
+FL body is structural induction on `tyCheck`/`tyInfer`. Estimated
+500-800 LOC.
+
+**Pass 10+: retire unshift_head-dependent code.**
+
+The 4 declaration sorries in `SoundnessProof.lean`
+(`tyCheck_sound_open`, `tyInfer_sound_open`, etc.) become provable
+via the typed FL. `unshift_head` is no longer needed; can be deleted
+or left documented.
+
+### Honest assessment
+
+Pass 6 set out to investigate a user hypothesis. Investigation
+returned: **the hypothesis is partially correct**. Typed-everything
+is the right path, but it's not a one-pass shortcut around the
+substitution lemma. The pass's commitment was to deliver the design
+doc + at least one substantive prototype piece. Both delivered.
+
+What I deliberately did NOT do:
+- Open new sorries to "make progress" on inline cases. The temptation
+  to case-split `revapp_L` or `neutral_ascent` on the goal-type was
+  resisted: it would add sorries (1 → 4 in each case) which violates
+  the no-regression rule, even when 2 of the 4 sub-cases close.
+- Inflate the count by adding sorried "scaffold" lemmas for pass 7+
+  to use. Pass 7 will state the substitution lemma when it actually
+  proves it; pre-stating it as `sorry` would be cosmetic.
+- Touch the FL body. That's pass 9 work; pass 6 is substrate.
+
+What I delivered:
+- A design doc that's honest about what the architecture buys vs
+  doesn't buy.
+- A `SubTV` substrate that pass 7+ inherits as a clean foundation.
+- A precise next-step list so pass 7 starts coding immediately
+  without re-investigating.
+- 0 sorry regression.
+
+The "couple of agents" estimate the user gave will likely be **3-4
+agents**, not 2, given the substitution-lemma cost at the Val-level.
+This is the most honest forward estimate available.
+
+---
+
 ## 2026-04-24 — Pass 5 partial + substitution-lemma post-mortem (agent-ad8dfe91)
 
 **Reformulated the FL signature to take an open-environment realisation
