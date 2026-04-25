@@ -28,23 +28,15 @@ This file is aspirational. Not a roadmap — items here may take years, may need
 
 ---
 
-## 3. Subsumption rule for stuck eliminators
+## 3. Subsumption through stuck eliminators
 
-**What:** When both sides of a subtype check are eliminations of the same inductive type and the subject is neutral, instead of treating the elim as opaque, virtually case-split on the subject's possible constructor shapes and check the subsumption in each branch.
+**What:** Today, when one or both sides of a subtype check is an elimination of an inductive type whose subject is a neutral, the eliminator can't fire and the algorithm has no path forward. We want the algorithm to recognise that such a stuck elim is still *semantically* the union of its branches, and close the subsumption when the inhabitation-equivalent claim holds.
 
-```
-n : Nat_ neutral
-LHS = Fin n               = stuck(n; zero→Bot; succ→sCase n)
-RHS = Fin (succ_ n)       = sCase n                          -- already reduced
+Concretely: judgments like `Fin n ⊑ Fin (succ_ n)` under fresh `n:Nat_` are sound (inhabitation-true) but currently rejected because `Fin n` is stuck while `Fin (succ_ n)` reduces.
 
-Split on n:
-  case n = zero_  : LHS = Bot,           RHS = Fin one_       → Bot ⊑ Fin one_  ✓ (S-BotL)
-  case n = succ_ k: LHS = Fin (succ_ k), RHS = Fin (succ_ succ_ k) → recurse / coinductive close
-```
+**Why it matters:** Unblocks #2, and the analogous parametric reasoning for Vec, List, and every other index-recursive type. Closes a real gap between the algorithmic checker and the declarative subtype relation it's meant to implement.
 
-**Why it matters:** Unblocks #2 (and the analogous parametric reasoning for Vec, List, every other index-recursive type). Closes a real gap between the structural algorithm and what the declarative subtype relation already endorses.
-
-**Blocker:** Implementation work. Needs a constructor-signature dispatcher per inductive type, careful coinductive closure to avoid infinite split, and integration with the seen-set. Cousins: bisimulation up-to-context (Brandt-Henglein style, which Och already does for `fix`), dependent-pattern-match coverage checking. Doable.
+**Blocker:** Open design problem. The challenge is recovering structural information from a stuck elim without sacrificing decidability or termination, and doing so uniformly across inductive types rather than per-type. Solutions exist in adjacent settings (bisimulation up-to-context, coverage checking, η-rules for inductives) but no off-the-shelf adaptation that fits Och's structural-with-recursion ⊑ cleanly.
 
 ---
 
