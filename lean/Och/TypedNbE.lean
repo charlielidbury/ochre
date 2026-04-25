@@ -253,20 +253,55 @@ theorem RC.neutral_top {n : Nat} {ne : Neutral} {v : Val} :
     RC (n+1) (.neutral ne) v := by
   show True; trivial
 
-/-- A concrete construction useful for `eval`'s `.lam` case: if `v`
-is itself a lambda, RC at a `.lam` type reduces to checking the body
-under the closure. This is provable by case analysis on `vapp`. -/
-theorem RC.lam_intro {n : Nat} {dV : Val} {cl clBody : Closure} {v : Val}
-    (_hbody : ∀ a r,
-      RC n dV a →
-      cl.openω a = some r →
-      ∃ rB, clBody.openω a = some rB ∧ RC n r rB) :
-    RC (n+1) (.lam dV cl) v := by
-  -- TODO(typed-nbe): proof body. Carefully unwind the `.lam` clause
-  -- of `RC` and discharge each instance via `_hbody`. The shape is
-  -- constructive (forall arg → exists r), so the body builds the
-  -- vapp witness from `cl`'s structure.
-  sorry
+/-- An RC-introduction lemma for closure-form values at a `.lam` type.
+Given that `v` is itself a lambda `.lam dV' clV` and that for every
+RC-typed argument `a`, `vapp` of `v` with `a` produces an RC result,
+we conclude `RC` at the `.lam dV cl` type.
+
+This is the constructive shape used by the FL's `.lam` case: when
+`eval` produces a lambda value, RC follows from showing the function
+behaves correctly under all RC-arguments.
+
+**Status: stated, body sorried.** Proof: unfold the `.lam` clause of
+RC, intro `a`, intro the RC-hypothesis on `a`, apply `hbody` to get
+the witness `r`, and produce the existential. Mostly mechanical;
+left sorried because the statement may need tweaking once FL's `.lam`
+case is concretely written.
+-/
+theorem RC.lam_intro {n : Nat} {dV : Val} {cl : Closure} {v : Val}
+    (hbody : ∀ a, RC n dV a →
+              ∃ r, vapp fuelω unfBound v a = .ok r
+                 ∧ ∃ rTy, cl.openω a = some rTy ∧ RC n rTy r) :
+    RC (n+1) (.lam dV cl) v := hbody
+
+/-- RC-introduction at an `.iota` type. Definitionally equal to the
+RC `.iota` clause — both conjuncts are required. -/
+theorem RC.iota_intro {n : Nat} {aV : Val} {cl : Closure} {v : Val}
+    (hann : RC n aV v)
+    (hbody : ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v) :
+    RC (n+1) (.iota aV cl) v := ⟨hann, hbody⟩
+
+/-- RC-introduction at a `.fix` type. -/
+theorem RC.fix_intro {n : Nat} {annV : Val} {cl : Closure} {v : Val}
+    (huy : ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v) :
+    RC (n+1) (.fix annV cl) v := huy
+
+/-- RC-elimination at `.lam`: extract the application-output witness. -/
+theorem RC.lam_elim {n : Nat} {dV : Val} {cl : Closure} {v a : Val}
+    (h : RC (n+1) (.lam dV cl) v) (ha : RC n dV a) :
+    ∃ r, vapp fuelω unfBound v a = .ok r
+       ∧ ∃ rTy, cl.openω a = some rTy ∧ RC n rTy r := h a ha
+
+/-- RC-elimination at `.iota`: split into the annotation and self-body
+witnesses. -/
+theorem RC.iota_elim {n : Nat} {aV : Val} {cl : Closure} {v : Val}
+    (h : RC (n+1) (.iota aV cl) v) :
+    RC n aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v := h
+
+/-- RC-elimination at `.fix`: extract the unfolded-type witness. -/
+theorem RC.fix_elim {n : Nat} {annV : Val} {cl : Closure} {v : Val}
+    (h : RC (n+1) (.fix annV cl) v) :
+    ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v := h
 
 /-! ## Typed eval
 
