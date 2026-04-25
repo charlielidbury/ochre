@@ -1,15 +1,73 @@
-# Typed NbE fundamental lemma (Option 1.75)
+# Typed NbE — the architectural foundation
 
-**Status:** research/planning sketch, 2026-04-23.
-**Scope:** the architectural path that would close Phase 1's
-residual sorries (particularly `eval_vapp_preserves_fullyQuotable`)
-by introducing reducibility-candidates-style typed invariants to
-the NbE proof chain.
-**Related:** `docs/ideas/quote-witness-feasibility.md` (the
-impossibility that motivates this), `docs/ideas/bottom.md`,
-`docs/ideas/soundness-strengthen.md` (Phase 2; orthogonal).
+**Status:** **endorsed direction**, 2026-04-25. To be implemented.
+Original sketch 2026-04-23, expanded after 2026-04-24/25 perf + wishlist
+investigations made the broader case.
+**Scope:** rebuild Och's NbE so semantic values carry their types, and
+the subtype/conversion check is type-directed. Not just a sorry-closure
+plan — this is the architectural substrate the rest of Och's open
+problems all reduce to.
+**Related:** `docs/ideas/quote-witness-feasibility.md` (an impossibility
+that motivates the typed approach), `docs/ideas/bottom.md`,
+`docs/ideas/soundness-strengthen.md` (Phase 2; orthogonal),
+`docs/ideas/subcheck-perf.md` and `docs/ideas/a6-closure-env-filtering.md`
+(perf negative results that point here), `WISHLIST.md` items #2 and #3
+(stuck-elim subsumption, unblocked by this).
 
-## Motivation
+## Why this is the right move
+
+Three of Och's biggest open problems share a root cause: the algorithmic
+checker has too little information at the point it's running.
+
+1. **Soundness.** The four declaration-level sorries in
+   `SoundnessProof.lean` need a typed reducibility predicate to close.
+   `eval_vapp_preserves_fullyQuotable` is provably impossible at its
+   current strength (Halting reduction, see `quote-witness-feasibility.md`)
+   — it needs RC, which needs typed NbE.
+
+2. **Performance.** `three_ ⊑ Nat_` costs ~50k fuel today. Two
+   independent investigations (memoization 2026-04-24, env-filtering
+   2026-04-25) confirmed there is no redundant work to cache or filter
+   away — the cost is **genuine algorithmic work** done by an untyped
+   checker that has to re-derive the singleton-Nat structure on every
+   call. Typed NbE turns this into pay-once construction-time work:
+   the obligation `n_ ⊑ Nat_` is discharged when the constant is built,
+   and recorded on the value itself. Subsequent checks become O(1)
+   lookups. The singleton encoding's intrinsic O(n) cost stops being
+   a runtime cost.
+
+3. **Wishlist #2 / #3.** Parametric width-monotonicity
+   (`λn:Nat_. Fin n ⊑ λn:Nat_. Fin (succ_ n)`) and stuck-eliminator
+   subsumption need the checker to know the *type* of a neutral, not
+   just its untyped form. Today `Fin n` for neutral `n:Nat_` is opaque
+   to the algorithm. With typed NbE the checker knows `n` inhabits
+   `Nat_`'s shape and can reason about `Fin n` parametrically through
+   its type rather than its stuck reduction.
+
+These are not three separate problems — they are three symptoms of the
+same architectural gap. Typed NbE is the foundation every credible
+solution to all three starts from.
+
+It also aligns Och with mainstream dependent type theory implementations.
+Coq, Lean, and Agda all run conversion against a typed semantic
+representation; none rely on untyped term equality alone. We can borrow
+proof technique (Abel's habilitation, Iris-style step-indexing, Coq's
+conversion machinery) instead of inventing from scratch.
+
+## What it does NOT do
+
+Typed NbE is the substrate, not the destination. It does not
+automatically give:
+
+- **Wishlist #1 (`Fin n ⊑ Nat_`)** — that's an Option F encoding
+  trade-off; needs separate encoding work.
+- **Wishlist #4 (inhabitation-as-subsumption)** — undecidable in full;
+  requires layers on top of typed NbE.
+
+But every credible path to those *starts from* typed NbE. Treat it as
+the foundation that unlocks the rest.
+
+## Original motivation (preserved for context)
 
 Phase 1's `eval_vapp_preserves_fullyQuotable` is formally impossible
 without invariants stronger than `Val.fullyQuotable`'s structural
@@ -190,21 +248,20 @@ statement bug orthogonal to this.
 
 ## Should we do it?
 
-**Not unilaterally.** This is 2–4 weeks of committed effort with
-several novel research questions (step-indexing × equirecursive
-subtyping; impredicative RC; iota self-types). It should happen if:
+**Yes — endorsed 2026-04-25.** The 2026-04-24/25 perf investigations
+(memoization, env-filtering) closed the door on incremental fixes to
+the untyped checker; both produced negative results pointing at the
+same conclusion: the architecture itself is the limiting factor.
+Combined with the soundness story and Wishlist items #2/#3, the case
+for typed NbE is now overdetermined.
 
-- Och's soundness story needs to be completed for publication /
-  downstream use.
-- The non-totality boundary documentation from `paper.md §7.2` is
-  insufficient for the project's aims.
-- Someone is willing to invest in the research-engineering.
-
-If none of those hold, **option (a) from the sorry-closure plan
-post-mortem — accept the boundary — remains the most honest
-answer**. The soundness theorems today have documented residual
-sorries that map precisely to OCH's stated non-total design. That's
-defensible.
+This is 2–4 weeks of committed research-engineering with genuine open
+questions (step-indexing × equirecursive subtyping; impredicative RC;
+iota self-types). Implementation will invalidate existing proofs in
+`SoundnessProof.lean` during the rebuild — affected proofs should be
+sorried with TODO markers and re-derived after the typed substrate
+stabilises. This is acceptable: we're moving to a stronger foundation,
+not abandoning soundness.
 
 ## Pointers if we do proceed
 
