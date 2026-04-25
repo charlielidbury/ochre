@@ -731,16 +731,41 @@ NOT derivable in general from `typeCheck` — see the
 the *RC-witnessed* fragment, it is). The third gives the typed-RC
 witness.
 
-**Proof status**: `sorry`. See `typed-nbe-implementation-log.md`. -/
+**Proof status (pass 4)**: scaffold that splits into typeCheck's
+operational cases. Currently sorries for all cases — a structural
+investigation revealed that the FL as stated requires an
+*open-environment* IH for the `.lam`/`.app`/`.letE` cases (the
+typed-environment realizability lemma), which is non-trivial to
+formulate inline. See the implementation log for the full
+post-mortem.
+
+The single declaration sorry remains at 1; this iteration adds
+an additional fuel hypothesis (`n ≤ fuelω`) so that
+`subCheckVal_subV` can be invoked at conversion sites. -/
 theorem typed_nbe_fundamental
     {n : Nat} {e τ : Expr}
     (_hcle : e.closedAt 0 = true) (_hclτ : τ.closedAt 0 = true)
     (_hfuel : 1 ≤ n)
+    (_hfuelω : n ≤ fuelω)
     (_hcheck : typeCheck n e τ = .ok true) :
     ∃ τV v, eval n unfBound [] τ = .ok τV
           ∧ eval n unfBound [] e = .ok v
           ∧ RC n 0 τV v := by
-  -- TODO(typed-nbe): proof body. See module docstring's sketch.
+  -- TODO(typed-nbe): proof body.
+  --
+  -- The proof requires structural induction on the typing
+  -- derivation, which means inducting on the fuel and dispatching
+  -- on the term shape. The crux is the `.lam` and `.app` cases,
+  -- which need an *open-environment* form of the FL stating:
+  --
+  --   typed-env Γ realises ρ →
+  --   tyCheck fuel Γ ρ e expected = .ok true →
+  --   eval fuel unfBound ρ e succeeds with v ∧ RC n d expected v
+  --
+  -- Without the open form, the closed FL's `.lam` case has
+  -- nowhere to recurse (the body lives under one binder). The
+  -- realistic path: prove the open form first; the closed form
+  -- is its specialisation at empty Γ/ρ.
   sorry
 
 /-! ## Bridge corollaries: from FL to old-soundness sorries
