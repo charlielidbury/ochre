@@ -144,9 +144,14 @@ def RC : Nat → Val → Val → Prop
   | _+1, .type, _ => True
   | _+1, .bot, _ => False
   | n+1, .lam dV cl, v =>
-      ∀ a, RC n dV a →
+      -- "All lower indices" form (Dreyer-Ahmed-Birkedal /
+      -- Pitts-Howe). Mono is trivial because shrinking `n+1` only
+      -- restricts the universally-quantified `m`. Without this
+      -- quantifier, mono on `.lam` fails (the contravariant-domain
+      -- issue: RC m' dV a doesn't lift to RC k dV a).
+      ∀ m, m ≤ n → ∀ a, RC m dV a →
         ∃ r, vapp fuelω unfBound v a = .ok r
-           ∧ ∃ rTy, cl.openω a = some rTy ∧ RC n rTy r
+           ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m rTy r
   | n+1, .iota aV cl, v =>
       RC n aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v
   | n+1, .fix annV cl, v =>
@@ -179,53 +184,33 @@ theorem RC.mono : ∀ (n : Nat) {m : Nat} {τ v : Val},
     intro m τ v hle _h
     have hm : m = 0 := Nat.eq_zero_of_le_zero hle
     subst hm
-    show True; trivial
+    unfold RC; trivial
   | succ k ih =>
     intro m τ v hle h
     cases m with
-    | zero => show True; trivial
+    | zero => unfold RC; trivial
     | succ m' =>
       have hle' : m' ≤ k := Nat.le_of_succ_le_succ hle
       cases τ with
-      | type => show True; trivial
+      | type => unfold RC; trivial
       | bot =>
         -- h : False at .bot; goal also False
-        exact h
-      | neutral _ => show True; trivial
+        unfold RC at h ⊢; exact h
+      | neutral _ => unfold RC; trivial
       | lam dV cl =>
-        -- RC (k+1) (.lam dV cl) v says: ∀ a, RC k dV a → ∃ r ...
-        -- RC (m'+1) (.lam dV cl) v says: ∀ a, RC m' dV a → ∃ r ...
-        -- For each `a` with RC m' dV a, lift to RC k dV a (by ih),
-        -- get r from h, weaken inner RC k via ih.
-        intro a hRCa
-        -- hRCa : RC m' dV a; need RC k dV a to apply h.
-        -- But we have ih which can go EITHER WAY (any m ≤ n weakens
-        -- to any m' ≤ m). To go *up* (m' → k) we'd need monotonicity
-        -- the OTHER way, which doesn't hold. So this argument is
-        -- subtly wrong: the function-type clause requires the
-        -- argument's RC at the same index, and we can't recover
-        -- "for all RC k a" from "for all RC m' a" without going up.
-        --
-        -- Fix: this is the standard issue with naive step-indexed
-        -- function-type RC. The honest direction is:
-        --   "RC (k+1) → RC m' for m' ≤ k" — TRUE for type/iota/fix.
-        -- For .lam, we need "RC k a → RC m' r" inside; the precise
-        -- statement that holds is *not* RC.mono but rather a
-        -- slightly different "fuel-stable" property.
-        --
-        -- Workaround: state RC.mono only for non-arrow types in
-        -- this iteration; .lam case uses a different tactic.
-        -- Marking sorry for now.
-        -- TODO(typed-nbe): refine RC.mono for .lam case. The
-        -- standard fix is to define RC' that stores its own
-        -- step-budget more carefully, or use a "later" modality
-        -- (Iris-style). For now this is left as the central
-        -- known limitation.
-        sorry
+        -- "All-lower-indices" form: RC (k+1) (.lam dV cl) v says
+        -- `∀ m ≤ k, ∀ a, RC m dV a → ...`. Weakening to (m'+1) gives
+        -- `∀ m ≤ m', ...`. Since m' ≤ k, every m ≤ m' is also ≤ k,
+        -- so we just apply h directly (no contravariant issue).
+        unfold RC at h ⊢
+        intro m hmle a hRCa
+        exact h m (Nat.le_trans hmle hle') a hRCa
       | iota aV cl =>
+        unfold RC at h ⊢
         obtain ⟨hRCa, vTy, hopen, hRCv⟩ := h
         refine ⟨ih hle' hRCa, vTy, hopen, ih hle' hRCv⟩
       | «fix» annV cl =>
+        unfold RC at h ⊢
         obtain ⟨uTy, hopen, hRC⟩ := h
         refine ⟨uTy, hopen, ih hle' hRC⟩
 
@@ -245,13 +230,13 @@ theorem RC.subtype_closed {n : Nat} {τ τ' v : Val}
 
 /-- RC at the universe `.type` is the entire `Val` space. -/
 theorem RC.type_top {n : Nat} {v : Val} : RC (n+1) .type v := by
-  show True; trivial
+  unfold RC; trivial
 
 /-- RC at `.neutral` is opaque (always holds). The caller discharges
 the obligation via the surrounding context. -/
 theorem RC.neutral_top {n : Nat} {ne : Neutral} {v : Val} :
     RC (n+1) (.neutral ne) v := by
-  show True; trivial
+  unfold RC; trivial
 
 /-- An RC-introduction lemma for closure-form values at a `.lam` type.
 Given that `v` is itself a lambda `.lam dV' clV` and that for every
@@ -269,39 +254,47 @@ left sorried because the statement may need tweaking once FL's `.lam`
 case is concretely written.
 -/
 theorem RC.lam_intro {n : Nat} {dV : Val} {cl : Closure} {v : Val}
-    (hbody : ∀ a, RC n dV a →
+    (hbody : ∀ m, m ≤ n → ∀ a, RC m dV a →
               ∃ r, vapp fuelω unfBound v a = .ok r
-                 ∧ ∃ rTy, cl.openω a = some rTy ∧ RC n rTy r) :
-    RC (n+1) (.lam dV cl) v := hbody
+                 ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m rTy r) :
+    RC (n+1) (.lam dV cl) v := by unfold RC; exact hbody
 
 /-- RC-introduction at an `.iota` type. Definitionally equal to the
 RC `.iota` clause — both conjuncts are required. -/
 theorem RC.iota_intro {n : Nat} {aV : Val} {cl : Closure} {v : Val}
     (hann : RC n aV v)
     (hbody : ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v) :
-    RC (n+1) (.iota aV cl) v := ⟨hann, hbody⟩
+    RC (n+1) (.iota aV cl) v := by
+  unfold RC; exact ⟨hann, hbody⟩
 
 /-- RC-introduction at a `.fix` type. -/
 theorem RC.fix_intro {n : Nat} {annV : Val} {cl : Closure} {v : Val}
     (huy : ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v) :
-    RC (n+1) (.fix annV cl) v := huy
+    RC (n+1) (.fix annV cl) v := by
+  unfold RC; exact huy
 
-/-- RC-elimination at `.lam`: extract the application-output witness. -/
-theorem RC.lam_elim {n : Nat} {dV : Val} {cl : Closure} {v a : Val}
-    (h : RC (n+1) (.lam dV cl) v) (ha : RC n dV a) :
+/-- RC-elimination at `.lam`: extract the application-output witness.
+With the all-lower-indices form, the eliminator is parametric in the
+chosen lower index `m ≤ n`. -/
+theorem RC.lam_elim {n m : Nat} {dV : Val} {cl : Closure} {v a : Val}
+    (h : RC (n+1) (.lam dV cl) v) (hm : m ≤ n) (ha : RC m dV a) :
     ∃ r, vapp fuelω unfBound v a = .ok r
-       ∧ ∃ rTy, cl.openω a = some rTy ∧ RC n rTy r := h a ha
+       ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m rTy r := by
+  unfold RC at h
+  exact h m hm a ha
 
 /-- RC-elimination at `.iota`: split into the annotation and self-body
 witnesses. -/
 theorem RC.iota_elim {n : Nat} {aV : Val} {cl : Closure} {v : Val}
     (h : RC (n+1) (.iota aV cl) v) :
-    RC n aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v := h
+    RC n aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v := by
+  unfold RC at h; exact h
 
 /-- RC-elimination at `.fix`: extract the unfolded-type witness. -/
 theorem RC.fix_elim {n : Nat} {annV : Val} {cl : Closure} {v : Val}
     (h : RC (n+1) (.fix annV cl) v) :
-    ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v := h
+    ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v := by
+  unfold RC at h; exact h
 
 /-! ## Typed eval — pass 2 integration layer
 
