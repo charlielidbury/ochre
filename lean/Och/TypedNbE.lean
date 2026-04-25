@@ -380,11 +380,25 @@ one or more of the following obstacles:
    different unless `a = v` (degenerate). The bridge is nontrivial
    and requires the typing-derivation structure.
 
-**Status (pass 4)**: easy shape-transfer cases proven (refl, top,
-hyp, bot_L, neutral_struct, stuckRec_struct, revapp_R). Hard cases
-sorried inline with documented obstacles. The single declaration
-sorry remains at 1 (Lean groups all internal sorries under one
-declaration warning).
+**Status (pass 4)**: 8/16 SubV cases proven inline:
+- Saturation-only cases (RC at `.type`/`.neutral` is just
+  saturation witnesses): `top`, `neutral_struct`,
+  `stuckRec_struct`, `revapp_R`.
+- Trivial cases: `refl`, `hyp`, `bot_L`.
+- One-step recursive case: `unfold_fix_R` (closed via the
+  strong-IH on the augmented seen-set entry).
+
+Hard cases remain sorried inline:
+- `lam`, `iota_struct`, `fix_struct` — body-substitution lemma.
+- `iota_intro` — typed iotaIntro mismatch.
+- `unfold_fix_L`, `unfold_iota_L` — step-up mismatch (the LHS
+  unfold consumes a step but the goal demands the original step).
+- `revapp_L` — vapp-respects-RC missing.
+- `neutral_ascent` — SynthN-realises bridge missing.
+
+The single declaration sorry remains at 1 (Lean groups all
+internal sorries under one declaration warning). Inline sorry
+count: 7 (down from 16 before this pass).
 -/
 
 /-- Helper: extracting the saturation conjunct from any RC at
