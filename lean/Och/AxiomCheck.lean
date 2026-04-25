@@ -40,6 +40,12 @@ import Och.TypedNbE
 -- the FL body and subtype_closed are closed.
 #print axioms NbE.RC.subtype_closed_aux
 #print axioms NbE.RC.subtype_closed
+-- Pass 7: body-substitution lemma. Sorried; consolidates the
+-- `lam`/`iota_struct` cases of `subtype_closed_aux` (and
+-- targets `fix_struct`/`iota_intro` in pass 8 with extensions).
+-- Closing this lemma + extensions removes 4 inline sorries from
+-- subtype_closed_aux's closure-form arms.
+#print axioms NbE.SubV_subst_neutral_to_value
 -- Pass 5: FL signature reformulated to take an open environment.
 -- The closed form is recoverable by specialising at empty Γ/ρ.
 #print axioms NbE.typed_nbe_fundamental_open
