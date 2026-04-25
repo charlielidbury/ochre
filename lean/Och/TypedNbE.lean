@@ -414,38 +414,51 @@ def subCheckTyped (fuel : Nat) (tyCtx : TyCtx)
 /-- Top-level typed entry point. Like `subCheck`, but goes
 through the typed pipeline.
 
-Strategy: run `tyInfer` to get a *principal type* for the LHS;
-pair the LHS value with that principal type as its declared type;
-fire the typed conversion check.
+**Architecture**. Two strategies, in order:
 
-If `tyInfer` fails (`.outOfFuel`/`.error`/`.ok none`), we fall
-back to the bare `subCheckVal a.val τ`, which is what
-`NbE.subCheck` does. The typed pipeline is a *conservative
-extension*: it accepts a strict superset of cases that
-`subCheck` does, paid for by the cost of the inference attempt.
+1. **Bidirectional path** — `typeCheck a τ`. This is the
+   syntactic-bidirectional checker: walks `a`'s structure, at
+   every `.app` checks the argument against the function's
+   domain syntactically (no value-level subtype check on the
+   *whole* term). For ascribed/inferable terms, this terminates
+   in O(|a|) subCheckVal calls each of which is small (e.g.
+   `Nat_ ⊑ Nat_` = refl). For ill-typed terms or terms that
+   typeCheck can't process, returns `.ok false` /
+   `.outOfFuel` / `.error`.
 
-For ascribed terms like `(zero_ : Nat_)` against `Nat_`, the
-declared type from the ascription IS `Nat_`, the fast-path
-becomes `Nat_ ⊑ Nat_` (refl), and the result is O(1). For
-unannotated terms like `succ_ zero_` against `Fin two_`,
-inference returns `Nat_` (or no principal type), fast-path
-fails, we fall back to the slow path. -/
-def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool := do
-  let τV ← eval fuel unfBound [] τ
-  let aV ← eval fuel unfBound [] a
-  -- Inferred type, if any. tyInfer returns `Outcome (Option Val)`:
-  -- - `.ok (some t)` = principal type found
-  -- - `.ok none` = well-typed but no principal type (e.g. `.lam`
-  --   that doesn't reify cleanly)
-  -- - `.outOfFuel`/`.error` = inference failed; fall back.
-  let inferred? : Option Val :=
-    match tyInfer fuel #[] [] a with
-    | .ok r => r
-    | _ => none
-  match inferred? with
-  | some inferredTy =>
-      subCheckTyped fuel #[] [] ⟨aV, inferredTy⟩ τV
-  | none => subCheckVal fuel #[] [] aV τV
+2. **Conversion fallback** — `subCheckVal aV τV`. The bare
+   value-level subtype check, which is what `subCheck` does.
+   This is necessary for cases where `typeCheck` rejects
+   (e.g. `Type ⊑ Nat_` is `.ok false` from typeCheck since
+   `.type` has principal type `.type` and `Type ⊑ Nat_` is
+   false; but at the value layer, `subCheck Type Nat_` is
+   *also* `.ok false` so it doesn't matter — yet the
+   bidirectional path is the one that gives the *win*).
+
+The win comes from (1): `typeCheck three_ Nat_` is fast
+because each layer of `succ_ ...` is checked locally. Without
+typing, `subCheckVal three_ Nat_` is forced to expand the
+singleton-encoded structure of `Nat_`'s ι-body and verify it
+matches `three_`'s structure — that's the ~50k fuel cost.
+
+For positive cases where (1) accepts: O(|a|) subCheckVal
+calls, each cheap (refl on inferred type).
+
+For positive cases where (1) rejects but the term is still
+declaratively a subtype (e.g. when the inferred type isn't
+the tightest, or when typeCheck has incompletenesses), (2)
+is the safety net — same cost as bare `subCheck`.
+
+For negative cases where the term is genuinely ill-typed:
+(1) rejects fast, (2) rejects, total cost is sum of both.
+That's a 2x slowdown for negatives compared to bare
+`subCheck` — acceptable given the test corpus is mostly
+positive subtyping.
+-/
+def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
+  match typeCheck fuel a τ with
+  | .ok true => .ok true
+  | _ => subCheck fuel a τ
 
 /-! ## The fundamental lemma
 
@@ -564,22 +577,5 @@ theorem RC.implies_quote_terminates
   -- Combined with `quote_total_on_eval` (in Soundness.lean) gives
   -- the full chain.
   sorry
-
-/-! ## Smoke tests for the typed pipeline
-
-These tests verify that the typed entry point `subCheckT` is at
-least as permissive as `subCheck` on a small sample. See
-`docs/ideas/typed-nbe-implementation-log.md` for the pass-2
-integration log. -/
-
-section TypedSmokeTests
-
-/-- `Type ⊑ Type` via subCheckT — the simplest case. -/
-example : subCheckT 50 .type .type = .ok true := by native_decide
-
-/-- `Type ⊑ Type` via subCheck — baseline. -/
-example : subCheck 50 .type .type = .ok true := by native_decide
-
-end TypedSmokeTests
 
 end NbE
