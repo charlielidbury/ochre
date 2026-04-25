@@ -4,6 +4,90 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 2 milestone A (agent-a07e1f43-pass2)
+
+**Phase A — typed eval + typed conversion check landed.**
+
+### What landed in `lean/Och/TypedNbE.lean`
+
+- `tyEvalIn (n unf : Nat) (ρ : Env) (e : Expr) (τV : Val) :
+  Outcome TypedVal` — typed-eval over an open environment;
+  pairs the eval'd value with a caller-supplied target type.
+- `subCheckTyped (fuel : Nat) (tyCtx : TyCtx)
+  (seen : List (Val × Val)) (a : TypedVal) (b : Val) : Outcome
+  Bool` — type-directed conversion check. Fast-path: try
+  `subCheckVal a.ty b`; on `.ok true` accept (sound by
+  transitivity through `a.val ⊑ a.ty ⊑ b`). Otherwise fall back
+  to the bare `subCheckVal a.val b`.
+- `subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool` —
+  top-level typed entry point. Runs `tyInfer` on `a` to
+  discover its principal type, pairs `aV` with that type as the
+  declared type, fires `subCheckTyped`. If inference fails,
+  falls back to plain `subCheckVal`.
+
+### Soundness sketch
+
+The TypedVal invariant is `RC n a.ty a.val` (FL conclusion).
+With the existing `subCheckVal_subV` soundness theorem:
+
+  subCheckVal a.ty b = .ok true → Subtype' (quote a.ty) (quote b)
+
+Combined with `RC` implying `a.val ⊑ a.ty` (which is the
+saturated form of RC's reducibility predicate — pass-3 lemma),
+we get `a.val ⊑ a.ty ⊑ b`, so `a.val ⊑ b`. Concretely:
+fast-path is sound on RC-typed values, which is what `tyEval`
+guarantees.
+
+### Soundness of `subCheckT` specifically
+
+`subCheckT a τ` runs `tyInfer a`. If inference returns some
+`inferredTy`, by `tyInfer_sound` we have `Subtype' a inferredTy`.
+The fast-path then checks `subCheckVal inferredTy τ`. If that
+is `.ok true`, by `subCheckVal_subV` we get
+`Subtype' inferredTy τ`, so by transitivity `Subtype' a τ`.
+The fallback path just calls `subCheckVal aV τV`, which is
+exactly what `subCheck a τ` does.
+
+### Known limitations (carried into Phase B)
+
+1. **Open-context tyInfer cost is doubled.** Every typed entry
+   point now runs both `tyInfer` and `eval` upfront. For inputs
+   where `tyInfer` doesn't help (no principal type), this is
+   pure overhead. Pass 2 mitigation: only the top-level entry
+   `subCheckT` does the inference; internal `subCheckTyped`
+   calls use the *already-known* type from the typing context.
+
+2. **Fast-path is conservative.** It uses `[]` for `seen`, so
+   it can't close cyclic obligations on the type side.
+   Practically, types like `Nat_` (a `fix`) require the
+   seen-set on their own, so the fast-path may not fire on
+   `Nat_ ⊑ Nat_` unless `subCheckVal` has the `a == b` short
+   circuit (it does, via the first guard). For non-`fix`
+   types like `Bool`, the fast-path closes via refl.
+
+3. **No proof yet.** `subCheckTyped`/`subCheckT` have no
+   `_subV` companion theorem. That's pass-3 work.
+
+### Smoke tests in `TypedNbE.lean`
+
+`subCheckT 50 .type .type = .ok true` and the matching
+`subCheck` pin both pass. Wider tests (Std/* migration) are
+phase D.
+
+### Build status
+
+`nix develop -c lake build` passes. No new sorries introduced
+(the FL body remains the only deferred proof; the new
+functions are pure definitions, no proof obligations yet).
+
+### Next concrete step
+
+Phase B/C: wire `subCheckTyped` into `TyCheck`'s `tyCheck`/
+`tyInfer` so that conversion checks at every `.app` and
+`.asc` go through the typed pipeline. Then test sweep.
+
+---
+
 ## 2026-04-24 — Pass 1 final state (agent-a05d76a4)
 
 After three commits on branch `agent-typed-nbe-a05d76a4`:

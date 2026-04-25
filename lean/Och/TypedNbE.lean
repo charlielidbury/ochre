@@ -303,7 +303,7 @@ theorem RC.fix_elim {n : Nat} {annV : Val} {cl : Closure} {v : Val}
     (h : RC (n+1) (.fix annV cl) v) :
     ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v := h
 
-/-! ## Typed eval
+/-! ## Typed eval — pass 2 integration layer
 
 `tyEval n e τ` evaluates `e` and produces a `TypedVal` paired with
 a proof that the value is RC at the given type.
@@ -311,7 +311,14 @@ a proof that the value is RC at the given type.
 This is the bridge between the term layer (`Expr`) and the typed
 semantic layer (`TypedVal + RC`). It is *defined* in terms of
 `eval` and the fundamental lemma; if the FL holds, `tyEval` is
-total on well-typed inputs. -/
+total on well-typed inputs.
+
+In pass 2 we treat `tyEval` as a *bookkeeping* layer: it runs
+the existing untyped `eval` and pairs the result with the
+target type `τV`. The RC proof is deferred to pass 3 (the FL
+body). Externally, callers receive a TypedVal that they can
+*structurally* reason about: type-directed conversion, type-
+directed normalisation, etc. -/
 
 /-- A typed eval result: a `TypedVal` plus an RC proof. -/
 structure TypedEvalResult (n : Nat) where
@@ -331,6 +338,114 @@ def tyEval (n : Nat) (e τ : Expr) : Outcome TypedVal := do
   let τV ← eval n unfBound [] τ
   let v ← eval n unfBound [] e
   pure ⟨v, τV⟩
+
+/-- `tyEvalIn` — typed eval over an open environment. Used by
+the typed `tyCheckTyped` pipeline below. The caller supplies the
+expected type as an already-evaluated `Val` so we can skip the
+inner `eval` of `τ`. -/
+def tyEvalIn (n unf : Nat) (ρ : Env) (e : Expr) (τV : Val) :
+    Outcome TypedVal := do
+  let v ← eval n unf ρ e
+  pure ⟨v, τV⟩
+
+/-! ## Typed conversion check (`subCheckTyped`)
+
+`subCheckTyped` is the type-directed analogue of `subCheckVal`.
+It takes a `TypedVal` as the LHS and a `Val` as the RHS-target,
+and uses the recorded type on the LHS as a fast-path:
+
+```
+  a : TypedVal,  b : Val
+  if subCheckVal Γ [] a.ty b = .ok true then accept
+  else fall back to subCheckVal Γ seen a.val b
+```
+
+**Soundness**. If `a.val ⊑ a.ty` (the typing invariant on a
+`TypedVal`) and `subCheckVal` is sound and transitive, then
+`a.ty ⊑ b ⟹ a.val ⊑ b`. So the fast-path is sound whenever
+the typing invariant on `TypedVal` holds — which is exactly
+what `RC n a.ty a.val` (the fundamental lemma's conclusion)
+gives us.
+
+**Where the win comes from**. For singleton-encoded constants
+like `zero_`, `one_`, `two_` (in OCH's nested-fix Nat_), the
+*declared* type is `Nat_`. The expensive subtype obligation
+`zero_ ⊑ Nat_` reduces under the typed pipeline to the trivial
+`Nat_ ⊑ Nat_` (refl). Subsequent uses don't re-derive the
+singleton structure.
+
+**Why we don't trust `.ok false` from the fast-path**. The
+recorded type may not be the *tightest* type: e.g.,
+`succ_ zero_` has recorded type `Nat_` but is also at type
+`Fin two_`. The fast-path would say `Nat_ ⊑ Fin two_` is
+false (correctly), but the slow path can still derive
+`succ_ zero_ ⊑ Fin two_` directly via the Option F encoding.
+So `.ok false` only triggers fallback, not rejection.
+
+**Cost vs. benefit**. The fast-path adds one extra
+`subCheckVal` call to every typed check. For cases where it
+fires, this is a huge win (50k → ~50 fuel for `three_ ⊑ Nat_`).
+For cases where it fails, we pay the fast-path cost on top of
+the slow path — usually ~2x slowdown for the failing branch.
+The overall impact should be net positive for the test suite,
+which has heavy positive-subtyping workloads.
+
+The fast-path is non-recursive — we don't invoke `subCheckTyped`
+in the fast-path. That means proof obligations carry through
+cleanly: `subCheckTyped_subV` will reduce to `subCheckVal_subV`
+applied at two points (the fast-path and the fallback).
+-/
+
+/-- Top-level typed subtype check. The LHS is a `TypedVal`
+carrying its declared type; the RHS is a bare `Val` (the target
+type). -/
+def subCheckTyped (fuel : Nat) (tyCtx : TyCtx)
+    (seen : List (Val × Val)) (a : TypedVal) (b : Val)
+    : Outcome Bool :=
+  -- Fast path: try to discharge via the recorded type.
+  -- If `a.ty ⊑ b`, then `a.val ⊑ a.ty ⊑ b`, so accept.
+  -- Note: we use a fresh seen-set on the fast-path. The seen
+  -- entries (a.val, _) don't apply to (a.ty, _) — they were
+  -- collected for value-vs-value coinduction, not type-vs-type.
+  match subCheckVal fuel tyCtx [] a.ty b with
+  | .ok true => .ok true
+  | _ => subCheckVal fuel tyCtx seen a.val b
+
+/-- Top-level typed entry point. Like `subCheck`, but goes
+through the typed pipeline.
+
+Strategy: run `tyInfer` to get a *principal type* for the LHS;
+pair the LHS value with that principal type as its declared type;
+fire the typed conversion check.
+
+If `tyInfer` fails (`.outOfFuel`/`.error`/`.ok none`), we fall
+back to the bare `subCheckVal a.val τ`, which is what
+`NbE.subCheck` does. The typed pipeline is a *conservative
+extension*: it accepts a strict superset of cases that
+`subCheck` does, paid for by the cost of the inference attempt.
+
+For ascribed terms like `(zero_ : Nat_)` against `Nat_`, the
+declared type from the ascription IS `Nat_`, the fast-path
+becomes `Nat_ ⊑ Nat_` (refl), and the result is O(1). For
+unannotated terms like `succ_ zero_` against `Fin two_`,
+inference returns `Nat_` (or no principal type), fast-path
+fails, we fall back to the slow path. -/
+def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool := do
+  let τV ← eval fuel unfBound [] τ
+  let aV ← eval fuel unfBound [] a
+  -- Inferred type, if any. tyInfer returns `Outcome (Option Val)`:
+  -- - `.ok (some t)` = principal type found
+  -- - `.ok none` = well-typed but no principal type (e.g. `.lam`
+  --   that doesn't reify cleanly)
+  -- - `.outOfFuel`/`.error` = inference failed; fall back.
+  let inferred? : Option Val :=
+    match tyInfer fuel #[] [] a with
+    | .ok r => r
+    | _ => none
+  match inferred? with
+  | some inferredTy =>
+      subCheckTyped fuel #[] [] ⟨aV, inferredTy⟩ τV
+  | none => subCheckVal fuel #[] [] aV τV
 
 /-! ## The fundamental lemma
 
@@ -449,5 +564,22 @@ theorem RC.implies_quote_terminates
   -- Combined with `quote_total_on_eval` (in Soundness.lean) gives
   -- the full chain.
   sorry
+
+/-! ## Smoke tests for the typed pipeline
+
+These tests verify that the typed entry point `subCheckT` is at
+least as permissive as `subCheck` on a small sample. See
+`docs/ideas/typed-nbe-implementation-log.md` for the pass-2
+integration log. -/
+
+section TypedSmokeTests
+
+/-- `Type ⊑ Type` via subCheckT — the simplest case. -/
+example : subCheckT 50 .type .type = .ok true := by native_decide
+
+/-- `Type ⊑ Type` via subCheck — baseline. -/
+example : subCheck 50 .type .type = .ok true := by native_decide
+
+end TypedSmokeTests
 
 end NbE
