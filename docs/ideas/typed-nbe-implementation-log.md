@@ -4,7 +4,86 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
-## 2026-04-24 — Pass 1 (agent-a05d76a4)
+## 2026-04-24 — Pass 1 final state (agent-a05d76a4)
+
+After three commits on branch `agent-typed-nbe-a05d76a4`:
+
+### Final tree contents
+
+- **`lean/Och/TypedNbE.lean`** (468 lines):
+  - `TypedVal` record (val + ty).
+  - `RC : Nat → Val → Val → Prop` (step-indexed reducibility predicate).
+  - `RC.mono` (proven for `.type`/`.bot`/`.neutral`/`.iota`/`.fix`;
+    sorried for `.lam`).
+  - `RC.subtype_closed` (sorried — needs SubV induction).
+  - `RC.type_top`, `RC.neutral_top` (proven trivially).
+  - `RC.lam_intro`/`iota_intro`/`fix_intro` (proven by defn).
+  - `RC.lam_elim`/`iota_elim`/`fix_elim` (proven by defn).
+  - `tyEval` (typed-eval wrapper, signature only).
+  - `typed_nbe_fundamental` (FL signature; body sorried).
+  - `RC.implies_fullyQuotable` (sorried).
+  - `RC.implies_quote_terminates` (sorried).
+
+- **`docs/ideas/typed-nbe.md`**: implementation addendum at the bottom
+  documenting the four architectural choices (parallel TypedVal,
+  step-indexed RC, FL-as-statement, file layout).
+
+- **`docs/ideas/typed-nbe-implementation-log.md`**: this file.
+
+### Final sorry count
+
+- `lean/Och/SoundnessProof.lean`: **4** declaration-level sorries
+  (unchanged).
+- `lean/Och/TypedNbE.lean`: **5** declaration-level sorries (was 6;
+  `RC.lam_intro` closed via defn-eq).
+- Net delta: **+5** new sorries to ground the substrate, but each
+  is a tractable target with a clear shape.
+
+### What's next (concrete steps for the next agent)
+
+In rough priority order:
+
+1. **Refactor RC for step-indexing on `.lam` (the "later" problem).**
+   Either Iris-style `▷` or lex-recursion on `(τ_size, n)`. This
+   unblocks `RC.mono` for the `.lam` case.
+
+2. **Prove the FL body, one case at a time.** Suggested order:
+   `.type`/`.bot`/`.bvar` (base) → `.asc` → `.fix`/`.iota` →
+   `.lam` → `.app` → `.letE`. The intro/elim lemmas in
+   TypedNbE.lean are designed for this.
+
+3. **Prove `RC.implies_quote_terminates`** (the bridge from typed
+   semantic to operational). This is the lemma that, combined with
+   FL, finally discharges the four old SoundnessProof sorries.
+
+4. **Wire the closed-context `typeCheck_sound` to use FL.** This
+   adds a typed pathway parallel to the existing untyped one.
+   The closed-context case has typing hypotheses available so FL
+   applies directly; the open-context case can reuse the path.
+
+5. **Once 1–4 land, retire the four old SoundnessProof sorries.**
+   They become provable corollaries of FL +
+   `implies_quote_terminates`.
+
+### What this pass is NOT
+
+- Not a closed FL.
+- Not a sorry-count reduction in `SoundnessProof.lean`.
+- Not a perf demonstration.
+
+It IS:
+
+- A typed substrate that compiles and is wired into the build.
+- A clear set of next-step targets with documented obstacles.
+- The architectural shift: future work no longer needs to fight
+  the `Val.fullyQuotable` Halting-reduction issue from
+  `quote-witness-feasibility.md`. Instead, RC + FL is the path,
+  and that path is well-precedented in the literature (Abel,
+  Dreyer-Ahmed-Birkedal, Iris).
+
+---
+
+## 2026-04-24 — Pass 1 initial scaffold (agent-a05d76a4)
 
 **Spec**: `docs/ideas/typed-nbe.md` (esp. the implementation addendum
 at the bottom).
