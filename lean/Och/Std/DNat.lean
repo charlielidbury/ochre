@@ -2,6 +2,7 @@ import Och.Macro
 import Och.Eval
 import Och.SubCheckVal
 import Och.Std.Bool
+import Och.TypedNbE
 
 /-!
 # Unified Natural Numbers (self-type encoding with singleton-tightened succ)
@@ -153,15 +154,15 @@ example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
 -- size. `two_ ⊑ Nat_` at fuel 800 works; `three_ ⊑ Nat_` takes
 -- ~50k fuel. SoundnessAudit pins `two_ ⊑ Nat_` at fuel 800.
 
-example : NbE.subCheck 200 zero_ Nat_ = .ok true := by native_decide
-example : NbE.subCheck 200 one_ Nat_ = .ok true := by native_decide
-example : NbE.subCheck 800 two_ Nat_ = .ok true := by native_decide
+example : NbE.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
+example : NbE.subCheckT 200 one_ Nat_ = .ok true := by native_decide
+example : NbE.subCheckT 800 two_ Nat_ = .ok true := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : NbE.subCheck 200 Nat_ zero_ = .ok false := by native_decide
-example : NbE.subCheck 200 Std.true_ Nat_ = .ok false := by native_decide
-example : NbE.subCheck 200 zero_ one_ = .ok false := by native_decide
+example : NbE.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
+example : NbE.subCheckT 200 Std.true_ Nat_ = .ok false := by native_decide
+example : NbE.subCheckT 200 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
 --

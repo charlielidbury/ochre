@@ -6,6 +6,7 @@ import Och.Std.Unit
 import Och.Std.Bool
 import Och.Std.DBool
 import Och.Std.Pair
+import Och.TypedNbE
 
 /-!
 # Property tests for the NbE checker
@@ -126,42 +127,42 @@ end OpenContext
 section Negative
 
 -- Numerals are not their predecessors.
-example : NbE.subCheck 800 two_ one_ = .ok false := by native_decide
-example : NbE.subCheck 400 one_ zero_ = .ok false := by native_decide
-example : NbE.subCheck 400 zero_ one_ = .ok false := by native_decide
+example : NbE.subCheckT 800 two_ one_ = .ok false := by native_decide
+example : NbE.subCheckT 400 one_ zero_ = .ok false := by native_decide
+example : NbE.subCheckT 400 zero_ one_ = .ok false := by native_decide
 
 -- Distinct base types.
-example : NbE.subCheck 200 Nat_ Unit_ = .ok false := by native_decide
-example : NbE.subCheck 200 Unit_ Nat_ = .ok false := by native_decide
-example : NbE.subCheck 200 Std.Bool Nat_ = .ok false := by native_decide
+example : NbE.subCheckT 200 Nat_ Unit_ = .ok false := by native_decide
+example : NbE.subCheckT 200 Unit_ Nat_ = .ok false := by native_decide
+example : NbE.subCheckT 200 Std.Bool Nat_ = .ok false := by native_decide
 
 -- Distinct lambdas (different domain ⇒ different function).
-example : NbE.subCheck 200 (och{ λx:Nat_. x }) (och{ λx:Unit_. x })
+example : NbE.subCheckT 200 (och{ λx:Nat_. x }) (och{ λx:Unit_. x })
   = .ok false := by native_decide
-example : NbE.subCheck 200 (och{ λx:Unit_. x }) (och{ λx:Nat_. x })
+example : NbE.subCheckT 200 (och{ λx:Unit_. x }) (och{ λx:Nat_. x })
   = .ok false := by native_decide
 
 -- DBool: the type is not one of its constructors, and the
 -- constructors are mutually unrelated. (Already in DBool.lean,
 -- duplicated here so this file alone covers the negative shape.)
-example : NbE.subCheck 200 dBool dtrue = .ok false := by native_decide
-example : NbE.subCheck 200 dfalse dtrue = .ok false := by native_decide
-example : NbE.subCheck 200 dtrue dfalse = .ok false := by native_decide
+example : NbE.subCheckT 200 dBool dtrue = .ok false := by native_decide
+example : NbE.subCheckT 200 dfalse dtrue = .ok false := by native_decide
+example : NbE.subCheckT 200 dtrue dfalse = .ok false := by native_decide
 
 -- Parametric: `Pair A B` is invariant in both arguments
 -- (post-A1, neutral-app args are bidirectional).
-example : NbE.subCheck 200 (och{ Pair Nat_ Unit_ })
+example : NbE.subCheckT 200 (och{ Pair Nat_ Unit_ })
   (och{ Pair Unit_ Nat_ }) = .ok false := by native_decide
 -- And the value-vs-type direction:
-example : NbE.subCheck 200 (och{ Pair Nat_ Unit_ }) Nat_
+example : NbE.subCheckT 200 (och{ Pair Nat_ Unit_ }) Nat_
   = .ok false := by native_decide
 
 -- A constructor is not the type, in either DNat direction.
-example : NbE.subCheck 400 Nat_ zero_ = .ok false := by native_decide
-example : NbE.subCheck 400 Nat_ one_ = .ok false := by native_decide
+example : NbE.subCheckT 400 Nat_ zero_ = .ok false := by native_decide
+example : NbE.subCheckT 400 Nat_ one_ = .ok false := by native_decide
 
 -- Top is one-directional.
-example : NbE.subCheck 200 (.type) Nat_ = .ok false := by native_decide
+example : NbE.subCheckT 200 (.type) Nat_ = .ok false := by native_decide
 
 end Negative
 
@@ -191,7 +192,7 @@ theorem rt_nf_total :
 theorem rt_forward :
     rtCorpus.all (fun e =>
       match nf 400 e with
-      | .ok e' => NbE.subCheck 400 e' e == .ok true
+      | .ok e' => NbE.subCheckT 400 e' e == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -199,7 +200,7 @@ theorem rt_forward :
 theorem rt_backward :
     rtCorpus.all (fun e =>
       match nf 400 e with
-      | .ok e' => NbE.subCheck 400 e e' == .ok true
+      | .ok e' => NbE.subCheckT 400 e e' == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -217,8 +218,8 @@ theorem rt_nf_idempotent_equiv :
       | .ok e' =>
         match nf 400 e' with
         | .ok e'' =>
-          NbE.subCheck 400 e' e'' == .ok true &&
-          NbE.subCheck 400 e'' e' == .ok true
+          NbE.subCheckT 400 e' e'' == .ok true &&
+          NbE.subCheckT 400 e'' e' == .ok true
         | _ => false
       | _ => false) = true := by
   native_decide
@@ -237,12 +238,12 @@ subtypes itself, and everything subtypes `Type`. -/
 
 theorem refl_sweep :
     rtCorpus.all (fun e =>
-      NbE.subCheck 400 e e == .ok true) = true := by
+      NbE.subCheckT 400 e e == .ok true) = true := by
   native_decide
 
 theorem top_sweep :
     rtCorpus.all (fun e =>
-      NbE.subCheck 400 e .type == .ok true) = true := by
+      NbE.subCheckT 400 e .type == .ok true) = true := by
   native_decide
 
 end Och.PropertyTests

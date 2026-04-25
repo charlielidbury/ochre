@@ -2,6 +2,7 @@ import Och.Macro
 import Och.Eval
 import Och.SubCheckVal
 import Och.Std.DNat
+import Och.TypedNbE
 
 /-!
 # Church-encoded Sigma (dependent pair)
@@ -57,10 +58,10 @@ example : concEval 100 snd_1_2 = concEval 100 two_ := by native_decide
 -- ---- Positive: subtype checking ----
 
 -- dpair Nat (λ_.Nat) 1 2 : Sigma Nat (λ_.Nat)
-example : NbE.subCheck 2000 pair_1_2 (och{ Sigma Nat_ constNat }) = .ok true := by native_decide
+example : NbE.subCheckT 2000 pair_1_2 (och{ Sigma Nat_ constNat }) = .ok true := by native_decide
 
 -- dpair : its full type
-example : NbE.subCheck 2000 dpair (och{
+example : NbE.subCheckT 2000 dpair (och{
   λA:Type. λB:(A → Type). λa:A. λ_:(B a). Sigma A B }) = .ok true := by native_decide
 
 -- ---- Negative: computation ----
@@ -77,10 +78,10 @@ example : concEval 100 fst_1_2 ≠ concEval 100 zero_ := by native_decide
 -- ---- Negative: subtype checking ----
 
 -- Sigma Nat (λ_.Nat) is not a Nat (it's a different type)
-example : NbE.subCheck 100 (och{ Sigma Nat_ constNat }) Nat_ = .ok false := by native_decide
+example : NbE.subCheckT 100 (och{ Sigma Nat_ constNat }) Nat_ = .ok false := by native_decide
 
 -- dpair is not itself a Sigma type (it's a constructor, not a value of Sigma)
-example : NbE.subCheck 100 dpair (och{ Sigma Nat_ constNat }) = .ok false := by native_decide
+example : NbE.subCheckT 100 dpair (och{ Sigma Nat_ constNat }) = .ok false := by native_decide
 
 end Tests
 end Std

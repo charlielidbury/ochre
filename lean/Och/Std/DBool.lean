@@ -3,6 +3,7 @@ import Och.Eval
 import Och.SubCheckVal
 import Och.Std.Bool
 import Och.Std.DNat
+import Och.TypedNbE
 
 /-!
 # Dependent Booleans (very-dependent ι encoding)
@@ -117,17 +118,17 @@ example : concEval 500 (och{ dfalse depMotive zero_ true_ }) = .ok true_ := by n
 -- the assumption set, ann-widening does not).
 -- -----------------------------------------------------------
 
-example : NbE.subCheck 50 dtrue dBool = .ok true := by native_decide
-example : NbE.subCheck 50 dfalse dBool = .ok true := by native_decide
+example : NbE.subCheckT 50 dtrue dBool = .ok true := by native_decide
+example : NbE.subCheckT 50 dfalse dBool = .ok true := by native_decide
 
 -- dBool ⋢ dtrue: dBool's motive demands both P(dtrue) and P(dfalse)
 -- but dtrue only demands P(self), so the body check fails at
 -- `Type ⊑ P dfalse`.
-example : NbE.subCheck 50 dBool dtrue = .ok false := by native_decide
+example : NbE.subCheckT 50 dBool dtrue = .ok false := by native_decide
 
 -- The constructors are pairwise unrelated.
-example : NbE.subCheck 50 dtrue dfalse = .ok false := by native_decide
-example : NbE.subCheck 50 dfalse dtrue = .ok false := by native_decide
+example : NbE.subCheckT 50 dtrue dfalse = .ok false := by native_decide
+example : NbE.subCheckT 50 dfalse dtrue = .ok false := by native_decide
 
 -- -----------------------------------------------------------
 -- Operations (not / and).

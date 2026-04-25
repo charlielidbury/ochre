@@ -3,6 +3,7 @@ import Och.Eval
 import Och.TyCheck
 import Och.SubCheckVal
 import Och.Std.DNat
+import Och.TypedNbE
 
 /-!
 # Finite sets `Fin n` — bounded by `Nat_` (Option F)
@@ -69,11 +70,11 @@ section Tests
 
 -- ── Positive: naturals inhabit Fin n directly (no wrapper) ──
 
-example : NbE.subCheck 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
-example : NbE.subCheck 2000 zero_ (och{ Fin two_ })    = .ok true := by native_decide
-example : NbE.subCheck 2000 zero_ (och{ Fin three_ })  = .ok true := by native_decide
-example : NbE.subCheck 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
-example : NbE.subCheck 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
+example : NbE.subCheckT 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
+example : NbE.subCheckT 2000 zero_ (och{ Fin two_ })    = .ok true := by native_decide
+example : NbE.subCheckT 2000 zero_ (och{ Fin three_ })  = .ok true := by native_decide
+example : NbE.subCheckT 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
+example : NbE.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
 
 -- `two_ ⊑ Fin three_` is part of the unified truth table but native_decide
 -- at any fuel we've tried doesn't terminate quickly. Option F's fs-codomain
@@ -84,36 +85,36 @@ example : NbE.subCheck 8000 one_  (och{ Fin three_ })  = .ok true := by native_d
 -- fuel 16000 on the plain-baseline-nat variant); here the nested-fix
 -- Nat_ multiplies the factor. Left in as a manual-verification TODO
 -- pending NbE performance work on Option-F traversal.
--- example : NbE.subCheck 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
+-- example : NbE.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
 
 -- ── Negative: diagonal and out-of-bounds rejected ──
 
 -- Diagonal: n ⊄ Fin n
-example : NbE.subCheck 8000 one_   (och{ Fin one_ })   = .ok false := by native_decide
--- example : NbE.subCheck 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
+example : NbE.subCheckT 8000 one_   (och{ Fin one_ })   = .ok false := by native_decide
+-- example : NbE.subCheckT 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
 
 -- Out-of-bounds: n ⊄ Fin m for n ≥ m
-example : NbE.subCheck 8000 one_  (och{ Fin zero_ })   = .ok false := by native_decide
-example : NbE.subCheck 8000 two_  (och{ Fin one_ })    = .ok false := by native_decide
--- example : NbE.subCheck 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
+example : NbE.subCheckT 8000 one_  (och{ Fin zero_ })   = .ok false := by native_decide
+example : NbE.subCheckT 8000 two_  (och{ Fin one_ })    = .ok false := by native_decide
+-- example : NbE.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Nat_ itself is too wide to inhabit Fin n.
-example : NbE.subCheck 8000 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
+example : NbE.subCheckT 8000 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
 
 -- Width monotonicity: smaller Fin embeds into larger.
-example : NbE.subCheck 4000 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
-example : NbE.subCheck 2000 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
+example : NbE.subCheckT 4000 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
+example : NbE.subCheckT 2000 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
 
 -- Type is not a Fin n.
-example : NbE.subCheck 2000 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
+example : NbE.subCheckT 2000 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
 
 -- Bot ⊑ Fin n (via S-BotL, the primitive rule).
-example : NbE.subCheck 2000 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
+example : NbE.subCheckT 2000 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
 
 -- Fin n ⊑ Nat_ at the TYPE level does NOT hold (Option F tradeoff).
 -- Not required by indexArr / other ops — only value-level subsumption
 -- of specific naturals into Fin n matters in practice.
-example : NbE.subCheck 8000 (och{ Fin one_ }) Nat_     = .ok false := by native_decide
+example : NbE.subCheckT 8000 (och{ Fin one_ }) Nat_     = .ok false := by native_decide
 
 end Tests
 

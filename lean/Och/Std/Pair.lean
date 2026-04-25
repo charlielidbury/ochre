@@ -4,6 +4,7 @@ import Och.SubCheckVal
 import Och.Std.DNat
 import Och.Std.Bool
 import Och.Std.Unit
+import Och.TypedNbE
 
 /-!
 # Och Std: Pair (binary product, Church-style)
@@ -63,25 +64,25 @@ example : concEval 100 (och{ snd_ p12 }) = concEval 100 two_ := by
 -- pair_ Nat Nat 1 2 : Pair Nat Nat (via type-ascent through k).
 -- Under the unified Nat_ (dNat-style), the subsumption `two_ ⊑ Nat_`
 -- on k's second argument needs more fuel (was fuel 100 on Scott Nat).
-example : NbE.subCheck 1000 p12 (och{ Pair Nat_ Nat_ }) = .ok true := by
+example : NbE.subCheckT 1000 p12 (och{ Pair Nat_ Nat_ }) = .ok true := by
   native_decide
 
 -- pair_ Bool Bool true false : Pair Bool Bool
-example : NbE.subCheck 100
+example : NbE.subCheckT 100
     (och{ pair_ Bool Bool true_ false_ })
     (och{ Pair Bool Bool })
   = .ok true := by native_decide
 
 -- fst β-reduces through the constructor: fst (pair_ … true true) ⊑ true
-example : NbE.subCheck 100
+example : NbE.subCheckT 100
     (och{ fst_ (pair_ Bool Bool true_ true_) }) true_
   = .ok true := by native_decide
 
 -- fst_ accepts any concrete pair via `Pair A B ⊑ Pair Type Type`
-example : NbE.subCheck 100 fst_ (och{ Pair Nat_ Nat_ → Type })
+example : NbE.subCheckT 100 fst_ (och{ Pair Nat_ Nat_ → Type })
   = .ok true := by native_decide
 
-example : NbE.subCheck 100 snd_ (och{ Pair Nat_ Nat_ → Type })
+example : NbE.subCheckT 100 snd_ (och{ Pair Nat_ Nat_ → Type })
   = .ok true := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
@@ -99,20 +100,20 @@ example : concEval 100 (och{ snd_ p12 }) ≠ concEval 100 one_ := by
 -- domain — contravariant-of-contravariant = covariant). With
 -- the bidirectional neutral-app rule this is *soundly* derived,
 -- unlike the old `k l r` body (SoundnessAudit A1).
-example : NbE.subCheck 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
+example : NbE.subCheckT 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
   = .ok true := by native_decide
 -- …and the witness that broke the old encoding is now
 -- consistent (substitution principle holds):
-example : NbE.subCheck 200
+example : NbE.subCheckT 200
     (och{ (Pair zero_ unit_) (zero_ → Unit_) })
     (och{ (Pair Nat_  Unit_) (zero_ → Unit_) })
   = .ok true := by native_decide
 
-example : NbE.subCheck 100 fst_ Nat_ = .ok false := by native_decide
+example : NbE.subCheckT 100 fst_ Nat_ = .ok false := by native_decide
 
-example : NbE.subCheck 1000 p12 Bool = .ok false := by native_decide
+example : NbE.subCheckT 1000 p12 Bool = .ok false := by native_decide
 
-example : NbE.subCheck 100
+example : NbE.subCheckT 100
     (och{ fst_ (pair_ Bool Bool true_ true_) }) false_
   = .ok false := by native_decide
 

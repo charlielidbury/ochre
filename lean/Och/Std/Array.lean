@@ -6,6 +6,7 @@ import Och.Std.DNat
 import Och.Std.Unit
 import Och.Std.Pair
 import Och.Std.DFin
+import Och.TypedNbE
 
 /-!
 # Length-Indexed Arrays (indexed by `Nat_`)
@@ -72,12 +73,12 @@ example : NbE.nf 200 (och{ fst_ (snd_ testArr2) }) = NbE.nf 200 two_ := by nativ
 
 -- ── Positive subtype checks ────────────────────────────────
 
-example : NbE.subCheck 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
-example : NbE.subCheck 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
+example : NbE.subCheckT 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
+example : NbE.subCheckT 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
-example : NbE.subCheck 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
+example : NbE.subCheckT 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
 
 -- ── Smoke: Array_ applied with abstract-friendly Nat_ index ───
 
@@ -148,7 +149,7 @@ example : (concEval 5000 (och{ fst_ appended })).isOk := by native_decide
 -- (domA push gives the wrong ascent type under n1/n2 binders). Pinned
 -- so future fixes make it visible.
 --
--- example : NbE.subCheck 5000 appendArrays
+-- example : NbE.subCheckT 5000 appendArrays
 --   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
 --   = .ok true := by native_decide
 
