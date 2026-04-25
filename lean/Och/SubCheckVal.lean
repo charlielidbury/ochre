@@ -8,6 +8,29 @@ import Och.MemoRefs
 ι closure with the *LHS Val* in the environment — one pointer, no
 copy. lam-lam opens both closures with the same fresh neutral. The
 seen-set holds `(Val × Val)` pairs.
+
+## Status (2026-04-24, typed-NbE pass 2)
+
+`subCheckVal` is now the **engine** of the typed pipeline, not a
+user-facing entry point. The user-facing entry is
+`NbE.subCheckT` (in `lean/Och/TypedNbE.lean`), which wraps:
+
+  1. `typeCheck a τ` — bidirectional checker. For most positive
+     cases, this short-circuits at O(|a|·refl) cost.
+  2. fall back to `subCheck a τ` (which calls `subCheckVal eV τV`)
+     when typeCheck rejects.
+
+`subCheckVal`/`subCheck` remain because:
+- `tyCheck` uses `subCheckVal` internally for conversion at every
+  `.app`/`.asc`/`.fix`/`.iota` arm.
+- Open-context tests in `PropertyTests.lean` exercise the engine
+  directly with hand-built `Val`s.
+- `subCheckVal_subV` (in `SoundnessProof.lean`) is the base
+  soundness theorem, ~5000 lines of proofs about this engine.
+
+So `subCheckVal` is not deletable; it's the substrate. Pass 2's
+goal of "make the old untyped path unused" is achieved at the
+*test-site / user-API* level.
 -/
 
 namespace NbE

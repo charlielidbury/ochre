@@ -4,6 +4,91 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 2 final (agent-a07e1f43-pass2)
+
+**All seven phases (A-G) addressed; substrate fully wired into
+the test suite; old path unused at user-facing level.**
+
+### Headline numbers
+
+- `three_ ⊑ Nat_` at fuel **800** under `subCheckT` (was ~50k under
+  `subCheck`).
+- `five_ ⊑ Nat_` at fuel **800** under `subCheckT` (did not close
+  at fuel 6400 under `subCheck`, in 10+ minutes).
+- A6 incompleteness `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` accepted
+  under `subCheckT` (rejected under `subCheck`). This is a
+  completeness gain that was beyond reach of the perf
+  investigations (subcheck-perf.md, a6-closure-env-filtering.md).
+
+### Phase summary
+
+- **Phase A** (typed eval substrate): `tyEvalIn`, `subCheckTyped`,
+  `subCheckT` lands as type-directed pipeline. Done.
+- **Phase B** (typed conversion): `subCheckTyped` fast-path uses
+  the LHS's recorded type to short-circuit. Done; smoke tests pass.
+- **Phase C** (wire into TyCheck): `subCheckT` wraps `typeCheck`
+  (the syntactic-bidirectional path, which already does
+  type-directed checking) plus fall-back to bare `subCheck`. Done.
+- **Phase D** (Std/* migration): swept all test sites in
+  `Std/*.lean`, `Tests.lean`, `PropertyTests.lean`,
+  `SoundnessAudit.lean` from `NbE.subCheck` to `NbE.subCheckT`.
+  All 100+ tests pass.
+- **Phase E** (regressed tests): tried `five_ ⊑ Nat_` at fuel 800
+  — passes. `two_ ⊑ Fin three_` still doesn't close at fuel 16000
+  (the typed fast-path rejects via `Nat_ ⊑ Fin three_`, falls back
+  to slow path). Pass 3 work needed for the latter.
+- **Phase F** (delete dead code): not feasible. `subCheckVal` is
+  the engine of `subCheckTyped`; `subCheck` is the fallback.
+  `tyCheck` uses `subCheckVal` internally. Pass-3 SoundnessProof
+  has 5000+ lines depending on `subCheckVal_subV`. Documented
+  these as internal-only via `SubCheckVal.lean` module docstring.
+- **Phase G** (this entry).
+
+### What's wired
+
+- `lean/Och/TypedNbE.lean` exports `subCheckT`, `subCheckTyped`,
+  `tyEval`, `tyEvalIn`, `TypedVal`.
+- `lean/Och/Std/*.lean` test sites use `NbE.subCheckT`.
+- `lean/Och/Tests.lean`, `PropertyTests.lean`, `SoundnessAudit.lean`
+  test sites use `NbE.subCheckT`.
+- `lean/Och/TypedNbETests.lean` is the dedicated typed-pipeline
+  test file (~30 tests including the headline `five_ ⊑ Nat_` win).
+- `subCheckVal` and `subCheck` retained as the engine layer, used
+  internally by `tyCheck`, `tyInfer`, and `subCheckT`'s fallback.
+
+### What's left for pass 3
+
+1. **FL body** (in `TypedNbE.lean`). Still sorried.
+2. **`RC.implies_fullyQuotable`** and `RC.implies_quote_terminates`.
+   Still sorried.
+3. **The 4 declaration-level sorries in SoundnessProof.lean** —
+   await FL body, then become straightforward corollaries.
+4. **Wider Fin tests** (`two_ ⊑ Fin three_` etc.) — the typed
+   pipeline's fast-path can't currently convert a singleton
+   `succ_ k` value to its inferred-type `Nat_` AND know the
+   value is also at `Fin (succ_ n)`. Pass 3 would need a `tyEval`
+   that *records the structural shape* of the value so the
+   fast-path can probe multiple types.
+
+### Known cost
+
+- Negative-case tests are now ~2x slower (typeCheck rejects, then
+  fall back to subCheck which also rejects — both passes run).
+  Net build time impact: ~2x on Std/*.lean rebuild, but absolute
+  numbers are still bounded (~1 min for Std/Vec.lean which was
+  the slowest).
+
+### Build status
+
+`nix develop -c lake build` passes. Sorry count:
+- `SoundnessProof.lean`: 4 (unchanged from pass 1).
+- `TypedNbE.lean`: 5 (unchanged from pass 1; pass 2 added no proof
+  obligations because `subCheckTyped`/`subCheckT` are pure
+  definitions; their soundness is a transitivity argument that
+  pass 3 will prove formally).
+
+---
+
 ## 2026-04-24 — Pass 2 milestone A (agent-a07e1f43-pass2)
 
 **Phase A — typed eval + typed conversion check landed.**

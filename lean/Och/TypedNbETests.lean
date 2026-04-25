@@ -64,6 +64,20 @@ example : NbE.subCheckT 800 two_ Nat_ = .ok true := by native_decide
 -- under the typed pipeline; under bare subCheck this needs ~50k.
 example : NbE.subCheckT 800 three_ Nat_ = .ok true := by native_decide
 
+/-- `five_ ⊑ Nat_` — the perf-regression sentinel from PerfProbe.lean
+that does not close under bare `subCheck` at any tested fuel
+(commented out at fuel 6400 there, did not close in 10+ minutes).
+Under `subCheckT`, the typeCheck-fast-path inlines through 5
+applications of `succ_`, each cheap because tyInfer at each layer
+returns `Nat_` directly from the fix annotation, so the recursive
+domain check on `m` becomes `subCheckVal Nat_ Nat_` = refl.
+
+If this passes at low fuel, that's the headline pass-2 win. -/
+def four_local := och{ succ_ three_ }
+def five_local := och{ succ_ four_local }
+example : NbE.subCheckT 800 four_local Nat_ = .ok true := by native_decide
+example : NbE.subCheckT 800 five_local Nat_ = .ok true := by native_decide
+
 -- Negatives still fail correctly.
 example : NbE.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
 example : NbE.subCheckT 200 zero_ one_ = .ok false := by native_decide
@@ -79,11 +93,14 @@ example : NbE.subCheckT 4000 one_  (och{ Fin two_ })    = .ok true := by native_
 example : NbE.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
 
 -- Try the previously-commented-out cases under the typed pipeline.
--- 2026-04-24: timed out (>10 min) at fuel 16000 — left commented.
--- These remain a target for future passes once the typed pipeline
--- iterates further (e.g. tyEval threading the inferred type through
--- application chains so `succ_ two_`'s inferred type carries
--- structurally rather than recomputing).
+-- 2026-04-24: at fuel 16000 the test runs longer than the 10-min
+-- build budget. Reason: even under the typed pipeline, the typeCheck
+-- fast-path for `two_ ⊑ Fin three_` rejects (tyInfer's principal
+-- type for `two_` is `Nat_`, and `Nat_ ⊑ Fin three_` is false), so
+-- we fall back to bare `subCheck two_ (Fin three_)` — the same
+-- expensive value-level check as without typed NbE. Pass 3 work
+-- (threading inferred types into singleton-aware tyEval) is needed
+-- to win this case.
 -- example : NbE.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
 -- example : NbE.subCheckT 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
 -- example : NbE.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
