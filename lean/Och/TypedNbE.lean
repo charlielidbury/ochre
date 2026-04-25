@@ -132,31 +132,56 @@ the head constructor; we never recurse on `τ`'s sub-`Val` directly
 that the *next* `n`-step bounds).
 -/
 
-/-- Step-indexed reducibility candidate predicate.
-`RC n τ v` reads: "v is in the RC of type τ at step-index n".
+/-- Step-indexed reducibility candidate predicate, **saturated form**
+(2026-04-25 refactor for pass 3).
 
-Defined by recursion on `n` first, then case on `τ`. The `fix` case
-is the main subtlety: we unfold once and recurse at smaller `n`,
-which is why step-indexing buys us well-foundedness without needing
-to inspect the closure body's structure. -/
-def RC : Nat → Val → Val → Prop
-  | 0, _, _ => True
-  | _+1, .type, _ => True
-  | _+1, .bot, _ => False
-  | n+1, .lam dV cl, v =>
+`RC n d τ v` reads: "v is in the RC of type τ at step-index n,
+depth d". Defined by recursion on `n` first, then case on `τ`.
+
+The depth `d` parameter records how many binders have been opened
+on the way to this point. It threads through closure types so the
+quote witnesses live at the correct depth.
+
+**Saturation**: the base cases (`.type`/`.neutral`) and *every*
+recursive case bake in `Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v
+= .ok q`. This is the "saturated" or "Girard-style" RC: instead of
+a separate `RC.implies_fullyQuotable`/`RC.implies_quote_terminates`
+lemma (which can't recover the witnesses for `.type`/`.neutral`
+where the unsaturated RC was just `True`), the witness is *carried
+inside RC* as part of the predicate.
+
+Trade-off: more bookkeeping in the FL body (each rule must produce
+fullyQuotable + quote witnesses), but `implies_*` lemmas become
+trivial projections. Without saturation, those lemmas are
+unprovable for the trivial RC clauses — and the soundness chain
+to `fullyQuotable` / `quote-witness` from FL collapses.
+
+The `fix` case is the main subtlety: we unfold once and recurse at
+smaller `n`, which is why step-indexing buys us well-foundedness
+without needing to inspect the closure body's structure. -/
+def RC : Nat → Nat → Val → Val → Prop
+  | 0, _, _, _ => True
+  | _+1, d, .type, v =>
+      Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q
+  | _+1, _, .bot, _ => False
+  | n+1, d, .lam dV cl, v =>
       -- "All lower indices" form (Dreyer-Ahmed-Birkedal /
       -- Pitts-Howe). Mono is trivial because shrinking `n+1` only
       -- restricts the universally-quantified `m`. Without this
       -- quantifier, mono on `.lam` fails (the contravariant-domain
       -- issue: RC m' dV a doesn't lift to RC k dV a).
-      ∀ m, m ≤ n → ∀ a, RC m dV a →
+      (Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q) ∧
+      ∀ m, m ≤ n → ∀ a, RC m d dV a →
         ∃ r, vapp fuelω unfBound v a = .ok r
-           ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m rTy r
-  | n+1, .iota aV cl, v =>
-      RC n aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v
-  | n+1, .fix annV cl, v =>
-      ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v
-  | _+1, .neutral _, _ => True
+           ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m d rTy r
+  | n+1, d, .iota aV cl, v =>
+      (Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q) ∧
+      RC n d aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n d vTy v
+  | n+1, d, .fix annV cl, v =>
+      (Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q) ∧
+      ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n d uTy v
+  | _+1, d, .neutral _, v =>
+      Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q
 
 /-! ## RC-closure properties
 
@@ -176,51 +201,48 @@ Strong induction on `n` with case-split on `τ`. The base `m = 0` is
 trivial. The inductive case uses the IH at `n` to weaken inner `RC n`
 hypotheses to `RC m`.
 -/
-theorem RC.mono : ∀ (n : Nat) {m : Nat} {τ v : Val},
-    m ≤ n → RC n τ v → RC m τ v := by
+theorem RC.mono : ∀ (n : Nat) {m d : Nat} {τ v : Val},
+    m ≤ n → RC n d τ v → RC m d τ v := by
   intro n
   induction n with
   | zero =>
-    intro m τ v hle _h
+    intro m d τ v hle _h
     have hm : m = 0 := Nat.eq_zero_of_le_zero hle
     subst hm
     unfold RC; trivial
   | succ k ih =>
-    intro m τ v hle h
+    intro m d τ v hle h
     cases m with
     | zero => unfold RC; trivial
     | succ m' =>
       have hle' : m' ≤ k := Nat.le_of_succ_le_succ hle
       cases τ with
-      | type => unfold RC; trivial
+      | type => unfold RC at h ⊢; exact h
       | bot =>
-        -- h : False at .bot; goal also False
         unfold RC at h ⊢; exact h
-      | neutral _ => unfold RC; trivial
+      | neutral _ => unfold RC at h ⊢; exact h
       | lam dV cl =>
-        -- "All-lower-indices" form: RC (k+1) (.lam dV cl) v says
-        -- `∀ m ≤ k, ∀ a, RC m dV a → ...`. Weakening to (m'+1) gives
-        -- `∀ m ≤ m', ...`. Since m' ≤ k, every m ≤ m' is also ≤ k,
-        -- so we just apply h directly (no contravariant issue).
         unfold RC at h ⊢
+        obtain ⟨hSat, hbody⟩ := h
+        refine ⟨hSat, ?_⟩
         intro m hmle a hRCa
-        exact h m (Nat.le_trans hmle hle') a hRCa
+        exact hbody m (Nat.le_trans hmle hle') a hRCa
       | iota aV cl =>
         unfold RC at h ⊢
-        obtain ⟨hRCa, vTy, hopen, hRCv⟩ := h
-        refine ⟨ih hle' hRCa, vTy, hopen, ih hle' hRCv⟩
+        obtain ⟨hSat, hRCa, vTy, hopen, hRCv⟩ := h
+        refine ⟨hSat, ih hle' hRCa, vTy, hopen, ih hle' hRCv⟩
       | «fix» annV cl =>
         unfold RC at h ⊢
-        obtain ⟨uTy, hopen, hRC⟩ := h
-        refine ⟨uTy, hopen, ih hle' hRC⟩
+        obtain ⟨hSat, uTy, hopen, hRC⟩ := h
+        refine ⟨hSat, uTy, hopen, ih hle' hRC⟩
 
 /-- RC is preserved under declarative subtyping (algorithmic SubV
 form). The intuition: if `τ ⊑ τ'` and `v` inhabits `RC τ`, then
 `v` also inhabits `RC τ'` because every "obligation" of `RC τ'` is
 a relaxation of one in `RC τ`. -/
-theorem RC.subtype_closed {n : Nat} {τ τ' v : Val}
+theorem RC.subtype_closed {n d : Nat} {τ τ' v : Val}
     (_hsub : SubV [] #[] τ τ')   -- assumes empty seen/Γ for now
-    (h : RC n τ v) : RC n τ' v := by
+    (h : RC n d τ v) : RC n d τ' v := by
   -- TODO(typed-nbe): proof body. Induction on SubV; each
   -- constructor of SubV maps to the corresponding "weakening" of RC.
   -- The hyp/refl/top cases are immediate; the lam case is
@@ -228,73 +250,98 @@ theorem RC.subtype_closed {n : Nat} {τ τ' v : Val}
   -- discharges via the old via SubV's contra direction).
   sorry
 
-/-- RC at the universe `.type` is the entire `Val` space. -/
-theorem RC.type_top {n : Nat} {v : Val} : RC (n+1) .type v := by
-  unfold RC; trivial
+/-- RC at the universe `.type` requires `v` is fully quotable AND
+has a concrete quote witness at depth `d`. (Saturated form.) -/
+theorem RC.type_top {n d : Nat} {v : Val}
+    (hfq : Val.fullyQuotable d v) (hq : ∃ q, quote fuelω d v = .ok q) :
+    RC (n+1) d .type v := by
+  unfold RC; exact ⟨hfq, hq⟩
 
-/-- RC at `.neutral` is opaque (always holds). The caller discharges
-the obligation via the surrounding context. -/
-theorem RC.neutral_top {n : Nat} {ne : Neutral} {v : Val} :
-    RC (n+1) (.neutral ne) v := by
-  unfold RC; trivial
+/-- RC at `.neutral` is also saturated: requires fullyQuotable + quote
+witness on `v`. -/
+theorem RC.neutral_top {n d : Nat} {ne : Neutral} {v : Val}
+    (hfq : Val.fullyQuotable d v) (hq : ∃ q, quote fuelω d v = .ok q) :
+    RC (n+1) d (.neutral ne) v := by
+  unfold RC; exact ⟨hfq, hq⟩
 
 /-- An RC-introduction lemma for closure-form values at a `.lam` type.
 Given that `v` is itself a lambda `.lam dV' clV` and that for every
 RC-typed argument `a`, `vapp` of `v` with `a` produces an RC result,
 we conclude `RC` at the `.lam dV cl` type.
 
-This is the constructive shape used by the FL's `.lam` case: when
-`eval` produces a lambda value, RC follows from showing the function
-behaves correctly under all RC-arguments.
-
-**Status: stated, body sorried.** Proof: unfold the `.lam` clause of
-RC, intro `a`, intro the RC-hypothesis on `a`, apply `hbody` to get
-the witness `r`, and produce the existential. Mostly mechanical;
-left sorried because the statement may need tweaking once FL's `.lam`
-case is concretely written.
--/
-theorem RC.lam_intro {n : Nat} {dV : Val} {cl : Closure} {v : Val}
-    (hbody : ∀ m, m ≤ n → ∀ a, RC m dV a →
+Now requires the saturation witnesses on `v` (fullyQuotable + quote)
+to populate the `.lam` clause. -/
+theorem RC.lam_intro {n d : Nat} {dV : Val} {cl : Closure} {v : Val}
+    (hfq : Val.fullyQuotable d v) (hq : ∃ q, quote fuelω d v = .ok q)
+    (hbody : ∀ m, m ≤ n → ∀ a, RC m d dV a →
               ∃ r, vapp fuelω unfBound v a = .ok r
-                 ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m rTy r) :
-    RC (n+1) (.lam dV cl) v := by unfold RC; exact hbody
+                 ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m d rTy r) :
+    RC (n+1) d (.lam dV cl) v := by
+  unfold RC; exact ⟨⟨hfq, hq⟩, hbody⟩
 
-/-- RC-introduction at an `.iota` type. Definitionally equal to the
-RC `.iota` clause — both conjuncts are required. -/
-theorem RC.iota_intro {n : Nat} {aV : Val} {cl : Closure} {v : Val}
-    (hann : RC n aV v)
-    (hbody : ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v) :
-    RC (n+1) (.iota aV cl) v := by
-  unfold RC; exact ⟨hann, hbody⟩
+/-- RC-introduction at an `.iota` type. -/
+theorem RC.iota_intro {n d : Nat} {aV : Val} {cl : Closure} {v : Val}
+    (hfq : Val.fullyQuotable d v) (hq : ∃ q, quote fuelω d v = .ok q)
+    (hann : RC n d aV v)
+    (hbody : ∃ vTy, cl.openω v = some vTy ∧ RC n d vTy v) :
+    RC (n+1) d (.iota aV cl) v := by
+  unfold RC; exact ⟨⟨hfq, hq⟩, hann, hbody⟩
 
 /-- RC-introduction at a `.fix` type. -/
-theorem RC.fix_intro {n : Nat} {annV : Val} {cl : Closure} {v : Val}
-    (huy : ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v) :
-    RC (n+1) (.fix annV cl) v := by
-  unfold RC; exact huy
+theorem RC.fix_intro {n d : Nat} {annV : Val} {cl : Closure} {v : Val}
+    (hfq : Val.fullyQuotable d v) (hq : ∃ q, quote fuelω d v = .ok q)
+    (huy : ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n d uTy v) :
+    RC (n+1) d (.fix annV cl) v := by
+  unfold RC; exact ⟨⟨hfq, hq⟩, huy⟩
 
-/-- RC-elimination at `.lam`: extract the application-output witness.
-With the all-lower-indices form, the eliminator is parametric in the
-chosen lower index `m ≤ n`. -/
-theorem RC.lam_elim {n m : Nat} {dV : Val} {cl : Closure} {v a : Val}
-    (h : RC (n+1) (.lam dV cl) v) (hm : m ≤ n) (ha : RC m dV a) :
+/-- RC-elimination at `.lam`: extract the application-output witness. -/
+theorem RC.lam_elim {n m d : Nat} {dV : Val} {cl : Closure} {v a : Val}
+    (h : RC (n+1) d (.lam dV cl) v) (hm : m ≤ n) (ha : RC m d dV a) :
     ∃ r, vapp fuelω unfBound v a = .ok r
-       ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m rTy r := by
+       ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m d rTy r := by
   unfold RC at h
-  exact h m hm a ha
+  exact h.2 m hm a ha
 
 /-- RC-elimination at `.iota`: split into the annotation and self-body
 witnesses. -/
-theorem RC.iota_elim {n : Nat} {aV : Val} {cl : Closure} {v : Val}
-    (h : RC (n+1) (.iota aV cl) v) :
-    RC n aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n vTy v := by
-  unfold RC at h; exact h
+theorem RC.iota_elim {n d : Nat} {aV : Val} {cl : Closure} {v : Val}
+    (h : RC (n+1) d (.iota aV cl) v) :
+    RC n d aV v ∧ ∃ vTy, cl.openω v = some vTy ∧ RC n d vTy v := by
+  unfold RC at h; exact h.2
 
 /-- RC-elimination at `.fix`: extract the unfolded-type witness. -/
-theorem RC.fix_elim {n : Nat} {annV : Val} {cl : Closure} {v : Val}
-    (h : RC (n+1) (.fix annV cl) v) :
-    ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n uTy v := by
-  unfold RC at h; exact h
+theorem RC.fix_elim {n d : Nat} {annV : Val} {cl : Closure} {v : Val}
+    (h : RC (n+1) d (.fix annV cl) v) :
+    ∃ uTy, cl.openω (.fix annV cl) = some uTy ∧ RC n d uTy v := by
+  unfold RC at h; exact h.2
+
+/-- **Saturation projection**: every non-zero RC carries a fullyQuotable
+witness on `v`. This is what was previously the `RC.implies_fullyQuotable`
+lemma — now provable directly from RC's definition because the witness
+is baked in. -/
+theorem RC.fullyQuotable {n d : Nat} {τ v : Val} (h : RC (n+1) d τ v) :
+    Val.fullyQuotable d v := by
+  unfold RC at h
+  cases τ with
+  | type => exact h.1
+  | bot => exact False.elim h
+  | neutral _ => exact h.1
+  | lam _ _ => exact h.1.1
+  | iota _ _ => exact h.1.1
+  | «fix» _ _ => exact h.1.1
+
+/-- **Saturation projection**: every non-zero RC carries a quote
+witness at the recorded depth. Was `RC.implies_quote_terminates`. -/
+theorem RC.quote_witness {n d : Nat} {τ v : Val} (h : RC (n+1) d τ v) :
+    ∃ q, quote fuelω d v = .ok q := by
+  unfold RC at h
+  cases τ with
+  | type => exact h.2
+  | bot => exact False.elim h
+  | neutral _ => exact h.2
+  | lam _ _ => exact h.1.2
+  | iota _ _ => exact h.1.2
+  | «fix» _ _ => exact h.1.2
 
 /-! ## Typed eval — pass 2 integration layer
 
@@ -314,9 +361,9 @@ body). Externally, callers receive a TypedVal that they can
 directed normalisation, etc. -/
 
 /-- A typed eval result: a `TypedVal` plus an RC proof. -/
-structure TypedEvalResult (n : Nat) where
+structure TypedEvalResult (n d : Nat) where
   tv : TypedVal
-  rc : RC n tv.ty tv.val
+  rc : RC n d tv.ty tv.val
 
 /-- Typed eval on closed expressions. Returns a `TypedVal` paired
 with an RC witness when:
@@ -521,54 +568,31 @@ theorem typed_nbe_fundamental
     (_hcheck : typeCheck n e τ = .ok true) :
     ∃ τV v, eval n unfBound [] τ = .ok τV
           ∧ eval n unfBound [] e = .ok v
-          ∧ RC n τV v := by
+          ∧ RC n 0 τV v := by
   -- TODO(typed-nbe): proof body. See module docstring's sketch.
   sorry
 
 /-! ## Bridge corollaries: from FL to old-soundness sorries
 
-These corollaries discharge the four declaration-level sorries in
-`SoundnessProof.lean` once the FL body is filled in. Currently
-sorried because they invoke the FL.
-
-The pattern: each old sorry has the shape "I need quote-termination
-on a Val produced by eval". The FL gives RC; RC gives quote-
-termination via `RC.implies_fullyQuotable` (sorried below) and the
-existing structural lemmas about quote.
+After the saturation refactor (2026-04-25), `RC.implies_fullyQuotable`
+and `RC.implies_quote_terminates` are now **trivial projections** of
+`RC.fullyQuotable` and `RC.quote_witness` (proven above). They are
+kept as named API for backward-compat with the Pass 1 plan, but
+delegate to the projections.
 -/
 
-/-- RC implies `Val.fullyQuotable`: if a value is RC at some type,
-it has a fully-quotable representation. This is the bridge from the
-typed-RC predicate to the (weaker) untyped fullyQuotable predicate
-that `SoundnessProof.lean` already uses. -/
+/-- RC implies `Val.fullyQuotable`. Direct delegation to the
+saturation projection. -/
 theorem RC.implies_fullyQuotable
-    {n : Nat} {τ v : Val} {d : Nat} (_h : RC (n+1) τ v) :
-    Val.fullyQuotable d v := by
-  -- TODO(typed-nbe): proof body. Case-split on τ's shape.
-  -- - .type/.neutral/.bot: trivial (the v can be anything, but
-  --   fullyQuotable is structural; need v's *shape* hypothesis,
-  --   which RC's neutral/type cases don't give. So this corollary
-  --   needs a stronger RC predicate: instead of "RC .type _ := True",
-  --   define "RC .type v := Val.fullyQuotable v" baked in. This is
-  --   the *saturated* RC; refactor pending.
-  -- - .lam: vapp at fresh-neutral terminates (RC.lam clause), and
-  --   the result fullyQuotable by IH on the result-type.
-  -- - .iota/.fix: open the closure with v / itself; the result
-  --   fullyQuotable by IH.
-  sorry
+    {n d : Nat} {τ v : Val} (h : RC (n+1) d τ v) :
+    Val.fullyQuotable d v :=
+  RC.fullyQuotable h
 
-/-- RC implies quote-termination: if `v` is RC at any type, `quote
-fuelω d v` succeeds with some output. This is the missing direction
-from `quote-witness-feasibility.md` — provable under the typed-RC
-hypothesis, impossible under the bare `Val.fullyQuotable`. -/
+/-- RC implies quote-termination. Direct delegation to the
+saturation projection. -/
 theorem RC.implies_quote_terminates
-    {n : Nat} {τ v : Val} {d : Nat} (_h : RC (n+1) τ v) :
-    ∃ q, quote fuelω d v = .ok q := by
-  -- TODO(typed-nbe): proof body. Same case-split as
-  -- implies_fullyQuotable, but extracting the actual quote witness
-  -- from RC's productivity content (vapp/openω termination).
-  -- Combined with `quote_total_on_eval` (in Soundness.lean) gives
-  -- the full chain.
-  sorry
+    {n d : Nat} {τ v : Val} (h : RC (n+1) d τ v) :
+    ∃ q, quote fuelω d v = .ok q :=
+  RC.quote_witness h
 
 end NbE
