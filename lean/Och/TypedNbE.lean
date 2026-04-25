@@ -433,72 +433,81 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           SubV S' Γ' τ_ τ'_ → RC m d' τ_ v_ → RC m d' τ'_ v_ := by
         intro m hmk
         exact ihStrong m (Nat.lt_succ_of_le hmk)
-      cases hsub with
-      | hyp hmem =>
+      match hsub with
+      | SubV.hyp hmem =>
           exact hS _ _ hmem (k+1) (Nat.le_refl _) v h
-      | refl =>
+      | SubV.refl =>
           exact h
-      | top =>
+      | SubV.top =>
           unfold RC
           exact RC.sat_of_succ h
-      | bot_L =>
+      | SubV.bot_L =>
           unfold RC at h
           exact False.elim h
-      | neutral_struct _ =>
+      | SubV.neutral_struct _ =>
           unfold RC
           exact RC.sat_of_succ h
-      | @neutral_ascent _ _ _ τ_synth _ _hsynth hsubAsc =>
+      | SubV.neutral_ascent _ _ =>
           -- Apply IH at step k to the SubV at the synthesized type.
-          -- Need: a way to obtain RC k d τ_synth v from RC (k+1) d
-          -- (.neutral nA) v. The SynthN-realises lemma is the
-          -- missing piece.
+          -- Need a `SynthN-realises` bridge first. Deferred.
           sorry
-      | lam _ _ _ _ =>
+      | SubV.lam _ _ _ _ =>
           -- Body-substitution issue. Deferred.
           sorry
-      | iota_struct _ _ _ _ =>
-          -- Body-substitution issue + seen-set step-shift handling.
-          -- Deferred.
+      | SubV.iota_struct _ _ _ _ =>
+          -- Body-substitution + seen-set step-shift. Deferred.
           sorry
-      | fix_struct _ _ _ _ =>
+      | SubV.fix_struct _ _ _ _ =>
           -- Same as iota_struct. Deferred.
           sorry
-      | iota_intro _ _ _ =>
+      | SubV.iota_intro _ _ _ =>
           -- iotaIntro type-vs-value mismatch. Deferred.
           sorry
-      | unfold_fix_R hopen hbody =>
-          -- The auxiliary's `τ`/`τ'` get unified with `a`/`.fix
-          -- ann clB`. The implicits (a, ann, clB, bB) are visible
-          -- in the goal as `?a/?ann/?clB/?bB` until we split.
+      | @SubV.unfold_fix_R S' Γ' a ann clB bB hopen hbody =>
+          -- τ' = .fix ann clB. RC.fix at step k+1 requires
+          -- saturation + RC k d bB v.
           unfold RC
-          -- Goal is `(saturation v) ∧ ∃ uTy, clB.openω (.fix ann
-          -- clB) = some uTy ∧ RC k d uTy v`. Take uTy = bB by
-          -- supplying hopen.
-          refine ⟨RC.sat_of_succ h, _, hopen, ?_⟩
-          -- Now goal: RC k d bB v.
-          -- Apply IH at step k. We construct hS_k for the augmented
-          -- seen-set.
-          -- This part is closing-able via the strong-IH; deferred
-          -- only because the named-implicit-binding within `cases
-          -- hsub with` is awkward in Lean 4. The shape is:
-          --   apply ih k (Nat.le_refl _) <hS_k> hbody (RC.mono ... h)
-          -- where hS_k discharges the new (a, .fix ann clB) entry
-          -- via ihStrong at step m < k+1 applied to OUR
-          -- (unfold_fix_R hopen hbody) derivation.
-          sorry
-      | unfold_fix_L _ _ _ =>
+          refine ⟨RC.sat_of_succ h, bB, hopen, ?_⟩
+          -- Apply IH at step k to hbody : SubV ((a, .fix ann clB)
+          -- :: S') Γ' a bB. Need augmented hS at step k.
+          have hS_k : ∀ α β, (α, β) ∈ ((a, .«fix» ann clB) :: S') →
+              ∀ m, m ≤ k → ∀ v', RC m d α v' → RC m d β v' := by
+            intro α β hαβ m hmk v' hαv'
+            rw [List.mem_cons] at hαβ
+            rcases hαβ with hαβ_eq | hin
+            · -- New entry. Apply ihStrong at m to OUR derivation.
+              obtain ⟨rfl, rfl⟩ := Prod.mk.inj hαβ_eq
+              -- Restrict outer hS at S' to step ≤ m.
+              have hS_m : ∀ α' β', (α', β') ∈ S' →
+                  ∀ m', m' ≤ m → ∀ v'', RC m' d α' v'' →
+                  RC m' d β' v'' := by
+                intro α' β' hin' m' hm'm v'' hα'v''
+                exact hS α' β' hin' m'
+                  (Nat.le_trans hm'm (Nat.le_succ_of_le hmk)) v''
+                  hα'v''
+              -- Apply ihStrong at step m to OUR derivation.
+              have hsub_orig : SubV S' Γ' α (.«fix» ann clB) :=
+                SubV.unfold_fix_R hopen hbody
+              exact ihStrong m
+                (Nat.lt_succ_of_le (Nat.le_trans hmk (Nat.le_refl k)))
+                hS_m hsub_orig hαv'
+            · -- Old entry: outer hS at step m.
+              exact hS α β hin m (Nat.le_succ_of_le hmk) v' hαv'
+          have h_lower : RC k d a v := RC.mono (k+1) (Nat.le_succ k) h
+          exact ih k (Nat.le_refl _) hS_k hbody h_lower
+      | SubV.unfold_fix_L _ _ _ =>
           -- Symmetric step-shift issue. Deferred.
           sorry
-      | unfold_iota_L _ _ _ =>
+      | SubV.unfold_iota_L _ _ _ =>
           -- Same as unfold_fix_L. Deferred.
           sorry
-      | stuckRec_struct _ _ _ _ =>
+      | SubV.stuckRec_struct _ _ _ _ =>
           unfold RC
           exact RC.sat_of_succ h
-      | revapp_R _ _ _ =>
+      | SubV.revapp_R _ _ _ =>
           unfold RC
           exact RC.sat_of_succ h
-      | revapp_L _ _ _ =>
+      | SubV.revapp_L _ _ _ =>
           -- vapp-respects-RC missing. Deferred.
           sorry
 

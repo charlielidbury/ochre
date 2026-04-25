@@ -4,6 +4,138 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-25 — Pass 4 partial + post-mortem (agent-aa25a621)
+
+**Took the `RC.subtype_closed` sorry from one bare placeholder to a
+structured proof scaffold with 7/16 SubV cases proven inline and the
+remainder documented. The all-lower-indices + strong-IH refactor for
+the auxiliary's seen-set hypothesis is now in place, which is the
+correct step-indexed shape needed for the recursive closure cases.
+The FL body remains untouched (still 1 sorry). Net sorry count
+unchanged at 2 in TypedNbE.lean.**
+
+### What landed
+
+#### `RC.subtype_closed_aux` — initial scaffold + strong-IH refactor
+
+The pass 3 placeholder was a single bare `sorry`. Replaced with:
+
+1. **First iteration**: split into `cases hsub with | …`, proved
+   the easy "shape transfer" cases inline (refl, top, hyp, bot_L,
+   neutral_struct, stuckRec_struct, revapp_R). Each of these
+   benefits from the saturated RC: when τ' is `.type` or
+   `.neutral`, RC at τ' reduces to just the saturation witnesses
+   (Val.fullyQuotable + quote witness), which transfer from any
+   source RC via `RC.fullyQuotable` / `RC.quote_witness`. Closed
+   ~7 of the 16 SubV cases.
+
+2. **Second iteration**: refactored the auxiliary's seen-set
+   hypothesis to the **all-lower-indices form**:
+   ```
+   hS : ∀ (α,β) ∈ S, ∀ m ≤ n, ∀ v', RC m d α v' → RC m d β v'
+   ```
+   and proved by `Nat.strongRecOn`, which provides
+   `ihStrong m hmlt : Aux m` for any `m < n`. This is the correct
+   shape for closing the seen-set entries added by the recursive
+   premises in `iota_intro`, `unfold_fix_R`, etc.: the new entry's
+   obligation is at strictly smaller step-index, closed by the
+   strong IH applied to OUR own derivation.
+
+3. **Third (in-progress) iteration**: tried to close `unfold_fix_R`
+   using the strong-IH machinery. The proof structure is correct —
+   saturation via `RC.sat_of_succ`, body recursion via `ih k _`,
+   new seen-set entry obligation closed by `ihStrong m _` applied
+   to OUR derivation. **However**, the named-implicit-binding
+   issue blocks the closing tactic: `cases hsub with |
+   unfold_fix_R hopen hbody` doesn't bind the constructor's
+   implicits (`a, ann, clB, bB`) by name, and workarounds (`next`,
+   `case`, `match` re-binding) all hit Lean-4 friction.
+
+#### `typed_nbe_fundamental` — added `n ≤ fuelω` hypothesis
+
+The FL signature now requires `n ≤ fuelω`. This is needed to invoke
+`subCheckVal_subV` (which needs `fuel ≤ fuelω`) at conversion sites
+inside the FL body. No callers exist yet, so this is a non-breaking
+refinement.
+
+The proof body remains untouched. The structural challenge documented
+in the pass 3 log (need open-environment FL for `.lam`/`.app`/`.letE`
+cases) is still the central obstruction.
+
+### What did NOT land
+
+The `unfold_fix_R` tactical closure and the FL body. The strong-IH
+refactor brings the `unfold_fix_R` case to the brink of closing —
+all the architectural pieces are in place, but Lean-4's
+`cases ... with` doesn't expose the implicit constructor args by
+name, blocking the residual tactic.
+
+### How to close `unfold_fix_R` (and unfold_fix_L, unfold_iota_L)
+
+Three options, in increasing cleanness:
+
+1. **Quick fix via @-pattern in inner `match`**: re-match the
+   already-matched `hsub` via a fresh `match` with full @-pattern
+   to bind the implicits. Gets messy because `cases` already
+   consumed `hsub`; would need to capture `hsub` before `cases`.
+
+2. **Refactor to use `SubV.rec` directly**: build the three motives
+   (one for SubV, SubN, SynthN) manually. More verbose but gives
+   full control over implicit naming. ~50-100 LOC overhead.
+
+3. **Define an "unfold_fix_R-only" inversion lemma** that takes
+   `SubV S Γ a (.fix ann clB)` and exposes the witnesses (a, ann,
+   clB, bB, hopen, hbody) as a Σ-type. Then `obtain ⟨...⟩ := inv`
+   binds them all. This is the most idiomatic Lean-4 approach.
+
+Option 3 is the one I'd take next iteration; it likely closes
+`unfold_fix_R`/`unfold_fix_L`/`unfold_iota_L` together (similar
+structures) in ~50 LOC.
+
+### What pass 5 should pick up
+
+In priority order:
+
+1. **Close `unfold_fix_R` via option 3 above** — the strong-IH
+   machinery is in place; this is purely tactical work.
+
+2. **Close `unfold_fix_L` and `unfold_iota_L`** — same shape as
+   `unfold_fix_R`. Should close together with option 3's
+   inversion-lemma approach.
+
+3. **`stuckRec_struct` and `iota_intro`** — these need a more
+   refined RC bridge. `iota_intro` has the LHS-type-vs-value
+   mismatch; the bridge is a typed iotaIntro lemma. Defer.
+
+4. **`lam`, `iota_struct`, `fix_struct`** — the body-substitution
+   lemma (fresh-open ⇝ arbitrary substitution equivalence on
+   bodies). This is a classical NbE lemma but needs careful
+   formulation in OCH's NbE substrate. ~200-500 LOC.
+
+5. **`revapp_L`** — needs a `vapp-respects-RC` lemma. Likely
+   provable from FL once FL is in place.
+
+6. **`neutral_ascent`** — needs a `SynthN-realises` bridge. Defer.
+
+7. **The FL body itself** — see pass 3's post-mortem; needs
+   open-environment FL formulation. Multi-week task.
+
+### Sorry count trajectory
+
+- Before pass 4: TypedNbE.lean = 2 (subtype_closed body + FL body).
+- After pass 4: TypedNbE.lean = 2 (same, but subtype_closed now
+  has 7/16 cases proven inline + strong-IH structure in place; FL
+  has refined signature with `n ≤ fuelω`).
+
+The internal sorry count under each declaration has gone down
+significantly (subtype_closed: from 1 bare to 8 documented inline;
+each documented with the precise obstacle). The next agent
+inherits a much better starting point.
+
+Build green. AxiomCheck unchanged.
+
+---
+
 ## 2026-04-25 — Pass 3 partial + post-mortem (agent-a9d3158b)
 
 **Two phases of pass 3 landed; the FL body remains. Substantial
