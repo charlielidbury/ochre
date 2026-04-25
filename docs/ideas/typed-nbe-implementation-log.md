@@ -4,6 +4,219 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 8 (overnight #3): SubV_subst_pair, fix_struct closed (structural) (agent-aab33530)
+
+**Stated `SubV_subst_pair` (sorried, the pair-substitution
+generalisation of `SubV_subst_neutral_to_value`) and used it to
+close `fix_struct` case of `subtype_closed_aux`. Net delta: 0
+inline sorries (closed 1, added 1 new sorried lemma — same as
+pass 7's pattern but with smaller leverage). The keystone
+`SubV_subst_neutral_to_value` was NOT proven this pass: detailed
+investigation confirms it is genuinely 200-400 LOC and cannot be
+landed in one overnight pass without weakening statements or
+intermediate sorries (forbidden by no-regression rule). Build
+green throughout.**
+
+### What landed
+
+#### `SubV_subst_pair` — pair-substitution lemma (sorried)
+
+The "different substituents on each side" generalisation of
+`SubV_subst_neutral_to_value`:
+
+```lean
+theorem SubV_subst_pair
+    {S Γ τ_dom clA clB bA bB} (va vb : Val)
+    (hbA : clA.openω (.neutral (.var Γ.size)) = some bA)
+    (hbB : clB.openω (.neutral (.var Γ.size)) = some bB)
+    (hbody : SubV S (Γ.push τ_dom) bA bB)
+    (hsubst : SubV S Γ va vb) :
+    ∃ bA' bB',
+      clA.openω va = some bA' ∧
+      clB.openω vb = some bB' ∧
+      SubV S Γ bA' bB'
+```
+
+The basic lemma replaces a fresh neutral with a SINGLE value on
+both sides; the pair version threads TWO related substituents
+(`va` on LHS, `vb` on RHS) connected by `SubV S Γ va vb`.
+
+**Estimated proof scope**: ~50-100 LOC on top of the basic
+lemma's 200-400 LOC. Currently sorried; pass 9+ work.
+
+#### `fix_struct` case closure
+
+The fix_struct case of `subtype_closed_aux` (previously deferred
+because RC at `.fix annA clA` opens at the FIX VALUE itself
+— `clA.openω (.fix annA clA)` for LHS, `clB.openω (.fix annB
+clB)` for RHS, with DISTINCT substituents) is now wired through
+`SubV_subst_pair`.
+
+Strategy mirrors iota_struct's pass-7 closure:
+1. Unfold RC at h, goal: saturation + body witness.
+2. Saturation transfers from h directly.
+3. Build augmented hS_k (seen-set + new entry, discharged via
+   ihStrong on OUR derivation at smaller step).
+4. Apply SubV_subst_pair on hBody at substituents
+   `(.fix annA clA, .fix annB clB)`, related by SubV.hyp on the
+   augmented seen-set's new entry.
+5. By Some-injectivity, the LHS-substituted body equals the RC
+   body witness from h.
+6. Apply ihStrong at step k on the resulting SubV (under hS_k)
+   to lift RC k d uTyA v to RC k d bB' v.
+
+#### `iota_intro` is NOT closed by SubV_subst_pair
+
+Pass 7's commit message suggested SubV_subst_pair could also
+close `iota_intro`. On closer inspection, **this is incorrect**:
+
+`SubV.iota_intro`'s premises don't go through a fresh neutral —
+they have `clB.openω a = some bB` directly, where `a` is the
+LHS *type/inhabitant*. RC.iota_intro requires `clB.openω v` for
+the actual VALUE `v`. Both opens are at concrete values, not at
+a fresh neutral; SubV_subst_pair (which has a fresh-neutral
+hypothesis) doesn't apply.
+
+Closing `iota_intro` requires a DIFFERENT lemma:
+
+```
+"closure_apply_coherence" :
+  RC k d a v →
+  clB.openω a = some bB →
+  RC k d bB v →           -- from SubV S Γ a bB + RC at a + IH
+  ∃ bB', clB.openω v = some bB' ∧ RC k d bB' v
+```
+
+This is parametricity of closure-application over RC-equivalent
+inputs. Documented inline in `subtype_closed_aux`. Pass 9+ work.
+
+### Why the keystone substitution lemma was NOT proven this pass
+
+The pass-8 prompt's primary target was proving
+`SubV_subst_neutral_to_value`. After detailed investigation, I
+conclude it is genuinely 200-400 LOC and cannot be safely
+landed in one overnight pass without violating rules. Specific
+findings:
+
+#### Approach 1: Val-level substitution machinery
+
+Define `Val.substLvl k vsub : Val → Val` (replace neutral level
+`k` with `vsub`). Required infrastructure:
+1. `Val.substLvl` definition with mutual recursion through Val,
+   Closure, Neutral. ~30 LOC.
+2. `eval_substLvl_commutes`: if `eval n unf (env_1 :: env_tail)
+   body = .ok bA` where `env_1 = .neutral (.var k)`, and
+   `Val.substLvl k vsub` is applied throughout the env, then
+   `eval n unf (vsub :: env_tail) body = .ok (Val.substLvl k vsub
+   bA)`. **This is a deep mutual induction on eval/vapp**, ~150
+   LOC for the operational property alone.
+3. `SubV` is preserved under `Val.substLvl k vsub` (changing
+   context from `Γ.push τ_dom` to `Γ`). **Structural induction
+   over 13 SubV constructors**, each requiring substitution
+   through the constructor's premises. ~150 LOC.
+
+Total: ~300-350 LOC. The middle step (eval_substLvl_commutes)
+is the load-bearing piece — without it, the substitution
+operation is meaningless at the SubV level.
+
+#### Approach 2: typed refinement
+
+Add `RC n d τ_dom v` as a hypothesis. The hope: RC's structural
+content lets us close cases by RC-elim instead of SubV-induction.
+
+In practice: SubV's closure cases (`lam`, `iota_struct`,
+`fix_struct`) STILL require us to relate `clA.openω fresh` to
+`clA.openω v` — that's the substitution's content. RC at v
+gives saturation + body content for v, but doesn't tell us how
+the closure body's eval-result transforms. We're back to needing
+eval-substitution.
+
+The savings from RC: in the `neutral_ascent`-shaped subcases,
+where SubV at neutral lets us discharge via saturation; and in
+the `iota_intro`-shaped subcases, where RC at the inhabitant
+helps. But for closure-form cases (the bulk), RC doesn't replace
+the substitution.
+
+Total: ~150-250 LOC, not the dramatic shortcut hoped for.
+
+#### Conclusion
+
+Both approaches are full-pass projects in their own right. The
+honest move was to:
+1. Land the structural staging (one more inline case factored
+   out into a sorried lemma).
+2. Document the wall with this post-mortem.
+
+This is the same disposition as passes 5, 6, and 7 reached
+independently. Four passes (5-8) have now confirmed the
+substitution lemma is a genuine 200-400 LOC obstacle that
+requires its own dedicated pass with that specific budget.
+
+### Sorry trajectory
+
+Pre-pass-8 (= post-pass-7):
+- `subtype_closed_aux` body: 6 inline (`neutral_ascent`,
+  `fix_struct`, `iota_intro`, `unfold_fix_L`, `unfold_iota_L`,
+  `revapp_L`).
+- `SubV_subst_neutral_to_value` body: 1.
+- `typed_nbe_fundamental_open` body: 1.
+- **Total**: 8.
+
+Post-pass-8:
+- `subtype_closed_aux` body: 5 (`fix_struct` closed; others
+  unchanged).
+- `SubV_subst_neutral_to_value` body: 1.
+- `SubV_subst_pair` body: 1 (NEW).
+- `typed_nbe_fundamental_open` body: 1.
+- **Total**: 8.
+
+**Net delta**: 0. Inline sorries within `subtype_closed_aux`
+dropped from 6 to 5 (a meaningful proxy-metric for soundness
+proof progress); the absolute total is unchanged because the
+substitution-lemma family is now factored as two related lemmas
+rather than one lemma + undocumented fix_struct gap.
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+updated: `SubV_subst_pair` added (shows sorryAx). No
+regressions in SoundnessProof.lean, AxiomCheck.lean, or test
+files.
+
+### Honest assessment
+
+Pass 8's deliverable is structural staging only — the same
+pattern as pass 7, with smaller leverage (1 case closed instead
+of 2). The keystone substitution lemma remains unproven, and
+this pass's investigation confirms it is genuinely a 200-400 LOC
+project requiring its own dedicated pass.
+
+The factoring contribution is real: future passes attacking the
+substitution lemma now have a precise pair-of-lemmas target,
+each with a specific subset of inline cases it dispatches.
+
+### What pass 9 should pick up
+
+In priority order:
+1. **Prove `SubV_subst_neutral_to_value`** — keystone, closes
+   `lam` + `iota_struct`. 200-400 LOC dedicated pass.
+2. **Prove `SubV_subst_pair`** — likely a refinement or parallel
+   induction. Closes `fix_struct`. 50-100 LOC after (1).
+3. **`iota_intro` via `closure_apply_coherence`** — new
+   bridge lemma family. ~100-200 LOC.
+4. **`neutral_ascent` / `revapp_L`** — need RC_env in scope of
+   subtype_closed_aux (signature change), or proven separately
+   under typed assumptions. ~200-300 LOC including the signature
+   change.
+5. **`unfold_fix_L`/`unfold_iota_L`** — step-up mismatch, needs
+   RC redesign or workaround.
+
+After (1)+(2), 3 of 5 remaining inline sorries close
+mechanically; subtype_closed_aux drops from 5 inline sorries to
+2 (just `iota_intro` and the unfold-L pair).
+
+---
+
 ## 2026-04-24 — Pass 7 (overnight #2): SubV_subst_neutral_to_value substrate (agent-aa094350)
 
 **Stated `SubV_subst_neutral_to_value` (sorried) and used it to
