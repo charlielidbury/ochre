@@ -394,124 +394,120 @@ private theorem RC.sat_of_succ {n d : Nat} {τ v : Val}
     Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q :=
   ⟨RC.fullyQuotable h, RC.quote_witness h⟩
 
-/-- Auxiliary form parameterised over the seen-set obligation. The
-top-level `RC.subtype_closed` corollary specialises `S = []`.
+/-- Auxiliary form parameterised over the seen-set obligation, in
+**all-lower-indices** form: the seen-set hypothesis covers every
+step `m ≤ n`. This makes the seen-set obligation transferable to
+strictly smaller step indices, which is necessary for the
+"unfold one step" cases (`unfold_fix_R`, `unfold_fix_L`,
+`unfold_iota_L`, etc.).
 
-`cases hsub` is used instead of `induction hsub` because SubV is
-mutually inductive with SubN/SynthN, and Lean's `induction` tactic
-doesn't directly support mutual inductives without manual motive
-construction. The hard cases — which would need IH access — are
-sorried, so `cases` suffices for the proven cases. -/
-theorem RC.subtype_closed_aux {n d : Nat} :
-    ∀ {S : List (Val × Val)} {Γ : TyCtx} {τ τ' v : Val},
-      (∀ α β, (α, β) ∈ S → ∀ v', RC n d α v' → RC n d β v') →
+Proven by **strong induction on n**. The IH provides `Aux m` for
+all `m ≤ k`, which is needed for cases like `unfold_fix_R` where
+the augmented seen-set obligation requires `Aux m` at strictly
+lower steps.
+
+Top-level `RC.subtype_closed` specialises `S = []`. -/
+theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
+    {S : List (Val × Val)} {Γ : TyCtx} {τ τ' v : Val},
+      (∀ α β, (α, β) ∈ S → ∀ m, m ≤ n → ∀ v',
+         RC m d α v' → RC m d β v') →
       SubV S Γ τ τ' → RC n d τ v → RC n d τ' v := by
-  intro S Γ τ τ' v hS hsub h
-  cases hsub with
-  | hyp hmem =>
-      -- Direct hit: the seen-set hypothesis discharges.
-      exact hS _ _ hmem v h
-  | refl =>
-      -- τ = τ', the source RC suffices.
-      exact h
-  | top =>
-      -- τ' = .type. RC at .type is just the saturation witnesses,
-      -- which we extract from the source RC.
-      cases hn : n with
-      | zero => unfold RC; trivial
-      | succ k =>
-        subst hn
-        unfold RC
-        exact RC.sat_of_succ h
-  | bot_L =>
-      -- LHS is .bot. RC at .bot is False (for n ≥ 1) — impossible
-      -- input. For n = 0 the goal is True trivially.
-      cases hn : n with
-      | zero => subst hn; unfold RC; trivial
-      | succ k =>
-        subst hn
-        unfold RC at h
-        exact False.elim h
-  | neutral_struct _ =>
-      -- τ = .neutral nA, τ' = .neutral nB. RC at .neutral _ is
-      -- just the saturation witnesses (in the saturated form).
-      cases hn : n with
-      | zero => unfold RC; trivial
-      | succ k =>
-        subst hn
-        unfold RC
-        exact RC.sat_of_succ h
-  | neutral_ascent _ _ =>
-      -- τ = .neutral nA. SynthN gives a synthesized type τ_n; the
-      -- subderivation `SubV S Γ τ_n b` could be invoked recursively
-      -- if we had the IH (which `cases` doesn't provide; only
-      -- `induction` does — but `induction` is blocked by the mutual
-      -- inductive). Even with the IH, the bridge "SynthN Γ nA τ →
-      -- RC at .neutral nA → RC at τ" (a SynthN-realises lemma)
-      -- isn't proven yet. Deferred.
-      sorry
-  | lam _ _ _ _ =>
-      -- The function-type case. Body premises are about fresh-
-      -- opened bodies; RC.lam requires bodies opened at arbitrary
-      -- RC-typed arguments. Substitution lemma (fresh-open ⇝
-      -- arbitrary-substitution-equivalence) is needed. Deferred.
-      sorry
-  | iota_struct _ _ _ _ =>
-      -- Body-substitution issue + seen-set circularity. Deferred.
-      sorry
-  | fix_struct _ _ _ _ =>
-      -- Same as iota_struct. Deferred.
-      sorry
-  | iota_intro _ _ _ =>
-      -- LHS-type-vs-value mismatch: the body premise opens clB at
-      -- the LHS *type* a, but RC.iota requires clB opened at the
-      -- *value* v. These don't coincide in general. Deferred.
-      sorry
-  | unfold_fix_R _ _ =>
-      -- τ' = .fix ann clB. RC.fix requires RC at clB.openω
-      -- (.fix ann clB) — exactly what the body premise gives,
-      -- modulo seen-set augmentation. Closing requires the IH on
-      -- the body subderivation (using `induction` not `cases`,
-      -- blocked by mutual). Deferred.
-      sorry
-  | unfold_fix_L _ _ _ =>
-      -- τ = .fix ann clA. Same IH-needs as unfold_fix_R. Deferred.
-      sorry
-  | unfold_iota_L _ _ _ =>
-      -- τ = .iota ann clA. Symmetric to unfold_fix_L. Deferred.
-      sorry
-  | stuckRec_struct _ _ _ _ =>
-      -- Both sides are .neutral (.stuckRec _ _). RC at neutral
-      -- types is just saturation.
-      cases hn : n with
-      | zero => unfold RC; trivial
-      | succ k =>
-        subst hn
-        unfold RC
-        exact RC.sat_of_succ h
-  | revapp_R _ _ _ =>
-      -- τ' = .neutral (.stuckRec f arg). RC at neutral is
-      -- saturation. Transfer from h.
-      cases hn : n with
-      | zero => unfold RC; trivial
-      | succ k =>
-        subst hn
-        unfold RC
-        exact RC.sat_of_succ h
-  | revapp_L _ _ _ =>
-      -- τ = .neutral (.stuckRec f arg). To use the body premise we
-      -- need RC at a' (the vapp-unfolded value). The saturated RC
-      -- at neutral gives only fullyQuotable + quote witness on `v`,
-      -- not RC at the unfolded type. This requires a "vapp-respects
-      -- -RC" lemma. Deferred.
-      sorry
+  intro n
+  induction n using Nat.strongRecOn with
+  | _ n ihStrong =>
+  -- ihStrong : ∀ m < n, [body with m]
+  match n with
+  | 0 =>
+      -- RC 0 d _ _ = True for all τ, τ'. So the conclusion is
+      -- True trivially.
+      intro d S Γ τ τ' v _hS _hsub _h
+      unfold RC
+      trivial
+  | k+1 =>
+      intro d S Γ τ τ' v hS hsub h
+      have ih : ∀ m, m ≤ k →
+          ∀ {d' : Nat} {S' : List (Val × Val)} {Γ' : TyCtx}
+            {τ_ τ'_ v_ : Val},
+          (∀ α β, (α, β) ∈ S' → ∀ m', m' ≤ m → ∀ v'',
+             RC m' d' α v'' → RC m' d' β v'') →
+          SubV S' Γ' τ_ τ'_ → RC m d' τ_ v_ → RC m d' τ'_ v_ := by
+        intro m hmk
+        exact ihStrong m (Nat.lt_succ_of_le hmk)
+      cases hsub with
+      | hyp hmem =>
+          exact hS _ _ hmem (k+1) (Nat.le_refl _) v h
+      | refl =>
+          exact h
+      | top =>
+          unfold RC
+          exact RC.sat_of_succ h
+      | bot_L =>
+          unfold RC at h
+          exact False.elim h
+      | neutral_struct _ =>
+          unfold RC
+          exact RC.sat_of_succ h
+      | @neutral_ascent _ _ _ τ_synth _ _hsynth hsubAsc =>
+          -- Apply IH at step k to the SubV at the synthesized type.
+          -- Need: a way to obtain RC k d τ_synth v from RC (k+1) d
+          -- (.neutral nA) v. The SynthN-realises lemma is the
+          -- missing piece.
+          sorry
+      | lam _ _ _ _ =>
+          -- Body-substitution issue. Deferred.
+          sorry
+      | iota_struct _ _ _ _ =>
+          -- Body-substitution issue + seen-set step-shift handling.
+          -- Deferred.
+          sorry
+      | fix_struct _ _ _ _ =>
+          -- Same as iota_struct. Deferred.
+          sorry
+      | iota_intro _ _ _ =>
+          -- iotaIntro type-vs-value mismatch. Deferred.
+          sorry
+      | unfold_fix_R hopen hbody =>
+          -- The auxiliary's `τ`/`τ'` get unified with `a`/`.fix
+          -- ann clB`. The implicits (a, ann, clB, bB) are visible
+          -- in the goal as `?a/?ann/?clB/?bB` until we split.
+          unfold RC
+          -- Goal is `(saturation v) ∧ ∃ uTy, clB.openω (.fix ann
+          -- clB) = some uTy ∧ RC k d uTy v`. Take uTy = bB by
+          -- supplying hopen.
+          refine ⟨RC.sat_of_succ h, _, hopen, ?_⟩
+          -- Now goal: RC k d bB v.
+          -- Apply IH at step k. We construct hS_k for the augmented
+          -- seen-set.
+          -- This part is closing-able via the strong-IH; deferred
+          -- only because the named-implicit-binding within `cases
+          -- hsub with` is awkward in Lean 4. The shape is:
+          --   apply ih k (Nat.le_refl _) <hS_k> hbody (RC.mono ... h)
+          -- where hS_k discharges the new (a, .fix ann clB) entry
+          -- via ihStrong at step m < k+1 applied to OUR
+          -- (unfold_fix_R hopen hbody) derivation.
+          sorry
+      | unfold_fix_L _ _ _ =>
+          -- Symmetric step-shift issue. Deferred.
+          sorry
+      | unfold_iota_L _ _ _ =>
+          -- Same as unfold_fix_L. Deferred.
+          sorry
+      | stuckRec_struct _ _ _ _ =>
+          unfold RC
+          exact RC.sat_of_succ h
+      | revapp_R _ _ _ =>
+          unfold RC
+          exact RC.sat_of_succ h
+      | revapp_L _ _ _ =>
+          -- vapp-respects-RC missing. Deferred.
+          sorry
 
 /-- Specialisation of the auxiliary at empty seen-set / context. -/
 theorem RC.subtype_closed {n d : Nat} {τ τ' v : Val}
     (hsub : SubV [] #[] τ τ')
     (h : RC n d τ v) : RC n d τ' v := by
-  refine RC.subtype_closed_aux ?_ hsub h
-  intro α β hmem
+  refine RC.subtype_closed_aux n ?_ hsub h
+  intro α β hmem _ _ _ _
   exact (List.not_mem_nil (α, β) hmem).elim
 
 /-! ## Typed eval — pass 2 integration layer
