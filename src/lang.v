@@ -83,6 +83,7 @@ Reserved Notation "'nborrow^m' ( l )" (at level 0, l at next level).
 Reserved Notation "'nloc' ( l )" (at level 0, l at next level).
 Reserved Notation "'nptr' ( l )" (at level 0).
 
+(* TODO: reserved notation for place evaluation. *)
 Reserved Notation "S  |-{op}  op  =>  r" (at level 60).
 Reserved Notation "S  |-{rv}  rv  =>  r" (at level 50).
 Reserved Notation "S  |-{stmt}  stmt  ~>{ n }  B" (at level 50).

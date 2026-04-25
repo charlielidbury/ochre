@@ -2,11 +2,37 @@ From Stdlib Require Import List.
 Import ListNotations.
 From stdpp Require Import pmap.
 Require Import base OptionMonad SimulationUtils PathToSubtree lang.
-Require Import Symbolic_states Symbolic_relations LLBC_sharp.
+Require Import Symbolic_states Symbolic_relations.
+(* We import the << LLBC_plus >> module after << LLBC_sharp >> so the LLBC+ definition
+   of [eval_stmt] overwrites the LLBC# definition. *)
+Require Import LLBC_sharp.
+Require Import LLBC_plus.
 
 Local Open Scope llbc_sharp_scope.
+Local Open Scope llbc_plus_scope.
 
 (** * Simulation proofs for place evaluation. *)
+Lemma eval_proj_valid S perm proj q r (H : eval_proj S perm proj q r) : valid_spath S r.
+Proof.
+  induction H.
+  - apply valid_spath_app. split.
+    + apply get_not_bot_valid_spath. destruct (S.[q]); discriminate.
+    + destruct (S.[q]); inversion get_q. econstructor; reflexivity || constructor.
+Qed.
+
+Lemma eval_path_valid (s : state) P perm q r
+  (valid_q : valid_spath s q) (eval_q_r : eval_path s perm P q r) :
+  valid_spath s r.
+Proof.
+  induction eval_q_r.
+  - assumption.
+  - apply IHeval_q_r. eapply eval_proj_valid. eassumption.
+Qed.
+
+Lemma eval_place_valid s p perm pi (H : eval_place s perm p pi) : valid_spath s pi.
+Proof. destruct H as (? & ?). eapply eval_path_valid; eassumption. Qed.
+Hint Resolve eval_place_valid : spath.
+
 Lemma eval_path_preservation Sl Sr perm p R :
   (forall proj, forward_simulation R R (eval_proj Sr perm proj) (eval_proj Sl perm proj)) ->
   forward_simulation R R (eval_path Sr perm p) (eval_path Sl perm p).
@@ -3033,15 +3059,21 @@ Proof.
 Qed.
 
 (** * Simulation proofs for statement evaluation. *)
-(** The LLBC+ rules [LLBC_plus_E_Seq_Unit_Propagate], [LLBC_plus_IfThenElse_Symbolic] and [LLBC_plus_E_Loop_Continue] require exhibiting a "join state" of two states [B0] and [B1]. Square diagrams that involve these rules are tricky, because it is required to prove that the states [B0] and [B1] are related to the final state [Br], but these states are only determined at the execution of the rule.
+(** The LLBC+ rules for statement [E_Seq_Unit_Propagate], [E_IfThenElse_Symbolic] and [E_Loop_Continue] require exhibiting a "join state" of two states [B0] and [B1]. Let take the general form for the diagram:
+<<
+Sl <= Sr
+|     |
+v     v
+Bl <= Br
+>>
 
-   This tactic simplifies these square diagrams. It operates like this:
-   - The states [B0] and [B1] to join are introduced as existential variables.
-   - First, we prove the execution statement. We assume the hypothesis [is_join ?B0 ?B1 B]. Using this as an assumption determines the terms [B0] and [B1].
-   - Finally, we only have to prove that [B0] and [B1] are related to [Br]. *)
+   This kind of square diagrams is tricky, because we must exhibit the "join state" [Bl] so that we can prove the statement evaluation [Sl |-{stmt} s ~>{n} Bl]. To do so, we must know the states [B0] and [B1], but these states can be quite complex. Finally, the exact join state [Bl] is not really important. It can be the result of the function [exists_join_state B0 B1 Br]. What only matters is that the states [B0] and [B1] are related to [Br].
+
+   The following lemma (and the associated tactic) removes the need to exhibit a state [Bl]. The proof of the evaluation is conducted first. The branching state [Bl] and the "join" property [Hjoin_l : is_join ?B0 ?B1 Bl] are assumed. When the assumption [Hjoin_l] is used, it determine the values of [B0] and [B1], that were introduced as existential variables. It is only after that the relations [B0 <= Br] and [B1 <= Br] are shown.
+ *)
 (* TODO: lemma and tactic names. *)
 Lemma execution_join_state n s Sl (B0 B1 Br : branching_state) :
-  (forall B, is_join B0 B1 B -> Sl |-{stmt} s ~>{n} B) ->
+  (forall Bl, is_join B0 B1 Bl -> Sl |-{stmt} s ~>{n} Bl) ->
   leq_branching B0 Br ->
   leq_branching B1 Br ->
   exists Bl, leq_branching Bl Br /\ Sl |-{stmt} s ~>{n} Bl.
@@ -3222,44 +3254,43 @@ Proof.
 Qed.
 
 Lemma stmt_preserves_LLBC_plus_rel n s :
-  forward_simulation leq_symbolic leq_branching
-                     (LLBC_plus_eval_stmt n s) (LLBC_plus_eval_stmt n s).
+  forward_simulation leq_symbolic leq_branching (eval_stmt n s) (eval_stmt n s).
 Proof.
   intros Sr S'r Heval. induction Heval; intros Sl Hleq.
-  (* Case [LLBC_plus_E_Step_Zero] *)
+  (* Case [E_Step_Zero] *)
   - execution_step. { constructor. } reflexivity.
 
-  (* Case [LLBC_plus_E_Nop]. *)
+  (* Case [E_Nop]. *)
   - execution_step. { constructor. } apply leq_singleton. assumption.
-  (* Case [LLBC_plus_E_Panic]. *)
+  (* Case [E_Panic]. *)
   - execution_step. { constructor. } apply leq_singleton. assumption.
-  (* Case [LLBC_plus_E_Break]. *)
+  (* Case [E_Break]. *)
   - execution_step. { constructor. } apply leq_singleton. assumption.
-  (* Case [LLBC_plus_E_Continue]. *)
+  (* Case [E_Continue]. *)
   - execution_step. { constructor. } apply leq_singleton. assumption.
 
-  (* Case [LLBC_plus_E_Propagate] *)
+  (* Case [E_Propagate] *)
   - specialize (IHHeval _ Hleq). destruct IHHeval as (Bl & ? & ?).
     execution_step.
-    { apply LLBC_plus_E_Seq_Propagate; eauto with spath. }
+    { apply E_Seq_Propagate; eauto with spath. }
     assumption.
 
-  (* Case [LLBC_plus_E_Seq_Unit_Propagate] *)
+  (* Case [E_Seq_Unit_Propagate] *)
   - specialize (IHHeval1 _ Hleq). destruct IHHeval1 as (B1l & Hleq1 & ?).
     eapply lookup_token_cases in Hleq1; [ | exact H_unit].
     destruct Hleq1 as [(? & ?) | (S1l & ? & Hleq1 & ?)].
     (* Case 1: the state after the execution of the first statement ([B1_l]) does not contain
         a [rUnit] token, we simply propagate. *)
-    + execution_step. { apply LLBC_plus_E_Seq_Propagate; eassumption. }
+    + execution_step. { apply E_Seq_Propagate; eassumption. }
       etransitivity; eauto with spath.
     (* Case 2. *)
     + specialize (IHHeval2 _ Hleq1). destruct IHHeval2 as (B_unit_l & Hleq2 & Heval2_l).
       execution_join_state.
-      { eapply LLBC_plus_E_Seq_Unit_Propagate; eassumption. }
+      { eapply E_Seq_Unit_Propagate; eassumption. }
       { etransitivity; eauto with spath. }
       { etransitivity; eauto with spath. }
 
-  (* Case [LLBC_plus_E_Assign] *)
+  (* Case [E_Assign] *)
   - destruct vS' as (vr & S'r).
     assert (not_contains_bot vr). { eapply eval_rvalue_no_bot. eassumption. }
     assert (not_contains_loan vr). { eapply eval_rvalue_no_loan. eassumption. }
@@ -3270,30 +3301,30 @@ Proof.
     execution_step. { econstructor; eassumption. }
     apply leq_singleton. assumption.
 
-  (* Case [LLBC_plus_E_IfThenElse_T] *)
+  (* Case [E_IfThenElse_T] *)
   - apply operand_preserves_leq in eval_cond. apply eval_cond in Hleq.
     destruct Hleq as ((v' & S'l) & Hleq' & eval_cond').
     apply leq_val_state_concrete_boolean in Hleq'. destruct Hleq' as (-> & Hleq').
     apply IHHeval in Hleq'. destruct Hleq' as (S''l & Hleq'' & eval_if).
     execution_step. { econstructor; eassumption. } assumption.
 
-  (* Case [LLBC_plus_E_IfThenElse_F] *)
+  (* Case [E_IfThenElse_F] *)
   - apply operand_preserves_leq in eval_cond. apply eval_cond in Hleq.
     destruct Hleq as ((v' & S'l) & Hleq' & eval_cond').
     apply leq_val_state_concrete_boolean in Hleq'. destruct Hleq' as (-> & Hleq').
     apply IHHeval in Hleq'. destruct Hleq' as (S''l & Hleq'' & eval_else).
     execution_step. { econstructor; eassumption. } assumption.
 
-  (* Case [LLBC_plus_IfThenElse_Symbolic] *)
+  (* Case [E_IfThenElse_Symbolic] *)
   - apply operand_preserves_leq in eval_cond. apply eval_cond in Hleq.
     destruct Hleq as ((v' & S'l) & Hleq' & eval_cond').
     apply leq_val_state_symbolic_boolean in Hleq'.
     destruct Hleq' as ([([ | ] & ->) | ->] & Hleq').
-    (* Case 1: the symbolic value abstracts the boolean true. We apply the rule [LLBC_plus_E_IfThenElse_T]. *)
+    (* Case 1: the symbolic value abstracts the boolean true. We apply the rule [E_IfThenElse_T]. *)
     + apply IHHeval1 in Hleq'. destruct Hleq' as (B''l & Hleq'' & eval_if).
       execution_step. { econstructor; eassumption. }
       transitivity B_if; eauto using leq_is_join_l.
-    (* Case 2: the symbolic value abstracts the boolean false. We apply the rule [LLBC_plus_E_IfThenElse_F]. *)
+    (* Case 2: the symbolic value abstracts the boolean false. We apply the rule [E_IfThenElse_F]. *)
     + apply IHHeval2 in Hleq'. destruct Hleq' as (B''l & Hleq'' & eval_else).
       execution_step. { econstructor; eassumption. }
       transitivity B_else; eauto using leq_is_join_r.
@@ -3301,32 +3332,32 @@ Proof.
     + specialize (IHHeval1 _ Hleq'). destruct IHHeval1 as (Bl_if & Hleq'_l & eval_if).
       specialize (IHHeval2 _ Hleq'). destruct IHHeval2 as (Bl_else & Hleq'_r & eval_else).
       execution_join_state.
-      { eapply LLBC_plus_IfThenElse_Symbolic; eassumption. }
+      { eapply E_IfThenElse_Symbolic; eassumption. }
       { etransitivity; eauto with spath. }
       { etransitivity; eauto with spath. }
 
-  (* Case [LLBC_plus_E_Reorg] *)
+  (* Case [E_Reorg] *)
   - eapply reorg_preservation in Hreorg. specialize (Hreorg _ Hleq).
     destruct Hreorg as (S'l & Hleq' & ?).
     specialize (IHHeval _ Hleq'). destruct IHHeval as (? & ? & ?).
     execution_step. { econstructor; eassumption. } assumption.
 
-  (* Case [LLBC_plus_E_Loop_Stop] *)
+  (* Case [E_Loop_Stop] *)
   - apply IHHeval in Hleq. destruct Hleq as (B1l & Hleq' & Heval').
     execution_step.
-    { apply LLBC_plus_E_Loop_Stop; eauto with spath. }
+    { apply E_Loop_Stop; eauto with spath. }
     auto with spath.
 
-  (* Case [LLBC_plus_E_Loop_Continue] *)
+  (* Case [E_Loop_Continue] *)
   - apply IHHeval1 in Hleq. destruct Hleq as (B1_l & Hleq' & Heval').
     eapply lookup_token_cases in Hcontinue; [ | exact Hleq'].
     destruct Hcontinue as [(? & ?) | (S1_l & ? & Hleq_S1 & ?)].
     + execution_step.
-      { eapply LLBC_plus_E_Loop_Stop; eauto with spath. }
+      { eapply E_Loop_Stop; eauto with spath. }
       etransitivity; eauto with spath.
     + apply IHHeval2 in Hleq_S1. destruct Hleq_S1 as (B2_l & Hleq'' & Heval2_l).
       execution_join_state.
-      { eapply LLBC_plus_E_Loop_Continue; eauto with spath. }
+      { eapply E_Loop_Continue; eauto with spath. }
       { etransitivity; eauto with spath. }
       { etransitivity; eauto with spath. }
 Qed.

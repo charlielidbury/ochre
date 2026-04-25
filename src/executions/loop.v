@@ -120,7 +120,7 @@ Proof.
   simpl_state.
 
   (** The loop invariant is satisfied when entering the loop. *)
-  apply LLBC_sharp_Weaken_Precondition with (Sr := S_inv).
+  apply Consequence_Precondition with (Sr := S_inv).
   { eapply prove_leq_symbolic.
     { apply Leq_Reborrow_MutBorrow_Abs
         with (sp := (encode_var b, [])) (l1 := l1) (i := 1%positive)
@@ -140,7 +140,7 @@ Proof.
     reflexivity. }
 
   (** We only have to prove that [B_inv] is the loop invariant. *)
-  apply LLBC_sharp_E_Loop_Invariant with (Binv := B_inv); [ | reflexivity..].
+  apply E_Loop_Invariant with (Binv := B_inv); [ | reflexivity..].
   (** Evaluation of the computation << x <= y >>. The result is stored in the temporary variable [cond]. *)
   eapply eval_seq_unit.
   { eapply assign_no_anon.
@@ -150,11 +150,11 @@ Proof.
   simpl_state.
 
   (** Evaluation of the conditional. *)
-  { eapply LLBC_sharp_IfThenElse_Symbolic; [ | eapply LLBC_sharp_Weaken_Postcondition..].
+  { eapply E_IfThenElse_Symbolic; [ | eapply Consequence_Postcondition..].
     { refine (try_compute (compute_eval_op _ _) _ _ _). reflexivity. }
 
     (** Evaluation of the if branch (<< break >>). *)
-    { apply LLBC_sharp_E_Break. }
+    { apply E_Break. }
 
     (** The invariant is satisfied when breaking from the loop. *)
     (** We only need to unitialize the binding << cond |-> true >> *)
@@ -173,7 +173,7 @@ Proof.
       simpl_state.
       (** Evaluation of the reborrow << b = *b >> *)
       eapply eval_seq_unit.
-      { eapply LLBC_sharp_E_Assign.
+      { eapply E_Assign.
         { refine (try_compute (compute_borrow_mut l2 _ _) _ _ _). reflexivity. }
        { refine (try_compute (compute_eval_store 1%positive _ _) _ _ _). reflexivity. }
       }
@@ -185,7 +185,7 @@ Proof.
         { refine (try_compute (compute_eval_store_no_anon _ _) _ _ _). reflexivity. }
       }
       simpl_state.
-      apply LLBC_sharp_E_Continue. }
+      apply E_Continue. }
 
     (** The invariant is satisfied when continuing the loop. *)
     { apply leq_singleton. unfold B_inv. simpl_map.

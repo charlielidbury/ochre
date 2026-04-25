@@ -1,4 +1,4 @@
-(** * Mechanized_LLBC.Symbolic_relations : Definition of the abstraction relations for LLBC# *)
+(** * Mechanized_LLBC.Symbolic_relations : Definition of the abstraction relations for LLBC#. *)
 From stdpp Require Import pmap gmap.
 Require Import base OptionMonad PathToSubtree SimulationUtils lang Symbolic_states.
 

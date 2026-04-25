@@ -23,7 +23,7 @@ Lemma eval_seq_unit S0 S1 B2 stmt_l stmt_r
   (eval_stmt_r : S1 |-# stmt_r ~> B2) :
   S0 |-# (Seq stmt_l stmt_r) ~> B2.
 Proof.
-  eapply LLBC_sharp_E_Seq_Unit_Propagate.
+  eapply E_Seq_Unit_Propagate.
   - exact eval_stmt_l.
   - reflexivity.
   - (* TODO: lemma? *)
@@ -45,8 +45,8 @@ Lemma assign_no_anon S vS' S'' p rv
   S |-# ASSIGN p <- rv ~> {[rUnit := S'']}.
 Proof.
   destruct Hstore as [? S']. destruct (exists_fresh_anon S') as (a & fresh_a).
-  eapply LLBC_sharp_Weaken_Postcondition.
-  { eapply LLBC_sharp_E_Assign.
+  eapply Consequence_Postcondition.
+  { eapply E_Assign.
     - exact eval_rv.
     - apply Store with (a := a).
       + exact eval_p.

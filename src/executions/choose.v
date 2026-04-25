@@ -89,8 +89,8 @@ Proof.
 
   (** Evaluation of the conditional. *)
   eapply eval_seq_unit.
-  { eapply LLBC_sharp_IfThenElse_Symbolic with (B := {[rUnit := join_state]});
-      [ | eapply LLBC_sharp_Weaken_Postcondition..].
+  { eapply E_IfThenElse_Symbolic with (B := {[rUnit := join_state]});
+      [ | eapply Consequence_Postcondition..].
     { refine (try_compute (compute_eval_op _ _) _ _ _). reflexivity. }
 
     (** Evaluation of the if branch. *)
@@ -167,7 +167,7 @@ Proof.
   simpl_state.
 
   (** In order to access the variable << x >>, we must perform reorganizations in order to end the loan [lx.] *)
-  eapply LLBC_sharp_E_Reorg.
+  eapply E_Reorg.
   { etransitivity.
     (* TODO: computation procedures for reorganization steps. *)
     (** Ending the loan [lz] ... *)
