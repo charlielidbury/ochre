@@ -263,6 +263,89 @@ sorried with TODO markers and re-derived after the typed substrate
 stabilises. This is acceptable: we're moving to a stronger foundation,
 not abandoning soundness.
 
+## Implementation addendum (2026-04-24, agent-a05d76a4)
+
+This section records architectural choices made during the first
+implementation pass. The goal of this pass is to land the typed-NbE
+*substrate* (datatype + RC predicate + fundamental-lemma statement)
+and use it to close the four declaration-level sorries in
+`SoundnessProof.lean`. The substrate may or may not have provable
+fundamental-lemma bodies — but the statement being right and the
+pipework wiring through is the load-bearing thing.
+
+### Choice 1 — parallel `TypedVal` over modifying `Val`
+
+`Val` stays untyped. A new structure `TypedVal` carries a `Val` plus
+its declared semantic type (also a `Val`). Rationale:
+
+- Minimises blast radius. `Val.beq`, `subCheckVal`, `quote`, every
+  proof in `SoundnessProof.lean` keeps working untouched.
+- The classical NbE proofs (Abel, Coquand-Kinoshita) all separate
+  semantic values from their *types* — types are values too in OCH,
+  and separating the two layers ergonomically is the intent.
+- Allows incremental migration: eval still produces `Val`s; we add
+  `tyEval e τ : Outcome TypedVal` as a *checked* wrapper that bundles
+  the evaluation with its declared type.
+- If we later decide intrinsic-typing the `Val` is the right move, we
+  can transition by making `TypedVal` the canonical form and dropping
+  `Val`'s standalone existence. This is a strictly looser commitment.
+
+A `TypedVal` is conceptually a witness `(v, τ) : Σ τ. RC τ v`, but
+in practice we carry `(v, τ)` as data and `RC τ v` as a separate
+proposition (Lean's record-with-Prop-field would force structural
+equality through it; we don't need that yet).
+
+### Choice 2 — RC as step-indexed `Prop`
+
+Per the spec's recommendation. Defined `RC : Nat → Val → Val → Prop`
+with `n` the step-budget. Inductive cases follow the type-shape of
+its second argument *after one quote-and-unfold*:
+
+```
+RC 0 τ v             := True  -- step-zero is trivially-OK; refines under ihstep
+RC (n+1) .type v     := True
+RC (n+1) .bot v      := False  -- Bot is empty
+RC (n+1) (.lam dV cl) v :=
+  ∀ a, RC n dV a → ∃ r, vapp fuelω unfBound v a = .ok r ∧ RC n (cl.openω a) r
+RC (n+1) (.iota aV cl) v :=
+  RC n aV v ∧ RC n (cl.openω v) v
+RC (n+1) (.fix _aV cl) v :=
+  RC n (cl.openω (.fix _aV cl)) v
+RC (n+1) (.neutral _) v := True  -- a neutral type is opaque; nothing to check
+```
+
+This doesn't yet account for `Subtype'` closure on the type side; that
+will be a separate `RC_subtype_closed` lemma.
+
+### Choice 3 — fundamental lemma as a *statement*, not a closed proof
+
+Per the user prompt's step 4 directive. We commit the FL signature; the
+proof body can be `sorry` initially. The downstream sorry-closure (step
+5) gets to assume the FL.
+
+### Choice 4 — file layout
+
+New file `lean/Och/TypedNbE.lean`, importing `NbE`/`SubCheckVal`. Defines
+`TypedVal`, `RC`, `tyEval` (a typed eval wrapper), and the FL statement
+`typed_nbe_fundamental`. SoundnessProof.lean adds an import and uses the
+FL to discharge the 4 sorries.
+
+### Realistic scope of this pass
+
+It is unlikely a single pass closes the FL proof body. The realistic
+landing target for *this* attempt:
+
+1. Datatype + RC + FL signature compile. ✓ goal
+2. Old 4 sorries are reduced to *one* sorry — the FL body itself.
+3. At least one regressed perf test (`three_ ⊑ Nat_` lower fuel) gets
+   a typed-subsumption path that closes it more cheaply, *or* the
+   path is wired and a follow-up agent adds the leaf-cases.
+
+If this attempt only lands (1), that is still progress: it makes the
+typed substrate a thing that exists, and the remaining work for follow-
+up agents is concrete. The danger to avoid is leaving a half-wired
+substrate that's neither used nor easy to use.
+
 ## Pointers if we do proceed
 
 - Andreas Abel, "Normalization by Evaluation: Dependent Types and
