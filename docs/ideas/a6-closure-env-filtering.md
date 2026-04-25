@@ -1,6 +1,6 @@
 # A6: closure-env filtering unblocks both perf and encoding simplification
 
-**Status:** research thread. Not started.
+**Status:** investigated 2026-04-24, hypothesis disproved by profiling. Not pursued. See post-mortem at end.
 
 ## The intuition (read this first)
 
@@ -82,3 +82,105 @@ This is a non-trivial refactor of `Closure.openFresh` and the seen-set keying lo
 - `docs/ideas/subcheck-perf.md` — the 2026-04-24 memoization post-mortem (the negative result that motivates this).
 - `lean/Och/Std/DNat.lean` — the encoding that would simplify.
 - DECISION-LOG entries tagged A6.
+
+## Post-mortem (2026-04-24, agent-aca6f2bc)
+
+### Plan executed
+
+Per the task brief, profile-first to confirm the dead-env-slot
+hypothesis before refactoring. Wrote an instrumented walker
+(`bvarUsed` + dead-slot counter) over the closures produced by
+`eval` and recursively followed by `Closure.openFresh` up to
+fuel 200, depth-walking through `λ`/`ι`/`fix` binders.
+
+### Numbers
+
+Across `zero_/one_/two_/three_ ⊑ Nat_` after evaluation
+(no opens):
+
+| judgment       | closures | totalSlots | dead | dead % |
+|----------------|----------|------------|------|--------|
+| zero_ ⊑ Nat_   |        2 |          0 |    0 |   0%   |
+| one_ ⊑ Nat_    |      197 |         64 |    0 |   0%   |
+| two_ ⊑ Nat_    |     6632 |       2176 |    0 |   0%   |
+| three_ ⊑ Nat_  |   218987 |      71872 |    0 |   0%   |
+
+Including opens (depth-walk through binders, fuel 100):
+
+| judgment       | closures | totalSlots | dead | dead % |
+|----------------|----------|------------|------|--------|
+| zero_ ⊑ Nat_   |       15 |         26 |    8 |  30%   |
+| one_ ⊑ Nat_    |       24 |         32 |   10 |  31%   |
+| two_ ⊑ Nat_    |      804 |        288 |   10 |   3%   |
+| three_ ⊑ Nat_  |    26544 |       8736 |   10 |   0%   |
+
+Dead-slot count is **a fixed small constant (~10)** regardless
+of numeral size. The proportion goes to 0% as work grows.
+
+### Distinct-env-per-body check
+
+For `three_ ⊑ Nat_` after deep opens (200 depth, fuel 1000),
+across 41,376 closure traversals: only **1 body** out of 16
+distinct bodies had multiple distinct envs (3 distinct envs
+total). The "non-canonical envs across unfold paths" pathology
+the design doc predicts is barely measurable.
+
+### Why the hypothesis is wrong
+
+The existing `Closure.mk' body env := ⟨body, env.take
+(bvarBound body - 1)⟩` (NbE.lean:84) already trims env to the
+prefix the body can structurally reach. For Och's actual
+closures, the live-set IS the prefix — no interior dead slots
+worth filtering. The `bvarBound`-based prefix-trim was added
+specifically to fix this kind of issue and **is doing its
+job**.
+
+The `three_ ⊑ Nat_` cost (~50k fuel) is therefore not from
+spurious closure-env distinctness. It's the genuine algorithmic
+work of the singleton-tightened `succ_` (Option A): each
+predecessor is threaded through the contra chain on the
+`s`-domain `λpred:m`. This is the same conclusion the previous
+memoization deep-dive reached (`docs/ideas/subcheck-perf.md`).
+
+### Decision
+
+Do not refactor `Closure.mk'` for filtering. The prefix-trim is
+already doing the work the doc proposed; further filtering
+would buy <1% in canonicalisation across measured workloads
+while costing significant proof-rework (47 references to
+`Closure.mk'` in `SoundnessProof.lean`, including the
+`shiftLvl`/`levelsBelow`/`envFullyQuotable`/`mk'_body_closed`
+lemma chain).
+
+### What might actually move the needle
+
+(Recording for the next deep-dive — these were considered
+during investigation but not executed.)
+
+1. **Iterative subCheckVal with a worklist + structural-hash
+   memo** (also flagged in `docs/ideas/subcheck-perf.md`).
+   Treats fuel as a global budget rather than per-call,
+   amortises across paths.
+
+2. **Typed NbE** (`docs/ideas/typed-nbe.md`). Most ambitious;
+   prunes whole branches that the current untyped checker
+   re-explores.
+
+3. **Re-encode succ_'s s-branch** to avoid the
+   singleton-predecessor contra chain. Trade off the Option-F
+   Fin subsumption for performance — keep `(succ_ m) ⊑ Fin
+   (succ_ n)` working but via wrapper constructors instead of
+   subsumption.
+
+4. **Accept the perf wall.** The ~50k fuel cost for
+   `three_ ⊑ Nat_` is the realistic ceiling for Option A.
+   `five_ ⊑ Nat_` and `two_ ⊑ Fin three_` won't close at
+   accessible fuel. Document this as Option-A's tradeoff and
+   keep moving on metatheory.
+
+The A6-completeness goal (push `domB` instead of `domA`)
+remains genuinely incomplete in the algorithm. But unlocking
+it requires more than env-filtering — the `domB`-push
+exponential blowup is *not* primarily an env-canonicality
+issue. It's the extra unfold work that pushing the narrower
+type provokes per recursive layer.
