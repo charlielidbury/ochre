@@ -533,6 +533,160 @@ theorem RC.subtype_closed {n d : Nat} {τ τ' v : Val}
   intro α β hmem _ _ _ _
   exact (List.not_mem_nil (α, β) hmem).elim
 
+/-! ## `SubTV` — the typed-everything subtype relation (pass 6)
+
+`SubTV n d τ_a τ_b` is the typed analog of `SubV`: a *logical-
+relation*-style predicate stating that every value RC-typed at
+`τ_a` is also RC-typed at `τ_b`, at the same step `n` and depth `d`.
+
+This is the foundation of the typed-everything pipeline. Where
+the untyped `SubV` is a *syntactic* relation between Vals, `SubTV`
+is a *semantic* relation defined via RC. The two are connected:
+
+```
+  SubV [] #[] τ_a τ_b → SubTV n d τ_a τ_b   (this is RC.subtype_closed!)
+```
+
+So `SubTV` is a strict refinement: SubV-related ⟹ SubTV-related.
+The reverse doesn't hold (SubTV admits more pairs than SubV), but
+that's irrelevant for soundness — the algorithm only ever produces
+SubV witnesses, and `SubTV` is what the FL needs.
+
+**Why bother defining a new relation?** Because it gives us a
+clean substrate for pass 7+ work:
+- `SubTV` constructors are all derivable from RC (no SubV-induction
+  needed for the trivial cases).
+- The FL body can use `SubTV` directly without going through
+  `SubV ⟹ RC` lifting (which is what `RC.subtype_closed_aux`
+  bottlenecks on).
+- The bridge `SubV ⟹ SubTV` is exactly `RC.subtype_closed`,
+  factored out as a single theorem.
+
+**Pass 6 deliverable**: definition + trivial constructors. The
+derivation `SubV ⟹ SubTV` is `RC.subtype_closed`'s job (still
+sorried for hard cases, but the trivial cases work).
+
+**Pass 7+**: `SubV ⟹ SubTV` for closure cases via Val-level
+body-substitution lemma (estimated 150-250 LOC, see design doc
+`docs/ideas/typed-everything-architecture.md`).
+-/
+
+/-- The typed-everything subtype relation. Logical-relation style:
+`τ_a ⊑^T τ_b` at step `n` and depth `d` iff every RC-typed value at
+`τ_a` is also RC-typed at `τ_b`.
+
+Definitionally extensional — purely a Π-type. Constructors below
+(`SubTV.refl`, `SubTV.top`, etc.) provide useful API, but anything
+provable about RC-coercions is a `SubTV`. -/
+def SubTV (n d : Nat) (τ_a τ_b : Val) : Prop :=
+  ∀ v, RC n d τ_a v → RC n d τ_b v
+
+namespace SubTV
+
+/-- Reflexivity: any type is a subtype of itself. -/
+theorem refl {n d : Nat} {τ : Val} : SubTV n d τ τ :=
+  fun _ h => h
+
+/-- Transitivity: composition of RC-coercions. -/
+theorem trans {n d : Nat} {τ_a τ_b τ_c : Val}
+    (hab : SubTV n d τ_a τ_b) (hbc : SubTV n d τ_b τ_c) :
+    SubTV n d τ_a τ_c :=
+  fun v h => hbc v (hab v h)
+
+/-- `.bot` is a subtype of everything. RC at `.bot` is `False`,
+so every "value" at `.bot` lifts vacuously. -/
+theorem bot_L {n d : Nat} {τ : Val} : SubTV n d .bot τ := by
+  intro v h
+  cases n with
+  | zero => unfold RC; trivial
+  | succ k =>
+    unfold RC at h
+    exact False.elim h
+
+/-- Anything is a subtype of `.type` (the universe is the largest
+type). At step `n+1`, this requires saturation on the value, which
+RC always provides (via `RC.fullyQuotable`/`RC.quote_witness`).
+At step 0, RC is `True` for both, trivial. -/
+theorem top {n d : Nat} {τ : Val} : SubTV n d τ .type := by
+  intro v h
+  cases n with
+  | zero => unfold RC; trivial
+  | succ k =>
+    -- RC (k+1) d .type v requires saturation. Get from h.
+    have hsat := RC.sat_of_succ h
+    unfold RC; exact hsat
+
+/-- Anything is a subtype of any neutral type. Like `top`, this is
+saturation-only. -/
+theorem to_neutral {n d : Nat} {τ : Val} {ne : Neutral} :
+    SubTV n d τ (.neutral ne) := by
+  intro v h
+  cases n with
+  | zero => unfold RC; trivial
+  | succ k =>
+    have hsat := RC.sat_of_succ h
+    unfold RC; exact hsat
+
+/-- The bridge from `SubV` (untyped algorithmic relation) to
+`SubTV` (typed semantic relation). At empty seen-set / context,
+this is exactly `RC.subtype_closed` repackaged. Because
+`RC.subtype_closed` is parametric in `n`, this gives `SubTV n d`
+for all `n` simultaneously.
+
+This is the **central bridge theorem** of the typed-everything
+architecture. The FL body uses `SubTV` directly; the algorithmic
+checker produces `SubV`; this lemma converts. As long as
+`RC.subtype_closed` is closed (currently 8 inline sorries on hard
+cases), `SubTV` is fully bridged.
+
+Pass 7+ work is closing the inline sorries in
+`RC.subtype_closed_aux`, NOT this bridge. -/
+theorem of_SubV {n d : Nat} {τ_a τ_b : Val}
+    (hsub : SubV [] #[] τ_a τ_b) : SubTV n d τ_a τ_b :=
+  fun _v h => RC.subtype_closed hsub h
+
+end SubTV
+
+/-! ## SubTV API: the typed pipeline's coercion primitive
+
+These wrappers give the FL body a clean interface for type
+coercion. The FL never directly invokes `RC.subtype_closed`;
+instead it goes through `SubTV` which provides:
+- `SubTV.coerce : SubTV n d τ_a τ_b → RC n d τ_a v → RC n d τ_b v`
+  (essentially the definition unfolded)
+- `SubTV.of_SubV` (above) for converting algorithmic outputs.
+
+In pass 9+ when the FL body is written, callers will use:
+```
+have hsub : SubTV n d τ_a τ_b := SubTV.of_SubV (subCheckVal_subV ...)
+have rc_b : RC n d τ_b v := hsub.coerce rc_a
+```
+
+NOT:
+```
+have rc_b : RC n d τ_b v :=
+  RC.subtype_closed (subV_of_subCheck ...) rc_a
+```
+
+The SubTV layer makes the type-direction explicit.
+-/
+
+/-- Apply a `SubTV` to coerce an RC witness. Trivial unfold but
+named for clarity at use sites. -/
+theorem SubTV.coerce {n d : Nat} {τ_a τ_b v : Val}
+    (hsub : SubTV n d τ_a τ_b) (h : RC n d τ_a v) : RC n d τ_b v :=
+  hsub v h
+
+/-- The contravariant variant for arrow-domain coercions. Mostly
+notational at this point; will be the call-site idiom for the
+function-type case in `SubV_to_SubTV.lam` (pass 7).
+
+Note: this is NOT the contravariant SubV.lam-domain rule (which is
+SubV S Γ domB domA → ...). It's just an alias for `SubTV` on the
+domain-type pair, named to make contravariance explicit. -/
+abbrev SubTV.contra (n d : Nat) (domA domB : Val) : Prop :=
+  SubTV n d domB domA
+
 /-! ## Typed eval — pass 2 integration layer
 
 `tyEval n e τ` evaluates `e` and produces a `TypedVal` paired with

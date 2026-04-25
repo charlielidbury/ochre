@@ -46,3 +46,16 @@ import Och.TypedNbE
 -- Pass 5: typed env realisation lemmas.
 #print axioms NbE.RC_env.nil
 #print axioms NbE.RC_env.cons
+-- Pass 6: typed-everything `SubTV` substrate. These are
+-- axiom-clean (no sorryAx) — they're proven via RC's
+-- saturation projections + RC.subtype_closed.
+-- `SubTV.of_SubV` transitively depends on RC.subtype_closed
+-- (which has 8 inline sorries on hard cases), but the
+-- substrate constructors themselves are sorry-free.
+#print axioms NbE.SubTV.refl
+#print axioms NbE.SubTV.trans
+#print axioms NbE.SubTV.bot_L
+#print axioms NbE.SubTV.top
+#print axioms NbE.SubTV.to_neutral
+#print axioms NbE.SubTV.of_SubV
+#print axioms NbE.SubTV.coerce
