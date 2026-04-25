@@ -123,16 +123,30 @@ In priority order:
 ### Sorry count trajectory
 
 - Before pass 4: TypedNbE.lean = 2 (subtype_closed body + FL body).
-- After pass 4: TypedNbE.lean = 2 (same, but subtype_closed now
-  has 7/16 cases proven inline + strong-IH structure in place; FL
-  has refined signature with `n ≤ fuelω`).
+- After pass 4: TypedNbE.lean = 2 (same declaration count).
 
-The internal sorry count under each declaration has gone down
-significantly (subtype_closed: from 1 bare to 8 documented inline;
-each documented with the precise obstacle). The next agent
-inherits a much better starting point.
+Internal sorry breakdown:
+- `subtype_closed_aux`: 8 SubV cases proven inline (refl, hyp, top,
+  bot_L, neutral_struct, stuckRec_struct, revapp_R, **unfold_fix_R**),
+  with 7 inline sorries on hard cases (each documented).
+- `typed_nbe_fundamental`: bare sorry, with refined signature
+  (`n ≤ fuelω` added) and structural notes for next pass.
 
-Build green. AxiomCheck unchanged.
+AxiomCheck.lean updated to track `subtype_closed_aux`,
+`subtype_closed`, and `typed_nbe_fundamental` (each shows sorryAx,
+as expected; the other 18 substrate lemmas are axiom-clean).
+
+Build green throughout.
+
+### Key technical insight: `match` vs `cases ... with`
+
+The `unfold_fix_R` closure depended on a Lean-4 specific trick:
+`cases hsub with | unfold_fix_R hopen hbody` doesn't bind the
+constructor's *implicit* arguments by name, while a tactic-mode
+`match hsub with | @SubV.unfold_fix_R S' Γ' a ann clB bB hopen
+hbody` does (via the @-pattern). Replacing `cases` with `match`
+unblocked the proof. Same technique should close `unfold_fix_L`
+and `unfold_iota_L` modulo the step-up issue noted earlier.
 
 ---
 

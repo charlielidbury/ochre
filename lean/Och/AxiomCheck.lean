@@ -35,3 +35,9 @@ import Och.TypedNbE
 #print axioms NbE.RC.fix_elim
 #print axioms NbE.RC.type_top
 #print axioms NbE.RC.neutral_top
+
+-- Pass 4 sorried lemmas — these still depend on sorryAx until
+-- the FL body and subtype_closed are closed.
+#print axioms NbE.RC.subtype_closed_aux
+#print axioms NbE.RC.subtype_closed
+#print axioms NbE.typed_nbe_fundamental
