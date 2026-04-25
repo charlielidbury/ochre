@@ -380,7 +380,7 @@ one or more of the following obstacles:
    different unless `a = v` (degenerate). The bridge is nontrivial
    and requires the typing-derivation structure.
 
-**Status (pass 7)**: 10/16 SubV cases proven inline:
+**Status (pass 8)**: 11/16 SubV cases proven inline:
 - Saturation-only cases (RC at `.type`/`.neutral` is just
   saturation witnesses): `top`, `neutral_struct`,
   `stuckRec_struct`, `revapp_R`.
@@ -388,24 +388,34 @@ one or more of the following obstacles:
 - One-step recursive case: `unfold_fix_R` (closed via the
   strong-IH on the augmented seen-set entry).
 - **Pass 7 closures**: `lam`, `iota_struct` — closed via the
-  `SubV_subst_neutral_to_value` body-substitution lemma (which
-  is itself sorried but consolidates 2 inline sorries into 1).
+  `SubV_subst_neutral_to_value` body-substitution lemma (sorried,
+  consolidates 2 inline sorries into 1).
+- **Pass 8 closure**: `fix_struct` — closed via the
+  `SubV_subst_pair` pair-substitution lemma (sorried,
+  consolidates 1 inline sorry into 1; relates `clA.openω
+  (.fix annA clA)` and `clB.openω (.fix annB clB)` via
+  `SubV.hyp` on the augmented seen-set).
 
 Hard cases remain sorried inline:
-- `fix_struct` — closure-shaped variation; needs an extension
-  of the substitution lemma that lets the substituend on each
-  side differ (need `clA.openω (.fix annA clA)` vs
-  `clB.openω (.fix annB clB)` to relate, but the substitution
-  lemma uses a single substituend).
-- `iota_intro` — typed iotaIntro LHS-vs-value mismatch.
+- `iota_intro` — typed iotaIntro LHS-vs-value mismatch (needs
+  RC-realisation bridge, distinct from the basic/pair
+  substitution family).
 - `unfold_fix_L`, `unfold_iota_L` — step-up mismatch (the LHS
-  unfold consumes a step but the goal demands the original step).
+  unfold consumes a step but the goal demands the original step;
+  documented in pass 5 post-mortem as a structural RC issue).
 - `revapp_L` — vapp-respects-RC missing.
 - `neutral_ascent` — SynthN-realises bridge missing.
 
-Inline sorry count in `subtype_closed_aux`: 6 (was 7 pre-pass-7).
-Plus 1 sorried lemma (`SubV_subst_neutral_to_value`) that closes
-2 of those cases. Net file delta: -1 inline sorry.
+Inline sorry count in `subtype_closed_aux`: 5 (was 6 pre-pass-8).
+Plus 2 sorried lemmas (`SubV_subst_neutral_to_value`,
+`SubV_subst_pair`) that together close 3 of the easier-shaped
+cases (`lam`, `iota_struct`, `fix_struct`).
+
+**Net file delta pass 8**: 0 inline sorries (closed 1 inline,
+added 1 new sorried lemma). Refactoring pass: the substitution
+lemma family is now stated as two related lemmas with their own
+proof targets, rather than one lemma plus an undocumented
+fix_struct gap. Pre-pass-8 total = post-pass-8 total = 8.
 -/
 
 /-- Helper: extracting the saturation conjunct from any RC at
@@ -477,8 +487,62 @@ theorem SubV_subst_neutral_to_value
       SubV S Γ bA' bB' := by
   -- See docstring for the proof strategy. Pass 7 leaves this
   -- sorried but consolidates the obligation: it dispatches the
-  -- `lam`/`iota_struct`/`fix_struct` cases of `subtype_closed_aux`,
-  -- so closing it closes those three at once.
+  -- `lam`/`iota_struct` cases of `subtype_closed_aux`. The
+  -- `fix_struct` case needs the *pair* version `SubV_subst_pair`
+  -- (below) because the substituends differ on each side
+  -- (`.fix annA clA` vs `.fix annB clB`).
+  sorry
+
+/-! ## `SubV_subst_pair` — different substituends on each side
+
+The `fix_struct` case of `subtype_closed_aux` needs to relate
+`clA.openω (.fix annA clA)` and `clB.openω (.fix annB clB)` —
+*different* substituends on the two sides. The basic
+`SubV_subst_neutral_to_value` lemma uses the *same* substituent
+on both sides; this is the pair-substitution generalisation.
+
+**Statement.** If two closures, opened at the same fresh neutral,
+give bodies related by SubV, AND we have two values `va, vb`
+related by SubV in the OUTER context, then the closures opened at
+`va` and `vb` (respectively) give bodies related by SubV in the
+outer context.
+
+**Why a separate lemma.** The basic lemma's proof inducts on the
+SubV derivation `bA ⊑ bB` and threads a SINGLE substituent
+through. The pair version threads TWO substituents — `va` on the
+LHS, `vb` on the RHS — connected by `SubV S Γ va vb`. The
+constructor cases are similar in shape but every recursive
+premise needs the pair-related-substituent input rather than
+single-substituent.
+
+**Implementation note.** In principle, `SubV_subst_pair` can
+follow from `SubV_subst_neutral_to_value` plus a "compose
+substitutions" step (substitute fresh→va on the LHS, fresh→vb
+on the RHS, glue via SubV transitivity at the substituents). In
+practice it's likely simpler to prove directly by SubV-induction
+with both substituents threaded in parallel. Either way, this is
+~50-100 LOC on top of the basic lemma.
+
+**`iota_intro` is NOT closed by this lemma.** That case has a
+type-vs-value mismatch (the LHS in `SubV.iota_intro` is the
+inhabitant `a` itself, but RC requires opening at the value `v`,
+where only `RC k d a v` holds). Closing `iota_intro` needs an
+RC-realisation bridge, distinct from this pair-substitution. -/
+theorem SubV_subst_pair
+    {S : List (Val × Val)} {Γ : TyCtx}
+    {τ_dom : Val} {clA clB : Closure} {bA bB : Val}
+    (va vb : Val)
+    (hbA : clA.openω (.neutral (.var Γ.size)) = some bA)
+    (hbB : clB.openω (.neutral (.var Γ.size)) = some bB)
+    (hbody : SubV S (Γ.push τ_dom) bA bB)
+    (hsubst : SubV S Γ va vb) :
+    ∃ bA' bB',
+      clA.openω va = some bA' ∧
+      clB.openω vb = some bB' ∧
+      SubV S Γ bA' bB' := by
+  -- See docstring. Pass 8 leaves this sorried; it dispatches
+  -- the `fix_struct` case of `subtype_closed_aux`, so closing
+  -- it closes that case.
   sorry
 
 /-- Auxiliary form parameterised over the seen-set obligation, in
@@ -667,22 +731,71 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           -- Step 6: apply IH at step k to hSubBody (under
           -- augmented seen-set, hS_k).
           exact ⟨bB', hOpenB', ih k (Nat.le_refl _) hS_k hSubBody hRCv⟩
-      | SubV.fix_struct _ _ _ _ =>
-          -- Closure-shaped variation. UNLIKE iota_struct, the RC
-          -- shape at `.fix` opens the body at the FIX VALUE itself
-          -- (`clA.openω (.fix annA clA)` for the LHS), and we need
-          -- to relate it to `clB.openω (.fix annB clB)` for the RHS.
-          -- These are two different substituends: the substitution
-          -- lemma `SubV_subst_neutral_to_value` only covers a SINGLE
-          -- substituend on both sides simultaneously. To close
-          -- fix_struct we'd need an extension lemma:
-          --   "If SubV S Γ a b at the augmented seen-set, then
-          --    `clA.openω a` and `clB.openω b` (substituting a and b
-          --    SEPARATELY) give related bodies".
-          -- This is a parametricity-of-closure-pair lemma, distinct
-          -- from but related to the basic substitution lemma. Pass
-          -- 8+ work. Deferred.
-          sorry
+      | @SubV.fix_struct S' Γ' annA annB clA clB bA bB
+          hbA hbB hAnn hBody =>
+          -- Goal: RC (k+1) d (.fix annB clB) v.
+          -- Strategy mirrors iota_struct, but RC at `.fix` opens
+          -- the body at the FIX VALUE itself (different
+          -- substituends on each side: clA at .fix annA clA,
+          -- clB at .fix annB clB). We use `SubV_subst_pair` —
+          -- the pair-substitution generalisation — with
+          -- substituents (.fix annA clA, .fix annB clB) related
+          -- by `SubV.hyp` in the augmented seen-set.
+          --   1. Unfold RC at h, goal: saturation + (∃ uTy,
+          --      cl.openω (.fix _ cl) = some uTy ∧ RC k d uTy v).
+          --   2. Saturation transfers from h directly.
+          --   3. Build augmented hS_k as in iota_struct.
+          --   4. Apply SubV_subst_pair on hBody at substituents
+          --      `va := .fix annA clA, vb := .fix annB clB`,
+          --      related by SubV.hyp on the augmented seen-set.
+          --   5. By Some-injectivity, the LHS bA' = uTyA from h.
+          --   6. Apply IH at step k on the resulting SubV (under
+          --      hS_k) to RC k d uTyA v, getting RC k d bB' v.
+          unfold RC at h ⊢
+          obtain ⟨hSat, uTyA, hOpenA, hRCu⟩ := h
+          have hS_k : ∀ α β, (α, β) ∈
+              ((.«fix» annA clA, .«fix» annB clB) :: S') →
+              ∀ m, m ≤ k → ∀ v', RC m d α v' → RC m d β v' := by
+            intro α β hαβ m hmk v' hαv'
+            rw [List.mem_cons] at hαβ
+            rcases hαβ with hαβ_eq | hin
+            · -- New entry: discharge via ihStrong applied to OUR
+              -- derivation at step m ≤ k < k+1.
+              obtain ⟨rfl, rfl⟩ := Prod.mk.inj hαβ_eq
+              have hS_m : ∀ α' β', (α', β') ∈ S' → ∀ m', m' ≤ m →
+                  ∀ v'', RC m' d α' v'' → RC m' d β' v'' := by
+                intro α' β' hin' m' hm'm v'' h'
+                exact hS α' β' hin' m'
+                  (Nat.le_trans hm'm (Nat.le_succ_of_le hmk)) v'' h'
+              have hsub_orig : SubV S' Γ' (.«fix» annA clA)
+                  (.«fix» annB clB) :=
+                SubV.fix_struct hbA hbB hAnn hBody
+              exact ihStrong m
+                (Nat.lt_succ_of_le hmk) hS_m hsub_orig hαv'
+            · exact hS α β hin m (Nat.le_succ_of_le hmk) v' hαv'
+          refine ⟨hSat, ?_⟩
+          -- Substituents related by SubV.hyp on the augmented
+          -- seen-set.
+          have hSubFix :
+              SubV ((.«fix» annA clA, .«fix» annB clB) :: S') Γ'
+                (.«fix» annA clA) (.«fix» annB clB) :=
+            SubV.hyp (List.mem_cons_self _ _)
+          -- Pair substitution lemma at (`.fix annA clA`,
+          -- `.fix annB clB`).
+          obtain ⟨bA', bB', hOpenA', hOpenB', hSubBody⟩ :=
+            SubV_subst_pair
+              (S := (.«fix» annA clA, .«fix» annB clB) :: S')
+              (Γ := Γ') (τ_dom := annB) (clA := clA) (clB := clB)
+              (bA := bA) (bB := bB)
+              (.«fix» annA clA) (.«fix» annB clB)
+              hbA hbB hBody hSubFix
+          -- bA' = uTyA (both equal clA.openω (.fix annA clA)).
+          have heq : bA' = uTyA := by
+            rw [hOpenA] at hOpenA'
+            exact (Option.some.injEq _ _).mp hOpenA'.symm
+          subst heq
+          -- Apply IH at step k to hSubBody under augmented hS_k.
+          exact ⟨bB', hOpenB', ih k (Nat.le_refl _) hS_k hSubBody hRCu⟩
       | SubV.iota_intro _ _ _ =>
           -- iotaIntro type-vs-value mismatch. Deferred.
           sorry
