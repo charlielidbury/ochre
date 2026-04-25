@@ -162,15 +162,72 @@ matter for the fundamental-lemma sketch. Future agents fill in
 proofs.
 -/
 
-/-- Step-index downward monotonicity: more fuel → more RC; less fuel
-also yields RC (RC weakens). This is the classical "monotone in n" of
-step-indexed logical relations. -/
-theorem RC.mono {n m : Nat} {τ v : Val} (hle : m ≤ n) (h : RC n τ v) :
-    RC m τ v := by
-  -- TODO(typed-nbe): proof body. Standard step-indexed induction.
-  -- Each case of RC at n+1 weakens to the same case at m+1 with
-  -- the IH at m ≤ n.
-  sorry
+/-- Step-index downward monotonicity: more fuel → less constrained.
+A value reducible at step `n` is also reducible at any `m ≤ n`.
+This is the classical "monotone in n" of step-indexed logical
+relations.
+
+Strong induction on `n` with case-split on `τ`. The base `m = 0` is
+trivial. The inductive case uses the IH at `n` to weaken inner `RC n`
+hypotheses to `RC m`.
+-/
+theorem RC.mono : ∀ (n : Nat) {m : Nat} {τ v : Val},
+    m ≤ n → RC n τ v → RC m τ v := by
+  intro n
+  induction n with
+  | zero =>
+    intro m τ v hle _h
+    have hm : m = 0 := Nat.eq_zero_of_le_zero hle
+    subst hm
+    show True; trivial
+  | succ k ih =>
+    intro m τ v hle h
+    cases m with
+    | zero => show True; trivial
+    | succ m' =>
+      have hle' : m' ≤ k := Nat.le_of_succ_le_succ hle
+      cases τ with
+      | type => show True; trivial
+      | bot =>
+        -- h : False at .bot; goal also False
+        exact h
+      | neutral _ => show True; trivial
+      | lam dV cl =>
+        -- RC (k+1) (.lam dV cl) v says: ∀ a, RC k dV a → ∃ r ...
+        -- RC (m'+1) (.lam dV cl) v says: ∀ a, RC m' dV a → ∃ r ...
+        -- For each `a` with RC m' dV a, lift to RC k dV a (by ih),
+        -- get r from h, weaken inner RC k via ih.
+        intro a hRCa
+        -- hRCa : RC m' dV a; need RC k dV a to apply h.
+        -- But we have ih which can go EITHER WAY (any m ≤ n weakens
+        -- to any m' ≤ m). To go *up* (m' → k) we'd need monotonicity
+        -- the OTHER way, which doesn't hold. So this argument is
+        -- subtly wrong: the function-type clause requires the
+        -- argument's RC at the same index, and we can't recover
+        -- "for all RC k a" from "for all RC m' a" without going up.
+        --
+        -- Fix: this is the standard issue with naive step-indexed
+        -- function-type RC. The honest direction is:
+        --   "RC (k+1) → RC m' for m' ≤ k" — TRUE for type/iota/fix.
+        -- For .lam, we need "RC k a → RC m' r" inside; the precise
+        -- statement that holds is *not* RC.mono but rather a
+        -- slightly different "fuel-stable" property.
+        --
+        -- Workaround: state RC.mono only for non-arrow types in
+        -- this iteration; .lam case uses a different tactic.
+        -- Marking sorry for now.
+        -- TODO(typed-nbe): refine RC.mono for .lam case. The
+        -- standard fix is to define RC' that stores its own
+        -- step-budget more carefully, or use a "later" modality
+        -- (Iris-style). For now this is left as the central
+        -- known limitation.
+        sorry
+      | iota aV cl =>
+        obtain ⟨hRCa, vTy, hopen, hRCv⟩ := h
+        refine ⟨ih hle' hRCa, vTy, hopen, ih hle' hRCv⟩
+      | «fix» annV cl =>
+        obtain ⟨uTy, hopen, hRC⟩ := h
+        refine ⟨uTy, hopen, ih hle' hRC⟩
 
 /-- RC is preserved under declarative subtyping (algorithmic SubV
 form). The intuition: if `τ ⊑ τ'` and `v` inhabits `RC τ`, then
