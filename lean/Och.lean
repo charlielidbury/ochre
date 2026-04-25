@@ -8,6 +8,8 @@ import Och.SubCheckVal
 import Och.TyCheck
 import Och.SoundnessAudit
 import Och.SoundnessProof
+import Och.TypedNbE
+import Och.TypedNbETests
 import Och.Subtyping
 import Och.Soundness
 import Och.Tests
