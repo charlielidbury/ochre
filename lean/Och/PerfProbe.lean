@@ -91,8 +91,13 @@ open Std
 -- at fuel 6400. The tradeoff is accepted: Option A unlocks the
 -- `succ_ m ⊑ Fin (succ_ n)` subsumption that Option F Fin needs
 -- for unified Fin/Nat without wrapper constructors.
-def four_ := och{ succ_ three_ }
-def five_ := och{ succ_ four_  }
+-- `four_`/`five_` are now defined in `Std/DNat.lean` and reachable via
+-- `open Std`. The historical regression sentinel below is preserved as
+-- documentation only — `NbE.subCheck 6400 five_ Nat_` still does not
+-- close at any practical fuel (it bypasses subCheckT's typeCheck
+-- fast-path, which is what makes the same check tractable in
+-- `subCheckT 200`). The substitution-based `SubstEval.subCheck five_
+-- Nat_` does close (~13 ms; see eval-subst-vs-env-benchmark.md).
 -- example : NbE.subCheck 6400 five_ Nat_ = .ok true := by native_decide
 
 -- `appendArrays` at its declared type: an A6-family

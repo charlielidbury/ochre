@@ -353,6 +353,95 @@ def runStressSection (fuelRef : IO.Ref Nat) : IO Unit := do
   let sz := match evalR with | .ok e => Expr.size e | _ => 0
   IO.println s!"four_ eval (subst): {eval_ms} ms HNF size={sz} nodes"
 
+/-! ## Section 6.5: arithmetic computation tests
+
+The DNat add_ / double_ tests are commented out in Std/DNat.lean
+because env-based concEval at fuel 5000 takes "multiple minutes" on
+`add_ one_ two_ = three_`. Substitution-based eval should fare much
+better — does it?
+-/
+
+structure ArithCase where
+  label : String
+  fuel  : Nat
+  e1    : Expr
+  e2    : Expr
+
+def arithCases : List ArithCase :=
+  [ ⟨"add_ zero_ two_ = two_  ", 1000, och{ add_ zero_ two_ }, two_ ⟩
+  , ⟨"add_ one_  one_ = two_  ", 1000, och{ add_ one_ one_ }, two_ ⟩
+  , ⟨"add_ one_  two_ = three_", 5000, och{ add_ one_ two_ }, three_ ⟩
+  , ⟨"double_ zero_   = zero_ ", 2000, och{ double_ zero_ }, zero_ ⟩
+  , ⟨"double_ one_    = two_  ", 5000, och{ double_ one_ }, two_ ⟩
+  ]
+
+def runArithSection (fuelRef : IO.Ref Nat) : IO Unit := do
+  IO.println ""
+  IO.println "=== Section 6.5: arithmetic compute tests (NbE.concEval vs SubstEval.evalSubst) ==="
+  IO.println "label                       | env_ms | subst_ms | env_eq | subst_eq"
+  for c in arithCases do
+    let (env_ms, env_eq) ← time (fun n =>
+        match concEval (c.fuel + n) c.e1, concEval (c.fuel + n) c.e2 with
+        | .ok r1, .ok r2 => r1 == r2
+        | _, _ => false) fuelRef
+    let (subst_ms, subst_eq) ← time (fun n =>
+        match SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.e1,
+              SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.e2 with
+        | .ok r1, .ok r2 => r1 == r2
+        | _, _ => false) fuelRef
+    IO.println s!"{c.label} | {toString env_ms |> rjust 6} | {toString subst_ms |> rjust 8} | {env_eq} | {subst_eq}"
+
+/-! ## Section 6: previously-impossible tests
+
+Tests that were left commented out in the Std/* files because env-based
+subCheck couldn't close them at any tractable fuel. With substitution-
+based subCheckT (the typed wrapper that tries `typeCheck` first), we
+expect many of these to close quickly.
+
+Reports verdicts and timings under both `NbE.subCheckT` (for
+comparison; bounded by a 5-second budget per case) and
+`SubstEval.subCheckT`.
+-/
+
+private def five_ : Expr := och{ succ_ four_ }
+
+structure ImpossibleCase where
+  label  : String
+  fuel   : Nat
+  a      : Expr
+  b      : Expr
+  /-- Whether to skip the NbE comparison (it's known infeasible). -/
+  skipNbE : Bool := false
+
+def impossibleCases : List ImpossibleCase :=
+  [ ⟨"DFin: two_  ⊑ Fin three_       ", 16000, two_,  och{ Fin three_ }, false ⟩
+  , ⟨"DFin: two_  ⊄ Fin two_         ", 16000, two_,  och{ Fin two_ }, false ⟩
+  , ⟨"DFin: three_ ⊄ Fin two_        ", 16000, three_, och{ Fin two_ }, false ⟩
+  , ⟨"DNat: four_ ⊑ Nat_             ", 200000, four_, Nat_, false ⟩
+  , ⟨"DNat: five_ ⊑ Nat_             ", 500000, five_, Nat_, false ⟩
+  ]
+
+def runImpossibleCase (c : ImpossibleCase) (fuelRef : IO.Ref Nat)
+    : IO (String × Option Nat × Nat × Outcome Bool × Outcome Bool) := do
+  -- NbE: skip if known infeasible; otherwise run with full fuel.
+  let envR : Option Nat × Outcome Bool ← if c.skipNbE then
+      pure (none, .error "skipped")
+    else do
+      let (env_ms, envR) ← time (fun n => NbE.subCheckT (c.fuel + n) c.a c.b) fuelRef
+      pure (some env_ms, envR)
+  -- Subst:
+  let (subst_ms, substR) ← time (fun n => SubstEval.subCheckT (c.fuel + n) c.a c.b) fuelRef
+  return (c.label, envR.fst, subst_ms, envR.snd, substR)
+
+def runImpossibleSection (fuelRef : IO.Ref Nat) : IO Unit := do
+  IO.println ""
+  IO.println "=== Section 6: previously-impossible tests (NbE.subCheckT vs SubstEval.subCheckT) ==="
+  IO.println "label                         | NbE_ms  | subst_ms | NbE verdict             | subst verdict"
+  for c in impossibleCases do
+    let (lbl, env_ms_opt, subst_ms, envR, substR) ← runImpossibleCase c fuelRef
+    let env_ms_str := match env_ms_opt with | some n => s!"{n}" | none => "skip"
+    IO.println s!"{lbl} | {env_ms_str |> rjust 6} | {toString subst_ms |> rjust 8} | {(toString (repr envR)) |> rjust 23} | {repr substR}"
+
 def runAll : IO Unit := do
   let fuelRef ← IO.mkRef (0 : Nat)
   IO.println "=== Eval comparison: env-based (NbE) vs substitution-based ==="
@@ -362,6 +451,8 @@ def runAll : IO Unit := do
   runChurchSection fuelRef
   runCompareSection fuelRef
   runStressSection fuelRef
+  runImpossibleSection fuelRef
+  runArithSection fuelRef
   IO.println ""
   IO.println "=== done ==="
 

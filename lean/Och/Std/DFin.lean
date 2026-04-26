@@ -4,6 +4,7 @@ import Och.TyCheck
 import Och.SubCheckVal
 import Och.Std.DNat
 import Och.TypedNbE
+import Och.EvalSubst
 
 /-!
 # Finite sets `Fin n` — bounded by `Nat_` (Option F)
@@ -76,27 +77,25 @@ example : NbE.subCheckT 2000 zero_ (och{ Fin three_ })  = .ok true := by native_
 example : NbE.subCheckT 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
 example : NbE.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
 
--- `two_ ⊑ Fin three_` is part of the unified truth table but native_decide
--- at any fuel we've tried doesn't terminate quickly. Option F's fs-codomain
--- is `P (succ_ q)`, which under the singleton-tightened succ_ threads
--- predecessor values through the contra chain; for numerals ≥ 2 the cost
--- scales fast. Verified by shape analysis (see DFinExp.lean in
--- research-worktree agent-a726638d, where dtwoA ⊑ DFinF dthreeA passed at
--- fuel 16000 on the plain-baseline-nat variant); here the nested-fix
--- Nat_ multiplies the factor. Left in as a manual-verification TODO
--- pending NbE performance work on Option-F traversal.
--- example : NbE.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
+-- `two_ ⊑ Fin three_` was previously commented because env-based subCheck
+-- couldn't close it at any tractable fuel. The production substitution-
+-- based `SubstEval.subCheckT` (lean/Och/EvalSubst.lean, see
+-- docs/ideas/eval-subst-vs-env-benchmark.md §6) closes it in ~35 ms.
+-- The env-based `NbE.subCheckT` *also* now closes (~320 ms) but at the
+-- cost of significant native_decide elaboration time at this fuel; we
+-- only check the subst path here as the production test.
+example : SubstEval.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
 
 -- ── Negative: diagonal and out-of-bounds rejected ──
 
 -- Diagonal: n ⊄ Fin n
 example : NbE.subCheckT 8000 one_   (och{ Fin one_ })   = .ok false := by native_decide
--- example : NbE.subCheckT 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
+example : SubstEval.subCheckT 16000 two_  (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Out-of-bounds: n ⊄ Fin m for n ≥ m
 example : NbE.subCheckT 8000 one_  (och{ Fin zero_ })   = .ok false := by native_decide
 example : NbE.subCheckT 8000 two_  (och{ Fin one_ })    = .ok false := by native_decide
--- example : NbE.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
+example : SubstEval.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Nat_ itself is too wide to inhabit Fin n.
 example : NbE.subCheckT 8000 Nat_  (och{ Fin two_ })    = .ok false := by native_decide

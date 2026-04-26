@@ -3,6 +3,7 @@ import Och.Eval
 import Och.SubCheckVal
 import Och.Std.Bool
 import Och.TypedNbE
+import Och.EvalSubst
 
 /-!
 # Unified Natural Numbers (self-type encoding with singleton-tightened succ)
@@ -87,6 +88,8 @@ def succ_ := och{
 def one_   := och{ succ_ zero_ }
 def two_   := och{ succ_ one_ }
 def three_ := och{ succ_ two_ }
+def four_  := och{ succ_ three_ }
+def five_  := och{ succ_ four_ }
 
 -- ============================================================
 -- Operations
@@ -157,6 +160,17 @@ example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
 example : NbE.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
 example : NbE.subCheckT 200 one_ Nat_ = .ok true := by native_decide
 example : NbE.subCheckT 800 two_ Nat_ = .ok true := by native_decide
+-- three_/four_/five_ ⊑ Nat_ close fast via subCheckT's typeCheck
+-- fast-path; bare subCheckVal hits the singleton-tower scaling and is
+-- ~14s for three_, projected hours for five_. The typed wrapper makes
+-- these tractable for both engines.
+example : NbE.subCheckT 200 three_ Nat_ = .ok true := by native_decide
+example : NbE.subCheckT 200 four_ Nat_ = .ok true := by native_decide
+example : NbE.subCheckT 200 five_ Nat_ = .ok true := by native_decide
+-- Same checks via the substitution-based subCheckT.
+example : SubstEval.subCheckT 200 three_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 four_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 five_ Nat_ = .ok true := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 
@@ -166,17 +180,16 @@ example : NbE.subCheckT 200 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
 --
--- NOTE: verified manually to compute correctly; commented out here
--- to keep build time reasonable. The dNat-style add_ unfolds more
--- aggressively than the old Scott Nat_'s add_ (each successor does
--- a full dependent elimination), and `native_decide` at fuel 5000
--- on `add_ one_ two_ = three_` takes multiple minutes.
---
--- example : concEval 1000 (och{ add_ zero_ two_ }) = concEval 1000 two_ := by native_decide
--- example : concEval 1000 (och{ add_ one_ one_ }) = concEval 1000 two_ := by native_decide
--- example : concEval 5000 (och{ add_ one_ two_ }) = concEval 5000 three_ := by native_decide
--- example : concEval 2000 (och{ double_ zero_ }) = concEval 2000 zero_ := by native_decide
--- example : concEval 5000 (och{ double_ one_ }) = concEval 5000 two_ := by native_decide
+-- These tests now pass — the prior "multiple minutes" comment was
+-- outdated by ~10x. The bench measurements (eval-subst-vs-env-
+-- benchmark.md §6.5) confirm both `concEval` and substitution-based
+-- eval close `add_ one_ two_ = three_` in ~22 ms.
+
+example : concEval 1000 (och{ add_ zero_ two_ }) = concEval 1000 two_ := by native_decide
+example : concEval 1000 (och{ add_ one_ one_ }) = concEval 1000 two_ := by native_decide
+example : concEval 5000 (och{ add_ one_ two_ }) = concEval 5000 three_ := by native_decide
+example : concEval 2000 (och{ double_ zero_ }) = concEval 2000 zero_ := by native_decide
+example : concEval 5000 (och{ double_ one_ }) = concEval 5000 two_ := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 
