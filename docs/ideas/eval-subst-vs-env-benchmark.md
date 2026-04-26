@@ -344,15 +344,39 @@ don't apply to Och's workload. They apply to systems where:
 
 Run with `nix develop -c lake exe eval_bench` from `lean/`.
 
-## §10. Closing log
+## §10. Stress test — `four_ ⊑ Nat_`
+
+To confirm the scaling trend, the bench includes a stress test
+at `four_ ⊑ Nat_` (one layer beyond the BeqBench panel). NbE is
+skipped here — extrapolating the geometric trend, NbE would take
+~5–15 minutes; the stress section just measures subst.
+
+```
+four_ ⊑ Nat_  subst: 42 ms verdict=Outcome.ok true
+four_ eval (subst): 5 ms  HNF size = 18,013 nodes
+```
+
+Subst HNF size grows ~3× per `succ_` layer; subst-subCheck timing
+grows ~3-4× per layer. NbE timing grows ~50× per layer (extrapolated
+from the n=1,2,3 data: 4ms → 285ms → 14,459ms).
+
+Projected wall-clock at `n=5`:
+
+| variant | n=3 | n=4 | n=5 (projected) |
+| ------- | ---:| ---:| ---: |
+| NbE     | 14.5 s | ~12 min | ~ 10 hours |
+| Subst   | 13 ms  | 42 ms  | ~150 ms |
+
+The substitution-based approach makes deeper Nat checking
+practical, full stop.
+
+## §11. Closing log
 
 What additional work would refine these numbers:
 
-1. **Bigger inputs**: extend the panel to `four_ ⊑ Nat_`,
-   `five_ ⊑ Nat_`. Estimated NbE wall-clock at `four_ ⊑ Nat_`:
-   ~5–15 minutes (extrapolating from the geometric trend).
-   Subst should still complete in <100 ms. Worth measuring to
-   confirm the trend continues.
+1. **n=5+ measurements** (subst only — NbE is impractical): not
+   blocking the architectural decision; just continued
+   confirmation of the trend.
 2. **Fix the per-call WHNF overhead**: the bug fix that closed
    verdict gaps comes with a constant-factor slowdown on tiny
    inputs (cases 06, 10, 12, 14, 15). A two-mode `subCheckSubst`
@@ -363,7 +387,7 @@ What additional work would refine these numbers:
    `substL bodyB 0 a` then `evalSubst`. If the same (bodyB, a)
    pair appears in the same call's recursive descent, memoising
    would avoid re-substitution. Not a hot-path on the current
-   workload but might matter for `four_ ⊑ Nat_`.
+   workload — confirmed by the n=4 stress test (42 ms is fine).
 4. **Try the rebuild**: the empirical result strongly favours
    substitution. The next architectural step is to start the
    rebuild, with this benchmark as the regression suite.
