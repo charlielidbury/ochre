@@ -9,3 +9,6 @@ package «och» where
 @[default_target]
 lean_lib «Och» where
   srcDir := "."
+
+lean_exe «beq_bench» where
+  root := `Och.BeqBench
