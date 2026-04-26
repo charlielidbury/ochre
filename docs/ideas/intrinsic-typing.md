@@ -126,11 +126,30 @@ must know the expected type before parsing, or thread it through.
 Top-level untyped `let`s currently desugar without any expected type;
 that convenience would break.
 
-**Performance.** `Val.beq` has been carefully tuned (ptrEq fast path;
-DNat 300s → 3s in `b055339`). Indexed ASTs are harder to `beq`: two
-`WTExpr Γ τ`s at different `τ` aren't even the same Lean type, so
-comparison requires `HEq`-style gymnastics and worse code generation.
-(c) and (a) preserve today's `Val.beq` verbatim.
+**Performance.** `Val.beq` has a ptrEq fast path. Commit `b055339`
+reported a 300s → 3s speedup on DNat, but **that figure is obsolete**:
+it applied to the old self-applying-tower `dNat` encoding (32-deep
+`(dsucc m)` in dsucc's P-domain), which was retired during Option-A
+singleton-tightening. The current `Nat_` doesn't produce that shape.
+
+A 2026-04-26 benchmark (`docs/ideas/ptreq-fastpath-benchmark.md`,
+`lean/Och/BeqBench.lean`) measured the fast-path's actual current
+contribution at **~1.5–1.7× constant factor**:
+
+| test | with ptrEq | without |
+|------|-----------:|--------:|
+| `two_ ⊑ Nat_` (fuel 800) | 295 ms | 500 ms |
+| `three_ ⊑ Nat_` (fuel 50k bare subCheck) | 15.0 s | 25.2 s |
+| everything else | 0 ms | 0 ms |
+
+Indexed ASTs are still harder to `beq`: two `WTExpr Γ τ`s at different
+`τ` aren't even the same Lean type, so comparison requires `HEq`-style
+gymnastics. But the cost of losing the fast-path entirely is bounded
+at **~1.7× on a few cases**, not asymptotic. ptrEq is worth keeping
+when it's free, but **it does not block intrinsic typing** — the
+asymptotic heavy lifting is done by `subCheckT`'s typeCheck fast-path,
+not by ptrEq. (c) and (a) preserve today's `Val.beq` verbatim; (b)'s
+HEq tax is therefore much smaller than this section originally implied.
 
 **Extensibility.** Ochre will grow surface features not in Och (match,
 atoms, unions, eventually mutation). Under (b), each needs a new
@@ -186,6 +205,25 @@ used only in the statements of `progress_mod_fuel` and its lemmas,
 leaving the executable pipeline unchanged. (b) should wait until
 Ochre's surface language is stable, which is a Phase 3+ question, not
 a now question.
+
+**Addendum 2026-04-26.** The 2026-04-25 typed-NbE rebuild and 2026-04-26
+ptrEq benchmark together updated the picture:
+
+- The "ten sorries" referenced above are now four (the Phase 1 set).
+  The typed-NbE substrate is built and axiom-clean but the FL body
+  and `subtype_closed_aux`'s closure cases hit structural walls
+  (passes 9–17, see `typed-nbe-implementation-log.md`). Some of those
+  walls would dissolve under intrinsic typing because the relevant
+  derivations would propagate through the indices.
+- The ptrEq concern in section 3 is downgraded — at most 1.7×
+  constant factor, not asymptotic. (b)'s HEq tax is real but bounded.
+- The "moving target surface language" objection still holds. Match,
+  atoms, ownership are still ahead.
+
+Net: (b) is *less expensive* than this doc originally argued, but
+(a) and (c) remain the right near-term moves. (b) should still wait
+for surface stability — but the perf rationale for waiting is weaker
+than originally stated.
 
 ## Open questions
 
