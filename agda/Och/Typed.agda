@@ -1,9 +1,9 @@
 ------------------------------------------------------------------
--- Och.Novus.Syntax (Agda)
+-- Och.Och.Syntax (Agda)
 --
--- Phase 1 of the Novus rebuild — Agda track.
+-- Phase 1 of the Och rebuild — Agda track.
 --
--- The Lean track of Novus had to fall back to a Nat-indexed Term
+-- The Lean track of Och had to fall back to a Nat-indexed Term
 -- because Lean 4 doesn't natively support induction-induction
 -- (Term : Ctx → Set with Term's constructors referencing Ctx.cons).
 --
@@ -16,7 +16,7 @@
 -- Equivalent to a small dependently-typed λ-calculus.
 ------------------------------------------------------------------
 
-module Novus.Typed where
+module Och.Typed where
 
 ------------------------------------------------------------------
 -- Term + Context, mutually defined.
@@ -60,9 +60,9 @@ mutual
          → T ∈ Γ
          → Term Γ
 
-    -- The Type universe. Type : Type at the object level (Och is
-    -- non-total by design).
-    univ : ∀ {Γ} → Term Γ
+    -- Top of the subtype lattice. Also the Type universe — `top :
+    -- top` at the object level, which is what makes Och non-total.
+    top  : ∀ {Γ} → Term Γ
 
     -- Lambda. Body lives in the extended context Γ , A.
     lam  : ∀ {Γ}
@@ -70,11 +70,11 @@ mutual
          → (b : Term (Γ , A))
          → Term Γ
 
-    -- Application. Like the Lean Novus, we don't enforce "f is a
-    -- function" structurally — the typing rule is checked via
-    -- naturalType + subsumption, not the constructor index.
-    -- (Choosing not to enforce-in-index here for symmetry with
-    -- the rest of Och's design where subsumption is implicit.)
+    -- Application. Like the Lean side of Och, we don't enforce
+    -- "f is a function" structurally — the typing rule is
+    -- checked via naturalType + subsumption, not the constructor
+    -- index. (For symmetry with the rest of Och's design where
+    -- subsumption is implicit.)
     app  : ∀ {Γ}
          → (f : Term Γ)
          → (a : Term Γ)

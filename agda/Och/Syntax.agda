@@ -1,5 +1,5 @@
 ------------------------------------------------------------------
--- Och.Novus.Syntax (Agda)
+-- Och.Och.Syntax (Agda)
 --
 -- Untyped abstract syntax tree for Och.
 --
@@ -8,7 +8,7 @@
 -- well-formedness invariants beyond "valid AST shape": bvars may
 -- be out of scope, applications may be ill-typed, etc.
 --
--- The intrinsically-typed counterpart is `Novus.Typed`, which
+-- The intrinsically-typed counterpart is `Och.Typed`, which
 -- builds Term + Ctx + (T ∈ Γ) via induction-induction. The
 -- type-checker (later phase) is the function
 -- `check : Syntax → Maybe (∃ Γ T. Term Γ T)`.
@@ -18,7 +18,7 @@
 --   * no `μ` yet
 ------------------------------------------------------------------
 
-module Novus.Syntax where
+module Och.Syntax where
 
 open import Agda.Builtin.Nat using (Nat)
 
@@ -29,7 +29,7 @@ open import Agda.Builtin.Nat using (Nat)
 -- with bvars as natural numbers. There's no claim that bvars are
 -- in scope or that applications are well-typed — that's checked
 -- by the type-checker (a later phase) which produces a
--- `Novus.Typed.Term Γ T` from a `Syntax`.
+-- `Och.Typed.Term Γ T` from a `Syntax`.
 ------------------------------------------------------------------
 
 data Syntax : Set where
@@ -38,12 +38,14 @@ data Syntax : Set where
   -- type-checker rejects if so.
   bvar : Nat → Syntax
 
-  -- The Type universe.
-  univ : Syntax
+  -- Top of the subtype lattice. Also serves as the Type universe
+  -- (there's no separate type-of-types hierarchy in Och — `top : top`
+  -- at the object level, which is what makes Och non-total).
+  top : Syntax
 
-  -- Bottom type. Empty set; satisfies `Bot ⊑ e` for every `e`
-  -- (the [S-BotL] declarative rule from paper.md §3.1).
-  bot  : Syntax
+  -- Bottom of the subtype lattice. Empty type; satisfies `bot ⊑ e`
+  -- for every `e` (the [S-BotL] declarative rule from paper.md §3.1).
+  bot : Syntax
 
   -- Lambda. Domain annotation, body. Body's bvar 0 refers to
   -- the parameter.
@@ -73,10 +75,10 @@ data Syntax : Set where
 -- This Phase-1 file does no work — just the data type. Operations
 -- (free-var counting, alpha-equivalence, pretty-printing, etc.)
 -- live in companion modules. The type-checker that promotes
--- Syntax → Typed.Term lives in `Novus.Check` (Phase 2+).
+-- Syntax → Typed.Term lives in `Och.Check` (Phase 2+).
 --
 -- Naming convention: this file uses `Syntax` rather than `Expr`
 -- (Lean Och) to make it clear we mean "raw user-facing surface"
--- — distinct from `Novus.Typed.Term`, which is the well-typed
+-- — distinct from `Och.Typed.Term`, which is the well-typed
 -- semantic representation.
 ------------------------------------------------------------------
