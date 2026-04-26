@@ -331,6 +331,28 @@ def runCompareSection (fuelRef : IO.Ref Nat) : IO Unit := do
         | _, _ => false) fuelRef
     IO.println s!"{c.label |> rjust 18} | {toString env_total_ms |> rjust 12} | {toString subst_total_ms |> rjust 14}  env_eq={env_eq} subst_eq={subst_eq}"
 
+/-! ## Section 5: scaling stress test (four_ ⊑ Nat_)
+
+The post-fix subst-subCheck on three_ is 13 ms; let's confirm the
+trend continues at four_. NbE on four_ would take ~5+ minutes
+(extrapolated from the geometric trend), so we time-box this:
+NbE gets a 60-second budget; if it doesn't complete, we report
+that.
+-/
+
+private def four_ : Expr := och{ succ_ three_ }
+
+def runStressSection (fuelRef : IO.Ref Nat) : IO Unit := do
+  IO.println ""
+  IO.println "=== Section 5: scaling stress (four_ ⊑ Nat_; NbE expected to be very slow) ==="
+  -- Just subst — NbE here would take minutes.
+  let (subst_ms, substR) ← time (fun n => SubstEval.subCheck (200000 + n) four_ Nat_) fuelRef
+  IO.println s!"four_ ⊑ Nat_  subst: {subst_ms} ms verdict={repr substR}"
+  -- subst eval cost on four_:
+  let (eval_ms, evalR) ← time (fun n => SubstEval.evalSubst (200000 + n) SubstEval.unfBound four_) fuelRef
+  let sz := match evalR with | .ok e => Expr.size e | _ => 0
+  IO.println s!"four_ eval (subst): {eval_ms} ms HNF size={sz} nodes"
+
 def runAll : IO Unit := do
   let fuelRef ← IO.mkRef (0 : Nat)
   IO.println "=== Eval comparison: env-based (NbE) vs substitution-based ==="
@@ -339,6 +361,7 @@ def runAll : IO Unit := do
   runSubSection fuelRef
   runChurchSection fuelRef
   runCompareSection fuelRef
+  runStressSection fuelRef
   IO.println ""
   IO.println "=== done ==="
 
