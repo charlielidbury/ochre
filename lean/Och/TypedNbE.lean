@@ -958,7 +958,7 @@ theorem Closure.envSubstLvl_take
           simp only [List.take_succ_cons]
           exact Closure.envSubstLvl_cons hw' (ih hws' m)
 
-/-! ### Pass 13 status: eval-commutation lemma deferred
+/-! ### Pass 13/14 status: eval-commutation lemma deferred
 
 The full eval-commutation lemma — given
 `eval n unf (.neutral (.var k) :: ρ) body = .ok bA`,
@@ -990,16 +990,137 @@ without unfolding), but `cl.openω v_sub` exhausts fuel.
   WellFormed propagates through `take` and `getElem?` (the two
   list operations `eval` performs on env).
 
-**What pass 14 still needs.** Either:
-1. Thread RC through eval-commutation (RC `v_sub` discharges
-   the vapp-firing partiality), giving the full lemma at
-   ~200-300 LOC.
-2. Or use a different proof architecture (signature refactor of
-   `subtype_closed_aux`, per pass-9's Critical Finding 3).
+**Pass 14 wall analysis (2026-04-25, agent-a682142c).** Pass 14
+attempted the RC-threaded eval-commutation lemma sketched above.
+After detailed analysis of the proof structure, the wall is
+deeper than pass 13 estimated:
 
-The infrastructure committed in pass 13 is required by either
-path: identity-on-closed is a precondition for the closure-form
-inductive cases of any eval-commutation proof. -/
+The proof would proceed by mutual induction on `eval`/`vapp`
+fuel `n`, mirroring `eval_vapp_shiftLvl` in `SoundnessProof.lean`.
+For most expression cases (`.type`/`.bot`/`.bvar`/`.lam`/`.iota`/
+`.fix`/`.letE`/`.asc`), the structural argument carries through
+using pass 13's `Closure.envSubstLvl_take`/`_getElem?` helpers.
+
+**The wall** is the `.app f a` case + `vapp` on `.neutral` head:
+
+1. `eval` evaluates `f → f'_left`, `a → a'_left`.
+2. `vapp n unf f'_left a'_left = .ok v_left`.
+3. By IH, ∃ f'_right with `vapp_substLvl: substLvl k v_sub f'_left
+   = some f'_right` (for some appropriate substLvl on the
+   `f'_left` shape), similarly for `a'_left`.
+4. Need: ∃ v_right, `vapp n unf f'_right a'_right = .ok v_right`
+   and `Val.substLvl ... v_left = some v_right`.
+
+**Subcase (the wall)**: when `f'_left = .neutral nf` where `nf`'s
+spine root is `.var k` (e.g., `.var k` itself, or `.app (.var k)
+arg1 arg2 …`). Then:
+- `Neutral.substLvl k v_sub nf` returns `some v_sub_post` where
+  `v_sub_post` is non-neutral (it's `v_sub` with sub-substitutions
+  on the args).
+- The substLvl match goes to the second arm: fires `vapp fuelω
+  unfBound v_sub_post a'_right`.
+- For substLvl to succeed at any concrete output, this `vapp` must
+  terminate. **This requires RC on v_sub** (pass 9's Ω
+  counterexample is precisely the case where it diverges).
+
+**Three sub-walls within this subcase**:
+1. **Fuel/unf alignment**: substLvl uses `(fuelω, unfBound)`;
+   the original `vapp n unf` uses caller-supplied `(n, unf)`.
+   Even if both terminate, the values may differ if the function
+   v_sub_post is `.iota`/`.fix` (where the unf gate matters).
+   Reconciling needs vapp_unf_mono (does it hold? non-trivial:
+   higher unf may fire iota/fix unfolding that lower unf won't).
+2. **RC.lam_elim shape constraint**: `RC.lam_elim` gives vapp
+   termination ONLY when applied to RC-typed arguments. The
+   `a'_right` we have isn't necessarily RC-typed at v_sub's domain
+   — it's just the value of an arbitrary subexpression.
+3. **Recursive RC threading**: for the `vapp` result to itself
+   commute with substLvl, we'd need to invoke a sibling lemma on
+   the eval'd body — which itself runs into the same .app wall.
+
+Pass 14 concludes: the RC-threaded eval-commutation lemma is NOT
+closeable in a single overnight pass without more substrate. The
+remaining work for pass 15+ is:
+- **Sub-wall 1**: prove `vapp_unf_mono` (or accept fuel/unf
+  alignment via an alternative formulation, e.g., parameterising
+  Val.substLvl by the original `unf`).
+- **Sub-wall 2**: thread RC's domain on `v_sub` AND on the
+  argument values that arise during eval. This requires an
+  RC_env-like predicate that tracks the type of each env entry,
+  AND a typed eval lemma that produces RC results from RC inputs.
+  Effectively this is the FUNDAMENTAL LEMMA itself in disguise —
+  once we have the FL, eval-commutation falls out as a corollary.
+- **Sub-wall 3**: structurally recursive RC-threading via mutual
+  induction on eval+vapp+well-formedness invariants.
+
+**Pass 14 contribution.** A small structural helper
+(`eval_substLvl_identity`) that captures the case where the eval
+result is `levelsBelow d` AND well-formed AND we substitute at a
+level `k ≥ d`. In this case, identity-on-closed kicks in directly
+and eval-commutation is trivial: `eval ρ' e = eval ρ e` (same
+result) and substLvl is identity.
+
+This corollary is useful for the easy fragment of any eval-
+commutation argument: when the closure body's eval result happens
+to not reference the binding level, substitution is a no-op.
+
+**Path forward.** Two strategic options for pass 15+:
+
+1. **Architecture change**: replace `Val.substLvl` with a
+   "typed substitution" that takes RC witnesses on env entries,
+   eliminating the partiality issue. This makes substLvl total
+   on RC-typed inputs but requires re-deriving identity-on-closed
+   in the typed setting.
+
+2. **Bypass via Subtype'**: use the existing `Subtype'`-level
+   subtyping (the `Expr`-level relation) to bridge the substitution
+   gap, leveraging existing Expr-level substitution lemmas in
+   `SoundnessProof.lean`. This keeps `SubV` for the algorithm but
+   doesn't require Val-level substitution to close the keystone.
+
+The infrastructure committed in pass 13 + pass 14 is required by
+either path: identity-on-closed (pass 13) and `eval_substLvl_
+identity` (pass 14) are preconditions for any value-level
+substitution argument that bypasses the .app wall. -/
+
+/-! ### `eval_substLvl_identity` (pass 14)
+
+Pass 14's contribution: a structural corollary that combines
+pass 13's `Val.substLvl_of_levelsBelow` with `eval_levelsBelow`
+(from `SoundnessProof.lean`). This handles the case where the
+eval result is levels-below the substitution point AND well-
+formed: substitution is identity, eval-commutation is trivial.
+
+This is the "easy fragment" of eval-commutation: when the
+closure body's eval result doesn't reference the binding level
+(or any higher), substitution doesn't fire. -/
+
+/-- If `eval` succeeds with a result that is `levelsBelow d` AND
+well-formed, then `Val.substLvl` at any `k ≥ d` is identity.
+
+This is a direct combination of `eval_levelsBelow` (which gives
+the levels-below conclusion from env-side levels-below) and pass
+13's `Val.substLvl_of_levelsBelow`.
+
+The hypotheses `Val.WellFormed v` and `Closure.envLevelsBelow d ρ`
+(the latter implies `v.levelsBelow d` via `eval_levelsBelow`) are
+the natural preconditions. The `hwf` hypothesis comes from the
+caller, which must establish it via "eval preserves WellFormed"
+(an as-yet-unproven lemma; see pass 14 wall analysis above). -/
+theorem Val.eval_substLvl_identity
+    {n unf d k : Nat} {ρ : Env} {e : Expr} {v : Val}
+    (h : eval n unf ρ e = .ok v)
+    (hρ_lb : Closure.envLevelsBelow d ρ)
+    (hwf : Val.WellFormed v)
+    (hkd : d ≤ k)
+    (fuel : Nat) (v_sub : Val) :
+    Val.substLvl fuel k v_sub v = some v := by
+  -- v is levels-below d via eval_levelsBelow.
+  have hv_lb : Val.levelsBelow d v := eval_levelsBelow h hρ_lb
+  -- levels-below d ⇒ levels-below k (since d ≤ k).
+  have hv_lbk : Val.levelsBelow k v := Val.levelsBelow_mono hkd v hv_lb
+  -- Apply pass 13's identity-on-closed.
+  exact Val.substLvl_of_levelsBelow v fuel k v_sub hv_lbk hwf
 
 /-! ## `SubV_subst_neutral_to_value` — the body-substitution lemma
 

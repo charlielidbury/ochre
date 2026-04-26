@@ -4,6 +4,130 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-25 — Pass 14 (overnight #9): wall reached on RC-threaded eval-commutation (agent-a682142c)
+
+**Pass 14's stated objective was the RC-threaded eval-commutation
+lemma. After detailed analysis of the proof structure, the wall is
+deeper than pass 13 estimated: closing the lemma requires (a)
+threading RC on env entries (effectively the FUNDAMENTAL LEMMA
+itself), (b) reconciling fuel/unf parameters between vapp's
+internal calls and substLvl's internal vapp, and (c) handling
+recursive RC-threading via mutual induction on eval+vapp+well-
+formedness invariants. Pass 14 commits a small structural
+corollary (`Val.eval_substLvl_identity`) and an extensive wall
+analysis. Sorry count unchanged at 8. Net delta: +1 axiom-clean
+lemma + 60 LOC of wall documentation.**
+
+This is "case 4" of pass 14's stop-conditions: hit a wall on the
+RC-threading. Pass 14 documents precisely why the lemma remains
+intractable in scope and what the strategic options are for pass 15.
+
+Net delta: 0 sorries. +1 lemma + 60 LOC of analysis in TypedNbE.lean.
+
+### Pass 14 contribution
+
+#### `Val.eval_substLvl_identity`
+
+A small but useful structural corollary that combines pass 13's
+`Val.substLvl_of_levelsBelow` with `eval_levelsBelow` (from
+`SoundnessProof.lean`):
+
+```lean
+theorem Val.eval_substLvl_identity
+    {n unf d k : Nat} {ρ : Env} {e : Expr} {v : Val}
+    (h : eval n unf ρ e = .ok v)
+    (hρ_lb : Closure.envLevelsBelow d ρ)
+    (hwf : Val.WellFormed v)
+    (hkd : d ≤ k)
+    (fuel : Nat) (v_sub : Val) :
+    Val.substLvl fuel k v_sub v = some v
+```
+
+Captures the "easy fragment" of eval-commutation: when the eval
+result `v` is `levelsBelow d` (which holds when env entries are
+levels-below `d`) AND `v` is well-formed, substitution at any
+level `k ≥ d` is identity. This handles the case where the
+closure body's eval result doesn't reference the substitution
+variable.
+
+#### Wall analysis (in `lean/Och/TypedNbE.lean`, ~60 LOC)
+
+A detailed analysis of why the RC-threaded eval-commutation lemma
+cannot be closed in pass-14 scope, decomposed into three sub-walls:
+
+1. **Fuel/unf alignment**: substLvl uses `(fuelω, unfBound)`; the
+   original `vapp n unf` uses caller-supplied `(n, unf)`. Even
+   if both terminate, results may differ if v_sub is `.iota`/
+   `.fix` (where the unf gate matters). Reconciling needs
+   `vapp_unf_mono` (whose validity is non-trivial: higher unf
+   may fire iota/fix unfolding that lower unf won't).
+
+2. **RC.lam_elim shape constraint**: `RC.lam_elim` gives vapp
+   termination ONLY when applied to RC-typed arguments. The
+   `a'_right` arising during eval isn't necessarily RC-typed at
+   v_sub's domain — it's just the value of an arbitrary
+   subexpression.
+
+3. **Recursive RC threading**: for the vapp result to itself
+   commute with substLvl, we'd need to invoke a sibling lemma on
+   the eval'd body — which itself runs into the same .app wall.
+
+### Strategic options for pass 15+
+
+Pass 14 identifies two paths forward:
+
+1. **Architecture change**: replace `Val.substLvl` with a "typed
+   substitution" that takes RC witnesses on env entries,
+   eliminating partiality. Substitution becomes total on RC-typed
+   inputs but requires re-deriving identity-on-closed.
+
+2. **Bypass via Subtype'**: use the existing `Subtype'`-level
+   subtyping (the `Expr`-level relation) to bridge the
+   substitution gap, leveraging existing Expr-level substitution
+   lemmas in `SoundnessProof.lean`. This keeps `SubV` for the
+   algorithm but doesn't require Val-level substitution to close
+   the keystone.
+
+### Sorry trajectory
+
+Pre-pass-14: 8 sorries (subtype_closed_aux 5 inline, plus 3
+declaration-level).
+
+Post-pass-14: SAME (8). +1 axiom-clean lemma (`Val.eval_substLvl_
+identity`) + 60 LOC of wall documentation.
+
+Net: 0 sorries.
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+extended with the new lemma — axiom-clean (only `propext` and
+`Quot.sound`).
+
+### Honest assessment
+
+Pass 14's contribution is small and primarily documentation. The
+wall pass 13 hit is REAL — pass 14 confirms it via independent
+analysis and decomposes it into concrete sub-walls. The
+`eval_substLvl_identity` corollary is useful but doesn't close
+the keystone.
+
+The strategic question is now: do we continue investing in the
+Val.substLvl architecture (which requires solving all three sub-
+walls), or do we pivot to one of the alternatives (typed
+substitution / Subtype' bypass)? Pass 15 should make this
+strategic decision before resuming implementation work.
+
+The pass-13 + pass-14 infrastructure remains useful regardless:
+- `Val.WellFormed` family: needed for any value-level reasoning.
+- `Val.substLvl_of_levelsBelow` (identity-on-closed): trivially
+  re-derivable in any substitution architecture.
+- `Closure.envSubstLvl_take`/`_getElem?`: env-side helpers for
+  any list-level reasoning.
+- `Val.eval_substLvl_identity` (pass 14): direct corollary.
+
+---
+
 ## 2026-04-24 — Pass 13 (overnight #8): WellFormed predicate + identity-on-closed (agent-a9cf5eef)
 
 **Pass 13's stated objective was the eval-commutation lemma, but

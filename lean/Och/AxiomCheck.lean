@@ -86,3 +86,10 @@ import Och.TypedNbE
 #print axioms NbE.Closure.envSubstLvl_take
 #print axioms NbE.Closure.envWellFormed_take
 #print axioms NbE.Closure.envWellFormed_getElem?
+
+-- Pass 14: structural identity corollary that combines pass 13's
+-- `Val.substLvl_of_levelsBelow` with `eval_levelsBelow` (from
+-- SoundnessProof.lean) for the easy fragment of eval-commutation.
+-- See pass-14 wall analysis in TypedNbE.lean for why the full
+-- eval-commutation lemma is not yet closeable.
+#print axioms NbE.Val.eval_substLvl_identity
