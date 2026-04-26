@@ -4,6 +4,271 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-25 — Pass 17 (overnight #12): the proposed RC redesign at `.neutral` is structurally infeasible (agent-a864520e)
+
+**Pass 17's stated objective was to implement the "Option A" RC
+redesign — adding a realisation conjunct to RC at `.neutral` — and
+verify it closes both `neutral_ascent` and `revapp_L`. Pass 17's
+investigation reveals that the redesign as proposed has TWO
+independent structural problems: (1) a step-up off-by-one barrier
+that prevents closing closure-form sub-cases of either lemma,
+and (2) a CASCADING regression that breaks existing axiom-clean
+cases (`SubV.neutral_struct`, `SubV.top` for `.neutral` RHS, and
+`SubTV.to_neutral`). Pass 17 commits this finding to the inline
+sorries' commentary plus this log entry. Sorry count unchanged at 8.
+This is the FIFTH critical finding in the typed-NbE pipeline.**
+
+This is "case 3" of pass 17's stop-conditions: the redesign breaks
+existing axiom-clean lemmas in unexpected ways. Pass 17 documents
+the architectural shape the redesign would actually need to take.
+
+Net delta: 0 sorries. ~80 LOC of additional inline analysis and a
+log entry.
+
+### The two structural problems
+
+#### Problem 1: step-up off-by-one for closure-form sub-cases
+
+The proposed lower-step realisation:
+```
+RC (n+1) d (.neutral nA) v ⟺
+  Val.fullyQuotable d v ∧ (∃ q, quote fuelω d v = .ok q) ∧
+  ∀ Γ τ, SynthN Γ nA τ → RC n d τ v
+```
+
+is **well-founded** (the realisation conjunct mentions RC at
+strictly-smaller step `n`, allowing structural recursion on the
+first index).
+
+But it does NOT close `neutral_ascent`'s closure-form sub-cases.
+Tracing through:
+
+- Goal: `RC (k+1) d (.lam dom cl) v` for closure-form `b = .lam dom cl`.
+- This needs the body witness clause: `∀ m ≤ k, ∀ a, RC m d dom a →
+  ∃ r, vapp _ _ v a = .ok r ∧ ∃ rTy, cl.openω a = some rTy ∧ RC m d rTy r`.
+- For each `m ≤ k`, we need to produce this body witness. Approach:
+  - Realisation gives `RC k d τ v` (lower step).
+  - By RC.mono: `RC (m+1) d τ v` for `m+1 ≤ k`.
+  - IH (subtype_closed_aux at step ≤ k) on `SubV S Γ τ b` at step
+    `m+1`: gives `RC (m+1) d (.lam dom cl) v`.
+  - Body witness in `RC (m+1) d (.lam dom cl) v` (at the lam-clause):
+    indices `≤ m`. So we get the body witness at index `m`. ✓ for
+    `m+1 ≤ k`, i.e., `m ≤ k-1`.
+- For the index `m = k` case of the OUTER body witness: we'd need
+  IH at step `k+1` (which IS the lemma we're proving — circular),
+  OR realisation that gives `RC k d (.lam dom cl) v` directly, OR
+  same-step realisation `RC (k+1) d τ v` (which the lower-step
+  redesign explicitly does NOT provide).
+
+**The off-by-one is structural**: the lam-clause's body witness at
+RC step `n+1` is at indices `m ≤ n`. To extract body witness at
+INDEX `n` (i.e., the highest index), we need RC at step `n+1` of
+the same `.lam` type. Lower-step realisation always lands one step
+short.
+
+Same analysis applies to `.iota`/`.fix` closure forms: their RC
+clauses at step `n+1` use `RC n d ...` (one step lower) for the
+body content, and from `RC n d (.iota _ _) v` we extract content at
+step `n-1`. Off-by-one persists.
+
+#### Problem 2: cascading regression on existing axiom-clean cases
+
+With the redesigned RC at `.neutral`, the structural cases of
+`subtype_closed_aux` whose RHS is `.neutral` would also break:
+
+- `SubV.neutral_struct {nA nB} : SubN S Γ nA nB → SubV S Γ (.neutral nA) (.neutral nB)`:
+  current proof transfers saturation from h to goal. Under the
+  redesign, the goal `RC (k+1) d (.neutral nB) v` requires NOT just
+  saturation but also the realisation conjunct
+  `∀ Γ' τ', SynthN Γ' nB τ' → RC k d τ' v`. This conjunct is NOT
+  available from h (which gives realisation for nA, not nB). To
+  bridge, we'd need a SubN-level realisation-transport lemma, which
+  is itself structurally similar in difficulty to the original
+  problem.
+
+- `SubV.top` (when RHS is incidentally `.neutral`-headed via
+  `top → ε`): same shape — RHS `.neutral` requires realisation,
+  which `top` doesn't provide.
+
+- `SubTV.to_neutral` (declared at line 1935 of TypedNbE.lean): says
+  `∀ τ, SubTV n d τ (.neutral ne)`. Under the redesign, this lemma
+  becomes UNPROVABLE in general because the LHS τ might not
+  synthesise anything compatible with `ne`'s synth signature. The
+  lemma may need to be DELETED or restricted.
+
+So the redesign's "ripple effect" estimate from pass 15 (~200-400
+LOC) is an UNDER-estimate. Each existing `.neutral`-RHS case in
+`subtype_closed_aux` becomes a NEW obligation requiring
+realisation-transport machinery. The total cost likely exceeds
+pass 15's estimate by an order of magnitude.
+
+### Why same-step realisation cannot be added to recursive RC
+
+To close the off-by-one, the realisation conjunct would need to
+provide `RC (n+1) d τ v` (same step) instead of `RC n d τ v`. But:
+
+- **Lean's structural recursion checker** rejects same-step
+  self-reference in the same `def`. The function being defined at
+  step `n+1` cannot mention its own value at step `n+1` for an
+  arbitrary `τ` (the third argument is universally-quantified and
+  not a structural sub-value of the current `.neutral nA`).
+
+- **Inductive definition** of RC is excluded by negative
+  occurrences: the `.lam` clause has `RC m d dV a → ...`, which
+  puts `RC` in negative position. Lean's positivity checker
+  rejects this.
+
+- **Well-founded recursion with a custom measure** (e.g., lex on
+  `(n, τ-depth)`) is the theoretical workaround, but `τ` in the
+  realisation conjunct is universally quantified — there's no
+  finite bound on its depth (a SynthN target can be arbitrarily
+  large). The measure would not decrease.
+
+- **Mutual definition with a separate `Realised` predicate** that
+  references RC: well-stratified at lower step (which gets us
+  back to lower-step realisation), but at same step it's still
+  circular.
+
+The classical solution in step-indexed logical relations literature
+(Iris, Dreyer-Ahmed-Birkedal) is to use a **UPred-style**
+construction: predicates parameterised by step-indices via a
+later-modality. This is non-trivial Lean infrastructure that
+doesn't exist in the current codebase.
+
+### Counterexample-validation cycle
+
+Pass 17 attempted to validate Option A by simulating a proof:
+1. Assume the redesigned RC at `.neutral` (lower-step realisation).
+2. Trace `neutral_ascent`'s proof case-by-case for closure-form
+   `b`.
+3. Hit the off-by-one barrier at the body-witness construction.
+4. Attempt various rescue strategies (RC.mono, IH iteration,
+   strong induction at higher step, SubV recursion at same step).
+5. Each rescue strategy reduces to the same off-by-one or hits a
+   different sub-issue.
+
+Specific dead-ends explored:
+- "Realisation at all m ≤ n": still off-by-one at m = n.
+- "Same-step realisation via auxiliary `Realised` predicate":
+  circular.
+- "Inductive RC with strict positivity": ruled out by the
+  function-clause negative occurrence.
+- "SubV-induction at same step + lower-step realisation":
+  still off-by-one.
+- "Step-up lemma `RC k d τ v ∧ saturation → RC (k+1) d τ v`":
+  FALSE for closure-form τ (the body-witness clause's index m
+  ranges higher in the upper step).
+
+### Strategic recommendations for pass 18+
+
+Given the structural analysis, three paths remain:
+
+#### Path A: pivot to `iota_intro`
+
+`SubV.iota_intro {S Γ ann cl bA bB}` has a different shape from
+`neutral_ascent`/`revapp_L`. Its body uses `closure_apply_coherence`
+(per pass 8), which is essentially the FL itself for the iota body.
+This may be tractable via direct closure-substitution lemmas
+(passes 7/8 made progress on similar shapes).
+
+Estimated cost: 100-200 LOC. Independent of the RC redesign.
+
+#### Path B: substantial RC rebuild via UPred-like infrastructure
+
+Build the same-step-realisation predicate using Lean's
+`WellFoundedRecursion` directly with a carefully-chosen measure,
+or import/build a UPred-like step-indexed monoid. This would
+let RC at `.neutral` carry same-step content without circularity.
+
+Estimated cost: 500-1000+ LOC of new infrastructure, plus
+re-proving existing RC lemmas under the new representation.
+Significant pass-multi-pass effort.
+
+#### Path C: declare the typed-NbE pipeline non-realisable for the
+declarative `SubV.neutral_ascent` rule
+
+Drop `SubV.neutral_ascent` from the algorithm, use a more
+restrictive subtype check (no neutral-head ascension). This sacri-
+fices algorithmic completeness on certain neutral-LHS pairs but
+unblocks the metatheory. Soundness preserved.
+
+Estimated cost: 200-400 LOC of algorithm refactor, plus updated
+soundness proofs. May break some existing test cases.
+
+#### Path D: live with the sorries and prioritise other progress
+
+Pass 17 confirms `neutral_ascent` and `revapp_L` are simultaneously
+walled by a structural property of the current RC formulation that
+cannot be easily lifted. Other inline sorries
+(`unfold_fix_L`/`unfold_iota_L`, `iota_intro`) and declaration
+sorries (`SubV_subst_pair`, `typed_nbe_fundamental_open`) may have
+tractable paths that don't depend on RC redesign.
+
+### Sorry trajectory
+
+Pre-pass-17 (= post-pass-16):
+- `subtype_closed_aux`: 5 inline (`neutral_ascent`, `iota_intro`,
+  `unfold_fix_L`, `unfold_iota_L`, `revapp_L`).
+- `SubV_subst_pair`: 1 declaration.
+- `typed_nbe_fundamental_open`: 1 declaration.
+- `eval_substLvl_identity` infrastructure: 1 declaration.
+- **Total**: 8.
+
+Post-pass-17: same. The two walled sorries are now flagged with
+pass-17 commentary explaining why the proposed Option A redesign
+does NOT close them.
+
+**Net delta**: 0. Sorries unchanged.
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. Only the inline
+docstring/sorry comments were updated.
+
+### Honest assessment
+
+Pass 17's stated target was to IMPLEMENT the RC redesign and CLOSE
+both blocked cases. Pass 17 instead concluded the redesign is
+structurally infeasible (Problem 1: off-by-one, Problem 2:
+cascading regression).
+
+This is the third consecutive pass (15, 16, 17) where the deliv-
+erable is a structural finding rather than a sorry-count
+reduction. The pattern indicates the typed-NbE architecture has
+hit a **design-level wall** that requires either:
+
+- Architectural pivot (Path C: drop `neutral_ascent`).
+- Heavy infrastructure investment (Path B: UPred-style).
+- Different proof target (Path A: `iota_intro` first).
+
+Pass 17's contribution is precision about WHY the cheapest paths
+fail. Future passes can choose Path A/B/C/D with full information.
+
+The user's pass-17 prompt anticipated this outcome (stop condition
+3: "redesign breaks existing axiom-clean lemmas in unexpected
+ways"). Pass 17 fulfills that disposition.
+
+### What pass 18 should pick up
+
+**Recommended priority**: Path A — try `iota_intro`. Independent of
+the RC redesign, may close cleanly via direct closure-substitution
+machinery from passes 7/8.
+
+If `iota_intro` is also walled, pivot to Path C (algorithmic
+refactor to drop `neutral_ascent` from the algorithm, then re-prove
+without it). This is large but bounded; the metatheory recovers
+even at the cost of some algorithmic completeness.
+
+Path B (UPred infrastructure) is correct but expensive — only
+worthwhile if the typed-NbE pipeline is the primary path forward
+for OCH soundness AND the cheaper alternatives are exhausted.
+
+Path D (live with sorries) is acceptable if the typed-NbE pipeline
+is being deprioritised in favour of the (untyped) original
+`SoundnessProof.lean` chain.
+
+---
+
 ## 2026-04-25 — Pass 16 (overnight #11): `revapp_L` is structurally unprovable, mirroring pass 15's `neutral_ascent` finding (agent-adccb0fc)
 
 **Pass 16's stated objective was to close `revapp_L` axiom-clean via

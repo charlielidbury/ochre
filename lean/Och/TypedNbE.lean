@@ -429,6 +429,19 @@ Hard cases remain sorried inline:
   `docs/ideas/typed-nbe-implementation-log.md` and the inline
   comment on the sorry below.
 
+  **Pass 17 (2026-04-25) update**: the proposed Option A
+  redesign — adding a lower-step realisation conjunct to RC at
+  `.neutral` — is well-founded but does NOT close this case.
+  An off-by-one barrier prevents bridging lower-step realisation
+  to same-step body witnesses for closure-form `b`. Additionally,
+  the redesign cascades regressions onto existing axiom-clean
+  cases (`SubV.neutral_struct`, `SubTV.to_neutral`, etc.). See
+  pass 17 entry for the full structural analysis. Same-step
+  realisation requires inductive RC + lex
+  (n, τ-depth) recursion, which Lean's positivity/structural
+  recursion checkers reject. UPred-style infrastructure is the
+  theoretical workaround (~500-1000 LOC of new infrastructure).
+
 Inline sorry count in `subtype_closed_aux`: 5 (was 6 pre-pass-8).
 Plus 2 sorried lemmas (`SubV_subst_neutral_to_value`,
 `SubV_subst_pair`) that together close 3 of the easier-shaped
@@ -1484,6 +1497,47 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           --       algorithm; large rewiring.
           --   D.  Live with the sorry; prioritise the four other
           --       sorried cases.
+          --
+          -- ----------------------------------------------------------
+          -- PASS 17 finding (2026-04-25, agent-a864520e): the proposed
+          -- "Option A" redesign — adding a lower-step realisation
+          -- conjunct
+          --   ∀ Γ τ, SynthN Γ nA τ → RC n d τ v
+          -- to RC at `.neutral` — is well-founded but DOES NOT close
+          -- this case. The off-by-one barrier:
+          --
+          -- For closure-form `b` (e.g., `.lam dom cl`), the goal
+          -- `RC (k+1) d (.lam dom cl) v` requires the body witness
+          -- at all indices `m ≤ k`, including `m = k`. That witness
+          -- needs `RC (k+1) d (.lam dom cl) v` itself (the outer
+          -- goal!) since RC's lam-clause for body witness at index
+          -- `k` requires step `k+1` of the function-type RC. The
+          -- realisation conjunct (lower step `RC k d τ v`) followed
+          -- by IH at step `m+1` produces the body witness at indices
+          -- `m ≤ k-1` only. Index `k` is structurally absent.
+          --
+          -- "Same-step" realisation (`RC (n+1) d τ v` in the .neutral
+          -- clause) would close the gap, but is NOT well-founded
+          -- under Lean's structural recursion on `n` — the function
+          -- definition would self-reference at the same recursion
+          -- step with arbitrary τ, which the kernel rejects.
+          -- Inductive `RC` (as `Prop`-valued inductive predicate) is
+          -- excluded by negative occurrence (the `.lam` clause's
+          -- `RC m d dV a → ...` puts `RC` in negative position).
+          --
+          -- Pass 17's recommended path: pivot from the RC-redesign
+          -- approach to either (a) `iota_intro` (different shape;
+          -- pass 8 noted it depends on closure_apply_coherence which
+          -- is essentially the FL itself), or (b) a SubV-recursion
+          -- refactor of `subtype_closed_aux` combined with an
+          -- inductive RC that admits same-step realisation via a
+          -- carefully-chosen well-foundedness measure (treating
+          -- (n, τ-depth) lexicographically; this is a substantial
+          -- rebuild of the RC predicate). Both are passes 18+
+          -- in scope.
+          --
+          -- See `docs/ideas/typed-nbe-implementation-log.md` pass 17
+          -- entry for the full off-by-one analysis.
           sorry
       | @SubV.lam S' Γ' domA domB clA clB bA bB hbA hbB hdom hbody =>
           -- Goal: RC (k+1) d (.lam domB clB) v.
@@ -1832,6 +1886,15 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           --       large rewiring of `subCheckVal`'s stuckRec-L arm.
           --   D.  Live with the sorry; the same RC redesign that
           --       handles `neutral_ascent` will handle this case.
+          --
+          -- ----------------------------------------------------------
+          -- PASS 17 finding: same off-by-one barrier as
+          -- `neutral_ascent` (see the long comment on that case
+          -- above). The proposed "Option A" lower-step realisation
+          -- does NOT close this case for closure-form `c`. Same-step
+          -- realisation requires inductive RC + lex
+          -- (n, τ-depth) recursion measure — substantial rebuild
+          -- (passes 18+).
           sorry
 
 /-- Specialisation of the auxiliary at empty seen-set / context.
