@@ -70,3 +70,19 @@ import Och.TypedNbE
 #print axioms NbE.SubTV.to_neutral
 #print axioms NbE.SubTV.of_SubV
 #print axioms NbE.SubTV.coerce
+
+-- Pass 13: identity-on-closed substitution, well-formedness
+-- predicate, and envSubstLvl list-operation commutation lemmas.
+-- These are sorry-free infrastructure for the eval-commutation
+-- proof that pass 14 will attempt.
+#print axioms NbE.Val.substLvl_of_levelsBelow
+#print axioms NbE.Neutral.substLvl_of_levelsBelow
+#print axioms NbE.Closure.substLvl_of_levelsBelow
+#print axioms NbE.Closure.envSubstLvl_of_levelsBelow
+#print axioms NbE.Closure.envSubstLvl_cons
+#print axioms NbE.Closure.envSubstLvl_cons_inv
+#print axioms NbE.Closure.envSubstLvl_length
+#print axioms NbE.Closure.envSubstLvl_getElem?
+#print axioms NbE.Closure.envSubstLvl_take
+#print axioms NbE.Closure.envWellFormed_take
+#print axioms NbE.Closure.envWellFormed_getElem?

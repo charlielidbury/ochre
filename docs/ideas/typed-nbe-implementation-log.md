@@ -4,6 +4,212 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 13 (overnight #8): WellFormed predicate + identity-on-closed (agent-a9cf5eef)
+
+**Pass 13's stated objective was the eval-commutation lemma, but
+analysis shows it requires RC-typing as an outer hypothesis (the
+Ω-counterexample pass 9 found is a true obstacle, not a statement-
+shape artefact). Pass 13's actual contribution is the
+infrastructure that any eval-commutation proof — RC-threaded or
+otherwise — will need: the `Val.WellFormed` predicate family, the
+identity-on-closed substitution lemma (pass 12's deferred work),
+and `Closure.envSubstLvl` commutation lemmas with `cons`/`take`/
+`getElem?`. Sorry count unchanged at 8. Net delta: +275 LOC of
+axiom-clean infrastructure.**
+
+This is "case 4" of pass 13's stop-conditions: hit a wall on a
+specific case (the `.app` eval case + vapp-firing on substituted
+neutral var). Pass 13 documents precisely what additional
+hypothesis (RC on `v_sub`) is needed and commits the auxiliary
+lemmas that the RC-threaded proof will rely on.
+
+Net delta: 0 sorries. +275 LOC across two sections of TypedNbE.lean.
+
+### What landed
+
+#### `Val.WellFormed` predicate family
+
+Mutual definitions in `lean/Och/TypedNbE.lean`:
+
+```lean
+mutual
+  def Val.WellFormed : Val → Prop
+    | .type => True
+    | .bot => True
+    | .neutral n => Neutral.WellFormed n
+    | .lam dom cl => Val.WellFormed dom ∧ Closure.WellFormed cl
+    | .iota ann cl => Val.WellFormed ann ∧ Closure.WellFormed cl
+    | .«fix» ann cl => Val.WellFormed ann ∧ Closure.WellFormed cl
+
+  def Neutral.WellFormed : Neutral → Prop
+    | .var _ => True
+    | .app n a => Neutral.WellFormed n ∧ Val.WellFormed a
+    | .stuckRec f a =>
+        Val.WellFormed f ∧ Val.WellFormed a ∧ a.isNeutral = true
+
+  def Closure.WellFormed : Closure → Prop
+    | ⟨_body, env⟩ => Closure.envWellFormed env
+
+  def Closure.envWellFormed : List Val → Prop
+    | [] => True
+    | v :: vs => Val.WellFormed v ∧ Closure.envWellFormed vs
+end
+```
+
+The key invariant: every `.stuckRec` has a `.isNeutral`
+argument. This is precisely the invariant pass 12 noted needed to
+exist for identity-on-closed to land cleanly. It's also the
+output invariant of `vapp`'s stuckRec branch (`a.isNeutral || unf
+== 0`).
+
+Plus structural lemmas: `Closure.envWellFormed_take`,
+`Closure.envWellFormed_getElem?`.
+
+#### Identity-on-closed substitution lemma
+
+Pass 12 deferred this with the comment "the structural identity
+lemma is deferred to pass 13". Pass 13 lands it as a mutual
+theorem family:
+
+```lean
+theorem Val.substLvl_of_levelsBelow :
+    ∀ (v : Val) (fuel k : Nat) (v_sub : Val),
+    Val.levelsBelow k v → Val.WellFormed v →
+    Val.substLvl fuel k v_sub v = some v
+```
+
+Plus mutual analogs for `Neutral.substLvl_of_levelsBelow`,
+`Closure.substLvl_of_levelsBelow`,
+`Closure.envSubstLvl_of_levelsBelow`. Structurally recursive on
+the value, mutual.
+
+Note that `Neutral.substLvl_of_levelsBelow` returns `some
+(.neutral n)` (not `some n`) because `Neutral.substLvl` returns
+`Option Val` (it may promote to non-neutral via β-firing).
+
+#### `envSubstLvl` list-operation commutation lemmas
+
+The env-side helper lemmas any eval-commutation proof needs:
+
+```lean
+theorem Closure.envSubstLvl_cons : ...    -- Folds element-substLvl + envSubstLvl into cons-envSubstLvl
+theorem Closure.envSubstLvl_cons_inv : ... -- Inverse: extracts element substitutions from cons-envSubstLvl
+theorem Closure.envSubstLvl_length : ...  -- envSubstLvl preserves length
+theorem Closure.envSubstLvl_getElem? : ... -- envSubstLvl commutes with getElem? (modulo Val.substLvl)
+theorem Closure.envSubstLvl_take : ...    -- envSubstLvl commutes with take
+```
+
+These are pure list-level lemmas (no eval), so they're easy and
+sorry-free. They're exactly the env-side analogs of the eval-
+commutation proof's `.bvar` (getElem?) and `.lam`/`.iota`/`.fix`
+(take, via `Closure.mk'`) cases.
+
+### Why eval-commutation itself didn't land
+
+Investigation of the proof structure shows that the `.app` eval
+case + vapp's `.neutral` arm interact pathologically:
+
+1. **Original eval**: `vapp n unf (.neutral n) a = .ok (.neutral
+   (.app n a))` — non-firing, succeeds at any fuel.
+2. **Substituted eval (k = level being substituted)**: when `n =
+   .var k`, after substitution `n' = v_sub` (a non-neutral, e.g.
+   `.lam`). vapp on `(v_sub, a')` may now FIRE (β-redex). Whether
+   this fires *and produces the same result as Val.substLvl
+   produces* depends on:
+   - `v_sub` being terminating (else vapp diverges) — needs RC.
+   - The fuel/unf parameters aligning between `vapp n unf` and
+     `Val.substLvl`'s internal `vapp fuel unfBound`.
+
+Without RC on `v_sub`, the vapp may diverge — exactly the Ω-
+counterexample pass 9 found.
+
+A pass-14 RC-threaded version of the eval-commutation lemma will
+have the form:
+
+```
+RC m d τ_sub v_sub →
+eval n unf (.neutral (.var k) :: ρ) body = .ok bA →
+∃ bA',
+  eval n unf (v_sub :: ρ) body = .ok bA' ∧
+  Val.substLvl fuel k v_sub bA = some bA'
+```
+
+The RC hypothesis discharges the `.app`/vapp-firing partiality.
+Pass 14 will use the lemmas pass 13 committed (especially
+identity-on-closed for the closure-form recursive cases, and
+`envSubstLvl_take` for the `Closure.mk'` step).
+
+### Sorry trajectory
+
+Pre-pass-13: 8 sorries (subtype_closed_aux 5 inline, plus 3
+declaration-level).
+
+Post-pass-13: SAME (8). +275 LOC of axiom-clean infrastructure
+(Val.WellFormed family, identity-on-closed mutual lemma family,
+envSubstLvl commutation helpers).
+
+Net: 0 sorries, +1 substantial infrastructure layer.
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+extended with the 11 new lemmas — all axiom-clean (only `propext`
+and `Quot.sound`, the standard Lean axioms; no `sorryAx`).
+
+### What pass 14 should pick up
+
+**Priority 1**: RC-threaded eval-commutation. The lemma pass 13
+attempted but couldn't close without RC. Roughly:
+
+1. State the lemma with `RC m d τ_sub v_sub` as an outer
+   hypothesis (per pass 11's typed-refinement of
+   `SubV_subst_neutral_to_value`).
+2. Prove by mutual fuel-induction over eval/vapp, using:
+   - `Closure.envSubstLvl_take` for the `.lam`/`.iota`/`.fix`
+     `Closure.mk'` step.
+   - `Closure.envSubstLvl_getElem?` for the `.bvar` step.
+   - `Val.substLvl_of_levelsBelow` for any `levelsBelow`-witnessed
+     subterms.
+   - RC's saturation conjunct (`∃ q, quote fuelω d v = .ok q`)
+     plus RC's elim properties to discharge the `.app`/vapp-firing
+     case.
+3. The vapp side needs to align fuel/unf with substLvl's internal
+   `vapp fuel unfBound` — likely via fuel-mono on vapp + a
+   pass-13-style `unf`-parameterisation of substLvl.
+
+Estimated: ~150-200 LOC (down from pass-9's ~200 LOC estimate
+because pass 13 commits the env-side helpers).
+
+**Priority 2** (alternative): the signature refactor of
+`subtype_closed_aux` (per pass-9 Critical Finding 3). Sidesteps
+the substitution machinery entirely. Pass 10 partially explored
+this. Worth re-evaluating now that pass 13 has the WellFormed
+infrastructure.
+
+### Honest assessment
+
+Pass 13 is a useful but **diminished** contribution: the stated
+goal was the eval-commutation lemma; the actual contribution is
+the auxiliary infrastructure. The diminishment is honest — the
+eval-commutation lemma cannot be proved without RC-typing, which
+in turn requires substantial threading work that pass 13 couldn't
+complete in scope.
+
+The pass-13 infrastructure is real progress: identity-on-closed
+is precisely the lemma pass 12 deferred (with its own deferred
+WellFormed predicate, also now in place). The envSubstLvl
+helpers are reusable. Both are required by any eval-commutation
+proof, RC-threaded or otherwise.
+
+The path to OCH soundness via this architecture remains:
+- Pass 14: RC-threaded eval-commutation (~150-200 LOC)
+- Pass 15: SubV-preservation under substLvl (~200 LOC)
+- Pass 16: glue + close keystone (~30 LOC)
+- Pass 17+: address remaining inline sorries
+- Pass 18+: FL body proper (multi-week)
+
+---
+
 ## 2026-04-24 — Pass 12 (overnight #7): Val.substLvl data layer (agent-a76c8b9f)
 
 **Committed the data layer for the Val-level substitution

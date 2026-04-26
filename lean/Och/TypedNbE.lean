@@ -680,42 +680,326 @@ example (j k : Nat) (v_sub : Val) (hjk : j ≠ k) :
   unfold Val.substLvl Neutral.substLvl
   simp [hjk]
 
-/-! ### Pass 12 limit: identity-on-levelsBelow is *not* lemma-clean
+/-! ### Val/Neutral/Closure well-formedness (pass 13)
 
-A natural pass-12 follow-on lemma would be:
-  `Val.levelsBelow k v → Val.substLvl fuel k v_sub v = some v`
-  (substitution is a no-op when level k doesn't appear).
+`Val.WellFormed` captures the invariant that pass 12 identified as
+needed: every `.stuckRec` in the value tree has its argument-side
+neutral. This is exactly the invariant that `vapp` maintains when
+producing stuckRec (it only fires the stuckRec branch when
+`a.isNeutral || unf == 0`; the latter case still produces a
+stuckRec, which violates this invariant — but only when fuel is
+exhausted).
 
-For `.var`/`.type`/`.bot`/closure-form heads, the proof is trivial.
-For `.app` and `.stuckRec` cases, the proof requires that the
-*structural recursive subst* doesn't fire vapp. For `.app`, this
-holds because `Val.levelsBelow k v_sub` doesn't matter — the
-spine is preserved as a Neutral spine. For `.stuckRec`, however:
+For pass 13's purposes we use the strong invariant
+(stuckRec implies arg is neutral) and prove later that `eval` /
+`vapp` preserve it under reasonable conditions. Identity-on-closed
+substitution (`levelsBelow k v → Val.substLvl fuel k v_sub v =
+some v`) follows directly. -/
+mutual
+  /-- A `Val` is *well-formed* iff every `.stuckRec` reachable
+  through closure-form heads has a `.isNeutral` argument. -/
+  def Val.WellFormed : Val → Prop
+    | .type => True
+    | .bot => True
+    | .neutral n => Neutral.WellFormed n
+    | .lam dom cl => Val.WellFormed dom ∧ Closure.WellFormed cl
+    | .iota ann cl => Val.WellFormed ann ∧ Closure.WellFormed cl
+    | .«fix» ann cl => Val.WellFormed ann ∧ Closure.WellFormed cl
 
-```
-Neutral.substLvl fuel k v_sub (.stuckRec f a) =
-  do let f' ← Val.substLvl fuel k v_sub f
-     let a' ← Val.substLvl fuel k v_sub a
-     if a'.isNeutral then
-       some (.neutral (.stuckRec f' a'))
-     else
-       (vapp fuel unfBound f' a').toOption
-```
+  def Neutral.WellFormed : Neutral → Prop
+    | .var _ => True
+    | .app n a => Neutral.WellFormed n ∧ Val.WellFormed a
+    | .stuckRec f a =>
+        Val.WellFormed f ∧ Val.WellFormed a ∧ a.isNeutral = true
 
-If `a` is non-neutral, the second branch fires vapp. With
-`a.levelsBelow k` alone we don't know that `a` is neutral.
-A separate "well-formed neutral" predicate (saying spine args
-in stuckRecs are themselves neutral) would unblock this, but
-introducing it for one lemma exceeds pass-12 scope.
+  def Closure.WellFormed : Closure → Prop
+    | ⟨_body, env⟩ => Closure.envWellFormed env
 
-Pass 13's eval-commutation lemma will have eval's output
-invariants in scope (eval never produces a stuckRec with
-non-neutral arg), at which point this lemma falls out as a
-side-condition rather than as a standalone identity.
+  /-- Helper for Closure.WellFormed (inlined list quantifier). -/
+  def Closure.envWellFormed : List Val → Prop
+    | [] => True
+    | v :: vs => Val.WellFormed v ∧ Closure.envWellFormed vs
+end
 
-Pass 12 commits the data-layer definition and the trivial
-documentation examples; the structural identity lemma is
-deferred to pass 13. -/
+/-- `envWellFormed` ↔ "every entry is well-formed". -/
+theorem Closure.envWellFormed_getElem?
+    {env : List Val} (h : Closure.envWellFormed env)
+    {k : Nat} {v : Val} (hk : env[k]? = some v) :
+    Val.WellFormed v := by
+  induction env generalizing k with
+  | nil => simp at hk
+  | cons w ws ih =>
+      cases k with
+      | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
+          subst hk
+          unfold Closure.envWellFormed at h
+          exact h.1
+      | succ m =>
+          simp only [List.getElem?_cons_succ] at hk
+          unfold Closure.envWellFormed at h
+          exact ih h.2 hk
+
+theorem Closure.envWellFormed_take
+    {env : List Val} (h : Closure.envWellFormed env) (n : Nat) :
+    Closure.envWellFormed (env.take n) := by
+  induction env generalizing n with
+  | nil => cases n <;> simp [List.take, Closure.envWellFormed]
+  | cons w ws ih =>
+      cases n with
+      | zero =>
+          simp [List.take, Closure.envWellFormed]
+      | succ m =>
+          unfold Closure.envWellFormed at h
+          simp only [List.take_succ_cons]
+          unfold Closure.envWellFormed
+          exact ⟨h.1, ih h.2 m⟩
+
+/-! ### Identity-on-levelsBelow (pass 13)
+
+Substitution is a no-op when level `k` doesn't appear in the
+value. With `Val.WellFormed` (every `.stuckRec` has a neutral
+argument), the `.stuckRec` case is straightforward — the
+neutrality of the argument is preserved (since substitution at
+levels below `k` never produces a non-neutral from a neutral). -/
+
+mutual
+  /-- `Val.substLvl` is the identity on values whose levels are all
+  below the substitution point AND that are well-formed. The
+  well-formedness condition is needed to handle `.stuckRec` (where
+  substitution would otherwise fire vapp on a non-neutral arg). -/
+  theorem Val.substLvl_of_levelsBelow :
+      ∀ (v : Val) (fuel k : Nat) (v_sub : Val),
+      Val.levelsBelow k v → Val.WellFormed v →
+      Val.substLvl fuel k v_sub v = some v
+    | .type, _, _, _, _, _ => rfl
+    | .bot, _, _, _, _, _ => rfl
+    | .neutral n, fuel, k, v_sub, h, hwf => by
+        unfold Val.substLvl
+        unfold Val.levelsBelow at h
+        unfold Val.WellFormed at hwf
+        exact Neutral.substLvl_of_levelsBelow n fuel k v_sub h hwf
+    | .lam dom cl, fuel, k, v_sub, h, hwf => by
+        unfold Val.substLvl
+        unfold Val.levelsBelow at h
+        unfold Val.WellFormed at hwf
+        rw [Val.substLvl_of_levelsBelow dom fuel k v_sub h.1 hwf.1]
+        simp only [bind, Option.bind_some]
+        rw [Closure.substLvl_of_levelsBelow cl fuel k v_sub h.2 hwf.2]
+        simp
+    | .iota ann cl, fuel, k, v_sub, h, hwf => by
+        unfold Val.substLvl
+        unfold Val.levelsBelow at h
+        unfold Val.WellFormed at hwf
+        rw [Val.substLvl_of_levelsBelow ann fuel k v_sub h.1 hwf.1]
+        simp only [bind, Option.bind_some]
+        rw [Closure.substLvl_of_levelsBelow cl fuel k v_sub h.2 hwf.2]
+        simp
+    | .«fix» ann cl, fuel, k, v_sub, h, hwf => by
+        unfold Val.substLvl
+        unfold Val.levelsBelow at h
+        unfold Val.WellFormed at hwf
+        rw [Val.substLvl_of_levelsBelow ann fuel k v_sub h.1 hwf.1]
+        simp only [bind, Option.bind_some]
+        rw [Closure.substLvl_of_levelsBelow cl fuel k v_sub h.2 hwf.2]
+        simp
+
+  /-- `Neutral.substLvl` returns the wrapped neutral when all levels
+  are below the substitution point and the neutral is well-formed.
+  The strong form (returns `some (.neutral n)`) is needed because
+  `Neutral.substLvl` returns `Option Val`, not `Option Neutral`. -/
+  theorem Neutral.substLvl_of_levelsBelow :
+      ∀ (n : Neutral) (fuel k : Nat) (v_sub : Val),
+      Neutral.levelsBelow k n → Neutral.WellFormed n →
+      Neutral.substLvl fuel k v_sub n = some (.neutral n)
+    | .var j, fuel, k, v_sub, h, _ => by
+        unfold Neutral.substLvl
+        unfold Neutral.levelsBelow at h
+        have : j ≠ k := Nat.ne_of_lt h
+        simp [this]
+    | .app n a, fuel, k, v_sub, h, hwf => by
+        unfold Neutral.substLvl
+        unfold Neutral.levelsBelow at h
+        unfold Neutral.WellFormed at hwf
+        rw [Neutral.substLvl_of_levelsBelow n fuel k v_sub h.1 hwf.1]
+        simp only [bind, Option.bind_some]
+        rw [Val.substLvl_of_levelsBelow a fuel k v_sub h.2 hwf.2]
+        simp
+    | .stuckRec f a, fuel, k, v_sub, h, hwf => by
+        unfold Neutral.substLvl
+        unfold Neutral.levelsBelow at h
+        unfold Neutral.WellFormed at hwf
+        rw [Val.substLvl_of_levelsBelow f fuel k v_sub h.1 hwf.1]
+        simp only [bind, Option.bind_some]
+        rw [Val.substLvl_of_levelsBelow a fuel k v_sub h.2 hwf.2.1]
+        simp [hwf.2.2]
+
+  theorem Closure.substLvl_of_levelsBelow :
+      ∀ (cl : Closure) (fuel k : Nat) (v_sub : Val),
+      Closure.levelsBelow k cl → Closure.WellFormed cl →
+      Closure.substLvl fuel k v_sub cl = some cl
+    | ⟨body, env⟩, fuel, k, v_sub, h, hwf => by
+        change Closure.envLevelsBelow k env at h
+        change Closure.envWellFormed env at hwf
+        unfold Closure.substLvl
+        rw [Closure.envSubstLvl_of_levelsBelow env fuel k v_sub h hwf]
+        simp
+
+  theorem Closure.envSubstLvl_of_levelsBelow :
+      ∀ (env : List Val) (fuel k : Nat) (v_sub : Val),
+      Closure.envLevelsBelow k env → Closure.envWellFormed env →
+      Closure.envSubstLvl fuel k v_sub env = some env
+    | [], _, _, _, _, _ => rfl
+    | w :: ws, fuel, k, v_sub, h, hwf => by
+        unfold Closure.envSubstLvl
+        unfold Closure.envLevelsBelow at h
+        unfold Closure.envWellFormed at hwf
+        rw [Val.substLvl_of_levelsBelow w fuel k v_sub h.1 hwf.1]
+        simp only [bind, Option.bind_some]
+        rw [Closure.envSubstLvl_of_levelsBelow ws fuel k v_sub h.2 hwf.2]
+        simp
+end
+
+/-! ### `envSubstLvl` list-operation commutation lemmas (pass 13)
+
+These are pure list-level commutation properties of
+`envSubstLvl` with `take` and `getElem?`. They are the env-side
+analogs of the shape lemmas needed by an eval-commutation proof
+(eval performs `getElem?` for `.bvar` and `take` via
+`Closure.mk'` for closure-form heads).
+
+These lemmas have `Closure.envSubstLvl ... env = some env'` as a
+hypothesis: they don't claim envSubstLvl succeeds (which depends
+on each entry's substLvl succeeding), they describe its
+behaviour when it does. -/
+
+theorem Closure.envSubstLvl_cons
+    {fuel k : Nat} {v_sub : Val} {w : Val} {ws : List Val}
+    {w' : Val} {ws' : List Val}
+    (hw : Val.substLvl fuel k v_sub w = some w')
+    (hws : Closure.envSubstLvl fuel k v_sub ws = some ws') :
+    Closure.envSubstLvl fuel k v_sub (w :: ws) = some (w' :: ws') := by
+  unfold Closure.envSubstLvl
+  rw [hw]
+  simp only [bind, Option.bind_some]
+  rw [hws]
+  simp
+
+/-- Inversion of `envSubstLvl` on a cons: extracts the element-wise
+substitutions. -/
+theorem Closure.envSubstLvl_cons_inv
+    {fuel k : Nat} {v_sub : Val} {w : Val} {ws : List Val}
+    {result : List Val}
+    (h : Closure.envSubstLvl fuel k v_sub (w :: ws) = some result) :
+    ∃ w' ws',
+      Val.substLvl fuel k v_sub w = some w' ∧
+      Closure.envSubstLvl fuel k v_sub ws = some ws' ∧
+      result = w' :: ws' := by
+  unfold Closure.envSubstLvl at h
+  simp only [bind, Option.bind] at h
+  match hw : Val.substLvl fuel k v_sub w, hws : Closure.envSubstLvl fuel k v_sub ws with
+  | none, _ => rw [hw] at h; cases h
+  | some w', none => rw [hw, hws] at h; cases h
+  | some w', some ws' =>
+      rw [hw, hws] at h
+      simp only [Option.some.injEq] at h
+      exact ⟨w', ws', rfl, rfl, h.symm⟩
+
+theorem Closure.envSubstLvl_length
+    {fuel k : Nat} {v_sub : Val} {env env' : List Val}
+    (h : Closure.envSubstLvl fuel k v_sub env = some env') :
+    env'.length = env.length := by
+  induction env generalizing env' with
+  | nil =>
+      unfold Closure.envSubstLvl at h
+      simp only [Option.some.injEq] at h
+      subst h; rfl
+  | cons w ws ih =>
+      obtain ⟨w', ws', _, hws', rfl⟩ := Closure.envSubstLvl_cons_inv h
+      simp [List.length_cons, ih hws']
+
+theorem Closure.envSubstLvl_getElem?
+    {fuel k : Nat} {v_sub : Val} {env env' : List Val}
+    (h : Closure.envSubstLvl fuel k v_sub env = some env')
+    (j : Nat) {v : Val} (hv : env[j]? = some v) :
+    ∃ v', env'[j]? = some v' ∧ Val.substLvl fuel k v_sub v = some v' := by
+  induction env generalizing j env' with
+  | nil => simp at hv
+  | cons w ws ih =>
+      obtain ⟨w', ws', hw', hws', rfl⟩ := Closure.envSubstLvl_cons_inv h
+      cases j with
+      | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hv
+          subst hv
+          refine ⟨w', ?_, hw'⟩
+          simp [List.getElem?_cons_zero]
+      | succ m =>
+          simp only [List.getElem?_cons_succ] at hv
+          obtain ⟨v', hv', hsub⟩ := ih hws' m hv
+          refine ⟨v', ?_, hsub⟩
+          simp only [List.getElem?_cons_succ]
+          exact hv'
+
+theorem Closure.envSubstLvl_take
+    {fuel k : Nat} {v_sub : Val} {env env' : List Val}
+    (h : Closure.envSubstLvl fuel k v_sub env = some env') (n : Nat) :
+    Closure.envSubstLvl fuel k v_sub (env.take n) = some (env'.take n) := by
+  induction env generalizing env' n with
+  | nil =>
+      unfold Closure.envSubstLvl at h
+      simp only [Option.some.injEq] at h
+      subst h
+      cases n <;> rfl
+  | cons w ws ih =>
+      obtain ⟨w', ws', hw', hws', rfl⟩ := Closure.envSubstLvl_cons_inv h
+      cases n with
+      | zero => simp [List.take, Closure.envSubstLvl]
+      | succ m =>
+          simp only [List.take_succ_cons]
+          exact Closure.envSubstLvl_cons hw' (ih hws' m)
+
+/-! ### Pass 13 status: eval-commutation lemma deferred
+
+The full eval-commutation lemma — given
+`eval n unf (.neutral (.var k) :: ρ) body = .ok bA`,
+derive `∃ bA', eval n unf (v_sub :: ρ) body = .ok bA' ∧
+Val.substLvl fuel k v_sub bA = some bA'` — turns out to be
+**genuinely intractable without RC-typing** on `v_sub`.
+
+**Why.** In the `.app` eval case, `eval` may produce
+`.neutral (.app (.var k) a)` (a stuck spine on the
+substitution variable). After substitution, the head becomes
+`v_sub`, and `Val.substLvl` must fire `vapp fuel unfBound v_sub
+a'`. Without RC-typing, this vapp may diverge — exactly the
+Ω-counterexample pass 9 found:
+- `clA = ⟨body := .app (.bvar 0) (.bvar 0), env := []⟩`,
+- `v_sub = .lam dom ⟨.app (.bvar 0) (.bvar 0), []⟩` (omega).
+
+`cl.openω fresh` succeeds (vapp on neutral fresh succeeds
+without unfolding), but `cl.openω v_sub` exhausts fuel.
+
+**What pass 13 contributes** (lemmas above):
+- `Val.WellFormed` / `Neutral.WellFormed` / `Closure.WellFormed`:
+  the structural invariant that every `.stuckRec` has a
+  `.isNeutral` argument.
+- `Val.substLvl_of_levelsBelow`: substitution is a no-op when
+  level `k` doesn't appear in a well-formed value. (Pass 12 had
+  noted this lemma needed the WellFormed predicate to land
+  cleanly; pass 13 introduces both.)
+- `Closure.envWellFormed_take`, `Closure.envWellFormed_getElem?`:
+  WellFormed propagates through `take` and `getElem?` (the two
+  list operations `eval` performs on env).
+
+**What pass 14 still needs.** Either:
+1. Thread RC through eval-commutation (RC `v_sub` discharges
+   the vapp-firing partiality), giving the full lemma at
+   ~200-300 LOC.
+2. Or use a different proof architecture (signature refactor of
+   `subtype_closed_aux`, per pass-9's Critical Finding 3).
+
+The infrastructure committed in pass 13 is required by either
+path: identity-on-closed is a precondition for the closure-form
+inductive cases of any eval-commutation proof. -/
 
 /-! ## `SubV_subst_neutral_to_value` — the body-substitution lemma
 
