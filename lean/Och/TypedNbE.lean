@@ -657,9 +657,40 @@ all `m ≤ k`, which is needed for cases like `unfold_fix_R` where
 the augmented seen-set obligation requires `Aux m` at strictly
 lower steps.
 
-Top-level `RC.subtype_closed` specialises `S = []`. -/
+Top-level `RC.subtype_closed` specialises `S = []`.
+
+**Pass 10 signature refactor (2026-04-24)**: now takes
+`RC_env n d Γ ρ` as a typed-environment realisation hypothesis.
+This brings the signature into alignment with the FL body's
+context (which always has `RC_env` in scope after the pass-5
+open-environment reformulation), and gives the existing closed
+cases AND the sorried hard cases a typed environment to work
+against.
+
+**Important honest assessment** (pass 10): the RC_env hypothesis
+*alone* does NOT dissolve the substitution wall for the closure-
+form cases (`lam`, `iota_struct`, `fix_struct`). Those cases
+still go through `SubV_subst_neutral_to_value` /
+`SubV_subst_pair`. The reason: the SubV body premise is on the
+*fresh-neutral-opened* bodies `bA = clA.openω fresh`,
+`bB = clB.openω fresh`, while the goal needs bodies opened at a
+concrete value `a`. Even with `RC_env`, the IH is on `bA, bB`
+(closed Vals), not on closure-bodies-as-functions, so the IH
+cannot be applied at `a` directly. Substitution on Val-level
+remains necessary.
+
+What RC_env *does* unlock: future passes can use it to attack
+the still-sorried `iota_intro`, `revapp_L`, `neutral_ascent`,
+`unfold_fix_L`, `unfold_iota_L` cases, which need typing
+information beyond what's in SubV. Pass 10 ships the substrate;
+pass 11+ uses it.
+
+For the existing closed cases, `RC_env` is threaded through
+unchanged via `RC_env.mono` at recursive calls (which always
+happen at the same Γ, just at a smaller step). -/
 theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
-    {S : List (Val × Val)} {Γ : TyCtx} {τ τ' v : Val},
+    {S : List (Val × Val)} {Γ : TyEnv} {ρ : Env} {τ τ' v : Val},
+      RC_env n d Γ ρ →
       (∀ α β, (α, β) ∈ S → ∀ m, m ≤ n → ∀ v',
          RC m d α v' → RC m d β v') →
       SubV S Γ τ τ' → RC n d τ v → RC n d τ' v := by
@@ -671,14 +702,15 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
   | 0 =>
       -- RC 0 d _ _ = True for all τ, τ'. So the conclusion is
       -- True trivially.
-      intro d S Γ τ τ' v _hS _hsub _h
+      intro d S Γ ρ τ τ' v _hΓρ _hS _hsub _h
       unfold RC
       trivial
   | k+1 =>
-      intro d S Γ τ τ' v hS hsub h
+      intro d S Γ ρ τ τ' v hΓρ hS hsub h
       have ih : ∀ m, m ≤ k →
-          ∀ {d' : Nat} {S' : List (Val × Val)} {Γ' : TyCtx}
+          ∀ {d' : Nat} {S' : List (Val × Val)} {Γ' : TyEnv} {ρ' : Env}
             {τ_ τ'_ v_ : Val},
+          RC_env m d' Γ' ρ' →
           (∀ α β, (α, β) ∈ S' → ∀ m', m' ≤ m → ∀ v'',
              RC m' d' α v'' → RC m' d' β v'') →
           SubV S' Γ' τ_ τ'_ → RC m d' τ_ v_ → RC m d' τ'_ v_ := by
@@ -737,8 +769,12 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
                 intro α β hin m'' hm''m v'' h'
                 exact hS α β hin m''
                   (Nat.le_trans hm''m (Nat.le_succ_of_le hm')) v'' h'
+              -- RC_env at the smaller step m'+1 ≤ k+1 via mono.
+              -- Use Γ' (post-match index name).
+              have hΓρ_m : RC_env (m'+1) d Γ' ρ :=
+                RC_env.mono (Nat.le_trans hm' (Nat.le_succ k)) hΓρ
               exact ihStrong (m'+1) (Nat.lt_succ_of_le hm')
-                hS_m' hdom ha_RCdomB
+                hΓρ_m hS_m' hdom ha_RCdomB
           -- Step 4: body clause at concrete `a`.
           obtain ⟨r, hvapp, rTyA, hOpenA, hRCa⟩ :=
             h_body m hm a ha_RCdomA
@@ -763,8 +799,10 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
               intro α β hin m'' hm''m v'' h'
               exact hS α β hin m''
                 (Nat.le_trans hm''m (Nat.le_succ_of_le hm')) v'' h'
+            have hΓρ_m : RC_env (m'+1) d Γ' ρ :=
+              RC_env.mono (Nat.le_trans hm' (Nat.le_succ k)) hΓρ
             exact ihStrong (m'+1) (Nat.lt_succ_of_le hm')
-              hS_m' hSubBody hRCa
+              hΓρ_m hS_m' hSubBody hRCa
       | @SubV.iota_struct S' Γ' annA annB clA clB bA bB
           hbA hbB hAnn hBody =>
           -- Goal: RC (k+1) d (.iota annB clB) v.
@@ -810,12 +848,19 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
               have hsub_orig : SubV S' Γ' (.iota annA clA)
                   (.iota annB clB) :=
                 SubV.iota_struct hbA hbB hAnn hBody
+              -- RC_env at step m via mono. Use Γ' (the match-bound
+              -- pattern variable, which the dependent pattern match
+              -- substitutes hΓρ's index to).
+              have hΓρ_m : RC_env m d Γ' ρ :=
+                RC_env.mono (Nat.le_trans hmk (Nat.le_succ k)) hΓρ
               exact ihStrong m
-                (Nat.lt_succ_of_le hmk) hS_m hsub_orig hαv'
+                (Nat.lt_succ_of_le hmk) hΓρ_m hS_m hsub_orig hαv'
             · exact hS α β hin m (Nat.le_succ_of_le hmk) v' hαv'
           -- Step 3: ann coercion at step k.
+          have hΓρ_k : RC_env k d Γ' ρ :=
+            RC_env.mono (Nat.le_succ k) hΓρ
           have hAnnB : RC k d annB v :=
-            ih k (Nat.le_refl _) hS_k hAnn hAnnA
+            ih k (Nat.le_refl _) hΓρ_k hS_k hAnn hAnnA
           refine ⟨hSat, hAnnB, ?_⟩
           -- Step 5: substitution lemma on hBody, applied at v.
           obtain ⟨bA', bB', hOpenA', hOpenB', hSubBody⟩ :=
@@ -830,7 +875,7 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           subst heq
           -- Step 6: apply IH at step k to hSubBody (under
           -- augmented seen-set, hS_k).
-          exact ⟨bB', hOpenB', ih k (Nat.le_refl _) hS_k hSubBody hRCv⟩
+          exact ⟨bB', hOpenB', ih k (Nat.le_refl _) hΓρ_k hS_k hSubBody hRCv⟩
       | @SubV.fix_struct S' Γ' annA annB clA clB bA bB
           hbA hbB hAnn hBody =>
           -- Goal: RC (k+1) d (.fix annB clB) v.
@@ -870,8 +915,10 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
               have hsub_orig : SubV S' Γ' (.«fix» annA clA)
                   (.«fix» annB clB) :=
                 SubV.fix_struct hbA hbB hAnn hBody
+              have hΓρ_m : RC_env m d Γ' ρ :=
+                RC_env.mono (Nat.le_trans hmk (Nat.le_succ k)) hΓρ
               exact ihStrong m
-                (Nat.lt_succ_of_le hmk) hS_m hsub_orig hαv'
+                (Nat.lt_succ_of_le hmk) hΓρ_m hS_m hsub_orig hαv'
             · exact hS α β hin m (Nat.le_succ_of_le hmk) v' hαv'
           refine ⟨hSat, ?_⟩
           -- Substituents related by SubV.hyp on the augmented
@@ -895,7 +942,9 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
             exact (Option.some.injEq _ _).mp hOpenA'.symm
           subst heq
           -- Apply IH at step k to hSubBody under augmented hS_k.
-          exact ⟨bB', hOpenB', ih k (Nat.le_refl _) hS_k hSubBody hRCu⟩
+          have hΓρ_k : RC_env k d Γ' ρ :=
+            RC_env.mono (Nat.le_succ k) hΓρ
+          exact ⟨bB', hOpenB', ih k (Nat.le_refl _) hΓρ_k hS_k hSubBody hRCu⟩
       | SubV.iota_intro _ _ _ =>
           -- iotaIntro type-vs-value mismatch. Deferred.
           sorry
@@ -924,13 +973,17 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
               -- Apply ihStrong at step m to OUR derivation.
               have hsub_orig : SubV S' Γ' α (.«fix» ann clB) :=
                 SubV.unfold_fix_R hopen hbody
+              have hΓρ_m : RC_env m d Γ' ρ :=
+                RC_env.mono (Nat.le_trans hmk (Nat.le_succ k)) hΓρ
               exact ihStrong m
                 (Nat.lt_succ_of_le (Nat.le_trans hmk (Nat.le_refl k)))
-                hS_m hsub_orig hαv'
+                hΓρ_m hS_m hsub_orig hαv'
             · -- Old entry: outer hS at step m.
               exact hS α β hin m (Nat.le_succ_of_le hmk) v' hαv'
           have h_lower : RC k d a v := RC.mono (k+1) (Nat.le_succ k) h
-          exact ih k (Nat.le_refl _) hS_k hbody h_lower
+          have hΓρ_k : RC_env k d Γ' ρ :=
+            RC_env.mono (Nat.le_succ k) hΓρ
+          exact ih k (Nat.le_refl _) hΓρ_k hS_k hbody h_lower
       | SubV.unfold_fix_L _ _ _ =>
           -- Symmetric step-shift issue. Deferred.
           sorry
@@ -947,11 +1000,16 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           -- vapp-respects-RC missing. Deferred.
           sorry
 
-/-- Specialisation of the auxiliary at empty seen-set / context. -/
+/-- Specialisation of the auxiliary at empty seen-set / context.
+
+Pass 10 update: now provides `RC_env.nil` (the empty typed
+environment realises the empty value environment trivially) to
+satisfy the new `RC_env n d Γ ρ` parameter at `Γ = #[]`,
+`ρ = []`. -/
 theorem RC.subtype_closed {n d : Nat} {τ τ' v : Val}
     (hsub : SubV [] #[] τ τ')
     (h : RC n d τ v) : RC n d τ' v := by
-  refine RC.subtype_closed_aux n ?_ hsub h
+  refine RC.subtype_closed_aux n RC_env.nil ?_ hsub h
   intro α β hmem _ _ _ _
   exact (List.not_mem_nil (α, β) hmem).elim
 

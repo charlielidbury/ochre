@@ -55,6 +55,8 @@ import Och.TypedNbE
 -- Pass 5: typed env realisation lemmas.
 #print axioms NbE.RC_env.nil
 #print axioms NbE.RC_env.cons
+-- Pass 10: step-index downward monotonicity for RC_env.
+#print axioms NbE.RC_env.mono
 -- Pass 6: typed-everything `SubTV` substrate. These are
 -- axiom-clean (no sorryAx) — they're proven via RC's
 -- saturation projections + RC.subtype_closed.
