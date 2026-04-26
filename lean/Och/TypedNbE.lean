@@ -1423,15 +1423,21 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           -- requires body witnesses that saturation alone cannot
           -- supply.
           --
-          -- Concrete counterexample:
-          --   Γ = [.lam dom cl], nA = .var 0,
-          --   so `SynthN Γ nA (.lam dom cl)` holds.
-          --   b = .lam dom cl (so `SubV.refl` discharges the inner
-          --   SubV premise).
-          --   v = .type — fullyQuotable, has quote witness, so
-          --     `RC (k+1) d (.neutral nA) .type` holds.
-          --   But `vapp _ .type _ = .err` (.type isn't a function),
-          --     so `RC (k+1) d (.lam dom cl) .type` is FALSE.
+          -- Concrete counterexample (refined per pass-15 verification):
+          --   Take cl₀ with body = `Expr.bot`, env = []. Then
+          --     `cl₀.openω _ = some .bot` for any input.
+          --   Pick τ = `.lam .type cl₀` (non-bot closure type whose
+          --     body opens to `.bot`).
+          --   Pick `nA` such that `SynthN Γ nA τ` holds (e.g. a bvar
+          --     of type τ in some Γ).
+          --   Pick b = τ (so `SubV S Γ τ b` discharges by `SubV.refl`).
+          --   Take v = `.type` — fullyQuotable + quote-witness, so
+          --     `RC (k+1) d (.neutral nA) .type` HOLDS.
+          --   But `RC (k+1) d τ .type` is FALSE for k ≥ 1:
+          --     `vapp _ _ .type a = .ok (.neutral (.stuckRec .type a))`
+          --     succeeds, but the body witness requires `RC m d .bot
+          --     (.neutral (.stuckRec .type a))`, and RC at `.bot` is
+          --     `False`.
           --
           -- Therefore `subtype_closed_aux`'s conclusion is FALSE for
           -- this `v` in the `neutral_ascent` case — the lemma is not
@@ -1448,12 +1454,14 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           -- options.
           --
           -- Strategic options (pass 16+):
-          --   A0. Prove "saturation ∧ τ ≠ .bot → RC n d τ v" as a
-          --       standalone lemma (Girard's "neutral terms are
-          --       reducible"). If true, closes neutral_ascent by
-          --       saturation transfer. Tractability uncertain —
-          --       hinges on whether eval-termination is derivable
-          --       from saturation invariants. ~150-300 LOC budget.
+          --   A0. (FALSE — pass 15 finding) Prove
+          --       "saturation ∧ τ ≠ .bot → RC n d τ v" as a stand-
+          --       alone lemma (Girard's "neutral terms are
+          --       reducible"). Counterexample: v = .type, τ =
+          --       .lam .type cl₀ where cl₀.openω _ = some .bot.
+          --       v is saturated, τ is non-bot, but RC n d τ v is
+          --       FALSE because the body witness requires RC at
+          --       .bot, which is False.
           --   A.  Redesign RC at `.neutral` to encode realisation
           --       (eval-of-nA = v, plus RC at synthesised type).
           --       ~200-400 LOC refactoring.

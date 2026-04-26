@@ -47,22 +47,35 @@ closure-form `τ` (`.lam`/`.iota`/`.fix`), this requires body
 witnesses on `v` (e.g., for `.lam`, ∀ RC-typed `a`, `vapp v a` produces
 an RC result). Saturation alone CANNOT supply these witnesses.
 
-#### Concrete counterexample
+#### Concrete counterexample (verified)
 
-Take `Γ = [.lam dom cl]`, `nA = .var 0` (so `SynthN Γ nA (.lam dom cl)`
-holds), `b = .lam dom cl`, `S = []`. Then `SubV.neutral_ascent`
-with `SubV.refl` gives a proof of `SubV [] Γ (.neutral nA)
-(.lam dom cl)`.
+Take cl₀ with body = `Expr.bot`, env = []. Then for any `a`,
+`cl₀.openω a = some .bot` (eval(a :: [], Expr.bot) = .ok .bot).
 
-Now take `v = .type`. `.type` is fullyQuotable, has a quote witness
-(at any depth `d`), so `RC (k+1) d (.neutral nA) v` HOLDS.
+Pick τ = `.lam .type cl₀` — a function-type whose body opens
+to `.bot`. τ is non-`.bot`.
 
-But `RC (k+1) d (.lam dom cl) (.type)` requires `vapp .type a`
-to produce an RC result for every RC-typed `a` — and `vapp`
-applied to `.type` returns `.err` (`.type` is not a function).
-So `RC (k+1) d (.lam dom cl) (.type)` is FALSE.
+Pick `Γ` and `nA` such that `SynthN Γ nA τ` holds (e.g. Γ has
+a bvar of type τ). Pick `b = τ` so `SubV S Γ τ b` is `SubV.refl`.
 
-Therefore the implication
+Then `SubV.neutral_ascent` with this `SynthN` and `SubV.refl`
+gives `SubV S Γ (.neutral nA) τ`.
+
+Take `v = .type`. `.type` is fullyQuotable, has a quote witness,
+so `RC (k+1) d (.neutral nA) .type` HOLDS by RC-at-`.neutral`'s
+saturation-only definition.
+
+But `RC (k+1) d τ .type` for k ≥ 1 requires the body witness:
+∀ m ≤ k, ∀ a with `RC m d .type a`, ∃ r with `vapp _ _ .type a =
+.ok r ∧ ∃ rTy, cl₀.openω a = some rTy ∧ RC m d rTy r`.
+
+`vapp _ _ .type a = .ok (.neutral (.stuckRec .type a))` succeeds.
+`rTy = .bot` (per cl₀'s definition). We need `RC m d .bot
+(.neutral (.stuckRec .type a))`, and `RC m d .bot _ = False` for
+m ≥ 1. So the body witness FAILS.
+
+Therefore `RC (k+1) d τ .type` is FALSE for k ≥ 1, while
+`RC (k+1) d (.neutral nA) .type` is TRUE — the implication
   `RC (k+1) d (.neutral nA) v → RC (k+1) d b v`
 is FALSE for this choice of `v`, and hence `subtype_closed_aux`
 is not provable AS STATED for the `neutral_ascent` case.
@@ -93,39 +106,46 @@ This is a structural problem with `subtype_closed_aux`'s signature
 combined with RC's definition at `.neutral`. Three paths forward
 (plus pragmatic Option D):
 
-#### Option A0: prove "saturation → RC at non-bot τ"
+#### Option A0: prove "saturation → RC at non-bot τ"  — FALSE
 
 A simpler-looking bridge: lemma `sat_implies_RC` saying
 "for any saturated `v` and non-`.bot` τ, `RC n d τ v` holds".
 
 If true, `neutral_ascent` closes immediately by saturation transfer.
 
-**Status**: this lemma is the typed analogue of Girard's "neutral
-terms are reducible" property. Whether it holds in the current RC
-formulation depends on closure-form cases (`.lam`/`.iota`/`.fix`):
-RC at those types requires `vapp v a` to terminate and produce
-RC results. For arbitrary saturated `v`:
-- If `v = .lam dom' cl'`: `vapp v a` calls `eval (a::env) body`,
-  whose termination depends on `body`'s structure — saturation
-  gives `body.closedAt (env.length + 1) = true` and `envFullyQuotable
-  env`, but NOT termination. This MIGHT be derivable from the
-  saturation invariants (closed-AT bounds + quote terminates), but
-  proving it amounts to the "well-typed implies terminates" theorem
-  of NbE itself.
-- If `v` is `.type` or `.neutral _`: `vapp` returns a stuckRec
-  immediately. The stuckRec needs to satisfy RC at `cl.openω a`,
-  which by recursion generates a chain of stuckRec values, each
-  larger but still saturated. May terminate the recursion via
-  step-loss.
+**Status (refined post-investigation)**: FALSE. Counterexample:
 
-**Disposition**: not obviously true, not obviously false. Worth
-attempting in a dedicated pass with a ~150-300 LOC budget. If it
-lands, it closes `neutral_ascent` AND likely simplifies `revapp_L`
-and possibly `iota_intro`.
+Take `v = .type` (fullyQuotable, has quote witness — saturated).
 
-**Risk**: may turn out to be false (specifically for the `.lam`
-case if eval-termination isn't derivable from saturation). In that
-case, Option A is unavoidable.
+Take `cl₀` with body = `Expr.bot`, env = `[]`. Then
+`cl₀.openω a = some .bot` for any `a` (eval(`a :: []`, `Expr.bot`)
+= `.ok .bot`).
+
+Take τ = `.lam .type cl₀` (a function-type returning bot). τ is
+non-bot.
+
+Now `RC (n+1) d τ v` requires: ∀ m ≤ n, ∀ a with `RC m d .type a`,
+∃ r, `vapp _ _ v a = .ok r ∧ ∃ rTy, cl₀.openω a = some rTy ∧
+RC m d rTy r`.
+
+`vapp _ _ .type a = .ok (.neutral (.stuckRec .type a))`. Set
+`r = .neutral (.stuckRec .type a)`. `rTy = .bot`. We need
+`RC m d .bot r`, which is FALSE for m ≥ 1.
+
+So `RC (n+1) d τ .type` is FALSE for n ≥ 1, despite `.type` being
+saturated and τ being non-bot.
+
+**Disposition**: this option is closed off. Saturation is
+genuinely insufficient to imply RC at carefully-chosen non-bot τ.
+
+The pattern this exposes: RC at closure-form types can have
+embedded `.bot` content that saturation alone cannot exclude.
+Saturation is a *syntactic* condition (quote terminates, structure
+is closed); RC has *semantic* content (typed-relation membership)
+that saturation doesn't capture.
+
+This rules out the Girard-style "neutrals are reducible" shortcut.
+We're left with Options A or B.
 
 #### Option A: redesign RC at `.neutral` to encode realisation
 
