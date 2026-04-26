@@ -25,3 +25,6 @@ _build
 # Agent worktrees (managed by Claude agent runtime)
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Agda compiled interface files
+*.agdai
