@@ -4,6 +4,207 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 12 (overnight #7): Val.substLvl data layer (agent-a76c8b9f)
+
+**Committed the data layer for the Val-level substitution
+machinery: `Val.substLvl`/`Neutral.substLvl`/`Closure.substLvl`
+mutual functions returning `Option Val/...`, ~95 LOC. Approach A.1
+(per pass-9 finding): partial at `.app`-redex firings, fuel-bounded
+via `vapp`. Pass 12's deliverable is component 1 of pass-9's 4-
+component plan (~510 LOC total). Eval-commutation, SubV-preservation,
+and glue remain for passes 13/14/15 respectively. Sorry count
+unchanged at 8.**
+
+This is "case 2" of pass 12's stop-conditions: components 1-3 land
+but combining hits a snag — except adapted for "component 1 lands
+cleanly; subsequent components are full passes themselves." The
+honest finding is that pass-9's ~510 LOC estimate is realistic, and
+the no-net-sorry rule means each component must be a separate
+clean pass. This pass commits component 1; passes 13-15 attack the
+remaining components.
+
+Net delta: 0 sorries. +95 LOC of mutual definitions (data layer).
+
+### What landed
+
+#### `Val.substLvl` definition
+
+Mutual definitions in `lean/Och/TypedNbE.lean`:
+
+```lean
+def Val.substLvl (fuel k : Nat) (v_sub : Val) : Val → Option Val
+  | .type => some .type
+  | .bot => some .bot
+  | .neutral n => Neutral.substLvl fuel k v_sub n
+  | .lam dom cl => do
+      let dom' ← Val.substLvl fuel k v_sub dom
+      let cl' ← Closure.substLvl fuel k v_sub cl
+      some (.lam dom' cl')
+  | .iota ann cl => ... | .«fix» ann cl => ...
+
+def Neutral.substLvl (fuel k : Nat) (v_sub : Val) : Neutral → Option Val
+  | .var j => if j = k then some v_sub else some (.neutral (.var j))
+  | .app n a => do
+      let n' ← Neutral.substLvl fuel k v_sub n
+      let a' ← Val.substLvl fuel k v_sub a
+      match n' with
+      | .neutral nn => some (.neutral (.app nn a'))
+      | _ => (vapp fuel unfBound n' a').toOption
+  | .stuckRec f a => do
+      let f' ← Val.substLvl fuel k v_sub f
+      let a' ← Val.substLvl fuel k v_sub a
+      if a'.isNeutral then some (.neutral (.stuckRec f' a'))
+      else (vapp fuel unfBound f' a').toOption
+
+def Closure.substLvl (fuel k : Nat) (v_sub : Val) : Closure → Option Closure
+  | ⟨body, env⟩ => do
+      let env' ← Closure.envSubstLvl fuel k v_sub env
+      some ⟨body, env'⟩
+
+def Closure.envSubstLvl (fuel k : Nat) (v_sub : Val) :
+    List Val → Option (List Val)
+```
+
+Termination: structural recursion on Val/Neutral/Closure/env
+(mutual). The `.app`/`.stuckRec` redex cases call `vapp` with
+fuel; substLvl itself doesn't recurse on vapp's result.
+
+#### Documentation examples
+
+Three `example` declarations (axiom-clean, no sorries) confirming
+computation behavior:
+- `Val.substLvl k v .type = some .type`
+- `Val.substLvl k v (.neutral (.var k)) = some v` (var-hit)
+- `Val.substLvl k v (.neutral (.var j)) = some (.neutral (.var j))`
+  for `j ≠ k` (var-miss)
+
+### What did NOT land
+
+Pass 12 attempted but **withdrew** the natural follow-on lemma:
+
+```
+Val.levelsBelow k v → Val.substLvl fuel k v_sub v = some v
+```
+
+Reason: the `.stuckRec f a` case requires `a.isNeutral` (else
+the function fires vapp). `Val.levelsBelow k a` doesn't imply
+`a.isNeutral`. A separate "well-formed neutral" predicate
+(saying spine args in stuck-recs are neutral) would unblock this,
+but introducing it for one lemma exceeds pass-12 scope.
+
+The eventual caller (eval-commutation, pass 13) has eval's output
+invariants in scope (eval never produces a stuckRec with non-
+neutral arg — that would have fired). Pass 13 will thread the
+invariant naturally.
+
+The `.lam`/`.iota`/`.fix`/`.app` cases of the identity lemma
+*were* clean and would land, but committing a partial lemma
+alone (without the `.stuckRec` case) is awkward and would
+require a separate predicate that doesn't yet exist. Pass 13's
+eval-commutation context provides the right setting.
+
+### Why eval-commutation (pass 13) needs to come next
+
+The keystone `SubV_subst_neutral_to_value` requires:
+1. `Val.substLvl` (pass 12: DONE)
+2. Eval-commutation (pass 13: TBD, ~200 LOC)
+3. SubV-preservation under substLvl (pass 14: TBD, ~200 LOC)
+4. Glue (pass 15: TBD, ~30 LOC)
+
+Pass 13's eval-commutation lemma will be:
+```
+eval n unf (.neutral (.var k) :: env) body = .ok bA →
+∃ bA',
+  eval ? unf (v_sub :: env) body = .ok bA' ∧
+  Val.substLvl ? k v_sub bA = some bA'
+```
+
+(With appropriate `k = env.length` arithmetic and the typed
+hypothesis on `v_sub` to discharge fuel-exhaustion at vapp
+calls.)
+
+The proof structure mirrors `eval_vapp_shiftLvl` in
+`SoundnessProof.lean` (mutual fuel-induction over eval/vapp,
+case-split on `e`/`f`'s shape). Each case mirrors the
+substLvl definition; the key novel content is the
+`.app`/`.stuckRec` redex cases where vapp may fire, and how
+the fuel parameters align between substLvl's vapp call and
+eval/vapp's own fuel.
+
+### Sorry trajectory
+
+Pre-pass-12:
+- `subtype_closed_aux`: 5 inline (`neutral_ascent`, `iota_intro`,
+  `unfold_fix_L`, `unfold_iota_L`, `revapp_L`)
+- `SubV_subst_neutral_to_value`: 1 declaration sorry
+- `SubV_subst_pair`: 1 declaration sorry
+- `typed_nbe_fundamental_open`: 1 declaration sorry
+- **Total**: 8
+
+Post-pass-12: SAME (8). +95 LOC of mutual definitions
+(`Val.substLvl` and friends), +3 axiom-clean documentation
+examples.
+
+Net: 0 sorries, +1 axiom-clean infrastructure (the substitution
+function definition).
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+unchanged.
+
+### What pass 13 should pick up
+
+**Priority 1: Eval-commutation lemma.** This is the load-bearing
+proof. ~200 LOC mirroring `eval_vapp_shiftLvl`. Each `eval`-case
+unfolds `Val.substLvl` at the corresponding shape; the vapp-redex
+cases need careful fuel accounting.
+
+**Suggested approach**:
+1. State the lemma as a mutual `eval ∧ vapp` theorem
+   (parallel to `eval_vapp_shiftLvl`).
+2. Induct on the outer fuel parameter.
+3. For each `eval`/`vapp` case, mirror the substLvl
+   computation.
+4. The `.app f arg` case where `f` evals to a `.lam`/`.iota`/
+   `.fix` triggers vapp — substLvl also fires vapp, so the
+   commutation reduces to `vapp_substLvl`.
+
+**Likely subtleties**:
+- The fuel parameter on substLvl may need to align with eval's
+  fuel (so `vapp` calls inside substLvl don't deplete a
+  separate fuel pool). Possibly fold them or use `fuelω`.
+- `Closure.mk'` does `take (bvarBound body - 1)`; substLvl
+  needs to commute with this take. The shift-precedent has
+  the same issue (`List.map_take`).
+- The `.bvar 0` case: when env is `(.neutral (.var k)) :: env`
+  vs `v_sub :: env`, looking up bvar 0 is exactly the
+  substitution case — direct application of substLvl.
+
+### Honest assessment
+
+Pass 12 is the first pass to LAND code (vs pure analysis like
+passes 9-11). The data layer is committed; the keystone is
+unblocked at component 1. The remaining components are well-
+specified (estimates from pass 9 stand) but each requires its
+own dedicated pass under the no-net-sorry rule.
+
+The path to OCH soundness via this architecture remains:
+- Pass 13: eval-commutation (~200 LOC)
+- Pass 14: SubV-preservation (~200 LOC)
+- Pass 15: glue + close keystone (~30 LOC)
+- Pass 16+: address remaining inline sorries
+  (`iota_intro`, `revapp_L`, `neutral_ascent`,
+  `unfold_fix_L`, `unfold_iota_L`)
+- Pass 17+: FL body proper (multi-week)
+
+This is a multi-pass, multi-week effort. Pass 12's contribution
+is foundational: the substitution function exists, its shape
+is correct, and its computation behavior is documented and
+verified through example proofs.
+
+---
+
 ## 2026-04-24 — Pass 11 (overnight #6): typed refinement of SubV_subst_neutral_to_value (agent-aba102f3)
 
 **Strengthened `SubV_subst_neutral_to_value`'s statement with an

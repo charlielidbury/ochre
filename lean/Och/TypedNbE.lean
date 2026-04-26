@@ -787,6 +787,25 @@ machinery above. See `docs/ideas/typed-nbe-implementation-log.md`
 pass-11 entry for the substantive reasoning behind keeping the
 lemma sorried with the corrected statement.
 
+**Pass 12 status.** The data layer is now in place:
+`Val.substLvl`/`Neutral.substLvl`/`Closure.substLvl` are defined
+above (Approach A.1: Outcome-valued, fuel-bounded). What remains:
+
+- **Eval-commutation** (pass 13, ~200 LOC): given
+  `eval n unf (.neutral (.var k) :: env) body = .ok bA`, derive
+  `eval fuel n unf (v_sub :: env) body = .ok bA' ∧
+   Val.substLvl fuel k v_sub bA = some bA'`. Mirrors
+  `eval_vapp_shiftLvl` in `SoundnessProof.lean`. Mutual
+  fuel-induction over eval/vapp.
+
+- **SubV-preservation** (pass 14, ~200 LOC): given
+  `SubV S (Γ.push τ_dom) bA bB ∧ Val.substLvl ... bA = some bA'
+   ∧ Val.substLvl ... bB = some bB'`, derive `SubV S Γ bA' bB'`.
+  Structural induction on SubV across 13 constructors.
+
+- **Glue** (pass 15, ~30 LOC): combine eval-commutation +
+  SubV-preservation + saturation-on-v to close the keystone.
+
 See `docs/ideas/typed-everything-architecture.md` (pass 6 design
 doc) §2 for why this lemma is intrinsically required (the typed-
 everything substrate does NOT magically dissolve it). -/
