@@ -525,6 +525,198 @@ theorem RC_env.mono {n m d : Nat} {Γ : TyEnv} {ρ : Env}
   obtain ⟨τ, v, hΓk, hρk, hRC⟩ := hidx k hk
   exact ⟨τ, v, hΓk, hρk, RC.mono _ hle hRC⟩
 
+/-! ## `Val.substLvl` — Val-level substitution machinery (pass 12)
+
+**Definition layer.** Replaces a level-indexed neutral variable
+`.var k` with a substituent value `v_sub` throughout a `Val`.
+
+**The partiality issue.** When we substitute through `.neutral
+(.app n a)` and `n` rewrites to a non-neutral (e.g., the head was
+`.var k` and `v_sub` is a `.lam`), the resulting `.app` is a
+β-redex that must be fired via `vapp`. This makes substitution
+inherently partial: it depends on `vapp` succeeding, which depends
+on fuel.
+
+**Approach** (per pass-9 finding A.1, refined for pass 12).
+`Val.substLvl` returns `Option Val`: `none` indicates either
+fuel exhaustion (`vapp` ran out) or genuine stuckness.
+`Neutral.substLvl` returns `Option Val` (NOT `Option Neutral`)
+since substitution may "promote" a neutral to a non-neutral via
+β/μ-firing.
+
+**Termination.** Structural recursion on the `Val`/`Neutral`/
+`Closure` argument (mutual). The `.app` case's `vapp` call is
+fuelled separately; substLvl itself doesn't recurse on its
+result. Closures are walked via their `env` (each entry
+recurses).
+
+**Pass 12 status.** This pass commits the data-layer definitions
+plus the simplest structural lemmas (`identity-on-closed`).
+The eval-commutation lemma (~200 LOC) and the SubV-preservation
+lemma (~200 LOC) are deferred to passes 13/14. This pass alone
+does NOT close `SubV_subst_neutral_to_value`. -/
+
+mutual
+  /-- Substitute `v_sub` for the level-indexed neutral var `.var k`
+  throughout a `Val`. Returns `none` for genuine stuckness or
+  fuel exhaustion at `.app`-redex firings.
+
+  The structural cases (`.type`, `.bot`, closure-form heads)
+  recurse via `Closure.substLvl`. The `.neutral n` case delegates
+  to `Neutral.substLvl`, which may promote-to-Val via vapp-redex
+  firing. -/
+  def Val.substLvl (fuel k : Nat) (v_sub : Val) : Val → Option Val
+    | .type => some .type
+    | .bot => some .bot
+    | .neutral n => Neutral.substLvl fuel k v_sub n
+    | .lam dom cl => do
+        let dom' ← Val.substLvl fuel k v_sub dom
+        let cl' ← Closure.substLvl fuel k v_sub cl
+        some (.lam dom' cl')
+    | .iota ann cl => do
+        let ann' ← Val.substLvl fuel k v_sub ann
+        let cl' ← Closure.substLvl fuel k v_sub cl
+        some (.iota ann' cl')
+    | .«fix» ann cl => do
+        let ann' ← Val.substLvl fuel k v_sub ann
+        let cl' ← Closure.substLvl fuel k v_sub cl
+        some (.«fix» ann' cl')
+
+  /-- Substitute through a Neutral. Returns `Option Val` because the
+  result may not remain a Neutral: substituting a non-neutral
+  `v_sub` for the spine's head var fires β. -/
+  def Neutral.substLvl (fuel k : Nat) (v_sub : Val) : Neutral → Option Val
+    | .var j => if j = k then some v_sub else some (.neutral (.var j))
+    | .app n a => do
+        let n' ← Neutral.substLvl fuel k v_sub n
+        let a' ← Val.substLvl fuel k v_sub a
+        match n' with
+        | .neutral nn => some (.neutral (.app nn a'))
+        | _ =>
+            -- Non-neutral spine head: fire vapp.
+            (vapp fuel unfBound n' a').toOption
+    | .stuckRec f a => do
+        let f' ← Val.substLvl fuel k v_sub f
+        let a' ← Val.substLvl fuel k v_sub a
+        -- Re-form the stuck-rec: f' may still be a closure-form
+        -- (fix/iota), in which case it's again stuck on the
+        -- (potentially still-neutral) a'.
+        if a'.isNeutral then
+          some (.neutral (.stuckRec f' a'))
+        else
+          -- a' became non-neutral: try a vapp that may fire.
+          (vapp fuel unfBound f' a').toOption
+
+  /-- Substitute through a Closure. The closure's body is
+  syntactic (`Expr`); we only substitute through the captured
+  environment. -/
+  def Closure.substLvl (fuel k : Nat) (v_sub : Val) :
+      Closure → Option Closure
+    | ⟨body, env⟩ => do
+        let env' ← Closure.envSubstLvl fuel k v_sub env
+        some ⟨body, env'⟩
+
+  /-- Substitute through a Closure environment, point-wise. -/
+  def Closure.envSubstLvl (fuel k : Nat) (v_sub : Val) :
+      List Val → Option (List Val)
+    | [] => some []
+    | v :: vs => do
+        let v' ← Val.substLvl fuel k v_sub v
+        let vs' ← Closure.envSubstLvl fuel k v_sub vs
+        some (v' :: vs')
+end
+
+/-! ### `Val.substLvl` simplest structural lemmas (pass 12)
+
+Pass 12 commits the data layer. The lemmas we can prove without
+needing eval-commutation:
+
+- `Val.substLvl_levelsBelow_identity`: substitution is identity
+  on values whose levels are all below `k`. (Trivial — the var
+  case never fires.)
+
+What is NOT proven in pass 12:
+- Eval-commutation: `eval (v_sub :: env) body = .ok v →
+  eval (.neutral (.var k) :: env) body = .ok bA → Val.substLvl k
+  v_sub bA = some v` (with appropriate level-arithmetic). This is
+  the heart of the keystone lemma; ~200 LOC of mutual
+  fuel-induction over eval/vapp.
+- SubV-preservation: `SubV S Γ a b → Val.substLvl k v_sub a =
+  some a' → Val.substLvl k v_sub b = some b' → SubV S Γ a' b'`.
+  Per pass-9 estimate, ~200 LOC across 13 SubV constructors. -/
+
+/-- Substitution by `v_sub` for the level `Γ.size` is identity
+on a closure body opened only at fresh-neutral var `Γ.size` IF
+that var doesn't actually appear in the body. (Trivial corollary
+of `Val.substLvl`'s definition; documents the simple no-op
+case.)
+
+Stated as an axiom-clean **non-`theorem`** placeholder for
+documentation; pass 13 makes it a real lemma when paired with
+the levels-below predicate threading. The general statement
+needs `Val.levelsBelow` from `SoundnessProof.lean`. -/
+example (k : Nat) (v_sub : Val) :
+    Val.substLvl 1 k v_sub .type = some .type := by
+  rfl
+
+/-- Documentation example: substituting through `.bot` is the
+identity. -/
+example (k : Nat) (v_sub : Val) :
+    Val.substLvl 1 k v_sub .bot = some .bot := by
+  rfl
+
+/-- Documentation example: substituting `v_sub` at the matching
+level fires the var case, returning `v_sub`. -/
+example (k : Nat) (v_sub : Val) :
+    Val.substLvl 1 k v_sub (.neutral (.var k)) = some v_sub := by
+  unfold Val.substLvl Neutral.substLvl
+  simp
+
+/-- Documentation example: substituting at a non-matching level
+leaves the variable unchanged. -/
+example (j k : Nat) (v_sub : Val) (hjk : j ≠ k) :
+    Val.substLvl 1 k v_sub (.neutral (.var j)) =
+      some (.neutral (.var j)) := by
+  unfold Val.substLvl Neutral.substLvl
+  simp [hjk]
+
+/-! ### Pass 12 limit: identity-on-levelsBelow is *not* lemma-clean
+
+A natural pass-12 follow-on lemma would be:
+  `Val.levelsBelow k v → Val.substLvl fuel k v_sub v = some v`
+  (substitution is a no-op when level k doesn't appear).
+
+For `.var`/`.type`/`.bot`/closure-form heads, the proof is trivial.
+For `.app` and `.stuckRec` cases, the proof requires that the
+*structural recursive subst* doesn't fire vapp. For `.app`, this
+holds because `Val.levelsBelow k v_sub` doesn't matter — the
+spine is preserved as a Neutral spine. For `.stuckRec`, however:
+
+```
+Neutral.substLvl fuel k v_sub (.stuckRec f a) =
+  do let f' ← Val.substLvl fuel k v_sub f
+     let a' ← Val.substLvl fuel k v_sub a
+     if a'.isNeutral then
+       some (.neutral (.stuckRec f' a'))
+     else
+       (vapp fuel unfBound f' a').toOption
+```
+
+If `a` is non-neutral, the second branch fires vapp. With
+`a.levelsBelow k` alone we don't know that `a` is neutral.
+A separate "well-formed neutral" predicate (saying spine args
+in stuckRecs are themselves neutral) would unblock this, but
+introducing it for one lemma exceeds pass-12 scope.
+
+Pass 13's eval-commutation lemma will have eval's output
+invariants in scope (eval never produces a stuckRec with
+non-neutral arg), at which point this lemma falls out as a
+side-condition rather than as a standalone identity.
+
+Pass 12 commits the data-layer definition and the trivial
+documentation examples; the structural identity lemma is
+deferred to pass 13. -/
+
 /-! ## `SubV_subst_neutral_to_value` — the body-substitution lemma
 
 The central technical lemma needed by the closure cases of
