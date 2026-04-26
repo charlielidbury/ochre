@@ -1,58 +1,104 @@
 # Typed NbE — the architectural foundation
 
-**Status:** **endorsed direction**, 2026-04-25. To be implemented.
-Original sketch 2026-04-23, expanded after 2026-04-24/25 perf + wishlist
-investigations made the broader case.
+**Status:** **partially shipped**, 2026-04-26. Substrate landed,
+integration delivered concrete-numeral perf wins, but the original
+ambition for closing soundness sorries and unlocking Wishlist #2/#3
+was over-stated. See "What actually shipped vs what was promised"
+below.
+
+Original sketch 2026-04-23, expanded 2026-04-25 to be the broad
+"architectural foundation" plan, then walked back 2026-04-26 after
+12 overnight passes (6-17) mapped the architecture's structural
+limits.
+
 **Scope:** rebuild Och's NbE so semantic values carry their types, and
-the subtype/conversion check is type-directed. Not just a sorry-closure
-plan — this is the architectural substrate the rest of Och's open
-problems all reduce to.
-**Related:** `docs/ideas/quote-witness-feasibility.md` (an impossibility
-that motivates the typed approach), `docs/ideas/bottom.md`,
+the subtype/conversion check is type-directed.
+
+**Related:** `docs/ideas/quote-witness-feasibility.md` (the impossibility
+that motivated the typed approach), `docs/ideas/bottom.md`,
 `docs/ideas/soundness-strengthen.md` (Phase 2; orthogonal),
 `docs/ideas/subcheck-perf.md` and `docs/ideas/a6-closure-env-filtering.md`
-(perf negative results that point here), `WISHLIST.md` items #2 and #3
-(stuck-elim subsumption, unblocked by this).
+(perf negative results), `docs/ideas/typed-nbe-overnight-summary.md`
+(2026-04-26 retrospective), `WISHLIST.md` items #2 and #3.
 
-## Why this is the right move
+## What actually shipped vs what was promised
 
-Three of Och's biggest open problems share a root cause: the algorithmic
-checker has too little information at the point it's running.
+The pre-implementation version of this doc claimed three motivations:
+soundness, perf, and Wishlist #2/#3. After 12 overnight passes of
+implementation work, the honest scorecard:
+
+| Motivation | Promised | Delivered |
+|---|---|---|
+| Close 4 SoundnessProof sorries | ✓ | ✗ — substrate axiom-clean but FL body and `subtype_closed_aux` inline cases not provable without further heavy machinery (UPred-style, ~500-1000 LOC). Sorry count moved 9 → 8 net. |
+| Concrete-numeral perf (e.g. `five_ ⊑ Nat_`) | ✓ | ✓ — fuel 800 vs 50k+ for `three_/four_/five_ ⊑ Nat_`. ~100 tests on typed pipeline. Real win. |
+| Wishlist #2 (parametric width-mono) | ✓ | ✗ — no test exists; `subCheckT` falls back to bare `subCheck` whenever bidirectional dispatch can't discharge a check. |
+| Wishlist #3 (stuck-eliminator subsumption) | ✓ | ✗ — same reason. Needs algorithmic redesign, not just typed values. |
+
+The pre-implementation reasoning was: "Typed NbE knows the *type* of a
+neutral, can reason parametrically through its type rather than its
+stuck reduction." The 2026-04-25 investigation showed this is true
+*in principle* but didn't translate to algorithmic wins because
+`subCheckT`'s typed front-end falls back to untyped `subCheck`
+whenever it can't discharge a check via type-directed reasoning. For
+parametric and stuck-eliminator cases, that fallback is exactly the
+expensive case typed NbE was supposed to avoid.
+
+What typed NbE *actually* delivered: a type-directed bidirectional
+front-end that handles concrete-numeral cases efficiently, plus
+~700 LOC of axiom-clean proof substrate (RC predicate, RC.mono,
+SubTV, RC_env, Val.substLvl data layer, WellFormed predicates).
+
+**The substrate is reusable.** Future Wishlist #2/#3 work can build
+on it. But typed NbE alone doesn't deliver them.
+
+## Original motivation (the case that was made)
+
+Three of Och's biggest open problems were claimed to share a root cause:
+the algorithmic checker has too little information at the point it's running.
 
 1. **Soundness.** The four declaration-level sorries in
-   `SoundnessProof.lean` need a typed reducibility predicate to close.
+   `SoundnessProof.lean` would close via a typed reducibility predicate.
    `eval_vapp_preserves_fullyQuotable` is provably impossible at its
    current strength (Halting reduction, see `quote-witness-feasibility.md`)
    — it needs RC, which needs typed NbE.
+
+   *Reality (2026-04-26):* the typed substrate is built and axiom-clean,
+   but the FL body proof requires Val-level substitution machinery
+   (~510 LOC across 4 components, only Component 1 landed) and
+   `subtype_closed_aux` has structural walls at `neutral_ascent`/
+   `revapp_L` that the architecture as designed cannot close.
 
 2. **Performance.** `three_ ⊑ Nat_` costs ~50k fuel today. Two
    independent investigations (memoization 2026-04-24, env-filtering
    2026-04-25) confirmed there is no redundant work to cache or filter
    away — the cost is **genuine algorithmic work** done by an untyped
    checker that has to re-derive the singleton-Nat structure on every
-   call. Typed NbE turns this into pay-once construction-time work:
-   the obligation `n_ ⊑ Nat_` is discharged when the constant is built,
-   and recorded on the value itself. Subsequent checks become O(1)
-   lookups. The singleton encoding's intrinsic O(n) cost stops being
-   a runtime cost.
+   call.
+
+   *Reality (2026-04-26):* the typed front-end's bidirectional dispatch
+   does win on concrete-numeral cases. `five_ ⊑ Nat_` at fuel 800 is
+   real. But the win comes from `tyCheck` better-using existing
+   information, not from "obligations recorded on the value itself"
+   as the pre-implementation pitch claimed. There is no per-value
+   subsumption-witness cache.
 
 3. **Wishlist #2 / #3.** Parametric width-monotonicity
    (`λn:Nat_. Fin n ⊑ λn:Nat_. Fin (succ_ n)`) and stuck-eliminator
-   subsumption need the checker to know the *type* of a neutral, not
-   just its untyped form. Today `Fin n` for neutral `n:Nat_` is opaque
-   to the algorithm. With typed NbE the checker knows `n` inhabits
-   `Nat_`'s shape and can reason about `Fin n` parametrically through
-   its type rather than its stuck reduction.
+   subsumption were claimed to follow from "checker knows the type
+   of a neutral".
 
-These are not three separate problems — they are three symptoms of the
-same architectural gap. Typed NbE is the foundation every credible
-solution to all three starts from.
+   *Reality (2026-04-26):* this didn't materialize. When the typed
+   front-end can't dispatch (e.g. because the neutral's type doesn't
+   structurally match the goal), it falls back to untyped `subCheck`
+   on the same values — same cost, same algorithm, same wall. These
+   wishlist items need an algorithmic change (a stuck-elim subsumption
+   rule), not just a typed substrate.
 
-It also aligns Och with mainstream dependent type theory implementations.
-Coq, Lean, and Agda all run conversion against a typed semantic
-representation; none rely on untyped term equality alone. We can borrow
-proof technique (Abel's habilitation, Iris-style step-indexing, Coq's
-conversion machinery) instead of inventing from scratch.
+It was also claimed to align Och with mainstream dependent type theory
+implementations. That alignment is structurally true (Coq, Lean, Agda
+all run conversion against a typed semantic representation), but the
+*payoff* is smaller than the analogy suggested — those systems also
+have decades of additional infrastructure layered on top.
 
 ## What it does NOT do
 
@@ -61,11 +107,13 @@ automatically give:
 
 - **Wishlist #1 (`Fin n ⊑ Nat_`)** — that's an Option F encoding
   trade-off; needs separate encoding work.
+- **Wishlist #2/#3** — see above; needs algorithmic work on top of
+  the substrate.
 - **Wishlist #4 (inhabitation-as-subsumption)** — undecidable in full;
   requires layers on top of typed NbE.
 
-But every credible path to those *starts from* typed NbE. Treat it as
-the foundation that unlocks the rest.
+The substrate makes future work on these *possible*. It doesn't make
+them *automatic*.
 
 ## Original motivation (preserved for context)
 
