@@ -4,6 +4,257 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-25 — Pass 15 (overnight #10): `neutral_ascent` SynthN-realises bridge is structurally unsound (agent-a20ccfc8)
+
+**Pass 15's stated objective was to close `neutral_ascent` axiom-clean
+via a SynthN-realises bridge as outlined by passes 8 and 10.
+Pass 15's investigation reveals that the bridge as imagined CANNOT
+EXIST given the current RC formulation: the lemma
+`subtype_closed_aux` at `neutral_ascent` is NOT TRUE as stated for
+arbitrary `v`. The hypothesis `RC (k+1) d (.neutral nA) v` reduces
+to plain saturation on `v` (fullyQuotable + quote-witness), which is
+strictly weaker than e.g. `RC (k+1) d (.lam dom cl) v` — so the
+goal cannot follow when the RHS `b` is a closure-form type. This is
+a structural finding about the RC predicate, not a proof-engineering
+gap. Pass 15 commits this finding to the log and writes a 90-LOC
+inline proof-context note explaining the obstruction. Sorry count
+unchanged at 8. Net delta: 0 sorries + ~90 LOC of wall documentation.**
+
+This is "case 3" of pass 15's stop-conditions: critical finding —
+the bridge has more depth than pass 10 estimated, in fact infinite
+depth, since the bridge AS DESCRIBED is unprovable.
+
+Net delta: 0 sorries. ~90 LOC of inline analysis in TypedNbE.lean.
+
+### The structural obstruction
+
+`SubV.neutral_ascent`'s hypotheses give us:
+- `SynthN Γ nA τ` — the neutral synthesises type `τ` in context `Γ`.
+- `SubV S Γ τ b` — that synthesised type is a subtype of `b`.
+
+The case body needs to prove: `RC (k+1) d (.neutral nA) v → RC (k+1) d b v`.
+
+By RC's definition at `.neutral`:
+```
+RC (n+1) d (.neutral _) v = Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q
+```
+This is JUST saturation. It says nothing about `v`'s relationship
+to `nA` (no `v = eval ρ nA`, no semantic link, no even
+"v has the shape compatible with nA's type").
+
+To apply the IH on `SubV S Γ τ b`, we need `RC (k+1) d τ v`. For
+closure-form `τ` (`.lam`/`.iota`/`.fix`), this requires body
+witnesses on `v` (e.g., for `.lam`, ∀ RC-typed `a`, `vapp v a` produces
+an RC result). Saturation alone CANNOT supply these witnesses.
+
+#### Concrete counterexample
+
+Take `Γ = [.lam dom cl]`, `nA = .var 0` (so `SynthN Γ nA (.lam dom cl)`
+holds), `b = .lam dom cl`, `S = []`. Then `SubV.neutral_ascent`
+with `SubV.refl` gives a proof of `SubV [] Γ (.neutral nA)
+(.lam dom cl)`.
+
+Now take `v = .type`. `.type` is fullyQuotable, has a quote witness
+(at any depth `d`), so `RC (k+1) d (.neutral nA) v` HOLDS.
+
+But `RC (k+1) d (.lam dom cl) (.type)` requires `vapp .type a`
+to produce an RC result for every RC-typed `a` — and `vapp`
+applied to `.type` returns `.err` (`.type` is not a function).
+So `RC (k+1) d (.lam dom cl) (.type)` is FALSE.
+
+Therefore the implication
+  `RC (k+1) d (.neutral nA) v → RC (k+1) d b v`
+is FALSE for this choice of `v`, and hence `subtype_closed_aux`
+is not provable AS STATED for the `neutral_ascent` case.
+
+### Why the bridge described in passes 8/10 doesn't exist
+
+Pass 10's planning sketch:
+
+> A `SynthN-realises` lemma. Given `SynthN Γ nA τ` and
+> `RC_env n d Γ ρ` (the realised typing context), a value `v` with
+> `R n d v (.bvar Γ.size)` (i.e., `v` realises the neutral `nA`'s
+> syntactic form) should imply `RC n d τ v`.
+
+The bridge requires the "v realises nA" precondition — i.e., that
+`v` is the eval of some term whose syntactic form matches `nA`.
+But `subtype_closed_aux`'s hypothesis is just `RC (k+1) d (.neutral
+nA) v`, which doesn't carry this realisation premise.
+
+The bridge described would close a DIFFERENT lemma than
+`subtype_closed_aux`. To use it inside `subtype_closed_aux`'s
+`neutral_ascent` arm, we'd need to first prove "if RC at .neutral nA
+holds for v, then v realises nA". This is FALSE in general (per the
+counterexample above).
+
+### Strategic options
+
+This is a structural problem with `subtype_closed_aux`'s signature
+combined with RC's definition at `.neutral`. Three paths forward
+(plus pragmatic Option D):
+
+#### Option A0: prove "saturation → RC at non-bot τ"
+
+A simpler-looking bridge: lemma `sat_implies_RC` saying
+"for any saturated `v` and non-`.bot` τ, `RC n d τ v` holds".
+
+If true, `neutral_ascent` closes immediately by saturation transfer.
+
+**Status**: this lemma is the typed analogue of Girard's "neutral
+terms are reducible" property. Whether it holds in the current RC
+formulation depends on closure-form cases (`.lam`/`.iota`/`.fix`):
+RC at those types requires `vapp v a` to terminate and produce
+RC results. For arbitrary saturated `v`:
+- If `v = .lam dom' cl'`: `vapp v a` calls `eval (a::env) body`,
+  whose termination depends on `body`'s structure — saturation
+  gives `body.closedAt (env.length + 1) = true` and `envFullyQuotable
+  env`, but NOT termination. This MIGHT be derivable from the
+  saturation invariants (closed-AT bounds + quote terminates), but
+  proving it amounts to the "well-typed implies terminates" theorem
+  of NbE itself.
+- If `v` is `.type` or `.neutral _`: `vapp` returns a stuckRec
+  immediately. The stuckRec needs to satisfy RC at `cl.openω a`,
+  which by recursion generates a chain of stuckRec values, each
+  larger but still saturated. May terminate the recursion via
+  step-loss.
+
+**Disposition**: not obviously true, not obviously false. Worth
+attempting in a dedicated pass with a ~150-300 LOC budget. If it
+lands, it closes `neutral_ascent` AND likely simplifies `revapp_L`
+and possibly `iota_intro`.
+
+**Risk**: may turn out to be false (specifically for the `.lam`
+case if eval-termination isn't derivable from saturation). In that
+case, Option A is unavoidable.
+
+#### Option A: redesign RC at `.neutral` to encode realisation
+
+Strengthen RC at `.neutral` to carry semantic content:
+```
+RC (n+1) d (.neutral nA) v ≡
+    Val.fullyQuotable d v ∧ (∃ q, quote fuelω d v = .ok q) ∧
+    -- The "realisation" content
+    ∃ τ ρ Γ, SynthN Γ nA τ ∧ RC_env n d Γ ρ ∧
+              (eval-of-nA-under-ρ = v) ∧ RC n d τ v
+```
+This would make `neutral_ascent`'s case immediate: the realisation
+content directly gives `RC n d τ v`, and the IH on `SubV S Γ τ b`
+finishes.
+
+**Trade-offs**:
+- All RC-introductions for neutral values (`RC.neutral_top`,
+  saturation-only paths) would need to provide the realisation
+  content. This is a significant ripple through the rest of the
+  proof. Estimated 200-400 LOC of refactoring.
+- Mono and elim lemmas at `.neutral` would need to thread the
+  realisation content. Modest expansion.
+- The FL body, which builds RC at `.neutral` from `eval`-results
+  via the open-context branch, would need to package the
+  realisation explicitly — but it has the data in scope, so
+  it should be tractable.
+
+#### Option B: strengthen `subtype_closed_aux`'s signature
+
+Change `subtype_closed_aux`'s hypothesis from `RC n d τ v` to
+"RC n d τ v ∧ v realises some closed term against τ". The
+realisation premise carries through the recursion. The single
+caller `subtype_closed` would need to provide this premise —
+which is OK if the value comes from eval at the call site.
+
+**Trade-offs**:
+- Caller-side: at every conversion site in tyCheck-style proofs,
+  the realisation hypothesis must be threaded. Pass 8+ added
+  `RC_env n d Γ ρ`; this would add yet another parameter (or
+  fold realisation into RC).
+- The "v realises a closed term" notion requires a definition.
+  `R n d v e` (the open-context relation in SoundnessProof.lean)
+  is a candidate, but it's a separate machinery.
+
+#### Option C: weaken the SubV signature to exclude `neutral_ascent`
+
+If `SubV.neutral_ascent` is the only constructor that violates
+`subtype_closed_aux`, we could remove it and re-prove the
+algorithm-to-SubV reflection without it. But `neutral_ascent` is
+needed by the algorithm (when `subCheckVal` reaches a neutral on
+the LHS, it synthesises and recurses on the synthesised type) —
+so this would require re-architecting `subCheckVal` itself, or
+adding a separate "via synthesis" path.
+
+#### Option D: live with the sorry, prioritise other progress
+
+The remaining four `subtype_closed_aux` sorries (`iota_intro`,
+`unfold_fix_L/iota_L`, `revapp_L`) have their own walls (some
+distinct from this one). Pass 15's finding is that `neutral_ascent`
+is harder than the other four (those have potential closure paths;
+this one needs RC redesign). Better to attack them first.
+
+### What pass 15 actually committed
+
+1. ~90 LOC of detailed wall analysis, written as a doc comment
+   right before `subtype_closed_aux`'s `neutral_ascent` sorry.
+   Includes the counterexample above and a pointer to this log.
+2. This log entry.
+3. Updated AxiomCheck.lean comments to reflect the structural
+   obstruction (no functional change to the file).
+
+No code changes in the actual proof (sorry remains as it was).
+This is a deliberate "honest finding" pass: the analysis is the
+deliverable.
+
+### Pass 15's recommendation
+
+Pass 16+ should NOT attempt `neutral_ascent` again under the
+current RC formulation. The most productive paths are:
+
+1. **`iota_intro` (closure_apply_coherence bridge)** — pass 15's
+   secondary target, deferred since pass 15 stopped after
+   the structural finding. No equivalent counterexample is
+   apparent for `iota_intro`; the bridge is genuinely about
+   closure parametricity, and may be tractable. ~100-200 LOC.
+
+2. **`revapp_L` partial closure on `c`'s shape** — case-split
+   handles the `c = .type/.neutral/.bot` sub-cases (saturation
+   suffices). Requires SPLITTING the single `revapp_L` sorry
+   into multiple narrower sorries (net regression in count).
+   Probably not worth it.
+
+3. **Pivot to Option A or B** above for `neutral_ascent` — large
+   refactoring pass (~200-400 LOC), high payoff (closes
+   neutral_ascent + likely simplifies revapp_L for free since
+   they share the saturation-only RC issue).
+
+### Sorry trajectory
+
+Pre-pass-15: 8 sorries (5 inline in `subtype_closed_aux`, 3
+declaration-level).
+
+Post-pass-15: SAME (8). +90 LOC of wall analysis.
+
+Net: 0 sorries.
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. No new lemmas, no
+changes to declaration set. Only the inline doc comment was
+expanded.
+
+### Honest assessment
+
+Pass 15's contribution is purely a structural finding — the kind
+that prevents future passes from chasing a chimera. The pass-10
+plan ("SynthN-realises bridge, ~100-200 LOC") implicitly assumed
+the bridge had a tractable proof; pass 15 shows the bridge as
+described is structurally unprovable.
+
+This is not a defeat — it's a redirection. The "small" sorry that
+looked like a 100-LOC bridge is in fact a 200-400 LOC RC redesign.
+Future planning should reflect this.
+
+The user's pass-15 prompt anticipated this outcome (stop
+condition 3). Pass 15 fulfills that disposition.
+
+---
+
 ## 2026-04-25 — Pass 14 (overnight #9): wall reached on RC-threaded eval-commutation (agent-a682142c)
 
 **Pass 14's stated objective was the RC-threaded eval-commutation

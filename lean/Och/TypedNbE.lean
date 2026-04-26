@@ -404,7 +404,17 @@ Hard cases remain sorried inline:
   unfold consumes a step but the goal demands the original step;
   documented in pass 5 post-mortem as a structural RC issue).
 - `revapp_L` — vapp-respects-RC missing.
-- `neutral_ascent` — SynthN-realises bridge missing.
+- `neutral_ascent` — **structurally unprovable under current RC**.
+  Pass 15 (2026-04-25) finding: the lemma's conclusion is FALSE
+  for arbitrary `v` in this case (counterexample: `v = .type` at
+  any closure-form `b`). RC at `.neutral` carries only saturation,
+  which does not imply RC at closure-form types. Closing this
+  case requires either redesigning RC at `.neutral` to encode
+  realisation content (~200-400 LOC) or strengthening
+  `subtype_closed_aux`'s signature with a "v realises a closed
+  term" premise. See pass 15 entry in
+  `docs/ideas/typed-nbe-implementation-log.md` and the inline
+  comment on the sorry below.
 
 Inline sorry count in `subtype_closed_aux`: 5 (was 6 pre-pass-8).
 Plus 2 sorried lemmas (`SubV_subst_neutral_to_value`,
@@ -1392,8 +1402,67 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           unfold RC
           exact RC.sat_of_succ h
       | SubV.neutral_ascent _ _ =>
-          -- Apply IH at step k to the SubV at the synthesized type.
-          -- Need a `SynthN-realises` bridge first. Deferred.
+          -- ----------------------------------------------------------
+          -- WALL: `neutral_ascent` cannot be closed under the current
+          -- RC formulation. Pass-15 finding (2026-04-25, agent-a20ccfc8).
+          -- ----------------------------------------------------------
+          --
+          -- `SubV.neutral_ascent` premises:
+          --   * `SynthN Γ nA τ` — `nA` synthesises type `τ`.
+          --   * `SubV S Γ τ b` — `τ ⊑ b`.
+          --
+          -- We have `h : RC (k+1) d (.neutral nA) v`. By RC's
+          -- definition at `.neutral`:
+          --   `RC (n+1) d (.neutral _) v
+          --      = Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q`
+          -- i.e. saturation only — no semantic link between `v` and
+          -- `nA`.
+          --
+          -- To apply `ih` on `SubV S Γ τ b`, we need `RC (k+1) d τ v`.
+          -- For `τ` of closure form (`.lam`/`.iota`/`.fix`), this
+          -- requires body witnesses that saturation alone cannot
+          -- supply.
+          --
+          -- Concrete counterexample:
+          --   Γ = [.lam dom cl], nA = .var 0,
+          --   so `SynthN Γ nA (.lam dom cl)` holds.
+          --   b = .lam dom cl (so `SubV.refl` discharges the inner
+          --   SubV premise).
+          --   v = .type — fullyQuotable, has quote witness, so
+          --     `RC (k+1) d (.neutral nA) .type` holds.
+          --   But `vapp _ .type _ = .err` (.type isn't a function),
+          --     so `RC (k+1) d (.lam dom cl) .type` is FALSE.
+          --
+          -- Therefore `subtype_closed_aux`'s conclusion is FALSE for
+          -- this `v` in the `neutral_ascent` case — the lemma is not
+          -- provable AS STATED.
+          --
+          -- The `SynthN-realises` bridge described in passes 8/10
+          -- doesn't dissolve this: that bridge needs "`v` realises
+          -- `nA`" as a precondition (i.e., `v = eval ρ nA`), which
+          -- `subtype_closed_aux`'s hypothesis doesn't carry. RC at
+          -- `.neutral` would have to be REDESIGNED to encode the
+          -- realisation content (~200-400 LOC of refactoring); see
+          -- the Pass 15 entry in
+          -- `docs/ideas/typed-nbe-implementation-log.md` for
+          -- options.
+          --
+          -- Strategic options (pass 16+):
+          --   A0. Prove "saturation ∧ τ ≠ .bot → RC n d τ v" as a
+          --       standalone lemma (Girard's "neutral terms are
+          --       reducible"). If true, closes neutral_ascent by
+          --       saturation transfer. Tractability uncertain —
+          --       hinges on whether eval-termination is derivable
+          --       from saturation invariants. ~150-300 LOC budget.
+          --   A.  Redesign RC at `.neutral` to encode realisation
+          --       (eval-of-nA = v, plus RC at synthesised type).
+          --       ~200-400 LOC refactoring.
+          --   B.  Strengthen `subtype_closed_aux`'s signature with
+          --       a "v realises some closed term" hypothesis.
+          --   C.  Restructure `SubV.neutral_ascent` away from the
+          --       algorithm; large rewiring.
+          --   D.  Live with the sorry; prioritise the four other
+          --       sorried cases.
           sorry
       | @SubV.lam S' Γ' domA domB clA clB bA bB hbA hbB hdom hbody =>
           -- Goal: RC (k+1) d (.lam domB clB) v.
