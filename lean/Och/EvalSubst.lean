@@ -231,10 +231,17 @@ mutual
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
-      if a == b then .ok true
-      else if seen.any (fun (a', b') => a == a' && b == b') then .ok true
-      else if b == .type then .ok true
-      else subCheckSubstMatch fuel tyCtx seen a b
+      -- Force WHNF on both sides. Without this, types stored in tyCtx
+      -- and inner doms can be un-evaluated Exprs whose structural
+      -- equality doesn't match their fully-reduced form.
+      match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
+      | .ok a', .ok b' =>
+          if a' == b' then .ok true
+          else if seen.any (fun (av, bv) => a' == av && b' == bv) then .ok true
+          else if b' == .type then .ok true
+          else subCheckSubstMatch fuel tyCtx seen a' b'
+      | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
+      | .error s, _ | _, .error s => .error s
 
   partial def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
