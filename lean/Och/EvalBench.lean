@@ -93,8 +93,19 @@ def evalCases : List EvalCase :=
   , ⟨"Fin one_",   2000, och{ Fin one_ } ⟩
   , ⟨"Fin three_", 8000, och{ Fin three_ } ⟩ ]
 
+/-- Run subst eval, then hash-cons the result to deduplicate
+    structurally-equal subtrees. Returns canonical Expr. -/
+unsafe def evalSubstHashConsedImpl (fuel unf : Nat) (e : Expr) : Outcome Expr :=
+  match SubstEval.evalSubst fuel unf e with
+  | .ok v => .ok (ShareCommon.shareCommon' v)
+  | other => other
+
+@[implemented_by evalSubstHashConsedImpl]
+def evalSubstHashConsed (fuel unf : Nat) (e : Expr) : Outcome Expr :=
+  SubstEval.evalSubst fuel unf e
+
 def runEvalCase (c : EvalCase) (fuelRef : IO.Ref Nat)
-    : IO (String × Nat × Nat × Nat × Nat × Nat) := do
+    : IO (String × Nat × Nat × Nat × Nat × Nat × Nat) := do
   -- NbE.eval (closure-domain WHNF; no body normalization)
   let (env_eval_ms, _) ← time (fun n => NbE.eval (c.fuel + n) NbE.unfBound [] c.e) fuelRef
   -- NbE.nf: full normal form (eval + quote under binders)
@@ -109,22 +120,26 @@ def runEvalCase (c : EvalCase) (fuelRef : IO.Ref Nat)
     match substR with
     | .ok e => Expr.size e
     | _ => 0
-  return (c.label, env_eval_ms, env_nf_ms, env_size, subst_ms, subst_size)
+  -- Subst eval + hash-consing (ShareCommon.shareCommon')
+  let (hc_ms, _) ← time (fun n => evalSubstHashConsed (c.fuel + n) SubstEval.unfBound c.e) fuelRef
+  return (c.label, env_eval_ms, env_nf_ms, env_size, subst_ms, subst_size, hc_ms)
 
 def runEvalSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println "=== Section 1: Pure eval (no subtype check) ==="
-  IO.println "                       env(WHNF)   env(NF)   nf_size  subst(HNF) subst_size"
-  IO.println "Source              | ms        ms        nodes     ms          nodes"
+  IO.println "                       env(WHNF)   env(NF)   nf_size   subst   subst_size   subst+HC"
+  IO.println "Source              |     ms          ms        nodes      ms      nodes        ms"
   let mut tot_env_e := 0
   let mut tot_env_nf := 0
   let mut tot_subst := 0
+  let mut tot_hc := 0
   for c in evalCases do
-    let (lbl, e_ms, nf_ms, e_sz, s_ms, sz) ← runEvalCase c fuelRef
-    IO.println s!"{lbl |> rjust 18}  |   {toString e_ms |> rjust 5}     {toString nf_ms |> rjust 5}   {toString e_sz |> rjust 7}    {toString s_ms |> rjust 5}     {toString sz |> rjust 7}"
+    let (lbl, e_ms, nf_ms, e_sz, s_ms, sz, h_ms) ← runEvalCase c fuelRef
+    IO.println s!"{lbl |> rjust 18}  |   {toString e_ms |> rjust 5}      {toString nf_ms |> rjust 5}    {toString e_sz |> rjust 8}    {toString s_ms |> rjust 5}    {toString sz |> rjust 7}    {toString h_ms |> rjust 5}"
     tot_env_e := tot_env_e + e_ms
     tot_env_nf := tot_env_nf + nf_ms
     tot_subst := tot_subst + s_ms
-  IO.println s!"-- TOTAL env(WHNF)={tot_env_e}ms env(NF)={tot_env_nf}ms subst={tot_subst}ms"
+    tot_hc := tot_hc + h_ms
+  IO.println s!"-- TOTAL env(WHNF)={tot_env_e}ms env(NF)={tot_env_nf}ms subst={tot_subst}ms subst+HC={tot_hc}ms"
 
 /-! ## Section 2: Subtype check parity (NbE.subCheck vs SubstEval.subCheck) -/
 
