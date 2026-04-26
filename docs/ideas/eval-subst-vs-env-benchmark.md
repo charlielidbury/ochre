@@ -398,3 +398,17 @@ The headline finding for the user:
 > heaviest workload (`three_ ⊑ Nat_`: 14.5 s → 13 ms). Hash-consing
 > and substitution memoization were not needed to deliver the
 > speedup — naive substitution suffices.
+
+## §12. Production migration (2026-04-26)
+
+Captured the speedup in the production pipeline. Refactored
+`lean/Och/EvalSubst.lean` from benchmark-only into Och's primary
+substitution-based eval module + added `SubstEval.subCheckT` (typed
+wrapper analogous to `NbE.subCheckT`). Uncommented several
+`Std/*.lean` tests that were dropped due to env-based timeouts;
+they now pass under either engine via `subCheckT`'s typeCheck
+fast-path or directly via SubstEval's substitution-based fallback.
+
+Full migration details, file-by-file diffs, and per-test before/after
+timings in `docs/ideas/subst-eval-migration.md`. Branch:
+`subst-eval-primary`.
