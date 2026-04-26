@@ -4,6 +4,359 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 9 (overnight #4): keystone post-mortem (agent-afa368ac)
+
+**No code changes this pass.** Pass 9's prompt asked for direct
+attack on `SubV_subst_neutral_to_value` (the keystone lemma
+that passes 5-8 "duck-and-covered" around). After ~3 hours of
+structural investigation across multiple proof strategies,
+pass 9 produces three critical findings:
+
+1. The lemma is **structurally harder** than passes 5-8
+   estimated — closer to ~510 LOC across 4 inter-dependent
+   components.
+2. The lemma's **statement contains a latent bug** — the
+   conclusion's eval-termination claim fails for arbitrary `v`.
+3. The **most promising path forward is a signature refactor**
+   of `subtype_closed_aux` (which the pass-9 prompt
+   specifically forbade, but pass 10+ should reconsider given
+   these findings).
+
+This is option 3 from the pass-9 prompt's "When to stop" list:
+*"Lemma genuinely intractable at Val-level too. Write a careful
+post-mortem describing exactly which sub-induction breaks, what
+additional infrastructure would unblock it, and whether the
+typed-everything architecture itself is the right path."*
+
+Net delta: 0 sorries.
+
+### Approaches investigated
+
+#### Approach A.0: structural Val-level substitution function
+
+```lean
+def Val.substLvl (k : Nat) (vs : Val) : Val → Val
+  | .type => .type
+  | .neutral (.var k') => if k' = k then vs else .neutral (.var k')
+  | .neutral (.app n a) => .neutral (.app (?subst n) (Val.substLvl k vs a))
+  | ...
+```
+
+**Fatal obstacle**: substituting a non-neutral `vs` into the
+spine head of `.neutral (.app (.var k) a)` produces a malformed
+Val. `Neutral.app`'s first argument MUST be a Neutral, so
+`.app vs ...` doesn't typecheck. There is no purely-structural
+type-correct substitution function on Val.
+
+#### Approach A.1: Outcome-valued substitution with vapp
+
+```lean
+def Val.substLvl (k : Nat) (vs : Val) : Val → Outcome Val
+  | .neutral (.app n a) => do
+      let nv ← Neutral.substLvl k vs n
+      let av ← Val.substLvl k vs a
+      vapp fuelω unfBound nv av  -- handles redex-firing
+```
+
+**Fatal obstacle**: makes substitution partial. Every
+downstream proof must thread the `.outOfFuel` / `.error` cases.
+The eval-substitution commutation lemma becomes a multi-case
+mutual induction with the partiality, ballooning to ~250 LOC
+just for component (b) below.
+
+#### Approach A.2: relational substitution
+
+```lean
+inductive Val.SubstLvl (k : Nat) (vs : Val) : Val → Val → Prop where
+  | type : Val.SubstLvl k vs .type .type
+  | varHit : Val.SubstLvl k vs (.neutral (.var k)) vs
+  | varMiss : k' ≠ k → Val.SubstLvl k vs (.neutral (.var k')) (.neutral (.var k'))
+  | app_neut : Val.SubstLvl k vs (.neutral n) (.neutral n') → ... →
+               Val.SubstLvl k vs (.neutral (.app n a)) (.neutral (.app n' a'))
+  | app_redex : Val.SubstLvl k vs (.neutral n) (.lam dom cl) → ... →
+                vapp fuelω unfBound (.lam dom cl) a' = .ok r →
+                Val.SubstLvl k vs (.neutral (.app n a)) r
+  | ...
+```
+
+**Obstacle**: avoids the partiality issue but requires deep
+case analysis on the relation. SubV-preservation under this
+relation needs to handle each clause; eval-commutation needs
+to handle each clause. Still ~400-500 LOC total.
+
+#### Approach B: typed refinement (RC-typed v)
+
+Add `RC n d τ_dom v` as a hypothesis. Hope: RC structure on `v`
+lets us close cases by RC-elim instead of substitution.
+
+**Investigation**: RC-typing on `v` does NOT replace the
+substitution content. Specifically, the SubV proof of
+`SubV S (Γ.push τ_dom) bA bB` may include constructors like
+`SubV.lam` where `bA = .lam domA' clA'` and `bB = .lam domB'
+clB'`. To transport this to `bA' = clA.openω v` (a different
+shape entirely — `bA'` need not be a `.lam`), we still need
+substitution at the closure-body level. RC on `v` gives
+saturation + body content for `v` ALONE; it doesn't tell us
+how `clA.body`'s eval result transforms.
+
+**Net savings of Approach B over A**: marginal. Only the
+`SubV.iota_intro`-like cases clearly benefit, and those have
+their own distinct obstacles.
+
+#### Approach C: direct induction on SubV (no substitution)
+
+Try to induct on `hbody : SubV S (Γ.push τ_dom) bA bB` and at
+each constructor, derive `bA' bB'` from the constructor's
+shape constraints.
+
+**Fatal obstacle**: each constructor only constrains `bA, bB`
+— it gives **no information** about `bA' = clA.openω v` or
+`bB' = clB.openω v`. The `bA' bB'` are determined by `clA`,
+`clB`'s INTERNAL structure (their `body : Expr` and `env :
+List Val`), which the SubV proof doesn't expose.
+
+For example, `SubV.refl` says `bA = bB`. The closures `clA,
+clB` need not be equal — only their fresh-opens match. So
+`clA.openω v` and `clB.openω v` are independent eval results;
+the lemma's conclusion `SubV S Γ bA' bB'` is generally NOT
+derivable from refl alone.
+
+This confirms substitution machinery is **structurally
+required**. Direct SubV induction without substitution is a
+non-starter.
+
+### Critical finding 1: pre-pass-9 estimate was off by ~2x
+
+Previous passes (5-8) framed the substitution lemma as
+"~200-400 LOC of structural induction" comparable in scope to
+`Subtype'.unshift_head`. **This estimate is too optimistic.**
+
+The Subtype'-level analog operates on `Expr`, which is purely
+syntactic. Substitution on Expr is straightforward structural
+recursion with no reduction.
+
+The SubV-level lemma operates on `Val`, which embeds
+operational semantics (closures with environments, neutral
+spines). Substitution must respect vapp-reductions when
+substituting non-neutral values into spine heads.
+
+Realistic estimate (with explicit components):
+
+| Component | Estimate | Notes |
+|---|---|---|
+| `Val.substLvl` def + termination | ~80 LOC | Outcome-valued; vapp call in `.app` case |
+| `eval_substLvl_commutes` | ~200 LOC | Mutual on eval/vapp; mirrors `eval_levelsBelow` |
+| `SubV_substLvl_preserves` | ~200 LOC | 13 SubV constructors |
+| Glue + statement-shape fix | ~30 LOC | Wires components |
+| **Total** | **~510 LOC** | Across 4 inter-dependent passes |
+
+Each component is a substantial pass-sized proof in its own
+right. None can be partially sorried without violating the
+pass-9 no-regression rule.
+
+### Critical finding 2: the lemma's statement has a latent bug
+
+The current statement claims `clA.openω v = some bA'` for
+ARBITRARY `v`. This is **provably false** for some inputs.
+
+**Concrete Ω-style counterexample**:
+
+Let `clA = ⟨body := .app (.bvar 0) (.bvar 0), env := []⟩`
+(self-application body).
+
+- `clA.openω fresh` runs `eval fuelω 4 [fresh] (.app (.bvar 0)
+  (.bvar 0))` → `vapp fuelω 4 fresh fresh`. Since `fresh =
+  .neutral (.var Γ.size)` is neutral, vapp returns `.ok
+  (.neutral (.app (.var Γ.size) (.neutral (.var Γ.size))))`.
+  Succeeds. So `bA = .neutral (.app (.var Γ.size) ...)`.
+- For `v = .lam dom ⟨.app (.bvar 0) (.bvar 0), []⟩`
+  (self-application function — the omega combinator),
+  `clA.openω v` runs `vapp fuelω 4 v v` → opens v's body at
+  `v :: []` → `vapp fuelω 4 v v` → ... → exhausts fuel.
+  Returns `.outOfFuel`. So `clA.openω v = none`.
+
+The lemma's conclusion `clA.openω v = some bA'` does NOT
+hold; the existential cannot be satisfied. The lemma's
+statement, as currently written, is **false in general**.
+
+**Fix** (generalisation, not weakening, per pass-9 rules):
+
+Option 1 — pre-conditioned conclusion:
+```
+SubV_subst_neutral_to_value :
+    clA.openω fresh = some bA → clB.openω fresh = some bB →
+    SubV S (Γ.push τ_dom) bA bB →
+    -- Caller proves eval-termination as precondition:
+    clA.openω v = some bA' → clB.openω v = some bB' →
+    SubV S Γ bA' bB'
+```
+Caller is responsible for eval-termination at v. This still
+requires the substitution lemma's content but doesn't claim
+spurious termination.
+
+Option 2 — typed refinement:
+```
+SubV_subst_neutral_to_value_typed :
+    RC n d τ_dom v →                  -- typed v
+    clA.openω fresh = some bA → clB.openω fresh = some bB →
+    SubV S (Γ.push τ_dom) bA bB →
+    ∃ bA' bB',
+      clA.openω v = some bA' ∧ clB.openω v = some bB' ∧
+      SubV S Γ bA' bB'
+```
+The RC hypothesis on `v` ensures the closure opens terminate
+(via the RC saturation conjunct's `quote` witness, which
+implies eval termination).
+
+**Pre-pass-9 callers** (pass 7's `lam`/`iota_struct`, pass 8's
+`fix_struct`): each call site has RC-typing on `v` available
+(`a` is RC-typed at domA in lam, `v` is RC-typed at annA in
+iota/fix). So Option 2 doesn't regress the use sites.
+
+The current statement (with no termination hypothesis) is
+**vacuously satisfied** at counterexample inputs because the
+conclusion has `clA.openω v = some bA'` as a CONJUNCT — if
+this fails, the existential is unprovable rather than false.
+But it's still misleading: callers expect the lemma to fire
+for any v, when in fact it can only fire when v makes both
+opens terminate.
+
+### Critical finding 3: signature refactor sidesteps the wall
+
+Pass 9's prompt **forbids** the signature refactor of
+`subtype_closed_aux`. But the post-mortem must surface this
+finding because it's the most promising path forward, and
+pass 10+ should reconsider:
+
+Refactor `subtype_closed_aux` to take `RC_env n d Γ ρ`:
+
+```lean
+theorem RC.subtype_closed_under_realisation
+    {n d : Nat} {Γ : TyCtx} {ρ : Env}
+    {S : List (Val × Val)} {τ τ' v : Val}
+    (hΓρ : RC_env n d Γ ρ)
+    (hS : ∀ α β, (α, β) ∈ S → ∀ m, m ≤ n → ∀ v',
+        RC m d α v' → RC m d β v')
+    (hsub : SubV S Γ τ τ')
+    (h : RC n d τ v) :
+    RC n d τ' v
+```
+
+The new ingredient is `hΓρ : RC_env n d Γ ρ` — a typed
+environment realisation. The closure-form cases (`SubV.lam`,
+`iota_struct`, `fix_struct`) now have:
+
+- For each bvar position in Γ, an RC-typed value.
+- For arbitrary RC-typed test arguments, the IH applies under
+  `RC_env.cons` extending the typed env.
+
+The "substitution wall" disappears: instead of needing to
+prove `SubV bA bB` extends to substituted versions, the proof
+directly inducts under the extended `RC_env`, and the RC
+structure of values closes the cases.
+
+Estimated cost: ~150-250 LOC for the new signature + re-proofs
+of existing closed cases (refl, top, bot_L, neutral_struct,
+stuckRec_struct, revapp_R, unfold_fix_R) + the new closure
+cases. **No substitution lemma needed.**
+
+This is a **structurally cleaner** path than the substitution
+machinery. Pass 9's recommendation: pass 10 should attempt
+this refactor before any more substitution-machinery work.
+
+### Why this finding wasn't surfaced in passes 5-8
+
+Passes 5-8 framed the problem as "the substitution lemma is
+hard but ultimately tractable, just needs a dedicated pass."
+This framing was **structurally correct** but **strategically
+misleading**: each pass added more inline scaffolding (using
+the keystone lemma) that ultimately depended on the keystone
+proof, making the overall effort feel close to closure when
+the central piece remained out of reach.
+
+Pass 9's contribution is the **architectural realisation**
+that:
+1. The substitution wall is harder than estimated.
+2. The lemma's statement has a structural bug.
+3. The wall is **avoidable** via signature refactor — a
+   detail that would be missed if pass 9 had blindly
+   continued adding scaffolding.
+
+### Alternative architectures briefly considered
+
+1. **RC redesign with guarded recursion (Iris-style ▷
+   modality)**: would change the step-loss issue on
+   `unfold_fix_R` but doesn't address substitution. Orthogonal.
+
+2. **Move soundness chain through quote**: `typeCheck e τ →
+   quote e' = .ok normal → Subtype' (quote a) (quote τ)`. Trades
+   the Val-level substitution for the Expr-level
+   `Subtype'.unshift_head` (which is itself a 300-500 LOC
+   resisting wall). No clear win.
+
+3. **Move to typed-everything (`SubTV`)**: pass 6 design doc
+   sketched this. The semantic subtype relation would
+   internalise RC. But the FL still needs to prove
+   non-trivial properties about closure equivalence; the wall
+   moves but doesn't disappear.
+
+4. **The `RC_env`-refactor (Critical finding 3)**: most
+   promising. Recommended for pass 10.
+
+### Sorry trajectory (no change)
+
+- TypedNbE.lean: 4 declaration sorries unchanged.
+- SoundnessProof.lean: 4 declaration sorries unchanged.
+
+### Build status
+
+`nix develop -c lake build` passes. AxiomCheck unchanged. No
+files modified (this entry is the only deliverable).
+
+### What pass 10 should pick up
+
+In priority order:
+
+1. **Refactor `subtype_closed_aux` signature to take `RC_env`**
+   (Critical finding 3) — most promising path. Estimated
+   ~150-250 LOC; sidesteps substitution wall entirely.
+   Even though pass 9 was forbidden from doing this, the
+   findings strongly justify reconsidering.
+
+2. **If the refactor doesn't pan out**, fix the keystone
+   lemma's statement (Critical finding 2): strengthen with
+   eval-termination evidence or RC-typing on `v`. Then
+   attempt the substitution machinery.
+
+3. **Stretch goal**: if (1) succeeds, retire
+   `SubV_subst_neutral_to_value` and `SubV_subst_pair` as
+   sorried lemmas — they would no longer be needed at the new
+   signature. This drops the sorry count by 2.
+
+4. **Architectural review**: if (1) and (2) both prove
+   intractable, consider whether typed-NbE is the right
+   architecture for OCH soundness, or whether to pivot.
+
+### Honest assessment
+
+Pass 9 is the first pass to **not** add scaffolding to the
+typed-NbE proof. The previous four passes (5-8) each added
+infrastructure that depended on the keystone — making the
+typed-NbE substrate ever-larger without closing the central
+proof obligation. Pass 9's contribution is to **diagnose**
+rather than scaffold.
+
+The findings (lemma is harder than estimated, has a latent
+statement bug, and is sidesteppable via signature refactor)
+redirect typed-NbE work toward a more promising path.
+
+The user's pass-9 prompt anticipated this outcome (option 3:
+"Lemma genuinely intractable at Val-level too. Write a careful
+post-mortem... possibly suggests we need to revisit the
+architecture."). This entry fulfills that disposition.
+
+---
+
 ## 2026-04-24 — Pass 8 (overnight #3): SubV_subst_pair, fix_struct closed (structural) (agent-aab33530)
 
 **Stated `SubV_subst_pair` (sorried, the pair-substitution
