@@ -44,15 +44,12 @@ mutual
 
   -- Well-typed terms.
   --
-  -- Term Γ is the type of well-formed terms in context Γ. The
-  -- term's "natural type" is recovered structurally: each
-  -- constructor produces a term whose type is determined by the
-  -- inputs.
+  -- Term Γ is the type of well-formed terms in context Γ.
   --
   -- We don't index Term by its type τ — Och terms are their own
-  -- types via subsumption (refl: e ⊑ e), so we use a separate
-  -- function `naturalType : Term Γ → Term Γ` to read off the
-  -- structural type.
+  -- types via subsumption (refl: e ⊑ e). The role normally played
+  -- by a τ-index is filled by separate operations (defined in
+  -- later phases) that read off a term's type from its structure.
   data Term where
     -- Bound variable lookup. The Member relation gives a typed
     -- de Bruijn index into Γ.
@@ -72,9 +69,9 @@ mutual
 
     -- Application. Like the Lean side of Och, we don't enforce
     -- "f is a function" structurally — the typing rule is
-    -- checked via naturalType + subsumption, not the constructor
-    -- index. (For symmetry with the rest of Och's design where
-    -- subsumption is implicit.)
+    -- checked separately by the typing relation (later phase),
+    -- not by the constructor index. (For symmetry with the rest
+    -- of Och's design where subsumption is implicit.)
     app  : ∀ {Γ}
          → (f : Term Γ)
          → (a : Term Γ)
@@ -112,9 +109,9 @@ mutual
 --
 -- 1. App well-formedness. `app f a` accepts any two terms; the
 --    typing rule "f : Π A B, a : A ⇒ f a : B[a/0]" is left to
---    the natural-type function (or to a typing relation we'll
---    define alongside). This is intentional for symmetry with
---    Och's subsumption-driven typing.
+--    the typing relation (defined alongside in a later phase).
+--    This is intentional for symmetry with Och's subsumption-
+--    driven typing.
 --
 -- 2. Subsumption. `e ⊑ τ` is the typing judgment in Och. We'll
 --    add Subtype' as a separate inductive (Phase 3) and recover
