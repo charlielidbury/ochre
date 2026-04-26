@@ -425,6 +425,106 @@ private theorem RC.sat_of_succ {n d : Nat} {τ v : Val}
     Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q :=
   ⟨RC.fullyQuotable h, RC.quote_witness h⟩
 
+/-! ## Typed environment realisation
+
+`RC_env n d Γ ρ`: the value-environment `ρ` realises the type-context
+`Γ` at step-index `n`, depth `d`. Each value-position aligns with the
+corresponding type-position via the bvar indexing convention.
+
+**Convention** (matching `tyInfer`/`tyCheck`): `Γ` is an `Array Val`
+(= `TyEnv`) where `Γ[Γ.size - 1 - k]` is the type at bvar `k`.
+`ρ` is a `List Val` (= `Env`) where `ρ[k]` is the value at bvar `k`
+(cons-order: position 0 is the head / most recently bound).
+
+The realisation aligns these by bvar index (NOT by raw array/list
+index). So `RC_env n d Γ ρ` requires `Γ.size = ρ.length` and, for
+every bvar `k < ρ.length`, the value `ρ[k]` is RC at the type
+`Γ[Γ.size - 1 - k]`.
+
+**Position in the file** (pass 10): defined here, *before*
+`subtype_closed_aux`, so that the latter can take `RC_env n d Γ ρ`
+as a hypothesis. The original definition site (after the FL
+signature) is preserved as documentation; the actual definition
+lives here. -/
+
+/-- The value environment `ρ` realises the type context `Γ` at step
+`n`, depth `d`. Indexed by bvar position (ρ is cons-order, Γ is
+reverse-order matching the bvar convention from `tyInfer`). -/
+def RC_env (n d : Nat) (Γ : TyEnv) (ρ : Env) : Prop :=
+  Γ.size = ρ.length ∧
+  ∀ k, k < ρ.length →
+    ∃ τ v, Γ[Γ.size - 1 - k]? = some τ ∧ ρ[k]? = some v ∧ RC n d τ v
+
+/-- The empty typed environment realises the empty value environment
+trivially. -/
+theorem RC_env.nil {n d : Nat} : RC_env n d #[] [] := by
+  refine ⟨rfl, ?_⟩
+  intro k hk
+  simp at hk
+
+/-- Extending the typed env with a freshly-bound `(τ, v)` pair
+preserves realisation, given `RC n d τ v`. The new entry takes
+bvar index `0`; existing entries shift to bvar `k+1`. -/
+theorem RC_env.cons {n d : Nat} {Γ : TyEnv} {ρ : Env} {τ v : Val}
+    (hΓρ : RC_env n d Γ ρ) (hRC : RC n d τ v) :
+    RC_env n d (Γ.push τ) (v :: ρ) := by
+  obtain ⟨hlen, hidx⟩ := hΓρ
+  refine ⟨?_, ?_⟩
+  · -- Length preservation: |Γ.push τ| = |Γ| + 1 = |ρ| + 1 = |v::ρ|.
+    simp [Array.size_push, hlen]
+  · -- Bvar lookup. New entry at k=0; existing entries at k+1.
+    intro k hk
+    -- Case on k. Use omega for the index-arithmetic relating
+    -- (Γ.push τ).size to Γ.size.
+    cases k with
+    | zero =>
+      -- k = 0 → bvar 0 maps to the freshly pushed τ and the head v.
+      refine ⟨τ, v, ?_, ?_, hRC⟩
+      · -- (Γ.push τ)[(Γ.size + 1) - 1 - 0]? = (Γ.push τ)[Γ.size]?
+        --  = some τ (the just-pushed entry).
+        have hbound : Γ.size < (Γ.push τ).size := by
+          rw [Array.size_push]; omega
+        have hidxeq : (Γ.push τ).size - 1 - 0 = Γ.size := by
+          rw [Array.size_push]; omega
+        rw [hidxeq, Array.getElem?_eq_getElem hbound]
+        rw [Array.getElem_push_eq]
+      · simp
+    | succ k' =>
+      -- k = k' + 1 → bvar k+1 looks up old position k'.
+      have hk_unfold : k' + 1 < ρ.length + 1 := by
+        simpa [List.length_cons] using hk
+      have hk' : k' < ρ.length := Nat.lt_of_succ_lt_succ hk_unfold
+      obtain ⟨τk, vk, hΓk, hρk, hRCk⟩ := hidx k' hk'
+      refine ⟨τk, vk, ?_, ?_, hRCk⟩
+      · -- (Γ.push τ)[(Γ.size + 1) - 1 - (k' + 1)]?
+        --  = (Γ.push τ)[Γ.size - 1 - k']? = Γ[Γ.size - 1 - k']?
+        have hbound_orig : Γ.size - 1 - k' < Γ.size := by
+          have : k' < Γ.size := hlen ▸ hk'
+          omega
+        have hbound_push : Γ.size - 1 - k' < (Γ.push τ).size := by
+          rw [Array.size_push]; omega
+        have hidxeq : (Γ.push τ).size - 1 - (k' + 1) = Γ.size - 1 - k' := by
+          rw [Array.size_push]; omega
+        rw [hidxeq]
+        rw [Array.getElem?_eq_getElem hbound_push]
+        rw [Array.getElem_push_lt _ _ _ hbound_orig]
+        rw [Array.getElem?_eq_getElem hbound_orig] at hΓk
+        exact hΓk
+      · -- (v :: ρ)[k' + 1]? = ρ[k']?
+        simpa using hρk
+
+/-- **Step-index downward monotonicity** for typed environments.
+`RC_env n d Γ ρ` at a higher step `n` weakens to any lower step
+`m ≤ n` because each per-position RC is downward-monotone in `n`
+via `RC.mono`. -/
+theorem RC_env.mono {n m d : Nat} {Γ : TyEnv} {ρ : Env}
+    (hle : m ≤ n) (hΓρ : RC_env n d Γ ρ) : RC_env m d Γ ρ := by
+  obtain ⟨hlen, hidx⟩ := hΓρ
+  refine ⟨hlen, ?_⟩
+  intro k hk
+  obtain ⟨τ, v, hΓk, hρk, hRC⟩ := hidx k hk
+  exact ⟨τ, v, hΓk, hρk, RC.mono _ hle hRC⟩
+
 /-! ## `SubV_subst_neutral_to_value` — the body-substitution lemma
 
 The central technical lemma needed by the closure cases of
@@ -1165,88 +1265,6 @@ def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
   match typeCheck fuel a τ with
   | .ok true => .ok true
   | _ => subCheck fuel a τ
-
-/-! ## Typed environment realisation
-
-`RC_env n d Γ ρ`: the value-environment `ρ` realises the type-context
-`Γ` at step-index `n`, depth `d`. Each value-position aligns with the
-corresponding type-position via the bvar indexing convention.
-
-**Convention** (matching `tyInfer`/`tyCheck`): `Γ` is an `Array Val`
-(= `TyEnv`) where `Γ[Γ.size - 1 - k]` is the type at bvar `k`.
-`ρ` is a `List Val` (= `Env`) where `ρ[k]` is the value at bvar `k`
-(cons-order: position 0 is the head / most recently bound).
-
-The realisation aligns these by bvar index (NOT by raw array/list
-index). So `RC_env n d Γ ρ` requires `Γ.size = ρ.length` and, for
-every bvar `k < ρ.length`, the value `ρ[k]` is RC at the type
-`Γ[Γ.size - 1 - k]`. -/
-
-/-- The value environment `ρ` realises the type context `Γ` at step
-`n`, depth `d`. Indexed by bvar position (ρ is cons-order, Γ is
-reverse-order matching the bvar convention from `tyInfer`). -/
-def RC_env (n d : Nat) (Γ : TyEnv) (ρ : Env) : Prop :=
-  Γ.size = ρ.length ∧
-  ∀ k, k < ρ.length →
-    ∃ τ v, Γ[Γ.size - 1 - k]? = some τ ∧ ρ[k]? = some v ∧ RC n d τ v
-
-/-- The empty typed environment realises the empty value environment
-trivially. -/
-theorem RC_env.nil {n d : Nat} : RC_env n d #[] [] := by
-  refine ⟨rfl, ?_⟩
-  intro k hk
-  simp at hk
-
-/-- Extending the typed env with a freshly-bound `(τ, v)` pair
-preserves realisation, given `RC n d τ v`. The new entry takes
-bvar index `0`; existing entries shift to bvar `k+1`. -/
-theorem RC_env.cons {n d : Nat} {Γ : TyEnv} {ρ : Env} {τ v : Val}
-    (hΓρ : RC_env n d Γ ρ) (hRC : RC n d τ v) :
-    RC_env n d (Γ.push τ) (v :: ρ) := by
-  obtain ⟨hlen, hidx⟩ := hΓρ
-  refine ⟨?_, ?_⟩
-  · -- Length preservation: |Γ.push τ| = |Γ| + 1 = |ρ| + 1 = |v::ρ|.
-    simp [Array.size_push, hlen]
-  · -- Bvar lookup. New entry at k=0; existing entries at k+1.
-    intro k hk
-    -- Case on k. Use omega for the index-arithmetic relating
-    -- (Γ.push τ).size to Γ.size.
-    cases k with
-    | zero =>
-      -- k = 0 → bvar 0 maps to the freshly pushed τ and the head v.
-      refine ⟨τ, v, ?_, ?_, hRC⟩
-      · -- (Γ.push τ)[(Γ.size + 1) - 1 - 0]? = (Γ.push τ)[Γ.size]?
-        --  = some τ (the just-pushed entry).
-        have hbound : Γ.size < (Γ.push τ).size := by
-          rw [Array.size_push]; omega
-        have hidxeq : (Γ.push τ).size - 1 - 0 = Γ.size := by
-          rw [Array.size_push]; omega
-        rw [hidxeq, Array.getElem?_eq_getElem hbound]
-        rw [Array.getElem_push_eq]
-      · simp
-    | succ k' =>
-      -- k = k' + 1 → bvar k+1 looks up old position k'.
-      have hk_unfold : k' + 1 < ρ.length + 1 := by
-        simpa [List.length_cons] using hk
-      have hk' : k' < ρ.length := Nat.lt_of_succ_lt_succ hk_unfold
-      obtain ⟨τk, vk, hΓk, hρk, hRCk⟩ := hidx k' hk'
-      refine ⟨τk, vk, ?_, ?_, hRCk⟩
-      · -- (Γ.push τ)[(Γ.size + 1) - 1 - (k' + 1)]?
-        --  = (Γ.push τ)[Γ.size - 1 - k']? = Γ[Γ.size - 1 - k']?
-        have hbound_orig : Γ.size - 1 - k' < Γ.size := by
-          have : k' < Γ.size := hlen ▸ hk'
-          omega
-        have hbound_push : Γ.size - 1 - k' < (Γ.push τ).size := by
-          rw [Array.size_push]; omega
-        have hidxeq : (Γ.push τ).size - 1 - (k' + 1) = Γ.size - 1 - k' := by
-          rw [Array.size_push]; omega
-        rw [hidxeq]
-        rw [Array.getElem?_eq_getElem hbound_push]
-        rw [Array.getElem_push_lt _ _ _ hbound_orig]
-        rw [Array.getElem?_eq_getElem hbound_orig] at hΓk
-        exact hΓk
-      · -- (v :: ρ)[k' + 1]? = ρ[k']?
-        simpa using hρk
 
 /-! ## The fundamental lemma — open-environment form
 
