@@ -4,6 +4,288 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 10 (overnight #5): RC_env signature refactor (agent-ad99cc16)
+
+**Landed pass 9's recommended `RC_env` signature refactor for
+`subtype_closed_aux` (~75 LOC delta, +1 axiom-clean lemma
+`RC_env.mono`). Confirmed honestly that the refactor — by
+itself — does NOT close any of the 5 sorried inline cases. Pass 9's
+post-mortem hoped that "directly inducting under the extended
+`RC_env`" would dissolve the substitution wall; pass 10's
+implementation reveals this is not the case. The refactor is
+nevertheless forward progress: it positions the proof to use
+typing information in pass 11+ work on the still-sorried cases
+and aligns with the FL body's signature.**
+
+Net delta: 0 sorries added, 0 removed. +1 axiom-clean lemma
+(`RC_env.mono`). +1 strengthened signature.
+
+This is "case 2" of pass 10's stop-conditions: refactor lands but
+0 closure cases close. Documented here.
+
+### What landed
+
+#### Signature refactor
+
+`RC.subtype_closed_aux` now takes `RC_env n d Γ ρ` as a typed-
+environment realisation hypothesis:
+
+```
+theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
+    {S : List (Val × Val)} {Γ : TyEnv} {ρ : Env} {τ τ' v : Val},
+      RC_env n d Γ ρ →                  -- NEW
+      (∀ α β, (α, β) ∈ S → ∀ m, m ≤ n → ∀ v',
+         RC m d α v' → RC m d β v') →
+      SubV S Γ τ τ' → RC n d τ v → RC n d τ' v
+```
+
+Closed corollary `RC.subtype_closed` provides `RC_env.nil` for the
+empty context. External API preserved.
+
+`RC_env` definition + `nil`/`cons`/`mono` lemmas relocated to
+*before* `subtype_closed_aux` (was originally after it, co-located
+with FL). Move was a pure relocation.
+
+#### `RC_env.mono` (new, axiom-clean)
+
+```
+theorem RC_env.mono {n m d : Nat} {Γ : TyEnv} {ρ : Env}
+    (hle : m ≤ n) (hΓρ : RC_env n d Γ ρ) : RC_env m d Γ ρ
+```
+
+Step-index downward monotonicity for typed envs. Trivial — per-
+position via `RC.mono`. Used by `subtype_closed_aux`'s recursive
+calls (which always step down).
+
+#### Pass 10's threading-through pattern
+
+Each match-case body's recursive call (`ihStrong m _` or `ih m _`)
+needs `RC_env m d Γ' ρ` where `Γ'` is the match-bound pattern
+variable. The fix: at each call site, derive
+`hΓρ_m : RC_env m d Γ' ρ := RC_env.mono _ hΓρ` and pass it as the
+first argument to the IH.
+
+Lean subtlety: after dependent pattern matching on `hsub : SubV S Γ
+τ τ'`, the dependent elimination substitutes outer `Γ`'s
+references in pre-existing hypotheses (e.g., `hΓρ` becomes
+`RC_env (k+1) d Γ' ρ`), but new type ascriptions in the case body
+must use `Γ'` explicitly. Without this, Lean fails to unify outer
+`Γ` (the FVar in scope) with `Γ'` (the match-introduced FVar).
+This was the elaboration trip-up in pass 10's first attempt;
+documented here for future agents.
+
+### Critical finding: RC_env alone does NOT dissolve the substitution wall
+
+Pass 9's post-mortem (Critical finding 3) claimed:
+
+> The "substitution wall" disappears: instead of needing to prove
+> `SubV bA bB` extends to substituted versions, the proof directly
+> inducts under the extended `RC_env`, and the RC structure of
+> values closes the cases.
+
+Pass 10 implements the refactor and traces through case-by-case.
+The above claim is **structurally incorrect**. Detailed analysis:
+
+#### `lam` case
+
+Premises (from `SubV.lam`): `hbA : clA.openω fresh = some bA`,
+`hbB : clB.openω fresh = some bB`,
+`hbody : SubV S' (Γ'.push domA) bA bB` — body relation at the
+*fresh-neutral-opened* bodies.
+
+Goal (after RC unfolding): for every `m ≤ k`, `a` with
+`RC m d domB a`, get `r` with `vapp v a = .ok r ∧ ∃ rTyB,
+clB.openω a = some rTyB ∧ RC m d rTyB r`.
+
+Strategy attempt with RC_env:
+1. From `ha_RCdomA : RC m d domA a` (via contravariance), construct
+   extended env `ρ' = a :: ρ` and `RC_env.cons hΓρ ha_RCdomA :
+   RC_env m d (Γ'.push domA) (a :: ρ)`.
+2. Apply IH on `hbody` at the extended env: this gives
+   `RC m d bA r → RC m d bB r` (NOT what we want!).
+
+The IH gives a coercion at `bA, bB`, the *fresh-opened* bodies.
+But we have `RC m d (clA.openω a) r` (the *concrete-opened* body)
+and want `RC m d (clB.openω a) r`. The IH fires at the wrong
+bodies.
+
+To bridge `bA = clA.openω fresh` to `clA.openω a`, we still need
+substitution at the Val level. RC_env doesn't dissolve this.
+
+#### `iota_struct`, `fix_struct` cases
+
+Same shape — the SubV body is at fresh-opened bodies, the goal
+needs concrete-opened bodies. Substitution required.
+
+#### `iota_intro` case
+
+Premise: `hOpen : clB.openω a = some bB`. Goal needs `clB.openω v`
+to terminate (where `v` is the value witness). Even with
+`RC_env Γ ρ` and `RC k d a v` available (mono of given `h`), there
+is no derivation of `clB.openω v = some _` from these. RC at `a`
+gives saturation + body witnesses on `v` *with respect to a's
+shape* — but those don't determine how `clB.openω v` evaluates.
+
+#### `revapp_L`, `neutral_ascent`, `unfold_fix_L`, `unfold_iota_L`
+
+These have distinct obstacles documented in passes 5/8:
+- `revapp_L`, `neutral_ascent`: only saturation on `v` is
+  available from `h`; v's relationship to the LHS-derivation
+  values (`a'`, synthesized type τ) is not in RC.
+- `unfold_fix_L`, `unfold_iota_L`: step-up mismatch (LHS unfold
+  consumes a step but goal demands original step).
+
+For `revapp_L` / `neutral_ascent`: RC_env helps conceptually (the
+typing context is now visible), but operationally the bridge
+needed is "vapp respects RC" or "SynthN-to-RC-realises", which are
+separate lemma families.
+
+For `unfold_fix_L` / `unfold_iota_L`: step-up is an RC structural
+issue, orthogonal to RC_env.
+
+### Why pass 9 thought RC_env would dissolve the wall
+
+Pass 9's intuition: "for arbitrary RC-typed test arguments, the IH
+applies under `RC_env.cons` extending the typed env." This is
+correct in shape but doesn't address the substitution issue. The
+IH on the SubV body fires *between bA and bB*, not on the closure
+bodies as functions. The extended env makes `(Γ'.push domA, a :: ρ)`
+typed, but the SubV is still about *closed Vals* `bA, bB`, not
+*open closure bodies*.
+
+Pass 9's recommendation was a structural intuition; pass 10's
+implementation falsifies it concretely. This redirects future
+work.
+
+### What the refactor IS good for
+
+**Forward progress, not case closure.** Specifically:
+
+1. **FL body alignment.** When the FL body is written (pass 11+),
+   it has `RC_env n d Γ ρ` from its open-environment signature.
+   At conversion sites, calling `subtype_closed_aux` is now a
+   trivial pass-through; previously the FL would need to specialise
+   to `RC_env.nil` (closed) or weave around the missing
+   parameter.
+
+2. **Substrate for sorried cases.** The 5 sorried inline cases
+   (`iota_intro`, `revapp_L`, `neutral_ascent`, `unfold_fix_L`,
+   `unfold_iota_L`) need typing information. With `hΓρ` now in
+   scope, future passes attacking these cases have it available.
+
+3. **Aligns with `SubTV` substrate.** `SubTV` (pass 6) is
+   logical-relation-style; bridging `SubV` to `SubTV` via
+   `subtype_closed` was always going to need typing info in the
+   limit. Pass 10 wires it through.
+
+4. **Doesn't regress.** All previously closed cases (refl, top,
+   hyp, bot_L, neutral_struct, stuckRec_struct, revapp_R, lam,
+   iota_struct, fix_struct, unfold_fix_R) preserved. No new
+   sorries.
+
+### Sorry trajectory
+
+Pre-pass-10:
+- `subtype_closed_aux`: 5 inline (`neutral_ascent`, `iota_intro`,
+  `unfold_fix_L`, `unfold_iota_L`, `revapp_L`).
+- `SubV_subst_neutral_to_value`: 1 declaration.
+- `SubV_subst_pair`: 1 declaration.
+- `typed_nbe_fundamental_open`: 1 declaration.
+- **Total**: 8.
+
+Post-pass-10:
+- `subtype_closed_aux`: 5 inline (UNCHANGED).
+- `SubV_subst_neutral_to_value`: 1 declaration (unchanged).
+- `SubV_subst_pair`: 1 declaration (unchanged).
+- `typed_nbe_fundamental_open`: 1 declaration (unchanged).
+- **Total**: 8.
+
+**Net delta**: 0 sorries. +1 axiom-clean lemma (`RC_env.mono`).
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+updated: `RC_env.mono` added (axiom-clean). All previously
+axiom-clean theorems remain so. `subtype_closed_aux` and
+`subtype_closed` continue to depend on sorryAx (5 inline sorries
+unchanged).
+
+### What pass 11 should pick up
+
+In priority order:
+
+1. **Attack the substitution lemmas directly** with the realistic
+   ~510-LOC budget pass 9 estimated. They remain the keystone for
+   `lam`/`iota_struct`/`fix_struct`. The Val-level substitution
+   machinery + eval-commutation + SubV-preservation is a 4-pass
+   project that would close 3 of the 5 sorried cases.
+
+2. **`iota_intro` via closure parametricity.** This needs
+   "`RC k d a v ∧ clB.openω a = some bB → ∃ bB', clB.openω v =
+   some bB' ∧ RC k d bB' v`" — a parametricity-of-closure-
+   application property. Distinct from substitution. ~100-200 LOC.
+
+3. **`revapp_L` via "vapp respects RC".** Lemma:
+   "`RC k d (.neutral (.stuckRec f arg)) v ∧ vappω f arg = some a'
+   ∧ a' ≠ stuckRec → RC k d a' v`". This effectively says RC at a
+   stuck application "follows the unfold". Needs RC.stuckRec
+   structure that doesn't exist yet — RC at `.neutral` is
+   currently just saturation. **Would need an RC redesign**
+   to add stuck-rec-respecting structure. Larger pass.
+
+4. **`neutral_ascent` via SynthN-realises bridge.** Similar to
+   (3) — needs RC.neutral to encode synthesized type info.
+   Either redesign RC at neutral, or add a separate
+   "SynthN-realises" lemma family that runs alongside RC. Both
+   are larger passes.
+
+5. **`unfold_fix_L`/`unfold_iota_L`** are blocked on the step-up
+   mismatch. Alternative architectures (guarded recursion,
+   Iris-style ▷ modality) might address this — see
+   pass-9 entry. Orthogonal to RC_env work.
+
+### Honest assessment
+
+Pass 10 is the second pass to NOT add scaffolding (after pass 9).
+The refactor is forward progress for pass 11+ work but does not
+close cases. The honest finding is that pass 9's hope was too
+optimistic: RC_env-in-the-signature is necessary but not
+sufficient for the closure-form cases. The substitution wall is
+real and structurally required, as pass 9 itself documented.
+
+What pass 10 affirms:
+- Pass 9's first finding (substitution lemma is ~510 LOC, not
+  ~200-400) — **strengthened**, since pass 10 confirms RC_env
+  doesn't shortcut it.
+- Pass 9's second finding (the keystone lemma's statement has a
+  latent bug) — **unchanged**, the lemma is still sorried with
+  the same statement.
+- Pass 9's third finding (the signature refactor sidesteps the
+  wall) — **falsified**. Refactor lands; wall remains.
+
+The user's pass-10 prompt anticipated this outcome:
+
+> 2. **Refactor lands but only 1-2 cases close.** Document why
+> others don't and what additional infrastructure they need. Stop.
+
+Pass 10 fulfills this disposition: 0 cases close, but the
+refactor lands cleanly and is documented for pass 11+ to
+build upon.
+
+The most likely path forward for OCH soundness now appears to be:
+- Direct attack on the Val-level substitution lemmas (~510 LOC)
+  is unavoidable for `lam`/`iota_struct`/`fix_struct`. Pass 11+
+  may attempt this.
+- Alternative: redesign the RC predicate to encode neutral-type
+  structure (so `RC.neutral` carries SynthN-realised content).
+  This would close `neutral_ascent`, `revapp_L`, possibly help
+  `iota_intro`. But it's a larger architectural shift.
+- Or: pivot to a different soundness architecture entirely
+  (e.g., quote-based as in pass 9's option 2). This is the
+  user's call.
+
+---
+
 ## 2026-04-24 — Pass 9 (overnight #4): keystone post-mortem (agent-afa368ac)
 
 **No code changes this pass.** Pass 9's prompt asked for direct
