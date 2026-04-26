@@ -5,6 +5,7 @@ import Och.NbE
 import Och.NbETests
 import Och.MemoRefs
 import Och.SubCheckVal
+import Och.EvalSubst
 import Och.TyCheck
 import Och.SoundnessAudit
 import Och.SoundnessProof
