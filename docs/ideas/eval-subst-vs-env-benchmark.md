@@ -280,7 +280,50 @@ Estimated work: **0.5 – 1.5 days** to chase down the bug, write
 the test cases that exercise it explicitly, and verify all 16
 cases agree. Out of scope for this measurement pass.
 
-## §6. Recommendation
+## §6. Structural compare cost (Section 4)
+
+This section answers a sub-question: even ignoring sub-checking, how
+expensive is *just comparing two values for equality* under each
+representation?
+
+| case               | NbE eval+Val.beq ms | subst eval+Expr== ms | result |
+| ------------------ | ------------------: | -------------------: | ------ |
+| one\_  vs Nat\_    | 0                   | 1                    | both: false |
+| two\_  vs Nat\_    | 0                   | 0                    | both: false |
+| three\_ vs Nat\_   | 0                   | 2                    | both: false |
+| two\_  vs three\_  | 0                   | 2                    | both: false |
+| one\_  vs one\_    | 0                   | 0                    | both: true  |
+| two\_  vs two\_    | 0                   | 1                    | both: true  |
+| **three\_ vs three\_** | **19**          | **3**                | **both: true** |
+| Nat\_  vs Nat\_    | 0                   | 0                    | both: true  |
+| Fin three\_ vs same| 19                  | 31                   | both: true  |
+
+Headline: **comparing two `three_` Vals via `Val.beq` takes 19 ms**
+(closure-tree-walk on the 33M-equivalent DAG, with `ptrEq` fast-
+path); comparing two `three_` Exprs structurally takes **3 ms**
+(walks 5,863 nodes once; equal subtrees short-circuit pointwise via
+the derived `==`).
+
+**Interpretation**:
+- Equality-comparison cost favours subst (smaller Exprs to walk).
+- Inequality-comparison cost is similar (both short-circuit on
+  first mismatch, < 2 ms).
+- The big gap is in **subCheckVal's recursive descent through
+  binders**, where NbE pays 14.5 s on `three_ ⊑ Nat_`. That's
+  *not* a Val.beq cost; it's the cost of repeatedly opening
+  closures and comparing under freshly-introduced binders, with
+  the seen-list and other guards firing many times.
+- Substitution would handle the same recursive descent by
+  repeatedly substituting `self`/level-bvars and re-evaluating —
+  paying eval cost per descent step rather than closure-open cost.
+
+The constant factor between the two strategies on under-binder
+work is what's unmeasured. From Section 1, subst HNF eval is ~8 ms
+for `three_`; if subCheckVal makes ~1000 internal sub-comparisons,
+subst could land around 8 s — within 2× of NbE's 14.5 s. But this
+is speculative; only fixing the port closes the loop.
+
+## §7. Recommendation
 
 **Substitution is viable for an intrinsic-typing rebuild, BUT:**
 
@@ -312,7 +355,7 @@ strict-positivity and closure-env machinery. If the kernel must
 maintain wall-clock parity on the singleton-Nat panel, NbE's
 sharing remains essential.
 
-## Closing log
+## §8. Closing log
 
 What additional work would refine the numbers:
 

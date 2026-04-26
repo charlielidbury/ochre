@@ -278,6 +278,59 @@ def runChurchSection (fuelRef : IO.Ref Nat) : IO Unit := do
     let (lbl, e_ms, s_ms, sz) ← runChurchCase c fuelRef
     IO.println s!"{lbl |> rjust 16} | {toString e_ms |> rjust 6} | {toString s_ms |> rjust 8} | {sz}"
 
+/-! ## Section 4: structural-compare proxies
+
+Question: if subst-based subCheck were correct, how much would
+the structural-compare cost? Floor estimate: compare the eval'd
+HNF outputs structurally.
+
+For each of the headline cases, measure:
+- subst eval LHS + subst eval RHS + Expr ==.
+- NbE eval LHS + NbE eval RHS + Val.beq.
+
+This isn't a real subCheck — there's no recursive descent through
+binders — but it gives a per-step cost estimate for the "compare
+two values" hot path.
+-/
+
+structure CompareCase where
+  label : String
+  fuel  : Nat
+  a     : Expr
+  b     : Expr
+
+def cmpCases : List CompareCase :=
+  [ ⟨"one_  vs Nat_  ",     200,  one_, Nat_ ⟩
+  , ⟨"two_  vs Nat_  ",     800,  two_, Nat_ ⟩
+  , ⟨"three_ vs Nat_ ",   50000, three_, Nat_ ⟩
+  , ⟨"two_  vs three_",    1000, two_, three_ ⟩
+  -- Identical-expression compares (force a full walk on equal Exprs).
+  -- Without ptrEq fast-path, subst pays to walk the entire HNF tree.
+  , ⟨"one_  vs one_  ",     200, one_, one_ ⟩
+  , ⟨"two_  vs two_  ",     800, two_, two_ ⟩
+  , ⟨"three_ vs three_",   50000, three_, three_ ⟩
+  , ⟨"Nat_  vs Nat_  ",    1000, Nat_, Nat_ ⟩
+  , ⟨"Fin three_ vs same", 8000, och{ Fin three_ }, och{ Fin three_ } ⟩ ]
+
+def runCompareSection (fuelRef : IO.Ref Nat) : IO Unit := do
+  IO.println ""
+  IO.println "=== Section 4: structural-compare proxies (NbE eval+beq vs subst eval+==) ==="
+  IO.println "case               | NbE eval+beq | subst eval+==  ==result"
+  for c in cmpCases do
+    -- NbE: eval LHS, eval RHS, Val.beq
+    let (env_total_ms, env_eq) ← time (fun n =>
+        match NbE.eval (c.fuel + n) NbE.unfBound [] c.a,
+              NbE.eval (c.fuel + n) NbE.unfBound [] c.b with
+        | .ok va, .ok vb => va == vb
+        | _, _ => false) fuelRef
+    -- Subst: evalSubst both, Expr ==
+    let (subst_total_ms, subst_eq) ← time (fun n =>
+        match SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.a,
+              SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.b with
+        | .ok ea, .ok eb => ea == eb
+        | _, _ => false) fuelRef
+    IO.println s!"{c.label |> rjust 18} | {toString env_total_ms |> rjust 12} | {toString subst_total_ms |> rjust 14}  env_eq={env_eq} subst_eq={subst_eq}"
+
 def runAll : IO Unit := do
   let fuelRef ← IO.mkRef (0 : Nat)
   IO.println "=== Eval comparison: env-based (NbE) vs substitution-based ==="
@@ -285,6 +338,7 @@ def runAll : IO Unit := do
   runEvalSection fuelRef
   runSubSection fuelRef
   runChurchSection fuelRef
+  runCompareSection fuelRef
   IO.println ""
   IO.println "=== done ==="
 
