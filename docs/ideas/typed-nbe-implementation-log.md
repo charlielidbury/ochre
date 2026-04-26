@@ -4,6 +4,231 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-25 — Pass 16 (overnight #11): `revapp_L` is structurally unprovable, mirroring pass 15's `neutral_ascent` finding (agent-adccb0fc)
+
+**Pass 16's stated objective was to close `revapp_L` axiom-clean via
+the "vapp-respects-RC" bridge described in pass 8. Pass 16's
+investigation reveals that `revapp_L` is structurally analogous to
+`neutral_ascent` (pass 15's finding): the LHS type is
+`.neutral (.stuckRec f arg)`, so the RC hypothesis is
+saturation-only, which is too weak to imply RC at the closure-form
+RHS `c` produced by the SubV recursive premise. A concrete
+counterexample is constructed and committed inline. Sorry count
+unchanged at 8. Net delta: 0 sorries + ~80 LOC of wall
+documentation. This is the FOURTH critical finding in the typed-NbE
+pipeline.**
+
+This is "case 3" of pass 16's stop-conditions: critical finding —
+`revapp_L`, like `neutral_ascent`, cannot be closed under the
+current RC formulation. The two cases share the same root cause
+(RC at `.neutral` is saturation-only) and would be closed by the
+same RC redesign (Option A from pass 15).
+
+Net delta: 0 sorries. ~80 LOC of inline analysis in TypedNbE.lean
+plus a docstring update flagging revapp_L's status.
+
+### The structural obstruction
+
+`SubV.revapp_L`'s constructor (in `lean/Och/SoundnessProof.lean:142`):
+
+```lean
+| revapp_L {S Γ f arg a' c} :
+    vappω f arg = some a' →
+    a' ≠ .neutral (.stuckRec f arg) →
+    SubV ((.neutral (.stuckRec f arg), c) :: S) Γ a' c →
+    SubV S Γ (.neutral (.stuckRec f arg)) c
+```
+
+The case body in `subtype_closed_aux` needs to prove:
+`RC (k+1) d (.neutral (.stuckRec f arg)) v → RC (k+1) d c v`.
+
+By RC's definition at `.neutral`:
+```
+RC (n+1) d (.neutral _) v
+  = Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q
+```
+i.e. saturation only. To apply the IH on `SubV ... a' c`, we need
+`RC (k+1) d a' v`. For closure-form `a'` (`.lam`/`.iota`/`.fix`),
+this requires body witnesses on `v` that saturation alone cannot
+supply.
+
+#### Concrete counterexample (verified)
+
+Pick `f = .iota .type ⟨Expr.lam Expr.type
+(Expr.lam Expr.type Expr.bot), []⟩` (a fix/iota whose body is a
+two-argument lambda returning bot).
+
+Pick `arg = .type` (non-neutral, so vapp doesn't stop on the
+neutral-arg guard).
+
+Then vapp at unf=4:
+- `f' = eval [f] (Expr.lam .type (Expr.lam .type .bot))
+      = .ok (.lam .type ⟨.lam .type .bot, [f]⟩)`
+- `a' = vapp f' arg = eval [arg, f] (.lam .type .bot)
+      = .ok (.lam .type ⟨.bot, [arg, f]⟩)`
+
+So `a' = .lam .type cl₀` with `cl₀ = ⟨Expr.bot, [arg, f]⟩`. For any
+`X`, `cl₀.openω X = eval [X, arg, f] Expr.bot = .ok .bot`.
+
+The productivity guard `a' ≠ .neutral (.stuckRec f arg)` holds (a'
+is a `.lam`, not a `.neutral`). ✓
+
+Pick `c := a'`. Then `SubV ... a' c` discharges by `SubV.refl`. ✓
+
+Take `v := .type` (fullyQuotable + has quote witness — saturated).
+
+Then:
+- `RC (k+1) d (.neutral (.stuckRec f arg)) .type` HOLDS
+  (saturation only).
+- `RC (k+1) d a' .type` for k ≥ 1 requires the body witness:
+  ∀ m ≤ k, ∀ x with `RC m d .type x`, ∃ r,
+  `vapp _ _ .type x = .ok r ∧ ∃ rTy, cl₀.openω x = some rTy ∧
+  RC m d rTy r`.
+  - `vapp .type x = .ok (.neutral (.stuckRec .type x))` (NbE.lean
+    line 161 — vapp on `.type` returns a stuckRec).
+  - `cl₀.openω x = .ok .bot`, so `rTy = .bot`.
+  - We need `RC m d .bot _`, which is FALSE for m ≥ 1.
+
+Therefore `RC (k+1) d c .type` is FALSE for k ≥ 1, while
+`RC (k+1) d (.neutral (.stuckRec f arg)) .type` is TRUE — the
+implication
+  `RC (k+1) d (.neutral (.stuckRec f arg)) v → RC (k+1) d c v`
+is FALSE for this `v`, and hence `subtype_closed_aux` is not
+provable AS STATED for the `revapp_L` case.
+
+### Why the "vapp-respects-RC" bridge described by pass 8 doesn't exist
+
+Pass 8 (and pass 10's recap, line 1192-1204) noted:
+
+> `revapp_L`, `neutral_ascent`: only saturation on `v` is
+> available from `h`; v's relationship to the LHS-derivation
+> values (`a'`, synthesized type τ) is not in RC.
+
+The intuition for a bridge: "if `vappω f arg = a'` and `v` satisfies
+RC at the LHS `.stuckRec`, then `v` satisfies RC at `a'`". But this
+is exactly what saturation alone cannot deliver — by the
+counterexample, saturated `v` need not be RC at the unfold of a
+stuck head when the unfold is closure-form with bot-body.
+
+Like the `SynthN-realises` bridge for `neutral_ascent` (pass 15's
+finding), this bridge would close a DIFFERENT lemma than
+`subtype_closed_aux`'s `revapp_L` arm. To use it inline, we'd need
+to first prove "if RC at `.neutral (.stuckRec f arg)` holds for v,
+then v is RC at vappω f arg" — and the counterexample falsifies
+this.
+
+### Strategic options
+
+Same as pass 15's neutral_ascent options (since both have the same
+root cause):
+
+#### Option A0: prove "saturation → RC at non-bot τ"  — FALSE
+
+Pass 15 ruled this out for non-bot closure-form types. The same
+counterexample (cl₀ with body = .bot) applies here.
+
+#### Option A: redesign RC at `.neutral` to encode realisation
+
+Strengthen RC at `.neutral` to carry semantic content (the synthesised
+type plus a realisation premise). This would close BOTH
+`neutral_ascent` and `revapp_L` simultaneously. Estimated 200-400 LOC
+of refactoring. See pass 15 entry for tradeoffs.
+
+#### Option B: strengthen `subtype_closed_aux`'s signature
+
+Add "v realises some closed term" as a hypothesis, threading
+through the recursion. Same costs as Option B in pass 15.
+
+#### Option C: restructure the algorithm to avoid `revapp_L`
+
+`SubV.revapp_L` is generated by `subCheckVal`'s stuckRec-L arm
+(`SubCheckVal.lean:481`). The algorithm reaches this arm when the
+LHS is a stuck recursive head and the structural arm fails — this is
+genuinely needed for soundness (it's how the algorithm makes
+progress on stuck heads). Removing it would require re-architecting
+the algorithm.
+
+#### Option D: live with the sorry; same RC redesign closes both
+
+Pragmatic: revapp_L and neutral_ascent share a root cause, so
+investing in Option A pays off twice. Pass 16 confirms revapp_L is
+not separately tractable.
+
+### Comparison with pass 15
+
+| Aspect | neutral_ascent (pass 15) | revapp_L (pass 16) |
+|--------|--------------------------|---------------------|
+| LHS type | `.neutral nA` | `.neutral (.stuckRec f arg)` |
+| RC at LHS | saturation only | saturation only |
+| Recursive premise | `SubV ... τ b` (synthesised τ) | `SubV ... a' c` (vapp result a') |
+| Bridge described | `SynthN-realises` | "vapp-respects-RC" |
+| Counterexample | v=.type, b=.lam-with-bot-body | v=.type, c=.lam-with-bot-body |
+| Status | FALSE as stated (pass 15) | FALSE as stated (pass 16) |
+| Closing option | Redesign RC at `.neutral` | Redesign RC at `.neutral` (same) |
+
+The two findings are **the same finding** wearing two different
+SubV-constructor hats. Both ultimately reduce to: RC at `.neutral`
+needs realisation content for the typed-everything story to close.
+
+### Sorry trajectory
+
+Pre-pass-16 (= post-pass-15):
+- `subtype_closed_aux`: 5 inline (`neutral_ascent`, `iota_intro`,
+  `unfold_fix_L`, `unfold_iota_L`, `revapp_L`).
+- `SubV_subst_neutral_to_value`: 0 (closed pass 11).
+- `SubV_subst_pair`: 1 declaration.
+- `typed_nbe_fundamental_open`: 1 declaration.
+- Plus an `eval_substLvl_identity` and other infrastructure: 1 declaration.
+- **Total**: 8.
+
+Post-pass-16: same. The `revapp_L` sorry is still in place, now
+extensively documented as structurally unprovable.
+
+**Net delta**: 0. The wall is documented but not breached.
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+unchanged (no new declarations). The only change is the inline
+sorry comment in `subtype_closed_aux` and a docstring entry above.
+
+### Honest assessment
+
+Pass 16's stated target (close `revapp_L` via the vapp-respects-RC
+bridge from pass 8) is not achievable. The bridge AS IMAGINED is
+unprovable for the same reason as the SynthN-realises bridge in pass
+15: RC at `.neutral` is saturation-only, and saturation does not
+imply RC at closure-form types.
+
+The contribution of pass 16 is:
+1. Proving the obstruction is structural (not proof-engineering).
+2. Confirming the `neutral_ascent` and `revapp_L` walls share a root
+   cause — they're the same finding, viewed through different SubV
+   constructors.
+3. Validating that Option A (redesign RC at `.neutral`) would close
+   both cases, making it the highest-leverage next move.
+
+### What pass 17 should pick up
+
+Sorry-count progress on `subtype_closed_aux` is now blocked on
+either:
+1. **Option A — redesign RC at `.neutral`** (~200-400 LOC). Closes
+   `neutral_ascent` AND `revapp_L` simultaneously. Highest-leverage
+   move; would also unblock the `SubTV` bridge for typed-everything.
+2. **`iota_intro`** — needs `closure_apply_coherence` (pass 8 noted
+   this is essentially the FL itself, so likely as hard as the FL
+   body).
+3. **`unfold_fix_L`/`unfold_iota_L`** — pass 5 noted these have a
+   step-up mismatch, which is a separate RC structural issue
+   (different from the .neutral one). May or may not be addressed
+   by Option A; need to re-check after the redesign.
+
+The remaining 3 inline sorries (after Option A) plus the 2 declaration
+sorries (`SubV_subst_pair`, `typed_nbe_fundamental_open`) are the
+typed-NbE story's actual remaining work.
+
+---
+
 ## 2026-04-25 — Pass 15 (overnight #10): `neutral_ascent` SynthN-realises bridge is structurally unsound (agent-a20ccfc8)
 
 **Pass 15's stated objective was to close `neutral_ascent` axiom-clean

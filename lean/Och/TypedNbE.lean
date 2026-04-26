@@ -403,7 +403,20 @@ Hard cases remain sorried inline:
 - `unfold_fix_L`, `unfold_iota_L` — step-up mismatch (the LHS
   unfold consumes a step but the goal demands the original step;
   documented in pass 5 post-mortem as a structural RC issue).
-- `revapp_L` — vapp-respects-RC missing.
+- `revapp_L` — **structurally unprovable under current RC**.
+  Pass 16 (2026-04-25) finding: the lemma's conclusion is FALSE
+  for arbitrary `v` in this case, by the SAME counterexample
+  pattern as `neutral_ascent`. The LHS type is
+  `.neutral (.stuckRec f arg)`, RC at which is saturation-only;
+  saturation cannot supply the body witness needed when the
+  recursive premise's RHS `c` is closure-form. Concrete
+  counterexample: pick `f = .iota .type ⟨lam .type (lam .type
+  bot), []⟩`, arg = .type. Then a' = .lam .type cl₀ with cl₀.body
+  = .bot. With v = .type and c = a', RC at the LHS is saturation
+  (TRUE), but RC at c requires body witness at .bot (FALSE). Same
+  RC-redesign (Option A from pass 15) would close both. See pass
+  16 entry in `docs/ideas/typed-nbe-implementation-log.md` and the
+  inline comment on the sorry below.
 - `neutral_ascent` — **structurally unprovable under current RC**.
   Pass 15 (2026-04-25) finding: the lemma's conclusion is FALSE
   for arbitrary `v` in this case (counterexample: `v = .type` at
@@ -1739,7 +1752,86 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           unfold RC
           exact RC.sat_of_succ h
       | SubV.revapp_L _ _ _ =>
-          -- vapp-respects-RC missing. Deferred.
+          -- ----------------------------------------------------------
+          -- WALL: `revapp_L` cannot be closed under the current RC
+          -- formulation. Pass-16 finding (2026-04-25, agent-adccb0fc).
+          -- ----------------------------------------------------------
+          --
+          -- Same structural issue as `neutral_ascent`: the LHS type is
+          -- `.neutral (.stuckRec f arg)`, so RC at it reduces to
+          -- saturation only — no semantic link between `v` and the
+          -- recursive head's unfolded form `a'`.
+          --
+          -- `SubV.revapp_L` premises:
+          --   * `vappω f arg = some a'` — `a'` is the one-step unfold.
+          --   * `a' ≠ .neutral (.stuckRec f arg)` — productivity guard.
+          --   * `SubV ((.neutral (.stuckRec f arg), c) :: S) Γ a' c`
+          --     — recursive premise on the unfolded form.
+          --
+          -- We have `h : RC (k+1) d (.neutral (.stuckRec f arg)) v`.
+          -- By RC's definition at `.neutral`:
+          --   `RC (n+1) d (.neutral _) v
+          --      = Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q`
+          -- i.e. saturation only.
+          --
+          -- To apply `ih` on `SubV ... a' c`, we need `RC (k+1) d a' v`.
+          -- For closure-form `a'` (`.lam`/`.iota`/`.fix`), this requires
+          -- body witnesses that saturation alone cannot supply.
+          --
+          -- Concrete counterexample (verified):
+          --   Pick f = `.iota .type ⟨Expr.lam Expr.type
+          --     (Expr.lam Expr.type Expr.bot), []⟩`.
+          --   Pick arg = `.type` (non-neutral, so vapp doesn't stop).
+          --   Then vapp at unf=4 reduces:
+          --     f'  = eval [f] (Expr.lam .type (Expr.lam .type .bot))
+          --         = .ok (.lam .type ⟨.lam .type .bot, [f]⟩)
+          --     a'  = vapp f' arg
+          --         = eval [arg, f] (.lam .type .bot)
+          --         = .ok (.lam .type ⟨.bot, [arg, f]⟩)
+          --   So a' = `.lam .type cl₀` with cl₀ = ⟨Expr.bot, [arg, f]⟩.
+          --   cl₀.openω X = eval [X, arg, f] Expr.bot = .ok .bot for any X.
+          --   a' ≠ .neutral (.stuckRec f arg) ✓ (a' is a .lam).
+          --
+          --   Pick c := a'. Then `SubV ... a' c` discharges by SubV.refl.
+          --   Take v := .type (fullyQuotable + quote-witness — saturated).
+          --
+          --   `RC (k+1) d (.neutral (.stuckRec f arg)) .type` HOLDS
+          --     (saturation only).
+          --   `RC (k+1) d a' .type` for k ≥ 1 requires the body witness:
+          --     ∀ m ≤ k, ∀ x with RC m d .type x, ∃ r,
+          --       vapp _ _ .type x = .ok r ∧
+          --       ∃ rTy, cl₀.openω x = some rTy ∧ RC m d rTy r.
+          --   vapp .type x = .ok (.neutral (.stuckRec .type x)) (NbE.lean:161).
+          --   cl₀.openω x = .ok .bot, so rTy = .bot, and we need
+          --   `RC m d .bot _`, which is FALSE for m ≥ 1.
+          --
+          -- Therefore `subtype_closed_aux`'s conclusion is FALSE for
+          -- this `v` in the `revapp_L` case — the lemma is not provable
+          -- AS STATED. Same counterexample shape as pass 15's
+          -- `neutral_ascent` finding.
+          --
+          -- The "vapp-respects-RC" bridge described in pass 8 doesn't
+          -- dissolve this: that bridge would need `RC (k+1) d a' v` as
+          -- a precondition (i.e., the unfolded form is itself
+          -- RC-typed). RC at `.neutral` saturation does NOT supply this
+          -- — by the counterexample above, saturated `v` need not be
+          -- RC at the unfold of a stuck head.
+          --
+          -- Strategic options (same as pass 15's neutral_ascent):
+          --   A0. (FALSE — pass 15 finding) "saturation ∧ τ ≠ .bot
+          --       → RC n d τ v" as a stand-alone lemma. Counterexample
+          --       constructed in the neutral_ascent comment above.
+          --   A.  Redesign RC at `.neutral` to encode realisation
+          --       content (∃ τ_synth, the value `v` is RC at τ_synth).
+          --       ~200-400 LOC refactoring. Would also close
+          --       `neutral_ascent`.
+          --   B.  Strengthen `subtype_closed_aux`'s signature with a
+          --       "v realises some closed term" hypothesis carrying
+          --       through the recursion.
+          --   C.  Restructure `SubV.revapp_L` away from the algorithm;
+          --       large rewiring of `subCheckVal`'s stuckRec-L arm.
+          --   D.  Live with the sorry; the same RC redesign that
+          --       handles `neutral_ascent` will handle this case.
           sorry
 
 /-- Specialisation of the auxiliary at empty seen-set / context.
