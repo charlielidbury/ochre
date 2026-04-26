@@ -4,6 +4,267 @@ Running log of the typed-NbE implementation work. Most recent entries
 at the top. Each entry is honest about what landed, what's sorried,
 and what's blocked.
 
+## 2026-04-24 — Pass 11 (overnight #6): typed refinement of SubV_subst_neutral_to_value (agent-aba102f3)
+
+**Strengthened `SubV_subst_neutral_to_value`'s statement with an
+`RC n d τ_dom v` hypothesis**, eliminating the Ω-style
+counterexample pass 9 found. Proof remains sorried; investigation
+confirms pass 9's structural finding that even with the typed
+hypothesis, the proof requires Val-level substitution machinery
+(`Val.substLvl` + eval-substitution-commutation, pass-9 estimate
+~510 LOC). Updated `lam` and `iota_struct` callers to provide RC
+witnesses (both have them readily available). Did NOT typed-
+refine `SubV_subst_pair`: the `fix_struct` caller's substituents
+are `.fix` types (not RC-realised at the relevant domain), and
+strengthening the pair lemma without an RC-at-fix-value auxiliary
+would force a new inline sorry at the call site, violating the
+no-net-sorry rule.
+
+Net delta: 0 sorries. Statement of `SubV_subst_neutral_to_value`
+is now correct (no Ω vacuity). The `lam`/`iota_struct` cases of
+`subtype_closed_aux` continue to use it; their soundness now
+rests on a *true* lemma rather than a vacuously-satisfied false
+one. `SubV_subst_pair` and `fix_struct` retain the pass-8 status.
+
+This is "case 2" of pass 11's stop-conditions: lemma statement
+fixed, proof remains partial, with detailed post-mortem on why
+even the typed version isn't easier.
+
+### What landed
+
+#### Statement strengthening
+
+```lean
+theorem SubV_subst_neutral_to_value
+    {n d : Nat}
+    {S : List (Val × Val)} {Γ : TyCtx}
+    {τ_dom : Val} {clA clB : Closure} {bA bB : Val} (v : Val)
+    (_hRC : RC n d τ_dom v)                            -- NEW
+    (hbA : clA.openω (.neutral (.var Γ.size)) = some bA)
+    (hbB : clB.openω (.neutral (.var Γ.size)) = some bB)
+    (hbody : SubV S (Γ.push τ_dom) bA bB) :
+    ∃ bA' bB',
+      clA.openω v = some bA' ∧
+      clB.openω v = some bB' ∧
+      SubV S Γ bA' bB'
+```
+
+Previously this lemma's existential conclusion was vacuously
+satisfied on Ω inputs (e.g. self-application closure opened at
+the omega combinator). The RC hypothesis on `v` rules out such
+inputs by saturation: `RC` at any non-zero step requires
+`Val.fullyQuotable d v ∧ ∃ q, quote fuelω d v = .ok q`, which
+implies `quote v` terminates. This (transitively) implies eval at
+`v`-bound positions terminates *to the extent that quote
+inspects them*. The conclusion's existential is now provable in
+principle.
+
+#### Caller updates
+
+`subtype_closed_aux` lam case: passes `ha_RCdomA : RC m d domA a`
+(the RC witness on the substituent argument `a`).
+
+`subtype_closed_aux` iota_struct case: passes `hAnnB : RC k d annB v`
+(the RC witness derived from the iota body's annotation
+realisation).
+
+Both call sites had the witness readily available — no new sorry,
+no new auxiliary lemma at these call sites.
+
+#### What was NOT changed
+
+`SubV_subst_pair` (used by `fix_struct`) retains its pass-8
+statement. Documented in-source: the typed refinement (route a:
+`RC n d τ_dom va ∧ RC n d τ_dom vb`) requires a "fix-inhabits-
+own-annotation" auxiliary lemma to discharge at the `fix_struct`
+caller (substituents are `.fix annA clA, .fix annB clB`, not RC-
+realised at `annB` directly). Building that aux lemma was out of
+scope for pass 11.
+
+The alternative (route b: explicit eval-termination preconditions)
+was *prototyped* during this pass — see git history below — but
+required +1 inline sorry at the `fix_struct` caller (for the RHS
+fix open termination), which violates the no-net-sorry constraint.
+
+### Why even the typed proof is hard
+
+Pass 9's Approach B already noted: "RC-typing on `v` does NOT
+replace the substitution content." Pass 11 attempted to find a
+proof path leveraging RC's structure; here is the negative
+result.
+
+#### The fundamental obstacle: shape mismatch on bA vs bA'
+
+The induction is on `hbody : SubV S (Γ.push τ_dom) bA bB`. Each
+SubV constructor constrains `bA, bB`:
+- `SubV.lam` ⟹ `bA = .lam ...`, `bB = .lam ...`
+- `SubV.iota_struct` ⟹ `bA = .iota ...`, `bB = .iota ...`
+- `SubV.refl` ⟹ `bA = bB`
+- ... etc.
+
+But the goal speaks of `bA' = clA.openω v` — an eval result whose
+shape is *not* constrained by the SubV constructor. For example:
+even when the SubV proves `SubV.lam bA bB`, `bA'` need not be a
+`.lam` (it's `eval fuelω (v :: env) body` — `body`'s shape post-
+eval depends on env, including v).
+
+The bridge "`bA, bA'` differ by Val-level substitution
+(replace fresh-neutral with v)" requires:
+
+(1) A **Val-level substitution function** `Val.substLvl k v_sub :
+    Val → Val/Outcome Val` that replaces `.neutral (.var k)` with
+    `v_sub`, propagating through `.app`/`.iota`/etc. (pass 9
+    Approach A).
+
+(2) An **eval-substitution-commutation lemma**:
+    `eval fuel (a₁ :: env) body = .ok r₁ →
+     eval fuel (a₂ :: env) body = .ok r₂ →
+     r₂ = Val.substLvl Γ.size (a₂ at original-position-of-a₁) r₁`
+    (modulo redex firing for `.app`-spine cases).
+
+(3) A **SubV-preserves-substLvl lemma**: substituting an
+    SubV-related pair into both sides preserves SubV.
+
+These are pass 9's components (a), (b), (c) — estimated ~510 LOC
+in total.
+
+The RC hypothesis on `v` *helps* component (b) by guaranteeing
+eval-termination at v-bound positions (saturation⇒quote
+terminates⇒eval-at-fresh terminates⇒eval-at-v terminates by
+substitution-commutation). But component (b) itself, the lemma
+that *defines* this commutation, is the bulk of the work and is
+unavoidable.
+
+#### Why RC's specific structure (saturation, mono, intro/elim) doesn't shortcut
+
+The user's prompt asked: "Consider whether RC's particular
+structure can be leveraged differently."
+
+- **Saturation conjuncts** (`fullyQuotable`, quote witness): tell
+  us about `v` itself (it's well-formed and quote-able). Don't
+  tell us about `eval (v :: env) body`'s shape.
+
+- **Mono** (`RC.mono`): downward step-index closure. Useful for
+  IH applications at smaller steps but doesn't change the
+  body-shape bridge.
+
+- **Intro/elim** lemmas (`RC.lam_intro`, `RC.lam_elim`, etc.):
+  give us forward/backward principles between RC at closure
+  types and explicit body opens. These are useful at the
+  *outer* level (where `subtype_closed_aux`'s lam case applies
+  the body clause of h to a concrete `a`) but inside the
+  substitution lemma itself, the goal is structural SubV
+  transport, not RC manipulation.
+
+The RC structure's payoff for this lemma is bounded: it makes
+the *statement* correct (no Ω vacuity), but the structural
+content of the proof is unchanged from pass 9's analysis.
+
+#### Could splitting into helpers help?
+
+Pass 9's prompt suggested: "Try splitting the lemma into smaller
+helper lemmas, each provable."
+
+Plausible factoring:
+- `Val.substLvl_well_def` — partiality discharge at `.app`-spine
+  cases, given RC on the substituend (~80 LOC).
+- `eval_substLvl_commutes_lam` — special case for `.lam`-bound
+  bodies (~50 LOC).
+- `eval_substLvl_commutes_neutral` — special case for fresh-
+  neutral substitution (~50 LOC).
+- `SubV_substLvl_preserves_<constructor>` — one per SubV
+  constructor (~150 LOC total, 13 constructors).
+- Glue lemma combining the above (~30 LOC).
+
+Total: still in the ~360-510 LOC range. No order-of-magnitude
+saving.
+
+### Sorry trajectory
+
+Pre-pass-11:
+- `subtype_closed_aux`: 5 inline sorries
+  (`neutral_ascent`, `iota_intro`, `unfold_fix_L`,
+  `unfold_iota_L`, `revapp_L`)
+- `SubV_subst_neutral_to_value`: 1 declaration sorry
+- `SubV_subst_pair`: 1 declaration sorry
+- `typed_nbe_fundamental_open`: 1 declaration sorry
+- **Total**: 8 sorries in TypedNbE.lean
+
+Post-pass-11:
+- `subtype_closed_aux`: 5 inline sorries (UNCHANGED)
+- `SubV_subst_neutral_to_value`: 1 declaration sorry,
+  **statement strengthened with RC hypothesis**
+- `SubV_subst_pair`: 1 declaration sorry (UNCHANGED, statement
+  preserved)
+- `typed_nbe_fundamental_open`: 1 declaration sorry (UNCHANGED)
+- **Total**: 8 sorries in TypedNbE.lean
+
+Net: 0 sorries added/removed. One statement strengthened from
+"vacuously satisfied on Ω" to "true under typed refinement".
+
+### Build status
+
+`nix develop -c lake build` passes end-to-end. AxiomCheck.lean
+unchanged (the same theorems still depend on sorryAx; the new RC
+hypothesis pulls `Quot.sound` into
+`SubV_subst_neutral_to_value`'s axiom dependencies as a structural
+side-effect of the RC predicate's mutual definition with
+Outcome/Val machinery — purely a transitivity addition, not a new
+fundamental dependency).
+
+### What pass 12+ should pick up
+
+In priority order:
+
+1. **The substitution machinery proper.** Pass 9's components
+   (`Val.substLvl`, eval-commutation, SubV-preservation). With
+   the typed `SubV_subst_neutral_to_value` statement, the
+   partiality issues in `Val.substLvl` are easier to discharge
+   (RC on the substituend is exactly the well-typed-substituent
+   condition). Estimated ~400-500 LOC; closes
+   `lam`/`iota_struct` axiomatically.
+
+2. **`SubV_subst_pair` typed refinement** — apply route (a)
+   (`RC n d τ_dom va ∧ RC n d τ_dom vb`) once an RC-at-fix-value
+   auxiliary lemma is built. The aux lemma might follow from
+   `RC.fix_intro` plus careful step-index bookkeeping — needs
+   investigation. Once route (a) lands, `fix_struct` rests on a
+   true pair-lemma, matching `lam`/`iota_struct`'s pass-11 status.
+
+3. **Alternative: pivot to typed-everything** (pass-6 design's
+   Level 2). The substitution lemma's content moves into
+   `subCheckTypedV`'s soundness, where the algorithmic
+   structural recursion at fresh neutrals carries the
+   parametricity argument. Pass 6's analysis (§2) showed the
+   substitution lemma is *intrinsically required* by either
+   architecture — pivoting moves the work but doesn't dissolve
+   it. Open question: does the typed-everything formulation
+   admit a cleaner substitution-machinery proof?
+
+4. **Leave intact, attack other inline sorries**
+   (`iota_intro`, `revapp_L`, `neutral_ascent`,
+   `unfold_fix_L`, `unfold_iota_L`). These have distinct
+   obstacles per pass-10's analysis; could be tackled in
+   parallel with the substitution work.
+
+### Honest assessment
+
+Pass 11 is the third pass to NOT add scaffolding (after passes
+9, 10). The strengthening is forward progress in *correctness*
+(statement is now true, not vacuously satisfied) but doesn't
+close cases. The substitution wall remains.
+
+The user's pass-11 prompt anticipated this disposition (case 2:
+"Lemma statement fixed but proof partial. Document precisely
+where the proof needs more work."). This entry fulfills that.
+
+The honest path to OCH soundness via this architecture remains:
+a dedicated multi-pass effort on the Val-level substitution
+machinery (pass 9's ~510 LOC estimate). No shortcut has emerged
+across passes 5-11.
+
+---
+
 ## 2026-04-24 — Pass 10 (overnight #5): RC_env signature refactor (agent-ad99cc16)
 
 **Landed pass 9's recommended `RC_env` signature refactor for

@@ -532,52 +532,77 @@ The central technical lemma needed by the closure cases of
 
 **Statement.** If two closures, opened at the same fresh neutral
 `(.var Γ.size)`, give bodies `bA, bB` related by `SubV` under
-`Γ.push τ_dom`, then for **any** value `v`, the closures opened at `v`
-give bodies `bA', bB'` related by `SubV` under `Γ`.
+`Γ.push τ_dom`, AND `v` is **RC-realised** at `τ_dom` (step `n`,
+depth `d`), then the closures opened at `v` give bodies
+`bA', bB'` related by `SubV` under `Γ`.
 
 Conceptually: this is a "fresh neutral substitution" lemma —
-replacing the abstract fresh neutral with a concrete value, and
+replacing the abstract fresh neutral with a *typed* value, and
 correspondingly trimming `τ_dom` off the typing context, preserves
 SubV.
+
+**Pass 11 typed-refinement (2026-04-24).** Previous formulations of
+this lemma (passes 7-10) had a **latent statement bug**: with
+arbitrary `v` (no typing), `clA.openω v` is not guaranteed to
+terminate — there is a concrete Ω-style counterexample
+(`clA = ⟨body := .app (.bvar 0) (.bvar 0), env := []⟩` opened at
+`v = .lam dom ⟨.app (.bvar 0) (.bvar 0), []⟩` exhausts fuel). The
+existential conclusion `∃ bA', clA.openω v = some bA'` is then
+unprovable, making the lemma vacuous on Ω inputs and misleading.
+
+The fix is to **strengthen** (not weaken) the statement: add
+`RC n d τ_dom v` as a hypothesis. This ensures `v` is "well-typed"
+in the RC sense at the closure's domain. Saturation on `v` (via
+`RC.fullyQuotable` / `RC.quote_witness`) provides eval-termination
+evidence the un-typed statement was missing.
 
 **Why we need it (lam case).** The `RC (.lam domB clB) v` clause
 requires the closure body opened at *every* RC-typed `a` to relate
 to the action of `vapp v a`. The `SubV.lam` premise only gives
-relatedness at the *fresh neutral*. The lemma closes the gap.
+relatedness at the *fresh neutral*. The lemma closes the gap. At
+the call site, `a` is RC-typed at `domA` (after contravariant
+coercion), satisfying the new RC hypothesis.
 
-**Why it is hard.** SubV's induction recursors on the *shape* of the
-two value arguments. After substituting `v` for the fresh neutral,
-the shapes can change wildly (e.g. `bA = .neutral (.app (var Γ.size)
-arg)`, but `bA' = vappω v arg` could be a `.lam`/`.iota`/etc.
-depending on `v`). The classical induction on SubV cannot transport
-the derivation case-by-case.
+**Why the proof is hard.** SubV's induction recursors on the *shape*
+of the two value arguments. After substituting `v` for the fresh
+neutral, the shapes can change wildly (e.g. `bA = .neutral (.app
+(var Γ.size) arg)`, but `bA' = vappω v arg` could be a
+`.lam`/`.iota`/etc. depending on `v`). The classical induction on
+SubV cannot transport the derivation case-by-case. Even with the
+RC hypothesis on `v`, the body shapes diverge — pass 9's Approach B
+showed RC-on-v gives saturation/quote info for `v` alone, not for
+how `clA.body`'s eval result transforms.
 
-A successful proof requires either:
+A successful proof requires:
 1. **Val-level substitution machinery** — define `Val.substLvl
    (k : Nat) (v_sub : Val) : Val → Val` (replace neutral level
    `.var k` with `v_sub`), prove it commutes with `eval` /
    `vapp` / closure-opening, prove it transports SubV under the
-   appropriate context-update. Estimated 200-400 LOC.
-2. **A typed refinement** — restrict to RC-typed `v` (require
-   `RC n d τ_dom v` as a hypothesis) and use the typed
-   structure to close case-by-case. Estimated 150-250 LOC at
-   the Val level (vs 300-500 at Expr-level for `unshift_head`).
+   appropriate context-update.
 
-Pass 7 (this commit) keeps the lemma sorried but USES it to close
-`lam` (and ideally `iota_struct`, `fix_struct`). This is honest:
-the lemma's *shape* is validated (it dispatches multiple cases),
-and the proof obligation is consolidated into a single sorried
-theorem that future passes can attack.
+   With the typed refinement, the partiality gates introduced by
+   `vapp` at `app`-spines can be discharged using `v`'s RC
+   structure (saturation gives `quote v` terminates; combined with
+   eval-substitution-commutation, `eval (v :: env) body` terminates
+   if `eval (fresh :: env) body` does).
 
-**Net delta this pass**: +1 sorried theorem statement, -3 inline
-sorries (in `subtype_closed_aux`'s closure-form cases). Net -2.
+   Pass 9 estimate: ~510 LOC across 4 inter-dependent components
+   (`Val.substLvl`, eval-commutation, SubV-preservation, glue).
+
+**Pass 11 status.** The statement is now correct (no Ω vacuity).
+The proof remains sorried; closing it requires the substitution
+machinery above. See `docs/ideas/typed-nbe-implementation-log.md`
+pass-11 entry for the substantive reasoning behind keeping the
+lemma sorried with the corrected statement.
 
 See `docs/ideas/typed-everything-architecture.md` (pass 6 design
 doc) §2 for why this lemma is intrinsically required (the typed-
 everything substrate does NOT magically dissolve it). -/
 theorem SubV_subst_neutral_to_value
+    {n d : Nat}
     {S : List (Val × Val)} {Γ : TyCtx}
     {τ_dom : Val} {clA clB : Closure} {bA bB : Val} (v : Val)
+    (_hRC : RC n d τ_dom v)
     (hbA : clA.openω (.neutral (.var Γ.size)) = some bA)
     (hbB : clB.openω (.neutral (.var Γ.size)) = some bB)
     (hbody : SubV S (Γ.push τ_dom) bA bB) :
@@ -585,12 +610,13 @@ theorem SubV_subst_neutral_to_value
       clA.openω v = some bA' ∧
       clB.openω v = some bB' ∧
       SubV S Γ bA' bB' := by
-  -- See docstring for the proof strategy. Pass 7 leaves this
-  -- sorried but consolidates the obligation: it dispatches the
-  -- `lam`/`iota_struct` cases of `subtype_closed_aux`. The
-  -- `fix_struct` case needs the *pair* version `SubV_subst_pair`
-  -- (below) because the substituends differ on each side
-  -- (`.fix annA clA` vs `.fix annB clB`).
+  -- See docstring for the proof strategy. Pass 11 strengthens
+  -- the statement with `RC n d τ_dom v` (closing the Ω counter-
+  -- example pass 9 found in the un-typed version) but keeps the
+  -- proof sorried — even with the typed hypothesis, the proof
+  -- requires Val-level substitution machinery (pass-9 Approach B
+  -- analysis: RC-on-v alone doesn't dissolve the structural
+  -- substitution requirement).
   sorry
 
 /-! ## `SubV_subst_pair` — different substituends on each side
@@ -602,9 +628,10 @@ The `fix_struct` case of `subtype_closed_aux` needs to relate
 on both sides; this is the pair-substitution generalisation.
 
 **Statement.** If two closures, opened at the same fresh neutral,
-give bodies related by SubV, AND we have two values `va, vb`
-related by SubV in the OUTER context, then the closures opened at
-`va` and `vb` (respectively) give bodies related by SubV in the
+give bodies related by SubV, two values `va, vb` are RC-realised
+at `τ_dom` (typed refinement, see pass-11 note below), AND `va, vb`
+are related by SubV in the OUTER context, then the closures opened
+at `va` and `vb` (respectively) give bodies related by SubV in the
 outer context.
 
 **Why a separate lemma.** The basic lemma's proof inducts on the
@@ -614,6 +641,23 @@ LHS, `vb` on the RHS — connected by `SubV S Γ va vb`. The
 constructor cases are similar in shape but every recursive
 premise needs the pair-related-substituent input rather than
 single-substituent.
+
+**Pass 11 status.** This pair lemma has the **same Ω
+counterexample** as `SubV_subst_neutral_to_value` (un-typed
+substituents allow non-terminating `clA.openω va`). The clean fix
+is route (a): require `RC n d τ_dom va ∧ RC n d τ_dom vb`. But
+the `fix_struct` caller's substituents are `.fix annA clA` and
+`.fix annB clB` — *types*, not typed values inhabiting `annB`.
+Providing the RC witnesses requires a separate "fix-inhabits-own-
+annotation" auxiliary lemma (out of pass-11 scope).
+
+To preserve the existing `fix_struct` structural argument and not
+inflate the inline-sorry count, pass 11 leaves this pair lemma's
+statement **unchanged** (still vacuously satisfied on Ω inputs).
+The post-pass-11 plan: build the RC-at-fix aux lemma, then apply
+route (a) here. See pass-11 entry in
+`docs/ideas/typed-nbe-implementation-log.md` for the full
+reasoning.
 
 **Implementation note.** In principle, `SubV_subst_pair` can
 follow from `SubV_subst_neutral_to_value` plus a "compose
@@ -640,9 +684,10 @@ theorem SubV_subst_pair
       clA.openω va = some bA' ∧
       clB.openω vb = some bB' ∧
       SubV S Γ bA' bB' := by
-  -- See docstring. Pass 8 leaves this sorried; it dispatches
-  -- the `fix_struct` case of `subtype_closed_aux`, so closing
-  -- it closes that case.
+  -- See docstring. Pass 11 leaves this lemma's statement
+  -- unchanged from pass 8; the typed-refinement (route a) is
+  -- deferred until the RC-at-fix-value auxiliary lemma is
+  -- written. Pair lemma itself remains sorried.
   sorry
 
 /-- Auxiliary form parameterised over the seen-set obligation, in
@@ -779,10 +824,12 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           obtain ⟨r, hvapp, rTyA, hOpenA, hRCa⟩ :=
             h_body m hm a ha_RCdomA
           -- Step 5: substitution lemma at value `a`.
+          -- Pass 11: provide RC witness on `a` (typed refinement).
           obtain ⟨bA', bB', hOpenA', hOpenB', hSubBody⟩ :=
-            SubV_subst_neutral_to_value (S := S') (Γ := Γ')
+            SubV_subst_neutral_to_value (n := m) (d := d)
+              (S := S') (Γ := Γ')
               (τ_dom := domA) (clA := clA) (clB := clB)
-              (bA := bA) (bB := bB) a hbA hbB hbody
+              (bA := bA) (bB := bB) a ha_RCdomA hbA hbB hbody
           -- bA' = rTyA from `clA.openω a = some bA' = some rTyA`.
           have heq : bA' = rTyA := by
             rw [hOpenA] at hOpenA'
@@ -863,11 +910,13 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
             ih k (Nat.le_refl _) hΓρ_k hS_k hAnn hAnnA
           refine ⟨hSat, hAnnB, ?_⟩
           -- Step 5: substitution lemma on hBody, applied at v.
+          -- Pass 11: provide RC witness on `v` at annB (the typed
+          -- refinement's hypothesis).
           obtain ⟨bA', bB', hOpenA', hOpenB', hSubBody⟩ :=
-            SubV_subst_neutral_to_value
+            SubV_subst_neutral_to_value (n := k) (d := d)
               (S := (.iota annA clA, .iota annB clB) :: S')
               (Γ := Γ') (τ_dom := annB) (clA := clA) (clB := clB)
-              (bA := bA) (bB := bB) v hbA hbB hBody
+              (bA := bA) (bB := bB) v hAnnB hbA hbB hBody
           -- bA' = vTy (both equal clA.openω v).
           have heq : bA' = vTy := by
             rw [hOpenA] at hOpenA'
