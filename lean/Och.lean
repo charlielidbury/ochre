@@ -13,6 +13,7 @@ import Och.Soundness
 import Och.SoundnessAudit
 import Och.Tests
 import Och.PropertyTests
+import Och.PropertyTestsExtra
 import Och.PerfProbe
 import Och.Std
 import Och.AppendVecPath
@@ -64,6 +65,8 @@ Tests / audit / std-library / probes (built so their
 - `Och.SoundnessAudit` — executable witnesses for soundness gaps
 - `Och.Tests`          — smoke tests
 - `Och.PropertyTests`  — open-Γ / negative / round-trip properties
+- `Och.PropertyTestsExtra` — fuel-mono, ctx-mono, idempotence, Bot,
+                              synth/subCheck consistency, β agreement
 - `Och.PerfProbe`      — perf benchmarks (compile-time pins)
 - `Och.Std`            — Std/* aggregator
 
