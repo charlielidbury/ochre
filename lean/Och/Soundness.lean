@@ -100,9 +100,35 @@ theorem concEval_preservation
     (hstep : concEval fuel e = .ok e') :
     Subtype' [] [] e' τ := sorry
 
+/-- **Progress** (the missing half of soundness): a synth-accepted
+term doesn't get stuck during evaluation. `concEval` may return
+`.ok value` or `.outOfFuel` — both benign — but never `.error`.
+
+Without this theorem, `concEval_preservation` is vacuously true
+on stuck programs (the `.ok e'` hypothesis fails). The current
+preservation-only theorem set lets a synth-accepted program
+silently produce `.error "stuck"` at runtime, which violates
+the practical reading of "synth gates concEval".
+
+See `docs/ideas/soundness-strengthen.md` for the full discussion.
+The Och-identity claim is: synth's structural walk is a
+*sufficient guarantee* against stuckness — every state concEval
+could get stuck in (free bvar, apply non-function, etc.) is
+ruled out by synth's app-arm domain check, ascription check, and
+binder validation. -/
+theorem synth_progress
+    {fuel : Nat} {e : Expr} {v : Och.WTValue}
+    (hcl : e.closedAt 0 = true)
+    (h : Och.synth e fuel = .ok v) :
+    ∀ f, ∀ msg, concEval f e ≠ .error msg := sorry
+
 /-- End-to-end soundness: a well-checked term evaluates to
-something that still inhabits its declared type. Combines
-`synth_sound`, `subCheck_sound`, and `concEval_preservation`. -/
+something that still inhabits its declared type, AND eval doesn't
+get stuck. Combines `synth_sound`, `subCheck_sound`,
+`synth_progress`, and `concEval_preservation`.
+
+Phrased so that the conclusion is "either out-of-fuel, or a
+typed value" — there is no third "stuck" outcome. -/
 theorem soundness
     {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
     (hcl : e.closedAt 0 = true)
