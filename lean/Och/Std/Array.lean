@@ -6,6 +6,7 @@ import Och.Std.DNat
 import Och.Std.Unit
 import Och.Std.Pair
 import Och.Std.DFin
+import Och.API
 
 /-!
 # Length-Indexed Arrays (indexed by `Nat_`)
@@ -54,18 +55,18 @@ open Expr
 -- ── Positive computation tests ─────────────────────────────
 
 -- Array_ zero_ T ≡ Unit_ (bidirectional subsumption).
-example : SubstEval.subCheckT 200 (och{ Array_ zero_ Nat_ }) Unit_ = .ok true ∧
-          SubstEval.subCheckT 200 Unit_ (och{ Array_ zero_ Nat_ }) = .ok true := by
+example : Och.subCheckE 200 (och{ Array_ zero_ Nat_ }) Unit_ = .ok true ∧
+          Och.subCheckE 200 Unit_ (och{ Array_ zero_ Nat_ }) = .ok true := by
   native_decide
 
 -- pair_ Nat Unit 0 unit, head it back out
 private def testArr1 := och{ pair_ Nat_ Unit_ zero_ unit_ }
 
-example : SubstEval.subCheckT 200 (och{ fst_ testArr1 }) zero_ = .ok true ∧
-          SubstEval.subCheckT 200 zero_ (och{ fst_ testArr1 }) = .ok true := by
+example : Och.subCheckE 200 (och{ fst_ testArr1 }) zero_ = .ok true ∧
+          Och.subCheckE 200 zero_ (och{ fst_ testArr1 }) = .ok true := by
   native_decide
-example : SubstEval.subCheckT 200 (och{ snd_ testArr1 }) unit_ = .ok true ∧
-          SubstEval.subCheckT 200 unit_ (och{ snd_ testArr1 }) = .ok true := by
+example : Och.subCheckE 200 (och{ snd_ testArr1 }) unit_ = .ok true ∧
+          Och.subCheckE 200 unit_ (och{ snd_ testArr1 }) = .ok true := by
   native_decide
 
 -- testArr2 = [1, 2]
@@ -73,33 +74,33 @@ private def testArr2 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
 }
 
-example : SubstEval.subCheckT 200 (och{ fst_ testArr2 }) one_ = .ok true ∧
-          SubstEval.subCheckT 200 one_ (och{ fst_ testArr2 }) = .ok true := by
+example : Och.subCheckE 200 (och{ fst_ testArr2 }) one_ = .ok true ∧
+          Och.subCheckE 200 one_ (och{ fst_ testArr2 }) = .ok true := by
   native_decide
-example : SubstEval.subCheckT 200 (och{ fst_ (snd_ testArr2) }) two_ = .ok true ∧
-          SubstEval.subCheckT 200 two_ (och{ fst_ (snd_ testArr2) }) = .ok true := by
+example : Och.subCheckE 200 (och{ fst_ (snd_ testArr2) }) two_ = .ok true ∧
+          Och.subCheckE 200 two_ (och{ fst_ (snd_ testArr2) }) = .ok true := by
   native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 
-example : SubstEval.subCheckT 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
-example : SubstEval.subCheckT 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
+example : Och.subCheckE 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
+example : Och.subCheckE 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
-example : SubstEval.subCheckT 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
+example : Och.subCheckE 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
 
 -- ── Smoke: Array_ applied with abstract-friendly Nat_ index ───
 
 example : (SubstEval.evalSubst 1000 SubstEval.unfBound (och{ Array_ (succ_ zero_) Nat_ })).isOk := by
   native_decide
 
-example : SubstEval.subCheckT 400 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
-          SubstEval.subCheckT 400 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
+example : Och.subCheckE 400 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
+          Och.subCheckE 400 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
   native_decide
-example : SubstEval.subCheckT 400 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
+example : Och.subCheckE 400 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
             = .ok true ∧
-          SubstEval.subCheckT 400 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
+          Och.subCheckE 400 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
             = .ok true := by
   native_decide
 
@@ -163,7 +164,7 @@ example : (concEval 5000 (och{ fst_ appended })).isOk := by native_decide
 -- (domA push gives the wrong ascent type under n1/n2 binders). Pinned
 -- so future fixes make it visible.
 --
--- example : SubstEval.subCheckT 5000 appendArrays
+-- example : Och.subCheckE 5000 appendArrays
 --   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
 --   = .ok true := by native_decide
 
@@ -240,10 +241,16 @@ example : (concEval 10000 (och{ indexArr Nat_ three_ arr3 zero_ })).isOk := by
 -- `typeCheck` at its declared dependent type — the same A6-family
 -- NbE incompleteness that blocks `appendArrays` above.
 
--- `three_` as an index into a length-3 array is rejected (diagonal).
-example : (TyCheck.typeCheck 10000
-            (och{ indexArr Nat_ three_ arr3 three_ }) Nat_).isOk
-        = false := by native_decide
+-- `three_` as an index into a length-3 array is rejected (diagonal)
+-- by the bidirectional walk in `TyCheck.tyInfer`. The public API
+-- `Och.synth` currently runs `tyInfer` for diagnostics but on
+-- `.error` falls back to `evalSubst` (Och.API module doc), so
+-- this pin asserts the `tyInfer` rejection rather than an `synth`
+-- rejection. Closing the boundary requires fixing the
+-- bidirectional incompleteness so `tyInfer.error` can be trusted.
+example : (TyCheck.tyInfer 10000 #[]
+            (och{ indexArr Nat_ three_ arr3 three_ })).isError
+        = true := by native_decide
 
 end IndexArrTests
 

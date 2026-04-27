@@ -369,22 +369,3 @@ example : whnfPi 1 .type .type = whnfPi 1 .type .type := by
   unfold whnfPi whnfPi.go; rfl
 
 end TyCheck
-
-namespace SubstEval
-
-/-- Top-level typed subtype check: try the syntactic
-`TyCheck.typeCheck` first (fast on positive cases — checks each
-`succ_` layer locally), fall back to `subCheck` on rejection.
-
-For positive cases that `typeCheck` accepts: O(|a|) cheap calls.
-For negatives or cases where `typeCheck` is incomplete: total cost
-is `typeCheck` + `subCheck`, the safety net.
-
-This is the production entry point for substitution-based subtype
-checking. -/
-def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
-  match TyCheck.typeCheck fuel a τ with
-  | .ok true => .ok true
-  | _ => subCheck fuel a τ
-
-end SubstEval

@@ -2,6 +2,7 @@ import Och.Macro
 import Och.Eval
 import Och.EvalSubst
 import Och.TyCheck
+import Och.API
 import Och.Std.DNat
 import Och.Std.DFin
 import Och.Std.Pair
@@ -374,12 +375,12 @@ def impossibleCases : List ImpossibleCase :=
 
 def runImpossibleCase (c : ImpossibleCase) (fuelRef : IO.Ref Nat)
     : IO (String × Nat × Outcome Bool) := do
-  let (subst_ms, substR) ← time (fun n => SubstEval.subCheckT (c.fuel + n) c.a c.b) fuelRef
+  let (subst_ms, substR) ← time (fun n => Och.subCheckE (c.fuel + n) c.a c.b) fuelRef
   return (c.label, subst_ms, substR)
 
 def runImpossibleSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 6: previously-impossible tests (SubstEval.subCheckT) ==="
+  IO.println "=== Section 6: previously-impossible tests (Och.subCheckE) ==="
   IO.println "label                         | subst_ms | subst verdict"
   for c in impossibleCases do
     let (lbl, subst_ms, substR) ← runImpossibleCase c fuelRef

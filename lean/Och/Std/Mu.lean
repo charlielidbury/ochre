@@ -4,6 +4,7 @@ import Och.EvalSubst
 import Och.TyCheck
 import Och.Std.DNat
 import Och.Std.Unit
+import Och.API
 
 /-!
 # Fix (general recursion) examples
@@ -70,22 +71,22 @@ example : (SubstEval.evalSubst 200 SubstEval.unfBound fixId).isOk := by native_d
 -- unified dNat-style Nat_, the subCheck walks the nested fix+ι and
 -- doesn't close within practical fuel. The computational correctness
 -- is still asserted by the concEval tests below.
--- example : SubstEval.subCheckT 2000 fixId NatToNat = .ok true := by native_decide
+-- example : Och.subCheckE 2000 fixId NatToNat = .ok true := by native_decide
 
 -- Function-type subtype checks on operations over Nat_ hit a checker
 -- gap: synthNeutral can't unfold a fix-typed head during neutralAscent,
 -- so `n Nat_` (with n:Nat_) fails type-synthesis. Left in as skipped
 -- until that's addressed; concEval tests below still demonstrate the
 -- operations are computationally correct.
--- example : SubstEval.subCheckT 1000 toZero NatToNat = .ok true := by native_decide
--- example : SubstEval.subCheckT 1000 toZeroThunked NatToNat = .ok true := by native_decide
+-- example : Och.subCheckE 1000 toZero NatToNat = .ok true := by native_decide
+-- example : Och.subCheckE 1000 toZeroThunked NatToNat = .ok true := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (negative)
 -- ------------------------------------------------------------
 
 -- fixId is not a Nat (it's a function)
-example : SubstEval.subCheckT 2000 fixId Nat_ = .ok false := by native_decide
+example : Och.subCheckE 2000 fixId Nat_ = .ok false := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (positive) -- concEval

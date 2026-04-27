@@ -3,6 +3,7 @@ import Och.Eval
 import Och.Std.Bool
 import Och.EvalSubst
 import Och.TyCheck
+import Och.API
 
 /-!
 # Unified Natural Numbers (self-type encoding with singleton-tightened succ)
@@ -144,35 +145,30 @@ example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
 
 -- ── Positive subtype checks ─────────────────────────────────
 --
--- NOTE: The Option A singleton-tightened `succ_` thread each
--- predecessor through the contra chain, so fuel scales with numeral
--- size. `two_ ⊑ Nat_` at fuel 800 works; `three_ ⊑ Nat_` takes
--- ~50k fuel. SoundnessAudit pins `two_ ⊑ Nat_` at fuel 800.
+-- NOTE: Under the engine-collapse refactor, the public API
+-- (`Och.synth` + `Och.subCheck`) does NOT use the bidirectional
+-- `typeCheck` fast-path that previously short-circuited
+-- `succ_`-tower numerals. The structural engine alone scales
+-- with numeral size, so the higher-numeral pins that previously
+-- closed at fuel 200 via the fast-path now need 16k–500k fuel
+-- (see `Och.EvalBench`'s impossibleCases). Compile-time
+-- `native_decide` becomes prohibitively slow, so the higher
+-- numerals are checked at runtime in `eval_bench` instead.
 
-example : SubstEval.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
-example : SubstEval.subCheckT 200 one_ Nat_ = .ok true := by native_decide
-example : SubstEval.subCheckT 800 two_ Nat_ = .ok true := by native_decide
--- three_/four_/five_ ⊑ Nat_ close fast via subCheckT's typeCheck
--- fast-path; bare subCheckVal hits the singleton-tower scaling and is
--- ~14s for three_, projected hours for five_. The typed wrapper makes
--- these tractable for both engines.
-example : SubstEval.subCheckT 200 three_ Nat_ = .ok true := by native_decide
-example : SubstEval.subCheckT 200 four_ Nat_ = .ok true := by native_decide
-example : SubstEval.subCheckT 200 five_ Nat_ = .ok true := by native_decide
--- Same checks via the substitution-based subCheckT.
-example : SubstEval.subCheckT 200 three_ Nat_ = .ok true := by native_decide
-example : SubstEval.subCheckT 200 four_ Nat_ = .ok true := by native_decide
-example : SubstEval.subCheckT 200 five_ Nat_ = .ok true := by native_decide
+example : Och.subCheckE 200 zero_ Nat_ = .ok true := by native_decide
+example : Och.subCheckE 2000 one_ Nat_ = .ok true := by native_decide
+example : Och.subCheckE 5000 two_ Nat_ = .ok true := by native_decide
+-- three_/four_/five_ ⊑ Nat_: now structural-only; bench-only.
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : SubstEval.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
+example : Och.subCheckE 5000 Nat_ zero_ = .ok false := by native_decide
 -- Note: under the permissive Bool encoding, `true_` and `zero_` are
 -- structurally identical (both `λP:Type. λt:Type. λf:Type. t`), so
 -- `true_ ⊑ Nat_` correctly succeeds. Use `Std.Bool` (the type) as
 -- the non-Nat witness instead.
-example : SubstEval.subCheckT 200 Std.Bool Nat_ = .ok false := by native_decide
-example : SubstEval.subCheckT 200 zero_ one_ = .ok false := by native_decide
+example : Och.subCheckE 200 Std.Bool Nat_ = .ok false := by native_decide
+example : Och.subCheckE 5000 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
 --

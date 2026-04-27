@@ -4,6 +4,7 @@ import Och.TyCheck
 import Och.EvalSubst
 import Och.Std.Bool
 import Och.Std.DNat
+import Och.API
 
 /-!
 # Polymorphic identity functions
@@ -52,8 +53,8 @@ private def fuel : Nat := 1000
 -- id Nat 3 reduces to 3 (transparency preserved). §6.4. Phrased as
 -- bidirectional `subCheckT` after the engine-collapse migration:
 -- two terms are convertible iff each subsumes the other.
-example : SubstEval.subCheckT 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
-          SubstEval.subCheckT 200 three_ (och{ id_ Nat_ three_ }) = .ok true := by
+example : Och.subCheckE 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
+          Och.subCheckE 200 three_ (och{ id_ Nat_ three_ }) = .ok true := by
   native_decide
 
 -- After A8, idAscribed reduces identically to id_ (the
@@ -65,13 +66,13 @@ example : SubstEval.subCheckT 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
 -- keeps the annotation as the *expected type* without
 -- conflating it with the value), not via the value-level
 -- evaluator.
-example : SubstEval.subCheckT 200 (och{ idAscribed Nat_ three_ }) three_ = .ok true ∧
-          SubstEval.subCheckT 200 three_ (och{ idAscribed Nat_ three_ }) = .ok true := by
+example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) three_ = .ok true ∧
+          Och.subCheckE 200 three_ (och{ idAscribed Nat_ three_ }) = .ok true := by
   native_decide
 
-example : SubstEval.subCheckT 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_ three_ })
+example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_ three_ })
             = .ok true ∧
-          SubstEval.subCheckT 200 (och{ id_ Nat_ three_ }) (och{ idAscribed Nat_ three_ })
+          Och.subCheckE 200 (och{ id_ Nat_ three_ }) (och{ idAscribed Nat_ three_ })
             = .ok true := by
   native_decide
 
@@ -81,14 +82,14 @@ example : SubstEval.subCheckT 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_
 
 -- id Nat 3 should NOT equal Nat — it is more precise (singleton 3).
 -- One-directional rejection: `Nat_ ⊑ id Nat_ three_` is false.
-example : SubstEval.subCheckT 200 Nat_ (och{ id_ Nat_ three_ }) = .ok false := by
+example : Och.subCheckE 200 Nat_ (och{ id_ Nat_ three_ }) = .ok false := by
   native_decide
 
 -- Semantic claim: `idAscribed Nat_ three_` is typeable at `Nat_`
 -- (the ascription preserves the checked type). Use `subCheckT` —
 -- the typed-pipeline+fallback wrapper — so the test stays robust
 -- to which internal pathway dispatches it.
-example : SubstEval.subCheckT 200 (och{ idAscribed Nat_ three_ }) Nat_
+example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) Nat_
   = .ok true := by native_decide
 
 -- ----------------------------------------------------------

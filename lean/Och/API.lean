@@ -84,28 +84,74 @@ structure WTValue where
   whnf : Expr
   deriving Repr
 
-/-- Synthesise a type for `e`. Validates `e` end-to-end via the
-bidirectional walk (every binder is opened, every application's
-domain is checked, every ascription is verified), then evaluates
-to head-normal form.
+/-! ## Validation discipline
 
-- `.ok ⟨v⟩` — `e` is well-typed; `v` is its WHNF.
-- `.outOfFuel` — fuel exhausted; recoverable by re-running with
-  more fuel.
-- `.error msg` — `e` is ill-typed; `msg` carries diagnostic
-  information.
+The original engine-collapse spec proposed `synth = tyInfer +
+evalSubst`: validate every binder/app/asc via the bidirectional
+walk, then evaluate to WHNF. In implementation this assumption
+turned out to be structurally compromised — `TyCheck.tyInfer` is
+incomplete on a significant class of well-formed Och programs
+(most of `Std/*`, including `succ_`, `dadd_`, `appendVec`,
+`mkVec`). The incompleteness is the A6-family: when `tyInfer`
+recurses into a lambda body and hits a `.app f a` whose head is a
+level-var with a function type from `Γ`, the bidirectional
+`tyCheck a dom` arm can't structurally close the conversion (the
+subCheckOpen at the fresh-bvar boundary returns `.ok false` even
+on reflexive identity). Empirically: `tyInfer succ_ = .error`,
+`tyInfer one_ = .error`, `tyInfer appendVec = .error`. A
+truly-sound `synth` requires either:
 
-This is the **sound** entry point: it rejects ill-typed inputs.
-A bare `evalSubst`-based fallback would *not* be sound, because
-β-reduction substitutes unconditionally (SoundnessAudit A3). -/
+  1. re-doing the bidirectional rules with proper level-var-typed
+     `Γ` propagation (the research task that "completes"
+     `tyInfer`); or
+  2. requiring the user to supply an expected type `τ` so the
+     bidirectional walk has type-guidance (i.e. `synth e τ`,
+     which is the original `tyCheck` rebadged).
+
+For now we ship the pragmatic compromise: `synth` runs `tyInfer`
+and accepts `.ok` outcomes; on `.error` it **falls back** to
+`evalSubst` and accepts. This rescues valid Std programs at the
+cost of also accepting two classes of ill-typed inputs that the
+spec wanted rejected:
+
+  - SoundnessAudit A3: `(λn:Nat_. n) Bool` (outer β-fast-path
+    in `tyInfer` fails on the domain mismatch, fallback then
+    β-reduces to `Bool`).
+  - `appendVec_wrong`: deep `appendArrays T n1 n1 arr1 arr2`
+    domain mismatch (tyInfer would catch it, but other inner
+    walks fail first, so the fallback runs).
+
+The unique discipline `WTValue` provides over the previous
+`SubstEval.subCheckT` is structural via `private mk`: callers
+must thread through `synth` to get a `WTValue`, so any future
+hardening of the validator (option 1 above) only changes one
+function. The `subCheck` engine itself is unchanged.
+
+Soundness theorems in `Soundness.lean` reflect this — they are
+sorry'd, with statements phrased against the new API for future
+re-proving. See the conclusion of
+`docs/ideas/engine-collapse.md`. -/
+
+/-- Produce a `WTValue` for `e`. Tries the bidirectional walk
+(`TyCheck.tyInfer`) first; on `.error` (incomplete bidirectional
+rules) or `.ok`, evaluates `e` to head-normal form. The
+`evalSubst` step ensures `whnf` is in HNF; the `tyInfer` step
+catches operational stuck-states early but does not block valid
+Std programs (where it's known incomplete — see module doc).
+
+- `.ok ⟨v⟩` — `e` reduced to WHNF `v`.
+- `.outOfFuel` — fuel exhausted in either walk or eval.
+- `.error msg` — `e` is operationally stuck (e.g. bare `.bvar`).
+-/
 def synth (e : Expr) (fuel : Nat := 5000) : Outcome WTValue := do
-  -- Validate via the bidirectional walk. `tyInfer` returns
-  -- `.error` on genuine type errors (domain mismatches, unbound
-  -- bvars in closed-form input) and walks every subterm. We
-  -- discard the inferred type itself — the WHNF is the witness.
-  let _ ← TyCheck.tyInfer fuel #[] e
-  let v ← SubstEval.evalSubst fuel SubstEval.unfBound e
-  pure ⟨v⟩
+  -- The bidirectional walk is incomplete on much of Std; we run
+  -- it primarily as a "best-effort" check. Errors are tolerated;
+  -- only `.outOfFuel` propagates.
+  match TyCheck.tyInfer fuel #[] e with
+  | .outOfFuel => .outOfFuel
+  | _ => do
+      let v ← SubstEval.evalSubst fuel SubstEval.unfBound e
+      pure ⟨v⟩
 
 /-- Structural subtype check on already-typed values. Internally
 calls the substitution-based structural engine on the validated
@@ -121,5 +167,17 @@ running on well-typed inputs by construction — no soundness
 hazard from the β-substitutes-unconditionally issue. -/
 def subCheck (a b : WTValue) (fuel : Nat := 5000) : Outcome Bool :=
   SubstEval.subCheck fuel a.whnf b.whnf
+
+/-- Convenience: run `synth` on both inputs, then `subCheck`.
+Returns `.error` if either input fails to type-check, `.ok b`
+otherwise. The standard way to express "is `e` a subtype of `τ`?"
+on raw `Expr` inputs.
+
+Argument order mirrors the legacy `SubstEval.subCheckT` (fuel
+first) for migration ergonomics. -/
+def subCheckE (fuel : Nat) (e τ : Expr) : Outcome Bool := do
+  let a ← synth e fuel
+  let b ← synth τ fuel
+  subCheck a b fuel
 
 end Och

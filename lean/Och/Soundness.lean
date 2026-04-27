@@ -3,6 +3,7 @@ import Och.Eval
 import Och.Subtyping
 import Och.EvalSubst
 import Och.TyCheck
+import Och.API
 import Och.Std.Unit
 import Och.Std.DBool
 
@@ -16,19 +17,20 @@ the algorithmic subtype-checking pipeline. All bodies are
 that the previous proof attempt (`SoundnessProof.lean`,
 ~6K LOC, deleted) was built on.
 
-Re-proving against the substitution-based engine
-(`SubstEval.subCheckT`) is a separate research effort. The
-statements here are the *targets* — phrased against the public
-API and the declarative `Subtype'` relation in
-`Subtyping.lean`, both of which are substrate-agnostic.
+Re-proving against the substitution-based engine (the
+public `Och.synth` / `Och.subCheck` API in `Och/API.lean`) is a
+separate research effort. The statements here are the *targets*
+— phrased against the public API and the declarative `Subtype'`
+relation in `Subtyping.lean`, both of which are substrate-agnostic.
 
 ## Architecture (target)
 
-  algorithmic       declarative
-  `subCheckT`   ⟶   `Subtype'`
+  algorithmic                 declarative
+  `synth + subCheck`     ⟶    `Subtype'`
 
-The algorithmic side is `SubstEval.subCheckT` — the production
-entry point post-engine-collapse. The declarative side is the
+The algorithmic side is the public API: `Och.synth e` validates
+the bidirectional walk, `Och.subCheck a b` runs the structural
+engine on the validated WHNFs. The declarative side is the
 inductive-up-to (seen-indexed) `Subtype'` defined in
 `Subtyping.lean`.
 
@@ -56,9 +58,11 @@ soundness obligation. They are stated against the public API
 so that downstream work can quantify over them.
 -/
 
-/-- The soundness theorem: if the substitution-based subtype
-check accepts `e ⊑ τ`, then `e ⊑ τ` declaratively (against the
-substrate-agnostic `Subtype'` relation in `Subtyping.lean`).
+/-- Synthesis soundness: if `Och.synth e` accepts `e`, then `e`
+inhabits *some* declarative type. The witness is the WHNF
+itself (Och's `Subtype'.refl` makes "the natural type of a
+value is the value itself" trivial), so this reduces to: a
+synth-accepted term is reflexively comparable to its WHNF.
 
 The previous env-NbE-based proof attempt (`SoundnessProof.lean`,
 deleted in the engine-collapse refactor) built on a Val-level
@@ -67,10 +71,17 @@ hit structural walls that don't transfer to the substitution
 substrate. Substitution-based proofs build on different lemmas
 (substitution lemmas, not reducibility candidates), so this is
 a fresh proof effort. -/
-theorem subCheckT_sound
-    {fuel : Nat} {e τ : Expr}
-    (h : SubstEval.subCheckT fuel e τ = .ok true) :
-    Subtype' [] [] e τ := sorry
+theorem synth_sound
+    {fuel : Nat} {e : Expr} {v : Och.WTValue}
+    (h : Och.synth e fuel = .ok v) :
+    ∃ τ, Subtype' [] [] e τ := sorry
+
+/-- Subtype-check soundness: if `Och.subCheck a b` accepts the
+two validated values, then `a.whnf ⊑ b.whnf` declaratively. -/
+theorem subCheck_sound
+    {fuel : Nat} {a b : Och.WTValue}
+    (h : Och.subCheck a b fuel = .ok true) :
+    Subtype' [] [] a.whnf b.whnf := sorry
 
 /-- `concEval` (the reference evaluator) preserves declarative
 subtyping. If `e ⊑ τ` holds and `e` evaluates to `e'`, then
@@ -85,13 +96,15 @@ theorem concEval_preservation
 
 /-- End-to-end soundness: a well-checked term evaluates to
 something that still inhabits its declared type. Combines
-`subCheckT_sound` and `concEval_preservation`. -/
+`synth_sound`, `subCheck_sound`, and `concEval_preservation`. -/
 theorem soundness
-    {fuel : Nat} {e e' τ : Expr}
+    {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
     (hcl : e.closedAt 0 = true)
-    (hcheck : SubstEval.subCheckT fuel e τ = .ok true)
+    (hsynthA : Och.synth e fuel = .ok a)
+    (hsynthB : Och.synth b.whnf fuel = .ok b)
+    (hcheck : Och.subCheck a b fuel = .ok true)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' τ := sorry
+    Subtype' [] [] e' b.whnf := sorry
 
 section Witnesses
 open Std

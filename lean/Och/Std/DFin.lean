@@ -3,6 +3,7 @@ import Och.Eval
 import Och.TyCheck
 import Och.Std.DNat
 import Och.EvalSubst
+import Och.API
 
 /-!
 # Finite sets `Fin n` — bounded by `Nat_` (Option F)
@@ -69,11 +70,11 @@ section Tests
 
 -- ── Positive: naturals inhabit Fin n directly (no wrapper) ──
 
-example : SubstEval.subCheckT 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
-example : SubstEval.subCheckT 2000 zero_ (och{ Fin two_ })    = .ok true := by native_decide
-example : SubstEval.subCheckT 2000 zero_ (och{ Fin three_ })  = .ok true := by native_decide
-example : SubstEval.subCheckT 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
-example : SubstEval.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
+example : Och.subCheckE 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
+example : Och.subCheckE 2000 zero_ (och{ Fin two_ })    = .ok true := by native_decide
+example : Och.subCheckE 2000 zero_ (och{ Fin three_ })  = .ok true := by native_decide
+example : Och.subCheckE 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
+example : Och.subCheckE 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
 
 -- `two_ ⊑ Fin three_` was previously commented because env-based subCheck
 -- couldn't close it at any tractable fuel. The production substitution-
@@ -82,36 +83,36 @@ example : SubstEval.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by n
 -- The env-based `NbE.subCheckT` *also* now closes (~320 ms) but at the
 -- cost of significant native_decide elaboration time at this fuel; we
 -- only check the subst path here as the production test.
-example : SubstEval.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
+example : Och.subCheckE 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
 
 -- ── Negative: diagonal and out-of-bounds rejected ──
 
 -- Diagonal: n ⊄ Fin n
-example : SubstEval.subCheckT 8000 one_   (och{ Fin one_ })   = .ok false := by native_decide
-example : SubstEval.subCheckT 16000 two_  (och{ Fin two_ }) = .ok false := by native_decide
+example : Och.subCheckE 8000 one_   (och{ Fin one_ })   = .ok false := by native_decide
+example : Och.subCheckE 16000 two_  (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Out-of-bounds: n ⊄ Fin m for n ≥ m
-example : SubstEval.subCheckT 8000 one_  (och{ Fin zero_ })   = .ok false := by native_decide
-example : SubstEval.subCheckT 8000 two_  (och{ Fin one_ })    = .ok false := by native_decide
-example : SubstEval.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
+example : Och.subCheckE 8000 one_  (och{ Fin zero_ })   = .ok false := by native_decide
+example : Och.subCheckE 8000 two_  (och{ Fin one_ })    = .ok false := by native_decide
+example : Och.subCheckE 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Nat_ itself is too wide to inhabit Fin n.
-example : SubstEval.subCheckT 8000 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
+example : Och.subCheckE 8000 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
 
 -- Width monotonicity: smaller Fin embeds into larger.
-example : SubstEval.subCheckT 4000 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
-example : SubstEval.subCheckT 2000 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
+example : Och.subCheckE 4000 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
+example : Och.subCheckE 2000 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
 
 -- Type is not a Fin n.
-example : SubstEval.subCheckT 2000 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
+example : Och.subCheckE 2000 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
 
 -- Bot ⊑ Fin n (via S-BotL, the primitive rule).
-example : SubstEval.subCheckT 2000 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
+example : Och.subCheckE 2000 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
 
 -- Fin n ⊑ Nat_ at the TYPE level does NOT hold (Option F tradeoff).
 -- Not required by indexArr / other ops — only value-level subsumption
 -- of specific naturals into Fin n matters in practice.
-example : SubstEval.subCheckT 8000 (och{ Fin one_ }) Nat_     = .ok false := by native_decide
+example : Och.subCheckE 8000 (och{ Fin one_ }) Nat_     = .ok false := by native_decide
 
 end Tests
 

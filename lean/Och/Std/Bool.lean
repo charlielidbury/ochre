@@ -1,7 +1,6 @@
 import Och.Macro
 import Och.Eval
-import Och.EvalSubst
-import Och.TyCheck
+import Och.API
 
 /-!
 # Church-encoded Booleans
@@ -63,21 +62,21 @@ example : concEval 50 (och{ or false_ true_ }) = concEval 50 true_ := by native_
 example : concEval 50 (och{ or false_ false_ }) = concEval 50 false_ := by native_decide
 
 -- subtype checking (positive)
-example : SubstEval.subCheckT 50 true_ Bool = .ok true := by native_decide
-example : SubstEval.subCheckT 50 false_ Bool = .ok true := by native_decide
-example : SubstEval.subCheckT 50 not' (och{ Bool → Bool }) = .ok true := by native_decide
-example : SubstEval.subCheckT 50 and' (och{ Bool → Bool → Bool }) = .ok true := by native_decide
-example : SubstEval.subCheckT 50 or (och{ Bool → Bool → Bool }) = .ok true := by native_decide
+example : Och.subCheckE 50 true_ Bool = .ok true := by native_decide
+example : Och.subCheckE 50 false_ Bool = .ok true := by native_decide
+example : Och.subCheckE 50 not' (och{ Bool → Bool }) = .ok true := by native_decide
+example : Och.subCheckE 50 and' (och{ Bool → Bool → Bool }) = .ok true := by native_decide
+example : Och.subCheckE 50 or (och{ Bool → Bool → Bool }) = .ok true := by native_decide
 
 -- subtype checking (negative)
 -- Bool is not a subtype of true or false (it's wider)
-example : SubstEval.subCheckT 50 Bool true_ = .ok false := by native_decide
-example : SubstEval.subCheckT 50 Bool false_ = .ok false := by native_decide
+example : Och.subCheckE 50 Bool true_ = .ok false := by native_decide
+example : Och.subCheckE 50 Bool false_ = .ok false := by native_decide
 -- not : Bool → Bool is not a Bool
-example : SubstEval.subCheckT 50 not' Bool = .ok false := by native_decide
+example : Och.subCheckE 50 not' Bool = .ok false := by native_decide
 -- and/or need two args, not one
-example : SubstEval.subCheckT 50 and' (och{ Bool → Bool }) = .ok false := by native_decide
-example : SubstEval.subCheckT 50 or (och{ Bool → Bool }) = .ok false := by native_decide
+example : Och.subCheckE 50 and' (och{ Bool → Bool }) = .ok false := by native_decide
+example : Och.subCheckE 50 or (och{ Bool → Bool }) = .ok false := by native_decide
 
 -- computation (negative)
 -- true selects first arg, not second
