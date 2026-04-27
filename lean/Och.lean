@@ -3,7 +3,6 @@ import Och.Outcome
 import Och.Eval
 import Och.NbE
 import Och.NbETests
-import Och.MemoRefs
 import Och.SubCheckVal
 import Och.EvalSubst
 import Och.TyCheck

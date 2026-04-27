@@ -1,5 +1,4 @@
 import Och.NbE
-import Och.MemoRefs
 
 /-!
 # Subtype checking on NbE values
@@ -226,42 +225,13 @@ See `docs/ideas/subcheck-perf.md` post-mortem for the full
 analysis and possible next steps (which all require more
 structural changes than fit in this investigation). -/
 
-/-- Memoized runtime implementation of `Closure.open`.
-Pure semantics: `eval fuel 4 (v :: cl.env) cl.body`. Runtime
-(currently a no-op that equals pure semantics): run `eval`,
-then pipe the result through `ShareCommon.State.shareCommon`
-— max-shares structurally-equal sub-Vals across calls
-(via a global `IO.Ref`).
-
-This is currently kept as infrastructure for future memo
-work: the sharing primitive is verified to work (see
-`docs/ideas/subcheck-perf.md` tests), but alone it doesn't
-move the needle on `n_ ⊑ Nat_` at the measured fuels. -/
-unsafe def Closure.openImpl (fuel : Nat) (cl : Closure) (v : Val) : Outcome Val :=
-  unsafeBaseIO do
-    match eval fuel 4 (v :: cl.env) cl.body with
-    | .ok r =>
-        let s ← shareState.get
-        let (r', s') := s.shareCommon r
-        shareState.set s'
-        return .ok r'
-    | other => return other
-
-/-- Alternative: use the cheaper `ShareCommon.shareCommon'`
-primitive (no persistent state, just one-shot max-sharing
-within the argument tree). Less canonical across calls but
-zero per-call state overhead. -/
-unsafe def Closure.openImplQuick (fuel : Nat) (cl : Closure) (v : Val) : Outcome Val :=
-  match eval fuel 4 (v :: cl.env) cl.body with
-  | .ok r => .ok (ShareCommon.shareCommon' r)
-  | other => other
-
 -- Disabled 2026-04-24: shareCommon's per-call overhead exceeds the
 -- downstream ptrEq savings for the Nat_-chain benchmarks (two_ ⊑ Nat_
--- at fuel 800: ~23s with shareCommon vs ~18s without). Left as
--- infrastructure for future memo work — see
--- `docs/ideas/subcheck-perf.md` post-mortem.
--- attribute [implemented_by Closure.openImpl] Closure.open
+-- at fuel 800: ~23s with shareCommon vs ~18s without). The
+-- accompanying `Closure.openImpl` / `openImplQuick` runtime overrides
+-- and the `MemoRefs.lean` shareState ref were removed during the
+-- engine-collapse refactor. See `docs/ideas/subcheck-perf.md`
+-- post-mortem for the full analysis.
 -- attribute [implemented_by Closure.openImplQuick] Closure.open
 
 /-- Open a closure with a fresh neutral at de Bruijn level `depth`.

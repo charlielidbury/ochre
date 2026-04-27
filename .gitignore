@@ -28,3 +28,6 @@ _build
 
 # Agda compiled interface files
 *.agdai
+
+# direnv local cache (.envrc itself is checked in)
+.direnv/
