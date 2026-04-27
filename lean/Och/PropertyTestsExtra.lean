@@ -582,4 +582,69 @@ theorem letE_subCheckE_transparent :
 
 end LetTransparency
 
+/-! ## 13. synth-rejection negative coverage
+
+`Och.synth` validates well-typedness end-to-end. These tests pin its
+*rejection* behaviour for hand-picked ill-typed terms — the
+positive complement to `synthCorpus_all_validate`. -/
+
+section SynthRejection
+
+/-- Ascription with mismatched type: the inner term doesn't subsume
+the annotation. `synth` rejects via its asc arm.
+
+NB: `(true_ : Nat_)` is *not* rejected, because `true_` and `zero_`
+have identical Church-style structure (`λP. λt. λf. t`) under the
+permissive constructor encoding. The structural engine sees them
+as the same value, so `true_ ⊑ Nat_` is `.ok true`. This is a
+documented imprecision (`Std/DNat.lean` notes the same fact). -/
+example : (Och.synth (.asc unit_ Nat_) 200).isError := by native_decide
+example : (Och.synth (.asc zero_ Unit_) 200).isError := by native_decide
+example : (Och.synth (.asc unit_ Std.Bool) 200).isError := by native_decide
+
+/-- Application of a non-Π head: `synth` rejects via the .app arm.
+
+NB: `zero_ true_` is *not* rejected, because `zero_` is itself a
+3-arg λ (its head IS a Π), so applying it to one argument is
+well-typed (β-reduces to a 2-arg λ). The non-Π rejection only
+fires for genuinely non-applicable heads (Type, Bot). -/
+example : (Och.synth (och{ Type Type }) 200).isError := by native_decide
+example : (Och.synth (.app .bot zero_) 200).isError := by native_decide
+
+/-- Application with mismatched argument type: `synth` rejects via
+the domain check at .app. -/
+example : (Och.synth (och{ (λx:Nat_. x) unit_ }) 200).isError := by
+  native_decide
+example : (Och.synth (och{ (λx:Unit_. x) zero_ }) 200).isError := by
+  native_decide
+
+/-- Bare bvar (open term): `synth` rejects (closed-form input
+expected). Pinned to make the contract explicit. -/
+example : (Och.synth (.bvar 0) 200).isError := by native_decide
+
+end SynthRejection
+
+/-! ## 14. Big-fuel sanity: results stable
+
+For a small set of representative terms, the answer is the same at
+fuel 50, 200, 1000. Surfaces any future fuel-dependent flake. -/
+
+section FuelStability
+
+private def stabilityCorpus : List (Expr × Expr) := [
+  (zero_, Nat_), (one_, Nat_), (two_, Nat_),
+  (true_, Std.Bool), (dtrue, dBool),
+  (och{ pair_ Nat_ Unit_ zero_ unit_ }, och{ Pair Nat_ Unit_ })
+]
+
+theorem stability_three_fuels :
+    stabilityCorpus.all (fun p =>
+      let r50   := Och.subCheckE 50  p.1 p.2
+      let r200  := Och.subCheckE 200 p.1 p.2
+      let r1000 := Och.subCheckE 1000 p.1 p.2
+      r50 == .ok true && r200 == .ok true && r1000 == .ok true) = true := by
+  native_decide
+
+end FuelStability
+
 end Och.PropertyTestsExtra
