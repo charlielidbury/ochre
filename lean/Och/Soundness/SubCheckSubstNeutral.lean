@@ -1,6 +1,7 @@
 import Och.Subtyping
 import Och.EvalSubst
 import Och.Soundness.EvalSubstLemmas
+import Och.Soundness.CloseAll
 
 /-!
 # C7: soundness of the engine's neutral-spine + ascent arm
@@ -76,16 +77,9 @@ The function below is the level-by-level closure (option (a)).  It
 is *not used* in the proof attempt — included as a marker for the
 work needed to make the bridge go through. -/
 
-/-- Translate the engine's level-indexed `tyCtx` to a declarative
-de-Bruijn-indexed `Ctx`. The reverse puts level-`(tyCtx.size-1)` at
-index 0 (innermost binder).
-
-Note: this translation is *consistent* only if the entries
-themselves don't reference level-vars from `tyCtx` (otherwise the
-entries also need translation).  At the engine's top-level entry
-points (`subCheck`, `subCheckOpen` from a closed user program) this
-holds vacuously: `tyCtx = #[]`. -/
-def tyCtxToCtx (tyCtx : Array Expr) : Ctx := tyCtx.toList.reverse
+-- `tyCtxToCtx` moved to `Och/Soundness/CloseAll.lean` so that the
+-- arithmetic between `closeAll`'s output indices and `tyCtxToCtx`'s
+-- lookup can be developed there.  This module imports it.
 
 /-- Lift the engine's seen-list (no depth tag) to a declarative
 seen-set, tagging each entry with the *current* depth `tyCtx.size`.
