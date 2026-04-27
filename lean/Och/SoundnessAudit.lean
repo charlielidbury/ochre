@@ -156,19 +156,12 @@ so this brings the algorithm in line.
 private def constrainedI := och{ ι self:Nat_. Type }
 
 /-- A5's semantic intent: when proving `a ⊑ ι self:T. body`, the
-algorithm checks the annotation `a ⊑ T` (not just the body).
-
-The original NbE pin recorded `.ok false` (annotation premise
-`dtrue ⊑ Nat_` rejects, semantically correct — dtrue is a Bool, not
-a Nat). After the Phase B migration to `SubstEval.subCheckT`, this
-query now returns `.ok true`: the substitution-based pipeline accepts
-the query, likely via a different routing (typeCheck fast-path or a
-more permissive neutral-iota arm). Re-baselined to record current
-behaviour; the divergence is worth documenting — likely a soundness
-gap in SubstEval relative to the spec, to be investigated as the
-engine stacks collapse. -/
+algorithm checks the annotation `a ⊑ T` (not just the body). Witness:
+`dtrue ⊑ constrainedI = ι self:Nat_. Type` is rejected because the
+annotation premise `dtrue ⊑ Nat_` fails. The body premise alone
+(`dtrue ⊑ Type` = top) would have spuriously accepted. -/
 theorem a5_annotationRejects :
-    SubstEval.subCheckT 200 dtrue constrainedI = .ok true := by
+    SubstEval.subCheckT 200 dtrue constrainedI = .ok false := by
   native_decide
 
 /-- And the legitimate recursive case still closes via seen. -/
@@ -230,16 +223,14 @@ theorem a6_completeUnderTypedPipeline :
       = .ok true := by
   native_decide
 
-/-- Bare engine on the A6 case. NbE's bare `subCheck` (post-domB-flip)
-closed this with `.ok true`. After migration to `SubstEval.subCheck`
-the bare substitution engine answers `.ok false` (the typed wrapper
-`subCheckT` still closes — see `a6_completeUnderTypedPipeline` above).
-This re-baselining is expected: SubstEval's structural engine isn't
-intended as the user-facing surface; the engine-collapse plan
-(Phase C) makes only `subCheckT` public. -/
+/-- Bare `subCheck` (the engine) now closes the A6 case.
+The historical incompleteness — `(λx:Nat_. x) ⊑ (λx:zero_. zero_)`
+returning `.ok false` — was a side-effect of pushing `domA` (wider)
+into the body context. After flipping to `domB` (narrower / target,
+matching the declarative spec), the bare engine accepts it. -/
 theorem a6_subCheckCompletes :
     SubstEval.subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
-      = .ok false := by
+      = .ok true := by
   native_decide
 
 /-- Concrete-numeral subsumption closes via the typed pipeline. -/
