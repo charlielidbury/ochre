@@ -4,6 +4,7 @@ import Och.Subtyping
 import Och.EvalSubst
 import Och.TyCheck
 import Och.API
+import Och.Soundness.ConcEvalPreservation
 import Och.Std.Unit
 import Och.Std.DBool
 
@@ -92,13 +93,22 @@ theorem subCheck_sound
 /-- `concEval` (the reference evaluator) preserves declarative
 subtyping. If `e ⊑ τ` holds and `e` evaluates to `e'`, then
 `e' ⊑ τ` too. Standard preservation, phrased against the
-substrate-agnostic `Subtype'`. -/
+substrate-agnostic `Subtype'`.
+
+Proof in `Soundness/ConcEvalPreservation.lean` via the strengthened
+*bidirectional* equivalence `concEval_equiv` (`Subtype' [] [] e' e ∧
+Subtype' [] [] e e'`). The single-direction form below falls out by
+`Subtype'.trans` with the user's hypothesis. The bidirectional form is
+needed because `app_cong` and `letE_cong` are not contravariant in their
+right-hand subterms, so swapping `f`/`a` in/out of an application spine
+requires both directions of `f ≡ fv` and `a ≡ av`. -/
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' τ := sorry
+    Subtype' [] [] e' τ :=
+  concEval_preservation_aux hcl hty hstep
 
 /-- **Progress** (the missing half of soundness): a synth-accepted
 term doesn't get stuck during evaluation. `concEval` may return
