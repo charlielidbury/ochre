@@ -467,4 +467,119 @@ theorem strictNew_one_directional :
 
 end Antisymmetry
 
+/-! ## 10. Pairwise-distinct numerals & bools
+
+Concrete constructors for finite-cardinality types are pairwise
+unrelated: distinct numerals don't subsume each other, and the two
+bool constructors are mutually unrelated. Combinatorial sweeps. -/
+
+section PairwiseDistinct
+
+private def numerals : List Expr := [zero_, one_, two_]
+
+/-- Off-diagonal: `n ⊑ m` is `false` whenever `n ≠ m`. The diagonal
+(reflexivity) is covered by `refl_sweep` in `PropertyTests`. -/
+theorem numerals_pairwise_distinct :
+    numerals.all (fun n =>
+      numerals.all (fun m =>
+        if n == m then true
+        else Och.subCheckE 200 n m == .ok false)) = true := by
+  native_decide
+
+private def boolCons : List Expr := [true_, false_]
+
+theorem boolCons_pairwise_distinct :
+    boolCons.all (fun a =>
+      boolCons.all (fun b =>
+        if a == b then true
+        else Och.subCheckE 200 a b == .ok false)) = true := by
+  native_decide
+
+private def dBoolCons : List Expr := [dtrue, dfalse]
+
+theorem dBoolCons_pairwise_distinct :
+    dBoolCons.all (fun a =>
+      dBoolCons.all (fun b =>
+        if a == b then true
+        else Och.subCheckE 200 a b == .ok false)) = true := by
+  native_decide
+
+/-- And every numeral subtypes Nat_ (positive sweep). -/
+theorem numerals_all_inhabit_nat :
+    numerals.all (fun n =>
+      Och.subCheckE 200 n Nat_ == .ok true) = true := by
+  native_decide
+
+/-- The numerals subtype Type as well (top). -/
+theorem numerals_all_subtype_type :
+    numerals.all (fun n =>
+      Och.subCheckE 200 n .type == .ok true) = true := by
+  native_decide
+
+end PairwiseDistinct
+
+/-! ## 11. Ascription transparency
+
+`(e : τ)` evaluates to `e` (per the A8 fix in `SoundnessAudit`). So:
+
+  - nested ascription: `((e : τ) : τ)` ≡ `e`
+  - ascription identity at the type itself: `(τ : Type)` ≡ `τ`
+
+Pinned over a small corpus. -/
+
+section AscTransparency
+
+private def ascCorpus : List (Expr × Expr) := [
+  (zero_, Nat_), (one_, Nat_), (true_, Std.Bool),
+  (unit_, Unit_), (Nat_, .type), (Std.Bool, .type)
+]
+
+/-- Single ascription: `(e : τ) ⊑ e` and conversely (when `e ⊑ τ`). -/
+theorem asc_single_transparent :
+    ascCorpus.all (fun p =>
+      Och.subCheckE 200 (.asc p.1 p.2) p.1 == .ok true &&
+      Och.subCheckE 200 p.1 (.asc p.1 p.2) == .ok true) = true := by
+  native_decide
+
+/-- Double ascription is transparent (idempotent). -/
+theorem asc_double_transparent :
+    ascCorpus.all (fun p =>
+      Och.subCheckE 200 (.asc (.asc p.1 p.2) p.2) p.1 == .ok true &&
+      Och.subCheckE 200 p.1 (.asc (.asc p.1 p.2) p.2) == .ok true) = true := by
+  native_decide
+
+/-- Even concretely: `concEval (e : τ) = concEval e`. -/
+theorem asc_concEval_transparent :
+    ascCorpus.all (fun p =>
+      concEval 200 (.asc p.1 p.2) == concEval 200 p.1) = true := by
+  native_decide
+
+end AscTransparency
+
+/-! ## 12. let-binding transparency
+
+`let x = v in body` β-reduces to `body[v/0]`. Pinned operationally:
+`concEval (let x = v in x) = concEval v`. -/
+
+section LetTransparency
+
+private def letCorpus : List Expr := [
+  zero_, one_, true_, unit_, Nat_, Std.Bool, dtrue
+]
+
+/-- `let x = v in x` evaluates to `v`. -/
+theorem letE_identity :
+    letCorpus.all (fun v =>
+      concEval 200 (.letE v (.bvar 0)) == concEval 200 v) = true := by
+  native_decide
+
+/-- Through the public surface: let is convertible with body[v/0]. -/
+theorem letE_subCheckE_transparent :
+    letCorpus.all (fun v =>
+      Och.subCheckE 200 (.letE v (.bvar 0)) v == .ok true &&
+      Och.subCheckE 200 v (.letE v (.bvar 0)) == .ok true) = true := by
+  native_decide
+
+end LetTransparency
+
 end Och.PropertyTestsExtra
