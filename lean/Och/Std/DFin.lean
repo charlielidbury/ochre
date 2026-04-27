@@ -3,7 +3,6 @@ import Och.Eval
 import Och.TyCheck
 import Och.SubCheckVal
 import Och.Std.DNat
-import Och.TypedNbE
 import Och.EvalSubst
 
 /-!

@@ -7,7 +7,6 @@ import Och.Std.DNat
 import Och.Std.Bool
 import Och.Std.DBool
 import Och.Std.Unit
-import Och.TypedNbE
 
 /-!
 # Phase 2: Soundness audit

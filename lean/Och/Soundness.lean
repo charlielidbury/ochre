@@ -1,44 +1,35 @@
 import Och.Syntax
 import Och.Eval
 import Och.Subtyping
-import Och.NbE
-import Och.SubCheckVal
-import Och.TyCheck
-import Och.SoundnessProof
 import Och.EvalSubst
 import Och.Std.Unit
 import Och.Std.DBool
 
 /-!
-# Soundness (Phase 2)
+# Soundness (Phase 2 — sorry-preserved scaffolds)
 
-Phase 1 (close all `TODO[mega-loop]` markers, zero `sorry` in
-`Std/`+`Tests.lean`) completed at f2ba74a; the soundness audit
-(`SoundnessAudit.lean`) identified three gaps, of which A1 was
-fixed at 047e59f. This file now records the chosen Phase-2
-architecture and the top-level theorem statements.
+Top-level theorem statements that record the soundness goal for
+the algorithmic subtype-checking pipeline. All bodies are
+`sorry`d; the engine-collapse refactor (2026-04-27,
+`docs/ideas/engine-collapse.md`) shelved the env-NbE substrate
+that the previous proof attempt (`SoundnessProof.lean`,
+~6K LOC, deleted) was built on.
 
-## Architecture
+Re-proving against the substitution-based engine
+(`SubstEval.subCheckT`) is a separate research effort. The
+statements here are the *targets* — phrased against the public
+API and the declarative `Subtype'` relation in
+`Subtyping.lean`, both of which are substrate-agnostic.
 
-Following `Och/Simple/CheckSoundness.lean`:
+## Architecture (target)
 
-  algorithmic ⟶ declarative ⟶ semantic
-  `typeCheck`    `Subtype'`    `⟦·⟧`
+  algorithmic       declarative
+  `subCheckT`   ⟶   `Subtype'`
 
-The algorithmic side is `NbE.typeCheck` (TyCheck.lean), *not*
-`NbE.subCheck` — the latter normalises first and so accepts
-ill-typed inputs (SoundnessAudit A3). `typeCheck` runs the
-domain check at every `.app` syntactically, then defers to
-`subCheckVal` for conversion.
-
-`subCheckVal` operates on `Val`s. The bridge to the Expr-level
-`Subtype'` is `quote`: every `Val` produced by `eval` quotes
-back to a unique normal-form `Expr` (NbETests witnesses
-canonicity). So the algorithmic-soundness statement is
-
-  `subCheckVal Γ a b = .ok true → Subtype' (quote a) (quote b)`
-
-modulo de Bruijn level/index bookkeeping.
+The algorithmic side is `SubstEval.subCheckT` — the production
+entry point post-engine-collapse. The declarative side is the
+inductive-up-to (seen-indexed) `Subtype'` defined in
+`Subtyping.lean`.
 
 ## Open design questions
 
@@ -46,13 +37,6 @@ modulo de Bruijn level/index bookkeeping.
   full value universe, accepting `Type : Type`. A predicative
   variant would index `Subtype'` and the model by a level.
   Deferred — Och is a core calculus, not a foundation.
-
-- **`Subtype'` synced** (fb53b4c): now context-indexed
-  (`Subtype' Γ a b`), with `lam` (contravariant domain),
-  `app_cong` (arg equivalence), `unfold_iota_L`, explicit
-  `trans`, and the `bvar` rule for type-ascent. The witnesses
-  below confirm the constructors suffice for the simplest
-  positive examples.
 
 - **Coinduction**: the seen-set discipline is Brandt-Henglein
   style. The declarative counterpart is a coinductive
@@ -62,105 +46,51 @@ modulo de Bruijn level/index bookkeeping.
 -/
 
 namespace Och.Soundness
-open NbE
 
 /-!
 ## Top-level statements
 
 These are *targets*, not yet proofs. Each `sorry` here is a
-Phase-2 obligation. They are stated now so that downstream
-work (e.g. `concEval`-preservation) can quantify over them.
+soundness obligation. They are stated against the public API
+so that downstream work can quantify over them.
 -/
 
--- `subCheckVal_sound` deleted 2026-04-21: unused wrapper, along
--- with `SubV_to_Subtype'` + `subCheckVal_sound_open`. The
--- `typeCheck_sound` entry point now sorries the subtype
--- derivation inline in the tyCheck mutual block.
+/-- The soundness theorem: if the substitution-based subtype
+check accepts `e ⊑ τ`, then `e ⊑ τ` declaratively (against the
+substrate-agnostic `Subtype'` relation in `Subtyping.lean`).
 
-/-- Closed-term NbE correctness: evaluating then quoting a
-closed term gives something `Subtype'`-equivalent to the
-original. Specialises `eval_realises` + `R_quote_equiv` at
-the empty environment. -/
-theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
-    (hcl : e.closedAt 0 = true)
-    (heval : eval fuel unf [] e = .ok v)
-    {e' : Expr} (hq : quote fuelω 0 v = .ok e')
-    {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := sorry
-private theorem bind_isSome_iff {α β} {o : Outcome α} {f : α → Outcome β} :
-    (o >>= f).isOk ↔ ∃ a, o = .ok a ∧ (f a).isOk := sorry
-theorem nf_asc_term_isSome {n : Nat} {t ty : Expr}
-    (hnf : (nf n (.asc t ty)).isOk) :
-    (nf n t).isOk := sorry
-theorem quote_total_on_eval {fuel : Nat} {e : Expr} {v : Val}
-    (hfuel : fuel ≤ fuelω)
-    (hnf : (nf fuelω e).isOk)
-    (heval : eval fuel unfBound [] e = .ok v) :
-    ∃ ve, quote fuelω 0 v = .ok ve := sorry
-theorem tyCheck_sound_closed
-    {fuel : Nat} {e τ : Expr} {τV : Val}
-    (hfuel : fuel ≤ fuelω)
-    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (_hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
-    (hτV : eval fuel unfBound [] τ = .ok τV)
-    (h : tyCheck fuel #[] [] e τV = .ok true) :
-    Subtype' [] [] e τ := sorry
-theorem typeCheck_sound
+The previous env-NbE-based proof attempt (`SoundnessProof.lean`,
+deleted in the engine-collapse refactor) built on a Val-level
+intermediate relation `SubV` and an RC predicate substrate; both
+hit structural walls that don't transfer to the substitution
+substrate. Substitution-based proofs build on different lemmas
+(substitution lemmas, not reducibility candidates), so this is
+a fresh proof effort. -/
+theorem subCheckT_sound
     {fuel : Nat} {e τ : Expr}
-    (hfuel : fuel ≤ fuelω)
-    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
-    (h : typeCheck fuel e τ = .ok true) :
+    (h : SubstEval.subCheckT fuel e τ = .ok true) :
     Subtype' [] [] e τ := sorry
-private theorem letE_unfold_equiv (val body : Expr) :
-    Equiv (.letE val body) (body.subst 0 val) := sorry
-private theorem asc_erase_equiv (t ty : Expr) :
-    Equiv (.asc t ty) t := sorry
-theorem concEval_equiv_closed
-    {fuel : Nat} {e e' : Expr}
-    (hcl : e.closedAt 0 = true)
-    (hstep : concEval fuel e = .ok e') :
-    Equiv e' e := sorry
-theorem concEval_refines
-    {fuel : Nat} {e e' : Expr}
-    (hcl : e.closedAt 0 = true)
-    (hstep : concEval fuel e = .ok e') :
-    ∀ {S Γ}, Subtype' S Γ e' e := sorry
+
+/-- `concEval` (the reference evaluator) preserves declarative
+subtyping. If `e ⊑ τ` holds and `e` evaluates to `e'`, then
+`e' ⊑ τ` too. Standard preservation, phrased against the
+substrate-agnostic `Subtype'`. -/
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)
     (hstep : concEval fuel e = .ok e') :
     Subtype' [] [] e' τ := sorry
+
+/-- End-to-end soundness: a well-checked term evaluates to
+something that still inhabits its declared type. Combines
+`subCheckT_sound` and `concEval_preservation`. -/
 theorem soundness
     {fuel : Nat} {e e' τ : Expr}
-    (hfuel : fuel ≤ fuelω)
-    (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
-    (hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
-    (hcheck : typeCheck fuel e τ = .ok true)
+    (hcl : e.closedAt 0 = true)
+    (hcheck : SubstEval.subCheckT fuel e τ = .ok true)
     (hstep : concEval fuel e = .ok e') :
     Subtype' [] [] e' τ := sorry
-
-/-! ## Substrate-agnostic scaffold
-
-The engine-collapse refactor (`docs/ideas/engine-collapse.md`)
-pivots the algorithmic side of soundness from the env-NbE
-substrate (`NbE.subCheckT`) to the substitution-based engine
-(`SubstEval.subCheckT`). The theorem below is the future-proof
-top-level statement against the new substrate. Its body is
-`sorry`d as a Phase-A scaffold; closing it is a separate
-research effort post-refactor (substitution-based proofs build
-on different lemmas than the RC-substrate the env-NbE proofs
-attempted, so most of `SoundnessProof.lean` does not transfer
-directly).
-
-Statement reads: if the substitution-based subtype check
-accepts `e ⊑ τ`, then `e ⊑ τ` declaratively (against the
-substrate-agnostic `Subtype'` relation in `Subtyping.lean`).
--/
-theorem subCheckT_sound
-    {fuel : Nat} {e τ : Expr}
-    (h : SubstEval.subCheckT fuel e τ = .ok true) :
-    Subtype' [] [] e τ := sorry
 
 section Witnesses
 open Std
@@ -171,17 +101,6 @@ example : Subtype' [] [] unit_ Unit_ := by
   apply Subtype'.lam_body
   apply Subtype'.lam_body
   exact Subtype'.bvar (k := 0) (τ := .bvar 0) rfl
-
--- The `zero_ ⊑ Nat_`, `(λx:Nat. x) zero_ ⊑ Nat_`, and `one_ ⊑ Nat_`
--- illustrative witnesses from the Church-encoding era have been
--- removed. Under the current Scott singleton encoding (see
--- Std/Nat.lean), these terms still subtype Nat_, but the
--- derivations now require `unfold_fix_R` on Nat_ plus full `lam`
--- with contravariant-different domains (e.g. `Type ⊑ (Nat_ → X)`
--- in zero_'s s-slot). Rewriting is non-trivial de Bruijn work and
--- the witnesses were illustrative, not load-bearing.  The
--- corresponding algorithmic facts are exercised in `Std/Nat.lean`
--- and `Std/Fin.lean` via `NbE.subCheck`.
 
 /-!
 The flagship coinductive case (SoundnessAudit A4): `dtrue ⊑ dBool`

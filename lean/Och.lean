@@ -2,14 +2,10 @@ import Och.Syntax
 import Och.Outcome
 import Och.Eval
 import Och.NbE
-import Och.NbETests
 import Och.SubCheckVal
 import Och.EvalSubst
 import Och.TyCheck
 import Och.SoundnessAudit
-import Och.SoundnessProof
-import Och.TypedNbE
-import Och.TypedNbETests
 import Och.Subtyping
 import Och.Soundness
 import Och.Tests

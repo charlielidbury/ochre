@@ -5,7 +5,6 @@ import Och.Subtyping
 import Och.Soundness
 import Och.Std
 import Och.Macro
-import Och.TypedNbE
 import Och.EvalSubst
 
 /-!

@@ -4,7 +4,6 @@ import Och.SubCheckVal
 import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Unit
-import Och.TypedNbE
 
 /-!
 # Fix (general recursion) examples

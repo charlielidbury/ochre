@@ -7,7 +7,6 @@ import Och.Std.Unit
 import Och.Std.Bool
 import Och.Std.DBool
 import Och.Std.Pair
-import Och.TypedNbE
 
 /-!
 # Property tests for the NbE checker

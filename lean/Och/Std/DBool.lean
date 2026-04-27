@@ -4,7 +4,6 @@ import Och.SubCheckVal
 import Och.EvalSubst
 import Och.Std.Bool
 import Och.Std.DNat
-import Och.TypedNbE
 
 /-!
 # Dependent Booleans (very-dependent ι encoding)

@@ -3,7 +3,6 @@ import Och.Eval
 import Och.SubCheckVal
 import Och.EvalSubst
 import Och.Std.DNat
-import Och.TypedNbE
 
 /-!
 # Church-encoded Sigma (dependent pair)

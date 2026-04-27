@@ -2,7 +2,6 @@ import Och.Macro
 import Och.Eval
 import Och.SubCheckVal
 import Och.EvalSubst
-import Och.TypedNbE
 
 /-!
 # Church-encoded Booleans

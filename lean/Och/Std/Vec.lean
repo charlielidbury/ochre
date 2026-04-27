@@ -7,7 +7,6 @@ import Och.Std.Unit
 import Och.Std.Pair
 import Och.Std.Array
 import Och.Std.Sigma
-import Och.TypedNbE
 
 /-!
 # Length-Indexed Vec (via Sigma, indexed by `Nat_`)

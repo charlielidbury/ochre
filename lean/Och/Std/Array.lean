@@ -7,7 +7,6 @@ import Och.Std.DNat
 import Och.Std.Unit
 import Och.Std.Pair
 import Och.Std.DFin
-import Och.TypedNbE
 
 /-!
 # Length-Indexed Arrays (indexed by `Nat_`)

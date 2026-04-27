@@ -1,6 +1,7 @@
 import Och.Macro
 import Och.Eval
 import Och.TyCheck
+import Och.EvalSubst
 import Och.Std.Bool
 import Och.Std.DNat
 
@@ -79,7 +80,7 @@ example : NbE.nf 200 (och{ id_ Nat_ three_ })
 -- (the ascription preserves the checked type). Use `subCheckT` —
 -- the typed-pipeline+fallback wrapper — so the test stays robust
 -- to which internal pathway dispatches it.
-example : NbE.subCheckT 200 (och{ idAscribed Nat_ three_ }) Nat_
+example : SubstEval.subCheckT 200 (och{ idAscribed Nat_ three_ }) Nat_
   = .ok true := by native_decide
 
 -- ----------------------------------------------------------

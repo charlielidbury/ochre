@@ -5,7 +5,6 @@ import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Bool
 import Och.Std.Unit
-import Och.TypedNbE
 
 /-!
 # Och Std: Pair (binary product, Church-style)
