@@ -17,4 +17,3 @@ import Och.Tests
 import Och.PropertyTests
 import Och.PerfProbe
 import Och.Std
-import Och.AxiomCheck

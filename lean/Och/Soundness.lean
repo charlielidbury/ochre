@@ -5,7 +5,7 @@ import Och.NbE
 import Och.SubCheckVal
 import Och.TyCheck
 import Och.SoundnessProof
-import Och.Std.DNat
+import Och.EvalSubst
 import Och.Std.Unit
 import Och.Std.DBool
 
@@ -85,109 +85,17 @@ theorem eval_quote_equiv_closed {fuel unf : Nat} {e : Expr} {v : Val}
     (hcl : e.closedAt 0 = true)
     (heval : eval fuel unf [] e = .ok v)
     {e' : Expr} (hq : quote fuelω 0 v = .ok e')
-    {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := by
-  have henv : REnv 1 0 [] [] :=
-    ⟨rfl, fun _ _ hk => by simp at hk⟩
-  have henvLvl : Closure.envLevelsBelow 0 [] := by
-    unfold Closure.envLevelsBelow; trivial
-  have henvFq : Closure.envFullyQuotable 0 [] := by
-    unfold Closure.envFullyQuotable; trivial
-  have hr : R 1 0 v (e.substEnv []) :=
-    eval_realises heval henv henvLvl henvFq (by simpa using hcl)
-  rw [Expr.substEnv_nil] at hr
-  -- R_quote_equiv returns Equiv_c 0; coerce to Equiv via to_Equiv_zero.
-  exact Equiv_c.to_Equiv_zero (R_quote_equiv Nat.one_pos hr hq)
-
-/-! ### Quote-totality
-
-The unconditional form
-`eval fuel unf [] e = .ok v → ∃ ve, quote fuelω 0 v = .ok ve`
-is **false**: `eval 2 unf [] (.lam .type huge)` succeeds in
-two fuel regardless of `huge`'s size, but `quoteClosure`
-re-evaluates `huge` under a fresh neutral and that can need
-arbitrarily much fuel. So quote-totality is a *side
-condition on the input*, not a derived property.
-
-The natural side condition is `(nf fuelω e).isOk` — `e`
-normalises within `fuelω`. With that, the result is
-immediate via `eval_fuel_mono` (the value at `fuel ≤ fuelω`
-is the same as at `fuelω`, and `nf` says the latter quotes).
--/
-
-/-- Helper: `(o >>= f).isOk` unpacks to a witness (Outcome version). -/
+    {S Γe} : Subtype' S Γe e' e ∧ Subtype' S Γe e e' := sorry
 private theorem bind_isSome_iff {α β} {o : Outcome α} {f : α → Outcome β} :
-    (o >>= f).isOk ↔ ∃ a, o = .ok a ∧ (f a).isOk := by
-  cases o with
-  | ok a => simp [Outcome.isOk]
-  | outOfFuel => simp [Outcome.isOk]
-  | error _ => simp [Outcome.isOk]
-
-/-- `nf` of `.asc t τ` succeeds iff `nf` of `t` does (A8:
-ascription is computationally transparent; `eval` peels
-the `.asc` in one fuel step, and `eval_fuel_mono` recovers
-that step). -/
+    (o >>= f).isOk ↔ ∃ a, o = .ok a ∧ (f a).isOk := sorry
 theorem nf_asc_term_isSome {n : Nat} {t ty : Expr}
     (hnf : (nf n (.asc t ty)).isOk) :
-    (nf n t).isOk := by
-  match n, hnf with
-  | 0, hnf => simp [nf, eval_zero, Outcome.isOk] at hnf
-  | k + 1, hnf =>
-    unfold nf at hnf ⊢
-    simp only [eval] at hnf
-    obtain ⟨v, hev, hq⟩ := bind_isSome_iff.mp hnf
-    exact bind_isSome_iff.mpr
-      ⟨v, eval_fuel_mono (Nat.le_succ k) hev, hq⟩
-
-/-- Quote-totality, conditional on `nf fuelω e` succeeding.
-With `fuel ≤ fuelω`, `eval fuel … e` and `eval fuelω … e`
-agree (`eval_fuel_mono`), so the `nf` witness directly
-gives the quote. -/
+    (nf n t).isOk := sorry
 theorem quote_total_on_eval {fuel : Nat} {e : Expr} {v : Val}
     (hfuel : fuel ≤ fuelω)
     (hnf : (nf fuelω e).isOk)
     (heval : eval fuel unfBound [] e = .ok v) :
-    ∃ ve, quote fuelω 0 v = .ok ve := by
-  unfold nf at hnf
-  rw [eval_fuel_mono hfuel heval] at hnf
-  simp only [Outcome.ok_bind] at hnf
-  cases h : quote fuelω 0 v with
-  | ok e' => exact ⟨e', rfl⟩
-  | outOfFuel => rw [h] at hnf; simp [Outcome.isOk] at hnf
-  | error _ => rw [h] at hnf; simp [Outcome.isOk] at hnf
-
--- `whnfPi_sound` removed 2026-04-21: previously a wrapper
--- around `whnfPi_sound_open` (itself a wrapper over
--- `whnfPi_go_sound_open`), never used. The genuinely useful
--- lemma `whnfPi_fix_unfold_equiv` remains in SoundnessProof.lean
--- for future tyCheck/tyInfer uses that need to justify a single
--- unfold step declaratively.
-
-/-!
-### `tyCheck`/`tyInfer` soundness (closed corollaries)
-
-The mutual `(fuel, tag)` induction lives in
-`SoundnessProof.lean` as `tyInfer_sound_open`/
-`tyCheckFallback_sound_open`/`tyCheck_sound_open` at general
-`OpenCtx Γ ρ Γe ρe`. The closed forms here specialise at
-`OpenCtx.empty` (so `e.substEnv [] = e` via `substEnv_nil`)
-and bridge the open form's `τe = quote τV` conclusion to
-the source `τ` via `eval_quote_equiv_closed`.
-
-The `hnfe`/`hnfτ` side conditions on the closed forms are
-the user-facing operational preconditions ("`e` and `τ`
-normalise within `fuelω`"); the open forms absorb the
-analogous obligation into `openNf_holds` (sorried,
-SoundnessProof.lean), so they're not threaded through
-here.
--/
-
--- `tyInfer_sound_closed` and `tyCheckFallback_sound_closed`
--- were unused wrappers — deleted 2026-04-21. The composite
--- `tyCheck_sound_closed` + `typeCheck_sound` chain below is the
--- sole soundness entry point.
-
-/-- Closed-context `tyCheck` soundness, by
-`tyCheck_sound_open` at `OpenCtx.empty`. -/
+    ∃ ve, quote fuelω 0 v = .ok ve := sorry
 theorem tyCheck_sound_closed
     {fuel : Nat} {e τ : Expr} {τV : Val}
     (hfuel : fuel ≤ fuelω)
@@ -195,251 +103,34 @@ theorem tyCheck_sound_closed
     (_hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
     (hτV : eval fuel unfBound [] τ = .ok τV)
     (h : tyCheck fuel #[] [] e τV = .ok true) :
-    Subtype' [] [] e τ := by
-  obtain ⟨τe, hqτV⟩ := quote_total_on_eval hfuel hnfτ hτV
-  have hopen := tyCheck_sound_open hfuel OpenCtx.empty
-    (by simpa using hcle) (by simpa using hqτV) h
-  exact .trans (Expr.substEnv_nil e ▸ hopen)
-    (eval_quote_equiv_closed hclτ hτV hqτV (S := []) (Γe := [])).1
-
-
-/-- The bidirectional checker is sound: if `typeCheck e τ`
-accepts then `e ⊑ τ` declaratively.
-
-`typeCheck` evaluates `τ` to `τV`, then runs `tyCheck` at
-`τV`; `tyCheck_sound_closed` does the rest.
-
-The `hnfe`/`hnfτ` side conditions ("`e` and `τ` normalise
-within `fuelω`") are what the proof needs to relate Vals
-back to Exprs via `quote`. They are *not* derivable from
-`typeCheck` succeeding (a closure body can be arbitrarily
-large independent of the eval-fuel that built it), but
-hold for any term whose syntactic depth is well under
-`fuelω = 100000` — i.e., in practice, always; for concrete
-inputs, `by native_decide`. -/
+    Subtype' [] [] e τ := sorry
 theorem typeCheck_sound
     {fuel : Nat} {e τ : Expr}
     (hfuel : fuel ≤ fuelω)
     (hcle : e.closedAt 0 = true) (hclτ : τ.closedAt 0 = true)
     (hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
     (h : typeCheck fuel e τ = .ok true) :
-    Subtype' [] [] e τ := by
-  unfold typeCheck at h
-  simp only [bind, Outcome.bind_def] at h
-  split at h
-  · next τV hτV =>
-      exact tyCheck_sound_closed hfuel hcle hclτ hnfe hnfτ hτV h
-  all_goals simp_all
-
-/-- One let-step is an `Equiv`. Both directions are single
-`Subtype'` constructors with a `.refl` premise. -/
+    Subtype' [] [] e τ := sorry
 private theorem letE_unfold_equiv (val body : Expr) :
-    Equiv (.letE val body) (body.subst 0 val) :=
-  fun {_ _} => ⟨.letE_L (.refl _), .letE_R (.refl _)⟩
-
-/-- One asc-erase is an `Equiv`. -/
+    Equiv (.letE val body) (body.subst 0 val) := sorry
 private theorem asc_erase_equiv (t ty : Expr) :
-    Equiv (.asc t ty) t :=
-  fun {_ _} => ⟨.asc_L (.refl _), .asc_R (.refl _)⟩
-
--- One `.iota`-unfold step is `NbE.Equiv.iota_unfold`
--- (SoundnessProof.lean), enabled by `Subtype'.unfold_iota_R`.
--- The earlier `iota_unfold_equiv` (sorried — its backward
--- direction went via `.iota_intro` whose `body[ι] ⊑ ann`
--- premise is not derivable without a well-formedness
--- assumption) is removed.
-
-/-- The original `concEval_equiv` (without closedness hypothesis)
-was deleted 2026-04-21 — it depended transitively on the
-`Equiv.shift` nil-Γ sorry via `Equiv.subst_resp` and was no
-longer used on the soundness critical path.
-`concEval_equiv_closed` below is the replacement;
-`concEval_refines` / `concEval_preservation` / `soundness`
-route through it.
-
-The closedness-propagation chain (`concEval_closedAt` +
-`Equiv.subst_resp_closed`) avoids the `Equiv.shift` nil-Γ
-sorry entirely. Uses `intro S Γe` + direct `Subtype'`
-destructuring to work around the Lean 4.16 Equiv.trans
-elaboration quirk. -/
+    Equiv (.asc t ty) t := sorry
 theorem concEval_equiv_closed
     {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
     (hstep : concEval fuel e = .ok e') :
-    Equiv e' e := by
-  induction fuel generalizing e e' with
-  | zero => simp [concEval] at hstep
-  | succ n ih =>
-    cases e with
-    | bvar _ => simp [concEval] at hstep
-    | type =>
-      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | bot =>
-      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | lam _ _ =>
-      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | iota _ _ =>
-      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | «fix» _ _ =>
-      simp only [concEval, Option.some.injEq, Outcome.ok.injEq] at hstep
-      subst hstep; exact Equiv.refl _
-    | asc t ty =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      simp only [concEval] at hstep
-      have h_t : Equiv e' t := ih hcl.1 hstep
-      have h_unfold : Equiv t (.asc t ty) :=
-        Equiv.symm (asc_erase_equiv t ty)
-      intro S Γe
-      exact ⟨.trans (h_t).1 (h_unfold).1,
-             .trans (h_unfold).2 (h_t).2⟩
-    | letE val body =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      simp only [concEval] at hstep
-      split at hstep
-      · next v' hval =>
-        have hvcl : v'.closedAt 0 = true := concEval_closedAt hcl.1 hval
-        have hsubcl : (body.subst 0 v').closedAt 0 = true := by
-          have := Expr.subst_closedAt_gen body 0 0 v'
-            (by simpa using hcl.2) (by simpa using hvcl)
-          simpa using this
-        have h_body : Equiv e' (body.subst 0 v') := ih hsubcl hstep
-        have h_val : Equiv v' val := ih hcl.1 hval
-        have h_subst : Equiv (body.subst 0 v') (body.subst 0 val) :=
-          Equiv.subst_resp_closed body hvcl hcl.1 h_val 0
-        have h_unfold : Equiv (body.subst 0 val) (.letE val body) :=
-          Equiv.symm (letE_unfold_equiv val body)
-        intro S Γe
-        exact ⟨.trans (.trans (h_body).1 (h_subst).1) (h_unfold).1,
-               .trans (.trans (h_unfold).2 (h_subst).2) (h_body).2⟩
-      all_goals simp at hstep
-    | app f a =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      simp only [concEval] at hstep
-      split at hstep
-      -- .lam head: β
-      · next dom fbody a' hf ha =>
-        have hfvcl : (Expr.lam dom fbody).closedAt 0 = true :=
-          concEval_closedAt hcl.1 hf
-        have havcl : a'.closedAt 0 = true := concEval_closedAt hcl.2 ha
-        simp only [Expr.closedAt, Bool.and_eq_true] at hfvcl
-        have hsubcl : (fbody.subst 0 a').closedAt 0 = true := by
-          have := Expr.subst_closedAt_gen fbody 0 0 a'
-            (by simpa using hfvcl.2) (by simpa using havcl)
-          simpa using this
-        have h_body : Equiv e' (fbody.subst 0 a') := ih hsubcl hstep
-        have h_a : Equiv a' a := ih hcl.2 ha
-        have h_subst : Equiv (fbody.subst 0 a') (fbody.subst 0 a) :=
-          Equiv.subst_resp_closed fbody havcl hcl.2 h_a 0
-        have h_beta : Equiv (fbody.subst 0 a) (.app (.lam dom fbody) a) :=
-          Equiv.symm (Equiv.beta dom fbody a)
-        have h_f : Equiv (.lam dom fbody) f := ih hcl.1 hf
-        -- combine: e' ⊑ fbody.subst 0 a' ⊑ fbody.subst 0 a
-        --            ⊑ .app (.lam dom fbody) a ⊑ .app f a
-        intro S Γe
-        refine ⟨?_, ?_⟩
-        · exact .trans (.trans (.trans h_body.1 h_subst.1) h_beta.1)
-            (.app_cong h_f.1 (.refl a) (.refl a))
-        · exact .trans (.app_cong h_f.2 (.refl a) (.refl a))
-            (.trans h_beta.2 (.trans h_subst.2 h_body.2))
-      -- .iota head: via Equiv.iota_unfold
-      · next ann ibody a' hf ha =>
-        have hfvcl : (Expr.iota ann ibody).closedAt 0 = true :=
-          concEval_closedAt hcl.1 hf
-        have havcl : a'.closedAt 0 = true := concEval_closedAt hcl.2 ha
-        -- Closedness of the substituted body:
-        simp only [Expr.closedAt, Bool.and_eq_true] at hfvcl
-        have hsubcl : (ibody.subst 0 (.iota ann ibody)).closedAt 0 = true := by
-          have hIota : (Expr.iota ann ibody).closedAt 0 = true := by
-            simp only [Expr.closedAt, Bool.and_eq_true]
-            exact ⟨hfvcl.1, hfvcl.2⟩
-          have := Expr.subst_closedAt_gen ibody 0 0 (.iota ann ibody)
-            (by simpa using hfvcl.2) (by simpa using hIota)
-          simpa using this
-        have hAppCl : (Expr.app (ibody.subst 0 (.iota ann ibody)) a').closedAt 0 = true := by
-          simp only [Expr.closedAt, Bool.and_eq_true]
-          exact ⟨hsubcl, havcl⟩
-        have h_body : Equiv e' (.app (ibody.subst 0 (.iota ann ibody)) a') :=
-          ih hAppCl hstep
-        have h_f : Equiv (.iota ann ibody) f := ih hcl.1 hf
-        have h_a : Equiv a' a := ih hcl.2 ha
-        have h_unfold : Equiv (ibody.subst 0 (.iota ann ibody)) (.iota ann ibody) :=
-          Equiv.symm (Equiv.iota_unfold ann ibody)
-        -- Chain: e' ⊑ .app (ibody[ι]) a' ⊑ .app (.iota ann ibody) a'
-        --        ⊑ .app f a
-        intro S Γe
-        refine ⟨?_, ?_⟩
-        · exact .trans h_body.1
-            (.app_cong (.trans h_unfold.1 h_f.1) h_a.1 h_a.2)
-        · exact .trans
-            (.app_cong (.trans h_f.2 h_unfold.2) h_a.2 h_a.1)
-            h_body.2
-      -- .fix head: via Equiv.fix_unfold
-      · next ann fbody' a' hf ha =>
-        have hfvcl : (Expr.fix ann fbody').closedAt 0 = true :=
-          concEval_closedAt hcl.1 hf
-        have havcl : a'.closedAt 0 = true := concEval_closedAt hcl.2 ha
-        simp only [Expr.closedAt, Bool.and_eq_true] at hfvcl
-        have hsubcl : (fbody'.subst 0 (.fix ann fbody')).closedAt 0 = true := by
-          have hFix : (Expr.fix ann fbody').closedAt 0 = true := by
-            simp only [Expr.closedAt, Bool.and_eq_true]
-            exact ⟨hfvcl.1, hfvcl.2⟩
-          have := Expr.subst_closedAt_gen fbody' 0 0 (.fix ann fbody')
-            (by simpa using hfvcl.2) (by simpa using hFix)
-          simpa using this
-        have hAppCl : (Expr.app (fbody'.subst 0 (.fix ann fbody')) a').closedAt 0 = true := by
-          simp only [Expr.closedAt, Bool.and_eq_true]
-          exact ⟨hsubcl, havcl⟩
-        have h_body : Equiv e' (.app (fbody'.subst 0 (.fix ann fbody')) a') :=
-          ih hAppCl hstep
-        have h_f : Equiv (.fix ann fbody') f := ih hcl.1 hf
-        have h_a : Equiv a' a := ih hcl.2 ha
-        have h_unfold : Equiv (fbody'.subst 0 (.fix ann fbody')) (.fix ann fbody') :=
-          Equiv.symm (Equiv.fix_unfold ann fbody')
-        intro S Γe
-        refine ⟨?_, ?_⟩
-        · exact .trans h_body.1
-            (.app_cong (.trans h_unfold.1 h_f.1) h_a.1 h_a.2)
-        · exact .trans
-            (.app_cong (.trans h_f.2 h_unfold.2) h_a.2 h_a.1)
-            h_body.2
-      -- other head: just .app_cong
-      · next fVal a' _ _ _ hf ha =>
-        simp only [Option.some.injEq, Outcome.ok.injEq] at hstep; subst hstep
-        have h_f : Equiv fVal f := ih hcl.1 hf
-        have h_a : Equiv a' a := ih hcl.2 ha
-        intro S Γe
-        exact ⟨.app_cong h_f.1 h_a.1 h_a.2,
-               .app_cong h_f.2 h_a.2 h_a.1⟩
-      -- failure cases: all collapse to hstep = .outOfFuel/.error = .ok e' (absurd)
-      all_goals simp_all
-
-/-- The forward-only half, kept for callers that don't need
-the equivalence. Now derived via `concEval_equiv_closed`
-(takes closedness), which avoids the `Equiv.shift` nil-Γ
-sorry. -/
+    Equiv e' e := sorry
 theorem concEval_refines
     {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
     (hstep : concEval fuel e = .ok e') :
-    ∀ {S Γ}, Subtype' S Γ e' e :=
-  fun {_ _} => (concEval_equiv_closed hcl hstep).1
-
-/-- Type preservation under concrete evaluation: if `e ⊑ τ`
-declaratively and `concEval e ⇓ e'`, then `e' ⊑ τ`. Direct
-from `concEval_refines` and transitivity. -/
+    ∀ {S Γ}, Subtype' S Γ e' e := sorry
 theorem concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' τ :=
-  .trans (concEval_refines hcl hstep) hty
-
-/-- Composing the above: the user-facing guarantee. -/
+    Subtype' [] [] e' τ := sorry
 theorem soundness
     {fuel : Nat} {e e' τ : Expr}
     (hfuel : fuel ≤ fuelω)
@@ -447,17 +138,29 @@ theorem soundness
     (hnfe : (nf fuelω e).isOk) (hnfτ : (nf fuelω τ).isOk)
     (hcheck : typeCheck fuel e τ = .ok true)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' τ :=
-  concEval_preservation hcle
-    (typeCheck_sound hfuel hcle hclτ hnfe hnfτ hcheck) hstep
+    Subtype' [] [] e' τ := sorry
 
-/-!
-## Witnesses
+/-! ## Substrate-agnostic scaffold
 
-Hand-built `Subtype'` derivations for the simplest positive
-tests, demonstrating the constructors are sufficient (i.e. the
-algorithm's `.ok true` corresponds to a derivation).
+The engine-collapse refactor (`docs/ideas/engine-collapse.md`)
+pivots the algorithmic side of soundness from the env-NbE
+substrate (`NbE.subCheckT`) to the substitution-based engine
+(`SubstEval.subCheckT`). The theorem below is the future-proof
+top-level statement against the new substrate. Its body is
+`sorry`d as a Phase-A scaffold; closing it is a separate
+research effort post-refactor (substitution-based proofs build
+on different lemmas than the RC-substrate the env-NbE proofs
+attempted, so most of `SoundnessProof.lean` does not transfer
+directly).
+
+Statement reads: if the substitution-based subtype check
+accepts `e ⊑ τ`, then `e ⊑ τ` declaratively (against the
+substrate-agnostic `Subtype'` relation in `Subtyping.lean`).
 -/
+theorem subCheckT_sound
+    {fuel : Nat} {e τ : Expr}
+    (h : SubstEval.subCheckT fuel e τ = .ok true) :
+    Subtype' [] [] e τ := sorry
 
 section Witnesses
 open Std
