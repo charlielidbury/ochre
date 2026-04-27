@@ -269,6 +269,32 @@ private def neutralHeadLevel : Expr → Option Nat
   | .app f _ => neutralHeadLevel f
   | _ => none
 
+/-- Internal: unfold a `.fix` / `.iota` wrapper in `ty` until a
+    `.lam` is exposed. Used by `synthNeutralType` to walk a spine
+    through types whose Π is wrapped in fix/iota (e.g. `Nat_`'s
+    self-eliminator `fix N. ι self:N. λP:..`). The `inhab`
+    argument is what to substitute for the ι-self when unfolding
+    (typically the spine-head being applied). -/
+private partial def exposePi (fuel : Nat) (inhab : Expr) (ty : Expr) :
+    Option Expr :=
+  match evalSubst fuel unfBound ty with
+  | .ok ty' => go unfBound ty'
+  | _ => none
+where
+  go : Nat → Expr → Option Expr
+  | 0, e => some e
+  | _+1, e@(.lam ..) => some e
+  | n+1, e@(.fix _ann body) =>
+      match evalSubst fuel 4 (substL body 0 e) with
+      | .ok e' => go n e'
+      | _ => none
+  | n+1, .iota _ann body =>
+      match evalSubst fuel 4 (substL body 0 inhab) with
+      | .ok e' => go n e'
+      | _ => none
+  | _, .bot => none
+  | _, e => some e
+
 mutual
   /-- Top-level subtype check arm. Forces WHNF on both sides, then
       delegates to `subCheckSubstMatch` for case-on-shape. -/
@@ -353,11 +379,36 @@ mutual
           | _ => .ok false
     -- _ ⊑ fix: unfoldFixR.
     | _, .fix _ann bodyB => do
-        let seen' := (a, b) :: seen
-        let unfolded := substL bodyB 0 b
-        match evalSubst (fuel + 1) unfBound unfolded with
-        | .ok b' => subCheckSubst fuel tyCtx seen' a b'
-        | _ => .ok false
+        -- Neutral-LHS short-circuit: if `a` is a neutral whose ascended
+        -- type via tyCtx is structurally `b`, accept immediately. This
+        -- avoids a divergence pattern where unfolding the fix on the
+        -- RHS produces a value that the post-unfold dispatch then
+        -- compares back against the original neutral on the LHS,
+        -- where the seen-set's stored entries don't match the post-
+        -- substitution shapes (substL renames bound vars). The pure
+        -- ascent path closes via Refl with no substitution drift.
+        if isNeutral a then
+          match synthNeutralType fuel tyCtx a with
+          | .ok (some ty) =>
+              if ty == b then .ok true
+              else
+                let seen' := (a, b) :: seen
+                let unfolded := substL bodyB 0 b
+                match evalSubst (fuel + 1) unfBound unfolded with
+                | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+                | _ => .ok false
+          | _ =>
+              let seen' := (a, b) :: seen
+              let unfolded := substL bodyB 0 b
+              match evalSubst (fuel + 1) unfBound unfolded with
+              | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+              | _ => .ok false
+        else
+          let seen' := (a, b) :: seen
+          let unfolded := substL bodyB 0 b
+          match evalSubst (fuel + 1) unfBound unfolded with
+          | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+          | _ => .ok false
     -- fix ⊑ _: unfoldFixL.
     | .fix _ann bodyA, _ => do
         let seen' := (a, b) :: seen
@@ -420,7 +471,11 @@ mutual
 
   /-- Synthesise the type of a neutral. Walks the spine, looking up
       head levels in `tyCtx` and applying argument types to function
-      types via `substL`. -/
+      types via `substL`. When the synthesised type at a spine step
+      is a `.fix` or `.iota` (e.g. `Nat_`'s self-eliminator), unfold
+      it via `exposePi` to expose the underlying `.lam` and continue.
+      A `.fix` at the spine head (e.g. `add_`) ascends to its
+      annotation. -/
   private partial def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
       (a : Expr) : Outcome (Option Expr) :=
     match fuel with
@@ -432,12 +487,26 @@ mutual
             let lvl := k - levelOffset
             .ok (tyCtx[lvl]?)
           else .ok none
+      | .fix ann _ =>
+          -- A fix's type-via-Refl is itself, but for spine walking
+          -- we want the *function-type* under which arguments
+          -- consume — that's the annotation.
+          match evalSubst (fuel + 1) unfBound ann with
+          | .ok ann' => .ok (some ann')
+          | _ => .ok none
       | .app f arg => do
           match (← synthNeutralType fuel tyCtx f) with
-          | some (.lam _dom retTy) =>
-              let retTy' := substL retTy 0 arg
-              match evalSubst (fuel + 1) unfBound retTy' with
-              | .ok r => .ok (some r)
+          | some ty =>
+              -- Expose a Π via fix/iota unfolding if needed. The
+              -- inhabitant for ι-unfolding is `f` (the spine head
+              -- that's being applied), since that's what
+              -- structurally inhabits the ι annotation here.
+              match exposePi fuel f ty with
+              | some (.lam _dom retTy) =>
+                  let retTy' := substL retTy 0 arg
+                  match evalSubst (fuel + 1) unfBound retTy' with
+                  | .ok r => .ok (some r)
+                  | _ => .ok none
               | _ => .ok none
           | _ => .ok none
       | _ => .ok none
@@ -501,5 +570,64 @@ def subCheckOpen (fuel : Nat) (tyCtx : Array Expr) (a b : Expr) :
   let a' ← evalSubst fuel unfBound a
   let b' ← evalSubst fuel unfBound b
   subCheckSubst fuel tyCtx [] a' b'
+
+/-- Walk a neutral spine to compute its declarative type, looking
+up free level-vars in `tyCtx` and applying argument types through
+`Π` bodies via `substL`. Public mirror of the internal
+`synthNeutralType` (used by `subCheckSubst`'s `[S-Ascent]` arm).
+
+`Och.synth` calls this from its `.app` arm to recover the Π type
+of a neutral function head: the bvar-arm of synth returns the
+variable itself (per paper-B's Refl-typing convention), so we need
+the spine ascent to expose a Π.
+
+- `.ok (some ty)` — neutral head ascended to type `ty` (in WHNF).
+- `.ok none` — `a` is not a neutral, or its head is unbound.
+- `.outOfFuel` — fuel exhausted.
+
+Returns `.ok none` for non-neutral inputs (the synth caller will
+notice and report `applied non-Π head`). -/
+def neutralType (fuel : Nat) (tyCtx : Array Expr) (a : Expr) :
+    Outcome (Option Expr) :=
+  synthNeutralType fuel tyCtx a
+
+/-! ## Π-exposure helper
+
+`Och.synth` (`Och/API.lean`) needs to destructure the synthesised
+type/value of an applied head as a `.lam dom body` (a Π). When the
+head is a `.fix`/`.iota`, we unfold the wrapper one or more times
+to expose the underlying Π. This function does that — it's a
+public mirror of the same logic that lived as a private helper in
+`Och/TyCheck.lean`. -/
+
+/-- Unfold a `.fix` / `.iota` wrapper in `ty` until a `.lam`
+(Π) is exposed, returning the Π. The `inhab` argument is what
+to substitute for the `ι`-self when unfolding `.iota` (= the
+*inhabitant* whose type we're computing — `n : ι self. B` means
+`n : B[self:=n]`). For `.fix`, the self is substituted with the
+fix itself (μ-unfold).
+
+- `some (.lam dom body)` — Π exposed.
+- `some other` — non-Π head (e.g. `.type`, neutral) after WHNF.
+- `none` — `.bot` (non-applicable; see `docs/ideas/bottom.md`)
+  or evaluation failure. -/
+def whnfPi (fuel : Nat) (inhab : Expr) (ty : Expr) : Option Expr :=
+  match evalSubst fuel unfBound ty with
+  | .ok ty' => go unfBound ty'
+  | _ => none
+where
+  go : Nat → Expr → Option Expr
+  | 0, e => some e
+  | _+1, e@(.lam ..) => some e
+  | n+1, e@(.fix _ann body) =>
+      match evalSubst fuel 4 (substL body 0 e) with
+      | .ok e' => go n e'
+      | _ => none
+  | n+1, .iota _ann body =>
+      match evalSubst fuel 4 (substL body 0 inhab) with
+      | .ok e' => go n e'
+      | _ => none
+  | _, .bot => none
+  | _, e => some e
 
 end SubstEval
