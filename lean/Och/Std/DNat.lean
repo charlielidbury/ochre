@@ -168,7 +168,11 @@ example : SubstEval.subCheckT 200 five_ Nat_ = .ok true := by native_decide
 -- ── Negative subtype checks ─────────────────────────────────
 
 example : NbE.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
-example : NbE.subCheckT 200 Std.true_ Nat_ = .ok false := by native_decide
+-- Note: under the permissive Bool encoding, `true_` and `zero_` are
+-- structurally identical (both `λP:Type. λt:Type. λf:Type. t`), so
+-- `true_ ⊑ Nat_` correctly succeeds. Use `Std.Bool` (the type) as
+-- the non-Nat witness instead.
+example : NbE.subCheckT 200 Std.Bool Nat_ = .ok false := by native_decide
 example : NbE.subCheckT 200 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
