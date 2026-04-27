@@ -190,7 +190,37 @@ example : SubstEval.subCheckOpen 5000 Γ_at_depth_15
 
 /-! ## Stage E — full `Och.synth appendVec`
 
-The end-to-end synth call. Currently fails. -/
+The end-to-end synth call fails (`.error`). The semantic question
+is the same one Stage D pinned: at depth 15, inside the
+fresh-walked body of `appendArrays`'s succ-branch, the inlined
+`pair_ T (Array_ (add_ pred n2) T) (fst_ arr) …` asks the engine
+to verify `fst_ arr ⊑ T`. `fst_`'s declared type is
+`Pair Type Type → Type`, so its return is `Type` — not the
+precise element type `T`. The structural engine correctly answers
+`.ok false` (Stage D), and synth correctly propagates the error.
+
+This isn't an engine bug. Two viable fixes:
+
+  1. **Program-level**: rewrite `appendArrays` (and any other
+     consumer that needs precise projections) to use inline
+     eliminators — `arr T (λa:T. λb:(Array_ pred T). a)` instead
+     of `fst_ arr` — exactly as `Std/Pair.lean`'s docstring
+     recommends ("fst_ p : Type, not : A. For precise
+     projections, write the eliminator inline").
+
+  2. **Synth-level**: a β-spine fast-path that peels
+     `.app .lam .arg` chains without recursing into `.lam` bodies
+     fresh. Mirrors `TyCheck.tyInfer`'s existing β-fast-path
+     (TyCheck.lean ~175). Implemented experimentally and
+     confirmed to *not* fix this case — even with the fast-path,
+     the failing question still surfaces because synth's `.fix`
+     and `.lam` arms still descend into `appendArrays`'s body
+     fresh, where the inlined `fst_ arr` evaluates the same way.
+
+The fundamental issue is that `fst_` *operationally* preserves
+type precision (it picks the head of a Pair), but its *declared*
+type doesn't carry that precision. Without inlining, the synth
+walk loses precision irrecoverably. -/
 
 example : (Och.synth Std.appendVec 5000).isError := by
   native_decide
