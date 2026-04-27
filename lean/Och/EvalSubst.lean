@@ -107,8 +107,13 @@ open Outcome
     free level-vars (instead of bound de Bruijn indices). Must be
     larger than any bvar index that ever appears in user programs;
     `100_000_000` is conservative — Och programs nest at most ~20
-    binders deep in practice. -/
-private def levelOffset : Nat := 100_000_000
+    binders deep in practice.
+
+    Exposed (not `private`) so the closedness predicate
+    `Expr.closedAtLvl` (defined below) and downstream substrate proofs
+    can refer to it. The encoding remains an internal detail; user code
+    should not assume any particular value. -/
+def levelOffset : Nat := 100_000_000
 
 /-- Encode a de Bruijn level as a free level-var. -/
 private def levelBvar (level : Nat) : Expr := .bvar (levelOffset + level)
@@ -188,6 +193,250 @@ private def isNeutral : Expr → Bool
   | .bvar k => isLevelIdx k
   | .app f _ => isNeutral f
   | _ => false
+
+/-! ## Closedness modulo level-vars
+
+The standard `Expr.closedAt n e` predicate (in `Syntax.lean`) requires
+*every* `bvar k` to satisfy `k < n`.  Programs in the substitution
+substrate violate that as soon as `openFresh` runs: a free level-var
+is encoded as `bvar (levelOffset + lvl)`, an index far above any
+realistic `n`.
+
+For the substrate's hygiene proofs we therefore use a level-aware
+predicate `Expr.closedAtLvl n e` that treats `bvar k` with `k ≥
+levelOffset` as **closed** (they're values, not bound variables).  On
+programs with no level-vars, `closedAtLvl 0 e ↔ closedAt 0 e`; on
+opened programs with level-vars, only `closedAtLvl` is invariant under
+the substitution substrate's operations.  This is the predicate
+`evalSubst`-style proofs should be written against.
+
+See `docs/ideas/soundness-strategy.md §4 wall-4` for context.
+
+The predicate lives in `namespace Expr` (not `SubstEval`) so that dot
+notation `e.closedAtLvl n` works the same way as `e.closedAt n`.
+`levelOffset` is referenced from `SubstEval`, requiring the helper to
+be re-exported below. -/
+
+end SubstEval
+
+namespace Expr
+
+/-- Like `Expr.closedAt`, but treats `bvar`s with index ≥
+    `SubstEval.levelOffset` (free level-vars) as closed. All other
+    constructors recurse exactly as in `closedAt`. This is the right
+    closedness invariant for substitution-substrate operations
+    (`shiftL`, `substL`, `evalSubst`), which never disturb level-vars. -/
+def closedAtLvl (n : Nat) : Expr → Bool
+  | .bvar k => k < n || k >= SubstEval.levelOffset
+  | .lam dom body => closedAtLvl n dom && closedAtLvl (n + 1) body
+  | .app f a => closedAtLvl n f && closedAtLvl n a
+  | .asc term ty => closedAtLvl n term && closedAtLvl n ty
+  | .type => true
+  | .bot => true
+  | .iota ann body => closedAtLvl n ann && closedAtLvl (n + 1) body
+  | .fix ann body => closedAtLvl n ann && closedAtLvl (n + 1) body
+  | .letE val body => closedAtLvl n val && closedAtLvl (n + 1) body
+
+end Expr
+
+namespace SubstEval
+
+open Expr (closedAtLvl)
+
+/-- `closedAtLvl` is monotone in the cutoff. -/
+theorem closedAtLvl_mono {e : Expr} {n m : Nat}
+    (h : e.closedAtLvl n = true) (hnm : n ≤ m) : e.closedAtLvl m = true := by
+  induction e generalizing n m with
+  | bvar k =>
+    simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at h ⊢
+    rcases h with h1 | h2
+    · exact Or.inl (by omega)
+    · exact Or.inr h2
+  | lam dom body ih_dom ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_dom h.1 hnm, ih_body h.2 (by omega)⟩
+  | app f a ih_f ih_a =>
+    simp only [closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_f h.1 hnm, ih_a h.2 hnm⟩
+  | asc t y ih_t ih_y =>
+    simp only [closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_t h.1 hnm, ih_y h.2 hnm⟩
+  | type => simp [closedAtLvl]
+  | bot => simp [closedAtLvl]
+  | iota ann body ih_ann ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1 hnm, ih_body h.2 (by omega)⟩
+  | fix ann body ih_ann ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1 hnm, ih_body h.2 (by omega)⟩
+  | letE val body ih_val ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_val h.1 hnm, ih_body h.2 (by omega)⟩
+
+/-- A free level-var is `closedAtLvl n` for any `n`. -/
+theorem closedAtLvl_levelBvar (lvl n : Nat) :
+    (levelBvar lvl).closedAtLvl n = true := by
+  simp only [levelBvar, closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+  exact Or.inr (Nat.le_add_right levelOffset lvl)
+
+/-- `shiftL` preserves `closedAtLvl` (generalized). Mirrors
+    `shift_closedAt`. The level-var arm of `shiftL` is the identity,
+    and level-vars are unconditionally `closedAtLvl`. -/
+theorem shiftL_closedAtLvl_gen (e : Expr) (n d c : Nat) (hc : c ≤ n)
+    (h : e.closedAtLvl n = true) : (shiftL d c e).closedAtLvl (n + d) = true := by
+  induction e generalizing n c with
+  | bvar k =>
+    simp only [shiftL, closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at h ⊢
+    by_cases hLvl : isLevelIdx k
+    · simp only [hLvl, ↓reduceIte, closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+      simp only [isLevelIdx, decide_eq_true_eq] at hLvl
+      exact Or.inr hLvl
+    · simp only [hLvl, Bool.false_eq_true, ↓reduceIte]
+      split
+      · simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+        rename_i hlt; exact Or.inl (by omega)
+      · simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+        rename_i hge
+        rcases h with h1 | h2
+        · exact Or.inl (by omega)
+        · simp only [isLevelIdx, decide_eq_true_eq, Bool.not_eq_true,
+            decide_eq_false_iff_not, Nat.not_le] at hLvl
+          exact Or.inr (by omega)
+  | lam dom body ih_dom ih_body =>
+    simp only [shiftL, closedAtLvl, Bool.and_eq_true] at h ⊢
+    refine ⟨ih_dom n c hc h.1, ?_⟩
+    have := ih_body (n + 1) (c + 1) (by omega) h.2
+    rwa [show n + 1 + d = n + d + 1 from by omega] at this
+  | app f a ih_f ih_a =>
+    simp only [shiftL, closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_f n c hc h.1, ih_a n c hc h.2⟩
+  | asc t y ih_t ih_y =>
+    simp only [shiftL, closedAtLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_t n c hc h.1, ih_y n c hc h.2⟩
+  | type => simp [shiftL, closedAtLvl]
+  | bot => simp [shiftL, closedAtLvl]
+  | iota ann body ih_ann ih_body =>
+    simp only [shiftL, closedAtLvl, Bool.and_eq_true] at h ⊢
+    refine ⟨ih_ann n c hc h.1, ?_⟩
+    have := ih_body (n + 1) (c + 1) (by omega) h.2
+    rwa [show n + 1 + d = n + d + 1 from by omega] at this
+  | fix ann body ih_ann ih_body =>
+    simp only [shiftL, closedAtLvl, Bool.and_eq_true] at h ⊢
+    refine ⟨ih_ann n c hc h.1, ?_⟩
+    have := ih_body (n + 1) (c + 1) (by omega) h.2
+    rwa [show n + 1 + d = n + d + 1 from by omega] at this
+  | letE val body ih_val ih_body =>
+    simp only [shiftL, closedAtLvl, Bool.and_eq_true] at h ⊢
+    refine ⟨ih_val n c hc h.1, ?_⟩
+    have := ih_body (n + 1) (c + 1) (by omega) h.2
+    rwa [show n + 1 + d = n + d + 1 from by omega] at this
+
+/-- `substL` preserves `closedAtLvl` (generalized). Mirrors
+    `subst_closedAt_gen`. -/
+theorem substL_closedAtLvl_gen (e : Expr) (j n : Nat) (s : Expr)
+    (he : e.closedAtLvl (j + n + 1) = true) (hs : s.closedAtLvl (j + n) = true)
+    : (substL e j s).closedAtLvl (j + n) = true := by
+  induction e generalizing j s with
+  | bvar k =>
+    simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at he
+    simp only [substL]
+    by_cases hLvl : isLevelIdx k
+    · simp only [hLvl, ↓reduceIte, closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+      simp only [isLevelIdx, decide_eq_true_eq] at hLvl
+      exact Or.inr hLvl
+    · simp only [hLvl, Bool.false_eq_true, ↓reduceIte]
+      by_cases heq : k == j
+      · simp only [heq, ↓reduceIte]; exact hs
+      · simp only [heq, Bool.false_eq_true, ↓reduceIte]
+        have hne : k ≠ j := by intro hh; simp [hh] at heq
+        by_cases hgt : k > j
+        · simp [hgt, closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+          simp only [isLevelIdx, decide_eq_true_eq, Bool.not_eq_true,
+            decide_eq_false_iff_not, Nat.not_le] at hLvl
+          rcases he with h1 | h2
+          · exact Or.inl (by omega)
+          · omega
+        · simp [hgt, closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+          rcases he with h1 | h2
+          · exact Or.inl (by omega)
+          · simp only [isLevelIdx, decide_eq_true_eq, Bool.not_eq_true,
+              decide_eq_false_iff_not, Nat.not_le] at hLvl
+            omega
+  | type => simp [substL, closedAtLvl]
+  | bot => simp [substL, closedAtLvl]
+  | lam dom body ih_dom ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at he
+    obtain ⟨he_dom, he_body⟩ := he
+    simp only [substL, closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_dom j s he_dom hs, ?_⟩
+    have hshift : (shiftL 1 0 s).closedAtLvl (j + 1 + n) = true := by
+      have h1 := shiftL_closedAtLvl_gen s (j + n) 1 0 (Nat.zero_le _) hs
+      have : j + n + 1 = j + 1 + n := by omega
+      rw [this] at h1; exact h1
+    have he2 : body.closedAtLvl (j + 1 + n + 1) = true := by
+      have : (j + n + 1) + 1 = j + 1 + n + 1 := by omega
+      rw [this] at he_body; exact he_body
+    have := ih_body (j + 1) (shiftL 1 0 s) he2 hshift
+    rwa [show j + 1 + n = j + n + 1 from by omega] at this
+  | app f a ih_f ih_a =>
+    simp only [closedAtLvl, Bool.and_eq_true] at he
+    obtain ⟨he_f, he_a⟩ := he
+    simp only [substL, closedAtLvl, Bool.and_eq_true]
+    exact ⟨ih_f j s he_f hs, ih_a j s he_a hs⟩
+  | asc t y ih_t ih_y =>
+    simp only [closedAtLvl, Bool.and_eq_true] at he
+    obtain ⟨he_t, he_y⟩ := he
+    simp only [substL, closedAtLvl, Bool.and_eq_true]
+    exact ⟨ih_t j s he_t hs, ih_y j s he_y hs⟩
+  | iota ann body ih_ann ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at he
+    obtain ⟨he_ann, he_body⟩ := he
+    simp only [substL, closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_ann j s he_ann hs, ?_⟩
+    have hshift : (shiftL 1 0 s).closedAtLvl (j + 1 + n) = true := by
+      have h1 := shiftL_closedAtLvl_gen s (j + n) 1 0 (Nat.zero_le _) hs
+      have : j + n + 1 = j + 1 + n := by omega
+      rw [this] at h1; exact h1
+    have he2 : body.closedAtLvl (j + 1 + n + 1) = true := by
+      have : (j + n + 1) + 1 = j + 1 + n + 1 := by omega
+      rw [this] at he_body; exact he_body
+    have := ih_body (j + 1) (shiftL 1 0 s) he2 hshift
+    rwa [show j + 1 + n = j + n + 1 from by omega] at this
+  | fix ann body ih_ann ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at he
+    obtain ⟨he_ann, he_body⟩ := he
+    simp only [substL, closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_ann j s he_ann hs, ?_⟩
+    have hshift : (shiftL 1 0 s).closedAtLvl (j + 1 + n) = true := by
+      have h1 := shiftL_closedAtLvl_gen s (j + n) 1 0 (Nat.zero_le _) hs
+      have : j + n + 1 = j + 1 + n := by omega
+      rw [this] at h1; exact h1
+    have he2 : body.closedAtLvl (j + 1 + n + 1) = true := by
+      have : (j + n + 1) + 1 = j + 1 + n + 1 := by omega
+      rw [this] at he_body; exact he_body
+    have := ih_body (j + 1) (shiftL 1 0 s) he2 hshift
+    rwa [show j + 1 + n = j + n + 1 from by omega] at this
+  | letE val body ih_val ih_body =>
+    simp only [closedAtLvl, Bool.and_eq_true] at he
+    obtain ⟨he_val, he_body⟩ := he
+    simp only [substL, closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_val j s he_val hs, ?_⟩
+    have hshift : (shiftL 1 0 s).closedAtLvl (j + 1 + n) = true := by
+      have h1 := shiftL_closedAtLvl_gen s (j + n) 1 0 (Nat.zero_le _) hs
+      have : j + n + 1 = j + 1 + n := by omega
+      rw [this] at h1; exact h1
+    have he2 : body.closedAtLvl (j + 1 + n + 1) = true := by
+      have : (j + n + 1) + 1 = j + 1 + n + 1 := by omega
+      rw [this] at he_body; exact he_body
+    have := ih_body (j + 1) (shiftL 1 0 s) he2 hshift
+    rwa [show j + 1 + n = j + n + 1 from by omega] at this
+
+/-- `substL` at position 0 preserves `closedAtLvl`. -/
+theorem substL_closedAtLvl {e s : Expr} {n : Nat}
+    (he : e.closedAtLvl (n + 1) = true) (hs : s.closedAtLvl n = true)
+    : (substL e 0 s).closedAtLvl n = true := by
+  have := substL_closedAtLvl_gen e 0 n s (by simpa using he) (by simpa using hs)
+  simpa using this
 
 /-! ## Substitution-based open-term evaluator
 
