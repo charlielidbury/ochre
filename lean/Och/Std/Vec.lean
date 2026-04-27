@@ -51,11 +51,11 @@ example : Och.subCheckE 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_
 
 -- ── Positive computation: unpack to get length ───────────────
 
-example : concEval 1000 (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-        = concEval 1000 one_ := by native_decide
+example : concEval 100 (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+        = concEval 100 one_ := by native_decide
 
-example : concEval 1000 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-        = concEval 1000 two_ := by native_decide
+example : concEval 100 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+        = concEval 100 two_ := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 
@@ -66,11 +66,11 @@ example : Och.subCheckE 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_de
 
 -- Phrased via concEval: the negative semantic claim is that `testVec1`
 -- with the projection-to-length argument does NOT compute to `two_`.
-example : concEval 1000 (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  ≠ concEval 1000 two_ := by native_decide
+example : concEval 100 (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+  ≠ concEval 100 two_ := by native_decide
 
-example : concEval 1000 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  ≠ concEval 1000 one_ := by native_decide
+example : concEval 100 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+  ≠ concEval 100 one_ := by native_decide
 
 end Tests
 
@@ -145,13 +145,11 @@ private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 -- (next pin); structural subtype checking on the *result* of
 -- `appendVec` is bench-only.
 
--- Concrete result: unpack and check length is nonzero. Concrete
--- evaluation through `appendVec` + `appendArrays` + dNat numerals is
--- a hefty native_decide; verified manually that result computes to
--- `false_` (length ≠ zero). Asserted only isOk in the hot build path.
-example : (concEval 10000 (och{
+-- Concrete result: unpack and check length is nonzero. Strict pin
+-- against `false_` (length ≠ zero, since vec1 ++ vec2 has length 3).
+example : concEval 200 (och{
     isZero_ (vecResult Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n))
-  })).isOk := by native_decide
+  }) = concEval 200 false_ := by native_decide
 
 end AppendVecTests
 end Std

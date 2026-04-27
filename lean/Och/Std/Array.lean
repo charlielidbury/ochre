@@ -151,17 +151,13 @@ private def app_arr1 := och{
 private def app_arr2 := och{ pair_ Nat_ Unit_ three_ unit_ }
 private def appended := och{ appendArrays Nat_ two_ one_ app_arr1 app_arr2 }
 
--- appendArrays [1,2] [3] = [1,2,3]  (concrete runtime eval). Verified
--- manually; concEval at fuel 5000+ takes too long to include in the
--- hot build path with the new dNat-style Nat_ (each numeral expansion
--- goes through more reduction work). Commented out pending perf work.
---
--- example : concEval 5000 (och{ fst_ appended }) = concEval 5000 one_ := by native_decide
--- example : concEval 5000 (och{ fst_ (snd_ appended) }) = concEval 5000 two_ := by native_decide
--- example : concEval 5000 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 5000 three_ := by
---   native_decide
--- Smoke: result is at least computable at high enough fuel.
-example : (concEval 5000 (och{ fst_ appended })).isOk := by native_decide
+-- appendArrays [1,2] [3] = [1,2,3]  (concrete runtime eval). Strict
+-- pins on each element. Re-enabled after engine collapse: matched
+-- length-3 elements pinned exactly to one_/two_/three_.
+example : concEval 200 (och{ fst_ appended }) = concEval 200 one_ := by native_decide
+example : concEval 200 (och{ fst_ (snd_ appended) }) = concEval 200 two_ := by native_decide
+example : concEval 200 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 200 three_ := by
+  native_decide
 
 -- appendArrays at its declared type: A6-family incompleteness
 -- (domA push gives the wrong ascent type under n1/n2 binders). Pinned
@@ -224,12 +220,14 @@ private def arr3 := och{
 }
 
 -- ── Positive computation: indexing returns the right element ──
--- NOTE: concrete concEval of `indexArr` over the unified Nat_ with
--- non-trivial numerals runs long (each numeral unfolds a fix+ι per
--- layer). Asserted only `.isOk` here; specific values verified
--- manually.
-example : (concEval 10000 (och{ indexArr Nat_ three_ arr3 zero_ })).isOk := by
-  native_decide
+-- Strict pins: indexing into [zero_, one_, two_] returns the element
+-- at each position. Pinned to concrete numerals.
+example : concEval 200 (och{ indexArr Nat_ three_ arr3 zero_ })
+        = concEval 200 zero_ := by native_decide
+example : concEval 200 (och{ indexArr Nat_ three_ arr3 one_ })
+        = concEval 200 one_ := by native_decide
+example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
+        = concEval 200 two_ := by native_decide
 
 -- ── Type-level safety via Fin's width-monotone subtyping ──
 --

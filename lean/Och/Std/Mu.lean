@@ -93,21 +93,20 @@ example : Och.subCheckE 2000 fixId Nat_ = .ok false := by native_decide
 -- ------------------------------------------------------------
 
 -- fixId 0 = 0
-example : concEval 1000 (och{ fixId zero_ }) = .ok zero_ := by native_decide
--- fixId three_: under dNat numerals, `fixId three_` evaluates but
--- concEval result at fuel 5000 no longer normalizes to the literal
--- three_ — the eliminator layers in three_ expand on the way in.
--- Asserted only that the application succeeds:
-example : (concEval 5000 (och{ fixId three_ })).isOk := by native_decide
+example : concEval 50 (och{ fixId zero_ }) = .ok zero_ := by native_decide
+-- fixId three_ = three_ (compare against `concEval _ three_` since
+-- numerals don't reduce to a syntactic literal but the numeral
+-- evaluated through fixId matches the numeral evaluated directly).
+example : concEval 50 (och{ fixId three_ })
+        = concEval 50 three_ := by native_decide
 
 -- toZeroThunked 0 = 0
-example : concEval 1000 (och{ toZeroThunked zero_ }) = .ok zero_ := by native_decide
--- toZeroThunked on non-zero uses isZero_ which returns false_ then
--- selects the recursive call; with dNat, concEval needs fuel
--- proportional to input size. The computational result `= zero_`
--- holds under high enough fuel; asserted only as isOk here to
--- keep build time reasonable.
-example : (concEval 5000 (och{ toZeroThunked one_ })).isOk := by native_decide
+example : concEval 50 (och{ toZeroThunked zero_ }) = .ok zero_ := by native_decide
+-- toZeroThunked one_ = zero_: pinned strictly. The thunked branches
+-- terminate the recursion at the next call; result is the syntactic
+-- zero_ value.
+example : concEval 200 (och{ toZeroThunked one_ })
+        = concEval 200 zero_ := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (negative) -- concEval
