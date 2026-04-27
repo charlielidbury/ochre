@@ -104,18 +104,18 @@ open Outcome
     larger than any bvar index that ever appears in user programs;
     `100_000_000` is conservative — Och programs nest at most ~20
     binders deep in practice. -/
-def levelOffset : Nat := 100_000_000
+private def levelOffset : Nat := 100_000_000
 
 /-- Encode a de Bruijn level as a free level-var. -/
-def levelBvar (level : Nat) : Expr := .bvar (levelOffset + level)
+private def levelBvar (level : Nat) : Expr := .bvar (levelOffset + level)
 
 /-- True iff `k` encodes a free level-var. -/
-@[inline] def isLevelIdx (k : Nat) : Bool := k >= levelOffset
+@[inline] private def isLevelIdx (k : Nat) : Bool := k >= levelOffset
 
 /-- Custom shift that does not touch level-vars. Standard `Expr.shift`
     would shift them, breaking absolute-position semantics. Otherwise
     mirrors `Expr.shift`. Structurally recursive. -/
-def shiftL (d c : Nat) : Expr → Expr
+private def shiftL (d c : Nat) : Expr → Expr
   | .bvar k =>
       if isLevelIdx k then .bvar k
       else if k < c then .bvar k
@@ -133,7 +133,7 @@ def shiftL (d c : Nat) : Expr → Expr
     Standard `Expr.subst` would decrement level-vars > j, which is
     semantically wrong (levels are absolute, not relative). Mirrors
     `Expr.subst` otherwise. Structurally recursive on `e`. -/
-def substL (e : Expr) (j : Nat) (s : Expr) : Expr :=
+private def substL (e : Expr) (j : Nat) (s : Expr) : Expr :=
   match e with
   | .bvar k =>
       if isLevelIdx k then .bvar k
@@ -151,13 +151,13 @@ def substL (e : Expr) (j : Nat) (s : Expr) : Expr :=
 
 /-- Open a body under a fresh free level-var at the given depth.
     Mirrors `Closure.openFresh fuel depth` in NbE. -/
-def openFresh (body : Expr) (depth : Nat) : Expr :=
+private def openFresh (body : Expr) (depth : Nat) : Expr :=
   substL body 0 (levelBvar depth)
 
 /-- True iff `e` is a "neutral" — its head is a free level-var or a
     stuck application thereof. Mirrors `Val.isNeutral`. Lambdas, iotas,
     fixes, type, bot are NOT neutral. -/
-def isNeutral : Expr → Bool
+private def isNeutral : Expr → Bool
   | .bvar k => isLevelIdx k
   | .app f _ => isNeutral f
   | _ => false
@@ -171,7 +171,7 @@ Result is an `Expr` in head-normal form: lambda, iota, fix, type, bot,
 or a neutral spine. -/
 
 /-- Default unfold bound. Match NbE for apples-to-apples behaviour. -/
-def unfBound : Nat := 32
+private def unfBound : Nat := 32
 
 /-- Substitution-based head-normal-form evaluator. Decreasing on
     `(fuel, unf)` lex: every recursive call either decrements `fuel`
@@ -233,11 +233,11 @@ clause requires substantial work — for now the block is `partial def`.
 The fuel parameter guarantees termination at runtime.
 -/
 
-abbrev TyCtx := Array Expr
+private abbrev TyCtx := Array Expr
 
 /-- Get the head level-var of a neutral spine. Returns `none` if `e`
     is not a neutral. -/
-def neutralHeadLevel : Expr → Option Nat
+private def neutralHeadLevel : Expr → Option Nat
   | .bvar k => if isLevelIdx k then some (k - levelOffset) else none
   | .app f _ => neutralHeadLevel f
   | _ => none
@@ -245,7 +245,7 @@ def neutralHeadLevel : Expr → Option Nat
 mutual
   /-- Top-level subtype check arm. Forces WHNF on both sides, then
       delegates to `subCheckSubstMatch` for case-on-shape. -/
-  partial def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
+  private partial def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -264,7 +264,7 @@ mutual
 
   /-- The per-shape case-split for `subCheckSubst`. Inputs are assumed
       to be in WHNF (the caller forces it). -/
-  partial def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
+  private partial def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     let depth := tyCtx.size
     match a, b with
@@ -364,7 +364,7 @@ mutual
   /-- Compare two neutral spines structurally. Heads must be equal
       level-vars; arguments must be pairwise *equivalent* (any-
       variance). -/
-  partial def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
+  private partial def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -382,7 +382,7 @@ mutual
 
   /-- Synthesise the type of a neutral spine and check against `b`.
       Mirrors NbE's `neutralAscent`. -/
-  partial def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
+  private partial def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -394,7 +394,7 @@ mutual
   /-- Synthesise the type of a neutral. Walks the spine, looking up
       head levels in `tyCtx` and applying argument types to function
       types via `substL`. -/
-  partial def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
+  private partial def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
       (a : Expr) : Outcome (Option Expr) :=
     match fuel with
     | 0 => .outOfFuel
