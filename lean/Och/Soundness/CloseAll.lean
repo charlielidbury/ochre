@@ -541,42 +541,128 @@ theorem closeAllAt_shiftL (c d c' d' m : Nat) (e : Expr)
       omega
     rw [ih_t c c' hcle hb_t hb.1, ih_y c c' hcle hb_y hb.2]
 
-/-- `closeAllAt` commutes with `substL` at the binder-counter
-    position.  The substitutee `s` is translated by `closeAllAt c d`
-    on the RHS to match the recursion's behaviour at the `bvar j` arm.
+/-! ### `closeAllAt_substL`: a similar wall
 
-    Proof shape: structural induction on `e`, using
-    `closeAllAt_shiftL` to handle the under-binder shift of `s`.
-    The level-var arm of `e` is preserved by `substL` (level-vars
-    are not the substituted index `j` since `levelOffset > j`), and
-    its `closeAllAt` image (a small `.bvar`) is also outside the
-    substituted range when `j < c` (the substitution position is
-    binder-local).
+By the same off-by-one analysis as `closeAll_openFresh`,
+`closeAllAt_substL` also fails as the naive equation in general.
 
-    Sorry'd: TODO close this.  Estimated 100-150 LOC. -/
-theorem closeAllAt_substL (c d j : Nat) (e s : Expr) (hj : j < c ∨ c = 0) :
+For a level-var `bvar (levelOffset + lvl)` in `e` with `lvl < d - 1`
+(strict, so the closeAllAt image is `bvar (d-1-lvl + c)` with `d - 1
+- lvl + c > 0`):
+
+* LHS: `closeAllAt c d (substL (.bvar (levelOffset+lvl)) j s)`
+  = `closeAllAt c d (.bvar (levelOffset+lvl))` (substL skips
+  level-vars) = `.bvar (d - 1 - lvl + c)`.
+* RHS: `substL (closeAllAt c d (.bvar (levelOffset+lvl))) j
+  (closeAllAt c d s)` = `substL (.bvar (d - 1 - lvl + c)) j _`.
+  When `j = 0` and `d - 1 - lvl + c > 0`, this decrements the bvar
+  to `.bvar (d - 1 - lvl + c - 1)`.  **Off by 1**.
+
+The fundamental issue: `substL` decrements bvars `> j` (because
+it eliminates the binder at `j`).  `closeAll`'s image places
+level-vars at de-Bruijn indices, which `substL` then tries to
+decrement.
+
+**Conclusion**: same wall as `closeAll_openFresh`.  Both lemmas
+require either:
+* a `substL`-variant that doesn't decrement (and a proof that the
+  engine's `substL` agrees on the relevant regime), or
+* a closeAll variant that itself decrements appropriately under
+  `substL`'s recursion pattern.
+
+We sorry this lemma; see the agent report.
+-/
+
+/-- **Open question / WALL**: closeAllAt with substL.  The naive
+    statement fails on level-vars with `d - 1 - lvl + c > j` due
+    to substL's decrement semantics on bvars `> j`. -/
+theorem closeAllAt_substL_OPEN_QUESTION (c d j : Nat) (e s : Expr)
+    (_hj : j < c ∨ c = 0) :
     closeAllAt c d (substL e j s) = substL (closeAllAt c d e) j (closeAllAt c d s) := by
+  -- See module docs.  Off-by-one between substL's decrement and
+  -- closeAllAt's image at de-Bruijn indices.
   sorry
 
-/-- `closeAll` of `openFresh body lvl` collapses to the
-    binder-internal `closeAllAt 1 (lvl+1) body`.  This is the lemma
-    the `lam`/`iota`/`fix` arms of `subCheckSubst` need to
-    decompose: opening the body under a fresh level-var, then
-    `closeAll`-ing the result, is the same as `closeAll`-ing the
-    body under one extra binder.
+/-! ### `closeAll_openFresh`: open commutes with closeAll modulo well-scoping
 
-    Proof shape: unfold `openFresh = substL body 0 (levelBvar lvl)`,
-    apply `closeAllAt_substL` (note `c = 0` so the `hj` branch
-    `c = 0` fires; `substL ... 0 ...` substitutes the outermost
-    bvar).  The substituted `levelBvar lvl = .bvar (levelOffset +
-    lvl)` translates to `.bvar (lvl + 1 - 1 - lvl) = .bvar 0` under
-    `closeAll (lvl+1)`, which is `bvar 0` — the right value to
-    substitute for the outermost binder of `body`.
+The naive equation `closeAll (lvl + 1) (openFresh body lvl) =
+closeAllAt 1 (lvl + 1) body` is **false** in general, due to a
+fundamental mismatch:
 
-    Sorry'd: TODO close this; depends on `closeAllAt_substL`. -/
-theorem closeAll_openFresh (body : Expr) (lvl : Nat) :
+* `openFresh body lvl = substL body 0 (levelBvar lvl)` *decrements*
+  ordinary bvars `> 0` in `body` (because `substL` eliminates the
+  binder at position 0).
+* `closeAllAt 1 d body` (the structural traversal) *preserves*
+  ordinary bvars; only level-vars get translated.
+
+Counterexample: `body = .bvar 1`.
+* `openFresh body lvl = .bvar 0` (decremented).  `closeAll (lvl+1)
+  (.bvar 0) = .bvar 0`.
+* `closeAllAt 1 (lvl+1) (.bvar 1) = .bvar 1` (ordinary bvar, `c = 1`,
+  unchanged).
+
+These differ on outer references.
+
+**Well-scoping fix**: under the assumption `body.bvarLTOrLvl 1 = true`
+(every ordinary bvar in `body` is `< 1`, i.e., only `.bvar 0` is
+allowed; level-vars are unrestricted), the equation does hold.  This
+is exactly the well-scoped invariant for a binder body that's been
+descended into once — the standard precondition in locally-nameless
+formulations.
+
+Concretely, with the well-scoping precondition, body has only:
+* `.bvar 0` — the binder being eliminated;
+* `.bvar (levelOffset + lvl')` for various `lvl' < lvl + 1` — free
+  level-vars.
+
+For each:
+* `.bvar 0`: openFresh substitutes with `levelBvar lvl`; closeAll
+  translates that to `.bvar 0`.  RHS: closeAllAt 1 (lvl+1) leaves
+  `.bvar 0` unchanged.  ✓
+* `.bvar (levelOffset + lvl')` (lvl' < lvl + 1): openFresh skips;
+  closeAll translates to `.bvar (lvl + 1 - 1 - lvl') = .bvar (lvl
+  - lvl')`.  RHS: closeAllAt 1 (lvl+1) translates to `.bvar (lvl +
+  1 - 1 - lvl' + 1) = .bvar (lvl - lvl' + 1)`.  **Off by 1**.
+
+Wait, even with well-scoping, level-vars don't match!  This is the
+real issue.
+
+**Conclusion**: `closeAll_openFresh` as a single-equation lemma is
+not the right shape.  The right lemma is at the **Subtype'-level**:
+some bridging derivation that says "the engine's recursive call on
+opened body, after `closeAll`, derives the same Subtype' as the
+structural lam rule applied to the closed body".
+
+This is research-grade: it requires either (a) shifting closeAllAt
+under-binder semantics to *also* increment outer bvars (matching
+openFresh's decrement, by applying the inverse `shiftL 1 0` once);
+or (b) reformulating the engine's openFresh to NOT decrement (a
+substantive change).
+
+We sorry this lemma with the issue clearly documented.  See the
+agent report and `docs/ideas/c7-wall.md` updates.
+
+-- Open question: is there a closeAllAt variant `closeAllAt' c d e`
+-- that *does* match openFresh's semantics?  Specifically: under a
+-- binder, ordinary bvars' translation behaviour changes from
+-- "preserve" to "decrement-and-translate-from-deeper-context".
+-- Such a variant might recover the equation.
+-/
+
+/-- **Open question / WALL**: the relationship between `closeAll`
+    of an opened body and `closeAllAt` of the body itself.  As
+    analyzed above, the naive equation does not hold.  This sorry
+    represents the next research-grade step in Proposal A. -/
+theorem closeAll_openFresh_OPEN_QUESTION (body : Expr) (lvl : Nat)
+    (_hb : body.bvarLTOrLvl 1 = true) :
     closeAll (lvl + 1) (SubstEval.openFreshTop body lvl)
       = closeAllAt 1 (lvl + 1) body := by
+  -- See module documentation for the analysis: even under
+  -- well-scoping, level-var translations differ by 1 (off-by-one
+  -- between `closeAll` and `closeAllAt 1 ...`).  The fundamental
+  -- obstacle is the substrate's `openFresh` using `substL` (which
+  -- decrements), while structural closeAllAt under-binder traversal
+  -- preserves indices.
   sorry
 
 end Och.Soundness
