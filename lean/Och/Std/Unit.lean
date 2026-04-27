@@ -1,6 +1,7 @@
 import Och.Macro
 import Och.Eval
 import Och.SubCheckVal
+import Och.EvalSubst
 import Och.TypedNbE
 
 /-!
@@ -30,14 +31,14 @@ section Tests
 example : concEval 50 (och{ unit_ Unit_ unit_ }) = .ok unit_ := by native_decide
 
 -- subtype checking (positive)
-example : NbE.subCheckT 50 unit_ Unit_ = .ok true := by native_decide
-example : NbE.subCheckT 50 Unit_ .type = .ok true := by native_decide
+example : SubstEval.subCheckT 50 unit_ Unit_ = .ok true := by native_decide
+example : SubstEval.subCheckT 50 Unit_ .type = .ok true := by native_decide
 
 -- subtype checking (negative)
 -- Unit_ is wider than unit_, so Unit_ ⊑ unit_ should fail
-example : NbE.subCheckT 50 Unit_ unit_ = .ok false := by native_decide
+example : SubstEval.subCheckT 50 Unit_ unit_ = .ok false := by native_decide
 -- Type is not a subtype of Unit_ (Type is wider)
-example : NbE.subCheckT 50 .type Unit_ = .ok false := by native_decide
+example : SubstEval.subCheckT 50 .type Unit_ = .ok false := by native_decide
 
 -- computation (negative)
 -- unit selects its argument, not something else

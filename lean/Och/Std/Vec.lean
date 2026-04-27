@@ -1,6 +1,7 @@
 import Och.Macro
 import Och.Eval
 import Och.TyCheck
+import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Unit
 import Och.Std.Pair
@@ -45,8 +46,8 @@ private def testVec2 := och{ mkVec Nat_ two_
 
 -- ── Positive subtype checks ──────────────────────────────────
 
-example : NbE.subCheckT 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
-example : NbE.subCheckT 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : SubstEval.subCheckT 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : SubstEval.subCheckT 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -58,8 +59,8 @@ example : concEval 1000 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n)
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : NbE.subCheckT 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
-example : NbE.subCheckT 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
+example : SubstEval.subCheckT 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
+example : SubstEval.subCheckT 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
@@ -103,7 +104,7 @@ private def appendVec_wrong := och{
 section AppendVecTests
 
 -- appendVec : Vec T → Vec T → Vec T
-example : NbE.subCheckT 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
+example : SubstEval.subCheckT 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
   = .ok true := by native_decide
 
 -- appendVec_wrong should NOT typecheck (the wrong length arg shows up
@@ -123,7 +124,7 @@ private def vec1 := och{ mkVec Nat_ two_
 private def vec2 := och{ mkVec Nat_ one_ (pair_ Nat_ Unit_ three_ unit_) }
 private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 
-example : NbE.subCheckT 400 vecResult (och{ Vec Nat_ })
+example : SubstEval.subCheckT 400 vecResult (och{ Vec Nat_ })
   = .ok true := by native_decide
 
 -- Concrete result: unpack and check length is nonzero. Concrete

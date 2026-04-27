@@ -150,16 +150,16 @@ example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
 -- size. `two_ ⊑ Nat_` at fuel 800 works; `three_ ⊑ Nat_` takes
 -- ~50k fuel. SoundnessAudit pins `two_ ⊑ Nat_` at fuel 800.
 
-example : NbE.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 200 one_ Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 800 two_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 one_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 800 two_ Nat_ = .ok true := by native_decide
 -- three_/four_/five_ ⊑ Nat_ close fast via subCheckT's typeCheck
 -- fast-path; bare subCheckVal hits the singleton-tower scaling and is
 -- ~14s for three_, projected hours for five_. The typed wrapper makes
 -- these tractable for both engines.
-example : NbE.subCheckT 200 three_ Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 200 four_ Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 200 five_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 three_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 four_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 five_ Nat_ = .ok true := by native_decide
 -- Same checks via the substitution-based subCheckT.
 example : SubstEval.subCheckT 200 three_ Nat_ = .ok true := by native_decide
 example : SubstEval.subCheckT 200 four_ Nat_ = .ok true := by native_decide
@@ -167,13 +167,13 @@ example : SubstEval.subCheckT 200 five_ Nat_ = .ok true := by native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : NbE.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
+example : SubstEval.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
 -- Note: under the permissive Bool encoding, `true_` and `zero_` are
 -- structurally identical (both `λP:Type. λt:Type. λf:Type. t`), so
 -- `true_ ⊑ Nat_` correctly succeeds. Use `Std.Bool` (the type) as
 -- the non-Nat witness instead.
-example : NbE.subCheckT 200 Std.Bool Nat_ = .ok false := by native_decide
-example : NbE.subCheckT 200 zero_ one_ = .ok false := by native_decide
+example : SubstEval.subCheckT 200 Std.Bool Nat_ = .ok false := by native_decide
+example : SubstEval.subCheckT 200 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
 --
