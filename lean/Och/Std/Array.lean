@@ -254,7 +254,7 @@ example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
 -- this pin asserts the `tyInfer` rejection rather than an `synth`
 -- rejection. Closing the boundary requires fixing the
 -- bidirectional incompleteness so `tyInfer.error` can be trusted.
-example : (TyCheck.tyInfer 1000 #[]
+example : (TyCheck.tyInfer 200 #[]
             (och{ indexArr Nat_ three_ arr3 three_ })).isError
         = true := by native_decide
 

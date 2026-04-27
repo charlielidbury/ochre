@@ -110,7 +110,7 @@ section AppendVecTests
 -- inline eliminators on `arr` instead of `fst_`/`snd_` (precision
 -- loss at the loose `Pair Type Type → Type` Std-level boundary
 -- was the bail; see `docs/ideas/appendvec-investigation.md`).
-example : (Och.synth Std.appendVec 1000).isOk := by native_decide
+example : (Och.synth Std.appendVec 200).isOk := by native_decide
 
 -- appendVec_wrong has a deliberate bug: the inner `appendArrays`
 -- call uses `n1` twice instead of `n1, n2`. The bidirectional
@@ -125,7 +125,7 @@ example : (Och.synth Std.appendVec 1000).isOk := by native_decide
 -- This pin asserts the `tyInfer`-level rejection. Closing the
 -- public-surface boundary requires the bidirectional-completeness
 -- work documented in `Och/API.lean`.
-example : (TyCheck.tyInfer 1000 #[] appendVec_wrong).isError
+example : (TyCheck.tyInfer 200 #[] appendVec_wrong).isError
        = true := by native_decide
 
 -- ── Concrete appendVec ──────────────────────────────────────
