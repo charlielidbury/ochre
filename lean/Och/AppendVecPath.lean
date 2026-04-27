@@ -80,13 +80,13 @@ private def lhsA : Expr := och{ add_ (succ_ predv) n2v }
 /-- RHS: `succ_ (add_ pred n2)`. -/
 private def rhsA : Expr := och{ succ_ (add_ predv n2v) }
 
-example : (evalSubst 5000 SubstEval.unfBound lhsA).isOk := by native_decide
-example : (evalSubst 5000 SubstEval.unfBound rhsA).isOk := by native_decide
+example : (evalSubst 200 SubstEval.unfBound lhsA).isOk := by native_decide
+example : (evalSubst 200 SubstEval.unfBound rhsA).isOk := by native_decide
 
-example : SubstEval.subCheckOpen 5000 tyCtx lhsA rhsA = .ok true := by
+example : SubstEval.subCheckOpen 1000 tyCtx lhsA rhsA = .ok true := by
   native_decide
 
-example : SubstEval.subCheckOpen 5000 tyCtx rhsA lhsA = .ok true := by
+example : SubstEval.subCheckOpen 1000 tyCtx rhsA lhsA = .ok true := by
   native_decide
 
 /-! ## Stage B — `Array_` unfolds correctly under abstract pred
@@ -103,10 +103,10 @@ private def lhsB : Expr := och{ Array_ (succ_ predv) Tv }
 /-- `Pair T (Array_ pred T)`. -/
 private def rhsB : Expr := och{ Pair Tv (Array_ predv Tv) }
 
-example : SubstEval.subCheckOpen 5000 tyCtx lhsB rhsB = .ok true := by
+example : SubstEval.subCheckOpen 1000 tyCtx lhsB rhsB = .ok true := by
   native_decide
 
-example : SubstEval.subCheckOpen 5000 tyCtx rhsB lhsB = .ok true := by
+example : SubstEval.subCheckOpen 1000 tyCtx rhsB lhsB = .ok true := by
   native_decide
 
 /-! ## Stage C — both layers combined
@@ -122,10 +122,10 @@ private def lhsC : Expr := och{ Array_ (add_ (succ_ predv) n2v) Tv }
 /-- `Pair T (Array_ (add_ pred n2) T)`. -/
 private def rhsC : Expr := och{ Pair Tv (Array_ (add_ predv n2v) Tv) }
 
-example : SubstEval.subCheckOpen 5000 tyCtx lhsC rhsC = .ok true := by
+example : SubstEval.subCheckOpen 1000 tyCtx lhsC rhsC = .ok true := by
   native_decide
 
-example : SubstEval.subCheckOpen 5000 tyCtx rhsC lhsC = .ok true := by
+example : SubstEval.subCheckOpen 1000 tyCtx rhsC lhsC = .ok true := by
   native_decide
 
 /-! ## Stage D — the actual question synth asks at the failing app
@@ -184,7 +184,7 @@ private def dom_at_failure : Expr := freshLevelVar 8
 -- subtyping rules don't include "RHS-ascend a level-var" (only
 -- LHS-ascend, the `bvar` rule), so this answer is sound — and the
 -- bug is therefore in *synth*'s question, not in the engine.
-example : SubstEval.subCheckOpen 5000 Γ_at_depth_15
+example : SubstEval.subCheckOpen 1000 Γ_at_depth_15
             aV_at_failure dom_at_failure
         = .ok false := by native_decide
 
@@ -204,7 +204,7 @@ the bidirectional walk asks "does loose-`Type` ⊑ precise-`T`?",
 which is structurally false. Inlining the eliminator restores
 precision because the motive carries the precise type. -/
 
-example : (Och.synth Std.appendArrays 5000).isOk := by native_decide
-example : (Och.synth Std.appendVec 5000).isOk := by native_decide
+example : (Och.synth Std.appendArrays 1000).isOk := by native_decide
+example : (Och.synth Std.appendVec 1000).isOk := by native_decide
 
 end Och.AppendVecPath

@@ -106,7 +106,7 @@ open Std
 -- `_, .fix` arm + `synthNeutralType`'s `exposePi` Π-unfolding
 -- through fix/iota wrappers (engine-collapse final pass
 -- 2026-04-27). The check now closes positively.
-example : SubstEval.subCheck 5000 appendArrays
+example : SubstEval.subCheck 1000 appendArrays
     (och{ λT:Type. λn1:Nat_. λn2:Nat_.
          Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
   = .ok true := by native_decide

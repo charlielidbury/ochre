@@ -244,7 +244,7 @@ theorem a6_subCheckCompletes :
 
 /-- Concrete-numeral subsumption closes via the typed pipeline. -/
 theorem a6_dtwoFast :
-    Och.subCheckE 800 two_ Nat_ = .ok true := by
+    Och.subCheckE 200 two_ Nat_ = .ok true := by
   native_decide
 
 /-!
@@ -435,12 +435,12 @@ private def sweepCorpus : List Expr := [
 
 /-- Reflexivity on the corpus. -/
 theorem sweep_refl :
-    sweepCorpus.all (fun e => Och.subCheckE 400 e e == .ok true) := by
+    sweepCorpus.all (fun e => Och.subCheckE 200 e e == .ok true) := by
   native_decide
 
 /-- Everything is ⊑ Type (top). -/
 theorem sweep_top :
-    sweepCorpus.all (fun e => Och.subCheckE 400 e .type == .ok true) := by
+    sweepCorpus.all (fun e => Och.subCheckE 200 e .type == .ok true) := by
   native_decide
 
 /-- The documented A6 incompleteness witness, under the typed
@@ -448,7 +448,7 @@ pipeline: closed under `subCheckT` (typed-NbE pass 2 win).
 Bare `subCheckVal` still has the A6 incompleteness — see
 `a6_subCheckIncompleteness`. Pinned to record both states. -/
 theorem sweep_a6_typedAccepts :
-    Och.subCheckE 400 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
+    Och.subCheckE 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
       = .ok true := by
   native_decide
 
@@ -464,8 +464,8 @@ private def strictPairs : List (Expr × Expr) := [
 
 theorem sweep_strict :
     strictPairs.all (fun (a, b) =>
-      Och.subCheckE 400 a b == .ok true &&
-      Och.subCheckE 400 b a == .ok false) := by
+      Och.subCheckE 200 a b == .ok true &&
+      Och.subCheckE 200 b a == .ok false) := by
   native_decide
 
 /-!

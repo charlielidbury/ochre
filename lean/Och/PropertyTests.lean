@@ -83,9 +83,9 @@ end OpenContext
 section Negative
 
 -- Numerals are not their predecessors.
-example : Och.subCheckE 800 two_ one_ = .ok false := by native_decide
-example : Och.subCheckE 400 one_ zero_ = .ok false := by native_decide
-example : Och.subCheckE 400 zero_ one_ = .ok false := by native_decide
+example : Och.subCheckE 200 two_ one_ = .ok false := by native_decide
+example : Och.subCheckE 200 one_ zero_ = .ok false := by native_decide
+example : Och.subCheckE 200 zero_ one_ = .ok false := by native_decide
 
 -- Distinct base types.
 example : Och.subCheckE 200 Nat_ Unit_ = .ok false := by native_decide
@@ -114,8 +114,8 @@ example : Och.subCheckE 200 (och{ Pair Nat_ Unit_ }) Nat_
   = .ok false := by native_decide
 
 -- A constructor is not the type, in either DNat direction.
-example : Och.subCheckE 400 Nat_ zero_ = .ok false := by native_decide
-example : Och.subCheckE 400 Nat_ one_ = .ok false := by native_decide
+example : Och.subCheckE 200 Nat_ zero_ = .ok false := by native_decide
+example : Och.subCheckE 200 Nat_ one_ = .ok false := by native_decide
 
 -- Top is one-directional.
 example : Och.subCheckE 200 (.type) Nat_ = .ok false := by native_decide
@@ -144,22 +144,22 @@ private def rtCorpus : List Expr := [
 
 /-- Each corpus term reaches HNF within fuel 400. -/
 theorem rt_hnf_total :
-    rtCorpus.all (fun e => (evalSubst 400 unfBound e).isOk) = true := by
+    rtCorpus.all (fun e => (evalSubst 200 unfBound e).isOk) = true := by
   native_decide
 
 /-- Forward: `hnf e ⊑ e` for every corpus term. -/
 theorem rt_forward :
     rtCorpus.all (fun e =>
-      match evalSubst 400 unfBound e with
-      | .ok e' => Och.subCheckE 400 e' e == .ok true
+      match evalSubst 200 unfBound e with
+      | .ok e' => Och.subCheckE 200 e' e == .ok true
       | _ => false) = true := by
   native_decide
 
 /-- Backward: `e ⊑ hnf e` for every corpus term. -/
 theorem rt_backward :
     rtCorpus.all (fun e =>
-      match evalSubst 400 unfBound e with
-      | .ok e' => Och.subCheckE 400 e e' == .ok true
+      match evalSubst 200 unfBound e with
+      | .ok e' => Och.subCheckE 200 e e' == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -172,12 +172,12 @@ subtypes itself, and everything subtypes `Type`. -/
 
 theorem refl_sweep :
     rtCorpus.all (fun e =>
-      Och.subCheckE 400 e e == .ok true) = true := by
+      Och.subCheckE 200 e e == .ok true) = true := by
   native_decide
 
 theorem top_sweep :
     rtCorpus.all (fun e =>
-      Och.subCheckE 400 e .type == .ok true) = true := by
+      Och.subCheckE 200 e .type == .ok true) = true := by
   native_decide
 
 end Och.PropertyTests

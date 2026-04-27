@@ -41,9 +41,9 @@ example : Och.subCheckE 200 (och{ Not' false_ }) true_ = .ok true ∧
 example : Och.subCheckE 200 (och{ Not' Bool }) Bool = .ok true ∧
           Och.subCheckE 200 Bool (och{ Not' Bool }) = .ok true := by
   native_decide
-example : Och.subCheckE 1000 false_ true_ = .ok false := by native_decide
-example : Och.subCheckE 1000 (och{ Not' true_ }) Bool = .ok true := by native_decide
-example : Och.subCheckE 1000 (och{ Not' false_ }) Bool = .ok true := by native_decide
+example : Och.subCheckE 200 false_ true_ = .ok false := by native_decide
+example : Och.subCheckE 200 (och{ Not' true_ }) Bool = .ok true := by native_decide
+example : Och.subCheckE 200 (och{ Not' false_ }) Bool = .ok true := by native_decide
 
 -- ============================================================
 -- §6.2 Abstract instantiation (ascription-based type-level tests)
@@ -53,12 +53,12 @@ example : Och.subCheckE 1000 (och{ Not' false_ }) Bool = .ok true := by native_d
 -- produce correct types. They use Std definitions directly.
 
 -- Abstract Nat: add (... : Nat) (... : Nat) ⊑ Nat
-example : Och.subCheckE 1000
+example : Och.subCheckE 200
   (och{ add_ (zero_ : Nat_) (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
 -- succ (... : Nat) ⊑ Nat
-example : Och.subCheckE 1000
+example : Och.subCheckE 200
   (och{ succ_ (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
@@ -70,12 +70,12 @@ example : Och.subCheckE 200
   native_decide
 
 -- isZero (... : Nat) ⊑ Bool
-example : Och.subCheckE 1000
+example : Och.subCheckE 200
   (och{ isZero_ (zero_ : Nat_) })
   Bool = .ok true := by native_decide
 
 -- double (... : Nat) ⊑ Nat
-example : Och.subCheckE 1000
+example : Och.subCheckE 200
   (och{ double_ (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
@@ -107,7 +107,7 @@ example : Och.subCheckE 200
 -- Rewrapped abstract vector ⊑ Vec Nat. The neutral-head gate leaves
 -- `Array_ n Nat_` (abstract `n`) stuck so the motive normalises, and
 -- the stuck-head re-eval rule lets the existential repack.
-example : Och.subCheckE 1000
+example : Och.subCheckE 200
   (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:Nat_. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
   (och{ Vec Nat_ }) = .ok true := by native_decide
 
