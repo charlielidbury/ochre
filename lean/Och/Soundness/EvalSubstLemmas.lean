@@ -121,4 +121,175 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
           | letE _ _ => simp only at h ⊢; exact h
           | app _ _ => simp only at h ⊢; exact h
 
+/-! ## Closedness preservation for `evalSubst`
+
+Mirror of `concEval_closedAt` (`Och/Eval.lean`). The closedness
+invariant here is `Expr.closedAtLvl`, not the vanilla `Expr.closedAt`:
+the substrate uses a `levelOffset = 100_000_000` trick to encode free
+level-vars as huge `bvar` indices, and `evalSubst` returns those
+indices unchanged. Vanilla `closedAt 0` is therefore *not* preserved
+by `evalSubst` on opened bodies. See `EvalSubst.lean`'s "Closedness
+modulo level-vars" section for the predicate definition and the
+`shiftL`/`substL` hygiene prerequisites this proof relies on.
+-/
+
+open Expr (closedAtLvl)
+
+/-- `evalSubst` preserves `closedAtLvl 0`: evaluating a term that
+    is closed-modulo-level-vars produces another such term. Mirrors
+    `concEval_closedAt`. -/
+theorem evalSubst_closedAtLvl {n unf : Nat} {e v : Expr}
+    (hcl : e.closedAtLvl 0 = true)
+    (h : evalSubst n unf e = .ok v) : v.closedAtLvl 0 = true := by
+  induction n generalizing unf e v with
+  | zero => rw [evalSubst.eq_1] at h; cases h
+  | succ k ih =>
+    match e with
+    | .bvar j =>
+      rw [evalSubst.eq_2] at h
+      simp only [Expr.closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at hcl
+      by_cases hLvl : isLevelIdx j
+      · simp only [hLvl, ↓reduceIte, Outcome.ok.injEq] at h
+        subst h
+        simp only [Expr.closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+        simp only [isLevelIdx, decide_eq_true_eq] at hLvl
+        exact Or.inr hLvl
+      · simp only [hLvl, Bool.false_eq_true, ↓reduceIte] at h
+        cases h
+    | .type =>
+      rw [evalSubst.eq_3] at h
+      simp only [Outcome.ok.injEq] at h; subst h; rfl
+    | .bot =>
+      rw [evalSubst.eq_4] at h
+      simp only [Outcome.ok.injEq] at h; subst h; rfl
+    | .lam dom body =>
+      rw [evalSubst.eq_5] at h
+      simp only [Outcome.ok.injEq] at h; subst h; exact hcl
+    | .iota ann body =>
+      rw [evalSubst.eq_6] at h
+      simp only [Outcome.ok.injEq] at h; subst h; exact hcl
+    | .fix ann body =>
+      rw [evalSubst.eq_7] at h
+      simp only [Outcome.ok.injEq] at h; subst h; exact hcl
+    | .asc t ty =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      rw [evalSubst.eq_8] at h
+      exact ih hcl.1 h
+    | .letE val body =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      rw [evalSubst.eq_9] at h
+      match hv : evalSubst k unf val with
+      | .outOfFuel => rw [hv] at h; cases h
+      | .error _ => rw [hv] at h; cases h
+      | .ok vVal =>
+        have hvcl := ih hcl.1 hv
+        rw [hv] at h
+        simp only [Outcome.ok_bind] at h
+        have hsub : (substL body 0 vVal).closedAtLvl 0 = true :=
+          substL_closedAtLvl (by simpa using hcl.2) hvcl
+        exact ih hsub h
+    | .app f a =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      rw [evalSubst.eq_10] at h
+      match hf : evalSubst k unf f with
+      | .outOfFuel => rw [hf] at h; cases h
+      | .error _ => rw [hf] at h; cases h
+      | .ok fv =>
+        have hfcl := ih hcl.1 hf
+        match ha : evalSubst k unf a with
+        | .outOfFuel => rw [hf, ha] at h; cases h
+        | .error _ => rw [hf, ha] at h; cases h
+        | .ok av =>
+          have hacl := ih hcl.2 ha
+          rw [hf, ha] at h
+          simp only [Outcome.ok_bind] at h
+          -- Helper: when the result is `.ok (.app fv av)`, closure follows
+          -- from `closedAtLvl 0 fv` and `closedAtLvl 0 av`.
+          cases fv with
+          | bvar bk =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show (Expr.app (.bvar bk) av).closedAtLvl 0 = true
+            simp only [Expr.closedAtLvl, Bool.and_eq_true]
+            exact ⟨hfcl, hacl⟩
+          | type =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show (Expr.app .type av).closedAtLvl 0 = true
+            simp only [Expr.closedAtLvl, Bool.and_eq_true]
+            exact ⟨by simp [Expr.closedAtLvl], hacl⟩
+          | bot =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show (Expr.app .bot av).closedAtLvl 0 = true
+            simp only [Expr.closedAtLvl, Bool.and_eq_true]
+            exact ⟨by simp [Expr.closedAtLvl], hacl⟩
+          | lam _dom body =>
+            -- β: substitute and recurse.
+            simp only at h
+            simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl
+            have hsub : (substL body 0 av).closedAtLvl 0 = true :=
+              substL_closedAtLvl (by simpa using hfcl.2) hacl
+            exact ih hsub h
+          | iota ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h
+              subst h
+              have : (Expr.app (.iota ann body) av).closedAtLvl 0
+                  = ((Expr.iota ann body).closedAtLvl 0 && av.closedAtLvl 0) := rfl
+              rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
+            · have hself : (Expr.iota ann body).closedAtLvl 0 = true := hfcl
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl
+              have hbody : body.closedAtLvl 1 = true := by simpa using hfcl.2
+              have hsub : (substL body 0 (.iota ann body)).closedAtLvl 0 = true :=
+                substL_closedAtLvl hbody hself
+              have hApp : (Expr.app (substL body 0 (.iota ann body)) av).closedAtLvl 0 = true := by
+                have : (Expr.app (substL body 0 (.iota ann body)) av).closedAtLvl 0
+                    = ((substL body 0 (.iota ann body)).closedAtLvl 0 && av.closedAtLvl 0) := rfl
+                rw [this, Bool.and_eq_true]; exact ⟨hsub, hacl⟩
+              exact ih hApp h
+          | fix ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h
+              subst h
+              have : (Expr.app (.fix ann body) av).closedAtLvl 0
+                  = ((Expr.fix ann body).closedAtLvl 0 && av.closedAtLvl 0) := rfl
+              rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
+            · have hself : (Expr.fix ann body).closedAtLvl 0 = true := hfcl
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl
+              have hbody : body.closedAtLvl 1 = true := by simpa using hfcl.2
+              have hsub : (substL body 0 (.fix ann body)).closedAtLvl 0 = true :=
+                substL_closedAtLvl hbody hself
+              have hApp : (Expr.app (substL body 0 (.fix ann body)) av).closedAtLvl 0 = true := by
+                have : (Expr.app (substL body 0 (.fix ann body)) av).closedAtLvl 0
+                    = ((substL body 0 (.fix ann body)).closedAtLvl 0 && av.closedAtLvl 0) := rfl
+                rw [this, Bool.and_eq_true]; exact ⟨hsub, hacl⟩
+              exact ih hApp h
+          | asc t ty =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            have : (Expr.app (.asc t ty) av).closedAtLvl 0
+                = ((Expr.asc t ty).closedAtLvl 0 && av.closedAtLvl 0) := rfl
+            rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
+          | letE vv b =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            have : (Expr.app (.letE vv b) av).closedAtLvl 0
+                = ((Expr.letE vv b).closedAtLvl 0 && av.closedAtLvl 0) := rfl
+            rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
+          | app f' a' =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            have : (Expr.app (.app f' a') av).closedAtLvl 0
+                = ((Expr.app f' a').closedAtLvl 0 && av.closedAtLvl 0) := rfl
+            rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
+
 end SubstEval

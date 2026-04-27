@@ -118,13 +118,17 @@ def levelOffset : Nat := 100_000_000
 /-- Encode a de Bruijn level as a free level-var. -/
 private def levelBvar (level : Nat) : Expr := .bvar (levelOffset + level)
 
-/-- True iff `k` encodes a free level-var. -/
-@[inline] private def isLevelIdx (k : Nat) : Bool := k >= levelOffset
+/-- True iff `k` encodes a free level-var. Exposed for use in
+    substrate hygiene proofs. -/
+@[inline] def isLevelIdx (k : Nat) : Bool := k >= levelOffset
 
 /-- Custom shift that does not touch level-vars. Standard `Expr.shift`
     would shift them, breaking absolute-position semantics. Otherwise
-    mirrors `Expr.shift`. Structurally recursive. -/
-private def shiftL (d c : Nat) : Expr → Expr
+    mirrors `Expr.shift`. Structurally recursive.
+
+    Exposed (not `private`) so substrate hygiene proofs in
+    `Soundness/EvalSubstLemmas.lean` can refer to it. -/
+def shiftL (d c : Nat) : Expr → Expr
   | .bvar k =>
       if isLevelIdx k then .bvar k
       else if k < c then .bvar k
@@ -141,8 +145,11 @@ private def shiftL (d c : Nat) : Expr → Expr
 /-- Custom substitution that does not touch level-vars.
     Standard `Expr.subst` would decrement level-vars > j, which is
     semantically wrong (levels are absolute, not relative). Mirrors
-    `Expr.subst` otherwise. Structurally recursive on `e`. -/
-private def substL (e : Expr) (j : Nat) (s : Expr) : Expr :=
+    `Expr.subst` otherwise. Structurally recursive on `e`.
+
+    Exposed (not `private`) so substrate hygiene proofs in
+    `Soundness/EvalSubstLemmas.lean` can refer to it. -/
+def substL (e : Expr) (j : Nat) (s : Expr) : Expr :=
   match e with
   | .bvar k =>
       if isLevelIdx k then .bvar k
