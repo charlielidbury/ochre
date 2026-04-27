@@ -19,8 +19,11 @@ Standard System F Church encoding. Non-dependent: the motive is erased
 namespace Std
 
 def Bool := och{ λX:Type. λt:X. λf:X. X }
-def true_ := och{ λX:Type. λt:X. λf:X. t }
-def false_ := och{ λX:Type. λt:X. λf:X. f }
+-- Permissive constructors: domains all Type. The constraint comes
+-- from the type they're checked against (Bool / dBool), not from
+-- the constructors themselves. Same shape as DNat's zero_/succ_.
+def true_  := och{ λP:Type. λt:Type. λf:Type. t }
+def false_ := och{ λP:Type. λt:Type. λf:Type. f }
 
 def ite := och{ λb:Bool. λX:Type. λt:X. λf:X. b X t f }
 
