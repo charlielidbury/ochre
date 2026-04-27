@@ -44,7 +44,7 @@ def idAscribed := och{ λT:Type. λx:T. (x : T) }
 
 section Tests
 
-private def fuel : Nat := 1000
+private def fuel : Nat := 100
 
 -- ----------------------------------------------------------
 -- Transparency: convertibility (positive)

@@ -59,10 +59,10 @@ example : concEval 100 snd_1_2 = concEval 100 two_ := by native_decide
 -- ---- Positive: subtype checking ----
 
 -- dpair Nat (λ_.Nat) 1 2 : Sigma Nat (λ_.Nat)
-example : Och.subCheckE 2000 pair_1_2 (och{ Sigma Nat_ constNat }) = .ok true := by native_decide
+example : Och.subCheckE 200 pair_1_2 (och{ Sigma Nat_ constNat }) = .ok true := by native_decide
 
 -- dpair : its full type
-example : Och.subCheckE 2000 dpair (och{
+example : Och.subCheckE 200 dpair (och{
   λA:Type. λB:(A → Type). λa:A. λ_:(B a). Sigma A B }) = .ok true := by native_decide
 
 -- ---- Negative: computation ----
