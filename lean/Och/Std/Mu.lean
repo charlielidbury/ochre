@@ -86,7 +86,7 @@ example : (SubstEval.evalSubst 200 SubstEval.unfBound fixId).isOk := by native_d
 -- ------------------------------------------------------------
 
 -- fixId is not a Nat (it's a function)
-example : Och.subCheckE 2000 fixId Nat_ = .ok false := by native_decide
+example : Och.subCheckE 200 fixId Nat_ = .ok false := by native_decide
 
 -- ------------------------------------------------------------
 -- Computation (positive) -- concEval
@@ -140,7 +140,7 @@ example : SubstEval.evalSubst 200 SubstEval.unfBound selfRefFn = .ok selfRefFn :
 -- f applied to Type normalises (the substitution engine handles
 -- self-reference-in-domain via its `unf` budget, the same way NbE
 -- did via its closure-domain `unf`).
-example : (SubstEval.evalSubst 500 SubstEval.unfBound (och{ selfRefFn Type })).isOk := by
+example : (SubstEval.evalSubst 200 SubstEval.unfBound (och{ selfRefFn Type })).isOk := by
   native_decide
 
 end Tests

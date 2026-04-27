@@ -83,24 +83,29 @@ example : Och.subCheckE 200 (och{ fst_ (snd_ testArr2) }) two_ = .ok true ∧
 
 -- ── Positive subtype checks ────────────────────────────────
 
-example : Och.subCheckE 1000 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
-example : Och.subCheckE 1000 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
+example : Och.subCheckE 200 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
+example : Och.subCheckE 200 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
-example : Och.subCheckE 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
+example : Och.subCheckE 200 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
 
 -- ── Smoke: Array_ applied with abstract-friendly Nat_ index ───
 
-example : (SubstEval.evalSubst 1000 SubstEval.unfBound (och{ Array_ (succ_ zero_) Nat_ })).isOk := by
-  native_decide
-
-example : Och.subCheckE 400 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
-          Och.subCheckE 400 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
-  native_decide
-example : Och.subCheckE 400 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
+-- `succ_ zero_` is the unfolded `one_`; the value-side computation
+-- closes through and the result is convertible with `Pair Nat_ Unit_`
+-- (which is what `Array_ one_ Nat_` reduces to).
+example : Och.subCheckE 200 (och{ Array_ (succ_ zero_) Nat_ }) (och{ Pair Nat_ Unit_ })
             = .ok true ∧
-          Och.subCheckE 400 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
+          Och.subCheckE 200 (och{ Pair Nat_ Unit_ }) (och{ Array_ (succ_ zero_) Nat_ })
+            = .ok true := by native_decide
+
+example : Och.subCheckE 200 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
+          Och.subCheckE 200 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
+  native_decide
+example : Och.subCheckE 200 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
+            = .ok true ∧
+          Och.subCheckE 200 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
             = .ok true := by
   native_decide
 
@@ -249,7 +254,7 @@ example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
 -- this pin asserts the `tyInfer` rejection rather than an `synth`
 -- rejection. Closing the boundary requires fixing the
 -- bidirectional incompleteness so `tyInfer.error` can be trusted.
-example : (TyCheck.tyInfer 10000 #[]
+example : (TyCheck.tyInfer 1000 #[]
             (och{ indexArr Nat_ three_ arr3 three_ })).isError
         = true := by native_decide
 

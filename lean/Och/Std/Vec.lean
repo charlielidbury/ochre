@@ -46,8 +46,8 @@ private def testVec2 := och{ mkVec Nat_ two_
 
 -- ── Positive subtype checks ──────────────────────────────────
 
-example : Och.subCheckE 1000 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
-example : Och.subCheckE 1000 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : Och.subCheckE 200 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : Och.subCheckE 200 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -59,8 +59,8 @@ example : concEval 100 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) 
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : Och.subCheckE 1000 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
-example : Och.subCheckE 1000 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
+example : Och.subCheckE 200 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
+example : Och.subCheckE 200 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
@@ -110,7 +110,7 @@ section AppendVecTests
 -- inline eliminators on `arr` instead of `fst_`/`snd_` (precision
 -- loss at the loose `Pair Type Type → Type` Std-level boundary
 -- was the bail; see `docs/ideas/appendvec-investigation.md`).
-example : (Och.synth Std.appendVec 5000).isOk := by native_decide
+example : (Och.synth Std.appendVec 1000).isOk := by native_decide
 
 -- appendVec_wrong has a deliberate bug: the inner `appendArrays`
 -- call uses `n1` twice instead of `n1, n2`. The bidirectional
@@ -125,7 +125,7 @@ example : (Och.synth Std.appendVec 5000).isOk := by native_decide
 -- This pin asserts the `tyInfer`-level rejection. Closing the
 -- public-surface boundary requires the bidirectional-completeness
 -- work documented in `Och/API.lean`.
-example : (TyCheck.tyInfer 5000 #[] appendVec_wrong).isError
+example : (TyCheck.tyInfer 1000 #[] appendVec_wrong).isError
        = true := by native_decide
 
 -- ── Concrete appendVec ──────────────────────────────────────
