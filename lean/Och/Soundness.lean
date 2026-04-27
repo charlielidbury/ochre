@@ -59,10 +59,16 @@ so that downstream work can quantify over them.
 -/
 
 /-- Synthesis soundness: if `Och.synth e` accepts `e`, then `e`
-inhabits *some* declarative type. The witness is the WHNF
-itself (Och's `Subtype'.refl` makes "the natural type of a
-value is the value itself" trivial), so this reduces to: a
-synth-accepted term is reflexively comparable to its WHNF.
+declaratively subtypes its synthesised WHNF.
+
+**Strengthening note (2026-04-28, overnight Stage 1):** the
+original statement was `∃ τ, Subtype' [] [] e τ`, which is trivially
+discharged by `Subtype'.refl _` (any term subtypes itself, vacuously).
+That form did not capture the real Och claim that synth's walk
+produces a *meaningful* type-witness. The strengthened form below
+ties the existential to `v.whnf` (the synth output), making it
+a non-vacuous correspondence between algorithmic synth and
+declarative subtype.
 
 The previous env-NbE-based proof attempt (`SoundnessProof.lean`,
 deleted in the engine-collapse refactor) built on a Val-level
@@ -74,7 +80,7 @@ a fresh proof effort. -/
 theorem synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
-    ∃ τ, Subtype' [] [] e τ := sorry
+    Subtype' [] [] e v.whnf := sorry
 
 /-- Subtype-check soundness: if `Och.subCheck a b` accepts the
 two validated values, then `a.whnf ⊑ b.whnf` declaratively. -/
