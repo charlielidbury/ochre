@@ -148,27 +148,25 @@ example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
 -- NOTE: Under the engine-collapse refactor, the public API
 -- (`Och.synth` + `Och.subCheck`) does NOT use the bidirectional
 -- `typeCheck` fast-path that previously short-circuited
--- `succ_`-tower numerals. The structural engine alone scales
--- with numeral size, so the higher-numeral pins that previously
--- closed at fuel 200 via the fast-path now need 16k–500k fuel
--- (see `Och.EvalBench`'s impossibleCases). Compile-time
--- `native_decide` becomes prohibitively slow, so the higher
--- numerals are checked at runtime in `eval_bench` instead.
+-- `succ_`-tower numerals. The structural engine alone still
+-- closes zero_/one_/two_ at fuel 200; three_/four_/five_ ⊑ Nat_
+-- need much more fuel (16k–500k, see `Och.EvalBench`'s
+-- impossibleCases) and are checked at runtime in `eval_bench`.
 
 example : Och.subCheckE 200 zero_ Nat_ = .ok true := by native_decide
-example : Och.subCheckE 2000 one_ Nat_ = .ok true := by native_decide
-example : Och.subCheckE 5000 two_ Nat_ = .ok true := by native_decide
+example : Och.subCheckE 200 one_ Nat_ = .ok true := by native_decide
+example : Och.subCheckE 200 two_ Nat_ = .ok true := by native_decide
 -- three_/four_/five_ ⊑ Nat_: now structural-only; bench-only.
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : Och.subCheckE 5000 Nat_ zero_ = .ok false := by native_decide
+example : Och.subCheckE 200 Nat_ zero_ = .ok false := by native_decide
 -- Note: under the permissive Bool encoding, `true_` and `zero_` are
 -- structurally identical (both `λP:Type. λt:Type. λf:Type. t`), so
 -- `true_ ⊑ Nat_` correctly succeeds. Use `Std.Bool` (the type) as
 -- the non-Nat witness instead.
 example : Och.subCheckE 200 Std.Bool Nat_ = .ok false := by native_decide
-example : Och.subCheckE 5000 zero_ one_ = .ok false := by native_decide
+example : Och.subCheckE 200 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
 --
@@ -177,11 +175,11 @@ example : Och.subCheckE 5000 zero_ one_ = .ok false := by native_decide
 -- benchmark.md §6.5) confirm both `concEval` and substitution-based
 -- eval close `add_ one_ two_ = three_` in ~22 ms.
 
-example : concEval 1000 (och{ add_ zero_ two_ }) = concEval 1000 two_ := by native_decide
-example : concEval 1000 (och{ add_ one_ one_ }) = concEval 1000 two_ := by native_decide
-example : concEval 5000 (och{ add_ one_ two_ }) = concEval 5000 three_ := by native_decide
-example : concEval 2000 (och{ double_ zero_ }) = concEval 2000 zero_ := by native_decide
-example : concEval 5000 (och{ double_ one_ }) = concEval 5000 two_ := by native_decide
+example : concEval 100 (och{ add_ zero_ two_ }) = concEval 100 two_ := by native_decide
+example : concEval 100 (och{ add_ one_ one_ }) = concEval 100 two_ := by native_decide
+example : concEval 100 (och{ add_ one_ two_ }) = concEval 100 three_ := by native_decide
+example : concEval 100 (och{ double_ zero_ }) = concEval 100 zero_ := by native_decide
+example : concEval 100 (och{ double_ one_ }) = concEval 100 two_ := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 
