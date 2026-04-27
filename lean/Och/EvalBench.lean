@@ -398,10 +398,20 @@ subCheck couldn't close them at any tractable fuel. With substitution-
 based subCheckT (the typed wrapper that tries `typeCheck` first), we
 expect many of these to close quickly.
 
-Reports verdicts and timings under both `NbE.subCheckT` (for
-comparison; bounded by a 5-second budget per case) and
-`SubstEval.subCheckT`.
+Reports verdicts and timings under both env-NbE typed pipeline
+(local mirror `nbeSubCheckT`: `NbE.typeCheck` fast-path with
+`NbE.subCheck` fallback; was `NbE.subCheckT` in the
+now-deleted `TypedNbE.lean`) and `SubstEval.subCheckT`.
 -/
+
+/-- Local mirror of the (deleted) `NbE.subCheckT`: typeCheck
+fast-path with subCheck fallback. Kept here so the eval-bench
+benchmark can still A/B-compare the two substrates without
+reviving the deleted typed-NbE module. -/
+private def nbeSubCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
+  match NbE.typeCheck fuel a τ with
+  | .ok true => .ok true
+  | _ => NbE.subCheck fuel a τ
 
 private def five_ : Expr := och{ succ_ four_ }
 
@@ -427,7 +437,7 @@ def runImpossibleCase (c : ImpossibleCase) (fuelRef : IO.Ref Nat)
   let envR : Option Nat × Outcome Bool ← if c.skipNbE then
       pure (none, .error "skipped")
     else do
-      let (env_ms, envR) ← time (fun n => NbE.subCheckT (c.fuel + n) c.a c.b) fuelRef
+      let (env_ms, envR) ← time (fun n => nbeSubCheckT (c.fuel + n) c.a c.b) fuelRef
       pure (some env_ms, envR)
   -- Subst:
   let (subst_ms, substR) ← time (fun n => SubstEval.subCheckT (c.fuel + n) c.a c.b) fuelRef
@@ -435,7 +445,7 @@ def runImpossibleCase (c : ImpossibleCase) (fuelRef : IO.Ref Nat)
 
 def runImpossibleSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 6: previously-impossible tests (NbE.subCheckT vs SubstEval.subCheckT) ==="
+  IO.println "=== Section 6: previously-impossible tests (env-NbE pipeline vs SubstEval.subCheckT) ==="
   IO.println "label                         | NbE_ms  | subst_ms | NbE verdict             | subst verdict"
   for c in impossibleCases do
     let (lbl, env_ms_opt, subst_ms, envR, substR) ← runImpossibleCase c fuelRef

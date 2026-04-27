@@ -171,7 +171,7 @@ Result is an `Expr` in head-normal form: lambda, iota, fix, type, bot,
 or a neutral spine. -/
 
 /-- Default unfold bound. Match NbE for apples-to-apples behaviour. -/
-private def unfBound : Nat := 32
+def unfBound : Nat := 32
 
 /-- Substitution-based head-normal-form evaluator. Decreasing on
     `(fuel, unf)` lex: every recursive call either decrements `fuel`
