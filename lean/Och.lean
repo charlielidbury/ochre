@@ -10,6 +10,7 @@ import Och.Subtyping
 import Och.Soundness
 import Och.Soundness.EvalSubstLemmas
 import Och.Soundness.SubCheckSubstNeutral
+import Och.Soundness.SubtypeSteps
 
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit
