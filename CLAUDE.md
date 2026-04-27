@@ -17,3 +17,6 @@ Everything is built via the Nix flake at the repo root. Use `nix develop` to get
 Agents/you are prompted into putting what they did and their rational into commit messages in great detail. This is often the most efficient way to figure out **why** something was done or to get more details about something unclear.
 
 A helper CLI called `claude-ask` is provided which can be used to ask agents/you questions based on the agent ID in the commit message which is very useful for getting more information about why things were done or more detail about what they tried. Usage: `claude-ask <agent-id-from-commit> "Your prompt goes here"`. The answer comes back over stdout.
+
+# Worktree gotcha
+`Agent({ isolation: "worktree" })` and `EnterWorktree` branch from the repo's default branch (`main`), **not** the session's current HEAD — despite docs claiming "based on HEAD". Always include an explicit `git reset --hard origin/<branch>` step at the start of any worktree-isolated agent prompt, or the agent will work on a stale codebase and produce commits that don't apply cleanly.
