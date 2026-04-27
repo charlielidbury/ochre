@@ -195,8 +195,11 @@ where
 
 /-- True iff `e` is a "neutral" — its head is a free level-var or a
     stuck application thereof. Mirrors `Val.isNeutral`. Lambdas, iotas,
-    fixes, type, bot are NOT neutral. -/
-private def isNeutral : Expr → Bool
+    fixes, type, bot are NOT neutral.
+
+    Exposed (not `private`) so soundness proofs in
+    `Soundness/SubCheckSubstNeutral.lean` can refer to it. -/
+def isNeutral : Expr → Bool
   | .bvar k => isLevelIdx k
   | .app f _ => isNeutral f
   | _ => false
@@ -516,7 +519,13 @@ clause requires substantial work — for now the block is `partial def`.
 The fuel parameter guarantees termination at runtime.
 -/
 
-private abbrev TyCtx := Array Expr
+/-- Engine-internal type-context: `tyCtx[lvl]` is the type of the
+    free level-var `freshLevelVar lvl`. Indexed by level (not by de
+    Bruijn depth).
+
+    Exposed (not `private`) so soundness proofs in
+    `Soundness/SubCheckSubstNeutral.lean` can refer to it. -/
+abbrev TyCtx := Array Expr
 
 /-- Get the head level-var of a neutral spine. Returns `none` if `e`
     is not a neutral. -/
@@ -553,8 +562,11 @@ where
 
 mutual
   /-- Top-level subtype check arm. Forces WHNF on both sides, then
-      delegates to `subCheckSubstMatch` for case-on-shape. -/
-  private partial def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
+      delegates to `subCheckSubstMatch` for case-on-shape.
+
+      Exposed (not `private`) so soundness proofs in
+      `Soundness/SubCheckSubstNeutral.lean` can refer to it. -/
+  partial def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -572,8 +584,9 @@ mutual
       | .error s, _ | _, .error s => .error s
 
   /-- The per-shape case-split for `subCheckSubst`. Inputs are assumed
-      to be in WHNF (the caller forces it). -/
-  private partial def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
+      to be in WHNF (the caller forces it). Exposed for soundness
+      proofs. -/
+  partial def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     let depth := tyCtx.size
     match a, b with
@@ -697,8 +710,8 @@ mutual
 
   /-- Compare two neutral spines structurally. Heads must be equal
       level-vars; arguments must be pairwise *equivalent* (any-
-      variance). -/
-  private partial def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
+      variance). Exposed for soundness proofs. -/
+  partial def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -715,8 +728,8 @@ mutual
       | _, _ => .ok false
 
   /-- Synthesise the type of a neutral spine and check against `b`.
-      Mirrors NbE's `neutralAscent`. -/
-  private partial def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
+      Mirrors NbE's `neutralAscent`. Exposed for soundness proofs. -/
+  partial def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -731,8 +744,8 @@ mutual
       is a `.fix` or `.iota` (e.g. `Nat_`'s self-eliminator), unfold
       it via `exposePi` to expose the underlying `.lam` and continue.
       A `.fix` at the spine head (e.g. `add_`) ascends to its
-      annotation. -/
-  private partial def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
+      annotation. Exposed for soundness proofs. -/
+  partial def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
       (a : Expr) : Outcome (Option Expr) :=
     match fuel with
     | 0 => .outOfFuel
