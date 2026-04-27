@@ -1,6 +1,6 @@
 import Och.Syntax
 import Och.Eval
-import Och.SubCheckVal
+import Och.NbE
 import Och.Subtyping
 import Och.Soundness
 import Och.Std

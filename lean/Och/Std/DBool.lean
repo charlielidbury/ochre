@@ -1,6 +1,5 @@
 import Och.Macro
 import Och.Eval
-import Och.SubCheckVal
 import Och.EvalSubst
 import Och.Std.Bool
 import Och.Std.DNat

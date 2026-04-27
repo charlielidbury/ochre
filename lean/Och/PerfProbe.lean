@@ -1,5 +1,4 @@
 import Och.Macro
-import Och.SubCheckVal
 import Och.TyCheck
 import Och.EvalSubst
 import Och.Std.Vec
