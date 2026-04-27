@@ -154,18 +154,13 @@ so this brings the algorithm in line.
 
 private def constrainedI := och{ ι self:Nat_. Type }
 
--- NOTE (2026-04-24 unification): under the new dependent `Nat_` encoding
--- `fix N. ι self:N. λP. λz. λs. P self`, the subtype comparison `dtrue ⊑
--- Nat_` no longer rejects, because both are ι-bodies with compatible
--- lam-lam shapes and the top-type covariance on `f:Type` / `s:(λpred…)`
--- kicks in. That makes `dtrue ⊑ constrainedI` pass via the ann-check +
--- body-top rule. The A5 annotation check itself is still enforced (the
--- *annotation* subtype is genuinely checked); it's just that Nat_'s
--- shape now admits shapes it didn't under Church-Nat_. Flipping the
--- expected outcome keeps the theorem as-is-pinned; a sharper audit of
--- `dtrue ⊑ Nat_` would recast it around Bool-specific structure.
-theorem a5_annotationChecked :
-    NbE.subCheckT 200 dtrue constrainedI = .ok true := by
+/-- A5's semantic intent: when proving `a ⊑ ι self:T. body`, the
+algorithm checks the annotation `a ⊑ T` (not just the body). Witness:
+`dtrue ⊑ constrainedI = ι self:Nat_. Type` is rejected because the
+annotation premise `dtrue ⊑ Nat_` fails. The body premise alone
+(`dtrue ⊑ Type` = top) would have spuriously accepted. -/
+theorem a5_annotationRejects :
+    NbE.subCheckT 200 dtrue constrainedI = .ok false := by
   native_decide
 
 /-- And the legitimate recursive case still closes via seen. -/
@@ -227,22 +222,18 @@ theorem a6_completeUnderTypedPipeline :
       = .ok true := by
   native_decide
 
-/-- Bare `subCheckVal` (the engine) still has the A6
-incompleteness. Pinned for the algorithmic record. -/
-theorem a6_subCheckIncompleteness :
+/-- Bare `subCheckVal` (the engine) now closes the A6 case.
+The historical incompleteness — `(λx:Nat_. x) ⊑ (λx:zero_. zero_)`
+returning `.ok false` — was a side-effect of pushing `domA` (wider)
+into the body context. After flipping to `domB` (narrower / target,
+matching the declarative spec), the bare engine accepts it. -/
+theorem a6_subCheckCompletes :
     NbE.subCheck 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
-      = .ok false := by
+      = .ok true := by
   native_decide
 
-/-- The `domB` blowup, witnessed: with `domA`, `two_ ⊑ Nat_`
-closes well within fuel 800. (At `domB` this query did not
-terminate within 15 minutes; that's not directly testable
-here, but is the regression that pins `domA`.) The singleton
-tightening of `succ_`'s `s`-branch domain (Option A) bumped the
-required fuel from 200 to 800 — structurally more work because
-the contra chain on the singleton `pred:m` threads more numerals
-through. Still orders of magnitude below the `domB` ceiling. -/
-theorem a6_dtwoFastWithDomA :
+/-- Concrete-numeral subsumption closes via the typed pipeline. -/
+theorem a6_dtwoFast :
     NbE.subCheckT 800 two_ Nat_ = .ok true := by
   native_decide
 

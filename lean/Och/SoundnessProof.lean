@@ -62,12 +62,10 @@ mutual
         clA.openω (.neutral (.var Γ.size)) = some bA →
         clB.openω (.neutral (.var Γ.size)) = some bB →
         SubV S Γ domB domA →
-        -- Push `domA`, matching the algorithm (SubCheckVal.lean
-        -- lam-lam arm). `Subtype'.lam` pushes `domB`; the
-        -- `SubV → Subtype'` bridge will need `Subtype'.narrow`
-        -- here. A6 / DECISION-LOG: `domB` is more complete but
-        -- causes seen-list misses on dNat-style nested fixes.
-        SubV S (Γ.push domA) bA bB →
+        -- Push `domB` (narrower / target), matching the algorithm
+        -- post-och-refactor flip and `Subtype'.lam`. The previous
+        -- `domA` push was a perf workaround; flipped 2026-04-27.
+        SubV S (Γ.push domB) bA bB →
         SubV S Γ (.lam domA clA) (.lam domB clB)
     | iota_struct {S Γ annA annB clA clB bA bB} :
         clA.openω (.neutral (.var Γ.size)) = some bA →

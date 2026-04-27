@@ -1588,8 +1588,8 @@ theorem RC.subtype_closed_aux : ∀ (n : Nat) {d : Nat}
           obtain ⟨bA', bB', hOpenA', hOpenB', hSubBody⟩ :=
             SubV_subst_neutral_to_value (n := m) (d := d)
               (S := S') (Γ := Γ')
-              (τ_dom := domA) (clA := clA) (clB := clB)
-              (bA := bA) (bB := bB) a ha_RCdomA hbA hbB hbody
+              (τ_dom := domB) (clA := clA) (clB := clB)
+              (bA := bA) (bB := bB) a ha_RCdomB hbA hbB hbody
           -- bA' = rTyA from `clA.openω a = some bA' = some rTyA`.
           have heq : bA' = rTyA := by
             rw [hOpenA] at hOpenA'

@@ -271,12 +271,14 @@ mutual
     -- Bot ⊑ anything ([S-BotL]).
     | .bot, _ => .ok true
     -- λ ⊑ λ: contravariant on domain, covariant on body (under fresh).
+    -- Push `domB` (narrower / target) — matches declarative spec.
+    -- See SubCheckVal.lean A6 comment for history.
     | .lam domA bodyA, .lam domB bodyB => do
         let contra ← subCheckSubst fuel tyCtx seen domB domA
         if !contra then return false
         let bodyA' := openFresh bodyA depth
         let bodyB' := openFresh bodyB depth
-        subCheckSubst fuel (tyCtx.push domA) seen bodyA' bodyB'
+        subCheckSubst fuel (tyCtx.push domB) seen bodyA' bodyB'
     -- ι ⊑ ι: structural attempt then iotaIntro fallback.
     | .iota annA bodyA, .iota annB bodyB =>
         let seen' := (a, b) :: seen

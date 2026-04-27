@@ -348,16 +348,15 @@ mutual
             if !contra then return false
             let bodyA ← clA.openFresh fuel depth
             let bodyB ← clB.openFresh fuel depth
-            -- A6: pushing `domB` here is more *complete* (the
-            -- fresh variable's ascent type would be the smaller
-            -- one, so `(λx:Nat_. x) ⊑ (λx:zero_. zero_)` would
-            -- pass) but causes seen-list misses on recursive
-            -- types whose inner-let closures capture an unused
-            -- fresh `self` (e.g., `dNat`'s `dsucc_local`),
-            -- making the check go exponential. We push `domA`
-            -- (sound; merely incomplete) until closure-env
-            -- masking lands. SoundnessAudit A6 / DECISION-LOG.
-            subCheckVal fuel (tyCtx.push domA) seen bodyA bodyB
+            -- A6: push `domB` (the narrower / target domain) — matches
+            -- the declarative spec (Pierce-style narrower-body). Was
+            -- `domA` historically due to closure-env-induced seen-list
+            -- misses, but env-filtering investigation (2026-04-24)
+            -- showed dead slots are a fixed ~10 across numeral sizes,
+            -- and substitution-based eval removes closures entirely.
+            -- och-refactor flips this to test whether the exponential
+            -- blowup actually materialises in current substrate.
+            subCheckVal fuel (tyCtx.push domB) seen bodyA bodyB
         | .iota annA clA, .iota annB clB =>
             -- Try the structural path first: open both with the same
             -- fresh neutral and compare bodies. This lets two ι-values

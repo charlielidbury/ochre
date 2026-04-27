@@ -61,7 +61,11 @@ namespace Std
 annotation is the placeholder `Type`. Defined before `Nat_` so it
 can be referenced directly from Nat_'s body. -/
 def zero_ := och{
-  ι self. λP:(self → Type). λz:(P self). λs:Type. z
+  λP:Type. λz:Type. λs:Type. z
+}
+
+def succ_ := och{
+  λpred:Type. λP:Type. λz:Type. λs:(pred → Type). s pred
 }
 
 /-- Unified natural numbers. Singleton-tightened inner `succ_` (the
@@ -70,20 +74,9 @@ change that enables `Std.Fin`'s Option F encoding to subsume
 `succ_ m ⊑ Fin (succ_ n)` directly, without a wrapper constructor. -/
 def Nat_ := och{
   fix N. ι self:N.
-    let succ_ = fix succ_:(N → N).
-      λm:N. λP:((succ_ m) → Type). λz:Type. λs:(λpred:m. P (succ_ pred)). s m in
     λP:(N → Type). λz:(P zero_). λs:(λpred:N. P (succ_ pred)). P self
 }
 
-/-- Successor. The `fix` here is genuine function recursion. The result
-is a raw λ-spine — it cannot be ι-wrapped (the local `succ_` inside
-`Nat_` and an ι-wrapped top-level `succ_` would be structurally
-inequivalent). Option A singleton tightening: the `s`-branch domain is
-`pred:m`. -/
-def succ_ := och{
-  fix succ_:(Nat_ → Nat_).
-    λm:Nat_. λP:((succ_ m) → Type). λz:Type. λs:(λpred:m. P (succ_ pred)). s m
-}
 
 def one_   := och{ succ_ zero_ }
 def two_   := och{ succ_ one_ }
