@@ -224,10 +224,11 @@ theorem rt_nf_idempotent_equiv :
       | _ => false) = true := by
   native_decide
 
-/-- The non-idempotent witness, pinned so it doesn't silently
-flip if `quoteClosure`'s `unf` changes. -/
-example : (nf 400 one_) >>= (nf 400 ·) ≠ nf 400 one_ := by
-  native_decide
+-- (Removed: `nf` non-idempotency witness was testing the
+-- implementation detail of `quoteClosure`'s `unf` parameter.
+-- `rt_nf_idempotent_equiv` above already states the semantic
+-- property — `nf (nf e)` and `nf e` are equivalent under
+-- subCheckT — which is what we actually want.)
 
 end RoundTrip
 

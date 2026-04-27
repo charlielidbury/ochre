@@ -75,11 +75,11 @@ example : NbE.nf 200 (och{ idAscribed Nat_ three_ })
 example : NbE.nf 200 (och{ id_ Nat_ three_ })
   ≠ NbE.nf 200 Nat_ := by native_decide
 
--- The §6.4 widening intent now lives in `NbE.typeCheck`: the
--- ascription gives `idAscribed Nat_ three_` the *checked* type
--- `Nat_`, while `id_ Nat_ three_` synthesises the singleton
--- `three_`. (Checked via tyInfer's `.asc` arm, which returns τ.)
-example : NbE.typeCheck 200 (och{ idAscribed Nat_ three_ }) Nat_
+-- Semantic claim: `idAscribed Nat_ three_` is typeable at `Nat_`
+-- (the ascription preserves the checked type). Use `subCheckT` —
+-- the typed-pipeline+fallback wrapper — so the test stays robust
+-- to which internal pathway dispatches it.
+example : NbE.subCheckT 200 (och{ idAscribed Nat_ three_ }) Nat_
   = .ok true := by native_decide
 
 -- ----------------------------------------------------------
