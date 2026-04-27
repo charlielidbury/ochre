@@ -1,6 +1,7 @@
 import Och.Macro
 import Och.Eval
 import Och.EvalSubst
+import Och.TyCheck
 import Och.Std.DNat
 import Och.Std.Bool
 import Och.Std.Unit

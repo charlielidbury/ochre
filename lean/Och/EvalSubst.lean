@@ -1,15 +1,19 @@
 import Och.Syntax
 import Och.Outcome
 import Och.Eval
-import Och.TyCheck
 
 /-!
-# Substitution-based evaluator and subtype check (production)
+# Substitution-based evaluator and structural subtype check
 
 This module provides Och's primary substitution-based evaluation pipeline:
-a head-normal-form evaluator (`evalSubst`) and a subtype check
-(`subCheckSubst` and entry points `subCheck` / `subCheckT`) that operate
-directly on `Expr`, never lifting into the NbE `Val`/`Closure` ADT.
+a head-normal-form evaluator (`evalSubst`) and a structural subtype check
+(`subCheck`) that operate directly on `Expr`, never lifting into a
+`Val`/`Closure` ADT.
+
+The bidirectional fast-path (`TyCheck.typeCheck`) and the typed
+top-level entry (`SubstEval.subCheckT`) live in `Och/TyCheck.lean`,
+which imports this module. Splitting the cycle that way keeps the
+structural engine free of any dependency on the type-checker.
 
 ## Status
 
@@ -153,6 +157,29 @@ private def substL (e : Expr) (j : Nat) (s : Expr) : Expr :=
     Mirrors `Closure.openFresh fuel depth` in NbE. -/
 private def openFresh (body : Expr) (depth : Nat) : Expr :=
   substL body 0 (levelBvar depth)
+
+/-- Inverse of `openFresh`: replace `levelBvar level` with `bvar 0`,
+    shifting other bound bvars up by 1 to make room for the new
+    binder. Other level-vars (different `level`) are unchanged.
+    Used by `TyCheck` to abstract a synthesised body type back
+    into a Π-type. -/
+def closeLevelVar (level : Nat) (e : Expr) : Expr :=
+  go 0 e
+where
+  go (c : Nat) : Expr → Expr
+  | .bvar k =>
+      if k == levelOffset + level then .bvar c
+      else if k >= levelOffset then .bvar k
+      else if k < c then .bvar k
+      else .bvar (k + 1)
+  | .lam dom body => .lam (go c dom) (go (c + 1) body)
+  | .iota ann body => .iota (go c ann) (go (c + 1) body)
+  | .fix ann body => .fix (go c ann) (go (c + 1) body)
+  | .letE val body => .letE (go c val) (go (c + 1) body)
+  | .app f a => .app (go c f) (go c a)
+  | .asc t ty => .asc (go c t) (go c ty)
+  | .type => .type
+  | .bot => .bot
 
 /-- True iff `e` is a "neutral" — its head is a free level-var or a
     stuck application thereof. Mirrors `Val.isNeutral`. Lambdas, iotas,
@@ -416,27 +443,63 @@ mutual
       | _ => .ok none
 end
 
-/-- Top-level entry point analogous to `NbE.subCheck`. -/
+/-- Structural subtype check on closed `Expr`s: WHNF both sides,
+    then descend through `subCheckSubst`. Public so `TyCheck.typeCheck`
+    can call it on conversion goals; the `subCheckSubst` mutual
+    block stays private. -/
 def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
   let a' ← evalSubst fuel unfBound a
   let b' ← evalSubst fuel unfBound b
   subCheckSubst fuel #[] [] a' b'
 
-/-- Top-level typed subtype check. Mirrors `NbE.subCheckT`: try the
-    syntactic `typeCheck` first (fast on positive cases — checks each
-    `succ_` layer locally), fall back to `subCheck` on rejection.
+/-! ## Open-context API for `TyCheck`
 
-    For positive cases that `typeCheck` accepts: O(|a|) cheap calls.
-    For negatives or cases where `typeCheck` is incomplete: total cost
-    is `typeCheck` + `subCheck`, the safety net.
+The bidirectional type-checker (`Och/TyCheck.lean`) walks an open
+`Expr` whose free variables are encoded as level-vars (the same
+`bvar (levelOffset + k)` trick the engine uses internally). It
+needs three things from this module:
 
-    This is the production entry point for substitution-based subtype
-    checking. New tests should call this directly; existing
-    `NbE.subCheckT` callers continue to work via the (slower) NbE
-    pipeline. -/
-def subCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
-  match NbE.typeCheck fuel a τ with
-  | .ok true => .ok true
-  | _ => subCheck fuel a τ
+  - a way to reference a fresh level-var (`freshLevelVar`),
+  - a way to open a binder under that fresh (`openFreshTop`),
+  - a way to substitute a value for the outermost binder
+    (`substTop`),
+  - a way to compare two types in a non-empty type context
+    (`subCheckOpen`).
+
+These are thin wrappers around the otherwise-private level-var
+primitives; we expose only the ones `TyCheck` actually needs.
+The `subCheckSubst` mutual block, `shiftL`, `isNeutral`, the
+private flag on `substL`/`openFresh` all stay internal — `TyCheck`
+does not need them directly.
+-/
+
+/-- The level-var encoding of de Bruijn level `level`. -/
+def freshLevelVar (level : Nat) : Expr := levelBvar level
+
+/-- If `e` is a free level-var, return its level; otherwise `none`. -/
+def asLevelVar : Expr → Option Nat
+  | .bvar k => if isLevelIdx k then some (k - levelOffset) else none
+  | _ => none
+
+/-- Open a body's outermost binder under a fresh level-var at
+    the given depth. Public mirror of the internal `openFresh`. -/
+def openFreshTop (body : Expr) (depth : Nat) : Expr :=
+  openFresh body depth
+
+/-- Substitute a value for the outermost binder of `body`, leaving
+    level-vars untouched. Used by `TyCheck` to instantiate Π
+    codomains with the actual argument and to discharge `let`
+    binders. Public mirror of the internal `substL`. -/
+def substTop (body : Expr) (value : Expr) : Expr :=
+  substL body 0 value
+
+/-- Subtype check in a non-empty type context. `tyCtx[k]` is the
+    type of `freshLevelVar k`. Forces WHNF on both sides, then
+    delegates to the private structural engine. -/
+def subCheckOpen (fuel : Nat) (tyCtx : Array Expr) (a b : Expr) :
+    Outcome Bool := do
+  let a' ← evalSubst fuel unfBound a
+  let b' ← evalSubst fuel unfBound b
+  subCheckSubst fuel tyCtx [] a' b'
 
 end SubstEval

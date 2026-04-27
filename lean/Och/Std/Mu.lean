@@ -1,7 +1,7 @@
 import Och.Macro
 import Och.Eval
-import Och.NbE
 import Och.EvalSubst
+import Och.TyCheck
 import Och.Std.DNat
 import Och.Std.Unit
 
@@ -54,11 +54,13 @@ open Expr
 -- NbE normalisation (was absEval)
 -- ------------------------------------------------------------
 
--- fixId normalises. Under the unified Nat_ (nested fix+ι), NF now
--- expands the type annotation; the former "fix = its own NF" shortcut
--- that worked under Church-Nat_ doesn't hold for dNat-style Nat_.
--- We assert success rather than identity.
-example : (NbE.nf 200 fixId).isOk := by native_decide
+-- fixId normalises (HNF terminates). Under the unified Nat_
+-- (nested fix+ι), even forcing HNF expands the type annotation;
+-- the former "fix = its own NF" shortcut that worked under
+-- Church-Nat_ doesn't hold for dNat-style Nat_. We assert success
+-- rather than identity. Migrated from `NbE.nf` to `evalSubst`
+-- post-engine-collapse.
+example : (SubstEval.evalSubst 200 SubstEval.unfBound fixId).isOk := by native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (positive)
@@ -131,12 +133,15 @@ example : (concEval 5000 (och{ toZeroThunked one_ })).isOk := by native_decide
 
 private def selfRefFn := och{ fix f:(Type → Type). λx:Type. λP:((f x) → Type). P }
 
--- f alone is fine (fix is a value, no unfolding)
-example : NbE.nf 200 selfRefFn = .ok selfRefFn := by native_decide
+-- f alone is fine (fix is a value, no unfolding under HNF).
+example : SubstEval.evalSubst 200 SubstEval.unfBound selfRefFn = .ok selfRefFn := by
+  native_decide
 
--- f applied to Type normalises (NbE handles the self-ref-in-domain
--- case via its `unf` budget; the legacy `absEval` used `muSeen`).
-example : (NbE.nf 500 (och{ selfRefFn Type })).isOk := by native_decide
+-- f applied to Type normalises (the substitution engine handles
+-- self-reference-in-domain via its `unf` budget, the same way NbE
+-- did via its closure-domain `unf`).
+example : (SubstEval.evalSubst 500 SubstEval.unfBound (och{ selfRefFn Type })).isOk := by
+  native_decide
 
 end Tests
 end Std

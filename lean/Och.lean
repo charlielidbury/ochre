@@ -8,10 +8,6 @@ import Och.TyCheck
 import Och.Subtyping
 import Och.Soundness
 
--- Internal substrate (typeCheck fast-path)
-import Och.NbE
-import Och.SubCheckVal
-
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit
 import Och.Tests
@@ -27,26 +23,22 @@ Public API:
 - `Och.Macro`      — the `och{...}` DSL surface syntax
 - `Och.Outcome`    — `Outcome α` (`.ok` / `.outOfFuel` / `.error`)
 - `Och.Eval`       — `concEval` (the reference evaluator)
-- `Och.EvalSubst`  — `SubstEval.subCheckT` / `subCheck` / `evalSubst`
-                     (the production subtype-checking entry point;
-                     internals private post-engine-collapse)
-- `Och.TyCheck`    — `NbE.typeCheck` (bidirectional fast-path used
-                     by `SubstEval.subCheckT`)
+- `Och.EvalSubst`  — substitution-based engine: `evalSubst`,
+                     structural `subCheck`, level-var primitives
+                     (`freshLevelVar` / `openFreshTop` / `substTop`
+                     / `subCheckOpen`) consumed by `TyCheck`
+- `Och.TyCheck`    — bidirectional checker (`TyCheck.typeCheck`)
+                     plus the typed top-level entry point
+                     `SubstEval.subCheckT`
 - `Och.Subtyping`  — `Subtype'` (declarative spec, proof target)
 - `Och.Soundness`  — top-level theorem statements (sorry-preserved
                      scaffolds for future re-proving)
-
-Internal modules (the typeCheck fast-path substrate; not part of
-the user-facing API):
-- `Och.NbE`        — env-NbE substrate (`Val` / `Closure` / `eval` /
-                     `quote`; underlies `NbE.typeCheck`)
-- `Och.SubCheckVal` — `subCheckVal` engine (called by `tyCheck`)
 
 Tests / audit / std-library / probes (built so their
 `native_decide` pins and witnesses are verified):
 - `Och.SoundnessAudit` — executable witnesses for soundness gaps
 - `Och.Tests`          — smoke tests
-- `Och.PropertyTests`  — open-Γ / negative / quote-RT properties
+- `Och.PropertyTests`  — open-Γ / negative / round-trip properties
 - `Och.PerfProbe`      — perf benchmarks (compile-time pins)
 - `Och.Std`            — Std/* aggregator
 -/

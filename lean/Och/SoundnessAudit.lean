@@ -22,7 +22,7 @@ should be moved to a "resolved" section with the new behaviour
 asserted instead.
 
 After the legacy `subCheckNF`/`absEval` retirement, all witnesses
-target `NbE.subCheck`/`NbE.typeCheck` only. The original two-checker
+target `NbE.subCheck`/`TyCheck.typeCheck` only. The original two-checker
 divergence sweep (which found A1/A5/A6/A7/A8) is replaced below by
 NbE-only structural properties (reflexivity, top, the documented A6
 incompleteness witness). The full audit history with both checkers
@@ -117,7 +117,7 @@ an axiom of the model.
 
 `NbE.eval`'s `.lam` β arm substitutes unconditionally, so
 `NbE.subCheck` is only meaningful on *already-well-typed*
-inputs. The Phase-1 fix is `NbE.typeCheck` (TyCheck.lean), which
+inputs. The Phase-1 fix is `TyCheck.typeCheck` (TyCheck.lean), which
 runs the domain check syntactically; the Phase-2 statement is
 therefore "`typeCheck e τ = .ok true → e : τ`", not
 "`subCheck e τ = .ok true → e : τ`".
@@ -131,7 +131,7 @@ theorem a3_subCheckBlind :
 
 /-- …but `typeCheck` catches it. -/
 theorem a3_typeCheckCatches :
-    (NbE.typeCheck 200 illTyped Bool).isOk = false := by
+    (TyCheck.typeCheck 200 illTyped Bool).isOk = false := by
   native_decide
 
 /-!
@@ -356,21 +356,21 @@ annotations that are fresh neutrals).
 
 /-- Pre-fix, the four false-lines below were `.ok true`. -/
 theorem a9_fixIotaBodyChecked :
-    NbE.typeCheck 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
-    NbE.typeCheck 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
+    TyCheck.typeCheck 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
+    TyCheck.typeCheck 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
     -- The `.letE`/`.app`-head paths:
-    NbE.typeCheck 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Nat_
+    TyCheck.typeCheck 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Nat_
       = .ok false ∧
-    NbE.typeCheck 200 (.app (.fix Nat_ unit_) zero_) Nat_
+    TyCheck.typeCheck 200 (.app (.fix Nat_ unit_) zero_) Nat_
       = .ok false ∧
-    NbE.typeCheck 200
+    TyCheck.typeCheck 200
       (.app (.letE (.fix (och{Nat_ → Nat_}) unit_) (.bvar 0)) zero_)
       Nat_ = .ok false ∧
     -- positive controls: a *well-formed* fix still checks,
     -- and the let-bound ill-formed fix checks at its *actual*
     -- type (the value unfolds to `unit_`):
-    NbE.typeCheck 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
-    NbE.typeCheck 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Unit_
+    TyCheck.typeCheck 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
+    TyCheck.typeCheck 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Unit_
       = .ok true := by
   native_decide
 -- Regression for nested-fix-annotation programs (`appendVec`)

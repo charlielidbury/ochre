@@ -1,6 +1,5 @@
 import Och.Macro
 import Och.Eval
-import Och.NbE
 import Och.EvalSubst
 import Och.TyCheck
 import Och.Std.DNat
@@ -54,22 +53,32 @@ open Expr
 
 -- ── Positive computation tests ─────────────────────────────
 
--- Array_ zero_ T = Unit_.
-example : NbE.nf 200 (och{ Array_ zero_ Nat_ }) = NbE.nf 200 Unit_ := by native_decide
+-- Array_ zero_ T ≡ Unit_ (bidirectional subsumption).
+example : SubstEval.subCheckT 200 (och{ Array_ zero_ Nat_ }) Unit_ = .ok true ∧
+          SubstEval.subCheckT 200 Unit_ (och{ Array_ zero_ Nat_ }) = .ok true := by
+  native_decide
 
 -- pair_ Nat Unit 0 unit, head it back out
 private def testArr1 := och{ pair_ Nat_ Unit_ zero_ unit_ }
 
-example : NbE.nf 200 (och{ fst_ testArr1 }) = NbE.nf 200 zero_ := by native_decide
-example : NbE.nf 200 (och{ snd_ testArr1 }) = NbE.nf 200 unit_ := by native_decide
+example : SubstEval.subCheckT 200 (och{ fst_ testArr1 }) zero_ = .ok true ∧
+          SubstEval.subCheckT 200 zero_ (och{ fst_ testArr1 }) = .ok true := by
+  native_decide
+example : SubstEval.subCheckT 200 (och{ snd_ testArr1 }) unit_ = .ok true ∧
+          SubstEval.subCheckT 200 unit_ (och{ snd_ testArr1 }) = .ok true := by
+  native_decide
 
 -- testArr2 = [1, 2]
 private def testArr2 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
 }
 
-example : NbE.nf 200 (och{ fst_ testArr2 }) = NbE.nf 200 one_ := by native_decide
-example : NbE.nf 200 (och{ fst_ (snd_ testArr2) }) = NbE.nf 200 two_ := by native_decide
+example : SubstEval.subCheckT 200 (och{ fst_ testArr2 }) one_ = .ok true ∧
+          SubstEval.subCheckT 200 one_ (och{ fst_ testArr2 }) = .ok true := by
+  native_decide
+example : SubstEval.subCheckT 200 (och{ fst_ (snd_ testArr2) }) two_ = .ok true ∧
+          SubstEval.subCheckT 200 two_ (och{ fst_ (snd_ testArr2) }) = .ok true := by
+  native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 
@@ -82,12 +91,17 @@ example : SubstEval.subCheckT 1000 unit_ (och{ Array_ one_ Nat_ }) = .ok false :
 
 -- ── Smoke: Array_ applied with abstract-friendly Nat_ index ───
 
-example : (NbE.nf 1000 (och{ Array_ (succ_ zero_) Nat_ })).isOk := by native_decide
-
-example : NbE.nf 400 (och{ Array_ one_ Nat_ }) = NbE.nf 400 (och{ Pair Nat_ Unit_ }) := by
+example : (SubstEval.evalSubst 1000 SubstEval.unfBound (och{ Array_ (succ_ zero_) Nat_ })).isOk := by
   native_decide
-example : NbE.nf 400 (och{ Array_ two_ Nat_ })
-        = NbE.nf 400 (och{ Pair Nat_ (Pair Nat_ Unit_) }) := by native_decide
+
+example : SubstEval.subCheckT 400 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
+          SubstEval.subCheckT 400 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
+  native_decide
+example : SubstEval.subCheckT 400 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
+            = .ok true ∧
+          SubstEval.subCheckT 400 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
+            = .ok true := by
+  native_decide
 
 end Tests
 
@@ -227,7 +241,7 @@ example : (concEval 10000 (och{ indexArr Nat_ three_ arr3 zero_ })).isOk := by
 -- NbE incompleteness that blocks `appendArrays` above.
 
 -- `three_` as an index into a length-3 array is rejected (diagonal).
-example : (NbE.typeCheck 10000
+example : (TyCheck.typeCheck 10000
             (och{ indexArr Nat_ three_ arr3 three_ }) Nat_).isOk
         = false := by native_decide
 

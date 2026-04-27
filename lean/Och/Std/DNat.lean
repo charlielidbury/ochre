@@ -2,6 +2,7 @@ import Och.Macro
 import Och.Eval
 import Och.Std.Bool
 import Och.EvalSubst
+import Och.TyCheck
 
 /-!
 # Unified Natural Numbers (self-type encoding with singleton-tightened succ)

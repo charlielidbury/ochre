@@ -70,7 +70,7 @@ private def bareSubCheck (fuel : Nat) (a τ : Expr) : Outcome Bool :=
 
 /-- Bare `typeCheck`-only: just the fast-path, no fallback. -/
 private def bareTypeCheck (fuel : Nat) (a τ : Expr) : Outcome Bool :=
-  NbE.typeCheck fuel a τ
+  TyCheck.typeCheck fuel a τ
 
 structure Case where
   label    : String

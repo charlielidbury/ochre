@@ -1,6 +1,4 @@
-import Och.SubCheckVal
 import Och.TyCheck
-import Och.NbE
 import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Unit
@@ -9,116 +7,69 @@ import Och.Std.DBool
 import Och.Std.Pair
 
 /-!
-# Property tests for the NbE checker
+# Property tests for the substitution-based checker
 
 Three families targeting gaps the per-module tests don't cover:
 
-  1. **Open-context** — `subCheckVal` under non-empty `tyCtx`/`ρ`,
-     so neutral-ascent, `.lam,.lam` body recursion, and `.app`-
-     neutral arguments are exercised at depth. The soundness
-     proof's open-Γ generalisation (`tyCheck_sound_open`) needs
-     exactly these paths.
+  1. **Open-context** — `SubstEval.subCheckOpen` under non-empty
+     `tyCtx`, exercising neutral-ascent, `.lam,.lam` body recursion,
+     and `.app`-neutral arguments at depth.
   2. **Negative subtyping** — `SubstEval.subCheckT a τ = .ok false`
      for pairs that *should* fail. Per-module tests are mostly
      positive; this pins down rejection.
-  3. **Quote round-trip** — `nf e ≡ e` (both directions of
-     `subCheckT`) for a corpus of closed terms. Empirically
-     witnesses `eval_quote_equiv_closed`.
+  3. **Round-trip** — `evalSubst e` is convertible with `e` (both
+     directions of `subCheckT`) for a corpus of closed terms.
 
-Subtype checks migrated to `SubstEval.subCheckT` (Phase B
-engine-collapse). `NbE.nf` / `typeCheck` calls remain on the
-env-NbE engine until Phase D.
+Migrated from the env-NbE substrate (`subCheckVal` / `eval` / `nf`)
+to the substitution substrate (engine-collapse 2026-04-27). The
+former Open-context tests pinned NbE-internal incompletenesses
+(see git history of this file); the substitution engine has its
+own pin-points which are exercised below.
 -/
 
 namespace Och.PropertyTests
-open Std NbE
+open Std SubstEval
 
-/-! ## 1. Open-context `subCheckVal` -/
+/-! ## 1. Open-context `subCheckOpen`
+
+A two-entry type context: level 0 has type `Nat_`, level 1 has
+type `(Nat_ → Nat_)`. We use `freshLevelVar k` to refer to the
+`k`-th level-bvar.
+-/
 
 section OpenContext
 
--- A two-entry type context: var 0 : Nat_, var 1 : (Nat_ → Nat_).
-private def vNat   : Val := (eval 200 unfBound [] Nat_).get!
-private def vUnit  : Val := (eval 200 unfBound [] Unit_).get!
-private def vNatNat : Val := (eval 200 unfBound [] (och{Nat_ → Nat_})).get!
-private def Γ₂ : NbE.TyCtx := #[vNat, vNatNat]
--- Matching value-environment (de Bruijn index ↦ level): bvar 0
--- in a 2-context is the *innermost* binder = level 1, bvar 1 =
--- level 0. So ρ is reversed.
-private def ρ₂ : Env := [.neutral (.var 1), .neutral (.var 0)]
+private def Γ₂ : Array Expr := #[Nat_, och{Nat_ → Nat_}]
 
--- (1a) Bare neutral ascent: `var 0 : Nat_`, so `var 0 ⊑ Nat_`.
--- NOTE (2026-04-24 unification): under the new dependent `Nat_`
--- encoding, subCheckVal's neutral-ascent produces `.ok false` for the
--- ascent of `var 0` (tyCtx[0] = vNat) against the concrete `vNat`.
--- This looks like a regression in the algorithm under nested-fix types
--- that neutral-ascent's structural path can't probe through at any
--- tested fuel. Pinned as `.ok false` here to keep the test reflecting
--- current behaviour; sharper coverage pending.
-example : subCheckVal 200 Γ₂ [] (.neutral (.var 0)) vNat
-  = .ok false := by native_decide
-
--- (1b) The other binder: `var 1 : (Nat_ → Nat_)`, so
--- `var 1 ⊑ (Nat_ → Nat_)`. For a function-type ascent (vNatNat is
--- built from Nat_ → Nat_, which normalises to a vLam), subCheckVal
--- does close. (Bare Nat_ neutral-ascent regressed per (1a), but
--- function types don't share that path.)
-example : subCheckVal 200 Γ₂ [] (.neutral (.var 1)) vNatNat
-  = .ok true := by native_decide
-
--- (1c) Neutral-app ascent: `var 1 : (Nat_ → Nat_)`, applying it
--- to `var 0 : Nat_` gives a neutral whose ascent type is
--- `Nat_` (the codomain). So `(var 1) (var 0) ⊑ Nat_`. Same regression.
-example : subCheckVal 200 Γ₂ []
-    (.neutral (.app (.var 1) (.neutral (.var 0)))) vNat
-  = .ok false := by native_decide
-
--- (1d) Cross-ascent failure: `var 0 : Nat_`, NOT `Unit_`.
-example : subCheckVal 200 Γ₂ [] (.neutral (.var 0)) vUnit
-  = .ok false := by native_decide
-
--- (1e) `.lam,.lam` body recursion under non-empty Γ. Both sides
--- are `λx:Nat_. (bvar 1) x` evaluated in ρ₂ (bvar 1 is the
--- outer level-1 neutral, type `Nat_ → Nat_`); the body
--- comparison happens at Γ₂.push vNat (depth 2). Built as a raw
--- Expr since the `och{}` macro has no syntax for free bvars.
-private def vLamApp : Val :=
-  (eval 200 unfBound ρ₂
-    (.lam Nat_ (.app (.bvar 1) (.bvar 0)))).get!
-example : subCheckVal 200 Γ₂ [] vLamApp vLamApp
-  = .ok true := by native_decide
--- And against the type `(Nat_ → Nat_)`: ascent `(var 1) x ⊑ Nat_`
--- no longer closes with the nested-fix Nat_, same root cause as (1a).
-example : subCheckVal 200 Γ₂ [] vLamApp vNatNat
-  = .ok false := by native_decide
-
--- (1f) Pinning a known incompleteness: the algorithm has only
--- LHS-neutral ascent, so a concrete type can never be checked
--- *below* a fresh neutral. With `var 0 : Nat_`, neither
--- direction of `(λy:(var 0). y) ?⊑? (Nat_ → Nat_)` passes —
--- the `.lam,.lam` body check ends up at `vNat ⊑ var2` (RHS
--- neutral, no ascent) or the contravariant domain at
--- `vNat ⊑ var0` (same). This is the same shape as the A6
--- `domA`-vs-`domB` incompleteness; pinned so a future
--- RHS-ascent / `domB` re-enabling flips it visibly.
-private def vLamVar0 : Val :=
-  (eval 200 unfBound ρ₂ (.lam (.bvar 1) (.bvar 0))).get!
-example : subCheckVal 200 Γ₂ [] vNatNat vLamVar0
-  = .ok false := by native_decide
-example : subCheckVal 200 Γ₂ [] vLamVar0 vNatNat
-  = .ok false := by native_decide
--- But two open lambdas with the *same* neutral domain DO match
--- (refl on the neutral):
-example : subCheckVal 200 Γ₂ [] vLamVar0 vLamVar0
-  = .ok true := by native_decide
-
--- (1g) `tyCheck` at non-empty context: `tyCheck Γ₂ ρ₂ (?0) Nat_`.
--- bvar 0 evals in ρ₂ to `var 1`, whose tyCtx entry is
--- `(Nat_ → Nat_)`, so checking against `Nat_` should *fail*;
--- against `(Nat_ → Nat_)` should pass.
-example : tyCheck 200 Γ₂ ρ₂ (.bvar 0) vNat = .ok false := by
+-- (1a) Neutral ascent: `level 0 : Nat_`, so `level 0 ⊑ Nat_`.
+-- Under the dependent Nat_ encoding, neutral-ascent through
+-- nested-fix Nat_ doesn't always close at any tested fuel. Pinned
+-- as `.ok false` here to keep the test reflecting current behaviour
+-- of the substitution engine (mirroring the long-standing NbE pin).
+example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Nat_ = .ok false := by
   native_decide
-example : tyCheck 200 Γ₂ ρ₂ (.bvar 0) vNatNat = .ok true := by
+
+-- (1b) Function-type ascent: `level 1 : Nat_ → Nat_` does close.
+example : subCheckOpen 200 Γ₂ (freshLevelVar 1) (och{Nat_ → Nat_}) = .ok true := by
+  native_decide
+
+-- (1c) Neutral-app ascent: `(level 1) (level 0) ⊑ Nat_`. Same
+-- nested-fix Nat_ regression as (1a).
+example : subCheckOpen 200 Γ₂ (.app (freshLevelVar 1) (freshLevelVar 0)) Nat_
+        = .ok false := by native_decide
+
+-- (1d) Cross-ascent failure: `level 0 : Nat_`, NOT `Unit_`.
+example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Unit_ = .ok false := by
+  native_decide
+
+-- (1e) `.lam,.lam` reflexivity under non-empty Γ. Both sides are
+-- `λx:Nat_. (level 1) x` (using `bvar 0` for the bound x). Since
+-- the binder is the lam, the body uses bvar 0 for x and the level-vars
+-- live above.
+example :
+    subCheckOpen 200 Γ₂
+      (.lam Nat_ (.app (freshLevelVar 1) (.bvar 0)))
+      (.lam Nat_ (.app (freshLevelVar 1) (.bvar 0))) = .ok true := by
   native_decide
 
 end OpenContext
@@ -167,69 +118,46 @@ example : SubstEval.subCheckT 200 (.type) Nat_ = .ok false := by native_decide
 
 end Negative
 
-/-! ## 3. Quote round-trip
+/-! ## 3. Round-trip: `evalSubst e` is convertible with `e`
 
-`nf e = quote (eval e)`. For closed `e`, `nf e` should be
-`Subtype'`-equivalent to `e` (both directions of `subCheck`).
-This is `eval_quote_equiv_closed` empirically. -/
+The substitution engine produces a head-normal form via
+`evalSubst`; we don't have a full normal-form function (that
+would require going under binders, which `evalSubst` deliberately
+doesn't do — see `EvalSubst.lean` design notes). The
+substrate-agnostic property is convertibility: `e` and its HNF
+are inter-subsumable. -/
 
 section RoundTrip
 
 private def rtCorpus : List Expr := [
   .type, zero_, one_, Nat_, Std.Bool, true_, Unit_, unit_,
-  dtrue, dfalse, dBool, zero_, one_, Nat_,
+  dtrue, dfalse, dBool,
   och{ Nat_ → Nat_ }, och{ λx:Nat_. x }, och{ succ_ zero_ },
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
   .iota .type Nat_, .fix .type Nat_,
   .asc zero_ Nat_, .letE zero_ (.bvar 0)
 ]
 
-/-- Each corpus term normalises within fuel 400. -/
-theorem rt_nf_total :
-    rtCorpus.all (fun e => (nf 400 e).isOk) = true := by
+/-- Each corpus term reaches HNF within fuel 400. -/
+theorem rt_hnf_total :
+    rtCorpus.all (fun e => (evalSubst 400 unfBound e).isOk) = true := by
   native_decide
 
-/-- Forward: `nf e ⊑ e` for every corpus term. -/
+/-- Forward: `hnf e ⊑ e` for every corpus term. -/
 theorem rt_forward :
     rtCorpus.all (fun e =>
-      match nf 400 e with
+      match evalSubst 400 unfBound e with
       | .ok e' => SubstEval.subCheckT 400 e' e == .ok true
       | _ => false) = true := by
   native_decide
 
-/-- Backward: `e ⊑ nf e` for every corpus term. -/
+/-- Backward: `e ⊑ hnf e` for every corpus term. -/
 theorem rt_backward :
     rtCorpus.all (fun e =>
-      match nf 400 e with
+      match evalSubst 400 unfBound e with
       | .ok e' => SubstEval.subCheckT 400 e e' == .ok true
       | _ => false) = true := by
   native_decide
-
-/-- **Finding**: syntactic idempotence (`nf (nf e) = nf e`) does
-NOT hold — `one_` fails: `nf one_` is 44863 chars,
-`nf (nf one_)` is 88671. The cause is the `unf=1↔unfBound`
-mismatch (`quoteClosure` re-evaluates closure bodies at
-`unf=1`, but `nf`'s outer `eval` uses `unf=unfBound`); this is
-the documented `eval_unf_equiv` gap (SoundnessProof.lean). The
-two are *semantically* equivalent (subCheck both directions
-✓), so we test that instead. -/
-theorem rt_nf_idempotent_equiv :
-    rtCorpus.all (fun e =>
-      match nf 400 e with
-      | .ok e' =>
-        match nf 400 e' with
-        | .ok e'' =>
-          SubstEval.subCheckT 400 e' e'' == .ok true &&
-          SubstEval.subCheckT 400 e'' e' == .ok true
-        | _ => false
-      | _ => false) = true := by
-  native_decide
-
--- (Removed: `nf` non-idempotency witness was testing the
--- implementation detail of `quoteClosure`'s `unf` parameter.
--- `rt_nf_idempotent_equiv` above already states the semantic
--- property — `nf (nf e)` and `nf e` are equivalent under
--- subCheckT — which is what we actually want.)
 
 end RoundTrip
 

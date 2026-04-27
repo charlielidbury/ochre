@@ -4,7 +4,6 @@ import Och.EvalSubst
 import Och.Std.Vec
 import Och.Std.Array
 import Och.Eval
-open NbE
 
 /-! # Performance probe & root-cause findings
 
@@ -73,7 +72,7 @@ Each `tyCheck`/`tyInfer` call to `subCheckVal` starts with empty
 is several dozen `subCheckVal` calls, several of which re-derive
 e.g. `Nat_ ⊑ Nat_`. Post-fix, each such re-derivation hits the
 `a == b` ptrEq guard in O(1), so the repeated work is cheap:
-`NbE.typeCheck 5000 appendVec` is 32 ms total. A cross-call
+`TyCheck.typeCheck 5000 appendVec` is 32 ms total. A cross-call
 memo-table would save a few ms but is not load-bearing.
 -/
 

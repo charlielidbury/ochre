@@ -63,11 +63,13 @@ example : SubstEval.subCheckT 1000 zero_ (och{ Vec Nat_ }) = .ok false := by nat
 
 -- ── Negative computation ─────────────────────────────────────
 
-example : NbE.nf 400 (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  ≠ NbE.nf 400 two_ := by native_decide
+-- Phrased via concEval: the negative semantic claim is that `testVec1`
+-- with the projection-to-length argument does NOT compute to `two_`.
+example : concEval 1000 (och{ testVec1 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+  ≠ concEval 1000 two_ := by native_decide
 
-example : NbE.nf 400 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  ≠ NbE.nf 400 one_ := by native_decide
+example : concEval 1000 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
+  ≠ concEval 1000 one_ := by native_decide
 
 end Tests
 
@@ -109,10 +111,10 @@ example : SubstEval.subCheckT 5000 appendVec (och{ λT:Type. Vec T → Vec T →
 -- appendVec_wrong should NOT typecheck (the wrong length arg shows up
 -- as a mismatch in the inner appendArrays call). The bidirectional
 -- typeCheck walks the syntactic term and catches this pre-β.
-example : (NbE.typeCheck 5000 appendVec_wrong
+example : (TyCheck.typeCheck 5000 appendVec_wrong
             (och{ λT:Type. Vec T → Vec T → Vec T })).isOk
   = false := by native_decide
-example : NbE.typeCheck 5000 appendVec
+example : TyCheck.typeCheck 5000 appendVec
             (och{ λT:Type. Vec T → Vec T → Vec T })
   = .ok true := by native_decide
 

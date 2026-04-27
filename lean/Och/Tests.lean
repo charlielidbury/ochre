@@ -1,11 +1,11 @@
 import Och.Syntax
 import Och.Eval
-import Och.NbE
 import Och.Subtyping
 import Och.Soundness
 import Och.Std
 import Och.Macro
 import Och.EvalSubst
+import Och.TyCheck
 
 /-!
 # Integration tests
@@ -14,13 +14,11 @@ Cross-cutting tests that span multiple Std modules and don't belong in any
 single file. Includes the Prop 5.2.9 regression test and §6.2 abstract
 instantiation tests.
 
-Subtype-check call sites use `SubstEval.subCheckT` (Phase B
-engine-collapse migration, 2026-04-27). Pure NbE entry points
-(`NbE.nf` for normal-form equality) remain on the env-NbE engine
-until Phase D removes it. Tests originally about `absEval`/`subCheckNF`
-semantics (the 5.2.9 `absEvalVal Not' Bool = Bool` abstract-
-instantiation case) are translated to `NbE.nf`-equality, which gives
-the same NF on closed terms.
+All algorithmic checks now run through `SubstEval.subCheckT`
+(post-engine-collapse, 2026-04-27). Tests originally phrased as
+`NbE.nf` equality are re-expressed as bidirectional `subCheckT`
+(convertibility) — same semantic content, no env-NbE substrate
+required.
 -/
 
 open Std
@@ -31,9 +29,17 @@ open Std
 
 private def Not' := och{ λX:Bool. X Bool false_ true_ }
 
-example : NbE.nf 200 (och{ Not' true_ }) = NbE.nf 200 false_ := by native_decide
-example : NbE.nf 200 (och{ Not' false_ }) = NbE.nf 200 true_ := by native_decide
-example : NbE.nf 200 (och{ Not' Bool }) = NbE.nf 200 Bool := by native_decide
+-- Bidirectional convertibility: `Not' true_` and `false_` are
+-- inter-subsumable.
+example : SubstEval.subCheckT 200 (och{ Not' true_ }) false_ = .ok true ∧
+          SubstEval.subCheckT 200 false_ (och{ Not' true_ }) = .ok true := by
+  native_decide
+example : SubstEval.subCheckT 200 (och{ Not' false_ }) true_ = .ok true ∧
+          SubstEval.subCheckT 200 true_ (och{ Not' false_ }) = .ok true := by
+  native_decide
+example : SubstEval.subCheckT 200 (och{ Not' Bool }) Bool = .ok true ∧
+          SubstEval.subCheckT 200 Bool (och{ Not' Bool }) = .ok true := by
+  native_decide
 example : SubstEval.subCheckT 1000 false_ true_ = .ok false := by native_decide
 example : SubstEval.subCheckT 1000 (och{ Not' true_ }) Bool = .ok true := by native_decide
 example : SubstEval.subCheckT 1000 (och{ Not' false_ }) Bool = .ok true := by native_decide
@@ -55,9 +61,12 @@ example : SubstEval.subCheckT 1000
   (och{ succ_ (zero_ : Nat_) })
   Nat_ = .ok true := by native_decide
 
--- isZero (succ (... : Nat)) = false (precisely!)
-example : NbE.nf 200
-  (och{ isZero_ (succ_ (zero_ : Nat_)) }) = NbE.nf 200 false_ := by native_decide
+-- isZero (succ (... : Nat)) = false (precisely): convertibility.
+example : SubstEval.subCheckT 200
+  (och{ isZero_ (succ_ (zero_ : Nat_)) }) false_ = .ok true ∧
+  SubstEval.subCheckT 200
+  false_ (och{ isZero_ (succ_ (zero_ : Nat_)) }) = .ok true := by
+  native_decide
 
 -- isZero (... : Nat) ⊑ Bool
 example : SubstEval.subCheckT 1000

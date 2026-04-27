@@ -1,8 +1,7 @@
 import Och.Macro
 import Och.Eval
-import Och.NbE
-import Och.SubCheckVal
 import Och.EvalSubst
+import Och.TyCheck
 import Och.Std.DNat
 import Och.Std.DFin
 import Och.Std.Pair
@@ -11,23 +10,16 @@ import Och.Std.Unit
 import Och.Std.DBool
 
 /-!
-# Substitution-based vs Env-based (NbE) eval benchmark
+# Substitution-based eval benchmark
 
-Measures the cost of substitution-based vs env-based evaluation on
-representative Och workloads. Three sections:
+Times `evalSubst` / `subCheck` / `subCheckT` on representative
+Och workloads.
 
-1. **Eval-only**: time `evalSubst` vs `NbE.eval` on the same source
-   terms; compare result sizes.
-2. **Subtype check**: parallel `SubstEval.subCheck` vs `NbE.subCheck`
-   on the BeqBench panel. Verdicts and timings reported. The
-   `SubstEval.subCheck` is a hand-port of `subCheckVal` and is
-   **incomplete** on cases involving `succ_`-applied numerals
-   (returns `false` where NbE returns `true`). See report.
-3. **Synthetic Church-numeral arithmetic**: pure-λ benchmarks where
-   substitution-vs-env diverges most cleanly. Both checkers agree
-   on these (no recursion).
-
-Results land in `docs/ideas/eval-subst-vs-env-benchmark.md`.
+Originally a head-to-head comparison vs the env-NbE engine; the
+NbE substrate was retired in the engine-collapse refactor
+(2026-04-27, `docs/ideas/engine-collapse.md`), so this is now a
+single-engine timing run. The historical benchmark numbers live
+in `docs/ideas/eval-subst-vs-env-benchmark.md`.
 
 Run with `lake exe eval_bench` from `lean/`.
 -/
@@ -63,14 +55,9 @@ def Expr.size : Expr → Nat
 
 /-! ## Section 1: Eval-only
 
-For each source term, run:
-- NbE.eval [] (high fuel) → Val. Skip quote (quote re-walks the Val
-  DAG and is dominated by tree-size, not eval cost).
-- SubstEval.evalSubst (high fuel) → Expr. Then size it.
-
-Reports raw eval time (ms) and size of resulting Expr (where
-applicable). NbE eval can't be size-compared cheaply (closures are
-shared), so we report Expr-size only for SubstEval.
+For each source term, run `SubstEval.evalSubst` (high fuel) → HNF
+`Expr`, then size it. Hash-consed run reports the post-shareCommon
+size for comparison.
 -/
 
 structure EvalCase where
@@ -105,15 +92,7 @@ def evalSubstHashConsed (fuel unf : Nat) (e : Expr) : Outcome Expr :=
   SubstEval.evalSubst fuel unf e
 
 def runEvalCase (c : EvalCase) (fuelRef : IO.Ref Nat)
-    : IO (String × Nat × Nat × Nat × Nat × Nat × Nat) := do
-  -- NbE.eval (closure-domain WHNF; no body normalization)
-  let (env_eval_ms, _) ← time (fun n => NbE.eval (c.fuel + n) NbE.unfBound [] c.e) fuelRef
-  -- NbE.nf: full normal form (eval + quote under binders)
-  let (env_nf_ms, envNfR) ← time (fun n => NbE.nf (c.fuel + n) c.e) fuelRef
-  let env_size :=
-    match envNfR with
-    | .ok e => Expr.size e
-    | _ => 0
+    : IO (String × Nat × Nat × Nat) := do
   -- SubstEval.evalSubst (head-normal form; doesn't go under binders)
   let (subst_ms, substR) ← time (fun n => SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.e) fuelRef
   let subst_size :=
@@ -122,26 +101,22 @@ def runEvalCase (c : EvalCase) (fuelRef : IO.Ref Nat)
     | _ => 0
   -- Subst eval + hash-consing (ShareCommon.shareCommon')
   let (hc_ms, _) ← time (fun n => evalSubstHashConsed (c.fuel + n) SubstEval.unfBound c.e) fuelRef
-  return (c.label, env_eval_ms, env_nf_ms, env_size, subst_ms, subst_size, hc_ms)
+  return (c.label, subst_ms, subst_size, hc_ms)
 
 def runEvalSection (fuelRef : IO.Ref Nat) : IO Unit := do
-  IO.println "=== Section 1: Pure eval (no subtype check) ==="
-  IO.println "                       env(WHNF)   env(NF)   nf_size   subst   subst_size   subst+HC"
-  IO.println "Source              |     ms          ms        nodes      ms      nodes        ms"
-  let mut tot_env_e := 0
-  let mut tot_env_nf := 0
+  IO.println "=== Section 1: Pure eval (substitution HNF) ==="
+  IO.println "                       subst   subst_size   subst+HC"
+  IO.println "Source              |    ms      nodes        ms"
   let mut tot_subst := 0
   let mut tot_hc := 0
   for c in evalCases do
-    let (lbl, e_ms, nf_ms, e_sz, s_ms, sz, h_ms) ← runEvalCase c fuelRef
-    IO.println s!"{lbl |> rjust 18}  |   {toString e_ms |> rjust 5}      {toString nf_ms |> rjust 5}    {toString e_sz |> rjust 8}    {toString s_ms |> rjust 5}    {toString sz |> rjust 7}    {toString h_ms |> rjust 5}"
-    tot_env_e := tot_env_e + e_ms
-    tot_env_nf := tot_env_nf + nf_ms
+    let (lbl, s_ms, sz, h_ms) ← runEvalCase c fuelRef
+    IO.println s!"{lbl |> rjust 18}  |   {toString s_ms |> rjust 5}    {toString sz |> rjust 7}    {toString h_ms |> rjust 5}"
     tot_subst := tot_subst + s_ms
     tot_hc := tot_hc + h_ms
-  IO.println s!"-- TOTAL env(WHNF)={tot_env_e}ms env(NF)={tot_env_nf}ms subst={tot_subst}ms subst+HC={tot_hc}ms"
+  IO.println s!"-- TOTAL subst={tot_subst}ms subst+HC={tot_hc}ms"
 
-/-! ## Section 2: Subtype check parity (NbE.subCheck vs SubstEval.subCheck) -/
+/-! ## Section 2: Subtype check timing (SubstEval.subCheck) -/
 
 structure SubCase where
   label  : String
@@ -168,32 +143,20 @@ def subCases : List SubCase :=
   , ⟨"16 unit_ ⊄ Nat_   (reject)        ",  200,  unit_, Nat_ ⟩ ]
 
 def runSubCase (c : SubCase) (fuelRef : IO.Ref Nat)
-    : IO (String × Nat × Nat × Outcome Bool × Outcome Bool) := do
-  let (env_ms, envR) ← time (fun n => NbE.subCheck (c.fuel + n) c.a c.b) fuelRef
+    : IO (String × Nat × Outcome Bool) := do
   let (subst_ms, substR) ← time (fun n => SubstEval.subCheck (c.fuel + n) c.a c.b) fuelRef
-  return (c.label, env_ms, subst_ms, envR, substR)
+  return (c.label, subst_ms, substR)
 
 def runSubSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 2: subCheck (NbE.subCheck vs SubstEval.subCheck) ==="
-  IO.println "label | env_ms subst_ms agree env_v subst_v"
-  let mut tot_env := 0
+  IO.println "=== Section 2: subCheck (SubstEval.subCheck) ==="
+  IO.println "label | subst_ms verdict"
   let mut tot_subst := 0
-  let mut disagree := 0
   for c in subCases do
-    let (lbl, e_ms, s_ms, envR, substR) ← runSubCase c fuelRef
-    let agree := envR == substR
-    if !agree then disagree := disagree + 1
-    IO.println s!"{lbl} | env={toString e_ms |> rjust 5}ms subst={toString s_ms |> rjust 5}ms agree={agree} env_v={repr envR} subst_v={repr substR}"
-    tot_env := tot_env + e_ms
+    let (lbl, s_ms, substR) ← runSubCase c fuelRef
+    IO.println s!"{lbl} | subst={toString s_ms |> rjust 5}ms verdict={repr substR}"
     tot_subst := tot_subst + s_ms
-  IO.println s!"-- TOTAL env={tot_env}ms subst={tot_subst}ms disagreements={disagree}"
-  if disagree > 0 then
-    IO.println "-- WARNING: SubstEval.subCheck verdicts diverge from NbE on some cases."
-    IO.println "-- This is a known limitation of the current port, not an artefact of"
-    IO.println "-- substitution-based eval per se. The Section 1 timings are the"
-    IO.println "-- apples-to-apples eval-cost comparison; subCheck timings here are"
-    IO.println "-- only meaningful for cases where verdicts agree."
+  IO.println s!"-- TOTAL subst={tot_subst}ms"
 
 /-! ## Section 3: Synthetic Church numeral arithmetic
 
@@ -261,22 +224,21 @@ def churchCases : List ChurchCase :=
   , ⟨"mul 16 16 (force)",    20000, forceN (Expr.app (Expr.app churchMul (mkChurchN 16)) (mkChurchN 16)) ⟩ ]
 
 def runChurchCase (c : ChurchCase) (fuelRef : IO.Ref Nat)
-    : IO (String × Nat × Nat × Nat) := do
-  let (env_ms, _envR) ← time (fun n => NbE.eval (c.fuel + n) NbE.unfBound [] c.e) fuelRef
+    : IO (String × Nat × Nat) := do
   let (subst_ms, substR) ← time (fun n => SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.e) fuelRef
   let size :=
     match substR with
     | .ok e => Expr.size e
     | _ => 0
-  return (c.label, env_ms, subst_ms, size)
+  return (c.label, subst_ms, size)
 
 def runChurchSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
   IO.println "=== Section 3: Church-numeral synthetic eval ==="
-  IO.println "case            | env_ms | subst_ms | subst_size"
+  IO.println "case            | subst_ms | subst_size"
   for c in churchCases do
-    let (lbl, e_ms, s_ms, sz) ← runChurchCase c fuelRef
-    IO.println s!"{lbl |> rjust 16} | {toString e_ms |> rjust 6} | {toString s_ms |> rjust 8} | {sz}"
+    let (lbl, s_ms, sz) ← runChurchCase c fuelRef
+    IO.println s!"{lbl |> rjust 16} | {toString s_ms |> rjust 8} | {sz}"
 
 /-! ## Section 4: structural-compare proxies
 
@@ -314,22 +276,15 @@ def cmpCases : List CompareCase :=
 
 def runCompareSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 4: structural-compare proxies (NbE eval+beq vs subst eval+==) ==="
-  IO.println "case               | NbE eval+beq | subst eval+==  ==result"
+  IO.println "=== Section 4: structural-compare proxies (subst eval + ==) ==="
+  IO.println "case               | subst eval+==  ==result"
   for c in cmpCases do
-    -- NbE: eval LHS, eval RHS, Val.beq
-    let (env_total_ms, env_eq) ← time (fun n =>
-        match NbE.eval (c.fuel + n) NbE.unfBound [] c.a,
-              NbE.eval (c.fuel + n) NbE.unfBound [] c.b with
-        | .ok va, .ok vb => va == vb
-        | _, _ => false) fuelRef
-    -- Subst: evalSubst both, Expr ==
     let (subst_total_ms, subst_eq) ← time (fun n =>
         match SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.a,
               SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.b with
         | .ok ea, .ok eb => ea == eb
         | _, _ => false) fuelRef
-    IO.println s!"{c.label |> rjust 18} | {toString env_total_ms |> rjust 12} | {toString subst_total_ms |> rjust 14}  env_eq={env_eq} subst_eq={subst_eq}"
+    IO.println s!"{c.label |> rjust 18} | {toString subst_total_ms |> rjust 14}  subst_eq={subst_eq}"
 
 /-! ## Section 5: scaling stress test (four_ ⊑ Nat_)
 
@@ -377,10 +332,10 @@ def arithCases : List ArithCase :=
 
 def runArithSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 6.5: arithmetic compute tests (NbE.concEval vs SubstEval.evalSubst) ==="
-  IO.println "label                       | env_ms | subst_ms | env_eq | subst_eq"
+  IO.println "=== Section 6.5: arithmetic compute tests (concEval vs SubstEval.evalSubst) ==="
+  IO.println "label                       | concEval_ms | subst_ms | conc_eq | subst_eq"
   for c in arithCases do
-    let (env_ms, env_eq) ← time (fun n =>
+    let (conc_ms, conc_eq) ← time (fun n =>
         match concEval (c.fuel + n) c.e1, concEval (c.fuel + n) c.e2 with
         | .ok r1, .ok r2 => r1 == r2
         | _, _ => false) fuelRef
@@ -389,29 +344,17 @@ def runArithSection (fuelRef : IO.Ref Nat) : IO Unit := do
               SubstEval.evalSubst (c.fuel + n) SubstEval.unfBound c.e2 with
         | .ok r1, .ok r2 => r1 == r2
         | _, _ => false) fuelRef
-    IO.println s!"{c.label} | {toString env_ms |> rjust 6} | {toString subst_ms |> rjust 8} | {env_eq} | {subst_eq}"
+    IO.println s!"{c.label} | {toString conc_ms |> rjust 11} | {toString subst_ms |> rjust 8} | {conc_eq} | {subst_eq}"
 
 /-! ## Section 6: previously-impossible tests
 
-Tests that were left commented out in the Std/* files because env-based
-subCheck couldn't close them at any tractable fuel. With substitution-
-based subCheckT (the typed wrapper that tries `typeCheck` first), we
-expect many of these to close quickly.
-
-Reports verdicts and timings under both env-NbE typed pipeline
-(local mirror `nbeSubCheckT`: `NbE.typeCheck` fast-path with
-`NbE.subCheck` fallback; was `NbE.subCheckT` in the
-now-deleted `TypedNbE.lean`) and `SubstEval.subCheckT`.
+Tests that were left commented out in the Std/* files because the
+old env-NbE subCheck couldn't close them at any tractable fuel.
+With `SubstEval.subCheckT` they now run quickly. The env-NbE side
+of the comparison was retired in the engine-collapse refactor —
+we just report substitution timings here. Historical NbE numbers
+live in `docs/ideas/eval-subst-vs-env-benchmark.md`.
 -/
-
-/-- Local mirror of the (deleted) `NbE.subCheckT`: typeCheck
-fast-path with subCheck fallback. Kept here so the eval-bench
-benchmark can still A/B-compare the two substrates without
-reviving the deleted typed-NbE module. -/
-private def nbeSubCheckT (fuel : Nat) (a τ : Expr) : Outcome Bool :=
-  match NbE.typeCheck fuel a τ with
-  | .ok true => .ok true
-  | _ => NbE.subCheck fuel a τ
 
 private def five_ : Expr := och{ succ_ four_ }
 
@@ -420,41 +363,31 @@ structure ImpossibleCase where
   fuel   : Nat
   a      : Expr
   b      : Expr
-  /-- Whether to skip the NbE comparison (it's known infeasible). -/
-  skipNbE : Bool := false
 
 def impossibleCases : List ImpossibleCase :=
-  [ ⟨"DFin: two_  ⊑ Fin three_       ", 16000, two_,  och{ Fin three_ }, false ⟩
-  , ⟨"DFin: two_  ⊄ Fin two_         ", 16000, two_,  och{ Fin two_ }, false ⟩
-  , ⟨"DFin: three_ ⊄ Fin two_        ", 16000, three_, och{ Fin two_ }, false ⟩
-  , ⟨"DNat: four_ ⊑ Nat_             ", 200000, four_, Nat_, false ⟩
-  , ⟨"DNat: five_ ⊑ Nat_             ", 500000, five_, Nat_, false ⟩
+  [ ⟨"DFin: two_  ⊑ Fin three_       ", 16000, two_,  och{ Fin three_ } ⟩
+  , ⟨"DFin: two_  ⊄ Fin two_         ", 16000, two_,  och{ Fin two_ } ⟩
+  , ⟨"DFin: three_ ⊄ Fin two_        ", 16000, three_, och{ Fin two_ } ⟩
+  , ⟨"DNat: four_ ⊑ Nat_             ", 200000, four_, Nat_ ⟩
+  , ⟨"DNat: five_ ⊑ Nat_             ", 500000, five_, Nat_ ⟩
   ]
 
 def runImpossibleCase (c : ImpossibleCase) (fuelRef : IO.Ref Nat)
-    : IO (String × Option Nat × Nat × Outcome Bool × Outcome Bool) := do
-  -- NbE: skip if known infeasible; otherwise run with full fuel.
-  let envR : Option Nat × Outcome Bool ← if c.skipNbE then
-      pure (none, .error "skipped")
-    else do
-      let (env_ms, envR) ← time (fun n => nbeSubCheckT (c.fuel + n) c.a c.b) fuelRef
-      pure (some env_ms, envR)
-  -- Subst:
+    : IO (String × Nat × Outcome Bool) := do
   let (subst_ms, substR) ← time (fun n => SubstEval.subCheckT (c.fuel + n) c.a c.b) fuelRef
-  return (c.label, envR.fst, subst_ms, envR.snd, substR)
+  return (c.label, subst_ms, substR)
 
 def runImpossibleSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 6: previously-impossible tests (env-NbE pipeline vs SubstEval.subCheckT) ==="
-  IO.println "label                         | NbE_ms  | subst_ms | NbE verdict             | subst verdict"
+  IO.println "=== Section 6: previously-impossible tests (SubstEval.subCheckT) ==="
+  IO.println "label                         | subst_ms | subst verdict"
   for c in impossibleCases do
-    let (lbl, env_ms_opt, subst_ms, envR, substR) ← runImpossibleCase c fuelRef
-    let env_ms_str := match env_ms_opt with | some n => s!"{n}" | none => "skip"
-    IO.println s!"{lbl} | {env_ms_str |> rjust 6} | {toString subst_ms |> rjust 8} | {(toString (repr envR)) |> rjust 23} | {repr substR}"
+    let (lbl, subst_ms, substR) ← runImpossibleCase c fuelRef
+    IO.println s!"{lbl} | {toString subst_ms |> rjust 8} | {repr substR}"
 
 def runAll : IO Unit := do
   let fuelRef ← IO.mkRef (0 : Nat)
-  IO.println "=== Eval comparison: env-based (NbE) vs substitution-based ==="
+  IO.println "=== Substitution-based eval benchmark ==="
   IO.println ""
   runEvalSection fuelRef
   runSubSection fuelRef
