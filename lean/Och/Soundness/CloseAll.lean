@@ -264,24 +264,282 @@ glues the `lam`/`iota`/`fix` arm of `subCheckSubst` to the
 declarative `lam`/`iota`/`fix` rule.
 -/
 
-/-- `closeAllAt` commutes with `shiftL` at matching binder counters.
-    The cutoff `c'` of the shift must equal the binder counter `c` of
-    the closure (matching cutoffs are what every Proposal-A use
-    requires).  Both sides agree pointwise.
+/-! ## Headroom predicate `bvarLTOrLvl`
 
-    Proof shape: structural induction on `e`.  The level-var arm
-    produces `.bvar (d - 1 - lvl + c)`, and `shiftL d' c (.bvar (d -
-    1 - lvl + c)) = .bvar (d - 1 - lvl + c + d')` when `d - 1 - lvl
-    + c ≥ c` (always true).  That equals
-    `closeAllAt c' d (shiftL d' c' (.bvar (levelOffset + lvl)))` since
-    `shiftL` skips level-vars.  The bound bvar arms (k < levelOffset,
-    k < c, etc.) match by the standard `shift` arithmetic.
+The substrate-level predicate `Expr.bvarLT m e` (defined in
+`EvalSubstLemmas.lean`) requires *every* bvar `< m`.  That fails on
+terms with level-vars (bvars `≥ levelOffset`), which is exactly the
+regime `closeAll` operates in.
 
-    Sorry'd: TODO close this.  Estimated 60-80 LOC structural
-    induction following the pattern of `shiftL_eq_shift_bvarLT`. -/
-theorem closeAllAt_shiftL (c d d' : Nat) (e : Expr) :
-    closeAllAt c d (shiftL d' c e) = shiftL d' c (closeAllAt c d e) := by
-  sorry
+We define the natural variant: `bvarLTOrLvl m e` says every bvar `k`
+in `e` satisfies `k < m ∨ k ≥ levelOffset`.  Ordinary bvars are
+bounded; level-vars are allowed unrestricted.  This is the
+operational invariant for `closeAll`-aware proofs: it's preserved
+across substrate operations (`shiftL`/`substL` skip level-vars and
+shift ordinary bvars by amounts whose total stays below
+`levelOffset`).
+
+It's exactly `closedAtLvl` of `Och/EvalSubst.lean` but with a uniform
+bound (no per-binder increment).  We expose it under a fresh name to
+keep the substitution-arithmetic invariants separate from the
+closedness invariants. -/
+
+/-- `bvarLTOrLvl m e`: every bvar `k` in `e` is either `< m` or a
+    free level-var (`≥ levelOffset`).  Uniform across binders, unlike
+    `closedAtLvl`. -/
+def _root_.Expr.bvarLTOrLvl (m : Nat) : Expr → Bool
+  | .bvar k => k < m || k ≥ levelOffset
+  | .lam dom body => Expr.bvarLTOrLvl m dom && Expr.bvarLTOrLvl m body
+  | .app f a => Expr.bvarLTOrLvl m f && Expr.bvarLTOrLvl m a
+  | .asc t ty => Expr.bvarLTOrLvl m t && Expr.bvarLTOrLvl m ty
+  | .type => true
+  | .bot => true
+  | .iota ann body => Expr.bvarLTOrLvl m ann && Expr.bvarLTOrLvl m body
+  | .fix ann body => Expr.bvarLTOrLvl m ann && Expr.bvarLTOrLvl m body
+  | .letE val body => Expr.bvarLTOrLvl m val && Expr.bvarLTOrLvl m body
+
+/-- `bvarLTOrLvl` is monotone in the bound. -/
+theorem bvarLTOrLvl_mono {e : Expr} {m m' : Nat}
+    (h : e.bvarLTOrLvl m = true) (hle : m ≤ m') : e.bvarLTOrLvl m' = true := by
+  induction e generalizing m m' with
+  | bvar k =>
+    simp only [Expr.bvarLTOrLvl, Bool.or_eq_true, decide_eq_true_eq] at h ⊢
+    omega
+  | type => simp [Expr.bvarLTOrLvl]
+  | bot => simp [Expr.bvarLTOrLvl]
+  | lam _ _ ih_dom ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_dom h.1 hle, ih_body h.2 hle⟩
+  | app _ _ ih_f ih_a =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_f h.1 hle, ih_a h.2 hle⟩
+  | asc _ _ ih_t ih_y =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_t h.1 hle, ih_y h.2 hle⟩
+  | iota _ _ ih_ann ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1 hle, ih_body h.2 hle⟩
+  | fix _ _ ih_ann ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1 hle, ih_body h.2 hle⟩
+  | letE _ _ ih_val ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_val h.1 hle, ih_body h.2 hle⟩
+
+/-! ### `closeAllAt_shiftL`: lockstep commutation with shift
+
+The right form of the lemma turned out to be more subtle than the
+spec doc suggested.  At a level-var `bvar (levelOffset + lvl)`,
+`shiftL d' c' (closeAllAt c d (.bvar (levelOffset + lvl)))` produces
+`bvar (d - 1 - lvl + c + d')` (the closed image got shifted up by
+`d'`), but `closeAllAt c d (shiftL d' c' (.bvar (levelOffset + lvl)))
+= closeAllAt c d (.bvar (levelOffset + lvl)) = bvar (d - 1 - lvl + c)`
+— the shiftL skipped the level-var.  These differ by `d'`.
+
+So the lemma must instead put `c + d'` on the LHS:
+`closeAllAt (c + d') d (shiftL d' c' e) = shiftL d' c' (closeAllAt c d e)`,
+under the side condition `c' ≤ c` (the shift cutoff is "inside" the
+binder counter — true for the canonical use case `c' = 0, c ≥ 0`).
+
+This commutation lemma also needs:
+1. **`bvarLT` headroom**: ordinary bvars in `e` must satisfy `k + d'
+   < levelOffset`, so shifting doesn't push them into the level-var
+   range.
+2. **closeAllAt-image headroom**: the closed image `d - 1 - lvl + c`
+   must be `< levelOffset` (and `< c'` cases must work out).  In
+   practice `d, c ≪ levelOffset`, so this is trivial.
+
+The proof is structurally inductive; ordinary bvar and level-var arms
+both reduce via `omega` with the headroom assumptions.  Recursion
+through binders bumps `c` and `c'` in lockstep.
+
+**Status**: sorry'd with a tight precondition.  Closing this is the
+main remaining substrate engineering for Proposal A; the proof
+follows the same shape as `shiftL_eq_shift_bvarLT` in
+`EvalSubstLemmas.lean` (≈100 LOC of structural induction with
+`omega`-driven arithmetic). -/
+
+/-- `closeAllAt` commutes with `shiftL` when the binder counter on
+    the LHS is `c + d'` (matching the shift's effect on the binder
+    range).  `c' ≤ c` ensures the shift cutoff is inside the binder
+    range.
+
+    Headroom assumption: `m + d ≤ levelOffset` and `m + d' ≤
+    levelOffset` and `bvarLT m e = true` (where `m` is some bound),
+    so that ordinary bvars don't accidentally cross into the level-var
+    range and closed-image bvars stay `< levelOffset`. -/
+theorem closeAllAt_shiftL (c d c' d' m : Nat) (e : Expr)
+    (hcle : c' ≤ c) (hbnd_d : c + d + d' + e.depth ≤ levelOffset)
+    (hb : e.bvarLTOrLvl m = true)
+    (hm : m + d' ≤ levelOffset) :
+    closeAllAt (c + d') d (shiftL d' c' e) = shiftL d' c' (closeAllAt c d e) := by
+  induction e generalizing c c' with
+  | bvar k =>
+    -- For bvar: depth = 0, so the budget reduces.
+    have hbnd_simple : c + d + d' ≤ levelOffset := by
+      have : (Expr.bvar k).depth = 0 := rfl
+      rw [this] at hbnd_d; omega
+    simp only [Expr.bvarLTOrLvl, Bool.or_eq_true, decide_eq_true_eq] at hb
+    -- hb : k < m ∨ k ≥ levelOffset.
+    rcases hb with hk_lt_m | hk_ge_lo
+    · -- Ordinary bvar: k < m ≤ levelOffset - d'.
+      have hk_lt : k < levelOffset := by omega
+      have hLvl_k : isLevelIdx k = false := by
+        simp only [isLevelIdx, decide_eq_true_eq, Bool.not_eq_true,
+          decide_eq_false_iff_not, Nat.not_le]; exact hk_lt
+      simp only [shiftL, hLvl_k, Bool.false_eq_true, ↓reduceIte]
+      have hk_not_ge : ¬ k ≥ levelOffset := by omega
+      have rhs_eq : closeAllAt c d (.bvar k) = .bvar k := by
+        simp [closeAllAt, hk_not_ge]
+      rw [rhs_eq]
+      by_cases hkc : k < c'
+      · simp only [hkc, ↓reduceIte]
+        have lhs_eq : closeAllAt (c+d') d (.bvar k) = .bvar k := by
+          simp [closeAllAt, hk_not_ge]
+        rw [lhs_eq]
+        simp [shiftL, hLvl_k, hkc]
+      · simp only [hkc, ↓reduceIte]
+        have hkd_lt : k + d' < levelOffset := by omega
+        have hkd_not_ge : ¬ k + d' ≥ levelOffset := by omega
+        have lhs_eq : closeAllAt (c+d') d (.bvar (k + d')) = .bvar (k + d') := by
+          simp [closeAllAt, hkd_not_ge]
+        rw [lhs_eq]
+        simp [shiftL, hLvl_k, hkc]
+    · -- Level-var: k ≥ levelOffset.
+      have hLvl_k : isLevelIdx k = true := by
+        simp only [isLevelIdx, decide_eq_true_eq]; exact hk_ge_lo
+      simp only [shiftL, hLvl_k, ↓reduceIte]
+      simp only [closeAllAt, hk_ge_lo, ↓reduceIte]
+      by_cases hlt : k - levelOffset < d
+      · -- closeAllAt produces .bvar (d - 1 - (k - levelOffset) + c).
+        simp only [hlt, ↓reduceIte]
+        -- Inline the image: image = d - 1 - (k - levelOffset) + c.
+        have h_image_not_ge_lo : ¬ d - 1 - (k - levelOffset) + c ≥ levelOffset := by
+          omega
+        have h_image_not_lt_c' : ¬ d - 1 - (k - levelOffset) + c < c' := by
+          omega
+        have hLvl_image : isLevelIdx (d - 1 - (k - levelOffset) + c) = false := by
+          simp only [isLevelIdx, decide_eq_true_eq, Bool.not_eq_true,
+            decide_eq_false_iff_not, Nat.not_le]; omega
+        -- Goal: .bvar (d - 1 - (k - levelOffset) + (c + d')) =
+        --       shiftL d' c' (.bvar (d - 1 - (k - levelOffset) + c)).
+        rw [show shiftL d' c' (.bvar (d - 1 - (k - levelOffset) + c))
+              = .bvar (d - 1 - (k - levelOffset) + c + d') from by
+            simp only [shiftL, hLvl_image, h_image_not_lt_c',
+              Bool.false_eq_true, ↓reduceIte]]
+        -- Goal: .bvar (... + (c + d')) = .bvar (... + c + d').  Just associativity.
+        have : d - 1 - (k - levelOffset) + (c + d') = d - 1 - (k - levelOffset) + c + d' := by
+          omega
+        rw [this]
+      · -- lvl ≥ d: both sides leave the level-var unchanged.
+        simp only [hlt, ↓reduceIte]
+        simp only [shiftL, hLvl_k, ↓reduceIte]
+  | type => simp [shiftL, closeAllAt]
+  | bot => simp [shiftL, closeAllAt]
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at hb
+    simp only [shiftL, closeAllAt]
+    have hb_dom : c + d + d' + dom.depth ≤ levelOffset := by
+      have : (Expr.lam dom body).depth = Nat.max dom.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : dom.depth ≤ Nat.max dom.depth body.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    have hb_body : (c + 1) + d + d' + body.depth ≤ levelOffset := by
+      have : (Expr.lam dom body).depth = Nat.max dom.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : body.depth ≤ Nat.max dom.depth body.depth := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    rw [ih_dom c c' hcle hb_dom hb.1]
+    rw [show c + d' + 1 = (c + 1) + d' from by omega]
+    rw [ih_body (c + 1) (c' + 1) (by omega) hb_body hb.2]
+  | iota ann body ih_ann ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at hb
+    simp only [shiftL, closeAllAt]
+    have hb_ann : c + d + d' + ann.depth ≤ levelOffset := by
+      have : (Expr.iota ann body).depth = Nat.max ann.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : ann.depth ≤ Nat.max ann.depth body.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    have hb_body : (c + 1) + d + d' + body.depth ≤ levelOffset := by
+      have : (Expr.iota ann body).depth = Nat.max ann.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : body.depth ≤ Nat.max ann.depth body.depth := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    rw [ih_ann c c' hcle hb_ann hb.1]
+    rw [show c + d' + 1 = (c + 1) + d' from by omega]
+    rw [ih_body (c + 1) (c' + 1) (by omega) hb_body hb.2]
+  | fix ann body ih_ann ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at hb
+    simp only [shiftL, closeAllAt]
+    have hb_ann : c + d + d' + ann.depth ≤ levelOffset := by
+      have : (Expr.fix ann body).depth = Nat.max ann.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : ann.depth ≤ Nat.max ann.depth body.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    have hb_body : (c + 1) + d + d' + body.depth ≤ levelOffset := by
+      have : (Expr.fix ann body).depth = Nat.max ann.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : body.depth ≤ Nat.max ann.depth body.depth := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    rw [ih_ann c c' hcle hb_ann hb.1]
+    rw [show c + d' + 1 = (c + 1) + d' from by omega]
+    rw [ih_body (c + 1) (c' + 1) (by omega) hb_body hb.2]
+  | letE val body ih_val ih_body =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at hb
+    simp only [shiftL, closeAllAt]
+    have hb_val : c + d + d' + val.depth ≤ levelOffset := by
+      have : (Expr.letE val body).depth = Nat.max val.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : val.depth ≤ Nat.max val.depth body.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    have hb_body : (c + 1) + d + d' + body.depth ≤ levelOffset := by
+      have : (Expr.letE val body).depth = Nat.max val.depth body.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : body.depth ≤ Nat.max val.depth body.depth := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    rw [ih_val c c' hcle hb_val hb.1]
+    rw [show c + d' + 1 = (c + 1) + d' from by omega]
+    rw [ih_body (c + 1) (c' + 1) (by omega) hb_body hb.2]
+  | app f a ih_f ih_a =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at hb
+    simp only [shiftL, closeAllAt]
+    have hb_f : c + d + d' + f.depth ≤ levelOffset := by
+      have : (Expr.app f a).depth = Nat.max f.depth a.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : f.depth ≤ Nat.max f.depth a.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    have hb_a : c + d + d' + a.depth ≤ levelOffset := by
+      have : (Expr.app f a).depth = Nat.max f.depth a.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : a.depth ≤ Nat.max f.depth a.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    rw [ih_f c c' hcle hb_f hb.1, ih_a c c' hcle hb_a hb.2]
+  | asc t ty ih_t ih_y =>
+    simp only [Expr.bvarLTOrLvl, Bool.and_eq_true] at hb
+    simp only [shiftL, closeAllAt]
+    have hb_t : c + d + d' + t.depth ≤ levelOffset := by
+      have : (Expr.asc t ty).depth = Nat.max t.depth ty.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : t.depth ≤ Nat.max t.depth ty.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    have hb_y : c + d + d' + ty.depth ≤ levelOffset := by
+      have : (Expr.asc t ty).depth = Nat.max t.depth ty.depth + 1 := rfl
+      rw [this] at hbnd_d
+      have hmax : ty.depth ≤ Nat.max t.depth ty.depth + 1 := by
+        simp [Nat.max_def]; split <;> omega
+      omega
+    rw [ih_t c c' hcle hb_t hb.1, ih_y c c' hcle hb_y hb.2]
 
 /-- `closeAllAt` commutes with `substL` at the binder-counter
     position.  The substitutee `s` is translated by `closeAllAt c d`
