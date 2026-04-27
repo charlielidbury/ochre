@@ -80,8 +80,16 @@ private def lhsA : Expr := och{ add_ (succ_ predv) n2v }
 /-- RHS: `succ_ (add_ pred n2)`. -/
 private def rhsA : Expr := och{ succ_ (add_ predv n2v) }
 
-example : (evalSubst 200 SubstEval.unfBound lhsA).isOk := by native_decide
-example : (evalSubst 200 SubstEval.unfBound rhsA).isOk := by native_decide
+-- evalSubst terminates and is HNF-idempotent on both sides
+-- (feeding the result back in is a no-op).
+example :
+    (match evalSubst 200 SubstEval.unfBound lhsA with
+     | .ok h => evalSubst 200 SubstEval.unfBound h == .ok h
+     | _ => false) = true := by native_decide
+example :
+    (match evalSubst 200 SubstEval.unfBound rhsA with
+     | .ok h => evalSubst 200 SubstEval.unfBound h == .ok h
+     | _ => false) = true := by native_decide
 
 example : SubstEval.subCheckOpen 200 tyCtx lhsA rhsA = .ok true := by
   native_decide
@@ -204,7 +212,16 @@ the bidirectional walk asks "does loose-`Type` ⊑ precise-`T`?",
 which is structurally false. Inlining the eliminator restores
 precision because the motive carries the precise type. -/
 
-example : (Och.synth Std.appendArrays 200).isOk := by native_decide
-example : (Och.synth Std.appendVec 200).isOk := by native_decide
+-- synth-validation succeeds, and the resulting WTValue is
+-- reflexively a subtype of itself (sanity-check that the synth
+-- output passes the public subCheck surface).
+example :
+    (match Och.synth Std.appendArrays 200 with
+     | .ok v => Och.subCheck v v 200 == .ok true
+     | _ => false) = true := by native_decide
+example :
+    (match Och.synth Std.appendVec 200 with
+     | .ok v => Och.subCheck v v 200 == .ok true
+     | _ => false) = true := by native_decide
 
 end Och.AppendVecPath

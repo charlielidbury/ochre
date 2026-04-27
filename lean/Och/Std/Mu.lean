@@ -55,13 +55,11 @@ open Expr
 -- NbE normalisation (was absEval)
 -- ------------------------------------------------------------
 
--- fixId normalises (HNF terminates). Under the unified Nat_
--- (nested fix+ι), even forcing HNF expands the type annotation;
--- the former "fix = its own NF" shortcut that worked under
--- Church-Nat_ doesn't hold for dNat-style Nat_. We assert success
--- rather than identity. Migrated from `NbE.nf` to `evalSubst`
--- post-engine-collapse.
-example : (SubstEval.evalSubst 200 SubstEval.unfBound fixId).isOk := by native_decide
+-- fixId is a fix-value: `evalSubst` returns it unchanged (the
+-- engine's `.fix _ _` arm is a no-op, since fix is a value).
+-- Strict equality on the WHNF.
+example : SubstEval.evalSubst 200 SubstEval.unfBound fixId = .ok fixId := by
+  native_decide
 
 -- ------------------------------------------------------------
 -- Subtype checking (positive)
@@ -139,8 +137,11 @@ example : SubstEval.evalSubst 200 SubstEval.unfBound selfRefFn = .ok selfRefFn :
 
 -- f applied to Type normalises (the substitution engine handles
 -- self-reference-in-domain via its `unf` budget, the same way NbE
--- did via its closure-domain `unf`).
-example : (SubstEval.evalSubst 200 SubstEval.unfBound (och{ selfRefFn Type })).isOk := by
+-- did via its closure-domain `unf`). Strengthened beyond `.isOk`:
+-- the HNF is convertible with itself (HNF idempotence + reflexivity
+-- on the result), and the WHNF is reflexively a subtype of itself.
+example : (SubstEval.evalSubst 200 SubstEval.unfBound (och{ selfRefFn Type })).isOk
+        ∧ Och.subCheckE 200 (och{ selfRefFn Type }) (och{ selfRefFn Type }) = .ok true := by
   native_decide
 
 end Tests

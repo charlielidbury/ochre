@@ -110,7 +110,11 @@ section AppendVecTests
 -- inline eliminators on `arr` instead of `fst_`/`snd_` (precision
 -- loss at the loose `Pair Type Type → Type` Std-level boundary
 -- was the bail; see `docs/ideas/appendvec-investigation.md`).
-example : (Och.synth Std.appendVec 200).isOk := by native_decide
+-- synth validates, and the WTValue is reflexive under subCheck.
+example :
+    (match Och.synth Std.appendVec 200 with
+     | .ok v => Och.subCheck v v 200 == .ok true
+     | _ => false) = true := by native_decide
 
 -- appendVec_wrong has a deliberate bug: the inner `appendArrays`
 -- call uses `n1` twice instead of `n1, n2`. The bidirectional

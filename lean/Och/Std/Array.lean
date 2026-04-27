@@ -148,7 +148,11 @@ def appendArrays := och{
 
 section AppendArraysTests
 
-example : (Och.synth Std.appendArrays 100).isOk := by native_decide
+-- synth validates, and the WTValue is reflexive under subCheck.
+example :
+    (match Och.synth Std.appendArrays 100 with
+     | .ok v => Och.subCheck v v 100 == .ok true
+     | _ => false) = true := by native_decide
 
 private def app_arr1 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
