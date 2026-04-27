@@ -12,3 +12,6 @@ lean_lib «Och» where
 
 lean_exe «eval_bench» where
   root := `Och.EvalBench
+
+lean_exe «fastpath_bench» where
+  root := `Och.FastPathBench
