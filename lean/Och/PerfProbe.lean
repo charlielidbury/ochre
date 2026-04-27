@@ -1,6 +1,7 @@
 import Och.Macro
 import Och.SubCheckVal
 import Och.TyCheck
+import Och.EvalSubst
 import Och.Std.Vec
 import Och.Std.Array
 import Och.Eval
@@ -105,7 +106,7 @@ open Std
 -- under the `n1`/`n2` binders). Found independently by the
 -- perf and retire-subchecknf forks; pinned here so any
 -- future `domB` re-enabling or RHS-ascent flips it visibly.
-example : NbE.subCheck 5000 appendArrays
+example : SubstEval.subCheck 5000 appendArrays
     (och{ λT:Type. λn1:Nat_. λn2:Nat_.
          Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
   = .ok false := by native_decide
