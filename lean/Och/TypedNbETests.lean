@@ -1,4 +1,5 @@
 import Och.TypedNbE
+import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Bool
 import Och.Std.DBool
@@ -10,7 +11,7 @@ import Och.Std.DFin
 # Tests for the typed-NbE pipeline (`subCheckT` / `subCheckTyped`)
 
 This file mirrors the smoke tests in `Std/*` and `Tests.lean` but
-runs them through the *typed* entry point `NbE.subCheckT`. The
+runs them through the *typed* entry point `SubstEval.subCheckT`. The
 goal is twofold:
 
 1. Confirm `subCheckT` is at least as permissive as `subCheck` on
@@ -30,23 +31,23 @@ open Std
 
 /-! ## Baseline: simple types -/
 
-example : NbE.subCheckT 50 .type .type = .ok true := by native_decide
-example : NbE.subCheckT 50 Nat_ .type = .ok true := by native_decide
-example : NbE.subCheckT 50 .type Nat_ = .ok false := by native_decide
+example : SubstEval.subCheckT 50 .type .type = .ok true := by native_decide
+example : SubstEval.subCheckT 50 Nat_ .type = .ok true := by native_decide
+example : SubstEval.subCheckT 50 .type Nat_ = .ok false := by native_decide
 
 /-! ## DBool — tight singleton encoding -/
 
-example : NbE.subCheckT 200 dtrue dBool = .ok true := by native_decide
-example : NbE.subCheckT 200 dfalse dBool = .ok true := by native_decide
-example : NbE.subCheckT 200 dtrue dfalse = .ok false := by native_decide
-example : NbE.subCheckT 200 dBool dtrue = .ok false := by native_decide
+example : SubstEval.subCheckT 200 dtrue dBool = .ok true := by native_decide
+example : SubstEval.subCheckT 200 dfalse dBool = .ok true := by native_decide
+example : SubstEval.subCheckT 200 dtrue dfalse = .ok false := by native_decide
+example : SubstEval.subCheckT 200 dBool dtrue = .ok false := by native_decide
 
 /-! ## Church Bool -/
 
-example : NbE.subCheckT 50 true_ Bool = .ok true := by native_decide
-example : NbE.subCheckT 50 false_ Bool = .ok true := by native_decide
-example : NbE.subCheckT 50 not' (och{ Bool → Bool }) = .ok true := by native_decide
-example : NbE.subCheckT 50 Bool true_ = .ok false := by native_decide
+example : SubstEval.subCheckT 50 true_ Bool = .ok true := by native_decide
+example : SubstEval.subCheckT 50 false_ Bool = .ok true := by native_decide
+example : SubstEval.subCheckT 50 not' (och{ Bool → Bool }) = .ok true := by native_decide
+example : SubstEval.subCheckT 50 Bool true_ = .ok false := by native_decide
 
 /-! ## DNat — the singleton-Nat encoding
 
@@ -57,12 +58,12 @@ Under `subCheckT`, the fast-path looks up `tyInfer three_` and
 checks the *type* against `Nat_`.
 -/
 
-example : NbE.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 200 one_ Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 800 two_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 zero_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 200 one_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 800 two_ Nat_ = .ok true := by native_decide
 -- The benchmark case: three_ ⊑ Nat_. Pinning at fuel 800 (matching two_)
 -- under the typed pipeline; under bare subCheck this needs ~50k.
-example : NbE.subCheckT 800 three_ Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 800 three_ Nat_ = .ok true := by native_decide
 
 /-- `five_ ⊑ Nat_` — the perf-regression sentinel from PerfProbe.lean
 that does not close under bare `subCheck` at any tested fuel
@@ -75,12 +76,12 @@ domain check on `m` becomes `subCheckVal Nat_ Nat_` = refl.
 If this passes at low fuel, that's the headline pass-2 win. -/
 def four_local := och{ succ_ three_ }
 def five_local := och{ succ_ four_local }
-example : NbE.subCheckT 800 four_local Nat_ = .ok true := by native_decide
-example : NbE.subCheckT 800 five_local Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 800 four_local Nat_ = .ok true := by native_decide
+example : SubstEval.subCheckT 800 five_local Nat_ = .ok true := by native_decide
 
 -- Negatives still fail correctly.
-example : NbE.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
-example : NbE.subCheckT 200 zero_ one_ = .ok false := by native_decide
+example : SubstEval.subCheckT 200 Nat_ zero_ = .ok false := by native_decide
+example : SubstEval.subCheckT 200 zero_ one_ = .ok false := by native_decide
 
 /-! ## DFin — the regressed cases
 
@@ -88,9 +89,9 @@ Several `Fin n` checks were commented out in `Std/DFin.lean`
 because `subCheck` couldn't close them at any tractable fuel.
 Try them here. Each one that passes is a concrete win. -/
 
-example : NbE.subCheckT 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
-example : NbE.subCheckT 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
-example : NbE.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
+example : SubstEval.subCheckT 2000 zero_ (och{ Fin one_ })    = .ok true := by native_decide
+example : SubstEval.subCheckT 4000 one_  (och{ Fin two_ })    = .ok true := by native_decide
+example : SubstEval.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_decide
 
 -- Try the previously-commented-out cases under the typed pipeline.
 -- 2026-04-24: at fuel 16000 the test runs longer than the 10-min
@@ -101,13 +102,13 @@ example : NbE.subCheckT 8000 one_  (och{ Fin three_ })  = .ok true := by native_
 -- expensive value-level check as without typed NbE. Pass 3 work
 -- (threading inferred types into singleton-aware tyEval) is needed
 -- to win this case.
--- example : NbE.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
--- example : NbE.subCheckT 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
--- example : NbE.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
+-- example : SubstEval.subCheckT 16000 two_ (och{ Fin three_ }) = .ok true := by native_decide
+-- example : SubstEval.subCheckT 16000 two_  (och{ Fin two_ })   = .ok false := by native_decide
+-- example : SubstEval.subCheckT 16000 three_ (och{ Fin two_ }) = .ok false := by native_decide
 
 /-! ## Pair / parametric -/
 
-example : NbE.subCheckT 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
+example : SubstEval.subCheckT 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
   = .ok true := by native_decide
 
 end NbE.TypedTests
