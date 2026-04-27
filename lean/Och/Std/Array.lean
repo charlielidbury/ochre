@@ -143,6 +143,8 @@ def appendArrays := och{
 
 section AppendArraysTests
 
+example : (Och.synth Std.appendArrays 100).isOk := by native_decide
+
 private def app_arr1 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
 }
