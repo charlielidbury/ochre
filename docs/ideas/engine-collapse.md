@@ -57,20 +57,32 @@ above the engine.
 
 ## Current state (as of 2026-04-27)
 
+Action vocabulary used below:
+
+- **keep** — file stays as-is or with minor adjustments.
+- **sorry-preserve** — file stays; theorem bodies become `sorry`,
+  but theorem *statements* are kept verbatim as scaffolds for
+  future re-proving.
+- **delete** — file removed from the working tree on this branch.
+  Git history preserves the contents — a future re-prover can
+  `git show` the deleted file or revert specific declarations.
+  No "live but unused" middle state; if it's not earning its keep
+  in the new pipeline, it goes.
+
 | File | Status | Action |
 |---|---|---|
-| `EvalSubst.lean` | live, primary | keep, becomes the engine |
-| `Eval.lean` (concEval) | live, used in soundness chain | keep |
-| `NbE.lean` (env-eval, `Val`/`Closure`/`quote`) | partial-dead | shelve |
-| `SubCheckVal.lean` (env-NbE structural) | live but redundant | shelve after migration |
-| `TyCheck.lean` (typeCheck) | live, fast-path | refactor into `~>` |
-| `TypedNbE.lean` | partial — runtime fast-path live, RC/FL substrate dead | split + shelve dead half |
-| `Subtyping.lean` (Subtype' declarative) | proof-only | keep |
-| `SoundnessProof.lean` (~6K LOC, 4 sorries) | proof depends on env-NbE | sorry bodies, preserve theorem statements |
-| `Soundness.lean` (top-level statements) | thin | adapt statements |
-| `SoundnessAudit.lean` | algorithmic pins | migrate to public API |
-| `MemoRefs.lean` | dead (0% benefit) | delete |
-| `Simple/` | separate project | leave alone |
+| `EvalSubst.lean` | live, primary | **keep** — becomes the engine |
+| `Eval.lean` (concEval) | live, used in soundness chain | **keep** (pending decision in Open Questions) |
+| `NbE.lean` (env-eval, `Val`/`Closure`/`quote`) | redundant after substrate decision | **delete** in Phase D |
+| `SubCheckVal.lean` (env-NbE structural) | redundant after caller migration | **delete** in Phase D |
+| `TyCheck.lean` (typeCheck) | live, fast-path | **keep** — refactor into `~>` |
+| `TypedNbE.lean` | partial — runtime fast-path live, RC/FL substrate dead | **split**: keep the runtime fast-path (if it survives the unified pipeline), **delete** the RC/FL proof substrate half |
+| `Subtyping.lean` (Subtype' declarative) | proof-only | **keep** |
+| `SoundnessProof.lean` (~6K LOC, 4 sorries) | proof depends on env-NbE | **sorry-preserve** (Phase A) |
+| `Soundness.lean` (top-level statements) | thin | **sorry-preserve** with statements adapted to public API |
+| `SoundnessAudit.lean` | algorithmic pins | **keep**; migrate pins to public API (Phase E) |
+| `MemoRefs.lean` | dead (0% benefit, already disabled) | **delete** in Phase D |
+| `Simple/` | separate project | **keep**, untouched |
 
 Branch state: 3 commits on `och-refactor` (lam-lam domB flip, test
 pathway cleanup, Bool permissive constructors). Build passes.
@@ -92,7 +104,13 @@ Steps:
    should be visible).
 3. Same treatment for `TypedNbE.lean`'s soundness substrate (RC,
    subtype_closed_aux, typed_nbe_fundamental_open, etc. — the dead
-   half identified earlier). Preserve theorem statements.
+   half identified earlier). Note: this half is **deleted** in
+   Phase D, not sorry-preserved. The proof attempt was found
+   structurally infeasible (passes 14-17); preserving its
+   statements is misleading because they refer to RC, which itself
+   is being deleted. The honest scaffolds for future re-proving
+   live in `Soundness.lean` / `SoundnessProof.lean` (sorry-preserved)
+   and the `docs/ideas/typed-nbe.md` retrospective.
 4. Update `Soundness.lean`'s top-level statements to phrase them
    against `EvalSubst.subCheckT` rather than `NbE.subCheck` where
    needed.
