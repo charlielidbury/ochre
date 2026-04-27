@@ -1,7 +1,10 @@
 # AppendVec investigation — why `Och.synth appendVec` fails
 
-**Status**: investigation complete (2026-04-27). No fix shipped;
-diagnostic test corpus pinned in `lean/Och/AppendVecPath.lean`.
+**Status**: investigation complete (2026-04-27); program-level fix
+shipped (`Std.appendArrays`'s succ branch rewritten to use inline
+eliminators on `arr`). `Och.synth Std.appendArrays` and
+`Och.synth Std.appendVec` now both succeed. Diagnostic test corpus
+is pinned in `lean/Och/AppendVecPath.lean`.
 
 ## Question
 
@@ -78,21 +81,31 @@ projections, write the eliminator inline").
 than inline projections, and so the bidirectional check on
 appendVec hits a precision-mismatch wall.
 
-## Fixes considered, none shipped
+## Fixes considered
 
-### Program-level: inline projections
+### Program-level: inline projections **— shipped**
 
 Rewrite `appendArrays`'s succ branch as
 `pair_ T (Array_ (add_ pred n2) T) (arr T (λa:T. λb:(Array_ pred T). a)) (self T pred n2 (arr (Array_ pred T) (λa:T. λb:(Array_ pred T). b)) arr2)`.
 
-This restores type precision and would let synth close. It was not
-applied because:
+This restores type precision (the inline motive carries the precise
+element type, instead of `fst_` / `snd_`'s loose
+`Pair Type Type → Type` ascent). **Empirically confirmed**: with
+this rewrite,
 
-- It mutates `Std.appendArrays`'s body, which is referenced by other
-  pinned tests (`Std/Vec.lean`'s vecResult chain).
-- The same precision loss exists in any other Std consumer that uses
-  `fst_`/`snd_` on a typed Pair — fixing one consumer doesn't fix the
-  pattern.
+  - `Och.synth Std.appendArrays` returns `.ok` (was `.error`),
+  - `Och.synth Std.appendVec` returns `.ok` (was `.error`).
+
+Other Std tests are unaffected. The `appendArrays` body is the
+only Std site using `fst_`/`snd_` in a precision-sensitive
+position; concrete tests like `Std/Vec.lean`'s `vecResult` chain
+go through the rewritten body via `concEval` (operational), which
+is unchanged because `fst_ p` and `p T (λa b. a)` β-reduce to the
+same value when `p` is concrete.
+
+Pinned: `Och.AppendVecPath` Stage E now asserts
+`(Och.synth Std.appendVec).isOk`; `Std/Vec.lean` re-enables the
+previously-bench-only `synth appendVec` pin.
 
 ### Synth-level: β-spine fast-path
 
@@ -126,20 +139,24 @@ extension breaks soundness. Out of scope.
 The `synth + subCheck` API is structurally fine for forms whose
 type-precision survives the bidirectional walk. The `appendVec`
 case was the canonical one we couldn't pin pre-refactor (commented
-out at `Std/Vec.lean` line 112), and we now have a precise
-explanation: the program uses `fst_`/`snd_` whose declared types
-lose precision, and the bidirectional walk asks correctly-false
-questions as a consequence.
+out at `Std/Vec.lean` line 112). With `appendArrays`'s succ-branch
+rewritten to use inline eliminators on `arr`, both
+`synth Std.appendArrays` and `synth Std.appendVec` now succeed at
+fuel 5000.
 
-To make `appendVec` typecheck through `synth`, either:
+`fst_`/`snd_` remain available in `Std/Pair.lean` for ergonomic
+non-precision-sensitive use; the rule of thumb is the one already
+in their docstring: "fst_ p : Type, not : A. For precise
+projections, write the eliminator inline." Going forward, any new
+Std consumer that needs precise dependent-type projections should
+inline.
 
-  1. Rewrite Std consumers to use inline eliminators where
-     precision matters.
-  2. Extend the declarative spec with a sound RHS-ascent rule
+Alternative routes not pursued:
+
+  1. Extend the declarative spec with a sound RHS-ascent rule
      (likely as a `letE`-style binder elaboration rather than a
-     subtyping rule), and update `Subtype'` accordingly.
-
-Both are out of scope for the engine-collapse refactor.
+     subtyping rule), and update `Subtype'` accordingly. Out of
+     scope for the engine-collapse refactor.
 
 ## Test corpus
 
@@ -152,6 +169,7 @@ Both are out of scope for the engine-collapse refactor.
     version of synth's failing question. This pin is the
     well-typedness fact: the question synth asks is genuinely false
     by structural rules.
-  - Stage E: `native_decide` `(Och.synth Std.appendVec).isError` —
-    pinning the current behaviour so a future fix shows up as a
-    test regression on this file.
+  - Stage E: `native_decide` `(Och.synth Std.appendArrays).isOk`
+    *and* `(Och.synth Std.appendVec).isOk` — the program-level
+    fix made these go green. Re-flipping these pins to `.isError`
+    is the canary that the precision-loss issue has crept back in.

@@ -106,11 +106,11 @@ private def appendVec_wrong := och{
 section AppendVecTests
 
 -- appendVec : Vec T → Vec T → Vec T
--- Originally pinned at fuel 5000 via subCheckT (which used the
--- typeCheck fast-path). The structural subCheck path needs more
--- fuel and doesn't close at 5000; bench-only after engine-collapse.
--- example : Och.subCheckE 5000 appendVec (och{ λT:Type. Vec T → Vec T → Vec T })
---   = .ok true := by native_decide
+-- Re-enabled after rewriting `appendArrays`'s succ-branch to use
+-- inline eliminators on `arr` instead of `fst_`/`snd_` (precision
+-- loss at the loose `Pair Type Type → Type` Std-level boundary
+-- was the bail; see `docs/ideas/appendvec-investigation.md`).
+example : (Och.synth Std.appendVec 5000).isOk := by native_decide
 
 -- appendVec_wrong has a deliberate bug: the inner `appendArrays`
 -- call uses `n1` twice instead of `n1, n2`. The bidirectional

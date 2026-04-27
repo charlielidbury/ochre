@@ -136,7 +136,8 @@ def appendArrays := och{
         (λarr:(Array_ zero_ T). arr2)
         (λpred:Nat_. λarr:(Array_ (succ_ pred) T).
           pair_ T (Array_ (add_ pred n2) T)
-            (fst_ arr) (self T pred n2 (snd_ arr) arr2))
+            (arr T (λa:T. λb:(Array_ pred T). a))
+            (self T pred n2 (arr (Array_ pred T) (λa:T. λb:(Array_ pred T). b)) arr2))
         arr1
 }
 
