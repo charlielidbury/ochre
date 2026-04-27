@@ -8,6 +8,7 @@ import Och.TyCheck
 import Och.API
 import Och.Subtyping
 import Och.Soundness
+import Och.Soundness.EvalSubstLemmas
 
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit
