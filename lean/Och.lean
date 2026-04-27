@@ -5,6 +5,7 @@ import Och.Outcome
 import Och.Eval
 import Och.EvalSubst
 import Och.TyCheck
+import Och.API
 import Och.Subtyping
 import Och.Soundness
 
