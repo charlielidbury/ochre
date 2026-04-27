@@ -99,13 +99,15 @@ open Std
 -- Nat_` does close (~13 ms; see eval-subst-vs-env-benchmark.md).
 -- example : NbE.subCheck 6400 five_ Nat_ = .ok true := by native_decide
 
--- `appendArrays` at its declared type: an A6-family
--- incompleteness (`domA` push gives the wrong ascent type
--- under the `n1`/`n2` binders). Found independently by the
--- perf and retire-subchecknf forks; pinned here so any
--- future `domB` re-enabling or RHS-ascent flips it visibly.
+-- `appendArrays` at its declared type: previously an A6-family
+-- incompleteness (`domA` push gave the wrong ascent type under
+-- the `n1`/`n2` binders), pinned as `.ok false`. Resolved by
+-- the engine's neutral-LHS short-circuit in `subCheckSubstMatch`'s
+-- `_, .fix` arm + `synthNeutralType`'s `exposePi` Π-unfolding
+-- through fix/iota wrappers (engine-collapse final pass
+-- 2026-04-27). The check now closes positively.
 example : SubstEval.subCheck 5000 appendArrays
     (och{ λT:Type. λn1:Nat_. λn2:Nat_.
          Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
-  = .ok false := by native_decide
+  = .ok true := by native_decide
 end Regression

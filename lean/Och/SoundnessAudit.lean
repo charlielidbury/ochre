@@ -134,26 +134,15 @@ theorem a3_subCheckBlind :
     SubstEval.subCheck 200 illTyped Bool = .ok true := by
   native_decide
 
-/-- The bidirectional walk in `TyCheck.tyInfer` rejects
-`illTyped` at the outer β-fast-path domain check (Bool ⊄ Nat_).
-`Och.synth` runs `tyInfer` for diagnostics but currently does
-*not* propagate its `.error` outcomes into a final rejection —
-`tyInfer` is incomplete on much of Std (see `Och.API` module
-doc), so propagating its errors would block valid programs
-(`succ_`, `appendVec`, ...). This pin records that `tyInfer`
-catches the A3 case structurally; `synth` itself accepts (the
-fallback runs). -/
-theorem a3_tyInferCatches :
-    (TyCheck.tyInfer 200 #[] illTyped).isError = true := by
-  native_decide
-
-/-- The corresponding hole at the public API surface: `synth`
-currently *accepts* `illTyped` because of the `tyInfer`-error
-fallback. Closing this hole is future work — the bidirectional
-incompleteness must first be fixed so `tyInfer`'s `.error`
-outcomes can be trusted. -/
-theorem a3_synthHoleOpen :
-    (Och.synth illTyped 200).isOk = true := by
+/-- The public API `Och.synth` rejects `illTyped` at its `.app`
+arm: when synthesising the inner application `(λn:Nat_. n) Bool`,
+the structural walk computes the lambda's domain as `Nat_` and
+checks `Bool ⊑ Nat_` via `subCheckOpen`, which fails. The walk
+returns `.error`, so the public API correctly refuses to construct
+a `WTValue`. The A3 hole (which previously left the public surface
+permissive) is closed. -/
+theorem a3_synthRejects :
+    (Och.synth illTyped 200).isOk = false := by
   native_decide
 
 /-!

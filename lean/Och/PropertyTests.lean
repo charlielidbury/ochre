@@ -43,21 +43,24 @@ section OpenContext
 private def Γ₂ : Array Expr := #[Nat_, och{Nat_ → Nat_}]
 
 -- (1a) Neutral ascent: `level 0 : Nat_`, so `level 0 ⊑ Nat_`.
--- Under the dependent Nat_ encoding, neutral-ascent through
--- nested-fix Nat_ doesn't always close at any tested fuel. Pinned
--- as `.ok false` here to keep the test reflecting current behaviour
--- of the substitution engine (mirroring the long-standing NbE pin).
-example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Nat_ = .ok false := by
+-- Closes via the engine's neutral-LHS short-circuit in the
+-- `_, .fix` arm: when LHS is a neutral whose ascended type IS
+-- the RHS structurally, accept immediately rather than fall into
+-- the unfold-RHS path (which produces a value the post-unfold
+-- dispatch can't always reconcile against the original neutral).
+example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Nat_ = .ok true := by
   native_decide
 
 -- (1b) Function-type ascent: `level 1 : Nat_ → Nat_` does close.
 example : subCheckOpen 200 Γ₂ (freshLevelVar 1) (och{Nat_ → Nat_}) = .ok true := by
   native_decide
 
--- (1c) Neutral-app ascent: `(level 1) (level 0) ⊑ Nat_`. Same
--- nested-fix Nat_ regression as (1a).
+-- (1c) Neutral-app ascent: `(level 1) (level 0) ⊑ Nat_`. Closes
+-- the same way as (1a) — the LHS app's ascended type is `Nat_`
+-- (apply `Nat_ → Nat_` to anything ⊑ Nat_), which the
+-- `_, .fix`-arm short-circuit recognizes structurally.
 example : subCheckOpen 200 Γ₂ (.app (freshLevelVar 1) (freshLevelVar 0)) Nat_
-        = .ok false := by native_decide
+        = .ok true := by native_decide
 
 -- (1d) Cross-ascent failure: `level 0 : Nat_`, NOT `Unit_`.
 example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Unit_ = .ok false := by
