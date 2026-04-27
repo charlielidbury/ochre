@@ -370,7 +370,77 @@ theorem beta_pairs_compute_equal :
 
 end BetaAgreement
 
-/-! ## 8. Antisymmetry on the `strictPairs` corpus
+/-! ## 8. Preservation fragment
+
+The soundness target (per `docs/what-is-och.md`):
+
+  > if `concEval(e) = v` and abstract eval gives type `t`,
+  > then `v ∈ t`
+
+This pins the forward direction on a hand-picked corpus of
+well-typed pairs `(e, τ)`: `e ⊑ τ` and `e ↓ v` implies `v ⊑ τ`.
+Empirical preservation. -/
+
+section Preservation
+
+/-- `(e, τ)` pairs where `e ⊑ τ` is expected to hold. Each is also
+expected to evaluate to a value still in `τ`. -/
+private def typedPairs : List (Expr × Expr) := [
+  -- numerals at Nat_
+  (zero_, Nat_), (one_, Nat_), (two_, Nat_),
+  -- bool constructors at Bool
+  (true_, Std.Bool), (false_, Std.Bool),
+  -- unit
+  (unit_, Unit_),
+  -- types at Type (top)
+  (Nat_, .type), (Std.Bool, .type), (Unit_, .type), (dBool, .type),
+  -- arithmetic / boolean computations
+  (och{ add_ zero_ one_ }, Nat_),
+  (och{ add_ one_ one_ }, Nat_),
+  (och{ pred_ two_ }, Nat_),
+  (och{ isZero_ zero_ }, Std.Bool),
+  (och{ not' true_ }, Std.Bool),
+  (och{ and' true_ false_ }, Std.Bool),
+  -- pair eliminators (via concrete pair)
+  (och{ fst_ (pair_ Nat_ Unit_ zero_ unit_) }, Nat_),
+  -- redex eliminations
+  (och{ (λx:Nat_. x) zero_ }, Nat_)
+]
+
+/-- All typed pairs are accepted by the structural subtype check. -/
+theorem typedPairs_well_typed :
+    typedPairs.all (fun p =>
+      Och.subCheckE 200 p.1 p.2 == .ok true) = true := by
+  native_decide
+
+/-- Concrete preservation: if `e ⊑ τ` and `concEval e = .ok v`,
+then `v ⊑ τ`. The typing relation is preserved by reduction.
+
+This is the single most important soundness fragment: it pins,
+empirically, that the abstract typing is *sound* with respect to
+concrete computation on each pair in the corpus. Subject reduction. -/
+theorem typedPairs_preservation :
+    typedPairs.all (fun p =>
+      match concEval 200 p.1 with
+      | .ok v => Och.subCheckE 200 v p.2 == .ok true
+      | _ => false) = true := by
+  native_decide
+
+/-- And the syntactic `e` and the value `v = concEval e` are
+themselves bidirectionally convertible (concEval doesn't lose
+information at the structural level). -/
+theorem typedPairs_eval_convertible :
+    typedPairs.all (fun p =>
+      match concEval 200 p.1 with
+      | .ok v =>
+          Och.subCheckE 200 p.1 v == .ok true &&
+          Och.subCheckE 200 v p.1 == .ok true
+      | _ => false) = true := by
+  native_decide
+
+end Preservation
+
+/-! ## 9. Antisymmetry on the `strictPairs` corpus
 
 Sweep that strict subtypes really are strict (one direction holds,
 the other doesn't). Mirrors `SoundnessAudit.sweep_strict` but with a
