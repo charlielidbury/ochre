@@ -82,7 +82,7 @@ Returns `Option Expr`: `none` means "no Π exposed" (either the
 body isn't structurally a Π after unfolding, or evaluation
 failed). Callers treat any failure as "no Π" and fall through to
 the next strategy. -/
-def whnfPi (fuel : Nat) (inhab : Expr) (ty : Expr) : Option Expr :=
+private def whnfPi (fuel : Nat) (inhab : Expr) (ty : Expr) : Option Expr :=
   -- Force `ty` to HNF first; then unfold fix/iota wrappers.
   match evalSubst fuel SubstEval.unfBound ty with
   | .ok ty' => go SubstEval.unfBound ty'
@@ -353,8 +353,14 @@ mutual
   termination_by (fuel, 3)
 end
 
-/-- Top-level entry: type-check closed `e` against closed `τ`. -/
-def typeCheck (fuel : Nat) (e τ : Expr) : Outcome Bool := do
+/-- Top-level entry: type-check closed `e` against closed `τ`.
+
+Marked `private` after the engine-collapse refactor — the public
+typing surface is `Och.synth` + `Och.subCheck` (`Och/API.lean`).
+This stays around for `Och.API.synth`'s internal call to
+`tyInfer` (which is part of the same mutual block) and for the
+remaining `tyInfer.isError` audit pins. -/
+private def typeCheck (fuel : Nat) (e τ : Expr) : Outcome Bool := do
   let τV ← evalSubst fuel SubstEval.unfBound τ
   tyCheck fuel #[] e τV
 
