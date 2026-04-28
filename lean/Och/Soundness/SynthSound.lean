@@ -275,7 +275,38 @@ result of `whnfPi`/`neutralType` exposure on the synthesised
 `vF`.  Bridging this back to `(.app f a)` requires showing
 `(.app f a) ⊑ (.app piExpr aV)` modulo evalSubst's β/unfold
 steps — a multi-step `Subtype'.app_cong` + `evalSubst_equiv`
-composition.  Sub-wall. -/
+composition.  Sub-wall.
+
+**Status.** Approached but not closed in this session.  The
+plan is:
+
+  1. Destructure synth's `.app` arm to extract `vF`, `aV`, `fV`,
+     `piExpr` witnesses (~50 LOC, mechanical).
+  2. From IH (when proven inline in `synthCore_sound_aux`):
+     `Subtype' [] [] f vF` and `Subtype' [] [] a _vA`.
+  3. From `evalSubst_equiv` on `f` and `a` (need closedness from
+     the also-walled `synthCore_topLevel_closedAt_WALL`):
+     `Subtype' [] [] f fV ∧ Subtype' [] [] fV f` and similarly
+     for `a`/`aV`.
+  4. **Hard step**: `Subtype' [] [] fV piExpr` — this is whnfPi's
+     unfold chain: each step is either an `unfold_iota_R` /
+     `unfold_fix_R` (declarative) or an `evalSubst` step (which
+     needs equiv).  Requires either a dedicated whnfPi-equiv
+     lemma or in-place unfolding of `whnfPi.go`.
+  5. Compose via `app_cong` + `trans` + `evalSubst_equiv` on
+     `(.app piExpr aV)`.
+
+The destructuring + steps 2, 3, 5 are mechanical (~150 LOC).
+Step 4 (whnfPi-equiv) is the substantive obligation; it would
+be its own ~100 LOC structural induction over `whnfPi.go`.
+
+**Coupling to wall 1.** Step 3 and step 5 both invoke
+`evalSubst_equiv`, which requires `closedAt 0` of its input.  At
+the top level that's the same hypothesis `synthCore_topLevel_
+closedAt_WALL` provides; for the sub-applications (`f`, `a`,
+`(.app piExpr aV)`) closedness propagation needs further
+infrastructure.  Closing wall 2 fully thus depends on wall 1's
+resolution. -/
 private theorem synthCore_app_WALL {n : Nat} {f a v : Expr}
     (_hclF : closedAt 0 f = true)
     (_hclA : closedAt 0 a = true)
