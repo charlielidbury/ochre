@@ -7,6 +7,7 @@ import Och.API
 import Och.Soundness.ConcEvalPreservation
 import Och.Soundness.SynthProgress
 import Och.Soundness.SubCheckSubstSoundness
+import Och.Soundness.SynthSound
 import Och.Std.Unit
 import Och.Std.DBool
 
@@ -79,11 +80,20 @@ intermediate relation `SubV` and an RC predicate substrate; both
 hit structural walls that don't transfer to the substitution
 substrate. Substitution-based proofs build on different lemmas
 (substitution lemmas, not reducibility candidates), so this is
-a fresh proof effort. -/
+a fresh proof effort.
+
+Delegates to `Och.Soundness.Och_synth_sound` in
+`Soundness/SynthSound.lean`, which routes through a single named
+opacity wall (`synthCore_opacity_WALL`) — the privacy + partial
+nature of `synthCore` in `Och/API.lean` blocks structural
+induction on synth's body.  See `Soundness/SynthSound.lean`'s
+module docstring for the proof skeleton and the three paths
+that lift the wall. -/
 theorem synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
-    Subtype' [] [] e v.whnf := sorry
+    Subtype' [] [] e v.whnf :=
+  Och_synth_sound h
 
 /-- Subtype-check soundness: if `Och.subCheck a b` accepts the
 two validated values, then `a.whnf ⊑ b.whnf` declaratively.
@@ -153,15 +163,29 @@ get stuck. Combines `synth_sound`, `subCheck_sound`,
 `synth_progress`, and `concEval_preservation`.
 
 Phrased so that the conclusion is "either out-of-fuel, or a
-typed value" — there is no third "stuck" outcome. -/
+typed value" — there is no third "stuck" outcome.
+
+The composition itself is sorry-free: each of the four pieces
+already routes through its own (potentially walled) proof, and
+`Subtype'.trans` + `concEval_preservation` glue them together.
+The `hsynthB` hypothesis is unused at this composition level —
+it's there so callers can be confident `b.whnf` itself is
+synth-validated (i.e. `b` is not a "smuggled" `WTValue`). -/
 theorem soundness
     {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
     (hcl : e.closedAt 0 = true)
     (hsynthA : Och.synth e fuel = .ok a)
-    (hsynthB : Och.synth b.whnf fuel = .ok b)
+    (_hsynthB : Och.synth b.whnf fuel = .ok b)
     (hcheck : Och.subCheck a b fuel = .ok true)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' b.whnf := sorry
+    Subtype' [] [] e' b.whnf :=
+  -- Chain: e ⊑ a.whnf  (synth_sound)
+  --       ⊑ b.whnf     (subCheck_sound)
+  --     and e ⇒ e'      (concEval), so e' ⊑ b.whnf by preservation.
+  let hSynthA : Subtype' [] [] e a.whnf := synth_sound hsynthA
+  let hCheck : Subtype' [] [] a.whnf b.whnf := subCheck_sound hcheck
+  let hChain : Subtype' [] [] e b.whnf := hSynthA.trans hCheck
+  concEval_preservation hcl hChain hstep
 
 section Witnesses
 open Std

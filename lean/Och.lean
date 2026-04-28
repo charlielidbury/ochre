@@ -15,6 +15,7 @@ import Och.Soundness.SubCheckSubstFallback
 import Och.Soundness.SubtypeSteps
 import Och.Soundness.SynthProgress
 import Och.Soundness.EvalSubstEquiv
+import Och.Soundness.SynthSound
 
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit
