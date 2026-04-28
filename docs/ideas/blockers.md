@@ -66,6 +66,45 @@ closedness invariants to fully close.
 Conditional on walls 2+3 because the fallback arms route through
 those.
 
+## 6. Seen-shrinking wall (iota-iota and fix-fix structural arms)
+
+**Surfaced**: 2026-04-28 (overnight), commit `343788c` (doc), via
+the iota-iota/fix-fix dispatch closure attempt.
+
+**Wall**: see `docs/ideas/tyCtxPush-bridge-wall.md` — extended
+"Iota/fix structural follow-up" section.
+
+The iota-iota and fix-fix engine arms add `(a, b)` to seen for ALL
+recursive sub-calls (structural attempt + fallback).  The dispatch's
+`_ih` thus yields derivations under the EXTENDED seen.  Subtype'
+fallback rules (`iota_intro`, `unfold_fix_R`) are productive (smaller
+S in conclusion than premise), so they thread through.  But the
+structural rule `Subtype'.iota_cong` PRESERVES S (same in premise
+and conclusion), so the dispatch goal — which needs the ORIGINAL
+seen — cannot be reached from the IH's extended seen.
+
+**Affects**: iota-iota and fix-fix structural arms (lam-lam is
+unaffected because lam doesn't extend seen).
+
+**Resolution paths** (per agent `343788c`):
+1. **Engine refactor**: drop seen-extension in iota-iota/fix-fix
+   structural attempt, keeping it for the fallback.  Smallest
+   change; might affect μ-type cycle-detection on fix's
+   structural path.
+2. **Seen-shrinking lemma**: prove
+   `Subtype' (entry :: S) Γ a b → Subtype' S Γ a b` under "entry
+   not used in derivation".  Requires a syntactic non-use
+   predicate over derivations.  Medium effort.
+3. **Derived `iota_cong_with_seen`**: admissibility from
+   `iota_intro` + `unfold_iota_R`.  Research-grade.
+
+**My read**: option 1 is simplest and most likely user-preferred.
+Removing seen-extension from the structural attempt should preserve
+correctness as long as the structural attempt only recurses
+finitely (which it does — `openFresh` + tyCtx grow, so fuel-strict).
+The fallback's seen-extension catches cycles when the structural
+attempt fails.
+
 ## 5. tyCtxPush_bridge_WALL — convention mismatch in arm packages
 
 **Surfaced**: 2026-04-28 (overnight), by lam-lam dispatch arm
