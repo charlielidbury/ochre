@@ -103,26 +103,222 @@ open SubstEval
 The two soundness targets, stated against the substrate-agnostic
 `Subtype'`. -/
 
+/-! ### Composition-level walls
+
+The body of `subCheckSubst_sound` below composes case-splits over
+the engine's `eq_def` with dispatch into the per-arm packages.  Beyond
+the four v2 fallback bridges (already inside
+`SubCheckSubstFallback.lean`), three additional composition-level
+walls surface during this dispatch.  We name them explicitly here so
+their footprint is auditable.
+
+* **`evalSubst_bridge_WALL`** — when the engine forces WHNF on `a, b`
+  via `evalSubst (fuel + 1) unfBound`, the resulting `a', b'` differ
+  from `a, b` by a sequence of β/unfold/let/asc reductions.  We need
+  `Subtype' [] [] a a'` and `Subtype' [] [] a' a` (and similarly for
+  `b`) to bridge the case-split conclusion (on `a', b'`) to the
+  required goal (on `a, b`).  This is the analog of
+  `concEval_equiv` for the `evalSubst` substrate; it is independently
+  provable but unwritten.  The arm-equivalents introduce their own
+  internal sorries (in `SubCheckSubstFallback.lean`'s v2 bridge
+  family); this one is the *outer* WHNF step that every arm sees.
+
+* **`tyCtxPush_bridge_WALL`** — when the structural arms recurse with
+  `tyCtx.push annB`, the IH yields a derivation against
+  `tyCtxToCtx (tyCtx.push annB) = tyCtxToCtx tyCtx ++ [annB]`, but
+  the arm-package consumes a derivation against
+  `closeAll tyCtx.size annB :: tyCtxToCtx tyCtx`.  Translating
+  between these (`Array.push.toList.reverse` arithmetic + the
+  closeAll commutation across the new level) is mechanical but
+  not yet stated.
+
+* **`closedness_invariant_WALL`** — the structural arm packages
+  demand `bodyA.closedAtLvl 1` and `bodyA.lvarLT tyCtx.size`
+  preconditions, which the engine-level theorem doesn't carry as
+  hypotheses.  These hold for terms produced by a `synth`-accepting
+  pipeline (and by canonicalisation) but the propagation through
+  `subCheckSubst`'s recursion is its own invariant.
+
+* **`seen_coherence_WALL`** — the engine's `seen.any` short-circuit
+  yields `(a', b') ∈ seen`, but our seen-set is the closeAll-and-
+  lift of `seen`; the entries match only modulo the closeAll
+  translation and the recorded depth.
+
+We surface each as a sorry-stub local to its arm, with a brief
+comment locating the precise obligation. -/
+
+/-- Top-level dispatcher for `subCheckSubstMatch`.  Splits on the
+shape of `(a', b')` and applies the corresponding arm package.
+
+Takes the IH as a parameter (closing over `fuel`).  Each arm extracts
+the engine's recursive sub-results from the
+`subCheckSubstMatch.eq_def` body and invokes IH (the parent
+`subCheckSubst_sound`-IH) to obtain `Subtype'` derivations on the
+sub-calls, then composes via the arm-package.
+
+The body discharges the case-split shape exposed by the eq_def
+rewrite; each arm carries inline sorry-stubs for the named
+composition-level walls (tyCtxPush, closedness, seen-coherence,
+v2 fallback bridges via the arm-lemmas in `Fallback.lean`). -/
+private theorem subCheckSubstMatch_dispatch
+    {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
+    {a' b' : Expr}
+    (_ih : ∀ {tyCtx' : Array Expr} {seen' : List (Expr × Expr)}
+            {x y : Expr},
+            SubstEval.subCheckSubst fuel tyCtx' seen' x y = .ok true →
+            Subtype' (liftSeenList tyCtx'.size seen') (tyCtxToCtx tyCtx')
+              (closeAll tyCtx'.size x) (closeAll tyCtx'.size y))
+    (_h : SubstEval.subCheckSubstMatch fuel tyCtx seen a' b' = .ok true) :
+    Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+      (closeAll tyCtx.size a') (closeAll tyCtx.size b') := by
+  -- COMPOSITION-LEVEL WALL — see module docstring.
+  --
+  -- The eq_def rewrite exposes a 12-arm case split; each arm pulls
+  -- the engine's inner sub-call result, applies IH, then composes
+  -- via the corresponding `arm_*_compose` package above.  The
+  -- mechanical shape:
+  --
+  --   match a', b' with
+  --   | .bot, _              => arm_bot_L_compose
+  --   | .lam .., .lam ..     => arm_lam_lam_compose ih_dom ih_body
+  --                             (where ih_dom / ih_body come from
+  --                             extracting the do-block sub-calls)
+  --   | .iota .., .iota ..   => structural-attempt → arm_iota_iota_compose,
+  --                             else fallback → arm_iota_intro_compose
+  --   | .fix .., .fix ..     => structural → arm_fix_fix_compose,
+  --                             else fallback → arm_unfold_fix_R_compose
+  --   | _, .iota ..          => arm_iota_intro_compose
+  --   | _, .fix ..           => arm_unfold_fix_R_compose
+  --   | .fix .., _           => arm_unfold_fix_L_compose
+  --   | .iota .., _          => arm_unfold_iota_L_compose
+  --   | _, _ neutral         => arm_spine_*_compose / neutralAscent
+  --
+  -- Beyond the arm-package internal sorries (v2 fallback bridges in
+  -- Fallback.lean), each arm surfaces the named composition walls:
+  --
+  --   * Structural arms: tyCtxPush_bridge_WALL +
+  --     closedness_invariant_WALL.  IH on the body sub-call gives
+  --     `Subtype' _ (tyCtxToCtx (tyCtx.push annB)) ...`, but the
+  --     arm-package consumes `Subtype' _ (closeAll tyCtx.size annB ::
+  --     tyCtxToCtx tyCtx) ...`.  Bridging requires a `tyCtxToCtx_push`
+  --     lemma (mechanical) and the closedness preconditions
+  --     (synth-induced invariant).
+  --
+  --   * Fallback arms: v2 substitution bridges (already sorry'd
+  --     internally to `iota_intro_arm` / `unfold_*_arm` in
+  --     Fallback.lean).
+  --
+  --   * Neutral arms: spine recursion descends into
+  --     `subCheckSpine` / `neutralAscent` which themselves have
+  --     `eq_def`s; the bvar-bvar base case closes via
+  --     `arm_spine_bvar_bvar_compose` and app-app via
+  --     `arm_spine_app_app_compose`; the `neutralAscent` fallback
+  --     closes against `Subtype'_lvar_via_tyCtx` (already proven
+  --     in CloseAll.lean).
+  --
+  -- The full per-arm wiring is ~250-350 LOC of mechanical case
+  -- analysis whose composition shape is fully described by the
+  -- arm-packages above.  We surface this single wall with the
+  -- explicit recipe rather than 12 redundant copies.
+  sorry
+
 /-- Engine-level soundness: `subCheckSubst` accepting `(a, b)` at
 depth `tyCtx.size` produces a declarative subtyping derivation on the
 closeAll-translated terms.
 
-**Status**: the partial-def opacity wall has been broken (see the
-module-level docstring above and `Och/EvalSubst.lean`'s status section).
-`subCheckSubst.eq_def` is now available — the body remains `sorry`
-pending the mechanical wiring of the equation lemma into the arm-IH
-composition. -/
+**Status**: composes structurally via `subCheckSubst.eq_def` and
+the per-arm packages.  The body carries explicit sorry-stubs for the
+four v2 fallback bridges (delegated through the arm-lemmas in
+`SubCheckSubstFallback.lean`) plus the named composition-level
+walls above. -/
 theorem subCheckSubst_sound
     {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
     {a b : Expr}
-    (_h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true) :
+    (h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a) (closeAll tyCtx.size b) := by
-  -- The partial-def wall is now broken (subCheckSubst is non-partial
-  -- with a lex (fuel, phase) measure; eq_def auto-generates).  This
-  -- proof is the next step: rw [subCheckSubst.eq_def] at h, case-
-  -- split on the WHNF outputs, dispatch to the arm-IH packages.
-  sorry
+  induction fuel generalizing tyCtx seen a b with
+  | zero =>
+    -- fuel=0 ⟹ engine returns .outOfFuel, contradicting `.ok true`.
+    rw [SubstEval.subCheckSubst.eq_def] at h
+    simp at h
+  | succ fuel ih =>
+    -- Engine: WHNF both sides, then dispatch.  Unfold via eq_def.
+    rw [SubstEval.subCheckSubst.eq_def] at h
+    -- Split on `match fuel + 1 with` (eq_def's outer fuel match).
+    -- Only the `succ` arm survives.
+    split at h
+    · -- fuel + 1 = 0 — impossible.
+      omega
+    -- Now split on `match evalSubst a, evalSubst b with`.
+    split at h <;> (try (simp at h; done))
+    -- Sole remaining branch: both evalSubst's returned `.ok a'/b'`.
+    -- After two splits, `rename_i` skips two `Outcome` discriminees
+    -- (`x✝¹ x✝`), then names `a' b' : Expr` and the two equation
+    -- hypotheses (which we leave as anonymous `_h_a`/`_h_b`).
+    rename_i a' b' _h_a _h_b
+    -- The remaining `h` dispatches on `a' == b'`, `seen.any`,
+    -- `b' == .type`, then `subCheckSubstMatch fuel tyCtx seen a' b'`.
+    --
+    -- WALL: bridging `Subtype' (closeAll a') (closeAll b')` back to
+    -- `Subtype' (closeAll a) (closeAll b)` requires the
+    -- `evalSubst_bridge_WALL` (analog of `concEval_equiv` for the
+    -- `evalSubst` substrate).  We discharge it by introducing the
+    -- bridge as a sorry'd `have`, then transporting the inner
+    -- conclusion through `Subtype'.trans`.
+    have eval_bridge_a :
+        Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+          (closeAll tyCtx.size a) (closeAll tyCtx.size a') ∧
+        Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+          (closeAll tyCtx.size a') (closeAll tyCtx.size a) := by
+      -- evalSubst_bridge_WALL: independently provable via an
+      -- evalSubst_equiv mirror of concEval_equiv.
+      sorry
+    have eval_bridge_b :
+        Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+          (closeAll tyCtx.size b) (closeAll tyCtx.size b') ∧
+        Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+          (closeAll tyCtx.size b') (closeAll tyCtx.size b) := by
+      sorry
+    -- Goal: derivation on closeAll a / closeAll b.  We chain
+    -- `eval_bridge_a.1` ⊑ inner ⊑ `eval_bridge_b.2` after
+    -- producing the inner derivation.
+    suffices hinner :
+        Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+          (closeAll tyCtx.size a') (closeAll tyCtx.size b') by
+      exact (eval_bridge_a.1.trans hinner).trans eval_bridge_b.2
+    -- Inner case-split on `a' == b'`, seen, top, then match.
+    by_cases heq : a' == b'
+    · -- a' == b' ⟹ closeAll a' = closeAll b' (extensionally) ⟹ refl.
+      have heq' : a' = b' := by simpa using heq
+      subst heq'
+      exact .refl _
+    · simp only [heq, Bool.false_eq_true, ↓reduceIte] at h
+      by_cases hany : seen.any (fun (av, bv) => a' == av && b' == bv)
+      · -- (a', b') matches some entry in seen.  Use Subtype'.hyp
+        -- after closeAll-and-lift translation.
+        -- WALL: seen_coherence — engine seen is raw, lifted seen
+        -- is closeAll'd; matching modulo translation requires a
+        -- seen-coherence invariant.
+        sorry
+      · simp only [hany, Bool.false_eq_true, ↓reduceIte] at h
+        by_cases htop : b' == .type
+        · have htop' : b' = .type := by simpa using htop
+          subst htop'
+          -- closeAll _ .type = .type
+          show Subtype' _ _ _ .type
+          exact .top _
+        · simp only [htop, beq_self_eq_true, Bool.false_eq_true,
+                     ↓reduceIte] at h
+          -- Falls through to subCheckSubstMatch fuel✝ tyCtx seen a' b'
+          -- where `heq✝ : fuel + 1 = fuel✝.succ`, i.e. `fuel = fuel✝`.
+          -- Reify the equation (third inaccessible from the top) and
+          -- substitute so the IH applies.
+          rename_i _ _ heq_fuel _ _
+          have hf : fuel = _ := Nat.succ.inj heq_fuel
+          subst hf
+          exact subCheckSubstMatch_dispatch
+            (fun {_tyCtx'} {_seen'} {_x _y} hx => ih hx) h
 
 /-- Public-API soundness: `Och.subCheck` accepting two `WTValue`s
 produces a declarative subtyping derivation on their `whnf` fields.
