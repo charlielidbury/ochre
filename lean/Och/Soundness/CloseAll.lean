@@ -693,8 +693,9 @@ theorem closeAllAt_succ_eq_shift (s : Expr) (c d m : Nat)
 
 /-! ### `closeAllAt_substL_subst`: the v2 wall closes (with `Expr.subst` on the right)
 
-The v2 wall (`closeAllAt_substL_OPEN_QUESTION`, below) is genuinely
-false: it commutes `closeAllAt` with `substL` on **both sides**.
+The naive v2 wall (`closeAllAt_substL` for arbitrary substituees,
+analysed in `docs/ideas/proposalA-wall-v2.md`) is genuinely false:
+it commutes `closeAllAt` with `substL` on **both sides**.
 `substL`'s decrement on level-var images causes off-by-ones.
 
 But the **fallback bridges** in `Soundness/SubCheckSubstFallback.lean`
@@ -986,33 +987,6 @@ require either:
 
 We sorry this lemma; see the agent report.
 -/
-
-/-- **WALL v2**: closeAllAt-substL commutation for arbitrary `s`.
-
-    The naive statement is provably **false** on any term with level-
-    vars and `d - 1 - lvl + c > j`: substL's decrement on the closed
-    image causes an off-by-one.  No hypothesis on `(c, d, j)` rescues
-    the equation; the off-by-one is structural.
-
-    However, the *useful* case — where `s` is itself a level-var
-    (`s = levelBvar lvl_s`) — is handled by
-    `closeAllAt_substL_levelBvar` (lockstep `c = j`, RHS uses
-    `closeAllAt (j+1) lvl_s`).
-
-    For arbitrary `s` (e.g. iota_intro's substituee = LHS spine), this
-    sorry remains.  See `docs/ideas/proposalA-wall-v2.md` for the
-    detailed analysis and resolution options.
-
-    Currently UNUSED in proofs.  Retained as a marker. -/
-theorem closeAllAt_substL_OPEN_QUESTION (c d j : Nat) (e s : Expr)
-    (_hj : j < c ∨ c = 0) :
-    closeAllAt c d (substL e j s) = substL (closeAllAt c d e) j (closeAllAt c d s) := by
-  -- See `docs/ideas/proposalA-wall-v2.md`: off-by-one between substL's
-  -- decrement and closeAllAt's image at de-Bruijn indices.  The naive
-  -- equation is genuinely false; correct restatements need either
-  -- engine refactor (Option A) or a substituee-shift correction that
-  -- itself fails on the substitution point.
-  sorry
 
 /-! ### `closeAll_openFresh`: open commutes with closeAll modulo well-scoping
 
