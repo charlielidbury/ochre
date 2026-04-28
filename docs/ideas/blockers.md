@@ -19,6 +19,48 @@ The autonomous decision matched the predicted user preference
 disagreed with: revert `Och.synth` and revert
 `synthCore_topLevel_closedAt`'s body to a `sorry`.
 
+## 2a. Fallback arm-lemma fuel-shift gap
+
+**Surfaced**: 2026-04-28 (overnight) by wall 6 resolution attempt
+(commit `909099f`).
+
+**Wall**: the fallback arm-lemmas in `SubCheckSubstFallback.lean`
+(`iota_intro_arm`, `unfold_fix_R_arm`, etc.) take their evalSubst
+hypothesis as `evalSubst (unfBound + 1) unfBound` (i.e., outer fuel
+hardcoded to `33 = unfBound + 1`), but the engine call in
+`subCheckSubstMatch` produces `evalSubst (fuel + 1) unfBound` where
+`fuel` is the live outer fuel from `subCheckSubst`'s induction.
+
+**Why hardcoded**: the arm-lemma body uses recursion analysis on
+`evalSubst` that needs the outer fuel to relate to `unfBound`.
+Refactoring to accept arbitrary `(n + 1) unfBound` would require
+either:
+1. Fuel-monotonicity: `evalSubst n u e = .ok v ∧ n' ≥ n →
+   evalSubst n' u e = .ok v`.  Provable but delicate (β-step at
+   each fuel level).
+2. Re-stating the arm-lemmas to take a fuel-irrelevant evalSubst
+   hypothesis, propagating through their internal proofs.
+
+**Affects**: all fallback paths in iota-iota, fix-fix, and the
+6+5+5+5 dispatch fallback arms.
+
+**Resolution paths**:
+1. Prove fuel-monotonicity of `evalSubst` (~50 LOC).  Bridge at
+   each call site: `evalSubst (fuel + 1) unfBound = .ok x →
+   evalSubst (unfBound + 1) unfBound = .ok x` requires
+   `fuel + 1 ≤ unfBound + 1 ∨ fuel + 1 ≥ unfBound + 1`.  Only the
+   `≥` direction is monotone-true; for `<` we need the OTHER
+   direction (downward fuel preservation), which isn't sound in
+   general (more fuel can produce a result while less fuel can't).
+2. Re-state the arm-lemmas to take any-fuel evalSubst hypothesis.
+   Less clean but tractable.
+
+**My read**: option 2.  The arm-lemmas' bodies likely don't
+actually need `unfBound + 1` specifically — they just need enough
+fuel for the recursion to terminate, which is provided by the
+hypothesis itself.  ~1 hour of refactoring per arm-lemma; ~6 LOC
+each.
+
 ## 2. closeAllAt_substL for arbitrary substituees
 
 **Surfaced**: 2026-04-28 02:24, Proposal A v2 wall.
