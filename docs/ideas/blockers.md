@@ -66,44 +66,40 @@ closedness invariants to fully close.
 Conditional on walls 2+3 because the fallback arms route through
 those.
 
-## 6. Seen-shrinking wall (iota-iota and fix-fix structural arms)
+## 6. Seen-shrinking wall (iota-iota and fix-fix structural arms) — RESOLVED via option 1
 
 **Surfaced**: 2026-04-28 (overnight), commit `343788c` (doc), via
 the iota-iota/fix-fix dispatch closure attempt.
 
-**Wall**: see `docs/ideas/tyCtxPush-bridge-wall.md` — extended
-"Iota/fix structural follow-up" section.
+**Resolution**: 2026-04-28, commits `7b506eb` (engine refactor) and
+`909099f` (arm closures).  Option 1 (engine refactor) confirmed
+sound: μ-type cycle-detection preserved (full test suite passes,
+including `Och.Std.Mu`, `Och.Std.DNat`, `Och.Std.Vec`,
+`Och.AppendVecPath`, `Och.PropertyTests`, `Och.PropertyTestsExtra`).
 
-The iota-iota and fix-fix engine arms add `(a, b)` to seen for ALL
-recursive sub-calls (structural attempt + fallback).  The dispatch's
-`_ih` thus yields derivations under the EXTENDED seen.  Subtype'
-fallback rules (`iota_intro`, `unfold_fix_R`) are productive (smaller
-S in conclusion than premise), so they thread through.  But the
-structural rule `Subtype'.iota_cong` PRESERVES S (same in premise
-and conclusion), so the dispatch goal — which needs the ORIGINAL
-seen — cannot be reached from the IH's extended seen.
+The structural success paths of the iota-iota and fix-fix dispatch
+arms are now real proofs (mirroring the lam-lam template from
+commit `f490d7c`).  Two trivial sorries removed.
 
-**Affects**: iota-iota and fix-fix structural arms (lam-lam is
-unaffected because lam doesn't extend seen).
+The fallback paths route through pre-existing arm-lemmas in
+`SubCheckSubstFallback.lean` which hardcode
+`evalSubst (unfBound + 1) unfBound` (vs. the engine's
+`evalSubst (fuel + 1) unfBound`).  This fuel-shift mismatch
+surfaces as two new local sorries — but they're a known wall-2
+instance (v2 fallback bridge family), not novel walls.  Net sorry
+count unchanged; the structural-success path (the actual subgoal
+gated by wall 6) is now closed.
 
-**Resolution paths** (per agent `343788c`):
-1. **Engine refactor**: drop seen-extension in iota-iota/fix-fix
-   structural attempt, keeping it for the fallback.  Smallest
-   change; might affect μ-type cycle-detection on fix's
-   structural path.
-2. **Seen-shrinking lemma**: prove
-   `Subtype' (entry :: S) Γ a b → Subtype' S Γ a b` under "entry
-   not used in derivation".  Requires a syntactic non-use
-   predicate over derivations.  Medium effort.
-3. **Derived `iota_cong_with_seen`**: admissibility from
-   `iota_intro` + `unfold_iota_R`.  Research-grade.
+**Original wall narrative** (kept for reference):
 
-**My read**: option 1 is simplest and most likely user-preferred.
-Removing seen-extension from the structural attempt should preserve
-correctness as long as the structural attempt only recurses
-finitely (which it does — `openFresh` + tyCtx grow, so fuel-strict).
-The fallback's seen-extension catches cycles when the structural
-attempt fails.
+The iota-iota and fix-fix engine arms previously added `(a, b)` to
+seen for ALL recursive sub-calls (structural attempt + fallback).
+The dispatch's `_ih` thus yielded derivations under the EXTENDED
+seen.  Subtype' fallback rules (`iota_intro`, `unfold_fix_R`) are
+productive (smaller S in conclusion than premise), so they thread
+through.  But the structural rule `Subtype'.iota_cong` PRESERVES S,
+so the dispatch goal — which needs the ORIGINAL seen — could not
+be reached from the IH's extended seen.
 
 ## 5. tyCtxPush_bridge_WALL — convention mismatch in arm packages
 
