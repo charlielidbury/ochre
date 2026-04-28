@@ -10,6 +10,8 @@ import Och.Subtyping
 import Och.Soundness
 import Och.Soundness.EvalSubstLemmas
 import Och.Soundness.SubCheckSubstNeutral
+import Och.Soundness.SubCheckSubstStructural
+import Och.Soundness.SubCheckSubstFallback
 import Och.Soundness.SubtypeSteps
 import Och.Soundness.SynthProgress
 
