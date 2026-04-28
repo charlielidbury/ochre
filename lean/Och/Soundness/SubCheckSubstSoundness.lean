@@ -278,20 +278,24 @@ theorem subCheckSubst_sound
     --   * Translating `closedAt 0` ↔ `closedAtLvl 0` under closeAll.
     --   * Pushing `Subtype' [] [] e' e` through `closeAll` to
     --     `Subtype' (lift seen) tyCtxToCtx (closeAll e') (closeAll e)`.
+    -- Both bridges discharge through the consolidated v2 wall
+    -- `closeAll_evalSubst_subtype` (in `Soundness/CloseAll.lean`):
+    -- given `evalSubst e = .ok e'`, the closeAll-translated forms
+    -- are bidirectionally `Subtype'`-related.  At depth 0 this
+    -- reduces to `evalSubst_equiv`; at non-zero depth it walls on
+    -- the same v2 issue as the fallback substBridge_WALLs.
     have eval_bridge_a :
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size a) (closeAll tyCtx.size a') ∧
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
-          (closeAll tyCtx.size a') (closeAll tyCtx.size a) := by
-      -- evalSubst_equiv now exists (depth-0 form).  Lifting through
-      -- closeAll at depth tyCtx.size remains unwritten.
-      sorry
+          (closeAll tyCtx.size a') (closeAll tyCtx.size a) :=
+      closeAll_evalSubst_subtype _h_a
     have eval_bridge_b :
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size b) (closeAll tyCtx.size b') ∧
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
-          (closeAll tyCtx.size b') (closeAll tyCtx.size b) := by
-      sorry
+          (closeAll tyCtx.size b') (closeAll tyCtx.size b) :=
+      closeAll_evalSubst_subtype _h_b
     -- Goal: derivation on closeAll a / closeAll b.  We chain
     -- `eval_bridge_a.1` ⊑ inner ⊑ `eval_bridge_b.2` after
     -- producing the inner derivation.

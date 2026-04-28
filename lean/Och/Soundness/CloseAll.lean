@@ -1,6 +1,7 @@
 import Och.Subtyping
 import Och.EvalSubst
 import Och.Soundness.EvalSubstLemmas
+import Och.Soundness.EvalSubstEquiv
 
 /-!
 # Proposal A: `closeAll` — translate level-vars to de-Bruijn indices
@@ -922,5 +923,115 @@ theorem closeAll_openFresh_OPEN_QUESTION (body : Expr) (lvl : Nat)
     closeAll (lvl + 1) (SubstEval.openFreshTop body lvl)
       = closeAllAt 1 lvl body :=
   closeAll_openFresh body lvl hcl hlv
+
+/-! ## Wall consolidation: closeAll-evalSubst commutation as a
+    bidirectional `Subtype'` bridge
+
+The two evaluation bridges `eval_bridge_a/b` in
+`Soundness/SubCheckSubstSoundness.lean`'s `subCheckSubst_sound` need
+to translate an `evalSubst e = .ok e'` step into bidirectional
+`Subtype'` derivations on the *closeAll-translated* terms (at depth
+`tyCtx.size`).
+
+At depth `d = 0`, `closeAll 0 = id` (`closeAll_zero` in
+`SubCheckSubstFallback.lean`) and `Soundness/EvalSubstEquiv.lean`'s
+`evalSubst_equiv` already discharges this directly under
+`closedAt 0`.
+
+At depth `d > 0`, the input `e` has free level-vars (encoded as
+`bvar (levelOffset + lvl)` for `lvl < d`), and the natural lifting
+walls on the same v2 closeAllAt-substL commutation issue
+(`docs/ideas/proposalA-wall-v2.md`):
+
+* **Path A** — derive `evalSubst fuel unf (closeAll d e) =
+  .ok (closeAll d e')` from `evalSubst fuel unf e = .ok e'`, then
+  apply `evalSubst_equiv` on the closeAll'd terms.  The pointwise
+  commutation `closeAll d (substL b 0 s) = (closeAllAt 1 d b).subst 0
+  (closeAll d s)` walls on the substL-decrement / closeAll-image
+  off-by-one (v2 wall).
+
+* **Path B** — structural induction on `Subtype' [] [] e' e` (yielded
+  by `evalSubst_equiv` at depth 0) lifting it to `Subtype' S Γ
+  (closeAll d e') (closeAll d e)`.  The β / iota_intro / unfold /
+  beta-let cases rely on the closeAllAt-substL commutation, same v2
+  wall.
+
+Rather than carry two structurally identical sorries inside
+`subCheckSubst_sound`, we consolidate to a single named wall here.
+Discharging this lemma is **equivalent** to closing the v2 walls in
+`SubCheckSubstFallback.lean`.  When the engine-side fix (option 1
+in `proposalA-wall-v2.md`: non-decrementing `openFresh`/`substL`)
+lands — or a closeAllSubst variant is built — this lemma closes
+unconditionally; the two consumer sorries in `subCheckSubst_sound`
+drop simultaneously. -/
+
+/-- **WALL** (consolidated v2): closeAll-evalSubst commutation as a
+    bidirectional `Subtype'` bridge.
+
+    Given `evalSubst fuel unf e = .ok e'`, the closeAll-translated
+    forms are mutually `Subtype'`-related under any seen-set / context.
+
+    *Status*: walls on `closeAllAt_substL` (v2; see
+    `docs/ideas/proposalA-wall-v2.md`).  At depth 0 (where
+    `closeAll 0 = id`) the lemma reduces to `evalSubst_equiv` under
+    `closedAt 0`; at non-zero depth it is the same wall as the four
+    fallback `*_substBridge_WALL` lemmas in `SubCheckSubstFallback.lean`.
+
+    Closing this single lemma discharges **both** `eval_bridge_a` and
+    `eval_bridge_b` consumers in `subCheckSubst_sound`. -/
+theorem closeAll_evalSubst_subtype
+    {fuel unf : Nat} {d : Nat} {e e' : Expr} {S : Seen} {Γ : Ctx}
+    (_hstep : SubstEval.evalSubst fuel unf e = .ok e') :
+    Subtype' S Γ (closeAll d e) (closeAll d e') ∧
+    Subtype' S Γ (closeAll d e') (closeAll d e) := by
+  -- Walls on closeAllAt_substL (v2 issue).  See module docstring
+  -- above and `docs/ideas/proposalA-wall-v2.md`.
+  sorry
+
+/-- **Depth-0 specialization** of `closeAll_evalSubst_subtype`,
+    discharged via `evalSubst_equiv` (in `Soundness/EvalSubstEquiv.lean`).
+
+    At `d = 0`, `closeAll 0 = id`, so the consolidated wall reduces to
+    the bidirectional `evalSubst_equiv` under `closedAt 0`.  This
+    closes unconditionally and bridges directly into `Subtype'` over
+    any seen-set / context via `Subtype'.weaken` (with the shape
+    `Subtype' [] []` lifting trivially to `Subtype' S Γ`).
+
+    Use this when the caller can establish `e.closedAt 0`; the general
+    `closeAll_evalSubst_subtype` walls because non-zero depth requires
+    the v2 closeAllAt-substL commutation. -/
+theorem closeAll_evalSubst_subtype_at_zero
+    {fuel unf : Nat} {e e' : Expr}
+    (hcl : e.closedAt 0 = true)
+    (hstep : SubstEval.evalSubst fuel unf e = .ok e') :
+    Subtype' [] [] (closeAll 0 e) (closeAll 0 e') ∧
+    Subtype' [] [] (closeAll 0 e') (closeAll 0 e) := by
+  -- closeAll 0 = id, and the bidirectional Subtype' comes directly
+  -- from evalSubst_equiv.
+  have ⟨h1, h2⟩ := evalSubst_equiv hcl hstep
+  -- Inline the `closeAll 0 = id` lemma (the same lemma also exists as
+  -- `Soundness.closeAll_zero` in `Soundness/SubCheckSubstFallback.lean`,
+  -- which is downstream of this file).
+  have hczAt : ∀ (c : Nat) (x : Expr), closeAllAt c 0 x = x := by
+    intro c x
+    induction x generalizing c with
+    | bvar k =>
+      simp only [closeAllAt]
+      by_cases h : k ≥ SubstEval.levelOffset
+      · simp only [h, ↓reduceIte]
+        have : ¬ (k - SubstEval.levelOffset < 0) := by omega
+        simp [this]
+      · simp [h]
+    | type => rfl
+    | bot => rfl
+    | lam _ _ ih_d ih_b => simp [closeAllAt, ih_d, ih_b]
+    | iota _ _ ih_a ih_b => simp [closeAllAt, ih_a, ih_b]
+    | fix _ _ ih_a ih_b => simp [closeAllAt, ih_a, ih_b]
+    | letE _ _ ih_v ih_b => simp [closeAllAt, ih_v, ih_b]
+    | app _ _ ih_f ih_a => simp [closeAllAt, ih_f, ih_a]
+    | asc _ _ ih_t ih_y => simp [closeAllAt, ih_t, ih_y]
+  have hcz : ∀ x, closeAll 0 x = x := fun x => hczAt 0 x
+  rw [hcz e, hcz e']
+  exact ⟨h2, h1⟩
 
 end Och.Soundness
