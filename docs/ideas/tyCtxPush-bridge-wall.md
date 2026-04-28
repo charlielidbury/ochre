@@ -314,3 +314,93 @@ level; the dispatch's collapsed sorry remains, plus
 `Och_subCheck_sound` and the unrelated `EvalSubstEquiv`/
 `SynthSound` ones.  Total `sorry` keyword count in
 `Soundness/`: 45 → 44.
+
+## Follow-up attempt outcome (2026-04-28, second pass)
+
+**Result: lam-lam arm closed.** Both predicted lemmas
+(`closeAll_succ_d_eq_shift` and `Subtype'_liftSeen_succ_to_d`)
+prove cleanly; with them the lam-lam arm of
+`subCheckSubstMatch_dispatch` discharges via
+`subCheckSubst_arm_lam_lam`.
+
+### Lemmas proved
+
+* **`closeAll_succ_d_eq_shift`** (in
+  `lean/Och/Soundness/CloseAll.lean`): `closeAll (d+1) e =
+  (closeAll d e).shift 1 0` under `closedAtLvl 0` and `lvarLT d`.
+  Generalised form `closeAllAt c (d+1) e = (closeAllAt c d e).shift 1
+  c` under `closedAtLvl c` and `lvarLT d` follows the existing
+  `closeAllAt_succ_eq_shift` pattern (~80 LOC structural induction).
+
+* **`Subtype'_liftSeen_succ_to_d`** (in
+  `lean/Och/Soundness/SubCheckSubstSoundness.lean`): re-translates a
+  derivation in `liftSeenList (d+1) seen` to `liftSeenList d seen`
+  at the same Γ, given seen entries are well-formed at depth `d`.
+  Generalised over `Sextra : Seen` (the `iota_intro`/`unfold_*`
+  rules grow `S` with `(Γ.length, _, _)` entries; these stay in
+  `Sextra`).  The substantive case is `Subtype'.hyp` on a
+  `(d+1)`-tagged seen entry, re-emitted as `(d)`-tagged with
+  outer shifts cancelling via `shift_shift_same`.
+
+### Lam-lam closure
+
+`subCheckSubstMatch_dispatch` and `subCheckSubst_sound` gain a new
+`hseen_wf` hypothesis:
+
+```
+∀ p ∈ seen, p.1.closedAtLvl 0 ∧ p.1.lvarLT tyCtx.size ∧
+            p.2.closedAtLvl 0 ∧ p.2.lvarLT tyCtx.size
+```
+
+The lone caller (`Och_subCheck_sound`, sorried) discharges trivially
+at `seen = []` — no new sorry introduced.  Net sorry change for
+this commit: −1 (lam-lam arm closed).
+
+Auxiliary lemmas also added:
+* `openFreshTop_eq_substL_freshLevelVar`, `closedAtLvl_freshLevelVar`
+  (in `EvalSubst.lean`) — public equations exposing the otherwise
+  private `levelBvar`/`openFresh` definitions.
+* `openFreshTop_closedAtLvl_zero` (in `EvalSubstLemmas.lean`).
+* `lvarLT_freshLevelVar` (in `CloseAll.lean`).
+
+### iota-iota / fix-fix: not closed
+
+Same recipe applies but the engine arms have a more complex
+structure: `match structural with | .ok true => ... | _ =>
+fallback`.  The dispatch must case-split on whether the structural
+attempt succeeded:
+
+* **Structural success** branch: same recipe as lam-lam, with
+  `seen' = (.iota annA bodyA, .iota annB bodyB) :: seen` (resp.
+  `.fix`).  The new entry's seen-wf follows from the constructor
+  closedness/lvarLT we already have via `_ha_cl, _hb_cl, _ha_lv,
+  _hb_lv`.
+
+* **Fallback** branch: routes through `iota_intro_arm` /
+  `unfold_fix_R_arm` (in `SubCheckSubstFallback.lean`).
+  Surprisingly, those arm-lemmas are FULLY proved (no internal
+  sorries) — `iota_intro_substBridge_WALL` etc. close via
+  `closeAll_substL_subst` and `closeAll_evalSubst_subtype_strong`,
+  both of which are already in `CloseAll.lean`.
+
+So both arms are closeable in principle with no new sorries,
+yielding −2 more (total −3 from the original task).  Skipped here
+due to remaining time budget; the wiring is mechanical
+(extract `_h` via `subCheckSubstMatch.eq_def`, case-split on
+`structural`, plug into structural arm or fallback arm).
+
+### Files touched (this attempt)
+
+* `lean/Och/Soundness/CloseAll.lean` — `closeAllAt_succ_d_eq_shift`,
+  `closeAll_succ_d_eq_shift`, `lvarLT_freshLevelVar`.
+* `lean/Och/Soundness/SubCheckSubstSoundness.lean` —
+  `Subtype'_liftSeen_succ_to_d` (+ aux), `subCheckSubst_sound`
+  signature gains `hseen_wf`, `subCheckSubstMatch_dispatch` lam-lam
+  arm closed.
+* `lean/Och/EvalSubst.lean` — `openFreshTop_eq_substL_freshLevelVar`,
+  `closedAtLvl_freshLevelVar`.
+* `lean/Och/Soundness/EvalSubstLemmas.lean` —
+  `openFreshTop_closedAtLvl_zero`.
+
+Sorry count: total `sorry` keyword count in `Soundness/`: 44 → 43
+(lam-lam closed; iota-iota/fix-fix remain).
