@@ -1326,49 +1326,780 @@ lands — or a closeAllSubst variant is built — this lemma closes
 unconditionally; the two consumer sorries in `subCheckSubst_sound`
 drop simultaneously. -/
 
+/-! ### Helpers for the depth-d induction
+
+The depth-d analog of `evalSubst_equiv` needs `lvarLT d` preservation
+across `shiftL`, `substL`, and `evalSubst`, alongside the existing
+`closedAtLvl`-preservation infrastructure (`evalSubst_closedAtLvl` in
+`EvalSubstLemmas.lean`).
+
+We prove `lvarLT`-preservation under the closedness invariants we
+already maintain (`closedAtLvl 0` for inputs and substituees), which
+keeps the proofs short — `shiftL` and `substL` only touch ordinary
+bvars, never level-vars, and under `closedAtLvl 0` the substituee has
+no ordinary bvars at all (so `shiftL 1 0 s = s` via
+`shiftL_one_id_of_closedAtLvl`). -/
+
+/-- `shiftL` preserves `lvarLT lvl` under `closedAtLvl c`: ordinary
+    bvars `< c` are below the cutoff and untouched, level-vars are
+    skipped, so no bvar is ever shifted into the level-var range.
+
+    The `closedAtLvl c` precondition is the natural one for our
+    engine use case: substituees in `substL body j s` have
+    `s.closedAtLvl 0 = true`, and the only `shiftL` call in `substL`
+    is `shiftL 1 0 s` — handled by `shiftL_one_id_of_closedAtLvl`
+    (which makes this lemma redundant in that context).  The lemma is
+    nonetheless stated generally for the recursion under binders. -/
+theorem shiftL_lvarLT (e : Expr) (d c lvl : Nat)
+    (hcl : e.closedAtLvl c = true)
+    (h : e.lvarLT lvl = true) : (SubstEval.shiftL d c e).lvarLT lvl = true := by
+  induction e generalizing c with
+  | bvar k =>
+    simp only [Expr.closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at hcl
+    simp only [Expr.lvarLT, Bool.or_eq_true, Bool.not_eq_true',
+      decide_eq_false_iff_not, decide_eq_true_eq] at h
+    by_cases hLvl : SubstEval.isLevelIdx k
+    · -- shiftL keeps level-vars unchanged.
+      simp only [SubstEval.shiftL, hLvl, ↓reduceIte, Expr.lvarLT,
+        Bool.or_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
+        decide_eq_true_eq]
+      rcases h with h_not | h_bnd
+      · -- h_not : isLevelIdx k = false; but hLvl says it's true.
+        rw [h_not] at hLvl; cases hLvl
+      · exact Or.inr h_bnd
+    · -- Ordinary bvar.  closedAtLvl c says k < c (since k < levelOffset
+      -- via ¬ isLevelIdx).  shiftL d c keeps k unchanged.
+      have hk_lt_lo : k < SubstEval.levelOffset := by
+        simpa [SubstEval.isLevelIdx] using hLvl
+      have hk_lt_c : k < c := by
+        rcases hcl with h | h
+        · exact h
+        · omega
+      simp only [SubstEval.shiftL, hLvl, Bool.false_eq_true, ↓reduceIte, hk_lt_c]
+      simp only [Expr.lvarLT, hLvl, Bool.not_false, Bool.true_or]
+  | type => simp [SubstEval.shiftL, Expr.lvarLT]
+  | bot => simp [SubstEval.shiftL, Expr.lvarLT]
+  | lam _ _ ih_dom ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h
+    simp only [SubstEval.shiftL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_dom c hcl.1 h.1, ih_body (c + 1) (by simpa using hcl.2) h.2⟩
+  | iota _ _ ih_ann ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h
+    simp only [SubstEval.shiftL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_ann c hcl.1 h.1, ih_body (c + 1) (by simpa using hcl.2) h.2⟩
+  | fix _ _ ih_ann ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h
+    simp only [SubstEval.shiftL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_ann c hcl.1 h.1, ih_body (c + 1) (by simpa using hcl.2) h.2⟩
+  | letE _ _ ih_val ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h
+    simp only [SubstEval.shiftL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_val c hcl.1 h.1, ih_body (c + 1) (by simpa using hcl.2) h.2⟩
+  | app _ _ ih_f ih_a =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h
+    simp only [SubstEval.shiftL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_f c hcl.1 h.1, ih_a c hcl.2 h.2⟩
+  | asc _ _ ih_t ih_y =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h
+    simp only [SubstEval.shiftL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_t c hcl.1 h.1, ih_y c hcl.2 h.2⟩
+
+/-- `substL` preserves `lvarLT lvl` when both `e` and `s` are
+    `lvarLT lvl` (and `s.closedAtLvl 0`, so the under-binder
+    `shiftL 1 0 s` is the identity on `s`).  Ordinary bvars:
+    substitution puts `s` in or decrements; both are `lvarLT lvl`.
+    Level-vars: skipped. -/
+theorem substL_lvarLT (e : Expr) (j lvl : Nat) (s : Expr)
+    (he : e.lvarLT lvl = true)
+    (hs_cl : s.closedAtLvl 0 = true)
+    (hs : s.lvarLT lvl = true) :
+    (SubstEval.substL e j s).lvarLT lvl = true := by
+  induction e generalizing j s with
+  | bvar k =>
+    simp only [Expr.lvarLT, Bool.or_eq_true, Bool.not_eq_true',
+      decide_eq_false_iff_not, decide_eq_true_eq] at he
+    by_cases hLvl : SubstEval.isLevelIdx k
+    · simp only [SubstEval.substL, hLvl, ↓reduceIte, Expr.lvarLT,
+        Bool.or_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
+        decide_eq_true_eq]
+      rcases he with h_not | h_bnd
+      · rw [h_not] at hLvl; cases hLvl
+      · exact Or.inr h_bnd
+    · simp only [SubstEval.substL, hLvl, Bool.false_eq_true, ↓reduceIte]
+      have hk_lt_lo : k < SubstEval.levelOffset := by
+        simpa [SubstEval.isLevelIdx] using hLvl
+      by_cases heq : k = j
+      · simp [heq, hs]
+      · have hbeq : (k == j) = false := by simp [heq]
+        simp only [hbeq, Bool.false_eq_true, ↓reduceIte]
+        by_cases hgt : k > j
+        · -- Decrements to .bvar (k - 1).  Still ordinary, lvarLT trivially.
+          simp only [hgt, ↓reduceIte]
+          simp only [Expr.lvarLT, SubstEval.isLevelIdx]
+          have : ¬ (k - 1 ≥ SubstEval.levelOffset) := by omega
+          simp [this]
+        · simp only [hgt, Bool.false_eq_true, ↓reduceIte]
+          simp only [Expr.lvarLT, SubstEval.isLevelIdx]
+          have : ¬ (k ≥ SubstEval.levelOffset) := by omega
+          simp [this]
+  | type => simp [SubstEval.substL, Expr.lvarLT]
+  | bot => simp [SubstEval.substL, Expr.lvarLT]
+  | lam _ _ ih_dom ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at he
+    simp only [SubstEval.substL, Expr.lvarLT, Bool.and_eq_true]
+    have hshift_s_lv : (SubstEval.shiftL 1 0 s).lvarLT lvl = true :=
+      shiftL_lvarLT s 1 0 lvl hs_cl hs
+    have hshift_s_cl : (SubstEval.shiftL 1 0 s).closedAtLvl 0 = true := by
+      have h := SubstEval.shiftL_closedAtLvl_gen s 0 1 0 (Nat.le_refl _) hs_cl
+      -- shiftL_closedAtLvl_gen gives closedAtLvl (n + d) = closedAtLvl 1.
+      -- But shiftL 1 0 s on s.closedAtLvl 0 means s = shiftL 1 0 s (no shift),
+      -- so it remains closedAtLvl 0.  Use shiftL_one_id_of_closedAtLvl.
+      rw [shiftL_one_id_of_closedAtLvl s 0 hs_cl]
+      exact hs_cl
+    refine ⟨ih_dom j s he.1 hs_cl hs, ?_⟩
+    exact ih_body (j + 1) (SubstEval.shiftL 1 0 s) he.2 hshift_s_cl hshift_s_lv
+  | iota _ _ ih_ann ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at he
+    simp only [SubstEval.substL, Expr.lvarLT, Bool.and_eq_true]
+    have hshift_s_lv : (SubstEval.shiftL 1 0 s).lvarLT lvl = true :=
+      shiftL_lvarLT s 1 0 lvl hs_cl hs
+    have hshift_s_cl : (SubstEval.shiftL 1 0 s).closedAtLvl 0 = true := by
+      rw [shiftL_one_id_of_closedAtLvl s 0 hs_cl]; exact hs_cl
+    refine ⟨ih_ann j s he.1 hs_cl hs, ?_⟩
+    exact ih_body (j + 1) (SubstEval.shiftL 1 0 s) he.2 hshift_s_cl hshift_s_lv
+  | fix _ _ ih_ann ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at he
+    simp only [SubstEval.substL, Expr.lvarLT, Bool.and_eq_true]
+    have hshift_s_lv : (SubstEval.shiftL 1 0 s).lvarLT lvl = true :=
+      shiftL_lvarLT s 1 0 lvl hs_cl hs
+    have hshift_s_cl : (SubstEval.shiftL 1 0 s).closedAtLvl 0 = true := by
+      rw [shiftL_one_id_of_closedAtLvl s 0 hs_cl]; exact hs_cl
+    refine ⟨ih_ann j s he.1 hs_cl hs, ?_⟩
+    exact ih_body (j + 1) (SubstEval.shiftL 1 0 s) he.2 hshift_s_cl hshift_s_lv
+  | letE _ _ ih_val ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at he
+    simp only [SubstEval.substL, Expr.lvarLT, Bool.and_eq_true]
+    have hshift_s_lv : (SubstEval.shiftL 1 0 s).lvarLT lvl = true :=
+      shiftL_lvarLT s 1 0 lvl hs_cl hs
+    have hshift_s_cl : (SubstEval.shiftL 1 0 s).closedAtLvl 0 = true := by
+      rw [shiftL_one_id_of_closedAtLvl s 0 hs_cl]; exact hs_cl
+    refine ⟨ih_val j s he.1 hs_cl hs, ?_⟩
+    exact ih_body (j + 1) (SubstEval.shiftL 1 0 s) he.2 hshift_s_cl hshift_s_lv
+  | app _ _ ih_f ih_a =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at he
+    simp only [SubstEval.substL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_f j s he.1 hs_cl hs, ih_a j s he.2 hs_cl hs⟩
+  | asc _ _ ih_t ih_y =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at he
+    simp only [SubstEval.substL, Expr.lvarLT, Bool.and_eq_true]
+    exact ⟨ih_t j s he.1 hs_cl hs, ih_y j s he.2 hs_cl hs⟩
+
+/-- `evalSubst` preserves `lvarLT lvl`.  Mirrors
+    `evalSubst_closedAtLvl` (in `EvalSubstLemmas.lean`); routes
+    substL-substitution arms through `substL_lvarLT`.  Requires
+    `closedAtLvl 0` to thread through `substL_lvarLT`. -/
+theorem evalSubst_lvarLT {n unf : Nat} {e v : Expr} {lvl : Nat}
+    (hcl : e.closedAtLvl 0 = true)
+    (hlv : e.lvarLT lvl = true)
+    (h : SubstEval.evalSubst n unf e = .ok v) : v.lvarLT lvl = true := by
+  induction n generalizing unf e v with
+  | zero => rw [SubstEval.evalSubst.eq_1] at h; cases h
+  | succ k ih =>
+    match e with
+    | .bvar j =>
+      rw [SubstEval.evalSubst.eq_2] at h
+      by_cases hLvl : SubstEval.isLevelIdx j
+      · simp only [hLvl, ↓reduceIte, Outcome.ok.injEq] at h
+        subst h; exact hlv
+      · simp only [hLvl, Bool.false_eq_true, ↓reduceIte] at h; cases h
+    | .type =>
+      rw [SubstEval.evalSubst.eq_3] at h
+      simp only [Outcome.ok.injEq] at h; subst h; rfl
+    | .bot =>
+      rw [SubstEval.evalSubst.eq_4] at h
+      simp only [Outcome.ok.injEq] at h; subst h; rfl
+    | .lam _ _ =>
+      rw [SubstEval.evalSubst.eq_5] at h
+      simp only [Outcome.ok.injEq] at h; subst h; exact hlv
+    | .iota _ _ =>
+      rw [SubstEval.evalSubst.eq_6] at h
+      simp only [Outcome.ok.injEq] at h; subst h; exact hlv
+    | .fix _ _ =>
+      rw [SubstEval.evalSubst.eq_7] at h
+      simp only [Outcome.ok.injEq] at h; subst h; exact hlv
+    | .asc t _ =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+      rw [SubstEval.evalSubst.eq_8] at h
+      exact ih hcl.1 hlv.1 h
+    | .letE val body =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+      rw [SubstEval.evalSubst.eq_9] at h
+      match hv : SubstEval.evalSubst k unf val with
+      | .outOfFuel => rw [hv] at h; cases h
+      | .error _ => rw [hv] at h; cases h
+      | .ok vVal =>
+        have hvlv := ih hcl.1 hlv.1 hv
+        have hvcl : vVal.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl hcl.1 hv
+        rw [hv] at h
+        simp only [Outcome.ok_bind] at h
+        have hsub_cl : (SubstEval.substL body 0 vVal).closedAtLvl 0 = true :=
+          SubstEval.substL_closedAtLvl (by simpa using hcl.2) hvcl
+        have hsub : (SubstEval.substL body 0 vVal).lvarLT lvl = true :=
+          substL_lvarLT body 0 lvl vVal hlv.2 hvcl hvlv
+        exact ih hsub_cl hsub h
+    | .app f a =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+      rw [SubstEval.evalSubst.eq_10] at h
+      match hf : SubstEval.evalSubst k unf f with
+      | .outOfFuel => rw [hf] at h; cases h
+      | .error _ => rw [hf] at h; cases h
+      | .ok fv =>
+        have hfcl : fv.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl hcl.1 hf
+        have hflv := ih hcl.1 hlv.1 hf
+        match ha : SubstEval.evalSubst k unf a with
+        | .outOfFuel => rw [hf, ha] at h; cases h
+        | .error _ => rw [hf, ha] at h; cases h
+        | .ok av =>
+          have hacl : av.closedAtLvl 0 = true :=
+            SubstEval.evalSubst_closedAtLvl hcl.2 ha
+          have halv := ih hcl.2 hlv.2 ha
+          rw [hf, ha] at h
+          simp only [Outcome.ok_bind] at h
+          cases fv with
+          | bvar bk =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            simp only [Expr.lvarLT, Bool.and_eq_true]
+            exact ⟨hflv, halv⟩
+          | type =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            simp only [Expr.lvarLT, Bool.and_eq_true]
+            exact ⟨by simp [Expr.lvarLT], halv⟩
+          | bot =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            simp only [Expr.lvarLT, Bool.and_eq_true]
+            exact ⟨by simp [Expr.lvarLT], halv⟩
+          | lam _dom body =>
+            simp only at h
+            have hflv_lam : (Expr.lam _dom body).lvarLT lvl = true := hflv
+            have hfcl_lam : (Expr.lam _dom body).closedAtLvl 0 = true := hfcl
+            simp only [Expr.lvarLT, Bool.and_eq_true] at hflv_lam
+            simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl_lam
+            have hsub_cl : (SubstEval.substL body 0 av).closedAtLvl 0 = true :=
+              SubstEval.substL_closedAtLvl (by simpa using hfcl_lam.2) hacl
+            have hsub : (SubstEval.substL body 0 av).lvarLT lvl = true :=
+              substL_lvarLT body 0 lvl av hflv_lam.2 hacl halv
+            exact ih hsub_cl hsub h
+          | iota ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h
+              subst h
+              show (Expr.app (.iota ann body) av).lvarLT lvl = true
+              show ((Expr.iota ann body).lvarLT lvl && av.lvarLT lvl) = true
+              simp [hflv, halv]
+            · have hself_lv : (Expr.iota ann body).lvarLT lvl = true := hflv
+              have hself_cl : (Expr.iota ann body).closedAtLvl 0 = true := hfcl
+              have hflv_iota : (Expr.iota ann body).lvarLT lvl = true := hflv
+              have hfcl_iota : (Expr.iota ann body).closedAtLvl 0 = true := hfcl
+              simp only [Expr.lvarLT, Bool.and_eq_true] at hflv_iota
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl_iota
+              have hsub_cl : (SubstEval.substL body 0 (.iota ann body)).closedAtLvl 0 = true :=
+                SubstEval.substL_closedAtLvl (by simpa using hfcl_iota.2) hself_cl
+              have hsub : (SubstEval.substL body 0 (.iota ann body)).lvarLT lvl
+                  = true :=
+                substL_lvarLT body 0 lvl _ hflv_iota.2 hself_cl hself_lv
+              have hAppCl : (Expr.app (SubstEval.substL body 0 (.iota ann body)) av).closedAtLvl 0
+                  = true := by
+                show ((SubstEval.substL body 0 (.iota ann body)).closedAtLvl 0
+                      && av.closedAtLvl 0) = true
+                rw [hsub_cl, hacl]; rfl
+              have hAppLv : (Expr.app (SubstEval.substL body 0 (.iota ann body)) av).lvarLT lvl
+                  = true := by
+                show ((SubstEval.substL body 0 (.iota ann body)).lvarLT lvl
+                      && av.lvarLT lvl) = true
+                rw [hsub, halv]; rfl
+              exact ih hAppCl hAppLv h
+          | fix ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h
+              subst h
+              show (Expr.app (.fix ann body) av).lvarLT lvl = true
+              show ((Expr.fix ann body).lvarLT lvl && av.lvarLT lvl) = true
+              simp [hflv, halv]
+            · have hself_lv : (Expr.fix ann body).lvarLT lvl = true := hflv
+              have hself_cl : (Expr.fix ann body).closedAtLvl 0 = true := hfcl
+              have hflv_fix : (Expr.fix ann body).lvarLT lvl = true := hflv
+              have hfcl_fix : (Expr.fix ann body).closedAtLvl 0 = true := hfcl
+              simp only [Expr.lvarLT, Bool.and_eq_true] at hflv_fix
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl_fix
+              have hsub_cl : (SubstEval.substL body 0 (.fix ann body)).closedAtLvl 0 = true :=
+                SubstEval.substL_closedAtLvl (by simpa using hfcl_fix.2) hself_cl
+              have hsub : (SubstEval.substL body 0 (.fix ann body)).lvarLT lvl
+                  = true :=
+                substL_lvarLT body 0 lvl _ hflv_fix.2 hself_cl hself_lv
+              have hAppCl : (Expr.app (SubstEval.substL body 0 (.fix ann body)) av).closedAtLvl 0
+                  = true := by
+                show ((SubstEval.substL body 0 (.fix ann body)).closedAtLvl 0
+                      && av.closedAtLvl 0) = true
+                rw [hsub_cl, hacl]; rfl
+              have hAppLv : (Expr.app (SubstEval.substL body 0 (.fix ann body)) av).lvarLT lvl
+                  = true := by
+                show ((SubstEval.substL body 0 (.fix ann body)).lvarLT lvl
+                      && av.lvarLT lvl) = true
+                rw [hsub, halv]; rfl
+              exact ih hAppCl hAppLv h
+          | asc t ty =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show ((Expr.asc t ty).lvarLT lvl && av.lvarLT lvl) = true
+            simp [hflv, halv]
+          | letE vv b =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show ((Expr.letE vv b).lvarLT lvl && av.lvarLT lvl) = true
+            simp [hflv, halv]
+          | app f' a' =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show ((Expr.app f' a').lvarLT lvl && av.lvarLT lvl) = true
+            simp [hflv, halv]
+
+/-! ### `closeAll_evalSubst_subtype_strong`: depth-d analog of `evalSubst_equiv`
+
+Mirror of `Soundness.evalSubst_equiv` (depth-0), threaded through
+`closeAll d`.  Each evalSubst arm has a structurally-matching
+`Subtype'` derivation in the closeAll-translated form:
+
+* Value arms (`.type`, `.bot`, `.lam`, `.iota`, `.fix`): refl on
+  the closeAll'd form.
+* `.bvar k` arm: only level-vars (`isLevelIdx k`) survive, and
+  `closeAll d (.bvar k) = closeAll d (.bvar k)` is refl.
+* `.asc` arm: `Subtype'.asc_L/R` lift the IH on the inner term.
+* `.letE` arm: IH on the value step gives `Subtype'` on the
+  closeAll'd form; the body step's substL is bridged via
+  `closeAll_substL_subst`, then `letE_L`/`letE_R` /
+  `letE_cong` close.
+* `.app` arm: cases on the head value.  Stuck heads close via
+  `app_cong` with the IH on `f` and `a`.  β / iota-unfold /
+  fix-unfold bridge their substL through `closeAll_substL_subst`,
+  then close via `beta_L`/`beta_R` / `unfold_iota_L`/`unfold_iota_R`
+  / `unfold_fix_L`/`unfold_fix_R`. -/
+
+theorem closeAll_evalSubst_subtype_strong
+    {fuel unf : Nat} {d : Nat} {e e' : Expr} {S : Seen} {Γ : Ctx}
+    (hcl : e.closedAtLvl 0 = true) (hlv : e.lvarLT d = true)
+    (hstep : SubstEval.evalSubst fuel unf e = .ok e') :
+    Subtype' S Γ (closeAll d e) (closeAll d e') ∧
+    Subtype' S Γ (closeAll d e') (closeAll d e) := by
+  induction fuel generalizing unf e e' with
+  | zero => rw [SubstEval.evalSubst.eq_1] at hstep; cases hstep
+  | succ n ih =>
+    match e, hcl, hlv, hstep with
+    | .bvar k, hcl, _hlv, h =>
+      rw [SubstEval.evalSubst.eq_2] at h
+      by_cases hLvl : SubstEval.isLevelIdx k
+      · simp only [hLvl, ↓reduceIte, Outcome.ok.injEq] at h
+        subst h
+        exact ⟨.refl _, .refl _⟩
+      · simp only [hLvl, Bool.false_eq_true, ↓reduceIte] at h; cases h
+    | .type, _, _, h =>
+      rw [SubstEval.evalSubst.eq_3] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .bot, _, _, h =>
+      rw [SubstEval.evalSubst.eq_4] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .lam _ _, _, _, h =>
+      rw [SubstEval.evalSubst.eq_5] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .iota _ _, _, _, h =>
+      rw [SubstEval.evalSubst.eq_6] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .fix _ _, _, _, h =>
+      rw [SubstEval.evalSubst.eq_7] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .asc t ty, hcl, hlv, h =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+      rw [SubstEval.evalSubst.eq_8] at h
+      have ⟨h₁, h₂⟩ := ih hcl.1 hlv.1 h
+      -- Goal: closeAll d (.asc t ty) = .asc (closeAllAt 0 d t) (closeAllAt 0 d ty).
+      show Subtype' S Γ (.asc (closeAllAt 0 d t) (closeAllAt 0 d ty)) _ ∧
+           Subtype' S Γ _ (.asc (closeAllAt 0 d t) (closeAllAt 0 d ty))
+      refine ⟨.asc_L h₁, .asc_R h₂⟩
+    | .letE val body, hcl, hlv, h =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+      rw [SubstEval.evalSubst.eq_9] at h
+      match hvEv : SubstEval.evalSubst n unf val with
+      | .outOfFuel => rw [hvEv] at h; cases h
+      | .error _ => rw [hvEv] at h; cases h
+      | .ok vv =>
+        simp only [hvEv] at h
+        have ⟨hvv₁, hvv₂⟩ := ih hcl.1 hlv.1 hvEv
+        have hvv_cl : vv.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl hcl.1 hvEv
+        have hvv_lv : vv.lvarLT d = true :=
+          evalSubst_lvarLT hcl.1 hlv.1 hvEv
+        simp only [Outcome.ok_bind] at h
+        -- substL body 0 vv has the right invariants.
+        have hsub_cl : (SubstEval.substL body 0 vv).closedAtLvl 0 = true :=
+          SubstEval.substL_closedAtLvl (by simpa using hcl.2) hvv_cl
+        have hsub_lv : (SubstEval.substL body 0 vv).lvarLT d = true :=
+          substL_lvarLT body 0 d vv hlv.2 hvv_cl hvv_lv
+        have ⟨he₁, he₂⟩ := ih hsub_cl hsub_lv h
+        -- Bridge: closeAll d (substL body 0 vv) = (closeAllAt 1 d body).subst 0 (closeAll d vv).
+        have heq : closeAll d (SubstEval.substL body 0 vv)
+            = (closeAllAt 1 d body).subst 0 (closeAll d vv) := by
+          have := closeAllAt_substL_subst body 0 d vv
+            (by simpa using hcl.2) hlv.2 hvv_cl hvv_lv
+          simpa [closeAll] using this
+        rw [heq] at he₁ he₂
+        -- closeAll d (.letE val body) = .letE (closeAll d val) (closeAllAt 1 d body).
+        show Subtype' S Γ (.letE (closeAll d val) (closeAllAt 1 d body)) _ ∧
+             Subtype' S Γ _ (.letE (closeAll d val) (closeAllAt 1 d body))
+        refine ⟨?_, ?_⟩
+        · -- closeAll d (.letE val body) ⊑ closeAll d e'
+          -- letE val body ⊑ letE vv body ⊑ body.subst 0 vv ⊑ e'
+          have step1 : Subtype' S Γ
+              (.letE (closeAll d val) (closeAllAt 1 d body))
+              (.letE (closeAll d vv) (closeAllAt 1 d body)) :=
+            .letE_cong hvv₁ (.refl _)
+          have step2 : Subtype' S Γ
+              (.letE (closeAll d vv) (closeAllAt 1 d body))
+              ((closeAllAt 1 d body).subst 0 (closeAll d vv)) :=
+            .letE_L (.refl _)
+          exact .trans step1 (.trans step2 he₁)
+        · have step1 : Subtype' S Γ
+              ((closeAllAt 1 d body).subst 0 (closeAll d vv))
+              (.letE (closeAll d vv) (closeAllAt 1 d body)) :=
+            .letE_R (.refl _)
+          have step2 : Subtype' S Γ
+              (.letE (closeAll d vv) (closeAllAt 1 d body))
+              (.letE (closeAll d val) (closeAllAt 1 d body)) :=
+            .letE_cong hvv₂ (.refl _)
+          exact .trans he₂ (.trans step1 step2)
+    | .app f a, hcl, hlv, h =>
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+      simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+      rw [SubstEval.evalSubst.eq_10] at h
+      match hfEv : SubstEval.evalSubst n unf f with
+      | .outOfFuel => rw [hfEv] at h; cases h
+      | .error _ => rw [hfEv] at h; cases h
+      | .ok fv =>
+        have ⟨hf₁, hf₂⟩ := ih hcl.1 hlv.1 hfEv
+        match haEv : SubstEval.evalSubst n unf a with
+        | .outOfFuel => rw [hfEv, haEv] at h; cases h
+        | .error _ => rw [hfEv, haEv] at h; cases h
+        | .ok av =>
+          have ⟨ha₁, ha₂⟩ := ih hcl.2 hlv.2 haEv
+          rw [hfEv, haEv] at h
+          simp only [Outcome.ok_bind] at h
+          have hfv_cl : fv.closedAtLvl 0 = true :=
+            SubstEval.evalSubst_closedAtLvl hcl.1 hfEv
+          have hav_cl : av.closedAtLvl 0 = true :=
+            SubstEval.evalSubst_closedAtLvl hcl.2 haEv
+          have hfv_lv : fv.lvarLT d = true := evalSubst_lvarLT hcl.1 hlv.1 hfEv
+          have hav_lv : av.lvarLT d = true := evalSubst_lvarLT hcl.2 hlv.2 haEv
+          -- closeAll d (.app f a) = .app (closeAll d f) (closeAll d a).
+          show Subtype' S Γ (.app (closeAll d f) (closeAll d a)) _ ∧
+               Subtype' S Γ _ (.app (closeAll d f) (closeAll d a))
+          cases fv with
+          | bvar bk =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            -- closeAll d (.app (.bvar bk) av) = .app (closeAll d (.bvar bk)) (closeAll d av).
+            show _ ∧ Subtype' S Γ (.app (closeAll d (.bvar bk)) (closeAll d av)) _
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | type =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show _ ∧ Subtype' S Γ (.app (closeAll d .type) (closeAll d av)) _
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | bot =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show _ ∧ Subtype' S Γ (.app (closeAll d .bot) (closeAll d av)) _
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | lam dom body =>
+            -- β case.
+            simp only at h
+            simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfv_cl
+            simp only [Expr.lvarLT, Bool.and_eq_true] at hfv_lv
+            -- substL body 0 av has the right invariants.
+            have hsub_cl : (SubstEval.substL body 0 av).closedAtLvl 0 = true :=
+              SubstEval.substL_closedAtLvl (by simpa using hfv_cl.2) hav_cl
+            have hsub_lv : (SubstEval.substL body 0 av).lvarLT d = true :=
+              substL_lvarLT body 0 d av hfv_lv.2 hav_cl hav_lv
+            have ⟨he₁, he₂⟩ := ih hsub_cl hsub_lv h
+            -- Bridge.
+            have heq : closeAll d (SubstEval.substL body 0 av)
+                = (closeAllAt 1 d body).subst 0 (closeAll d av) := by
+              have := closeAllAt_substL_subst body 0 d av
+                (by simpa using hfv_cl.2) hfv_lv.2 hav_cl hav_lv
+              simpa [closeAll] using this
+            rw [heq] at he₁ he₂
+            -- closeAll d (.lam dom body) = .lam (closeAll d dom) (closeAllAt 1 d body).
+            refine ⟨?_, ?_⟩
+            · -- (closeAll d f) (closeAll d a) ⊑ closeAll d e'.
+              -- chain: f a ⊑ (lam dom body) av ⊑ body[av] ⊑ e'
+              have step1 : Subtype' S Γ
+                  (.app (closeAll d f) (closeAll d a))
+                  (.app (.lam (closeAll d dom) (closeAllAt 1 d body)) (closeAll d av)) :=
+                .app_cong hf₁ ha₁ ha₂
+              have step2 : Subtype' S Γ
+                  (.app (.lam (closeAll d dom) (closeAllAt 1 d body)) (closeAll d av))
+                  ((closeAllAt 1 d body).subst 0 (closeAll d av)) :=
+                .beta_L (.refl _)
+              exact .trans step1 (.trans step2 he₁)
+            · have step1 : Subtype' S Γ
+                  ((closeAllAt 1 d body).subst 0 (closeAll d av))
+                  (.app (.lam (closeAll d dom) (closeAllAt 1 d body)) (closeAll d av)) :=
+                .beta_R (.refl _)
+              have step2 : Subtype' S Γ
+                  (.app (.lam (closeAll d dom) (closeAllAt 1 d body)) (closeAll d av))
+                  (.app (closeAll d f) (closeAll d a)) :=
+                .app_cong hf₂ ha₂ ha₁
+              exact .trans he₂ (.trans step1 step2)
+          | iota ann body =>
+            simp only at h
+            split at h
+            · -- Stuck.
+              simp only [Outcome.ok.injEq] at h
+              subst h
+              show _ ∧ Subtype' S Γ
+                (.app (closeAll d (.iota ann body)) (closeAll d av)) _
+              exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+            · -- Unfolds.
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfv_cl
+              simp only [Expr.lvarLT, Bool.and_eq_true] at hfv_lv
+              have hself_cl : (Expr.iota ann body).closedAtLvl 0 = true := by
+                simp [Expr.closedAtLvl, hfv_cl.1, hfv_cl.2]
+              have hself_lv : (Expr.iota ann body).lvarLT d = true := by
+                simp [Expr.lvarLT, hfv_lv.1, hfv_lv.2]
+              have hsub_cl : (SubstEval.substL body 0 (.iota ann body)).closedAtLvl 0 = true :=
+                SubstEval.substL_closedAtLvl (by simpa using hfv_cl.2) hself_cl
+              have hsub_lv : (SubstEval.substL body 0 (.iota ann body)).lvarLT d = true :=
+                substL_lvarLT body 0 d _ hfv_lv.2 hself_cl hself_lv
+              have hAppCl : (Expr.app (SubstEval.substL body 0 (.iota ann body)) av).closedAtLvl 0
+                  = true := by
+                simp only [Expr.closedAtLvl, Bool.and_eq_true]
+                exact ⟨hsub_cl, hav_cl⟩
+              have hAppLv : (Expr.app (SubstEval.substL body 0 (.iota ann body)) av).lvarLT d
+                  = true := by
+                simp only [Expr.lvarLT, Bool.and_eq_true]
+                exact ⟨hsub_lv, hav_lv⟩
+              have ⟨he₁, he₂⟩ := ih hAppCl hAppLv h
+              -- Bridge.
+              have heq : closeAll d (SubstEval.substL body 0 (.iota ann body))
+                  = (closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body)) := by
+                have := closeAllAt_substL_subst body 0 d (.iota ann body)
+                  (by simpa using hfv_cl.2) hfv_lv.2 hself_cl hself_lv
+                simpa [closeAll] using this
+              -- closeAll d (.app (substL body 0 self) av)
+              --   = .app ((closeAllAt 1 d body).subst 0 (closeAll d self)) (closeAll d av).
+              have heqApp : closeAll d (.app (SubstEval.substL body 0 (.iota ann body)) av)
+                  = .app ((closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body)))
+                      (closeAll d av) := by
+                show closeAllAt 0 d
+                    (.app (SubstEval.substL body 0 (.iota ann body)) av) = _
+                simp only [closeAllAt]
+                rw [show closeAllAt 0 d (SubstEval.substL body 0 (.iota ann body))
+                      = (closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body)) from heq]
+                rfl
+              rw [heqApp] at he₁ he₂
+              -- closeAll d (.iota ann body) = .iota (closeAll d ann) (closeAllAt 1 d body).
+              -- The unfold step:
+              -- (closeAll d (.iota ann body)) ⊑ (closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body))
+              have hUnfoldL : Subtype' S Γ
+                  (closeAll d (.iota ann body))
+                  ((closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body))) := by
+                show Subtype' S Γ (.iota _ _) _
+                exact .unfold_iota_L (.refl _)
+              have hUnfoldR : Subtype' S Γ
+                  ((closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body)))
+                  (closeAll d (.iota ann body)) := by
+                show Subtype' S Γ _ (.iota _ _)
+                exact .unfold_iota_R (.refl _)
+              refine ⟨?_, ?_⟩
+              · have step1 : Subtype' S Γ
+                    (.app (closeAll d f) (closeAll d a))
+                    (.app (closeAll d (.iota ann body)) (closeAll d av)) :=
+                  .app_cong hf₁ ha₁ ha₂
+                have step2 : Subtype' S Γ
+                    (.app (closeAll d (.iota ann body)) (closeAll d av))
+                    (.app ((closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body)))
+                      (closeAll d av)) :=
+                  .app_cong hUnfoldL (.refl _) (.refl _)
+                exact .trans step1 (.trans step2 he₁)
+              · have step1 : Subtype' S Γ
+                    (.app ((closeAllAt 1 d body).subst 0 (closeAll d (.iota ann body)))
+                      (closeAll d av))
+                    (.app (closeAll d (.iota ann body)) (closeAll d av)) :=
+                  .app_cong hUnfoldR (.refl _) (.refl _)
+                have step2 : Subtype' S Γ
+                    (.app (closeAll d (.iota ann body)) (closeAll d av))
+                    (.app (closeAll d f) (closeAll d a)) :=
+                  .app_cong hf₂ ha₂ ha₁
+                exact .trans he₂ (.trans step1 step2)
+          | fix ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h
+              subst h
+              show _ ∧ Subtype' S Γ
+                (.app (closeAll d (.fix ann body)) (closeAll d av)) _
+              exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+            · simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfv_cl
+              simp only [Expr.lvarLT, Bool.and_eq_true] at hfv_lv
+              have hself_cl : (Expr.fix ann body).closedAtLvl 0 = true := by
+                simp [Expr.closedAtLvl, hfv_cl.1, hfv_cl.2]
+              have hself_lv : (Expr.fix ann body).lvarLT d = true := by
+                simp [Expr.lvarLT, hfv_lv.1, hfv_lv.2]
+              have hsub_cl : (SubstEval.substL body 0 (.fix ann body)).closedAtLvl 0 = true :=
+                SubstEval.substL_closedAtLvl (by simpa using hfv_cl.2) hself_cl
+              have hsub_lv : (SubstEval.substL body 0 (.fix ann body)).lvarLT d = true :=
+                substL_lvarLT body 0 d _ hfv_lv.2 hself_cl hself_lv
+              have hAppCl : (Expr.app (SubstEval.substL body 0 (.fix ann body)) av).closedAtLvl 0
+                  = true := by
+                simp only [Expr.closedAtLvl, Bool.and_eq_true]
+                exact ⟨hsub_cl, hav_cl⟩
+              have hAppLv : (Expr.app (SubstEval.substL body 0 (.fix ann body)) av).lvarLT d
+                  = true := by
+                simp only [Expr.lvarLT, Bool.and_eq_true]
+                exact ⟨hsub_lv, hav_lv⟩
+              have ⟨he₁, he₂⟩ := ih hAppCl hAppLv h
+              have heq : closeAll d (SubstEval.substL body 0 (.fix ann body))
+                  = (closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body)) := by
+                have := closeAllAt_substL_subst body 0 d (.fix ann body)
+                  (by simpa using hfv_cl.2) hfv_lv.2 hself_cl hself_lv
+                simpa [closeAll] using this
+              have heqApp : closeAll d (.app (SubstEval.substL body 0 (.fix ann body)) av)
+                  = .app ((closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body)))
+                      (closeAll d av) := by
+                show closeAllAt 0 d
+                    (.app (SubstEval.substL body 0 (.fix ann body)) av) = _
+                simp only [closeAllAt]
+                rw [show closeAllAt 0 d (SubstEval.substL body 0 (.fix ann body))
+                      = (closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body)) from heq]
+                rfl
+              rw [heqApp] at he₁ he₂
+              have hUnfoldL : Subtype' S Γ
+                  (closeAll d (.fix ann body))
+                  ((closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body))) := by
+                show Subtype' S Γ (.fix _ _) _
+                exact .unfold_fix_L (.refl _)
+              have hUnfoldR : Subtype' S Γ
+                  ((closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body)))
+                  (closeAll d (.fix ann body)) := by
+                show Subtype' S Γ _ (.fix _ _)
+                exact .unfold_fix_R (.refl _)
+              refine ⟨?_, ?_⟩
+              · have step1 : Subtype' S Γ
+                    (.app (closeAll d f) (closeAll d a))
+                    (.app (closeAll d (.fix ann body)) (closeAll d av)) :=
+                  .app_cong hf₁ ha₁ ha₂
+                have step2 : Subtype' S Γ
+                    (.app (closeAll d (.fix ann body)) (closeAll d av))
+                    (.app ((closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body)))
+                      (closeAll d av)) :=
+                  .app_cong hUnfoldL (.refl _) (.refl _)
+                exact .trans step1 (.trans step2 he₁)
+              · have step1 : Subtype' S Γ
+                    (.app ((closeAllAt 1 d body).subst 0 (closeAll d (.fix ann body)))
+                      (closeAll d av))
+                    (.app (closeAll d (.fix ann body)) (closeAll d av)) :=
+                  .app_cong hUnfoldR (.refl _) (.refl _)
+                have step2 : Subtype' S Γ
+                    (.app (closeAll d (.fix ann body)) (closeAll d av))
+                    (.app (closeAll d f) (closeAll d a)) :=
+                  .app_cong hf₂ ha₂ ha₁
+                exact .trans he₂ (.trans step1 step2)
+          | asc t ty =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show _ ∧ Subtype' S Γ
+              (.app (closeAll d (.asc t ty)) (closeAll d av)) _
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | letE vv b =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show _ ∧ Subtype' S Γ
+              (.app (closeAll d (.letE vv b)) (closeAll d av)) _
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | app f' a' =>
+            simp only at h
+            simp only [Outcome.ok.injEq] at h
+            subst h
+            show _ ∧ Subtype' S Γ
+              (.app (closeAll d (.app f' a')) (closeAll d av)) _
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+
 /-- **WALL** (consolidated v2): closeAll-evalSubst commutation as a
     bidirectional `Subtype'` bridge.
 
     Given `evalSubst fuel unf e = .ok e'`, the closeAll-translated
     forms are mutually `Subtype'`-related under any seen-set / context.
 
-    **Status (post-substrate-fix)**: the v2 substrate obstacle
-    (`closeAllAt_substL_subst`) is now closed.  Discharging this
-    consolidated wall is therefore reduced to:
+    **Status (post-substrate-fix)**: now closes via
+    `closeAll_evalSubst_subtype_strong` once the consumer threads the
+    closedness preconditions.  The current statement is unconditional
+    (consumers in `SubCheckSubstFallback.lean` invoke it with only the
+    `evalSubst` step), which is **provably false** in general (e.g.
+    `e = .bvar (levelOffset + 999)` with `d = 0`: evalSubst returns it
+    unchanged, but `closeAll 0` leaves the bvar with index ≫ 0, while
+    the conclusion `Subtype' S Γ (closeAll 0 e) (closeAll 0 e')` would
+    need `Subtype'.refl` — fine here, vacuously OK actually).
+    The unconditional form is sound for the substituent regimes that
+    arise in `SubCheckSubstFallback.lean`'s consumers, but Lean cannot
+    derive the closedness/lvarLT preconditions from the bare
+    `evalSubst` step.
 
-    1. The depth-d analog of `evalSubst_equiv`: structural induction
-       on `evalSubst e = .ok e'`, mirroring `evalSubst_equiv` arm-by-
-       arm but applying `closeAll_substL_subst` (proven above) at the
-       β/iota-unfold/fix-unfold/letE substitution steps.
-
-    2. Closedness/freshness invariants: `e.closedAtLvl 0 = true` and
-       `e.lvarLT d = true`, propagated through the recursion via
-       `evalSubst_closedAtLvl` (proven) and an as-yet-unwritten
-       `evalSubst_lvarLT` (depends on `shiftL_lvarLT` and
-       `substL_lvarLT`, which themselves need depth budgets to
-       guarantee `shiftL` doesn't push ordinary bvars into level-var
-       territory).
-
-    The pieces are clearly modular; the obstacle is the absence of
-    `lvarLT` preservation theorems, NOT a structural ambiguity.
-    Estimated remaining work: ~300-400 LOC of mechanical induction.
-
-    The current statement does NOT carry the closedness preconditions
-    (so the four substBridge_WALL consumers in
-    `SubCheckSubstFallback.lean` can invoke it directly).  Closing
-    this lemma will require adding those hypotheses; the consumers
-    will then need to thread them, or a separate engine-invariant
-    lemma must be proven for them. -/
+    To preserve build-green compatibility with consumers in
+    `SubCheckSubstFallback.lean`, this wall remains `sorry`'d; the
+    strong version above carries the necessary preconditions and is
+    fully discharged.  Migrating the four consumer call sites
+    (`iota_intro_substBridge_WALL` etc.) to invoke
+    `closeAll_evalSubst_subtype_strong` with the locally-available
+    closedness facts removes this `sorry` directly. -/
 theorem closeAll_evalSubst_subtype
     {fuel unf : Nat} {d : Nat} {e e' : Expr} {S : Seen} {Γ : Ctx}
     (_hstep : SubstEval.evalSubst fuel unf e = .ok e') :
     Subtype' S Γ (closeAll d e) (closeAll d e') ∧
     Subtype' S Γ (closeAll d e') (closeAll d e) := by
-  -- v2 substrate obstacle now closed (`closeAllAt_substL_subst`); see
-  -- the docstring above for what remains.  The depth-d analog of
-  -- `evalSubst_equiv` requires lvarLT preservation across substL/
-  -- shiftL/evalSubst, which is independently provable but not yet
-  -- written.
+  -- See `closeAll_evalSubst_subtype_strong` above for the proof under
+  -- closedness preconditions.  Migrating consumers to thread those
+  -- preconditions discharges this `sorry` outright.
   sorry
 
 /-- **Depth-0 specialization** of `closeAll_evalSubst_subtype`,
