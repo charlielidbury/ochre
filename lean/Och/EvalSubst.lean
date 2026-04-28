@@ -21,14 +21,16 @@ structural engine free of any dependency on the type-checker.
 accepts them via lex measure on `(fuel, unf)` for `evalSubst`, and
 structural recursion on the input `Expr` for the substitution helpers).
 
-The `subCheckSubst` mutual block is `partial def`. It reflects exactly
-the recursive structure of the NbE-domain `subCheckVal` (which is also
-non-partial via a delicate `(fuel, _)` lex measure) — but the
-substitution-domain version interleaves WHNF re-evaluation with the
-recursion, and the resulting termination story is harder to capture in
-a `decreasing_by` clause without significant work. Documented as a
-pending proof obligation; in practice the fuel-driven structure
-guarantees termination.
+The `subCheckSubst` mutual block is non-`partial` as well, with each
+function carrying a lex `(fuel, phase)` termination measure. `phase`
+distinguishes `subCheckSubst` (phase 0) from `subCheckSubstMatch`
+(phase 1): every `subCheckSubst → subCheckSubstMatch` call decrements
+`fuel`, and every `subCheckSubstMatch → subCheckSubst` call decrements
+phase at the same fuel. All other recursive calls in the block (spine,
+ascent, synth, plus self-recursive ones) decrement `fuel` directly.
+Equation lemmas (`subCheckSubst.eq_def` etc.) auto-generate, which
+the soundness composition in `Soundness/SubCheckSubstSoundness.lean`
+relies on.
 
 ## Why substitution-based?
 
@@ -513,10 +515,11 @@ LHS neutral to its type when the spine doesn't match. Mirrors
 NbE's `TyCtx`.
 
 The recursion mixes WHNF re-evaluation with structural descent through
-binders. While each individual recursive call decreases either `fuel`
-or the input `Expr`'s structure, capturing this in a `decreasing_by`
-clause requires substantial work — for now the block is `partial def`.
-The fuel parameter guarantees termination at runtime.
+binders. Termination is captured by a lex `(fuel, phase)` measure
+(see the module docstring): `subCheckSubst → subCheckSubstMatch`
+decrements `fuel`, the reverse direction decrements `phase`, and all
+other recursive calls decrement `fuel` directly. Equation lemmas
+auto-generate.
 -/
 
 /-- Engine-internal type-context: `tyCtx[lvl]` is the type of the
@@ -540,12 +543,13 @@ private def neutralHeadLevel : Expr → Option Nat
     self-eliminator `fix N. ι self:N. λP:..`). The `inhab`
     argument is what to substitute for the ι-self when unfolding
     (typically the spine-head being applied). -/
-private partial def exposePi (fuel : Nat) (inhab : Expr) (ty : Expr) :
+private def exposePi (fuel : Nat) (inhab : Expr) (ty : Expr) :
     Option Expr :=
   match evalSubst fuel unfBound ty with
   | .ok ty' => go unfBound ty'
   | _ => none
 where
+  /-- Structurally recursive on the unfold budget `n : Nat`. -/
   go : Nat → Expr → Option Expr
   | 0, e => some e
   | _+1, e@(.lam ..) => some e
@@ -566,7 +570,7 @@ mutual
 
       Exposed (not `private`) so soundness proofs in
       `Soundness/SubCheckSubstNeutral.lean` can refer to it. -/
-  partial def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
+  def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -582,11 +586,13 @@ mutual
           else subCheckSubstMatch fuel tyCtx seen a' b'
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
       | .error s, _ | _, .error s => .error s
+  termination_by (fuel, 0)
+  decreasing_by all_goals (simp_wf; omega)
 
   /-- The per-shape case-split for `subCheckSubst`. Inputs are assumed
       to be in WHNF (the caller forces it). Exposed for soundness
       proofs. -/
-  partial def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
+  def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     let depth := tyCtx.size
     match a, b with
@@ -707,11 +713,13 @@ mutual
           neutralAscent fuel tyCtx seen a b
         else
           .ok false
+  termination_by (fuel, 1)
+  decreasing_by all_goals (simp_wf; omega)
 
   /-- Compare two neutral spines structurally. Heads must be equal
       level-vars; arguments must be pairwise *equivalent* (any-
       variance). Exposed for soundness proofs. -/
-  partial def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
+  def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -726,10 +734,12 @@ mutual
           if !fwd then return false
           subCheckSubst fuel tyCtx seen v2 v1
       | _, _ => .ok false
+  termination_by (fuel, 0)
+  decreasing_by all_goals (simp_wf; omega)
 
   /-- Synthesise the type of a neutral spine and check against `b`.
       Mirrors NbE's `neutralAscent`. Exposed for soundness proofs. -/
-  partial def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
+  def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
       (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
@@ -737,6 +747,8 @@ mutual
       match synthNeutralType fuel tyCtx a with
       | .ok (some ty) => subCheckSubst fuel tyCtx seen ty b
       | _ => .ok false
+  termination_by (fuel, 0)
+  decreasing_by all_goals (simp_wf; omega)
 
   /-- Synthesise the type of a neutral. Walks the spine, looking up
       head levels in `tyCtx` and applying argument types to function
@@ -745,7 +757,7 @@ mutual
       it via `exposePi` to expose the underlying `.lam` and continue.
       A `.fix` at the spine head (e.g. `add_`) ascends to its
       annotation. Exposed for soundness proofs. -/
-  partial def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
+  def synthNeutralType (fuel : Nat) (tyCtx : TyCtx)
       (a : Expr) : Outcome (Option Expr) :=
     match fuel with
     | 0 => .outOfFuel
@@ -779,6 +791,8 @@ mutual
               | _ => .ok none
           | _ => .ok none
       | _ => .ok none
+  termination_by (fuel, 0)
+  decreasing_by all_goals (simp_wf; omega)
 end
 
 /-- Structural subtype check on closed `Expr`s: WHNF both sides,

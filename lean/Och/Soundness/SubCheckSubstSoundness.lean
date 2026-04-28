@@ -27,43 +27,33 @@ and discharges the public `Och.subCheck_sound` (in `Och/Soundness.lean`)
 by specialising at `tyCtx = #[]`, `seen = []`, where `closeAll 0 = id`
 (`closeAll_zero`) and the conclusion collapses to `Subtype' [] [] a b`.
 
-## Composition wall: partial-def opacity
+## Composition wall: partial-def opacity (RESOLVED)
 
-**Status (overnight Stage 2): WALLED at the meta-level.**
+**Status: the partial-def opacity wall is now broken.**
 
-The engine's mutual block
-
-```
-mutual
-  partial def subCheckSubst …
-  partial def subCheckSubstMatch …
-  partial def subCheckSpine …
-  partial def neutralAscent …
-  partial def synthNeutralType …
-end
-```
-
-is a **mutual `partial def`**.  Lean 4 treats every constant in such
-a block as opaque: no `eq_def`, `eq_1`, `eq_2`, … equation lemmas are
-generated, and `unfold` / `simp only [name]` / `rw [name]` all fail
-with `simp made no progress` or `failed to unfold`.  Empirically
-verified in this repo (mutual non-partial defs *do* get equation
-lemmas; mutual `partial def`s do not).
-
-The consequence: given a hypothesis `h : subCheckSubst fuel tyCtx
-seen a b = .ok true`, there is **no tactic-level move** that steps `h`
-to `subCheckSubstMatch fuel tyCtx seen a' b' = .ok true` (after the
-WHNF step) or that produces, on a `.lam, .lam` shape, the engine's
-`(domB, domA) ∧ (bodyA', bodyB')` pair of recursive results.  The
+The engine's mutual block was historically `partial def`, which made
+every constant in the block opaque to `unfold` / `simp only [name]` /
+`rw [name]` (no `eq_def`, `eq_1`, … equation lemmas).  Given a
+hypothesis `h : subCheckSubst fuel tyCtx seen a b = .ok true`, there
+was no tactic-level move that stepped `h` to `subCheckSubstMatch
+fuel tyCtx seen a' b' = .ok true` (after the WHNF step) — the
 arm-lemmas in `SubCheckSubstStructural` etc. all take such pairs as
-*parameters* — they are the right-hand side of the would-be case
-analysis, but the left-hand side of the analysis (extracting the
-parameters from `h`) cannot be performed.
+*parameters*, and the left-hand side of the case analysis (extracting
+those parameters from `h`) could not be performed.
 
-This is the *meta-level* analogue of the v2 wall: the v2 wall blocks
-inside the fallback arm-lemmas (substrate substitution commutation);
-the partial-def-opacity wall blocks the *frame around* the arm-lemmas
-(connecting `h` to the arm-lemmas' premises).
+That wall has now been knocked down by converting the mutual block
+to non-partial defs in `Och/EvalSubst.lean` with a lex `(fuel, phase)`
+termination measure (see that file's module docstring).  The
+auto-generated `subCheckSubst.eq_def`, `subCheckSubstMatch.eq_def`,
+… equation lemmas are now available — `rw [subCheckSubst.eq_def] at
+h` (or `simp only [...]`) steps `h` through the WHNF/dispatch frame
+and exposes the inner `subCheckSubstMatch` call, from which the
+arm-lemma premises can be extracted via further case analysis.
+
+The composition theorems below still carry `sorry` in their bodies
+(the wiring from `eq_def` to the arm-IH packages is mechanical but
+non-trivial and is the next step); the *meta-level* obstruction is
+gone.
 
 ## What this file delivers
 
@@ -117,18 +107,21 @@ The two soundness targets, stated against the substrate-agnostic
 depth `tyCtx.size` produces a declarative subtyping derivation on the
 closeAll-translated terms.
 
-**Wall**: the partial-def opacity wall (see module doc) blocks the
-case-analysis on `h`'s engine-equation.  The body is `sorry`. -/
+**Status**: the partial-def opacity wall has been broken (see the
+module-level docstring above and `Och/EvalSubst.lean`'s status section).
+`subCheckSubst.eq_def` is now available — the body remains `sorry`
+pending the mechanical wiring of the equation lemma into the arm-IH
+composition. -/
 theorem subCheckSubst_sound
     {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
     {a b : Expr}
     (_h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a) (closeAll tyCtx.size b) := by
-  -- WALL: mutual `partial def` produces no equation lemmas.  See
-  -- module doc.  The composition of arm-lemmas below would discharge
-  -- the goal *if* the engine-equation could be unfolded; today, it
-  -- cannot.
+  -- The partial-def wall is now broken (subCheckSubst is non-partial
+  -- with a lex (fuel, phase) measure; eq_def auto-generates).  This
+  -- proof is the next step: rw [subCheckSubst.eq_def] at h, case-
+  -- split on the WHNF outputs, dispatch to the arm-IH packages.
   sorry
 
 /-- Public-API soundness: `Och.subCheck` accepting two `WTValue`s
