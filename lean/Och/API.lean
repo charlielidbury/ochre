@@ -295,8 +295,11 @@ complete structural engine `SubstEval.subCheckOpen`.
   operationally stuck (e.g. unbound bare bvar, applied non-Π).
 -/
 def synth (e : Expr) (fuel : Nat := 5000) : Outcome WTValue := do
-  let v ← synthCore fuel #[] e
-  pure ⟨v⟩
+  if !e.closedAt 0 then
+    .error s!"synth: input contains unbound bvars (not closed)"
+  else
+    let v ← synthCore fuel #[] e
+    pure ⟨v⟩
 
 /-- Structural subtype check on already-typed values. Internally
 calls the substitution-based structural engine on the validated

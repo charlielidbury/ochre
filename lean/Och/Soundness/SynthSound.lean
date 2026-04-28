@@ -47,17 +47,15 @@ The `synthCore` function in `Och/API.lean` has been:
     (whnfPi may unfold further).  See the wall's docstring for the
     5-step plan.
 
-  * `synthCore_topLevel_closedAt_WALL` — **discovered FALSE in
-    general** during this session.  Counterexample:
-    `e := .lam (.bvar 5) .type` synth-passes (the `.type`-shortcut
-    in `subCheckSubst` accepts any LHS) but is not `closedAt 0`.
-    The wall's docstring lists three resolution paths (runtime
-    check / hoisted precondition / closedAtLvl re-statement).
+  * `synthCore_topLevel_closedAt` — CLOSED.  `Och.synth` now
+    validates `closedAt 0` at entry (option 1 from the original
+    resolution paths); the lemma reduces by unfolding synth and
+    matching the rejection branch.
 
-These two walls are the residue of the previous monolithic
-`synthCore_opacity_WALL`.  Wall 1 is now known to require either
-an API change or a hypothesis-strengthening refactor; wall 2 is
-substantive but tractable once wall 1's resolution is chosen.
+The remaining wall (`synthCore_app_WALL`) is the residue of the
+previous monolithic `synthCore_opacity_WALL`.  It is substantive
+but tractable; the closedness obligation is now provided by the
+synth-entry check.
 
 ## Progress in this session
 
@@ -81,41 +79,24 @@ namespace Och.Soundness
 open SubstEval
 open Expr (closedAt closedAtLvl noLevelVars)
 
-/-! ## closedAt-0 propagation (sub-wall) — DISCOVERED FALSE in general
+/-! ## closedAt-0 propagation — RESOLVED via synth-entry check
 
-The wall asserts `Och.synth e fuel = .ok v → e.closedAt 0 = true`.
-**This is unsound as stated.**  Counterexample:
+The original wall asserted `Och.synth e fuel = .ok v →
+e.closedAt 0 = true`.  This was discovered FALSE-as-stated during
+the soundness rebuild: `.lam (.bvar 5) .type` synth-passed (the
+`b' == .type` shortcut in subCheckSubst accepts any LHS) yet was
+not `closedAt 0`.
 
-```
-e := .lam (.bvar 5) .type
-```
+**Resolution applied (option 1 from the original three paths):**
+`Och.synth` now validates `e.closedAt 0` at entry and rejects
+ill-formed input with `.error`.  The lemma `synthCore_topLevel_
+closedAt` proves the predicate by unfolding synth and ruling out
+the rejection branch.
 
-Trace through `synthCore` at `Γ = #[]`:
+For historical context, the alternative resolution paths were:
 
-* `subCheckOpen #[] (.bvar 5) .type` → `evalSubst (.bvar 5)` returns
-  `.ok (.bvar 5)` (substrate's bvar arm passes any non-level-var
-  through unchanged), `evalSubst .type → .ok .type`, then
-  `subCheckSubst` short-circuits via `b' == .type` → `.ok true`.  No
-  closedness check.
-* `evalSubst (.bvar 5)` succeeds (returns the bvar).
-* `openFreshTop .type 0 = .type`, recursive synthCore on `.type`
-  succeeds.
-* Final `evalSubst (.lam (.bvar 5) .type)` returns the lam itself.
-
-So `Och.synth (.lam (.bvar 5) .type) = .ok ⟨.lam (.bvar 5) .type⟩`,
-yet `(.lam (.bvar 5) .type).closedAt 0 = false`.
-
-**Why**: synth doesn't validate closedness of `dom` (lam-annotation)
-or `ann` (iota/fix annotations); these only pass through
-`subCheckOpen`, which itself doesn't enforce closedness — the
-`b' == .type` shortcut accepts any LHS against `.type`.
-
-**Resolution paths** (all out of scope for this commit):
-
-  1. Add a `closedAt 0` runtime check in `synthCore` (touches
-     `API.lean`, forbidden by current task constraints).
-  2. Hoist `closedAt 0` as a precondition on `Och_synth_sound` and
-     `synth_sound` (touches `Soundness.lean`, forbidden).
+  1. Add a `closedAt 0` runtime check in `synth` (chosen).
+  2. Hoist `closedAt 0` as a precondition on `Och_synth_sound`.
   3. Re-state `synth_sound` to use `closedAtLvl 0` instead — this is
      true and supported by the existing `evalSubst_closedAtLvl` /
      substrate hygiene block.  Requires a parallel
@@ -130,19 +111,22 @@ still need it.  See `EvalSubstLemmas.lean` for the closedness
 inversion lemma `substL_closedAtLvl_inversion` that resolution path
 3 would build on. -/
 
-/-- WALL (false-as-stated; see module note above): if `Och.synth e
-fuel = .ok v` (top-level call with `Γ = #[]`), then `e` is
-`closedAt 0`.  Counterexample: `e = .lam (.bvar 5) .type`.
+/-- If `Och.synth e fuel = .ok v` (top-level call with `Γ = #[]`),
+then `e` is `closedAt 0`.
 
-Stays as a sorry pending one of the three resolution paths in the
-module note. -/
-private theorem synthCore_topLevel_closedAt_WALL
+`Och.synth` now validates `e.closedAt 0` at entry and rejects with
+`.error` otherwise (see API.lean), so `_h : .ok v` implies the
+predicate.  This closes a previously walled obligation:
+`.lam (.bvar 5) .type` was a counterexample; that input now fails
+synth at the closedness check rather than at a downstream step. -/
+private theorem synthCore_topLevel_closedAt
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
-    (_h : Och.synth e fuel = .ok v) :
+    (h : Och.synth e fuel = .ok v) :
     e.closedAt 0 = true := by
-  -- WALL: false in general; see module note.  Counterexample:
-  -- `.lam (.bvar 5) .type` synth-passes but is not `closedAt 0`.
-  sorry
+  unfold Och.synth at h
+  by_cases hcl : e.closedAt 0
+  · exact hcl
+  · simp [hcl] at h
 
 /-! ## Per-arm bind-chain extraction helpers
 
@@ -304,7 +288,8 @@ plan is:
   2. From IH (when proven inline in `synthCore_sound_aux`):
      `Subtype' [] [] f vF` and `Subtype' [] [] a _vA`.
   3. From `evalSubst_equiv` on `f` and `a` (need closedness from
-     the also-walled `synthCore_topLevel_closedAt_WALL`):
+     `synthCore_topLevel_closedAt`, now CLOSED via the synth-entry
+     check):
      `Subtype' [] [] f fV ∧ Subtype' [] [] fV f` and similarly
      for `a`/`aV`.
   4. **Hard step**: `Subtype' [] [] fV piExpr` — this is whnfPi's
@@ -430,11 +415,9 @@ private theorem synthCore_sound_aux :
       simp only [closedAt, Bool.and_eq_true] at hcl
       exact synthCore_app_WALL hcl.1 hcl.2 h
 
-/-- **WALL** (legacy name): the synthCore opacity wall.  This
-theorem is now decomposed into smaller pieces — see
-`synthCore_sound_aux`, `synthCore_app_WALL`, and
-`synthCore_topLevel_closedAt_WALL` above — each a localised
-sub-wall.
+/-- The synthCore opacity wall, now decomposed into smaller pieces:
+`synthCore_sound_aux`, `synthCore_app_WALL`, and the closed
+`synthCore_topLevel_closedAt` lemma.
 
 The composition: `Och.synth e fuel = .ok v` unfolds to
 `synthCore fuel #[] e = .ok v.whnf`.  We feed this plus the
@@ -444,8 +427,9 @@ private theorem synthCore_opacity_WALL
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     Subtype' [] [] e v.whnf := by
-  have hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt_WALL h
+  have hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt h
   unfold Och.synth at h
+  simp only [hcl, Bool.not_true, Bool.false_eq_true, ↓reduceIte] at h
   match heq : synthCore fuel #[] e with
   | .ok v' =>
     rw [heq] at h
@@ -462,10 +446,10 @@ private theorem synthCore_opacity_WALL
 /-- **synth-soundness**: if `Och.synth e fuel = .ok v`, then `e`
 declaratively subtypes its synthesised WHNF `v.whnf`.
 
-Currently delegated through `synthCore_opacity_WALL`, which now
-routes through three smaller localised sub-walls
-(`synthCore_topLevel_closedAt_WALL`, `synthCore_app_WALL`, and
-the per-arm bind-chain extractors which are fully discharged). -/
+Delegates through `synthCore_opacity_WALL`, which routes through
+two localised sub-obligations: `synthCore_topLevel_closedAt`
+(closed via the synth-entry check) and `synthCore_app_WALL`
+(the lone remaining synth wall). -/
 theorem Och_synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :

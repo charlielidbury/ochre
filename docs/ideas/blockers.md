@@ -3,40 +3,21 @@
 Living list of items that need user input. Each is documented in
 detail in its own doc; this is the index.
 
-## 1. synth doesn't validate annotation closedness
+## 1. synth doesn't validate annotation closedness — RESOLVED
 
 **Surfaced**: 2026-04-28 03:50, by the `Close remaining synth_sound walls`
 agent (commit `83e7366`).
 
-**Wall**: `synthCore_topLevel_closedAt_WALL` in
-`lean/Och/Soundness/SynthSound.lean` was found to be **provably false
-as stated**. Counterexample: `λ:.bvar 5. .type` synth-passes (closedness
-isn't checked on the lambda's domain annotation; `subCheckOpen .bvar 5
-.type` accepts because `b' == .type` shortcuts to `.ok true`) but is not
-`closedAt 0`.
+**Resolved**: 2026-04-28 (overnight), via option 1 (runtime check in
+synth).  `Och.synth` now validates `e.closedAt 0` at entry and
+rejects with `.error` otherwise.  The previously-walled lemma
+`synthCore_topLevel_closedAt` proves trivially by unfolding synth
+and ruling out the rejection branch.
 
-**Connects to**: `docs/ideas/type-imprecision.md` — same root cause
-(structural subtype's `S-Top` accepts anything ⊑ Type, including
-ill-formed expressions in type-position).
-
-**Resolution paths** (need user verdict):
-1. **Runtime check**: synth verifies closedness of all annotations
-   before accepting. Tightens synth's contract; matches the user's
-   "synth gates concEval" framing.
-2. **Hoisted precondition**: callers must ensure closedness; synth
-   stays as-is. Less invasive but pushes the obligation upstream.
-3. **`closedAtLvl` re-statement**: weaken the soundness theorem to
-   require `closedAtLvl 0` instead of `closedAt 0`. Substrate-correct
-   but loses the practical "synth gates concEval" claim.
-
-**My read of user's preference**: option 1. The user has consistently
-preferred tighter specs over loose ones, and explicitly framed synth
-as "gating concEval against ill-typed problems". A synth that accepts
-open annotations doesn't gate.
-
-**Impact**: until resolved, `synth_sound` carries this as a sub-wall.
-Chains through `Och_subCheck_sound` and the final `soundness`
-composition.
+The autonomous decision matched the predicted user preference
+(tighter specs / "synth gates concEval" framing).  Reversible if
+disagreed with: revert `Och.synth` and revert
+`synthCore_topLevel_closedAt`'s body to a `sorry`.
 
 ## 2. closeAllAt_substL for arbitrary substituees
 
