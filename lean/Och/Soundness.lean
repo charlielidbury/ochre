@@ -6,6 +6,7 @@ import Och.TyCheck
 import Och.API
 import Och.Soundness.ConcEvalPreservation
 import Och.Soundness.SynthProgress
+import Och.Soundness.SubCheckSubstSoundness
 import Och.Std.Unit
 import Och.Std.DBool
 
@@ -85,11 +86,23 @@ theorem synth_sound
     Subtype' [] [] e v.whnf := sorry
 
 /-- Subtype-check soundness: if `Och.subCheck a b` accepts the
-two validated values, then `a.whnf ⊑ b.whnf` declaratively. -/
+two validated values, then `a.whnf ⊑ b.whnf` declaratively.
+
+Delegates to `Och.Soundness.Och_subCheck_sound` in
+`Soundness/SubCheckSubstSoundness.lean`, which composes the per-arm
+soundness lemmas in `SubCheckSubst{Structural,Neutral,Fallback}.lean`.
+
+The composition currently walls on (a) partial-def opacity for the
+mutual `subCheckSubst` block (no `eq_def` available, so case-analysis
+on `h` cannot extract sub-call witnesses) and (b) the v2 substitution
+bridges in the fallback arms.  The arm-lemmas themselves are proven
+modulo those internal sorries; the composition skeleton is in
+`SubCheckSubstSoundness.lean`. -/
 theorem subCheck_sound
     {fuel : Nat} {a b : Och.WTValue}
     (h : Och.subCheck a b fuel = .ok true) :
-    Subtype' [] [] a.whnf b.whnf := sorry
+    Subtype' [] [] a.whnf b.whnf :=
+  Och.Soundness.Och_subCheck_sound h
 
 /-- `concEval` (the reference evaluator) preserves declarative
 subtyping. If `e ⊑ τ` holds and `e` evaluates to `e'`, then
