@@ -156,8 +156,13 @@ theorem iota_intro_substBridge_WALL
     closeAll_substL_subst bodyB d a hbody_cl hbody_lv ha_cl ha_lv
   rw [← heq]
   -- Now goal: Subtype' (closeAll d bodyB'') (closeAll d (substL bodyB 0 a)).
-  -- Use closeAll_evalSubst_subtype on h_eval (in reverse direction).
-  exact (closeAll_evalSubst_subtype h_eval).2
+  -- Discharge via `closeAll_evalSubst_subtype_strong` after deriving the
+  -- closedness/lvarLT invariants on the substituted body.
+  have hsub_cl : (SubstEval.substL bodyB 0 a).closedAtLvl 0 = true :=
+    SubstEval.substL_closedAtLvl hbody_cl ha_cl
+  have hsub_lv : (SubstEval.substL bodyB 0 a).lvarLT d = true :=
+    substL_lvarLT bodyB 0 d a hbody_lv ha_cl ha_lv
+  exact (closeAll_evalSubst_subtype_strong hsub_cl hsub_lv h_eval).2
 
 /-- Substitution bridge for `unfold_fix_R` fallback. -/
 theorem unfold_fix_R_substBridge_WALL
@@ -181,7 +186,11 @@ theorem unfold_fix_R_substBridge_WALL
     closeAll_substL_subst bodyB d (.fix ann bodyB)
       hbody_cl hbody_lv hself_cl hself_lv
   rw [← heq]
-  exact (closeAll_evalSubst_subtype h_eval).2
+  have hsub_cl : (SubstEval.substL bodyB 0 (.fix ann bodyB)).closedAtLvl 0 = true :=
+    SubstEval.substL_closedAtLvl hbody_cl hself_cl
+  have hsub_lv : (SubstEval.substL bodyB 0 (.fix ann bodyB)).lvarLT d = true :=
+    substL_lvarLT bodyB 0 d (.fix ann bodyB) hbody_lv hself_cl hself_lv
+  exact (closeAll_evalSubst_subtype_strong hsub_cl hsub_lv h_eval).2
 
 /-- Substitution bridge for `unfold_fix_L` fallback. -/
 theorem unfold_fix_L_substBridge_WALL
@@ -206,7 +215,11 @@ theorem unfold_fix_L_substBridge_WALL
       hbody_cl hbody_lv hself_cl hself_lv
   rw [← heq]
   -- Need: Subtype' (closeAll d (substL ...)) (closeAll d a').
-  exact (closeAll_evalSubst_subtype h_eval).1
+  have hsub_cl : (SubstEval.substL bodyA 0 (.fix ann bodyA)).closedAtLvl 0 = true :=
+    SubstEval.substL_closedAtLvl hbody_cl hself_cl
+  have hsub_lv : (SubstEval.substL bodyA 0 (.fix ann bodyA)).lvarLT d = true :=
+    substL_lvarLT bodyA 0 d (.fix ann bodyA) hbody_lv hself_cl hself_lv
+  exact (closeAll_evalSubst_subtype_strong hsub_cl hsub_lv h_eval).1
 
 /-- Substitution bridge for `unfold_iota_L` fallback. -/
 theorem unfold_iota_L_substBridge_WALL
@@ -230,7 +243,11 @@ theorem unfold_iota_L_substBridge_WALL
     closeAll_substL_subst bodyA d (.iota ann bodyA)
       hbody_cl hbody_lv hself_cl hself_lv
   rw [← heq]
-  exact (closeAll_evalSubst_subtype h_eval).1
+  have hsub_cl : (SubstEval.substL bodyA 0 (.iota ann bodyA)).closedAtLvl 0 = true :=
+    SubstEval.substL_closedAtLvl hbody_cl hself_cl
+  have hsub_lv : (SubstEval.substL bodyA 0 (.iota ann bodyA)).lvarLT d = true :=
+    substL_lvarLT bodyA 0 d (.iota ann bodyA) hbody_lv hself_cl hself_lv
+  exact (closeAll_evalSubst_subtype_strong hsub_cl hsub_lv h_eval).1
 
 /-! ## Arm lemmas
 
