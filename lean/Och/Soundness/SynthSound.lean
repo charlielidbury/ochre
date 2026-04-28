@@ -62,37 +62,67 @@ namespace Och.Soundness
 open SubstEval
 open Expr (closedAt closedAtLvl noLevelVars)
 
-/-! ## closedAt-0 propagation (sub-wall)
+/-! ## closedAt-0 propagation (sub-wall) — DISCOVERED FALSE in general
 
-`Och.synth e fuel = .ok v` only succeeds when every recursive
-call site (binder bodies, `.asc` inner, `.app` f/a, `.letE` val/
-body) accepts; and at the *top* level `Γ = #[]`, so any free
-`bvar` in `e` would fail the `.bvar` arm.  Hence top-level
-synth acceptance implies `e.closedAt 0 = true`.
+The wall asserts `Och.synth e fuel = .ok v → e.closedAt 0 = true`.
+**This is unsound as stated.**  Counterexample:
 
-To prove this for *every* recursive call, we'd need to show that
-`openFreshTop body depth` and `Γ.push annV` keep the closedAt
-invariant.  The substrate has the relevant lemmas
-(`Expr.subst_closedAt`, `bvarLT_of_closedAt`) but threading them
-through the synth-accept witness requires a dedicated structural
-induction.
+```
+e := .lam (.bvar 5) .type
+```
 
-We isolate this as a single sub-wall and use it at the top-level
-call site only. -/
+Trace through `synthCore` at `Γ = #[]`:
 
-/-- WALL: if `Och.synth e fuel = .ok v` (top-level call with
-`Γ = #[]`), then `e` is `closedAt 0`.  This is the closedAt
-invariant the inner `synthCore_sound_aux` needs. -/
+* `subCheckOpen #[] (.bvar 5) .type` → `evalSubst (.bvar 5)` returns
+  `.ok (.bvar 5)` (substrate's bvar arm passes any non-level-var
+  through unchanged), `evalSubst .type → .ok .type`, then
+  `subCheckSubst` short-circuits via `b' == .type` → `.ok true`.  No
+  closedness check.
+* `evalSubst (.bvar 5)` succeeds (returns the bvar).
+* `openFreshTop .type 0 = .type`, recursive synthCore on `.type`
+  succeeds.
+* Final `evalSubst (.lam (.bvar 5) .type)` returns the lam itself.
+
+So `Och.synth (.lam (.bvar 5) .type) = .ok ⟨.lam (.bvar 5) .type⟩`,
+yet `(.lam (.bvar 5) .type).closedAt 0 = false`.
+
+**Why**: synth doesn't validate closedness of `dom` (lam-annotation)
+or `ann` (iota/fix annotations); these only pass through
+`subCheckOpen`, which itself doesn't enforce closedness — the
+`b' == .type` shortcut accepts any LHS against `.type`.
+
+**Resolution paths** (all out of scope for this commit):
+
+  1. Add a `closedAt 0` runtime check in `synthCore` (touches
+     `API.lean`, forbidden by current task constraints).
+  2. Hoist `closedAt 0` as a precondition on `Och_synth_sound` and
+     `synth_sound` (touches `Soundness.lean`, forbidden).
+  3. Re-state `synth_sound` to use `closedAtLvl 0` instead — this is
+     true and supported by the existing `evalSubst_closedAtLvl` /
+     substrate hygiene block.  Requires a parallel
+     `evalSubst_equiv_closedAtLvl` and propagation through the
+     `Subtype'`-side declarative system, neither of which exists yet.
+
+**Refactor in this commit.** The `.lam`, `.iota`, `.fix` arms of
+`synthCore_sound_aux` are now closed via `Subtype'.refl` directly
+(see `evalSubst_{lam,iota,fix}_refl` below), so they no longer
+consume the wall.  Only `.letE`, `.app`, and `.asc` (inner only)
+still need it.  See `EvalSubstLemmas.lean` for the closedness
+inversion lemma `substL_closedAtLvl_inversion` that resolution path
+3 would build on. -/
+
+/-- WALL (false-as-stated; see module note above): if `Och.synth e
+fuel = .ok v` (top-level call with `Γ = #[]`), then `e` is
+`closedAt 0`.  Counterexample: `e = .lam (.bvar 5) .type`.
+
+Stays as a sorry pending one of the three resolution paths in the
+module note. -/
 private theorem synthCore_topLevel_closedAt_WALL
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (_h : Och.synth e fuel = .ok v) :
     e.closedAt 0 = true := by
-  -- WALL: structural inversion through openFreshTop / Γ.push.
-  -- At top-level `Γ = #[]`, the `.bvar` arm always fails (the
-  -- `lvl < Γ.size` check fails for any level-var).  Pushing
-  -- this through the binder arms requires
-  -- `(openFreshTop body 0).closedAt 0 → body.closedAt 1`, which
-  -- is a routine substitution lemma we leave as a sorry-stub.
+  -- WALL: false in general; see module note.  Counterexample:
+  -- `.lam (.bvar 5) .type` synth-passes but is not `closedAt 0`.
   sorry
 
 /-! ## Per-arm bind-chain extraction helpers
