@@ -1412,6 +1412,13 @@ private theorem subCheckSubstMatch_dispatch
   -- _ ⊑ fix : unfoldFixR fallback.  Routes through `unfold_fix_R_arm`.
   -- Non-neutral LHS (lam/asc/letE): engine takes the `else` branch
   -- (no `isNeutral` short-circuit), giving the clean fallback shape.
+  -- Neutral LHS (bvar/app): engine enters the `if isNeutral` branch
+  -- with a `synthNeutralType` lookup and a `ty == b` short-circuit.
+  -- The `ty == b` true case demands a Subtype' derivation from a
+  -- type ascent (essentially `Subtype'_lvar_via_tyCtx`'s territory),
+  -- which is a separate open wall (neutral-ascent fallback).  We
+  -- leave these 2 arms `sorry` with a pointer; they unblock alongside
+  -- the spine bvar-bvar arm at line 2278-2280.
   | .bvar _k, .fix _ann _bodyB => sorry
   | .app _f _v, .fix _ann _bodyB => sorry
   | .lam _domA _bodyA, .fix _annB _bodyB =>
