@@ -291,19 +291,84 @@ private theorem subCheckSubstMatch_dispatch
   -- are not neutral).  Engine returns `.ok false`, so `_h` is
   -- contradictory; discharging requires unfolding through the
   -- catch-all guard.
-  | .lam _domA _bodyA, .bvar _k => sorry
-  | .lam _domA _bodyA, .app _f _v => sorry
-  | .lam _domA _bodyA, .bot => sorry
-  | .lam _domA _bodyA, .asc _t _ty => sorry
-  | .lam _domA _bodyA, .letE _v _b => sorry
-  | .type, .bvar _k => sorry
-  | .type, .app _f _v => sorry
-  | .type, .lam _domB _bodyB => sorry
-  | .type, .bot => sorry
-  | .type, .asc _t _ty => sorry
-  | .type, .letE _v _b => sorry
-  | .asc _t _ty, _ => sorry  -- LHS .asc shape (engine WHNF should remove).
-  | .letE _v _b, _ => sorry  -- LHS .letE shape (engine WHNF should remove).
+  -- `.lam, *` (catch-all): `.lam` is not neutral, so engine returns
+  -- `.ok false`, contradicting `_h`.
+  | .lam _domA _bodyA, .bvar _k =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .lam _domA _bodyA, .app _f _v =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .lam _domA _bodyA, .bot =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .lam _domA _bodyA, .asc _t _ty =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .lam _domA _bodyA, .letE _v _b =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .type, .bvar _k =>
+    -- Engine takes the catch-all `_, _` arm.  `.type` is not neutral,
+    -- so `isNeutral a && isNeutral b` and `isNeutral a` are both
+    -- false; engine returns `.ok false`, contradicting `_h`.
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .type, .app _f _v =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .type, .lam _domB _bodyB =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .type, .bot =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .type, .asc _t _ty =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .type, .letE _v _b =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  -- LHS `.asc` / `.letE`: not neutral; engine catch-all returns
+  -- `.ok false`.  In a fully-reduced WHNF setting these never appear,
+  -- but discharging vacuously is sound regardless.  We dispatch on the
+  -- RHS shape to fully reduce the engine's match.
+  | .asc _t _ty, .bvar _k =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .asc _t _ty, .app _f _v =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .asc _t _ty, .lam _domB _bodyB =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .asc _t _ty, .bot =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .asc _t _ty, .asc _t' _ty' =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .asc _t _ty, .letE _v _b =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .letE _v _b, .bvar _k =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .letE _v _b, .app _f _v' =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .letE _v _b, .lam _domB _bodyB =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .letE _v _b, .bot =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .letE _v _b, .asc _t _ty =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
+  | .letE _v _b, .letE _v' _b' =>
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp [SubstEval.isNeutral] at _h
   | .iota _annA _bodyA, .bot => sorry
   | .fix _annA _bodyA, .bot => sorry
   -- Cross-shape combinations missed above:
