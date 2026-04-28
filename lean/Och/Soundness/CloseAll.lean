@@ -1332,21 +1332,43 @@ drop simultaneously. -/
     Given `evalSubst fuel unf e = .ok e'`, the closeAll-translated
     forms are mutually `Subtype'`-related under any seen-set / context.
 
-    *Status*: walls on `closeAllAt_substL` (v2; see
-    `docs/ideas/proposalA-wall-v2.md`).  At depth 0 (where
-    `closeAll 0 = id`) the lemma reduces to `evalSubst_equiv` under
-    `closedAt 0`; at non-zero depth it is the same wall as the four
-    fallback `*_substBridge_WALL` lemmas in `SubCheckSubstFallback.lean`.
+    **Status (post-substrate-fix)**: the v2 substrate obstacle
+    (`closeAllAt_substL_subst`) is now closed.  Discharging this
+    consolidated wall is therefore reduced to:
 
-    Closing this single lemma discharges **both** `eval_bridge_a` and
-    `eval_bridge_b` consumers in `subCheckSubst_sound`. -/
+    1. The depth-d analog of `evalSubst_equiv`: structural induction
+       on `evalSubst e = .ok e'`, mirroring `evalSubst_equiv` arm-by-
+       arm but applying `closeAll_substL_subst` (proven above) at the
+       β/iota-unfold/fix-unfold/letE substitution steps.
+
+    2. Closedness/freshness invariants: `e.closedAtLvl 0 = true` and
+       `e.lvarLT d = true`, propagated through the recursion via
+       `evalSubst_closedAtLvl` (proven) and an as-yet-unwritten
+       `evalSubst_lvarLT` (depends on `shiftL_lvarLT` and
+       `substL_lvarLT`, which themselves need depth budgets to
+       guarantee `shiftL` doesn't push ordinary bvars into level-var
+       territory).
+
+    The pieces are clearly modular; the obstacle is the absence of
+    `lvarLT` preservation theorems, NOT a structural ambiguity.
+    Estimated remaining work: ~300-400 LOC of mechanical induction.
+
+    The current statement does NOT carry the closedness preconditions
+    (so the four substBridge_WALL consumers in
+    `SubCheckSubstFallback.lean` can invoke it directly).  Closing
+    this lemma will require adding those hypotheses; the consumers
+    will then need to thread them, or a separate engine-invariant
+    lemma must be proven for them. -/
 theorem closeAll_evalSubst_subtype
     {fuel unf : Nat} {d : Nat} {e e' : Expr} {S : Seen} {Γ : Ctx}
     (_hstep : SubstEval.evalSubst fuel unf e = .ok e') :
     Subtype' S Γ (closeAll d e) (closeAll d e') ∧
     Subtype' S Γ (closeAll d e') (closeAll d e) := by
-  -- Walls on closeAllAt_substL (v2 issue).  See module docstring
-  -- above and `docs/ideas/proposalA-wall-v2.md`.
+  -- v2 substrate obstacle now closed (`closeAllAt_substL_subst`); see
+  -- the docstring above for what remains.  The depth-d analog of
+  -- `evalSubst_equiv` requires lvarLT preservation across substL/
+  -- shiftL/evalSubst, which is independently provable but not yet
+  -- written.
   sorry
 
 /-- **Depth-0 specialization** of `closeAll_evalSubst_subtype`,
