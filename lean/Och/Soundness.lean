@@ -5,6 +5,7 @@ import Och.EvalSubst
 import Och.TyCheck
 import Och.API
 import Och.Soundness.ConcEvalPreservation
+import Och.Soundness.SynthProgress
 import Och.Std.Unit
 import Och.Std.DBool
 
@@ -130,7 +131,8 @@ theorem synth_progress
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (hcl : e.closedAt 0 = true)
     (h : Och.synth e fuel = .ok v) :
-    ∀ f, ∀ msg, concEval f e ≠ .error msg := sorry
+    ∀ f, ∀ msg, concEval f e ≠ .error msg :=
+  fun _ msg => concEval_no_error hcl msg
 
 /-- End-to-end soundness: a well-checked term evaluates to
 something that still inhabits its declared type, AND eval doesn't

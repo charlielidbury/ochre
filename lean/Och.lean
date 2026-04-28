@@ -11,6 +11,7 @@ import Och.Soundness
 import Och.Soundness.EvalSubstLemmas
 import Och.Soundness.SubCheckSubstNeutral
 import Och.Soundness.SubtypeSteps
+import Och.Soundness.SynthProgress
 
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit
