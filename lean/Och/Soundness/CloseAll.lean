@@ -610,6 +610,19 @@ theorem lvarLT_mono {e : Expr} {lvl lvl' : Nat}
     simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
     exact ⟨ih_val h.1, ih_body h.2⟩
 
+/-- The fresh level-var `freshLevelVar depth` has `lvarLT lvl` iff
+    `depth < lvl`.  Public-facing form needed for openFreshTop's
+    lvarLT-preservation analysis (used in the lam-lam/iota-iota/fix-fix
+    structural arms in `SubCheckSubstSoundness.lean`). -/
+theorem lvarLT_freshLevelVar (depth lvl : Nat) (hdepth : depth < lvl) :
+    (SubstEval.freshLevelVar depth).lvarLT lvl = true := by
+  -- `freshLevelVar depth` is definitionally `.bvar (levelOffset + depth)`.
+  show (Expr.bvar (SubstEval.levelOffset + depth)).lvarLT lvl = true
+  simp only [Expr.lvarLT, Bool.or_eq_true, Bool.not_eq_true',
+    decide_eq_false_iff_not, decide_eq_true_eq, SubstEval.isLevelIdx]
+  right
+  omega
+
 /-! ### `closeAllAt_succ_eq_shift`: bumping the binder counter
 
 For terms `s` whose ordinary bvars are bounded by `m` and whose

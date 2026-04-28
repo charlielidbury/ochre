@@ -832,4 +832,19 @@ theorem substL_closedAtLvl_inversion (body : Expr) (n : Nat) (s : Expr)
     body.closedAtLvl (n + 1) = true :=
   substL_closedAtLvl_inversion_gen body 0 n s (Nat.zero_le _) h
 
+/-! ## `openFreshTop` preservation (closedAtLvl, lvarLT)
+
+Public-facing closedness/lvarLT preservation lemmas through
+`openFreshTop`.  Internally `openFreshTop body depth = substL body 0
+(levelBvar depth)`; both `openFresh` and `levelBvar` are private to
+`Och.EvalSubst`, so callers in other modules cannot expand the
+definition manually.  These wrappers expose the preservation results
+in the public API. -/
+
+theorem openFreshTop_closedAtLvl_zero (body : Expr) (depth : Nat)
+    (hbody : body.closedAtLvl 1 = true) :
+    (openFreshTop body depth).closedAtLvl 0 = true := by
+  rw [openFreshTop_eq_substL_freshLevelVar]
+  exact substL_closedAtLvl hbody (closedAtLvl_freshLevelVar depth 0)
+
 end SubstEval

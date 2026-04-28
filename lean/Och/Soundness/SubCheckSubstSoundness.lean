@@ -323,11 +323,17 @@ private theorem subCheckSubstMatch_dispatch
     {a' b' : Expr}
     (_ih : ∀ {tyCtx' : Array Expr} {seen' : List (Expr × Expr)}
             {x y : Expr},
+            (∀ p ∈ seen',
+              p.1.closedAtLvl 0 = true ∧ p.1.lvarLT tyCtx'.size = true ∧
+              p.2.closedAtLvl 0 = true ∧ p.2.lvarLT tyCtx'.size = true) →
             x.closedAtLvl 0 = true → x.lvarLT tyCtx'.size = true →
             y.closedAtLvl 0 = true → y.lvarLT tyCtx'.size = true →
             SubstEval.subCheckSubst fuel tyCtx' seen' x y = .ok true →
             Subtype' (liftSeenList tyCtx'.size seen') (tyCtxToCtx tyCtx')
               (closeAll tyCtx'.size x) (closeAll tyCtx'.size y))
+    (_hseen_wf : ∀ p ∈ seen,
+      p.1.closedAtLvl 0 = true ∧ p.1.lvarLT tyCtx.size = true ∧
+      p.2.closedAtLvl 0 = true ∧ p.2.lvarLT tyCtx.size = true)
     (_ha_cl : a'.closedAtLvl 0 = true) (_ha_lv : a'.lvarLT tyCtx.size = true)
     (_hb_cl : b'.closedAtLvl 0 = true) (_hb_lv : b'.lvarLT tyCtx.size = true)
     (_h : SubstEval.subCheckSubstMatch fuel tyCtx seen a' b' = .ok true) :
@@ -437,17 +443,83 @@ private theorem subCheckSubstMatch_dispatch
       have ih_dom :
           Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
             (closeAll tyCtx.size _domB) (closeAll tyCtx.size _domA) :=
-        _ih hclB_dom hlvB_dom hclA_dom hlvA_dom h_dom
+        _ih _hseen_wf hclB_dom hlvB_dom hclA_dom hlvA_dom h_dom
       -- The body sub-call is `subCheckSubst fuel (tyCtx.push _domB)
       -- seen (openFresh _bodyA tyCtx.size) (openFresh _bodyB
       -- tyCtx.size) = .ok true`.  Apply `_ih` to obtain a derivation
       -- against `liftSeenList (tyCtx.size + 1) seen` and
-      -- `tyCtxToCtx (tyCtx.push _domB)`.  The arm-package consumes
-      -- `liftSeenList tyCtx.size seen` and
-      -- `closeAll tyCtx.size _domB :: tyCtxToCtx tyCtx`; bridging
-      -- the two is the `tyCtxPush_bridge_WALL` named in the module
-      -- docstring.  Sorried here.
-      sorry
+      -- `tyCtxToCtx (tyCtx.push _domB) = closeAll tyCtx.size _domB
+      -- :: tyCtxToCtx tyCtx`; then translate the Seen via
+      -- `Subtype'_liftSeen_succ_to_d`.
+      have h_body_call :
+          SubstEval.subCheckSubst fuel (tyCtx.push _domB) seen
+            (SubstEval.openFreshTop _bodyA tyCtx.size)
+            (SubstEval.openFreshTop _bodyB tyCtx.size)
+            = .ok true := _h
+      -- Closedness/lvarLT for openFreshTop bodyA/bodyB at depth tyCtx.size.
+      have h_open_a_cl : (SubstEval.openFreshTop _bodyA tyCtx.size).closedAtLvl 0
+          = true := SubstEval.openFreshTop_closedAtLvl_zero _ _ hclA_body
+      have h_open_b_cl : (SubstEval.openFreshTop _bodyB tyCtx.size).closedAtLvl 0
+          = true := SubstEval.openFreshTop_closedAtLvl_zero _ _ hclB_body
+      have hlvA_body_succ : _bodyA.lvarLT (tyCtx.push _domB).size = true := by
+        rw [Array.size_push]
+        exact lvarLT_mono hlvA_body (Nat.le_succ _)
+      have hlvB_body_succ : _bodyB.lvarLT (tyCtx.push _domB).size = true := by
+        rw [Array.size_push]
+        exact lvarLT_mono hlvB_body (Nat.le_succ _)
+      have h_depth_lt : tyCtx.size < (tyCtx.push _domB).size := by
+        rw [Array.size_push]; omega
+      have h_open_a_lv :
+          (SubstEval.openFreshTop _bodyA tyCtx.size).lvarLT
+            (tyCtx.push _domB).size = true := by
+        rw [SubstEval.openFreshTop_eq_substL_freshLevelVar]
+        refine substL_lvarLT _bodyA 0 _ _ hlvA_body_succ
+          (SubstEval.closedAtLvl_freshLevelVar _ _) ?_
+        exact lvarLT_freshLevelVar _ _ h_depth_lt
+      have h_open_b_lv :
+          (SubstEval.openFreshTop _bodyB tyCtx.size).lvarLT
+            (tyCtx.push _domB).size = true := by
+        rw [SubstEval.openFreshTop_eq_substL_freshLevelVar]
+        refine substL_lvarLT _bodyB 0 _ _ hlvB_body_succ
+          (SubstEval.closedAtLvl_freshLevelVar _ _) ?_
+        exact lvarLT_freshLevelVar _ _ h_depth_lt
+      -- Seen-wf at the new depth (tyCtx.size + 1) follows by lvarLT_mono.
+      have h_seen_wf_succ : ∀ p ∈ seen,
+          p.1.closedAtLvl 0 = true ∧
+          p.1.lvarLT (tyCtx.push _domB).size = true ∧
+          p.2.closedAtLvl 0 = true ∧
+          p.2.lvarLT (tyCtx.push _domB).size = true := by
+        intro p hp
+        obtain ⟨h1, h2, h3, h4⟩ := _hseen_wf p hp
+        rw [Array.size_push]
+        refine ⟨h1, ?_, h3, ?_⟩
+        · exact lvarLT_mono h2 (Nat.le_succ _)
+        · exact lvarLT_mono h4 (Nat.le_succ _)
+      -- Apply IH at the body call.
+      have ih_body_succ :
+          Subtype' (liftSeenList (tyCtx.push _domB).size seen)
+              (tyCtxToCtx (tyCtx.push _domB))
+              (closeAll (tyCtx.push _domB).size
+                (SubstEval.openFreshTop _bodyA tyCtx.size))
+              (closeAll (tyCtx.push _domB).size
+                (SubstEval.openFreshTop _bodyB tyCtx.size)) :=
+        _ih h_seen_wf_succ h_open_a_cl h_open_a_lv h_open_b_cl h_open_b_lv
+          h_body_call
+      -- Rewrite Γ via tyCtxToCtx_push and the Seen tag via
+      -- Subtype'_liftSeen_succ_to_d.
+      rw [tyCtxToCtx_push] at ih_body_succ
+      rw [Array.size_push] at ih_body_succ
+      have ih_body :
+          Subtype' (liftSeenList tyCtx.size seen)
+              (closeAll tyCtx.size _domB :: tyCtxToCtx tyCtx)
+              (closeAll (tyCtx.size + 1)
+                (SubstEval.openFreshTop _bodyA tyCtx.size))
+              (closeAll (tyCtx.size + 1)
+                (SubstEval.openFreshTop _bodyB tyCtx.size)) :=
+        Subtype'_liftSeen_succ_to_d _hseen_wf ih_body_succ
+      -- Apply the lam-lam composition arm (from SubCheckSubstStructural).
+      exact subCheckSubst_arm_lam_lam hclA_body hclB_body
+        hlvA_body hlvB_body ih_dom ih_body
     · -- contra = false: `_h` reduces to `pure false = .ok true`,
       -- contradicting the premise.
       simp only [hcontra, Bool.not_false, ↓reduceIte,
@@ -632,6 +704,9 @@ walls above. -/
 theorem subCheckSubst_sound
     {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
     {a b : Expr}
+    (hseen_wf : ∀ p ∈ seen,
+      p.1.closedAtLvl 0 = true ∧ p.1.lvarLT tyCtx.size = true ∧
+      p.2.closedAtLvl 0 = true ∧ p.2.lvarLT tyCtx.size = true)
     (ha_cl : a.closedAtLvl 0 = true) (ha_lv : a.lvarLT tyCtx.size = true)
     (hb_cl : b.closedAtLvl 0 = true) (hb_lv : b.lvarLT tyCtx.size = true)
     (h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true) :
@@ -745,9 +820,9 @@ theorem subCheckSubst_sound
           have hb'_lv : b'.lvarLT tyCtx.size = true :=
             evalSubst_lvarLT hb_cl hb_lv _h_b
           exact subCheckSubstMatch_dispatch
-            (fun {_tyCtx'} {_seen'} {_x _y} hx_cl hx_lv hy_cl hy_lv hx =>
-              ih hx_cl hx_lv hy_cl hy_lv hx)
-            ha'_cl ha'_lv hb'_cl hb'_lv h
+            (fun {_tyCtx'} {_seen'} {_x _y} hsw' hx_cl hx_lv hy_cl hy_lv hx =>
+              ih hsw' hx_cl hx_lv hy_cl hy_lv hx)
+            hseen_wf ha'_cl ha'_lv hb'_cl hb'_lv h
 
 /-- Public-API soundness: `Och.subCheck` accepting two `WTValue`s
 produces a declarative subtyping derivation on their `whnf` fields.

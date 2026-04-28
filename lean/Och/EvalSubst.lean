@@ -838,6 +838,20 @@ def asLevelVar : Expr → Option Nat
 def openFreshTop (body : Expr) (depth : Nat) : Expr :=
   openFresh body depth
 
+/-- Public-facing equation: `openFreshTop` is `substL`-on-`freshLevelVar`.
+    Lets external callers (other modules) reason about openFreshTop's
+    closedness/lvarLT preservation without needing to unfold the
+    internal private `openFresh` definition. -/
+theorem openFreshTop_eq_substL_freshLevelVar (body : Expr) (depth : Nat) :
+    openFreshTop body depth = substL body 0 (freshLevelVar depth) := rfl
+
+/-- The fresh level-var `freshLevelVar depth` is `closedAtLvl n` for
+    any `n` (level-vars are out-of-scope w.r.t. ordinary bvar
+    bounds). -/
+theorem closedAtLvl_freshLevelVar (depth n : Nat) :
+    (freshLevelVar depth).closedAtLvl n = true :=
+  closedAtLvl_levelBvar depth n
+
 /-- Substitute a value for the outermost binder of `body`, leaving
     level-vars untouched. Used by `TyCheck` to instantiate Π
     codomains with the actual argument and to discharge `let`
