@@ -517,22 +517,29 @@ theorem Och_subCheck_sound
   -- and `SubstEval.subCheck fuel x y = subCheckSubst fuel #[] [] x' y'`
   -- where `x' = evalSubst fuel unfBound x`, `y' = evalSubst fuel unfBound y`.
   -- The eval bridge plus the `closeAll 0 = id` collapse give us the
-  -- conclusion via `subCheckSubst_sound`.  The eval bridge is itself
-  -- a sub-wall (mirror of `concEval_equiv`); we sorry the composition
-  -- here and document the chain.
+  -- conclusion via `subCheckSubst_sound`.  Sorried because:
   --
-  -- Chain (sketch, all walled):
-  --   1.  `evalSubst_equiv` (UNWRITTEN) gives
-  --         `Subtype' [] [] a.whnf x' ∧ Subtype' [] [] x' a.whnf`
-  --       and similarly for `b`.
+  -- Chain:
+  --   1.  `evalSubst_equiv` (closed at depth 0; see EvalSubstEquiv.lean)
+  --       gives `Subtype' [] [] a.whnf x' ∧ Subtype' [] [] x' a.whnf`
+  --       provided `a.whnf.closedAt 0 = true`.  Same for `b`.
   --   2.  `subCheckSubst_sound` on the inner call gives
   --         `Subtype' [] [] (closeAll 0 x') (closeAll 0 y')`,
   --       which by `closeAll_zero` is `Subtype' [] [] x' y'`.
   --   3.  Trans-chain: `a.whnf ⊑ x' ⊑ y' ⊑ b.whnf`.
   --
-  -- Step 1 walls on `evalSubst_equiv` (independently provable but
-  -- unwritten).  Step 2 walls on `subCheckSubst_sound` above.
-  -- Both are sorry-bridged.
+  -- The remaining gap is the **closedness invariant on WTValue**:
+  -- `WTValue.whnf.closedAt 0 = true` is true of all values produced
+  -- by `Och.synth` (which now validates closedAt at entry; closedness
+  -- preservation through `synthCore`'s arms is provable by induction
+  -- but unproven), but not currently a structural invariant on the
+  -- WTValue type.  Two paths:
+  --   (a) Add `whnf_closedAt` field to `WTValue` (touches `API.lean`).
+  --   (b) Prove `Och.synth e fuel = .ok v → v.whnf.closedAt 0` and
+  --       hoist as hypothesis on `subCheck_sound` callers.
+  --
+  -- Step 2 also remains walled (`subCheckSubst_sound` is sorry'd
+  -- internally, transitively on the dispatch and v2 fallback bridges).
   sorry
 
 /-! ## Arm-IH composition packages
