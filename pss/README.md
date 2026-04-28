@@ -80,10 +80,16 @@ Under `papers/`:
   "An interactive type checker for dependent types with general recursion
   (System Description)" (PPDP 2025, doi:10.1145/3756907.3756925). Describes
   an Emacs/Lisp-based interactive checker for PSS. Implementation-focused;
-  no new metatheory, so not on this formalization's critical path. The
-  artifact is open source at
-  <https://github.com/valentin-ppp/interactive-dependenttypes-typechecker>
-  (Emacs Lisp). Note that this paper extends PSS with a primitive fixed-point
-  combinator `Y u` and a variant type `Or(u, v)`, both of which are absent
-  from the MPSS metatheory we mechanize — useful background but not part
-  of the formalization scope.
+  no new metatheory, so not on this formalization's critical path. Note
+  that this paper extends PSS with a primitive fixed-point combinator
+  `Y u` and a variant type `Or(u, v)`, both of which are absent from the
+  MPSS metatheory we mechanize — useful background but not part of the
+  formalization scope.
+
+  **The artifact is vendored as a git subtree under `checker-artifact/`** —
+  see `checker-artifact/README.md` and `checker-artifact/src/` for the
+  Emacs Lisp implementation. Sub-agents looking for concrete examples of
+  PSS terms (Scott-encoded ints, the integer type, factorial, Syracuse) or
+  the type-checker's command surface can read directly without leaving the
+  worktree. Upstream:
+  <https://github.com/valentin-ppp/interactive-dependenttypes-typechecker>.
