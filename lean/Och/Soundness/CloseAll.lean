@@ -48,20 +48,6 @@ namespace Och.Soundness
 
 open SubstEval
 
-/-! ## `tyCtxToCtx`
-
-Translate the engine's level-indexed `tyCtx` to a declarative
-de-Bruijn-indexed `Ctx`. The reverse puts level-`(tyCtx.size-1)` at
-index 0 (innermost binder).
-
-Previously lived in `SubCheckSubstNeutral.lean`; moved here so the
-arithmetic lemmas about `closeAll`'s output indices can sit
-alongside.  `SubCheckSubstNeutral.lean` re-exports via `import`. -/
-
-/-- Translate the engine's level-indexed `tyCtx` to a declarative
-    de-Bruijn-indexed `Ctx`. -/
-def tyCtxToCtx (tyCtx : Array Expr) : Ctx := tyCtx.toList.reverse
-
 /-! ## The `closeAll` translation
 
 `closeAllAt c d e` substitutes `bvar (levelOffset + lvl)` with
@@ -135,35 +121,65 @@ theorem closeAllAt_bvar_lt_levelOffset (c d k : Nat) (hk : k < levelOffset) :
   have : ¬ k ≥ levelOffset := by omega
   simp [this]
 
-/-! ## `tyCtxToCtx` lookup arithmetic
+/-! ## `tyCtxToCtx`: depth-stratified `closeAll` translation
 
-For `tyCtx : Array Expr` of size `d`, `tyCtxToCtx tyCtx =
-tyCtx.toList.reverse` has length `d`, and looking up index `d - 1 -
-lvl` (the closed form of level `lvl`) should retrieve `tyCtx[lvl]`.
--/
+Translate the engine's level-indexed `tyCtx` to a declarative
+de-Bruijn-indexed `Ctx`.  Each entry `tyCtx[i]` was inserted at
+depth `i` (during the engine's `openFresh` descent), so we close
+its level-vars w.r.t. depth `i`.  The `.reverse` puts level
+`(tyCtx.size-1)` at index `0` (innermost binder).
+
+This **Design A** convention (depth-stratified `closeAll` on
+entries) keeps the canonical Ctx form uniform: every entry is a
+closed-up term, and `tyCtxToCtx (tyCtx.push x)` extends as
+`closeAll tyCtx.size x :: tyCtxToCtx tyCtx`, which is exactly the
+shape consumed by structural arm-packages.  See
+`docs/ideas/tyCtxPush-bridge-wall.md` for the design rationale. -/
+
+/-- Translate the engine's level-indexed `tyCtx` to a declarative
+    de-Bruijn-indexed `Ctx`, depth-stratified by `closeAll`. -/
+def tyCtxToCtx (tyCtx : Array Expr) : Ctx :=
+  (tyCtx.toList.mapIdx (fun i e => closeAll i e)).reverse
 
 theorem tyCtxToCtx_length (tyCtx : Array Expr) :
     (tyCtxToCtx tyCtx).length = tyCtx.size := by
-  simp [tyCtxToCtx]
+  simp [tyCtxToCtx, List.length_mapIdx]
 
+/-- Cons-extension: pushing `x` at the current depth `tyCtx.size`
+    prepends `closeAll tyCtx.size x` to the canonical Ctx.  This is
+    the structural lemma that closes the `tyCtxPush_bridge_WALL`
+    under Design A. -/
+theorem tyCtxToCtx_push (tyCtx : Array Expr) (x : Expr) :
+    tyCtxToCtx (tyCtx.push x)
+      = closeAll tyCtx.size x :: tyCtxToCtx tyCtx := by
+  simp only [tyCtxToCtx, Array.push_toList, List.mapIdx_append,
+             List.mapIdx_cons, List.mapIdx_nil, List.reverse_append,
+             List.reverse_cons, List.reverse_nil, List.nil_append,
+             List.length_mapIdx]
+  have hlen : tyCtx.toList.length = tyCtx.size := by simp
+  rw [hlen, Nat.zero_add]
+  rfl
+
+/-- Lookup at the (closed-form) image index `tyCtx.size - 1 - lvl`
+    retrieves `closeAll lvl tyCtx[lvl]`: the entry at level `lvl`
+    closed at the depth where it was inserted. -/
 theorem tyCtxToCtx_get?_at (tyCtx : Array Expr) (lvl : Nat)
     (hlvl : lvl < tyCtx.size) :
-    (tyCtxToCtx tyCtx).get? (tyCtx.size - 1 - lvl) = tyCtx[lvl]? := by
-  -- `tyCtxToCtx tyCtx = tyCtx.toList.reverse`.  Indexing reversed list
-  -- at position `n - 1 - i` retrieves the original list at position `i`.
+    (tyCtxToCtx tyCtx).get? (tyCtx.size - 1 - lvl)
+      = (tyCtx[lvl]?).map (closeAll lvl) := by
   simp only [tyCtxToCtx, List.get?_eq_getElem?]
   rw [List.getElem?_reverse]
-  · -- Goal: `tyCtx.toList[tyCtx.toList.length - 1 - (tyCtx.size - 1 - lvl)]?
-    --        = tyCtx[lvl]?`
-    have hlen : tyCtx.toList.length = tyCtx.size := by simp
+  · have hlen : (tyCtx.toList.mapIdx (fun i e => closeAll i e)).length = tyCtx.size := by
+      simp [List.length_mapIdx]
     rw [hlen]
     have hidx : tyCtx.size - 1 - (tyCtx.size - 1 - lvl) = lvl := by omega
     rw [hidx]
-    -- Now: `tyCtx.toList[lvl]? = tyCtx[lvl]?`.  These are equal:
-    -- both are `Array.getElem?` on the same data.
+    -- Now: `mapIdx _ tyCtx.toList[lvl]? = (tyCtx[lvl]?).map (closeAll lvl)`.
+    rw [List.getElem?_mapIdx]
+    -- Goal becomes `(tyCtx.toList[lvl]?).map (fun e => closeAll lvl e)
+    --              = (tyCtx[lvl]?).map (closeAll lvl)`.
     simp only [Array.getElem?_toList]
-  · -- Index bound: `tyCtx.size - 1 - lvl < tyCtx.toList.length`.
-    simp; omega
+  · simp [List.length_mapIdx]; omega
 
 /-! ## The lemma that breaks the C7 wall
 
@@ -195,13 +211,13 @@ theorem Subtype'_lvar_via_tyCtx
     (h : tyCtx[lvl]? = some ty) :
     Subtype' S (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size (.bvar (SubstEval.levelOffset + lvl)))
-      (ty.shift (tyCtx.size - 1 - lvl + 1) 0) := by
+      ((closeAll lvl ty).shift (tyCtx.size - 1 - lvl + 1) 0) := by
   rw [closeAll_levelBvar tyCtx.size lvl hlvl]
   -- Goal: `Subtype' S (tyCtxToCtx tyCtx) (.bvar (tyCtx.size-1-lvl))
-  --                    (ty.shift (tyCtx.size-1-lvl+1) 0)`.
+  --                    ((closeAll lvl ty).shift (tyCtx.size-1-lvl+1) 0)`.
   apply Subtype'.bvar
-  rw [tyCtxToCtx_get?_at tyCtx lvl hlvl]
-  exact h
+  rw [tyCtxToCtx_get?_at tyCtx lvl hlvl, h]
+  rfl
 
 /-! ## Substrate commutation lemmas (DEFERRED)
 

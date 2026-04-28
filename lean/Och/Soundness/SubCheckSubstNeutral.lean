@@ -82,15 +82,16 @@ work needed to make the bridge go through. -/
 -- lookup can be developed there.  This module imports it.
 
 /-- Lift the engine's seen-list (no depth tag) to a declarative
-seen-set, tagging each entry with the *current* depth `tyCtx.size`.
+seen-set, tagging each entry with the *current* depth `tyCtx.size`
+**and** applying `closeAll depth` to the entries' terms.
 
-This is the "shallow" lift; it's correct only at the depth where the
-entry was recorded.  Once the engine descends through a binder,
-`tyCtx.size` grows but the seen-list entries don't shift, while
-declarative `.hyp` re-shifts entries to the use-depth.  This
-divergence is wall-2 of `docs/ideas/soundness-strategy.md §4`. -/
+The `closeAll` translation is the **Design A** convention from
+`docs/ideas/tyCtxPush-bridge-wall.md`: the canonical declarative form
+is "closeAll'd everywhere", so seen-list entries are pre-translated.
+This makes the engine's `seen.any (a == av && b == bv)` short-circuit
+match a `Subtype'.hyp` lookup directly under translation. -/
 def liftSeenList (depth : Nat) (seen : List (Expr × Expr)) : Seen :=
-  seen.map (fun (a, b) => (depth, a, b))
+  seen.map (fun (a, b) => (depth, closeAll depth a, closeAll depth b))
 
 theorem liftSeenList_nil (depth : Nat) :
     liftSeenList depth [] = [] := rfl
@@ -98,7 +99,8 @@ theorem liftSeenList_nil (depth : Nat) :
 theorem liftSeenList_cons (depth : Nat) (a b : Expr)
     (seen : List (Expr × Expr)) :
     liftSeenList depth ((a, b) :: seen)
-    = (depth, a, b) :: liftSeenList depth seen := rfl
+    = (depth, closeAll depth a, closeAll depth b)
+        :: liftSeenList depth seen := rfl
 
 /-! ## Proof attempt
 

@@ -534,12 +534,30 @@ theorem subCheckSubst_sound
       exact .refl _
     · simp only [heq, Bool.false_eq_true, ↓reduceIte] at h
       by_cases hany : seen.any (fun (av, bv) => a' == av && b' == bv)
-      · -- (a', b') matches some entry in seen.  Use Subtype'.hyp
-        -- after closeAll-and-lift translation.
-        -- WALL: seen_coherence — engine seen is raw, lifted seen
-        -- is closeAll'd; matching modulo translation requires a
-        -- seen-coherence invariant.
-        sorry
+      · -- (a', b') matches some entry in seen.  Under Design A,
+        -- `liftSeenList tyCtx.size seen` contains
+        -- `(tyCtx.size, closeAll tyCtx.size av, closeAll tyCtx.size bv)`
+        -- for each `(av, bv) ∈ seen`.  Since `a' = av` and `b' = bv`,
+        -- the goal closes via `Subtype'.hyp_here`.
+        rw [List.any_eq_true] at hany
+        obtain ⟨⟨av, bv⟩, hin, hmatch⟩ := hany
+        have ha_eq : a' = av := by
+          simp only [Bool.and_eq_true, beq_iff_eq] at hmatch
+          exact hmatch.1
+        have hb_eq : b' = bv := by
+          simp only [Bool.and_eq_true, beq_iff_eq] at hmatch
+          exact hmatch.2
+        -- Goal: `Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+        --                  (closeAll tyCtx.size a') (closeAll tyCtx.size b')`.
+        rw [ha_eq, hb_eq]
+        have hin_lifted :
+            ((tyCtxToCtx tyCtx).length, closeAll tyCtx.size av,
+                closeAll tyCtx.size bv)
+              ∈ liftSeenList tyCtx.size seen := by
+          rw [tyCtxToCtx_length]
+          simp only [liftSeenList, List.mem_map]
+          exact ⟨(av, bv), hin, rfl⟩
+        exact Subtype'.hyp_here hin_lifted
       · simp only [hany, Bool.false_eq_true, ↓reduceIte] at h
         by_cases htop : b' == .type
         · have htop' : b' = .type := by simpa using htop

@@ -195,3 +195,122 @@ commit `568f148`.  The agent successfully discharged:
 * `contra = false` short-circuit closed as vacuous from `_h`.
 
 The body sub-call's IH-vs-arm-package mismatch is the residue.
+
+## Design A: attempt outcome (2026-04-28)
+
+**Result: Partial win.**  Design A closes the seen-list short-circuit
+(removed one sorry) but uncovers a *new* under-binder mismatch on
+the structural arms (lam-lam, iota-iota, fix-fix).  The Ctx-side
+ripple worked exactly as anticipated — `tyCtxToCtx_push` proves
+`tyCtxToCtx (tyCtx.push x) = closeAll tyCtx.size x :: tyCtxToCtx
+tyCtx` cleanly — and `Subtype'_lvar_via_tyCtx`'s re-proof closed
+without arithmetic obstacle (RHS becomes `(closeAll lvl ty).shift _
+_`, discharged via `tyCtxToCtx_get?_at` returning `(tyCtx[lvl]?).map
+(closeAll lvl)`).
+
+### What closed
+
+* **`tyCtxToCtx`**: redefined as
+  `(tyCtx.toList.mapIdx (fun i e => closeAll i e)).reverse`.
+* **`tyCtxToCtx_get?_at`**: re-proved with conclusion
+  `... = (tyCtx[lvl]?).map (closeAll lvl)`.
+* **`tyCtxToCtx_push`** (new): the cons-extension lemma that the
+  arm-packages' Ctx head expectation requires.
+* **`Subtype'_lvar_via_tyCtx`**: re-proved with RHS `(closeAll lvl
+  ty).shift _ _`.
+* **`liftSeenList`**: redefined to apply `closeAll depth` to entries.
+* **Seen short-circuit case** (`subCheckSubst_sound:~536`): closed
+  via `Subtype'.hyp_here`.  The proof matches `(av, bv) ∈ seen`
+  against the lifted seen-set entry `(tyCtx.size, closeAll tyCtx.size
+  av, closeAll tyCtx.size bv)` directly.
+
+### What did NOT close: lam-lam structural body sub-call
+
+The body sub-call recurses under `tyCtx.push domB` with the *same*
+seen list.  The dispatch's `_ih` produces a derivation against
+`liftSeenList (tyCtx.size + 1) seen`, but `arm_lam_lam_compose`
+expects `liftSeenList tyCtx.size seen`.
+
+**Under Design A, these are different Seen sets**: each entry's
+terms are `closeAll`-translated at the seen-list's tagged depth.
+Going from depth `d` to `d+1`:
+
+* Tag changes: `(d, ...)` → `(d+1, ...)`
+* Terms change: `closeAll d av` → `closeAll (d+1) av`
+
+These differ by exactly `Expr.shift 1 0` modulo the lvarLT/closedAt
+preconditions, but the depth-tag mismatch means `Subtype'.hyp` would
+use them at different shift amounts, producing different conclusion
+forms.  No simple weakening rule closes the gap.
+
+### The new wall: `closeAll_succ_d_eq_shift`
+
+The required lemma to bridge `liftSeenList (d+1) seen` and
+`liftSeenList d seen` (suitably shifted) is:
+
+```
+closeAll (d + 1) e = (closeAll d e).shift 1 0
+```
+
+under `e.closedAtLvl 0 ∧ e.lvarLT d`.  This lemma is **not in the
+file** (the existing `closeAllAt_succ_eq_shift` bumps the binder
+counter `c`, not the depth `d` — different operation).  Proving it
+follows the same structural-induction pattern but with the level-var
+arm doing the arithmetic on `d`.  ~80 LOC of structural induction.
+
+Even with `closeAll_succ_d_eq_shift` proved, the Seen-translation
+would still require:
+
+```
+Subtype' (liftSeenList (d+1) seen) Γ x y
+  → Subtype' (liftSeenList d seen) Γ x y     -- (*)
+```
+
+This is **false in general**: the rule lets us conclude `Subtype'
+Γ ((closeAll d av).shift 1 0) ((closeAll d bv).shift 1 0)` (via
+`Subtype'.hyp` on the d-tagged entry at `Γ.length = d+1`), which
+matches `closeAll (d+1) av/bv` only via the shift lemma.  Going
+the other direction (replace d-tagged entries by (d+1)-tagged
+ones) is the actual implication needed, and that direction
+**adds restrictions** (the shifts live above the cutoff; mostly
+fine) but loses the original entry's usability at depth `d` — but
+since we're at `Γ.length = d+1` this isn't a regression.
+
+So the proof of (*) **should** go through with care.  Combined
+with `closeAll_succ_d_eq_shift`, that closes the lam-lam body
+mismatch and then the iota-iota/fix-fix arms by analogy.
+
+### Recommendation
+
+**Keep Design A.**  The redefinitions are clean, the existing
+proofs all close, and only one sorry was reduced — but the *path
+to closing the rest* is now well-defined: prove
+`closeAll_succ_d_eq_shift` (~80 LOC) and the Seen-weakening lemma
+(~30 LOC), then the lam-lam/iota-iota/fix-fix arms compose
+mechanically.
+
+The fallback arms (iota_intro, unfold_fix_R, unfold_iota_L,
+unfold_fix_L) do **not** push to `tyCtx`, so their Seen
+mismatch is just `liftSeenList tyCtx.size ((a,b) :: seen)`
+vs the arm-package's expected entry — which **does** match
+under Design A by `liftSeenList_cons` (already a definitional
+unfolding).  Closing those is a separate stitch.
+
+### Files touched
+
+* `lean/Och/Soundness/CloseAll.lean` — `tyCtxToCtx` redefined,
+  `tyCtxToCtx_push` added, `tyCtxToCtx_get?_at` and
+  `Subtype'_lvar_via_tyCtx` re-proved.
+* `lean/Och/Soundness/SubCheckSubstNeutral.lean` —
+  `liftSeenList` redefined to apply `closeAll`.
+* `lean/Och/Soundness/SubCheckSubstSoundness.lean` — seen
+  short-circuit case discharged via `Subtype'.hyp_here`.
+
+Sorry count: **4 → 3** top-level warnings.  The seen short-
+circuit sorry (which was inside `subCheckSubst_sound`, *not* the
+`subCheckSubstMatch_dispatch`'s collapsed sorry) is gone, so
+`subCheckSubst_sound` itself is now sorry-free at the function
+level; the dispatch's collapsed sorry remains, plus
+`Och_subCheck_sound` and the unrelated `EvalSubstEquiv`/
+`SynthSound` ones.  Total `sorry` keyword count in
+`Soundness/`: 45 → 44.
