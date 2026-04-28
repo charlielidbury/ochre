@@ -261,18 +261,30 @@ theorem subCheckSubst_sound
     -- `b' == .type`, then `subCheckSubstMatch fuel tyCtx seen a' b'`.
     --
     -- WALL: bridging `Subtype' (closeAll a') (closeAll b')` back to
-    -- `Subtype' (closeAll a) (closeAll b)` requires the
-    -- `evalSubst_bridge_WALL` (analog of `concEval_equiv` for the
-    -- `evalSubst` substrate).  We discharge it by introducing the
-    -- bridge as a sorry'd `have`, then transporting the inner
-    -- conclusion through `Subtype'.trans`.
+    -- `Subtype' (closeAll a) (closeAll b)` requires an evalSubst-
+    -- based equivalence under closeAll.  The depth-0 / no-level-vars
+    -- case is now closed by `Och.Soundness.evalSubst_equiv`
+    -- (Soundness/EvalSubstEquiv.lean).  At depth `tyCtx.size > 0`
+    -- the engine works on terms with level-vars; lifting the lemma
+    -- through `closeAll` requires a closeAll-evalSubst commutation
+    -- that's still unwritten.
+    --
+    --   evalSubst_equiv : closedAt 0 e → evalSubst e = .ok e' →
+    --                     Subtype' [] [] e' e ∧ Subtype' [] [] e e'
+    --
+    -- For the depth-0 specialisation in `Och_subCheck_sound`, this
+    -- closes step 1 of that chain.  Here at `tyCtx.size`, the bridge
+    -- still walls on:
+    --   * Translating `closedAt 0` ↔ `closedAtLvl 0` under closeAll.
+    --   * Pushing `Subtype' [] [] e' e` through `closeAll` to
+    --     `Subtype' (lift seen) tyCtxToCtx (closeAll e') (closeAll e)`.
     have eval_bridge_a :
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size a) (closeAll tyCtx.size a') ∧
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size a') (closeAll tyCtx.size a) := by
-      -- evalSubst_bridge_WALL: independently provable via an
-      -- evalSubst_equiv mirror of concEval_equiv.
+      -- evalSubst_equiv now exists (depth-0 form).  Lifting through
+      -- closeAll at depth tyCtx.size remains unwritten.
       sorry
     have eval_bridge_b :
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
