@@ -223,9 +223,78 @@ private theorem subCheckSubstMatch_dispatch
   --   subCheckSubst fuel (tyCtx.push domB) seen bodyA' bodyB'
   -- IH composition via `subCheckSubst_arm_lam_lam` requires
   -- `bodyA.closedAtLvl 1`, `bodyA.lvarLT tyCtx.size` (and same for B);
-  -- those preconditions live above the dispatch hypothesis.
-  -- WALL: closedness_invariant_WALL + tyCtxPush_bridge_WALL.
-  | .lam _domA _bodyA, .lam _domB _bodyB => sorry
+  -- we extract these from `_ha_cl`/`_ha_lv`/`_hb_cl`/`_hb_lv`.
+  --
+  -- We extract both engine sub-results from `_h` and feed them
+  -- through `_ih` (with closedness/lvarLT preconditions) to obtain
+  -- `Subtype'` derivations on the domain and body sub-calls.  The
+  -- body sub-call is recursed under `tyCtx.push domB`, so the IH
+  -- yields a derivation against `liftSeenList (tyCtx.size + 1) seen`
+  -- and `tyCtxToCtx (tyCtx.push domB) = tyCtxToCtx tyCtx ++ [domB]`,
+  -- which `arm_lam_lam_compose` consumes as `liftSeenList tyCtx.size
+  -- seen` and `closeAll tyCtx.size domB :: tyCtxToCtx tyCtx`.  The
+  -- bridge between these is `tyCtxPush_bridge_WALL`.
+  | .lam _domA _bodyA, .lam _domB _bodyB =>
+    -- Decompose closedness on the LHS/RHS lams.
+    have hclA_dom : _domA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hclB_dom : _domB.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _hb_cl
+      exact _hb_cl.1
+    have hclB_body : _bodyB.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _hb_cl
+      exact _hb_cl.2
+    have hlvA_dom : _domA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    have hlvB_dom : _domB.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _hb_lv
+      exact _hb_lv.1
+    have hlvB_body : _bodyB.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _hb_lv
+      exact _hb_lv.2
+    -- Unfold the engine to expose the do-block on the lam-lam arm.
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    -- `_h` is now the do-block; extract `contra ← subCheckSubst fuel tyCtx seen domB domA`.
+    rw [Outcome.bind_eq_ok] at _h
+    obtain ⟨contra, h_dom_call, _h⟩ := _h
+    -- `_h : (if !contra then pure false else …) = .ok true`.
+    by_cases hcontra : contra
+    · -- contra = true: `_h` reduces to the body sub-call.
+      simp only [hcontra, Bool.not_true, Bool.false_eq_true,
+                 ↓reduceIte] at _h
+      -- `h_dom_call : subCheckSubst fuel tyCtx seen domB domA = .ok true`.
+      have h_dom : SubstEval.subCheckSubst fuel tyCtx seen _domB _domA
+          = .ok true := by
+        rw [h_dom_call]; rw [hcontra]
+      -- Apply `_ih` to the domain (contravariant) call.
+      have ih_dom :
+          Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+            (closeAll tyCtx.size _domB) (closeAll tyCtx.size _domA) :=
+        _ih hclB_dom hlvB_dom hclA_dom hlvA_dom h_dom
+      -- The body sub-call is `subCheckSubst fuel (tyCtx.push _domB)
+      -- seen (openFresh _bodyA tyCtx.size) (openFresh _bodyB
+      -- tyCtx.size) = .ok true`.  Apply `_ih` to obtain a derivation
+      -- against `liftSeenList (tyCtx.size + 1) seen` and
+      -- `tyCtxToCtx (tyCtx.push _domB)`.  The arm-package consumes
+      -- `liftSeenList tyCtx.size seen` and
+      -- `closeAll tyCtx.size _domB :: tyCtxToCtx tyCtx`; bridging
+      -- the two is the `tyCtxPush_bridge_WALL` named in the module
+      -- docstring.  Sorried here.
+      sorry
+    · -- contra = false: `_h` reduces to `pure false = .ok true`,
+      -- contradicting the premise.
+      simp only [hcontra, Bool.not_false, ↓reduceIte,
+                 pure, Outcome.ok.injEq] at _h
+      cases _h
   -- C3 (iota-iota): structural-attempt → `subCheckSubst_arm_iota_iota`,
   -- else fallback → `iota_intro_arm`.
   -- WALL: structural surfaces closedness + tyCtxPush; fallback
