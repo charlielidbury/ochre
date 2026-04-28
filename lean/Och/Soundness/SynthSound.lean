@@ -44,17 +44,36 @@ The `synthCore` function in `Och/API.lean` has been:
     `(.app f a) ⊑ evalSubst (.app piExpr aV)` requires a
     multi-step `Subtype'.app_cong` + `evalSubst_equiv` composition
     that is non-trivial because `piExpr` may differ from `evalSubst f`
-    (whnfPi may unfold further).
+    (whnfPi may unfold further).  See the wall's docstring for the
+    5-step plan.
 
-  * `synthCore_topLevel_closedAt_WALL` — propagating `closedAt 0`
-    from synth-acceptance back through binder bodies.  At top-level
-    `Γ = #[]`, a free `bvar` would fail the `.bvar` arm, so synth
-    only accepts `closedAt 0` inputs; the discharge requires
-    structural inversion through `openFreshTop` substitution.
+  * `synthCore_topLevel_closedAt_WALL` — **discovered FALSE in
+    general** during this session.  Counterexample:
+    `e := .lam (.bvar 5) .type` synth-passes (the `.type`-shortcut
+    in `subCheckSubst` accepts any LHS) but is not `closedAt 0`.
+    The wall's docstring lists three resolution paths (runtime
+    check / hoisted precondition / closedAtLvl re-statement).
 
 These two walls are the residue of the previous monolithic
-`synthCore_opacity_WALL` — they are strictly weaker (smaller
-surface, more localised) and each is a self-contained obligation.
+`synthCore_opacity_WALL`.  Wall 1 is now known to require either
+an API change or a hypothesis-strengthening refactor; wall 2 is
+substantive but tractable once wall 1's resolution is chosen.
+
+## Progress in this session
+
+  * `.lam` / `.iota` / `.fix` arms of `synthCore_sound_aux`
+    refactored to use `Subtype'.refl` directly via the
+    `evalSubst_{lam,iota,fix}_refl` helper lemmas — these arms no
+    longer consume the `closedAt 0` hypothesis, reducing wall 1's
+    surface to `.letE` / `.app` / `.asc`-inner only.
+  * Wall 1 confirmed FALSE-as-stated; documented with
+    counterexample + three resolution paths.
+  * `substL_closedAtLvl_inversion` helper added to
+    `EvalSubstLemmas.lean` — the closedness inversion lemma the
+    wall's docstring asks for, useful for any future
+    `closedAtLvl`-based re-statement (resolution path 3).
+  * Wall 2 documentation updated with 5-step plan + LOC
+    estimate.
 -/
 
 namespace Och.Soundness
