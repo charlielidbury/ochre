@@ -170,6 +170,8 @@ private theorem subCheckSubstMatch_dispatch
             SubstEval.subCheckSubst fuel tyCtx' seen' x y = .ok true →
             Subtype' (liftSeenList tyCtx'.size seen') (tyCtxToCtx tyCtx')
               (closeAll tyCtx'.size x) (closeAll tyCtx'.size y))
+    (_ha_cl : a'.closedAtLvl 0 = true) (_ha_lv : a'.lvarLT tyCtx.size = true)
+    (_hb_cl : b'.closedAtLvl 0 = true) (_hb_lv : b'.lvarLT tyCtx.size = true)
     (_h : SubstEval.subCheckSubstMatch fuel tyCtx seen a' b' = .ok true) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a') (closeAll tyCtx.size b') := by
@@ -408,9 +410,22 @@ theorem subCheckSubst_sound
           rename_i _ _ heq_fuel _ _
           have hf : fuel = _ := Nat.succ.inj heq_fuel
           subst hf
+          -- Derive a' / b' invariants from the originals via evalSubst
+          -- preservation lemmas (`evalSubst_closedAtLvl` and
+          -- `evalSubst_lvarLT`).  These feed the dispatch arms that
+          -- need component-wise closedness for `subCheckSubst_arm_*`.
+          have ha'_cl : a'.closedAtLvl 0 = true :=
+            SubstEval.evalSubst_closedAtLvl ha_cl _h_a
+          have ha'_lv : a'.lvarLT tyCtx.size = true :=
+            evalSubst_lvarLT ha_cl ha_lv _h_a
+          have hb'_cl : b'.closedAtLvl 0 = true :=
+            SubstEval.evalSubst_closedAtLvl hb_cl _h_b
+          have hb'_lv : b'.lvarLT tyCtx.size = true :=
+            evalSubst_lvarLT hb_cl hb_lv _h_b
           exact subCheckSubstMatch_dispatch
             (fun {_tyCtx'} {_seen'} {_x _y} hx_cl hx_lv hy_cl hy_lv hx =>
-              ih hx_cl hx_lv hy_cl hy_lv hx) h
+              ih hx_cl hx_lv hy_cl hy_lv hx)
+            ha'_cl ha'_lv hb'_cl hb'_lv h
 
 /-- Public-API soundness: `Och.subCheck` accepting two `WTValue`s
 produces a declarative subtyping derivation on their `whnf` fields.
