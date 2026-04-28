@@ -173,56 +173,146 @@ private theorem subCheckSubstMatch_dispatch
     (_h : SubstEval.subCheckSubstMatch fuel tyCtx seen a' b' = .ok true) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a') (closeAll tyCtx.size b') := by
-  -- COMPOSITION-LEVEL WALL — see module docstring.
+  -- 12-arm dispatch, inlined as an explicit `match a', b'` skeleton.
   --
-  -- The eq_def rewrite exposes a 12-arm case split; each arm pulls
-  -- the engine's inner sub-call result, applies IH, then composes
-  -- via the corresponding `arm_*_compose` package above.  The
-  -- mechanical shape:
+  -- Each arm names the engine arm it discharges and the per-arm wall
+  -- it surfaces.  Arms split into three groups:
   --
-  --   match a', b' with
-  --   | .bot, _              => arm_bot_L_compose
-  --   | .lam .., .lam ..     => arm_lam_lam_compose ih_dom ih_body
-  --                             (where ih_dom / ih_body come from
-  --                             extracting the do-block sub-calls)
-  --   | .iota .., .iota ..   => structural-attempt → arm_iota_iota_compose,
-  --                             else fallback → arm_iota_intro_compose
-  --   | .fix .., .fix ..     => structural → arm_fix_fix_compose,
-  --                             else fallback → arm_unfold_fix_R_compose
-  --   | _, .iota ..          => arm_iota_intro_compose
-  --   | _, .fix ..           => arm_unfold_fix_R_compose
-  --   | .fix .., _           => arm_unfold_fix_L_compose
-  --   | .iota .., _          => arm_unfold_iota_L_compose
-  --   | _, _ neutral         => arm_spine_*_compose / neutralAscent
+  --   * **Trivial** (no IH, no walls): C0 (.bot, _), and the engine's
+  --     dispatch never actually reaches `b' = .type` because
+  --     `subCheckSubst` short-circuits that case before invoking
+  --     `subCheckSubstMatch`.  So the `_, .type` arms below are
+  --     vacuous-from-`_h` (engine takes the catch-all neutral arm
+  --     and returns `.ok false`).  We discharge them via
+  --     `Subtype'.top` (declaratively still valid).
   --
-  -- Beyond the arm-package internal sorries (v2 fallback bridges in
-  -- Fallback.lean), each arm surfaces the named composition walls:
+  --   * **Structural** (lam-lam, iota-iota, fix-fix): arm-package
+  --     calls require closedness invariants we don't carry here.
+  --     WALLS: closedness_invariant_WALL + tyCtxPush_bridge_WALL
+  --     (see module docstring).
   --
-  --   * Structural arms: tyCtxPush_bridge_WALL +
-  --     closedness_invariant_WALL.  IH on the body sub-call gives
-  --     `Subtype' _ (tyCtxToCtx (tyCtx.push annB)) ...`, but the
-  --     arm-package consumes `Subtype' _ (closeAll tyCtx.size annB ::
-  --     tyCtxToCtx tyCtx) ...`.  Bridging requires a `tyCtxToCtx_push`
-  --     lemma (mechanical) and the closedness preconditions
-  --     (synth-induced invariant).
+  --   * **Fallback** (iota_intro, unfold_*): route through the v2
+  --     substitution bridges in `SubCheckSubstFallback.lean`.
+  --     WALLS: v2 substitution bridges (already sorry'd internally).
   --
-  --   * Fallback arms: v2 substitution bridges (already sorry'd
-  --     internally to `iota_intro_arm` / `unfold_*_arm` in
-  --     Fallback.lean).
-  --
-  --   * Neutral arms: spine recursion descends into
-  --     `subCheckSpine` / `neutralAscent` which themselves have
-  --     `eq_def`s; the bvar-bvar base case closes via
-  --     `arm_spine_bvar_bvar_compose` and app-app via
-  --     `arm_spine_app_app_compose`; the `neutralAscent` fallback
-  --     closes against `Subtype'_lvar_via_tyCtx` (already proven
+  --   * **Neutral** (bvar/app catch-all): spine-compare or ascent.
+  --     WALLS: spine recursion (closes via app_cong + IH);
+  --     `Subtype'_lvar_via_tyCtx` for the ascent fallback (closed
   --     in CloseAll.lean).
   --
-  -- The full per-arm wiring is ~250-350 LOC of mechanical case
-  -- analysis whose composition shape is fully described by the
-  -- arm-packages above.  We surface this single wall with the
-  -- explicit recipe rather than 12 redundant copies.
-  sorry
+  -- We surface ONE sorry per non-trivial arm (instead of one
+  -- collapsed sorry for the whole dispatch).  Each per-arm sorry
+  -- is a precise wall whose discharge is independent of the others.
+  match a', b' with
+  -- C0: bot ⊑ anything.  Engine returns `.ok true` unconditionally.
+  | .bot, _ =>
+    show Subtype' _ _ .bot _
+    exact .bot_L
+  -- _ ⊑ .type (RHS top): the engine's `subCheckSubstMatch` doesn't
+  -- short-circuit `b' = .type` itself (that's done by
+  -- `subCheckSubst` before it dispatches), but `Subtype'.top` closes
+  -- the goal regardless of `_h`.
+  | _, .type =>
+    show Subtype' _ _ _ .type
+    exact .top _
+  -- C2: lam-lam structural.  Engine:
+  --   contra ← subCheckSubst fuel tyCtx seen domB domA  (contravariant)
+  --   bodyA' := openFresh bodyA depth, bodyB' := openFresh bodyB depth
+  --   subCheckSubst fuel (tyCtx.push domB) seen bodyA' bodyB'
+  -- IH composition via `subCheckSubst_arm_lam_lam` requires
+  -- `bodyA.closedAtLvl 1`, `bodyA.lvarLT tyCtx.size` (and same for B);
+  -- those preconditions live above the dispatch hypothesis.
+  -- WALL: closedness_invariant_WALL + tyCtxPush_bridge_WALL.
+  | .lam _domA _bodyA, .lam _domB _bodyB => sorry
+  -- C3 (iota-iota): structural-attempt → `subCheckSubst_arm_iota_iota`,
+  -- else fallback → `iota_intro_arm`.
+  -- WALL: structural surfaces closedness + tyCtxPush; fallback
+  -- surfaces v2 bridge.
+  | .iota _annA _bodyA, .iota _annB _bodyB => sorry
+  -- C4 (fix-fix): structural-attempt → `subCheckSubst_arm_fix_fix`,
+  -- else fallback → `unfold_fix_R_arm`.
+  | .fix _annA _bodyA, .fix _annB _bodyB => sorry
+  -- _ ⊑ ι : iotaIntro fallback.  Routes through
+  -- `iota_intro_arm` (v2 bridge sorry'd internally).
+  -- We enumerate every non-iota, non-bot LHS:
+  | .bvar _k, .iota _ann _bodyB => sorry
+  | .app _f _v, .iota _ann _bodyB => sorry
+  | .lam _domA _bodyA, .iota _ann _bodyB => sorry
+  | .fix _annA _bodyA, .iota _ann _bodyB => sorry
+  | .asc _t _ty, .iota _ann _bodyB => sorry
+  | .letE _v _b, .iota _ann _bodyB => sorry
+  -- _ ⊑ fix : unfoldFixR fallback.  Routes through `unfold_fix_R_arm`.
+  | .bvar _k, .fix _ann _bodyB => sorry
+  | .app _f _v, .fix _ann _bodyB => sorry
+  | .lam _domA _bodyA, .fix _ann _bodyB => sorry
+  | .asc _t _ty, .fix _ann _bodyB => sorry
+  | .letE _v _b, .fix _ann _bodyB => sorry
+  -- fix ⊑ _ : unfoldFixL fallback (LHS = fix; already handled
+  -- fix-fix and fix-iota above).
+  | .fix _annA _bodyA, .bvar _k => sorry
+  | .fix _annA _bodyA, .app _f _v => sorry
+  | .fix _annA _bodyA, .lam _domB _bodyB => sorry
+  | .fix _annA _bodyA, .asc _t _ty => sorry
+  | .fix _annA _bodyA, .letE _v _b => sorry
+  -- ι ⊑ _ : unfoldIotaL fallback.
+  | .iota _annA _bodyA, .bvar _k => sorry
+  | .iota _annA _bodyA, .app _f _v => sorry
+  | .iota _annA _bodyA, .lam _domB _bodyB => sorry
+  | .iota _annA _bodyA, .asc _t _ty => sorry
+  | .iota _annA _bodyA, .letE _v _b => sorry
+  -- Neutral arms (LHS ∈ {bvar, app}, RHS ∈ {bvar, app}, plus all
+  -- non-neutral RHS shapes for non-neutral LHS where the engine
+  -- catch-all kicks in).
+  -- Spine bvar-bvar: closes via `arm_spine_bvar_bvar_compose`.
+  | .bvar _k1, .bvar _k2 => sorry
+  -- Spine bvar-app: spine compare returns false on shape mismatch;
+  -- engine then falls to `neutralAscent`.
+  | .bvar _k, .app _f _v => sorry
+  -- Spine app-bvar: same.
+  | .app _f _v, .bvar _k => sorry
+  -- Spine app-app: closes via `arm_spine_app_app_compose`.
+  | .app _f1 _v1, .app _f2 _v2 => sorry
+  -- Remaining catch-all shapes where engine returns `.ok false`
+  -- (vacuous from `_h`):  one-sided neutrals + non-neutral RHS,
+  -- type-on-LHS, etc.  We sorry these — they're all unreachable
+  -- under `_h : ... = .ok true` but extracting the contradiction
+  -- requires unfolding `subCheckSubstMatch.eq_def` and reasoning
+  -- about the catch-all branch.
+  | .bvar _k, .bot => sorry
+  | .bvar _k, .asc _t _ty => sorry
+  | .bvar _k, .letE _v _b => sorry
+  | .app _f _v, .bot => sorry
+  | .app _f _v, .asc _t _ty => sorry
+  | .app _f _v, .letE _v' _b => sorry
+  -- These arms hit the engine's catch-all (`_, _ =>` with
+  -- `isNeutral a && isNeutral b` — false here since `.lam`/`.type`
+  -- are not neutral).  Engine returns `.ok false`, so `_h` is
+  -- contradictory; discharging requires unfolding through the
+  -- catch-all guard.
+  | .lam _domA _bodyA, .bvar _k => sorry
+  | .lam _domA _bodyA, .app _f _v => sorry
+  | .lam _domA _bodyA, .bot => sorry
+  | .lam _domA _bodyA, .asc _t _ty => sorry
+  | .lam _domA _bodyA, .letE _v _b => sorry
+  | .type, .bvar _k => sorry
+  | .type, .app _f _v => sorry
+  | .type, .lam _domB _bodyB => sorry
+  | .type, .bot => sorry
+  | .type, .asc _t _ty => sorry
+  | .type, .letE _v _b => sorry
+  | .asc _t _ty, _ => sorry  -- LHS .asc shape (engine WHNF should remove).
+  | .letE _v _b, _ => sorry  -- LHS .letE shape (engine WHNF should remove).
+  | .iota _annA _bodyA, .bot => sorry
+  | .fix _annA _bodyA, .bot => sorry
+  -- Cross-shape combinations missed above:
+  -- iota-fix: engine takes ι ⊑ _ (unfoldIotaL) arm.
+  | .iota _annA _bodyA, .fix _ann _bodyB => sorry
+  -- type as LHS with iota/fix RHS: engine returns false.
+  | .type, .iota _ann _bodyB => sorry
+  | .type, .fix _ann _bodyB => sorry
+  -- bvar/app LHS with .lam RHS: engine returns false (no arm matches).
+  | .bvar _k, .lam _domB _bodyB => sorry
+  | .app _f _v, .lam _domB _bodyB => sorry
 
 /-- Engine-level soundness: `subCheckSubst` accepting `(a, b)` at
 depth `tyCtx.size` produces a declarative subtyping derivation on the
