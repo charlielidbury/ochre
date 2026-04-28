@@ -609,16 +609,16 @@ mutual
         subCheckSubst fuel (tyCtx.push domB) seen bodyA' bodyB'
     -- ι ⊑ ι: structural attempt then iotaIntro fallback.
     | .iota annA bodyA, .iota annB bodyB =>
-        let seen' := (a, b) :: seen
         let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen' annA annB
+          let annOk ← subCheckSubst fuel tyCtx seen annA annB
           if !annOk then return false
           let bodyA' := openFresh bodyA depth
           let bodyB' := openFresh bodyB depth
-          subCheckSubst fuel (tyCtx.push annB) seen' bodyA' bodyB'
+          subCheckSubst fuel (tyCtx.push annB) seen bodyA' bodyB'
         match structural with
         | .ok true => .ok true
         | _ => do
+          let seen' := (a, b) :: seen
           let okAnn ← subCheckSubst fuel tyCtx seen' a annB
           if !okAnn then .ok false
           else do
@@ -628,16 +628,16 @@ mutual
             | _ => .ok false
     -- fix ⊑ fix: structural attempt then unfold-RHS fallback.
     | .fix annA bodyA, .fix annB bodyB =>
-        let seen' := (a, b) :: seen
         let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen' annA annB
+          let annOk ← subCheckSubst fuel tyCtx seen annA annB
           if !annOk then return false
           let bodyA' := openFresh bodyA depth
           let bodyB' := openFresh bodyB depth
-          subCheckSubst fuel (tyCtx.push annB) seen' bodyA' bodyB'
+          subCheckSubst fuel (tyCtx.push annB) seen bodyA' bodyB'
         match structural with
         | .ok true => .ok true
         | _ => do
+          let seen' := (a, b) :: seen
           let unfolded := substL bodyB 0 b
           match evalSubst (fuel + 1) unfBound unfolded with
           | .ok b' => subCheckSubst fuel tyCtx seen' a b'
