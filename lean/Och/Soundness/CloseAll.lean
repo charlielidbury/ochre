@@ -707,6 +707,115 @@ theorem closeAllAt_succ_eq_shift (s : Expr) (c d m : Nat)
     simp only [closeAllAt, Expr.shift]
     rw [ih_t c m hcl.1 hlv.1 hcm, ih_y c m hcl.2 hlv.2 hcm]
 
+/-! ### `closeAllAt_succ_d_eq_shift`: bumping the *depth* `d`
+
+The dual of `closeAllAt_succ_eq_shift`: bumping the depth from `d` to
+`d + 1` (rather than the binder-counter `c`) is also a `shift`, but
+with shift cutoff `c` (the current binder counter).
+
+The level-var `bvar (levelOffset + lvl)` with `lvl < d` translates to
+`bvar (d - 1 - lvl + c)` at depth `d` and `bvar (d - lvl + c)` at
+depth `d + 1`; these differ by exactly `1` and the shifted result
+sits above the cutoff `c`, so `shift 1 c` produces it cleanly.
+
+The level-var `bvar (levelOffset + d)` (`lvl = d`) would be unmapped
+at depth `d` (left as `.bvar (levelOffset + d)`) but mapped at depth
+`d + 1` (image `.bvar c`); these are not related by `shift 1 c`.  So
+we require `lvarLT d` to exclude this case.
+
+Plain bvars `k < levelOffset` need `k < c` (i.e., `closedAtLvl c`)
+for the shift to leave them alone — otherwise the LHS leaves them
+in place but the RHS shifts them up by one.
+
+This is the key recursion-step lemma needed by the
+under-binder Seen mismatch in `SubCheckSubstSoundness.lean` (lam-lam,
+iota-iota, fix-fix structural arms): the dispatch's IH yields a
+derivation against `liftSeenList (d+1) seen`, but the arm-package
+expects `liftSeenList d seen`, and bridging requires a `closeAll d`
+↔ `closeAll (d+1)` translation.  The `c = 0` specialisation
+(`closeAll_succ_d_eq_shift`) captures exactly this. -/
+
+theorem closeAllAt_succ_d_eq_shift (e : Expr) (c d : Nat)
+    (hcl : e.closedAtLvl c = true)
+    (hlv : e.lvarLT d = true) :
+    closeAllAt c (d + 1) e = (closeAllAt c d e).shift 1 c := by
+  induction e generalizing c with
+  | bvar k =>
+    simp only [Expr.closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at hcl
+    simp only [Expr.lvarLT, Bool.or_eq_true, Bool.not_eq_true',
+      decide_eq_false_iff_not, decide_eq_true_eq] at hlv
+    by_cases hLvl : k ≥ levelOffset
+    · -- Level-var case.
+      have hlvl_lt : k - levelOffset < d := by
+        rcases hlv with h_not_lvl | h_bound
+        · exact absurd hLvl (by simpa [isLevelIdx] using h_not_lvl)
+        · exact h_bound
+      have hlvl_lt_succ : k - levelOffset < d + 1 := by omega
+      have hLHS : closeAllAt c (d + 1) (.bvar k)
+          = .bvar (d + 1 - 1 - (k - levelOffset) + c) := by
+        simp only [closeAllAt, hLvl, ↓reduceIte, hlvl_lt_succ]
+      have hRHS_close : closeAllAt c d (.bvar k)
+          = .bvar (d - 1 - (k - levelOffset) + c) := by
+        simp only [closeAllAt, hLvl, ↓reduceIte, hlvl_lt]
+      rw [hLHS, hRHS_close]
+      -- Shift on `.bvar (d - 1 - lvl + c)` at cutoff `c`: index ≥ c.
+      simp only [Expr.shift]
+      have h_not_lt : ¬ d - 1 - (k - levelOffset) + c < c := by omega
+      simp [h_not_lt]
+      omega
+    · -- Ordinary bvar: k < levelOffset.  closedAtLvl c says k < c.
+      have hk_lt_lo : k < levelOffset := by omega
+      have hk_lt_c : k < c := by
+        rcases hcl with h | h
+        · exact h
+        · omega
+      have hk_not_ge : ¬ k ≥ levelOffset := by omega
+      simp only [closeAllAt, hk_not_ge, ↓reduceIte, Expr.shift]
+      simp [hk_lt_c]
+  | type => simp [closeAllAt, Expr.shift]
+  | bot => simp [closeAllAt, Expr.shift]
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [closeAllAt, Expr.shift]
+    rw [ih_dom c hcl.1 hlv.1,
+        ih_body (c + 1) (by simpa using hcl.2) hlv.2]
+  | iota ann body ih_ann ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [closeAllAt, Expr.shift]
+    rw [ih_ann c hcl.1 hlv.1,
+        ih_body (c + 1) (by simpa using hcl.2) hlv.2]
+  | fix ann body ih_ann ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [closeAllAt, Expr.shift]
+    rw [ih_ann c hcl.1 hlv.1,
+        ih_body (c + 1) (by simpa using hcl.2) hlv.2]
+  | letE val body ih_val ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [closeAllAt, Expr.shift]
+    rw [ih_val c hcl.1 hlv.1,
+        ih_body (c + 1) (by simpa using hcl.2) hlv.2]
+  | app f a ih_f ih_a =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [closeAllAt, Expr.shift]
+    rw [ih_f c hcl.1 hlv.1, ih_a c hcl.2 hlv.2]
+  | asc t y ih_t ih_y =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [closeAllAt, Expr.shift]
+    rw [ih_t c hcl.1 hlv.1, ih_y c hcl.2 hlv.2]
+
+/-- Top-level specialisation at `c = 0`: `closeAll (d+1) e = (closeAll d e).shift 1 0`,
+    given `e.closedAtLvl 0` and `e.lvarLT d`. -/
+theorem closeAll_succ_d_eq_shift (d : Nat) (e : Expr)
+    (hcl : e.closedAtLvl 0 = true) (hlv : e.lvarLT d = true) :
+    closeAll (d + 1) e = (closeAll d e).shift 1 0 := by
+  simpa [closeAll] using closeAllAt_succ_d_eq_shift e 0 d hcl hlv
+
 /-! ### `closeAllAt_substL_subst`: the v2 wall closes (with `Expr.subst` on the right)
 
 The naive v2 wall (`closeAllAt_substL` for arbitrary substituees,
