@@ -173,8 +173,9 @@ theorem iota_intro_substBridge_WALL
 /-- Substitution bridge for `unfold_fix_R` fallback. -/
 theorem unfold_fix_R_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {ann bodyB bodyB'' : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyB 0 (.fix ann bodyB)) = .ok bodyB'')
     (hbody_cl : bodyB.closedAtLvl 1 = true)
     (hbody_lv : bodyB.lvarLT d = true)
@@ -201,8 +202,9 @@ theorem unfold_fix_R_substBridge_WALL
 /-- Substitution bridge for `unfold_fix_L` fallback. -/
 theorem unfold_fix_L_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {ann bodyA a' : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyA 0 (.fix ann bodyA)) = .ok a')
     (hbody_cl : bodyA.closedAtLvl 1 = true)
     (hbody_lv : bodyA.lvarLT d = true)
@@ -230,8 +232,9 @@ theorem unfold_fix_L_substBridge_WALL
 /-- Substitution bridge for `unfold_iota_L` fallback. -/
 theorem unfold_iota_L_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {ann bodyA a' : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyA 0 (.iota ann bodyA)) = .ok a')
     (hbody_cl : bodyA.closedAtLvl 1 = true)
     (hbody_lv : bodyA.lvarLT d = true)
@@ -315,8 +318,9 @@ theorem iota_intro_arm
     extended by `(a, .fix ann bodyB)`. -/
 theorem unfold_fix_R_arm
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {a ann bodyB bodyB'' : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyB 0 (.fix ann bodyB)) = .ok bodyB'')
     (hbody_cl : bodyB.closedAtLvl 1 = true)
     (hbody_lv : bodyB.lvarLT d = true)
@@ -348,8 +352,9 @@ theorem unfold_fix_R_arm
     `Subtype' (bodyA.subst 0 (.fix ann bodyA)) b`. -/
 theorem unfold_fix_L_arm
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {ann bodyA a' b : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyA 0 (.fix ann bodyA)) = .ok a')
     (hbody_cl : bodyA.closedAtLvl 1 = true)
     (hbody_lv : bodyA.lvarLT d = true)
@@ -383,8 +388,9 @@ theorem unfold_fix_L_arm
     Apply `Subtype'.unfold_iota_L`. -/
 theorem unfold_iota_L_arm
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {ann bodyA a' b : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyA 0 (.iota ann bodyA)) = .ok a')
     (hbody_cl : bodyA.closedAtLvl 1 = true)
     (hbody_lv : bodyA.lvarLT d = true)

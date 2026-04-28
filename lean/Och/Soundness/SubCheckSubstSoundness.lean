@@ -731,20 +731,11 @@ private theorem subCheckSubstMatch_dispatch
                   :: liftSeenList tyCtx.size seen := by
             simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
           rw [h_seen_unfold] at ih_ann ih_body
-          -- The arm-lemma `iota_intro_arm` is hardcoded to
-          -- `evalSubst (unfBound + 1) unfBound …`, but the engine
-          -- here uses `evalSubst (fuel + 1) unfBound …`.  Bridging
-          -- this fuel mismatch is part of the wall-2 v2 fallback
-          -- bridge family (see blockers.md §2).  Defer with a local
-          -- equation sorry that converts the engine's fuel to the
-          -- arm's fuel.
-          have h_eval_unf :
-              SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
-                (SubstEval.substL _bodyB 0 (Expr.iota _annA _bodyA))
-                = .ok bodyB'' := by
-            -- WALL: fuel-shift bridge, part of wall-2 family.
-            sorry
-          exact iota_intro_arm h_eval_unf hclB_body hlvB_body
+          -- `iota_intro_arm` is now fuel-polymorphic (wall 2a, option 2):
+          -- `h_eval` from the engine has shape
+          -- `evalSubst (fuel + 1) unfBound … = .ok bodyB''` and unifies
+          -- directly with the arm-lemma's `{fuel unf : Nat}` binders.
+          exact iota_intro_arm h_eval hclB_body hlvB_body
             _ha_cl _ha_lv ih_ann ih_body
         · cases _h
       · simp only [hokAnn, Bool.not_false, ↓reduceIte] at _h
@@ -914,14 +905,10 @@ private theorem subCheckSubstMatch_dispatch
                 :: liftSeenList tyCtx.size seen := by
           simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
         rw [h_seen_unfold] at ih_body
-        -- Wall-2 fuel-shift bridge for the arm-lemma.
-        have h_eval_unf :
-            SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
-              (SubstEval.substL _bodyB 0 (Expr.fix _annB _bodyB))
-              = .ok b' := by
-          -- WALL: fuel-shift bridge, part of wall-2 family.
-          sorry
-        exact unfold_fix_R_arm h_eval_unf hclB_body hlvB_body
+        -- `unfold_fix_R_arm` is now fuel-polymorphic (wall 2a, option 2);
+        -- the engine's `h_eval : evalSubst (fuel + 1) unfBound … = .ok b'`
+        -- unifies directly with the arm-lemma's `{fuel unf : Nat}` binders.
+        exact unfold_fix_R_arm h_eval hclB_body hlvB_body
           hclB_ann hlvB_ann ih_body
       · cases _h
   -- _ ⊑ ι : iotaIntro fallback.  Routes through
