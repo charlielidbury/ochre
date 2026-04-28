@@ -541,6 +541,58 @@ theorem closeAllAt_shiftL (c d c' d' m : Nat) (e : Expr)
       omega
     rw [ih_t c c' hcle hb_t hb.1, ih_y c c' hcle hb_y hb.2]
 
+/-! ### `lvarLT`: bound on level-var indices
+
+For the corrected `closeAll_openFresh` lemma we need a freshness
+invariant on `body`'s level-vars: every level-var index `lvl'` in
+`body` must satisfy `lvl' < lvl` (so that opening with a fresh
+level `lvl` doesn't collide with an existing one).
+
+`lvarLT lvl e` says: every `bvar k` in `e` with `k ≥ levelOffset`
+satisfies `k - levelOffset < lvl`.  Ordinary bvars are unrestricted.
+Uniform across binders (level-vars are absolute, not bvar-relative). -/
+
+def _root_.Expr.lvarLT (lvl : Nat) : Expr → Bool
+  | .bvar k => !SubstEval.isLevelIdx k || (k - SubstEval.levelOffset < lvl)
+  | .lam dom body => Expr.lvarLT lvl dom && Expr.lvarLT lvl body
+  | .app f a => Expr.lvarLT lvl f && Expr.lvarLT lvl a
+  | .asc t ty => Expr.lvarLT lvl t && Expr.lvarLT lvl ty
+  | .type => true
+  | .bot => true
+  | .iota ann body => Expr.lvarLT lvl ann && Expr.lvarLT lvl body
+  | .fix ann body => Expr.lvarLT lvl ann && Expr.lvarLT lvl body
+  | .letE val body => Expr.lvarLT lvl val && Expr.lvarLT lvl body
+
+theorem lvarLT_mono {e : Expr} {lvl lvl' : Nat}
+    (h : e.lvarLT lvl = true) (hle : lvl ≤ lvl') : e.lvarLT lvl' = true := by
+  induction e with
+  | bvar k =>
+    simp only [Expr.lvarLT, Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq,
+      decide_eq_false_iff_not] at h ⊢
+    rcases h with h1 | h2
+    · exact Or.inl h1
+    · exact Or.inr (by omega)
+  | type => simp [Expr.lvarLT]
+  | bot => simp [Expr.lvarLT]
+  | lam _ _ ih_dom ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_dom h.1, ih_body h.2⟩
+  | app _ _ ih_f ih_a =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_f h.1, ih_a h.2⟩
+  | asc _ _ ih_t ih_y =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_t h.1, ih_y h.2⟩
+  | iota _ _ ih_ann ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1, ih_body h.2⟩
+  | fix _ _ ih_ann ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_ann h.1, ih_body h.2⟩
+  | letE _ _ ih_val ih_body =>
+    simp only [Expr.lvarLT, Bool.and_eq_true] at h ⊢
+    exact ⟨ih_val h.1, ih_body h.2⟩
+
 /-! ### `closeAllAt_substL`: a similar wall
 
 By the same off-by-one analysis as `closeAll_openFresh`,
@@ -649,20 +701,209 @@ agent report and `docs/ideas/c7-wall.md` updates.
 -- Such a variant might recover the equation.
 -/
 
-/-- **Open question / WALL**: the relationship between `closeAll`
-    of an opened body and `closeAllAt` of the body itself.  As
-    analyzed above, the naive equation does not hold.  This sorry
-    represents the next research-grade step in Proposal A. -/
-theorem closeAll_openFresh_OPEN_QUESTION (body : Expr) (lvl : Nat)
-    (_hb : body.bvarLTOrLvl 1 = true) :
+/-! ### `closeAll_openFresh` — the corrected equation (CLOSED)
+
+**Resolution to the wall.**  The originally-stated equation
+`closeAll (lvl+1) (openFresh body lvl) = closeAllAt 1 (lvl+1) body`
+is *provably false* (off by 1 on level-vars).  But the equation we
+*actually need* for soundness — to relate the post-`openFresh`
+recursive call to the structural lam/iota/fix subterm — is
+
+    closeAll (lvl+1) (openFresh body lvl) = closeAllAt 1 lvl body
+
+i.e., the RHS uses `closeAllAt 1 lvl`, NOT `closeAllAt 1 (lvl+1)`.
+Concretely, on a level-var `levelBvar lvl'` (with `lvl' < lvl`):
+
+* LHS: `openFresh` skips, `closeAll (lvl+1)` produces
+  `bvar (lvl+1 - 1 - lvl') = bvar (lvl - lvl')`.
+* RHS (corrected): `closeAllAt 1 lvl (levelBvar lvl') = bvar
+  (lvl - 1 - lvl' + 1) = bvar (lvl - lvl')`.  ✓
+
+The `+1` on the binder counter exactly cancels the `−1` from
+`d − 1 − lvl'` shifting, because `d` itself is reduced from `lvl+1`
+to `lvl`.
+
+This makes intuitive sense: when we "open" the binder, we drop
+the `+1` from `d`, but compensate with `+1` on the binder counter
+because we've conceptually descended into the binder.  In the
+original (incorrect) statement, `d` and `c` both increased,
+double-counting.
+
+The proof is a generalized inductive helper on `j` (substL position
+= closeAllAt counter = same value, lockstep), with hypotheses:
+  * `body.closedAtLvl (j+1) = true` — body's ordinary bvars are
+    `≤ j`; ensures `substL` only substitutes (doesn't decrement).
+  * `body.lvarLT lvl = true` — body's level-vars are `< lvl`;
+    ensures `closeAllAt` translation is uniform across both sides.
+-/
+
+/-- **Helper**: `closeAllAt` and `substL` of a level-var commute when
+    the substL position equals the closeAllAt binder counter (lockstep).
+    The level-var being substituted matches the closeAllAt depth bump
+    on the RHS — so the LHS's `closeAllAt j (lvl+1)` produces the same
+    image as the RHS's `closeAllAt (j+1) lvl`.
+
+    Hypotheses:
+    * `body.closedAtLvl (j+1) = true` rules out bvars `> j`, which
+      `substL` would decrement (causing the off-by-one).
+    * `body.lvarLT lvl = true` rules out level-vars `≥ lvl`, which
+      `closeAllAt (j+1) lvl` would leave alone but
+      `closeAllAt j (lvl+1)` would translate. -/
+theorem closeAllAt_substL_levelBvar (body : Expr) (j lvl : Nat)
+    (hcl : body.closedAtLvl (j + 1) = true)
+    (hlv : body.lvarLT lvl = true) :
+    closeAllAt j (lvl + 1) (substL body j (.bvar (SubstEval.levelOffset + lvl)))
+      = closeAllAt (j + 1) lvl body := by
+  induction body generalizing j with
+  | bvar k =>
+    simp only [Expr.closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at hcl
+    simp only [Expr.lvarLT, Bool.or_eq_true, Bool.not_eq_true',
+      decide_eq_false_iff_not, decide_eq_true_eq] at hlv
+    simp only [substL]
+    by_cases hLvl : SubstEval.isLevelIdx k
+    · -- Level-var case.
+      have hkge : k ≥ SubstEval.levelOffset := by
+        simpa [SubstEval.isLevelIdx] using hLvl
+      simp only [hLvl, ↓reduceIte]
+      have hk_lvl_lt : k - SubstEval.levelOffset < lvl := by
+        rcases hlv with h_not_lvl | h_bound
+        · exact absurd hkge (by simpa [SubstEval.isLevelIdx] using h_not_lvl)
+        · exact h_bound
+      -- LHS: closeAllAt j (lvl+1) (.bvar k) with k ≥ levelOffset, lvl' < lvl < lvl+1.
+      have hLHS : closeAllAt j (lvl + 1) (.bvar k) =
+          .bvar (lvl + 1 - 1 - (k - SubstEval.levelOffset) + j) := by
+        have hlt : k - SubstEval.levelOffset < lvl + 1 := by omega
+        have := closeAllAt_levelBvar j (lvl + 1) (k - SubstEval.levelOffset) hlt
+        rw [show SubstEval.levelOffset + (k - SubstEval.levelOffset) = k from by omega] at this
+        exact this
+      rw [hLHS]
+      -- RHS: closeAllAt (j+1) lvl (.bvar k) with k ≥ levelOffset, lvl' < lvl.
+      have hRHS : closeAllAt (j + 1) lvl (.bvar k) =
+          .bvar (lvl - 1 - (k - SubstEval.levelOffset) + (j + 1)) := by
+        have := closeAllAt_levelBvar (j + 1) lvl (k - SubstEval.levelOffset) hk_lvl_lt
+        rw [show SubstEval.levelOffset + (k - SubstEval.levelOffset) = k from by omega] at this
+        exact this
+      rw [hRHS]
+      -- Both indices: lvl - (k - levelOffset) + j.
+      have : lvl + 1 - 1 - (k - SubstEval.levelOffset) + j
+           = lvl - 1 - (k - SubstEval.levelOffset) + (j + 1) := by omega
+      rw [this]
+    · -- Ordinary bvar case.  k < levelOffset.
+      have hk_lt_lo : k < SubstEval.levelOffset := by
+        simpa [SubstEval.isLevelIdx] using hLvl
+      simp only [hLvl, Bool.false_eq_true, ↓reduceIte]
+      -- closedAtLvl (j+1) tells us k < j+1 or k ≥ levelOffset; the latter is excluded.
+      have hk_le_j : k ≤ j := by
+        rcases hcl with h1 | h2
+        · omega
+        · omega
+      by_cases heq : k = j
+      · -- substL substitutes with levelBvar lvl.
+        subst heq
+        simp only [beq_self_eq_true, ↓reduceIte]
+        -- LHS becomes closeAllAt k (lvl+1) (.bvar (levelOffset + lvl))
+        -- = bvar (lvl+1-1-lvl + k) = bvar k.
+        have hLHS := closeAllAt_levelBvar k (lvl + 1) lvl (by omega)
+        rw [hLHS]
+        -- RHS: closeAllAt (k+1) lvl (.bvar k) with k < levelOffset, so .bvar k.
+        rw [closeAllAt_bvar_lt_levelOffset (k + 1) lvl k hk_lt_lo]
+        -- Goal: .bvar (lvl+1-1-lvl+k) = .bvar k.
+        congr 1; omega
+      · -- k ≠ j, so k < j.
+        have hk_lt_j : k < j := by omega
+        have hbeq : (k == j) = false := by simp [heq]
+        simp only [hbeq, Bool.false_eq_true, ↓reduceIte]
+        have hk_not_gt : ¬ k > j := by omega
+        simp only [hk_not_gt, ↓reduceIte]
+        -- Both sides leave .bvar k unchanged.
+        rw [closeAllAt_bvar_lt_levelOffset j (lvl + 1) k hk_lt_lo]
+        rw [closeAllAt_bvar_lt_levelOffset (j + 1) lvl k hk_lt_lo]
+  | type => simp [substL, closeAllAt]
+  | bot => simp [substL, closeAllAt]
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [substL, closeAllAt]
+    have hshift : SubstEval.shiftL 1 0 (.bvar (SubstEval.levelOffset + lvl))
+        = .bvar (SubstEval.levelOffset + lvl) := by
+      simp [SubstEval.shiftL, SubstEval.isLevelIdx]
+    rw [hshift]
+    rw [ih_dom j hcl.1 hlv.1, ih_body (j + 1) (by simpa using hcl.2) hlv.2]
+  | iota ann body ih_ann ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [substL, closeAllAt]
+    have hshift : SubstEval.shiftL 1 0 (.bvar (SubstEval.levelOffset + lvl))
+        = .bvar (SubstEval.levelOffset + lvl) := by
+      simp [SubstEval.shiftL, SubstEval.isLevelIdx]
+    rw [hshift]
+    rw [ih_ann j hcl.1 hlv.1, ih_body (j + 1) (by simpa using hcl.2) hlv.2]
+  | fix ann body ih_ann ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [substL, closeAllAt]
+    have hshift : SubstEval.shiftL 1 0 (.bvar (SubstEval.levelOffset + lvl))
+        = .bvar (SubstEval.levelOffset + lvl) := by
+      simp [SubstEval.shiftL, SubstEval.isLevelIdx]
+    rw [hshift]
+    rw [ih_ann j hcl.1 hlv.1, ih_body (j + 1) (by simpa using hcl.2) hlv.2]
+  | letE val body ih_val ih_body =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [substL, closeAllAt]
+    have hshift : SubstEval.shiftL 1 0 (.bvar (SubstEval.levelOffset + lvl))
+        = .bvar (SubstEval.levelOffset + lvl) := by
+      simp [SubstEval.shiftL, SubstEval.isLevelIdx]
+    rw [hshift]
+    rw [ih_val j hcl.1 hlv.1, ih_body (j + 1) (by simpa using hcl.2) hlv.2]
+  | app f a ih_f ih_a =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [substL, closeAllAt]
+    rw [ih_f j hcl.1 hlv.1, ih_a j hcl.2 hlv.2]
+  | asc t ty ih_t ih_y =>
+    simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
+    simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
+    simp only [substL, closeAllAt]
+    rw [ih_t j hcl.1 hlv.1, ih_y j hcl.2 hlv.2]
+
+/-- **Wall broken (Option D)**: corrected `closeAll_openFresh`.
+
+The post-Proposal-A C7 use case needs `closeAll (lvl+1) (openFresh
+body lvl) = closeAllAt 1 lvl body`, *not* `closeAllAt 1 (lvl+1) body`
+(the original OPEN_QUESTION shape, which is provably false).
+
+With the corrected RHS, the equation holds under the natural
+preconditions: body's ordinary bvars are `≤ 0` (i.e., only `bvar 0`,
+the binder being eliminated), and body's level-vars are all `< lvl`
+(freshness).  The proof is a one-line specialization of
+`closeAllAt_substL_levelBvar` at `j = 0`. -/
+theorem closeAll_openFresh (body : Expr) (lvl : Nat)
+    (hcl : body.closedAtLvl 1 = true)
+    (hlv : body.lvarLT lvl = true) :
     closeAll (lvl + 1) (SubstEval.openFreshTop body lvl)
-      = closeAllAt 1 (lvl + 1) body := by
-  -- See module documentation for the analysis: even under
-  -- well-scoping, level-var translations differ by 1 (off-by-one
-  -- between `closeAll` and `closeAllAt 1 ...`).  The fundamental
-  -- obstacle is the substrate's `openFresh` using `substL` (which
-  -- decrements), while structural closeAllAt under-binder traversal
-  -- preserves indices.
-  sorry
+      = closeAllAt 1 lvl body := by
+  have h := closeAllAt_substL_levelBvar body 0 lvl hcl hlv
+  -- Unfold closeAll (= closeAllAt 0) and openFreshTop on the LHS.
+  -- `openFreshTop body lvl = substL body 0 (levelBvar lvl)`; level-vars are
+  -- structurally `bvar (levelOffset + lvl)`.
+  have h_open : SubstEval.openFreshTop body lvl
+      = SubstEval.substL body 0 (.bvar (SubstEval.levelOffset + lvl)) := by
+    rfl
+  rw [closeAll, h_open]
+  exact h
+
+/-- Backwards-compatible alias retaining the OPEN_QUESTION name with
+    the corrected statement.  See `closeAll_openFresh` for the proof.
+
+    The original statement (with `closeAllAt 1 (lvl+1) body`) was
+    provably false; the corrected statement uses `closeAllAt 1 lvl
+    body`, which is what soundness actually wants. -/
+theorem closeAll_openFresh_OPEN_QUESTION (body : Expr) (lvl : Nat)
+    (hcl : body.closedAtLvl 1 = true)
+    (hlv : body.lvarLT lvl = true) :
+    closeAll (lvl + 1) (SubstEval.openFreshTop body lvl)
+      = closeAllAt 1 lvl body :=
+  closeAll_openFresh body lvl hcl hlv
 
 end Och.Soundness
