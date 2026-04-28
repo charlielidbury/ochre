@@ -527,12 +527,403 @@ private theorem subCheckSubstMatch_dispatch
       cases _h
   -- C3 (iota-iota): structural-attempt → `subCheckSubst_arm_iota_iota`,
   -- else fallback → `iota_intro_arm`.
-  -- WALL: structural surfaces closedness + tyCtxPush; fallback
-  -- surfaces v2 bridge.
-  | .iota _annA _bodyA, .iota _annB _bodyB => sorry
+  -- After the engine refactor (commit 7b506eb), the structural attempt
+  -- uses bare `seen` (no `(a,b)` extension); the seen extension is
+  -- moved into the fallback only.  This means the structural success
+  -- path threads `liftSeenList tyCtx.size seen` directly with no
+  -- Seen-shrinking step, mirroring the lam-lam template.
+  | .iota _annA _bodyA, .iota _annB _bodyB =>
+    -- Decompose closedness on the LHS/RHS iotas.
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hclB_ann : _annB.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _hb_cl
+      exact _hb_cl.1
+    have hclB_body : _bodyB.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _hb_cl
+      exact _hb_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    have hlvB_ann : _annB.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _hb_lv
+      exact _hb_lv.1
+    have hlvB_body : _bodyB.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _hb_lv
+      exact _hb_lv.2
+    -- Unfold the engine.
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    -- `_h` is `match structural with | .ok true => .ok true | _ => fallback`,
+    -- where structural is the bare-seen do-block.
+    -- Split on the structural's outcome.
+    split at _h
+    · -- structural = .ok true: extract the do-block.
+      rename_i hstruct
+      -- `hstruct : (do …structural body…) = .ok true`
+      rw [Outcome.bind_eq_ok] at hstruct
+      obtain ⟨annOk, h_ann_call, hstruct⟩ := hstruct
+      by_cases hannOk : annOk
+      · -- annOk = true: hstruct reduces to body sub-call.
+        simp only [hannOk, Bool.not_true, Bool.false_eq_true,
+                   ↓reduceIte] at hstruct
+        have h_ann : SubstEval.subCheckSubst fuel tyCtx seen _annA _annB
+            = .ok true := by
+          rw [h_ann_call]; rw [hannOk]
+        have ih_ann :
+            Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+              (closeAll tyCtx.size _annA) (closeAll tyCtx.size _annB) :=
+          _ih _hseen_wf hclA_ann hlvA_ann hclB_ann hlvB_ann h_ann
+        -- Body sub-call: under tyCtx.push annB, bare seen.
+        have h_body_call :
+            SubstEval.subCheckSubst fuel (tyCtx.push _annB) seen
+              (SubstEval.openFreshTop _bodyA tyCtx.size)
+              (SubstEval.openFreshTop _bodyB tyCtx.size)
+              = .ok true := hstruct
+        have h_open_a_cl : (SubstEval.openFreshTop _bodyA tyCtx.size).closedAtLvl 0
+            = true := SubstEval.openFreshTop_closedAtLvl_zero _ _ hclA_body
+        have h_open_b_cl : (SubstEval.openFreshTop _bodyB tyCtx.size).closedAtLvl 0
+            = true := SubstEval.openFreshTop_closedAtLvl_zero _ _ hclB_body
+        have hlvA_body_succ : _bodyA.lvarLT (tyCtx.push _annB).size = true := by
+          rw [Array.size_push]
+          exact lvarLT_mono hlvA_body (Nat.le_succ _)
+        have hlvB_body_succ : _bodyB.lvarLT (tyCtx.push _annB).size = true := by
+          rw [Array.size_push]
+          exact lvarLT_mono hlvB_body (Nat.le_succ _)
+        have h_depth_lt : tyCtx.size < (tyCtx.push _annB).size := by
+          rw [Array.size_push]; omega
+        have h_open_a_lv :
+            (SubstEval.openFreshTop _bodyA tyCtx.size).lvarLT
+              (tyCtx.push _annB).size = true := by
+          rw [SubstEval.openFreshTop_eq_substL_freshLevelVar]
+          refine substL_lvarLT _bodyA 0 _ _ hlvA_body_succ
+            (SubstEval.closedAtLvl_freshLevelVar _ _) ?_
+          exact lvarLT_freshLevelVar _ _ h_depth_lt
+        have h_open_b_lv :
+            (SubstEval.openFreshTop _bodyB tyCtx.size).lvarLT
+              (tyCtx.push _annB).size = true := by
+          rw [SubstEval.openFreshTop_eq_substL_freshLevelVar]
+          refine substL_lvarLT _bodyB 0 _ _ hlvB_body_succ
+            (SubstEval.closedAtLvl_freshLevelVar _ _) ?_
+          exact lvarLT_freshLevelVar _ _ h_depth_lt
+        have h_seen_wf_succ : ∀ p ∈ seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT (tyCtx.push _annB).size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT (tyCtx.push _annB).size = true := by
+          intro p hp
+          obtain ⟨h1, h2, h3, h4⟩ := _hseen_wf p hp
+          rw [Array.size_push]
+          refine ⟨h1, ?_, h3, ?_⟩
+          · exact lvarLT_mono h2 (Nat.le_succ _)
+          · exact lvarLT_mono h4 (Nat.le_succ _)
+        have ih_body_succ :
+            Subtype' (liftSeenList (tyCtx.push _annB).size seen)
+                (tyCtxToCtx (tyCtx.push _annB))
+                (closeAll (tyCtx.push _annB).size
+                  (SubstEval.openFreshTop _bodyA tyCtx.size))
+                (closeAll (tyCtx.push _annB).size
+                  (SubstEval.openFreshTop _bodyB tyCtx.size)) :=
+          _ih h_seen_wf_succ h_open_a_cl h_open_a_lv h_open_b_cl h_open_b_lv
+            h_body_call
+        rw [tyCtxToCtx_push] at ih_body_succ
+        rw [Array.size_push] at ih_body_succ
+        have ih_body :
+            Subtype' (liftSeenList tyCtx.size seen)
+                (closeAll tyCtx.size _annB :: tyCtxToCtx tyCtx)
+                (closeAll (tyCtx.size + 1)
+                  (SubstEval.openFreshTop _bodyA tyCtx.size))
+                (closeAll (tyCtx.size + 1)
+                  (SubstEval.openFreshTop _bodyB tyCtx.size)) :=
+          Subtype'_liftSeen_succ_to_d _hseen_wf ih_body_succ
+        exact subCheckSubst_arm_iota_iota hclA_body hclB_body
+          hlvA_body hlvB_body ih_ann ih_body
+      · -- annOk = false: hstruct collapses to `pure false = .ok true`,
+        -- contradicting the structural success.
+        simp only [hannOk, Bool.not_false, ↓reduceIte,
+                   pure, Outcome.ok.injEq] at hstruct
+        cases hstruct
+    · -- structural = NOT .ok true: fallback path (iota_intro).
+      -- Engine: let seen' := (a, b) :: seen
+      --        let okAnn ← subCheckSubst fuel tyCtx seen' a annB
+      --        if !okAnn then .ok false
+      --        else do
+      --          let bodyB' := substL bodyB 0 a
+      --          match evalSubst (fuel + 1) unfBound bodyB' with
+      --          | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
+      --          | _ => .ok false
+      rw [Outcome.bind_eq_ok] at _h
+      obtain ⟨okAnn, h_okAnn_call, _h⟩ := _h
+      by_cases hokAnn : okAnn
+      · simp only [hokAnn, Bool.not_true, Bool.false_eq_true,
+                   ↓reduceIte] at _h
+        split at _h
+        · rename_i bodyB'' h_eval
+          -- h_eval : evalSubst (fuel + 1) unfBound (substL _bodyB 0 (.iota _annA _bodyA)) = .ok bodyB''
+          -- _h : subCheckSubst fuel tyCtx seen' (.iota _annA _bodyA) bodyB'' = .ok true
+          -- where seen' = (.iota _annA _bodyA, .iota _annB _bodyB) :: seen.
+          have h_okAnn :
+              SubstEval.subCheckSubst fuel tyCtx
+                  ((Expr.iota _annA _bodyA, Expr.iota _annB _bodyB) :: seen)
+                  (Expr.iota _annA _bodyA) _annB = .ok true := by
+            rw [h_okAnn_call]; rw [hokAnn]
+          -- seen' well-formedness: the new entry uses (.iota _annA _bodyA) and
+          -- (.iota _annB _bodyB), both of which inherit closedAtLvl 0 / lvarLT
+          -- tyCtx.size from the original `_ha_cl/_hb_cl/_ha_lv/_hb_lv`.
+          have h_seen'_wf : ∀ p ∈
+              (Expr.iota _annA _bodyA, Expr.iota _annB _bodyB) :: seen,
+              p.1.closedAtLvl 0 = true ∧
+              p.1.lvarLT tyCtx.size = true ∧
+              p.2.closedAtLvl 0 = true ∧
+              p.2.lvarLT tyCtx.size = true := by
+            intro p hp
+            rcases List.mem_cons.mp hp with heq | hin
+            · subst heq
+              exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+            · exact _hseen_wf p hin
+          -- IH on the okAnn call: yields Subtype' over liftSeenList tyCtx.size seen'.
+          have ih_ann :
+              Subtype'
+                  (liftSeenList tyCtx.size
+                    ((Expr.iota _annA _bodyA, Expr.iota _annB _bodyB) :: seen))
+                  (tyCtxToCtx tyCtx)
+                  (closeAll tyCtx.size (Expr.iota _annA _bodyA))
+                  (closeAll tyCtx.size _annB) :=
+            _ih h_seen'_wf _ha_cl _ha_lv hclB_ann hlvB_ann h_okAnn
+          -- Body sub-call closedness for the IH.
+          have h_substL_cl :
+              (SubstEval.substL _bodyB 0 (Expr.iota _annA _bodyA)).closedAtLvl 0
+                = true :=
+            SubstEval.substL_closedAtLvl hclB_body _ha_cl
+          have h_substL_lv :
+              (SubstEval.substL _bodyB 0 (Expr.iota _annA _bodyA)).lvarLT
+                tyCtx.size = true :=
+            substL_lvarLT _bodyB 0 tyCtx.size (Expr.iota _annA _bodyA)
+              hlvB_body _ha_cl _ha_lv
+          have h_bodyB''_cl : bodyB''.closedAtLvl 0 = true :=
+            SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+          have h_bodyB''_lv : bodyB''.lvarLT tyCtx.size = true :=
+            evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+          have ih_body :
+              Subtype'
+                  (liftSeenList tyCtx.size
+                    ((Expr.iota _annA _bodyA, Expr.iota _annB _bodyB) :: seen))
+                  (tyCtxToCtx tyCtx)
+                  (closeAll tyCtx.size (Expr.iota _annA _bodyA))
+                  (closeAll tyCtx.size bodyB'') :=
+            _ih h_seen'_wf _ha_cl _ha_lv h_bodyB''_cl h_bodyB''_lv _h
+          -- Convert `liftSeenList tyCtx.size (cons … seen)` into the form
+          -- `((tyCtxToCtx tyCtx).length, closeAll …, closeAll …) :: liftSeenList tyCtx.size seen`
+          -- expected by `arm_iota_intro_compose`.
+          have h_seen_unfold :
+              liftSeenList tyCtx.size
+                  ((Expr.iota _annA _bodyA, Expr.iota _annB _bodyB) :: seen)
+                = ((tyCtxToCtx tyCtx).length,
+                    closeAll tyCtx.size (Expr.iota _annA _bodyA),
+                    closeAll tyCtx.size (Expr.iota _annB _bodyB))
+                  :: liftSeenList tyCtx.size seen := by
+            simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+          rw [h_seen_unfold] at ih_ann ih_body
+          -- The arm-lemma `iota_intro_arm` is hardcoded to
+          -- `evalSubst (unfBound + 1) unfBound …`, but the engine
+          -- here uses `evalSubst (fuel + 1) unfBound …`.  Bridging
+          -- this fuel mismatch is part of the wall-2 v2 fallback
+          -- bridge family (see blockers.md §2).  Defer with a local
+          -- equation sorry that converts the engine's fuel to the
+          -- arm's fuel.
+          have h_eval_unf :
+              SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+                (SubstEval.substL _bodyB 0 (Expr.iota _annA _bodyA))
+                = .ok bodyB'' := by
+            -- WALL: fuel-shift bridge, part of wall-2 family.
+            sorry
+          exact iota_intro_arm h_eval_unf hclB_body hlvB_body
+            _ha_cl _ha_lv ih_ann ih_body
+        · cases _h
+      · simp only [hokAnn, Bool.not_false, ↓reduceIte] at _h
+        cases _h
   -- C4 (fix-fix): structural-attempt → `subCheckSubst_arm_fix_fix`,
   -- else fallback → `unfold_fix_R_arm`.
-  | .fix _annA _bodyA, .fix _annB _bodyB => sorry
+  -- Same shape as iota-iota.  After the engine refactor, structural
+  -- attempt uses bare seen.
+  | .fix _annA _bodyA, .fix _annB _bodyB =>
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hclB_ann : _annB.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _hb_cl
+      exact _hb_cl.1
+    have hclB_body : _bodyB.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _hb_cl
+      exact _hb_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    have hlvB_ann : _annB.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _hb_lv
+      exact _hb_lv.1
+    have hlvB_body : _bodyB.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _hb_lv
+      exact _hb_lv.2
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    split at _h
+    · -- structural success.
+      rename_i hstruct
+      rw [Outcome.bind_eq_ok] at hstruct
+      obtain ⟨annOk, h_ann_call, hstruct⟩ := hstruct
+      by_cases hannOk : annOk
+      · simp only [hannOk, Bool.not_true, Bool.false_eq_true,
+                   ↓reduceIte] at hstruct
+        have h_ann : SubstEval.subCheckSubst fuel tyCtx seen _annA _annB
+            = .ok true := by
+          rw [h_ann_call]; rw [hannOk]
+        have ih_ann :
+            Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
+              (closeAll tyCtx.size _annA) (closeAll tyCtx.size _annB) :=
+          _ih _hseen_wf hclA_ann hlvA_ann hclB_ann hlvB_ann h_ann
+        have h_body_call :
+            SubstEval.subCheckSubst fuel (tyCtx.push _annB) seen
+              (SubstEval.openFreshTop _bodyA tyCtx.size)
+              (SubstEval.openFreshTop _bodyB tyCtx.size)
+              = .ok true := hstruct
+        have h_open_a_cl : (SubstEval.openFreshTop _bodyA tyCtx.size).closedAtLvl 0
+            = true := SubstEval.openFreshTop_closedAtLvl_zero _ _ hclA_body
+        have h_open_b_cl : (SubstEval.openFreshTop _bodyB tyCtx.size).closedAtLvl 0
+            = true := SubstEval.openFreshTop_closedAtLvl_zero _ _ hclB_body
+        have hlvA_body_succ : _bodyA.lvarLT (tyCtx.push _annB).size = true := by
+          rw [Array.size_push]
+          exact lvarLT_mono hlvA_body (Nat.le_succ _)
+        have hlvB_body_succ : _bodyB.lvarLT (tyCtx.push _annB).size = true := by
+          rw [Array.size_push]
+          exact lvarLT_mono hlvB_body (Nat.le_succ _)
+        have h_depth_lt : tyCtx.size < (tyCtx.push _annB).size := by
+          rw [Array.size_push]; omega
+        have h_open_a_lv :
+            (SubstEval.openFreshTop _bodyA tyCtx.size).lvarLT
+              (tyCtx.push _annB).size = true := by
+          rw [SubstEval.openFreshTop_eq_substL_freshLevelVar]
+          refine substL_lvarLT _bodyA 0 _ _ hlvA_body_succ
+            (SubstEval.closedAtLvl_freshLevelVar _ _) ?_
+          exact lvarLT_freshLevelVar _ _ h_depth_lt
+        have h_open_b_lv :
+            (SubstEval.openFreshTop _bodyB tyCtx.size).lvarLT
+              (tyCtx.push _annB).size = true := by
+          rw [SubstEval.openFreshTop_eq_substL_freshLevelVar]
+          refine substL_lvarLT _bodyB 0 _ _ hlvB_body_succ
+            (SubstEval.closedAtLvl_freshLevelVar _ _) ?_
+          exact lvarLT_freshLevelVar _ _ h_depth_lt
+        have h_seen_wf_succ : ∀ p ∈ seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT (tyCtx.push _annB).size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT (tyCtx.push _annB).size = true := by
+          intro p hp
+          obtain ⟨h1, h2, h3, h4⟩ := _hseen_wf p hp
+          rw [Array.size_push]
+          refine ⟨h1, ?_, h3, ?_⟩
+          · exact lvarLT_mono h2 (Nat.le_succ _)
+          · exact lvarLT_mono h4 (Nat.le_succ _)
+        have ih_body_succ :
+            Subtype' (liftSeenList (tyCtx.push _annB).size seen)
+                (tyCtxToCtx (tyCtx.push _annB))
+                (closeAll (tyCtx.push _annB).size
+                  (SubstEval.openFreshTop _bodyA tyCtx.size))
+                (closeAll (tyCtx.push _annB).size
+                  (SubstEval.openFreshTop _bodyB tyCtx.size)) :=
+          _ih h_seen_wf_succ h_open_a_cl h_open_a_lv h_open_b_cl h_open_b_lv
+            h_body_call
+        rw [tyCtxToCtx_push] at ih_body_succ
+        rw [Array.size_push] at ih_body_succ
+        have ih_body :
+            Subtype' (liftSeenList tyCtx.size seen)
+                (closeAll tyCtx.size _annB :: tyCtxToCtx tyCtx)
+                (closeAll (tyCtx.size + 1)
+                  (SubstEval.openFreshTop _bodyA tyCtx.size))
+                (closeAll (tyCtx.size + 1)
+                  (SubstEval.openFreshTop _bodyB tyCtx.size)) :=
+          Subtype'_liftSeen_succ_to_d _hseen_wf ih_body_succ
+        exact subCheckSubst_arm_fix_fix hclA_body hclB_body
+          hlvA_body hlvB_body ih_ann ih_body
+      · simp only [hannOk, Bool.not_false, ↓reduceIte,
+                   pure, Outcome.ok.injEq] at hstruct
+        cases hstruct
+    · -- structural fail: fallback path (unfold_fix_R).
+      -- Engine: let seen' := (a, b) :: seen
+      --        let unfolded := substL bodyB 0 b
+      --        match evalSubst (fuel + 1) unfBound unfolded with
+      --        | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+      --        | _ => .ok false
+      split at _h
+      · rename_i b' h_eval
+        -- h_eval : evalSubst (fuel + 1) unfBound (substL _bodyB 0 (.fix _annB _bodyB)) = .ok b'
+        -- _h : subCheckSubst fuel tyCtx seen' (.fix _annA _bodyA) b' = .ok true
+        -- where seen' = (.fix _annA _bodyA, .fix _annB _bodyB) :: seen.
+        have h_seen'_wf : ∀ p ∈
+            (Expr.fix _annA _bodyA, Expr.fix _annB _bodyB) :: seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT tyCtx.size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT tyCtx.size = true := by
+          intro p hp
+          rcases List.mem_cons.mp hp with heq | hin
+          · subst heq
+            exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+          · exact _hseen_wf p hin
+        -- Closedness for substL bodyB 0 (fix annB bodyB).
+        have h_substL_cl :
+            (SubstEval.substL _bodyB 0 (Expr.fix _annB _bodyB)).closedAtLvl 0
+              = true :=
+          SubstEval.substL_closedAtLvl hclB_body _hb_cl
+        have h_substL_lv :
+            (SubstEval.substL _bodyB 0 (Expr.fix _annB _bodyB)).lvarLT
+              tyCtx.size = true :=
+          substL_lvarLT _bodyB 0 tyCtx.size (Expr.fix _annB _bodyB)
+            hlvB_body _hb_cl _hb_lv
+        have h_b'_cl : b'.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+        have h_b'_lv : b'.lvarLT tyCtx.size = true :=
+          evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+        have ih_body :
+            Subtype'
+                (liftSeenList tyCtx.size
+                  ((Expr.fix _annA _bodyA, Expr.fix _annB _bodyB) :: seen))
+                (tyCtxToCtx tyCtx)
+                (closeAll tyCtx.size (Expr.fix _annA _bodyA))
+                (closeAll tyCtx.size b') :=
+          _ih h_seen'_wf _ha_cl _ha_lv h_b'_cl h_b'_lv _h
+        have h_seen_unfold :
+            liftSeenList tyCtx.size
+                ((Expr.fix _annA _bodyA, Expr.fix _annB _bodyB) :: seen)
+              = ((tyCtxToCtx tyCtx).length,
+                  closeAll tyCtx.size (Expr.fix _annA _bodyA),
+                  closeAll tyCtx.size (Expr.fix _annB _bodyB))
+                :: liftSeenList tyCtx.size seen := by
+          simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+        rw [h_seen_unfold] at ih_body
+        -- Wall-2 fuel-shift bridge for the arm-lemma.
+        have h_eval_unf :
+            SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+              (SubstEval.substL _bodyB 0 (Expr.fix _annB _bodyB))
+              = .ok b' := by
+          -- WALL: fuel-shift bridge, part of wall-2 family.
+          sorry
+        exact unfold_fix_R_arm h_eval_unf hclB_body hlvB_body
+          hclB_ann hlvB_ann ih_body
+      · cases _h
   -- _ ⊑ ι : iotaIntro fallback.  Routes through
   -- `iota_intro_arm` (v2 bridge sorry'd internally).
   -- We enumerate every non-iota, non-bot LHS:
