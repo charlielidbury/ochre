@@ -1604,11 +1604,336 @@ private theorem subCheckSubstMatch_dispatch
     · cases _h
   -- fix ⊑ _ : unfoldFixL fallback (LHS = fix; already handled
   -- fix-fix and fix-iota above).
-  | .fix _annA _bodyA, .bvar _k => sorry
-  | .fix _annA _bodyA, .app _f _v => sorry
-  | .fix _annA _bodyA, .lam _domB _bodyB => sorry
-  | .fix _annA _bodyA, .asc _t _ty => sorry
-  | .fix _annA _bodyA, .letE _v _b => sorry
+  -- Engine: `let seen' := (a, b) :: seen; …; match evalSubst …`
+  --        `with | .ok a' => if a' == a then .ok false else …`
+  -- Per arm: extract hclA_ann/hclA_body, run evalSubst, handle the
+  -- `a' == a` short-circuit (false ⟹ contradicts `_h`), recurse via
+  -- `unfold_fix_L_arm`.
+  | .fix _annA _bodyA, .bvar _k =>
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    split at _h
+    · rename_i a' h_eval
+      by_cases haa : a' == Expr.fix _annA _bodyA
+      · simp only [haa, ↓reduceIte] at _h
+        cases _h
+      · simp only [haa, Bool.false_eq_true, ↓reduceIte] at _h
+        have h_seen'_wf : ∀ p ∈
+            (Expr.fix _annA _bodyA, Expr.bvar _k) :: seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT tyCtx.size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT tyCtx.size = true := by
+          intro p hp
+          rcases List.mem_cons.mp hp with heq | hin
+          · subst heq
+            exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+          · exact _hseen_wf p hin
+        have h_substL_cl :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).closedAtLvl 0
+              = true :=
+          SubstEval.substL_closedAtLvl hclA_body _ha_cl
+        have h_substL_lv :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).lvarLT
+              tyCtx.size = true :=
+          substL_lvarLT _bodyA 0 tyCtx.size (Expr.fix _annA _bodyA)
+            hlvA_body _ha_cl _ha_lv
+        have h_a'_cl : a'.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+        have h_a'_lv : a'.lvarLT tyCtx.size = true :=
+          evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+        have ih_body :
+            Subtype'
+                (liftSeenList tyCtx.size
+                  ((Expr.fix _annA _bodyA, Expr.bvar _k) :: seen))
+                (tyCtxToCtx tyCtx)
+                (closeAll tyCtx.size a')
+                (closeAll tyCtx.size (Expr.bvar _k)) :=
+          _ih h_seen'_wf h_a'_cl h_a'_lv _hb_cl _hb_lv _h
+        have h_seen_unfold :
+            liftSeenList tyCtx.size
+                ((Expr.fix _annA _bodyA, Expr.bvar _k) :: seen)
+              = ((tyCtxToCtx tyCtx).length,
+                  closeAll tyCtx.size (Expr.fix _annA _bodyA),
+                  closeAll tyCtx.size (Expr.bvar _k))
+                :: liftSeenList tyCtx.size seen := by
+          simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+        rw [h_seen_unfold] at ih_body
+        exact unfold_fix_L_arm h_eval hclA_body hlvA_body
+          hclA_ann hlvA_ann ih_body
+    · cases _h
+  | .fix _annA _bodyA, .app _f _v =>
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    split at _h
+    · rename_i a' h_eval
+      by_cases haa : a' == Expr.fix _annA _bodyA
+      · simp only [haa, ↓reduceIte] at _h
+        cases _h
+      · simp only [haa, Bool.false_eq_true, ↓reduceIte] at _h
+        have h_seen'_wf : ∀ p ∈
+            (Expr.fix _annA _bodyA, Expr.app _f _v) :: seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT tyCtx.size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT tyCtx.size = true := by
+          intro p hp
+          rcases List.mem_cons.mp hp with heq | hin
+          · subst heq
+            exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+          · exact _hseen_wf p hin
+        have h_substL_cl :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).closedAtLvl 0
+              = true :=
+          SubstEval.substL_closedAtLvl hclA_body _ha_cl
+        have h_substL_lv :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).lvarLT
+              tyCtx.size = true :=
+          substL_lvarLT _bodyA 0 tyCtx.size (Expr.fix _annA _bodyA)
+            hlvA_body _ha_cl _ha_lv
+        have h_a'_cl : a'.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+        have h_a'_lv : a'.lvarLT tyCtx.size = true :=
+          evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+        have ih_body :
+            Subtype'
+                (liftSeenList tyCtx.size
+                  ((Expr.fix _annA _bodyA, Expr.app _f _v) :: seen))
+                (tyCtxToCtx tyCtx)
+                (closeAll tyCtx.size a')
+                (closeAll tyCtx.size (Expr.app _f _v)) :=
+          _ih h_seen'_wf h_a'_cl h_a'_lv _hb_cl _hb_lv _h
+        have h_seen_unfold :
+            liftSeenList tyCtx.size
+                ((Expr.fix _annA _bodyA, Expr.app _f _v) :: seen)
+              = ((tyCtxToCtx tyCtx).length,
+                  closeAll tyCtx.size (Expr.fix _annA _bodyA),
+                  closeAll tyCtx.size (Expr.app _f _v))
+                :: liftSeenList tyCtx.size seen := by
+          simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+        rw [h_seen_unfold] at ih_body
+        exact unfold_fix_L_arm h_eval hclA_body hlvA_body
+          hclA_ann hlvA_ann ih_body
+    · cases _h
+  | .fix _annA _bodyA, .lam _domB _bodyB =>
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    split at _h
+    · rename_i a' h_eval
+      by_cases haa : a' == Expr.fix _annA _bodyA
+      · simp only [haa, ↓reduceIte] at _h
+        cases _h
+      · simp only [haa, Bool.false_eq_true, ↓reduceIte] at _h
+        have h_seen'_wf : ∀ p ∈
+            (Expr.fix _annA _bodyA, Expr.lam _domB _bodyB) :: seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT tyCtx.size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT tyCtx.size = true := by
+          intro p hp
+          rcases List.mem_cons.mp hp with heq | hin
+          · subst heq
+            exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+          · exact _hseen_wf p hin
+        have h_substL_cl :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).closedAtLvl 0
+              = true :=
+          SubstEval.substL_closedAtLvl hclA_body _ha_cl
+        have h_substL_lv :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).lvarLT
+              tyCtx.size = true :=
+          substL_lvarLT _bodyA 0 tyCtx.size (Expr.fix _annA _bodyA)
+            hlvA_body _ha_cl _ha_lv
+        have h_a'_cl : a'.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+        have h_a'_lv : a'.lvarLT tyCtx.size = true :=
+          evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+        have ih_body :
+            Subtype'
+                (liftSeenList tyCtx.size
+                  ((Expr.fix _annA _bodyA, Expr.lam _domB _bodyB) :: seen))
+                (tyCtxToCtx tyCtx)
+                (closeAll tyCtx.size a')
+                (closeAll tyCtx.size (Expr.lam _domB _bodyB)) :=
+          _ih h_seen'_wf h_a'_cl h_a'_lv _hb_cl _hb_lv _h
+        have h_seen_unfold :
+            liftSeenList tyCtx.size
+                ((Expr.fix _annA _bodyA, Expr.lam _domB _bodyB) :: seen)
+              = ((tyCtxToCtx tyCtx).length,
+                  closeAll tyCtx.size (Expr.fix _annA _bodyA),
+                  closeAll tyCtx.size (Expr.lam _domB _bodyB))
+                :: liftSeenList tyCtx.size seen := by
+          simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+        rw [h_seen_unfold] at ih_body
+        exact unfold_fix_L_arm h_eval hclA_body hlvA_body
+          hclA_ann hlvA_ann ih_body
+    · cases _h
+  | .fix _annA _bodyA, .asc _t _ty =>
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    split at _h
+    · rename_i a' h_eval
+      by_cases haa : a' == Expr.fix _annA _bodyA
+      · simp only [haa, ↓reduceIte] at _h
+        cases _h
+      · simp only [haa, Bool.false_eq_true, ↓reduceIte] at _h
+        have h_seen'_wf : ∀ p ∈
+            (Expr.fix _annA _bodyA, Expr.asc _t _ty) :: seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT tyCtx.size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT tyCtx.size = true := by
+          intro p hp
+          rcases List.mem_cons.mp hp with heq | hin
+          · subst heq
+            exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+          · exact _hseen_wf p hin
+        have h_substL_cl :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).closedAtLvl 0
+              = true :=
+          SubstEval.substL_closedAtLvl hclA_body _ha_cl
+        have h_substL_lv :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).lvarLT
+              tyCtx.size = true :=
+          substL_lvarLT _bodyA 0 tyCtx.size (Expr.fix _annA _bodyA)
+            hlvA_body _ha_cl _ha_lv
+        have h_a'_cl : a'.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+        have h_a'_lv : a'.lvarLT tyCtx.size = true :=
+          evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+        have ih_body :
+            Subtype'
+                (liftSeenList tyCtx.size
+                  ((Expr.fix _annA _bodyA, Expr.asc _t _ty) :: seen))
+                (tyCtxToCtx tyCtx)
+                (closeAll tyCtx.size a')
+                (closeAll tyCtx.size (Expr.asc _t _ty)) :=
+          _ih h_seen'_wf h_a'_cl h_a'_lv _hb_cl _hb_lv _h
+        have h_seen_unfold :
+            liftSeenList tyCtx.size
+                ((Expr.fix _annA _bodyA, Expr.asc _t _ty) :: seen)
+              = ((tyCtxToCtx tyCtx).length,
+                  closeAll tyCtx.size (Expr.fix _annA _bodyA),
+                  closeAll tyCtx.size (Expr.asc _t _ty))
+                :: liftSeenList tyCtx.size seen := by
+          simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+        rw [h_seen_unfold] at ih_body
+        exact unfold_fix_L_arm h_eval hclA_body hlvA_body
+          hclA_ann hlvA_ann ih_body
+    · cases _h
+  | .fix _annA _bodyA, .letE _v _b =>
+    have hclA_ann : _annA.closedAtLvl 0 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.1
+    have hclA_body : _bodyA.closedAtLvl 1 = true := by
+      simp only [Expr.closedAtLvl, Bool.and_eq_true] at _ha_cl
+      exact _ha_cl.2
+    have hlvA_ann : _annA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.1
+    have hlvA_body : _bodyA.lvarLT tyCtx.size = true := by
+      simp only [Expr.lvarLT, Bool.and_eq_true] at _ha_lv
+      exact _ha_lv.2
+    rw [SubstEval.subCheckSubstMatch.eq_def] at _h
+    simp only at _h
+    split at _h
+    · rename_i a' h_eval
+      by_cases haa : a' == Expr.fix _annA _bodyA
+      · simp only [haa, ↓reduceIte] at _h
+        cases _h
+      · simp only [haa, Bool.false_eq_true, ↓reduceIte] at _h
+        have h_seen'_wf : ∀ p ∈
+            (Expr.fix _annA _bodyA, Expr.letE _v _b) :: seen,
+            p.1.closedAtLvl 0 = true ∧
+            p.1.lvarLT tyCtx.size = true ∧
+            p.2.closedAtLvl 0 = true ∧
+            p.2.lvarLT tyCtx.size = true := by
+          intro p hp
+          rcases List.mem_cons.mp hp with heq | hin
+          · subst heq
+            exact ⟨_ha_cl, _ha_lv, _hb_cl, _hb_lv⟩
+          · exact _hseen_wf p hin
+        have h_substL_cl :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).closedAtLvl 0
+              = true :=
+          SubstEval.substL_closedAtLvl hclA_body _ha_cl
+        have h_substL_lv :
+            (SubstEval.substL _bodyA 0 (Expr.fix _annA _bodyA)).lvarLT
+              tyCtx.size = true :=
+          substL_lvarLT _bodyA 0 tyCtx.size (Expr.fix _annA _bodyA)
+            hlvA_body _ha_cl _ha_lv
+        have h_a'_cl : a'.closedAtLvl 0 = true :=
+          SubstEval.evalSubst_closedAtLvl h_substL_cl h_eval
+        have h_a'_lv : a'.lvarLT tyCtx.size = true :=
+          evalSubst_lvarLT h_substL_cl h_substL_lv h_eval
+        have ih_body :
+            Subtype'
+                (liftSeenList tyCtx.size
+                  ((Expr.fix _annA _bodyA, Expr.letE _v _b) :: seen))
+                (tyCtxToCtx tyCtx)
+                (closeAll tyCtx.size a')
+                (closeAll tyCtx.size (Expr.letE _v _b)) :=
+          _ih h_seen'_wf h_a'_cl h_a'_lv _hb_cl _hb_lv _h
+        have h_seen_unfold :
+            liftSeenList tyCtx.size
+                ((Expr.fix _annA _bodyA, Expr.letE _v _b) :: seen)
+              = ((tyCtxToCtx tyCtx).length,
+                  closeAll tyCtx.size (Expr.fix _annA _bodyA),
+                  closeAll tyCtx.size (Expr.letE _v _b))
+                :: liftSeenList tyCtx.size seen := by
+          simp only [liftSeenList, List.map_cons, tyCtxToCtx_length]
+        rw [h_seen_unfold] at ih_body
+        exact unfold_fix_L_arm h_eval hclA_body hlvA_body
+          hclA_ann hlvA_ann ih_body
+    · cases _h
   -- ι ⊑ _ : unfoldIotaL fallback.
   | .iota _annA _bodyA, .bvar _k => sorry
   | .iota _annA _bodyA, .app _f _v => sorry
