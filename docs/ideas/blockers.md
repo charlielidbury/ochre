@@ -76,8 +76,12 @@ those.
 | 4: seen + 12 arms | SubCheckSubstSoundness | LOW (mechanical) | grind it out |
 
 The three top-level theorems' status:
-- `synth_sound`: walled at 1.
+- `synth_sound`: walled at `synthCore_app_WALL` only (was 2 walls; closedness wall closed via synth-entry check in commit c121da9).
 - `subCheck_sound`: walled at 2+3+4.
 - `concEval_preservation`: ✅ closed.
 - `synth_progress`: ✅ closed.
 - `soundness` (composition): body sorry-free; only upstream walls.
+
+End-to-end `soundness` statement simplified in commit 64b96f8 — the
+redundant `hcl : e.closedAt 0` premise dropped from both
+`synth_progress` and `soundness`, derived internally from synth.
