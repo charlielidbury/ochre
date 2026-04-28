@@ -244,16 +244,22 @@ de-Bruijn indices before stating the goal.  This *unblocks* the
 level-var ascent step (`Subtype'_lvar_via_tyCtx`), which closes
 under the closed-form interpretation.
 
-Two sorries remain in this version:
-1. The structural recursion (refl/app_cong/trans/iota/fix arms) —
-   needs the `closeAll` substrate commutation lemmas
-   (`closeAllAt_substL_OPEN_QUESTION`, `closeAll_openFresh_OPEN_QUESTION`).
-2. The seen-list translation — the lift via
-   `liftSeenList tyCtx.size seen` needs to track the closed-form
-   versions of seen entries.
+**Status update (Apr 2026, v2 wall analysis):**
 
-The sorry's body now reduces to *commutation infrastructure*, not a
-representation gap.  The wall-breaking lemma itself is closed. -/
+* Bvar-arm: closed via `Subtype'_lvar_via_tyCtx`.
+* App / app_cong arm: closed structurally.
+* **Lam-Lam, Iota-Iota, Fix-Fix structural arms**: `closeAll_openFresh`
+  (CloseAll.lean) now provides the recursion bridge — the engine's
+  `openFresh body depth` matches the closed structural body
+  `closeAllAt 1 depth body` (with `closedAtLvl 1` and `lvarLT depth`
+  preconditions).  This was the v1 wall; **resolved**.
+* **Iota_intro / unfoldFixR / iotaElim / unfoldFixL arms**: still
+  need `closeAllAt_substL` for arbitrary substituees.  v2 wall
+  remains open; see `docs/ideas/proposalA-wall-v2.md`.
+* Seen-list translation: still pending.
+
+The remaining sorry blocks on substrate-substitution commutation
+(v2 wall), not the level-var representation gap. -/
 
 theorem subCheckSubst_sound_arm_neutral_closeAll
     {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
@@ -265,14 +271,11 @@ theorem subCheckSubst_sound_arm_neutral_closeAll
       (Och.Soundness.tyCtxToCtx tyCtx)
       (Och.Soundness.closeAll tyCtx.size a)
       (Och.Soundness.closeAll tyCtx.size b) := by
-  -- The bvar-arm of the recursion now closes via
-  -- `Subtype'_lvar_via_tyCtx`.  Other arms (lam, app, fix, iota,
-  -- letE, asc, beta, etc.) need the substrate commutation lemmas:
-  -- `closeAllAt_shiftL` (closed) and the two open-question lemmas.
-  --
-  -- This sorry represents the FULL recursion on (fuel, sizeOf a +
-  -- sizeOf b) — substantial structural work but no longer blocked
-  -- by the level-var representation gap.
+  -- Status (Apr 2026 v2): bvar / app / lam / iota / fix STRUCTURAL
+  -- arms now reducible — see `closeAll_openFresh` (CloseAll.lean).
+  -- The remaining gap is iota_intro / unfold-* arms, which need
+  -- closeAllAt-substL commutation for arbitrary substituees (v2
+  -- wall, `docs/ideas/proposalA-wall-v2.md`).
   sorry
 
 end Och.Soundness
