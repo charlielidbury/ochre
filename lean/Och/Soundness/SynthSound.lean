@@ -125,6 +125,25 @@ private theorem synthCore_lam_evalSubst {n : Nat} {dom body v : Expr}
     simp only [Bool.not_false, if_true] at h
     cases h
 
+/-- Canonical-form refl: `evalSubst n unfBound (.lam dom body) = .ok v`
+implies `v = .lam dom body`.  Combined with `synthCore_lam_evalSubst`,
+this means synth's output for a `.lam` arm is the lam itself — no
+closedness or evalSubst-equivalence needed to bridge.
+
+The same holds for `.iota` and `.fix`: `evalSubst` returns
+`.ok e` immediately, the canonical-form arms in `evalSubst.eq_*`
+are pattern-direct.  This lets the synth-soundness proof close
+those arms via `Subtype'.refl` without the `closedAt 0`
+hypothesis. -/
+private theorem evalSubst_lam_refl {n : Nat} {dom body v : Expr}
+    (h : evalSubst n unfBound (.lam dom body) = .ok v) :
+    v = .lam dom body := by
+  cases n with
+  | zero => rw [evalSubst.eq_1] at h; cases h
+  | succ k =>
+    rw [evalSubst.eq_5] at h
+    simp only [Outcome.ok.injEq] at h; exact h.symm
+
 private theorem synthCore_iota_evalSubst {n : Nat} {ann body v : Expr}
     (h : synthCore (n+1) #[] (.iota ann body) = .ok v) :
     evalSubst n unfBound (.iota ann body) = .ok v := by
@@ -143,6 +162,15 @@ private theorem synthCore_iota_evalSubst {n : Nat} {ann body v : Expr}
     simp only [Bool.not_false, if_true] at h
     cases h
 
+private theorem evalSubst_iota_refl {n : Nat} {ann body v : Expr}
+    (h : evalSubst n unfBound (.iota ann body) = .ok v) :
+    v = .iota ann body := by
+  cases n with
+  | zero => rw [evalSubst.eq_1] at h; cases h
+  | succ k =>
+    rw [evalSubst.eq_6] at h
+    simp only [Outcome.ok.injEq] at h; exact h.symm
+
 private theorem synthCore_fix_evalSubst {n : Nat} {ann body v : Expr}
     (h : synthCore (n+1) #[] (.fix ann body) = .ok v) :
     evalSubst n unfBound (.fix ann body) = .ok v := by
@@ -160,6 +188,15 @@ private theorem synthCore_fix_evalSubst {n : Nat} {ann body v : Expr}
     subst hok
     simp only [Bool.not_false, if_true] at h
     cases h
+
+private theorem evalSubst_fix_refl {n : Nat} {ann body v : Expr}
+    (h : evalSubst n unfBound (.fix ann body) = .ok v) :
+    v = .fix ann body := by
+  cases n with
+  | zero => rw [evalSubst.eq_1] at h; cases h
+  | succ k =>
+    rw [evalSubst.eq_7] at h
+    simp only [Outcome.ok.injEq] at h; exact h.symm
 
 private theorem synthCore_letE_evalSubst {n : Nat} {val body v : Expr}
     (h : synthCore (n+1) #[] (.letE val body) = .ok v) :
@@ -262,26 +299,32 @@ private theorem synthCore_sound_aux :
     simp only [closedAt, decide_eq_true_eq] at hcl
     omega
   | lam dom body _ihDom _ihBody =>
-    intro fuel v hcl h
+    intro fuel v _hcl h
     cases fuel with
     | zero => rw [synthCore.eq_1] at h; cases h
     | succ n =>
       have hev := synthCore_lam_evalSubst h
-      exact (evalSubst_equiv hcl hev).2
+      have hveq := evalSubst_lam_refl hev
+      subst hveq
+      exact .refl _
   | iota ann body _ihAnn _ihBody =>
-    intro fuel v hcl h
+    intro fuel v _hcl h
     cases fuel with
     | zero => rw [synthCore.eq_1] at h; cases h
     | succ n =>
       have hev := synthCore_iota_evalSubst h
-      exact (evalSubst_equiv hcl hev).2
+      have hveq := evalSubst_iota_refl hev
+      subst hveq
+      exact .refl _
   | fix ann body _ihAnn _ihBody =>
-    intro fuel v hcl h
+    intro fuel v _hcl h
     cases fuel with
     | zero => rw [synthCore.eq_1] at h; cases h
     | succ n =>
       have hev := synthCore_fix_evalSubst h
-      exact (evalSubst_equiv hcl hev).2
+      have hveq := evalSubst_fix_refl hev
+      subst hveq
+      exact .refl _
   | letE val body _ihVal _ihBody =>
     intro fuel v hcl h
     cases fuel with
