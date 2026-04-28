@@ -66,6 +66,30 @@ closedness invariants to fully close.
 Conditional on walls 2+3 because the fallback arms route through
 those.
 
+## 5. tyCtxPush_bridge_WALL — convention mismatch in arm packages
+
+**Surfaced**: 2026-04-28 (overnight), by lam-lam dispatch arm
+attempt (commit `568f148`).
+
+**Wall**: see `docs/ideas/tyCtxPush-bridge-wall.md`.  The dispatch's
+IH yields a Ctx with **raw** `domB` head; arm-package
+`arm_lam_lam_compose` (and iota/fix counterparts) expects a
+**closeAll'd** head.  These are not equal in general
+(`closeAll d domB ≠ domB` when `domB` has level-vars `< d`).
+
+**Affects**: lam-lam, iota-iota, fix-fix structural dispatch arms
+(all three blocked identically).
+
+**Resolution paths**:
+1. Redefine `tyCtxToCtx` to apply depth-stratified `closeAll` to
+   each entry.  ~4-6 hours; cleanest but invasive.
+2. Redefine arm packages to take raw heads.  Cheaper but loses
+   the "closeAll'd-everywhere" canonical form.
+
+**My read**: option 1 long-term, but blocked on user verdict since
+either choice has downstream consequences for the C7 lemma's
+conclusion shape.
+
 ## Summary
 
 | Wall | File | Severity | Resolution |
