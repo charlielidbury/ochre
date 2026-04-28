@@ -98,6 +98,164 @@ namespace Och.Soundness
 
 open SubstEval
 
+/-! ## Seen-coherence weakening across a depth bump
+
+Under Design A, `liftSeenList d seen` translates each entry `(a, b)`
+to `(d, closeAll d a, closeAll d b)`.  When the dispatch's IH
+recurses under a binder (`tyCtx' = tyCtx.push x`, `d' = d + 1`), the
+yielded derivation is against `liftSeenList (d + 1) seen`, but the
+arm-package consumes `liftSeenList d seen`.  The `(d+1)` and `(d)`
+forms are equi-derivable at the *current* (post-binder) Γ, modulo a
+`shift 1 0` on every entry's terms — which `closeAll_succ_d_eq_shift`
+provides under `closedAtLvl 0`/`lvarLT d` on each entry of `seen`.
+
+The lemma below makes this translation explicit: a derivation in
+`liftSeenList (d + 1) seen` (with seen entries well-formed at depth
+`d`) re-translates to a derivation in `liftSeenList d seen` at the
+same Γ.  The substantive case is `Subtype'.hyp`: a `(d+1)`-tagged
+entry used at Γ.length `≥ d+1` re-emits as a `(d)`-tagged entry at
+the same Γ, with the conclusion's shifts cancelling via
+`shift_shift_same`.
+
+The generalised form takes an arbitrary prefix `Sextra : Seen` (used
+to thread through the `iota_intro`/`unfold_*` rules that grow `S`
+with `(Γ.length, _, _)` entries while we descend).
+
+This is the "seen-coherence under depth bump" wall named in the
+module preamble; closing it required `closeAll_succ_d_eq_shift` (in
+`Och/Soundness/CloseAll.lean`) plus a routine induction. -/
+
+private theorem Subtype'_liftSeen_succ_to_d_aux
+    {seen : List (Expr × Expr)} {d : Nat}
+    (hseen_wf : ∀ p ∈ seen,
+      p.1.closedAtLvl 0 = true ∧ p.1.lvarLT d = true ∧
+      p.2.closedAtLvl 0 = true ∧ p.2.lvarLT d = true) :
+    ∀ {Sextra : Seen} {Γ : Ctx} {x y : Expr},
+      Subtype' (Sextra ++ liftSeenList (d + 1) seen) Γ x y →
+      Subtype' (Sextra ++ liftSeenList d seen) Γ x y := by
+  intro Sextra Γ x y h
+  generalize hSeq : Sextra ++ liftSeenList (d + 1) seen = S at h
+  induction h generalizing Sextra with
+  | @hyp _ Γ d' a b hin hle =>
+    subst hSeq
+    -- `(d', a, b) ∈ Sextra ++ liftSeenList (d+1) seen`.
+    rw [List.mem_append] at hin
+    rcases hin with hL | hR
+    · -- Entry from Sextra: same membership in the target.
+      have hin' : (d', a, b) ∈ Sextra ++ liftSeenList d seen :=
+        List.mem_append.mpr (Or.inl hL)
+      exact Subtype'.hyp hin' hle
+    · -- Entry from liftSeenList (d+1) seen.
+      simp only [liftSeenList, List.mem_map] at hR
+      obtain ⟨⟨a₀, b₀⟩, hp_in, hp_eq⟩ := hR
+      -- hp_eq : (d+1, closeAll (d+1) a₀, closeAll (d+1) b₀) = (d', a, b)
+      simp only [Prod.mk.injEq] at hp_eq
+      obtain ⟨hd'_eq, ha_eq, hb_eq⟩ := hp_eq
+      subst hd'_eq
+      subst ha_eq
+      subst hb_eq
+      -- The corresponding (d, closeAll d a₀, closeAll d b₀) is in liftSeenList d seen.
+      have hin_d : (d, closeAll d a₀, closeAll d b₀) ∈ liftSeenList d seen := by
+        simp only [liftSeenList, List.mem_map]
+        exact ⟨(a₀, b₀), hp_in, rfl⟩
+      have hin_d' : (d, closeAll d a₀, closeAll d b₀) ∈
+          Sextra ++ liftSeenList d seen :=
+        List.mem_append.mpr (Or.inr hin_d)
+      have hd_le : d ≤ Γ.length := by omega
+      have hpwf := hseen_wf (a₀, b₀) hp_in
+      obtain ⟨ha_cl, ha_lv, hb_cl, hb_lv⟩ := hpwf
+      -- Apply hyp at the (d, ...) entry.
+      have hsub :
+          Subtype' (Sextra ++ liftSeenList d seen) Γ
+            ((closeAll d a₀).shift (Γ.length - d) 0)
+            ((closeAll d b₀).shift (Γ.length - d) 0) :=
+        Subtype'.hyp hin_d' hd_le
+      -- Need to rewrite to match the original conclusion shape.
+      -- closeAll (d+1) a₀ = (closeAll d a₀).shift 1 0.
+      have hca_a : closeAll (d + 1) a₀ = (closeAll d a₀).shift 1 0 :=
+        closeAll_succ_d_eq_shift d a₀ ha_cl ha_lv
+      have hca_b : closeAll (d + 1) b₀ = (closeAll d b₀).shift 1 0 :=
+        closeAll_succ_d_eq_shift d b₀ hb_cl hb_lv
+      rw [hca_a, hca_b]
+      -- Goal: Subtype' ... ((closeAll d a₀).shift 1 0).shift (Γ.length - (d+1)) 0
+      --                      ((closeAll d b₀).shift 1 0).shift (Γ.length - (d+1)) 0
+      -- And hsub gives shift (Γ.length - d) on closeAll d a₀.
+      have hshift_a :
+          ((closeAll d a₀).shift 1 0).shift (Γ.length - (d + 1)) 0
+            = (closeAll d a₀).shift (Γ.length - d) 0 := by
+        rw [Expr.shift_shift_same]
+        congr 1; omega
+      have hshift_b :
+          ((closeAll d b₀).shift 1 0).shift (Γ.length - (d + 1)) 0
+            = (closeAll d b₀).shift (Γ.length - d) 0 := by
+        rw [Expr.shift_shift_same]
+        congr 1; omega
+      rw [hshift_a, hshift_b]
+      exact hsub
+  | refl e => subst hSeq; exact .refl e
+  | top e => subst hSeq; exact .top e
+  | trans _ _ ih1 ih2 => subst hSeq; exact .trans (ih1 rfl) (ih2 rfl)
+  | bvar h_get => subst hSeq; exact .bvar h_get
+  | lam _ _ ih_d ih_b => subst hSeq; exact .lam (ih_d rfl) (ih_b rfl)
+  | app_cong _ _ _ ihf iha iha' =>
+    subst hSeq; exact .app_cong (ihf rfl) (iha rfl) (iha' rfl)
+  | iota_body _ ih => subst hSeq; exact .iota_body (ih rfl)
+  | fix_body _ ih => subst hSeq; exact .fix_body (ih rfl)
+  | iota_cong _ _ ih_a ih_b => subst hSeq; exact .iota_cong (ih_a rfl) (ih_b rfl)
+  | fix_cong _ _ ih_a ih_b => subst hSeq; exact .fix_cong (ih_a rfl) (ih_b rfl)
+  | letE_cong _ _ ih_v ih_b => subst hSeq; exact .letE_cong (ih_v rfl) (ih_b rfl)
+  | @iota_intro _ Γ a ann body _ _ ih1 ih2 =>
+    subst hSeq
+    refine .iota_intro ?_ ?_
+    · have := ih1 (Sextra := (Γ.length, a, .iota ann body) :: Sextra)
+      simpa [List.cons_append] using this rfl
+    · have := ih2 (Sextra := (Γ.length, a, .iota ann body) :: Sextra)
+      simpa [List.cons_append] using this rfl
+  | @unfold_iota_L _ Γ ann body c _ ih =>
+    subst hSeq
+    refine .unfold_iota_L ?_
+    have := ih (Sextra := (Γ.length, .iota ann body, c) :: Sextra)
+    simpa [List.cons_append] using this rfl
+  | @unfold_iota_R _ Γ a ann body _ ih =>
+    subst hSeq
+    refine .unfold_iota_R ?_
+    have := ih (Sextra := (Γ.length, a, .iota ann body) :: Sextra)
+    simpa [List.cons_append] using this rfl
+  | @unfold_fix_L _ Γ ann body c _ ih =>
+    subst hSeq
+    refine .unfold_fix_L ?_
+    have := ih (Sextra := (Γ.length, .fix ann body, c) :: Sextra)
+    simpa [List.cons_append] using this rfl
+  | @unfold_fix_R _ Γ a ann body _ ih =>
+    subst hSeq
+    refine .unfold_fix_R ?_
+    have := ih (Sextra := (Γ.length, a, .fix ann body) :: Sextra)
+    simpa [List.cons_append] using this rfl
+  | beta_L _ ih => subst hSeq; exact .beta_L (ih rfl)
+  | beta_R _ ih => subst hSeq; exact .beta_R (ih rfl)
+  | letE_L _ ih => subst hSeq; exact .letE_L (ih rfl)
+  | letE_R _ ih => subst hSeq; exact .letE_R (ih rfl)
+  | asc_L _ ih => subst hSeq; exact .asc_L (ih rfl)
+  | asc_R _ ih => subst hSeq; exact .asc_R (ih rfl)
+  | bot_L => subst hSeq; exact .bot_L
+
+/-- Public-facing form: a derivation in `liftSeenList (d + 1) seen`
+re-translates to one in `liftSeenList d seen` at the same Γ, given
+`seen` entries are well-formed at depth `d`.
+
+Direct corollary of `Subtype'_liftSeen_succ_to_d_aux` at `Sextra = []`. -/
+theorem Subtype'_liftSeen_succ_to_d
+    {seen : List (Expr × Expr)} {d : Nat} {Γ : Ctx} {x y : Expr}
+    (hseen_wf : ∀ p ∈ seen,
+      p.1.closedAtLvl 0 = true ∧ p.1.lvarLT d = true ∧
+      p.2.closedAtLvl 0 = true ∧ p.2.lvarLT d = true)
+    (h : Subtype' (liftSeenList (d + 1) seen) Γ x y) :
+    Subtype' (liftSeenList d seen) Γ x y := by
+  have h' : Subtype' ([] ++ liftSeenList (d + 1) seen) Γ x y := by
+    simpa using h
+  have := Subtype'_liftSeen_succ_to_d_aux (Sextra := []) hseen_wf h'
+  simpa using this
+
 /-! ## Top-level statements
 
 The two soundness targets, stated against the substrate-agnostic
