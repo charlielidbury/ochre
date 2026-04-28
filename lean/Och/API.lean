@@ -140,8 +140,14 @@ app rule). For `.app`, it's the WHNF of the β-reduced result.
 `Soundness/SynthSound.lean` can name and case-analyse the
 function (the public `Och.synth` delegates here). The earlier
 `private` qualifier walled the synth-soundness proof; lifting
-it is a Step-1 change in the overnight effort. -/
-partial def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
+it is a Step-1 change in the overnight effort.
+
+**Termination.** Non-`partial`: `fuel` strictly decreases at every
+recursive call (the outer match exposes `fuel + 1`, the inner body
+recurses with the predecessor `fuel`).  Lex measure `(fuel)` suffices
+because no recursive call increases `fuel`.  Equation lemmas (`eq_1`,
+`eq_2`, …) are auto-generated for the soundness proof. -/
+def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
     Outcome Expr :=
   match fuel with
   | 0 => .outOfFuel
@@ -274,6 +280,8 @@ partial def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
               evalSubst fuel SubstEval.unfBound (.app piExpr aV)
         | _ =>
             .error s!"synth: internal: non-Π piExpr after exposure"
+  termination_by fuel
+  decreasing_by all_goals first | (simp_wf; omega) | omega | simp_wf
 
 /-! ## Public surface -/
 
