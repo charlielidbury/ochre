@@ -265,8 +265,20 @@ private theorem subCheckSubstMatch_dispatch
   -- Neutral arms (LHS ∈ {bvar, app}, RHS ∈ {bvar, app}, plus all
   -- non-neutral RHS shapes for non-neutral LHS where the engine
   -- catch-all kicks in).
-  -- Spine bvar-bvar: closes via `arm_spine_bvar_bvar_compose`.
-  | .bvar _k1, .bvar _k2 => sorry
+  -- Spine bvar-bvar: closes via `arm_spine_bvar_bvar_compose`.  Engine
+  -- `_, _` catch-all does `subCheckSpine` then (on failure)
+  -- `neutralAscent`.  The clean path: spine returns `.ok true` iff
+  -- `k1 == k2 && isLevelIdx k1`.  In that case the closed terms are
+  -- equal and `refl` closes.  The neutralAscent fallback walls on
+  -- the lvar-via-tyCtx ascent (existing CloseAll wall).
+  | .bvar k1, .bvar k2 =>
+    by_cases hkk : k1 == k2
+    · have heq' : k1 = k2 := by simpa using hkk
+      subst heq'
+      exact .refl _
+    · -- k1 ≠ k2 ⟹ engine spine returns false ⟹ neutralAscent.
+      -- This is the real neutral-ascent fallback wall.
+      sorry
   -- Spine bvar-app: spine compare returns false on shape mismatch;
   -- engine then falls to `neutralAscent`.
   | .bvar _k, .app _f _v => sorry
