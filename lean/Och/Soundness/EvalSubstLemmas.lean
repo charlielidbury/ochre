@@ -689,4 +689,147 @@ theorem substL_eq_subst_no_levelvars (e : Expr) (j : Nat) (s : Expr) (m : Nat)
     substL e j s = e.subst j s :=
   substL_eq_subst_bvarLT e j s m hb_e hb_s hbnd
 
+/-! ## `openFreshTop` closedness inversion
+
+`openFreshTop body depth = substL body 0 (levelBvar depth)`.  After
+opening, each `bvar 0` in `body` becomes a level-var (`bvar
+(levelOffset + depth)`), and each `bvar (k+1)` becomes `bvar k`
+(decremented).  Hence:
+
+  - `(openFreshTop body depth).closedAtLvl 0 = true` iff every bvar
+    `k+1` in `body` lands at index `< 0` after decrement (impossible
+    unless absent), i.e. `body` only uses bvar 0.  This corresponds
+    to `body.closedAtLvl 1 = true`.
+
+We prove the inversion direction (the easy one for our soundness
+use): if the *opened* body is closed at 0, the *original* body is
+closed at 1.  This is the routine substitution-lemma the synth
+soundness proof asks for in its closedness sub-wall.
+
+Note: the analogous statement for the bvar-only `closedAt`
+predicate is **false** — `(openFreshTop body 0).closedAt 0` requires
+no bvars at all (level-vars violate `closedAt`), but
+`body.closedAt 1` allows `bvar 0`.  The `closedAtLvl` predicate is
+the right invariant for the substrate's level-var encoding (see the
+"Closedness modulo level-vars" block in `EvalSubst.lean`).
+-/
+
+open Expr (closedAtLvl)
+
+/-- Inversion lemma (generalized): if `(substL body j s).closedAtLvl n
+    = true`, then `body.closedAtLvl (n + 1) = true`, given that the
+    substitution position `j ≤ n` (so the substituted bvar `j` itself
+    fits within the `n+1` bound on the original body).
+
+    The `bvar (k+1) → bvar k` decrement is what gives us the bound
+    increment from `n` to `n + 1`: a bvar `j'` in the result with
+    `j' < n` corresponds either to a level-var preimage (handled by
+    `closedAtLvl`'s level-var disjunct) or to `bvar (j'+1)` in the
+    original body, which has `j' + 1 < n + 1`.  The `j ≤ n` premise
+    handles the substituted position itself: the original `bvar j`
+    (which becomes `s` in the result) trivially satisfies
+    `j < n + 1`. -/
+theorem substL_closedAtLvl_inversion_gen :
+    ∀ (body : Expr) (j n : Nat) (s : Expr),
+      j ≤ n →
+      (substL body j s).closedAtLvl n = true →
+      body.closedAtLvl (n + 1) = true := by
+  intro body
+  induction body with
+  | bvar k =>
+    intro j n s hjn h
+    simp only [substL] at h
+    by_cases hLvl : isLevelIdx k
+    · -- bvar k is a level-var; substL is identity.
+      simp only [hLvl, ↓reduceIte] at h
+      simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+      simp only [isLevelIdx, decide_eq_true_eq] at hLvl
+      exact Or.inr hLvl
+    · simp only [hLvl, Bool.false_eq_true, ↓reduceIte] at h
+      by_cases heq : k == j
+      · -- bvar j replaced with s.  k = j ≤ n, so k < n + 1.
+        simp only [beq_iff_eq] at heq
+        subst heq
+        simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+        exact Or.inl (by omega)
+      · simp only [heq, Bool.false_eq_true, ↓reduceIte] at h
+        by_cases hgt : k > j
+        · -- k > j: result is bvar (k - 1).  closedAtLvl n on bvar (k-1)
+          -- means (k-1) < n or (k-1) ≥ levelOffset.  We need k < n+1 or
+          -- k ≥ levelOffset.
+          simp only [hgt, ↓reduceIte] at h
+          simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at h
+          simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+          simp only [isLevelIdx, decide_eq_true_eq, Bool.not_eq_true,
+            decide_eq_false_iff_not, Nat.not_le] at hLvl
+          rcases h with h1 | h2
+          · exact Or.inl (by omega)
+          · -- k - 1 ≥ levelOffset means k ≥ levelOffset + 1, but
+            -- hLvl says k < levelOffset, contradiction.
+            omega
+        · -- k < j (and k ≠ j by heq): result is bvar k.
+          -- closedAtLvl n on bvar k means k < n or k ≥ levelOffset.
+          -- We need k < n+1 or k ≥ levelOffset.
+          have hne : k ≠ j := by intro hh; simp [hh] at heq
+          have hlt : k < j := by omega
+          simp only [hgt, ↓reduceIte] at h
+          simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq] at h
+          simp only [closedAtLvl, Bool.or_eq_true, decide_eq_true_eq]
+          rcases h with h1 | h2
+          · exact Or.inl (by omega)
+          · exact Or.inr h2
+  | type =>
+    intro _ _ _ _ _; rfl
+  | bot =>
+    intro _ _ _ _ _; rfl
+  | lam dom body ih_dom ih_body =>
+    intro j n s hjn h
+    simp only [substL, closedAtLvl, Bool.and_eq_true] at h
+    obtain ⟨hd, hb⟩ := h
+    simp only [closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_dom j n s hjn hd, ?_⟩
+    exact ih_body (j + 1) (n + 1) (shiftL 1 0 s) (by omega) hb
+  | app f a ih_f ih_a =>
+    intro j n s hjn h
+    simp only [substL, closedAtLvl, Bool.and_eq_true] at h
+    simp only [closedAtLvl, Bool.and_eq_true]
+    exact ⟨ih_f j n s hjn h.1, ih_a j n s hjn h.2⟩
+  | asc t y ih_t ih_y =>
+    intro j n s hjn h
+    simp only [substL, closedAtLvl, Bool.and_eq_true] at h
+    simp only [closedAtLvl, Bool.and_eq_true]
+    exact ⟨ih_t j n s hjn h.1, ih_y j n s hjn h.2⟩
+  | iota ann body ih_ann ih_body =>
+    intro j n s hjn h
+    simp only [substL, closedAtLvl, Bool.and_eq_true] at h
+    obtain ⟨ha, hb⟩ := h
+    simp only [closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_ann j n s hjn ha, ?_⟩
+    exact ih_body (j + 1) (n + 1) (shiftL 1 0 s) (by omega) hb
+  | fix ann body ih_ann ih_body =>
+    intro j n s hjn h
+    simp only [substL, closedAtLvl, Bool.and_eq_true] at h
+    obtain ⟨ha, hb⟩ := h
+    simp only [closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_ann j n s hjn ha, ?_⟩
+    exact ih_body (j + 1) (n + 1) (shiftL 1 0 s) (by omega) hb
+  | letE val body ih_val ih_body =>
+    intro j n s hjn h
+    simp only [substL, closedAtLvl, Bool.and_eq_true] at h
+    obtain ⟨hv, hb⟩ := h
+    simp only [closedAtLvl, Bool.and_eq_true]
+    refine ⟨ih_val j n s hjn hv, ?_⟩
+    exact ih_body (j + 1) (n + 1) (shiftL 1 0 s) (by omega) hb
+
+/-- Specialisation at `j = 0`: if `(substL body 0 s).closedAtLvl n =
+    true`, then `body.closedAtLvl (n + 1) = true`.  This is the
+    inversion form `openFreshTop` asks for in the synth soundness
+    proof: `openFreshTop body depth = substL body 0 (levelBvar depth)`,
+    so this lemma covers the closedness inversion through
+    `openFreshTop` directly. -/
+theorem substL_closedAtLvl_inversion (body : Expr) (n : Nat) (s : Expr)
+    (h : (substL body 0 s).closedAtLvl n = true) :
+    body.closedAtLvl (n + 1) = true :=
+  substL_closedAtLvl_inversion_gen body 0 n s (Nat.zero_le _) h
+
 end SubstEval
