@@ -106,8 +106,11 @@ structure WTValue where
 
 /-- Type context for `synth`: `Γ[k]` is the synthesised type of
 the level-var `freshLevelVar k`. Mirrors `TyCheck.TyEnv` but
-populated by the synth walk itself, never by `tyInfer`. -/
-private abbrev TyEnv := Array Expr
+populated by the synth walk itself, never by `tyInfer`.
+
+Public so soundness lemmas in `Soundness/SynthSound.lean` can
+mention `Γ`'s type when stating per-arm helper lemmas. -/
+abbrev TyEnv := Array Expr
 
 /-! ## Synth core (private mutual block)
 
@@ -131,8 +134,14 @@ app rule). For `.app`, it's the WHNF of the β-reduced result.
 - `.ok v` — `e` synthesised; `v` is its WHNF type-witness.
 - `.outOfFuel` — fuel exhausted.
 - `.error msg` — `e` is ill-typed (a domain check failed) or
-  operationally stuck. -/
-private partial def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
+  operationally stuck.
+
+**Visibility.** Public so that soundness proofs in
+`Soundness/SynthSound.lean` can name and case-analyse the
+function (the public `Och.synth` delegates here). The earlier
+`private` qualifier walled the synth-soundness proof; lifting
+it is a Step-1 change in the overnight effort. -/
+partial def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
     Outcome Expr :=
   match fuel with
   | 0 => .outOfFuel
