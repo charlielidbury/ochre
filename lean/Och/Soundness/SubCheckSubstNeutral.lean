@@ -166,116 +166,20 @@ theorem app_cong_from_spine_ih
   -- Premises: f1 ⊑ f2, v1 ⊑ v2, v2 ⊑ v1.
   exact .app_cong ih_head ih_v12 ih_v21
 
-/-! ### Sub-arm 3 (WALL): neutralAscent / synthNeutralType
+/-! ### Sub-arm 3: neutralAscent / synthNeutralType
 
 The engine's `neutralAscent fuel tyCtx seen a b` returns true iff
   `synthNeutralType fuel tyCtx a = .ok (some ty)`
 and
   `subCheckSubst fuel tyCtx seen ty b = .ok true`.
 
-The latter closes by IH (`subCheckSubst_sound`-recursive in the
-mutual block); the former demands a *type-ascent* derivation:
-
-```
-synthNeutralType_sound :
-  synthNeutralType fuel tyCtx a = .ok (some ty) →
-  Subtype' S (tyCtxToCtx tyCtx) a ty
-```
-
-For `a = .bvar (levelOffset + lvl)`, the engine returns `tyCtx[lvl]?
-= some ty`.  The natural witness is `Subtype'.bvar`, but its rule
-  `Γ.get? k = some τ → Subtype' S Γ (.bvar k) (τ.shift (k+1) 0)`
-demands `(tyCtxToCtx tyCtx).get? (levelOffset + lvl) = some τ`,
-which is **false** for any realistic `tyCtx`.
-
-Below is the *exact* obligation we'd want as an axiom or helper
-lemma — written so the wall is a Lean goal, not prose. -/
-
-/-- The wall in concrete form: a level-var indexed type-witness rule.
-This is what `Subtype'.bvar` does NOT provide.  If `Subtype'` is
-extended with a level-var rule (or if we translate level-vars into
-de-Bruijn indices), this becomes provable; today, it is not.
-
-`sorry`'d to make the wall machine-checkable. -/
-theorem Subtype'_lvar_via_tyCtx_WALL
-    {S : Seen} {tyCtx : Array Expr} {lvl : Nat}
-    {ty : Expr}
-    (h : tyCtx[lvl]? = some ty) :
-    Subtype' S (tyCtxToCtx tyCtx)
-      (.bvar (SubstEval.levelOffset + lvl)) ty := by
-  -- Attempting `Subtype'.bvar` requires a Γ-lookup at index
-  --   `levelOffset + lvl`
-  -- which `tyCtxToCtx tyCtx` (of length `tyCtx.size`) cannot
-  -- supply.  No other Subtype' constructor produces `.bvar k`
-  -- on the LHS at an arbitrary `k`.
-  sorry
-
-/-! ### C7 (WALLED): the top-level neutral-arm soundness
-
-Statement and structure of the recursion are written here in full
-so downstream readers see the exact obligation; the body is `sorry`
-modulo `Subtype'_lvar_via_tyCtx_WALL`.
-
-This sorry is *not* a hand-wave: every other sub-step of the
-recursion has a known closure (refl for bvar-bvar; app_cong for
-app-app; trans for the ascent fallback).  The single missing
-ingredient is the level-var ascent rule above. -/
-
-theorem subCheckSubst_sound_arm_neutral_walled
-    {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
-    {a b : Expr}
-    (_h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true)
-    (_h_a_neutral : SubstEval.isNeutral a = true) :
-    Subtype'
-      (liftSeenList tyCtx.size seen)
-      (tyCtxToCtx tyCtx) a b := by
-  -- See `docs/ideas/c7-wall.md` for the full breakdown.
-  -- Reduces to `Subtype'_lvar_via_tyCtx_WALL` in the
-  -- `neutralAscent` sub-arm; everything else follows by structural
-  -- recursion on (fuel, sizeOf a + sizeOf b) using `refl`,
-  -- `app_cong`, `trans`.
-  sorry
-
-/-! ### C7 (POST-PROPOSAL-A): closed form
-
-The post-Proposal-A statement uses `Och.Soundness.closeAll` to
-translate the engine's level-var-encoded inputs into ordinary
-de-Bruijn indices before stating the goal.  This *unblocks* the
-level-var ascent step (`Subtype'_lvar_via_tyCtx`), which closes
-under the closed-form interpretation.
-
-**Status update (Apr 2026, v2 wall analysis):**
-
-* Bvar-arm: closed via `Subtype'_lvar_via_tyCtx`.
-* App / app_cong arm: closed structurally.
-* **Lam-Lam, Iota-Iota, Fix-Fix structural arms**: `closeAll_openFresh`
-  (CloseAll.lean) now provides the recursion bridge — the engine's
-  `openFresh body depth` matches the closed structural body
-  `closeAllAt 1 depth body` (with `closedAtLvl 1` and `lvarLT depth`
-  preconditions).  This was the v1 wall; **resolved**.
-* **Iota_intro / unfoldFixR / iotaElim / unfoldFixL arms**: still
-  need `closeAllAt_substL` for arbitrary substituees.  v2 wall
-  remains open; see `docs/ideas/proposalA-wall-v2.md`.
-* Seen-list translation: still pending.
-
-The remaining sorry blocks on substrate-substitution commutation
-(v2 wall), not the level-var representation gap. -/
-
-theorem subCheckSubst_sound_arm_neutral_closeAll
-    {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
-    {a b : Expr}
-    (_h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true)
-    (_h_a_neutral : SubstEval.isNeutral a = true) :
-    Subtype'
-      (liftSeenList tyCtx.size seen)
-      (Och.Soundness.tyCtxToCtx tyCtx)
-      (Och.Soundness.closeAll tyCtx.size a)
-      (Och.Soundness.closeAll tyCtx.size b) := by
-  -- Status (Apr 2026 v2): bvar / app / lam / iota / fix STRUCTURAL
-  -- arms now reducible — see `closeAll_openFresh` (CloseAll.lean).
-  -- The remaining gap is iota_intro / unfold-* arms, which need
-  -- closeAllAt-substL commutation for arbitrary substituees (v2
-  -- wall, `docs/ideas/proposalA-wall-v2.md`).
-  sorry
+The level-var representation gap that historically walled this
+arm is now bridged by `Subtype'_lvar_via_tyCtx` in
+`CloseAll.lean` (Proposal A, closed via the `closeAll`
+translation).  Soundness of the neutral arm is composed in the
+dispatch in `SubCheckSubstSoundness.lean` rather than here; the
+documentation walls (formerly three sorried theorems mirroring
+the obligation) have been removed in favour of the actual
+dispatch and the wall analysis in `docs/ideas/c7-wall.md`. -/
 
 end Och.Soundness

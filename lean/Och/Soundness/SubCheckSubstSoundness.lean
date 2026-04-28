@@ -758,8 +758,8 @@ theorem arm_hyp_compose (a b : Expr)
 The neutral arm of `subCheckSubstMatch` calls `subCheckSpine`
 followed (on failure) by `neutralAscent`.  The spine arms close
 declaratively via `Subtype'.refl` (head equality) and `Subtype'.app_cong`
-(spine recursion); the neutral-ascent arm walls on
-`Subtype'_lvar_via_tyCtx_WALL` (level-var ascent — broken by
+(spine recursion); the neutral-ascent arm uses
+`Subtype'_lvar_via_tyCtx` (level-var ascent, broken by
 Proposal A's `closeAll`, see `CloseAll.lean`). -/
 
 /-- Spine bvar-bvar composition (closed via `subCheckSpine_sound_bvar_bvar`).
