@@ -112,6 +112,62 @@ everywhere".  But it's expensive (~4-6 hours).  Design B is cheaper
 but the soundness tower's invariant becomes context-dependent
 (some entries closeAll'd, others raw).
 
+### Design A: implementation plan
+
+The cascade of changes:
+
+1. **`Och/Soundness/CloseAll.lean:63`** — redefine `tyCtxToCtx`:
+   ```lean
+   def tyCtxToCtx (tyCtx : Array Expr) : Ctx :=
+     (tyCtx.toList.mapIdx (fun i e => closeAll i e)).reverse
+   ```
+   Or equivalently using `Array.foldl` with depth tracking.
+
+2. **`Och/Soundness/CloseAll.lean:tyCtxToCtx_get?_at`** — return the
+   depth-stratified-closeAll'd entry: `closeAll lvl tyCtx[lvl]`.
+
+3. **`Och/Soundness/CloseAll.lean:Subtype'_lvar_via_tyCtx`** —
+   conclusion changes from `ty.shift _ _` to
+   `(closeAll lvl ty).shift _ _`.  Re-prove using the new
+   `tyCtxToCtx_get?_at`.
+
+4. **`Och/Soundness/SubCheckSubstNeutral.lean:liftSeenList`** —
+   apply closeAll to entries:
+   ```lean
+   def liftSeenList (depth : Nat) (seen : List (Expr × Expr)) : Seen :=
+     seen.map (fun (a, b) => (depth, closeAll depth a, closeAll depth b))
+   ```
+
+5. **`Och/Soundness/SubCheckSubstSoundness.lean`** — the inline
+   `seen.any` short-circuit case (line ~474) now closes via
+   `Subtype'.hyp` directly: `(d, closeAll d a, closeAll d b) ∈
+   liftSeenList d seen` matches the goal.  Remove the
+   `seen_coherence_WALL` sorry.
+
+6. **Dispatch arms (lam-lam, iota-iota, fix-fix)** — IH now produces
+   the right Ctx shape: `tyCtxToCtx (tyCtx.push domB) = closeAll
+   tyCtx.size domB :: tyCtxToCtx tyCtx` matches the arm-package's
+   expected `closeAll tyCtx.size domB :: tyCtxToCtx tyCtx`.  Apply
+   `arm_lam_lam_compose` directly.
+
+7. **Audit other `tyCtxToCtx` / `liftSeenList` users** in
+   `SubCheckSubstSoundness.lean` (~60 references) — most should
+   work without change because they only mention these names in
+   types, not by structural pattern-matching.  The
+   `Subtype'_lvar_via_tyCtx` conclusion change is the only
+   substantive ripple.
+
+**Estimated effort:** 4-6 hours of focused work; ~200 LOC of
+modifications; one `Subtype'_lvar_via_tyCtx` re-proof; many
+sorries that this closes (~3 structural + 1 seen + ~6 fallback
+arms = ~10 internal dispatch sorries, plus the seen short-
+circuit at line 474).
+
+**Risk:** the `Subtype'_lvar_via_tyCtx` re-proof might hit a new
+arithmetic obstacle (the `closeAll lvl ty` term mixes depths).
+Worst case: design A is *also* unsound and we fall back to design
+B with a `domB ≡ closeAll d domB` bridge lemma.
+
 In the interim: arm packages remain unprovable in the dispatch.
 The dispatch arm closures wall on this; iota-iota and fix-fix have
 identical shape and identical wall.
