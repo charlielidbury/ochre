@@ -152,18 +152,18 @@ ruled out by synth's app-arm domain check, ascription check, and
 binder validation. -/
 theorem synth_progress
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
-    (hcl : e.closedAt 0 = true)
     (h : Och.synth e fuel = .ok v) :
     ∀ f, ∀ msg, concEval f e ≠ .error msg :=
-  fun _ msg => concEval_no_error hcl msg
+  fun _ msg => concEval_no_error (synthCore_topLevel_closedAt h) msg
 
 /-- End-to-end soundness: a well-checked term evaluates to
 something that still inhabits its declared type, AND eval doesn't
 get stuck. Combines `synth_sound`, `subCheck_sound`,
 `synth_progress`, and `concEval_preservation`.
 
-Phrased so that the conclusion is "either out-of-fuel, or a
-typed value" — there is no third "stuck" outcome.
+The closedness premise is now derived internally from
+`synthCore_topLevel_closedAt` — `Och.synth` validates `closedAt 0`
+at entry, so callers don't need to supply it.
 
 The composition itself is sorry-free: each of the four pieces
 already routes through its own (potentially walled) proof, and
@@ -173,7 +173,6 @@ it's there so callers can be confident `b.whnf` itself is
 synth-validated (i.e. `b` is not a "smuggled" `WTValue`). -/
 theorem soundness
     {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
-    (hcl : e.closedAt 0 = true)
     (hsynthA : Och.synth e fuel = .ok a)
     (_hsynthB : Och.synth b.whnf fuel = .ok b)
     (hcheck : Och.subCheck a b fuel = .ok true)
@@ -182,6 +181,7 @@ theorem soundness
   -- Chain: e ⊑ a.whnf  (synth_sound)
   --       ⊑ b.whnf     (subCheck_sound)
   --     and e ⇒ e'      (concEval), so e' ⊑ b.whnf by preservation.
+  let hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt hsynthA
   let hSynthA : Subtype' [] [] e a.whnf := synth_sound hsynthA
   let hCheck : Subtype' [] [] a.whnf b.whnf := subCheck_sound hcheck
   let hChain : Subtype' [] [] e b.whnf := hSynthA.trans hCheck

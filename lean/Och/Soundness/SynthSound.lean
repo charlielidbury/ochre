@@ -119,7 +119,7 @@ then `e` is `closedAt 0`.
 predicate.  This closes a previously walled obligation:
 `.lam (.bvar 5) .type` was a counterexample; that input now fails
 synth at the closedness check rather than at a downstream step. -/
-private theorem synthCore_topLevel_closedAt
+theorem synthCore_topLevel_closedAt
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     e.closedAt 0 = true := by
