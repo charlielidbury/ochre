@@ -727,31 +727,12 @@ theorem arm_refl_compose (a : Expr) :
       (closeAll tyCtx.size a) (closeAll tyCtx.size a) :=
   .refl _
 
-/-- Hyp arm (engine's seen-list short-circuit).  When `(a, b) ∈ seen`,
-the engine returns true; the declarative counterpart is `Subtype'.hyp`
-on the lifted seen-set. -/
-theorem arm_hyp_compose (a b : Expr)
-    (hin : (a, b) ∈ seen) :
-    Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
-      ((closeAll tyCtx.size a).shift 0 0)
-      ((closeAll tyCtx.size b).shift 0 0) := by
-  -- `(a, b) ∈ seen` ⟹ `(tyCtx.size, a, b) ∈ liftSeenList tyCtx.size seen`.
-  -- `Subtype'.hyp` then gives, at the recorded depth `tyCtx.size`:
-  --   Subtype' S Γ (a.shift (Γ.length - tyCtx.size) 0) (b.shift … 0)
-  -- With `Γ.length = tyCtx.size` (i.e., we're at the recording depth),
-  -- the shift is by 0, which is the identity (`Expr.shift_zero`).
-  -- Caller is expected to specialise to that depth.
-  --
-  -- WALL: the engine's seen-list is the *raw* `seen`, but ours is
-  -- the closeAll'd-and-lifted form.  For this lemma to fire in the
-  -- mutual block, we'd need `(closeAll d a, closeAll d b) ∈ seen`
-  -- when `(a, b) ∈ seen`'s pre-image — but the engine doesn't
-  -- closeAll its seen entries.  This requires a `seen-coherence`
-  -- predicate threaded through the recursion.
-  --
-  -- Closes via `Subtype'.hyp` modulo this coherence; we sorry the
-  -- coherence step.
-  sorry
+-- Hyp arm (engine's seen-list short-circuit) is handled inline
+-- in `subCheckSubst_sound`'s `by_cases hany : seen.any …` branch
+-- (the seen_coherence wall lives there).  No standalone arm-
+-- package is needed; the previously-stubbed `arm_hyp_compose`
+-- was unused and conflated raw seen entries with their closeAll-
+-- translated counterparts in the goal.
 
 /-! ### Spine arms (neutral case)
 
