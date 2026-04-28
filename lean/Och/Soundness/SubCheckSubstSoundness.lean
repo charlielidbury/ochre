@@ -455,6 +455,10 @@ theorem arm_iota_intro_compose
     {a ann bodyB bodyB'' : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyB 0 a) = .ok bodyB'')
+    (hbody_cl : bodyB.closedAtLvl 1 = true)
+    (hbody_lv : bodyB.lvarLT tyCtx.size = true)
+    (ha_cl : a.closedAtLvl 0 = true)
+    (ha_lv : a.lvarLT tyCtx.size = true)
     (ih_ann : Subtype'
         (((tyCtxToCtx tyCtx).length, closeAll tyCtx.size a,
             closeAll tyCtx.size (.iota ann bodyB))
@@ -469,13 +473,17 @@ theorem arm_iota_intro_compose
         (closeAll tyCtx.size a) (closeAll tyCtx.size bodyB'')) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a) (closeAll tyCtx.size (.iota ann bodyB)) :=
-  iota_intro_arm h_eval ih_ann ih_body
+  iota_intro_arm h_eval hbody_cl hbody_lv ha_cl ha_lv ih_ann ih_body
 
 /-- unfold_fix_R fallback composition. -/
 theorem arm_unfold_fix_R_compose
     {a ann bodyB bodyB'' : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyB 0 (.fix ann bodyB)) = .ok bodyB'')
+    (hbody_cl : bodyB.closedAtLvl 1 = true)
+    (hbody_lv : bodyB.lvarLT tyCtx.size = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT tyCtx.size = true)
     (ih_body : Subtype'
         (((tyCtxToCtx tyCtx).length, closeAll tyCtx.size a,
             closeAll tyCtx.size (.fix ann bodyB))
@@ -484,13 +492,17 @@ theorem arm_unfold_fix_R_compose
         (closeAll tyCtx.size a) (closeAll tyCtx.size bodyB'')) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a) (closeAll tyCtx.size (.fix ann bodyB)) :=
-  unfold_fix_R_arm h_eval ih_body
+  unfold_fix_R_arm h_eval hbody_cl hbody_lv hann_cl hann_lv ih_body
 
 /-- unfold_fix_L fallback composition. -/
 theorem arm_unfold_fix_L_compose
     {ann bodyA a' b : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyA 0 (.fix ann bodyA)) = .ok a')
+    (hbody_cl : bodyA.closedAtLvl 1 = true)
+    (hbody_lv : bodyA.lvarLT tyCtx.size = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT tyCtx.size = true)
     (ih_body : Subtype'
         (((tyCtxToCtx tyCtx).length, closeAll tyCtx.size (.fix ann bodyA),
             closeAll tyCtx.size b)
@@ -499,13 +511,17 @@ theorem arm_unfold_fix_L_compose
         (closeAll tyCtx.size a') (closeAll tyCtx.size b)) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size (.fix ann bodyA)) (closeAll tyCtx.size b) :=
-  unfold_fix_L_arm h_eval ih_body
+  unfold_fix_L_arm h_eval hbody_cl hbody_lv hann_cl hann_lv ih_body
 
 /-- unfold_iota_L fallback composition. -/
 theorem arm_unfold_iota_L_compose
     {ann bodyA a' b : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyA 0 (.iota ann bodyA)) = .ok a')
+    (hbody_cl : bodyA.closedAtLvl 1 = true)
+    (hbody_lv : bodyA.lvarLT tyCtx.size = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT tyCtx.size = true)
     (ih_body : Subtype'
         (((tyCtxToCtx tyCtx).length, closeAll tyCtx.size (.iota ann bodyA),
             closeAll tyCtx.size b)
@@ -514,7 +530,7 @@ theorem arm_unfold_iota_L_compose
         (closeAll tyCtx.size a') (closeAll tyCtx.size b)) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size (.iota ann bodyA)) (closeAll tyCtx.size b) :=
-  unfold_iota_L_arm h_eval ih_body
+  unfold_iota_L_arm h_eval hbody_cl hbody_lv hann_cl hann_lv ih_body
 
 /-! ### Trivial arms
 

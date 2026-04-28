@@ -119,87 +119,118 @@ Closing this requires three sub-steps:
 Step 2 is the open obstacle.  We `sorry` each bridge and tag with
 the specific wall instance. -/
 
+/-! ## Substitution bridges — derivation via `closeAll_substL_subst`
+    plus the consolidated `closeAll_evalSubst_subtype` wall.
+
+The four bridges below all share a common shape:
+1. The engine performs `bodyB' := substL body 0 self`.
+2. evalSubst reduces it to `bodyB''`.
+3. We need to relate `bodyB''` to `body.subst 0 self` in closed form.
+
+The two-step derivation is:
+* By `closeAll_substL_subst`: `closeAll d bodyB' = (closeAllAt 1 d body).subst 0 (closeAll d self)`.
+* By `closeAll_evalSubst_subtype` (consolidated wall): `Subtype'`
+  bidirectionally relates `closeAll d bodyB'` and `closeAll d bodyB''`.
+
+Each bridge takes the engine's evalSubst step plus closedness/lvarLT
+preconditions sufficient to invoke `closeAll_substL_subst`. -/
+
 /-- Substitution bridge for `iota_intro` fallback.
 
-    Engine: `bodyB' = substL bodyB 0 a`, `bodyB'' = evalSubst bodyB'`.
-    Need: `Subtype' (closeAll d bodyB'') ((closeAllAt 1 d bodyB).subst 0 (closeAll d a))`.
-
-    **Wall instance.**  See `docs/ideas/proposalA-wall-v2.md` —
-    the substituee `a` is an arbitrary closed term, not a level-var,
-    so `closeAllAt_substL_levelBvar` does not apply. -/
+    Engine: `bodyB' = substL bodyB 0 a`, `bodyB'' = evalSubst bodyB'`. -/
 theorem iota_intro_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
     {a bodyB bodyB'' : Expr}
-    (_h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
-        (SubstEval.substL bodyB 0 a) = .ok bodyB'') :
+    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+        (SubstEval.substL bodyB 0 a) = .ok bodyB'')
+    (hbody_cl : bodyB.closedAtLvl 1 = true)
+    (hbody_lv : bodyB.lvarLT d = true)
+    (ha_cl : a.closedAtLvl 0 = true)
+    (ha_lv : a.lvarLT d = true) :
     Subtype' S Γ
       (closeAll d bodyB'')
       ((closeAllAt 1 d bodyB).subst 0 (closeAll d a)) := by
-  sorry
+  -- Bridge: closeAll d (substL bodyB 0 a) = (closeAllAt 1 d bodyB).subst 0 (closeAll d a).
+  have heq : closeAll d (SubstEval.substL bodyB 0 a)
+           = (closeAllAt 1 d bodyB).subst 0 (closeAll d a) :=
+    closeAll_substL_subst bodyB d a hbody_cl hbody_lv ha_cl ha_lv
+  rw [← heq]
+  -- Now goal: Subtype' (closeAll d bodyB'') (closeAll d (substL bodyB 0 a)).
+  -- Use closeAll_evalSubst_subtype on h_eval (in reverse direction).
+  exact (closeAll_evalSubst_subtype h_eval).2
 
-/-- Substitution bridge for `unfold_fix_R` fallback.
-
-    Engine: `bodyB' = substL bodyB 0 b`, `bodyB'' = evalSubst bodyB'`,
-    where `b = .fix ann bodyB`.  The substituee is the *fix itself*,
-    not the LHS `a`.
-
-    Need: `Subtype' (closeAll d bodyB'') ((closeAllAt 1 d bodyB).subst 0 (closeAll d b))`.
-
-    **Wall instance.**  Same as `iota_intro_substBridge_WALL` —
-    closeAll-substL commutation for arbitrary substituee.
-
-    *Note*: in this case the substituee IS structured (it's a `.fix`),
-    so it might admit a tailored bridge via the existing
-    `unfold_fix_R` step lemma — but the closeAll-substL commutation
-    obstacle is the same. -/
+/-- Substitution bridge for `unfold_fix_R` fallback. -/
 theorem unfold_fix_R_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
     {ann bodyB bodyB'' : Expr}
-    (_h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
-        (SubstEval.substL bodyB 0 (.fix ann bodyB)) = .ok bodyB'') :
+    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+        (SubstEval.substL bodyB 0 (.fix ann bodyB)) = .ok bodyB'')
+    (hbody_cl : bodyB.closedAtLvl 1 = true)
+    (hbody_lv : bodyB.lvarLT d = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT d = true) :
     Subtype' S Γ
       (closeAll d bodyB'')
       ((closeAllAt 1 d bodyB).subst 0 (closeAll d (.fix ann bodyB))) := by
-  sorry
+  have hself_cl : (Expr.fix ann bodyB).closedAtLvl 0 = true := by
+    simp [Expr.closedAtLvl, hann_cl, hbody_cl]
+  have hself_lv : (Expr.fix ann bodyB).lvarLT d = true := by
+    simp [Expr.lvarLT, hann_lv, hbody_lv]
+  have heq : closeAll d (SubstEval.substL bodyB 0 (.fix ann bodyB))
+           = (closeAllAt 1 d bodyB).subst 0 (closeAll d (.fix ann bodyB)) :=
+    closeAll_substL_subst bodyB d (.fix ann bodyB)
+      hbody_cl hbody_lv hself_cl hself_lv
+  rw [← heq]
+  exact (closeAll_evalSubst_subtype h_eval).2
 
-/-- Substitution bridge for `unfold_fix_L` fallback.
-
-    Engine: `unfolded = substL bodyA 0 a` where `a = .fix ann bodyA`,
-    then `a' = evalSubst unfolded`.  Engine then recurses on
-    `subCheckSubst _ _ _ a' b`.
-
-    Need: `Subtype' ((closeAllAt 1 d bodyA).subst 0 (closeAll d a)) (closeAll d a')`.
-    The direction is flipped vs iota_intro because `unfold_fix_L`
-    takes the L-direction step (RHS doesn't get unfolded; LHS does).
-
-    **Wall instance.** Same v2 wall. -/
+/-- Substitution bridge for `unfold_fix_L` fallback. -/
 theorem unfold_fix_L_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
     {ann bodyA a' : Expr}
-    (_h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
-        (SubstEval.substL bodyA 0 (.fix ann bodyA)) = .ok a') :
+    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+        (SubstEval.substL bodyA 0 (.fix ann bodyA)) = .ok a')
+    (hbody_cl : bodyA.closedAtLvl 1 = true)
+    (hbody_lv : bodyA.lvarLT d = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT d = true) :
     Subtype' S Γ
       ((closeAllAt 1 d bodyA).subst 0 (closeAll d (.fix ann bodyA)))
       (closeAll d a') := by
-  sorry
+  have hself_cl : (Expr.fix ann bodyA).closedAtLvl 0 = true := by
+    simp [Expr.closedAtLvl, hann_cl, hbody_cl]
+  have hself_lv : (Expr.fix ann bodyA).lvarLT d = true := by
+    simp [Expr.lvarLT, hann_lv, hbody_lv]
+  have heq : closeAll d (SubstEval.substL bodyA 0 (.fix ann bodyA))
+           = (closeAllAt 1 d bodyA).subst 0 (closeAll d (.fix ann bodyA)) :=
+    closeAll_substL_subst bodyA d (.fix ann bodyA)
+      hbody_cl hbody_lv hself_cl hself_lv
+  rw [← heq]
+  -- Need: Subtype' (closeAll d (substL ...)) (closeAll d a').
+  exact (closeAll_evalSubst_subtype h_eval).1
 
-/-- Substitution bridge for `unfold_iota_L` fallback.
-
-    Engine: `unfolded = substL bodyA 0 a` where `a = .iota ann bodyA`,
-    then `a' = evalSubst unfolded`.
-
-    Need: `Subtype' ((closeAllAt 1 d bodyA).subst 0 (closeAll d a)) (closeAll d a')`.
-
-    **Wall instance.** Same v2 wall. -/
+/-- Substitution bridge for `unfold_iota_L` fallback. -/
 theorem unfold_iota_L_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
     {ann bodyA a' : Expr}
-    (_h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
-        (SubstEval.substL bodyA 0 (.iota ann bodyA)) = .ok a') :
+    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+        (SubstEval.substL bodyA 0 (.iota ann bodyA)) = .ok a')
+    (hbody_cl : bodyA.closedAtLvl 1 = true)
+    (hbody_lv : bodyA.lvarLT d = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT d = true) :
     Subtype' S Γ
       ((closeAllAt 1 d bodyA).subst 0 (closeAll d (.iota ann bodyA)))
       (closeAll d a') := by
-  sorry
+  have hself_cl : (Expr.iota ann bodyA).closedAtLvl 0 = true := by
+    simp [Expr.closedAtLvl, hann_cl, hbody_cl]
+  have hself_lv : (Expr.iota ann bodyA).lvarLT d = true := by
+    simp [Expr.lvarLT, hann_lv, hbody_lv]
+  have heq : closeAll d (SubstEval.substL bodyA 0 (.iota ann bodyA))
+           = (closeAllAt 1 d bodyA).subst 0 (closeAll d (.iota ann bodyA)) :=
+    closeAll_substL_subst bodyA d (.iota ann bodyA)
+      hbody_cl hbody_lv hself_cl hself_lv
+  rw [← heq]
+  exact (closeAll_evalSubst_subtype h_eval).1
 
 /-! ## Arm lemmas
 
@@ -222,6 +253,10 @@ theorem iota_intro_arm
     {a ann bodyB bodyB'' : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyB 0 a) = .ok bodyB'')
+    (hbody_cl : bodyB.closedAtLvl 1 = true)
+    (hbody_lv : bodyB.lvarLT d = true)
+    (ha_cl : a.closedAtLvl 0 = true)
+    (ha_lv : a.lvarLT d = true)
     (ih_ann : Subtype'
         ((Γ.length, closeAll d a, closeAll d (.iota ann bodyB)) :: S)
         Γ (closeAll d a) (closeAll d ann))
@@ -243,7 +278,7 @@ theorem iota_intro_arm
         ((Γ.length, closeAll d a, closeAll d (.iota ann bodyB)) :: S)
         Γ (closeAll d bodyB'')
         ((closeAllAt 1 d bodyB).subst 0 (closeAll d a)) :=
-      iota_intro_substBridge_WALL h_eval
+      iota_intro_substBridge_WALL h_eval hbody_cl hbody_lv ha_cl ha_lv
     exact ih_body.trans bridge
 
 /-- **unfold_fix_R** fallback arm (engine: `_, .fix ann bodyB`).
@@ -259,6 +294,10 @@ theorem unfold_fix_R_arm
     {a ann bodyB bodyB'' : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyB 0 (.fix ann bodyB)) = .ok bodyB'')
+    (hbody_cl : bodyB.closedAtLvl 1 = true)
+    (hbody_lv : bodyB.lvarLT d = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT d = true)
     (ih_body : Subtype'
         ((Γ.length, closeAll d a, closeAll d (.fix ann bodyB)) :: S)
         Γ (closeAll d a) (closeAll d bodyB'')) :
@@ -266,16 +305,11 @@ theorem unfold_fix_R_arm
   show Subtype' S Γ (closeAll d a)
     (.fix (closeAllAt 0 d ann) (closeAllAt 1 d bodyB))
   apply Subtype'.unfold_fix_R
-  -- Need: Subtype' [(... a ⊑ fix)] Γ (closeAll d a)
-  --         ((closeAllAt 1 d bodyB).subst 0 (.fix (closeAllAt 0 d ann) (closeAllAt 1 d bodyB)))
-  -- Note: the .fix on the RHS in the goal IS closeAll d (.fix ann bodyB).
   have bridge : Subtype'
       ((Γ.length, closeAll d a, closeAll d (.fix ann bodyB)) :: S)
       Γ (closeAll d bodyB'')
       ((closeAllAt 1 d bodyB).subst 0 (closeAll d (.fix ann bodyB))) :=
-    unfold_fix_R_substBridge_WALL h_eval
-  -- Convert closeAll d (.fix ann bodyB) form on RHS of bridge to .fix … form on goal.
-  -- They're definitionally equal: closeAll d (.fix ann bodyB) = .fix (closeAllAt 0 d ann) (closeAllAt 1 d bodyB).
+    unfold_fix_R_substBridge_WALL h_eval hbody_cl hbody_lv hann_cl hann_lv
   show Subtype' _ Γ (closeAll d a)
     ((closeAllAt 1 d bodyB).subst 0 (closeAll d (.fix ann bodyB)))
   exact ih_body.trans bridge
@@ -293,6 +327,10 @@ theorem unfold_fix_L_arm
     {ann bodyA a' b : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyA 0 (.fix ann bodyA)) = .ok a')
+    (hbody_cl : bodyA.closedAtLvl 1 = true)
+    (hbody_lv : bodyA.lvarLT d = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT d = true)
     (ih_body : Subtype'
         ((Γ.length, closeAll d (.fix ann bodyA), closeAll d b) :: S)
         Γ (closeAll d a') (closeAll d b)) :
@@ -301,10 +339,6 @@ theorem unfold_fix_L_arm
     (.fix (closeAllAt 0 d ann) (closeAllAt 1 d bodyA))
     (closeAll d b)
   apply Subtype'.unfold_fix_L
-  -- Goal:
-  --   Subtype' [(.fix … ⊑ closeAll d b) :: S] Γ
-  --     ((closeAllAt 1 d bodyA).subst 0 (.fix (closeAllAt 0 d ann) (closeAllAt 1 d bodyA)))
-  --     (closeAll d b)
   show Subtype' _ Γ
     ((closeAllAt 1 d bodyA).subst 0 (closeAll d (.fix ann bodyA)))
     (closeAll d b)
@@ -313,7 +347,7 @@ theorem unfold_fix_L_arm
       Γ
       ((closeAllAt 1 d bodyA).subst 0 (closeAll d (.fix ann bodyA)))
       (closeAll d a') :=
-    unfold_fix_L_substBridge_WALL h_eval
+    unfold_fix_L_substBridge_WALL h_eval hbody_cl hbody_lv hann_cl hann_lv
   exact bridge.trans ih_body
 
 /-- **unfold_iota_L** fallback arm (engine: `.iota ann bodyA, _`).
@@ -328,6 +362,10 @@ theorem unfold_iota_L_arm
     {ann bodyA a' b : Expr}
     (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
         (SubstEval.substL bodyA 0 (.iota ann bodyA)) = .ok a')
+    (hbody_cl : bodyA.closedAtLvl 1 = true)
+    (hbody_lv : bodyA.lvarLT d = true)
+    (hann_cl : ann.closedAtLvl 0 = true)
+    (hann_lv : ann.lvarLT d = true)
     (ih_body : Subtype'
         ((Γ.length, closeAll d (.iota ann bodyA), closeAll d b) :: S)
         Γ (closeAll d a') (closeAll d b)) :
@@ -344,7 +382,7 @@ theorem unfold_iota_L_arm
       Γ
       ((closeAllAt 1 d bodyA).subst 0 (closeAll d (.iota ann bodyA)))
       (closeAll d a') :=
-    unfold_iota_L_substBridge_WALL h_eval
+    unfold_iota_L_substBridge_WALL h_eval hbody_cl hbody_lv hann_cl hann_lv
   exact bridge.trans ih_body
 
 /-! ## Sidestep status
