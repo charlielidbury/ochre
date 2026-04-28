@@ -19,7 +19,31 @@ The autonomous decision matched the predicted user preference
 disagreed with: revert `Och.synth` and revert
 `synthCore_topLevel_closedAt`'s body to a `sorry`.
 
-## 2a. Fallback arm-lemma fuel-shift gap
+## 2a. Fallback arm-lemma fuel-shift gap — RESOLVED via option 2
+
+**Resolution**: 2026-04-28 (overnight), commits `08273d5` (single-arm
+test) and `0c107e5` (extension to remaining 6 arm-lemmas).  Option 2
+(re-state arm-lemmas to take any-fuel hypothesis) confirmed sound:
+the proof bodies didn't need a single change because
+`closeAll_evalSubst_subtype_strong` is already fuel-polymorphic.
+
+Generalized: `iota_intro_arm`, `unfold_fix_R_arm`,
+`unfold_fix_L_arm`, `unfold_iota_L_arm`, and their three
+`_substBridge_WALL` companions.
+
+The iota-iota and fix-fix fallback dispatch sorries close directly:
+the engine's `evalSubst (fuel + 1) unfBound` now unifies with the
+arm-lemma's quantified `{fuel unf}`.  Total sorry count in
+`Soundness/`: 70 → 68.
+
+(`unfold_fix_L` and `unfold_iota_L` callers in the dispatch were
+already calling through `arm_*_compose` wrappers that kept the
+original signature; unification chose `fuel := unfBound + 1` for
+those, no changes needed.)
+
+**Original wall description** (kept for reference):
+
+## 2a (original). Fallback arm-lemma fuel-shift gap
 
 **Surfaced**: 2026-04-28 (overnight) by wall 6 resolution attempt
 (commit `909099f`).
