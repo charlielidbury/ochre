@@ -120,7 +120,7 @@ Step 2 is the open obstacle.  We `sorry` each bridge and tag with
 the specific wall instance. -/
 
 /-! ## Substitution bridges — derivation via `closeAll_substL_subst`
-    plus the consolidated `closeAll_evalSubst_subtype` wall.
+    plus `closeAll_evalSubst_subtype_strong`.
 
 The four bridges below all share a common shape:
 1. The engine performs `bodyB' := substL body 0 self`.
@@ -129,11 +129,13 @@ The four bridges below all share a common shape:
 
 The two-step derivation is:
 * By `closeAll_substL_subst`: `closeAll d bodyB' = (closeAllAt 1 d body).subst 0 (closeAll d self)`.
-* By `closeAll_evalSubst_subtype` (consolidated wall): `Subtype'`
-  bidirectionally relates `closeAll d bodyB'` and `closeAll d bodyB''`.
+* By `closeAll_evalSubst_subtype_strong`: `Subtype'` bidirectionally
+  relates `closeAll d bodyB'` and `closeAll d bodyB''`, given
+  `bodyB'.closedAtLvl 0` and `bodyB'.lvarLT d`.
 
 Each bridge takes the engine's evalSubst step plus closedness/lvarLT
-preconditions sufficient to invoke `closeAll_substL_subst`. -/
+preconditions sufficient to invoke `closeAll_substL_subst` and
+derive the substituted-body invariants for the strong eval bridge. -/
 
 /-- Substitution bridge for `iota_intro` fallback.
 

@@ -165,6 +165,8 @@ private theorem subCheckSubstMatch_dispatch
     {a' b' : Expr}
     (_ih : ∀ {tyCtx' : Array Expr} {seen' : List (Expr × Expr)}
             {x y : Expr},
+            x.closedAtLvl 0 = true → x.lvarLT tyCtx'.size = true →
+            y.closedAtLvl 0 = true → y.lvarLT tyCtx'.size = true →
             SubstEval.subCheckSubst fuel tyCtx' seen' x y = .ok true →
             Subtype' (liftSeenList tyCtx'.size seen') (tyCtxToCtx tyCtx')
               (closeAll tyCtx'.size x) (closeAll tyCtx'.size y))
@@ -234,6 +236,8 @@ walls above. -/
 theorem subCheckSubst_sound
     {fuel : Nat} {tyCtx : Array Expr} {seen : List (Expr × Expr)}
     {a b : Expr}
+    (ha_cl : a.closedAtLvl 0 = true) (ha_lv : a.lvarLT tyCtx.size = true)
+    (hb_cl : b.closedAtLvl 0 = true) (hb_lv : b.lvarLT tyCtx.size = true)
     (h : SubstEval.subCheckSubst fuel tyCtx seen a b = .ok true) :
     Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
       (closeAll tyCtx.size a) (closeAll tyCtx.size b) := by
@@ -260,42 +264,23 @@ theorem subCheckSubst_sound
     -- The remaining `h` dispatches on `a' == b'`, `seen.any`,
     -- `b' == .type`, then `subCheckSubstMatch fuel tyCtx seen a' b'`.
     --
-    -- WALL: bridging `Subtype' (closeAll a') (closeAll b')` back to
-    -- `Subtype' (closeAll a) (closeAll b)` requires an evalSubst-
-    -- based equivalence under closeAll.  The depth-0 / no-level-vars
-    -- case is now closed by `Och.Soundness.evalSubst_equiv`
-    -- (Soundness/EvalSubstEquiv.lean).  At depth `tyCtx.size > 0`
-    -- the engine works on terms with level-vars; lifting the lemma
-    -- through `closeAll` requires a closeAll-evalSubst commutation
-    -- that's still unwritten.
-    --
-    --   evalSubst_equiv : closedAt 0 e → evalSubst e = .ok e' →
-    --                     Subtype' [] [] e' e ∧ Subtype' [] [] e e'
-    --
-    -- For the depth-0 specialisation in `Och_subCheck_sound`, this
-    -- closes step 1 of that chain.  Here at `tyCtx.size`, the bridge
-    -- still walls on:
-    --   * Translating `closedAt 0` ↔ `closedAtLvl 0` under closeAll.
-    --   * Pushing `Subtype' [] [] e' e` through `closeAll` to
-    --     `Subtype' (lift seen) tyCtxToCtx (closeAll e') (closeAll e)`.
-    -- Both bridges discharge through the consolidated v2 wall
-    -- `closeAll_evalSubst_subtype` (in `Soundness/CloseAll.lean`):
-    -- given `evalSubst e = .ok e'`, the closeAll-translated forms
-    -- are bidirectionally `Subtype'`-related.  At depth 0 this
-    -- reduces to `evalSubst_equiv`; at non-zero depth it walls on
-    -- the same v2 issue as the fallback substBridge_WALLs.
+    -- The closeAll-evalSubst bridge is now closed via
+    -- `closeAll_evalSubst_subtype_strong` using the `closedAtLvl 0` /
+    -- `lvarLT tyCtx.size` preconditions threaded through `subCheckSubst_sound`.
+    -- These preconditions hold for terms produced by a `synth`-validated
+    -- pipeline (closedness invariant from typechecking).
     have eval_bridge_a :
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size a) (closeAll tyCtx.size a') ∧
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size a') (closeAll tyCtx.size a) :=
-      closeAll_evalSubst_subtype _h_a
+      closeAll_evalSubst_subtype_strong ha_cl ha_lv _h_a
     have eval_bridge_b :
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size b) (closeAll tyCtx.size b') ∧
         Subtype' (liftSeenList tyCtx.size seen) (tyCtxToCtx tyCtx)
           (closeAll tyCtx.size b') (closeAll tyCtx.size b) :=
-      closeAll_evalSubst_subtype _h_b
+      closeAll_evalSubst_subtype_strong hb_cl hb_lv _h_b
     -- Goal: derivation on closeAll a / closeAll b.  We chain
     -- `eval_bridge_a.1` ⊑ inner ⊑ `eval_bridge_b.2` after
     -- producing the inner derivation.
@@ -334,7 +319,8 @@ theorem subCheckSubst_sound
           have hf : fuel = _ := Nat.succ.inj heq_fuel
           subst hf
           exact subCheckSubstMatch_dispatch
-            (fun {_tyCtx'} {_seen'} {_x _y} hx => ih hx) h
+            (fun {_tyCtx'} {_seen'} {_x _y} hx_cl hx_lv hy_cl hy_lv hx =>
+              ih hx_cl hx_lv hy_cl hy_lv hx) h
 
 /-- Public-API soundness: `Och.subCheck` accepting two `WTValue`s
 produces a declarative subtyping derivation on their `whnf` fields.

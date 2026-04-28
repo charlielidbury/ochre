@@ -2065,44 +2065,7 @@ theorem closeAll_evalSubst_subtype_strong
               (.app (closeAll d (.app f' a')) (closeAll d av)) _
             exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
 
-/-- **WALL** (consolidated v2): closeAll-evalSubst commutation as a
-    bidirectional `Subtype'` bridge.
-
-    Given `evalSubst fuel unf e = .ok e'`, the closeAll-translated
-    forms are mutually `Subtype'`-related under any seen-set / context.
-
-    **Status (post-substrate-fix)**: now closes via
-    `closeAll_evalSubst_subtype_strong` once the consumer threads the
-    closedness preconditions.  The current statement is unconditional
-    (consumers in `SubCheckSubstFallback.lean` invoke it with only the
-    `evalSubst` step), which is **provably false** in general (e.g.
-    `e = .bvar (levelOffset + 999)` with `d = 0`: evalSubst returns it
-    unchanged, but `closeAll 0` leaves the bvar with index ≫ 0, while
-    the conclusion `Subtype' S Γ (closeAll 0 e) (closeAll 0 e')` would
-    need `Subtype'.refl` — fine here, vacuously OK actually).
-    The unconditional form is sound for the substituent regimes that
-    arise in `SubCheckSubstFallback.lean`'s consumers, but Lean cannot
-    derive the closedness/lvarLT preconditions from the bare
-    `evalSubst` step.
-
-    To preserve build-green compatibility with consumers in
-    `SubCheckSubstFallback.lean`, this wall remains `sorry`'d; the
-    strong version above carries the necessary preconditions and is
-    fully discharged.  Migrating the four consumer call sites
-    (`iota_intro_substBridge_WALL` etc.) to invoke
-    `closeAll_evalSubst_subtype_strong` with the locally-available
-    closedness facts removes this `sorry` directly. -/
-theorem closeAll_evalSubst_subtype
-    {fuel unf : Nat} {d : Nat} {e e' : Expr} {S : Seen} {Γ : Ctx}
-    (_hstep : SubstEval.evalSubst fuel unf e = .ok e') :
-    Subtype' S Γ (closeAll d e) (closeAll d e') ∧
-    Subtype' S Γ (closeAll d e') (closeAll d e) := by
-  -- See `closeAll_evalSubst_subtype_strong` above for the proof under
-  -- closedness preconditions.  Migrating consumers to thread those
-  -- preconditions discharges this `sorry` outright.
-  sorry
-
-/-- **Depth-0 specialization** of `closeAll_evalSubst_subtype`,
+/-- **Depth-0 specialization** of `closeAll_evalSubst_subtype_strong`,
     discharged via `evalSubst_equiv` (in `Soundness/EvalSubstEquiv.lean`).
 
     At `d = 0`, `closeAll 0 = id`, so the consolidated wall reduces to
@@ -2111,9 +2074,9 @@ theorem closeAll_evalSubst_subtype
     any seen-set / context via `Subtype'.weaken` (with the shape
     `Subtype' [] []` lifting trivially to `Subtype' S Γ`).
 
-    Use this when the caller can establish `e.closedAt 0`; the general
-    `closeAll_evalSubst_subtype` walls because non-zero depth requires
-    the v2 closeAllAt-substL commutation. -/
+    Use this when the caller can establish `e.closedAt 0`; for the
+    depth-`d` analog with full closedness/lvarLT preconditions, see
+    `closeAll_evalSubst_subtype_strong`. -/
 theorem closeAll_evalSubst_subtype_at_zero
     {fuel unf : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
