@@ -404,3 +404,98 @@ due to remaining time budget; the wiring is mechanical
 
 Sorry count: total `sorry` keyword count in `Soundness/`: 44 → 43
 (lam-lam closed; iota-iota/fix-fix remain).
+
+### Follow-up attempt 2 (agent-a9b8e08241821af9b): Seen-shrinking wall surfaces
+
+Attempted to follow the lam-lam template for iota-iota and fix-fix.
+Discovered a structural obstacle: those engine arms use `seen' =
+(a, b) :: seen` for ALL recursive sub-calls, including the structural
+ones. The IH from `_ih` therefore yields a derivation under the
+**extended** seen list:
+
+```
+Subtype' (liftSeenList tyCtx.size ((.iota annA bodyA, .iota annB bodyB) :: seen)) ...
+```
+
+But the dispatch's goal is at the **shrunk** seen:
+
+```
+Subtype' (liftSeenList tyCtx.size seen) ...
+```
+
+The structural arm-lemma `subCheckSubst_arm_iota_iota` (in
+`SubCheckSubstStructural.lean`) is built from `Subtype'.iota_cong`,
+which preserves `S` between premises and conclusion (`S → S`). So
+applying the arm-lemma with `S = liftSeenList _ ((.iota..)::seen)`
+yields a derivation under the extended seen — **not** the dispatch
+goal's shrunk seen.
+
+**The wall**: there's no Seen-shrinking lemma `Subtype' (entry :: S) Γ a b
+→ Subtype' S Γ a b`.  `Subtype'.weaken` only goes the expanding direction
+(adding entries is monotone; dropping is not). Dropping requires either:
+  1. A "non-use" predicate (`entry ∉ used_hyps_in_derivation`), then
+     proving by structural induction that derivations not using `entry`
+     can be re-typed at the smaller seen.  Non-trivial — the `hyp` rule
+     is the obstacle.
+  2. A reformulation of the dispatch / arm-lemma signatures so that
+     `Subtype'_liftSeen_succ_to_d_aux`-style depth bridging absorbs
+     the entry drop.  Untested.
+
+The **fallback** arms (`iota_intro_arm`, `unfold_fix_R_arm`) handle
+this naturally because `Subtype'.iota_intro` and `unfold_fix_R` are
+**productive** rules: their conclusion's `S` is *smaller* than the
+premises' `S` (the rules add the entry).  So feeding extended-seen
+IHs into fallback arm-lemmas closes the dispatch goal at the original
+`S`.  But the **structural** rule `iota_cong` is non-productive in
+this sense.
+
+The previous report's claim that the arms close "in principle, no new
+sorries" was overoptimistic — it overlooked the seen-extension
+mismatch between `_ih` and `subCheckSubst_arm_iota_iota`.
+
+### What was tried
+
+* Wrote the full structural-success branch (case-split via `split at
+  _h`, extract sub-results, apply `_ih`, bridge depth via
+  `Subtype'_liftSeen_succ_to_d`, apply `subCheckSubst_arm_iota_iota`).
+  Compiles up to the final `exact` — Lean rejects with type mismatch:
+  IHs are at `liftSeenList _ ((iota,iota)::seen)`, conclusion needs
+  `liftSeenList _ seen`.
+* Wrote the fallback branch (case-split structural failure, extract
+  ann + body sub-results from fallback do-block, apply `_ih`,
+  bridge `tyCtx.size ↔ (tyCtxToCtx tyCtx).length`, apply
+  `iota_intro_arm`).  Compiles cleanly — the productive rule
+  absorbs the entry drop naturally.
+* Verified that `arm_iota_iota_compose` (the local helper) ALSO
+  outputs at extended seen, confirming the obstacle isn't an
+  artifact of using the underlying lemma directly.
+
+### What's needed to close the structural arm
+
+Either:
+
+* **Seen-shrinking lemma**: prove `Subtype' (entry :: S) Γ a b →
+  Subtype' S Γ a b` under appropriate side conditions.  The general
+  form requires reasoning about the derivation's `hyp` lookups; a
+  syntactic "entry not used" check would be sufficient but is
+  non-standard for dependent-type derivation predicates.
+
+* **Engine refactor**: change the engine's iota-iota structural arm
+  to NOT extend `seen` for the structural attempt (only extend for
+  fallback).  This would change the algorithm's behavior (potentially
+  losing ability to short-circuit on structural recursive cycles).
+
+* **Subtype' reformulation**: consider a derived `iota_cong_with_seen`
+  rule that adds the entry to `S` (productive form).  If derivable
+  from `iota_intro` + `unfold_iota_L/R`, this would close the gap.
+  Initial attempt: `iota_intro` requires premise `a ⊑ body[self/a]`
+  which the structural arm doesn't have.
+
+Sorry count after this attempt: unchanged (54 in
+`SubCheckSubstSoundness.lean`; 43 across `Soundness/`).  Partial
+work reverted.
+
+### Files touched (reverted)
+
+None — partial work reverted before commit.  The wall analysis
+above is the only output.
