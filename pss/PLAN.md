@@ -1,0 +1,456 @@
+# PSS / MPSS Lean 4 Formalization Plan
+
+> Authoritative plan for this formalization. All sub-agents must read this file before starting work and follow the conventions below verbatim.
+>
+> **SCOPE UPDATE (post-Wave-5 dispatch):** This plan was originally written to mechanize BOTH Hutchins' declarative+algorithmic system AND the MPSS Krivine reformulation. After confirming MPSS supersedes all of Hutchins' algorithmic machinery and metatheory (see README.md "Scope" section), we have **trimmed to KAM-only**. The following modules listed below have been DELETED and should not be re-introduced: `Pss/Algo/*` (all six files), `Pss/Decl/*` (all three files), `Pss/Bridge/*`. Sub-agents should ignore §3 entries for those paths and treat the corresponding waves (4C, 5D, 7C, and the Hutchins parts of 3D) as out of scope. Wave 7 retains only `TransitivityElim`, `MPSS TypeSafety`, and polish.
+
+---
+
+## 0. Reading-derived facts that drive the design
+
+These come from a careful read of both PDFs in `papers/`. They are load-bearing for everything below.
+
+**From Hutchins 2010 (paper 1, `papers/hutchins-2010-pss.pdf`):**
+
+- Single syntactic category. `t, u ::= x | Top | λx ≤ t. u | t(u)`. Values are `Top` and `λx ≤ t. u`. (Fig. 1.)
+- Contexts `Γ ::= ∅ | Γ, x ≤ t`. The `≤` here is **the same** as the subtype relation symbol — bound entries record an upper bound, not a "type" in the traditional sense.
+- Two declarative judgments with shared shape, abbreviated via meta-variable `◁ ∈ {≤, ≡}`: `Γ ⊢ t ◁ u`. The DS-* rules in Fig. 1 are schemas over `◁`. There is also `wf` and `≤_wf`.
+- Reduction `t ⟶ t'` (the small operational reduction) is plain `β` plus context closure (E-CONG, E-APP). System is **not strongly normalizing** (Theorem 4.4, Girard's paradox via Top).
+- Algorithmic system (Fig. 2) replaces transitivity with two reductions on terms-in-context:
+  - `Γ ⊢_A t ⟶^≡ t'` — **equivalence reduction**: SRE-APP (β where the operand is shown to be a subtype of the bound, via `≤*`), SRE-TOPAPP (`Top(t) ⟶ Top`), plus congruence anywhere.
+  - `Γ ⊢_A t ⟶^≤ t'` — **subtype reduction**: SRS-PROM (`x ⟶^≤ t` when `x ≤ t ∈ Γ`), SRS-TOP (`t ⟶^≤ Top`), congruence only in **positive** evaluation contexts.
+  - Subtyping is then `≤*` = refl-trans of single-step `t ⟶ s ⟵ u` (Fig. 2 AS-* rules); equivalence likewise.
+- Proven theorems in paper 1: confluence of `⟶^≡` (Thm 6.1, Takahashi style); local commutativity (Lemma 6.4); Lemma 6.3 "commutativity ⇒ transitivity"; Lemma 5.2 inversion; Lemma 5.3 reduction implies equivalence; Lemma 5.4 substitution; Theorem 5.5 progress; Theorem 5.6 preservation. **Conjecture 5.1** (transitivity elimination) and **Conjecture 6.2** (global commutativity) are open.
+
+**From Pasquale & García-Pérez 2024 (paper 2, `papers/pasquale-garcia-perez-2024-mpss.pdf`):**
+
+- MPSS has the SAME term syntax `t ::= x | Top | (λx ≤ t. u) | (u v) | α` (where `α` is a metavariable for stack-popped operands — for Lean's purposes it just lives in the same `Term` inductive; there's no separate syntactic class once you mechanize).
+- Logical contexts `Γ ::= ε | Γ, x ≤ t | Γ, x ≡ α`. **Crucial difference from PSS**: contexts now contain BOTH subtype bindings (`x ≤ t`) and equivalence bindings (`x ≡ α`). The latter is what `Me-FOp` introduces.
+- Stacks `s ::= nil | α :: s`. Extended context `Γ ; s`.
+- Two reductions on extended contexts: `Γ; s ⊢ u ⟶^≡ v` (Fig. 2, 8 rules: Me-Pro, Me-Bet, Me-Top, Me-App, Me-Var, Me-Fun, Me-TAp, Me-FOp) and `Γ; s ⊢ u ⟶^≤ v` (6 rules: Ms-Pro, Ms-Top, Ms-Equ, Ms-App, Ms-Fun, Ms-FOp).
+- "Reduction of extended context" `Γ; s ↣ Γ'; s'` (Ct-Ann, Ct-Stk).
+- **Lemma 1** (`⟶^≤` and `⟶^≡` strongly commute): main result.
+- **Lemma 2** (`⟶^≡` has the diamond property), with a "no Me-Pro on `x` in subderivations" side condition.
+- **Theorem 3** (transitivity admissible) follows from Lemma 1 + Lemma 2.
+- §4 well-formedness `wf`, `≤_wf`, `≤*_wf` (Fig. 4); operational semantics `↦` (Os-Bet + Os-Con); **Theorems 4 & 5** (progress, preservation) — both **conditional on Conjecture 8**.
+
+---
+
+## 1. Lakefile / dependencies
+
+### 1.1 Toolchain
+
+Pin **`leanprover/lean4:v4.16.0`** in `lean-toolchain`.
+
+`lean-toolchain`:
+```
+leanprover/lean4:v4.16.0
+```
+
+### 1.2 Mathlib pin
+
+`lakefile.lean`:
+```lean
+import Lake
+open Lake DSL
+
+package «pss» where
+  leanOptions := #[
+    ⟨`autoImplicit, false⟩,
+    ⟨`relaxedAutoImplicit, false⟩,
+    ⟨`pp.unicode.fun, true⟩
+  ]
+  moreServerOptions := #[⟨`linter.unusedVariables, false⟩]
+
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4" @ "v4.16.0"
+
+@[default_target]
+lean_lib «Pss» where
+  srcDir := "."
+  globs := #[.andSubmodules `Pss]
+```
+
+---
+
+## 2. Binding representation: **locally-nameless with cofinite quantification**
+
+This is **the** load-bearing decision.
+
+```lean
+inductive Term where
+  | bvar : Nat → Term
+  | fvar : String → Term
+  | top  : Term
+  | abs  : (bound : Term) → (body : Term) → Term
+  | app  : Term → Term → Term
+deriving DecidableEq
+```
+
+Why locally-nameless and not the alternatives:
+
+- **Locally nameless** ✅: Substitution lemma is a 5-line `induction` after the open/close framework is in place. Cofinite quantification gives the right induction principle for free for `wf`.
+- Pure de Bruijn: MPSS commutativity case-splits on whether `Me-Pro` promotes a specific variable `x` — this is a NAME-tracking property; raw de Bruijn forces shift bookkeeping every diagram.
+- Well-scoped de Bruijn: same problem, plus `ReflTransGen` of typed reductions doesn't fit Mathlib's untyped `Relation.ReflTransGen`.
+- PHOAS: cannot express `Me-Pro`'s context lookup. Wrong tool.
+
+### Infrastructure agents must build (`Pss.Syntax.LocallyNameless`)
+
+```lean
+def open_ (k : Nat) (u : Term) : Term → Term
+def opening (u : Term) : Term → Term := open_ 0 u
+def close_ (k : Nat) (x : String) : Term → Term
+def fv : Term → Finset String
+def subst (x : String) (u : Term) : Term → Term
+
+inductive LC : Term → Prop
+  | top : LC .top
+  | fvar : LC (.fvar x)
+  | app : LC u → LC v → LC (.app u v)
+  | abs : LC bound → (∀ x ∉ L, LC (opening (.fvar x) body)) → LC (.abs bound body)
+```
+
+Standard locally-nameless lemmas:
+- `subst_open_var : x ≠ y → subst x u (opening (.fvar y) e) = opening (.fvar y) (subst x u e)`
+- `subst_intro : x ∉ fv e → opening u e = subst x u (opening (.fvar x) e)`
+- `open_lc : LC e → opening u e = e`
+- `subst_lc : LC u → LC e → LC (subst x u e)`
+- round-trips `open_close`, `close_open`.
+
+Reference: Aydemir et al. 2008 "Engineering Formal Metatheory" (POPLmark).
+
+### Convention for context entries
+
+Contexts store `fvar`-named entries. Bound bodies in `abs` use `bvar 0`. A judgment `Γ ⊢ t ◁ u` is only stated when `t` and `u` are `LC` and `fv t ∪ fv u ⊆ dom Γ`. Carry this as a side condition on every relation (in `prevalid`) — do NOT make `Term` an indexed type.
+
+---
+
+## 3. Module hierarchy
+
+All paths under `pss/`. Lean modules under `pss/Pss/`. The root file `pss/Pss.lean` re-exports everything.
+
+```
+pss/
+├── lakefile.lean
+├── lean-toolchain
+├── lake-manifest.json           [generated]
+├── README.md                    [hand-written orientation]
+├── PLAN.md                      [this file]
+├── papers/                      [PDFs]
+├── Pss.lean                     [umbrella import]
+└── Pss/
+    ├── Syntax/
+    │   ├── Term.lean
+    │   ├── LocallyNameless.lean
+    │   └── FreeVars.lean
+    ├── Context/
+    │   ├── Logical.lean
+    │   ├── Stack.lean
+    │   └── Prevalid.lean
+    ├── Reduction/
+    │   └── Operational.lean
+    ├── Decl/                     -- Hutchins 2010 §3 declarative
+    │   ├── Subtyping.lean
+    │   ├── WellFormed.lean
+    │   └── Theorems.lean
+    ├── Algo/                     -- Hutchins 2010 §6 algorithmic
+    │   ├── EqRed.lean
+    │   ├── SubRed.lean
+    │   ├── Subtyping.lean
+    │   ├── Confluence.lean
+    │   ├── LocalCommute.lean
+    │   └── PartialSafety.lean
+    ├── Mpss/                     -- Pasquale & García-Pérez 2024
+    │   ├── EqRed.lean
+    │   ├── SubRed.lean
+    │   ├── ContextRed.lean
+    │   ├── Substitution.lean
+    │   ├── Weakening.lean
+    │   ├── Narrowing.lean
+    │   ├── Diamond.lean
+    │   ├── Commutation.lean
+    │   ├── TransitivityElim.lean
+    │   ├── WellFormed.lean
+    │   ├── OperationalSem.lean
+    │   └── TypeSafety.lean
+    ├── Bridge/                   -- relating systems
+    │   ├── DeclAlgo.lean
+    │   └── AlgoMpss.lean
+    └── Util/
+        ├── ParRed.lean
+        └── Tactic.lean
+```
+
+### Module-by-module specification
+
+**`Pss.Syntax.Term`** — `inductive Term` (locally-nameless). Pretty-printer + DecidableEq.
+
+**`Pss.Syntax.LocallyNameless`** — `open_`, `opening`, `close_`, `subst`, `LC`. Notation `e^[x]` for `opening (.fvar x) e`. Plus the round-trip and substitution-vs-opening lemmas listed in §2.
+
+**`Pss.Syntax.FreeVars`** — `fv : Term → Finset String`, `bv : Term → Finset Nat`. Monotonicity / set-containment lemmas.
+
+**`Pss.Context.Logical`** — `inductive CtxEntry := sub (x : String) (t : Term) | equ (x : String) (α : Term)`. `Ctx := List CtxEntry` (innermost-last). `dom`, `lookupSub`, `lookupEqu`. SUPERSET so PSS can ignore `equ` and MPSS uses both.
+
+**`Pss.Context.Stack`** — `Stack := List Term`. `ExtCtx := Ctx × Stack`. Used by `Mpss/*`; PSS-side, the stack is implicitly `nil`.
+
+**`Pss.Context.Prevalid`** — `inductive Prevalid : Ctx → Prop` (Pv-Emp, Pv-Ctx, Pv-EqA from MPSS Fig. 1). `inductive PrevalidExt : Ctx → Stack → Prop` (Pv-Nil, Pv-Sta).
+
+**`Pss.Reduction.Operational`** — `inductive Step : Term → Term → Prop` — `Os-Bet`, `Os-Con`. Evaluation contexts `EvalCtx`. Notation `t ↦ t'`.
+
+**`Pss.Decl.Subtyping`** — Mutually inductive `DSub` and `DEq`. Cofinite quantification on DS-FUN:
+```lean
+| dsFun : DEq Γ t t' →
+    (∀ x ∉ L, DSub ((.sub x t) :: Γ) (u^[x]) (u'^[x])) →
+    DSub Γ (.abs t u) (.abs t' u')
+```
+
+**`Pss.Decl.WellFormed`** — `WF` (W-Var, W-Top, W-Fun, W-App). `WSub Γ t u := WF Γ t ∧ WF Γ u ∧ DSub Γ t u`.
+
+**`Pss.Decl.Theorems`** — Hutchins §5 lemmas/theorems. `axiom Conjecture_5_1_TransitivityElim` (discharged in Wave 7).
+
+**`Pss.Algo.EqRed`** — `AEqRed`: Hutchins Fig. 2 SRE-* + congruence SR-Cong + SR-Fun. Notation `Γ ⊢_A t ⟶^≡ t'`.
+
+**`Pss.Algo.SubRed`** — `ASubRed`: SRS-Prom, SRS-Top, congruence in **positive** contexts only. Helper `inductive PosCtx`.
+
+**`Pss.Algo.Subtyping`** — `AEq`, `ASub` (per Fig. 2). `AS-Left`/`AS-Right` derived.
+
+**`Pss.Algo.Confluence`** — `Theorem_6_1_ConfluenceOfEqRed : Confluent (AEqRed Γ)`, via diamond of Takahashi `ParEqRed`.
+
+**`Pss.Algo.LocalCommute`** — `Lemma_6_4_LocalCommutativity` from Hutchins §6.6.
+
+**`Pss.Algo.PartialSafety`** — Bridges Hutchins §5 and §6 under `Conjecture_5_1` axiom.
+
+**`Pss.Mpss.EqRed`** — `MEqRed`: 8 rules (Me-Pro, Me-Bet, Me-Top, Me-App, Me-Var, Me-Fun, Me-TAp, Me-FOp).
+
+**`Pss.Mpss.SubRed`** — `MSubRed`: 6 rules (Ms-Pro, Ms-Top, Ms-Equ, Ms-App, Ms-Fun, Ms-FOp). Mutual with `MEqRed`.
+
+**`Pss.Mpss.ContextRed`** — `ExtCtxRed` (Ct-Ann, Ct-Stk). **Lemma 36** (extraction).
+
+**`Pss.Mpss.Substitution`** — Lemmas 28, 29, 30, 31, 32 from MPSS appendix.
+
+**`Pss.Mpss.Weakening`** — Lemmas 19, 20, 21, 22.
+
+**`Pss.Mpss.Narrowing`** — Lemmas 23, 24, 25, 26.
+
+**`Pss.Mpss.Diamond`** — `Lemma_2_DiamondMEqRed` + `Proposition_18_ReflexivityMEqRed`. Side condition encoded as a `Prop` predicate on derivations OR a refined inductive (see Risk 4).
+
+**`Pss.Mpss.Commutation`** — `Lemma_1_StrongCommutativity`. Heart of the formalization. ~600-900 lines.
+
+**`Pss.Mpss.TransitivityElim`** — `Theorem_3_TransitivityIsAdmissible`.
+
+**`Pss.Mpss.WellFormed`** — `WfM`, `WSubM`, `WSubMStar` (Fig. 4).
+
+**`Pss.Mpss.OperationalSem`** — Lifts `Step` to MPSS terminology. `Proposition_17`.
+
+**`Pss.Mpss.TypeSafety`** — `axiom Conjecture_8_WellSubtypingContextIndependent`. `Theorem_4_Progress`, `Theorem_5_Preservation`. Lemmas 6, 7, 10, 11, 15, 16.
+
+**`Pss.Bridge.DeclAlgo`** — `decl_to_algo`, `algo_to_decl`.
+
+**`Pss.Bridge.AlgoMpss`** — `mpss_to_algo`, `algo_to_mpss`. **Headline:** `Conjecture_5_1_proven` — discharges the axiom from `Pss.Decl.Theorems` by transferring through MPSS.
+
+**`Pss.Util.ParRed`** — Generic Takahashi parallel reduction.
+
+**`Pss.Util.Tactic`** — `pick_fresh` tactic for cofinite quantification.
+
+---
+
+## 4. Dispatch waves
+
+Each wave has 3-6 agents that can run in parallel with **no shared writes**. Agents inside a wave never edit the same file. Each agent's deliverables = the signatures it must produce; bodies can use `sorry` if blocked, with a `TODO` comment, to unblock downstream.
+
+### Wave 0 — bootstrap (1 agent)
+- Agent 0: `lean-toolchain`, `lakefile.lean`, empty `Pss.lean`, empty subdirs, `lake update`, `README.md`.
+
+### Wave 1 — syntax & infrastructure (4 agents)
+- 1A: `Pss/Syntax/Term.lean` + `Pss/Syntax/LocallyNameless.lean`
+- 1B: `Pss/Syntax/FreeVars.lean`
+- 1C: `Pss/Util/ParRed.lean`
+- 1D: `Pss/Util/Tactic.lean`
+
+### Wave 2 — contexts & operational semantics (3 agents)
+- 2A: `Pss/Context/{Logical,Stack,Prevalid}.lean`
+- 2B: `Pss/Reduction/Operational.lean`
+- 2C: `Pss/Decl/{Subtyping,WellFormed}.lean`
+
+### Wave 3 — algorithmic system + MPSS reductions (4 agents)
+- 3A: `Pss/Algo/{EqRed,SubRed,Subtyping}.lean`
+- 3B: `Pss/Mpss/{EqRed,SubRed}.lean`
+- 3C: `Pss/Mpss/ContextRed.lean`
+- 3D: `Pss/Decl/Theorems.lean` (Hutchins §5 with `Conjecture_5_1` axiom)
+
+### Wave 4 — MPSS substitution / weakening + Algo confluence (3 agents)
+- 4A: `Pss/Mpss/Weakening.lean`
+- 4B: `Pss/Mpss/Substitution.lean`
+- 4C: `Pss/Algo/Confluence.lean`
+
+### Wave 5 — narrowing, diamond, local commute (4 agents)
+- 5A: `Pss/Mpss/WellFormed.lean`
+- 5B: `Pss/Mpss/Narrowing.lean`
+- 5C: `Pss/Mpss/Diamond.lean`
+- 5D: `Pss/Algo/LocalCommute.lean`
+
+### Wave 6 — main commutation theorem (1 agent — too central to parallelize)
+- Agent 6: `Pss/Mpss/Commutation.lean`. Estimate 600-900 lines. **Enumerate the case grid before starting the proof.**
+
+### Wave 7 — type safety & bridges (3 agents)
+- 7A: `Pss/Mpss/{TransitivityElim,OperationalSem}.lean`
+- 7B: `Pss/Mpss/TypeSafety.lean`
+- 7C: `Pss/Bridge/{DeclAlgo,AlgoMpss}.lean` — discharges `Conjecture_5_1`.
+
+### Wave 8 — polish (1 agent)
+- Agent 8: `Pss.lean` umbrella, `AXIOMS.md`, `Pss/Sanity.lean` with `#print axioms`, README update.
+
+**Total:** 8 waves, 22 agent-slots. Wave 6 single-threaded; all other waves parallel 3-4 wide.
+
+---
+
+## 5. Risk register
+
+### Risk 1: The substitution-and-opening swamp (HIGH)
+
+Mitigation: Wave 1 Agent 1A copies the lemma list verbatim from Aydemir et al. 2008. Each lemma name in this plan must be honored by downstream citations. Wave 1 ends with a `lake build Pss.Syntax.LocallyNameless` gate before Wave 2 starts.
+
+### Risk 2: Mathlib's `Confluent` doesn't match context-indexed reductions (MEDIUM)
+
+Mitigation: `Pss/Util/ParRed.lean` takes a `Ctx` parameter and re-bundles the ternary relation as an unindexed family `r Γ : α → α → Prop`. State `Confluent (r Γ)` directly; don't fight Mathlib's bundlings.
+
+### Risk 3: MPSS commutation has more cases than the appendix admits (MEDIUM-HIGH)
+
+Mitigation: Wave 6 (one agent) is given a generous time budget. The agent's first task: enumerate all `(MEqRed.constructor, MSubRed.constructor)` pairs. Mark vacuous, paper-covered, missing. **Do not start the proof until the case grid is filled in.** If a case proves intractable, axiomatize precisely (`axiom Mpss_Commute_Case_FOp_App : ...`) — max 2 escape hatches before escalating.
+
+### Risk 4: "no Me-Pro on x" side condition awkward to state (LOW-MEDIUM)
+
+Mitigation: Define `MEqRedAvoidsPro : MEqRed Γ s u v → String → Prop` by recursion through the inductive's constructors. Fall back to a refined inductive `MEqRedNoProOf x` if predicate-on-derivations is friction.
+
+### Risk 5: Hutchins 2009 thesis missing from `papers/` (CONFIRMED)
+
+The thesis download failed (Edinburgh repository redirect issue). The two PoP/POPL papers are present. Mitigation:
+- For Hutchins proofs that reference the thesis "for full details", reconstruct from first principles using:
+  - Pierce TAPL Ch 26 (Higher-Order Subtyping) for proof shape.
+  - Takahashi 1995 directly for confluence.
+  - Paper 2 §1's worked example for the Lemma 6.4 case 2 diagram.
+- Wave 0 README should note the thesis is missing and recommend fetching it manually.
+
+---
+
+## 6. What to mechanize vs. axiomatize
+
+### 6.1 Permanent axioms
+
+- **`Conjecture_8_WellSubtypingContextIndependent`** (in `Pss.Mpss.TypeSafety`) — paper 2 explicitly leaves this open; we mirror that. Theorems 4 and 5 are stated and proved CONDITIONAL on this axiom.
+
+### 6.2 Temporary axioms (discharged in later waves)
+
+- **`Conjecture_5_1_TransitivityElim`** (in `Pss.Decl.Theorems`) — Hutchins' open conjecture. Used as axiom in Wave 3 to unblock parallel work. **Discharged in Wave 7** by `Pss.Bridge.AlgoMpss.Conjecture_5_1_proven`.
+
+### 6.3 Tactical escape hatch (max 2)
+
+If Wave 6 hits a sub-case taking >1 day, add `TODO_axiom` with exact statement + paper reference. Each escape hatch listed in `AXIOMS.md`. Max two before escalating.
+
+### 6.4 Things we mechanize even though tempting to axiomatize
+
+- Locally-nameless substitution lemmas — 5-10 lines each given LN infra.
+- Confluence of `⟶^≡` — standard Takahashi.
+- Lemma 36 — promote it to a named lemma.
+
+### 6.5 Things we explicitly do NOT formalize
+
+- Hutchins §3.6 multi-universe extension.
+- Hutchins §4 PTS embedding.
+- MPSS §4 type-checking algorithms / decidability.
+
+---
+
+## 7. Definition-of-done
+
+The artifact is "done" when:
+
+1. `lake build` succeeds.
+2. `#print axioms Theorem_3_TransitivityIsAdmissible` lists only `propext`, `Quot.sound`, `Classical.choice`.
+3. `#print axioms Theorem_4_Progress` and `#print axioms Theorem_5_Preservation` list those plus `Conjecture_8_WellSubtypingContextIndependent` — no `Conjecture_5_1_TransitivityElim`.
+4. `#print axioms Conjecture_5_1_proven` lists only the standard three.
+5. `AXIOMS.md` documents the residual `Conjecture_8` axiom with paper citation.
+6. Every theorem named in §3 of this plan exists at the path indicated.
+
+---
+
+## 8. Sketch signatures
+
+```lean
+-- Pss.Syntax.Term
+inductive Term where
+  | bvar : Nat → Term
+  | fvar : String → Term
+  | top  : Term
+  | abs  : Term → Term → Term
+  | app  : Term → Term → Term
+
+-- Pss.Syntax.LocallyNameless
+def Term.opening : Term → Term → Term
+def Term.subst   : String → Term → Term → Term
+def Term.fv      : Term → Finset String
+inductive Term.LC : Term → Prop
+
+-- Pss.Context
+inductive CtxEntryKind | sub | equ
+structure CtxEntry where
+  name : String
+  bound : Term
+  kind : CtxEntryKind
+abbrev Ctx := List CtxEntry
+abbrev Stack := List Term
+
+-- Pss.Decl.Subtyping  (mutually inductive)
+inductive DSub : Ctx → Term → Term → Prop
+inductive DEq  : Ctx → Term → Term → Prop
+
+-- Pss.Algo
+inductive AEqRed : Ctx → Term → Term → Prop
+inductive ASubRed : Ctx → Term → Term → Prop
+def ASub (Γ : Ctx) (t u : Term) : Prop :=
+  ∃ s, ASubRed.Star Γ t s ∧ AEqRed.Star Γ u s
+
+-- Pss.Mpss
+inductive MEqRed : Ctx → Stack → Term → Term → Prop
+inductive MSubRed : Ctx → Stack → Term → Term → Prop
+inductive ExtCtxRed : Ctx × Stack → Ctx × Stack → Prop
+
+-- Headline theorems
+theorem Theorem_6_1_ConfluenceOfEqRed (Γ : Ctx) :
+    Confluent (AEqRed Γ)
+
+theorem Lemma_6_4_LocalCommutativity {Γ t₀ t₁ t₂} :
+    AEqRed Γ t₀ t₁ → ASubRed Γ t₀ t₂ →
+    ∃ t₃, AEqRedRefl Γ t₂ t₃ ∧ ASubStar Γ t₁ t₃
+
+theorem Lemma_1_StrongCommutativity {Γ s t₀ t₁ t₂} :
+    MSubRed Γ s t₀ t₁ → MEqRed Γ s t₀ t₂ →
+    ∀ Γ' s', ExtCtxRed (Γ, s) (Γ', s') →
+    ∃ t₃, MEqRed Γ s t₂ t₃ ∧ MSubRed Γ' s' t₁ t₃
+
+theorem Theorem_3_TransitivityIsAdmissible {Γ s u v} :
+    MSubStar Γ s u v → MSub Γ s u v
+
+theorem Theorem_4_Progress
+    [h : Conjecture_8] {Γ t} (hwf : WfM Γ t) :
+    NormalForm t ∨ ∃ t', Step t t'
+
+theorem Theorem_5_Preservation
+    [h : Conjecture_8] {Γ t t' u} :
+    WSubMStar Γ t u → Step t t' → WSubMStar Γ t' u
+
+theorem Conjecture_5_1_proven {Γ v w} :
+    WSubStar Γ v w → DSub Γ v w
+```
+
+---
+
+## Critical files
+
+These five files, if any one is wrong, derail everything:
+
+- `pss/Pss/Syntax/LocallyNameless.lean` — binding convention. Risk 1.
+- `pss/Pss/Mpss/Commutation.lean` — the single hardest proof. Risk 3.
+- `pss/Pss/Mpss/{EqRed,SubRed}.lean` — MPSS rules; downstream meta-theory cites them constantly.
+- `pss/Pss/Bridge/AlgoMpss.lean` — discharges `Conjecture_5_1`.
+- `pss/lakefile.lean` — Mathlib pin.
