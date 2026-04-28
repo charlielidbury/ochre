@@ -139,11 +139,15 @@ derive the substituted-body invariants for the strong eval bridge. -/
 
 /-- Substitution bridge for `iota_intro` fallback.
 
-    Engine: `bodyB' = substL bodyB 0 a`, `bodyB'' = evalSubst bodyB'`. -/
+    Engine: `bodyB' = substL bodyB 0 a`, `bodyB'' = evalSubst bodyB'`.
+
+    Generalised over the outer evalSubst fuel: the proof only uses
+    `closeAll_evalSubst_subtype_strong`, which is itself fuel-polymorphic. -/
 theorem iota_intro_substBridge_WALL
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {a bodyB bodyB'' : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyB 0 a) = .ok bodyB'')
     (hbody_cl : bodyB.closedAtLvl 1 = true)
     (hbody_lv : bodyB.lvarLT d = true)
@@ -269,8 +273,9 @@ produces the parent `Subtype'`. -/
     directly into `Subtype'.iota_intro`. -/
 theorem iota_intro_arm
     {S : Seen} {Γ : Ctx} {d : Nat}
+    {fuel unf : Nat}
     {a ann bodyB bodyB'' : Expr}
-    (h_eval : SubstEval.evalSubst (SubstEval.unfBound + 1) SubstEval.unfBound
+    (h_eval : SubstEval.evalSubst fuel unf
         (SubstEval.substL bodyB 0 a) = .ok bodyB'')
     (hbody_cl : bodyB.closedAtLvl 1 = true)
     (hbody_lv : bodyB.lvarLT d = true)
