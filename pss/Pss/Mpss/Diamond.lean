@@ -136,16 +136,19 @@ residual obligation explicit and small: every axiom takes the structural
 IH it needs, so discharging it does not require recursive descent
 inside the axiom's own statement. -/
 
-/-- Inline residual: both derivations are `Me-Pro` on the same free
-variable `x`, looking up the same `equBinds y α`. The IH closes the
-inner sub-derivations of `α ⟶ α₁` vs `α ⟶ α₂` directly. -/
-private axiom Lemma_2_inline_pro_pro
+/-- Inline residual (DISCHARGED): both derivations are `Me-Pro` on the
+same free variable `y`, looking up the same `equBinds y α`. The IH
+closes the inner sub-derivations of `α ⟶ α₁` vs `α ⟶ α₂` directly:
+applying `ihα₁` to `hα₂` produces the common reduct `t₃` such that
+`α₁ ⟶ t₃` and `α₂ ⟶ t₃`, which is exactly the conclusion. -/
+private theorem Lemma_2_inline_pro_pro
     {Γ : Ctx} {s : Stack} {y : String} {α α₁ α₂ : Term}
-    (hpv₁ hpv₂ : PrevalidExt Γ s) (heq : Γ.equBinds y α)
-    (hα₁ : MEqRed Γ s α α₁) (hα₂ : MEqRed Γ s α α₂)
+    (_hpv₁ _hpv₂ : PrevalidExt Γ s) (_heq : Γ.equBinds y α)
+    (_hα₁ : MEqRed Γ s α α₁) (hα₂ : MEqRed Γ s α α₂)
     (ihα₁ : ∀ {t₂' : Term}, MEqRed Γ s α t₂' →
       ∃ (t₃ : Term), MEqRed Γ s α₁ t₃ ∧ MEqRed Γ s t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s α₁ t₃ ∧ MEqRed Γ s α₂ t₃
+    ∃ (t₃ : Term), MEqRed Γ s α₁ t₃ ∧ MEqRed Γ s α₂ t₃ :=
+  ihα₁ hα₂
 
 /-- Inline residual: `Me-Bet` on the LHS, anything on the RHS. The body
 and operand IHs from the outer induction close the recursion. -/
