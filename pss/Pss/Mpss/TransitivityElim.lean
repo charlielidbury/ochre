@@ -66,14 +66,24 @@ abbrev MSubStar (Γ : Ctx) (s : Stack) : Term → Term → Prop :=
 
 /-! ## §2. Single-step lifters -/
 
-/-- Lift a single `MEqRed` to `MEqRedStar`. -/
+/-- Lift a single `MEqRed` to `MEqRedStar` (via `MEqRedJ` wrap). -/
 theorem MEqRedStar.single {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : MEqRedStar Γ s u v :=
-  Relation.ReflTransGen.single h
+  Relation.ReflTransGen.single ⟨h⟩
 
-/-- Lift a single `MSubRed` to `MSubRedStar`. -/
+/-- Lift a single `MSubRed` to `MSubRedStar` (via `MSubRedJ` wrap). -/
 theorem MSubRedStar.single {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : MSubRedStar Γ s u v :=
+  Relation.ReflTransGen.single ⟨h⟩
+
+/-- Lift a single `MEqRedJ` to `MEqRedStar`. -/
+theorem MEqRedStar.singleJ {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedJ Γ s u v) : MEqRedStar Γ s u v :=
+  Relation.ReflTransGen.single h
+
+/-- Lift a single `MSubRedJ` to `MSubRedStar`. -/
+theorem MSubRedStar.singleJ {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedJ Γ s u v) : MSubRedStar Γ s u v :=
   Relation.ReflTransGen.single h
 
 /-! ## §3. Diamond of `MEqRedStar` (lifted from Lemma 2)
@@ -83,7 +93,11 @@ Standard "diamond ⇒ confluence on stars". Two helpers, each by
 
 /-- Step-vs-star diamond. By `head_induction_on` on the star chain.
 At each head step of the chain, apply single-step Lemma 2 to combine
-the input step with the head step. -/
+the input step with the head step.
+
+The `hHead` provided by `head_induction_on` is `MEqRedJ` (Prop-wrapped)
+since the chain is `ReflTransGen MEqRedJ`; we extract the underlying
+Type-valued derivation via `.some` (uses `Classical.choice`). -/
 theorem diamond_step_eqStar
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ s t₀ t₁)
@@ -102,14 +116,14 @@ theorem diamond_step_eqStar
   · -- refl case: a = t₂. Given input : MEqRed Γ s t₂ x, take t₃ = x.
     intro x hstep
     exact ⟨x, Relation.ReflTransGen.refl, MEqRedStar.single hstep⟩
-  · -- head case: hHead : MEqRed a c; hTailStar : c →* t₂; ihC at c.
+  · -- head case: hHead : MEqRedJ a c; hTailStar : c →* t₂; ihC at c.
     intro a c hHead hTailStar ihC x hInput
     obtain ⟨y, hcy, hxy⟩ :=
-      Lemma_2_DiamondMEqRed_sameCtx (h₁ := hHead) (h₂ := hInput)
+      Lemma_2_DiamondMEqRed_sameCtx (h₁ := hHead.some) (h₂ := hInput)
     -- hcy : MEqRed Γ s c y; hxy : MEqRed Γ s x y.
     obtain ⟨t₃, hyT₃, hT₂T₃⟩ := ihC hcy
     refine ⟨t₃, ?_, hT₂T₃⟩
-    exact Relation.ReflTransGen.head hxy hyT₃
+    exact Relation.ReflTransGen.head ⟨hxy⟩ hyT₃
 
 /-- Star-vs-star diamond on `MEqRedStar`. By `head_induction_on` on the
 first chain, applying `diamond_step_eqStar` at each head step. -/
@@ -130,9 +144,9 @@ theorem diamond_eqStar_eqStar
   · -- refl case: a = t₁. Given any star : t₁ →* z, close trivially.
     intro z hStar
     exact ⟨z, hStar, Relation.ReflTransGen.refl⟩
-  · -- head case.
+  · -- head case: hHead : MEqRedJ a c (Prop wrap of MEqRed).
     intro a c hHead hTailStar ihC z hInputStar
-    obtain ⟨y, hcy, hzy⟩ := diamond_step_eqStar hHead hInputStar
+    obtain ⟨y, hcy, hzy⟩ := diamond_step_eqStar hHead.some hInputStar
     obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
     refine ⟨t₃, hT₁T₃, ?_⟩
     exact Relation.ReflTransGen.trans hzy hyT₃
@@ -145,31 +159,34 @@ then `MSubRedStar` × single `MEqRed`, and finally
 
 /-- Strong commutativity at (single MSubRed, MEqRedStar). By
 `head_induction_on` on the equiv chain, applying single-step Lemma 1 at
-each head step. -/
+each head step.
+
+The closing right edge is now wrapped in `MSubRedJ` (Nonempty) since
+`MSubRed` is `Type`-valued and we keep the Prop conclusion with `∃/∧`. -/
 theorem commute_subStep_eqStar
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (hsub : MSubRed Γ s t₀ t₁)
     (heqs : MEqRedStar Γ s t₀ t₂) :
-    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRed Γ s t₂ t₃ := by
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
   suffices key : ∀ {a : Term} (h : MEqRedStar Γ s a t₂),
       ∀ {x : Term}, MSubRed Γ s a x →
-        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MSubRed Γ s t₂ t₃ from
+        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MSubRedJ Γ s t₂ t₃ from
     key heqs hsub
   intro a h
   refine Relation.ReflTransGen.head_induction_on (b := t₂)
     (P := fun a (_ : MEqRedStar Γ s a t₂) =>
       ∀ {x : Term}, MSubRed Γ s a x →
-        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MSubRed Γ s t₂ t₃) h ?_ ?_
+        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MSubRedJ Γ s t₂ t₃) h ?_ ?_
   · -- refl: a = t₂. Given input : MSubRed Γ s t₂ x, take t₃ = x.
     intro x hsub
-    exact ⟨x, Relation.ReflTransGen.refl, hsub⟩
-  · -- head: hHead : MEqRed Γ s a c, ihC at c.
+    exact ⟨x, Relation.ReflTransGen.refl, ⟨hsub⟩⟩
+  · -- head: hHead : MEqRedJ Γ s a c, ihC at c.
     intro a c hHead hTailStar ihC x hInput
     obtain ⟨y, hxy, hcy⟩ :=
-      Lemma_1_StrongCommutativity_sameCtx hInput hHead
+      Lemma_1_StrongCommutativity_sameCtx hInput hHead.some
     obtain ⟨t₃, hyT₃, hT₂T₃⟩ := ihC hcy
     refine ⟨t₃, ?_, hT₂T₃⟩
-    exact Relation.ReflTransGen.head hxy hyT₃
+    exact Relation.ReflTransGen.head ⟨hxy⟩ hyT₃
 
 /-- Strong commutativity at (single MSubRed, MEqRedStar) — variant returning
 a closing edge that is itself a single MSubRed step on the right. The
@@ -181,7 +198,7 @@ theorem commute_subStep_eqStar_star
     (heqs : MEqRedStar Γ s t₀ t₂) :
     ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
   obtain ⟨t₃, h1, h2⟩ := commute_subStep_eqStar hsub heqs
-  exact ⟨t₃, h1, MSubRedStar.single h2⟩
+  exact ⟨t₃, h1, MSubRedStar.singleJ h2⟩
 
 /-- Strong commutativity at (MSubRedStar, MEqRedStar). By
 `head_induction_on` on the sub chain, applying `commute_subStep_eqStar`
@@ -203,9 +220,9 @@ theorem commute_subStar_eqStar
   · -- refl: a = t₁. Given heqs : MEqRedStar Γ s t₁ z, close with t₃ = z.
     intro z heqs
     exact ⟨z, heqs, Relation.ReflTransGen.refl⟩
-  · -- head: hHead : MSubRed a c, hTailStar : c →* t₁, ihC at c.
+  · -- head: hHead : MSubRedJ a c, hTailStar : c →* t₁, ihC at c.
     intro a c hHead hTailStar ihC z hEqStar
-    obtain ⟨y, hcy, hzy⟩ := commute_subStep_eqStar_star hHead hEqStar
+    obtain ⟨y, hcy, hzy⟩ := commute_subStep_eqStar_star hHead.some hEqStar
     obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
     refine ⟨t₃, hT₁T₃, ?_⟩
     exact Relation.ReflTransGen.trans hzy hyT₃

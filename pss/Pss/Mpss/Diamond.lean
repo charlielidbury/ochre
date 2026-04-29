@@ -99,8 +99,12 @@ extended context `Γ; s` and any locally-closed in-scope term `u`,
 `Γ; s ⊢ u ⟶^≡ u`.
 
 This is a direct re-export of `MEqRed.refl` from `Pss.Mpss.Substitution`,
-exposed at this module under the paper's name. -/
-theorem Proposition_18_ReflexivityMEqRed
+exposed at this module under the paper's name.
+
+Returns the bare Type-valued derivation; converted from `theorem` to
+`noncomputable def` because `MEqRed` is `Type`-valued and the underlying
+`MEqRed.refl` uses `Classical.choice`. -/
+noncomputable def Proposition_18_ReflexivityMEqRed
     {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
     MEqRed Γ s u u :=
@@ -108,17 +112,17 @@ theorem Proposition_18_ReflexivityMEqRed
 
 /-- **Proposition 18 (Reflexivity, subtyping half).** Same statement, for
 `⟶^≤`. Follows by `Ms-Equ` from the equivalence half. -/
-theorem Proposition_18_ReflexivityMSubRed
+noncomputable def Proposition_18_ReflexivityMSubRed
     {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
     MSubRed Γ s u u :=
   MSubRed.equ hpv (Proposition_18_ReflexivityMEqRed hpv hLC hfv)
 
 /-- **Proposition 18 (Reflexivity, combined).** Both halves. -/
-theorem Proposition_18_Reflexivity
+noncomputable def Proposition_18_Reflexivity
     {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
-    MEqRed Γ s u u ∧ MSubRed Γ s u u :=
+    MEqRed Γ s u u × MSubRed Γ s u u :=
   ⟨Proposition_18_ReflexivityMEqRed hpv hLC hfv,
    Proposition_18_ReflexivityMSubRed hpv hLC hfv⟩
 
@@ -151,13 +155,13 @@ same free variable `y`, looking up the same `equBinds y α`. The IH
 closes the inner sub-derivations of `α ⟶ α₁` vs `α ⟶ α₂` directly:
 applying `ihα₁` to `hα₂` produces the common reduct `t₃` such that
 `α₁ ⟶ t₃` and `α₂ ⟶ t₃`, which is exactly the conclusion. -/
-private theorem Lemma_2_inline_pro_pro
+private noncomputable def Lemma_2_inline_pro_pro
     {Γ : Ctx} {s : Stack} {y : String} {α α₁ α₂ : Term}
     (_hpv₁ _hpv₂ : PrevalidExt Γ s) (_heq : Γ.equBinds y α)
     (_hα₁ : MEqRed Γ s α α₁) (hα₂ : MEqRed Γ s α α₂)
     (ihα₁ : ∀ {t₂' : Term}, MEqRed Γ s α t₂' →
-      ∃ (t₃ : Term), MEqRed Γ s α₁ t₃ ∧ MEqRed Γ s t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s α₁ t₃ ∧ MEqRed Γ s α₂ t₃ :=
+      Σ' (t₃ : Term), MEqRed Γ s α₁ t₃ × MEqRed Γ s t₂' t₃) :
+    Σ' (t₃ : Term), MEqRed Γ s α₁ t₃ × MEqRed Γ s α₂ t₃ :=
   ihα₁ hα₂
 
 /-! #### Why the App × Bet, App × App, Bet × App, Bet × Bet arms remain axiomatized
@@ -212,25 +216,25 @@ private axiom Lemma_2_inline_app_residual_axiom
     (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
     (h₂ : MEqRed Γ s (.app u v) t₂)
     (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
-      ∃ (t₃ : Term), MEqRed Γ (v :: s) u' t₃ ∧ MEqRed Γ (v :: s) t₂' t₃)
+      Σ' (t₃ : Term), MEqRed Γ (v :: s) u' t₃ × MEqRed Γ (v :: s) t₂' t₃)
     (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
-      ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s (.app u' v') t₃ ∧ MEqRed Γ s t₂ t₃
+      Σ' (t₃ : Term), MEqRed Γ [] v' t₃ × MEqRed Γ [] t₂' t₃) :
+    Σ' (t₃ : Term), MEqRed Γ s (.app u' v') t₃ × MEqRed Γ s t₂ t₃
 
 /-- Inline residual (DISCHARGED, partial): `Me-App` on the LHS, any rule
 on the RHS. App × TAp dispatches directly via the IHs (the `tAp`
 constructor's vacuous-source check forces the operator to be `.top`,
 which has only a single trivial inner derivation). App × App and
 App × Bet are delegated to the residual axiom. -/
-private theorem Lemma_2_inline_app
+private noncomputable def Lemma_2_inline_app
     {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
     (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
     (h₂ : MEqRed Γ s (.app u v) t₂)
     (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
-      ∃ (t₃ : Term), MEqRed Γ (v :: s) u' t₃ ∧ MEqRed Γ (v :: s) t₂' t₃)
+      Σ' (t₃ : Term), MEqRed Γ (v :: s) u' t₃ × MEqRed Γ (v :: s) t₂' t₃)
     (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
-      ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s (.app u' v') t₃ ∧ MEqRed Γ s t₂ t₃ := by
+      Σ' (t₃ : Term), MEqRed Γ [] v' t₃ × MEqRed Γ [] t₂' t₃) :
+    Σ' (t₃ : Term), MEqRed Γ s (.app u' v') t₃ × MEqRed Γ s t₂ t₃ := by
   cases h₂ with
   | @tAp _ _ _ hpv hLCv hfvv =>
     -- App × TAp: t₀ = .app .top v. Cases on `hu : MEqRed Γ (v::s) .top u'`:
@@ -263,16 +267,16 @@ private axiom Lemma_2_inline_bet_residual_axiom
     (hv : MEqRed Γ [] v v')
     (h₂ : MEqRed Γ s (.app (.abs t body) v) t₂)
     (ihbody : ∀ y (_hy : y ∉ L) {t₂' : Term}, MEqRed Γ s (body^[y]) t₂' →
-      ∃ (t₃ : Term), MEqRed Γ s (body'^[y]) t₃ ∧ MEqRed Γ s t₂' t₃)
+      Σ' (t₃ : Term), MEqRed Γ s (body'^[y]) t₃ × MEqRed Γ s t₂' t₃)
     (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
-      ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s (Term.opening v' body') t₃ ∧ MEqRed Γ s t₂ t₃
+      Σ' (t₃ : Term), MEqRed Γ [] v' t₃ × MEqRed Γ [] t₂' t₃) :
+    Σ' (t₃ : Term), MEqRed Γ s (Term.opening v' body') t₃ × MEqRed Γ s t₂ t₃
 
 /-- Inline residual (vacuous-Bet × TAp + delegate Bet × {App, Bet}):
 the Bet × TAp arm cannot occur (sources `.app (.abs t body) v` and
 `.app .top u` differ in their `.app`-head), so case-analysis on `h₂`
 exposes only the dispatched arms. -/
-private theorem Lemma_2_inline_bet
+private noncomputable def Lemma_2_inline_bet
     {Γ : Ctx} {s : Stack} {t v v' body body' : Term} {L : Finset String}
     {t₂ : Term}
     (hLCt : Term.LC t)
@@ -280,20 +284,20 @@ private theorem Lemma_2_inline_bet
     (hv : MEqRed Γ [] v v')
     (h₂ : MEqRed Γ s (.app (.abs t body) v) t₂)
     (ihbody : ∀ y (_hy : y ∉ L) {t₂' : Term}, MEqRed Γ s (body^[y]) t₂' →
-      ∃ (t₃ : Term), MEqRed Γ s (body'^[y]) t₃ ∧ MEqRed Γ s t₂' t₃)
+      Σ' (t₃ : Term), MEqRed Γ s (body'^[y]) t₃ × MEqRed Γ s t₂' t₃)
     (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
-      ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s (Term.opening v' body') t₃ ∧ MEqRed Γ s t₂ t₃ :=
+      Σ' (t₃ : Term), MEqRed Γ [] v' t₃ × MEqRed Γ [] t₂' t₃) :
+    Σ' (t₃ : Term), MEqRed Γ s (Term.opening v' body') t₃ × MEqRed Γ s t₂ t₃ :=
   Lemma_2_inline_bet_residual_axiom hLCt hbody hv h₂ ihbody ihv
 
 /-- Inline residual (DISCHARGED): `Me-TAp` on the LHS, anything (TAp/App
 on `.app .top u` shape) on the RHS. The `bet` constructor is vacuous
 because `Top` is not an `.abs`. -/
-private theorem Lemma_2_inline_tAp
+private noncomputable def Lemma_2_inline_tAp
     {Γ : Ctx} {s : Stack} {u : Term} {t₂ : Term}
     (hpv : PrevalidExt Γ s) (_hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom)
     (h₂ : MEqRed Γ s (.app .top u) t₂) :
-    ∃ (t₃ : Term), MEqRed Γ s .top t₃ ∧ MEqRed Γ s t₂ t₃ := by
+    Σ' (t₃ : Term), MEqRed Γ s .top t₃ × MEqRed Γ s t₂ t₃ := by
   cases h₂ with
   | @app _ _ _ uDst _ vDst hu hv =>
     have hLCvDst : Term.LC vDst := MEqRed.lc_right hv
@@ -316,14 +320,14 @@ private axiom Lemma_2_inline_fun_fun
     (hbody₂ : ∀ y, y ∉ L₂ →
       MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body₂^[y]))
     (iht : ∀ {t₂'' : Term}, MEqRed Γ [] t t₂'' →
-      ∃ (t₃ : Term), MEqRed Γ [] t₁' t₃ ∧ MEqRed Γ [] t₂'' t₃)
+      Σ' (t₃ : Term), MEqRed Γ [] t₁' t₃ × MEqRed Γ [] t₂'' t₃)
     (ihbody : ∀ y (_hy : y ∉ L₁) {body₂' : Term},
       MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) body₂' →
-      ∃ (t₃ : Term),
-        MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body₁^[y]) t₃ ∧
+      Σ' (t₃ : Term),
+        MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body₁^[y]) t₃ ×
         MEqRed (⟨y, t, .sub⟩ :: Γ) [] body₂' t₃) :
-    ∃ (t₃ : Term),
-      MEqRed Γ [] (.abs t₁' body₁) t₃ ∧ MEqRed Γ [] (.abs t₂' body₂) t₃
+    Σ' (t₃ : Term),
+      MEqRed Γ [] (.abs t₁' body₁) t₃ × MEqRed Γ [] (.abs t₂' body₂) t₃
 
 /-- Inline residual: both derivations are `Me-FOp`. Cofinite body-IH at
 a fresh name with `.equ` binding, plus annotation-IH. -/
@@ -336,14 +340,14 @@ private axiom Lemma_2_inline_fOp_fOp
     (hbody₂ : ∀ y, y ∉ L₂ →
       MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body₂^[y]))
     (iht : ∀ {t₂'' : Term}, MEqRed Γ [] t t₂'' →
-      ∃ (t₃ : Term), MEqRed Γ [] t₁' t₃ ∧ MEqRed Γ [] t₂'' t₃)
+      Σ' (t₃ : Term), MEqRed Γ [] t₁' t₃ × MEqRed Γ [] t₂'' t₃)
     (ihbody : ∀ y (_hy : y ∉ L₁) {body₂' : Term},
       MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) body₂' →
-      ∃ (t₃ : Term),
-        MEqRed (⟨y, α, .equ⟩ :: Γ) s (body₁^[y]) t₃ ∧
+      Σ' (t₃ : Term),
+        MEqRed (⟨y, α, .equ⟩ :: Γ) s (body₁^[y]) t₃ ×
         MEqRed (⟨y, α, .equ⟩ :: Γ) s body₂' t₃) :
-    ∃ (t₃ : Term),
-      MEqRed Γ (α :: s) (.abs t₁' body₁) t₃ ∧
+    Σ' (t₃ : Term),
+      MEqRed Γ (α :: s) (.abs t₁' body₁) t₃ ×
       MEqRed Γ (α :: s) (.abs t₂' body₂) t₃
 
 /-! ### §3.2 Same-context core lemma -/
@@ -351,12 +355,15 @@ private axiom Lemma_2_inline_fOp_fOp
 /-- **Same-context Lemma 2 (core).** Diamond property of `MEqRed` at a
 single extended context. Proved by induction on `h₁`, with the `t₂`
 index generalized so each constructor case has access to the structural
-IH of its own sub-derivations against an arbitrary `t₂`. -/
-theorem Lemma_2_DiamondMEqRed_core
+IH of its own sub-derivations against an arbitrary `t₂`.
+
+Returns a `Σ'` (Type-valued sigma) since `MEqRed` is `Type`-valued and
+`∃` requires a `Prop`-valued body. -/
+noncomputable def Lemma_2_DiamondMEqRed_core
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ s t₀ t₁)
     (h₂ : MEqRed Γ s t₀ t₂) :
-    ∃ (t₃ : Term), MEqRed Γ s t₁ t₃ ∧ MEqRed Γ s t₂ t₃ := by
+    Σ' (t₃ : Term), MEqRed Γ s t₁ t₃ × MEqRed Γ s t₂ t₃ := by
   induction h₁ generalizing t₂ with
   | @pro Γ s yvr aLkup α' hpv₁ heq₁ hα₁ ihα₁ =>
     cases h₂ with
@@ -417,21 +424,22 @@ private axiom Lemma_2_DiamondMEqRed_ctx_axiom
     (hCt₁ : ExtCtxRedStar (Γ₀, s₀) (Γ₁, s₁))
     (hCt₂ : ExtCtxRedStar (Γ₀, s₀) (Γ₂, s₂))
     {t₃ : Term} (h₁'₀ : MEqRed Γ₀ s₀ t₁ t₃) (h₂'₀ : MEqRed Γ₀ s₀ t₂ t₃) :
-    ∃ (t₃' : Term), MEqRed Γ₁ s₁ t₁ t₃' ∧ MEqRed Γ₂ s₂ t₂ t₃'
+    Σ' (t₃' : Term), MEqRed Γ₁ s₁ t₁ t₃' × MEqRed Γ₂ s₂ t₂ t₃'
 
 /-- **Lemma 2** (Pasquale & García-Pérez 2024 §3, Diamond property of
 `⟶^≡`).
 
-Status: **THEOREM** (modulo per-case private inline axioms in §3.1
-and the context-evolution lift in §3.3). -/
-theorem Lemma_2_DiamondMEqRed
+Status: **DEF** (modulo per-case private inline axioms in §3.1 and the
+context-evolution lift in §3.3). Returns `Σ'` since `MEqRed` is now
+`Type`-valued. -/
+noncomputable def Lemma_2_DiamondMEqRed
     {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ₀ s₀ t₀ t₁)
     (h₂ : MEqRed Γ₀ s₀ t₀ t₂)
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
     (hCt₁ : ExtCtxRedStar (Γ₀, s₀) (Γ₁, s₁))
     (hCt₂ : ExtCtxRedStar (Γ₀, s₀) (Γ₂, s₂)) :
-    ∃ (t₃ : Term), MEqRed Γ₁ s₁ t₁ t₃ ∧ MEqRed Γ₂ s₂ t₂ t₃ := by
+    Σ' (t₃ : Term), MEqRed Γ₁ s₁ t₁ t₃ × MEqRed Γ₂ s₂ t₂ t₃ := by
   obtain ⟨t₃, h₁'₀, h₂'₀⟩ := Lemma_2_DiamondMEqRed_core h₁ h₂
   exact Lemma_2_DiamondMEqRed_ctx_axiom hCt₁ hCt₂ h₁'₀ h₂'₀
 
@@ -442,14 +450,14 @@ side-condition clause has been dropped); kept as a name-compatible
 alias for downstream consumers. -/
 
 /-- Bare-existence corollary of `Lemma_2_DiamondMEqRed`. -/
-theorem Lemma_2_DiamondMEqRed_bare
+noncomputable def Lemma_2_DiamondMEqRed_bare
     {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ₀ s₀ t₀ t₁)
     (h₂ : MEqRed Γ₀ s₀ t₀ t₂)
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
     (hCt₁ : ExtCtxRedStar (Γ₀, s₀) (Γ₁, s₁))
     (hCt₂ : ExtCtxRedStar (Γ₀, s₀) (Γ₂, s₂)) :
-    ∃ t₃, MEqRed Γ₁ s₁ t₁ t₃ ∧ MEqRed Γ₂ s₂ t₂ t₃ :=
+    Σ' t₃, MEqRed Γ₁ s₁ t₁ t₃ × MEqRed Γ₂ s₂ t₂ t₃ :=
   Lemma_2_DiamondMEqRed h₁ h₂ hCt₁ hCt₂
 
 /-! ## §5. Same-context corollary
@@ -459,11 +467,11 @@ The most common application of Lemma 2 takes `Γ₁; s₁ = Γ₂; s₂ = Γ₀;
 sense. -/
 
 /-- The diamond property of `MEqRed` at a single extended context. -/
-theorem Lemma_2_DiamondMEqRed_sameCtx
+noncomputable def Lemma_2_DiamondMEqRed_sameCtx
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ s t₀ t₁)
     (h₂ : MEqRed Γ s t₀ t₂) :
-    ∃ t₃, MEqRed Γ s t₁ t₃ ∧ MEqRed Γ s t₂ t₃ :=
+    Σ' t₃, MEqRed Γ s t₁ t₃ × MEqRed Γ s t₂ t₃ :=
   Lemma_2_DiamondMEqRed_bare h₁ h₂
     (Relation.ReflTransGen.refl) (Relation.ReflTransGen.refl)
 

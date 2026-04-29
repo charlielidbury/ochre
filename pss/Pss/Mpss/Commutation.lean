@@ -205,8 +205,8 @@ axiom Lemma_1_StrongCommutativity
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
     (hCt₁ : ExtCtxRedStar (Γ₀, s₀) (Γ₁, s₁))
     (hCt₂ : ExtCtxRedStar (Γ₀, s₀) (Γ₂, s₂)) :
-    ∃ t₃,
-      MEqRed  Γ₁ s₁ t₁ t₃ ∧
+    Σ' t₃,
+      MEqRed  Γ₁ s₁ t₁ t₃ ×
       MSubRed Γ₂ s₂ t₂ t₃
 
 /-! ## §2. Same-context corollary
@@ -217,11 +217,11 @@ form. Used by `TransitivityElim`. -/
 
 /-- Same-context corollary: take `Γ₁; s₁ = Γ₂; s₂ = Γ₀; s₀` (no
 context evolution). -/
-theorem Lemma_1_StrongCommutativity_sameCtx
+noncomputable def Lemma_1_StrongCommutativity_sameCtx
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (hsub : MSubRed Γ s t₀ t₁)
     (heq  : MEqRed  Γ s t₀ t₂) :
-    ∃ t₃, MEqRed Γ s t₁ t₃ ∧ MSubRed Γ s t₂ t₃ :=
+    Σ' t₃, MEqRed Γ s t₁ t₃ × MSubRed Γ s t₂ t₃ :=
   Lemma_1_StrongCommutativity hsub heq
     Relation.ReflTransGen.refl Relation.ReflTransGen.refl
 
@@ -246,12 +246,12 @@ When the subtype side is `Ms-Top`, the right closing edge is also
 /-- **Sub-case `top × *`** (paper p. 17 "If the vertical edge is
 Ms-Top..."): the closing top edge is `Me-Top` and the closing right
 edge is `Ms-Top`. Fully discharged. -/
-theorem Lemma_1_case_top
+def Lemma_1_case_top
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack} {t₂ : Term}
     (hpv₁ : PrevalidExt Γ₁ s₁) (hpv₂ : PrevalidExt Γ₂ s₂)
     (hLCt₂ : Term.LC t₂)
     (hfv₂ : Term.fv t₂ ⊆ Γ₂.dom) :
-    ∃ t₃, MEqRed Γ₁ s₁ Term.top t₃ ∧ MSubRed Γ₂ s₂ t₂ t₃ :=
+    Σ' t₃, MEqRed Γ₁ s₁ Term.top t₃ × MSubRed Γ₂ s₂ t₂ t₃ :=
   -- Take t₃ = Top. The top edge is Me-Top in Γ₁; s₁; the right edge
   -- is Ms-Top of t₂ in Γ₂; s₂.
   ⟨.top, MEqRed.top hpv₁, MSubRed.top hpv₂ hLCt₂ hfv₂⟩

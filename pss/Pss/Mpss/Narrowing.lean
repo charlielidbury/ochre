@@ -248,7 +248,7 @@ when narrowing the head's `.sub` entry (the head is `.sub`, so `equBinds x`
 returns `none` from the head; `Γ₂` lookups go through `_equBinds_narrow`).
 -/
 
-theorem Lemma_25_NarrowingMEqRed
+noncomputable def Lemma_25_NarrowingMEqRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
     (hLCt : Term.LC t)

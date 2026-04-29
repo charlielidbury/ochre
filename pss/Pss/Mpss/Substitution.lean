@@ -206,13 +206,18 @@ theorem Lemma_28_SubstPreservesPrevalid
 
 /-! ## §7. Reflexivity of `MEqRed` (Proposition 18, partial) -/
 
-/-- **Proposition 18 (MEqRed half).** Reflexivity of MPSS equivalence reduction. -/
-theorem MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
+/-- **Proposition 18 (MEqRed half).** Reflexivity of MPSS equivalence reduction.
+
+Returns `MEqRedJ` (Prop-wrapped) since the proof inducts on the
+Prop-valued `Term.LC u` predicate, which cannot eliminate into a
+Type-valued conclusion. Callers that need the bare Type-valued
+derivation can use `(MEqRed.refl …).some`. -/
+theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
     (hpv : PrevalidExt Γ st) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
-    MEqRed Γ st u u := by
+    MEqRedJ Γ st u u := by
   induction hLC generalizing st Γ with
-  | top => exact MEqRed.top hpv
-  | fvar x => exact MEqRed.var hpv
+  | top => exact ⟨MEqRed.top hpv⟩
+  | fvar x => exact ⟨MEqRed.var hpv⟩
   | @app a b hLCa hLCb iha ihb =>
     have hfa : Term.fv a ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inl hz)
@@ -220,82 +225,107 @@ theorem MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
     have hpvb : PrevalidExt Γ (b :: st) := PrevalidExt.cons hpv hLCb hfb
     have hpvnil : PrevalidExt Γ [] := PrevalidExt.nil (extractPrevalid hpv)
-    exact MEqRed.app (iha hpvb hfa) (ihb hpvnil hfb)
+    obtain ⟨ha⟩ := iha hpvb hfa
+    obtain ⟨hb⟩ := ihb hpvnil hfb
+    exact ⟨MEqRed.app ha hb⟩
   | @abs L bound body hLCbound hbody ihbound ihbody =>
     have hpvnil : PrevalidExt Γ [] := PrevalidExt.nil (extractPrevalid hpv)
     have hfb : Term.fv bound ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inl hz)
     have hfbody : Term.fv body ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
-    have hb_refl : MEqRed Γ [] bound bound := ihbound hpvnil hfb
+    obtain ⟨hb_refl⟩ : MEqRedJ Γ [] bound bound := ihbound hpvnil hfb
     cases st with
     | nil =>
-      refine MEqRed.fun_ (L ∪ Γ.dom) hb_refl ?_
-      intro y hy
-      have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
-      have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
-      have hpvy : Prevalid (⟨y, bound, .sub⟩ :: Γ) :=
-        Prevalid.sub (extractPrevalid hpv) hyΓ hfb hLCbound
-      have hpvey : PrevalidExt (⟨y, bound, .sub⟩ :: Γ) [] := PrevalidExt.nil hpvy
-      have hfvy : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, bound, .sub⟩ :: Γ) := by
-        intro z hz
-        have hsub := Term.fv_open_subset 0 (.fvar y) body
-        have hmem : z ∈ Term.fv body ∪ Term.fv (.fvar y) := hsub hz
-        rcases Finset.mem_union.mp hmem with h | h
-        · have hzΓ : z ∈ Γ.dom := hfbody h
-          have hdom_eq : Ctx.dom (⟨y, bound, .sub⟩ :: Γ) =
-              insert y Γ.dom := Ctx.dom_cons _ _
-          rw [hdom_eq]
-          exact Finset.mem_insert_of_mem hzΓ
-        · have hzy : z = y := by simpa [Term.fv] using h
-          subst hzy
-          have hdom_eq : Ctx.dom (⟨z, bound, .sub⟩ :: Γ) =
-              insert z Γ.dom := Ctx.dom_cons _ _
-          rw [hdom_eq]
-          exact Finset.mem_insert_self _ _
-      exact ihbody y hyL hpvey hfvy
-    | cons α tail =>
-      cases hpv with
-      | cons hpvr hLCα hfvα =>
-        refine MEqRed.fOp (L ∪ Γ.dom) hb_refl ?_
+      classical
+      -- Build the cofinite witness: at each fresh `y`, get a Type-level
+      -- MEqRed for the opened body. We collect via Classical.choice.
+      have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
+          Nonempty (MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y])) := by
         intro y hy
         have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
         have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
-        have hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ) :=
-          Prevalid.equ (extractPrevalid hpvr) hyΓ hfvα hLCα
-        have hpvey : PrevalidExt (⟨y, α, .equ⟩ :: Γ) tail := by
-          have aux : ∀ {st : Stack}, PrevalidExt Γ st →
-              PrevalidExt (⟨y, α, .equ⟩ :: Γ) st := by
-            intro st hst
-            induction hst with
-            | nil _ => exact PrevalidExt.nil hpvy
-            | @cons _ β hpvE hLCβ hfvβ ih =>
-              refine PrevalidExt.cons ih hLCβ ?_
-              intro z hz
-              have hzΓ : z ∈ Γ.dom := hfvβ hz
-              have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
-                  insert y Γ.dom := Ctx.dom_cons _ _
-              show z ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ)
-              rw [hdom_eq]
-              exact Finset.mem_insert_of_mem hzΓ
-          exact aux hpvr
-        have hfvy : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, α, .equ⟩ :: Γ) := by
+        have hpvy : Prevalid (⟨y, bound, .sub⟩ :: Γ) :=
+          Prevalid.sub (extractPrevalid hpv) hyΓ hfb hLCbound
+        have hpvey : PrevalidExt (⟨y, bound, .sub⟩ :: Γ) [] := PrevalidExt.nil hpvy
+        have hfvy : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, bound, .sub⟩ :: Γ) := by
           intro z hz
           have hsub := Term.fv_open_subset 0 (.fvar y) body
           have hmem : z ∈ Term.fv body ∪ Term.fv (.fvar y) := hsub hz
           rcases Finset.mem_union.mp hmem with h | h
           · have hzΓ : z ∈ Γ.dom := hfbody h
-            have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
+            have hdom_eq : Ctx.dom (⟨y, bound, .sub⟩ :: Γ) =
                 insert y Γ.dom := Ctx.dom_cons _ _
             rw [hdom_eq]
             exact Finset.mem_insert_of_mem hzΓ
           · have hzy : z = y := by simpa [Term.fv] using h
             subst hzy
-            have hdom_eq : Ctx.dom (⟨z, α, .equ⟩ :: Γ) =
+            have hdom_eq : Ctx.dom (⟨z, bound, .sub⟩ :: Γ) =
                 insert z Γ.dom := Ctx.dom_cons _ _
             rw [hdom_eq]
             exact Finset.mem_insert_self _ _
         exact ihbody y hyL hpvey hfvy
+      have hbody_choice : ∀ y, y ∉ (L ∪ Γ.dom) →
+          MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y]) :=
+        fun y hy => (hbody_each y hy).some
+      exact ⟨MEqRed.fun_ (L ∪ Γ.dom) hb_refl hbody_choice⟩
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        classical
+        have hpvey_aux : ∀ {st : Stack} (y : String) (_hyΓ : y ∉ Γ.dom),
+            PrevalidExt Γ st →
+            Prevalid (⟨y, α, .equ⟩ :: Γ) →
+            PrevalidExt (⟨y, α, .equ⟩ :: Γ) st := by
+          intro st y _hyΓ hst hpvy
+          induction hst with
+          | nil _ => exact PrevalidExt.nil hpvy
+          | @cons _ β hpvE hLCβ hfvβ ih =>
+            refine PrevalidExt.cons ih hLCβ ?_
+            intro z hz
+            have hzΓ : z ∈ Γ.dom := hfvβ hz
+            have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
+                insert y Γ.dom := Ctx.dom_cons _ _
+            show z ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ)
+            rw [hdom_eq]
+            exact Finset.mem_insert_of_mem hzΓ
+        have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
+            Nonempty (MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y])) := by
+          intro y hy
+          have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
+          have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
+          have hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ) :=
+            Prevalid.equ (extractPrevalid hpvr) hyΓ hfvα hLCα
+          have hpvey : PrevalidExt (⟨y, α, .equ⟩ :: Γ) tail :=
+            hpvey_aux y hyΓ hpvr hpvy
+          have hfvy : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, α, .equ⟩ :: Γ) := by
+            intro z hz
+            have hsub := Term.fv_open_subset 0 (.fvar y) body
+            have hmem : z ∈ Term.fv body ∪ Term.fv (.fvar y) := hsub hz
+            rcases Finset.mem_union.mp hmem with h | h
+            · have hzΓ : z ∈ Γ.dom := hfbody h
+              have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
+                  insert y Γ.dom := Ctx.dom_cons _ _
+              rw [hdom_eq]
+              exact Finset.mem_insert_of_mem hzΓ
+            · have hzy : z = y := by simpa [Term.fv] using h
+              subst hzy
+              have hdom_eq : Ctx.dom (⟨z, α, .equ⟩ :: Γ) =
+                  insert z Γ.dom := Ctx.dom_cons _ _
+              rw [hdom_eq]
+              exact Finset.mem_insert_self _ _
+          exact ihbody y hyL hpvey hfvy
+        have hbody_choice : ∀ y, y ∉ (L ∪ Γ.dom) →
+            MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y]) :=
+          fun y hy => (hbody_each y hy).some
+        exact ⟨MEqRed.fOp (L ∪ Γ.dom) hb_refl hbody_choice⟩
+
+/-- Type-valued accessor for `MEqRed.refl_J`. Uses choice to extract the
+underlying derivation tree from the `Nonempty`-wrapped result. -/
+noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
+    (hpv : PrevalidExt Γ st) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
+    MEqRed Γ st u u :=
+  (MEqRed.refl_J hpv hLC hfv).some
 
 /-! ## §8. Helper lemmas for Lemma 31 -/
 
@@ -536,7 +566,7 @@ Heaviest cases:
 * `Me-Fun`, `Me-FOp`, `Me-Bet`'s body — cofinite quantification with
   fresh `y` outside `{x} ∪ L ∪ dom ∪ fv s ∪ fv body ∪ fv body'`.
 -/
-theorem Lemma_31_ReductionUnderSubst_Eq
+noncomputable def Lemma_31_ReductionUnderSubst_Eq
     {Γ₁ Γ₂ : Ctx} {st : Stack} {x : String} {s t u v : Term}
     (h : MEqRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st u v)
     (hok : SubstOk Γ₁ s) :
@@ -710,7 +740,7 @@ preserves MPSS subtype reduction under a `.sub` head binding.
 
 5/6 cases proved directly; the `Ms-Pro y = x` arm uses
 `Lemma_30_msPro_x_axiom`. -/
-theorem Lemma_30_ReductionUnderSubst_Sub
+noncomputable def Lemma_30_ReductionUnderSubst_Sub
     {Γ₁ Γ₂ : Ctx} {st : Stack} {x : String} {s t u v : Term}
     (h : MSubRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st u v)
     (hok : SubstOk Γ₁ s) :
@@ -812,7 +842,7 @@ form needed for full commutation (substituting `v` on LHS and `v'` on
 RHS for some `v ⟶ v'`) is left to a future iteration; the restricted
 form below is the "diagonal" used by the reflexive part of the
 commutation diagram. -/
-theorem Lemma_32_ReductionUnderSubst_Eq_OfEqu
+noncomputable def Lemma_32_ReductionUnderSubst_Eq_OfEqu
     {Γ₁ Γ₂ : Ctx} {st : Stack} {x : String} {s v u u' : Term}
     (h : MEqRed (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁) st u u')
     (hok : SubstOk Γ₁ s)

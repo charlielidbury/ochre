@@ -318,8 +318,8 @@ theorem Theorem_5_Preservation
   have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
   have hLCt : Term.LC t := WfM.lc hwfT
   have hfvT : Term.fv t ⊆ Γ.dom := WfM.fv_subset hwfT
-  -- 4. Apply Proposition 17: get MEqRed Γ [] t t'.
-  have hMEq : MEqRed Γ [] t t' :=
+  -- 4. Apply Proposition 17: get MEqRed Γ [] t t' (Prop-wrapped, so `obtain`).
+  obtain ⟨hMEq⟩ : Nonempty (MEqRed Γ [] t t') :=
     Proposition_17_FromOperationalToEqRed hpvNil hLCt hfvT hstep
   -- 5. Build WSubM Γ t' t' via Ws-Rfl: needs WfM Γ t'.
   have hSubT' : WSubM Γ t' t' := WSubM.rfl hwfT'

@@ -46,7 +46,7 @@ Note: although the paper presents `MEqRed` and `MSubRed` together, only
 `MSubRed` actually depends on `MEqRed` (via `Ms-Equ`); `MEqRed` does not
 reference `MSubRed`. We exploit this and define `MEqRed` as a plain
 inductive, which gives us a single-motive eliminator for `induction`. -/
-inductive MEqRed : Ctx → Stack → Term → Term → Prop where
+inductive MEqRed : Ctx → Stack → Term → Term → Type where
   /-- **Me-Pro**: variable promotion under an `≡`-binding. If `x ≡ α ∈ Γ`
   and `α` reduces to `α'`, then `x` reduces to `α'`. -/
   | pro {Γ : Ctx} {s : Stack} {x : String} {α α' : Term} :
@@ -136,7 +136,7 @@ inductive MEqRed : Ctx → Stack → Term → Term → Prop where
 Figure 2 (bottom half). The only mutual link with `MEqRed` is via the
 `Ms-Equ` constructor, so we define `MSubRed` as a plain inductive that
 **references** `MEqRed`. -/
-inductive MSubRed : Ctx → Stack → Term → Term → Prop where
+inductive MSubRed : Ctx → Stack → Term → Term → Type where
   /-- **Ms-Pro**: variable promotion under a `≤`-binding. -/
   | pro {Γ : Ctx} {s : Stack} {x : String} {t : Term} :
       PrevalidExt Γ s →
@@ -199,13 +199,25 @@ inductive MSubRed : Ctx → Stack → Term → Term → Prop where
         MSubRed (⟨x, α, .equ⟩ :: Γ) s (body^[x]) (body'^[x])) →
       MSubRed Γ (α :: s) (.abs t body) (.abs t body')
 
-/-- Many-step equivalence reduction. -/
+/-- Prop-wrapped MPSS equivalence reduction. Used by callers that only
+need provability (not derivation-tree shape) — notably the reflexive
+transitive closure built via Mathlib's `Relation.ReflTransGen`, which is
+restricted to `Prop`-valued relations. -/
+def MEqRedJ (Γ : Ctx) (s : Stack) (u v : Term) : Prop :=
+  Nonempty (MEqRed Γ s u v)
+
+/-- Prop-wrapped MPSS subtype reduction. See `MEqRedJ`. -/
+def MSubRedJ (Γ : Ctx) (s : Stack) (u v : Term) : Prop :=
+  Nonempty (MSubRed Γ s u v)
+
+/-- Many-step equivalence reduction (reflexive-transitive closure of the
+Prop-wrapped single-step relation). -/
 abbrev MEqRedStar (Γ : Ctx) (s : Stack) : Term → Term → Prop :=
-  Relation.ReflTransGen (MEqRed Γ s)
+  Relation.ReflTransGen (MEqRedJ Γ s)
 
 /-- Many-step subtype reduction. -/
 abbrev MSubRedStar (Γ : Ctx) (s : Stack) : Term → Term → Prop :=
-  Relation.ReflTransGen (MSubRed Γ s)
+  Relation.ReflTransGen (MSubRedJ Γ s)
 
 /-! ## Local-closure preservation
 

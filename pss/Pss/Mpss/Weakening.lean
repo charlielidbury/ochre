@@ -317,7 +317,7 @@ the bridge `MEqRed.toScoped` provably reconstructs them under
 it in Wave 5 against the actual `Wf` judgment.
 -/
 
-inductive MEqRedScoped : Ctx → Stack → Term → Term → Prop where
+inductive MEqRedScoped : Ctx → Stack → Term → Term → Type where
   | pro {Γ : Ctx} {s : Stack} {x : String} {α α' : Term} :
       PrevalidExt Γ s → Γ.equBinds x α →
       MEqRedScoped Γ s α α' →
@@ -356,7 +356,7 @@ inductive MEqRedScoped : Ctx → Stack → Term → Term → Prop where
         MEqRedScoped (⟨x, α, .equ⟩ :: Γ) s (body^[x]) (body'^[x])) →
       MEqRedScoped Γ (α :: s) (.abs t body) (.abs t' body')
 
-inductive MSubRedScoped : Ctx → Stack → Term → Term → Prop where
+inductive MSubRedScoped : Ctx → Stack → Term → Term → Type where
   | pro {Γ : Ctx} {s : Stack} {x : String} {t : Term} :
       PrevalidExt Γ s → Γ.subBinds x t →
       MSubRedScoped Γ s (.fvar x) t
@@ -386,7 +386,7 @@ inductive MSubRedScoped : Ctx → Stack → Term → Term → Prop where
 
 /-! ## Bridge: scoped → unscoped (the trivial direction) -/
 
-theorem MEqRedScoped.toMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MEqRedScoped.toMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRedScoped Γ s u v) : MEqRed Γ s u v := by
   induction h with
   | pro hpv heq _ ih => exact MEqRed.pro hpv heq ih
@@ -401,7 +401,7 @@ theorem MEqRedScoped.toMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
   | @fOp Γ s t t' α body body' L _ _ _ _ _ iht ihbody =>
     exact MEqRed.fOp (L := L) iht ihbody
 
-theorem MSubRedScoped.toMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MSubRedScoped.toMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRedScoped Γ s u v) : MSubRed Γ s u v := by
   induction h with
   | pro hpv hb => exact MSubRed.pro hpv hb
@@ -446,7 +446,7 @@ Lemma 22 as a sub-lemma (only `MSubRed` references `MEqRed`). -/
 
 /-- Internal partitioned form: weakening for scoped MEqRed under a
 middle insertion. -/
-theorem Lemma_22_WeakeningMEqRedScoped_partitioned :
+noncomputable def Lemma_22_WeakeningMEqRedScoped_partitioned :
     ∀ {Γ : Ctx} {s : Stack} {u v : Term},
       MEqRedScoped Γ s u v →
       ∀ (Γ₁ Δ Γ₂ : Ctx), Γ = Γ₁ ++ Γ₂ →
@@ -543,7 +543,7 @@ theorem Lemma_22_WeakeningMEqRedScoped_partitioned :
 /-- **Lemma 22** (Weakening for `MEqRed`, partitioned form). The
 paper's statement, translated to our partitioned `CtxExtends`. Operates
 on the unscoped `MEqRed`; uses the `MEqRed.toScoped` bridge internally. -/
-theorem Lemma_22_WeakeningMEqRed {Γ₁ Δ Γ₂ : Ctx} {s : Stack} {u v : Term}
+noncomputable def Lemma_22_WeakeningMEqRed {Γ₁ Δ Γ₂ : Ctx} {s : Stack} {u v : Term}
     (hΓPv : Prevalid (Γ₁ ++ Γ₂))
     (hFvU : Term.fv u ⊆ (Γ₁ ++ Γ₂).dom)
     (hpv' : Prevalid (Γ₁ ++ Δ ++ Γ₂))
@@ -553,7 +553,7 @@ theorem Lemma_22_WeakeningMEqRed {Γ₁ Δ Γ₂ : Ctx} {s : Stack} {u v : Term}
     (MEqRed.toScoped hΓPv hFvU h) Γ₁ Δ Γ₂ rfl hpv').toMEqRed
 
 /-- "Append-on-top" form of Lemma 22 (paper's `Γ, Γ'`). -/
-theorem Lemma_22_WeakeningMEqRed_append {Γ Δ : Ctx} {s : Stack} {u v : Term}
+noncomputable def Lemma_22_WeakeningMEqRed_append {Γ Δ : Ctx} {s : Stack} {u v : Term}
     (hΓPv : Prevalid Γ)
     (hFvU : Term.fv u ⊆ Γ.dom)
     (hpv' : Prevalid (Δ ++ Γ))
@@ -573,7 +573,7 @@ Same shape as Lemma 22, by induction on the `MSubRed` derivation. The
 `Ms-Equ` arm calls into Lemma 22. -/
 
 /-- Internal partitioned form: weakening for scoped MSubRed. -/
-theorem Lemma_21_WeakeningMSubRedScoped_partitioned :
+noncomputable def Lemma_21_WeakeningMSubRedScoped_partitioned :
     ∀ {Γ : Ctx} {s : Stack} {u v : Term},
       MSubRedScoped Γ s u v →
       ∀ (Γ₁ Δ Γ₂ : Ctx), Γ = Γ₁ ++ Γ₂ →
@@ -651,7 +651,7 @@ theorem Lemma_21_WeakeningMSubRedScoped_partitioned :
     exact hres
 
 /-- **Lemma 21** (Weakening for `MSubRed`, partitioned form). -/
-theorem Lemma_21_WeakeningMSubRed {Γ₁ Δ Γ₂ : Ctx} {s : Stack} {u v : Term}
+noncomputable def Lemma_21_WeakeningMSubRed {Γ₁ Δ Γ₂ : Ctx} {s : Stack} {u v : Term}
     (hΓPv : Prevalid (Γ₁ ++ Γ₂))
     (hFvU : Term.fv u ⊆ (Γ₁ ++ Γ₂).dom)
     (hpv' : Prevalid (Γ₁ ++ Δ ++ Γ₂))
@@ -661,7 +661,7 @@ theorem Lemma_21_WeakeningMSubRed {Γ₁ Δ Γ₂ : Ctx} {s : Stack} {u v : Term
     (MSubRed.toScoped hΓPv hFvU h) Γ₁ Δ Γ₂ rfl hpv').toMSubRed
 
 /-- "Append-on-top" form of Lemma 21 (paper's `Γ, Γ'`). -/
-theorem Lemma_21_WeakeningMSubRed_append {Γ Δ : Ctx} {s : Stack} {u v : Term}
+noncomputable def Lemma_21_WeakeningMSubRed_append {Γ Δ : Ctx} {s : Stack} {u v : Term}
     (hΓPv : Prevalid Γ)
     (hFvU : Term.fv u ⊆ Γ.dom)
     (hpv' : Prevalid (Δ ++ Γ))
