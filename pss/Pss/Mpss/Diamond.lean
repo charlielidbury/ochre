@@ -58,26 +58,28 @@ a fallback if downstream proofs need a different shape.
 ## Case grid for `Lemma_2_DiamondMEqRed_core` (single-context form)
 
 The case grid is indexed by the shape of `t₀` (which determines which
-`MEqRed` constructors can possibly fire). The row enumerates `t₀`'s
-shape; columns are the cross-product `(h₁ rule × h₂ rule)`.
+`MEqRed` constructors can possibly fire). The proof is a single
+`induction h₁ generalizing t₂` block; each constructor case does an
+inner `cases h₂` and either discharges directly or dispatches to a
+narrow inline residual axiom whose signature receives the structural
+IH(s) of the outer induction.
 
 | t₀ shape    | (h₁ rule × h₂ rule)        | Status  | Notes                       |
 |-------------|----------------------------|---------|-----------------------------|
 | `.bvar k`   | (any × any)                | V       | impossible — no MEqRed constructor produces `.bvar` |
 | `.top`      | (Top × Top)                | P       | `t₃ := .top`, both `.top`    |
-|             | (Top × any other) / sym    | V       | only Me-Top fires on `.top`  |
 | `.fvar x`   | (Var × Var)                | P       | `t₃ := .fvar x`, both `.var` |
 |             | (Var × Pro)                | P       | `t₃ := α'`; refl + reuse Pro |
 |             | (Pro × Var)                | P       | symmetric                    |
-|             | (Pro × Pro)                | A       | `Lemma_2_case_Pro_Pro`       |
-| `.abs t b`  | (Fun × Fun) at empty stack | A       | `Lemma_2_case_Fun_Fun`       |
-|             | (FOp × FOp) at α::s stack  | A       | `Lemma_2_case_FOp_FOp`       |
-|             | other                      | V       | impossible by stack          |
-| `.app u v`  | (Bet × any) / sym          | A       | `Lemma_2_case_App` (covers all 9 sub-cells) |
-|             | (App × any) / sym          | A       | (same)                       |
-|             | (TAp × TAp)                | A       | (same; could be inlined)     |
+|             | (Pro × Pro)                | A       | `Lemma_2_inline_pro_pro` (IH-aware) |
+| `.abs t b`  | (Fun × Fun) at empty stack | A       | `Lemma_2_inline_fun_fun` (IH-aware) |
+|             | (FOp × FOp) at α::s stack  | A       | `Lemma_2_inline_fOp_fOp` (IH-aware) |
+| `.app u v`  | (TAp × TAp/App)            | T       | `Lemma_2_inline_tAp` (theorem) |
+|             | (App × Bet/App/TAp)        | A       | `Lemma_2_inline_app` (IH-aware) |
+|             | (Bet × Bet/App/TAp)        | A       | `Lemma_2_inline_bet` (IH-aware) |
 
-Legend: P = proved inline; A = narrow private case-axiom; V = vacuous.
+Legend: P = proved inline; T = inline real `theorem`; A = inline
+private axiom that consumes the outer-induction IH; V = vacuous.
 
 ## Context-evolution lifting
 
@@ -250,88 +252,204 @@ private axiom MEqRedAvoidsPro_proInv_propagate
     (hAv : MEqRedAvoidsPro x (MEqRed.pro hpv₁ heq hα)) :
     MEqRedAvoidsPro x (MEqRed.pro hpv₂ heq hα)
 
-/-! ### §3.1 Per-case private axioms
 
-These axioms capture the residual cases of the diamond proof that
-require either a body-IH at a fresh name (`Fun_Fun`, `FOp_FOp`),
-substitution-vs-reduction commutation (`Bet_Bet` and its mixes with
-`App`/`TAp`), or recursive case-grid descent (`Pro_Pro`). Each axiom
-states only the residual obligation it captures.
+/-! ### §3.1 Inline residual fallbacks (IH-aware)
 
-These are **per-case axioms**; the headline `Lemma_2_DiamondMEqRed`
-below is a real `theorem`. -/
+The hard cells of the diamond grid require recursive applications of
+the diamond property on syntactic sub-derivations. In the previous
+revision these were packaged as opaque `case-axioms` that re-implemented
+the recursion internally, which forfeited the structural-IH guarantees
+of an outer `induction`. The new presentation rewrites
+`Lemma_2_DiamondMEqRed_core` as ONE big `induction h₁` block, which
+gives each constructor case access to the structural IHs of its
+sub-derivations.
 
-/-- Residual case: both derivations are `Me-Pro` on the same free variable
-`x`, looking up the same `equBinds y α`. The two inner sub-derivations
-of `α ⟶ α'` and `α ⟶ α''` close (recursively) by the diamond property. -/
-private axiom Lemma_2_case_Pro_Pro
+A handful of cases still depend on machinery (cofinite body-IH lifting,
+substitution-vs-reduction commutation in `Bet × Bet`, etc.) that does
+not yet have a discharged form in this file. We capture each remaining
+case as an **inline `private axiom` whose signature receives the IH(s)
+of the outer induction as parameters**. This makes the residual
+obligation explicit and small: every axiom takes the structural IH it
+needs, so discharging it does not require recursive descent inside the
+axiom's own statement. -/
+
+/-- Inline residual: both derivations are `Me-Pro` on the same free
+variable `x`, looking up the same `equBinds y α`. The IH closes the
+inner sub-derivations of `α ⟶ α₁` vs `α ⟶ α₂` directly: the outer
+`Me-Pro` step is shared, so the joining edges live inside the inductive
+`α ⟶ ?` family.
+
+Discharge requires inversion on `MEqRedAvoidsPro x (MEqRed.pro hpv heq hα)`
+to extract the inner `MEqRedAvoidsPro x hα`. Lean's dependent `cases`
+struggles with the indexed `MEqRedAvoidsPro` family at this constructor
+shape; pending an `injection`-style inversion lemma in the supporting
+helper layer, we leave this as an inline axiom that consumes the IH. -/
+private axiom Lemma_2_inline_pro_pro
     {Γ : Ctx} {s : Stack} {y : String} {α α₁ α₂ : Term}
-    (hpv : PrevalidExt Γ s) (heq : Γ.equBinds y α)
-    (hα₁ : MEqRed Γ s α α₁) (hα₂ : MEqRed Γ s α α₂) :
+    (hpv₁ hpv₂ : PrevalidExt Γ s) (heq : Γ.equBinds y α)
+    (hα₁ : MEqRed Γ s α α₁) (hα₂ : MEqRed Γ s α α₂)
+    (ihα₁ : ∀ {t₂' : Term}, MEqRed Γ s α t₂' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ s α₁ t₃) (h₂' : MEqRed Γ s t₂' t₃),
+        ∀ x : String,
+          (MEqRedAvoidsPro x hα₁ → MEqRedAvoidsPro x h₂') ∧
+          (∀ (h₂'' : MEqRed Γ s α t₂'),
+            MEqRedAvoidsPro x h₂'' → MEqRedAvoidsPro x h₁')) :
     ∃ (t₃ : Term) (h₁' : MEqRed Γ s α₁ t₃) (h₂' : MEqRed Γ s α₂ t₃),
       ∀ x : String,
-        (MEqRedAvoidsPro x (MEqRed.pro hpv heq hα₁) →
+        (MEqRedAvoidsPro x (MEqRed.pro hpv₁ heq hα₁) →
           MEqRedAvoidsPro x h₂') ∧
-        (MEqRedAvoidsPro x (MEqRed.pro hpv heq hα₂) →
+        (MEqRedAvoidsPro x (MEqRed.pro hpv₂ heq hα₂) →
           MEqRedAvoidsPro x h₁')
 
-/-- Residual case: both derivations are `Me-Fun` (descent under abstraction
-at empty stack). The two body sub-derivations under fresh names close by
-the diamond at the extended context, and likewise the two annotation
-sub-derivations. The joining derivation is again a `Me-Fun`. -/
-private axiom Lemma_2_case_Fun_Fun
-    {Γ : Ctx} {t t₁ t₂ body body₁ body₂ : Term}
-    {L₁ L₂ : Finset String}
-    (ht₁ : MEqRed Γ [] t t₁) (ht₂ : MEqRed Γ [] t t₂)
+/-- Inline residual: `Me-Bet` on the LHS, anything on the RHS. The body
+and operand IHs from the outer induction close the recursion. -/
+private axiom Lemma_2_inline_bet
+    {Γ : Ctx} {s : Stack} {t v v' body body' : Term} {L : Finset String}
+    {t₂ : Term}
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hv : MEqRed Γ [] v v')
+    (h₂ : MEqRed Γ s (.app (.abs t body) v) t₂)
+    (ihbody : ∀ y (hy : y ∉ L) {t₂' : Term}, MEqRed Γ s (body^[y]) t₂' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ s (body'^[y]) t₃)
+        (h₂' : MEqRed Γ s t₂' t₃), True)
+    (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ [] v' t₃) (h₂' : MEqRed Γ [] t₂' t₃),
+        True) :
+    ∃ (t₃ : Term)
+      (h₁' : MEqRed Γ s (Term.opening v' body') t₃)
+      (h₂' : MEqRed Γ s t₂ t₃),
+      ∀ x : String,
+        (MEqRedAvoidsPro x (MEqRed.bet (L := L) hLCt hbody hv) →
+          MEqRedAvoidsPro x h₂') ∧
+        (MEqRedAvoidsPro x h₂ → MEqRedAvoidsPro x h₁')
+
+/-- Inline residual: `Me-App` on the LHS, anything (Bet/App/TAp) on the RHS. -/
+private axiom Lemma_2_inline_app
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
+    (h₂ : MEqRed Γ s (.app u v) t₂)
+    (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ (v :: s) u' t₃)
+        (h₂' : MEqRed Γ (v :: s) t₂' t₃), True)
+    (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ [] v' t₃) (h₂' : MEqRed Γ [] t₂' t₃),
+        True) :
+    ∃ (t₃ : Term)
+      (h₁' : MEqRed Γ s (.app u' v') t₃)
+      (h₂' : MEqRed Γ s t₂ t₃),
+      ∀ x : String,
+        (MEqRedAvoidsPro x (MEqRed.app hu hv) →
+          MEqRedAvoidsPro x h₂') ∧
+        (MEqRedAvoidsPro x h₂ → MEqRedAvoidsPro x h₁')
+
+/-- Inline residual (DISCHARGED): `Me-TAp` on the LHS, anything (TAp/App
+on `.app .top u` shape) on the RHS. The `bet` constructor is vacuous
+because `Top` is not an `.abs`. -/
+private theorem Lemma_2_inline_tAp
+    {Γ : Ctx} {s : Stack} {u : Term} {t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom)
+    (h₂ : MEqRed Γ s (.app .top u) t₂) :
+    ∃ (t₃ : Term)
+      (h₁' : MEqRed Γ s .top t₃)
+      (h₂' : MEqRed Γ s t₂ t₃),
+      ∀ x : String,
+        (MEqRedAvoidsPro x (MEqRed.tAp hpv hLCu hfvu) →
+          MEqRedAvoidsPro x h₂') ∧
+        (MEqRedAvoidsPro x h₂ → MEqRedAvoidsPro x h₁') := by
+  cases h₂ with
+  | @app _ _ _ uDst _ vDst hu hv =>
+    -- hu : MEqRed Γ (u :: s) .top uDst — only `top` fires on .top, so uDst = .top.
+    -- We just need to package the joining edge: t₃ := .top.
+    -- h₁' : MEqRed Γ s .top .top — by Me-Top with hpv.
+    -- h₂' : MEqRed Γ s (.app uDst vDst) .top — by Me-TAp.
+    -- For Me-TAp we need LC and fv ⊆ dom for vDst. These come from hv via
+    -- MEqRed.lc_right and MEqRed_fv_preserve.
+    have hLCuDst : Term.LC uDst := MEqRed.lc_right hu
+    have hLCvDst : Term.LC vDst := MEqRed.lc_right hv
+    have hfvvDst : Term.fv vDst ⊆ Γ.dom := MEqRed_fv_preserve hv hfvu
+    -- We also need uDst = .top. This follows by inversion on hu (only `top`
+    -- and `tAp` reduce .top, but tAp needs a stack head — here the stack is
+    -- (u :: s), so tAp could fire on `.top` if `.top = .app .top _`, no that
+    -- doesn't match either. So only `top` fires).
+    -- Actually `MEqRed Γ (u :: s) .top uDst`: cases on this.
+    cases hu with
+    | top hpvU =>
+      -- uDst = .top.
+      refine ⟨.top, MEqRed.top hpv, ?_, ?_⟩
+      · -- MEqRed Γ s (.app .top vDst) .top via Me-TAp.
+        exact MEqRed.tAp hpv hLCvDst hfvvDst
+      · intro x; refine ⟨?_, ?_⟩
+        · intro _hAv₁; exact .tAp hpv hLCvDst hfvvDst
+        · intro _hAv₂; exact .top hpv
+  | tAp hpv₂ hLCu' hfvu' =>
+    -- Both reduce to .top.
+    refine ⟨.top, MEqRed.top hpv, MEqRed.top hpv, ?_⟩
+    intro x; exact ⟨fun _ => .top hpv, fun _ => .top hpv⟩
+
+/-- Inline residual: both derivations are `Me-Fun`. Cofinite body-IH at
+a fresh name, plus annotation-IH. -/
+private axiom Lemma_2_inline_fun_fun
+    {Γ : Ctx} {t t₁' body body₁ body₂ : Term} {L₁ L₂ : Finset String}
+    {t₂' : Term}
+    (ht₁ : MEqRed Γ [] t t₁') (ht₂ : MEqRed Γ [] t t₂')
     (hbody₁ : ∀ y, y ∉ L₁ →
       MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body₁^[y]))
     (hbody₂ : ∀ y, y ∉ L₂ →
-      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body₂^[y])) :
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body₂^[y]))
+    (iht : ∀ {t₂'' : Term}, MEqRed Γ [] t t₂'' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ [] t₁' t₃) (h₂' : MEqRed Γ [] t₂'' t₃),
+        True)
+    (ihbody : ∀ y (hy : y ∉ L₁) {body₂' : Term},
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) body₂' →
+      ∃ (t₃ : Term)
+        (h₁' : MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body₁^[y]) t₃)
+        (h₂' : MEqRed (⟨y, t, .sub⟩ :: Γ) [] body₂' t₃), True) :
     ∃ (t₃ : Term)
-      (h₁' : MEqRed Γ [] (.abs t₁ body₁) t₃)
-      (h₂' : MEqRed Γ [] (.abs t₂ body₂) t₃),
+      (h₁' : MEqRed Γ [] (.abs t₁' body₁) t₃)
+      (h₂' : MEqRed Γ [] (.abs t₂' body₂) t₃),
       ∀ x : String,
         (MEqRedAvoidsPro x (MEqRed.fun_ (L := L₁) ht₁ hbody₁) →
           MEqRedAvoidsPro x h₂') ∧
         (MEqRedAvoidsPro x (MEqRed.fun_ (L := L₂) ht₂ hbody₂) →
           MEqRedAvoidsPro x h₁')
 
-/-- Residual case: both derivations are `Me-FOp` (descent under abstraction
-with the same head-of-stack popped as an `.equ` binding). -/
-private axiom Lemma_2_case_FOp_FOp
-    {Γ : Ctx} {s : Stack} {α t t₁ t₂ body body₁ body₂ : Term}
-    {L₁ L₂ : Finset String}
-    (ht₁ : MEqRed Γ [] t t₁) (ht₂ : MEqRed Γ [] t t₂)
+/-- Inline residual: both derivations are `Me-FOp`. Cofinite body-IH at
+a fresh name with `.equ` binding, plus annotation-IH. -/
+private axiom Lemma_2_inline_fOp_fOp
+    {Γ : Ctx} {s : Stack} {α t t₁' body body₁ body₂ : Term}
+    {L₁ L₂ : Finset String} {t₂' : Term}
+    (ht₁ : MEqRed Γ [] t t₁') (ht₂ : MEqRed Γ [] t t₂')
     (hbody₁ : ∀ y, y ∉ L₁ →
       MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body₁^[y]))
     (hbody₂ : ∀ y, y ∉ L₂ →
-      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body₂^[y])) :
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body₂^[y]))
+    (iht : ∀ {t₂'' : Term}, MEqRed Γ [] t t₂'' →
+      ∃ (t₃ : Term) (h₁' : MEqRed Γ [] t₁' t₃) (h₂' : MEqRed Γ [] t₂'' t₃),
+        True)
+    (ihbody : ∀ y (hy : y ∉ L₁) {body₂' : Term},
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) body₂' →
+      ∃ (t₃ : Term)
+        (h₁' : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body₁^[y]) t₃)
+        (h₂' : MEqRed (⟨y, α, .equ⟩ :: Γ) s body₂' t₃), True) :
     ∃ (t₃ : Term)
-      (h₁' : MEqRed Γ (α :: s) (.abs t₁ body₁) t₃)
-      (h₂' : MEqRed Γ (α :: s) (.abs t₂ body₂) t₃),
+      (h₁' : MEqRed Γ (α :: s) (.abs t₁' body₁) t₃)
+      (h₂' : MEqRed Γ (α :: s) (.abs t₂' body₂) t₃),
       ∀ x : String,
         (MEqRedAvoidsPro x (MEqRed.fOp (L := L₁) ht₁ hbody₁) →
           MEqRedAvoidsPro x h₂') ∧
         (MEqRedAvoidsPro x (MEqRed.fOp (L := L₂) ht₂ hbody₂) →
           MEqRedAvoidsPro x h₁')
 
-/-- Residual case: `t₀ = .app u v`. Both derivations fire on this
-application. We package all 9 sub-cells (Bet/App/TAp × Bet/App/TAp,
-modulo the syntactic constraints) into a single residual axiom. -/
-private axiom Lemma_2_case_App
-    {Γ : Ctx} {s : Stack} {u v t₁ t₂ : Term}
-    (h₁ : MEqRed Γ s (.app u v) t₁)
-    (h₂ : MEqRed Γ s (.app u v) t₂) :
-    ∃ (t₃ : Term) (h₁' : MEqRed Γ s t₁ t₃) (h₂' : MEqRed Γ s t₂ t₃),
-      ∀ x : String,
-        (MEqRedAvoidsPro x h₁ → MEqRedAvoidsPro x h₂') ∧
-        (MEqRedAvoidsPro x h₂ → MEqRedAvoidsPro x h₁')
-
 /-! ### §3.2 Same-context core lemma
 
 We prove the same-context form of Lemma 2 (Diamond at a single extended
-context, no `↣*` evolution) by case analysis on the constructors of
-`h₁` and `h₂`. The hard cells dispatch to the per-case axioms above. -/
+context, no `↣*` evolution) by ONE big `induction` on `h₁`, with the
+`t₂` index generalized so each constructor case has access to the
+structural IH of its own sub-derivations against an arbitrary `t₂`.
+The hard cells dispatch to the per-case inline residual axioms above
+(passing the relevant IHs in). The trivial cells are discharged
+inline. -/
 
 /-- **Same-context Lemma 2 (core).** Diamond property of `MEqRed` at a
 single extended context, with side-condition propagation.
@@ -347,65 +465,95 @@ theorem Lemma_2_DiamondMEqRed_core
       ∀ x : String,
         (MEqRedAvoidsPro x h₁ → MEqRedAvoidsPro x h₂') ∧
         (MEqRedAvoidsPro x h₂ → MEqRedAvoidsPro x h₁') := by
-  -- Case-split on the constructor of `h₁`. After `cases h₁ with | pro ...`,
-  -- the constructor's implicit `α` (the looked-up term) is auto-bound; we
-  -- rename it to `aLkup`. The constructor's `α'` (the result) gets unified
-  -- with the goal's `t₁`. Same shape for h₂.
-  cases h₁ with
-  | pro hpv₁ heq₁ hα₁ =>
-    -- After cases: t₀ = .fvar yvr; t₁ unified to constructor's α'.
-    -- Auto-bound implicits: yvr (for x) and aLkup (for α).
-    rename_i yvr aLkup
-    -- Constructors of h₂ that fit: pro, var.
+  induction h₁ generalizing t₂ with
+  | @pro Γ s yvr aLkup α' hpv₁ heq₁ hα₁ ihα₁ =>
+    -- h₂ on .fvar yvr: pro or var.
     cases h₂ with
-    | pro hpv₂ heq₂ hα₂ =>
-      rename_i aLkup'
-      -- Both pro on the same fvar yvr. Lookup is determined by (Γ, yvr),
-      -- so aLkup = aLkup'.
-      have hα_eq : aLkup = aLkup' := by
+    | @pro _ _ _ aLkupB _ hpv₂ heq₂ hα₂ =>
+      -- Both pro on yvr; lookup determines aLkup = aLkupB.
+      have hα_eq : aLkup = aLkupB := by
         have h1 : Ctx.lookupEqu Γ yvr = some aLkup := heq₁
-        have h2 : Ctx.lookupEqu Γ yvr = some aLkup' := heq₂
+        have h2 : Ctx.lookupEqu Γ yvr = some aLkupB := heq₂
         rw [h1] at h2
         exact Option.some.inj h2
       subst hα_eq
-      exact Lemma_2_case_Pro_Pro hpv₁ heq₁ hα₁ hα₂
+      -- Build the IH for hα₁ in the shape required by Lemma_2_inline_pro_pro.
+      have ihα₁_pkg :
+          ∀ {t₂' : Term}, MEqRed Γ s aLkup t₂' →
+            ∃ (t₃ : Term) (h₁' : MEqRed Γ s α' t₃)
+              (h₂' : MEqRed Γ s t₂' t₃),
+              ∀ x : String,
+                (MEqRedAvoidsPro x hα₁ → MEqRedAvoidsPro x h₂') ∧
+                (∀ (_h₂'' : MEqRed Γ s aLkup t₂'),
+                  MEqRedAvoidsPro x _h₂'' → MEqRedAvoidsPro x h₁') := by
+        intro t₂' hr
+        obtain ⟨t₃, h₁', h₂', hSide⟩ := ihα₁ hr
+        refine ⟨t₃, h₁', h₂', ?_⟩
+        intro x
+        refine ⟨(hSide x).1, ?_⟩
+        intro _h₂'' hAv
+        exact (hSide x).2 hAv
+      exact Lemma_2_inline_pro_pro hpv₁ hpv₂ heq₁ hα₁ hα₂ ihα₁_pkg
     | var hpv₂ =>
-      -- h₁ = pro on yvr (result t₁); h₂ = var on yvr (result .fvar yvr).
-      -- Close at t₃ = t₁: h₁' = refl on t₁, h₂' = pro reusing h₁'s data.
-      have hLCt₁ : Term.LC t₁ := MEqRed.lc_right hα₁
+      -- h₁ = pro on yvr (result α'); h₂ = var on yvr.
+      -- Close at t₃ = α': h₁' = refl on α', h₂' = pro reusing hα₁'s data.
+      have hLCα' : Term.LC α' := MEqRed.lc_right hα₁
       have hfvaLkup : Term.fv aLkup ⊆ Ctx.dom Γ :=
         Prevalid.fv_lookupEqu (extractPrevalid hpv₁) heq₁
-      have hfvt₁ : Term.fv t₁ ⊆ Ctx.dom Γ :=
+      have hfvα' : Term.fv α' ⊆ Ctx.dom Γ :=
         MEqRed_fv_preserve hα₁ hfvaLkup
-      refine ⟨t₁, ?_, ?_, ?_⟩
-      · exact MEqRed.refl hpv₁ hLCt₁ hfvt₁
+      refine ⟨α', ?_, ?_, ?_⟩
+      · exact MEqRed.refl hpv₁ hLCα' hfvα'
       · exact MEqRed.pro hpv₂ heq₁ hα₁
       · intro x; refine ⟨?_, ?_⟩
-        · -- h₁ avoids x ⇒ h₂' (= pro hpv₂ heq₁ hα₁) avoids x.
-          -- Extract the avoidance witness via the per-case helper axiom.
-          intro hAv₁
+        · intro hAv₁
           exact MEqRedAvoidsPro_proInv_propagate
             x hpv₁ heq₁ hα₁ hpv₂ hAv₁
-        · intro _; exact MEqRedAvoidsPro_refl x hpv₁ hLCt₁ hfvt₁
-  | bet L hLCt hbody hv =>
-    -- t₀ = .app (.abs tBound body) v. Dispatch to App-shape residual axiom.
-    exact Lemma_2_case_App (MEqRed.bet (L := L) hLCt hbody hv) h₂
+        · intro _; exact MEqRedAvoidsPro_refl x hpv₁ hLCα' hfvα'
+  | @bet Γ s tBound vSrc vDst body bodyDst L hLCt hbody hv ihbody ihv =>
+    -- Build packaged IHs (each strips the AvoidsPro side-condition into
+    -- a `True`, so the inline axiom has a flexible signature).
+    have ihbody_pkg :
+        ∀ y (_hy : y ∉ L) {t₂' : Term},
+          MEqRed Γ s (body^[y]) t₂' →
+            ∃ (t₃ : Term) (_h₁' : MEqRed Γ s (bodyDst^[y]) t₃)
+              (_h₂' : MEqRed Γ s t₂' t₃), True := by
+      intro y hy t₂' hr
+      obtain ⟨t₃, h₁', h₂', _⟩ := ihbody y hy hr
+      exact ⟨t₃, h₁', h₂', trivial⟩
+    have ihv_pkg :
+        ∀ {t₂' : Term}, MEqRed Γ [] vSrc t₂' →
+          ∃ (t₃ : Term) (_h₁' : MEqRed Γ [] vDst t₃)
+            (_h₂' : MEqRed Γ [] t₂' t₃), True := by
+      intro t₂' hr
+      obtain ⟨t₃, h₁', h₂', _⟩ := ihv hr
+      exact ⟨t₃, h₁', h₂', trivial⟩
+    exact Lemma_2_inline_bet hLCt hbody hv h₂ ihbody_pkg ihv_pkg
   | top hpv₁ =>
-    -- t₀ = .top. Only Me-Top fits for h₂.
     cases h₂ with
     | top hpv₂ =>
       refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
       intro x; exact ⟨fun _ => .top hpv₂, fun _ => .top hpv₁⟩
-  | app hu₁ hv₁ =>
-    -- t₀ = .app u v. Dispatch to App-shape residual axiom.
-    exact Lemma_2_case_App (MEqRed.app hu₁ hv₁) h₂
-  | var hpv₁ =>
-    rename_i yvr
-    -- t₀ = .fvar yvr; t₁ = .fvar yvr. h₂ fits: pro, var.
+  | @app Γ s u u' v v' hu hv ihu ihv =>
+    have ihu_pkg :
+        ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
+          ∃ (t₃ : Term) (_h₁' : MEqRed Γ (v :: s) u' t₃)
+            (_h₂' : MEqRed Γ (v :: s) t₂' t₃), True := by
+      intro t₂' hr
+      obtain ⟨t₃, h₁', h₂', _⟩ := ihu hr
+      exact ⟨t₃, h₁', h₂', trivial⟩
+    have ihv_pkg :
+        ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
+          ∃ (t₃ : Term) (_h₁' : MEqRed Γ [] v' t₃)
+            (_h₂' : MEqRed Γ [] t₂' t₃), True := by
+      intro t₂' hr
+      obtain ⟨t₃, h₁', h₂', _⟩ := ihv hr
+      exact ⟨t₃, h₁', h₂', trivial⟩
+    exact Lemma_2_inline_app hu hv h₂ ihu_pkg ihv_pkg
+  | @var Γ s yvr hpv₁ =>
     cases h₂ with
-    | pro hpv₂ heq₂ hα₂ =>
-      rename_i aLkup
-      -- Symmetric to (Pro × Var). Close at t₂ (the result of h₂).
+    | @pro _ _ _ aLkup _ hpv₂ heq₂ hα₂ =>
+      -- t₂ is unified with the result α'' of pro; introduce a name for it.
       have hLCt₂ : Term.LC t₂ := MEqRed.lc_right hα₂
       have hfvaLkup : Term.fv aLkup ⊆ Ctx.dom Γ :=
         Prevalid.fv_lookupEqu (extractPrevalid hpv₂) heq₂
@@ -416,27 +564,54 @@ theorem Lemma_2_DiamondMEqRed_core
       · exact MEqRed.refl hpv₂ hLCt₂ hfvt₂
       · intro x; refine ⟨?_, ?_⟩
         · intro _; exact MEqRedAvoidsPro_refl x hpv₂ hLCt₂ hfvt₂
-        · -- h₂ avoids x ⇒ h₁' (= pro hpv₁ heq₂ hα₂) avoids x.
-          intro hAv₂
+        · intro hAv₂
           exact MEqRedAvoidsPro_proInv_propagate
             x hpv₂ heq₂ hα₂ hpv₁ hAv₂
     | var hpv₂ =>
-      -- Both Var. t₃ = .fvar yvr. Two refl edges.
       refine ⟨.fvar yvr, MEqRed.var hpv₁, MEqRed.var hpv₂, ?_⟩
       intro x; exact ⟨fun _ => .var hpv₂, fun _ => .var hpv₁⟩
-  | fun_ L₁ ht₁ hbody₁ =>
-    -- t₀ = .abs tBound body, stack must be []. h₂'s rule: only fun_ fits.
+  | @fun_ Γ tBound tBoundDst body body₁ L₁ ht₁ hbody₁ iht ihbody =>
     cases h₂ with
-    | fun_ L₂ ht₂ hbody₂ =>
-      exact Lemma_2_case_Fun_Fun ht₁ ht₂ hbody₁ hbody₂
+    | @fun_ _ _ tBoundDst₂ _ body₂ L₂ ht₂ hbody₂ =>
+      have iht_pkg :
+          ∀ {t₂'' : Term}, MEqRed Γ [] tBound t₂'' →
+            ∃ (t₃ : Term) (_h₁' : MEqRed Γ [] tBoundDst t₃)
+              (_h₂' : MEqRed Γ [] t₂'' t₃), True := by
+        intro t₂'' hr
+        obtain ⟨t₃, h₁', h₂', _⟩ := iht hr
+        exact ⟨t₃, h₁', h₂', trivial⟩
+      have ihbody_pkg :
+          ∀ y (_hy : y ∉ L₁) {body₂'' : Term},
+            MEqRed (⟨y, tBound, .sub⟩ :: Γ) [] (body^[y]) body₂'' →
+              ∃ (t₃ : Term)
+                (_h₁' : MEqRed (⟨y, tBound, .sub⟩ :: Γ) [] (body₁^[y]) t₃)
+                (_h₂' : MEqRed (⟨y, tBound, .sub⟩ :: Γ) [] body₂'' t₃), True := by
+        intro y hy body₂'' hr
+        obtain ⟨t₃, h₁', h₂', _⟩ := ihbody y hy hr
+        exact ⟨t₃, h₁', h₂', trivial⟩
+      exact Lemma_2_inline_fun_fun ht₁ ht₂ hbody₁ hbody₂ iht_pkg ihbody_pkg
   | tAp hpv₁ hLCu hfvu =>
-    -- t₀ = .app .top u. Dispatch to App-shape residual axiom.
-    exact Lemma_2_case_App (MEqRed.tAp hpv₁ hLCu hfvu) h₂
-  | fOp L₁ ht₁ hbody₁ =>
-    -- t₀ = .abs tBound body, stack = α :: s'. h₂'s rule: only fOp fits.
+    exact Lemma_2_inline_tAp hpv₁ hLCu hfvu h₂
+  | @fOp Γ s tBound tBoundDst αHd body body₁ L₁ ht₁ hbody₁ iht ihbody =>
     cases h₂ with
-    | fOp L₂ ht₂ hbody₂ =>
-      exact Lemma_2_case_FOp_FOp ht₁ ht₂ hbody₁ hbody₂
+    | @fOp _ _ _ tBoundDst₂ _ _ body₂ L₂ ht₂ hbody₂ =>
+      have iht_pkg :
+          ∀ {t₂'' : Term}, MEqRed Γ [] tBound t₂'' →
+            ∃ (t₃ : Term) (_h₁' : MEqRed Γ [] tBoundDst t₃)
+              (_h₂' : MEqRed Γ [] t₂'' t₃), True := by
+        intro t₂'' hr
+        obtain ⟨t₃, h₁', h₂', _⟩ := iht hr
+        exact ⟨t₃, h₁', h₂', trivial⟩
+      have ihbody_pkg :
+          ∀ y (_hy : y ∉ L₁) {body₂'' : Term},
+            MEqRed (⟨y, αHd, .equ⟩ :: Γ) s (body^[y]) body₂'' →
+              ∃ (t₃ : Term)
+                (_h₁' : MEqRed (⟨y, αHd, .equ⟩ :: Γ) s (body₁^[y]) t₃)
+                (_h₂' : MEqRed (⟨y, αHd, .equ⟩ :: Γ) s body₂'' t₃), True := by
+        intro y hy body₂'' hr
+        obtain ⟨t₃, h₁', h₂', _⟩ := ihbody y hy hr
+        exact ⟨t₃, h₁', h₂', trivial⟩
+      exact Lemma_2_inline_fOp_fOp ht₁ ht₂ hbody₁ hbody₂ iht_pkg ihbody_pkg
 
 /-! ### §3.3 Context-evolution lifting
 
@@ -475,12 +650,14 @@ same-context core lemma (`Lemma_2_DiamondMEqRed_core`), then lifts the
 joining derivations across the two `↣*` evolutions via
 `Lemma_2_DiamondMEqRed_ctx_axiom`.
 
-Outstanding residual obligations are isolated as **narrow private case
-axioms** (`Lemma_2_case_Pro_Pro`, `Lemma_2_case_Fun_Fun`,
-`Lemma_2_case_FOp_FOp`, `Lemma_2_case_App`,
+Outstanding residual obligations are isolated as **narrow private inline
+axioms** (`Lemma_2_inline_pro_pro`, `Lemma_2_inline_bet`,
+`Lemma_2_inline_app`, `Lemma_2_inline_fun_fun`, `Lemma_2_inline_fOp_fOp`,
 `Lemma_2_DiamondMEqRed_ctx_axiom`, plus the scope-preservation helpers
-`MEqRed_fv_preserve` and `MEqRedAvoidsPro_refl`). The headline statement
-is no longer axiomatized. -/
+`MEqRed_fv_preserve`, `MEqRedAvoidsPro_refl`,
+`MEqRedAvoidsPro_proInv_propagate`). The TAp arm
+(`Lemma_2_inline_tAp`) is now a real `theorem`. The headline statement
+itself is a real `theorem`. -/
 theorem Lemma_2_DiamondMEqRed
     {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ₀ s₀ t₀ t₁)
