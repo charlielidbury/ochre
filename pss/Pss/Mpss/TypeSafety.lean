@@ -42,20 +42,24 @@ metatheory.
   on the well-formedness derivation, using Conjecture 8 in the `app`
   case.
 
-Lemmas 15, 16 (paper appendix) — out of scope: they are about `≡_wf`
-(`WEquM`), which is not mechanized in our `Pss/Mpss/WellFormed.lean`.
+Lemmas 15, 16 (paper appendix) — PROVED in
+`Pss/Mpss/WellFormed.lean` as `Lemma_15_WEquM_symm` and
+`Lemma_16_WEquM_to_WSubM`. Both are 3-case inductions on `WEquM`.
 
-Lemma 10 (inversion) — partial restricted-form already axiomatized in
-`Pss/Mpss/WellFormed.lean` as `Lemma_10_InversionRestricted`.
+Lemma 10 (inversion) — full form (returning `WEquM Γ t t'`) is
+axiomatized in `Pss/Mpss/WellFormed.lean` as `Lemma_10_Inversion`. A
+restricted reduction-flavoured form is also retained as
+`Lemma_10_InversionRestricted`.
 
 ## Status
 
 * `Conjecture_8_WellSubtypingContextIndependent` — **AXIOMATIZED**
   (permanent, paper-conjecture-status).
 * `Lemma_6_EvaluationPreservesWf` — **AXIOMATIZED** (the paper's β-case
-  proof requires Lemmas 10 (full inversion), 15, 16 (`≡_wf` machinery,
-  out of scope), 7 (substitution), and 27 (none of which are mechanized
-  here). Discharge requires major infrastructure.).
+  proof requires Lemmas 10 (full inversion, axiomatized as
+  `Lemma_10_Inversion`), 15, 16 (now PROVED), 7 (substitution,
+  axiomatized), and 27 (not mechanized). Discharge now requires
+  Lemmas 10 + 27 + 7 to land.).
 * `Lemma_7_SubstitutionPreservesWf` — **AXIOMATIZED** (the paper's
   proof depends on Conjecture 8 plus a sub-induction on `WSubMStar` for
   the `Wf-App` case using Lemma 30/31 substitution lemmas; full
@@ -306,12 +310,13 @@ theorem Lemma_11_TopHasNoFunctionSupertype
 /-! ## §4. Lemma 6 (Evaluation preserves well-formedness)
 
 The paper's proof case-splits on `Step t t'`. The β-case (paper p. 27)
-uses Lemmas 10, 15, 16, 7. Lemma 15/16 require WEquM. Lemma 10 is
-restricted in our formalization. So we axiomatize Lemma 6 with a
-precise statement and a `TODO Wave 8` note.
+uses Lemmas 10, 15, 16, 7. Lemmas 15/16 are now PROVED (see
+`Lemma_15_WEquM_symm`, `Lemma_16_WEquM_to_WSubM`). Lemma 10 is fully
+stated as `Lemma_10_Inversion` (axiomatized). Lemma 7 is axiomatized.
+We still axiomatize Lemma 6 itself pending those discharges.
 
-TODO Wave 8: discharge by extending `Pss/Mpss/WellFormed.lean` with
-WEquM + full Lemmas 10, 15, 16. -/
+TODO Wave 8: discharge using `Lemma_10_Inversion`, `Lemma_15_WEquM_symm`,
+`Lemma_16_WEquM_to_WSubM`, and `Lemma_7_SubstitutionPreservesWf`. -/
 
 /-- **Lemma 6 (Evaluation preserves well-formedness, Pasquale &
 García-Pérez 2024 §4).**

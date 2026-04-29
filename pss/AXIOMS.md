@@ -5,7 +5,7 @@ v2, December 2025), the MPSS Krivine-style reformulation of Hutchins'
 Pure Subtype Systems. Type safety (Theorems 4 and 5) is conditional on
 the following axioms.
 
-Total axiom count: **12** (1 permanent, 11 outstanding).
+Total axiom count: **13** (1 permanent, 12 outstanding).
 
 ## Permanent axioms (paper-conjecture-status)
 
@@ -87,14 +87,27 @@ Total axiom count: **12** (1 permanent, 11 outstanding).
 - Companion of the previous, for the subtype reduction.
 - Discharge plan: same as above.
 
+### `Lemma_10_Inversion`
+- File: `Pss/Mpss/WellFormed.lean`.
+- Paper: Pasquale & García-Pérez 2024, Appendix Lemma 10.
+- Full inversion of `WSubMStar` at `abs/abs`: returns
+  `WEquM Γ t t'` (well-equivalence of the bound annotations), matching
+  the paper's exact statement.
+- Discharge plan: prove via Theorem 3 (transitivity elimination) plus a
+  chain-shape argument on `MEqRedStar`/`MSubRedStar` reductions out of
+  abstractions.
+
 ### `Lemma_10_InversionRestricted`
-- File: `Pss/Mpss/WellFormed.lean`, line 503.
+- File: `Pss/Mpss/WellFormed.lean`.
 - Paper: Pasquale & García-Pérez 2024, Appendix Lemma 10.
 - Restricted-form inversion of `WSubMStar` at `abs/abs`: returns a
   common `MEqRedStar` reduct of the bound annotations rather than the
-  paper's `≡_wf` (which would need `WEquM`).
-- Discharge plan: prove the restricted form once Theorem 3 is fully
-  available (`MEqRedStar` machinery + `Lemma 3` flatten).
+  paper's `≡_wf`. Retained as a separate axiom because extracting a
+  common reduct from a `WEquM` chain (the conclusion of
+  `Lemma_10_Inversion`) requires diamond-style joining of the prepended
+  / appended `MEqRed` steps.
+- Discharge plan: same as `Lemma_10_Inversion`, then a diamond-style
+  joining lemma to extract the common reduct.
 
 ### `Proposition_17_beta_axiom` *(new in Wave 7)*
 - File: `Pss/Mpss/OperationalSem.lean`, line 81.
@@ -139,12 +152,12 @@ Total axiom count: **12** (1 permanent, 11 outstanding).
   `Lemma_28_SubstPreservesPrevalid` (already proved in
   `Pss/Mpss/Substitution.lean`).
 
-## Lemmas the paper covers but that we leave out
+## Lemmas the paper covers and we have proved
 
 - **Lemma 15** (paper appendix): `Γ ⊢ u ≡_wf v  ⟹  Γ ⊢ v ≡_wf u`.
-  Requires `WEquM` (well-equivalence), not mechanized.
+  PROVED in `Pss/Mpss/WellFormed.lean` as `Lemma_15_WEquM_symm`.
 - **Lemma 16** (paper appendix): `Γ ⊢ u ≡_wf v  ⟹  Γ ⊢ u ≤_wf v`.
-  Same reason.
+  PROVED in `Pss/Mpss/WellFormed.lean` as `Lemma_16_WEquM_to_WSubM`.
 
 ## Audit
 

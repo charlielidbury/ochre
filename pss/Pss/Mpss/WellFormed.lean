@@ -3,23 +3,27 @@ import Pss.Mpss.Weakening
 set_option linter.unusedVariables false
 
 /-! # `Pss.Mpss.WellFormed` — MPSS well-formedness, well-subtyping, transitive
-well-subtyping
+well-subtyping, and well-equivalence
 
-Pasquale & García-Pérez 2024 (CSL 2026), Figure 4. Three judgments:
+Pasquale & García-Pérez 2024 (CSL 2026), Figure 4. Four judgments:
 
 * `WfM Γ t`         — `Γ ⊢ t wf`         (term well-formedness; 5 rules)
 * `WSubM Γ t u`     — `Γ ⊢ t ≤_wf u`     (well-subtyping; 4 rules)
 * `WSubMStar Γ t u` — `Γ ⊢ t ≤*_wf u`    (transitive well-subtyping; 2 rules)
+* `WEquM Γ t u`     — `Γ ⊢ t ≡_wf u`     (well-equivalence; 3 rules)
+* `WEquMStar Γ t u` — `Γ ⊢ t ≡*_wf u`    (transitive well-equivalence; 2 rules)
 
-The three are mutually inductive:
+The first three are mutually inductive:
 
 * `WfM` references `WSubMStar` (in `Wf-App`).
 * `WSubM` references `WfM` (in `Ws-Rfl`, `Ws-Lf2`).
 * `WSubMStar` references `WfM` and `WSubM` (in `Ws-Sub`, `Ws-Trs`).
 
-We mechanize ONLY the `≤_wf` instance of the paper's `◁_wf` meta-judgment.
-The `≡_wf` variant is not used by `WfM` and is out of scope here; this
-also means Lemmas 15/16 (which are about `≡_wf`) are not mechanized.
+`WEquM` is the `≡_wf` analogue of `WSubM`. The paper's `◁_wf` meta-judgment
+ranges over both `≤_wf` and `≡_wf`, but `WEquM` does NOT have an `Ws-Lf2`
+analogue: only equivalence-reduction may be prepended/appended (per paper
+Fig 4). `WEquM` is defined separately (not in the mutual block) because it
+is only consumed by the inversion-style lemmas downstream, not by `WfM`.
 
 ## Wave 4A bridge axioms
 
@@ -470,25 +474,108 @@ which only requires `PrevalidExt Γ s`, not scope on `x`). So
 lemmas should phrase scoping requirements via the surrounding `WfM`
 premises, not via a bare `WSubM` derivation. -/
 
-/-! ## §6. Inversion-style lemmas (Lemmas 10, 15, 16)
+/-! ## §6. Well-equivalence (`WEquM`)
+
+The `≡_wf` analogue of `WSubM`. Paper §4 Fig 4 (right column), with the
+critical observation: `WEquM` only has rules that match `WSubM`'s `Ws-Rfl`,
+`Ws-Lf1`, and `Ws-Rgh`. There is no `Ws-Lf2` analogue — equivalence does
+not subsume subtype-reduction steps.
+
+This is why we define `WEquM` separately (not in the mutual block above):
+it does not reference `WfM` recursively (only via the `Ws-Rfl`-style
+reflexivity premise on the diagonal), and `WfM` does not reference it.
+Defining it after the mutual block avoids a deeper mutual entanglement. -/
+
+/-- MPSS well-equivalence `Γ ⊢ u ≡_wf t`. Pasquale & García-Pérez 2024,
+Figure 4 (right column, `≡_wf` instance of `◁_wf`). -/
+inductive WEquM : Ctx → Term → Term → Prop where
+  /-- **Wse-Rfl**: reflexivity. -/
+  | rfl {Γ : Ctx} {t : Term} :
+      WfM Γ t → WEquM Γ t t
+  /-- **Wse-Lf1**: prepend an equivalence-reduction step on the left. -/
+  | lf1 {Γ : Ctx} {v v' t : Term} :
+      MEqRed Γ [] v v' →
+      WEquM Γ v' t →
+      WEquM Γ v t
+  /-- **Wse-Rgh**: append an equivalence-reduction step on the right. -/
+  | rgh {Γ : Ctx} {v t t' : Term} :
+      WEquM Γ v t' →
+      MEqRed Γ [] t t' →
+      WEquM Γ v t
+
+/-- MPSS transitive well-equivalence `Γ ⊢ v ≡*_wf t`. Analogous to
+`WSubMStar` but for the equivalence judgment. -/
+inductive WEquMStar : Ctx → Term → Term → Prop where
+  /-- **Wse-Sub**: a single well-equivalence step is transitive. -/
+  | sub {Γ : Ctx} {v t : Term} :
+      WfM Γ v → WEquM Γ v t → WfM Γ t →
+      WEquMStar Γ v t
+  /-- **Wse-Trs**: transitivity. -/
+  | trs {Γ : Ctx} {v u t : Term} :
+      WEquMStar Γ v u → WfM Γ u → WEquMStar Γ u t →
+      WEquMStar Γ v t
+
+@[inherit_doc] notation:50 Γ " ⊢ₘ " t " ≡_wf "  u => WEquM Γ t u
+@[inherit_doc] notation:50 Γ " ⊢ₘ " t " ≡*_wf " u => WEquMStar Γ t u
+
+/-! ## §7. Inversion-style lemmas (Lemmas 10, 15, 16)
+
+* **Lemma 15** (`Γ ⊢ u ≡_wf v ⟹ Γ ⊢ v ≡_wf u`): symmetry of `≡_wf`.
+  PROVED — straightforward 3-case induction.
+
+* **Lemma 16** (`Γ ⊢ u ≡_wf v ⟹ Γ ⊢ u ≤_wf v`): inclusion of `≡_wf`
+  into `≤_wf`. PROVED — straightforward 3-case induction.
 
 * **Lemma 10** (Inversion): If `Γ ⊢ (λx≤t.u) ≤*_wf (λx≤t'.u')` then
   `Γ ⊢ t ≡_wf t'`. AXIOMATIZED — proof requires Theorem 3 (transitivity
   elimination) and Lemma 3 (which together flatten `≤*_wf` to `≤_wf`),
-  plus `MEqRedStar` reasoning. Single-axiom Wave-5 quota.
+  plus `MEqRedStar` reasoning. -/
 
-* **Lemma 15** (`Γ ⊢ u ≡_wf v ⟹ Γ ⊢ v ≡_wf u`): OUT OF SCOPE.
-  Requires defining `WEquM` (the `≡_wf` analogue of `WSubM`), which we
-  do not introduce here.
+/-- **Lemma 15 (Symmetry of well-equivalence).** Pasquale & García-Pérez
+2024, appendix A. -/
+theorem Lemma_15_WEquM_symm {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
+    WEquM Γ v u := by
+  induction h with
+  | rfl hwf => exact WEquM.rfl hwf
+  | lf1 hred _ ih =>
+      -- h : WEquM Γ u' v from premise; ih : WEquM Γ v u'
+      -- want: WEquM Γ v u, given hred : MEqRed Γ [] u u'
+      exact WEquM.rgh ih hred
+  | rgh _ hred ih =>
+      -- premise: WEquM Γ u v', MEqRed Γ [] v v'; ih : WEquM Γ v' u
+      -- want: WEquM Γ v u
+      exact WEquM.lf1 hred ih
 
-* **Lemma 16** (`Γ ⊢ u ≡_wf v ⟹ Γ ⊢ u ≤_wf v`): OUT OF SCOPE. Same
-  reason as Lemma 15.
+/-- **Lemma 16 (Well-equivalence implies well-subtyping).** Pasquale &
+García-Pérez 2024, appendix A. -/
+theorem Lemma_16_WEquM_to_WSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
+    WSubM Γ u v := by
+  induction h with
+  | rfl hwf => exact WSubM.rfl hwf
+  | lf1 hred _ ih => exact WSubM.lf1 hred ih
+  | rgh _ hred ih => exact WSubM.rgh ih hred
 
-We restate Lemma 10 in a slightly weaker, mechanizable form: instead of
-returning `Γ ⊢ t ≡_wf t'`, we return the existence of a common
-equivalence-reduct via `MEqRedStar`. Downstream uses of Lemma 10 in the
-preservation proof actually consume this reduction-flavored statement.
--/
+/-- **Lemma 10 (Inversion lemma — full form).** From a transitive
+well-subtyping between two abstractions of the form `λ x ≤ t. u` and
+`λ x ≤ t'. u'`, the bound annotations are well-equivalent.
+
+This is the paper's exact Lemma 10 statement. AXIOMATIZED — discharge
+requires Theorem 3 (transitivity elimination) plus a chain-shape argument
+on `MEqRedStar` (paper appendix). -/
+axiom Lemma_10_Inversion
+    {Γ : Ctx} {t t' u u' : Term}
+    (h : WSubMStar Γ (.abs t u) (.abs t' u')) :
+    WEquM Γ t t'
+
+/-! ### Lemma 10 — restricted form (legacy, derivable from `WEquM` + extra
+infrastructure)
+
+`Lemma_10_InversionRestricted` returns a common `MEqRedStar` reduct rather
+than `WEquM`. It is *not* trivially derivable from `Lemma_10_Inversion`:
+extracting a common reduct from a `WEquM` chain requires diamond-style
+joining of the prepended/appended `MEqRed` steps. We retain it as a
+separate axiom for downstream consumers that already use the
+common-reduct form. -/
 
 /-- **Lemma 10 (Inversion lemma, restricted form).** From a transitive
 well-subtyping between two abstractions of the form `λ x ≤ t. u` and
@@ -496,10 +583,7 @@ well-subtyping between two abstractions of the form `λ x ≤ t. u` and
 
 Restricted form: returns a common reduct `z` with
 `MEqRedStar Γ [] t z ∧ MEqRedStar Γ [] t' z`, instead of the paper's
-`Γ ⊢ t ≡_wf t'`.
-
-AXIOMATIZED (Wave 5 single-axiom quota for this file). Discharge requires
-Theorem 3 (transitivity elimination) — see paper §3 and `PLAN.md`. -/
+`Γ ⊢ t ≡_wf t'`. -/
 axiom Lemma_10_InversionRestricted
     {Γ : Ctx} {t t' u u' : Term}
     (h : WSubMStar Γ (.abs t u) (.abs t' u')) :
