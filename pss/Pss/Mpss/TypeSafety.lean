@@ -1,6 +1,7 @@
 import Pss.Mpss.TransitivityElim
 import Pss.Mpss.OperationalSem
 import Pss.Mpss.Narrowing
+import Mathlib.Logic.Relation
 
 set_option linter.unusedVariables false
 
@@ -51,16 +52,21 @@ Lemma 10 (inversion) — partial restricted-form already axiomatized in
 
 * `Conjecture_8_WellSubtypingContextIndependent` — **AXIOMATIZED**
   (permanent, paper-conjecture-status).
-* `Lemma_6_EvaluationPreservesWf` — **AXIOMATIZED** (one Wave-7
-  axiom; the proof requires the paper-style `app` inversion which
-  isn't tractable from `Lemma_10_InversionRestricted` alone).
-* `Lemma_7_SubstitutionPreservesWf` — **AXIOMATIZED** (one Wave-7
-  axiom; the proof depends on Conjecture 8 plus inversion lemmas
-  beyond Wave 5A's restricted form).
+* `Lemma_6_EvaluationPreservesWf` — **AXIOMATIZED** (the paper's β-case
+  proof requires Lemmas 10 (full inversion), 15, 16 (`≡_wf` machinery,
+  out of scope), 7 (substitution), and 27 (none of which are mechanized
+  here). Discharge requires major infrastructure.).
+* `Lemma_7_SubstitutionPreservesWf` — **AXIOMATIZED** (the paper's
+  proof depends on Conjecture 8 plus a sub-induction on `WSubMStar` for
+  the `Wf-App` case using Lemma 30/31 substitution lemmas; full
+  discharge requires significant additional infrastructure).
+* `Lemma_11_TopHasNoFunctionSupertype` — **PROVED**. The proof strips
+  `WSubMStar` to the diagrammatic `MSub` relation (a common
+  `MSubRedStar`/`MEqRedStar` reduct exists) and applies inversions on
+  the two reductions: every step out of `.top` returns `.top`, and
+  every step out of an abstraction returns an abstraction.
 * `Theorem_4_Progress` — **PROVED** (conditional on
-  `Conjecture_8_WellSubtypingContextIndependent` and
-  `Lemma_11_TopHasNoFunctionSupertype` — the latter is a paper
-  inversion lemma we axiomatize here in a restricted form).
+  `Conjecture_8_WellSubtypingContextIndependent`).
 * `Theorem_5_Preservation` — **PROVED** conditional on Conjecture 8
   and Lemma 6.
 -/
@@ -113,18 +119,189 @@ axiom Conjecture_8_WellSubtypingContextIndependent
 /-! ## §3. Lemma 11 (restricted): Top has no function supertype
 
 The paper's Lemma 11 is consumed by Theorem 4's `App` case to rule out
-the case where the operator of a redex is `Top`. The full statement
-involves the full `≤*_wf` relation; we axiomatize the restricted form
-that suffices for Progress.
+the case where the operator of a redex is `Top`.
 
-TODO Wave 8: discharge by Lemma 10 + the trivial fact that the
-function-shape preservation chain has no Top hop. -/
+**Proof sketch.** We strip the `WfM` decoration of `WSubMStar` to land in
+the diagrammatic `MSub` relation (a common reduct under `MSubRedStar` and
+`MEqRedStar`). The diagram has the form:
 
-/-- **Lemma 11 (restricted, Pasquale & García-Pérez 2024 §4 appendix).**
-`Top` is not a transitive well-subtype of an abstraction. -/
-axiom Lemma_11_TopHasNoFunctionSupertype
+    .top ─→^≤* w ←—^≡* (.abs bound body)
+
+By inversion on `MSubRed` and `MEqRed`, every step out of `.top` returns
+`.top` and every step out of `(.abs ...)` returns an `.abs ...`. So
+`w = .top` and `w = .abs ...` simultaneously, contradiction.
+
+The proof uses the existing `MSub`/`Theorem 3` machinery via the strip
+lemma `WSubMStar.toMSub`. -/
+
+/-- Single-step inversion: `MEqRed Γ s .top v` forces `v = .top`. -/
+private theorem _MEqRed_top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MEqRed Γ s .top v) : v = .top := by
+  cases h with
+  | top _ => rfl
+
+/-- Single-step inversion: `MSubRed Γ s .top v` forces `v = .top`. -/
+private theorem _MSubRed_top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MSubRed Γ s .top v) : v = .top := by
+  cases h with
+  | top _ _ _ => rfl
+  | equ _ heq => exact _MEqRed_top_inv heq
+
+/-- Multi-step inversion: from `.top`, the only `MEqRedStar` reduct is
+`.top`. -/
+private theorem _MEqRedStar_top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MEqRedStar Γ s .top v) : v = .top := by
+  induction h with
+  | refl => rfl
+  | tail _ hStep ih =>
+    subst ih
+    obtain ⟨hStep'⟩ := hStep
+    exact _MEqRed_top_inv hStep'
+
+/-- Multi-step inversion: from `.top`, the only `MSubRedStar` reduct is
+`.top`. -/
+private theorem _MSubRedStar_top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MSubRedStar Γ s .top v) : v = .top := by
+  induction h with
+  | refl => rfl
+  | tail _ hStep ih =>
+    subst ih
+    obtain ⟨hStep'⟩ := hStep
+    exact _MSubRed_top_inv hStep'
+
+/-- Single-step inversion: `MEqRed Γ s (.abs b body) v` forces `v` to be
+an abstraction. -/
+private theorem _MEqRed_abs_inv {Γ : Ctx} {s : Stack} {b body v : Term}
+    (h : MEqRed Γ s (.abs b body) v) :
+    ∃ b' body', v = .abs b' body' := by
+  cases h with
+  | fun_ _ _ _ => exact ⟨_, _, rfl⟩
+  | fOp _ _ _ => exact ⟨_, _, rfl⟩
+
+/-- Multi-step inversion: from `(.abs b body)`, every `MEqRedStar` reduct
+is an abstraction. -/
+private theorem _MEqRedStar_abs_inv {Γ : Ctx} {s : Stack} {b body v : Term}
+    (h : MEqRedStar Γ s (.abs b body) v) :
+    ∃ b' body', v = .abs b' body' := by
+  induction h with
+  | refl => exact ⟨b, body, rfl⟩
+  | tail _ hStep ih =>
+    obtain ⟨b', body', hEq⟩ := ih
+    subst hEq
+    obtain ⟨hStep'⟩ := hStep
+    exact _MEqRed_abs_inv hStep'
+
+/-! ### Stripping `WSubM`/`WSubMStar` to `MSub`
+
+`MSub Γ s u v` (paper diagrammatic `≤`) is `∃ w, MSubRedStar Γ s u w ∧
+MEqRedStar Γ s v w`. Every `WSubM` derivation strips to an `MSub` at
+empty stack by ignoring the `WfM` decorations and converting MEqRed/MSubRed
+single steps to chains. -/
+
+/-- Local helper: extract `Prevalid Γ` from any `MEqRed Γ s u v`.
+We can't reuse `MEqRed.prevalid` from `Substitution.lean` (private),
+so we re-derive it locally via induction on the `MEqRed` derivation. -/
+private theorem _Prevalid_of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : Prevalid Γ := by
+  induction h with
+  | @pro _ _ _ _ _ hpv _ _ _ => exact extractPrevalid hpv
+  | @bet _ _ _ _ _ _ _ _ _ _ _ _ ihv => exact ihv
+  | @top _ _ hpv => exact extractPrevalid hpv
+  | @app _ _ _ _ _ _ _ _ _ ihv => exact ihv
+  | @var _ _ _ hpv => exact extractPrevalid hpv
+  | @fun_ _ _ _ _ _ _ _ _ iht _ => exact iht
+  | @tAp _ _ _ hpv _ _ => exact extractPrevalid hpv
+  | @fOp _ _ _ _ _ _ _ _ _ _ iht _ => exact iht
+
+/-- Wrap `Prevalid Γ` into `PrevalidExt Γ []`. -/
+private theorem _PrevalidExt_nil_of_MEqRed {Γ : Ctx} {u v : Term}
+    (h : MEqRed Γ [] u v) : PrevalidExt Γ [] :=
+  PrevalidExt.nil (_Prevalid_of_MEqRed h)
+
+/-- Combined strip of `WfM`/`WSubM`/`WSubMStar` to `MSub` via the mutual
+recursor. The `WfM` motive is trivial; both `WSubM` and `WSubMStar`
+strip to `MSub Γ [] v t`. -/
+private theorem _toMSub_combined :
+    (∀ {Γ : Ctx} {v t : Term}, WSubM Γ v t → MSub Γ [] v t) ∧
+    (∀ {Γ : Ctx} {v t : Term}, WSubMStar Γ v t → MSub Γ [] v t) := by
+  refine ⟨?_, ?_⟩
+  all_goals intro Γ v t h
+  · -- WSubM strip: induct via the WSubM mutual recursor.
+    classical
+    exact (WSubM.rec
+      (motive_1 := fun _ _ _ => True)
+      (motive_2 := fun Γ v t _ => MSub Γ [] v t)
+      (motive_3 := fun Γ v t _ => MSub Γ [] v t)
+      -- Wf cases: trivial.
+      (fun _ _ => trivial) (fun _ _ => trivial) (fun _ => trivial)
+      (fun _ _ _ _ _ => trivial) (fun _ _ _ _ => trivial)
+      -- Ws-Rfl: take w = t, both chains refl.
+      (fun {Γ t} _ _ => ⟨t, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩)
+      -- Ws-Lf1: prepend MEqRed (via Ms-Equ) on MSubRed* side.
+      (fun {Γ v v' t} hred _ ih => by
+        obtain ⟨w, hSubChain, hEqChain⟩ := ih
+        have hpv : PrevalidExt Γ [] := _PrevalidExt_nil_of_MEqRed hred
+        have hSubStep : MSubRed Γ [] v v' := MSubRed.equ hpv hred
+        exact ⟨w, Relation.ReflTransGen.head ⟨hSubStep⟩ hSubChain, hEqChain⟩)
+      -- Ws-Lf2: prepend MSubRed on MSubRed* side.
+      (fun {Γ v v' t} _ hred _ _ _ _ ih => by
+        obtain ⟨w, hSubChain, hEqChain⟩ := ih
+        exact ⟨w, Relation.ReflTransGen.head ⟨hred⟩ hSubChain, hEqChain⟩)
+      -- Ws-Rgh: prepend MEqRed on MEqRed* side.
+      (fun {Γ v t t'} _ hred ih => by
+        obtain ⟨w, hSubChain, hEqChain⟩ := ih
+        exact ⟨w, hSubChain, Relation.ReflTransGen.head ⟨hred⟩ hEqChain⟩)
+      -- Ws-Sub: ih on the WSubM core.
+      (fun _ _ _ _ ih_sub _ => ih_sub)
+      -- Ws-Trs: combine via MSub.trans_step.
+      (fun _ _ _ ih1 _ ih2 => MSub.trans_step ih1 ih2)
+      h)
+  · -- WSubMStar strip: induct via the WSubMStar mutual recursor.
+    classical
+    exact (WSubMStar.rec
+      (motive_1 := fun _ _ _ => True)
+      (motive_2 := fun Γ v t _ => MSub Γ [] v t)
+      (motive_3 := fun Γ v t _ => MSub Γ [] v t)
+      (fun _ _ => trivial) (fun _ _ => trivial) (fun _ => trivial)
+      (fun _ _ _ _ _ => trivial) (fun _ _ _ _ => trivial)
+      (fun {Γ t} _ _ => ⟨t, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩)
+      (fun {Γ v v' t} hred _ ih => by
+        obtain ⟨w, hSubChain, hEqChain⟩ := ih
+        have hpv : PrevalidExt Γ [] := _PrevalidExt_nil_of_MEqRed hred
+        have hSubStep : MSubRed Γ [] v v' := MSubRed.equ hpv hred
+        exact ⟨w, Relation.ReflTransGen.head ⟨hSubStep⟩ hSubChain, hEqChain⟩)
+      (fun {Γ v v' t} _ hred _ _ _ _ ih => by
+        obtain ⟨w, hSubChain, hEqChain⟩ := ih
+        exact ⟨w, Relation.ReflTransGen.head ⟨hred⟩ hSubChain, hEqChain⟩)
+      (fun {Γ v t t'} _ hred ih => by
+        obtain ⟨w, hSubChain, hEqChain⟩ := ih
+        exact ⟨w, hSubChain, Relation.ReflTransGen.head ⟨hred⟩ hEqChain⟩)
+      (fun _ _ _ _ ih_sub _ => ih_sub)
+      (fun _ _ _ ih1 _ ih2 => MSub.trans_step ih1 ih2)
+      h)
+
+/-- Strip the `WfM` decoration of `WSubM` to the diagrammatic `MSub`. -/
+private theorem _WSubM_toMSub {Γ : Ctx} {v t : Term}
+    (h : WSubM Γ v t) : MSub Γ [] v t := _toMSub_combined.1 h
+
+/-- Strip `WSubMStar` to `MSub` via the mutual recursor. -/
+private theorem _WSubMStar_toMSub {Γ : Ctx} {v t : Term}
+    (h : WSubMStar Γ v t) : MSub Γ [] v t := _toMSub_combined.2 h
+
+/-- **Lemma 11 (Pasquale & García-Pérez 2024 §4 appendix).** `Top` is not
+a transitive well-subtype of an abstraction. -/
+theorem Lemma_11_TopHasNoFunctionSupertype
     {Γ : Ctx} {bound body : Term}
-    (h : WSubMStar Γ .top (.abs bound body)) : False
+    (h : WSubMStar Γ .top (.abs bound body)) : False := by
+  have hMSub : MSub Γ [] .top (.abs bound body) := _WSubMStar_toMSub h
+  obtain ⟨w, hSubChain, hEqChain⟩ := hMSub
+  -- hSubChain : MSubRedStar Γ [] .top w
+  -- hEqChain  : MEqRedStar Γ [] (.abs bound body) w
+  have hwTop : w = .top := _MSubRedStar_top_inv hSubChain
+  obtain ⟨b', body', hwAbs⟩ := _MEqRedStar_abs_inv hEqChain
+  -- w = .top and w = .abs ... contradiction.
+  rw [hwTop] at hwAbs
+  cases hwAbs
 
 /-! ## §4. Lemma 6 (Evaluation preserves well-formedness)
 
