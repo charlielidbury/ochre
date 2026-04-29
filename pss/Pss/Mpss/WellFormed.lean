@@ -559,9 +559,62 @@ theorem Lemma_16_WEquM_to_WSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
 well-subtyping between two abstractions of the form `λ x ≤ t. u` and
 `λ x ≤ t'. u'`, the bound annotations are well-equivalent.
 
-This is the paper's exact Lemma 10 statement. AXIOMATIZED — discharge
-requires Theorem 3 (transitivity elimination) plus a chain-shape argument
-on `MEqRedStar` (paper appendix). -/
+This is the paper's exact Lemma 10 statement. AXIOMATIZED.
+
+## Precise discharge blocker (audit notes, agent_id: och-refactor)
+
+The natural strategy via `_WSubMStar_toMSub` (in `TypeSafety.lean`) yields
+`MSub Γ [] (.abs t u) (.abs t' u')` = `∃ w, MSubRedStar Γ [] (.abs t u) w
+∧ MEqRedStar Γ [] (.abs t' u') w`. By chain inversions on `Me-Fun` /
+`Ms-Fun` / `Ms-Equ` (the only rules that fire on `.abs` at empty stack),
+`w = .abs t_w body_w` and we extract two `MEqRedStar` annotation chains:
+`MEqRedStar Γ [] t t_w` and `MEqRedStar Γ [] t' t_w`. We additionally have
+`WfM Γ t` and `WfM Γ t'` from the LHS/RHS extractors of `WSubMStar`.
+
+**The blocker is reaching `WEquM Γ t t'` from these two chains plus
+endpoint WfM.** The `WEquM` constructors are:
+* `rfl`: needs `WfM Γ t` to anchor a `WEquM Γ t t`.
+* `lf1`: prepend a forward `MEqRed` step on the LHS (no WfM).
+* `rgh`: append a *backward* `MEqRed` step on the RHS (no WfM).
+
+The two unconditionally provable helper lemmas are:
+* Lemma A (no WfM): `MEqRedStar Γ [] a b → WEquM Γ b c → WEquM Γ a c`.
+  (Tail induction on the chain, applying `lf1` at each step.)
+* Lemma B (no WfM): `WEquM Γ a c → MEqRedStar Γ [] b c → WEquM Γ a b`.
+  (Tail induction on the chain, applying `rgh` at each step.)
+
+Lemma A extends the LHS *backward* along a forward chain; Lemma B shrinks
+the RHS *backward* along a forward chain. Crucially, **neither extends
+either side *forward* along a forward chain without an additional WfM
+anchor** (because `rgh`'s consumed step is `t →ₑ t'`, not `t' →ₑ t`).
+With our chains both pointing **toward** `t_w`, neither helper can be
+seeded from `WEquM Γ t' t'` (rfl, anchored by `WfM Γ t'`): every
+extension chain we have ends at `t_w`, not at `t'`.
+
+The only seed that closes is `WEquM Γ t_w t_w` (rfl), which requires
+`WfM Γ t_w`. **Producing `WfM Γ t_w` requires preservation of `WfM`
+under `MEqRed` at empty stack.** That preservation lemma is non-trivial
+in this calculus:
+* `Me-Fun` case: needs `Lemma_23_NarrowingWf` (available) plus IH on the
+  annotation reduction. Since the annotation is itself an arbitrary
+  term, the IH demands the *general* preservation, not just the
+  `.abs/.abs` specialization.
+* `Me-Bet` (β) case: requires `Lemma_7_SubstitutionPreservesWf` (already
+  axiomatized in `TypeSafety.lean`).
+* `Me-Pro` (variable promotion) case: requires preservation along the
+  variable's stored sub-binding chain — recursive.
+
+Discharging the full preservation lemma is therefore a substantial new
+mutual-recursive proof in its own right (effectively a parallel
+`Lemma_6_EvaluationPreservesWf` for `MEqRed` instead of `Step`, which
+the existing infrastructure does NOT cover — `Lemma 6` only handles
+top-level operational `Step`, while `MEqRed` reduces under abstractions
+and propagates through any subterm).
+
+Cf. `AXIOMS.md` for the listing. The restricted form
+`Lemma_10_InversionRestricted` (returning a common `MEqRedStar` reduct)
+is provable without `WfM`-preservation but is currently unused
+downstream. -/
 axiom Lemma_10_Inversion
     {Γ : Ctx} {t t' u u' : Term}
     (h : WSubMStar Γ (.abs t u) (.abs t' u')) :
