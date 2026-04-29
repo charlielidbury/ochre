@@ -331,7 +331,7 @@ noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
 
 /-- If `Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁` has a `.equ`-binding for `y`, then `y ≠ x`
 (since the only entry for `x` is `.sub`, by prevalidity). -/
-private theorem equBinds_ne_x_at_sub_head
+theorem equBinds_ne_x_at_sub_head
     {Γ₁ Γ₂ : Ctx} {x y : String} {t α : Term}
     (hpv : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁))
     (heq : (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁).equBinds y α) : y ≠ x := by
@@ -372,7 +372,7 @@ private theorem equBinds_ne_x_at_sub_head
 /-- Given `equBinds y α` in `Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁` with `y ≠ x`, find
 the binding's position and produce the corresponding binding in the
 substituted context. -/
-private theorem equBinds_split
+theorem equBinds_split
     {Γ₁ Γ₂ : Ctx} {x y : String} {s t α : Term}
     (hyx : y ≠ x)
     (hpv : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁))
@@ -426,7 +426,7 @@ private theorem equBinds_split
 `.sub` entry for `x` is the only entry that could match `x`; if `y ≠ x`
 the binding is preserved through substitution. The `y = x` case yields
 `b = t` and is handled separately by callers. -/
-private theorem subBinds_split_neq
+theorem subBinds_split_neq
     {Γ₁ Γ₂ : Ctx} {x y : String} {s t b : Term}
     (hyx : y ≠ x)
     (hpv : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁))
@@ -585,6 +585,38 @@ theorem subBinds_at_equ_head_impossible
     · simp [he] at hsb
       have hpv_tail : Prevalid (rest ++ ⟨x, v, .equ⟩ :: Γ₁) := hpv.tail
       exact ih hpv_tail hsb
+
+/-- Uniqueness: the `.sub` head binding for `x` is the only one. Mirrors
+`equBinds_at_equ_head_unique`. Used by Renaming for the `Ms-Pro y = x` arm. -/
+theorem subBinds_at_sub_head_unique
+    {Γ₁ Γ₂ : Ctx} {x : String} {t b : Term}
+    (hpv : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁))
+    (hb : (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁).subBinds x b) : b = t := by
+  induction Γ₂ with
+  | nil =>
+    have hb' : Ctx.subBinds (⟨x, t, .sub⟩ :: Γ₁) x b := by simpa using hb
+    simp [Ctx.subBinds, Ctx.lookupSub] at hb'
+    exact hb'.symm
+  | cons e rest ih =>
+    have hpv_eq : (e :: rest ++ ⟨x, t, .sub⟩ :: Γ₁) =
+        (e :: (rest ++ ⟨x, t, .sub⟩ :: Γ₁)) := by simp
+    rw [hpv_eq] at hpv
+    simp [Ctx.subBinds, Ctx.lookupSub_cons] at hb
+    by_cases he : e.name = x
+    · cases he_kind : e.kind with
+      | sub =>
+        exfalso
+        have hyfresh : e.name ∉ Ctx.dom (rest ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+          cases hpv with
+          | sub _ hen _ _ => exact hen
+          | equ _ hen _ _ => exact hen
+        apply hyfresh
+        rw [he, Ctx.dom_append, Ctx.dom_cons]
+        apply Finset.mem_union.mpr; right
+        exact Finset.mem_insert_self _ _
+      | equ => simp [he, he_kind] at hb
+    · simp [he] at hb
+      exact ih hpv.tail hb
 
 /-- `.equ`-head version of `subBinds_split_neq`: when the head is `.equ` for `x`
 and `y ≠ x`, `.sub`-bindings for `y` lift through substitution. -/

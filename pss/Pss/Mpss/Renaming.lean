@@ -78,91 +78,409 @@ theorem Term.subst_open_fresh {y z : String} {e : Term}
 
 /-! ## §2. Renaming for MEqRed under a `.sub` head binding
 
-We invoke Lemma 31 with the substituted term `(.fvar z)`. To satisfy
-`SubstOk`'s `fv (.fvar z) ⊆ Γ.dom` constraint we first weaken (Lemma 22)
-to insert `⟨z, t, .sub⟩` into the tail, then apply Lemma 31. The
-substituted output context drops the `y`-head (since Lemma 31 with
-`Γ₂ = []` yields the tail directly).
+The previous implementation went through Lemma 22 (weakening) then
+Lemma 31, which required the caller to supply `Term.fv body ⊆ Γ.dom`.
+We replace it with a **direct renaming primitive** `subst_yz_sub_head`
+that operates on the non-doubled context `Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁`,
+substituting `y → fvar z` and producing the result in
+`Γ₂.subst y (.fvar z) ++ ⟨z, t, .sub⟩ :: Γ₁`. No weakening step is
+performed, so no `fv body` precondition is needed at the call site.
+
+The proof mirrors `subst_yz_equ_head` (§3) but for `.sub` head:
+- `Me-Pro yi` never fires on `y` (which has a `.sub` binding, not `.equ`),
+  so the `.equ`-uniqueness arm doesn't appear; all `Me-Pro` cases are
+  handled uniformly via `equBinds_split` (followed by a middle-insert
+  to restore the renamed head binding).
+- `Me-Var y` becomes `MEqRed.refl` for `z` (which is now in scope at
+  the renamed head).
 -/
 
+/-- Helper: build prevalidity of the renamed context
+`Γ₂.subst y (.fvar z) ++ ⟨z, t, .sub⟩ :: Γ₁`.
+
+Constructs prevalidity of the doubled context first, then substitutes
+`y → fvar z` (which is `SubstOk` because `z` is now in scope as the
+new head). -/
+private theorem prevalid_rename_sub_head
+    {Γ₂ Γ₁ : Ctx} {y z : String} {t : Term}
+    (hyz : y ≠ z)
+    (hz_notin_Γ₁ : z ∉ Γ₁.dom)
+    (hz_notin_Γ₂ : z ∉ Γ₂.dom)
+    (hpv : Prevalid (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁)) :
+    Prevalid (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
+  classical
+  -- Extract head data from hpv via Prevalid.outer.
+  have hpv_inner : Prevalid (⟨y, t, .sub⟩ :: Γ₁) := Prevalid.outer hpv
+  cases hpv_inner with
+  | sub hpvΓ₁ hy_notin_Γ₁ hfvt hLCt =>
+    -- Build Prevalid (⟨y,t,.sub⟩ :: ⟨z,t,.sub⟩ :: Γ₁).
+    have hpv_zsub : Prevalid (⟨z, t, .sub⟩ :: Γ₁) :=
+      Prevalid.sub hpvΓ₁ hz_notin_Γ₁ hfvt hLCt
+    have hyz_zsub : y ∉ Ctx.dom (⟨z, t, .sub⟩ :: Γ₁) := by
+      rw [Ctx.dom_cons]
+      intro hmem
+      rcases Finset.mem_insert.mp hmem with hyz' | hyΓ
+      · exact hyz hyz'
+      · exact hy_notin_Γ₁ hyΓ
+    have hfvt_z : Term.fv t ⊆ Ctx.dom (⟨z, t, .sub⟩ :: Γ₁) := by
+      intro w hw
+      rw [Ctx.dom_cons]; exact Finset.mem_insert_of_mem (hfvt hw)
+    have hpv_y_z : Prevalid (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ₁) :=
+      Prevalid.sub hpv_zsub hyz_zsub hfvt_z hLCt
+    -- Extend to Prevalid (Γ₂ ++ ⟨y,t,.sub⟩ :: ⟨z,t,.sub⟩ :: Γ₁) by induction on Γ₂.
+    have hpv_doubled :
+        Prevalid (Γ₂ ++ ⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ₁) := by
+      induction Γ₂ with
+      | nil => simpa using hpv_y_z
+      | cons e rest ih =>
+        have hpv' : Prevalid (e :: (rest ++ ⟨y, t, .sub⟩ :: Γ₁)) := by simpa using hpv
+        have hpv_rest : Prevalid (rest ++ ⟨y, t, .sub⟩ :: Γ₁) := hpv'.tail
+        have hz_notin_rest : z ∉ Ctx.dom rest := by
+          intro hmem
+          apply hz_notin_Γ₂
+          rw [Ctx.dom_cons]; exact Finset.mem_insert_of_mem hmem
+        have ih' := ih hz_notin_rest hpv_rest
+        have he_notin : e.name ∉ Ctx.dom (rest ++ ⟨y, t, .sub⟩ :: Γ₁) := by
+          cases hpv' with
+          | sub _ hen _ _ => exact hen
+          | equ _ hen _ _ => exact hen
+        have he_notin' : e.name ∉ Ctx.dom (rest ++ ⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ₁) := by
+          intro hmem
+          rw [Ctx.dom_append, Ctx.dom_cons, Ctx.dom_cons] at hmem
+          rw [Ctx.dom_append, Ctx.dom_cons] at he_notin
+          rcases Finset.mem_union.mp hmem with hr | htail
+          · apply he_notin; exact Finset.mem_union.mpr (Or.inl hr)
+          · rcases Finset.mem_insert.mp htail with hey | hrest
+            · apply he_notin
+              exact Finset.mem_union.mpr (Or.inr (Finset.mem_insert.mpr (Or.inl hey)))
+            · rcases Finset.mem_insert.mp hrest with hez | hΓ
+              · -- e.name = z. But e ∈ Γ₂ has name in Γ₂.dom; z ∉ Γ₂.dom.
+                apply hz_notin_Γ₂
+                -- Goal: z ∈ Ctx.dom (e :: rest); after simp: z ∈ insert e.name (Ctx.dom rest).
+                rw [show z = e.name from hez.symm]
+                exact Finset.mem_insert_self _ _
+              · apply he_notin
+                exact Finset.mem_union.mpr (Or.inr (Finset.mem_insert.mpr (Or.inr hΓ)))
+        cases hpv' with
+        | @sub _ name u' _ _ hfve hlce =>
+          have hfve' : Term.fv u' ⊆
+              Ctx.dom (rest ++ ⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ₁) := by
+            intro w hw
+            have hw' := hfve hw
+            rw [Ctx.dom_append, Ctx.dom_cons] at hw'
+            rw [Ctx.dom_append, Ctx.dom_cons, Ctx.dom_cons]
+            rcases Finset.mem_union.mp hw' with hr | htail
+            · exact Finset.mem_union.mpr (Or.inl hr)
+            · rcases Finset.mem_insert.mp htail with hey | hΓ
+              · exact Finset.mem_union.mpr (Or.inr (Finset.mem_insert.mpr (Or.inl hey)))
+              · exact Finset.mem_union.mpr
+                  (Or.inr (Finset.mem_insert.mpr
+                    (Or.inr (Finset.mem_insert.mpr (Or.inr hΓ)))))
+          have res := Prevalid.sub ih' he_notin' hfve' hlce
+          simpa using res
+        | @equ _ name α _ _ hfve hlce =>
+          have hfve' : Term.fv α ⊆
+              Ctx.dom (rest ++ ⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ₁) := by
+            intro w hw
+            have hw' := hfve hw
+            rw [Ctx.dom_append, Ctx.dom_cons] at hw'
+            rw [Ctx.dom_append, Ctx.dom_cons, Ctx.dom_cons]
+            rcases Finset.mem_union.mp hw' with hr | htail
+            · exact Finset.mem_union.mpr (Or.inl hr)
+            · rcases Finset.mem_insert.mp htail with hey | hΓ
+              · exact Finset.mem_union.mpr (Or.inr (Finset.mem_insert.mpr (Or.inl hey)))
+              · exact Finset.mem_union.mpr
+                  (Or.inr (Finset.mem_insert.mpr
+                    (Or.inr (Finset.mem_insert.mpr (Or.inr hΓ)))))
+          have res := Prevalid.equ ih' he_notin' hfve' hlce
+          simpa using res
+    -- Apply Lemma 28a with x := y, s := .fvar z, target tail := ⟨z,t,.sub⟩ :: Γ₁.
+    have hok : SubstOk (⟨z, t, .sub⟩ :: Γ₁) (.fvar z) := by
+      refine ⟨Term.LC.fvar z, ?_⟩
+      intro w hw
+      have hwz : w = z := by simpa [Term.fv] using hw
+      subst hwz
+      rw [Ctx.dom_cons]; exact Finset.mem_insert_self _ _
+    exact Lemma_28a_SubstPreservesPrevalid_kind hpv_doubled hok
+
+/-- Helper: build `PrevalidExt` of the renamed context with stack also renamed. -/
+private theorem prevalidExt_rename_sub_head
+    {Γ₂ Γ₁ : Ctx} {st : Stack} {y z : String} {t : Term}
+    (hyz : y ≠ z)
+    (hz_notin_Γ₁ : z ∉ Γ₁.dom)
+    (hz_notin_Γ₂ : z ∉ Γ₂.dom)
+    (hpv : PrevalidExt (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) st) :
+    PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st) := by
+  classical
+  have hpv_base := extractPrevalid hpv
+  have hpv_renamed := prevalid_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv_base
+  -- Now we have prevalidity of the output context. Need to rebuild stack.
+  have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+  -- Build by induction on st.
+  induction st with
+  | nil =>
+    cases hpv with
+    | nil _ => exact PrevalidExt.nil hpv_renamed
+  | cons α st' ih =>
+    match hpv with
+    | PrevalidExt.cons hpvr hLCα hfvα =>
+      have ih' := ih hpvr
+      have hLCα' : Term.LC (Term.subst y (.fvar z) α) := Term.subst_lc hLCfz hLCα
+      have hfvα' : Term.fv (Term.subst y (.fvar z) α) ⊆
+          Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
+        intro w hw
+        have hsub := Term.fv_subst_subset y (.fvar z) α hw
+        rcases Finset.mem_union.mp hsub with hsd | hsd
+        · rcases Finset.mem_sdiff.mp hsd with ⟨hwfv, hwne⟩
+          have hw_in : w ∈ Ctx.dom (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) := hfvα hwfv
+          rw [Ctx.dom_append, Ctx.dom_cons] at hw_in
+          show w ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+          rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+          rcases Finset.mem_union.mp hw_in with hΓ₂ | htail
+          · exact Finset.mem_union.mpr (Or.inl hΓ₂)
+          · rcases Finset.mem_insert.mp htail with hwy | hwΓ₁
+            · exact absurd hwy (fun hh => hwne (by simp [hh]))
+            · exact Finset.mem_union.mpr
+                (Or.inr (Finset.mem_insert_of_mem hwΓ₁))
+        · have hwz : w = z := by simpa [Term.fv] using hsd
+          rw [hwz]
+          show z ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+          rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+          exact Finset.mem_union.mpr
+            (Or.inr (Finset.mem_insert_self _ _))
+      exact PrevalidExt.cons ih' hLCα' hfvα'
+
+/-- Specialized renaming substitution lemma for a `.sub` head binding.
+Substitutes `(.fvar z)` for `y` in a derivation whose head-`.sub`
+binding is `⟨y, t, .sub⟩`, producing a derivation in the renamed context
+where the head is `⟨z, t, .sub⟩`. **No weakening required** at the call
+site, hence no `fv body ⊆ Γ.dom` hypothesis needed. -/
+private noncomputable def MEqRed.subst_yz_sub_head
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y z : String} {t u u' : Term}
+    (hyz : y ≠ z)
+    (hz_notin_Γ₁ : z ∉ Γ₁.dom)
+    (hz_notin_Γ₂ : z ∉ Γ₂.dom)
+    (h : MEqRed (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) st u u') :
+    MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st)
+      (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) u') := by
+  classical
+  generalize hΓ : (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) = Γ at h
+  revert hz_notin_Γ₂
+  induction h generalizing Γ₂ with
+  | @pro Γ st' yi α α' hpv heq hα ihα =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hpvL : Prevalid (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) := extractPrevalid hpv
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        (Stack.subst y (.fvar z) st') :=
+      prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
+    have hyiy : yi ≠ y := equBinds_ne_x_at_sub_head hpvL heq
+    rw [Term.subst_fvar_ne hyiy]
+    have heq_lifted : (Ctx.subst y (.fvar z) Γ₂ ++ Γ₁).equBinds yi
+        (Term.subst y (.fvar z) α) :=
+      equBinds_split (s := .fvar z) hyiy hpvL heq
+    have hpv_big : Prevalid (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) :=
+      prevalid_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpvL
+    have hpv_big_assoc :
+        Prevalid (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) := by
+      have heq : (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) =
+          (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by simp
+      exact heq ▸ hpv_big
+    have heq' : (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁).equBinds yi
+        (Term.subst y (.fvar z) α) := by
+      have := Ctx.equBinds_insert_middle
+        (Γ₁ := Ctx.subst y (.fvar z) Γ₂) (Δ := [⟨z, t, .sub⟩]) (Γ₂ := Γ₁)
+        hpv_big_assoc heq_lifted
+      have heq_simp : (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) =
+          (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by simp
+      exact heq_simp ▸ this
+    exact MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl hz_notin_Γ₂)
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
+        Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd') := by
+      simp [Term.opening, Term.subst_open hLCfz]
+    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app (.abs tBound bd) v0))
+      (Term.subst y (.fvar z) (Term.opening v0' bd'))
+    rw [hsubst_open]
+    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st')
+      (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
+            (Term.subst y (.fvar z) v0))
+      (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    · intro yfresh hyfresh
+      simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
+      have hyfL : yfresh ∉ L := hyfresh.1
+      have hyfy : yfresh ≠ y := hyfresh.2
+      -- Bet body recurses with same Γ₂ (no extension), so reuse hz_notin_Γ₂.
+      have ih_body := ihbody yfresh hyfL (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+      rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+          Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+      exact ih_body
+    · have ihv' := ihv (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+      simpa using ihv'
+  | @top Γ st' hpv =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    exact MEqRed.top
+      (prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv)
+  | @app Γ st' u_ u_' v_ v_' hu hv ihu ihv =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have ihu' := ihu (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+    have ihv' := ihv (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+    simp at ihu'
+    refine MEqRed.app ?_ ?_
+    · exact ihu'
+    · simpa using ihv'
+  | @var Γ st' yi hpv =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        (Stack.subst y (.fvar z) st') :=
+      prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
+    by_cases hyiy : yi = y
+    · -- subst y (.fvar z) (.fvar yi) = .fvar z when yi = y. Use MEqRed.refl.
+      have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar z := by
+        rw [hyiy]; simp [Term.subst]
+      rw [hsubst_eq]
+      have hLCz : Term.LC (.fvar z) := Term.LC.fvar z
+      have hfvz : Term.fv (.fvar z) ⊆
+          Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
+        intro w hw
+        have hwz : w = z := by simpa [Term.fv] using hw
+        subst hwz
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        exact Finset.mem_union.mpr (Or.inr (Finset.mem_insert_self _ _))
+      exact MEqRed.refl hpv' hLCz hfvz
+    · rw [Term.subst_fvar_ne hyiy]
+      exact MEqRed.var hpv'
+  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) [])
+      (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
+      (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+      simpa using iht'
+    · intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      have hyfL : yfresh ∉ L := hyfresh.1.1
+      have hyfy : yfresh ≠ y := hyfresh.1.2
+      have hyfz : yfresh ≠ z := hyfresh.2
+      -- yfresh ≠ z, so z ∉ (⟨yfresh, tt, .sub⟩ :: Γ₂).dom.
+      have hz_notin_Γ₂' : z ∉ Ctx.dom (⟨yfresh, tt, .sub⟩ :: Γ₂) := by
+        rw [Ctx.dom_cons]
+        intro hmem
+        rcases Finset.mem_insert.mp hmem with hzy | hzΓ
+        · exact hyfz hzy.symm
+        · exact hz_notin_Γ₂ hzΓ
+      have ih_body :=
+        ihbody yfresh hyfL (Γ₂ := ⟨yfresh, tt, .sub⟩ :: Γ₂) (by simp) hz_notin_Γ₂'
+      have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+      rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+          Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+      simpa [Ctx.subst, List.cons_append] using ih_body
+  | @tAp Γ st' u_ hpv hLCu hfv =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        (Stack.subst y (.fvar z) st') :=
+      prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
+    have hLCu' : Term.LC (Term.subst y (.fvar z) u_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCu
+    have hfv' :
+        Term.fv (Term.subst y (.fvar z) u_) ⊆
+          Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
+      intro w hw
+      have hsub := Term.fv_subst_subset y (.fvar z) u_ hw
+      rcases Finset.mem_union.mp hsub with hsd | hsd
+      · rcases Finset.mem_sdiff.mp hsd with ⟨hwfv, hwne⟩
+        have hw_in : w ∈ Ctx.dom (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) := hfv hwfv
+        rw [Ctx.dom_append, Ctx.dom_cons] at hw_in
+        show w ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        rcases Finset.mem_union.mp hw_in with hΓ₂ | htail
+        · exact Finset.mem_union.mpr (Or.inl hΓ₂)
+        · rcases Finset.mem_insert.mp htail with hwy | hwΓ₁
+          · exact absurd hwy (fun hh => hwne (by simp [hh]))
+          · exact Finset.mem_union.mpr
+              (Or.inr (Finset.mem_insert_of_mem hwΓ₁))
+      · have hwz : w = z := by simpa [Term.fv] using hsd
+        rw [hwz]
+        show z ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        exact Finset.mem_union.mpr
+          (Or.inr (Finset.mem_insert_self _ _))
+    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
+    simp [Term.subst]
+    exact MEqRed.tAp hpv' hLCu' hfv'
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) (αi :: st'))
+      (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
+      (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
+    rw [Stack.subst_cons]
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+      simpa using iht'
+    · intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      have hyfL : yfresh ∉ L := hyfresh.1.1
+      have hyfy : yfresh ≠ y := hyfresh.1.2
+      have hyfz : yfresh ≠ z := hyfresh.2
+      have hz_notin_Γ₂' : z ∉ Ctx.dom (⟨yfresh, αi, .equ⟩ :: Γ₂) := by
+        rw [Ctx.dom_cons]
+        intro hmem
+        rcases Finset.mem_insert.mp hmem with hzy | hzΓ
+        · exact hyfz hzy.symm
+        · exact hz_notin_Γ₂ hzΓ
+      have ih_body :=
+        ihbody yfresh hyfL (Γ₂ := ⟨yfresh, αi, .equ⟩ :: Γ₂) (by simp) hz_notin_Γ₂'
+      have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+      rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+          Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+      simpa [Ctx.subst, List.cons_append] using ih_body
+
 /-- **Renaming for `MEqRed` under a `.sub`-head binding.** Given a
-derivation at a fresh `y`, produce one at any other fresh `z`. -/
+derivation at a fresh `y`, produce one at any other fresh `z`.
+
+This version does **NOT** require `Term.fv body ⊆ Γ.dom` (the previous
+implementation needed it for the internal weakening step). It uses the
+`subst_yz_sub_head` primitive directly, with `Γ₂ := []`. -/
 noncomputable def MEqRed.rename_sub
     {Γ : Ctx} {s : Stack} {body body' t : Term} {y z : String}
     (hpvΓ : Prevalid Γ)
     (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ.dom)
     (hy_notin_Γ : y ∉ Γ.dom) (hz_notin_Γ : z ∉ Γ.dom)
     (hy_notin_body : y ∉ Term.fv body) (hy_notin_body' : y ∉ Term.fv body')
-    (hfv_body : Term.fv body ⊆ Γ.dom) (hfv_body' : Term.fv body' ⊆ Γ.dom)
     (hy_notin_stack : ∀ α ∈ s, y ∉ Term.fv α)
     (h : MEqRed (⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y])) :
     MEqRed (⟨z, t, .sub⟩ :: Γ) s (body^[z]) (body'^[z]) := by
   classical
   by_cases hyz : y = z
   · subst hyz; exact h
-  -- Step 1: Build prevalidity for the weakened context ⟨y⟩::⟨z⟩::Γ.
-  have hpvz : Prevalid (⟨z, t, .sub⟩ :: Γ) :=
-    Prevalid.sub hpvΓ hz_notin_Γ hfvt hLCt
-  have hyzdom : y ∉ Ctx.dom (⟨z, t, .sub⟩ :: Γ) := by
-    rw [Ctx.dom_cons]
-    intro hmem
-    rcases Finset.mem_insert.mp hmem with hyz' | hyΓ
-    · exact hyz hyz'
-    · exact hy_notin_Γ hyΓ
-  have hfvt_z : Term.fv t ⊆ Ctx.dom (⟨z, t, .sub⟩ :: Γ) := by
-    intro w hw
-    rw [Ctx.dom_cons]
-    exact Finset.mem_insert_of_mem (hfvt hw)
-  have hpv_yz : Prevalid (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ) :=
-    Prevalid.sub hpvz hyzdom hfvt_z hLCt
-  -- Step 2: fv bound on body^[y].
-  have hfv_open_y : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, t, .sub⟩ :: Γ) := by
-    intro w hw
-    have hsub := Term.fv_open_subset 0 (.fvar y) body
-    rw [Ctx.dom_cons]
-    rcases Finset.mem_union.mp (hsub hw) with hwBody | hwY
-    · exact Finset.mem_insert_of_mem (hfv_body hwBody)
-    · have hwy : w = y := by simpa [Term.fv] using hwY
-      subst hwy
-      exact Finset.mem_insert_self _ _
-  -- Step 3: Apply Lemma 22. Insert [⟨z, t, .sub⟩] between [⟨y, t, .sub⟩] and Γ.
-  have hpv_pre : Prevalid (([⟨y, t, .sub⟩] : Ctx) ++ Γ) := by
-    show Prevalid (⟨y, t, .sub⟩ :: Γ)
-    exact Prevalid.sub hpvΓ hy_notin_Γ hfvt hLCt
-  have hpv_post : Prevalid (([⟨y, t, .sub⟩] : Ctx) ++ [⟨z, t, .sub⟩] ++ Γ) := by
-    show Prevalid (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ)
-    exact hpv_yz
-  have h_weakened : MEqRed (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ)
-      s (body^[y]) (body'^[y]) := by
-    have hh : MEqRed (([⟨y, t, .sub⟩] : Ctx) ++ Γ) s (body^[y]) (body'^[y]) := by
-      show MEqRed (⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y]); exact h
-    have hfvU : Term.fv (body^[y]) ⊆ Ctx.dom (([⟨y, t, .sub⟩] : Ctx) ++ Γ) := by
-      show Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, t, .sub⟩ :: Γ); exact hfv_open_y
-    have hres :=
-      Lemma_22_WeakeningMEqRed (Γ₁ := [⟨y, t, .sub⟩]) (Δ := [⟨z, t, .sub⟩]) (Γ₂ := Γ)
-        hpv_pre hfvU hpv_post hh
-    -- hres : MEqRed ([⟨y,...⟩] ++ [⟨z,...⟩] ++ Γ) ...; rewrite to cons form.
-    have heq : (([⟨y, t, .sub⟩] : Ctx) ++ [⟨z, t, .sub⟩] ++ Γ) =
-        (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ) := by simp
-    exact heq ▸ hres
-  -- Step 4: Apply Lemma 31. Γ₂ = [], Γ₁ = ⟨z, t, .sub⟩ :: Γ, x = y, s_sub = .fvar z.
-  have hsub_ok : SubstOk (⟨z, t, .sub⟩ :: Γ) (.fvar z) := by
-    refine ⟨Term.LC.fvar z, ?_⟩
-    intro w hw
-    have hwz : w = z := by simpa [Term.fv] using hw
-    subst hwz
-    rw [Ctx.dom_cons]; exact Finset.mem_insert_self _ _
-  have h_weakened' :
-      MEqRed (([] : Ctx) ++ ⟨y, t, .sub⟩ :: (⟨z, t, .sub⟩ :: Γ))
-        s (body^[y]) (body'^[y]) := by
-    show MEqRed (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y])
-    exact h_weakened
+  -- Apply subst_yz_sub_head with Γ₂ := [], y := y, z := z.
+  have h_in_form : MEqRed (([] : Ctx) ++ ⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y]) := by
+    show MEqRed (⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y]); exact h
+  have hz_notin_empty : z ∉ Ctx.dom ([] : Ctx) := by
+    simp [Ctx.dom]
   have h_subst :=
-    Lemma_31_ReductionUnderSubst_Eq (Γ₂ := []) h_weakened' hsub_ok
-  -- h_subst : MEqRed (Ctx.subst y (.fvar z) [] ++ ⟨z, t, .sub⟩ :: Γ)
-  --                  (Stack.subst y (.fvar z) s)
-  --                  (Term.subst y (.fvar z) (body^[y]))
-  --                  (Term.subst y (.fvar z) (body'^[y]))
+    MEqRed.subst_yz_sub_head (Γ₂ := ([] : Ctx)) hyz hz_notin_Γ hz_notin_empty h_in_form
+  -- h_subst : MEqRed ([].subst y (.fvar z) ++ ⟨z, t, .sub⟩ :: Γ) ...
   have hctx_eq :
       Ctx.subst y (.fvar z) ([] : Ctx) ++ (⟨z, t, .sub⟩ :: Γ) =
         ⟨z, t, .sub⟩ :: Γ := by simp
@@ -504,82 +822,241 @@ noncomputable def MEqRed.rename_equ
   rw [hctx_eq, hstk_eq, hbody_eq, hbody'_eq] at h_subst
   exact h_subst
 
-/-! ## §4. Renaming for MSubRed
+/-! ## §4. Renaming for MSubRed under a `.sub`-head binding
 
-Same pattern as MEqRed but invokes Lemma 30 / Lemma 21 internally. The
-escape-hatch `Lemma_30_msPro_x_axiom` only fires for the `Ms-Pro y = x`
-arm; under our renaming use case (`x = .fvar z`, `t = subBinds`), this
-becomes `MSubRed _ _ (.fvar z) (subst y (.fvar z) t)` which still uses
-the axiom — but the axiom's preconditions are met.
+We provide the analogue `MSubRed.subst_yz_sub_head` of
+`MEqRed.subst_yz_sub_head` that operates on the non-doubled context.
+The proof is by direct induction; for the `Ms-Equ` arm we delegate to
+`MEqRed.subst_yz_sub_head`. Critically, **no escape-hatch axiom** (such
+as `Lemma_30_msPro_x_axiom`) is needed: the `Ms-Pro y = x` case is
+discharged directly because `subBinds_at_sub_head_unique` gives
+`t' = t`, then `y ∉ fv t` (by prevalidity) makes `subst y (.fvar z) t = t`,
+yielding `Ms-Pro z` against the renamed head binding.
 -/
 
+/-- Specialized renaming substitution lemma for `MSubRed` under a
+`.sub`-head binding. Mirrors `MEqRed.subst_yz_sub_head`. **No
+weakening required**, no `fv body ⊆ Γ.dom` hypothesis, **no axiom**
+(unlike `Lemma_30_ReductionUnderSubst_Sub` which uses
+`Lemma_30_msPro_x_axiom`). -/
+private noncomputable def MSubRed.subst_yz_sub_head
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y z : String} {t u u' : Term}
+    (hyz : y ≠ z)
+    (hz_notin_Γ₁ : z ∉ Γ₁.dom)
+    (hz_notin_Γ₂ : z ∉ Γ₂.dom)
+    (h : MSubRed (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) st u u') :
+    MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st)
+      (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) u') := by
+  classical
+  generalize hΓ : (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) = Γ at h
+  revert hz_notin_Γ₂
+  induction h generalizing Γ₂ with
+  | @pro Γ st' yi t' hpv hsb =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hpvL : Prevalid (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) := extractPrevalid hpv
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        (Stack.subst y (.fvar z) st') :=
+      prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
+    by_cases hyiy : yi = y
+    · -- yi = y. Lookup .sub binding for y at head: t' = t.
+      have hsb_y : (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁).subBinds y t' := hyiy ▸ hsb
+      have ht'_eq : t' = t := subBinds_at_sub_head_unique hpvL hsb_y
+      rw [hyiy, ht'_eq]
+      -- subst y (.fvar y) (.fvar y) = .fvar z. We need y ∉ fv t to make
+      -- subst y (.fvar z) t = t. Get from Prevalid: ⟨y, t, .sub⟩ :: Γ₁'s t has fv ⊆ Γ₁.dom; y ∉ Γ₁.dom.
+      have hpv_inner : Prevalid (⟨y, t, .sub⟩ :: Γ₁) := Prevalid.outer hpvL
+      have hy_notin_t : y ∉ Term.fv t := by
+        cases hpv_inner with
+        | sub _ hy_notin_Γ₁_inner hfvt _ =>
+          intro h; exact hy_notin_Γ₁_inner (hfvt h)
+      have hsubst_y_fvar_y : Term.subst y (.fvar z) (.fvar y) = .fvar z := by
+        simp [Term.subst]
+      rw [hsubst_y_fvar_y, Term.subst_fresh hy_notin_t]
+      -- Goal: MSubRed (renamed) (.fvar z) t. Use Ms-Pro for z; subBinds z t holds because
+      -- z ∉ Γ₂.dom so lookup goes to head ⟨z, t, .sub⟩.
+      have hsb_z : (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁).subBinds z t := by
+        have hz_notin_subst_Γ₂ : z ∉ (Ctx.subst y (.fvar z) Γ₂).dom := by
+          rw [Ctx.dom_subst]; exact hz_notin_Γ₂
+        have hlk_tail : Ctx.lookupSub (⟨z, t, .sub⟩ :: Γ₁) z = some t := by
+          simp [Ctx.lookupSub, Ctx.lookupSub_cons]
+        show Ctx.lookupSub (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) z = some t
+        exact Ctx.lookupSub_append_right (Ctx.subst y (.fvar z) Γ₂) _ z t
+          hz_notin_subst_Γ₂ hlk_tail
+      exact MSubRed.pro hpv' hsb_z
+    · -- yi ≠ y. Standard case: use subBinds_split_neq + insert_middle.
+      rw [Term.subst_fvar_ne hyiy]
+      have hsb_lifted : (Ctx.subst y (.fvar z) Γ₂ ++ Γ₁).subBinds yi
+          (Term.subst y (.fvar z) t') :=
+        subBinds_split_neq (s := .fvar z) hyiy hpvL hsb
+      have hpv_big : Prevalid (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) :=
+        prevalid_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpvL
+      have hpv_big_assoc :
+          Prevalid (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) := by
+        have heq : (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) =
+            (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by simp
+        exact heq ▸ hpv_big
+      have hsb' : (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁).subBinds yi
+          (Term.subst y (.fvar z) t') := by
+        have := Ctx.subBinds_insert_middle
+          (Γ₁ := Ctx.subst y (.fvar z) Γ₂) (Δ := [⟨z, t, .sub⟩]) (Γ₂ := Γ₁)
+          hpv_big_assoc hsb_lifted
+        have heq_simp : (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) =
+            (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by simp
+        exact heq_simp ▸ this
+      exact MSubRed.pro hpv' hsb'
+  | @top Γ st' u_ hpv hLCu hfv =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        (Stack.subst y (.fvar z) st') :=
+      prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
+    have hLCu' : Term.LC (Term.subst y (.fvar z) u_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCu
+    have hfv' :
+        Term.fv (Term.subst y (.fvar z) u_) ⊆
+          Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
+      intro w hw
+      have hsub := Term.fv_subst_subset y (.fvar z) u_ hw
+      rcases Finset.mem_union.mp hsub with hsd | hsd
+      · rcases Finset.mem_sdiff.mp hsd with ⟨hwfv, hwne⟩
+        have hw_in : w ∈ Ctx.dom (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) := hfv hwfv
+        rw [Ctx.dom_append, Ctx.dom_cons] at hw_in
+        show w ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        rcases Finset.mem_union.mp hw_in with hΓ₂ | htail
+        · exact Finset.mem_union.mpr (Or.inl hΓ₂)
+        · rcases Finset.mem_insert.mp htail with hwy | hwΓ₁
+          · exact absurd hwy (fun hh => hwne (by simp [hh]))
+          · exact Finset.mem_union.mpr
+              (Or.inr (Finset.mem_insert_of_mem hwΓ₁))
+      · have hwz : w = z := by simpa [Term.fv] using hsd
+        rw [hwz]
+        show z ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        exact Finset.mem_union.mpr
+          (Or.inr (Finset.mem_insert_self _ _))
+    show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) u_) (Term.subst y (.fvar z) .top)
+    simp [Term.subst]
+    exact MSubRed.top hpv' hLCu' hfv'
+  | @equ Γ st' u_ v_ hpv heq =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        (Stack.subst y (.fvar z) st') :=
+      prevalidExt_rename_sub_head hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
+    have heq' :=
+      MEqRed.subst_yz_sub_head (Γ₂ := Γ₂) hyz hz_notin_Γ₁ hz_notin_Γ₂ heq
+    exact MSubRed.equ hpv' heq'
+  | @app Γ st' u_ u_' v_ hu hLCv hfvv ihu =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    have ihu' := ihu (Γ₂ := Γ₂) rfl hz_notin_Γ₂
+    have hLCv' : Term.LC (Term.subst y (.fvar z) v_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCv
+    have hfvv' :
+        Term.fv (Term.subst y (.fvar z) v_) ⊆
+          Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
+      intro w hw
+      have hsub := Term.fv_subst_subset y (.fvar z) v_ hw
+      rcases Finset.mem_union.mp hsub with hsd | hsd
+      · rcases Finset.mem_sdiff.mp hsd with ⟨hwfv, hwne⟩
+        have hw_in : w ∈ Ctx.dom (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁) := hfvv hwfv
+        rw [Ctx.dom_append, Ctx.dom_cons] at hw_in
+        show w ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        rcases Finset.mem_union.mp hw_in with hΓ₂ | htail
+        · exact Finset.mem_union.mpr (Or.inl hΓ₂)
+        · rcases Finset.mem_insert.mp htail with hwy | hwΓ₁
+          · exact absurd hwy (fun hh => hwne (by simp [hh]))
+          · exact Finset.mem_union.mpr
+              (Or.inr (Finset.mem_insert_of_mem hwΓ₁))
+      · have hwz : w = z := by simpa [Term.fv] using hsd
+        rw [hwz]
+        show z ∈ Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+        rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
+        exact Finset.mem_union.mpr
+          (Or.inr (Finset.mem_insert_self _ _))
+    show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app u_ v_)) (Term.subst y (.fvar z) (.app u_' v_))
+    simp [Term.subst]
+    refine MSubRed.app ?_ hLCv' hfvv'
+    simpa using ihu'
+  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) [])
+      (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
+    simp [Term.subst]
+    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+    have hyfL : yfresh ∉ L := hyfresh.1.1
+    have hyfy : yfresh ≠ y := hyfresh.1.2
+    have hyfz : yfresh ≠ z := hyfresh.2
+    have hz_notin_Γ₂' : z ∉ Ctx.dom (⟨yfresh, tt, .sub⟩ :: Γ₂) := by
+      rw [Ctx.dom_cons]
+      intro hmem
+      rcases Finset.mem_insert.mp hmem with hzy | hzΓ
+      · exact hyfz hzy.symm
+      · exact hz_notin_Γ₂ hzΓ
+    have ih_body :=
+      ihbody yfresh hyfL (Γ₂ := ⟨yfresh, tt, .sub⟩ :: Γ₂) (by simp) hz_notin_Γ₂'
+    rw [Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd,
+        Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd'] at ih_body
+    simpa [Ctx.subst, List.cons_append] using ih_body
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+    subst hΓ
+    intro hz_notin_Γ₂
+    show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
+      (Stack.subst y (.fvar z) (αi :: st'))
+      (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
+    rw [Stack.subst_cons]
+    simp [Term.subst]
+    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+    have hyfL : yfresh ∉ L := hyfresh.1.1
+    have hyfy : yfresh ≠ y := hyfresh.1.2
+    have hyfz : yfresh ≠ z := hyfresh.2
+    have hz_notin_Γ₂' : z ∉ Ctx.dom (⟨yfresh, αi, .equ⟩ :: Γ₂) := by
+      rw [Ctx.dom_cons]
+      intro hmem
+      rcases Finset.mem_insert.mp hmem with hzy | hzΓ
+      · exact hyfz hzy.symm
+      · exact hz_notin_Γ₂ hzΓ
+    have ih_body :=
+      ihbody yfresh hyfL (Γ₂ := ⟨yfresh, αi, .equ⟩ :: Γ₂) (by simp) hz_notin_Γ₂'
+    rw [Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd,
+        Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd'] at ih_body
+    simpa [Ctx.subst, List.cons_append] using ih_body
+
 /-- **Renaming for `MSubRed` under a `.sub`-head binding.** Analogous to
-`MEqRed.rename_sub`, via Lemma 30 and Lemma 21. -/
+`MEqRed.rename_sub`. **No** `fv body ⊆ Γ.dom` precondition required (uses
+the new `subst_yz_sub_head` primitive instead of going through Lemmas
+21/30). -/
 noncomputable def MSubRed.rename_sub
     {Γ : Ctx} {s : Stack} {body body' t : Term} {y z : String}
     (hpvΓ : Prevalid Γ)
     (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ.dom)
     (hy_notin_Γ : y ∉ Γ.dom) (hz_notin_Γ : z ∉ Γ.dom)
     (hy_notin_body : y ∉ Term.fv body) (hy_notin_body' : y ∉ Term.fv body')
-    (hfv_body : Term.fv body ⊆ Γ.dom) (hfv_body' : Term.fv body' ⊆ Γ.dom)
     (hy_notin_stack : ∀ α ∈ s, y ∉ Term.fv α)
     (h : MSubRed (⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y])) :
     MSubRed (⟨z, t, .sub⟩ :: Γ) s (body^[z]) (body'^[z]) := by
   classical
   by_cases hyz : y = z
   · subst hyz; exact h
-  have hpvz : Prevalid (⟨z, t, .sub⟩ :: Γ) :=
-    Prevalid.sub hpvΓ hz_notin_Γ hfvt hLCt
-  have hyzdom : y ∉ Ctx.dom (⟨z, t, .sub⟩ :: Γ) := by
-    rw [Ctx.dom_cons]
-    intro hmem
-    rcases Finset.mem_insert.mp hmem with hyz' | hyΓ
-    · exact hyz hyz'
-    · exact hy_notin_Γ hyΓ
-  have hfvt_z : Term.fv t ⊆ Ctx.dom (⟨z, t, .sub⟩ :: Γ) := by
-    intro w hw
-    rw [Ctx.dom_cons]
-    exact Finset.mem_insert_of_mem (hfvt hw)
-  have hpv_yz : Prevalid (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ) :=
-    Prevalid.sub hpvz hyzdom hfvt_z hLCt
-  have hfv_open_y : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, t, .sub⟩ :: Γ) := by
-    intro w hw
-    have hsub := Term.fv_open_subset 0 (.fvar y) body
-    rw [Ctx.dom_cons]
-    rcases Finset.mem_union.mp (hsub hw) with hwBody | hwY
-    · exact Finset.mem_insert_of_mem (hfv_body hwBody)
-    · have hwy : w = y := by simpa [Term.fv] using hwY
-      subst hwy; exact Finset.mem_insert_self _ _
-  have hpv_pre : Prevalid (([⟨y, t, .sub⟩] : Ctx) ++ Γ) := by
-    show Prevalid (⟨y, t, .sub⟩ :: Γ)
-    exact Prevalid.sub hpvΓ hy_notin_Γ hfvt hLCt
-  have hpv_post : Prevalid (([⟨y, t, .sub⟩] : Ctx) ++ [⟨z, t, .sub⟩] ++ Γ) := by
-    show Prevalid (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ); exact hpv_yz
-  have h_weakened : MSubRed (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ)
-      s (body^[y]) (body'^[y]) := by
-    have hh : MSubRed (([⟨y, t, .sub⟩] : Ctx) ++ Γ) s (body^[y]) (body'^[y]) := by
-      show MSubRed (⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y]); exact h
-    have hfvU : Term.fv (body^[y]) ⊆ Ctx.dom (([⟨y, t, .sub⟩] : Ctx) ++ Γ) := by
-      show Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, t, .sub⟩ :: Γ); exact hfv_open_y
-    have hres :=
-      Lemma_21_WeakeningMSubRed (Γ₁ := [⟨y, t, .sub⟩]) (Δ := [⟨z, t, .sub⟩]) (Γ₂ := Γ)
-        hpv_pre hfvU hpv_post hh
-    have heq : (([⟨y, t, .sub⟩] : Ctx) ++ [⟨z, t, .sub⟩] ++ Γ) =
-        (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ) := by simp
-    exact heq ▸ hres
-  have hsub_ok : SubstOk (⟨z, t, .sub⟩ :: Γ) (.fvar z) := by
-    refine ⟨Term.LC.fvar z, ?_⟩
-    intro w hw
-    have hwz : w = z := by simpa [Term.fv] using hw
-    subst hwz
-    rw [Ctx.dom_cons]; exact Finset.mem_insert_self _ _
-  have h_weakened' :
-      MSubRed (([] : Ctx) ++ ⟨y, t, .sub⟩ :: (⟨z, t, .sub⟩ :: Γ))
-        s (body^[y]) (body'^[y]) := by
-    show MSubRed (⟨y, t, .sub⟩ :: ⟨z, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y])
-    exact h_weakened
+  have h_in_form : MSubRed (([] : Ctx) ++ ⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y]) := by
+    show MSubRed (⟨y, t, .sub⟩ :: Γ) s (body^[y]) (body'^[y]); exact h
+  have hz_notin_empty : z ∉ Ctx.dom ([] : Ctx) := by simp [Ctx.dom]
   have h_subst :=
-    Lemma_30_ReductionUnderSubst_Sub (Γ₂ := []) h_weakened' hsub_ok
+    MSubRed.subst_yz_sub_head (Γ₂ := ([] : Ctx)) hyz hz_notin_Γ hz_notin_empty h_in_form
   have hctx_eq :
       Ctx.subst y (.fvar z) ([] : Ctx) ++ (⟨z, t, .sub⟩ :: Γ) =
         ⟨z, t, .sub⟩ :: Γ := by simp
