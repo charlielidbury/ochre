@@ -36,11 +36,22 @@ Total axiom count: **12** (1 permanent, 11 outstanding).
   narrowing-using cells.
 
 ### `Lemma_2_DiamondMEqRed`
-- File: `Pss/Mpss/Diamond.lean`, line 205.
+- File: `Pss/Mpss/Diamond.lean`.
 - Paper: Pasquale & García-Pérez 2024, §3 (Lemma 2, Appendix A proof).
-- Diamond property of MPSS equivalence reduction modulo the "no Me-Pro
-  on `x`" side condition (encoded as `MEqRedAvoidsPro`).
-- Discharge plan: ~300-500 line case-grid proof per paper §3.
+- Diamond property of MPSS equivalence reduction. Mechanized as a
+  THEOREM (not an axiom) via a same-context core + a context-evolution
+  lift; the core dispatches to 5 narrow per-case private inline axioms
+  (one per recursive structural case) and the lift is one further
+  private axiom.
+- Note: the paper's "moreover" clause (no `Me-Pro` on `x` side condition)
+  is dropped from this mechanization. The previous attempt
+  (`MEqRedAvoidsPro`) was unsound under Lean 4's proof irrelevance,
+  and no downstream consumer in this codebase actually used the side
+  condition (see the module docstrings in `Pss/Mpss/AvoidsPro.lean`
+  and `Pss/Mpss/Diamond.lean` for the full analysis).
+- Discharge plan: discharge the 5 inline residual axioms + the
+  context-evolution lift via the existing weakening / narrowing
+  infrastructure.
 
 ### `Lemma_24_NarrowingMSubRed`
 - File: `Pss/Mpss/Narrowing.lean`, line 317.
@@ -57,8 +68,12 @@ Total axiom count: **12** (1 permanent, 11 outstanding).
   `MSubRed`). Under the paper's "no promotion of `x`" side condition,
   this case is vacuous; mechanizing the side condition requires a
   refined `MSubRedNoProOf` predicate.
-- Discharge plan: introduce `MSubRedNoProOf` mirroring `MEqRedAvoidsPro`,
-  then discharge the case directly.
+- Discharge plan: introduce a structurally-recursive `Bool`-valued
+  function `avoidsPro : MSubRed Γ s u v → String → Bool` (NOT an
+  inductive Prop predicate — see the analysis in
+  `Pss/Mpss/AvoidsPro.lean` for why an indexed Prop predicate over a
+  Prop-valued reduction is unsound under proof irrelevance), then
+  discharge the case directly.
 
 ### `MEqRed.toScoped`
 - File: `Pss/Mpss/Weakening.lean`, line 432.

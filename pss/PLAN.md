@@ -318,9 +318,22 @@ Mitigation: `Pss/Util/ParRed.lean` takes a `Ctx` parameter and re-bundles the te
 
 Mitigation: Wave 6 (one agent) is given a generous time budget. The agent's first task: enumerate all `(MEqRed.constructor, MSubRed.constructor)` pairs. Mark vacuous, paper-covered, missing. **Do not start the proof until the case grid is filled in.** If a case proves intractable, axiomatize precisely (`axiom Mpss_Commute_Case_FOp_App : ...`) — max 2 escape hatches before escalating.
 
-### Risk 4: "no Me-Pro on x" side condition awkward to state (LOW-MEDIUM)
+### Risk 4: "no Me-Pro on x" side condition awkward to state (REALIZED — and dropped)
 
-Mitigation: Define `MEqRedAvoidsPro : MEqRed Γ s u v → String → Prop` by recursion through the inductive's constructors. Fall back to a refined inductive `MEqRedNoProOf x` if predicate-on-derivations is friction.
+The first attempt (`MEqRedAvoidsPro` as an indexed `Prop` predicate over
+`MEqRed`) was unsound under Lean 4's proof irrelevance: two `MEqRed`
+derivations of the same proposition are definitionally equal, so the
+`pro`-vs-`var` constructor distinction collapses for any source/target
+where both rules can fire. The predicate has been dropped (see
+`Pss/Mpss/AvoidsPro.lean` history note for the analysis); no downstream
+consumer in the current codebase actually used the side condition.
+
+Future mitigation: when discharging Lemma 1, re-introduce the side
+condition as a structurally-recursive `Bool`-valued function on the
+derivation tree (`def avoidsPro : MEqRed Γ s u v → String → Bool`),
+which sees the constructor shape rather than just the propositional
+content. Do NOT re-introduce as an indexed `Prop`-predicate — that
+form is fundamentally incompatible with `Prop`-valued `MEqRed`.
 
 ### Risk 5: Hutchins 2009 thesis missing from `papers/` (CONFIRMED)
 
