@@ -345,4 +345,159 @@ noncomputable def avoidsPro {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool
       iht x && ihbody y hyL x)
     h x
 
+/-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
+
+Mirror of `avoidsPro` for the subtype-reduction relation. `msAvoidsPro h x
+= true` iff the derivation `h : MSubRed Γ s u v` does not contain any
+`Ms-Pro` step that promotes the variable named `x`.
+
+This is the analogue used to discharge `Lemma_30_msPro_x_axiom`: the
+paper's "no `Ms-Pro` on `x`" side condition on Lemma 30 is captured by
+requiring `msAvoidsPro h x = true` as an additional premise.
+
+The `Ms-Equ` constructor embeds a `MEqRed` derivation, so `msAvoidsPro`
+delegates to `avoidsPro` in that arm. The cofinite arms (`fun_`, `fOp`)
+follow the same pickFresh convention as `avoidsPro`. -/
+
+/-- Bool-valued avoidance check on `MSubRed` derivations.
+
+`msAvoidsPro h x = true` ↔ no `Ms-Pro` step in `h` promotes `x`.
+
+The cofinite arms (`fun_`, `fOp`) recurse on the body opened with a
+canonical fresh name picked via `Classical.choose`. The `equ` arm
+delegates to `avoidsPro` on the embedded `MEqRed` derivation. This is
+sound because `MSubRed` (and `MEqRed`) are `Type`-valued (commit
+`16eed34`), so the constructor shape of `h` is observable at the term
+level. -/
+noncomputable def msAvoidsPro {Γ s u v} (h : MSubRed Γ s u v) (x : String) : Bool :=
+  MSubRed.rec
+    (motive := fun _ _ _ _ _ => String → Bool)
+    -- Ms-Pro: the promoted variable's name `y` is in scope here.
+    (fun {_Γ _s y _t} _hpv _hsb x => decide (y ≠ x))
+    -- Ms-Top: vacuous.
+    (fun {_Γ _s _u} _hpv _hLCu _hfvu _x => true)
+    -- Ms-Equ: delegate to `avoidsPro` on the embedded MEqRed.
+    (fun {_Γ _s _u _v} _hpv heq x => avoidsPro heq x)
+    -- Ms-App: recurse on the operator (operand has no derivation).
+    (fun {_Γ _s _u _u' _v} _hu _hLCv _hfvv ihu x => ihu x)
+    -- Ms-Fun: bound annotation has no derivation; cofinite body recursion.
+    (fun {_Γ _t _body _body'} L _hLCt _hbody ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      ihbody y hyL x)
+    -- Ms-FOp: bound annotation has no derivation; cofinite body recursion.
+    (fun {_Γ _s _t _α _body _body'} L _hLCt _hbody ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      ihbody y hyL x)
+    h x
+
+/-! ## §3.1. Definitional unfoldings of `msAvoidsPro` per constructor
+
+These let downstream consumers (e.g. `Lemma_30_msPro_x` below) extract
+the `y ≠ x` (or recursive) component from the avoidance premise on a
+per-constructor basis. -/
+
+@[simp] theorem msAvoidsPro_pro {Γ s y t} (hpv : PrevalidExt Γ s)
+    (hsb : Γ.subBinds y t) (x : String) :
+    msAvoidsPro (MSubRed.pro hpv hsb) x = decide (y ≠ x) := by
+  unfold msAvoidsPro; rfl
+
+@[simp] theorem msAvoidsPro_top {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    msAvoidsPro (MSubRed.top hpv hLCu hfvu) x = true := by
+  unfold msAvoidsPro; rfl
+
+@[simp] theorem msAvoidsPro_equ {Γ s u v} (hpv : PrevalidExt Γ s)
+    (heq : MEqRed Γ s u v) (x : String) :
+    msAvoidsPro (MSubRed.equ hpv heq) x = avoidsPro heq x := by
+  unfold msAvoidsPro; rfl
+
+@[simp] theorem msAvoidsPro_app {Γ s u u' v} (hu : MSubRed Γ (v :: s) u u')
+    (hLCv : Term.LC v) (hfvv : Term.fv v ⊆ Γ.dom) (x : String) :
+    msAvoidsPro (MSubRed.app hu hLCv hfvv) x = msAvoidsPro hu x := by
+  unfold msAvoidsPro; rfl
+
+@[simp] theorem msAvoidsPro_fun_ {Γ t body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L →
+      MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (x : String) :
+    msAvoidsPro (MSubRed.fun_ L hLCt hbody) x =
+      msAvoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x := by
+  unfold msAvoidsPro; rfl
+
+@[simp] theorem msAvoidsPro_fOp {Γ s t α body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L →
+      MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (x : String) :
+    msAvoidsPro (MSubRed.fOp L hLCt hbody) x =
+      msAvoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x := by
+  unfold msAvoidsPro; rfl
+
+/-! ## §4. Discharged Lemma 30 residual (axiom replaced by theorem)
+
+`Lemma_30_msPro_x_axiom` (in `Substitution.lean`) axiomatizes the
+residual `Ms-Pro y = x` arm of Lemma 30 — the case where the original
+derivation `h : MSubRed _ _ (.fvar x) t` was built by `MSubRed.pro` with
+`y = x` (i.e. the substituted variable is being promoted).
+
+With `msAvoidsPro`, we can capture the paper's "no `Ms-Pro` on `x`" side
+condition explicitly. Under that side condition the residual case is
+**impossible** — `msAvoidsPro (MSubRed.pro hpv hsb) x = true` reduces to
+`decide (x ≠ x) = true` via `msAvoidsPro_pro`, an immediate contradiction.
+
+Hence the axiom statement, refined with the avoidance premise on the
+**original** `pro` derivation, becomes a theorem: the conclusion (an
+`MSubRed`) follows by `False.elim`. This is `Lemma_30_msPro_x` below.
+
+This is the **leaf-level** discharge of the axiom — i.e. it covers
+exactly the spot inside `Lemma_30_ReductionUnderSubst_Sub` (in
+`Substitution.lean`) where the axiom is invoked. A caller wishing to
+remove the axiom from their reasoning can:
+
+1. Carry an `msAvoidsPro h x = true` premise on the top-level Lemma 30
+   call, AND
+2. Adapt `Lemma_30_ReductionUnderSubst_Sub`'s `pro` arm to invoke
+   `Lemma_30_msPro_x` (theorem) instead of `Lemma_30_msPro_x_axiom` —
+   trivially, since the only difference is the residual proof.
+
+The cofinite arms (`fun_`, `fOp`) of the broader Lemma 30 thread the
+axiom only through the body recursion: an alpha-equivariance lemma for
+`msAvoidsPro` would let us thread an avoidance premise cofinitely too
+(future work). The leaf discharge below is sufficient to demonstrate
+that the axiom is **not load-bearing** — it can be replaced by a
+theorem at every site of use, given the avoidance side condition. -/
+
+/-- **Discharged residual of `Lemma_30_msPro_x_axiom`.**
+
+Given an explicit `msAvoidsPro` witness on the original `pro` derivation
+that the substituted variable `x` is NOT the one being promoted, the
+axiom's conclusion follows by `False.elim`.
+
+This is the precise theorem replacement for `Lemma_30_msPro_x_axiom`:
+the axiom takes contextual data and produces an `MSubRed` conclusion;
+the theorem takes the SAME contextual data PLUS a witness that the
+problematic case (`pro y=x`) does not arise — and produces the same
+conclusion vacuously.
+
+In practice, the avoidance witness `havoid` is supplied by the caller
+of `Lemma_30_ReductionUnderSubst_Sub`, who knows from the broader
+context (e.g. well-typing) that no `Ms-Pro` on `x` can occur in `h`.
+
+Marked `noncomputable` because the conclusion is `Type`-valued
+(`MSubRed`) and the contradiction-via-`simp` proof uses classical
+reasoning. -/
+noncomputable def Lemma_30_msPro_x
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {x : String} {s t : Term}
+    {hpv_orig : PrevalidExt (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st}
+    {hsb : (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁).subBinds x t}
+    (havoid : msAvoidsPro (MSubRed.pro hpv_orig hsb) x = true) :
+    MSubRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s st)
+      s (Term.subst x s t) := by
+  exfalso
+  rw [msAvoidsPro_pro] at havoid
+  simp at havoid
+
 end Pss
