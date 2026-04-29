@@ -168,7 +168,7 @@ private lemma Ctx.lookupEqu_some_mem_dom {Γ : Ctx} {x : String} {α : Term}
       exact Or.inr (ih h)
 
 /-- Helper: if `Prevalid (Δ ++ Γ₂)` and `x ∈ Γ₂.dom`, then `x ∉ Δ.dom`. -/
-private lemma Ctx.notin_delta_of_in_tail
+lemma Ctx.notin_delta_of_in_tail
     {Δ Γ₂ : Ctx} {x : String}
     (hpv : Prevalid (Δ ++ Γ₂)) (hxΓ₂ : x ∈ Γ₂.dom) :
     x ∉ Δ.dom := by

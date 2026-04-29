@@ -479,7 +479,7 @@ lemma Term.subst_fvar_ne {x y : String} (hyx : y ≠ x) (s : Term) :
   simp [Term.subst, hyx]
 
 /-- Uniqueness: `.equ` head binding is the only one for `x`. -/
-private theorem equBinds_at_equ_head_unique
+theorem equBinds_at_equ_head_unique
     {Γ₁ Γ₂ : Ctx} {x : String} {v α : Term}
     (hpv : Prevalid (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁))
     (heq : (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁).equBinds x α) : α = v := by
@@ -511,7 +511,7 @@ private theorem equBinds_at_equ_head_unique
 
 /-- `.equ`-head version of `equBinds_split`: when the head is `.equ` for `x`
 and `y ≠ x`, `.equ`-bindings for `y` lift through substitution. -/
-private theorem equBinds_split_equ
+theorem equBinds_split_equ
     {Γ₁ Γ₂ : Ctx} {x y : String} {s v α : Term}
     (hyx : y ≠ x)
     (hpv : Prevalid (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁))
@@ -551,6 +551,87 @@ private theorem equBinds_split_equ
         (⟨e.name, Term.subst x s e.bound, e.kind⟩ :: (Ctx.subst x s rest ++ Γ₁))
         y (Term.subst x s α)
       simp [Ctx.equBinds, Ctx.lookupEqu_cons, he]
+      exact ih'
+
+/-- `.equ`-head version: a `.sub`-binding for `x` is impossible when the
+head entry for `x` is `.equ`. (Used by Renaming.) -/
+theorem subBinds_at_equ_head_impossible
+    {Γ₁ Γ₂ : Ctx} {x : String} {v t : Term}
+    (hpv : Prevalid (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁))
+    (hsb : (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁).subBinds x t) : False := by
+  induction Γ₂ with
+  | nil =>
+    have hsb' : Ctx.subBinds (⟨x, v, .equ⟩ :: Γ₁) x t := by simpa using hsb
+    simp [Ctx.subBinds, Ctx.lookupSub] at hsb'
+  | cons e rest ih =>
+    have hpv_eq : (e :: rest ++ ⟨x, v, .equ⟩ :: Γ₁) =
+        (e :: (rest ++ ⟨x, v, .equ⟩ :: Γ₁)) := by simp
+    rw [hpv_eq] at hpv
+    simp [Ctx.subBinds, Ctx.lookupSub_cons] at hsb
+    by_cases he : e.name = x
+    · cases he_kind : e.kind with
+      | sub =>
+        -- e at head names x with kind .sub. By prevalidity, e.name ∉ tail.dom,
+        -- but tail contains ⟨x, v, .equ⟩.
+        have hyfresh : e.name ∉ Ctx.dom (rest ++ ⟨x, v, .equ⟩ :: Γ₁) := by
+          cases hpv with
+          | sub _ hen _ _ => exact hen
+          | equ _ hen _ _ => exact hen
+        apply hyfresh
+        rw [he, Ctx.dom_append, Ctx.dom_cons]
+        apply Finset.mem_union.mpr; right
+        exact Finset.mem_insert_self _ _
+      | equ => simp [he, he_kind] at hsb
+    · simp [he] at hsb
+      have hpv_tail : Prevalid (rest ++ ⟨x, v, .equ⟩ :: Γ₁) := hpv.tail
+      exact ih hpv_tail hsb
+
+/-- `.equ`-head version of `subBinds_split_neq`: when the head is `.equ` for `x`
+and `y ≠ x`, `.sub`-bindings for `y` lift through substitution. -/
+theorem subBinds_split_equ
+    {Γ₁ Γ₂ : Ctx} {x y : String} {s v b : Term}
+    (hyx : y ≠ x)
+    (hpv : Prevalid (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁))
+    (hb : (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁).subBinds y b) :
+    (Ctx.subst x s Γ₂ ++ Γ₁).subBinds y (Term.subst x s b) := by
+  induction Γ₂ with
+  | nil =>
+    -- y ≠ x and head is ⟨x, v, .equ⟩ — lookupSub skips it; binding is in Γ₁.
+    have hb0 : Ctx.subBinds (⟨x, v, .equ⟩ :: Γ₁) y b := by simpa using hb
+    simp [Ctx.subBinds, Ctx.lookupSub_cons, Ne.symm hyx] at hb0
+    -- hb0 : Γ₁.lookupSub y = some b
+    have hfvb : Term.fv b ⊆ Γ₁.dom :=
+      Prevalid.fv_lookupSub hpv.tail hb0
+    have hxnotin : x ∉ Γ₁.dom := by
+      cases hpv with
+      | equ _ hxn _ _ => exact hxn
+    have hxb : x ∉ Term.fv b := fun h => hxnotin (hfvb h)
+    rw [Term.subst_fresh hxb]
+    show Ctx.subBinds (Ctx.subst x s ([] : Ctx) ++ Γ₁) y b
+    simp [Ctx.subst]
+    exact hb0
+  | cons e rest ih =>
+    have hpv_eq : (e :: rest ++ ⟨x, v, .equ⟩ :: Γ₁) =
+        (e :: (rest ++ ⟨x, v, .equ⟩ :: Γ₁)) := by simp
+    rw [hpv_eq] at hpv
+    simp [Ctx.subBinds, Ctx.lookupSub_cons] at hb
+    by_cases he : e.name = y
+    · cases he_kind : e.kind with
+      | sub =>
+        simp [he, he_kind] at hb
+        subst hb
+        show Ctx.subBinds
+          (⟨e.name, Term.subst x s e.bound, e.kind⟩ :: (Ctx.subst x s rest ++ Γ₁))
+          y (Term.subst x s e.bound)
+        simp [Ctx.subBinds, Ctx.lookupSub_cons, he, he_kind]
+      | equ => simp [he, he_kind] at hb
+    · simp [he] at hb
+      have hpv_tail : Prevalid (rest ++ ⟨x, v, .equ⟩ :: Γ₁) := hpv.tail
+      have ih' := ih hpv_tail hb
+      show Ctx.subBinds
+        (⟨e.name, Term.subst x s e.bound, e.kind⟩ :: (Ctx.subst x s rest ++ Γ₁))
+        y (Term.subst x s b)
+      simp [Ctx.subBinds, Ctx.lookupSub_cons, he]
       exact ih'
 
 /-! ## §9. Lemma 31 — Reduction under substitution (MEqRed) -/
