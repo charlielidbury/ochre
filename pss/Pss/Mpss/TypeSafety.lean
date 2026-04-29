@@ -55,15 +55,21 @@ restricted reduction-flavoured form is also retained as
 
 * `Conjecture_8_WellSubtypingContextIndependent` — **AXIOMATIZED**
   (permanent, paper-conjecture-status).
-* `Lemma_6_EvaluationPreservesWf` — **AXIOMATIZED** (the paper's β-case
-  proof requires Lemmas 10 (full inversion, axiomatized as
-  `Lemma_10_Inversion`), 15, 16 (now PROVED), 7 (substitution,
-  axiomatized), and 27 (not mechanized). Discharge now requires
-  Lemmas 10 + 27 + 7 to land.).
+* `Lemma_6_EvaluationPreservesWf` — **PROVED** (conditional on
+  `Lemma_10_Inversion` and `Lemma_7_SubstitutionPreservesWf`). The
+  paper's β-case (p. 27) is mechanized via Lemmas 10 + 15 + 16 + 7
+  exactly as written. The four congruence cases (`appL`, `appR`,
+  `absBound`, `absBody`) bypass Lemma 27 by inlining the
+  Theorem-5-style preservation pattern (Prop 17 + Ws-Rgh + Ws-Trs);
+  for `absBound` we use `Lemma_23_NarrowingWf` to push the body's
+  WfM through the bound-annotation reduction.
 * `Lemma_7_SubstitutionPreservesWf` — **AXIOMATIZED** (the paper's
-  proof depends on Conjecture 8 plus a sub-induction on `WSubMStar` for
-  the `Wf-App` case using Lemma 30/31 substitution lemmas; full
-  discharge requires significant additional infrastructure).
+  proof depends on Conjecture 8 plus a sub-induction on `WSubMStar`
+  for the `Wf-App` case using Lemma 30/31 substitution lemmas. The
+  `Wf-PrS / u = x` case in particular requires an instantiated WfM
+  weakening lemma (paper's Lemma 19/20 Wf-side), which exists in
+  this codebase only as the schema `Lemma_20_WeakeningWf_schema`.
+  Full discharge requires significant additional infrastructure.).
 * `Lemma_11_TopHasNoFunctionSupertype` — **PROVED**. The proof strips
   `WSubMStar` to the diagrammatic `MSub` relation (a common
   `MSubRedStar`/`MEqRedStar` reduct exists) and applies inversions on
@@ -72,7 +78,7 @@ restricted reduction-flavoured form is also retained as
 * `Theorem_4_Progress` — **PROVED** (conditional on
   `Conjecture_8_WellSubtypingContextIndependent`).
 * `Theorem_5_Preservation` — **PROVED** conditional on Conjecture 8
-  and Lemma 6.
+  and Lemma 7 (via Lemma 6).
 -/
 
 namespace Pss
@@ -307,56 +313,16 @@ theorem Lemma_11_TopHasNoFunctionSupertype
   rw [hwTop] at hwAbs
   cases hwAbs
 
-/-! ## §4. Lemma 6 (Evaluation preserves well-formedness)
+/-! ## §4. Helper extractors
 
-The paper's proof case-splits on `Step t t'`. The β-case (paper p. 27)
-uses Lemmas 10, 15, 16, 7. Lemmas 15/16 are now PROVED (see
-`Lemma_15_WEquM_symm`, `Lemma_16_WEquM_to_WSubM`). Lemma 10 is fully
-stated as `Lemma_10_Inversion` (axiomatized). Lemma 7 is axiomatized.
-We still axiomatize Lemma 6 itself pending those discharges.
-
-TODO Wave 8: discharge using `Lemma_10_Inversion`, `Lemma_15_WEquM_symm`,
-`Lemma_16_WEquM_to_WSubM`, and `Lemma_7_SubstitutionPreservesWf`. -/
-
-/-- **Lemma 6 (Evaluation preserves well-formedness, Pasquale &
-García-Pérez 2024 §4).**
-
-If `Γ ⊢ t wf` and `t ↦ t'`, then `Γ ⊢ t' wf`. -/
-axiom Lemma_6_EvaluationPreservesWf
-    {Γ : Ctx} {t t' : Term}
-    (hwf : WfM Γ t)
-    (hstep : Step t t') :
-    WfM Γ t'
-
-/-! ## §5. Lemma 7 (Substitution preserves well-formedness)
-
-The paper's Lemma 7 is used by Lemma 6 in the β-case. It depends on
-Conjecture 8 (paper p. 27 "Now, by Lemma 7 ..."). We axiomatize it
-in restricted form (single-binder context); the full polymorphic
-form would extend to a context-prefix substitution.
-
-TODO Wave 8: discharge using Conjecture 8 + Lemma 28 (substitution
-preserves prevalidity, already proved in `Pss/Mpss/Substitution.lean`). -/
-
-/-- **Lemma 7 (Substitution preserves well-formedness, Pasquale &
-García-Pérez 2024 §4).** Restricted single-binder form: instead of the
-paper's `Γ, x ≤ t, Γ' ⊢ u wf  ⟹  Γ, Γ'[x\α] ⊢ u[x\α] wf`, we state the
-case `Γ' = ∅`. -/
-axiom Lemma_7_SubstitutionPreservesWf
-    {Γ : Ctx} {x : String} {t u α : Term}
-    (hwfU : WfM (⟨x, t, .sub⟩ :: Γ) u)
-    (hα : WSubMStar Γ α t) :
-    WfM Γ (Term.subst x α u)
-
-/-! ## §6. Helper extractors
-
-These two helpers extract `WfM Γ v` from the LHS of `WSubMStar Γ v t`,
-and `Prevalid Γ` from `WfM Γ t`. Both use the WfM/WSubMStar mutual
+These helpers extract `WfM Γ v` from the LHS / RHS of `WSubMStar Γ v t`,
+and `Prevalid Γ` from `WfM Γ t`. All three use the WfM/WSubMStar mutual
 recursor with appropriate motives (since `induction` doesn't directly
 handle the mutual block).
 
-Note `WSubMStar.sub` carries `WfM Γ v` directly, and `WSubMStar.trs`
-carries `WSubMStar Γ v u` whose LHS-WfM we recover by IH. -/
+`WSubMStar.sub` carries `WfM Γ v` AND `WfM Γ t` directly; `WSubMStar.trs`
+carries `WSubMStar Γ v u` and `WSubMStar Γ u t` whose LHS-WfM /
+RHS-WfM we recover by IH. -/
 
 /-- From `WSubMStar Γ v t` extract `WfM Γ v`. -/
 theorem wfM_left_of_wsubmstar {Γ : Ctx} {v t : Term}
@@ -376,6 +342,27 @@ theorem wfM_left_of_wsubmstar {Γ : Ctx} {v t : Term}
     (fun _ _ _ => trivial)             -- Ws-Rgh
     (fun {Γ v t} hwfV _ _ _ _ _ => hwfV)         -- Ws-Sub
     (fun {Γ v u t} _ _ _ ih1 _ _ => ih1)         -- Ws-Trs
+    h
+
+/-- From `WSubMStar Γ v t` extract `WfM Γ t`. Mirror of
+`wfM_left_of_wsubmstar`. -/
+theorem wfM_right_of_wsubmstar {Γ : Ctx} {v t : Term}
+    (h : WSubMStar Γ v t) : WfM Γ t :=
+  WSubMStar.rec
+    (motive_1 := fun _ _ _ => True)
+    (motive_2 := fun _ _ _ _ => True)
+    (motive_3 := fun Γ _ t _ => WfM Γ t)
+    (fun _ _ => trivial)               -- Wf-PrS
+    (fun _ _ => trivial)               -- Wf-PrE
+    (fun _ => trivial)                 -- Wf-Top
+    (fun _ _ _ _ _ => trivial)         -- Wf-Fun
+    (fun _ _ _ _ => trivial)           -- Wf-App
+    (fun _ _ => trivial)               -- Ws-Rfl
+    (fun _ _ _ => trivial)             -- Ws-Lf1
+    (fun _ _ _ _ _ _ _ => trivial)     -- Ws-Lf2
+    (fun _ _ _ => trivial)             -- Ws-Rgh
+    (fun {Γ v t} _ _ hwfT _ _ _ => hwfT)         -- Ws-Sub
+    (fun {Γ v u t} _ _ _ _ _ ih2 => ih2)         -- Ws-Trs
     h
 
 /-- Mutual extractor `Prevalid Γ` from `WfM Γ t` (and from
@@ -398,6 +385,205 @@ theorem prevalid_of_wfM {Γ : Ctx} {t : Term} (h : WfM Γ t) : Prevalid Γ :=
     (fun {_ _ _} _ _ _ ihwfV _ _ => ihwfV)     -- Ws-Sub
     (fun {_ _ _ _} _ _ _ ih1 _ _ => ih1)       -- Ws-Trs
     h
+
+/-! ## §5. Lemma 7 (Substitution preserves well-formedness)
+
+The paper's Lemma 7 is used by Lemma 6 in the β-case. It depends on
+Conjecture 8 (paper p. 27 "Now, by Lemma 7 ...") plus a sub-induction
+on `WSubMStar` for the `Wf-App` case using Lemma 30/31 substitution
+lemmas. Additionally, the `Wf-PrS / u = x` case (paper p. 28) uses
+the WfM-side of weakening (paper Lemma 19/20), which exists in this
+codebase only as the abstract schema `Lemma_20_WeakeningWf_schema` —
+not yet instantiated for `WfM`. We axiomatize Lemma 7 in restricted
+single-binder form pending that infrastructure. -/
+
+/-- **Lemma 7 (Substitution preserves well-formedness, Pasquale &
+García-Pérez 2024 §4).** Restricted single-binder form: instead of the
+paper's `Γ, x ≤ t, Γ' ⊢ u wf  ⟹  Γ, Γ'[x\α] ⊢ u[x\α] wf`, we state the
+case `Γ' = ∅`. -/
+axiom Lemma_7_SubstitutionPreservesWf
+    {Γ : Ctx} {x : String} {t u α : Term}
+    (hwfU : WfM (⟨x, t, .sub⟩ :: Γ) u)
+    (hα : WSubMStar Γ α t) :
+    WfM Γ (Term.subst x α u)
+
+/-! ## §6. Lemma 6 (Evaluation preserves well-formedness)
+
+The paper's proof case-splits on `Step t t'` (Pasquale & García-Pérez
+2024, p. 27). We mechanize all five cases:
+
+* β case: Lemmas 10 + 15 + 16 + 7 (the latter axiomatized above).
+* `appL` / `appR`: bypass paper's "Lemma 27" by inlining the
+  Theorem-5-style preservation pattern (Prop 17 + Ws-Rgh + Ws-Trs).
+* `absBound`: same Theorem-5-style pattern on the bound annotation,
+  combined with `Lemma_23_NarrowingWf` to push the body's WfM
+  through the bound-annotation reduction (since narrowing requires
+  `bound' ≤_wf bound` only as `LC bound'` + `fv bound' ⊆ Γ.dom`,
+  and we get the latter from `MEqRed_fv_subset` on the `MEqRed`
+  obtained via Prop 17).
+* `absBody`: cofinite-quantification IH on the body openings.
+
+The proof is by induction on `Step` generalizing over `Γ` (so the
+`absBody` IH lifts to the extended context). -/
+
+/-- **Lemma 6 (Evaluation preserves well-formedness, Pasquale &
+García-Pérez 2024 §4).**
+
+If `Γ ⊢ t wf` and `t ↦ t'`, then `Γ ⊢ t' wf`.
+
+PROVED conditional on `Lemma_7_SubstitutionPreservesWf` (β case),
+`Lemma_10_Inversion` (β case), and `Proposition_17_beta_axiom` (the
+four congruence cases via Prop 17). -/
+theorem Lemma_6_EvaluationPreservesWf
+    {Γ : Ctx} {t t' : Term}
+    (hwf : WfM Γ t)
+    (hstep : Step t t') :
+    WfM Γ t' := by
+  induction hstep generalizing Γ with
+  | @beta bound body arg hAbsLC hArgLC =>
+    -- t = (.abs bound body) arg, t' = Term.opening arg body.
+    -- Invert hwf via Wf-App.
+    cases hwf with
+    | @app _ _ _ z hStarFn hStarArg =>
+      -- hStarFn : WSubMStar Γ (.abs bound body) (.abs z .top)
+      -- hStarArg : WSubMStar Γ arg z
+      -- Step 1: Lemma 10 inversion on hStarFn -> WEquM Γ bound z.
+      have hEquBz : WEquM Γ bound z := Lemma_10_Inversion hStarFn
+      -- Step 2: symmetry (Lemma 15) + Lemma 16 -> WSubM Γ z bound.
+      have hSubZBd : WSubM Γ z bound :=
+        Lemma_16_WEquM_to_WSubM (Lemma_15_WEquM_symm hEquBz)
+      -- Step 3: get WfM Γ z (from hStarArg's RHS) and WfM Γ bound
+      --         (from hStarFn's LHS Wf-Fun inversion).
+      have hwfZ : WfM Γ z := wfM_right_of_wsubmstar hStarArg
+      have hwfFn : WfM Γ (.abs bound body) := wfM_left_of_wsubmstar hStarFn
+      have hwfBd : WfM Γ bound := by
+        cases hwfFn with
+        | @fun_ _ _ _ L hT _ => exact hT
+      -- Step 4: wrap hSubZBd in Ws-Sub -> WSubMStar Γ z bound.
+      have hStarZBd : WSubMStar Γ z bound :=
+        WSubMStar.sub hwfZ hSubZBd hwfBd
+      -- Step 5: trs hStarArg + hStarZBd -> WSubMStar Γ arg bound.
+      have hStarArgBd : WSubMStar Γ arg bound :=
+        WSubMStar.trs hStarArg hwfZ hStarZBd
+      -- Step 6: extract Wf-Fun body data: cofinite WfM
+      -- (⟨x, bound, .sub⟩ :: Γ) (body^[x]).
+      classical
+      obtain ⟨L, hT, hBody⟩ : ∃ L : Finset String, WfM Γ bound ∧
+          (∀ x, x ∉ L → WfM (⟨x, bound, .sub⟩ :: Γ) (Term.opening (.fvar x) body)) := by
+        cases hwfFn with
+        | @fun_ _ _ _ L hT hB => exact ⟨L, hT, hB⟩
+      -- Step 7: choose fresh x outside L ∪ fv body.
+      obtain ⟨x, hxF⟩ := Term.exists_fresh (L ∪ Term.fv body)
+      have hxL : x ∉ L := fun h => hxF (Finset.mem_union.mpr (Or.inl h))
+      have hxFv : x ∉ Term.fv body :=
+        fun h => hxF (Finset.mem_union.mpr (Or.inr h))
+      have hwfBodyOpen : WfM (⟨x, bound, .sub⟩ :: Γ) (Term.opening (.fvar x) body) :=
+        hBody x hxL
+      -- Step 8: Lemma 7: subst x arg into body^[x] becomes opening arg body.
+      have hLCarg : Term.LC arg := hArgLC
+      have hSubstEq : Term.subst x arg (Term.opening (.fvar x) body) =
+          Term.opening arg body :=
+        (Term.subst_intro hxFv hLCarg).symm
+      have hwfSubst : WfM Γ (Term.subst x arg (Term.opening (.fvar x) body)) :=
+        Lemma_7_SubstitutionPreservesWf hwfBodyOpen hStarArgBd
+      rw [hSubstEq] at hwfSubst
+      exact hwfSubst
+  | @appL u u' v hstep hLCv ihU =>
+    -- Goal: WfM Γ (.app u' v).
+    cases hwf with
+    | @app _ _ _ z hStarFn hStarArg =>
+      -- hStarFn : WSubMStar Γ u (.abs z .top)
+      -- hStarArg : WSubMStar Γ v z
+      have hwfU : WfM Γ u := wfM_left_of_wsubmstar hStarFn
+      have hwfFnRHS : WfM Γ (.abs z .top) := wfM_right_of_wsubmstar hStarFn
+      have hwfU' : WfM Γ u' := ihU hwfU
+      -- Build WSubMStar Γ u' u via Prop 17 + Ws-Rgh + Ws-Sub.
+      have hpvΓ : Prevalid Γ := prevalid_of_wfM hwfU
+      have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
+      have hLCu : Term.LC u := WfM.lc hwfU
+      have hfvU : Term.fv u ⊆ Γ.dom := WfM.fv_subset hwfU
+      obtain ⟨hMEq⟩ : Nonempty (MEqRed Γ [] u u') :=
+        Proposition_17_FromOperationalToEqRed hpvNil hLCu hfvU hstep
+      have hSubU' : WSubM Γ u' u' := WSubM.rfl hwfU'
+      have hSubU'_u : WSubM Γ u' u := WSubM.rgh hSubU' hMEq
+      have hStarU'_u : WSubMStar Γ u' u := WSubMStar.sub hwfU' hSubU'_u hwfU
+      have hStarU'_FnRHS : WSubMStar Γ u' (.abs z .top) :=
+        WSubMStar.trs hStarU'_u hwfU hStarFn
+      exact WfM.app hStarU'_FnRHS hStarArg
+  | @appR u v v' hLCu hstep ihV =>
+    -- Goal: WfM Γ (.app u v').
+    cases hwf with
+    | @app _ _ _ z hStarFn hStarArg =>
+      have hwfV : WfM Γ v := wfM_left_of_wsubmstar hStarArg
+      have hwfZ : WfM Γ z := wfM_right_of_wsubmstar hStarArg
+      have hwfV' : WfM Γ v' := ihV hwfV
+      have hpvΓ : Prevalid Γ := prevalid_of_wfM hwfV
+      have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
+      have hLCv : Term.LC v := WfM.lc hwfV
+      have hfvV : Term.fv v ⊆ Γ.dom := WfM.fv_subset hwfV
+      obtain ⟨hMEq⟩ : Nonempty (MEqRed Γ [] v v') :=
+        Proposition_17_FromOperationalToEqRed hpvNil hLCv hfvV hstep
+      have hSubV' : WSubM Γ v' v' := WSubM.rfl hwfV'
+      have hSubV'_v : WSubM Γ v' v := WSubM.rgh hSubV' hMEq
+      have hStarV'_v : WSubMStar Γ v' v := WSubMStar.sub hwfV' hSubV'_v hwfV
+      have hStarV'_z : WSubMStar Γ v' z :=
+        WSubMStar.trs hStarV'_v hwfV hStarArg
+      exact WfM.app hStarFn hStarV'_z
+  | @absBound bound bound' body L hstep hbodyLC ihBound =>
+    -- Goal: WfM Γ (.abs bound' body).
+    cases hwf with
+    | @fun_ _ _ _ L₀ hT hB =>
+      -- IH on Step bound bound': WfM Γ bound -> WfM Γ bound'.
+      have hwfBd' : WfM Γ bound' := ihBound hT
+      -- Need: cofinite WfM (⟨x, bound', .sub⟩ :: Γ) (body^[x]).
+      -- Strategy: take x ∉ L₀ ∪ Γ.dom, use hB x hxL₀ to get
+      -- WfM (⟨x, bound, .sub⟩ :: Γ) (body^[x]), then narrow via Lemma 23.
+      -- Narrowing requires LC bound' and fv bound' ⊆ Γ.dom.
+      have hLCBd' : Term.LC bound' := Step.lc_right hstep
+      -- fv bound' ⊆ Γ.dom: from MEqRed_fv_subset on the Prop-17 image.
+      have hLCBd : Term.LC bound := WfM.lc hT
+      have hfvBd : Term.fv bound ⊆ Γ.dom := WfM.fv_subset hT
+      have hpvΓ : Prevalid Γ := prevalid_of_wfM hT
+      have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
+      obtain ⟨hMEqBd⟩ : Nonempty (MEqRed Γ [] bound bound') :=
+        Proposition_17_FromOperationalToEqRed hpvNil hLCBd hfvBd hstep
+      have hfvBd' : Term.fv bound' ⊆ Γ.dom := by
+        intro y hy
+        have hy' : y ∈ Term.fv bound ∪ Γ.dom := MEqRed_fv_subset hMEqBd hy
+        rcases Finset.mem_union.mp hy' with h | h
+        · exact hfvBd h
+        · exact h
+      -- Build the new cofinite witness.
+      refine WfM.fun_ (L₀ ∪ Γ.dom) hwfBd' ?_
+      intro y hy
+      have hyL₀ : y ∉ L₀ := fun h =>
+        hy (Finset.mem_union.mpr (Or.inl h))
+      have hyΓ : y ∉ Γ.dom := fun h =>
+        hy (Finset.mem_union.mpr (Or.inr h))
+      have hwfBody_old : WfM (⟨y, bound, .sub⟩ :: Γ) (Term.opening (.fvar y) body) :=
+        hB y hyL₀
+      -- Apply Lemma 23 with Γ₂ = [] to swap the head bound -> bound'.
+      have :=
+        Lemma_23_NarrowingWf (Γ₁ := Γ) (Γ₂ := []) (x := y)
+          (t := bound') (t' := bound) (u := Term.opening (.fvar y) body)
+          (by simpa using hwfBody_old) hLCBd' hfvBd'
+      simpa using this
+  | @absBody bound body body' L hLCbound hbody ihBody =>
+    -- Goal: WfM Γ (.abs bound body').
+    cases hwf with
+    | @fun_ _ _ _ L₀ hT hB =>
+      refine WfM.fun_ (L ∪ L₀ ∪ Γ.dom) hT ?_
+      intro y hy
+      have hyL : y ∉ L := fun h => hy (by
+        apply Finset.mem_union.mpr; left
+        apply Finset.mem_union.mpr; left; exact h)
+      have hyL₀ : y ∉ L₀ := fun h => hy (by
+        apply Finset.mem_union.mpr; left
+        apply Finset.mem_union.mpr; right; exact h)
+      have hwfBody_old : WfM (⟨y, bound, .sub⟩ :: Γ) (Term.opening (.fvar y) body) :=
+        hB y hyL₀
+      -- Apply IH at this fresh y, with Γ := ⟨y, bound, .sub⟩ :: Γ.
+      exact ihBody y hyL hwfBody_old
 
 /-! ## §7. Theorem 4 — Progress
 
