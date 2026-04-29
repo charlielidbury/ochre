@@ -299,21 +299,85 @@ noncomputable def Lemma_25_NarrowingMEqRed
 
 /-! ## §4. Lemma 24 — Narrowing for `MSubRed` (axiomatized)
 
-The `Ms-Pro y = x` case: when narrowing the `.sub` head entry for `x`,
-the lookup `Γ.subBinds x t'` becomes `subBinds x t`. To produce
-`MSubRed _ s (.fvar x) t'` (matching the original RHS) in the new
-context, we need to compose the new lookup `(.fvar x) →ₛ t` with a step
-from `t` to `t'` — but `t ≤_wf t'` is a `WSubM` chain, not a single
-`MSubRed` step.
+**Status (post-investigation, 2026-04):** The axiom as currently stated
+is *structurally false* under the LC + fv premise alone. Concrete
+counter-shape: take a derivation of `MSubRed Γ_old [] (.fvar x) (.fvar z)`
+proceeding via `Ms-Pro` on `x` (giving the binding `t' = .fvar z`).
+Narrowing replaces `t'` with an unrelated `t = .top`. The new lookup
+yields `MSubRed Γ_new [] (.fvar x) .top`, but the conclusion demands
+`MSubRed Γ_new [] (.fvar x) (.fvar z)` — and there is no Ms-* arm that
+can step `.top → .fvar z`. So the lemma is genuinely false unless `t`
+and `t'` are related by a witness such as `WSubM Γ₁ t t'`.
 
-The mechanized discharge requires either (a) a refined statement
-producing `MSubRedStar` (transitive closure) on the right, or (b) the
-`WSubMStar`-style chain glue from Wave 4B's escape-hatch axiom
-(`Lemma_30_msPro_x_axiom`). Both are scheduled for Wave 7. We expend
-the single Wave-5 axiom quota here.
+### Why the discharge cannot land in Narrowing.lean alone
+
+The `Ms-Pro y = x` case needs to bridge the gap from `t` (new lookup)
+to `t'` (old RHS). The natural bridge is `WSubM Γ_new t t'` (weakened
+from `WSubM Γ₁ t t'`). Two integration paths:
+
+* **Path A — strengthen Lemma 24 only.** Add `WSubM Γ₁ t t'` to
+  Lemma 24's premises and change its conclusion to `WSubM Γ_new v u`
+  (taking the IH continuation `WSubM Γ_new v' u` as an extra
+  parameter). The proof for the `Ms-Pro y = x` case then needs to
+  compose `WSubM Γ_new t t'` with `WSubM Γ_new t' u` into
+  `WSubM Γ_new t u`. This is **WSubM transitivity**, which is *not*
+  derivable structurally:
+    - `rfl`/`lf1`/`lf2` cases: induct on the first WSubM.
+    - `rgh hsub hred` case: have `WSubM Γ a b''` and `MEqRed Γ b b''`,
+      need to extend to `c` given `WSubM Γ b c`. Going from `b''` to
+      `b` requires inverting the MEqRed direction; lifting via Lemma 15
+      (WEquM symmetry) + Lemma 16 (WEquM ⊆ WSubM) recovers
+      `WSubM Γ b'' b`, but composing `WSubM b'' b` with `WSubM b c`
+      is recursive transitivity again. No structural fixed point.
+  WSubM-transitivity is essentially Theorem 3's content (via `MSub`
+  ↔ `WSubM` correspondence), which lives in `Pss.Mpss.TransitivityElim`
+  and is *not* in this file's transitive imports.
+
+* **Path B — strengthen Lemma 23's whole API.** Add `WSubM Γ₁ t t'` to
+  Lemma 23's external signature, propagating to Lemma 26 and to the
+  motives `_N_motive_*`. This breaks the call site at
+  `Pss/Mpss/TypeSafety.lean:786`, which currently supplies only
+  `LC bound'` and `fv bound' ⊆ Γ.dom`. (That call site *can* derive
+  `WSubM Γ bound' bound` via Lemma 15 + Lemma 16 from a
+  `MEqRed Γ [] bound bound'` it already has, but performing that
+  derivation requires editing TypeSafety.lean, which is out of scope.)
+
+### Conclusion
+
+The current axiom is **load-bearing for an unsound claim**. Honest
+discharge requires either (i) restructuring across multiple files to
+add the `WSubM Γ₁ t t'` premise end-to-end, or (ii) importing
+TransitivityElim infrastructure into Narrowing.lean to obtain a
+WSubM-transitivity lemma. Both are out of scope for this turn's
+restriction to Narrowing.lean only with the existing axiom budget.
 
 **Axiom contract:** `MSubRed` narrowing under restricted (`fv ⊆`,
-`LC`) premises, mirroring Lemma 25's signature. -/
+`LC`) premises, mirroring Lemma 25's signature. The axiom is
+*provisionally stated* in this form to keep Lemma 23 building; a sound
+restatement will need cross-file changes (above).
+
+**Sound shape (target for Wave 7, not yet implementable here):**
+
+```
+theorem Lemma_24_sound
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' v v' u : Term} {st : Stack}
+    (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st v v')
+    (hChain : WSubM Γ₁ t t')                              -- new premise
+    (hCont : WSubM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) v' u)       -- continuation
+    (hwfV_new hwfV'_new : WfM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) _) :
+    WSubM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) v u                  -- changed conclusion
+```
+
+Discharge plan: induct on `h`. The `Ms-Pro y = x` case:
+1. Weaken `hChain` to `WSubM Γ_new t t'` (Lemma 23 chicken-and-egg —
+   handle by mutual induction with Lemma 23 itself).
+2. Compose `WSubM Γ_new t t'` with `hCont : WSubM Γ_new t' u` into
+   `WSubM Γ_new t u`. This is WSubM-transitivity, which requires
+   Theorem 3 collapse (lift to WSubMStar via `WSubMStar.sub`,
+   transitive-close via `WSubMStar.trs`, collapse back via Theorem 3
+   — i.e. the `MSub`/`MSubRedStar` correspondence in
+   `Pss.Mpss.TransitivityElim`).
+3. Wrap with `WSubM.lf2 _ (Ms-Pro new lookup) _ (WSubM Γ_new t u)`. -/
 axiom Lemma_24_NarrowingMSubRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
