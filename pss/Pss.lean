@@ -12,6 +12,7 @@ import Pss.Mpss.SubRed
 import Pss.Mpss.ContextRed
 import Pss.Mpss.Weakening
 import Pss.Mpss.Substitution
+import Pss.Mpss.AvoidsPro
 import Pss.Mpss.WellFormed
 import Pss.Mpss.Diamond
 import Pss.Mpss.Narrowing
