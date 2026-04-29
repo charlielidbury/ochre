@@ -46,51 +46,17 @@ correct re-introduction is via a Bool-valued recursive function
 derivation tree's structural shape, not just its propositional
 content) — NOT a re-introduction of the inductive predicate.
 
-## Update (Jan 2026): Bool-valued redesign blocked by universe elimination
+## Update (post-`16eed34`): Bool-valued redesign now possible
 
-A subsequent attempt to introduce the Bool-valued recursive function
-`avoidsPro : MEqRed Γ s u v → String → Bool` was **blocked at the
-kernel level** by Lean 4's universe-elimination restriction.
+Commit `16eed34` lifted `MEqRed` and `MSubRed` from `Prop` to `Type`.
+This enables `Bool`-valued (and more generally, `Type`-valued)
+recursion on the derivation tree without falling foul of the kernel's
+`Prop → Type` elimination restriction.
 
-`MEqRed` is a non-singleton inductive in `Prop`. Lean's elimination
-rule for `Prop`-inductives only allows recursion into `Prop` motives
-(unless the inductive is a "subsingleton" — at most one constructor,
-all arguments in `Prop`, with no extra information beyond the
-proposition itself). `MEqRed` has eight constructors, so the kernel
-rejects any motive in `Type` (such as `Bool` or `Nat`).
-
-Verified empirically (see commit log):
-
-```lean
-def avoidsProTest {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
-  match h with | .top _ => true | _ => false
--- error: dependent pattern matcher [...]
-
-noncomputable def avoidsProTest {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
-  MEqRed.rec (motive := fun _ _ _ _ _ => Bool) ... h
--- error: type mismatch: Bool has type Type ... expected Prop
-```
-
-Soundness-preserving paths forward (none cheap):
-
-1. **Lift `MEqRed` to `Type`.** Allows `Bool`-valued recursion. Cost:
-   massive refactor; every downstream `induction h with` becomes a
-   `Type`-level eliminator and proof irrelevance is lost.
-2. **Parallel `Type`-valued derivation tree** that mirrors `MEqRed`,
-   plus an equi-inhabitance theorem. Cost: doubling the derivation
-   infrastructure.
-3. **Locally-nameless renaming/closing infrastructure** sufficient to
-   discharge the body-recursive cases of Lemma 2 directly, without
-   needing the avoidance side condition. Cost: an `MEqRed_rename`
-   theorem (the current `Lemma_31` requires `SubstOk` which itself
-   requires `fv s ⊆ Γ.dom`, ruling out genuinely-fresh names — so a
-   variant with the fresh-name-is-not-yet-in-scope side handled
-   explicitly is needed).
-
-Until one of these is built, the residual axioms in
-`Pss/Mpss/Diamond.lean` remain (see the case grid in that module's
-docstring). The App × TAp arm has been discharged (vacuous-source
-case), narrowing the residual to the genuinely hard arms.
+We define `avoidsPro` below via the auto-generated recursor (rather
+than via tactic-mode pattern matching, which would require manual
+termination-by annotations because of the cofinite functional argument
+in the binder cases).
 
 ## What remains here
 
@@ -98,10 +64,14 @@ case), narrowing the residual to the genuinely hard arms.
 * `MEqRed_fv_subset` — `fv` of the destination is bounded by `fv` of
   the source plus `Γ.dom`.
 * `MEqRed_fv_preserve` — `MEqRed` preserves `fv ⊆ Γ.dom`.
+* `avoidsPro` — Bool-valued structural-recursion check on `MEqRed`
+  derivations. `avoidsPro h x = true` iff no `Me-Pro` step in `h`
+  promotes the variable named `x`. Defined via the auto-generated
+  `MEqRed.rec` (Type-valued post `16eed34`).
 
-These are pure scope-preservation lemmas and have no soundness issue.
-They are kept because `Pss.Mpss.Diamond` uses `MEqRed_fv_preserve`
-in the `pro × var` cells of `Lemma_2_DiamondMEqRed_core` and in the
+The scope-preservation lemmas have no soundness issue. They are kept
+because `Pss.Mpss.Diamond` uses `MEqRed_fv_preserve` in the
+`pro × var` cells of `Lemma_2_DiamondMEqRed_core` and in the
 `Lemma_2_inline_tAp` discharger.
 
 ## Why `Substitution` is allowed
@@ -307,5 +277,72 @@ theorem MEqRed_fv_preserve {Γ : Ctx} {s : Stack} {u v : Term}
   rcases Finset.mem_union.mp hzU with h' | h'
   · exact hfv h'
   · exact h'
+
+/-! ## §2. Bool-valued `avoidsPro` (post `MEqRed : Type` refactor)
+
+`avoidsPro h x = true` iff the derivation `h : MEqRed Γ s u v` does not
+contain any `Me-Pro` step that promotes the variable named `x`. The
+paper's "moreover" clause of Lemma 2 propagates an avoidance side
+condition like this through both closing derivations.
+
+Defined via the auto-generated `MEqRed.rec` rather than via tactic-mode
+pattern matching. The reason: the cofinite cases (`bet`, `fun_`, `fOp`)
+have a body argument of functional type `∀ y, y ∉ L → MEqRed …`, and
+the equation compiler does not synthesise a structural decreasing
+measure across that — so a direct `match` fails termination checking.
+The recursor's auto-generated motive correctly threads the IH through
+without needing a manual termination annotation.
+
+Convention for the cofinite arms: pick a canonical fresh `y` via
+`Classical.choose` against the binder-LC bound `L` and recurse on the
+body opened with that `y`. (`avoidsPro` is `noncomputable` because of
+this; the recursor itself would be computable, but the pickFresh helper
+relies on `Classical.choice`.) -/
+
+/-- Helper: pick a canonical fresh name avoiding `L`. -/
+private noncomputable def pickFresh (L : Finset String) : String :=
+  Classical.choose (Term.exists_fresh L)
+
+private theorem pickFresh_notMem (L : Finset String) :
+    pickFresh L ∉ L :=
+  Classical.choose_spec (Term.exists_fresh L)
+
+/-- Bool-valued avoidance check on `MEqRed` derivations.
+
+`avoidsPro h x = true` ↔ no `Me-Pro` step in `h` promotes `x`.
+
+The cofinite arms (`bet`, `fun_`, `fOp`) recurse on the body opened
+with a canonical fresh name picked via `Classical.choose`. This is
+sound because `MEqRed` is `Type`-valued (commit `16eed34`), so the
+constructor shape of `h` is observable at the term level. -/
+noncomputable def avoidsPro {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool :=
+  MEqRed.rec
+    (motive := fun _ _ _ _ _ => String → Bool)
+    -- Me-Pro: the promoted variable's name `y` is in scope here.
+    (fun {_ _ y _ _} _ _ _ ihα x => decide (y ≠ x) && ihα x)
+    -- Me-Bet: cofinite body + operand recursion.
+    (fun L _ _ _ ihbody ihv x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      ihbody y hyL x && ihv x)
+    -- Me-Top: vacuous.
+    (fun _ _ => true)
+    -- Me-App: both subterms.
+    (fun _ _ ihu ihv x => ihu x && ihv x)
+    -- Me-Var: vacuous (no Me-Pro).
+    (fun _ _ => true)
+    -- Me-Fun: bound annotation + cofinite body.
+    (fun L _ _ iht ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      iht x && ihbody y hyL x)
+    -- Me-TAp: vacuous.
+    (fun _ _ _ _ => true)
+    -- Me-FOp: bound annotation + cofinite body.
+    (fun L _ _ iht ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      iht x && ihbody y hyL x)
+    h x
 
 end Pss

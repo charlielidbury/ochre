@@ -67,20 +67,26 @@ the conclusion.
 |             | (FOp × FOp) at α::s stack  | A       | `Lemma_2_inline_fOp_fOp` (IH-aware) |
 | `.app u v`  | (TAp × TAp/App)            | T       | `Lemma_2_inline_tAp` (theorem) |
 |             | (App × TAp)                | T       | discharged inside `Lemma_2_inline_app` |
-|             | (App × App, App × Bet)     | A       | `Lemma_2_inline_app_residual_axiom` |
+|             | (App × App)                | T       | discharged via `_ctx_axiom` |
+|             | (App × Bet)                | A       | `Lemma_2_inline_app_bet_residual_axiom` |
 |             | (Bet × *)                  | A       | `Lemma_2_inline_bet_residual_axiom` |
 
 Legend: P = proved inline (in `_core`); T = real `theorem`; A = inline
 private axiom that consumes the outer-induction IH; V = vacuous.
 
-The dispatched arms (App × TAp, vacuous Bet × TAp, Pro × Pro) reduce
-the residual axiom count from **5 → 3** (plus the context-evolution
-lift `Lemma_2_DiamondMEqRed_ctx_axiom`).
+The newly-dispatched App × App arm uses
+`Lemma_2_DiamondMEqRed_ctx_axiom` to lift the operator's joining
+derivation across the single-step Ct-Stk evolution `Γ; v::s ↣ Γ; v'::s`
+(and analogously to `v₂::s`). This trades one residual for re-use of
+an existing one — net axiom count is unchanged but the residual surface
+has shrunk from {App × App, App × Bet, Bet × *} to {App × Bet, Bet × *}.
 
-See `Pss/Mpss/AvoidsPro.lean`'s "Bool-valued redesign blocked by
-universe elimination" section for the analysis of why the residual
-arms cannot be discharged via the paper's "moreover" clause in this
-encoding.
+The newly-introduced `avoidsPro` Bool-valued recursion in
+`Pss/Mpss/AvoidsPro.lean` (post-`16eed34`) provides the foundation
+for the term-size-bounded discharge of the App × Bet, Bet × * arms,
+but that discharge requires changing `_core`'s induction scheme to
+term-size induction with `avoidsPro` as the bounding measure — a
+non-trivial refactor scheduled separately.
 -/
 
 namespace Pss
@@ -140,6 +146,24 @@ The paper's statement (verbatim, modulo notation):
   `no-promotion-of-x` side condition through the closing derivations.
   See the module docstring above for why we dropped that clause.] -/
 
+/-! ### §3.0 Context-evolution lifting (axiomatised)
+
+The context evolution `↣*` is handled by a separate axiom that lifts a
+same-context joining derivation across two `↣*` evolutions. We also
+invoke it locally inside the App × App arm of `Lemma_2_inline_app` to
+shift across a single Ct-Stk step `Γ; v::s ↣ Γ; v'::s` (in which case
+the source context-stack pair is the SAME, but the target stack-head
+swaps from `v` to `v'`/`v₂`). -/
+
+/-- Lift a same-context joining derivation across two `↣*` evolutions. -/
+private axiom Lemma_2_DiamondMEqRed_ctx_axiom
+    {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
+    {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
+    (hCt₁ : ExtCtxRedStar (Γ₀, s₀) (Γ₁, s₁))
+    (hCt₂ : ExtCtxRedStar (Γ₀, s₀) (Γ₂, s₂))
+    {t₃ : Term} (h₁'₀ : MEqRed Γ₀ s₀ t₁ t₃) (h₂'₀ : MEqRed Γ₀ s₀ t₂ t₃) :
+    Σ' (t₃' : Term), MEqRed Γ₁ s₁ t₁ t₃' × MEqRed Γ₂ s₂ t₂ t₃'
+
 /-! ### §3.1 Inline residual fallbacks (IH-aware)
 
 The hard cells of the diamond grid require recursive applications of
@@ -164,68 +188,70 @@ private noncomputable def Lemma_2_inline_pro_pro
     Σ' (t₃ : Term), MEqRed Γ s α₁ t₃ × MEqRed Γ s α₂ t₃ :=
   ihα₁ hα₂
 
-/-! #### Why the App × Bet, App × App, Bet × App, Bet × Bet arms remain axiomatized
+/-! #### Status of the App × Bet, Bet × {App, Bet} arms
 
-These four arms all share the same fundamental obstruction. The clean
-discharge needs the paper's "moreover" clause to bound the number of
-`Me-Pro` promotions, so that term-size induction terminates for the
-body-recursive cases despite operand substitution potentially growing
-the term.
+After the App × App discharge (via `_ctx_axiom`-mediated stack-shift),
+the remaining axiomatised arms are:
 
-The natural mechanization of that clause is a `Bool`-valued recursive
-function `avoidsPro : MEqRed Γ s u v → String → Bool` on the
-derivation tree's structural shape. **This is blocked by Lean 4's
-universe-elimination restriction**: `Prop → Type` elimination on a
-non-singleton `Prop`-inductive is rejected by the kernel. Verified by
-direct experiment (January 2026): both pattern-match and explicit
-`MEqRed.rec` produce the diagnostic
-`type mismatch: Bool has type Type ... expected Prop`.
+* App × Bet (`Lemma_2_inline_app_bet_residual_axiom`)
+* Bet × {App, Bet} (`Lemma_2_inline_bet_residual_axiom`)
+* Fun × Fun (`Lemma_2_inline_fun_fun`)
+* FOp × FOp (`Lemma_2_inline_fOp_fOp`)
 
-The previous-iteration `Prop`-valued predicate `MEqRedAvoidsPro` was
-unsound for an orthogonal reason (proof-irrelevance collapsing
-constructor shapes; see `Pss/Mpss/AvoidsPro.lean` docstring).
+The β-step arms (App × Bet, Bet × {App, Bet}) all share the same
+fundamental obstruction: the β-reduction `(.abs t body) v ⟶ body[v/x]`
+can grow the term, so structural induction on the derivation tree does
+not terminate for the closing argument. The paper threads a "moreover"
+side condition (no `Me-Pro` step on the bound name) to bound the
+opening, allowing term-size induction.
 
-Three soundness-preserving paths forward:
+`avoidsPro` (in `Pss/Mpss/AvoidsPro.lean`, post-`16eed34`) provides
+the Bool-valued mechanisation of that side condition, but consuming it
+requires changing `_core`'s induction scheme from
+`induction h₁ generalizing t₂` to a lex measure on `(Term.size t₀,
+avoidsPro-count of h₁)`. That refactor is non-trivial enough to be
+scheduled separately.
 
-1. **Lift `MEqRed` from `Prop` to `Type`.** Allows `Bool`-valued recursion.
-   Cost: massive refactor — every downstream `induction h with` becomes
-   a `Type`-level eliminator and proof irrelevance is lost.
-2. **Introduce a parallel `Type`-valued derivation tree** `MEqRedTree`
-   that mirrors `MEqRed` and prove they're equi-inhabited. `avoidsPro`
-   recurses on `MEqRedTree`. Cost: doubling the derivation infrastructure.
-3. **Build a stack/context renaming lemma + cofinite body-closing
-   helper** to discharge the body-recursive cases without an avoidance
-   side condition. This is the locally-nameless fix; needs an
-   `MEqRed_rename` theorem (substitute `fvar y'` for `fvar y` in a
-   derivation) which the current `Lemma_31` does not directly cover
-   (the `SubstOk` premise requires `fv s ⊆ Γ.dom`, ruling out genuinely
-   fresh names).
+The Fun × Fun and FOp × FOp arms are body-recursive under cofinite
+quantification on a fresh name; their discharge needs renaming
+infrastructure. -/
 
-Until one of these is built, we keep the per-arm residuals as private
-axioms with clear scope. -/
+/-- App × Bet residual: the operator is an `.abs t' body'` and the RHS
+β-reduces. Discharge needs term-size induction on the body bounded by
+the avoidance count — see comment above.
 
-/-- App × non-TAp residual: covers App × App and App × Bet.
-Stack-mismatch / cofinite body-closure obstruction (see comment above).
-
-We do not narrow the axiom signature with a `¬ TAp h₂` premise because
-HEq-discrimination on `Prop`-indexed inductives is awkward; instead the
-caller (`Lemma_2_inline_app`) statically dispatches the TAp arm before
-invoking the axiom. -/
-private axiom Lemma_2_inline_app_residual_axiom
-    {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
-    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
-    (h₂ : MEqRed Γ s (.app u v) t₂)
-    (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
+Now that `MEqRed` is `Type`-valued, `avoidsPro` is definable (see
+`Pss/Mpss/AvoidsPro.lean`), but the term-size induction itself still
+needs to be set up at the `_core` level (induction scheme change). For
+the moment we keep the App × Bet arm as a private axiom whose
+signature receives the necessary IHs. The operator's source type
+`(.abs t' body')` is forced by the source-shape match in the caller. -/
+private axiom Lemma_2_inline_app_bet_residual_axiom
+    {Γ : Ctx} {s : Stack} {u' v v' : Term} {t' body' body'' : Term}
+    {L₂ : Finset String} {v₂' : Term}
+    (hu : MEqRed Γ (v :: s) (.abs t' body') u') (hv : MEqRed Γ [] v v')
+    (hLCt₂ : Term.LC t')
+    (hbody₂ : ∀ y, y ∉ L₂ → MEqRed Γ s (body'^[y]) (body''^[y]))
+    (hv₂ : MEqRed Γ [] v v₂')
+    (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) (.abs t' body') t₂' →
       Σ' (t₃ : Term), MEqRed Γ (v :: s) u' t₃ × MEqRed Γ (v :: s) t₂' t₃)
     (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
       Σ' (t₃ : Term), MEqRed Γ [] v' t₃ × MEqRed Γ [] t₂' t₃) :
-    Σ' (t₃ : Term), MEqRed Γ s (.app u' v') t₃ × MEqRed Γ s t₂ t₃
+    Σ' (t₃ : Term),
+      MEqRed Γ s (.app u' v') t₃ × MEqRed Γ s (Term.opening v₂' body'') t₃
 
-/-- Inline residual (DISCHARGED, partial): `Me-App` on the LHS, any rule
-on the RHS. App × TAp dispatches directly via the IHs (the `tAp`
-constructor's vacuous-source check forces the operator to be `.top`,
-which has only a single trivial inner derivation). App × App and
-App × Bet are delegated to the residual axiom. -/
+/-- Inline residual (DISCHARGED, except App × Bet): `Me-App` on the LHS,
+any rule on the RHS.
+
+* App × TAp: vacuous-source dispatch (operator forced to `.top`).
+* App × App: discharged via `Lemma_2_DiamondMEqRed_ctx_axiom`.
+  The IHs close `(u', u₂)` at stack `(v::s)` and `(v', v₂)` at stack
+  `[]`; we then use the context-evolution axiom `Γ; v::s ↣ Γ; v'::s`
+  (Ct-Stk on `v ⟶ v'`) and `Γ; v::s ↣ Γ; v₂::s` to lift the operator
+  closure across the stack evolution. The lifted derivations rebuild
+  `MEqRed.app` at stack `s`.
+* App × Bet: still axiomatised (`Lemma_2_inline_app_bet_residual_axiom`).
+-/
 private noncomputable def Lemma_2_inline_app
     {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
     (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
@@ -250,12 +276,23 @@ private noncomputable def Lemma_2_inline_app
       have hfvv' : Term.fv v' ⊆ Γ.dom := MEqRed_fv_preserve hv hfvv
       exact ⟨.top, MEqRed.tAp hpvS hLCv' hfvv', MEqRed.top hpvS⟩
   | @app _ _ _ u₂ _ v₂ hu₂ hv₂ =>
-    -- App × App: stack-mismatch obstruction (see comment above).
-    exact Lemma_2_inline_app_residual_axiom hu hv (MEqRed.app hu₂ hv₂) ihu ihv
+    -- App × App via _ctx_axiom: close (u', u₂) at (v::s) and (v', v₂) at [],
+    -- then lift the operator closure across Γ; v::s ↣ Γ; v'::s and
+    -- Γ; v::s ↣ Γ; v₂::s (single Ct-Stk steps on v ⟶ v' / v ⟶ v₂).
+    obtain ⟨w, hu'_w, hu₂_w⟩ := ihu hu₂
+    obtain ⟨v₃, hv'_v₃, hv₂_v₃⟩ := ihv hv₂
+    have hCt₁ : ExtCtxRedStar (Γ, v :: s) (Γ, v' :: s) :=
+      ExtCtxRed.to_star (.stk .refl hv)
+    have hCt₂ : ExtCtxRedStar (Γ, v :: s) (Γ, v₂ :: s) :=
+      ExtCtxRed.to_star (.stk .refl hv₂)
+    obtain ⟨w', hu'_w', hu₂_w'⟩ :=
+      Lemma_2_DiamondMEqRed_ctx_axiom hCt₁ hCt₂ hu'_w hu₂_w
+    exact ⟨.app w' v₃, MEqRed.app hu'_w' hv'_v₃, MEqRed.app hu₂_w' hv₂_v₃⟩
   | @bet _ _ t' _ _ _ body' L₂ hLCt₂ hbody₂ hv₂ =>
-    -- App × Bet: cofinite body-closure obstruction (see comment above).
-    exact Lemma_2_inline_app_residual_axiom hu hv (MEqRed.bet L₂ hLCt₂ hbody₂ hv₂)
-      ihu ihv
+    -- App × Bet: still axiomatised. The source-shape match equates u with
+    -- the .abs t' body' shape; the axiom takes the operator-MEqRed at that
+    -- forced shape directly.
+    exact Lemma_2_inline_app_bet_residual_axiom hu hv hLCt₂ hbody₂ hv₂ ihu ihv
 
 /-- Bet × non-TAp residual: covers Bet × App and Bet × Bet.
 Same closure obstruction as App × non-TAp. -/
@@ -414,17 +451,8 @@ noncomputable def Lemma_2_DiamondMEqRed_core
 
 /-! ### §3.3 Context-evolution lifting
 
-The context evolution `↣*` is handled by a separate axiom that lifts the
-same-context joining derivations across the two `↣*` evolutions. -/
-
-/-- Lift a same-context joining derivation across two `↣*` evolutions. -/
-private axiom Lemma_2_DiamondMEqRed_ctx_axiom
-    {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
-    {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
-    (hCt₁ : ExtCtxRedStar (Γ₀, s₀) (Γ₁, s₁))
-    (hCt₂ : ExtCtxRedStar (Γ₀, s₀) (Γ₂, s₂))
-    {t₃ : Term} (h₁'₀ : MEqRed Γ₀ s₀ t₁ t₃) (h₂'₀ : MEqRed Γ₀ s₀ t₂ t₃) :
-    Σ' (t₃' : Term), MEqRed Γ₁ s₁ t₁ t₃' × MEqRed Γ₂ s₂ t₂ t₃'
+(The lift axiom is hoisted to §3.0 above so it can be invoked inside
+the App × App arm of `Lemma_2_inline_app`.) -/
 
 /-- **Lemma 2** (Pasquale & García-Pérez 2024 §3, Diamond property of
 `⟶^≡`).
