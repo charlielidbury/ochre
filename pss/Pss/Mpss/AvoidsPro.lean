@@ -46,6 +46,52 @@ correct re-introduction is via a Bool-valued recursive function
 derivation tree's structural shape, not just its propositional
 content) — NOT a re-introduction of the inductive predicate.
 
+## Update (Jan 2026): Bool-valued redesign blocked by universe elimination
+
+A subsequent attempt to introduce the Bool-valued recursive function
+`avoidsPro : MEqRed Γ s u v → String → Bool` was **blocked at the
+kernel level** by Lean 4's universe-elimination restriction.
+
+`MEqRed` is a non-singleton inductive in `Prop`. Lean's elimination
+rule for `Prop`-inductives only allows recursion into `Prop` motives
+(unless the inductive is a "subsingleton" — at most one constructor,
+all arguments in `Prop`, with no extra information beyond the
+proposition itself). `MEqRed` has eight constructors, so the kernel
+rejects any motive in `Type` (such as `Bool` or `Nat`).
+
+Verified empirically (see commit log):
+
+```lean
+def avoidsProTest {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
+  match h with | .top _ => true | _ => false
+-- error: dependent pattern matcher [...]
+
+noncomputable def avoidsProTest {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
+  MEqRed.rec (motive := fun _ _ _ _ _ => Bool) ... h
+-- error: type mismatch: Bool has type Type ... expected Prop
+```
+
+Soundness-preserving paths forward (none cheap):
+
+1. **Lift `MEqRed` to `Type`.** Allows `Bool`-valued recursion. Cost:
+   massive refactor; every downstream `induction h with` becomes a
+   `Type`-level eliminator and proof irrelevance is lost.
+2. **Parallel `Type`-valued derivation tree** that mirrors `MEqRed`,
+   plus an equi-inhabitance theorem. Cost: doubling the derivation
+   infrastructure.
+3. **Locally-nameless renaming/closing infrastructure** sufficient to
+   discharge the body-recursive cases of Lemma 2 directly, without
+   needing the avoidance side condition. Cost: an `MEqRed_rename`
+   theorem (the current `Lemma_31` requires `SubstOk` which itself
+   requires `fv s ⊆ Γ.dom`, ruling out genuinely-fresh names — so a
+   variant with the fresh-name-is-not-yet-in-scope side handled
+   explicitly is needed).
+
+Until one of these is built, the residual axioms in
+`Pss/Mpss/Diamond.lean` remain (see the case grid in that module's
+docstring). The App × TAp arm has been discharged (vacuous-source
+case), narrowing the residual to the genuinely hard arms.
+
 ## What remains here
 
 * `fv_subset_open_fvar` — opening with a fresh fvar only adds names.

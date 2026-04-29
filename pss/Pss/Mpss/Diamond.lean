@@ -62,15 +62,25 @@ the conclusion.
 | `.fvar x`   | (Var × Var)                | P       | `t₃ := .fvar x`, both `.var` |
 |             | (Var × Pro)                | P       | `t₃ := α'`; refl + reuse Pro |
 |             | (Pro × Var)                | P       | symmetric                    |
-|             | (Pro × Pro)                | A       | `Lemma_2_inline_pro_pro` (IH-aware) |
+|             | (Pro × Pro)                | T       | `Lemma_2_inline_pro_pro` (IH-aware theorem) |
 | `.abs t b`  | (Fun × Fun) at empty stack | A       | `Lemma_2_inline_fun_fun` (IH-aware) |
 |             | (FOp × FOp) at α::s stack  | A       | `Lemma_2_inline_fOp_fOp` (IH-aware) |
 | `.app u v`  | (TAp × TAp/App)            | T       | `Lemma_2_inline_tAp` (theorem) |
-|             | (App × Bet/App/TAp)        | A       | `Lemma_2_inline_app` (IH-aware) |
-|             | (Bet × Bet/App/TAp)        | A       | `Lemma_2_inline_bet` (IH-aware) |
+|             | (App × TAp)                | T       | discharged inside `Lemma_2_inline_app` |
+|             | (App × App, App × Bet)     | A       | `Lemma_2_inline_app_residual_axiom` |
+|             | (Bet × *)                  | A       | `Lemma_2_inline_bet_residual_axiom` |
 
-Legend: P = proved inline; T = inline real `theorem`; A = inline
+Legend: P = proved inline (in `_core`); T = real `theorem`; A = inline
 private axiom that consumes the outer-induction IH; V = vacuous.
+
+The dispatched arms (App × TAp, vacuous Bet × TAp, Pro × Pro) reduce
+the residual axiom count from **5 → 3** (plus the context-evolution
+lift `Lemma_2_DiamondMEqRed_ctx_axiom`).
+
+See `Pss/Mpss/AvoidsPro.lean`'s "Bool-valued redesign blocked by
+universe elimination" section for the analysis of why the residual
+arms cannot be discharged via the paper's "moreover" clause in this
+encoding.
 -/
 
 namespace Pss
@@ -150,9 +160,102 @@ private theorem Lemma_2_inline_pro_pro
     ∃ (t₃ : Term), MEqRed Γ s α₁ t₃ ∧ MEqRed Γ s α₂ t₃ :=
   ihα₁ hα₂
 
-/-- Inline residual: `Me-Bet` on the LHS, anything on the RHS. The body
-and operand IHs from the outer induction close the recursion. -/
-private axiom Lemma_2_inline_bet
+/-! #### Why the App × Bet, App × App, Bet × App, Bet × Bet arms remain axiomatized
+
+These four arms all share the same fundamental obstruction. The clean
+discharge needs the paper's "moreover" clause to bound the number of
+`Me-Pro` promotions, so that term-size induction terminates for the
+body-recursive cases despite operand substitution potentially growing
+the term.
+
+The natural mechanization of that clause is a `Bool`-valued recursive
+function `avoidsPro : MEqRed Γ s u v → String → Bool` on the
+derivation tree's structural shape. **This is blocked by Lean 4's
+universe-elimination restriction**: `Prop → Type` elimination on a
+non-singleton `Prop`-inductive is rejected by the kernel. Verified by
+direct experiment (January 2026): both pattern-match and explicit
+`MEqRed.rec` produce the diagnostic
+`type mismatch: Bool has type Type ... expected Prop`.
+
+The previous-iteration `Prop`-valued predicate `MEqRedAvoidsPro` was
+unsound for an orthogonal reason (proof-irrelevance collapsing
+constructor shapes; see `Pss/Mpss/AvoidsPro.lean` docstring).
+
+Three soundness-preserving paths forward:
+
+1. **Lift `MEqRed` from `Prop` to `Type`.** Allows `Bool`-valued recursion.
+   Cost: massive refactor — every downstream `induction h with` becomes
+   a `Type`-level eliminator and proof irrelevance is lost.
+2. **Introduce a parallel `Type`-valued derivation tree** `MEqRedTree`
+   that mirrors `MEqRed` and prove they're equi-inhabited. `avoidsPro`
+   recurses on `MEqRedTree`. Cost: doubling the derivation infrastructure.
+3. **Build a stack/context renaming lemma + cofinite body-closing
+   helper** to discharge the body-recursive cases without an avoidance
+   side condition. This is the locally-nameless fix; needs an
+   `MEqRed_rename` theorem (substitute `fvar y'` for `fvar y` in a
+   derivation) which the current `Lemma_31` does not directly cover
+   (the `SubstOk` premise requires `fv s ⊆ Γ.dom`, ruling out genuinely
+   fresh names).
+
+Until one of these is built, we keep the per-arm residuals as private
+axioms with clear scope. -/
+
+/-- App × non-TAp residual: covers App × App and App × Bet.
+Stack-mismatch / cofinite body-closure obstruction (see comment above).
+
+We do not narrow the axiom signature with a `¬ TAp h₂` premise because
+HEq-discrimination on `Prop`-indexed inductives is awkward; instead the
+caller (`Lemma_2_inline_app`) statically dispatches the TAp arm before
+invoking the axiom. -/
+private axiom Lemma_2_inline_app_residual_axiom
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
+    (h₂ : MEqRed Γ s (.app u v) t₂)
+    (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
+      ∃ (t₃ : Term), MEqRed Γ (v :: s) u' t₃ ∧ MEqRed Γ (v :: s) t₂' t₃)
+    (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
+      ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
+    ∃ (t₃ : Term), MEqRed Γ s (.app u' v') t₃ ∧ MEqRed Γ s t₂ t₃
+
+/-- Inline residual (DISCHARGED, partial): `Me-App` on the LHS, any rule
+on the RHS. App × TAp dispatches directly via the IHs (the `tAp`
+constructor's vacuous-source check forces the operator to be `.top`,
+which has only a single trivial inner derivation). App × App and
+App × Bet are delegated to the residual axiom. -/
+private theorem Lemma_2_inline_app
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
+    (h₂ : MEqRed Γ s (.app u v) t₂)
+    (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
+      ∃ (t₃ : Term), MEqRed Γ (v :: s) u' t₃ ∧ MEqRed Γ (v :: s) t₂' t₃)
+    (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
+      ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
+    ∃ (t₃ : Term), MEqRed Γ s (.app u' v') t₃ ∧ MEqRed Γ s t₂ t₃ := by
+  cases h₂ with
+  | @tAp _ _ _ hpv hLCv hfvv =>
+    -- App × TAp: t₀ = .app .top v. Cases on `hu : MEqRed Γ (v::s) .top u'`:
+    -- only `.top` produces `.top` as source on this fvar-free shape, so
+    -- `u' = .top` and the joined reduct is `.top` itself.
+    cases hu with
+    | top hpvU =>
+      -- Pop v-head from hpvU : PrevalidExt Γ (v::s).
+      have hpvS : PrevalidExt Γ s := by
+        cases hpvU with
+        | cons hpv' _ _ => exact hpv'
+      have hLCv' : Term.LC v' := MEqRed.lc_right hv
+      have hfvv' : Term.fv v' ⊆ Γ.dom := MEqRed_fv_preserve hv hfvv
+      exact ⟨.top, MEqRed.tAp hpvS hLCv' hfvv', MEqRed.top hpvS⟩
+  | @app _ _ _ u₂ _ v₂ hu₂ hv₂ =>
+    -- App × App: stack-mismatch obstruction (see comment above).
+    exact Lemma_2_inline_app_residual_axiom hu hv (MEqRed.app hu₂ hv₂) ihu ihv
+  | @bet _ _ t' _ _ _ body' L₂ hLCt₂ hbody₂ hv₂ =>
+    -- App × Bet: cofinite body-closure obstruction (see comment above).
+    exact Lemma_2_inline_app_residual_axiom hu hv (MEqRed.bet L₂ hLCt₂ hbody₂ hv₂)
+      ihu ihv
+
+/-- Bet × non-TAp residual: covers Bet × App and Bet × Bet.
+Same closure obstruction as App × non-TAp. -/
+private axiom Lemma_2_inline_bet_residual_axiom
     {Γ : Ctx} {s : Stack} {t v v' body body' : Term} {L : Finset String}
     {t₂ : Term}
     (hLCt : Term.LC t)
@@ -165,16 +268,23 @@ private axiom Lemma_2_inline_bet
       ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
     ∃ (t₃ : Term), MEqRed Γ s (Term.opening v' body') t₃ ∧ MEqRed Γ s t₂ t₃
 
-/-- Inline residual: `Me-App` on the LHS, anything (Bet/App/TAp) on the RHS. -/
-private axiom Lemma_2_inline_app
-    {Γ : Ctx} {s : Stack} {u u' v v' : Term} {t₂ : Term}
-    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
-    (h₂ : MEqRed Γ s (.app u v) t₂)
-    (ihu : ∀ {t₂' : Term}, MEqRed Γ (v :: s) u t₂' →
-      ∃ (t₃ : Term), MEqRed Γ (v :: s) u' t₃ ∧ MEqRed Γ (v :: s) t₂' t₃)
+/-- Inline residual (vacuous-Bet × TAp + delegate Bet × {App, Bet}):
+the Bet × TAp arm cannot occur (sources `.app (.abs t body) v` and
+`.app .top u` differ in their `.app`-head), so case-analysis on `h₂`
+exposes only the dispatched arms. -/
+private theorem Lemma_2_inline_bet
+    {Γ : Ctx} {s : Stack} {t v v' body body' : Term} {L : Finset String}
+    {t₂ : Term}
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hv : MEqRed Γ [] v v')
+    (h₂ : MEqRed Γ s (.app (.abs t body) v) t₂)
+    (ihbody : ∀ y (_hy : y ∉ L) {t₂' : Term}, MEqRed Γ s (body^[y]) t₂' →
+      ∃ (t₃ : Term), MEqRed Γ s (body'^[y]) t₃ ∧ MEqRed Γ s t₂' t₃)
     (ihv : ∀ {t₂' : Term}, MEqRed Γ [] v t₂' →
       ∃ (t₃ : Term), MEqRed Γ [] v' t₃ ∧ MEqRed Γ [] t₂' t₃) :
-    ∃ (t₃ : Term), MEqRed Γ s (.app u' v') t₃ ∧ MEqRed Γ s t₂ t₃
+    ∃ (t₃ : Term), MEqRed Γ s (Term.opening v' body') t₃ ∧ MEqRed Γ s t₂ t₃ :=
+  Lemma_2_inline_bet_residual_axiom hLCt hbody hv h₂ ihbody ihv
 
 /-- Inline residual (DISCHARGED): `Me-TAp` on the LHS, anything (TAp/App
 on `.app .top u` shape) on the RHS. The `bet` constructor is vacuous
