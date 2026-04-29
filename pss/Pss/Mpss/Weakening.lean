@@ -28,9 +28,13 @@ naturally produce in the IH). We take as primitive
   judgments are not yet defined in this codebase (Wave 5 Agent 5A);
   the schema awaits instantiation there.
 * **Lemma 21 (MSubRed):** PROVED. Operates on a "scoped" wrapper
-  `MSubRedScoped` (see below); the unscoped form follows from the bridge
-  `MSubRed.toScoped` (axiomatized; provable in Wave 5).
+  `MSubRedScoped` (see below); the unscoped form follows via the
+  (now-proven) bridge `MSubRed.toScoped`.
 * **Lemma 22 (MEqRed):** PROVED. Operates on the wrapper `MEqRedScoped`.
+* **Bridges `MEqRed.toScoped` / `MSubRed.toScoped`:** PROVED (Wave 5
+  follow-up). After the wrapper refactor the bridges are trivial
+  structural mirrors; see comment block on `MEqRedScoped` /
+  `MSubRedScoped` for design notes.
 
 ## On the scoped wrappers
 
@@ -39,27 +43,17 @@ carry `fv t ⊆ Γ.dom` premises on binder annotations (Pasquale 2024
 Figure 2 describes an untyped reduction; well-scopedness is layered on
 via `Wf` in §4 of the paper).
 
-For the weakening proof we **need** `fv t ⊆ Γ.dom` on binder annotations,
-so we can construct `Prevalid (⟨y, t, .sub⟩ :: ...)` (or the analogous
-`.equ` form) for the IH applied to a cofinite-fresh body opening.
+The original wrapper design (Wave 4) added `fv t ⊆ Γ.dom` premises on
+binder annotations to enable extending `Γ` with a fresh
+`⟨y, t, .sub⟩` / `⟨y, α, .equ⟩` binding for the body IH inside the
+weakening proofs. That made the unscoped → scoped bridge unprovable.
 
-We capture this requirement via wrapper inductives `MEqRedScoped` and
-`MSubRedScoped` that mirror the original rules but add the missing
-`fv t ⊆ Γ.dom` (and `fv α ⊆ Γ.dom` for `Me-FOp` / `Ms-FOp`) premises to
-binder constructors. The weakening lemmas operate on these wrappers; the
-unscoped→scoped bridge (`MEqRed.toScoped` / `MSubRed.toScoped`) is the
-only piece axiomatized in this file — it is provable from `Prevalid Γ` +
-`fv u ⊆ Γ.dom` by a standard scope-preservation induction (whose
-ingredients are mostly provided by `Pss.Context.Prevalid` lemmas), and
-will be discharged in Wave 5 (`Pss/Mpss/WellFormed.lean`) where the
-ambient `Wf` predicate is available.
-
-This pattern (introduce a stronger predicate that includes the missing
-premises, prove the lemma on the stronger predicate, leave the
-strengthening as a bridge) is standard in mechanized metatheory of
-PTS-like systems where the syntactic rules don't carry full
-well-formedness information.
--/
+The Wave 5 follow-up REMOVES those premises and instead recovers
+`fv t`, `fv α`, `LC α` *on demand* inside Lemma 22/21's `fun_` /
+`fOp` arms, by instantiating the body sub-derivation at a single
+fresh `x_0` and inverting the resulting `Prevalid (⟨x_0, _, _⟩ :: Γ)`.
+The wrappers are now structurally identical to `MEqRed` / `MSubRed`,
+which makes the unscoped → scoped bridges trivial. -/
 
 namespace Pss
 
@@ -339,7 +333,6 @@ inductive MEqRedScoped : Ctx → Stack → Term → Term → Type where
       PrevalidExt Γ s →
       MEqRedScoped Γ s (.fvar x) (.fvar x)
   | fun_ {Γ : Ctx} {t t' body body' : Term} (L : Finset String) :
-      Term.fv t ⊆ Γ.dom →
       MEqRedScoped Γ [] t t' →
       (∀ x, x ∉ L →
         MEqRedScoped (⟨x, t, .sub⟩ :: Γ) [] (body^[x]) (body'^[x])) →
@@ -349,8 +342,6 @@ inductive MEqRedScoped : Ctx → Stack → Term → Term → Type where
       MEqRedScoped Γ s (.app .top u) .top
   | fOp {Γ : Ctx} {s : Stack} {t t' α body body' : Term}
         (L : Finset String) :
-      Term.fv t ⊆ Γ.dom →
-      Term.fv α ⊆ Γ.dom → Term.LC α →
       MEqRedScoped Γ [] t t' →
       (∀ x, x ∉ L →
         MEqRedScoped (⟨x, α, .equ⟩ :: Γ) s (body^[x]) (body'^[x])) →
@@ -372,14 +363,13 @@ inductive MSubRedScoped : Ctx → Stack → Term → Term → Type where
       Term.LC v → Term.fv v ⊆ Γ.dom →
       MSubRedScoped Γ s (.app u v) (.app u' v)
   | fun_ {Γ : Ctx} {t body body' : Term} (L : Finset String) :
-      Term.fv t ⊆ Γ.dom → Term.LC t →
+      Term.LC t →
       (∀ x, x ∉ L →
         MSubRedScoped (⟨x, t, .sub⟩ :: Γ) [] (body^[x]) (body'^[x])) →
       MSubRedScoped Γ [] (.abs t body) (.abs t body')
   | fOp {Γ : Ctx} {s : Stack} {t α body body' : Term}
         (L : Finset String) :
-      Term.fv t ⊆ Γ.dom → Term.LC t →
-      Term.fv α ⊆ Γ.dom → Term.LC α →
+      Term.LC t →
       (∀ x, x ∉ L →
         MSubRedScoped (⟨x, α, .equ⟩ :: Γ) s (body^[x]) (body'^[x])) →
       MSubRedScoped Γ (α :: s) (.abs t body) (.abs t body')
@@ -395,10 +385,10 @@ noncomputable def MEqRedScoped.toMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
   | top hpv => exact MEqRed.top hpv
   | app _ _ ihu ihv => exact MEqRed.app ihu ihv
   | var hpv => exact MEqRed.var hpv
-  | @fun_ Γ t t' body body' L _ _ _ iht ihbody =>
+  | @fun_ Γ t t' body body' L _ _ iht ihbody =>
     exact MEqRed.fun_ (L := L) iht ihbody
   | tAp hpv hLC hfv => exact MEqRed.tAp hpv hLC hfv
-  | @fOp Γ s t t' α body body' L _ _ _ _ _ iht ihbody =>
+  | @fOp Γ s t t' α body body' L _ _ iht ihbody =>
     exact MEqRed.fOp (L := L) iht ihbody
 
 noncomputable def MSubRedScoped.toMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
@@ -408,36 +398,106 @@ noncomputable def MSubRedScoped.toMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
   | top hpv hLC hfv => exact MSubRed.top hpv hLC hfv
   | @equ Γ s u v hpv heq => exact MSubRed.equ hpv heq.toMEqRed
   | app _ hLCv hfvv ihu => exact MSubRed.app ihu hLCv hfvv
-  | @fun_ Γ t body body' L _ hLCt _ ihbody =>
+  | @fun_ Γ t body body' L hLCt _ ihbody =>
     exact MSubRed.fun_ (L := L) hLCt ihbody
-  | @fOp Γ s t α body body' L _ hLCt _ _ _ ihbody =>
+  | @fOp Γ s t α body body' L hLCt _ ihbody =>
     exact MSubRed.fOp (L := L) hLCt ihbody
 
-/-! ## Bridge: unscoped → scoped (axiomatized; provable in Wave 5)
+/-! ## Helper: extract `Prevalid Γ` from any `MEqRed Γ s u v`
 
-Going unscoped → scoped requires recovering binder-annotation scope from
-`Prevalid Γ` + `fv u ⊆ Γ.dom`. This is provable by the standard
-scope-preservation argument — every reduction rule preserves
-`fv u ⊆ Γ.dom` (with `Γ` adjusted by binder extensions), and the binder
-annotations encountered are sub-terms of `u` so their scope is bounded.
+This mirrors the private `MEqRed.prevalid` from `Pss.Mpss.Substitution`.
+We re-prove it here to keep `Pss.Mpss.Weakening`'s import surface
+minimal. Used inside Lemma 22's `fun_` / `fOp` arms (and the analogous
+Lemma 21 arms) to recover `fv t ⊆ Γ.dom` etc. from the body sub-
+derivation after the wrapper refactor.
+-/
 
-We axiomatize the bridge here and discharge it in Wave 5
-(`Pss/Mpss/WellFormed.lean`) where the ambient `Wf` predicate provides
-the extra structure to make the proof go through. The shape of the proof
-is straightforward case-analysis on the rule used + appeals to
-`Prevalid.fv_lookup{Sub,Equ}` for the `pro` cases. -/
+private theorem _extractPrevalidOfMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : Prevalid Γ := by
+  induction h with
+  | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
+  | @bet Γ s t v v' body body' L _ _ _ _ ihv => exact ihv
+  | @top Γ s hpv => exact extractPrevalid hpv
+  | @app Γ s u u' v v' _ _ _ ihv => exact ihv
+  | @var Γ s x hpv => exact extractPrevalid hpv
+  | @fun_ Γ t t' body body' L _ _ iht _ => exact iht
+  | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
+  | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
 
-/-- Bridge unscoped → scoped MEqRed under prevalidity + scope. Provable
-from the scope-preservation invariant; deferred to Wave 5. -/
-axiom MEqRed.toScoped {Γ : Ctx} {s : Stack} {u v : Term} :
-    Prevalid Γ → Term.fv u ⊆ Γ.dom → MEqRed Γ s u v →
-    MEqRedScoped Γ s u v
+private theorem _extractPrevalidOfMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : Prevalid Γ := by
+  induction h with
+  | @pro Γ st x t hpv _ => exact extractPrevalid hpv
+  | @top Γ st u hpv _ _ => exact extractPrevalid hpv
+  | @equ Γ st u v hpv heq => exact extractPrevalid hpv
+  | @app Γ st u u' v _ _ _ ihu => exact ihu
+  | @fun_ Γ t body body' L _ _ ihbody =>
+    classical
+    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    exact (ihbody x hx).tail
+  | @fOp Γ st t α body body' L _ _ ihbody =>
+    classical
+    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    exact (ihbody x hx).tail
 
-/-- Bridge unscoped → scoped MSubRed under prevalidity + scope. Provable
-from the scope-preservation invariant; deferred to Wave 5. -/
-axiom MSubRed.toScoped {Γ : Ctx} {s : Stack} {u v : Term} :
-    Prevalid Γ → Term.fv u ⊆ Γ.dom → MSubRed Γ s u v →
-    MSubRedScoped Γ s u v
+/-! ## Bridge: unscoped → scoped
+
+After the Wave 5 follow-up refactor (see the comment block on the scoped
+wrapper definitions above), `MEqRedScoped` / `MSubRedScoped` are
+structurally identical to `MEqRed` / `MSubRed`. The bridge is therefore
+a trivial structural reflection. The `Prevalid Γ` and `fv u ⊆ Γ.dom`
+arguments are retained for backwards compatibility with downstream
+callers in `Renaming.lean`, but are not consumed.
+-/
+
+/-- Internal premise-free bridge. After the wrapper refactor the scoped
+wrapper is structurally identical to `MEqRed`, so this is a pure
+constructor reflection. -/
+noncomputable def _MEqRed.toScopedAux : ∀ {Γ : Ctx} {s : Stack} {u v : Term},
+    MEqRed Γ s u v → MEqRedScoped Γ s u v := by
+  intro Γ s u v h
+  induction h with
+  | pro hpv heq _ ih => exact MEqRedScoped.pro hpv heq ih
+  | @bet Γ s t v v' body body' L hLCt _ _ ihbody ihv =>
+    exact MEqRedScoped.bet (L := L) hLCt ihbody ihv
+  | top hpv => exact MEqRedScoped.top hpv
+  | app _ _ ihu ihv => exact MEqRedScoped.app ihu ihv
+  | var hpv => exact MEqRedScoped.var hpv
+  | @fun_ Γ t t' body body' L _ _ iht ihbody =>
+    exact MEqRedScoped.fun_ (L := L) iht ihbody
+  | tAp hpv hLC hfv => exact MEqRedScoped.tAp hpv hLC hfv
+  | @fOp Γ s t t' α body body' L _ _ iht ihbody =>
+    exact MEqRedScoped.fOp (L := L) iht ihbody
+
+noncomputable def _MSubRed.toScopedAux : ∀ {Γ : Ctx} {s : Stack} {u v : Term},
+    MSubRed Γ s u v → MSubRedScoped Γ s u v := by
+  intro Γ s u v h
+  induction h with
+  | pro hpv hb => exact MSubRedScoped.pro hpv hb
+  | top hpv hLC hfv => exact MSubRedScoped.top hpv hLC hfv
+  | @equ Γ s u v hpv heq =>
+    exact MSubRedScoped.equ hpv (_MEqRed.toScopedAux heq)
+  | app _ hLCv hfvv ihu => exact MSubRedScoped.app ihu hLCv hfvv
+  | @fun_ Γ t body body' L hLCt _ ihbody =>
+    exact MSubRedScoped.fun_ (L := L) hLCt ihbody
+  | @fOp Γ s t α body body' L hLCt _ ihbody =>
+    exact MSubRedScoped.fOp (L := L) hLCt ihbody
+
+/-- Bridge unscoped → scoped MEqRed. After the wrapper refactor the
+scoped wrapper is structurally identical to `MEqRed`, so the bridge is
+a trivial structural mirror. The `Prevalid` / `fv` premises are
+retained for backwards compatibility with downstream callers in
+`Renaming.lean`, but are not consumed. -/
+noncomputable def MEqRed.toScoped {Γ : Ctx} {s : Stack} {u v : Term}
+    (_hpv : Prevalid Γ) (_hfv : Term.fv u ⊆ Γ.dom) (h : MEqRed Γ s u v) :
+    MEqRedScoped Γ s u v :=
+  _MEqRed.toScopedAux h
+
+/-- Bridge unscoped → scoped MSubRed. -/
+noncomputable def MSubRed.toScoped {Γ : Ctx} {s : Stack} {u v : Term}
+    (_hpv : Prevalid Γ) (_hfv : Term.fv u ⊆ Γ.dom) (h : MSubRed Γ s u v) :
+    MSubRedScoped Γ s u v :=
+  _MSubRed.toScopedAux h
 
 /-! ## Lemma 22 (Weakening for MEqRed)
 
@@ -480,17 +540,39 @@ noncomputable def Lemma_22_WeakeningMEqRedScoped_partitioned :
     intro Γ₁ Δ Γ₂ hsplit hpv'
     subst hsplit
     exact MEqRedScoped.var (Lemma_19_WeakeningPrevalid hpv' hpv)
-  | @fun_ Γ t t' body body' L hFvT ht hbody iht ihbody =>
+  | @fun_ Γ t t' body body' L ht hbody iht ihbody =>
     intro Γ₁ Δ Γ₂ hsplit hpv'
     subst hsplit
-    have hLCt : Term.LC t := MEqRed.lc_left ht.toMEqRed
+    classical
+    -- Recover `fv t ⊆ Γ.dom` and `LC t` from a single body sub-derivation
+    -- at a fresh `x_0`. We pick `x_0 ∉ L ∪ (Γ₁ ++ Γ₂).dom` so the body
+    -- sub-derivation lives at `⟨x_0, t, .sub⟩ :: (Γ₁ ++ Γ₂)`, whose
+    -- prevalidity carries both pieces in its `Prevalid.sub` arm.
+    -- We use `Classical.choose` (not `obtain`) since this is a `Type`-
+    -- valued definition and `Exists` only eliminates into `Prop`.
+    let x_0 : String :=
+      Classical.choose (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0 : x_0 ∉ L ∪ (Γ₁ ++ Γ₂).dom :=
+      Classical.choose_spec (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0_L : x_0 ∉ L := fun h => hx_0 (by
+      apply Finset.mem_union.mpr; left; exact h)
+    have hbody_x_0 : MEqRed (⟨x_0, t, .sub⟩ :: (Γ₁ ++ Γ₂)) []
+        (body^[x_0]) (body'^[x_0]) := (hbody x_0 hx_0_L).toMEqRed
+    have hpvBody : Prevalid (⟨x_0, t, .sub⟩ :: (Γ₁ ++ Γ₂)) :=
+      _extractPrevalidOfMEqRed hbody_x_0
+    have hLCt : Term.LC t := by
+      cases hpvBody with
+      | sub _ _ _ hLC => exact hLC
+    have hFvT : Term.fv t ⊆ (Γ₁ ++ Γ₂).dom := by
+      cases hpvBody with
+      | sub _ _ hfv _ => exact hfv
     have hFvT' : Term.fv t ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
       intro z hz
       have := hFvT hz
       simp [Ctx.dom_append] at *
       tauto
     refine MEqRedScoped.fun_ (L := L ∪ (Γ₁ ++ Δ ++ Γ₂).dom)
-      hFvT' (iht Γ₁ Δ Γ₂ rfl hpv') ?_
+      (iht Γ₁ Δ Γ₂ rfl hpv') ?_
     intro y hy
     have hyL : y ∉ L := fun h => hy (by
       apply Finset.mem_union.mpr; left; exact h)
@@ -500,7 +582,6 @@ noncomputable def Lemma_22_WeakeningMEqRedScoped_partitioned :
       Prevalid.sub hpv' hyΓ' hFvT' hLCt
     have hres := ihbody y hyL (⟨y, t, .sub⟩ :: Γ₁) Δ Γ₂ rfl
       (by simpa [List.cons_append] using hpvY)
-    -- conclusion: MEqRedScoped (⟨y, t, .sub⟩ :: (Γ₁ ++ Δ ++ Γ₂)) [] (body^[y]) (body'^[y])
     have heq : (⟨y, t, .sub⟩ :: Γ₁) ++ Δ ++ Γ₂ =
         ⟨y, t, .sub⟩ :: (Γ₁ ++ Δ ++ Γ₂) := by
       simp [List.cons_append]
@@ -514,17 +595,33 @@ noncomputable def Lemma_22_WeakeningMEqRedScoped_partitioned :
     have := hfv hz
     simp [Ctx.dom_append] at *
     tauto
-  | @fOp Γ s t t' α body body' L hFvT hFvα hLCα ht hbody iht ihbody =>
+  | @fOp Γ s t t' α body body' L ht hbody iht ihbody =>
     intro Γ₁ Δ Γ₂ hsplit hpv'
     subst hsplit
-    have hFvT' : Term.fv t ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
-      intro z hz; have := hFvT hz
-      simp [Ctx.dom_append] at *; tauto
+    classical
+    -- Recover `fv α ⊆ Γ.dom` and `LC α` from a single body sub-derivation
+    -- at a fresh `x_0`. (We do NOT need `fv t` after the wrapper refactor.)
+    let x_0 : String :=
+      Classical.choose (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0 : x_0 ∉ L ∪ (Γ₁ ++ Γ₂).dom :=
+      Classical.choose_spec (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0_L : x_0 ∉ L := fun h => hx_0 (by
+      apply Finset.mem_union.mpr; left; exact h)
+    have hbody_x_0 : MEqRed (⟨x_0, α, .equ⟩ :: (Γ₁ ++ Γ₂)) s
+        (body^[x_0]) (body'^[x_0]) := (hbody x_0 hx_0_L).toMEqRed
+    have hpvBody : Prevalid (⟨x_0, α, .equ⟩ :: (Γ₁ ++ Γ₂)) :=
+      _extractPrevalidOfMEqRed hbody_x_0
+    have hLCα : Term.LC α := by
+      cases hpvBody with
+      | equ _ _ _ hLC => exact hLC
+    have hFvα : Term.fv α ⊆ (Γ₁ ++ Γ₂).dom := by
+      cases hpvBody with
+      | equ _ _ hfv _ => exact hfv
     have hFvα' : Term.fv α ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
       intro z hz; have := hFvα hz
       simp [Ctx.dom_append] at *; tauto
     refine MEqRedScoped.fOp (L := L ∪ (Γ₁ ++ Δ ++ Γ₂).dom)
-      hFvT' hFvα' hLCα (iht Γ₁ Δ Γ₂ rfl hpv') ?_
+      (iht Γ₁ Δ Γ₂ rfl hpv') ?_
     intro y hy
     have hyL : y ∉ L := fun h => hy (by
       apply Finset.mem_union.mpr; left; exact h)
@@ -603,13 +700,28 @@ noncomputable def Lemma_21_WeakeningMSubRedScoped_partitioned :
     refine MSubRedScoped.app (ihu Γ₁ Δ Γ₂ rfl hpv') hLCv ?_
     intro z hz; have := hfvv hz
     simp [Ctx.dom_append] at *; tauto
-  | @fun_ Γ t body body' L hFvT hLCt hbody ihbody =>
+  | @fun_ Γ t body body' L hLCt hbody ihbody =>
     intro Γ₁ Δ Γ₂ hsplit hpv'
     subst hsplit
+    classical
+    -- Recover `fv t ⊆ Γ.dom` from a single body sub-derivation.
+    let x_0 : String :=
+      Classical.choose (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0 : x_0 ∉ L ∪ (Γ₁ ++ Γ₂).dom :=
+      Classical.choose_spec (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0_L : x_0 ∉ L := fun h => hx_0 (by
+      apply Finset.mem_union.mpr; left; exact h)
+    have hbody_x_0 : MSubRed (⟨x_0, t, .sub⟩ :: (Γ₁ ++ Γ₂)) []
+        (body^[x_0]) (body'^[x_0]) := (hbody x_0 hx_0_L).toMSubRed
+    have hpvBody : Prevalid (⟨x_0, t, .sub⟩ :: (Γ₁ ++ Γ₂)) :=
+      _extractPrevalidOfMSubRed hbody_x_0
+    have hFvT : Term.fv t ⊆ (Γ₁ ++ Γ₂).dom := by
+      cases hpvBody with
+      | sub _ _ hfv _ => exact hfv
     have hFvT' : Term.fv t ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
       intro z hz; have := hFvT hz
       simp [Ctx.dom_append] at *; tauto
-    refine MSubRedScoped.fun_ (L := L ∪ (Γ₁ ++ Δ ++ Γ₂).dom) hFvT' hLCt ?_
+    refine MSubRedScoped.fun_ (L := L ∪ (Γ₁ ++ Δ ++ Γ₂).dom) hLCt ?_
     intro y hy
     have hyL : y ∉ L := fun h => hy (by
       apply Finset.mem_union.mpr; left; exact h)
@@ -624,17 +736,31 @@ noncomputable def Lemma_21_WeakeningMSubRedScoped_partitioned :
       simp [List.cons_append]
     rw [← heq]
     exact hres
-  | @fOp Γ s t α body body' L hFvT hLCt hFvα hLCα hbody ihbody =>
+  | @fOp Γ s t α body body' L hLCt hbody ihbody =>
     intro Γ₁ Δ Γ₂ hsplit hpv'
     subst hsplit
-    have hFvT' : Term.fv t ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
-      intro z hz; have := hFvT hz
-      simp [Ctx.dom_append] at *; tauto
+    classical
+    -- Recover `fv α ⊆ Γ.dom` and `LC α` from a single body sub-derivation.
+    let x_0 : String :=
+      Classical.choose (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0 : x_0 ∉ L ∪ (Γ₁ ++ Γ₂).dom :=
+      Classical.choose_spec (Term.exists_fresh (L ∪ (Γ₁ ++ Γ₂).dom))
+    have hx_0_L : x_0 ∉ L := fun h => hx_0 (by
+      apply Finset.mem_union.mpr; left; exact h)
+    have hbody_x_0 : MSubRed (⟨x_0, α, .equ⟩ :: (Γ₁ ++ Γ₂)) s
+        (body^[x_0]) (body'^[x_0]) := (hbody x_0 hx_0_L).toMSubRed
+    have hpvBody : Prevalid (⟨x_0, α, .equ⟩ :: (Γ₁ ++ Γ₂)) :=
+      _extractPrevalidOfMSubRed hbody_x_0
+    have hLCα : Term.LC α := by
+      cases hpvBody with
+      | equ _ _ _ hLC => exact hLC
+    have hFvα : Term.fv α ⊆ (Γ₁ ++ Γ₂).dom := by
+      cases hpvBody with
+      | equ _ _ hfv _ => exact hfv
     have hFvα' : Term.fv α ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
       intro z hz; have := hFvα hz
       simp [Ctx.dom_append] at *; tauto
-    refine MSubRedScoped.fOp (L := L ∪ (Γ₁ ++ Δ ++ Γ₂).dom)
-      hFvT' hLCt hFvα' hLCα ?_
+    refine MSubRedScoped.fOp (L := L ∪ (Γ₁ ++ Δ ++ Γ₂).dom) hLCt ?_
     intro y hy
     have hyL : y ∉ L := fun h => hy (by
       apply Finset.mem_union.mpr; left; exact h)
