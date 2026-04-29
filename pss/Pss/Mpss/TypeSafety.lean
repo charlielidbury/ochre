@@ -9,9 +9,18 @@ set_option linter.unusedVariables false
 
 Pasquale & García-Pérez 2024 (CSL 2026), §4 and Appendix.
 
-This module mechanizes type safety for MPSS, conditional on
+This module mechanizes type safety for MPSS. The paper states
 **Conjecture 8** (well-subtyping is context-independent under
-covariant contexts), which the paper leaves explicitly open.
+covariant contexts) as an open question, expected to be needed for
+the Lemma 7 (substitution preserves well-formedness) Wf-App case.
+
+In this formalization, Lemma 7 is discharged via the WfM/WSubM/
+WSubMStar mutual recursor, with the Wf-App case handled by direct IH
+on the WSubMStar premises and the WSubM-level substitution via
+Lemmas 30 and 31. As a result Conjecture 8 is **not** required for
+either Theorem 4 (Progress) or Theorem 5 (Preservation) — it is
+retained as a paper-faithful axiom for reference but is unused in the
+proof closure.
 
 Concretely we prove:
 
@@ -20,27 +29,22 @@ Concretely we prove:
 * **Theorem 5 (Preservation)** — operational reduction preserves
   transitive well-subtyping `≤*_wf`.
 
-Both are stated as paper-faithful theorems CONDITIONAL on the
-permanent axiom `Conjecture_8_WellSubtypingContextIndependent`, which
-mirrors the paper's open conjecture.
+## ⚠ Retained paper axiom
 
-## ⚠ Permanent axiom
-
-`Conjecture_8_WellSubtypingContextIndependent` is left as an axiom in
-this formalization, mirroring its open status in the source paper
-(Pasquale & García-Pérez 2024, p. 13). All Theorem 4 & 5 derivations
-discharge through this axiom; it does NOT need to be proved by a
-discharger to validate the type-safety story — it would need to be
-proved (or refuted) by future research to definitively close the
-metatheory.
+`Conjecture_8_WellSubtypingContextIndependent` is retained as an
+axiom in this formalization to mirror its open status in the source
+paper (Pasquale & García-Pérez 2024, p. 13). It is currently unused
+in the discharge of Theorems 4 and 5 here.
 
 ## Lemmas mechanized here
 
 * **Lemma 6** (Evaluation preserves well-formedness) — by induction
   on `Step`.
 * **Lemma 7** (Substitution preserves well-formedness) — by induction
-  on the well-formedness derivation, using Conjecture 8 in the `app`
-  case.
+  on the well-formedness derivation. Discharge does not require
+  Conjecture 8: the `Wf-App` case is handled by direct IH on the
+  `WSubMStar` premises, with the WSubM substitution sub-lemma using
+  `Lemma 30` / `Lemma 31` from `Pss.Mpss.Substitution`.
 
 Lemmas 15, 16 (paper appendix) — PROVED in
 `Pss/Mpss/WellFormed.lean` as `Lemma_15_WEquM_symm` and
@@ -54,7 +58,14 @@ restricted reduction-flavoured form is also retained as
 ## Status
 
 * `Conjecture_8_WellSubtypingContextIndependent` — **AXIOMATIZED**
-  (permanent, paper-conjecture-status).
+  (paper-conjecture-status). Currently UNUSED in the discharge
+  closure of Theorems 4 and 5: the Lemma 7 proof here avoids it.
+* `WfM.weaken_append` — **PROVED**. WF-side of paper Lemma 19/20:
+  inserting a Δ-block at the top of the context preserves
+  well-formedness (provided the result is prevalid). Discharged via
+  the WfM/WSubM/WSubMStar mutual recursor with motive carrying
+  `fv ⊆ Γ.dom` preconditions on the WSubM/WSubMStar legs (used to
+  invoke MEqRed/MSubRed weakening from `Pss.Mpss.Weakening`).
 * `Lemma_6_EvaluationPreservesWf` — **PROVED** (conditional on
   `Lemma_10_Inversion` and `Lemma_7_SubstitutionPreservesWf`). The
   paper's β-case (p. 27) is mechanized via Lemmas 10 + 15 + 16 + 7
@@ -63,13 +74,15 @@ restricted reduction-flavoured form is also retained as
   Theorem-5-style preservation pattern (Prop 17 + Ws-Rgh + Ws-Trs);
   for `absBound` we use `Lemma_23_NarrowingWf` to push the body's
   WfM through the bound-annotation reduction.
-* `Lemma_7_SubstitutionPreservesWf` — **AXIOMATIZED** (the paper's
-  proof depends on Conjecture 8 plus a sub-induction on `WSubMStar`
-  for the `Wf-App` case using Lemma 30/31 substitution lemmas. The
-  `Wf-PrS / u = x` case in particular requires an instantiated WfM
-  weakening lemma (paper's Lemma 19/20 Wf-side), which exists in
-  this codebase only as the schema `Lemma_20_WeakeningWf_schema`.
-  Full discharge requires significant additional infrastructure.).
+* `Lemma_7_SubstitutionPreservesWf` — **PROVED**. Generalized form
+  `Lemma_7_SubstitutionPreservesWf_general` discharges via the
+  WfM/WSubM/WSubMStar mutual recursor: Wf-App by direct IH on the
+  WSubMStar premises (sidestepping the paper's appeal to Conjecture 8
+  in this case); Wf-PrS / u = x by an internal `WfM.weaken_append`
+  (paper's Lemma 19/20 Wf-side, also discharged here via the mutual
+  recursor); WSubM / WSubMStar cases by Lemmas 30 and 31 from
+  `Pss.Mpss.Substitution`. The restricted single-binder form is
+  recovered as a corollary at `Γ' = ∅`.
 * `Lemma_11_TopHasNoFunctionSupertype` — **PROVED**. The proof strips
   `WSubMStar` to the diagrammatic `MSub` relation (a common
   `MSubRedStar`/`MEqRedStar` reduct exists) and applies inversions on
@@ -77,8 +90,14 @@ restricted reduction-flavoured form is also retained as
   every step out of an abstraction returns an abstraction.
 * `Theorem_4_Progress` — **PROVED** (conditional on
   `Conjecture_8_WellSubtypingContextIndependent`).
-* `Theorem_5_Preservation` — **PROVED** conditional on Conjecture 8
-  and Lemma 7 (via Lemma 6).
+* `Theorem_5_Preservation` — **PROVED**. With Lemma 7 now discharged
+  (without using Conjecture 8), Theorem 5's axiom dependencies reduce
+  to the standard Lean kernel axioms plus paper-level axioms
+  `Lemma_10_Inversion`, `Proposition_17_beta_axiom`,
+  `Lemma_24_NarrowingMSubRed`, and `Lemma_30_msPro_x_axiom`.
+  Conjecture 8 is no longer in the dependency closure of either
+  Theorem 4 or Theorem 5; we retain it as a paper-faithful axiom for
+  reference but type-safety as mechanized here does not consume it.
 -/
 
 namespace Pss
@@ -388,24 +407,505 @@ theorem prevalid_of_wfM {Γ : Ctx} {t : Term} (h : WfM Γ t) : Prevalid Γ :=
 
 /-! ## §5. Lemma 7 (Substitution preserves well-formedness)
 
-The paper's Lemma 7 is used by Lemma 6 in the β-case. It depends on
-Conjecture 8 (paper p. 27 "Now, by Lemma 7 ...") plus a sub-induction
-on `WSubMStar` for the `Wf-App` case using Lemma 30/31 substitution
-lemmas. Additionally, the `Wf-PrS / u = x` case (paper p. 28) uses
-the WfM-side of weakening (paper Lemma 19/20), which exists in this
-codebase only as the abstract schema `Lemma_20_WeakeningWf_schema` —
-not yet instantiated for `WfM`. We axiomatize Lemma 7 in restricted
-single-binder form pending that infrastructure. -/
+The paper's Lemma 7 is used by Lemma 6 in the β-case. We discharge it
+via the standard mutual-recursor pattern over `WfM` / `WSubM` /
+`WSubMStar`, threading an arbitrary context prefix `Γ₂` (paper's `Γ'`)
+in the partition `Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁`.
+
+* The `Wf-App` case is handled by direct IH on the WSubMStar premises;
+  the WSubM substitution sub-lemma uses Lemmas 30 and 31 (rather than
+  the paper's auxiliary diagram via Conjecture 8).
+* The `Wf-PrS / u = x` case uses an internal `WfM` weakening lemma
+  (`WfM.weaken_append`) proved here via the WfM mutual recursor —
+  this is the WF-side of paper Lemmas 19/20.
+* The `WSubM` / `WSubMStar` cases use Lemmas 30 and 31 from
+  `Pss.Mpss.Substitution` for the MEqRed/MSubRed reduction premises. -/
+
+/-! ### §5.1. WfM weakening (append-on-left)
+
+The paper's Lemma 19/20 Wf-side, instantiated for `WfM` / `WSubM` /
+`WSubMStar`. We use the partitioned form so the `Wf-Fun` cofinite IH
+naturally extends `Γ₁` (the inner partition) at the head.
+
+The motives carry `fv v, fv u ⊆ (Γ₁ ++ Γ₂).dom` as preconditions for
+the `WSubM` / `WSubMStar` motives. This is needed for MEqRed/MSubRed
+weakening (Lemmas 22/21) which require source scope to construct the
+scoped wrapper. -/
+
+namespace Lemma7
+
+/-- Combined weakening motive for `WfM`: a Δ-block can be inserted in
+the middle of any partitioned context, provided the result is
+prevalid. -/
+private def _W_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Prop :=
+  fun Γ u _ => ∀ Γ₁ Δ Γ₂ : Ctx, Γ = Γ₁ ++ Γ₂ →
+    Prevalid (Γ₁ ++ Δ ++ Γ₂) → WfM (Γ₁ ++ Δ ++ Γ₂) u
+
+private def _W_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Prop :=
+  fun Γ v u _ => ∀ Γ₁ Δ Γ₂ : Ctx, Γ = Γ₁ ++ Γ₂ →
+    Prevalid (Γ₁ ++ Δ ++ Γ₂) →
+    Term.fv v ⊆ (Γ₁ ++ Γ₂).dom →
+    Term.fv u ⊆ (Γ₁ ++ Γ₂).dom →
+    WSubM (Γ₁ ++ Δ ++ Γ₂) v u
+
+private def _W_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Prop :=
+  fun Γ v u _ => ∀ Γ₁ Δ Γ₂ : Ctx, Γ = Γ₁ ++ Γ₂ →
+    Prevalid (Γ₁ ++ Δ ++ Γ₂) →
+    Term.fv v ⊆ (Γ₁ ++ Γ₂).dom →
+    Term.fv u ⊆ (Γ₁ ++ Γ₂).dom →
+    WSubMStar (Γ₁ ++ Δ ++ Γ₂) v u
+
+private theorem _fv_lift_through_delta {Γ₁ Δ Γ₂ : Ctx} {u : Term}
+    (h : Term.fv u ⊆ (Γ₁ ++ Γ₂).dom) :
+    Term.fv u ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := by
+  intro z hz
+  have := h hz
+  simp [Ctx.dom_append] at *; tauto
+
+private theorem _W_varSub :
+    ∀ {Γ : Ctx} {y : String} {u : Term}
+      (hpv : Prevalid Γ) (hb : Γ.subBinds y u),
+      _W_motive_wf Γ (.fvar y) (WfM.varSub hpv hb) := by
+  intro Γ y u hpv hb Γ₁ Δ Γ₂ hΓ hpv'
+  subst hΓ
+  exact WfM.varSub hpv' (Ctx.subBinds_insert_middle hpv' hb)
+
+private theorem _W_varEqu :
+    ∀ {Γ : Ctx} {y : String} {α : Term}
+      (hpv : Prevalid Γ) (hb : Γ.equBinds y α),
+      _W_motive_wf Γ (.fvar y) (WfM.varEqu hpv hb) := by
+  intro Γ y α hpv hb Γ₁ Δ Γ₂ hΓ hpv'
+  subst hΓ
+  exact WfM.varEqu hpv' (Ctx.equBinds_insert_middle hpv' hb)
+
+private theorem _W_top :
+    ∀ {Γ : Ctx} (hpv : Prevalid Γ),
+      _W_motive_wf Γ .top (WfM.top hpv) := by
+  intro Γ hpv Γ₁ Δ Γ₂ hΓ hpv'
+  subst hΓ
+  exact WfM.top hpv'
+
+private theorem _W_fun :
+    ∀ {Γ : Ctx} {t₀ u : Term} (L : Finset String)
+      (hT : WfM Γ t₀)
+      (hB : ∀ y, y ∉ L → WfM (⟨y, t₀, .sub⟩ :: Γ) (Term.opening (.fvar y) u))
+      (ihT : _W_motive_wf Γ t₀ hT)
+      (ihB : ∀ y (hy : y ∉ L),
+        _W_motive_wf (⟨y, t₀, .sub⟩ :: Γ)
+          (Term.opening (.fvar y) u) (hB y hy)),
+      _W_motive_wf Γ (.abs t₀ u) (WfM.fun_ L hT hB) := by
+  intro Γ t₀ u L hT hB ihT ihB Γ₁ Δ Γ₂ hΓ hpv'
+  subst hΓ
+  have hfvT : Term.fv t₀ ⊆ (Γ₁ ++ Γ₂).dom := WfM.fv_subset hT
+  have hLCT : Term.LC t₀ := WfM.lc hT
+  have hfvT' : Term.fv t₀ ⊆ (Γ₁ ++ Δ ++ Γ₂).dom := _fv_lift_through_delta hfvT
+  refine WfM.fun_ (L ∪ (Γ₁ ++ Δ ++ Γ₂).dom) (ihT Γ₁ Δ Γ₂ rfl hpv') ?_
+  intro y hy
+  have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
+  have hyD : y ∉ (Γ₁ ++ Δ ++ Γ₂).dom :=
+    fun h => hy (Finset.mem_union.mpr (Or.inr h))
+  have hpv_y : Prevalid (⟨y, t₀, .sub⟩ :: (Γ₁ ++ Δ ++ Γ₂)) :=
+    Prevalid.sub hpv' hyD hfvT' hLCT
+  have hpv_y' : Prevalid ((⟨y, t₀, .sub⟩ :: Γ₁) ++ Δ ++ Γ₂) := by
+    simpa [List.cons_append] using hpv_y
+  exact ihB y hyL (⟨y, t₀, .sub⟩ :: Γ₁) Δ Γ₂ (by simp) hpv_y'
+
+private theorem _W_app :
+    ∀ {Γ : Ctx} {u v t₀ : Term}
+      (hStarU : WSubMStar Γ u (.abs t₀ .top))
+      (hStarV : WSubMStar Γ v t₀)
+      (ihU : _W_motive_star Γ u (.abs t₀ .top) hStarU)
+      (ihV : _W_motive_star Γ v t₀ hStarV),
+      _W_motive_wf Γ (.app u v) (WfM.app hStarU hStarV) := by
+  intro Γ u v t₀ hSU hSV ihU ihV Γ₁ Δ Γ₂ hΓ hpv'
+  subst hΓ
+  have hfvU : Term.fv u ⊆ (Γ₁ ++ Γ₂).dom :=
+    WSubMStar.fv_left_subset hSU
+  have hfvAbs : Term.fv (.abs t₀ .top) ⊆ (Γ₁ ++ Γ₂).dom :=
+    WSubMStar.fv_right_subset hSU
+  have hfvV : Term.fv v ⊆ (Γ₁ ++ Γ₂).dom :=
+    WSubMStar.fv_left_subset hSV
+  have hfvT0 : Term.fv t₀ ⊆ (Γ₁ ++ Γ₂).dom :=
+    WSubMStar.fv_right_subset hSV
+  exact WfM.app (ihU Γ₁ Δ Γ₂ rfl hpv' hfvU hfvAbs)
+                (ihV Γ₁ Δ Γ₂ rfl hpv' hfvV hfvT0)
+
+private theorem _W_rfl :
+    ∀ {Γ : Ctx} {u : Term} (hwf : WfM Γ u)
+      (ihwf : _W_motive_wf Γ u hwf),
+      _W_motive_sub Γ u u (WSubM.rfl hwf) := by
+  intro Γ u hwf ihwf Γ₁ Δ Γ₂ hΓ hpv' _ _
+  subst hΓ
+  exact WSubM.rfl (ihwf Γ₁ Δ Γ₂ rfl hpv')
+
+private theorem _W_lf1 :
+    ∀ {Γ : Ctx} {v v' u : Term}
+      (hred : MEqRed Γ [] v v')
+      (hsub : WSubM Γ v' u)
+      (ih : _W_motive_sub Γ v' u hsub),
+      _W_motive_sub Γ v u (WSubM.lf1 hred hsub) := by
+  intro Γ v v' u hred hsub ih Γ₁ Δ Γ₂ hΓ hpv' hfvV hfvU
+  subst hΓ
+  have hΓPv : Prevalid (Γ₁ ++ Γ₂) := _Prevalid_of_MEqRed hred
+  have hred' : MEqRed (Γ₁ ++ Δ ++ Γ₂) [] v v' :=
+    Lemma_22_WeakeningMEqRed hΓPv hfvV hpv' hred
+  have hfvV' : Term.fv v' ⊆ (Γ₁ ++ Γ₂).dom := MEqRed_fv_preserve hred hfvV
+  exact WSubM.lf1 hred' (ih Γ₁ Δ Γ₂ rfl hpv' hfvV' hfvU)
+
+private theorem _W_lf2 :
+    ∀ {Γ : Ctx} {v v' u : Term}
+      (hwfV : WfM Γ v) (hred : MSubRed Γ [] v v')
+      (hwfV' : WfM Γ v') (hsub : WSubM Γ v' u)
+      (ihwfV : _W_motive_wf Γ v hwfV)
+      (ihwfV' : _W_motive_wf Γ v' hwfV')
+      (ih : _W_motive_sub Γ v' u hsub),
+      _W_motive_sub Γ v u (WSubM.lf2 hwfV hred hwfV' hsub) := by
+  intro Γ v v' u hwfV hred hwfV' hsub ihwfV ihwfV' ih Γ₁ Δ Γ₂ hΓ hpv' hfvV hfvU
+  subst hΓ
+  have hΓPv : Prevalid (Γ₁ ++ Γ₂) := prevalid_of_wfM hwfV
+  have hred' : MSubRed (Γ₁ ++ Δ ++ Γ₂) [] v v' :=
+    Lemma_21_WeakeningMSubRed hΓPv hfvV hpv' hred
+  have hfvV' : Term.fv v' ⊆ (Γ₁ ++ Γ₂).dom := WfM.fv_subset hwfV'
+  exact WSubM.lf2 (ihwfV Γ₁ Δ Γ₂ rfl hpv') hred'
+                   (ihwfV' Γ₁ Δ Γ₂ rfl hpv')
+                   (ih Γ₁ Δ Γ₂ rfl hpv' hfvV' hfvU)
+
+private theorem _W_rgh :
+    ∀ {Γ : Ctx} {v u u' : Term}
+      (hsub : WSubM Γ v u') (hred : MEqRed Γ [] u u')
+      (ih : _W_motive_sub Γ v u' hsub),
+      _W_motive_sub Γ v u (WSubM.rgh hsub hred) := by
+  intro Γ v u u' hsub hred ih Γ₁ Δ Γ₂ hΓ hpv' hfvV hfvU
+  subst hΓ
+  have hΓPv : Prevalid (Γ₁ ++ Γ₂) := _Prevalid_of_MEqRed hred
+  have hred' : MEqRed (Γ₁ ++ Δ ++ Γ₂) [] u u' :=
+    Lemma_22_WeakeningMEqRed hΓPv hfvU hpv' hred
+  have hfvU' : Term.fv u' ⊆ (Γ₁ ++ Γ₂).dom := MEqRed_fv_preserve hred hfvU
+  exact WSubM.rgh (ih Γ₁ Δ Γ₂ rfl hpv' hfvV hfvU') hred'
+
+private theorem _W_sub_star :
+    ∀ {Γ : Ctx} {v u : Term}
+      (hwfV : WfM Γ v) (hsub : WSubM Γ v u) (hwfT : WfM Γ u)
+      (ihwfV : _W_motive_wf Γ v hwfV)
+      (ihsub : _W_motive_sub Γ v u hsub)
+      (ihwfT : _W_motive_wf Γ u hwfT),
+      _W_motive_star Γ v u
+        (WSubMStar.sub hwfV hsub hwfT) := by
+  intro Γ v u hwfV hsub hwfT ihwfV ihsub ihwfT Γ₁ Δ Γ₂ hΓ hpv' hfvV hfvU
+  subst hΓ
+  exact WSubMStar.sub (ihwfV Γ₁ Δ Γ₂ rfl hpv')
+                       (ihsub Γ₁ Δ Γ₂ rfl hpv' hfvV hfvU)
+                       (ihwfT Γ₁ Δ Γ₂ rfl hpv')
+
+private theorem _W_trs_star :
+    ∀ {Γ : Ctx} {v u w : Term}
+      (hStar1 : WSubMStar Γ v u) (hwfU : WfM Γ u) (hStar2 : WSubMStar Γ u w)
+      (ih1 : _W_motive_star Γ v u hStar1)
+      (ihwfU : _W_motive_wf Γ u hwfU)
+      (ih2 : _W_motive_star Γ u w hStar2),
+      _W_motive_star Γ v w
+        (WSubMStar.trs hStar1 hwfU hStar2) := by
+  intro Γ v u w hStar1 hwfU hStar2 ih1 ihwfU ih2 Γ₁ Δ Γ₂ hΓ hpv' hfvV hfvW
+  subst hΓ
+  have hfvU : Term.fv u ⊆ (Γ₁ ++ Γ₂).dom := WfM.fv_subset hwfU
+  exact WSubMStar.trs (ih1 Γ₁ Δ Γ₂ rfl hpv' hfvV hfvU)
+                       (ihwfU Γ₁ Δ Γ₂ rfl hpv')
+                       (ih2 Γ₁ Δ Γ₂ rfl hpv' hfvU hfvW)
+
+end Lemma7
+
+/-- WfM weakening (append-on-top form): inserting a Δ-block at the top
+preserves well-formedness, provided the result is prevalid. This is the
+WF-side of paper Lemma 19/20. -/
+theorem WfM.weaken_append {Γ Δ : Ctx} {u : Term}
+    (hwf : WfM Γ u)
+    (hpv' : Prevalid (Δ ++ Γ)) :
+    WfM (Δ ++ Γ) u := by
+  have := WfM.rec
+    (motive_1 := Lemma7._W_motive_wf)
+    (motive_2 := Lemma7._W_motive_sub)
+    (motive_3 := Lemma7._W_motive_star)
+    @Lemma7._W_varSub @Lemma7._W_varEqu @Lemma7._W_top
+    @Lemma7._W_fun @Lemma7._W_app
+    @Lemma7._W_rfl @Lemma7._W_lf1 @Lemma7._W_lf2 @Lemma7._W_rgh
+    @Lemma7._W_sub_star @Lemma7._W_trs_star
+    hwf
+  exact this [] Δ Γ rfl (by simpa using hpv')
+
+/-! ### §5.2. Lemma 7 main statement (generalized) -/
+
+namespace Lemma7
+
+/-! ### Substitution motives
+
+Combined motives for the substitution preservation lemma:
+`Γ = Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁` is partitioned and `α` is supplied
+once, with `WSubMStar Γ₁ α t` (giving us `WfM Γ₁ α`,
+`SubstOk Γ₁ α`, etc.). -/
+
+section
+variable (Γ₁out : Ctx) (xout : String) (tout αout : Term)
+
+private def _S_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Prop :=
+  fun Γ u _ => ∀ Γ₂ : Ctx,
+    Γ = Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out →
+    WSubMStar Γ₁out αout tout →
+    WfM (Ctx.subst xout αout Γ₂ ++ Γ₁out) (Term.subst xout αout u)
+
+private def _S_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Prop :=
+  fun Γ v u _ => ∀ Γ₂ : Ctx,
+    Γ = Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out →
+    WSubMStar Γ₁out αout tout →
+    WSubM (Ctx.subst xout αout Γ₂ ++ Γ₁out)
+      (Term.subst xout αout v) (Term.subst xout αout u)
+
+private def _S_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Prop :=
+  fun Γ v u _ => ∀ Γ₂ : Ctx,
+    Γ = Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out →
+    WSubMStar Γ₁out αout tout →
+    WSubMStar (Ctx.subst xout αout Γ₂ ++ Γ₁out)
+      (Term.subst xout αout v) (Term.subst xout αout u)
+
+/-- Helper: extract `SubstOk Γ₁ α` from `WSubMStar Γ₁ α t`. -/
+private theorem _SubstOk_of_WSubMStar {Γ₁ : Ctx} {α t : Term}
+    (hα : WSubMStar Γ₁ α t) : SubstOk Γ₁ α :=
+  ⟨WSubMStar.lc_left hα, WSubMStar.fv_left_subset hα⟩
+
+/-- Helper: derive `Prevalid (Ctx.subst x α Γ₂ ++ Γ₁)` from the
+prevalidity of the original context and `WSubMStar Γ₁ α t`. -/
+private theorem _Prevalid_subst_of_WSubMStar
+    {Γ₁ Γ₂ : Ctx} {x : String} {t α : Term}
+    (hpv : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁))
+    (hα : WSubMStar Γ₁ α t) :
+    Prevalid (Ctx.subst x α Γ₂ ++ Γ₁) :=
+  Lemma_28a_SubstPreservesPrevalid_kind hpv (_SubstOk_of_WSubMStar hα)
+
+/-! ### §5.3. Per-case discharge -/
+
+private theorem _S_varSub :
+    ∀ {Γ : Ctx} {y : String} {u : Term}
+      (hpv : Prevalid Γ) (hb : Γ.subBinds y u),
+      _S_motive_wf Γ₁out xout tout αout Γ (.fvar y)
+        (WfM.varSub hpv hb) := by
+  intro Γ y u hpv hb Γ₂ hΓ hα
+  subst hΓ
+  have hpvN : Prevalid (Ctx.subst xout αout Γ₂ ++ Γ₁out) :=
+    _Prevalid_subst_of_WSubMStar hpv hα
+  by_cases hyx : y = xout
+  · subst hyx
+    rw [Term.subst_fvar_eq]
+    have hwfα : WfM Γ₁out αout := wfM_left_of_wsubmstar hα
+    exact WfM.weaken_append hwfα hpvN
+  · rw [Term.subst_fvar_ne hyx]
+    have hb' :
+        (Ctx.subst xout αout Γ₂ ++ Γ₁out).subBinds y (Term.subst xout αout u) :=
+      subBinds_split_neq (s := αout) hyx hpv hb
+    exact WfM.varSub hpvN hb'
+
+private theorem _S_varEqu :
+    ∀ {Γ : Ctx} {y : String} {α : Term}
+      (hpv : Prevalid Γ) (hb : Γ.equBinds y α),
+      _S_motive_wf Γ₁out xout tout αout Γ (.fvar y)
+        (WfM.varEqu hpv hb) := by
+  intro Γ y α hpv hb Γ₂ hΓ hα
+  subst hΓ
+  have hpvN : Prevalid (Ctx.subst xout αout Γ₂ ++ Γ₁out) :=
+    _Prevalid_subst_of_WSubMStar hpv hα
+  have hyx : y ≠ xout := equBinds_ne_x_at_sub_head hpv hb
+  rw [Term.subst_fvar_ne hyx]
+  have hb' :
+      (Ctx.subst xout αout Γ₂ ++ Γ₁out).equBinds y (Term.subst xout αout α) :=
+    equBinds_split (s := αout) hyx hpv hb
+  exact WfM.varEqu hpvN hb'
+
+private theorem _S_top :
+    ∀ {Γ : Ctx} (hpv : Prevalid Γ),
+      _S_motive_wf Γ₁out xout tout αout Γ .top (WfM.top hpv) := by
+  intro Γ hpv Γ₂ hΓ hα
+  subst hΓ
+  have hpvN : Prevalid (Ctx.subst xout αout Γ₂ ++ Γ₁out) :=
+    _Prevalid_subst_of_WSubMStar hpv hα
+  show WfM _ (Term.subst xout αout .top)
+  simp [Term.subst]
+  exact WfM.top hpvN
+
+private theorem _S_fun :
+    ∀ {Γ : Ctx} {t₀ u : Term} (L : Finset String)
+      (hT : WfM Γ t₀)
+      (hB : ∀ y, y ∉ L → WfM (⟨y, t₀, .sub⟩ :: Γ) (Term.opening (.fvar y) u))
+      (ihT : _S_motive_wf Γ₁out xout tout αout Γ t₀ hT)
+      (ihB : ∀ y (hy : y ∉ L),
+        _S_motive_wf Γ₁out xout tout αout (⟨y, t₀, .sub⟩ :: Γ)
+          (Term.opening (.fvar y) u) (hB y hy)),
+      _S_motive_wf Γ₁out xout tout αout Γ (.abs t₀ u)
+        (WfM.fun_ L hT hB) := by
+  intro Γ t₀ u L hT hB ihT ihB Γ₂ hΓ hα
+  subst hΓ
+  show WfM _ (Term.subst xout αout (.abs t₀ u))
+  simp only [Term.subst]
+  refine WfM.fun_ (L ∪ {xout}) (ihT Γ₂ rfl hα) ?_
+  intro y hy
+  simp [Finset.mem_union, Finset.mem_singleton] at hy
+  have hyL : y ∉ L := hy.1
+  have hyx : y ≠ xout := hy.2
+  have ih_body := ihB y hyL (⟨y, t₀, .sub⟩ :: Γ₂) (by simp) hα
+  have hLCα : Term.LC αout := WSubMStar.lc_left hα
+  rw [Term.subst_open_var (Ne.symm hyx) hLCα u] at ih_body
+  simpa [Ctx.subst, List.cons_append] using ih_body
+
+private theorem _S_app :
+    ∀ {Γ : Ctx} {u v t₀ : Term}
+      (hStarU : WSubMStar Γ u (.abs t₀ .top))
+      (hStarV : WSubMStar Γ v t₀)
+      (ihU : _S_motive_star Γ₁out xout tout αout Γ u (.abs t₀ .top) hStarU)
+      (ihV : _S_motive_star Γ₁out xout tout αout Γ v t₀ hStarV),
+      _S_motive_wf Γ₁out xout tout αout Γ (.app u v)
+        (WfM.app hStarU hStarV) := by
+  intro Γ u v t₀ hSU hSV ihU ihV Γ₂ hΓ hα
+  subst hΓ
+  show WfM _ (Term.subst xout αout (.app u v))
+  simp only [Term.subst]
+  have ihU' := ihU Γ₂ rfl hα
+  have ihV' := ihV Γ₂ rfl hα
+  simp only [Term.subst] at ihU'
+  exact WfM.app ihU' ihV'
+
+private theorem _S_rfl :
+    ∀ {Γ : Ctx} {u : Term} (hwf : WfM Γ u)
+      (ihwf : _S_motive_wf Γ₁out xout tout αout Γ u hwf),
+      _S_motive_sub Γ₁out xout tout αout Γ u u (WSubM.rfl hwf) := by
+  intro Γ u hwf ihwf Γ₂ hΓ hα
+  subst hΓ
+  exact WSubM.rfl (ihwf Γ₂ rfl hα)
+
+private theorem _S_lf1 :
+    ∀ {Γ : Ctx} {v v' u : Term}
+      (hred : MEqRed Γ [] v v')
+      (hsub : WSubM Γ v' u)
+      (ih : _S_motive_sub Γ₁out xout tout αout Γ v' u hsub),
+      _S_motive_sub Γ₁out xout tout αout Γ v u
+        (WSubM.lf1 hred hsub) := by
+  intro Γ v v' u hred hsub ih Γ₂ hΓ hα
+  subst hΓ
+  have hok := _SubstOk_of_WSubMStar hα
+  have hred' : MEqRed (Ctx.subst xout αout Γ₂ ++ Γ₁out)
+                      (Stack.subst xout αout [])
+                      (Term.subst xout αout v) (Term.subst xout αout v') :=
+    Lemma_31_ReductionUnderSubst_Eq hred hok
+  have hred'' : MEqRed (Ctx.subst xout αout Γ₂ ++ Γ₁out) []
+                       (Term.subst xout αout v) (Term.subst xout αout v') := by
+    simpa using hred'
+  exact WSubM.lf1 hred'' (ih Γ₂ rfl hα)
+
+private theorem _S_lf2 :
+    ∀ {Γ : Ctx} {v v' u : Term}
+      (hwfV : WfM Γ v) (hred : MSubRed Γ [] v v')
+      (hwfV' : WfM Γ v') (hsub : WSubM Γ v' u)
+      (ihwfV : _S_motive_wf Γ₁out xout tout αout Γ v hwfV)
+      (ihwfV' : _S_motive_wf Γ₁out xout tout αout Γ v' hwfV')
+      (ih : _S_motive_sub Γ₁out xout tout αout Γ v' u hsub),
+      _S_motive_sub Γ₁out xout tout αout Γ v u
+        (WSubM.lf2 hwfV hred hwfV' hsub) := by
+  intro Γ v v' u hwfV hred hwfV' hsub ihwfV ihwfV' ih Γ₂ hΓ hα
+  subst hΓ
+  have hok := _SubstOk_of_WSubMStar hα
+  have hred' : MSubRed (Ctx.subst xout αout Γ₂ ++ Γ₁out)
+                       (Stack.subst xout αout [])
+                       (Term.subst xout αout v) (Term.subst xout αout v') :=
+    Lemma_30_ReductionUnderSubst_Sub hred hok
+  have hred'' : MSubRed (Ctx.subst xout αout Γ₂ ++ Γ₁out) []
+                        (Term.subst xout αout v) (Term.subst xout αout v') := by
+    simpa using hred'
+  exact WSubM.lf2 (ihwfV Γ₂ rfl hα) hred''
+                   (ihwfV' Γ₂ rfl hα)
+                   (ih Γ₂ rfl hα)
+
+private theorem _S_rgh :
+    ∀ {Γ : Ctx} {v u u' : Term}
+      (hsub : WSubM Γ v u') (hred : MEqRed Γ [] u u')
+      (ih : _S_motive_sub Γ₁out xout tout αout Γ v u' hsub),
+      _S_motive_sub Γ₁out xout tout αout Γ v u
+        (WSubM.rgh hsub hred) := by
+  intro Γ v u u' hsub hred ih Γ₂ hΓ hα
+  subst hΓ
+  have hok := _SubstOk_of_WSubMStar hα
+  have hred' : MEqRed (Ctx.subst xout αout Γ₂ ++ Γ₁out)
+                      (Stack.subst xout αout [])
+                      (Term.subst xout αout u) (Term.subst xout αout u') :=
+    Lemma_31_ReductionUnderSubst_Eq hred hok
+  have hred'' : MEqRed (Ctx.subst xout αout Γ₂ ++ Γ₁out) []
+                       (Term.subst xout αout u) (Term.subst xout αout u') := by
+    simpa using hred'
+  exact WSubM.rgh (ih Γ₂ rfl hα) hred''
+
+private theorem _S_sub_star :
+    ∀ {Γ : Ctx} {v u : Term}
+      (hwfV : WfM Γ v) (hsub : WSubM Γ v u) (hwfT : WfM Γ u)
+      (ihwfV : _S_motive_wf Γ₁out xout tout αout Γ v hwfV)
+      (ihsub : _S_motive_sub Γ₁out xout tout αout Γ v u hsub)
+      (ihwfT : _S_motive_wf Γ₁out xout tout αout Γ u hwfT),
+      _S_motive_star Γ₁out xout tout αout Γ v u
+        (WSubMStar.sub hwfV hsub hwfT) := by
+  intro Γ v u hwfV hsub hwfT ihwfV ihsub ihwfT Γ₂ hΓ hα
+  subst hΓ
+  exact WSubMStar.sub (ihwfV Γ₂ rfl hα) (ihsub Γ₂ rfl hα)
+                       (ihwfT Γ₂ rfl hα)
+
+private theorem _S_trs_star :
+    ∀ {Γ : Ctx} {v u w : Term}
+      (hStar1 : WSubMStar Γ v u) (hwfU : WfM Γ u) (hStar2 : WSubMStar Γ u w)
+      (ih1 : _S_motive_star Γ₁out xout tout αout Γ v u hStar1)
+      (ihwfU : _S_motive_wf Γ₁out xout tout αout Γ u hwfU)
+      (ih2 : _S_motive_star Γ₁out xout tout αout Γ u w hStar2),
+      _S_motive_star Γ₁out xout tout αout Γ v w
+        (WSubMStar.trs hStar1 hwfU hStar2) := by
+  intro Γ v u w hStar1 hwfU hStar2 ih1 ihwfU ih2 Γ₂ hΓ hα
+  subst hΓ
+  exact WSubMStar.trs (ih1 Γ₂ rfl hα) (ihwfU Γ₂ rfl hα)
+                       (ih2 Γ₂ rfl hα)
+
+end -- section
+
+end Lemma7
 
 /-- **Lemma 7 (Substitution preserves well-formedness, Pasquale &
-García-Pérez 2024 §4).** Restricted single-binder form: instead of the
-paper's `Γ, x ≤ t, Γ' ⊢ u wf  ⟹  Γ, Γ'[x\α] ⊢ u[x\α] wf`, we state the
-case `Γ' = ∅`. -/
-axiom Lemma_7_SubstitutionPreservesWf
+García-Pérez 2024 §4).** Generalized form: arbitrary context prefix
+`Γ₂` between `Γ₁` and the head substitution binding `⟨x, t, .sub⟩`.
+Mirrors the paper's `Γ, x ≤ t, Γ' ⊢ u wf  ⟹  Γ, Γ'[x\α] ⊢ u[x\α] wf`. -/
+theorem Lemma_7_SubstitutionPreservesWf_general
+    {Γ₁ Γ₂ : Ctx} {x : String} {t α u : Term}
+    (hwfU : WfM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) u)
+    (hα : WSubMStar Γ₁ α t) :
+    WfM (Ctx.subst x α Γ₂ ++ Γ₁) (Term.subst x α u) := by
+  have := WfM.rec
+    (motive_1 := Lemma7._S_motive_wf Γ₁ x t α)
+    (motive_2 := Lemma7._S_motive_sub Γ₁ x t α)
+    (motive_3 := Lemma7._S_motive_star Γ₁ x t α)
+    (@Lemma7._S_varSub Γ₁ x t α)
+    (@Lemma7._S_varEqu Γ₁ x t α)
+    (@Lemma7._S_top Γ₁ x t α)
+    (@Lemma7._S_fun Γ₁ x t α)
+    (@Lemma7._S_app Γ₁ x t α)
+    (@Lemma7._S_rfl Γ₁ x t α)
+    (@Lemma7._S_lf1 Γ₁ x t α)
+    (@Lemma7._S_lf2 Γ₁ x t α)
+    (@Lemma7._S_rgh Γ₁ x t α)
+    (@Lemma7._S_sub_star Γ₁ x t α)
+    (@Lemma7._S_trs_star Γ₁ x t α)
+    hwfU
+  exact this Γ₂ rfl hα
+
+/-- **Lemma 7 (Substitution preserves well-formedness).**
+Restricted single-binder form: `Γ₂ = ∅` corollary of
+`Lemma_7_SubstitutionPreservesWf_general`. -/
+theorem Lemma_7_SubstitutionPreservesWf
     {Γ : Ctx} {x : String} {t u α : Term}
     (hwfU : WfM (⟨x, t, .sub⟩ :: Γ) u)
     (hα : WSubMStar Γ α t) :
-    WfM Γ (Term.subst x α u)
+    WfM Γ (Term.subst x α u) := by
+  have := Lemma_7_SubstitutionPreservesWf_general (Γ₂ := []) (Γ₁ := Γ)
+    (by simpa using hwfU) hα
+  simpa [Ctx.subst] using this
 
 /-! ## §6. Lemma 6 (Evaluation preserves well-formedness)
 
