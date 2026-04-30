@@ -299,11 +299,13 @@ body opened with that `y`. (`avoidsPro` is `noncomputable` because of
 this; the recursor itself would be computable, but the pickFresh helper
 relies on `Classical.choice`.) -/
 
-/-- Helper: pick a canonical fresh name avoiding `L`. -/
-private noncomputable def pickFresh (L : Finset String) : String :=
+/-- Helper: pick a canonical fresh name avoiding `L`. Exposed publicly
+so consumers (`Pss.Mpss.Diamond`) can refer to the body witness picked
+in the cofinite arms of `avoidsPro`'s simp lemmas. -/
+noncomputable def pickFresh (L : Finset String) : String :=
   Classical.choose (Term.exists_fresh L)
 
-private theorem pickFresh_notMem (L : Finset String) :
+theorem pickFresh_notMem (L : Finset String) :
     pickFresh L ∉ L :=
   Classical.choose_spec (Term.exists_fresh L)
 

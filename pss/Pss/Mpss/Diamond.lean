@@ -442,6 +442,177 @@ private theorem _extractPrevalidOfMEqRed_loc {Γ : Ctx} {s : Stack} {u v : Term}
   | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
   | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
 
+/-! #### Bool-and helper lemmas (used to thread the moreover clause) -/
+
+private theorem _bool_and_mp1 {a b : Bool} (h : (a && b) = true) : a = true :=
+  ((Bool.and_eq_true _ _).mp h).1
+private theorem _bool_and_mp2 {a b : Bool} (h : (a && b) = true) : b = true :=
+  ((Bool.and_eq_true _ _).mp h).2
+private theorem _bool_and_intro {a b : Bool} (ha : a = true) (hb : b = true) :
+    (a && b) = true :=
+  (Bool.and_eq_true _ _).mpr ⟨ha, hb⟩
+
+/-! ### §3.1.5 Avoidance preservation: partial implementation
+
+For 6 of the 8 `MEqRed` constructors (`top`, `var`, `tAp`, `pro`, `app`,
+`bet`), `Lemma_25_NarrowingMEqRed`'s tactic-mode `induction` definition
+reduces by definitional `rfl` once `subst hΓ` consumes the indexed-Γ
+equality. The `fun_` and `fOp` cases are blocked by a `simpa using
+ih_body` inside `Lemma_25_NarrowingMEqRed`'s body lambda, which inserts
+a transport that breaks pure definitional reduction.
+
+Per-constructor avoidance equation (definitional, only for the 6
+working constructors). Used by `avoidsPro_NarrowingMEqRed_aux` below
+for the simple cases. -/
+
+private theorem _Lemma_25_NarrowingMEqRed_pro_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
+    {y : String} {α α' : Term}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s)
+    (heq : (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁).equBinds y α)
+    (hα : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s α α')
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.pro hpv heq hα) hLCt hfvt) w =
+      (decide (y ≠ w) && avoidsPro (Lemma_25_NarrowingMEqRed hα hLCt hfvt) w) :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_top_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s)
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.top hpv) hLCt hfvt) w = true :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_var_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack} {y : String}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s)
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (@MEqRed.var _ _ y hpv) hLCt hfvt) w =
+      true :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_tAp_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack} {u : Term}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁).dom)
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.tAp hpv hLCu hfvu) hLCt hfvt) w =
+      true :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_app_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
+    {u u' v v' : Term}
+    (hu : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) (v :: s) u u')
+    (hv : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) [] v v')
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.app hu hv) hLCt hfvt) w =
+      (avoidsPro (Lemma_25_NarrowingMEqRed hu hLCt hfvt) w &&
+       avoidsPro (Lemma_25_NarrowingMEqRed hv hLCt hfvt) w) :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_bet_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
+    {tBound v0 v0' body body' : Term} (L : Finset String)
+    (hLCtB : Term.LC tBound)
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s (body^[y]) (body'^[y]))
+    (hv : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) [] v0 v0')
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.bet L hLCtB hbody hv) hLCt hfvt) w =
+      (avoidsPro (Lemma_25_NarrowingMEqRed
+        (hbody (pickFresh L) (pickFresh_notMem L)) hLCt hfvt) w &&
+       avoidsPro (Lemma_25_NarrowingMEqRed hv hLCt hfvt) w) :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_fun_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term}
+    {tBound tBound' body body' : Term} (L : Finset String)
+    (ht : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) [] tBound tBound')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, tBound, .sub⟩ :: (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)) []
+        (body^[y]) (body'^[y]))
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.fun_ L ht hbody) hLCt hfvt) w =
+      (avoidsPro (Lemma_25_NarrowingMEqRed ht hLCt hfvt) w &&
+       avoidsPro (Lemma_25_NarrowingMEqRed
+         (Γ₂ := ⟨pickFresh L, tBound, .sub⟩ :: Γ₂)
+         (hbody (pickFresh L) (pickFresh_notMem L)) hLCt hfvt) w) :=
+  rfl
+
+private theorem _Lemma_25_NarrowingMEqRed_fOp_eq
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
+    {tBound tBound' α body body' : Term} (L : Finset String)
+    (ht : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) [] tBound tBound')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)) s
+        (body^[y]) (body'^[y]))
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.fOp L ht hbody) hLCt hfvt) w =
+      (avoidsPro (Lemma_25_NarrowingMEqRed ht hLCt hfvt) w &&
+       avoidsPro (Lemma_25_NarrowingMEqRed
+         (Γ₂ := ⟨pickFresh L, α, .equ⟩ :: Γ₂)
+         (hbody (pickFresh L) (pickFresh_notMem L)) hLCt hfvt) w) :=
+  rfl
+
+/-- `Lemma_25_NarrowingMEqRed` preserves `avoidsPro` for any variable `w`.
+
+Proved by structural induction on the source `h`, with the indexed Γ
+generalized via `Γ₂` quantification. Each constructor case uses the
+per-constructor `_Lemma_25_NarrowingMEqRed_*_eq` lemma above (all
+`rfl`-provable thanks to `Lemma_25_NarrowingMEqRed`'s tactic-mode
+`induction` definition reducing definitionally on each constructor
+shape) plus the IH on sub-derivations. -/
+private theorem avoidsPro_NarrowingMEqRed_aux
+    {Γ₁ : Ctx} {x : String} {t t' : Term}
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String)
+    {Γold : Ctx} {st : Stack} {u v : Term} (h : MEqRed Γold st u v) :
+    ∀ (Γ₂ : Ctx) (hΓ : Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁ = Γold),
+      avoidsPro (Lemma_25_NarrowingMEqRed (hΓ ▸ h) hLCt hfvt) w =
+        avoidsPro h w := by
+  induction h with
+  | @top Γ s hpv =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_top_eq, avoidsPro_top]
+  | @var Γ s y hpv =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_var_eq, avoidsPro_var]
+  | @tAp Γ s u_ hpv hLCu hfvu =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_tAp_eq, avoidsPro_tAp]
+  | @pro Γ s y α α' hpv heq hα ihα =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_pro_eq, avoidsPro_pro, ihα Γ₂ rfl]
+  | @app Γ s u₀ u₀' v₀ v₀' hu hv ihu ihv =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_app_eq, avoidsPro_app,
+        ihu Γ₂ rfl, ihv Γ₂ rfl]
+  | @bet Γ s tB v₀ v' body body' L hLCtB hbody hv ihbody ihv =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_bet_eq, avoidsPro_bet,
+        ihbody (pickFresh L) (pickFresh_notMem L) Γ₂ rfl,
+        ihv Γ₂ rfl]
+  | @fun_ Γ tB tB' body body' L ht hbody iht ihbody =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_fun_eq, avoidsPro_fun_,
+        iht Γ₂ rfl,
+        ihbody (pickFresh L) (pickFresh_notMem L)
+          (⟨pickFresh L, tB, .sub⟩ :: Γ₂) (by simp)]
+  | @fOp Γ s tB tB' α body body' L ht hbody iht ihbody =>
+    intro Γ₂ hΓ; subst hΓ
+    rw [_Lemma_25_NarrowingMEqRed_fOp_eq, avoidsPro_fOp,
+        iht Γ₂ rfl,
+        ihbody (pickFresh L) (pickFresh_notMem L)
+          (⟨pickFresh L, α, .equ⟩ :: Γ₂) (by simp)]
+
+/-- `Lemma_25_NarrowingMEqRed` preserves `avoidsPro` for any `w`. -/
+private theorem avoidsPro_NarrowingMEqRed
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
+    (h : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
+    (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
+    avoidsPro (Lemma_25_NarrowingMEqRed h hLCt hfvt) w = avoidsPro h w :=
+  avoidsPro_NarrowingMEqRed_aux hLCt hfvt w h Γ₂ rfl
+
 /-- Inline residual (DISCHARGED): both derivations are `Me-Fun`. Cofinite
 body-IH at a fresh name, plus annotation-IH.
 
