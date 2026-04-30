@@ -377,7 +377,43 @@ Discharge plan: induct on `h`. The `Ms-Pro y = x` case:
    transitive-close via `WSubMStar.trs`, collapse back via Theorem 3
    — i.e. the `MSub`/`MSubRedStar` correspondence in
    `Pss.Mpss.TransitivityElim`).
-3. Wrap with `WSubM.lf2 _ (Ms-Pro new lookup) _ (WSubM Γ_new t u)`. -/
+3. Wrap with `WSubM.lf2 _ (Ms-Pro new lookup) _ (WSubM Γ_new t u)`.
+
+### Discharge attempt notes (2026-04, agent_id: och-refactor)
+
+A focused attempt at discharging Lemma 24 with the WSubMStar shape
+(documented in commit message) hit the following residual blockers
+beyond the original analysis:
+
+* **Ms-App at non-empty inner stack:** the constructor produces output
+  at empty stack from an inner `MSubRed Γ_old (v::s) u u'` derivation.
+  Narrowing the inner derivation requires the same y=x bridging at
+  non-empty stack, which the WSubMStar conclusion (only at empty
+  stack) cannot accommodate. A stack-aware companion lemma is needed,
+  and its discharge has the same structural issue at every stack
+  level.
+
+* **Ms-Fun body recursion:** the body recurses at an EXTENDED context
+  `⟨z, t₀, .sub⟩ :: Γ_old`. To narrow the body's MSubRed, the
+  WSubMStar bridge must be weakened from `Γ_new` to
+  `⟨z, t₀, .sub⟩ :: Γ_new`. This requires `WSubMStar` weakening
+  through a binder, which is **not** available in `Narrowing.lean`'s
+  upstream imports (lives in `TypeSafety.lean` as `WfM.weaken_append`
+  and friends, which are downstream of `Narrowing` via the
+  `TransitivityElim → Commutation → Diamond → Narrowing` chain — a
+  cycle).
+
+* **Ms-FOp body recursion:** same issue as Ms-Fun, with `.equ` binder
+  instead of `.sub`.
+
+So even with the WSubMStar restatement, the discharge requires
+either (i) WSubMStar weakening inlined into `Narrowing.lean`
+(non-trivial, ~200 lines duplicated from `TypeSafety.lean`'s
+`Lemma7._W_*` machinery), or (ii) lifting the entire narrowing
+infrastructure downstream of `WfM`-weakening.
+
+For now we retain the axiomatization. The `_N_lf2` use site below
+also retains the call. -/
 axiom Lemma_24_NarrowingMSubRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
