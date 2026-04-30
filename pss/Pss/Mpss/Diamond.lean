@@ -673,6 +673,14 @@ private theorem avoidsPro_subst_eq_stack
     avoidsPro (heq ▸ h) w = avoidsPro h w := by
   subst heq; rfl
 
+/-- Cast invariance for the `MEqRed.refl`-shaped transport: both source
+and destination indices are the same term, transported simultaneously. -/
+private theorem avoidsPro_subst_eq_both
+    {Γ : Ctx} {s : Stack} {u u' : Term}
+    (heq : u = u') (h : MEqRed Γ s u u) (w : String) :
+    avoidsPro (heq ▸ h : MEqRed Γ s u' u') w = avoidsPro h w := by
+  subst heq; rfl
+
 
 /-! #### Local re-derivation of `subst_yz_sub_head` and `rename_sub`
 
@@ -1066,6 +1074,29 @@ private theorem _subst_yz_sub_head_local_tAp_eq
     (hfvu : Term.fv u ⊆ (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁).dom) (w : String) :
     avoidsPro (_subst_yz_sub_head_local hyz hz_notin_Γ₁ hz_notin_Γ₂
       (MEqRed.tAp hpv hLCu hfvu)) w = true := rfl
+
+/-! ### Avoidance preservation: status
+
+The combined-function approach (`_subst_yz_sub_head_with_av` returning
+`Σ' h' (preservation)`) works for the simple cases (top, app, tAp, var,
+pro) but bottoms out at the COFINITE BODY cases (bet, fun_, fOp).
+
+The blocker: `avoidsPro_bet` (and `_fun_`, `_fOp`) evaluate the body at
+`pickFresh L`. The renamed bet uses `MEqRed.bet (L ∪ {y}) ...`, so its
+`avoidsPro` evaluates at `pickFresh (L ∪ {y}) ≠ pickFresh L`. To compare
+the two `avoidsPro` values, we need an **alpha-equivariance** lemma for
+`avoidsPro`: `avoidsPro (hbody y₁ _) w = avoidsPro (hbody y₂ _) w` for
+any two fresh y₁, y₂ valid for `hbody`.
+
+This is a real deeper theorem requiring its own structural proof. It
+holds because under a `.sub` head binding (the case we're in here),
+`Me-Pro yi` always has `yi ≠ y` (equBinds_ne_x_at_sub_head), so the
+fresh y' choice doesn't affect any `Me-Pro yi = w` check for any
+user-chosen w.
+
+Future-work: prove `avoidsPro_alpha_equivariance` for cofinite-body
+constructors under `.sub`-head context, then complete the bet/fun_/fOp
+cases of `_subst_yz_sub_head_with_av`. -/
 
 
 
