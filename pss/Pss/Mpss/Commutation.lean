@@ -115,7 +115,43 @@ theorem Lemma_1_case_pro_pro_vacuous
       simp [hex] at hsub' hequ'
       exact ih hpv_norm.tail hsub' hequ'
 
-/-! ## §2. Context-evolution lift -/
+/-! ## §2. Context-evolution lift
+
+### Discharge-attempt blocker (this session, 2026-04-29)
+
+Same fundamental obstruction as `Lemma_2_DiamondMEqRed_ctx_axiom`.
+Path-(b) "direct construction via existing infrastructure" was attempted
+and bottoms out at the inductive (non-refl) arms of `↣*`:
+
+* **refl/refl** is trivial (return `⟨t₃, h₁'₀, h₂'₀⟩`).
+* **Ct-Stk single step** (the only non-trivial usage at the internal
+  call site, App × App in `_core`): replacing stack head `v` with `v₂`
+  where `MEqRed Γ [] v v₂`. The `Ms-FOp`/`Me-FOp` constructors pop the
+  stack head INTO an `.equ`-binding `⟨x, v, .equ⟩`. Replacing `v` with
+  `v₂` requires `.equ`-narrowing of `MSubRed`/`MEqRed` along an
+  `MEqRed`-step on the bound term, which is itself confluence-shaped
+  (the body's `Me-Pro` rule looks up `equBinds y α` and chains
+  `α → ...`; replacing `α` with reduct `α'` requires the strong
+  commutativity to re-thread the chain).
+* **Ct-Ann single step** for a `.sub` annotation requires Lemma 24,
+  still axiomatised. Honest discharge would need WSubM-transitivity
+  from `Pss.Mpss.TransitivityElim`, which is downstream of this
+  module (cycle-creating import).
+* **Ct-Ann single step** for an `.equ` annotation: same shape as
+  Ct-Stk (`.equ`-narrowing along an `MEqRed`-step).
+
+### Both consumers actually pass reflexive chains
+
+1. The headline is only consumed via
+   `Lemma_1_StrongCommutativity_sameCtx` (passes `refl, refl`); see
+   `Pss.Mpss.TransitivityElim` line 186.
+2. The internal `_core` App × App arm passes `hCt₁ = refl` and
+   `hCt₂ = .stk .refl hv₂` (a single Ct-Stk step on the stack head).
+
+If the App × App arm could be re-engineered to avoid the stk-shift
+(e.g. by reducing `v, v₂` to a common reduct via Lemma 2 first, then
+joining at the common stack), `_ctx_axiom` could be eliminated
+entirely. That refactor was not attempted in this session. -/
 
 /-- Lift a same-context Lemma-1-style joining derivation across two
 `↣*` evolutions. Mirrors `Lemma_2_DiamondMEqRed_ctx_axiom`. -/
