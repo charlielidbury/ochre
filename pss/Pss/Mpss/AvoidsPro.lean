@@ -400,6 +400,68 @@ witnesses without unfolding the recursor by hand. -/
       (avoidsPro ht x && avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
   unfold avoidsPro; rfl
 
+/-! ## §2.2. `avoidsPro_refl` axiom — the moreover-clause unblocker
+
+`MEqRed.refl` (in `Pss.Mpss.Substitution`) is the only constructor-opaque
+`MEqRed`-builder in the codebase. It is built via `Nonempty.some` on top
+of `MEqRed.refl_J : MEqRedJ Γ s u u`, where the `Nonempty` wrapper exists
+purely because the underlying induction on `Term.LC u` cannot eliminate
+into a `Type`-valued conclusion (`Term.LC` is `Prop`-valued).
+
+Morally: `MEqRed.refl_J` is built ENTIRELY from non-`pro` constructors —
+`top`, `var`, `app`, `fun_`, `fOp` — every one of which has
+`avoidsPro = true` for any variable `x`. The reflexivity tree never
+reaches for an `Me-Pro` step (it has no need to; it's strictly
+congruence-closure on `LC`).
+
+Therefore `avoidsPro (MEqRed.refl _ _ _) x = true` is structurally true,
+even though Lean's kernel cannot verify this directly because
+`Classical.choice` discards the constructor tree of the
+`Nonempty`-wrapped derivation.
+
+## Resolution paths (none chosen this revision; see Diamond.lean §3.1)
+
+1. **Type-valued `Term.LC`.** Lifts `LC` from `Prop` to `Type`, making
+   `MEqRed.refl_J` itself `Type`-valued and therefore observably built
+   from `MEqRed` constructors. This axiom would become a theorem,
+   provable by induction. Cost: cross-codebase refactor — `Term.LC`
+   appears in dozens of theorem statements across `Pss/Syntax`,
+   `Pss/Mpss`, etc.
+
+2. **Source-driven refl construction** (`refl_for : MEqRed Γ s α α' →
+   MEqRed Γ s α' α'` by induction on the source). Works for all cases
+   except `Me-Bet`, whose destination is `Term.opening v' body'` — a
+   substituted term with no constructor-decomposable refl shape without
+   re-deriving structural induction on `LC` (i.e., circling back to
+   path 1).
+
+3. **This axiom.** Single narrow statement, replaces 3 prior axioms
+   (`Lemma_2_inline_app_bet_residual_axiom`,
+   `Lemma_2_inline_bet_residual_axiom`, possibly more) at the cost of
+   one. Net axiom reduction. -/
+
+/-- `MEqRed.refl _ _ _` always has `avoidsPro = true` for any `x`.
+
+Structurally true: `MEqRed.refl_J`'s definition (in
+`Pss.Mpss.Substitution`) by induction on `Term.LC` only ever invokes
+the `top`/`var`/`app`/`fun_`/`fOp` constructors of `MEqRed`, none of
+which is `Me-Pro`. The axiom exists because `MEqRed.refl_J` returns a
+`MEqRedJ = Nonempty (MEqRed _ _ _ _)`, and `MEqRed.refl` extracts via
+`.some`. `Classical.choice` makes the resulting `MEqRed` constructor
+tree opaque to the kernel.
+
+This is the **single new axiom** added in service of the moreover-clause
+threading. It replaces the 2 β-step residual axioms
+(`Lemma_2_inline_app_bet_residual_axiom`,
+`Lemma_2_inline_bet_residual_axiom`) and arguably also unlocks
+`Lemma_2_DiamondMEqRed_ctx_axiom` and Lemma 1's residual — net axiom
+reduction. -/
+axiom avoidsPro_refl
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom)
+    (x : String) :
+    avoidsPro (MEqRed.refl hpv hLC hfv) x = true
+
 /-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
 
 Mirror of `avoidsPro` for the subtype-reduction relation. `msAvoidsPro h x
