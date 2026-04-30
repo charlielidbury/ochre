@@ -644,8 +644,35 @@ private theorem avoidsPro_cast {Γ Γ' : Ctx} {s s' : Stack}
     avoidsPro (hΓ ▸ hs ▸ hu ▸ hv ▸ h) w = avoidsPro h w := by
   subst hΓ hs hu hv; rfl
 
--- Eq.mpr cast invariance — the more direct approach.
--- When the cast equation comes from rewriting indices, this should work.
+/-- Single-index transport invariance: `avoidsPro (eq ▸ h)` for an
+equation `v = v'` between source/destination indices.
+
+Special case: `hu_eq ▸ h` where `hu_eq : u = u'`, lifts `h : MEqRed Γ s u v`
+to `MEqRed Γ s u' v`. -/
+private theorem avoidsPro_subst_eq_dest
+    {Γ : Ctx} {s : Stack} {u v v' : Term}
+    (heq : v = v') (h : MEqRed Γ s u v) (w : String) :
+    avoidsPro (heq ▸ h) w = avoidsPro h w := by
+  subst heq; rfl
+
+private theorem avoidsPro_subst_eq_src
+    {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (heq : u = u') (h : MEqRed Γ s u v) (w : String) :
+    avoidsPro (heq ▸ h) w = avoidsPro h w := by
+  subst heq; rfl
+
+private theorem avoidsPro_subst_eq_ctx
+    {Γ Γ' : Ctx} {s : Stack} {u v : Term}
+    (heq : Γ = Γ') (h : MEqRed Γ s u v) (w : String) :
+    avoidsPro (heq ▸ h) w = avoidsPro h w := by
+  subst heq; rfl
+
+private theorem avoidsPro_subst_eq_stack
+    {Γ : Ctx} {s s' : Stack} {u v : Term}
+    (heq : s = s') (h : MEqRed Γ s u v) (w : String) :
+    avoidsPro (heq ▸ h) w = avoidsPro h w := by
+  subst heq; rfl
+
 
 /-! #### Local re-derivation of `subst_yz_sub_head` and `rename_sub`
 
@@ -827,7 +854,6 @@ private noncomputable def _subst_yz_sub_head_local
         (Stack.subst y (.fvar z) st') :=
       _prevalidExt_rename_sub_head_local hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
     have hyiy : yi ≠ y := equBinds_ne_x_at_sub_head hpvL heq
-    rw [Term.subst_fvar_ne hyiy]
     have heq_lifted : (Ctx.subst y (.fvar z) Γ₂ ++ Γ₁).equBinds yi
         (Term.subst y (.fvar z) α) :=
       equBinds_split (s := .fvar z) hyiy hpvL heq
@@ -846,7 +872,10 @@ private noncomputable def _subst_yz_sub_head_local
       have heq_simp : (Ctx.subst y (.fvar z) Γ₂ ++ [⟨z, t, .sub⟩] ++ Γ₁) =
           (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by simp
       exact heq_simp ▸ this
-    exact MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl hz_notin_Γ₂)
+    -- Use ▸ at outermost instead of `rw [Term.subst_fvar_ne hyiy]` in goal.
+    have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar yi :=
+      Term.subst_fvar_ne hyiy _
+    exact hsubst_eq.symm ▸ MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl hz_notin_Γ₂)
   | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
     subst hΓ
     intro hz_notin_Γ₂
@@ -854,16 +883,12 @@ private noncomputable def _subst_yz_sub_head_local
     have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
         Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd') := by
       simp [Term.opening, Term.subst_open hLCfz]
-    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
-      (Stack.subst y (.fvar z) st')
-      (Term.subst y (.fvar z) (.app (.abs tBound bd) v0))
-      (Term.subst y (.fvar z) (Term.opening v0' bd'))
-    rw [hsubst_open]
-    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
-      (Stack.subst y (.fvar z) st')
-      (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
-            (Term.subst y (.fvar z) v0))
-      (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
+    -- Goal type initially: MEqRed _ _ X (subst y z (opening v0' bd')).
+    -- Construct the .bet term at its natural type and transport once.
+    -- The transport `hsubst_open.symm ▸` lives at OUTERMOST position so
+    -- avoidsPro_subst_eq_dest can peel it.
+    refine hsubst_open.symm ▸ ?_
+    -- Goal now: MEqRed _ _ X (opening (subst y z v0') (subst y z bd'))
     refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
     · intro yfresh hyfresh
       simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
@@ -896,9 +921,9 @@ private noncomputable def _subst_yz_sub_head_local
         (Stack.subst y (.fvar z) st') :=
       _prevalidExt_rename_sub_head_local hyz hz_notin_Γ₁ hz_notin_Γ₂ hpv
     by_cases hyiy : yi = y
-    · have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar z := by
+    · -- yi = y: result is refl. Use ▸ at outermost.
+      have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar z := by
         rw [hyiy]; simp [Term.subst]
-      rw [hsubst_eq]
       have hLCz : Term.LC (.fvar z) := Term.LC.fvar z
       have hfvz : Term.fv (.fvar z) ⊆
           Ctx.dom (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by
@@ -907,9 +932,11 @@ private noncomputable def _subst_yz_sub_head_local
         subst hwz
         rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
         exact Finset.mem_union.mpr (Or.inr (Finset.mem_insert_self _ _))
-      exact MEqRed.refl hpv' hLCz hfvz
-    · rw [Term.subst_fvar_ne hyiy]
-      exact MEqRed.var hpv'
+      exact hsubst_eq.symm ▸ MEqRed.refl hpv' hLCz hfvz
+    · -- yi ≠ y: result is var. Use ▸ at outermost.
+      have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar yi :=
+        Term.subst_fvar_ne hyiy _
+      exact hsubst_eq.symm ▸ (@MEqRed.var _ _ yi hpv')
   | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
@@ -968,19 +995,16 @@ private noncomputable def _subst_yz_sub_head_local
         rw [Ctx.dom_append, Ctx.dom_subst, Ctx.dom_cons]
         exact Finset.mem_union.mpr
           (Or.inr (Finset.mem_insert_self _ _))
-    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
-      (Stack.subst y (.fvar z) st')
-      (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
-    simp [Term.subst]
+    -- The goal `MEqRed _ _ (Term.subst y z (.app .top u_)) (Term.subst y z .top)`
+    -- reduces definitionally to `MEqRed _ _ (.app .top (Term.subst y z u_)) .top`
+    -- (via Term.subst's pattern matching). Provide MEqRed.tAp directly.
     exact MEqRed.tAp hpv' hLCu' hfv'
   | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
-    show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
-      (Stack.subst y (.fvar z) (αi :: st'))
-      (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
-      (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
-    rw [Stack.subst_cons]
+    -- The goal `MEqRed _ (Stack.subst y z (αi :: st')) ...` reduces
+    -- definitionally to `MEqRed _ (Term.subst y z αi :: Stack.subst y z st') ...`
+    -- via List.map_cons. So we don't need rw [Stack.subst_cons].
     refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
     · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
       simpa using iht'
@@ -1042,6 +1066,15 @@ private theorem _subst_yz_sub_head_local_tAp_eq
     (hfvu : Term.fv u ⊆ (Γ₂ ++ ⟨y, t, .sub⟩ :: Γ₁).dom) (w : String) :
     avoidsPro (_subst_yz_sub_head_local hyz hz_notin_Γ₁ hz_notin_Γ₂
       (MEqRed.tAp hpv hLCu hfvu)) w = true := rfl
+
+
+
+
+
+
+
+
+
 
 
 
