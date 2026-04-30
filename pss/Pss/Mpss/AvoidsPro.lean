@@ -345,6 +345,61 @@ noncomputable def avoidsPro {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool
       iht x && ihbody y hyL x)
     h x
 
+/-! ## §2.1. Definitional unfoldings of `avoidsPro` per constructor
+
+Mirror of the `msAvoidsPro_*` simp lemmas below: per-constructor `simp`
+unfoldings of `avoidsPro` so downstream proofs can split off avoidance
+witnesses without unfolding the recursor by hand. -/
+
+@[simp] theorem avoidsPro_pro {Γ s y α α'} (hpv : PrevalidExt Γ s)
+    (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α') (x : String) :
+    avoidsPro (MEqRed.pro hpv heq hα) x = (decide (y ≠ x) && avoidsPro hα x) := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_bet {Γ s t v v' body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hv : MEqRed Γ [] v v') (x : String) :
+    avoidsPro (MEqRed.bet L hLCt hbody hv) x =
+      (avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x && avoidsPro hv x) := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_top {Γ s} (hpv : PrevalidExt Γ s) (x : String) :
+    avoidsPro (MEqRed.top hpv) x = true := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_app {Γ s u u' v v'}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v') (x : String) :
+    avoidsPro (MEqRed.app hu hv) x = (avoidsPro hu x && avoidsPro hv x) := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_var {Γ s y} (hpv : PrevalidExt Γ s) (x : String) :
+    avoidsPro (@MEqRed.var Γ s y hpv) x = true := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_fun_ {Γ t t' body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (x : String) :
+    avoidsPro (MEqRed.fun_ L ht hbody) x =
+      (avoidsPro ht x && avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_tAp {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    avoidsPro (MEqRed.tAp hpv hLCu hfvu) x = true := by
+  unfold avoidsPro; rfl
+
+@[simp] theorem avoidsPro_fOp {Γ s t t' α body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (x : String) :
+    avoidsPro (MEqRed.fOp L ht hbody) x =
+      (avoidsPro ht x && avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
+  unfold avoidsPro; rfl
+
 /-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
 
 Mirror of `avoidsPro` for the subtype-reduction relation. `msAvoidsPro h x
