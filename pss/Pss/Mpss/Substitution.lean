@@ -840,7 +840,48 @@ ruling out this arm via well-typing.
 Statement: if the only way to fire `Ms-Pro` for `x` is to look up the
 specific `.sub` head binding, then after substituting `α` for `x`, the
 "reduction" `x ⟶^≤ t` becomes the trivial `α ⟶^≤ t[x\α]`, which holds
-by reflexivity-then-subtype-step composition. -/
+by reflexivity-then-subtype-step composition.
+
+## Status (2026-04-29)
+
+Commit `172b6b6` introduced `Lemma_30_msPro_x` (in `AvoidsPro.lean`):
+a leaf-level theorem that takes an `msAvoidsPro h x = true` witness on
+the `pro` derivation and discharges the residual obligation by
+`False.elim` (the witness immediately contradicts `y = x`).
+
+Wiring `Lemma_30_msPro_x` here in place of `Lemma_30_msPro_x_axiom`
+requires threading an `msAvoidsPro h x = true` premise through the
+WHOLE `Lemma_30_ReductionUnderSubst_Sub` proof (not just the leaf):
+
+* The axiom is invoked at the `pro y = x` arm of the induction on
+  `h : MSubRed (...) st u v`. To replace it with `Lemma_30_msPro_x`,
+  the leaf needs the `msAvoidsPro` witness on the SPECIFIC `MSubRed.pro
+  hpv hsb` step in scope. That witness must come from a top-level
+  `havoid : msAvoidsPro h x = true` premise added to the function.
+* The `app` arm requires `msAvoidsPro hu x = true` on the operator
+  derivation (immediately discharged by `msAvoidsPro_app`).
+* The cofinite arms (`fun_`, `fOp`) need to thread the avoidance
+  through to the body IH at an arbitrary fresh `y ∉ L`. The current
+  `msAvoidsPro` definition reduces the cofinite cases by sampling
+  `pickFresh L` (a single canonical fresh name); to recover the
+  avoidance witness at an arbitrary `y ∉ L`, an alpha-equivariance
+  lemma `msAvoidsPro (hbody y₁ _) x = msAvoidsPro (hbody y₂ _) x` is
+  needed. That is the residual work to fully replace the axiom here.
+
+The blocker for **removing the axiom from Theorem 5's dep list** is
+NOT the leaf discharge — `Lemma_30_msPro_x` already exists. The blocker
+is the SOLE caller `Pss.Mpss.TypeSafety._S_lf2` (in `Lemma_7_*`'s
+`WSubM.lf2` arm), which calls `Lemma_30_ReductionUnderSubst_Sub hred
+hok` without an avoidance witness. Adding the `havoid` premise here
+breaks that call site; the call site cannot independently produce an
+`msAvoidsPro hred xout = true` because the `WSubM.lf2` constructor
+carries no such side condition. The fix has to land in TypeSafety
+(propagating the avoidance through the `_S_motive_sub` motive) before
+the axiom can be removed here.
+
+For the present revision the axiom remains; `Lemma_30_msPro_x`
+documents the exact leaf-level discharge that becomes available once
+the avoidance premise is threaded. -/
 axiom Lemma_30_msPro_x_axiom
     {Γ₁ Γ₂ : Ctx} {st : Stack} (x : String) {s : Term} (t : Term)
     (hok : SubstOk Γ₁ s)
