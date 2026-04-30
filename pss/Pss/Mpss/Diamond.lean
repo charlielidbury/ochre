@@ -613,6 +613,26 @@ private theorem avoidsPro_NarrowingMEqRed
     avoidsPro (Lemma_25_NarrowingMEqRed h hLCt hfvt) w = avoidsPro h w :=
   avoidsPro_NarrowingMEqRed_aux hLCt hfvt w h Γ₂ rfl
 
+/-! #### Avoidance preservation for `MEqRed.rename_sub` and
+`MEqRed.rename_equ_no_fv` — required but not yet implemented.
+
+Following the same `rfl`-via-tactic-mode-induction pattern that worked
+for `avoidsPro_NarrowingMEqRed`. The PROBLEM: `MEqRed.rename_sub`
+wraps the private `MEqRed.subst_yz_sub_head` with several `rw`-induced
+transport `cast`s (to convert `Ctx.subst y (.fvar z) ([] : Ctx) ++ ...`
+to the simplified form, etc.). These transports break the `rfl` proof
+for the `y ≠ z` subcase.
+
+To bypass: re-prove `subst_yz_sub_head`'s avoidance preservation
+inline in this file (mirroring the structure from Renaming.lean). The
+`subst_yz_sub_head` function is `private` to Renaming.lean, so we can't
+reference it directly — we must reconstruct its body. ~150 lines of
+mirror code, doable but out of scope for the current commit.
+
+The same applies to the local `MEqRed.rename_equ_no_fv` (in this file)
+which similarly wraps `MEqRed.rename_equ_loc` with transport `cast`s. -/
+
+
 /-- Inline residual (DISCHARGED): both derivations are `Me-Fun`. Cofinite
 body-IH at a fresh name, plus annotation-IH.
 
