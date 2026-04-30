@@ -89,6 +89,65 @@ for the term-size-bounded discharge of the App × Bet, Bet × * arms,
 but that discharge requires changing `_core`'s induction scheme to
 term-size induction with `avoidsPro` as the bounding measure — a
 non-trivial refactor scheduled separately.
+
+## Discharge attempt (this session, 2026-04-29) — moreover-clause threading blocker
+
+Threading the paper's "moreover" clause (avoidance of Me-Pro on `x`
+through both closing derivations) is necessary to discharge the
+β-step residuals using term-size induction. The plan was to give
+`_core` the signature
+
+```
+Σ' (t₃ : Term) (h₁' : MEqRed Γ s t₁ t₃) (h₂' : MEqRed Γ s t₂ t₃),
+  ∀ x : String,
+    (avoidsPro h₁ x = true → avoidsPro h₂' x = true) ∧
+    (avoidsPro h₂ x = true → avoidsPro h₁' x = true)
+```
+
+Per-constructor `avoidsPro_*` simp lemmas were added to
+`Pss.Mpss.AvoidsPro` (see `avoidsPro_pro`/`_bet`/`_top`/`_app`/`_var`/
+`_fun_`/`_tAp`/`_fOp`) precisely to support this threading. They unfold
+`avoidsPro` constructor-by-constructor without manual recursor unfolds.
+
+**The blocker:** `_core`'s `var × pro` arm closes the diagram with
+`MEqRed.refl hpv hLCα' hfvα' : MEqRed Γ s α' α'` on the right edge,
+where `α'` is the destination of the `pro`'s inner reduction. To prove
+the moreover clause we need `avoidsPro (MEqRed.refl hpv hLCα' hfvα') x =
+true` for all `x`, but `MEqRed.refl` is built via `Classical.choice` on
+top of `MEqRed.refl_J : MEqRedJ Γ s α' α'` (a `Nonempty`-wrapped
+derivation). The `.some` extraction is opaque: we cannot observe which
+constructor tree `Classical.choice` returned, hence `avoidsPro` of a
+`refl`-built derivation is not provably `true` in Lean.
+
+The same blocker hits any cell where the closing edge is a refl
+(symmetric `pro × var`, the `MEqRed.tAp` discharger, etc.).
+
+**Three resolution paths, none ready in this session:**
+
+1. **Type-valued `Term.LC`.** Lifts `LC` from `Prop` to `Type`, making
+   `MEqRed.refl_J` itself Type-valued and therefore observably built
+   from `MEqRed` constructors (no `Classical.choice`). Then `avoidsPro`
+   can be computed structurally on the refl-derivation. This is a
+   massive cross-codebase refactor — `Term.LC` appears in dozens of
+   theorem statements and proofs across `Pss/Syntax`, `Pss/Mpss`, etc.
+
+2. **Source-driven refl construction.** Replace `MEqRed.refl hpv hLC hfv`
+   with a construction that takes a witness `MEqRed Γ s α α'` and
+   returns BOTH the refl and a proof of `avoidsPro = true` at once,
+   via Type-induction on the source derivation. Doable but ~200 lines
+   of mirror-recursion that mostly duplicates `MEqRed.refl_J`'s tree.
+
+3. **`avoidsPro_refl` as a single new axiom.** One-line axiom
+   `avoidsPro (MEqRed.refl _ _ _) x = true`, morally true (refl uses
+   only top/var/app/fun_/fOp constructors, all of which trivially avoid
+   Pro). Violates this session's "no new axioms" constraint, but would
+   unblock the entire threading in ~30 lines of additional code on top
+   of the simp lemmas already committed.
+
+**What WAS shipped this session:** Per-constructor `avoidsPro_*` simp
+lemmas in `Pss/Mpss/AvoidsPro.lean` (commit `3d08efd`). These are the
+foundation for any of the three paths above; they let downstream proofs
+unfold `avoidsPro` on a constructor-shaped derivation by `simp` alone.
 -/
 
 namespace Pss
