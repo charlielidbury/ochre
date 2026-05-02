@@ -17,6 +17,56 @@ induction scheme to a lex measure on `(Term.size t₀, avoidsPro-count)`
 — a separate, multi-day refactor. The Type-LC refactor was the
 prerequisite for that work but does not by itself complete it.
 
+### Discharge plan for the β-residuals (post-Type-LC, next-session targets)
+
+The β-residuals have a single shared blocker: `_core`'s `induction h₁`
+fixes the IHs at the source-derivation's stack, which prevents the
+App×App and β-step arms from cleanly closing across stack-head shifts
+and term-substitutions. Concrete plan:
+
+1. **`MEqRed.equ_head_replace` (new lemma).** Given `MEqRed (⟨y, α,
+   .equ⟩ :: Γ) s u u'`, `MEqRed Γ [] α α'`, AND `avoidsPro h y = true`,
+   produce `MEqRed (⟨y, α', .equ⟩ :: Γ) s u u'`. Structural recursion;
+   `Me-Pro` arm is the discharge site for the `avoidsPro` premise (when
+   `Me-Pro` looks up `equBinds y α`, the avoidsPro witness rules out
+   `y = name-being-promoted`). With `avoidsPro_refl` now a real
+   theorem, the closing tree's `MEqRed.refl` invocations satisfy
+   `avoidsPro = true` automatically. Estimated ~150-200 lines.
+
+2. **`MEqRed.stack_head_replace` (new lemma).** Given
+   `MEqRed Γ (α :: s) u u'` and `MEqRed Γ [] α α'`, produce
+   `MEqRed Γ (α' :: s) u u'`. Structural recursion; the `fOp` arm
+   reduces to `MEqRed.equ_head_replace` (item 1) since the body's
+   `.equ` head is `α`. Estimated ~100 lines on top of item 1.
+
+3. **`Lemma_2_DiamondMEqRed_ctx_axiom` (single-step Ct-Stk discharge).**
+   With items 1 and 2, the App×App `_inline_app` arm's use of
+   `_ctx_axiom` (which is exactly a single Ct-Stk step) becomes
+   directly provable: apply `MEqRed.stack_head_replace` to lift
+   `hu'_w` and `hu₂_w` from stack `(v::s)` to stacks `(v'::s)` and
+   `(v₂::s)` respectively. Eliminates `_ctx_axiom` from `_core`'s
+   closure, which removes it from Theorems 3, 4, Lemma 1 / 2 closures.
+
+4. **β-residual axioms (#6, #9, #10).** Threading the moreover-clause
+   through `_core`'s App×App, App×Bet, Bet×* arms requires
+   restructuring `_core` to either (a) thread an `avoidsPro` premise
+   through every constructor case, OR (b) compute the moreover-clause
+   as a separate property of `_core`'s output via a second induction.
+   Path (b) is cleaner but requires items 1-3 to be in place first
+   (the closing arms of `_core` invoke `MEqRed.refl`, whose `avoidsPro`
+   is now `true` thanks to `avoidsPro_refl`). Estimated ~500-1000
+   lines combined.
+
+5. **`Lemma_1_inline_app_bet_residual` (#7) and `Lemma_1_ctx_axiom`
+   (#6).** Mirror of the Lemma 2 work for the strong-commutativity
+   diagram. Same approach with MSubRed in place of one of the MEqRed.
+
+The `_inline_app`'s App×App use of `_ctx_axiom` is the single highest-
+leverage target: discharging it (via items 1-3) eliminates
+`_ctx_axiom` from ALL headline theorem closures (it remains only in
+the explicit `Lemma_2_DiamondMEqRed_general` form which is paper-API
+boilerplate, not a headline).
+
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
 > "Inactive" = no headline theorem depends on it; retained for

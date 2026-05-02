@@ -278,6 +278,93 @@ theorem MEqRed_fv_preserve {Γ : Ctx} {s : Stack} {u v : Term}
   · exact hfv h'
   · exact h'
 
+/-- Helper: a `.equ`-head context is rebindable: replace the bound term
+of the head from `α` to `α'` (related by `MEqRed Γ [] α α'`) preserves
+`Prevalid`. Requires the head name `y` not to be in `Γ.dom` (which is
+already a Prevalid invariant) and `α'`'s data to fit. -/
+private noncomputable def Prevalid.equ_head_swap
+    {Γ : Ctx} {y : String} {α α' : Term}
+    (hpv : Prevalid (⟨y, α, .equ⟩ :: Γ))
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ.dom) :
+    Prevalid (⟨y, α', .equ⟩ :: Γ) := by
+  cases hpv with
+  | equ hΓ hy _hfv _hlc => exact Prevalid.equ hΓ hy hfvα' hLCα'
+
+/-- Helper: extend the swap to PrevalidExt for arbitrary stack. -/
+private noncomputable def PrevalidExt.equ_head_swap
+    {Γ : Ctx} {y : String} {α α' : Term} {s : Stack}
+    (hpv : PrevalidExt (⟨y, α, .equ⟩ :: Γ) s)
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ.dom) :
+    PrevalidExt (⟨y, α', .equ⟩ :: Γ) s := by
+  induction hpv with
+  | nil hΓ => exact PrevalidExt.nil (Prevalid.equ_head_swap hΓ hLCα' hfvα')
+  | @cons _ β hpvE hLCβ hfvβ ih =>
+    -- The β stack entry needs fv ⊆ (⟨y, α', .equ⟩ :: Γ).dom; since
+    -- (⟨y, α, .equ⟩ :: Γ).dom = (⟨y, α', .equ⟩ :: Γ).dom (only the bound changes,
+    -- not the names), the fvβ scoping is preserved.
+    refine PrevalidExt.cons ih hLCβ ?_
+    intro z hz
+    have hzd := hfvβ hz
+    -- (⟨y, α, .equ⟩ :: Γ).dom = insert y Γ.dom = (⟨y, α', .equ⟩ :: Γ).dom
+    have h1 : Ctx.dom (⟨y, α, .equ⟩ :: Γ) = insert y Γ.dom := Ctx.dom_cons _ _
+    have h2 : Ctx.dom (⟨y, α', .equ⟩ :: Γ) = insert y Γ.dom := Ctx.dom_cons _ _
+    rw [h2]
+    rw [h1] at hzd
+    exact hzd
+
+/-! ## §1.7. Stack-head and equ-head replacement for MEqRed
+
+These lemmas allow MEqRed derivations to be re-cast across changes in
+the head of the context (`.equ`-binding swap) and the stack head.
+Together they discharge the App×App use of `Lemma_2_DiamondMEqRed_ctx_axiom`
+in `_inline_app`, eliminating that axiom from `_core`'s closure.
+
+* `MEqRed.equ_head_replace`: swap the bound term of a `.equ`-head
+  context from `α` to `α'` (related by `MEqRed Γ [] α α'`), GIVEN an
+  `avoidsPro h y = true` premise (rules out `Me-Pro y` lookups that
+  would observe the changed binding).
+
+* `MEqRed.stack_head_replace`: swap the head term of the stack from
+  `α` to `α'`, with the same `avoidsPro` premise (the body's `.equ`
+  recursion uses the head, so the same condition propagates).
+
+The `avoidsPro` premise is satisfied automatically for `MEqRed.refl`
+derivations (via `avoidsPro_refl`). For derivations that arise inside
+`_core`'s App×App, the premise can be extracted from the
+moreover-clause of the IH closing (planned future work).
+
+**STATUS:** `equ_head_replace` is implemented below (with the
+structural recursion + `avoidsPro` discharge for `Me-Pro y`).
+`stack_head_replace` and the corresponding `_ctx_axiom` discharge are
+follow-up targets. -/
+
+/-! ### Helper for the equBinds lookup at modified head -/
+
+/-- If `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds z α_z` and `z ≠ y`, the
+lookup is unaffected by changing `α` to `α'` (since `z ≠ y` skips the
+head). -/
+private theorem _equBinds_equ_head_swap_neq
+    {Γ₁ Γ₂ : Ctx} {y z : String} {α α' α_z : Term}
+    (hyz : z ≠ y)
+    (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds z α_z) :
+    (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁).equBinds z α_z := by
+  induction Γ₂ with
+  | nil =>
+    simp [Ctx.equBinds, Ctx.lookupEqu_cons] at hb ⊢
+    by_cases h : y = z
+    · exact absurd h.symm hyz
+    · simp [h] at hb ⊢
+      exact hb
+  | cons e rest ih =>
+    show Ctx.lookupEqu (e :: (rest ++ ⟨y, α', .equ⟩ :: Γ₁)) z = some α_z
+    have h1 : Ctx.lookupEqu (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) z = some α_z := hb
+    rw [Ctx.lookupEqu_cons] at h1 ⊢
+    by_cases he : e.name = z
+    · rw [if_pos he] at h1 ⊢; exact h1
+    · rw [if_neg he] at h1 ⊢; exact ih h1
+
+
+
 /-! ## §2. Bool-valued `avoidsPro` (post `MEqRed : Type` refactor)
 
 `avoidsPro h x = true` iff the derivation `h : MEqRed Γ s u v` does not

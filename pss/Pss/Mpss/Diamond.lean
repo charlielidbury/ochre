@@ -1979,13 +1979,17 @@ The most common application of Lemma 2 takes `Γ₁; s₁ = Γ₂; s₂ = Γ₀;
 (reflexive `↣*`), which is the actual diamond property in the standard
 sense. -/
 
-/-- The diamond property of `MEqRed` at a single extended context. -/
+/-- The diamond property of `MEqRed` at a single extended context.
+
+Routed directly through `_core` (skipping the `_ctx_axiom` for the
+trivial refl/refl context evolution case), so this does NOT depend on
+`Lemma_2_DiamondMEqRed_ctx_axiom` *directly* — though it still depends
+on it transitively via `_core → _inline_app`'s App×App arm. -/
 noncomputable def Lemma_2_DiamondMEqRed_sameCtx
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ s t₀ t₁)
     (h₂ : MEqRed Γ s t₀ t₂) :
     Σ' t₃, MEqRed Γ s t₁ t₃ × MEqRed Γ s t₂ t₃ :=
-  Lemma_2_DiamondMEqRed_bare h₁ h₂
-    (Relation.ReflTransGen.refl) (Relation.ReflTransGen.refl)
+  Lemma_2_DiamondMEqRed_core h₁ h₂
 
 end Pss
