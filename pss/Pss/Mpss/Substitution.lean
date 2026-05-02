@@ -200,18 +200,40 @@ noncomputable def Lemma_28_SubstPreservesPrevalid
 
 /-! ## §7. Reflexivity of `MEqRed` (Proposition 18, partial) -/
 
+/-- Helper: extend a `PrevalidExt Γ st` with an `.equ` head binding, given
+the head's data. Used in `MEqRed.refl`'s `fOp` arm to thread the body's
+stack-valid PrevalidExt under the new head binding. -/
+private noncomputable def _PrevalidExt_extend_equ {Γ : Ctx} (y : String) (α : Term)
+    (hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ))
+    {st : Stack} (hst : PrevalidExt Γ st) :
+    PrevalidExt (⟨y, α, .equ⟩ :: Γ) st := by
+  induction hst with
+  | nil _ => exact PrevalidExt.nil hpvy
+  | @cons _ β hpvE hLCβ hfvβ ih =>
+    refine PrevalidExt.cons ih hLCβ ?_
+    intro z hz
+    have hzΓ : z ∈ Γ.dom := hfvβ hz
+    have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
+        insert y Γ.dom := Ctx.dom_cons _ _
+    show z ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ)
+    rw [hdom_eq]
+    exact Finset.mem_insert_of_mem hzΓ
+
 /-- **Proposition 18 (MEqRed half).** Reflexivity of MPSS equivalence reduction.
 
-Returns `MEqRedJ` (Prop-wrapped) since the proof inducts on the
-Prop-valued `Term.LC u` predicate, which cannot eliminate into a
-Type-valued conclusion. Callers that need the bare Type-valued
-derivation can use `(MEqRed.refl …).some`. -/
-theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
+**Post-Type-LC refactor (Option B):** This is now a direct
+`Type`-valued recursion on `Term.LC u`. Previously this was
+`MEqRed.refl_J : MEqRedJ Γ st u u` (Prop) extracted via
+`Classical.choice` to produce `MEqRed.refl`; the indirection
+existed because `Term.LC : Prop` could not eliminate into the
+`Type`-valued `MEqRed`. With `Term.LC : Type` the recursion is
+direct. -/
+noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
     (hpv : PrevalidExt Γ st) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
-    MEqRedJ Γ st u u := by
+    MEqRed Γ st u u := by
   induction hLC generalizing st Γ with
-  | top => exact ⟨MEqRed.top hpv⟩
-  | fvar x => exact ⟨MEqRed.var hpv⟩
+  | top => exact MEqRed.top hpv
+  | fvar x => exact MEqRed.var hpv
   | @app a b hLCa hLCb iha ihb =>
     have hfa : Term.fv a ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inl hz)
@@ -219,23 +241,18 @@ theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
     have hpvb : PrevalidExt Γ (b :: st) := PrevalidExt.cons hpv hLCb hfb
     have hpvnil : PrevalidExt Γ [] := PrevalidExt.nil (extractPrevalid hpv)
-    obtain ⟨ha⟩ := iha hpvb hfa
-    obtain ⟨hb⟩ := ihb hpvnil hfb
-    exact ⟨MEqRed.app ha hb⟩
+    exact MEqRed.app (iha hpvb hfa) (ihb hpvnil hfb)
   | @abs L bound body hLCbound hbody ihbound ihbody =>
     have hpvnil : PrevalidExt Γ [] := PrevalidExt.nil (extractPrevalid hpv)
     have hfb : Term.fv bound ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inl hz)
     have hfbody : Term.fv body ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
-    obtain ⟨hb_refl⟩ : MEqRedJ Γ [] bound bound := ihbound hpvnil hfb
+    have hb_refl : MEqRed Γ [] bound bound := ihbound hpvnil hfb
     cases st with
     | nil =>
-      classical
-      -- Build the cofinite witness: at each fresh `y`, get a Type-level
-      -- MEqRed for the opened body. We collect via Classical.choice.
       have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
-          Nonempty (MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y])) := by
+          MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y]) := by
         intro y hy
         have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
         have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
@@ -259,39 +276,19 @@ theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
             rw [hdom_eq]
             exact Finset.mem_insert_self _ _
         exact ihbody y hyL hpvey hfvy
-      have hbody_choice : ∀ y, y ∉ (L ∪ Γ.dom) →
-          MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y]) :=
-        fun y hy => (hbody_each y hy).some
-      exact ⟨MEqRed.fun_ (L ∪ Γ.dom) hb_refl hbody_choice⟩
+      exact MEqRed.fun_ (L ∪ Γ.dom) hb_refl hbody_each
     | cons α tail =>
       cases hpv with
       | cons hpvr hLCα hfvα =>
-        classical
-        have hpvey_aux : ∀ {st : Stack} (y : String) (_hyΓ : y ∉ Γ.dom),
-            PrevalidExt Γ st →
-            Prevalid (⟨y, α, .equ⟩ :: Γ) →
-            PrevalidExt (⟨y, α, .equ⟩ :: Γ) st := by
-          intro st y _hyΓ hst hpvy
-          induction hst with
-          | nil _ => exact PrevalidExt.nil hpvy
-          | @cons _ β hpvE hLCβ hfvβ ih =>
-            refine PrevalidExt.cons ih hLCβ ?_
-            intro z hz
-            have hzΓ : z ∈ Γ.dom := hfvβ hz
-            have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
-                insert y Γ.dom := Ctx.dom_cons _ _
-            show z ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ)
-            rw [hdom_eq]
-            exact Finset.mem_insert_of_mem hzΓ
         have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
-            Nonempty (MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y])) := by
+            MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y]) := by
           intro y hy
           have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
           have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
           have hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ) :=
             Prevalid.equ (extractPrevalid hpvr) hyΓ hfvα hLCα
           have hpvey : PrevalidExt (⟨y, α, .equ⟩ :: Γ) tail :=
-            hpvey_aux y hyΓ hpvr hpvy
+            _PrevalidExt_extend_equ y α hpvy hpvr
           have hfvy : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, α, .equ⟩ :: Γ) := by
             intro z hz
             have hsub := Term.fv_open_subset 0 (.fvar y) body
@@ -309,17 +306,15 @@ theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
               rw [hdom_eq]
               exact Finset.mem_insert_self _ _
           exact ihbody y hyL hpvey hfvy
-        have hbody_choice : ∀ y, y ∉ (L ∪ Γ.dom) →
-            MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y]) :=
-          fun y hy => (hbody_each y hy).some
-        exact ⟨MEqRed.fOp (L ∪ Γ.dom) hb_refl hbody_choice⟩
+        exact MEqRed.fOp (L ∪ Γ.dom) hb_refl hbody_each
 
-/-- Type-valued accessor for `MEqRed.refl_J`. Uses choice to extract the
-underlying derivation tree from the `Nonempty`-wrapped result. -/
-noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
+/-- Backwards-compatibility alias: the `_J` form is `Nonempty (MEqRed _ _ _ _)`,
+which equals `MEqRedJ`. Post-Type-LC refactor `MEqRed.refl` is the
+primary form. -/
+theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
     (hpv : PrevalidExt Γ st) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
-    MEqRed Γ st u u :=
-  (MEqRed.refl_J hpv hLC hfv).some
+    MEqRedJ Γ st u u :=
+  ⟨MEqRed.refl hpv hLC hfv⟩
 
 /-! ## §8. Helper lemmas for Lemma 31 -/
 

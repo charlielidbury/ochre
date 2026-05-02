@@ -444,30 +444,41 @@ even though Lean's kernel cannot verify this directly because
 
 /-- `MEqRed.refl _ _ _` always has `avoidsPro = true` for any `x`.
 
-Structurally true: `MEqRed.refl_J`'s definition (in
-`Pss.Mpss.Substitution`) by induction on `Term.LC` only ever invokes
-the `top`/`var`/`app`/`fun_`/`fOp` constructors of `MEqRed`, none of
-which is `Me-Pro`. The axiom exists because `MEqRed.refl_J` returns a
-`MEqRedJ = Nonempty (MEqRed _ _ _ _)`, and `MEqRed.refl` extracts via
-`.some`. `Classical.choice` makes the resulting `MEqRed` constructor
-tree opaque to the kernel.
+**Post-Type-LC refactor (Option B): now a theorem.**
+With `Term.LC : Type`, `MEqRed.refl` is built by direct structural
+recursion on the LC witness (no `Classical.choice` extraction). The
+recursion only ever invokes `top`/`var`/`app`/`fun_`/`fOp` —
+constructors that have `avoidsPro = true` for any `x` — so the result
+follows by mirror-induction on the same LC witness.
 
-This is the **single new axiom** added in service of the moreover-clause
-threading. It would, if consumed, replace the 2 β-step residual axioms
-(`Lemma_2_inline_app_bet_residual_axiom`,
-`Lemma_2_inline_bet_residual_axiom`) and arguably also unlock
-`Lemma_2_DiamondMEqRed_ctx_axiom` and Lemma 1's residual — net axiom
-reduction.
-
-**Status (post-Wave-7):** INACTIVE. Not yet wired into the β-residual
-discharge sites; therefore not in any headline theorem's `#print
-axioms` closure. Listed in `AXIOMS.md` as INACTIVE outstanding
-axiom #12. -/
-axiom avoidsPro_refl
+The proof uses `MEqRed.refl.eq_def` (the equation compiler's defining
+equations) to unfold the recursion at each constructor, then applies
+the per-constructor `avoidsPro_*` `simp` lemmas. -/
+theorem avoidsPro_refl
     {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom)
     (x : String) :
-    avoidsPro (MEqRed.refl hpv hLC hfv) x = true
+    avoidsPro (MEqRed.refl hpv hLC hfv) x = true := by
+  induction hLC generalizing s Γ with
+  | top =>
+    simp only [MEqRed.refl, avoidsPro_top]
+  | fvar y =>
+    simp only [MEqRed.refl, avoidsPro_var]
+  | @app a b hLCa hLCb iha ihb =>
+    simp only [MEqRed.refl, avoidsPro_app, Bool.and_eq_true]
+    refine ⟨iha _ _, ihb _ _⟩
+  | @abs L bound body hLCbound hbody ihbound ihbody =>
+    cases s with
+    | nil =>
+      simp only [MEqRed.refl, avoidsPro_fun_, Bool.and_eq_true]
+      refine ⟨ihbound _ _, ?_⟩
+      exact ihbody _ _ _ _
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        simp only [MEqRed.refl, avoidsPro_fOp, Bool.and_eq_true]
+        refine ⟨ihbound _ _, ?_⟩
+        exact ihbody _ _ _ _
 
 /-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
 
