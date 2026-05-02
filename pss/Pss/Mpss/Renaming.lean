@@ -101,7 +101,7 @@ The proof mirrors `subst_yz_equ_head` (§3) but for `.sub` head:
 Constructs prevalidity of the doubled context first, then substitutes
 `y → fvar z` (which is `SubstOk` because `z` is now in scope as the
 new head). -/
-private theorem prevalid_rename_sub_head
+private noncomputable def prevalid_rename_sub_head
     {Γ₂ Γ₁ : Ctx} {y z : String} {t : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)
@@ -204,7 +204,7 @@ private theorem prevalid_rename_sub_head
     exact Lemma_28a_SubstPreservesPrevalid_kind hpv_doubled hok
 
 /-- Helper: build `PrevalidExt` of the renamed context with stack also renamed. -/
-private theorem prevalidExt_rename_sub_head
+private noncomputable def prevalidExt_rename_sub_head
     {Γ₂ Γ₁ : Ctx} {st : Stack} {y z : String} {t : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)

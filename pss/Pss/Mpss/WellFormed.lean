@@ -42,8 +42,11 @@ namespace Pss
 mutual
 
 /-- MPSS term well-formedness `Γ ⊢ t wf`. Pasquale & García-Pérez 2024,
-Figure 4. -/
-inductive WfM : Ctx → Term → Prop where
+Figure 4.
+
+`Type`-valued (post-Type-LC refactor): the constructors carry `Prevalid`
+witnesses (also Type-valued), so `WfM` lifts naturally. -/
+inductive WfM : Ctx → Term → Type where
   /-- **Wf-PrS**: a variable bound by `≤` is well-formed. -/
   | varSub {Γ : Ctx} {x : String} {t : Term} :
       Prevalid Γ → Γ.subBinds x t → WfM Γ (.fvar x)
@@ -66,8 +69,10 @@ inductive WfM : Ctx → Term → Prop where
       WfM Γ (.app u v)
 
 /-- MPSS well-subtyping `Γ ⊢ u ≤_wf t`. Pasquale & García-Pérez 2024,
-Figure 4 (Ws-Rfl, Ws-Lf1, Ws-Lf2, Ws-Rgh). -/
-inductive WSubM : Ctx → Term → Term → Prop where
+Figure 4 (Ws-Rfl, Ws-Lf1, Ws-Lf2, Ws-Rgh).
+
+`Type`-valued (post-Type-LC refactor). -/
+inductive WSubM : Ctx → Term → Term → Type where
   /-- **Ws-Rfl**: reflexivity. We attach `WfM Γ t` to recover the
   paper's "Γ prevalid" antecedent. -/
   | rfl {Γ : Ctx} {t : Term} :
@@ -92,8 +97,10 @@ inductive WSubM : Ctx → Term → Term → Prop where
       WSubM Γ v t
 
 /-- MPSS transitive well-subtyping `Γ ⊢ v ≤*_wf t`. Pasquale &
-García-Pérez 2024, Figure 4 (Ws-Sub, Ws-Trs). -/
-inductive WSubMStar : Ctx → Term → Term → Prop where
+García-Pérez 2024, Figure 4 (Ws-Sub, Ws-Trs).
+
+`Type`-valued (post-Type-LC refactor). -/
+inductive WSubMStar : Ctx → Term → Term → Type where
   /-- **Ws-Sub**: a single well-subtyping step is transitive. -/
   | sub {Γ : Ctx} {v t : Term} :
       WfM Γ v → WSubM Γ v t → WfM Γ t →
@@ -113,8 +120,10 @@ end
 
 /-! ## §3. Reflexivity helper -/
 
-/-- Reflexivity at any well-formed term. -/
-theorem WSubMStar.refl_of_wfM {Γ : Ctx} {t : Term} (h : WfM Γ t) :
+/-- Reflexivity at any well-formed term.
+
+`def` (since `WSubMStar : Type` post-Type-LC refactor). -/
+def WSubMStar.refl_of_wfM {Γ : Ctx} {t : Term} (h : WfM Γ t) :
     WSubMStar Γ t t :=
   WSubMStar.sub h (WSubM.rfl h) h
 
@@ -126,34 +135,36 @@ using `WfM.rec`. Lean's mutual recursor takes one motive per inductive in
 the block. -/
 
 /-- Combined LC payload for the three mutual predicates. We use a unified
-motive on each of the three so the recursor can be applied uniformly. -/
-private def _LC_motive_wf : (Γ : Ctx) → (t : Term) → WfM Γ t → Prop :=
+motive on each of the three so the recursor can be applied uniformly.
+
+`Type`-valued motives (post-Type-LC refactor): `Term.LC` itself is `Type`. -/
+private def _LC_motive_wf : (Γ : Ctx) → (t : Term) → WfM Γ t → Type :=
   fun _ t _ => Term.LC t
 
-private def _LC_motive_sub : (Γ : Ctx) → (v t : Term) → WSubM Γ v t → Prop :=
-  fun _ v t _ => Term.LC v ∧ Term.LC t
+private def _LC_motive_sub : (Γ : Ctx) → (v t : Term) → WSubM Γ v t → Type :=
+  fun _ v t _ => PProd (Term.LC v) (Term.LC t)
 
-private def _LC_motive_star : (Γ : Ctx) → (v t : Term) → WSubMStar Γ v t → Prop :=
-  fun _ v t _ => Term.LC v ∧ Term.LC t
+private def _LC_motive_star : (Γ : Ctx) → (v t : Term) → WSubMStar Γ v t → Type :=
+  fun _ v t _ => PProd (Term.LC v) (Term.LC t)
 
 /-- The 12 case payloads for the LC mutual recursor. We reuse them across
 the three induction principles. -/
 
-private theorem _LC_varSub : ∀ {Γ : Ctx} {x : String} {t : Term}
+private def _LC_varSub : ∀ {Γ : Ctx} {x : String} {t : Term}
     (hpv : Prevalid Γ) (hb : Γ.subBinds x t),
     _LC_motive_wf Γ (.fvar x) (WfM.varSub hpv hb) :=
   fun _ _ => Term.LC.fvar _
 
-private theorem _LC_varEqu : ∀ {Γ : Ctx} {x : String} {α : Term}
+private def _LC_varEqu : ∀ {Γ : Ctx} {x : String} {α : Term}
     (hpv : Prevalid Γ) (hb : Γ.equBinds x α),
     _LC_motive_wf Γ (.fvar x) (WfM.varEqu hpv hb) :=
   fun _ _ => Term.LC.fvar _
 
-private theorem _LC_top : ∀ {Γ : Ctx} (hpv : Prevalid Γ),
+private def _LC_top : ∀ {Γ : Ctx} (hpv : Prevalid Γ),
     _LC_motive_wf Γ .top (WfM.top hpv) :=
   fun _ => Term.LC.top
 
-private theorem _LC_fun : ∀ {Γ : Ctx} {t u : Term} (L : Finset String)
+private def _LC_fun : ∀ {Γ : Ctx} {t u : Term} (L : Finset String)
     (hT : WfM Γ t)
     (hB : ∀ x, x ∉ L → WfM (⟨x, t, .sub⟩ :: Γ) (Term.opening (.fvar x) u))
     (ihT : Term.LC t)
@@ -161,54 +172,55 @@ private theorem _LC_fun : ∀ {Γ : Ctx} {t u : Term} (L : Finset String)
     _LC_motive_wf Γ (.abs t u) (WfM.fun_ L hT hB) :=
   fun L _ _ ihT ihB => Term.LC.abs L ihT ihB
 
-private theorem _LC_app : ∀ {Γ : Ctx} {u v t : Term}
+private def _LC_app : ∀ {Γ : Ctx} {u v t : Term}
     (hStarU : WSubMStar Γ u (.abs t .top))
     (hStarV : WSubMStar Γ v t)
-    (ihU : Term.LC u ∧ Term.LC (.abs t .top))
-    (ihV : Term.LC v ∧ Term.LC t),
+    (ihU : PProd (Term.LC u) (Term.LC (.abs t .top)))
+    (ihV : PProd (Term.LC v) (Term.LC t)),
     _LC_motive_wf Γ (.app u v) (WfM.app hStarU hStarV) :=
   fun _ _ ihU ihV => Term.LC.app ihU.1 ihV.1
 
-private theorem _LC_rfl : ∀ {Γ : Ctx} {t : Term} (hwf : WfM Γ t)
+private def _LC_rfl : ∀ {Γ : Ctx} {t : Term} (hwf : WfM Γ t)
     (ihwf : Term.LC t),
     _LC_motive_sub Γ t t (WSubM.rfl hwf) :=
   fun _ ihwf => ⟨ihwf, ihwf⟩
 
-private theorem _LC_lf1 : ∀ {Γ : Ctx} {v v' t : Term}
+private noncomputable def _LC_lf1 : ∀ {Γ : Ctx} {v v' t : Term}
     (hred : MEqRed Γ [] v v')
     (hsub : WSubM Γ v' t)
-    (ih : Term.LC v' ∧ Term.LC t),
+    (ih : PProd (Term.LC v') (Term.LC t)),
     _LC_motive_sub Γ v t (WSubM.lf1 hred hsub) :=
   fun hred _ ih => ⟨MEqRed.lc_left hred, ih.2⟩
 
-private theorem _LC_lf2 : ∀ {Γ : Ctx} {v v' t : Term}
+private def _LC_lf2 : ∀ {Γ : Ctx} {v v' t : Term}
     (hwfV : WfM Γ v) (hred : MSubRed Γ [] v v')
     (hwfV' : WfM Γ v') (hsub : WSubM Γ v' t)
-    (ihwfV : Term.LC v) (ihwfV' : Term.LC v') (ih : Term.LC v' ∧ Term.LC t),
+    (ihwfV : Term.LC v) (ihwfV' : Term.LC v')
+    (ih : PProd (Term.LC v') (Term.LC t)),
     _LC_motive_sub Γ v t (WSubM.lf2 hwfV hred hwfV' hsub) :=
   fun _ _ _ _ ihwfV _ ih => ⟨ihwfV, ih.2⟩
 
-private theorem _LC_rgh : ∀ {Γ : Ctx} {v t t' : Term}
+private noncomputable def _LC_rgh : ∀ {Γ : Ctx} {v t t' : Term}
     (hsub : WSubM Γ v t') (hred : MEqRed Γ [] t t')
-    (ih : Term.LC v ∧ Term.LC t'),
+    (ih : PProd (Term.LC v) (Term.LC t')),
     _LC_motive_sub Γ v t (WSubM.rgh hsub hred) :=
   fun _ hred ih => ⟨ih.1, MEqRed.lc_left hred⟩
 
-private theorem _LC_sub_star : ∀ {Γ : Ctx} {v t : Term}
+private def _LC_sub_star : ∀ {Γ : Ctx} {v t : Term}
     (hwfV : WfM Γ v) (hsub : WSubM Γ v t) (hwfT : WfM Γ t)
-    (ihwfV : Term.LC v) (ihsub : Term.LC v ∧ Term.LC t)
+    (ihwfV : Term.LC v) (ihsub : PProd (Term.LC v) (Term.LC t))
     (ihwfT : Term.LC t),
     _LC_motive_star Γ v t (WSubMStar.sub hwfV hsub hwfT) :=
   fun _ _ _ ihwfV _ ihwfT => ⟨ihwfV, ihwfT⟩
 
-private theorem _LC_trs_star : ∀ {Γ : Ctx} {v u t : Term}
+private def _LC_trs_star : ∀ {Γ : Ctx} {v u t : Term}
     (hStar1 : WSubMStar Γ v u) (hwfU : WfM Γ u) (hStar2 : WSubMStar Γ u t)
-    (ih1 : Term.LC v ∧ Term.LC u) (ihwfU : Term.LC u)
-    (ih2 : Term.LC u ∧ Term.LC t),
+    (ih1 : PProd (Term.LC v) (Term.LC u)) (ihwfU : Term.LC u)
+    (ih2 : PProd (Term.LC u) (Term.LC t)),
     _LC_motive_star Γ v t (WSubMStar.trs hStar1 hwfU hStar2) :=
   fun _ _ _ ih1 _ ih2 => ⟨ih1.1, ih2.2⟩
 
-theorem WfM.lc {Γ : Ctx} {t : Term} (h : WfM Γ t) : Term.LC t :=
+noncomputable def WfM.lc {Γ : Ctx} {t : Term} (h : WfM Γ t) : Term.LC t :=
   WfM.rec
     (motive_1 := _LC_motive_wf)
     (motive_2 := _LC_motive_sub)
@@ -218,8 +230,8 @@ theorem WfM.lc {Γ : Ctx} {t : Term} (h : WfM Γ t) : Term.LC t :=
     @_LC_sub_star @_LC_trs_star
     h
 
-theorem WSubM.lc_pair {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
-    Term.LC v ∧ Term.LC t :=
+noncomputable def WSubM.lc_pair {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
+    PProd (Term.LC v) (Term.LC t) :=
   WSubM.rec
     (motive_1 := _LC_motive_wf)
     (motive_2 := _LC_motive_sub)
@@ -229,8 +241,8 @@ theorem WSubM.lc_pair {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
     @_LC_sub_star @_LC_trs_star
     h
 
-theorem WSubMStar.lc_pair {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
-    Term.LC v ∧ Term.LC t :=
+noncomputable def WSubMStar.lc_pair {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+    PProd (Term.LC v) (Term.LC t) :=
   WSubMStar.rec
     (motive_1 := _LC_motive_wf)
     (motive_2 := _LC_motive_sub)
@@ -241,19 +253,19 @@ theorem WSubMStar.lc_pair {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
     h
 
 /-- LC for `WSubM` (left endpoint). -/
-theorem WSubM.lc_left {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
+noncomputable def WSubM.lc_left {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
     Term.LC v := (WSubM.lc_pair h).1
 
 /-- LC for `WSubM` (right endpoint). -/
-theorem WSubM.lc_right {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
+noncomputable def WSubM.lc_right {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
     Term.LC t := (WSubM.lc_pair h).2
 
 /-- LC for `WSubMStar` (left endpoint). -/
-theorem WSubMStar.lc_left {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+noncomputable def WSubMStar.lc_left {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
     Term.LC v := (WSubMStar.lc_pair h).1
 
 /-- LC for `WSubMStar` (right endpoint). -/
-theorem WSubMStar.lc_right {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+noncomputable def WSubMStar.lc_right {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
     Term.LC t := (WSubMStar.lc_pair h).2
 
 /-! ## §5. Free-variable scoping
@@ -487,8 +499,10 @@ reflexivity premise on the diagonal), and `WfM` does not reference it.
 Defining it after the mutual block avoids a deeper mutual entanglement. -/
 
 /-- MPSS well-equivalence `Γ ⊢ u ≡_wf t`. Pasquale & García-Pérez 2024,
-Figure 4 (right column, `≡_wf` instance of `◁_wf`). -/
-inductive WEquM : Ctx → Term → Term → Prop where
+Figure 4 (right column, `≡_wf` instance of `◁_wf`).
+
+`Type`-valued (post-Type-LC refactor; `WfM`/`MEqRed` premises are Type). -/
+inductive WEquM : Ctx → Term → Term → Type where
   /-- **Wse-Rfl**: reflexivity. -/
   | rfl {Γ : Ctx} {t : Term} :
       WfM Γ t → WEquM Γ t t
@@ -504,8 +518,10 @@ inductive WEquM : Ctx → Term → Term → Prop where
       WEquM Γ v t
 
 /-- MPSS transitive well-equivalence `Γ ⊢ v ≡*_wf t`. Analogous to
-`WSubMStar` but for the equivalence judgment. -/
-inductive WEquMStar : Ctx → Term → Term → Prop where
+`WSubMStar` but for the equivalence judgment.
+
+`Type`-valued (post-Type-LC refactor). -/
+inductive WEquMStar : Ctx → Term → Term → Type where
   /-- **Wse-Sub**: a single well-equivalence step is transitive. -/
   | sub {Γ : Ctx} {v t : Term} :
       WfM Γ v → WEquM Γ v t → WfM Γ t →
@@ -532,8 +548,10 @@ inductive WEquMStar : Ctx → Term → Term → Prop where
   plus `MEqRedStar` reasoning. -/
 
 /-- **Lemma 15 (Symmetry of well-equivalence).** Pasquale & García-Pérez
-2024, appendix A. -/
-theorem Lemma_15_WEquM_symm {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
+2024, appendix A.
+
+`noncomputable def` (since `WEquM : Type` post-Type-LC refactor). -/
+noncomputable def Lemma_15_WEquM_symm {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
     WEquM Γ v u := by
   induction h with
   | rfl hwf => exact WEquM.rfl hwf
@@ -547,8 +565,10 @@ theorem Lemma_15_WEquM_symm {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
       exact WEquM.lf1 hred ih
 
 /-- **Lemma 16 (Well-equivalence implies well-subtyping).** Pasquale &
-García-Pérez 2024, appendix A. -/
-theorem Lemma_16_WEquM_to_WSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
+García-Pérez 2024, appendix A.
+
+`noncomputable def` (since `WSubM : Type` post-Type-LC refactor). -/
+noncomputable def Lemma_16_WEquM_to_WSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
     WSubM Γ u v := by
   induction h with
   | rfl hwf => exact WSubM.rfl hwf

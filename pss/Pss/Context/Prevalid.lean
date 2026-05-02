@@ -17,8 +17,11 @@ to Hutchins'.
 
 namespace Pss
 
-/-- Pre-validity (MPSS Fig. 1). -/
-inductive Prevalid : Ctx → Prop
+/-- Pre-validity (MPSS Fig. 1).
+
+`Type`-valued (post-Type-LC refactor): carries `Term.LC` witnesses
+in its `sub`/`equ` constructors. -/
+inductive Prevalid : Ctx → Type
   | empty : Prevalid []
   | sub {Γ : Ctx} {x : String} {t : Term} :
       Prevalid Γ →
@@ -33,8 +36,10 @@ inductive Prevalid : Ctx → Prop
       Term.LC α →
       Prevalid (⟨x, α, .equ⟩ :: Γ)
 
-/-- Pre-validity for an extended context `Γ ; s` (MPSS Fig. 1, Pv-Nil/Pv-Sta). -/
-inductive PrevalidExt : Ctx → Stack → Prop
+/-- Pre-validity for an extended context `Γ ; s` (MPSS Fig. 1, Pv-Nil/Pv-Sta).
+
+`Type`-valued (post-Type-LC refactor) since it carries `Term.LC`. -/
+inductive PrevalidExt : Ctx → Stack → Type
   | nil {Γ : Ctx} : Prevalid Γ → PrevalidExt Γ []
   | cons {Γ : Ctx} {s : Stack} {α : Term} :
       PrevalidExt Γ s → Term.LC α → Term.fv α ⊆ Γ.dom →
@@ -57,8 +62,10 @@ theorem Prevalid.nodup {Γ : Ctx} (h : Prevalid Γ) : Ctx.NoDup Γ := by
     intro hmem
     exact hx ((Ctx.mem_map_name_iff_mem_dom Γ x).mp hmem)
 
-/-- The tail of a pre-valid context is pre-valid. -/
-theorem Prevalid.tail {e : CtxEntry} {Γ : Ctx} (h : Prevalid (e :: Γ)) :
+/-- The tail of a pre-valid context is pre-valid.
+
+`def` (since `Prevalid : Type` post-Type-LC refactor). -/
+def Prevalid.tail {e : CtxEntry} {Γ : Ctx} (h : Prevalid (e :: Γ)) :
     Prevalid Γ := by
   cases h with
   | sub hΓ _ _ _ => exact hΓ
@@ -98,8 +105,10 @@ theorem Prevalid.fv_lookupSub {Γ : Ctx} {x : String} {t : Term}
       simp [Ctx.dom]
       exact Or.inr (this hz)
 
-/-- A `.sub`-bound term is locally closed. -/
-theorem Prevalid.lc_lookupSub {Γ : Ctx} {x : String} {t : Term}
+/-- A `.sub`-bound term is locally closed.
+
+`noncomputable def` (since `Term.LC : Type`); inducts on Type-valued `Prevalid`. -/
+noncomputable def Prevalid.lc_lookupSub {Γ : Ctx} {x : String} {t : Term}
     (h : Prevalid Γ) (hb : Γ.subBinds x t) : Term.LC t := by
   induction h with
   | empty =>
@@ -150,8 +159,10 @@ theorem Prevalid.fv_lookupEqu {Γ : Ctx} {x : String} {α : Term}
       simp [Ctx.dom]
       exact Or.inr (this hz)
 
-/-- An `.equ`-bound term is locally closed. -/
-theorem Prevalid.lc_lookupEqu {Γ : Ctx} {x : String} {α : Term}
+/-- An `.equ`-bound term is locally closed.
+
+`noncomputable def` (since `Term.LC : Type`); inducts on Type-valued `Prevalid`. -/
+noncomputable def Prevalid.lc_lookupEqu {Γ : Ctx} {x : String} {α : Term}
     (h : Prevalid Γ) (hb : Γ.equBinds x α) : Term.LC α := by
   induction h with
   | empty =>

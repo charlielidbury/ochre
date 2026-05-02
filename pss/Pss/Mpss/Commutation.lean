@@ -255,7 +255,7 @@ private theorem _Term_fv_close_notMem_C (x : String) :
     exact ⟨iht k, ihu k⟩
 
 /-- Local re-proof of the `Prevalid` extractor for `MEqRed`. -/
-private theorem _extractPrevalidOfMEqRed_C {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def _extractPrevalidOfMEqRed_C {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
@@ -268,7 +268,7 @@ private theorem _extractPrevalidOfMEqRed_C {Γ : Ctx} {s : Stack} {u v : Term}
   | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
 
 /-- Local re-proof of the `Prevalid` extractor for `MSubRed`. -/
-private theorem _extractPrevalidOfMSubRed_C {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def _extractPrevalidOfMSubRed_C {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x t hpv _ => exact extractPrevalid hpv
@@ -277,11 +277,13 @@ private theorem _extractPrevalidOfMSubRed_C {Γ : Ctx} {s : Stack} {u v : Term}
   | @app Γ st u u' v _ _ _ ihu => exact ihu
   | @fun_ Γ t body body' L _ _ ihbody =>
     classical
-    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    let x : String := Classical.choose (Term.exists_fresh L)
+    have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact (ihbody x hx).tail
   | @fOp Γ st t α body body' L _ _ ihbody =>
     classical
-    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    let x : String := Classical.choose (Term.exists_fresh L)
+    have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact (ihbody x hx).tail
 
 /-- **Ms-Fun × Me-Fun residual** — DISCHARGED.
@@ -397,7 +399,7 @@ because the source `body` of `MSubRed.fOp` does not satisfy
 `fv body ⊆ Γ.dom`, blocking use of Renaming.lean's `MSubRed.rename_equ`. -/
 
 /-- Local copy: `Prevalid` doubled-equ insertion (mirrors Diamond). -/
-private theorem _Prevalid_insert_fresh_equ_mid_C
+private noncomputable def _Prevalid_insert_fresh_equ_mid_C
     {Γ₁ Γ₂ : Ctx} {y z : String} {α : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)
@@ -488,7 +490,7 @@ private theorem _Prevalid_insert_fresh_equ_mid_C
         exact Prevalid.equ ih' he_notin' hfve' hlce
 
 /-- Local `PrevalidExt` analog. -/
-private theorem _PrevalidExt_insert_fresh_equ_mid_C
+private noncomputable def _PrevalidExt_insert_fresh_equ_mid_C
     {Γ₁ Γ₂ : Ctx} {st : Stack} {y z : String} {α : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)

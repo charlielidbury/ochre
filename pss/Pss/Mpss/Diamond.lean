@@ -454,7 +454,7 @@ private theorem Term.fv_close_notMem (x : String) :
     exact ⟨iht k, ihu k⟩
 
 /-- Local re-proof of the `Prevalid` extractor for `MEqRed`. -/
-private theorem _extractPrevalidOfMEqRed_loc {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def _extractPrevalidOfMEqRed_loc {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
@@ -720,7 +720,7 @@ inside `Lemma_2_inline_fun_fun` is sound. -/
 
 /-- Local re-derivation: `Prevalid` of the renamed context. Mirrors
 `Pss.Mpss.Renaming.prevalid_rename_sub_head`. -/
-private theorem _prevalid_rename_sub_head_local
+private noncomputable def _prevalid_rename_sub_head_local
     {Γ₂ Γ₁ : Ctx} {y z : String} {t : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)
@@ -818,7 +818,7 @@ private theorem _prevalid_rename_sub_head_local
 
 /-- Local re-derivation: `PrevalidExt` of the renamed context with stack
 also renamed. Mirrors `Pss.Mpss.Renaming.prevalidExt_rename_sub_head`. -/
-private theorem _prevalidExt_rename_sub_head_local
+private noncomputable def _prevalidExt_rename_sub_head_local
     {Γ₂ Γ₁ : Ctx} {st : Stack} {y z : String} {t : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)
@@ -1267,7 +1267,7 @@ private lemma Ctx.lookupEqu_some_mem_dom_loc {Γ : Ctx} {x : String} {α : Term}
 /-- Lift `Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁)` to
 `Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: ⟨z, α, .equ⟩ :: Γ₁)` by inserting a fresh
 `⟨z, α, .equ⟩` entry between the head and the tail. -/
-private theorem Prevalid.insert_fresh_equ_mid
+private noncomputable def Prevalid.insert_fresh_equ_mid
     {Γ₁ Γ₂ : Ctx} {y z : String} {α : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)
@@ -1358,7 +1358,7 @@ private theorem Prevalid.insert_fresh_equ_mid
         exact Prevalid.equ ih' he_notin' hfve' hlce
 
 /-- `PrevalidExt` analog of `Prevalid.insert_fresh_equ_mid`. -/
-private theorem PrevalidExt.insert_fresh_equ_mid
+private noncomputable def PrevalidExt.insert_fresh_equ_mid
     {Γ₁ Γ₂ : Ctx} {st : Stack} {y z : String} {α : Term}
     (hyz : y ≠ z)
     (hz_notin_Γ₁ : z ∉ Γ₁.dom)

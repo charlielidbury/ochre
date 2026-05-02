@@ -224,8 +224,11 @@ abbrev MSubRedStar (Γ : Ctx) (s : Stack) : Term → Term → Prop :=
 Every term occurring in a derivation is locally closed. We prove this in a
 single mutual induction over both relations. -/
 
-/-- Helper: every `PrevalidExt Γ s` carries a `Prevalid Γ` underneath. -/
-theorem extractPrevalid {Γ : Ctx} {s : Stack} (h : PrevalidExt Γ s) :
+/-- Helper: every `PrevalidExt Γ s` carries a `Prevalid Γ` underneath.
+
+`noncomputable def` (since `PrevalidExt : Type` post-Type-LC refactor; the
+recursion uses `PrevalidExt.rec` which the code generator does not synth). -/
+noncomputable def extractPrevalid {Γ : Ctx} {s : Stack} (h : PrevalidExt Γ s) :
     Prevalid Γ := by
   induction h with
   | nil hΓ => exact hΓ
@@ -234,9 +237,11 @@ theorem extractPrevalid {Γ : Ctx} {s : Stack} (h : PrevalidExt Γ s) :
 /-- Combined LC-preservation for the mutual reduction relations. We can't
 use the `induction` tactic on a mutual inductive (multiple motives), so we
 fall back to manual `rec` application via the `motive_*` formulation: prove
-`(LC u ∧ LC v)` for both relations simultaneously by mutual recursion. -/
-private theorem MEqRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
-    (h : MEqRed Γ s u v) : Term.LC u ∧ Term.LC v
+`(LC u × LC v)` for both relations simultaneously by mutual recursion.
+
+`Type`-valued (`PProd`) and `noncomputable def` (since `Term.LC : Type`). -/
+private noncomputable def MEqRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : PProd (Term.LC u) (Term.LC v)
   := by
   induction h with
   | @pro Γ s x α α' hpv heq hα ihα =>
@@ -247,7 +252,9 @@ private theorem MEqRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
       -- RHS: opening v' body'. Use subst_intro + subst_lc.
       classical
       have hv'LC : Term.LC v' := ihv.2
-      obtain ⟨x, hx⟩ := Term.exists_fresh (L ∪ Term.fv body')
+      let x : String := Classical.choose (Term.exists_fresh (L ∪ Term.fv body'))
+      have hx : x ∉ L ∪ Term.fv body' :=
+        Classical.choose_spec (Term.exists_fresh (L ∪ Term.fv body'))
       have hxL : x ∉ L := fun h' => hx (Finset.mem_union.mpr (Or.inl h'))
       have hxFv : x ∉ Term.fv body' :=
         fun h' => hx (Finset.mem_union.mpr (Or.inr h'))
@@ -269,17 +276,19 @@ private theorem MEqRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
       · intro x hx; exact (ihbody x hx).2
 
 /-- LHS of any equivalence step is locally closed. -/
-theorem MEqRed.lc_left {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MEqRed.lc_left {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Term.LC u := (MEqRed.lc_pair h).1
 
 /-- RHS of any equivalence step is locally closed. -/
-theorem MEqRed.lc_right {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MEqRed.lc_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Term.LC v := (MEqRed.lc_pair h).2
 
 /-- Combined LC-preservation for `MSubRed`. Uses `MEqRed.lc_pair` for the
-`Ms-Equ` arm — the only place where the two relations interact. -/
-private theorem MSubRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
-    (h : MSubRed Γ s u v) : Term.LC u ∧ Term.LC v
+`Ms-Equ` arm — the only place where the two relations interact.
+
+`Type`-valued (`PProd`) and `noncomputable def`. -/
+private noncomputable def MSubRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : PProd (Term.LC u) (Term.LC v)
   := by
   induction h with
   | @pro Γ s x t hpv hb =>
@@ -300,11 +309,11 @@ private theorem MSubRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
       · intro x hx; exact (ihbody x hx).2
 
 /-- LHS of any subtyping step is locally closed. -/
-theorem MSubRed.lc_left {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MSubRed.lc_left {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Term.LC u := (MSubRed.lc_pair h).1
 
 /-- RHS of any subtyping step is locally closed. -/
-theorem MSubRed.lc_right {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MSubRed.lc_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Term.LC v := (MSubRed.lc_pair h).2
 
 end Pss

@@ -254,7 +254,10 @@ theorem Proposition_17_FromOperationalToEqRed
           cases hLC with
           | abs L₀ _ hb =>
             classical
-            obtain ⟨z, hz⟩ := Term.exists_fresh (L₀ ∪ Term.fv body ∪ {y})
+            let z : String :=
+              Classical.choose (Term.exists_fresh (L₀ ∪ Term.fv body ∪ {y}))
+            have hz : z ∉ L₀ ∪ Term.fv body ∪ {y} :=
+              Classical.choose_spec (Term.exists_fresh (L₀ ∪ Term.fv body ∪ {y}))
             have hzL₀ : z ∉ L₀ := fun h => hz (by
               apply Finset.mem_union.mpr; left
               apply Finset.mem_union.mpr; left; exact h)
@@ -305,7 +308,10 @@ theorem Proposition_17_FromOperationalToEqRed
             cases hLC with
             | abs L₀ _ hb =>
               classical
-              obtain ⟨z, hz⟩ := Term.exists_fresh (L₀ ∪ Term.fv body ∪ {y})
+              let z : String :=
+                Classical.choose (Term.exists_fresh (L₀ ∪ Term.fv body ∪ {y}))
+              have hz : z ∉ L₀ ∪ Term.fv body ∪ {y} :=
+                Classical.choose_spec (Term.exists_fresh (L₀ ∪ Term.fv body ∪ {y}))
               have hzL₀ : z ∉ L₀ := fun h => hz (by
                 apply Finset.mem_union.mpr; left
                 apply Finset.mem_union.mpr; left; exact h)
