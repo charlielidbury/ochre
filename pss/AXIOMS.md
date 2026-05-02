@@ -5,8 +5,17 @@ v2, December 2025), the MPSS Krivine-style reformulation of Hutchins'
 Pure Subtype Systems. Type safety (Theorems 4 and 5) is conditional on
 the axioms below.
 
-**Total axiom count: 12** (1 permanent, 9 active outstanding, 2 inactive
+**Total axiom count: 11** (1 permanent, 9 active outstanding, 1 inactive
 outstanding).
+
+**Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
+`avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
+real theorem in commit `64162c2` after lifting `Term.LC` from `Prop` to
+`Type`. The 5 active β-residual axioms (#6, #7, #8, #9, #10) remain
+because they require restructuring `Lemma_2_DiamondMEqRed_core`'s
+induction scheme to a lex measure on `(Term.size t₀, avoidsPro-count)`
+— a separate, multi-day refactor. The Type-LC refactor was the
+prerequisite for that work but does not by itself complete it.
 
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
@@ -291,32 +300,17 @@ Lemma 2.
 * **Estimated complexity:** Small (~50-100 lines if anyone wants to
   prove it).
 
-### 12. `avoidsPro_refl`
+### 12. `avoidsPro_refl` — DISCHARGED (post Type-LC refactor)
 
-* **File:** `Pss/Mpss/AvoidsPro.lean`, line 461.
+* **File:** `Pss/Mpss/AvoidsPro.lean`, line 457.
 * **Statement:** `avoidsPro (MEqRed.refl hpv hLC hfv) x = true` for any
   context, term, scope witness, and variable name.
-* **Status:** Inactive outstanding. Consumed only by `Lemma_30_msPro_x`
-  (a theorem in the same file, line 611), which is itself consumed only
-  by hypothetical future `Lemma_30_ReductionUnderSubst_Sub` callers.
-  Not yet wired into `TypeSafety.lean`'s `_S_lf2` site, hence does not
-  appear in any headline theorem's dependency closure.
-* **Paper:** N/A (mechanization-side bridging axiom).
-* **Discharge plan:** Documented in file lines 405-443. The axiom is
-  morally true: `MEqRed.refl_J`'s derivation tree only invokes
-  `top`/`var`/`app`/`fun_`/`fOp` constructors, all of which trivially
-  satisfy `avoidsPro = true`. The kernel cannot verify this because
-  `MEqRed.refl` extracts via `Classical.choice` from a `Nonempty`. Two
-  paths:
-  1. Type-valued `Term.LC` (Option B — would let `MEqRed.refl_J` be
-     `Type`-valued and structurally recursive);
-  2. Source-driven `refl_for : MEqRed Γ s α α' → MEqRed Γ s α' α'` by
-     induction on the source — works for all cases except `Me-Bet`,
-     whose destination `Term.opening v' body'` has no
-     constructor-decomposable refl shape without re-deriving structural
-     induction on `LC` (i.e. circling back to path 1).
-* **Estimated complexity:** Large on path 1 (cross-codebase refactor);
-  see `PLAN.md`'s discharge-campaign section "Option B".
+* **Status:** PROVED as a theorem in commit `64162c2` (branch
+  `type-lc-experiment`). With `Term.LC : Type` (post-Type-LC refactor),
+  `MEqRed.refl` is built by direct structural recursion on the LC
+  witness without `Classical.choice`, so the constructor tree of
+  `MEqRed.refl` is observable to the `simp [MEqRed.refl, avoidsPro_*]`
+  unfolding. The theorem mirrors the recursion of `MEqRed.refl` exactly.
 
 ---
 
