@@ -881,7 +881,11 @@ the axiom can be removed here.
 
 For the present revision the axiom remains; `Lemma_30_msPro_x`
 documents the exact leaf-level discharge that becomes available once
-the avoidance premise is threaded. -/
+the avoidance premise is threaded.
+
+**Cross-ref:** see `AXIOMS.md` axiom #4 for status / paper / discharge
+plan; this is currently in the `#print axioms` closure of Theorem 5
+only. -/
 axiom Lemma_30_msPro_x_axiom
     {Γ₁ Γ₂ : Ctx} {st : Stack} (x : String) {s : Term} (t : Term)
     (hok : SubstOk Γ₁ s)

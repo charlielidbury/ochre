@@ -413,7 +413,11 @@ either (i) WSubMStar weakening inlined into `Narrowing.lean`
 infrastructure downstream of `WfM`-weakening.
 
 For now we retain the axiomatization. The `_N_lf2` use site below
-also retains the call. -/
+also retains the call.
+
+**Cross-ref:** see `AXIOMS.md` axiom #2 for status / paper / discharge
+plan; this is currently in the `#print axioms` closure of Theorem 3, 4,
+5 and Lemma 1. -/
 axiom Lemma_24_NarrowingMSubRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)

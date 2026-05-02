@@ -75,9 +75,19 @@ For any prevalid extended context `Γ; s` and any LC well-scoped β-redex
 `(λ ≤ bound. body) arg`, the operational β-step embeds into MPSS
 equivalence reduction.
 
-Discharge plan: refine the body-sub-derivation construction in
-`MEqRed.bet` or write a custom `MEqRed.refl`-style helper that handles
-opened bodies with stray fvars. -/
+**Why an axiom (precise blocker):** `MEqRed.bet`'s body sub-derivation
+is at `Γ; s` (NOT extended) — see `MEQRED-BET-AUDIT.md` for confirmation
+that this is paper-faithful and must NOT be modified. The natural
+construction needs `MEqRed Γ s (body^[x]) (body^[x])` for fresh `x`,
+which would require `fv (body^[x]) ⊆ Γ.dom` for `MEqRed.refl` — but
+`body^[x]` may free-mention `x ∉ Γ.dom`. `MEqRed.refl` itself extracts
+via `Classical.choice` from `MEqRed.refl_J : MEqRedJ ...` (a Nonempty
+wrapper, opaque to the kernel).
+
+**Discharge plan:** see `AXIOMS.md` axiom #5
+(`Proposition_17_beta_axiom`). Two paths: (a) custom β-helper that
+walks `LC e` using `MEqRed.var` (no fv-scope) at fvars; (b) Type-LC
+refactor (`PLAN.md`'s discharge-campaign Option B). -/
 axiom Proposition_17_beta_axiom
     {Γ : Ctx} {s : Stack} {bound body arg : Term}
     (hpv : PrevalidExt Γ s)

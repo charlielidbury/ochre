@@ -46,14 +46,23 @@ Cells discharged in `_core`:
 Cells delegated to per-row residual axioms (mirror Lemma 2's pattern):
 
   - **Ms-App × Me-Bet**: `Lemma_1_inline_app_bet_residual` (β-step;
-    needs term-size induction).
-  - **Ms-Fun × Me-Fun**: `Lemma_1_inline_fun_fun_residual`.
-  - **Ms-FOp × Me-FOp**: `Lemma_1_inline_fOp_fOp_residual`.
+    needs term-size induction — see `AXIOMS.md` axiom #7).
 
-Plus the single context-evolution lift: `Lemma_1_ctx_axiom`.
+Cells previously delegated, now discharged (commit `eba1284`):
 
-This brings the total axiom count from 1 (headline) to 4 (1 lift + 3
-narrow per-cell), with all easy cells fully discharged. -/
+  - **Ms-Fun × Me-Fun**: discharged via `MSubRed.rename_sub`
+    + `Lemma_25_NarrowingMEqRed` (theorem, not axiom).
+  - **Ms-FOp × Me-FOp**: discharged via the local
+    `MSubRed.rename_equ` helper (theorem, not axiom).
+
+Plus the single context-evolution lift: `Lemma_1_ctx_axiom`
+(see `AXIOMS.md` axiom #6).
+
+**Current axiom count: 2** (1 ctx-lift + 1 narrow per-cell), with all
+non-β-residual cells fully discharged. The headline
+`Lemma_1_StrongCommutativity` is a theorem, conditional on these two
+private axioms plus the Lemma 2 / Narrowing infrastructure axioms it
+inherits. -/
 
 namespace Pss
 
@@ -154,7 +163,25 @@ joining at the common stack), `_ctx_axiom` could be eliminated
 entirely. That refactor was not attempted in this session. -/
 
 /-- Lift a same-context Lemma-1-style joining derivation across two
-`↣*` evolutions. Mirrors `Lemma_2_DiamondMEqRed_ctx_axiom`. -/
+`↣*` evolutions. Mirrors `Lemma_2_DiamondMEqRed_ctx_axiom`.
+
+**Why an axiom (precise blocker):** the inductive arms of `↣*`
+(`Ct-Stk` for stack-head replacement, `Ct-Ann` for context-annotation
+replacement) re-cast `MSubRed`/`MEqRed` derivations under an outer
+`MEqRed`-step on the popped stack head or annotation. That re-casting
+is itself confluence-shaped (e.g., the `.equ`-narrowing chain in
+Me-Pro lookups), creating a recursive call into the strong-commutativity
+machinery. The Ct-Ann arm for `.sub`-annotations would need
+`Lemma_24_NarrowingMSubRed` (still axiomatized) plus WSubM-transitivity
+from `TransitivityElim` — downstream of this module (cycle-creating
+import).
+
+**Discharge plan:** see `AXIOMS.md` axiom #6 (`Lemma_1_ctx_axiom`).
+Both consumers of this axiom currently pass refl-or-near-refl chains;
+the App × App `_core` arm specifically uses a single Ct-Stk step. A
+refactor of App × App to reduce `v, v₂` to a common reduct via Lemma 2
+*before* joining at the common stack would eliminate the internal use,
+leaving only the (refl, refl) external use which is provable directly. -/
 private axiom Lemma_1_ctx_axiom
     {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
@@ -167,7 +194,25 @@ private axiom Lemma_1_ctx_axiom
 
 /-- Ms-App × Me-Bet residual: source operator is `.abs t' body`. The
 β-step on the right reduces to `Term.opening v body'`. The closing
-diagram needs term-size induction (paper p. 22). -/
+diagram needs term-size induction (paper p. 22).
+
+**Why an axiom (precise blocker):** the β-reduction
+`(.abs t body) v ⟶ body[v/x]` can grow the term, so structural
+induction on the derivation tree does not terminate. The paper threads
+a "no Me-Pro on `x`" side condition (`avoidsPro` Bool, see
+`Pss/Mpss/AvoidsPro.lean`) that bounds the body's structure during the
+opening, allowing a lex measure on `(Term.size t₀, avoidsPro-count)`.
+Threading that side condition through `_core`'s induction scheme
+requires either:
+
+1. The standalone `avoidsPro_refl` axiom (already in `AvoidsPro.lean`)
+   plumbed through;
+2. A Type-LC refactor (lift `Term.LC` from `Prop` to `Type`) that
+   eliminates `MEqRed.refl`'s `Classical.choice` opacity — see
+   `PLAN.md`'s discharge-campaign "Option B".
+
+**Discharge plan:** see `AXIOMS.md` axiom #7
+(`Lemma_1_inline_app_bet_residual`). -/
 private axiom Lemma_1_inline_app_bet_residual
     {Γ : Ctx} {s : Stack} {u' v t' body body' v' : Term} {L : Finset String}
     (hu : MSubRed Γ (v :: s) (.abs t' body) u')

@@ -136,8 +136,13 @@ def CoCtx.fill : CoCtx → Term → Term
 > `Γ ⊢ Co[u] ≤*_wf Co[t]`.
 
 Open conjecture in the source paper. **Permanent axiom in this
-formalization** (per `PLAN.md` §6.1). All conditional theorems
-(Theorems 4 and 5) ultimately discharge through this axiom. -/
+formalization** (per `PLAN.md` §6.1).
+
+**Status (post-Wave-7):** UNUSED in the actual closure of Theorem 4 and
+Theorem 5. The Wave-7 discharge of `Lemma_7_SubstitutionPreservesWf`
+was reworked to route around this axiom via direct IH on the
+`WSubMStar` premises in the Wf-App case. Retained as a paper-faithful
+axiom for reference. See `AXIOMS.md` axiom #1. -/
 axiom Conjecture_8_WellSubtypingContextIndependent
     {Γ : Ctx} {u t : Term} {Co : CoCtx}
     (h : WSubMStar Γ u t)

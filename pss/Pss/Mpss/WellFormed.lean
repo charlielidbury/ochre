@@ -611,10 +611,11 @@ the existing infrastructure does NOT cover — `Lemma 6` only handles
 top-level operational `Step`, while `MEqRed` reduces under abstractions
 and propagates through any subterm).
 
-Cf. `AXIOMS.md` for the listing. The restricted form
-`Lemma_10_InversionRestricted` (returning a common `MEqRedStar` reduct)
-is provable without `WfM`-preservation but is currently unused
-downstream. -/
+Cf. `AXIOMS.md` axiom #3 for the listing (status / paper / discharge
+plan). The restricted form `Lemma_10_InversionRestricted` (returning a
+common `MEqRedStar` reduct) is provable without `WfM`-preservation but
+is currently unused downstream — listed in AXIOMS.md as INACTIVE
+outstanding axiom #11. -/
 axiom Lemma_10_Inversion
     {Γ : Ctx} {t t' u u' : Term}
     (h : WSubMStar Γ (.abs t u) (.abs t' u')) :
@@ -628,7 +629,12 @@ than `WEquM`. It is *not* trivially derivable from `Lemma_10_Inversion`:
 extracting a common reduct from a `WEquM` chain requires diamond-style
 joining of the prepended/appended `MEqRed` steps. We retain it as a
 separate axiom for downstream consumers that already use the
-common-reduct form. -/
+common-reduct form.
+
+**Status (post-Wave-7):** INACTIVE. No headline theorem (Theorem 3, 4,
+5; Lemma 1; Lemma 2) has this in its `#print axioms` closure. Theorem 5
+goes through the full-form `Lemma_10_Inversion` directly. Listed in
+`AXIOMS.md` under "Inactive outstanding". -/
 
 /-- **Lemma 10 (Inversion lemma, restricted form).** From a transitive
 well-subtyping between two abstractions of the form `λ x ≤ t. u` and
@@ -636,7 +642,12 @@ well-subtyping between two abstractions of the form `λ x ≤ t. u` and
 
 Restricted form: returns a common reduct `z` with
 `MEqRedStar Γ [] t z ∧ MEqRedStar Γ [] t' z`, instead of the paper's
-`Γ ⊢ t ≡_wf t'`. -/
+`Γ ⊢ t ≡_wf t'`.
+
+INACTIVE: not in any headline theorem's dependency closure. Provable
+without `WfM`-preservation under `MEqRed` (unlike the full form);
+discharge would strip `WSubMStar` to `MSub` and read off the common
+reduct directly. See `AXIOMS.md`. -/
 axiom Lemma_10_InversionRestricted
     {Γ : Ctx} {t t' u u' : Term}
     (h : WSubMStar Γ (.abs t u) (.abs t' u')) :

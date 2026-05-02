@@ -6,6 +6,126 @@
 
 ---
 
+## DISCHARGE CAMPAIGN STATUS (post-Wave-7)
+
+> **All seven waves are complete.** The project is now in a sustained
+> discharge campaign aimed at peeling residual axioms off the headline
+> theorems. This section captures where we started, where we are now,
+> and the two unblocking options that the campaign has identified.
+
+### Where we started
+
+Waves 0–7 landed the full module hierarchy (per §3 below) with
+Lemma 1, Lemma 2, and several Wave-7 lemmas as **monolithic axioms**.
+Headline theorems (Theorems 3, 4, 5) were stated as conditional theorems
+on those monoliths plus on `Conjecture_8`.
+
+### Where we are now (12 remaining axioms, all narrow)
+
+Lemma 1 and Lemma 2 are now **theorems**. The monolithic axioms have
+been replaced by:
+
+* **3 narrow per-cell β-residual axioms** (Lemma 2): one ctx-axiom +
+  two `inline_*_bet_residual_axiom`s for the β-step diagonal;
+* **2 narrow per-cell β-residual axioms** (Lemma 1): one ctx-axiom +
+  one `inline_app_bet_residual` for Ms-App × Me-Bet.
+
+Plus the pre-existing axioms that did not change shape:
+
+* `Conjecture_8` (paper-permanent, now UNUSED by headline closure);
+* `Lemma_24_NarrowingMSubRed` (cycle-blocked, see file analysis);
+* `Lemma_10_Inversion` (blocked on `WfM`-preservation under `MEqRed`);
+* `Lemma_10_InversionRestricted` (legacy, inactive);
+* `Lemma_30_msPro_x_axiom` (leaf discharged via `msAvoidsPro`; awaits
+  threading through `TypeSafety._S_lf2`);
+* `avoidsPro_refl` (inactive bridging axiom);
+* `Proposition_17_beta_axiom` (LN-encoding obstacle on `MEqRed.refl`).
+
+12 total. See `AXIOMS.md` for per-axiom statements, paper refs, blocker
+analyses, complexity estimates, and discharge plans.
+
+### The 12 axioms by category
+
+* **1 permanent (paper-conjecture status):** `Conjecture_8_*`.
+* **9 active outstanding (in headline closures):**
+  `Lemma_24_NarrowingMSubRed`, `Lemma_10_Inversion`,
+  `Lemma_30_msPro_x_axiom`, `Proposition_17_beta_axiom`,
+  `Lemma_1_ctx_axiom`, `Lemma_1_inline_app_bet_residual`,
+  `Lemma_2_DiamondMEqRed_ctx_axiom`,
+  `Lemma_2_inline_app_bet_residual_axiom`,
+  `Lemma_2_inline_bet_residual_axiom`.
+* **2 inactive outstanding (no headline depends on these):**
+  `Lemma_10_InversionRestricted`, `avoidsPro_refl`.
+
+### Unblocking options
+
+The campaign converged on two sharply different paths forward:
+
+**Option A — keep grinding.** Each remaining axiom requires multiple
+sessions of careful proof engineering. Multiple converging blockers
+have surfaced, all documented in their respective file headers:
+
+* **Alpha-equivariance for `avoidsPro` / `msAvoidsPro`.** The Bool
+  recursion samples `pickFresh L`, so threading an avoidance premise
+  through the cofinite arms requires a lemma
+  `avoidsPro (hbody y₁ _) x = avoidsPro (hbody y₂ _) x`. Currently
+  blocks Lemma 30 axiom removal (file analysis: AvoidsPro.lean §3.1
+  / §4 + Substitution.lean line 845-883).
+* **Transport casts everywhere.** The cofinite quantification
+  pervades, so any rename / narrowing / weakening lemma that has to
+  re-thread an avoidance witness fights heterogeneous-equality casts.
+* **Term-size induction.** The β-residuals genuinely need a lex
+  measure on `(Term.size t₀, avoidsPro-count)` — `_core`'s induction
+  scheme has to change.
+* **Cycle-creating import.** `Lemma_24` discharge wants
+  WSubMStar-weakening from `TypeSafety.lean`, downstream of
+  `Narrowing.lean` (Narrowing → Diamond → Commutation → TransitivityElim
+  → … → TypeSafety). Either inline ~200 lines, or re-architect.
+
+Estimate: 5+ sessions per residual layer.
+
+**Option B — Type-LC refactor.** Lift `Term.LC` from `Prop` to `Type`,
+mirroring the earlier `MEqRed`/`MSubRed` `Prop → Type` refactor (commit
+`16eed34`). Consequences:
+
+* `MEqRed.refl_J` becomes `Type`-valued, eliminating the
+  `Classical.choice`-based opacity that blocks `avoidsPro_refl`,
+  `Lemma_2_inline_app_bet_residual_axiom`,
+  `Lemma_2_inline_bet_residual_axiom`,
+  `Lemma_1_inline_app_bet_residual`, and likely
+  `Proposition_17_beta_axiom`. **Five of the nine active axioms are
+  unblocked at once.**
+* `Term.LC` appears in dozens of theorem statements across `Pss/Syntax`,
+  `Pss/Mpss`, etc. The refactor is mechanical (mostly s/Prop/Type/g) but
+  pervasive. Order-of-magnitude estimate: a single sustained session,
+  maybe two if dependent-pair reshapings are needed.
+
+### Recommended order
+
+1. **Try Option B first.** It is the high-leverage move: a single
+   refactor that potentially eliminates five residual axioms.
+2. If Option B fails or breaks downstream proofs in unforeseen ways,
+   `git revert` it and fall back to Option A — chip away at residuals
+   in the order that the AXIOMS.md complexity estimates suggest.
+3. Independent of A/B: discharge `Lemma_24_NarrowingMSubRed` via
+   path 1 (inline ~200 lines of WSubMStar-weakening into
+   `Narrowing.lean`). Independent of the β-residual layer; can be done
+   in parallel.
+
+The campaign artifacts to read before diving in:
+
+* This file's discharge-campaign section + AXIOMS.md.
+* `pss/MEQRED-BET-AUDIT.md` — established that `MEqRed.bet`'s body
+  context is paper-faithful and should NOT be modified. Future agents
+  who attempt to change it are repeating a falsified hypothesis.
+* `pss/CHECKER-PORT-INVESTIGATION.md` — orthogonal but useful: a
+  read-only feasibility study of porting the PPDP'25 Emacs/Lisp
+  PSS-checker artifact to Lean. Recommends "Option B" (port pure logic
+  + Scott encodings + replay interpreter). NOT part of the discharge
+  campaign; archived for future reference.
+
+---
+
 ## 0. Reading-derived facts that drive the design
 
 These come from a careful read of both PDFs in `papers/`. They are load-bearing for everything below.

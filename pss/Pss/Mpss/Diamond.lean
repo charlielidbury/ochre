@@ -216,7 +216,19 @@ shift across a single Ct-Stk step `Γ; v::s ↣ Γ; v'::s` (in which case
 the source context-stack pair is the SAME, but the target stack-head
 swaps from `v` to `v'`/`v₂`). -/
 
-/-- Lift a same-context joining derivation across two `↣*` evolutions. -/
+/-- Lift a same-context joining derivation across two `↣*` evolutions.
+
+**Why an axiom (precise blocker):** identical to `Lemma_1_ctx_axiom`'s
+blocker (see `Pss/Mpss/Commutation.lean`). The Ct-Stk and Ct-Ann
+inductive arms re-cast the inner `MEqRed` derivations across an
+`MEqRed`-step on the popped stack head / annotation, requiring
+`.equ`-narrowing of `MEqRed` along an `MEqRed`-step on the bound term
+— itself confluence-shaped (recursive). Both consumers of this axiom
+(`Lemma_2_DiamondMEqRed` and the App × App arm of `Lemma_2_inline_app`)
+pass refl-or-near-refl chains.
+
+**Discharge plan:** see `AXIOMS.md` axiom #8
+(`Lemma_2_DiamondMEqRed_ctx_axiom`). -/
 private axiom Lemma_2_DiamondMEqRed_ctx_axiom
     {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
@@ -288,7 +300,16 @@ Now that `MEqRed` is `Type`-valued, `avoidsPro` is definable (see
 needs to be set up at the `_core` level (induction scheme change). For
 the moment we keep the App × Bet arm as a private axiom whose
 signature receives the necessary IHs. The operator's source type
-`(.abs t' body')` is forced by the source-shape match in the caller. -/
+`(.abs t' body')` is forced by the source-shape match in the caller.
+
+**Discharge plan:** see `AXIOMS.md` axiom #9
+(`Lemma_2_inline_app_bet_residual_axiom`). The blocker shared with
+axiom #10 / `Lemma_1_inline_app_bet_residual` is that
+`avoidsPro (MEqRed.refl _) x = true` is not structurally provable
+because `MEqRed.refl` extracts via `Classical.choice` from a
+`Nonempty`. Three resolution paths in `PLAN.md`'s discharge campaign:
+Type-LC refactor (Option B), source-driven refl construction, or
+consume the standalone `avoidsPro_refl` axiom. -/
 private axiom Lemma_2_inline_app_bet_residual_axiom
     {Γ : Ctx} {s : Stack} {u' v v' : Term} {t' body' body'' : Term}
     {L₂ : Finset String} {v₂' : Term}
@@ -358,7 +379,10 @@ private noncomputable def Lemma_2_inline_app
     exact Lemma_2_inline_app_bet_residual_axiom hu hv hLCt₂ hbody₂ hv₂ ihu ihv
 
 /-- Bet × non-TAp residual: covers Bet × App and Bet × Bet.
-Same closure obstruction as App × non-TAp. -/
+Same closure obstruction as App × non-TAp.
+
+**Discharge plan:** see `AXIOMS.md` axiom #10
+(`Lemma_2_inline_bet_residual_axiom`). Same blocker as #9. -/
 private axiom Lemma_2_inline_bet_residual_axiom
     {Γ : Ctx} {s : Stack} {t v v' body body' : Term} {L : Finset String}
     {t₂ : Term}

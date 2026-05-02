@@ -453,11 +453,16 @@ which is `Me-Pro`. The axiom exists because `MEqRed.refl_J` returns a
 tree opaque to the kernel.
 
 This is the **single new axiom** added in service of the moreover-clause
-threading. It replaces the 2 β-step residual axioms
+threading. It would, if consumed, replace the 2 β-step residual axioms
 (`Lemma_2_inline_app_bet_residual_axiom`,
-`Lemma_2_inline_bet_residual_axiom`) and arguably also unlocks
+`Lemma_2_inline_bet_residual_axiom`) and arguably also unlock
 `Lemma_2_DiamondMEqRed_ctx_axiom` and Lemma 1's residual — net axiom
-reduction. -/
+reduction.
+
+**Status (post-Wave-7):** INACTIVE. Not yet wired into the β-residual
+discharge sites; therefore not in any headline theorem's `#print
+axioms` closure. Listed in `AXIOMS.md` as INACTIVE outstanding
+axiom #12. -/
 axiom avoidsPro_refl
     {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom)

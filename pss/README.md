@@ -53,14 +53,37 @@ theorem.
 
 ## Status
 
-- Wave 0: bootstrap — done
-- Wave 1: syntax & infrastructure — done
-- Wave 2: contexts & operational semantics — done
-- Wave 3: MPSS reductions + extended-context reduction — done
-- Wave 4: MPSS substitution / weakening + (axiomatized) Algo confluence — done
-- Wave 5: WellFormed, narrowing, diamond, local commute — in progress
-- Wave 6: main commutation theorem (Lemma 1) — pending
-- Wave 7: transitivity elim, MPSS type safety, polish — pending
+All seven mechanization waves are complete; the project is in a
+post-Wave-7 **discharge campaign** that has converted the previous
+monolithic `Lemma_1_StrongCommutativity` and `Lemma_2_DiamondMEqRed`
+axioms into theorems with narrow per-cell residuals.
+
+Current state (run `nix develop --command lake build Pss.Sanity` to
+re-verify):
+
+- **Total axiom count: 12** (1 permanent paper conjecture + 9 active
+  outstanding + 2 inactive outstanding).
+- All five headline results — Theorems 3, 4, 5; Lemma 1; Lemma 2 —
+  are theorems, not axioms.
+- `Conjecture_8_WellSubtypingContextIndependent` (paper-permanent) is
+  retained for paper faithfulness but is **not** in any headline
+  theorem's dependency closure (Wave-7 reworked Lemma 7 to route
+  around it).
+- Theorem 5's residual axioms reduce to four: `Lemma_10_Inversion`,
+  `Lemma_24_NarrowingMSubRed`, `Lemma_30_msPro_x_axiom`,
+  `Proposition_17_beta_axiom`.
+- Theorem 3, 4 and Lemma 1 share six residual axioms: the four for
+  Theorem 5 minus `Lemma_10_Inversion`/`Proposition_17_beta_axiom`,
+  plus the per-cell Lemma-1/Lemma-2 ctx-axiom + β-residual family.
+- Lemma 2's residuals are three: `Lemma_2_DiamondMEqRed_ctx_axiom` and
+  the two `Lemma_2_inline_*_residual_axiom` β-cells.
+
+See `AXIOMS.md` for per-axiom paper references, blocker analyses, and
+discharge plans, and `PLAN.md` (DISCHARGE CAMPAIGN STATUS section) for
+the recommended next-step strategy. The campaign has converged on a
+choice between continued grinding ("Option A") and a structural
+"Type-LC" refactor ("Option B") that would unblock several β-residuals
+at once by lifting `Term.LC` from `Prop` to `Type`.
 
 ## Papers
 
