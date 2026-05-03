@@ -69,12 +69,17 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
   | bet {Γ : Ctx} {s : Stack} {t v v' body body' : Term} (L : Finset String) :
       Term.LC t →
       (∀ x, x ∉ L → MEqRed Γ s (body^[x]) (body'^[x])) →
-      -- Phase 5g.1 placeholder: a uniformity premise on the cofinite body.
-      -- 5g.3 will replace `True` with
-      --   `∀ x y (hx : x ∉ L) (hy : y ∉ L) (w : String),
-      --      AvoidsProUniv (hbody x hx) w ↔ AvoidsProUniv (hbody y hy) w`.
-      -- Kept as `True` here to avoid the import cycle
-      -- `Reductions → AvoidsPro → Substitution → ContextRed → Reductions`.
+      -- Phase 5g.1 placeholder. Phase 5g.3b (replacing `True` with the
+      -- real `AvoidsProUniv ↔ AvoidsProUniv` uniformity premise) was
+      -- proven STRUCTURALLY IMPOSSIBLE in iteration `pss-20260503-235559`:
+      -- Lean 4's `mutual inductive` rejects (i) Type+Prop in one block
+      -- (universe mismatch) and (ii) ANY mutual neighbor reference in
+      -- another inductive's INDEX/PARAMETER signature ("unknown
+      -- identifier"). Mutual neighbors are visible only inside
+      -- CONSTRUCTOR ARGUMENT TYPES, not in the inductive's header. See
+      -- `pss/AXIOMS.md` "Phase 5g.3b STRUCTURALLY IMPOSSIBLE" for the
+      -- spike + analysis. The `True` here is dead weight kept to avoid
+      -- churning ~127 call sites; remove when next refactoring this file.
       (hUniform : True) →
       MEqRed Γ [] v v' →
       MEqRed Γ s (.app (.abs t body) v) (Term.opening v' body')
@@ -195,10 +200,8 @@ inductive MSubRed : Ctx → Stack → Term → Term → Type where
       Term.LC t →
       (∀ x, x ∉ L →
         MSubRed (⟨x, t, .sub⟩ :: Γ) [] (body^[x]) (body'^[x])) →
-      -- Phase 5g.1 placeholder uniformity premise. 5g.3 will replace
-      -- `True` with the MSubRed analog of `AvoidsProUniv` once the
-      -- predicate is sorted (defined in `AvoidsPro.lean`, which lives
-      -- below `Reductions.lean` in the import DAG, hence the placeholder).
+      -- Phase 5g.1 placeholder uniformity premise. See `MEqRed.bet`
+      -- for the Phase 5g.3b STRUCTURALLY IMPOSSIBLE finding.
       (hUniform : True) →
       MSubRed Γ [] (.abs t body) (.abs t body')
 

@@ -130,6 +130,85 @@ axiom counts unchanged. Recommended next direction is the cross-codebase
 Type-LC + alpha-aware MEqRed refactor (multi-day, preserves paper proof
 structure but unblocks the rename-stable infrastructure end-to-end).
 
+**Phase 5g.3b STRUCTURALLY IMPOSSIBLE (2026-05-03 — same date).** The
+"alpha-aware MEqRed refactor" recommended at the end of Phase 5f was
+attempted in Phase 5g.1/5g.2/5g.3a (uniform-cofinite constructor scaffold
++ ~127 call-site migration to `trivial` placeholders + extracting
+`AvoidsProUniv` to its own file to break the import cycle).
+
+Phase 5g.3b's plan was to replace the `(hUniform : True)` placeholder on
+`MEqRed.bet/fun_/fOp` (and `MSubRed.fun_/fOp`) with the real
+
+```
+∀ x y (hx : x ∉ L) (hy : y ∉ L) (w : String),
+    AvoidsProUniv (hbody x hx) w ↔ AvoidsProUniv (hbody y hy) w
+```
+
+via a `mutual inductive` block that lets `MEqRed` and (an inductively-
+redefined) `AvoidsProUniv` cross-reference. The blocker analysis in
+commit `60ab132` named two paths: (a) mutual block, (b) redefine
+`AvoidsProUniv` structurally on Term shape.
+
+A spike in `pss-20260503-235559` confirmed BOTH paths are dead:
+
+* **Universe-mismatch in mutual block.** Lean 4 rejects a `mutual` block
+  containing both a `Type`-valued and a `Prop`-valued `inductive` ("invalid
+  mutually inductive types, resulting universe mismatch"). Forcing both
+  to `Type` doesn't help — see next.
+* **Mutual neighbor invisible in INDEX position.** Lean 4 rejects a
+  `mutual` block where one inductive's INDEX or PARAMETER signature
+  references another mutual neighbor by name ("unknown identifier
+  'MEqRed_C'"). Mutual neighbors are visible inside CONSTRUCTOR
+  ARGUMENT TYPES only. So `inductive AvoidsProUniv : MEqRed_C u v →
+  String → Type` cannot live in the same mutual block as `MEqRed_C`.
+* **"Structural-on-Term" path rejected.** `avoidsPro h x` is a property
+  of which `Me-Pro` lookups the derivation tree takes; two derivations
+  of the same source/target sequent can have radically different
+  `Me-Pro` patterns (`var` vs `pro`-then-refl), so no Term-level
+  predicate captures the same content.
+* **External alpha-equivariance lemma fallback also fails.** The Plan
+  agent's recommendation to replace constructor-baked uniformity with
+  an externally-proved theorem `AvoidsProUniv_uniform_across_witnesses`
+  is unsound for arbitrary `hbody` — `hbody : ∀ y ∉ L, MEqRed Γ st
+  (body^[y]) (body'^[y])` is a function with no a priori uniformity
+  guarantee. Two cofinite witnesses `y₁ ≠ y₂` can have `hbody y₁ _`
+  and `hbody y₂ _` produced by completely different proof skeletons,
+  in which case their `AvoidsProUniv` values disagree. The Phase 5b/5c
+  existence-form lemmas (`AvoidsProUniv_subst_yz_stray_exists`) are
+  provable because they CONSTRUCT a renamed derivation with the right
+  property — they do NOT claim equality of avoidance values across the
+  pre-existing function.
+
+**Implication for the discharge campaign.** Phase 5g's premise — that
+constructor-level uniformity can be added to `MEqRed`'s cofinite arms —
+is false. The `True` placeholders shipped in 5g.1/5g.2 are dead weight;
+they preserve no option value because the only useful replacement is
+structurally inadmissible. The `(hUniform : True)` slots could be
+reverted at the cost of churning ~127 call sites, but kept for now to
+avoid regression risk — future iterations should remove them when
+attacking another part of `Reductions.lean`.
+
+**The honest path forward for the β-residual axioms** is one of:
+
+1. **Existence-form composition (Lever A — Phase 5d's direction).**
+   Use `AvoidsProUniv_subst_yz_stray_exists` and friends to construct
+   closing trees existentially in β-residual proofs. Phase 5e/5f already
+   showed this hits the App×App stack-shift trap at the public Lemma 2
+   API. Could be revisited if the API can be extended to carry the CAPSU
+   side conditions.
+2. **Setoid quotient on derivations.** Quotient out non-uniform
+   witnesses via an alpha-equivalence on derivations, then work in the
+   quotient. Massive refactor; experimental viability.
+3. **De Bruijn re-encoding.** Switch from cofinite quantification to
+   uniform de Bruijn or nested-abstraction encoding. Massive cross-
+   codebase refactor; loses paper-faithful binder structure.
+4. **Accept axioms permanently.** Mark the β-residual axioms (and the
+   ctx_axioms) as paper-permanent in the same vein as `Conjecture_8`,
+   with a citation to the architectural-impossibility proof above.
+
+None of (1)–(4) is single-iteration. The campaign needs strategic
+input on which direction to commit to next.
+
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
 > "Inactive" = no headline theorem depends on it; retained for
