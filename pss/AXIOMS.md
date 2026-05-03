@@ -386,18 +386,39 @@ theorem.
 * **Paper:** Appendix Lemma 10 (full form).
 * **Statement:** `WSubMStar Γ (.abs t u) (.abs t' u') → WEquM Γ t t'`.
 * **Status:** Outstanding active. Hits Theorem 5.
-* **Discharge plan:** A long blocker analysis (file lines 564-617)
-  identifies the precise obstruction: stripping the `WSubMStar` to
-  `MSub` and inverting `Me-Fun`/`Ms-Fun` chains yields
-  `MEqRedStar Γ [] t t_w` and `MEqRedStar Γ [] t' t_w`. Two helper
-  lemmas (`Lemma A`, `Lemma B`) extend `WEquM` backwards along forward
-  `MEqRedStar` chains. **Closing requires `WfM Γ t_w` to seed
-  `WEquM Γ t_w t_w` (rfl).** Producing `WfM Γ t_w` requires
-  `WfM`-preservation under `MEqRed` (a non-trivial parallel of
-  `Lemma_6_EvaluationPreservesWf` for `MEqRed` instead of `Step`).
-  Discharging is a substantial new mutual-recursive proof.
-* **Estimated complexity:** Medium-large (~300-600 lines for the
-  preservation lemma alone).
+* **Discharge plan (REVISED 2026-05-04 after counterexample):** A long
+  blocker analysis (file lines 564-617) identifies the precise
+  obstruction: stripping the `WSubMStar` to `MSub` and inverting
+  `Me-Fun`/`Ms-Fun` chains yields `MEqRedStar Γ [] t t_w` and
+  `MEqRedStar Γ [] t' t_w`. Two helper lemmas (`Lemma A`, `Lemma B`)
+  extend `WEquM` backwards along forward `MEqRedStar` chains.
+  **Closing requires `WfM Γ t_w` to seed `WEquM Γ t_w t_w` (rfl).**
+* **The previous discharge plan — `WfM`-preservation under `MEqRed`
+  at empty stack — is FALSE in this calculus.** A Lean-checked
+  counterexample lives in `Pss/Mpss/WfMPreservation.lean`
+  (`Lemma_WfM_preservation_MEqRed_counterexample`):
+  - `Γ = [⟨"x", .app .top .top, .equ⟩]`. `Prevalid Γ` holds (closed,
+    LC), but `.app .top .top` is *not* `WfM Γ` (Lemma 11).
+  - `WfM Γ (.fvar "x")` via `Wf-PrE` (only requires Prevalid+binding).
+  - `MEqRed Γ [] (.fvar "x") (.app .top .top)` via `Me-Pro` plus
+    reflexive app-congruence.
+  - But `WfM Γ (.app .top .top)` is impossible.
+* **Structural cause:** `MEqRed.pro` reads off an `≡`-binding's stored
+  term, which `Prevalid` only checks for `fv ⊆ Γ.dom` and `LC`. The
+  paper's `WfM` and the calculus's `Prevalid` are not aligned —
+  `≡`-bindings can store terms that are not themselves `WfM`. Step's
+  `Lemma_6_EvaluationPreservesWf` is provable because `Step` never
+  consults the context; `MEqRed` does.
+* **Recovery strategies (none realized):**
+  1. Strengthen `Prevalid` to a `WfCtx` mutually inductive with `WfM`.
+  2. Strengthen `Wf-PrE` to require `WfM Γ α`.
+  3. Restrict the lemma to `pro`-preserving derivations.
+  4. Bypass `WfM Γ t_w` via a Church-Rosser-style proof of
+     `Lemma_10_Inversion` directly. Most promising; uses the existing
+     `Lemma_2_DiamondMEqRed` infrastructure.
+* **Estimated complexity:** Strategy (1) is a deep refactor (every
+  Prevalid construction site upgrades). Strategy (4) requires new
+  Diamond-adjacent infrastructure (~400-600 lines).
 
 ### 4. `Lemma_30_msPro_x_axiom`
 

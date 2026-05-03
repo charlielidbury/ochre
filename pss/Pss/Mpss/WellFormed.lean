@@ -613,23 +613,63 @@ extension chain we have ends at `t_w`, not at `t'`.
 
 The only seed that closes is `WEquM Γ t_w t_w` (rfl), which requires
 `WfM Γ t_w`. **Producing `WfM Γ t_w` requires preservation of `WfM`
-under `MEqRed` at empty stack.** That preservation lemma is non-trivial
-in this calculus:
-* `Me-Fun` case: needs `Lemma_23_NarrowingWf` (available) plus IH on the
-  annotation reduction. Since the annotation is itself an arbitrary
-  term, the IH demands the *general* preservation, not just the
-  `.abs/.abs` specialization.
-* `Me-Bet` (β) case: requires `Lemma_7_SubstitutionPreservesWf` (already
-  axiomatized in `TypeSafety.lean`).
-* `Me-Pro` (variable promotion) case: requires preservation along the
-  variable's stored sub-binding chain — recursive.
+under `MEqRed` at empty stack** — an axiomatic-looking step.
 
-Discharging the full preservation lemma is therefore a substantial new
-mutual-recursive proof in its own right (effectively a parallel
-`Lemma_6_EvaluationPreservesWf` for `MEqRed` instead of `Step`, which
-the existing infrastructure does NOT cover — `Lemma 6` only handles
-top-level operational `Step`, while `MEqRed` reduces under abstractions
-and propagates through any subterm).
+### Update (agent_id: `pss-2026-05-04-WfM-preservation-counterexample`)
+
+The proposed preservation lemma — a parallel `Lemma_6_EvaluationPreservesWf`
+for `MEqRed` instead of `Step` — was previously described as "non-trivial
+but tractable". **It is FALSE.** A Lean-checked counterexample lives in
+`Pss.Mpss.WfMPreservation`:
+
+* Take `Γ = [⟨"x", .app .top .top, .equ⟩]`. The bound term is closed and
+  `LC`, so `Prevalid Γ` holds. But `.app .top .top` is *not* `WfM Γ`
+  (Lemma 11: Top has no function supertype).
+* `WfM Γ (.fvar "x")` holds via `Wf-PrE` (only requires `Prevalid`+binding,
+  NOT well-formedness of the bound annotation).
+* `MEqRed Γ [] (.fvar "x") (.app .top .top)` holds via `Me-Pro` plus
+  reflexive `app`-congruence on `.top .top`.
+* But `WfM Γ (.app .top .top)` reduces to a `Top ≤*_wf .abs t .top`
+  obligation that Lemma 11 refutes.
+
+The structural cause: `MEqRed.pro` reads off an `≡`-binding's stored term,
+but `Prevalid` only ensures structural well-formedness (`fv ⊆ Γ.dom` +
+`LC`), not typing well-formedness. `Lemma_6_EvaluationPreservesWf` is
+provable for `Step` because `Step` is purely syntactic and never consults
+the context. `MEqRed` *does* consult the context (via `pro`/`var`), and
+the calculus does not enforce that bound annotations are themselves
+`WfM`. Hence the natural preservation lemma is unavailable.
+
+### Recovery strategies (none realized yet)
+
+See `Pss.Mpss.WfMPreservation` for the full list. Briefly:
+
+1. **Strengthen `Prevalid` to a `WfCtx` mutually inductive with `WfM`.**
+   Requires every `Prevalid` builder in the codebase to upgrade to
+   carrying a `WfM` payload for `≡`-bound annotations.
+2. **Strengthen `Wf-PrE` to require `WfM Γ α`** in addition to the
+   binding. Paper-non-faithful and breaks termination of the `WfM`
+   recursion (must recurse into stored annotations).
+3. **Restrict the lemma's domain** to `MEqRed` derivations whose `pro`
+   applications only target already-`WfM` bound terms. Then the
+   call sites of `Lemma_10_Inversion` need to thread that predicate
+   through their inputs — but `WSubMStar` doesn't expose its internal
+   `MEqRed` derivations directly, so this is non-trivial.
+4. **Bypass `WfM Γ t_w` entirely.** Find a Church-Rosser-style proof
+   of `Lemma_10_Inversion` that produces `WEquM Γ t t'` directly from
+   the joinable annotation chains, without needing the `rfl` seed at
+   the join point. Most promising path because it avoids touching the
+   `Prevalid`/`WfM` interface, but has not been investigated.
+
+Strategy (4) — the Church-Rosser bypass — is the recommended next attack
+vector. Sketch: `MEqRedStar Γ [] t t_w` and `MEqRedStar Γ [] t' t_w`
+together form a "wedge" over `t_w`. By a parallel-reduction analogue of
+the Diamond property (cf. `Pss.Mpss.Diamond.Lemma_2_DiamondMEqRed`), the
+two chains can be re-joined into a single forward `MEqRedStar Γ [] t s`
+followed by a backward chain `MEqRedStar Γ [] t' s'` where some
+relationship between `s` and `s'` is established. This may bypass the
+need for a seed. Significant new lemma machinery would be required, but
+the existing diamond infrastructure is a reasonable starting point.
 
 Cf. `AXIOMS.md` axiom #3 for the listing (status / paper / discharge
 plan). The restricted form `Lemma_10_InversionRestricted` (returning a

@@ -156,7 +156,11 @@ Inducting on `h₁ : WSubM Γ a b`, the four cases are:
   `WSubM` along `MEqRed` on the LHS", which the calculus does *not*
   enjoy as a one-step result without WfM-preservation along `MEqRed`
   (cf. the discharge-blocker discussion attached to
-  `Lemma_10_Inversion` in `Pss.Mpss.WellFormed`).
+  `Lemma_10_Inversion` in `Pss.Mpss.WellFormed`, and the FALSITY
+  finding documented in `Pss.Mpss.WfMPreservation` —
+  the natural preservation lemma is refuted by a Lean-checked
+  counterexample exploiting the `Me-Pro` rule plus the gap between
+  `Prevalid` and `WfM`).
 
 The `WSubMStar` form proven above is sufficient for all current
 downstream uses and avoids this blocker. -/
