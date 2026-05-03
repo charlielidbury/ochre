@@ -3212,6 +3212,297 @@ noncomputable def MEqRed.equ_head_replace
       hy₀_fvbd hy₀_fvbd' hy₀_stack ihbody_y₀_norm
     simpa using ren
 
+/-! ### §8.2a. Phase 5d: `MEqRed.equ_head_replace_univ_exists`
+
+A parallel form of `equ_head_replace` that takes an `AvoidsProUniv`
+premise instead of the Bool `avoidsPro` + `cofinDomFresh` triple, and
+returns an existence statement preserving `AvoidsProUniv` on the output.
+
+**Why this matters.** The original `equ_head_replace` samples cofinite
+arms at `pickFresh L` and then renames the result via `rename_stray` /
+`rename_sub` / `_rename_equ`. This works but threads two Bool freshness
+premises (`avoidsPro` + `cofinDomFresh`) that callers must discharge,
+and the Bool `avoidsPro` is fragile under future rename compositions
+(its sample point shifts when `L` widens — the alpha-equivariance trap).
+
+`AvoidsProUniv` quantifies universally over the cofinite witness:
+`∀ yfresh ∉ L, AvoidsProUniv (hbody yfresh _) x`. So the `bet`/`fun_`/
+`fOp` arms here can recurse DIRECTLY at any chosen `yfresh` (we use the
+output's own cofinite witness — no `pickFresh L` sample, no rename).
+This sidesteps the alpha-equivariance trap structurally: there is never
+a moment where we "translate" from sample `pickFresh L` to sample
+`pickFresh L'`. The `Me-Pro y` arm becomes immediate from
+`AvoidsProUniv_pro` (`y_i ≠ y` is part of the universal predicate).
+
+The output preserves `AvoidsProUniv h' y`, enabling consumers that
+compose multiple `equ_head_replace_univ_exists` calls.
+
+**Existence form.** We return `∃ h' : MEqRed ..., AvoidsProUniv h' y`
+because the cofinite arms construct each body branch via `Classical.choice`
+on the inductive existence hypothesis. -/
+
+/-- Equ-head bound-term replacement preserving a *predicate* on
+avoidance names AND `CofinAvoidsProSelfUniv`.
+
+The predicate `Avoid : String → Prop` captures the set of names whose
+avoidance must be preserved on the output. Critically, in the fOp
+Case A delegation from `stack_replace_univ_exists`, we need to preserve
+avoidance of BOTH the swapped binder name `y` AND the cofinite witness
+`yfresh` (for output `CofinAvoidsProSelfUniv`).
+
+The predicate-form makes this preservation modular: caller supplies any
+predicate they want (e.g. `fun z => z = y ∨ z = yfresh` or
+`fun _ => True` for the trivial form). -/
+theorem MEqRed.equ_head_replace_univ_exists_pred
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y : String} {α α' u u' : Term}
+    (h : MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u')
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom)
+    (Avoid : String → Prop)
+    (hyAvoid : Avoid y)
+    (hAvoidAll : ∀ z, Avoid z → AvoidsProUniv h z)
+    (hCAU : CofinAvoidsProSelfUniv h) :
+    ∃ h' : MEqRed (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st u u',
+      (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+      CofinAvoidsProSelfUniv h' := by
+  classical
+  revert hyAvoid hAvoidAll hCAU
+  generalize hΓ : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) = Γ at h
+  induction h generalizing Γ₂ Avoid with
+  | @pro Γ st' yi β β' hpv heq hβ ihβ =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    rw [CofinAvoidsProSelfUniv_pro] at hCAU
+    -- Extract `yi ≠ z` from hAvoidAll for each z in Avoid; the rewrite
+    -- happens on demand.
+    have hyiy : yi ≠ y := by
+      have := hAvoidAll y hyAvoid
+      rw [AvoidsProUniv_pro] at this
+      exact this.1
+    have hpv' : PrevalidExt (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st' :=
+      PrevalidExt.equ_head_replace_mid hpv hLCα' hfvα'
+    have heq' := _equBinds_equ_head_swap_neq (α' := α') hyiy heq
+    -- Recurse with the same Avoid predicate; need to derive
+    -- `∀ z, Avoid z → AvoidsProUniv hβ z` from the input's avoidance.
+    have hAvoidInner : ∀ z, Avoid z → AvoidsProUniv hβ z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_pro] at this
+      exact this.2
+    obtain ⟨hβ', hβA, hβC⟩ := ihβ (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidInner hCAU
+    refine ⟨MEqRed.pro hpv' heq' hβ', ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_pro]
+      refine ⟨?_, hβA z hz⟩
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_pro] at this
+      exact this.1
+    · rw [CofinAvoidsProSelfUniv_pro]; exact hβC
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    rw [CofinAvoidsProSelfUniv_bet] at hCAU
+    obtain ⟨hbC, hvC⟩ := hCAU
+    have body_each : ∀ yfresh, yfresh ∉ L →
+        ∃ h' : MEqRed (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st'
+                  (bd^[yfresh]) (bd'^[yfresh]),
+          (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+          CofinAvoidsProSelfUniv h' := by
+      intro yfresh hyf
+      have hAvoidBody : ∀ z, Avoid z → AvoidsProUniv (hbody yfresh hyf) z := by
+        intro z hz
+        have := hAvoidAll z hz
+        rw [AvoidsProUniv_bet] at this
+        exact this.1 yfresh hyf
+      exact ihbody yfresh hyf (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidBody (hbC yfresh hyf)
+    let body_witness : ∀ yfresh, yfresh ∉ L →
+        MEqRed (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st'
+          (bd^[yfresh]) (bd'^[yfresh]) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose
+    have body_witness_specs :
+        ∀ yfresh (hyf : yfresh ∉ L),
+          (∀ z, Avoid z → AvoidsProUniv (body_witness yfresh hyf) z) ∧
+          CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose_spec
+    have hAvoidV : ∀ z, Avoid z → AvoidsProUniv hv z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_bet] at this
+      exact this.2
+    obtain ⟨hv', hvA, hvC'⟩ := ihv (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidV hvC
+    refine ⟨MEqRed.bet L hLCt body_witness hv', ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_bet]
+      exact ⟨fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz, hvA z hz⟩
+    · rw [CofinAvoidsProSelfUniv_bet]
+      exact ⟨fun yfresh hyf => (body_witness_specs yfresh hyf).2, hvC'⟩
+  | @top Γ st' hpv =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st' :=
+      PrevalidExt.equ_head_replace_mid hpv hLCα' hfvα'
+    refine ⟨MEqRed.top hpv', ?_, ?_⟩
+    · intro z _; rw [AvoidsProUniv_top]; trivial
+    · rw [CofinAvoidsProSelfUniv_top]; trivial
+  | @app Γ st' u_ u_' v_ v_' hu hv ihu ihv =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    rw [CofinAvoidsProSelfUniv_app] at hCAU
+    obtain ⟨huC, hvC⟩ := hCAU
+    have hAvoidU : ∀ z, Avoid z → AvoidsProUniv hu z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_app] at this
+      exact this.1
+    have hAvoidV : ∀ z, Avoid z → AvoidsProUniv hv z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_app] at this
+      exact this.2
+    obtain ⟨hu', huA, huC'⟩ := ihu (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidU huC
+    obtain ⟨hv', hvA, hvC'⟩ := ihv (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidV hvC
+    refine ⟨MEqRed.app hu' hv', ?_, ?_⟩
+    · intro z hz; rw [AvoidsProUniv_app]; exact ⟨huA z hz, hvA z hz⟩
+    · rw [CofinAvoidsProSelfUniv_app]; exact ⟨huC', hvC'⟩
+  | @var Γ st' yi hpv =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st' :=
+      PrevalidExt.equ_head_replace_mid hpv hLCα' hfvα'
+    refine ⟨MEqRed.var hpv', ?_, ?_⟩
+    · intro z _; rw [AvoidsProUniv_var]; trivial
+    · rw [CofinAvoidsProSelfUniv_var]; trivial
+  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    rw [CofinAvoidsProSelfUniv_fun_] at hCAU
+    obtain ⟨htC, hbC⟩ := hCAU
+    have hAvoidT : ∀ z, Avoid z → AvoidsProUniv ht z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_fun_] at this
+      exact this.1
+    obtain ⟨ht', htA, htC'⟩ := iht (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidT htC
+    have body_each : ∀ yfresh, yfresh ∉ L →
+        ∃ h' : MEqRed (⟨yfresh, tt, .sub⟩ :: (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁)) []
+                  (bd^[yfresh]) (bd'^[yfresh]),
+          (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+          CofinAvoidsProSelfUniv h' := by
+      intro yfresh hyf
+      have hAvoidBody : ∀ z, Avoid z → AvoidsProUniv (hbody yfresh hyf) z := by
+        intro z hz
+        have := hAvoidAll z hz
+        rw [AvoidsProUniv_fun_] at this
+        exact this.2 yfresh hyf
+      have ihres := ihbody yfresh hyf (Avoid := Avoid)
+        (Γ₂ := ⟨yfresh, tt, .sub⟩ :: Γ₂)
+        (by simp) hyAvoid hAvoidBody (hbC yfresh hyf)
+      obtain ⟨h_inner, hAv_inner, hC_inner⟩ := ihres
+      refine ⟨?_, ?_, ?_⟩
+      · simpa using h_inner
+      · intro z hz
+        simpa [AvoidsProUniv_subst_eq_ctx] using hAv_inner z hz
+      · change CofinAvoidsProSelfUniv h_inner; exact hC_inner
+    let body_witness : ∀ yfresh, yfresh ∉ L →
+        MEqRed (⟨yfresh, tt, .sub⟩ :: (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁)) []
+          (bd^[yfresh]) (bd'^[yfresh]) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose
+    have body_witness_specs :
+        ∀ yfresh (hyf : yfresh ∉ L),
+          (∀ z, Avoid z → AvoidsProUniv (body_witness yfresh hyf) z) ∧
+          CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose_spec
+    refine ⟨MEqRed.fun_ L ht' body_witness, ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_fun_]
+      exact ⟨htA z hz, fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz⟩
+    · rw [CofinAvoidsProSelfUniv_fun_]
+      exact ⟨htC', fun yfresh hyf => (body_witness_specs yfresh hyf).2⟩
+  | @tAp Γ st' u_ hpv hLCu hfv =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st' :=
+      PrevalidExt.equ_head_replace_mid hpv hLCα' hfvα'
+    have hfv' : Term.fv u_ ⊆ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) := by
+      rw [← _Ctx_dom_eq_under_equ_head_replace (α := α) (α' := α')]; exact hfv
+    refine ⟨MEqRed.tAp hpv' hLCu hfv', ?_, ?_⟩
+    · intro z _; rw [AvoidsProUniv_tAp]; trivial
+    · rw [CofinAvoidsProSelfUniv_tAp]; trivial
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+    intro hyAvoid hAvoidAll hCAU
+    subst hΓ
+    rw [CofinAvoidsProSelfUniv_fOp] at hCAU
+    obtain ⟨htC, hbC⟩ := hCAU
+    have hAvoidT : ∀ z, Avoid z → AvoidsProUniv ht z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_fOp] at this
+      exact this.1
+    obtain ⟨ht', htA, htC'⟩ := iht (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidT htC
+    -- For each cofinite witness yfresh, we recurse with EXTENDED Avoid =
+    -- Avoid ∪ {yfresh}, which gives us the body's avoidance of both the
+    -- input's tracked names AND the cofinite witness itself (for output
+    -- CofinAvoidsProSelfUniv).
+    have body_each : ∀ yfresh, yfresh ∉ L →
+        ∃ h' : MEqRed (⟨yfresh, αi, .equ⟩ :: (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁)) st'
+                  (bd^[yfresh]) (bd'^[yfresh]),
+          (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+          AvoidsProUniv h' yfresh ∧
+          CofinAvoidsProSelfUniv h' := by
+      intro yfresh hyf
+      let Avoid' : String → Prop := fun z => Avoid z ∨ z = yfresh
+      have hAvoidExtended : ∀ z, Avoid' z → AvoidsProUniv (hbody yfresh hyf) z := by
+        intro z hz
+        cases hz with
+        | inl hz =>
+          have := hAvoidAll z hz
+          rw [AvoidsProUniv_fOp] at this
+          exact this.2 yfresh hyf
+        | inr hzeq =>
+          rw [hzeq]
+          exact (hbC yfresh hyf).1
+      have hyAvoidExt : Avoid' y := Or.inl hyAvoid
+      have ihres := ihbody yfresh hyf (Avoid := Avoid')
+        (Γ₂ := ⟨yfresh, αi, .equ⟩ :: Γ₂)
+        (by simp) hyAvoidExt hAvoidExtended (hbC yfresh hyf).2
+      obtain ⟨h_inner, hAv_inner, hC_inner⟩ := ihres
+      refine ⟨?_, ?_, ?_, ?_⟩
+      · simpa using h_inner
+      · intro z hz
+        simpa [AvoidsProUniv_subst_eq_ctx] using hAv_inner z (Or.inl hz)
+      · simpa [AvoidsProUniv_subst_eq_ctx] using hAv_inner yfresh (Or.inr rfl)
+      · change CofinAvoidsProSelfUniv h_inner; exact hC_inner
+    let body_witness : ∀ yfresh, yfresh ∉ L →
+        MEqRed (⟨yfresh, αi, .equ⟩ :: (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁)) st'
+          (bd^[yfresh]) (bd'^[yfresh]) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose
+    have body_witness_specs :
+        ∀ yfresh (hyf : yfresh ∉ L),
+          (∀ z, Avoid z → AvoidsProUniv (body_witness yfresh hyf) z) ∧
+          AvoidsProUniv (body_witness yfresh hyf) yfresh ∧
+          CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose_spec
+    refine ⟨MEqRed.fOp L ht' body_witness, ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_fOp]
+      exact ⟨htA z hz, fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz⟩
+    · rw [CofinAvoidsProSelfUniv_fOp]
+      refine ⟨htC', fun yfresh hyf => ?_⟩
+      exact ⟨(body_witness_specs yfresh hyf).2.1, (body_witness_specs yfresh hyf).2.2⟩
+
+theorem MEqRed.equ_head_replace_univ_exists
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y : String} {α α' u u' : Term}
+    (h : MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u')
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom)
+    (hUniv : AvoidsProUniv h y)
+    (hCAU : CofinAvoidsProSelfUniv h) :
+    ∃ h' : MEqRed (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st u u',
+      AvoidsProUniv h' y ∧ CofinAvoidsProSelfUniv h' := by
+  obtain ⟨h', hAv, hC⟩ :=
+    MEqRed.equ_head_replace_univ_exists_pred h hLCα' hfvα'
+      (Avoid := fun z => z = y) rfl
+      (by intro z hz; subst hz; exact hUniv) hCAU
+  exact ⟨h', hAv y rfl, hC⟩
+
 /-! ### §8.3. `MSubRed.equ_head_replace` -/
 
 /-- **MSubRed analog of `MEqRed.equ_head_replace`**: replace the bound
@@ -3701,6 +3992,314 @@ noncomputable def MEqRed.stack_head_replace
   -- generalized signature without any conversion.
   MEqRed.stack_replace (Γ₁ := Γ) (Γ₂ := []) (s_pre := []) (s_post := s)
     hLCα' hfvα' h hFresh hAPS
+
+/-! ### §9.3a. Phase 5d: `MEqRed.stack_replace_univ_exists_pred` /
+`stack_head_replace_univ_exists`
+
+Phase 5d analog of `stack_replace` / `stack_head_replace`, taking a
+`CofinAvoidsProSelfUniv h` premise (replacing both `cofinDomFresh` and
+`cofinAvoidsProSelf`) PLUS a predicate-form `AvoidsProUniv` premise
+(`∀ z, Avoid z → AvoidsProUniv h z`), and returning an existence form
+preserving BOTH `CofinAvoidsProSelfUniv` AND the predicate-form
+avoidance on the output.
+
+**Why predicate form.** In fOp Case B (the body's stack is
+`β :: rest ++ α :: s_post`), the recursive output's
+`CofinAvoidsProSelfUniv` requires `AvoidsProUniv (body_y_i) y_i` —
+which is exactly the `Avoid := {y_i}` predicate-form preservation
+that this theorem establishes.
+
+**The structural avoidance of the alpha-equivariance trap.** In the
+fOp Case A arm, the body recurses at extended ctx with binding
+`⟨y_i, α, .equ⟩` for each cofinite witness `y_i ∉ L`. We delegate
+directly to `equ_head_replace_univ_exists_pred` at this `y_i`
+(NOT at a canonical `pickFresh L`-sample). The premise
+`AvoidsProUniv (hbody y_i _) y_i` comes from `CofinAvoidsProSelfUniv`'s
+fOp clause without any sample-point alignment between input and output
+L's. No rename, no `pickFresh L → pickFresh L'` translation, no
+fragility under constructor-set widening. -/
+
+theorem MEqRed.stack_replace_univ_exists_pred
+    {Γ₁ : Ctx} {α α' : Term}
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom) :
+    {Γ₂ : Ctx} → {s_pre s_post : Stack} → {u u' : Term} →
+    (h : MEqRed (Γ₂ ++ Γ₁) (s_pre ++ α :: s_post) u u') →
+    (Avoid : String → Prop) →
+    (∀ z, Avoid z → AvoidsProUniv h z) →
+    CofinAvoidsProSelfUniv h →
+    ∃ h' : MEqRed (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post) u u',
+      (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+      CofinAvoidsProSelfUniv h' := by
+  intro Γ₂ s_pre s_post u u' h Avoid hAvoidAll hCAU
+  classical
+  revert hAvoidAll hCAU
+  generalize hΓ : (Γ₂ ++ Γ₁) = Γ at h
+  generalize hS : (s_pre ++ α :: s_post) = stk at h
+  induction h generalizing Γ₂ s_pre Avoid with
+  | @pro Γ stk' yi β β' hpv heq hβ ihβ =>
+    intro hAvoidAll hCAU
+    subst hΓ; subst hS
+    rw [CofinAvoidsProSelfUniv_pro] at hCAU
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post) :=
+      PrevalidExt.stack_replace_mid hpv hLCα' (by
+        intro x hx
+        have := hfvα' hx
+        rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
+    have hAvoidInner : ∀ z, Avoid z → AvoidsProUniv hβ z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_pro] at this
+      exact this.2
+    obtain ⟨hβ', hβA, hβC⟩ := ihβ (Avoid := Avoid) (Γ₂ := Γ₂) (s_pre := s_pre) rfl rfl
+      hAvoidInner hCAU
+    refine ⟨MEqRed.pro hpv' heq hβ', ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_pro]
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_pro] at this
+      exact ⟨this.1, hβA z hz⟩
+    · rw [CofinAvoidsProSelfUniv_pro]; exact hβC
+  | @bet Γ stk' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+    intro hAvoidAll hCAU
+    subst hΓ; subst hS
+    rw [CofinAvoidsProSelfUniv_bet] at hCAU
+    obtain ⟨hbU, hvU⟩ := hCAU
+    -- The body shares the stack `stk' = s_pre ++ α :: s_post`, recurse on it.
+    -- The operand `hv` has empty stack — no α :: s_post, pass through.
+    have body_each : ∀ yfresh, yfresh ∉ L →
+        ∃ h' : MEqRed (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post)
+                  (bd^[yfresh]) (bd'^[yfresh]),
+          (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+          CofinAvoidsProSelfUniv h' := by
+      intro yfresh hyf
+      have hAvoidBody : ∀ z, Avoid z → AvoidsProUniv (hbody yfresh hyf) z := by
+        intro z hz
+        have := hAvoidAll z hz
+        rw [AvoidsProUniv_bet] at this
+        exact this.1 yfresh hyf
+      exact ihbody yfresh hyf (Avoid := Avoid) (Γ₂ := Γ₂) (s_pre := s_pre) rfl rfl
+        hAvoidBody (hbU yfresh hyf)
+    let body_witness : ∀ yfresh, yfresh ∉ L →
+        MEqRed (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post)
+          (bd^[yfresh]) (bd'^[yfresh]) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose
+    have body_witness_specs :
+        ∀ yfresh (hyf : yfresh ∉ L),
+          (∀ z, Avoid z → AvoidsProUniv (body_witness yfresh hyf) z) ∧
+          CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
+      fun yfresh hyf => (body_each yfresh hyf).choose_spec
+    refine ⟨MEqRed.bet L hLCt body_witness hv, ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_bet]
+      refine ⟨fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz, ?_⟩
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_bet] at this
+      exact this.2
+    · rw [CofinAvoidsProSelfUniv_bet]
+      exact ⟨fun yfresh hyf => (body_witness_specs yfresh hyf).2, hvU⟩
+  | @top Γ stk' hpv =>
+    intro _ _
+    subst hΓ; subst hS
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post) :=
+      PrevalidExt.stack_replace_mid hpv hLCα' (by
+        intro x hx
+        have := hfvα' hx
+        rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
+    refine ⟨MEqRed.top hpv', ?_, ?_⟩
+    · intro z _; rw [AvoidsProUniv_top]; trivial
+    · rw [CofinAvoidsProSelfUniv_top]; trivial
+  | @app Γ stk' u_ u_' v_ v_' hu hv ihu ihv =>
+    intro hAvoidAll hCAU
+    subst hΓ; subst hS
+    rw [CofinAvoidsProSelfUniv_app] at hCAU
+    obtain ⟨huU, hvU⟩ := hCAU
+    have hAvoidU : ∀ z, Avoid z → AvoidsProUniv hu z := by
+      intro z hz
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_app] at this
+      exact this.1
+    obtain ⟨hu', huA, huC'⟩ := ihu (Avoid := Avoid) (Γ₂ := Γ₂) (s_pre := v_ :: s_pre)
+      rfl (by simp) hAvoidU huU
+    refine ⟨MEqRed.app hu' hv, ?_, ?_⟩
+    · intro z hz
+      rw [AvoidsProUniv_app]
+      refine ⟨huA z hz, ?_⟩
+      have := hAvoidAll z hz
+      rw [AvoidsProUniv_app] at this
+      exact this.2
+    · rw [CofinAvoidsProSelfUniv_app]
+      exact ⟨huC', hvU⟩
+  | @var Γ stk' yi hpv =>
+    intro _ _
+    subst hΓ; subst hS
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post) :=
+      PrevalidExt.stack_replace_mid hpv hLCα' (by
+        intro x hx
+        have := hfvα' hx
+        rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
+    refine ⟨MEqRed.var hpv', ?_, ?_⟩
+    · intro z _; rw [AvoidsProUniv_var]; trivial
+    · rw [CofinAvoidsProSelfUniv_var]; trivial
+  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+    intro _ _
+    -- Vacuous: fun_ requires stack [], but s_pre ++ α :: s_post is non-empty.
+    exfalso
+    cases s_pre with
+    | nil => simp at hS
+    | cons _ _ => simp at hS
+  | @tAp Γ stk' u_ hpv hLCu hfv =>
+    intro _ _
+    subst hΓ; subst hS
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post) :=
+      PrevalidExt.stack_replace_mid hpv hLCα' (by
+        intro x hx
+        have := hfvα' hx
+        rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
+    refine ⟨MEqRed.tAp hpv' hLCu hfv, ?_, ?_⟩
+    · intro z _; rw [AvoidsProUniv_tAp]; trivial
+    · rw [CofinAvoidsProSelfUniv_tAp]; trivial
+  | @fOp Γ stk' tt tt' αi bd bd' L ht hbody iht ihbody =>
+    intro hAvoidAll hCAU
+    subst hΓ
+    cases s_pre with
+    | nil =>
+      -- Case A: s_pre = []. αi = α and stk' = s_post.
+      simp at hS
+      obtain ⟨hαieq, hstkeq⟩ := hS
+      subst hαieq; subst hstkeq
+      rw [CofinAvoidsProSelfUniv_fOp] at hCAU
+      obtain ⟨htU, hbcomb⟩ := hCAU
+      have hfvα'_full : Term.fv α' ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+        intro x hx
+        have := hfvα' hx
+        rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this)
+      -- For each cofinite witness y_i, use equ_head_replace_univ_exists_pred to swap
+      -- α → α' inside the body's context. Track Avoid ∪ {y_i} so the output
+      -- preserves both the input's tracked names AND y_i (for self-avoidance).
+      have body_each : ∀ y_i, y_i ∉ L →
+          ∃ h' : MEqRed (⟨y_i, α', .equ⟩ :: (Γ₂ ++ Γ₁)) s_post
+                    (bd^[y_i]) (bd'^[y_i]),
+            (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+            AvoidsProUniv h' y_i ∧ CofinAvoidsProSelfUniv h' := by
+        intro y_i hyiL
+        obtain ⟨hAvUniv_i, hCAU_i⟩ := hbcomb y_i hyiL
+        let Avoid' : String → Prop := fun z => Avoid z ∨ z = y_i
+        have hAvoidExt : ∀ z, Avoid' z → AvoidsProUniv (hbody y_i hyiL) z := by
+          intro z hz
+          cases hz with
+          | inl hz =>
+            have := hAvoidAll z hz
+            rw [AvoidsProUniv_fOp] at this
+            exact this.2 y_i hyiL
+          | inr hzeq => rw [hzeq]; exact hAvUniv_i
+        have hyAvoidExt : Avoid' y_i := Or.inr rfl
+        obtain ⟨h_swap, h_swap_avs, h_swap_cau⟩ :=
+          MEqRed.equ_head_replace_univ_exists_pred
+            (Γ₁ := Γ₂ ++ Γ₁) (Γ₂ := []) (y := y_i)
+            (hbody y_i hyiL) hLCα' hfvα'_full Avoid' hyAvoidExt hAvoidExt hCAU_i
+        refine ⟨h_swap, ?_, ?_, h_swap_cau⟩
+        · intro z hz; exact h_swap_avs z (Or.inl hz)
+        · exact h_swap_avs y_i (Or.inr rfl)
+      let body_witness : ∀ y_i, y_i ∉ L →
+          MEqRed (⟨y_i, α', .equ⟩ :: (Γ₂ ++ Γ₁)) s_post
+            (bd^[y_i]) (bd'^[y_i]) :=
+        fun y_i hyiL => (body_each y_i hyiL).choose
+      have body_witness_specs :
+          ∀ y_i (hyiL : y_i ∉ L),
+            (∀ z, Avoid z → AvoidsProUniv (body_witness y_i hyiL) z) ∧
+            AvoidsProUniv (body_witness y_i hyiL) y_i ∧
+            CofinAvoidsProSelfUniv (body_witness y_i hyiL) :=
+        fun y_i hyiL => (body_each y_i hyiL).choose_spec
+      refine ⟨MEqRed.fOp L ht body_witness, ?_, ?_⟩
+      · intro z hz
+        rw [AvoidsProUniv_fOp]
+        refine ⟨?_, fun y_i hyiL => (body_witness_specs y_i hyiL).1 z hz⟩
+        have := hAvoidAll z hz
+        rw [AvoidsProUniv_fOp] at this
+        exact this.1
+      · rw [CofinAvoidsProSelfUniv_fOp]
+        refine ⟨htU, fun y_i hyiL => ?_⟩
+        exact ⟨(body_witness_specs y_i hyiL).2.1, (body_witness_specs y_i hyiL).2.2⟩
+    | cons β rest =>
+      -- Case B: αi = β, stk' = rest ++ α :: s_post.
+      simp at hS
+      obtain ⟨hβeq, hstkeq⟩ := hS
+      subst hβeq; subst hstkeq
+      rw [CofinAvoidsProSelfUniv_fOp] at hCAU
+      obtain ⟨htU, hbcomb⟩ := hCAU
+      -- For each cofinite witness y_i, recurse via the IH (predicate-form),
+      -- tracking Avoid ∪ {y_i}.
+      have body_each : ∀ y_i, y_i ∉ L →
+          ∃ h' : MEqRed (⟨y_i, β, .equ⟩ :: (Γ₂ ++ Γ₁)) (rest ++ α' :: s_post)
+                    (bd^[y_i]) (bd'^[y_i]),
+            (∀ z, Avoid z → AvoidsProUniv h' z) ∧
+            AvoidsProUniv h' y_i ∧ CofinAvoidsProSelfUniv h' := by
+        intro y_i hyiL
+        obtain ⟨hAvUniv_i, hCAU_i⟩ := hbcomb y_i hyiL
+        let Avoid' : String → Prop := fun z => Avoid z ∨ z = y_i
+        have hAvoidExt : ∀ z, Avoid' z → AvoidsProUniv (hbody y_i hyiL) z := by
+          intro z hz
+          cases hz with
+          | inl hz =>
+            have := hAvoidAll z hz
+            rw [AvoidsProUniv_fOp] at this
+            exact this.2 y_i hyiL
+          | inr hzeq => rw [hzeq]; exact hAvUniv_i
+        have ihres := ihbody y_i hyiL (Avoid := Avoid')
+          (Γ₂ := ⟨y_i, β, .equ⟩ :: Γ₂)
+          (s_pre := rest) (by simp) (by simp) hAvoidExt hCAU_i
+        obtain ⟨h_inner, hAv_inner, hC_inner⟩ := ihres
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · simpa using h_inner
+        · intro z hz
+          simpa [AvoidsProUniv_subst_eq_ctx] using hAv_inner z (Or.inl hz)
+        · simpa [AvoidsProUniv_subst_eq_ctx] using hAv_inner y_i (Or.inr rfl)
+        · change CofinAvoidsProSelfUniv h_inner; exact hC_inner
+      let body_witness : ∀ y_i, y_i ∉ L →
+          MEqRed (⟨y_i, β, .equ⟩ :: (Γ₂ ++ Γ₁)) (rest ++ α' :: s_post)
+            (bd^[y_i]) (bd'^[y_i]) :=
+        fun y_i hyiL => (body_each y_i hyiL).choose
+      have body_witness_specs :
+          ∀ y_i (hyiL : y_i ∉ L),
+            (∀ z, Avoid z → AvoidsProUniv (body_witness y_i hyiL) z) ∧
+            AvoidsProUniv (body_witness y_i hyiL) y_i ∧
+            CofinAvoidsProSelfUniv (body_witness y_i hyiL) :=
+        fun y_i hyiL => (body_each y_i hyiL).choose_spec
+      refine ⟨MEqRed.fOp L ht body_witness, ?_, ?_⟩
+      · intro z hz
+        rw [AvoidsProUniv_fOp]
+        refine ⟨?_, fun y_i hyiL => (body_witness_specs y_i hyiL).1 z hz⟩
+        have := hAvoidAll z hz
+        rw [AvoidsProUniv_fOp] at this
+        exact this.1
+      · rw [CofinAvoidsProSelfUniv_fOp]
+        refine ⟨htU, fun y_i hyiL => ?_⟩
+        exact ⟨(body_witness_specs y_i hyiL).2.1, (body_witness_specs y_i hyiL).2.2⟩
+
+/-- Specialization with `Avoid` trivial (always False). -/
+theorem MEqRed.stack_replace_univ_exists
+    {Γ₁ Γ₂ : Ctx} {s_pre s_post : Stack} {α α' u u' : Term}
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom)
+    (h : MEqRed (Γ₂ ++ Γ₁) (s_pre ++ α :: s_post) u u')
+    (hCAU : CofinAvoidsProSelfUniv h) :
+    ∃ h' : MEqRed (Γ₂ ++ Γ₁) (s_pre ++ α' :: s_post) u u',
+      CofinAvoidsProSelfUniv h' := by
+  obtain ⟨h', _, hC⟩ :=
+    MEqRed.stack_replace_univ_exists_pred (Γ₁ := Γ₁) (Γ₂ := Γ₂)
+      (s_pre := s_pre) (s_post := s_post) hLCα' hfvα' h
+      (Avoid := fun _ => False) (by intro z hz; cases hz) hCAU
+  exact ⟨h', hC⟩
+
+/-- Stack-head replacement using the universal-AvoidsProUniv premise.
+Specialization with `Γ₂ = []`, `s_pre = []`. -/
+theorem MEqRed.stack_head_replace_univ_exists
+    {Γ : Ctx} {s : Stack} {α α' u u' : Term}
+    (h : MEqRed Γ (α :: s) u u')
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ.dom)
+    (hCAU : CofinAvoidsProSelfUniv h) :
+    ∃ h' : MEqRed Γ (α' :: s) u u', CofinAvoidsProSelfUniv h' :=
+  MEqRed.stack_replace_univ_exists (Γ₁ := Γ) (Γ₂ := []) (s_pre := []) (s_post := s)
+    hLCα' hfvα' h hCAU
 
 /-! ### §9.4. MSubRed analog — DEFERRED to a follow-up phase
 
