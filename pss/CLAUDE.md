@@ -54,6 +54,20 @@ time pressure. Throttling is in place — work as long as you need.
    sub-agent type to find one.** Decision paralysis is itself a problem
    worth delegating.
 
+5a. **Hardest case first.** When you have a choice of axioms / cases /
+   targets to attack, pick the hardest one — not the one whose context
+   is already loaded, not the one with the freshest blocker analysis,
+   not the one a sub-agent's report happens to dangle in front of you.
+   If the hard case falls, the easy ones are usually mechanical fallout.
+   If it resists, you've learned something load-bearing for the next
+   iteration. Easy-first feels productive but leaves the actual problem
+   for later, indefinitely. Past anti-patterns to avoid:
+   - Discharging `tAp × *` cells while leaving `Bet × Bet` axiomatic.
+   - "Splitting" an axiom into two narrower axioms with no proof
+     progress (Pareto-neutral or worse).
+   - Picking the residual whose context is already loaded over the
+     residual that matters most.
+
 6. **You may NOT introduce axioms that are mathematically false.** Sub-
    agents have previously shipped axioms whose statements are
    counterexample-false (the proposed alpha-equivariance for arbitrary

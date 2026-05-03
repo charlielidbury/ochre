@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Infinite loop of Claude Code agents working on Och.
+# Infinite loop of Claude Code agents working on the PSS Lean formalization.
 #
 # Each iteration launches Claude Code interactively with remote control,
 # so you can connect via the web URL printed in the logs.
 # When the agent finishes (idle prompt detected), /exit is sent automatically.
+#
+# Each agent reads CLAUDE.md (auto-loaded) and AGENT_PROMPT.md (this loop's
+# iteration brief). Together they tell the agent: continue the discharge
+# campaign, dispatch sub-agents, never bail.
 #
 # Usage:
 #   ./loop.sh              # run with defaults
@@ -27,7 +31,7 @@ pane_fingerprint() {
   tmux capture-pane -t "$session" -p 2>/dev/null | md5sum | cut -d' ' -f1
 }
 
-echo "Starting Och agent loop"
+echo "Starting PSS discharge-campaign agent loop"
 echo "  Max turns per iteration: $MAX_TURNS"
 echo "  Pause every: ${PAUSE_EVERY:-never} iterations"
 echo "  Press Ctrl-C to stop"
@@ -59,7 +63,9 @@ while true; do
   echo "  Attach locally: tmux attach -t $SESSION_NAME"
 
   # Send the prompt
-  tmux send-keys -t "$SESSION_NAME" "$PROMPT" Enter
+  tmux send-keys -t "$SESSION_NAME" "$PROMPT"
+  sleep 0.3
+  tmux send-keys -t "$SESSION_NAME" Enter
 
   echo "  Agent started. Waiting for it to finish..."
 
