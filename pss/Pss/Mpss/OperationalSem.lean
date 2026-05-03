@@ -219,7 +219,7 @@ theorem Proposition_17_FromOperationalToEqRed
             subst this; simp [Ctx.dom_cons]
         exact MEqRed.refl_J hpvyExt hLCbodyOpen hfvBodyOpen
       exact ⟨MEqRed.fun_ (L ∪ Γ.dom ∪ Term.fv body) ihBound
-        (fun y hy => (hbody_each y hy).some)⟩
+        (fun y hy => (hbody_each y hy).some) trivial⟩
     | cons α tail =>
       cases hpv with
       | cons hpvR hLCα hfvα =>
@@ -255,7 +255,7 @@ theorem Proposition_17_FromOperationalToEqRed
               subst this; simp [Ctx.dom_cons]
           exact MEqRed.refl_J hpvyExt hLCbodyOpen hfvBodyOpen
         exact ⟨MEqRed.fOp (L ∪ Γ.dom ∪ Term.fv body) ihBound
-          (fun y hy => (hbody_each y hy).some)⟩
+          (fun y hy => (hbody_each y hy).some) trivial⟩
   | @absBody bound body body' L hLCbound hbody ih =>
     have hfvBound : Term.fv bound ⊆ Γ.dom := by
       intro y hy; apply hfv; simp [Term.fv]; exact Or.inl hy
@@ -310,7 +310,7 @@ theorem Proposition_17_FromOperationalToEqRed
             subst this; simp [Ctx.dom_cons]
         exact ih y hyL hpvyExt hLCopen hfvBodyOpen
       exact ⟨MEqRed.fun_ (L ∪ Γ.dom ∪ Term.fv body ∪ Term.fv body') hboundRefl
-        (fun y hy => (hbody_each y hy).some)⟩
+        (fun y hy => (hbody_each y hy).some) trivial⟩
     | cons α tail =>
       cases hpv with
       | cons hpvR hLCα hfvα =>
@@ -364,6 +364,6 @@ theorem Proposition_17_FromOperationalToEqRed
               subst this; simp [Ctx.dom_cons]
           exact ih y hyL hpvyExt hLCopen hfvBodyOpen
         exact ⟨MEqRed.fOp (L ∪ Γ.dom ∪ Term.fv body ∪ Term.fv body') hboundRefl
-          (fun y hy => (hbody_each y hy).some)⟩
+          (fun y hy => (hbody_each y hy).some) trivial⟩
 
 end Pss

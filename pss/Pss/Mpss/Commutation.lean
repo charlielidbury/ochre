@@ -249,13 +249,13 @@ private noncomputable def _extractPrevalidOfMEqRed_C {Γ : Ctx} {s : Stack} {u v
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
-  | @bet Γ s t v v' body body' L _ _ _ _ ihv => exact ihv
+  | @bet Γ s t v v' body body' L _ _ _ _ _ ihv => exact ihv
   | @top Γ s hpv => exact extractPrevalid hpv
   | @app Γ s u u' v v' _ _ _ ihv => exact ihv
   | @var Γ s x hpv => exact extractPrevalid hpv
-  | @fun_ Γ t t' body body' L _ _ iht _ => exact iht
+  | @fun_ Γ t t' body body' L _ _ _ iht _ => exact iht
   | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
-  | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
+  | @fOp Γ s t t' α body body' L _ _ _ iht _ => exact iht
 
 /-- Local re-proof of the `Prevalid` extractor for `MSubRed`. -/
 private noncomputable def _extractPrevalidOfMSubRed_C {Γ : Ctx} {s : Stack} {u v : Term}
@@ -265,12 +265,12 @@ private noncomputable def _extractPrevalidOfMSubRed_C {Γ : Ctx} {s : Stack} {u 
   | @top Γ st u hpv _ _ => exact extractPrevalid hpv
   | @equ Γ st u v hpv heq => exact extractPrevalid hpv
   | @app Γ st u u' v _ _ _ ihu => exact ihu
-  | @fun_ Γ t body body' L _ _ ihbody =>
+  | @fun_ Γ t body body' L _ _ _ ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh L)
     have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact (ihbody x hx).tail
-  | @fOp Γ st t α body body' L _ _ ihbody =>
+  | @fOp Γ st t α body body' L _ _ _ ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh L)
     have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
@@ -345,7 +345,7 @@ private noncomputable def Lemma_1_inline_fun_fun_residual
   have hfvt' : Term.fv t' ⊆ Γ.dom := MEqRed_fv_preserve ht₂ hfvt
   refine ⟨.abs t' body₃, ?_, ?_⟩
   · -- Left edge: MEqRed Γ [] (.abs t body₁) (.abs t' body₃) via Me-Fun.
-    refine MEqRed.fun_ (Γ.dom ∪ Term.fv body₁ ∪ Term.fv body₃ ∪ {y}) ht₂ ?_
+    refine MEqRed.fun_ (Γ.dom ∪ Term.fv body₁ ∪ Term.fv body₃ ∪ {y}) ht₂ ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -361,7 +361,7 @@ private noncomputable def Lemma_1_inline_fun_fun_residual
     exact MEqRed.rename_sub hpvΓ hLCt hfvt hy_notin_Γ hz_notin_Γ
       hy_notin_body₁ hy_notin_body₃ (by intro α hα; cases hα) h_at_y
   · -- Right edge: MSubRed Γ [] (.abs t' body₂) (.abs t' body₃) via Ms-Fun.
-    refine MSubRed.fun_ (Γ.dom ∪ Term.fv body₂ ∪ Term.fv body₃ ∪ {y}) hLCt' ?_
+    refine MSubRed.fun_ (Γ.dom ∪ Term.fv body₂ ∪ Term.fv body₃ ∪ {y}) hLCt' ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -474,7 +474,7 @@ private noncomputable def Lemma_1_inline_fOp_fOp_residual
   refine ⟨.abs t' body₃, ?_, ?_⟩
   · -- Left: MEqRed Γ (α :: s) (.abs t body₁) (.abs t' body₃) via Me-FOp.
     refine MEqRed.fOp (Γ.dom ∪ Term.fv body₁ ∪ Term.fv body₃ ∪ Term.fv α ∪ {y})
-      ht₂ ?_
+      ht₂ ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -495,7 +495,7 @@ private noncomputable def Lemma_1_inline_fOp_fOp_residual
       hy_notin_body₁ hy_notin_body₃ hy_notin_stack h_at_y
   · -- Right: MSubRed Γ (α :: s) (.abs t' body₂) (.abs t' body₃) via Ms-FOp.
     refine MSubRed.fOp (Γ.dom ∪ Term.fv body₂ ∪ Term.fv body₃ ∪ Term.fv α ∪ {y})
-      hLCt' ?_
+      hLCt' ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -559,7 +559,7 @@ noncomputable def Lemma_1_StrongCommutativity_core
       have hLCv₂ : Term.LC v₂ := MEqRed.lc_right hv₂
       have hfvv₂ : Term.fv v₂ ⊆ Γ.dom := MEqRed_fv_preserve hv₂ hfvv
       exact ⟨.app w' v₂, MEqRed.app hu'_w' hv₂, MSubRed.app hu₂_w' hLCv₂ hfvv₂⟩
-    | @bet _ _ tBound _ _ body body' L hLCt hbody hv₂ =>
+    | @bet _ _ tBound _ _ body body' L hLCt hbody _hUni₂ hv₂ =>
       -- App × Bet residual.
       exact Lemma_1_inline_app_bet_residual hu hLCv hfvv hLCt hbody hv₂ ihu
     | @tAp _ _ _ hpv₂ hLCu' hfvu' =>
@@ -580,15 +580,15 @@ noncomputable def Lemma_1_StrongCommutativity_core
           -- u' = .top.
           refine ⟨.top, MEqRed.tAp hpv₂ hLCv' hfvv', ?_⟩
           exact MSubRed.top hpv₂ Term.LC.top (by intro z hz; simp [Term.fv] at hz)
-  | @fun_ Γ t body body' L hLCt hbody ihbody =>
+  | @fun_ Γ t body body' L hLCt hbody _hUni ihbody =>
     -- Source: .abs t body at empty stack. Cases on heq.
     cases heq with
-    | @fun_ _ _ t' _ body₂ L₂ ht₂ hbody₂ =>
+    | @fun_ _ _ t' _ body₂ L₂ ht₂ hbody₂ _hUni₂ =>
       exact Lemma_1_inline_fun_fun_residual hLCt hbody ht₂ hbody₂ ihbody
-  | @fOp Γ s t α body body' L hLCt hbody ihbody =>
+  | @fOp Γ s t α body body' L hLCt hbody _hUni ihbody =>
     -- Source: .abs t body at α::s. Cases on heq.
     cases heq with
-    | @fOp _ _ _ t' _ _ body₂ L₂ ht₂ hbody₂ =>
+    | @fOp _ _ _ t' _ _ body₂ L₂ ht₂ hbody₂ _hUni₂ =>
       exact Lemma_1_inline_fOp_fOp_residual hLCt hbody ht₂ hbody₂ ihbody
 
 /-! ## §5. Headline theorem -/

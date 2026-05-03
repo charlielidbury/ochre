@@ -131,7 +131,7 @@ theorem MEqRed_fv_subset {Γ : Ctx} {s : Stack} {u v : Term}
     · exact Finset.mem_union.mpr (Or.inr
         (Prevalid.fv_lookupEqu (extractPrevalid hpv) heq h'))
     · exact Finset.mem_union.mpr (Or.inr h')
-  | @bet Γ s t v0 v0' body body' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ s t v0 v0' body body' L hLCt hbody _hUni hv ihbody ihv =>
     classical
     obtain ⟨y, hy⟩ := Term.exists_fresh (L ∪ Term.fv body')
     have hyL : y ∉ L := fun h' => hy (Finset.mem_union.mpr (Or.inl h'))
@@ -195,7 +195,7 @@ theorem MEqRed_fv_subset {Γ : Ctx} {s : Stack} {u v : Term}
       · exact Finset.mem_union.mpr (Or.inr h')
   | @var Γ s y hpv =>
     intro z hz; exact Finset.mem_union.mpr (Or.inl hz)
-  | @fun_ Γ t t' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t t' body body' L ht hbody _hUni iht ihbody =>
     classical
     obtain ⟨y, hy⟩ := Term.exists_fresh (L ∪ Term.fv body')
     have hyL : y ∉ L := fun h' => hy (Finset.mem_union.mpr (Or.inl h'))
@@ -231,7 +231,7 @@ theorem MEqRed_fv_subset {Γ : Ctx} {s : Stack} {u v : Term}
       · exact Finset.mem_union.mpr (Or.inr h')
   | @tAp Γ s u0 hpv hLC hfvU =>
     intro z hz; simp [Term.fv] at hz
-  | @fOp Γ s t t' αHd body body' L ht hbody iht ihbody =>
+  | @fOp Γ s t t' αHd body body' L ht hbody _hUni iht ihbody =>
     classical
     obtain ⟨y, hy⟩ := Term.exists_fresh (L ∪ Term.fv body')
     have hyL : y ∉ L := fun h' => hy (Finset.mem_union.mpr (Or.inl h'))
@@ -497,7 +497,7 @@ noncomputable def avoidsPro {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool
     -- Me-Pro: the promoted variable's name `y` is in scope here.
     (fun {_ _ y _ _} _ _ _ ihα x => decide (y ≠ x) && ihα x)
     -- Me-Bet: cofinite body + operand recursion.
-    (fun L _ _ _ ihbody ihv x =>
+    (fun L _ _ _ _ ihbody ihv x =>
       let y := pickFresh L
       have hyL : y ∉ L := pickFresh_notMem L
       ihbody y hyL x && ihv x)
@@ -508,14 +508,14 @@ noncomputable def avoidsPro {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool
     -- Me-Var: vacuous (no Me-Pro).
     (fun _ _ => true)
     -- Me-Fun: bound annotation + cofinite body.
-    (fun L _ _ iht ihbody x =>
+    (fun L _ _ _ iht ihbody x =>
       let y := pickFresh L
       have hyL : y ∉ L := pickFresh_notMem L
       iht x && ihbody y hyL x)
     -- Me-TAp: vacuous.
     (fun _ _ _ _ => true)
     -- Me-FOp: bound annotation + cofinite body.
-    (fun L _ _ iht ihbody x =>
+    (fun L _ _ _ iht ihbody x =>
       let y := pickFresh L
       have hyL : y ∉ L := pickFresh_notMem L
       iht x && ihbody y hyL x)
@@ -535,8 +535,9 @@ witnesses without unfolding the recursor by hand. -/
 @[simp] theorem avoidsPro_bet {Γ s t v v' body body'} (L : Finset String)
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
     (hv : MEqRed Γ [] v v') (x : String) :
-    avoidsPro (MEqRed.bet L hLCt hbody hv) x =
+    avoidsPro (MEqRed.bet L hLCt hbody hUni hv) x =
       (avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x && avoidsPro hv x) := by
   unfold avoidsPro; rfl
 
@@ -557,8 +558,9 @@ witnesses without unfolding the recursor by hand. -/
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
       MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    avoidsPro (MEqRed.fun_ L ht hbody) x =
+    avoidsPro (MEqRed.fun_ L ht hbody hUni) x =
       (avoidsPro ht x && avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
   unfold avoidsPro; rfl
 
@@ -571,8 +573,9 @@ witnesses without unfolding the recursor by hand. -/
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
       MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    avoidsPro (MEqRed.fOp L ht hbody) x =
+    avoidsPro (MEqRed.fOp L ht hbody hUni) x =
       (avoidsPro ht x && avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
   unfold avoidsPro; rfl
 
@@ -692,7 +695,7 @@ def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
     -- Me-Pro: y ≠ x ∧ recurse on inner derivation.
     (fun {_ _ y _ _} _ _ _ ihα x => y ≠ x ∧ ihα x)
     -- Me-Bet: universal over the cofinite witness; recurse on operand.
-    (fun {_ _ _ _ _ _ _} L _ _hbody _ ihbody ihv x =>
+    (fun {_ _ _ _ _ _ _} L _ _hbody _ _ ihbody ihv x =>
       (∀ y (hy : y ∉ L), ihbody y hy x) ∧ ihv x)
     -- Me-Top: vacuous.
     (fun _ _ => True)
@@ -701,12 +704,12 @@ def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
     -- Me-Var: vacuous.
     (fun _ _ => True)
     -- Me-Fun: bound annotation + universal over cofinite witness.
-    (fun {_ _ _ _ _} L _ _hbody iht ihbody x =>
+    (fun {_ _ _ _ _} L _ _hbody _ iht ihbody x =>
       iht x ∧ ∀ y (hy : y ∉ L), ihbody y hy x)
     -- Me-TAp: vacuous.
     (fun _ _ _ _ => True)
     -- Me-FOp: bound annotation + universal over cofinite witness.
-    (fun {_ _ _ _ _ _ _} L _ _hbody iht ihbody x =>
+    (fun {_ _ _ _ _ _ _} L _ _hbody _ iht ihbody x =>
       iht x ∧ ∀ y (hy : y ∉ L), ihbody y hy x)
     h x
 
@@ -720,8 +723,9 @@ def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
 @[simp] theorem AvoidsProUniv_bet {Γ s t v v' body body'} (L : Finset String)
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
     (hv : MEqRed Γ [] v v') (x : String) :
-    AvoidsProUniv (MEqRed.bet L hLCt hbody hv) x ↔
+    AvoidsProUniv (MEqRed.bet L hLCt hbody hUni hv) x ↔
       (∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x) ∧
       AvoidsProUniv hv x := by
   unfold AvoidsProUniv; rfl
@@ -744,8 +748,9 @@ def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
       MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    AvoidsProUniv (MEqRed.fun_ L ht hbody) x ↔
+    AvoidsProUniv (MEqRed.fun_ L ht hbody hUni) x ↔
       AvoidsProUniv ht x ∧
       ∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x := by
   unfold AvoidsProUniv; rfl
@@ -759,8 +764,9 @@ def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
       MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    AvoidsProUniv (MEqRed.fOp L ht hbody) x ↔
+    AvoidsProUniv (MEqRed.fOp L ht hbody hUni) x ↔
       AvoidsProUniv ht x ∧
       ∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x := by
   unfold AvoidsProUniv; rfl
@@ -881,7 +887,7 @@ theorem AvoidsProUniv_to_avoidsPro
     rw [avoidsPro_pro, Bool.and_eq_true]
     refine ⟨?_, ihα huα⟩
     simpa [decide_eq_true_eq] using hyx
-  | @bet Γ s t v0 v0' body body' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ s t v0 v0' body body' L hLCt hbody _hUni hv ihbody ihv =>
     rw [AvoidsProUniv_bet] at hUniv
     obtain ⟨hbU, hvU⟩ := hUniv
     rw [avoidsPro_bet, Bool.and_eq_true]
@@ -895,14 +901,14 @@ theorem AvoidsProUniv_to_avoidsPro
     exact ⟨ihu huU, ihv hvU⟩
   | @var Γ s y hpv =>
     rw [avoidsPro_var]
-  | @fun_ Γ t t' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t t' body body' L ht hbody _hUni iht ihbody =>
     rw [AvoidsProUniv_fun_] at hUniv
     obtain ⟨htU, hbU⟩ := hUniv
     rw [avoidsPro_fun_, Bool.and_eq_true]
     exact ⟨iht htU, ihbody _ _ (hbU _ _)⟩
   | @tAp Γ s u0 hpv hLC hfvU =>
     rw [avoidsPro_tAp]
-  | @fOp Γ s t t' αHd body body' L ht hbody iht ihbody =>
+  | @fOp Γ s t t' αHd body body' L ht hbody _hUni iht ihbody =>
     rw [AvoidsProUniv_fOp] at hUniv
     obtain ⟨htU, hbU⟩ := hUniv
     rw [avoidsPro_fOp, Bool.and_eq_true]
@@ -966,7 +972,7 @@ def CofinAvoidsProSelfUniv {Γ s u v} (h : MEqRed Γ s u v) : Prop :=
     -- Me-Pro: recurse on the inner derivation.
     (fun _ _ _ ihα => ihα)
     -- Me-Bet: propagate through body recursion + operand.
-    (fun {_ _ _ _ _ _ _} L _ _ _ ihbody ihv =>
+    (fun {_ _ _ _ _ _ _} L _ _ _ _ ihbody ihv =>
       (∀ y (hy : y ∉ L), ihbody y hy) ∧ ihv)
     -- Me-Top: leaf.
     (fun _ => True)
@@ -975,13 +981,13 @@ def CofinAvoidsProSelfUniv {Γ s u v} (h : MEqRed Γ s u v) : Prop :=
     -- Me-Var: leaf.
     (fun _ => True)
     -- Me-Fun: propagate (no .equ swap; just bound recursion).
-    (fun {_ _ _ _ _} L _ _ iht ihbody =>
+    (fun {_ _ _ _ _} L _ _ _ iht ihbody =>
       iht ∧ ∀ y (hy : y ∉ L), ihbody y hy)
     -- Me-TAp: leaf.
     (fun _ _ _ => True)
     -- Me-FOp: HERE is the body-self-avoidance condition. For every
     -- cofinite witness y, the body universally avoids y itself.
-    (fun {_ _ _ _ _ _ _} L _ hbody iht ihbody =>
+    (fun {_ _ _ _ _ _ _} L _ hbody _ iht ihbody =>
       iht ∧ ∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) y ∧ ihbody y hy)
     h
 
@@ -994,8 +1000,9 @@ def CofinAvoidsProSelfUniv {Γ s u v} (h : MEqRed Γ s u v) : Prop :=
 @[simp] theorem CofinAvoidsProSelfUniv_bet {Γ s t v v' body body'}
     (L : Finset String) (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
     (hv : MEqRed Γ [] v v') :
-    CofinAvoidsProSelfUniv (MEqRed.bet L hLCt hbody hv) ↔
+    CofinAvoidsProSelfUniv (MEqRed.bet L hLCt hbody hUni hv) ↔
       (∀ y (hy : y ∉ L), CofinAvoidsProSelfUniv (hbody y hy)) ∧
       CofinAvoidsProSelfUniv hv := by
   unfold CofinAvoidsProSelfUniv; rfl
@@ -1017,8 +1024,9 @@ def CofinAvoidsProSelfUniv {Γ s u v} (h : MEqRed Γ s u v) : Prop :=
 @[simp] theorem CofinAvoidsProSelfUniv_fun_ {Γ t t' body body'}
     (L : Finset String) (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
-      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y])) :
-    CofinAvoidsProSelfUniv (MEqRed.fun_ L ht hbody) ↔
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True) :
+    CofinAvoidsProSelfUniv (MEqRed.fun_ L ht hbody hUni) ↔
       CofinAvoidsProSelfUniv ht ∧
       ∀ y (hy : y ∉ L), CofinAvoidsProSelfUniv (hbody y hy) := by
   unfold CofinAvoidsProSelfUniv; rfl
@@ -1031,8 +1039,9 @@ def CofinAvoidsProSelfUniv {Γ s u v} (h : MEqRed Γ s u v) : Prop :=
 @[simp] theorem CofinAvoidsProSelfUniv_fOp {Γ s t t' α body body'}
     (L : Finset String) (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
-      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y])) :
-    CofinAvoidsProSelfUniv (MEqRed.fOp L ht hbody) ↔
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True) :
+    CofinAvoidsProSelfUniv (MEqRed.fOp L ht hbody hUni) ↔
       CofinAvoidsProSelfUniv ht ∧
       ∀ y (hy : y ∉ L),
         AvoidsProUniv (hbody y hy) y ∧ CofinAvoidsProSelfUniv (hbody y hy) := by
@@ -1066,7 +1075,7 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
     -- Me-Pro: recurse on the inner derivation.
     (fun _ _ _ ihα => ihα)
     -- Me-Bet: track freshness at the canonical witness, recurse.
-    (fun {Γ _ _ _ _ body body'} L _ _ _ ihbody ihv =>
+    (fun {Γ _ _ _ _ body body'} L _ _ _ _ ihbody ihv =>
       let y₀ := pickFresh L
       have hy₀L : y₀ ∉ L := pickFresh_notMem L
       decide (y₀ ∉ Γ.dom) && decide (y₀ ∉ Term.fv body) &&
@@ -1078,7 +1087,7 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
     -- Me-Var: leaf.
     (fun _ => true)
     -- Me-Fun: track freshness at canonical witness, recurse.
-    (fun {Γ _ _ body body'} L _ _ iht ihbody =>
+    (fun {Γ _ _ body body'} L _ _ _ iht ihbody =>
       let y₀ := pickFresh L
       have hy₀L : y₀ ∉ L := pickFresh_notMem L
       decide (y₀ ∉ Γ.dom) && decide (y₀ ∉ Term.fv body) &&
@@ -1086,7 +1095,7 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
     -- Me-TAp: leaf.
     (fun _ _ _ => true)
     -- Me-FOp: track freshness at canonical witness, recurse.
-    (fun {Γ _ _ _ _ body body'} L _ _ iht ihbody =>
+    (fun {Γ _ _ _ _ body body'} L _ _ _ iht ihbody =>
       let y₀ := pickFresh L
       have hy₀L : y₀ ∉ L := pickFresh_notMem L
       decide (y₀ ∉ Γ.dom) && decide (y₀ ∉ Term.fv body) &&
@@ -1103,8 +1112,9 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
 @[simp] theorem cofinDomFresh_bet {Γ s t v v' body body'} (L : Finset String)
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
     (hv : MEqRed Γ [] v v') :
-    cofinDomFresh (MEqRed.bet L hLCt hbody hv) =
+    cofinDomFresh (MEqRed.bet L hLCt hbody hUni hv) =
       (decide (pickFresh L ∉ Γ.dom) && decide (pickFresh L ∉ Term.fv body) &&
        decide (pickFresh L ∉ Term.fv body') &&
        cofinDomFresh (hbody (pickFresh L) (pickFresh_notMem L)) &&
@@ -1128,8 +1138,9 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
 @[simp] theorem cofinDomFresh_fun_ {Γ t t' body body'} (L : Finset String)
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
-      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y])) :
-    cofinDomFresh (MEqRed.fun_ L ht hbody) =
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True) :
+    cofinDomFresh (MEqRed.fun_ L ht hbody hUni) =
       (decide (pickFresh L ∉ Γ.dom) && decide (pickFresh L ∉ Term.fv body) &&
        decide (pickFresh L ∉ Term.fv body') &&
        cofinDomFresh ht &&
@@ -1144,8 +1155,9 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
 @[simp] theorem cofinDomFresh_fOp {Γ s t t' α body body'} (L : Finset String)
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
-      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y])) :
-    cofinDomFresh (MEqRed.fOp L ht hbody) =
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True) :
+    cofinDomFresh (MEqRed.fOp L ht hbody hUni) =
       (decide (pickFresh L ∉ Γ.dom) && decide (pickFresh L ∉ Term.fv body) &&
        decide (pickFresh L ∉ Term.fv body') &&
        cofinDomFresh ht &&
@@ -1241,7 +1253,7 @@ noncomputable def msAvoidsPro {Γ s u v} (h : MSubRed Γ s u v) (x : String) : B
     -- The widening is local — `msAvoidsPro` remains a deterministic
     -- function of the derivation; the simp lemmas below reflect the
     -- new sample point.
-    (fun {_Γ _t body body'} L _hLCt _hbody ihbody x =>
+    (fun {_Γ _t body body'} L _hLCt _hbody _hUni ihbody x =>
       let L' := L ∪ Term.fv body ∪ Term.fv body' ∪ {x}
       let y := pickFresh L'
       have hyL : y ∉ L := fun h => pickFresh_notMem L'
@@ -1249,7 +1261,7 @@ noncomputable def msAvoidsPro {Γ s u v} (h : MSubRed Γ s u v) (x : String) : B
          Finset.mem_union.mpr <| Or.inl h)
       ihbody y hyL x)
     -- Ms-FOp: same widening for the same reason.
-    (fun {_Γ _s _t _α body body'} L _hLCt _hbody ihbody x =>
+    (fun {_Γ _s _t _α body body'} L _hLCt _hbody _hUni ihbody x =>
       let L' := L ∪ Term.fv body ∪ Term.fv body' ∪ {x}
       let y := pickFresh L'
       have hyL : y ∉ L := fun h => pickFresh_notMem L'
@@ -1332,8 +1344,9 @@ theorem msAvoidsPro_L_aug_ne_x {L : Finset String} {body body' : Term}
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    msAvoidsPro (MSubRed.fun_ L hLCt hbody) x =
+    msAvoidsPro (MSubRed.fun_ L hLCt hbody hUni) x =
       msAvoidsPro
         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
                msAvoidsPro_L_aug_notMem_L) x := by
@@ -1343,8 +1356,9 @@ theorem msAvoidsPro_L_aug_ne_x {L : Finset String} {body body' : Term}
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    msAvoidsPro (MSubRed.fOp L hLCt hbody) x =
+    msAvoidsPro (MSubRed.fOp L hLCt hbody hUni) x =
       msAvoidsPro
         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
                msAvoidsPro_L_aug_notMem_L) x := by
@@ -1378,13 +1392,13 @@ noncomputable def msCofinDomFresh {Γ s u v} (h : MSubRed Γ s u v) (x : String)
     -- Ms-App: recurse on the operator (propagate x).
     (fun _ _ _ ihu x => ihu x)
     -- Ms-Fun: track freshness at the SAME widened sample as msAvoidsPro.
-    (fun {Γ _ body body'} L _ _ ihbody x =>
+    (fun {Γ _ body body'} L _ _ _ ihbody x =>
       let L' := msAvoidsPro_L_aug L body body' x
       let y := pickFresh L'
       have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
       decide (y ∉ Γ.dom) && ihbody y hyL x)
     -- Ms-FOp: same widened sample.
-    (fun {Γ _ _ _ body body'} L _ _ ihbody x =>
+    (fun {Γ _ _ _ body body'} L _ _ _ ihbody x =>
       let L' := msAvoidsPro_L_aug L body body' x
       let y := pickFresh L'
       have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
@@ -1420,8 +1434,9 @@ So `msCofinDomFresh` only needs to track the dom-freshness explicitly. -/
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    msCofinDomFresh (MSubRed.fun_ L hLCt hbody) x =
+    msCofinDomFresh (MSubRed.fun_ L hLCt hbody hUni) x =
       (decide (pickFresh (msAvoidsPro_L_aug L body body' x) ∉ Γ.dom) &&
        msCofinDomFresh
          (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
@@ -1433,8 +1448,9 @@ So `msCofinDomFresh` only needs to track the dom-freshness explicitly. -/
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    msCofinDomFresh (MSubRed.fOp L hLCt hbody) x =
+    msCofinDomFresh (MSubRed.fOp L hLCt hbody hUni) x =
       (decide (pickFresh (msAvoidsPro_L_aug L body body' x) ∉ Γ.dom) &&
        msCofinDomFresh
          (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
@@ -1473,7 +1489,7 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
     -- Me-Pro: recurse on the inner derivation.
     (fun _ _ _ ihα => ihα)
     -- Me-Bet: propagate through body recursion + operand.
-    (fun {_Γ _ _ _ _ _ _} L _ _ _ ihbody ihv =>
+    (fun {_Γ _ _ _ _ _ _} L _ _ _ _ ihbody ihv =>
       let y₀ := pickFresh L
       have hy₀L : y₀ ∉ L := pickFresh_notMem L
       ihbody y₀ hy₀L && ihv)
@@ -1484,7 +1500,7 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
     -- Me-Var: leaf.
     (fun _ => true)
     -- Me-Fun: propagate.
-    (fun {_Γ _ _ _ _} L _ _ iht ihbody =>
+    (fun {_Γ _ _ _ _} L _ _ _ iht ihbody =>
       let y₀ := pickFresh L
       have hy₀L : y₀ ∉ L := pickFresh_notMem L
       iht && ihbody y₀ hy₀L)
@@ -1494,7 +1510,7 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
     -- The body recurses at extended ctx with binding `⟨pickFresh L, α, .equ⟩`.
     -- For `stack_replace`'s fOp Case A to delegate to `equ_head_replace`,
     -- we need `avoidsPro (body pickFresh) pickFresh = true`.
-    (fun {_Γ _ _ _ _ _ _} L _ hbody iht ihbody =>
+    (fun {_Γ _ _ _ _ _ _} L _ hbody _ iht ihbody =>
       let y₀ := pickFresh L
       have hy₀L : y₀ ∉ L := pickFresh_notMem L
       avoidsPro (hbody y₀ hy₀L) y₀ && iht && ihbody y₀ hy₀L)
@@ -1510,8 +1526,9 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
 @[simp] theorem cofinAvoidsProSelf_bet {Γ s t v v' body body'} (L : Finset String)
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
     (hv : MEqRed Γ [] v v') :
-    cofinAvoidsProSelf (MEqRed.bet L hLCt hbody hv) =
+    cofinAvoidsProSelf (MEqRed.bet L hLCt hbody hUni hv) =
       (cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L)) &&
        cofinAvoidsProSelf hv) := by
   unfold cofinAvoidsProSelf; rfl
@@ -1533,8 +1550,9 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
 @[simp] theorem cofinAvoidsProSelf_fun_ {Γ t t' body body'} (L : Finset String)
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
-      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y])) :
-    cofinAvoidsProSelf (MEqRed.fun_ L ht hbody) =
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True) :
+    cofinAvoidsProSelf (MEqRed.fun_ L ht hbody hUni) =
       (cofinAvoidsProSelf ht &&
        cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L))) := by
   unfold cofinAvoidsProSelf; rfl
@@ -1547,8 +1565,9 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
 @[simp] theorem cofinAvoidsProSelf_fOp {Γ s t t' α body body'} (L : Finset String)
     (ht : MEqRed Γ [] t t')
     (hbody : ∀ y, y ∉ L →
-      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y])) :
-    cofinAvoidsProSelf (MEqRed.fOp L ht hbody) =
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True) :
+    cofinAvoidsProSelf (MEqRed.fOp L ht hbody hUni) =
       (avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) (pickFresh L) &&
        cofinAvoidsProSelf ht &&
        cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L))) := by
@@ -1619,12 +1638,12 @@ noncomputable def msCofinAvoidsProSelf {Γ s u v} (h : MSubRed Γ s u v) (x : St
     -- Ms-App: recurse on operator.
     (fun _ _ _ ihu x => ihu x)
     -- Ms-Fun: propagate (no .equ swap; just bound recursion).
-    (fun {_Γ _ body body'} L _ _ ihbody x =>
+    (fun {_Γ _ body body'} L _ _ _ ihbody x =>
       let y := pickFresh (msAvoidsPro_L_aug L body body' x)
       have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
       ihbody y hyL x)
     -- Ms-FOp: HERE is where the body-self-avoidance condition lives.
-    (fun {_Γ _ _ _ body body'} L _ hbody ihbody x =>
+    (fun {_Γ _ _ _ body body'} L _ hbody _ ihbody x =>
       let y := pickFresh (msAvoidsPro_L_aug L body body' x)
       have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
       msAvoidsPro (hbody y hyL) y && ihbody y hyL x)
@@ -1656,8 +1675,9 @@ noncomputable def msCofinAvoidsProSelf {Γ s u v} (h : MSubRed Γ s u v) (x : St
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    msCofinAvoidsProSelf (MSubRed.fun_ L hLCt hbody) x =
+    msCofinAvoidsProSelf (MSubRed.fun_ L hLCt hbody hUni) x =
       msCofinAvoidsProSelf
         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
                msAvoidsPro_L_aug_notMem_L) x := by
@@ -1668,8 +1688,9 @@ noncomputable def msCofinAvoidsProSelf {Γ s u v} (h : MSubRed Γ s u v) (x : St
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
     (x : String) :
-    msCofinAvoidsProSelf (MSubRed.fOp L hLCt hbody) x =
+    msCofinAvoidsProSelf (MSubRed.fOp L hLCt hbody hUni) x =
       (msAvoidsPro
          (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
                 msAvoidsPro_L_aug_notMem_L)

@@ -265,9 +265,9 @@ noncomputable def Lemma_25_NarrowingMEqRed
     have heq' : (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁).equBinds y α :=
       _equBinds_narrow heq
     exact MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl)
-  | @bet Γ s t₀ v₀ v' body body' L hLCt₀ hbody hv ihbody ihv =>
+  | @bet Γ s t₀ v₀ v' body body' L hLCt₀ hbody _hUni hv ihbody ihv =>
     subst hΓ
-    refine MEqRed.bet (L := L) hLCt₀ ?_ (ihv (Γ₂ := Γ₂) rfl)
+    refine MEqRed.bet (L := L) hLCt₀ ?_ trivial (ihv (Γ₂ := Γ₂) rfl)
     intro y hy
     exact ihbody y hy (Γ₂ := Γ₂) rfl
   | @top Γ s hpv =>
@@ -279,9 +279,9 @@ noncomputable def Lemma_25_NarrowingMEqRed
   | @var Γ s y hpv =>
     subst hΓ
     exact MEqRed.var (Lemma_26_NarrowingPrevalid hpv hLCt hfvt)
-  | @fun_ Γ t₀ t₀' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t₀ t₀' body body' L ht hbody _hUni iht ihbody =>
     subst hΓ
-    refine MEqRed.fun_ (L := L) (iht (Γ₂ := Γ₂) rfl) ?_
+    refine MEqRed.fun_ (L := L) (iht (Γ₂ := Γ₂) rfl) ?_ trivial
     intro y hy
     have ih_body := ihbody y hy (Γ₂ := ⟨y, t₀, .sub⟩ :: Γ₂) (by simp)
     simpa using ih_body
@@ -292,9 +292,9 @@ noncomputable def Lemma_25_NarrowingMEqRed
     have hzd := hfv hz
     rw [_dom_narrow_eq (t := t) (t' := t')]
     exact hzd
-  | @fOp Γ s t₀ t₀' α body body' L ht hbody iht ihbody =>
+  | @fOp Γ s t₀ t₀' α body body' L ht hbody _hUni iht ihbody =>
     subst hΓ
-    refine MEqRed.fOp (L := L) (iht (Γ₂ := Γ₂) rfl) ?_
+    refine MEqRed.fOp (L := L) (iht (Γ₂ := Γ₂) rfl) ?_ trivial
     intro y hy
     have ih_body := ihbody y hy (Γ₂ := ⟨y, α, .equ⟩ :: Γ₂) (by simp)
     simpa using ih_body

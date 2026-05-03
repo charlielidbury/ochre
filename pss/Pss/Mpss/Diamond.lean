@@ -499,7 +499,7 @@ private noncomputable def Lemma_2_inline_app
     obtain ⟨w', hu'_w', hu₂_w'⟩ :=
       Lemma_2_DiamondMEqRed_ctx_axiom hCt₁ hCt₂ hu'_w hu₂_w
     exact ⟨.app w' v₃, MEqRed.app hu'_w' hv'_v₃, MEqRed.app hu₂_w' hv₂_v₃⟩
-  | @bet _ _ t' _ _ _ body' L₂ hLCt₂ hbody₂ hv₂ =>
+  | @bet _ _ t' _ _ _ body' L₂ hLCt₂ hbody₂ _hUni₂ hv₂ =>
     -- App × Bet: still axiomatised. The source-shape match equates u with
     -- the .abs t' body' shape; the axiom takes the operator-MEqRed at that
     -- forced shape directly.
@@ -585,13 +585,13 @@ private noncomputable def _extractPrevalidOfMEqRed_loc {Γ : Ctx} {s : Stack} {u
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
-  | @bet Γ s t v v' body body' L _ _ _ _ ihv => exact ihv
+  | @bet Γ s t v v' body body' L _ _ _ _ _ ihv => exact ihv
   | @top Γ s hpv => exact extractPrevalid hpv
   | @app Γ s u u' v v' _ _ _ ihv => exact ihv
   | @var Γ s x hpv => exact extractPrevalid hpv
-  | @fun_ Γ t t' body body' L _ _ iht _ => exact iht
+  | @fun_ Γ t t' body body' L _ _ _ iht _ => exact iht
   | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
-  | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
+  | @fOp Γ s t t' α body body' L _ _ _ iht _ => exact iht
 
 /-! #### Bool-and helper lemmas (used to thread the moreover clause) -/
 
@@ -668,9 +668,10 @@ private theorem _Lemma_25_NarrowingMEqRed_bet_eq
     (hLCtB : Term.LC tBound)
     (hbody : ∀ y, y ∉ L →
       MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s (body^[y]) (body'^[y]))
+    (hUni : True)
     (hv : MEqRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) [] v0 v0')
     (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
-    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.bet L hLCtB hbody hv) hLCt hfvt) w =
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.bet L hLCtB hbody hUni hv) hLCt hfvt) w =
       (avoidsPro (Lemma_25_NarrowingMEqRed
         (hbody (pickFresh L) (pickFresh_notMem L)) hLCt hfvt) w &&
        avoidsPro (Lemma_25_NarrowingMEqRed hv hLCt hfvt) w) :=
@@ -683,8 +684,9 @@ private theorem _Lemma_25_NarrowingMEqRed_fun_eq
     (hbody : ∀ y, y ∉ L →
       MEqRed (⟨y, tBound, .sub⟩ :: (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)) []
         (body^[y]) (body'^[y]))
+    (hUni : True)
     (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
-    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.fun_ L ht hbody) hLCt hfvt) w =
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.fun_ L ht hbody hUni) hLCt hfvt) w =
       (avoidsPro (Lemma_25_NarrowingMEqRed ht hLCt hfvt) w &&
        avoidsPro (Lemma_25_NarrowingMEqRed
          (Γ₂ := ⟨pickFresh L, tBound, .sub⟩ :: Γ₂)
@@ -698,8 +700,9 @@ private theorem _Lemma_25_NarrowingMEqRed_fOp_eq
     (hbody : ∀ y, y ∉ L →
       MEqRed (⟨y, α, .equ⟩ :: (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)) s
         (body^[y]) (body'^[y]))
+    (hUni : True)
     (hLCt : Term.LC t) (hfvt : Term.fv t ⊆ Γ₁.dom) (w : String) :
-    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.fOp L ht hbody) hLCt hfvt) w =
+    avoidsPro (Lemma_25_NarrowingMEqRed (MEqRed.fOp L ht hbody hUni) hLCt hfvt) w =
       (avoidsPro (Lemma_25_NarrowingMEqRed ht hLCt hfvt) w &&
        avoidsPro (Lemma_25_NarrowingMEqRed
          (Γ₂ := ⟨pickFresh L, α, .equ⟩ :: Γ₂)
@@ -738,18 +741,18 @@ private theorem avoidsPro_NarrowingMEqRed_aux
     intro Γ₂ hΓ; subst hΓ
     rw [_Lemma_25_NarrowingMEqRed_app_eq, avoidsPro_app,
         ihu Γ₂ rfl, ihv Γ₂ rfl]
-  | @bet Γ s tB v₀ v' body body' L hLCtB hbody hv ihbody ihv =>
+  | @bet Γ s tB v₀ v' body body' L hLCtB hbody _hUni hv ihbody ihv =>
     intro Γ₂ hΓ; subst hΓ
     rw [_Lemma_25_NarrowingMEqRed_bet_eq, avoidsPro_bet,
         ihbody (pickFresh L) (pickFresh_notMem L) Γ₂ rfl,
         ihv Γ₂ rfl]
-  | @fun_ Γ tB tB' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ tB tB' body body' L ht hbody _hUni iht ihbody =>
     intro Γ₂ hΓ; subst hΓ
     rw [_Lemma_25_NarrowingMEqRed_fun_eq, avoidsPro_fun_,
         iht Γ₂ rfl,
         ihbody (pickFresh L) (pickFresh_notMem L)
           (⟨pickFresh L, tB, .sub⟩ :: Γ₂) (by simp)]
-  | @fOp Γ s tB tB' α body body' L ht hbody iht ihbody =>
+  | @fOp Γ s tB tB' α body body' L ht hbody _hUni iht ihbody =>
     intro Γ₂ hΓ; subst hΓ
     rw [_Lemma_25_NarrowingMEqRed_fOp_eq, avoidsPro_fOp,
         iht Γ₂ rfl,
@@ -1035,7 +1038,7 @@ private noncomputable def _subst_yz_sub_head_local
     have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar yi :=
       Term.subst_fvar_ne hyiy _
     exact hsubst_eq.symm ▸ MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl hz_notin_Γ₂)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     intro hz_notin_Γ₂
     have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
@@ -1048,7 +1051,7 @@ private noncomputable def _subst_yz_sub_head_local
     -- avoidsPro_subst_eq_dest can peel it.
     refine hsubst_open.symm ▸ ?_
     -- Goal now: MEqRed _ _ X (opening (subst y z v0') (subst y z bd'))
-    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ trivial ?_
     · intro yfresh hyfresh
       simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
       have hyfL : yfresh ∉ L := hyfresh.1
@@ -1096,14 +1099,14 @@ private noncomputable def _subst_yz_sub_head_local
       have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar yi :=
         Term.subst_fvar_ne hyiy _
       exact hsubst_eq.symm ▸ (@MEqRed.var _ _ yi hpv')
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
       simpa using iht'
     · intro yfresh hyfresh
@@ -1158,13 +1161,13 @@ private noncomputable def _subst_yz_sub_head_local
     -- reduces definitionally to `MEqRed _ _ (.app .top (Term.subst y z u_)) .top`
     -- (via Term.subst's pattern matching). Provide MEqRed.tAp directly.
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
     -- The goal `MEqRed _ (Stack.subst y z (αi :: st')) ...` reduces
     -- definitionally to `MEqRed _ (Term.subst y z αi :: Stack.subst y z st') ...`
     -- via List.map_cons. So we don't need rw [Stack.subst_cons].
-    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
       simpa using iht'
     · intro yfresh hyfresh
@@ -1339,7 +1342,7 @@ private noncomputable def Lemma_2_inline_fun_fun
   have hfvt₂' : Term.fv t₂' ⊆ Γ.dom := MEqRed_fv_preserve ht₂ hfvt
   refine ⟨.abs t₃ann body₃, ?_, ?_⟩
   · refine MEqRed.fun_ (Γ.dom ∪ Term.fv body₁ ∪ Term.fv body₃ ∪ {y})
-      ht₁'_t₃ann ?_
+      ht₁'_t₃ann ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -1358,7 +1361,7 @@ private noncomputable def Lemma_2_inline_fun_fun
     exact Lemma_25_NarrowingMEqRed (Γ₂ := []) (Γ₁ := Γ) (x := z)
       (t := t₁') (t' := t) h_at_z hLCt₁' hfvt₁'
   · refine MEqRed.fun_ (Γ.dom ∪ Term.fv body₂ ∪ Term.fv body₃ ∪ {y})
-      ht₂'_t₃ann ?_
+      ht₂'_t₃ann ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -1633,7 +1636,7 @@ private noncomputable def MEqRed.rename_equ_loc
           (Term.subst y (.fvar z) β) :=
         Ctx.lookupEqu_lift_middle hyiz heq_un
       exact MEqRed.pro hpv' heq' (ihβ (Γ₂ := Γ₂) hz_notin_Γ₂ rfl)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
     have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
@@ -1649,7 +1652,7 @@ private noncomputable def MEqRed.rename_equ_loc
       (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
             (Term.subst y (.fvar z) v0))
       (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ trivial ?_
     · intro yfresh hyfresh
       simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
       have hyfL : yfresh ∉ L := hyfresh.1
@@ -1700,13 +1703,13 @@ private noncomputable def MEqRed.rename_equ_loc
       exact MEqRed.refl hpv' hLCz hfvz
     · rw [Term.subst_fvar_ne hyiy]
       exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) hz_notin_Γ₂ rfl
       simpa using iht'
     · intro yfresh hyfresh
@@ -1760,14 +1763,14 @@ private noncomputable def MEqRed.rename_equ_loc
       (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) (αi :: st'))
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
     rw [Stack.subst_cons]
-    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) hz_notin_Γ₂ rfl
       simpa using iht'
     · intro yfresh hyfresh
@@ -1959,7 +1962,7 @@ private noncomputable def Lemma_2_inline_fOp_fOp
     Term.fv_close_notMem y 0 b
   refine ⟨.abs t₃ann body₃, ?_, ?_⟩
   · refine MEqRed.fOp (Γ.dom ∪ Term.fv body₁ ∪ Term.fv body₃ ∪ Term.fv α ∪ {y})
-      ht₁'_t₃ann ?_
+      ht₁'_t₃ann ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -1979,7 +1982,7 @@ private noncomputable def Lemma_2_inline_fOp_fOp
     exact MEqRed.rename_equ_no_fv hyz hy_notin_Γ hz_notin_Γ hy_notin_α
       hy_notin_body₁ hy_notin_body₃ hy_notin_stack h_at_y
   · refine MEqRed.fOp (Γ.dom ∪ Term.fv body₂ ∪ Term.fv body₃ ∪ Term.fv α ∪ {y})
-      ht₂'_t₃ann ?_
+      ht₂'_t₃ann ?_ trivial
     intro z hzfresh
     have hz_notin_Γ : z ∉ Γ.dom := fun h => hzfresh
       (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
@@ -2031,7 +2034,7 @@ noncomputable def Lemma_2_DiamondMEqRed_core
       have hfvα' : Term.fv α' ⊆ Ctx.dom Γ :=
         MEqRed_fv_preserve hα₁ hfvaLkup
       exact ⟨α', MEqRed.refl hpv₁ hLCα' hfvα', MEqRed.pro hpv₂ heq₁ hα₁⟩
-  | @bet Γ s tBound vSrc vDst body bodyDst L hLCt hbody hv ihbody ihv =>
+  | @bet Γ s tBound vSrc vDst body bodyDst L hLCt hbody _hUni hv ihbody ihv =>
     exact Lemma_2_inline_bet hLCt hbody hv h₂ ihbody ihv
   | top hpv₁ =>
     cases h₂ with
@@ -2050,15 +2053,15 @@ noncomputable def Lemma_2_DiamondMEqRed_core
       exact ⟨t₂, MEqRed.pro hpv₁ heq₂ hα₂, MEqRed.refl hpv₂ hLCt₂ hfvt₂⟩
     | var hpv₂ =>
       exact ⟨.fvar yvr, MEqRed.var hpv₁, MEqRed.var hpv₂⟩
-  | @fun_ Γ tBound tBoundDst body body₁ L₁ ht₁ hbody₁ iht ihbody =>
+  | @fun_ Γ tBound tBoundDst body body₁ L₁ ht₁ hbody₁ _hUni iht ihbody =>
     cases h₂ with
-    | @fun_ _ _ tBoundDst₂ _ body₂ L₂ ht₂ hbody₂ =>
+    | @fun_ _ _ tBoundDst₂ _ body₂ L₂ ht₂ hbody₂ _hUni₂ =>
       exact Lemma_2_inline_fun_fun ht₁ ht₂ hbody₁ hbody₂ iht ihbody
   | tAp hpv₁ hLCu hfvu =>
     exact Lemma_2_inline_tAp hpv₁ hLCu hfvu h₂
-  | @fOp Γ s tBound tBoundDst αHd body body₁ L₁ ht₁ hbody₁ iht ihbody =>
+  | @fOp Γ s tBound tBoundDst αHd body body₁ L₁ ht₁ hbody₁ _hUni iht ihbody =>
     cases h₂ with
-    | @fOp _ _ _ tBoundDst₂ _ _ body₂ L₂ ht₂ hbody₂ =>
+    | @fOp _ _ _ tBoundDst₂ _ _ body₂ L₂ ht₂ hbody₂ _hUni₂ =>
       exact Lemma_2_inline_fOp_fOp ht₁ ht₂ hbody₁ hbody₂ iht ihbody
 
 /-! ### §3.3 Context-evolution lifting

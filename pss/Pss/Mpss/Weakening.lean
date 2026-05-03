@@ -381,15 +381,15 @@ noncomputable def MEqRedScoped.toMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
   induction h with
   | pro hpv heq _ ih => exact MEqRed.pro hpv heq ih
   | @bet Γ s t v v' body body' L hLCt _ _ ihbody ihv =>
-    exact MEqRed.bet (L := L) hLCt ihbody ihv
+    exact MEqRed.bet (L := L) hLCt ihbody trivial ihv
   | top hpv => exact MEqRed.top hpv
   | app _ _ ihu ihv => exact MEqRed.app ihu ihv
   | var hpv => exact MEqRed.var hpv
   | @fun_ Γ t t' body body' L _ _ iht ihbody =>
-    exact MEqRed.fun_ (L := L) iht ihbody
+    exact MEqRed.fun_ (L := L) iht ihbody trivial
   | tAp hpv hLC hfv => exact MEqRed.tAp hpv hLC hfv
   | @fOp Γ s t t' α body body' L _ _ iht ihbody =>
-    exact MEqRed.fOp (L := L) iht ihbody
+    exact MEqRed.fOp (L := L) iht ihbody trivial
 
 noncomputable def MSubRedScoped.toMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRedScoped Γ s u v) : MSubRed Γ s u v := by
@@ -399,9 +399,9 @@ noncomputable def MSubRedScoped.toMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
   | @equ Γ s u v hpv heq => exact MSubRed.equ hpv heq.toMEqRed
   | app _ hLCv hfvv ihu => exact MSubRed.app ihu hLCv hfvv
   | @fun_ Γ t body body' L hLCt _ ihbody =>
-    exact MSubRed.fun_ (L := L) hLCt ihbody
+    exact MSubRed.fun_ (L := L) hLCt ihbody trivial
   | @fOp Γ s t α body body' L hLCt _ ihbody =>
-    exact MSubRed.fOp (L := L) hLCt ihbody
+    exact MSubRed.fOp (L := L) hLCt ihbody trivial
 
 /-! ## Helper: extract `Prevalid Γ` from any `MEqRed Γ s u v`
 
@@ -416,13 +416,13 @@ private noncomputable def _extractPrevalidOfMEqRed {Γ : Ctx} {s : Stack} {u v :
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
-  | @bet Γ s t v v' body body' L _ _ _ _ ihv => exact ihv
+  | @bet Γ s t v v' body body' L _ _ _ _ _ ihv => exact ihv
   | @top Γ s hpv => exact extractPrevalid hpv
   | @app Γ s u u' v v' _ _ _ ihv => exact ihv
   | @var Γ s x hpv => exact extractPrevalid hpv
-  | @fun_ Γ t t' body body' L _ _ iht _ => exact iht
+  | @fun_ Γ t t' body body' L _ _ _ iht _ => exact iht
   | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
-  | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
+  | @fOp Γ s t t' α body body' L _ _ _ iht _ => exact iht
 
 private noncomputable def _extractPrevalidOfMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Prevalid Γ := by
@@ -431,12 +431,12 @@ private noncomputable def _extractPrevalidOfMSubRed {Γ : Ctx} {s : Stack} {u v 
   | @top Γ st u hpv _ _ => exact extractPrevalid hpv
   | @equ Γ st u v hpv heq => exact extractPrevalid hpv
   | @app Γ st u u' v _ _ _ ihu => exact ihu
-  | @fun_ Γ t body body' L _ _ ihbody =>
+  | @fun_ Γ t body body' L _ _ _ ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh L)
     have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact (ihbody x hx).tail
-  | @fOp Γ st t α body body' L _ _ ihbody =>
+  | @fOp Γ st t α body body' L _ _ _ ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh L)
     have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
@@ -460,15 +460,15 @@ noncomputable def _MEqRed.toScopedAux : ∀ {Γ : Ctx} {s : Stack} {u v : Term},
   intro Γ s u v h
   induction h with
   | pro hpv heq _ ih => exact MEqRedScoped.pro hpv heq ih
-  | @bet Γ s t v v' body body' L hLCt _ _ ihbody ihv =>
+  | @bet Γ s t v v' body body' L hLCt _ _ _ ihbody ihv =>
     exact MEqRedScoped.bet (L := L) hLCt ihbody ihv
   | top hpv => exact MEqRedScoped.top hpv
   | app _ _ ihu ihv => exact MEqRedScoped.app ihu ihv
   | var hpv => exact MEqRedScoped.var hpv
-  | @fun_ Γ t t' body body' L _ _ iht ihbody =>
+  | @fun_ Γ t t' body body' L _ _ _ iht ihbody =>
     exact MEqRedScoped.fun_ (L := L) iht ihbody
   | tAp hpv hLC hfv => exact MEqRedScoped.tAp hpv hLC hfv
-  | @fOp Γ s t t' α body body' L _ _ iht ihbody =>
+  | @fOp Γ s t t' α body body' L _ _ _ iht ihbody =>
     exact MEqRedScoped.fOp (L := L) iht ihbody
 
 noncomputable def _MSubRed.toScopedAux : ∀ {Γ : Ctx} {s : Stack} {u v : Term},
@@ -480,9 +480,9 @@ noncomputable def _MSubRed.toScopedAux : ∀ {Γ : Ctx} {s : Stack} {u v : Term}
   | @equ Γ s u v hpv heq =>
     exact MSubRedScoped.equ hpv (_MEqRed.toScopedAux heq)
   | app _ hLCv hfvv ihu => exact MSubRedScoped.app ihu hLCv hfvv
-  | @fun_ Γ t body body' L hLCt _ ihbody =>
+  | @fun_ Γ t body body' L hLCt _ _ ihbody =>
     exact MSubRedScoped.fun_ (L := L) hLCt ihbody
-  | @fOp Γ s t α body body' L hLCt _ ihbody =>
+  | @fOp Γ s t α body body' L hLCt _ _ ihbody =>
     exact MSubRedScoped.fOp (L := L) hLCt ihbody
 
 /-- Bridge unscoped → scoped MEqRed. After the wrapper refactor the

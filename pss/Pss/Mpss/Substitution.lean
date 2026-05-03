@@ -282,7 +282,7 @@ noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
             rw [hdom_eq]
             exact Finset.mem_insert_self _ _
         exact ihbody y hyL hpvey hfvy
-      exact MEqRed.fun_ (L ∪ Γ.dom ∪ Term.fv body) hb_refl hbody_each
+      exact MEqRed.fun_ (L ∪ Γ.dom ∪ Term.fv body) hb_refl hbody_each trivial
     | cons α tail =>
       cases hpv with
       | cons hpvr hLCα hfvα =>
@@ -314,7 +314,7 @@ noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
               rw [hdom_eq]
               exact Finset.mem_insert_self _ _
           exact ihbody y hyL hpvey hfvy
-        exact MEqRed.fOp (L ∪ Γ.dom ∪ Term.fv body) hb_refl hbody_each
+        exact MEqRed.fOp (L ∪ Γ.dom ∪ Term.fv body) hb_refl hbody_each trivial
 
 /-- Backwards-compatibility alias: the `_J` form is `Nonempty (MEqRed _ _ _ _)`,
 which equals `MEqRedJ`. Post-Type-LC refactor `MEqRed.refl` is the
@@ -696,7 +696,7 @@ noncomputable def Lemma_31_ReductionUnderSubst_Eq
     have hpv' : PrevalidExt (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s st') :=
       Lemma_28_SubstPreservesPrevalid hpv hok
     exact MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl)
-  | @bet Γ st' t' v' v'' body body' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' t' v' v'' body body' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     -- u = .app (.abs t' body) v'  reduces to  Term.opening v'' body'
     -- After subst: subst x s (.app (.abs t' body) v') = .app (.abs (subst x s t') (subst x s body)) (subst x s v')
@@ -713,7 +713,7 @@ noncomputable def Lemma_31_ReductionUnderSubst_Eq
     show MEqRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s st')
       (.app (.abs (Term.subst x s t') (Term.subst x s body)) (Term.subst x s v'))
       (Term.opening (Term.subst x s v'') (Term.subst x s body'))
-    refine MEqRed.bet (L ∪ {x}) (Term.subst_lc hLCs hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {x}) (Term.subst_lc hLCs hLCt) ?_ trivial ?_
     · -- Body case.
       intro y hy
       simp [Finset.mem_union, Finset.mem_singleton] at hy
@@ -756,14 +756,14 @@ noncomputable def Lemma_31_ReductionUnderSubst_Eq
       exact MEqRed.refl hpv' hok.lc hfvs
     · rw [Term.subst_fvar_ne hyx]
       exact MEqRed.var hpv'
-  | @fun_ Γ t' t'' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t' t'' body body' L ht hbody _hUni iht ihbody =>
     subst hΓ
     -- u = .abs t' body, v = .abs t'' body'
     -- subst gives .abs (subst x s t') (subst x s body) → .abs (subst x s t'') (subst x s body')
     show MEqRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s [])
       (.abs (Term.subst x s t') (Term.subst x s body))
       (.abs (Term.subst x s t'') (Term.subst x s body'))
-    refine MEqRed.fun_ (L ∪ {x}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {x}) ?_ ?_ trivial
     · -- Bound annotation reduction at empty stack.
       have iht' := iht (Γ₂ := Γ₂) rfl
       simpa using iht'
@@ -789,14 +789,14 @@ noncomputable def Lemma_31_ReductionUnderSubst_Eq
       (Term.subst x s (.app .top u_)) (Term.subst x s .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' t' t'' α body body' L ht hbody iht ihbody =>
+  | @fOp Γ st' t' t'' α body body' L ht hbody _hUni iht ihbody =>
     subst hΓ
     -- u = .abs t' body, v = .abs t'' body', stack = α :: tail
     show MEqRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s (α :: st'))
       (.abs (Term.subst x s t') (Term.subst x s body))
       (.abs (Term.subst x s t'') (Term.subst x s body'))
     rw [Stack.subst_cons]
-    refine MEqRed.fOp (L ∪ {x}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {x}) ?_ ?_ trivial
     · -- Bound annotation reduction.
       have iht' := iht (Γ₂ := Γ₂) rfl
       simpa using iht'
@@ -943,12 +943,12 @@ noncomputable def Lemma_30_ReductionUnderSubst_Sub
     simp [Term.subst]
     refine MSubRed.app ?_ hLCv' hfvv'
     simpa using ihu'
-  | @fun_ Γ t' body body' L hLCt hbody ihbody =>
+  | @fun_ Γ t' body body' L hLCt hbody _hUni ihbody =>
     subst hΓ
     show MSubRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s [])
       (Term.subst x s (.abs t' body)) (Term.subst x s (.abs t' body'))
     simp [Term.subst]
-    refine MSubRed.fun_ (L ∪ {x}) (Term.subst_lc hok.lc hLCt) ?_
+    refine MSubRed.fun_ (L ∪ {x}) (Term.subst_lc hok.lc hLCt) ?_ trivial
     intro y hy
     simp [Finset.mem_union, Finset.mem_singleton] at hy
     have hyL : y ∉ L := hy.1
@@ -957,13 +957,13 @@ noncomputable def Lemma_30_ReductionUnderSubst_Sub
     rw [Term.subst_open_var (Ne.symm hyx) hok.lc body,
         Term.subst_open_var (Ne.symm hyx) hok.lc body'] at ih_body
     simpa [Ctx.subst, List.cons_append] using ih_body
-  | @fOp Γ st' t' α body body' L hLCt hbody ihbody =>
+  | @fOp Γ st' t' α body body' L hLCt hbody _hUni ihbody =>
     subst hΓ
     show MSubRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s (α :: st'))
       (Term.subst x s (.abs t' body)) (Term.subst x s (.abs t' body'))
     rw [Stack.subst_cons]
     simp [Term.subst]
-    refine MSubRed.fOp (L ∪ {x}) (Term.subst_lc hok.lc hLCt) ?_
+    refine MSubRed.fOp (L ∪ {x}) (Term.subst_lc hok.lc hLCt) ?_ trivial
     intro y hy
     simp [Finset.mem_union, Finset.mem_singleton] at hy
     have hyL : y ∉ L := hy.1
@@ -1042,7 +1042,7 @@ noncomputable def Lemma_32_ReductionUnderSubst_Eq_OfEqu
       have heq' : (Ctx.subst x s Γ₂ ++ Γ₁).equBinds y (Term.subst x s α) :=
         equBinds_split_equ hyx hpvL heq
       exact MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl)
-  | @bet Γ st' t' v' v'' body body' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' t' v' v'' body body' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     have hLCs := hok.lc
     have hsubst_open : Term.subst x s (Term.opening v'' body') =
@@ -1054,7 +1054,7 @@ noncomputable def Lemma_32_ReductionUnderSubst_Eq_OfEqu
     show MEqRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s st')
       (.app (.abs (Term.subst x s t') (Term.subst x s body)) (Term.subst x s v'))
       (Term.opening (Term.subst x s v'') (Term.subst x s body'))
-    refine MEqRed.bet (L ∪ {x}) (Term.subst_lc hLCs hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {x}) (Term.subst_lc hLCs hLCt) ?_ trivial ?_
     · intro y hy
       simp [Finset.mem_union, Finset.mem_singleton] at hy
       have hyL : y ∉ L := hy.1
@@ -1094,12 +1094,12 @@ noncomputable def Lemma_32_ReductionUnderSubst_Eq_OfEqu
       exact MEqRed.refl hpv' hok.lc hfvs
     · rw [Term.subst_fvar_ne hyx]
       exact MEqRed.var hpv'
-  | @fun_ Γ t' t'' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t' t'' body body' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s [])
       (.abs (Term.subst x s t') (Term.subst x s body))
       (.abs (Term.subst x s t'') (Term.subst x s body'))
-    refine MEqRed.fun_ (L ∪ {x}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {x}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl
       simpa using iht'
     · intro y hy
@@ -1121,13 +1121,13 @@ noncomputable def Lemma_32_ReductionUnderSubst_Eq_OfEqu
       (Term.subst x s (.app .top u_)) (Term.subst x s .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' t' t'' α body body' L ht hbody iht ihbody =>
+  | @fOp Γ st' t' t'' α body body' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst x s Γ₂ ++ Γ₁) (Stack.subst x s (α :: st'))
       (.abs (Term.subst x s t') (Term.subst x s body))
       (.abs (Term.subst x s t'') (Term.subst x s body'))
     rw [Stack.subst_cons]
-    refine MEqRed.fOp (L ∪ {x}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {x}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl
       simpa using iht'
     · intro y hy
@@ -1236,13 +1236,13 @@ private noncomputable def MEqRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
-  | @bet Γ s t v v' body body' L _ _ _ _ ihv => exact ihv
+  | @bet Γ s t v v' body body' L _ _ _ _ _ ihv => exact ihv
   | @top Γ s hpv => exact extractPrevalid hpv
   | @app Γ s u u' v v' _ _ _ ihv => exact ihv
   | @var Γ s x hpv => exact extractPrevalid hpv
-  | @fun_ Γ t t' body body' L _ _ iht _ => exact iht
+  | @fun_ Γ t t' body body' L _ _ _ iht _ => exact iht
   | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
-  | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
+  | @fOp Γ s t t' α body body' L _ _ _ iht _ => exact iht
 
 /-- Pop the head of a non-empty `PrevalidExt`. -/
 private def PrevalidExt.tail {Γ : Ctx} {s : Stack} {α : Term}
@@ -1273,7 +1273,7 @@ noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : PrevalidExt Γ s := by
   induction h with
   | @pro Γ s x α α' hpv _ _ _ => exact hpv
-  | @bet Γ s t v0 v0' body body' L _ _ _ ihbody _ =>
+  | @bet Γ s t v0 v0' body body' L _ _ _ _ ihbody _ =>
     classical
     let x : String := Classical.choose (Term.exists_fresh L)
     have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
@@ -1282,9 +1282,9 @@ noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
     exact PrevalidExt.tail ihu
   | top hpv => exact hpv
   | var hpv => exact hpv
-  | @fun_ Γ t t' body body' L _ _ iht _ => exact iht
+  | @fun_ Γ t t' body body' L _ _ _ iht _ => exact iht
   | tAp hpv _ _ => exact hpv
-  | @fOp Γ s t t' α body body' L _ _ iht ihbody =>
+  | @fOp Γ s t t' α body body' L _ _ _ iht ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s))
     have hx : x ∉ L ∪ Γ.dom ∪ Stack.fvAll s :=
@@ -1321,7 +1321,7 @@ noncomputable def MSubRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
   | top hpv _ _ => exact hpv
   | equ hpv _ => exact hpv
   | @app Γ s u u' v hu _ _ ihu => exact PrevalidExt.tail ihu
-  | @fun_ Γ t body body' L _ _ ihbody =>
+  | @fun_ Γ t body body' L _ _ _ ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh L)
     have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
@@ -1330,7 +1330,7 @@ noncomputable def MSubRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
     have hpvBare : Prevalid (⟨x, t, .sub⟩ :: Γ) := extractPrevalid hpvExt
     have hpvΓ : Prevalid Γ := by cases hpvBare with | sub hpv _ _ _ => exact hpv
     exact PrevalidExt.nil hpvΓ
-  | @fOp Γ s t α body body' L _ _ ihbody =>
+  | @fOp Γ s t α body body' L _ _ _ ihbody =>
     classical
     let x : String := Classical.choose (Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s))
     have hx : x ∉ L ∪ Γ.dom ∪ Stack.fvAll s :=
@@ -1379,7 +1379,7 @@ noncomputable def MEqRed.subst {Γ : Ctx} {s : Stack} {u v : Term}
     rw [hα_fix] at ihα'
     rw [Term.subst_fvar_ne hxy]
     exact MEqRed.pro hpv heq ihα'
-  | @bet Γ st t v0 v0' body body' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st t v0 v0' body body' L hLCt hbody _hUni hv ihbody ihv =>
     have hsubst_open : Term.subst y w (Term.opening v0' body') =
         Term.opening (Term.subst y w v0') (Term.subst y w body') := by
       simp [Term.opening, Term.subst_open hw_lc]
@@ -1390,7 +1390,7 @@ noncomputable def MEqRed.subst {Γ : Ctx} {s : Stack} {u v : Term}
     show MEqRed Γ st
       (.app (.abs (Term.subst y w t) (Term.subst y w body)) (Term.subst y w v0))
       (Term.opening (Term.subst y w v0') (Term.subst y w body'))
-    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hw_lc hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hw_lc hLCt) ?_ trivial ?_
     · intro x hx
       simp [Finset.mem_union, Finset.mem_singleton] at hx
       have hxL : x ∉ L := hx.1
@@ -1424,7 +1424,7 @@ noncomputable def MEqRed.subst {Γ : Ctx} {s : Stack} {u v : Term}
       exact MEqRed.refl hpv hw_lc hw_fv
     · rw [Term.subst_fvar_ne hxy]
       exact MEqRed.var hpv
-  | @fun_ Γ t' t'' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t' t'' body body' L ht hbody _hUni iht ihbody =>
     show MEqRed Γ []
       (.abs (Term.subst y w t') (Term.subst y w body))
       (.abs (Term.subst y w t'') (Term.subst y w body'))
@@ -1450,7 +1450,7 @@ noncomputable def MEqRed.subst {Γ : Ctx} {s : Stack} {u v : Term}
       | sub _ _ hfv _ => exact hfv
     have hyt' : y ∉ Term.fv t' := fun h' => hy_not_dom (hfv_t' h')
     have ht'_fix : Term.subst y w t' = t' := Term.subst_fresh hyt'
-    refine MEqRed.fun_ (L ∪ {y} ∪ Γ.dom) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y} ∪ Γ.dom) ?_ ?_ trivial
     · exact iht hy_not_dom hw_fv
     · intro x hx
       simp only [Finset.mem_union, Finset.mem_singleton] at hx
@@ -1484,11 +1484,11 @@ noncomputable def MEqRed.subst {Γ : Ctx} {s : Stack} {u v : Term}
     show MEqRed Γ st (Term.subst y w (.app .top u_)) (Term.subst y w .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv hLCu' hfv'
-  | @fOp Γ st t' t'' α body body' L ht hbody iht ihbody =>
+  | @fOp Γ st t' t'' α body body' L ht hbody _hUni iht ihbody =>
     show MEqRed Γ (α :: st)
       (.abs (Term.subst y w t') (Term.subst y w body))
       (.abs (Term.subst y w t'') (Term.subst y w body'))
-    refine MEqRed.fOp (L ∪ {y} ∪ Γ.dom) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y} ∪ Γ.dom) ?_ ?_ trivial
     · exact iht hy_not_dom hw_fv
     · intro x hx
       simp only [Finset.mem_union, Finset.mem_singleton] at hx

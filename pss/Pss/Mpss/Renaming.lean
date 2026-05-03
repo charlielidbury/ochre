@@ -297,7 +297,7 @@ private noncomputable def MEqRed.subst_yz_sub_head
           (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁) := by simp
       exact heq_simp ▸ this
     exact MEqRed.pro hpv' heq' (ihα (Γ₂ := Γ₂) rfl hz_notin_Γ₂)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     intro hz_notin_Γ₂
     have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
@@ -314,7 +314,7 @@ private noncomputable def MEqRed.subst_yz_sub_head
       (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
             (Term.subst y (.fvar z) v0))
       (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ trivial ?_
     · intro yfresh hyfresh
       simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
       have hyfL : yfresh ∉ L := hyfresh.1
@@ -362,14 +362,14 @@ private noncomputable def MEqRed.subst_yz_sub_head
       exact MEqRed.refl hpv' hLCz hfvz
     · rw [Term.subst_fvar_ne hyiy]
       exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
       simpa using iht'
     · intro yfresh hyfresh
@@ -426,7 +426,7 @@ private noncomputable def MEqRed.subst_yz_sub_head
       (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
@@ -434,7 +434,7 @@ private noncomputable def MEqRed.subst_yz_sub_head
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
     rw [Stack.subst_cons]
-    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl hz_notin_Γ₂
       simpa using iht'
     · intro yfresh hyfresh
@@ -608,7 +608,7 @@ private noncomputable def MEqRed.subst_yz_equ_head
         -- ⟨y, α, .equ⟩, the tail is ⟨z, α, .equ⟩ :: Γ₁.
         exact equBinds_split_equ (s := .fvar z) hyiy hpvL heq
       exact MEqRed.pro hpv' heq' (ihβ (Γ₂ := Γ₂) rfl)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
     have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
@@ -624,7 +624,7 @@ private noncomputable def MEqRed.subst_yz_equ_head
       (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
             (Term.subst y (.fvar z) v0))
       (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ trivial ?_
     · intro yfresh hyfresh
       simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
       have hyfL : yfresh ∉ L := hyfresh.1
@@ -667,13 +667,13 @@ private noncomputable def MEqRed.subst_yz_equ_head
       exact MEqRed.refl hpv' hLCz hfvz
     · rw [Term.subst_fvar_ne hyiy]
       exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.fun_ (L ∪ {y}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl
       simpa using iht'
     · intro yfresh hyfresh
@@ -723,14 +723,14 @@ private noncomputable def MEqRed.subst_yz_equ_head
       (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) (αi :: st'))
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
     rw [Stack.subst_cons]
-    refine MEqRed.fOp (L ∪ {y}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) rfl
       simpa using iht'
     · intro yfresh hyfresh
@@ -986,14 +986,14 @@ private noncomputable def MSubRed.subst_yz_sub_head
     simp [Term.subst]
     refine MSubRed.app ?_ hLCv' hfvv'
     simpa using ihu'
-  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+  | @fun_ Γ tt bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
     show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     simp [Term.subst]
-    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
     have hyfL : yfresh ∉ L := hyfresh.1.1
@@ -1010,7 +1010,7 @@ private noncomputable def MSubRed.subst_yz_sub_head
     rw [Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd,
         Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd'] at ih_body
     simpa [Ctx.subst, List.cons_append] using ih_body
-  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     intro hz_notin_Γ₂
     show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, t, .sub⟩ :: Γ₁)
@@ -1018,7 +1018,7 @@ private noncomputable def MSubRed.subst_yz_sub_head
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     rw [Stack.subst_cons]
     simp [Term.subst]
-    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
     have hyfL : yfresh ∉ L := hyfresh.1.1
@@ -1193,13 +1193,13 @@ private noncomputable def MSubRed.subst_yz_equ_head
     simp [Term.subst]
     refine MSubRed.app ?_ hLCv' hfvv'
     simpa using ihu'
-  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+  | @fun_ Γ tt bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     simp [Term.subst]
-    refine MSubRed.fun_ (L ∪ {y}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fun_ (L ∪ {y}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
     have hyfL : yfresh ∉ L := hyfresh.1
@@ -1208,14 +1208,14 @@ private noncomputable def MSubRed.subst_yz_equ_head
     rw [Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd,
         Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd'] at ih_body
     simpa [Ctx.subst, List.cons_append] using ih_body
-  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) (αi :: st'))
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     rw [Stack.subst_cons]
     simp [Term.subst]
-    refine MSubRed.fOp (L ∪ {y}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fOp (L ∪ {y}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
     have hyfL : yfresh ∉ L := hyfresh.1
@@ -1561,7 +1561,7 @@ noncomputable def _MEqRed_rename_equ_loc
           (Term.subst y (.fvar z) β) :=
         _lookupEqu_lift_middle hyiz heq_un
       exact MEqRed.pro hpv' heq' (ihβ (Γ₂ := Γ₂) hz_notin_Γ₂ rfl)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
     have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
@@ -1577,7 +1577,7 @@ noncomputable def _MEqRed_rename_equ_loc
       (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
             (Term.subst y (.fvar z) v0))
       (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y}) (Term.subst_lc hLCfz hLCt) ?_ trivial ?_
     · intro yfresh hyfresh
       simp [Finset.mem_union, Finset.mem_singleton] at hyfresh
       have hyfL : yfresh ∉ L := hyfresh.1
@@ -1628,13 +1628,13 @@ noncomputable def _MEqRed_rename_equ_loc
       exact MEqRed.refl hpv' hLCz hfvz
     · rw [Term.subst_fvar_ne hyiy]
       exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) hz_notin_Γ₂ rfl
       simpa using iht'
     · intro yfresh hyfresh
@@ -1688,14 +1688,14 @@ noncomputable def _MEqRed_rename_equ_loc
       (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     show MEqRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) (αi :: st'))
       (.abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd))
       (.abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd'))
     rw [Stack.subst_cons]
-    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht (Γ₂ := Γ₂) hz_notin_Γ₂ rfl
       simpa using iht'
     · intro yfresh hyfresh
@@ -1876,13 +1876,13 @@ noncomputable def _MSubRed_rename_equ_loc
     simp [Term.subst]
     refine MSubRed.app ?_ hLCv' hfvv'
     simpa using ihu'
-  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+  | @fun_ Γ tt bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) [])
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     simp [Term.subst]
-    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
     obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
@@ -1897,14 +1897,14 @@ noncomputable def _MSubRed_rename_equ_loc
     rw [Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd,
         Term.subst_open_var (Ne.symm hyfy) (Term.LC.fvar z) bd'] at ih_body
     simpa [Ctx.subst, List.cons_append] using ih_body
-  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     show MSubRed (Ctx.subst y (.fvar z) Γ₂ ++ ⟨z, α, .equ⟩ :: Γ₁)
       (Stack.subst y (.fvar z) (αi :: st'))
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     rw [Stack.subst_cons]
     simp [Term.subst]
-    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
     obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
@@ -2213,7 +2213,7 @@ noncomputable def MEqRed.subst_yz_stray
     have heq' : (Ctx.subst y (.fvar z) Γ).equBinds yi (Term.subst y (.fvar z) α) :=
       _equBinds_subst_pointwise y (.fvar z) heq
     exact MEqRed.pro hpv' heq' (ihα hy_notin_Γ)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     intro hy_notin_Γ
     have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
     have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
@@ -2227,7 +2227,7 @@ noncomputable def MEqRed.subst_yz_stray
       (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
             (Term.subst y (.fvar z) v0))
       (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
-    refine MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    refine MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt) ?_ trivial ?_
     · intro yfresh hyfresh
       simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
       obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
@@ -2266,12 +2266,12 @@ noncomputable def MEqRed.subst_yz_stray
       exact MEqRed.var hpv'
     · rw [Term.subst_fvar_ne hyiy]
       exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     intro hy_notin_Γ
     show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) [])
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt' bd'))
     simp [Term.subst]
-    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht hy_notin_Γ
       simpa using iht'
     · intro yfresh hyfresh
@@ -2314,13 +2314,13 @@ noncomputable def MEqRed.subst_yz_stray
       (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
     simp [Term.subst]
     exact MEqRed.tAp hpv' hLCu' hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     intro hy_notin_Γ
     show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) (αi :: st'))
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt' bd'))
     rw [Stack.subst_cons]
     simp [Term.subst]
-    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_ trivial
     · have iht' := iht hy_notin_Γ
       simpa using iht'
     · intro yfresh hyfresh
@@ -2429,12 +2429,12 @@ noncomputable def MSubRed.subst_yz_stray
     simp [Term.subst]
     refine MSubRed.app ?_ hLCv' hfvv'
     simpa using ihu'
-  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+  | @fun_ Γ tt bd bd' L hLCt hbody _hUni ihbody =>
     intro hy_notin_Γ
     show MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) [])
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     simp [Term.subst]
-    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
     obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
@@ -2449,13 +2449,13 @@ noncomputable def MSubRed.subst_yz_stray
     rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
         Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
     simpa [Ctx.subst, List.cons_append] using ih_body
-  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody _hUni ihbody =>
     intro hy_notin_Γ
     show MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) (αi :: st'))
       (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
     rw [Stack.subst_cons]
     simp [Term.subst]
-    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
     obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
@@ -2548,7 +2548,7 @@ theorem AvoidsProUniv_subst_yz_stray_exists
     refine ⟨heq_subst.symm ▸ MEqRed.pro hpv' heq' hα', ?_⟩
     simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_pro]
     exact ⟨hyix, huα'⟩
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     intro hy_notin_Γ hUniv
     rw [AvoidsProUniv_bet] at hUniv
     obtain ⟨hbU, hvU⟩ := hUniv
@@ -2592,7 +2592,7 @@ theorem AvoidsProUniv_subst_yz_stray_exists
         (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
               (Term.subst y (.fvar z) v0))
         (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd')) :=
-      MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt) body_witness hv'
+      MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt) body_witness trivial hv'
     -- The source term .app (.abs tBound bd) v0 substitutes by definition to
     -- .app (.abs (subst tBound) (subst bd)) (subst v0) — this is rfl.
     -- The dest term (subst (Term.opening v0' bd')) needs hsubst_open.
@@ -2602,7 +2602,7 @@ theorem AvoidsProUniv_subst_yz_stray_exists
     -- body_witness_avoids and hvU'.
     simp only [AvoidsProUniv_subst_eq_dest]
     show AvoidsProUniv (MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt)
-        body_witness hv') x
+        body_witness trivial hv') x
     simp only [AvoidsProUniv_bet]
     exact ⟨body_witness_avoids, hvU'⟩
   | @top Γ st' hpv =>
@@ -2679,7 +2679,7 @@ theorem AvoidsProUniv_subst_yz_stray_exists
       · exact rfl
       · exact heqe.symm
       · exact heqe.symm
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     intro hy_notin_Γ hUniv
     rw [AvoidsProUniv_fun_] at hUniv
     obtain ⟨htU, hbU⟩ := hUniv
@@ -2731,10 +2731,10 @@ theorem AvoidsProUniv_subst_yz_stray_exists
         .abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd') := rfl
     have hstack_eq : Stack.subst y (.fvar z) ([] : Stack) = ([] : Stack) := rfl
     refine ⟨hstack_eq.symm ▸ hsrc_eq.symm ▸ hdst_eq.symm ▸
-              MEqRed.fun_ (L ∪ {y} ∪ {z}) ht' body_witness, ?_⟩
+              MEqRed.fun_ (L ∪ {y} ∪ {z}) ht' body_witness trivial, ?_⟩
     simp only [AvoidsProUniv_subst_eq_stack, AvoidsProUniv_subst_eq_src,
                AvoidsProUniv_subst_eq_dest]
-    show AvoidsProUniv (MEqRed.fun_ (L ∪ {y} ∪ {z}) ht' body_witness) x
+    show AvoidsProUniv (MEqRed.fun_ (L ∪ {y} ∪ {z}) ht' body_witness trivial) x
     simp only [AvoidsProUniv_fun_]
     exact ⟨htU', body_witness_avoids⟩
   | @tAp Γ st' u_ hpv hLCu hfv =>
@@ -2757,7 +2757,7 @@ theorem AvoidsProUniv_subst_yz_stray_exists
     simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_subst_eq_dest]
     show AvoidsProUniv (MEqRed.tAp hpv' hLCu' hfv') x
     simp only [AvoidsProUniv_tAp]
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     intro hy_notin_Γ hUniv
     rw [AvoidsProUniv_fOp] at hUniv
     obtain ⟨htU, hbU⟩ := hUniv
@@ -2812,10 +2812,10 @@ theorem AvoidsProUniv_subst_yz_stray_exists
         Term.subst y (.fvar z) αi :: Stack.subst y (.fvar z) st' := by
       simp [Stack.subst]
     refine ⟨hstack_eq ▸ hsrc_eq.symm ▸ hdst_eq.symm ▸
-              MEqRed.fOp (L ∪ {y} ∪ {z}) ht' body_witness, ?_⟩
+              MEqRed.fOp (L ∪ {y} ∪ {z}) ht' body_witness trivial, ?_⟩
     simp only [AvoidsProUniv_subst_eq_stack, AvoidsProUniv_subst_eq_src,
                AvoidsProUniv_subst_eq_dest]
-    show AvoidsProUniv (MEqRed.fOp (L ∪ {y} ∪ {z}) ht' body_witness) x
+    show AvoidsProUniv (MEqRed.fOp (L ∪ {y} ∪ {z}) ht' body_witness trivial) x
     simp only [AvoidsProUniv_fOp]
     exact ⟨htU', body_witness_avoids⟩
 
@@ -2976,7 +2976,7 @@ noncomputable def MEqRed.equ_head_replace
       PrevalidExt.equ_head_replace_mid hpv hLCα' hfvα'
     have heq' := _equBinds_equ_head_swap_neq (α' := α') hyiy heq
     exact MEqRed.pro hpv' heq' (ihβ (Γ₂ := Γ₂) rfl hAvoid_inner hFresh)
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     rw [avoidsPro_bet] at hAvoid
     rw [cofinDomFresh_bet] at hFresh
@@ -3002,7 +3002,7 @@ noncomputable def MEqRed.equ_head_replace
     have ihv' := ihv (Γ₂ := Γ₂) rfl hAvoid_v hFresh_v
     -- Output L_new ⊇ L ∪ Γ.dom ∪ {y₀} so yfresh ≠ y₀ and yfresh ∉ Γ_replaced.dom.
     refine MEqRed.bet (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀})
-      hLCt ?_ ihv'
+      hLCt ?_ trivial ihv'
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
     push_neg at hyfresh
@@ -3044,7 +3044,7 @@ noncomputable def MEqRed.equ_head_replace
     have hpv' : PrevalidExt (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st' :=
       PrevalidExt.equ_head_replace_mid hpv hLCα' hfvα'
     exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     rw [avoidsPro_fun_] at hAvoid
     rw [cofinDomFresh_fun_] at hFresh
@@ -3068,7 +3068,7 @@ noncomputable def MEqRed.equ_head_replace
     have iht' := iht (Γ₂ := Γ₂) rfl hAvoid_t hFresh_t
     have ihbody_y₀ := ihbody y₀ hy₀L
       (Γ₂ := ⟨y₀, tt, .sub⟩ :: Γ₂) (by simp) hAvoid_body hFresh_body
-    refine MEqRed.fun_ (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) iht' ?_
+    refine MEqRed.fun_ (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) iht' ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
     push_neg at hyfresh
@@ -3104,7 +3104,7 @@ noncomputable def MEqRed.equ_head_replace
     have hfv' : Term.fv u_ ⊆ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) := by
       rw [← _Ctx_dom_eq_under_equ_head_replace (α := α) (α' := α')]; exact hfv
     exact MEqRed.tAp hpv' hLCu hfv'
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     rw [avoidsPro_fOp] at hAvoid
     rw [cofinDomFresh_fOp] at hFresh
@@ -3128,7 +3128,7 @@ noncomputable def MEqRed.equ_head_replace
     have iht' := iht (Γ₂ := Γ₂) rfl hAvoid_t hFresh_t
     have ihbody_y₀ := ihbody y₀ hy₀L
       (Γ₂ := ⟨y₀, αi, .equ⟩ :: Γ₂) (by simp) hAvoid_body hFresh_body
-    refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) iht' ?_
+    refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) iht' ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
     push_neg at hyfresh
@@ -3166,7 +3166,7 @@ noncomputable def MEqRed.equ_head_replace
     -- So we should be able to derive y₀ ∉ fv stack from the OUTER context's prevalidExt,
     -- which exists in the input MEqRed.fOp. Let me extract it.
     have hpv_outer_st : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) (αi :: st') :=
-      MEqRed.prevalidExt (MEqRed.fOp L ht hbody)
+      MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
     -- Wait, that's circular — I'm reconstructing the input. Better: hbody y₀ hy₀L
     -- is the body MEqRed with stack st' at extended ctx. Its prevalidExt gives
     -- PrevalidExt at the extended ctx. Stack entries' fv bound within that.
@@ -3199,7 +3199,7 @@ noncomputable def MEqRed.equ_head_replace
     -- fv ⊆ outer Γ.dom (no y₀).
     have hpv_outer_inputst : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) (αi :: st') := by
       -- Reconstruct via the input MEqRed.fOp.
-      exact MEqRed.prevalidExt (MEqRed.fOp L ht hbody)
+      exact MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
     have hpv_outer_st_only : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st' := by
       cases hpv_outer_inputst with
       | cons hpv_tail _ _ => exact hpv_tail
@@ -3297,7 +3297,7 @@ theorem MEqRed.equ_head_replace_univ_exists_pred
       rw [AvoidsProUniv_pro] at this
       exact this.1
     · rw [CofinAvoidsProSelfUniv_pro]; exact hβC
-  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     intro hyAvoid hAvoidAll hCAU
     subst hΓ
     rw [CofinAvoidsProSelfUniv_bet] at hCAU
@@ -3329,7 +3329,7 @@ theorem MEqRed.equ_head_replace_univ_exists_pred
       rw [AvoidsProUniv_bet] at this
       exact this.2
     obtain ⟨hv', hvA, hvC'⟩ := ihv (Avoid := Avoid) (Γ₂ := Γ₂) rfl hyAvoid hAvoidV hvC
-    refine ⟨MEqRed.bet L hLCt body_witness hv', ?_, ?_⟩
+    refine ⟨MEqRed.bet L hLCt body_witness trivial hv', ?_, ?_⟩
     · intro z hz
       rw [AvoidsProUniv_bet]
       exact ⟨fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz, hvA z hz⟩
@@ -3371,7 +3371,7 @@ theorem MEqRed.equ_head_replace_univ_exists_pred
     refine ⟨MEqRed.var hpv', ?_, ?_⟩
     · intro z _; rw [AvoidsProUniv_var]; trivial
     · rw [CofinAvoidsProSelfUniv_var]; trivial
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     intro hyAvoid hAvoidAll hCAU
     subst hΓ
     rw [CofinAvoidsProSelfUniv_fun_] at hCAU
@@ -3411,7 +3411,7 @@ theorem MEqRed.equ_head_replace_univ_exists_pred
           (∀ z, Avoid z → AvoidsProUniv (body_witness yfresh hyf) z) ∧
           CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
       fun yfresh hyf => (body_each yfresh hyf).choose_spec
-    refine ⟨MEqRed.fun_ L ht' body_witness, ?_, ?_⟩
+    refine ⟨MEqRed.fun_ L ht' body_witness trivial, ?_, ?_⟩
     · intro z hz
       rw [AvoidsProUniv_fun_]
       exact ⟨htA z hz, fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz⟩
@@ -3427,7 +3427,7 @@ theorem MEqRed.equ_head_replace_univ_exists_pred
     refine ⟨MEqRed.tAp hpv' hLCu hfv', ?_, ?_⟩
     · intro z _; rw [AvoidsProUniv_tAp]; trivial
     · rw [CofinAvoidsProSelfUniv_tAp]; trivial
-  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     intro hyAvoid hAvoidAll hCAU
     subst hΓ
     rw [CofinAvoidsProSelfUniv_fOp] at hCAU
@@ -3481,7 +3481,7 @@ theorem MEqRed.equ_head_replace_univ_exists_pred
           AvoidsProUniv (body_witness yfresh hyf) yfresh ∧
           CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
       fun yfresh hyf => (body_each yfresh hyf).choose_spec
-    refine ⟨MEqRed.fOp L ht' body_witness, ?_, ?_⟩
+    refine ⟨MEqRed.fOp L ht' body_witness trivial, ?_, ?_⟩
     · intro z hz
       rw [AvoidsProUniv_fOp]
       exact ⟨htA z hz, fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz⟩
@@ -3552,7 +3552,7 @@ noncomputable def MSubRed.equ_head_replace
       rw [← _Ctx_dom_eq_under_equ_head_replace (α := α) (α' := α')]; exact hfvv
     have ihu' := ihu (Γ₂ := Γ₂) rfl hAvoid hFresh
     exact MSubRed.app ihu' hLCv' hfvv'
-  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+  | @fun_ Γ tt bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     rw [msAvoidsPro_fun_] at hAvoid
     rw [msCofinDomFresh_fun_] at hFresh
@@ -3571,7 +3571,7 @@ noncomputable def MSubRed.equ_head_replace
       rw [← _Ctx_dom_eq_under_equ_head_replace (α := α) (α' := α')]; exact hy₀_dom
     have ihbody_y₀ := ihbody y₀ hy₀L
       (Γ₂ := ⟨y₀, tt, .sub⟩ :: Γ₂) (by simp) hAvoid hFresh_body
-    refine MSubRed.fun_ (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) hLCt ?_
+    refine MSubRed.fun_ (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) hLCt ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
     push_neg at hyfresh
@@ -3595,7 +3595,7 @@ noncomputable def MSubRed.equ_head_replace
       hy₀_dom' hyf_dom hy₀_fvbd hy₀_fvbd'
       (by intro β hβ; cases hβ) ihbody_y₀_norm
     simpa using ren
-  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody _hUni ihbody =>
     subst hΓ
     rw [msAvoidsPro_fOp] at hAvoid
     rw [msCofinDomFresh_fOp] at hFresh
@@ -3613,7 +3613,7 @@ noncomputable def MSubRed.equ_head_replace
       rw [← _Ctx_dom_eq_under_equ_head_replace (α := α) (α' := α')]; exact hy₀_dom
     have ihbody_y₀ := ihbody y₀ hy₀L
       (Γ₂ := ⟨y₀, αi, .equ⟩ :: Γ₂) (by simp) hAvoid hFresh_body
-    refine MSubRed.fOp (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) hLCt ?_
+    refine MSubRed.fOp (L ∪ Ctx.dom (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) ∪ {y₀}) hLCt ?_ trivial
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
     push_neg at hyfresh
@@ -3631,7 +3631,7 @@ noncomputable def MSubRed.equ_head_replace
     have hy₀_αi : y₀ ∉ Term.fv αi := fun h' => hy₀_dom' (hfv_αi h')
     -- Stack freshness for y₀ from the input MSubRed.fOp.
     have hpv_outer_inputst : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) (αi :: st') :=
-      MSubRed.prevalidExt (MSubRed.fOp L hLCt hbody)
+      MSubRed.prevalidExt (MSubRed.fOp L hLCt hbody trivial)
     have hpv_outer_st_only : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st' := by
       cases hpv_outer_inputst with
       | cons hpv_tail _ _ => exact hpv_tail
@@ -3757,7 +3757,7 @@ noncomputable def MEqRed.stack_replace
         have := hfvα' hx
         rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
     exact MEqRed.pro hpv' heq (ihβ (Γ₂ := Γ₂) (s_pre := s_pre) rfl rfl hFresh hAPS)
-  | @bet Γ stk' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ stk' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     subst hΓ
     subst hS
     rw [cofinDomFresh_bet] at hFresh
@@ -3779,7 +3779,7 @@ noncomputable def MEqRed.stack_replace
     let y₀ := pickFresh L
     have hy₀L : y₀ ∉ L := pickFresh_notMem L
     have ihbody_y₀ := ihbody y₀ hy₀L (Γ₂ := Γ₂) (s_pre := s_pre) rfl rfl hFresh_body hAPS_body
-    refine MEqRed.bet (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}) hLCt ?_ hv
+    refine MEqRed.bet (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}) hLCt ?_ trivial hv
     intro yfresh hyfresh
     simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
     push_neg at hyfresh
@@ -3826,7 +3826,7 @@ noncomputable def MEqRed.stack_replace
         have := hfvα' hx
         rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
     exact MEqRed.var hpv'
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     -- Vacuous: fun_ requires stack [], but s_pre ++ α :: s_post is non-empty.
     exfalso
     cases s_pre with
@@ -3841,7 +3841,7 @@ noncomputable def MEqRed.stack_replace
         have := hfvα' hx
         rw [Ctx.dom_append]; exact Finset.mem_union.mpr (Or.inr this))
     exact MEqRed.tAp hpv' hLCu hfv
-  | @fOp Γ stk' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ stk' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     subst hΓ
     cases s_pre with
     | nil =>
@@ -3885,13 +3885,13 @@ noncomputable def MEqRed.stack_replace
       have hy₀_α' : pickFresh L ∉ Term.fv α' :=
         fv_notin_of_dom_notin hfvα'_full hy₀_dom
       have hpv_outer : PrevalidExt (Γ₂ ++ Γ₁) (α :: s_post) :=
-        MEqRed.prevalidExt (MEqRed.fOp L ht hbody)
+        MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
       have hpv_outer_st : PrevalidExt (Γ₂ ++ Γ₁) s_post := by
         cases hpv_outer with
         | cons hpv_t _ _ => exact hpv_t
       have hz_stack : ∀ β ∈ s_post, pickFresh L ∉ Term.fv β :=
         _y₀_notin_stack_fv_of_notin_dom hpv_outer_st hy₀_dom
-      refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {pickFresh L}) ht ?_
+      refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {pickFresh L}) ht ?_ trivial
       intro yfresh hyfresh
       simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
       push_neg at hyfresh
@@ -3930,14 +3930,14 @@ noncomputable def MEqRed.stack_replace
       have ihbody_y₀_norm :
           MEqRed (⟨pickFresh L, β, .equ⟩ :: (Γ₂ ++ Γ₁)) (rest ++ α' :: s_post)
             (bd^[pickFresh L]) (bd'^[pickFresh L]) := by simpa using ihbody_y₀
-      refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {pickFresh L}) ht ?_
+      refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {pickFresh L}) ht ?_ trivial
       intro yfresh hyfresh
       simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
       push_neg at hyfresh
       obtain ⟨⟨hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
       have hyz : pickFresh L ≠ yfresh := fun h' => hyf_y₀ h'.symm
       have hpv_outer : PrevalidExt (Γ₂ ++ Γ₁) (β :: rest ++ α :: s_post) :=
-        MEqRed.prevalidExt (MEqRed.fOp L ht hbody)
+        MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
       have hpv_outer_β : Term.fv β ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
         cases hpv_outer with
         | cons _ _ hfvβ => exact hfvβ
@@ -4059,7 +4059,7 @@ theorem MEqRed.stack_replace_univ_exists_pred
       rw [AvoidsProUniv_pro] at this
       exact ⟨this.1, hβA z hz⟩
     · rw [CofinAvoidsProSelfUniv_pro]; exact hβC
-  | @bet Γ stk' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ stk' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
     intro hAvoidAll hCAU
     subst hΓ; subst hS
     rw [CofinAvoidsProSelfUniv_bet] at hCAU
@@ -4088,7 +4088,7 @@ theorem MEqRed.stack_replace_univ_exists_pred
           (∀ z, Avoid z → AvoidsProUniv (body_witness yfresh hyf) z) ∧
           CofinAvoidsProSelfUniv (body_witness yfresh hyf) :=
       fun yfresh hyf => (body_each yfresh hyf).choose_spec
-    refine ⟨MEqRed.bet L hLCt body_witness hv, ?_, ?_⟩
+    refine ⟨MEqRed.bet L hLCt body_witness trivial hv, ?_, ?_⟩
     · intro z hz
       rw [AvoidsProUniv_bet]
       refine ⟨fun yfresh hyf => (body_witness_specs yfresh hyf).1 z hz, ?_⟩
@@ -4140,7 +4140,7 @@ theorem MEqRed.stack_replace_univ_exists_pred
     refine ⟨MEqRed.var hpv', ?_, ?_⟩
     · intro z _; rw [AvoidsProUniv_var]; trivial
     · rw [CofinAvoidsProSelfUniv_var]; trivial
-  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
     intro _ _
     -- Vacuous: fun_ requires stack [], but s_pre ++ α :: s_post is non-empty.
     exfalso
@@ -4158,7 +4158,7 @@ theorem MEqRed.stack_replace_univ_exists_pred
     refine ⟨MEqRed.tAp hpv' hLCu hfv, ?_, ?_⟩
     · intro z _; rw [AvoidsProUniv_tAp]; trivial
     · rw [CofinAvoidsProSelfUniv_tAp]; trivial
-  | @fOp Γ stk' tt tt' αi bd bd' L ht hbody iht ihbody =>
+  | @fOp Γ stk' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
     intro hAvoidAll hCAU
     subst hΓ
     cases s_pre with
@@ -4210,7 +4210,7 @@ theorem MEqRed.stack_replace_univ_exists_pred
             AvoidsProUniv (body_witness y_i hyiL) y_i ∧
             CofinAvoidsProSelfUniv (body_witness y_i hyiL) :=
         fun y_i hyiL => (body_each y_i hyiL).choose_spec
-      refine ⟨MEqRed.fOp L ht body_witness, ?_, ?_⟩
+      refine ⟨MEqRed.fOp L ht body_witness trivial, ?_, ?_⟩
       · intro z hz
         rw [AvoidsProUniv_fOp]
         refine ⟨?_, fun y_i hyiL => (body_witness_specs y_i hyiL).1 z hz⟩
@@ -4265,7 +4265,7 @@ theorem MEqRed.stack_replace_univ_exists_pred
             AvoidsProUniv (body_witness y_i hyiL) y_i ∧
             CofinAvoidsProSelfUniv (body_witness y_i hyiL) :=
         fun y_i hyiL => (body_each y_i hyiL).choose_spec
-      refine ⟨MEqRed.fOp L ht body_witness, ?_, ?_⟩
+      refine ⟨MEqRed.fOp L ht body_witness trivial, ?_, ?_⟩
       · intro z hz
         rw [AvoidsProUniv_fOp]
         refine ⟨?_, fun y_i hyiL => (body_witness_specs y_i hyiL).1 z hz⟩

@@ -239,13 +239,13 @@ private noncomputable def _Prevalid_of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro _ _ _ _ _ hpv _ _ _ => exact extractPrevalid hpv
-  | @bet _ _ _ _ _ _ _ _ _ _ _ _ ihv => exact ihv
+  | @bet _ _ _ _ _ _ _ _ _ _ _ _ _ ihv => exact ihv
   | @top _ _ hpv => exact extractPrevalid hpv
   | @app _ _ _ _ _ _ _ _ _ ihv => exact ihv
   | @var _ _ _ hpv => exact extractPrevalid hpv
-  | @fun_ _ _ _ _ _ _ _ _ iht _ => exact iht
+  | @fun_ _ _ _ _ _ _ _ _ _ iht _ => exact iht
   | @tAp _ _ _ hpv _ _ => exact extractPrevalid hpv
-  | @fOp _ _ _ _ _ _ _ _ _ _ iht _ => exact iht
+  | @fOp _ _ _ _ _ _ _ _ _ _ _ iht _ => exact iht
 
 /-- Wrap `Prevalid Γ` into `PrevalidExt Γ []`. -/
 private noncomputable def _PrevalidExt_nil_of_MEqRed {Γ : Ctx} {u v : Term}
