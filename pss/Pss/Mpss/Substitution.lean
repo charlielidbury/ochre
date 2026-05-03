@@ -1261,7 +1261,7 @@ private lemma Stack.mem_fvAll {st : Stack} {α : Term} (hα : α ∈ st)
 /-- Extract `PrevalidExt Γ s` from `MEqRed Γ s u v`. The `fOp` case
 picks a cofinite-fresh `x` outside `L ∪ Γ.dom ∪ Stack.fvAll s` so the body
 IH's stack remains valid after descending past the new entry. -/
-private noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
+noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : PrevalidExt Γ s := by
   induction h with
   | @pro Γ s x α α' hpv _ _ _ => exact hpv
@@ -1298,6 +1298,49 @@ private noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
       PrevalidExt.descend_cons hpvΓ hpvExt hfreshAll
     have hpvExtBare : Prevalid (⟨x, α, .equ⟩ :: Γ) := extractPrevalid hpvExt
     cases hpvExtBare with
+    | equ _ _ hfvα hLCα =>
+      exact PrevalidExt.cons hpvS hLCα hfvα
+
+/-- Extract `PrevalidExt Γ s` from `MSubRed Γ s u v`. Mirrors
+`MEqRed.prevalidExt`. The `app` arm uses `PrevalidExt.tail`; the `equ`
+arm carries `PrevalidExt` directly; the cofinite `fun_`/`fOp` arms pick
+a fresh witness via `Classical.choose` like `MEqRed.prevalidExt`'s
+analog. -/
+noncomputable def MSubRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : PrevalidExt Γ s := by
+  induction h with
+  | pro hpv _ => exact hpv
+  | top hpv _ _ => exact hpv
+  | equ hpv _ => exact hpv
+  | @app Γ s u u' v hu _ _ ihu => exact PrevalidExt.tail ihu
+  | @fun_ Γ t body body' L _ _ ihbody =>
+    classical
+    let x : String := Classical.choose (Term.exists_fresh L)
+    have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
+    have hpvExt : PrevalidExt (⟨x, t, .sub⟩ :: Γ) [] := ihbody x hx
+    -- The `nil` arm of PrevalidExt; just descend to get Prevalid Γ.
+    have hpvBare : Prevalid (⟨x, t, .sub⟩ :: Γ) := extractPrevalid hpvExt
+    have hpvΓ : Prevalid Γ := by cases hpvBare with | sub hpv _ _ _ => exact hpv
+    exact PrevalidExt.nil hpvΓ
+  | @fOp Γ s t α body body' L _ _ ihbody =>
+    classical
+    let x : String := Classical.choose (Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s))
+    have hx : x ∉ L ∪ Γ.dom ∪ Stack.fvAll s :=
+      Classical.choose_spec (Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s))
+    have hxL : x ∉ L := fun h' => hx (by
+      apply Finset.mem_union.mpr; left
+      apply Finset.mem_union.mpr; left; exact h')
+    have hxFV : x ∉ Stack.fvAll s := fun h' => hx (by
+      apply Finset.mem_union.mpr; right; exact h')
+    have hpvExt : PrevalidExt (⟨x, α, .equ⟩ :: Γ) s := ihbody x hxL
+    have hfreshAll : ∀ β ∈ s, x ∉ Term.fv β := by
+      intro β hβ hzfv
+      exact hxFV (Stack.mem_fvAll hβ hzfv)
+    have hpvBare : Prevalid (⟨x, α, .equ⟩ :: Γ) := extractPrevalid hpvExt
+    have hpvΓ : Prevalid Γ := by cases hpvBare with | equ hpv _ _ _ => exact hpv
+    have hpvS : PrevalidExt Γ s :=
+      PrevalidExt.descend_cons hpvΓ hpvExt hfreshAll
+    cases hpvBare with
     | equ _ _ hfvα hLCα =>
       exact PrevalidExt.cons hpvS hLCα hfvα
 

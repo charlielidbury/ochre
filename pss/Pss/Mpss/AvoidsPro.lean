@@ -654,6 +654,120 @@ theorem avoidsPro_refl
         refine ⟨ihbound _ _, ?_⟩
         exact ihbody _ _ _ _
 
+/-! ## §2.3. `cofinDomFresh` — canonical-witness freshness predicate
+
+The β-residual unblock's `MEqRed.equ_head_replace` (in `Pss.Mpss.Renaming`)
+needs to recurse on cofinite-arm bodies at a SINGLE canonical witness
+(`pickFresh L`), then convert the result to arbitrary witnesses via
+`rename_stray` / `rename_sub` / `_rename_equ`. Those rename helpers require:
+
+* `pickFresh L ∉ Γ.dom` (so the canonical witness is "stray" relative to
+  the current context),
+* `pickFresh L ∉ Term.fv body` and `... ∉ Term.fv body'` (so
+  `Term.subst_open_fresh` reduces `subst y₀ (.fvar yfresh) (body^[y₀])`
+  to `body^[yfresh]`).
+
+`cofinDomFresh h = true` is a Bool-valued recursive check on the
+derivation `h` that asserts these freshness conditions hold at every
+cofinite arm's canonical witness.
+
+This is NOT the alpha-equivariance trap — `cofinDomFresh` samples at the
+SAME canonical witness as `avoidsPro` (deterministically `pickFresh L`),
+so it's a property of the derivation tree's shape, not a cross-witness
+claim. -/
+
+noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
+  MEqRed.rec
+    (motive := fun _ _ _ _ _ => Bool)
+    -- Me-Pro: recurse on the inner derivation.
+    (fun _ _ _ ihα => ihα)
+    -- Me-Bet: track freshness at the canonical witness, recurse.
+    (fun {Γ _ _ _ _ body body'} L _ _ _ ihbody ihv =>
+      let y₀ := pickFresh L
+      have hy₀L : y₀ ∉ L := pickFresh_notMem L
+      decide (y₀ ∉ Γ.dom) && decide (y₀ ∉ Term.fv body) &&
+      decide (y₀ ∉ Term.fv body') && ihbody y₀ hy₀L && ihv)
+    -- Me-Top: leaf, no freshness condition.
+    (fun _ => true)
+    -- Me-App: recurse on both subterms.
+    (fun _ _ ihu ihv => ihu && ihv)
+    -- Me-Var: leaf.
+    (fun _ => true)
+    -- Me-Fun: track freshness at canonical witness, recurse.
+    (fun {Γ _ _ body body'} L _ _ iht ihbody =>
+      let y₀ := pickFresh L
+      have hy₀L : y₀ ∉ L := pickFresh_notMem L
+      decide (y₀ ∉ Γ.dom) && decide (y₀ ∉ Term.fv body) &&
+      decide (y₀ ∉ Term.fv body') && iht && ihbody y₀ hy₀L)
+    -- Me-TAp: leaf.
+    (fun _ _ _ => true)
+    -- Me-FOp: track freshness at canonical witness, recurse.
+    (fun {Γ _ _ _ _ body body'} L _ _ iht ihbody =>
+      let y₀ := pickFresh L
+      have hy₀L : y₀ ∉ L := pickFresh_notMem L
+      decide (y₀ ∉ Γ.dom) && decide (y₀ ∉ Term.fv body) &&
+      decide (y₀ ∉ Term.fv body') && iht && ihbody y₀ hy₀L)
+    h
+
+/-! ### §2.3.1. Per-constructor `simp` unfoldings for `cofinDomFresh` -/
+
+@[simp] theorem cofinDomFresh_pro {Γ s y α α'} (hpv : PrevalidExt Γ s)
+    (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α') :
+    cofinDomFresh (MEqRed.pro hpv heq hα) = cofinDomFresh hα := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_bet {Γ s t v v' body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hv : MEqRed Γ [] v v') :
+    cofinDomFresh (MEqRed.bet L hLCt hbody hv) =
+      (decide (pickFresh L ∉ Γ.dom) && decide (pickFresh L ∉ Term.fv body) &&
+       decide (pickFresh L ∉ Term.fv body') &&
+       cofinDomFresh (hbody (pickFresh L) (pickFresh_notMem L)) &&
+       cofinDomFresh hv) := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_top {Γ s} (hpv : PrevalidExt Γ s) :
+    cofinDomFresh (MEqRed.top hpv) = true := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_app {Γ s u u' v v'}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v') :
+    cofinDomFresh (MEqRed.app hu hv) =
+      (cofinDomFresh hu && cofinDomFresh hv) := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_var {Γ s y} (hpv : PrevalidExt Γ s) :
+    cofinDomFresh (@MEqRed.var Γ s y hpv) = true := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_fun_ {Γ t t' body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y])) :
+    cofinDomFresh (MEqRed.fun_ L ht hbody) =
+      (decide (pickFresh L ∉ Γ.dom) && decide (pickFresh L ∉ Term.fv body) &&
+       decide (pickFresh L ∉ Term.fv body') &&
+       cofinDomFresh ht &&
+       cofinDomFresh (hbody (pickFresh L) (pickFresh_notMem L))) := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_tAp {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) :
+    cofinDomFresh (MEqRed.tAp hpv hLCu hfvu) = true := by
+  unfold cofinDomFresh; rfl
+
+@[simp] theorem cofinDomFresh_fOp {Γ s t t' α body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y])) :
+    cofinDomFresh (MEqRed.fOp L ht hbody) =
+      (decide (pickFresh L ∉ Γ.dom) && decide (pickFresh L ∉ Term.fv body) &&
+       decide (pickFresh L ∉ Term.fv body') &&
+       cofinDomFresh ht &&
+       cofinDomFresh (hbody (pickFresh L) (pickFresh_notMem L))) := by
+  unfold cofinDomFresh; rfl
+
 /-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
 
 Mirror of `avoidsPro` for the subtype-reduction relation. `msAvoidsPro h x
@@ -805,6 +919,97 @@ theorem msAvoidsPro_L_aug_ne_x {L : Finset String} {body body' : Term}
         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
                msAvoidsPro_L_aug_notMem_L) x := by
   unfold msAvoidsPro; rfl
+
+/-! ## §3.2. `msCofinDomFresh` — MSubRed canonical-witness freshness
+
+Mirror of `cofinDomFresh` for `MSubRed` derivations. Used by
+`MSubRed.equ_head_replace` (in `Pss.Mpss.Renaming`) for the same
+canonical-witness rename pattern. Delegates to `cofinDomFresh` at the
+`Ms-Equ` arm.
+
+**Sampling alignment with `msAvoidsPro`.** `msAvoidsPro` samples its
+cofinite arms at `pickFresh (msAvoidsPro_L_aug L body body' x)` (a widened
+set) — see §3.1 above. To enable consumers like `MSubRed.equ_head_replace`
+to use BOTH `msAvoidsPro` and `msCofinDomFresh` at the SAME canonical
+witness, `msCofinDomFresh` is parametrized by the same `x : String` and
+samples at the same widened point. The `x` parameter is unused in the
+freshness check itself; it just propagates through to align the sample
+point. -/
+
+noncomputable def msCofinDomFresh {Γ s u v} (h : MSubRed Γ s u v) (x : String) : Bool :=
+  MSubRed.rec
+    (motive := fun _ _ _ _ _ => String → Bool)
+    -- Ms-Pro: leaf.
+    (fun _ _ _ => true)
+    -- Ms-Top: leaf.
+    (fun _ _ _ _ => true)
+    -- Ms-Equ: delegate to `cofinDomFresh` on the embedded MEqRed (no x dep).
+    (fun _ heq _ => cofinDomFresh heq)
+    -- Ms-App: recurse on the operator (propagate x).
+    (fun _ _ _ ihu x => ihu x)
+    -- Ms-Fun: track freshness at the SAME widened sample as msAvoidsPro.
+    (fun {Γ _ body body'} L _ _ ihbody x =>
+      let L' := msAvoidsPro_L_aug L body body' x
+      let y := pickFresh L'
+      have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
+      decide (y ∉ Γ.dom) && ihbody y hyL x)
+    -- Ms-FOp: same widened sample.
+    (fun {Γ _ _ _ body body'} L _ _ ihbody x =>
+      let L' := msAvoidsPro_L_aug L body body' x
+      let y := pickFresh L'
+      have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
+      decide (y ∉ Γ.dom) && ihbody y hyL x)
+    h x
+
+/-- The `pickFresh L_aug ∉ fv body` and `... ∉ fv body'` properties are
+ALREADY GUARANTEED by `msAvoidsPro_L_aug_notMem_body{,'}` (see §3.1).
+So `msCofinDomFresh` only needs to track the dom-freshness explicitly. -/
+
+@[simp] theorem msCofinDomFresh_pro {Γ s y t} (hpv : PrevalidExt Γ s)
+    (hsb : Γ.subBinds y t) (x : String) :
+    msCofinDomFresh (MSubRed.pro hpv hsb) x = true := by
+  unfold msCofinDomFresh; rfl
+
+@[simp] theorem msCofinDomFresh_top {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    msCofinDomFresh (MSubRed.top hpv hLCu hfvu) x = true := by
+  unfold msCofinDomFresh; rfl
+
+@[simp] theorem msCofinDomFresh_equ {Γ s u v} (hpv : PrevalidExt Γ s)
+    (heq : MEqRed Γ s u v) (x : String) :
+    msCofinDomFresh (MSubRed.equ hpv heq) x = cofinDomFresh heq := by
+  unfold msCofinDomFresh; rfl
+
+@[simp] theorem msCofinDomFresh_app {Γ s u u' v} (hu : MSubRed Γ (v :: s) u u')
+    (hLCv : Term.LC v) (hfvv : Term.fv v ⊆ Γ.dom) (x : String) :
+    msCofinDomFresh (MSubRed.app hu hLCv hfvv) x = msCofinDomFresh hu x := by
+  unfold msCofinDomFresh; rfl
+
+@[simp] theorem msCofinDomFresh_fun_ {Γ : Ctx} {t body body' : Term}
+    (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L →
+      MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (x : String) :
+    msCofinDomFresh (MSubRed.fun_ L hLCt hbody) x =
+      (decide (pickFresh (msAvoidsPro_L_aug L body body' x) ∉ Γ.dom) &&
+       msCofinDomFresh
+         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+                msAvoidsPro_L_aug_notMem_L) x) := by
+  unfold msCofinDomFresh; rfl
+
+@[simp] theorem msCofinDomFresh_fOp {Γ : Ctx} {s : Stack} {t α body body' : Term}
+    (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L →
+      MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (x : String) :
+    msCofinDomFresh (MSubRed.fOp L hLCt hbody) x =
+      (decide (pickFresh (msAvoidsPro_L_aug L body body' x) ∉ Γ.dom) &&
+       msCofinDomFresh
+         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+                msAvoidsPro_L_aug_notMem_L) x) := by
+  unfold msCofinDomFresh; rfl
 
 /-! ## §4. Discharged Lemma 30 residual (axiom replaced by theorem)
 
