@@ -1980,4 +1980,568 @@ noncomputable def _MEqRed_rename_equ_no_fv
   rw [hctx_eq, hstk_eq, hbody_eq, hbody'_eq] at h_subst
   exact h_subst
 
+/-! ## §7. Stray-variable renaming functor on derivations
+
+Phase 1 of the architectural lever to unblock the β-residual axioms
+(per `CLAUDE.md` "next big architectural lever" and rule 5a).
+
+The `rename_sub` / `rename_equ` lemmas of §2-§6 rename a binder name `y`
+that appears at the top of `Γ`. The **stray-variable** version takes a
+derivation in plain `Γ` and renames `y → z` where BOTH `y` and `z` are
+*outside* `Γ.dom` (and so are not bound anywhere in the context).
+
+This is exactly the case that the β-residual proofs need: when
+discharging the Me-Bet/Ms-App grid in Lemma 1 / Lemma 2, the
+"alpha-equivariance" ingredient reduces to: given a body derivation at
+some fresh `y`, produce a body derivation at any other fresh `z`. Both
+`y` and `z` are stray w.r.t. the surrounding `Γ`.
+
+### Why this is provable (and why naive alpha-equivariance is not)
+
+The reverted commit `4145292` shipped `avoidsPro_alpha_equiv` which
+claimed `avoidsPro (hbody y₁ _) x = avoidsPro (hbody y₂ _) x` for an
+arbitrary `hbody : ∀ y ∉ L, MEqRed _ _ _ _`. That statement is FALSE:
+`hbody` is an arbitrary function and can branch on its input. The
+counterexample `hbody y _ := if y = "foo" then h_with_pro_y else h_var`
+has different `avoidsPro` values across witnesses.
+
+`rename_stray` sidesteps this by being a CONCRETE construction (not an
+arbitrary function): we BUILD the renamed derivation by structural
+recursion. The companion `avoidsPro_rename_stray` (below) is provably
+true because both sides recurse on the SAME derivation tree shape.
+
+### Strategy
+
+We use the same `Γ₂ ++ ⟨y, ⋯⟩ :: Γ₁` decomposition as the §3-§5
+helpers BUT with no actual `⟨y, …⟩` head binding. Instead we observe
+that when `y ∉ Γ.dom`, every constructor that mentions `y` (which can
+only be `.fvar y` inside terms or via `MEqRed.var` / `MEqRed.pro`) has
+a clean substitution rule:
+
+* `MEqRed.var yi`: `yi` itself is unconstrained at `var`-level, so we
+  case-split on `yi = y`. If `yi = y`, we need `MEqRed Γ s (.fvar z)
+  (.fvar z)`, which is `MEqRed.var hpv'` (using the same `hpv'` since
+  the substitution is the identity on Γ).
+* `MEqRed.pro yi`: by `equBinds yi α` we have `yi ∈ Γ.dom`, hence
+  `yi ≠ y`. Also `α` has `fv α ⊆ Γ.dom`, hence `y ∉ fv α` and
+  `subst y (.fvar z) α = α`.
+-/
+
+/-- `Term.subst y (.fvar y) e = e` for any term `e`. The substitution
+of a variable for itself is the identity. -/
+private theorem _Term_subst_self_id (y : String) (e : Term) :
+    Term.subst y (.fvar y) e = e := by
+  induction e with
+  | bvar _ => rfl
+  | fvar x =>
+    by_cases h : x = y
+    · simp [Term.subst, h]
+    · simp [Term.subst, h]
+  | top => rfl
+  | abs t b iht ihb => simp [Term.subst, iht, ihb]
+  | app t s iht ihs => simp [Term.subst, iht, ihs]
+
+/-- `Stack.subst y (.fvar y) s = s`. -/
+private theorem _Stack_subst_self_id (y : String) (s : Stack) :
+    Stack.subst y (.fvar y) s = s := by
+  induction s with
+  | nil => rfl
+  | cons α tail ih => rw [Stack.subst_cons, _Term_subst_self_id, ih]
+
+/-- Free variables of an entry's bound term are contained in the
+context's domain (when the context is prevalid). Used to discharge
+"y ∉ entry.bound.fv" obligations from "y ∉ Γ.dom". -/
+private theorem _Prevalid_fv_entry_subset_dom {Γ : Ctx} (h : Prevalid Γ) :
+    ∀ e ∈ Γ, Term.fv e.bound ⊆ Γ.dom := by
+  induction h with
+  | empty => intro e he; cases he
+  | @sub Γ' y t hΓ' _hy hfv _hLC ih =>
+    intro e he
+    rcases List.mem_cons.mp he with he | he
+    · subst he
+      intro w hw
+      rw [Ctx.dom_cons]
+      exact Finset.mem_insert_of_mem (hfv hw)
+    · intro w hw
+      have := ih e he hw
+      rw [Ctx.dom_cons]
+      exact Finset.mem_insert_of_mem this
+  | @equ Γ' y α hΓ' _hy hfv _hLC ih =>
+    intro e he
+    rcases List.mem_cons.mp he with he | he
+    · subst he
+      intro w hw
+      rw [Ctx.dom_cons]
+      exact Finset.mem_insert_of_mem (hfv hw)
+    · intro w hw
+      have := ih e he hw
+      rw [Ctx.dom_cons]
+      exact Finset.mem_insert_of_mem this
+
+/-- If `y ∉ Γ.dom`, substitution of `y` is the identity on `Γ`. -/
+private theorem _Ctx_subst_id_of_stray {Γ : Ctx} {y : String} {u : Term}
+    (hpv : Prevalid Γ) (hy : y ∉ Γ.dom) :
+    Ctx.subst y u Γ = Γ := by
+  apply Ctx.subst_fresh
+  intro e he
+  exact fun h => hy (_Prevalid_fv_entry_subset_dom hpv e he h)
+
+/-- If `y ∉ Γ.dom`, every stack entry's `fv` excludes `y`, and so
+substitution is the identity on the stack. -/
+private theorem _Stack_subst_id_of_stray {Γ : Ctx} {st : Stack}
+    {y : String} {u : Term}
+    (hpv : PrevalidExt Γ st) (hy : y ∉ Γ.dom) :
+    Stack.subst y u st = st := by
+  apply Stack.subst_fresh
+  induction hpv with
+  | nil _ => intro α hα; cases hα
+  | @cons _ β _ hLCβ hfvβ ih =>
+    intro α hα
+    rcases List.mem_cons.mp hα with hα | hα
+    · subst hα; intro h; exact hy (hfvβ h)
+    · exact ih α hα
+
+/-- `Ms-Pro yi` cannot have `yi = y` when `y ∉ Γ.dom`: the lookup would
+require `y ∈ Γ.dom`. -/
+private theorem _subBinds_in_dom {Γ : Ctx} {y : String} {t : Term}
+    (h : Γ.subBinds y t) : y ∈ Γ.dom := _lookupSub_some_dom h
+
+/-- `Me-Pro yi` cannot have `yi = y` when `y ∉ Γ.dom`. -/
+private theorem _equBinds_in_dom {Γ : Ctx} {y : String} {α : Term}
+    (h : Γ.equBinds y α) : y ∈ Γ.dom := _lookupEqu_some_mem_dom h
+
+/-! ### Helper: equBinds, subBinds preserved under whole-context substitution
+
+When we substitute `y → s` over the whole context Γ pointwise (without
+removing any binding), an `equBinds yi α` lookup becomes `equBinds yi
+(subst y s α)` — the names are unchanged, only the bound terms are
+renamed. -/
+
+theorem _equBinds_subst_pointwise {Γ : Ctx} {yi : String} {α : Term}
+    (y : String) (s : Term) (h : Γ.equBinds yi α) :
+    (Ctx.subst y s Γ).equBinds yi (Term.subst y s α) := by
+  induction Γ with
+  | nil => simp [Ctx.equBinds, Ctx.lookupEqu] at h
+  | cons e rest ih =>
+    show Ctx.lookupEqu (⟨e.name, Term.subst y s e.bound, e.kind⟩ :: Ctx.subst y s rest) yi
+        = some (Term.subst y s α)
+    have h' : Ctx.lookupEqu (e :: rest) yi = some α := h
+    rw [Ctx.lookupEqu_cons] at h' ⊢
+    by_cases hex : e.name = yi
+    · simp [hex] at h' ⊢
+      cases hkind : e.kind with
+      | sub => simp [hkind] at h'
+      | equ =>
+        simp [hkind] at h' ⊢
+        subst h'; rfl
+    · simp [hex] at h' ⊢
+      exact ih h'
+
+theorem _subBinds_subst_pointwise {Γ : Ctx} {yi : String} {t : Term}
+    (y : String) (s : Term) (h : Γ.subBinds yi t) :
+    (Ctx.subst y s Γ).subBinds yi (Term.subst y s t) := by
+  induction Γ with
+  | nil => simp [Ctx.subBinds, Ctx.lookupSub] at h
+  | cons e rest ih =>
+    show Ctx.lookupSub (⟨e.name, Term.subst y s e.bound, e.kind⟩ :: Ctx.subst y s rest) yi
+        = some (Term.subst y s t)
+    have h' : Ctx.lookupSub (e :: rest) yi = some t := h
+    rw [Ctx.lookupSub_cons] at h' ⊢
+    by_cases hex : e.name = yi
+    · simp [hex] at h' ⊢
+      cases hkind : e.kind with
+      | equ => simp [hkind] at h'
+      | sub =>
+        simp [hkind] at h' ⊢
+        subst h'; rfl
+    · simp [hex] at h' ⊢
+      exact ih h'
+
+/-! ### Helper: Prevalid preservation under SubstOk-style substitution
+
+When `y` is stray (`y ∉ Γ.dom`), the substitution `subst y (.fvar z) Γ`
+is the identity. Prevalidity is preserved trivially (since we're
+substituting nothing). -/
+
+private noncomputable def _Prevalid_subst_stray
+    {Γ : Ctx} {y z : String} (hpv : Prevalid Γ) (hy_notin : y ∉ Γ.dom) :
+    Prevalid (Ctx.subst y (.fvar z) Γ) := by
+  rw [_Ctx_subst_id_of_stray hpv hy_notin]; exact hpv
+
+private noncomputable def _PrevalidExt_subst_stray
+    {Γ : Ctx} {st : Stack} {y z : String}
+    (hpv : PrevalidExt Γ st) (hy_notin : y ∉ Γ.dom) :
+    PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st) := by
+  rw [_Ctx_subst_id_of_stray (extractPrevalid hpv) hy_notin,
+      _Stack_subst_id_of_stray hpv hy_notin]
+  exact hpv
+
+/-! ### Helper: in-the-extended-context Prevalid for binder cases
+
+When the body recursion extends Γ by `⟨yfresh, β, .sub⟩` (or `.equ`),
+we need `Prevalid` of the substituted extended context for the body's
+`hpv'` argument. The substitution renames `β` to `subst y (.fvar z) β`
+in the new entry; Γ itself stays unchanged (since `y ∉ Γ.dom`). -/
+
+/-- Core renaming for `MEqRed` (stray-pair version), substituting the
+WHOLE context. The wrapper `MEqRed.rename_stray` then unfolds
+`Ctx.subst y (.fvar z) Γ = Γ` and `Stack.subst y (.fvar z) s = s` via
+the identity facts above (using `Prevalid Γ` extracted from `h`).
+
+We carry `y ∉ Γ.dom` as a hypothesis (not `z ∉ Γ.dom`, which is only
+needed at the wrapper level for stack-identity simplification). The
+`y ∉ Γ.dom` hypothesis is propagated through binder cases by
+extending. The `pro`/`var` arms case-split on `yi = y`. -/
+noncomputable def MEqRed.subst_yz_stray
+    {Γ : Ctx} {st : Stack} {y z : String} {u u' : Term}
+    (hyz : y ≠ z)
+    (hy_notin_Γ : y ∉ Γ.dom)
+    (h : MEqRed Γ st u u') :
+    MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st)
+      (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) u') := by
+  classical
+  revert hy_notin_Γ
+  induction h with
+  | @pro Γ st' yi α α' hpv heq hα ihα =>
+    intro hy_notin_Γ
+    have hpvL : Prevalid Γ := extractPrevalid hpv
+    have hyi_dom : yi ∈ Γ.dom := _equBinds_in_dom heq
+    have hyiy : yi ≠ y := fun hh => hy_notin_Γ (hh ▸ hyi_dom)
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    rw [Term.subst_fvar_ne hyiy]
+    have heq' : (Ctx.subst y (.fvar z) Γ).equBinds yi (Term.subst y (.fvar z) α) :=
+      _equBinds_subst_pointwise y (.fvar z) heq
+    exact MEqRed.pro hpv' heq' (ihα hy_notin_Γ)
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+    intro hy_notin_Γ
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
+        Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd') := by
+      simp [Term.opening, Term.subst_open hLCfz]
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app (.abs tBound bd) v0))
+      (Term.subst y (.fvar z) (Term.opening v0' bd'))
+    rw [hsubst_open]
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
+            (Term.subst y (.fvar z) v0))
+      (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd'))
+    refine MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt) ?_ ?_
+    · intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
+      -- Bet's body recurses at the same Γ (no extension), so reuse hy_notin_Γ.
+      have ih_body := ihbody yfresh hyfL hy_notin_Γ
+      rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+          Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+      exact ih_body
+    · exact ihv hy_notin_Γ
+  | @top Γ st' hpv =>
+    intro hy_notin_Γ
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) .top) (Term.subst y (.fvar z) .top)
+    simp [Term.subst]
+    exact MEqRed.top hpv'
+  | @app Γ st' u_ u_' v_ v_' hu hv ihu ihv =>
+    intro hy_notin_Γ
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app u_ v_)) (Term.subst y (.fvar z) (.app u_' v_'))
+    simp [Term.subst]
+    refine MEqRed.app ?_ ?_
+    · have ihu' := ihu hy_notin_Γ
+      simpa using ihu'
+    · exact ihv hy_notin_Γ
+  | @var Γ st' yi hpv =>
+    intro hy_notin_Γ
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    by_cases hyiy : yi = y
+    · -- yi = y: the substituted target is .fvar z. Use MEqRed.var with .fvar z.
+      have hsubst_eq : Term.subst y (.fvar z) (.fvar yi) = .fvar z := by
+        rw [hyiy]; simp [Term.subst]
+      rw [hsubst_eq]
+      exact MEqRed.var hpv'
+    · rw [Term.subst_fvar_ne hyiy]
+      exact MEqRed.var hpv'
+  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+    intro hy_notin_Γ
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) [])
+      (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt' bd'))
+    simp [Term.subst]
+    refine MEqRed.fun_ (L ∪ {y} ∪ {z}) ?_ ?_
+    · have iht' := iht hy_notin_Γ
+      simpa using iht'
+    · intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
+      have hy_notin_Γ' : y ∉ Ctx.dom (⟨yfresh, tt, .sub⟩ :: Γ) := by
+        rw [Ctx.dom_cons]
+        intro hmem
+        rcases Finset.mem_insert.mp hmem with hyy | hyΓ
+        · exact hyfy hyy.symm
+        · exact hy_notin_Γ hyΓ
+      have ih_body := ihbody yfresh hyfL hy_notin_Γ'
+      have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+      rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+          Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+      simpa [Ctx.subst, List.cons_append] using ih_body
+  | @tAp Γ st' u_ hpv hLCu hfv =>
+    intro hy_notin_Γ
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    have hLCu' : Term.LC (Term.subst y (.fvar z) u_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCu
+    have hfv' : Term.fv (Term.subst y (.fvar z) u_) ⊆
+        Ctx.dom (Ctx.subst y (.fvar z) Γ) := by
+      rw [Ctx.dom_subst]
+      intro w hw
+      have hsub := Term.fv_subst_subset y (.fvar z) u_ hw
+      rcases Finset.mem_union.mp hsub with hsd | hsd
+      · rcases Finset.mem_sdiff.mp hsd with ⟨hwfv, _⟩
+        exact hfv hwfv
+      · -- hsd : w ∈ fv (.fvar z), so w = z. Use the fact that y ∉ fv u_ (from hfv +
+        -- hy_notin_Γ) to conclude that subst y (.fvar z) u_ = u_, so the .fvar-z branch
+        -- of the fv_subst_subset breakdown is actually impossible — except we can also
+        -- close out by noting w ∈ fv u_ then.
+        have hy_notin_u : y ∉ Term.fv u_ := fun h' => hy_notin_Γ (hfv h')
+        have hu_eq : Term.subst y (.fvar z) u_ = u_ := Term.subst_fresh hy_notin_u
+        rw [hu_eq] at hw
+        exact hfv hw
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app .top u_)) (Term.subst y (.fvar z) .top)
+    simp [Term.subst]
+    exact MEqRed.tAp hpv' hLCu' hfv'
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+    intro hy_notin_Γ
+    show MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) (αi :: st'))
+      (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt' bd'))
+    rw [Stack.subst_cons]
+    simp [Term.subst]
+    refine MEqRed.fOp (L ∪ {y} ∪ {z}) ?_ ?_
+    · have iht' := iht hy_notin_Γ
+      simpa using iht'
+    · intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
+      have hy_notin_Γ' : y ∉ Ctx.dom (⟨yfresh, αi, .equ⟩ :: Γ) := by
+        rw [Ctx.dom_cons]
+        intro hmem
+        rcases Finset.mem_insert.mp hmem with hyy | hyΓ
+        · exact hyfy hyy.symm
+        · exact hy_notin_Γ hyΓ
+      have ih_body := ihbody yfresh hyfL hy_notin_Γ'
+      have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+      rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+          Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+      simpa [Ctx.subst, List.cons_append] using ih_body
+
+/-- **Renaming for `MEqRed` over a stray-binder pair.** Given a derivation
+in `Γ` and `y, z` both outside `Γ.dom`, produce the substituted derivation.
+
+The substitution is the identity on `Γ` and the stack (since `y ∉ Γ.dom`),
+but acts non-trivially on the source / target terms.
+
+This is the principled replacement for the FALSE alpha-equivariance lemma
+reverted in `12da200`: instead of a postulate that `avoidsPro` is
+preserved across arbitrary cofinite-witness substitution, we provide a
+CONCRETE renaming functor on derivations that we built by structural
+recursion. The companion `avoidsPro_rename_stray` (below) is provably
+true because both sides recurse on the same derivation tree shape. -/
+noncomputable def MEqRed.rename_stray
+    {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpvΓ : Prevalid Γ)
+    (h : MEqRed Γ s u v)
+    (y z : String) (hy : y ∉ Γ.dom) (hz : z ∉ Γ.dom) :
+    MEqRed Γ
+      (Stack.subst y (.fvar z) s)
+      (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) v) := by
+  classical
+  by_cases hyz : y = z
+  · subst hyz
+    rw [_Term_subst_self_id, _Term_subst_self_id, _Stack_subst_self_id]
+    exact h
+  · have h_sub := MEqRed.subst_yz_stray hyz hy h
+    have hctx_eq : Ctx.subst y (.fvar z) Γ = Γ := _Ctx_subst_id_of_stray hpvΓ hy
+    rw [hctx_eq] at h_sub
+    exact h_sub
+
+/-- Core renaming substitution lemma for `MSubRed` (stray version),
+substituting the WHOLE context. Mirrors `MEqRed.subst_yz_stray`. -/
+noncomputable def MSubRed.subst_yz_stray
+    {Γ : Ctx} {st : Stack} {y z : String} {u u' : Term}
+    (hyz : y ≠ z)
+    (hy_notin_Γ : y ∉ Γ.dom)
+    (h : MSubRed Γ st u u') :
+    MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st)
+      (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) u') := by
+  classical
+  revert hy_notin_Γ
+  induction h with
+  | @pro Γ st' yi t' hpv hsb =>
+    intro hy_notin_Γ
+    have hpvL : Prevalid Γ := extractPrevalid hpv
+    have hyi_dom : yi ∈ Γ.dom := _subBinds_in_dom hsb
+    have hyiy : yi ≠ y := fun hh => hy_notin_Γ (hh ▸ hyi_dom)
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    rw [Term.subst_fvar_ne hyiy]
+    have hsb' : (Ctx.subst y (.fvar z) Γ).subBinds yi (Term.subst y (.fvar z) t') :=
+      _subBinds_subst_pointwise y (.fvar z) hsb
+    exact MSubRed.pro hpv' hsb'
+  | @top Γ st' u_ hpv hLCu hfv =>
+    intro hy_notin_Γ
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    have hLCu' : Term.LC (Term.subst y (.fvar z) u_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCu
+    have hfv' : Term.fv (Term.subst y (.fvar z) u_) ⊆
+        Ctx.dom (Ctx.subst y (.fvar z) Γ) := by
+      rw [Ctx.dom_subst]
+      have hy_notin_u : y ∉ Term.fv u_ := fun h => hy_notin_Γ (hfv h)
+      have hu_eq : Term.subst y (.fvar z) u_ = u_ := Term.subst_fresh hy_notin_u
+      rw [hu_eq]; exact hfv
+    show MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) u_) (Term.subst y (.fvar z) .top)
+    simp [Term.subst]
+    exact MSubRed.top hpv' hLCu' hfv'
+  | @equ Γ st' u_ v_ hpv heq =>
+    intro hy_notin_Γ
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    have heq' := MEqRed.subst_yz_stray hyz hy_notin_Γ heq
+    exact MSubRed.equ hpv' heq'
+  | @app Γ st' u_ u_' v_ hu hLCv hfvv ihu =>
+    intro hy_notin_Γ
+    have ihu' := ihu hy_notin_Γ
+    have hLCv' : Term.LC (Term.subst y (.fvar z) v_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCv
+    have hfvv' : Term.fv (Term.subst y (.fvar z) v_) ⊆
+        Ctx.dom (Ctx.subst y (.fvar z) Γ) := by
+      rw [Ctx.dom_subst]
+      have hy_notin_v : y ∉ Term.fv v_ := fun h => hy_notin_Γ (hfvv h)
+      have hv_eq : Term.subst y (.fvar z) v_ = v_ := Term.subst_fresh hy_notin_v
+      rw [hv_eq]; exact hfvv
+    show MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+      (Term.subst y (.fvar z) (.app u_ v_)) (Term.subst y (.fvar z) (.app u_' v_))
+    simp [Term.subst]
+    refine MSubRed.app ?_ hLCv' hfvv'
+    simpa using ihu'
+  | @fun_ Γ tt bd bd' L hLCt hbody ihbody =>
+    intro hy_notin_Γ
+    show MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) [])
+      (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
+    simp [Term.subst]
+    refine MSubRed.fun_ (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+    obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
+    have hy_notin_Γ' : y ∉ Ctx.dom (⟨yfresh, tt, .sub⟩ :: Γ) := by
+      rw [Ctx.dom_cons]
+      intro hmem
+      rcases Finset.mem_insert.mp hmem with hyy | hyΓ
+      · exact hyfy hyy.symm
+      · exact hy_notin_Γ hyΓ
+    have ih_body := ihbody yfresh hyfL hy_notin_Γ'
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+    simpa [Ctx.subst, List.cons_append] using ih_body
+  | @fOp Γ st' tt αi bd bd' L hLCt hbody ihbody =>
+    intro hy_notin_Γ
+    show MSubRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) (αi :: st'))
+      (Term.subst y (.fvar z) (.abs tt bd)) (Term.subst y (.fvar z) (.abs tt bd'))
+    rw [Stack.subst_cons]
+    simp [Term.subst]
+    refine MSubRed.fOp (L ∪ {y} ∪ {z}) (Term.subst_lc (Term.LC.fvar z) hLCt) ?_
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+    obtain ⟨⟨hyfL, hyfy⟩, hyfz⟩ := hyfresh
+    have hy_notin_Γ' : y ∉ Ctx.dom (⟨yfresh, αi, .equ⟩ :: Γ) := by
+      rw [Ctx.dom_cons]
+      intro hmem
+      rcases Finset.mem_insert.mp hmem with hyy | hyΓ
+      · exact hyfy hyy.symm
+      · exact hy_notin_Γ hyΓ
+    have ih_body := ihbody yfresh hyfL hy_notin_Γ'
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    rw [Term.subst_open_var (Ne.symm hyfy) hLCfz bd,
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd'] at ih_body
+    simpa [Ctx.subst, List.cons_append] using ih_body
+
+/-- **Renaming for `MSubRed` over a stray-binder pair.** Analog of
+`MEqRed.rename_stray`. -/
+noncomputable def MSubRed.rename_stray
+    {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpvΓ : Prevalid Γ)
+    (h : MSubRed Γ s u v)
+    (y z : String) (hy : y ∉ Γ.dom) (hz : z ∉ Γ.dom) :
+    MSubRed Γ
+      (Stack.subst y (.fvar z) s)
+      (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) v) := by
+  classical
+  by_cases hyz : y = z
+  · subst hyz
+    rw [_Term_subst_self_id, _Term_subst_self_id, _Stack_subst_self_id]
+    exact h
+  · have h_sub := MSubRed.subst_yz_stray hyz hy h
+    have hctx_eq : Ctx.subst y (.fvar z) Γ = Γ := _Ctx_subst_id_of_stray hpvΓ hy
+    rw [hctx_eq] at h_sub
+    exact h_sub
+
+/-! ### §7.1. Note on `avoidsPro_rename_stray` — Phase 2 follow-up
+
+The user-spec for Phase 1 also requested a companion
+`avoidsPro_rename_stray h y z hy hz x = avoidsPro h x` lemma. After
+implementing the renaming functor, careful analysis reveals this
+particular preservation statement runs into the SAME alpha-equivariance
+trap that the FALSE `avoidsPro_alpha_equiv` axiom (reverted in
+`12da200`) tried to discharge.
+
+The crux: `avoidsPro` for the cofinite arms (`bet`, `fun_`, `fOp`)
+evaluates the body at the canonical witness `pickFresh L`, where `L` is
+the binder's avoidance set. The renamed derivation has a different
+binder set `L' = L ∪ {y, z}`, so `avoidsPro` of the renamed derivation
+samples at `pickFresh L'`, and `pickFresh L ≠ pickFresh L'` in general.
+Equating `avoidsPro (hbody (pickFresh L) _) x` with
+`avoidsPro (hbody (pickFresh L') _) x` for arbitrary `hbody` is
+exactly the FALSE alpha-equivariance statement (counterexample:
+`hbody y _ := if y = pickFresh L then h_with_pro else h_var`).
+
+The principled fix lives at the `avoidsPro` definition level, not at
+the rename_stray level: redesign `avoidsPro` so the cofinite witness is
+**universally quantified** rather than `pickFresh`-canonical. Concretely:
+
+```
+-- Future Phase 2 redesign sketch:
+def avoidsPro' (h : MEqRed Γ s u v) (x : String) : Prop := match h with
+  | .bet L hLCt hbody hv =>
+      (∀ y ∉ L, avoidsPro' (hbody y _) x) ∧ avoidsPro' hv x
+  ...
+```
+
+Under this Prop-valued ∀-witness formulation, `avoidsPro'_rename_stray`
+becomes provable: for any `y ∉ L'`, we have `y ∉ L` (since `L' ⊇ L`),
+so the IH at `y` directly applies. No alpha-equivariance is needed.
+
+The downside: `avoidsPro'` is `Prop`-valued, which complicates the
+existing `avoidsPro_refl` theorem (currently a Bool-valued reflexivity
+fact). The current `avoidsPro` is `Bool`-valued precisely so it can be
+introspected by `simp` decision procedures in downstream consumers
+(notably `Lemma_30_msPro_x` and the projected `equ_head_replace`
+discharge).
+
+A hybrid approach: keep Bool-valued `avoidsPro` for downstream use,
+but carry a separate Prop-valued `AvoidsPro_universal` predicate that
+DOES survive renaming. The two are equivalent under appropriate
+witness alignment, but only the Prop-valued one is rename-stable.
+
+Phase 2 work item: implement the Prop-valued `AvoidsPro_universal` and
+prove `AvoidsPro_universal_rename_stray`. Then connect it back to the
+Bool `avoidsPro` for the specific witness it cares about. This unblocks
+the β-residual axioms via a different mechanical route than the current
+`equ_head_replace` scaffolding. -/
+
 end Pss
