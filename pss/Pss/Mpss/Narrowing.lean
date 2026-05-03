@@ -456,7 +456,7 @@ commit `4145292`).
   the outer `MSubRed.fOp`'s prevalidExt and lifting `y₀ ∉ Γ.dom`
   through `fv β ⊆ Γ.dom`.
 
-### Phase B — discharge SHIPPED behind axiom (this commit, agent_id: och-l24-phaseB)
+### Phase B — discharge SHIPPED behind axiom (commit `5g.3a` family, agent_id: och-l24-phaseB)
 
 The 6-arm aux theorem `_Lemma_24_NarrowingMSubRed_aux` (private,
 ~150 lines, lines 513-666) takes an explicit
@@ -464,16 +464,56 @@ The 6-arm aux theorem `_Lemma_24_NarrowingMSubRed_aux` (private,
 constructor arms (Ms-Pro, Ms-Top, Ms-Equ, Ms-App, Ms-Fun, Ms-FOp).
 This proves the axiom modulo the avoidance witness wire-up.
 
-The axiom `Lemma_24_NarrowingMSubRed` is RETAINED at this phase. The
-remaining wire-up to remove it from headline closures:
+### Phase B audit — wire-up BLOCKED (2026-05, agent_id: och-l24-wireup)
 
-1. Thread `(hAvoid : msAvoidsPro h x = true)` through `_S_motive_sub`
-   in `Pss.Mpss.TypeSafety.lean` (`_S_lf2` consumer's signature).
-2. Supply an `msAvoidsPro` witness at the `Lemma_24_*` call site in
-   `Pss.Mpss.Commutation.lean` line ~627
-   (`Lemma_1_inline_fun_fun_residual` consumer).
-3. Replace the axiom with a thin wrapper around the aux that supplies
-   the avoidance witness from the consumer's data. -/
+A wire-up audit was performed targeting both call sites:
+
+1. **`Pss.Mpss.Narrowing.lean:_N_lf2`** (line ~812). Used inside
+   `Lemma_23_NarrowingWf` (via `WSubM.rec`). The MSubRed `hred` lives
+   in the OUTER `WSubM Γ v u` derivation; the surrounding `_N_motive_sub`
+   does not thread an avoidance premise. The high-level consumer
+   (`absBound` in `TypeSafety.lean:1058`) calls `Lemma_23_NarrowingWf`
+   on a `WfM (⟨y, bound, .sub⟩ :: Γ) (body^[y])` derivation where `y`
+   is freshly chosen from `L₀ ∪ Γ.dom`. The MSubReds inside that WfM
+   (produced by the cofinite WfM constructor `hB y hyL₀`) MAY contain
+   `Ms-Pro y` steps: the binding `⟨y, bound, .sub⟩` is in scope and
+   `body^[y]` may contain `.fvar y`, which `WSubM.lf2`'s `hred` may
+   chain through `Ms-Pro y` (looking up `bound`). Freshness of `y`
+   outside `Γ.dom` does NOT preclude this — the binding is precisely
+   what makes the lookup possible.
+
+2. **`Pss.Mpss.Commutation.lean:Lemma_1_inline_fun_fun_residual`**
+   (line ~381). Narrowing the head annotation `t → t'` of a renamed
+   body MSubRed `h_at_z`. The renamed derivation is constructed via
+   `MSubRed.rename_sub` from a source `hb₂_to_b` produced by Lemma 1's
+   recursive IH. Per `MSubRed.subst_yz_sub_head`'s `pro` arm
+   (`Renaming.lean:855-908`), `Ms-Pro y` steps in the source become
+   `Ms-Pro z` steps in the renamed target (the binder name changes too).
+   So `z`-freshness yields `msAvoidsPro h_at_z y = true` (vacuously,
+   `y` no longer appears) but NOT `msAvoidsPro h_at_z z = true` (which
+   is what we need). A real witness would require Lemma 1's IH itself
+   to output an MSubRed satisfying `msAvoidsPro` w.r.t. fresh binders —
+   an output-side property requiring deep restructuring across all
+   Lemma 1 cases.
+
+Both call sites have the same fundamental obstacle: an MSubRed
+derivation in context `⟨y, t, .sub⟩ :: Γ` may legitimately contain
+`Ms-Pro y` steps; freshness of `y` outside `Γ.dom` is not enough to
+rule those out because the binding for `y` is precisely what enables
+the lookup.
+
+**Conclusion:** Removing the axiom from headline closures requires
+either (i) propagating `msAvoidsPro` premises through three layers of
+motives (`_N_motive_sub` in Narrowing, `_S_motive_sub` in TypeSafety,
+plus a Lemma 1 output invariant in Commutation) or (ii) discovering a
+structural invariant on WfM/WSubMStar-derived MSubReds that rules out
+`Ms-Pro` on freshly-named binders. Neither fits inside Narrowing.lean
+alone.
+
+The axiom `Lemma_24_NarrowingMSubRed` is RETAINED. The aux theorem
+remains as a proof witness modulo the avoidance premise — the
+mathematical content is correct; only the local-derivability of the
+witness is missing. -/
 axiom Lemma_24_NarrowingMSubRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)

@@ -310,23 +310,75 @@ theorem.
      freshness set introduced by this commit's edit to `msAvoidsPro`),
      then build body at arbitrary z via `MSubRed.rename_sub` (no-fv
      rename in `Pss/Mpss/Renaming.lean`). NO alpha-equivariance.
-  4. Ms-FOp arm: blocked on a no-fv-precondition variant of
-     `MSubRed.rename_equ` (currently a `private` 400-line helper in
-     `Pss/Mpss/Commutation.lean` — needs factoring into
-     `Pss/Mpss/Renaming.lean` to avoid the
-     `Commutation → ... → Narrowing` import cycle).
-  5. Wire-up: thread `msAvoidsPro` through `_S_motive_sub` in
-     `Pss/Mpss/TypeSafety.lean` and supply a witness at
-     `Lemma_1_inline_fun_fun_residual` in `Pss/Mpss/Commutation.lean`.
-* **Estimated complexity:** Medium-large (~400 lines refactor for the
-  equ-rename promotion + ~200 lines for the discharge proper +
-  ~100 lines wire-up). Total ~700 lines.
+  4. Ms-FOp arm: same shape as Ms-Fun, using
+     `_MSubRed_rename_equ_no_fv` from `Pss/Mpss/Renaming.lean`.
+
+  **Phase B (2026-05, this commit):** All 6 arms above are
+  DISCHARGED in `_Lemma_24_NarrowingMSubRed_aux` (private,
+  `Pss/Mpss/Narrowing.lean` lines 514-666). Modulo the avoidance
+  witness wire-up at the call sites, the lemma is proved.
+* **Wire-up status (2026-05, post Phase-B audit, agent_id:
+  och-l24-wireup):** REMOVAL FROM HEADLINE CLOSURES IS BLOCKED.
+  Auditing the two call sites of `Lemma_24_NarrowingMSubRed`:
+
+  * `Pss/Mpss/Narrowing.lean:_N_lf2` (line 812). Used inside
+    `Lemma_23_NarrowingWf` for the `WSubM.lf2` constructor. The
+    surrounding `_N_motive_sub` motive does not thread an avoidance
+    premise. The actual high-level consumer is `absBound` in
+    `TypeSafety.lean:1058`, which calls `Lemma_23_NarrowingWf` on
+    `hwfBody_old : WfM (⟨y, bound, .sub⟩ :: Γ) (body^[y])` where
+    `y` is freshly chosen from `L₀ ∪ Γ.dom`. **The MSubRed sub-
+    derivations of `hwfBody_old` are produced by `hB y hyL₀` (the
+    cofinite WfM constructor), and they may legitimately contain
+    `Ms-Pro y` steps**: the binding `⟨y, bound, .sub⟩` is in scope
+    and `body^[y]` may contain `.fvar y`, which `WSubM.lf2`'s
+    `hred` may chain through `Ms-Pro y`. Freshness of `y` outside
+    `Γ.dom` does NOT preclude `Ms-Pro y` because the `y` binding is
+    ADDED at the head before the WfM derivation is constructed.
+
+  * `Pss/Mpss/Commutation.lean:Lemma_1_inline_fun_fun_residual`
+    (line 381). Narrowing the head annotation `t → t'` of a renamed
+    body MSubRed `h_at_z : MSubRed (⟨z, t, .sub⟩ :: Γ) [] (body₂^[z])
+    (body₃^[z])` where `z` is freshly chosen. **Same issue: the
+    renamed `h_at_z` is built via `MSubRed.rename_sub` from a body
+    MSubRed `hb₂_to_b` produced by Lemma 1's recursive IH. `Ms-Pro
+    y` steps in the source become `Ms-Pro z` steps in the renamed
+    target (per `MSubRed.subst_yz_sub_head`'s `pro` arm,
+    `Renaming.lean:855-908`), so `z`-freshness does NOT yield
+    `msAvoidsPro h_at_z z = true`**. The Lemma 1 IH would need to
+    output an MSubRed satisfying `msAvoidsPro` w.r.t. fresh
+    binders — an output-side property requiring deep restructuring
+    of all Lemma 1 cases.
+
+  Both call sites have the same fundamental obstacle: an MSubRed
+  derivation in context `⟨y, t, .sub⟩ :: Γ` may legitimately
+  contain `Ms-Pro y` steps (looking up `t`); freshness of `y`
+  outside `Γ.dom` is not sufficient to rule out `Ms-Pro y` because
+  the binding for `y` is precisely what makes such a lookup
+  possible.
+
+  **Conclusion:** The wire-up cannot be performed locally with the
+  freshness invariants currently available. The honest path requires
+  *either* (i) propagating `msAvoidsPro` premises through
+  `_N_motive_sub` (Narrowing.lean) AND `_S_motive_sub`
+  (TypeSafety.lean) AND a Lemma 1 output invariant (Commutation.lean)
+  — all three layers — *or* (ii) finding a structural/semantic
+  invariant on `WfM`/`WSubMStar`-derived MSubReds that rules out
+  Ms-Pro on freshly-named binders. Neither option fits inside
+  Narrowing.lean alone.
+
+  Phase B's aux theorem is RETAINED as the proof witness; the
+  axiom is RETAINED as the load-bearing API.
+* **Estimated complexity:** Multi-file restructure (~500-1000 lines
+  across Narrowing/TypeSafety/Commutation, plus an output invariant
+  on Lemma 1 in `Pss/Mpss/Commutation.lean`). Not a single-iteration
+  task.
 * **Foundational note:** Earlier discharge plans (path A "WSubM
   transitivity" and path B "WSubMStar end-to-end") are NOT viable
   per the analysis on lines 300-380 of `Narrowing.lean` — both
   require infrastructure downstream of this file. The avoidance-
-  witness path documented above lives entirely upstream and is the
-  active target.
+  witness path is the active target but blocked per the wire-up
+  audit above.
 
 ### 3. `Lemma_10_Inversion`
 
