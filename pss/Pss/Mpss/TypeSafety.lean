@@ -235,7 +235,7 @@ single steps to chains. -/
 /-- Local helper: extract `Prevalid Γ` from any `MEqRed Γ s u v`.
 We can't reuse `MEqRed.prevalid` from `Substitution.lean` (private),
 so we re-derive it locally via induction on the `MEqRed` derivation. -/
-private theorem _Prevalid_of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def _Prevalid_of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro _ _ _ _ _ hpv _ _ _ => exact extractPrevalid hpv
@@ -248,7 +248,7 @@ private theorem _Prevalid_of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
   | @fOp _ _ _ _ _ _ _ _ _ _ iht _ => exact iht
 
 /-- Wrap `Prevalid Γ` into `PrevalidExt Γ []`. -/
-private theorem _PrevalidExt_nil_of_MEqRed {Γ : Ctx} {u v : Term}
+private noncomputable def _PrevalidExt_nil_of_MEqRed {Γ : Ctx} {u v : Term}
     (h : MEqRed Γ [] u v) : PrevalidExt Γ [] :=
   PrevalidExt.nil (_Prevalid_of_MEqRed h)
 
@@ -348,43 +348,45 @@ handle the mutual block).
 carries `WSubMStar Γ v u` and `WSubMStar Γ u t` whose LHS-WfM /
 RHS-WfM we recover by IH. -/
 
-/-- From `WSubMStar Γ v t` extract `WfM Γ v`. -/
-theorem wfM_left_of_wsubmstar {Γ : Ctx} {v t : Term}
+/-- From `WSubMStar Γ v t` extract `WfM Γ v`.
+
+`Type`-valued (post-Type-LC refactor); use `PUnit` motives where Prop's `True` was used. -/
+noncomputable def wfM_left_of_wsubmstar {Γ : Ctx} {v t : Term}
     (h : WSubMStar Γ v t) : WfM Γ v :=
   WSubMStar.rec
-    (motive_1 := fun _ _ _ => True)
-    (motive_2 := fun _ _ _ _ => True)
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun _ _ _ _ => PUnit)
     (motive_3 := fun Γ v _ _ => WfM Γ v)
-    (fun _ _ => trivial)               -- Wf-PrS
-    (fun _ _ => trivial)               -- Wf-PrE
-    (fun _ => trivial)                 -- Wf-Top
-    (fun _ _ _ _ _ => trivial)         -- Wf-Fun
-    (fun _ _ _ _ => trivial)           -- Wf-App
-    (fun _ _ => trivial)               -- Ws-Rfl
-    (fun _ _ _ => trivial)             -- Ws-Lf1
-    (fun _ _ _ _ _ _ _ => trivial)     -- Ws-Lf2
-    (fun _ _ _ => trivial)             -- Ws-Rgh
+    (fun _ _ => PUnit.unit)               -- Wf-PrS
+    (fun _ _ => PUnit.unit)               -- Wf-PrE
+    (fun _ => PUnit.unit)                 -- Wf-Top
+    (fun _ _ _ _ _ => PUnit.unit)         -- Wf-Fun
+    (fun _ _ _ _ => PUnit.unit)           -- Wf-App
+    (fun _ _ => PUnit.unit)               -- Ws-Rfl
+    (fun _ _ _ => PUnit.unit)             -- Ws-Lf1
+    (fun _ _ _ _ _ _ _ => PUnit.unit)     -- Ws-Lf2
+    (fun _ _ _ => PUnit.unit)             -- Ws-Rgh
     (fun {Γ v t} hwfV _ _ _ _ _ => hwfV)         -- Ws-Sub
     (fun {Γ v u t} _ _ _ ih1 _ _ => ih1)         -- Ws-Trs
     h
 
 /-- From `WSubMStar Γ v t` extract `WfM Γ t`. Mirror of
 `wfM_left_of_wsubmstar`. -/
-theorem wfM_right_of_wsubmstar {Γ : Ctx} {v t : Term}
+noncomputable def wfM_right_of_wsubmstar {Γ : Ctx} {v t : Term}
     (h : WSubMStar Γ v t) : WfM Γ t :=
   WSubMStar.rec
-    (motive_1 := fun _ _ _ => True)
-    (motive_2 := fun _ _ _ _ => True)
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun _ _ _ _ => PUnit)
     (motive_3 := fun Γ _ t _ => WfM Γ t)
-    (fun _ _ => trivial)               -- Wf-PrS
-    (fun _ _ => trivial)               -- Wf-PrE
-    (fun _ => trivial)                 -- Wf-Top
-    (fun _ _ _ _ _ => trivial)         -- Wf-Fun
-    (fun _ _ _ _ => trivial)           -- Wf-App
-    (fun _ _ => trivial)               -- Ws-Rfl
-    (fun _ _ _ => trivial)             -- Ws-Lf1
-    (fun _ _ _ _ _ _ _ => trivial)     -- Ws-Lf2
-    (fun _ _ _ => trivial)             -- Ws-Rgh
+    (fun _ _ => PUnit.unit)               -- Wf-PrS
+    (fun _ _ => PUnit.unit)               -- Wf-PrE
+    (fun _ => PUnit.unit)                 -- Wf-Top
+    (fun _ _ _ _ _ => PUnit.unit)         -- Wf-Fun
+    (fun _ _ _ _ => PUnit.unit)           -- Wf-App
+    (fun _ _ => PUnit.unit)               -- Ws-Rfl
+    (fun _ _ _ => PUnit.unit)             -- Ws-Lf1
+    (fun _ _ _ _ _ _ _ => PUnit.unit)     -- Ws-Lf2
+    (fun _ _ _ => PUnit.unit)             -- Ws-Rgh
     (fun {Γ v t} _ _ hwfT _ _ _ => hwfT)         -- Ws-Sub
     (fun {Γ v u t} _ _ _ _ _ ih2 => ih2)         -- Ws-Trs
     h
@@ -392,20 +394,20 @@ theorem wfM_right_of_wsubmstar {Γ : Ctx} {v t : Term}
 /-- Mutual extractor `Prevalid Γ` from `WfM Γ t` (and from
 `WSubMStar Γ v t` via the LHS). Defined together with `Prevalid` of
 `WSubMStar` via the mutual recursor. -/
-theorem prevalid_of_wfM {Γ : Ctx} {t : Term} (h : WfM Γ t) : Prevalid Γ :=
+noncomputable def prevalid_of_wfM {Γ : Ctx} {t : Term} (h : WfM Γ t) : Prevalid Γ :=
   WfM.rec
     (motive_1 := fun Γ _ _ => Prevalid Γ)
-    (motive_2 := fun _ _ _ _ => True)
+    (motive_2 := fun _ _ _ _ => PUnit)
     (motive_3 := fun Γ _ _ _ => Prevalid Γ)
     (fun {_ _ _} hpv _ => hpv)                 -- Wf-PrS
     (fun {_ _ _} hpv _ => hpv)                 -- Wf-PrE
     (fun {_} hpv => hpv)                       -- Wf-Top
     (fun {_ _ _} _ _ _ ihT _ => ihT)           -- Wf-Fun
     (fun {_ _ _ _} _ _ ih1 _ => ih1)           -- Wf-App
-    (fun _ _ => trivial)                       -- Ws-Rfl
-    (fun _ _ _ => trivial)                     -- Ws-Lf1
-    (fun _ _ _ _ _ _ _ => trivial)             -- Ws-Lf2
-    (fun _ _ _ => trivial)                     -- Ws-Rgh
+    (fun _ _ => PUnit.unit)                       -- Ws-Rfl
+    (fun _ _ _ => PUnit.unit)                     -- Ws-Lf1
+    (fun _ _ _ _ _ _ _ => PUnit.unit)             -- Ws-Lf2
+    (fun _ _ _ => PUnit.unit)                     -- Ws-Rgh
     (fun {_ _ _} _ _ _ ihwfV _ _ => ihwfV)     -- Ws-Sub
     (fun {_ _ _ _} _ _ _ ih1 _ _ => ih1)       -- Ws-Trs
     h
@@ -441,19 +443,21 @@ namespace Lemma7
 
 /-- Combined weakening motive for `WfM`: a Δ-block can be inserted in
 the middle of any partitioned context, provided the result is
-prevalid. -/
-private def _W_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Prop :=
+prevalid.
+
+`Type`-valued motive (post-Type-LC refactor). -/
+private def _W_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Type :=
   fun Γ u _ => ∀ Γ₁ Δ Γ₂ : Ctx, Γ = Γ₁ ++ Γ₂ →
     Prevalid (Γ₁ ++ Δ ++ Γ₂) → WfM (Γ₁ ++ Δ ++ Γ₂) u
 
-private def _W_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Prop :=
+private def _W_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Type :=
   fun Γ v u _ => ∀ Γ₁ Δ Γ₂ : Ctx, Γ = Γ₁ ++ Γ₂ →
     Prevalid (Γ₁ ++ Δ ++ Γ₂) →
     Term.fv v ⊆ (Γ₁ ++ Γ₂).dom →
     Term.fv u ⊆ (Γ₁ ++ Γ₂).dom →
     WSubM (Γ₁ ++ Δ ++ Γ₂) v u
 
-private def _W_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Prop :=
+private def _W_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Type :=
   fun Γ v u _ => ∀ Γ₁ Δ Γ₂ : Ctx, Γ = Γ₁ ++ Γ₂ →
     Prevalid (Γ₁ ++ Δ ++ Γ₂) →
     Term.fv v ⊆ (Γ₁ ++ Γ₂).dom →
@@ -467,7 +471,7 @@ private theorem _fv_lift_through_delta {Γ₁ Δ Γ₂ : Ctx} {u : Term}
   have := h hz
   simp [Ctx.dom_append] at *; tauto
 
-private theorem _W_varSub :
+private noncomputable def _W_varSub :
     ∀ {Γ : Ctx} {y : String} {u : Term}
       (hpv : Prevalid Γ) (hb : Γ.subBinds y u),
       _W_motive_wf Γ (.fvar y) (WfM.varSub hpv hb) := by
@@ -475,7 +479,7 @@ private theorem _W_varSub :
   subst hΓ
   exact WfM.varSub hpv' (Ctx.subBinds_insert_middle hpv' hb)
 
-private theorem _W_varEqu :
+private noncomputable def _W_varEqu :
     ∀ {Γ : Ctx} {y : String} {α : Term}
       (hpv : Prevalid Γ) (hb : Γ.equBinds y α),
       _W_motive_wf Γ (.fvar y) (WfM.varEqu hpv hb) := by
@@ -483,14 +487,14 @@ private theorem _W_varEqu :
   subst hΓ
   exact WfM.varEqu hpv' (Ctx.equBinds_insert_middle hpv' hb)
 
-private theorem _W_top :
+private noncomputable def _W_top :
     ∀ {Γ : Ctx} (hpv : Prevalid Γ),
       _W_motive_wf Γ .top (WfM.top hpv) := by
   intro Γ hpv Γ₁ Δ Γ₂ hΓ hpv'
   subst hΓ
   exact WfM.top hpv'
 
-private theorem _W_fun :
+private noncomputable def _W_fun :
     ∀ {Γ : Ctx} {t₀ u : Term} (L : Finset String)
       (hT : WfM Γ t₀)
       (hB : ∀ y, y ∉ L → WfM (⟨y, t₀, .sub⟩ :: Γ) (Term.opening (.fvar y) u))
@@ -515,7 +519,7 @@ private theorem _W_fun :
     simpa [List.cons_append] using hpv_y
   exact ihB y hyL (⟨y, t₀, .sub⟩ :: Γ₁) Δ Γ₂ (by simp) hpv_y'
 
-private theorem _W_app :
+private noncomputable def _W_app :
     ∀ {Γ : Ctx} {u v t₀ : Term}
       (hStarU : WSubMStar Γ u (.abs t₀ .top))
       (hStarV : WSubMStar Γ v t₀)
@@ -535,7 +539,7 @@ private theorem _W_app :
   exact WfM.app (ihU Γ₁ Δ Γ₂ rfl hpv' hfvU hfvAbs)
                 (ihV Γ₁ Δ Γ₂ rfl hpv' hfvV hfvT0)
 
-private theorem _W_rfl :
+private noncomputable def _W_rfl :
     ∀ {Γ : Ctx} {u : Term} (hwf : WfM Γ u)
       (ihwf : _W_motive_wf Γ u hwf),
       _W_motive_sub Γ u u (WSubM.rfl hwf) := by
@@ -543,7 +547,7 @@ private theorem _W_rfl :
   subst hΓ
   exact WSubM.rfl (ihwf Γ₁ Δ Γ₂ rfl hpv')
 
-private theorem _W_lf1 :
+private noncomputable def _W_lf1 :
     ∀ {Γ : Ctx} {v v' u : Term}
       (hred : MEqRed Γ [] v v')
       (hsub : WSubM Γ v' u)
@@ -557,7 +561,7 @@ private theorem _W_lf1 :
   have hfvV' : Term.fv v' ⊆ (Γ₁ ++ Γ₂).dom := MEqRed_fv_preserve hred hfvV
   exact WSubM.lf1 hred' (ih Γ₁ Δ Γ₂ rfl hpv' hfvV' hfvU)
 
-private theorem _W_lf2 :
+private noncomputable def _W_lf2 :
     ∀ {Γ : Ctx} {v v' u : Term}
       (hwfV : WfM Γ v) (hred : MSubRed Γ [] v v')
       (hwfV' : WfM Γ v') (hsub : WSubM Γ v' u)
@@ -575,7 +579,7 @@ private theorem _W_lf2 :
                    (ihwfV' Γ₁ Δ Γ₂ rfl hpv')
                    (ih Γ₁ Δ Γ₂ rfl hpv' hfvV' hfvU)
 
-private theorem _W_rgh :
+private noncomputable def _W_rgh :
     ∀ {Γ : Ctx} {v u u' : Term}
       (hsub : WSubM Γ v u') (hred : MEqRed Γ [] u u')
       (ih : _W_motive_sub Γ v u' hsub),
@@ -588,7 +592,7 @@ private theorem _W_rgh :
   have hfvU' : Term.fv u' ⊆ (Γ₁ ++ Γ₂).dom := MEqRed_fv_preserve hred hfvU
   exact WSubM.rgh (ih Γ₁ Δ Γ₂ rfl hpv' hfvV hfvU') hred'
 
-private theorem _W_sub_star :
+private noncomputable def _W_sub_star :
     ∀ {Γ : Ctx} {v u : Term}
       (hwfV : WfM Γ v) (hsub : WSubM Γ v u) (hwfT : WfM Γ u)
       (ihwfV : _W_motive_wf Γ v hwfV)
@@ -602,7 +606,7 @@ private theorem _W_sub_star :
                        (ihsub Γ₁ Δ Γ₂ rfl hpv' hfvV hfvU)
                        (ihwfT Γ₁ Δ Γ₂ rfl hpv')
 
-private theorem _W_trs_star :
+private noncomputable def _W_trs_star :
     ∀ {Γ : Ctx} {v u w : Term}
       (hStar1 : WSubMStar Γ v u) (hwfU : WfM Γ u) (hStar2 : WSubMStar Γ u w)
       (ih1 : _W_motive_star Γ v u hStar1)
@@ -622,7 +626,7 @@ end Lemma7
 /-- WfM weakening (append-on-top form): inserting a Δ-block at the top
 preserves well-formedness, provided the result is prevalid. This is the
 WF-side of paper Lemma 19/20. -/
-theorem WfM.weaken_append {Γ Δ : Ctx} {u : Term}
+noncomputable def WfM.weaken_append {Γ Δ : Ctx} {u : Term}
     (hwf : WfM Γ u)
     (hpv' : Prevalid (Δ ++ Γ)) :
     WfM (Δ ++ Γ) u := by
@@ -651,20 +655,20 @@ once, with `WSubMStar Γ₁ α t` (giving us `WfM Γ₁ α`,
 section
 variable (Γ₁out : Ctx) (xout : String) (tout αout : Term)
 
-private def _S_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Prop :=
+private def _S_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Type :=
   fun Γ u _ => ∀ Γ₂ : Ctx,
     Γ = Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out →
     WSubMStar Γ₁out αout tout →
     WfM (Ctx.subst xout αout Γ₂ ++ Γ₁out) (Term.subst xout αout u)
 
-private def _S_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Prop :=
+private def _S_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Type :=
   fun Γ v u _ => ∀ Γ₂ : Ctx,
     Γ = Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out →
     WSubMStar Γ₁out αout tout →
     WSubM (Ctx.subst xout αout Γ₂ ++ Γ₁out)
       (Term.subst xout αout v) (Term.subst xout αout u)
 
-private def _S_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Prop :=
+private def _S_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Type :=
   fun Γ v u _ => ∀ Γ₂ : Ctx,
     Γ = Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out →
     WSubMStar Γ₁out αout tout →
@@ -672,13 +676,13 @@ private def _S_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u �
       (Term.subst xout αout v) (Term.subst xout αout u)
 
 /-- Helper: extract `SubstOk Γ₁ α` from `WSubMStar Γ₁ α t`. -/
-private theorem _SubstOk_of_WSubMStar {Γ₁ : Ctx} {α t : Term}
+private noncomputable def _SubstOk_of_WSubMStar {Γ₁ : Ctx} {α t : Term}
     (hα : WSubMStar Γ₁ α t) : SubstOk Γ₁ α :=
   ⟨WSubMStar.lc_left hα, WSubMStar.fv_left_subset hα⟩
 
 /-- Helper: derive `Prevalid (Ctx.subst x α Γ₂ ++ Γ₁)` from the
 prevalidity of the original context and `WSubMStar Γ₁ α t`. -/
-private theorem _Prevalid_subst_of_WSubMStar
+private noncomputable def _Prevalid_subst_of_WSubMStar
     {Γ₁ Γ₂ : Ctx} {x : String} {t α : Term}
     (hpv : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁))
     (hα : WSubMStar Γ₁ α t) :
@@ -687,7 +691,7 @@ private theorem _Prevalid_subst_of_WSubMStar
 
 /-! ### §5.3. Per-case discharge -/
 
-private theorem _S_varSub :
+private noncomputable def _S_varSub :
     ∀ {Γ : Ctx} {y : String} {u : Term}
       (hpv : Prevalid Γ) (hb : Γ.subBinds y u),
       _S_motive_wf Γ₁out xout tout αout Γ (.fvar y)
@@ -707,7 +711,7 @@ private theorem _S_varSub :
       subBinds_split_neq (s := αout) hyx hpv hb
     exact WfM.varSub hpvN hb'
 
-private theorem _S_varEqu :
+private noncomputable def _S_varEqu :
     ∀ {Γ : Ctx} {y : String} {α : Term}
       (hpv : Prevalid Γ) (hb : Γ.equBinds y α),
       _S_motive_wf Γ₁out xout tout αout Γ (.fvar y)
@@ -723,7 +727,7 @@ private theorem _S_varEqu :
     equBinds_split (s := αout) hyx hpv hb
   exact WfM.varEqu hpvN hb'
 
-private theorem _S_top :
+private noncomputable def _S_top :
     ∀ {Γ : Ctx} (hpv : Prevalid Γ),
       _S_motive_wf Γ₁out xout tout αout Γ .top (WfM.top hpv) := by
   intro Γ hpv Γ₂ hΓ hα
@@ -734,7 +738,7 @@ private theorem _S_top :
   simp [Term.subst]
   exact WfM.top hpvN
 
-private theorem _S_fun :
+private noncomputable def _S_fun :
     ∀ {Γ : Ctx} {t₀ u : Term} (L : Finset String)
       (hT : WfM Γ t₀)
       (hB : ∀ y, y ∉ L → WfM (⟨y, t₀, .sub⟩ :: Γ) (Term.opening (.fvar y) u))
@@ -758,7 +762,7 @@ private theorem _S_fun :
   rw [Term.subst_open_var (Ne.symm hyx) hLCα u] at ih_body
   simpa [Ctx.subst, List.cons_append] using ih_body
 
-private theorem _S_app :
+private noncomputable def _S_app :
     ∀ {Γ : Ctx} {u v t₀ : Term}
       (hStarU : WSubMStar Γ u (.abs t₀ .top))
       (hStarV : WSubMStar Γ v t₀)
@@ -775,7 +779,7 @@ private theorem _S_app :
   simp only [Term.subst] at ihU'
   exact WfM.app ihU' ihV'
 
-private theorem _S_rfl :
+private noncomputable def _S_rfl :
     ∀ {Γ : Ctx} {u : Term} (hwf : WfM Γ u)
       (ihwf : _S_motive_wf Γ₁out xout tout αout Γ u hwf),
       _S_motive_sub Γ₁out xout tout αout Γ u u (WSubM.rfl hwf) := by
@@ -783,7 +787,7 @@ private theorem _S_rfl :
   subst hΓ
   exact WSubM.rfl (ihwf Γ₂ rfl hα)
 
-private theorem _S_lf1 :
+private noncomputable def _S_lf1 :
     ∀ {Γ : Ctx} {v v' u : Term}
       (hred : MEqRed Γ [] v v')
       (hsub : WSubM Γ v' u)
@@ -802,7 +806,7 @@ private theorem _S_lf1 :
     simpa using hred'
   exact WSubM.lf1 hred'' (ih Γ₂ rfl hα)
 
-private theorem _S_lf2 :
+private noncomputable def _S_lf2 :
     ∀ {Γ : Ctx} {v v' u : Term}
       (hwfV : WfM Γ v) (hred : MSubRed Γ [] v v')
       (hwfV' : WfM Γ v') (hsub : WSubM Γ v' u)
@@ -825,7 +829,7 @@ private theorem _S_lf2 :
                    (ihwfV' Γ₂ rfl hα)
                    (ih Γ₂ rfl hα)
 
-private theorem _S_rgh :
+private noncomputable def _S_rgh :
     ∀ {Γ : Ctx} {v u u' : Term}
       (hsub : WSubM Γ v u') (hred : MEqRed Γ [] u u')
       (ih : _S_motive_sub Γ₁out xout tout αout Γ v u' hsub),
@@ -843,7 +847,7 @@ private theorem _S_rgh :
     simpa using hred'
   exact WSubM.rgh (ih Γ₂ rfl hα) hred''
 
-private theorem _S_sub_star :
+private noncomputable def _S_sub_star :
     ∀ {Γ : Ctx} {v u : Term}
       (hwfV : WfM Γ v) (hsub : WSubM Γ v u) (hwfT : WfM Γ u)
       (ihwfV : _S_motive_wf Γ₁out xout tout αout Γ v hwfV)
@@ -856,7 +860,7 @@ private theorem _S_sub_star :
   exact WSubMStar.sub (ihwfV Γ₂ rfl hα) (ihsub Γ₂ rfl hα)
                        (ihwfT Γ₂ rfl hα)
 
-private theorem _S_trs_star :
+private noncomputable def _S_trs_star :
     ∀ {Γ : Ctx} {v u w : Term}
       (hStar1 : WSubMStar Γ v u) (hwfU : WfM Γ u) (hStar2 : WSubMStar Γ u w)
       (ih1 : _S_motive_star Γ₁out xout tout αout Γ v u hStar1)
@@ -877,7 +881,7 @@ end Lemma7
 García-Pérez 2024 §4).** Generalized form: arbitrary context prefix
 `Γ₂` between `Γ₁` and the head substitution binding `⟨x, t, .sub⟩`.
 Mirrors the paper's `Γ, x ≤ t, Γ' ⊢ u wf  ⟹  Γ, Γ'[x\α] ⊢ u[x\α] wf`. -/
-theorem Lemma_7_SubstitutionPreservesWf_general
+noncomputable def Lemma_7_SubstitutionPreservesWf_general
     {Γ₁ Γ₂ : Ctx} {x : String} {t α u : Term}
     (hwfU : WfM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) u)
     (hα : WSubMStar Γ₁ α t) :
@@ -903,7 +907,7 @@ theorem Lemma_7_SubstitutionPreservesWf_general
 /-- **Lemma 7 (Substitution preserves well-formedness).**
 Restricted single-binder form: `Γ₂ = ∅` corollary of
 `Lemma_7_SubstitutionPreservesWf_general`. -/
-theorem Lemma_7_SubstitutionPreservesWf
+noncomputable def Lemma_7_SubstitutionPreservesWf
     {Γ : Ctx} {x : String} {t u α : Term}
     (hwfU : WfM (⟨x, t, .sub⟩ :: Γ) u)
     (hα : WSubMStar Γ α t) :
@@ -938,71 +942,58 @@ If `Γ ⊢ t wf` and `t ↦ t'`, then `Γ ⊢ t' wf`.
 
 PROVED conditional on `Lemma_7_SubstitutionPreservesWf` (β case),
 `Lemma_10_Inversion` (β case), and `Proposition_17_beta_axiom` (the
-four congruence cases via Prop 17). -/
-theorem Lemma_6_EvaluationPreservesWf
+four congruence cases via Prop 17).
+
+`Nonempty`-wrapped version that does the induction on the Prop-valued
+`Step` hypothesis. The Type-valued accessor below extracts via `.some`. -/
+private theorem Lemma_6_EvaluationPreservesWf_J
     {Γ : Ctx} {t t' : Term}
     (hwf : WfM Γ t)
     (hstep : Step t t') :
-    WfM Γ t' := by
+    Nonempty (WfM Γ t') := by
+  classical
   induction hstep generalizing Γ with
   | @beta bound body arg hAbsLC hArgLC =>
-    -- t = (.abs bound body) arg, t' = Term.opening arg body.
-    -- Invert hwf via Wf-App.
     cases hwf with
     | @app _ _ _ z hStarFn hStarArg =>
-      -- hStarFn : WSubMStar Γ (.abs bound body) (.abs z .top)
-      -- hStarArg : WSubMStar Γ arg z
-      -- Step 1: Lemma 10 inversion on hStarFn -> WEquM Γ bound z.
       have hEquBz : WEquM Γ bound z := Lemma_10_Inversion hStarFn
-      -- Step 2: symmetry (Lemma 15) + Lemma 16 -> WSubM Γ z bound.
       have hSubZBd : WSubM Γ z bound :=
         Lemma_16_WEquM_to_WSubM (Lemma_15_WEquM_symm hEquBz)
-      -- Step 3: get WfM Γ z (from hStarArg's RHS) and WfM Γ bound
-      --         (from hStarFn's LHS Wf-Fun inversion).
       have hwfZ : WfM Γ z := wfM_right_of_wsubmstar hStarArg
       have hwfFn : WfM Γ (.abs bound body) := wfM_left_of_wsubmstar hStarFn
       have hwfBd : WfM Γ bound := by
         cases hwfFn with
         | @fun_ _ _ _ L hT _ => exact hT
-      -- Step 4: wrap hSubZBd in Ws-Sub -> WSubMStar Γ z bound.
       have hStarZBd : WSubMStar Γ z bound :=
         WSubMStar.sub hwfZ hSubZBd hwfBd
-      -- Step 5: trs hStarArg + hStarZBd -> WSubMStar Γ arg bound.
       have hStarArgBd : WSubMStar Γ arg bound :=
         WSubMStar.trs hStarArg hwfZ hStarZBd
-      -- Step 6: extract Wf-Fun body data: cofinite WfM
-      -- (⟨x, bound, .sub⟩ :: Γ) (body^[x]).
       classical
-      obtain ⟨L, hT, hBody⟩ : ∃ L : Finset String, WfM Γ bound ∧
-          (∀ x, x ∉ L → WfM (⟨x, bound, .sub⟩ :: Γ) (Term.opening (.fvar x) body)) := by
-        cases hwfFn with
-        | @fun_ _ _ _ L hT hB => exact ⟨L, hT, hB⟩
-      -- Step 7: choose fresh x outside L ∪ fv body.
-      obtain ⟨x, hxF⟩ := Term.exists_fresh (L ∪ Term.fv body)
-      have hxL : x ∉ L := fun h => hxF (Finset.mem_union.mpr (Or.inl h))
-      have hxFv : x ∉ Term.fv body :=
-        fun h => hxF (Finset.mem_union.mpr (Or.inr h))
-      have hwfBodyOpen : WfM (⟨x, bound, .sub⟩ :: Γ) (Term.opening (.fvar x) body) :=
-        hBody x hxL
-      -- Step 8: Lemma 7: subst x arg into body^[x] becomes opening arg body.
-      have hLCarg : Term.LC arg := hArgLC
-      have hSubstEq : Term.subst x arg (Term.opening (.fvar x) body) =
-          Term.opening arg body :=
-        (Term.subst_intro hxFv hLCarg).symm
-      have hwfSubst : WfM Γ (Term.subst x arg (Term.opening (.fvar x) body)) :=
-        Lemma_7_SubstitutionPreservesWf hwfBodyOpen hStarArgBd
-      rw [hSubstEq] at hwfSubst
-      exact hwfSubst
+      cases hwfFn with
+      | @fun_ _ _ _ Lfn hT hB =>
+        let x : String :=
+          Classical.choose (Term.exists_fresh (Lfn ∪ Term.fv body))
+        have hxF : x ∉ Lfn ∪ Term.fv body :=
+          Classical.choose_spec (Term.exists_fresh (Lfn ∪ Term.fv body))
+        have hxL : x ∉ Lfn := fun h => hxF (Finset.mem_union.mpr (Or.inl h))
+        have hxFv : x ∉ Term.fv body :=
+          fun h => hxF (Finset.mem_union.mpr (Or.inr h))
+        have hwfBodyOpen : WfM (⟨x, bound, .sub⟩ :: Γ) (Term.opening (.fvar x) body) :=
+          hB x hxL
+        have hLCarg : Term.LC arg := hArgLC
+        have hSubstEq : Term.subst x arg (Term.opening (.fvar x) body) =
+            Term.opening arg body :=
+          (Term.subst_intro hxFv hLCarg).symm
+        have hwfSubst : WfM Γ (Term.subst x arg (Term.opening (.fvar x) body)) :=
+          Lemma_7_SubstitutionPreservesWf hwfBodyOpen hStarArgBd
+        rw [hSubstEq] at hwfSubst
+        exact ⟨hwfSubst⟩
   | @appL u u' v hstep hLCv ihU =>
-    -- Goal: WfM Γ (.app u' v).
     cases hwf with
     | @app _ _ _ z hStarFn hStarArg =>
-      -- hStarFn : WSubMStar Γ u (.abs z .top)
-      -- hStarArg : WSubMStar Γ v z
       have hwfU : WfM Γ u := wfM_left_of_wsubmstar hStarFn
       have hwfFnRHS : WfM Γ (.abs z .top) := wfM_right_of_wsubmstar hStarFn
-      have hwfU' : WfM Γ u' := ihU hwfU
-      -- Build WSubMStar Γ u' u via Prop 17 + Ws-Rgh + Ws-Sub.
+      have hwfU' : WfM Γ u' := (ihU hwfU).some
       have hpvΓ : Prevalid Γ := prevalid_of_wfM hwfU
       have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
       have hLCu : Term.LC u := WfM.lc hwfU
@@ -1014,14 +1005,13 @@ theorem Lemma_6_EvaluationPreservesWf
       have hStarU'_u : WSubMStar Γ u' u := WSubMStar.sub hwfU' hSubU'_u hwfU
       have hStarU'_FnRHS : WSubMStar Γ u' (.abs z .top) :=
         WSubMStar.trs hStarU'_u hwfU hStarFn
-      exact WfM.app hStarU'_FnRHS hStarArg
+      exact ⟨WfM.app hStarU'_FnRHS hStarArg⟩
   | @appR u v v' hLCu hstep ihV =>
-    -- Goal: WfM Γ (.app u v').
     cases hwf with
     | @app _ _ _ z hStarFn hStarArg =>
       have hwfV : WfM Γ v := wfM_left_of_wsubmstar hStarArg
       have hwfZ : WfM Γ z := wfM_right_of_wsubmstar hStarArg
-      have hwfV' : WfM Γ v' := ihV hwfV
+      have hwfV' : WfM Γ v' := (ihV hwfV).some
       have hpvΓ : Prevalid Γ := prevalid_of_wfM hwfV
       have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
       have hLCv : Term.LC v := WfM.lc hwfV
@@ -1033,13 +1023,11 @@ theorem Lemma_6_EvaluationPreservesWf
       have hStarV'_v : WSubMStar Γ v' v := WSubMStar.sub hwfV' hSubV'_v hwfV
       have hStarV'_z : WSubMStar Γ v' z :=
         WSubMStar.trs hStarV'_v hwfV hStarArg
-      exact WfM.app hStarFn hStarV'_z
+      exact ⟨WfM.app hStarFn hStarV'_z⟩
   | @absBound bound bound' body L hstep hbodyLC ihBound =>
-    -- Goal: WfM Γ (.abs bound' body).
     cases hwf with
     | @fun_ _ _ _ L₀ hT hB =>
-      -- IH on Step bound bound': WfM Γ bound -> WfM Γ bound'.
-      have hwfBd' : WfM Γ bound' := ihBound hT
+      have hwfBd' : WfM Γ bound' := (ihBound hT).some
       -- Need: cofinite WfM (⟨x, bound', .sub⟩ :: Γ) (body^[x]).
       -- Strategy: take x ∉ L₀ ∪ Γ.dom, use hB x hxL₀ to get
       -- WfM (⟨x, bound, .sub⟩ :: Γ) (body^[x]), then narrow via Lemma 23.
@@ -1058,8 +1046,7 @@ theorem Lemma_6_EvaluationPreservesWf
         rcases Finset.mem_union.mp hy' with h | h
         · exact hfvBd h
         · exact h
-      -- Build the new cofinite witness.
-      refine WfM.fun_ (L₀ ∪ Γ.dom) hwfBd' ?_
+      refine ⟨WfM.fun_ (L₀ ∪ Γ.dom) hwfBd' ?_⟩
       intro y hy
       have hyL₀ : y ∉ L₀ := fun h =>
         hy (Finset.mem_union.mpr (Or.inl h))
@@ -1067,17 +1054,15 @@ theorem Lemma_6_EvaluationPreservesWf
         hy (Finset.mem_union.mpr (Or.inr h))
       have hwfBody_old : WfM (⟨y, bound, .sub⟩ :: Γ) (Term.opening (.fvar y) body) :=
         hB y hyL₀
-      -- Apply Lemma 23 with Γ₂ = [] to swap the head bound -> bound'.
       have :=
         Lemma_23_NarrowingWf (Γ₁ := Γ) (Γ₂ := []) (x := y)
           (t := bound') (t' := bound) (u := Term.opening (.fvar y) body)
           (by simpa using hwfBody_old) hLCBd' hfvBd'
       simpa using this
   | @absBody bound body body' L hLCbound hbody ihBody =>
-    -- Goal: WfM Γ (.abs bound body').
     cases hwf with
     | @fun_ _ _ _ L₀ hT hB =>
-      refine WfM.fun_ (L ∪ L₀ ∪ Γ.dom) hT ?_
+      refine ⟨WfM.fun_ (L ∪ L₀ ∪ Γ.dom) hT ?_⟩
       intro y hy
       have hyL : y ∉ L := fun h => hy (by
         apply Finset.mem_union.mpr; left
@@ -1087,8 +1072,16 @@ theorem Lemma_6_EvaluationPreservesWf
         apply Finset.mem_union.mpr; right; exact h)
       have hwfBody_old : WfM (⟨y, bound, .sub⟩ :: Γ) (Term.opening (.fvar y) body) :=
         hB y hyL₀
-      -- Apply IH at this fresh y, with Γ := ⟨y, bound, .sub⟩ :: Γ.
-      exact ihBody y hyL hwfBody_old
+      exact (ihBody y hyL hwfBody_old).some
+
+/-- **Lemma 6 (Evaluation preserves well-formedness).** Type-valued
+accessor wrapping `Lemma_6_EvaluationPreservesWf_J`. -/
+noncomputable def Lemma_6_EvaluationPreservesWf
+    {Γ : Ctx} {t t' : Term}
+    (hwf : WfM Γ t)
+    (hstep : Step t t') :
+    WfM Γ t' :=
+  (Lemma_6_EvaluationPreservesWf_J hwf hstep).some
 
 /-! ## §7. Theorem 4 — Progress
 
@@ -1150,7 +1143,7 @@ theorem Theorem_4_Progress
           exact ⟨_, Step.appR hLCu hStepV⟩
       · -- u is Top — contradicts Lemma 11.
         subst hTop
-        exact absurd hwSU (fun h => Lemma_11_TopHasNoFunctionSupertype h)
+        exact (Lemma_11_TopHasNoFunctionSupertype hwSU).elim
       · -- u steps.
         right; right
         exact ⟨_, Step.appL hStepU hLCv⟩
@@ -1162,7 +1155,7 @@ theorem Theorem_4_Progress
 If `Γ ⊢ t ≤*_wf u` and `t ↦ t'`, then `Γ ⊢ t' ≤*_wf u`.
 
 Conditional on Lemma 6 (which is itself conditional on Conjecture 8). -/
-theorem Theorem_5_Preservation
+noncomputable def Theorem_5_Preservation
     {Γ : Ctx} {t t' u : Term}
     (hwf : WSubMStar Γ t u)
     (hstep : Step t t') :
@@ -1191,9 +1184,9 @@ theorem Theorem_5_Preservation
   have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hpvΓ
   have hLCt : Term.LC t := WfM.lc hwfT
   have hfvT : Term.fv t ⊆ Γ.dom := WfM.fv_subset hwfT
-  -- 4. Apply Proposition 17: get MEqRed Γ [] t t' (Prop-wrapped, so `obtain`).
-  obtain ⟨hMEq⟩ : Nonempty (MEqRed Γ [] t t') :=
-    Proposition_17_FromOperationalToEqRed hpvNil hLCt hfvT hstep
+  -- 4. Apply Proposition 17: get MEqRed Γ [] t t' (Prop-wrapped, extract via Classical.choice).
+  have hMEq : MEqRed Γ [] t t' :=
+    (Proposition_17_FromOperationalToEqRed hpvNil hLCt hfvT hstep).some
   -- 5. Build WSubM Γ t' t' via Ws-Rfl: needs WfM Γ t'.
   have hSubT' : WSubM Γ t' t' := WSubM.rfl hwfT'
   -- 6. Apply Ws-Rgh: from WSubM Γ t' t' and MEqRed Γ [] t t', get WSubM Γ t' t.

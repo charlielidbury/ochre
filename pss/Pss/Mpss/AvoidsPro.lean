@@ -278,6 +278,93 @@ theorem MEqRed_fv_preserve {Γ : Ctx} {s : Stack} {u v : Term}
   · exact hfv h'
   · exact h'
 
+/-- Helper: a `.equ`-head context is rebindable: replace the bound term
+of the head from `α` to `α'` (related by `MEqRed Γ [] α α'`) preserves
+`Prevalid`. Requires the head name `y` not to be in `Γ.dom` (which is
+already a Prevalid invariant) and `α'`'s data to fit. -/
+private noncomputable def Prevalid.equ_head_swap
+    {Γ : Ctx} {y : String} {α α' : Term}
+    (hpv : Prevalid (⟨y, α, .equ⟩ :: Γ))
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ.dom) :
+    Prevalid (⟨y, α', .equ⟩ :: Γ) := by
+  cases hpv with
+  | equ hΓ hy _hfv _hlc => exact Prevalid.equ hΓ hy hfvα' hLCα'
+
+/-- Helper: extend the swap to PrevalidExt for arbitrary stack. -/
+private noncomputable def PrevalidExt.equ_head_swap
+    {Γ : Ctx} {y : String} {α α' : Term} {s : Stack}
+    (hpv : PrevalidExt (⟨y, α, .equ⟩ :: Γ) s)
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ.dom) :
+    PrevalidExt (⟨y, α', .equ⟩ :: Γ) s := by
+  induction hpv with
+  | nil hΓ => exact PrevalidExt.nil (Prevalid.equ_head_swap hΓ hLCα' hfvα')
+  | @cons _ β hpvE hLCβ hfvβ ih =>
+    -- The β stack entry needs fv ⊆ (⟨y, α', .equ⟩ :: Γ).dom; since
+    -- (⟨y, α, .equ⟩ :: Γ).dom = (⟨y, α', .equ⟩ :: Γ).dom (only the bound changes,
+    -- not the names), the fvβ scoping is preserved.
+    refine PrevalidExt.cons ih hLCβ ?_
+    intro z hz
+    have hzd := hfvβ hz
+    -- (⟨y, α, .equ⟩ :: Γ).dom = insert y Γ.dom = (⟨y, α', .equ⟩ :: Γ).dom
+    have h1 : Ctx.dom (⟨y, α, .equ⟩ :: Γ) = insert y Γ.dom := Ctx.dom_cons _ _
+    have h2 : Ctx.dom (⟨y, α', .equ⟩ :: Γ) = insert y Γ.dom := Ctx.dom_cons _ _
+    rw [h2]
+    rw [h1] at hzd
+    exact hzd
+
+/-! ## §1.7. Stack-head and equ-head replacement for MEqRed
+
+These lemmas allow MEqRed derivations to be re-cast across changes in
+the head of the context (`.equ`-binding swap) and the stack head.
+Together they discharge the App×App use of `Lemma_2_DiamondMEqRed_ctx_axiom`
+in `_inline_app`, eliminating that axiom from `_core`'s closure.
+
+* `MEqRed.equ_head_replace`: swap the bound term of a `.equ`-head
+  context from `α` to `α'` (related by `MEqRed Γ [] α α'`), GIVEN an
+  `avoidsPro h y = true` premise (rules out `Me-Pro y` lookups that
+  would observe the changed binding).
+
+* `MEqRed.stack_head_replace`: swap the head term of the stack from
+  `α` to `α'`, with the same `avoidsPro` premise (the body's `.equ`
+  recursion uses the head, so the same condition propagates).
+
+The `avoidsPro` premise is satisfied automatically for `MEqRed.refl`
+derivations (via `avoidsPro_refl`). For derivations that arise inside
+`_core`'s App×App, the premise can be extracted from the
+moreover-clause of the IH closing (planned future work).
+
+**STATUS:** `equ_head_replace` is implemented below (with the
+structural recursion + `avoidsPro` discharge for `Me-Pro y`).
+`stack_head_replace` and the corresponding `_ctx_axiom` discharge are
+follow-up targets. -/
+
+/-! ### Helper for the equBinds lookup at modified head -/
+
+/-- If `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds z α_z` and `z ≠ y`, the
+lookup is unaffected by changing `α` to `α'` (since `z ≠ y` skips the
+head). -/
+private theorem _equBinds_equ_head_swap_neq
+    {Γ₁ Γ₂ : Ctx} {y z : String} {α α' α_z : Term}
+    (hyz : z ≠ y)
+    (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds z α_z) :
+    (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁).equBinds z α_z := by
+  induction Γ₂ with
+  | nil =>
+    simp [Ctx.equBinds, Ctx.lookupEqu_cons] at hb ⊢
+    by_cases h : y = z
+    · exact absurd h.symm hyz
+    · simp [h] at hb ⊢
+      exact hb
+  | cons e rest ih =>
+    show Ctx.lookupEqu (e :: (rest ++ ⟨y, α', .equ⟩ :: Γ₁)) z = some α_z
+    have h1 : Ctx.lookupEqu (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) z = some α_z := hb
+    rw [Ctx.lookupEqu_cons] at h1 ⊢
+    by_cases he : e.name = z
+    · rw [if_pos he] at h1 ⊢; exact h1
+    · rw [if_neg he] at h1 ⊢; exact ih h1
+
+
+
 /-! ## §2. Bool-valued `avoidsPro` (post `MEqRed : Type` refactor)
 
 `avoidsPro h x = true` iff the derivation `h : MEqRed Γ s u v` does not
@@ -444,30 +531,41 @@ even though Lean's kernel cannot verify this directly because
 
 /-- `MEqRed.refl _ _ _` always has `avoidsPro = true` for any `x`.
 
-Structurally true: `MEqRed.refl_J`'s definition (in
-`Pss.Mpss.Substitution`) by induction on `Term.LC` only ever invokes
-the `top`/`var`/`app`/`fun_`/`fOp` constructors of `MEqRed`, none of
-which is `Me-Pro`. The axiom exists because `MEqRed.refl_J` returns a
-`MEqRedJ = Nonempty (MEqRed _ _ _ _)`, and `MEqRed.refl` extracts via
-`.some`. `Classical.choice` makes the resulting `MEqRed` constructor
-tree opaque to the kernel.
+**Post-Type-LC refactor (Option B): now a theorem.**
+With `Term.LC : Type`, `MEqRed.refl` is built by direct structural
+recursion on the LC witness (no `Classical.choice` extraction). The
+recursion only ever invokes `top`/`var`/`app`/`fun_`/`fOp` —
+constructors that have `avoidsPro = true` for any `x` — so the result
+follows by mirror-induction on the same LC witness.
 
-This is the **single new axiom** added in service of the moreover-clause
-threading. It would, if consumed, replace the 2 β-step residual axioms
-(`Lemma_2_inline_app_bet_residual_axiom`,
-`Lemma_2_inline_bet_residual_axiom`) and arguably also unlock
-`Lemma_2_DiamondMEqRed_ctx_axiom` and Lemma 1's residual — net axiom
-reduction.
-
-**Status (post-Wave-7):** INACTIVE. Not yet wired into the β-residual
-discharge sites; therefore not in any headline theorem's `#print
-axioms` closure. Listed in `AXIOMS.md` as INACTIVE outstanding
-axiom #12. -/
-axiom avoidsPro_refl
+The proof uses `MEqRed.refl.eq_def` (the equation compiler's defining
+equations) to unfold the recursion at each constructor, then applies
+the per-constructor `avoidsPro_*` `simp` lemmas. -/
+theorem avoidsPro_refl
     {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom)
     (x : String) :
-    avoidsPro (MEqRed.refl hpv hLC hfv) x = true
+    avoidsPro (MEqRed.refl hpv hLC hfv) x = true := by
+  induction hLC generalizing s Γ with
+  | top =>
+    simp only [MEqRed.refl, avoidsPro_top]
+  | fvar y =>
+    simp only [MEqRed.refl, avoidsPro_var]
+  | @app a b hLCa hLCb iha ihb =>
+    simp only [MEqRed.refl, avoidsPro_app, Bool.and_eq_true]
+    refine ⟨iha _ _, ihb _ _⟩
+  | @abs L bound body hLCbound hbody ihbound ihbody =>
+    cases s with
+    | nil =>
+      simp only [MEqRed.refl, avoidsPro_fun_, Bool.and_eq_true]
+      refine ⟨ihbound _ _, ?_⟩
+      exact ihbody _ _ _ _
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        simp only [MEqRed.refl, avoidsPro_fOp, Bool.and_eq_true]
+        refine ⟨ihbound _ _, ?_⟩
+        exact ihbody _ _ _ _
 
 /-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
 

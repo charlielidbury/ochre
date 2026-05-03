@@ -45,7 +45,7 @@ because the bare `WSubM Γ₁ t t'` does NOT in general imply
 `fv t ⊆ Γ₁.dom` (cf. `WSubM.lf1` + `MEqRed.var` for an unscoped variable;
 see `Pss/Mpss/WellFormed.lean` §5.5). All downstream callers can supply
 these premises. -/
-theorem Lemma_26a_NarrowingPrevalid_kind
+noncomputable def Lemma_26a_NarrowingPrevalid_kind
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term}
     (hpv : Prevalid (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁))
     (hLCt : Term.LC t)
@@ -85,7 +85,7 @@ theorem Lemma_26a_NarrowingPrevalid_kind
 /-- **Lemma 26** (Pasquale & García-Pérez 2024, Narrowing for
 `PrevalidExt`). Restricted form: takes `Term.fv t ⊆ Γ₁.dom` and
 `Term.LC t` instead of relying on a bare `WSubM`. -/
-theorem Lemma_26_NarrowingPrevalid
+noncomputable def Lemma_26_NarrowingPrevalid
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
     (hpv : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s)
     (hLCt : Term.LC t)
@@ -109,7 +109,7 @@ theorem Lemma_26_NarrowingPrevalid
 /-- Convenience wrapper: derive Lemma 26 from a `WSubM Γ₁ t t'` plus an
 explicit `Term.fv t ⊆ Γ₁.dom` premise. The `LC t` part is recovered from
 `WSubM.lc_left`. -/
-theorem Lemma_26_NarrowingPrevalid_ofWSubM
+noncomputable def Lemma_26_NarrowingPrevalid_ofWSubM
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' : Term} {s : Stack}
     (hpv : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) s)
     (hsub : WSubM Γ₁ t t')
@@ -437,22 +437,22 @@ We thread `Γ₂` (the inner partition) and the equality
 section Narrowing23
 variable (Γ₁out : Ctx) (xout : String) (tout tout' : Term)
 
-/-- Combined narrowing motive for `WfM`. -/
-private def _N_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Prop :=
+/-- Combined narrowing motive for `WfM`. `Type`-valued. -/
+private def _N_motive_wf : (Γ : Ctx) → (u : Term) → WfM Γ u → Type :=
   fun Γ u _ => ∀ Γ₂ : Ctx,
     Γ = Γ₂ ++ ⟨xout, tout', .sub⟩ :: Γ₁out →
     Term.LC tout → Term.fv tout ⊆ Γ₁out.dom →
     WfM (Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out) u
 
-/-- Combined narrowing motive for `WSubM`. -/
-private def _N_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Prop :=
+/-- Combined narrowing motive for `WSubM`. `Type`-valued. -/
+private def _N_motive_sub : (Γ : Ctx) → (v u : Term) → WSubM Γ v u → Type :=
   fun Γ v u _ => ∀ Γ₂ : Ctx,
     Γ = Γ₂ ++ ⟨xout, tout', .sub⟩ :: Γ₁out →
     Term.LC tout → Term.fv tout ⊆ Γ₁out.dom →
     WSubM (Γ₂ ++ ⟨xout, tout, .sub⟩ :: Γ₁out) v u
 
-/-- Combined narrowing motive for `WSubMStar`. -/
-private def _N_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Prop :=
+/-- Combined narrowing motive for `WSubMStar`. `Type`-valued. -/
+private def _N_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u → Type :=
   fun Γ v u _ => ∀ Γ₂ : Ctx,
     Γ = Γ₂ ++ ⟨xout, tout', .sub⟩ :: Γ₁out →
     Term.LC tout → Term.fv tout ⊆ Γ₁out.dom →
@@ -460,7 +460,7 @@ private def _N_motive_star : (Γ : Ctx) → (v u : Term) → WSubMStar Γ v u �
 
 /-- The 11 case payloads for the narrowing mutual recursor. -/
 
-private theorem _N_varSub :
+private noncomputable def _N_varSub :
     ∀ {Γ : Ctx} {y : String} {u : Term}
       (hpv : Prevalid Γ) (hb : Γ.subBinds y u),
       _N_motive_wf Γ₁out xout tout tout' Γ (.fvar y) (WfM.varSub hpv hb) := by
@@ -471,7 +471,8 @@ private theorem _N_varSub :
   by_cases hyx : y = xout
   · subst hyx
     by_cases hshad : ∃ b, Γ₂.subBinds y b
-    · obtain ⟨b, hb_in_Γ₂⟩ := hshad
+    · let b : Term := Classical.choose hshad
+      have hb_in_Γ₂ : Γ₂.subBinds y b := Classical.choose_spec hshad
       have h_old : (Γ₂ ++ ⟨y, tout', .sub⟩ :: Γ₁out).subBinds y b :=
         Ctx.lookupSub_append_left Γ₂ _ y b hb_in_Γ₂
       have hb_u : b = u := by
@@ -491,7 +492,7 @@ private theorem _N_varSub :
       _subBinds_narrow_neq hyx hb
     exact WfM.varSub hpvN hb_new
 
-private theorem _N_varEqu :
+private noncomputable def _N_varEqu :
     ∀ {Γ : Ctx} {y : String} {α : Term}
       (hpv : Prevalid Γ) (hb : Γ.equBinds y α),
       _N_motive_wf Γ₁out xout tout tout' Γ (.fvar y) (WfM.varEqu hpv hb) := by
@@ -501,14 +502,14 @@ private theorem _N_varEqu :
     Lemma_26a_NarrowingPrevalid_kind hpv hLCt hfvt
   exact WfM.varEqu hpvN (_equBinds_narrow hb)
 
-private theorem _N_top :
+private noncomputable def _N_top :
     ∀ {Γ : Ctx} (hpv : Prevalid Γ),
       _N_motive_wf Γ₁out xout tout tout' Γ .top (WfM.top hpv) := by
   intro Γ hpv Γ₂ hΓ hLCt hfvt
   subst hΓ
   exact WfM.top (Lemma_26a_NarrowingPrevalid_kind hpv hLCt hfvt)
 
-private theorem _N_fun :
+private noncomputable def _N_fun :
     ∀ {Γ : Ctx} {t₀ u : Term} (L : Finset String)
       (hT : WfM Γ t₀)
       (hB : ∀ y, y ∉ L → WfM (⟨y, t₀, .sub⟩ :: Γ) (Term.opening (.fvar y) u))
@@ -524,7 +525,7 @@ private theorem _N_fun :
   have ih := ihB y hy (⟨y, t₀, .sub⟩ :: Γ₂) (by simp) hLCt hfvt
   simpa using ih
 
-private theorem _N_app :
+private noncomputable def _N_app :
     ∀ {Γ : Ctx} {u v t₀ : Term}
       (hStarU : WSubMStar Γ u (.abs t₀ .top))
       (hStarV : WSubMStar Γ v t₀)
@@ -535,7 +536,7 @@ private theorem _N_app :
   subst hΓ
   exact WfM.app (ihU Γ₂ rfl hLCt hfvt) (ihV Γ₂ rfl hLCt hfvt)
 
-private theorem _N_rfl :
+private noncomputable def _N_rfl :
     ∀ {Γ : Ctx} {u : Term} (hwf : WfM Γ u)
       (ihwf : _N_motive_wf Γ₁out xout tout tout' Γ u hwf),
       _N_motive_sub Γ₁out xout tout tout' Γ u u (WSubM.rfl hwf) := by
@@ -543,7 +544,7 @@ private theorem _N_rfl :
   subst hΓ
   exact WSubM.rfl (ihwf Γ₂ rfl hLCt hfvt)
 
-private theorem _N_lf1 :
+private noncomputable def _N_lf1 :
     ∀ {Γ : Ctx} {v v' u : Term}
       (hred : MEqRed Γ [] v v')
       (hsub : WSubM Γ v' u)
@@ -555,7 +556,7 @@ private theorem _N_lf1 :
     Lemma_25_NarrowingMEqRed hred hLCt hfvt
   exact WSubM.lf1 hred' (ih Γ₂ rfl hLCt hfvt)
 
-private theorem _N_lf2 :
+private noncomputable def _N_lf2 :
     ∀ {Γ : Ctx} {v v' u : Term}
       (hwfV : WfM Γ v) (hred : MSubRed Γ [] v v')
       (hwfV' : WfM Γ v') (hsub : WSubM Γ v' u)
@@ -572,7 +573,7 @@ private theorem _N_lf2 :
                   (ihwfV' Γ₂ rfl hLCt hfvt)
                   (ih Γ₂ rfl hLCt hfvt)
 
-private theorem _N_rgh :
+private noncomputable def _N_rgh :
     ∀ {Γ : Ctx} {v u u' : Term}
       (hsub : WSubM Γ v u') (hred : MEqRed Γ [] u u')
       (ih : _N_motive_sub Γ₁out xout tout tout' Γ v u' hsub),
@@ -583,7 +584,7 @@ private theorem _N_rgh :
     Lemma_25_NarrowingMEqRed hred hLCt hfvt
   exact WSubM.rgh (ih Γ₂ rfl hLCt hfvt) hred'
 
-private theorem _N_sub_star :
+private noncomputable def _N_sub_star :
     ∀ {Γ : Ctx} {v u : Term}
       (hwfV : WfM Γ v) (hsub : WSubM Γ v u) (hwfT : WfM Γ u)
       (ihwfV : _N_motive_wf Γ₁out xout tout tout' Γ v hwfV)
@@ -596,7 +597,7 @@ private theorem _N_sub_star :
   exact WSubMStar.sub (ihwfV Γ₂ rfl hLCt hfvt) (ihsub Γ₂ rfl hLCt hfvt)
                        (ihwfT Γ₂ rfl hLCt hfvt)
 
-private theorem _N_trs_star :
+private noncomputable def _N_trs_star :
     ∀ {Γ : Ctx} {v u w : Term}
       (hStar1 : WSubMStar Γ v u) (hwfU : WfM Γ u) (hStar2 : WSubMStar Γ u w)
       (ih1 : _N_motive_star Γ₁out xout tout tout' Γ v u hStar1)
@@ -613,7 +614,7 @@ end Narrowing23
 
 /-- **Lemma 23** (Pasquale & García-Pérez 2024, Narrowing for `WfM`).
 Restricted form: takes `Term.fv t ⊆ Γ₁.dom` and `Term.LC t` directly. -/
-theorem Lemma_23_NarrowingWf
+noncomputable def Lemma_23_NarrowingWf
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u : Term}
     (hwf : WfM (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) u)
     (hLCt : Term.LC t)
@@ -637,7 +638,7 @@ theorem Lemma_23_NarrowingWf
     hwf Γ₂ rfl hLCt hfvt
 
 /-- Companion narrowing for `WSubM`. -/
-theorem Lemma_23_NarrowingWSubM
+noncomputable def Lemma_23_NarrowingWSubM
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' v u : Term}
     (hsub : WSubM (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) v u)
     (hLCt : Term.LC t)
@@ -661,7 +662,7 @@ theorem Lemma_23_NarrowingWSubM
     hsub Γ₂ rfl hLCt hfvt
 
 /-- Companion narrowing for `WSubMStar`. -/
-theorem Lemma_23_NarrowingWSubMStar
+noncomputable def Lemma_23_NarrowingWSubMStar
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' v u : Term}
     (hstar : WSubMStar (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) v u)
     (hLCt : Term.LC t)

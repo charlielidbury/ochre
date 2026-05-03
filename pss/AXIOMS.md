@@ -5,8 +5,67 @@ v2, December 2025), the MPSS Krivine-style reformulation of Hutchins'
 Pure Subtype Systems. Type safety (Theorems 4 and 5) is conditional on
 the axioms below.
 
-**Total axiom count: 12** (1 permanent, 9 active outstanding, 2 inactive
+**Total axiom count: 11** (1 permanent, 9 active outstanding, 1 inactive
 outstanding).
+
+**Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
+`avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
+real theorem in commit `64162c2` after lifting `Term.LC` from `Prop` to
+`Type`. The 5 active β-residual axioms (#6, #7, #8, #9, #10) remain
+because they require restructuring `Lemma_2_DiamondMEqRed_core`'s
+induction scheme to a lex measure on `(Term.size t₀, avoidsPro-count)`
+— a separate, multi-day refactor. The Type-LC refactor was the
+prerequisite for that work but does not by itself complete it.
+
+### Discharge plan for the β-residuals (post-Type-LC, next-session targets)
+
+The β-residuals have a single shared blocker: `_core`'s `induction h₁`
+fixes the IHs at the source-derivation's stack, which prevents the
+App×App and β-step arms from cleanly closing across stack-head shifts
+and term-substitutions. Concrete plan:
+
+1. **`MEqRed.equ_head_replace` (new lemma).** Given `MEqRed (⟨y, α,
+   .equ⟩ :: Γ) s u u'`, `MEqRed Γ [] α α'`, AND `avoidsPro h y = true`,
+   produce `MEqRed (⟨y, α', .equ⟩ :: Γ) s u u'`. Structural recursion;
+   `Me-Pro` arm is the discharge site for the `avoidsPro` premise (when
+   `Me-Pro` looks up `equBinds y α`, the avoidsPro witness rules out
+   `y = name-being-promoted`). With `avoidsPro_refl` now a real
+   theorem, the closing tree's `MEqRed.refl` invocations satisfy
+   `avoidsPro = true` automatically. Estimated ~150-200 lines.
+
+2. **`MEqRed.stack_head_replace` (new lemma).** Given
+   `MEqRed Γ (α :: s) u u'` and `MEqRed Γ [] α α'`, produce
+   `MEqRed Γ (α' :: s) u u'`. Structural recursion; the `fOp` arm
+   reduces to `MEqRed.equ_head_replace` (item 1) since the body's
+   `.equ` head is `α`. Estimated ~100 lines on top of item 1.
+
+3. **`Lemma_2_DiamondMEqRed_ctx_axiom` (single-step Ct-Stk discharge).**
+   With items 1 and 2, the App×App `_inline_app` arm's use of
+   `_ctx_axiom` (which is exactly a single Ct-Stk step) becomes
+   directly provable: apply `MEqRed.stack_head_replace` to lift
+   `hu'_w` and `hu₂_w` from stack `(v::s)` to stacks `(v'::s)` and
+   `(v₂::s)` respectively. Eliminates `_ctx_axiom` from `_core`'s
+   closure, which removes it from Theorems 3, 4, Lemma 1 / 2 closures.
+
+4. **β-residual axioms (#6, #9, #10).** Threading the moreover-clause
+   through `_core`'s App×App, App×Bet, Bet×* arms requires
+   restructuring `_core` to either (a) thread an `avoidsPro` premise
+   through every constructor case, OR (b) compute the moreover-clause
+   as a separate property of `_core`'s output via a second induction.
+   Path (b) is cleaner but requires items 1-3 to be in place first
+   (the closing arms of `_core` invoke `MEqRed.refl`, whose `avoidsPro`
+   is now `true` thanks to `avoidsPro_refl`). Estimated ~500-1000
+   lines combined.
+
+5. **`Lemma_1_inline_app_bet_residual` (#7) and `Lemma_1_ctx_axiom`
+   (#6).** Mirror of the Lemma 2 work for the strong-commutativity
+   diagram. Same approach with MSubRed in place of one of the MEqRed.
+
+The `_inline_app`'s App×App use of `_ctx_axiom` is the single highest-
+leverage target: discharging it (via items 1-3) eliminates
+`_ctx_axiom` from ALL headline theorem closures (it remains only in
+the explicit `Lemma_2_DiamondMEqRed_general` form which is paper-API
+boilerplate, not a headline).
 
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
@@ -291,32 +350,17 @@ Lemma 2.
 * **Estimated complexity:** Small (~50-100 lines if anyone wants to
   prove it).
 
-### 12. `avoidsPro_refl`
+### 12. `avoidsPro_refl` — DISCHARGED (post Type-LC refactor)
 
-* **File:** `Pss/Mpss/AvoidsPro.lean`, line 461.
+* **File:** `Pss/Mpss/AvoidsPro.lean`, line 457.
 * **Statement:** `avoidsPro (MEqRed.refl hpv hLC hfv) x = true` for any
   context, term, scope witness, and variable name.
-* **Status:** Inactive outstanding. Consumed only by `Lemma_30_msPro_x`
-  (a theorem in the same file, line 611), which is itself consumed only
-  by hypothetical future `Lemma_30_ReductionUnderSubst_Sub` callers.
-  Not yet wired into `TypeSafety.lean`'s `_S_lf2` site, hence does not
-  appear in any headline theorem's dependency closure.
-* **Paper:** N/A (mechanization-side bridging axiom).
-* **Discharge plan:** Documented in file lines 405-443. The axiom is
-  morally true: `MEqRed.refl_J`'s derivation tree only invokes
-  `top`/`var`/`app`/`fun_`/`fOp` constructors, all of which trivially
-  satisfy `avoidsPro = true`. The kernel cannot verify this because
-  `MEqRed.refl` extracts via `Classical.choice` from a `Nonempty`. Two
-  paths:
-  1. Type-valued `Term.LC` (Option B — would let `MEqRed.refl_J` be
-     `Type`-valued and structurally recursive);
-  2. Source-driven `refl_for : MEqRed Γ s α α' → MEqRed Γ s α' α'` by
-     induction on the source — works for all cases except `Me-Bet`,
-     whose destination `Term.opening v' body'` has no
-     constructor-decomposable refl shape without re-deriving structural
-     induction on `LC` (i.e. circling back to path 1).
-* **Estimated complexity:** Large on path 1 (cross-codebase refactor);
-  see `PLAN.md`'s discharge-campaign section "Option B".
+* **Status:** PROVED as a theorem in commit `64162c2` (branch
+  `type-lc-experiment`). With `Term.LC : Type` (post-Type-LC refactor),
+  `MEqRed.refl` is built by direct structural recursion on the LC
+  witness without `Classical.choice`, so the constructor tree of
+  `MEqRed.refl` is observable to the `simp [MEqRed.refl, avoidsPro_*]`
+  unfolding. The theorem mirrors the recursion of `MEqRed.refl` exactly.
 
 ---
 

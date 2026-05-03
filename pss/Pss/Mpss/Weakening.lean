@@ -247,7 +247,7 @@ The foundational piece (always available, used as a side condition by
 the other cases): extending a prevalid extended context with a fresh
 block in the middle preserves prevalidity. -/
 
-theorem Lemma_19_WeakeningPrevalid {Γ₁ Δ Γ₂ : Ctx} {s : Stack}
+noncomputable def Lemma_19_WeakeningPrevalid {Γ₁ Δ Γ₂ : Ctx} {s : Stack}
     (hpv' : Prevalid (Γ₁ ++ Δ ++ Γ₂))
     (hpvExt : PrevalidExt (Γ₁ ++ Γ₂) s) :
     PrevalidExt (Γ₁ ++ Δ ++ Γ₂) s := by
@@ -261,7 +261,7 @@ theorem Lemma_19_WeakeningPrevalid {Γ₁ Δ Γ₂ : Ctx} {s : Stack}
     tauto
 
 /-- "Append-on-top" form (paper's `Γ, Γ'`). -/
-theorem Lemma_19_WeakeningPrevalid_append {Γ Δ : Ctx} {s : Stack}
+noncomputable def Lemma_19_WeakeningPrevalid_append {Γ Δ : Ctx} {s : Stack}
     (hpv' : Prevalid (Δ ++ Γ))
     (hpvExt : PrevalidExt Γ s) :
     PrevalidExt (Δ ++ Γ) s := by
@@ -412,7 +412,7 @@ Lemma 21 arms) to recover `fv t ⊆ Γ.dom` etc. from the body sub-
 derivation after the wrapper refactor.
 -/
 
-private theorem _extractPrevalidOfMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def _extractPrevalidOfMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
@@ -424,7 +424,7 @@ private theorem _extractPrevalidOfMEqRed {Γ : Ctx} {s : Stack} {u v : Term}
   | @tAp Γ s u hpv _ _ => exact extractPrevalid hpv
   | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
 
-private theorem _extractPrevalidOfMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def _extractPrevalidOfMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x t hpv _ => exact extractPrevalid hpv
@@ -433,11 +433,13 @@ private theorem _extractPrevalidOfMSubRed {Γ : Ctx} {s : Stack} {u v : Term}
   | @app Γ st u u' v _ _ _ ihu => exact ihu
   | @fun_ Γ t body body' L _ _ ihbody =>
     classical
-    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    let x : String := Classical.choose (Term.exists_fresh L)
+    have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact (ihbody x hx).tail
   | @fOp Γ st t α body body' L _ _ ihbody =>
     classical
-    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    let x : String := Classical.choose (Term.exists_fresh L)
+    have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact (ihbody x hx).tail
 
 /-! ## Bridge: unscoped → scoped

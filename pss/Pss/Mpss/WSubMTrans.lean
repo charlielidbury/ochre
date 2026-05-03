@@ -60,7 +60,7 @@ downstream consumers that ultimately strip back to `MSub` or that can
 finish via `Theorem_3_TransitivityIsAdmissible`.
 
 PROVED. -/
-theorem WSubMStar.WSubM_trans
+def WSubMStar.WSubM_trans
     {Γ : Ctx} {a b c : Term}
     (hwfA : WfM Γ a) (hwfB : WfM Γ b) (hwfC : WfM Γ c)
     (h₁ : WSubM Γ a b) (h₂ : WSubM Γ b c) :
@@ -69,7 +69,7 @@ theorem WSubMStar.WSubM_trans
 
 /-- **Star-on-star transitivity** of `WSubMStar`. Direct application of
 `WSubMStar.trs`. Convenience wrapper. -/
-theorem WSubMStar.trans
+def WSubMStar.trans
     {Γ : Ctx} {a b c : Term}
     (hwfB : WfM Γ b)
     (h₁ : WSubMStar Γ a b) (h₂ : WSubMStar Γ b c) :
@@ -90,24 +90,25 @@ by repeated application of `WSubM.lf1`. By induction on the chain.
 
 PROVED. No `WfM` premises needed (mirrors `lf1`'s lack of `WfM`
 decoration). -/
-theorem WSubM.left_lf1_chain
+noncomputable def WSubM.left_lf1_chain
     {Γ : Ctx} {a a' c : Term}
     (hChain : MEqRedStar Γ [] a a')
     (hSub : WSubM Γ a' c) :
     WSubM Γ a c := by
   -- Strengthen so we can induct on the chain endpoint.
+  -- The chain is Prop-valued; conclusion is Type. Wrap in Nonempty for
+  -- induction, then extract via .some at the end.
   suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x a'),
-      WSubM Γ a' c → WSubM Γ x c from key hChain hSub
+      Nonempty (WSubM Γ a' c → WSubM Γ x c) from (key hChain).some hSub
   intro x h
-  -- head_induction_on adds steps at the front: chain = head :: tail.
   refine Relation.ReflTransGen.head_induction_on (b := a')
     (P := fun x (_ : MEqRedStar Γ [] x a') =>
-      WSubM Γ a' c → WSubM Γ x c) h ?_ ?_
-  · -- refl: x = a'. Given `WSubM Γ a' c`, return it.
-    intro hSub'; exact hSub'
-  · -- head: hHead : MEqRedJ Γ [] x y; hTail : MEqRedStar Γ [] y a'; ihY at y.
-    intro x y hHead hTail ihY hSubA'
-    have hSubY : WSubM Γ y c := ihY hSubA'
+      Nonempty (WSubM Γ a' c → WSubM Γ x c)) h ?_ ?_
+  · exact ⟨fun hSub' => hSub'⟩
+  · intro x y hHead hTail ihY
+    classical
+    refine ⟨fun hSubA' => ?_⟩
+    have hSubY : WSubM Γ y c := ihY.some hSubA'
     exact WSubM.lf1 hHead.some hSubY
 
 /-- **Append an `MEqRedStar` chain on the RHS of a `WSubM`** — the
@@ -120,26 +121,22 @@ Note the asymmetry with `left_lf1_chain`: there, the chain runs from
 (toward `c'` which is what the WSubM already has).
 
 PROVED. No `WfM` premises needed. -/
-theorem WSubM.right_rgh_chain
+noncomputable def WSubM.right_rgh_chain
     {Γ : Ctx} {a c c' : Term}
     (hSub : WSubM Γ a c')
     (hChain : MEqRedStar Γ [] c c') :
     WSubM Γ a c := by
-  -- Induct on the chain. head_induction_on goes from x at front to c'.
   suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x c'),
-      WSubM Γ a c' → WSubM Γ a x from key hChain hSub
+      Nonempty (WSubM Γ a c' → WSubM Γ a x) from (key hChain).some hSub
   intro x h
   refine Relation.ReflTransGen.head_induction_on (b := c')
     (P := fun x (_ : MEqRedStar Γ [] x c') =>
-      WSubM Γ a c' → WSubM Γ a x) h ?_ ?_
-  · -- refl: x = c'. Given `WSubM Γ a c'`, return it.
-    intro hSub'; exact hSub'
-  · -- head: hHead : MEqRedJ Γ [] x y; hTail : MEqRedStar Γ [] y c'; ihY at y.
-    intro x y hHead hTail ihY hSubC'
-    have hSubAY : WSubM Γ a y := ihY hSubC'
-    -- We have hHead : MEqRedJ Γ [] x y (so MEqRed x → y), and need
-    -- WSubM Γ a x. Apply `rgh`: rgh (h : WSubM Γ a y) (red : MEqRed Γ [] x y)
-    --   : WSubM Γ a x.
+      Nonempty (WSubM Γ a c' → WSubM Γ a x)) h ?_ ?_
+  · exact ⟨fun hSub' => hSub'⟩
+  · intro x y hHead hTail ihY
+    classical
+    refine ⟨fun hSubC' => ?_⟩
+    have hSubAY : WSubM Γ a y := ihY.some hSubC'
     exact WSubM.rgh hSubAY hHead.some
 
 /-! ## §3. Note on single-step `WSubM.trans`

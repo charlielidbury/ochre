@@ -73,8 +73,13 @@ def Term.subst (x : String) (u : Term) : Term → Term
 /-! ## Local closure -/
 
 /-- A term is *locally closed* if every bound variable is bound by some
-enclosing `abs`. The binder case uses cofinite quantification (Aydemir et al.). -/
-inductive Term.LC : Term → Prop
+enclosing `abs`. The binder case uses cofinite quantification (Aydemir et al.).
+
+**Lifted to `Type`** (post-Type-LC refactor): this enables `MEqRed.refl`
+to be defined by direct structural recursion on `LC`, eliminating the
+`Classical.choice` opacity that blocked discharge of the β-residual
+axioms. See `PLAN.md` discharge-campaign Option B. -/
+inductive Term.LC : Term → Type
   | top  : Term.LC .top
   | fvar (x : String) : Term.LC (.fvar x)
   | app {u v : Term} : Term.LC u → Term.LC v → Term.LC (.app u v)
@@ -319,8 +324,12 @@ theorem Term.subst_intro {x : String} {u e : Term} (hx : x ∉ Term.fv e)
 
 /-! ## `subst_lc` — needs the cofinite trick. -/
 
-/-- **subst_lc**: substituting a locally-closed term preserves local closure. -/
-theorem Term.subst_lc {x : String} {u e : Term}
+/-- **subst_lc**: substituting a locally-closed term preserves local closure.
+
+`Type`-valued (since `Term.LC : Type`); use `noncomputable def` because
+the recursion uses `LC` constructors that the code generator does not
+synthesize for `Type`-valued inductives by default. -/
+noncomputable def Term.subst_lc {x : String} {u e : Term}
     (hu : Term.LC u) (he : Term.LC e) :
     Term.LC (Term.subst x u e) := by
   induction he with
@@ -351,8 +360,10 @@ theorem Term.subst_lc {x : String} {u e : Term}
 /-! ## `lc_opening_intro` -/
 
 /-- Restated `LC.abs`: a `λ-abs` is locally closed when its bound annotation is
-LC and its body opens to LC for cofinitely many names. -/
-theorem Term.lc_opening_intro (L : Finset String) {bound body : Term}
+LC and its body opens to LC for cofinitely many names.
+
+`Type`-valued (since `Term.LC : Type`); use `def` rather than `theorem`. -/
+def Term.lc_opening_intro (L : Finset String) {bound body : Term}
     (hb : Term.LC bound)
     (hbody : ∀ x, x ∉ L → Term.LC (body^[x])) :
     Term.LC (.abs bound body) :=

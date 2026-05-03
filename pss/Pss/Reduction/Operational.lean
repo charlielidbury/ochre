@@ -55,27 +55,39 @@ namespace Step
 
 /-! ## Local-closure preservation -/
 
-/-- Every reducible term is locally closed. -/
-theorem lc_left {t t' : Term} (h : t ↦ t') : Term.LC t := by
-  induction h with
-  | beta hAbs hArg => exact Term.LC.app hAbs hArg
-  | appL _ huLC iht => exact Term.LC.app iht huLC
-  | appR htLC _ ihu => exact Term.LC.app htLC ihu
-  | @absBound bound bound' body L _ hbody iht =>
-      exact Term.LC.abs L iht hbody
-  | @absBody bound body body' L hbound _ ihbody =>
-      -- ihbody : ∀ x, x ∉ L → Term.LC (body^[x])
-      exact Term.LC.abs L hbound ihbody
+/-- Every reducible term is locally closed.
 
-/-- Reduction preserves local closure. -/
-theorem lc_right {t t' : Term} (h : t ↦ t') : Term.LC t' := by
+Returns `Nonempty (Term.LC t)` because `Step` is `Prop`-valued and
+`Term.LC : Type` cannot be eliminated into via `Prop` recursion.
+A `noncomputable def Step.lc_left : t ↦ t' → Term.LC t` is provided
+below as a thin choice-extracting wrapper for ergonomic use sites. -/
+theorem lc_left_J {t t' : Term} (h : t ↦ t') : Nonempty (Term.LC t) := by
+  induction h with
+  | beta hAbs hArg => exact ⟨Term.LC.app hAbs hArg⟩
+  | appL _ huLC iht => exact ⟨Term.LC.app iht.some huLC⟩
+  | appR htLC _ ihu => exact ⟨Term.LC.app htLC ihu.some⟩
+  | @absBound bound bound' body L _ hbody iht =>
+      exact ⟨Term.LC.abs L iht.some hbody⟩
+  | @absBody bound body body' L hbound _ ihbody =>
+      -- ihbody : ∀ x, x ∉ L → Nonempty (Term.LC (body^[x]))
+      classical
+      exact ⟨Term.LC.abs L hbound (fun x hx => (ihbody x hx).some)⟩
+
+/-- Type-valued accessor: every reducible term is locally closed. -/
+noncomputable def lc_left {t t' : Term} (h : t ↦ t') : Term.LC t :=
+  (Step.lc_left_J h).some
+
+/-- Reduction preserves local closure.
+
+Returns `Nonempty (Term.LC t')` because `Step` is `Prop`-valued. -/
+theorem lc_right_J {t t' : Term} (h : t ↦ t') : Nonempty (Term.LC t') := by
+  classical
   induction h with
   | @beta bound body arg hAbs hArg =>
       -- We need LC (Term.opening arg body). Use subst_intro + subst_lc.
       -- From hAbs : LC (abs bound body), we have a cofinite-quantified body.
       cases hAbs with
       | abs L _ hbodyLC =>
-          classical
           obtain ⟨x, hx⟩ := Term.exists_fresh (L ∪ Term.fv body)
           have hxL : x ∉ L := by
             intro h'
@@ -86,15 +98,20 @@ theorem lc_right {t t' : Term} (h : t ↦ t') : Term.LC t' := by
           -- LC (body^[x])
           have hopen : Term.LC (Term.opening (.fvar x) body) := hbodyLC x hxL
           -- opening arg body = subst x arg (body^[x])
+          refine ⟨?_⟩
           rw [Term.subst_intro hxFv hArg]
           exact Term.subst_lc hArg hopen
-  | appL _ huLC iht => exact Term.LC.app iht huLC
-  | appR htLC _ ihu => exact Term.LC.app htLC ihu
+  | appL _ huLC iht => exact ⟨Term.LC.app iht.some huLC⟩
+  | appR htLC _ ihu => exact ⟨Term.LC.app htLC ihu.some⟩
   | @absBound bound bound' body L _ hbody iht =>
-      exact Term.LC.abs L iht hbody
+      exact ⟨Term.LC.abs L iht.some hbody⟩
   | @absBody bound body body' L hbound _ ihbody =>
-      -- ihbody : ∀ x, x ∉ L → Term.LC (body'^[x])
-      exact Term.LC.abs L hbound ihbody
+      -- ihbody : ∀ x, x ∉ L → Nonempty (Term.LC (body'^[x]))
+      exact ⟨Term.LC.abs L hbound (fun x hx => (ihbody x hx).some)⟩
+
+/-- Type-valued accessor: reduction preserves local closure. -/
+noncomputable def lc_right {t t' : Term} (h : t ↦ t') : Term.LC t' :=
+  (Step.lc_right_J h).some
 
 /-! ## Inversion -/
 
@@ -124,24 +141,27 @@ abbrev Step.Star : Term → Term → Prop := Relation.ReflTransGen Step
 namespace Step.Star
 
 /-- For multi-step: either the source is locally closed, or the relation
-is the reflexive empty step (in which case `t = t'`). -/
-theorem lc_left {t t' : Term} (h : t ↦* t') : Term.LC t ∨ t = t' := by
+is the reflexive empty step (in which case `t = t'`).
+
+Wraps `Term.LC t` in `Nonempty` because `Step.Star` is Prop-valued
+(`Relation.ReflTransGen`) and cannot eliminate to a Type-valued conclusion. -/
+theorem lc_left {t t' : Term} (h : t ↦* t') : Nonempty (Term.LC t) ∨ t = t' := by
   induction h with
   | refl => exact Or.inr rfl
   | tail _ hstep ih =>
-      -- Whatever ih says, hstep : _ ↦ _, so its source is LC. But ih's claim
-      -- is about the original t. We need LC t.
       rcases ih with hLC | heq
       · exact Or.inl hLC
-      · -- ih says t = (intermediate). hstep : intermediate ↦ t'. So intermediate
-        -- is LC, and t = intermediate, so t is LC.
-        exact Or.inl (heq ▸ Step.lc_left hstep)
+      · exact Or.inl ⟨heq ▸ Step.lc_left hstep⟩
 
-/-- For multi-step: if the source is LC, so is the target. -/
-theorem lc_right {t t' : Term} (h : t ↦* t') (htLC : Term.LC t) : Term.LC t' := by
+/-- For multi-step: if the source is LC, so is the target.
+
+`Step.Star` is Prop-valued, so eliminating into a Type-valued `Term.LC`
+requires `Nonempty` wrapping. -/
+theorem lc_right {t t' : Term} (h : t ↦* t') (htLC : Term.LC t) :
+    Nonempty (Term.LC t') := by
   induction h with
-  | refl => exact htLC
-  | tail _ hstep ih => exact Step.lc_right hstep
+  | refl => exact ⟨htLC⟩
+  | tail _ hstep _ih => exact ⟨Step.lc_right hstep⟩
 
 end Step.Star
 
@@ -166,11 +186,13 @@ def EvalCtx.fill : EvalCtx → Term → Term
   | .appR u E, t  => .app u (E.fill t)
 
 /-- Local-closure side condition on a context: every term mentioned in
-context positions is LC. Required to lift `Step` through context filling. -/
-def EvalCtx.LC : EvalCtx → Prop
-  | .hole       => True
-  | .appL E u   => E.LC ∧ Term.LC u
-  | .appR u E   => Term.LC u ∧ E.LC
+context positions is LC. Required to lift `Step` through context filling.
+
+Type-valued (`PProd`) since `Term.LC : Type`. -/
+def EvalCtx.LC : EvalCtx → Type
+  | .hole       => PUnit
+  | .appL E u   => PProd E.LC (Term.LC u)
+  | .appR u E   => PProd (Term.LC u) E.LC
 
 /-- Stepping commutes with filling, given the context's side terms are LC. -/
 theorem Step.context {t t' : Term} {E : EvalCtx}
@@ -179,10 +201,12 @@ theorem Step.context {t t' : Term} {E : EvalCtx}
   induction E with
   | hole => simpa [EvalCtx.fill] using h
   | appL E u ih =>
+      simp [EvalCtx.LC] at hE
       obtain ⟨hELC, huLC⟩ := hE
       simp [EvalCtx.fill]
       exact Step.appL (ih hELC) huLC
   | appR u E ih =>
+      simp [EvalCtx.LC] at hE
       obtain ⟨huLC, hELC⟩ := hE
       simp [EvalCtx.fill]
       exact Step.appR huLC (ih hELC)

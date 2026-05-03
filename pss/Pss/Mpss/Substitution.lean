@@ -84,25 +84,19 @@ def Stack.subst (x : String) (s : Term) (st : Stack) : Stack :=
 
 /-! ## §2. The substitutability premise -/
 
-/-- A term `s` is well-formed for substitution at `Γ`. -/
-def SubstOk (Γ : Ctx) (s : Term) : Prop :=
-  Term.LC s ∧ Term.fv s ⊆ Γ.dom
+/-- A term `s` is well-formed for substitution at `Γ`.
 
-namespace SubstOk
-
-theorem lc {Γ : Ctx} {s : Term} (h : SubstOk Γ s) : Term.LC s := h.1
-
-theorem fv_sub {Γ : Ctx} {s : Term} (h : SubstOk Γ s) :
-    Term.fv s ⊆ Γ.dom := h.2
-
-end SubstOk
+`Type`-valued (structure with named fields) since `Term.LC : Type`. -/
+structure SubstOk (Γ : Ctx) (s : Term) : Type where
+  lc : Term.LC s
+  fv_sub : Term.fv s ⊆ Γ.dom
 
 /-! ## §3. Prevalidity outer-context extraction
 
 Used inside Lemma 32 to extract `Prevalid (⟨x, v, .equ⟩ :: Γ₁)` from
 `Prevalid (Γ₂ ++ ⟨x, v, .equ⟩ :: Γ₁)`. -/
 
-theorem Prevalid.outer {Γ₁ Γ₂ : Ctx} (h : Prevalid (Γ₂ ++ Γ₁)) : Prevalid Γ₁ := by
+def Prevalid.outer {Γ₁ Γ₂ : Ctx} (h : Prevalid (Γ₂ ++ Γ₁)) : Prevalid Γ₁ := by
   induction Γ₂ with
   | nil => simpa using h
   | cons e rest ih => exact ih h.tail
@@ -146,7 +140,7 @@ private lemma Ctx.dom_subst_append (x : String) (s : Term) (Γ₁ Γ₂ : Ctx) :
     (Ctx.subst x s Γ₂ ++ Γ₁).dom = Γ₂.dom ∪ Γ₁.dom := by
   rw [Ctx.dom_append, Ctx.dom_subst]
 
-theorem Lemma_28a_SubstPreservesPrevalid_kind
+noncomputable def Lemma_28a_SubstPreservesPrevalid_kind
     {Γ₁ Γ₂ : Ctx} {x : String} {t s : Term} {k : CtxEntryKind}
     (hpv : Prevalid (Γ₂ ++ ⟨x, t, k⟩ :: Γ₁))
     (hok : SubstOk Γ₁ s) :
@@ -186,7 +180,7 @@ theorem Lemma_28a_SubstPreservesPrevalid_kind
 
 /-- **Lemma 28** (Pasquale & García-Pérez 2024).
 Substitution preserves prevalidity (extended-context form). -/
-theorem Lemma_28_SubstPreservesPrevalid
+noncomputable def Lemma_28_SubstPreservesPrevalid
     {Γ₁ Γ₂ : Ctx} {st : Stack} {x : String} {t s : Term}
     {k : CtxEntryKind}
     (hpv : PrevalidExt (Γ₂ ++ ⟨x, t, k⟩ :: Γ₁) st)
@@ -206,18 +200,40 @@ theorem Lemma_28_SubstPreservesPrevalid
 
 /-! ## §7. Reflexivity of `MEqRed` (Proposition 18, partial) -/
 
+/-- Helper: extend a `PrevalidExt Γ st` with an `.equ` head binding, given
+the head's data. Used in `MEqRed.refl`'s `fOp` arm to thread the body's
+stack-valid PrevalidExt under the new head binding. -/
+private noncomputable def _PrevalidExt_extend_equ {Γ : Ctx} (y : String) (α : Term)
+    (hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ))
+    {st : Stack} (hst : PrevalidExt Γ st) :
+    PrevalidExt (⟨y, α, .equ⟩ :: Γ) st := by
+  induction hst with
+  | nil _ => exact PrevalidExt.nil hpvy
+  | @cons _ β hpvE hLCβ hfvβ ih =>
+    refine PrevalidExt.cons ih hLCβ ?_
+    intro z hz
+    have hzΓ : z ∈ Γ.dom := hfvβ hz
+    have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
+        insert y Γ.dom := Ctx.dom_cons _ _
+    show z ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ)
+    rw [hdom_eq]
+    exact Finset.mem_insert_of_mem hzΓ
+
 /-- **Proposition 18 (MEqRed half).** Reflexivity of MPSS equivalence reduction.
 
-Returns `MEqRedJ` (Prop-wrapped) since the proof inducts on the
-Prop-valued `Term.LC u` predicate, which cannot eliminate into a
-Type-valued conclusion. Callers that need the bare Type-valued
-derivation can use `(MEqRed.refl …).some`. -/
-theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
+**Post-Type-LC refactor (Option B):** This is now a direct
+`Type`-valued recursion on `Term.LC u`. Previously this was
+`MEqRed.refl_J : MEqRedJ Γ st u u` (Prop) extracted via
+`Classical.choice` to produce `MEqRed.refl`; the indirection
+existed because `Term.LC : Prop` could not eliminate into the
+`Type`-valued `MEqRed`. With `Term.LC : Type` the recursion is
+direct. -/
+noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
     (hpv : PrevalidExt Γ st) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
-    MEqRedJ Γ st u u := by
+    MEqRed Γ st u u := by
   induction hLC generalizing st Γ with
-  | top => exact ⟨MEqRed.top hpv⟩
-  | fvar x => exact ⟨MEqRed.var hpv⟩
+  | top => exact MEqRed.top hpv
+  | fvar x => exact MEqRed.var hpv
   | @app a b hLCa hLCb iha ihb =>
     have hfa : Term.fv a ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inl hz)
@@ -225,23 +241,18 @@ theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
     have hpvb : PrevalidExt Γ (b :: st) := PrevalidExt.cons hpv hLCb hfb
     have hpvnil : PrevalidExt Γ [] := PrevalidExt.nil (extractPrevalid hpv)
-    obtain ⟨ha⟩ := iha hpvb hfa
-    obtain ⟨hb⟩ := ihb hpvnil hfb
-    exact ⟨MEqRed.app ha hb⟩
+    exact MEqRed.app (iha hpvb hfa) (ihb hpvnil hfb)
   | @abs L bound body hLCbound hbody ihbound ihbody =>
     have hpvnil : PrevalidExt Γ [] := PrevalidExt.nil (extractPrevalid hpv)
     have hfb : Term.fv bound ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inl hz)
     have hfbody : Term.fv body ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
-    obtain ⟨hb_refl⟩ : MEqRedJ Γ [] bound bound := ihbound hpvnil hfb
+    have hb_refl : MEqRed Γ [] bound bound := ihbound hpvnil hfb
     cases st with
     | nil =>
-      classical
-      -- Build the cofinite witness: at each fresh `y`, get a Type-level
-      -- MEqRed for the opened body. We collect via Classical.choice.
       have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
-          Nonempty (MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y])) := by
+          MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y]) := by
         intro y hy
         have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
         have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
@@ -265,39 +276,19 @@ theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
             rw [hdom_eq]
             exact Finset.mem_insert_self _ _
         exact ihbody y hyL hpvey hfvy
-      have hbody_choice : ∀ y, y ∉ (L ∪ Γ.dom) →
-          MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y]) :=
-        fun y hy => (hbody_each y hy).some
-      exact ⟨MEqRed.fun_ (L ∪ Γ.dom) hb_refl hbody_choice⟩
+      exact MEqRed.fun_ (L ∪ Γ.dom) hb_refl hbody_each
     | cons α tail =>
       cases hpv with
       | cons hpvr hLCα hfvα =>
-        classical
-        have hpvey_aux : ∀ {st : Stack} (y : String) (_hyΓ : y ∉ Γ.dom),
-            PrevalidExt Γ st →
-            Prevalid (⟨y, α, .equ⟩ :: Γ) →
-            PrevalidExt (⟨y, α, .equ⟩ :: Γ) st := by
-          intro st y _hyΓ hst hpvy
-          induction hst with
-          | nil _ => exact PrevalidExt.nil hpvy
-          | @cons _ β hpvE hLCβ hfvβ ih =>
-            refine PrevalidExt.cons ih hLCβ ?_
-            intro z hz
-            have hzΓ : z ∈ Γ.dom := hfvβ hz
-            have hdom_eq : Ctx.dom (⟨y, α, .equ⟩ :: Γ) =
-                insert y Γ.dom := Ctx.dom_cons _ _
-            show z ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ)
-            rw [hdom_eq]
-            exact Finset.mem_insert_of_mem hzΓ
         have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
-            Nonempty (MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y])) := by
+            MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y]) := by
           intro y hy
           have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
           have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
           have hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ) :=
             Prevalid.equ (extractPrevalid hpvr) hyΓ hfvα hLCα
           have hpvey : PrevalidExt (⟨y, α, .equ⟩ :: Γ) tail :=
-            hpvey_aux y hyΓ hpvr hpvy
+            _PrevalidExt_extend_equ y α hpvy hpvr
           have hfvy : Term.fv (body^[y]) ⊆ Ctx.dom (⟨y, α, .equ⟩ :: Γ) := by
             intro z hz
             have hsub := Term.fv_open_subset 0 (.fvar y) body
@@ -315,17 +306,15 @@ theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
               rw [hdom_eq]
               exact Finset.mem_insert_self _ _
           exact ihbody y hyL hpvey hfvy
-        have hbody_choice : ∀ y, y ∉ (L ∪ Γ.dom) →
-            MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y]) :=
-          fun y hy => (hbody_each y hy).some
-        exact ⟨MEqRed.fOp (L ∪ Γ.dom) hb_refl hbody_choice⟩
+        exact MEqRed.fOp (L ∪ Γ.dom) hb_refl hbody_each
 
-/-- Type-valued accessor for `MEqRed.refl_J`. Uses choice to extract the
-underlying derivation tree from the `Nonempty`-wrapped result. -/
-noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
+/-- Backwards-compatibility alias: the `_J` form is `Nonempty (MEqRed _ _ _ _)`,
+which equals `MEqRedJ`. Post-Type-LC refactor `MEqRed.refl` is the
+primary form. -/
+theorem MEqRed.refl_J {Γ : Ctx} {st : Stack} {u : Term}
     (hpv : PrevalidExt Γ st) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
-    MEqRed Γ st u u :=
-  (MEqRed.refl_J hpv hLC hfv).some
+    MEqRedJ Γ st u u :=
+  ⟨MEqRed.refl hpv hLC hfv⟩
 
 /-! ## §8. Helper lemmas for Lemma 31 -/
 
@@ -1194,7 +1183,7 @@ private theorem dom_of_subBinds {Γ : Ctx} {x : String} {t : Term}
 /-- Helper: lift `PrevalidExt Γ s` over a `cons` extension by checking
 each stack entry remains scoped under the larger domain. Just monotonicity
 of subset for `Finset` membership. -/
-private theorem PrevalidExt.weaken_cons {Γ : Ctx} {e : CtxEntry}
+private noncomputable def PrevalidExt.weaken_cons {Γ : Ctx} {e : CtxEntry}
     (hpvE : Prevalid (e :: Γ)) {s : Stack} (hpv : PrevalidExt Γ s) :
     PrevalidExt (e :: Γ) s := by
   induction s with
@@ -1211,7 +1200,7 @@ private theorem PrevalidExt.weaken_cons {Γ : Ctx} {e : CtxEntry}
 that no stack entry mentions `e.name`. (Used in the helper that extracts
 `PrevalidExt Γ s` from an `MEqRed Γ s u v` derivation, in the `fOp`
 case where the body has been opened with a fresh name we control.) -/
-private theorem PrevalidExt.descend_cons {Γ : Ctx} {s : Stack} {e : CtxEntry}
+private noncomputable def PrevalidExt.descend_cons {Γ : Ctx} {s : Stack} {e : CtxEntry}
     (hpvΓ : Prevalid Γ)
     (hpv : PrevalidExt (e :: Γ) s)
     (hfresh : ∀ α ∈ s, e.name ∉ Term.fv α) :
@@ -1235,7 +1224,7 @@ private theorem PrevalidExt.descend_cons {Γ : Ctx} {s : Stack} {e : CtxEntry}
       exact PrevalidExt.cons ih' hLCα hfvα'
 
 /-- Helper: extract `Prevalid Γ` from any `MEqRed Γ s u v`. -/
-private theorem MEqRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def MEqRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : Prevalid Γ := by
   induction h with
   | @pro Γ st x α α' hpv _ _ _ => exact extractPrevalid hpv
@@ -1248,7 +1237,7 @@ private theorem MEqRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
   | @fOp Γ s t t' α body body' L _ _ iht _ => exact iht
 
 /-- Pop the head of a non-empty `PrevalidExt`. -/
-private theorem PrevalidExt.tail {Γ : Ctx} {s : Stack} {α : Term}
+private def PrevalidExt.tail {Γ : Ctx} {s : Stack} {α : Term}
     (h : PrevalidExt Γ (α :: s)) : PrevalidExt Γ s := by
   cases h with
   | cons hpvr _ _ => exact hpvr
@@ -1272,13 +1261,14 @@ private lemma Stack.mem_fvAll {st : Stack} {α : Term} (hα : α ∈ st)
 /-- Extract `PrevalidExt Γ s` from `MEqRed Γ s u v`. The `fOp` case
 picks a cofinite-fresh `x` outside `L ∪ Γ.dom ∪ Stack.fvAll s` so the body
 IH's stack remains valid after descending past the new entry. -/
-private theorem MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
+private noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRed Γ s u v) : PrevalidExt Γ s := by
   induction h with
   | @pro Γ s x α α' hpv _ _ _ => exact hpv
   | @bet Γ s t v0 v0' body body' L _ _ _ ihbody _ =>
     classical
-    obtain ⟨x, hx⟩ := Term.exists_fresh L
+    let x : String := Classical.choose (Term.exists_fresh L)
+    have hx : x ∉ L := Classical.choose_spec (Term.exists_fresh L)
     exact ihbody x hx
   | @app Γ s u u' v v' _ _ ihu _ =>
     exact PrevalidExt.tail ihu
@@ -1288,7 +1278,9 @@ private theorem MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
   | tAp hpv _ _ => exact hpv
   | @fOp Γ s t t' α body body' L _ _ iht ihbody =>
     classical
-    obtain ⟨x, hx⟩ := Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s)
+    let x : String := Classical.choose (Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s))
+    have hx : x ∉ L ∪ Γ.dom ∪ Stack.fvAll s :=
+      Classical.choose_spec (Term.exists_fresh (L ∪ Γ.dom ∪ Stack.fvAll s))
     have hxL : x ∉ L := fun h' => hx (by
       apply Finset.mem_union.mpr; left
       apply Finset.mem_union.mpr; left; exact h')
