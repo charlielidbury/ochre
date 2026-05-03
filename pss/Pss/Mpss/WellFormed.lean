@@ -575,7 +575,7 @@ noncomputable def Lemma_16_WEquM_to_WSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ 
   | lf1 hred _ ih => exact WSubM.lf1 hred ih
   | rgh _ hred ih => exact WSubM.rgh ih hred
 
-/-- **Lemma 10 (Inversion lemma — full form).** From a transitive
+/-! **Lemma 10 (Inversion lemma — full form).** From a transitive
 well-subtyping between two abstractions of the form `λ x ≤ t. u` and
 `λ x ≤ t'. u'`, the bound annotations are well-equivalent.
 
@@ -675,7 +675,342 @@ Cf. `AXIOMS.md` axiom #3 for the listing (status / paper / discharge
 plan). The restricted form `Lemma_10_InversionRestricted` (returning a
 common `MEqRedStar` reduct) is provable without `WfM`-preservation but
 is currently unused downstream — listed in AXIOMS.md as INACTIVE
-outstanding axiom #11. -/
+outstanding axiom #11.
+
+### Strategy A audit (agent_id: `pss-20260504-strategy-a-audit`)
+
+A subsequent dispatched agent (this one) attempted Strategy A — direct
+induction on the WSubMStar derivation, with `WEquM` chain helpers
+(`left_chain`, `right_chain`, `right_chain_fwd`, `trans`) — and found:
+
+* The `_sub` (single `WSubM`) cases of the inversion DO close cleanly
+  via direct case-analysis. See `_Lemma_10_Inversion_sub_partial` below
+  for the proven partial discharge.
+* The `_star` (`WSubMStar`) case via `trs` is **structurally blocked
+  by confluence**. To compose two intermediate `WEquM`s (one from each
+  leg of `trs`) into a single `WEquM`, we would need `WEquM.trans`,
+  which is **isomorphic to the diamond property of `MEqRed`**
+  (because `WEquM Γ a b` ≃ `∃ m, a → m ∧ b → m` zigzag, and composing
+  two zigzags requires confluence at the joining midpoint).
+* The plan agent's `WEquM.right_chain_fwd` (Helper 3) — proposed as
+  "symmetrize, prepend on LHS via Helper 1, symmetrize again" —
+  contains a **directional error**: after symmetrizing `WEquM Γ a b`
+  to `WEquM Γ b a`, the chain `MEqRedStar Γ [] b c` (forward from b)
+  cannot be prepended via Helper 1 (which requires a chain ending at
+  the WEquM's LHS). Forward extension on the right of WEquM truly
+  requires confluence.
+
+Conclusion: Strategy A's `_star`-trs case is **as hard as the diamond
+property of MEqRed**, which is itself the source of the `Lemma_2_*`
+β-residuals. Bypassing those β-residuals via direct induction is
+therefore impossible without a fundamentally new technique.
+
+The paper's own proof routes through `Theorem 3` (transitivity
+elimination) which collapses the `WSubMStar.trs` away, then reads off
+the common reduct from the resulting `MSub`. That route is fine for
+discharging the axiom but would re-introduce β-residuals into
+Theorem 5's closure (count would increase from 4 to ~8). Because the
+explicit goal of this discharge campaign is to **strictly reduce**
+Theorem 5's axiom count, the paper-route is **not a valid discharge**.
+
+### Status post-Strategy-A audit
+
+The axiom remains. The `_sub` partial proof is shipped as
+`_Lemma_10_Inversion_sub_partial` (auxiliary). It can be reused if a
+future Strategy avoids the `trs` case (e.g., by RESTRICTING the call
+sites to provide `trs`-free WSubMStar derivations, possibly through a
+calculus refactor that makes `trs` admissible-only at construction
+time). -/
+
+/-! ### §7.1. Helper inversions (single-step)
+
+Local re-derivations of the inversions used in the partial discharge.
+We avoid pulling in `Pss.Mpss.TypeSafety` (which is downstream of this
+file) by re-proving the small ones we need. -/
+
+/-- Single-step inversion: `MEqRed Γ s .top v` forces `v = .top`. -/
+private theorem _Lemma_10_MEqRed_top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MEqRed Γ s .top v) : v = .top := by
+  cases h with
+  | top _ => rfl
+
+/-- Single-step inversion: `MSubRed Γ s .top v` forces `v = .top`. -/
+private theorem _Lemma_10_MSubRed_top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MSubRed Γ s .top v) : v = .top := by
+  cases h with
+  | top _ _ _ => rfl
+  | equ _ heq => exact _Lemma_10_MEqRed_top_inv heq
+
+/-- Single-step *annotated* inversion on `MEqRed Γ [] (.abs t body) v`:
+the only constructor that fires is `Me-Fun`, so `v = .abs t' body'` with
+`MEqRed Γ [] t t'`. (At empty stack, `Me-FOp` cannot fire.) -/
+private noncomputable def _Lemma_10_MEqRed_abs_inv_annot
+    {Γ : Ctx} {t body v : Term}
+    (h : MEqRed Γ [] (.abs t body) v) :
+    Σ' (t' body' : Term),
+      PProd (v = .abs t' body') (MEqRed Γ [] t t') := by
+  cases h with
+  | fun_ L hT _ _ => exact ⟨_, _, ⟨rfl, hT⟩⟩
+
+/-- Single-step *annotated* inversion on `MSubRed Γ [] (.abs t body) v`:
+the constructors that fire are `Ms-Top`, `Ms-Equ` (delegating to
+`Me-Fun`), and `Ms-Fun` (annotation invariant). The result captures
+all three cases. (At empty stack, `Ms-FOp` cannot fire.) -/
+private noncomputable def _Lemma_10_MSubRed_abs_inv_annot
+    {Γ : Ctx} {t body v : Term}
+    (h : MSubRed Γ [] (.abs t body) v) :
+    PSum
+      (v = .top)
+      (Σ' (t' body' : Term),
+         PProd (v = .abs t' body')
+           (PSum (t' = t) (MEqRed Γ [] t t'))) := by
+  cases h with
+  | top _ _ _ => exact PSum.inl rfl
+  | equ _ heq =>
+      cases heq with
+      | fun_ L hT _ _ =>
+          exact PSum.inr ⟨_, _, ⟨rfl, PSum.inr hT⟩⟩
+  | fun_ _ _ _ _ =>
+      exact PSum.inr ⟨_, _, ⟨rfl, PSum.inl rfl⟩⟩
+
+/-! ### §7.2. WEquM chain helpers (no WfM required)
+
+These two extend a `WEquM` by an `MEqRedStar` chain on the LHS (forward)
+and on the RHS (backward). They mirror the WSubM versions in
+`Pss.Mpss.WSubMTrans`. -/
+
+/-- **Prepend a forward `MEqRedStar` chain on the LHS of a `WEquM`.**
+
+Given `MEqRedStar Γ [] a a'` and `WEquM Γ a' c`, derive `WEquM Γ a c`
+by repeated `WEquM.lf1`. -/
+noncomputable def WEquM.left_chain
+    {Γ : Ctx} {a a' c : Term}
+    (hChain : MEqRedStar Γ [] a a')
+    (hEqu : WEquM Γ a' c) :
+    WEquM Γ a c := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x a'),
+      Nonempty (WEquM Γ a' c → WEquM Γ x c) from (key hChain).some hEqu
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := a')
+    (P := fun x (_ : MEqRedStar Γ [] x a') =>
+      Nonempty (WEquM Γ a' c → WEquM Γ x c)) h ?_ ?_
+  · exact ⟨fun he => he⟩
+  · intro x y hHead hTail ihY
+    classical
+    refine ⟨fun heA' => ?_⟩
+    have heY : WEquM Γ y c := ihY.some heA'
+    exact WEquM.lf1 hHead.some heY
+
+/-- **Shrink a forward `MEqRedStar` chain on the RHS of a `WEquM`** —
+i.e., given `WEquM Γ a c'` and a forward chain `c → c'`, derive
+`WEquM Γ a c` (NOT the other direction). The constructor `WEquM.rgh`
+consumes a step `c → c'`, so this lemma is direct.
+
+Note the asymmetry: extending RHS *forward* (`WEquM Γ a c → c → c' →
+WEquM Γ a c'`) is **not** provable here — that would require the
+diamond property of `MEqRed` (because WEquM is structurally a zigzag
+`a → m ← b`, and absorbing a forward step on the RHS-end would require
+joining `c → c'` with `c → m` via confluence). -/
+noncomputable def WEquM.right_chain_back
+    {Γ : Ctx} {a c c' : Term}
+    (hEqu : WEquM Γ a c')
+    (hChain : MEqRedStar Γ [] c c') :
+    WEquM Γ a c := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x c'),
+      Nonempty (WEquM Γ a c' → WEquM Γ a x) from (key hChain).some hEqu
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := c')
+    (P := fun x (_ : MEqRedStar Γ [] x c') =>
+      Nonempty (WEquM Γ a c' → WEquM Γ a x)) h ?_ ?_
+  · exact ⟨fun he => he⟩
+  · intro x y hHead hTail ihY
+    classical
+    refine ⟨fun heC' => ?_⟩
+    have heAY : WEquM Γ a y := ihY.some heC'
+    exact WEquM.rgh heAY hHead.some
+
+/-! ### §7.3. Partial discharge of Lemma 10 — the `_sub` direction
+
+We can prove the `WSubM` variant of Lemma 10 directly, by structural
+induction on the `WSubM` derivation. The four cases all close cleanly:
+
+* `Ws-Rfl`: `a = b`, so `t = t'`; close with `WEquM.rfl`.
+* `Ws-Lf1`: invert the prepended `MEqRed Γ [] (.abs t u) v'` via
+  `Me-Fun`; recurse; close with `WEquM.lf1`.
+* `Ws-Lf2`: invert the prepended `MSubRed Γ [] (.abs t u) v'`. Three
+  sub-cases:
+  - `Ms-Top` produces `v' = .top`, leaving `WSubM Γ .top (.abs t' u')`
+    which is impossible (the WSubM-version of Lemma 11). Discharged
+    via `_WSubM_top_abs_uninhabited`.
+  - `Ms-Equ` delegates to `Me-Fun`; same as `Ws-Lf1`.
+  - `Ms-Fun` keeps annotation invariant; recurse directly.
+* `Ws-Rgh`: invert the appended `MEqRed Γ [] (.abs t' u') v'` via
+  `Me-Fun`; recurse; close with `WEquM.rgh`.
+
+The subtlety is the `_WSubM_top_abs_uninhabited` argument, which is
+itself proven by structural induction. -/
+
+/-! ### §7.3a. Custom-motive recursors (mutual block workaround)
+
+The `induction` tactic does not directly support mutual inductive
+families like `WfM`/`WSubM`/`WSubMStar`. We use the auto-generated
+`WSubM.rec` with explicit motive functions and trivial WfM/WSubMStar
+motives. -/
+
+/-- Motive type: `WSubM Γ a b → False` proposition saying it's
+impossible if `a = .top` and `b = .abs _ _`. -/
+private def _Lemma_10_top_abs_motive_sub :
+    (Γ : Ctx) → (a b : Term) → WSubM Γ a b → Prop :=
+  fun Γ a b _ => a = .top → ∀ {t' u' : Term}, b = .abs t' u' → False
+
+/-- Motive type: `WfM` trivial. -/
+private def _Lemma_10_top_abs_motive_wf :
+    (Γ : Ctx) → (t : Term) → WfM Γ t → Prop :=
+  fun _ _ _ => True
+
+/-- Motive type: `WSubMStar` trivial. -/
+private def _Lemma_10_top_abs_motive_star :
+    (Γ : Ctx) → (a b : Term) → WSubMStar Γ a b → Prop :=
+  fun _ _ _ _ => True
+
+/-- **The WSubM-version of Lemma 11**: there is no `WSubM Γ .top (.abs
+t' u')` derivation. Direct structural induction on the derivation tree
+via `WSubM.rec`.
+
+This is provable from the existing axiom-free machinery and avoids the
+`_WSubMStar_toMSub` route (which goes through `Theorem 3` and incurs
+the β-residual axioms). -/
+theorem _WSubM_top_abs_uninhabited
+    {Γ : Ctx} {t' u' : Term}
+    (h : WSubM Γ .top (.abs t' u')) : False := by
+  classical
+  exact (WSubM.rec
+    (motive_1 := _Lemma_10_top_abs_motive_wf)
+    (motive_2 := _Lemma_10_top_abs_motive_sub)
+    (motive_3 := _Lemma_10_top_abs_motive_star)
+    -- WfM cases (5): all trivial.
+    (fun _ _ => trivial) (fun _ _ => trivial) (fun _ => trivial)
+    (fun _ _ _ _ _ => trivial) (fun _ _ _ _ => trivial)
+    -- Ws-Rfl: args (hwf, ihwf)
+    (fun {Γ x} _hwf _ihwf => by
+      intro hA t' u' hB; subst hA; cases hB)
+    -- Ws-Lf1: args (hred, h_inner, ih)
+    (fun {Γ a v' b} hred _h_inner ih => by
+      intro hA t' u' hB; subst hA
+      have : v' = .top := _Lemma_10_MEqRed_top_inv hred
+      subst this; exact ih rfl hB)
+    -- Ws-Lf2: args (hwfA, hred, hwfA', h_inner, ihwfA, ihwfA', ih)
+    (fun {Γ a v' b} _hwfA hred _hwfA' _h_inner _ihA _ihA' ih => by
+      intro hA t' u' hB; subst hA
+      have : v' = .top := _Lemma_10_MSubRed_top_inv hred
+      subst this; exact ih rfl hB)
+    -- Ws-Rgh: args (h_inner, hred, ih)
+    (fun {Γ a b b'} _h_inner hred ih => by
+      intro hA t' u' hB; subst hA; subst hB
+      obtain ⟨t1, u1, hbEq, _⟩ := _Lemma_10_MEqRed_abs_inv_annot hred
+      exact ih rfl hbEq)
+    -- WSubMStar.sub: args (hwfV, hsub, hwfT, ihwfV, ihsub, ihwfT)
+    (fun _ _ _ _ _ _ => trivial)
+    -- WSubMStar.trs: args (hStar1, hwfU, hStar2, ih1, ihwfU, ih2)
+    (fun _ _ _ _ _ _ => trivial)
+    h) rfl rfl
+
+/-! ### §7.3b. Partial discharge — `_sub` direction motives -/
+
+/-- Motive type: `WSubM Γ a b → ∀ {t u t' u'}, a = .abs t u →
+b = .abs t' u' → WEquM Γ t t'`. Type-valued. -/
+private def _Lemma_10_inv_motive_sub :
+    (Γ : Ctx) → (a b : Term) → WSubM Γ a b → Type :=
+  fun Γ a b _ =>
+    ∀ {t u t' u' : Term}, a = .abs t u → b = .abs t' u' → WEquM Γ t t'
+
+/-- Motive type: `WfM` trivial. -/
+private def _Lemma_10_inv_motive_wf :
+    (Γ : Ctx) → (t : Term) → WfM Γ t → Type :=
+  fun _ _ _ => Unit
+
+/-- Motive type: `WSubMStar` trivial (we only handle the `_sub` part). -/
+private def _Lemma_10_inv_motive_star :
+    (Γ : Ctx) → (a b : Term) → WSubMStar Γ a b → Type :=
+  fun _ _ _ _ => Unit
+
+/-- **Single-WSubM Lemma 10**: a `WSubM` between two `.abs` terms
+yields a `WEquM` on their bound annotations. PROVED directly via
+`WSubM.rec`. -/
+noncomputable def _Lemma_10_Inversion_sub_partial
+    {Γ : Ctx} {a b : Term} (h : WSubM Γ a b)
+    {t u t' u' : Term} (heqA : a = .abs t u) (heqB : b = .abs t' u') :
+    WEquM Γ t t' := by
+  classical
+  exact (WSubM.rec
+    (motive_1 := _Lemma_10_inv_motive_wf)
+    (motive_2 := _Lemma_10_inv_motive_sub)
+    (motive_3 := _Lemma_10_inv_motive_star)
+    -- WfM cases: all unit.
+    (fun _ _ => ()) (fun _ _ => ()) (fun _ => ())
+    (fun _ _ _ _ _ => ()) (fun _ _ _ _ => ())
+    -- Ws-Rfl: args (hwf, ihwf)
+    (fun {Γ x} hwf _ihwf => by
+      intro t u t' u' hA hB
+      subst hA; cases hB
+      cases hwf with
+      | @fun_ _ _ _ L hT _ => exact WEquM.rfl hT)
+    -- Ws-Lf1: args (hred, h_inner, ih)
+    (fun {Γ a v' b} hred _h_inner ih => by
+      intro t u t' u' hA hB
+      subst hA
+      obtain ⟨t1, u1, hv'Eq, hStep⟩ :=
+        _Lemma_10_MEqRed_abs_inv_annot hred
+      subst hv'Eq
+      have hRec : WEquM Γ t1 t' := ih rfl hB
+      exact WEquM.lf1 hStep hRec)
+    -- Ws-Lf2: args (hwfA, hred, hwfA', h_inner, ihwfA, ihwfA', ih)
+    (fun {Γ a v' b} _hwfA hred _hwfA' h_inner _ihA _ihA' ih => by
+      intro t u t' u' hA hB
+      subst hA
+      cases _Lemma_10_MSubRed_abs_inv_annot hred with
+      | inl hTop =>
+          subst hTop; subst hB
+          exact (_WSubM_top_abs_uninhabited h_inner).elim
+      | inr hAbs =>
+          obtain ⟨t1, u1, hv'Eq, hRel⟩ := hAbs
+          subst hv'Eq
+          have hRec : WEquM Γ t1 t' := ih rfl hB
+          cases hRel with
+          | inl hT1Eq => subst hT1Eq; exact hRec
+          | inr hStep => exact WEquM.lf1 hStep hRec)
+    -- Ws-Rgh: args (h_inner, hred, ih)
+    (fun {Γ a b b'} _h_inner hred ih => by
+      intro t u t' u' hA hB
+      subst hB
+      obtain ⟨t1, u1, hbEq, hStep⟩ :=
+        _Lemma_10_MEqRed_abs_inv_annot hred
+      subst hbEq
+      have hRec : WEquM Γ t t1 := ih hA rfl
+      exact WEquM.rgh hRec hStep)
+    -- WSubMStar.sub: args (hwfV, hsub, hwfT, ihwfV, ihsub, ihwfT)
+    (fun _ _ _ _ _ _ => ())
+    -- WSubMStar.trs: args (hStar1, hwfU, hStar2, ih1, ihwfU, ih2)
+    (fun _ _ _ _ _ _ => ())
+    h) heqA heqB
+
+/-! ### §7.4. The remaining axiom
+
+Despite the partial `_sub` discharge above, the full `Lemma_10_Inversion`
+remains an axiom because the `WSubMStar.trs` case requires
+**`WEquM.trans`** at the joining annotation — which is **isomorphic to
+the diamond/confluence property of MEqRed at empty stack**, the same
+property whose β-case is currently axiomatized as the `Lemma_2_*`
+β-residuals.
+
+Specifically, in the case `WSubMStar.trs h₁ wfU h₂` with `h₁ :
+WSubMStar Γ (.abs t u) U` and `h₂ : WSubMStar Γ U (.abs t' u')`, after
+shape-determining `U = .abs t_m u_m` we need to combine the IH-produced
+`WEquM Γ t t_m` and `WEquM Γ t_m t'` into `WEquM Γ t t'`. This
+composition requires forward-extending one `WEquM` along the other's
+midpoint — which IS the diamond property restricted to bound
+annotations. -/
+
 axiom Lemma_10_Inversion
     {Γ : Ctx} {t t' u u' : Term}
     (h : WSubMStar Γ (.abs t u) (.abs t' u')) :

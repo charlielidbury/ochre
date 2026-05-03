@@ -385,7 +385,14 @@ theorem.
 * **File:** `Pss/Mpss/WellFormed.lean`, line 618.
 * **Paper:** Appendix Lemma 10 (full form).
 * **Statement:** `WSubMStar Γ (.abs t u) (.abs t' u') → WEquM Γ t t'`.
-* **Status:** Outstanding active. Hits Theorem 5.
+* **Status:** Outstanding active. Hits Theorem 5. **Partial discharge
+  shipped 2026-05-04**: the `_sub` direction of the proof is now PROVEN
+  (`_Lemma_10_Inversion_sub_partial` in `WellFormed.lean`, axiom-free).
+  The `_star` direction's `WSubMStar.trs` case is `WEquM.trans`, which
+  is shown to be **isomorphic to the diamond/confluence property** of
+  MEqRed and therefore cannot be discharged without re-introducing the
+  `Lemma_2_*` β-residuals into Theorem 5's closure (see Strategy A
+  audit in `WellFormed.lean` §7.4).
 * **Discharge plan (REVISED 2026-05-04 after counterexample):** A long
   blocker analysis (file lines 564-617) identifies the precise
   obstruction: stripping the `WSubMStar` to `MSub` and inverting
@@ -409,16 +416,45 @@ theorem.
   `≡`-bindings can store terms that are not themselves `WfM`. Step's
   `Lemma_6_EvaluationPreservesWf` is provable because `Step` never
   consults the context; `MEqRed` does.
+* **Strategy A audit (2026-05-04, this discharge attempt).** The
+  most promising recovery — Strategy 4 from the prior list, "Bypass
+  `WfM Γ t_w` via a Church-Rosser-style proof" — was attempted as
+  *Strategy A* (direct induction on the `WSubMStar` derivation, with
+  `WEquM` chain helpers `left_chain` / `right_chain_back` /
+  `right_chain_fwd` / `WEquM.trans`). Findings:
+  - The single-step (`_sub`) direction is fully provable; see
+    `_Lemma_10_Inversion_sub_partial` in `WellFormed.lean`.
+  - The `_star` direction via `WSubMStar.trs` requires `WEquM.trans`
+    (composing two `WEquM`s through a joining annotation). Structurally,
+    `WEquM Γ a b` is a zigzag `a → m ← b`, so composing two zigzags
+    requires confluence at the joining midpoint — i.e. **the diamond
+    property of MEqRed**, which is the source of the `Lemma_2_*`
+    β-residuals.
+  - The plan agent's proposed `WEquM.right_chain_fwd` (Helper 3,
+    "symmetrize, prepend on LHS, symmetrize again") contains a
+    directional error: after symmetrizing `WEquM Γ a b` to
+    `WEquM Γ b a`, the chain `b → c` cannot be prepended on the LHS
+    of the symmetrized WEquM via `left_chain` (which requires a chain
+    *ending* at b, not starting from b).
+  - The paper's own proof routes through `Theorem 3` (transitivity
+    elimination), which uses `Lemma_2_DiamondMEqRed` and would
+    re-introduce all 5 β-residuals into Theorem 5's closure — net
+    regression (4 → ~8 axioms).
 * **Recovery strategies (none realized):**
   1. Strengthen `Prevalid` to a `WfCtx` mutually inductive with `WfM`.
   2. Strengthen `Wf-PrE` to require `WfM Γ α`.
   3. Restrict the lemma to `pro`-preserving derivations.
-  4. Bypass `WfM Γ t_w` via a Church-Rosser-style proof of
-     `Lemma_10_Inversion` directly. Most promising; uses the existing
-     `Lemma_2_DiamondMEqRed` infrastructure.
+  4. Discharge the β-residuals first (so the paper-route discharge is
+     net-neutral). The β-residuals (axioms #6-#10) are themselves
+     blocked on missing infrastructure — see those entries.
+  5. Restrict call sites to provide `trs`-free WSubMStar derivations
+     (then the `_sub` partial discharge applies directly). Requires
+     auditing every `WSubMStar.trs` construction — non-local refactor.
 * **Estimated complexity:** Strategy (1) is a deep refactor (every
-  Prevalid construction site upgrades). Strategy (4) requires new
-  Diamond-adjacent infrastructure (~400-600 lines).
+  Prevalid construction site upgrades). Strategy (4) is the
+  pragmatic next step: discharge the β-residuals, then the axiom
+  becomes a wrapper over `Theorem_3 + _Lemma_10_Inversion_sub_partial`.
+  Strategy (5) is a moderate refactor of call sites.
 
 ### 4. `Lemma_30_msPro_x_axiom`
 

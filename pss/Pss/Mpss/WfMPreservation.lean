@@ -102,6 +102,36 @@ above are the only known paths forward; (4) (Church-Rosser bypass) is
 the most promising because it does not require touching the `Prevalid`
 / `WfM` interface.
 
+### Update (2026-05-04, agent_id `pss-20260504-strategy-a-audit`)
+
+Strategy 4 (Church-Rosser bypass) was attempted as *Strategy A* —
+direct induction on the `WSubMStar` derivation with `WEquM` chain
+helpers. Result: **the `_sub` (single-`WSubM`) direction is fully
+provable** (see `_Lemma_10_Inversion_sub_partial` in
+`Pss.Mpss.WellFormed`, axiom-free), but the `_star`-`trs` case requires
+`WEquM.trans`, which is **structurally isomorphic to the diamond /
+confluence property of MEqRed at empty stack** — that property is
+itself the source of the `Lemma_2_*` β-residuals.
+
+Therefore Strategy 4 *also* requires β-residuals (just routed through
+a different decomposition), and is not net-positive over the paper's
+own proof (which goes through `Theorem 3 = transitivity elimination`).
+
+The remaining viable paths:
+
+* **Discharge the β-residuals first**, then the paper's proof becomes
+  a clean discharge of `Lemma_10_Inversion`. (Strategy 5 in the AXIOMS.md
+  entry for axiom #3.)
+* **Restrict call sites to provide `trs`-free WSubMStar derivations**,
+  then `_Lemma_10_Inversion_sub_partial` covers them. Requires
+  auditing every `WSubMStar.trs` construction in the codebase.
+* **Strategies 1-3 from the original list** (touching the `Prevalid` /
+  `WfM` interface).
+
+See the audit notes in `Pss.Mpss.WellFormed` §7.4 for the detailed
+analysis of why Strategy A's `WEquM.trans` is impossible without
+confluence.
+
 ## Related blockers
 
 The same counterexample obstructs:
