@@ -1011,6 +1011,205 @@ So `msCofinDomFresh` only needs to track the dom-freshness explicitly. -/
                 msAvoidsPro_L_aug_notMem_L) x) := by
   unfold msCofinDomFresh; rfl
 
+/-! ## §3.3. `cofinAvoidsProSelf` — fOp body avoids pro on its own canonical witness
+
+Phase 3 of the β-residual unblock (`MEqRed.stack_replace` in
+`Pss.Mpss.Renaming`) needs the `fOp` body's derivation to avoid `Me-Pro`
+on the body's canonical fresh witness `pickFresh L`. This is exactly the
+shape `equ_head_replace` consumes when we delegate the `fOp` Case A
+swap (where the input stack head `α` is the same as the binding's bound
+term).
+
+Per AXIOMS.md "Discharge plan for the β-residuals" item §2: the `fOp`
+arm of `stack_replace` reduces to `MEqRed.equ_head_replace`. That call
+needs `avoidsPro (body z) z = true` where `z` is the canonical sample
+the body recurses at — i.e., `pickFresh L`. Capturing this as a Bool
+function of the derivation lets `stack_replace` carry it as a single
+premise without alpha-equivariance.
+
+Why this is NOT alpha-equivariance: `cofinAvoidsProSelf` is a
+deterministic Bool function of the derivation tree's shape. Each `fOp`
+arm samples at the SAME point as `cofinDomFresh` and `avoidsPro`
+(deterministically `pickFresh L`), so it's a property of the source
+tree, not a cross-witness claim.
+
+Propagates through every constructor; only `fOp` introduces a new
+constraint. The `bet`/`fun_` cofinite arms only need their bodies'
+recursive condition (no .equ-head swap there). -/
+
+noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
+  MEqRed.rec
+    (motive := fun _ _ _ _ _ => Bool)
+    -- Me-Pro: recurse on the inner derivation.
+    (fun _ _ _ ihα => ihα)
+    -- Me-Bet: propagate through body recursion + operand.
+    (fun {_Γ _ _ _ _ _ _} L _ _ _ ihbody ihv =>
+      let y₀ := pickFresh L
+      have hy₀L : y₀ ∉ L := pickFresh_notMem L
+      ihbody y₀ hy₀L && ihv)
+    -- Me-Top: leaf.
+    (fun _ => true)
+    -- Me-App: recurse on both subterms.
+    (fun _ _ ihu ihv => ihu && ihv)
+    -- Me-Var: leaf.
+    (fun _ => true)
+    -- Me-Fun: propagate.
+    (fun {_Γ _ _ _ _} L _ _ iht ihbody =>
+      let y₀ := pickFresh L
+      have hy₀L : y₀ ∉ L := pickFresh_notMem L
+      iht && ihbody y₀ hy₀L)
+    -- Me-TAp: leaf.
+    (fun _ _ _ => true)
+    -- Me-FOp: HERE is where we add the body-self-avoidance condition.
+    -- The body recurses at extended ctx with binding `⟨pickFresh L, α, .equ⟩`.
+    -- For `stack_replace`'s fOp Case A to delegate to `equ_head_replace`,
+    -- we need `avoidsPro (body pickFresh) pickFresh = true`.
+    (fun {_Γ _ _ _ _ _ _} L _ hbody iht ihbody =>
+      let y₀ := pickFresh L
+      have hy₀L : y₀ ∉ L := pickFresh_notMem L
+      avoidsPro (hbody y₀ hy₀L) y₀ && iht && ihbody y₀ hy₀L)
+    h
+
+/-! ### §3.3.1. Per-constructor `simp` unfoldings for `cofinAvoidsProSelf` -/
+
+@[simp] theorem cofinAvoidsProSelf_pro {Γ s y α α'} (hpv : PrevalidExt Γ s)
+    (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α') :
+    cofinAvoidsProSelf (MEqRed.pro hpv heq hα) = cofinAvoidsProSelf hα := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_bet {Γ s t v v' body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hv : MEqRed Γ [] v v') :
+    cofinAvoidsProSelf (MEqRed.bet L hLCt hbody hv) =
+      (cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L)) &&
+       cofinAvoidsProSelf hv) := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_top {Γ s} (hpv : PrevalidExt Γ s) :
+    cofinAvoidsProSelf (MEqRed.top hpv) = true := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_app {Γ s u u' v v'}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v') :
+    cofinAvoidsProSelf (MEqRed.app hu hv) =
+      (cofinAvoidsProSelf hu && cofinAvoidsProSelf hv) := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_var {Γ s y} (hpv : PrevalidExt Γ s) :
+    cofinAvoidsProSelf (@MEqRed.var Γ s y hpv) = true := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_fun_ {Γ t t' body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y])) :
+    cofinAvoidsProSelf (MEqRed.fun_ L ht hbody) =
+      (cofinAvoidsProSelf ht &&
+       cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L))) := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_tAp {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) :
+    cofinAvoidsProSelf (MEqRed.tAp hpv hLCu hfvu) = true := by
+  unfold cofinAvoidsProSelf; rfl
+
+@[simp] theorem cofinAvoidsProSelf_fOp {Γ s t t' α body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y])) :
+    cofinAvoidsProSelf (MEqRed.fOp L ht hbody) =
+      (avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) (pickFresh L) &&
+       cofinAvoidsProSelf ht &&
+       cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L))) := by
+  unfold cofinAvoidsProSelf; rfl
+
+/-! ## §3.4. `msCofinAvoidsProSelf` — MSubRed analog
+
+Mirror of `cofinAvoidsProSelf` for `MSubRed` derivations. Used by
+`MSubRed.stack_replace` (Phase 3). The `Ms-Equ` arm delegates to
+`cofinAvoidsProSelf` on the embedded `MEqRed`. The `Ms-FOp` arm samples
+at the SAME widened point as `msAvoidsPro` (`msAvoidsPro_L_aug L body
+body' x`) so that `MSubRed.equ_head_replace`'s sample alignment carries
+through.
+
+Like `msCofinDomFresh`, this is parametrized by `x : String` for sample
+alignment with `msAvoidsPro`. The `x` parameter is unused at most arms
+and just propagates. -/
+
+noncomputable def msCofinAvoidsProSelf {Γ s u v} (h : MSubRed Γ s u v) (x : String) :
+    Bool :=
+  MSubRed.rec
+    (motive := fun _ _ _ _ _ => String → Bool)
+    -- Ms-Pro: leaf.
+    (fun _ _ _ => true)
+    -- Ms-Top: leaf.
+    (fun _ _ _ _ => true)
+    -- Ms-Equ: delegate to `cofinAvoidsProSelf`.
+    (fun _ heq _ => cofinAvoidsProSelf heq)
+    -- Ms-App: recurse on operator.
+    (fun _ _ _ ihu x => ihu x)
+    -- Ms-Fun: propagate (no .equ swap; just bound recursion).
+    (fun {_Γ _ body body'} L _ _ ihbody x =>
+      let y := pickFresh (msAvoidsPro_L_aug L body body' x)
+      have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
+      ihbody y hyL x)
+    -- Ms-FOp: HERE is where the body-self-avoidance condition lives.
+    (fun {_Γ _ _ _ body body'} L _ hbody ihbody x =>
+      let y := pickFresh (msAvoidsPro_L_aug L body body' x)
+      have hyL : y ∉ L := msAvoidsPro_L_aug_notMem_L
+      msAvoidsPro (hbody y hyL) y && ihbody y hyL x)
+    h x
+
+@[simp] theorem msCofinAvoidsProSelf_pro {Γ s y t} (hpv : PrevalidExt Γ s)
+    (hsb : Γ.subBinds y t) (x : String) :
+    msCofinAvoidsProSelf (MSubRed.pro hpv hsb) x = true := by
+  unfold msCofinAvoidsProSelf; rfl
+
+@[simp] theorem msCofinAvoidsProSelf_top {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    msCofinAvoidsProSelf (MSubRed.top hpv hLCu hfvu) x = true := by
+  unfold msCofinAvoidsProSelf; rfl
+
+@[simp] theorem msCofinAvoidsProSelf_equ {Γ s u v} (hpv : PrevalidExt Γ s)
+    (heq : MEqRed Γ s u v) (x : String) :
+    msCofinAvoidsProSelf (MSubRed.equ hpv heq) x = cofinAvoidsProSelf heq := by
+  unfold msCofinAvoidsProSelf; rfl
+
+@[simp] theorem msCofinAvoidsProSelf_app {Γ s u u' v} (hu : MSubRed Γ (v :: s) u u')
+    (hLCv : Term.LC v) (hfvv : Term.fv v ⊆ Γ.dom) (x : String) :
+    msCofinAvoidsProSelf (MSubRed.app hu hLCv hfvv) x =
+      msCofinAvoidsProSelf hu x := by
+  unfold msCofinAvoidsProSelf; rfl
+
+@[simp] theorem msCofinAvoidsProSelf_fun_ {Γ : Ctx} {t body body' : Term}
+    (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L →
+      MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (x : String) :
+    msCofinAvoidsProSelf (MSubRed.fun_ L hLCt hbody) x =
+      msCofinAvoidsProSelf
+        (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+               msAvoidsPro_L_aug_notMem_L) x := by
+  unfold msCofinAvoidsProSelf; rfl
+
+@[simp] theorem msCofinAvoidsProSelf_fOp {Γ : Ctx} {s : Stack} {t α body body' : Term}
+    (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L →
+      MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (x : String) :
+    msCofinAvoidsProSelf (MSubRed.fOp L hLCt hbody) x =
+      (msAvoidsPro
+         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+                msAvoidsPro_L_aug_notMem_L)
+         (pickFresh (msAvoidsPro_L_aug L body body' x)) &&
+       msCofinAvoidsProSelf
+         (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+                msAvoidsPro_L_aug_notMem_L) x) := by
+  unfold msCofinAvoidsProSelf; rfl
+
 /-! ## §4. Discharged Lemma 30 residual (axiom replaced by theorem)
 
 `Lemma_30_msPro_x_axiom` (in `Substitution.lean`) axiomatizes the
