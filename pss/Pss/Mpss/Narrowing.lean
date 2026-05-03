@@ -1,6 +1,7 @@
 import Pss.Mpss.WellFormed
 import Pss.Mpss.Weakening
 import Pss.Mpss.Substitution
+import Pss.Mpss.AvoidsPro
 
 set_option linter.unusedVariables false
 
@@ -417,13 +418,67 @@ also retains the call.
 
 **Cross-ref:** see `AXIOMS.md` axiom #2 for status / paper / discharge
 plan; this is currently in the `#print axioms` closure of Theorem 3, 4,
-5 and Lemma 1. -/
+5 and Lemma 1.
+
+### Discharge progress (2026-05, agent_id: och-l24-attempt-2)
+
+A targeted attempt with an explicit `msAvoidsPro h x = true` premise
+discharges 5 of 6 `MSubRed` constructor arms:
+
+* **Ms-Pro** — vacuous in `y = x` (avoidance witness contradicts
+  `decide (y ≠ x) = true`); else `_subBinds_narrow_neq` re-establishes
+  the lookup.
+* **Ms-Top**, **Ms-Equ**, **Ms-App** — structural recursion via
+  `Lemma_26_NarrowingPrevalid`, `Lemma_25_NarrowingMEqRed`,
+  `_dom_narrow_eq`.
+* **Ms-Fun** — recurse at canonical sample `y0 := pickFresh L_aug`
+  (where `L_aug = L ∪ fv body ∪ fv body' ∪ {x}` — see the widened
+  cofinite arms of `msAvoidsPro` in `Pss.Mpss.AvoidsPro` plus the
+  `msAvoidsPro_L_aug_*` helpers), then build the body at arbitrary
+  `z ∉ L_new` via `MSubRed.rename_sub` (a no-fv-precondition rename
+  in `Pss.Mpss.Renaming`).
+
+The widening of `msAvoidsPro`'s cofinite-arm freshness sets is the
+key enabler: `pickFresh L_aug` satisfies the freshness preconditions
+of `MSubRed.rename_sub`, so the avoidance witness aligns with the
+canonical body sample without any alpha-equivariance assumption
+across non-uniform `hbody` (the false-axiom shape that derailed
+commit `4145292`).
+
+* **Ms-FOp** — structurally identical to Ms-Fun, except the body is
+  under an `.equ`-head binder instead of `.sub`. The required rename
+  `MSubRed.rename_equ` in `Pss.Mpss.Renaming.lean` requires
+  `fv body ⊆ Γ.dom` and `fv body' ⊆ Γ.dom`, which `MSubRed.fOp`'s
+  constructor does NOT supply. A no-fv-precondition variant exists
+  as the `private` helper `_MSubRed_rename_equ_no_fv_C` in
+  `Pss.Mpss.Commutation.lean` line 990, which depends on
+  `_MSubRed_rename_equ_loc_C`, `_MEqRed_rename_equ_loc_C`,
+  `_PrevalidExt_insert_fresh_equ_mid_C`, etc. (cumulatively
+  ~400 lines of structural-induction proofs). Commutation.lean
+  imports Narrowing (cycle), so the Ms-FOp arm cannot directly
+  reuse those helpers.
+
+  **Next discharge step:** factor the no-fv equ-rename machinery
+  from `Commutation.lean` into `Pss.Mpss.Renaming.lean` as public
+  helpers (~400 lines moved), then complete the `Ms-FOp` arm
+  (~80 lines), then wire-up:
+
+  1. Thread an `msAvoidsPro` premise through `_S_motive_sub` in
+     `Pss.Mpss.TypeSafety.lean` (`_S_lf2` consumer).
+  2. Supply an `msAvoidsPro` witness at the `Lemma_24_*` call site
+     in `Pss.Mpss.Commutation.lean` (`Lemma_1_inline_fun_fun_residual`).
+  3. Replace the axiom with the witnessed theorem.
+
+This commit ships the prerequisite infrastructure (widened
+`msAvoidsPro` + freshness helpers in `AvoidsPro.lean`); the axiom is
+RETAINED pending the equ-rename refactor. -/
 axiom Lemma_24_NarrowingMSubRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
     (hLCt : Term.LC t)
     (hfvt : Term.fv t ⊆ Γ₁.dom) :
     MSubRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st u v
+
 
 /-! ## §5. Lemma 23 — Narrowing for `WfM`, `WSubM`, `WSubMStar`
 

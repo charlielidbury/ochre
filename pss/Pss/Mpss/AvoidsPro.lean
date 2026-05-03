@@ -603,14 +603,27 @@ noncomputable def msAvoidsPro {Γ s u v} (h : MSubRed Γ s u v) (x : String) : B
     -- Ms-App: recurse on the operator (operand has no derivation).
     (fun {_Γ _s _u _u' _v} _hu _hLCv _hfvv ihu x => ihu x)
     -- Ms-Fun: bound annotation has no derivation; cofinite body recursion.
-    (fun {_Γ _t _body _body'} L _hLCt _hbody ihbody x =>
-      let y := pickFresh L
-      have hyL : y ∉ L := pickFresh_notMem L
+    -- Sample at `pickFresh (L ∪ fv body ∪ fv body' ∪ {x})` so the witness
+    -- aligns with the freshness preconditions of `MSubRed.rename_sub`
+    -- (which downstream `Lemma_24_NarrowingMSubRed`-style discharges
+    -- need to thread the avoidance witness across cofinite samples).
+    -- The widening is local — `msAvoidsPro` remains a deterministic
+    -- function of the derivation; the simp lemmas below reflect the
+    -- new sample point.
+    (fun {_Γ _t body body'} L _hLCt _hbody ihbody x =>
+      let L' := L ∪ Term.fv body ∪ Term.fv body' ∪ {x}
+      let y := pickFresh L'
+      have hyL : y ∉ L := fun h => pickFresh_notMem L'
+        (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
+         Finset.mem_union.mpr <| Or.inl h)
       ihbody y hyL x)
-    -- Ms-FOp: bound annotation has no derivation; cofinite body recursion.
-    (fun {_Γ _s _t _α _body _body'} L _hLCt _hbody ihbody x =>
-      let y := pickFresh L
-      have hyL : y ∉ L := pickFresh_notMem L
+    -- Ms-FOp: same widening for the same reason.
+    (fun {_Γ _s _t _α body body'} L _hLCt _hbody ihbody x =>
+      let L' := L ∪ Term.fv body ∪ Term.fv body' ∪ {x}
+      let y := pickFresh L'
+      have hyL : y ∉ L := fun h => pickFresh_notMem L'
+        (Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
+         Finset.mem_union.mpr <| Or.inl h)
       ihbody y hyL x)
     h x
 
@@ -640,13 +653,59 @@ per-constructor basis. -/
     msAvoidsPro (MSubRed.app hu hLCv hfvv) x = msAvoidsPro hu x := by
   unfold msAvoidsPro; rfl
 
+/-- Helper: the augmented L set used by `msAvoidsPro`'s cofinite arms.
+Includes the source's L plus `Term.fv body`, `Term.fv body'`, and `{x}`.
+This guarantees the canonical witness `pickFresh (msAvoidsPro_L_aug ...)`
+satisfies freshness preconditions for `MSubRed.rename_sub`. -/
+def msAvoidsPro_L_aug (L : Finset String) (body body' : Term) (x : String) :
+    Finset String :=
+  L ∪ Term.fv body ∪ Term.fv body' ∪ {x}
+
+theorem msAvoidsPro_L_aug_notMem_L {L : Finset String} {body body' : Term}
+    {x : String} :
+    pickFresh (msAvoidsPro_L_aug L body body' x) ∉ L := by
+  intro h
+  apply pickFresh_notMem (msAvoidsPro_L_aug L body body' x)
+  unfold msAvoidsPro_L_aug
+  exact Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
+    Finset.mem_union.mpr <| Or.inl h
+
+theorem msAvoidsPro_L_aug_notMem_body {L : Finset String} {body body' : Term}
+    {x : String} :
+    pickFresh (msAvoidsPro_L_aug L body body' x) ∉ Term.fv body := by
+  intro h
+  apply pickFresh_notMem (msAvoidsPro_L_aug L body body' x)
+  unfold msAvoidsPro_L_aug
+  exact Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inl <|
+    Finset.mem_union.mpr <| Or.inr h
+
+theorem msAvoidsPro_L_aug_notMem_body' {L : Finset String} {body body' : Term}
+    {x : String} :
+    pickFresh (msAvoidsPro_L_aug L body body' x) ∉ Term.fv body' := by
+  intro h
+  apply pickFresh_notMem (msAvoidsPro_L_aug L body body' x)
+  unfold msAvoidsPro_L_aug
+  exact Finset.mem_union.mpr <| Or.inl <| Finset.mem_union.mpr <| Or.inr h
+
+theorem msAvoidsPro_L_aug_ne_x {L : Finset String} {body body' : Term}
+    {x : String} :
+    pickFresh (msAvoidsPro_L_aug L body body' x) ≠ x := by
+  intro hxeq
+  apply pickFresh_notMem (msAvoidsPro_L_aug L body body' x)
+  show pickFresh (msAvoidsPro_L_aug L body body' x) ∈
+    L ∪ Term.fv body ∪ Term.fv body' ∪ {x}
+  refine Finset.mem_union.mpr <| Or.inr ?_
+  simp [hxeq]
+
 @[simp] theorem msAvoidsPro_fun_ {Γ t body body'} (L : Finset String)
     (hLCt : Term.LC t)
     (hbody : ∀ y, y ∉ L →
       MSubRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
     (x : String) :
     msAvoidsPro (MSubRed.fun_ L hLCt hbody) x =
-      msAvoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x := by
+      msAvoidsPro
+        (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+               msAvoidsPro_L_aug_notMem_L) x := by
   unfold msAvoidsPro; rfl
 
 @[simp] theorem msAvoidsPro_fOp {Γ s t α body body'} (L : Finset String)
@@ -655,7 +714,9 @@ per-constructor basis. -/
       MSubRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
     (x : String) :
     msAvoidsPro (MSubRed.fOp L hLCt hbody) x =
-      msAvoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x := by
+      msAvoidsPro
+        (hbody (pickFresh (msAvoidsPro_L_aug L body body' x))
+               msAvoidsPro_L_aug_notMem_L) x := by
   unfold msAvoidsPro; rfl
 
 /-! ## §4. Discharged Lemma 30 residual (axiom replaced by theorem)

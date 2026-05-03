@@ -148,7 +148,8 @@ theorem.
 
 ### 2. `Lemma_24_NarrowingMSubRed`
 
-* **File:** `Pss/Mpss/Narrowing.lean`, line 417.
+* **File:** `Pss/Mpss/Narrowing.lean`, line 417 (axiom statement) and
+  the post-axiom docstring §4 for the discharge progress.
 * **Paper:** Appendix Lemma 24.
 * **Statement:** Narrowing for `MSubRed`: if `MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v`
   and `Term.LC t` and `fv t ⊆ Γ₁.dom`, then
@@ -156,18 +157,34 @@ theorem.
   required — the antecedent has been weakened from the paper's
   formulation.)
 * **Status:** Outstanding active. Hits Theorem 3, 4, 5 and Lemma 1.
-* **Discharge plan:** A Wave-5 attempt is documented in the file
-  (lines 382-413). The Ms-App / Ms-Fun / Ms-FOp arms each need
-  WSubMStar-weakening through a binder, which is downstream of
-  `Narrowing.lean` via the import chain
-  `TransitivityElim → Commutation → Diamond → Narrowing` — creating a
-  cycle. Two paths:
-  1. Inline ~200 lines of WSubMStar-weakening into `Narrowing.lean`
-     (duplicating `TypeSafety.lean`'s `Lemma7._W_*` machinery); OR
-  2. Re-architect to lift narrowing downstream of `WfM`-weakening (much
-     larger structural change).
-* **Estimated complexity:** Medium (~200-300 lines on path 1; large on
-  path 2).
+* **Discharge plan (2026-05, post-attempt-2):** The honest discharge
+  takes an `msAvoidsPro h x = true` side condition (the paper's "no
+  Ms-Pro on x" premise, captured by the Bool-valued `msAvoidsPro` in
+  `Pss/Mpss/AvoidsPro.lean`). With the avoidance witness:
+  1. Ms-Pro y arm: vacuous when y = x; else `_subBinds_narrow_neq`.
+  2. Ms-Top, Ms-Equ, Ms-App: structural recursion via existing helpers.
+  3. Ms-Fun arm: recurse at canonical sample
+     `y0 := pickFresh (L ∪ fv body ∪ fv body' ∪ {x})` (the widened
+     freshness set introduced by this commit's edit to `msAvoidsPro`),
+     then build body at arbitrary z via `MSubRed.rename_sub` (no-fv
+     rename in `Pss/Mpss/Renaming.lean`). NO alpha-equivariance.
+  4. Ms-FOp arm: blocked on a no-fv-precondition variant of
+     `MSubRed.rename_equ` (currently a `private` 400-line helper in
+     `Pss/Mpss/Commutation.lean` — needs factoring into
+     `Pss/Mpss/Renaming.lean` to avoid the
+     `Commutation → ... → Narrowing` import cycle).
+  5. Wire-up: thread `msAvoidsPro` through `_S_motive_sub` in
+     `Pss/Mpss/TypeSafety.lean` and supply a witness at
+     `Lemma_1_inline_fun_fun_residual` in `Pss/Mpss/Commutation.lean`.
+* **Estimated complexity:** Medium-large (~400 lines refactor for the
+  equ-rename promotion + ~200 lines for the discharge proper +
+  ~100 lines wire-up). Total ~700 lines.
+* **Foundational note:** Earlier discharge plans (path A "WSubM
+  transitivity" and path B "WSubMStar end-to-end") are NOT viable
+  per the analysis on lines 300-380 of `Narrowing.lean` — both
+  require infrastructure downstream of this file. The avoidance-
+  witness path documented above lives entirely upstream and is the
+  active target.
 
 ### 3. `Lemma_10_Inversion`
 
