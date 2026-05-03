@@ -242,16 +242,76 @@ theorem.
 * **Discharge plan:** `MEqRed.bet`'s body sub-derivation is at `Γ; s`
   WITHOUT the binder added (paper-faithful — see `MEQRED-BET-AUDIT.md`).
   This makes `MEqRed.refl` opaque on freshly-opened bodies whose stray
-  fvar isn't in `Γ.dom`. Two paths:
-  1. Custom β-helper that walks `LC e` using `MEqRed.var` (no fv-scope
-     needed) at fvars; recursive `.app` case still wants `fv ⊆ Γ.dom`
-     for the operand;
-  2. Lifting `Term.LC` from `Prop` to `Type` would let
-     `MEqRed.refl_J` itself become `Type`-valued (no `Classical.choice`
-     extraction), enabling structural recursion through opened bodies
-     without the fv-scope precondition.
-* **Estimated complexity:** Small-medium on path 1 (~100-200 lines);
-  large on path 2 (cross-codebase refactor).
+  fvar isn't in `Γ.dom`.
+
+* **Path 1 (custom β-helper) — REJECTED 2026-05-03 (blocker analysis).**
+  The naive recipe ("walk `LC body^[y]` and use `MEqRed.var` at fvars
+  since `MEqRed.var` has no fv-scope check") does NOT close. The wall is
+  `MEqRed.app`'s constructor signature:
+
+  ```
+  | app : MEqRed Γ (v :: s) u u' → MEqRed Γ [] v v' →
+          MEqRed Γ s (.app u v) (.app u' v')
+  ```
+
+  The first sub-derivation requires `MEqRed Γ (v :: s) u u'`, whose
+  leaves (e.g. `MEqRed.var hpv`) require `PrevalidExt Γ (v :: s)`,
+  requiring `fv v ⊆ Γ.dom`. When `body` syntactically contains an
+  `.app a b` with `b` containing `.bvar 0`, the opened operand
+  `b^[y]` free-mentions `y ∉ Γ.dom`, and PrevalidExt fails.
+
+  Concrete counterexample to the naive walk: `body = .app (.bvar 0)
+  (.bvar 0)`. Then `body^[y] = .app (.fvar y) (.fvar y)`. To build
+  `MEqRed Γ s body^[y] body^[y]` via `MEqRed.app hu hv` we need
+  `hu : MEqRed Γ (.fvar y :: s) (.fvar y) (.fvar y)`. The leaf
+  `MEqRed.var hpv'` needs `PrevalidExt Γ (.fvar y :: s)`, requiring
+  `{y} ⊆ Γ.dom`. FALSE for fresh y.
+
+  **Strip variant also rejected.** Building the body refl at the
+  extended context `⟨y, .top, .sub⟩ :: Γ` succeeds (PrevalidExt
+  satisfies `{y} ⊆ insert y Γ.dom`). But the strip step
+  `MEqRed (⟨y, .top, .sub⟩ :: Γ) s u u' → MEqRed Γ s u u'` fails on
+  the `MEqRed.app` arm of its own structural recursion: stripping y
+  from the operator's sub-derivation `MEqRed (⟨y, .top, .sub⟩ :: Γ)
+  (v :: s) u u'` requires `y ∉ fv v` to re-establish PrevalidExt at
+  unextended Γ. But `v` may free-mention y (the very case where the
+  extended-context construction was needed). Construct and strip hit
+  the SAME `.app`-operand wall.
+
+  Examined alternatives within Path 1:
+  - `MEqRed.rename_*` functors don't strip — they rename the binding
+    name and the stray fvar to a new fresh name; the binding stays.
+  - No other `MEqRed` constructor produces `.app` shapes (Me-tAp only
+    handles `.app .top u`; Me-Bet only handles `.app (.abs t u) v`).
+  - No structural restriction on `body` (e.g. "no `.bvar 0` under
+    `.app`-operand") is implied by `LC (.abs t body)`.
+
+* **Path 2 (alpha-equivariance) — FORBIDDEN.** Per the discharge-
+  campaign constraints, alpha-equivariance is the cluster-wide
+  blocker for the β-residual axioms (#6, #7, #9, #10). Path 2 unblocks
+  Proposition 17 for the same fundamental reason it would unblock the
+  β-residuals, but is the same multi-day refactor.
+
+* **Path 3 (refine `MEqRed.bet`'s body premise to extended ctx) —
+  FORBIDDEN.** Per `MEQRED-BET-AUDIT.md`, the unextended-Γ body
+  premise is paper-faithful and is REQUIRED for Lemma 1's
+  commutativity proof (Case Me-Bet × Ms-App, p. 9:19–9:20 of paper).
+  Adding the binding would break Lemma 1.
+
+* **Path 4 (Type-LC + alpha-aware MEqRed) — VIABLE BUT MULTI-DAY.**
+  Redesign `MEqRed.bet` / `.fun_` / `.fOp` constructors to take a
+  Type-valued cofinite quantifier whose sample point is invariant
+  under the rename functors. The body premise becomes structurally
+  observable (no fv-scope check, no Classical.choice). With this in
+  place, the body refl on `body^[y]` could be built by structural
+  recursion on body's structure (NOT body^[y]'s LC), resolving the
+  `.app`-operand stray issue at the constructor-level. Cross-codebase
+  refactor on the same scale as the Type-LC refactor (commit
+  `ad3ff08`). See `PLAN.md`'s discharge-campaign Option B.
+
+* **Estimated complexity:** Path 4 only (multi-day cross-codebase
+  refactor, ~500-1000 lines). Path 1 is rejected; Paths 2 and 3 are
+  forbidden.
 
 ### 6. `Lemma_1_ctx_axiom` *(private to `Pss.Mpss.Commutation`)*
 

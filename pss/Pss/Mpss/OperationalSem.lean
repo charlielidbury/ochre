@@ -59,15 +59,49 @@ construction via `MEqRed.bet` requires a body sub-derivation in `Γ; s`
 (NOT extended), which fails the fv-scope requirement of `MEqRed.refl`
 when the freshly opened body mentions a name outside `Γ.dom`.
 
-Discharging this would require a custom reflexivity helper that walks
-LC structure using `MEqRed.var` (no fv-scope needed) for fvars; the
-helper still needs fv-scope for `.app` subterms, which the recursive
-case can't easily satisfy. A future polish wave would either (a) refine
-`MEqRed.bet`'s body premise to extend the context, or (b) prove the
-custom helper using a stronger induction principle that tracks "stray"
-fvars explicitly.
+**Path-1 (custom β-helper) blocker analysis (2026-05-03 attempted):**
+The naive recipe — "walk `LC body^[y]` and use `MEqRed.var` at fvars (no
+fv-scope check)" — does NOT close. The wall is `MEqRed.app`'s
+constructor signature:
 
-TODO Wave 8: discharge `Proposition_17_beta_axiom`. -/
+```
+| app : MEqRed Γ (v :: s) u u' → MEqRed Γ [] v v' →
+        MEqRed Γ s (.app u v) (.app u' v')
+```
+
+To CONSTRUCT the first sub-derivation `MEqRed Γ (v :: s) u u'` we
+recurse into `u`; every leaf (e.g. `MEqRed.var hpv`) requires
+`PrevalidExt Γ (v :: s)`, which requires `fv v ⊆ Γ.dom`. When `body`
+contains `.app a b` with `b` syntactically containing `.bvar 0`,
+`b^[y]` free-mentions `y ∉ Γ.dom` and the PrevalidExt fails. Concrete
+counterexample: `body = .app (.bvar 0) (.bvar 0)` ⇒ `body^[y] =
+.app (.fvar y) (.fvar y)`; PrevalidExt Γ (.fvar y :: s) needs
+`{y} ⊆ Γ.dom`, FALSE for fresh y.
+
+**Path-1 + strip blocker analysis.** Building at the EXTENDED context
+`⟨y, .top, .sub⟩ :: Γ` (where y has scope) succeeds, but the strip
+`MEqRed (⟨y, .top, .sub⟩ :: Γ) s u u' → MEqRed Γ s u u'` fails on the
+`MEqRed.app` arm: the recursion needs `y ∉ fv v` for the operand to
+re-establish PrevalidExt at unextended Γ, but in the just-built
+derivation `v` may free-mention y (precisely the case that motivated
+the extended-ctx construction). Strip and construct hit the same
+`.app`-operand wall.
+
+**Path-2 (alpha-equivariance) is forbidden.** Per the discharge-campaign
+constraints, alpha-equivariance is the cluster-wide blocker for the
+β-residuals and is not available here.
+
+**Path-3 (refine `MEqRed.bet`'s body premise) is forbidden.** Per
+`MEQRED-BET-AUDIT.md`, the unextended-Γ body premise is paper-faithful
+and required for Lemma 1's commutativity proof. Modifying it would
+break headline Lemma 1.
+
+**Path-4 (Type-LC + alpha-aware MEqRed) is multi-day cross-codebase
+refactor.** Redesigning `MEqRed.bet` / `.fun_` / `.fOp` to take a
+Type-valued cofinite quantifier whose sample point is invariant under
+the rename functors. See `AXIOMS.md` axiom #5 for the full plan.
+
+The axiom remains. -/
 
 /-- **Escape-hatch axiom** for the β-case of Proposition 17.
 
@@ -80,14 +114,12 @@ is at `Γ; s` (NOT extended) — see `MEQRED-BET-AUDIT.md` for confirmation
 that this is paper-faithful and must NOT be modified. The natural
 construction needs `MEqRed Γ s (body^[x]) (body^[x])` for fresh `x`,
 which would require `fv (body^[x]) ⊆ Γ.dom` for `MEqRed.refl` — but
-`body^[x]` may free-mention `x ∉ Γ.dom`. `MEqRed.refl` itself extracts
-via `Classical.choice` from `MEqRed.refl_J : MEqRedJ ...` (a Nonempty
-wrapper, opaque to the kernel).
+`body^[x]` may free-mention `x ∉ Γ.dom`.
 
-**Discharge plan:** see `AXIOMS.md` axiom #5
-(`Proposition_17_beta_axiom`). Two paths: (a) custom β-helper that
-walks `LC e` using `MEqRed.var` (no fv-scope) at fvars; (b) Type-LC
-refactor (`PLAN.md`'s discharge-campaign Option B). -/
+The 2026-05-03 path-1 attempt confirmed the LN obstruction propagates
+through `MEqRed.app`'s implicit PrevalidExt-on-stack requirement. The
+discharge requires alpha-equivariance OR the Type-LC + alpha-aware
+MEqRed redesign (Path 4). See `AXIOMS.md` axiom #5 for full analysis. -/
 axiom Proposition_17_beta_axiom
     {Γ : Ctx} {s : Stack} {bound body arg : Term}
     (hpv : PrevalidExt Γ s)
