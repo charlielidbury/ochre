@@ -313,6 +313,55 @@ theorem.
   external (caller-supplied refl) usage.
 * **Estimated complexity:** Medium (same shape as `Lemma_1_ctx_axiom`).
 
+* **Phase 4 blocker (2026-05-03 session):** Phase 3's
+  `MEqRed.stack_head_replace` is shipped (in `Renaming.lean` §9.3)
+  but cannot be plugged into the App×App arm without first discharging
+  its `cofinDomFresh` and `cofinAvoidsProSelf` premises on the IH
+  outputs `hu'_w`, `hu₂_w`. These premises are non-trivial:
+  - `cofinAvoidsProSelf` at the `fOp` arm requires
+    `avoidsPro (hbody (pickFresh L)) (pickFresh L) = true`. The body
+    `body^[y₀]` lives at context `⟨y₀, α, .equ⟩ :: Γ`, so `Me-Pro y₀`
+    steps in the body are LEGAL — `_core`'s output may include them.
+    There is therefore NO general `cofin_normalize` recipe for arbitrary
+    `MEqRed Γ s u u'` that produces a witness with cofinAvoidsProSelf =
+    true: at the fOp arm we cannot strip Me-Pro on the binding name.
+  - Refl-shape rescue fails: `_core`'s App×App output sub-derivations
+    (`hu'_w` from `ihu hu₂`, `hv'_v₃` from `ihv hv₂`) are arbitrary
+    IH outputs, NOT refl-shaped, so an `avoidsPro_refl`-style trivial
+    discharge is unavailable.
+  - The only viable path is Option A: thread cofin* output guarantees
+    through `_core`'s motive plus every `_inline_*` lemma's signature
+    (`_inline_pro_pro`, `_inline_app`, `_inline_bet`, `_inline_fun_fun`,
+    `_inline_fOp_fOp`, `_inline_tAp`). Each output construction (App,
+    Pro, refl, fOp via rename_equ_no_fv, etc.) needs a cofin proof.
+    `MEqRed.refl`'s cofin = true requires widening `L` in its `abs`
+    case to include `fv body` and constructing dedicated lemmas
+    `cofinDomFresh_refl`, `cofinAvoidsProSelf_refl`. This is a
+    multi-day cross-cutting refactor (>500 lines, multiple files).
+  - The estimate for Phase 4 has therefore been revised: it is NOT a
+    one-line "plug stack_head_replace into App×App" — it requires the
+    motive-threading refactor described above as a prerequisite.
+
+* **Recommended next attempt (Phase 4a + 4b):**
+  - **Phase 4a — `cofin_refl` lemmas.** Prove `cofinDomFresh_refl` and
+    `cofinAvoidsProSelf_refl` for `MEqRed.refl _ _ _` by structural
+    recursion on `Term.LC` (mirroring the existing `avoidsPro_refl`
+    proof). Requires widening the `L` used inside `MEqRed.refl`'s `abs`
+    case (or proving it works at the existing `L ∪ Γ.dom`). Estimated
+    ~100-150 lines in `AvoidsPro.lean`.
+  - **Phase 4b — `_core` motive enrichment.** Add cofin* output
+    guarantees to `Lemma_2_DiamondMEqRed_core`'s motive and to all six
+    `_inline_*` lemma signatures. Each output construction needs a
+    cofin* proof. The fOp_fOp arm (which uses `rename_equ_no_fv`) needs
+    a `cofin*_rename_equ_no_fv` preservation lemma. Estimated ~400-600
+    lines across `Diamond.lean`, plus ~50-100 lines of preservation
+    lemmas in `Renaming.lean`.
+  - **Phase 4c — discharge in App×App.** Once Phases 4a and 4b are in
+    place, the App×App arm can replace `_ctx_axiom` with two
+    `MEqRed.stack_head_replace` calls (one per leg, using `hv` /
+    `hv₂` to swap the stack head). The premises are immediate from
+    the enriched IH output guarantees.
+
 ### 9. `Lemma_2_inline_app_bet_residual_axiom` *(private to `Pss.Mpss.Diamond`)*
 
 * **File:** `Pss/Mpss/Diamond.lean`, line 292.
