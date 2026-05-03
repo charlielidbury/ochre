@@ -768,6 +768,52 @@ noncomputable def cofinDomFresh {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
        cofinDomFresh (hbody (pickFresh L) (pickFresh_notMem L))) := by
   unfold cofinDomFresh; rfl
 
+/-! ### §2.3.2. `cofinDomFresh_refl` — refl-shaped derivations are dom-fresh
+
+Mirror of `avoidsPro_refl` (§2.2). `MEqRed.refl` is built by direct
+structural recursion on `Term.LC u` (Type-valued post-Type-LC refactor),
+so each cofinite arm uses the widened L choice
+`L_orig ∪ Γ.dom ∪ Term.fv body` (see `Substitution.lean`'s
+`MEqRed.refl` `abs` case). The widened L ensures that
+`pickFresh L_chosen` is automatically disjoint from `Γ.dom` and
+`Term.fv body` — and since refl produces `body = body'`, also from
+`Term.fv body'`. -/
+
+theorem cofinDomFresh_refl
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
+    cofinDomFresh (MEqRed.refl hpv hLC hfv) = true := by
+  induction hLC generalizing s Γ with
+  | top =>
+    simp only [MEqRed.refl, cofinDomFresh_top]
+  | fvar y =>
+    simp only [MEqRed.refl, cofinDomFresh_var]
+  | @app a b hLCa hLCb iha ihb =>
+    simp only [MEqRed.refl, cofinDomFresh_app, Bool.and_eq_true]
+    refine ⟨iha _ _, ihb _ _⟩
+  | @abs L bound body hLCbound hbody ihbound ihbody =>
+    -- Common: the widened L for the cofinite arm.
+    set L' : Finset String := L ∪ Γ.dom ∪ Term.fv body with hL'
+    have hpf_notL' : pickFresh L' ∉ L' := pickFresh_notMem L'
+    have hpf_notΓ : pickFresh L' ∉ Γ.dom := fun h =>
+      hpf_notL' (Finset.mem_union.mpr (Or.inl
+        (Finset.mem_union.mpr (Or.inr h))))
+    have hpf_notFv : pickFresh L' ∉ Term.fv body := fun h =>
+      hpf_notL' (Finset.mem_union.mpr (Or.inr h))
+    cases s with
+    | nil =>
+      simp only [MEqRed.refl, cofinDomFresh_fun_, Bool.and_eq_true,
+                 decide_eq_true_eq]
+      refine ⟨⟨⟨⟨hpf_notΓ, hpf_notFv⟩, hpf_notFv⟩, ihbound _ _⟩, ?_⟩
+      exact ihbody _ _ _ _
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        simp only [MEqRed.refl, cofinDomFresh_fOp, Bool.and_eq_true,
+                   decide_eq_true_eq]
+        refine ⟨⟨⟨⟨hpf_notΓ, hpf_notFv⟩, hpf_notFv⟩, ihbound _ _⟩, ?_⟩
+        exact ihbody _ _ _ _
+
 /-! ## §3. Bool-valued `msAvoidsPro` for `MSubRed`
 
 Mirror of `avoidsPro` for the subtype-reduction relation. `msAvoidsPro h x
@@ -1123,6 +1169,45 @@ noncomputable def cofinAvoidsProSelf {Γ s u v} (h : MEqRed Γ s u v) : Bool :=
        cofinAvoidsProSelf ht &&
        cofinAvoidsProSelf (hbody (pickFresh L) (pickFresh_notMem L))) := by
   unfold cofinAvoidsProSelf; rfl
+
+/-! ### §3.3.2. `cofinAvoidsProSelf_refl` — refl-shaped derivations self-avoid
+
+Mirror of `avoidsPro_refl` (§2.2) and `cofinDomFresh_refl` (§2.3.2).
+At the `fOp` arm, the body recursion `hbody y hyL` is itself produced by
+`MEqRed.refl` on the opened body — so by `avoidsPro_refl` it avoids any
+variable, in particular the canonical sampling witness `pickFresh L`. -/
+
+theorem cofinAvoidsProSelf_refl
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
+    cofinAvoidsProSelf (MEqRed.refl hpv hLC hfv) = true := by
+  induction hLC generalizing s Γ with
+  | top =>
+    simp only [MEqRed.refl, cofinAvoidsProSelf_top]
+  | fvar y =>
+    simp only [MEqRed.refl, cofinAvoidsProSelf_var]
+  | @app a b hLCa hLCb iha ihb =>
+    simp only [MEqRed.refl, cofinAvoidsProSelf_app, Bool.and_eq_true]
+    refine ⟨iha _ _, ihb _ _⟩
+  | @abs L bound body hLCbound hbody ihbound ihbody =>
+    cases s with
+    | nil =>
+      simp only [MEqRed.refl, cofinAvoidsProSelf_fun_, Bool.and_eq_true]
+      refine ⟨ihbound _ _, ?_⟩
+      exact ihbody _ _ _ _
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        simp only [MEqRed.refl, cofinAvoidsProSelf_fOp, Bool.and_eq_true]
+        -- Three obligations:
+        -- (1) avoidsPro (body-refl) (pickFresh L_widened) = true
+        --     — this is `avoidsPro_refl` applied to the IH-produced refl.
+        -- (2) cofinAvoidsProSelf bound-refl = true — recurse on `ihbound`.
+        -- (3) cofinAvoidsProSelf body-refl = true — recurse on `ihbody`.
+        refine ⟨⟨?_, ihbound _ _⟩, ihbody _ _ _ _⟩
+        -- (1): the body's recursive call IS `MEqRed.refl _ _ _`, so
+        -- `avoidsPro_refl` discharges it.
+        exact avoidsPro_refl _ _ _ _
 
 /-! ## §3.4. `msCofinAvoidsProSelf` — MSubRed analog
 

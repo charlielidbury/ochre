@@ -249,13 +249,19 @@ noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
     have hfbody : Term.fv body ⊆ Γ.dom := by
       intro z hz; exact hfv (by simp [Term.fv]; exact Or.inr hz)
     have hb_refl : MEqRed Γ [] bound bound := ihbound hpvnil hfb
+    -- Widened L (Phase 4a, β-residual unblock): include `Term.fv body` so that
+    -- the canonical fresh witness `pickFresh L_chosen` is automatically not
+    -- in `fv body` — this lets `cofinDomFresh_refl` discharge by simp on the
+    -- per-constructor cofinDomFresh unfoldings (no extra freshness side-conditions).
     cases st with
     | nil =>
-      have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
+      have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom ∪ Term.fv body) →
           MEqRed (⟨y, bound, .sub⟩ :: Γ) [] (body^[y]) (body^[y]) := by
         intro y hy
-        have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
-        have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
+        have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl
+          (Finset.mem_union.mpr (Or.inl h))))
+        have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inl
+          (Finset.mem_union.mpr (Or.inr h))))
         have hpvy : Prevalid (⟨y, bound, .sub⟩ :: Γ) :=
           Prevalid.sub (extractPrevalid hpv) hyΓ hfb hLCbound
         have hpvey : PrevalidExt (⟨y, bound, .sub⟩ :: Γ) [] := PrevalidExt.nil hpvy
@@ -276,15 +282,17 @@ noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
             rw [hdom_eq]
             exact Finset.mem_insert_self _ _
         exact ihbody y hyL hpvey hfvy
-      exact MEqRed.fun_ (L ∪ Γ.dom) hb_refl hbody_each
+      exact MEqRed.fun_ (L ∪ Γ.dom ∪ Term.fv body) hb_refl hbody_each
     | cons α tail =>
       cases hpv with
       | cons hpvr hLCα hfvα =>
-        have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom) →
+        have hbody_each : ∀ y, y ∉ (L ∪ Γ.dom ∪ Term.fv body) →
             MEqRed (⟨y, α, .equ⟩ :: Γ) tail (body^[y]) (body^[y]) := by
           intro y hy
-          have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl h))
-          have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inr h))
+          have hyL : y ∉ L := fun h => hy (Finset.mem_union.mpr (Or.inl
+            (Finset.mem_union.mpr (Or.inl h))))
+          have hyΓ : y ∉ Γ.dom := fun h => hy (Finset.mem_union.mpr (Or.inl
+            (Finset.mem_union.mpr (Or.inr h))))
           have hpvy : Prevalid (⟨y, α, .equ⟩ :: Γ) :=
             Prevalid.equ (extractPrevalid hpvr) hyΓ hfvα hLCα
           have hpvey : PrevalidExt (⟨y, α, .equ⟩ :: Γ) tail :=
@@ -306,7 +314,7 @@ noncomputable def MEqRed.refl {Γ : Ctx} {st : Stack} {u : Term}
               rw [hdom_eq]
               exact Finset.mem_insert_self _ _
           exact ihbody y hyL hpvey hfvy
-        exact MEqRed.fOp (L ∪ Γ.dom) hb_refl hbody_each
+        exact MEqRed.fOp (L ∪ Γ.dom ∪ Term.fv body) hb_refl hbody_each
 
 /-- Backwards-compatibility alias: the `_J` form is `Nonempty (MEqRed _ _ _ _)`,
 which equals `MEqRedJ`. Post-Type-LC refactor `MEqRed.refl` is the
