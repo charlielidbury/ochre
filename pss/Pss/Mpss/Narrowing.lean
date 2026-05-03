@@ -2,6 +2,7 @@ import Pss.Mpss.WellFormed
 import Pss.Mpss.Weakening
 import Pss.Mpss.Substitution
 import Pss.Mpss.AvoidsPro
+import Pss.Mpss.Renaming
 
 set_option linter.unusedVariables false
 
