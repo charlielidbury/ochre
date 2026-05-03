@@ -98,6 +98,38 @@ docstring (Phase 5e blocker section) for the full analysis. Headline
 axiom counts unchanged. Alternative paths forward documented in the
 docstring; none ship-ready.
 
+**Phase 5f: option (a) "App×App restructure" viability analysis blocked
+(2026-05-03 — same date).** A subsequent attempt explored four sub-variants
+of restructuring `_inline_app`'s App×App arm to AVOID stack-head replacement
+entirely (sidestepping the Phase 5e CAPSU population trap):
+- **(a1)** "Diamond at u doesn't care about stack mismatches" — blocked.
+  Closing `MEqRed Γ s (.app u' v') t₃` via constructor analysis FORCES
+  `t₃ = .app w v_w` with operator sub-derivations at stacks `(v' :: s)` /
+  `(v₂ :: s)`, not the IH-given `(v :: s)`. `MEqRed` is a parallel-reduction
+  relation (not transitively closed), so composing derivations to bridge
+  stack heads is unavailable.
+- **(a2)** "Reduce v first, then close operator at common stack" — blocked.
+  `_core` is structural-recursive on `h₁`, so `ihu` is FIXED at stack
+  `(v :: s)` from `h₁`'s `.app` constructor signature. Any operator
+  derivation at a different stack must be CONSTRUCTED via stack-head
+  replacement, which is the Phase 5e wall.
+- **(a3)** "Output CAPSU guarantee from `_core` motive without input CAPSU"
+  — blocked. The Pro × Var case outputs `MEqRed.pro hpv₂ heq₁ hα₁`, whose
+  CAPSU (by `CofinAvoidsProSelf_pro` simp) reduces to CAPSU on `hα₁`, a
+  sub-derivation of input `h₁`. Output CAPSU still bottoms out at input
+  CAPSU on `h₁/h₂` — same blocker as Phase 5e.
+- **(a4)** "Ship analysis, propose option (b)" — selected.
+
+The structural reason: `MEqRed.app`'s constructor co-fixes the operator's
+stack-head and the operand's source as the SAME term `v`, so any closing
+of two parallel reductions whose operands disagree must shift stack heads
+somewhere in the closing tree. Stack-head replacement requires side
+conditions the public API can't populate. See `Pss/Mpss/Diamond.lean`'s
+docstring Phase 5f section for the four-paragraph analysis. Headline
+axiom counts unchanged. Recommended next direction is the cross-codebase
+Type-LC + alpha-aware MEqRed refactor (multi-day, preserves paper proof
+structure but unblocks the rename-stable infrastructure end-to-end).
+
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
 > "Inactive" = no headline theorem depends on it; retained for

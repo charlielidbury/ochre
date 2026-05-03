@@ -283,7 +283,79 @@ populated at the public Lemma 2 entry point without altering its API.
   Lemma 2 / Theorem 3 / Lemma 1 take CAPSU side conditions. Paper-
   faithfulness suffers; downstream callers (e.g. `TransitivityElim`)
   also need to supply CAPSU on `Classical.choice`-extracted
-  derivations, which is itself unprovable. -/
+  derivations, which is itself unprovable.
+
+**Phase 5f: Option (a) "App×App restructure" viability analysis (2026-05-03,
+post-Phase-5e).** A subsequent attempt examined whether the App×App arm of
+`_inline_app` could be rewritten to AVOID stack-head replacement entirely —
+sidestepping `_ctx_axiom` without enriching `_core`'s motive with CAPSU.
+Four sub-variants were explored; ALL are blocked by the same structural
+constraint:
+
+* **(a1) "Diamond at u doesn't care about stack mismatches".** The output
+  goal is `Σ' t₃, MEqRed Γ s (.app u' v') t₃ × MEqRed Γ s (.app u₂ v₂) t₃`.
+  The only `MEqRed` constructors that produce a target of shape
+  `MEqRed Γ s (.app _ _) t₃` with arbitrary operator are `.app` (forces
+  `t₃ = .app w v_w`, requires sub-derivation at stack `(v_first :: s)` for
+  the operator) and `.bet` (forces `u' = .abs t' body'`, not generally
+  true here). `.tAp` requires `u' = .top`. So any closing derivation MUST
+  use `.app` constructor with operator at stack `(v' :: s)` and `(v₂ :: s)`
+  respectively. The IHs `ihu` give the operator at stack `(v :: s)` only.
+  `MEqRed` is a parallel-reduction relation, not transitively closed, so
+  composing derivations to bridge stack heads is not available. Blocked.
+
+* **(a2) "Reduce v's first, then close operator".** `_core` is structural-
+  recursive on `h₁`, so `ihu` and `ihv` are FIXED at the stacks determined
+  by `h₁`'s `.app` constructor signature (`hu : MEqRed Γ (v :: s) u u'`,
+  `hv : MEqRed Γ [] v v'`). Any new operator derivation at a different
+  stack `(v_w :: s)` must be CONSTRUCTED — there's no IH that gives one
+  for free. Constructing `MEqRed Γ (v_w :: s) u u_w` from existing
+  `MEqRed Γ (v :: s) u u'` is precisely `stack_head_replace`, which is
+  exactly the helper Phase 5e tried to discharge and which requires the
+  CAPSU side condition. Blocked.
+
+* **(a3) "Output cofin* guarantee in `_core`'s motive (no input CAPSU)".**
+  The Pro × Var case of `_core` outputs `MEqRed.pro hpv₂ heq₁ hα₁`. By
+  the `cofinAvoidsProSelf_pro` simp lemma, output CAPSU reduces to CAPSU
+  on `hα₁` — a sub-derivation of the INPUT `h₁`. So a "produces CAPSU as
+  output" motive still bottoms out at input CAPSU on `h₁/h₂`. Even
+  proving CAPSU by structural induction on `_core`'s OUTPUT derivation
+  fails because the output's leaves are input sub-derivations whose CAPSU
+  is not definable without input CAPSU. Blocked.
+
+* **(a4) "Ship analysis, propose option (b)".** Selected. The analysis
+  above shows that any closing of App×App at stack `s` from operator
+  IHs at stack `(v :: s)` MUST use stack-head replacement somewhere,
+  and stack-head replacement requires side conditions that cannot be
+  populated at the public entry. Option (a) is fundamentally blocked.
+
+**The structural reason in one paragraph.** `MEqRed.app`'s constructor
+signature is `MEqRed Γ (v :: s) u u' → MEqRed Γ [] v v' → MEqRed Γ s
+(.app u v) (.app u' v')`. The operator's stack-head `v` is *the same
+term* as the operand's source `v`. When two parallel reductions step
+the operand to `v'` and `v₂` (different reducts), the joining target
+must satisfy BOTH operator chains' stack-head invariants — but the IH
+only gives the operator at stack `(v :: s)`. There's no way around
+this without either (i) a stack-head-replacement lemma (which requires
+side conditions on input derivations the public API cannot supply), or
+(ii) restricting the diamond to inputs that carry CAPSU evidence
+(altering the public API in a paper-unfaithful way).
+
+**Recommended next direction: option (b) "inline WSubM-transitivity".**
+The current call chain `Theorem_3 → MSub.trans_step → commute_subStar_eqStar
+→ Lemma_1_StrongCommutativity_sameCtx` (uses `Lemma_1_ctx_axiom`) and
+`→ Lemma_2_DiamondMEqRed_sameCtx` (uses `Lemma_2_DiamondMEqRed_ctx_axiom`)
+is the entire surface area for these axioms. A direct discharge of WSubM
+transitivity (the headline of `TransitivityElim`) WITHOUT routing through
+`Lemma_1`/`Lemma_2` would eliminate the dependency. The paper's
+transitivity-elimination proof is the diamond + commutativity construction;
+inlining it requires either a different transitivity proof technique
+(e.g., logical relations) or accepting that transitivity is paper-faithfully
+proven via diamond. Option (b) is therefore "proof-theoretic" rather than
+"proof-engineering" — out of scope for a single discharge campaign session.
+The honest path is the cross-codebase Type-LC + alpha-aware MEqRed refactor
+(third bullet above), which preserves the paper's proof structure but
+makes the rename-stable infrastructure (Phase 5a–5d) work end-to-end. -/
 private axiom Lemma_2_DiamondMEqRed_ctx_axiom
     {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
