@@ -67,6 +67,15 @@ leverage target: discharging it (via items 1-3) eliminates
 the explicit `Lemma_2_DiamondMEqRed_general` form which is paper-API
 boilerplate, not a headline).
 
+**Phase 5a complete (2026-05-03).** `AvoidsProUniv` Prop predicate +
+per-constructor simp lemmas + bridge `AvoidsProUniv → avoidsPro = true`
++ `AvoidsProUniv_refl` shipped in `Pss/Mpss/AvoidsPro.lean §2.5`. This
+is rename-stable infrastructure (universal quantification over cofinite
+witnesses survives `L ↦ L'` widening, unlike the Bool `avoidsPro`'s
+`pickFresh L` sample point) for the cofin* family. Phase 5b: rename-
+preservation lemmas. Headline axiom counts unchanged by 5a (infra-
+structure-only).
+
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
 > "Inactive" = no headline theorem depends on it; retained for

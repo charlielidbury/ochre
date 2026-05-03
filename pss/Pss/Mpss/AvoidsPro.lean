@@ -654,6 +654,198 @@ theorem avoidsPro_refl
         refine ⟨ihbound _ _, ?_⟩
         exact ihbody _ _ _ _
 
+/-! ## §2.5. Universal cofinite avoidance: `AvoidsProUniv`
+
+Phase 5a of the Type-aware MEqRed architectural refactor. Mirrors
+`avoidsPro` but at every cofinite arm (`bet`/`fun_`/`fOp`), universally
+quantifies over the cofinite witness rather than sampling at
+`pickFresh L`. This lifts above the Bool `avoidsPro`'s sample-point
+fragility:
+
+* The Bool `avoidsPro` evaluates `hbody (pickFresh L) _`'s avoidance —
+  fragile because future `rename_stray`-style helpers widen `L` to
+  `L ∪ {y, z}`, shifting `pickFresh L` to `pickFresh (L ∪ {y, z})` and
+  breaking equality across the rename.
+* `AvoidsProUniv` evaluates `∀ y ∉ L, ...`, which is preserved across
+  any `L ↦ L'` widening (a universal over a smaller cofinite set is
+  trivially restrictable to a subset's complement: if `y ∉ L'` and
+  `L ⊆ L'` then `y ∉ L`, so the universal over `L`'s complement
+  applies).
+
+Designed as the rename-stable foundation for the cofin* family in
+Phase 5b/5c. The bridge `AvoidsProUniv → avoidsPro = true` lets
+existing Bool consumers continue to work unchanged.
+
+Defined via `MEqRed.rec` (matching the style of `avoidsPro`) so that
+the cofinite arms' functional bodies are handled cleanly without the
+equation compiler needing to synthesise a structural decreasing
+measure across a `∀ y, y ∉ L → ...` argument. -/
+
+/-- Universal Prop-valued cofinite avoidance.
+
+Mirror of the Bool `avoidsPro`: `AvoidsProUniv h x` holds iff no
+`Me-Pro` step in `h` promotes `x`, but with each cofinite arm
+quantified universally over the witness rather than sampled. -/
+def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
+  MEqRed.rec
+    (motive := fun _ _ _ _ _ => String → Prop)
+    -- Me-Pro: y ≠ x ∧ recurse on inner derivation.
+    (fun {_ _ y _ _} _ _ _ ihα x => y ≠ x ∧ ihα x)
+    -- Me-Bet: universal over the cofinite witness; recurse on operand.
+    (fun {_ _ _ _ _ _ _} L _ _hbody _ ihbody ihv x =>
+      (∀ y (hy : y ∉ L), ihbody y hy x) ∧ ihv x)
+    -- Me-Top: vacuous.
+    (fun _ _ => True)
+    -- Me-App: both subterms.
+    (fun _ _ ihu ihv x => ihu x ∧ ihv x)
+    -- Me-Var: vacuous.
+    (fun _ _ => True)
+    -- Me-Fun: bound annotation + universal over cofinite witness.
+    (fun {_ _ _ _ _} L _ _hbody iht ihbody x =>
+      iht x ∧ ∀ y (hy : y ∉ L), ihbody y hy x)
+    -- Me-TAp: vacuous.
+    (fun _ _ _ _ => True)
+    -- Me-FOp: bound annotation + universal over cofinite witness.
+    (fun {_ _ _ _ _ _ _} L _ _hbody iht ihbody x =>
+      iht x ∧ ∀ y (hy : y ∉ L), ihbody y hy x)
+    h x
+
+/-! ### §2.5.1. Per-constructor simp lemmas for `AvoidsProUniv` -/
+
+@[simp] theorem AvoidsProUniv_pro {Γ s y α α'} (hpv : PrevalidExt Γ s)
+    (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α') (x : String) :
+    AvoidsProUniv (MEqRed.pro hpv heq hα) x ↔ y ≠ x ∧ AvoidsProUniv hα x := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_bet {Γ s t v v' body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hv : MEqRed Γ [] v v') (x : String) :
+    AvoidsProUniv (MEqRed.bet L hLCt hbody hv) x ↔
+      (∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x) ∧
+      AvoidsProUniv hv x := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_top {Γ s} (hpv : PrevalidExt Γ s) (x : String) :
+    AvoidsProUniv (MEqRed.top hpv) x ↔ True := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_app {Γ s u u' v v'}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v') (x : String) :
+    AvoidsProUniv (MEqRed.app hu hv) x ↔
+      AvoidsProUniv hu x ∧ AvoidsProUniv hv x := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_var {Γ s y} (hpv : PrevalidExt Γ s) (x : String) :
+    AvoidsProUniv (@MEqRed.var Γ s y hpv) x ↔ True := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_fun_ {Γ t t' body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (x : String) :
+    AvoidsProUniv (MEqRed.fun_ L ht hbody) x ↔
+      AvoidsProUniv ht x ∧
+      ∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_tAp {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    AvoidsProUniv (MEqRed.tAp hpv hLCu hfvu) x ↔ True := by
+  unfold AvoidsProUniv; rfl
+
+@[simp] theorem AvoidsProUniv_fOp {Γ s t t' α body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (x : String) :
+    AvoidsProUniv (MEqRed.fOp L ht hbody) x ↔
+      AvoidsProUniv ht x ∧
+      ∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x := by
+  unfold AvoidsProUniv; rfl
+
+/-! ### §2.5.2. Bridge: `AvoidsProUniv → avoidsPro = true`
+
+Specialize the universal at the canonical witness `pickFresh L` for
+each cofinite arm; recurse structurally on the derivation. This is
+the bridge that lets the Bool-based consumers (`equ_head_replace`,
+`Lemma_2_inline_*`, etc.) keep using `avoidsPro` while Phase 5b/5c can
+generate `AvoidsProUniv` witnesses for rename-stable propagation. -/
+
+theorem AvoidsProUniv_to_avoidsPro
+    {Γ : Ctx} {s : Stack} {u v : Term} (h : MEqRed Γ s u v) (x : String)
+    (hUniv : AvoidsProUniv h x) :
+    avoidsPro h x = true := by
+  induction h with
+  | @pro Γ s y α α' hpv heq hα ihα =>
+    rw [AvoidsProUniv_pro] at hUniv
+    obtain ⟨hyx, huα⟩ := hUniv
+    rw [avoidsPro_pro, Bool.and_eq_true]
+    refine ⟨?_, ihα huα⟩
+    simpa [decide_eq_true_eq] using hyx
+  | @bet Γ s t v0 v0' body body' L hLCt hbody hv ihbody ihv =>
+    rw [AvoidsProUniv_bet] at hUniv
+    obtain ⟨hbU, hvU⟩ := hUniv
+    rw [avoidsPro_bet, Bool.and_eq_true]
+    exact ⟨ihbody _ _ (hbU _ _), ihv hvU⟩
+  | @top Γ s hpv =>
+    rw [avoidsPro_top]
+  | @app Γ s u0 u0' v0 v0' hu hv ihu ihv =>
+    rw [AvoidsProUniv_app] at hUniv
+    obtain ⟨huU, hvU⟩ := hUniv
+    rw [avoidsPro_app, Bool.and_eq_true]
+    exact ⟨ihu huU, ihv hvU⟩
+  | @var Γ s y hpv =>
+    rw [avoidsPro_var]
+  | @fun_ Γ t t' body body' L ht hbody iht ihbody =>
+    rw [AvoidsProUniv_fun_] at hUniv
+    obtain ⟨htU, hbU⟩ := hUniv
+    rw [avoidsPro_fun_, Bool.and_eq_true]
+    exact ⟨iht htU, ihbody _ _ (hbU _ _)⟩
+  | @tAp Γ s u0 hpv hLC hfvU =>
+    rw [avoidsPro_tAp]
+  | @fOp Γ s t t' αHd body body' L ht hbody iht ihbody =>
+    rw [AvoidsProUniv_fOp] at hUniv
+    obtain ⟨htU, hbU⟩ := hUniv
+    rw [avoidsPro_fOp, Bool.and_eq_true]
+    exact ⟨iht htU, ihbody _ _ (hbU _ _)⟩
+
+/-! ### §2.5.3. `AvoidsProUniv_refl` — refl is universally Pro-avoiding
+
+Mirror of `avoidsPro_refl` (§2.2). `MEqRed.refl` is built by direct
+structural recursion on `Term.LC u`, never invoking `Me-Pro` — so the
+universal Prop-valued avoidance holds at every cofinite witness. The
+proof structure mirrors `avoidsPro_refl`'s induction on `hLC`. -/
+
+theorem AvoidsProUniv_refl
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom)
+    (x : String) :
+    AvoidsProUniv (MEqRed.refl hpv hLC hfv) x := by
+  induction hLC generalizing s Γ with
+  | top =>
+    simp only [MEqRed.refl, AvoidsProUniv_top]
+  | fvar y =>
+    simp only [MEqRed.refl, AvoidsProUniv_var]
+  | @app a b hLCa hLCb iha ihb =>
+    simp only [MEqRed.refl, AvoidsProUniv_app]
+    refine ⟨iha _ _, ihb _ _⟩
+  | @abs L bound body hLCbound hbody ihbound ihbody =>
+    cases s with
+    | nil =>
+      simp only [MEqRed.refl, AvoidsProUniv_fun_]
+      refine ⟨ihbound _ _, ?_⟩
+      intro y hy
+      exact ihbody _ _ _ _
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        simp only [MEqRed.refl, AvoidsProUniv_fOp]
+        refine ⟨ihbound _ _, ?_⟩
+        intro y hy
+        exact ihbody _ _ _ _
+
 /-! ## §2.3. `cofinDomFresh` — canonical-witness freshness predicate
 
 The β-residual unblock's `MEqRed.equ_head_replace` (in `Pss.Mpss.Renaming`)
