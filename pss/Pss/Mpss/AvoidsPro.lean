@@ -765,6 +765,103 @@ def AvoidsProUniv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Prop :=
       ∀ y (hy : y ∉ L), AvoidsProUniv (hbody y hy) x := by
   unfold AvoidsProUniv; rfl
 
+/-! ### §2.5.1a. Cast-invariance lemmas for `AvoidsProUniv`
+
+**Why these lemmas exist (Phase 5b' prerequisite).** The rename functors
+in `Pss.Mpss.Renaming` (`MEqRed.subst_yz_stray`,
+`MEqRed.subst_yz_sub_head`, `_MEqRed_rename_equ_loc`, plus their
+`MSubRed` counterparts) are tactic-defined recursive functors. Each
+constructor branch uses `rw [...]` to align the goal with the
+constructor application, producing an `Eq.mpr`-shaped (or equivalently
+`cast`-shaped) wrapper around the underlying `MEqRed.cstr`-application.
+
+When Phase 5b's preservation lemmas (`AvoidsProUniv_subst_yz_stray`
+etc.) try to evaluate `AvoidsProUniv (rename ... h) x` and `simp` open
+the rename functor, the `cast`/`Eq.mpr` wrapper blocks the per-
+constructor `AvoidsProUniv_pro/var/...` simp lemmas from firing —
+the head of the term is `cast h_type (MEqRed.cstr ...)`, not
+`MEqRed.cstr ...`.
+
+These cast-invariance lemmas state that `AvoidsProUniv` is invariant
+under index-aligned casts, and as `@[simp]` they let simp peel the
+cast off and expose the constructor head for the per-constructor
+simp lemmas.
+
+**Mirror of `Pss.Mpss.Diamond`'s `avoidsPro_subst_eq_*` family**
+(lines 676-706), which provides the same cast-elimination service for
+the Bool-valued `avoidsPro`. -/
+
+/-- HEq decomposition: if `h : MEqRed Γ s u v` and `h' : MEqRed Γ' s' u' v'`
+are heterogeneously equal AND all four indices are propositionally equal,
+then `AvoidsProUniv h x ↔ AvoidsProUniv h' x`.
+
+This is the master cast-invariance lemma — all single-index forms below
+follow from it via `subst` chains. -/
+theorem AvoidsProUniv_eq_of_heq
+    {Γ Γ' : Ctx} {s s' : Stack} {u u' v v' : Term}
+    {h : MEqRed Γ s u v} {h' : MEqRed Γ' s' u' v'}
+    (hΓ : Γ = Γ') (hs : s = s') (hu : u = u') (hv : v = v')
+    (heqd : HEq h h') (x : String) :
+    AvoidsProUniv h x ↔ AvoidsProUniv h' x := by
+  subst hΓ hs hu hv
+  cases heqd
+  rfl
+
+/-- `cast` produces an HEq with its argument when the type equality is
+between aligned MEqRed types. -/
+theorem AvoidsProUniv_heq_of_cast
+    {α β : Sort _} (h_type : α = β) (a : α) :
+    HEq (cast h_type a) a := by
+  subst h_type; rfl
+
+/-- Single-index cast invariance: rewriting only the destination term.
+Mirror of `Pss.Mpss.Diamond.avoidsPro_subst_eq_dest` for `AvoidsProUniv`. -/
+@[simp] theorem AvoidsProUniv_subst_eq_dest
+    {Γ : Ctx} {s : Stack} {u v v' : Term}
+    (heq : v = v') (h : MEqRed Γ s u v) (x : String) :
+    AvoidsProUniv (heq ▸ h) x ↔ AvoidsProUniv h x := by
+  subst heq; rfl
+
+/-- Single-index cast invariance: rewriting only the source term.
+Mirror of `avoidsPro_subst_eq_src`. -/
+@[simp] theorem AvoidsProUniv_subst_eq_src
+    {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (heq : u = u') (h : MEqRed Γ s u v) (x : String) :
+    AvoidsProUniv (heq ▸ h) x ↔ AvoidsProUniv h x := by
+  subst heq; rfl
+
+/-- Single-index cast invariance: rewriting only the context.
+Mirror of `avoidsPro_subst_eq_ctx`. -/
+@[simp] theorem AvoidsProUniv_subst_eq_ctx
+    {Γ Γ' : Ctx} {s : Stack} {u v : Term}
+    (heq : Γ = Γ') (h : MEqRed Γ s u v) (x : String) :
+    AvoidsProUniv (heq ▸ h) x ↔ AvoidsProUniv h x := by
+  subst heq; rfl
+
+/-- Single-index cast invariance: rewriting only the stack.
+Mirror of `avoidsPro_subst_eq_stack`. -/
+@[simp] theorem AvoidsProUniv_subst_eq_stack
+    {Γ : Ctx} {s s' : Stack} {u v : Term}
+    (heq : s = s') (h : MEqRed Γ s u v) (x : String) :
+    AvoidsProUniv (heq ▸ h) x ↔ AvoidsProUniv h x := by
+  subst heq; rfl
+
+/-- Multi-index cast invariance: when ALL four indices are equal (so the
+type-level equality `MEqRed Γ s u v = MEqRed Γ' s' u' v'` is provable),
+`cast` preserves `AvoidsProUniv`.
+
+This is the "general purpose" form for use sites that have all four
+index equalities in hand. The single-index versions are preferred when
+only one index changes. -/
+theorem AvoidsProUniv_cast
+    {Γ Γ' : Ctx} {s s' : Stack} {u u' v v' : Term}
+    (hΓ : Γ = Γ') (hs : s = s') (hu : u = u') (hv : v = v')
+    (h_type : MEqRed Γ s u v = MEqRed Γ' s' u' v')
+    (h : MEqRed Γ s u v) (x : String) :
+    AvoidsProUniv (cast h_type h) x ↔ AvoidsProUniv h x := by
+  exact AvoidsProUniv_eq_of_heq hΓ.symm hs.symm hu.symm hv.symm
+    (AvoidsProUniv_heq_of_cast h_type h) x
+
 /-! ### §2.5.2. Bridge: `AvoidsProUniv → avoidsPro = true`
 
 Specialize the universal at the canonical witness `pickFresh L` for
