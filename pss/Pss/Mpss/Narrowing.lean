@@ -447,38 +447,223 @@ across non-uniform `hbody` (the false-axiom shape that derailed
 commit `4145292`).
 
 * **Ms-FOp** — structurally identical to Ms-Fun, except the body is
-  under an `.equ`-head binder instead of `.sub`. The required rename
-  `MSubRed.rename_equ` in `Pss.Mpss.Renaming.lean` requires
-  `fv body ⊆ Γ.dom` and `fv body' ⊆ Γ.dom`, which `MSubRed.fOp`'s
-  constructor does NOT supply. A no-fv-precondition variant exists
-  as the `private` helper `_MSubRed_rename_equ_no_fv_C` in
-  `Pss.Mpss.Commutation.lean` line 990, which depends on
-  `_MSubRed_rename_equ_loc_C`, `_MEqRed_rename_equ_loc_C`,
-  `_PrevalidExt_insert_fresh_equ_mid_C`, etc. (cumulatively
-  ~400 lines of structural-induction proofs). Commutation.lean
-  imports Narrowing (cycle), so the Ms-FOp arm cannot directly
-  reuse those helpers.
+  under an `.equ`-head binder instead of `.sub`. **CLOSED** (Phase B,
+  this commit) using the `_MSubRed_rename_equ_no_fv` helper in
+  `Pss.Mpss.Renaming.lean` (extracted from `Commutation.lean` in
+  Phase A, commit `ae3fed0`). The freshness data `y₀ ∉ Γ.dom`,
+  `y₀ ∉ fv αi` is recovered from the body's `MSubRed.prevalidExt`;
+  the stack-freshness `∀ β ∈ st', y₀ ∉ fv β` is recovered by walking
+  the outer `MSubRed.fOp`'s prevalidExt and lifting `y₀ ∉ Γ.dom`
+  through `fv β ⊆ Γ.dom`.
 
-  **Next discharge step:** factor the no-fv equ-rename machinery
-  from `Commutation.lean` into `Pss.Mpss.Renaming.lean` as public
-  helpers (~400 lines moved), then complete the `Ms-FOp` arm
-  (~80 lines), then wire-up:
+### Phase B — discharge SHIPPED behind axiom (this commit, agent_id: och-l24-phaseB)
 
-  1. Thread an `msAvoidsPro` premise through `_S_motive_sub` in
-     `Pss.Mpss.TypeSafety.lean` (`_S_lf2` consumer).
-  2. Supply an `msAvoidsPro` witness at the `Lemma_24_*` call site
-     in `Pss.Mpss.Commutation.lean` (`Lemma_1_inline_fun_fun_residual`).
-  3. Replace the axiom with the witnessed theorem.
+The 6-arm aux theorem `_Lemma_24_NarrowingMSubRed_aux` (private,
+~150 lines, lines 513-666) takes an explicit
+`(hAvoid : msAvoidsPro h x = true)` premise and discharges all six
+constructor arms (Ms-Pro, Ms-Top, Ms-Equ, Ms-App, Ms-Fun, Ms-FOp).
+This proves the axiom modulo the avoidance witness wire-up.
 
-This commit ships the prerequisite infrastructure (widened
-`msAvoidsPro` + freshness helpers in `AvoidsPro.lean`); the axiom is
-RETAINED pending the equ-rename refactor. -/
+The axiom `Lemma_24_NarrowingMSubRed` is RETAINED at this phase. The
+remaining wire-up to remove it from headline closures:
+
+1. Thread `(hAvoid : msAvoidsPro h x = true)` through `_S_motive_sub`
+   in `Pss.Mpss.TypeSafety.lean` (`_S_lf2` consumer's signature).
+2. Supply an `msAvoidsPro` witness at the `Lemma_24_*` call site in
+   `Pss.Mpss.Commutation.lean` line ~627
+   (`Lemma_1_inline_fun_fun_residual` consumer).
+3. Replace the axiom with a thin wrapper around the aux that supplies
+   the avoidance witness from the consumer's data. -/
 axiom Lemma_24_NarrowingMSubRed
     {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
     (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
     (hLCt : Term.LC t)
     (hfvt : Term.fv t ⊆ Γ₁.dom) :
     MSubRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st u v
+
+/-! ### §4.5. Phase B aux discharge — `_Lemma_24_NarrowingMSubRed_aux`
+
+(Phase B of the `Lemma_24_NarrowingMSubRed` discharge campaign.)
+
+Aux theorem that closes ALL six MSubRed constructor arms (Ms-Pro,
+Ms-Top, Ms-Equ, Ms-App, Ms-Fun, Ms-FOp) with an explicit
+`(hAvoid : msAvoidsPro h x = true)` premise.
+
+* **Ms-Pro**: vacuous in `y = x` (avoidance witness contradicts
+  `decide (y ≠ x) = true`); else `_subBinds_narrow_neq` re-establishes
+  the lookup.
+* **Ms-Top**, **Ms-Equ**, **Ms-App**: structural recursion via
+  `Lemma_26_NarrowingPrevalid`, `Lemma_25_NarrowingMEqRed`,
+  `_dom_narrow_eq`.
+* **Ms-Fun**: recurse at canonical sample `y0 := pickFresh
+  (msAvoidsPro_L_aug L body body' x)` (widened freshness), apply IH at
+  `Γ₂' := ⟨y0, t₀, .sub⟩ :: Γ₂`, then for arbitrary `z ∉ L_new` build
+  the body via `MSubRed.rename_sub`.
+* **Ms-FOp**: same shape as Ms-Fun, using `_MSubRed_rename_equ_no_fv`
+  in lieu of `MSubRed.rename_sub` (the no-fv variant landed in
+  `Pss.Mpss.Renaming` Phase A, commit `ae3fed0`).
+
+This theorem is the **proof witness** for `Lemma_24_NarrowingMSubRed`
+modulo the `msAvoidsPro` premise wire-up. The axiom is RETAINED at this
+phase pending the wire-up:
+1. Thread `(hAvoid : msAvoidsPro h x = true)` through `_S_motive_sub`
+   in `Pss.Mpss.TypeSafety.lean`.
+2. Supply an `msAvoidsPro` witness at the `Lemma_24_*` call site in
+   `Pss.Mpss.Commutation.lean` (`Lemma_1_inline_fun_fun_residual`).
+3. Replace the axiom with a thin wrapper around this aux. -/
+private noncomputable def _Lemma_24_NarrowingMSubRed_aux
+    {Γ₁ Γ₂ : Ctx} {x : String} {t t' u v : Term} {st : Stack}
+    (h : MSubRed (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st u v)
+    (hLCt : Term.LC t)
+    (hfvt : Term.fv t ⊆ Γ₁.dom)
+    (hAvoid : msAvoidsPro h x = true) :
+    MSubRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st u v := by
+  classical
+  generalize hΓ : (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) = Γold at h
+  induction h generalizing Γ₂ with
+  | @pro Γ st' y u_old hpv hsb =>
+    subst hΓ
+    rw [msAvoidsPro_pro] at hAvoid
+    have hyx : y ≠ x := decide_eq_true_eq.mp hAvoid
+    have hpvN : PrevalidExt (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st' :=
+      Lemma_26_NarrowingPrevalid hpv hLCt hfvt
+    have hsbN : (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁).subBinds y u_old :=
+      _subBinds_narrow_neq hyx hsb
+    exact MSubRed.pro hpvN hsbN
+  | @top Γ st' u_ hpv hLCu hfvu =>
+    subst hΓ
+    have hpvN : PrevalidExt (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st' :=
+      Lemma_26_NarrowingPrevalid hpv hLCt hfvt
+    have hfvuN : Term.fv u_ ⊆ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      rw [_dom_narrow_eq (t := t) (t' := t')]; exact hfvu
+    exact MSubRed.top hpvN hLCu hfvuN
+  | @equ Γ st' u_ v_ hpv heq =>
+    subst hΓ
+    have hpvN : PrevalidExt (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st' :=
+      Lemma_26_NarrowingPrevalid hpv hLCt hfvt
+    have heqN : MEqRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) st' u_ v_ :=
+      Lemma_25_NarrowingMEqRed heq hLCt hfvt
+    exact MSubRed.equ hpvN heqN
+  | @app Γ st' u_ u_' v_ hu hLCv hfvv ihu =>
+    subst hΓ
+    rw [msAvoidsPro_app] at hAvoid
+    have ihuN := ihu (Γ₂ := Γ₂) rfl hAvoid
+    have hfvvN : Term.fv v_ ⊆ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      rw [_dom_narrow_eq (t := t) (t' := t')]; exact hfvv
+    exact MSubRed.app ihuN hLCv hfvvN
+  | @fun_ Γ tt body body' L hLCtt hbody _hUni ihbody =>
+    subst hΓ
+    rw [msAvoidsPro_fun_] at hAvoid
+    -- Canonical sample y₀ = pickFresh L_aug.
+    let y₀ : String := pickFresh (msAvoidsPro_L_aug L body body' x)
+    have hy₀L : y₀ ∉ L := msAvoidsPro_L_aug_notMem_L
+    have hy₀_body : y₀ ∉ Term.fv body := msAvoidsPro_L_aug_notMem_body
+    have hy₀_body' : y₀ ∉ Term.fv body' := msAvoidsPro_L_aug_notMem_body'
+    -- Apply IH at extended Γ₂' = ⟨y₀, tt, .sub⟩ :: Γ₂.
+    have hbody_y₀ : MSubRed (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)) []
+        (body^[y₀]) (body'^[y₀]) := hbody y₀ hy₀L
+    have ihbody_y₀ := ihbody y₀ hy₀L (Γ₂ := ⟨y₀, tt, .sub⟩ :: Γ₂)
+      (by simp) hAvoid
+    have ihbody_y₀_norm :
+        MSubRed (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁)) []
+          (body^[y₀]) (body'^[y₀]) := by simpa using ihbody_y₀
+    -- Extract Prevalid Γ_new + LC tt + fv tt from the body's prevalidExt.
+    have hpvE_full : PrevalidExt
+        (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁)) [] :=
+      MSubRed.prevalidExt ihbody_y₀_norm
+    have hpv_full : Prevalid (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁)) :=
+      extractPrevalid hpvE_full
+    have hpv_outer : Prevalid (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      cases hpv_full with
+      | sub hpv _ _ _ => exact hpv
+    have hy₀_dom_new : y₀ ∉ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      cases hpv_full with
+      | sub _ hy _ _ => exact hy
+    have hLCtt' : Term.LC tt := by
+      cases hpv_full with | sub _ _ _ hLC => exact hLC
+    have hfvtt : Term.fv tt ⊆ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      cases hpv_full with | sub _ _ hfv _ => exact hfv
+    -- Build the cofinite body for the new Ms-Fun.
+    refine MSubRed.fun_ (L ∪ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) ∪ {y₀})
+      hLCtt ?_ trivial
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+    push_neg at hyfresh
+    obtain ⟨⟨_hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+    have ren := MSubRed.rename_sub (z := yfresh) hpv_outer hLCtt' hfvtt
+      hy₀_dom_new hyf_dom hy₀_body hy₀_body'
+      (by intro β hβ; cases hβ) ihbody_y₀_norm
+    simpa using ren
+  | @fOp Γ st' tt αi body body' L hLCtt hbody _hUni ihbody =>
+    subst hΓ
+    rw [msAvoidsPro_fOp] at hAvoid
+    -- Canonical sample y₀ = pickFresh L_aug.
+    let y₀ : String := pickFresh (msAvoidsPro_L_aug L body body' x)
+    have hy₀L : y₀ ∉ L := msAvoidsPro_L_aug_notMem_L
+    have hy₀_body : y₀ ∉ Term.fv body := msAvoidsPro_L_aug_notMem_body
+    have hy₀_body' : y₀ ∉ Term.fv body' := msAvoidsPro_L_aug_notMem_body'
+    -- Apply IH at extended Γ₂' = ⟨y₀, αi, .equ⟩ :: Γ₂.
+    have hbody_y₀ : MSubRed (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)) st'
+        (body^[y₀]) (body'^[y₀]) := hbody y₀ hy₀L
+    have ihbody_y₀ := ihbody y₀ hy₀L (Γ₂ := ⟨y₀, αi, .equ⟩ :: Γ₂)
+      (by simp) hAvoid
+    have ihbody_y₀_norm :
+        MSubRed (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁)) st'
+          (body^[y₀]) (body'^[y₀]) := by simpa using ihbody_y₀
+    -- Extract Prevalid + y₀ ∉ dom + fv αi from the body's prevalidExt.
+    have hpvE_full : PrevalidExt
+        (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁)) st' :=
+      MSubRed.prevalidExt ihbody_y₀_norm
+    have hpv_full : Prevalid (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁)) :=
+      extractPrevalid hpvE_full
+    have hy₀_dom_new : y₀ ∉ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      cases hpv_full with
+      | equ _ hy _ _ => exact hy
+    have hfv_αi : Term.fv αi ⊆ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) := by
+      cases hpv_full with | equ _ _ hfv _ => exact hfv
+    have hy₀_αi : y₀ ∉ Term.fv αi := fun h' => hy₀_dom_new (hfv_αi h')
+    -- Stack freshness: the OUTER MSubRed.fOp's prevalidExt is at (αi :: st')
+    -- in Γ_old; tail gives PrevalidExt Γ_old st', from which y₀'s
+    -- not-in-dom (in Γ_old form) lifts through stack fv ⊆ dom.
+    have hy₀_dom_old : y₀ ∉ Ctx.dom (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) := by
+      rw [_dom_narrow_eq (t := t') (t' := t)]; exact hy₀_dom_new
+    have hpv_outer_inputst : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁)
+        (αi :: st') :=
+      MSubRed.prevalidExt (MSubRed.fOp L hLCtt hbody trivial)
+    have hpv_outer_st_only : PrevalidExt (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) st' := by
+      cases hpv_outer_inputst with
+      | cons hpv_tail _ _ => exact hpv_tail
+    -- Inline replacement of the private `_y₀_notin_stack_fv_of_notin_dom`
+    -- helper from Renaming.lean (which is read-only this iteration).
+    -- We walk the PrevalidExt proof tree of `hpv_outer_st_only` to extract
+    -- `fv β ⊆ Γ.dom` for each β ∈ st'.
+    have hstk_fv : ∀ β ∈ st', Term.fv β ⊆
+        Ctx.dom (Γ₂ ++ ⟨x, t', .sub⟩ :: Γ₁) := by
+      have go : ∀ {Γ : Ctx} {s : Stack},
+          PrevalidExt Γ s → ∀ β ∈ s, Term.fv β ⊆ Γ.dom := by
+        intro Γ s hpv
+        induction hpv with
+        | nil _ => intro β hβ; cases hβ
+        | cons _ _ hfvα ih_inner =>
+          intro β hβ
+          rcases List.mem_cons.mp hβ with hβ | hβ
+          · subst hβ; exact hfvα
+          · exact ih_inner β hβ
+      exact go hpv_outer_st_only
+    have hy₀_stack : ∀ β ∈ st', y₀ ∉ Term.fv β := fun β hβ hyβ =>
+      hy₀_dom_old (hstk_fv β hβ hyβ)
+    -- Build the cofinite body for the new Ms-FOp.
+    refine MSubRed.fOp (L ∪ Ctx.dom (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) ∪ {y₀})
+      hLCtt ?_ trivial
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+    push_neg at hyfresh
+    obtain ⟨⟨_hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+    have hyz : y₀ ≠ yfresh := fun h' => hyf_y₀ h'.symm
+    have ren := _MSubRed_rename_equ_no_fv (z := yfresh) hyz
+      hy₀_dom_new hyf_dom hy₀_αi hy₀_body hy₀_body' hy₀_stack
+      ihbody_y₀_norm
+    simpa using ren
 
 
 /-! ## §5. Lemma 23 — Narrowing for `WfM`, `WSubM`, `WSubMStar`
