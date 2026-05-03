@@ -362,6 +362,91 @@ theorem.
     `hv₂` to swap the stack head). The premises are immediate from
     the enriched IH output guarantees.
 
+* **Phase 4b reassessment (2026-05-03, second pass):** A second-pass
+  analysis confirms Phase 4b as decomposed above runs into the same
+  alpha-equivariance trap that Phase 1's §7.1 docstring (in
+  `Renaming.lean`) and the false `avoidsPro_alpha_equiv` axiom (reverted
+  in `12da200`) both warn against. **TWO independent blockers**:
+
+  1. **cofin*-preservation lemmas for rename functors require
+     alpha-equivariance.** All `MEqRed.rename_*` functors
+     (`rename_stray`, `rename_sub`, `rename_equ_no_fv`, etc.) widen the
+     cofinite L set by `{y, z}` at every `bet`/`fun_`/`fOp` arm: the
+     output is `MEqRed.bet (L ∪ {y, z}) ...`, so its `cofinDomFresh`
+     samples at `pickFresh (L ∪ {y, z})`, NOT `pickFresh L`. Proving
+     `cofinDomFresh (rename_stray h y z hy hz) = cofinDomFresh h`
+     (or even `... = true` from `cofinDomFresh h = true`) requires
+     equating the body's cofin* values at TWO DIFFERENT canonical
+     witnesses — exactly the FALSE alpha-equivariance statement. No
+     constructive proof is available.
+
+  2. **`_core`'s motive enrichment requires INPUT cofin* hypotheses
+     that cannot be supplied at the public `Lemma_2_DiamondMEqRed`
+     entry point.** The motive must look like:
+     ```
+     (h₂ : MEqRed Γ s t₀ t₂) →
+     cofinDomFresh h₁ = true → cofinAvoidsProSelf h₁ = true →
+     cofinDomFresh h₂ = true → cofinAvoidsProSelf h₂ = true →
+     Σ' t₃ (h₁' ...) (h₂' ...), <output cofin* obligations>
+     ```
+     because the Pro × Var case OUTPUTS `MEqRed.pro hpv₂ heq₁ hα₁`
+     where `hα₁` is the input's inner derivation, so output cofin*
+     reduces (by `cofinDomFresh_pro` simp) to cofin* of the input's
+     sub-derivation. Without input cofin* hypotheses, this case
+     cannot discharge.
+
+     But cofin* on arbitrary inputs is NOT constructable (per the
+     2026-05-03 first-pass blocker analysis: cofin_normalize is
+     impossible because `Me-Pro y₀` steps in fOp body bodies are
+     legal). So `Lemma_2_DiamondMEqRed`'s public signature would have
+     to ADD cofin* hypotheses on `h₁`, `h₂` — changing the public
+     statement. This is unacceptable: Lemma 2's paper-faithful form
+     does not include such side conditions, and the downstream
+     consumers (notably `Theorem_3_TransitivityIsAdmissible` via
+     `Lemma_1_StrongCommutativity`) would need to supply them, which
+     they cannot.
+
+  **What Phase 4b CAN ship without alpha-equivariance.** The refl-shape
+  arms (where `_core` outputs `MEqRed.refl ...`) discharge cofin* via
+  Phase 4a's `cofinDomFresh_refl` / `cofinAvoidsProSelf_refl`. The
+  direct constructor outputs (`MEqRed.app`, `MEqRed.pro`,
+  `MEqRed.bet`, etc.) distribute cofin* through their simp lemmas,
+  but reduce to cofin* of sub-derivations — which requires either
+  IH outputs (recursive, fine) OR input data (alpha-equivariance trap).
+
+  The `_inline_fun_fun` / `_inline_fOp_fOp` arms produce outputs via
+  `MEqRed.rename_sub` / `MEqRed.rename_equ_no_fv` — these introduce
+  L widening and immediately hit blocker (1).
+
+  **Verdict: Phase 4b as decomposed is NOT FEASIBLE.** A different
+  strategy is required to remove `Lemma_2_DiamondMEqRed_ctx_axiom`
+  from headline closures.
+
+* **Alternative paths forward (none ready):**
+  - **Type-LC + alpha-aware `MEqRed`.** Redesign `MEqRed.bet`/`.fun_`/
+    `.fOp` constructors to take a body via Type-valued cofinite
+    quantifier (rather than the current `∀ y, y ∉ L → ...`). The
+    rename functors then produce derivations with the SAME L (sample
+    point invariant). cofin* preservation becomes definitional.
+    Cross-codebase refactor on the scale of the Type-LC refactor
+    (commit `ad3ff08`).
+  - **Side-condition-strengthened public Lemma 2.** Accept that public
+    `Lemma_2_DiamondMEqRed` requires cofin* on inputs (paper-faithful
+    forms exist that take auxiliary measure premises). All callers
+    in `Lemma_1_StrongCommutativity`, `Theorem_3_TransitivityIsAdmissible`,
+    etc. would need to supply them. Probably impossible without
+    discharging cofin* at the call site, which is the same trap.
+  - **Direct `_ctx_axiom` discharge via .equ-narrowing chain.** The
+    original `_ctx_axiom` discharge plan from `AXIOMS.md` (the
+    confluence-shaped recursive narrowing) is independent of the
+    Phase 3/4 stack_head_replace approach. ~300-500 lines.
+  - **Drop the App×App internal use of `_ctx_axiom`.** Restructure
+    `_inline_app`'s App×App arm to NOT use `_ctx_axiom` — e.g.,
+    by performing the `v ⟶ v'` swap before calling `ihu`, so the
+    operator IH already lives at the right stack. Requires refactoring
+    `_core`'s induction scheme to share `v` between App×App
+    sub-derivations differently. Speculative; needs deeper analysis.
+
 ### 9. `Lemma_2_inline_app_bet_residual_axiom` *(private to `Pss.Mpss.Diamond`)*
 
 * **File:** `Pss/Mpss/Diamond.lean`, line 292.
