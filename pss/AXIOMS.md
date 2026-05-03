@@ -87,6 +87,17 @@ Phase 5d: integrate the existence-form preservation into β-residual
 discharge. Headline axiom counts unchanged by 5a/5b'/5c (infrastructure-
 only).
 
+**Phase 5e blocked (2026-05-03 — same date).** First attempt at consuming
+Phase 5d's `stack_head_replace_univ_exists` to discharge the App×App
+internal use of `Lemma_2_DiamondMEqRed_ctx_axiom` discovered an
+**architectural gap** in the Type-aware MEqRed design:
+`stack_head_replace_univ_exists` requires `CofinAvoidsProSelfUniv` on its
+input derivation, which **cannot be supplied at the public Lemma 2 entry
+point**. See `Pss/Mpss/Diamond.lean`'s `Lemma_2_DiamondMEqRed_ctx_axiom`
+docstring (Phase 5e blocker section) for the full analysis. Headline
+axiom counts unchanged. Alternative paths forward documented in the
+docstring; none ship-ready.
+
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
 > "Inactive" = no headline theorem depends on it; retained for

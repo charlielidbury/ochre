@@ -228,7 +228,62 @@ inductive arms re-cast the inner `MEqRed` derivations across an
 pass refl-or-near-refl chains.
 
 **Discharge plan:** see `AXIOMS.md` axiom #8
-(`Lemma_2_DiamondMEqRed_ctx_axiom`). -/
+(`Lemma_2_DiamondMEqRed_ctx_axiom`).
+
+**Phase 5e blocker (2026-05-03):** Phase 5d's `stack_head_replace_univ_exists`
+takes a `CofinAvoidsProSelfUniv` premise on the input derivation. Phase 5e
+attempted to use this helper to discharge `_inline_app`'s App×App internal
+use of `_ctx_axiom`. The architectural gap that blocks the discharge:
+
+1. **`_inline_app`'s App×App arm needs `CofinAvoidsProSelfUniv hu'_w` and
+   `CofinAvoidsProSelfUniv hu₂_w`** to invoke `stack_head_replace_univ_exists`.
+   These IH outputs come from `ihu hu₂`. Preserving CAPSU through the IH
+   requires `_core`'s motive enrichment with output-CAPSU guarantees.
+
+2. **`_core`'s motive enrichment requires INPUT CAPSU on `h₁` and `h₂`**.
+   Specifically, the Pro × Var case OUTPUTS `MEqRed.pro hpv₂ heq₁ hα₁` whose
+   `CAPSU` (by `CofinAvoidsProSelfUniv_pro` simp) reduces to `CAPSU hα₁` —
+   where `hα₁` is the input's inner derivation (sub-derivation of `h₁`).
+   So output CAPSU requires input CAPSU on h₁.
+
+3. **CAPSU is NOT universally provable on arbitrary `MEqRed Γ s u v`**. The
+   `fOp` arm of `CAPSU` requires `AvoidsProUniv (hbody y_i _) y_i` for every
+   cofinite witness — but in the body's context `⟨y_i, α, .equ⟩ :: Γ`, a
+   `Me-Pro y_i` step is a LEGAL constructor (looks up `equBinds y_i α`).
+   Arbitrary derivations may include such steps, so `AvoidsProUniv` fails
+   in general. There is no "CAPSU normalize" recipe.
+
+4. **The public `Lemma_2_DiamondMEqRed_sameCtx` callers cannot supply input
+   CAPSU**. Callers in `Pss/Mpss/Commutation.lean` (`Lemma_1_StrongCommutativity_sameCtx`
+   line 546) and `Pss/Mpss/TransitivityElim.lean` (line 122) pass arbitrary
+   `MEqRed` derivations from outer case-splits / `Classical.choice` extractions.
+   Adding `CAPSU` premises to `_sameCtx` would propagate up to
+   `Lemma_1_StrongCommutativity`, `Theorem_3_TransitivityIsAdmissible`, etc.
+   — changing public APIs to take side conditions the paper does not include
+   and that downstream callers cannot supply.
+
+**Verdict**: Phase 5e as designed (use Phase 5d infrastructure to discharge
+`_ctx_axiom` from headline closures via input-CAPSU premises) is BLOCKED
+by the same fundamental mismatch identified in the Phase 4b second-pass
+analysis. The `AvoidsProUniv` / `CofinAvoidsProSelfUniv` rename-stable
+predicates are TRUE rename-stable infrastructure but they cannot be
+populated at the public Lemma 2 entry point without altering its API.
+
+**Alternative paths forward** (none ready, listed for future sessions):
+* **Restructure `_inline_app`'s App×App** to NOT use `_ctx_axiom` —
+  e.g., reduce `v ⟶ v'` first and shift IH stacks, requires deeper
+  refactor of `_core`'s induction scheme.
+* **Direct `_ctx_axiom` discharge via `.equ`-narrowing chain** —
+  the original confluence-shaped recursive narrowing. ~300-500 lines.
+  Independent of the Phase 5d infrastructure.
+* **Type-LC + alpha-aware MEqRed constructors** — make body sample
+  invariant under rename so CAPSU is definitionally preserved across
+  cofinite-set widening. Cross-codebase refactor on the scale of Type-LC.
+* **Side-condition-strengthened public Lemma 2** — accept that
+  Lemma 2 / Theorem 3 / Lemma 1 take CAPSU side conditions. Paper-
+  faithfulness suffers; downstream callers (e.g. `TransitivityElim`)
+  also need to supply CAPSU on `Classical.choice`-extracted
+  derivations, which is itself unprovable. -/
 private axiom Lemma_2_DiamondMEqRed_ctx_axiom
     {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
     {Γ₁ : Ctx} {s₁ : Stack} {Γ₂ : Ctx} {s₂ : Stack}
