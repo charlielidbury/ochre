@@ -2544,4 +2544,96 @@ Bool `avoidsPro` for the specific witness it cares about. This unblocks
 the β-residual axioms via a different mechanical route than the current
 `equ_head_replace` scaffolding. -/
 
+/-! ## §8. Phase 2 (in progress): `equ_head_replace` infrastructure scaffold
+
+Phase 2 of the architectural lever to unblock the β-residual axioms is
+**partially built** in this section as supporting infrastructure for a
+later complete implementation:
+
+* `Pss.Mpss.AvoidsPro.Prevalid.equ_head_replace_mid` and
+  `PrevalidExt.equ_head_replace_mid` — generalize the existing
+  `Prevalid.equ_head_swap` / `PrevalidExt.equ_head_swap` (which only
+  handled the single-layer `⟨y, α, .equ⟩ :: Γ₁`) to the prefix-extended
+  form `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁`. These cover the head-swap obligation
+  for the non-cofinite arms of `equ_head_replace`.
+* `Pss.Mpss.AvoidsPro._subBinds_equ_head_swap` — analog for `.sub`-typed
+  lookups across the head swap (used in MSubRed.pro arm).
+* `Pss.Mpss.AvoidsPro._equBinds_equ_head_swap_neq` — exposed publicly
+  (was private) so §8 helpers and future work can use it.
+
+The non-cofinite arms (`pro`/`top`/`var`/`app`/`tAp` for MEqRed; their
+counterparts for MSubRed) **work cleanly** with these helpers. The
+cofinite arms (`bet`/`fun_`/`fOp`) **encountered three composition
+blockers** that required deferring the completion:
+
+### Blockers identified for cofinite arms (per spec §"If you hit a blocker")
+
+The spec strategy uses Phase 1's `MEqRed.rename_stray` to extend the
+recursion's canonical-witness output (`pickFresh L`) to arbitrary other
+witnesses `z'' ∉ L'`. Three preconditions must hold simultaneously for
+this composition to typecheck:
+
+1. **`pickFresh L ∉ Γ_curr.dom`** (`rename_stray`'s `y` precondition).
+   The Bool predicate `cofinDomFresh` (drafted then reverted) would
+   capture "every cofinite L in h includes Γ.dom", giving us this for
+   free. **Achievable.**
+
+2. **`pickFresh L ∉ Term.fv body`** and `... fv body'`
+   (so `Term.subst_open_fresh` reduces `subst pickFresh _ (body^[pickFresh L])`
+   to `body^[z'']`).
+   This is NOT enforced by `cofinDomFresh` — it requires a separate
+   `bodyFv` Bool predicate (or an fv-tracking premise like
+   `Term.fv body ⊆ Γ.dom` so it follows from blocker (1)).
+   **Achievable but adds another premise.**
+
+3. **`Prevalid Γ_curr`** (`rename_stray`'s `hpvΓ` argument).
+   `MEqRed.bet`/`MEqRed.app`/`MEqRed.fun_`/`MEqRed.fOp` constructors do
+   NOT carry `PrevalidExt` explicitly — only `pro`/`top`/`var`/`tAp` do.
+   So inside the `bet` case of `equ_head_replace`'s induction, we have
+   no direct way to extract `Prevalid Γ_curr`.
+   The fix is to **add `hpv : PrevalidExt Γ st` as a top-level premise**
+   to `equ_head_replace`. **Achievable but adds another premise.**
+
+### Path forward (next-iteration work)
+
+A clean Phase 2 completion needs `equ_head_replace`'s signature widened
+to:
+```
+def MEqRed.equ_head_replace
+    {Γ₁ : Ctx} {y : String} {α α' : Term}
+    (hα : MEqRed Γ₁ [] α α') (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom)
+    {Γ₂ : Ctx} {st : Stack} {u u' : Term}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st)        -- NEW: blocker 3
+    (hfvu : Term.fv u ⊆ (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).dom)      -- NEW: blocker 2
+    (h : MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u')
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : MEqRed.cofinDomFresh h = true)                  -- NEW: blocker 1
+    : MEqRed (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st u u'
+```
+
+The `cofinDomFresh` predicate (drafted in this session, then removed)
+is well-defined and structurally recurses over the derivation tree. It
+would be added to `Pss.Mpss.AvoidsPro` next session.
+
+Discharge sites that consume `equ_head_replace` will need to supply
+these premises, all of which are reasonable invariants:
+* `hpv`: discharge sites typically have PrevalidExt available.
+* `hfvu`: discharge sites construct derivations from well-formed terms.
+* `hFresh`: discharge sites construct `MEqRed.bet`/`fun_`/`fOp` with
+  `L ⊇ Γ.dom`, the standard cofinite-witness practice.
+
+The non-cofinite arms can be shipped as a partial scaffold WITHOUT the
+new premises (since they don't use rename_stray internally). However,
+the spec requires a complete proof for all cases, so this partial
+implementation is documented but not exposed.
+
+### Why we did not ship the partial implementation
+
+Per the project's standing rules, sub-agents must NOT ship `sorry`s in
+production code. The cofinite arms genuinely need the three premises
+above to complete; rather than shipping a `sorry`-laden draft, this
+section documents the precise blockers and the additive premises
+needed. The supporting helpers (`Prevalid.equ_head_replace_mid` etc.
+in `AvoidsPro.lean`) are reusable and remain shipped. -/
+
 end Pss

@@ -343,7 +343,7 @@ follow-up targets. -/
 /-- If `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds z α_z` and `z ≠ y`, the
 lookup is unaffected by changing `α` to `α'` (since `z ≠ y` skips the
 head). -/
-private theorem _equBinds_equ_head_swap_neq
+theorem _equBinds_equ_head_swap_neq
     {Γ₁ Γ₂ : Ctx} {y z : String} {α α' α_z : Term}
     (hyz : z ≠ y)
     (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds z α_z) :
@@ -362,6 +362,93 @@ private theorem _equBinds_equ_head_swap_neq
     by_cases he : e.name = z
     · rw [if_pos he] at h1 ⊢; exact h1
     · rw [if_neg he] at h1 ⊢; exact ih h1
+
+/-- Mirror for `subBinds`: changing the `.equ`-head's bound term `α → α'`
+does not affect any `.sub`-typed lookup at any `z` (since `.sub` lookups
+skip `.equ` entries even when names match). -/
+theorem _subBinds_equ_head_swap
+    {Γ₁ Γ₂ : Ctx} {y z : String} {α α' t_z : Term}
+    (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).subBinds z t_z) :
+    (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁).subBinds z t_z := by
+  induction Γ₂ with
+  | nil =>
+    show Ctx.lookupSub (⟨y, α', .equ⟩ :: Γ₁) z = some t_z
+    have h1 : Ctx.lookupSub (⟨y, α, .equ⟩ :: Γ₁) z = some t_z := hb
+    rw [Ctx.lookupSub_cons] at h1 ⊢
+    -- The head is `.equ`, so `lookupSub` always skips it (returns none for
+    -- a name match, recurses for non-match). Both sides reduce to lookup on Γ₁.
+    by_cases hxy : y = z
+    · simp [hxy] at h1 ⊢
+    · simp [hxy] at h1 ⊢; exact h1
+  | cons e rest ih =>
+    show Ctx.lookupSub (e :: (rest ++ ⟨y, α', .equ⟩ :: Γ₁)) z = some t_z
+    have h1 : Ctx.lookupSub (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) z = some t_z := hb
+    rw [Ctx.lookupSub_cons] at h1 ⊢
+    by_cases he : e.name = z
+    · rw [if_pos he] at h1 ⊢
+      cases hkind : e.kind with
+      | sub => simp [hkind] at h1 ⊢; exact h1
+      | equ => simp [hkind] at h1
+    · rw [if_neg he] at h1 ⊢; exact ih h1
+
+/-- Generalized form of `Prevalid.equ_head_swap`: replace the bound term
+of the `.equ`-head from `α` to `α'` in `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁`. The
+`fv α'` constraint is against `Γ₁.dom` (not the whole context's dom),
+mirroring the `Prevalid.equ` constructor's invariant. -/
+noncomputable def Prevalid.equ_head_replace_mid
+    {Γ₁ Γ₂ : Ctx} {y : String} {α α' : Term}
+    (hpv : Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁))
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom) :
+    Prevalid (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) := by
+  induction Γ₂ with
+  | nil =>
+    cases hpv with
+    | equ hΓ hy _hfv _hlc => exact Prevalid.equ hΓ hy hfvα' hLCα'
+  | cons e rest ih =>
+    -- `hpv : Prevalid (e :: rest ++ ⟨y, α, .equ⟩ :: Γ₁)`.
+    have hpv' : Prevalid (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) := by simpa using hpv
+    cases hpv' with
+    | @sub _ x t hpv_tail hx hfvt hLCt =>
+      have ih' := ih hpv_tail
+      have hx' : x ∉ Ctx.dom (rest ++ ⟨y, α', .equ⟩ :: Γ₁) := by
+        rw [Ctx.dom_append, Ctx.dom_cons]
+        rw [Ctx.dom_append, Ctx.dom_cons] at hx
+        exact hx
+      have hfvt' : Term.fv t ⊆ Ctx.dom (rest ++ ⟨y, α', .equ⟩ :: Γ₁) := by
+        rw [Ctx.dom_append, Ctx.dom_cons]
+        rw [Ctx.dom_append, Ctx.dom_cons] at hfvt
+        exact hfvt
+      exact Prevalid.sub ih' hx' hfvt' hLCt
+    | @equ _ x β hpv_tail hx hfvβ hLCβ =>
+      have ih' := ih hpv_tail
+      have hx' : x ∉ Ctx.dom (rest ++ ⟨y, α', .equ⟩ :: Γ₁) := by
+        rw [Ctx.dom_append, Ctx.dom_cons]
+        rw [Ctx.dom_append, Ctx.dom_cons] at hx
+        exact hx
+      have hfvβ' : Term.fv β ⊆ Ctx.dom (rest ++ ⟨y, α', .equ⟩ :: Γ₁) := by
+        rw [Ctx.dom_append, Ctx.dom_cons]
+        rw [Ctx.dom_append, Ctx.dom_cons] at hfvβ
+        exact hfvβ
+      exact Prevalid.equ ih' hx' hfvβ' hLCβ
+
+/-- `PrevalidExt` analog: replace the bound term of the `.equ`-head
+from `α` to `α'` in `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁` for any stack. -/
+noncomputable def PrevalidExt.equ_head_replace_mid
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y : String} {α α' : Term}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st)
+    (hLCα' : Term.LC α') (hfvα' : Term.fv α' ⊆ Γ₁.dom) :
+    PrevalidExt (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁) st := by
+  induction hpv with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.equ_head_replace_mid hΓ hLCα' hfvα')
+  | @cons _ β hpvE hLCβ hfvβ ih =>
+    refine PrevalidExt.cons ih hLCβ ?_
+    -- `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).dom = (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁).dom`
+    -- (only the bound changes, not names).
+    intro z hz
+    have hzd := hfvβ hz
+    rw [Ctx.dom_append, Ctx.dom_cons] at hzd ⊢
+    exact hzd
 
 
 
