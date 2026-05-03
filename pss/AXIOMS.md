@@ -416,6 +416,44 @@ theorem.
   `≡`-bindings can store terms that are not themselves `WfM`. Step's
   `Lemma_6_EvaluationPreservesWf` is provable because `Step` never
   consults the context; `MEqRed` does.
+* **Strategy B audit (2026-05-04, contravariant `WSubMStar`-direct
+  formulation).** A subsequent attempt reformulated the inversion to
+  return `WSubMStar Γ t' t` (contravariant on bound annotations) instead
+  of `WEquM Γ t t'`. The hypothesis was that the FREE `WSubMStar.trs`
+  constructor would let chain composition bypass the confluence wall.
+  Findings:
+  - The single-WSubM contravariant inversion `_Lemma_10_contra_inv_sub`
+    is fully provable (analogous to `_Lemma_10_Inversion_sub_partial` but
+    returning `WSubM Γ t' t`).
+  - Two chain helpers — `WSubMStar.extend_left_via_MEqRed_fwd` and
+    `WSubMStar.extend_right_via_MEqRed_back` — are also provable
+    axiom-free (lift the WSubM-level prepend/append helpers to chains
+    via `WSubMStar.rec` with a transducer motive).
+  - The lift to `WSubMStar` level still fails at `WSubMStar.trs`. The
+    plan agent's proposed `WSubMStar.preserves_abs` lemma — **the
+    foundational claim that `WSubMStar Γ (.abs ..) v → ∃ t' u',
+    v = .abs t' u'`** — is **FALSE**.
+  - Counterexample: take `Γ = [⟨"x", α, .equ⟩]` for some α reducing to
+    (.abs ..). Then `WSubM.rgh` consumes `MEqRed Γ [] (.fvar x) α'` (via
+    `Me-Pro`, which fires on equ-bound variables); combined with
+    `WSubM.rfl` on (.abs ..), this yields `WSubM Γ (.abs ..) (.fvar x)`.
+    Hence `WSubMStar Γ (.abs ..) (.fvar x)` is inhabited — chains can
+    "detour" through equ-bound variables. Symmetrically, `(.fvar x) ≤*_wf
+    (.abs ..)` is also inhabited via `Ws-Lf1 + Me-Pro`, so trs can have
+    fvar midpoints.
+  - The `WfM Γ U` constructors give five midpoint shapes: `top`,
+    `varSub`, `varEqu`, `fun_`, `app`. Only `fun_` admits direct IH
+    composition. `top` requires the analogue of Lemma 11 at WSubMStar
+    level (currently only available through Theorem 3 → β-residuals).
+    `varSub` should be uninhabited (`Me-Pro` requires equ-binding, not
+    sub-binding) but proving this requires a custom lemma. `varEqu`
+    requires recursion through the binder's α (not structurally
+    smaller — needs well-founded recursion on a different measure).
+    `app` is similar to `varEqu` (e.g., `Me-Bet` allows `(.app (.abs t' .body)) → opening _ body`).
+  - The auxiliaries (`_Lemma_10_contra_inv_sub`,
+    `WSubMStar.extend_left_via_MEqRed_fwd`,
+    `WSubMStar.extend_right_via_MEqRed_back`) are SHIPPED to
+    `WellFormed.lean` §7.5 as future-reusable infrastructure.
 * **Strategy A audit (2026-05-04, this discharge attempt).** The
   most promising recovery — Strategy 4 from the prior list, "Bypass
   `WfM Γ t_w` via a Church-Rosser-style proof" — was attempted as

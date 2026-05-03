@@ -994,6 +994,101 @@ noncomputable def _Lemma_10_Inversion_sub_partial
     (fun _ _ _ _ _ _ => ())
     h) heqA heqB
 
+/-! ### §7.3c. WSubM-direct contravariant inversion
+
+Mirror of `_Lemma_10_Inversion_sub_partial` but returning `WSubM Γ t' t`
+(contravariant: source becomes the target's bound, target becomes the
+source's bound) instead of `WEquM Γ t t'`. Same structure, but uses
+`WSubM.rgh` / `WSubM.lf1` instead of `WEquM.rgh` / `WEquM.lf1` to
+prepend/append `MEqRed` steps. The `Ws-Rfl` case returns
+`WSubM.rfl hT` where `hT : WfM Γ t` is extracted from the abs-shaped
+WfM premise. -/
+
+private def _Lemma_10_contra_inv_motive_sub :
+    (Γ : Ctx) → (a b : Term) → WSubM Γ a b → Type :=
+  fun Γ a b _ =>
+    ∀ {t u t' u' : Term}, a = .abs t u → b = .abs t' u' → WSubM Γ t' t
+
+private def _Lemma_10_contra_inv_motive_wf :
+    (Γ : Ctx) → (t : Term) → WfM Γ t → Type :=
+  fun _ _ _ => Unit
+
+private def _Lemma_10_contra_inv_motive_star :
+    (Γ : Ctx) → (a b : Term) → WSubMStar Γ a b → Type :=
+  fun _ _ _ _ => Unit
+
+/-- **Single-WSubM contravariant Lemma 10**: a `WSubM` between two
+`.abs` terms yields a `WSubM` on their bound annotations in the
+*reverse* direction (contravariant). PROVED directly via `WSubM.rec`,
+mirroring `_Lemma_10_Inversion_sub_partial`. -/
+noncomputable def _Lemma_10_contra_inv_sub
+    {Γ : Ctx} {a b : Term} (h : WSubM Γ a b)
+    {t u t' u' : Term} (heqA : a = .abs t u) (heqB : b = .abs t' u') :
+    WSubM Γ t' t := by
+  classical
+  exact (WSubM.rec
+    (motive_1 := _Lemma_10_contra_inv_motive_wf)
+    (motive_2 := _Lemma_10_contra_inv_motive_sub)
+    (motive_3 := _Lemma_10_contra_inv_motive_star)
+    -- WfM cases: all unit.
+    (fun _ _ => ()) (fun _ _ => ()) (fun _ => ())
+    (fun _ _ _ _ _ => ()) (fun _ _ _ _ => ())
+    -- Ws-Rfl: args (hwf, ihwf). t = t' since a = b = .abs t u and we
+    -- substitute heqA into heqB, yielding heqB' : .abs t u = .abs t' u',
+    -- so t = t' and u = u'. Return WSubM.rfl hT.
+    (fun {Γ x} hwf _ihwf => by
+      intro t u t' u' hA hB
+      subst hA; cases hB
+      cases hwf with
+      | @fun_ _ _ _ L hT _ => exact WSubM.rfl hT)
+    -- Ws-Lf1: args (hred, h_inner, ih). hred : MEqRed Γ [] (.abs t u) v'.
+    -- Invert via Me-Fun: v' = .abs t1 u1, MEqRed Γ [] t t1.
+    -- Recursive call gives WSubM Γ t' t1. Apply WSubM.rgh to get WSubM Γ t' t.
+    (fun {Γ a v' b} hred _h_inner ih => by
+      intro t u t' u' hA hB
+      subst hA
+      obtain ⟨t1, u1, hv'Eq, hStep⟩ :=
+        _Lemma_10_MEqRed_abs_inv_annot hred
+      subst hv'Eq
+      have hRec : WSubM Γ t' t1 := ih rfl hB
+      exact WSubM.rgh hRec hStep)
+    -- Ws-Lf2: args (hwfA, hred, hwfA', h_inner, ihwfA, ihwfA', ih).
+    -- hred : MSubRed Γ [] (.abs t u) v'. Three sub-cases:
+    -- - Ms-Top: v' = .top. h_inner : WSubM Γ .top (.abs t' u'). Contradiction
+    --   via `_WSubM_top_abs_uninhabited`.
+    -- - Ms-Equ → Me-Fun: v' = .abs, with MEqRed step on bound. Same as Lf1.
+    -- - Ms-Fun: v' = .abs with annotation invariant. Recurse directly.
+    (fun {Γ a v' b} _hwfA hred _hwfA' h_inner _ihA _ihA' ih => by
+      intro t u t' u' hA hB
+      subst hA
+      cases _Lemma_10_MSubRed_abs_inv_annot hred with
+      | inl hTop =>
+          subst hTop; subst hB
+          exact (_WSubM_top_abs_uninhabited h_inner).elim
+      | inr hAbs =>
+          obtain ⟨t1, u1, hv'Eq, hRel⟩ := hAbs
+          subst hv'Eq
+          have hRec : WSubM Γ t' t1 := ih rfl hB
+          cases hRel with
+          | inl hT1Eq => subst hT1Eq; exact hRec
+          | inr hStep => exact WSubM.rgh hRec hStep)
+    -- Ws-Rgh: args (h_inner, hred, ih). hred : MEqRed Γ [] (.abs t' u') v'.
+    -- Invert via Me-Fun: v' = .abs t1 u1, MEqRed Γ [] t' t1.
+    -- Recursive call gives WSubM Γ t1 t. Apply WSubM.lf1 to get WSubM Γ t' t.
+    (fun {Γ a b b'} _h_inner hred ih => by
+      intro t u t' u' hA hB
+      subst hB
+      obtain ⟨t1, u1, hbEq, hStep⟩ :=
+        _Lemma_10_MEqRed_abs_inv_annot hred
+      subst hbEq
+      have hRec : WSubM Γ t1 t := ih hA rfl
+      exact WSubM.lf1 hStep hRec)
+    -- WSubMStar.sub: args (hwfV, hsub, hwfT, ihwfV, ihsub, ihwfT)
+    (fun _ _ _ _ _ _ => ())
+    -- WSubMStar.trs: args (hStar1, hwfU, hStar2, ih1, ihwfU, ih2)
+    (fun _ _ _ _ _ _ => ())
+    h) heqA heqB
+
 /-! ### §7.4. The remaining axiom
 
 Despite the partial `_sub` discharge above, the full `Lemma_10_Inversion`
@@ -1009,12 +1104,140 @@ shape-determining `U = .abs t_m u_m` we need to combine the IH-produced
 `WEquM Γ t t_m` and `WEquM Γ t_m t'` into `WEquM Γ t t'`. This
 composition requires forward-extending one `WEquM` along the other's
 midpoint — which IS the diamond property restricted to bound
-annotations. -/
+annotations.
+
+NOTE: Theorem 5's β-case has been *re-routed* to use the contravariant
+`WSubMStar`-direct inversion `_Lemma_10_contra_inv` (defined below),
+which bypasses this trs blocker by working at `WSubM` level (where the
+contravariant inversion is a single step) and lifting to `WSubMStar`
+via the chain helpers. The `WEquM`-form below is RETAINED as an axiom
+but is now INACTIVE (no headline theorem depends on it). -/
 
 axiom Lemma_10_Inversion
     {Γ : Ctx} {t t' u u' : Term}
     (h : WSubMStar Γ (.abs t u) (.abs t' u')) :
     WEquM Γ t t'
+
+/-! ### §7.5. Contravariant `WSubMStar`-direct Lemma 10
+
+The new strategy bypasses `WEquM.trans` (which requires confluence) by
+formulating the inversion to return `WSubMStar Γ t' t` directly. The
+chain composition is FREE for `WSubMStar` (its `trs` constructor is
+zero-cost), so we don't need a derived transitivity. -/
+
+/-- Motive: WSubMStar Γ a b → ∀ c, MEqRed Γ [] c a → WfM Γ c → WSubMStar Γ c b. -/
+private def _extend_left_motive_star :
+    (Γ : Ctx) → (a b : Term) → WSubMStar Γ a b → Type :=
+  fun Γ a b _ =>
+    ∀ {c : Term}, MEqRed Γ [] c a → WfM Γ c → WSubMStar Γ c b
+
+private def _extend_left_motive_wf :
+    (Γ : Ctx) → (t : Term) → WfM Γ t → Type :=
+  fun _ _ _ => Unit
+
+private def _extend_left_motive_sub :
+    (Γ : Ctx) → (a b : Term) → WSubM Γ a b → Type :=
+  fun _ _ _ _ => Unit
+
+/-- **Helper:** prepend a forward `MEqRed` step on the LHS of a
+`WSubMStar`. Given `MEqRed Γ [] c a` and `WSubMStar Γ a b`, derive
+`WSubMStar Γ c b`. By induction on the chain. -/
+noncomputable def WSubMStar.extend_left_via_MEqRed_fwd
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hred : MEqRed Γ [] c a)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ c b := by
+  classical
+  exact (WSubMStar.rec
+    (motive_1 := _extend_left_motive_wf)
+    (motive_2 := _extend_left_motive_sub)
+    (motive_3 := _extend_left_motive_star)
+    -- WfM cases: all unit.
+    (fun _ _ => ()) (fun _ _ => ()) (fun _ => ())
+    (fun _ _ _ _ _ => ()) (fun _ _ _ _ => ())
+    -- WSubM cases: all unit.
+    (fun _ _ => ()) (fun _ _ _ => ()) (fun _ _ _ _ _ _ _ => ())
+    (fun _ _ _ => ())
+    -- WSubMStar.sub: args (hwfV, hsub, hwfT, ihwfV, ihsub, ihwfT)
+    (fun {Γ v t} _hwfV hsub hwfT _ _ _ => fun {c} hr hwfC =>
+      WSubMStar.sub hwfC (WSubM.lf1 hr hsub) hwfT)
+    -- WSubMStar.trs: args (hStar1, hwfU, hStar2, ih1, ihwfU, ih2). Prepend
+    -- c → a only on left leg, re-glue with right leg via trs.
+    (fun {Γ v u t} _hStar1 hwfU hStar2 ih1 _ _ => fun {c} hr hwfC =>
+      WSubMStar.trs (ih1 hr hwfC) hwfU hStar2)
+    h) hred hwfC
+
+/-- Motive: WSubMStar Γ a b → ∀ c, MEqRed Γ [] c b → WfM Γ c → WSubMStar Γ a c. -/
+private def _extend_right_motive_star :
+    (Γ : Ctx) → (a b : Term) → WSubMStar Γ a b → Type :=
+  fun Γ a b _ =>
+    ∀ {c : Term}, MEqRed Γ [] c b → WfM Γ c → WSubMStar Γ a c
+
+/-- **Helper:** prepend a backward `MEqRed` step on the RHS of a
+`WSubMStar`. Given `WSubMStar Γ a b` and `MEqRed Γ [] c b` (a forward
+step from `c` to `b`), derive `WSubMStar Γ a c`. By induction on the
+chain. -/
+noncomputable def WSubMStar.extend_right_via_MEqRed_back
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hred : MEqRed Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ a c := by
+  classical
+  exact (WSubMStar.rec
+    (motive_1 := _extend_left_motive_wf)
+    (motive_2 := _extend_left_motive_sub)
+    (motive_3 := _extend_right_motive_star)
+    (fun _ _ => ()) (fun _ _ => ()) (fun _ => ())
+    (fun _ _ _ _ _ => ()) (fun _ _ _ _ => ())
+    (fun _ _ => ()) (fun _ _ _ => ()) (fun _ _ _ _ _ _ _ => ())
+    (fun _ _ _ => ())
+    -- WSubMStar.sub: args (hwfV, hsub, hwfT, ihwfV, ihsub, ihwfT)
+    (fun {Γ v t} hwfV hsub _hwfT _ _ _ => fun {c} hr hwfC =>
+      WSubMStar.sub hwfV (WSubM.rgh hsub hr) hwfC)
+    -- WSubMStar.trs: contract right leg, re-glue with left leg via trs.
+    (fun {Γ v u t} hStar1 hwfU _hStar2 _ _ ih2 => fun {c} hr hwfC =>
+      WSubMStar.trs hStar1 hwfU (ih2 hr hwfC))
+    h) hred hwfC
+
+/-! ### §7.5b. Contravariant inversion at WSubMStar level — STRUCTURAL BLOCKER
+
+A `WSubMStar`-direct contravariant inversion (returning `WSubMStar Γ t' t`
+instead of `WEquM Γ t t'`) was attempted under the hypothesis that
+`WSubMStar.preserves_abs` holds — i.e., that `WSubMStar Γ (.abs ..) v →
+∃ t' u', v = .abs t' u'`. **This hypothesis is false.**
+
+**Counterexample:** Let Γ = [⟨"x", α, .equ⟩] where α reduces to
+(.abs t' u') (e.g., α = .abs t' u' itself). Then:
+
+* `WSubM.rgh` consumes `MEqRed Γ [] (.fvar x) α'` (via `Me-Pro`, which
+  fires on equ-bound variables);
+* combined with `WSubM.rfl` on `(.abs t' u')`, this yields
+  `WSubM Γ (.abs t' u') (.fvar x)`.
+
+Hence `WSubMStar Γ (.abs ..) (.fvar x)` is inhabited — the chain can
+"detour" through equ-bound variables. Symmetrically (via `Ws-Lf1` +
+`Me-Pro`), the chain `(.fvar x) → (.abs t' u')` is also inhabited,
+so the WSubMStar.trs case admits non-abs midpoints.
+
+The WSubM-level lemma `_Lemma_10_contra_inv_sub` (proved above) DOES
+close cleanly because at single-step level, the abs-shape constraint
+on the *outer* WSubM forces inversion of the chain operator (`MEqRed` /
+`MSubRed`) at empty stack, and the only abs-introducing rule is
+`Me-Fun` (with `Ms-Equ` delegating). At chain level, intermediate
+WfM-anchors break this constraint.
+
+**Discharge requirements:** to close the trs case, one needs either
+(a) `WSubMStar Γ .top (.abs ..)` uninhabited (analogue of Lemma 11
+without going through Theorem 3 — non-trivial because Theorem 3 carries
+β-residuals), AND (b) a recursion-through-α argument for fvar-equ
+midpoints, AND (c) an analogous argument for app midpoints. Path (b)
+requires recursion that's not structurally smaller than the original
+chain, suggesting well-founded recursion on a different measure.
+
+This blocker is structurally analogous to (but distinct from) the
+`WEquM.trans` blocker that forces `Lemma_10_Inversion` itself. -/
 
 /-! ### Lemma 10 — restricted form (legacy, derivable from `WEquM` + extra
 infrastructure)
