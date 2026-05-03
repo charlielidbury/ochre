@@ -2491,6 +2491,334 @@ noncomputable def MSubRed.rename_stray
     rw [hctx_eq] at h_sub
     exact h_sub
 
+/-! ### §7.0a. Phase 5c: existence-form rename + `AvoidsProUniv` preservation
+
+The original `MEqRed.subst_yz_stray` is defined in tactic mode; its
+`rw [...]`-induced casts make the result-shape opaque to `simp`, so an
+*ex-post* preservation theorem
+`AvoidsProUniv (subst_yz_stray h) x`
+has to syntactically reduce the functor on each constructor case — which
+fails because tactic-mode `induction h with ...` doesn't generate
+`.eq_pro/.eq_bet/...` simp lemmas usable in proof contexts.
+
+The principled fix is a *parallel* construction
+`AvoidsProUniv_subst_yz_stray_exists`: an **existence statement**
+`∃ h' : MEqRed (rename Γ) (rename st) (rename u) (rename u'),
+  AvoidsProUniv h' x`,
+proven by induction on `h`. At each constructor case, we BUILD a fresh
+rename derivation (parallel to but not literally `subst_yz_stray h`) and
+pair it with an `AvoidsProUniv` proof — both come from the IHs.
+
+This is what Phase 5d's `equ_head_replace` will consume: it doesn't need
+the rename to be literally `subst_yz_stray h`; it needs *some* renamed
+derivation it can use, with the avoidance preserved. The existence form
+delivers exactly that. -/
+
+/-- Existence-form preservation: for any `MEqRed`-derivation that
+universally avoids `x` at all `Me-Pro` lookups, there exists a
+`y → z`-renamed derivation that also avoids `x`. -/
+theorem AvoidsProUniv_subst_yz_stray_exists
+    {Γ : Ctx} {st : Stack} {y z : String} {u u' : Term}
+    (hyz : y ≠ z)
+    (hy_notin_Γ : y ∉ Γ.dom)
+    (h : MEqRed Γ st u u')
+    (x : String)
+    (hUniv : AvoidsProUniv h x) :
+    ∃ h' : MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st)
+              (Term.subst y (.fvar z) u) (Term.subst y (.fvar z) u'),
+      AvoidsProUniv h' x := by
+  classical
+  revert hy_notin_Γ hUniv
+  induction h with
+  | @pro Γ st' yi α α' hpv heq hα ihα =>
+    intro hy_notin_Γ hUniv
+    rw [AvoidsProUniv_pro] at hUniv
+    obtain ⟨hyix, huα⟩ := hUniv
+    have hyi_dom : yi ∈ Γ.dom := _equBinds_in_dom heq
+    have hyiy : yi ≠ y := fun hh => hy_notin_Γ (hh ▸ hyi_dom)
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ)
+        (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    have heq' : (Ctx.subst y (.fvar z) Γ).equBinds yi
+        (Term.subst y (.fvar z) α) :=
+      _equBinds_subst_pointwise y (.fvar z) heq
+    obtain ⟨hα', huα'⟩ := ihα hy_notin_Γ huα
+    have heq_subst : Term.subst y (.fvar z) (.fvar yi) = .fvar yi :=
+      Term.subst_fvar_ne hyiy (.fvar z)
+    refine ⟨heq_subst.symm ▸ MEqRed.pro hpv' heq' hα', ?_⟩
+    simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_pro]
+    exact ⟨hyix, huα'⟩
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody hv ihbody ihv =>
+    intro hy_notin_Γ hUniv
+    rw [AvoidsProUniv_bet] at hUniv
+    obtain ⟨hbU, hvU⟩ := hUniv
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    -- Body data: ihbody recursively gives existence of body rename + AvoidsProUniv
+    -- at the OPENED term. We'll later need to align this with the bet-constructor's
+    -- expected body shape (∂(subst bd)^[yfresh] vs subst (bd^[yfresh])).
+    have body_each : ∀ yfresh, yfresh ∉ L ∪ {y} ∪ {z} →
+        ∃ h' : MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+                  ((Term.subst y (.fvar z) bd)^[yfresh])
+                  ((Term.subst y (.fvar z) bd')^[yfresh]),
+          AvoidsProUniv h' x := by
+      intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      obtain ⟨⟨hyfL, hyfy⟩, _hyfz⟩ := hyfresh
+      have hbd_eq : Term.subst y (.fvar z) (bd^[yfresh]) =
+          (Term.subst y (.fvar z) bd)^[yfresh] :=
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd
+      have hbd'_eq : Term.subst y (.fvar z) (bd'^[yfresh]) =
+          (Term.subst y (.fvar z) bd')^[yfresh] :=
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd'
+      obtain ⟨h_inner, hu_inner⟩ := ihbody yfresh hyfL hy_notin_Γ (hbU yfresh hyfL)
+      refine ⟨hbd_eq ▸ hbd'_eq ▸ h_inner, ?_⟩
+      simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_subst_eq_dest]
+      exact hu_inner
+    obtain ⟨hv', hvU'⟩ := ihv hy_notin_Γ hvU
+    -- Construct the bet derivation by choice.
+    let body_witness : ∀ yfresh, yfresh ∉ L ∪ {y} ∪ {z} →
+        MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+          ((Term.subst y (.fvar z) bd)^[yfresh])
+          ((Term.subst y (.fvar z) bd')^[yfresh]) :=
+      fun yfresh hyfresh => (body_each yfresh hyfresh).choose
+    have body_witness_avoids : ∀ yfresh (hyfresh : yfresh ∉ L ∪ {y} ∪ {z}),
+        AvoidsProUniv (body_witness yfresh hyfresh) x :=
+      fun yfresh hyfresh => (body_each yfresh hyfresh).choose_spec
+    have hsubst_open : Term.subst y (.fvar z) (Term.opening v0' bd') =
+        Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd') := by
+      simp [Term.opening, Term.subst_open hLCfz]
+    -- Build the bet derivation explicitly with a single ▸-cast on the dest term.
+    let bet_core : MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+        (.app (.abs (Term.subst y (.fvar z) tBound) (Term.subst y (.fvar z) bd))
+              (Term.subst y (.fvar z) v0))
+        (Term.opening (Term.subst y (.fvar z) v0') (Term.subst y (.fvar z) bd')) :=
+      MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt) body_witness hv'
+    -- The source term .app (.abs tBound bd) v0 substitutes by definition to
+    -- .app (.abs (subst tBound) (subst bd)) (subst v0) — this is rfl.
+    -- The dest term (subst (Term.opening v0' bd')) needs hsubst_open.
+    refine ⟨hsubst_open ▸ bet_core, ?_⟩
+    -- Avoidance: AvoidsProUniv (hsubst_open ▸ bet_core) x ↔ AvoidsProUniv bet_core x
+    -- via AvoidsProUniv_subst_eq_dest. Then the bet_core's avoidance is built from
+    -- body_witness_avoids and hvU'.
+    simp only [AvoidsProUniv_subst_eq_dest]
+    show AvoidsProUniv (MEqRed.bet (L ∪ {y} ∪ {z}) (Term.subst_lc hLCfz hLCt)
+        body_witness hv') x
+    simp only [AvoidsProUniv_bet]
+    exact ⟨body_witness_avoids, hvU'⟩
+  | @top Γ st' hpv =>
+    intro hy_notin_Γ _hUniv
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ)
+        (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    -- subst y _ .top = .top by definition.
+    have htop_eq : Term.subst y (.fvar z) .top = .top := rfl
+    refine ⟨htop_eq.symm ▸ MEqRed.top hpv', ?_⟩
+    simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_subst_eq_dest,
+               AvoidsProUniv_top]
+  | @app Γ st' u_ u_' v_ v_' hu hv ihu ihv =>
+    intro hy_notin_Γ hUniv
+    rw [AvoidsProUniv_app] at hUniv
+    obtain ⟨huU, hvU⟩ := hUniv
+    obtain ⟨hu', huU'⟩ := ihu hy_notin_Γ huU
+    obtain ⟨hv', hvU'⟩ := ihv hy_notin_Γ hvU
+    -- hu' has stack `Stack.subst y (.fvar z) (v_ :: st')`, need
+    -- (Term.subst y _ v_) :: (Stack.subst y _ st'). Aligned via Stack.subst_cons.
+    have hstack_eq : Stack.subst y (.fvar z) (v_ :: st') =
+        Term.subst y (.fvar z) v_ :: Stack.subst y (.fvar z) st' := by
+      simp [Stack.subst]
+    let hu'_aligned : MEqRed (Ctx.subst y (.fvar z) Γ)
+        (Term.subst y (.fvar z) v_ :: Stack.subst y (.fvar z) st')
+        (Term.subst y (.fvar z) u_) (Term.subst y (.fvar z) u_') :=
+      hstack_eq ▸ hu'
+    -- subst y _ (.app u_ v_) = .app (subst y _ u_) (subst y _ v_) by definition.
+    have hsrc_eq : Term.subst y (.fvar z) (.app u_ v_) =
+        .app (Term.subst y (.fvar z) u_) (Term.subst y (.fvar z) v_) := rfl
+    have hdst_eq : Term.subst y (.fvar z) (.app u_' v_') =
+        .app (Term.subst y (.fvar z) u_') (Term.subst y (.fvar z) v_') := rfl
+    refine ⟨hsrc_eq.symm ▸ hdst_eq.symm ▸ MEqRed.app hu'_aligned hv', ?_⟩
+    simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_subst_eq_dest]
+    show AvoidsProUniv (MEqRed.app hu'_aligned hv') x
+    simp only [AvoidsProUniv_app]
+    refine ⟨?_, hvU'⟩
+    show AvoidsProUniv (hstack_eq ▸ hu') x
+    simp only [AvoidsProUniv_subst_eq_stack]
+    exact huU'
+  | @var Γ st' yi hpv =>
+    intro hy_notin_Γ _hUniv
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ)
+        (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    -- Var is symmetric (same source and dest). Use a single cast on the
+    -- MEqRed type level via congruence equality.
+    by_cases hyiy : yi = y
+    · have heqe : Term.subst y (.fvar z) (.fvar yi) = .fvar z := by
+        rw [hyiy]; simp [Term.subst]
+      have htype_eq : MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+          (.fvar z) (.fvar z) =
+          MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+          (Term.subst y (.fvar z) (.fvar yi)) (Term.subst y (.fvar z) (.fvar yi)) := by
+        rw [heqe]
+      refine ⟨cast htype_eq (MEqRed.var hpv' : MEqRed _ _ (.fvar z) (.fvar z)), ?_⟩
+      rw [AvoidsProUniv_cast _ _ _ _ htype_eq]
+      · simp [AvoidsProUniv_var]
+      · exact rfl
+      · exact rfl
+      · exact heqe.symm
+      · exact heqe.symm
+    · have heqe : Term.subst y (.fvar z) (.fvar yi) = .fvar yi :=
+        Term.subst_fvar_ne hyiy (.fvar z)
+      have htype_eq : MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+          (.fvar yi) (.fvar yi) =
+          MEqRed (Ctx.subst y (.fvar z) Γ) (Stack.subst y (.fvar z) st')
+          (Term.subst y (.fvar z) (.fvar yi)) (Term.subst y (.fvar z) (.fvar yi)) := by
+        rw [heqe]
+      refine ⟨cast htype_eq (MEqRed.var hpv' : MEqRed _ _ (.fvar yi) (.fvar yi)), ?_⟩
+      rw [AvoidsProUniv_cast _ _ _ _ htype_eq]
+      · simp [AvoidsProUniv_var]
+      · exact rfl
+      · exact rfl
+      · exact heqe.symm
+      · exact heqe.symm
+  | @fun_ Γ tt tt' bd bd' L ht hbody iht ihbody =>
+    intro hy_notin_Γ hUniv
+    rw [AvoidsProUniv_fun_] at hUniv
+    obtain ⟨htU, hbU⟩ := hUniv
+    obtain ⟨ht', htU'⟩ := iht hy_notin_Γ htU
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    -- Body data with the extended-context hypothesis on hy_notin_Γ.
+    have body_each : ∀ yfresh, yfresh ∉ L ∪ {y} ∪ {z} →
+        ∃ h' : MEqRed (⟨yfresh, Term.subst y (.fvar z) tt, .sub⟩ ::
+                        Ctx.subst y (.fvar z) Γ) []
+                  ((Term.subst y (.fvar z) bd)^[yfresh])
+                  ((Term.subst y (.fvar z) bd')^[yfresh]),
+          AvoidsProUniv h' x := by
+      intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      obtain ⟨⟨hyfL, hyfy⟩, _⟩ := hyfresh
+      have hy_notin_Γ' : y ∉ Ctx.dom (⟨yfresh, tt, .sub⟩ :: Γ) := by
+        rw [Ctx.dom_cons]
+        intro hmem
+        rcases Finset.mem_insert.mp hmem with hyy | hyΓ
+        · exact hyfy hyy.symm
+        · exact hy_notin_Γ hyΓ
+      obtain ⟨h_inner, hu_inner⟩ :=
+        ihbody yfresh hyfL hy_notin_Γ' (hbU yfresh hyfL)
+      have hbd_eq : Term.subst y (.fvar z) (bd^[yfresh]) =
+          (Term.subst y (.fvar z) bd)^[yfresh] :=
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd
+      have hbd'_eq : Term.subst y (.fvar z) (bd'^[yfresh]) =
+          (Term.subst y (.fvar z) bd')^[yfresh] :=
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd'
+      have hctx_eq : Ctx.subst y (.fvar z) (⟨yfresh, tt, .sub⟩ :: Γ) =
+          ⟨yfresh, Term.subst y (.fvar z) tt, .sub⟩ :: Ctx.subst y (.fvar z) Γ := by
+        simp [Ctx.subst]
+      refine ⟨hctx_eq ▸ hbd_eq ▸ hbd'_eq ▸ h_inner, ?_⟩
+      simp only [AvoidsProUniv_subst_eq_ctx, AvoidsProUniv_subst_eq_src,
+                 AvoidsProUniv_subst_eq_dest]
+      exact hu_inner
+    let body_witness : ∀ yfresh, yfresh ∉ L ∪ {y} ∪ {z} →
+        MEqRed (⟨yfresh, Term.subst y (.fvar z) tt, .sub⟩ ::
+                  Ctx.subst y (.fvar z) Γ) []
+          ((Term.subst y (.fvar z) bd)^[yfresh])
+          ((Term.subst y (.fvar z) bd')^[yfresh]) :=
+      fun yfresh hyfresh => (body_each yfresh hyfresh).choose
+    have body_witness_avoids : ∀ yfresh (hyfresh : yfresh ∉ L ∪ {y} ∪ {z}),
+        AvoidsProUniv (body_witness yfresh hyfresh) x :=
+      fun yfresh hyfresh => (body_each yfresh hyfresh).choose_spec
+    have hsrc_eq : Term.subst y (.fvar z) (.abs tt bd) =
+        .abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd) := rfl
+    have hdst_eq : Term.subst y (.fvar z) (.abs tt' bd') =
+        .abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd') := rfl
+    have hstack_eq : Stack.subst y (.fvar z) ([] : Stack) = ([] : Stack) := rfl
+    refine ⟨hstack_eq.symm ▸ hsrc_eq.symm ▸ hdst_eq.symm ▸
+              MEqRed.fun_ (L ∪ {y} ∪ {z}) ht' body_witness, ?_⟩
+    simp only [AvoidsProUniv_subst_eq_stack, AvoidsProUniv_subst_eq_src,
+               AvoidsProUniv_subst_eq_dest]
+    show AvoidsProUniv (MEqRed.fun_ (L ∪ {y} ∪ {z}) ht' body_witness) x
+    simp only [AvoidsProUniv_fun_]
+    exact ⟨htU', body_witness_avoids⟩
+  | @tAp Γ st' u_ hpv hLCu hfv =>
+    intro hy_notin_Γ _hUniv
+    have hpv' : PrevalidExt (Ctx.subst y (.fvar z) Γ)
+        (Stack.subst y (.fvar z) st') :=
+      _PrevalidExt_subst_stray hpv hy_notin_Γ
+    have hLCu' : Term.LC (Term.subst y (.fvar z) u_) :=
+      Term.subst_lc (Term.LC.fvar z) hLCu
+    have hfv' : Term.fv (Term.subst y (.fvar z) u_) ⊆
+        Ctx.dom (Ctx.subst y (.fvar z) Γ) := by
+      rw [Ctx.dom_subst]
+      have hy_notin_u : y ∉ Term.fv u_ := fun h' => hy_notin_Γ (hfv h')
+      have hu_eq : Term.subst y (.fvar z) u_ = u_ := Term.subst_fresh hy_notin_u
+      rw [hu_eq]; exact hfv
+    have hsrc_eq : Term.subst y (.fvar z) (.app .top u_) =
+        .app .top (Term.subst y (.fvar z) u_) := rfl
+    have hdst_eq : Term.subst y (.fvar z) (.top : Term) = .top := rfl
+    refine ⟨hsrc_eq.symm ▸ hdst_eq.symm ▸ MEqRed.tAp hpv' hLCu' hfv', ?_⟩
+    simp only [AvoidsProUniv_subst_eq_src, AvoidsProUniv_subst_eq_dest]
+    show AvoidsProUniv (MEqRed.tAp hpv' hLCu' hfv') x
+    simp only [AvoidsProUniv_tAp]
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody iht ihbody =>
+    intro hy_notin_Γ hUniv
+    rw [AvoidsProUniv_fOp] at hUniv
+    obtain ⟨htU, hbU⟩ := hUniv
+    obtain ⟨ht', htU'⟩ := iht hy_notin_Γ htU
+    have hLCfz : Term.LC (.fvar z) := Term.LC.fvar z
+    have body_each : ∀ yfresh, yfresh ∉ L ∪ {y} ∪ {z} →
+        ∃ h' : MEqRed (⟨yfresh, Term.subst y (.fvar z) αi, .equ⟩ ::
+                        Ctx.subst y (.fvar z) Γ)
+                  (Stack.subst y (.fvar z) st')
+                  ((Term.subst y (.fvar z) bd)^[yfresh])
+                  ((Term.subst y (.fvar z) bd')^[yfresh]),
+          AvoidsProUniv h' x := by
+      intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton, not_or] at hyfresh
+      obtain ⟨⟨hyfL, hyfy⟩, _⟩ := hyfresh
+      have hy_notin_Γ' : y ∉ Ctx.dom (⟨yfresh, αi, .equ⟩ :: Γ) := by
+        rw [Ctx.dom_cons]
+        intro hmem
+        rcases Finset.mem_insert.mp hmem with hyy | hyΓ
+        · exact hyfy hyy.symm
+        · exact hy_notin_Γ hyΓ
+      obtain ⟨h_inner, hu_inner⟩ :=
+        ihbody yfresh hyfL hy_notin_Γ' (hbU yfresh hyfL)
+      have hbd_eq : Term.subst y (.fvar z) (bd^[yfresh]) =
+          (Term.subst y (.fvar z) bd)^[yfresh] :=
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd
+      have hbd'_eq : Term.subst y (.fvar z) (bd'^[yfresh]) =
+          (Term.subst y (.fvar z) bd')^[yfresh] :=
+        Term.subst_open_var (Ne.symm hyfy) hLCfz bd'
+      have hctx_eq : Ctx.subst y (.fvar z) (⟨yfresh, αi, .equ⟩ :: Γ) =
+          ⟨yfresh, Term.subst y (.fvar z) αi, .equ⟩ ::
+          Ctx.subst y (.fvar z) Γ := by simp [Ctx.subst]
+      refine ⟨hctx_eq ▸ hbd_eq ▸ hbd'_eq ▸ h_inner, ?_⟩
+      simp only [AvoidsProUniv_subst_eq_ctx, AvoidsProUniv_subst_eq_src,
+                 AvoidsProUniv_subst_eq_dest]
+      exact hu_inner
+    let body_witness : ∀ yfresh, yfresh ∉ L ∪ {y} ∪ {z} →
+        MEqRed (⟨yfresh, Term.subst y (.fvar z) αi, .equ⟩ ::
+                  Ctx.subst y (.fvar z) Γ)
+          (Stack.subst y (.fvar z) st')
+          ((Term.subst y (.fvar z) bd)^[yfresh])
+          ((Term.subst y (.fvar z) bd')^[yfresh]) :=
+      fun yfresh hyfresh => (body_each yfresh hyfresh).choose
+    have body_witness_avoids : ∀ yfresh (hyfresh : yfresh ∉ L ∪ {y} ∪ {z}),
+        AvoidsProUniv (body_witness yfresh hyfresh) x :=
+      fun yfresh hyfresh => (body_each yfresh hyfresh).choose_spec
+    have hsrc_eq : Term.subst y (.fvar z) (.abs tt bd) =
+        .abs (Term.subst y (.fvar z) tt) (Term.subst y (.fvar z) bd) := rfl
+    have hdst_eq : Term.subst y (.fvar z) (.abs tt' bd') =
+        .abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd') := rfl
+    have hstack_eq : Stack.subst y (.fvar z) (αi :: st') =
+        Term.subst y (.fvar z) αi :: Stack.subst y (.fvar z) st' := by
+      simp [Stack.subst]
+    refine ⟨hstack_eq ▸ hsrc_eq.symm ▸ hdst_eq.symm ▸
+              MEqRed.fOp (L ∪ {y} ∪ {z}) ht' body_witness, ?_⟩
+    simp only [AvoidsProUniv_subst_eq_stack, AvoidsProUniv_subst_eq_src,
+               AvoidsProUniv_subst_eq_dest]
+    show AvoidsProUniv (MEqRed.fOp (L ∪ {y} ∪ {z}) ht' body_witness) x
+    simp only [AvoidsProUniv_fOp]
+    exact ⟨htU', body_witness_avoids⟩
+
 /-! ### §7.1. Note on `avoidsPro_rename_stray` — Phase 2 follow-up
 
 The user-spec for Phase 1 also requested a companion

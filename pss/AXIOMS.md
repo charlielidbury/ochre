@@ -72,9 +72,20 @@ per-constructor simp lemmas + bridge `AvoidsProUniv → avoidsPro = true`
 + `AvoidsProUniv_refl` shipped in `Pss/Mpss/AvoidsPro.lean §2.5`. This
 is rename-stable infrastructure (universal quantification over cofinite
 witnesses survives `L ↦ L'` widening, unlike the Bool `avoidsPro`'s
-`pickFresh L` sample point) for the cofin* family. Phase 5b: rename-
-preservation lemmas. Headline axiom counts unchanged by 5a (infra-
-structure-only).
+`pickFresh L` sample point) for the cofin* family.
+
+**Phase 5b'/5c complete (2026-05-03).** Cast-invariance lemmas
+(`AvoidsProUniv_subst_eq_dest/src/ctx/stack`) + master HEq form
+(`AvoidsProUniv_eq_of_heq`/`AvoidsProUniv_cast`) shipped in
+`Pss/Mpss/AvoidsPro.lean §2.5.1a`. Existence-form preservation
+`AvoidsProUniv_subst_yz_stray_exists` shipped in `Pss/Mpss/Renaming.lean §7.0a`:
+`∀ h huniv, ∃ h' (renamed), AvoidsProUniv h' x`. Built by parallel
+structural induction; cofinite arms close via `body_each` Σ-existence
+witnesses combined via `Classical.choose`. No new axioms.
+
+Phase 5d: integrate the existence-form preservation into β-residual
+discharge. Headline axiom counts unchanged by 5a/5b'/5c (infrastructure-
+only).
 
 > "Active" = currently in the transitive `#print axioms` dependency list
 > of at least one headline theorem (Theorem 3, 4, 5; Lemma 1; Lemma 2).
