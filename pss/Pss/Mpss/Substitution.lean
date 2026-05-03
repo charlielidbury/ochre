@@ -880,6 +880,59 @@ For the present revision the axiom remains; `Lemma_30_msPro_x`
 documents the exact leaf-level discharge that becomes available once
 the avoidance premise is threaded.
 
+## Status (2026-05-03) — SubstOk-bridge approach evaluated and rejected
+
+A second discharge path was explored: the WSubM-bridge via `SubstOk`.
+The intuition: `SubstOk Γ₁ s` is constructed at the call site from
+`WSubMStar Γ₁out αout tout` (via `_SubstOk_of_WSubMStar`), so
+mathematically there exists a `WSubMStar Γ₁out αout tout` proof "near"
+the axiom site. If we could thread this proof, the residual
+`MSubRed _ _ s (Term.subst x s t)` could potentially be derived.
+
+**Findings:**
+
+1. **`SubstOk` itself does NOT carry `WSubM`.** It is a structure with
+   only `lc : Term.LC s` and `fv_sub : Term.fv s ⊆ Γ.dom`. The lookup
+   binding `t` is not even mentioned in `SubstOk Γ₁ s`. Adding the
+   `WSubMStar Γ₁out s tout` field (or equivalent) would require touching
+   every `SubstOk` constructor site (Substitution, Diamond, Renaming —
+   ~7 sites) and every consumer.
+
+2. **Even WITH the bridge in scope, a single `MSubRed` step is
+   unobtainable.** The axiom's conclusion is a SINGLE `MSubRed` step,
+   not a chain. The bridge gives at best `WSubMStar Γ₁out s tout` →
+   (via weakening + `_WSubMStar_toMSub`) → an `MSub Γ_subst [] s tout`,
+   which is `∃ w, MSubRedStar s w ∧ MEqRedStar tout w`. There is no
+   `MSubRed` constructor that absorbs an arbitrary `MSubRedStar`; the
+   six constructors (`pro`, `top`, `equ`, `app`, `fun_`, `fOp`) all
+   require structural shape on the left.
+
+3. **Re-architecting the consumer also fails.** One could try to
+   reshape `_S_lf2` to construct `WSubMStar Γ_subst αout (subst u)`
+   instead of a single `WSubM.lf2 ... hred ...`. But:
+   * `_S_motive_sub` returns `WSubM`, not `WSubMStar`. Weakening it
+     yields downstream cascade through `_S_rfl`/`_S_lf1`/`_S_rgh`/
+     `_S_sub_star` (would need to insert WfM at intermediate joining
+     points; only `_S_lf2` has those WfM IHs available).
+   * Even granting that cascade, the final composition step requires
+     "compose `WSubMStar Γ a b` with `WSubM Γ b c` into `WSubM Γ a c`"
+     — the single-`WSubM`-transitivity that `WSubMTrans.lean` §3
+     documents as **unprovable** without subject reduction along
+     `MEqRed` on the LHS of `≤_wf` (the same blocker that obstructs
+     `Lemma_10_Inversion` and `Lemma_24_NarrowingMSubRed`).
+
+**Conclusion:** the SubstOk-bridge approach reduces this axiom to the
+same WSubM-transitivity / subject-reduction blocker that obstructs
+axioms #2 (`Lemma_10_Inversion`) and #3 (`Lemma_24_NarrowingMSubRed`).
+It is not an independent path. The two viable discharge strategies
+remain:
+
+* (a) Avoidance plumbing (msAvoidsPro through `_S_motive_sub`) — still
+  blocked at the call site, since `WSubM.lf2` legitimately permits
+  `MSubRed.pro` on `xout`.
+* (b) Discharge `WSubM`-transitivity (axiom #2's cluster) — would
+  unblock this and several other axioms simultaneously.
+
 **Cross-ref:** see `AXIOMS.md` axiom #4 for status / paper / discharge
 plan; this is currently in the `#print axioms` closure of Theorem 5
 only. -/

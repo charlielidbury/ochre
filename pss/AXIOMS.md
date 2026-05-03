@@ -424,6 +424,24 @@ theorem.
 * **Estimated complexity:** Medium (~150-250 lines, mostly in
   `TypeSafety.lean` plumbing + alpha-equivariance lemma for
   `msAvoidsPro`).
+* **Alternative path REJECTED 2026-05-03 (SubstOk-bridge).** A second
+  approach was investigated: extracting a `WSubMStar Γ₁out αout tout`
+  from the call site (where it lives, since `_S_lf2` constructs
+  `SubstOk` from a `WSubMStar`) and using it to derive the residual
+  `MSubRed`. Findings (full notes in `Pss/Mpss/Substitution.lean`
+  Status (2026-05-03) docstring above the axiom):
+  1. `SubstOk` carries only `Term.LC s` and `fv s ⊆ Γ.dom`; no `WSubM`.
+  2. Even WITH the bridge, the axiom asks for a SINGLE `MSubRed` step,
+     while the bridge yields at best a `WSubMStar` chain. No `MSubRed`
+     constructor absorbs an arbitrary chain.
+  3. Re-architecting `_S_motive_sub` to return `WSubMStar` instead of
+     `WSubM` runs into the documented `WSubM`-transitivity blocker
+     (cf. `Pss/Mpss/WSubMTrans.lean` §3): the `rgh` case requires
+     subject reduction along `MEqRed` on the LHS of `≤_wf`, which is
+     exactly the obstruction shared with axioms #2 and #3.
+  Hence the SubstOk-bridge collapses to the same WSubM-transitivity
+  cluster that obstructs `Lemma_10_Inversion` and
+  `Lemma_24_NarrowingMSubRed`. It is not an independent attack vector.
 
 ### 5. `Proposition_17_beta_axiom`
 
