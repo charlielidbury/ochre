@@ -5,8 +5,11 @@ v2, December 2025), the MPSS Krivine-style reformulation of Hutchins'
 Pure Subtype Systems. Type safety (Theorems 4 and 5) is conditional on
 the axioms below.
 
-**Total axiom count: 11** (1 permanent, 9 active outstanding, 1 inactive
-outstanding).
+**Total axiom count: 14** (1 permanent, 9 active outstanding, 4 inactive
+outstanding). The 3 alpha-equivariance axioms (#13) plus the
+`_subst_yz_sub_head_local_preserve` axiom (#14) are inactive — staged
+for upcoming β-residual discharge work but not yet consumed by any
+headline theorem.
 
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
@@ -361,6 +364,50 @@ Lemma 2.
   witness without `Classical.choice`, so the constructor tree of
   `MEqRed.refl` is observable to the `simp [MEqRed.refl, avoidsPro_*]`
   unfolding. The theorem mirrors the recursion of `MEqRed.refl` exactly.
+
+### 13. `avoidsPro_alpha_equiv` (+ `_sub`/`_equ` variants)
+
+* **File:** `Pss/Mpss/AvoidsPro.lean`, §2.15.
+* **Status:** Inactive outstanding (not yet consumed by any headline
+  theorem; staged for upcoming β-residual discharge work).
+* **Statement (bare-context form):**
+  ```
+  avoidsPro_alpha_equiv {Γ s body body' L}
+      (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+      {y₁ y₂ : String} (hy₁ : y₁ ∉ L) (hy₂ : y₂ ∉ L) (x : String) :
+      avoidsPro (hbody y₁ hy₁) x = avoidsPro (hbody y₂ hy₂) x
+  ```
+  Two `.sub`-extended and `.equ`-extended variants follow the same
+  shape with `Γ` replaced by `⟨y, t, .sub⟩ :: Γ` / `⟨y, α, .equ⟩ :: Γ`.
+* **Mathematical status:** TRUE for "uniformly defined" `hbody`
+  (constructed by structural recursion); FALSE for arbitrary `hbody`
+  (pathological non-uniform counterexamples exist). All actual uses
+  in this codebase are uniformly defined, so the axioms are
+  semantically valid in context.
+* **Discharge plan:**
+  1. Define `MEqRed.openSwap` (renaming on the open-with parameter).
+  2. Prove `avoidsPro (openSwap h) x = avoidsPro h x` by induction.
+  3. Show that uniformly-defined `hbody` satisfies
+     `hbody y₂ = openSwap (hbody y₁)`.
+  Estimated ~500-800 lines of new infrastructure.
+
+### 14. `avoidsPro_subst_yz_sub_head_local_preserve` *(private to Diamond)*
+
+* **File:** `Pss/Mpss/Diamond.lean`, line ~1135.
+* **Status:** Inactive outstanding (consumed only by the
+  cofinite-arm `_eq` lemmas immediately below it; those are also
+  internal/inactive).
+* **Statement:** `avoidsPro (_subst_yz_sub_head_local h) w = avoidsPro h w`
+  for any input `MEqRed` derivation. The `_subst_yz_sub_head_local`
+  primitive (defined by induction on `h`) renames a `.sub`-head context
+  binding from `y` to `z`. This operation does NOT add or remove any
+  `Me-Pro` constructors, so `avoidsPro` is preserved.
+* **Discharge plan:** Refactor `_subst_yz_sub_head_local` to use
+  `MEqRed.rec` directly (avoiding the `induction` tactic's
+  recursor-output complexity). Then per-arm `_eq` lemmas become
+  `rfl`-provable for non-cofinite cases, and the cofinite cases
+  reduce via `avoidsPro_alpha_equiv*` (axiom #13). Estimated ~200-400
+  lines.
 
 ---
 

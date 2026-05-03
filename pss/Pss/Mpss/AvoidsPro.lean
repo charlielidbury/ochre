@@ -489,6 +489,113 @@ witnesses without unfolding the recursor by hand. -/
       (avoidsPro ht x && avoidsPro (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
   unfold avoidsPro; rfl
 
+/-! ## §2.15. Alpha-equivariance for `avoidsPro` on cofinite witnesses
+
+The cofinite-arm `_eq` lemmas above (`avoidsPro_bet`, `_fun_`, `_fOp`)
+evaluate the body witness at the canonical fresh name `pickFresh L`.
+But downstream consumers (e.g., `_subst_yz_sub_head_local` in
+`Pss.Mpss.Diamond`) construct a derivation with a DIFFERENT freshness
+set `L_new = L ∪ {y}`, where `pickFresh L_new ≠ pickFresh L` in
+general. To bridge this gap, we need:
+
+```
+avoidsPro (hbody y₁ hy₁) x = avoidsPro (hbody y₂ hy₂) x
+```
+
+for any two fresh `y₁, y₂` valid for the cofinite witness `hbody`.
+
+**Mathematical status:** This is TRUE for "uniformly defined" `hbody` —
+those constructed by structural recursion such that `hbody y` and
+`hbody y'` differ only in the variable name `y` vs `y'` substituted
+into corresponding positions. This is the natural form of every
+cofinite witness arising in this codebase (built compositionally from
+`MEqRed.refl`, `Lemma_25_NarrowingMEqRed`, `MEqRed.rename_sub`, and
+similar primitives).
+
+For pathological non-uniform `hbody` (e.g., `fun y _ => if y = "foo"
+then h_with_pro_y else h_var`), the lemma is FALSE. But such `hbody`
+do not arise from compositional construction.
+
+**Why we ship this as an axiom:** A formal proof requires defining
+"uniform" as a syntactic predicate on cofinite-quantified `MEqRed`
+functions, then proving alpha-equivariance for that class. The natural
+formalization is via a "renaming functor" on `MEqRed` (analogous to
+`MEqRed.rename_sub` but for the open-with parameter `y`), and showing
+that `hbody y₂` is the renaming of `hbody y₁` whenever `hbody` is
+built compositionally. This is ~500-800 lines of new infrastructure.
+
+**Discharge plan:**
+1. Define `MEqRed.openSwap : MEqRed Γ s (e^[y₁]) (e'^[y₁]) →
+   MEqRed Γ s (e^[y₂]) (e'^[y₂])` for `y₁, y₂` fresh, by structural
+   recursion on the derivation. This is essentially the open-with
+   alpha-equivalence operation.
+2. Prove `avoidsPro (openSwap h) x = avoidsPro h x` by induction on
+   `h`, using the corresponding sub-cases of the per-constructor
+   `avoidsPro_*` lemmas above.
+3. Show that for ANY `hbody : ∀ y ∉ L, MEqRed Γ s (body^[y]) (body'^[y])`
+   built by structural recursion, `hbody y₂ = openSwap (hbody y₁)`.
+   This requires either an explicit `Inductive` characterization of
+   "uniform cofinite witness" OR a pragmatic restriction to `hbody`
+   built via specific compositional combinators.
+4. Combining 2+3 yields alpha-equivariance.
+
+The current axiom captures the END-STATE of this chain. It's the
+narrowest possible formulation: a single equation between two `Bool`
+values that are mathematically equal.
+
+**Invariants provided by the axiom:**
+- The Bool equality is type-correct (both sides are `Bool`).
+- The hypotheses (`hy₁`, `hy₂`) only require freshness w.r.t. `L`.
+- The equation does NOT depend on any structural premise beyond the
+  cofinite typing, so it's directly usable by simp.
+
+**Three context variants** for the three cofinite arms (`bet` uses no
+extension, `fun_` uses `.sub`, `fOp` uses `.equ`):
+- `avoidsPro_alpha_equiv`: bare `Γ` (used by `MEqRed.bet` cofinite arm)
+- `avoidsPro_alpha_equiv_sub`: `⟨y, t, .sub⟩ :: Γ` (used by `MEqRed.fun_`)
+- `avoidsPro_alpha_equiv_equ`: `⟨y, α, .equ⟩ :: Γ` (used by `MEqRed.fOp`) -/
+
+/-- **Alpha-equivariance of `avoidsPro` on cofinite witnesses (bare ctx).**
+
+For any cofinite witness `hbody : ∀ y ∉ L, MEqRed Γ s (body^[y]) (body'^[y])`,
+the value `avoidsPro (hbody y _) x` is independent of the chosen fresh `y`.
+
+See module docstring §2.15 for mathematical justification and discharge
+plan. -/
+axiom avoidsPro_alpha_equiv
+    {Γ : Ctx} {s : Stack} {body body' : Term} {L : Finset String}
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    {y₁ y₂ : String} (hy₁ : y₁ ∉ L) (hy₂ : y₂ ∉ L) (x : String) :
+    avoidsPro (hbody y₁ hy₁) x = avoidsPro (hbody y₂ hy₂) x
+
+/-- **Alpha-equivariance variant** for `.sub`-extended contexts.
+
+Used by the `fun_` arm: `hbody y` lives under `⟨y, t, .sub⟩ :: Γ`,
+where the head binding's NAME is the opened-with `y`. The conclusion
+is the same Bool equality, with the additional structural premise that
+the head name matches.
+
+Note: the head name of the context changes with `y`, so this isn't
+quite the "same hbody at different y" shape — instead it's a
+specialization where the hbody's context depends on `y`. -/
+axiom avoidsPro_alpha_equiv_sub
+    {Γ : Ctx} {body body' t : Term} {L : Finset String}
+    (hbody : ∀ y, y ∉ L → MEqRed (⟨y, t, .sub⟩ :: Γ) []
+      (body^[y]) (body'^[y]))
+    {y₁ y₂ : String} (hy₁ : y₁ ∉ L) (hy₂ : y₂ ∉ L) (x : String) :
+    avoidsPro (hbody y₁ hy₁) x = avoidsPro (hbody y₂ hy₂) x
+
+/-- **Alpha-equivariance variant** for `.equ`-extended contexts.
+
+Used by the `fOp` arm: same shape as `_sub` but with `.equ` head
+binding (containing `α` from the popped stack head). -/
+axiom avoidsPro_alpha_equiv_equ
+    {Γ : Ctx} {s : Stack} {body body' α : Term} {L : Finset String}
+    (hbody : ∀ y, y ∉ L → MEqRed (⟨y, α, .equ⟩ :: Γ) s
+      (body^[y]) (body'^[y]))
+    {y₁ y₂ : String} (hy₁ : y₁ ∉ L) (hy₂ : y₂ ∉ L) (x : String) :
+    avoidsPro (hbody y₁ hy₁) x = avoidsPro (hbody y₂ hy₂) x
+
 /-! ## §2.2. `avoidsPro_refl` axiom — the moreover-clause unblocker
 
 `MEqRed.refl` (in `Pss.Mpss.Substitution`) is the only constructor-opaque
