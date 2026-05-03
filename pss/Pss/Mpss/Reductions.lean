@@ -69,6 +69,13 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
   | bet {Γ : Ctx} {s : Stack} {t v v' body body' : Term} (L : Finset String) :
       Term.LC t →
       (∀ x, x ∉ L → MEqRed Γ s (body^[x]) (body'^[x])) →
+      -- Phase 5g.1 placeholder: a uniformity premise on the cofinite body.
+      -- 5g.3 will replace `True` with
+      --   `∀ x y (hx : x ∉ L) (hy : y ∉ L) (w : String),
+      --      AvoidsProUniv (hbody x hx) w ↔ AvoidsProUniv (hbody y hy) w`.
+      -- Kept as `True` here to avoid the import cycle
+      -- `Reductions → AvoidsPro → Substitution → ContextRed → Reductions`.
+      (hUniform : True) →
       MEqRed Γ [] v v' →
       MEqRed Γ s (.app (.abs t body) v) (Term.opening v' body')
 
@@ -106,6 +113,8 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
       MEqRed Γ [] t t' →
       (∀ x, x ∉ L →
         MEqRed (⟨x, t, .sub⟩ :: Γ) [] (body^[x]) (body'^[x])) →
+      -- Phase 5g.1 placeholder uniformity premise. See `bet` for details.
+      (hUniform : True) →
       MEqRed Γ [] (.abs t body) (.abs t' body')
 
   /-- **Me-TAp**: `Top` applied to anything reduces to `Top`. (A "technical
@@ -130,6 +139,8 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
       MEqRed Γ [] t t' →
       (∀ x, x ∉ L →
         MEqRed (⟨x, α, .equ⟩ :: Γ) s (body^[x]) (body'^[x])) →
+      -- Phase 5g.1 placeholder uniformity premise. See `bet` for details.
+      (hUniform : True) →
       MEqRed Γ (α :: s) (.abs t body) (.abs t' body')
 
 /-- MPSS subtype reduction `Γ; s ⊢ u ⟶^≤ v`. Pasquale & García-Pérez 2024
@@ -184,6 +195,11 @@ inductive MSubRed : Ctx → Stack → Term → Term → Type where
       Term.LC t →
       (∀ x, x ∉ L →
         MSubRed (⟨x, t, .sub⟩ :: Γ) [] (body^[x]) (body'^[x])) →
+      -- Phase 5g.1 placeholder uniformity premise. 5g.3 will replace
+      -- `True` with the MSubRed analog of `AvoidsProUniv` once the
+      -- predicate is sorted (defined in `AvoidsPro.lean`, which lives
+      -- below `Reductions.lean` in the import DAG, hence the placeholder).
+      (hUniform : True) →
       MSubRed Γ [] (.abs t body) (.abs t body')
 
   /-- **Ms-FOp**: descend under an *applied* abstraction by popping the
@@ -197,6 +213,8 @@ inductive MSubRed : Ctx → Stack → Term → Term → Type where
       Term.LC t →
       (∀ x, x ∉ L →
         MSubRed (⟨x, α, .equ⟩ :: Γ) s (body^[x]) (body'^[x])) →
+      -- Phase 5g.1 placeholder uniformity premise. See `MSubRed.fun_`.
+      (hUniform : True) →
       MSubRed Γ (α :: s) (.abs t body) (.abs t body')
 
 /-- Prop-wrapped MPSS equivalence reduction. Used by callers that only
@@ -246,7 +264,7 @@ private noncomputable def MEqRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
   induction h with
   | @pro Γ s x α α' hpv heq hα ihα =>
       exact ⟨Term.LC.fvar _, ihα.2⟩
-  | @bet Γ s t v v' body body' L hLCt hbody hv ihbody ihv =>
+  | @bet Γ s t v v' body body' L hLCt hbody _hUni hv ihbody ihv =>
       refine ⟨Term.LC.app (Term.LC.abs L hLCt ?_) ihv.1, ?_⟩
       · intro x hx; exact (ihbody x hx).1
       -- RHS: opening v' body'. Use subst_intro + subst_lc.
@@ -265,12 +283,12 @@ private noncomputable def MEqRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
   | @app Γ s u u' v v' hu hv ihu ihv =>
       exact ⟨Term.LC.app ihu.1 ihv.1, Term.LC.app ihu.2 ihv.2⟩
   | var _ => exact ⟨Term.LC.fvar _, Term.LC.fvar _⟩
-  | @fun_ Γ t t' body body' L ht hbody iht ihbody =>
+  | @fun_ Γ t t' body body' L ht hbody _hUni iht ihbody =>
       refine ⟨Term.LC.abs L iht.1 ?_, Term.LC.abs L iht.2 ?_⟩
       · intro x hx; exact (ihbody x hx).1
       · intro x hx; exact (ihbody x hx).2
   | tAp _ hLCu _ => exact ⟨Term.LC.app Term.LC.top hLCu, Term.LC.top⟩
-  | @fOp Γ s t t' α body body' L ht hbody iht ihbody =>
+  | @fOp Γ s t t' α body body' L ht hbody _hUni iht ihbody =>
       refine ⟨Term.LC.abs L iht.1 ?_, Term.LC.abs L iht.2 ?_⟩
       · intro x hx; exact (ihbody x hx).1
       · intro x hx; exact (ihbody x hx).2
@@ -299,11 +317,11 @@ private noncomputable def MSubRed.lc_pair {Γ : Ctx} {s : Stack} {u v : Term}
       exact ⟨MEqRed.lc_left heq, MEqRed.lc_right heq⟩
   | @app Γ s u u' v hu hLCv hfv ihu =>
       exact ⟨Term.LC.app ihu.1 hLCv, Term.LC.app ihu.2 hLCv⟩
-  | @fun_ Γ t body body' L hLCt hbody ihbody =>
+  | @fun_ Γ t body body' L hLCt hbody _hUni ihbody =>
       refine ⟨Term.LC.abs L hLCt ?_, Term.LC.abs L hLCt ?_⟩
       · intro x hx; exact (ihbody x hx).1
       · intro x hx; exact (ihbody x hx).2
-  | @fOp Γ s t α body body' L hLCt hbody ihbody =>
+  | @fOp Γ s t α body body' L hLCt hbody _hUni ihbody =>
       refine ⟨Term.LC.abs L hLCt ?_, Term.LC.abs L hLCt ?_⟩
       · intro x hx; exact (ihbody x hx).1
       · intro x hx; exact (ihbody x hx).2
