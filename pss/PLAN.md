@@ -392,6 +392,9 @@ hard caveats.
      to equivalence-reduction chains. Named aliases
      `Lemma_2_DeBruijn_step_eqStar_of` and
      `Lemma_2_DeBruijn_DiamondMEqRedStar_of` mirror the paper milestone.
+     Single-step premise aliases `Lemma_1_DeBruijn_StrongCommutativity`
+     and `Lemma_2_DeBruijn_DiamondMEqRed` mark the future full case-grid
+     audit points.
      The first actual single-step cells are closed:
      `EqDiamonds.top` and `StrongCommutes.top` discharge the `Top` source
      cases by shape inversion.

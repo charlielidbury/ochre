@@ -205,6 +205,11 @@ abbrev EqDiamonds (Γ : Ctx) (s : Stack) : Prop :=
     MEqRed Γ s t₀ t₂ →
     ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃
 
+/-- Named de Bruijn Lemma 2 single-step premise. This is an alias for
+`EqDiamonds`, useful as the audit point for the future full case grid. -/
+def Lemma_2_DeBruijn_DiamondMEqRed (Γ : Ctx) (s : Stack) : Prop :=
+  EqDiamonds Γ s
+
 namespace EqDiamonds
 
 /-- The `Top` source cell of de Bruijn Lemma 2. Both one-step equivalence
@@ -484,6 +489,11 @@ abbrev StrongCommutes (Γ : Ctx) (s : Stack) : Prop :=
     MSubRed Γ s t₀ t₁ →
     MEqRed Γ s t₀ t₂ →
     ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃
+
+/-- Named de Bruijn Lemma 1 single-step premise. This is an alias for
+`StrongCommutes`, useful as the audit point for the future full case grid. -/
+def Lemma_1_DeBruijn_StrongCommutativity (Γ : Ctx) (s : Stack) : Prop :=
+  StrongCommutes Γ s
 
 namespace StrongCommutes
 

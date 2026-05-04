@@ -344,6 +344,10 @@ closures, 2 inactive outstanding).
   `diamond_step_eqStar_of`, and `diamond_eqStar_eqStar_of`. These lift a
   de Bruijn single-step equivalence diamond to equivalence-reduction
   chains, without introducing axioms. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added single-step premise
+  audit aliases `Lemma_1_DeBruijn_StrongCommutativity` and
+  `Lemma_2_DeBruijn_DiamondMEqRed` for `StrongCommutes` and
+  `EqDiamonds`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added named conditional
   de Bruijn Lemma-2 aliases `Lemma_2_DeBruijn_step_eqStar_of` and
   `Lemma_2_DeBruijn_DiamondMEqRedStar_of`. No axiom-count change.
