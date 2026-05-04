@@ -907,6 +907,47 @@ noncomputable def WSubMStar.extend_right_via_MEqRed_back
       WSubMStar.trs hLeft hwfU (ihRight hr hwfC))
     h) hred hwfC
 
+private def _extendLeftWEquMStarMotive (Γ : Ctx) (a b : Term)
+    (_ : WEquMStar Γ a b) : Type :=
+  ∀ {c : Term}, MEqRed Γ [] c a → WfM Γ c → WEquMStar Γ c b
+
+/-- Prepend a forward equivalence-reduction step on the left of de Bruijn
+transitive well-equivalence. -/
+noncomputable def WEquMStar.extend_left_via_MEqRed_fwd
+    {Γ : Ctx} {a b c : Term}
+    (h : WEquMStar Γ a b)
+    (hred : MEqRed Γ [] c a)
+    (hwfC : WfM Γ c) :
+    WEquMStar Γ c b := by
+  exact (WEquMStar.rec
+    (motive := _extendLeftWEquMStarMotive Γ)
+    (fun _ heq hwfT => fun hr hwfC =>
+      WEquMStar.sub hwfC (WEquM.lf1 hr heq) hwfT)
+    (fun _ hwfU hRight ihLeft _ _ => fun hr hwfC =>
+      WEquMStar.trs (ihLeft hr hwfC) hwfU hRight)
+    h) hred hwfC
+
+private def _extendRightWEquMStarMotive (Γ : Ctx) (a b : Term)
+    (_ : WEquMStar Γ a b) : Type :=
+  ∀ {c : Term}, MEqRed Γ [] c b → WfM Γ c → WEquMStar Γ a c
+
+/-- Prepend a backward equivalence-reduction step on the right of de Bruijn
+transitive well-equivalence. Given a forward step `c → b`, the result replaces
+the right endpoint `b` by `c`. -/
+noncomputable def WEquMStar.extend_right_via_MEqRed_back
+    {Γ : Ctx} {a b c : Term}
+    (h : WEquMStar Γ a b)
+    (hred : MEqRed Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WEquMStar Γ a c := by
+  exact (WEquMStar.rec
+    (motive := _extendRightWEquMStarMotive Γ)
+    (fun hwfV heq _ => fun hr hwfC =>
+      WEquMStar.sub hwfV (WEquM.rgh heq hr) hwfC)
+    (fun hLeft hwfU _ _ ihRight => fun hr hwfC =>
+      WEquMStar.trs hLeft hwfU (ihRight hr hwfC))
+    h) hred hwfC
+
 /-- Prepend an equivalence-reduction chain on the left of de Bruijn
 well-subtyping. -/
 noncomputable def WSubM.left_lf1_chain {Γ : Ctx} {a a' c : Term}
