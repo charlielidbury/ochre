@@ -4051,6 +4051,59 @@ noncomputable def WfM.replaceAt_sub_from_payloads {Γ : Ctx} {cutoff : Nat}
       exact WfM.app_replaceAt_sub_of_wsubred hFun hArg hcut hOldNew
         (fun hx => hWf hx) hEqPresOld hSubRedReplace
 
+/-- Arbitrary-depth `WfM` replacement where the empty-stack subtype-step
+residual payload is built from constructor-level `MSubRed` residual payloads. -/
+noncomputable def WfM.replaceAt_sub_from_msub_payloads {Γ : Ctx} {cutoff : Nat}
+    {old new body : Term}
+    (h : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) body)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x)
+    (hWfBody : ∀ {head x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+          [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) y)
+    (hAppOp : ∀ {arg u u' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ))
+          arg →
+        MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          (arg :: []) u u' →
+          MSubRedStar
+            (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (arg :: []) u u')
+    (hFunBody : ∀ {t t' body body' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ))
+          t →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+            [] body body' →
+          MSubRedStar ({ bound := t', kind := .sub } ::
+              Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            [] body body')
+    (hWfNew : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) new)) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) body :=
+  WfM.replaceAt_sub_from_payloads h hcut hOldNew hWf hWfBody hEqPresOld
+    (fun hx hy hred =>
+      WSubMStar.of_MSubRed_replaceAt_sub_from_payloads hred hcut hOldNew
+        hWf hSubRedPresNew hAppOp hFunBody hWfNew hx hy)
+
 /-- Constructor-level `WfM` head replacement from recursive payloads.
 
 This packages the non-recursive case split needed by the eventual mutual
