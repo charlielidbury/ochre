@@ -885,6 +885,209 @@ theorem noVarX_refl
           rw [Ctx.dom_cons]; exact Finset.mem_insert_of_mem hxΓ
         apply ihbody _ _ _ _ hxopen hxΓ'
 
+/-! ## §2.8. `avoidsFv` — syntactic fv-avoidance Bool predicate
+
+`avoidsFv h x = true` iff the variable `x` is syntactically absent from
+every term mentioned anywhere in the derivation tree of
+`h : MEqRed Γ s u v`: the source term `u`, the target term `v`, every
+stack entry, every bound annotation in `bet`/`fun_`/`fOp`, the looked-up
+bound term in `pro`, the `tAp` operand, and (transitively) the same
+checks on every sub-derivation.
+
+### Why we need it (iter-9 — `MEqRed.strip_equ_head` prerequisite)
+
+Iter-8 shipped the `Prevalid.equ_head_remove_mid` family in
+`Pss/Mpss/Renaming.lean` §10. The full `MEqRed.strip_equ_head` functor
+— which closes the body-diamond / bare-context gap blocking
+`Lemma_2_inline_app_bet_residual_axiom` — needs a Bool predicate that
+bundles "every term mentioned in the derivation avoids `y`" so the
+cofinite arms can supply the right `y ∉ fv` premises to
+`Prevalid.equ_head_remove_mid`.
+
+The §10.2 docstring of Renaming.lean spells this out: in the cofinite
+arm `bet`, the post-substitution target `Term.opening v0' body'` may
+hide free occurrences of `y` even when `y ∉ fv (Term.opening v0' body')`
+(because `y` could be bound after substitution but free in `v0'`
+itself). So a single source/target check on the conclusion is NOT
+enough — we need to track fv-freshness against EVERY intermediate term
+appearing in the derivation tree.
+
+`avoidsFv` does exactly this by recursively conjoining
+`decide (x ∉ Term.fv ·)` checks at every node's source/target/stack
+plus the recursive `avoidsFv` of every sub-derivation.
+
+### Coverage observations per constructor
+
+* **Me-Pro** `{Γ s y α α'} _ _ hα`: source = `.fvar y`, target = `α'`,
+  sub `hα : MEqRed Γ s α α'` covers `α` and `α'` via its own
+  source/target check.
+* **Me-Bet** `{Γ s t v v' body body'} L _ hbody _ hv`: source =
+  `.app (.abs t body) v` (covers `t`, `body`, `v`); target =
+  `Term.opening v' body'`; subs cover `body^[y]`, `body'^[y]`, `v`,
+  `v'`. Note the subtlety the §10.2 docstring flags:
+  `x ∉ Term.fv (Term.opening v' body')` does NOT imply
+  `x ∉ Term.fv v'` — but the recursion on `hv` provides
+  `decide (x ∉ Term.fv v')` directly via `hv`'s target check, so the
+  bundled predicate is strictly stronger than a single conclusion-level
+  fv check.
+* **Me-Top**: vacuous (source = target = `.top`, `fv .top = ∅`).
+* **Me-App** `{Γ s u u' v v'} hu hv`: source = `.app u v`, target =
+  `.app u' v'`; subs cover `u`, `u'`, `v`, `v'`.
+* **Me-Var** `{Γ s y} _`: source = target = `.fvar y`.
+* **Me-Fun** `{Γ t t' body body'} L ht hbody _`: source =
+  `.abs t body`, target = `.abs t' body'`; subs cover `t`, `t'`,
+  `body^[y]`, `body'^[y]`.
+* **Me-TAp** `{Γ s u} _ _ _`: source = `.app .top u`, target = `.top`.
+* **Me-FOp** `{Γ s t t' α body body'} L ht hbody _`: source =
+  `.abs t body` under stack `α :: s`, target = `.abs t' body'`. The
+  popped operand `α` lives in the stack, so the stack-check covers it.
+
+In every constructor, the body recursion uses the canonical
+`pickFresh L` witness (matching `avoidsPro` / `noVarX`'s convention).
+The function is `noncomputable` for the same reason as those: pickFresh
+relies on `Classical.choice`. -/
+
+/-- Bool-valued check on `MEqRed` derivations: `avoidsFv h x = true`
+iff `x` is syntactically absent from every term referenced anywhere in
+the derivation tree of `h`. Defined via `MEqRed.rec`; see §2.8 above
+for the constructor-by-constructor coverage analysis. -/
+noncomputable def avoidsFv {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool :=
+  MEqRed.rec
+    (motive := fun _ s u v _ => String → Bool)
+    -- Me-Pro: source = `.fvar y`, target = `α'`. Recurse on hα.
+    (fun {_ s y _ α'} _ _ _ ihα x =>
+      decide (x ∉ Term.fv (Term.fvar y)) &&
+      decide (x ∉ Term.fv α') &&
+      s.all (fun β => decide (x ∉ Term.fv β)) &&
+      ihα x)
+    -- Me-Bet: source = `.app (.abs t body) v`, target = `Term.opening v' body'`.
+    (fun {_ s t v v' body body'} L _ _ _ _ ihbody ihv x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      decide (x ∉ Term.fv (Term.app (Term.abs t body) v)) &&
+      decide (x ∉ Term.fv (Term.opening v' body')) &&
+      s.all (fun β => decide (x ∉ Term.fv β)) &&
+      ihbody y hyL x &&
+      ihv x)
+    -- Me-Top: source = target = `.top`. Stack still needs checking.
+    (fun {_ s} _ x =>
+      s.all (fun β => decide (x ∉ Term.fv β)))
+    -- Me-App: source = `.app u v`, target = `.app u' v'`.
+    (fun {_ s u u' v v'} _ _ ihu ihv x =>
+      decide (x ∉ Term.fv (Term.app u v)) &&
+      decide (x ∉ Term.fv (Term.app u' v')) &&
+      s.all (fun β => decide (x ∉ Term.fv β)) &&
+      ihu x &&
+      ihv x)
+    -- Me-Var: source = target = `.fvar y`. Stack still needs checking.
+    (fun {_ s y} _ x =>
+      decide (x ∉ Term.fv (Term.fvar y)) &&
+      s.all (fun β => decide (x ∉ Term.fv β)))
+    -- Me-Fun: source = `.abs t body`, target = `.abs t' body'` under nil stack.
+    (fun {_ t t' body body'} L _ _ _ iht ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      decide (x ∉ Term.fv (Term.abs t body)) &&
+      decide (x ∉ Term.fv (Term.abs t' body')) &&
+      iht x &&
+      ihbody y hyL x)
+    -- Me-TAp: source = `.app .top u`, target = `.top`.
+    (fun {_ s u} _ _ _ x =>
+      decide (x ∉ Term.fv (Term.app Term.top u)) &&
+      s.all (fun β => decide (x ∉ Term.fv β)))
+    -- Me-FOp: source = `.abs t body` under stack `α :: s`,
+    -- target = `.abs t' body'`. Stack-check covers `α`.
+    (fun {_ s t t' α body body'} L _ _ _ iht ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      decide (x ∉ Term.fv (Term.abs t body)) &&
+      decide (x ∉ Term.fv (Term.abs t' body')) &&
+      (α :: s).all (fun β => decide (x ∉ Term.fv β)) &&
+      iht x &&
+      ihbody y hyL x)
+    h x
+
+/-! ### Per-constructor `simp` lemmas for `avoidsFv`. Mirror of the
+`avoidsPro_*` and `noVarX_*` families. Each lemma re-expresses the
+recursor application at one constructor as a Bool conjunction of
+syntactic fv checks plus recursive `avoidsFv` calls on sub-derivations. -/
+
+@[simp] theorem avoidsFv_pro {Γ s y α α'} (hpv : PrevalidExt Γ s)
+    (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α') (x : String) :
+    avoidsFv (MEqRed.pro hpv heq hα) x =
+      (decide (x ∉ Term.fv (Term.fvar y)) &&
+       decide (x ∉ Term.fv α') &&
+       s.all (fun β => decide (x ∉ Term.fv β)) &&
+       avoidsFv hα x) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_bet {Γ s t v v' body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
+    (hv : MEqRed Γ [] v v') (x : String) :
+    avoidsFv (MEqRed.bet L hLCt hbody hUni hv) x =
+      (decide (x ∉ Term.fv (Term.app (Term.abs t body) v)) &&
+       decide (x ∉ Term.fv (Term.opening v' body')) &&
+       s.all (fun β => decide (x ∉ Term.fv β)) &&
+       avoidsFv (hbody (pickFresh L) (pickFresh_notMem L)) x &&
+       avoidsFv hv x) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_top {Γ s} (hpv : PrevalidExt Γ s) (x : String) :
+    avoidsFv (MEqRed.top hpv) x = s.all (fun β => decide (x ∉ Term.fv β)) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_app {Γ s u u' v v'}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v') (x : String) :
+    avoidsFv (MEqRed.app hu hv) x =
+      (decide (x ∉ Term.fv (Term.app u v)) &&
+       decide (x ∉ Term.fv (Term.app u' v')) &&
+       s.all (fun β => decide (x ∉ Term.fv β)) &&
+       avoidsFv hu x &&
+       avoidsFv hv x) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_var {Γ s y} (hpv : PrevalidExt Γ s) (x : String) :
+    avoidsFv (@MEqRed.var Γ s y hpv) x =
+      (decide (x ∉ Term.fv (Term.fvar y)) &&
+       s.all (fun β => decide (x ∉ Term.fv β))) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_fun_ {Γ t t' body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
+    (x : String) :
+    avoidsFv (MEqRed.fun_ L ht hbody hUni) x =
+      (decide (x ∉ Term.fv (Term.abs t body)) &&
+       decide (x ∉ Term.fv (Term.abs t' body')) &&
+       avoidsFv ht x &&
+       avoidsFv (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_tAp {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    avoidsFv (MEqRed.tAp hpv hLCu hfvu) x =
+      (decide (x ∉ Term.fv (Term.app Term.top u)) &&
+       s.all (fun β => decide (x ∉ Term.fv β))) := by
+  unfold avoidsFv; rfl
+
+@[simp] theorem avoidsFv_fOp {Γ s t t' α body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
+    (x : String) :
+    avoidsFv (MEqRed.fOp L ht hbody hUni) x =
+      (decide (x ∉ Term.fv (Term.abs t body)) &&
+       decide (x ∉ Term.fv (Term.abs t' body')) &&
+       (α :: s).all (fun β => decide (x ∉ Term.fv β)) &&
+       avoidsFv ht x &&
+       avoidsFv (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
+  unfold avoidsFv; rfl
+
 /-! ## §2.7. `Lemma_32_AsymmetricEqu` — asymmetric extension of Lemma 32
 
 Iteration-1 viability spike. The restricted form
