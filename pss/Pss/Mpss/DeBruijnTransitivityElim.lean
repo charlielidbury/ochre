@@ -687,5 +687,31 @@ noncomputable def toMSubStar {Γ : Ctx} {v t : Term}
 
 end WSubMStar
 
+namespace WEquM
+
+/-- Strip one de Bruijn well-equivalence derivation to diagrammatic
+subtyping, by first viewing well-equivalence as well-subtyping. -/
+noncomputable def toMSub {Γ : Ctx} {v t : Term}
+    (h : WEquM Γ v t) : MSub Γ [] v t :=
+  h.toWSubM.toMSub
+
+/-- Strip one de Bruijn well-equivalence derivation to one step in the
+reflexive-transitive diagrammatic layer. -/
+noncomputable def toMSubStar {Γ : Ctx} {v t : Term}
+    (h : WEquM Γ v t) : MSubStar Γ [] v t :=
+  h.toMSub.to_star
+
+end WEquM
+
+namespace WEquMStar
+
+/-- Strip de Bruijn transitive well-equivalence to a transitive chain of
+diagrammatic subtyping steps, via its well-subtyping embedding. -/
+noncomputable def toMSubStar {Γ : Ctx} {v t : Term}
+    (h : WEquMStar Γ v t) : MSubStar Γ [] v t :=
+  h.toWSubMStar.toMSubStar
+
+end WEquMStar
+
 end DeBruijn
 end Pss

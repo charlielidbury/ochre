@@ -281,6 +281,10 @@ closures, 2 inactive outstanding).
   subtyping steps; collapsing that chain to one `MSub` remains the
   future de Bruijn Theorem 3 port. Imported from `Pss.lean`; no
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the matching
+  well-equivalence strips `WEquM.toMSub`, `WEquM.toMSubStar`, and
+  `WEquMStar.toMSubStar` via the existing well-equivalence to
+  well-subtyping embedding. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added named closure helpers
   for the de Bruijn diagrammatic layer: `MSub.to_star`,
   `MSubStar.refl`, `MSubStar.single`, `MSubStar.trans`, and
