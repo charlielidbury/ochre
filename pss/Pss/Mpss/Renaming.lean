@@ -5142,4 +5142,190 @@ noncomputable def MEqRed.descend_body_equ_bvar0
     rw [Term.subst_fvar_eq]
     exact MEqRed.var hpv''
 
+/-! ### §11.1. Phase B (case `body = .top`).
+
+The opening `(.top)^[y]` reduces to `.top` (opening leaves `.top`
+untouched), so the source is literally `.top`. The only constructor
+that produces source `.top` is `MEqRed.top`. Its target is also `.top`.
+After `Term.subst y (.fvar z) .top = .top`, the resulting derivation is
+`MEqRed.top` at the head-removed bare `Γ`, built by
+`PrevalidExt.equ_head_remove_mid` with `Γ₂ = []`. -/
+
+/-- **Phase B (case `body = .top`).**
+
+Given a derivation at `(⟨y, α, .equ⟩ :: Γ)` with source `.top`,
+produce the same shape at the bare `Γ`. The post-substituted target is
+`.top` (substitution is a no-op on `.top`). -/
+noncomputable def MEqRed.descend_body_equ_top
+    {Γ : Ctx} {s : Stack} {y : String} {α target_y : Term}
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s .top target_y)
+    (hAvoid : avoidsPro h y = true)
+    (hst_avoid : ∀ β ∈ s, y ∉ Term.fv β)
+    (z : String) :
+    MEqRed Γ s .top (Term.subst y (.fvar z) target_y) := by
+  classical
+  -- `hAvoid` is unused here — no `pro` constructor produces source `.top`.
+  -- Source `.top` admits only `MEqRed.top` as a constructor.
+  cases h with
+  | @top _ _ hpv =>
+    have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have hpv' : PrevalidExt ([] ++ Γ) s :=
+      PrevalidExt.equ_head_remove_mid (Γ₂ := []) hpv hΓ₂_avoid hst_avoid
+    have hpv'' : PrevalidExt Γ s := by simpa using hpv'
+    show MEqRed Γ s .top (Term.subst y (.fvar z) .top)
+    -- subst on .top is a no-op.
+    show MEqRed Γ s .top .top
+    exact MEqRed.top hpv''
+
+/-! ### §11.2. Phase B (case `body = .fvar w`, `w ≠ y`).
+
+The opening `(.fvar w)^[y]` is `.fvar w` (opening only touches `.bvar 0`),
+so the source is `.fvar w` with `w ≠ y`. Possible constructors:
+
+* `MEqRed.var` — target = `.fvar w`. Substituting `y` for `.fvar z` in
+  `.fvar w` is a no-op (since `w ≠ y`), so the target stays `.fvar w`,
+  matching `MEqRed.var hpv'` at the head-removed bare `Γ`.
+
+* `MEqRed.pro hpv heq hβ` — target = β'. The constructor's `x = w`
+  (from source-shape match), and from `heq : Γ.equBinds w β` with `w ≠ y`,
+  `_equBinds_equ_head_remove_neq` lifts to `(Γ ++ []).equBinds w β` (i.e.
+  bare `Γ`-binding). The inner derivation `hβ : MEqRed (⟨y,α,.equ⟩::Γ) s β β'`
+  is descended via `MEqRed.strip_equ_head` (with `Γ₂ = []`), which removes
+  the head equ-binding wholesale. The output post-substitution: since
+  `y ∉ fv β'` (extracted from `hAvoidFv h y`), `Term.subst y (.fvar z) β' = β'`,
+  so the goal lines up with `MEqRed.pro hpv' heq' (strip_equ_head hβ ...)`.
+
+  The `pro` arm needs the bundling premises that `strip_equ_head`
+  requires: `cofinDomFresh h = true`, `avoidsFv h y = true`, plus
+  `y ∉ Γ.dom` for §10.1's lookup helper. -/
+
+/-- **Phase B (case `body = .fvar w`, `w ≠ y`).**
+
+Given a derivation at `(⟨y, α, .equ⟩ :: Γ)` with source `.fvar w` for
+`w ≠ y`, produce a derivation at the bare `Γ` with source `.fvar w` and
+target `Term.subst y (.fvar z) target_y`. -/
+noncomputable def MEqRed.descend_body_equ_fvar
+    {Γ : Ctx} {s : Stack} {y w : String} {α target_y : Term}
+    (hwy : w ≠ y)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (.fvar w) target_y)
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true)
+    (hAvoidFv : avoidsFv h y = true)
+    (hy_Γ : y ∉ Γ.dom)
+    (hst_avoid : ∀ β ∈ s, y ∉ Term.fv β)
+    (z : String) :
+    MEqRed Γ s (.fvar w) (Term.subst y (.fvar z) target_y) := by
+  classical
+  cases h with
+  | @pro _ _ _ aLkup _ hpv heq hβ =>
+    -- The constructor's `α'` is forced by goal unification to be `target_y`,
+    -- so it appears as `target_y` in the body. The constructor's `α` (the
+    -- looked-up bound term) gets bound to `aLkup`. The `x` index gets
+    -- substituted to `w` (rigid match on `.fvar w` source).
+    -- avoidsPro_pro: factor `decide (w ≠ y)`, combined with the recursive
+    -- avoidsPro on hβ.
+    rw [avoidsPro_pro] at hAvoid
+    obtain ⟨_hwy_decide, hAvoid_inner⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    -- Decompose hAvoidFv: ((src && tgt) && stack) && rec.
+    rw [avoidsFv_pro] at hAvoidFv
+    obtain ⟨hAvoidFv_left, hAvoidFv_inner⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+    obtain ⟨hAvoidFv_left2, _hAvoidFv_stack⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left
+    obtain ⟨_hAvoidFv_w, hAvoidFv_target⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left2
+    have hy_target : y ∉ Term.fv target_y := decide_eq_true_eq.mp hAvoidFv_target
+    -- Decompose cofinDomFresh: passes through unmodified to hβ.
+    rw [cofinDomFresh_pro] at hFresh
+    -- Lift the binding past the head removal.
+    have hΓ₂_avoid_nil : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have heq' : Ctx.equBinds ([] ++ Γ) w aLkup :=
+      _equBinds_equ_head_remove_neq hwy heq
+    have heq'' : Ctx.equBinds Γ w aLkup := by simpa using heq'
+    -- Strip the head from hβ.
+    have haRed : MEqRed ([] ++ Γ) s aLkup target_y :=
+      MEqRed.strip_equ_head (Γ₂ := []) hβ hΓ₂_avoid_nil hy_Γ hst_avoid
+        hAvoid_inner hFresh hAvoidFv_inner
+    have haRedFull : MEqRed Γ s aLkup target_y := by simpa using haRed
+    -- Build PrevalidExt at the smaller context.
+    have hpv' : PrevalidExt ([] ++ Γ) s :=
+      PrevalidExt.equ_head_remove_mid (Γ₂ := []) hpv hΓ₂_avoid_nil hst_avoid
+    have hpv'' : PrevalidExt Γ s := by simpa using hpv'
+    -- Substitution on target_y is a no-op (y ∉ fv target_y).
+    have htarget_fix : Term.subst y (.fvar z) target_y = target_y :=
+      Term.subst_fresh hy_target
+    show MEqRed Γ s (.fvar w) (Term.subst y (.fvar z) target_y)
+    rw [htarget_fix]
+    exact MEqRed.pro hpv'' heq'' haRedFull
+  | @var _ _ _ hpv =>
+    -- Source-shape match: pattern's `x` unifies with `w`. Target = .fvar w.
+    have hΓ₂_avoid_nil : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have hpv' : PrevalidExt ([] ++ Γ) s :=
+      PrevalidExt.equ_head_remove_mid (Γ₂ := []) hpv hΓ₂_avoid_nil hst_avoid
+    have hpv'' : PrevalidExt Γ s := by simpa using hpv'
+    -- Substitution on .fvar w with w ≠ y is a no-op.
+    show MEqRed Γ s (.fvar w) (Term.subst y (.fvar z) (.fvar w))
+    rw [Term.subst_fvar_ne hwy]
+    exact MEqRed.var hpv''
+
+/-! ### §11.3. Phase B (case `body = .app a b`) — DEFERRED with sharp blocker
+
+The `app`-template case requires source-shape `.app (a^[y]) (b^[y])`,
+i.e. the descent must dispatch on which constructor produced this `.app`
+at the extended context. The MEqRed constructors with source `.app _ _`:
+
+* `MEqRed.app hu hv` — `hu` lives at stack `(b^[y]) :: s` with source
+  `a^[y]`; `hv` at empty stack with source `b^[y]`. **Both
+  sub-derivations have GENERIC TEMPLATES** (`a` and `b`), not necessarily
+  `.app`. So `descend_body_equ_app` cannot recurse on itself for the
+  sub-derivations — it would need to call EITHER `descend_body_equ_app`
+  with smaller templates (impossible — the templates aren't `.app`) OR
+  the assembled `descend_body_equ` proper (which dispatches on the
+  template's outermost constructor — Phase C).
+
+* `MEqRed.tAp hpv hLCu hfvu` — forces `a^[y] = .top`. From opening's
+  shape preservation, `a` must be `.top` (or `.bvar 0` opening to `.fvar y`
+  which doesn't equal `.top`; `a = .top` is the only solution). Operand
+  `b^[y]` becomes the operand. Output: `MEqRed Γ s (.app .top (b^[z])) .top`,
+  built by `MEqRed.tAp` at the bare context. Needs `Term.LC (b^[z])` and
+  `Term.fv (b^[z]) ⊆ Γ.dom` — derivable from the corresponding `b^[y]`
+  facts via the established renaming infrastructure (LC is renaming-stable;
+  fv-subset transfers under variable swap modulo dom shift).
+
+* `MEqRed.bet L hLCt hbody hUni hv` — forces `a^[y] = .abs t bd` for
+  some `t, bd`. Possible `a`-templates: `a = .abs t' bd'` with
+  `t = t'^[y]` and `bd = bd'^[y_shifted]` (the body-template's bvars
+  shift under the abs binder). Output: `MEqRed Γ s (.app (a^[z]) (b^[z]))
+  (Term.opening (subst-of-v') (subst-of-bd'-renamed))` — needs full Phase B2
+  (binder-template handling) PLUS the `bet`'s body recursion at
+  `.bvar 0`-opened body, which is exactly `descend_body_equ_bvar0` (Phase A)
+  composed with the inner-binder shift.
+
+The clean factoring requires Phase C's MUTUAL recursion across
+templates: `descend_body_equ` itself dispatches on the body template,
+calling `descend_body_equ_bvar0` (Phase A), `descend_body_equ_top`,
+`descend_body_equ_fvar` (this section), `descend_body_equ_app` (the
+present case), and `descend_body_equ_abs` (Phase B2). The `app`
+sub-case's recursion on `a` and `b` then becomes a recursive call to
+the assembled `descend_body_equ`.
+
+**Why we don't ship a stub here:** even shipping the SIGNATURE (with
+`(rec_a : ∀ ...) (rec_b : ∀ ...)` as parameters) requires fixing the
+exact polymorphism: `rec_a` would need to vary over the SUB-template's
+shape (since after `MEqRed.bet` the sub-source is `.abs ...`, after
+`MEqRed.app` it's `a^[y]`), the STACK (`hu` is at `b^[y] :: s`,
+`hv` at `[]`), and the avoidance/freshness premises (these depend on
+the constructor). Encoding all five constructors' preconditions through a
+single `rec_a` premise is more axiom-shaped than proof-shaped.
+
+The disciplined plan: ship Phase B's leaves (`top`, `fvar` here) and
+Phase B2's binder leaf (`abs`), then build Phase C as a single
+mutually-recursive functor whose case-split on the template subsumes
+both the leaf calls and the `app`/`abs` recursive calls. Phase C is the
+right scope for the `app` template case, not Phase B.
+
+CROSS-REFERENCE: the headline consumer `Lemma_2_inline_app_bet_residual_axiom`
+(Diamond.lean §847) needs the `app` template case ONLY indirectly — it
+needs `descend_body_equ` to flow through the body of the inner abstraction
+(which is some `body : Term`), so `app`-shaped bodies arise from any
+non-trivial program. Until Phase C lands, the headline axiom remains
+dependent on the renaming-functor pipeline. -/
+
 end Pss
