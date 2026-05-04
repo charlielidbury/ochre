@@ -941,6 +941,11 @@ closures, 2 inactive outstanding).
   This matches the output of the de Bruijn replacement splitters, rather
   than requiring raw `MSubRedStar` residual replacements. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements`, wiring the
+  diagrammatic `FOp` commutation endpoint to the shifted changed-head
+  replacement packages for both equivalence-derived and direct subtype body
+  residuals. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
