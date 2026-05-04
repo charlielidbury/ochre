@@ -700,6 +700,13 @@ closures, 2 inactive outstanding).
   bound-change body lift: first change the abstraction bound by an
   empty-stack equivalence step, then lift a diagrammatic body replacement
   chain under the fixed new bound. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added one-step subtype
+  replacement splitters `msubRed_equ_head_replace_from_handlers` and
+  `msubRed_equ_under_head_replace_from_handlers`. They discharge stable
+  `Ms-Pro`/`Ms-Top` leaves immediately and expose `Ms-Equ`, `Ms-App`,
+  `Ms-Fun`, and `Ms-FOp` as explicit recursive handler obligations for
+  the innermost and preserved-head `.equ` replacement contexts. No
+  axiom-count change.
 * `Pss/Context/DeBruijn.lean` — added the first `.equ`-head replacement
   infrastructure: subtype lookups are invariant when the innermost
   `.equ` bound changes, nonzero equivalence lookups are invariant, and
