@@ -579,6 +579,12 @@ closures, 2 inactive outstanding).
   remaining app-abs strong-commutativity surface is now explicit as:
   subtype β package, immediate join, equivalence β package, or both
   targets still abstraction-headed. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added conditional
+  commutation wrappers `commute_appAbs_subStar_eqStar_of_branches` and
+  `commute_appAbs_subStep_eqStar_of_branches`. These consume the paired
+  classifier and reduce the abstraction-headed application commutation
+  proof to three explicit handlers: subtype β package, equivalence β
+  package, and residual app-abs/app-abs targets. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
