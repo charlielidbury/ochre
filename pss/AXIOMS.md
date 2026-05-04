@@ -1102,6 +1102,15 @@ closures, 2 inactive outstanding).
   `WfM.app_sub_under_head_replace_of_payload`, and
   `WfM.app_replaceAt_sub_from_body_replaceAt_of_payload`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added `Wf-App` replacement
+  consumers whose subtype-step residual payloads are already
+  `WSubMStar` paths, covering arbitrary-depth, head, under-head, and
+  binder-recursive shapes:
+  `WfM.app_replaceAt_sub_of_wsubred`,
+  `WfM.app_sub_head_replace_of_wsubred`,
+  `WfM.app_sub_under_head_replace_of_wsubred`, and
+  `WfM.app_replaceAt_sub_from_body_replaceAt_of_wsubred`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added recursive-body `Wf-Fun`
   replacement consumers `WfM.fun_replaceAt_sub_from_body_wf`,
   `WfM.fun_sub_head_replace_from_body_wf`, and
