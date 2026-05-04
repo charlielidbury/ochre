@@ -913,6 +913,12 @@ closures, 2 inactive outstanding).
   equivalence from the tail below a replaced `.sub` entry through the
   replaced entry and all preserved heads above it. This is the bridge
   needed for the changed-slot `Ws-Lf2` residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WSubMStar.lf2_self_replaceAt_sub`, the changed-slot `Ws-Lf2`
+  replacement residual chain: step from the variable to shifted `new`,
+  cross back to shifted `old` via `MEqRed.lift_replaceAt_sub_self`, then
+  continue with the recursively replaced tail chain. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

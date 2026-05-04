@@ -586,6 +586,45 @@ noncomputable def WSubMStar.trs_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
     WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
   WSubMStar.trs hLeft hwfMid hRight
 
+/-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
+changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
+resulting well-subtyping path steps to shifted `new`, crosses back to shifted
+`old` via the lifted old-to-new equivalence, then continues with the
+recursively replaced tail chain. -/
+noncomputable def WSubMStar.lf2_self_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {old new t : Term}
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hwfVar : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar cutoff))
+    (hwfNew : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) new))
+    (hTail : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) old) t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar cutoff) t := by
+  let Γnew := Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ
+  have hredSelf : MSubRed Γnew [] (.bvar cutoff)
+      (Term.shiftBy 0 (cutoff + 1) new) :=
+    MSubRed.pro_replaceAt_sub_self (Γ := Γ) (cutoff := cutoff)
+      (s := []) (new := new) (PrevalidExt.nil hwfVar.prevalid) hcut
+  have hStepSelf : WSubMStar Γnew (.bvar cutoff)
+      (Term.shiftBy 0 (cutoff + 1) new) :=
+    WSubMStar.sub hwfVar
+      (WSubM.lf2 hwfVar hredSelf hwfNew (WSubM.rfl hwfNew)) hwfNew
+  have hEqLift : MEqRed Γnew []
+      (Term.shiftBy 0 (cutoff + 1) old)
+      (Term.shiftBy 0 (cutoff + 1) new) :=
+    MEqRed.lift_replaceAt_sub_self (Γ := Γ) (cutoff := cutoff)
+      (old := old) (new := new) hwfVar.prevalid hcut hOldNew
+  have hOldWf : WfM Γnew (Term.shiftBy 0 (cutoff + 1) old) :=
+    hTail.wf_left
+  have hBack : WSubMStar Γnew
+      (Term.shiftBy 0 (cutoff + 1) new)
+      (Term.shiftBy 0 (cutoff + 1) old) :=
+    WSubMStar.sub hwfNew (WSubM.rgh (WSubM.rfl hwfNew) hEqLift) hOldWf
+  exact WSubMStar.trs (WSubMStar.trs hStepSelf hwfNew hBack) hOldWf hTail
+
 /-- `Top` remains well-formed when replacing the innermost `.sub` context
 annotation. -/
 noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}
