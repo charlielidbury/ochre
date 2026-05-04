@@ -1196,6 +1196,51 @@ theorem MEqRed.pro_equ_under_head_one_residual {Γ : Ctx} {s : Stack}
   subst hαeq
   exact ⟨rfl, ⟨hα⟩⟩
 
+/-- Rebuild `Me-App` after replacing an `.equ` entry immediately under a
+preserved head, assuming recursive premises have already been replaced. -/
+noncomputable def MEqRed.app_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {_old new u u' v v' : Term}
+    (hOp : MEqRed (head :: { bound := new, kind := .equ } :: Γ) (v :: s) u u')
+    (hArg : MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] v v') :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.app u v) (.app u' v') :=
+  MEqRed.app hOp hArg
+
+/-- Rebuild `Me-Fun` after replacing an under-head `.equ` entry, assuming
+the bound and body premises have already been replaced. -/
+noncomputable def MEqRed.fun_equ_under_head_replace {Γ : Ctx}
+    {head : CtxEntry} {_old new t t' body body' : Term}
+    (hBound : MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] t t')
+    (hBody : MEqRed ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .equ } :: Γ) [] body body') :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) []
+      (.abs t body) (.abs t' body') :=
+  MEqRed.fun_ hBound hBody
+
+/-- Rebuild `Me-Bet` after replacing an under-head `.equ` entry, assuming
+the body and argument premises have already been replaced. -/
+noncomputable def MEqRed.bet_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t v v' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) t)
+    (hBody : MEqRed ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hArg : MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] v v') :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.app (.abs t body) v) (Term.instantiate 0 v' body') := by
+  exact MEqRed.bet (by simpa [Ctx.depth] using ht) hBody hArg
+
+/-- Rebuild `Me-FOp` after replacing an under-head `.equ` entry, assuming
+the bound and body premises have already been replaced. -/
+noncomputable def MEqRed.fOp_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t t' α body body' : Term}
+    (hBound : MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] t t')
+    (hα : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) α)
+    (hBody : MEqRed ({ bound := α, kind := .equ } :: head ::
+        { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body') :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) (α :: s)
+      (.abs t body) (.abs t' body') := by
+  exact MEqRed.fOp hBound (by simpa [Ctx.depth] using hα) hBody
+
 /-- `Ms-Pro` is stable when replacing an `.equ` entry immediately under a
 preserved head, because subtype lookup ignores `.equ` entries. -/
 noncomputable def MSubRed.pro_equ_under_head_replace {Γ : Ctx} {s : Stack}
@@ -1217,6 +1262,50 @@ noncomputable def MSubRed.top_equ_under_head_replace {Γ : Ctx} {s : Stack}
     MSubRed (head :: { bound := new, kind := .equ } :: Γ) s u .top := by
   exact MSubRed.top (PrevalidExt.equ_under_head_replace hpv hnew) (by
     simpa [Ctx.depth] using hu)
+
+/-- Rebuild `Ms-Equ` after replacing an under-head `.equ` entry, assuming
+the equivalence premise has already been replaced. -/
+noncomputable def MSubRed.equ_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u v : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s u v) :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) s u v :=
+  MSubRed.equ (PrevalidExt.equ_under_head_replace hpv hnew) hEq
+
+/-- Rebuild `Ms-App` after replacing an under-head `.equ` entry, assuming
+the operator premise has already been replaced. -/
+noncomputable def MSubRed.app_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u u' v : Term}
+    (hOp : MSubRed (head :: { bound := new, kind := .equ } :: Γ) (v :: s) u u')
+    (hv : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) v) :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.app u v) (.app u' v) := by
+  exact MSubRed.app hOp (by simpa [Ctx.depth] using hv)
+
+/-- Rebuild `Ms-Fun` after replacing an under-head `.equ` entry, assuming
+the bound and body premises have already been replaced. -/
+noncomputable def MSubRed.fun_equ_under_head_replace {Γ : Ctx}
+    {head : CtxEntry} {old new t t' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) t)
+    (hBound : MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] t t')
+    (hBody : MSubRed ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .equ } :: Γ) [] body body') :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) []
+      (.abs t body) (.abs t' body') := by
+  exact MSubRed.fun_ (by simpa [Ctx.depth] using ht) hBound hBody
+
+/-- Rebuild `Ms-FOp` after replacing an under-head `.equ` entry, assuming
+the body premise has already been replaced. -/
+noncomputable def MSubRed.fOp_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) t)
+    (hα : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) α)
+    (hBody : MSubRed ({ bound := α, kind := .equ } :: head ::
+        { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body') :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) (α :: s)
+      (.abs t body) (.abs t body') := by
+  exact MSubRed.fOp (by simpa [Ctx.depth] using ht) (by simpa [Ctx.depth] using hα) hBody
 
 /-! ## Shape inversions -/
 

@@ -746,6 +746,15 @@ closures, 2 inactive outstanding).
   binder while keeping the changed `.equ` entry one level down; the
   equivalence lookup at index `1` is exposed as
   `MEqRed.pro_equ_under_head_one_residual`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added constructor rebuilders for
+  under-head `.equ` replacement after recursive premises have already
+  been replaced: `MEqRed.app_equ_under_head_replace`,
+  `MEqRed.fun_equ_under_head_replace`, `MEqRed.bet_equ_under_head_replace`,
+  `MEqRed.fOp_equ_under_head_replace`, `MSubRed.equ_equ_under_head_replace`,
+  `MSubRed.app_equ_under_head_replace`, `MSubRed.fun_equ_under_head_replace`,
+  and `MSubRed.fOp_equ_under_head_replace`. These are the preserved-head
+  counterparts to the innermost replacement rebuilders. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msub_equ_under_head_old_bound_to_new_bvar1`, the one-level-deeper
   analogue of `msub_equ_head_old_bound_to_new_bvar0`. It joins the old
