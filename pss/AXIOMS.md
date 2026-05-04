@@ -65,6 +65,9 @@ closures, 2 inactive outstanding).
 * `Pss/Context/DeBruijn.lean` — corrected `.sub` / `.equ` lookup to
   return bounds lifted into the current context. Stored bounds are scoped
   in the entry tail; each newer head crossed by lookup applies `shift 0`.
+* `Pss/Context/DeBruijn.lean` — lookup weakening helpers
+  (`lookup_weaken_head`, `subBinds_weaken_head`,
+  `equBinds_weaken_head`) and Type-valued `Stack.Scoped.shift`.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 

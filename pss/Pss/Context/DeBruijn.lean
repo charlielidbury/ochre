@@ -172,6 +172,28 @@ theorem equBinds_lt {Γ : Ctx} {i : Nat} {t : Term} :
     Γ.equBinds i t → i < Γ.depth :=
   lookupEqu_some_lt
 
+/-- Raw lookup weakens under a new head by incrementing the index. -/
+theorem lookup_weaken_head {Γ : Ctx} {i : Nat} {entry found : CtxEntry} :
+    lookup Γ i = some found → lookup (entry :: Γ) (i + 1) = some found := by
+  intro h
+  simpa using h
+
+/-- Subtype lookup weakens under a new head by incrementing the index and
+lifting the looked-up bound through the new binding. -/
+theorem subBinds_weaken_head {Γ : Ctx} {i : Nat} {t : Term} (entry : CtxEntry) :
+    subBinds Γ i t → subBinds (entry :: Γ) (i + 1) (Term.shift 0 t) := by
+  intro h
+  simp [subBinds]
+  exact ⟨t, h, rfl⟩
+
+/-- Equivalence lookup weakens under a new head by incrementing the index and
+lifting the looked-up bound through the new binding. -/
+theorem equBinds_weaken_head {Γ : Ctx} {i : Nat} {t : Term} (entry : CtxEntry) :
+    equBinds Γ i t → equBinds (entry :: Γ) (i + 1) (Term.shift 0 t) := by
+  intro h
+  simp [equBinds]
+  exact ⟨t, h, rfl⟩
+
 end Ctx
 
 /-! ## Stacks and extended contexts -/
@@ -208,6 +230,17 @@ inductive Scoped (depth : Nat) : Stack → Type
   | nil : Scoped depth []
   | cons {α : Term} {s : Stack} :
       Term.Scoped depth α → Scoped depth s → Scoped depth (α :: s)
+
+/-- One-step shifting preserves stack scoping under one additional ambient
+binding. -/
+noncomputable def Scoped.shift {depth : Nat} {s : Stack} :
+    Scoped depth s → Scoped (depth + 1) (Stack.shift 0 s) := by
+  intro h
+  induction h with
+  | nil =>
+    exact Scoped.nil
+  | cons hα hs ih =>
+    exact Scoped.cons (Term.shift_scoped 0 depth _ (Nat.zero_le _) hα) ih
 
 end Stack
 
