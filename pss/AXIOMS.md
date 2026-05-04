@@ -407,6 +407,9 @@ closures, 2 inactive outstanding).
   `eqStar_to_top_of_subStar_top`, the direct target-to-`Top` chain
   corollary of `commute_subStar_to_top_eqStar`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_eqStar_to_top_of_subStar_top`, packaging the same target as a
+  diagrammatic subtype of `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `abs_eqStar_to_top_of_subStar_top`, a named corollary exposing the
   target-to-`Top` subtype chain from `commute_abs_to_top_eqStar`. No
   axiom-count change.

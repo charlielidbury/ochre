@@ -659,6 +659,17 @@ theorem eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
   subst t₃
   exact hTarget
 
+/-- Diagrammatic packaging of `eqStar_to_top_of_subStar_top`: an
+equivalence-chain target is below `Top` whenever the original scoped source
+has a subtype chain to `Top`. -/
+theorem msub_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hScoped : Term.Scoped Γ.depth t₀)
+    (hSubTop : MSubRedStar Γ s t₀ .top)
+    (hEq : MEqRedStar Γ s t₀ t₂) : MSub Γ s t₂ .top :=
+  MSub.intro
+    (eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq)
+    Relation.ReflTransGen.refl
+
 /-- If a subtype chain from an abstraction reaches `Top`, any equivalence
 chain from the same abstraction joins it at `Top`. -/
 theorem commute_abs_to_top_eqStar {Γ : Ctx} {s : Stack}

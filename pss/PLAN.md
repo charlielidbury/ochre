@@ -425,8 +425,9 @@ hard caveats.
      reaches `Top`. The generalized helper
      `commute_subStar_to_top_eqStar` handles any scoped source whose
      subtype side reaches `Top`; `eqStar_to_top_of_subStar_top` exposes
-     the resulting target-to-`Top` subtype chain directly. The
-     abstraction-specific corollary is named
+     the resulting target-to-`Top` subtype chain directly, and
+     `msub_eqStar_to_top_of_subStar_top` packages that target as
+     diagrammatically below `Top`. The abstraction-specific corollary is named
      `abs_eqStar_to_top_of_subStar_top`.
      Abstraction-headed application inversions `MEqRed.app_abs_inv` and
      `MSubRed.app_abs_inv` separate β, `Top`, `Top`-headed application,
