@@ -497,6 +497,10 @@ hard caveats.
      `appAbs_subStar_appTop_to_top`,
      `msub_appAbs_subStar_appTop_to_top`, and
      `msubStar_appAbs_subStar_appTop_to_top`.
+     The corresponding commutation branch is named
+     `commute_appAbs_subStar_appTop_eqStar`, joining such subtype
+     branches against arbitrary equivalence chains from the same source
+     at `Top`.
      The compressed subtype-chain split
      `msub_appAbs_subStar_beta_or_toTop_or_appAbs` /
      `msubStar_appAbs_subStar_beta_or_toTop_or_appAbs` combines the raw
