@@ -952,6 +952,183 @@ theorem MSubRedStar.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
     (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
     (Prevalid.tail hNew) hpv
 
+/-! ## Sub-head replacement constructors -/
+
+/-- `Me-Top` is stable when the bound stored in an innermost `.sub` head is
+replaced. -/
+noncomputable def MEqRed.top_sub_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s .top .top :=
+  MEqRed.top (PrevalidExt.sub_head_replace hpv hnew)
+
+/-- `Me-Var` is stable when replacing an innermost `.sub` head; the context
+depth is unchanged. -/
+noncomputable def MEqRed.var_sub_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
+    {i : Nat}
+    (hpv : PrevalidExt ({ bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hi : i < Ctx.depth ({ bound := old, kind := .sub } :: Γ)) :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s (.bvar i) (.bvar i) := by
+  exact MEqRed.var (PrevalidExt.sub_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hi)
+
+/-- `Me-TAp` is stable when replacing an innermost `.sub` head. -/
+noncomputable def MEqRed.tAp_sub_head_replace {Γ : Ctx} {s : Stack} {old new u : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) u) :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s (.app .top u) .top := by
+  exact MEqRed.tAp (PrevalidExt.sub_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hu)
+
+/-- `Me-Pro` is stable when replacing an innermost `.sub` head, because
+equivalence lookup skips `.sub` heads. -/
+noncomputable def MEqRed.pro_sub_head_replace {Γ : Ctx} {s : Stack}
+    {old new : Term} {i : Nat} {α α' : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.equBinds ({ bound := old, kind := .sub } :: Γ) i α)
+    (hα : MEqRed ({ bound := new, kind := .sub } :: Γ) s α α') :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s (.bvar i) α' :=
+  MEqRed.pro (PrevalidExt.sub_head_replace hpv hnew)
+    (Ctx.equBinds_sub_head_replace hb) hα
+
+/-- Rebuild `Me-App` after replacing an innermost `.sub` head, assuming the
+recursive premises have already been replaced. -/
+noncomputable def MEqRed.app_sub_head_replace {Γ : Ctx} {s : Stack}
+    {_old new u u' v v' : Term}
+    (hOp : MEqRed ({ bound := new, kind := .sub } :: Γ) (v :: s) u u')
+    (hArg : MEqRed ({ bound := new, kind := .sub } :: Γ) [] v v') :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s (.app u v) (.app u' v') :=
+  MEqRed.app hOp hArg
+
+/-- Rebuild `Me-Fun` after replacing an innermost `.sub` head, assuming the
+bound and preserved-head body premises have already been replaced. -/
+noncomputable def MEqRed.fun_sub_head_replace {Γ : Ctx}
+    {_old new t t' body body' : Term}
+    (hBound : MEqRed ({ bound := new, kind := .sub } :: Γ) [] t t')
+    (hBody : MEqRed ({ bound := t, kind := .sub } ::
+        { bound := new, kind := .sub } :: Γ) [] body body') :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) []
+      (.abs t body) (.abs t' body') :=
+  MEqRed.fun_ hBound hBody
+
+/-- Rebuild `Me-Bet` after replacing an innermost `.sub` head, assuming the
+body and argument premises have already been replaced. -/
+noncomputable def MEqRed.bet_sub_head_replace {Γ : Ctx} {s : Stack}
+    {old new t v v' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t)
+    (hBody : MEqRed ({ bound := t, kind := .sub } ::
+        { bound := new, kind := .sub } :: Γ) (Stack.shift 0 s) body body')
+    (hArg : MEqRed ({ bound := new, kind := .sub } :: Γ) [] v v') :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s
+      (.app (.abs t body) v) (Term.instantiate 0 v' body') := by
+  exact MEqRed.bet (by simpa [Ctx.depth] using ht) hBody hArg
+
+/-- Rebuild `Me-FOp` after replacing an innermost `.sub` head, assuming the
+bound and preserved-head body premises have already been replaced. -/
+noncomputable def MEqRed.fOp_sub_head_replace {Γ : Ctx} {s : Stack}
+    {old new t t' α body body' : Term}
+    (hBound : MEqRed ({ bound := new, kind := .sub } :: Γ) [] t t')
+    (hα : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) α)
+    (hBody : MEqRed ({ bound := α, kind := .equ } ::
+        { bound := new, kind := .sub } :: Γ) (Stack.shift 0 s) body body') :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) (α :: s)
+      (.abs t body) (.abs t' body') := by
+  exact MEqRed.fOp hBound (by simpa [Ctx.depth] using hα) hBody
+
+/-! ### Sub-head replacement under one preserved head -/
+
+/-- `Me-Top` is stable when replacing a `.sub` entry immediately under a
+preserved head. -/
+noncomputable def MEqRed.top_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) s .top .top :=
+  MEqRed.top (PrevalidExt.sub_under_head_replace hpv hnew)
+
+/-- `Me-Var` is stable when replacing a `.sub` entry immediately under a
+preserved head. -/
+noncomputable def MEqRed.var_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term} {i : Nat}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hi : i < Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) s
+      (.bvar i) (.bvar i) := by
+  exact MEqRed.var (PrevalidExt.sub_under_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hi)
+
+/-- `Me-TAp` is stable when replacing a `.sub` entry immediately under a
+preserved head. -/
+noncomputable def MEqRed.tAp_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) u) :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) s (.app .top u) .top := by
+  exact MEqRed.tAp (PrevalidExt.sub_under_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hu)
+
+/-- `Me-Pro` is stable when replacing a `.sub` entry immediately under a
+preserved head, because equivalence lookup skips `.sub` entries. -/
+noncomputable def MEqRed.pro_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term} {i : Nat} {α α' : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.equBinds (head :: { bound := old, kind := .sub } :: Γ) i α)
+    (hα : MEqRed (head :: { bound := new, kind := .sub } :: Γ) s α α') :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) s (.bvar i) α' :=
+  MEqRed.pro (PrevalidExt.sub_under_head_replace hpv hnew)
+    (Ctx.equBinds_sub_under_head_replace hb) hα
+
+/-- Rebuild `Me-App` after replacing an under-head `.sub` entry, assuming
+recursive premises have already been replaced. -/
+noncomputable def MEqRed.app_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {_old new u u' v v' : Term}
+    (hOp : MEqRed (head :: { bound := new, kind := .sub } :: Γ) (v :: s) u u')
+    (hArg : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] v v') :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) s
+      (.app u v) (.app u' v') :=
+  MEqRed.app hOp hArg
+
+/-- Rebuild `Me-Fun` after replacing an under-head `.sub` entry, assuming
+the bound and body premises have already been replaced. -/
+noncomputable def MEqRed.fun_sub_under_head_replace {Γ : Ctx}
+    {head : CtxEntry} {_old new t t' body body' : Term}
+    (hBound : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] t t')
+    (hBody : MEqRed ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .sub } :: Γ) [] body body') :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) []
+      (.abs t body) (.abs t' body') :=
+  MEqRed.fun_ hBound hBody
+
+/-- Rebuild `Me-Bet` after replacing an under-head `.sub` entry, assuming
+the body and argument premises have already been replaced. -/
+noncomputable def MEqRed.bet_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t v v' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t)
+    (hBody : MEqRed ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .sub } :: Γ) (Stack.shift 0 s) body body')
+    (hArg : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] v v') :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) s
+      (.app (.abs t body) v) (Term.instantiate 0 v' body') := by
+  exact MEqRed.bet (by simpa [Ctx.depth] using ht) hBody hArg
+
+/-- Rebuild `Me-FOp` after replacing an under-head `.sub` entry, assuming
+the bound and body premises have already been replaced. -/
+noncomputable def MEqRed.fOp_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t t' α body body' : Term}
+    (hBound : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] t t')
+    (hα : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) α)
+    (hBody : MEqRed ({ bound := α, kind := .equ } :: head ::
+        { bound := new, kind := .sub } :: Γ) (Stack.shift 0 s) body body') :
+    MEqRed (head :: { bound := new, kind := .sub } :: Γ) (α :: s)
+      (.abs t body) (.abs t' body') := by
+  exact MEqRed.fOp hBound (by simpa [Ctx.depth] using hα) hBody
+
 /-! ## Equ-head replacement leaf constructors -/
 
 /-- `Me-Top` is stable when the bound stored in an innermost `.equ` head is

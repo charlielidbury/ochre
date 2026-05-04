@@ -842,6 +842,10 @@ closures, 2 inactive outstanding).
   `MSubRed.top_equ_head_replace`. These close the non-head-observing
   cases needed by the eventual structural replacement proof. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added `MEqRed` constructor-level
+  `.sub` head replacement wrappers for innermost and one-preserved-head
+  contexts, covering equivalence transport needed by future
+  `WfMSubHeadReplace`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
