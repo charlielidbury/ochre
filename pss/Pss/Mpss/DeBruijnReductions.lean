@@ -957,6 +957,39 @@ theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
       subst hEq
       exact hStep.some.abs_inv
 
+/-- A de Bruijn subtype-reduction step from an abstraction can only target
+`Top` or another abstraction. -/
+theorem MSubRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MSubRed Γ s (.abs bound body) v) :
+    v = .top ∨ ∃ bound' body', v = .abs bound' body' := by
+  cases h with
+  | top _ _ =>
+    exact Or.inl rfl
+  | equ _ heq =>
+    exact Or.inr heq.abs_inv
+  | fun_ _ _ _ =>
+    exact Or.inr ⟨_, _, rfl⟩
+  | fOp _ _ _ =>
+    exact Or.inr ⟨_, _, rfl⟩
+
+/-- A de Bruijn subtype-reduction chain from an abstraction can only target
+`Top` or another abstraction. -/
+theorem MSubRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MSubRedStar Γ s (.abs bound body) v) :
+    v = .top ∨ ∃ bound' body', v = .abs bound' body' := by
+  induction h with
+  | refl =>
+    exact Or.inr ⟨bound, body, rfl⟩
+  | tail _ hStep ih =>
+    cases ih with
+    | inl hTop =>
+      subst hTop
+      exact Or.inl hStep.some.top_inv
+    | inr hAbs =>
+      obtain ⟨bound', body', hEq⟩ := hAbs
+      subst hEq
+      exact hStep.some.abs_inv
+
 /-- A one-step equivalence reduction from a `Top`-headed application can only
 target either `Top` or another `Top`-headed application. -/
 theorem MEqRed.app_top_inv {Γ : Ctx} {s : Stack} {arg v : Term}

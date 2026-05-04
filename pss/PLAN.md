@@ -389,6 +389,10 @@ hard caveats.
      one-step and star equivalence/subtype reductions, and the direct
      star-level joins `diamond_tAp_eqStar` and
      `commute_appTop_subStar_tAp` close the corresponding `TAp` targets.
+     Abstraction subtype shape inversions are available through
+     `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, and
+     `commute_abs_to_top_eqStar` closes the branch where the subtype side
+     reaches `Top`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

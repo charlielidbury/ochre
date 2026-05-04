@@ -434,6 +434,18 @@ theorem commute_appTop_subStar_tAp {Γ : Ctx} {s : Stack} {u t : Term}
     have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
     exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg'), Relation.ReflTransGen.refl⟩
 
+/-- If a subtype chain from an abstraction reaches `Top`, any equivalence
+chain from the same abstraction joins it at `Top`. -/
+theorem commute_abs_to_top_eqStar {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.abs bound body))
+    (_hSubTop : MSubRedStar Γ s (.abs bound body) .top)
+    (hEq : MEqRedStar Γ s (.abs bound body) t) :
+    ∃ t₃, MEqRedStar Γ s .top t₃ ∧ MSubRedStar Γ s t t₃ := by
+  have hTargetScoped : Term.Scoped Γ.depth t := hEq.scoped_right hScoped
+  exact ⟨.top, Relation.ReflTransGen.refl,
+    MSubRedStar.single (MSubRed.top hpv hTargetScoped)⟩
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

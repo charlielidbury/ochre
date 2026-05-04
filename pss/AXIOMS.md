@@ -341,6 +341,11 @@ closures, 2 inactive outstanding).
   `MSubRedStar.app_top_inv`, plus direct star-level joins
   `diamond_tAp_eqStar` and `commute_appTop_subStar_tAp`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnReductions.lean` and
+  `Pss/Mpss/DeBruijnTransitivityElim.lean` — added abstraction subtype
+  shape inversions `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, plus the
+  direct abstraction-to-`Top` join `commute_abs_to_top_eqStar`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
