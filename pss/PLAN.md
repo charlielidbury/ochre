@@ -415,7 +415,9 @@ hard caveats.
      `appTop_subStar_to_top` expose the resulting target-to-`Top`
      chains directly. Diagrammatic packaging adapters
      `msub_appTop_eqStar_to_top` and `msub_appTop_subStar_to_top` view
-     those targets as `MSub Γ s _ .top`.
+     those targets as `MSub Γ s _ .top`; matching transitive wrappers
+     are available as `msubStar_appTop_eqStar_to_top` and
+     `msubStar_appTop_subStar_to_top`.
      The full star-level `Top`-headed source cell is also available as
      `commute_appTop_subStar_eqStar`, joining arbitrary subtype and
      equivalence chains from that source at `Top`.
@@ -427,8 +429,9 @@ hard caveats.
      subtype side reaches `Top`; `eqStar_to_top_of_subStar_top` exposes
      the resulting target-to-`Top` subtype chain directly, and
      `msub_eqStar_to_top_of_subStar_top` packages that target as
-     diagrammatically below `Top`. The abstraction-specific corollary is named
-     `abs_eqStar_to_top_of_subStar_top`.
+     diagrammatically below `Top`; the matching transitive wrapper is
+     `msubStar_eqStar_to_top_of_subStar_top`. The abstraction-specific
+     corollary is named `abs_eqStar_to_top_of_subStar_top`.
      Abstraction-headed application inversions `MEqRed.app_abs_inv` and
      `MSubRed.app_abs_inv` separate β, `Top`, `Top`-headed application,
      and abstraction-headed application targets.

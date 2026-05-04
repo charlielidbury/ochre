@@ -390,6 +390,10 @@ closures, 2 inactive outstanding).
   packaging adapters `msub_appTop_eqStar_to_top` and
   `msub_appTop_subStar_to_top`, viewing those `Top`-headed chain targets
   as `MSub Γ s _ .top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added transitive
+  diagrammatic wrappers `msubStar_appTop_eqStar_to_top` and
+  `msubStar_appTop_subStar_to_top` for the same `Top`-headed targets. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appTop_subStar_eqStar`, the full star-level commutation cell
   for a `Top`-headed application source. It joins arbitrary subtype and
@@ -409,6 +413,9 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msub_eqStar_to_top_of_subStar_top`, packaging the same target as a
   diagrammatic subtype of `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubStar_eqStar_to_top_of_subStar_top`, the transitive diagrammatic
+  wrapper for that general `Top`-target package. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `abs_eqStar_to_top_of_subStar_top`, a named corollary exposing the
   target-to-`Top` subtype chain from `commute_abs_to_top_eqStar`. No

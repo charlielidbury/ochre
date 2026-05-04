@@ -591,6 +591,12 @@ theorem msub_appTop_eqStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
   MSub.intro (MSubRedStar.of_MEqRedStar hpv (appTop_eqStar_to_top hpv hu h))
     Relation.ReflTransGen.refl
 
+/-- Transitive diagrammatic packaging of `appTop_eqStar_to_top`. -/
+theorem msubStar_appTop_eqStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MEqRedStar Γ s (.app .top u) t) : MSubStar Γ s t .top :=
+  (msub_appTop_eqStar_to_top hpv hu h).to_star
+
 /-- Any subtype-chain target of a `Top`-headed application is
 diagrammatically below `Top`. -/
 theorem msub_appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
@@ -598,6 +604,12 @@ theorem msub_appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
     (h : MSubRedStar Γ s (.app .top u) t) : MSub Γ s t .top :=
   MSub.intro (MSubRedStar.of_MEqRedStar hpv (appTop_subStar_to_top hpv hu h))
     Relation.ReflTransGen.refl
+
+/-- Transitive diagrammatic packaging of `appTop_subStar_to_top`. -/
+theorem msubStar_appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MSubRedStar Γ s (.app .top u) t) : MSubStar Γ s t .top :=
+  (msub_appTop_subStar_to_top hpv hu h).to_star
 
 /-- Direct star-level commutation for a `Top`-headed application source. Any
 subtype chain and any equivalence chain out of the same source join at
@@ -669,6 +681,15 @@ theorem msub_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack} {t₀ t₂ : Te
   MSub.intro
     (eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq)
     Relation.ReflTransGen.refl
+
+/-- Transitive diagrammatic packaging of
+`eqStar_to_top_of_subStar_top`. -/
+theorem msubStar_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
+    {t₀ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth t₀)
+    (hSubTop : MSubRedStar Γ s t₀ .top)
+    (hEq : MEqRedStar Γ s t₀ t₂) : MSubStar Γ s t₂ .top :=
+  (msub_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
 
 /-- If a subtype chain from an abstraction reaches `Top`, any equivalence
 chain from the same abstraction joins it at `Top`. -/
