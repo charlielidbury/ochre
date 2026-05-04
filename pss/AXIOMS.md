@@ -1040,6 +1040,12 @@ closures, 2 inactive outstanding).
   `meqRedStar_equ_head_shifted_replace_function_from_replacements` and
   `msubRedStar_equ_head_shifted_replace_function_from_replacements`, packaging
   shifted replacement over every residual tail stack. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added function-valued
+  under-head shifted replacement wrappers
+  `meqRedStar_equ_under_head_shifted_replace_function_from_tail_lift` and
+  `msubRedStar_equ_under_head_shifted_replace_function_from_tail_lift`,
+  packaging tail-lift replacements while deriving the new-tail prevalidity
+  and preserved-head context replacement locally. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
