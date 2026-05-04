@@ -298,6 +298,30 @@ def shift (cutoff : Nat) : Stack → Stack :=
 @[simp] theorem shift_cons (cutoff : Nat) (α : Term) (s : Stack) :
     shift cutoff (α :: s) = Term.shift cutoff α :: shift cutoff s := rfl
 
+/-- Stack-level lift commutation inherited pointwise from terms. -/
+theorem shiftBy_lift_comm (base cutoff amount : Nat) (s : Stack)
+    (hbase : base ≤ cutoff) :
+    shiftBy (cutoff + 1) amount (shiftBy base 1 s) =
+      shiftBy base 1 (shiftBy cutoff amount s) := by
+  induction s with
+  | nil =>
+    rfl
+  | cons α s ih =>
+    simp only [shiftBy_cons, Term.shiftBy_lift_comm base cutoff amount α hbase, ih]
+
+/-- Shifting a stack below one newly introduced binder commutes with the raw
+top-level one-step lift. -/
+theorem shiftBy_shift_zero (cutoff amount : Nat) (s : Stack) :
+    shiftBy (cutoff + 1) amount (shift 0 s) =
+      shift 0 (shiftBy cutoff amount s) := by
+  simpa [shift] using shiftBy_lift_comm 0 cutoff amount s (Nat.zero_le cutoff)
+
+/-- The stack shape used when weakening a body derivation under an existing
+binder matches the shape obtained by first weakening the outer stack. -/
+theorem shift_one_shift_zero (s : Stack) :
+    shift 1 (shift 0 s) = shift 0 (shift 0 s) := by
+  simpa [shift] using shiftBy_shift_zero 0 1 s
+
 /-- Every term in a stack is scoped in a context of depth `depth`. Type-valued
 so it can carry proof-relevant `Term.Scoped` witnesses. -/
 inductive Scoped (depth : Nat) : Stack → Type

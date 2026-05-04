@@ -77,6 +77,11 @@ closures, 2 inactive outstanding).
   inserting a new outer entry under an existing binder head. This is the
   context-side prerequisite for full de Bruijn reduction weakening under
   binder rules; no axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` / `Pss/Context/DeBruijn.lean` — seeded the
+  first β-weakening shift equalities: `Term.instantiate_shift_succ`,
+  `Term.instantiate_zero_shift_one`, and stack-level shift commutation
+  lemmas. These connect insertion under a binder to the β target shape;
+  no axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

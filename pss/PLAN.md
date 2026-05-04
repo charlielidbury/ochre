@@ -167,7 +167,9 @@ hard caveats.
      `.sub` / `.equ` lookup weakening under that insertion shape are
      available. Full reduction weakening still needs the term-level
      shift/substitution equalities that connect the β result across this
-     insertion.
+     insertion; the first such equality,
+     `Term.instantiate_shift_succ` / `instantiate_zero_shift_one`, and
+     stack shift commutation lemmas have now been seeded.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

@@ -259,6 +259,51 @@ theorem shiftBy_instantiate (cutoff amount k : Nat) (v t : Term)
     simp only [instantiate_app, shiftBy_app]
     exact congrArg₂ Term.app (ih_fn cutoff k v hcut) (ih_arg cutoff k v hcut)
 
+/-- Instantiation commutes with inserting a new binding immediately outside
+the instantiated slot. -/
+theorem instantiate_shift_succ (k : Nat) (v t : Term) :
+    instantiate k (shift k v) (shift (k + 1) t) =
+      shift k (instantiate k v t) := by
+  induction t generalizing k v with
+  | bvar i =>
+    by_cases hlt : i < k
+    · have hshift : ¬ k + 1 ≤ i := by omega
+      have hshift_rhs : ¬ k ≤ i := by omega
+      simp [instantiate, shift, shiftBy, hlt, hshift, hshift_rhs]
+    · by_cases heq : i = k
+      · have hshift : ¬ k + 1 ≤ i := by omega
+        simp [instantiate, shift, shiftBy, hlt, heq, hshift]
+      · have hgt : k < i := by omega
+        have hshift : k + 1 ≤ i := by omega
+        have hnlt : ¬ i + 1 < k := by omega
+        have hne : i + 1 ≠ k := by omega
+        have hpred_shift : k ≤ i - 1 := by omega
+        have hpred_rhs : i - 1 + 1 = i := by omega
+        simp [instantiate, shift, shiftBy, hlt, heq, hshift, hnlt, hne, hpred_shift, hpred_rhs]
+  | top =>
+    simp [instantiate, shift, shiftBy]
+  | abs bound body ih_bound ih_body =>
+    simp only [instantiate_abs, shift_abs]
+    exact congrArg₂ Term.abs
+      (ih_bound k v)
+      (by
+        have hbody := ih_body (k + 1) (shift 0 v)
+        have hshift : shift (k + 1) (shift 0 v) = shift 0 (shift k v) := by
+          exact shiftBy_lift_comm 0 k 1 v (Nat.zero_le k)
+        simpa [hshift, Nat.add_assoc] using hbody)
+  | app fn arg ih_fn ih_arg =>
+    simp only [instantiate_app, shift_app]
+    exact congrArg₂ Term.app (ih_fn k v) (ih_arg k v)
+
+/-- Instantiation at the innermost binder commutes with inserting a new
+outer binding. The body is shifted at cutoff `1`, preserving its binder at
+index `0`, while the replacement term is shifted at cutoff `0` because it
+lives outside that binder. -/
+theorem instantiate_zero_shift_one (v t : Term) :
+    instantiate 0 (shift 0 v) (shift 1 t) =
+      shift 0 (instantiate 0 v t) := by
+  simpa using instantiate_shift_succ 0 v t
+
 /-! ## Scoping -/
 
 /-- `Scoped depth t` means every index in `t` is bound within `depth`
