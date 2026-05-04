@@ -937,6 +937,37 @@ theorem msubStar_appAbs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) : MSubStar Γ s t .top :=
   (msub_appAbs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
 
+/-- Diagrammatic packaging of the β branch from
+`MEqRedStar.app_abs_inv`: if an equivalence chain from an
+abstraction-headed application has taken β, the final target is
+diagrammatically below that β target; otherwise the final target is still
+abstraction-headed. -/
+theorem msub_appAbs_eqStar_beta_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) :
+    (∃ arg' body', MSub Γ s t (Term.instantiate 0 arg' body')) ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' := by
+  cases hEq.app_abs_inv with
+  | inl hBet =>
+    obtain ⟨arg', body', hChain⟩ := hBet
+    exact Or.inl ⟨arg', body', MSub.of_MEqRedStar_right hChain⟩
+  | inr hApp =>
+    exact Or.inr hApp
+
+/-- Transitive diagrammatic packaging of
+`msub_appAbs_eqStar_beta_or_appAbs`. -/
+theorem msubStar_appAbs_eqStar_beta_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) :
+    (∃ arg' body', MSubStar Γ s t (Term.instantiate 0 arg' body')) ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' := by
+  cases msub_appAbs_eqStar_beta_or_appAbs hEq with
+  | inl hBet =>
+    obtain ⟨arg', body', hMSub⟩ := hBet
+    exact Or.inl ⟨arg', body', hMSub.to_star⟩
+  | inr hApp =>
+    exact Or.inr hApp
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

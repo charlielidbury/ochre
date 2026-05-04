@@ -478,6 +478,10 @@ hard caveats.
      `appAbs_eqStar_to_top_of_subStar_top`,
      `msub_appAbs_eqStar_to_top_of_subStar_top`, and
      `msubStar_appAbs_eqStar_to_top_of_subStar_top`.
+     The β branch of an abstraction-headed application equivalence chain
+     is packaged diagrammatically by
+     `msub_appAbs_eqStar_beta_or_appAbs` and
+     `msubStar_appAbs_eqStar_beta_or_appAbs`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

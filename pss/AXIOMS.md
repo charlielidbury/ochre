@@ -493,6 +493,13 @@ closures, 2 inactive outstanding).
   `msubStar_appAbs_eqStar_to_top_of_subStar_top`, the
   abstraction-headed application specializations of the general
   target-to-`Top` package. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_appAbs_eqStar_beta_or_appAbs` and
+  `msubStar_appAbs_eqStar_beta_or_appAbs`, packaging the
+  abstraction-headed application equivalence-chain β branch as a
+  diagrammatic edge from the final target back to the β target, while
+  preserving the residual abstraction-headed shape branch. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
