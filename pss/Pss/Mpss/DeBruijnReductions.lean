@@ -2571,6 +2571,31 @@ noncomputable def MSubRed.refl {Γ : Ctx} {s : Stack} {u : Term}
     MSubRed Γ s u u :=
   MSubRed.equ hpv (MEqRed.refl hpv hu)
 
+/-- Compose the changing-bound `Ms-Fun` step with a body subtype chain that
+already lives under the changed bound. This isolates the endpoint composition
+needed by the general `.sub` replacement abstraction case. -/
+theorem MSubRedStar.fun_bound_then_body {Γ : Ctx}
+    {t t' body body' : Term}
+    (ht : Term.Scoped Γ.depth t)
+    (hEq : MEqRed Γ [] t t')
+    (hBodyScoped : Term.Scoped (Γ.depth + 1) body)
+    (hBody : MSubRedStar ({ bound := t', kind := .sub } :: Γ) [] body body') :
+    MSubRedStar Γ [] (.abs t body) (.abs t' body') := by
+  have hpvΓ : Prevalid Γ := hEq.prevalid
+  have ht' : Term.Scoped Γ.depth t' := hEq.scoped_right
+  have hpvOldBodyCtx : Prevalid ({ bound := t, kind := .sub } :: Γ) :=
+    Prevalid.sub hpvΓ ht
+  have hBodyRefl : MSubRed ({ bound := t, kind := .sub } :: Γ) [] body body :=
+    MSubRed.refl (PrevalidExt.nil hpvOldBodyCtx) (by
+      simpa [Ctx.depth] using hBodyScoped)
+  have hFirst : MSubRedStar Γ [] (.abs t body) (.abs t' body) :=
+    MSubRedStar.single (MSubRed.fun_ ht hEq hBodyRefl)
+  have hEqRefl : MEqRed Γ [] t' t' :=
+    MEqRed.refl (PrevalidExt.nil hpvΓ) ht'
+  have hTail : MSubRedStar Γ [] (.abs t' body) (.abs t' body') :=
+    MSubRedStar.fun_body_fixed ht' hEqRefl hBody
+  exact MSubRedStar.trans hFirst hTail
+
 
 end DeBruijn
 end Pss
