@@ -170,6 +170,14 @@ hard caveats.
      insertion; the first such equality,
      `Term.instantiate_shift_succ` / `instantiate_zero_shift_one`, and
      stack shift commutation lemmas have now been seeded.
+     Attempting the next `MEqRed` weakening helper exposed the expected
+     nested-binder generalization: after descending through another
+     abstraction, insertion happens under two preserved heads, so
+     `Prevalid.weaken_second_tail_head`,
+     `PrevalidExt.weaken_second_tail_head`, and the corresponding
+     index-shift descriptions are now available. The remaining lookup
+     transport should be generalized as insertion-at-depth rather than
+     accumulated one-off lemmas.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

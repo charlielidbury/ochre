@@ -221,6 +221,47 @@ def insertUnderHeadIndex : Nat → Nat
 @[simp] theorem insertUnderHeadIndex_succ (i : Nat) :
     insertUnderHeadIndex (i + 1) = i + 2 := rfl
 
+/-- Shifting at cutoff `1` implements the index translation for inserting a
+new context entry immediately under the current head binder. -/
+theorem shift_one_bvar_insertUnderHeadIndex (i : Nat) :
+    Term.shift 1 (.bvar i) = .bvar (insertUnderHeadIndex i) := by
+  cases i with
+  | zero =>
+    rfl
+  | succ i =>
+    simp [Term.shift, Term.shiftBy]
+
+/-- De Bruijn index translation for inserting a new context entry immediately
+under two existing heads. The two innermost binders keep indices `0` and `1`;
+every outer reference moves up by one. -/
+def insertUnderTwoHeadsIndex : Nat → Nat
+  | 0 => 0
+  | 1 => 1
+  | i + 2 => i + 3
+
+@[simp] theorem insertUnderTwoHeadsIndex_zero :
+    insertUnderTwoHeadsIndex 0 = 0 := rfl
+
+@[simp] theorem insertUnderTwoHeadsIndex_one :
+    insertUnderTwoHeadsIndex 1 = 1 := rfl
+
+@[simp] theorem insertUnderTwoHeadsIndex_add_two (i : Nat) :
+    insertUnderTwoHeadsIndex (i + 2) = i + 3 := rfl
+
+/-- Shifting at cutoff `2` implements the index translation for inserting a
+new context entry immediately under two current heads. -/
+theorem shift_two_bvar_insertUnderTwoHeadsIndex (i : Nat) :
+    Term.shift 2 (.bvar i) = .bvar (insertUnderTwoHeadsIndex i) := by
+  cases i with
+  | zero =>
+    rfl
+  | succ i =>
+    cases i with
+    | zero =>
+      rfl
+    | succ i =>
+      simp [Term.shift, Term.shiftBy]
+
 /-- Subtype lookup weakens when a new context entry is inserted immediately
 under an existing head binder. The looked-up bound is lifted through the
 inserted entry, while the head binder remains at index `0`. -/
@@ -429,6 +470,24 @@ noncomputable def weaken_tail_head {Γ : Ctx} {head newHead : CtxEntry} :
   | equ _ hbound =>
     exact Prevalid.equ hNew (Term.shift_scoped 0 Γ.depth _ (Nat.zero_le _) hbound)
 
+/-- Rebuild two prevalid heads over a newly extended tail. This is the next
+context shape encountered when reduction weakening descends through an
+abstraction inside an already-open binder body. -/
+noncomputable def weaken_second_tail_head {Γ : Ctx} {head₁ head₂ newHead : CtxEntry} :
+    Prevalid (head₁ :: head₂ :: Γ) →
+    Prevalid (newHead :: Γ) →
+    Prevalid (head₁.shift 1 :: head₂.shift 0 :: newHead :: Γ) := by
+  intro hHeads hNew
+  cases hHeads with
+  | sub hTail hbound =>
+    exact Prevalid.sub
+      (Prevalid.weaken_tail_head hTail hNew)
+      (Term.shift_scoped 1 (Γ.depth + 1) _ (by omega) hbound)
+  | equ hTail hbound =>
+    exact Prevalid.equ
+      (Prevalid.weaken_tail_head hTail hNew)
+      (Term.shift_scoped 1 (Γ.depth + 1) _ (by omega) hbound)
+
 /-- Lookup of a `.sub` binding in a prevalid context returns a term scoped in
 the whole context. -/
 noncomputable def scoped_lookupSub {Γ : Ctx} {i : Nat} {t : Term}
@@ -586,6 +645,20 @@ noncomputable def weaken_tail_head {Γ : Ctx} {s : Stack} {head newHead : CtxEnt
     exact PrevalidExt.nil hpv
   | cons hst hα ih =>
     exact PrevalidExt.cons ih (Term.shift_scoped 1 (Γ.depth + 1) _ (by omega) hα)
+
+/-- Insert a new logical context entry immediately under two existing binder
+heads, shifting stack operands at cutoff `2`. -/
+noncomputable def weaken_second_tail_head {Γ : Ctx} {s : Stack}
+    {head₁ head₂ newHead : CtxEntry} :
+    PrevalidExt (head₁ :: head₂ :: Γ) s →
+    Prevalid (head₁.shift 1 :: head₂.shift 0 :: newHead :: Γ) →
+    PrevalidExt (head₁.shift 1 :: head₂.shift 0 :: newHead :: Γ) (Stack.shift 2 s) := by
+  intro h hpv
+  induction h with
+  | nil _ =>
+    exact PrevalidExt.nil hpv
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (Term.shift_scoped 2 (Γ.depth + 2) _ (by omega) hα)
 
 end PrevalidExt
 

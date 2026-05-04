@@ -82,6 +82,14 @@ closures, 2 inactive outstanding).
   `Term.instantiate_zero_shift_one`, and stack-level shift commutation
   lemmas. These connect insertion under a binder to the β target shape;
   no axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added the second nested-binder insertion
+  layer: `Ctx.insertUnderTwoHeadsIndex`,
+  `Ctx.shift_two_bvar_insertUnderTwoHeadsIndex`,
+  `Prevalid.weaken_second_tail_head`, and
+  `PrevalidExt.weaken_second_tail_head`. This records the next concrete
+  shape required by reduction weakening under nested abstractions. The
+  lookup side should now be generalized to insertion-at-depth instead of
+  extended by more ad hoc arities; no axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
