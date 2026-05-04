@@ -259,6 +259,57 @@ theorem shiftBy_instantiate (cutoff amount k : Nat) (v t : Term)
     simp only [instantiate_app, shiftBy_app]
     exact congrArg₂ Term.app (ih_fn cutoff k v hcut) (ih_arg cutoff k v hcut)
 
+/-- Shifting above an instantiated slot commutes with instantiation. Since
+instantiation removes slot `k`, a later shift at `cutoff` corresponds to
+shifting the original term at `cutoff + 1`. -/
+theorem shiftBy_instantiate_lt (cutoff amount k : Nat) (v t : Term)
+    (hk : k < cutoff) :
+    shiftBy cutoff amount (instantiate k v t) =
+      instantiate k (shiftBy cutoff amount v) (shiftBy (cutoff + 1) amount t) := by
+  induction t generalizing cutoff k v with
+  | bvar i =>
+    by_cases hlt : i < k
+    · have hshift : ¬ cutoff ≤ i := by omega
+      have hshift_rhs : ¬ cutoff + 1 ≤ i := by omega
+      simp [instantiate, shiftBy, hlt, hshift, hshift_rhs]
+    · by_cases heq : i = k
+      · have hshift_rhs : ¬ cutoff + 1 ≤ i := by omega
+        subst heq
+        simp [instantiate, shiftBy, hshift_rhs]
+      · have hgt : k < i := by omega
+        by_cases hci : cutoff ≤ i - 1
+        · have hshift_rhs : cutoff + 1 ≤ i := by omega
+          have hnlt : ¬ i + amount < k := by omega
+          have hne : i + amount ≠ k := by omega
+          have hpred : i + amount - 1 = i - 1 + amount := by omega
+          simp [instantiate, shiftBy, hlt, heq, hci, hshift_rhs, hnlt, hne, hpred]
+        · have hshift_rhs : ¬ cutoff + 1 ≤ i := by omega
+          have hshift_lhs : ¬ cutoff ≤ i - 1 := hci
+          simp [instantiate, shiftBy, hlt, heq, hshift_lhs, hshift_rhs]
+  | top =>
+    simp [instantiate, shiftBy]
+  | abs bound body ih_bound ih_body =>
+    simp only [instantiate_abs, shiftBy_abs]
+    exact congrArg₂ Term.abs
+      (ih_bound cutoff k v hk)
+      (by
+        have hbody := ih_body (cutoff + 1) (k + 1) (shift 0 v) (by omega)
+        have hshift :
+            shiftBy (cutoff + 1) amount (shift 0 v) =
+              shift 0 (shiftBy cutoff amount v) :=
+          shiftBy_shift_zero cutoff amount v
+        simpa [hshift, Nat.add_assoc] using hbody)
+  | app fn arg ih_fn ih_arg =>
+    simp only [instantiate_app, shiftBy_app]
+    exact congrArg₂ Term.app (ih_fn cutoff k v hk) (ih_arg cutoff k v hk)
+
+/-- One-step version of `shiftBy_instantiate_lt`. -/
+theorem shift_instantiate_lt (cutoff k : Nat) (v t : Term)
+    (hk : k < cutoff) :
+    shift cutoff (instantiate k v t) =
+      instantiate k (shift cutoff v) (shift (cutoff + 1) t) :=
+  shiftBy_instantiate_lt cutoff 1 k v t hk
+
 /-- Instantiation commutes with inserting a new binding immediately outside
 the instantiated slot. -/
 theorem instantiate_shift_succ (k : Nat) (v t : Term) :
@@ -303,6 +354,16 @@ theorem instantiate_zero_shift_one (v t : Term) :
     instantiate 0 (shift 0 v) (shift 1 t) =
       shift 0 (instantiate 0 v t) := by
   simpa using instantiate_shift_succ 0 v t
+
+/-- β-instantiation commutes with shifting the surrounding context. -/
+theorem shift_instantiate_zero (cutoff : Nat) (v t : Term) :
+    shift cutoff (instantiate 0 v t) =
+      instantiate 0 (shift cutoff v) (shift (cutoff + 1) t) := by
+  cases cutoff with
+  | zero =>
+    exact (instantiate_shift_succ 0 v t).symm
+  | succ cutoff =>
+    exact shift_instantiate_lt (cutoff + 1) 0 v t (Nat.succ_pos cutoff)
 
 /-! ## Scoping -/
 

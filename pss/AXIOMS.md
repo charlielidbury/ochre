@@ -129,6 +129,10 @@ closures, 2 inactive outstanding).
   `Ctx.equBinds_insertAt_after_shift`, and
   `Ctx.insertAtIndex_lt_depth`. These are the lookup/index shapes needed
   by shifted `pro` and `var` reduction cases. No axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` — added the shift-above-instantiation
+  lemmas `Term.shiftBy_instantiate_lt`, `Term.shift_instantiate_lt`, and
+  the β-shaped `Term.shift_instantiate_zero`. These are needed by the
+  `MEqRed.bet` weakening case. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

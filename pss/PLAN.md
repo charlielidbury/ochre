@@ -201,6 +201,10 @@ hard caveats.
      `Ctx.equBinds_insertAt_after_shift`, which present after-cutoff
      bindings as `Term.shift cutoff` rather than only `Term.shift 0`.
      `Ctx.insertAtIndex_lt_depth` handles shifted variable bounds.
+     Syntax now has `Term.shiftBy_instantiate_lt`,
+     `Term.shift_instantiate_lt`, and `Term.shift_instantiate_zero`,
+     covering the β-target rewrite needed when weakening reductions under
+     inserted context entries.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
