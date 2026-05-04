@@ -776,7 +776,10 @@ closures, 2 inactive outstanding).
   `msub_equ_under_head_new_bvar1_to_old_bound`, the preserved-head
   analogue for the under-head residual at index `1`. It joins `bvar 1`
   back to the old doubly shifted bound using the new doubly shifted bound
-  as common reduct. No axiom-count change.
+  as common reduct. Also added
+  `msub_equ_under_head_new_bvar1_to_old_bound_of_equ_head_lift`, the
+  composed form that weakens a changed-head old-to-new lift and immediately
+  applies the converse bridge. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

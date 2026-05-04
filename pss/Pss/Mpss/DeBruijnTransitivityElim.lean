@@ -1976,6 +1976,29 @@ theorem msub_equ_under_head_old_bound_to_new_bvar1_of_equ_head_lift {Γ : Ctx}
     (meq_equ_under_head_stack_lift_from_equ_head_lift
       hpvTail hNewScoped hHeadNew hOldNew)
 
+/-- Converse composed consumer for the under-head `Me-Pro` residual: a
+changed-head old-to-new lift is weakened under the preserved head and used to
+join `bvar 1` back to the old under-head bound. -/
+theorem msub_equ_under_head_new_bvar1_to_old_bound_of_equ_head_lift {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hHeadNew : Prevalid (head :: { bound := new, kind := .equ } :: Γ))
+    (hOldNew : MEqRed ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 old) (Term.shift 0 new)) :
+    MSub (head :: { bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 (Stack.shift 0 s))
+      (.bvar 1) (Term.shift 0 (Term.shift 0 old)) := by
+  have hpvNewCtx : Prevalid ({ bound := new, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hNewScoped
+  have hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvNewCtx
+  exact msub_equ_under_head_new_bvar1_to_old_bound
+    (PrevalidExt.weaken_head hpvNew hHeadNew) hNewScoped
+    (meq_equ_under_head_stack_lift_from_equ_head_lift
+      hpvTail hNewScoped hHeadNew hOldNew)
+
 /-- A reflexive argument equivalence can always be lifted under a changed
 `.equ` head and residual stack. This is the stack-stable base case for the
 head `Me-Pro` bridge. -/
