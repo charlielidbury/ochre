@@ -62,6 +62,9 @@ closures, 2 inactive outstanding).
   (`Stack.shift`) under the new innermost binding. Added Type-valued
   `Stack.Scoped`, `PrevalidExt.stack_scoped`, and shifted-stack
   prevalidity helpers.
+* `Pss/Context/DeBruijn.lean` — corrected `.sub` / `.equ` lookup to
+  return bounds lifted into the current context. Stored bounds are scoped
+  in the entry tail; each newer head crossed by lookup applies `shift 0`.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 

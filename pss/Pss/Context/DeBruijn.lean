@@ -47,23 +47,26 @@ def lookup : Ctx → Nat → Option CtxEntry
   | e :: _, 0 => some e
   | _ :: Γ, n + 1 => lookup Γ n
 
-/-- Look up the bound of a `.sub` entry at index `i`. -/
+/-- Look up the bound of a `.sub` entry at index `i`, lifted into the current
+context. The stored bound for an entry is scoped in that entry's tail; every
+recursive step shifts it through one newer binding. -/
 def lookupSub : Ctx → Nat → Option Term
   | [], _ => none
   | e :: _, 0 =>
       match e.kind with
-      | .sub => some e.bound
+      | .sub => some (Term.shift 0 e.bound)
       | .equ => none
-  | _ :: Γ, n + 1 => lookupSub Γ n
+  | _ :: Γ, n + 1 => (lookupSub Γ n).map (Term.shift 0)
 
-/-- Look up the bound of an `.equ` entry at index `i`. -/
+/-- Look up the bound of an `.equ` entry at index `i`, lifted into the current
+context. -/
 def lookupEqu : Ctx → Nat → Option Term
   | [], _ => none
   | e :: _, 0 =>
       match e.kind with
-      | .equ => some e.bound
+      | .equ => some (Term.shift 0 e.bound)
       | .sub => none
-  | _ :: Γ, n + 1 => lookupEqu Γ n
+  | _ :: Γ, n + 1 => (lookupEqu Γ n).map (Term.shift 0)
 
 @[simp] theorem lookup_nil (i : Nat) : lookup [] i = none := rfl
 @[simp] theorem lookupSub_nil (i : Nat) : lookupSub [] i = none := rfl
@@ -76,22 +79,22 @@ def lookupEqu : Ctx → Nat → Option Term
     lookup (e :: Γ) (i + 1) = lookup Γ i := rfl
 
 @[simp] theorem lookupSub_zero_sub (t : Term) (Γ : Ctx) :
-    lookupSub ({ bound := t, kind := .sub } :: Γ) 0 = some t := rfl
+    lookupSub ({ bound := t, kind := .sub } :: Γ) 0 = some (Term.shift 0 t) := rfl
 
 @[simp] theorem lookupSub_zero_equ (t : Term) (Γ : Ctx) :
     lookupSub ({ bound := t, kind := .equ } :: Γ) 0 = none := rfl
 
 @[simp] theorem lookupEqu_zero_equ (t : Term) (Γ : Ctx) :
-    lookupEqu ({ bound := t, kind := .equ } :: Γ) 0 = some t := rfl
+    lookupEqu ({ bound := t, kind := .equ } :: Γ) 0 = some (Term.shift 0 t) := rfl
 
 @[simp] theorem lookupEqu_zero_sub (t : Term) (Γ : Ctx) :
     lookupEqu ({ bound := t, kind := .sub } :: Γ) 0 = none := rfl
 
 @[simp] theorem lookupSub_succ (e : CtxEntry) (Γ : Ctx) (i : Nat) :
-    lookupSub (e :: Γ) (i + 1) = lookupSub Γ i := rfl
+    lookupSub (e :: Γ) (i + 1) = (lookupSub Γ i).map (Term.shift 0) := rfl
 
 @[simp] theorem lookupEqu_succ (e : CtxEntry) (Γ : Ctx) (i : Nat) :
-    lookupEqu (e :: Γ) (i + 1) = lookupEqu Γ i := rfl
+    lookupEqu (e :: Γ) (i + 1) = (lookupEqu Γ i).map (Term.shift 0) := rfl
 
 /-- A subtype binding at index `i`. -/
 def subBinds (Γ : Ctx) (i : Nat) (t : Term) : Prop :=
@@ -102,10 +105,10 @@ def equBinds (Γ : Ctx) (i : Nat) (t : Term) : Prop :=
   Γ.lookupEqu i = some t
 
 @[simp] theorem subBinds_zero_self (Γ : Ctx) (t : Term) :
-    subBinds ({ bound := t, kind := .sub } :: Γ) 0 t := rfl
+    subBinds ({ bound := t, kind := .sub } :: Γ) 0 (Term.shift 0 t) := rfl
 
 @[simp] theorem equBinds_zero_self (Γ : Ctx) (t : Term) :
-    equBinds ({ bound := t, kind := .equ } :: Γ) 0 t := rfl
+    equBinds ({ bound := t, kind := .equ } :: Γ) 0 (Term.shift 0 t) := rfl
 
 /-- A successful raw lookup is necessarily within the context depth. -/
 theorem lookup_some_lt {Γ : Ctx} {i : Nat} {e : CtxEntry} :
@@ -126,7 +129,7 @@ theorem lookup_some_lt {Γ : Ctx} {i : Nat} {e : CtxEntry} :
 /-- A successful `.sub` lookup is necessarily within the context depth. -/
 theorem lookupSub_some_lt {Γ : Ctx} {i : Nat} {t : Term} :
     Γ.lookupSub i = some t → i < Γ.depth := by
-  induction Γ generalizing i with
+  induction Γ generalizing i t with
   | nil =>
     simp [lookupSub]
   | cons head tail ih =>
@@ -136,13 +139,15 @@ theorem lookupSub_some_lt {Γ : Ctx} {i : Nat} {t : Term} :
       simp [depth]
     | succ i =>
       intro h
-      have hi := ih h
+      simp [lookupSub] at h
+      rcases h with ⟨a, ha, _⟩
+      have hi := ih ha
       simpa [depth, Nat.add_comm] using Nat.succ_lt_succ hi
 
 /-- A successful `.equ` lookup is necessarily within the context depth. -/
 theorem lookupEqu_some_lt {Γ : Ctx} {i : Nat} {t : Term} :
     Γ.lookupEqu i = some t → i < Γ.depth := by
-  induction Γ generalizing i with
+  induction Γ generalizing i t with
   | nil =>
     simp [lookupEqu]
   | cons head tail ih =>
@@ -152,7 +157,9 @@ theorem lookupEqu_some_lt {Γ : Ctx} {i : Nat} {t : Term} :
       simp [depth]
     | succ i =>
       intro h
-      have hi := ih h
+      simp [lookupEqu] at h
+      rcases h with ⟨a, ha, _⟩
+      have hi := ih ha
       simpa [depth, Nat.add_comm] using Nat.succ_lt_succ hi
 
 /-- A `.sub` binding index is necessarily within the context depth. -/
@@ -268,7 +275,7 @@ def tail {e : CtxEntry} {Γ : Ctx} :
 the whole context. -/
 noncomputable def scoped_lookupSub {Γ : Ctx} {i : Nat} {t : Term}
     (hΓ : Prevalid Γ) (hb : Γ.subBinds i t) : Term.Scoped Γ.depth t := by
-  induction hΓ generalizing i with
+  induction hΓ generalizing i t with
   | empty =>
     simp [Ctx.subBinds] at hb
   | @sub Γ' u hΓ' hu ih =>
@@ -276,23 +283,41 @@ noncomputable def scoped_lookupSub {Γ : Ctx} {i : Nat} {t : Term}
     | zero =>
       simp [Ctx.subBinds] at hb
       subst hb
-      exact Term.scoped_mono (by simp [Ctx.depth]) hu
+      simpa [Ctx.depth] using Term.shift_scoped 0 Γ'.depth u (Nat.zero_le _) hu
     | succ i =>
       simp [Ctx.subBinds] at hb
-      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+      cases hlook : Γ'.lookupSub i with
+      | none =>
+        simp [hlook] at hb
+      | some a =>
+        simp [hlook] at hb
+        have hsc : Term.Scoped Γ'.depth a := ih hlook
+        have hsc' : Term.Scoped (Γ'.depth + 1) (Term.shift 0 a) :=
+          Term.shift_scoped 0 Γ'.depth a (Nat.zero_le _) hsc
+        subst hb
+        simpa [Ctx.depth] using hsc'
   | @equ Γ' α hΓ' hα ih =>
     cases i with
     | zero =>
       simp [Ctx.subBinds] at hb
     | succ i =>
       simp [Ctx.subBinds] at hb
-      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+      cases hlook : Γ'.lookupSub i with
+      | none =>
+        simp [hlook] at hb
+      | some a =>
+        simp [hlook] at hb
+        have hsc : Term.Scoped Γ'.depth a := ih hlook
+        have hsc' : Term.Scoped (Γ'.depth + 1) (Term.shift 0 a) :=
+          Term.shift_scoped 0 Γ'.depth a (Nat.zero_le _) hsc
+        subst hb
+        simpa [Ctx.depth] using hsc'
 
 /-- Lookup of an `.equ` binding in a prevalid context returns a term scoped in
 the whole context. -/
 noncomputable def scoped_lookupEqu {Γ : Ctx} {i : Nat} {α : Term}
     (hΓ : Prevalid Γ) (hb : Γ.equBinds i α) : Term.Scoped Γ.depth α := by
-  induction hΓ generalizing i with
+  induction hΓ generalizing i α with
   | empty =>
     simp [Ctx.equBinds] at hb
   | @sub Γ' u hΓ' hu ih =>
@@ -301,16 +326,34 @@ noncomputable def scoped_lookupEqu {Γ : Ctx} {i : Nat} {α : Term}
       simp [Ctx.equBinds] at hb
     | succ i =>
       simp [Ctx.equBinds] at hb
-      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+      cases hlook : Γ'.lookupEqu i with
+      | none =>
+        simp [hlook] at hb
+      | some a =>
+        simp [hlook] at hb
+        have hsc : Term.Scoped Γ'.depth a := ih hlook
+        have hsc' : Term.Scoped (Γ'.depth + 1) (Term.shift 0 a) :=
+          Term.shift_scoped 0 Γ'.depth a (Nat.zero_le _) hsc
+        subst hb
+        simpa [Ctx.depth] using hsc'
   | @equ Γ' β hΓ' hβ ih =>
     cases i with
     | zero =>
       simp [Ctx.equBinds] at hb
       subst hb
-      exact Term.scoped_mono (by simp [Ctx.depth]) hβ
+      simpa [Ctx.depth] using Term.shift_scoped 0 Γ'.depth β (Nat.zero_le _) hβ
     | succ i =>
       simp [Ctx.equBinds] at hb
-      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+      cases hlook : Γ'.lookupEqu i with
+      | none =>
+        simp [hlook] at hb
+      | some a =>
+        simp [hlook] at hb
+        have hsc : Term.Scoped Γ'.depth a := ih hlook
+        have hsc' : Term.Scoped (Γ'.depth + 1) (Term.shift 0 a) :=
+          Term.shift_scoped 0 Γ'.depth a (Nat.zero_le _) hsc
+        subst hb
+        simpa [Ctx.depth] using hsc'
 
 end Prevalid
 

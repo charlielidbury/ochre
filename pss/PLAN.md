@@ -157,6 +157,8 @@ hard caveats.
      Type-valued `Term.Scoped`; `MSubRed.refl` follows by `Ms-Equ`.
      Head-context extension now shifts outer stack operands under the
      new innermost binding (`Stack.shift 0 s`) in the binder rules.
+     Context lookup now returns bounds lifted into the current context;
+     raw stored bounds remain scoped in each entry's tail.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
