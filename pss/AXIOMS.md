@@ -494,6 +494,35 @@ theorem.
   becomes a wrapper over `Theorem_3 + _Lemma_10_Inversion_sub_partial`.
   Strategy (5) is a moderate refactor of call sites.
 
+* **Iteration shipped 2026-05-04 (`4fe6b1b`, `e99fd8c`).** Two pieces
+  of axiom-free infrastructure landed for future Strategy-5/Strategy-1
+  use, with sharper blocker analyses:
+  - `WSubMStarTrsFree` predicate (`WellFormed.lean §7.3d`) +
+    `_Lemma_10_Inversion_trsFree` private theorem. **Strategy 5 wire-up
+    audit**: 2 `WSubMStar.trs → WfM.app` feeders at
+    `TypeSafety.lean:1007/1026` (Lemma_6's appL/appR arms). Each
+    prepends a single Prop-17-derived `MEqRed` onto a pre-existing
+    chain. Collapsing them to trs-free shape requires `WSubM`
+    transitivity (Wall 2) — Strategy 5 walls cleanly into Wall 2.
+  - `WfCtxEqu` predicate + `WfCtxEqu.lookup_equ` lemma
+    (`WfMPreservation.lean §3-4`). The §2 counterexample is excluded
+    by construction. **Conditional WfM-preservation under `MEqRed`**:
+    the `pro/top/var/tAp` cases close cleanly via `lookup_equ`; the
+    `app/bet` cases reduce to **`WSubMStar` preservation under
+    `MEqRed`**, which IS Wall 2. **Net finding**: Wall 3
+    (`WfM`-preservation) reduces to Wall 2 (`WSubM`-transitivity / 
+    `WSubMStar`-preservation). The two walls are the same problem.
+  
+  **Implication**: a single mutual induction on the WfM/WSubM/WSubMStar
+  block (which is already mutual — see `WellFormed.lean` line 42)
+  could in principle close BOTH walls plus Lemma_10_Inversion
+  simultaneously. The Me-Bet case is the genuine sticking point —
+  it routes through Lemma_10 itself in standard subject-reduction
+  proofs, creating apparent circularity. Whether the mutual induction
+  closes that circularity is an open architectural question;
+  preliminary analysis suggests the `.trs` case of WSubMStar (where
+  the midpoint is non-`.abs`) is where the cycle actually breaks.
+
 ### 4. `Lemma_30_msPro_x_axiom`
 
 * **File:** `Pss/Mpss/Substitution.lean`, line 885.
