@@ -4117,6 +4117,74 @@ noncomputable def meq_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stac
     (meq_equ_head_stack_lift_bet_handler_of_replacements hBetBodyReplace hNilReplace)
     h
 
+/-- Lift an empty-stack equivalence-reduction chain under a changed `.equ`
+head, given a lift for each single step. -/
+theorem meqRedStar_equ_head_stack_lift_from_step_lift {Γ : Ctx} {s : Stack}
+    {head u v : Term}
+    (hStep :
+      ∀ {a b : Term},
+        MEqRed Γ [] a b →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 a) (Term.shift 0 b))
+    (h : MEqRedStar Γ [] u v) :
+    MEqRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid v hStar hLast ih =>
+    exact Relation.ReflTransGen.trans ih (MEqRedStar.single (hStep hLast.some))
+
+/-- Chain-level changed-head stack lift with the canonical constructor
+handlers wired in. -/
+theorem meqRedStar_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}
+    {head u v : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hProReplace :
+      ∀ {α α' : Term},
+        MEqRed Γ [] α α' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 α) (Term.shift 0 α'))
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed Γ (arg :: []) op op' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ)
+          (Term.shift 0 arg :: Stack.shift 0 s)
+          (Term.shift 0 op) (Term.shift 0 op'))
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed Γ [] arg arg' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 arg) (Term.shift 0 arg'))
+    (hFunNilBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hFunConsBodyReplace :
+      ∀ {α bound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth α →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 α, kind := .equ } ::
+          { bound := head, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    (hBetBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (h : MEqRedStar Γ [] u v) :
+    MEqRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) :=
+  meqRedStar_equ_head_stack_lift_from_step_lift
+    (meq_equ_head_stack_lift_from_replacements hpvTail hHeadScoped hProReplace
+      hAppOpReplace hNilReplace hFunNilBodyReplace hFunConsBodyReplace
+      hBetBodyReplace)
+    h
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/
