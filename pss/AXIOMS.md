@@ -688,6 +688,13 @@ closures, 2 inactive outstanding).
   bound via an empty-stack equivalence step and then lifts a diagrammatic
   body replacement chain through `FOp` under the fixed new bound. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added fixed-bound `Fun`
+  lifting helpers for empty-stack body replacement:
+  `msubRedStar_abs_fun_body_fixed_bound`,
+  `meqRedStar_abs_fun_body_fixed_bound`,
+  `msub_abs_fun_body_fixed_bound`, and
+  `msubStar_abs_fun_body_fixed_bound`. These are the empty-stack binder
+  counterparts to the `FOp` body lifts. No axiom-count change.
 * `Pss/Context/DeBruijn.lean` — added the first `.equ`-head replacement
   infrastructure: subtype lookups are invariant when the innermost
   `.equ` bound changes, nonzero equivalence lookups are invariant, and
