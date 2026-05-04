@@ -525,8 +525,10 @@ closures, 2 inactive outstanding).
   `Top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the compressed
   abstraction-headed application subtype-chain split
+  `msub_appAbs_subStar_beta_or_toTop_or_appAbs` /
   `msubStar_appAbs_subStar_beta_or_toTop_or_appAbs` and one-step
-  specialization `msubStar_appAbs_subStep_beta_or_toTop_or_appAbs`,
+  specializations `msub_appAbs_subStep_beta_or_toTop_or_appAbs` /
+  `msubStar_appAbs_subStep_beta_or_toTop_or_appAbs`,
   combining raw `Top` and `Top`-headed target branches into a single
   target-to-`Top` diagrammatic branch. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
