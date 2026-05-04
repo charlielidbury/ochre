@@ -770,6 +770,11 @@ closures, 2 inactive outstanding).
   old-to-new stack lift plus a recursive replacement of the old-bound
   residual and returns the handler expected by the equivalence splitter.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_pro_tail_handler_of_replacement`, the canonical
+  non-head `Me-Pro` handler for innermost `.equ` replacement. It rebuilds
+  the shifted variable through the new head and composes with the
+  recursively replaced looked-up-bound chain. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stack-stable
   top-level equivalence lifts under a changed `.equ` head for reflexive,
   `Me-Top`, `Me-Var`, and `Me-TAp` shapes. These are the first true cases
@@ -842,6 +847,11 @@ closures, 2 inactive outstanding).
   `meq_equ_under_head_pro_residual_handler_of_replacement`, the
   preserved-head analogue of the canonical `Me-Pro` residual handler
   builder for index `1`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added preserved-head
+  non-residual `Me-Pro` handler builders
+  `meq_equ_under_head_pro_zero_handler_of_replacement` and
+  `meq_equ_under_head_pro_tail_handler_of_replacement`, covering index
+  `0` and indices `2+` respectively. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

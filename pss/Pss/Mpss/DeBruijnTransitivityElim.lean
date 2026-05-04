@@ -2348,6 +2348,28 @@ theorem meq_equ_head_pro_residual_handler_of_replacement {Γ : Ctx} {s : Stack}
   msubStar_equ_head_new_bvar0_to_replaced_residual hpvTail hNewScoped
     hOldNewStack (hReplace hResidual)
 
+/-- Canonical handler for non-head `Me-Pro` during innermost `.equ`
+replacement: rebuild the shifted variable through the new head, then follow
+the recursively replaced looked-up bound chain. -/
+theorem meq_equ_head_pro_tail_handler_of_replacement {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) s α α' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s α α')
+    {i : Nat} {α α' : Term}
+    (hb : Ctx.equBinds ({ bound := old, kind := .equ } :: Γ) (i + 1) α)
+    (hα : MEqRed ({ bound := old, kind := .equ } :: Γ) s α α') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s (.bvar (i + 1)) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_head_replace hpv hNewScoped)
+      (MEqRed.pro_equ_head_replace_succ hpv hNewScoped hb
+        (MEqRed.refl (PrevalidExt.equ_head_replace hpv hNewScoped)
+          hα.scoped_left)))
+    (hReplace hα)
+
 /-- Under a preserved head and changed `.equ` entry, the old shifted
 under-head bound diagrammatically subtypes the new variable at index `1`.
 This is the one-level-deeper analogue of
@@ -2450,6 +2472,50 @@ theorem meq_equ_under_head_pro_residual_handler_of_replacement {Γ : Ctx}
       (.bvar 1) target :=
   msubStar_equ_under_head_new_bvar1_to_replaced_residual hpvNew hNewScoped
     hOldNewStack (hReplace hResidual)
+
+/-- Canonical handler for preserved-head index `0` `Me-Pro` during under-head
+`.equ` replacement. -/
+theorem meq_equ_under_head_pro_zero_handler_of_replacement {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α' →
+        MSubStar (head :: { bound := new, kind := .equ } :: Γ) s α α')
+    {α α' : Term}
+    (hb : Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ) 0 α)
+    (hα : MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s (.bvar 0) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_under_head_replace hpv hNewScoped)
+      (MEqRed.pro_equ_under_head_replace_zero hpv hNewScoped hb
+        (MEqRed.refl (PrevalidExt.equ_under_head_replace hpv hNewScoped)
+          hα.scoped_left)))
+    (hReplace hα)
+
+/-- Canonical handler for non-residual indices `2+` of `Me-Pro` during
+under-head `.equ` replacement. -/
+theorem meq_equ_under_head_pro_tail_handler_of_replacement {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α' →
+        MSubStar (head :: { bound := new, kind := .equ } :: Γ) s α α')
+    {i : Nat} {α α' : Term}
+    (hb : Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ)
+      ((i + 1) + 1) α)
+    (hα : MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar ((i + 1) + 1)) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_under_head_replace hpv hNewScoped)
+      (MEqRed.pro_equ_under_head_replace_succ_succ hpv hNewScoped hb
+        (MEqRed.refl (PrevalidExt.equ_under_head_replace hpv hNewScoped)
+          hα.scoped_left)))
+    (hReplace hα)
 
 /-- If an old-to-new equivalence has already been lifted under the changed
 `.equ` head, ordinary head weakening lifts it one level deeper under a
