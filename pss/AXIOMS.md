@@ -735,8 +735,8 @@ closures, 2 inactive outstanding).
   `Me-TAp`, `Me-Pro` at the preserved head and indices `2+`, `Ms-Pro`,
   and `Ms-Top`. These support recursive replacement below a preserved
   binder while keeping the changed `.equ` entry one level down; the
-  equivalence lookup at index `1` remains the explicit residual. No
-  axiom-count change.
+  equivalence lookup at index `1` is exposed as
+  `MEqRed.pro_equ_under_head_one_residual`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

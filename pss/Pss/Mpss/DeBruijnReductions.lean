@@ -1090,6 +1090,23 @@ noncomputable def MEqRed.pro_equ_under_head_replace_succ_succ {Γ : Ctx}
   MEqRed.pro (PrevalidExt.equ_under_head_replace hpv hnew)
     (Ctx.equBinds_equ_under_head_replace_succ_succ hb) hα
 
+/-- The replaced under-head `.equ` entry is the residual `Me-Pro` case: from
+the preserved head, it sits at index `1` and exposes the old bound shifted
+through both heads. -/
+theorem MEqRed.pro_equ_under_head_one_residual {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old α α' : Term}
+    (hb : Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ) 1 α)
+    (hα : MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α') :
+    α = Term.shift 0 (Term.shift 0 old) ∧
+      MEqRedJ (head :: { bound := old, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 old)) α' := by
+  have hαeq : α = Term.shift 0 (Term.shift 0 old) := by
+    have hraw : Term.shift 0 (Term.shift 0 old) = α := by
+      simpa [Ctx.equBinds] using hb
+    exact hraw.symm
+  subst hαeq
+  exact ⟨rfl, ⟨hα⟩⟩
+
 /-- `Ms-Pro` is stable when replacing an `.equ` entry immediately under a
 preserved head, because subtype lookup ignores `.equ` entries. -/
 noncomputable def MSubRed.pro_equ_under_head_replace {Γ : Ctx} {s : Stack}
