@@ -4401,6 +4401,123 @@ theorem commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements {Γ : Ctx}
       hEqFunBodyReplace hEqBetBodyReplace hEqFOpBodyReplace hAppOpReplace
       hFunBodyReplace hFOpBodyReplace hBody
 
+/-- Changed-argument structural application commutation where the shifted
+old-to-new argument equivalence is produced from the argument step by the
+changed-head stack-lift package. -/
+theorem commute_appAbs_structApp_eqStep_of_lifted_shifted_fOp_replacements
+    {Γ : Ctx} {s : Stack}
+    {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hArgProReplace :
+      ∀ {α α' : Term},
+        MEqRed Γ [] α α' →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 α) (Term.shift 0 α'))
+    (hArgAppOpReplace :
+      ∀ {op op' operand : Term},
+        MEqRed Γ (operand :: []) op op' →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ)
+          (Term.shift 0 operand :: Stack.shift 0 s)
+          (Term.shift 0 op) (Term.shift 0 op'))
+    (hArgNilReplace :
+      ∀ {u v : Term},
+        MEqRed Γ [] u v →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ) []
+          (Term.shift 0 u) (Term.shift 0 v))
+    (hArgFunNilBodyReplace :
+      ∀ {funBound body body' : Term},
+        MEqRed ({ bound := funBound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 funBound, kind := .sub } ::
+          { bound := arg', kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hArgFunConsBodyReplace :
+      ∀ {operand funBound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth operand →
+        MEqRed ({ bound := funBound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 operand, kind := .equ } ::
+          { bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    (hArgBetBodyReplace :
+      ∀ {funBound body body' : Term},
+        MEqRed ({ bound := funBound, kind := .sub } :: Γ) (Stack.shift 0 [])
+          body body' →
+        MEqRed ({ bound := Term.shift 0 funBound, kind := .sub } ::
+          { bound := arg', kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hEqSelfReplace :
+      ∀ {u v : Term},
+        MEqRed ({ bound := arg, kind := .equ } :: Γ) (Stack.shift 0 s) u v →
+        MSubStar ({ bound := arg', kind := .equ } :: Γ) (Stack.shift 0 s) u v)
+    (hEqAppOpReplace :
+      ∀ {op op' operand : Term},
+        MEqRed ({ bound := arg, kind := .equ } :: Γ)
+          (operand :: Stack.shift 0 s) op op' →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ)
+          (operand :: Stack.shift 0 s) op op')
+    (hNilReplace :
+      ∀ {u v : Term},
+        MEqRed ({ bound := arg, kind := .equ } :: Γ) [] u v →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ) [] u v)
+    (hEqFunBodyReplace :
+      ∀ {funBound body body' : Term},
+        MEqRed ({ bound := funBound, kind := .sub } ::
+          { bound := arg, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := funBound, kind := .sub } ::
+          { bound := arg', kind := .equ } :: Γ) [] body body')
+    (hEqBetBodyReplace :
+      ∀ {funBound body body' : Term},
+        MEqRed ({ bound := funBound, kind := .sub } ::
+          { bound := arg, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+          body body' →
+        MEqRed ({ bound := funBound, kind := .sub } ::
+          { bound := arg', kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+          body body')
+    (hEqFOpBodyReplace :
+      ∀ {operand body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := arg, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := arg, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := operand, kind := .equ } ::
+          { bound := arg', kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (hAppOpReplace :
+      ∀ {op op' operand : Term},
+        MSubRed ({ bound := arg, kind := .equ } :: Γ)
+          (operand :: Stack.shift 0 s) op op' →
+        Term.Scoped (Ctx.depth ({ bound := arg, kind := .equ } :: Γ)) operand →
+        MSubStar ({ bound := arg', kind := .equ } :: Γ)
+          (operand :: Stack.shift 0 s) op op')
+    (hFunBodyReplace :
+      ∀ {funBound body body' : Term},
+        MSubRed ({ bound := funBound, kind := .sub } ::
+          { bound := arg, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := funBound, kind := .sub } ::
+          { bound := arg', kind := .equ } :: Γ) [] body body')
+    (hFOpBodyReplace :
+      ∀ {operand body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := arg, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MSubRed ({ bound := operand, kind := .equ } ::
+          { bound := arg, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := operand, kind := .equ } ::
+          { bound := arg', kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
+  have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
+  exact commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements
+    hpvTail hcommArg hSubOp hEqOp hEqArg
+    (meq_equ_head_stack_lift_from_replacements hpvTail hArg'Scoped
+      hArgProReplace hArgAppOpReplace hArgNilReplace hArgFunNilBodyReplace
+      hArgFunConsBodyReplace hArgBetBodyReplace hEqArg)
+    hEqSelfReplace hEqAppOpReplace hNilReplace hEqFunBodyReplace
+    hEqBetBodyReplace hEqFOpBodyReplace hAppOpReplace hFunBodyReplace
+    hFOpBodyReplace
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

@@ -969,6 +969,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_equ_head_stack_lift_from_replacements`, composing the
   changed-head equivalence stack lift over `MEqRedStar` chains. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_lifted_shifted_fOp_replacements`,
+  deriving the shifted old-to-new argument equivalence for the diagrammatic
+  `FOp` commutation endpoint from `hEqArg` via the changed-head stack-lift
+  package. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
