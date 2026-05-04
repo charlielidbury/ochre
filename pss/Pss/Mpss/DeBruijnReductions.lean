@@ -1357,6 +1357,98 @@ noncomputable def MSubRed.fOp_replaceAt_sub {Γ : Ctx} {s : Stack}
   MSubRed.fOp (by simpa [Ctx.depth_replaceAt] using ht)
     (by simpa [Ctx.depth_replaceAt] using hα) hBody
 
+/-- Full equivalence-reduction transport across arbitrary-depth `.sub`
+replacement. Since equivalence lookup ignores `.sub` entries, every
+constructor is preserved exactly; recursive binder cases advance the
+replacement index under the preserved binder. -/
+noncomputable def MEqRed.replaceAt_sub_aux {Γold : Ctx} {s : Stack}
+    {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v) :
+    ∀ {Γ : Ctx} {cutoff : Nat},
+      Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ →
+      cutoff < Ctx.depth Γ →
+      MEqRed (List.drop (cutoff + 1) Γ) [] old new →
+      MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v := by
+  induction h with
+  | pro hpv hb hα ih =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      exact MEqRed.pro_replaceAt_sub
+        (PrevalidExt.replaceAt_sub_same hpv hcut hnew)
+        hb (ih rfl hcut hOldNew)
+  | bet ht hBody hArg ihBody ihArg =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      exact MEqRed.bet_replaceAt_sub ht
+        (by
+          simpa [Ctx.replaceAt, Nat.add_assoc] using
+            ihBody (Γ := { bound := _, kind := .sub } :: Γ)
+              (cutoff := cutoff + 1) rfl
+              (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+              (by simpa [Nat.add_assoc] using hOldNew))
+        (ihArg rfl hcut hOldNew)
+  | top hpv =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      exact MEqRed.top_replaceAt_sub
+        (PrevalidExt.replaceAt_sub_same hpv hcut hnew)
+  | app hOp hArg ihOp ihArg =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      exact MEqRed.app_replaceAt_sub (ihOp rfl hcut hOldNew) (ihArg rfl hcut hOldNew)
+  | var hpv hi =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      exact MEqRed.var_replaceAt_sub
+        (PrevalidExt.replaceAt_sub_same hpv hcut hnew)
+        hi
+  | fun_ hBound hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      exact MEqRed.fun_replaceAt_sub (ihBound rfl hcut hOldNew) (by
+        simpa [Ctx.replaceAt, Nat.add_assoc] using
+          ihBody (Γ := { bound := _, kind := .sub } :: Γ)
+            (cutoff := cutoff + 1) rfl
+            (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+            (by simpa [Nat.add_assoc] using hOldNew))
+  | tAp hpv hu =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      exact MEqRed.tAp_replaceAt_sub
+        (PrevalidExt.replaceAt_sub_same hpv hcut hnew)
+        hu
+  | fOp hBound hα hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      exact MEqRed.fOp_replaceAt_sub (ihBound rfl hcut hOldNew) hα (by
+        simpa [Ctx.replaceAt, Nat.add_assoc] using
+          ihBody (Γ := { bound := _, kind := .equ } :: Γ)
+            (cutoff := cutoff + 1) rfl
+            (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+            (by simpa [Nat.add_assoc] using hOldNew))
+
+/-- Full equivalence-reduction transport across arbitrary-depth `.sub`
+replacement. -/
+noncomputable def MEqRed.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {old new : Term}
+    (h : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s u v)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new) :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
+  h.replaceAt_sub_aux rfl hcut hOldNew
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}

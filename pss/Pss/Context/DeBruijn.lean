@@ -1608,6 +1608,24 @@ noncomputable def replaceAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
         rw [Ctx.depth_replaceAt]
         exact hα)
 
+/-- Replace the same `.sub` slot inside a context already known to contain
+the old replacement at that slot, collapsing the double replacement to the
+new one. -/
+noncomputable def replaceAt_sub_same {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {old new : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .sub }) :
+    PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s := by
+  have hpvDouble :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub }
+        (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) s :=
+    PrevalidExt.replaceAt hpv (by simpa [Ctx.depth_replaceAt] using hcut)
+      (newEntry := { bound := new, kind := .sub })
+      (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
+  simpa using hpvDouble
+
 /-- Every operand in a prevalid stack is scoped in the logical context. -/
 noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
     PrevalidExt Γ s → Stack.Scoped Γ.depth s := by

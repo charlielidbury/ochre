@@ -919,6 +919,13 @@ closures, 2 inactive outstanding).
   cross back to shifted `old` via `MEqRed.lift_replaceAt_sub_self`, then
   continue with the recursively replaced tail chain. No axiom-count
   change.
+* `Pss/Context/DeBruijn.lean` — added `PrevalidExt.replaceAt_sub_same`,
+  collapsing the common double-replacement prevalidity cast for
+  arbitrary-depth `.sub` replacement. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — proved full exact
+  `MEqRed.replaceAt_sub`, transporting equivalence reductions across
+  arbitrary-depth `.sub` replacement by structural recursion. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
