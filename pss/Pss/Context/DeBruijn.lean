@@ -363,6 +363,44 @@ theorem subBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry
           subst h
           simp [htail_bind]
 
+/-- Reduction-facing subtype lookup transport for entries at or outside an
+insertion cutoff. This is the same index movement as
+`subBinds_insertAt_after`, but presents the lifted bound as a shift at the
+insertion cutoff, matching shifted reduction terms. -/
+theorem subBinds_insertAt_after_shift {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    {t : Term} (hidx : cutoff ≤ i) :
+    subBinds Γ i t →
+    subBinds (insertAt cutoff newEntry Γ) (i + 1) (Term.shift cutoff t) := by
+  induction Γ generalizing cutoff i t with
+  | nil =>
+    simp [subBinds]
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      intro h
+      simpa using subBinds_insertAt_after (Γ := head :: tail)
+        (cutoff := 0) (i := i) (newEntry := newEntry) hidx h
+    | succ cutoff =>
+      cases i with
+      | zero =>
+        omega
+      | succ i =>
+        intro h
+        have htail : cutoff ≤ i := Nat.succ_le_succ_iff.mp hidx
+        simp [subBinds] at h ⊢
+        cases hlook : lookupSub tail i with
+        | none =>
+          simp [hlook] at h
+        | some a =>
+          simp [hlook] at h
+          have htail_bind :
+              subBinds (insertAt cutoff newEntry tail) (i + 1) (Term.shift cutoff a) :=
+            ih (cutoff := cutoff) (i := i) htail hlook
+          simp [subBinds] at htail_bind
+          subst h
+          exact ⟨Term.shift cutoff a, htail_bind,
+            (Term.shiftBy_shift_zero cutoff 1 a).symm⟩
+
 /-- Subtype lookup transport for entries before an insertion cutoff. Their
 indices are preserved, and their returned bounds are shifted at the cutoff
 remaining below that entry. -/
@@ -438,6 +476,42 @@ theorem equBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry
           subst h
           simp [htail_bind]
 
+/-- Reduction-facing equivalence lookup transport for entries at or outside an
+insertion cutoff. -/
+theorem equBinds_insertAt_after_shift {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    {α : Term} (hidx : cutoff ≤ i) :
+    equBinds Γ i α →
+    equBinds (insertAt cutoff newEntry Γ) (i + 1) (Term.shift cutoff α) := by
+  induction Γ generalizing cutoff i α with
+  | nil =>
+    simp [equBinds]
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      intro h
+      simpa using equBinds_insertAt_after (Γ := head :: tail)
+        (cutoff := 0) (i := i) (newEntry := newEntry) hidx h
+    | succ cutoff =>
+      cases i with
+      | zero =>
+        omega
+      | succ i =>
+        intro h
+        have htail : cutoff ≤ i := Nat.succ_le_succ_iff.mp hidx
+        simp [equBinds] at h ⊢
+        cases hlook : lookupEqu tail i with
+        | none =>
+          simp [hlook] at h
+        | some a =>
+          simp [hlook] at h
+          have htail_bind :
+              equBinds (insertAt cutoff newEntry tail) (i + 1) (Term.shift cutoff a) :=
+            ih (cutoff := cutoff) (i := i) htail hlook
+          simp [equBinds] at htail_bind
+          subst h
+          exact ⟨Term.shift cutoff a, htail_bind,
+            (Term.shiftBy_shift_zero cutoff 1 a).symm⟩
+
 /-- Equivalence lookup transport for entries before an insertion cutoff. Their
 indices are preserved, and their returned bounds are shifted at the insertion
 cutoff. -/
@@ -508,6 +582,20 @@ theorem insertAtIndex_eq_succ_of_le {cutoff i : Nat} :
     cutoff ≤ i → insertAtIndex cutoff i = i + 1 := by
   intro h
   simp [insertAtIndex, h]
+
+/-- Inserting into a context preserves in-bounds indices after translating
+them with `insertAtIndex`. -/
+theorem insertAtIndex_lt_depth {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth) (hi : i < Γ.depth) :
+    insertAtIndex cutoff i < (insertAt cutoff newEntry Γ).depth := by
+  have hdepth : (insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    depth_insertAt_of_le hcut
+  by_cases hidx : cutoff ≤ i
+  · rw [insertAtIndex_eq_succ_of_le hidx, hdepth]
+    omega
+  · have hlt : i < cutoff := Nat.lt_of_not_ge hidx
+    rw [insertAtIndex_eq_self_of_lt hlt, hdepth]
+    omega
 
 /-- De Bruijn index translation for inserting a new context entry immediately
 under an existing head binder. The binder keeps index `0`; every outer

@@ -196,7 +196,11 @@ hard caveats.
      available as `Prevalid.insertAt`, taking a prevalid witness for the
      inserted entry over the actual insertion tail. Extended-context
      insertion is available as `PrevalidExt.insertAt`, shifting stack
-     operands at the same cutoff.
+     operands at the same cutoff. Reduction-facing lookup transport is
+     now seeded via `Ctx.subBinds_insertAt_after_shift` and
+     `Ctx.equBinds_insertAt_after_shift`, which present after-cutoff
+     bindings as `Term.shift cutoff` rather than only `Term.shift 0`.
+     `Ctx.insertAtIndex_lt_depth` handles shifted variable bounds.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

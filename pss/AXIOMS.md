@@ -124,6 +124,11 @@ closures, 2 inactive outstanding).
 * `Pss/Context/DeBruijn.lean` — added `PrevalidExt.insertAt`, the
   extended-context version of generalized insertion; stack operands are
   shifted at the insertion cutoff. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added reduction-facing insertion
+  helpers: `Ctx.subBinds_insertAt_after_shift`,
+  `Ctx.equBinds_insertAt_after_shift`, and
+  `Ctx.insertAtIndex_lt_depth`. These are the lookup/index shapes needed
+  by shifted `pro` and `var` reduction cases. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
