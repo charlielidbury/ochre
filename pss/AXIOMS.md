@@ -1027,6 +1027,10 @@ closures, 2 inactive outstanding).
   chain-level function-valued counterpart for reusable changed-head stack
   lifts over `MEqRedStar` chains. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRedStar_equ_head_stack_lift_function_from_step_lift`, a generic
+  function-valued chain lift over `MEqRedStar` from a tail-polymorphic
+  one-step lift. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
   changed-head replacement premises before invoking the argument-stack-lifted

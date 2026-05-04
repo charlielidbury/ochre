@@ -5042,6 +5042,26 @@ theorem meqRedStar_equ_head_stack_lift_from_step_lift {Γ : Ctx} {s : Stack}
   | @tail mid v hStar hLast ih =>
     exact Relation.ReflTransGen.trans ih (MEqRedStar.single (hStep hLast.some))
 
+/-- Function-valued variant of
+`meqRedStar_equ_head_stack_lift_from_step_lift`, for callers that can lift
+each single step under every residual tail stack. -/
+theorem meqRedStar_equ_head_stack_lift_function_from_step_lift {Γ : Ctx}
+    {head u v : Term}
+    (hStep :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {a b : Term},
+          MEqRed Γ [] a b →
+          MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+            (Term.shift 0 a) (Term.shift 0 b))
+    (h : MEqRedStar Γ [] u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MEqRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+        (Term.shift 0 u) (Term.shift 0 v) :=
+  fun hpvTail =>
+    meqRedStar_equ_head_stack_lift_from_step_lift (hStep hpvTail) h
+
 /-- Chain-level changed-head stack lift with the canonical constructor
 handlers wired in. -/
 theorem meqRedStar_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}
