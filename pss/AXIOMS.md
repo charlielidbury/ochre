@@ -174,6 +174,11 @@ closures, 2 inactive outstanding).
   `MEqRedJ.weaken_head`, `MSubRedJ.weaken_head`,
   `MEqRedStar.weaken_head`, `MSubRedStar.weaken_head`, plus matching
   `*_weaken_tail_head` forms. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
+  well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
+  separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint
+  invariants, `WEquM.symm`, and `WEquM.toWSubM`. Imported from
+  `Pss.lean`; no axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

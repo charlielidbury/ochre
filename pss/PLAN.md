@@ -242,6 +242,15 @@ hard caveats.
      wrapper and closure layers (`*_weaken_head`, `*_weaken_tail_head`).
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
+   * **Seeded 2026-05-04 on `db-refactor`:**
+     `Pss/Mpss/DeBruijnWellFormed.lean` defines the de Bruijn
+     well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
+     separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped
+     endpoint invariants for all five judgments, `WEquM.symm`, and
+     `WEquM.toWSubM`. The `Wf-Fun` rule now has a single body premise
+     under `{ bound := t, kind := .sub } :: Γ`, matching the de Bruijn
+     reduction binder shape and avoiding the locally-nameless cofinite
+     body function.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
