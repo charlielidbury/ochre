@@ -2143,6 +2143,29 @@ theorem diamond_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
     meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα
       (MEqRedStar.single hRight.some)⟩
 
+/-- Star-level fixed-bound `FOp` abstraction diamond. A body-level de Bruijn
+Lemma-2 premise lifts to equivalence chains under the operand `.equ` head,
+then through the abstraction. -/
+noncomputable def diamond_abs_fOp_body_fixed_bound_star {Γ : Ctx} {s : Stack}
+    {α bound body body₁ body₂ : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hdiamondBody : EqDiamonds ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s))
+    (hBody₁ : MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₁)
+    (hBody₂ : MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ :=
+    diamond_eqStar_eqStar_of hdiamondBody hBody₁ hBody₂
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hLeft,
+    meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hRight⟩
+
 /-- Fixed-bound `FOp` abstraction cell for de Bruijn Lemma 1. A body-level
 strong-commutativity square under the operand `.equ` head lifts to the
 abstraction level. -/
@@ -2329,6 +2352,25 @@ theorem diamond_abs_fun_body_fixed_bound {Γ : Ctx}
       (MEqRedStar.single hLeft.some),
     meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
       (MEqRedStar.single hRight.some)⟩
+
+/-- Star-level fixed-bound `Fun` abstraction diamond. A body-level de Bruijn
+Lemma-2 premise lifts to equivalence chains under the `.sub` head, then
+through the abstraction. -/
+noncomputable def diamond_abs_fun_body_fixed_bound_star {Γ : Ctx}
+    {bound body body₁ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hBody₁ : MEqRedStar ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hBody₂ : MEqRedStar ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound body₁) t₃ ∧
+        MEqRedStar Γ [] (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ :=
+    diamond_eqStar_eqStar_of hdiamondBody hBody₁ hBody₂
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped hLeft,
+    meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped hRight⟩
 
 /-- Fixed-bound `Fun` abstraction cell for de Bruijn Lemma 1. A body-level
 strong-commutativity square under the `.sub` head lifts to the abstraction
