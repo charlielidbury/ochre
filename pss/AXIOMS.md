@@ -395,6 +395,10 @@ closures, 2 inactive outstanding).
   shape inversions `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, plus the
   direct abstraction-to-`Top` join `commute_abs_to_top_eqStar`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — generalized the
+  abstraction-to-`Top` join as `commute_subStar_to_top_eqStar`: whenever
+  a scoped source has a subtype chain to `Top`, any equivalence-chain
+  target joins it at `Top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `abs_eqStar_to_top_of_subStar_top`, a named corollary exposing the
   target-to-`Top` subtype chain from `commute_abs_to_top_eqStar`. No

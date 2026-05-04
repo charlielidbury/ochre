@@ -619,6 +619,17 @@ theorem commute_appTop_subStar_eqStar {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term
       exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg₁),
         MSubRedStar.single (MSubRed.top hpv hEqTargetScoped)⟩
 
+/-- If the subtype side has already reached `Top`, any equivalence-chain
+target from the same scoped source joins it at `Top`. -/
+theorem commute_subStar_to_top_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hScoped : Term.Scoped Γ.depth t₀)
+    (_hSubTop : MSubRedStar Γ s t₀ .top)
+    (hEq : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s .top t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  have hTargetScoped : Term.Scoped Γ.depth t₂ := hEq.scoped_right hScoped
+  exact ⟨.top, Relation.ReflTransGen.refl,
+    MSubRedStar.single (MSubRed.top hpv hTargetScoped)⟩
+
 /-- If a subtype chain from an abstraction reaches `Top`, any equivalence
 chain from the same abstraction joins it at `Top`. -/
 theorem commute_abs_to_top_eqStar {Γ : Ctx} {s : Stack}
@@ -627,9 +638,7 @@ theorem commute_abs_to_top_eqStar {Γ : Ctx} {s : Stack}
     (_hSubTop : MSubRedStar Γ s (.abs bound body) .top)
     (hEq : MEqRedStar Γ s (.abs bound body) t) :
     ∃ t₃, MEqRedStar Γ s .top t₃ ∧ MSubRedStar Γ s t t₃ := by
-  have hTargetScoped : Term.Scoped Γ.depth t := hEq.scoped_right hScoped
-  exact ⟨.top, Relation.ReflTransGen.refl,
-    MSubRedStar.single (MSubRed.top hpv hTargetScoped)⟩
+  exact commute_subStar_to_top_eqStar hpv hScoped _hSubTop hEq
 
 /-- If an abstraction has a subtype chain to `Top`, every equivalence-chain
 target from that abstraction has a subtype chain to `Top`. -/

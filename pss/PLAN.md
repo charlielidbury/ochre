@@ -420,7 +420,9 @@ hard caveats.
      Abstraction subtype shape inversions are available through
      `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, and
      `commute_abs_to_top_eqStar` closes the branch where the subtype side
-     reaches `Top`. The corollary
+     reaches `Top`. The generalized helper
+     `commute_subStar_to_top_eqStar` handles any scoped source whose
+     subtype side reaches `Top`. The corollary
      `abs_eqStar_to_top_of_subStar_top` exposes the target-to-`Top`
      subtype chain directly.
      Abstraction-headed application inversions `MEqRed.app_abs_inv` and
