@@ -284,6 +284,11 @@ theorem subBinds_equBinds_false {Γ : Ctx} {i : Nat} {t α : Term} :
         | some α0 =>
           exact ih hSubLookup hEquLookup
 
+theorem equBinds_subBinds_false {Γ : Ctx} {i : Nat} {α t : Term} :
+    Γ.equBinds i α → Γ.subBinds i t → False := by
+  intro heq hsub
+  exact subBinds_equBinds_false hsub heq
+
 @[simp] theorem subBinds_zero_self (Γ : Ctx) (t : Term) :
     subBinds ({ bound := t, kind := .sub } :: Γ) 0 (Term.shift 0 t) := rfl
 

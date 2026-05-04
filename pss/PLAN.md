@@ -378,7 +378,8 @@ hard caveats.
      Lookup uniqueness/disjointness helpers now support variable-grid
      cells: `EqDiamonds.pro_pro_of` closes `Me-Pro × Me-Pro`
      recursively, and `StrongCommutes.pro_pro_vacuous` closes the
-     impossible `Ms-Pro × Me-Pro` clash.
+     impossible `Ms-Pro × Me-Pro` clash. Both directions of sub/equ
+     binding disjointness are named.
      Reusable single-step case combinators are in place:
      `EqDiamonds.refl_left`, `EqDiamonds.refl_right`,
      `StrongCommutes.equ_of`, and `StrongCommutes.top_of`.

@@ -321,7 +321,7 @@ closures, 2 inactive outstanding).
   — added lookup uniqueness/disjointness helpers
   `Ctx.lookupSub_unique`, `Ctx.lookupEqu_unique`,
   `Ctx.subBinds_unique`, `Ctx.equBinds_unique`, and
-  `Ctx.subBinds_equBinds_false`; used them to add
+  `Ctx.subBinds_equBinds_false` / `Ctx.equBinds_subBinds_false`; used them to add
   `EqDiamonds.pro_pro_of` and `StrongCommutes.pro_pro_vacuous`. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added reusable de Bruijn
