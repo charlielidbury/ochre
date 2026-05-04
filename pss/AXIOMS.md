@@ -1107,6 +1107,12 @@ closures, 2 inactive outstanding).
   `WSubMStar.fun_replaceAt_sub_from_body_fixed_bound_to_star`, and
   `WSubMStar.fun_replaceAt_sub_from_body_changed_bound_to_star`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added stack-sensitive changed-head
+  `Ms-FOp` residual wrappers
+  `MSubRedStar.fOp_sub_head_replace_from_body` and
+  `MSubRedStar.fOp_sub_head_replace_from_body_replaceAt`, packaging the
+  non-empty-stack `FOp` body residual at the direct head and recursive
+  body `replaceAt 1` shapes. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

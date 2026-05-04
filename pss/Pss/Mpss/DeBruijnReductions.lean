@@ -1591,6 +1591,43 @@ theorem MSubRedStar.fOp_replaceAt_sub_from_body_replaceAt {Γ : Ctx} {s : Stack}
     (t := t) (α := α) (body := body) (body' := body')
     ht hα (by simpa [Ctx.replaceAt] using hBody)
 
+/-- Head specialization of `MSubRedStar.fOp_replaceAt_sub_from_body`. -/
+theorem MSubRedStar.fOp_sub_head_replace_from_body {Γ : Ctx} {s : Stack}
+    {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t)
+    (hα : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) α)
+    (hBody : MSubRedStar ({ bound := α, kind := .equ } ::
+        { bound := new, kind := .sub } :: Γ)
+        (Stack.shift 0 s) body body') :
+    MSubRedStar ({ bound := new, kind := .sub } :: Γ) (α :: s)
+      (.abs t body) (.abs t body') := by
+  simpa [Ctx.replaceAt] using
+    (MSubRedStar.fOp_replaceAt_sub_from_body
+      (Γ := { bound := old, kind := .sub } :: Γ) (s := s)
+      (cutoff := 0) (old := old) (new := new)
+      (t := t) (α := α) (body := body) (body' := body')
+      (by simpa [Ctx.replaceAt] using ht)
+      (by simpa [Ctx.replaceAt] using hα)
+      (by simpa [Ctx.replaceAt] using hBody))
+
+/-- Binder-recursive head specialization of
+`MSubRedStar.fOp_replaceAt_sub_from_body_replaceAt`. -/
+theorem MSubRedStar.fOp_sub_head_replace_from_body_replaceAt {Γ : Ctx} {s : Stack}
+    {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t)
+    (hα : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) α)
+    (hBody : MSubRedStar
+        (Ctx.replaceAt 1 { bound := new, kind := .sub }
+          ({ bound := α, kind := .equ } :: { bound := old, kind := .sub } :: Γ))
+        (Stack.shift 0 s) body body') :
+    MSubRedStar ({ bound := new, kind := .sub } :: Γ) (α :: s)
+      (.abs t body) (.abs t body') := by
+  simpa [Ctx.replaceAt] using
+    (MSubRedStar.fOp_sub_head_replace_from_body
+      (Γ := Γ) (s := s) (old := old) (new := new)
+      (t := t) (α := α) (body := body) (body' := body')
+      ht hα (by simpa [Ctx.replaceAt] using hBody))
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}
