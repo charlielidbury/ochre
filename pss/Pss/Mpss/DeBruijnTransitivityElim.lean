@@ -1590,6 +1590,34 @@ theorem meqRedStar_app_fixed_arg {Γ : Ctx} {s : Stack}
     exact Relation.ReflTransGen.trans ih
       (MEqRedStar.single (MEqRed.app hStep.some hArg))
 
+/-- Lift a diagrammatic subtype step under a fixed application argument. -/
+theorem msub_app_fixed_arg {Γ : Ctx} {s : Stack}
+    {arg u v : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (h : MSub Γ (arg :: s) u v) :
+    MSub Γ s (.app u arg) (.app v arg) := by
+  obtain ⟨w, hSub, hEq⟩ := h
+  have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil (PrevalidExt.ctx hpvTail)
+  have hArgRefl : MEqRed Γ [] arg arg := MEqRed.refl hpvNil hArgScoped
+  exact MSub.intro
+    (msubRedStar_app_fixed_arg hArgScoped hSub)
+    (meqRedStar_app_fixed_arg hArgRefl hEq)
+
+/-- Lift a diagrammatic subtype chain under a fixed application argument. -/
+theorem msubStar_app_fixed_arg {Γ : Ctx} {s : Stack}
+    {arg u v : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (h : MSubStar Γ (arg :: s) u v) :
+    MSubStar Γ s (.app u arg) (.app v arg) := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid v hStar hStep ih =>
+    exact Relation.ReflTransGen.trans ih
+      (MSub.to_star (msub_app_fixed_arg hpvTail hArgScoped hStep))
+
 /-- Changed-argument structural application commutation for
 abstraction-headed applications, isolated behind the precise missing
 stack-head transport. The transport premise moves the operator-side subtype
