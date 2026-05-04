@@ -506,6 +506,11 @@ closures, 2 inactive outstanding).
   specializations of the abstraction dispatcher:
   `commute_abs_subStar_eqStep_top_or_absAbs` and
   `commute_abs_subStep_eqStep_top_or_absAbs`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added fixed-bound `Fun`
+  abstraction cells `diamond_abs_fun_body_fixed_bound` and
+  `commute_abs_fun_body_fixed_bound`, lifting body-level Lemma-2 and
+  Lemma-1 cells under the `.sub` head through the abstraction
+  constructors. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

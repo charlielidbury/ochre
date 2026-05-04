@@ -2211,6 +2211,45 @@ theorem msubStar_abs_fun_body_fixed_bound {Γ : Ctx}
     exact Relation.ReflTransGen.trans ih
       (MSub.to_star (msub_abs_fun_body_fixed_bound hpvNil hBoundScoped hStep))
 
+/-- Fixed-bound `Fun` abstraction cell for de Bruijn Lemma 2. A body-level
+equivalence diamond under the `.sub` head lifts to the abstraction level. -/
+theorem diamond_abs_fun_body_fixed_bound {Γ : Ctx}
+    {bound body body₁ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hBody₁ : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hBody₂ : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound body₁) t₃ ∧
+        MEqRedStar Γ [] (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ := hdiamondBody hBody₁ hBody₂
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
+      (MEqRedStar.single hLeft.some),
+    meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
+      (MEqRedStar.single hRight.some)⟩
+
+/-- Fixed-bound `Fun` abstraction cell for de Bruijn Lemma 1. A body-level
+strong-commutativity square under the `.sub` head lifts to the abstraction
+level. -/
+theorem commute_abs_fun_body_fixed_bound {Γ : Ctx}
+    {bound body body₁ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hcommBody : StrongCommutes ({ bound := bound, kind := .sub } :: Γ) [])
+    (hSubBody : MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ := hcommBody hSubBody hEqBody
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
+      (MEqRedStar.single hLeft.some),
+    msubRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
+      (MSubRedStar.single hRight.some)⟩
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
