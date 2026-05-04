@@ -3662,6 +3662,74 @@ noncomputable def WSubM.replaceAt_sub_from_body_replaceAt_to_star_of_wsubred
       (by simpa [Nat.add_assoc] using hOldNew)
       hWf hEqPresOld hSubRedReplace hwfV hwfT)
 
+/-- Binder-recursive specialization of
+`WSubM.replaceAt_sub_to_star_from_direct_payloads`. -/
+noncomputable def WSubM.replaceAt_sub_from_body_replaceAt_to_star_from_direct_payloads
+    {Γ : Ctx} {cutoff : Nat} {head old new v t : Term}
+    (h : WSubM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+      ({ bound := head, kind := .sub } :: Γ)) v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] x y →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ))) arg →
+        MSubRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) (arg :: []) u u' →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) (.app u arg) →
+          WSubMStar
+            (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) (.app u arg) (.app u' arg))
+    (hFun : ∀ {a a' body body' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ))) a →
+        MEqRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] a a' →
+          MSubRed ({ bound := a, kind := .sub } ::
+              Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+                ({ bound := head, kind := .sub } :: Γ)) [] body body' →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) (.abs a body) →
+          WSubMStar
+            (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) (.abs a body) (.abs a' body'))
+    (hWfNew : WfM
+      (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ))
+      (Term.shiftBy 0 (cutoff + 2) new))
+    (hwfV : WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+      ({ bound := head, kind := .sub } :: Γ)) v)
+    (hwfT : WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+      ({ bound := head, kind := .sub } :: Γ)) t) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t := by
+  have hcutBody :
+      cutoff + 1 < Ctx.depth ({ bound := head, kind := .sub } :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Nat.succ_lt_succ hcut
+  simpa [Ctx.replaceAt, Nat.add_assoc] using
+    (WSubM.replaceAt_sub_to_star_from_direct_payloads
+      (Γ := { bound := head, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) h hcutBody
+      (by simpa [Nat.add_assoc] using hOldNew)
+      hWf hEqPresOld hApp hFun
+      (by simpa [Nat.add_assoc] using hWfNew)
+      hwfV hwfT)
+
 /-- Under-head specialization of `WSubM.replaceAt_sub_to_star_of`. -/
 noncomputable def WSubM.sub_under_head_replace_to_star_of {Γ : Ctx}
     {head : CtxEntry} {old new v t : Term}
@@ -4075,6 +4143,70 @@ noncomputable def WSubMStar.replaceAt_sub_from_body_replaceAt_of_wsubred
       (old := old) (new := new) h hcutBody
       (by simpa [Nat.add_assoc] using hOldNew)
       hWf hEqPresOld hSubRedReplace)
+
+/-- Binder-recursive specialization of
+`WSubMStar.replaceAt_sub_of_direct_payloads`. -/
+noncomputable def WSubMStar.replaceAt_sub_from_body_replaceAt_of_direct_payloads
+    {Γ : Ctx} {cutoff : Nat} {head old new v t : Term}
+    (h : WSubMStar (Ctx.replaceAt (cutoff + 1)
+      { bound := old, kind := .sub } ({ bound := head, kind := .sub } :: Γ))
+      v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] x y →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ))) arg →
+        MSubRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) (arg :: []) u u' →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) (.app u arg) →
+          WSubMStar
+            (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) (.app u arg) (.app u' arg))
+    (hFun : ∀ {a a' body body' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ))) a →
+        MEqRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] a a' →
+          MSubRed ({ bound := a, kind := .sub } ::
+              Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+                ({ bound := head, kind := .sub } :: Γ)) [] body body' →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) (.abs a body) →
+          WSubMStar
+            (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) (.abs a body) (.abs a' body'))
+    (hWfNew : WfM
+      (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ))
+      (Term.shiftBy 0 (cutoff + 2) new)) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t := by
+  have hcutBody :
+      cutoff + 1 < Ctx.depth ({ bound := head, kind := .sub } :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Nat.succ_lt_succ hcut
+  simpa [Ctx.replaceAt, Nat.add_assoc] using
+    (WSubMStar.replaceAt_sub_of_direct_payloads
+      (Γ := { bound := head, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) h hcutBody
+      (by simpa [Nat.add_assoc] using hOldNew)
+      hWf hEqPresOld hApp hFun
+      (by simpa [Nat.add_assoc] using hWfNew))
 
 /-- Under-head specialization of `WSubMStar.replaceAt_sub_of_payload`. -/
 noncomputable def WSubMStar.sub_under_head_replace_of_payload {Γ : Ctx}

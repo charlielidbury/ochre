@@ -1162,11 +1162,14 @@ closures, 2 inactive outstanding).
   `WSubM.replaceAt_sub_to_star_from_direct_payloads`,
   `WSubM.sub_head_replace_to_star_from_direct_payloads`,
   `WSubM.sub_under_head_replace_to_star_from_direct_payloads`,
+  `WSubM.replaceAt_sub_from_body_replaceAt_to_star_from_direct_payloads`,
   `WSubMStar.replaceAt_sub_of_direct_payloads`,
   `WSubMStar.sub_head_replace_of_direct_payloads`, and
-  `WSubMStar.sub_under_head_replace_of_direct_payloads`. These package
-  the existing direct constructor-level subtype residual consumer for
-  one-step and transitive well-subtyping callers. No axiom-count change.
+  `WSubMStar.sub_under_head_replace_of_direct_payloads`, and
+  `WSubMStar.replaceAt_sub_from_body_replaceAt_of_direct_payloads`.
+  These package the existing direct constructor-level subtype residual
+  consumer for one-step and transitive well-subtyping callers. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
