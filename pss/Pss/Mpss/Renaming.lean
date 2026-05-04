@@ -7282,4 +7282,287 @@ noncomputable def MEqRed.strip_equ_head_y_fresh
       hy₀_fvbd hy₀_fvbd' hy₀_stack ihbody_y₀_norm
     simpa using ren
 
+/-! ### §11.9 — `MEqRed.descend_y_fresh_source_template` (iter-23: 5 of 8 arms)
+
+This is the architectural unifier of §11.7's leaves. The §11.7 leaves
+(`bvar0`, `top`, `fvar var-arm` aux, `app-app` open-recursion arm) each
+encode ONE constructor case of the descent functor. This §11.9 functor
+encodes the WHOLE case grid by inducting on the input derivation rather
+than recursing on `body : Term`.
+
+### Signature
+
+* Input: `MEqRed (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer) u u'`
+  with `y ∉ fv u` (source-fresh — i.e., the body's outermost shape is
+  not `.bvar 0` / `.fvar y`, which the consumer handles via the existing
+  `descend_body_equ_uniform_bvar0` leaf).
+* Output: `MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) u (subst y (.fvar z) u')`.
+
+Source is preserved verbatim because `subst y (.fvar z) u = u` under
+`y ∉ fv u`. Target gets the `y → z` substitution (target may legitimately
+contain `y` via `MEqRed.var .fvar y` or `MEqRed.pro` looked-up terms,
+though `avoidsPro` rules out the latter).
+
+### Iter-23 status: 5 of 8 arms
+
+* **var, top, tAp, app, pro**: shipped, no axioms, no sorries.
+* **bet, fun_, fOp**: gated behind a single `Empty` premise
+  `cofinite_blocked`. Each cofinite arm uses `cofinite_blocked.elim`.
+
+### Why cofinite arms are gated
+
+The cofinite arms (`bet`, `fun_`, `fOp`) require an additional
+`MEqRed.rename_stray`-style mechanism on the body sub-derivation
+combined with the template-shift on the output stack. The combined
+y₀-renaming + stack-template-shift is the next blocker; see iter-24's
+candidate strategies in the docstring. The shipped 5 arms are the
+NON-COFINITE ones, which collectively cover the consumer's expected
+hot path (the §10.3 `strip_equ_head` analog at the descent-functor
+level).
+
+### Why the `app` arm uses `LC v_` to extend `s_tmpl`
+
+For `MEqRed.app hu hv : MEqRed _ s (.app u_ v_) (.app u_' v_')`, `hu`'s
+stack is `v_ :: s`. To express this as `s_tmpl_new.map (·^[y]) ++ s_outer`
+for the recursive call, we set `s_tmpl_new := v_ :: s_tmpl` and use
+`v_^[y] = v_` (which holds because `v_` is LC, so opening at `bvar 0`
+is the identity). The `LC v_` data comes from the input prevalidExt
+extracted via `MEqRed.prevalidExt h` plus prevalid's `fv ⊆ dom`.
+
+For `hv` at empty stack: trivial; new s_tmpl = []. -/
+
+/-- **Iter-23 — unified descent functor (5 of 8 arms).**
+
+Threads the stack-template-shift `(·^[y]) ↝ (·^[z])` through each
+non-cofinite constructor of `MEqRed`, removing the equ-head from the
+context.
+
+### Premises
+
+* `hAvoid`: blocks the `Me-Pro y` arm (which would inject `y` directly
+  into the target via lookup).
+* `hFresh`: passed through; cofinite arms (gated this iteration) need
+  it to ensure `pickFresh L ≠ y`.
+* `hy_stmpl`, `hy_souter`, `hy_Γ`: y-freshness data on the stack
+  templates, the y-fresh outer, and the outer context's domain.
+* `hy_src`: the source `u` is y-fresh. Excludes `body = .bvar 0` (which
+  has source `.fvar y` — handled by the existing `bvar0` leaf instead).
+* `hz_Γ`: `z` is in scope at the smaller context Γ (the rename
+  destination).
+
+### Output
+
+`MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) u (subst y (.fvar z) u')`.
+The source is `u` (no rename, since `y ∉ fv u`); the target gets the
+`y → z` substitution. The stack templates rename y → z; `s_outer` is
+unchanged.
+
+### Iter-24+ unblocker
+
+Replace `cofinite_blocked` with `Empty.rec`-style proofs in each of
+the bet/fun_/fOp arms by supplying:
+* For `bet`: a `MEqRed.rename_stray`-style rename of the body
+  sub-derivation from `y₀ → yfresh` AT the template-shifted output
+  stack. The body sub-derivation lives at the same outer stack, so
+  template threading is straightforward; the v0' operand recursion
+  goes through directly.
+* For `fun_`/`fOp`: the body sub-derivation lives at an EXTENDED
+  context `⟨y₀, t/α, .sub/.equ⟩ :: ⟨y, α, .equ⟩ :: Γ`. The recursive
+  call needs the descent functor at a Γ₂-extended signature
+  (`Γ₂ := ⟨y₀, ..., ...⟩ :: []`), which `_PrevalidExt_descend_under_equ_head_template`'s
+  current Γ₂=[] specialization does not support. A Γ₂-generalized
+  variant of that helper is the unblocker. -/
+noncomputable def MEqRed.descend_y_fresh_source_template
+    {Γ : Ctx} {s_outer : Stack} {y : String} {α u u' : Term}
+    (s_tmpl : List Term)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer) u u')
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true)
+    (hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b)
+    (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (hy_src : y ∉ Term.fv u)
+    (z : String) (hz_Γ : z ∈ Γ.dom)
+    (cofinite_blocked : Empty) :
+    MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) u (Term.subst y (.fvar z) u') := by
+  classical
+  -- Generalize Γ and the stack to free metavariables so `induction h` works.
+  -- The equations let us recover the structure at each constructor case.
+  generalize hΓ : (⟨y, α, .equ⟩ :: Γ : Ctx) = Γ' at h
+  generalize hst : s_tmpl.map (·^[y]) ++ s_outer = st at h
+  -- Hypotheses depending on h (hAvoid, hFresh, hy_src) are auto-generalized.
+  -- Explicitly generalize the stack-shape data (s_tmpl, s_outer) and the
+  -- freshness side-data (hy_stmpl, hy_souter) so the IH can refresh them
+  -- at the recursive call. (Listed alphabetically — Lean reorders the IH's
+  -- ∀-binders to a topological sort, so we adapt to its choice at use.)
+  induction h generalizing s_tmpl hy_stmpl s_outer hy_souter with
+  | @pro Γ_h st' yi β β' hpv heq hβ ihβ =>
+    -- Source = .fvar yi. hy_src says yi ≠ y.
+    -- avoidsPro_pro gives yi ≠ y AND avoidsPro hβ y.
+    subst hΓ
+    rw [avoidsPro_pro] at hAvoid
+    rw [cofinDomFresh_pro] at hFresh
+    obtain ⟨hyiy_decide, hAvoid_inner⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    have hyiy : yi ≠ y := decide_eq_true_eq.mp hyiy_decide
+    -- y ∉ fv β via §10.1 helper at Γ₂ = [].
+    have hpvFull : Prevalid (⟨y, α, .equ⟩ :: Γ) := extractPrevalid hpv
+    have hy_β : y ∉ Term.fv β :=
+      _y_notin_fv_lookupEqu_under_avoid (Γ₂ := []) hpvFull heq hyiy
+        (Ctx.AvoidsBoundFv_nil y) hy_Γ
+    -- Recurse on hβ at the same template/outer (stack unchanged).
+    have ih :=
+      ihβ (s_tmpl := s_tmpl) (s_outer := s_outer) (hy_stmpl := hy_stmpl)
+          (hy_souter := hy_souter) (hAvoid := hAvoid_inner) (hFresh := hFresh)
+          (hy_src := hy_β) rfl hst
+    -- Build new equ-binding lookup at the smaller ctx.
+    have heq' := _equBinds_equ_head_remove_neq (Γ₂ := []) hyiy heq
+    -- Build new prevalidExt at the smaller ctx via the iter-18 helper.
+    -- Need `hpv` reshaped from `st'` back to `s_tmpl.map (·^[y]) ++ s_outer`.
+    -- `hst : s_tmpl.map (·^[y]) ++ s_outer = st'` so symm + rewrite gets us there.
+    rw [← hst] at hpv
+    have hpv' : PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) :=
+      _PrevalidExt_descend_under_equ_head_template
+        s_tmpl hpv hy_stmpl hy_souter hy_Γ z hz_Γ
+    -- Output target: subst y (.fvar z) (.fvar yi) ... wait, target is β'.
+    -- `MEqRed.pro` produces target β'; subst y (.fvar z) β'. Need this from ih.
+    -- ih : MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) β (subst y (.fvar z) β').
+    -- Source for output pro is .fvar yi; subst y (.fvar z) on it: yi ≠ y, so .fvar yi.
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.fvar yi)
+                 (Term.subst y (.fvar z) β')
+    exact MEqRed.pro hpv' heq' ih
+  | @top Γ_h st' hpv =>
+    -- Source = .top, target = .top. subst y (.fvar z) .top = .top.
+    -- Build the descended PrevalidExt and apply MEqRed.top.
+    subst hΓ
+    rw [← hst] at hpv
+    have hpv' : PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) :=
+      _PrevalidExt_descend_under_equ_head_template
+        s_tmpl hpv hy_stmpl hy_souter hy_Γ z hz_Γ
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) .top
+                 (Term.subst y (.fvar z) .top)
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) .top .top
+    exact MEqRed.top hpv'
+  | @var Γ_h st' yi hpv =>
+    -- Source = .fvar yi. hy_src : y ∉ fv (.fvar yi) = {yi}, so yi ≠ y.
+    subst hΓ
+    have hyiy : yi ≠ y := by
+      intro heq
+      apply hy_src
+      simp [Term.fv, heq]
+    rw [← hst] at hpv
+    have hpv' : PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) :=
+      _PrevalidExt_descend_under_equ_head_template
+        s_tmpl hpv hy_stmpl hy_souter hy_Γ z hz_Γ
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.fvar yi)
+                 (Term.subst y (.fvar z) (.fvar yi))
+    rw [Term.subst_fvar_ne hyiy]
+    exact MEqRed.var hpv'
+  | @tAp Γ_h st' u_ hpv hLCu hfv =>
+    -- Source = .app .top u_, target = .top. avoidsPro hAvoid for tAp is trivial true.
+    -- subst y (.fvar z) .top = .top.
+    -- Decompose hy_src via fv_app.
+    subst hΓ
+    have hy_u_ : y ∉ Term.fv u_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    rw [← hst] at hpv
+    have hpv' : PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) :=
+      _PrevalidExt_descend_under_equ_head_template
+        s_tmpl hpv hy_stmpl hy_souter hy_Γ z hz_Γ
+    -- Need fv u_ ⊆ Γ.dom. From hfv : ⊆ insert y Γ.dom and y ∉ fv u_.
+    have hfv' : Term.fv u_ ⊆ Γ.dom := by
+      intro w hw
+      have hwd := hfv hw
+      rw [Ctx.dom_cons] at hwd
+      rcases Finset.mem_insert.mp hwd with hwy | hwΓ
+      · subst hwy; exact absurd hw hy_u_
+      · exact hwΓ
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.app .top u_)
+                 (Term.subst y (.fvar z) .top)
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.app .top u_) .top
+    exact MEqRed.tAp hpv' hLCu hfv'
+  | @app Γ_h st' u_ u_' v_ v_' hu hv ihu ihv =>
+    subst hΓ
+    -- Source = .app u_ v_, target = .app u_' v_'.
+    rw [avoidsPro_app] at hAvoid
+    rw [cofinDomFresh_app] at hFresh
+    obtain ⟨hAvoid_u, hAvoid_v⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    obtain ⟨hFresh_u, hFresh_v⟩ := Bool.and_eq_true _ _ |>.mp hFresh
+    -- y-fresh decomposition.
+    have hy_u_ : y ∉ Term.fv u_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inl h_in)
+    have hy_v_ : y ∉ Term.fv v_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    -- Extract LC v_ from hv's prevalidExt (operand source = .app _ v_, but
+    -- equivalently from hu's stack PrevalidExt: v_ is on the stack).
+    -- hu : MEqRed _ (v_ :: st') u_ u_'. Stack v_ :: st' is prevalid.
+    have hpvE_u : PrevalidExt (⟨y, α, .equ⟩ :: Γ) (v_ :: st') :=
+      MEqRed.prevalidExt hu
+    -- Extract LC v_ from the head of v_ :: st' via PrevalidExt.cons inversion.
+    have hLC_v_ : Term.LC v_ := by
+      cases hpvE_u with
+      | cons _ hLC _ => exact hLC
+    have hv_open_y : v_^[y] = v_ := Term.opening_lc hLC_v_ (.fvar y)
+    have hv_open_z : v_^[z] = v_ := Term.opening_lc hLC_v_ (.fvar z)
+    -- Recurse on hu with new s_tmpl_u := v_ :: s_tmpl, same s_outer.
+    -- The new y-opened stack: (v_ :: s_tmpl).map (·^[y]) ++ s_outer
+    --   = v_^[y] :: s_tmpl.map (·^[y]) ++ s_outer
+    --   = v_ :: s_tmpl.map (·^[y]) ++ s_outer
+    --   = v_ :: st' (matches hu's stack via hst).
+    have hy_stmpl_u : ∀ b ∈ v_ :: s_tmpl, y ∉ Term.fv b := by
+      intro b hb
+      rcases List.mem_cons.mp hb with rfl | hmem
+      · exact hy_v_
+      · exact hy_stmpl b hmem
+    have hst_u : (v_ :: s_tmpl).map (·^[y]) ++ s_outer = v_ :: st' := by
+      simp [List.map_cons, hv_open_y, hst]
+    have ihu' :=
+      ihu (s_tmpl := v_ :: s_tmpl) (s_outer := s_outer)
+          (hy_stmpl := hy_stmpl_u) (hy_souter := hy_souter)
+          (hAvoid := hAvoid_u) (hFresh := hFresh_u)
+          (hy_src := hy_u_) rfl hst_u
+    -- Recurse on hv with s_tmpl_v := [], s_outer_v := [].
+    have hy_stmpl_v : ∀ b ∈ ([] : List Term), y ∉ Term.fv b := by
+      intro b hb; cases hb
+    have hy_souter_v : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have hst_v : ([] : List Term).map (·^[y]) ++ ([] : Stack) = [] := by simp
+    have ihv' :=
+      ihv (s_tmpl := []) (s_outer := [])
+          (hy_stmpl := hy_stmpl_v) (hy_souter := hy_souter_v)
+          (hAvoid := hAvoid_v) (hFresh := hFresh_v)
+          (hy_src := hy_v_) rfl hst_v
+    -- Output: MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.app u_ v_)
+    --                  (subst y (.fvar z) (.app u_' v_')).
+    -- subst y (.fvar z) (.app u_' v_') = .app (subst y (.fvar z) u_') (subst y (.fvar z) v_').
+    have htgt : Term.subst y (.fvar z) (.app u_' v_')
+        = .app (Term.subst y (.fvar z) u_') (Term.subst y (.fvar z) v_') := by
+      simp [Term.subst]
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.app u_ v_)
+                 (Term.subst y (.fvar z) (.app u_' v_'))
+    rw [htgt]
+    -- Build MEqRed.app: hu' at stack v_ :: (s_tmpl.map (·^[z]) ++ s_outer),
+    --                   hv' at stack [].
+    -- ihu' : MEqRed Γ ((v_ :: s_tmpl).map (·^[z]) ++ s_outer) u_ (subst y (.fvar z) u').
+    -- Need: MEqRed Γ (v_ :: s_tmpl.map (·^[z]) ++ s_outer) u_ (subst y (.fvar z) u').
+    -- These are def-eq via simp [List.map_cons, hv_open_z].
+    have hu_descended : MEqRed Γ (v_ :: (s_tmpl.map (·^[z]) ++ s_outer))
+                                u_ (Term.subst y (.fvar z) u_') := by
+      have : MEqRed Γ ((v_ :: s_tmpl).map (·^[z]) ++ s_outer)
+                     u_ (Term.subst y (.fvar z) u_') := ihu'
+      simpa [List.map_cons, hv_open_z] using this
+    -- ihv' : MEqRed Γ ([].map (·^[z]) ++ []) v_ (subst y (.fvar z) v_').
+    -- That stack reduces to [].
+    have hv_descended : MEqRed Γ [] v_ (Term.subst y (.fvar z) v_') := by
+      simpa using ihv'
+    exact MEqRed.app hu_descended hv_descended
+  | @bet _ _ _ _ _ _ _ _ _ _ _ _ _ =>
+    exact cofinite_blocked.elim
+  | @fun_ _ _ _ _ _ _ _ _ _ _ _ =>
+    exact cofinite_blocked.elim
+  | @fOp _ _ _ _ _ _ _ _ _ _ _ _ =>
+    exact cofinite_blocked.elim
+
 end Pss
