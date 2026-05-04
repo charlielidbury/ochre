@@ -9242,68 +9242,60 @@ noncomputable def MEqRed.castSrc
   cases heq
   rfl
 
-/-- **Iter-32 — `MEqRed.openInverse_descend` (Lever A Phase 2.1).**
+/-- **Iter-32 — `MEqRed.openInverse_descend` (Lever A Phase 2.3).**
 
 The headline open-target descent functor. Given a derivation at the
-extended context `⟨y, α, .equ⟩ :: Γ` with source `body^[y]` and the
-standard freshness premises, produce, for any cofinite `z ∉ Γ.dom`,
-the analogous derivation at the bare context Γ on the z-renamed body
-and the openInverse-then-z-opened target.
+extended context `⟨y, α, .equ⟩ :: Γ` with source equal to `body^[y]`
+(via the explicit equation `hsrc : source = body^[y]`), produce, for any
+cofinite `z ∉ Γ.dom`, the analogous derivation at the bare context Γ on
+the z-renamed body and the openInverse-then-z-opened target.
 
-**Phase 2.1 status: `top` and `var` arms CLOSED; 6 remaining arms
-(pro, tAp, app, bet, fun_, fOp) gated.** Iter-32 Phase 2.0 (commit
-`7c4b273`) shipped the signature with all 8 arms Empty-gated. This
-iteration closes `top` and `var` via body-shape inversion
-(`Term.opening_eq_top` / `Term.opening_eq_fvar` in
-`Pss.Syntax.LocallyNameless`) plus `PrevalidExt.equ_head_remove_mid`
-at `Γ₂ = []`. The signature is unchanged: gates that ARE closed have
-their corresponding parameter removed; gates that are NOT closed
-remain as separate Empty parameters.
+**Signature refactor (Phase 2.3):** the `h` parameter's source is now
+`source` (free) plus an equation `hsrc : source = body^[y]`, rather
+than the literal `body^[y]`. This decouples the function-argument's
+type from the inverted body shape — the recursive call in the `pro` arm
+passes `hα : MEqRed _ _ α_yi target_open` directly as the new `h` (no
+`Eq.rec` cast on the source-index).
 
-### Per-arm status (Phase 2.1)
+**Phase 2.3 status: signature refactored to path (b) form (`source` +
+`hsrc` equation), but the `pro` arm hit a SEPARATE Lean WF blocker. The
+math closes; the obstacle is termination-bookkeeping. `top` and `var`
+arms remain CLOSED with the new signature; `pro` reverts to gated.**
 
-* **`pro` arm** [GATED — `hgate_pro`] — Source `.fvar yi`. Body
-  inversion: `body = .fvar yi` with `yi ≠ y` (the `body = .bvar 0`
-  sub-case forces `yi = y` and is ruled out by `avoidsPro_pro`).
-  Recurse on `hα` via `MEqRed.strip_equ_head` (with `Γ₂ = []`).
-  **Phase 2.2 (iter-32) outcome — TECHNICAL BLOCKER on WF reasoning:**
-  The `pro` arm is mathematically discharged: y-freshness of α_yi follows
-  from `_y_notin_fv_lookupEqu_under_avoid` (Γ₂ = []), Term.LC α_yi from
-  `Prevalid.lc_lookupEqu`. The recursive call uses `body := α_yi`, which
-  requires casting `hα : MEqRed _ _ α_yi _` to `MEqRed _ _ (α_yi^[y]) _`
-  via a new `MEqRed.castSrc` helper (Eq.rec on the source-index). All
-  the setup compiles green; the FAILURE is in the `decreasing_by` block.
+Iter-32 Phase 2.0 (commit `7c4b273`) shipped the signature with all 8
+arms Empty-gated; Phase 2.1 (commit `adb6779`) closed `top` and `var`;
+Phase 2.2 (commit `ebb78b3`) walled on Lean WF for the `pro` arm with
+the original `body^[y]` signature (Eq.rec cast couldn't reduce in
+WF-goal context). Phase 2.3 (this iteration) adopts the path-(b)
+signature, eliminating the cast, but exposed a SECOND Lean WF blocker:
 
-  **Root cause:** Lean's WF compiler generates a goal
-  `(hα.castSrc h_open_y.symm).derSize < h.derSize` where `h` is the
-  function-arg in its ORIGINAL `body^[y]`-shaped form. After
-  `generalize hsrc : body^[y] = src at h`, the local `h` (with type
-  using `src`) is related to the function-arg `h_func` by a non-trivial
-  `Eq.rec` cast. After `cases h with | pro` and source-shape inversion
-  (`body = .fvar w`, `w = yi` substs), the cast equation `hsrc` reduces
-  to `(Term.fvar w)^[y] = Term.fvar w`, which IS rfl propositionally
-  (`Term.open_` on `.fvar` is identity). However, Lean 4 does NOT
-  reduce this rfl-cast definitionally during WF goal-checking: `Term.open_`
-  lacks `@[reducible]`. Thus the WF goal cannot be closed by `rfl`,
-  `HEq.refl`, or `derSize_castSrc rfl _` — Lean still sees `h_func` and
-  the local `h` as syntactically distinct objects with different types
-  (`(Term.fvar w)^[y]` vs `Term.fvar w`).
+**Phase 2.3 WF blocker — structural recursion fails on
+non-variable index.** With `h : MEqRed (⟨y, α, .equ⟩ :: Γ) s source
+target_open`, the first index `⟨y, α, .equ⟩ :: Γ` is a CONS expression,
+not a variable. Lean's structural-recursion compiler rejects: "its type
+Pss.MEqRed is an inductive family and indices are not variables". The
+WF measure on `derSize` runs into the cases-via-HEq problem: `cases h
+with | pro hpv heq hα` introduces `HEq h (MEqRed.pro hpv heq hα)` rather
+than direct `Eq` (because the cases-target's source-index `(.fvar x✝)`
+differs from the function-arg's `source` index). Lean's `decreasing_by`
+goal becomes `hα.derSize < h✝⁶.derSize` where bridging the two requires
+chasing the HEq + multiple Eq witnesses; available `rename_i`/`subst`
+machinery doesn't reliably bind them.
 
-  **Phase 2.3 paths:**
-  (a) Mark `Term.open_` `@[reducible]` (or define a reducible alias).
-      Quickest fix; risk: may cause unwanted simp loops elsewhere.
-  (b) Refactor `openInverse_descend` to take `body` and `src` as
-      separate arguments with an equation `hsrc : body^[y] = src`,
-      so the recursive call doesn't need a cast. Cleanest mathematically;
-      requires touching every existing arm's call sites.
-  (c) Build a structural-recursion helper (e.g. via `MEqRed.recOn`
-      with explicit motive) that bypasses `generalize` entirely.
-      Most invasive but most robust.
-  Iter-32 Phase 2.2 attempted (b)-style approaches with `castSrc` plus
-  HEq witness chaining and was unable to bridge `h_func` and local `h`
-  in the WF goal context. The `castSrc` helper itself is sound and
-  preserves `derSize`/`avoidsPro`/`cofinDomFresh` (proven simp lemmas);
-  the obstacle is purely Lean-WF-bookkeeping.
+**Phase 2.4 plan:** factor the pro-arm recursion into a separate
+helper `MEqRed.openInverse_descend_pro_chain` whose context parameter
+is fully general (so structural recursion is admissible). The outer
+`openInverse_descend` calls it once, with a runtime equation pinning
+the head shape. Alternatively, refactor to use `induction h
+generalizing` instead of `cases h`, which provides IHs without WF
+goals.
+
+### Per-arm status (Phase 2.3)
+
+* **`pro` arm** [GATED — `_hgate_pro`] — Source `.fvar yi`. Math
+  fully discharged (see Phase 2.2 docblock + dispatch notes), but the
+  recursive call's WF / structural check fails. See "Phase 2.3 WF
+  blocker" above.
 
 * **`var` arm** [CLOSED — Phase 2.1] — Source `.fvar yi`. Body
   inversion gives `body = .bvar 0` (yi = y) or `body = .fvar yi`
@@ -9353,45 +9345,38 @@ remain as separate Empty parameters.
 The remaining Empty-premise gates ensure the file compiles — Phase 2.x
 discharges them arm-by-arm without re-litigating the signature. -/
 noncomputable def MEqRed.openInverse_descend
-    {Γ : Ctx} {s : Stack} {y : String} {α body target_open : Term}
+    {Γ : Ctx} {s : Stack} {y : String} {α body source target_open : Term}
     (hy_body : y ∉ Term.fv body)
     (hy_souter : ∀ β ∈ s, y ∉ Term.fv β)
     (_hy_Γ : y ∉ Γ.dom)
     (_hLC_target : Term.LC target_open)
-    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) target_open)
+    (hsrc : source = body^[y])
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s source target_open)
     (_hAvoid : avoidsPro h y = true)
     (_hFresh : cofinDomFresh h = true)
     (z : String) (_hz : z ∉ Γ.dom)
-    (hgate_pro : Empty)
+    (_hgate_pro : Empty)
     (_hgate_tAp : Empty)
     (_hgate_app : Empty)
     (_hgate_bet : Empty)
     (_hgate_fun : Empty)
     (_hgate_fOp : Empty) :
     MEqRed Γ s (body^[z]) (Term.opening (.fvar z) (Term.openInverse y target_open)) := by
-  -- Phase 2.1 (iter-32): the `top` and `var` arms are CLOSED. Each is
-  -- structural — body-shape inversion (Term.opening_eq_top /
-  -- Term.opening_eq_fvar) reduces the source-form to a known constructor,
-  -- and PrevalidExt.equ_head_remove_mid (with Γ₂ = []) strips the head
-  -- equ-binding. The remaining 6 arms (pro, tAp, app, bet, fun_, fOp) are
-  -- still Empty-gated; each requires Phase 2.x infrastructure (e.g. avoidsFv
-  -- threading for `pro`, in-Γ z₀ + alpha-rename routing for the recursive
-  -- arms; see the §14 leading docblock for full per-arm blocker analysis).
-  classical
-  -- Generalize the source so we can invert the per-constructor source-shape
-  -- match into a `body = ...` equality and then `subst`.
-  generalize hsrc : (body^[y]) = src at h
+  -- Phase 2.3 (iter-32): SIGNATURE REFACTORED to take `(source : Term)`
+  -- + `hsrc : source = body^[y]` (path b from Phase 2.2). The top and var
+  -- arms continue to close cleanly with the new signature (consume hsrc
+  -- to invert body shape). The pro arm's MATH closes (per Phase 2.2),
+  -- but a Lean WF / structural-recursion blocker reappeared in a new
+  -- form (see §14 docblock: "Phase 2.3 WF blocker"). pro reverts to
+  -- Empty-gated; Phase 2.4 attacks via a helper-with-general-context
+  -- factoring or `induction h generalizing` IH-thread approach.
   cases h with
-  | @pro _ _ _ _ _ _ _ _ =>
-    -- Closing this arm requires `avoidsFv` to descend the recursive `hα`
-    -- via `MEqRed.strip_equ_head` (which needs `y ∉ fv α'`). The headline
-    -- signature does not currently carry an `avoidsFv` premise; Phase 2.2
-    -- (or its successor) will either thread `avoidsFv` through, or supply
-    -- the targeted `y ∉ fv` invariants directly. Gated for now.
-    exact hgate_pro.elim
+  | @pro _ _ _ _ _ _ _ _ => exact _hgate_pro.elim
   | @top _ _ hpv =>
-    -- Source-shape match: `body^[y] = .top`. Invert to get `body = .top`.
-    have hbody : body = .top := Term.opening_eq_top hsrc
+    -- Source-shape match: `.top = body^[y]`. Invert to get `body = .top`.
+    -- Use `Term.opening_eq_top` on `hsrc.symm`.
+    have hsrc' : (Term.top : Term) = body^[y] := hsrc
+    have hbody : body = .top := Term.opening_eq_top hsrc'.symm
     subst hbody
     -- Strip the head equ-binding from `hpv` (Γ₂ = []).
     have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
@@ -9410,22 +9395,22 @@ noncomputable def MEqRed.openInverse_descend
     rw [htgt]
     exact MEqRed.top hpv''
   | @var _ _ yi hpv =>
-    -- Source-shape match: `body^[y] = .fvar yi`. Body inversion gives two
-    -- shapes — case on `body` directly to keep the destructuring at the
-    -- Type-valued goal.
+    -- Source-shape match: `.fvar yi = body^[y]` (via hsrc). Body inversion
+    -- gives `body = .bvar 0 ∧ yi = y` or `body = .fvar yi`. Case-split on
+    -- `body` directly to keep destructuring at the Type-valued goal.
+    have hsrc' : (Term.fvar yi : Term) = body^[y] := hsrc
     cases body with
     | bvar i =>
-      -- (.bvar i)^[y] = .fvar y if i = 0, else .bvar i. Source = .fvar yi
-      -- forces i = 0 and yi = y.
       cases i with
       | zero =>
-        -- (.bvar 0)^[y] = .fvar y, so yi = y. Rewrite the constructor's `yi`
-        -- variable to `y` everywhere via the equation.
+        -- (.bvar 0)^[y] = .fvar y, so yi = y.
         have h_open : (Term.bvar 0)^[y] = .fvar y := by
           simp [Term.opening, Term.open_]
-        rw [h_open] at hsrc
-        have hyiy : y = yi := by injection hsrc
-        subst hyiy
+        rw [h_open] at hsrc'
+        -- Inject `Term.fvar yi = Term.fvar y` to `yi = y`. Subst eliminates
+        -- `yi` (so `y` stays in scope as the binding name).
+        have hyiy : yi = y := by injection hsrc'
+        subst yi
         -- Strip the head.
         have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
         have hpv' : PrevalidExt ([] ++ Γ) s :=
@@ -9444,21 +9429,21 @@ noncomputable def MEqRed.openInverse_descend
         rw [htgt]
         exact MEqRed.var hpv''
       | succ n =>
-        -- (.bvar (n+1))^[y] = .bvar (n+1) ≠ .fvar yi. Contradiction.
         exfalso
         have h_open : (Term.bvar (n+1))^[y] = .bvar (n+1) := by
           simp [Term.opening, Term.open_]
-        rw [h_open] at hsrc
-        cases hsrc
+        rw [h_open] at hsrc'
+        cases hsrc'
     | fvar w =>
-      -- (.fvar w)^[y] = .fvar w. Source = .fvar yi forces w = yi.
+      -- (.fvar w)^[y] = .fvar w. hsrc' : .fvar yi = .fvar w forces yi = w.
+      -- Subst eliminates `w` so the `MEqRed.var hpv'` use-site has `yi`.
       have h_open : (Term.fvar w)^[y] = .fvar w := by
         simp [Term.opening, Term.open_]
-      rw [h_open] at hsrc
-      have hwy : w = yi := by injection hsrc
-      subst hwy
-      -- From hy_body : y ∉ fv (.fvar w) = {w}, w ≠ y.
-      have hwy : w ≠ y := by
+      rw [h_open] at hsrc'
+      have hyiw : yi = w := by injection hsrc'
+      subst w
+      -- From hy_body : y ∉ fv (.fvar yi) = {yi}, yi ≠ y.
+      have hwy : yi ≠ y := by
         intro h_eq
         apply hy_body
         simp [Term.fv, h_eq]
@@ -9467,30 +9452,25 @@ noncomputable def MEqRed.openInverse_descend
       have hpv' : PrevalidExt ([] ++ Γ) s :=
         PrevalidExt.equ_head_remove_mid (Γ₂ := []) hpv hΓ₂_avoid hy_souter
       have hpv'' : PrevalidExt Γ s := by simpa using hpv'
-      -- Source: `(.fvar w)^[z] = .fvar w`.
-      have hopen_z : (Term.fvar w : Term)^[z] = .fvar w := by
+      -- Source: `(.fvar yi)^[z] = .fvar yi`.
+      have hopen_z : (Term.fvar yi : Term)^[z] = .fvar yi := by
         simp [Term.opening, Term.open_]
       rw [hopen_z]
-      -- Target: `Term.openInverse y (.fvar w) = .fvar w` (since `w ≠ y`).
-      have htgt : Term.opening (.fvar z) (Term.openInverse y (.fvar w)) =
-          .fvar w := by
-        show Term.open_ 0 (.fvar z) (Term.close_ 0 y (.fvar w)) = .fvar w
+      -- Target: `Term.openInverse y (.fvar yi) = .fvar yi` (since `yi ≠ y`).
+      have htgt : Term.opening (.fvar z) (Term.openInverse y (.fvar yi)) =
+          .fvar yi := by
+        show Term.open_ 0 (.fvar z) (Term.close_ 0 y (.fvar yi)) = .fvar yi
         simp [Term.close_, hwy, Term.open_]
       rw [htgt]
       exact MEqRed.var hpv''
     | top =>
-      -- (.top)^[y] = .top ≠ .fvar yi. Contradiction.
       exfalso
       have h_open : (Term.top)^[y] = .top := by simp [Term.opening, Term.open_]
-      rw [h_open] at hsrc; cases hsrc
+      rw [h_open] at hsrc'; cases hsrc'
     | abs t' inner' =>
-      -- (.abs t' inner')^[y] is .abs (...) (...) ≠ .fvar yi. Contradiction.
-      exfalso
-      simp [Term.opening, Term.open_] at hsrc
+      exfalso; simp [Term.opening, Term.open_] at hsrc'
     | app a' b' =>
-      -- (.app a' b')^[y] is .app (...) (...) ≠ .fvar yi. Contradiction.
-      exfalso
-      simp [Term.opening, Term.open_] at hsrc
+      exfalso; simp [Term.opening, Term.open_] at hsrc'
   | @tAp _ _ _ _ _ _ => exact _hgate_tAp.elim
   | @app _ _ _ _ _ _ _ _ => exact _hgate_app.elim
   | @bet _ _ _ _ _ _ _ _ _ _ _ _ => exact _hgate_bet.elim
