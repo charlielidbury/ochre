@@ -614,6 +614,30 @@ theorem MEqRedJ.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
   rintro ⟨h⟩
   exact ⟨h.insertAt hcut hNew hpv⟩
 
+/-- Prop-wrapper head-extension weakening for de Bruijn equivalence
+reduction. -/
+theorem MEqRedJ.weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MEqRedJ Γ s u v →
+    MEqRedJ (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  simpa using MEqRedJ.insertAt (Γ := Γ) (s := s) (u := u) (v := v)
+    (cutoff := 0) (newEntry := newEntry) (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Prop-wrapper weakening under one existing head binder for de Bruijn
+equivalence reduction. -/
+theorem MEqRedJ.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {head newHead : CtxEntry}
+    (hpv : PrevalidExt (head :: Γ) s)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ)) :
+    MEqRedJ (head :: Γ) s u v →
+    MEqRedJ (head.shift 0 :: newHead :: Γ) (Stack.shift 1 s)
+      (Term.shift 1 u) (Term.shift 1 v) := by
+  simpa using MEqRedJ.insertAt (Γ := head :: Γ) (s := s) (u := u) (v := v)
+    (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
+    (Prevalid.tail hNew) hpv
+
 /-- Prop-wrapper insertion weakening for de Bruijn subtype reduction. -/
 theorem MSubRedJ.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
     {cutoff : Nat} {newEntry : CtxEntry}
@@ -625,6 +649,29 @@ theorem MSubRedJ.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
       (Term.shift cutoff u) (Term.shift cutoff v) := by
   rintro ⟨h⟩
   exact ⟨h.insertAt hcut hNew hpv⟩
+
+/-- Prop-wrapper head-extension weakening for de Bruijn subtype reduction. -/
+theorem MSubRedJ.weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MSubRedJ Γ s u v →
+    MSubRedJ (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  simpa using MSubRedJ.insertAt (Γ := Γ) (s := s) (u := u) (v := v)
+    (cutoff := 0) (newEntry := newEntry) (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Prop-wrapper weakening under one existing head binder for de Bruijn subtype
+reduction. -/
+theorem MSubRedJ.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {head newHead : CtxEntry}
+    (hpv : PrevalidExt (head :: Γ) s)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ)) :
+    MSubRedJ (head :: Γ) s u v →
+    MSubRedJ (head.shift 0 :: newHead :: Γ) (Stack.shift 1 s)
+      (Term.shift 1 u) (Term.shift 1 v) := by
+  simpa using MSubRedJ.insertAt (Γ := head :: Γ) (s := s) (u := u) (v := v)
+    (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
+    (Prevalid.tail hNew) hpv
 
 /-- Reflexive-transitive closure insertion weakening for de Bruijn equivalence
 reduction. -/
@@ -645,6 +692,30 @@ theorem MEqRedStar.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
   · intro a b hHead _ ih
     exact Relation.ReflTransGen.head (MEqRedJ.insertAt hcut hNew hpv hHead) ih
 
+/-- Reflexive-transitive closure head-extension weakening for de Bruijn
+equivalence reduction. -/
+theorem MEqRedStar.weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MEqRedStar Γ s u v →
+    MEqRedStar (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  simpa using MEqRedStar.insertAt (Γ := Γ) (s := s) (u := u) (v := v)
+    (cutoff := 0) (newEntry := newEntry) (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Reflexive-transitive closure weakening under one existing head binder for
+de Bruijn equivalence reduction. -/
+theorem MEqRedStar.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {head newHead : CtxEntry}
+    (hpv : PrevalidExt (head :: Γ) s)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ)) :
+    MEqRedStar (head :: Γ) s u v →
+    MEqRedStar (head.shift 0 :: newHead :: Γ) (Stack.shift 1 s)
+      (Term.shift 1 u) (Term.shift 1 v) := by
+  simpa using MEqRedStar.insertAt (Γ := head :: Γ) (s := s) (u := u) (v := v)
+    (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
+    (Prevalid.tail hNew) hpv
+
 /-- Reflexive-transitive closure insertion weakening for de Bruijn subtype
 reduction. -/
 theorem MSubRedStar.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
@@ -663,6 +734,30 @@ theorem MSubRedStar.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
   · exact Relation.ReflTransGen.refl
   · intro a b hHead _ ih
     exact Relation.ReflTransGen.head (MSubRedJ.insertAt hcut hNew hpv hHead) ih
+
+/-- Reflexive-transitive closure head-extension weakening for de Bruijn subtype
+reduction. -/
+theorem MSubRedStar.weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MSubRedStar Γ s u v →
+    MSubRedStar (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  simpa using MSubRedStar.insertAt (Γ := Γ) (s := s) (u := u) (v := v)
+    (cutoff := 0) (newEntry := newEntry) (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Reflexive-transitive closure weakening under one existing head binder for
+de Bruijn subtype reduction. -/
+theorem MSubRedStar.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {head newHead : CtxEntry}
+    (hpv : PrevalidExt (head :: Γ) s)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ)) :
+    MSubRedStar (head :: Γ) s u v →
+    MSubRedStar (head.shift 0 :: newHead :: Γ) (Stack.shift 1 s)
+      (Term.shift 1 u) (Term.shift 1 v) := by
+  simpa using MSubRedStar.insertAt (Γ := head :: Γ) (s := s) (u := u) (v := v)
+    (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
+    (Prevalid.tail hNew) hpv
 
 /-! ## Reflexivity -/
 

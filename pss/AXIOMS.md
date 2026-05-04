@@ -169,6 +169,11 @@ closures, 2 inactive outstanding).
   weakening through the Prop wrappers and reflexive-transitive closures:
   `MEqRedJ.insertAt`, `MSubRedJ.insertAt`, `MEqRedStar.insertAt`, and
   `MSubRedStar.insertAt`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added head and one-preserved-head
+  convenience corollaries for those Prop wrappers and star closures:
+  `MEqRedJ.weaken_head`, `MSubRedJ.weaken_head`,
+  `MEqRedStar.weaken_head`, `MSubRedStar.weaken_head`, plus matching
+  `*_weaken_tail_head` forms. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

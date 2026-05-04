@@ -237,7 +237,9 @@ hard caveats.
      through `Ctx.insertAt` as `MEqRedJ.insertAt`, `MSubRedJ.insertAt`,
      `MEqRedStar.insertAt`, and `MSubRedStar.insertAt`, so future
      well-formed-judgment ports can reuse the same generalized context
-     insertion API at the one-step and multi-step levels.
+     insertion API at the one-step and multi-step levels. Head and
+     one-preserved-head specializations are also available for both
+     wrapper and closure layers (`*_weaken_head`, `*_weaken_tail_head`).
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
