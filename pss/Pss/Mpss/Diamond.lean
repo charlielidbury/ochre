@@ -436,7 +436,133 @@ axiom #10 / `Lemma_1_inline_app_bet_residual` is that
 because `MEqRed.refl` extracts via `Classical.choice` from a
 `Nonempty`. Three resolution paths in `PLAN.md`'s discharge campaign:
 Type-LC refactor (Option B), source-driven refl construction, or
-consume the standalone `avoidsPro_refl` axiom. -/
+consume the standalone `avoidsPro_refl` axiom.
+
+## ITERATION 2 (pss-20260504): Lemma_32_AsymmetricEqu wire-up — INSUFFICIENT
+
+Iteration 2 of the β-residual discharge campaign attempted to rewire this
+axiom from `axiom` to `noncomputable def` whose body invokes
+`Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010). The viability
+spike concluded: **the asymmetric Lemma 32 with its current signature is
+INSUFFICIENT to discharge this axiom.** The detailed analysis follows.
+
+### Setup post-`cases hu`
+
+`cases hu : MEqRed Γ (v :: s) (.abs t' body') u'` exposes only the
+`MEqRed.fOp` constructor (source `.abs ...` at non-empty stack `(v::s)`
+forces this). It yields:
+* `u' = .abs t'_dst body'_dst`
+* `ht'_to_t'_dst : MEqRed Γ [] t' t'_dst`
+* `hbody_dst y _ : MEqRed (⟨y, v, .equ⟩ :: Γ) s (body'^[y]) (body'_dst^[y])`
+
+Goal: `Σ' t₃, MEqRed Γ s (.app (.abs t'_dst body'_dst) v') t₃ ×
+              MEqRed Γ s (Term.opening v₂' body'') t₃`.
+
+### What we need vs. what Lemma 32 provides
+
+The natural target shape is `t₃ = Term.opening v_join body_join` where
+`v_join` joins `(v', v₂')` (via `ihv hv₂`) and `body_join` joins
+`(body'_dst, body'')` from common source `body'`.
+
+The body diamond `body'_dst ⟶ body_join ⟸ body''` is the load-bearing
+step. We have the two sub-derivations:
+* `hbody_dst y _ : MEqRed (⟨y, v, .equ⟩ :: Γ) s (body'^[y]) (body'_dst^[y])`
+* `hbody₂   y _ : MEqRed Γ                       s (body'^[y]) (body''^[y])`
+
+These are at DIFFERENT contexts. To diamond-join, we need either:
+(a) Diamond at the body interior — recursive call to `_core` at stack `s`
+    in `(⟨y, v, .equ⟩ :: Γ)` (after weakening `hbody₂` via Lemma 22), OR
+(b) Reduce both to plain `Γ` and join there (also needing `_core`).
+
+Either path requires recursive access to `Lemma_2_DiamondMEqRed_core`,
+which is NOT a parameter of this axiom and CANNOT be one without making
+the inline-axiom mutually recursive with `_core`.
+
+### Strategies tried and ruled out
+
+1. **β-fire LHS, bridge with Lemma 32.** Fires
+   `MEqRed.bet` on LHS to reach `Term.opening v_l_dst body_l_dst`, then
+   chains a Lemma-32 application to bridge to `Term.opening v_join
+   body_join`. **BLOCKED:** `MEqRed` is single-step parallel-reduction;
+   composing two single steps requires transitivity (only available in
+   `MEqRedStar`).
+
+2. **Use `ihu` with weakened `hbody₂`.** Construct
+   `h_alt = MEqRed.fOp L_alt ht'_refl hbody₂_lifted trivial :
+   MEqRed Γ (v::s) (.abs t' body') (.abs t' body'')` (with `hbody₂_lifted
+   = Lemma_22_WeakeningMEqRed hbody₂` lifting from `Γ` to `(⟨y,v,.equ⟩::
+   Γ)`). Then `ihu h_alt` gives a join `t_join = .abs t_jJ body_jJ`. The
+   resulting body derivation `hbody_jJ y _ : MEqRed (⟨y,v,.equ⟩::Γ) s
+   (body''^[y]) (body_jJ^[y])` would need to be DESCENDED to plain Γ via
+   Lemma 32 to feed back into a `MEqRed.bet` β-fire. **BLOCKED:** Lemma
+   32 produces output of shape `MEqRed Γ s (Term.opening v body)
+   (Term.opening v' body')`, not `MEqRed Γ s (body^[y]) (body'^[y])` —
+   the former cannot be plugged into `MEqRed.bet`'s body-derivation slot.
+
+3. **Lemma 32 with substituends `(.fvar y, .fvar y)` to descend hbody.**
+   Would produce `MEqRed Γ s (body'_dst^[y]) (body_jJ^[y])` (since
+   `subst y (.fvar y) = id`). **BLOCKED:** the `noVarX hbody y = true`
+   premise of Lemma 32 is NOT generally satisfied — `body'_dst^[y]` may
+   contain `.fvar y` (the opening introduced one!) that reduces
+   reflexively via `MEqRed.var`, which is exactly what `noVarX y = false`
+   detects.
+
+4. **Direct Lemma 32 on `hbody_dst` with substituends `(v', v_join)`.**
+   Mediated by `MEqRed Γ [] v' v_join` (from `ihv hv₂`). Produces
+   `MEqRed Γ s (Term.opening v' body') (Term.opening v_join body'_dst)`.
+   **BLOCKED:** the source shape is `Term.opening v' body'`, not the
+   `Term.opening v₂' body''` (RHS) we need to join from. Also `v ⟶ v'`
+   would be needed mediating, but `MEqRed Γ [] v v_join` directly is
+   unavailable (only via composition).
+
+### Conclusion: signature gap
+
+`Lemma_32_AsymmetricEqu` IS a useful tool — it correctly bridges
+`(⟨y,v,.equ⟩::Γ)` to plain `Γ` by substituting the bound name. But it is
+ONE TOOL OF TWO required: the OTHER tool is body-diamond confluence at
+the body interior, which fundamentally needs `Lemma_2_DiamondMEqRed_core`
+to be reachable from inside this discharge.
+
+**Minimum signature augmentation needed for iter 3:**
+
+```
+ihbody : ∀ y (_hy : y ∉ ?L) {body₂' : Term},
+  MEqRed (⟨y, v, .equ⟩ :: Γ) s (body'^[y]) body₂' →
+  Σ' (body₃ : Term),
+    MEqRed (⟨y, v, .equ⟩ :: Γ) s (body'_dst^[y]) body₃ ×
+    MEqRed (⟨y, v, .equ⟩ :: Γ) s body₂' body₃
+```
+
+But this body-IH is NOT structurally available from `_core`'s outer
+induction on `h₁` — `hbody_dst` is not a sub-derivation of `hu`'s outer
+shape (`hu = MEqRed.fOp ...`'s body is a cofinite-quantified family,
+not a single sub-derivation Lean's `induction` recognizes). Producing
+the body-IH requires either:
+
+* Switching `_core`'s recursion scheme to the term-size measure
+  (`Term.size t₀ + avoidsPro-count`) so that the body interior counts
+  as "structurally smaller" — a non-trivial refactor scheduled in
+  `PLAN.md` as the term-size-induction phase.
+* Making `_inline_app_bet` mutually recursive with `_core` directly,
+  with explicit termination metric. Lean 4 supports this via
+  `mutual ... end` blocks, but it requires a custom termination
+  measure and re-arrangement of the existing definitions.
+
+### What iter 3 should actually attempt
+
+Given this analysis, iter 3's plan should NOT be "discharge
+`Lemma_32_AsymmetricEqu`" (which the plan was). Instead, iter 3 should
+attack the more fundamental obstruction by either:
+(a) Building the term-size induction scheme for `_core` so the body-IH
+    becomes available, then revisiting this discharge with the body-IH
+    as a parameter (or as a recursive call), OR
+(b) Spiking the `mutual`-block restructure of `_inline_app_bet` ↔ `_core`
+    with explicit `decreasing_by` termination on `(Term.size t₀,
+    avoidsPro hu)`.
+
+The newly-added `Lemma_32_AsymmetricEqu` axiom retains its value —
+it's load-bearing for the body-descent step OF the discharge once the
+body-IH is available. Iter 3 should keep it. -/
 private axiom Lemma_2_inline_app_bet_residual_axiom
     {Γ : Ctx} {s : Stack} {u' v v' : Term} {t' body' body'' : Term}
     {L₂ : Finset String} {v₂' : Term}
