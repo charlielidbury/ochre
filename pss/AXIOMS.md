@@ -572,6 +572,12 @@ closures, 2 inactive outstanding).
   preservation for the bound and require only the de Bruijn narrowing
   payload `WfMSubHeadReplace` for replacing the `.sub` head in the body
   context. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added context-level `.sub` head
+  replacement infrastructure: tail subtype lookup preservation
+  `subBinds_sub_head_replace_succ`, equivalence lookup preservation
+  `equBinds_sub_head_replace`, and logical/extended prevalidity helpers
+  `Prevalid.sub_head_replace` and `PrevalidExt.sub_head_replace`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

@@ -392,6 +392,27 @@ theorem equBinds_weaken_head {Γ : Ctx} {i : Nat} {t : Term} (entry : CtxEntry) 
   simp [equBinds]
   exact ⟨t, h, rfl⟩
 
+/-- Changing the bound stored in a `.sub` head preserves subtype lookups
+outside that head. The head lookup itself intentionally changes target. -/
+theorem subBinds_sub_head_replace_succ {Γ : Ctx} {old new : Term}
+    {i : Nat} {t : Term} :
+    subBinds ({ bound := old, kind := .sub } :: Γ) (i + 1) t →
+    subBinds ({ bound := new, kind := .sub } :: Γ) (i + 1) t := by
+  intro h
+  simpa [subBinds] using h
+
+/-- Changing the bound stored in a `.sub` head preserves all equivalence
+lookups, because equivalence lookup skips `.sub` heads. -/
+theorem equBinds_sub_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {α : Term} :
+    equBinds ({ bound := old, kind := .sub } :: Γ) i α →
+    equBinds ({ bound := new, kind := .sub } :: Γ) i α := by
+  cases i with
+  | zero =>
+      simp [equBinds]
+  | succ i =>
+      intro h
+      simpa [equBinds] using h
+
 /-- Changing the bound stored in an `.equ` head does not affect subtype
 lookups, because subtype lookup skips `.equ` heads. -/
 theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :
@@ -1032,6 +1053,18 @@ def tail {e : CtxEntry} {Γ : Ctx} :
   | sub hΓ _ => exact hΓ
   | equ hΓ _ => exact hΓ
 
+/-- Replace the bound stored in an innermost `.sub` context entry. The tail
+context and context depth are unchanged, so all existing entries remain
+well-scoped once the new bound is scoped in the same tail. -/
+noncomputable def sub_head_replace {Γ : Ctx} {old new : Term} :
+    Prevalid ({ bound := old, kind := .sub } :: Γ) →
+    Term.Scoped Γ.depth new →
+    Prevalid ({ bound := new, kind := .sub } :: Γ) := by
+  intro h hnew
+  cases h with
+  | sub hΓ _ =>
+    exact Prevalid.sub hΓ hnew
+
 /-- Insert a prevalid entry into a prevalid context after `cutoff` preserved
 heads. The inserted-entry witness is stated over the actual tail at the
 insertion point. -/
@@ -1279,6 +1312,20 @@ noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
     exact Stack.Scoped.nil
   | cons hst hα ih =>
     exact Stack.Scoped.cons hα ih
+
+/-- Replace the bound stored in an innermost `.sub` context entry while
+preserving extended-context prevalidity. -/
+noncomputable def sub_head_replace {Γ : Ctx} {s : Stack} {old new : Term} :
+    PrevalidExt ({ bound := old, kind := .sub } :: Γ) s →
+    Term.Scoped Γ.depth new →
+    PrevalidExt ({ bound := new, kind := .sub } :: Γ) s := by
+  intro h hnew
+  induction h with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.sub_head_replace hΓ hnew)
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (by
+      simpa [Ctx.depth] using hα)
 
 /-- Replace the bound stored in an innermost `.equ` context entry while
 preserving extended-context prevalidity. -/
