@@ -742,7 +742,10 @@ closures, 2 inactive outstanding).
   analogue of `msub_equ_head_old_bound_to_new_bvar0`. It joins the old
   shifted under-head `.equ` bound to the new `bvar 1`, assuming the
   old-to-new bound equivalence has already been lifted to the same
-  preserved-head residual stack. No axiom-count change.
+  preserved-head residual stack. Also added
+  `meq_equ_under_head_stack_lift_from_equ_head_lift`, which obtains that
+  preserved-head old-to-new premise by weakening an existing changed-head
+  stack lift one binder deeper. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -1875,6 +1875,27 @@ theorem msub_equ_under_head_old_bound_to_new_bvar1 {Γ : Ctx} {s : Stack}
     (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
     (MEqRedStar.single hVarNew)
 
+/-- If an old-to-new equivalence has already been lifted under the changed
+`.equ` head, ordinary head weakening lifts it one level deeper under a
+preserved head. This supplies the old-to-new premise needed by
+`msub_equ_under_head_old_bound_to_new_bvar1` in `FOp` body residuals. -/
+noncomputable def meq_equ_under_head_stack_lift_from_equ_head_lift {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hHeadNew : Prevalid (head :: { bound := new, kind := .equ } :: Γ))
+    (hOldNew : MEqRed ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 old) (Term.shift 0 new)) :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 (Stack.shift 0 s))
+      (Term.shift 0 (Term.shift 0 old)) (Term.shift 0 (Term.shift 0 new)) := by
+  have hpvNewCtx : Prevalid ({ bound := new, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hNewScoped
+  have hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvNewCtx
+  exact MEqRed.weaken_head hOldNew hpvNew hHeadNew
+
 /-- A reflexive argument equivalence can always be lifted under a changed
 `.equ` head and residual stack. This is the stack-stable base case for the
 head `Me-Pro` bridge. -/
