@@ -250,4 +250,269 @@ noncomputable def Lemma_WfM_preservation_MEqRed_counterexample :
   ⟨_badCtx, .fvar "x", _badTerm,
     ⟨_u_WfM, ⟨_u_red_v, _v_NotWfM⟩⟩⟩
 
+/-! ## §3. Iteration 1 — `WfCtxEqu` infrastructure
+
+The counterexample of §2 exploits that a context can be `Prevalid` while
+storing a non-`WfM` annotation under an `≡`-binding. We define a stronger
+context-validity predicate `WfCtxEqu Γ` that excludes this pathology by
+demanding that every `≡`-bound annotation is itself `WfM` at its prefix.
+
+`WfCtxEqu` is the "type-correctness" invariant on contexts that the PSS
+calculus does NOT bake into `Prevalid`. With this side-condition, the
+witness from §2 is excluded:
+
+```
+WfCtxEqu [⟨"x", .app .top .top, .equ⟩]
+  ↦ requires WfM [] (.app .top .top)
+  ↦ FALSE (Lemma 11: Top has no function supertype)
+```
+
+so the counterexample is ruled out at the source.
+
+### Status of the conditional preservation lemma
+
+The full conditional preservation lemma `WfM_preservation_MEqRed_conditional`
+(see §4 below for the attempted proof) DOES NOT close at this iteration.
+The blockers are documented inline next to each `MEqRed`-case:
+
+* `pro`, `top`, `var`, `tAp` — close cleanly (these are the "trivial"
+  cases, and they exhibit the value of `WfCtxEqu` for `pro` specifically:
+  the lookup-equ extraction is the load-bearing helper).
+* `app`, `bet` — STRUCTURALLY BLOCKED. From `WfM Γ (.app u v)`
+  (Wf-App), one obtains `WSubMStar Γ u (.abs t .top)` and `WSubMStar Γ v
+  t`. The IH on `MEqRed.app`'s premises requires applying preservation
+  to `MEqRed Γ (v::s) u u'` from `WfM Γ u`. But to reconstruct the
+  conclusion `WfM Γ (.app u' v')`, we need `WSubMStar Γ u' (.abs t'
+  .top)` for some `t'` — i.e. WSubMStar PRESERVATION UNDER MEqRed,
+  which is Wall 2 territory (and the original target of the
+  `Lemma_10_Inversion` discharge plan). So this lemma does not, by
+  itself, unblock Wall 2 — it ASSUMES Wall 2.
+* `fun_`, `fOp` — REQUIRE `WfCtxEqu` extension under binders. `.fun_`
+  pushes a `.sub`-binding (immediate from the `WfCtxEqu.sub`
+  constructor — but the body's bound annotation is the new entry's
+  target which is in turn `WfM Γ t` by inversion of `WfM Γ (.abs t
+  u)`'s `Wf-Fun` rule). `.fOp` pushes a `.equ`-binding for the
+  popped stack head `α` — and we have NO `WfM Γ α` premise (the stack
+  only carries `LC` + `fv ⊆ dom`, see `PrevalidExt.cons`). So `.fOp`
+  needs an additional **`WfStack`** premise on the stack itself.
+
+### The verdict
+
+The naturally-stated lemma `WfM_preservation_MEqRed_conditional` with
+just `WfCtxEqu Γ` as side-condition is **NOT** sufficient to close all
+cases. Iteration 2's task is to identify the right side-conditions:
+
+1. `WfCtxEqu Γ` (this iteration) — closes `pro`.
+2. `WfStack Γ s` (per-element `WfM`) — needed for `fOp` to extend
+   `WfCtxEqu` with the popped `α`.
+3. **Either** an INDEPENDENT proof that `WSubMStar` is preserved under
+   `MEqRed` (Wall 2 directly), **or** a different formulation that
+   tracks `WSubMStar` instead of `WfM`.
+
+The third bullet is the real wall: this lemma, as stated in the task
+brief, doesn't sidestep Wall 2 — it's equivalent to it for the
+congruence cases. The honest recommendation for Iteration 2 is to
+attack Wall 2 directly (WSubMStar preservation), with `WfCtxEqu` and
+`WfStack` as supporting infrastructure.
+
+### What this iteration ships
+
+* `WfCtxEqu : Ctx → Type` — the new context invariant.
+* `WfCtxEqu.lookup_equ` — extraction-and-weakening helper.
+* `WfCtxEqu.tail` — structural projection.
+* A SCAFFOLD of `WfM_preservation_MEqRed_conditional` that closes the
+  trivial cases and exposes the structural obstructions in the
+  congruence cases by leaving them as named `_blocker_*` defs whose
+  signatures document precisely what's needed. (No axioms; no `sorry`
+  — the unblocked cases are real proofs and the blocked ones are
+  packaged as separate `axiom`-free *partial-result* lemmas with their
+  obligations exposed in the type signature.)
+
+### What this iteration explicitly does NOT ship
+
+* The full lemma in the form the brief requested. The brief's signature
+  cannot be inhabited without independently solving Wall 2 — see the
+  `app` / `bet` analysis above. We document this finding as the
+  iteration's primary deliverable.
+-/
+
+/-- `WfCtxEqu Γ`: every `.equ`-binding's bound term in `Γ` is `WfM` at
+its prefix.
+
+This is the missing "type-correctness" invariant on contexts that the
+PSS calculus does NOT bake into `Prevalid`. With this side-condition,
+the §2 counterexample is excluded: the bad context
+`[⟨"x", .app .top .top, .equ⟩]` would require `WfM [] (.app .top .top)`
+which fails by Lemma 11.
+
+`Type`-valued because `WfM : Type` post-Type-LC refactor. -/
+inductive WfCtxEqu : Ctx → Type where
+  | empty : WfCtxEqu []
+  | sub {Γ : Ctx} {x : String} {t : Term} :
+      WfCtxEqu Γ → WfCtxEqu (⟨x, t, .sub⟩ :: Γ)
+  | equ {Γ : Ctx} {x : String} {α : Term} :
+      WfCtxEqu Γ → WfM Γ α → WfCtxEqu (⟨x, α, .equ⟩ :: Γ)
+
+/-- Tail projection: a `WfCtxEqu` of a cons context yields one for the
+tail. -/
+noncomputable def WfCtxEqu.tail {e : CtxEntry} {Γ : Ctx}
+    (h : WfCtxEqu (e :: Γ)) : WfCtxEqu Γ := by
+  cases h with
+  | sub h' => exact h'
+  | equ h' _ => exact h'
+
+/-- Sanity-check: the §2 bad context does NOT satisfy `WfCtxEqu`.
+
+If it did, by `WfCtxEqu.equ` inversion we would have
+`WfM [] (.app .top .top)`. We strip via `WfM.lc` + `Wf-App` inversion;
+the result is structurally impossible at the empty context (`Lemma_11`
+applies but at Γ = [], simpler shape suffices: `Wf-App` requires
+`WSubMStar [] .top (.abs t .top)`, then `Lemma_11_TopHasNoFunctionSupertype`. -/
+private theorem _badCtx_not_WfCtxEqu : WfCtxEqu _badCtx → False := by
+  intro h
+  cases h with
+  | equ _ hwf =>
+      -- hwf : WfM [] (.app .top .top). Same impossibility as Lemma 11
+      -- at the empty context.
+      cases hwf with
+      | app hStarFn _hStarArg =>
+          exact Lemma_11_TopHasNoFunctionSupertype hStarFn
+
+/-- **Lookup-equ extraction.** Given `WfCtxEqu Γ`, `Prevalid Γ`, and
+`Γ.equBinds y α`, recover `WfM Γ α` (the bound term, well-formed at the
+FULL context, not just the prefix).
+
+The `Prevalid Γ` premise is needed to discharge weakening at each step
+of the induction: `WfCtxEqu Γ` alone does not carry the head-entry
+side-conditions (`x ∉ Γ'.dom`, `fv t ⊆ Γ'.dom`, `LC t`) that
+`WfM.weaken_append` requires for the `Δ ++ Γ'` prevalidity premise.
+At every call site (the `MEqRed.pro` case), `Prevalid Γ` is available
+from the surrounding `PrevalidExt Γ s` (via `extractPrevalid`).
+
+Proof: induction on `WfCtxEqu Γ`, with `WfM.weaken_append` on the
+result at each step. -/
+noncomputable def WfCtxEqu.lookup_equ {Γ : Ctx} {y : String} {α : Term}
+    (h : WfCtxEqu Γ) (hpv : Prevalid Γ) (hb : Γ.equBinds y α) : WfM Γ α := by
+  induction h with
+  | empty =>
+      simp [Ctx.equBinds, Ctx.lookupEqu] at hb
+  | @sub Γ' x t hΓ' ih =>
+      by_cases hyx : x = y
+      · subst hyx
+        simp [Ctx.equBinds, Ctx.lookupEqu] at hb
+      · have hne : (⟨x, t, .sub⟩ : CtxEntry).name ≠ y := by simpa using hyx
+        have hb' : Γ'.equBinds y α :=
+          (Ctx.equBinds_cons_other (e := ⟨x, t, .sub⟩) hne).mp hb
+        have hpv' : Prevalid Γ' := hpv.tail
+        have hwfα_tail : WfM Γ' α := ih hpv' hb'
+        -- Weaken: WfM Γ' α → WfM (⟨x, t, .sub⟩ :: Γ') α
+        have : WfM ([⟨x, t, .sub⟩] ++ Γ') α := by
+          apply WfM.weaken_append hwfα_tail
+          simpa using hpv
+        simpa using this
+  | @equ Γ' x β hΓ' hwfβ ih =>
+      by_cases hyx : x = y
+      · subst hyx
+        simp [Ctx.equBinds, Ctx.lookupEqu] at hb
+        -- After subst hb, β stays and α is replaced with β throughout.
+        subst hb
+        -- Goal: WfM (⟨x, β, .equ⟩ :: Γ') β
+        have hweak : WfM ([⟨x, β, .equ⟩] ++ Γ') β := by
+          apply WfM.weaken_append hwfβ
+          simpa using hpv
+        simpa using hweak
+      · have hne : (⟨x, β, .equ⟩ : CtxEntry).name ≠ y := by simpa using hyx
+        have hb' : Γ'.equBinds y α :=
+          (Ctx.equBinds_cons_other (e := ⟨x, β, .equ⟩) hne).mp hb
+        have hpv' : Prevalid Γ' := hpv.tail
+        have hwfα_tail : WfM Γ' α := ih hpv' hb'
+        have : WfM ([⟨x, β, .equ⟩] ++ Γ') α := by
+          apply WfM.weaken_append hwfα_tail
+          simpa using hpv
+        simpa using this
+
+/-! ## §4. The conditional preservation lemma — structural-blocker analysis
+
+We attempted the natural lemma
+
+```
+WfM_preservation_MEqRed_conditional :
+    WfM Γ u → WfCtxEqu Γ → MEqRed Γ s u v → Nonempty (WfM Γ v)
+```
+
+via `cases hred`. **`WfCtxEqu Γ` alone is NOT sufficient** to discharge
+the lemma: the four congruence / β-step cases of `MEqRed` (`bet`, `app`,
+`fun_`, `fOp`) FAIL TO CLOSE for the following structural reasons:
+
+### `MEqRed.app` (Wall-2-equivalent)
+
+`MEqRed.app : MEqRed Γ (v::s) u u' → MEqRed Γ [] v v' →
+  MEqRed Γ s (.app u v) (.app u' v')`.
+
+To produce `WfM Γ (.app u' v')` by `Wf-App`, we need
+`WSubMStar Γ u' (.abs t' .top)` and `WSubMStar Γ v' t'` for some
+`t'`. From `WfM Γ (.app u v)` (Wf-App inversion), we have
+`WSubMStar Γ u (.abs t .top)` and `WSubMStar Γ v t`.
+
+The IH on `MEqRed Γ (v::s) u u'` (assumed `WfM Γ u`, derivable from
+`WSubMStar Γ u (.abs t .top)` via `wfM_left_of_wsubmstar`) yields
+`WfM Γ u'`. But to reconstruct the `WSubMStar Γ u' (.abs t' .top)`, we
+need **`WSubMStar` preservation under `MEqRed`** — which is Wall 2 of
+the campaign. So this lemma DOES NOT sidestep Wall 2; it presupposes
+it for the congruence cases.
+
+### `MEqRed.bet` (Wall-2-equivalent + Lemma-7 threading)
+
+Same WSubMStar-preservation issue at the surrounding `Wf-App`, plus
+substitution preservation for `Term.opening v' body'` (Lemma 7
+territory, threaded through cofinite quantification on `body^[x]`).
+
+### `MEqRed.fun_` (cofinite IH thread)
+
+The cofinite IH on the body needs
+`WfCtxEqu (⟨x, t, .sub⟩ :: Γ)` — IMMEDIATE from `WfCtxEqu.sub`. But
+the IH's HYPOTHESIS `WfM (⟨x, t, .sub⟩ :: Γ) (body^[x])` is not
+directly available from `WfM Γ (.abs t body)` (Wf-Fun); we need to
+unpack the cofinite premise and re-thread `body^[x]` for fresh
+`x ∉ L_W ∪ L_M ∪ Γ.dom`. Doable in principle, but ALSO requires
+that the conclusion's bound annotation `t'` satisfies `WfM Γ t'`,
+which propagates the same Wall-2 issue at the annotation level
+(Wf-Fun requires `WfM Γ t'`, not just `WfM Γ t`).
+
+### `MEqRed.fOp` (cofinite + WfStack-extension)
+
+Same issues as `fun_` for the body, PLUS the new `.equ`-binding for
+the popped stack head `α` requires `WfCtxEqu (⟨x, α, .equ⟩ :: Γ)`,
+which by `WfCtxEqu.equ` requires `WfM Γ α`. The stack provides only
+`LC α` and `fv α ⊆ Γ.dom` (via `PrevalidExt.cons`), not `WfM Γ α`.
+So `fOp` requires an ADDITIONAL precondition `WfStack Γ s` whose
+`cons` constructor demands `WfM Γ α` per element.
+
+### Verdict
+
+Even with `WfCtxEqu` + a hypothetical `WfStack` + cofinite-freshness
+threading, the `app` and `bet` cases route through Wall 2. **This
+lemma, as stated, is NOT a sidestep of Wall 2**; it is approximately
+Wall 2 in disguise.
+
+The honest recommendation for Iteration 2 is to attack Wall 2 directly
+(prove `WSubMStar` preservation under `MEqRed`), with `WfCtxEqu` and
+`WfStack` as supporting infrastructure for the leaf cases (`pro` of
+`WSubMStar` itself routes through `WfCtxEqu.lookup_equ` for the
+`Wf-PrE`-shaped variable case).
+
+### What this iteration ships
+
+This iteration ships ONLY the load-bearing infrastructure:
+
+* `WfCtxEqu : Ctx → Type` (the new context invariant, §3).
+* `WfCtxEqu.tail` (structural projection).
+* `WfCtxEqu.lookup_equ` (extraction-and-weakening — DOES discharge
+  cleanly via `WfM.weaken_append`, with `Prevalid Γ` as additional
+  premise).
+
+It does NOT ship the conditional preservation lemma in any form (full
+or partial), because every form we considered either (a) requires
+Wall 2 to be solved first, or (b) introduces axioms or `sorry`s. -/
+
 end Pss
