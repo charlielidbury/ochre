@@ -2477,6 +2477,103 @@ noncomputable def WSubMStar.of_MSubRedStar_fwd
         (WSubMStar.of_MSubRed_fwd hHead.some hwfX hwfY)
         (ih.some hwfY)⟩
 
+/-- `Ms-App` replacement residual embedded as well-subtyping, assuming the
+operator subtype residual has already been transported. -/
+noncomputable def WSubMStar.app_replaceAt_sub_from_operator_to_star {Γ : Ctx}
+    {cutoff : Nat} {old new u u' v : Term}
+    (hOp : MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (v :: []) u u')
+    (hv : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) v)
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) y)
+    (hwfApp : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.app u v)) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.app u v) (.app u' v) :=
+  WSubMStar.of_MSubRedStar_fwd hpres
+    (MSubRedStar.app_replaceAt_sub_from_operator
+      (Γ := Γ) (s := []) (cutoff := cutoff) (old := old) (new := new)
+      hOp hv)
+    hwfApp
+
+/-- Head specialization of `WSubMStar.app_replaceAt_sub_from_operator_to_star`. -/
+noncomputable def WSubMStar.app_sub_head_replace_from_operator_to_star {Γ : Ctx}
+    {old new u u' v : Term}
+    (hOp : MSubRedStar ({ bound := new, kind := .sub } :: Γ) (v :: []) u u')
+    (hv : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) v)
+    (hpres : ∀ {x y : Term},
+      MSubRedJ ({ bound := new, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := new, kind := .sub } :: Γ) x →
+          WfM ({ bound := new, kind := .sub } :: Γ) y)
+    (hwfApp : WfM ({ bound := new, kind := .sub } :: Γ) (.app u v)) :
+    WSubMStar ({ bound := new, kind := .sub } :: Γ)
+      (.app u v) (.app u' v) := by
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.app_replaceAt_sub_from_operator_to_star
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) (u := u) (u' := u') (v := v)
+      (by simpa [Ctx.replaceAt] using hOp)
+      (by simpa [Ctx.replaceAt] using hv)
+      (fun {x y} hxy hx => by
+        simpa [Ctx.replaceAt] using hpres hxy hx)
+      (by simpa [Ctx.replaceAt] using hwfApp))
+
+/-- Fixed-bound `Ms-Fun` replacement residual embedded as well-subtyping,
+assuming the body subtype residual has already been transported. -/
+noncomputable def WSubMStar.fun_replaceAt_sub_from_body_fixed_bound_to_star
+    {Γ : Ctx} {cutoff : Nat} {old new t body body' : Term}
+    (ht : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEqT : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] t t)
+    (hBody : MSubRedStar ({ bound := t, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] body body')
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) y)
+    (hwfAbs : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.abs t body)) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.abs t body) (.abs t body') :=
+  WSubMStar.of_MSubRedStar_fwd hpres
+    (MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound
+      (Γ := Γ) (cutoff := cutoff) (old := old) (new := new)
+      (t := t) (body := body) (body' := body') ht hEqT hBody)
+    hwfAbs
+
+/-- Changing-bound `Ms-Fun` replacement residual embedded as well-subtyping,
+assuming the body subtype residual has already been transported under the
+changed bound. -/
+noncomputable def WSubMStar.fun_replaceAt_sub_from_body_changed_bound_to_star
+    {Γ : Ctx} {cutoff : Nat} {old new t t' body body' : Term}
+    (ht : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] t t')
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) + 1)
+      body)
+    (hBody : MSubRedStar ({ bound := t', kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] body body')
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) y)
+    (hwfAbs : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.abs t body)) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.abs t body) (.abs t' body') :=
+  WSubMStar.of_MSubRedStar_fwd hpres
+    (MSubRedStar.fun_replaceAt_sub_from_body_changed_bound
+      (Γ := Γ) (cutoff := cutoff) (old := old) (new := new)
+      (t := t) (t' := t') (body := body) (body' := body')
+      ht hEq hBodyScoped hBody)
+    hwfAbs
+
 /-- A forward empty-stack equivalence-reduction chain embeds into de Bruijn
 transitive well-equivalence under an explicit well-formedness preservation
 premise for the chain's steps. -/

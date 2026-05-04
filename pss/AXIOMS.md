@@ -1099,6 +1099,14 @@ closures, 2 inactive outstanding).
   replacement consumers `WfM.fun_replaceAt_sub_from_body_wf`,
   `WfM.fun_sub_head_replace_from_body_wf`, and
   `WfM.fun_sub_under_head_replace_from_body_wf`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added structural subtype
+  residual wrappers embedding transported raw `Ms-App` and `Ms-Fun`
+  replacement chains into well-subtyping stars:
+  `WSubMStar.app_replaceAt_sub_from_operator_to_star`,
+  `WSubMStar.app_sub_head_replace_from_operator_to_star`,
+  `WSubMStar.fun_replaceAt_sub_from_body_fixed_bound_to_star`, and
+  `WSubMStar.fun_replaceAt_sub_from_body_changed_bound_to_star`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
