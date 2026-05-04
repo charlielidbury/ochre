@@ -1719,6 +1719,49 @@ theorem commute_appAbs_structApp_eqStep_of_fOp_handlers {Γ : Ctx} {s : Stack}
       exact msubRedStar_app_fixed_arg hArg'Scoped
         (hSubResidual hStack hBody.some)
 
+/-- Changed-argument structural application commutation reduced to body-level
+replacement under the `FOp` `.equ` head. The two replacement premises are the
+remaining de Bruijn analogue of stack-head replacement: they move residual
+body reductions from the old head `arg` to the changed head `arg'`. -/
+theorem commute_appAbs_structApp_eqStep_of_body_fOp_replacements {Γ : Ctx}
+    {s : Stack} {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hEquBodyReplace :
+      ∀ {joinBound joinBody : Term},
+        MEqRed Γ [] bound₂ joinBound →
+        MEqRed ({ bound := arg, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody)
+    (hSubBodyReplace :
+      ∀ {joinBody : Term},
+        MSubRed ({ bound := arg, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody →
+        MSubRed ({ bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
+  have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
+  have hBound₂Scoped : Term.Scoped Γ.depth bound₂ :=
+    (Term.Scoped.abs_inv hEqOp.scoped_right).1
+  have hpvNew : PrevalidExt Γ (arg' :: s) :=
+    PrevalidExt.cons hpvTail hArg'Scoped
+  refine commute_appAbs_structApp_eqStep_of_fOp_handlers hpvTail hcommArg
+    hSubOp hEqOp hEqArg ?_ ?_
+  · intro joinBound joinBody oldArg rest hStack hBound hBody
+    cases hStack
+    exact MSubRedStar.single (MSubRed.equ hpvNew
+      (MEqRed.fOp hBound hArg'Scoped (hEquBodyReplace hBound hBody)))
+  · intro joinBody oldArg rest hStack hBody
+    cases hStack
+    exact MSubRedStar.single (MSubRed.fOp hBound₂Scoped hArg'Scoped
+      (hSubBodyReplace hBody))
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

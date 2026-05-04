@@ -652,6 +652,12 @@ closures, 2 inactive outstanding).
   of assuming blanket stack-head transport, it asks only for the two
   residual replacement handlers exposed above: one for equivalence-derived
   `Me-FOp` and one for direct `Ms-FOp`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_body_fOp_replacements`, which
+  packages those two residual handlers from body-level replacement under
+  the changed `.equ` head. This leaves the remaining proof obligation at
+  the narrow body-replacement boundary, rather than at the outer
+  application commutation layer. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
