@@ -658,6 +658,233 @@ theorem avoidsPro_refl
         refine ⟨ihbound _ _, ?_⟩
         exact ihbody _ _ _ _
 
+/-! ## §2.6. `noVarX` — strengthened avoidance ruling out `Me-Var x` too
+
+Iteration-1 viability spike for `Lemma_32_AsymmetricEqu` (Substitution.lean).
+
+### Why a NEW Bool predicate (and not a strengthening of `avoidsPro`)
+
+`avoidsPro h x = true` rules out `Me-Pro` steps that promote `x`. It does
+NOT rule out `Me-Var x` (which is a vacuous reflexivity step on the bound
+variable). For the **asymmetric** Lemma 32
+
+```
+hbody : MEqRed (⟨x, α, .equ⟩ :: Γ) s body body'
+hv    : MEqRed Γ [] v v'
+─────────────────────────────────────────────────
+        MEqRed Γ s (subst x v body) (subst x v' body')
+```
+
+a counterexample exists with `body = body' = .fvar x`, witnessed by
+`MEqRed.var hpv` (Reductions.lean:104-106; no `x ∉ Γ.dom` precondition):
+the conclusion would require `MEqRed Γ s v v'` from `MEqRed Γ [] v v'`,
+which is a non-trivial stack lift that is NOT generally available.
+
+`noVarX h x` returns `false` precisely when an `Me-Var x` step appears
+anywhere in `h`, ruling out the counterexample. Its definition mirrors
+`avoidsPro`'s recursive shape, with the difference at the `var`/`pro` arms:
+* `Me-Var y` — `noVarX = decide (y ≠ x)` (vs. `avoidsPro = true`).
+* `Me-Pro y _ _` — `noVarX = ihα x` (no `y ≠ x` check; `Me-Pro y` is fine
+  to reach `x` AS LONG AS the inner derivation also avoids `Me-Var x`).
+  Compare `avoidsPro = decide (y ≠ x) && ihα x`.
+
+All other arms are conjunctions that descend into sub-derivations,
+identical in shape to `avoidsPro`. -/
+
+/-- Bool-valued check on `MEqRed` derivations: `noVarX h x = true` iff no
+`Me-Var x` step appears in `h` (i.e. the derivation never reflexively
+re-uses the variable named `x` via the `Me-Var` constructor).
+
+Mirrors `avoidsPro`'s recursive shape, descending into sub-derivations
+in every case. The defining difference is in the `var` arm: `noVarX`
+returns `decide (y ≠ x)` while `avoidsPro` returns `true`. -/
+noncomputable def noVarX {Γ s u v} (h : MEqRed Γ s u v) (x : String) : Bool :=
+  MEqRed.rec
+    (motive := fun _ _ _ _ _ => String → Bool)
+    -- Me-Pro: descend into `α`'s reduction. (No `y ≠ x` check; Me-Pro
+    -- is fine — it's only Me-Var on x that's forbidden.)
+    (fun {_ _ _ _ _} _ _ _ ihα x => ihα x)
+    -- Me-Bet: cofinite body + operand recursion.
+    (fun L _ _ _ _ ihbody ihv x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      ihbody y hyL x && ihv x)
+    -- Me-Top: vacuous.
+    (fun _ _ => true)
+    -- Me-App: both subterms.
+    (fun _ _ ihu ihv x => ihu x && ihv x)
+    -- Me-Var: the defining arm. Forbid `y = x`.
+    (fun {_ _ y} _ x => decide (y ≠ x))
+    -- Me-Fun: bound annotation + cofinite body.
+    (fun L _ _ _ iht ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      iht x && ihbody y hyL x)
+    -- Me-TAp: vacuous.
+    (fun _ _ _ _ => true)
+    -- Me-FOp: bound annotation + cofinite body.
+    (fun L _ _ _ iht ihbody x =>
+      let y := pickFresh L
+      have hyL : y ∉ L := pickFresh_notMem L
+      iht x && ihbody y hyL x)
+    h x
+
+/-! ### Per-constructor `simp` lemmas for `noVarX`. Mirror of the
+`avoidsPro_*` family. -/
+
+@[simp] theorem noVarX_pro {Γ s y α α'} (hpv : PrevalidExt Γ s)
+    (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α') (x : String) :
+    noVarX (MEqRed.pro hpv heq hα) x = noVarX hα x := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_bet {Γ s t v v' body body'} (L : Finset String)
+    (hLCt : Term.LC t)
+    (hbody : ∀ y, y ∉ L → MEqRed Γ s (body^[y]) (body'^[y]))
+    (hUni : True)
+    (hv : MEqRed Γ [] v v') (x : String) :
+    noVarX (MEqRed.bet L hLCt hbody hUni hv) x =
+      (noVarX (hbody (pickFresh L) (pickFresh_notMem L)) x && noVarX hv x) := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_top {Γ s} (hpv : PrevalidExt Γ s) (x : String) :
+    noVarX (MEqRed.top hpv) x = true := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_app {Γ s u u' v v'}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v') (x : String) :
+    noVarX (MEqRed.app hu hv) x = (noVarX hu x && noVarX hv x) := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_var {Γ s y} (hpv : PrevalidExt Γ s) (x : String) :
+    noVarX (@MEqRed.var Γ s y hpv) x = decide (y ≠ x) := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_fun_ {Γ t t' body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, t, .sub⟩ :: Γ) [] (body^[y]) (body'^[y]))
+    (hUni : True)
+    (x : String) :
+    noVarX (MEqRed.fun_ L ht hbody hUni) x =
+      (noVarX ht x && noVarX (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_tAp {Γ s u} (hpv : PrevalidExt Γ s)
+    (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) (x : String) :
+    noVarX (MEqRed.tAp hpv hLCu hfvu) x = true := by
+  unfold noVarX; rfl
+
+@[simp] theorem noVarX_fOp {Γ s t t' α body body'} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hbody : ∀ y, y ∉ L →
+      MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (body'^[y]))
+    (hUni : True)
+    (x : String) :
+    noVarX (MEqRed.fOp L ht hbody hUni) x =
+      (noVarX ht x && noVarX (hbody (pickFresh L) (pickFresh_notMem L)) x) := by
+  unfold noVarX; rfl
+
+/-! ### `noVarX_refl` — the `MEqRed.refl` discharge.
+
+The reflexivity `MEqRed.refl hpv hLC hfv` recurses on the LC witness; the
+`Term.LC.fvar y` arm produces `MEqRed.var hpv : MEqRed Γ s (.fvar y) (.fvar y)`,
+which has `noVarX _ x = decide (y ≠ x)`. If `x ∈ Term.fv u`, then some
+`.fvar x` subterm of `u` contributes a `Me-Var x` step at recursion, making
+`noVarX = false`.
+
+The side condition `x ∉ Term.fv u` is necessary; it is, however, NOT
+sufficient by itself. In the `LC.abs` arm, `MEqRed.refl` picks a fresh
+`y` against its widened `L' = L ∪ Γ.dom ∪ Term.fv body`. The body
+recursion runs on `body^[y]`. To guarantee `x ∉ Term.fv (body^[y])`,
+we additionally need `x ≠ y`. Since `y ∉ Γ.dom`, the side condition
+`x ∈ Γ.dom` ensures `y ≠ x`. So we require BOTH `x ∉ Term.fv u` (for the
+`fvar` arm) AND `x ∈ Γ.dom` (for the binder arm's freshness alignment).
+
+In the planned downstream use (`Lemma_32_AsymmetricEqu`), `x` is a
+context-bound `.equ`-head variable, so `x ∈ Γ.dom` holds directly. -/
+
+/-- `MEqRed.refl hpv hLC hfv` has `noVarX = true` for any `x ∈ Γ.dom`
+that does not appear free in `u`.
+
+Proof by mirror-induction on `hLC`, exactly as `avoidsPro_refl` (line
+635), with the new ingredient: `Term.LC.fvar y` gives `noVarX (MEqRed.var
+hpv) x = decide (y ≠ x)`, discharged from `hx : x ∉ Term.fv (.fvar y) =
+{y}`. The binder arms (`LC.abs` over `nil` / `cons` stacks) require
+`x ∈ Γ.dom` to ensure the picked-fresh `y ∉ Γ.dom` satisfies `y ≠ x`,
+which in turn lets us conclude `x ∉ Term.fv (body^[y])` from
+`Term.fv_open_subset`. -/
+theorem noVarX_refl
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom)
+    (x : String) (hx : x ∉ Term.fv u) (hxΓ : x ∈ Γ.dom) :
+    noVarX (MEqRed.refl hpv hLC hfv) x = true := by
+  induction hLC generalizing s Γ with
+  | top =>
+    simp only [MEqRed.refl, noVarX_top]
+  | fvar y =>
+    -- `fv (.fvar y) = {y}`; `hx : x ∉ {y}` gives `y ≠ x`.
+    have hyx : y ≠ x := by
+      intro h
+      apply hx
+      simp [Term.fv, h]
+    simp only [MEqRed.refl, noVarX_var, decide_eq_true_eq]
+    exact hyx
+  | @app a b hLCa hLCb iha ihb =>
+    -- `fv (.app a b) = fv a ∪ fv b`; `hx` splits.
+    have hxa : x ∉ Term.fv a := fun h => hx (by simp [Term.fv]; exact Or.inl h)
+    have hxb : x ∉ Term.fv b := fun h => hx (by simp [Term.fv]; exact Or.inr h)
+    simp only [MEqRed.refl, noVarX_app, Bool.and_eq_true]
+    refine ⟨iha _ _ hxa hxΓ, ihb _ _ hxb hxΓ⟩
+  | @abs L bound body hLCbound hbody ihbound ihbody =>
+    -- `fv (.abs bound body) = fv bound ∪ fv body`; both disjoint from `x`.
+    have hxbound : x ∉ Term.fv bound :=
+      fun h => hx (by simp [Term.fv]; exact Or.inl h)
+    have hxbody : x ∉ Term.fv body :=
+      fun h => hx (by simp [Term.fv]; exact Or.inr h)
+    cases s with
+    | nil =>
+      simp only [MEqRed.refl, noVarX_fun_, Bool.and_eq_true]
+      refine ⟨ihbound _ _ hxbound hxΓ, ?_⟩
+      -- The picked-fresh `y` is outside `L ∪ Γ.dom ∪ Term.fv body`.
+      -- Since `x ∈ Γ.dom`, `y ≠ x`. Hence `x ∉ Term.fv (body^[y]) ⊆
+      -- Term.fv body ∪ {y}`.
+      set L' := L ∪ Γ.dom ∪ Term.fv body with hL'
+      have hyL' : pickFresh L' ∉ L' := pickFresh_notMem L'
+      have hy_notΓ : pickFresh L' ∉ Γ.dom := fun h => hyL'
+        (Finset.mem_union.mpr (Or.inl (Finset.mem_union.mpr (Or.inr h))))
+      have hyx : pickFresh L' ≠ x := fun h => hy_notΓ (h ▸ hxΓ)
+      have hxopen : x ∉ Term.fv (body^[pickFresh L']) := by
+        intro hxin
+        have hsub := Term.fv_open_subset 0 (.fvar (pickFresh L')) body hxin
+        rcases Finset.mem_union.mp hsub with h1 | h1
+        · exact hxbody h1
+        · have hxy : x = pickFresh L' := by simpa [Term.fv] using h1
+          exact hyx hxy.symm
+      -- The IH-friendly context: `⟨pickFresh L', bound, .sub⟩ :: Γ`.
+      have hxΓ' : x ∈ Ctx.dom (⟨pickFresh L', bound, .sub⟩ :: Γ) := by
+        rw [Ctx.dom_cons]; exact Finset.mem_insert_of_mem hxΓ
+      apply ihbody _ _ _ _ hxopen hxΓ'
+    | cons α tail =>
+      cases hpv with
+      | cons hpvr hLCα hfvα =>
+        simp only [MEqRed.refl, noVarX_fOp, Bool.and_eq_true]
+        refine ⟨ihbound _ _ hxbound hxΓ, ?_⟩
+        set L' := L ∪ Γ.dom ∪ Term.fv body with hL'
+        have hyL' : pickFresh L' ∉ L' := pickFresh_notMem L'
+        have hy_notΓ : pickFresh L' ∉ Γ.dom := fun h => hyL'
+          (Finset.mem_union.mpr (Or.inl (Finset.mem_union.mpr (Or.inr h))))
+        have hyx : pickFresh L' ≠ x := fun h => hy_notΓ (h ▸ hxΓ)
+        have hxopen : x ∉ Term.fv (body^[pickFresh L']) := by
+          intro hxin
+          have hsub := Term.fv_open_subset 0 (.fvar (pickFresh L')) body hxin
+          rcases Finset.mem_union.mp hsub with h1 | h1
+          · exact hxbody h1
+          · have hxy : x = pickFresh L' := by simpa [Term.fv] using h1
+            exact hyx hxy.symm
+        have hxΓ' : x ∈ Ctx.dom (⟨pickFresh L', α, .equ⟩ :: Γ) := by
+          rw [Ctx.dom_cons]; exact Finset.mem_insert_of_mem hxΓ
+        apply ihbody _ _ _ _ hxopen hxΓ'
+
 /-! ## §2.5. Universal cofinite avoidance: `AvoidsProUniv` (extracted)
 
 The definition `AvoidsProUniv` and its eight per-constructor simp
