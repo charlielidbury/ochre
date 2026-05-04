@@ -868,6 +868,16 @@ closures, 2 inactive outstanding).
   `msub_equ_under_head_fop_handler_of_body_replacement`, lifting recursive
   body replacement chains through `FOp` for innermost and preserved-head
   `.equ` replacement. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added canonical equivalence
+  replacement handler builders for `Me-App`, `Me-Fun`, and `Me-Bet`:
+  `meq_equ_head_app_handler_of_raw_replacements`,
+  `meq_equ_under_head_app_handler_of_raw_replacements`,
+  `meq_equ_head_fun_handler_of_raw_replacements`,
+  `meq_equ_under_head_fun_handler_of_raw_replacements`,
+  `meq_equ_head_bet_handler_of_raw_replacements`, and
+  `meq_equ_under_head_bet_handler_of_raw_replacements`. These package raw
+  recursive replacements into the handler shape expected by the equivalence
+  replacement splitters. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

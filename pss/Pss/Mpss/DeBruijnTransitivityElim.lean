@@ -2234,6 +2234,159 @@ theorem msub_equ_under_head_fop_handler_of_body_replacement {Γ : Ctx} {s : Stac
   exact msubStar_abs_fOp_body_fixed_bound hpvNewTail hBoundScoped hArgScoped
     (hBodyReplace hArgScoped rfl hBody)
 
+/-- Canonical `Me-App` handler for innermost `.equ` replacement when both
+recursive premises have already been replaced as raw equivalence steps. -/
+theorem meq_equ_head_app_handler_of_raw_replacements {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) (arg :: s) op op')
+    (hArgReplace :
+      ∀ {arg arg' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] arg arg')
+    {op op' arg arg' : Term}
+    (hOp : MEqRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op')
+    (hArg : MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s
+      (.app op arg) (.app op' arg') :=
+  MSubStar.of_MEqRed (PrevalidExt.equ_head_replace hpv hnew)
+    (MEqRed.app_equ_head_replace (_old := old) (hOpReplace hOp) (hArgReplace hArg))
+
+/-- Canonical `Me-App` handler for under-head `.equ` replacement when both
+recursive premises have already been replaced as raw equivalence steps. -/
+theorem meq_equ_under_head_app_handler_of_raw_replacements {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) (arg :: s) op op')
+    (hArgReplace :
+      ∀ {arg arg' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] arg arg')
+    {op op' arg arg' : Term}
+    (hOp : MEqRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op')
+    (hArg : MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.app op arg) (.app op' arg') :=
+  MSubStar.of_MEqRed (PrevalidExt.equ_under_head_replace hpv hnew)
+    (MEqRed.app_equ_under_head_replace (_old := old) (hOpReplace hOp)
+      (hArgReplace hArg))
+
+/-- Canonical `Me-Fun` handler for innermost `.equ` replacement when the
+bound and body premises have already been replaced as raw equivalence steps.
+-/
+theorem meq_equ_head_fun_handler_of_raw_replacements {Γ : Ctx}
+    {old new : Term}
+    (hpvNil : PrevalidExt ({ bound := old, kind := .equ } :: Γ) [])
+    (hnew : Term.Scoped Γ.depth new)
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] bound bound')
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    {bound bound' body body' : Term}
+    (hBound : MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound')
+    (hBody : MEqRed ({ bound := bound, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) [] body body') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) []
+      (.abs bound body) (.abs bound' body') :=
+  MSubStar.of_MEqRed (PrevalidExt.equ_head_replace hpvNil hnew)
+    (MEqRed.fun_equ_head_replace (_old := old) (hBoundReplace hBound)
+      (hBodyReplace hBody))
+
+/-- Canonical `Me-Fun` handler for under-head `.equ` replacement when the
+bound and body premises have already been replaced as raw equivalence steps.
+-/
+theorem meq_equ_under_head_fun_handler_of_raw_replacements {Γ : Ctx}
+    {head : CtxEntry} {old new : Term}
+    (hpvNil : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) [])
+    (hnew : Term.Scoped Γ.depth new)
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] bound bound')
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    {bound bound' body body' : Term}
+    (hBound : MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound')
+    (hBody : MEqRed ({ bound := bound, kind := .sub } :: head ::
+      { bound := old, kind := .equ } :: Γ) [] body body') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) []
+      (.abs bound body) (.abs bound' body') :=
+  MSubStar.of_MEqRed (PrevalidExt.equ_under_head_replace hpvNil hnew)
+    (MEqRed.fun_equ_under_head_replace (_old := old) (hBoundReplace hBound)
+      (hBodyReplace hBody))
+
+/-- Canonical `Me-Bet` handler for innermost `.equ` replacement when the body
+and argument premises have already been replaced as raw equivalence steps. -/
+theorem meq_equ_head_bet_handler_of_raw_replacements {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hArgReplace :
+      ∀ {arg arg' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] arg arg')
+    {bound arg arg' body body' : Term}
+    (hBoundScoped : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound)
+    (hBody : MEqRed ({ bound := bound, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hArg : MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s
+      (.app (.abs bound body) arg) (Term.instantiate 0 arg' body') :=
+  MSubStar.of_MEqRed (PrevalidExt.equ_head_replace hpv hnew)
+    (MEqRed.bet_equ_head_replace hBoundScoped (hBodyReplace hBody)
+      (hArgReplace hArg))
+
+/-- Canonical `Me-Bet` handler for under-head `.equ` replacement when the body
+and argument premises have already been replaced as raw equivalence steps. -/
+theorem meq_equ_under_head_bet_handler_of_raw_replacements {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hArgReplace :
+      ∀ {arg arg' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] arg arg')
+    {bound arg arg' body body' : Term}
+    (hBoundScoped : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) bound)
+    (hBody : MEqRed ({ bound := bound, kind := .sub } :: head ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hArg : MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.app (.abs bound body) arg) (Term.instantiate 0 arg' body') :=
+  MSubStar.of_MEqRed (PrevalidExt.equ_under_head_replace hpv hnew)
+    (MEqRed.bet_equ_under_head_replace hBoundScoped (hBodyReplace hBody)
+      (hArgReplace hArg))
+
 /-- One-step equivalence replacement splitter for an innermost changed `.equ`
 head. Stable leaves are discharged immediately; the head `Me-Pro` case is
 exposed as its precise residual, and recursive constructor cases are exposed
