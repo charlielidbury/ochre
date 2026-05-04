@@ -4301,6 +4301,382 @@ theorem MEqRed.stack_head_replace_univ_exists
   MEqRed.stack_replace_univ_exists (Γ₁ := Γ) (Γ₂ := []) (s_pre := []) (s_post := s)
     hLCα' hfvα' h hCAU
 
+/-! ## §10. `strip_equ_head` — head-removal functor on `MEqRed`
+
+Iteration 7+ of the β-residual unblock campaign. Where
+`equ_head_replace` (§8) replaces the bound term `α → α'` of a `.equ`-head
+binding, `strip_equ_head` REMOVES the head entirely:
+
+  `MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u'`
+  ────────────────────────────────────────────
+  `MEqRed (Γ₂ ++ Γ₁) st u u'`
+
+This is the body-diamond-descent piece needed by Lemma 2's App×Bet
+residual: the body-IH lives at the EXTENDED context
+`(⟨y₀, v, .equ⟩ :: Γ)`, but `MEqRed.bet`'s body cofinite is at the BARE
+`Γ`. The strip functor closes that gap when `avoidsPro h y₀ = true`
+(no `Me-Pro y₀` lookups against the head being stripped).
+
+### Architectural notes — why this is harder than `equ_head_replace`
+
+`equ_head_replace` preserves `Ctx.dom`: `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).dom
+= (Γ₂ ++ ⟨y, α', .equ⟩ :: Γ₁).dom`. Subset/freshness data on terms,
+stack entries, and Γ₂'s prior bindings transfers verbatim.
+
+`strip_equ_head` REMOVES `y` from the dom. To rebuild a derivation in
+the smaller context, every term that previously had fv against the
+larger dom must be re-checked: its fv must in fact avoid `y`. This
+applies to:
+
+* `u`, `u'` (source/target): syntactic `y`-freshness must be passed in.
+* Stack entries `β ∈ st`: each must avoid `y`.
+* Γ₂'s entries' bound terms: each must avoid `y` (so the new
+  `Prevalid (Γ₂ ++ Γ₁)` invariants hold).
+* For the `pro yi` arm: the looked-up `α_yi` must avoid `y` (used in
+  the recursion's source/target).
+* For the `bet`/`fun_`/`fOp` cofinite arms: the bound annotation `tt` /
+  `αi` and the operand `v0`/`v0'` must avoid `y`.
+
+The natural way to bundle these is a **stronger Bool predicate**
+"`avoidsFv h y = true`" that recursively checks every term in the
+derivation tree for `y`-freshness. We don't yet have that infrastructure
+(adding it is one full session worth of work). For now we provide:
+
+* The dom-equation helper `_Ctx_dom_eq_under_equ_head_remove`.
+* The `equBinds`/`subBinds` lookup helpers `_equBinds_equ_head_remove_neq`
+  and `_subBinds_equ_head_remove`.
+* `Prevalid.equ_head_remove_mid` and `PrevalidExt.equ_head_remove_mid`,
+  parametrized by an explicit `Γ₂` "all entries' bounds avoid y"
+  hypothesis.
+
+The full `MEqRed.strip_equ_head` is NOT YET defined — building it
+requires the `avoidsFv`-style predicate to compose hypotheses through
+the cofinite arms. This iteration ships the structural helpers; the
+predicate + functor body is the next deliverable.
+
+### Why we don't take a shortcut
+
+A tempting shortcut: prove `MEqRed.strip_equ_head` for `Γ₂ = []` only
+(matching iter-6's use site). But the cofinite-arm body recursion grows
+`Γ₂` by `⟨y₀, tt, .sub⟩` (or `⟨y₀, αi, .equ⟩`), so even the
+`Γ₂ = []` initial call needs the general-`Γ₂` form internally. No
+shortcut exists. -/
+
+/-- `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).dom = insert y (Γ₂ ++ Γ₁).dom`.
+
+The head removal removes `y` from the domain, so the LHS dom is the
+RHS dom plus `{y}`. -/
+private theorem _Ctx_dom_eq_under_equ_head_remove
+    {Γ₁ Γ₂ : Ctx} {y : String} {α : Term} :
+    Ctx.dom (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) =
+      insert y (Ctx.dom (Γ₂ ++ Γ₁)) := by
+  rw [Ctx.dom_append, Ctx.dom_append, Ctx.dom_cons]
+  -- LHS: Γ₂.dom ∪ insert y Γ₁.dom
+  -- RHS: insert y (Γ₂.dom ∪ Γ₁.dom)
+  ext z
+  simp [Finset.mem_insert, Finset.mem_union, or_comm, or_left_comm]
+
+/-- If `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds yi α_yi` and `yi ≠ y`,
+the lookup survives in `Γ₂ ++ Γ₁` (we just skip the head we removed).
+
+Mirror of `_equBinds_equ_head_swap_neq` (§8.1) but for full removal. -/
+private theorem _equBinds_equ_head_remove_neq
+    {Γ₁ Γ₂ : Ctx} {y yi : String} {α α_yi : Term}
+    (hyiy : yi ≠ y)
+    (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds yi α_yi) :
+    (Γ₂ ++ Γ₁).equBinds yi α_yi := by
+  induction Γ₂ with
+  | nil =>
+    simp [Ctx.equBinds, Ctx.lookupEqu_cons] at hb
+    by_cases h : y = yi
+    · exact absurd h.symm hyiy
+    · simp [h] at hb
+      exact hb
+  | cons e rest ih =>
+    show Ctx.lookupEqu (e :: (rest ++ Γ₁)) yi = some α_yi
+    have h1 : Ctx.lookupEqu (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) yi = some α_yi := hb
+    rw [Ctx.lookupEqu_cons] at h1 ⊢
+    by_cases he : e.name = yi
+    · rw [if_pos he] at h1 ⊢; exact h1
+    · rw [if_neg he] at h1 ⊢; exact ih h1
+
+/-- Mirror for `subBinds`: if `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).subBinds yi t`,
+the lookup survives in `Γ₂ ++ Γ₁` (the removed head is `.equ`-typed, so
+`.sub` lookups always skipped it). -/
+private theorem _subBinds_equ_head_remove
+    {Γ₁ Γ₂ : Ctx} {y yi : String} {α t : Term}
+    (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).subBinds yi t) :
+    (Γ₂ ++ Γ₁).subBinds yi t := by
+  induction Γ₂ with
+  | nil =>
+    show Ctx.lookupSub Γ₁ yi = some t
+    have h1 : Ctx.lookupSub (⟨y, α, .equ⟩ :: Γ₁) yi = some t := hb
+    rw [Ctx.lookupSub_cons] at h1
+    -- Head is `.equ`, so `lookupSub` always skips: name match → none, no match → recurse.
+    by_cases hxy : y = yi
+    · simp [hxy] at h1
+    · simp [hxy] at h1; exact h1
+  | cons e rest ih =>
+    show Ctx.lookupSub (e :: (rest ++ Γ₁)) yi = some t
+    have h1 : Ctx.lookupSub (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) yi = some t := hb
+    rw [Ctx.lookupSub_cons] at h1 ⊢
+    by_cases he : e.name = yi
+    · rw [if_pos he] at h1 ⊢
+      cases hkind : e.kind with
+      | sub => simp [hkind] at h1 ⊢; exact h1
+      | equ => simp [hkind] at h1
+    · rw [if_neg he] at h1 ⊢; exact ih h1
+
+/-- A predicate on contexts: every entry's bound term avoids the variable `y`.
+Used as a structural hypothesis for `Prevalid.equ_head_remove_mid`. -/
+def Ctx.AvoidsBoundFv (Γ : Ctx) (y : String) : Prop :=
+  ∀ e ∈ Γ, y ∉ Term.fv e.bound
+
+@[simp] theorem Ctx.AvoidsBoundFv_nil (y : String) :
+    Ctx.AvoidsBoundFv [] y := by
+  intro e he; cases he
+
+@[simp] theorem Ctx.AvoidsBoundFv_cons {e : CtxEntry} {rest : Ctx} {y : String} :
+    Ctx.AvoidsBoundFv (e :: rest) y ↔
+      y ∉ Term.fv e.bound ∧ Ctx.AvoidsBoundFv rest y := by
+  constructor
+  · intro h
+    refine ⟨?_, ?_⟩
+    · exact h e (List.mem_cons_self _ _)
+    · intro e' he'; exact h e' (List.mem_cons_of_mem _ he')
+  · rintro ⟨hhead, htail⟩ e' he'
+    rcases List.mem_cons.mp he' with rfl | he'
+    · exact hhead
+    · exact htail e' he'
+
+/-- **Remove an `.equ`-head from a Prevalid context.**
+
+Given:
+* `hpv : Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁)` — the input prevalidity.
+* `hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y` — every Γ₂ entry's bound term
+  avoids `y` (so its fv-subset invariant survives the `y`-removal).
+
+Produces: `Prevalid (Γ₂ ++ Γ₁)`. -/
+noncomputable def Prevalid.equ_head_remove_mid
+    {Γ₁ Γ₂ : Ctx} {y : String} {α : Term}
+    (hpv : Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁))
+    (hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y) :
+    Prevalid (Γ₂ ++ Γ₁) := by
+  induction Γ₂ with
+  | nil =>
+    -- `Γ₂ = []`, so input is `Prevalid (⟨y, α, .equ⟩ :: Γ₁)`. Drop the head via cases.
+    cases hpv with
+    | equ hΓ _ _ _ => exact hΓ
+  | cons e rest ih =>
+    -- `Γ₂ = e :: rest`. Input: `Prevalid (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁))`.
+    have hpv' : Prevalid (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) := by simpa using hpv
+    have ⟨hhead, htail⟩ := Ctx.AvoidsBoundFv_cons.mp hΓ₂_avoid
+    cases hpv' with
+    | @sub _ x t hpv_tail hx hfvt hLCt =>
+      have ih' := ih hpv_tail htail
+      -- Need: x ∉ (rest ++ Γ₁).dom, fv t ⊆ (rest ++ Γ₁).dom.
+      have hx' : x ∉ Ctx.dom (rest ++ Γ₁) := by
+        rw [Ctx.dom_append] at hx ⊢
+        rw [Ctx.dom_cons] at hx
+        intro hxnew
+        rw [Finset.mem_union] at hxnew
+        apply hx
+        rw [Finset.mem_union]
+        cases hxnew with
+        | inl h1 => exact Or.inl h1
+        | inr h1 => exact Or.inr (Finset.mem_insert_of_mem h1)
+      have hfvt' : Term.fv t ⊆ Ctx.dom (rest ++ Γ₁) := by
+        intro z hz
+        have := hfvt hz
+        rw [Ctx.dom_append, Ctx.dom_cons] at this
+        rw [Ctx.dom_append]
+        rw [Finset.mem_union] at this
+        cases this with
+        | inl h1 => exact Finset.mem_union.mpr (Or.inl h1)
+        | inr h1 =>
+          rw [Finset.mem_insert] at h1
+          cases h1 with
+          | inl hzy =>
+            -- z = y, but z ∈ fv t and we have hhead: y ∉ fv (t = e.bound) for this entry.
+            -- e here IS this `sub` entry, with bound = t. So hhead : y ∉ fv t.
+            -- Wait, e.bound = t? Let's check: e = ⟨x, t, .sub⟩, e.bound = t. Yes.
+            -- So z = y → z ∉ fv t, contradiction.
+            subst hzy; exact absurd hz hhead
+          | inr h2 => exact Finset.mem_union.mpr (Or.inr h2)
+      exact Prevalid.sub ih' hx' hfvt' hLCt
+    | @equ _ x β hpv_tail hx hfvβ hLCβ =>
+      have ih' := ih hpv_tail htail
+      have hx' : x ∉ Ctx.dom (rest ++ Γ₁) := by
+        rw [Ctx.dom_append] at hx ⊢
+        rw [Ctx.dom_cons] at hx
+        intro hxnew
+        rw [Finset.mem_union] at hxnew
+        apply hx
+        rw [Finset.mem_union]
+        cases hxnew with
+        | inl h1 => exact Or.inl h1
+        | inr h1 => exact Or.inr (Finset.mem_insert_of_mem h1)
+      have hfvβ' : Term.fv β ⊆ Ctx.dom (rest ++ Γ₁) := by
+        intro z hz
+        have := hfvβ hz
+        rw [Ctx.dom_append, Ctx.dom_cons] at this
+        rw [Ctx.dom_append]
+        rw [Finset.mem_union] at this
+        cases this with
+        | inl h1 => exact Finset.mem_union.mpr (Or.inl h1)
+        | inr h1 =>
+          rw [Finset.mem_insert] at h1
+          cases h1 with
+          | inl hzy =>
+            subst hzy; exact absurd hz hhead
+          | inr h2 => exact Finset.mem_union.mpr (Or.inr h2)
+      exact Prevalid.equ ih' hx' hfvβ' hLCβ
+
+/-- `PrevalidExt` analog: remove the `.equ`-head from `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁`.
+
+Requires every Γ₂ entry's bound to avoid `y` (for `Prevalid.equ_head_remove_mid`)
+AND every stack entry's fv to avoid `y` (since the new dom is smaller). -/
+noncomputable def PrevalidExt.equ_head_remove_mid
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y : String} {α : Term}
+    (hpv : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st)
+    (hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y)
+    (hst_avoid : ∀ β ∈ st, y ∉ Term.fv β) :
+    PrevalidExt (Γ₂ ++ Γ₁) st := by
+  induction hpv with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.equ_head_remove_mid hΓ hΓ₂_avoid)
+  | @cons _ β _hpvE hLCβ hfvβ ih =>
+    -- Stack head = β; tail's freshness comes from hst_avoid restricted to tail.
+    have hβ_avoid : y ∉ Term.fv β :=
+      hst_avoid β (List.mem_cons_self _ _)
+    have htail_avoid : ∀ β' ∈ _, y ∉ Term.fv β' := fun β' hβ' =>
+      hst_avoid β' (List.mem_cons_of_mem _ hβ')
+    have ih' := ih htail_avoid
+    refine PrevalidExt.cons ih' hLCβ ?_
+    -- New: fv β ⊆ (Γ₂ ++ Γ₁).dom. From hfvβ : fv β ⊆ (Γ₂ ++ ⟨y,α,.equ⟩::Γ₁).dom
+    -- combined with y ∉ fv β.
+    intro z hz
+    have hzd := hfvβ hz
+    rw [_Ctx_dom_eq_under_equ_head_remove] at hzd
+    rw [Finset.mem_insert] at hzd
+    cases hzd with
+    | inl hzy => subst hzy; exact absurd hz hβ_avoid
+    | inr hz' => exact hz'
+
+/-! ### §10.1. Lookup-side helper: `y ∉ fv α_yi` under context-avoidance
+
+For the `pro yi` arm of `strip_equ_head`, we need `y ∉ fv α_yi` where
+`α_yi` is the looked-up bound term. With Γ₂'s entries' bounds avoiding
+`y` (hypothesis (2)) and `y ∉ Γ₁.dom` + Γ₁'s Prevalid invariant, this
+follows by case-split on whether `yi` is bound in Γ₂ or Γ₁:
+
+* `yi ∈ Γ₂.dom`: `α_yi` is a Γ₂ entry's bound, which by hypothesis (2)
+  has `y ∉ fv α_yi`. ✓
+* `yi ∉ Γ₂.dom`: lookup goes past Γ₂, past the head (`yi ≠ y` from
+  `avoidsPro_pro`), into Γ₁. By `Prevalid.fv_lookupEqu` on Γ₁'s tail at
+  `yi`, `fv α_yi ⊆ Γ₁.dom`. With `y ∉ Γ₁.dom`, ✓. -/
+
+/-- If `(Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds yi α_yi`, `yi ≠ y`,
+Γ₂'s entries' bounds avoid `y`, and `y ∉ Γ₁.dom`, then `y ∉ fv α_yi`.
+
+Provides the missing premise for the `pro` arm of `strip_equ_head`. -/
+private theorem _y_notin_fv_lookupEqu_under_avoid
+    {Γ₁ Γ₂ : Ctx} {y yi : String} {α α_yi : Term}
+    (hpv : Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁))
+    (hb : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁).equBinds yi α_yi)
+    (hyiy : yi ≠ y)
+    (hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y)
+    (hy_Γ₁ : y ∉ Γ₁.dom) :
+    y ∉ Term.fv α_yi := by
+  induction Γ₂ with
+  | nil =>
+    -- Lookup is in `⟨y, α, .equ⟩ :: Γ₁`. yi ≠ y, so lookup goes into Γ₁.
+    show y ∉ Term.fv α_yi
+    have hb' : Ctx.lookupEqu (⟨y, α, .equ⟩ :: Γ₁) yi = some α_yi := hb
+    rw [Ctx.lookupEqu_cons] at hb'
+    by_cases hyy : y = yi
+    · exact absurd hyy.symm hyiy
+    · simp [hyy] at hb'
+      -- hb' : Ctx.lookupEqu Γ₁ yi = some α_yi
+      have hpv₁ : Prevalid Γ₁ := by
+        have hpv' : Prevalid (⟨y, α, .equ⟩ :: Γ₁) := by simpa using hpv
+        cases hpv' with | equ hΓ _ _ _ => exact hΓ
+      have hbΓ₁ : Γ₁.equBinds yi α_yi := hb'
+      have hfv : Term.fv α_yi ⊆ Γ₁.dom :=
+        Prevalid.fv_lookupEqu hpv₁ hbΓ₁
+      exact fun h => hy_Γ₁ (hfv h)
+  | cons e rest ih =>
+    -- Lookup tries e first; if e.name = yi and e is .equ, found = e.bound.
+    have ⟨hhead, htail⟩ := Ctx.AvoidsBoundFv_cons.mp hΓ₂_avoid
+    have hpv' : Prevalid (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) := by simpa using hpv
+    have hpv_tail : Prevalid (rest ++ ⟨y, α, .equ⟩ :: Γ₁) := by
+      cases hpv' with
+      | sub hpv_t _ _ _ => exact hpv_t
+      | equ hpv_t _ _ _ => exact hpv_t
+    have hb' : Ctx.lookupEqu (e :: (rest ++ ⟨y, α, .equ⟩ :: Γ₁)) yi = some α_yi := hb
+    rw [Ctx.lookupEqu_cons] at hb'
+    by_cases he : e.name = yi
+    · rw [if_pos he] at hb'
+      cases hkind : e.kind with
+      | sub => simp [hkind] at hb'
+      | equ =>
+        simp [hkind] at hb'
+        -- hb' : e.bound = α_yi (after simp)
+        -- hhead : y ∉ fv e.bound
+        rw [← hb']
+        exact hhead
+    · rw [if_neg he] at hb'
+      exact ih hpv_tail hb' htail
+
+/-! ### §10.2. `MEqRed.strip_equ_head` — STILL PENDING
+
+The full functor is not yet built. With the §10.1 helper, the `pro`
+arm becomes tractable. The remaining blockers:
+
+* **Cofinite arms (`bet`/`fun_`/`fOp`)**: the body recursion grows Γ₂
+  by `⟨y₀, tt, .sub⟩` (or `⟨y₀, αi, .equ⟩`). To extend the
+  `Ctx.AvoidsBoundFv` premise to the new Γ₂', we need `y ∉ fv tt`
+  (resp. `y ∉ fv αi`). From the source/target hypotheses we can
+  extract `y ∉ fv tt` for `bet` (since `t` appears explicitly in
+  source `.app (.abs t body) v0`), but for the TARGET branches of
+  `fun_`/`fOp` (where `t'` is the new bound) we need `y ∉ fv t'`,
+  which is NOT derivable from `y ∉ fv u'` alone — it requires
+  separately tracking `y ∉ fv` of bound annotations through the
+  recursion.
+
+* **Cofinite operand recursion (`bet` `v` arm)**: needs `y ∉ fv v0'`
+  (target operand). Not derivable from `y ∉ fv u' = fv (Term.opening
+  v0' body')` because `Term.opening` may absorb `y` from `v0'` if
+  `body'` has a `0`-bvar reference (only one occurrence is opened, so
+  if `body'` has e.g. two `0`-bvars one is overwritten, but `v0'` is
+  substituted into all such positions — wait, opening uses index 0
+  consistently). Concretely: `Term.opening v0' body'` gets `v0'`
+  inserted at every `0`-bvar of `body'` (when bvar 0 is open), so its
+  fv is `fv body' ∪ (fv v0' if 0-bvar present)`. So `y ∉ fv (opening)`
+  doesn't preclude `y ∈ fv v0'` if `body'` has no 0-bvar.
+
+The natural fix: thread `y ∉ fv body'` AND `y ∉ fv v0'` AND
+`y ∉ fv body` AND `y ∉ fv v0` AND `y ∉ fv t` AND `y ∉ fv t'` etc.
+through a stronger structural premise — essentially an "all terms
+mentioned anywhere in the derivation avoid `y`" Bool predicate
+(`avoidsFv`).
+
+Designing `avoidsFv` mirrors `avoidsPro` (§2 of `AvoidsPro.lean`):
+recursive Bool function on `MEqRed.rec`, per-constructor `simp`
+lemmas, equivariance / preservation lemmas. ~200-400 lines of
+infrastructure.
+
+The follow-up iteration should:
+1. Add `def avoidsFv (h : MEqRed Γ s u v) (x : String) : Bool` with
+   per-constructor simp lemmas.
+2. Use `avoidsPro h y && cofinDomFresh h && avoidsFv h y` as the
+   bundled premise.
+3. Build `MEqRed.strip_equ_head` arm-by-arm following
+   `equ_head_replace`'s template.
+
+Cross-reference: `Lemma_2_inline_app_bet_residual_axiom` in
+`Pss/Mpss/Diamond.lean` (iter-6 blocker analysis at lines 571-697). -/
+
 /-! ### §9.4. MSubRed analog — DEFERRED to a follow-up phase
 
 A natural follow-up would build `MSubRed.stack_replace` /
