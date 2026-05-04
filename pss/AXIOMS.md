@@ -203,6 +203,13 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnReductions.lean` — added named closure helpers
   `MEqRedStar.single`, `MSubRedStar.single`, `MEqRedStar.trans`, and
   `MSubRedStar.trans`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added de Bruijn shape
+  inversions for reductions and reduction chains:
+  `MEqRed.top_inv`, `MSubRed.top_inv`, `MEqRedStar.top_inv`,
+  `MSubRedStar.top_inv`, `MEqRed.abs_inv`, and `MEqRedStar.abs_inv`.
+  These are the reduction-side facts needed to rule out `Top` reducing
+  to a function shape in the de Bruijn progress path. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnContextRed.lean` — ported MPSS extended-context
   reduction to the de Bruijn layer as `ExtCtxRed` / `ExtCtxRedStar`,
   with nameless `Ct-Ann` / `Ct-Stk` constructors, context-depth,

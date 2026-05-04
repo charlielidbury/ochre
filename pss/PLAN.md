@@ -255,7 +255,10 @@ hard caveats.
      `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`. Named closure
      helpers are available as `MEqRedStar.single`,
      `MSubRedStar.single`, `MEqRedStar.trans`, and
-     `MSubRedStar.trans`.
+     `MSubRedStar.trans`. Shape inversions are available as
+     `MEqRed.top_inv`, `MSubRed.top_inv`, `MEqRedStar.top_inv`,
+     `MSubRedStar.top_inv`, `MEqRed.abs_inv`, and
+     `MEqRedStar.abs_inv`.
      De Bruijn extended-context reduction is now ported in
      `Pss/Mpss/DeBruijnContextRed.lean` as `ExtCtxRed` /
      `ExtCtxRedStar`, with nameless `Ct-Ann` / `Ct-Stk`, structural

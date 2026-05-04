@@ -903,6 +903,60 @@ theorem MSubRedStar.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
     (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
     (Prevalid.tail hNew) hpv
 
+/-! ## Shape inversions -/
+
+/-- A de Bruijn equivalence-reduction step from `Top` can only target `Top`. -/
+theorem MEqRed.top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MEqRed Γ s .top v) : v = .top := by
+  cases h with
+  | top _ => rfl
+
+/-- A de Bruijn subtype-reduction step from `Top` can only target `Top`. -/
+theorem MSubRed.top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MSubRed Γ s .top v) : v = .top := by
+  cases h with
+  | top _ _ => rfl
+  | equ _ heq => exact heq.top_inv
+
+/-- A de Bruijn equivalence-reduction chain from `Top` can only target `Top`. -/
+theorem MEqRedStar.top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MEqRedStar Γ s .top v) : v = .top := by
+  induction h with
+  | refl => rfl
+  | tail _ hStep ih =>
+      subst ih
+      exact hStep.some.top_inv
+
+/-- A de Bruijn subtype-reduction chain from `Top` can only target `Top`. -/
+theorem MSubRedStar.top_inv {Γ : Ctx} {s : Stack} {v : Term}
+    (h : MSubRedStar Γ s .top v) : v = .top := by
+  induction h with
+  | refl => rfl
+  | tail _ hStep ih =>
+      subst ih
+      exact hStep.some.top_inv
+
+/-- A de Bruijn equivalence-reduction step from an abstraction can only target
+an abstraction. -/
+theorem MEqRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MEqRed Γ s (.abs bound body) v) :
+    ∃ bound' body', v = .abs bound' body' := by
+  cases h with
+  | fun_ _ _ => exact ⟨_, _, rfl⟩
+  | fOp _ _ _ => exact ⟨_, _, rfl⟩
+
+/-- A de Bruijn equivalence-reduction chain from an abstraction can only target
+an abstraction. -/
+theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MEqRedStar Γ s (.abs bound body) v) :
+    ∃ bound' body', v = .abs bound' body' := by
+  induction h with
+  | refl => exact ⟨bound, body, rfl⟩
+  | tail _ hStep ih =>
+      obtain ⟨bound', body', hEq⟩ := ih
+      subst hEq
+      exact hStep.some.abs_inv
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.
