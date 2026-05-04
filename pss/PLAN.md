@@ -144,6 +144,9 @@ hard caveats.
      defines nameless context entries, index-based `.sub` / `.equ`
      lookup, binding predicates, stacks, and extended contexts. This is
      standalone and does not alter the locally-nameless context modules.
+     It also now includes Type-valued `Prevalid` / `PrevalidExt`,
+     successful-lookup depth lemmas, scoped lookup lemmas, and stack
+     prevalidity destructors.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

@@ -107,6 +107,64 @@ def equBinds (Γ : Ctx) (i : Nat) (t : Term) : Prop :=
 @[simp] theorem equBinds_zero_self (Γ : Ctx) (t : Term) :
     equBinds ({ bound := t, kind := .equ } :: Γ) 0 t := rfl
 
+/-- A successful raw lookup is necessarily within the context depth. -/
+theorem lookup_some_lt {Γ : Ctx} {i : Nat} {e : CtxEntry} :
+    Γ.lookup i = some e → i < Γ.depth := by
+  induction Γ generalizing i with
+  | nil =>
+    simp [lookup]
+  | cons head tail ih =>
+    cases i with
+    | zero =>
+      intro _
+      simp [depth]
+    | succ i =>
+      intro h
+      have hi := ih h
+      simpa [depth, Nat.add_comm] using Nat.succ_lt_succ hi
+
+/-- A successful `.sub` lookup is necessarily within the context depth. -/
+theorem lookupSub_some_lt {Γ : Ctx} {i : Nat} {t : Term} :
+    Γ.lookupSub i = some t → i < Γ.depth := by
+  induction Γ generalizing i with
+  | nil =>
+    simp [lookupSub]
+  | cons head tail ih =>
+    cases i with
+    | zero =>
+      intro _
+      simp [depth]
+    | succ i =>
+      intro h
+      have hi := ih h
+      simpa [depth, Nat.add_comm] using Nat.succ_lt_succ hi
+
+/-- A successful `.equ` lookup is necessarily within the context depth. -/
+theorem lookupEqu_some_lt {Γ : Ctx} {i : Nat} {t : Term} :
+    Γ.lookupEqu i = some t → i < Γ.depth := by
+  induction Γ generalizing i with
+  | nil =>
+    simp [lookupEqu]
+  | cons head tail ih =>
+    cases i with
+    | zero =>
+      intro _
+      simp [depth]
+    | succ i =>
+      intro h
+      have hi := ih h
+      simpa [depth, Nat.add_comm] using Nat.succ_lt_succ hi
+
+/-- A `.sub` binding index is necessarily within the context depth. -/
+theorem subBinds_lt {Γ : Ctx} {i : Nat} {t : Term} :
+    Γ.subBinds i t → i < Γ.depth :=
+  lookupSub_some_lt
+
+/-- An `.equ` binding index is necessarily within the context depth. -/
+theorem equBinds_lt {Γ : Ctx} {i : Nat} {t : Term} :
+    Γ.equBinds i t → i < Γ.depth :=
+  lookupEqu_some_lt
+
 end Ctx
 
 /-! ## Stacks and extended contexts -/
@@ -136,6 +194,125 @@ def extend (E : ExtCtx) (α : Term) : ExtCtx := (E.ctx, α :: E.stack)
     extend (Γ, s) α = (Γ, α :: s) := rfl
 
 end ExtCtx
+
+/-! ## Prevalidity -/
+
+/-- Pre-valid de Bruijn logical contexts.
+
+When extending `Γ` with a new head entry, the entry's bound is scoped in the
+tail `Γ`, not in the extended context. This matches the paper convention that
+`Γ, x ≤ t` requires `t` to be well-scoped in `Γ`; the newly bound variable is
+available only in bodies checked under the extended context. -/
+inductive Prevalid : Ctx → Type
+  | empty : Prevalid []
+  | sub {Γ : Ctx} {t : Term} :
+      Prevalid Γ →
+      Term.Scoped Γ.depth t →
+      Prevalid ({ bound := t, kind := .sub } :: Γ)
+  | equ {Γ : Ctx} {α : Term} :
+      Prevalid Γ →
+      Term.Scoped Γ.depth α →
+      Prevalid ({ bound := α, kind := .equ } :: Γ)
+
+/-- Pre-validity for an extended de Bruijn context `Γ ; s`. -/
+inductive PrevalidExt : Ctx → Stack → Type
+  | nil {Γ : Ctx} : Prevalid Γ → PrevalidExt Γ []
+  | cons {Γ : Ctx} {s : Stack} {α : Term} :
+      PrevalidExt Γ s →
+      Term.Scoped Γ.depth α →
+      PrevalidExt Γ (α :: s)
+
+namespace Prevalid
+
+/-- The tail of a non-empty prevalid de Bruijn context is prevalid. -/
+def tail {e : CtxEntry} {Γ : Ctx} :
+    Prevalid (e :: Γ) → Prevalid Γ := by
+  intro h
+  cases h with
+  | sub hΓ _ => exact hΓ
+  | equ hΓ _ => exact hΓ
+
+/-- Lookup of a `.sub` binding in a prevalid context returns a term scoped in
+the whole context. -/
+noncomputable def scoped_lookupSub {Γ : Ctx} {i : Nat} {t : Term}
+    (hΓ : Prevalid Γ) (hb : Γ.subBinds i t) : Term.Scoped Γ.depth t := by
+  induction hΓ generalizing i with
+  | empty =>
+    simp [Ctx.subBinds] at hb
+  | @sub Γ' u hΓ' hu ih =>
+    cases i with
+    | zero =>
+      simp [Ctx.subBinds] at hb
+      subst hb
+      exact Term.scoped_mono (by simp [Ctx.depth]) hu
+    | succ i =>
+      simp [Ctx.subBinds] at hb
+      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+  | @equ Γ' α hΓ' hα ih =>
+    cases i with
+    | zero =>
+      simp [Ctx.subBinds] at hb
+    | succ i =>
+      simp [Ctx.subBinds] at hb
+      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+
+/-- Lookup of an `.equ` binding in a prevalid context returns a term scoped in
+the whole context. -/
+noncomputable def scoped_lookupEqu {Γ : Ctx} {i : Nat} {α : Term}
+    (hΓ : Prevalid Γ) (hb : Γ.equBinds i α) : Term.Scoped Γ.depth α := by
+  induction hΓ generalizing i with
+  | empty =>
+    simp [Ctx.equBinds] at hb
+  | @sub Γ' u hΓ' hu ih =>
+    cases i with
+    | zero =>
+      simp [Ctx.equBinds] at hb
+    | succ i =>
+      simp [Ctx.equBinds] at hb
+      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+  | @equ Γ' β hΓ' hβ ih =>
+    cases i with
+    | zero =>
+      simp [Ctx.equBinds] at hb
+      subst hb
+      exact Term.scoped_mono (by simp [Ctx.depth]) hβ
+    | succ i =>
+      simp [Ctx.equBinds] at hb
+      exact Term.scoped_mono (by simp [Ctx.depth]) (ih hb)
+
+end Prevalid
+
+namespace PrevalidExt
+
+/-- Extract the logical-context prevalidity witness from an extended-context
+prevalidity witness. -/
+noncomputable def ctx {Γ : Ctx} {s : Stack} :
+    PrevalidExt Γ s → Prevalid Γ := by
+  intro h
+  induction h with
+  | nil hΓ => exact hΓ
+  | cons _ _ ih => exact ih
+
+/-- The tail stack of a prevalid non-empty stack remains prevalid. -/
+def tail {Γ : Ctx} {s : Stack} {α : Term} :
+    PrevalidExt Γ (α :: s) → PrevalidExt Γ s := by
+  intro h
+  cases h with
+  | cons hst _ => exact hst
+
+/-- The top operand of a prevalid non-empty stack is scoped in the context. -/
+def head_scoped {Γ : Ctx} {s : Stack} {α : Term} :
+    PrevalidExt Γ (α :: s) → Term.Scoped Γ.depth α := by
+  intro h
+  cases h with
+  | cons _ hα => exact hα
+
+/-- Push a scoped operand onto a prevalid extended context. -/
+def push {Γ : Ctx} {s : Stack} {α : Term} :
+    PrevalidExt Γ s → Term.Scoped Γ.depth α → PrevalidExt Γ (α :: s) :=
+  PrevalidExt.cons
+
+end PrevalidExt
 
 end DeBruijn
 end Pss

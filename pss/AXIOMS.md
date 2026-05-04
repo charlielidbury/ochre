@@ -42,8 +42,12 @@ closures, 2 inactive outstanding).
 * `Pss/Context/DeBruijn.lean` — standalone de Bruijn logical context and
   stack seed: nameless `CtxEntry`, list-head-is-innermost `Ctx`,
   index-based `lookup`, `lookupSub`, `lookupEqu`, binding predicates,
-  `Stack`, and `ExtCtx`. Imported from `Pss.lean`; it does not import or
-  modify the locally-nameless context modules.
+  successful-lookup depth lemmas, `Stack`, and `ExtCtx`.
+* `Pss/Context/DeBruijn.lean` prevalidity seed — Type-valued
+  `Prevalid` and `PrevalidExt`, context-tail and stack-tail helpers,
+  stack-head scoping, and scoped lookup lemmas for `.sub` / `.equ`
+  bindings. Imported from `Pss.lean`; it does not import or modify the
+  locally-nameless context modules.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 
