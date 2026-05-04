@@ -183,6 +183,10 @@ closures, 2 inactive outstanding).
   `Ctx.insertAt` weakening for all five de Bruijn well-formed judgments:
   `WfM.insertAt`, `WSubM.insertAt`, `WSubMStar.insertAt`,
   `WEquM.insertAt`, and `WEquMStar.insertAt`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added head and
+  one-preserved-head convenience corollaries for all five de Bruijn
+  well-formed judgments (`*_weaken_head`, `*_weaken_tail_head`). No
+  axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

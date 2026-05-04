@@ -252,7 +252,9 @@ hard caveats.
      reduction binder shape and avoiding the locally-nameless cofinite
      body function. Generalized context insertion weakening is now
      proved for all five judgments as `WfM.insertAt`, `WSubM.insertAt`,
-     `WSubMStar.insertAt`, `WEquM.insertAt`, and `WEquMStar.insertAt`.
+     `WSubMStar.insertAt`, `WEquM.insertAt`, and `WEquMStar.insertAt`,
+     with head and one-preserved-head corollaries available as
+     `*_weaken_head` and `*_weaken_tail_head`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms

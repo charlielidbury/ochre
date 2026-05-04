@@ -493,6 +493,105 @@ noncomputable def WEquMStar.insertAt {Γ : Ctx} {v t : Term}
   | trs _ hwfMid _ ihLeft ihRight =>
     exact WEquMStar.trs ihLeft (hwfMid.insertAt hcut hNew hpv) ihRight
 
+/-- Head-extension weakening for de Bruijn well-formedness. -/
+noncomputable def WfM.weaken_head {Γ : Ctx} {t : Term} {newEntry : CtxEntry}
+    (h : WfM Γ t)
+    (hNew : Prevalid (newEntry :: Γ))
+    (hpv : Prevalid Γ) :
+    WfM (newEntry :: Γ) (Term.shift 0 t) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Head-extension weakening for de Bruijn well-subtyping. -/
+noncomputable def WSubM.weaken_head {Γ : Ctx} {v t : Term} {newEntry : CtxEntry}
+    (h : WSubM Γ v t)
+    (hNew : Prevalid (newEntry :: Γ))
+    (hpv : Prevalid Γ) :
+    WSubM (newEntry :: Γ) (Term.shift 0 v) (Term.shift 0 t) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Head-extension weakening for de Bruijn transitive well-subtyping. -/
+noncomputable def WSubMStar.weaken_head {Γ : Ctx} {v t : Term}
+    {newEntry : CtxEntry}
+    (h : WSubMStar Γ v t)
+    (hNew : Prevalid (newEntry :: Γ))
+    (hpv : Prevalid Γ) :
+    WSubMStar (newEntry :: Γ) (Term.shift 0 v) (Term.shift 0 t) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Head-extension weakening for de Bruijn well-equivalence. -/
+noncomputable def WEquM.weaken_head {Γ : Ctx} {v t : Term} {newEntry : CtxEntry}
+    (h : WEquM Γ v t)
+    (hNew : Prevalid (newEntry :: Γ))
+    (hpv : Prevalid Γ) :
+    WEquM (newEntry :: Γ) (Term.shift 0 v) (Term.shift 0 t) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Head-extension weakening for de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.weaken_head {Γ : Ctx} {v t : Term}
+    {newEntry : CtxEntry}
+    (h : WEquMStar Γ v t)
+    (hNew : Prevalid (newEntry :: Γ))
+    (hpv : Prevalid Γ) :
+    WEquMStar (newEntry :: Γ) (Term.shift 0 v) (Term.shift 0 t) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Weakening under one existing head binder for de Bruijn well-formedness. -/
+noncomputable def WfM.weaken_tail_head {Γ : Ctx} {t : Term}
+    {head newHead : CtxEntry}
+    (h : WfM (head :: Γ) t)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ))
+    (hpv : Prevalid (head :: Γ)) :
+    WfM (head.shift 0 :: newHead :: Γ) (Term.shift 1 t) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
+/-- Weakening under one existing head binder for de Bruijn well-subtyping. -/
+noncomputable def WSubM.weaken_tail_head {Γ : Ctx} {v t : Term}
+    {head newHead : CtxEntry}
+    (h : WSubM (head :: Γ) v t)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ))
+    (hpv : Prevalid (head :: Γ)) :
+    WSubM (head.shift 0 :: newHead :: Γ) (Term.shift 1 v) (Term.shift 1 t) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
+/-- Weakening under one existing head binder for de Bruijn transitive
+well-subtyping. -/
+noncomputable def WSubMStar.weaken_tail_head {Γ : Ctx} {v t : Term}
+    {head newHead : CtxEntry}
+    (h : WSubMStar (head :: Γ) v t)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ))
+    (hpv : Prevalid (head :: Γ)) :
+    WSubMStar (head.shift 0 :: newHead :: Γ) (Term.shift 1 v) (Term.shift 1 t) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
+/-- Weakening under one existing head binder for de Bruijn well-equivalence. -/
+noncomputable def WEquM.weaken_tail_head {Γ : Ctx} {v t : Term}
+    {head newHead : CtxEntry}
+    (h : WEquM (head :: Γ) v t)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ))
+    (hpv : Prevalid (head :: Γ)) :
+    WEquM (head.shift 0 :: newHead :: Γ) (Term.shift 1 v) (Term.shift 1 t) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
+/-- Weakening under one existing head binder for de Bruijn transitive
+well-equivalence. -/
+noncomputable def WEquMStar.weaken_tail_head {Γ : Ctx} {v t : Term}
+    {head newHead : CtxEntry}
+    (h : WEquMStar (head :: Γ) v t)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ))
+    (hpv : Prevalid (head :: Γ)) :
+    WEquMStar (head.shift 0 :: newHead :: Γ) (Term.shift 1 v) (Term.shift 1 t) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
 /-! ## Basic well-equivalence helpers -/
 
 /-- Symmetry of de Bruijn well-equivalence. -/
