@@ -2135,108 +2135,66 @@ private noncomputable def Lemma_2_inline_fOp_fOp
 /-! ### §3.2 Same-context core lemma -/
 
 /-- **Same-context Lemma 2 (core).** Diamond property of `MEqRed` at a
-single extended context. Proved by induction on `h₁`, with the `t₂`
-index generalized so each constructor case has access to the structural
-IH of its own sub-derivations against an arbitrary `t₂`.
+single extended context.
 
 Returns a `Σ'` (Type-valued sigma) since `MEqRed` is `Type`-valued and
 `∃` requires a `Prop`-valued body.
 
-## Iter-4 attempt (pss-20260504-iter4): WF refactor SHIPPED PARTIAL
+## Iter-5 refactor (pss-20260504-iter5): WF recursion via `structural h₁`
 
-Iter 4 attempted to refactor this from `induction h₁ generalizing t₂`
-to a `noncomputable def` with `match h₁` and `termination_by
-MEqRed.derSize h₁`. The structural skeleton works (verified via
-`exact <lemma>` discharge of 6/9 termination obligations) but the
-3 cofinite-arm body recursions (`bet`, `fun_`, `fOp`) hit a
-**fundamental gap in the iter-3 `derSize` design**:
+The body of `_core` is now a `match h₁, h₂ with` whose recursive calls
+into the per-cell helpers (`Lemma_2_inline_*`) are wired through
+**lambda IHs** rather than the equation compiler's auto-generated
+`ihu/ihv/ihbody`. The termination is closed by `termination_by
+structural h₁`.
 
-For each cofinite arm, the body-IH parameter passed to the helper has
-form `fun y hy {body₂'} hh => _core (hbody y hy) hh`. Lean's
-`decreasing_by` then needs to prove
+### Why this works (despite iter-4's blocker analysis)
+
+Iter 4 attempted `termination_by MEqRed.derSize h₁` and hit a wall on
+the cofinite-arm body recursions: for `bet`/`fun_`/`fOp`, the body IH
+passed to the helper is `fun y hy h₂' => _core (hbody y hy) h₂'`, and
+Lean's `decreasing_by` would need
 `derSize (hbody y hy) < derSize parent` for **arbitrary** `y ∉ L`.
-But `derSize` (defined in `Pss/Mpss/MEqRedSize.lean` via `MEqRed.rec`)
-samples the body at `pickFresh L` only:
+The iter-3 `derSize` only samples at `pickFresh L`, so this needs an
+y-invariance lemma — the alpha-equivariance hole.
 
-```
-derSize (MEqRed.fOp L ht hbody _) :=
-  1 + derSize ht + derSize (hbody (pickFresh L) (pickFresh_notMem L))
-```
+The iter-5 fix sidesteps this entirely: `MEqRed` is `Type`-valued
+(post `ad3ff08`), so Lean's structural recursion can eliminate over
+its recursor — and the cofinite-arm `hbody : ∀ y, y ∉ L → MEqRed ...`
+fields are recognized as structurally-decreasing arguments by the
+elaborator. The recursive call `_core (hbody y hy) h₂'` for arbitrary
+`y` is structurally smaller than the constructor `MEqRed.bet/fun_/fOp
+... hbody ...` regardless of the y choice. No measure proofs required.
 
-So `derSize (hbody y _)` for arbitrary `y ∉ L` is the value of
-`MEqRed.rec` applied to a DIFFERENT derivation, with no
-guaranteed relationship to `derSize (hbody (pickFresh L) _)`. The
-function `hbody : ∀ y, y ∉ L → MEqRed ...` is supplied by the user of
-the constructor and CAN have arbitrarily different sizes at different
-y values (no alpha-equivariance constraint on the constructor).
+### Why the lambda-IH style preserves the helper signatures
 
-### Why this is the alpha-equivariance hole
+The per-cell helpers (`Lemma_2_inline_pro_pro`, `_inline_app`,
+`_inline_bet`, `_inline_fun_fun`, `_inline_fOp_fOp`) take their IHs as
+ordinary function parameters of shape
+`∀ {t₂'}, MEqRed Γ s α t₂' → Σ' ...` (and analogously the body-IHs).
+The `match`-body wraps each as a lambda
+`fun {t₂'} h₂' => Lemma_2_DiamondMEqRed_core <sub-derivation> h₂'`.
+This preserves the helpers' public signatures unchanged.
 
-This IS the alpha-equivariance hole flagged in `pss/CLAUDE.md`:
+### What this unblocks
 
-> "The next big architectural lever is the renaming functor on MEqRed
-> (~500-800 lines): a Type-valued recursive renaming that preserves
-> constructor structure, enabling honest discharge of alpha-equivariance.
-> This unblocks the β-residual layer."
+With body-position recursive calls now in scope of `_core`, iter 6 can
+attempt to discharge `Lemma_2_inline_app_bet_residual_axiom` and
+`Lemma_2_inline_bet_residual_axiom` (the β-residual axioms). The
+body-diamond closure they need is now obtainable via direct recursion
+into `_core` from the helper bodies — which is the architectural lever
+flagged in iter-2 / iter-4 docstrings.
 
-Concretely, an arbitrary-y body-decrease lemma `derSize_fOp_body_arb`
-of shape `∀ y hy, derSize (hbody y hy) < derSize parent` is provable
-ONLY IF we have a renaming-invariance lemma
-`derSize (hbody y₁ _) = derSize (hbody y₂ _)` for any two fresh y's.
-That requires the renaming functor.
-
-### Iter-5 plan
-
-Two viable paths (both unblock the body-diamond and thereby
-`Lemma_2_inline_app_bet_residual_axiom`):
-
-**(A) Term-size measure (simpler).** Replace `derSize` with a
-syntactic measure on the source term `t₀`. For non-`pro` cases,
-sub-derivation source terms are syntactically smaller. For `pro`, use
-a lex on `(Term.size t₀, derSize h₁)` where the lookup-`α` may grow
-the term but is bounded by the original Γ's syntactic size. Critically:
-`Term.size (body^[y])` is y-independent (opening with `.fvar y`
-preserves size), so the body recursion's source-size is bounded by
-the parent's source-size MINUS 1 — strict decrease holds for ALL y.
-
-**(B) Renaming functor + alpha-equivariance lemma.** The big refactor
-mentioned in `pss/CLAUDE.md`. Adds ~500-800 lines of renaming
-infrastructure that lets us prove `derSize (rename y→z h) = derSize h`,
-which then licenses `derSize_*_body_arb`. Strategically more valuable
-since it unblocks `MEqRed.refl`-based avoidsPro arguments too, but
-significantly more work.
-
-Recommended: (A) first as a minimal-change unblock; (B) later as a
-strategic infrastructure investment.
-
-### Iter-4 deliverable: blocker analysis + path (A) foundations
-
-Iter 4 reverts to the iter-3 baseline (this `induction` proof) for
-`_core` and ships:
-
-1. This blocker docstring documenting the y-arbitrary derSize gap.
-2. `Pss/Syntax/LocallyNameless.lean` additions (this iter):
-   - `Term.size : Term → Nat` — syntactic AST-node count.
-   - `Term.size_open_fvar` — opening with a free variable preserves
-     size (the y-invariance property load-bearing for path A).
-   - `Term.size_opening_fvar` — `^[]` specialization.
-
-These additions are what iter 5 needs to attempt path (A) — the
-term-size measure approach. With `Term.size_opening_fvar`, iter 5 can
-prove `Term.size (body^[y]) = Term.size body` (y-invariant), making
-the body recursion's source-size strictly smaller than the parent's
-source-size for ALL y choices.
-
-The `MEqRedSize.lean` infrastructure from iter 3 also remains useful:
-the per-constructor `derSize_*` simp lemmas serve as templates for
-the term-size analogues iter 5 will write. -/
+Note: this iteration ships ONLY the structural refactor. Headline
+closures (`Theorem_3/4/5`, `Lemma_1/2`) are byte-identical to the
+iter-4 baseline; no axioms added or discharged. -/
 noncomputable def Lemma_2_DiamondMEqRed_core
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ s t₀ t₁)
     (h₂ : MEqRed Γ s t₀ t₂) :
-    Σ' (t₃ : Term), MEqRed Γ s t₁ t₃ × MEqRed Γ s t₂ t₃ := by
-  induction h₁ generalizing t₂ with
-  | @pro Γ s yvr aLkup α' hpv₁ heq₁ hα₁ ihα₁ =>
+    Σ' (t₃ : Term), MEqRed Γ s t₁ t₃ × MEqRed Γ s t₂ t₃ :=
+  match h₁, h₂ with
+  | @MEqRed.pro _ _ yvr aLkup α' hpv₁ heq₁ hα₁, h₂ => by
     cases h₂ with
     | @pro _ _ _ aLkupB _ hpv₂ heq₂ hα₂ =>
       have hα_eq : aLkup = aLkupB := by
@@ -2245,7 +2203,8 @@ noncomputable def Lemma_2_DiamondMEqRed_core
         rw [h1] at h2
         exact Option.some.inj h2
       subst hα_eq
-      exact Lemma_2_inline_pro_pro hpv₁ hpv₂ heq₁ hα₁ hα₂ ihα₁
+      exact Lemma_2_inline_pro_pro hpv₁ hpv₂ heq₁ hα₁ hα₂
+        (fun {t₂'} h₂' => Lemma_2_DiamondMEqRed_core hα₁ h₂')
     | var hpv₂ =>
       have hLCα' : Term.LC α' := MEqRed.lc_right hα₁
       have hfvaLkup : Term.fv aLkup ⊆ Ctx.dom Γ :=
@@ -2253,15 +2212,19 @@ noncomputable def Lemma_2_DiamondMEqRed_core
       have hfvα' : Term.fv α' ⊆ Ctx.dom Γ :=
         MEqRed_fv_preserve hα₁ hfvaLkup
       exact ⟨α', MEqRed.refl hpv₁ hLCα' hfvα', MEqRed.pro hpv₂ heq₁ hα₁⟩
-  | @bet Γ s tBound vSrc vDst body bodyDst L hLCt hbody _hUni hv ihbody ihv =>
-    exact Lemma_2_inline_bet hLCt hbody hv h₂ ihbody ihv
-  | top hpv₁ =>
+  | .bet L hLCt hbody hUni hv, h₂ =>
+    Lemma_2_inline_bet hLCt hbody hv h₂
+      (fun y hy {t₂'} h₂' => Lemma_2_DiamondMEqRed_core (hbody y hy) h₂')
+      (fun {t₂'} h₂' => Lemma_2_DiamondMEqRed_core hv h₂')
+  | .top hpv₁, h₂ => by
     cases h₂ with
     | top hpv₂ =>
       exact ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂⟩
-  | @app Γ s u u' v v' hu hv ihu ihv =>
-    exact Lemma_2_inline_app hu hv h₂ ihu ihv
-  | @var Γ s yvr hpv₁ =>
+  | .app hu hv, h₂ =>
+    Lemma_2_inline_app hu hv h₂
+      (fun {t₂'} h₂' => Lemma_2_DiamondMEqRed_core hu h₂')
+      (fun {t₂'} h₂' => Lemma_2_DiamondMEqRed_core hv h₂')
+  | @MEqRed.var _ _ yvr hpv₁, h₂ => by
     cases h₂ with
     | @pro _ _ _ aLkup _ hpv₂ heq₂ hα₂ =>
       have hLCt₂ : Term.LC t₂ := MEqRed.lc_right hα₂
@@ -2272,16 +2235,20 @@ noncomputable def Lemma_2_DiamondMEqRed_core
       exact ⟨t₂, MEqRed.pro hpv₁ heq₂ hα₂, MEqRed.refl hpv₂ hLCt₂ hfvt₂⟩
     | var hpv₂ =>
       exact ⟨.fvar yvr, MEqRed.var hpv₁, MEqRed.var hpv₂⟩
-  | @fun_ Γ tBound tBoundDst body body₁ L₁ ht₁ hbody₁ _hUni iht ihbody =>
+  | .fun_ L₁ ht₁ hbody₁ hUni, h₂ => by
     cases h₂ with
     | @fun_ _ _ tBoundDst₂ _ body₂ L₂ ht₂ hbody₂ _hUni₂ =>
-      exact Lemma_2_inline_fun_fun ht₁ ht₂ hbody₁ hbody₂ iht ihbody
-  | tAp hpv₁ hLCu hfvu =>
-    exact Lemma_2_inline_tAp hpv₁ hLCu hfvu h₂
-  | @fOp Γ s tBound tBoundDst αHd body body₁ L₁ ht₁ hbody₁ _hUni iht ihbody =>
+      exact Lemma_2_inline_fun_fun ht₁ ht₂ hbody₁ hbody₂
+        (fun {t₂''} h₂' => Lemma_2_DiamondMEqRed_core ht₁ h₂')
+        (fun y hy {body₂'} h₂' => Lemma_2_DiamondMEqRed_core (hbody₁ y hy) h₂')
+  | .tAp hpv₁ hLCu hfvu, h₂ => Lemma_2_inline_tAp hpv₁ hLCu hfvu h₂
+  | .fOp L₁ ht₁ hbody₁ hUni, h₂ => by
     cases h₂ with
     | @fOp _ _ _ tBoundDst₂ _ _ body₂ L₂ ht₂ hbody₂ _hUni₂ =>
-      exact Lemma_2_inline_fOp_fOp ht₁ ht₂ hbody₁ hbody₂ iht ihbody
+      exact Lemma_2_inline_fOp_fOp ht₁ ht₂ hbody₁ hbody₂
+        (fun {t₂''} h₂' => Lemma_2_DiamondMEqRed_core ht₁ h₂')
+        (fun y hy {body₂'} h₂' => Lemma_2_DiamondMEqRed_core (hbody₁ y hy) h₂')
+termination_by structural h₁
 
 /-! ### §3.3 Context-evolution lifting
 
