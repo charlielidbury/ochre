@@ -2347,6 +2347,15 @@ theorem MEqRed.abs_inv_detail {Γ : Ctx} {s : Stack} {bound body v : Term}
   | fOp hBound hα hBody =>
     exact Or.inr ⟨_, _, _, _, ⟨hBound⟩, ⟨hα⟩, rfl, ⟨hBody⟩, rfl⟩
 
+/-- Bound projection for one empty-stack equivalence step between
+abstractions. -/
+def MEqRed.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
+    (h : MEqRed Γ [] (.abs bound body) (.abs result body')) :
+    MEqRed Γ [] bound result := by
+  cases h with
+  | fun_ hBound _ =>
+    exact hBound
+
 /-- A de Bruijn equivalence-reduction chain from an abstraction can only target
 an abstraction. -/
 theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
@@ -2358,6 +2367,30 @@ theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
       obtain ⟨bound', body', hEq⟩ := ih
       subst hEq
       exact hStep.some.abs_inv
+
+/-- Bound projection for an empty-stack equivalence chain between
+abstractions. -/
+theorem MEqRedStar.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
+    (h : MEqRedStar Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedStar Γ [] bound result := by
+  suffices key : ∀ {target : Term},
+      MEqRedStar Γ [] (.abs bound body) target →
+        ∀ {result body' : Term}, target = .abs result body' →
+          MEqRedStar Γ [] bound result from
+    key h rfl
+  intro target hChain
+  induction hChain with
+  | refl =>
+      intro result body' hEq
+      cases hEq
+      exact Relation.ReflTransGen.refl
+  | tail hStar hStep ih =>
+      intro result body' hEq
+      subst hEq
+      obtain ⟨midBound, midBody, hMid⟩ := MEqRedStar.abs_inv hStar
+      subst hMid
+      exact MEqRedStar.trans (ih rfl)
+        (MEqRedStar.single hStep.some.abs_bound_red)
 
 /-- A de Bruijn subtype-reduction step from an abstraction can only target
 `Top` or another abstraction. -/
@@ -2419,6 +2452,18 @@ theorem MSubRed.abs_inv_detail {Γ : Ctx} {s : Stack} {bound body v : Term}
     exact Or.inr (Or.inr (Or.inr (Or.inr
       ⟨_, _, _, ⟨ht⟩, ⟨hα⟩, rfl, ⟨hBody⟩, rfl⟩)))
 
+/-- Bound projection for one empty-stack subtype step between abstractions.
+The bound changes only through an equivalence reduction; body-only function
+operand steps keep it fixed. -/
+theorem MSubRed.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
+    (h : MSubRed Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedStar Γ [] bound result := by
+  cases h with
+  | equ _ hEq =>
+      exact MEqRedStar.single hEq.abs_bound_red
+  | fun_ _ hBound _ =>
+      exact MEqRedStar.single hBound
+
 /-- A de Bruijn subtype-reduction chain from an abstraction can only target
 `Top` or another abstraction. -/
 theorem MSubRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
@@ -2436,6 +2481,33 @@ theorem MSubRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
       obtain ⟨bound', body', hEq⟩ := hAbs
       subst hEq
       exact hStep.some.abs_inv
+
+/-- Bound projection for an empty-stack subtype chain between abstractions. -/
+theorem MSubRedStar.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
+    (h : MSubRedStar Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedStar Γ [] bound result := by
+  suffices key : ∀ {target : Term},
+      MSubRedStar Γ [] (.abs bound body) target →
+        ∀ {result body' : Term}, target = .abs result body' →
+          MEqRedStar Γ [] bound result from
+    key h rfl
+  intro target hChain
+  induction hChain with
+  | refl =>
+      intro result body' hEq
+      cases hEq
+      exact Relation.ReflTransGen.refl
+  | tail hStar hStep ih =>
+      intro result body' hEq
+      subst hEq
+      obtain ⟨midBound, midBody, hMid⟩ := (MSubRedStar.abs_inv hStar).resolve_left (by
+        intro hTop
+        subst hTop
+        have hTargetTop : Term.abs result body' = Term.top :=
+          MSubRed.top_inv (Nonempty.some hStep)
+        cases hTargetTop)
+      subst hMid
+      exact MEqRedStar.trans (ih rfl) (MSubRed.abs_bound_red (Nonempty.some hStep))
 
 /-- A one-step equivalence reduction from a `Top`-headed application can only
 target either `Top` or another `Top`-headed application. -/

@@ -1206,6 +1206,12 @@ closures, 2 inactive outstanding).
   `MSubRed.abs_function_bound_inversion`, extracting bound
   well-equivalence from an empty-stack function-to-function subtype
   reduction. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added abstraction bound projection
+  lemmas for empty-stack equivalence/subtype reduction chains:
+  `MEqRed.abs_bound_red`, `MEqRedStar.abs_bound_red`,
+  `MSubRed.abs_bound_red`, and `MSubRedStar.abs_bound_red`. These expose
+  the shared-bound chain needed by the remaining function-bound inversion.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
