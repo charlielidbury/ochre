@@ -1142,6 +1142,13 @@ closures, 2 inactive outstanding).
   recursive `Ms-App` and `Ms-Fun` cases are supplied directly as
   `WSubMStar` residuals rather than raw subtype-reduction chains. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added head, under-head, and
+  binder-recursive specializations of the direct subtype-step residual
+  consumer:
+  `WSubMStar.of_MSubRed_sub_head_replace_from_direct_payloads`,
+  `WSubMStar.of_MSubRed_sub_under_head_replace_from_direct_payloads`,
+  and `WSubMStar.of_MSubRed_replaceAt_sub_from_body_direct_payloads`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
