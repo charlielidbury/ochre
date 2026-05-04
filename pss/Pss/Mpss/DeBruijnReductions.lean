@@ -1171,6 +1171,58 @@ noncomputable def MEqRed.pro_replaceAt_sub {Γ : Ctx} {s : Stack}
       (.bvar i) α' :=
   MEqRed.pro hpvNew (Ctx.equBinds_replaceAt_sub hb) hα
 
+/-- Generic `Me-App` rebuilder after arbitrary-depth `.sub` replacement,
+assuming both recursive premises have already been replaced. -/
+noncomputable def MEqRed.app_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {new u u' v v' : Term}
+    (hOp : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (v :: s) u u')
+    (hArg : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] v v') :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.app u v) (.app u' v') :=
+  MEqRed.app hOp hArg
+
+/-- Generic `Me-Fun` rebuilder after arbitrary-depth `.sub` replacement,
+assuming the bound and body premises have already been replaced. -/
+noncomputable def MEqRed.fun_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new t t' body body' : Term}
+    (hBound : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] t t')
+    (hBody : MEqRed ({ bound := t, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] body body') :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (.abs t body) (.abs t' body') :=
+  MEqRed.fun_ hBound hBody
+
+/-- Generic `Me-Bet` rebuilder after arbitrary-depth `.sub` replacement,
+assuming body and argument premises have already been replaced. -/
+noncomputable def MEqRed.bet_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new t v v' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hBody : MEqRed ({ bound := t, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+        (Stack.shift 0 s) body body')
+    (hArg : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] v v') :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.app (.abs t body) v) (Term.instantiate 0 v' body') :=
+  MEqRed.bet (by simpa [Ctx.depth_replaceAt] using ht) hBody hArg
+
+/-- Generic `Me-FOp` rebuilder after arbitrary-depth `.sub` replacement,
+assuming bound and body premises have already been replaced. -/
+noncomputable def MEqRed.fOp_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new t t' α body body' : Term}
+    (hBound : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] t t')
+    (hα : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) α)
+    (hBody : MEqRed ({ bound := α, kind := .equ } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+        (Stack.shift 0 s) body body') :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (α :: s)
+      (.abs t body) (.abs t' body') :=
+  MEqRed.fOp hBound (by simpa [Ctx.depth_replaceAt] using hα) hBody
+
 /-- Generic `Ms-Top` transport across replacement of a `.sub` entry at any
 context depth. -/
 noncomputable def MSubRed.top_replaceAt_sub {Γ : Ctx} {s : Stack}
@@ -1179,6 +1231,15 @@ noncomputable def MSubRed.top_replaceAt_sub {Γ : Ctx} {s : Stack}
     (hu : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) u) :
     MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u .top :=
   MSubRed.top hpvNew (by simpa [Ctx.depth_replaceAt] using hu)
+
+/-- Generic `Ms-Equ` rebuilder after arbitrary-depth `.sub` replacement,
+assuming the equivalence premise has already been replaced. -/
+noncomputable def MSubRed.equ_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {new u v : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v) :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
+  MSubRed.equ hpvNew hEq
 
 /-- The changed innermost `.sub` entry reduces to the new shifted annotation
 after replacement. This is the residual form of head-index `Ms-Pro`. -/
@@ -1211,6 +1272,43 @@ noncomputable def MSubRed.pro_replaceAt_sub_of_ne {Γ : Ctx} {s : Stack}
     MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
       (.bvar i) t :=
   MSubRed.pro hpv (Ctx.subBinds_replaceAt_sub_of_ne hne hb)
+
+/-- Generic `Ms-App` rebuilder after arbitrary-depth `.sub` replacement,
+assuming the operator premise has already been replaced. -/
+noncomputable def MSubRed.app_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u u' v : Term}
+    (hOp : MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (v :: s) u u')
+    (hv : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) v) :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.app u v) (.app u' v) :=
+  MSubRed.app hOp (by simpa [Ctx.depth_replaceAt] using hv)
+
+/-- Generic `Ms-Fun` rebuilder after arbitrary-depth `.sub` replacement,
+assuming the bound equivalence and body premises have already been replaced. -/
+noncomputable def MSubRed.fun_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {old new t t' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] t t')
+    (hBody : MSubRed ({ bound := t, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] body body') :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (.abs t body) (.abs t' body') :=
+  MSubRed.fun_ (by simpa [Ctx.depth_replaceAt] using ht) hEq hBody
+
+/-- Generic `Ms-FOp` rebuilder after arbitrary-depth `.sub` replacement,
+assuming the body premise has already been replaced. -/
+noncomputable def MSubRed.fOp_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hα : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) α)
+    (hBody : MSubRed ({ bound := α, kind := .equ } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+        (Stack.shift 0 s) body body') :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (α :: s)
+      (.abs t body) (.abs t body') :=
+  MSubRed.fOp (by simpa [Ctx.depth_replaceAt] using ht)
+    (by simpa [Ctx.depth_replaceAt] using hα) hBody
 
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/

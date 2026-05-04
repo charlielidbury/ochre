@@ -885,6 +885,13 @@ closures, 2 inactive outstanding).
   replacement leaf constructors `MEqRed.top_replaceAt_sub`,
   `MEqRed.var_replaceAt_sub`, `MEqRed.tAp_replaceAt_sub`, and
   `MSubRed.top_replaceAt_sub`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added arbitrary-depth `.sub`
+  replacement structural rebuilders for already-replaced recursive
+  premises: `MEqRed.app_replaceAt_sub`, `MEqRed.fun_replaceAt_sub`,
+  `MEqRed.bet_replaceAt_sub`, `MEqRed.fOp_replaceAt_sub`,
+  `MSubRed.equ_replaceAt_sub`, `MSubRed.app_replaceAt_sub`,
+  `MSubRed.fun_replaceAt_sub`, and `MSubRed.fOp_replaceAt_sub`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
