@@ -32,6 +32,53 @@ include `avoidsAllStray` witnesses. With output-side avoidance, the
 descent step in `Lemma_2_inline_app_bet_residual_axiom` becomes possible
 via the new `noVarX`/`avoidsPro`-equipped `Lemma_32_AsymmetricEqu`.
 
+**Session 2026-05-04 (iters 8–13) — head-removal infrastructure shipped:**
+The iter-8+ avoidsAllStray cofin-arm completion was deferred in favor
+of a different unblock path: head-removal functor `MEqRed.strip_equ_head`
++ template-aware descent functor `descend_body_equ`.
+* `Pss/Mpss/Renaming.lean` §10 — `Prevalid.equ_head_remove_mid`,
+  `PrevalidExt.equ_head_remove_mid`, `Ctx.AvoidsBoundFv` predicate,
+  `_y_notin_fv_lookupEqu_under_avoid` (commit `abea6a7`, iter 8).
+* `Pss/Mpss/AvoidsPro.lean` §2.8 — `avoidsFv` Bool predicate +
+  per-constructor simp lemmas (commit `4073b46`, iter 9).
+* `Pss/Mpss/Renaming.lean` §10.3 — `MEqRed.strip_equ_head` head-removal
+  functor (commit `2a45008`, iter 10). Mirror of `equ_head_replace`.
+* `Pss/Mpss/Diamond.lean` — iter-11 blocker analysis on
+  `Lemma_2_inline_app_bet_residual_axiom` (commit `4a2d755`):
+  `strip_equ_head` cannot be directly applied to body-IH outputs
+  whose source contains the binder being stripped (avoidsFv at the
+  outermost source mention always fails). Architectural finding: paper
+  sidesteps via α-conversion on named binders; LN encoding makes the
+  obligation explicit.
+* `Pss/Mpss/Renaming.lean` §11 — `descend_body_equ` template-aware
+  descent functor:
+  - **Phase A** (commit `189efe7`, iter 12): `body = .bvar 0` leaf case
+    — `MEqRed.descend_body_equ_bvar0`. Avoids the trap by using the
+    paper's "moreover" clause (`avoidsPro h y = true`) to rule out
+    `MEqRed.pro y`, leaving only `MEqRed.var` whose target trivially
+    rewrites to `.fvar z` under the requested substitution.
+  - **Phase B** (commit `3795a4f`, iter 13): non-binding template
+    cases — `descend_body_equ_top` (body = `.top`),
+    `descend_body_equ_fvar` (body = `.fvar w`, w ≠ y; consumes
+    `strip_equ_head` on the `pro` arm).
+
+**Iter-14+ next attack:** continue `descend_body_equ` —
+* **Phase B's `app` template case** (deferred from iter 13): generic
+  `body = .app a b`; recursion needs Phase C's mutual recursion or
+  a polymorphic recursive-call hypothesis.
+* **Phase B2 (binder template `body = .abs t inner`)**: needs careful
+  bvar-shift handling under the inner binder.
+* **Phase C**: assembled `descend_body_equ` as mutual recursion across
+  templates.
+* **Phase D** (final): consume `descend_body_equ` in
+  `Lemma_2_DiamondMEqRed_core`'s App×Bet residual to discharge
+  `Lemma_2_inline_app_bet_residual_axiom`.
+
+The paper's "moreover" clause (which the Plan agent's iter-12 paper
+deep-dive confirmed is exactly `avoidsPro`) is supplied to
+`descend_body_equ` as a premise, recovering the paper-faithful proof
+shape but adapted to LN's explicit binder-name handling.
+
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
 real theorem in commit `64162c2` after lifting `Term.LC` from `Prop` to
