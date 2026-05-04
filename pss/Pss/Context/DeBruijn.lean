@@ -208,6 +208,37 @@ theorem equBinds_weaken_head {Γ : Ctx} {i : Nat} {t : Term} (entry : CtxEntry) 
   simp [equBinds]
   exact ⟨t, h, rfl⟩
 
+/-- De Bruijn index translation for inserting a new context entry after
+`cutoff` preserved heads. -/
+def insertAtIndex (cutoff i : Nat) : Nat :=
+  if cutoff ≤ i then i + 1 else i
+
+/-- Shifting a variable at `cutoff` implements the corresponding insertion
+translation on its index. -/
+theorem shift_bvar_insertAtIndex (cutoff i : Nat) :
+    Term.shift cutoff (.bvar i) = .bvar (insertAtIndex cutoff i) := by
+  by_cases h : cutoff ≤ i
+  · simp [Term.shift, Term.shiftBy, insertAtIndex, h]
+  · simp [Term.shift, Term.shiftBy, insertAtIndex, h]
+
+@[simp] theorem insertAtIndex_zero (i : Nat) :
+    insertAtIndex 0 i = i + 1 := by
+  simp [insertAtIndex]
+
+@[simp] theorem insertAtIndex_succ_self (cutoff : Nat) :
+    insertAtIndex (cutoff + 1) cutoff = cutoff := by
+  simp [insertAtIndex]
+
+theorem insertAtIndex_eq_self_of_lt {cutoff i : Nat} :
+    i < cutoff → insertAtIndex cutoff i = i := by
+  intro h
+  simp [insertAtIndex, Nat.not_le_of_gt h]
+
+theorem insertAtIndex_eq_succ_of_le {cutoff i : Nat} :
+    cutoff ≤ i → insertAtIndex cutoff i = i + 1 := by
+  intro h
+  simp [insertAtIndex, h]
+
 /-- De Bruijn index translation for inserting a new context entry immediately
 under an existing head binder. The binder keeps index `0`; every outer
 reference moves up by one. -/
@@ -225,11 +256,12 @@ def insertUnderHeadIndex : Nat → Nat
 new context entry immediately under the current head binder. -/
 theorem shift_one_bvar_insertUnderHeadIndex (i : Nat) :
     Term.shift 1 (.bvar i) = .bvar (insertUnderHeadIndex i) := by
+  rw [shift_bvar_insertAtIndex]
   cases i with
   | zero =>
     rfl
   | succ i =>
-    simp [Term.shift, Term.shiftBy]
+    simp [insertAtIndex]
 
 /-- De Bruijn index translation for inserting a new context entry immediately
 under two existing heads. The two innermost binders keep indices `0` and `1`;
@@ -252,6 +284,7 @@ def insertUnderTwoHeadsIndex : Nat → Nat
 new context entry immediately under two current heads. -/
 theorem shift_two_bvar_insertUnderTwoHeadsIndex (i : Nat) :
     Term.shift 2 (.bvar i) = .bvar (insertUnderTwoHeadsIndex i) := by
+  rw [shift_bvar_insertAtIndex]
   cases i with
   | zero =>
     rfl
@@ -260,7 +293,7 @@ theorem shift_two_bvar_insertUnderTwoHeadsIndex (i : Nat) :
     | zero =>
       rfl
     | succ i =>
-      simp [Term.shift, Term.shiftBy]
+      simp [insertAtIndex]
 
 /-- Subtype lookup weakens when a new context entry is inserted immediately
 under an existing head binder. The looked-up bound is lifted through the

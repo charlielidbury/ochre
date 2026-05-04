@@ -90,6 +90,10 @@ closures, 2 inactive outstanding).
   shape required by reduction weakening under nested abstractions. The
   lookup side should now be generalized to insertion-at-depth instead of
   extended by more ad hoc arities; no axiom-count change.
+* `Pss/Context/DeBruijn.lean` — introduced the common index translation
+  `Ctx.insertAtIndex` plus `Ctx.shift_bvar_insertAtIndex`; the previous
+  one- and two-head index descriptions now specialize this general
+  insertion-at-cutoff shape. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
