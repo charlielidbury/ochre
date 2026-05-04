@@ -1009,6 +1009,54 @@ noncomputable def WEquMStar.replaceAt_sub_from_body_replaceAt_of_wf {Γ : Ctx}
       (old := old) (new := new) (v := v) (t := t)
       h hcutHead (by simpa [Nat.add_assoc] using hOldNew) hWf)
 
+/-- Conditional transport of transitive well-subtyping across arbitrary-depth
+`.sub` replacement, reducing the problem to transport of single `WSubM`
+steps with their endpoint well-formedness witnesses. This avoids pretending
+that exact `WSubM` replacement is always one-step: changed-slot `Ws-Lf2`
+residuals are naturally star-valued. -/
+noncomputable def WSubMStar.replaceAt_sub_of_wsub {Γ : Ctx} {cutoff : Nat}
+    {old new v t : Term}
+    (h : WSubMStar (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) v t)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x)
+    (hSub : ∀ {x y : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) y →
+          WSubM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x y →
+            WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+              x y) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t := by
+  cases h with
+  | sub hwfV hsub hwfT =>
+      exact hSub hwfV hwfT hsub
+  | trs hLeft hwfMid hRight =>
+      exact WSubMStar.trs_replaceAt_sub
+        (WSubMStar.replaceAt_sub_of_wsub hLeft hWf hSub) (hWf hwfMid)
+        (WSubMStar.replaceAt_sub_of_wsub hRight hWf hSub)
+
+/-- Under-head specialization of `WSubMStar.replaceAt_sub_of_wsub`. -/
+noncomputable def WSubMStar.sub_under_head_replace_of_wsub {Γ : Ctx}
+    {head : CtxEntry} {old new v t : Term}
+    (h : WSubMStar (head :: { bound := old, kind := .sub } :: Γ) v t)
+    (hWf : ∀ {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hSub : ∀ {x y : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := old, kind := .sub } :: Γ) y →
+          WSubM (head :: { bound := old, kind := .sub } :: Γ) x y →
+            WSubMStar (head :: { bound := new, kind := .sub } :: Γ) x y) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t := by
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.replaceAt_sub_of_wsub
+      (Γ := head :: { bound := old, kind := .sub } :: Γ) (cutoff := 1)
+      (old := old) (new := new) h
+      (fun {x} hx => by
+        simpa [Ctx.replaceAt] using hWf hx)
+      (fun {x y} hx hy hxy => by
+        simpa [Ctx.replaceAt] using hSub hx hy hxy))
+
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
 resulting well-subtyping path steps to shifted `new`, crosses back to shifted

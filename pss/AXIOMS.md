@@ -1017,6 +1017,12 @@ closures, 2 inactive outstanding).
   `WEquM.replaceAt_sub_from_body_replaceAt_of_wf` and
   `WEquMStar.replaceAt_sub_from_body_replaceAt_of_wf`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added conditional
+  `WSubMStar` `.sub` replacement transports
+  `WSubMStar.replaceAt_sub_of_wsub` and
+  `WSubMStar.sub_under_head_replace_of_wsub`; these reduce arbitrary
+  transitive well-subtyping replacement to step replacement with explicit
+  endpoint well-formedness witnesses. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
