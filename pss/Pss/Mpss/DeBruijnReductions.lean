@@ -189,6 +189,46 @@ noncomputable def MSubRed.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Term.Scoped Γ.depth v :=
   h.scoped_pair.2
 
+/-! ## Prevalidity invariants -/
+
+/-- Context prevalidity from de Bruijn equivalence reduction. -/
+noncomputable def MEqRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : Prevalid Γ := by
+  induction h with
+  | pro hpv _ _ _ =>
+    exact PrevalidExt.ctx hpv
+  | bet _ _ _ _ ihArg =>
+    exact ihArg
+  | top hpv =>
+    exact PrevalidExt.ctx hpv
+  | app _ _ _ ihArg =>
+    exact ihArg
+  | var hpv _ =>
+    exact PrevalidExt.ctx hpv
+  | fun_ _ _ ihBound _ =>
+    exact ihBound
+  | tAp hpv _ =>
+    exact PrevalidExt.ctx hpv
+  | fOp _ _ _ ihBound _ =>
+    exact ihBound
+
+/-- Context prevalidity from de Bruijn subtype reduction. -/
+noncomputable def MSubRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : Prevalid Γ := by
+  induction h with
+  | pro hpv _ =>
+    exact PrevalidExt.ctx hpv
+  | top hpv _ =>
+    exact PrevalidExt.ctx hpv
+  | equ hpv _ =>
+    exact PrevalidExt.ctx hpv
+  | app _ _ ih =>
+    exact ih
+  | fun_ _ heq _ _ =>
+    exact heq.prevalid
+  | fOp _ _ _ ih =>
+    exact Prevalid.tail ih
+
 /-! ## Insertion weakening scaffolding -/
 
 /-- Weakening helper for the de Bruijn equivalence variable case under

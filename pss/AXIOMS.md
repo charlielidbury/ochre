@@ -174,6 +174,9 @@ closures, 2 inactive outstanding).
   `MEqRedJ.weaken_head`, `MSubRedJ.weaken_head`,
   `MEqRedStar.weaken_head`, `MSubRedStar.weaken_head`, plus matching
   `*_weaken_tail_head` forms. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added context-prevalidity
+  extractors `MEqRed.prevalid` and `MSubRed.prevalid`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
   well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
   separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint
