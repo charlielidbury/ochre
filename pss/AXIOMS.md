@@ -1132,6 +1132,10 @@ closures, 2 inactive outstanding).
   `WfM.replaceAt_sub_from_msub_payloads`, the arbitrary-depth analogue
   wiring constructor-level `MSubRed` residual consumers into generic
   `WfM` replacement. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WfM.replaceAt_sub_from_body_msub_payloads`, the binder-recursive
+  specialization of generic `WfM` replacement with constructor-level
+  `MSubRed` residual payloads. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
