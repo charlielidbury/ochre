@@ -211,6 +211,9 @@ closures, 2 inactive outstanding).
   extractors for de Bruijn transitive well-subtyping/equivalence:
   `WSubMStar.wf_left`, `WSubMStar.wf_right`, `WEquMStar.wf_left`, and
   `WEquMStar.wf_right`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added reflexive empty-stack
+  reduction bridges from well-formed terms: `WfM.MEqRed_refl` and
+  `WfM.MSubRed_refl`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added single-step endpoint
   extension helpers for de Bruijn transitive well-subtyping:
   `WSubMStar.extend_left_via_MEqRed_fwd` and

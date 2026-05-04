@@ -414,6 +414,20 @@ noncomputable def WEquMStar.wf_right {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v
   | trs _ _ _ _ ihRight =>
     exact ihRight
 
+/-! ## Reflexive reductions from well-formed terms -/
+
+/-- Empty-stack de Bruijn equivalence-reduction reflexivity for any
+well-formed term. -/
+noncomputable def WfM.MEqRed_refl {Γ : Ctx} {t : Term} (h : WfM Γ t) :
+    MEqRed Γ [] t t :=
+  MEqRed.refl (PrevalidExt.nil h.prevalid) h.scoped
+
+/-- Empty-stack de Bruijn subtype-reduction reflexivity for any well-formed
+term. -/
+noncomputable def WfM.MSubRed_refl {Γ : Ctx} {t : Term} (h : WfM Γ t) :
+    MSubRed Γ [] t t :=
+  MSubRed.refl (PrevalidExt.nil h.prevalid) h.scoped
+
 /-! ## Insertion weakening -/
 
 private def _InsertWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=
