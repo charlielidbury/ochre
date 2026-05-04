@@ -521,6 +521,11 @@ closures, 2 inactive outstanding).
   `commute_abs_fun_bound_fixed_body`, lifting bound-level equivalence
   diamonds through abstraction constructors when the body remains
   unchanged. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added fixed-body `FOp`
+  abstraction cells `diamond_abs_fOp_bound_fixed_body` and
+  `commute_abs_fOp_bound_fixed_body`, lifting bound-level changes through
+  `FOp` when the operand and body remain unchanged. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

@@ -2167,6 +2167,58 @@ theorem commute_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
     msubRedStar_abs_fOp_body_fixed_bound hBoundScoped hα
       (MSubRedStar.single hRight.some)⟩
 
+/-- Fixed-body `FOp` abstraction cell for de Bruijn Lemma 2. A bound-level
+equivalence diamond lifts through `FOp` when the operand and body are
+unchanged. -/
+theorem diamond_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
+    {α bound bound₁ bound₂ body : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hα : Term.Scoped Γ.depth α)
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body)
+    (hdiamondBound : EqDiamonds Γ [])
+    (hBound₁ : MEqRed Γ [] bound bound₁)
+    (hBound₂ : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound₁ body) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound₂ body) t₃ := by
+  obtain ⟨bound₃, hLeft, hRight⟩ := hdiamondBound hBound₁ hBound₂
+  have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail (Prevalid.equ (PrevalidExt.ctx hpvTail) hα)
+  have hBodyRefl : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body :=
+    MEqRed.refl hpvBody hBodyScoped
+  exact ⟨.abs bound₃ body,
+    MEqRedStar.single (MEqRed.fOp hLeft.some hα hBodyRefl),
+    MEqRedStar.single (MEqRed.fOp hRight.some hα hBodyRefl)⟩
+
+/-- Fixed-body `FOp` abstraction cell for de Bruijn Lemma 1's `Ms-FOp ×
+Me-FOp` branch when the subtype-side body is unchanged. The equivalence side's
+bound step supplies the shared target directly. -/
+theorem commute_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
+    {α bound bound₂ body : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hα : Term.Scoped Γ.depth α)
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body)
+    (hEqBound : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound₂ body) t₃ := by
+  have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail (Prevalid.equ (PrevalidExt.ctx hpvTail) hα)
+  have hBodyEqRefl : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body :=
+    MEqRed.refl hpvBody hBodyScoped
+  have hBodySubRefl : MSubRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body :=
+    MSubRed.refl hpvBody hBodyScoped
+  exact ⟨.abs bound₂ body,
+    MEqRedStar.single (MEqRed.fOp hEqBound hα hBodyEqRefl),
+    MSubRedStar.single (MSubRed.fOp hEqBound.scoped_right hα hBodySubRefl)⟩
+
 /-- Lift a diagrammatic body replacement chain through `FOp` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fOp_equ_bound_body {Γ : Ctx} {s : Stack}
