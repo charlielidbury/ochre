@@ -602,6 +602,68 @@ noncomputable def MSubRed.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
   simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
     (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
 
+/-- Prop-wrapper insertion weakening for de Bruijn equivalence reduction. -/
+theorem MEqRedJ.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : PrevalidExt Γ s) :
+    MEqRedJ Γ s u v →
+    MEqRedJ (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v) := by
+  rintro ⟨h⟩
+  exact ⟨h.insertAt hcut hNew hpv⟩
+
+/-- Prop-wrapper insertion weakening for de Bruijn subtype reduction. -/
+theorem MSubRedJ.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : PrevalidExt Γ s) :
+    MSubRedJ Γ s u v →
+    MSubRedJ (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v) := by
+  rintro ⟨h⟩
+  exact ⟨h.insertAt hcut hNew hpv⟩
+
+/-- Reflexive-transitive closure insertion weakening for de Bruijn equivalence
+reduction. -/
+theorem MEqRedStar.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : PrevalidExt Γ s) :
+    MEqRedStar Γ s u v →
+    MEqRedStar (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v) := by
+  intro h
+  refine Relation.ReflTransGen.head_induction_on (b := v)
+    (P := fun a _ =>
+      MEqRedStar (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+        (Term.shift cutoff a) (Term.shift cutoff v)) h ?_ ?_
+  · exact Relation.ReflTransGen.refl
+  · intro a b hHead _ ih
+    exact Relation.ReflTransGen.head (MEqRedJ.insertAt hcut hNew hpv hHead) ih
+
+/-- Reflexive-transitive closure insertion weakening for de Bruijn subtype
+reduction. -/
+theorem MSubRedStar.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : PrevalidExt Γ s) :
+    MSubRedStar Γ s u v →
+    MSubRedStar (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v) := by
+  intro h
+  refine Relation.ReflTransGen.head_induction_on (b := v)
+    (P := fun a _ =>
+      MSubRedStar (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+        (Term.shift cutoff a) (Term.shift cutoff v)) h ?_ ?_
+  · exact Relation.ReflTransGen.refl
+  · intro a b hHead _ ih
+    exact Relation.ReflTransGen.head (MSubRedJ.insertAt hcut hNew hpv hHead) ih
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.

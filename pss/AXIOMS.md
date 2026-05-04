@@ -165,6 +165,10 @@ closures, 2 inactive outstanding).
   `MEqRed.weaken_head`, `MSubRed.weaken_head`,
   `MEqRed.weaken_tail_head`, and `MSubRed.weaken_tail_head`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — lifted generalized insertion
+  weakening through the Prop wrappers and reflexive-transitive closures:
+  `MEqRedJ.insertAt`, `MSubRedJ.insertAt`, `MEqRedStar.insertAt`, and
+  `MSubRedStar.insertAt`. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
