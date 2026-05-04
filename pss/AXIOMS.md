@@ -35,6 +35,10 @@ closures, 2 inactive outstanding).
   `Term.instantiate_of_scoped_id` and `Term.instantiate_closed_id`.
 * `Pss/Syntax/DeBruijn.lean` raw weakening bridge — `Term.scoped_mono`
   and `Term.Closed.scoped`.
+* `Pss/Syntax/DeBruijn.lean` Phase-2 shift/substitution interaction —
+  `Term.instantiate_shiftBy_succ`, `Term.shiftBy_lift_comm`,
+  `Term.shiftBy_shiftBy_zero_one`, `Term.shiftBy_shift_zero`, and
+  `Term.shiftBy_instantiate`.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 

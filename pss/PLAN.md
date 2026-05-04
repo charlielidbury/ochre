@@ -133,6 +133,10 @@ hard caveats.
      atomic switch.
 2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
    strengthen. Replaces named `Term.subst`.
+   * **Started 2026-05-04 on `db-refactor`:** `Pss/Syntax/DeBruijn.lean`
+     now includes the first shift/substitution interaction lemmas:
+     cancellation of one shift unit by instantiation, binder-lift
+     commutation, and `shiftBy_instantiate`.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
    delete most of `Renaming.lean`, port `Prevalid` / `Weakening` /
    `ContextRed` to indices.
