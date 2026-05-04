@@ -535,6 +535,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_abs_fOp_bound_fixed_body`, plus star-level fixed-body
   abstraction diamonds `diamond_abs_fun_bound_fixed_body_star` and
   `diamond_abs_fOp_bound_fixed_body_star`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level fixed-bound
+  abstraction commutation wrappers `commute_abs_fun_body_fixed_bound_star`
+  and `commute_abs_fOp_body_fixed_bound_star`, lifting body-level
+  subtype/equivalence chain commutation through `Fun` and stack-sensitive
+  `FOp`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

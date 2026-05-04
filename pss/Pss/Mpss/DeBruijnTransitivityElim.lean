@@ -7705,6 +7705,48 @@ noncomputable def Lemma_1_DeBruijn_StrongCommutativityStar_of
     ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
   commute_subStar_eqStar_of hcomm hsubs heqs
 
+/-- Star-level fixed-bound `FOp` abstraction commutation. A body-level
+de Bruijn Lemma-1 premise lifts subtype/equivalence chains under the operand
+`.equ` head, then through the abstraction. -/
+noncomputable def commute_abs_fOp_body_fixed_bound_star {Γ : Ctx} {s : Stack}
+    {α bound body body₁ body₂ : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hcommBody : StrongCommutes ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s))
+    (hSubBody : MSubRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₁)
+    (hEqBody : MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ :=
+    commute_subStar_eqStar_of hcommBody hSubBody hEqBody
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hLeft,
+    msubRedStar_abs_fOp_body_fixed_bound hBoundScoped hα hRight⟩
+
+/-- Star-level fixed-bound `Fun` abstraction commutation. A body-level
+de Bruijn Lemma-1 premise lifts subtype/equivalence chains under the `.sub`
+head, then through the abstraction. -/
+noncomputable def commute_abs_fun_body_fixed_bound_star {Γ : Ctx}
+    {bound body body₁ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hcommBody : StrongCommutes ({ bound := bound, kind := .sub } :: Γ) [])
+    (hSubBody : MSubRedStar ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBody : MEqRedStar ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ :=
+    commute_subStar_eqStar_of hcommBody hSubBody hEqBody
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped hLeft,
+    msubRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped hRight⟩
+
 namespace MSub
 
 /-- Single-step composition for de Bruijn diagrammatic subtyping, conditional
