@@ -986,6 +986,14 @@ closures, 2 inactive outstanding).
   subtype counterparts that reuse the under-head shifted equivalence package
   for `Ms-Equ` branches and compose over subtype-reduction chains. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added tail-stack variants
+  `meqRed_equ_under_head_shifted_replace_from_tail_lift`,
+  `meqRedStar_equ_under_head_shifted_replace_from_tail_lift`,
+  `msubRed_equ_under_head_shifted_replace_from_tail_lift`, and
+  `msubRedStar_equ_under_head_shifted_replace_from_tail_lift`. These expose
+  the form needed by recursive `FOp` body replacements: the old-to-new
+  changed-head equivalence is supplied at the preserved head's tail stack and
+  weakened under that head locally. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
