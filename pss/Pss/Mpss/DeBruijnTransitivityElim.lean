@@ -1877,6 +1877,26 @@ noncomputable def meq_equ_head_stack_lift_var {Γ : Ctx} {s : Stack} {head : Ter
       (Term.shift 0 (.bvar i)) (Term.shift 0 (.bvar i)) :=
   meq_equ_head_stack_lift_refl hpvTail hHeadScoped (Term.Scoped.bvar hi)
 
+/-- Recursive `Me-Pro` stack lift under a changed `.equ` head for a variable
+coming from the original context. The new head shifts the promoted variable
+to index `i + 1`; the looked-up bound reduction is supplied recursively. -/
+noncomputable def meq_equ_head_stack_lift_pro {Γ : Ctx} {s : Stack}
+    {head α α' : Term} {i : Nat}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hb : Γ.equBinds i α)
+    (hα : MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 α) (Term.shift 0 α')) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.bvar i)) (Term.shift 0 α') := by
+  have hpvHead : Prevalid ({ bound := head, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hHeadScoped
+  have hpv : PrevalidExt ({ bound := head, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvHead
+  simpa [Ctx.shift_bvar_insertAtIndex] using
+    MEqRed.pro hpv (Ctx.equBinds_weaken_head { bound := head, kind := .equ } hb) hα
+
 /-- The `Me-TAp` argument-equivalence step lifts under a changed `.equ` head
 and residual stack. -/
 noncomputable def meq_equ_head_stack_lift_tAp {Γ : Ctx} {s : Stack} {head u : Term}
