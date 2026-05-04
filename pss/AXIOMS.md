@@ -528,6 +528,10 @@ closures, 2 inactive outstanding).
   for abstraction-headed application sources whose subtype side reaches a
   `Top`-headed application. It joins that branch against any equivalence
   chain from the same source at `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStep_appTop_eqStar`, the single-subtype-step
+  specialization of the same abstraction-headed application appTop branch
+  commutation theorem. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the compressed
   abstraction-headed application subtype-chain split
   `msub_appAbs_subStar_beta_or_toTop_or_appAbs` /

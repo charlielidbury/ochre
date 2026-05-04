@@ -1006,6 +1006,18 @@ theorem commute_appAbs_subStar_appTop_eqStar {Γ : Ctx} {s : Stack}
   exact ⟨.top, appTop_to_top hpv hArg',
     eqStar_to_top_of_subStar_top hpv hScoped hSourceTop hEq⟩
 
+/-- Single-subtype-step specialization of
+`commute_appAbs_subStar_appTop_eqStar`. -/
+theorem commute_appAbs_subStep_appTop_eqStar {Γ : Ctx} {s : Stack}
+    {bound body arg t₁ t₂ arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hAppTop : t₁ = .app .top arg')
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_appAbs_subStar_appTop_eqStar hpv hScoped (MSubRedStar.single hSub)
+    hAppTop hEq
+
 /-- Diagrammatic packaging of the β branch from
 `MEqRedStar.app_abs_inv`: if an equivalence chain from an
 abstraction-headed application has taken β, the final target is
