@@ -576,6 +576,57 @@ noncomputable def WSubM.rgh_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
     WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
   WSubM.rgh hsub hred
 
+/-- Binder-recursive `Ws-Rfl` replacement wrapper. -/
+noncomputable def WSubM.rfl_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head t : Term}
+    (hwf : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) t) :
+    WSubM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
+  WSubM.rfl (by simpa [Ctx.replaceAt] using hwf)
+
+/-- Binder-recursive `Ws-Lf1` replacement wrapper. -/
+noncomputable def WSubM.lf1_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v v' t : Term}
+    (hred : MEqRed (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) [] v v')
+    (hsub : WSubM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v' t) :
+    WSubM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubM.lf1 (by simpa [Ctx.replaceAt] using hred)
+    (by simpa [Ctx.replaceAt] using hsub)
+
+/-- Binder-recursive `Ws-Lf2` replacement wrapper. -/
+noncomputable def WSubM.lf2_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v v' t : Term}
+    (hwfV : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v)
+    (hred : MSubRed (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) [] v v')
+    (hwfV' : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v')
+    (hsub : WSubM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v' t) :
+    WSubM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubM.lf2 (by simpa [Ctx.replaceAt] using hwfV)
+    (by simpa [Ctx.replaceAt] using hred)
+    (by simpa [Ctx.replaceAt] using hwfV')
+    (by simpa [Ctx.replaceAt] using hsub)
+
+/-- Binder-recursive `Ws-Rgh` replacement wrapper. -/
+noncomputable def WSubM.rgh_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v t t' : Term}
+    (hsub : WSubM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v t')
+    (hred : MEqRed (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) [] t t') :
+    WSubM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubM.rgh (by simpa [Ctx.replaceAt] using hsub)
+    (by simpa [Ctx.replaceAt] using hred)
+
 /-- Rebuild `Ws-Sub` after arbitrary-depth `.sub` replacement. -/
 noncomputable def WSubMStar.sub_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
     {new v t : Term}
