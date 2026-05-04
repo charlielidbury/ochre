@@ -360,6 +360,9 @@ hard caveats.
      `EqDiamonds`, `diamond_step_eqStar_of`, and
      `diamond_eqStar_eqStar_of` lift a single-step equivalence diamond
      to equivalence-reduction chains.
+     The first actual single-step cells are closed:
+     `EqDiamonds.top` and `StrongCommutes.top` discharge the `Top` source
+     cases by shape inversion.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

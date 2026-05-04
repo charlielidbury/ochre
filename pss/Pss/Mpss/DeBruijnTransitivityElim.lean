@@ -92,6 +92,21 @@ abbrev EqDiamonds (Γ : Ctx) (s : Stack) : Prop :=
     MEqRed Γ s t₀ t₂ →
     ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃
 
+namespace EqDiamonds
+
+/-- The `Top` source cell of de Bruijn Lemma 2. Both one-step equivalence
+targets must be `Top`, so the diamond closes immediately. -/
+theorem top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s .top t₁) (h₂ : MEqRed Γ s .top t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  have ht₁ : t₁ = .top := h₁.top_inv
+  have ht₂ : t₂ = .top := h₂.top_inv
+  subst t₁
+  subst t₂
+  exact ⟨.top, ⟨h₁⟩, ⟨h₂⟩⟩
+
+end EqDiamonds
+
 /-- Lift a single-step equivalence diamond to one equivalence step against an
 equivalence-reduction chain. -/
 noncomputable def diamond_step_eqStar_of
@@ -150,6 +165,21 @@ abbrev StrongCommutes (Γ : Ctx) (s : Stack) : Prop :=
     MSubRed Γ s t₀ t₁ →
     MEqRed Γ s t₀ t₂ →
     ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃
+
+namespace StrongCommutes
+
+/-- The `Top` source cell of de Bruijn Lemma 1. Both one-step targets must be
+`Top`, so the commutation square closes immediately. -/
+theorem top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
+    (hsub : MSubRed Γ s .top t₁) (heq : MEqRed Γ s .top t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  have ht₁ : t₁ = .top := hsub.top_inv
+  have ht₂ : t₂ = .top := heq.top_inv
+  subst t₁
+  subst t₂
+  exact ⟨.top, ⟨heq⟩, ⟨hsub⟩⟩
+
+end StrongCommutes
 
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/

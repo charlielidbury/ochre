@@ -298,6 +298,11 @@ closures, 2 inactive outstanding).
   `diamond_step_eqStar_of`, and `diamond_eqStar_eqStar_of`. These lift a
   de Bruijn single-step equivalence diamond to equivalence-reduction
   chains, without introducing axioms. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — discharged the `Top` source
+  cells for the de Bruijn conditional single-step premises:
+  `EqDiamonds.top` and `StrongCommutes.top`. Both use the de Bruijn
+  reduction shape inversions to close immediately. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
