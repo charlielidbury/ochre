@@ -505,6 +505,87 @@ noncomputable def WfM.bvar_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
   | varEqu _ hb =>
       exact WfM.varEqu hpvNew (Ctx.equBinds_replaceAt_sub hb)
 
+/-- Rebuild `Wf-Fun` after arbitrary-depth `.sub` replacement, assuming the
+bound and body premises have already been replaced. -/
+noncomputable def WfM.fun_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new t body : Term}
+    (hT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t)
+    (hBody : WfM ({ bound := t, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) body) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.abs t body) :=
+  WfM.fun_ hT hBody
+
+/-- Rebuild `Wf-App` after arbitrary-depth `.sub` replacement, assuming both
+well-subtyping star premises have already been replaced. -/
+noncomputable def WfM.app_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new u v t : Term}
+    (hFun : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      u (.abs t .top))
+    (hArg : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.app u v) :=
+  WfM.app hFun hArg
+
+/-- Rebuild `Ws-Rfl` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WSubM.rfl_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new t : Term}
+    (hwf : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
+  WSubM.rfl hwf
+
+/-- Rebuild `Ws-Lf1` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WSubM.lf1_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v v' t : Term}
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] v v')
+    (hsub : WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v' t) :
+    WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubM.lf1 hred hsub
+
+/-- Rebuild `Ws-Lf2` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WSubM.lf2_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v v' t : Term}
+    (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v)
+    (hred : MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] v v')
+    (hwfV' : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v')
+    (hsub : WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v' t) :
+    WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubM.lf2 hwfV hred hwfV' hsub
+
+/-- Rebuild `Ws-Rgh` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WSubM.rgh_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v t t' : Term}
+    (hsub : WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t')
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] t t') :
+    WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubM.rgh hsub hred
+
+/-- Rebuild `Ws-Sub` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WSubMStar.sub_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v t : Term}
+    (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v)
+    (hsub : WSubM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t)
+    (hwfT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubMStar.sub hwfV hsub hwfT
+
+/-- Rebuild `Ws-Trs` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WSubMStar.trs_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v u t : Term}
+    (hLeft : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v u)
+    (hwfMid : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) u)
+    (hRight : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      u t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubMStar.trs hLeft hwfMid hRight
+
 /-- `Top` remains well-formed when replacing the innermost `.sub` context
 annotation. -/
 noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}

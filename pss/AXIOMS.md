@@ -901,6 +901,13 @@ closures, 2 inactive outstanding).
   `WfM.bvar_replaceAt_sub`, splitting the variable case into changed
   `.sub` slot, non-changed subtype lookup, and equivalence lookup. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added arbitrary-depth `.sub`
+  replacement constructor rebuilders for explicit recursive premises:
+  `WfM.fun_replaceAt_sub`, `WfM.app_replaceAt_sub`,
+  `WSubM.rfl_replaceAt_sub`, `WSubM.lf1_replaceAt_sub`,
+  `WSubM.lf2_replaceAt_sub`, `WSubM.rgh_replaceAt_sub`,
+  `WSubMStar.sub_replaceAt_sub`, and `WSubMStar.trs_replaceAt_sub`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
