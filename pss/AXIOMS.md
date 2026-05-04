@@ -149,7 +149,9 @@ closures, 2 inactive outstanding).
   lemmas for the future full weakening induction. No axiom-count change.
   A fixed-outer-context attempt at full `MEqRed.insertAt` was rejected by
   Lean's induction shape; the next statement should generalize `Γ`, `s`,
-  and `PrevalidExt Γ s` through the induction.
+  and `PrevalidExt Γ s` through the induction and use explicit
+  `@constructor` patterns to avoid stale implicit names in constructor
+  cases.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

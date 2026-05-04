@@ -221,7 +221,10 @@ hard caveats.
      An initial fixed-outer-`Γ` attempt at `MEqRed.insertAt` exposed the
      correct theorem shape: `Γ`, `s`, and the `PrevalidExt Γ s` witness
      must be generalized with each constructor case, rather than held as
-     outer fixed parameters.
+     outer fixed parameters. A second pass showed that the proof also
+     needs explicit `@constructor` patterns (e.g. `@pro Γp sp ...`) to
+     keep Lean from resolving helper applications against stale outer
+     implicit names.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
