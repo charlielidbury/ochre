@@ -19,9 +19,13 @@ closures, 2 inactive outstanding).
 * `Pss/Syntax/DeBruijn.lean` scoping bridge — `Term.Scoped`,
   `Term.Closed`, `Term.shift_scoped`, and `Term.instantiate_scoped`,
   giving downstream ports a first replacement for locally-nameless
-  local closure. Imported from `Pss.lean`. No axiom-count change;
-  `Pss.Sanity` headline closures remain byte-identical to the iter-32
-  pivot baseline.
+  local closure.
+* `Pss/Syntax/DeBruijn.lean` shift/scoping strengthening —
+  `Term.shiftBy_compose`, `Term.shiftBy_scoped`,
+  `Term.shiftBy_of_scoped_id`, `Term.shiftBy_closed_id`,
+  `Term.shift_closed_id`, and `Term.instantiate_closed`. Imported from
+  `Pss.lean`. No axiom-count change; `Pss.Sanity` headline closures
+  remain byte-identical to the iter-32 pivot baseline.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

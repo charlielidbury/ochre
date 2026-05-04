@@ -90,6 +90,22 @@ theorem shiftBy_zero_id (cutoff : Nat) (t : Term) :
   | app fn arg ih_fn ih_arg =>
     simp [shiftBy, ih_fn, ih_arg]
 
+/-- Two shifts at the same cutoff compose by adding their amounts. -/
+theorem shiftBy_compose (cutoff amount₁ amount₂ : Nat) (t : Term) :
+    shiftBy cutoff amount₂ (shiftBy cutoff amount₁ t) =
+      shiftBy cutoff (amount₁ + amount₂) t := by
+  induction t generalizing cutoff with
+  | bvar i =>
+    by_cases h : cutoff ≤ i
+    · have h' : cutoff ≤ i + amount₁ := by omega
+      simp [shiftBy, h, h', Nat.add_assoc]
+    · simp [shiftBy, h]
+  | top => simp [shiftBy]
+  | abs bound body ih_bound ih_body =>
+    simp [shiftBy, ih_bound, ih_body]
+  | app fn arg ih_fn ih_arg =>
+    simp [shiftBy, ih_fn, ih_arg]
+
 /-! ## Instantiation -/
 
 /-- `instantiate k v t` substitutes `v` for `bvar k` in `t`. Indices above
@@ -190,6 +206,60 @@ theorem shift_scoped (cutoff depth : Nat) (t : Term)
     simp only [shift, shiftBy_app]
     exact Scoped.app (ih_fn cutoff hcut) (ih_arg cutoff hcut)
 
+/-- General shifting preserves scoping, increasing the ambient depth by the
+shift amount. -/
+theorem shiftBy_scoped (cutoff amount depth : Nat) (t : Term)
+    (hcut : cutoff ≤ depth) :
+    Scoped depth t → Scoped (depth + amount) (shiftBy cutoff amount t) := by
+  intro h
+  induction h generalizing cutoff with
+  | bvar hi =>
+    simp [shiftBy]
+    split
+    · exact Scoped.bvar (by omega)
+    · exact Scoped.bvar (by omega)
+  | top =>
+    exact Scoped.top
+  | abs h_bound h_body ih_bound ih_body =>
+    simp only [shiftBy_abs]
+    exact Scoped.abs (ih_bound cutoff hcut) (by
+      simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+        ih_body (cutoff + 1) (by omega))
+  | app h_fn h_arg ih_fn ih_arg =>
+    simp only [shiftBy_app]
+    exact Scoped.app (ih_fn cutoff hcut) (ih_arg cutoff hcut)
+
+/-- Shifting at or above the current scoping depth has no effect. -/
+theorem shiftBy_of_scoped_id (cutoff amount : Nat) (t : Term) :
+    Scoped cutoff t → shiftBy cutoff amount t = t := by
+  intro h
+  induction t generalizing cutoff with
+  | bvar i =>
+    cases h with
+    | bvar hi =>
+    have hnot : ¬ cutoff ≤ i := by omega
+    simp [shiftBy, hnot]
+  | top =>
+    simp [shiftBy]
+  | abs bound body ih_bound ih_body =>
+    cases h with
+    | abs h_bound h_body =>
+    simp [shiftBy, ih_bound cutoff h_bound, ih_body (cutoff + 1) h_body]
+  | app fn arg ih_fn ih_arg =>
+    cases h with
+    | app h_fn h_arg =>
+    simp [shiftBy, ih_fn cutoff h_fn, ih_arg cutoff h_arg]
+
+/-- Closed terms are invariant under top-level shifting. -/
+theorem shiftBy_closed_id (amount : Nat) (t : Term) :
+    Closed t → shiftBy 0 amount t = t :=
+  shiftBy_of_scoped_id 0 amount t
+
+/-- Closed terms are invariant under one-step top-level shifting. -/
+theorem shift_closed_id (t : Term) :
+    Closed t → shift 0 t = t :=
+  shiftBy_closed_id 1 t
+
 /-- Instantiation preserves scoping and removes one available index from the
 ambient depth. The premise `k ≤ depth` says the removed slot is among the
 `depth + 1` slots available to the input term. -/
@@ -222,6 +292,13 @@ theorem instantiate_scoped (k depth : Nat) (v t : Term)
     | app h_fn h_arg =>
     simp only [instantiate_app]
     exact Scoped.app (ih_fn k depth v hk hv h_fn) (ih_arg k depth v hk hv h_arg)
+
+/-- Instantiating the outermost available index with a closed term produces a
+closed term. This is the β-substitution shape used by MPSS reductions. -/
+theorem instantiate_closed (v t : Term) :
+    Closed v → Scoped 1 t → Closed (instantiate 0 v t) := by
+  intro hv ht
+  exact instantiate_scoped 0 0 v t (by omega) hv ht
 
 end Term
 end DeBruijn
