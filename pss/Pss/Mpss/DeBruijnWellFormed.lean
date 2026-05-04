@@ -1207,6 +1207,57 @@ noncomputable def WEquMStar.of_MEqRedStar_back
         hwfY
         (WEquMStar.of_MEqRed_back hHead.some hwfX hwfY)⟩
 
+/-- Prepend a forward equivalence-reduction chain on the left of de Bruijn
+transitive well-subtyping under explicit stepwise `WfM` preservation. -/
+noncomputable def WSubMStar.extend_left_via_MEqRedStar_fwd
+    {Γ : Ctx} {a a' b : Term}
+    (h : WSubMStar Γ a' b)
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] a a')
+    (hwfA : WfM Γ a) :
+    WSubMStar Γ a b := by
+  exact WSubMStar.trans (hChain.wf_right_of hpres hwfA)
+    (WSubMStar.of_MEqRedStar_fwd hpres hChain hwfA) h
+
+/-- Append a backward equivalence-reduction chain on the right of de Bruijn
+transitive well-subtyping under explicit stepwise `WfM` preservation. Given a
+forward chain `c →* b`, the result replaces the right endpoint `b` by `c`. -/
+noncomputable def WSubMStar.extend_right_via_MEqRedStar_back
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ a c := by
+  exact WSubMStar.trans (hChain.wf_right_of hpres hwfC) h
+    (WSubMStar.of_MEqRedStar_back hpres hChain hwfC)
+
+/-- Prepend a forward equivalence-reduction chain on the left of de Bruijn
+transitive well-equivalence under explicit stepwise `WfM` preservation. -/
+noncomputable def WEquMStar.extend_left_via_MEqRedStar_fwd
+    {Γ : Ctx} {a a' b : Term}
+    (h : WEquMStar Γ a' b)
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] a a')
+    (hwfA : WfM Γ a) :
+    WEquMStar Γ a b := by
+  exact WEquMStar.trs
+    (WEquMStar.of_MEqRedStar_fwd hpres hChain hwfA)
+    (hChain.wf_right_of hpres hwfA) h
+
+/-- Append a backward equivalence-reduction chain on the right of de Bruijn
+transitive well-equivalence under explicit stepwise `WfM` preservation. Given a
+forward chain `c →* b`, the result replaces the right endpoint `b` by `c`. -/
+noncomputable def WEquMStar.extend_right_via_MEqRedStar_back
+    {Γ : Ctx} {a b c : Term}
+    (h : WEquMStar Γ a b)
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WEquMStar Γ a c := by
+  exact WEquMStar.trs h (hChain.wf_right_of hpres hwfC)
+    (WEquMStar.of_MEqRedStar_back hpres hChain hwfC)
+
 /-- Prepend an equivalence-reduction chain on the left of de Bruijn
 well-subtyping. -/
 noncomputable def WSubM.left_lf1_chain {Γ : Ctx} {a a' c : Term}
