@@ -1057,6 +1057,11 @@ closures, 2 inactive outstanding).
   `WSubMStar.sub_head_replace_of_payload`, composing conditional
   exact-step replacement into transitive well-subtyping replacement. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WSubMStar.replaceAt_sub_of_wsubred` and
+  `WSubMStar.sub_head_replace_of_wsubred`, payload-driven transitive
+  well-subtyping replacement wrappers whose subtype-reduction residuals
+  are already `WSubMStar` paths. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
   binder-recursive payload wrappers
   `WSubMStar.sub_under_head_replace_of_payload` and
