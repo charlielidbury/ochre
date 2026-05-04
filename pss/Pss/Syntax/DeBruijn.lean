@@ -197,6 +197,21 @@ def Scoped.bvar_lt {depth i : Nat} :
   cases h with
   | bvar hi => exact hi
 
+/-- Inversion for scoped abstractions. -/
+def Scoped.abs_inv {depth : Nat} {bound body : Term} :
+    Scoped depth (.abs bound body) →
+      Scoped depth bound × Scoped (depth + 1) body := by
+  intro h
+  cases h with
+  | abs h_bound h_body => exact ⟨h_bound, h_body⟩
+
+/-- Inversion for scoped applications. -/
+def Scoped.app_inv {depth : Nat} {t u : Term} :
+    Scoped depth (.app t u) → Scoped depth t × Scoped depth u := by
+  intro h
+  cases h with
+  | app h_t h_u => exact ⟨h_t, h_u⟩
+
 def no_scoped_zero_bvar (i : Nat) :
     Scoped 0 (.bvar i) → False := by
   intro h
@@ -214,6 +229,16 @@ def closed_abs {bound body : Term} :
 def closed_app {t u : Term} :
     Closed t → Closed u → Closed (.app t u) :=
   Scoped.app
+
+/-- Inversion for closed abstractions. -/
+def Closed.abs_inv {bound body : Term} :
+    Closed (.abs bound body) → Closed bound × Scoped 1 body :=
+  Scoped.abs_inv
+
+/-- Inversion for closed applications. -/
+def Closed.app_inv {t u : Term} :
+    Closed (.app t u) → Closed t × Closed u :=
+  Scoped.app_inv
 
 /-- Scoping is monotone in the ambient depth. This is the raw de Bruijn
 weakening lemma for syntax. -/

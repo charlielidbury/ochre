@@ -28,8 +28,9 @@ closures, 2 inactive outstanding).
   `Term.shiftBy_of_scoped_id`, `Term.shiftBy_closed_id`,
   `Term.shift_closed_id`, and `Term.instantiate_closed`.
 * `Pss/Syntax/DeBruijn.lean` scoped constructor/inversion bridge —
-  `Scoped.bvar_lt`, `no_scoped_zero_bvar`, and closed constructor
-  aliases for `top`, `abs`, and `app`.
+  `Scoped.bvar_lt`, `Scoped.abs_inv`, `Scoped.app_inv`,
+  `no_scoped_zero_bvar`, closed constructor aliases for `top`, `abs`,
+  and `app`, plus `Closed.abs_inv` / `Closed.app_inv`.
 * `Pss/Syntax/DeBruijn.lean` instantiation freshness bridge —
   `Term.instantiate_of_scoped_id` and `Term.instantiate_closed_id`.
 * `Pss/Syntax/DeBruijn.lean` raw weakening bridge — `Term.scoped_mono`

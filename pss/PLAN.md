@@ -124,10 +124,11 @@ hard caveats.
      lemmas. It also provides Type-valued `Scoped`/`Closed` plus
      preservation lemmas for shift and instantiate, shift composition,
      scoped-shift identity, closed β-instantiation, scoped
-     constructor/inversion helpers, instantiation freshness/no-op lemmas,
-     and raw scoped weakening. `Scoped : Type` is intentional, matching
-     the existing `Term.LC : Type` design needed by Type-valued MPSS
-     reductions. The module is imported by `Pss.lean`; the
+     constructor/inversion helpers (`bvar`, `abs`, `app`), instantiation
+     freshness/no-op lemmas, and raw scoped weakening. `Scoped : Type`
+     is intentional, matching the existing `Term.LC : Type` design
+     needed by Type-valued MPSS reductions. The module is imported by
+     `Pss.lean`; the
      locally-nameless development remains untouched until the downstream
      atomic switch.
 2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
