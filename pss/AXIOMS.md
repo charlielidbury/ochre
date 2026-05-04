@@ -1011,6 +1011,11 @@ closures, 2 inactive outstanding).
   the recursive `FOp` body handlers from tail-stack old-to-new lifts before
   invoking `commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_argument_stack_lifted_fOp_tail_lifts`,
+  deriving both the top-level shifted old-to-new argument equivalence and
+  the recursive `FOp` tail old-to-new equivalences from a single reusable
+  argument stack-lift function. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
