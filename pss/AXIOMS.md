@@ -905,6 +905,12 @@ closures, 2 inactive outstanding).
   `msubRedStar_equ_under_head_replace_from_replacements`, specializing the
   generic chain consumer to the composed one-step subtype replacement
   wrappers. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level equivalence
+  replacement wrappers `meqRedStar_equ_head_replace_from_replacements` and
+  `meqRedStar_equ_under_head_replace_from_replacements`, specializing the
+  generic chain consumer to the composed one-step equivalence replacement
+  wrappers while retaining explicit `Me-Pro` residual premises. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
