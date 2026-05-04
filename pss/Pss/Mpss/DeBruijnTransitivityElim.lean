@@ -685,6 +685,13 @@ noncomputable def toMSubStar {Γ : Ctx} {v t : Term}
     (fun _ _ _ ihLeft _ ihRight => Relation.ReflTransGen.trans ihLeft ihRight)
     h)
 
+/-- Conditional de Bruijn Theorem 3 use-site for well-subtyping: once
+single-step strong commutativity is available at the empty stack, transitive
+well-subtyping strips directly to one diagrammatic subtyping step. -/
+noncomputable def toMSub_of {Γ : Ctx} {v t : Term}
+    (hcomm : StrongCommutes Γ []) (h : WSubMStar Γ v t) : MSub Γ [] v t :=
+  MSubStar.collapse_of hcomm h.toMSubStar
+
 end WSubMStar
 
 namespace WEquM
@@ -710,6 +717,12 @@ diagrammatic subtyping steps, via its well-subtyping embedding. -/
 noncomputable def toMSubStar {Γ : Ctx} {v t : Term}
     (h : WEquMStar Γ v t) : MSubStar Γ [] v t :=
   h.toWSubMStar.toMSubStar
+
+/-- Conditional de Bruijn Theorem 3 use-site for well-equivalence, routed
+through the well-subtyping embedding. -/
+noncomputable def toMSub_of {Γ : Ctx} {v t : Term}
+    (hcomm : StrongCommutes Γ []) (h : WEquMStar Γ v t) : MSub Γ [] v t :=
+  MSubStar.collapse_of hcomm h.toMSubStar
 
 end WEquMStar
 

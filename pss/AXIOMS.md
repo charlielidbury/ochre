@@ -306,6 +306,11 @@ closures, 2 inactive outstanding).
   star-to-single-diagram collapse from a de Bruijn single-step strong
   commutativity premise, without introducing axioms. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added conditional
+  Theorem-3 use-site adapters `WSubMStar.toMSub_of` and
+  `WEquMStar.toMSub_of`, collapsing well-subtyping / well-equivalence
+  directly to one diagrammatic step from `StrongCommutes Γ []`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the conditional
   Lemma 2 star-lifting skeleton: `EqDiamonds`,
   `diamond_step_eqStar_of`, and `diamond_eqStar_eqStar_of`. These lift a

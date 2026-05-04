@@ -361,7 +361,9 @@ hard caveats.
      `StrongCommutes`, `commute_subStep_eqStar_of`,
      `commute_subStar_eqStar_of`, `MSub.trans_step_of`, and
      `MSubStar.collapse_of` collapse `MSubStar` to `MSub` from a
-     de Bruijn single-step strong-commutativity premise.
+     de Bruijn single-step strong-commutativity premise. Use-site
+     adapters `WSubMStar.toMSub_of` and `WEquMStar.toMSub_of` now
+     combine stripping and collapse at the empty stack.
      The conditional Lemma 2 star-lifting skeleton is also present:
      `EqDiamonds`, `diamond_step_eqStar_of`, and
      `diamond_eqStar_eqStar_of` lift a single-step equivalence diamond
