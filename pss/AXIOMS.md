@@ -717,6 +717,12 @@ closures, 2 inactive outstanding).
   variables from the original context. The changed `.equ` head shifts the
   variable index to `i + 1`; the looked-up bound reduction is supplied as
   the recursive lift premise. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — split the changed-head
+  `Me-Fun` stack lift into `meq_equ_head_stack_lift_fun_nil` for the
+  empty residual stack and `meq_equ_head_stack_lift_fun_cons_of_fop_body`
+  for nonempty stacks, where the lifted abstraction is rebuilt through
+  `Me-FOp` with an explicit operand-headed body premise. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -1926,6 +1926,38 @@ noncomputable def meq_equ_head_stack_lift_app {Γ : Ctx} {s : Stack}
       (Term.shift 0 (.app u v)) (Term.shift 0 (.app u' v')) := by
   simpa [Stack.shift] using MEqRed.app hOp hArg
 
+/-- Empty-stack `Me-Fun` lift under a changed `.equ` head. This is the only
+case where a top-level `Me-Fun` step remains a `Me-Fun` step after entering
+the changed head context. -/
+noncomputable def meq_equ_head_stack_lift_fun_nil {Γ : Ctx}
+    {head bound bound' body body' : Term}
+    (hBound : MEqRed ({ bound := head, kind := .equ } :: Γ) []
+      (Term.shift 0 bound) (Term.shift 0 bound'))
+    (hBody : MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+        { bound := head, kind := .equ } :: Γ) []
+      (Term.shift 1 body) (Term.shift 1 body')) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) []
+      (Term.shift 0 (.abs bound body)) (Term.shift 0 (.abs bound' body')) := by
+  simpa using MEqRed.fun_ hBound hBody
+
+/-- Nonempty-stack `Me-Fun` lift under a changed `.equ` head. With an operand
+on the residual stack, the abstraction step must be rebuilt as `Me-FOp`;
+the required body reduction under the operand `.equ` head remains explicit. -/
+noncomputable def meq_equ_head_stack_lift_fun_cons_of_fop_body {Γ : Ctx}
+    {head α bound bound' body body' : Term} {rest : Stack}
+    (hα : Term.Scoped Γ.depth α)
+    (hBound : MEqRed ({ bound := head, kind := .equ } :: Γ) []
+      (Term.shift 0 bound) (Term.shift 0 bound'))
+    (hBody : MEqRed ({ bound := Term.shift 0 α, kind := .equ } ::
+        { bound := head, kind := .equ } :: Γ)
+      (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body')) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 (α :: rest))
+      (Term.shift 0 (.abs bound body)) (Term.shift 0 (.abs bound' body')) := by
+  have hαShift : Term.Scoped (Ctx.depth ({ bound := head, kind := .equ } :: Γ))
+      (Term.shift 0 α) := by
+    simpa [Ctx.depth] using Term.shift_scoped 0 Γ.depth α (Nat.zero_le _) hα
+  simpa [Stack.shift] using MEqRed.fOp hBound hαShift hBody
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/
