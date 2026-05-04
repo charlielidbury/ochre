@@ -602,20 +602,6 @@ theorem appTop_app_tAp {Γ : Ctx} {s : Stack} {u u' : Term}
   subst u'
   exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩, ⟨MSubRed.refl hpv Term.Scoped.top⟩⟩
 
-/-- The `Ms-* × Me-TAp` cells for a `Top`-headed application. The `Ms-Equ`
-branch delegates to the local equivalence diamond premise. -/
-theorem appTop_any_tAp_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
-    {u t₁ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
-    (hsub : MSubRed Γ s (.app .top u) t₁) :
-    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s .top t₃ := by
-  cases hsub with
-  | top _ hScoped =>
-    exact top_of hpv hScoped (MEqRed.tAp hpv hu)
-  | equ _ heqStep =>
-    exact equ_of hdiamond hpv heqStep (MEqRed.tAp hpv hu)
-  | app hOp _ =>
-    exact appTop_app_tAp hpv hu hOp
-
 /-- The full `Top`-headed application source cell for de Bruijn Lemma 1.
 The local `Ms-Equ` branch is discharged by the matching de Bruijn Lemma 2
 cell `EqDiamonds.appTop_any`; structural branches close at `Top`. -/
@@ -655,6 +641,23 @@ theorem appTop_any_of {Γ : Ctx} {s : Stack} (_hdiamond : EqDiamonds Γ s)
     (heq : MEqRed Γ s (.app .top u) t₂) :
     ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
   exact appTop_any hpv hu hsub heq
+
+/-- The `Ms-* × Me-TAp` cells for a `Top`-headed application. The
+`Ms-Equ` branch is discharged by the matching de Bruijn Lemma 2 cell. -/
+theorem appTop_any_tAp {Γ : Ctx} {s : Stack}
+    {u t₁ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hsub : MSubRed Γ s (.app .top u) t₁) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s .top t₃ := by
+  exact appTop_any hpv hu hsub (MEqRed.tAp hpv hu)
+
+/-- Compatibility wrapper for the `Ms-* × Me-TAp` cells that matches the
+conditional Lemma 1 helper shape. The local diamond premise is no longer
+needed for this cell. -/
+theorem appTop_any_tAp_of {Γ : Ctx} {s : Stack} (_hdiamond : EqDiamonds Γ s)
+    {u t₁ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hsub : MSubRed Γ s (.app .top u) t₁) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s .top t₃ := by
+  exact appTop_any_tAp hpv hu hsub
 
 end StrongCommutes
 

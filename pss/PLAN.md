@@ -429,7 +429,9 @@ hard caveats.
      `Ms-Equ` steps the same way.
      `Top`-headed application/`TAp` cells are consolidated through
      `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
-     `StrongCommutes.appTop_any_tAp_of`.
+     `StrongCommutes.appTop_any_tAp`, with
+     `StrongCommutes.appTop_any_tAp_of` retained as a compatibility
+     wrapper.
      The full one-step equivalence diamond for `Top`-headed application
      sources is named `EqDiamonds.appTop_any`.
      The full one-step `Top`-headed application strong-commutativity
