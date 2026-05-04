@@ -64,6 +64,7 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
   binding for the body derivation. -/
   | fOp {Γ : Ctx} {s : Stack} {t t' α body body' : Term} :
       MEqRed Γ [] t t' →
+      Term.Scoped Γ.depth α →
       MEqRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
       MEqRed Γ (α :: s) (.abs t body) (.abs t' body')
 
@@ -103,6 +104,7 @@ inductive MSubRed : Ctx → Stack → Term → Term → Type where
   /-- **Ms-FOp**. -/
   | fOp {Γ : Ctx} {s : Stack} {t α body body' : Term} :
       Term.Scoped Γ.depth t →
+      Term.Scoped Γ.depth α →
       MSubRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
       MSubRed Γ (α :: s) (.abs t body) (.abs t body')
 
@@ -145,7 +147,7 @@ noncomputable def MEqRed.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
     exact ⟨Term.Scoped.abs ih_t.1 ih_body.1, Term.Scoped.abs ih_t.2 ih_body.2⟩
   | tAp _ hu =>
     exact ⟨Term.Scoped.app Term.Scoped.top hu, Term.Scoped.top⟩
-  | fOp _ _ ih_t ih_body =>
+  | fOp _ _ _ ih_t ih_body =>
     exact ⟨Term.Scoped.abs ih_t.1 ih_body.1, Term.Scoped.abs ih_t.2 ih_body.2⟩
 
 /-- Left projection of `MEqRed.scoped_pair`. -/
@@ -174,7 +176,7 @@ noncomputable def MSubRed.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
     exact ⟨Term.Scoped.app ih.1 hv, Term.Scoped.app ih.2 hv⟩
   | fun_ ht heq _ ih_body =>
     exact ⟨Term.Scoped.abs ht ih_body.1, Term.Scoped.abs heq.scoped_pair.2 ih_body.2⟩
-  | fOp ht _ ih_body =>
+  | fOp ht _ _ ih_body =>
     exact ⟨Term.Scoped.abs ht ih_body.1, Term.Scoped.abs ht ih_body.2⟩
 
 /-- Left projection of `MSubRed.scoped_pair`. -/
@@ -229,7 +231,7 @@ noncomputable def MEqRed.refl {Γ : Ctx} {s : Stack} {u : Term}
         Prevalid.equ (PrevalidExt.ctx hpv) hα
       have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s') :=
         PrevalidExt.weaken_head hpvTail hpvBodyCtx
-      exact MEqRed.fOp hBoundRefl (ihBody hpvBody hBody)
+      exact MEqRed.fOp hBoundRefl hα (ihBody hpvBody hBody)
 
 /-- Reflexivity of de Bruijn subtype reduction, via `Ms-Equ`. -/
 noncomputable def MSubRed.refl {Γ : Ctx} {s : Stack} {u : Term}

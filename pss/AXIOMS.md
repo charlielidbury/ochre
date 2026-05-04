@@ -137,6 +137,10 @@ closures, 2 inactive outstanding).
   one-step aliases `Term.shift_shift_zero` and `Stack.shift_shift_zero`
   for the binder-stack commutation shape used by reduction weakening. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — made the de Bruijn `fOp`
+  constructors explicitly carry the scoped operand premise
+  `Term.Scoped Γ.depth α`. This is required for future insertion
+  weakening to rebuild the `.equ` binder head. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

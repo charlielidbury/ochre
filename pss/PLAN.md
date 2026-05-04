@@ -207,6 +207,10 @@ hard caveats.
      inserted context entries. One-step aliases `Term.shift_shift_zero`
      and `Stack.shift_shift_zero` name the corresponding binder-stack
      commutation shape.
+     The de Bruijn `MEqRed.fOp` / `MSubRed.fOp` constructors now carry
+     an explicit `Term.Scoped Γ.depth α` operand premise, which is needed
+     to rebuild the `.equ` head when reductions are weakened through
+     `Ctx.insertAt`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
