@@ -1112,6 +1112,11 @@ closures, 2 inactive outstanding).
   replacement depth. Recursive `Ms-App` and `Ms-Fun` residuals remain
   explicit payloads, while leaf cases are discharged by the existing
   well-subtyping-star residual wrappers. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added head and under-head
+  specializations of the empty-stack subtype-step replacement consumer:
+  `WSubMStar.of_MSubRed_sub_head_replace_from_payloads` and
+  `WSubMStar.of_MSubRed_sub_under_head_replace_from_payloads`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
