@@ -316,6 +316,36 @@ theorem any_tAp {Γ : Ctx} {s : Stack} {u t₁ : Term}
   obtain ⟨t₃, hLeft, hRight⟩ := tAp_any hpv hu h₁
   exact ⟨t₃, hRight, hLeft⟩
 
+/-- The full one-step `Top`-headed application source cell of de Bruijn
+Lemma 2. Both targets are either `Top` or another `Top`-headed application,
+so all branches join at `Top`. -/
+theorem appTop_any {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h₁ : MEqRed Γ s (.app .top u) t₁)
+    (h₂ : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  have hShape₁ := MEqRed.app_top_inv h₁
+  have hShape₂ := MEqRed.app_top_inv h₂
+  cases hShape₁ with
+  | inl hTop₁ =>
+    subst hTop₁
+    exact tAp_any hpv hu h₂
+  | inr hApp₁ =>
+    obtain ⟨arg₁, hEq₁⟩ := hApp₁
+    subst hEq₁
+    have hTargetScoped₁ : Term.Scoped Γ.depth (.app .top arg₁) := h₁.scoped_right
+    have hArg₁ : Term.Scoped Γ.depth arg₁ := (Term.Scoped.app_inv hTargetScoped₁).2
+    cases hShape₂ with
+    | inl hTop₂ =>
+      subst hTop₂
+      exact ⟨.top, ⟨MEqRed.tAp hpv hArg₁⟩, ⟨MEqRed.top hpv⟩⟩
+    | inr hApp₂ =>
+      obtain ⟨arg₂, hEq₂⟩ := hApp₂
+      subst hEq₂
+      have hTargetScoped₂ : Term.Scoped Γ.depth (.app .top arg₂) := h₂.scoped_right
+      have hArg₂ : Term.Scoped Γ.depth arg₂ := (Term.Scoped.app_inv hTargetScoped₂).2
+      exact ⟨.top, ⟨MEqRed.tAp hpv hArg₁⟩, ⟨MEqRed.tAp hpv hArg₂⟩⟩
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence

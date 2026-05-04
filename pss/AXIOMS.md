@@ -402,6 +402,10 @@ closures, 2 inactive outstanding).
   strong-commutativity `Ms-Equ` branch delegates to the local diamond
   premise. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the full one-step
+  `Top`-headed application equivalence diamond cell
+  `EqDiamonds.appTop_any`. Both one-step targets join at `Top`. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the full one-step
   `Top`-headed application strong-commutativity combinator
   `StrongCommutes.appTop_any_of`, closing structural branches at `Top`
   and delegating `Ms-Equ` to the local diamond premise. No axiom-count

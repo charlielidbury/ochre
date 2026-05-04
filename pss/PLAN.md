@@ -430,6 +430,8 @@ hard caveats.
      `Top`-headed application/`TAp` cells are consolidated through
      `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
      `StrongCommutes.appTop_any_tAp_of`.
+     The full one-step equivalence diamond for `Top`-headed application
+     sources is named `EqDiamonds.appTop_any`.
      The full one-step `Top`-headed application strong-commutativity
      combinator `StrongCommutes.appTop_any_of` is also available.
      `Top`-headed application shape inversions are available for
