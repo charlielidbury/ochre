@@ -16,17 +16,20 @@ closures, 2 inactive outstanding).
   including `shiftBy_zero_id`, `instantiate_distributes_over_app`,
   `shift_distributes_over_app`, `instantiate_shiftBy_one_id`, and
   `instantiate_shift_id`.
-* `Pss/Syntax/DeBruijn.lean` scoping bridge — `Term.Scoped`,
-  `Term.Closed`, `Term.shift_scoped`, and `Term.instantiate_scoped`,
-  giving downstream ports a first replacement for locally-nameless
-  local closure.
+* `Pss/Syntax/DeBruijn.lean` scoping bridge — Type-valued
+  `Term.Scoped`, `Term.Closed`, `Term.shift_scoped`, and
+  `Term.instantiate_scoped`, giving downstream ports a proof-relevant
+  replacement for locally-nameless local closure. `Scoped : Type`
+  is intentional: MPSS reductions are Type-valued, and future
+  reflexivity constructors need to recurse on scoping evidence just as
+  current `MEqRed.refl` recurses on `Term.LC`.
 * `Pss/Syntax/DeBruijn.lean` shift/scoping strengthening —
   `Term.shiftBy_compose`, `Term.shiftBy_scoped`,
   `Term.shiftBy_of_scoped_id`, `Term.shiftBy_closed_id`,
   `Term.shift_closed_id`, and `Term.instantiate_closed`.
-* `Pss/Syntax/DeBruijn.lean` scoped inversion/simp bridge —
-  `scoped_bvar_iff`, `scoped_abs_iff`, `scoped_app_iff`, and closed
-  specializations for `top`, `abs`, and `app`. Imported from `Pss.lean`.
+* `Pss/Syntax/DeBruijn.lean` scoped constructor/inversion bridge —
+  `Scoped.bvar_lt`, `no_scoped_zero_bvar`, and closed constructor
+  aliases for `top`, `abs`, and `app`.
 * `Pss/Syntax/DeBruijn.lean` instantiation freshness bridge —
   `Term.instantiate_of_scoped_id` and `Term.instantiate_closed_id`.
 * `Pss/Syntax/DeBruijn.lean` raw weakening bridge — `Term.scoped_mono`

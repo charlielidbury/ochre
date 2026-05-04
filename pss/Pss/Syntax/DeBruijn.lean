@@ -174,8 +174,12 @@ theorem instantiate_shift_id (cutoff : Nat) (v t : Term) :
 /-! ## Scoping -/
 
 /-- `Scoped depth t` means every index in `t` is bound within `depth`
-surrounding binders. Closed terms are `Scoped 0`. -/
-inductive Scoped : Nat → Term → Prop
+surrounding binders. Closed terms are `Scoped 0`.
+
+This is `Type`-valued, matching the post-Type-LC locally-nameless
+development. The MPSS reductions are also `Type`-valued, so later
+reflexivity constructions must be able to recurse on scoping evidence. -/
+inductive Scoped : Nat → Term → Type
   | bvar {depth i : Nat} : i < depth → Scoped depth (.bvar i)
   | top {depth : Nat} : Scoped depth .top
   | abs {depth : Nat} {bound body : Term} :
@@ -184,58 +188,36 @@ inductive Scoped : Nat → Term → Prop
       Scoped depth t → Scoped depth u → Scoped depth (.app t u)
 
 /-- Closed de Bruijn terms have no free indices. -/
-abbrev Closed (t : Term) : Prop := Scoped 0 t
+abbrev Closed (t : Term) : Type := Scoped 0 t
 
-@[simp] theorem scoped_bvar_iff (depth i : Nat) :
-    Scoped depth (.bvar i) ↔ i < depth := by
-  constructor
-  · intro h
-    cases h with
-    | bvar hi => exact hi
-  · exact Scoped.bvar
+/-- Inversion for scoped variables. -/
+def Scoped.bvar_lt {depth i : Nat} :
+    Scoped depth (.bvar i) → i < depth := by
+  intro h
+  cases h with
+  | bvar hi => exact hi
 
-@[simp] theorem not_scoped_zero_bvar (i : Nat) :
-    ¬ Scoped 0 (.bvar i) := by
-  simp
+def no_scoped_zero_bvar (i : Nat) :
+    Scoped 0 (.bvar i) → False := by
+  intro h
+  exact Nat.not_lt_zero _ h.bvar_lt
 
-@[simp] theorem scoped_top_iff (depth : Nat) :
-    Scoped depth .top ↔ True := by
-  constructor
-  · intro _; trivial
-  · intro _; exact Scoped.top
+/-- Constructor alias for closed `top`. -/
+def closed_top : Closed .top := Scoped.top
 
-@[simp] theorem scoped_abs_iff (depth : Nat) (bound body : Term) :
-    Scoped depth (.abs bound body) ↔
-      Scoped depth bound ∧ Scoped (depth + 1) body := by
-  constructor
-  · intro h
-    cases h with
-    | abs h_bound h_body => exact ⟨h_bound, h_body⟩
-  · intro h
-    exact Scoped.abs h.1 h.2
+/-- Constructor alias for closed abstractions. -/
+def closed_abs {bound body : Term} :
+    Closed bound → Scoped 1 body → Closed (.abs bound body) :=
+  Scoped.abs
 
-@[simp] theorem scoped_app_iff (depth : Nat) (t u : Term) :
-    Scoped depth (.app t u) ↔ Scoped depth t ∧ Scoped depth u := by
-  constructor
-  · intro h
-    cases h with
-    | app h_t h_u => exact ⟨h_t, h_u⟩
-  · intro h
-    exact Scoped.app h.1 h.2
-
-@[simp] theorem closed_top : Closed .top := Scoped.top
-
-@[simp] theorem closed_abs_iff (bound body : Term) :
-    Closed (.abs bound body) ↔ Closed bound ∧ Scoped 1 body :=
-  scoped_abs_iff 0 bound body
-
-@[simp] theorem closed_app_iff (t u : Term) :
-    Closed (.app t u) ↔ Closed t ∧ Closed u :=
-  scoped_app_iff 0 t u
+/-- Constructor alias for closed applications. -/
+def closed_app {t u : Term} :
+    Closed t → Closed u → Closed (.app t u) :=
+  Scoped.app
 
 /-- Scoping is monotone in the ambient depth. This is the raw de Bruijn
 weakening lemma for syntax. -/
-theorem scoped_mono {depth depth' : Nat} {t : Term}
+noncomputable def scoped_mono {depth depth' : Nat} {t : Term}
     (hdepth : depth ≤ depth') :
     Scoped depth t → Scoped depth' t := by
   intro h
@@ -250,12 +232,12 @@ theorem scoped_mono {depth depth' : Nat} {t : Term}
     exact Scoped.app (ih_t hdepth) (ih_u hdepth)
 
 /-- Closed terms are scoped at every ambient depth. -/
-theorem Closed.scoped (depth : Nat) {t : Term} :
+noncomputable def Closed.scoped (depth : Nat) {t : Term} :
     Closed t → Scoped depth t :=
   scoped_mono (Nat.zero_le depth)
 
 /-- One-step shifting preserves scoping, increasing the ambient depth by one. -/
-theorem shift_scoped (cutoff depth : Nat) (t : Term)
+noncomputable def shift_scoped (cutoff depth : Nat) (t : Term)
     (hcut : cutoff ≤ depth) :
     Scoped depth t → Scoped (depth + 1) (shift cutoff t) := by
   intro h
@@ -276,7 +258,7 @@ theorem shift_scoped (cutoff depth : Nat) (t : Term)
 
 /-- General shifting preserves scoping, increasing the ambient depth by the
 shift amount. -/
-theorem shiftBy_scoped (cutoff amount depth : Nat) (t : Term)
+noncomputable def shiftBy_scoped (cutoff amount depth : Nat) (t : Term)
     (hcut : cutoff ≤ depth) :
     Scoped depth t → Scoped (depth + amount) (shiftBy cutoff amount t) := by
   intro h
@@ -298,7 +280,7 @@ theorem shiftBy_scoped (cutoff amount depth : Nat) (t : Term)
     exact Scoped.app (ih_fn cutoff hcut) (ih_arg cutoff hcut)
 
 /-- Shifting at or above the current scoping depth has no effect. -/
-theorem shiftBy_of_scoped_id (cutoff amount : Nat) (t : Term) :
+noncomputable def shiftBy_of_scoped_id (cutoff amount : Nat) (t : Term) :
     Scoped cutoff t → shiftBy cutoff amount t = t := by
   intro h
   induction t generalizing cutoff with
@@ -319,19 +301,19 @@ theorem shiftBy_of_scoped_id (cutoff amount : Nat) (t : Term) :
     simp [shiftBy, ih_fn cutoff h_fn, ih_arg cutoff h_arg]
 
 /-- Closed terms are invariant under top-level shifting. -/
-theorem shiftBy_closed_id (amount : Nat) (t : Term) :
+noncomputable def shiftBy_closed_id (amount : Nat) (t : Term) :
     Closed t → shiftBy 0 amount t = t :=
   shiftBy_of_scoped_id 0 amount t
 
 /-- Closed terms are invariant under one-step top-level shifting. -/
-theorem shift_closed_id (t : Term) :
+noncomputable def shift_closed_id (t : Term) :
     Closed t → shift 0 t = t :=
   shiftBy_closed_id 1 t
 
 /-- Instantiation preserves scoping and removes one available index from the
 ambient depth. The premise `k ≤ depth` says the removed slot is among the
 `depth + 1` slots available to the input term. -/
-theorem instantiate_scoped (k depth : Nat) (v t : Term)
+noncomputable def instantiate_scoped (k depth : Nat) (v t : Term)
     (hk : k ≤ depth) (hv : Scoped depth v) :
     Scoped (depth + 1) t → Scoped depth (instantiate k v t) := by
   intro h
@@ -363,14 +345,14 @@ theorem instantiate_scoped (k depth : Nat) (v t : Term)
 
 /-- Instantiating the outermost available index with a closed term produces a
 closed term. This is the β-substitution shape used by MPSS reductions. -/
-theorem instantiate_closed (v t : Term) :
+noncomputable def instantiate_closed (v t : Term) :
     Closed v → Scoped 1 t → Closed (instantiate 0 v t) := by
   intro hv ht
   exact instantiate_scoped 0 0 v t (by omega) hv ht
 
 /-- Instantiating an index at or above the current scoping depth has no
 effect. This is the de Bruijn freshness/no-op substitution lemma. -/
-theorem instantiate_of_scoped_id (k : Nat) (v t : Term) :
+noncomputable def instantiate_of_scoped_id (k : Nat) (v t : Term) :
     Scoped k t → instantiate k v t = t := by
   intro h
   induction t generalizing k v with
@@ -391,7 +373,7 @@ theorem instantiate_of_scoped_id (k : Nat) (v t : Term) :
     simp [instantiate, ih_fn k v h_fn, ih_arg k v h_arg]
 
 /-- Instantiating a closed term at top level is a no-op. -/
-theorem instantiate_closed_id (v t : Term) :
+noncomputable def instantiate_closed_id (v t : Term) :
     Closed t → instantiate 0 v t = t :=
   instantiate_of_scoped_id 0 v t
 

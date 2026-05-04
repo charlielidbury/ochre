@@ -121,12 +121,15 @@ hard caveats.
    * **Started 2026-05-04 on `db-refactor`:** `Pss/Syntax/DeBruijn.lean`
      now provides the standalone `Pss.DeBruijn.Term` core, `size`,
      `shiftBy`, one-step `shift`, `instantiate`, and five named algebraic
-     lemmas. It also provides `Scoped`/`Closed` plus preservation lemmas
-     for shift and instantiate, shift composition, scoped-shift identity,
-     closed β-instantiation, and scoped inversion/simp lemmas. The module
-     now also includes instantiation freshness/no-op lemmas and raw
-     scoped weakening. It is imported by `Pss.lean`; the locally-nameless
-     development remains untouched until the downstream atomic switch.
+     lemmas. It also provides Type-valued `Scoped`/`Closed` plus
+     preservation lemmas for shift and instantiate, shift composition,
+     scoped-shift identity, closed β-instantiation, scoped
+     constructor/inversion helpers, instantiation freshness/no-op lemmas,
+     and raw scoped weakening. `Scoped : Type` is intentional, matching
+     the existing `Term.LC : Type` design needed by Type-valued MPSS
+     reductions. The module is imported by `Pss.lean`; the
+     locally-nameless development remains untouched until the downstream
+     atomic switch.
 2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
    strengthen. Replaces named `Term.subst`.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
