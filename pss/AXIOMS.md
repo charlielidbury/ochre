@@ -1137,6 +1137,12 @@ closures, 2 inactive outstanding).
   `WSubMStar.fun_replaceAt_sub_from_body_fixed_bound_to_star`, and
   `WSubMStar.fun_replaceAt_sub_from_body_changed_bound_to_star`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
+  binder-recursive `Ms-App` well-subtyping wrappers
+  `WSubMStar.app_sub_under_head_replace_from_operator_to_star` and
+  `WSubMStar.app_replaceAt_sub_from_body_operator_to_star`, packaging
+  already transported operator subtype chains below preserved binders.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added stack-sensitive changed-head
   `Ms-FOp` residual wrappers
   `MSubRedStar.fOp_sub_head_replace_from_body` and

@@ -2521,6 +2521,64 @@ noncomputable def WSubMStar.app_sub_head_replace_from_operator_to_star {Γ : Ctx
         simpa [Ctx.replaceAt] using hpres hxy hx)
       (by simpa [Ctx.replaceAt] using hwfApp))
 
+/-- Under-head specialization of
+`WSubMStar.app_replaceAt_sub_from_operator_to_star`. -/
+noncomputable def WSubMStar.app_sub_under_head_replace_from_operator_to_star
+    {Γ : Ctx} {head : CtxEntry} {old new u u' v : Term}
+    (hOp : MSubRedStar (head :: { bound := new, kind := .sub } :: Γ)
+      (v :: []) u u')
+    (hv : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) v)
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (head :: { bound := new, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) y)
+    (hwfApp : WfM (head :: { bound := new, kind := .sub } :: Γ)
+      (.app u v)) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+      (.app u v) (.app u' v) := by
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.app_replaceAt_sub_from_operator_to_star
+      (Γ := head :: { bound := old, kind := .sub } :: Γ) (cutoff := 1)
+      (old := old) (new := new) (u := u) (u' := u') (v := v)
+      (by simpa [Ctx.replaceAt] using hOp)
+      (by simpa [Ctx.replaceAt] using hv)
+      (fun {x y} hxy hx => by
+        simpa [Ctx.replaceAt] using hpres hxy hx)
+      (by simpa [Ctx.replaceAt] using hwfApp))
+
+/-- Binder-recursive specialization of
+`WSubMStar.app_replaceAt_sub_from_operator_to_star`. -/
+noncomputable def WSubMStar.app_replaceAt_sub_from_body_operator_to_star
+    {Γ : Ctx} {cutoff : Nat} {head old new u u' v : Term}
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOp : MSubRedStar
+      (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) (v :: []) u u')
+    (hv : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ))) v)
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] x y →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) y)
+    (hwfApp : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) (.app u v)) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.app u v) (.app u' v) := by
+  have hcutBody :
+      cutoff + 1 < Ctx.depth ({ bound := head, kind := .sub } :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Nat.succ_lt_succ hcut
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.app_replaceAt_sub_from_operator_to_star
+      (Γ := { bound := head, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) (u := u) (u' := u') (v := v)
+      hOp hv hpres hwfApp)
+
 /-- Fixed-bound `Ms-Fun` replacement residual embedded as well-subtyping,
 assuming the body subtype residual has already been transported. -/
 noncomputable def WSubMStar.fun_replaceAt_sub_from_body_fixed_bound_to_star
