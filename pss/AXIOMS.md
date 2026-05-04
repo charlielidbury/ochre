@@ -187,6 +187,11 @@ closures, 2 inactive outstanding).
   one-preserved-head convenience corollaries for all five de Bruijn
   well-formed judgments (`*_weaken_head`, `*_weaken_tail_head`). No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added de Bruijn well-formed
+  chain helpers: `WSubMStar.WSubM_trans`, `WSubMStar.trans`,
+  `WSubM.left_lf1_chain`, `WSubM.right_rgh_chain`,
+  `WEquM.left_chain`, and `WEquM.right_chain_back`. No axiom-count
+  change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

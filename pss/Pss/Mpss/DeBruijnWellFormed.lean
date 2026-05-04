@@ -616,5 +616,91 @@ noncomputable def WEquM.toWSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
   | rgh _ hred ih =>
     exact WSubM.rgh ih hred
 
+/-! ## Chain helpers -/
+
+/-- Compose two de Bruijn well-subtyping steps into transitive
+well-subtyping. -/
+def WSubMStar.WSubM_trans {Γ : Ctx} {a b c : Term}
+    (hwfA : WfM Γ a) (hwfB : WfM Γ b) (hwfC : WfM Γ c)
+    (h₁ : WSubM Γ a b) (h₂ : WSubM Γ b c) :
+    WSubMStar Γ a c :=
+  WSubMStar.trs (WSubMStar.sub hwfA h₁ hwfB) hwfB
+    (WSubMStar.sub hwfB h₂ hwfC)
+
+/-- Star-on-star transitivity of de Bruijn well-subtyping. -/
+def WSubMStar.trans {Γ : Ctx} {a b c : Term}
+    (hwfB : WfM Γ b)
+    (h₁ : WSubMStar Γ a b) (h₂ : WSubMStar Γ b c) :
+    WSubMStar Γ a c :=
+  WSubMStar.trs h₁ hwfB h₂
+
+/-- Prepend an equivalence-reduction chain on the left of de Bruijn
+well-subtyping. -/
+noncomputable def WSubM.left_lf1_chain {Γ : Ctx} {a a' c : Term}
+    (hChain : MEqRedStar Γ [] a a')
+    (hSub : WSubM Γ a' c) :
+    WSubM Γ a c := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x a'),
+      Nonempty (WSubM Γ a' c → WSubM Γ x c) from (key hChain).some hSub
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := a')
+    (P := fun x (_ : MEqRedStar Γ [] x a') =>
+      Nonempty (WSubM Γ a' c → WSubM Γ x c)) h ?_ ?_
+  · exact ⟨fun hSub' => hSub'⟩
+  · intro x y hHead _ ihY
+    exact ⟨fun hSubA' =>
+      WSubM.lf1 hHead.some (ihY.some hSubA')⟩
+
+/-- Append an equivalence-reduction chain on the right of de Bruijn
+well-subtyping, reading the chain backward through `Ws-Rgh`. -/
+noncomputable def WSubM.right_rgh_chain {Γ : Ctx} {a c c' : Term}
+    (hSub : WSubM Γ a c')
+    (hChain : MEqRedStar Γ [] c c') :
+    WSubM Γ a c := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x c'),
+      Nonempty (WSubM Γ a c' → WSubM Γ a x) from (key hChain).some hSub
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := c')
+    (P := fun x (_ : MEqRedStar Γ [] x c') =>
+      Nonempty (WSubM Γ a c' → WSubM Γ a x)) h ?_ ?_
+  · exact ⟨fun hSub' => hSub'⟩
+  · intro x y hHead _ ihY
+    exact ⟨fun hSubC' =>
+      WSubM.rgh (ihY.some hSubC') hHead.some⟩
+
+/-- Prepend an equivalence-reduction chain on the left of de Bruijn
+well-equivalence. -/
+noncomputable def WEquM.left_chain {Γ : Ctx} {a a' c : Term}
+    (hChain : MEqRedStar Γ [] a a')
+    (hEqu : WEquM Γ a' c) :
+    WEquM Γ a c := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x a'),
+      Nonempty (WEquM Γ a' c → WEquM Γ x c) from (key hChain).some hEqu
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := a')
+    (P := fun x (_ : MEqRedStar Γ [] x a') =>
+      Nonempty (WEquM Γ a' c → WEquM Γ x c)) h ?_ ?_
+  · exact ⟨fun hEqu' => hEqu'⟩
+  · intro x y hHead _ ihY
+    exact ⟨fun hEquA' =>
+      WEquM.lf1 hHead.some (ihY.some hEquA')⟩
+
+/-- Append an equivalence-reduction chain on the right of de Bruijn
+well-equivalence, reading the chain backward through `Wse-Rgh`. -/
+noncomputable def WEquM.right_chain_back {Γ : Ctx} {a c c' : Term}
+    (hEqu : WEquM Γ a c')
+    (hChain : MEqRedStar Γ [] c c') :
+    WEquM Γ a c := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x c'),
+      Nonempty (WEquM Γ a c' → WEquM Γ a x) from (key hChain).some hEqu
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := c')
+    (P := fun x (_ : MEqRedStar Γ [] x c') =>
+      Nonempty (WEquM Γ a c' → WEquM Γ a x)) h ?_ ?_
+  · exact ⟨fun hEqu' => hEqu'⟩
+  · intro x y hHead _ ihY
+    exact ⟨fun hEquC' =>
+      WEquM.rgh (ihY.some hEquC') hHead.some⟩
+
 end DeBruijn
 end Pss
