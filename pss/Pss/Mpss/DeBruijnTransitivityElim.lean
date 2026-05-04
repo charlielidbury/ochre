@@ -993,6 +993,56 @@ theorem msubStar_abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     (hEq : MEqRedStar Γ s (.abs bound body) t) : MSubStar Γ s t .top :=
   (msub_abs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
 
+/-- Diagrammatic split for subtype chains from an abstraction. The target is
+either `Top` or another abstraction. -/
+theorem msub_abs_subStar_top_or_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hSub : MSubRedStar Γ s (.abs bound body) t) :
+    MSub Γ s (.abs bound body) .top ∨
+      ∃ bound' body',
+        t = .abs bound' body' ∧
+          MSub Γ s (.abs bound body) (.abs bound' body') := by
+  cases hSub.abs_inv with
+  | inl hTop =>
+      subst hTop
+      exact Or.inl (MSub.of_MSubRedStar hSub)
+  | inr hAbs =>
+      obtain ⟨bound', body', hEq⟩ := hAbs
+      subst hEq
+      exact Or.inr ⟨bound', body', rfl, MSub.of_MSubRedStar hSub⟩
+
+/-- Transitive diagrammatic split for subtype chains from an abstraction. -/
+theorem msubStar_abs_subStar_top_or_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hSub : MSubRedStar Γ s (.abs bound body) t) :
+    MSubStar Γ s (.abs bound body) .top ∨
+      ∃ bound' body',
+        t = .abs bound' body' ∧
+          MSubStar Γ s (.abs bound body) (.abs bound' body') := by
+  cases msub_abs_subStar_top_or_abs hSub with
+  | inl hTop =>
+      exact Or.inl hTop.to_star
+  | inr hAbs =>
+      obtain ⟨bound', body', hEq, hBranch⟩ := hAbs
+      exact Or.inr ⟨bound', body', hEq, hBranch.to_star⟩
+
+/-- One-step specialization of `msub_abs_subStar_top_or_abs`. -/
+theorem msub_abs_subStep_top_or_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hSub : MSubRed Γ s (.abs bound body) t) :
+    MSub Γ s (.abs bound body) .top ∨
+      ∃ bound' body',
+        t = .abs bound' body' ∧
+          MSub Γ s (.abs bound body) (.abs bound' body') :=
+  msub_abs_subStar_top_or_abs (MSubRedStar.single hSub)
+
+/-- Transitive diagrammatic one-step specialization of
+`msub_abs_subStar_top_or_abs`. -/
+theorem msubStar_abs_subStep_top_or_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hSub : MSubRed Γ s (.abs bound body) t) :
+    MSubStar Γ s (.abs bound body) .top ∨
+      ∃ bound' body',
+        t = .abs bound' body' ∧
+          MSubStar Γ s (.abs bound body) (.abs bound' body') :=
+  msubStar_abs_subStar_top_or_abs (MSubRedStar.single hSub)
+
 /-- If a subtype chain from an abstraction-headed application reaches `Top`,
 any equivalence chain from the same source joins it at `Top`. -/
 theorem commute_appAbs_to_top_eqStar {Γ : Ctx} {s : Stack}
