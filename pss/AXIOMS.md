@@ -1101,6 +1101,11 @@ closures, 2 inactive outstanding).
   consumer that selects the changed-slot residual or the preserved-slot
   residual from the binding index at an arbitrary replaced `.sub` depth.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added head and under-head
+  specializations of the generic `Ms-Pro` binding consumer:
+  `WSubMStar.pro_sub_head_replace_to_old_of_bind` and
+  `WSubMStar.pro_sub_under_head_replace_to_old_of_bind`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
