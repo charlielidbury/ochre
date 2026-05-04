@@ -300,7 +300,10 @@ hard caveats.
      `WSubMStar.extend_left_via_MEqRedStar_fwd`,
      `WSubMStar.extend_right_via_MEqRedStar_back`,
      `WEquMStar.extend_left_via_MEqRedStar_fwd`, and
-     `WEquMStar.extend_right_via_MEqRedStar_back`.
+     `WEquMStar.extend_right_via_MEqRedStar_back`. Transitive
+     well-subtyping can also absorb restricted empty-stack subtype
+     chains at its left endpoint through
+     `WSubMStar.extend_left_via_MSubRedStar_fwd`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms

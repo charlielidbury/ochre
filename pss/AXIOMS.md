@@ -262,6 +262,10 @@ closures, 2 inactive outstanding).
   `WEquMStar.extend_left_via_MEqRedStar_fwd`, and
   `WEquMStar.extend_right_via_MEqRedStar_back`. These require explicit
   stepwise `WfM` preservation. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added the directed conditional
+  left-endpoint extension helper along empty-stack subtype-reduction
+  chains: `WSubMStar.extend_left_via_MSubRedStar_fwd`. This requires
+  explicit stepwise `WfM` preservation. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
