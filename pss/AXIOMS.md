@@ -683,6 +683,11 @@ closures, 2 inactive outstanding).
   equivalence `FOp` chain lifters. These let body-level replacement
   residuals produce `MSub`/`MSubStar` joins and still lift back to
   abstraction-headed residuals. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubStar_abs_fOp_equ_bound_body`, which first changes an abstraction
+  bound via an empty-stack equivalence step and then lifts a diagrammatic
+  body replacement chain through `FOp` under the fixed new bound. No
+  axiom-count change.
 * `Pss/Context/DeBruijn.lean` — added the first `.equ`-head replacement
   infrastructure: subtype lookups are invariant when the innermost
   `.equ` bound changes, nonzero equivalence lookups are invariant, and

@@ -1876,6 +1876,30 @@ theorem msubStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
       (MSub.to_star
         (msub_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hStep))
 
+/-- Lift a diagrammatic body replacement chain through `FOp` after first
+changing the abstraction bound by an empty-stack equivalence step. -/
+theorem msubStar_abs_fOp_equ_bound_body {Γ : Ctx} {s : Stack}
+    {α bound bound' body body' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBound : MEqRed Γ [] bound bound')
+    (hα : Term.Scoped Γ.depth α)
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body)
+    (hBody : MSubStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body') :
+    MSubStar Γ (α :: s) (.abs bound body) (.abs bound' body') := by
+  have hpvBodyCtx : Prevalid ({ bound := α, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hα
+  have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvBodyCtx
+  have hBodyRefl : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body :=
+    MEqRed.refl hpvBody hBodyScoped
+  exact MSubStar.trans
+    (MSub.to_star (MSub.of_MEqRed (PrevalidExt.cons hpvTail hα)
+      (MEqRed.fOp hBound hα hBodyRefl)))
+    (msubStar_abs_fOp_body_fixed_bound hpvTail hBound.scoped_right hα hBody)
+
 /-- Under a changed `.equ` head, the old shifted head bound diagrammatically
 subtypes the new head variable. The subtype side uses an old-to-new head
 equivalence at the same residual stack; the equivalence side promotes
