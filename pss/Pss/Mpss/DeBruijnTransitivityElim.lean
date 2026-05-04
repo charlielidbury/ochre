@@ -83,6 +83,64 @@ end MSubStar
 
 /-! ## Conditional Theorem 3 lifting skeleton -/
 
+/-- De Bruijn single-step equivalence diamond at a fixed extended context.
+This is the de Bruijn Lemma 2 shape needed when lifting equivalence diamonds
+from steps to chains. -/
+abbrev EqDiamonds (Γ : Ctx) (s : Stack) : Prop :=
+  ∀ {t₀ t₁ t₂ : Term},
+    MEqRed Γ s t₀ t₁ →
+    MEqRed Γ s t₀ t₂ →
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃
+
+/-- Lift a single-step equivalence diamond to one equivalence step against an
+equivalence-reduction chain. -/
+noncomputable def diamond_step_eqStar_of
+    {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s t₀ t₁)
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ := by
+  suffices key : ∀ {a : Term} (h : MEqRedStar Γ s a t₂),
+      ∀ {x : Term}, MEqRed Γ s a x →
+        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MEqRedStar Γ s t₂ t₃ from
+    key h₂ h₁
+  intro a h
+  refine Relation.ReflTransGen.head_induction_on (b := t₂)
+    (P := fun a (_ : MEqRedStar Γ s a t₂) =>
+      ∀ {x : Term}, MEqRed Γ s a x →
+        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MEqRedStar Γ s t₂ t₃) h ?_ ?_
+  · intro x hstep
+    exact ⟨x, Relation.ReflTransGen.refl, MEqRedStar.single hstep⟩
+  · intro a c hHead _ ihC x hInput
+    obtain ⟨y, hcy, hxy⟩ := hdiamond hHead.some hInput
+    obtain ⟨t₃, hyT₃, hT₂T₃⟩ := ihC hcy.some
+    exact ⟨t₃, Relation.ReflTransGen.head hxy hyT₃, hT₂T₃⟩
+
+/-- Lift a single-step equivalence diamond to two equivalence-reduction
+chains. -/
+noncomputable def diamond_eqStar_eqStar_of
+    {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRedStar Γ s t₀ t₁)
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ := by
+  suffices key : ∀ {a : Term} (h : MEqRedStar Γ s a t₁),
+      ∀ {z : Term}, MEqRedStar Γ s a z →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s z t₃ from
+    key h₁ h₂
+  intro a h
+  refine Relation.ReflTransGen.head_induction_on (b := t₁)
+    (P := fun a (_ : MEqRedStar Γ s a t₁) =>
+      ∀ {z : Term}, MEqRedStar Γ s a z →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s z t₃) h ?_ ?_
+  · intro z hStar
+    exact ⟨z, hStar, Relation.ReflTransGen.refl⟩
+  · intro a c hHead _ ihC z hInputStar
+    obtain ⟨y, hcy, hzy⟩ :=
+      diamond_step_eqStar_of hdiamond hHead.some hInputStar
+    obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
+    exact ⟨t₃, hT₁T₃, Relation.ReflTransGen.trans hzy hyT₃⟩
+
 /-- De Bruijn single-step strong commutativity at a fixed extended context.
 This is the de Bruijn Lemma 1 shape needed by the star-lifting argument for
 Theorem 3. The conclusion uses the Prop wrappers for single Type-valued

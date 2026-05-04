@@ -356,6 +356,10 @@ hard caveats.
      `commute_subStar_eqStar_of`, `MSub.trans_step_of`, and
      `MSubStar.collapse_of` collapse `MSubStar` to `MSub` from a
      de Bruijn single-step strong-commutativity premise.
+     The conditional Lemma 2 star-lifting skeleton is also present:
+     `EqDiamonds`, `diamond_step_eqStar_of`, and
+     `diamond_eqStar_eqStar_of` lift a single-step equivalence diamond
+     to equivalence-reduction chains.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
