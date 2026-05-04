@@ -4093,6 +4093,44 @@ noncomputable def WfM.sub_head_replace_from_payloads {Γ : Ctx}
       exact WfM.app_sub_head_replace_of_wsubred hFun hArg hOldNew
         (fun hx => hWf hx) hEqPresOld hSubRedReplace
 
+/-- Head `WfM` replacement where the empty-stack subtype-step residual
+payload is built from constructor-level `MSubRed` residual payloads. -/
+noncomputable def WfM.sub_head_replace_from_msub_payloads {Γ : Ctx}
+    {old new body : Term}
+    (h : WfM ({ bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head : CtxEntry} {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := old, kind := .sub } :: Γ) x →
+          WfM ({ bound := old, kind := .sub } :: Γ) y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ ({ bound := new, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := new, kind := .sub } :: Γ) x →
+          WfM ({ bound := new, kind := .sub } :: Γ) y)
+    (hAppOp : ∀ {arg u u' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) arg →
+        MSubRed ({ bound := old, kind := .sub } :: Γ) (arg :: []) u u' →
+          MSubRedStar ({ bound := new, kind := .sub } :: Γ) (arg :: []) u u')
+    (hFunBody : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := old, kind := .sub } :: Γ) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              { bound := old, kind := .sub } :: Γ) [] body body' →
+            MSubRedStar ({ bound := t', kind := .sub } ::
+              { bound := new, kind := .sub } :: Γ) [] body body')
+    (hWfNew : WfM ({ bound := new, kind := .sub } :: Γ) (Term.shift 0 new)) :
+    WfM ({ bound := new, kind := .sub } :: Γ) body :=
+  WfM.sub_head_replace_from_payloads h hOldNew hWf hWfUnder hEqPresOld
+    (fun hx hy hred =>
+      WSubMStar.of_MSubRed_sub_head_replace_from_payloads hred hOldNew
+        hWf hSubRedPresNew hAppOp hFunBody hWfNew hx hy)
+
 /-- Constructor-level `WfM` under-head replacement from recursive payloads.
 
 This is the preserved-head analogue of `WfM.sub_head_replace_from_payloads`.
@@ -4133,6 +4171,47 @@ noncomputable def WfM.sub_under_head_replace_from_payloads {Γ : Ctx}
   | app hFun hArg =>
       exact WfM.app_sub_under_head_replace_of_wsubred hFun hArg hOldNew
         (fun hx => hWf hx) hEqPresOld hSubRedReplace
+
+/-- Under-head `WfM` replacement where the empty-stack subtype-step residual
+payload is built from constructor-level `MSubRed` residual payloads. -/
+noncomputable def WfM.sub_under_head_replace_from_msub_payloads {Γ : Ctx}
+    {head : CtxEntry} {old new body : Term}
+    (h : WfM (head :: { bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head' : CtxEntry} {x : Term},
+      WfM (head' :: head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head' :: head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (head :: { bound := old, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := old, kind := .sub } :: Γ) y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ (head :: { bound := new, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) y)
+    (hAppOp : ∀ {arg u u' : Term},
+      Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) arg →
+        MSubRed (head :: { bound := old, kind := .sub } :: Γ)
+          (arg :: []) u u' →
+          MSubRedStar (head :: { bound := new, kind := .sub } :: Γ)
+            (arg :: []) u u')
+    (hFunBody : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t →
+        MEqRed (head :: { bound := old, kind := .sub } :: Γ) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } :: head ::
+              { bound := old, kind := .sub } :: Γ) [] body body' →
+            MSubRedStar ({ bound := t', kind := .sub } :: head ::
+              { bound := new, kind := .sub } :: Γ) [] body body')
+    (hWfNew : WfM (head :: { bound := new, kind := .sub } :: Γ)
+      (Term.shiftBy 0 2 new)) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) body :=
+  WfM.sub_under_head_replace_from_payloads h hOldNew hWf hWfUnder hEqPresOld
+    (fun hx hy hred =>
+      WSubMStar.of_MSubRed_sub_under_head_replace_from_payloads hred hOldNew
+        hWf hSubRedPresNew hAppOp hFunBody hWfNew hx hy)
 
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/

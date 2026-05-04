@@ -1122,6 +1122,12 @@ closures, 2 inactive outstanding).
   binder-recursive specialization of the empty-stack subtype-step
   replacement consumer for the `cutoff + 1` context under a preserved
   subtype head. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WfM.sub_head_replace_from_msub_payloads` and
+  `WfM.sub_under_head_replace_from_msub_payloads`, wiring the
+  constructor-level `MSubRed` residual consumers into the existing
+  head and under-head `WfM` replacement payload consumers. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
