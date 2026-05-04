@@ -926,6 +926,9 @@ closures, 2 inactive outstanding).
   `MEqRed.replaceAt_sub`, transporting equivalence reductions across
   arbitrary-depth `.sub` replacement by structural recursion. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — lifted exact `.sub` replacement
+  for equivalence reductions to chains as `MEqRedStar.replaceAt_sub`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

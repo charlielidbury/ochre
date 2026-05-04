@@ -1449,6 +1449,21 @@ noncomputable def MEqRed.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
     MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
   h.replaceAt_sub_aux rfl hcut hOldNew
 
+/-- Chain-level equivalence-reduction transport across arbitrary-depth `.sub`
+replacement. -/
+theorem MEqRedStar.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {old new : Term}
+    (h : MEqRedStar (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s u v)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new) :
+    MEqRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hStep ih =>
+      exact Relation.ReflTransGen.tail ih
+        ⟨hStep.some.replaceAt_sub hcut hOldNew⟩
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}
