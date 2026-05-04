@@ -57,60 +57,86 @@ analyses, complexity estimates, and discharge plans.
 * **2 inactive outstanding (no headline depends on these):**
   `Lemma_10_InversionRestricted`, `avoidsPro_refl`.
 
-### Unblocking options
+### Unblocking options — historical (now superseded by de Bruijn pivot)
 
-The campaign converged on two sharply different paths forward:
+The campaign explored several paths through iter-32. All walled at the
+same fundamental obstacle: **the cofinite quantifier on
+`MEqRed.bet`/`fun_`/`fOp`'s body is a function with no a priori
+uniformity guarantee, and `MEqRed.tAp`/`app` constructors require
+`fv ⊆ Γ.dom` premises that fail for stray cofinite witnesses.**
 
-**Option A — keep grinding.** Each remaining axiom requires multiple
-sessions of careful proof engineering. Multiple converging blockers
-have surfaced, all documented in their respective file headers:
+The historical paths attempted:
 
-* **Alpha-equivariance for `avoidsPro` / `msAvoidsPro`.** The Bool
-  recursion samples `pickFresh L`, so threading an avoidance premise
-  through the cofinite arms requires a lemma
-  `avoidsPro (hbody y₁ _) x = avoidsPro (hbody y₂ _) x`. Currently
-  blocks Lemma 30 axiom removal (file analysis: AvoidsPro.lean §3.1
-  / §4 + Substitution.lean line 845-883).
-* **Transport casts everywhere.** The cofinite quantification
-  pervades, so any rename / narrowing / weakening lemma that has to
-  re-thread an avoidance witness fights heterogeneous-equality casts.
-* **Term-size induction.** The β-residuals genuinely need a lex
-  measure on `(Term.size t₀, avoidsPro-count)` — `_core`'s induction
-  scheme has to change.
-* **Cycle-creating import.** `Lemma_24` discharge wants
-  WSubMStar-weakening from `TypeSafety.lean`, downstream of
-  `Narrowing.lean` (Narrowing → Diamond → Commutation → TransitivityElim
-  → … → TypeSafety). Either inline ~200 lines, or re-architect.
+1. **Option A — keep grinding** (Phases 1–28). Each axiom required
+   multiple sessions. Walled on alpha-equivariance and term-size
+   induction.
+2. **Option B — Type-LC refactor** (commit `64162c2`). Lifted `Term.LC`
+   from `Prop` to `Type`. Discharged `avoidsPro_refl` (axiom #12). Did
+   NOT move the 5 β-residuals — they require restructuring `_core`'s
+   induction scheme, which depends on machinery still walled by
+   alpha-equivariance.
+3. **AvoidsProUniv (Phase 5a–5g)** — `Type`-valued universal
+   alpha-equivariance predicate. Phase 5g.3b proved structurally
+   impossible (Lean rejects mutual `Type`/`Prop` blocks; mutual indices
+   can't reference neighbors).
+4. **Lever A — open-target descent functor (iter-29 through iter-32).**
+   Built `Term.openInverse` infrastructure and `MEqRed.openInverse_descend`
+   skeleton with 3 honest arms (`top`, `var`, `pro`). **Walled at the
+   `tAp` arm (commit `5f2c58c`)** with a Lean-checked counterexample:
+   the output requires `MEqRed Γ s (.app .top (.fvar z)) .top` for stray
+   `z ∉ Γ.dom`, which `MEqRed.tAp`'s `fv u ⊆ Γ.dom` premise makes
+   uninhabitable. Same wall affects `app`/`bet`/`fun_`/`fOp` arms.
+5. **Lever B — alpha-equivariance renaming functor.** Audit at iter-31
+   (commit `bad6651`) found it has the same structural wall as Lever A
+   in disguise. Dispreferred and not attempted.
 
-Estimate: 5+ sessions per residual layer.
+### Decision (iter-32 — sealed): switch to de Bruijn
 
-**Option B — Type-LC refactor.** Lift `Term.LC` from `Prop` to `Type`,
-mirroring the earlier `MEqRed`/`MSubRed` `Prop → Type` refactor (commit
-`16eed34`). Consequences:
+The five β-residual axioms are **provably not closeable** in the current
+encoding without a major refactor. Three remaining options were on the
+table:
 
-* `MEqRed.refl_J` becomes `Type`-valued, eliminating the
-  `Classical.choice`-based opacity that blocks `avoidsPro_refl`,
-  `Lemma_2_inline_app_bet_residual_axiom`,
-  `Lemma_2_inline_bet_residual_axiom`,
-  `Lemma_1_inline_app_bet_residual`, and likely
-  `Proposition_17_beta_axiom`. **Five of the nine active axioms are
-  unblocked at once.**
-* `Term.LC` appears in dozens of theorem statements across `Pss/Syntax`,
-  `Pss/Mpss`, etc. The refactor is mechanical (mostly s/Prop/Type/g) but
-  pervasive. Order-of-magnitude estimate: a single sustained session,
-  maybe two if dependent-pair reshapings are needed.
+1. **Existence-form composition (Lever A continuation)** — DEAD per
+   iter-32 counterexample.
+2. **Setoid quotient on derivations** — experimental viability,
+   speculative.
+3. **De Bruijn re-encoding** — well-understood, eliminates the cofinite
+   quantifier wall by collapsing `∀ y ∉ L, MEqRed Γ s (body^[y])
+   (body'^[y])` to a single `MEqRed (β :: Γ) s body body'`.
 
-### Recommended order
+**The user's authoritative direction (iter-32):** commit to de Bruijn.
+"de Bruijn indices are a more organised approach which leads to cleaner
+codebases and will reduce our tech debt."
 
-1. **Try Option B first.** It is the high-leverage move: a single
-   refactor that potentially eliminates five residual axioms.
-2. If Option B fails or breaks downstream proofs in unforeseen ways,
-   `git revert` it and fall back to Option A — chip away at residuals
-   in the order that the AXIOMS.md complexity estimates suggest.
-3. Independent of A/B: discharge `Lemma_24_NarrowingMSubRed` via
-   path 1 (inline ~200 lines of WSubMStar-weakening into
-   `Narrowing.lean`). Independent of the β-residual layer; can be done
-   in parallel.
+See `CLAUDE.md` "NEXT MAJOR WORK — de Bruijn refactor" for the phase
+plan, scope estimate (35–60 dispatches), atomic-switch constraint, and
+hard caveats.
+
+### Recommended order (post-iter-32)
+
+1. **Phase 1 — DeBruijn.lean syntax core.** Ship the new `Term`
+   inductive (`bvar (Nat)`, `top`, `app`, `abs`) plus
+   `instantiate`/`shift` operations and 4–6 algebraic lemmas. No
+   `MEqRed` work yet. Branch `db-refactor` from `pss`.
+2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
+   strengthen. Replaces named `Term.subst`.
+3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
+   delete most of `Renaming.lean`, port `Prevalid` / `Weakening` /
+   `ContextRed` to indices.
+4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
+   `WEquM` re-stated in indices.
+5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
+   4, 5. The 5 β-residuals discharge here.
+6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
+   (just the Wf-inversion cluster + Prop-17 + Lemma 24). Update
+   `AXIOMS.md` to reflect.
+
+`Lemma_24_NarrowingMSubRed`, `Lemma_10_Inversion`, `Lemma_30_msPro_x_axiom`,
+`Proposition_17_beta_axiom` may also discharge under de Bruijn but the
+walls there were not purely encoding-shaped (e.g. Lemma 24 has a cycle
+through `TypeSafety.lean`'s import order). Prioritize the β-residual
+cluster discharge as the campaign's success metric for the de Bruijn
+refactor; the others can be reassessed after Phase 5.
 
 The campaign artifacts to read before diving in:
 

@@ -148,10 +148,92 @@ paper-faithful, currently NOT in any headline closure).
 
 Plus 1 inactive axiom (`Lemma_10_InversionRestricted`).
 
-The next big architectural lever is the **renaming functor on MEqRed**
-(~500-800 lines): a Type-valued recursive renaming that preserves
-constructor structure, enabling honest discharge of alpha-equivariance.
-This unblocks the β-residual layer.
+## NEXT MAJOR WORK — de Bruijn refactor (post-iter-32 decision)
+
+**Lever A (open-target descent, the "renaming functor on MEqRed" approach)
+walled at iter-32 with a Lean-checked counterexample at the `tAp` arm.**
+See commit `5f2c58c` and `Pss/Mpss/Renaming.lean §15` for the
+counterexample (`MEqRed.openInverse_descend_tAp_counterexample`). The
+structural reason: every `MEqRed` constructor whose stack/operand carries
+an `fv ⊆ Γ.dom` premise (`tAp`, `app`, `bet`, `fun_`, `fOp`) cannot
+produce cofinite-z output when the body shape mentions `bvar 0` in such
+positions, because `{z} ⊄ Γ.dom` for stray z. This forecloses the entire
+LN-with-cofinite-quantifier discharge strategy at the encoding level.
+
+The campaign's next major work is to **switch the formalization from
+locally-nameless to de Bruijn indices**. Per the user's standing decision:
+
+> "de Bruijn indices are a more organised approach which leads to cleaner
+> codebases and will reduce our tech debt."
+
+### Why de Bruijn dissolves the wall
+
+The wall is the cofinite quantifier `∀ y ∉ L, MEqRed Γ s (body^[y])
+(body'^[y])` on `MEqRed.bet`/`fun_`/`fOp`. The body sub-derivation is a
+**function** over fresh names; two distinct witnesses can have proof
+skeletons whose `avoidsPro` values disagree (no a priori uniformity). In
+de Bruijn:
+
+```
+| bet : MEqRed (β :: Γ) s body body' →           -- ONE body derivation
+        MEqRed Γ [] arg arg' →
+        MEqRed Γ s (.app (.abs t body) arg) (instantiate 0 arg' body')
+```
+
+There are no fresh names to pick; the body sub-derivation is a single
+proof tree; alpha-equivariance is vacuous; the 5 β-residuals close as
+case-grid recursion over genuine structural sub-derivations.
+
+### Scope estimate (calibrated)
+
+Codebase: 27.5k Lean lines. Touched by the switch: ~25k (everything in
+`Pss/Mpss/*` and `Pss/Syntax/*`; `Pss/Checker/*` ~700 lines is
+orthogonal). Phasing:
+
+| Phase | Scope | Dispatches |
+|---|---|---|
+| 1 | `Pss/Syntax/DeBruijn.lean` (new), rewrite `Reductions.lean`, shrink `AvoidsPro.lean` | 4–6 |
+| 2 | `Substitution.lean` rewrite (lift/instantiate/strengthen lemmas) | 3–5 |
+| 3 | `Prevalid`, `Weakening`, `ContextRed`, **delete most of `Renaming.lean`** (the 9.5k-line descend_* family becomes obsolete), replace with ~1k index-shift machinery | 4–7 |
+| 4 | `WellFormed.lean`, `WfMPreservation.lean` | 3–4 |
+| 5 | `Diamond`, `Commutation`, `Narrowing`, `TypeSafety`, `SubjectReduction`, `TransitivityElim` — **the 5 β-residuals discharge here** | 6–10 |
+| 6 | Cleanup, axiom audit, doc refresh | 2–3 |
+| **Realistic with risk multiplier** | | **35–60 dispatches** |
+
+### Atomic switch — no incremental migration
+
+Changing the `Term` inductive forces an atomic switch. Cannot half-port.
+If a sub-agent walls partway, revert the whole work-branch and start
+over rather than ship a Frankenstein. Recommend doing the work on a
+fresh branch (e.g. `db-refactor`) so the `meqred-uniform-experiment`
+LN state remains a fallback.
+
+### Hard caveats
+
+1. **Paper-faithfulness loss.** Theorem statements that mention binders
+   no longer textually match Pasquale & García-Pérez 2024. For a
+   paper-mechanization project, this is a real qualitative cost.
+2. **Unknown new walls.** ~20% chance Prevalid-shaped invariants pose
+   new problems in de Bruijn form. Phase 5e/5f's CAPSU population trap
+   wasn't purely about alpha; some of it is Prevalid-shaped.
+3. **WfM/WSubM still want names** in the paper's statements. Either
+   keep names there and de-Bruijn only the reduction relations
+   (hybrid encoding, its own complications) or push de Bruijn through
+   the type system (loses readability).
+
+### What an iteration on de Bruijn looks like
+
+**Phase 1 first dispatch** should ship `Pss/Syntax/DeBruijn.lean` with
+the new `Term` inductive plus the replacement `instantiate`/`shift`
+operations and 4–6 algebraic lemmas. No `MEqRed` work yet — the syntax
+core must compile and have its substitution machinery proved before
+anything downstream switches over. See `AXIOMS.md` "Lever A
+counterexample (iter-32)" section for what existing helpers are now
+obsolete.
+
+DO NOT attempt to keep both encodings live at once. The combinatorial
+explosion of mixed-encoding work has been demonstrated in Phase 5g (~127
+call-site migration) and is the pre-existing failure mode.
 
 ## Loop runner
 
@@ -185,3 +267,12 @@ when they want sustained progress. It:
   dropped.** The current `avoidsPro` is a Bool-valued recursive
   function. Do not re-introduce the predicate version.
 - **Conjecture 8 stays.** The paper leaves it open; we mirror that.
+- **Lever A (open-target descent functor) is dead** as of iter-32.
+  Lean-checked counterexample at the `tAp` arm in commit `5f2c58c`
+  (`Pss/Mpss/Renaming.lean §15`,
+  `MEqRed.openInverse_descend_tAp_counterexample`). The 3 honest arms
+  closed (`top`, `var`, `pro`) and `Term.openInverse` infrastructure are
+  retained in-tree as documented dead-end. Do not attempt the remaining
+  5 arms. Do not attempt Lever B (alpha-equivariance renaming functor) —
+  the iter-31 audit showed it has the same wall in disguise. The campaign
+  has pivoted to the de Bruijn refactor; see "NEXT MAJOR WORK" above.

@@ -9,6 +9,37 @@ formalization to **zero outstanding axioms in headline theorem closures**
 haven't. Especially the banned-phrases list and the narrow legitimate
 stopping conditions.
 
+## Campaign state — iter-32 pivot to de Bruijn
+
+The locally-nameless discharge campaign **walled at iter-32** with a
+Lean-checked counterexample to Lever A (commit `5f2c58c`,
+`Pss/Mpss/Renaming.lean §15`,
+`MEqRed.openInverse_descend_tAp_counterexample`). The 5 β-residual
+axioms cannot be closed in the current encoding. Per the user's
+authoritative direction, the campaign now executes a **de Bruijn
+refactor**.
+
+If you're a fresh iteration on or after 2026-05-04 (post commit
+`5f2c58c`), your job is to **execute one phase of the de Bruijn
+refactor**, NOT to attempt the 5 β-residual axioms in the LN encoding.
+
+See `CLAUDE.md` "NEXT MAJOR WORK — de Bruijn refactor" for the phase
+plan and `PLAN.md` "Decision (iter-32 — sealed)" for the historical
+record of why the LN approach walled.
+
+**Banned this iteration onward:**
+- Do NOT attempt `Lemma_2_inline_app_bet_residual_axiom`,
+  `Lemma_2_inline_bet_residual_axiom`,
+  `Lemma_2_DiamondMEqRed_ctx_axiom`,
+  `Lemma_1_inline_app_bet_residual`, or `Lemma_1_ctx_axiom` in the LN
+  encoding. They are walled.
+- Do NOT extend `MEqRed.openInverse_descend` (Lever A is dead).
+- Do NOT attempt a "Lever B" alpha-equivariance renaming functor — same
+  wall in disguise per iter-31 audit.
+- Do NOT mix de Bruijn with locally-nameless (atomic switch — see
+  CLAUDE.md). If the de Bruijn refactor is in flight on a feature
+  branch, work on that branch; if not, start it.
+
 ## What to do, this iteration
 
 ### Step 1 — Read the current state
@@ -26,65 +57,49 @@ The build MUST be green at the start of your iteration. If it isn't,
 your first job is to find and revert the breaking commit. Do not start
 new work on a broken baseline.
 
-### Step 2 — Pick the next concrete target (HARDEST FIRST)
+### Step 2 — Pick the next concrete de Bruijn refactor task
 
-**Hardest case first** is non-negotiable. When you have a choice between
-attacking a hard problem and an easy one, attack the hard one. If the
-hard one falls, the easy ones are usually mechanical fallout. If the
-hard one resists, the easy ones are still there for next iteration —
-but you've learned something. Easy-first looks productive but leaves the
-load-bearing problems for someone else, indefinitely.
+**The discharge campaign is now executing the de Bruijn refactor.** The
+phase plan lives in `CLAUDE.md` "NEXT MAJOR WORK — de Bruijn refactor".
+Pick the lowest-numbered phase that hasn't been started; if a phase is
+in flight on a feature branch, advance it.
 
-Specific anti-patterns this campaign has fallen into:
-- Discharging `tAp × *` and `Top` cells in Lemma 2's case grid while
-  leaving `Bet × Bet` and `App × Bet` as axioms. Wrong shape.
-- "Restructuring" or "splitting" an axiom into two narrower axioms with
-  no actual proof progress. Pareto-neutral at best, axiom-count-negative
-  at worst.
-- Picking the residual whose blocker analysis is freshest because the
-  context is loaded, instead of the residual that matters most.
+The phases (recap):
 
-The active outstanding axioms, **ranked hardest-first**:
+1. **Phase 1 — DeBruijn.lean syntax core.** New `Term` inductive
+   (`bvar (Nat)`, `top`, `app`, `abs`) + `instantiate`/`shift` ops + 4–6
+   algebraic lemmas. ~600 lines. Must build green before Phase 2 starts.
+2. **Phase 2 — substitution machinery.** `Substitution.lean` rewrite.
+3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`;
+   delete most of `Renaming.lean`'s descend_* family (~9k lines obsolete).
+4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
+   `WEquM` re-stated in indices.
+5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3, 4, 5.
+   **The 5 β-residual axioms discharge here.**
+6. **Phase 6 — cleanup + axiom audit.**
 
-1. **The renaming functor on `MEqRed`** (~500-800 lines, multi-iteration).
-   This is the universal unblocker. Once it exists, alpha-equivariance
-   for `avoidsPro` becomes provable, which unblocks the β-residual cells
-   below, which unblocks Lemma 2's `_core` term-size induction, which
-   unblocks Lemma 1's parallel residuals. Five axioms collapse off the
-   headline closures. **If you don't have a clear single-iteration win,
-   start this.** Multi-iteration work is fine — commit incremental
-   pieces with green builds, the next iteration picks up.
+**Hardest case first within a phase.** Within Phase 5, the case grid
+order (App×Bet, Bet×Bet, Bet×App, App×App) is the hardest-first natural
+order — these are the cells walled in LN. Don't ship Phase 5 trivial
+cases ahead of these.
 
-2. **`Lemma_2_DiamondMEqRed_ctx_axiom`** (Diamond.lean) and
-   **`Lemma_1_ctx_axiom`** (Commutation.lean). Confluence-shaped; need
-   mutual recursion with the diamond/commutativity itself (now possible
-   since both are theorems). Multi-session.
+**Branch hygiene.** The de Bruijn work goes on a fresh `db-refactor`
+branch (or whatever you named it). The current `meqred-uniform-experiment`
+state preserves the LN attempt as fallback. Do NOT attempt to merge
+work-in-progress de Bruijn into `meqred-uniform-experiment` — atomic
+switch only when Phase 6 is done.
 
-3. **`Lemma_2_inline_bet_residual_axiom`** and
-   **`Lemma_2_inline_app_bet_residual_axiom`** (Diamond.lean), and
-   **`Lemma_1_inline_app_bet_residual`** (Commutation.lean). β-residual
-   cells. Need term-size induction in `_core` with `avoidsPro` measure;
-   need alpha-equivariance to thread the moreover clause; need (1) above.
-
-4. **`Proposition_17_beta_axiom`** (OperationalSem.lean). LN encoding
-   obstacle on `MEqRed.refl` interaction with `MEqRed.bet`'s body
-   context — see `MEQRED-BET-AUDIT.md` (the rule itself is paper-
-   faithful; the issue is downstream).
-
-5. **`Lemma_10_Inversion`** (WellFormed.lean). Needs WfM preservation
-   under MEqRed; partial helper exists.
-
-6. **`Lemma_24_NarrowingMSubRed`** (Narrowing.lean). Cycle: needs
-   WSubMStar weakening from TypeSafety which is downstream of Narrowing.
-
-7. **`Lemma_30_msPro_x_axiom`** (Substitution.lean). Easiest of the
-   active list — leaf already discharged as `Lemma_30_msPro_x` theorem;
-   "just" needs threading through `TypeSafety._S_lf2`. **Avoid this as
-   your only target unless you've also tried something harder.**
-
-Read each candidate's docstring (in its file) and `AXIOMS.md` entry for
-the precise blocker. Pick the highest-ranked one whose blocker you can
-actually attack this iteration, then dispatch a sub-agent on it.
+If you're picking up Phase 1 from scratch:
+1. `git checkout -b db-refactor`
+2. Create `Pss/Syntax/DeBruijn.lean` with the new inductive.
+3. DO NOT delete `Pss/Syntax/LocallyNameless.lean` yet. It will be
+   removed in Phase 3 once nothing references it.
+4. The new `Term` should have a clean `instantiate k v t` (replace
+   bvar k with v, lift other bvars accordingly) and `shift k t` (lift
+   bvars ≥ k). Ship 4–6 lemmas: `instantiate_shift_id`,
+   `shift_zero_id` (or whatever shape compiles), `shift_compose`,
+   `instantiate_distributes_over_app`, etc.
+5. Build green. Commit. Push.
 
 ### Step 3 — Dispatch a sub-agent
 
