@@ -588,6 +588,11 @@ closures, 2 inactive outstanding).
   `PrevalidExt.sub_under_head_replace`, preserving the outer head while
   replacing the body-context `.sub` annotation below it. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added variable-leaf consumers for
+  `.sub` head replacement, `WfM.bvar_sub_head_replace` and
+  `WfM.bvar_sub_under_head_replace`, rebuilding the changed subtype
+  binding at the replaced entry and transporting unaffected lookups. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

@@ -456,6 +456,55 @@ noncomputable def WfM.MSubRed_refl {Γ : Ctx} {t : Term} (h : WfM Γ t) :
     MSubRed Γ [] t t :=
   MSubRed.refl (PrevalidExt.nil h.prevalid) h.scoped
 
+/-! ## Sub-head replacement leaves -/
+
+/-- Variable well-formedness is preserved when replacing the innermost `.sub`
+context annotation. The replaced entry itself is rebuilt against the new
+annotation; tail lookups are transported by context lookup helpers. -/
+noncomputable def WfM.bvar_sub_head_replace {Γ : Ctx} {old new : Term}
+    {i : Nat}
+    (h : WfM ({ bound := old, kind := .sub } :: Γ) (.bvar i))
+    (hnew : Term.Scoped Γ.depth new) :
+    WfM ({ bound := new, kind := .sub } :: Γ) (.bvar i) := by
+  have hpvNew : Prevalid ({ bound := new, kind := .sub } :: Γ) :=
+    Prevalid.sub_head_replace h.prevalid hnew
+  cases h with
+  | varSub _ hb =>
+      cases i with
+      | zero =>
+          exact @WfM.varSub _ 0 (Term.shift 0 new) hpvNew
+            (by simp [Ctx.subBinds])
+      | succ i =>
+          exact WfM.varSub hpvNew (Ctx.subBinds_sub_head_replace_succ hb)
+  | varEqu _ hb =>
+      exact WfM.varEqu hpvNew (Ctx.equBinds_sub_head_replace hb)
+
+/-- Variable well-formedness is preserved when replacing a `.sub` annotation
+immediately under one preserved context head. -/
+noncomputable def WfM.bvar_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {i : Nat}
+    (h : WfM (head :: { bound := old, kind := .sub } :: Γ) (.bvar i))
+    (hnew : Term.Scoped Γ.depth new) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) (.bvar i) := by
+  have hpvNew : Prevalid (head :: { bound := new, kind := .sub } :: Γ) :=
+    Prevalid.sub_under_head_replace h.prevalid hnew
+  cases h with
+  | varSub _ hb =>
+      cases i with
+      | zero =>
+          exact WfM.varSub hpvNew
+            (Ctx.subBinds_sub_under_head_replace_zero hb)
+      | succ i =>
+          cases i with
+          | zero =>
+              exact @WfM.varSub _ 1 (Term.shift 0 (Term.shift 0 new)) hpvNew
+                (@Ctx.subBinds_sub_under_head_replace_one Γ head old new)
+          | succ i =>
+              exact WfM.varSub hpvNew
+                (Ctx.subBinds_sub_under_head_replace_succ_succ hb)
+  | varEqu _ hb =>
+      exact WfM.varEqu hpvNew (Ctx.equBinds_sub_under_head_replace hb)
+
 /-! ## Insertion weakening -/
 
 private def _InsertWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=
