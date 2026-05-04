@@ -290,6 +290,11 @@ closures, 2 inactive outstanding).
   `MSub.of_MSubRed`, and `MSub.of_MEqRed`, so future de Bruijn Lemma 1 /
   Lemma 2 proofs can package common-reduct diagrams without restating
   the witness shape. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added chain-level
+  equivalence adapters for the diagrammatic layer:
+  `MSub.of_MEqRedStar_left`, `MSub.of_MEqRedStar_right`, and matching
+  `MSubStar.of_MEqRedStar_left` / `.of_MEqRedStar_right`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the conditional
   Theorem 3 lifting skeleton: `StrongCommutes`,
   `commute_subStep_eqStar_of`, `commute_subStar_eqStar_of`,

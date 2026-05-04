@@ -53,6 +53,20 @@ theorem of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
     (hpv : PrevalidExt Γ s) (h : MEqRed Γ s u v) : MSub Γ s u v :=
   MSub.of_MSubRed (MSubRed.equ hpv h)
 
+/-- An equivalence-reduction chain from the left endpoint to the right
+endpoint is a diagrammatic subtyping step when the extended context is
+prevalid. -/
+theorem of_MEqRedStar_left {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpv : PrevalidExt Γ s) (h : MEqRedStar Γ s u v) : MSub Γ s u v :=
+  MSub.of_MSubRedStar (MSubRedStar.of_MEqRedStar hpv h)
+
+/-- An equivalence-reduction chain from the right endpoint back to the left
+endpoint is directly a diagrammatic subtyping step, using the left endpoint
+as the common reduct. -/
+theorem of_MEqRedStar_right {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s v u) : MSub Γ s u v :=
+  MSub.intro Relation.ReflTransGen.refl h
+
 /-- A single de Bruijn diagrammatic subtyping step embeds into its reflexive
 transitive closure. -/
 theorem to_star {Γ : Ctx} {s : Stack} {u v : Term}
@@ -72,6 +86,18 @@ relation. -/
 theorem single {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSub Γ s u v) : MSubStar Γ s u v :=
   Relation.ReflTransGen.single h
+
+/-- Embed an equivalence-reduction chain as one step of transitive
+diagrammatic subtyping when the extended context is prevalid. -/
+theorem of_MEqRedStar_left {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpv : PrevalidExt Γ s) (h : MEqRedStar Γ s u v) : MSubStar Γ s u v :=
+  MSub.to_star (MSub.of_MEqRedStar_left hpv h)
+
+/-- Embed a backwards equivalence-reduction chain as one step of transitive
+diagrammatic subtyping. -/
+theorem of_MEqRedStar_right {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s v u) : MSubStar Γ s u v :=
+  MSub.to_star (MSub.of_MEqRedStar_right h)
 
 /-- Transitivity of the reflexive-transitive diagrammatic relation. -/
 theorem trans {Γ : Ctx} {s : Stack} {u v w : Term}

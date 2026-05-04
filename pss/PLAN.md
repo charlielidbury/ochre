@@ -352,7 +352,9 @@ hard caveats.
      `MSubStar.single`, `MSubStar.trans`, and `WSubM.toMSubStar`.
      Diagram introduction helpers `MSub.intro`, `MSub.of_MSubRedStar`,
      `MSub.of_MSubRed`, and `MSub.of_MEqRed` package common-reduct
-     witnesses and one-step reductions.
+     witnesses and one-step reductions. Chain-level equivalence
+     adapters are available as `MSub.of_MEqRedStar_left`,
+     `MSub.of_MEqRedStar_right`, and matching `MSubStar` variants.
      The conditional Theorem 3 lifting skeleton is now present:
      `StrongCommutes`, `commute_subStep_eqStar_of`,
      `commute_subStar_eqStar_of`, `MSub.trans_step_of`, and
