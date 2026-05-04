@@ -1075,6 +1075,13 @@ closures, 2 inactive outstanding).
   `WSubMStar.top_sub_head_replace_to_star`,
   `WSubMStar.equ_replaceAt_sub_to_star`, and
   `WSubMStar.equ_sub_head_replace_to_star`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
+  leaf residual wrappers:
+  `WSubMStar.pro_sub_under_head_replace_one_to_old`,
+  `WSubMStar.pro_sub_under_head_replace_zero_to_star`,
+  `WSubMStar.pro_sub_under_head_replace_succ_succ_to_star`,
+  `WSubMStar.top_sub_under_head_replace_to_star`, and
+  `WSubMStar.equ_sub_under_head_replace_to_star`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
   binder-recursive payload wrappers
   `WSubMStar.sub_under_head_replace_of_payload` and
