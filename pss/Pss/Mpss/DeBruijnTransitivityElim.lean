@@ -1493,6 +1493,35 @@ theorem commute_appAbs_subStep_eqStar_of_branches {Γ : Ctx} {s : Stack}
   commute_appAbs_subStar_eqStar_of_branches hpv hScoped
     (MSubRedStar.single hSub) hEq hSubBet hEqBet hAppAbs
 
+/-- One-step abstraction-headed application commutation split with the local
+equivalence diamond available. `Ms-Top`, `Ms-Equ`, and the `Ms-App` branch
+whose operator reaches `Top` already commute; the only residual is the
+structural `Ms-App` branch whose operator remains abstraction-headed. -/
+theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
+    {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hdiamond : EqDiamonds Γ s) (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
+  cases hSub with
+  | top _ _ =>
+    exact Or.inl (commute_appAbs_subStep_to_top_eqStar hpv hScoped
+      (MSubRed.top hpv hScoped) hEq)
+  | equ _ hEqSub =>
+    exact Or.inl (commute_equStep_eqStar_of hdiamond hpv hEqSub hEq)
+  | app hOp hArg =>
+    cases hOp.abs_inv with
+    | inl hTop =>
+      subst hTop
+      exact Or.inl (commute_appAbs_subStep_appTop_eqStar hpv hScoped
+        (MSubRed.app hOp hArg) rfl hEq)
+    | inr hAbs =>
+      obtain ⟨bound', body', hEqAbs⟩ := hAbs
+      subst hEqAbs
+      exact Or.inr ⟨bound', body', arg, rfl⟩
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

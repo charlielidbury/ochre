@@ -585,6 +585,12 @@ closures, 2 inactive outstanding).
   classifier and reduce the abstraction-headed application commutation
   proof to three explicit handlers: subtype β package, equivalence β
   package, and residual app-abs/app-abs targets. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStep_eqStar_of_diamond_or_appAbs`, a one-step
+  abstraction-headed application split with the local equivalence
+  diamond available. It closes `Ms-Top`, `Ms-Equ`, and the `Ms-App`
+  operator-to-`Top` branch, leaving only the structural `Ms-App` branch
+  whose operator remains abstraction-headed. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
