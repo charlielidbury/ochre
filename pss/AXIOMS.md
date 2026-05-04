@@ -1197,6 +1197,10 @@ closures, 2 inactive outstanding).
   `StepBetaPreservesWfM_of` and `StepPreservesWfM_of_components`. This
   mirrors the locally nameless Lemma 6 β proof but keeps both remaining
   de Bruijn ingredients explicit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split function-bound inversion again
+  at the Theorem-3 boundary with `AbsFunctionBoundInversionOfMSub` and
+  `AbsFunctionBoundInversion_of_msub`, reducing the β inversion payload to
+  a single diagrammatic abstraction-subtyping step. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,

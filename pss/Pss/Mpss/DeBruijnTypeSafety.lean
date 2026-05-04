@@ -140,6 +140,23 @@ def AbsFunctionBoundInversion : Type :=
     WSubMStar Γ (.abs bound body) (.abs result .top) →
       WEquM Γ bound result
 
+/-- Diagrammatic function-bound inversion payload: after Theorem 3 collapses a
+well-subtyping chain between functions to a single diagrammatic subtype step,
+the remaining obligation is to recover equivalence between the bounds. -/
+def AbsFunctionBoundInversionOfMSub : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term},
+    MSub Γ [] (.abs bound body) (.abs result .top) →
+      WEquM Γ bound result
+
+/-- The arbitrary-context β inversion payload follows from context-generic
+Theorem 3 and the single-diagrammatic-step abstraction-bound inversion. -/
+noncomputable def AbsFunctionBoundInversion_of_msub
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hInv : AbsFunctionBoundInversionOfMSub) :
+    AbsFunctionBoundInversion := by
+  intro Γ bound body result hFun
+  exact hInv (hFun.toMSub_of (hcomm (Γ := Γ)))
+
 /-- The β preservation payload follows from function-bound inversion and the
 exact de Bruijn body-instantiation preservation lemma. -/
 noncomputable def StepBetaPreservesWfM_of
