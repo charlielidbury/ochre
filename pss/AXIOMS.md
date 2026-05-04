@@ -1051,6 +1051,12 @@ closures, 2 inactive outstanding).
   `.sub` slot, where the residual back to the old shifted bound is a
   `WSubMStar` path rather than a raw subtype-reduction chain. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
+  binder-recursive exact-step variants for `WSubM` replacement with
+  well-subtyping-star subtype residuals:
+  `WSubM.sub_under_head_replace_to_star_of_wsubred` and
+  `WSubM.replaceAt_sub_from_body_replaceAt_to_star_of_wsubred`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added payload-driven
   `WSubMStar` replacement wrappers
   `WSubMStar.replaceAt_sub_of_payload` and
