@@ -500,6 +500,12 @@ closures, 2 inactive outstanding).
   diagrammatic edge from the final target back to the β target, while
   preserving the residual abstraction-headed shape branch. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs` and
+  `msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs`, packaging
+  the abstraction-headed application subtype-chain split into `Top`, β,
+  `Top`-headed application, and residual abstraction-headed application
+  branches. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

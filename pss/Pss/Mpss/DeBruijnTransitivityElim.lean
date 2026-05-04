@@ -968,6 +968,49 @@ theorem msubStar_appAbs_eqStar_beta_or_appAbs {Γ : Ctx} {s : Stack}
   | inr hApp =>
     exact Or.inr hApp
 
+/-- Diagrammatic packaging of the β branch from
+`MSubRedStar.app_abs_inv`: subtype chains from an abstraction-headed
+application either reach `Top`, have a diagrammatic edge from a β target to
+the final target, become `Top`-headed applications, or remain
+abstraction-headed applications. -/
+theorem msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t) :
+    t = .top ∨
+      (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t) ∨
+      (∃ arg', t = .app .top arg') ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' := by
+  cases hSub.app_abs_inv with
+  | inl hTop =>
+    exact Or.inl hTop
+  | inr hRest =>
+    cases hRest with
+    | inl hBet =>
+      obtain ⟨arg', body', hChain⟩ := hBet
+      exact Or.inr (Or.inl ⟨arg', body', MSub.of_MSubRedStar hChain⟩)
+    | inr hRest =>
+      exact Or.inr (Or.inr hRest)
+
+/-- Transitive diagrammatic packaging of
+`msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs`. -/
+theorem msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t) :
+    t = .top ∨
+      (∃ arg' body', MSubStar Γ s (Term.instantiate 0 arg' body') t) ∨
+      (∃ arg', t = .app .top arg') ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' := by
+  cases msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs hSub with
+  | inl hTop =>
+    exact Or.inl hTop
+  | inr hRest =>
+    cases hRest with
+    | inl hBet =>
+      obtain ⟨arg', body', hMSub⟩ := hBet
+      exact Or.inr (Or.inl ⟨arg', body', hMSub.to_star⟩)
+    | inr hRest =>
+      exact Or.inr (Or.inr hRest)
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of
