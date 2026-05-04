@@ -1044,6 +1044,12 @@ closures, 2 inactive outstanding).
   `WSubM.sub_under_head_replace_to_star_of` and
   `WSubM.replaceAt_sub_from_body_replaceAt_to_star_of` for the
   conditional exact-step replacement helper. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added payload-driven
+  `WSubMStar` replacement wrappers
+  `WSubMStar.replaceAt_sub_of_payload` and
+  `WSubMStar.sub_head_replace_of_payload`, composing conditional
+  exact-step replacement into transitive well-subtyping replacement. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
