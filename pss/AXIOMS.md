@@ -1012,6 +1012,10 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head specializations
   `WEquM.sub_under_head_replace_of_wf` and
   `WEquMStar.sub_under_head_replace_of_wf`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added head specializations
+  `WEquM.sub_head_replace_of_wf` and
+  `WEquMStar.sub_head_replace_of_wf` for conditional `.sub`
+  replacement at cutoff `0`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added binder-recursive
   `replaceAt (cutoff + 1)` specializations
   `WEquM.replaceAt_sub_from_body_replaceAt_of_wf` and
@@ -1023,6 +1027,9 @@ closures, 2 inactive outstanding).
   `WSubMStar.sub_under_head_replace_of_wsub`; these reduce arbitrary
   transitive well-subtyping replacement to step replacement with explicit
   endpoint well-formedness witnesses. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added the head specialization
+  `WSubMStar.sub_head_replace_of_wsub` for conditional transitive
+  well-subtyping replacement at cutoff `0`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added binder-recursive
   `WSubMStar.replaceAt_sub_from_body_replaceAt_of_wsub`, preserving the
   body binder head while applying conditional `.sub` replacement in its

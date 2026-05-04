@@ -922,6 +922,40 @@ noncomputable def WEquMStar.replaceAt_sub_of_wf {Γ : Ctx} {cutoff : Nat}
   | trs _ hwfMid _ ihLeft ihRight =>
       exact WEquMStar.trs_replaceAt_sub ihLeft (hWf hwfMid) ihRight
 
+/-- Head specialization of conditional `WEquM` `.sub` replacement. -/
+noncomputable def WEquM.sub_head_replace_of_wf {Γ : Ctx}
+    {old new v t : Term}
+    (h : WEquM ({ bound := old, kind := .sub } :: Γ) v t)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x) :
+    WEquM ({ bound := new, kind := .sub } :: Γ) v t := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WEquM.replaceAt_sub_of_wf
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) (v := v) (t := t)
+      h hcut (by simpa using hOldNew) hWf)
+
+/-- Head specialization of conditional `WEquMStar` `.sub` replacement. -/
+noncomputable def WEquMStar.sub_head_replace_of_wf {Γ : Ctx}
+    {old new v t : Term}
+    (h : WEquMStar ({ bound := old, kind := .sub } :: Γ) v t)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x) :
+    WEquMStar ({ bound := new, kind := .sub } :: Γ) v t := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WEquMStar.replaceAt_sub_of_wf
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) (v := v) (t := t)
+      h hcut (by simpa using hOldNew) hWf)
+
 /-- Under-head specialization of conditional `WEquM` `.sub` replacement. -/
 noncomputable def WEquM.sub_under_head_replace_of_wf {Γ : Ctx}
     {head : CtxEntry} {old new v t : Term}
@@ -1034,6 +1068,24 @@ noncomputable def WSubMStar.replaceAt_sub_of_wsub {Γ : Ctx} {cutoff : Nat}
       exact WSubMStar.trs_replaceAt_sub
         (WSubMStar.replaceAt_sub_of_wsub hLeft hWf hSub) (hWf hwfMid)
         (WSubMStar.replaceAt_sub_of_wsub hRight hWf hSub)
+
+/-- Head specialization of `WSubMStar.replaceAt_sub_of_wsub`. -/
+noncomputable def WSubMStar.sub_head_replace_of_wsub {Γ : Ctx}
+    {old new v t : Term}
+    (h : WSubMStar ({ bound := old, kind := .sub } :: Γ) v t)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hSub : ∀ {x y : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := old, kind := .sub } :: Γ) y →
+          WSubM ({ bound := old, kind := .sub } :: Γ) x y →
+            WSubMStar ({ bound := new, kind := .sub } :: Γ) x y) :
+    WSubMStar ({ bound := new, kind := .sub } :: Γ) v t := by
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.replaceAt_sub_of_wsub
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) h hWf hSub)
 
 /-- Under-head specialization of `WSubMStar.replaceAt_sub_of_wsub`. -/
 noncomputable def WSubMStar.sub_under_head_replace_of_wsub {Γ : Ctx}
