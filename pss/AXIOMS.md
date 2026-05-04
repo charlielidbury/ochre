@@ -958,6 +958,11 @@ closures, 2 inactive outstanding).
   `MSubRedStar.fun_bound_then_body`, which composes a changing-bound
   `Ms-Fun` step with a body subtype chain already transported under the
   changed bound. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-specific
+  `.sub` replacement wrappers:
+  `MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound` and
+  `MSubRedStar.fun_replaceAt_sub_from_body_changed_bound`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

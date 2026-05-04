@@ -2596,6 +2596,34 @@ theorem MSubRedStar.fun_bound_then_body {Γ : Ctx}
     MSubRedStar.fun_body_fixed ht' hEqRefl hBody
   exact MSubRedStar.trans hFirst hTail
 
+/-- Star-valued fixed-bound `Ms-Fun` replacement from an already-replaced body
+subtype chain. -/
+theorem MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound {Γ : Ctx}
+    {cutoff : Nat} {old new t body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEqT : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] t t)
+    (hBody : MSubRedStar ({ bound := t, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] body body') :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (.abs t body) (.abs t body') :=
+  MSubRedStar.fun_body_fixed (by simpa [Ctx.depth_replaceAt] using ht)
+    hEqT hBody
+
+/-- Star-valued changing-bound `Ms-Fun` replacement once the body subtype chain
+has already been transported under the changed bound. -/
+theorem MSubRedStar.fun_replaceAt_sub_from_body_changed_bound {Γ : Ctx}
+    {cutoff : Nat} {old new t t' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] t t')
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) + 1) body)
+    (hBody : MSubRedStar ({ bound := t', kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] body body') :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (.abs t body) (.abs t' body') :=
+  MSubRedStar.fun_bound_then_body (by simpa [Ctx.depth_replaceAt] using ht)
+    hEq hBodyScoped hBody
+
 
 end DeBruijn
 end Pss
