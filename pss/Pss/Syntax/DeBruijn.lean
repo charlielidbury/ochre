@@ -155,6 +155,74 @@ theorem instantiate_shift_id (cutoff : Nat) (v t : Term) :
     instantiate cutoff v (shift cutoff t) = t := by
   exact instantiate_shiftBy_one_id cutoff v t
 
+/-! ## Scoping -/
+
+/-- `Scoped depth t` means every index in `t` is bound within `depth`
+surrounding binders. Closed terms are `Scoped 0`. -/
+inductive Scoped : Nat → Term → Prop
+  | bvar {depth i : Nat} : i < depth → Scoped depth (.bvar i)
+  | top {depth : Nat} : Scoped depth .top
+  | abs {depth : Nat} {bound body : Term} :
+      Scoped depth bound → Scoped (depth + 1) body → Scoped depth (.abs bound body)
+  | app {depth : Nat} {t u : Term} :
+      Scoped depth t → Scoped depth u → Scoped depth (.app t u)
+
+/-- Closed de Bruijn terms have no free indices. -/
+abbrev Closed (t : Term) : Prop := Scoped 0 t
+
+/-- One-step shifting preserves scoping, increasing the ambient depth by one. -/
+theorem shift_scoped (cutoff depth : Nat) (t : Term)
+    (hcut : cutoff ≤ depth) :
+    Scoped depth t → Scoped (depth + 1) (shift cutoff t) := by
+  intro h
+  induction h generalizing cutoff with
+  | bvar hi =>
+    simp [shift, shiftBy]
+    split
+    · exact Scoped.bvar (by omega)
+    · exact Scoped.bvar (by omega)
+  | top =>
+    exact Scoped.top
+  | abs h_bound h_body ih_bound ih_body =>
+    simp only [shift, shiftBy_abs]
+    exact Scoped.abs (ih_bound cutoff hcut) (ih_body (cutoff + 1) (by omega))
+  | app h_fn h_arg ih_fn ih_arg =>
+    simp only [shift, shiftBy_app]
+    exact Scoped.app (ih_fn cutoff hcut) (ih_arg cutoff hcut)
+
+/-- Instantiation preserves scoping and removes one available index from the
+ambient depth. The premise `k ≤ depth` says the removed slot is among the
+`depth + 1` slots available to the input term. -/
+theorem instantiate_scoped (k depth : Nat) (v t : Term)
+    (hk : k ≤ depth) (hv : Scoped depth v) :
+    Scoped (depth + 1) t → Scoped depth (instantiate k v t) := by
+  intro h
+  induction t generalizing k depth v with
+  | bvar i =>
+    cases h with
+    | bvar hi =>
+    simp [instantiate]
+    split
+    · exact Scoped.bvar (by omega)
+    · split
+      · exact hv
+      · exact Scoped.bvar (by omega)
+  | top =>
+    exact Scoped.top
+  | abs bound body ih_bound ih_body =>
+    cases h with
+    | abs h_bound h_body =>
+    simp only [instantiate_abs]
+    exact Scoped.abs
+      (ih_bound k depth v hk hv h_bound)
+      (ih_body (k + 1) (depth + 1) (shift 0 v) (by omega)
+        (shift_scoped 0 depth v (by omega) hv) h_body)
+  | app fn arg ih_fn ih_arg =>
+    cases h with
+    | app h_fn h_arg =>
+    simp only [instantiate_app]
+    exact Scoped.app (ih_fn k depth v hk hv h_fn) (ih_arg k depth v hk hv h_arg)
+
 end Term
 end DeBruijn
 end Pss

@@ -15,9 +15,13 @@ closures, 2 inactive outstanding).
   one-step `Term.shift`; `Term.instantiate`; named algebraic lemmas
   including `shiftBy_zero_id`, `instantiate_distributes_over_app`,
   `shift_distributes_over_app`, `instantiate_shiftBy_one_id`, and
-  `instantiate_shift_id`. Imported from `Pss.lean`. No axiom-count
-  change; `Pss.Sanity` headline closures remain byte-identical to the
-  iter-32 pivot baseline.
+  `instantiate_shift_id`.
+* `Pss/Syntax/DeBruijn.lean` scoping bridge — `Term.Scoped`,
+  `Term.Closed`, `Term.shift_scoped`, and `Term.instantiate_scoped`,
+  giving downstream ports a first replacement for locally-nameless
+  local closure. Imported from `Pss.lean`. No axiom-count change;
+  `Pss.Sanity` headline closures remain byte-identical to the iter-32
+  pivot baseline.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
