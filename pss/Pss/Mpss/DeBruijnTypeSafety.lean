@@ -109,6 +109,16 @@ def WfMSubHeadReplace : Type :=
       WfM ({ bound := old, kind := .sub } :: Γ) body →
         WfM ({ bound := new, kind := .sub } :: Γ) body
 
+/-- Sharpened `.sub` head replacement payload for the operational
+abstraction-bound case. The step proof already has `WfM Γ new`, so callers do
+not need the stronger replacement theorem that works without it. -/
+def WfMSubHeadReplaceOfNewWf : Type :=
+  ∀ {Γ : Ctx} {old new body : Term},
+    MEqRed Γ [] old new →
+      WfM Γ new →
+        WfM ({ bound := old, kind := .sub } :: Γ) body →
+          WfM ({ bound := new, kind := .sub } :: Γ) body
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
@@ -154,6 +164,49 @@ theorem wf_right_nonempty_of
           ih.some (by simpa [Ctx.depth, hdepth]) hParts.2
         WfM.fun_ hParts.1 hBody'⟩
 
+/-- Sharpened variant of `StepAt.wf_right_nonempty_of`: the abstraction-bound
+case only requires replacement when the new bound is already well-formed in
+the ambient context. -/
+theorem wf_right_nonempty_of_new_wf
+    (hBeta : StepBetaPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {depth : Nat} {t t' : Term} (hstep : StepAt depth t t') :
+    Nonempty (∀ {Γ : Ctx}, Γ.depth = depth → WfM Γ t → WfM Γ t') := by
+  induction hstep with
+  | beta =>
+      exact ⟨fun {Γ} _hdepth hwf => hBeta (Γ := Γ) hwf⟩
+  | @appL depth op op' arg hOp _hArgScoped ih =>
+      exact ⟨fun {Γ} hdepth hwf =>
+        let ⟨funBound, hFun, hArg⟩ := hwf.app_inv
+        let hwfOp' : WfM Γ op' := ih.some hdepth hFun.wf_left
+        let hBack : WSubMStar Γ op' op :=
+          WSubMStar.of_StepAt_back (by simpa [hdepth] using hOp)
+            hFun.wf_left hwfOp'
+        WfM.app (WSubMStar.trans hFun.wf_left hBack hFun) hArg⟩
+  | @appR depth op arg arg' _hOpScoped hArgStep ih =>
+      exact ⟨fun {Γ} hdepth hwf =>
+        let ⟨funBound, hFun, hArg⟩ := hwf.app_inv
+        let hwfArg' : WfM Γ arg' := ih.some hdepth hArg.wf_left
+        let hBack : WSubMStar Γ arg' arg :=
+          WSubMStar.of_StepAt_back (by simpa [hdepth] using hArgStep)
+            hArg.wf_left hwfArg'
+        WfM.app hFun (WSubMStar.trans hArg.wf_left hBack hArg)⟩
+  | @absBound depth bound bound' body hBound _hBodyScoped _ih =>
+      exact ⟨fun {Γ} hdepth hwf =>
+        let hParts := hwf.fun_inv
+        let hwfBound' : WfM Γ bound' := _ih.some hdepth hParts.1
+        let hEqBound : MEqRed Γ [] bound bound' :=
+          MEqRed.of_StepAt (by simpa [hdepth] using hBound) rfl
+            (PrevalidExt.nil hParts.1.prevalid)
+        WfM.fun_ hwfBound'
+          (hSubHeadReplace hEqBound hwfBound' hParts.2)⟩
+  | @absBody depth bound body body' _hBoundScoped hBody ih =>
+      exact ⟨fun {Γ} hdepth hwf =>
+        let hParts := hwf.fun_inv
+        let hBody' : WfM ({ bound := bound, kind := .sub } :: Γ) body' :=
+          ih.some (by simpa [Ctx.depth, hdepth]) hParts.2
+        WfM.fun_ hParts.1 hBody'⟩
+
 end StepAt
 
 /-- De Bruijn operational well-formedness preservation reduced to the two
@@ -164,6 +217,17 @@ noncomputable def StepPreservesWfM_of
     StepPreservesWfM := by
   intro Γ t t' hstep hwf
   exact (StepAt.wf_right_nonempty_of hBeta hSubHeadReplace hstep).some rfl hwf
+
+/-- De Bruijn operational well-formedness preservation reduced to β
+instantiation and the sharpened `.sub` head replacement payload that receives
+well-formedness of the new bound. -/
+noncomputable def StepPreservesWfM_of_new_wf
+    (hBeta : StepBetaPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfM := by
+  intro Γ t t' hstep hwf
+  exact (StepAt.wf_right_nonempty_of_new_wf hBeta hSubHeadReplace hstep).some
+    rfl hwf
 
 /-- De Bruijn preservation, conditional on operational well-formedness
 preservation. The operational step is at the ambient context depth so the

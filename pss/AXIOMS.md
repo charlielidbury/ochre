@@ -1181,6 +1181,12 @@ closures, 2 inactive outstanding).
   `WfM.sub_under_head_replace_from_direct_payloads_of_new_wf`, which
   derive the shifted new-bound payload from `WfM Γ new`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added sharpened operational
+  `.sub` replacement payload `WfMSubHeadReplaceOfNewWf`, plus
+  `StepAt.wf_right_nonempty_of_new_wf` and
+  `StepPreservesWfM_of_new_wf`. This matches the abstraction-bound step,
+  where the new bound has already been proved well-formed. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
