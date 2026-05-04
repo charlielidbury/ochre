@@ -929,6 +929,11 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnReductions.lean` — lifted exact `.sub` replacement
   for equivalence reductions to chains as `MEqRedStar.replaceAt_sub`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added star-valued consumers
+  `WSubMStar.lf1_replaceAt_sub_from_star` and
+  `WSubMStar.rgh_replaceAt_sub_from_star`, packaging replaced equivalence
+  steps with already-replaced recursive well-subtyping chains. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

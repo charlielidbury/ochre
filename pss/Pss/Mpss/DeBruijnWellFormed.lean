@@ -1157,6 +1157,22 @@ noncomputable def WSubMStar.extend_left_via_MEqRed_fwd
       WSubMStar.trs (ihLeft hr hwfC) hwfU hRight)
     h) hred hwfC
 
+/-- `Ws-Lf1` replacement packaged for star-valued recursive premises: replace
+the equivalence step across an arbitrary-depth `.sub` replacement, then
+prepend it to the already-replaced tail chain. -/
+noncomputable def WSubMStar.lf1_replaceAt_sub_from_star {Γ : Ctx}
+    {cutoff : Nat} {old new v v' t : Term}
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      [] v v')
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hsub : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v' t)
+    (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  hsub.extend_left_via_MEqRed_fwd
+    (hred.replaceAt_sub hcut hOldNew) hwfV
+
 private def _extendLeftWSubMStarMSubRedMotive (Γ : Ctx) (a b : Term)
     (_ : WSubMStar Γ a b) : Type :=
   ∀ {c : Term}, MSubRed Γ [] c a → WfM Γ c → WSubMStar Γ c b
@@ -1231,6 +1247,22 @@ noncomputable def WSubMStar.extend_right_via_MEqRed_back
     (fun hLeft hwfU _ _ _ ihRight => fun hr hwfC =>
       WSubMStar.trs hLeft hwfU (ihRight hr hwfC))
     h) hred hwfC
+
+/-- `Ws-Rgh` replacement packaged for star-valued recursive premises: replace
+the equivalence step across an arbitrary-depth `.sub` replacement, then move
+the right endpoint of the already-replaced chain backward along it. -/
+noncomputable def WSubMStar.rgh_replaceAt_sub_from_star {Γ : Ctx}
+    {cutoff : Nat} {old new v t t' : Term}
+    (hsub : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t')
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      [] t t')
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hwfT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  hsub.extend_right_via_MEqRed_back
+    (hred.replaceAt_sub hcut hOldNew) hwfT
 
 private def _extendLeftWEquMStarMotive (Γ : Ctx) (a b : Term)
     (_ : WEquMStar Γ a b) : Type :=
