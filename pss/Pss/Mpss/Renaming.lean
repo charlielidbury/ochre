@@ -4628,54 +4628,397 @@ private theorem _y_notin_fv_lookupEqu_under_avoid
     · rw [if_neg he] at hb'
       exact ih hpv_tail hb' htail
 
-/-! ### §10.2. `MEqRed.strip_equ_head` — STILL PENDING
+/-! ### §10.2. `MEqRed.strip_equ_head` architectural notes
 
-The full functor is not yet built. With the §10.1 helper, the `pro`
-arm becomes tractable. The remaining blockers:
+The full functor is built in §10.3 below (shipped at iter 10).
 
-* **Cofinite arms (`bet`/`fun_`/`fOp`)**: the body recursion grows Γ₂
-  by `⟨y₀, tt, .sub⟩` (or `⟨y₀, αi, .equ⟩`). To extend the
-  `Ctx.AvoidsBoundFv` premise to the new Γ₂', we need `y ∉ fv tt`
-  (resp. `y ∉ fv αi`). From the source/target hypotheses we can
-  extract `y ∉ fv tt` for `bet` (since `t` appears explicitly in
-  source `.app (.abs t body) v0`), but for the TARGET branches of
-  `fun_`/`fOp` (where `t'` is the new bound) we need `y ∉ fv t'`,
-  which is NOT derivable from `y ∉ fv u'` alone — it requires
-  separately tracking `y ∉ fv` of bound annotations through the
-  recursion.
+The architectural sketch: `equ_head_replace` (§8.2) preserves
+`Ctx.dom`, so subset / freshness invariants on terms, stack entries,
+and Γ₂'s prior bindings transfer verbatim. `strip_equ_head` REMOVES
+`y` from `Ctx.dom`, so every term mentioned anywhere in the
+derivation tree must independently avoid `y`. The bundling premise
+is
 
-* **Cofinite operand recursion (`bet` `v` arm)**: needs `y ∉ fv v0'`
-  (target operand). Not derivable from `y ∉ fv u' = fv (Term.opening
-  v0' body')` because `Term.opening` may absorb `y` from `v0'` if
-  `body'` has a `0`-bvar reference (only one occurrence is opened, so
-  if `body'` has e.g. two `0`-bvars one is overwritten, but `v0'` is
-  substituted into all such positions — wait, opening uses index 0
-  consistently). Concretely: `Term.opening v0' body'` gets `v0'`
-  inserted at every `0`-bvar of `body'` (when bvar 0 is open), so its
-  fv is `fv body' ∪ (fv v0' if 0-bvar present)`. So `y ∉ fv (opening)`
-  doesn't preclude `y ∈ fv v0'` if `body'` has no 0-bvar.
+  `avoidsPro h y && cofinDomFresh h && avoidsFv h y`
 
-The natural fix: thread `y ∉ fv body'` AND `y ∉ fv v0'` AND
-`y ∉ fv body` AND `y ∉ fv v0` AND `y ∉ fv t` AND `y ∉ fv t'` etc.
-through a stronger structural premise — essentially an "all terms
-mentioned anywhere in the derivation avoid `y`" Bool predicate
-(`avoidsFv`).
+* `avoidsPro h y = true`: no `Me-Pro y` step in `h` (preserves the
+  `pro` arm: a `pro yi` lookup with `yi = y` would fail in
+  `Γ₂ ++ Γ₁` since the binding has been removed).
+* `cofinDomFresh h = true`: canonical `pickFresh L` witnesses are
+  fresh w.r.t. the input dom and body fv (preserved from the
+  `equ_head_replace` template).
+* `avoidsFv h y = true`: every term referenced in the derivation
+  tree (source, target, stack, sub-derivations recursively) is
+  syntactically `y`-fresh. This is what supplies `y ∉ fv tt` for
+  the `fun_` body extension, `y ∉ fv αi` for the `fOp` body
+  extension, `y ∉ fv v` for the `app` operator's stack, and the
+  `pro` arm's α_yi avoidance via §10.1.
 
-Designing `avoidsFv` mirrors `avoidsPro` (§2 of `AvoidsPro.lean`):
-recursive Bool function on `MEqRed.rec`, per-constructor `simp`
-lemmas, equivariance / preservation lemmas. ~200-400 lines of
-infrastructure.
-
-The follow-up iteration should:
-1. Add `def avoidsFv (h : MEqRed Γ s u v) (x : String) : Bool` with
-   per-constructor simp lemmas.
-2. Use `avoidsPro h y && cofinDomFresh h && avoidsFv h y` as the
-   bundled premise.
-3. Build `MEqRed.strip_equ_head` arm-by-arm following
-   `equ_head_replace`'s template.
+The §10.1 helper `_y_notin_fv_lookupEqu_under_avoid` discharges the
+`pro yi` arm's `y ∉ fv α_yi` premise (no `avoidsFv` data on the
+looked-up bound — must derive from Γ₂'s `Ctx.AvoidsBoundFv` plus
+Γ₁'s Prevalid).
 
 Cross-reference: `Lemma_2_inline_app_bet_residual_axiom` in
-`Pss/Mpss/Diamond.lean` (iter-6 blocker analysis at lines 571-697). -/
+`Pss/Mpss/Diamond.lean` (iter-6 blocker analysis at lines 571-697)
+is the headline consumer. -/
+
+/-! ### §10.3. `MEqRed.strip_equ_head` — the head-removal functor
+
+Mirror of `MEqRed.equ_head_replace` (§8.2). Each cofinite arm
+samples the canonical fresh `y₀ := pickFresh L` from the IH, then
+renames `y₀ → yfresh` via `MEqRed.rename_stray` / `MEqRed.rename_sub`
+/ `_MEqRed_rename_equ_no_fv`. The output cofinite L-set widens to
+`L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}` (the new dom — without the stripped
+`y` head).
+
+The `avoidsFv` premise (iter-9) supplies `y`-freshness for every
+term mentioned in the derivation tree, needed because
+`y ∉ fv (Term.opening v0' body')` does NOT imply `y ∉ fv v0'` /
+`y ∉ fv body'` separately. -/
+
+/-- **Remove an `.equ`-head from a `MEqRed` derivation.**
+
+Given:
+* `h : MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u'` — the input
+  derivation.
+* `hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y` — Γ₂ entries' bounds avoid
+  `y`.
+* `hy_Γ₁ : y ∉ Γ₁.dom` — `y` is unbound in Γ₁.
+* `hst_avoid : ∀ β ∈ st, y ∉ Term.fv β` — stack entries avoid `y`.
+* `hAvoid : avoidsPro h y = true` — no `Me-Pro y` step in `h`.
+* `hFresh : cofinDomFresh h = true` — canonical witnesses fresh.
+* `hAvoidFv : avoidsFv h y = true` — every term in the derivation
+  tree avoids `y`.
+
+Produces: `MEqRed (Γ₂ ++ Γ₁) st u u'`. -/
+noncomputable def MEqRed.strip_equ_head
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y : String} {α u u' : Term}
+    (h : MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u')
+    (hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y)
+    (hy_Γ₁ : y ∉ Γ₁.dom)
+    (hst_avoid : ∀ β ∈ st, y ∉ Term.fv β)
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true)
+    (hAvoidFv : avoidsFv h y = true) :
+    MEqRed (Γ₂ ++ Γ₁) st u u' := by
+  classical
+  generalize hΓ : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) = Γ at h
+  induction h generalizing Γ₂ with
+  | @pro Γ st' yi β β' hpv heq hβ ihβ =>
+    subst hΓ
+    rw [avoidsPro_pro] at hAvoid
+    rw [cofinDomFresh_pro] at hFresh
+    rw [avoidsFv_pro] at hAvoidFv
+    obtain ⟨hyiy_decide, hAvoid_inner⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    have hyiy : yi ≠ y := decide_eq_true_eq.mp hyiy_decide
+    -- Decompose hAvoidFv: (((y ∉ fv (fvar yi) && y ∉ fv β') && stack) && rec).
+    obtain ⟨hAvoidFv_left, hAvoidFv_inner⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+    obtain ⟨hAvoidFv_left2, hAvoidFv_stack⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left
+    obtain ⟨_hAvoidFv_yi, _hAvoidFv_β'⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left2
+    -- Get Prevalid of input ctx for the §10.1 helper.
+    have hpvFull : Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) := extractPrevalid hpv
+    have hy_β : y ∉ Term.fv β :=
+      _y_notin_fv_lookupEqu_under_avoid hpvFull heq hyiy hΓ₂_avoid hy_Γ₁
+    -- New stack-avoidance: same st', same predicate.
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    have heq' := _equBinds_equ_head_remove_neq hyiy heq
+    exact MEqRed.pro hpv' heq' (ihβ (Γ₂ := Γ₂) hΓ₂_avoid hst_avoid rfl hAvoid_inner hFresh
+      hAvoidFv_inner)
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
+    subst hΓ
+    rw [avoidsPro_bet] at hAvoid
+    rw [cofinDomFresh_bet] at hFresh
+    rw [avoidsFv_bet] at hAvoidFv
+    obtain ⟨hAvoid_body, hAvoid_v⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    -- Decompose hFresh: (((dom && fvbd) && fvbd') && body) && v.
+    obtain ⟨hFresh_left_v, hFresh_v⟩ := Bool.and_eq_true _ _ |>.mp hFresh
+    obtain ⟨hFresh_left_body, hFresh_body⟩ := Bool.and_eq_true _ _ |>.mp hFresh_left_v
+    obtain ⟨hFresh_left_fvbd', hFresh_fvbd'_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_body
+    obtain ⟨hFresh_dom_dec, hFresh_fvbd_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_fvbd'
+    -- Decompose hAvoidFv: ((((src && tgt) && stack) && body) && v).
+    obtain ⟨hAvoidFv_left_v, hAvoidFv_v⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+    obtain ⟨hAvoidFv_left_body, hAvoidFv_body⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_v
+    obtain ⟨hAvoidFv_left_stack, _hAvoidFv_stack⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+    obtain ⟨_hAvoidFv_src, _hAvoidFv_tgt⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_stack
+    have hy₀_dom : pickFresh L ∉ Ctx.dom (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) :=
+      decide_eq_true_eq.mp hFresh_dom_dec
+    have hy₀_fvbd : pickFresh L ∉ Term.fv bd :=
+      decide_eq_true_eq.mp hFresh_fvbd_dec
+    have hy₀_fvbd' : pickFresh L ∉ Term.fv bd' :=
+      decide_eq_true_eq.mp hFresh_fvbd'_dec
+    let y₀ := pickFresh L
+    have hy₀L : y₀ ∉ L := pickFresh_notMem L
+    -- y₀ ∉ removed-context dom (smaller).
+    have hy₀_dom' : y₀ ∉ Ctx.dom (Γ₂ ++ Γ₁) := by
+      intro h_in
+      apply hy₀_dom
+      rw [_Ctx_dom_eq_under_equ_head_remove]
+      exact Finset.mem_insert_of_mem h_in
+    -- IH calls. Body keeps Γ₂; stack stays = st'; ctx-avoid + stack-avoid unchanged.
+    have ihbody_y₀ := ihbody y₀ hy₀L (Γ₂ := Γ₂) hΓ₂_avoid hst_avoid rfl
+      hAvoid_body hFresh_body hAvoidFv_body
+    -- Operand v: at empty stack, vacuous stack-avoid.
+    have hv_stack_avoid : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have ihv' := ihv (Γ₂ := Γ₂) hΓ₂_avoid hv_stack_avoid rfl hAvoid_v hFresh_v hAvoidFv_v
+    -- Build the output bet at the smaller context.
+    refine MEqRed.bet (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀})
+      hLCt ?_ trivial ihv'
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+    push_neg at hyfresh
+    obtain ⟨⟨hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+    -- Prevalid for the output context.
+    have hpvE_y₀ : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      MEqRed.prevalidExt ihbody_y₀
+    have hpv_removed : Prevalid (Γ₂ ++ Γ₁) := extractPrevalid hpvE_y₀
+    -- Stack freshness for y₀ via PrevalidExt at the new context.
+    have hy₀_stack : ∀ β ∈ st', y₀ ∉ Term.fv β :=
+      _y₀_notin_stack_fv_of_notin_dom hpvE_y₀ hy₀_dom'
+    -- Rename y₀ → yfresh.
+    have ren := MEqRed.rename_stray hpv_removed ihbody_y₀ y₀ yfresh hy₀_dom' hyf_dom
+    have hstk_eq : Stack.subst y₀ (.fvar yfresh) st' = st' :=
+      Stack.subst_fresh hy₀_stack
+    have hbd_eq : Term.subst y₀ (.fvar yfresh) (bd^[y₀]) = bd^[yfresh] :=
+      Term.subst_open_fresh hy₀_fvbd
+    have hbd'_eq : Term.subst y₀ (.fvar yfresh) (bd'^[y₀]) = bd'^[yfresh] :=
+      Term.subst_open_fresh hy₀_fvbd'
+    rw [hstk_eq, hbd_eq, hbd'_eq] at ren
+    exact ren
+  | @top Γ st' hpv =>
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    exact MEqRed.top hpv'
+  | @app Γ st' u_ u_' v_ v_' hu hv ihu ihv =>
+    subst hΓ
+    rw [avoidsPro_app] at hAvoid
+    rw [cofinDomFresh_app] at hFresh
+    rw [avoidsFv_app] at hAvoidFv
+    obtain ⟨hAvoid_u, hAvoid_v⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    obtain ⟨hFresh_u, hFresh_v⟩ := Bool.and_eq_true _ _ |>.mp hFresh
+    -- Decompose hAvoidFv: ((((src && tgt) && stack) && u) && v).
+    obtain ⟨hAvoidFv_left_v, hAvoidFv_v⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+    obtain ⟨hAvoidFv_left_u, hAvoidFv_u⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_v
+    obtain ⟨hAvoidFv_left_stack, _hAvoidFv_stack⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_u
+    obtain ⟨hAvoidFv_src, _hAvoidFv_tgt⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_stack
+    -- src = .app u_ v_; y ∉ fv src ⇒ y ∉ fv v_, needed for stack of u arm.
+    have hy_src : y ∉ Term.fv (Term.app u_ v_) :=
+      decide_eq_true_eq.mp hAvoidFv_src
+    have hy_v_ : y ∉ Term.fv v_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    -- Stack for u arm = v_ :: st'; stack-avoid extends.
+    have hu_stack_avoid : ∀ β ∈ (v_ :: st'), y ∉ Term.fv β := by
+      intro β hβ
+      rcases List.mem_cons.mp hβ with rfl | hβtail
+      · exact hy_v_
+      · exact hst_avoid β hβtail
+    have hv_stack_avoid : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have ihu' := ihu (Γ₂ := Γ₂) hΓ₂_avoid hu_stack_avoid rfl hAvoid_u hFresh_u hAvoidFv_u
+    have ihv' := ihv (Γ₂ := Γ₂) hΓ₂_avoid hv_stack_avoid rfl hAvoid_v hFresh_v hAvoidFv_v
+    exact MEqRed.app ihu' ihv'
+  | @var Γ st' yi hpv =>
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    exact MEqRed.var hpv'
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
+    subst hΓ
+    rw [avoidsPro_fun_] at hAvoid
+    rw [cofinDomFresh_fun_] at hFresh
+    rw [avoidsFv_fun_] at hAvoidFv
+    obtain ⟨hAvoid_t, hAvoid_body⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    obtain ⟨hFresh_left_body, hFresh_body⟩ := Bool.and_eq_true _ _ |>.mp hFresh
+    obtain ⟨hFresh_left_t, hFresh_t⟩ := Bool.and_eq_true _ _ |>.mp hFresh_left_body
+    obtain ⟨hFresh_left_fvbd', hFresh_fvbd'_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_t
+    obtain ⟨hFresh_dom_dec, hFresh_fvbd_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_fvbd'
+    -- Decompose hAvoidFv: (((src && tgt) && t) && body).
+    obtain ⟨hAvoidFv_left_body, hAvoidFv_body⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv
+    obtain ⟨hAvoidFv_left_t, hAvoidFv_t⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+    obtain ⟨hAvoidFv_src, _hAvoidFv_tgt⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_t
+    -- src = .abs tt bd; y ∉ fv src ⇒ y ∉ fv tt, needed for the new Γ₂'.
+    have hy_src : y ∉ Term.fv (Term.abs tt bd) :=
+      decide_eq_true_eq.mp hAvoidFv_src
+    have hy_tt : y ∉ Term.fv tt := by
+      intro h_in; apply hy_src; rw [Term.fv_abs]
+      exact Finset.mem_union.mpr (Or.inl h_in)
+    have hy₀_dom : pickFresh L ∉ Ctx.dom (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) :=
+      decide_eq_true_eq.mp hFresh_dom_dec
+    have hy₀_fvbd : pickFresh L ∉ Term.fv bd :=
+      decide_eq_true_eq.mp hFresh_fvbd_dec
+    have hy₀_fvbd' : pickFresh L ∉ Term.fv bd' :=
+      decide_eq_true_eq.mp hFresh_fvbd'_dec
+    let y₀ := pickFresh L
+    have hy₀L : y₀ ∉ L := pickFresh_notMem L
+    have hy₀_dom' : y₀ ∉ Ctx.dom (Γ₂ ++ Γ₁) := by
+      intro h_in
+      apply hy₀_dom
+      rw [_Ctx_dom_eq_under_equ_head_remove]
+      exact Finset.mem_insert_of_mem h_in
+    -- t IH at empty stack.
+    have ht_stack_avoid : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have iht' := iht (Γ₂ := Γ₂) hΓ₂_avoid ht_stack_avoid rfl hAvoid_t hFresh_t hAvoidFv_t
+    -- body IH at extended Γ₂' = ⟨y₀, tt, .sub⟩ :: Γ₂; stack = [].
+    have hΓ₂'_avoid : Ctx.AvoidsBoundFv (⟨y₀, tt, .sub⟩ :: Γ₂) y :=
+      Ctx.AvoidsBoundFv_cons.mpr ⟨hy_tt, hΓ₂_avoid⟩
+    have hbody_stack_avoid : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have ihbody_y₀ := ihbody y₀ hy₀L
+      (Γ₂ := ⟨y₀, tt, .sub⟩ :: Γ₂) hΓ₂'_avoid hbody_stack_avoid (by simp)
+      hAvoid_body hFresh_body hAvoidFv_body
+    refine MEqRed.fun_ (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}) iht' ?_ trivial
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+    push_neg at hyfresh
+    obtain ⟨⟨hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+    -- Extract data from ihbody_y₀'s prevalidExt.
+    have ihbody_y₀_norm : MEqRed (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ Γ₁)) []
+        (bd^[y₀]) (bd'^[y₀]) := by simpa using ihbody_y₀
+    have hpvE_full : PrevalidExt (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ Γ₁)) [] :=
+      MEqRed.prevalidExt ihbody_y₀_norm
+    have hpv_full : Prevalid (⟨y₀, tt, .sub⟩ :: (Γ₂ ++ Γ₁)) :=
+      extractPrevalid hpvE_full
+    have hpv_outer : Prevalid (Γ₂ ++ Γ₁) := by
+      cases hpv_full with
+      | sub hpv _ _ _ => exact hpv
+    have hLCt_tt : Term.LC tt := by
+      cases hpv_full with
+      | sub _ _ _ hLCtt => exact hLCtt
+    have hfvtt : Term.fv tt ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+      cases hpv_full with
+      | sub _ _ hfvtt _ => exact hfvtt
+    -- Apply MEqRed.rename_sub. Stack is empty for fun_, so stack-freshness is trivial.
+    have ren := MEqRed.rename_sub hpv_outer hLCt_tt hfvtt
+      hy₀_dom' hyf_dom hy₀_fvbd hy₀_fvbd'
+      (by intro β hβ; cases hβ) ihbody_y₀_norm
+    simpa using ren
+  | @tAp Γ st' u_ hpv hLCu hfv =>
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    -- Need fv u_ ⊆ (Γ₂ ++ Γ₁).dom. From original hfv : ⊆ insert y (Γ₂ ++ Γ₁).dom and
+    -- y ∉ fv u_ (from hAvoidFv at this case).
+    rw [avoidsFv_tAp] at hAvoidFv
+    obtain ⟨hAvoidFv_src, _hAvoidFv_stack⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv
+    -- src = .app .top u_; y ∉ fv src ⇒ y ∉ fv u_.
+    have hy_src : y ∉ Term.fv (Term.app Term.top u_) :=
+      decide_eq_true_eq.mp hAvoidFv_src
+    have hy_u : y ∉ Term.fv u_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    have hfv' : Term.fv u_ ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+      intro z hz
+      have hzd := hfv hz
+      rw [_Ctx_dom_eq_under_equ_head_remove] at hzd
+      rw [Finset.mem_insert] at hzd
+      cases hzd with
+      | inl hzy => subst hzy; exact absurd hz hy_u
+      | inr hz' => exact hz'
+    exact MEqRed.tAp hpv' hLCu hfv'
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
+    subst hΓ
+    rw [avoidsPro_fOp] at hAvoid
+    rw [cofinDomFresh_fOp] at hFresh
+    rw [avoidsFv_fOp] at hAvoidFv
+    obtain ⟨hAvoid_t, hAvoid_body⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    obtain ⟨hFresh_left_body, hFresh_body⟩ := Bool.and_eq_true _ _ |>.mp hFresh
+    obtain ⟨hFresh_left_t, hFresh_t⟩ := Bool.and_eq_true _ _ |>.mp hFresh_left_body
+    obtain ⟨hFresh_left_fvbd', hFresh_fvbd'_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_t
+    obtain ⟨hFresh_dom_dec, hFresh_fvbd_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_fvbd'
+    -- Decompose hAvoidFv: ((((src && tgt) && stack(α::st')) && t) && body).
+    obtain ⟨hAvoidFv_left_body, hAvoidFv_body⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv
+    obtain ⟨hAvoidFv_left_t, hAvoidFv_t⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+    obtain ⟨hAvoidFv_left_stack, hAvoidFv_stack⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_t
+    obtain ⟨_hAvoidFv_src, _hAvoidFv_tgt⟩ :=
+      Bool.and_eq_true _ _ |>.mp hAvoidFv_left_stack
+    -- Stack at this node is αi :: st'; we need y ∉ fv αi.
+    have hy_αi : y ∉ Term.fv αi := by
+      have h_all : (αi :: st').all (fun β => decide (y ∉ Term.fv β)) = true :=
+        hAvoidFv_stack
+      rw [List.all_cons, Bool.and_eq_true] at h_all
+      exact decide_eq_true_eq.mp h_all.1
+    have hy₀_dom : pickFresh L ∉ Ctx.dom (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) :=
+      decide_eq_true_eq.mp hFresh_dom_dec
+    have hy₀_fvbd : pickFresh L ∉ Term.fv bd :=
+      decide_eq_true_eq.mp hFresh_fvbd_dec
+    have hy₀_fvbd' : pickFresh L ∉ Term.fv bd' :=
+      decide_eq_true_eq.mp hFresh_fvbd'_dec
+    let y₀ := pickFresh L
+    have hy₀L : y₀ ∉ L := pickFresh_notMem L
+    have hy₀_dom' : y₀ ∉ Ctx.dom (Γ₂ ++ Γ₁) := by
+      intro h_in
+      apply hy₀_dom
+      rw [_Ctx_dom_eq_under_equ_head_remove]
+      exact Finset.mem_insert_of_mem h_in
+    -- t IH at empty stack.
+    have ht_stack_avoid : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have iht' := iht (Γ₂ := Γ₂) hΓ₂_avoid ht_stack_avoid rfl hAvoid_t hFresh_t hAvoidFv_t
+    -- body IH at extended Γ₂' = ⟨y₀, αi, .equ⟩ :: Γ₂; stack = st' (after pop).
+    -- Stack-avoid for st': from outer hst_avoid which was for the ORIGINAL stack
+    -- (αi :: st' at this fOp node). Body recurses at st' alone.
+    have hst'_avoid : ∀ β ∈ st', y ∉ Term.fv β := fun β hβ =>
+      hst_avoid β (List.mem_cons_of_mem _ hβ)
+    have hΓ₂'_avoid : Ctx.AvoidsBoundFv (⟨y₀, αi, .equ⟩ :: Γ₂) y :=
+      Ctx.AvoidsBoundFv_cons.mpr ⟨hy_αi, hΓ₂_avoid⟩
+    have ihbody_y₀ := ihbody y₀ hy₀L
+      (Γ₂ := ⟨y₀, αi, .equ⟩ :: Γ₂) hΓ₂'_avoid hst'_avoid (by simp)
+      hAvoid_body hFresh_body hAvoidFv_body
+    refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}) iht' ?_ trivial
+    intro yfresh hyfresh
+    simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+    push_neg at hyfresh
+    obtain ⟨⟨hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+    have hyz : y₀ ≠ yfresh := fun h' => hyf_y₀ h'.symm
+    have ihbody_y₀_norm :
+        MEqRed (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) st'
+          (bd^[y₀]) (bd'^[y₀]) := by simpa using ihbody_y₀
+    have hpvE_full : PrevalidExt (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) st' :=
+      MEqRed.prevalidExt ihbody_y₀_norm
+    have hpv_full : Prevalid (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) :=
+      extractPrevalid hpvE_full
+    have hfv_αi : Term.fv αi ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+      cases hpv_full with
+      | equ _ _ hfvαi _ => exact hfvαi
+    have hy₀_αi : y₀ ∉ Term.fv αi := fun h' => hy₀_dom' (hfv_αi h')
+    -- Stack freshness for y₀ at the body's PrevalidExt. Since st' lives at the
+    -- EXTENDED ctx, entries' fv ⊆ insert y₀ (Γ₂ ++ Γ₁).dom — they could mention y₀.
+    -- Use the OUTER context's PrevalidExt at outer st (αi :: st') instead.
+    have hpv_outer_inputst : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) (αi :: st') :=
+      MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
+    have hpv_outer_st_only : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st' := by
+      cases hpv_outer_inputst with
+      | cons hpv_tail _ _ => exact hpv_tail
+    have hy₀_stack : ∀ β ∈ st', y₀ ∉ Term.fv β :=
+      _y₀_notin_stack_fv_of_notin_dom hpv_outer_st_only hy₀_dom
+    -- Apply _MEqRed_rename_equ_no_fv. Stack itself doesn't depend on the head, so
+    -- y₀ ∉ fv st' is the same statement at either context.
+    have ren := _MEqRed_rename_equ_no_fv hyz hy₀_dom' hyf_dom hy₀_αi
+      hy₀_fvbd hy₀_fvbd' hy₀_stack ihbody_y₀_norm
+    simpa using ren
 
 /-! ### §9.4. MSubRed analog — DEFERRED to a follow-up phase
 
