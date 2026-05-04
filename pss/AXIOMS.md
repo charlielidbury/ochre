@@ -269,6 +269,18 @@ closures, 2 inactive outstanding).
   left-endpoint extension helper along empty-stack subtype-reduction
   chains: `WSubMStar.extend_left_via_MSubRedStar_fwd`. This requires
   explicit stepwise `WfM` preservation. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added endpoint-only embeddings
+  and endpoint extensions for empty-stack equivalence-reduction chains:
+  `WSubMStar.of_MEqRedStar_fwd_of_wf`,
+  `WSubMStar.of_MEqRedStar_back_of_wf`,
+  `WEquMStar.of_MEqRedStar_fwd_of_wf`,
+  `WEquMStar.of_MEqRedStar_back_of_wf`,
+  `WSubMStar.extend_left_via_MEqRedStar_fwd_of_wf`,
+  `WSubMStar.extend_right_via_MEqRedStar_back_of_wf`,
+  `WEquMStar.extend_left_via_MEqRedStar_fwd_of_wf`, and
+  `WEquMStar.extend_right_via_MEqRedStar_back_of_wf`. These use the
+  existing `WSubM`/`WEquM` chain constructors and need only endpoint
+  well-formedness, not stepwise preservation. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

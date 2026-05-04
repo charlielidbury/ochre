@@ -1348,6 +1348,84 @@ noncomputable def WEquM.right_chain_back {Γ : Ctx} {a c c' : Term}
     exact ⟨fun hEquC' =>
       WEquM.rgh (ihY.some hEquC') hHead.some⟩
 
+/-- A forward empty-stack equivalence-reduction chain embeds into de Bruijn
+transitive well-subtyping when both endpoints are well-formed. Unlike the
+conditional `of_MEqRedStar_fwd`, this packages the entire chain into a single
+`WSubM` step via `WSubM.left_lf1_chain`, so no intermediate `WfM` preservation
+premise is needed. -/
+noncomputable def WSubMStar.of_MEqRedStar_fwd_of_wf {Γ : Ctx} {a b : Term}
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ a b :=
+  WSubMStar.sub hwfA (WSubM.left_lf1_chain hChain (WSubM.rfl hwfB)) hwfB
+
+/-- A forward empty-stack equivalence-reduction chain embeds backward into
+de Bruijn transitive well-subtyping when both endpoints are well-formed. -/
+noncomputable def WSubMStar.of_MEqRedStar_back_of_wf {Γ : Ctx} {a b : Term}
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ b a :=
+  WSubMStar.sub hwfB (WSubM.right_rgh_chain (WSubM.rfl hwfB) hChain) hwfA
+
+/-- A forward empty-stack equivalence-reduction chain embeds into de Bruijn
+transitive well-equivalence when both endpoints are well-formed. -/
+noncomputable def WEquMStar.of_MEqRedStar_fwd_of_wf {Γ : Ctx} {a b : Term}
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WEquMStar Γ a b :=
+  WEquMStar.sub hwfA (WEquM.left_chain hChain (WEquM.rfl hwfB)) hwfB
+
+/-- A forward empty-stack equivalence-reduction chain embeds backward into
+de Bruijn transitive well-equivalence when both endpoints are well-formed. -/
+noncomputable def WEquMStar.of_MEqRedStar_back_of_wf {Γ : Ctx} {a b : Term}
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WEquMStar Γ b a :=
+  WEquMStar.sub hwfB (WEquM.right_chain_back (WEquM.rfl hwfB) hChain) hwfA
+
+/-- Prepend a forward equivalence-reduction chain on the left of de Bruijn
+transitive well-subtyping, requiring only endpoint well-formedness. -/
+noncomputable def WSubMStar.extend_left_via_MEqRedStar_fwd_of_wf
+    {Γ : Ctx} {a a' b : Term}
+    (h : WSubMStar Γ a' b)
+    (hChain : MEqRedStar Γ [] a a')
+    (hwfA : WfM Γ a) :
+    WSubMStar Γ a b :=
+  WSubMStar.trans h.wf_left
+    (WSubMStar.of_MEqRedStar_fwd_of_wf hChain hwfA h.wf_left) h
+
+/-- Append a backward equivalence-reduction chain on the right of de Bruijn
+transitive well-subtyping, requiring only endpoint well-formedness. Given a
+forward chain `c →* b`, the result replaces the right endpoint `b` by `c`. -/
+noncomputable def WSubMStar.extend_right_via_MEqRedStar_back_of_wf
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hChain : MEqRedStar Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ a c :=
+  WSubMStar.trans h.wf_right h
+    (WSubMStar.of_MEqRedStar_back_of_wf hChain hwfC h.wf_right)
+
+/-- Prepend a forward equivalence-reduction chain on the left of de Bruijn
+transitive well-equivalence, requiring only endpoint well-formedness. -/
+noncomputable def WEquMStar.extend_left_via_MEqRedStar_fwd_of_wf
+    {Γ : Ctx} {a a' b : Term}
+    (h : WEquMStar Γ a' b)
+    (hChain : MEqRedStar Γ [] a a')
+    (hwfA : WfM Γ a) :
+    WEquMStar Γ a b :=
+  WEquMStar.trs
+    (WEquMStar.of_MEqRedStar_fwd_of_wf hChain hwfA h.wf_left)
+    h.wf_left h
+
+/-- Append a backward equivalence-reduction chain on the right of de Bruijn
+transitive well-equivalence, requiring only endpoint well-formedness. Given a
+forward chain `c →* b`, the result replaces the right endpoint `b` by `c`. -/
+noncomputable def WEquMStar.extend_right_via_MEqRedStar_back_of_wf
+    {Γ : Ctx} {a b c : Term}
+    (h : WEquMStar Γ a b)
+    (hChain : MEqRedStar Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WEquMStar Γ a c :=
+  WEquMStar.trs h h.wf_right
+    (WEquMStar.of_MEqRedStar_back_of_wf hChain hwfC h.wf_right)
+
 /-- Compose two de Bruijn well-equivalence steps into transitive
 well-equivalence. -/
 def WEquMStar.WEquM_trans {Γ : Ctx} {a b c : Term}
