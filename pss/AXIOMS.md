@@ -156,6 +156,10 @@ closures, 2 inactive outstanding).
   generalized insertion weakening for de Bruijn equivalence reduction.
   It weakens through `Ctx.insertAt`, shifting the stack and source/target
   terms at the insertion cutoff. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — proved `MSubRed.insertAt`,
+  generalized insertion weakening for de Bruijn subtype reduction. It
+  reuses `MEqRed.insertAt` in `Ms-Equ` and `Ms-Fun`. No axiom-count
+  change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

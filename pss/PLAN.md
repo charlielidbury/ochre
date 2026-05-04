@@ -228,6 +228,8 @@ hard caveats.
      `MEqRed.insertAt` is now proved with that shape: it weakens an
      equivalence reduction through `Ctx.insertAt`, shifting the stack and
      both terms at the insertion cutoff.
+     `MSubRed.insertAt` is also proved, reusing `MEqRed.insertAt` for the
+     `Ms-Equ` and bound-equivalence premises.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
