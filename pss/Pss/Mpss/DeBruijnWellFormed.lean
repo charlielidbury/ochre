@@ -396,6 +396,11 @@ noncomputable def WSubMStar.wf_right {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v
     (fun _ _ _ _ _ ihRight => ihRight)
     h
 
+/-- Endpoint well-formedness pair from de Bruijn transitive well-subtyping. -/
+noncomputable def WSubMStar.wf_pair {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+    WfM Γ v × WfM Γ t :=
+  ⟨h.wf_left, h.wf_right⟩
+
 /-- Left endpoint well-formedness from de Bruijn transitive well-equivalence. -/
 noncomputable def WEquMStar.wf_left {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v t) :
     WfM Γ v := by
@@ -413,6 +418,11 @@ noncomputable def WEquMStar.wf_right {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v
     exact hwfT
   | trs _ _ _ _ ihRight =>
     exact ihRight
+
+/-- Endpoint well-formedness pair from de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.wf_pair {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v t) :
+    WfM Γ v × WfM Γ t :=
+  ⟨h.wf_left, h.wf_right⟩
 
 /-! ## Reflexive reductions from well-formed terms -/
 

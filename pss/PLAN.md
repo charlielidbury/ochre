@@ -274,7 +274,8 @@ hard caveats.
      `WEquMStar.symm` and `WEquMStar.toWSubMStar`. Endpoint
      well-formedness extractors are available as
      `WSubMStar.wf_left` / `.wf_right` and
-     `WEquMStar.wf_left` / `.wf_right`. Well-formed terms now provide
+     `WEquMStar.wf_left` / `.wf_right`, plus paired forms
+     `WSubMStar.wf_pair` and `WEquMStar.wf_pair`. Well-formed terms now provide
      reflexive empty-stack reductions through `WfM.MEqRed_refl` and
      `WfM.MSubRed_refl`. De Bruijn `WSubMStar` can now
      absorb single empty-stack equivalence steps at either endpoint via
