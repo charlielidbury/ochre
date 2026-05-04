@@ -884,6 +884,44 @@ noncomputable def WEquMStar.trs_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
     (by simpa [Ctx.replaceAt] using hwfMid)
     (by simpa [Ctx.replaceAt] using hRight)
 
+/-- Conditional transport of de Bruijn well-equivalence across arbitrary-depth
+`.sub` replacement. The only non-local ingredient is well-formedness
+transport for endpoints; equivalence-reduction premises transport exactly. -/
+noncomputable def WEquM.replaceAt_sub_of_wf {Γ : Ctx} {cutoff : Nat}
+    {old new v t : Term}
+    (h : WEquM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x) :
+    WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t := by
+  induction h with
+  | rfl hwf =>
+      exact WEquM.rfl_replaceAt_sub (hWf hwf)
+  | lf1 hred _ ih =>
+      exact WEquM.lf1_replaceAt_sub_from_replaced hred hcut hOldNew ih
+  | rgh _ hred ih =>
+      exact WEquM.rgh_replaceAt_sub_from_replaced ih hred hcut hOldNew
+
+/-- Conditional transport of de Bruijn transitive well-equivalence across
+arbitrary-depth `.sub` replacement. -/
+noncomputable def WEquMStar.replaceAt_sub_of_wf {Γ : Ctx} {cutoff : Nat}
+    {old new v t : Term}
+    (h : WEquMStar (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x) :
+    WEquMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t := by
+  induction h with
+  | sub hwfV heq hwfT =>
+      exact WEquMStar.sub_replaceAt_sub (hWf hwfV)
+        (heq.replaceAt_sub_of_wf hcut hOldNew hWf) (hWf hwfT)
+  | trs _ hwfMid _ ihLeft ihRight =>
+      exact WEquMStar.trs_replaceAt_sub ihLeft (hWf hwfMid) ihRight
+
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
 resulting well-subtyping path steps to shifted `new`, crosses back to shifted
