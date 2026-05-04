@@ -145,8 +145,28 @@ well-subtyping chain between functions to a single diagrammatic subtype step,
 the remaining obligation is to recover equivalence between the bounds. -/
 def AbsFunctionBoundInversionOfMSub : Type :=
   ∀ {Γ : Ctx} {bound body result : Term},
+    WfM Γ (.abs bound body) →
+      WfM Γ (.abs result .top) →
     MSub Γ [] (.abs bound body) (.abs result .top) →
       WEquM Γ bound result
+
+/-- One-step abstraction-function subtype inversion: any direct empty-stack
+subtype reduction from one abstraction to another can only change the bound by
+an equivalence reduction. -/
+noncomputable def MSubRed.abs_function_bound_inversion
+    {Γ : Ctx} {bound body result : Term}
+    (_hwfSource : WfM Γ (.abs bound body))
+    (hwfTarget : WfM Γ (.abs result .top))
+    (h : MSubRed Γ [] (.abs bound body) (.abs result .top)) :
+    WEquM Γ bound result := by
+  have hwfResult : WfM Γ result := hwfTarget.fun_inv.1
+  cases h with
+  | equ _ hEq =>
+      cases hEq with
+      | fun_ hBound _ =>
+          exact WEquM.lf1 hBound (WEquM.rfl hwfResult)
+  | fun_ _ hBound _ =>
+      exact WEquM.lf1 hBound (WEquM.rfl hwfResult)
 
 /-- The arbitrary-context β inversion payload follows from context-generic
 Theorem 3 and the single-diagrammatic-step abstraction-bound inversion. -/
@@ -155,7 +175,8 @@ noncomputable def AbsFunctionBoundInversion_of_msub
     (hInv : AbsFunctionBoundInversionOfMSub) :
     AbsFunctionBoundInversion := by
   intro Γ bound body result hFun
-  exact hInv (hFun.toMSub_of (hcomm (Γ := Γ)))
+  exact hInv hFun.wf_left hFun.wf_right
+    (hFun.toMSub_of (hcomm (Γ := Γ)))
 
 /-- The β preservation payload follows from function-bound inversion and the
 exact de Bruijn body-instantiation preservation lemma. -/
