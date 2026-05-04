@@ -137,6 +137,11 @@ hard caveats.
      now includes the first shift/substitution interaction lemmas:
      cancellation of one shift unit by instantiation, binder-lift
      commutation, and `shiftBy_instantiate`.
+     `Pss/Reduction/DeBruijnOperational.lean` now ports the plain
+     operational small-step relation as depth-indexed `StepAt`, with
+     closed alias `Step`, β via `Term.instantiate 0`, direct
+     abstraction-body stepping at `depth + 1`, source/target scoping
+     accessors, application inversion, and star closures.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
    delete most of `Renaming.lean`, port `Prevalid` / `Weakening` /
    `ContextRed` to indices.

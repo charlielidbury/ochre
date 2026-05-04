@@ -8,6 +8,7 @@ import Pss.Context.Stack
 import Pss.Context.DeBruijn
 import Pss.Context.Prevalid
 import Pss.Reduction.Operational
+import Pss.Reduction.DeBruijnOperational
 import Pss.Mpss.Reductions
 import Pss.Mpss.DeBruijnReductions
 import Pss.Mpss.DeBruijnContextRed

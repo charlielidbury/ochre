@@ -133,6 +133,12 @@ closures, 2 inactive outstanding).
   lemmas `Term.shiftBy_instantiate_lt`, `Term.shift_instantiate_lt`, and
   the β-shaped `Term.shift_instantiate_zero`. These are needed by the
   `MEqRed.bet` weakening case. No axiom-count change.
+* `Pss/Reduction/DeBruijnOperational.lean` — ported the plain
+  operational small-step relation to de Bruijn terms as depth-indexed
+  `StepAt`, with closed alias `Step`, β via `Term.instantiate 0`, direct
+  abstraction-body stepping at `depth + 1`, source/target scoping
+  accessors, application inversion, and star closures. Imported from
+  `Pss.lean`; no axiom-count change.
 * `Pss/Syntax/DeBruijn.lean` / `Pss/Context/DeBruijn.lean` — added
   one-step aliases `Term.shift_shift_zero` and `Stack.shift_shift_zero`
   for the binder-stack commutation shape used by reduction weakening. No
