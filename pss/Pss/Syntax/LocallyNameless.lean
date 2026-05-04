@@ -31,6 +31,34 @@ def Term.fv : Term → Finset String
   | .abs t u   => Term.fv t ∪ Term.fv u
   | .app t u   => Term.fv t ∪ Term.fv u
 
+/-! ## Syntactic size
+
+The conventional locally-nameless syntactic size: counts AST nodes,
+counting `bvar`/`fvar`/`top` as leaves of size 1, and `abs`/`app` as
+internal nodes whose size is `1 +` the recursive sums.
+
+**Why this matters (iter-4 / iter-5 plan).** The Lemma 2 / Lemma 1
+diamond proofs need a derivation-WF measure that lets the body
+sub-derivations of cofinite-quantified `MEqRed` constructors count as
+"strictly smaller" than the parent. The naïve `derSize` measure
+(see `Pss.Mpss.MEqRedSize`) samples the body at `pickFresh L`, which
+is NOT y-invariant — so an arbitrary-y body-decrease lemma is not
+provable without the renaming functor (see Diamond.lean §3.2 iter-4
+docstring on `Lemma_2_DiamondMEqRed_core`).
+
+`Term.size` is **y-invariant under opening**: opening a body with
+`.fvar y` does not change syntactic size (Term.size_open_fvar below).
+This makes `Term.size t₀` a viable WF measure for the cofinite-arm
+body recursion in Lemma 2 / Lemma 1, modulo handling the `pro` arm
+(whose lookup-α may be arbitrarily large) via a lex with the
+context's syntactic size. -/
+def Term.size : Term → Nat
+  | .bvar _    => 1
+  | .fvar _    => 1
+  | .top       => 1
+  | .abs t u   => 1 + Term.size t + Term.size u
+  | .app t u   => 1 + Term.size t + Term.size u
+
 /-! ## Opening: replace `bvar k` with `u` -/
 
 /-- `Term.open_ k u e` substitutes the bound variable `bvar k` in `e` with `u`,
@@ -107,6 +135,41 @@ lemma Term.exists_fresh (s : Finset String) : ∃ x : String, x ∉ s := by
     Term.fv (.abs t b) = Term.fv t ∪ Term.fv b := rfl
 @[simp] lemma Term.fv_app (t u : Term) :
     Term.fv (.app t u) = Term.fv t ∪ Term.fv u := rfl
+
+/-! ## Size simp lemmas -/
+
+@[simp] lemma Term.size_bvar (i : Nat) : Term.size (.bvar i) = 1 := rfl
+@[simp] lemma Term.size_fvar (x : String) : Term.size (.fvar x) = 1 := rfl
+@[simp] lemma Term.size_top : Term.size .top = 1 := rfl
+@[simp] lemma Term.size_abs (t b : Term) :
+    Term.size (.abs t b) = 1 + Term.size t + Term.size b := rfl
+@[simp] lemma Term.size_app (t u : Term) :
+    Term.size (.app t u) = 1 + Term.size t + Term.size u := rfl
+
+/-! ## Size under opening — the y-invariance load-bearing for path (A) -/
+
+/-- Opening with a free variable preserves syntactic size: `Term.size
+(open_ k (.fvar x) e) = Term.size e`. The free-variable substituent has
+size 1 (a leaf), so the bvar→fvar swap is size-neutral. -/
+theorem Term.size_open_fvar (k : Nat) (x : String) (e : Term) :
+    Term.size (Term.open_ k (Term.fvar x) e) = Term.size e := by
+  induction e generalizing k with
+  | bvar i =>
+    by_cases h : i = k
+    · simp [Term.open_, h, Term.size]
+    · simp [Term.open_, h, Term.size]
+  | fvar y => simp [Term.open_, Term.size]
+  | top => simp [Term.open_, Term.size]
+  | abs t b iht ihb =>
+    simp [Term.open_, Term.size, iht, ihb]
+  | app t u iht ihu =>
+    simp [Term.open_, Term.size, iht, ihu]
+
+/-- Specialization to `Term.opening` (= `open_ 0`): `^[x]` preserves
+size. -/
+theorem Term.size_opening_fvar (x : String) (e : Term) :
+    Term.size (e^[x]) = Term.size e :=
+  Term.size_open_fvar 0 x e
 
 /-! ## fv under operations -/
 

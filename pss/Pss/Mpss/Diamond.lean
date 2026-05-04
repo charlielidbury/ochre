@@ -1,6 +1,10 @@
 import Pss.Mpss.Substitution
 import Pss.Mpss.Weakening
 import Pss.Mpss.AvoidsPro
+-- `MEqRedSize` is referenced in the iter-4 docstring on
+-- `Lemma_2_DiamondMEqRed_core` (~§3.2). Imported so iter 5's WF refactor
+-- attempt has the dependency wired up; see the docstring for context.
+import Pss.Mpss.MEqRedSize
 import Pss.Mpss.Renaming
 import Pss.Mpss.Narrowing
 
@@ -2136,7 +2140,96 @@ index generalized so each constructor case has access to the structural
 IH of its own sub-derivations against an arbitrary `t₂`.
 
 Returns a `Σ'` (Type-valued sigma) since `MEqRed` is `Type`-valued and
-`∃` requires a `Prop`-valued body. -/
+`∃` requires a `Prop`-valued body.
+
+## Iter-4 attempt (pss-20260504-iter4): WF refactor SHIPPED PARTIAL
+
+Iter 4 attempted to refactor this from `induction h₁ generalizing t₂`
+to a `noncomputable def` with `match h₁` and `termination_by
+MEqRed.derSize h₁`. The structural skeleton works (verified via
+`exact <lemma>` discharge of 6/9 termination obligations) but the
+3 cofinite-arm body recursions (`bet`, `fun_`, `fOp`) hit a
+**fundamental gap in the iter-3 `derSize` design**:
+
+For each cofinite arm, the body-IH parameter passed to the helper has
+form `fun y hy {body₂'} hh => _core (hbody y hy) hh`. Lean's
+`decreasing_by` then needs to prove
+`derSize (hbody y hy) < derSize parent` for **arbitrary** `y ∉ L`.
+But `derSize` (defined in `Pss/Mpss/MEqRedSize.lean` via `MEqRed.rec`)
+samples the body at `pickFresh L` only:
+
+```
+derSize (MEqRed.fOp L ht hbody _) :=
+  1 + derSize ht + derSize (hbody (pickFresh L) (pickFresh_notMem L))
+```
+
+So `derSize (hbody y _)` for arbitrary `y ∉ L` is the value of
+`MEqRed.rec` applied to a DIFFERENT derivation, with no
+guaranteed relationship to `derSize (hbody (pickFresh L) _)`. The
+function `hbody : ∀ y, y ∉ L → MEqRed ...` is supplied by the user of
+the constructor and CAN have arbitrarily different sizes at different
+y values (no alpha-equivariance constraint on the constructor).
+
+### Why this is the alpha-equivariance hole
+
+This IS the alpha-equivariance hole flagged in `pss/CLAUDE.md`:
+
+> "The next big architectural lever is the renaming functor on MEqRed
+> (~500-800 lines): a Type-valued recursive renaming that preserves
+> constructor structure, enabling honest discharge of alpha-equivariance.
+> This unblocks the β-residual layer."
+
+Concretely, an arbitrary-y body-decrease lemma `derSize_fOp_body_arb`
+of shape `∀ y hy, derSize (hbody y hy) < derSize parent` is provable
+ONLY IF we have a renaming-invariance lemma
+`derSize (hbody y₁ _) = derSize (hbody y₂ _)` for any two fresh y's.
+That requires the renaming functor.
+
+### Iter-5 plan
+
+Two viable paths (both unblock the body-diamond and thereby
+`Lemma_2_inline_app_bet_residual_axiom`):
+
+**(A) Term-size measure (simpler).** Replace `derSize` with a
+syntactic measure on the source term `t₀`. For non-`pro` cases,
+sub-derivation source terms are syntactically smaller. For `pro`, use
+a lex on `(Term.size t₀, derSize h₁)` where the lookup-`α` may grow
+the term but is bounded by the original Γ's syntactic size. Critically:
+`Term.size (body^[y])` is y-independent (opening with `.fvar y`
+preserves size), so the body recursion's source-size is bounded by
+the parent's source-size MINUS 1 — strict decrease holds for ALL y.
+
+**(B) Renaming functor + alpha-equivariance lemma.** The big refactor
+mentioned in `pss/CLAUDE.md`. Adds ~500-800 lines of renaming
+infrastructure that lets us prove `derSize (rename y→z h) = derSize h`,
+which then licenses `derSize_*_body_arb`. Strategically more valuable
+since it unblocks `MEqRed.refl`-based avoidsPro arguments too, but
+significantly more work.
+
+Recommended: (A) first as a minimal-change unblock; (B) later as a
+strategic infrastructure investment.
+
+### Iter-4 deliverable: blocker analysis + path (A) foundations
+
+Iter 4 reverts to the iter-3 baseline (this `induction` proof) for
+`_core` and ships:
+
+1. This blocker docstring documenting the y-arbitrary derSize gap.
+2. `Pss/Syntax/LocallyNameless.lean` additions (this iter):
+   - `Term.size : Term → Nat` — syntactic AST-node count.
+   - `Term.size_open_fvar` — opening with a free variable preserves
+     size (the y-invariance property load-bearing for path A).
+   - `Term.size_opening_fvar` — `^[]` specialization.
+
+These additions are what iter 5 needs to attempt path (A) — the
+term-size measure approach. With `Term.size_opening_fvar`, iter 5 can
+prove `Term.size (body^[y]) = Term.size body` (y-invariant), making
+the body recursion's source-size strictly smaller than the parent's
+source-size for ALL y choices.
+
+The `MEqRedSize.lean` infrastructure from iter 3 also remains useful:
+the per-constructor `derSize_*` simp lemmas serve as templates for
+the term-size analogues iter 5 will write. -/
 noncomputable def Lemma_2_DiamondMEqRed_core
     {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
     (h₁ : MEqRed Γ s t₀ t₁)
