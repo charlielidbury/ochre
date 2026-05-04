@@ -551,6 +551,11 @@ closures, 2 inactive outstanding).
   `commute_appAbs_subStep_appTop_eqStar`, the single-subtype-step
   specialization of the same abstraction-headed application appTop branch
   commutation theorem. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStar_topOrAppTop_eqStar` and
+  `commute_appAbs_subStep_topOrAppTop_eqStar`, the combined `Top` /
+  `Top`-headed target branch for abstraction-headed application
+  commutation. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the compressed
   abstraction-headed application subtype-chain split
   `msub_appAbs_subStar_beta_or_toTop_or_appAbs` /
