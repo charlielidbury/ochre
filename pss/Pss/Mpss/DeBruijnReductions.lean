@@ -1147,6 +1147,86 @@ theorem MSubRed.app_abs_inv {Γ : Ctx} {s : Stack}
       subst hEq
       exact Or.inr (Or.inr (Or.inr ⟨bound', body', arg, rfl⟩))
 
+/-- A chain of equivalence reductions from an abstraction-headed application
+either has already taken a β step, in which case the final target remains
+reachable from that β target, or it is still abstraction-headed. -/
+theorem MEqRedStar.app_abs_inv {Γ : Ctx} {s : Stack}
+    {bound body arg v : Term}
+    (h : MEqRedStar Γ s (.app (.abs bound body) arg) v) :
+    (∃ arg' body', MEqRedStar Γ s (Term.instantiate 0 arg' body') v) ∨
+      ∃ bound' body' arg', v = .app (.abs bound' body') arg' := by
+  induction h with
+  | refl =>
+    exact Or.inr ⟨bound, body, arg, rfl⟩
+  | tail _ hStep ih =>
+    cases ih with
+    | inl hBet =>
+      obtain ⟨arg', body', hChain⟩ := hBet
+      exact Or.inl ⟨arg', body', Relation.ReflTransGen.tail hChain hStep⟩
+    | inr hApp =>
+      obtain ⟨bound', body', arg', hEq⟩ := hApp
+      subst hEq
+      cases hStep.some.app_abs_inv with
+      | inl hBet =>
+        obtain ⟨arg'', body'', hEq⟩ := hBet
+        subst hEq
+        exact Or.inl ⟨arg'', body'', Relation.ReflTransGen.refl⟩
+      | inr hApp =>
+        exact Or.inr hApp
+
+/-- A chain of subtype reductions from an abstraction-headed application
+either reaches `Top`, has already taken a β step through `Ms-Equ`, is still
+`Top`-headed, or is still abstraction-headed. The β branch is recorded as a
+subtype chain from the β target to the final target. -/
+theorem MSubRedStar.app_abs_inv {Γ : Ctx} {s : Stack}
+    {bound body arg v : Term}
+    (h : MSubRedStar Γ s (.app (.abs bound body) arg) v) :
+    v = .top ∨
+      (∃ arg' body', MSubRedStar Γ s (Term.instantiate 0 arg' body') v) ∨
+      (∃ arg', v = .app .top arg') ∨
+      ∃ bound' body' arg', v = .app (.abs bound' body') arg' := by
+  induction h with
+  | refl =>
+    exact Or.inr (Or.inr (Or.inr ⟨bound, body, arg, rfl⟩))
+  | tail _ hStep ih =>
+    cases ih with
+    | inl hTop =>
+      subst hTop
+      exact Or.inl hStep.some.top_inv
+    | inr hRest =>
+      cases hRest with
+      | inl hBet =>
+        obtain ⟨arg', body', hChain⟩ := hBet
+        exact Or.inr (Or.inl ⟨arg', body', Relation.ReflTransGen.tail hChain hStep⟩)
+      | inr hRest =>
+        cases hRest with
+        | inl hAppTop =>
+          obtain ⟨arg', hEq⟩ := hAppTop
+          subst hEq
+          cases hStep.some.app_top_inv with
+          | inl hTop =>
+            exact Or.inl hTop
+          | inr hAppTop =>
+            exact Or.inr (Or.inr (Or.inl hAppTop))
+        | inr hAppAbs =>
+          obtain ⟨bound', body', arg', hEq⟩ := hAppAbs
+          subst hEq
+          cases hStep.some.app_abs_inv with
+          | inl hTop =>
+            exact Or.inl hTop
+          | inr hRest =>
+            cases hRest with
+            | inl hBet =>
+              obtain ⟨arg'', body'', hEq⟩ := hBet
+              subst hEq
+              exact Or.inr (Or.inl ⟨arg'', body'', Relation.ReflTransGen.refl⟩)
+            | inr hRest =>
+              cases hRest with
+              | inl hAppTop =>
+                exact Or.inr (Or.inr (Or.inl hAppTop))
+              | inr hAppAbs =>
+                exact Or.inr (Or.inr (Or.inr hAppAbs))
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.

@@ -481,6 +481,11 @@ closures, 2 inactive outstanding).
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
   application targets, and abstraction-headed application targets. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — lifted the abstraction-headed
+  application split to chains with `MEqRedStar.app_abs_inv` and
+  `MSubRedStar.app_abs_inv`. The β branch is recorded as a chain from
+  the β target to the final target, since later reductions can leave the
+  β target's syntactic shape. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
