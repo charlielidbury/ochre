@@ -137,6 +137,26 @@ def insertAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
       simp [depth] at hdepth ⊢
       omega
 
+/-- The newly inserted entry is found exactly at the insertion cutoff. -/
+theorem lookup_insertAt_self {cutoff : Nat} {newEntry : CtxEntry} {Γ : Ctx}
+    (hcut : cutoff ≤ Γ.depth) :
+    lookup (insertAt cutoff newEntry Γ) cutoff = some newEntry := by
+  induction Γ generalizing cutoff with
+  | nil =>
+    cases cutoff with
+    | zero =>
+      rfl
+    | succ cutoff =>
+      simp [depth] at hcut
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      rfl
+    | succ cutoff =>
+      have htail : cutoff ≤ Ctx.depth tail := by
+        simpa [depth, Nat.add_comm] using Nat.succ_le_succ_iff.mp hcut
+      simpa using ih htail
+
 @[simp] theorem lookup_zero (e : CtxEntry) (Γ : Ctx) :
     lookup (e :: Γ) 0 = some e := rfl
 

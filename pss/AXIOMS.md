@@ -99,6 +99,9 @@ closures, 2 inactive outstanding).
   zero, one, and two preserved heads plus `Ctx.depth_insertAt_of_le`.
   This is the context-level target for future generalized lookup and
   reduction weakening. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `Ctx.lookup_insertAt_self`, the
+  raw lookup fact that the inserted entry is found at the insertion
+  cutoff. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

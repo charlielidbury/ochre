@@ -182,7 +182,9 @@ hard caveats.
      with the one- and two-head index translations reduced to that common
      definition. The matching context transformer `Ctx.insertAt` is also
      in place, with simp lemmas for the zero/one/two-head shapes and
-     `Ctx.depth_insertAt_of_le`.
+     `Ctx.depth_insertAt_of_le`; raw lookup now has
+     `Ctx.lookup_insertAt_self` for finding the inserted entry at the
+     insertion cutoff.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
