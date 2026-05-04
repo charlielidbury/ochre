@@ -29,6 +29,23 @@ namespace MSub
 theorem refl {Γ : Ctx} {s : Stack} {t : Term} : MSub Γ s t t :=
   ⟨t, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
 
+/-- Diagrammatic subtyping preserves right-endpoint scoping in `Prop` form
+from left-endpoint scoping. The `Nonempty` wrapper is needed because `MSub`
+is Prop-valued while scoping is Type-valued. -/
+theorem scoped_right_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSub Γ s u v) (hu : Term.Scoped Γ.depth u) :
+    Nonempty (Term.Scoped Γ.depth v) := by
+  obtain ⟨w, hSub, hEqu⟩ := h
+  have hw : Term.Scoped Γ.depth w := hSub.scoped_right hu
+  exact hEqu.scoped_left_nonempty hw
+
+/-- Diagrammatic subtyping relates scoped endpoints in `Prop` form when the
+left endpoint is scoped. -/
+theorem scoped_pair_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSub Γ s u v) (hu : Term.Scoped Γ.depth u) :
+    Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
+  ⟨⟨hu, (h.scoped_right_nonempty hu).some⟩⟩
+
 /-- Introduce de Bruijn diagrammatic subtyping from explicit subtype and
 equivalence chains to a common reduct. -/
 theorem intro {Γ : Ctx} {s : Stack} {u v w : Term}
@@ -80,6 +97,24 @@ namespace MSubStar
 /-- Reflexivity for the reflexive-transitive diagrammatic relation. -/
 theorem refl {Γ : Ctx} {s : Stack} {t : Term} : MSubStar Γ s t t :=
   Relation.ReflTransGen.refl
+
+/-- Transitive diagrammatic subtyping preserves right-endpoint scoping in
+`Prop` form from left-endpoint scoping. -/
+theorem scoped_right_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubStar Γ s u v) (hu : Term.Scoped Γ.depth u) :
+    Nonempty (Term.Scoped Γ.depth v) := by
+  induction h with
+  | refl =>
+    exact ⟨hu⟩
+  | tail hStar hStep ih =>
+    exact hStep.scoped_right_nonempty ih.some
+
+/-- Transitive diagrammatic subtyping relates scoped endpoints in `Prop` form
+when the left endpoint is scoped. -/
+theorem scoped_pair_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubStar Γ s u v) (hu : Term.Scoped Γ.depth u) :
+    Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
+  ⟨⟨hu, (h.scoped_right_nonempty hu).some⟩⟩
 
 /-- Embed one diagrammatic step into the reflexive-transitive diagrammatic
 relation. -/

@@ -252,7 +252,12 @@ hard caveats.
      reductions as `MEqRed.prevalid` and `MSubRed.prevalid`. Scoping
      extractors are available for Prop wrappers and star closures as
      `MEqRedJ.scoped_*`, `MSubRedJ.scoped_*`,
-     `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`. Named closure
+     `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`; backwards
+     star-scoping extractors are available in Prop-safe `Nonempty` form
+     as `MEqRedStar.scoped_left_nonempty`,
+     `MEqRedStar.scoped_pair_from_right_nonempty`,
+     `MSubRedStar.scoped_left_nonempty`, and
+     `MSubRedStar.scoped_pair_from_right_nonempty`. Named closure
      helpers are available as `MEqRedStar.single`,
      `MSubRedStar.single`, `MEqRedStar.trans`, and
      `MSubRedStar.trans`; equivalence chains embed into subtype chains
@@ -350,6 +355,10 @@ hard caveats.
      future de Bruijn Lemma 1 / Lemma 2 proofs. The layer also has named
      closure helpers `MSub.to_star`, `MSubStar.refl`,
      `MSubStar.single`, `MSubStar.trans`, and `WSubM.toMSubStar`.
+     Diagram endpoint scoping is available in Prop-safe `Nonempty` form
+     through `MSub.scoped_right_nonempty`,
+     `MSub.scoped_pair_nonempty`, `MSubStar.scoped_right_nonempty`, and
+     `MSubStar.scoped_pair_nonempty`.
      The `MSubStar` layer has matching reduction adapters
      `MSubStar.of_MSubRedStar`, `.of_MSubRed`, and `.of_MEqRed`.
      Well-equivalence strips are also available as `WEquM.toMSub`,

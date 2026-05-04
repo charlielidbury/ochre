@@ -200,6 +200,12 @@ closures, 2 inactive outstanding).
   `MEqRedStar.scoped_right`, `MEqRedStar.scoped_pair`,
   `MSubRedStar.scoped_right`, and `MSubRedStar.scoped_pair`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added Prop-safe backwards
+  scoping extractors for star reductions:
+  `MEqRedStar.scoped_left_nonempty`,
+  `MEqRedStar.scoped_pair_from_right_nonempty`,
+  `MSubRedStar.scoped_left_nonempty`, and
+  `MSubRedStar.scoped_pair_from_right_nonempty`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added named closure helpers
   `MEqRedStar.single`, `MSubRedStar.single`, `MEqRedStar.trans`, and
   `MSubRedStar.trans`. No axiom-count change.
@@ -289,6 +295,11 @@ closures, 2 inactive outstanding).
   for the de Bruijn diagrammatic layer: `MSub.to_star`,
   `MSubStar.refl`, `MSubStar.single`, `MSubStar.trans`, and
   `WSubM.toMSubStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added Prop-safe endpoint
+  scoping extractors for diagrammatic subtyping:
+  `MSub.scoped_right_nonempty`, `MSub.scoped_pair_nonempty`,
+  `MSubStar.scoped_right_nonempty`, and
+  `MSubStar.scoped_pair_nonempty`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `MSubStar`
   reduction adapters `MSubStar.of_MSubRedStar`, `.of_MSubRed`, and
   `.of_MEqRed`, matching the existing `MSub` introduction API at the

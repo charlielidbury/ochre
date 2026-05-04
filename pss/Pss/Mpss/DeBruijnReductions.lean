@@ -244,6 +244,25 @@ noncomputable def MEqRedStar.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
     Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
   ⟨hu, h.scoped_right hu⟩
 
+/-- A de Bruijn equivalence-reduction chain provides source scoping in
+`Prop` form when its target is scoped. This `Nonempty` shape avoids
+eliminating the Prop-valued star into a Type-valued conclusion. -/
+theorem MEqRedStar.scoped_left_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u) := by
+  induction h with
+  | refl =>
+    exact ⟨hv⟩
+  | tail hStar hStep ih =>
+    exact ih hStep.scoped_left
+
+/-- A de Bruijn equivalence-reduction chain relates scoped endpoints in
+`Prop` form when its target is scoped. -/
+theorem MEqRedStar.scoped_pair_from_right_nonempty {Γ : Ctx} {s : Stack}
+    {u v : Term} (h : MEqRedStar Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
+  ⟨⟨(h.scoped_left_nonempty hv).some, hv⟩⟩
+
 /-- A de Bruijn subtype-reduction chain preserves target scoping from source
 scoping. -/
 noncomputable def MSubRedStar.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
@@ -266,6 +285,24 @@ noncomputable def MSubRedStar.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRedStar Γ s u v) (hu : Term.Scoped Γ.depth u) :
     Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
   ⟨hu, h.scoped_right hu⟩
+
+/-- A de Bruijn subtype-reduction chain provides source scoping in `Prop`
+form when its target is scoped. -/
+theorem MSubRedStar.scoped_left_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u) := by
+  induction h with
+  | refl =>
+    exact ⟨hv⟩
+  | tail hStar hStep ih =>
+    exact ih hStep.scoped_left
+
+/-- A de Bruijn subtype-reduction chain relates scoped endpoints in `Prop`
+form when its target is scoped. -/
+theorem MSubRedStar.scoped_pair_from_right_nonempty {Γ : Ctx} {s : Stack}
+    {u v : Term} (h : MSubRedStar Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
+  ⟨⟨(h.scoped_left_nonempty hv).some, hv⟩⟩
 
 /-! ## Closure constructors -/
 
