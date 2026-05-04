@@ -134,21 +134,22 @@ def BetaInstantiationPreservesWfM : Type :=
         WfM Γ (Term.instantiate 0 arg body)
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
-has a function supertype, their bounds are well-equivalent. -/
+has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
   ∀ {Γ : Ctx} {bound body result : Term},
     WSubMStar Γ (.abs bound body) (.abs result .top) →
-      WEquM Γ bound result
+      WEquMStar Γ bound result
 
 /-- Diagrammatic function-bound inversion payload: after Theorem 3 collapses a
 well-subtyping chain between functions to a single diagrammatic subtype step,
-the remaining obligation is to recover equivalence between the bounds. -/
+the remaining obligation is to recover transitive well-equivalence between the
+bounds. -/
 def AbsFunctionBoundInversionOfMSub : Type :=
   ∀ {Γ : Ctx} {bound body result : Term},
     WfM Γ (.abs bound body) →
       WfM Γ (.abs result .top) →
     MSub Γ [] (.abs bound body) (.abs result .top) →
-      WEquM Γ bound result
+      WEquMStar Γ bound result
 
 /-- One-step abstraction-function subtype inversion: any direct empty-stack
 subtype reduction from one abstraction to another can only change the bound by
@@ -158,15 +159,18 @@ noncomputable def MSubRed.abs_function_bound_inversion
     (_hwfSource : WfM Γ (.abs bound body))
     (hwfTarget : WfM Γ (.abs result .top))
     (h : MSubRed Γ [] (.abs bound body) (.abs result .top)) :
-    WEquM Γ bound result := by
+    WEquMStar Γ bound result := by
   have hwfResult : WfM Γ result := hwfTarget.fun_inv.1
+  have hwfBound : WfM Γ bound := _hwfSource.fun_inv.1
   cases h with
   | equ _ hEq =>
       cases hEq with
       | fun_ hBound _ =>
-          exact WEquM.lf1 hBound (WEquM.rfl hwfResult)
+          exact WEquMStar.of_WEquM hwfBound hwfResult
+            (WEquM.lf1 hBound (WEquM.rfl hwfResult))
   | fun_ _ hBound _ =>
-      exact WEquM.lf1 hBound (WEquM.rfl hwfResult)
+      exact WEquMStar.of_WEquM hwfBound hwfResult
+        (WEquM.lf1 hBound (WEquM.rfl hwfResult))
 
 /-- The arbitrary-context β inversion payload follows from context-generic
 Theorem 3 and the single-diagrammatic-step abstraction-bound inversion. -/
@@ -186,16 +190,14 @@ noncomputable def StepBetaPreservesWfM_of
     StepBetaPreservesWfM := by
   intro Γ bound body arg hwf
   obtain ⟨result, hFun, hArg⟩ := hwf.app_inv
-  have hEquBoundResult : WEquM Γ bound result := hInv hFun
-  have hSubResultBound : WSubM Γ result bound :=
-    hEquBoundResult.symm.toWSubM
+  have hEquBoundResult : WEquMStar Γ bound result := hInv hFun
+  have hSubResultBound : WSubMStar Γ result bound :=
+    hEquBoundResult.symm.toWSubMStar
   have hwfAbs : WfM Γ (.abs bound body) := hFun.wf_left
   have hAbsParts := hwfAbs.fun_inv
   have hwfResult : WfM Γ result := hArg.wf_right
-  have hStarResultBound : WSubMStar Γ result bound :=
-    WSubMStar.sub hwfResult hSubResultBound hAbsParts.1
   have hStarArgBound : WSubMStar Γ arg bound :=
-    WSubMStar.trs hArg hwfResult hStarResultBound
+    WSubMStar.trs hArg hwfResult hSubResultBound
   exact hSubst hStarArgBound hAbsParts.2
 
 /-- Remaining `.sub` head replacement payload for de Bruijn well-formedness.

@@ -1202,6 +1202,11 @@ closures, 2 inactive outstanding).
   `AbsFunctionBoundInversion_of_msub`, reducing the β inversion payload to
   a well-formed single diagrammatic abstraction-subtyping step. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — weakened function-bound inversion
+  results from one-step `WEquM` to transitive `WEquMStar`, which is still
+  sufficient for β preservation through `WEquMStar.toWSubMStar` and matches
+  the common-reduct evidence exposed by diagrammatic subtyping. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — proved the direct one-step helper
   `MSubRed.abs_function_bound_inversion`, extracting bound
   well-equivalence from an empty-stack function-to-function subtype
