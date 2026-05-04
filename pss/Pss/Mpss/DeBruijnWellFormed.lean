@@ -678,6 +678,32 @@ noncomputable def WSubMStar.trs_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
     (by simpa [Ctx.replaceAt] using hwfMid)
     (by simpa [Ctx.replaceAt] using hRight)
 
+/-- Star-valued `Ws-Rfl` replacement from an already-replaced well-formed
+endpoint. This is the reflexive case for the star-valued replacement shape of
+exact `WSubM` derivations. -/
+noncomputable def WSubMStar.rfl_replaceAt_sub_from_wf {Γ : Ctx}
+    {cutoff : Nat} {new t : Term}
+    (hwf : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
+  WSubMStar.refl_of_wfM hwf
+
+/-- Under-head star-valued `Ws-Rfl` replacement from an already-replaced
+well-formed endpoint. -/
+noncomputable def WSubMStar.rfl_sub_under_head_replace_from_wf {Γ : Ctx}
+    {head : CtxEntry} {new t : Term}
+    (hwf : WfM (head :: { bound := new, kind := .sub } :: Γ) t) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) t t :=
+  WSubMStar.refl_of_wfM hwf
+
+/-- Binder-recursive star-valued `Ws-Rfl` replacement wrapper. -/
+noncomputable def WSubMStar.rfl_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head t : Term}
+    (hwf : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) t) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
+  WSubMStar.refl_of_wfM (by simpa [Ctx.replaceAt] using hwf)
+
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
 resulting well-subtyping path steps to shifted `new`, crosses back to shifted

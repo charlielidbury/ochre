@@ -994,6 +994,9 @@ closures, 2 inactive outstanding).
   `replaceAt (cutoff + 1)` chain wrappers for `Ms-FOp` and both
   fixed- and changing-bound `Ms-Fun` subtype replacement endpoint
   shapes. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added star-valued reflexive
+  `WSubMStar` replacement wrappers for arbitrary-depth, under-head, and
+  binder-recursive `.sub` replacement shapes. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
