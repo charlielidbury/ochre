@@ -379,6 +379,10 @@ closures, 2 inactive outstanding).
   `diamond_tAp_eqStar` and `commute_appTop_subStar_tAp`. No axiom-count
   change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `diamond_appTop_eqStar_eqStar`, the full star-level equivalence
+  diamond for a `Top`-headed application source. Both chains join at
+  `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appTop_subStar_eqStar`, the full star-level commutation cell
   for a `Top`-headed application source. It joins arbitrary subtype and
   equivalence chains from that source at `Top`. No axiom-count change.

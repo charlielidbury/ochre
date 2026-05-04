@@ -274,6 +274,40 @@ theorem diamond_tAp_eqStar {Γ : Ctx} {s : Stack} {u t : Term}
     have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
     exact ⟨.top, Relation.ReflTransGen.refl, MEqRedStar.single (MEqRed.tAp hpv hArg')⟩
 
+/-- Direct star-level equivalence diamond for a `Top`-headed application
+source. Both equivalence chains can only reach `Top` or another
+`Top`-headed application, and both forms join at `Top`. -/
+theorem diamond_appTop_eqStar_eqStar {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h₁ : MEqRedStar Γ s (.app .top u) t₁)
+    (h₂ : MEqRedStar Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ := by
+  have hShape₁ := h₁.app_top_inv
+  have hShape₂ := h₂.app_top_inv
+  cases hShape₁ with
+  | inl hTop₁ =>
+    subst hTop₁
+    exact diamond_tAp_eqStar hpv hu h₂
+  | inr hApp₁ =>
+    obtain ⟨arg₁, hEq₁⟩ := hApp₁
+    subst hEq₁
+    have hTargetScoped₁ : Term.Scoped Γ.depth (.app .top arg₁) :=
+      h₁.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+    have hArg₁ : Term.Scoped Γ.depth arg₁ := (Term.Scoped.app_inv hTargetScoped₁).2
+    cases hShape₂ with
+    | inl hTop₂ =>
+      subst hTop₂
+      exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg₁),
+        Relation.ReflTransGen.refl⟩
+    | inr hApp₂ =>
+      obtain ⟨arg₂, hEq₂⟩ := hApp₂
+      subst hEq₂
+      have hTargetScoped₂ : Term.Scoped Γ.depth (.app .top arg₂) :=
+        h₂.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+      have hArg₂ : Term.Scoped Γ.depth arg₂ := (Term.Scoped.app_inv hTargetScoped₂).2
+      exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg₁),
+        MEqRedStar.single (MEqRed.tAp hpv hArg₂)⟩
+
 /-- Lift a single-step equivalence diamond to one equivalence step against an
 equivalence-reduction chain. -/
 noncomputable def diamond_step_eqStar_of

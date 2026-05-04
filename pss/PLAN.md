@@ -409,6 +409,8 @@ hard caveats.
      one-step and star equivalence/subtype reductions, and the direct
      star-level joins `diamond_tAp_eqStar` and
      `commute_appTop_subStar_tAp` close the corresponding `TAp` targets.
+     The full equivalence-chain diamond for `Top`-headed sources is
+     named `diamond_appTop_eqStar_eqStar`.
      The full star-level `Top`-headed source cell is also available as
      `commute_appTop_subStar_eqStar`, joining arbitrary subtype and
      equivalence chains from that source at `Top`.
