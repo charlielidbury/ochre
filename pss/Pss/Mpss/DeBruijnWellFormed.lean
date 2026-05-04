@@ -259,6 +259,101 @@ noncomputable def WEquMStar.scoped_right {Γ : Ctx} {v t : Term}
     Term.Scoped Γ.depth t :=
   h.scoped_pair.2
 
+/-! ## Context validity invariants -/
+
+/-- Combined context-prevalidity invariant for the three mutual judgments. -/
+noncomputable def _prevalid_combined :
+    (∀ {Γ : Ctx} {t : Term}, WfM Γ t → Prevalid Γ) ×
+    (∀ {Γ : Ctx} {v t : Term}, WSubM Γ v t → Prevalid Γ) ×
+    (∀ {Γ : Ctx} {v t : Term}, WSubMStar Γ v t → Prevalid Γ) := by
+  refine ⟨?wf, ?sub, ?star⟩
+  · intro Γ t h
+    exact (WfM.rec
+      (motive_1 := fun Γ _ _ => Prevalid Γ)
+      (motive_2 := fun Γ _ _ _ => Prevalid Γ)
+      (motive_3 := fun Γ _ _ _ => Prevalid Γ)
+      (fun hpv _ => hpv)
+      (fun hpv _ => hpv)
+      (fun hpv => hpv)
+      (fun _ _ ihT _ => ihT)
+      (fun _ _ ihU _ => ihU)
+      (fun _ ih => ih)
+      (fun _ _ ih => ih)
+      (fun _ _ _ _ ihV _ _ => ihV)
+      (fun _ _ ih => ih)
+      (fun _ _ _ ihV _ _ => ihV)
+      (fun _ _ _ ihLeft _ _ => ihLeft)
+      h)
+  · intro Γ v t h
+    exact (WSubM.rec
+      (motive_1 := fun Γ _ _ => Prevalid Γ)
+      (motive_2 := fun Γ _ _ _ => Prevalid Γ)
+      (motive_3 := fun Γ _ _ _ => Prevalid Γ)
+      (fun hpv _ => hpv)
+      (fun hpv _ => hpv)
+      (fun hpv => hpv)
+      (fun _ _ ihT _ => ihT)
+      (fun _ _ ihU _ => ihU)
+      (fun _ ih => ih)
+      (fun _ _ ih => ih)
+      (fun _ _ _ _ ihV _ _ => ihV)
+      (fun _ _ ih => ih)
+      (fun _ _ _ ihV _ _ => ihV)
+      (fun _ _ _ ihLeft _ _ => ihLeft)
+      h)
+  · intro Γ v t h
+    exact (WSubMStar.rec
+      (motive_1 := fun Γ _ _ => Prevalid Γ)
+      (motive_2 := fun Γ _ _ _ => Prevalid Γ)
+      (motive_3 := fun Γ _ _ _ => Prevalid Γ)
+      (fun hpv _ => hpv)
+      (fun hpv _ => hpv)
+      (fun hpv => hpv)
+      (fun _ _ ihT _ => ihT)
+      (fun _ _ ihU _ => ihU)
+      (fun _ ih => ih)
+      (fun _ _ ih => ih)
+      (fun _ _ _ _ ihV _ _ => ihV)
+      (fun _ _ ih => ih)
+      (fun _ _ _ ihV _ _ => ihV)
+      (fun _ _ _ ihLeft _ _ => ihLeft)
+      h)
+
+/-- Context prevalidity from de Bruijn well-formedness. -/
+noncomputable def WfM.prevalid {Γ : Ctx} {t : Term} (h : WfM Γ t) :
+    Prevalid Γ :=
+  _prevalid_combined.1 h
+
+/-- Context prevalidity from de Bruijn well-subtyping. -/
+noncomputable def WSubM.prevalid {Γ : Ctx} {v t : Term} (h : WSubM Γ v t) :
+    Prevalid Γ :=
+  _prevalid_combined.2.1 h
+
+/-- Context prevalidity from de Bruijn transitive well-subtyping. -/
+noncomputable def WSubMStar.prevalid {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+    Prevalid Γ :=
+  _prevalid_combined.2.2 h
+
+/-- Context prevalidity from de Bruijn well-equivalence. -/
+noncomputable def WEquM.prevalid {Γ : Ctx} {v t : Term} (h : WEquM Γ v t) :
+    Prevalid Γ := by
+  induction h with
+  | rfl hwf =>
+    exact hwf.prevalid
+  | lf1 _ _ ih =>
+    exact ih
+  | rgh _ _ ih =>
+    exact ih
+
+/-- Context prevalidity from de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.prevalid {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v t) :
+    Prevalid Γ := by
+  induction h with
+  | sub hwfV _ _ =>
+    exact hwfV.prevalid
+  | trs _ _ _ ihLeft _ =>
+    exact ihLeft
+
 /-! ## Insertion weakening -/
 
 private def _InsertWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=

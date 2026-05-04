@@ -193,6 +193,10 @@ closures, 2 inactive outstanding).
   `WEquM.left_chain`, `WEquM.right_chain_back`,
   `WEquMStar.WEquM_trans`, and `WEquMStar.trans`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added context-prevalidity
+  extractors for all five de Bruijn well-formed judgments:
+  `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,
+  `WEquM.prevalid`, and `WEquMStar.prevalid`. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
