@@ -378,6 +378,27 @@ noncomputable def StepPreservesWfM_of_components
     (StepBetaPreservesWfM_of hSubst hInv)
     hSubHeadReplace
 
+/-- β preservation reduced directly to the Type-valued function-bound diagram
+payload and the body-instantiation lemma. -/
+noncomputable def StepBetaPreservesWfM_of_diagram
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload) :
+    StepBetaPreservesWfM :=
+  StepBetaPreservesWfM_of hSubst
+    (AbsFunctionBoundInversion_of_diagram hDiagram)
+
+/-- Operational well-formedness preservation reduced to the body-instantiation
+lemma, the Type-valued function-bound diagram payload, and sharpened `.sub`
+head replacement. -/
+noncomputable def StepPreservesWfM_of_diagram_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_new_wf
+    (StepBetaPreservesWfM_of_diagram hSubst hDiagram)
+    hSubHeadReplace
+
 /-- De Bruijn preservation, conditional on operational well-formedness
 preservation. The operational step is at the ambient context depth so the
 closed case specializes to `Step`. -/
