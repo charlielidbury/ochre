@@ -498,6 +498,10 @@ closures, 2 inactive outstanding).
   abstraction-headed application specializations of the general
   target-to-`Top` package. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStep_to_top_eqStar`, the single-subtype-step
+  specialization of the abstraction-headed application branch where the
+  subtype side reaches `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msub_appAbs_eqStar_beta_or_appAbs` and
   `msubStar_appAbs_eqStar_beta_or_appAbs`, packaging the
   abstraction-headed application equivalence-chain β branch as a

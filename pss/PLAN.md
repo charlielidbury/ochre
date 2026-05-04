@@ -480,6 +480,8 @@ hard caveats.
      `appAbs_eqStar_to_top_of_subStar_top`,
      `msub_appAbs_eqStar_to_top_of_subStar_top`, and
      `msubStar_appAbs_eqStar_to_top_of_subStar_top`.
+     The corresponding one-step `Top` branch is named
+     `commute_appAbs_subStep_to_top_eqStar`.
      The β branch of an abstraction-headed application equivalence chain
      is packaged diagrammatically by
      `msub_appAbs_eqStar_beta_or_appAbs` and
