@@ -999,6 +999,12 @@ closures, 2 inactive outstanding).
   `PrevalidExt.head_scoped_of_eq_cons` extractors. These support future
   `FOp` residual proofs that learn non-empty stack shape from an equality
   against `Stack.shift`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_shifted_fop_body_handler_from_tail_lifts` and
+  `msub_equ_head_shifted_fop_body_handler_from_tail_lifts`, packaging the
+  `FOp` body handlers required by shifted changed-head replacement from
+  tail-stack old-to-new lifts plus explicit recursive body obligations. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

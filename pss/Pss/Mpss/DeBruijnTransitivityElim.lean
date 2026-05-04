@@ -4339,6 +4339,257 @@ theorem msubRedStar_equ_under_head_shifted_replace_from_tail_lift {Γ : Ctx}
       hFOpBodyReplace)
     h
 
+/-- Build the `Me-FOp` body handler expected by the shifted changed-head
+replacement package from tail-stack old-to-new lifts. This packages the
+common work of extracting prevalidity from `Stack.shift 0 s = operand :: rest`
+and weakening the old-to-new bridge under the exposed operand head. -/
+theorem meq_equ_head_shifted_fop_body_handler_from_tail_lifts {Γ : Ctx}
+    {s : Stack} {old new : Term}
+    (hpvOld : PrevalidExt ({ bound := old, kind := .equ } :: Γ) (Stack.shift 0 s))
+    (hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s))
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewTail :
+      ∀ {operand : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) rest
+          (Term.shift 0 old) (Term.shift 0 new))
+    (hSelfReplace :
+      ∀ {operand : Term} {rest : Stack} {u v : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) u v →
+        MSubStar ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) u v)
+    (hAppOpReplace :
+      ∀ {operand : Term} {rest : Stack} {op op' arg : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (arg :: Stack.shift 0 rest) op op' →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (arg :: Stack.shift 0 rest) op op')
+    (hNilReplace :
+      ∀ {operand : Term} {rest : Stack} {u v : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) [] u v →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) [] u v)
+    (hFunBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {bound body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hBetBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {bound body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 rest))
+          body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 rest))
+          body body')
+    (hFOpBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {inner body body' : Term}
+          {innerRest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        Term.Scoped (Ctx.depth ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ)) inner →
+        Stack.shift 0 rest = inner :: innerRest →
+        MEqRed ({ bound := inner, kind := .equ } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 innerRest) body body' →
+        MSubStar ({ bound := inner, kind := .equ } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 innerRest) body body')
+    {operand body body' : Term} {rest : Stack}
+    (hOperand : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand)
+    (hStack : Stack.shift 0 s = operand :: rest)
+    (hBody : MEqRed ({ bound := operand, kind := .equ } ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar ({ bound := operand, kind := .equ } ::
+      { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' := by
+  have hpvOldTail : PrevalidExt ({ bound := old, kind := .equ } :: Γ) rest :=
+    PrevalidExt.tail_of_eq_cons hpvOld hStack
+  have hpvNewTail : PrevalidExt ({ bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.tail_of_eq_cons hpvNew hStack
+  have hOperandNew :
+      Term.Scoped (Ctx.depth ({ bound := new, kind := .equ } :: Γ)) operand :=
+    PrevalidExt.head_scoped_of_eq_cons hpvNew hStack
+  have hHeadOld : Prevalid ({ bound := operand, kind := .equ } ::
+      { bound := old, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvOldTail) hOperand
+  have hHeadNew : Prevalid ({ bound := operand, kind := .equ } ::
+      { bound := new, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvNewTail) hOperandNew
+  exact meqRed_equ_under_head_shifted_replace_from_tail_lift
+    hpvOldTail hpvNewTail hNewScoped hHeadOld hHeadNew
+    (hOldNewTail hOperand hStack)
+    (fun h => hSelfReplace hOperand hStack h)
+    (fun h => hAppOpReplace hOperand hStack h)
+    (fun h => hNilReplace hOperand hStack h)
+    (fun h => hFunBodyReplace hOperand hStack h)
+    (fun h => hBetBodyReplace hOperand hStack h)
+    (fun hInner hInnerStack h =>
+      hFOpBodyReplace hOperand hStack hInner hInnerStack h)
+    hBody
+
+/-- Build the `Ms-FOp` body handler expected by the shifted changed-head
+replacement package from tail-stack old-to-new lifts, reusing the
+corresponding equivalence handler for `Ms-Equ` branches. -/
+theorem msub_equ_head_shifted_fop_body_handler_from_tail_lifts {Γ : Ctx}
+    {s : Stack} {old new : Term}
+    (hpvOld : PrevalidExt ({ bound := old, kind := .equ } :: Γ) (Stack.shift 0 s))
+    (hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s))
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewTail :
+      ∀ {operand : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) rest
+          (Term.shift 0 old) (Term.shift 0 new))
+    (hEqSelfReplace :
+      ∀ {operand : Term} {rest : Stack} {u v : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) u v →
+        MSubStar ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) u v)
+    (hEqAppOpReplace :
+      ∀ {operand : Term} {rest : Stack} {op op' arg : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (arg :: Stack.shift 0 rest) op op' →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (arg :: Stack.shift 0 rest) op op')
+    (hNilReplace :
+      ∀ {operand : Term} {rest : Stack} {u v : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) [] u v →
+        MEqRed ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) [] u v)
+    (hEqFunBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {bound body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hEqBetBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {bound body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 rest))
+          body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 rest))
+          body body')
+    (hEqFOpBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {inner body body' : Term}
+          {innerRest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        Term.Scoped (Ctx.depth ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ)) inner →
+        Stack.shift 0 rest = inner :: innerRest →
+        MEqRed ({ bound := inner, kind := .equ } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 innerRest) body body' →
+        MSubStar ({ bound := inner, kind := .equ } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 innerRest) body body')
+    (hAppOpReplace :
+      ∀ {operand : Term} {rest : Stack} {op op' arg : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MSubRed ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (arg :: Stack.shift 0 rest) op op' →
+        Term.Scoped (Ctx.depth ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ)) arg →
+        MSubStar ({ bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (arg :: Stack.shift 0 rest) op op')
+    (hFunBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {bound body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hFOpBodyReplace :
+      ∀ {operand : Term} {rest : Stack} {inner body body' : Term}
+          {innerRest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand →
+        Stack.shift 0 s = operand :: rest →
+        Term.Scoped (Ctx.depth ({ bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ)) inner →
+        Stack.shift 0 rest = inner :: innerRest →
+        MSubRed ({ bound := inner, kind := .equ } ::
+          { bound := operand, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 innerRest) body body' →
+        MSubStar ({ bound := inner, kind := .equ } ::
+          { bound := operand, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 innerRest) body body')
+    {operand body body' : Term} {rest : Stack}
+    (hOperand : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) operand)
+    (hStack : Stack.shift 0 s = operand :: rest)
+    (hBody : MSubRed ({ bound := operand, kind := .equ } ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar ({ bound := operand, kind := .equ } ::
+      { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' := by
+  have hpvOldTail : PrevalidExt ({ bound := old, kind := .equ } :: Γ) rest :=
+    PrevalidExt.tail_of_eq_cons hpvOld hStack
+  have hpvNewTail : PrevalidExt ({ bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.tail_of_eq_cons hpvNew hStack
+  have hOperandNew :
+      Term.Scoped (Ctx.depth ({ bound := new, kind := .equ } :: Γ)) operand :=
+    PrevalidExt.head_scoped_of_eq_cons hpvNew hStack
+  have hHeadOld : Prevalid ({ bound := operand, kind := .equ } ::
+      { bound := old, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvOldTail) hOperand
+  have hHeadNew : Prevalid ({ bound := operand, kind := .equ } ::
+      { bound := new, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvNewTail) hOperandNew
+  exact msubRed_equ_under_head_shifted_replace_from_tail_lift
+    hpvOldTail hpvNewTail hNewScoped hHeadOld hHeadNew
+    (hOldNewTail hOperand hStack)
+    (fun h => hEqSelfReplace hOperand hStack h)
+    (fun h => hEqAppOpReplace hOperand hStack h)
+    (fun h => hNilReplace hOperand hStack h)
+    (fun h => hEqFunBodyReplace hOperand hStack h)
+    (fun h => hEqBetBodyReplace hOperand hStack h)
+    (fun hInner hInnerStack h =>
+      hEqFOpBodyReplace hOperand hStack hInner hInnerStack h)
+    (fun h hArg => hAppOpReplace hOperand hStack h hArg)
+    (fun h => hFunBodyReplace hOperand hStack h)
+    (fun hInner hInnerStack h =>
+      hFOpBodyReplace hOperand hStack hInner hInnerStack h)
+    hBody
+
 /-- A reflexive argument equivalence can always be lifted under a changed
 `.equ` head and residual stack. This is the stack-stable base case for the
 head `Me-Pro` bridge. -/
