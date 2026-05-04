@@ -553,6 +553,20 @@ theorem pro_pro_vacuous {Γ : Ctx} {s : Stack} {i : Nat} {t α α' : Term}
     ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s α' t₃ := by
   exact (Ctx.subBinds_equBinds_false hsubBind heqBind).elim
 
+/-- The full `Ms-Pro × Me-*` source cell for de Bruijn Lemma 1. An
+equivalence step from the same variable source is either `Me-Var`, which
+closes by the subtype binding, or `Me-Pro`, which is impossible because one
+context index cannot carry both binding kinds. -/
+theorem pro_any {Γ : Ctx} {s : Stack} {i : Nat} {t t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hsubBind : Γ.subBinds i t)
+    (heq : MEqRed Γ s (.bvar i) t₂) :
+    ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  cases heq with
+  | pro _ heqBind hα =>
+    exact pro_pro_vacuous hsubBind heqBind hα
+  | var _ hi =>
+    exact pro_var hpv hsubBind hi
+
 /-- The `Ms-Equ × Me-Var` source cell of de Bruijn Lemma 1. -/
 theorem equ_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}
     (hpv : PrevalidExt Γ s) (heqStep : MEqRed Γ s (.bvar i) t)

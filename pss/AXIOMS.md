@@ -1073,6 +1073,11 @@ closures, 2 inactive outstanding).
   `msubRedStar_equ_under_head_replace_with_pro_function_from_replacements`.
   No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `StrongCommutes.pro_any`, the full de Bruijn Lemma-1 `Ms-Pro × Me-*`
+  source cell. The `Me-Var` branch closes by the subtype binding, and the
+  `Me-Pro` branch is impossible by context binding-kind uniqueness. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
   changed-head replacement premises before invoking the argument-stack-lifted
