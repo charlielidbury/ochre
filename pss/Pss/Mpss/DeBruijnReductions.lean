@@ -952,6 +952,53 @@ theorem MSubRedStar.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
     (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
     (Prevalid.tail hNew) hpv
 
+/-! ## Generic replacement lifts -/
+
+/-- Lift an equivalence between the old and new annotations from the tail
+below a replaced `.sub` entry through the replaced entry and every preserved
+head above it. The endpoints are shifted by the number of heads crossed. -/
+noncomputable def MEqRed.lift_replaceAt_sub_self {Γ : Ctx} {cutoff : Nat}
+    {old new : Term}
+    (hpvNew : Prevalid (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ))
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new) :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (Term.shiftBy 0 (cutoff + 1) old) (Term.shiftBy 0 (cutoff + 1) new) := by
+  induction Γ generalizing cutoff with
+  | nil =>
+      exact False.elim (Nat.not_lt_zero _ hcut)
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero =>
+          simpa [Term.shift] using
+            hOldNew.weaken_head (PrevalidExt.nil hOldNew.prevalid) hpvNew
+      | succ cutoff =>
+          have hpvTail : Prevalid (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) :=
+            Prevalid.tail hpvNew
+          have hcutTail : cutoff < Ctx.depth Γ := by
+            simpa [Ctx.depth] using hcut
+          have hLiftTail :
+              MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+                (Term.shiftBy 0 (cutoff + 1) old)
+                (Term.shiftBy 0 (cutoff + 1) new) :=
+            ih hpvTail hcutTail hOldNew
+          have hLiftHead :
+              MEqRed (head :: Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+                (Term.shift 0 (Term.shiftBy 0 (cutoff + 1) old))
+                (Term.shift 0 (Term.shiftBy 0 (cutoff + 1) new)) :=
+            hLiftTail.weaken_head (PrevalidExt.nil hLiftTail.prevalid) hpvNew
+          have hOldShift :
+              Term.shift 0 (Term.shiftBy 0 (cutoff + 1) old) =
+                Term.shiftBy 0 (cutoff + 2) old := by
+            simpa [Term.shift, Nat.add_assoc] using
+              (Term.shiftBy_compose 0 (cutoff + 1) 1 old)
+          have hNewShift :
+              Term.shift 0 (Term.shiftBy 0 (cutoff + 1) new) =
+                Term.shiftBy 0 (cutoff + 2) new := by
+            simpa [Term.shift, Nat.add_assoc] using
+              (Term.shiftBy_compose 0 (cutoff + 1) 1 new)
+          simpa [Ctx.replaceAt, hOldShift, hNewShift] using hLiftHead
+
 /-! ## Sub-head replacement constructors -/
 
 /-- `Me-Top` is stable when the bound stored in an innermost `.sub` head is

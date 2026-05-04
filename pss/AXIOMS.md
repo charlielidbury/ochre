@@ -909,6 +909,11 @@ closures, 2 inactive outstanding).
   `WSubMStar.sub_replaceAt_sub`, and `WSubMStar.trs_replaceAt_sub`.
   No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.lift_replaceAt_sub_self`, lifting the old-to-new annotation
+  equivalence from the tail below a replaced `.sub` entry through the
+  replaced entry and all preserved heads above it. This is the bridge
+  needed for the changed-slot `Ws-Lf2` residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
   recursively replaced bound reduction, isolating the only remaining
