@@ -517,6 +517,12 @@ closures, 2 inactive outstanding).
   `msubStar_appAbs_subStep_beta_or_top_or_appTop_or_appAbs`, routing
   single reductions through the same abstraction-headed application
   diagram packages. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `appAbs_subStar_appTop_to_top` plus diagrammatic wrappers
+  `msub_appAbs_subStar_appTop_to_top` and
+  `msubStar_appAbs_subStar_appTop_to_top`, closing the `Top`-headed
+  target branch of abstraction-headed application subtype chains at
+  `Top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -492,6 +492,11 @@ hard caveats.
      `msubStar_appAbs_eqStep_beta_or_appAbs`,
      `msub_appAbs_subStep_beta_or_top_or_appTop_or_appAbs`, and
      `msubStar_appAbs_subStep_beta_or_top_or_appTop_or_appAbs`.
+     The `Top`-headed target branch of an abstraction-headed application
+     subtype chain closes at `Top` through
+     `appAbs_subStar_appTop_to_top`,
+     `msub_appAbs_subStar_appTop_to_top`, and
+     `msubStar_appAbs_subStar_appTop_to_top`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

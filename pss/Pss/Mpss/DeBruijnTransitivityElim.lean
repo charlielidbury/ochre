@@ -955,6 +955,36 @@ theorem msubStar_appAbs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) : MSubStar Γ s t .top :=
   (msub_appAbs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
 
+/-- If a subtype chain from an abstraction-headed application reaches a
+`Top`-headed application, that target has a subtype chain to `Top`. -/
+theorem appAbs_subStar_appTop_to_top {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') : MSubRedStar Γ s t .top := by
+  subst hAppTop
+  have hTargetScoped : Term.Scoped Γ.depth (.app .top arg') :=
+    hSub.scoped_right hScoped
+  have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
+  exact MSubRedStar.of_MEqRedStar hpv (appTop_to_top hpv hArg')
+
+/-- Diagrammatic packaging of `appAbs_subStar_appTop_to_top`. -/
+theorem msub_appAbs_subStar_appTop_to_top {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') : MSub Γ s t .top :=
+  MSub.intro (appAbs_subStar_appTop_to_top hpv hScoped hSub hAppTop)
+    Relation.ReflTransGen.refl
+
+/-- Transitive diagrammatic packaging of `appAbs_subStar_appTop_to_top`. -/
+theorem msubStar_appAbs_subStar_appTop_to_top {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') : MSubStar Γ s t .top :=
+  (msub_appAbs_subStar_appTop_to_top hpv hScoped hSub hAppTop).to_star
+
 /-- Diagrammatic packaging of the β branch from
 `MEqRedStar.app_abs_inv`: if an equivalence chain from an
 abstraction-headed application has taken β, the final target is
