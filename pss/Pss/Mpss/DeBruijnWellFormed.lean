@@ -2776,6 +2776,64 @@ noncomputable def WSubMStar.of_MSubRed_replaceAt_sub_from_payloads {Γ : Ctx}
         ht (hEq.replaceAt_sub hcut hOldNew) hBodyScoped
         (hFunBody ht hEq hBody) hSubRedPresNew (hWf hwfX)
 
+/-- Constructor-level empty-stack subtype-step replacement where the
+recursive `Ms-App` and `Ms-Fun` cases are supplied directly as
+well-subtyping-star residuals.
+
+This avoids requiring a raw nonempty-stack subtype-reduction residual for the
+`Ms-App` operator premise, which is too rigid around the changed `.sub`
+lookup. -/
+noncomputable def WSubMStar.of_MSubRed_replaceAt_sub_from_direct_payloads
+    {Γ : Ctx} {cutoff : Nat} {old new x y : Term}
+    (h : MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      [] x y)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {z : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) z →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) z)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ))
+          arg →
+        MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          (arg :: []) u u' →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.app u arg) →
+          WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ))
+          t →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+            [] body body' →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.abs t body) →
+          WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.abs t body) (.abs t' body'))
+    (hWfNew : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) new))
+    (hwfX : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x)
+    (hwfY : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) y) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x y := by
+  cases h with
+  | pro hpv hb =>
+      exact WSubMStar.pro_replaceAt_sub_to_old_of_bind hcut hOldNew hb
+        (hWf hwfX) hWfNew (hWf hwfY)
+  | top hpv hu =>
+      exact WSubMStar.top_replaceAt_sub_to_star hu (hWf hwfX) (hWf hwfY)
+  | equ hpv hEq =>
+      exact WSubMStar.equ_replaceAt_sub_to_star hEq hcut hOldNew
+        (hWf hwfX) (hWf hwfY)
+  | app hOp hv =>
+      exact hApp hv hOp (hWf hwfX)
+  | @fun_ _ t t' body body' ht hEq hBody =>
+      exact hFun ht hEq hBody (hWf hwfX)
+
 /-- Head specialization of
 `WSubMStar.of_MSubRed_replaceAt_sub_from_payloads`. -/
 noncomputable def WSubMStar.of_MSubRed_sub_head_replace_from_payloads

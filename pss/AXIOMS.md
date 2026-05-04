@@ -1136,6 +1136,12 @@ closures, 2 inactive outstanding).
   `WfM.replaceAt_sub_from_body_msub_payloads`, the binder-recursive
   specialization of generic `WfM` replacement with constructor-level
   `MSubRed` residual payloads. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WSubMStar.of_MSubRed_replaceAt_sub_from_direct_payloads`, a
+  constructor-level empty-stack subtype-step replacement consumer whose
+  recursive `Ms-App` and `Ms-Fun` cases are supplied directly as
+  `WSubMStar` residuals rather than raw subtype-reduction chains. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
