@@ -5578,6 +5578,23 @@ noncomputable def MEqRed.descend_body_equ_app
 
 /-! ### §11.5. Phase C — assembled `descend_body_equ` template-aware functor
 
+### ITER-17 AUDIT CAVEAT
+
+The §11.5 functor as shipped takes `avoidsFv h y = true` as a
+load-bearing premise (inherited from §11.2/§11.4/§11.4b leaves). This
+premise is **not satisfiable by the headline consumer**
+(`Lemma_2_inline_app_bet_residual_axiom`) because the consumer's
+body-IH outputs have source `body'_dst^[y₀]`, which mentions `y₀`
+whenever `body'_dst` syntactically contains `.bvar 0` — i.e., whenever
+the abstraction actually uses its bound variable.
+
+The §11.5 functor is correct under its stated premises, but those
+premises are stricter than what the paper's "moreover" clause supplies
+(`avoidsPro`-only — strictly weaker than `avoidsFv`). Iter-18 should
+attack a uniform `avoidsPro`-only rebuild via stack-template
+generalization. See §11.6 for the full audit and the iter-18 design
+sketch.
+
 ### Design summary
 
 Phase C assembles the per-template leaves §11.1–§11.4 into a single
@@ -5812,5 +5829,159 @@ noncomputable def MEqRed.descend_body_equ
     rw [hopen_z]
     rw [← hsubst_open_a, ← hsubst_open_b]
     exact h_descended
+
+/-! ### §11.6. Iter-17 audit — `avoidsFv` premise gap in §11.4–§11.5
+
+This section records the iteration-17 audit of the `descend_body_equ`
+infrastructure shipped in iters 13–16. The audit's conclusion is that
+the iter-16 assembled functor (§11.5) is shipped with a load-bearing
+`avoidsFv h y = true` premise that **the headline consumer cannot
+satisfy**. Iter-17 ships sharp blocker analysis (this docstring) rather
+than a flawed rebuild; iter-18+ should attack the recursive-call
+generalization documented below.
+
+### Gap confirmation: the `avoidsFv` premise vs. the headline consumer
+
+`Lemma_2_inline_app_bet_residual_axiom` (Diamond.lean §847) needs to
+descend a body-IH output of the form
+
+    hbd_to_join : MEqRed (⟨y₀, v, .equ⟩ :: Γ) s
+                         (body'_dst^[y₀]) body_join_open
+
+into a derivation at bare Γ. The §11.5 functor offers exactly this
+shape, but with `avoidsFv h y₀ = true` as a premise.
+
+`avoidsFv` (AvoidsPro.lean §2.8) at every constructor of `MEqRed`
+includes a `decide (y₀ ∉ Term.fv source) && decide (y₀ ∉ Term.fv target)`
+factor. The body-IH source is `body'_dst^[y₀]`. **The opening
+`body'_dst^[y₀]` literally contains `.fvar y₀` at every position where
+`body'_dst` had a `.bvar 0`** (this is what opening DOES). So whenever
+`body'_dst` syntactically mentions `.bvar 0` — which is exactly when
+the abstraction's body actually USES its bound variable — we have
+`y₀ ∈ Term.fv (body'_dst^[y₀])`, hence
+`decide (y₀ ∉ Term.fv (body'_dst^[y₀])) = false`, hence
+`avoidsFv h y₀ ≠ true`.
+
+### Concrete counterexample
+
+Take `body'_dst = .app (.bvar 0) .top`. Then
+`body'_dst^[y₀] = .app (.fvar y₀) .top`, so
+`Term.fv (body'_dst^[y₀]) = {y₀}`. Any derivation of
+`MEqRed (⟨y₀, v, .equ⟩ :: Γ) s (.app (.fvar y₀) .top) target` must
+fail `avoidsFv` at the outermost cell, regardless of inner shape.
+
+This is not a fixable detail at the consumer site — it's intrinsic to
+locally-nameless opening: the binder name appears in the term it binds,
+ALWAYS, whenever the body uses the bound variable.
+
+### Why the paper's "moreover" clause IS satisfiable
+
+The paper's "moreover" clause (mechanized as `avoidsPro h y₀ = true`)
+asserts that **no `Me-Pro y₀` step appears in the derivation**. It does
+NOT assert that `y₀` is absent from the source/target — that would be
+provably false in locally-nameless. Phase A (`descend_body_equ_bvar0`)
+ALREADY uses `avoidsPro`-only and already handles the source `.fvar y₀`
+correctly (its constructor cases are `MEqRed.var` / `MEqRed.pro`; the
+former produces target `.fvar y₀` with no Me-Pro step needed; the latter
+contradicts `avoidsPro` directly).
+
+The asymmetry between Phase A (avoidsPro-correct) and Phases B/B2/D
+(avoidsFv-flawed) is the precise gap iter-17 identified.
+
+### Why a uniform avoidsPro rebuild is structurally hard
+
+The natural rebuild — replace `avoidsFv` with `avoidsPro` throughout
+§11.4–§11.5 and structurally recurse on `body : Term` — runs into a
+deeper blocker at the `body = .app a b` arm with constructor
+`MEqRed.app hu hv`. The sub-derivations are:
+
+* `hu : MEqRed (⟨y, α, .equ⟩ :: Γ) (b^[y] :: s) (a^[y]) u'`
+* `hv : MEqRed (⟨y, α, .equ⟩ :: Γ) [] (b^[y]) v'`
+
+The `hv` recursion on template `b` at empty stack is unproblematic.
+But `hu`'s stack head is `b^[y]` — it depends on `y`. The recursive
+call `descend_body_equ_uniform body=a, stack=(b^[y]::s)` requires
+`y ∉ Term.fv (b^[y]::s)` to discharge the `hst_avoid` premise (used by
+the leaf calls inside the recursion). But `b^[y]` contains `y` whenever
+`b` mentions `.bvar 0` — exactly the same locally-nameless artifact.
+
+The `body = .abs t inner` arm has a parallel blocker: the body
+sub-derivation lives at a deeper context `(⟨y_inner, _, _⟩ ::
+⟨y, α, .equ⟩ :: Γ)` where the `.equ` head is no longer at position 0.
+Stripping it requires a "strip-from-middle" functor, plus the recursive
+call must descend through TWO binder layers simultaneously.
+
+### The architectural fix iter-18 should attempt
+
+A uniform avoidsPro-only descent functor needs **stack-template
+generalization**. The signature shape:
+
+    descend_body_equ_uniform
+      (body : Term) (s_tmpl : List Term)
+      (h : MEqRed (⟨y, α, .equ⟩ :: Γ)
+                  (s_tmpl.map (·^[y]) ++ s_outer)
+                  (body^[y]) target_y)
+      (hAvoid : avoidsPro h y = true)
+      (hy_body : y ∉ Term.fv body)
+      (hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b)
+      (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+      ... :
+      MEqRed Γ
+             (s_tmpl.map (·^[z]) ++ s_outer)
+             (body^[z])
+             (Term.subst y (.fvar z) target_y)
+
+The recursion at `body = .app a b` constructor `MEqRed.app hu hv`
+becomes:
+* `hu` recurses with `body := a, s_tmpl := b :: s_tmpl_old`. Premise
+  `y ∉ Term.fv (b :: s_tmpl_old)` follows from `y ∉ fv b` (extracted
+  from `y ∉ fv (.app a b)`) and the inherited `y ∉ fv s_tmpl_old`.
+* `hv` recurses with `body := b, s_tmpl := []`. Trivial.
+
+For `body = .abs t inner`, the strip-from-middle plus deeper-binder
+recursion is a separate sub-functor — likely a dedicated
+`descend_body_equ_under_extra_binder` helper that handles the
+two-layer case.
+
+For `MEqRed.bet` (when `body = .app (.abs t inner) b`), the body
+sub-derivation lives at the SAME outer context (no extra binder added
+by `bet`'s template), so the recursion goes through with `body :=
+inner` and a freshness-shifted bvar argument. The `subst_open`-style
+distribution lemmas need to handle the bvar-depth offset.
+
+### Termination measure
+
+`Term.size body` decreases at every recursive call (since `a`, `b`,
+`inner` are proper subterms of `body`). `Term.size_opening_fvar`
+already exists and confirms opening doesn't change size, so the
+measure is consistent across the y/z views.
+
+### Estimated effort for iter-18
+
+Stack-template generalization: ~400–600 lines (the case grid plus the
+constructor casework on each MEqRed rule that produces source `.app
+_ _`, `.abs _ _`, `.fvar _`, `.top`).
+
+Strip-from-middle helper for the `.abs`-arm: ~200–300 lines (mirrors
+`strip_equ_head` but at non-zero context offset; needs the
+`Ctx.AvoidsBoundFv` premise to relate the deeper layer to the outer
+strip).
+
+Total iter-18 budget: ~600–900 lines, single-file (Renaming.lean).
+
+### What iter-17 ships
+
+Iter-17 ships ONLY this docstring (no axiom additions, no axiom
+discharges, no signature changes). The headline closures
+(`Theorem_3/4/5`, `Lemma_1/2`) are byte-identical to iter-16. The
+purpose of this commit is to record the avoidsFv gap so iter-18
+doesn't re-tread iter-16's path.
+
+The iter-16 functor §11.5 is NOT removed — it's correct for the
+restricted shape of body-IH outputs that DO satisfy `avoidsFv` (those
+where the body template doesn't mention `.bvar 0`, i.e., the
+abstraction's body is `y`-fresh). It's just not the universal tool
+the headline consumer needs. Iter-18's stack-template generalization
+will subsume §11.5 once shipped. -/
 
 end Pss
