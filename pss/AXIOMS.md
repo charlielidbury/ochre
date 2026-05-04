@@ -889,6 +889,12 @@ closures, 2 inactive outstanding).
   `Ms-App`/`Ms-Fun`/`Ms-FOp` handlers into the one-step subtype splitters
   while keeping the recursive replacement premises explicit. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added composite equivalence
+  replacement wrappers `meqRed_equ_head_replace_from_replacements` and
+  `meqRed_equ_under_head_replace_from_replacements`, wiring the canonical
+  `Me-App`/`Me-Fun`/`Me-Bet`/`Me-FOp` handlers into the one-step
+  equivalence splitters while keeping the lookup-sensitive `Me-Pro`
+  residual handlers explicit. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
