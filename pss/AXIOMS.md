@@ -944,6 +944,10 @@ closures, 2 inactive outstanding).
   chain behavior: `MSubRedStar.equ_replaceAt_sub`,
   `MSubRedStar.app_replaceAt_sub_from_operator`, and
   `MSubRedStar.fOp_replaceAt_sub_from_body`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added the innermost `.sub` head
+  specialization `MSubRedStar.app_sub_head_replace_from_operator` for
+  stack-indexed `Ms-App` residuals whose operator chain has already been
+  transported. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added
   `WSubMStar.lf2_replaceAt_sub_from_substar`, packaging star-valued
   subtype replacement residuals into the `Ws-Lf2` well-subtyping shape

@@ -1591,6 +1591,22 @@ theorem MSubRedStar.fOp_replaceAt_sub_from_body_replaceAt {Γ : Ctx} {s : Stack}
     (t := t) (α := α) (body := body) (body' := body')
     ht hα (by simpa [Ctx.replaceAt] using hBody)
 
+/-- Head specialization of `MSubRedStar.app_replaceAt_sub_from_operator`. -/
+theorem MSubRedStar.app_sub_head_replace_from_operator {Γ : Ctx} {s : Stack}
+    {old new u u' v : Term}
+    (hOp : MSubRedStar ({ bound := new, kind := .sub } :: Γ)
+      (v :: s) u u')
+    (hv : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) v) :
+    MSubRedStar ({ bound := new, kind := .sub } :: Γ) s
+      (.app u v) (.app u' v) := by
+  simpa [Ctx.replaceAt] using
+    (MSubRedStar.app_replaceAt_sub_from_operator
+      (Γ := { bound := old, kind := .sub } :: Γ) (s := s)
+      (cutoff := 0) (old := old) (new := new)
+      (u := u) (u' := u') (v := v)
+      (by simpa [Ctx.replaceAt] using hOp)
+      (by simpa [Ctx.replaceAt] using hv))
+
 /-- Head specialization of `MSubRedStar.fOp_replaceAt_sub_from_body`. -/
 theorem MSubRedStar.fOp_sub_head_replace_from_body {Γ : Ctx} {s : Stack}
     {old new t α body body' : Term}
