@@ -2703,6 +2703,150 @@ noncomputable def WSubMStar.replaceAt_sub_from_body_replaceAt_of_payload
       (by simpa [Nat.add_assoc] using hOldNew)
       hWf hEqPresOld hSubRedReplace hSubRedPresNew)
 
+/-- `Wf-App` replacement across arbitrary-depth `.sub` replacement using
+payload-driven transitive well-subtyping replacement for both premises. -/
+noncomputable def WfM.app_replaceAt_sub_of_payload {Γ : Ctx} {cutoff : Nat}
+    {old new u v t : Term}
+    (hFun : WSubMStar
+      (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      u (.abs t .top))
+    (hArg : WSubMStar
+      (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) y)
+    (hSubRedReplace : ∀ {x y : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) y →
+          MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+            [] x y →
+            MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+              [] x y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) y) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.app u v) :=
+  WfM.app
+    (WSubMStar.replaceAt_sub_of_payload hFun hcut hOldNew hWf
+      hEqPresOld hSubRedReplace hSubRedPresNew)
+    (WSubMStar.replaceAt_sub_of_payload hArg hcut hOldNew hWf
+      hEqPresOld hSubRedReplace hSubRedPresNew)
+
+/-- Head specialization of `WfM.app_replaceAt_sub_of_payload`. -/
+noncomputable def WfM.app_sub_head_replace_of_payload {Γ : Ctx}
+    {old new u v t : Term}
+    (hFun : WSubMStar ({ bound := old, kind := .sub } :: Γ)
+      u (.abs t .top))
+    (hArg : WSubMStar ({ bound := old, kind := .sub } :: Γ) v t)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := old, kind := .sub } :: Γ) x →
+          WfM ({ bound := old, kind := .sub } :: Γ) y)
+    (hSubRedReplace : ∀ {x y : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := old, kind := .sub } :: Γ) y →
+          MSubRed ({ bound := old, kind := .sub } :: Γ) [] x y →
+            MSubRedStar ({ bound := new, kind := .sub } :: Γ) [] x y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ ({ bound := new, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := new, kind := .sub } :: Γ) x →
+          WfM ({ bound := new, kind := .sub } :: Γ) y) :
+    WfM ({ bound := new, kind := .sub } :: Γ) (.app u v) :=
+  WfM.app
+    (WSubMStar.sub_head_replace_of_payload hFun hOldNew hWf
+      hEqPresOld hSubRedReplace hSubRedPresNew)
+    (WSubMStar.sub_head_replace_of_payload hArg hOldNew hWf
+      hEqPresOld hSubRedReplace hSubRedPresNew)
+
+/-- Under-head specialization of `WfM.app_replaceAt_sub_of_payload`. -/
+noncomputable def WfM.app_sub_under_head_replace_of_payload {Γ : Ctx}
+    {head : CtxEntry} {old new u v t : Term}
+    (hFun : WSubMStar (head :: { bound := old, kind := .sub } :: Γ)
+      u (.abs t .top))
+    (hArg : WSubMStar (head :: { bound := old, kind := .sub } :: Γ) v t)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (head :: { bound := old, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := old, kind := .sub } :: Γ) y)
+    (hSubRedReplace : ∀ {x y : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := old, kind := .sub } :: Γ) y →
+          MSubRed (head :: { bound := old, kind := .sub } :: Γ) [] x y →
+            MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) [] x y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ (head :: { bound := new, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) y) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) (.app u v) :=
+  WfM.app
+    (WSubMStar.sub_under_head_replace_of_payload hFun hOldNew hWf
+      hEqPresOld hSubRedReplace hSubRedPresNew)
+    (WSubMStar.sub_under_head_replace_of_payload hArg hOldNew hWf
+      hEqPresOld hSubRedReplace hSubRedPresNew)
+
+/-- Binder-recursive specialization of `WfM.app_replaceAt_sub_of_payload`. -/
+noncomputable def WfM.app_replaceAt_sub_from_body_replaceAt_of_payload
+    {Γ : Ctx} {cutoff : Nat} {head old new u v t : Term}
+    (hFun : WSubMStar (Ctx.replaceAt (cutoff + 1)
+      { bound := old, kind := .sub } ({ bound := head, kind := .sub } :: Γ))
+      u (.abs t .top))
+    (hArg : WSubMStar (Ctx.replaceAt (cutoff + 1)
+      { bound := old, kind := .sub } ({ bound := head, kind := .sub } :: Γ))
+      v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] x y →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) y)
+    (hSubRedReplace : ∀ {x y : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) y →
+          MSubRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) [] x y →
+            MSubRedStar (Ctx.replaceAt (cutoff + 1)
+              { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) [] x y)
+    (hSubRedPresNew : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] x y →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) y) :
+    WfM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.app u v) :=
+  WfM.app
+    (WSubMStar.replaceAt_sub_from_body_replaceAt_of_payload hFun hcut hOldNew
+      hWf hEqPresOld hSubRedReplace hSubRedPresNew)
+    (WSubMStar.replaceAt_sub_from_body_replaceAt_of_payload hArg hcut hOldNew
+      hWf hEqPresOld hSubRedReplace hSubRedPresNew)
+
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/
 noncomputable def WSubMStar.extend_right_via_MSubRedStar_fwd

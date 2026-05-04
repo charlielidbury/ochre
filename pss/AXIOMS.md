@@ -1055,6 +1055,14 @@ closures, 2 inactive outstanding).
   `WSubMStar.sub_under_head_replace_of_payload` and
   `WSubMStar.replaceAt_sub_from_body_replaceAt_of_payload`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added payload-driven `Wf-App`
+  replacement consumers for arbitrary-depth, head, under-head, and
+  binder-recursive `.sub` replacement:
+  `WfM.app_replaceAt_sub_of_payload`,
+  `WfM.app_sub_head_replace_of_payload`,
+  `WfM.app_sub_under_head_replace_of_payload`, and
+  `WfM.app_replaceAt_sub_from_body_replaceAt_of_payload`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
