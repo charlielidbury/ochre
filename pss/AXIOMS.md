@@ -250,6 +250,11 @@ closures, 2 inactive outstanding).
   Each requires an explicit stepwise `WfM`-preservation premise, avoiding
   the known false unrestricted subject-reduction statement. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added conditional
+  well-formedness propagation helpers for empty-stack reduction stars:
+  `MEqRedStar.wf_right_of`, `MSubRedStar.wf_right_of`,
+  `MEqRedStar.wf_pair_of`, and `MSubRedStar.wf_pair_of`. These also
+  require explicit stepwise `WfM` preservation. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

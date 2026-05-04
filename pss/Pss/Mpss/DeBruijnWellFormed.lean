@@ -1033,6 +1033,62 @@ noncomputable def WEquMStar.of_MEqRed_back {Γ : Ctx} {a b : Term}
   WEquMStar.extend_right_via_MEqRed_back (WEquMStar.refl_of_wfM hwfB)
     hred hwfA
 
+/-- Propagate de Bruijn well-formedness along an empty-stack
+equivalence-reduction chain under an explicit stepwise preservation premise. -/
+noncomputable def MEqRedStar.wf_right_of
+    {Γ : Ctx} {a b : Term}
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] a b) :
+    WfM Γ a → WfM Γ b := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x b),
+      Nonempty (WfM Γ x → WfM Γ b) from
+    (key hChain).some
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := b)
+    (P := fun x (_ : MEqRedStar Γ [] x b) =>
+      Nonempty (WfM Γ x → WfM Γ b)) h ?_ ?_
+  · exact ⟨fun hwf => hwf⟩
+  · intro x y hHead _ ih
+    exact ⟨fun hwfX =>
+      ih.some (hpres hHead hwfX)⟩
+
+/-- Propagate de Bruijn well-formedness along an empty-stack
+subtype-reduction chain under an explicit stepwise preservation premise. -/
+noncomputable def MSubRedStar.wf_right_of
+    {Γ : Ctx} {a b : Term}
+    (hpres : ∀ {x y : Term}, MSubRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MSubRedStar Γ [] a b) :
+    WfM Γ a → WfM Γ b := by
+  suffices key : ∀ {x : Term} (h : MSubRedStar Γ [] x b),
+      Nonempty (WfM Γ x → WfM Γ b) from
+    (key hChain).some
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := b)
+    (P := fun x (_ : MSubRedStar Γ [] x b) =>
+      Nonempty (WfM Γ x → WfM Γ b)) h ?_ ?_
+  · exact ⟨fun hwf => hwf⟩
+  · intro x y hHead _ ih
+    exact ⟨fun hwfX =>
+      ih.some (hpres hHead hwfX)⟩
+
+/-- Endpoint well-formedness for an empty-stack equivalence-reduction chain
+under explicit stepwise preservation. -/
+noncomputable def MEqRedStar.wf_pair_of
+    {Γ : Ctx} {a b : Term}
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) :
+    WfM Γ a × WfM Γ b :=
+  ⟨hwfA, hChain.wf_right_of hpres hwfA⟩
+
+/-- Endpoint well-formedness for an empty-stack subtype-reduction chain under
+explicit stepwise preservation. -/
+noncomputable def MSubRedStar.wf_pair_of
+    {Γ : Ctx} {a b : Term}
+    (hpres : ∀ {x y : Term}, MSubRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MSubRedStar Γ [] a b) (hwfA : WfM Γ a) :
+    WfM Γ a × WfM Γ b :=
+  ⟨hwfA, hChain.wf_right_of hpres hwfA⟩
+
 /-- A forward empty-stack equivalence-reduction chain embeds into de Bruijn
 transitive well-subtyping under an explicit well-formedness preservation
 premise for the chain's steps. This is intentionally conditional: unrestricted

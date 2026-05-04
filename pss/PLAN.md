@@ -291,7 +291,10 @@ hard caveats.
      `WSubMStar.of_MEqRedStar_back`, `WSubMStar.of_MSubRedStar_fwd`,
      `WEquMStar.of_MEqRedStar_fwd`, and
      `WEquMStar.of_MEqRedStar_back` when the caller supplies stepwise
-     `WfM` preservation for that restricted chain.
+     `WfM` preservation for that restricted chain. The same restricted
+     preservation premise also gives endpoint well-formedness propagation
+     through `MEqRedStar.wf_right_of`, `MSubRedStar.wf_right_of`, and
+     the corresponding `*.wf_pair_of` helpers.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
