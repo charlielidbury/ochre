@@ -745,7 +745,9 @@ closures, 2 inactive outstanding).
   preserved-head residual stack. Also added
   `meq_equ_under_head_stack_lift_from_equ_head_lift`, which obtains that
   preserved-head old-to-new premise by weakening an existing changed-head
-  stack lift one binder deeper. No axiom-count change.
+  stack lift one binder deeper, and
+  `msub_equ_under_head_old_bound_to_new_bvar1_of_equ_head_lift`, which
+  composes the weakening with the residual bridge. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
