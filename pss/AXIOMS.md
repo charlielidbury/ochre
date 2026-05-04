@@ -607,6 +607,14 @@ closures, 2 inactive outstanding).
   operator stack `arg :: s` while keeping the argument reflexive; the
   changed-argument case remains the stack-transport residual. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_app_fixed_arg` and the transport-parametric changed-argument
+  structural branch
+  `commute_appAbs_structApp_eqStep_of_stackHead_transport`. The branch now
+  closes assuming exactly a transport of subtype-reduction stars from the
+  old operator stack head `arg :: s` to the new head `arg' :: s`; proving
+  that stack-head transport is the remaining infrastructure gap for this
+  structural App/App cell. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

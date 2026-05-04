@@ -1564,6 +1564,43 @@ theorem commute_appAbs_structApp_eqStep_sameArg_of {Γ : Ctx} {s : Stack}
     MEqRedStar.single (MEqRed.app hEqJoin.some hArgRefl),
     MSubRedStar.single (MSubRed.app hSubJoin.some hArgScoped)⟩
 
+/-- Lift an operator subtype-reduction chain under a fixed argument into an
+application subtype-reduction chain. -/
+theorem msubRedStar_app_fixed_arg {Γ : Ctx} {s : Stack}
+    {arg u u' : Term} (hArgScoped : Term.Scoped Γ.depth arg)
+    (h : MSubRedStar Γ (arg :: s) u u') :
+    MSubRedStar Γ s (.app u arg) (.app u' arg) := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail y z hStar hStep ih =>
+    exact Relation.ReflTransGen.trans ih
+      (MSubRedStar.single (MSubRed.app hStep.some hArgScoped))
+
+/-- Changed-argument structural application commutation for
+abstraction-headed applications, isolated behind the precise missing
+stack-head transport. The transport premise moves the operator-side subtype
+join from the old stack head `arg :: s` to the new one `arg' :: s`. -/
+theorem commute_appAbs_structApp_eqStep_of_stackHead_transport {Γ : Ctx}
+    {s : Stack} {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hTransport :
+      ∀ {u v : Term},
+        MSubRedStar Γ (arg :: s) u v →
+        MSubRedStar Γ (arg' :: s) u v) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
+  obtain ⟨op₃, hEqJoin, hSubJoin⟩ := hcommArg hSubOp hEqOp
+  have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
+  exact ⟨.app op₃ arg',
+    MEqRedStar.single (MEqRed.app hEqJoin.some hEqArg),
+    msubRedStar_app_fixed_arg hArg'Scoped
+      (hTransport (Relation.ReflTransGen.single hSubJoin))⟩
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of
