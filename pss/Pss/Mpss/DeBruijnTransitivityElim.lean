@@ -391,6 +391,35 @@ theorem appTop_any_tAp_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
   | app hOp _ =>
     exact appTop_app_tAp hpv hu hOp
 
+/-- The full `Top`-headed application source cell for de Bruijn Lemma 1. The
+`Ms-Equ` branch delegates to the local equivalence diamond premise; structural
+branches close at `Top`. -/
+theorem appTop_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {u t₁ t₂ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hsub : MSubRed Γ s (.app .top u) t₁)
+    (heq : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  cases hsub with
+  | top _ hScoped =>
+    exact top_of hpv hScoped heq
+  | equ _ heqStep =>
+    exact equ_of hdiamond hpv heqStep heq
+  | app hOp _ =>
+    have hOpTop := MSubRed.top_inv hOp
+    subst hOpTop
+    have hShape := MEqRed.app_top_inv heq
+    cases hShape with
+    | inl hTop =>
+      subst hTop
+      exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩, ⟨MSubRed.refl hpv Term.Scoped.top⟩⟩
+    | inr hApp =>
+      obtain ⟨arg', hEq⟩ := hApp
+      subst hEq
+      have hTargetScoped : Term.Scoped Γ.depth (.app .top arg') := heq.scoped_right
+      have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
+      exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩,
+        ⟨MSubRed.top hpv (Term.Scoped.app Term.Scoped.top hArg')⟩⟩
+
 end StrongCommutes
 
 /-- The `Top` source case for one subtype step against an equivalence chain,
