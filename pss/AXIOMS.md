@@ -707,6 +707,11 @@ closures, 2 inactive outstanding).
   of the stack-sensitive lift needed by `msub_equ_head_old_bound_to_new_bvar0`;
   `Me-Fun`, `Me-Bet`, and recursive `Me-App` remain residual. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_stack_lift_app`, the recursive `Me-App` constructor for
+  stack-sensitive lifting under a changed `.equ` head. The lift now
+  reduces application steps to the expected operator and argument lift
+  premises. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

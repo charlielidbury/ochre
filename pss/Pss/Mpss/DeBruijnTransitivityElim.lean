@@ -1893,6 +1893,19 @@ noncomputable def meq_equ_head_stack_lift_tAp {Γ : Ctx} {s : Stack} {head u : T
   exact MEqRed.tAp hpv
     (Term.shift_scoped 0 Γ.depth u (Nat.zero_le _) hu)
 
+/-- Recursive `Me-App` stack lift under a changed `.equ` head. The operator
+premise is required at the shifted operand stack, and the argument premise at
+the empty stack, matching the de Bruijn `Me-App` constructor. -/
+noncomputable def meq_equ_head_stack_lift_app {Γ : Ctx} {s : Stack}
+    {head u u' v v' : Term}
+    (hOp : MEqRed ({ bound := head, kind := .equ } :: Γ)
+      (Term.shift 0 v :: Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 u'))
+    (hArg : MEqRed ({ bound := head, kind := .equ } :: Γ) []
+      (Term.shift 0 v) (Term.shift 0 v')) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.app u v)) (Term.shift 0 (.app u' v')) := by
+  simpa [Stack.shift] using MEqRed.app hOp hArg
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/
