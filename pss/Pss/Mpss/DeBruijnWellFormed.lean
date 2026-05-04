@@ -2847,6 +2847,60 @@ noncomputable def WfM.app_replaceAt_sub_from_body_replaceAt_of_payload
     (WSubMStar.replaceAt_sub_from_body_replaceAt_of_payload hArg hcut hOldNew
       hWf hEqPresOld hSubRedReplace hSubRedPresNew)
 
+/-- `Wf-Fun` replacement across arbitrary-depth `.sub` replacement, making
+the recursive body-context well-formedness transport explicit. -/
+noncomputable def WfM.fun_replaceAt_sub_from_body_wf {Γ : Ctx}
+    {cutoff : Nat} {old new t body : Term}
+    (hT : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) t)
+    (hBody : WfM (Ctx.replaceAt (cutoff + 1)
+      { bound := old, kind := .sub } ({ bound := t, kind := .sub } :: Γ))
+      body)
+    (hWfT : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x)
+    (hWfBody : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := t, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := t, kind := .sub } :: Γ)) x) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.abs t body) :=
+  WfM.fun_replaceAt_sub_from_body_replaceAt (hWfT hT) (hWfBody hBody)
+
+/-- Head specialization of `WfM.fun_replaceAt_sub_from_body_wf`. -/
+noncomputable def WfM.fun_sub_head_replace_from_body_wf {Γ : Ctx}
+    {old new t body : Term}
+    (hT : WfM ({ bound := old, kind := .sub } :: Γ) t)
+    (hBody : WfM ({ bound := t, kind := .sub } ::
+      { bound := old, kind := .sub } :: Γ) body)
+    (hWfT : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hWfBody : ∀ {x : Term},
+      WfM ({ bound := t, kind := .sub } ::
+          { bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := t, kind := .sub } ::
+          { bound := new, kind := .sub } :: Γ) x) :
+    WfM ({ bound := new, kind := .sub } :: Γ) (.abs t body) :=
+  WfM.fun_ (hWfT hT) (hWfBody hBody)
+
+/-- Under-head specialization of `WfM.fun_replaceAt_sub_from_body_wf`. -/
+noncomputable def WfM.fun_sub_under_head_replace_from_body_wf {Γ : Ctx}
+    {head : CtxEntry} {old new t body : Term}
+    (hT : WfM (head :: { bound := old, kind := .sub } :: Γ) t)
+    (hBody : WfM ({ bound := t, kind := .sub } :: head ::
+      { bound := old, kind := .sub } :: Γ) body)
+    (hWfT : ∀ {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hWfBody : ∀ {x : Term},
+      WfM ({ bound := t, kind := .sub } :: head ::
+          { bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := t, kind := .sub } :: head ::
+          { bound := new, kind := .sub } :: Γ) x) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) (.abs t body) :=
+  WfM.fun_ (hWfT hT) (hWfBody hBody)
+
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/
 noncomputable def WSubMStar.extend_right_via_MSubRedStar_fwd

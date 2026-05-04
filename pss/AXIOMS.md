@@ -1063,6 +1063,10 @@ closures, 2 inactive outstanding).
   `WfM.app_sub_under_head_replace_of_payload`, and
   `WfM.app_replaceAt_sub_from_body_replaceAt_of_payload`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added recursive-body `Wf-Fun`
+  replacement consumers `WfM.fun_replaceAt_sub_from_body_wf`,
+  `WfM.fun_sub_head_replace_from_body_wf`, and
+  `WfM.fun_sub_under_head_replace_from_body_wf`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
