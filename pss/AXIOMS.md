@@ -895,6 +895,11 @@ closures, 2 inactive outstanding).
   `Me-App`/`Me-Fun`/`Me-Bet`/`Me-FOp` handlers into the one-step
   equivalence splitters while keeping the lookup-sensitive `Me-Pro`
   residual handlers explicit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added generic chain consumers
+  `msubRedStar_replace_from_step_replacement` and
+  `meqRedStar_replace_from_step_replacement`, which compose per-step
+  diagrammatic replacements across subtype/equivalence reduction stars. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

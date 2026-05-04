@@ -2819,6 +2819,32 @@ theorem meqRed_equ_under_head_replace_from_replacements {Γ : Ctx} {s : Stack}
       hNilReplace hFOpBodyReplace)
     h
 
+/-- Consume a subtype-reduction chain when each old-context step has already
+been replaced by a diagrammatic chain in the new context. -/
+theorem msubRedStar_replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
+    {u v : Term}
+    (hStep :
+      ∀ {a b : Term}, MSubRed Γ s a b → MSubStar Γ' s a b)
+    (h : MSubRedStar Γ s u v) : MSubStar Γ' s u v := by
+  induction h with
+  | refl =>
+    exact MSubStar.refl
+  | @tail mid v hStar hLast ih =>
+    exact MSubStar.trans ih (hStep hLast.some)
+
+/-- Consume an equivalence-reduction chain when each old-context step has
+already been replaced by a diagrammatic chain in the new context. -/
+theorem meqRedStar_replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
+    {u v : Term}
+    (hStep :
+      ∀ {a b : Term}, MEqRed Γ s a b → MSubStar Γ' s a b)
+    (h : MEqRedStar Γ s u v) : MSubStar Γ' s u v := by
+  induction h with
+  | refl =>
+    exact MSubStar.refl
+  | @tail mid v hStar hLast ih =>
+    exact MSubStar.trans ih (hStep hLast.some)
+
 /-- Under a changed `.equ` head, the old shifted head bound diagrammatically
 subtypes the new head variable. The subtype side uses an old-to-new head
 equivalence at the same residual stack; the equivalence side promotes
