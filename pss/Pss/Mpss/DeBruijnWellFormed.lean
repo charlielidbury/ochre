@@ -711,6 +711,85 @@ noncomputable def WfM.bvar_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
   | varEqu _ hb =>
       exact WfM.varEqu hpvNew (Ctx.equBinds_sub_under_head_replace hb)
 
+/-- Rebuild `Wf-Fun` when replacing a `.sub` annotation immediately under one
+preserved context head, assuming the bound and body premises have already
+been replaced. -/
+noncomputable def WfM.fun_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new t body : Term}
+    (hT : WfM (head :: { bound := new, kind := .sub } :: Γ) t)
+    (hBody : WfM ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .sub } :: Γ) body) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) (.abs t body) :=
+  WfM.fun_ hT hBody
+
+/-- Rebuild `Wf-App` when replacing a `.sub` annotation immediately under one
+preserved context head, assuming both well-subtyping star premises have
+already been replaced. -/
+noncomputable def WfM.app_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new u v t : Term}
+    (hFun : WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+      u (.abs t .top))
+    (hArg : WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) (.app u v) :=
+  WfM.app hFun hArg
+
+/-- Rebuild `Ws-Rfl` when replacing a `.sub` annotation immediately under one
+preserved context head. -/
+noncomputable def WSubM.rfl_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new t : Term}
+    (hwf : WfM (head :: { bound := new, kind := .sub } :: Γ) t) :
+    WSubM (head :: { bound := new, kind := .sub } :: Γ) t t :=
+  WSubM.rfl hwf
+
+/-- Rebuild `Ws-Lf1` when replacing a `.sub` annotation immediately under one
+preserved context head. -/
+noncomputable def WSubM.lf1_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v v' t : Term}
+    (hred : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] v v')
+    (hsub : WSubM (head :: { bound := new, kind := .sub } :: Γ) v' t) :
+    WSubM (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WSubM.lf1 hred hsub
+
+/-- Rebuild `Ws-Lf2` when replacing a `.sub` annotation immediately under one
+preserved context head. -/
+noncomputable def WSubM.lf2_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v v' t : Term}
+    (hwfV : WfM (head :: { bound := new, kind := .sub } :: Γ) v)
+    (hred : MSubRed (head :: { bound := new, kind := .sub } :: Γ) [] v v')
+    (hwfV' : WfM (head :: { bound := new, kind := .sub } :: Γ) v')
+    (hsub : WSubM (head :: { bound := new, kind := .sub } :: Γ) v' t) :
+    WSubM (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WSubM.lf2 hwfV hred hwfV' hsub
+
+/-- Rebuild `Ws-Rgh` when replacing a `.sub` annotation immediately under one
+preserved context head. -/
+noncomputable def WSubM.rgh_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v t t' : Term}
+    (hsub : WSubM (head :: { bound := new, kind := .sub } :: Γ) v t')
+    (hred : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] t t') :
+    WSubM (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WSubM.rgh hsub hred
+
+/-- Rebuild `Ws-Sub` when replacing a `.sub` annotation immediately under one
+preserved context head. -/
+noncomputable def WSubMStar.sub_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v t : Term}
+    (hwfV : WfM (head :: { bound := new, kind := .sub } :: Γ) v)
+    (hsub : WSubM (head :: { bound := new, kind := .sub } :: Γ) v t)
+    (hwfT : WfM (head :: { bound := new, kind := .sub } :: Γ) t) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WSubMStar.sub hwfV hsub hwfT
+
+/-- Rebuild `Ws-Trs` when replacing a `.sub` annotation immediately under one
+preserved context head. -/
+noncomputable def WSubMStar.trs_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v u t : Term}
+    (hLeft : WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v u)
+    (hwfMid : WfM (head :: { bound := new, kind := .sub } :: Γ) u)
+    (hRight : WSubMStar (head :: { bound := new, kind := .sub } :: Γ) u t) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WSubMStar.trs hLeft hwfMid hRight
+
 /-! ## Insertion weakening -/
 
 private def _InsertWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=
