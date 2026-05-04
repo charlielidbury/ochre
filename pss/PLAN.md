@@ -124,7 +124,8 @@ hard caveats.
      lemmas. It also provides `Scoped`/`Closed` plus preservation lemmas
      for shift and instantiate, shift composition, scoped-shift identity,
      closed β-instantiation, and scoped inversion/simp lemmas. The module
-     is imported by `Pss.lean`; the locally-nameless development remains
+     now also includes instantiation freshness/no-op lemmas. It is
+     imported by `Pss.lean`; the locally-nameless development remains
      untouched until the downstream atomic switch.
 2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
    strengthen. Replaces named `Term.subst`.

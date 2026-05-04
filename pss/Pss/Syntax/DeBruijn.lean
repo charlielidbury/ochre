@@ -347,6 +347,33 @@ theorem instantiate_closed (v t : Term) :
   intro hv ht
   exact instantiate_scoped 0 0 v t (by omega) hv ht
 
+/-- Instantiating an index at or above the current scoping depth has no
+effect. This is the de Bruijn freshness/no-op substitution lemma. -/
+theorem instantiate_of_scoped_id (k : Nat) (v t : Term) :
+    Scoped k t → instantiate k v t = t := by
+  intro h
+  induction t generalizing k v with
+  | bvar i =>
+    cases h with
+    | bvar hi =>
+    have hlt : i < k := hi
+    simp [instantiate, hlt]
+  | top =>
+    simp [instantiate]
+  | abs bound body ih_bound ih_body =>
+    cases h with
+    | abs h_bound h_body =>
+    simp [instantiate, ih_bound k v h_bound, ih_body (k + 1) (shift 0 v) h_body]
+  | app fn arg ih_fn ih_arg =>
+    cases h with
+    | app h_fn h_arg =>
+    simp [instantiate, ih_fn k v h_fn, ih_arg k v h_arg]
+
+/-- Instantiating a closed term at top level is a no-op. -/
+theorem instantiate_closed_id (v t : Term) :
+    Closed t → instantiate 0 v t = t :=
+  instantiate_of_scoped_id 0 v t
+
 end Term
 end DeBruijn
 end Pss
