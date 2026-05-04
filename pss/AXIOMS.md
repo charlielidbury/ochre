@@ -102,6 +102,12 @@ closures, 2 inactive outstanding).
 * `Pss/Context/DeBruijn.lean` — added `Ctx.lookup_insertAt_self`, the
   raw lookup fact that the inserted entry is found at the insertion
   cutoff. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added generalized after-insertion lookup
+  transport: `Ctx.lookup_insertAt_after`,
+  `Ctx.subBinds_insertAt_after`, and `Ctx.equBinds_insertAt_after`.
+  These move original bindings at or outside the insertion cutoff to
+  index `i + 1`, with `.sub` / `.equ` bounds lifted through the inserted
+  entry. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

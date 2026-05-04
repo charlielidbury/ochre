@@ -184,7 +184,9 @@ hard caveats.
      in place, with simp lemmas for the zero/one/two-head shapes and
      `Ctx.depth_insertAt_of_le`; raw lookup now has
      `Ctx.lookup_insertAt_self` for finding the inserted entry at the
-     insertion cutoff.
+     insertion cutoff. Lookup transport for bindings at or outside the
+     insertion cutoff is now available as `Ctx.lookup_insertAt_after`,
+     `Ctx.subBinds_insertAt_after`, and `Ctx.equBinds_insertAt_after`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
