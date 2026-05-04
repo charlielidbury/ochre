@@ -1298,22 +1298,16 @@ theorem msubStar_appAbs_subStar_beta_or_toTop_or_appAbs {Γ : Ctx} {s : Stack}
     (∃ arg' body', MSubStar Γ s (Term.instantiate 0 arg' body') t) ∨
       MSubStar Γ s t .top ∨
       ∃ bound' body' arg', t = .app (.abs bound' body') arg' := by
-  cases msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs hSub with
-  | inl hTop =>
-    subst hTop
-    exact Or.inr (Or.inl Relation.ReflTransGen.refl)
+  cases msub_appAbs_subStar_beta_or_toTop_or_appAbs hpv hScoped hSub with
+  | inl hBet =>
+    obtain ⟨arg', body', hMSub⟩ := hBet
+    exact Or.inl ⟨arg', body', hMSub.to_star⟩
   | inr hRest =>
     cases hRest with
-    | inl hBet =>
-      exact Or.inl hBet
-    | inr hRest =>
-      cases hRest with
-      | inl hAppTop =>
-        obtain ⟨arg', hEq⟩ := hAppTop
-        exact Or.inr (Or.inl
-          (msubStar_appAbs_subStar_appTop_to_top hpv hScoped hSub hEq))
-      | inr hAppAbs =>
-        exact Or.inr (Or.inr hAppAbs)
+    | inl hTop =>
+      exact Or.inr (Or.inl hTop.to_star)
+    | inr hAppAbs =>
+      exact Or.inr (Or.inr hAppAbs)
 
 /-- One-step specialization of
 `msubStar_appAbs_subStar_beta_or_toTop_or_appAbs`. -/
