@@ -233,6 +233,27 @@ abbrev Closed (t : Term) : Prop := Scoped 0 t
     Closed (.app t u) ↔ Closed t ∧ Closed u :=
   scoped_app_iff 0 t u
 
+/-- Scoping is monotone in the ambient depth. This is the raw de Bruijn
+weakening lemma for syntax. -/
+theorem scoped_mono {depth depth' : Nat} {t : Term}
+    (hdepth : depth ≤ depth') :
+    Scoped depth t → Scoped depth' t := by
+  intro h
+  induction h generalizing depth' with
+  | bvar hi =>
+    exact Scoped.bvar (by omega)
+  | top =>
+    exact Scoped.top
+  | abs h_bound h_body ih_bound ih_body =>
+    exact Scoped.abs (ih_bound hdepth) (ih_body (by omega))
+  | app h_t h_u ih_t ih_u =>
+    exact Scoped.app (ih_t hdepth) (ih_u hdepth)
+
+/-- Closed terms are scoped at every ambient depth. -/
+theorem Closed.scoped (depth : Nat) {t : Term} :
+    Closed t → Scoped depth t :=
+  scoped_mono (Nat.zero_le depth)
+
 /-- One-step shifting preserves scoping, increasing the ambient depth by one. -/
 theorem shift_scoped (cutoff depth : Nat) (t : Term)
     (hcut : cutoff ≤ depth) :

@@ -29,6 +29,8 @@ closures, 2 inactive outstanding).
   specializations for `top`, `abs`, and `app`. Imported from `Pss.lean`.
 * `Pss/Syntax/DeBruijn.lean` instantiation freshness bridge —
   `Term.instantiate_of_scoped_id` and `Term.instantiate_closed_id`.
+* `Pss/Syntax/DeBruijn.lean` raw weakening bridge — `Term.scoped_mono`
+  and `Term.Closed.scoped`.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 
