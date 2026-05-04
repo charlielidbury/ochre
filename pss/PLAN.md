@@ -250,7 +250,9 @@ hard caveats.
      `WEquM.toWSubM`. The `Wf-Fun` rule now has a single body premise
      under `{ bound := t, kind := .sub } :: Γ`, matching the de Bruijn
      reduction binder shape and avoiding the locally-nameless cofinite
-     body function.
+     body function. Generalized context insertion weakening is now
+     proved for all five judgments as `WfM.insertAt`, `WSubM.insertAt`,
+     `WSubMStar.insertAt`, `WEquM.insertAt`, and `WEquMStar.insertAt`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms

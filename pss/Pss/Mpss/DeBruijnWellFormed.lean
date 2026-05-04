@@ -259,6 +259,240 @@ noncomputable def WEquMStar.scoped_right {Γ : Ctx} {v t : Term}
     Term.Scoped Γ.depth t :=
   h.scoped_pair.2
 
+/-! ## Insertion weakening -/
+
+private def _InsertWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=
+  ∀ {cutoff : Nat} {newEntry : CtxEntry},
+    cutoff ≤ Γ.depth →
+    Prevalid (newEntry :: List.drop cutoff Γ) →
+    Prevalid Γ →
+    WfM (Ctx.insertAt cutoff newEntry Γ) (Term.shift cutoff t)
+
+private def _InsertWSubMMotive (Γ : Ctx) (v t : Term) (_ : WSubM Γ v t) : Type :=
+  ∀ {cutoff : Nat} {newEntry : CtxEntry},
+    cutoff ≤ Γ.depth →
+    Prevalid (newEntry :: List.drop cutoff Γ) →
+    Prevalid Γ →
+    WSubM (Ctx.insertAt cutoff newEntry Γ) (Term.shift cutoff v) (Term.shift cutoff t)
+
+private def _InsertWSubMStarMotive (Γ : Ctx) (v t : Term)
+    (_ : WSubMStar Γ v t) : Type :=
+  ∀ {cutoff : Nat} {newEntry : CtxEntry},
+    cutoff ≤ Γ.depth →
+    Prevalid (newEntry :: List.drop cutoff Γ) →
+    Prevalid Γ →
+    WSubMStar (Ctx.insertAt cutoff newEntry Γ) (Term.shift cutoff v) (Term.shift cutoff t)
+
+private noncomputable def _insertAt_varSub : ∀ {Γ : Ctx} {i : Nat} {t : Term}
+    (hpv0 : Prevalid Γ) (hb : Γ.subBinds i t),
+    _InsertWfMotive Γ (.bvar i) (WfM.varSub hpv0 hb) := by
+  intro Γ i t hpv0 hb cutoff newEntry hcut hNew hpv
+  rw [Ctx.shift_bvar_insertAtIndex]
+  exact WfM.varSub (Prevalid.insertAt hcut hpv hNew) (Ctx.subBinds_insertAt hb)
+
+private noncomputable def _insertAt_varEqu : ∀ {Γ : Ctx} {i : Nat} {α : Term}
+    (hpv0 : Prevalid Γ) (hb : Γ.equBinds i α),
+    _InsertWfMotive Γ (.bvar i) (WfM.varEqu hpv0 hb) := by
+  intro Γ i α hpv0 hb cutoff newEntry hcut hNew hpv
+  rw [Ctx.shift_bvar_insertAtIndex]
+  exact WfM.varEqu (Prevalid.insertAt hcut hpv hNew) (Ctx.equBinds_insertAt hb)
+
+private noncomputable def _insertAt_top : ∀ {Γ : Ctx} (hpv0 : Prevalid Γ),
+    _InsertWfMotive Γ .top (WfM.top hpv0) := by
+  intro Γ hpv0 cutoff newEntry hcut hNew hpv
+  exact WfM.top (Prevalid.insertAt hcut hpv hNew)
+
+private noncomputable def _insertAt_fun : ∀ {Γ : Ctx} {t body : Term}
+    (hT : WfM Γ t)
+    (hBody : WfM ({ bound := t, kind := .sub } :: Γ) body),
+    _InsertWfMotive Γ t hT →
+    _InsertWfMotive ({ bound := t, kind := .sub } :: Γ) body hBody →
+    _InsertWfMotive Γ (.abs t body) (WfM.fun_ hT hBody) := by
+  intro Γ t body hT hBody ihT ihBody cutoff newEntry hcut hNew hpv
+  have hcutBody :
+      cutoff + 1 ≤ Ctx.depth ({ bound := t, kind := .sub } :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm] using Nat.succ_le_succ hcut
+  have hNewBody :
+      Prevalid (newEntry :: List.drop (cutoff + 1)
+        ({ bound := t, kind := .sub } :: Γ)) := by
+    simpa using hNew
+  have hpvBody : Prevalid ({ bound := t, kind := .sub } :: Γ) :=
+    Prevalid.sub hpv hT.scoped
+  exact WfM.fun_ (ihT hcut hNew hpv) (by
+    simpa using ihBody hcutBody hNewBody hpvBody)
+
+private noncomputable def _insertAt_app : ∀ {Γ : Ctx} {u v t : Term}
+    (hStarU : WSubMStar Γ u (.abs t .top))
+    (hStarV : WSubMStar Γ v t),
+    _InsertWSubMStarMotive Γ u (.abs t .top) hStarU →
+    _InsertWSubMStarMotive Γ v t hStarV →
+    _InsertWfMotive Γ (.app u v) (WfM.app hStarU hStarV) := by
+  intro Γ u v t hStarU hStarV ihU ihV cutoff newEntry hcut hNew hpv
+  exact WfM.app (by simpa using ihU hcut hNew hpv) (ihV hcut hNew hpv)
+
+private noncomputable def _insertAt_rfl : ∀ {Γ : Ctx} {t : Term}
+    (hwf : WfM Γ t),
+    _InsertWfMotive Γ t hwf →
+    _InsertWSubMMotive Γ t t (WSubM.rfl hwf) := by
+  intro Γ t hwf ih cutoff newEntry hcut hNew hpv
+  exact WSubM.rfl (ih hcut hNew hpv)
+
+private noncomputable def _insertAt_lf1 : ∀ {Γ : Ctx} {v v' t : Term}
+    (hred : MEqRed Γ [] v v')
+    (hsub : WSubM Γ v' t),
+    _InsertWSubMMotive Γ v' t hsub →
+    _InsertWSubMMotive Γ v t (WSubM.lf1 hred hsub) := by
+  intro Γ v v' t hred hsub ih cutoff newEntry hcut hNew hpv
+  exact WSubM.lf1 (hred.insertAt hcut hNew (PrevalidExt.nil hpv))
+    (ih hcut hNew hpv)
+
+private noncomputable def _insertAt_lf2 : ∀ {Γ : Ctx} {v v' t : Term}
+    (hwfV : WfM Γ v)
+    (hred : MSubRed Γ [] v v')
+    (hwfV' : WfM Γ v')
+    (hsub : WSubM Γ v' t),
+    _InsertWfMotive Γ v hwfV →
+    _InsertWfMotive Γ v' hwfV' →
+    _InsertWSubMMotive Γ v' t hsub →
+    _InsertWSubMMotive Γ v t (WSubM.lf2 hwfV hred hwfV' hsub) := by
+  intro Γ v v' t hwfV hred hwfV' hsub ihV ihV' ihSub cutoff newEntry hcut hNew hpv
+  exact WSubM.lf2 (ihV hcut hNew hpv)
+    (hred.insertAt hcut hNew (PrevalidExt.nil hpv))
+    (ihV' hcut hNew hpv) (ihSub hcut hNew hpv)
+
+private noncomputable def _insertAt_rgh : ∀ {Γ : Ctx} {v t t' : Term}
+    (hsub : WSubM Γ v t')
+    (hred : MEqRed Γ [] t t'),
+    _InsertWSubMMotive Γ v t' hsub →
+    _InsertWSubMMotive Γ v t (WSubM.rgh hsub hred) := by
+  intro Γ v t t' hsub hred ih cutoff newEntry hcut hNew hpv
+  exact WSubM.rgh (ih hcut hNew hpv)
+    (hred.insertAt hcut hNew (PrevalidExt.nil hpv))
+
+private noncomputable def _insertAt_sub : ∀ {Γ : Ctx} {v t : Term}
+    (hwfV : WfM Γ v)
+    (hsub : WSubM Γ v t)
+    (hwfT : WfM Γ t),
+    _InsertWfMotive Γ v hwfV →
+    _InsertWSubMMotive Γ v t hsub →
+    _InsertWfMotive Γ t hwfT →
+    _InsertWSubMStarMotive Γ v t (WSubMStar.sub hwfV hsub hwfT) := by
+  intro Γ v t hwfV hsub hwfT ihV ihSub ihT cutoff newEntry hcut hNew hpv
+  exact WSubMStar.sub (ihV hcut hNew hpv) (ihSub hcut hNew hpv)
+    (ihT hcut hNew hpv)
+
+private noncomputable def _insertAt_trs : ∀ {Γ : Ctx} {v u t : Term}
+    (hLeft : WSubMStar Γ v u)
+    (hwfMid : WfM Γ u)
+    (hRight : WSubMStar Γ u t),
+    _InsertWSubMStarMotive Γ v u hLeft →
+    _InsertWfMotive Γ u hwfMid →
+    _InsertWSubMStarMotive Γ u t hRight →
+    _InsertWSubMStarMotive Γ v t (WSubMStar.trs hLeft hwfMid hRight) := by
+  intro Γ v u t hLeft hwfMid hRight ihLeft ihMid ihRight cutoff newEntry hcut hNew hpv
+  exact WSubMStar.trs (ihLeft hcut hNew hpv) (ihMid hcut hNew hpv)
+    (ihRight hcut hNew hpv)
+
+/-- Combined insertion weakening for the three mutual well-formed judgments. -/
+noncomputable def _insertAt_combined :
+    (∀ {Γ : Ctx} {t : Term} (h : WfM Γ t), _InsertWfMotive Γ t h) ×
+    (∀ {Γ : Ctx} {v t : Term} (h : WSubM Γ v t), _InsertWSubMMotive Γ v t h) ×
+    (∀ {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t),
+      _InsertWSubMStarMotive Γ v t h) := by
+  refine ⟨?wf, ?sub, ?star⟩
+  · intro Γ t h
+    exact WfM.rec
+      (motive_1 := _InsertWfMotive)
+      (motive_2 := _InsertWSubMMotive)
+      (motive_3 := _InsertWSubMStarMotive)
+      @_insertAt_varSub @_insertAt_varEqu @_insertAt_top
+      @_insertAt_fun @_insertAt_app
+      @_insertAt_rfl @_insertAt_lf1 @_insertAt_lf2 @_insertAt_rgh
+      @_insertAt_sub @_insertAt_trs
+      h
+  · intro Γ v t h
+    exact WSubM.rec
+      (motive_1 := _InsertWfMotive)
+      (motive_2 := _InsertWSubMMotive)
+      (motive_3 := _InsertWSubMStarMotive)
+      @_insertAt_varSub @_insertAt_varEqu @_insertAt_top
+      @_insertAt_fun @_insertAt_app
+      @_insertAt_rfl @_insertAt_lf1 @_insertAt_lf2 @_insertAt_rgh
+      @_insertAt_sub @_insertAt_trs
+      h
+  · intro Γ v t h
+    exact WSubMStar.rec
+      (motive_1 := _InsertWfMotive)
+      (motive_2 := _InsertWSubMMotive)
+      (motive_3 := _InsertWSubMStarMotive)
+      @_insertAt_varSub @_insertAt_varEqu @_insertAt_top
+      @_insertAt_fun @_insertAt_app
+      @_insertAt_rfl @_insertAt_lf1 @_insertAt_lf2 @_insertAt_rgh
+      @_insertAt_sub @_insertAt_trs
+      h
+
+/-- General insertion weakening for de Bruijn well-formedness. -/
+noncomputable def WfM.insertAt {Γ : Ctx} {t : Term} (h : WfM Γ t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : Prevalid Γ) :
+    WfM (Ctx.insertAt cutoff newEntry Γ) (Term.shift cutoff t) :=
+  _insertAt_combined.1 h hcut hNew hpv
+
+/-- General insertion weakening for de Bruijn well-subtyping. -/
+noncomputable def WSubM.insertAt {Γ : Ctx} {v t : Term} (h : WSubM Γ v t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : Prevalid Γ) :
+    WSubM (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) :=
+  _insertAt_combined.2.1 h hcut hNew hpv
+
+/-- General insertion weakening for de Bruijn transitive well-subtyping. -/
+noncomputable def WSubMStar.insertAt {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : Prevalid Γ) :
+    WSubMStar (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) :=
+  _insertAt_combined.2.2 h hcut hNew hpv
+
+/-- General insertion weakening for de Bruijn well-equivalence. -/
+noncomputable def WEquM.insertAt {Γ : Ctx} {v t : Term} (h : WEquM Γ v t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : Prevalid Γ) :
+    WEquM (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) := by
+  induction h with
+  | rfl hwf =>
+    exact WEquM.rfl (hwf.insertAt hcut hNew hpv)
+  | lf1 hred _ ih =>
+    exact WEquM.lf1 (hred.insertAt hcut hNew (PrevalidExt.nil hpv))
+      ih
+  | rgh _ hred ih =>
+    exact WEquM.rgh ih
+      (hred.insertAt hcut hNew (PrevalidExt.nil hpv))
+
+/-- General insertion weakening for de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.insertAt {Γ : Ctx} {v t : Term}
+    (h : WEquMStar Γ v t) {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : Prevalid Γ) :
+    WEquMStar (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) := by
+  induction h with
+  | sub hwfV heq hwfT =>
+    exact WEquMStar.sub (hwfV.insertAt hcut hNew hpv)
+      (heq.insertAt hcut hNew hpv) (hwfT.insertAt hcut hNew hpv)
+  | trs _ hwfMid _ ihLeft ihRight =>
+    exact WEquMStar.trs ihLeft (hwfMid.insertAt hcut hNew hpv) ihRight
+
 /-! ## Basic well-equivalence helpers -/
 
 /-- Symmetry of de Bruijn well-equivalence. -/
