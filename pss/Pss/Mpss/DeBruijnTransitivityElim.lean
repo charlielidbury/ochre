@@ -1099,6 +1099,45 @@ theorem msubStar_appAbs_subStep_beta_or_top_or_appTop_or_appAbs {Γ : Ctx} {s : 
       ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
   msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs (MSubRedStar.single hSub)
 
+/-- Compressed abstraction-headed application subtype-chain split: the target
+is reached from a β target, is itself diagrammatically below `Top`, or remains
+abstraction-headed. This combines the raw `Top` and `Top`-headed application
+branches of `msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs`. -/
+theorem msubStar_appAbs_subStar_beta_or_toTop_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t) :
+    (∃ arg' body', MSubStar Γ s (Term.instantiate 0 arg' body') t) ∨
+      MSubStar Γ s t .top ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' := by
+  cases msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs hSub with
+  | inl hTop =>
+    subst hTop
+    exact Or.inr (Or.inl Relation.ReflTransGen.refl)
+  | inr hRest =>
+    cases hRest with
+    | inl hBet =>
+      exact Or.inl hBet
+    | inr hRest =>
+      cases hRest with
+      | inl hAppTop =>
+        obtain ⟨arg', hEq⟩ := hAppTop
+        exact Or.inr (Or.inl
+          (msubStar_appAbs_subStar_appTop_to_top hpv hScoped hSub hEq))
+      | inr hAppAbs =>
+        exact Or.inr (Or.inr hAppAbs)
+
+/-- One-step specialization of
+`msubStar_appAbs_subStar_beta_or_toTop_or_appAbs`. -/
+theorem msubStar_appAbs_subStep_beta_or_toTop_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t) :
+    (∃ arg' body', MSubStar Γ s (Term.instantiate 0 arg' body') t) ∨
+      MSubStar Γ s t .top ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
+  msubStar_appAbs_subStar_beta_or_toTop_or_appAbs hpv hScoped (MSubRedStar.single hSub)
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of
