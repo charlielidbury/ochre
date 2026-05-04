@@ -1129,6 +1129,12 @@ closures, 2 inactive outstanding).
   replacement consumers `WfM.fun_replaceAt_sub_from_body_wf`,
   `WfM.fun_sub_head_replace_from_body_wf`, and
   `WfM.fun_sub_under_head_replace_from_body_wf`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WfM.sub_head_replace_from_payloads`, a constructor-level head
+  replacement packager for `WfM` that wires leaf, `Wf-App`, and
+  `Wf-Fun` cases to explicit recursive well-formedness,
+  equivalence-preservation, and subtype-residual payloads. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added structural subtype
   residual wrappers embedding transported raw `Ms-App` and `Ms-Fun`
   replacement chains into well-subtyping stars:

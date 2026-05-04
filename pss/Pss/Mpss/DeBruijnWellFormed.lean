@@ -3696,6 +3696,48 @@ noncomputable def WfM.fun_sub_under_head_replace_from_body_wf {Γ : Ctx}
     WfM (head :: { bound := new, kind := .sub } :: Γ) (.abs t body) :=
   WfM.fun_ (hWfT hT) (hWfBody hBody)
 
+/-- Constructor-level `WfM` head replacement from recursive payloads.
+
+This packages the non-recursive case split needed by the eventual mutual
+replacement theorem: leaves are rebuilt directly, `Wf-App` delegates to the
+already transported well-subtyping-star premises, and `Wf-Fun` delegates to the
+top-level and under-head recursive well-formedness payloads. -/
+noncomputable def WfM.sub_head_replace_from_payloads {Γ : Ctx}
+    {old new body : Term}
+    (h : WfM ({ bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head : CtxEntry} {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := old, kind := .sub } :: Γ) x →
+          WfM ({ bound := old, kind := .sub } :: Γ) y)
+    (hSubRedReplace : ∀ {x y : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := old, kind := .sub } :: Γ) y →
+          MSubRed ({ bound := old, kind := .sub } :: Γ) [] x y →
+            WSubMStar ({ bound := new, kind := .sub } :: Γ) x y) :
+    WfM ({ bound := new, kind := .sub } :: Γ) body := by
+  have hnew : Term.Scoped Γ.depth new := hOldNew.scoped_right
+  cases h with
+  | varSub hpv hb =>
+      exact WfM.bvar_sub_head_replace (WfM.varSub hpv hb) hnew
+  | varEqu hpv hb =>
+      exact WfM.bvar_sub_head_replace (WfM.varEqu hpv hb) hnew
+  | top hpv =>
+      exact WfM.top_sub_head_replace (WfM.top hpv) hnew
+  | fun_ hT hBody =>
+      exact WfM.fun_sub_head_replace_from_body_wf hT hBody
+        (fun hx => hWf hx)
+        (fun hx => hWfUnder (head := { bound := _, kind := .sub }) hx)
+  | app hFun hArg =>
+      exact WfM.app_sub_head_replace_of_wsubred hFun hArg hOldNew
+        (fun hx => hWf hx) hEqPresOld hSubRedReplace
+
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/
 noncomputable def WSubMStar.extend_right_via_MSubRedStar_fwd
