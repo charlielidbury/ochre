@@ -120,13 +120,43 @@ the template/outer split: source can be y-occurring (e.g. `.fvar y` —
 the body-`bvar 0` case), so the body-shape dispatch in
 `descend_body_equ_uniform` becomes unnecessary at the consumer level.
 
-**Iter-29+ next attack:** consume `MEqRed.descend_at_head` in
-`Diamond.lean`'s `Lemma_2_DiamondMEqRed_core` App×Bet residual,
-potentially bypassing `descend_body_equ_uniform` entirely. Multi-iteration
-work to discharge `Lemma_2_inline_app_bet_residual_axiom`.
+**Iter-29 (commit `338b0e6`) shipped consumer-facing wrapper.**
+`MEqRed.descend_body_equ_uniform_app` (`Pss/Mpss/Renaming.lean §12`,
+caller-facing) — specializes `descend_at_head` to `Γ₂ = []` and rewrites
+the substitution-form output back to the opening-form shape
+`MEqRed Γ s (body^[z]) (Term.subst y (.fvar z) target)` expected by
+Lemma 2 consumers. Bridges via `Stack.subst_fresh hy_souter` and
+`Term.subst_open_fresh hy_body`. ~80 lines. No new axioms.
 
-The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-29+
-retires it once `descend_at_head` is consumed end-to-end.
+**Iter-30+ blocker: cofinite-z gap.** Audit during iter-29 dispatch
+revealed that the discharge of `Lemma_2_inline_app_bet_residual_axiom`
+(axiom #9) requires the body-descent to produce a *cofinite* output
+shape `∀ y ∉ L', MEqRed Γ s (body'_dst^[y]) (body_join^[y])` for the
+`MEqRed.bet` β-fire on the LHS chain. But `descend_body_equ_uniform_app`
+requires `z ∈ Γ.dom` (inherited from `SubstOk Γ (.fvar z)` in
+`_MEqRed_descend_at_head_subst`'s internal substitution step), while
+the cofinite witness `y ∉ L'` is necessarily outside `Γ.dom`. The two
+constraints are mutually exclusive.
+
+**Iter-30+ candidate paths** to bridge the gap:
+1. Extend `descend_body_equ_uniform_app` to handle out-of-scope `y`
+   by first weakening Γ → `⟨y, .top, .sub⟩::Γ`, descending at `z = y`
+   (now in scope), then post-stripping the temporary head binding.
+   ~100-150 lines. Requires careful tracking of `Lemma_22_WeakeningMEqRed`
+   and `strip_equ_head`-like infrastructure (already exists, but the
+   composition is novel).
+2. Replace cofinite output with a single-witness output and rebuild the
+   cofinite shape via `MEqRed.rename_stray`. The rename functor requires
+   both names outside `Γ.dom`, so this needs a trampoline through a
+   widened ctx.
+3. Reformulate `_MEqRed_descend_at_head_subst` to allow stray `z`
+   directly, by relaxing the `SubstOk` premise. Architecturally cleanest
+   but requires re-proving all 8 MEqRed arms with a different prevalidExt
+   strategy. Largest scope.
+
+The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-30+
+retires it once the cofinite-z bridge lands and `descend_body_equ_uniform_app`
+is consumed end-to-end.
 
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
