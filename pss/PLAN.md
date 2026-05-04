@@ -218,6 +218,10 @@ hard caveats.
      `fOp_insertAt`, and matching `MSubRed` wrappers for
      `pro`/`top`/`equ`/`app`/`fun`/`fOp`. The remaining full weakening
      theorem is now a prevalidity-threading induction over these wrappers.
+     An initial fixed-outer-`Γ` attempt at `MEqRed.insertAt` exposed the
+     correct theorem shape: `Γ`, `s`, and the `PrevalidExt Γ s` witness
+     must be generalized with each constructor case, rather than held as
+     outer fixed parameters.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

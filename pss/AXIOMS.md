@@ -147,6 +147,9 @@ closures, 2 inactive outstanding).
   `pro`/`top`/`equ`/`app`/`fun`/`fOp`. These wrappers package the
   existing context insertion, index transport, and shift/instantiation
   lemmas for the future full weakening induction. No axiom-count change.
+  A fixed-outer-context attempt at full `MEqRed.insertAt` was rejected by
+  Lean's induction shape; the next statement should generalize `Γ`, `s`,
+  and `PrevalidExt Γ s` through the induction.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
