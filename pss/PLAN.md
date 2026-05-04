@@ -241,7 +241,10 @@ hard caveats.
      one-preserved-head specializations are also available for both
      wrapper and closure layers (`*_weaken_head`, `*_weaken_tail_head`).
      Context-prevalidity extractors are available for raw de Bruijn
-     reductions as `MEqRed.prevalid` and `MSubRed.prevalid`.
+     reductions as `MEqRed.prevalid` and `MSubRed.prevalid`. Scoping
+     extractors are available for Prop wrappers and star closures as
+     `MEqRedJ.scoped_*`, `MSubRedJ.scoped_*`,
+     `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
    * **Seeded 2026-05-04 on `db-refactor`:**

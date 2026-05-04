@@ -177,6 +177,14 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnReductions.lean` — added context-prevalidity
   extractors `MEqRed.prevalid` and `MSubRed.prevalid`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added Prop-wrapper and
+  reflexive-transitive-closure scoping helpers for de Bruijn reductions:
+  `MEqRedJ.scoped_pair`, `MEqRedJ.scoped_left`,
+  `MEqRedJ.scoped_right`, `MSubRedJ.scoped_pair`,
+  `MSubRedJ.scoped_left`, `MSubRedJ.scoped_right`,
+  `MEqRedStar.scoped_right`, `MEqRedStar.scoped_pair`,
+  `MSubRedStar.scoped_right`, and `MSubRedStar.scoped_pair`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
   well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
   separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint

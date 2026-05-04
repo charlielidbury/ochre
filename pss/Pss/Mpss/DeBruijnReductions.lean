@@ -189,6 +189,84 @@ noncomputable def MSubRed.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Term.Scoped Γ.depth v :=
   h.scoped_pair.2
 
+/-! ## Prop-wrapper and closure scoping invariants -/
+
+/-- Prop-wrapper equivalence reduction relates scoped de Bruijn terms. -/
+noncomputable def MEqRedJ.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedJ Γ s u v) : Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
+  h.some.scoped_pair
+
+/-- Left projection of `MEqRedJ.scoped_pair`. -/
+noncomputable def MEqRedJ.scoped_left {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedJ Γ s u v) : Term.Scoped Γ.depth u :=
+  h.scoped_pair.1
+
+/-- Right projection of `MEqRedJ.scoped_pair`. -/
+noncomputable def MEqRedJ.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedJ Γ s u v) : Term.Scoped Γ.depth v :=
+  h.scoped_pair.2
+
+/-- Prop-wrapper subtype reduction relates scoped de Bruijn terms. -/
+noncomputable def MSubRedJ.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedJ Γ s u v) : Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
+  h.some.scoped_pair
+
+/-- Left projection of `MSubRedJ.scoped_pair`. -/
+noncomputable def MSubRedJ.scoped_left {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedJ Γ s u v) : Term.Scoped Γ.depth u :=
+  h.scoped_pair.1
+
+/-- Right projection of `MSubRedJ.scoped_pair`. -/
+noncomputable def MSubRedJ.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedJ Γ s u v) : Term.Scoped Γ.depth v :=
+  h.scoped_pair.2
+
+/-- A de Bruijn equivalence-reduction chain preserves target scoping from
+source scoping. -/
+noncomputable def MEqRedStar.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s u v) :
+    Term.Scoped Γ.depth u → Term.Scoped Γ.depth v := by
+  suffices key : ∀ {a : Term} (h : MEqRedStar Γ s a v),
+      Nonempty (Term.Scoped Γ.depth a → Term.Scoped Γ.depth v) from
+    (key h).some
+  intro a h
+  refine Relation.ReflTransGen.head_induction_on (b := v)
+    (P := fun a _ => Nonempty (Term.Scoped Γ.depth a → Term.Scoped Γ.depth v))
+    h ?_ ?_
+  · exact ⟨fun hu => hu⟩
+  · intro _ _ hHead _ ih
+    exact ⟨fun hu => ih.some hHead.scoped_right⟩
+
+/-- A de Bruijn equivalence-reduction chain relates scoped endpoints when its
+source is scoped. -/
+noncomputable def MEqRedStar.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s u v) (hu : Term.Scoped Γ.depth u) :
+    Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
+  ⟨hu, h.scoped_right hu⟩
+
+/-- A de Bruijn subtype-reduction chain preserves target scoping from source
+scoping. -/
+noncomputable def MSubRedStar.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) :
+    Term.Scoped Γ.depth u → Term.Scoped Γ.depth v := by
+  suffices key : ∀ {a : Term} (h : MSubRedStar Γ s a v),
+      Nonempty (Term.Scoped Γ.depth a → Term.Scoped Γ.depth v) from
+    (key h).some
+  intro a h
+  refine Relation.ReflTransGen.head_induction_on (b := v)
+    (P := fun a _ => Nonempty (Term.Scoped Γ.depth a → Term.Scoped Γ.depth v))
+    h ?_ ?_
+  · exact ⟨fun hu => hu⟩
+  · intro _ _ hHead _ ih
+    exact ⟨fun hu => ih.some hHead.scoped_right⟩
+
+/-- A de Bruijn subtype-reduction chain relates scoped endpoints when its
+source is scoped. -/
+noncomputable def MSubRedStar.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) (hu : Term.Scoped Γ.depth u) :
+    Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
+  ⟨hu, h.scoped_right hu⟩
+
 /-! ## Prevalidity invariants -/
 
 /-- Context prevalidity from de Bruijn equivalence reduction. -/
