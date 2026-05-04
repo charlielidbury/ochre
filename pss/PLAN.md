@@ -225,6 +225,9 @@ hard caveats.
      needs explicit `@constructor` patterns (e.g. `@pro Γp sp ...`) to
      keep Lean from resolving helper applications against stale outer
      implicit names.
+     `MEqRed.insertAt` is now proved with that shape: it weakens an
+     equivalence reduction through `Ctx.insertAt`, shifting the stack and
+     both terms at the insertion cutoff.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

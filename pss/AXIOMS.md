@@ -152,6 +152,10 @@ closures, 2 inactive outstanding).
   and `PrevalidExt Γ s` through the induction and use explicit
   `@constructor` patterns to avoid stale implicit names in constructor
   cases.
+* `Pss/Mpss/DeBruijnReductions.lean` — proved `MEqRed.insertAt`,
+  generalized insertion weakening for de Bruijn equivalence reduction.
+  It weakens through `Ctx.insertAt`, shifting the stack and source/target
+  terms at the insertion cutoff. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

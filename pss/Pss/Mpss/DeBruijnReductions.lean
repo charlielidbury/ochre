@@ -397,6 +397,102 @@ noncomputable def MSubRed.fOp_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
     Ctx.depth_insertAt_of_le hcut
   exact MSubRed.fOp (by simpa [hdepth] using ht') (by simpa [hdepth] using hα') hbody
 
+/-- General insertion weakening for de Bruijn equivalence reduction. -/
+noncomputable def MEqRed.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ))
+    (hpv : PrevalidExt Γ s) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v) := by
+  induction h generalizing cutoff newEntry with
+  | @pro Γp sp i α α' hpv0 hb hred ih =>
+    have hpv' : PrevalidExt (Ctx.insertAt cutoff newEntry Γp) (Stack.shift cutoff sp) :=
+      PrevalidExt.insertAt (Γ := Γp) (s := sp) (cutoff := cutoff)
+        (newEntry := newEntry) hcut hpv
+        (Prevalid.insertAt (Γ := Γp) (cutoff := cutoff) (newEntry := newEntry)
+          hcut (PrevalidExt.ctx hpv) hNew)
+    exact MEqRed.pro_insertAt hpv' hb (ih hcut hNew hpv)
+  | @bet Γp sp t x x' body body' ht hbody harg ih_body ih_arg =>
+    have hpvBodyCtx : Prevalid ({ bound := t, kind := .sub } :: Γp) :=
+      Prevalid.sub (PrevalidExt.ctx hpv) ht
+    have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γp) (Stack.shift 0 sp) :=
+      PrevalidExt.weaken_head hpv hpvBodyCtx
+    have hcutBody : cutoff + 1 ≤ Ctx.depth ({ bound := t, kind := .sub } :: Γp) := by
+      simpa [Ctx.depth, Nat.add_comm] using Nat.succ_le_succ hcut
+    have hNewBody :
+        Prevalid (newEntry :: List.drop (cutoff + 1) ({ bound := t, kind := .sub } :: Γp)) := by
+      simpa using hNew
+    have hbody' :
+        MEqRed (Ctx.insertAt (cutoff + 1) newEntry ({ bound := t, kind := .sub } :: Γp))
+          (Stack.shift 0 (Stack.shift cutoff sp))
+          (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body') := by
+      have hb := ih_body hcutBody hNewBody hpvBody
+      simpa [Stack.shift_shift_zero cutoff sp] using hb
+    have hpvNil : PrevalidExt Γp [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+    exact MEqRed.bet_insertAt hcut ht hbody' (ih_arg hcut hNew hpvNil)
+  | @top Γp sp hpv0 =>
+    have hpv' : PrevalidExt (Ctx.insertAt cutoff newEntry Γp) (Stack.shift cutoff sp) :=
+      PrevalidExt.insertAt (Γ := Γp) (s := sp) (cutoff := cutoff)
+        (newEntry := newEntry) hcut hpv
+        (Prevalid.insertAt (Γ := Γp) (cutoff := cutoff) (newEntry := newEntry)
+          hcut (PrevalidExt.ctx hpv) hNew)
+    exact MEqRed.top_insertAt hpv'
+  | @app Γp sp u₀ u₁ x x' hfn harg ih_fn ih_arg =>
+    have hx : Term.Scoped Γp.depth x := harg.scoped_left
+    have hpvFn : PrevalidExt Γp (x :: sp) := PrevalidExt.cons hpv hx
+    have hfn' := ih_fn hcut hNew hpvFn
+    have hpvNil : PrevalidExt Γp [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+    exact MEqRed.app_insertAt hfn' (ih_arg hcut hNew hpvNil)
+  | @var Γp sp i hpv0 hi =>
+    have hpv' : PrevalidExt (Ctx.insertAt cutoff newEntry Γp) (Stack.shift cutoff sp) :=
+      PrevalidExt.insertAt (Γ := Γp) (s := sp) (cutoff := cutoff)
+        (newEntry := newEntry) hcut hpv
+        (Prevalid.insertAt (Γ := Γp) (cutoff := cutoff) (newEntry := newEntry)
+          hcut (PrevalidExt.ctx hpv) hNew)
+    exact MEqRed.var_insertAt hcut hpv' hi
+  | @fun_ Γp t t' body body' hbound hbody ih_bound ih_body =>
+    have hpvNil : PrevalidExt Γp [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have ht : Term.Scoped Γp.depth t := hbound.scoped_left
+    have hpvBodyCtx : Prevalid ({ bound := t, kind := .sub } :: Γp) :=
+      Prevalid.sub (PrevalidExt.ctx hpv) ht
+    have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γp) [] :=
+      PrevalidExt.nil hpvBodyCtx
+    have hcutBody : cutoff + 1 ≤ Ctx.depth ({ bound := t, kind := .sub } :: Γp) := by
+      simpa [Ctx.depth, Nat.add_comm] using Nat.succ_le_succ hcut
+    have hNewBody :
+        Prevalid (newEntry :: List.drop (cutoff + 1) ({ bound := t, kind := .sub } :: Γp)) := by
+      simpa using hNew
+    exact MEqRed.fun_insertAt
+      (ih_bound hcut hNew hpvNil)
+      (ih_body hcutBody hNewBody hpvBody)
+  | @tAp Γp sp x hpv0 hx =>
+    have hpv' : PrevalidExt (Ctx.insertAt cutoff newEntry Γp) (Stack.shift cutoff sp) :=
+      PrevalidExt.insertAt (Γ := Γp) (s := sp) (cutoff := cutoff)
+        (newEntry := newEntry) hcut hpv
+        (Prevalid.insertAt (Γ := Γp) (cutoff := cutoff) (newEntry := newEntry)
+          hcut (PrevalidExt.ctx hpv) hNew)
+    exact MEqRed.tAp_insertAt hcut hpv' hx
+  | @fOp Γp sp t t' α body body' hbound hα hbody ih_bound ih_body =>
+    have hpvTail : PrevalidExt Γp sp := PrevalidExt.tail hpv
+    have hpvNil : PrevalidExt Γp [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have hpvBodyCtx : Prevalid ({ bound := α, kind := .equ } :: Γp) :=
+      Prevalid.equ (PrevalidExt.ctx hpv) hα
+    have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γp) (Stack.shift 0 sp) :=
+      PrevalidExt.weaken_head hpvTail hpvBodyCtx
+    have hcutBody : cutoff + 1 ≤ Ctx.depth ({ bound := α, kind := .equ } :: Γp) := by
+      simpa [Ctx.depth, Nat.add_comm] using Nat.succ_le_succ hcut
+    have hNewBody :
+        Prevalid (newEntry :: List.drop (cutoff + 1) ({ bound := α, kind := .equ } :: Γp)) := by
+      simpa using hNew
+    have hbody' :
+        MEqRed (Ctx.insertAt (cutoff + 1) newEntry ({ bound := α, kind := .equ } :: Γp))
+          (Stack.shift 0 (Stack.shift cutoff sp))
+          (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body') := by
+      have hb := ih_body hcutBody hNewBody hpvBody
+      simpa [Stack.shift_shift_zero cutoff sp] using hb
+    exact MEqRed.fOp_insertAt hcut (ih_bound hcut hNew hpvNil) hα hbody'
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.
