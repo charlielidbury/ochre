@@ -911,6 +911,11 @@ closures, 2 inactive outstanding).
   generic chain consumer to the composed one-step equivalence replacement
   wrappers while retaining explicit `Me-Pro` residual premises. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRed_equ_head_shifted_replace_from_replacements`, a shifted-stack
+  equivalence replacement wrapper that wires the canonical head and non-head
+  `Me-Pro` handlers into the composed one-step replacement path. This is the
+  stack shape used by recursive `FOp` body residuals. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
