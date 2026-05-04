@@ -204,6 +204,10 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added transitive
   well-equivalence utilities: `WEquMStar.symm` and
   `WEquMStar.toWSubMStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added endpoint well-formedness
+  extractors for de Bruijn transitive well-subtyping/equivalence:
+  `WSubMStar.wf_left`, `WSubMStar.wf_right`, `WEquMStar.wf_left`, and
+  `WEquMStar.wf_right`. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

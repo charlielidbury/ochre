@@ -354,6 +354,66 @@ noncomputable def WEquMStar.prevalid {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v
   | trs _ _ _ ihLeft _ =>
     exact ihLeft
 
+/-! ## Endpoint well-formedness extractors -/
+
+/-- Left endpoint well-formedness from de Bruijn transitive well-subtyping. -/
+noncomputable def WSubMStar.wf_left {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+    WfM Γ v :=
+  WSubMStar.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun _ _ _ _ => PUnit)
+    (motive_3 := fun Γ v _ _ => WfM Γ v)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ _ => PUnit.unit)
+    (fun _ _ _ _ _ _ _ => PUnit.unit)
+    (fun _ _ _ => PUnit.unit)
+    (fun hwfV _ _ _ _ _ => hwfV)
+    (fun _ _ _ ihLeft _ _ => ihLeft)
+    h
+
+/-- Right endpoint well-formedness from de Bruijn transitive well-subtyping. -/
+noncomputable def WSubMStar.wf_right {Γ : Ctx} {v t : Term} (h : WSubMStar Γ v t) :
+    WfM Γ t :=
+  WSubMStar.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun _ _ _ _ => PUnit)
+    (motive_3 := fun Γ _ t _ => WfM Γ t)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ _ => PUnit.unit)
+    (fun _ _ _ _ _ _ _ => PUnit.unit)
+    (fun _ _ _ => PUnit.unit)
+    (fun _ _ hwfT _ _ _ => hwfT)
+    (fun _ _ _ _ _ ihRight => ihRight)
+    h
+
+/-- Left endpoint well-formedness from de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.wf_left {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v t) :
+    WfM Γ v := by
+  induction h with
+  | sub hwfV _ _ =>
+    exact hwfV
+  | trs _ _ _ ihLeft _ =>
+    exact ihLeft
+
+/-- Right endpoint well-formedness from de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.wf_right {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v t) :
+    WfM Γ t := by
+  induction h with
+  | sub _ _ hwfT =>
+    exact hwfT
+  | trs _ _ _ _ ihRight =>
+    exact ihRight
+
 /-! ## Insertion weakening -/
 
 private def _InsertWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=
