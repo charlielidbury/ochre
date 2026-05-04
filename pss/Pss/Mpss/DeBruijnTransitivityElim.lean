@@ -2298,6 +2298,58 @@ theorem commute_abs_fun_body_fixed_bound {Γ : Ctx}
     msubRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
       (MSubRedStar.single hRight.some)⟩
 
+/-- Fixed-body `Fun` abstraction cell for de Bruijn Lemma 2. A bound-level
+equivalence diamond lifts to abstractions when the body is unchanged. -/
+theorem diamond_abs_fun_bound_fixed_body {Γ : Ctx}
+    {bound bound₁ bound₂ body : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hdiamondBound : EqDiamonds Γ [])
+    (hBound₁ : MEqRed Γ [] bound bound₁)
+    (hBound₂ : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body) t₃ ∧
+        MEqRedStar Γ [] (.abs bound₂ body) t₃ := by
+  obtain ⟨bound₃, hLeft, hRight⟩ := hdiamondBound hBound₁ hBound₂
+  have hpvBody₁ : PrevalidExt ({ bound := bound₁, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁.scoped_right)
+  have hpvBody₂ : PrevalidExt ({ bound := bound₂, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₂.scoped_right)
+  have hBody₁ : MEqRed ({ bound := bound₁, kind := .sub } :: Γ) [] body body :=
+    MEqRed.refl hpvBody₁ hBodyScoped
+  have hBody₂ : MEqRed ({ bound := bound₂, kind := .sub } :: Γ) [] body body :=
+    MEqRed.refl hpvBody₂ hBodyScoped
+  exact ⟨.abs bound₃ body,
+    MEqRedStar.single (MEqRed.fun_ hLeft.some hBody₁),
+    MEqRedStar.single (MEqRed.fun_ hRight.some hBody₂)⟩
+
+/-- Fixed-body `Fun` abstraction cell for de Bruijn Lemma 1's `Ms-Fun ×
+Me-Fun` branch. The subtype constructor's bound premise is itself an
+equivalence step, so a bound-level equivalence diamond supplies the shared
+bound target. -/
+theorem commute_abs_fun_bound_fixed_body {Γ : Ctx}
+    {bound bound₁ bound₂ body : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hEqBound : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body) t₃ := by
+  obtain ⟨bound₃, hLeft, hRight⟩ := hdiamondBound hSubBound hEqBound
+  have hpvBody₁ : PrevalidExt ({ bound := bound₁, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hSubBound.scoped_right)
+  have hpvBody₂ : PrevalidExt ({ bound := bound₂, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hEqBound.scoped_right)
+  have hBody₁ : MEqRed ({ bound := bound₁, kind := .sub } :: Γ) [] body body :=
+    MEqRed.refl hpvBody₁ hBodyScoped
+  have hBody₂ : MSubRed ({ bound := bound₂, kind := .sub } :: Γ) [] body body :=
+    MSubRed.refl hpvBody₂ hBodyScoped
+  exact ⟨.abs bound₃ body,
+    MEqRedStar.single (MEqRed.fun_ hLeft.some hBody₁),
+    MSubRedStar.single (MSubRed.fun_ hEqBound.scoped_right hRight.some hBody₂)⟩
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
