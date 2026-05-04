@@ -1577,6 +1577,19 @@ theorem msubRedStar_app_fixed_arg {Γ : Ctx} {s : Stack}
     exact Relation.ReflTransGen.trans ih
       (MSubRedStar.single (MSubRed.app hStep.some hArgScoped))
 
+/-- Lift an operator equivalence-reduction chain under a fixed argument into
+an application equivalence-reduction chain. -/
+theorem meqRedStar_app_fixed_arg {Γ : Ctx} {s : Stack}
+    {arg u u' : Term} (hArg : MEqRed Γ [] arg arg)
+    (h : MEqRedStar Γ (arg :: s) u u') :
+    MEqRedStar Γ s (.app u arg) (.app u' arg) := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail y z hStar hStep ih =>
+    exact Relation.ReflTransGen.trans ih
+      (MEqRedStar.single (MEqRed.app hStep.some hArg))
+
 /-- Changed-argument structural application commutation for
 abstraction-headed applications, isolated behind the precise missing
 stack-head transport. The transport premise moves the operator-side subtype
@@ -1778,6 +1791,27 @@ theorem msubRedStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
   | @tail mid body' hStar hStep ih =>
     exact Relation.ReflTransGen.trans ih
       (MSubRedStar.single (MSubRed.fOp hBoundScoped hα hStep.some))
+
+/-- Lift a body equivalence-reduction chain under an `.equ` head into an
+abstraction equivalence-reduction chain through the matching `FOp` stack
+head, keeping the abstraction bound fixed. -/
+theorem meqRedStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
+    {α bound body body' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hBody : MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body') :
+    MEqRedStar Γ (α :: s) (.abs bound body) (.abs bound body') := by
+  have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil (PrevalidExt.ctx hpvTail)
+  have hBoundRefl : MEqRed Γ [] bound bound :=
+    MEqRed.refl hpvNil hBoundScoped
+  induction hBody with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid body' hStar hStep ih =>
+    exact Relation.ReflTransGen.trans ih
+      (MEqRedStar.single (MEqRed.fOp hBoundRefl hα hStep.some))
 
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction

@@ -666,6 +666,11 @@ closures, 2 inactive outstanding).
   replacement chains under the new `.equ` head, so the remaining
   replacement obligation need not be a one-step raw reduction. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added equivalence-chain
+  lifting helpers `meqRedStar_app_fixed_arg` and
+  `meqRedStar_abs_fOp_body_fixed_bound`, matching the existing subtype
+  chain lifts. These support later residual joins whose replacement
+  target may require additional equivalence steps. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
