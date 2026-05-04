@@ -594,6 +594,12 @@ closures, 2 inactive outstanding).
   operator-step evidence via `MSubRedJ`. The shape-only corollary
   `commute_appAbs_subStep_eqStar_of_diamond_or_appAbs` remains available.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added detail-preserving one-step
+  abstraction-headed application inversions
+  `MEqRed.app_abs_inv_detail` and `MSubRed.app_abs_inv_detail`. These
+  refine the existing shape-only inversions with `MEqRedJ` / `MSubRedJ`
+  payloads for β, residual equivalence application, structural app-to-Top,
+  and structural app-to-abstraction branches. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

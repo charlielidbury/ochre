@@ -1118,6 +1118,29 @@ theorem MEqRed.app_abs_inv {Γ : Ctx} {s : Stack}
     subst hEq
     exact Or.inr ⟨bound', body', _, rfl⟩
 
+/-- A detail-preserving one-step equivalence inversion from an
+abstraction-headed application. The β branch keeps the body and argument
+premises; the residual application branch keeps the operator and argument
+steps. -/
+theorem MEqRed.app_abs_inv_detail {Γ : Ctx} {s : Stack}
+    {bound body arg v : Term}
+    (h : MEqRed Γ s (.app (.abs bound body) arg) v) :
+    (∃ body' arg',
+      MEqRedJ ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s) body body' ∧
+        MEqRedJ Γ [] arg arg' ∧
+        v = Term.instantiate 0 arg' body') ∨
+      ∃ bound' body' arg',
+        MEqRedJ Γ (arg :: s) (.abs bound body) (.abs bound' body') ∧
+          MEqRedJ Γ [] arg arg' ∧
+          v = .app (.abs bound' body') arg' := by
+  cases h with
+  | bet _ hBody hArg =>
+    exact Or.inl ⟨_, _, ⟨hBody⟩, ⟨hArg⟩, rfl⟩
+  | app hOp hArg =>
+    obtain ⟨bound', body', hEq⟩ := hOp.abs_inv
+    subst hEq
+    exact Or.inr ⟨bound', body', _, ⟨hOp⟩, ⟨hArg⟩, rfl⟩
+
 /-- A one-step subtype reduction from an abstraction-headed application is
 either `Top`, a β target inherited through `Ms-Equ`, a `Top`-headed
 application, or another abstraction-headed application. -/
@@ -1146,6 +1169,48 @@ theorem MSubRed.app_abs_inv {Γ : Ctx} {s : Stack}
       obtain ⟨bound', body', hEq⟩ := hAbs
       subst hEq
       exact Or.inr (Or.inr (Or.inr ⟨bound', body', arg, rfl⟩))
+
+/-- A detail-preserving one-step subtype inversion from an
+abstraction-headed application. Besides the immediate `Top` target, it
+separates β targets inherited through `Ms-Equ`, residual applications
+inherited through `Ms-Equ`, structural `Ms-App` targets whose operator reaches
+`Top`, and structural `Ms-App` targets whose operator remains an abstraction. -/
+theorem MSubRed.app_abs_inv_detail {Γ : Ctx} {s : Stack}
+    {bound body arg v : Term}
+    (h : MSubRed Γ s (.app (.abs bound body) arg) v) :
+    v = .top ∨
+      (∃ body' arg',
+        MEqRedJ ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s) body body' ∧
+          MEqRedJ Γ [] arg arg' ∧
+          v = Term.instantiate 0 arg' body') ∨
+      (∃ bound' body' arg',
+        MEqRedJ Γ (arg :: s) (.abs bound body) (.abs bound' body') ∧
+          MEqRedJ Γ [] arg arg' ∧
+          v = .app (.abs bound' body') arg') ∨
+      (∃ arg',
+        MSubRedJ Γ (arg :: s) (.abs bound body) .top ∧
+          v = .app .top arg') ∨
+      ∃ bound' body',
+        MSubRedJ Γ (arg :: s) (.abs bound body) (.abs bound' body') ∧
+          v = .app (.abs bound' body') arg := by
+  cases h with
+  | top _ _ =>
+    exact Or.inl rfl
+  | equ _ heq =>
+    cases heq.app_abs_inv_detail with
+    | inl hBet =>
+      exact Or.inr (Or.inl hBet)
+    | inr hApp =>
+      exact Or.inr (Or.inr (Or.inl hApp))
+  | app hOp _ =>
+    cases hOp.abs_inv with
+    | inl hTop =>
+      subst hTop
+      exact Or.inr (Or.inr (Or.inr (Or.inl ⟨arg, ⟨hOp⟩, rfl⟩)))
+    | inr hAbs =>
+      obtain ⟨bound', body', hEq⟩ := hAbs
+      subst hEq
+      exact Or.inr (Or.inr (Or.inr (Or.inr ⟨bound', body', ⟨hOp⟩, rfl⟩)))
 
 /-- A chain of equivalence reductions from an abstraction-headed application
 either has already taken a β step, in which case the final target remains
