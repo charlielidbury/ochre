@@ -499,6 +499,10 @@ hard caveats.
      `appAbs_subStar_appTop_to_top`,
      `msub_appAbs_subStar_appTop_to_top`, and
      `msubStar_appAbs_subStar_appTop_to_top`.
+     The composed source-to-`Top` package for this branch is named
+     `appAbs_subStar_to_top_of_appTop`,
+     `msub_appAbs_to_top_of_subStar_appTop`, and
+     `msubStar_appAbs_to_top_of_subStar_appTop`.
      The corresponding commutation branch is named
      `commute_appAbs_subStar_appTop_eqStar`, joining such subtype
      branches against arbitrary equivalence chains from the same source
