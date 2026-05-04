@@ -1646,6 +1646,24 @@ noncomputable def WSubMStar.extend_left_via_MSubRedStar_fwd
   exact WSubMStar.trans (hChain.wf_right_of hpres hwfA)
     (WSubMStar.of_MSubRedStar_fwd hpres hChain hwfA) h
 
+/-- `Ws-Lf2` replacement packaged for star-valued subtype residuals: prepend
+an already-replaced subtype chain to an already-replaced recursive
+well-subtyping chain, under the local stepwise `WfM` preservation needed to
+turn reduction chains into well-subtyping chains. -/
+noncomputable def WSubMStar.lf2_replaceAt_sub_from_substar {Γ : Ctx}
+    {cutoff : Nat} {new v v' t : Term}
+    (hred : MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] v v')
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) y)
+    (hsub : WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v' t)
+    (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  hsub.extend_left_via_MSubRedStar_fwd hpres hred hwfV
+
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/
 noncomputable def WSubMStar.extend_right_via_MSubRedStar_fwd
