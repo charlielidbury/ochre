@@ -1841,6 +1841,41 @@ theorem meqRedStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
     exact Relation.ReflTransGen.trans ih
       (MEqRedStar.single (MEqRed.fOp hBoundRefl hα hStep.some))
 
+/-- Lift a diagrammatic body subtyping step under an `.equ` head into an
+abstraction subtyping step through `FOp`, keeping the abstraction bound fixed.
+-/
+theorem msub_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
+    {α bound body body' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hBody : MSub ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body') :
+    MSub Γ (α :: s) (.abs bound body) (.abs bound body') := by
+  obtain ⟨joinBody, hSubBody, hEqBody⟩ := hBody
+  exact MSub.intro
+    (msubRedStar_abs_fOp_body_fixed_bound hBoundScoped hα hSubBody)
+    (meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hEqBody)
+
+/-- Lift a diagrammatic body subtyping chain under an `.equ` head into an
+abstraction subtyping chain through `FOp`, keeping the abstraction bound
+fixed. -/
+theorem msubStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
+    {α bound body body' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hBody : MSubStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body') :
+    MSubStar Γ (α :: s) (.abs bound body) (.abs bound body') := by
+  induction hBody with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid body' hStar hStep ih =>
+    exact Relation.ReflTransGen.trans ih
+      (MSub.to_star
+        (msub_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hStep))
+
 /-- Under a changed `.equ` head, the old shifted head bound diagrammatically
 subtypes the new head variable. The subtype side uses an old-to-new head
 equivalence at the same residual stack; the equivalence side promotes

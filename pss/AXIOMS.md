@@ -677,6 +677,12 @@ closures, 2 inactive outstanding).
   application-chain lifters. These let later replacement residuals lift
   `MSub`/`MSubStar` joins through a stable application argument. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic `FOp`
+  body lifts `msub_abs_fOp_body_fixed_bound` and
+  `msubStar_abs_fOp_body_fixed_bound`, reusing the raw subtype and
+  equivalence `FOp` chain lifters. These let body-level replacement
+  residuals produce `MSub`/`MSubStar` joins and still lift back to
+  abstraction-headed residuals. No axiom-count change.
 * `Pss/Context/DeBruijn.lean` — added the first `.equ`-head replacement
   infrastructure: subtype lookups are invariant when the innermost
   `.equ` bound changes, nonzero equivalence lookups are invariant, and
