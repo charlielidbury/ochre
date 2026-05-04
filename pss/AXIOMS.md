@@ -615,6 +615,13 @@ closures, 2 inactive outstanding).
   old operator stack head `arg :: s` to the new head `arg' :: s`; proving
   that stack-head transport is the remaining infrastructure gap for this
   structural App/App cell. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.abs_inv_detail`, splitting one-step abstraction equivalence
+  reductions into the unapplied `Me-Fun` branch and the operand-stack
+  `Me-FOp` branch. The `Me-FOp` branch records the actual stack head and
+  body derivation with Prop-safe wrappers, making the stack-head transport
+  residual inspectable without losing constructor evidence. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

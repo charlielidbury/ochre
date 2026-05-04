@@ -994,6 +994,27 @@ theorem MEqRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
   | fun_ _ _ => exact ⟨_, _, rfl⟩
   | fOp _ _ _ => exact ⟨_, _, rfl⟩
 
+/-- Detail-preserving one-step equivalence inversion from an abstraction,
+separating the unapplied-function rule from the operand-stack rule. -/
+theorem MEqRed.abs_inv_detail {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MEqRed Γ s (.abs bound body) v) :
+    (∃ bound' body',
+      MEqRedJ Γ [] bound bound' ∧
+        MEqRedJ ({ bound := bound, kind := .sub } :: Γ) [] body body' ∧
+        v = .abs bound' body') ∨
+      ∃ bound' α rest body',
+        MEqRedJ Γ [] bound bound' ∧
+          Nonempty (Term.Scoped Γ.depth α) ∧
+          s = α :: rest ∧
+          MEqRedJ ({ bound := α, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body' ∧
+          v = .abs bound' body' := by
+  cases h with
+  | fun_ hBound hBody =>
+    exact Or.inl ⟨_, _, ⟨hBound⟩, ⟨hBody⟩, rfl⟩
+  | fOp hBound hα hBody =>
+    exact Or.inr ⟨_, _, _, _, ⟨hBound⟩, ⟨hα⟩, rfl, ⟨hBody⟩, rfl⟩
+
 /-- A de Bruijn equivalence-reduction chain from an abstraction can only target
 an abstraction. -/
 theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
