@@ -1222,6 +1222,11 @@ closures, 2 inactive outstanding).
   `StepPreservesWfM_of_diagram_components`, so the preservation endpoint can
   consume the Type-valued function-bound diagram payload directly. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct chain-diagram β and
+  preservation wrappers `StepBetaPreservesWfM_of_chain_diagram` and
+  `StepPreservesWfM_of_chain_diagram_components`, allowing preservation to
+  consume the Type-valued chain diagram payload directly. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — proved the direct one-step helper
   `MSubRed.abs_function_bound_inversion`, extracting bound
   well-equivalence from an empty-stack function-to-function subtype
