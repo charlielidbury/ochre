@@ -154,7 +154,7 @@ hard caveats.
      derivations under extended nameless contexts rather than cofinite
      fresh-name functions.
      `MEqRed.refl` is now a direct structural recursion on
-     Type-valued `Term.Scoped`.
+     Type-valued `Term.Scoped`; `MSubRed.refl` follows by `Ms-Equ`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

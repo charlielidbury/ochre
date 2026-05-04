@@ -231,6 +231,12 @@ noncomputable def MEqRed.refl {Γ : Ctx} {s : Stack} {u : Term}
         PrevalidExt.weaken_head hpvTail hpvBodyCtx
       exact MEqRed.fOp hBoundRefl (ihBody hpvBody hBody)
 
+/-- Reflexivity of de Bruijn subtype reduction, via `Ms-Equ`. -/
+noncomputable def MSubRed.refl {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u) :
+    MSubRed Γ s u u :=
+  MSubRed.equ hpv (MEqRed.refl hpv hu)
+
 
 end DeBruijn
 end Pss

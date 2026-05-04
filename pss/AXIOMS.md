@@ -55,7 +55,8 @@ closures, 2 inactive outstanding).
   scoping invariants.
 * `Pss/Mpss/DeBruijnReductions.lean` — `MEqRed.refl`, direct structural
   reflexivity from Type-valued `Term.Scoped`, plus
-  `PrevalidExt.weaken_head` support in `Pss/Context/DeBruijn.lean`.
+  `MSubRed.refl` via `Ms-Equ` and `PrevalidExt.weaken_head` support in
+  `Pss/Context/DeBruijn.lean`.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 
