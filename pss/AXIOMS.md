@@ -395,6 +395,10 @@ closures, 2 inactive outstanding).
   shape inversions `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, plus the
   direct abstraction-to-`Top` join `commute_abs_to_top_eqStar`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `abs_eqStar_to_top_of_subStar_top`, a named corollary exposing the
+  target-to-`Top` subtype chain from `commute_abs_to_top_eqStar`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
