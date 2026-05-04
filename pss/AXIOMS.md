@@ -207,6 +207,10 @@ closures, 2 inactive outstanding).
   `WEquM.left_chain`, `WEquM.right_chain_back`,
   `WEquMStar.WEquM_trans`, and `WEquMStar.trans`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added single-step embeddings
+  `WSubMStar.of_WSubM` and `WEquMStar.of_WEquM`, and rewired the
+  two-step transitivity helpers through those names. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added context-prevalidity
   extractors for all five de Bruijn well-formed judgments:
   `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,

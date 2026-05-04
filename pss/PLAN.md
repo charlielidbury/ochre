@@ -266,6 +266,7 @@ hard caveats.
      are also available: `WSubMStar.WSubM_trans`, `WSubMStar.trans`,
      `WSubM.left_lf1_chain`, `WSubM.right_rgh_chain`,
      `WEquM.left_chain`, `WEquM.right_chain_back`,
+     `WSubMStar.of_WSubM`, `WEquMStar.of_WEquM`,
      `WEquMStar.WEquM_trans`, and `WEquMStar.trans`. Context
      prevalidity extractors are available for all five judgments as
      `*.prevalid`, plus derived-prevalid insertion wrappers

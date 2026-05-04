@@ -846,14 +846,21 @@ noncomputable def WEquM.toWSubM {Γ : Ctx} {u v : Term} (h : WEquM Γ u v) :
 
 /-! ## Chain helpers -/
 
+/-- Embed one de Bruijn well-subtyping step into transitive well-subtyping. -/
+def WSubMStar.of_WSubM {Γ : Ctx} {a b : Term}
+    (hwfA : WfM Γ a) (hwfB : WfM Γ b)
+    (h : WSubM Γ a b) :
+    WSubMStar Γ a b :=
+  WSubMStar.sub hwfA h hwfB
+
 /-- Compose two de Bruijn well-subtyping steps into transitive
 well-subtyping. -/
 def WSubMStar.WSubM_trans {Γ : Ctx} {a b c : Term}
     (hwfA : WfM Γ a) (hwfB : WfM Γ b) (hwfC : WfM Γ c)
     (h₁ : WSubM Γ a b) (h₂ : WSubM Γ b c) :
     WSubMStar Γ a c :=
-  WSubMStar.trs (WSubMStar.sub hwfA h₁ hwfB) hwfB
-    (WSubMStar.sub hwfB h₂ hwfC)
+  WSubMStar.trs (WSubMStar.of_WSubM hwfA hwfB h₁) hwfB
+    (WSubMStar.of_WSubM hwfB hwfC h₂)
 
 /-- Star-on-star transitivity of de Bruijn well-subtyping. -/
 def WSubMStar.trans {Γ : Ctx} {a b c : Term}
@@ -1454,14 +1461,22 @@ noncomputable def WEquMStar.extend_right_via_MEqRedStar_back_of_wf
   WEquMStar.trs h h.wf_right
     (WEquMStar.of_MEqRedStar_back_of_wf hChain hwfC h.wf_right)
 
+/-- Embed one de Bruijn well-equivalence step into transitive
+well-equivalence. -/
+def WEquMStar.of_WEquM {Γ : Ctx} {a b : Term}
+    (hwfA : WfM Γ a) (hwfB : WfM Γ b)
+    (h : WEquM Γ a b) :
+    WEquMStar Γ a b :=
+  WEquMStar.sub hwfA h hwfB
+
 /-- Compose two de Bruijn well-equivalence steps into transitive
 well-equivalence. -/
 def WEquMStar.WEquM_trans {Γ : Ctx} {a b c : Term}
     (hwfA : WfM Γ a) (hwfB : WfM Γ b) (hwfC : WfM Γ c)
     (h₁ : WEquM Γ a b) (h₂ : WEquM Γ b c) :
     WEquMStar Γ a c :=
-  WEquMStar.trs (WEquMStar.sub hwfA h₁ hwfB) hwfB
-    (WEquMStar.sub hwfB h₂ hwfC)
+  WEquMStar.trs (WEquMStar.of_WEquM hwfA hwfB h₁) hwfB
+    (WEquMStar.of_WEquM hwfB hwfC h₂)
 
 /-- Star-on-star transitivity of de Bruijn well-equivalence. -/
 def WEquMStar.trans {Γ : Ctx} {a b c : Term}
