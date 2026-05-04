@@ -593,6 +593,9 @@ closures, 2 inactive outstanding).
   `WfM.bvar_sub_under_head_replace`, rebuilding the changed subtype
   binding at the replaced entry and transporting unaffected lookups. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added `Top` leaf consumers for
+  `.sub` head replacement, `WfM.top_sub_head_replace` and
+  `WfM.top_sub_under_head_replace`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

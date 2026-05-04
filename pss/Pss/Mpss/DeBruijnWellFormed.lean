@@ -458,6 +458,23 @@ noncomputable def WfM.MSubRed_refl {Γ : Ctx} {t : Term} (h : WfM Γ t) :
 
 /-! ## Sub-head replacement leaves -/
 
+/-- `Top` remains well-formed when replacing the innermost `.sub` context
+annotation. -/
+noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}
+    (h : WfM ({ bound := old, kind := .sub } :: Γ) .top)
+    (hnew : Term.Scoped Γ.depth new) :
+    WfM ({ bound := new, kind := .sub } :: Γ) .top :=
+  WfM.top (Prevalid.sub_head_replace h.prevalid hnew)
+
+/-- `Top` remains well-formed when replacing a `.sub` annotation immediately
+under one preserved context head. -/
+noncomputable def WfM.top_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {old new : Term}
+    (h : WfM (head :: { bound := old, kind := .sub } :: Γ) .top)
+    (hnew : Term.Scoped Γ.depth new) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) .top :=
+  WfM.top (Prevalid.sub_under_head_replace h.prevalid hnew)
+
 /-- Variable well-formedness is preserved when replacing the innermost `.sub`
 context annotation. The replaced entry itself is rebuilt against the new
 annotation; tail lookups are transported by context lookup helpers. -/
