@@ -227,7 +227,54 @@ The input is a Wf-App with the LHS abstraction; the body MEqRed step
 lives at flat Γ but the Wf-Fun inversion gives the body WfM at extended
 Γ. The context-mismatch obstacle is the same one captured in
 `_SR_axiom_app_meApp_bet` — this is just the projected per-case form,
-indexed on the actual abstraction body `bd`. -/
+indexed on the actual abstraction body `bd`.
+
+## Circular-dependency finding (iteration `pss-20260504-025516` audit)
+
+**The natural discharge of `_SR_v2_bet_residual` requires
+`Lemma_10_Inversion`.** This makes the SR-as-discharge-of-Lemma-10
+strategy circular: SR's β-residual essentially encodes a specialization
+of Lemma 10 inversion.
+
+Sketch of the discharge attempt:
+1. Pick fresh `x ∉ L ∪ Lfn ∪ Γ.dom ∪ relevant fvs`.
+2. From `hwfFn`, by Wf-Fun inversion: `WfM (⟨x, tt, .sub⟩ :: Γ) (bd^[x])`.
+3. Lift `hbd x : MEqRed Γ [] (bd^[x]) (bd'^[x])` to extended context via
+   `Lemma_22_WeakeningMEqRed`.
+4. Recursive SR call at extended context yields
+   `WfM (⟨x, tt, .sub⟩ :: Γ) (bd'^[x])`.
+5. Recursive SR call at `hv` yields `WfM Γ v'`.
+6. Apply `Lemma_7_SubstitutionPreservesWf` with substitution `x → v'` —
+   **this requires `WSubMStar Γ v' tt`**, where `tt` is the abstraction's
+   bound annotation.
+7. We have `hStarV : WSubMStar Γ v T` and `MEqRed Γ [] v v'`. To get
+   `WSubMStar Γ v' tt`, we need to:
+   - Forward-extend the LHS through `hv` (confluence-shaped — itself
+     non-trivial), AND
+   - Bridge the codomain `T` (from `hStarFn`'s target shape) to the
+     bound annotation `tt`.
+   - The codomain-to-bound bridge IS exactly `Lemma_10_Inversion`'s
+     output (`WEquM Γ tt T`), then translated via `Lemma_15_WEquM_symm`
+     and `Lemma_16_WEquM_to_WSubM` (mirroring TypeSafety.lean:959-970).
+
+Without `Lemma_10_Inversion`, no path is known for step 7. So:
+* SR-via-MEqRed-recursion does NOT yield a fresh discharge angle for
+  `Lemma_10_Inversion`; it merely renames the dependency.
+* Wiring SR into Lemma_10's discharge via this residual would yield
+  net 0 axiom-count improvement (Lemma_10 → _SR_v2_bet_residual,
+  which itself encodes Lemma_10's content).
+
+The remaining honest paths to break this stalemate are the same ones
+listed in `Pss/Mpss/WfMPreservation.lean` (recovery strategies 1-4)
+and the Phase 5g.3b "remaining honest paths" (CAPSU-aware existence-
+form composition, setoid-quotient on derivations, de-Bruijn
+re-encoding, or accept axioms permanently).
+
+The axiom is RETAINED as a Pareto-positive narrowing of
+`_SR_axiom_app_meApp_bet` (more hypotheses, hence harder to
+counterexample-falsify and easier to discharge if a fresh angle is
+found). Future work should not re-attempt the natural discharge path
+above — it is documented blocked by the circularity. -/
 private axiom _SR_v2_bet_residual
     {Γ : Ctx} {tt bd v T : Term}
     (hCtx : WfCtxEqu Γ)
