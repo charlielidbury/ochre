@@ -568,6 +568,48 @@ theorem subBinds_replaceAt_sub_self {Γ : Ctx} {cutoff : Nat} {new : Term}
                 simpa [Term.shift, Nat.add_assoc] using
                   (Term.shiftBy_compose 0 (cutoff + 1) 1 new)⟩
 
+/-- Replacing a `.sub` entry preserves subtype lookups away from the changed
+index. The changed index itself has the residual described by
+`subBinds_replaceAt_sub_self`. -/
+theorem subBinds_replaceAt_sub_of_ne {Γ : Ctx} {cutoff i : Nat}
+    {old new t : Term} (hne : i ≠ cutoff) :
+    subBinds (replaceAt cutoff { bound := old, kind := .sub } Γ) i t →
+    subBinds (replaceAt cutoff { bound := new, kind := .sub } Γ) i t := by
+  induction Γ generalizing cutoff i t with
+  | nil =>
+      cases i <;> simp [subBinds, replaceAt]
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero =>
+          cases i with
+          | zero =>
+              exact False.elim (hne rfl)
+          | succ i =>
+              exact Ctx.subBinds_sub_head_replace_succ
+      | succ cutoff =>
+          cases i with
+          | zero =>
+              cases head with
+              | mk bound kind =>
+                  cases kind <;> simp [subBinds, replaceAt]
+          | succ i =>
+              intro h
+              simp [subBinds, replaceAt] at h ⊢
+              cases hlook : lookupSub (replaceAt cutoff { bound := old, kind := .sub } Γ) i with
+              | none =>
+                  simp [hlook] at h
+              | some a =>
+                  simp [hlook] at h
+                  subst h
+                  have hneTail : i ≠ cutoff := by
+                    intro hEq
+                    exact hne (by simp [hEq])
+                  have htail : subBinds
+                      (replaceAt cutoff { bound := new, kind := .sub } Γ) i a :=
+                    ih (cutoff := cutoff) (i := i) (t := a) hneTail
+                      (by simpa [subBinds] using hlook)
+                  exact ⟨a, by simpa [subBinds] using htail, rfl⟩
+
 /-- Changing the bound stored in an `.equ` head does not affect subtype
 lookups, because subtype lookup skips `.equ` heads. -/
 theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :

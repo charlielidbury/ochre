@@ -872,6 +872,11 @@ closures, 2 inactive outstanding).
   `MEqRed.pro_replaceAt_sub` for arbitrary-depth `Me-Pro` transport and
   `MSubRed.pro_replaceAt_sub_self` for the changed-slot `Ms-Pro`
   residual. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnReductions.lean` —
+  added arbitrary-depth non-changed-slot subtype lookup/reduction
+  transport across `.sub` replacement:
+  `Ctx.subBinds_replaceAt_sub_of_ne` and
+  `MSubRed.pro_replaceAt_sub_of_ne`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

@@ -1164,6 +1164,17 @@ noncomputable def MSubRed.pro_replaceAt_sub_self {Γ : Ctx} {s : Stack}
       (.bvar cutoff) (Term.shiftBy 0 (cutoff + 1) new) :=
   MSubRed.pro hpv (Ctx.subBinds_replaceAt_sub_self hcut)
 
+/-- Generic non-changed-slot `Ms-Pro` transport after replacing a `.sub`
+entry at any context depth. -/
+noncomputable def MSubRed.pro_replaceAt_sub_of_ne {Γ : Ctx} {s : Stack}
+    {cutoff i : Nat} {old new t : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hne : i ≠ cutoff)
+    (hb : Ctx.subBinds (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) i t) :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.bvar i) t :=
+  MSubRed.pro hpv (Ctx.subBinds_replaceAt_sub_of_ne hne hb)
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}
