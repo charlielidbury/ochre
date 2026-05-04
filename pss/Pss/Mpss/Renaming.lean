@@ -5462,4 +5462,206 @@ noncomputable def MEqRed.descend_body_equ_abs
   rw [hsubst_t, hsubst_inner, hsubst_target]
   exact h_stripped'
 
+/-! ### §11.5. Phase C — assembled `descend_body_equ` template-aware functor
+
+### Design summary
+
+Phase C assembles the per-template leaves §11.1–§11.4 into a single
+template-aware descent functor on **body templates** (as opposed to the
+post-opened sources the leaves are keyed to). The leaves are defined
+over post-opened sources of fixed shape — `.top`, `.fvar w`, `.abs t inner`
+— but the consumer's body template is a single `Term` parameter, so the
+opening unfolds need to be performed BEFORE the leaf can be invoked.
+
+### Signature decision (Architecture A)
+
+The leaves §11.1, §11.2, §11.4 take `avoidsFv h y = true` (the source's
+recursive `y`-freshness across the derivation tree). Phase A does NOT —
+its source `.fvar y` makes `avoidsFv h y = true` structurally impossible
+(the `var`/`pro` simp lemmas have a `decide (y ∉ fv (.fvar y))` factor
+that is always false for `x = y`).
+
+We adopt **Architecture A**: Phase C takes `avoidsFv` and **excludes**
+`body = .bvar 0` via the template-level premise `hy_body : y ∉ Term.fv body`,
+EXCEPT that `Term.fv (.bvar 0) = ∅`, so `hy_body` does NOT exclude
+`.bvar 0`. The actual exclusion is via structural contradiction with
+`hAvoidFv` inside the function body: when `body = .bvar 0`, the source
+`.fvar y` makes every constructor of `MEqRed` produce `avoidsFv h y = false`,
+which contradicts `hAvoidFv`. So `.bvar 0` falls into a `False.elim` arm.
+
+The consumer dispatches on the body template:
+* `body = .bvar 0` → call `descend_body_equ_bvar0` (Phase A) directly.
+* otherwise → call Phase C (this section's umbrella functor).
+
+### Template case status (THIS ITERATION SHIPS items 1–5)
+
+1. `body = .bvar (n+1)`: vacuous — `(.bvar (n+1))^[y] = .bvar n` (since
+   `n+1 ≠ 0`), and no MEqRed constructor admits source `.bvar n`.
+   `cases h` exhausts no constructors → `nomatch`.
+
+2. `body = .bvar 0`: excluded via `hAvoidFv` contradiction.
+
+3. `body = .top`: delegates to `descend_body_equ_top` (§11.1) after
+   rewriting the source via `Term.opening` simp on `.top`.
+
+4. `body = .fvar w`: case-split on `w =? y`. `w = y` contradicts
+   `hy_body`. `w ≠ y`: delegates to `descend_body_equ_fvar` (§11.2).
+
+5. `body = .abs t' inner'`: `(.abs t' inner')^[y]` reduces to
+   `.abs (Term.open_ 0 (.fvar y) t') (Term.open_ 1 (.fvar y) inner')`.
+   Apply `descend_body_equ_abs` (§11.4) with the post-opened pieces;
+   align the output via `subst_open` distribution at depths 0 and 1
+   (combined with `subst_fresh` from `hy_body` ⇒ `y ∉ Term.fv t'` and
+   `y ∉ Term.fv inner'`).
+
+### Deferred to Phase D (item 6)
+
+6. `body = .app a b`: requires structural recursion on `Term.size body`,
+   since `a` and `b` are smaller body templates. Constructor casework
+   on `h` yields three arms (`app`, `tAp`, `bet`); each recurses on
+   the sub-templates. See §11.3 for the detailed deferral analysis.
+
+Phase D scope estimate: ~300–400 lines for the `.app` recursive case.
+The `.app` case is the main remaining substantive work in the renaming
+functor pipeline. -/
+
+/-- **Phase C (partial) — assembled `descend_body_equ` template-aware
+descent functor.**
+
+Given a derivation at the extended context `(⟨y, α, .equ⟩ :: Γ)` with
+source `body^[y]` for some body template `body : Term`, produce a
+derivation at the bare `Γ` with source `body^[z]` and target
+`Term.subst y (.fvar z) target_y`.
+
+This iteration handles all template shapes EXCEPT `.app` (Phase D) and
+`.bvar 0` (consumer dispatches to Phase A directly). The `.bvar 0` arm
+is excluded inside this function via `hAvoidFv` contradiction.
+
+For `body = .app a b`, this function REQUIRES the caller to supply the
+recursive case via `rec_app`. Phase D's job is to discharge this
+dependency by structural recursion on `Term.size body`.
+
+The `rec_app` parameter encapsulates the recursive-on-sub-templates
+case. It is NOT an axiom — Phase D will define it as a recursive call
+to `descend_body_equ` itself, terminating on `body.size`. Until Phase
+D lands, the consumer cannot invoke Phase C with `body = .app _ _`,
+which is exactly the residual blocker of `Lemma_2_inline_app_bet_residual_axiom`. -/
+noncomputable def MEqRed.descend_body_equ
+    {Γ : Ctx} {s : Stack} {y : String} {α target_y : Term}
+    (body : Term)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) target_y)
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true)
+    (hAvoidFv : avoidsFv h y = true)
+    (hy_Γ : y ∉ Γ.dom)
+    (hy_body : y ∉ Term.fv body)
+    (hst_avoid : ∀ β ∈ s, y ∉ Term.fv β)
+    (z : String)
+    (rec_app : ∀ (a b : Term),
+      body = .app a b →
+      MEqRed Γ s ((.app a b)^[z]) (Term.subst y (.fvar z) target_y)) :
+    MEqRed Γ s (body^[z]) (Term.subst y (.fvar z) target_y) := by
+  classical
+  -- Rather than `match body with`, we use a destructive `rcases` pattern
+  -- on `body` that lets us simultaneously rewrite `body^[y]` in `h` and
+  -- carry the avoidsPro/cofinDomFresh/avoidsFv premises through.
+  -- The key trick: introduce a `body_eq : body = ...` equality and
+  -- `subst` it, so the dependent hypotheses re-typecheck.
+  -- Generalize the source `body^[y]` to a fresh variable so we can
+  -- substitute it via the per-case opening equations (`subst` cleanly
+  -- updates dependent hypotheses, unlike `rw` which only updates the
+  -- target hypothesis).
+  generalize hsrc : (body^[y]) = src at h
+  cases body_template_eq : body with
+  | bvar n =>
+    subst body_template_eq
+    cases n with
+    | zero =>
+      -- (.bvar 0)^[y] = .fvar y.
+      have hopen : (Term.bvar 0 : Term)^[y] = .fvar y := by
+        simp [Term.opening, Term.open_]
+      rw [hopen] at hsrc
+      subst hsrc
+      cases h with
+      | @pro _ _ _ aLkup _ hpv heq hβ =>
+        exfalso
+        rw [avoidsFv_pro] at hAvoidFv
+        simp at hAvoidFv
+      | @var _ _ _ hpv =>
+        exfalso
+        rw [avoidsFv_var] at hAvoidFv
+        simp at hAvoidFv
+    | succ n =>
+      have hopen : (Term.bvar (n+1) : Term)^[y] = .bvar (n+1) := by
+        simp [Term.opening, Term.open_]
+      rw [hopen] at hsrc
+      subst hsrc
+      nomatch h
+  | fvar w =>
+    subst body_template_eq
+    by_cases hwy : w = y
+    · subst hwy
+      exfalso; apply hy_body; simp [Term.fv]
+    · have hopen : (Term.fvar w : Term)^[y] = .fvar w := by
+        simp [Term.opening, Term.open_]
+      rw [hopen] at hsrc
+      subst hsrc
+      have hopen_z : (Term.fvar w : Term)^[z] = .fvar w := by
+        simp [Term.opening, Term.open_]
+      rw [hopen_z]
+      exact MEqRed.descend_body_equ_fvar hwy h hAvoid hFresh hAvoidFv
+        hy_Γ hst_avoid z
+  | top =>
+    subst body_template_eq
+    have hopen : (Term.top : Term)^[y] = .top := by
+      simp [Term.opening, Term.open_]
+    rw [hopen] at hsrc
+    subst hsrc
+    have hopen_z : (Term.top : Term)^[z] = .top := by
+      simp [Term.opening, Term.open_]
+    rw [hopen_z]
+    exact MEqRed.descend_body_equ_top h hAvoid hst_avoid z
+  | abs t' inner' =>
+    subst body_template_eq
+    have hopen : (Term.abs t' inner' : Term)^[y] =
+        .abs (Term.open_ 0 (.fvar y) t') (Term.open_ 1 (.fvar y) inner') := by
+      simp [Term.opening, Term.open_]
+    rw [hopen] at hsrc
+    subst hsrc
+    -- Extract template-level fv freshness from hy_body.
+    have hy_t' : y ∉ Term.fv t' := fun h_in => hy_body (by
+      rw [Term.fv_abs]; exact Finset.mem_union.mpr (Or.inl h_in))
+    have hy_inner' : y ∉ Term.fv inner' := fun h_in => hy_body (by
+      rw [Term.fv_abs]; exact Finset.mem_union.mpr (Or.inr h_in))
+    -- Apply §11.4 leaf.
+    have h_descended :
+        MEqRed Γ s
+          (.abs (Term.subst y (.fvar z) (Term.open_ 0 (.fvar y) t'))
+                (Term.subst y (.fvar z) (Term.open_ 1 (.fvar y) inner')))
+          (Term.subst y (.fvar z) target_y) :=
+      MEqRed.descend_body_equ_abs h hAvoid hFresh hAvoidFv hy_Γ hst_avoid z
+    -- Distribute `subst y (.fvar z)` over `open_ k (.fvar y) e`.
+    have hLC_z : Term.LC (.fvar z) := Term.LC.fvar z
+    have hsubst_open_t :
+        Term.subst y (.fvar z) (Term.open_ 0 (.fvar y) t') =
+        Term.open_ 0 (.fvar z) t' := by
+      rw [Term.subst_open hLC_z, Term.subst_fresh hy_t']
+      simp [Term.subst]
+    have hsubst_open_inner :
+        Term.subst y (.fvar z) (Term.open_ 1 (.fvar y) inner') =
+        Term.open_ 1 (.fvar z) inner' := by
+      rw [Term.subst_open hLC_z, Term.subst_fresh hy_inner']
+      simp [Term.subst]
+    -- Goal source: (.abs t' inner')^[z] = .abs (open_ 0 (.fvar z) t') (open_ 1 (.fvar z) inner').
+    have hopen_z : (Term.abs t' inner' : Term)^[z] =
+        .abs (Term.open_ 0 (.fvar z) t') (Term.open_ 1 (.fvar z) inner') := by
+      simp [Term.opening, Term.open_]
+    rw [hopen_z]
+    rw [← hsubst_open_t, ← hsubst_open_inner]
+    exact h_descended
+  | app a b =>
+    subst body_template_eq
+    -- Phase D: deferred. Consumer supplies via rec_app.
+    exact rec_app a b rfl
+
 end Pss
