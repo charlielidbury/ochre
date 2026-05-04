@@ -1195,6 +1195,25 @@ noncomputable def WSubMStar.lf1_replaceAt_sub_from_star {Γ : Ctx}
   hsub.extend_left_via_MEqRed_fwd
     (hred.replaceAt_sub hcut hOldNew) hwfV
 
+/-- `Ws-Lf1` replacement under one preserved head, packaged for recursive
+binder cases. -/
+noncomputable def WSubMStar.lf1_sub_under_head_replace_from_star {Γ : Ctx}
+    {head : CtxEntry} {old new v v' t : Term}
+    (hred : MEqRed (head :: { bound := old, kind := .sub } :: Γ) [] v v')
+    (hOldNew : MEqRed Γ [] old new)
+    (hsub : WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v' t)
+    (hwfV : WfM (head :: { bound := new, kind := .sub } :: Γ) v) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t := by
+  have hcut : 1 < Ctx.depth (head :: { bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.lf1_replaceAt_sub_from_star
+      (Γ := head :: { bound := old, kind := .sub } :: Γ)
+      (cutoff := 1) (old := old) (new := new)
+      (v := v) (v' := v') (t := t)
+      hred hcut (by simpa using hOldNew)
+      (by simpa using hsub) (by simpa using hwfV))
+
 private def _extendLeftWSubMStarMSubRedMotive (Γ : Ctx) (a b : Term)
     (_ : WSubMStar Γ a b) : Type :=
   ∀ {c : Term}, MSubRed Γ [] c a → WfM Γ c → WSubMStar Γ c b
@@ -1285,6 +1304,25 @@ noncomputable def WSubMStar.rgh_replaceAt_sub_from_star {Γ : Ctx}
     WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
   hsub.extend_right_via_MEqRed_back
     (hred.replaceAt_sub hcut hOldNew) hwfT
+
+/-- `Ws-Rgh` replacement under one preserved head, packaged for recursive
+binder cases. -/
+noncomputable def WSubMStar.rgh_sub_under_head_replace_from_star {Γ : Ctx}
+    {head : CtxEntry} {old new v t t' : Term}
+    (hsub : WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t')
+    (hred : MEqRed (head :: { bound := old, kind := .sub } :: Γ) [] t t')
+    (hOldNew : MEqRed Γ [] old new)
+    (hwfT : WfM (head :: { bound := new, kind := .sub } :: Γ) t) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t := by
+  have hcut : 1 < Ctx.depth (head :: { bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.rgh_replaceAt_sub_from_star
+      (Γ := head :: { bound := old, kind := .sub } :: Γ)
+      (cutoff := 1) (old := old) (new := new)
+      (v := v) (t := t) (t' := t')
+      (by simpa using hsub) hred hcut (by simpa using hOldNew)
+      (by simpa using hwfT))
 
 private def _extendLeftWEquMStarMotive (Γ : Ctx) (a b : Term)
     (_ : WEquMStar Γ a b) : Type :=
@@ -1684,6 +1722,20 @@ noncomputable def WSubMStar.lf2_replaceAt_sub_from_substar {Γ : Ctx}
       v' t)
     (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v) :
     WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  hsub.extend_left_via_MSubRedStar_fwd hpres hred hwfV
+
+/-- `Ws-Lf2` replacement under one preserved head, packaged for recursive
+binder cases with an already transported subtype residual chain. -/
+noncomputable def WSubMStar.lf2_sub_under_head_replace_from_substar {Γ : Ctx}
+    {head : CtxEntry} {new v v' t : Term}
+    (hred : MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) [] v v')
+    (hpres : ∀ {x y : Term},
+      MSubRedJ (head :: { bound := new, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) y)
+    (hsub : WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v' t)
+    (hwfV : WfM (head :: { bound := new, kind := .sub } :: Γ) v) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) v t :=
   hsub.extend_left_via_MSubRedStar_fwd hpres hred hwfV
 
 /-- Append a forward subtype-reduction chain on the right of de Bruijn

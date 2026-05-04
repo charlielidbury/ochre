@@ -974,6 +974,11 @@ closures, 2 inactive outstanding).
   `WSubMStar.lf2_sub_under_head_self_replace`, the index-1 under-head
   specialization of the changed-slot `Ws-Lf2` replacement residual. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head star consumers
+  `WSubMStar.lf1_sub_under_head_replace_from_star`,
+  `WSubMStar.rgh_sub_under_head_replace_from_star`, and
+  `WSubMStar.lf2_sub_under_head_replace_from_substar` for recursive
+  binder replacement cases. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
