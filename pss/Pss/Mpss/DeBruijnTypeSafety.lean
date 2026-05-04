@@ -15,10 +15,27 @@ namespace DeBruijn
 def NoTopFunctionSupertypes : Prop :=
   ∀ {bound : Term}, WSubMStar [] .top (.abs bound .top) → False
 
+/-- Context-generic form of the `Top`-has-no-function-supertype obstruction.
+This is the shape needed by arbitrary-context function-bound inversion. -/
+def NoTopFunctionSupertypesAt : Prop :=
+  ∀ {Γ : Ctx} {bound : Term}, WSubMStar Γ .top (.abs bound .top) → False
+
+/-- Once de Bruijn Theorem 3 is available at every context, `Top` cannot have a
+function supertype at any context. Diagrammatic subtyping from `Top` can only
+join at `Top`, while equivalence chains from an abstraction can only target
+another abstraction. -/
+noncomputable def NoTopFunctionSupertypesAt_of
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ []) :
+    NoTopFunctionSupertypesAt := by
+  intro Γ bound hTopFun
+  obtain ⟨join, hSubTop, hEqAbs⟩ := hTopFun.toMSub_of (hcomm (Γ := Γ))
+  have hJoinTop : join = .top := hSubTop.top_inv
+  subst hJoinTop
+  obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
+  cases hAbsTop
+
 /-- Once de Bruijn Theorem 3 is available at the empty context, `Top` cannot
-have a function supertype. Diagrammatic subtyping from `Top` can only join at
-`Top`, while equivalence chains from an abstraction can only target another
-abstraction. -/
+have a function supertype. -/
 noncomputable def NoTopFunctionSupertypes_of
     (hcomm : StrongCommutes [] []) :
     NoTopFunctionSupertypes := by
@@ -28,6 +45,13 @@ noncomputable def NoTopFunctionSupertypes_of
   subst hJoinTop
   obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
   cases hAbsTop
+
+/-- The context-generic obstruction specializes to the closed progress
+obstruction. -/
+def NoTopFunctionSupertypes_of_at
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    NoTopFunctionSupertypes :=
+  hNoTop (Γ := [])
 
 /-- De Bruijn progress, conditional on the `Top`-has-no-function-supertype
 fact. A closed well-formed term is an abstraction, `Top`, or takes an
