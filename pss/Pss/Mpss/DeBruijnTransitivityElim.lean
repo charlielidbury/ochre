@@ -29,6 +29,30 @@ namespace MSub
 theorem refl {Γ : Ctx} {s : Stack} {t : Term} : MSub Γ s t t :=
   ⟨t, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
 
+/-- Introduce de Bruijn diagrammatic subtyping from explicit subtype and
+equivalence chains to a common reduct. -/
+theorem intro {Γ : Ctx} {s : Stack} {u v w : Term}
+    (hSub : MSubRedStar Γ s u w) (hEqu : MEqRedStar Γ s v w) :
+    MSub Γ s u v :=
+  ⟨w, hSub, hEqu⟩
+
+/-- A subtype-reduction chain is a diagrammatic subtyping step whose right
+endpoint is the common reduct. -/
+theorem of_MSubRedStar {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) : MSub Γ s u v :=
+  MSub.intro h Relation.ReflTransGen.refl
+
+/-- A single subtype-reduction step is a diagrammatic subtyping step. -/
+theorem of_MSubRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : MSub Γ s u v :=
+  MSub.of_MSubRedStar (MSubRedStar.single h)
+
+/-- A single equivalence-reduction step is a diagrammatic subtyping step when
+the extended context is known prevalid. -/
+theorem of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpv : PrevalidExt Γ s) (h : MEqRed Γ s u v) : MSub Γ s u v :=
+  MSub.of_MSubRed (MSubRed.equ hpv h)
+
 /-- A single de Bruijn diagrammatic subtyping step embeds into its reflexive
 transitive closure. -/
 theorem to_star {Γ : Ctx} {s : Stack} {u v : Term}

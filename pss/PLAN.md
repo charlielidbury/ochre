@@ -348,6 +348,9 @@ hard caveats.
      future de Bruijn Lemma 1 / Lemma 2 proofs. The layer also has named
      closure helpers `MSub.to_star`, `MSubStar.refl`,
      `MSubStar.single`, `MSubStar.trans`, and `WSubM.toMSubStar`.
+     Diagram introduction helpers `MSub.intro`, `MSub.of_MSubRedStar`,
+     `MSub.of_MSubRed`, and `MSub.of_MEqRed` package common-reduct
+     witnesses and one-step reductions.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

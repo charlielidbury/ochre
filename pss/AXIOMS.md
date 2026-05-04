@@ -281,6 +281,11 @@ closures, 2 inactive outstanding).
   for the de Bruijn diagrammatic layer: `MSub.to_star`,
   `MSubStar.refl`, `MSubStar.single`, `MSubStar.trans`, and
   `WSubM.toMSubStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
+  introduction helpers `MSub.intro`, `MSub.of_MSubRedStar`,
+  `MSub.of_MSubRed`, and `MSub.of_MEqRed`, so future de Bruijn Lemma 1 /
+  Lemma 2 proofs can package common-reduct diagrams without restating
+  the witness shape. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
