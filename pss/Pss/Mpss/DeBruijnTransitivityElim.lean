@@ -897,6 +897,14 @@ noncomputable def collapse_of {Γ : Ctx} {s : Stack}
 
 end MSubStar
 
+/-- Named de Bruijn Theorem 3 skeleton: transitive diagrammatic subtyping is
+admissible from single-step strong commutativity at the same extended
+context. -/
+noncomputable def Theorem_3_DeBruijn_TransitivityIsAdmissible_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s) {u v : Term}
+    (h : MSubStar Γ s u v) : MSub Γ s u v :=
+  MSubStar.collapse_of hcomm h
+
 namespace WSubM
 
 /-- Strip one de Bruijn well-subtyping derivation to diagrammatic subtyping. -/
@@ -968,6 +976,12 @@ noncomputable def toMSub_of {Γ : Ctx} {v t : Term}
 
 end WSubMStar
 
+/-- Named de Bruijn well-subtyping use-site for Theorem 3 at the empty stack. -/
+noncomputable def Theorem_3_DeBruijn_WSubMStar_toMSub_of
+    {Γ : Ctx} {v t : Term} (hcomm : StrongCommutes Γ [])
+    (h : WSubMStar Γ v t) : MSub Γ [] v t :=
+  h.toMSub_of hcomm
+
 namespace WEquM
 
 /-- Strip one de Bruijn well-equivalence derivation to diagrammatic
@@ -999,6 +1013,13 @@ noncomputable def toMSub_of {Γ : Ctx} {v t : Term}
   MSubStar.collapse_of hcomm h.toMSubStar
 
 end WEquMStar
+
+/-- Named de Bruijn well-equivalence use-site for Theorem 3 at the empty
+stack. -/
+noncomputable def Theorem_3_DeBruijn_WEquMStar_toMSub_of
+    {Γ : Ctx} {v t : Term} (hcomm : StrongCommutes Γ [])
+    (h : WEquMStar Γ v t) : MSub Γ [] v t :=
+  h.toMSub_of hcomm
 
 end DeBruijn
 end Pss

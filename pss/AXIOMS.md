@@ -331,6 +331,11 @@ closures, 2 inactive outstanding).
   `WEquMStar.toMSub_of`, collapsing well-subtyping / well-equivalence
   directly to one diagrammatic step from `StrongCommutes Γ []`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added named conditional
+  de Bruijn Theorem-3 aliases
+  `Theorem_3_DeBruijn_TransitivityIsAdmissible_of`,
+  `Theorem_3_DeBruijn_WSubMStar_toMSub_of`, and
+  `Theorem_3_DeBruijn_WEquMStar_toMSub_of`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the conditional
   Lemma 2 star-lifting skeleton: `EqDiamonds`,
   `diamond_step_eqStar_of`, and `diamond_eqStar_eqStar_of`. These lift a

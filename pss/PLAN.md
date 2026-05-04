@@ -378,7 +378,11 @@ hard caveats.
      `MSubStar.collapse_of` collapse `MSubStar` to `MSub` from a
      de Bruijn single-step strong-commutativity premise. Use-site
      adapters `WSubMStar.toMSub_of` and `WEquMStar.toMSub_of` now
-     combine stripping and collapse at the empty stack.
+     combine stripping and collapse at the empty stack. Named
+     theorem-style aliases are available as
+     `Theorem_3_DeBruijn_TransitivityIsAdmissible_of`,
+     `Theorem_3_DeBruijn_WSubMStar_toMSub_of`, and
+     `Theorem_3_DeBruijn_WEquMStar_toMSub_of`.
      The conditional Lemma 2 star-lifting skeleton is also present:
      `EqDiamonds`, `diamond_step_eqStar_of`, and
      `diamond_eqStar_eqStar_of` lift a single-step equivalence diamond
