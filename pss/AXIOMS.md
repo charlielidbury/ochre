@@ -324,6 +324,11 @@ closures, 2 inactive outstanding).
   `Ctx.subBinds_equBinds_false`; used them to add
   `EqDiamonds.pro_pro_of` and `StrongCommutes.pro_pro_vacuous`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added reusable de Bruijn
+  single-step case combinators `EqDiamonds.refl_left`,
+  `EqDiamonds.refl_right`, `StrongCommutes.equ_of`, and
+  `StrongCommutes.top_of`, reducing reflexive equivalence, `Ms-Equ`, and
+  `Ms-Top` cells to existing premises. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -379,6 +379,9 @@ hard caveats.
      cells: `EqDiamonds.pro_pro_of` closes `Me-Pro × Me-Pro`
      recursively, and `StrongCommutes.pro_pro_vacuous` closes the
      impossible `Ms-Pro × Me-Pro` clash.
+     Reusable single-step case combinators are in place:
+     `EqDiamonds.refl_left`, `EqDiamonds.refl_right`,
+     `StrongCommutes.equ_of`, and `StrongCommutes.top_of`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

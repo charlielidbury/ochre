@@ -112,6 +112,20 @@ theorem var_var {Γ : Ctx} {s : Stack} {i : Nat}
   let h : MEqRed Γ s (.bvar i) (.bvar i) := MEqRed.var hpv hi
   exact ⟨.bvar i, ⟨h⟩, ⟨h⟩⟩
 
+/-- If the left equivalence step is reflexive, the de Bruijn Lemma 2 cell
+closes against the right step directly. -/
+theorem refl_left {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (h₂ : MEqRed Γ s t₀ t₂) :
+    ∃ t₃, MEqRedJ Γ s t₀ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  exact ⟨t₂, ⟨h₂⟩, ⟨MEqRed.refl hpv h₂.scoped_right⟩⟩
+
+/-- If the right equivalence step is reflexive, the de Bruijn Lemma 2 cell
+closes against the left step directly. -/
+theorem refl_right {Γ : Ctx} {s : Stack} {t₀ t₁ : Term}
+    (hpv : PrevalidExt Γ s) (h₁ : MEqRed Γ s t₀ t₁) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₀ t₃ := by
+  exact ⟨t₁, ⟨MEqRed.refl hpv h₁.scoped_right⟩, ⟨h₁⟩⟩
+
 /-- The `Me-Pro × Me-Var` source cell of de Bruijn Lemma 2. -/
 theorem pro_var {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term}
     (hpv : PrevalidExt Γ s) (hb : Γ.equBinds i α)
@@ -283,6 +297,22 @@ theorem equ_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}
     ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s (.bvar i) t₃ := by
   let hsub : MSubRed Γ s (.bvar i) t := MSubRed.equ hpv heqStep
   exact ⟨t, ⟨MEqRed.refl hpv heqStep.scoped_right⟩, ⟨hsub⟩⟩
+
+/-- Any `Ms-Equ × Me-*` cell of de Bruijn Lemma 1 reduces to the local
+de Bruijn Lemma 2 diamond. -/
+theorem equ_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (heqSub : MEqRed Γ s t₀ t₁) (heq : MEqRed Γ s t₀ t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ := hdiamond heqSub heq
+  exact ⟨t₃, hLeft, ⟨MSubRed.equ hpv hRight.some⟩⟩
+
+/-- Any `Ms-Top × Me-*` cell of de Bruijn Lemma 1 closes at `Top`. -/
+theorem top_of {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (_hScoped : Term.Scoped Γ.depth t₀)
+    (heq : MEqRed Γ s t₀ t₂) :
+    ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  exact ⟨.top, ⟨MEqRed.top hpv⟩, ⟨MSubRed.top hpv heq.scoped_right⟩⟩
 
 /-- The `Ms-Top × Me-TAp` source cell for a `Top`-headed application. -/
 theorem appTop_top_tAp {Γ : Ctx} {s : Stack} {u : Term}
