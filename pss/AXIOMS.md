@@ -1009,6 +1009,9 @@ closures, 2 inactive outstanding).
   `WEquMStar.replaceAt_sub_of_wf`; these reduce well-equivalence
   `.sub` replacement to the corresponding `WfM` replacement payload. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head specializations
+  `WEquM.sub_under_head_replace_of_wf` and
+  `WEquMStar.sub_under_head_replace_of_wf`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
