@@ -7375,7 +7375,7 @@ noncomputable def MEqRed.strip_equ_head_y_fresh
       hy₀_fvbd hy₀_fvbd' hy₀_stack ihbody_y₀_norm
     simpa using ren
 
-/-! ### §11.9 — `MEqRed.descend_y_fresh_source_template` (iter-24: 7 of 8 arms)
+/-! ### §11.9 — `MEqRed.descend_y_fresh_source_template` (iter-25: total — 8 of 8 arms)
 
 This is the architectural unifier of §11.7's leaves. The §11.7 leaves
 (`bvar0`, `top`, `fvar var-arm` aux, `app-app` open-recursion arm) each
@@ -7383,28 +7383,35 @@ encode ONE constructor case of the descent functor. This §11.9 functor
 encodes the WHOLE case grid by inducting on the input derivation rather
 than recursing on `body : Term`.
 
-### Iter-24 update — Γ₂-generalization plus LC-stack premise
+### Iter-25 update — total functor; gate removed
 
-Iter-23 ran `Γ₂=[]`-only (input ctx `⟨y, α, .equ⟩ :: Γ`), and gated all
-three cofinite arms (bet/fun_/fOp) behind `cofinite_blocked : Empty`.
+Iter-23 ran `Γ₂=[]`-only and gated all three cofinite arms behind
+`cofinite_blocked : Empty`. Iter-24 generalised to arbitrary `Γ₂` and
+shipped 7 of 8 arms (var/top/tAp/app/pro/bet/fun_), leaving fOp gated.
 
-Iter-24 generalises to arbitrary `Γ₂` (input ctx `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁`,
-output ctx `Γ₂ ++ Γ₁`) plus an additional premise
-`hLC_stmpl : ∀ b ∈ s_tmpl, Term.LC b`. The LC premise lets us collapse
-`b^[y] = b` and `b^[z] = b` for templates, so stack entries effectively
-behave as y-fresh (under `hy_stmpl`).
+Iter-25 ships the **fOp** arm via case-split on `s_tmpl` (cons-vs-nil)
+to dispatch the αi-position into the s_outer slice (subcase A) or the
+s_tmpl slice (subcase B); both subcases recurse on `hbody y₀` at the
+extended context `⟨y₀, αi, .equ⟩ :: Γ₂` and post-rename y₀ → yfresh via
+`_MEqRed_rename_equ_no_fv`. The `cofinite_blocked` gate is removed —
+the functor is now total and callable.
 
-With Γ₂-generalization, the cofinite arms can recurse into a body
-sub-derivation that lives at an EXTENDED ctx
-`⟨y₀, _, _⟩ :: Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁` (i.e., new `Γ₂' = ⟨y₀,_,_⟩::Γ₂`).
-After recursion, we post-rename `y₀ → yfresh` via `MEqRed.rename_stray`
-(bet) / `MEqRed.rename_sub` (fun_) / `_MEqRed_rename_equ_no_fv` (fOp).
+### Premise threading
 
-### Iter-24 status: 7 of 8 arms
+Γ₂-generalization (input ctx `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁`, output ctx
+`Γ₂ ++ Γ₁`) plus the LC premise `hLC_stmpl : ∀ b ∈ s_tmpl, Term.LC b`.
+The LC premise collapses `b^[y] = b` and `b^[z] = b` for templates, so
+stack entries effectively behave as y-fresh (under `hy_stmpl`). The
+cofinite arms recurse into a body sub-derivation at the EXTENDED ctx
+`⟨y₀, _, _⟩ :: Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁` (new `Γ₂' = ⟨y₀,_,_⟩::Γ₂`),
+then post-rename `y₀ → yfresh` via `MEqRed.rename_stray` (bet) /
+`MEqRed.rename_sub` (fun_) / `_MEqRed_rename_equ_no_fv` (fOp).
 
-* **var, top, tAp, app, pro, bet, fun_**: shipped, no axioms, no sorries.
-* **fOp**: gated behind `cofinite_blocked : Empty`. The blocker is the
-  fOp-stack-aliasing case (see fOp-arm comment).
+### Status: 8 of 8 arms
+
+* **var, top, tAp, app, pro, bet, fun_, fOp**: shipped, no axioms, no
+  sorries. The descent functor is total and ready for consumer wiring
+  into the β-residual closures.
 
 ### Why the `app` arm uses `LC v_` to extend `s_tmpl`
 
@@ -7415,7 +7422,7 @@ for the recursive call, we set `s_tmpl_new := v_ :: s_tmpl` and use
 is the identity). The `LC v_` data comes from the input prevalidExt
 extracted via `MEqRed.prevalidExt h` plus prevalid's `fv ⊆ dom`. -/
 
-/-- **Iter-24 — unified descent functor (7 of 8 arms).**
+/-- **Iter-25 — unified descent functor (total: 8 of 8 arms).**
 
 Threads the stack-template-shift `(·^[y]) ↝ (·^[z])` through each
 constructor of `MEqRed`, removing the equ-head from the middle of the
@@ -7440,24 +7447,19 @@ context (`Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁ ↦ Γ₂ ++ Γ₁`). The LC premi
 
 `MEqRed (Γ₂ ++ Γ₁) (s_tmpl.map (·^[z]) ++ s_outer) u (subst y (.fvar z) u')`.
 
-### fOp blocker (iter-24)
+### fOp arm (iter-25 close)
 
-In the `fOp` arm, the stack at the constructor is `αi :: st'` where αi
-is the bound type and st' is the body's stack. Two subcases for the
-descent split (αi may come from s_tmpl or s_outer). When αi sits in
-the s_outer slice, `y ∉ fv αi` is direct; in the s_tmpl slice, with the
-LC-premise `hLC_stmpl` we'd get `αi = b^[y] = b` (since b LC) so
-`y ∉ fv αi` from `hy_stmpl b`. Both subcases shippable in principle.
+The `fOp` arm's stack at the constructor is `αi :: st'`. We case-split
+`s_tmpl`:
 
-The remaining iter-24 fOp blocker is mechanical: dispatching the body's
-stack-template-split correctly (cons-vs-nil case analysis on `s_tmpl`)
-and threading the recursion at the modified `s_tmpl' / s_outer'`. The
-recursion produces output stack `s_tmpl'.map (·^[z]) ++ s_outer'`, but
-fOp's output expects `(αi-or-b^[z]) :: rest`. Reconciling the shape
-requires the LC-collapse `b^[z] = b` on the αi-template and combining
-with `s_outer`/`st'` reconstruction. This shape-reconciliation is the
-last mechanical step; see fOp arm comment for the precise gap. Iter-25
-ships fOp once the shape-reconciliation lemma is in hand. -/
+* **Subcase A (`s_tmpl = []`):** `s_outer = αi :: st'`. αi-freshness from
+  `hy_souter αi (head)`. Body recurses with `s_tmpl' = []`, `s_outer' = st'`.
+* **Subcase B (`s_tmpl = b :: stl`):** `b^[y] = αi`. With `hLC_stmpl b`,
+  `b^[y] = b`, so `αi = b`, and y-freshness comes from `hy_stmpl b`. Body
+  recurses with `s_tmpl' = stl`, `s_outer' = s_outer`.
+
+In both subcases the body recurses at the EXTENDED Γ₂' = `⟨y₀, αi, .equ⟩ :: Γ₂`,
+and the post-recursion y₀ → yfresh rename uses `_MEqRed_rename_equ_no_fv`. -/
 noncomputable def MEqRed.descend_y_fresh_source_template
     {Γ₁ Γ₂ : Ctx} {s_outer : Stack} {y : String} {α u u' : Term}
     (s_tmpl : List Term)
@@ -7470,8 +7472,7 @@ noncomputable def MEqRed.descend_y_fresh_source_template
     (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
     (hy_Γ₁ : y ∉ Γ₁.dom)
     (hy_src : y ∉ Term.fv u)
-    (z : String) (hz_out : z ∈ Ctx.dom (Γ₂ ++ Γ₁))
-    (cofinite_blocked : Empty) :
+    (z : String) (hz_out : z ∈ Ctx.dom (Γ₂ ++ Γ₁)) :
     MEqRed (Γ₂ ++ Γ₁) (s_tmpl.map (·^[z]) ++ s_outer) u
                        (Term.subst y (.fvar z) u') := by
   classical
@@ -7870,41 +7871,317 @@ noncomputable def MEqRed.descend_y_fresh_source_template
     -- ren has source binding `tt` (not subst-d since y ∉ fv tt). Confirms with the
     -- fun_ output's body cofinite premise (which uses input `tt` for the binding).
     exact ren
-  | @fOp _ _ _ _ _ _ _ _ _ _ _ _ =>
-    -- Iter-24 fOp blocker (sharper than iter-23):
-    -- Stack at fOp node is `αi :: stk_inner`. From `hst : s_tmpl.map (·^[y]) ++ s_outer
-    -- = αi :: stk_inner`, two subcases for the descent:
-    --   A) `s_tmpl = []`: then `s_outer = αi :: stk_inner`. Body's stack is `stk_inner`,
-    --      which equals s_outer-tail. Recurse with s_tmpl' = [], s_outer' = stk_inner.
-    --      Both `y ∉ fv αi` (from hy_souter at head) and `hy_souter'` (tail) follow.
-    --   B) `s_tmpl = b :: stl`: `b^[y] = αi`. With `hLC_stmpl b`, b is LC so b^[y] = b
-    --      and hence αi = b. Body's stack `stk_inner = stl.map (·^[y]) ++ s_outer`, so
-    --      recurse with s_tmpl' = stl, s_outer' = s_outer.
-    -- Both subcases: body recurses at extended Γ₂' = ⟨y₀, αi, .equ⟩ :: Γ₂ with the new
-    -- (s_tmpl', s_outer') pair. After recursion, the OUTPUT stack's αi-position
-    -- needs reconstruction — in subcase A, the output stack is
-    -- `[].map (·^[z]) ++ stk_inner = stk_inner`, but fOp's output expects stack
-    -- `(subst y (.fvar z) αi-or-rebuilt) :: ?`. The reconstruction must align
-    -- the iter-24 body's stack output (`s_tmpl'.map (·^[z]) ++ s_outer'`) with the
-    -- fOp constructor's expected output stack `(αi-target):: rest_descended`.
-    --
-    -- Subcase A is straightforward: αi target is unchanged (αi y-fresh, unmoved
-    -- by subst). The body's recursive output gives `stk_inner_descended`, which
-    -- is precisely the cons-tail of the αi :: stk_inner_descended = output stack.
-    -- The y₀ → yfresh rename (via _MEqRed_rename_equ_no_fv) lifts cleanly.
-    --
-    -- Subcase B is also straightforward via LC: αi = b, and the output's
-    -- "αi position" maps to b^[z] = b (b LC). The body's recursive output
-    -- `stl.map (·^[z]) ++ s_outer` joined to `b^[z] = b = αi` reconstructs
-    -- `αi :: stl_descended ++ s_outer = αi :: stk_inner_descended`. Same as A.
-    --
-    -- BLOCKER (iter-24): the case-split machinery + shape-reconciliation
-    -- (s_tmpl-vs-s_outer split for αi) combined with the post-recursion
-    -- _MEqRed_rename_equ_no_fv composition to rename y₀ → yfresh requires
-    -- ~150 lines of bookkeeping. Iter-25 ships fOp via this case-split, mirroring
-    -- the §10.3 fOp pattern but with the stack-template machinery threaded through.
-    -- For iter-24, we surface this gap as `cofinite_blocked` to keep the build
-    -- green and headline closures stable.
-    exact cofinite_blocked.elim
+  | @fOp Γ_h st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
+    -- fOp's stack is αi :: st'. From `hst : s_tmpl.map (·^[y]) ++ s_outer = αi :: st'`,
+    -- case-split on s_tmpl:
+    --   A) `s_tmpl = []`: s_outer = αi :: st'. Body recurses with s_tmpl' = [],
+    --      s_outer' = st'. αi-freshness from `hy_souter αi (head)`.
+    --   B) `s_tmpl = b :: stl`: b^[y] = αi. With `hLC_stmpl b`, b LC so b^[y] = b.
+    --      Hence αi = b. Body recurses with s_tmpl' = stl, s_outer' = s_outer.
+    -- Both subcases: body lives at EXTENDED Γ₂' = ⟨y₀, αi, .equ⟩ :: Γ₂. After
+    -- recursion at extended Γ₂', use `_MEqRed_rename_equ_no_fv` to rename
+    -- y₀ → yfresh in the head equ-binding for the fOp output.
+    subst hΓ
+    rw [avoidsPro_fOp] at hAvoid
+    rw [cofinDomFresh_fOp] at hFresh
+    obtain ⟨hAvoid_t, hAvoid_body⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    obtain ⟨hFresh_left_body, hFresh_body⟩ := Bool.and_eq_true _ _ |>.mp hFresh
+    obtain ⟨hFresh_left_t, hFresh_t⟩ := Bool.and_eq_true _ _ |>.mp hFresh_left_body
+    obtain ⟨hFresh_left_fvbd', hFresh_fvbd'_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_t
+    obtain ⟨hFresh_dom_dec, hFresh_fvbd_dec⟩ :=
+      Bool.and_eq_true _ _ |>.mp hFresh_left_fvbd'
+    have hy₀_dom_in : pickFresh L ∉ Ctx.dom (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) :=
+      decide_eq_true_eq.mp hFresh_dom_dec
+    have hy₀_fvbd : pickFresh L ∉ Term.fv bd :=
+      decide_eq_true_eq.mp hFresh_fvbd_dec
+    have hy₀_fvbd' : pickFresh L ∉ Term.fv bd' :=
+      decide_eq_true_eq.mp hFresh_fvbd'_dec
+    let y₀ := pickFresh L
+    have hy₀L : y₀ ∉ L := pickFresh_notMem L
+    have hy_in_input : y ∈ Ctx.dom (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) := by
+      rw [_Ctx_dom_eq_under_equ_head_remove]
+      exact Finset.mem_insert_self _ _
+    have hy₀_neq_y : y₀ ≠ y := fun heq' => hy₀_dom_in (heq' ▸ hy_in_input)
+    have hy₀_dom_out : y₀ ∉ Ctx.dom (Γ₂ ++ Γ₁) := by
+      intro h_in
+      apply hy₀_dom_in
+      rw [_Ctx_dom_eq_under_equ_head_remove]
+      exact Finset.mem_insert_of_mem h_in
+    -- Decompose hy_src: source = .abs tt bd.
+    have hy_tt : y ∉ Term.fv tt := by
+      intro h_in; apply hy_src; rw [Term.fv_abs]
+      exact Finset.mem_union.mpr (Or.inl h_in)
+    have hy_bd : y ∉ Term.fv bd := by
+      intro h_in; apply hy_src; rw [Term.fv_abs]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    have hy_bd_y₀ : y ∉ Term.fv (bd^[y₀]) := by
+      intro h_in
+      have hsub : y ∈ Term.fv bd ∪ Term.fv (.fvar y₀) :=
+        Term.fv_open_subset 0 (.fvar y₀) bd h_in
+      rcases Finset.mem_union.mp hsub with hb | hf
+      · exact hy_bd hb
+      · simp [Term.fv] at hf; exact hy₀_neq_y (hf ▸ rfl)
+    -- Recurse on iht at empty stack/templates, same Γ₂.
+    have hLC_stmpl_t : ∀ b ∈ ([] : List Term), Term.LC b := by
+      intro b hb; exact (List.not_mem_nil _ hb).elim
+    have hy_stmpl_t : ∀ b ∈ ([] : List Term), y ∉ Term.fv b := by
+      intro b hb; cases hb
+    have hy_souter_t : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have hst_t : ([] : List Term).map (·^[y]) ++ ([] : Stack) = [] := by simp
+    have iht' :=
+      iht (Γ₂ := Γ₂) (s_tmpl := []) (s_outer := [])
+          (hΓ₂_avoid := hΓ₂_avoid) (hLC_stmpl := hLC_stmpl_t)
+          (hy_stmpl := hy_stmpl_t) (hy_souter := hy_souter_t)
+          (hAvoid := hAvoid_t) (hFresh := hFresh_t)
+          (hy_src := hy_tt) (hz_out := hz_out) rfl hst_t
+    have iht_norm : MEqRed (Γ₂ ++ Γ₁) [] tt (Term.subst y (.fvar z) tt') := by
+      simpa using iht'
+    -- Case-split on s_tmpl. Both subcases yield the same shape: αi y-fresh,
+    -- recurse on hbody y₀ at extended Γ₂' = ⟨y₀, αi, .equ⟩ :: Γ₂ with appropriate
+    -- (s_tmpl', s_outer') pair such that
+    --   s_tmpl'.map (·^[y]) ++ s_outer' = st'   (matching body's stack).
+    -- Both subcases produce y₀-fresh αi (so we can extend Γ₂'_avoid).
+    have hLC_z : Term.LC (.fvar z) := Term.LC.fvar z
+    -- Define s_tmpl'/s_outer' along with the αi-freshness data and the post-
+    -- recursion stack-shape equality, then run the body recursion uniformly.
+    have hst_eq : s_tmpl.map (·^[y]) ++ s_outer = αi :: st' := hst
+    -- Compute the body recursion's output and the αi-freshness in the two
+    -- subcases. We package both as a single `∃ s_tmpl' s_outer', ...` block
+    -- to keep the arm linear; but a direct `match s_tmpl with` is cleaner.
+    -- Source/target of fOp:
+    -- source = .abs tt bd, target = .abs tt' bd'. After subst y (.fvar z):
+    --   subst y (.fvar z) (.abs tt' bd') = .abs (subst y (.fvar z) tt')
+    --                                            (subst y (.fvar z) bd').
+    have htgt : Term.subst y (.fvar z) (.abs tt' bd')
+        = .abs (Term.subst y (.fvar z) tt') (Term.subst y (.fvar z) bd') := by
+      simp [Term.subst]
+    show MEqRed (Γ₂ ++ Γ₁) (s_tmpl.map (·^[z]) ++ s_outer)
+                 (.abs tt bd) (Term.subst y (.fvar z) (.abs tt' bd'))
+    rw [htgt]
+    -- Rebuild the fOp output stack `αi :: rest_descended` as
+    -- `s_tmpl.map (·^[z]) ++ s_outer`.
+    -- Subcase A: s_tmpl = []. Then s_outer = αi :: st'.
+    -- Subcase B: s_tmpl = b :: stl, b LC, b^[y] = αi (= b), st' = stl.map (·^[y]) ++ s_outer.
+    -- The two subcases are unified by computing y-fresh αi and the body
+    -- recursion's stack at appropriate (s_tmpl', s_outer') pair.
+    cases s_tmpl with
+    | nil =>
+      -- s_outer = αi :: st'.
+      have hst_outer : s_outer = αi :: st' := by simpa using hst_eq
+      -- αi-freshness: αi ∈ s_outer (head).
+      have hy_αi : y ∉ Term.fv αi := by
+        rw [hst_outer] at hy_souter
+        exact hy_souter αi (List.mem_cons_self _ _)
+      have hy_st' : ∀ β ∈ st', y ∉ Term.fv β := by
+        intro β hβ
+        rw [hst_outer] at hy_souter
+        exact hy_souter β (List.mem_cons_of_mem _ hβ)
+      -- Extend Γ₂_avoid with αi entry.
+      have hΓ₂'_avoid : Ctx.AvoidsBoundFv (⟨y₀, αi, .equ⟩ :: Γ₂) y :=
+        Ctx.AvoidsBoundFv_cons.mpr ⟨hy_αi, hΓ₂_avoid⟩
+      -- y ∉ fv (bd^[y₀]) — already have hy_bd_y₀.
+      -- z ∈ Ctx.dom of the new Γ₂' ++ Γ₁ = ⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁).
+      have hz_out_ext : z ∈ Ctx.dom ((⟨y₀, αi, .equ⟩ :: Γ₂) ++ Γ₁) := by
+        simp [Ctx.dom_append, Ctx.dom_cons] at hz_out ⊢
+        tauto
+      -- Recurse on hbody y₀ at extended Γ₂' = ⟨y₀, αi, .equ⟩ :: Γ₂, with
+      -- s_tmpl' = [], s_outer' = st' (so s_tmpl'.map (·^[y]) ++ s_outer' = st').
+      have hctx_eq_body :
+          ((⟨y₀, αi, .equ⟩ :: Γ₂) ++ ⟨y, α, .equ⟩ :: Γ₁ : Ctx) =
+            ⟨y₀, αi, .equ⟩ :: (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) := by simp
+      have hst_body : ([] : List Term).map (·^[y]) ++ st' = st' := by simp
+      have hLC_stmpl_b : ∀ b ∈ ([] : List Term), Term.LC b := by
+        intro b hb; exact (List.not_mem_nil _ hb).elim
+      have hy_stmpl_b : ∀ b ∈ ([] : List Term), y ∉ Term.fv b := by
+        intro b hb; cases hb
+      have ihbody_y₀ :=
+        ihbody y₀ hy₀L (Γ₂ := ⟨y₀, αi, .equ⟩ :: Γ₂)
+          (s_tmpl := []) (s_outer := st')
+          (hΓ₂_avoid := hΓ₂'_avoid) (hLC_stmpl := hLC_stmpl_b)
+          (hy_stmpl := hy_stmpl_b) (hy_souter := hy_st')
+          (hAvoid := hAvoid_body) (hFresh := hFresh_body)
+          (hy_src := hy_bd_y₀)
+          (hz_out := hz_out_ext) hctx_eq_body.symm hst_body
+      -- ihbody_y₀ : MEqRed ((⟨y₀, αi, .equ⟩ :: Γ₂) ++ Γ₁)
+      --                    ([].map (·^[z]) ++ st')
+      --                    (bd^[y₀])
+      --                    (subst y (.fvar z) (bd'^[y₀])).
+      have ihbody_y₀_norm :
+          MEqRed (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) st'
+            (bd^[y₀]) (Term.subst y (.fvar z) (bd'^[y₀])) := by
+        simpa using ihbody_y₀
+      -- Convert subst y (.fvar z) (bd'^[y₀]) ↦ (subst y (.fvar z) bd')^[y₀]
+      -- via y ≠ y₀ and `Term.subst_open_var`.
+      have hsubst_open_bd' :
+          Term.subst y (.fvar z) (bd'^[y₀]) = (Term.subst y (.fvar z) bd')^[y₀] :=
+        Term.subst_open_var hy₀_neq_y.symm hLC_z bd'
+      rw [hsubst_open_bd'] at ihbody_y₀_norm
+      -- Now apply MEqRed.fOp at the smaller ctx with binding αi at the head.
+      -- Output stack: αi :: st' = [].map (·^[z]) ++ s_outer = s_outer.
+      -- Goal stack: ([] : List Term).map (·^[z]) ++ s_outer = s_outer = αi :: st'.
+      -- So we need MEqRed (Γ₂ ++ Γ₁) (αi :: st') ...
+      have hgoal_stack : ([] : List Term).map (·^[z]) ++ s_outer = αi :: st' := by
+        simp [hst_outer]
+      rw [hgoal_stack]
+      refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}) iht_norm ?_ trivial
+      intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+      push_neg at hyfresh
+      obtain ⟨⟨hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+      have hyz : y₀ ≠ yfresh := fun h' => hyf_y₀ h'.symm
+      -- y₀ ∉ fv αi (αi ∈ s_outer ⊆ stack of fOp's PrevalidExt at outer ctx).
+      -- Pull from the body's PrevalidExt at outer ctx — fOp's stack = αi :: st'.
+      have hpvE_outer_full : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) (αi :: st') :=
+        MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
+      have hpv_outer_st_only : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st' := by
+        cases hpvE_outer_full with
+        | cons hpv_tail _ _ => exact hpv_tail
+      have hpvE_full : PrevalidExt (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) st' :=
+        MEqRed.prevalidExt ihbody_y₀_norm
+      have hpv_full : Prevalid (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) :=
+        extractPrevalid hpvE_full
+      have hfv_αi_out : Term.fv αi ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+        cases hpv_full with
+        | equ _ _ hfvαi _ => exact hfvαi
+      have hy₀_αi : y₀ ∉ Term.fv αi := fun h' => hy₀_dom_out (hfv_αi_out h')
+      have hy₀_st' : ∀ β ∈ st', y₀ ∉ Term.fv β :=
+        _y₀_notin_stack_fv_of_notin_dom hpv_outer_st_only hy₀_dom_in
+      -- y₀ ∉ fv (subst y (.fvar z) bd').
+      have hy₀_neq_z : y₀ ≠ z := fun h => hy₀_dom_out (h ▸ hz_out)
+      have hy₀_notin_subst_bd' : y₀ ∉ Term.fv (Term.subst y (.fvar z) bd') := by
+        intro h_in
+        have hsub := Term.fv_subst_subset y (.fvar z) bd' h_in
+        rcases Finset.mem_union.mp hsub with h1 | h2
+        · exact hy₀_fvbd' (Finset.mem_sdiff.mp h1).1
+        · have : y₀ = z := by simpa [Term.fv] using h2
+          exact hy₀_neq_z this
+      have ren := _MEqRed_rename_equ_no_fv hyz hy₀_dom_out hyf_dom hy₀_αi
+        hy₀_fvbd hy₀_notin_subst_bd' hy₀_st' ihbody_y₀_norm
+      simpa using ren
+    | cons b stl =>
+      -- s_tmpl.map (·^[y]) ++ s_outer = b^[y] :: (stl.map (·^[y]) ++ s_outer) = αi :: st'.
+      -- Hence αi = b^[y] and st' = stl.map (·^[y]) ++ s_outer.
+      have hst_cons : b^[y] :: (stl.map (·^[y]) ++ s_outer) = αi :: st' := by
+        simpa [List.map_cons] using hst_eq
+      have hαi_eq : αi = b^[y] := by
+        have := List.head_eq_of_cons_eq hst_cons
+        exact this.symm
+      have hst'_eq : st' = stl.map (·^[y]) ++ s_outer :=
+        (List.tail_eq_of_cons_eq hst_cons).symm
+      -- LC b → b^[y] = b (and b^[z] = b).
+      have hLC_b : Term.LC b := hLC_stmpl b (List.mem_cons_self _ _)
+      have hb_open_y : b^[y] = b := Term.opening_lc hLC_b (.fvar y)
+      have hb_open_z : b^[z] = b := Term.opening_lc hLC_b (.fvar z)
+      -- αi-freshness: y ∉ fv b (from hy_stmpl).
+      have hy_b : y ∉ Term.fv b := hy_stmpl b (List.mem_cons_self _ _)
+      have hy_αi : y ∉ Term.fv αi := by rw [hαi_eq, hb_open_y]; exact hy_b
+      -- Tail freshness data.
+      have hLC_stmpl_tail : ∀ b' ∈ stl, Term.LC b' := fun b' hb' =>
+        hLC_stmpl b' (List.mem_cons_of_mem _ hb')
+      have hy_stmpl_tail : ∀ b' ∈ stl, y ∉ Term.fv b' := fun b' hb' =>
+        hy_stmpl b' (List.mem_cons_of_mem _ hb')
+      -- Extend Γ₂_avoid with αi entry.
+      have hΓ₂'_avoid : Ctx.AvoidsBoundFv (⟨y₀, αi, .equ⟩ :: Γ₂) y :=
+        Ctx.AvoidsBoundFv_cons.mpr ⟨hy_αi, hΓ₂_avoid⟩
+      have hz_out_ext : z ∈ Ctx.dom ((⟨y₀, αi, .equ⟩ :: Γ₂) ++ Γ₁) := by
+        simp [Ctx.dom_append, Ctx.dom_cons] at hz_out ⊢
+        tauto
+      -- Recurse on hbody y₀ at extended Γ₂', s_tmpl' = stl, s_outer' = s_outer.
+      -- Need st' = stl.map (·^[y]) ++ s_outer (already have hst'_eq).
+      have hctx_eq_body :
+          ((⟨y₀, αi, .equ⟩ :: Γ₂) ++ ⟨y, α, .equ⟩ :: Γ₁ : Ctx) =
+            ⟨y₀, αi, .equ⟩ :: (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) := by simp
+      have hst_body : stl.map (·^[y]) ++ s_outer = st' := hst'_eq.symm
+      have ihbody_y₀ :=
+        ihbody y₀ hy₀L (Γ₂ := ⟨y₀, αi, .equ⟩ :: Γ₂)
+          (s_tmpl := stl) (s_outer := s_outer)
+          (hΓ₂_avoid := hΓ₂'_avoid) (hLC_stmpl := hLC_stmpl_tail)
+          (hy_stmpl := hy_stmpl_tail) (hy_souter := hy_souter)
+          (hAvoid := hAvoid_body) (hFresh := hFresh_body)
+          (hy_src := hy_bd_y₀)
+          (hz_out := hz_out_ext) hctx_eq_body.symm hst_body
+      have ihbody_y₀_norm :
+          MEqRed (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) (stl.map (·^[z]) ++ s_outer)
+            (bd^[y₀]) (Term.subst y (.fvar z) (bd'^[y₀])) := by
+        simpa using ihbody_y₀
+      have hsubst_open_bd' :
+          Term.subst y (.fvar z) (bd'^[y₀]) = (Term.subst y (.fvar z) bd')^[y₀] :=
+        Term.subst_open_var hy₀_neq_y.symm hLC_z bd'
+      rw [hsubst_open_bd'] at ihbody_y₀_norm
+      -- Goal stack: (b :: stl).map (·^[z]) ++ s_outer = b^[z] :: (stl.map (·^[z]) ++ s_outer)
+      --   = b :: (stl.map (·^[z]) ++ s_outer) = αi :: (stl.map (·^[z]) ++ s_outer)
+      -- (last step uses αi = b^[y] = b).
+      have hαi_eq_b : αi = b := by rw [hαi_eq, hb_open_y]
+      have hgoal_stack :
+          (b :: stl).map (·^[z]) ++ s_outer = αi :: (stl.map (·^[z]) ++ s_outer) := by
+        simp [List.map_cons, hb_open_z, hαi_eq_b]
+      rw [hgoal_stack]
+      refine MEqRed.fOp (L ∪ Ctx.dom (Γ₂ ++ Γ₁) ∪ {y₀}) iht_norm ?_ trivial
+      intro yfresh hyfresh
+      simp only [Finset.mem_union, Finset.mem_singleton] at hyfresh
+      push_neg at hyfresh
+      obtain ⟨⟨hyfL, hyf_dom⟩, hyf_y₀⟩ := hyfresh
+      have hyz : y₀ ≠ yfresh := fun h' => hyf_y₀ h'.symm
+      -- y₀ ∉ fv αi: αi = b, b ∈ s_tmpl. Pull fv b from prevalidExt of fOp at outer.
+      have hpvE_outer_full : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) (αi :: st') :=
+        MEqRed.prevalidExt (MEqRed.fOp L ht hbody trivial)
+      have hpv_outer_st_only : PrevalidExt (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st' := by
+        cases hpvE_outer_full with
+        | cons hpv_tail _ _ => exact hpv_tail
+      -- αi's fv ⊆ outer dom (after equ-head removal under hy_αi). Pull from
+      -- inner body's PrevalidExt's head (at extended ctx).
+      have hpvE_full : PrevalidExt (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁))
+                                    (stl.map (·^[z]) ++ s_outer) :=
+        MEqRed.prevalidExt ihbody_y₀_norm
+      have hpv_full : Prevalid (⟨y₀, αi, .equ⟩ :: (Γ₂ ++ Γ₁)) :=
+        extractPrevalid hpvE_full
+      have hfv_αi_out : Term.fv αi ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+        cases hpv_full with
+        | equ _ _ hfvαi _ => exact hfvαi
+      have hy₀_αi : y₀ ∉ Term.fv αi := fun h' => hy₀_dom_out (hfv_αi_out h')
+      -- Stack freshness for y₀: use OUTER PrevalidExt at outer ctx for tail st'.
+      have hy₀_st' : ∀ β ∈ st', y₀ ∉ Term.fv β :=
+        _y₀_notin_stack_fv_of_notin_dom hpv_outer_st_only hy₀_dom_in
+      -- st' = stl.map (·^[y]) ++ s_outer (from hst'_eq). The shape we need is
+      -- on stl.map (·^[z]) ++ s_outer. But all these stack entries are y-fresh
+      -- and y₀-fresh in BOTH shapes, since:
+      --   * For β ∈ s_outer, y₀ ∉ fv β follows from hy₀_st' on β ∈ st'
+      --     (since s_outer ⊆ st').
+      --   * For β ∈ stl.map (·^[z]), β = b'^[z] with b' ∈ stl. b'^[y] ∈ st'
+      --     is y₀-fresh, and b'^[z] = b' = b'^[y] (b' LC). Hence y₀-fresh.
+      have hy₀_stk : ∀ β ∈ stl.map (·^[z]) ++ s_outer, y₀ ∉ Term.fv β := by
+        intro β hβ
+        rcases List.mem_append.mp hβ with hL | hR
+        · -- β = b'^[z] for some b' ∈ stl, b' LC.
+          rcases List.mem_map.mp hL with ⟨b', hb'_in, hβ_eq⟩
+          have hLC_b' : Term.LC b' := hLC_stmpl_tail b' hb'_in
+          have hb'_open : b'^[z] = b' := Term.opening_lc hLC_b' (.fvar z)
+          have hb'_open_y : b'^[y] = b' := Term.opening_lc hLC_b' (.fvar y)
+          -- b'^[y] ∈ stl.map (·^[y]) ⊆ st'.
+          have hb'_y_in_st' : b'^[y] ∈ st' := by
+            rw [hst'_eq]
+            exact List.mem_append.mpr (Or.inl (List.mem_map.mpr ⟨b', hb'_in, rfl⟩))
+          have : y₀ ∉ Term.fv (b'^[y]) := hy₀_st' (b'^[y]) hb'_y_in_st'
+          rw [hb'_open_y] at this
+          rw [← hβ_eq, hb'_open]
+          exact this
+        · -- β ∈ s_outer ⊆ st'.
+          have hβ_in_st' : β ∈ st' := by
+            rw [hst'_eq]
+            exact List.mem_append.mpr (Or.inr hR)
+          exact hy₀_st' β hβ_in_st'
+      have hy₀_neq_z : y₀ ≠ z := fun h => hy₀_dom_out (h ▸ hz_out)
+      have hy₀_notin_subst_bd' : y₀ ∉ Term.fv (Term.subst y (.fvar z) bd') := by
+        intro h_in
+        have hsub := Term.fv_subst_subset y (.fvar z) bd' h_in
+        rcases Finset.mem_union.mp hsub with h1 | h2
+        · exact hy₀_fvbd' (Finset.mem_sdiff.mp h1).1
+        · have : y₀ = z := by simpa [Term.fv] using h2
+          exact hy₀_neq_z this
+      have ren := _MEqRed_rename_equ_no_fv hyz hy₀_dom_out hyf_dom hy₀_αi
+        hy₀_fvbd hy₀_notin_subst_bd' hy₀_stk ihbody_y₀_norm
+      simpa using ren
 
 end Pss
