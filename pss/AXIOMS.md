@@ -883,6 +883,12 @@ closures, 2 inactive outstanding).
   `meq_equ_under_head_fop_handler_of_body_replacement`, combining a raw
   bound-equivalence replacement with a diagrammatic recursive body
   replacement under the preserved operand head. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added composite subtype
+  replacement wrappers `msubRed_equ_head_replace_from_replacements` and
+  `msubRed_equ_under_head_replace_from_replacements`, wiring the canonical
+  `Ms-App`/`Ms-Fun`/`Ms-FOp` handlers into the one-step subtype splitters
+  while keeping the recursive replacement premises explicit. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
