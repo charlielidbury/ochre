@@ -1,6 +1,7 @@
 import Pss.Mpss.Substitution
 import Pss.Mpss.Weakening
 import Pss.Mpss.AvoidsPro
+import Pss.Mpss.MEqRedSize
 
 /-! # `Pss.Mpss.Renaming` — fresh-variable renaming for MPSS reductions
 
@@ -9206,6 +9207,41 @@ consistent.
 The signature is mathematically sound. The constructor-level closure
 is gated on Phase 2.x infrastructure, not on a flaw in the statement. -/
 
+/-! ### §14.0. `MEqRed.castSrc` — propositional transport on the source index
+
+`openInverse_descend`'s recursive call (Phase 2.2 onward) needs to bridge
+`hα : MEqRed _ _ α_yi target` (source = bare `α_yi`) and the call
+signature's `body^[y]` source-shape (with `body := α_yi`). When `α_yi`
+is locally closed (Prevalid invariant), `α_yi^[y] = α_yi` propositionally
+but NOT definitionally. The `castSrc` helper uses `Eq.rec` to transport
+the derivation; `derSize`/`avoidsPro`/`cofinDomFresh` are constructor-
+recursive (index-independent), so `castSrc` preserves them all exactly. -/
+
+noncomputable def MEqRed.castSrc
+    {Γ : Ctx} {s : Stack} {u u' v : Term} (heq : u = u')
+    (h : MEqRed Γ s u v) : MEqRed Γ s u' v := heq ▸ h
+
+@[simp] theorem MEqRed.derSize_castSrc {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (heq : u = u') (h : MEqRed Γ s u v) :
+    (h.castSrc heq).derSize = h.derSize := by
+  unfold MEqRed.castSrc
+  cases heq
+  rfl
+
+@[simp] theorem MEqRed.avoidsPro_castSrc {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (heq : u = u') (h : MEqRed Γ s u v) (x : String) :
+    avoidsPro (h.castSrc heq) x = avoidsPro h x := by
+  unfold MEqRed.castSrc
+  cases heq
+  rfl
+
+@[simp] theorem MEqRed.cofinDomFresh_castSrc {Γ : Ctx} {s : Stack}
+    {u u' v : Term} (heq : u = u') (h : MEqRed Γ s u v) :
+    cofinDomFresh (h.castSrc heq) = cofinDomFresh h := by
+  unfold MEqRed.castSrc
+  cases heq
+  rfl
+
 /-- **Iter-32 — `MEqRed.openInverse_descend` (Lever A Phase 2.1).**
 
 The headline open-target descent functor. Given a derivation at the
@@ -9230,12 +9266,44 @@ remain as separate Empty parameters.
   inversion: `body = .fvar yi` with `yi ≠ y` (the `body = .bvar 0`
   sub-case forces `yi = y` and is ruled out by `avoidsPro_pro`).
   Recurse on `hα` via `MEqRed.strip_equ_head` (with `Γ₂ = []`).
-  **Outstanding blocker:** `strip_equ_head` requires
-  `avoidsFv h y = true`, which the current headline signature does
-  NOT carry. Phase 2.2 (next) either threads `avoidsFv` through (clean
-  but signature-changing) or supplies the targeted `y ∉ fv α'`
-  invariants directly via `cofinDomFresh`/`avoidsPro` consequences
-  (more delicate but signature-preserving).
+  **Phase 2.2 (iter-32) outcome — TECHNICAL BLOCKER on WF reasoning:**
+  The `pro` arm is mathematically discharged: y-freshness of α_yi follows
+  from `_y_notin_fv_lookupEqu_under_avoid` (Γ₂ = []), Term.LC α_yi from
+  `Prevalid.lc_lookupEqu`. The recursive call uses `body := α_yi`, which
+  requires casting `hα : MEqRed _ _ α_yi _` to `MEqRed _ _ (α_yi^[y]) _`
+  via a new `MEqRed.castSrc` helper (Eq.rec on the source-index). All
+  the setup compiles green; the FAILURE is in the `decreasing_by` block.
+
+  **Root cause:** Lean's WF compiler generates a goal
+  `(hα.castSrc h_open_y.symm).derSize < h.derSize` where `h` is the
+  function-arg in its ORIGINAL `body^[y]`-shaped form. After
+  `generalize hsrc : body^[y] = src at h`, the local `h` (with type
+  using `src`) is related to the function-arg `h_func` by a non-trivial
+  `Eq.rec` cast. After `cases h with | pro` and source-shape inversion
+  (`body = .fvar w`, `w = yi` substs), the cast equation `hsrc` reduces
+  to `(Term.fvar w)^[y] = Term.fvar w`, which IS rfl propositionally
+  (`Term.open_` on `.fvar` is identity). However, Lean 4 does NOT
+  reduce this rfl-cast definitionally during WF goal-checking: `Term.open_`
+  lacks `@[reducible]`. Thus the WF goal cannot be closed by `rfl`,
+  `HEq.refl`, or `derSize_castSrc rfl _` — Lean still sees `h_func` and
+  the local `h` as syntactically distinct objects with different types
+  (`(Term.fvar w)^[y]` vs `Term.fvar w`).
+
+  **Phase 2.3 paths:**
+  (a) Mark `Term.open_` `@[reducible]` (or define a reducible alias).
+      Quickest fix; risk: may cause unwanted simp loops elsewhere.
+  (b) Refactor `openInverse_descend` to take `body` and `src` as
+      separate arguments with an equation `hsrc : body^[y] = src`,
+      so the recursive call doesn't need a cast. Cleanest mathematically;
+      requires touching every existing arm's call sites.
+  (c) Build a structural-recursion helper (e.g. via `MEqRed.recOn`
+      with explicit motive) that bypasses `generalize` entirely.
+      Most invasive but most robust.
+  Iter-32 Phase 2.2 attempted (b)-style approaches with `castSrc` plus
+  HEq witness chaining and was unable to bridge `h_func` and local `h`
+  in the WF goal context. The `castSrc` helper itself is sound and
+  preserves `derSize`/`avoidsPro`/`cofinDomFresh` (proven simp lemmas);
+  the obstacle is purely Lean-WF-bookkeeping.
 
 * **`var` arm** [CLOSED — Phase 2.1] — Source `.fvar yi`. Body
   inversion gives `body = .bvar 0` (yi = y) or `body = .fvar yi`
