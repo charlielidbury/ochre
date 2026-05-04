@@ -94,6 +94,11 @@ closures, 2 inactive outstanding).
   `Ctx.insertAtIndex` plus `Ctx.shift_bvar_insertAtIndex`; the previous
   one- and two-head index descriptions now specialize this general
   insertion-at-cutoff shape. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — introduced the corresponding context
+  transformer `Ctx.insertAt`, including simp lemmas for inserting under
+  zero, one, and two preserved heads plus `Ctx.depth_insertAt_of_le`.
+  This is the context-level target for future generalized lookup and
+  reduction weakening. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

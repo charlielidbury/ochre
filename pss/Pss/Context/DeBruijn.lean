@@ -82,9 +82,60 @@ def lookupEqu : Ctx → Nat → Option Term
       | .sub => none
   | _ :: Γ, n + 1 => (lookupEqu Γ n).map (Term.shift 0)
 
+/-- Insert a context entry after `cutoff` preserved heads. Preserved entries
+have their stored bounds shifted at the number of still-preserved heads below
+them, because the inserted entry is outside those heads but inside the
+remaining tail. If `cutoff` is larger than the context depth this leaves the
+context unchanged; well-scoped uses carry a `cutoff ≤ Γ.depth` premise. -/
+def insertAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
+  | Γ =>
+      match cutoff, Γ with
+      | 0, Γ => newEntry :: Γ
+      | _ + 1, [] => []
+      | cutoff + 1, head :: Γ => head.shift cutoff :: insertAt cutoff newEntry Γ
+
 @[simp] theorem lookup_nil (i : Nat) : lookup [] i = none := rfl
 @[simp] theorem lookupSub_nil (i : Nat) : lookupSub [] i = none := rfl
 @[simp] theorem lookupEqu_nil (i : Nat) : lookupEqu [] i = none := rfl
+
+@[simp] theorem insertAt_zero (newEntry : CtxEntry) (Γ : Ctx) :
+    insertAt 0 newEntry Γ = newEntry :: Γ := rfl
+
+@[simp] theorem insertAt_succ_nil (cutoff : Nat) (newEntry : CtxEntry) :
+    insertAt (cutoff + 1) newEntry [] = [] := rfl
+
+@[simp] theorem insertAt_succ_cons (cutoff : Nat) (newEntry head : CtxEntry) (Γ : Ctx) :
+    insertAt (cutoff + 1) newEntry (head :: Γ) =
+      head.shift cutoff :: insertAt cutoff newEntry Γ := rfl
+
+@[simp] theorem insertAt_one_cons (newEntry head : CtxEntry) (Γ : Ctx) :
+    insertAt 1 newEntry (head :: Γ) = head.shift 0 :: newEntry :: Γ := rfl
+
+@[simp] theorem insertAt_two_cons_cons
+    (newEntry head₁ head₂ : CtxEntry) (Γ : Ctx) :
+    insertAt 2 newEntry (head₁ :: head₂ :: Γ) =
+      head₁.shift 1 :: head₂.shift 0 :: newEntry :: Γ := rfl
+
+@[simp] theorem depth_insertAt_of_le {cutoff : Nat} {newEntry : CtxEntry} {Γ : Ctx}
+    (hcut : cutoff ≤ Γ.depth) :
+    depth (insertAt cutoff newEntry Γ) = Γ.depth + 1 := by
+  induction Γ generalizing cutoff with
+  | nil =>
+    cases cutoff with
+    | zero =>
+      simp [depth]
+    | succ cutoff =>
+      simp [depth] at hcut
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      simp [depth]
+    | succ cutoff =>
+      have htail : cutoff ≤ Ctx.depth tail := by
+        simpa [depth, Nat.add_comm] using Nat.succ_le_succ_iff.mp hcut
+      have hdepth := ih htail
+      simp [depth] at hdepth ⊢
+      omega
 
 @[simp] theorem lookup_zero (e : CtxEntry) (Γ : Ctx) :
     lookup (e :: Γ) 0 = some e := rfl
