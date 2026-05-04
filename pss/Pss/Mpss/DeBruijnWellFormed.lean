@@ -1200,6 +1200,45 @@ noncomputable def WSubMStar.lf2_sub_under_head_self_replace {Γ : Ctx}
       hcut (by simpa using hOldNew) hwfVar (by simpa using hwfNew)
       (by simpa using hTail))
 
+/-- Changed-slot `Ms-Pro` replacement as a well-subtyping residual ending at
+the old shifted annotation. This is the payload shape needed by
+`WSubMStar.replaceAt_sub_of_wsubred`: raw subtype reduction reaches shifted
+`new`, while the final edge back to shifted `old` is a well-subtyping
+right-equivalence step. -/
+noncomputable def WSubMStar.pro_self_replaceAt_sub_to_old {Γ : Ctx}
+    {cutoff : Nat} {old new : Term}
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hwfVar : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar cutoff))
+    (hwfNew : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) new))
+    (hwfOld : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) old)) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar cutoff) (Term.shiftBy 0 (cutoff + 1) old) :=
+  WSubMStar.lf2_self_replaceAt_sub hcut hOldNew hwfVar hwfNew
+    (WSubMStar.refl_of_wfM hwfOld)
+
+/-- Head specialization of `WSubMStar.pro_self_replaceAt_sub_to_old`. -/
+noncomputable def WSubMStar.pro_sub_head_replace_to_old {Γ : Ctx}
+    {old new : Term}
+    (hOldNew : MEqRed Γ [] old new)
+    (hwfVar : WfM ({ bound := new, kind := .sub } :: Γ) (.bvar 0))
+    (hwfNew : WfM ({ bound := new, kind := .sub } :: Γ) (Term.shift 0 new))
+    (hwfOld : WfM ({ bound := new, kind := .sub } :: Γ) (Term.shift 0 old)) :
+    WSubMStar ({ bound := new, kind := .sub } :: Γ)
+      (.bvar 0) (Term.shift 0 old) := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.pro_self_replaceAt_sub_to_old
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) hcut (by simpa using hOldNew)
+      (by simpa [Ctx.replaceAt] using hwfVar)
+      (by simpa [Ctx.replaceAt] using hwfNew)
+      (by simpa [Ctx.replaceAt] using hwfOld))
+
 /-- `Top` remains well-formed when replacing the innermost `.sub` context
 annotation. -/
 noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}
