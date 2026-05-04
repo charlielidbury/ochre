@@ -458,6 +458,53 @@ noncomputable def WfM.MSubRed_refl {Γ : Ctx} {t : Term} (h : WfM Γ t) :
 
 /-! ## Sub-head replacement leaves -/
 
+/-- `Top` remains well-formed when replacing a `.sub` context entry at any
+valid context index. -/
+noncomputable def WfM.top_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {old new : Term}
+    (h : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) .top)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .sub }) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) .top :=
+  WfM.top (by
+    have hpvDouble :
+        Prevalid (Ctx.replaceAt cutoff { bound := new, kind := .sub }
+          (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) :=
+      Prevalid.replaceAt h.prevalid (by simpa [Ctx.depth_replaceAt] using hcut)
+        (newEntry := { bound := new, kind := .sub })
+        (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
+    simpa using hpvDouble)
+
+/-- Variable well-formedness is preserved when replacing a `.sub` context
+entry at any valid index. The changed subtype slot is rebuilt against the
+new shifted annotation; every other subtype lookup and every equivalence
+lookup is transported by generic context lookup helpers. -/
+noncomputable def WfM.bvar_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {old new : Term} {i : Nat}
+    (h : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) (.bvar i))
+    (hcut : cutoff < Ctx.depth Γ)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .sub }) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.bvar i) := by
+  have hpvNew : Prevalid (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) :=
+    by
+      have hpvDouble :
+          Prevalid (Ctx.replaceAt cutoff { bound := new, kind := .sub }
+            (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) :=
+        Prevalid.replaceAt h.prevalid (by simpa [Ctx.depth_replaceAt] using hcut)
+          (newEntry := { bound := new, kind := .sub })
+          (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
+      simpa using hpvDouble
+  cases h with
+  | varSub _ hb =>
+      by_cases hEq : i = cutoff
+      · subst hEq
+        exact WfM.varSub hpvNew (Ctx.subBinds_replaceAt_sub_self hcut)
+      · exact WfM.varSub hpvNew (Ctx.subBinds_replaceAt_sub_of_ne hEq hb)
+  | varEqu _ hb =>
+      exact WfM.varEqu hpvNew (Ctx.equBinds_replaceAt_sub hb)
+
 /-- `Top` remains well-formed when replacing the innermost `.sub` context
 annotation. -/
 noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}

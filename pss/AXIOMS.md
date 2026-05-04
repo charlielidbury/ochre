@@ -892,6 +892,15 @@ closures, 2 inactive outstanding).
   `MSubRed.equ_replaceAt_sub`, `MSubRed.app_replaceAt_sub`,
   `MSubRed.fun_replaceAt_sub`, and `MSubRed.fOp_replaceAt_sub`. No
   axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `Ctx.drop_succ_replaceAt_self` and
+  `Ctx.replaceAt_replaceAt_same`, the context algebra needed to perform
+  replacement again inside an already-replaced context. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added arbitrary-depth `.sub`
+  replacement leaves `WfM.top_replaceAt_sub` and
+  `WfM.bvar_replaceAt_sub`, splitting the variable case into changed
+  `.sub` slot, non-changed subtype lookup, and equivalence lookup. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

@@ -156,6 +156,35 @@ def replaceAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
       | succ cutoff =>
           simpa [depth] using ih cutoff
 
+/-- The context tail strictly below a replaced entry is unchanged. -/
+@[simp] theorem drop_succ_replaceAt_self (cutoff : Nat) (newEntry : CtxEntry)
+    (Γ : Ctx) :
+    List.drop (cutoff + 1) (replaceAt cutoff newEntry Γ) =
+      List.drop (cutoff + 1) Γ := by
+  induction Γ generalizing cutoff with
+  | nil =>
+      cases cutoff <;> rfl
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero => rfl
+      | succ cutoff =>
+          simpa [replaceAt, Nat.add_assoc] using ih cutoff
+
+/-- Replacing the same context index twice is the same as keeping the later
+replacement. -/
+@[simp] theorem replaceAt_replaceAt_same (cutoff : Nat)
+    (oldEntry newEntry : CtxEntry) (Γ : Ctx) :
+    replaceAt cutoff newEntry (replaceAt cutoff oldEntry Γ) =
+      replaceAt cutoff newEntry Γ := by
+  induction Γ generalizing cutoff with
+  | nil =>
+      cases cutoff <;> rfl
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero => rfl
+      | succ cutoff =>
+          simp [replaceAt, ih]
+
 @[simp] theorem depth_insertAt_of_le {cutoff : Nat} {newEntry : CtxEntry} {Γ : Ctx}
     (hcut : cutoff ≤ Γ.depth) :
     depth (insertAt cutoff newEntry Γ) = Γ.depth + 1 := by
