@@ -683,6 +683,12 @@ closures, 2 inactive outstanding).
   `MSubRed.top_equ_head_replace`. These close the non-head-observing
   cases needed by the eventual structural replacement proof. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
+  case. It uses the new nonzero equivalence-lookup transport and a
+  recursively replaced bound reduction, isolating the only remaining
+  `Me-Pro` obstruction at the changed head index `0`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

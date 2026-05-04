@@ -983,6 +983,19 @@ noncomputable def MEqRed.tAp_equ_head_replace {Γ : Ctx} {s : Stack} {old new u 
   exact MEqRed.tAp (PrevalidExt.equ_head_replace hpv hnew) (by
     simpa [Ctx.depth] using hu)
 
+/-- Non-head `Me-Pro` is stable across an innermost `.equ` head replacement,
+given the recursively replaced reduction of the looked-up bound. The index is
+written as `i + 1` to rule out the changed head binding. -/
+noncomputable def MEqRed.pro_equ_head_replace_succ {Γ : Ctx} {s : Stack}
+    {old new : Term} {i : Nat} {α α' : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.equBinds ({ bound := old, kind := .equ } :: Γ) (i + 1) α)
+    (hα : MEqRed ({ bound := new, kind := .equ } :: Γ) s α α') :
+    MEqRed ({ bound := new, kind := .equ } :: Γ) s (.bvar (i + 1)) α' :=
+  MEqRed.pro (PrevalidExt.equ_head_replace hpv hnew)
+    (Ctx.equBinds_equ_head_replace_succ hb) hα
+
 /-- `Ms-Pro` is stable when the bound stored in an innermost `.equ` head is
 replaced, because subtype lookup ignores `.equ` heads. -/
 noncomputable def MSubRed.pro_equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
