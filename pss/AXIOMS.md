@@ -671,6 +671,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_abs_fOp_body_fixed_bound`, matching the existing subtype
   chain lifts. These support later residual joins whose replacement
   target may require additional equivalence steps. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added the first `.equ`-head replacement
+  infrastructure: subtype lookups are invariant when the innermost
+  `.equ` bound changes, nonzero equivalence lookups are invariant, and
+  `Prevalid` / `PrevalidExt` can be rebuilt over the changed head when
+  the new bound is scoped in the same tail. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

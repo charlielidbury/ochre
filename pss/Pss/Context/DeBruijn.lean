@@ -379,6 +379,39 @@ theorem equBinds_weaken_head {Γ : Ctx} {i : Nat} {t : Term} (entry : CtxEntry) 
   simp [equBinds]
   exact ⟨t, h, rfl⟩
 
+/-- Changing the bound stored in an `.equ` head does not affect subtype
+lookups, because subtype lookup skips `.equ` heads. -/
+theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :
+    subBinds ({ bound := old, kind := .equ } :: Γ) i t →
+    subBinds ({ bound := new, kind := .equ } :: Γ) i t := by
+  cases i with
+  | zero =>
+    simp [subBinds]
+  | succ i =>
+    intro h
+    simpa [subBinds] using h
+
+/-- Changing the bound stored in an `.equ` head preserves all equivalence
+lookups outside that head. -/
+theorem equBinds_equ_head_replace_succ {Γ : Ctx} {old new : Term}
+    {i : Nat} {α : Term} :
+    equBinds ({ bound := old, kind := .equ } :: Γ) (i + 1) α →
+    equBinds ({ bound := new, kind := .equ } :: Γ) (i + 1) α := by
+  intro h
+  simpa [equBinds] using h
+
+/-- If an equivalence lookup under an `.equ` head does not target index `0`,
+changing the head bound preserves it. -/
+theorem equBinds_equ_head_replace_of_ne_zero {Γ : Ctx} {old new : Term}
+    {i : Nat} {α : Term} (hi : i ≠ 0) :
+    equBinds ({ bound := old, kind := .equ } :: Γ) i α →
+    equBinds ({ bound := new, kind := .equ } :: Γ) i α := by
+  cases i with
+  | zero =>
+    exact (hi rfl).elim
+  | succ i =>
+    exact equBinds_equ_head_replace_succ
+
 /-- Subtype lookup transport for entries at or outside an insertion cutoff.
 The returned bound is lifted through the inserted entry. -/
 theorem subBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
@@ -1095,6 +1128,18 @@ noncomputable def scoped_lookupEqu {Γ : Ctx} {i : Nat} {α : Term}
         subst hb
         simpa [Ctx.depth] using hsc'
 
+/-- Replace the bound stored in an innermost `.equ` context entry. The tail
+context and context depth are unchanged, so all existing entries remain
+well-scoped once the new bound is scoped in the same tail. -/
+noncomputable def equ_head_replace {Γ : Ctx} {old new : Term} :
+    Prevalid ({ bound := old, kind := .equ } :: Γ) →
+    Term.Scoped Γ.depth new →
+    Prevalid ({ bound := new, kind := .equ } :: Γ) := by
+  intro h hnew
+  cases h with
+  | equ hΓ _ =>
+    exact Prevalid.equ hΓ hnew
+
 end Prevalid
 
 namespace PrevalidExt
@@ -1136,6 +1181,20 @@ noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
     exact Stack.Scoped.nil
   | cons hst hα ih =>
     exact Stack.Scoped.cons hα ih
+
+/-- Replace the bound stored in an innermost `.equ` context entry while
+preserving extended-context prevalidity. -/
+noncomputable def equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term} :
+    PrevalidExt ({ bound := old, kind := .equ } :: Γ) s →
+    Term.Scoped Γ.depth new →
+    PrevalidExt ({ bound := new, kind := .equ } :: Γ) s := by
+  intro h hnew
+  induction h with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.equ_head_replace hΓ hnew)
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (by
+      simpa [Ctx.depth] using hα)
 
 /-- Extend the logical context at the head while shifting stack operands to
 preserve references to the old context. -/
