@@ -758,6 +758,53 @@ def tail {e : CtxEntry} {Γ : Ctx} :
   | sub hΓ _ => exact hΓ
   | equ hΓ _ => exact hΓ
 
+/-- Insert a prevalid entry into a prevalid context after `cutoff` preserved
+heads. The inserted-entry witness is stated over the actual tail at the
+insertion point. -/
+noncomputable def insertAt {Γ : Ctx} {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth) :
+    Prevalid Γ →
+    Prevalid (newEntry :: List.drop cutoff Γ) →
+    Prevalid (Ctx.insertAt cutoff newEntry Γ) := by
+  intro hΓ hNew
+  induction hΓ generalizing cutoff with
+  | empty =>
+    cases cutoff with
+    | zero =>
+      exact hNew
+    | succ cutoff =>
+      simp [Ctx.depth] at hcut
+  | @sub Γ' t hTail hbound ih =>
+    cases cutoff with
+    | zero =>
+      exact hNew
+    | succ cutoff =>
+      have htail : cutoff ≤ Ctx.depth Γ' := by
+        simpa [Ctx.depth, Nat.add_comm] using Nat.succ_le_succ_iff.mp hcut
+      have hbound' : Term.Scoped (Γ'.depth + 1) (Term.shift cutoff t) :=
+        Term.shift_scoped cutoff _ _ htail hbound
+      have hdepth :
+          Ctx.depth (Ctx.insertAt cutoff newEntry Γ') = Γ'.depth + 1 :=
+        Ctx.depth_insertAt_of_le htail
+      exact Prevalid.sub
+        (ih htail hNew)
+        (by simpa [hdepth] using hbound')
+  | @equ Γ' α hTail hbound ih =>
+    cases cutoff with
+    | zero =>
+      exact hNew
+    | succ cutoff =>
+      have htail : cutoff ≤ Ctx.depth Γ' := by
+        simpa [Ctx.depth, Nat.add_comm] using Nat.succ_le_succ_iff.mp hcut
+      have hbound' : Term.Scoped (Γ'.depth + 1) (Term.shift cutoff α) :=
+        Term.shift_scoped cutoff _ _ htail hbound
+      have hdepth :
+          Ctx.depth (Ctx.insertAt cutoff newEntry Γ') = Γ'.depth + 1 :=
+        Ctx.depth_insertAt_of_le htail
+      exact Prevalid.equ
+        (ih htail hNew)
+        (by simpa [hdepth] using hbound')
+
 /-- Rebuild a prevalid head over a newly extended tail. The stored head bound
 is shifted through the new tail head. This is the context-side operation needed
 when weakening reductions under one binder: the binder remains innermost, while

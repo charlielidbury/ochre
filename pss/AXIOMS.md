@@ -117,6 +117,10 @@ closures, 2 inactive outstanding).
   `Ctx.equBinds_insertAt_before`. These preserve the original binding
   index and shift the returned bound at the insertion cutoff. No
   axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `Prevalid.insertAt`, the
+  generalized prevalidity transport for `Ctx.insertAt`. It consumes a
+  prevalid witness for the inserted entry over `List.drop cutoff Γ` and
+  rebuilds the shifted preserved heads. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

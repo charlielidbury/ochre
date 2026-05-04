@@ -192,7 +192,9 @@ hard caveats.
      preserved-head transports are also available as
      `Ctx.subBinds_insertAt_before` and `Ctx.equBinds_insertAt_before`;
      they preserve the original index and shift the returned bound at
-     the insertion cutoff.
+     the insertion cutoff. General prevalid context insertion is now
+     available as `Prevalid.insertAt`, taking a prevalid witness for the
+     inserted entry over the actual insertion tail.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
