@@ -252,7 +252,8 @@ hard caveats.
      `Pss/Mpss/DeBruijnContextRed.lean` as `ExtCtxRed` /
      `ExtCtxRedStar`, with nameless `Ct-Ann` / `Ct-Stk`, structural
      preservation lemmas, de Bruijn `lemma_36`, and single-step closure
-     helpers.
+     helpers. The star layer also has named `refl`, `single`, `trans`,
+     structural preservation, and star-level `lemma_36` helpers.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
    * **Seeded 2026-05-04 on `db-refactor`:**

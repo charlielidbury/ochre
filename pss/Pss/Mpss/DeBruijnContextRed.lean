@@ -116,5 +116,74 @@ theorem stk_step {Γ Γ' : Ctx} {s s' : Stack} {α α' : Term}
 
 end ExtCtxRed
 
+namespace ExtCtxRedStar
+
+/-! ## Star helpers -/
+
+/-- Reflexivity of de Bruijn extended-context reduction stars. -/
+theorem refl {Γ : Ctx} {s : Stack} : ExtCtxRedStar (Γ, s) (Γ, s) :=
+  Relation.ReflTransGen.refl
+
+/-- A single de Bruijn extended-context reduction as a star. -/
+theorem single {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRed Γ s Γ' s') :
+    ExtCtxRedStar (Γ, s) (Γ', s') :=
+  ExtCtxRed.to_star h
+
+/-- Transitivity of de Bruijn extended-context reduction stars. -/
+theorem trans {Γ₁ Γ₂ Γ₃ : Ctx} {s₁ s₂ s₃ : Stack}
+    (h₁ : ExtCtxRedStar (Γ₁, s₁) (Γ₂, s₂))
+    (h₂ : ExtCtxRedStar (Γ₂, s₂) (Γ₃, s₃)) :
+    ExtCtxRedStar (Γ₁, s₁) (Γ₃, s₃) :=
+  Relation.ReflTransGen.trans h₁ h₂
+
+/-! ## Star structural invariants -/
+
+/-- De Bruijn extended-context reduction stars preserve context depth. -/
+theorem preserves_ctx_depth {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRedStar (Γ, s) (Γ', s')) : Γ.depth = Γ'.depth := by
+  refine Relation.ReflTransGen.head_induction_on
+    (P := fun E (_ : ExtCtxRedStar E (Γ', s')) => E.1.depth = Γ'.depth)
+    h ?_ ?_
+  · rfl
+  · intro E F hHead _ ih
+    exact Eq.trans hHead.preserves_ctx_depth ih
+
+/-- De Bruijn extended-context reduction stars preserve stack length. -/
+theorem preserves_stack_length {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRedStar (Γ, s) (Γ', s')) : s.length = s'.length := by
+  refine Relation.ReflTransGen.head_induction_on
+    (P := fun E (_ : ExtCtxRedStar E (Γ', s')) => E.2.length = s'.length)
+    h ?_ ?_
+  · rfl
+  · intro E F hHead _ ih
+    exact Eq.trans hHead.preserves_stack_length ih
+
+/-- De Bruijn extended-context reduction stars preserve context-entry kinds. -/
+theorem preserves_kinds {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRedStar (Γ, s) (Γ', s')) :
+    Γ.map (·.kind) = Γ'.map (·.kind) := by
+  refine Relation.ReflTransGen.head_induction_on
+    (P := fun E (_ : ExtCtxRedStar E (Γ', s')) => E.1.map (·.kind) = Γ'.map (·.kind))
+    h ?_ ?_
+  · rfl
+  · intro E F hHead _ ih
+    exact Eq.trans hHead.preserves_kinds ih
+
+/-- Star-level de Bruijn Lemma 36: stack changes can be stripped from an
+extended-context reduction star. -/
+theorem lemma_36 {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRedStar (Γ, s) (Γ', s')) :
+    ExtCtxRedStar (Γ, []) (Γ', []) := by
+  refine Relation.ReflTransGen.head_induction_on
+    (P := fun E (_ : ExtCtxRedStar E (Γ', s')) =>
+      ExtCtxRedStar (E.1, []) (Γ', []))
+    h ?_ ?_
+  · exact refl
+  · intro E F hHead _ ih
+    exact trans (single hHead.lemma_36) ih
+
+end ExtCtxRedStar
+
 end DeBruijn
 end Pss

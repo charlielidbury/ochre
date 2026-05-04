@@ -194,6 +194,12 @@ closures, 2 inactive outstanding).
   stack-length, and context-kind preservation, de Bruijn `lemma_36`,
   and single-step closure helpers. Imported from `Pss.lean`; no
   axiom-count change.
+* `Pss/Mpss/DeBruijnContextRed.lean` — added named star-layer helpers
+  for de Bruijn extended-context reduction: `ExtCtxRedStar.refl`,
+  `ExtCtxRedStar.single`, `ExtCtxRedStar.trans`,
+  `ExtCtxRedStar.preserves_ctx_depth`,
+  `ExtCtxRedStar.preserves_stack_length`, `ExtCtxRedStar.preserves_kinds`,
+  and star-level `ExtCtxRedStar.lemma_36`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
   well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
   separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint
