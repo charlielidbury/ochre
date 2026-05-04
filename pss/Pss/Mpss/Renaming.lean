@@ -9561,4 +9561,140 @@ noncomputable def MEqRed.openInverse_descend
   | @fun_ _ _ _ _ _ _ _ _ _ => intros; exact _hgate_fun.elim
   | @fOp _ _ _ _ _ _ _ _ _ _ _ => intros; exact _hgate_fOp.elim
 
+/-! ## §15. Lever A counterexample at the `tAp` arm — iter-32 Phase 2.5
+
+The `tAp` arm of `openInverse_descend` (§14, Empty-gated as
+`_hgate_tAp`) is **mathematically false** in general. Concretely, for
+the body `body = .app .top (.bvar 0)`:
+
+* The input derivation `MEqRed [⟨"y", .top, .equ⟩] [] (.app .top (.fvar "y")) .top`
+  is constructable via `MEqRed.tAp`: the operand-fv premise reads
+  `Term.fv (.fvar "y") = {"y"} ⊆ {"y"} = (⟨"y", .top, .equ⟩ :: []).dom`,
+  which holds. The avoid premise (`avoidsPro_tAp = true`) and freshness
+  premise (`cofinDomFresh_tAp = true`) are also automatic.
+
+* The output asked for at any stray `z ∉ Γ.dom = ∅`, instantiated at
+  `z = "z"`, is `MEqRed [] [] ((.app .top (.bvar 0))^["z"]) (Term.opening (.fvar "z") (Term.openInverse "y" .top))`
+  which reduces to `MEqRed [] [] (.app .top (.fvar "z")) .top` (since
+  `Term.openInverse "y" .top = .top` by `openInverse_fresh`, and the
+  outer opening at `.top` is the identity).
+
+* This output is **uninhabited**. Case analysis on the supposed
+  derivation eliminates seven of the eight `MEqRed` constructors by
+  source/target shape; the only surviving constructor `MEqRed.tAp`
+  requires `Term.fv (.fvar "z") = {"z"} ⊆ ([] : Ctx).dom = ∅`, which
+  is false. (The `MEqRed.refl` *function* defined in
+  `Pss.Mpss.Substitution` is not a primitive constructor; on the shape
+  `.app .top (.fvar "z")` it would itself unfold to `MEqRed.tAp` and
+  hit the same fv premise.)
+
+### Structural lesson — why this kills Lever A's headline signature
+
+The wall is structural, not local to `tAp`. Six `MEqRed` constructors
+carry **explicit `Term.fv u ⊆ Γ.dom` premises** on their leaf
+sub-terms (verified by inspection of `Reductions.lean`):
+
+* `MEqRed.tAp` — `Term.fv u ⊆ Γ.dom` on the operand under `.top`.
+* `MEqRed.bet` — operand `Term.LC v` is closed but the body's bvar-0
+  opening at fresh `x ∉ L` introduces a free name; the `bet`
+  output target `Term.opening v' body'` carries `body'`'s residual
+  free names, and `MEqRed.bet`'s recursive cofinite premise on
+  `body'^[x]` must satisfy whatever fv-discipline the body's
+  occurrences impose downstream.
+* `MEqRed.app` — no direct fv premise on the operator/operand
+  themselves (paper-faithful), BUT the source's stack invariant
+  (`PrevalidExt Γ (v :: s)`) demands `fv v ⊆ Γ.dom`. The recursive
+  call rebuilds this stack invariant at the post-rename `body_v^[z]`
+  with `z ∉ Γ.dom`.
+* `MEqRed.fun_` — body-recursion under `(⟨x, t, .sub⟩ :: Γ)` extends
+  the dom by `x`; the body's bvar-0 opening can mention any free
+  name in scope, and the post-rename body sub-derivation must live
+  in a context whose dom contains the fresh `z`.
+* `MEqRed.fOp` — body-recursion under `(⟨x, α, .equ⟩ :: Γ)`; same
+  shape as `fun_` plus the head's `α` carries a stack-fv constraint.
+* `MSubRed.top`, `MSubRed.app` — same `fv u ⊆ Γ.dom` /
+  `fv v ⊆ Γ.dom` pattern (out of scope for `MEqRed.openInverse_descend`
+  but the same wall would land on the `MSubRed` analogue).
+
+In every one of these arms, the post-rename construction must place
+a sub-term in a context whose `dom` is `Γ.dom` (NOT `insert z Γ.dom`).
+But the post-rename sub-term's `fv` may legitimately contain `z`
+(introduced by `^[z]` opening of a body that mentions `bvar 0`), and
+`z ∉ Γ.dom` by hypothesis. The fv-check premise then fails by the
+same calculation as `tAp`.
+
+The headline signature `MEqRed.openInverse_descend` therefore claims
+something stronger than is true: at any cofinite `z ∉ Γ.dom`, the
+descent produces a derivation in `Γ` whose source mentions `z`. The
+correct strengthening would either (a) restrict `z` to `Γ.dom`
+(eliminating the cofinite-z benefit and re-introducing the iter-30
+wall); (b) weaken the output to a *witness-existential* with `z ∈
+insert y₀ Γ.dom` for some auxiliary `y₀`, threading an alpha-rename
+chain back into the consumer's reconstruction logic — itself the
+same iter-30 wall in different clothing; or (c) abandon the
+locally-nameless encoding for the renaming functor and adopt a
+de Bruijn refactor where the cofinite-z handle is replaced by a
+fresh-index handle that carries no fv constraint.
+
+### The Lean-checked counterexample
+
+The theorem `MEqRed.openInverse_descend_tAp_counterexample` below
+exhibits the concrete instance and proves the output is uninhabited
+by cases on the supposed derivation. -/
+
+/-- **Lean-checked counterexample to the `tAp` arm of
+`openInverse_descend`.**
+
+Setup: `Γ := []`, `s := []`, `y := "y"`, `α := .top`,
+`body := .app .top (.bvar 0)`, `target_open := .top`, `z := "z"`.
+
+The input shape `MEqRed [⟨"y", .top, .equ⟩] [] (.app .top (.fvar "y")) .top`
+is constructable (`tAp_input` below); the output shape
+`MEqRed [] [] (.app .top (.fvar "z")) .top` is uninhabited
+(`output_uninhabited` below).
+
+This proves that the `tAp` arm cannot be discharged in full
+generality — the cofinite-z output exceeds what the constructor's
+fv-check premise allows. See the §15 docstring above for the
+structural lesson and the corresponding wall on the `app` / `bet` /
+`fun_` / `fOp` arms.
+
+`noncomputable def` (Type-valued, since `MEqRed : Type` and the
+input pair contains a derivation, not a Prop). The output predicate
+is encoded as `Empty`-valued (i.e. an absurdity premise) rather than
+`False` because `MEqRed` is `Type`-valued. -/
+noncomputable def MEqRed.openInverse_descend_tAp_counterexample :
+    -- Input: a valid `MEqRed.tAp` derivation in the y-extended context.
+    PProd
+      (MEqRed [⟨"y", .top, .equ⟩] [] (.app .top (.fvar "y")) .top)
+      -- Output: empty for any candidate derivation in the bare context.
+      (MEqRed ([] : Ctx) [] (.app .top (.fvar "z")) .top → Empty) := by
+  refine ⟨?_, ?_⟩
+  · -- Input derivation: build the y-extended PrevalidExt, then apply tAp.
+    have hΓ : Prevalid ([⟨"y", .top, .equ⟩] : Ctx) := by
+      refine Prevalid.equ Prevalid.empty ?_ ?_ Term.LC.top
+      · simp [Ctx.dom]
+      · simp [Term.fv]
+    have hpv : PrevalidExt ([⟨"y", .top, .equ⟩] : Ctx) [] := PrevalidExt.nil hΓ
+    have hLCu : Term.LC (.fvar "y") := Term.LC.fvar _
+    have hfvy : Term.fv (.fvar "y") ⊆ Ctx.dom [⟨"y", .top, .equ⟩] := by
+      intro w hw
+      have : w = "y" := by simpa [Term.fv] using hw
+      subst this
+      simp [Ctx.dom]
+    exact MEqRed.tAp hpv hLCu hfvy
+  · -- Output uninhabited: case-analyze on the supposed derivation.
+    -- All eight constructors disagree on source/target shape except
+    -- `tAp`, which forces `fv (.fvar "z") = {"z"} ⊆ ∅` — false.
+    intro h
+    cases h with
+    | tAp _ _ hfvz =>
+      -- hfvz : Term.fv (.fvar "z") ⊆ Ctx.dom [] = ∅.
+      -- Membership of "z" in `Term.fv (.fvar "z")` (a singleton on "z")
+      -- transports to membership in `∅`, contradiction.
+      have hmem : ("z" : String) ∈ Term.fv (Term.fvar "z") := by
+        simp [Term.fv]
+      have hempty : ("z" : String) ∈ Ctx.dom ([] : Ctx) := hfvz hmem
+      simp [Ctx.dom] at hempty
+
 end Pss

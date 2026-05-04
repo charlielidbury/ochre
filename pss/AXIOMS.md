@@ -245,6 +245,73 @@ The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-30+
 retires it once the cofinite-z bridge lands and `descend_body_equ_uniform_app`
 is consumed end-to-end.
 
+**Iter-32 Phase 2.0–2.4 — Lever A Phase 2 partial close.**
+Phase 2.0 (commit `7c4b273`): shipped `MEqRed.openInverse_descend`
+signature with all 8 arms `Empty`-gated (the function compiles but
+each arm is a stub). Phase 2.1 (`adb6779`): closed `top` and `var`
+arms. Phase 2.2 (`ebb78b3`): walled at WF on `pro` (Eq.rec cast). Phase
+2.3 (`c0aa2d0`): refactored signature to take `hsrc : source = body^[y]`
+explicitly; eliminated cast but exposed structural-recursion
+WF rejection. Phase 2.4 (`dfd06b7`): refactored to `induction h
+generalizing body` pattern (mirror of `_MEqRed_descend_at_head_subst`
+§12); closed `pro` arm honestly without WF goals. Status entering
+Phase 2.5: 3 of 8 arms closed (`top`, `var`, `pro`); 5 arms
+(`tAp`, `app`, `bet`, `fun_`, `fOp`) still `Empty`-gated.
+
+**Iter-32 Phase 2.5 — Lever A WALLS at the `tAp` arm (this iteration).**
+Status: **Lever A's headline signature is mathematically false.**
+A Lean-checked counterexample lands at `MEqRed.openInverse_descend`'s
+`tAp` arm in `Pss/Mpss/Renaming.lean §15`
+(`MEqRed.openInverse_descend_tAp_counterexample`). The structural
+issue:
+
+* `MEqRed.tAp`'s third premise is `Term.fv u ⊆ Γ.dom` for the
+  operand `u` under `.top`. Inside `openInverse_descend`'s `tAp`
+  arm, after body-shape inversion `body = .app .top body_u`, the
+  output requires constructing `MEqRed Γ s (.app .top (body_u^[z])) .top`
+  for stray `z ∉ Γ.dom`. The operand-fv premise becomes
+  `Term.fv (body_u^[z]) ⊆ Γ.dom`. When `body_u = .bvar 0` (a
+  legitimate input shape — passes `avoidsPro_tAp = true`,
+  `cofinDomFresh_tAp = true`, and `fv (.fvar y) ⊆ insert y Γ.dom`),
+  we get `body_u^[z] = .fvar z`, and the premise reduces to
+  `{z} ⊆ Γ.dom`, which contradicts `z ∉ Γ.dom`.
+
+* The output is uninhabited under any of the 8 `MEqRed`
+  constructors: 7 fail by source/target shape mismatch, and the
+  remaining `tAp` constructor's fv premise fails as above.
+
+* **The wall is structural, not local to `tAp`.** Five
+  `MEqRed` constructors carry fv-check premises (or stack-fv
+  invariants) that must be reconciled with the post-rename
+  bvar-0-mentioning sub-term: `tAp`, `app` (via the stack
+  invariant on `v :: s`), `bet` (operand premise + body's
+  bvar-0 occurrences in target), `fun_` and `fOp` (body
+  recursion under sub-context whose dom contains `x`, not `z`).
+  All five plausibly admit the same `body_u = .bvar 0`-style
+  counterexample.
+
+**Implication for the campaign:**
+* Lever A as currently formulated is dead; the cofinite-z output
+  promises something stronger than is true.
+* The `Empty`-gated `tAp` / `app` / `bet` / `fun_` / `fOp` arms
+  in `openInverse_descend` cannot be discharged honestly; the
+  function survives only as a partial-defined function used by
+  no caller (3 closed arms unblock no consumer).
+* **Pivot path:** the de Bruijn refactor of `Term`, `MEqRed`,
+  `MSubRed` is the next architectural lever. de Bruijn replaces
+  the cofinite-z handle with a fresh-index handle that carries
+  no fv constraint, eliminating the wall structurally. Cost
+  estimate: multi-week refactor (~3000-5000 lines touched).
+* Alternative pivot: a "dom-extending z" reformulation, where
+  the descent functor's output context is `(z, αz, .equ) :: Γ`
+  rather than bare `Γ`, permitting `z ∈ output ctx.dom`. This
+  echoes the iter-30 wrapper's shape and may be Lever C.
+
+The counterexample is shipped in `Pss/Mpss/Renaming.lean §15` and
+its `#print axioms` reads `[propext, Quot.sound]` (no project-level
+axioms — the un-inhabitability is constructively verified by
+case-analysis on the supposed derivation).
+
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
 real theorem in commit `64162c2` after lifting `Term.LC` from `Prop` to
