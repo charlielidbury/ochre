@@ -1627,6 +1627,44 @@ theorem msub_abs_step_stackHead_transport_or_fOp {Γ : Ctx} {s : Stack}
   | fOp _ _ hBody =>
     exact Or.inr (Or.inr ⟨arg, s, rfl, ⟨hBody⟩⟩)
 
+/-- Changed-argument structural application commutation reduced to the
+operator-side `FOp` residual. After applying strong commutativity to the
+operator steps, the only obstruction to building the changed-argument
+application join is transporting the operator subtype join across the stack
+head; for abstraction targets that obstruction is exactly an `FOp` body
+derivation tied to the old head. -/
+theorem commute_appAbs_structApp_eqStep_or_fOp_residual {Γ : Ctx} {s : Stack}
+    {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg') :
+    (∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃) ∨
+      ∃ joinBound joinBody,
+        MEqRedJ Γ (arg :: s) (.abs bound₁ body₁) (.abs joinBound joinBody) ∧
+          ((∃ oldArg rest,
+            arg :: s = oldArg :: rest ∧
+              MEqRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+                (Stack.shift 0 rest) body₂ joinBody) ∨
+            ∃ oldArg rest,
+              arg :: s = oldArg :: rest ∧
+                MSubRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+                  (Stack.shift 0 rest) body₂ joinBody) := by
+  obtain ⟨op₃, hEqJoin, hSubJoin⟩ := hcommArg hSubOp hEqOp
+  obtain ⟨joinBound, joinBody, hOp₃⟩ := hEqJoin.some.abs_inv
+  subst hOp₃
+  cases msub_abs_step_stackHead_transport_or_fOp hpvTail hEqArg hSubJoin.some with
+  | inl hTransportStep =>
+    have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
+    exact Or.inl ⟨.app (.abs joinBound joinBody) arg',
+      MEqRedStar.single (MEqRed.app hEqJoin.some hEqArg),
+      MSubRedStar.single (MSubRed.app hTransportStep.some hArg'Scoped)⟩
+  | inr hResidual =>
+    exact Or.inr ⟨joinBound, joinBody, hEqJoin, hResidual⟩
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

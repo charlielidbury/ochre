@@ -635,6 +635,12 @@ closures, 2 inactive outstanding).
   This rules out a blanket stack-head transport theorem and identifies
   the remaining work as an `FOp`-specific stack-head replacement. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_or_fOp_residual`, reducing the
+  changed-argument structural App/App branch through the operator
+  strong-commutativity join. The branch now either joins directly or
+  returns an operator-side `FOp` residual for the joined abstraction
+  target. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
