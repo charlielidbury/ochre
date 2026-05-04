@@ -1968,6 +1968,25 @@ theorem msubStar_abs_fun_body_fixed_bound {Γ : Ctx}
     exact Relation.ReflTransGen.trans ih
       (MSub.to_star (msub_abs_fun_body_fixed_bound hpvNil hBoundScoped hStep))
 
+/-- Lift a diagrammatic body replacement chain through `Fun` after first
+changing the abstraction bound by an empty-stack equivalence step. -/
+theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
+    {bound bound' body body' : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBound : MEqRed Γ [] bound bound')
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hBody : MSubStar ({ bound := bound', kind := .sub } :: Γ) [] body body') :
+    MSubStar Γ [] (.abs bound body) (.abs bound' body') := by
+  have hpvBodyCtx : Prevalid ({ bound := bound, kind := .sub } :: Γ) :=
+    Prevalid.sub (PrevalidExt.ctx hpvNil) hBound.scoped_left
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil hpvBodyCtx
+  have hBodyRefl : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body :=
+    MEqRed.refl hpvBody hBodyScoped
+  exact MSubStar.trans
+    (MSub.to_star (MSub.of_MEqRed hpvNil (MEqRed.fun_ hBound hBodyRefl)))
+    (msubStar_abs_fun_body_fixed_bound hpvNil hBound.scoped_right hBody)
+
 /-- Under a changed `.equ` head, the old shifted head bound diagrammatically
 subtypes the new head variable. The subtype side uses an old-to-new head
 equivalence at the same residual stack; the equivalence side promotes
