@@ -1207,6 +1207,11 @@ closures, 2 inactive outstanding).
   sufficient for β preservation through `WEquMStar.toWSubMStar` and matches
   the common-reduct evidence exposed by diagrammatic subtyping. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added Type-valued
+  `AbsFunctionBoundDiagram` and `AbsFunctionBoundDiagramPayload`, then
+  proved `AbsFunctionBoundInversion_of_diagram` using the abstraction-bound
+  chain projections. This avoids eliminating Prop-valued `MSub` witnesses
+  while constructing `WEquMStar`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — proved the direct one-step helper
   `MSubRed.abs_function_bound_inversion`, extracting bound
   well-equivalence from an empty-stack function-to-function subtype

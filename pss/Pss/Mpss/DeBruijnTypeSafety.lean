@@ -151,6 +151,44 @@ def AbsFunctionBoundInversionOfMSub : Type :=
     MSub Γ [] (.abs bound body) (.abs result .top) →
       WEquMStar Γ bound result
 
+/-- Type-valued common-reduct diagram for a well-subtyping chain from an
+abstraction to a function supertype. This avoids eliminating the Prop-valued
+`MSub` witness when constructing Type-valued well-equivalence evidence. -/
+structure AbsFunctionBoundDiagram
+    (Γ : Ctx) (bound body result : Term) : Type where
+  joinBound : Term
+  joinBody : Term
+  subJoin :
+    MSubRedStar Γ [] (.abs bound body) (.abs joinBound joinBody)
+  eqJoin :
+    MEqRedStar Γ [] (.abs result .top) (.abs joinBound joinBody)
+  wfJoinBound : WfM Γ joinBound
+
+/-- Remaining Type-valued diagram payload for function-bound inversion. -/
+def AbsFunctionBoundDiagramPayload : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term},
+    WSubMStar Γ (.abs bound body) (.abs result .top) →
+      AbsFunctionBoundDiagram Γ bound body result
+
+/-- A Type-valued common-reduct diagram gives the transitive bound
+well-equivalence needed by β preservation. -/
+noncomputable def AbsFunctionBoundInversion_of_diagram
+    (hDiagram : AbsFunctionBoundDiagramPayload) :
+    AbsFunctionBoundInversion := by
+  intro Γ bound body result hFun
+  let d := hDiagram hFun
+  have hwfBound : WfM Γ bound := hFun.wf_left.fun_inv.1
+  have hwfResult : WfM Γ result := hFun.wf_right.fun_inv.1
+  have hBoundJoin : MEqRedStar Γ [] bound d.joinBound :=
+    MSubRedStar.abs_bound_red d.subJoin
+  have hResultJoin : MEqRedStar Γ [] result d.joinBound :=
+    MEqRedStar.abs_bound_red d.eqJoin
+  have hLeft : WEquMStar Γ bound d.joinBound :=
+    WEquMStar.of_MEqRedStar_fwd_of_wf hBoundJoin hwfBound d.wfJoinBound
+  have hRight : WEquMStar Γ d.joinBound result :=
+    WEquMStar.of_MEqRedStar_back_of_wf hResultJoin hwfResult d.wfJoinBound
+  exact WEquMStar.trans d.wfJoinBound hLeft hRight
+
 /-- One-step abstraction-function subtype inversion: any direct empty-stack
 subtype reduction from one abstraction to another can only change the bound by
 an equivalence reduction. -/
