@@ -5984,4 +5984,260 @@ abstraction's body is `y`-fresh). It's just not the universal tool
 the headline consumer needs. Iter-18's stack-template generalization
 will subsume §11.5 once shipped. -/
 
+/-! ### §11.7. Iter-18 — `descend_body_equ_uniform` infrastructure
+
+This section ships iter-18's deliverable for the `avoidsPro`-only
+descent functor (§11.6 design): the `_PrevalidExt_descend_under_equ_head_template`
+helper that constructs the post-descent prevalid context with stack-template
+generalization. This helper is the prerequisite for the leaves of
+`descend_body_equ_uniform`; iter-19 will assemble the leaves + .app arm
+on top of this helper.
+
+### Mathematical correctness check on the helper signature
+
+Input:
+* `hpv : PrevalidExt (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer)`.
+* `hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b` (template-level freshness).
+* `hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β` (already-opened freshness).
+* `hy_Γ : y ∉ Γ.dom` (head-binding's own freshness).
+* `z : String`, `hz_Γ : z ∈ Γ.dom`.
+
+Output: `PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer)`.
+
+**LC.** For each `b^[z]`: `Term.LC (b^[y])` is given (from `hpv`), and
+`Term.LC (b^[z])` follows by renaming-LC (`Term.subst_lc` applied to
+`Term.subst y (.fvar z) (b^[y])`, which equals `b^[z]` under
+`y ∉ fv b`). For each `s_outer` entry `β`: `Term.LC β` is given;
+unchanged in the output (since `subst y (.fvar z) β = β` from
+`y ∉ fv β`).
+
+**fv-subset.** For each `b^[z]`: `fv (b^[z]) ⊆ fv b ∪ {z}`. From
+`fv (b^[y]) ⊆ {y} ∪ Γ.dom` (from input `hpv`) plus `y ∉ fv b`, we
+get `fv b ⊆ Γ.dom`. With `z ∈ Γ.dom`, `fv (b^[z]) ⊆ Γ.dom`. ✓
+For each `s_outer` entry `β`: `fv β ⊆ {y} ∪ Γ.dom` plus `y ∉ fv β`
+gives `fv β ⊆ Γ.dom`. ✓
+
+**Counterexample check.** Take `s_tmpl = [.bvar 0]`, `s_outer = []`,
+`Γ.dom = {z, ...}`. Then `s_tmpl.map (·^[y]) = [.fvar y]`, with
+`fv (.fvar y) = {y}`. Input prevalid says `{y} ⊆ {y} ∪ Γ.dom`. ✓.
+Output: `s_tmpl.map (·^[z]) = [.fvar z]`, with `fv (.fvar z) = {z}`.
+Need `{z} ⊆ Γ.dom`, i.e., `z ∈ Γ.dom`. ✓ (premise).
+
+**Without `hz_Γ`**, the case `s_tmpl = [.bvar 0]` would produce a
+prevalid claiming `{z} ⊆ Γ.dom` even when `z ∉ Γ.dom` — false. So
+`hz_Γ` is mathematically required, not bookkeeping.
+
+### Iter-19 picks up here
+
+With this helper in hand, iter-19's leaves become:
+
+    body = .bvar 0:
+      cases h with
+      | .pro ... => exfalso (avoidsPro_pro contradicts hAvoid)
+      | .var hpv => MEqRed.var (helper s_tmpl hpv ...)
+
+    body = .top:
+      cases h with
+      | .top hpv => MEqRed.top (helper s_tmpl hpv ...)
+
+    body = .fvar w (w ≠ y):
+      cases h with
+      | .var hpv => MEqRed.var (helper ...)
+      | .pro hpv heq hβ => MEqRed.pro (helper ...) heq' (descend hβ ...)
+        where descend uses _y_notin_fv_lookupEqu_under_avoid to reduce
+        the inner derivation to a y-fresh template body.
+
+The `body = .app a b` arm with `MEqRed.app hu hv` recurses on `a` with
+`s_tmpl := b :: s_tmpl_old`, on `b` with `s_tmpl := []`. Both
+sub-recursions feed back through the same helper at the new `s_tmpl`. -/
+
+/-- **Helper for `descend_body_equ_uniform` leaves.**
+
+Constructs the post-descent `PrevalidExt` with stack-template
+generalization. The input stack `s_tmpl.map (·^[y]) ++ s_outer`
+carries y-dependent templates; the output stack `s_tmpl.map (·^[z]) ++ s_outer`
+substitutes `y → z` in the templates while leaving `s_outer` (already
+y-fresh) unchanged.
+
+**Mathematical correctness check.** See §11.7 docstring above. The
+critical invariant is that `y ∉ fv b` (template-level) lets us
+swap the opening `b^[y] ↝ b^[z]` via `Term.subst_open_var` and
+`Term.subst_fresh`. -/
+private noncomputable def _PrevalidExt_descend_under_equ_head_template
+    {Γ : Ctx} {s_outer : Stack} {y : String} {α : Term}
+    (s_tmpl : List Term)
+    (hpv : PrevalidExt (⟨y, α, .equ⟩ :: Γ)
+                       (s_tmpl.map (·^[y]) ++ s_outer))
+    (hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b)
+    (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (z : String) (hz_Γ : z ∈ Γ.dom) :
+    PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) := by
+  classical
+  -- Strategy: induct on `s_tmpl`. Base case `s_tmpl = []`: stack is
+  -- `s_outer`, all entries y-fresh (from hy_souter), so
+  -- `equ_head_remove_mid` applies directly.
+  -- Cons case: peel off the head `b^[y]`, recurse on tail, then prepend
+  -- the new head `b^[z]` with renamed LC and shifted fv.
+  induction s_tmpl with
+  | nil =>
+    -- `s_tmpl.map (·^[y]) ++ s_outer = s_outer`.
+    have hpv' : PrevalidExt (⟨y, α, .equ⟩ :: Γ) s_outer := by simpa using hpv
+    have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have hpv_out : PrevalidExt (([] : Ctx) ++ Γ) s_outer :=
+      PrevalidExt.equ_head_remove_mid (Γ₂ := []) hpv' hΓ₂_avoid hy_souter
+    have hpv_bare : PrevalidExt Γ s_outer := by simpa using hpv_out
+    show PrevalidExt Γ (([] : List Term).map (·^[z]) ++ s_outer)
+    simpa using hpv_bare
+  | cons b s_tmpl_tail ih =>
+    -- Stack: `(b :: s_tmpl_tail).map (·^[y]) ++ s_outer = b^[y] :: (s_tmpl_tail.map (·^[y]) ++ s_outer)`.
+    have hpv_cons : PrevalidExt (⟨y, α, .equ⟩ :: Γ)
+        (b^[y] :: (s_tmpl_tail.map (·^[y]) ++ s_outer)) := by
+      simpa using hpv
+    -- Tail premises for IH.
+    have hy_stmpl_tail : ∀ b' ∈ s_tmpl_tail, y ∉ Term.fv b' := fun b' hb' =>
+      hy_stmpl b' (List.mem_cons_of_mem _ hb')
+    have hy_b : y ∉ Term.fv b :=
+      hy_stmpl b (List.mem_cons_self _ _)
+    -- Decompose hpv_cons: head's LC + fv data, plus tail's PrevalidExt.
+    -- Built as a direct match so the LC component (Type-valued) is separated
+    -- from the fv-subset component (Prop-valued).
+    cases hpv_cons with
+    | cons hpv_tail_in hLC_b_y hfv_b_y =>
+    -- IH: PrevalidExt Γ (s_tmpl_tail.map (·^[z]) ++ s_outer).
+    have ih_out : PrevalidExt Γ (s_tmpl_tail.map (·^[z]) ++ s_outer) :=
+      ih hpv_tail_in hy_stmpl_tail
+    -- Compute LC of `b^[z]` from LC of `b^[y]`.
+    have hLC_z : Term.LC (.fvar z) := Term.LC.fvar z
+    have hLC_subst : Term.LC (Term.subst y (.fvar z) (b^[y])) :=
+      Term.subst_lc hLC_z hLC_b_y
+    -- `Term.subst y (.fvar z) (b^[y]) = b^[z]` because `y ∉ fv b` and
+    -- the canonical `subst_open_var`-style rewrite collapses the result.
+    have hsubst_open : Term.subst y (.fvar z) (b^[y]) = b^[z] := by
+      unfold Term.opening
+      rw [Term.subst_open hLC_z, Term.subst_fresh hy_b]
+      simp [Term.subst]
+    have hLC_b_z : Term.LC (b^[z]) := by rw [← hsubst_open]; exact hLC_subst
+    -- Compute fv of `b^[z]` ⊆ Γ.dom.
+    have hfv_b_z : Term.fv (b^[z]) ⊆ Γ.dom := by
+      intro w hw
+      -- `fv (b^[z]) ⊆ fv b ∪ {z}` (from `Term.fv_open_subset`).
+      have hsub := Term.fv_open_subset 0 (.fvar z) b hw
+      rcases Finset.mem_union.mp hsub with hwb | hwz
+      · -- `w ∈ fv b`. Need `fv b ⊆ Γ.dom` from input.
+        -- From `hfv_b_y : fv (b^[y]) ⊆ (⟨y,α,.equ⟩::Γ).dom` and `fv b ⊆ fv (b^[y])`
+        -- (via `Term.fv_open_subset` again — but we want the other direction).
+        -- Actually: opening with `.fvar y` only ADDS `y` to fv. So `fv b ⊆ fv (b^[y])`.
+        -- Specifically: `fv (b^[y])` is `fv b` minus all `bvar 0`-substituted positions
+        -- (which are `bvar` not `fvar`, so don't contribute) PLUS `{y}` if any
+        -- `bvar 0` was substituted. So `fv b ⊆ fv (b^[y]) ∪ {y}`. Combined with
+        -- `fv (b^[y]) ⊆ {y} ∪ Γ.dom`, `fv b ⊆ {y} ∪ Γ.dom`. With `y ∉ fv b`,
+        -- `fv b ⊆ Γ.dom`.
+        have hfv_b_sub : Term.fv b ⊆ Term.fv (b^[y]) ∪ {y} := by
+          -- A free variable in `b` survives opening (opening only changes bvars).
+          intro v hv
+          exact Finset.mem_union.mpr (Or.inl (fv_subset_open_fvar b y hv))
+        have hfv_b_in : w ∈ Term.fv (b^[y]) ∪ {y} := hfv_b_sub hwb
+        rcases Finset.mem_union.mp hfv_b_in with hwby | hwy_singleton
+        · -- `w ∈ fv (b^[y]) ⊆ (⟨y,α,.equ⟩::Γ).dom`. So `w ∈ {y} ∪ Γ.dom`.
+          have hw_in : w ∈ Ctx.dom (⟨y, α, .equ⟩ :: Γ) := hfv_b_y hwby
+          rw [Ctx.dom_cons] at hw_in
+          rcases Finset.mem_insert.mp hw_in with hwy | hwΓ
+          · -- `w = y`, but `y ∉ fv b` and `w ∈ fv b` — contradiction.
+            subst hwy
+            exact absurd hwb hy_b
+          · exact hwΓ
+        · -- `w = y`, but again `y ∉ fv b`.
+          have : w = y := by simpa using hwy_singleton
+          subst this
+          exact absurd hwb hy_b
+      · -- `w ∈ fv (.fvar z) = {z}`, so `w = z`.
+        have : w = z := by simpa [Term.fv] using hwz
+        subst this
+        exact hz_Γ
+    -- Build the cons.
+    have hgoal_eq : (b :: s_tmpl_tail).map (·^[z]) ++ s_outer
+        = b^[z] :: (s_tmpl_tail.map (·^[z]) ++ s_outer) := by simp
+    show PrevalidExt Γ ((b :: s_tmpl_tail).map (·^[z]) ++ s_outer)
+    rw [hgoal_eq]
+    exact PrevalidExt.cons ih_out hLC_b_z hfv_b_z
+
+/-- Auxiliary helper for `descend_body_equ_uniform_bvar0`: takes the
+input stack as a free metavariable so `cases` works without dependent-
+elimination glitches on non-variable indices. The caller-side wrapper
+`descend_body_equ_uniform_bvar0` instantiates `stk` with the
+template-aware shape `s_tmpl.map (·^[y]) ++ s_outer`. -/
+private noncomputable def _descend_body_equ_uniform_bvar0_aux
+    {Γ : Ctx} {y : String} {α target_y : Term} {stk : Stack}
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) stk (.fvar y) target_y)
+    (hAvoid : avoidsPro h y = true)
+    {Γ' : Ctx} {stk' : Stack}
+    (hpv' : PrevalidExt Γ' stk') (z : String) :
+    MEqRed Γ' stk' (.fvar z) (Term.subst y (.fvar z) target_y) := by
+  classical
+  cases h with
+  | @pro _ _ _ β β' hpv heq hβ =>
+    rw [avoidsPro_pro] at hAvoid
+    simp at hAvoid
+  | @var _ _ _ hpv =>
+    show MEqRed Γ' stk' (.fvar z) (Term.subst y (.fvar z) (.fvar y))
+    rw [Term.subst_fvar_eq]
+    exact MEqRed.var hpv'
+
+/-- **Iter-18 leaf — `body = .bvar 0` case of `descend_body_equ_uniform`.**
+
+The simplest substantive leaf, demonstrating the helper
+`_PrevalidExt_descend_under_equ_head_template` in action.
+
+Source: `(.bvar 0)^[y] = .fvar y`. Constructors with this source:
+* `MEqRed.var` — produces target `.fvar y`. After `Term.subst y (.fvar z)`,
+  target becomes `.fvar z`. Output: `MEqRed.var (helper ...)`.
+* `MEqRed.pro` — excluded by `avoidsPro_pro`'s `decide (y ≠ y)` factor,
+  which contradicts `hAvoid`.
+
+This leaf is the iter-18 "minimum viable demonstration" of the
+`avoidsPro`-only descent at the new uniform signature. Iter-19 will
+ship the remaining leaves (`.top`, `.fvar w`) and the `.app` recursive
+arm, all on top of `_PrevalidExt_descend_under_equ_head_template`.
+
+**Implementation note (cases-elim quirk).** Direct `cases h` on the
+non-variable stack `s_tmpl.map (·^[y]) ++ s_outer` fails dependent
+elimination because Lean can't reduce the equation
+`s_tmpl.map (·^[y]) ++ s_outer = []` (used by `MEqRed.fun_`'s stack
+pattern). We work around via the auxiliary
+`_descend_body_equ_uniform_bvar0_aux`, which takes the stack as a
+free metavariable. -/
+noncomputable def MEqRed.descend_body_equ_uniform_bvar0
+    {Γ : Ctx} {s_outer : Stack} {y : String} {α target_y : Term}
+    (s_tmpl : List Term)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer)
+                ((Term.bvar 0)^[y]) target_y)
+    (hAvoid : avoidsPro h y = true)
+    (hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b)
+    (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (z : String) (hz_Γ : z ∈ Γ.dom) :
+    MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) ((Term.bvar 0)^[z])
+              (Term.subst y (.fvar z) target_y) := by
+  classical
+  have hopen_z : (Term.bvar 0 : Term)^[z] = .fvar z := by
+    simp [Term.opening, Term.open_]
+  rw [hopen_z]
+  -- Coerce `h`'s source from `(.bvar 0)^[y]` to `.fvar y` for the auxiliary.
+  -- Coerce `h`'s source via `generalize` + `subst` (Phase D pattern), so
+  -- both `h` and `hAvoid`'s type update consistently.
+  generalize hsrc : (Term.bvar 0 : Term)^[y] = src at h
+  have hopen_y : (Term.bvar 0 : Term)^[y] = .fvar y := by
+    simp [Term.opening, Term.open_]
+  rw [hopen_y] at hsrc
+  subst hsrc
+  -- Build descended PrevalidExt via the iter-18 helper.
+  have hpv_in : PrevalidExt (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer) :=
+    MEqRed.prevalidExt h
+  have hpv' : PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) :=
+    _PrevalidExt_descend_under_equ_head_template
+      s_tmpl hpv_in hy_stmpl hy_souter hy_Γ z hz_Γ
+  -- Delegate to the auxiliary.
+  exact _descend_body_equ_uniform_bvar0_aux h hAvoid hpv' z
+
 end Pss
