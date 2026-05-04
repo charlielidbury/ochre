@@ -934,6 +934,11 @@ closures, 2 inactive outstanding).
   `WSubMStar.rgh_replaceAt_sub_from_star`, packaging replaced equivalence
   steps with already-replaced recursive well-subtyping chains. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added subtype-reduction chain
+  congruence helpers `MSubRedStar.app_fixed_arg`,
+  `MSubRedStar.fOp_body_fixed`, and `MSubRedStar.fun_body_fixed` for the
+  fixed-endpoint shapes needed by star-valued `.sub` replacement. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

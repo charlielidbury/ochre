@@ -342,6 +342,51 @@ theorem MSubRedStar.of_MEqRedStar {Γ : Ctx} {s : Stack} {u v : Term}
     exact Relation.ReflTransGen.trans ih
       (MSubRedStar.single (MSubRed.equ hpv hStep.some))
 
+/-- Lift an operator subtype-reduction chain under a fixed application
+argument. -/
+theorem MSubRedStar.app_fixed_arg {Γ : Ctx} {s : Stack}
+    {arg u u' : Term} (hArgScoped : Term.Scoped Γ.depth arg)
+    (h : MSubRedStar Γ (arg :: s) u u') :
+    MSubRedStar Γ s (.app u arg) (.app u' arg) := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hStep ih =>
+      exact Relation.ReflTransGen.trans ih
+        (MSubRedStar.single (MSubRed.app hStep.some hArgScoped))
+
+/-- Lift a body subtype-reduction chain through `Ms-FOp` with fixed bound and
+fixed operand. -/
+theorem MSubRedStar.fOp_body_fixed {Γ : Ctx} {s : Stack}
+    {t α body body' : Term}
+    (ht : Term.Scoped Γ.depth t)
+    (hα : Term.Scoped Γ.depth α)
+    (h : MSubRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body') :
+    MSubRedStar Γ (α :: s) (.abs t body) (.abs t body') := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hStep ih =>
+      exact Relation.ReflTransGen.trans ih
+        (MSubRedStar.single (MSubRed.fOp ht hα hStep.some))
+
+/-- Lift a body subtype-reduction chain through the reflexive-bound `Ms-Fun`
+shape. This only handles the fixed-bound case; the general changing-bound
+`Ms-Fun` replacement needs an additional endpoint bridge. -/
+theorem MSubRedStar.fun_body_fixed {Γ : Ctx}
+    {t body body' : Term}
+    (ht : Term.Scoped Γ.depth t)
+    (hEqT : MEqRed Γ [] t t)
+    (h : MSubRedStar ({ bound := t, kind := .sub } :: Γ) [] body body') :
+    MSubRedStar Γ [] (.abs t body) (.abs t body') := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hStep ih =>
+      exact Relation.ReflTransGen.trans ih
+        (MSubRedStar.single (MSubRed.fun_ ht hEqT hStep.some))
+
 /-! ## Prevalidity invariants -/
 
 /-- Context prevalidity from de Bruijn equivalence reduction. -/
