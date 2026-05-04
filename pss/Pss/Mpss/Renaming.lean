@@ -5328,4 +5328,138 @@ needs `descend_body_equ` to flow through the body of the inner abstraction
 non-trivial program. Until Phase C lands, the headline axiom remains
 dependent on the renaming-functor pipeline. -/
 
+/-! ### §11.4. Phase B2 (case `body = .abs t inner`).
+
+The opening `(.abs t inner)^[y]` reduces (under `Term.opening_abs`-shape
+distribution) to `.abs t' inner'` for templates `t', inner'` whose
+exact form depends on whether `t` mentions `.bvar 0` and how `inner`
+shifts under the inner binder. For the descent functor, however, all we
+need is the SHAPE: source = `.abs (something) (something)`.
+
+After the avoidsFv premise is consumed, the source's full free-variable
+structure avoids `y`, so `Term.subst y (.fvar z)` is a no-op on both
+the source and the target. The leaf reduces to a pure
+`MEqRed.strip_equ_head` call — no constructor casework needed.
+
+### Why no `rec_t` parameter
+
+The task suggested an `rec_t` parameter for the `t`-annotation descent
+(Option (a)). Examining the actual obligation: `hAvoidFv h y = true`
+already supplies `y ∉ Term.fv (.abs t inner)`, hence `y ∉ Term.fv t` AND
+`y ∉ Term.fv inner`. Likewise `y ∉ Term.fv target_y`. With both endpoints
+`y`-fresh, the per-constructor descent collapses to `strip_equ_head`
+(§10.3) at `Γ₂ = []`, followed by a `Term.subst_fresh` rewrite to align
+the goal's substitution with the identity.
+
+This makes Phase B2 strictly LESS interesting than the task spec
+anticipated — but ONLY because Phase A's `bvar 0` case is the unique
+template where the source mentions `y` (`(.bvar 0)^[y] = .fvar y`). All
+other body templates (`top`, `fvar w` with `w ≠ y`, `app`, `abs`,
+`bvar (n+1)`) preserve `y`-freshness through opening, so their leaves
+all reduce to the same `strip_equ_head + subst_fresh` boilerplate.
+
+### Phase C implications
+
+For Phase C's mutual-recursive functor on body templates, this means the
+case-split on the template's outermost constructor only does NON-TRIVIAL
+work in the `bvar 0` arm; every other arm is a uniform call to the
+strip-and-rewrite combinator. Phase C can therefore be assembled as a
+SINGLE wrapper around `strip_equ_head` for the non-`bvar 0` cases, with
+the `bvar 0` case bolted on. The leaves shipped here, in §11.1, and in
+§11.2 are essentially the same shape — `descend_body_equ_top`,
+`descend_body_equ_fvar` (the `var` arm), and `descend_body_equ_abs`
+(below) all reduce to head-removal plus a target-side `subst_fresh`.
+
+The `app` template case (§11.3) is the same — the source `.app (a^[y])
+(b^[y])` is `y`-fresh iff `a` and `b` are `y`-fresh, which is what
+`avoidsFv` supplies. So the `app` leaf, too, can be assembled by the
+same pattern. Phase C's "mutual recursion" is therefore actually a
+single pattern played at all five constructor cases. -/
+
+/-- **Phase B2 — `body = .abs t inner` leaf case.**
+
+Given a derivation at `(⟨y, α, .equ⟩ :: Γ)` with source `.abs t inner`,
+produce a derivation at the bare `Γ` with substituted source/target.
+
+**Implementation:** The source's `y`-freshness (from `hAvoidFv`) makes
+`Term.subst y (.fvar z)` a no-op on the source; same for the target.
+So the descent is just `strip_equ_head` plus two `Term.subst_fresh`
+rewrites. -/
+noncomputable def MEqRed.descend_body_equ_abs
+    {Γ : Ctx} {s : Stack} {y : String} {α t inner target_y : Term}
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (.abs t inner) target_y)
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true)
+    (hAvoidFv : avoidsFv h y = true)
+    (hy_Γ : y ∉ Γ.dom)
+    (hst_avoid : ∀ β ∈ s, y ∉ Term.fv β)
+    (z : String) :
+    MEqRed Γ s (.abs (Term.subst y (.fvar z) t)
+                     (Term.subst y (.fvar z) inner))
+              (Term.subst y (.fvar z) target_y) := by
+  classical
+  -- Source `.abs t inner` is produced by either `MEqRed.fun_` (s = [])
+  -- or `MEqRed.fOp` (s = α' :: s'). Either way, `avoidsFv h y = true`
+  -- supplies `y ∉ fv (.abs t inner)` AND `y ∉ fv target_y`, so the
+  -- substitution is a no-op on both endpoints. The descent reduces to
+  -- `strip_equ_head` at `Γ₂ = []`.
+  --
+  -- We obtain `y ∉ fv (.abs t inner)` and `y ∉ fv target_y` by
+  -- case-analysis on `h` (since `avoidsFv` is recursor-defined; the
+  -- per-constructor `simp` lemmas factor it cleanly).
+  have hy_src : y ∉ Term.fv (Term.abs t inner) := by
+    cases h with
+    | @fun_ _ _ tt' _ inner' L ht hbody hUni =>
+      rw [avoidsFv_fun_] at hAvoidFv
+      obtain ⟨hAvoidFv_left_body, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+      obtain ⟨hAvoidFv_left_t, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+      obtain ⟨hAvoidFv_src, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_t
+      exact decide_eq_true_eq.mp hAvoidFv_src
+    | @fOp _ _ _ tt' αi _ inner' L ht hbody hUni =>
+      rw [avoidsFv_fOp] at hAvoidFv
+      obtain ⟨hAvoidFv_left_body, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+      obtain ⟨hAvoidFv_left_t, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+      obtain ⟨hAvoidFv_left_stack, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_t
+      obtain ⟨hAvoidFv_src, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_stack
+      exact decide_eq_true_eq.mp hAvoidFv_src
+  have hy_target : y ∉ Term.fv target_y := by
+    cases h with
+    | @fun_ _ _ tt' _ inner' L ht hbody hUni =>
+      rw [avoidsFv_fun_] at hAvoidFv
+      obtain ⟨hAvoidFv_left_body, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+      obtain ⟨hAvoidFv_left_t, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+      obtain ⟨_, hAvoidFv_tgt⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_t
+      exact decide_eq_true_eq.mp hAvoidFv_tgt
+    | @fOp _ _ _ tt' αi _ inner' L ht hbody hUni =>
+      rw [avoidsFv_fOp] at hAvoidFv
+      obtain ⟨hAvoidFv_left_body, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv
+      obtain ⟨hAvoidFv_left_t, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_body
+      obtain ⟨hAvoidFv_left_stack, _⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_t
+      obtain ⟨_, hAvoidFv_tgt⟩ := Bool.and_eq_true _ _ |>.mp hAvoidFv_left_stack
+      exact decide_eq_true_eq.mp hAvoidFv_tgt
+  -- Extract `y ∉ fv t` and `y ∉ fv inner` from `hy_src`.
+  have hy_t : y ∉ Term.fv t := fun h_in => hy_src (by
+    rw [Term.fv_abs]; exact Finset.mem_union.mpr (Or.inl h_in))
+  have hy_inner : y ∉ Term.fv inner := fun h_in => hy_src (by
+    rw [Term.fv_abs]; exact Finset.mem_union.mpr (Or.inr h_in))
+  -- Substitution is a no-op on the source's pieces and the target.
+  have hsubst_t : Term.subst y (.fvar z) t = t := Term.subst_fresh hy_t
+  have hsubst_inner : Term.subst y (.fvar z) inner = inner :=
+    Term.subst_fresh hy_inner
+  have hsubst_target : Term.subst y (.fvar z) target_y = target_y :=
+    Term.subst_fresh hy_target
+  -- Strip the head equ-binding. At `Γ₂ := []` the conclusion's context is
+  -- `[] ++ Γ = Γ` (definitionally for lists).
+  have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+  have h_stripped : MEqRed (([] : Ctx) ++ Γ) s (.abs t inner) target_y :=
+    MEqRed.strip_equ_head (Γ₂ := []) h hΓ₂_avoid hy_Γ hst_avoid
+      hAvoid hFresh hAvoidFv
+  have h_stripped' : MEqRed Γ s (.abs t inner) target_y := by simpa using h_stripped
+  -- Align the goal: rewrite the substitution-no-ops.
+  show MEqRed Γ s (.abs (Term.subst y (.fvar z) t)
+                        (Term.subst y (.fvar z) inner))
+                 (Term.subst y (.fvar z) target_y)
+  rw [hsubst_t, hsubst_inner, hsubst_target]
+  exact h_stripped'
+
 end Pss
