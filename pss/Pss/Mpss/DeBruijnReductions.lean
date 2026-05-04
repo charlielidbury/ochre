@@ -1521,6 +1521,33 @@ theorem MSubRedStar.equ_replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
   MSubRedStar.single
     (MSubRed.equ_replaceAt_sub hpvNew (hEq.replaceAt_sub hcut hOldNew))
 
+/-- Star-valued changed-slot `Ms-Pro` replacement residual. -/
+theorem MSubRedStar.pro_replaceAt_sub_self {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {new : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hcut : cutoff < Ctx.depth Γ) :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.bvar cutoff) (Term.shiftBy 0 (cutoff + 1) new) :=
+  MSubRedStar.single (MSubRed.pro_replaceAt_sub_self hpvNew hcut)
+
+/-- Star-valued non-changed-slot `Ms-Pro` replacement. -/
+theorem MSubRedStar.pro_replaceAt_sub_of_ne {Γ : Ctx} {s : Stack}
+    {cutoff i : Nat} {old new t : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hne : i ≠ cutoff)
+    (hb : Ctx.subBinds (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) i t) :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.bvar i) t :=
+  MSubRedStar.single (MSubRed.pro_replaceAt_sub_of_ne hpvNew hne hb)
+
+/-- Star-valued `Ms-Top` replacement. -/
+theorem MSubRedStar.top_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hu : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) u) :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u .top :=
+  MSubRedStar.single (MSubRed.top_replaceAt_sub hpvNew hu)
+
 /-- Star-valued `Ms-App` replacement from an already-replaced operator
 subtype chain. -/
 theorem MSubRedStar.app_replaceAt_sub_from_operator {Γ : Ctx} {s : Stack}

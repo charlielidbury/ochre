@@ -949,6 +949,11 @@ closures, 2 inactive outstanding).
   subtype replacement residuals into the `Ws-Lf2` well-subtyping shape
   under an explicit local stepwise `WfM` preservation premise. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added star-valued leaf wrappers
+  for `.sub` subtype replacement:
+  `MSubRedStar.pro_replaceAt_sub_self`,
+  `MSubRedStar.pro_replaceAt_sub_of_ne`, and
+  `MSubRedStar.top_replaceAt_sub`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
