@@ -1573,6 +1573,24 @@ theorem MSubRedStar.fOp_replaceAt_sub_from_body {Γ : Ctx} {s : Stack}
   MSubRedStar.fOp_body_fixed (by simpa [Ctx.depth_replaceAt] using ht)
     (by simpa [Ctx.depth_replaceAt] using hα) hBody
 
+/-- Binder-recursive `Ms-FOp` chain replacement wrapper. Recursive body calls
+under the `.equ` operand head naturally produce `replaceAt (cutoff + 1)`;
+this packages the definitional fold back to the constructor context. -/
+theorem MSubRedStar.fOp_replaceAt_sub_from_body_replaceAt {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hα : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) α)
+    (hBody : MSubRedStar
+        (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := α, kind := .equ } :: Γ))
+        (Stack.shift 0 s) body body') :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (α :: s)
+      (.abs t body) (.abs t body') :=
+  MSubRedStar.fOp_replaceAt_sub_from_body (Γ := Γ) (s := s)
+    (cutoff := cutoff) (old := old) (new := new)
+    (t := t) (α := α) (body := body) (body' := body')
+    ht hα (by simpa [Ctx.replaceAt] using hBody)
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}
@@ -2695,6 +2713,21 @@ theorem MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound {Γ : Ctx}
   MSubRedStar.fun_body_fixed (by simpa [Ctx.depth_replaceAt] using ht)
     hEqT hBody
 
+/-- Binder-recursive fixed-bound `Ms-Fun` chain replacement wrapper. -/
+theorem MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {old new t body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEqT : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] t t)
+    (hBody : MSubRedStar
+        (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := t, kind := .sub } :: Γ)) [] body body') :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (.abs t body) (.abs t body') :=
+  MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound
+    (Γ := Γ) (cutoff := cutoff) (old := old) (new := new)
+    (t := t) (body := body) (body' := body')
+    ht hEqT (by simpa [Ctx.replaceAt] using hBody)
+
 /-- Star-valued changing-bound `Ms-Fun` replacement once the body subtype chain
 has already been transported under the changed bound. -/
 theorem MSubRedStar.fun_replaceAt_sub_from_body_changed_bound {Γ : Ctx}
@@ -2709,6 +2742,24 @@ theorem MSubRedStar.fun_replaceAt_sub_from_body_changed_bound {Γ : Ctx}
       (.abs t body) (.abs t' body') :=
   MSubRedStar.fun_bound_then_body (by simpa [Ctx.depth_replaceAt] using ht)
     hEq hBodyScoped hBody
+
+/-- Binder-recursive changing-bound `Ms-Fun` chain replacement wrapper, once
+the recursive body chain already lives under the changed abstraction bound. -/
+theorem MSubRedStar.fun_replaceAt_sub_from_body_changed_bound_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {old new t t' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) [] t t')
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) + 1) body)
+    (hBody : MSubRedStar
+        (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := t', kind := .sub } :: Γ)) [] body body') :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+      (.abs t body) (.abs t' body') :=
+  MSubRedStar.fun_replaceAt_sub_from_body_changed_bound
+    (Γ := Γ) (cutoff := cutoff) (old := old) (new := new)
+    (t := t) (t' := t') (body := body) (body' := body')
+    ht hEq hBodyScoped (by simpa [Ctx.replaceAt] using hBody)
 
 /-- Star-valued changing-bound `Ms-Fun` under one preserved head once the body
 chain already lives under the changed bound. -/
