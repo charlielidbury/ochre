@@ -583,6 +583,22 @@ theorem appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
   subst t₃
   exact hTarget
 
+/-- Any equivalence-chain target of a `Top`-headed application is
+diagrammatically below `Top`. -/
+theorem msub_appTop_eqStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MEqRedStar Γ s (.app .top u) t) : MSub Γ s t .top :=
+  MSub.intro (MSubRedStar.of_MEqRedStar hpv (appTop_eqStar_to_top hpv hu h))
+    Relation.ReflTransGen.refl
+
+/-- Any subtype-chain target of a `Top`-headed application is
+diagrammatically below `Top`. -/
+theorem msub_appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MSubRedStar Γ s (.app .top u) t) : MSub Γ s t .top :=
+  MSub.intro (MSubRedStar.of_MEqRedStar hpv (appTop_subStar_to_top hpv hu h))
+    Relation.ReflTransGen.refl
+
 /-- Direct star-level commutation for a `Top`-headed application source. Any
 subtype chain and any equivalence chain out of the same source join at
 `Top`. -/

@@ -413,7 +413,9 @@ hard caveats.
      named `diamond_appTop_eqStar_eqStar`.
      Normalization corollaries `appTop_eqStar_to_top` and
      `appTop_subStar_to_top` expose the resulting target-to-`Top`
-     chains directly.
+     chains directly. Diagrammatic packaging adapters
+     `msub_appTop_eqStar_to_top` and `msub_appTop_subStar_to_top` view
+     those targets as `MSub Γ s _ .top`.
      The full star-level `Top`-headed source cell is also available as
      `commute_appTop_subStar_eqStar`, joining arbitrary subtype and
      equivalence chains from that source at `Top`.

@@ -386,6 +386,10 @@ closures, 2 inactive outstanding).
   corollaries `appTop_eqStar_to_top` and `appTop_subStar_to_top`,
   exposing the `Top` join for equivalence and subtype chain targets of
   a `Top`-headed application. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
+  packaging adapters `msub_appTop_eqStar_to_top` and
+  `msub_appTop_subStar_to_top`, viewing those `Top`-headed chain targets
+  as `MSub Γ s _ .top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appTop_subStar_eqStar`, the full star-level commutation cell
   for a `Top`-headed application source. It joins arbitrary subtype and
