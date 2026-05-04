@@ -2119,6 +2119,54 @@ theorem msubStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
       (MSub.to_star
         (msub_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hStep))
 
+/-- Fixed-bound `FOp` abstraction cell for de Bruijn Lemma 2. A body-level
+equivalence diamond under the operand `.equ` head lifts to the abstraction
+level. -/
+theorem diamond_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
+    {α bound body body₁ body₂ : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hdiamondBody : EqDiamonds ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s))
+    (hBody₁ : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₁)
+    (hBody₂ : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ := hdiamondBody hBody₁ hBody₂
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα
+      (MEqRedStar.single hLeft.some),
+    meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα
+      (MEqRedStar.single hRight.some)⟩
+
+/-- Fixed-bound `FOp` abstraction cell for de Bruijn Lemma 1. A body-level
+strong-commutativity square under the operand `.equ` head lifts to the
+abstraction level. -/
+theorem commute_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
+    {α bound body body₁ body₂ : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hcommBody : StrongCommutes ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s))
+    (hSubBody : MSubRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₁)
+    (hEqBody : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound body₂) t₃ := by
+  obtain ⟨body₃, hLeft, hRight⟩ := hcommBody hSubBody hEqBody
+  exact ⟨.abs bound body₃,
+    meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα
+      (MEqRedStar.single hLeft.some),
+    msubRedStar_abs_fOp_body_fixed_bound hBoundScoped hα
+      (MSubRedStar.single hRight.some)⟩
+
 /-- Lift a diagrammatic body replacement chain through `FOp` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fOp_equ_bound_body {Γ : Ctx} {s : Stack}

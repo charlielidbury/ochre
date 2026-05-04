@@ -511,6 +511,11 @@ closures, 2 inactive outstanding).
   `commute_abs_fun_body_fixed_bound`, lifting body-level Lemma-2 and
   Lemma-1 cells under the `.sub` head through the abstraction
   constructors. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added fixed-bound `FOp`
+  abstraction cells `diamond_abs_fOp_body_fixed_bound` and
+  `commute_abs_fOp_body_fixed_bound`, lifting body-level Lemma-2 and
+  Lemma-1 cells under the operand `.equ` head through the stack-sensitive
+  abstraction constructors. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
