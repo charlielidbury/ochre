@@ -487,7 +487,8 @@ closures, 2 inactive outstanding).
   the β target to the final target, since later reductions can leave the
   β target's syntactic shape. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
-  `appAbs_eqStar_to_top_of_subStar_top` and diagrammatic wrappers
+  `commute_appAbs_to_top_eqStar`,
+  `appAbs_eqStar_to_top_of_subStar_top`, and diagrammatic wrappers
   `msub_appAbs_eqStar_to_top_of_subStar_top` /
   `msubStar_appAbs_eqStar_to_top_of_subStar_top`, the
   abstraction-headed application specializations of the general

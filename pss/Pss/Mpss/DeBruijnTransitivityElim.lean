@@ -899,6 +899,16 @@ theorem msubStar_abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     (hEq : MEqRedStar Γ s (.abs bound body) t) : MSubStar Γ s t .top :=
   (msub_abs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
 
+/-- If a subtype chain from an abstraction-headed application reaches `Top`,
+any equivalence chain from the same source joins it at `Top`. -/
+theorem commute_appAbs_to_top_eqStar {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSubTop : MSubRedStar Γ s (.app (.abs bound body) arg) .top)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) :
+    ∃ t₃, MEqRedStar Γ s .top t₃ ∧ MSubRedStar Γ s t t₃ := by
+  exact commute_subStar_to_top_eqStar hpv hScoped hSubTop hEq
+
 /-- If an abstraction-headed application has a subtype chain to `Top`, every
 equivalence-chain target from that source has a subtype chain to `Top`. -/
 theorem appAbs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
