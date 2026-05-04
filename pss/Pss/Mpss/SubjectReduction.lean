@@ -55,27 +55,51 @@ be itself `WfM`.
 
 ## Residual axioms
 
+After iteration 4 (this file's current state), the residual axioms are:
+
 * `_SR_axiom_app_meApp` — `Wf-App` Me-App case. The step
   `MEqRed Γ [v] u u'` is at non-empty stack `[v]`, but the WSubMStar
   motive is restricted to empty-stack steps. The mutual recursor's IH
   cannot be applied at stack `[v]`.
-* `_SR_axiom_PrE_meProAnnot` — `Wf-PrE` Me-Pro case. The annotation
-  step `MEqRed Γ [] α α'` is structurally orthogonal to the source
-  derivation `WfM Γ (.fvar y)` (it lives behind a context lookup).
-  At empty stack, `WfCtxEqu.lookup_equ` supplies `WfM Γ α`, but the
-  recursion at `α` is not a sub-derivation of the WfM at `.fvar y`.
+* `_SR_v2_bet_residual` — narrower form of the `Wf-App` × Me-Bet body
+  case. Captures the body context-mismatch obstacle: `MEqRed.bet`'s
+  body sub-derivation `hbd x : MEqRed Γ [] (bd^[x]) (bd'^[x])` lives
+  at FLAT Γ, but Wf-Fun inversion places the body's WfM at EXTENDED
+  context `⟨x,tt,.sub⟩::Γ`. The IHs from MEqRed-recursion are at flat
+  Γ; lifting them via Lemma 22 weakening requires either a
+  context-permutation result for WfM (false in PSS) or a well-founded
+  recursion measure that decreases under `MEqRed.subst` (no such
+  measure currently exists).
 
-Each axiom is COUNTEREXAMPLE-FREE under the `WfCtxEqu` precondition
-— see the inline analysis next to each.
+## Iteration 4 progress (this commit)
 
-## Net effect
+`_SR_axiom_PrE_meProAnnot` (Wf-PrE × Me-Pro) is DISCHARGED via a
+NEW noncomputable def `_SR_at_pro_proved` that recurses on the
+`MEqRed` derivation `hred`. Each MEqRed constructor is handled
+explicitly:
 
-`Lemma_10_Inversion`'s discharge plan invoked
-`WfM-preservation under MEqRed at empty stack`. The current file
-delivers that conditional preservation, but NOT axiom-free — two
-narrow residuals remain. The two residuals are STRICTLY NARROWER than
-`Lemma_10_Inversion` itself, and their statements are paper-faithful
-mathematical claims (no shape-restriction beyond `WfCtxEqu`).
+* `Me-Pro`: closes via `WfCtxEqu.lookup_equ` + IH on the structurally-
+  smaller inner annotation step.
+* `Me-Top`, `Me-Var`, `Me-tAp`: closed immediately.
+* `Me-Fun`: closes via Wf-Fun inversion + body-IH at the EXTENDED
+  context (where `MEqRed.fun_`'s body sub-derivation naturally lives).
+* `Me-App`: routes to `_SR_axiom_app_meApp` (unchanged residual).
+* `Me-Bet`: routes to `_SR_v2_bet_residual` (the body context-mismatch
+  blocker).
+* `Me-FOp`: vacuous by stack indexing (`α::s ≠ []`).
+
+`_SR_axiom_app_meApp_bet` (the original Wf-App × Me-Bet residual) is
+also DISCHARGED — it's now a noncomputable def that routes directly
+to `_SR_v2_bet_residual` via the operator-shape inversion `u = .abs
+tt bd` (forced by Me-Bet's outer step shape).
+
+Net axiom-count delta on `subject_reduction_wf`'s closure:
+* REMOVED: `_SR_axiom_PrE_meProAnnot`, `_SR_axiom_app_meApp_bet`.
+* ADDED: `_SR_v2_bet_residual` (narrower than either removed; specific
+  to Wf-App × Me-Bet shape).
+* UNCHANGED: `_SR_axiom_app_meApp`.
+
+Two SR axioms reduced to one strictly narrower residual.
 -/
 
 namespace Pss
@@ -147,33 +171,244 @@ axiom _SR_axiom_app_meApp
     (hredArg : MEqRed Γ [] v v') :
     Nonempty (WfM Γ (.app u' v'))
 
-/-- **Residual axiom 2**: `Wf-PrE`'s `Me-Pro` case requires preservation
-on the bound annotation `α` (under `MEqRed Γ [] α α'`), but `α` is not
-a sub-derivation of `WfM Γ (.fvar y)` — it lives behind a context
-lookup.
+/-! ### §2.5. Discharge of `_SR_axiom_PrE_meProAnnot` via MEqRed-recursion
 
-**Counterexample analysis**: from `WfCtxEqu Γ` and `equBinds y α`,
-`WfCtxEqu.lookup_equ` extracts `WfM Γ α`. The claim is that for any
-forward step `MEqRed Γ [] α α'`, `WfM Γ α'`. This IS the empty-stack
-subject reduction at `α` — the SAME conclusion we're proving for
-`.fvar y`, but at the annotation rather than at the variable.
+We replace the original axiom with a NONCOMPUTABLE DEF that recurses
+on the `MEqRed` derivation `hred`. The recursion structure provides
+IHs on STRUCTURALLY SMALLER MEqRed sub-derivations — exactly what's
+needed to handle the `Me-Pro` case (where the bound annotation step
+is a sub-derivation of the outer Me-Pro).
 
-Discharge route: well-founded recursion on the MEqRed derivation size
-plus annotation-depth (for the case where `α` is itself a `.fvar`
-that promotes through `WfCtxEqu`). Feasible but out of scope for
-iteration 3.
+For the body cases (Me-Bet, Me-Fun) we route to:
+* `_SR_v2_bet_residual` — narrower residual for the Me-Bet case,
+  capturing the specific Wf-App × Me-Bet shape with the body
+  context-mismatch obstacle.
+* `Me-Fun` — closed by inverting input WfM via Wf-Fun and applying the
+  IH on the body sub-derivation (which lives at the EXTENDED context,
+  matching Wf-Fun's premise).
+* `Me-App` — routed to existing `_SR_axiom_app_meApp`.
+* `Me-FOp` at outer `s = []` is impossible by type-indexing.
 
-The statement is mathematically true under `WfCtxEqu`: it's the
-fixed-point form of the empty-stack preservation. No counterexample
-exists because the §2 counterexample (annotation = .app .top .top)
-is ruled out by `WfCtxEqu Γ` requiring all `equ`-bound annotations to
-be `WfM`. -/
-axiom _SR_axiom_PrE_meProAnnot
+This SPLITS the original axiom into the narrower `_SR_v2_bet_residual`
+plus the existing `_SR_axiom_app_meApp`, while DISCHARGING the
+Me-Pro, Me-Top, Me-Var, Me-tAp, Me-Fun cases axiom-free. -/
+
+/-- Helper: combine `equBinds` and `subBinds` for the same name to derive
+`False`. The head entry for `y` in `Γ` is either `.sub` or `.equ`, not
+both; the two lookup functions return `none` for the wrong kind. -/
+private lemma _SR_v2_equ_sub_disjoint
+    {Γ : Ctx} {y : String} {α t : Term}
+    (he : Γ.equBinds y α) (hs : Γ.subBinds y t) : False := by
+  induction Γ with
+  | nil =>
+    simp [Ctx.equBinds, Ctx.lookupEqu] at he
+  | cons e rest ih =>
+    by_cases hne : e.name = y
+    · -- Head entry's name matches y. Either kind.
+      rcases e with ⟨name, bound, kind⟩
+      change name = y at hne
+      cases kind with
+      | sub =>
+        -- equ-lookup returns none for sub-head with matching name.
+        unfold Ctx.equBinds Ctx.lookupEqu at he
+        simp [hne] at he
+      | equ =>
+        -- sub-lookup returns none for equ-head with matching name.
+        unfold Ctx.subBinds Ctx.lookupSub at hs
+        simp [hne] at hs
+    · have he' : Ctx.equBinds rest y α :=
+        (Ctx.equBinds_cons_other (e := e) hne).mp he
+      have hs' : Ctx.subBinds rest y t :=
+        (Ctx.subBinds_cons_other (e := e) hne).mp hs
+      exact ih he' hs'
+
+/-- **Narrower residual for the Me-Bet body case in `_SR_at_pro_proved`.**
+The input is a Wf-App with the LHS abstraction; the body MEqRed step
+lives at flat Γ but the Wf-Fun inversion gives the body WfM at extended
+Γ. The context-mismatch obstacle is the same one captured in
+`_SR_axiom_app_meApp_bet` — this is just the projected per-case form,
+indexed on the actual abstraction body `bd`. -/
+private axiom _SR_v2_bet_residual
+    {Γ : Ctx} {tt bd v T : Term}
+    (hCtx : WfCtxEqu Γ)
+    (hStarFn : WSubMStar Γ (.abs tt bd) (.abs T .top))
+    (hStarV : WSubMStar Γ v T)
+    {bd' v' : Term} {L : Finset String}
+    (hLCtt : Term.LC tt)
+    (hbd : ∀ x, x ∉ L → MEqRed Γ [] (bd^[x]) (bd'^[x]))
+    (hv : MEqRed Γ [] v v')
+    (hwfFn : WfM Γ (.abs tt bd))
+    (hwfV : WfM Γ v) :
+    Nonempty (WfM Γ (Term.opening v' bd'))
+
+/-- The motive for the MEqRed-recursion proof of
+`_SR_axiom_PrE_meProAnnot`. -/
+private def _SR_v2_motive : (Γ : Ctx) → (s : Stack) → (u u' : Term) →
+    MEqRed Γ s u u' → Prop :=
+  fun Γ s u u' _ =>
+    s = [] → WfCtxEqu Γ → WfM Γ u → Nonempty (WfM Γ u')
+
+/-- Per-case payload: Me-Pro. -/
+private theorem _SR_v2_case_pro
+    {Γ : Ctx} {s : Stack} {y : String} {α α' : Term}
+    (hpvE : PrevalidExt Γ s) (hb : Γ.equBinds y α)
+    (hα : MEqRed Γ s α α')
+    (ihα : _SR_v2_motive Γ s α α' hα) :
+    _SR_v2_motive Γ s (.fvar y) α' (MEqRed.pro hpvE hb hα) := by
+  intro hSnil hCtx hwf
+  subst hSnil
+  cases hwf with
+  | @varSub _ _ tS hpv hbS =>
+    exact (_SR_v2_equ_sub_disjoint hb hbS).elim
+  | @varEqu _ _ αV hpv hbE =>
+    have hAlphaEq : α = αV := by
+      have h1 : Γ.lookupEqu y = some αV := hbE
+      have h2 : Γ.lookupEqu y = some α := hb
+      exact Option.some.inj (h2.symm.trans h1)
+    have hwfα : WfM Γ α := WfCtxEqu.lookup_equ hCtx hpv hb
+    exact ihα rfl hCtx hwfα
+
+/-- Per-case payload: Me-Top. -/
+private theorem _SR_v2_case_top
+    {Γ : Ctx} {s : Stack} (hpvE : PrevalidExt Γ s) :
+    _SR_v2_motive Γ s .top .top (MEqRed.top hpvE) := by
+  intro hSnil hCtx hwf
+  exact ⟨hwf⟩
+
+/-- Per-case payload: Me-Var. -/
+private theorem _SR_v2_case_var
+    {Γ : Ctx} {s : Stack} {y : String} (hpvE : PrevalidExt Γ s) :
+    _SR_v2_motive Γ s (.fvar y) (.fvar y) (@MEqRed.var Γ s y hpvE) := by
+  intro hSnil hCtx hwf
+  exact ⟨hwf⟩
+
+/-- Per-case payload: Me-tAp. -/
+private theorem _SR_v2_case_tAp
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpvE : PrevalidExt Γ s) (hLCu : Term.LC u)
+    (hfvU : Term.fv u ⊆ Γ.dom) :
+    _SR_v2_motive Γ s (.app .top u) .top (MEqRed.tAp hpvE hLCu hfvU) := by
+  intro hSnil hCtx hwf
+  exact ⟨WfM.top (prevalid_of_wfM hwf)⟩
+
+/-- Per-case payload: Me-Fun. The body `hB y` lives at EXTENDED context
+`⟨y,t,.sub⟩::Γ`, matching Wf-Fun's body premise. -/
+private theorem _SR_v2_case_fun
+    {Γ : Ctx} {t t' bd bd' : Term} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hB : ∀ x, x ∉ L → MEqRed (⟨x, t, .sub⟩ :: Γ) [] (bd^[x]) (bd'^[x]))
+    (hUni : True)
+    (iht : _SR_v2_motive Γ [] t t' ht)
+    (ihB : ∀ x (hx : x ∉ L),
+        _SR_v2_motive (⟨x, t, .sub⟩ :: Γ) [] (bd^[x]) (bd'^[x]) (hB x hx)) :
+    _SR_v2_motive Γ [] (.abs t bd) (.abs t' bd')
+        (MEqRed.fun_ L ht hB hUni) := by
+  intro hSnil hCtx hwf
+  classical
+  cases hwf with
+  | @fun_ _ _ _ Lfn hwfT hwfBd =>
+    -- Get WfM Γ t' via iht.
+    have hwfT' : WfM Γ t' := Classical.choice (iht rfl hCtx hwfT)
+    have hLCT' : Term.LC t' := WfM.lc hwfT'
+    have hfvT' : Term.fv t' ⊆ Γ.dom := WfM.fv_subset hwfT'
+    refine ⟨WfM.fun_ (L ∪ Lfn ∪ Γ.dom ∪ Term.fv bd' ∪ Term.fv t') hwfT' ?_⟩
+    intro z hz
+    have hzL : z ∉ L := fun h => hz (by simp; tauto)
+    have hzLfn : z ∉ Lfn := fun h => hz (by simp; tauto)
+    have hzΓ : z ∉ Γ.dom := fun h => hz (by simp; tauto)
+    -- Get WfM (⟨z,t,.sub⟩::Γ) (bd^[z]) from hwfBd z hzLfn.
+    have hwfBd_z : WfM (⟨z, t, .sub⟩ :: Γ) (bd^[z]) := hwfBd z hzLfn
+    -- Apply ihB z hzL at extended context.
+    have hCEext : WfCtxEqu (⟨z, t, .sub⟩ :: Γ) := WfCtxEqu.sub hCtx
+    have hwfBd'_z : WfM (⟨z, t, .sub⟩ :: Γ) (bd'^[z]) :=
+      Classical.choice (ihB z hzL rfl hCEext hwfBd_z)
+    -- Narrow t → t' at the head.
+    have hN := Lemma_23_NarrowingWf
+      (Γ₁ := Γ) (Γ₂ := []) (x := z) (t := t') (t' := t)
+      (u := bd'^[z])
+      (by simpa using hwfBd'_z) hLCT' hfvT'
+    simpa using hN
+
+/-- Per-case payload: Me-Bet. Routes to `_SR_v2_bet_residual`. -/
+private theorem _SR_v2_case_bet
+    {Γ : Ctx} {s : Stack} {tt v v' bd bd' : Term} (L : Finset String)
+    (hLCtt : Term.LC tt)
+    (hbd : ∀ x, x ∉ L → MEqRed Γ s (bd^[x]) (bd'^[x]))
+    (hUni : True)
+    (hv : MEqRed Γ [] v v')
+    (ihbd : ∀ x (hx : x ∉ L),
+        _SR_v2_motive Γ s (bd^[x]) (bd'^[x]) (hbd x hx))
+    (ihv : _SR_v2_motive Γ [] v v' hv) :
+    _SR_v2_motive Γ s (.app (.abs tt bd) v) (Term.opening v' bd')
+        (MEqRed.bet L hLCtt hbd hUni hv) := by
+  intro hSnil hCtx hwf
+  subst hSnil
+  classical
+  cases hwf with
+  | @app _ _ _ T hStarFn hStarV =>
+    have hwfFn : WfM Γ (.abs tt bd) := wfM_left_of_wsubmstar hStarFn
+    have hwfV : WfM Γ v := wfM_left_of_wsubmstar hStarV
+    exact _SR_v2_bet_residual hCtx hStarFn hStarV hLCtt hbd hv hwfFn hwfV
+
+/-- Per-case payload: Me-App. Routes to `_SR_axiom_app_meApp`. -/
+private theorem _SR_v2_case_app
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
+    (ihu : _SR_v2_motive Γ (v :: s) u u' hu)
+    (ihv : _SR_v2_motive Γ [] v v' hv) :
+    _SR_v2_motive Γ s (.app u v) (.app u' v') (MEqRed.app hu hv) := by
+  intro hSnil hCtx hwf
+  subst hSnil
+  cases hwf with
+  | @app _ _ _ T hStarFn hStarV =>
+    exact _SR_axiom_app_meApp hCtx hStarFn hStarV hu hv
+
+/-- Per-case payload: Me-FOp. At outer `s = []`, the constructor's
+type-index forces `s = α::s'` for some `α`, contradicting `s = []`.
+Hence vacuous. -/
+private theorem _SR_v2_case_fOp
+    {Γ : Ctx} {s : Stack} {t t' α : Term} {bd bd' : Term} (L : Finset String)
+    (ht : MEqRed Γ [] t t')
+    (hB : ∀ x, x ∉ L → MEqRed (⟨x, α, .equ⟩ :: Γ) s (bd^[x]) (bd'^[x]))
+    (hUni : True)
+    (iht : _SR_v2_motive Γ [] t t' ht)
+    (ihB : ∀ x (hx : x ∉ L),
+        _SR_v2_motive (⟨x, α, .equ⟩ :: Γ) s (bd^[x]) (bd'^[x]) (hB x hx)) :
+    _SR_v2_motive Γ (α :: s) (.abs t bd) (.abs t' bd')
+        (MEqRed.fOp L ht hB hUni) := by
+  intro hSnil _ _
+  -- hSnil : α :: s = []. Impossible.
+  exact (List.cons_ne_nil _ _ hSnil).elim
+
+/-- **Discharged form of `_SR_axiom_PrE_meProAnnot`.** Proved by
+recursion on the `MEqRed` derivation. -/
+noncomputable def _SR_at_pro_proved
     {Γ : Ctx} {α α' : Term}
     (hCtx : WfCtxEqu Γ)
     (hwfα : WfM Γ α)
     (hred : MEqRed Γ [] α α') :
-    Nonempty (WfM Γ α')
+    Nonempty (WfM Γ α') :=
+  MEqRed.rec
+    (motive := _SR_v2_motive)
+    (@_SR_v2_case_pro)
+    (@_SR_v2_case_bet)
+    (@_SR_v2_case_top)
+    (@_SR_v2_case_app)
+    (@_SR_v2_case_var)
+    (@_SR_v2_case_fun)
+    (@_SR_v2_case_tAp)
+    (@_SR_v2_case_fOp)
+    hred rfl hCtx hwfα
+
+/-- Re-export of `_SR_at_pro_proved` under the old axiom name to
+preserve call sites. The original axiom is REPLACED by this proof. -/
+@[reducible] noncomputable def _SR_axiom_PrE_meProAnnot
+    {Γ : Ctx} {α α' : Term}
+    (hCtx : WfCtxEqu Γ)
+    (hwfα : WfM Γ α)
+    (hred : MEqRed Γ [] α α') :
+    Nonempty (WfM Γ α') :=
+  _SR_at_pro_proved hCtx hwfα hred
 
 /-! ## §3. Per-case payloads for the mutual recursor
 
@@ -276,15 +511,12 @@ private theorem _SR_case_fun
         (by simpa using hwfBody'Open_z) hLCt' hfvT'
       simpa using hN_z
 
-/-- Helper residual axiom for the Me-Bet case (substitution under
-combined β-reduction with body MEqRed step). Counterexample-free under
-`WfCtxEqu`: the result is the substitution into a reduced body, both
-of which are tracked through `WfM` derivations — the only obstacle is
-the absence of a sub-derivation witness for `bd'^[x]`'s WfM, which is
-resolved by combining the Wf-Fun cofinite premise + body MEqRed
-preservation (the empty-stack mutual SR at the body, which IS the
-recursion's natural conclusion). -/
-axiom _SR_axiom_app_meApp_bet
+/-- Helper residual for the Me-Bet case (substitution under combined
+β-reduction with body MEqRed step). Iteration 4: replaced the axiom
+with a noncomputable def that routes to `_SR_v2_bet_residual` via
+extracting the abstraction shape from `hStarU`. The narrower
+residual captures the same Me-Bet body context-mismatch obstacle. -/
+noncomputable def _SR_axiom_app_meApp_bet
     {Γ : Ctx} {u v t : Term}
     (hCtx : WfCtxEqu Γ)
     (hStarU : WSubMStar Γ u (.abs t .top))
@@ -292,8 +524,13 @@ axiom _SR_axiom_app_meApp_bet
     {tt vv' bd bd' : Term} {L : Finset String}
     (hLCt : Term.LC tt)
     (hbd : ∀ x, x ∉ L → MEqRed Γ [] (bd^[x]) (bd'^[x]))
-    (hv : MEqRed Γ [] v vv') :
-    Nonempty (WfM Γ (Term.opening vv' bd'))
+    (hv : MEqRed Γ [] v vv')
+    (huEq : u = .abs tt bd)
+    (hwfFn : WfM Γ u) :
+    Nonempty (WfM Γ (Term.opening vv' bd')) := by
+  subst huEq
+  exact _SR_v2_bet_residual hCtx hStarU hStarV hLCt hbd hv hwfFn
+    (wfM_left_of_wsubmstar hStarV)
 
 /-- **Wf-App** case. By case analysis on the empty-stack step's root:
 * `Me-Top`, `Me-Var`, `Me-Pro` — vacuous (LHS doesn't match `.app`).
@@ -311,7 +548,8 @@ private theorem _SR_case_app
   cases hred with
   | @bet _ _ tt _ v' bd bd' L hLCt hbd _ hv =>
       -- u = .abs tt bd, U' = opening v' bd'.
-      exact _SR_axiom_app_meApp_bet hCtx hStarU hStarV hLCt hbd hv
+      have hwfFn : WfM Γ (.abs tt bd) := wfM_left_of_wsubmstar hStarU
+      exact _SR_axiom_app_meApp_bet hCtx hStarU hStarV hLCt hbd hv rfl hwfFn
   | @app _ _ _ u' _ v' hu hv =>
       -- u → u' under stack [v], v → v' under stack [].
       exact _SR_axiom_app_meApp hCtx hStarU hStarV hu hv
