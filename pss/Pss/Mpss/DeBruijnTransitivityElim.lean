@@ -3871,6 +3871,72 @@ theorem meqRedStar_equ_under_head_replace_with_pro_from_replacements {Γ : Ctx}
       hBetBodyReplace hFOpBodyReplace)
     h
 
+/-- Function-valued chain-level under-head equivalence replacement with all
+canonical `Me-Pro` cases wired. This packages
+`meqRedStar_equ_under_head_replace_with_pro_from_replacements` across every
+residual stack, deriving the new-context prevalidity from the old one. -/
+theorem meqRedStar_equ_under_head_replace_with_pro_function_from_replacements
+    {Γ : Ctx} {head : CtxEntry} {old new u v : Term}
+    (hnew : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      ∀ {s : Stack},
+        PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (Term.shift 0 (Term.shift 0 old)) (Term.shift 0 (Term.shift 0 new)))
+    (hSelfReplace :
+      ∀ {s : Stack},
+        PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+        ∀ {u v : Term},
+          MEqRed (head :: { bound := old, kind := .equ } :: Γ) s u v →
+          MSubStar (head :: { bound := new, kind := .equ } :: Γ) s u v)
+    (hAppOpReplace :
+      ∀ {s : Stack},
+        PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+        ∀ {op op' arg : Term},
+          MEqRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+          MEqRed (head :: { bound := new, kind := .equ } :: Γ) (arg :: s) op op')
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] arg arg')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hBetBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+        ∀ {bound body body' : Term},
+          MEqRed ({ bound := bound, kind := .sub } :: head ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+          MEqRed ({ bound := bound, kind := .sub } :: head ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hFOpBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+        ∀ {arg body body' : Term} {rest : Stack},
+          Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+          s = arg :: rest →
+          MEqRed ({ bound := arg, kind := .equ } :: head ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+          MSubStar ({ bound := arg, kind := .equ } :: head ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (h :
+      ∀ {s : Stack},
+        PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+        MEqRedStar (head :: { bound := old, kind := .equ } :: Γ) s u v) :
+    ∀ {s : Stack},
+      PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s →
+      MSubStar (head :: { bound := new, kind := .equ } :: Γ) s u v :=
+  fun hpvOld =>
+    meqRedStar_equ_under_head_replace_with_pro_from_replacements hpvOld
+      (PrevalidExt.equ_under_head_replace hpvOld hnew) hnew
+      (hOldNewStack hpvOld) (hSelfReplace hpvOld) (hAppOpReplace hpvOld)
+      hNilReplace hFunBodyReplace (hBetBodyReplace hpvOld)
+      (hFOpBodyReplace hpvOld) (h hpvOld)
+
 /-- If an old-to-new equivalence has already been lifted under the changed
 `.equ` head, ordinary head weakening lifts it one level deeper under a
 preserved head. This supplies the old-to-new premise needed by
