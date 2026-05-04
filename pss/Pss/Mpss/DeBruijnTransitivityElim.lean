@@ -179,6 +179,25 @@ theorem app_tAp {Γ : Ctx} {s : Stack} {u u' v' : Term}
   obtain ⟨t₃, hLeft, hRight⟩ := tAp_app hpv hu hOp hArg
   exact ⟨t₃, hRight, hLeft⟩
 
+/-- The `Me-TAp × Me-*` cells for a `Top`-headed application. -/
+theorem tAp_any {Γ : Ctx} {s : Stack} {u t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h₂ : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  cases h₂ with
+  | app hOp hArg =>
+    exact tAp_app hpv hu hOp hArg
+  | tAp _ _ =>
+    exact tAp_tAp hpv hu
+
+/-- The `Me-* × Me-TAp` cells for a `Top`-headed application. -/
+theorem any_tAp {Γ : Ctx} {s : Stack} {u t₁ : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h₁ : MEqRed Γ s (.app .top u) t₁) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s .top t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ := tAp_any hpv hu h₁
+  exact ⟨t₃, hRight, hLeft⟩
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence
@@ -338,6 +357,20 @@ theorem appTop_app_tAp {Γ : Ctx} {s : Stack} {u u' : Term}
   have hu' : u' = .top := hOp.top_inv
   subst u'
   exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩, ⟨MSubRed.refl hpv Term.Scoped.top⟩⟩
+
+/-- The `Ms-* × Me-TAp` cells for a `Top`-headed application. The `Ms-Equ`
+branch delegates to the local equivalence diamond premise. -/
+theorem appTop_any_tAp_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {u t₁ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hsub : MSubRed Γ s (.app .top u) t₁) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s .top t₃ := by
+  cases hsub with
+  | top _ hScoped =>
+    exact top_of hpv hScoped (MEqRed.tAp hpv hu)
+  | equ _ heqStep =>
+    exact equ_of hdiamond hpv heqStep (MEqRed.tAp hpv hu)
+  | app hOp _ =>
+    exact appTop_app_tAp hpv hu hOp
 
 end StrongCommutes
 

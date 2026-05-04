@@ -329,6 +329,11 @@ closures, 2 inactive outstanding).
   `EqDiamonds.refl_right`, `StrongCommutes.equ_of`, and
   `StrongCommutes.top_of`, reducing reflexive equivalence, `Ms-Equ`, and
   `Ms-Top` cells to existing premises. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — consolidated `Top`-headed
+  application/`TAp` cells with `EqDiamonds.tAp_any`,
+  `EqDiamonds.any_tAp`, and `StrongCommutes.appTop_any_tAp_of`; the
+  strong-commutativity `Ms-Equ` branch delegates to the local diamond
+  premise. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

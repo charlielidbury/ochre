@@ -382,6 +382,9 @@ hard caveats.
      Reusable single-step case combinators are in place:
      `EqDiamonds.refl_left`, `EqDiamonds.refl_right`,
      `StrongCommutes.equ_of`, and `StrongCommutes.top_of`.
+     `Top`-headed application/`TAp` cells are consolidated through
+     `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
+     `StrongCommutes.appTop_any_tAp_of`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
