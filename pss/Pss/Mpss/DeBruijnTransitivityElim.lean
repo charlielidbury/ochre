@@ -1085,6 +1085,49 @@ theorem msubStar_abs_eqStep_abs {Γ : Ctx} {s : Stack}
         MSubStar Γ s (.abs bound body) (.abs bound' body') :=
   msubStar_abs_eqStar_abs hpv (MEqRedStar.single hEq)
 
+/-- Combined abstraction-source dispatcher for subtype and equivalence chains.
+The subtype branch to `Top` closes immediately; the remaining branch exposes
+both abstraction-shaped targets diagrammatically. -/
+theorem commute_abs_subStar_eqStar_top_or_absAbs {Γ : Ctx} {s : Stack}
+    {bound body t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.abs bound body))
+    (hSub : MSubRedStar Γ s (.abs bound body) t₁)
+    (hEq : MEqRedStar Γ s (.abs bound body) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound₁ body₁ bound₂ body₂,
+        t₁ = .abs bound₁ body₁ ∧
+          t₂ = .abs bound₂ body₂ ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₁ body₁) ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₂ body₂) := by
+  cases hSub.abs_inv with
+  | inl hTop =>
+      subst hTop
+      exact Or.inl (commute_abs_to_top_eqStar hpv hScoped hSub hEq)
+  | inr hAbs₁ =>
+      obtain ⟨bound₁, body₁, hTarget₁⟩ := hAbs₁
+      subst hTarget₁
+      obtain ⟨bound₂, body₂, hTarget₂, hEqBranch⟩ :=
+        msubStar_abs_eqStar_abs hpv hEq
+      subst hTarget₂
+      exact Or.inr ⟨bound₁, body₁, bound₂, body₂, rfl, rfl,
+        MSubStar.of_MSubRedStar hSub, hEqBranch⟩
+
+/-- One-subtype-step specialization of
+`commute_abs_subStar_eqStar_top_or_absAbs`. -/
+theorem commute_abs_subStep_eqStar_top_or_absAbs {Γ : Ctx} {s : Stack}
+    {bound body t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.abs bound body))
+    (hSub : MSubRed Γ s (.abs bound body) t₁)
+    (hEq : MEqRedStar Γ s (.abs bound body) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound₁ body₁ bound₂ body₂,
+        t₁ = .abs bound₁ body₁ ∧
+          t₂ = .abs bound₂ body₂ ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₁ body₁) ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₂ body₂) :=
+  commute_abs_subStar_eqStar_top_or_absAbs hpv hScoped
+    (MSubRedStar.single hSub) hEq
+
 /-- If a subtype chain from an abstraction-headed application reaches `Top`,
 any equivalence chain from the same source joins it at `Top`. -/
 theorem commute_appAbs_to_top_eqStar {Γ : Ctx} {s : Stack}
