@@ -286,6 +286,13 @@ closures, 2 inactive outstanding).
   `MSub.of_MSubRed`, and `MSub.of_MEqRed`, so future de Bruijn Lemma 1 /
   Lemma 2 proofs can package common-reduct diagrams without restating
   the witness shape. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the conditional
+  Theorem 3 lifting skeleton: `StrongCommutes`,
+  `commute_subStep_eqStar_of`, `commute_subStar_eqStar_of`,
+  `MSub.trans_step_of`, and `MSubStar.collapse_of`. These prove the
+  star-to-single-diagram collapse from a de Bruijn single-step strong
+  commutativity premise, without introducing axioms. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

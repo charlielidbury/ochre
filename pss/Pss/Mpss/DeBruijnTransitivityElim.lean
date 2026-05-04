@@ -81,6 +81,100 @@ theorem trans {Γ : Ctx} {s : Stack} {u v w : Term}
 
 end MSubStar
 
+/-! ## Conditional Theorem 3 lifting skeleton -/
+
+/-- De Bruijn single-step strong commutativity at a fixed extended context.
+This is the de Bruijn Lemma 1 shape needed by the star-lifting argument for
+Theorem 3. The conclusion uses the Prop wrappers for single Type-valued
+reduction steps. -/
+abbrev StrongCommutes (Γ : Ctx) (s : Stack) : Prop :=
+  ∀ {t₀ t₁ t₂ : Term},
+    MSubRed Γ s t₀ t₁ →
+    MEqRed Γ s t₀ t₂ →
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃
+
+/-- Lift single-step strong commutativity to one subtype step against an
+equivalence-reduction chain. -/
+noncomputable def commute_subStep_eqStar_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s)
+    {t₀ t₁ t₂ : Term}
+    (hsub : MSubRed Γ s t₀ t₁)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  suffices key : ∀ {a : Term} (h : MEqRedStar Γ s a t₂),
+      ∀ {x : Term}, MSubRed Γ s a x →
+        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MSubRedStar Γ s t₂ t₃ from
+    key heqs hsub
+  intro a h
+  refine Relation.ReflTransGen.head_induction_on (b := t₂)
+    (P := fun a (_ : MEqRedStar Γ s a t₂) =>
+      ∀ {x : Term}, MSubRed Γ s a x →
+        ∃ t₃, MEqRedStar Γ s x t₃ ∧ MSubRedStar Γ s t₂ t₃) h ?_ ?_
+  · intro x hsub
+    exact ⟨x, Relation.ReflTransGen.refl, MSubRedStar.single hsub⟩
+  · intro a c hHead _ ihC x hInput
+    obtain ⟨y, hxy, hcy⟩ := hcomm hInput hHead.some
+    obtain ⟨t₃, hyT₃, hT₂T₃⟩ := ihC hcy.some
+    exact ⟨t₃, Relation.ReflTransGen.head hxy hyT₃, hT₂T₃⟩
+
+/-- Lift single-step strong commutativity to subtype-reduction chains against
+equivalence-reduction chains. -/
+noncomputable def commute_subStar_eqStar_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s)
+    {t₀ t₁ t₂ : Term}
+    (hsubs : MSubRedStar Γ s t₀ t₁)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  suffices key : ∀ {a : Term} (h : MSubRedStar Γ s a t₁),
+      ∀ {z : Term}, MEqRedStar Γ s a z →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s z t₃ from
+    key hsubs heqs
+  intro a h
+  refine Relation.ReflTransGen.head_induction_on (b := t₁)
+    (P := fun a (_ : MSubRedStar Γ s a t₁) =>
+      ∀ {z : Term}, MEqRedStar Γ s a z →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s z t₃) h ?_ ?_
+  · intro z heqs
+    exact ⟨z, heqs, Relation.ReflTransGen.refl⟩
+  · intro a c hHead _ ihC z hEqStar
+    obtain ⟨y, hcy, hzy⟩ :=
+      commute_subStep_eqStar_of hcomm hHead.some hEqStar
+    obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
+    exact ⟨t₃, hT₁T₃, Relation.ReflTransGen.trans hzy hyT₃⟩
+
+namespace MSub
+
+/-- Single-step composition for de Bruijn diagrammatic subtyping, conditional
+on de Bruijn single-step strong commutativity. -/
+noncomputable def trans_step_of {Γ : Ctx} {s : Stack}
+    (hcomm : StrongCommutes Γ s) {t u v : Term}
+    (htu : MSub Γ s t u) (huv : MSub Γ s u v) :
+    MSub Γ s t v := by
+  obtain ⟨w₁, ht_w₁, hu_w₁⟩ := htu
+  obtain ⟨w₂, hu_w₂, hv_w₂⟩ := huv
+  obtain ⟨z, hw₂_z, hw₁_z⟩ := commute_subStar_eqStar_of hcomm hu_w₂ hu_w₁
+  exact MSub.intro
+    (MSubRedStar.trans ht_w₁ hw₁_z)
+    (MEqRedStar.trans hv_w₂ hw₂_z)
+
+end MSub
+
+namespace MSubStar
+
+/-- Conditional de Bruijn Theorem 3: if single-step strong commutativity holds
+at the fixed extended context, the transitive closure of diagrammatic
+subtyping collapses to one diagrammatic subtyping step. -/
+noncomputable def collapse_of {Γ : Ctx} {s : Stack}
+    (hcomm : StrongCommutes Γ s) {u v : Term}
+    (h : MSubStar Γ s u v) : MSub Γ s u v := by
+  induction h with
+  | refl =>
+    exact MSub.refl
+  | @tail u' v hStar hStep ih =>
+    exact MSub.trans_step_of hcomm ih hStep
+
+end MSubStar
+
 namespace WSubM
 
 /-- Strip one de Bruijn well-subtyping derivation to diagrammatic subtyping. -/

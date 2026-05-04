@@ -351,6 +351,11 @@ hard caveats.
      Diagram introduction helpers `MSub.intro`, `MSub.of_MSubRedStar`,
      `MSub.of_MSubRed`, and `MSub.of_MEqRed` package common-reduct
      witnesses and one-step reductions.
+     The conditional Theorem 3 lifting skeleton is now present:
+     `StrongCommutes`, `commute_subStep_eqStar_of`,
+     `commute_subStar_eqStar_of`, `MSub.trans_step_of`, and
+     `MSubStar.collapse_of` collapse `MSubStar` to `MSub` from a
+     de Bruijn single-step strong-commutativity premise.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
