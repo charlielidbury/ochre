@@ -702,5 +702,21 @@ noncomputable def WEquM.right_chain_back {Γ : Ctx} {a c c' : Term}
     exact ⟨fun hEquC' =>
       WEquM.rgh (ihY.some hEquC') hHead.some⟩
 
+/-- Compose two de Bruijn well-equivalence steps into transitive
+well-equivalence. -/
+def WEquMStar.WEquM_trans {Γ : Ctx} {a b c : Term}
+    (hwfA : WfM Γ a) (hwfB : WfM Γ b) (hwfC : WfM Γ c)
+    (h₁ : WEquM Γ a b) (h₂ : WEquM Γ b c) :
+    WEquMStar Γ a c :=
+  WEquMStar.trs (WEquMStar.sub hwfA h₁ hwfB) hwfB
+    (WEquMStar.sub hwfB h₂ hwfC)
+
+/-- Star-on-star transitivity of de Bruijn well-equivalence. -/
+def WEquMStar.trans {Γ : Ctx} {a b c : Term}
+    (hwfB : WfM Γ b)
+    (h₁ : WEquMStar Γ a b) (h₂ : WEquMStar Γ b c) :
+    WEquMStar Γ a c :=
+  WEquMStar.trs h₁ hwfB h₂
+
 end DeBruijn
 end Pss

@@ -190,7 +190,8 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added de Bruijn well-formed
   chain helpers: `WSubMStar.WSubM_trans`, `WSubMStar.trans`,
   `WSubM.left_lf1_chain`, `WSubM.right_rgh_chain`,
-  `WEquM.left_chain`, and `WEquM.right_chain_back`. No axiom-count
+  `WEquM.left_chain`, `WEquM.right_chain_back`,
+  `WEquMStar.WEquM_trans`, and `WEquMStar.trans`. No axiom-count
   change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**

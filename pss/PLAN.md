@@ -257,7 +257,8 @@ hard caveats.
      `*_weaken_head` and `*_weaken_tail_head`. The first chain helpers
      are also available: `WSubMStar.WSubM_trans`, `WSubMStar.trans`,
      `WSubM.left_lf1_chain`, `WSubM.right_rgh_chain`,
-     `WEquM.left_chain`, and `WEquM.right_chain_back`.
+     `WEquM.left_chain`, `WEquM.right_chain_back`,
+     `WEquMStar.WEquM_trans`, and `WEquMStar.trans`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
