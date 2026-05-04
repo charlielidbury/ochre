@@ -632,6 +632,10 @@ closures, 2 inactive outstanding).
   transport splitter for abstraction-to-abstraction subtype steps. Direct
   constructor analysis shows the non-empty-stack abstraction residual is
   `FOp`-shaped: either equivalence-derived `Me-FOp` or direct `Ms-FOp`.
+  The residual records the bound-side payload as well: `Me-FOp` carries
+  the bound equivalence and body equivalence under the old `.equ` head,
+  while `Ms-FOp` carries bound equality and body subtyping under the old
+  `.equ` head.
   This rules out a blanket stack-head transport theorem and identifies
   the remaining work as an `FOp`-specific stack-head replacement. No
   axiom-count change.
@@ -640,7 +644,8 @@ closures, 2 inactive outstanding).
   changed-argument structural App/App branch through the operator
   strong-commutativity join. The branch now either joins directly or
   returns an operator-side `FOp` residual for the joined abstraction
-  target. No axiom-count change.
+  target, preserving the bound-side evidence needed to distinguish the
+  equivalence-derived and direct subtype cases. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

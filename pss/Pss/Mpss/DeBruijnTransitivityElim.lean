@@ -1613,19 +1613,21 @@ theorem msub_abs_step_stackHead_transport_or_fOp {Γ : Ctx} {s : Stack}
     MSubRedJ Γ (arg' :: s) (.abs bound body) (.abs bound' body') ∨
       (∃ oldArg rest,
         arg :: s = oldArg :: rest ∧
+          MEqRedJ Γ [] bound bound' ∧
           MEqRedJ ({ bound := oldArg, kind := .equ } :: Γ)
             (Stack.shift 0 rest) body body') ∨
       (∃ oldArg rest,
         arg :: s = oldArg :: rest ∧
+          bound' = bound ∧
           MSubRedJ ({ bound := oldArg, kind := .equ } :: Γ)
             (Stack.shift 0 rest) body body') := by
   cases h with
   | equ _ heq =>
     cases heq with
-    | fOp _ _ hBody =>
-      exact Or.inr (Or.inl ⟨arg, s, rfl, ⟨hBody⟩⟩)
+    | fOp hBound _ hBody =>
+      exact Or.inr (Or.inl ⟨arg, s, rfl, ⟨hBound⟩, ⟨hBody⟩⟩)
   | fOp _ _ hBody =>
-    exact Or.inr (Or.inr ⟨arg, s, rfl, ⟨hBody⟩⟩)
+    exact Or.inr (Or.inr ⟨arg, s, rfl, rfl, ⟨hBody⟩⟩)
 
 /-- Changed-argument structural application commutation reduced to the
 operator-side `FOp` residual. After applying strong commutativity to the
@@ -1647,10 +1649,12 @@ theorem commute_appAbs_structApp_eqStep_or_fOp_residual {Γ : Ctx} {s : Stack}
         MEqRedJ Γ (arg :: s) (.abs bound₁ body₁) (.abs joinBound joinBody) ∧
           ((∃ oldArg rest,
             arg :: s = oldArg :: rest ∧
+              MEqRedJ Γ [] bound₂ joinBound ∧
               MEqRedJ ({ bound := oldArg, kind := .equ } :: Γ)
                 (Stack.shift 0 rest) body₂ joinBody) ∨
             ∃ oldArg rest,
               arg :: s = oldArg :: rest ∧
+                joinBound = bound₂ ∧
                 MSubRedJ ({ bound := oldArg, kind := .equ } :: Γ)
                   (Stack.shift 0 rest) body₂ joinBody) := by
   obtain ⟨op₃, hEqJoin, hSubJoin⟩ := hcommArg hSubOp hEqOp
