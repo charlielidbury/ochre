@@ -217,6 +217,11 @@ closures, 2 inactive outstanding).
   `WEquM.of_MEqRed_fwd`, and `WEquM.of_MEqRed_back`. The matching star
   embeddings now reuse those names where dependency order permits. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added the one-step embedding from
+  an empty-stack subtype reduction into de Bruijn well-subtyping:
+  `WSubM.of_MSubRed_fwd`. The matching transitive embedding
+  `WSubMStar.of_MSubRed_fwd` now reuses that named step. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added context-prevalidity
   extractors for all five de Bruijn well-formed judgments:
   `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,

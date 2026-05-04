@@ -1038,6 +1038,13 @@ noncomputable def WEquM.of_MEqRed_back {Γ : Ctx} {a b : Term}
     WEquM Γ b a :=
   WEquM.rgh (WEquM.rfl hwfB) hred
 
+/-- A forward empty-stack subtype-reduction step embeds into one de Bruijn
+well-subtyping step when both endpoints are well-formed. -/
+noncomputable def WSubM.of_MSubRed_fwd {Γ : Ctx} {a b : Term}
+    (hred : MSubRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubM Γ a b :=
+  WSubM.lf2 hwfA hred hwfB (WSubM.rfl hwfB)
+
 /-- A forward empty-stack equivalence-reduction step embeds into de Bruijn
 transitive well-subtyping when both endpoints are well-formed. -/
 noncomputable def WSubMStar.of_MEqRed_fwd {Γ : Ctx} {a b : Term}
@@ -1057,8 +1064,7 @@ transitive well-subtyping when both endpoints are well-formed. -/
 noncomputable def WSubMStar.of_MSubRed_fwd {Γ : Ctx} {a b : Term}
     (hred : MSubRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
     WSubMStar Γ a b :=
-  WSubMStar.extend_left_via_MSubRed_fwd (WSubMStar.refl_of_wfM hwfB)
-    hred hwfA
+  WSubMStar.of_WSubM hwfA hwfB (WSubM.of_MSubRed_fwd hred hwfA hwfB)
 
 /-- A forward empty-stack equivalence-reduction step embeds into de Bruijn
 transitive well-equivalence when both endpoints are well-formed. -/
