@@ -995,6 +995,33 @@ theorem msubStar_appAbs_subStar_appTop_to_top {Γ : Ctx} {s : Stack}
     (hAppTop : t = .app .top arg') : MSubStar Γ s t .top :=
   (msub_appAbs_subStar_appTop_to_top hpv hScoped hSub hAppTop).to_star
 
+/-- Single-subtype-step specialization of
+`appAbs_subStar_appTop_to_top`. -/
+theorem appAbs_subStep_appTop_to_top {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') : MSubRedStar Γ s t .top :=
+  appAbs_subStar_appTop_to_top hpv hScoped (MSubRedStar.single hSub) hAppTop
+
+/-- Single-subtype-step specialization of
+`msub_appAbs_subStar_appTop_to_top`. -/
+theorem msub_appAbs_subStep_appTop_to_top {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') : MSub Γ s t .top :=
+  msub_appAbs_subStar_appTop_to_top hpv hScoped (MSubRedStar.single hSub) hAppTop
+
+/-- Transitive single-subtype-step specialization of
+`msubStar_appAbs_subStar_appTop_to_top`. -/
+theorem msubStar_appAbs_subStep_appTop_to_top {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') : MSubStar Γ s t .top :=
+  msubStar_appAbs_subStar_appTop_to_top hpv hScoped (MSubRedStar.single hSub) hAppTop
+
 /-- If a subtype chain from an abstraction-headed application reaches a
 `Top`-headed application, the original source has a subtype chain to `Top`. -/
 theorem appAbs_subStar_to_top_of_appTop {Γ : Ctx} {s : Stack}
@@ -1025,6 +1052,36 @@ theorem msubStar_appAbs_to_top_of_subStar_appTop {Γ : Ctx} {s : Stack}
     (hAppTop : t = .app .top arg') :
     MSubStar Γ s (.app (.abs bound body) arg) .top :=
   (msub_appAbs_to_top_of_subStar_appTop hpv hScoped hSub hAppTop).to_star
+
+/-- Single-subtype-step specialization of
+`appAbs_subStar_to_top_of_appTop`. -/
+theorem appAbs_subStep_to_top_of_appTop {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') :
+    MSubRedStar Γ s (.app (.abs bound body) arg) .top :=
+  appAbs_subStar_to_top_of_appTop hpv hScoped (MSubRedStar.single hSub) hAppTop
+
+/-- Single-subtype-step specialization of
+`msub_appAbs_to_top_of_subStar_appTop`. -/
+theorem msub_appAbs_to_top_of_subStep_appTop {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') :
+    MSub Γ s (.app (.abs bound body) arg) .top :=
+  msub_appAbs_to_top_of_subStar_appTop hpv hScoped (MSubRedStar.single hSub) hAppTop
+
+/-- Transitive single-subtype-step specialization of
+`msubStar_appAbs_to_top_of_subStar_appTop`. -/
+theorem msubStar_appAbs_to_top_of_subStep_appTop {Γ : Ctx} {s : Stack}
+    {bound body arg t arg' : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t)
+    (hAppTop : t = .app .top arg') :
+    MSubStar Γ s (.app (.abs bound body) arg) .top :=
+  msubStar_appAbs_to_top_of_subStar_appTop hpv hScoped (MSubRedStar.single hSub) hAppTop
 
 /-- If the subtype side of an abstraction-headed application reaches a
 `Top`-headed application, it commutes with any equivalence chain from the

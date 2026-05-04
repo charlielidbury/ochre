@@ -527,11 +527,21 @@ closures, 2 inactive outstanding).
   `msubStar_appAbs_subStar_appTop_to_top`, closing the `Top`-headed
   target branch of abstraction-headed application subtype chains at
   `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added one-step
+  specializations `appAbs_subStep_appTop_to_top`,
+  `msub_appAbs_subStep_appTop_to_top`, and
+  `msubStar_appAbs_subStep_appTop_to_top` for the same `Top`-headed
+  target branch. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `appAbs_subStar_to_top_of_appTop` plus diagrammatic wrappers
   `msub_appAbs_to_top_of_subStar_appTop` and
   `msubStar_appAbs_to_top_of_subStar_appTop`, packaging the composed
   source-to-`Top` chain for the same branch. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added one-step
+  specializations `appAbs_subStep_to_top_of_appTop`,
+  `msub_appAbs_to_top_of_subStep_appTop`, and
+  `msubStar_appAbs_to_top_of_subStep_appTop` for the composed
+  source-to-`Top` package. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_subStar_appTop_eqStar`, the branch commutation theorem
   for abstraction-headed application sources whose subtype side reaches a
