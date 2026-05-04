@@ -1131,6 +1131,17 @@ noncomputable def MEqRed.fOp_sub_under_head_replace {Γ : Ctx} {s : Stack}
 
 /-! ### Subtype constructors stable across sub-head replacement -/
 
+/-- The changed innermost `.sub` entry reduces to the new shifted annotation
+after replacement. This is the residual form of head-index `Ms-Pro`. -/
+noncomputable def MSubRed.pro_sub_head_zero_residual {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MSubRed ({ bound := new, kind := .sub } :: Γ) s
+      (.bvar 0) (Term.shift 0 new) :=
+  MSubRed.pro (PrevalidExt.sub_head_replace hpv hnew) (by
+    simp [Ctx.subBinds])
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}
@@ -1196,6 +1207,18 @@ noncomputable def MSubRed.fOp_sub_head_replace {Γ : Ctx} {s : Stack}
       (.abs t body) (.abs t body') := by
   exact MSubRed.fOp (by simpa [Ctx.depth] using ht)
     (by simpa [Ctx.depth] using hα) hBody
+
+/-- The changed under-head `.sub` entry reduces to the new doubly shifted
+annotation after replacement. This is the residual form of index-`1`
+`Ms-Pro`. -/
+noncomputable def MSubRed.pro_sub_under_head_one_residual {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MSubRed (head :: { bound := new, kind := .sub } :: Γ) s
+      (.bvar 1) (Term.shift 0 (Term.shift 0 new)) :=
+  MSubRed.pro (PrevalidExt.sub_under_head_replace hpv hnew)
+    (@Ctx.subBinds_sub_under_head_replace_one Γ head old new)
 
 /-- `Ms-Pro` at the preserved head remains stable when replacing a `.sub`
 entry immediately below it. -/

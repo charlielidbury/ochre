@@ -851,6 +851,10 @@ closures, 2 inactive outstanding).
   innermost non-head `Ms-Pro`, preserved-head `Ms-Pro`, `Ms-Top`,
   `Ms-Equ`, `Ms-App`, `Ms-Fun`, and `Ms-FOp`. The changed `.sub` entry
   remains exposed as the expected residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added explicit `Ms-Pro` residual
+  constructors for the changed `.sub` replacement slot:
+  `MSubRed.pro_sub_head_zero_residual` and
+  `MSubRed.pro_sub_under_head_one_residual`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
