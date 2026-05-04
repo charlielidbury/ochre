@@ -267,6 +267,32 @@ noncomputable def MSubRedStar.scoped_pair {Γ : Ctx} {s : Stack} {u v : Term}
     Term.Scoped Γ.depth u × Term.Scoped Γ.depth v :=
   ⟨hu, h.scoped_right hu⟩
 
+/-! ## Closure constructors -/
+
+/-- A single de Bruijn equivalence-reduction step embeds into its reflexive
+transitive closure. -/
+theorem MEqRedStar.single {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : MEqRedStar Γ s u v :=
+  Relation.ReflTransGen.single ⟨h⟩
+
+/-- A single de Bruijn subtype-reduction step embeds into its reflexive
+transitive closure. -/
+theorem MSubRedStar.single {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : MSubRedStar Γ s u v :=
+  Relation.ReflTransGen.single ⟨h⟩
+
+/-- Star-on-star transitivity for de Bruijn equivalence reduction. -/
+theorem MEqRedStar.trans {Γ : Ctx} {s : Stack} {u v w : Term}
+    (h₁ : MEqRedStar Γ s u v) (h₂ : MEqRedStar Γ s v w) :
+    MEqRedStar Γ s u w :=
+  Relation.ReflTransGen.trans h₁ h₂
+
+/-- Star-on-star transitivity for de Bruijn subtype reduction. -/
+theorem MSubRedStar.trans {Γ : Ctx} {s : Stack} {u v w : Term}
+    (h₁ : MSubRedStar Γ s u v) (h₂ : MSubRedStar Γ s v w) :
+    MSubRedStar Γ s u w :=
+  Relation.ReflTransGen.trans h₁ h₂
+
 /-! ## Prevalidity invariants -/
 
 /-- Context prevalidity from de Bruijn equivalence reduction. -/

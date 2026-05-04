@@ -244,7 +244,10 @@ hard caveats.
      reductions as `MEqRed.prevalid` and `MSubRed.prevalid`. Scoping
      extractors are available for Prop wrappers and star closures as
      `MEqRedJ.scoped_*`, `MSubRedJ.scoped_*`,
-     `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`.
+     `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`. Named closure
+     helpers are available as `MEqRedStar.single`,
+     `MSubRedStar.single`, `MEqRedStar.trans`, and
+     `MSubRedStar.trans`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
    * **Seeded 2026-05-04 on `db-refactor`:**

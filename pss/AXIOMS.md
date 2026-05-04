@@ -185,6 +185,9 @@ closures, 2 inactive outstanding).
   `MEqRedStar.scoped_right`, `MEqRedStar.scoped_pair`,
   `MSubRedStar.scoped_right`, and `MSubRedStar.scoped_pair`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added named closure helpers
+  `MEqRedStar.single`, `MSubRedStar.single`, `MEqRedStar.trans`, and
+  `MSubRedStar.trans`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
   well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
   separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint
