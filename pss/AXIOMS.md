@@ -271,6 +271,8 @@ closures, 2 inactive outstanding).
   explicit stepwise `WfM` preservation. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added endpoint-only embeddings
   and endpoint extensions for empty-stack equivalence-reduction chains:
+  `WSubM.of_MEqRedStar_fwd`, `WSubM.of_MEqRedStar_back`,
+  `WEquM.of_MEqRedStar_fwd`, `WEquM.of_MEqRedStar_back`,
   `WSubMStar.of_MEqRedStar_fwd_of_wf`,
   `WSubMStar.of_MEqRedStar_back_of_wf`,
   `WEquMStar.of_MEqRedStar_fwd_of_wf`,

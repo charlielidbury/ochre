@@ -306,9 +306,11 @@ hard caveats.
      chains at its left endpoint through
      `WSubMStar.extend_left_via_MSubRedStar_fwd`. For equivalence
      chains specifically, endpoint-only variants are available with the
-     `_of_wf` suffix; these require only the two endpoints to be
-     well-formed because the underlying `WSubM`/`WEquM` chain
-     constructors absorb intermediate equivalence-reduction steps.
+     `_of_wf` suffix at the transitive layers and as
+     `WSubM.of_MEqRedStar_*` / `WEquM.of_MEqRedStar_*` at the one-step
+     layers; these require only the relevant endpoint well-formedness
+     because the underlying `WSubM`/`WEquM` chain constructors absorb
+     intermediate equivalence-reduction steps.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
