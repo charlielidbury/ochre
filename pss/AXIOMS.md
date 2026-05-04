@@ -929,6 +929,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_equ_under_head_replace_with_pro_from_replacements`, the
   chain-level counterpart that composes the same under-head `Me-Pro`
   replacement package over equivalence stars. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added shifted-stack subtype
+  replacement wrappers `msubRed_equ_head_shifted_replace_from_replacements`
+  and `msubRedStar_equ_head_shifted_replace_from_replacements`, using the
+  shifted equivalence replacement package for `Ms-Equ` branches and exposing
+  only recursive constructor replacements. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
