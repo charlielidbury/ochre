@@ -180,6 +180,32 @@ theorem lookup_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry found : CtxE
         have htail : cutoff ≤ i := Nat.succ_le_succ_iff.mp hidx
         simpa using ih (cutoff := cutoff) (i := i) htail h
 
+/-- Raw lookup transport for entries before the insertion cutoff: their
+indices are preserved, while their stored bounds are shifted by the number of
+preserved heads below them. -/
+theorem lookup_insertAt_before {Γ : Ctx} {cutoff i : Nat} {newEntry found : CtxEntry}
+    (hidx : i < cutoff) :
+    lookup Γ i = some found →
+    lookup (insertAt cutoff newEntry Γ) i = some (found.shift (cutoff - (i + 1))) := by
+  induction Γ generalizing cutoff i with
+  | nil =>
+    simp [lookup]
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      omega
+    | succ cutoff =>
+      cases i with
+      | zero =>
+        intro h
+        cases h
+        rfl
+      | succ i =>
+        intro h
+        have htail : i < cutoff := Nat.succ_lt_succ_iff.mp hidx
+        have hrec := ih (cutoff := cutoff) (i := i) htail h
+        simpa [Nat.succ_sub_succ_eq_sub] using hrec
+
 @[simp] theorem lookup_zero (e : CtxEntry) (Γ : Ctx) :
     lookup (e :: Γ) 0 = some e := rfl
 

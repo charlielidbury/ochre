@@ -108,6 +108,10 @@ closures, 2 inactive outstanding).
   These move original bindings at or outside the insertion cutoff to
   index `i + 1`, with `.sub` / `.equ` bounds lifted through the inserted
   entry. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `Ctx.lookup_insertAt_before` for
+  preserved-head raw lookups before the insertion cutoff. The found entry
+  stays at the same index and its stored bound is shifted by the number
+  of preserved heads below it. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
