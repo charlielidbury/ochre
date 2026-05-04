@@ -637,4 +637,46 @@ theorem Term.openInverse_fv (y : String) (t : Term) :
       refine Finset.mem_sdiff.mpr ⟨?_, h2⟩
       exact Finset.mem_union.mpr (Or.inr h1)
 
+/-! ### Body-shape inversion lemmas (iter-32 Phase 2.1)
+
+Used by `MEqRed.openInverse_descend` (Renaming.lean §14) to invert the
+constructor's source-shape match back to the body template. -/
+
+/-- **opening_eq_top**: if opening `body` at `y` produces `.top`, then `body`
+itself is `.top`. The other constructors of `Term` open to a same-shaped
+term, so only `.top` opens to `.top`. (`.bvar 0` opens to `.fvar y`, which
+is not `.top`.) -/
+theorem Term.opening_eq_top {body : Term} {y : String}
+    (h : body^[y] = .top) : body = .top := by
+  cases body with
+  | bvar i =>
+    simp [Term.opening, Term.open_] at h
+    by_cases hi : i = 0
+    · simp [hi] at h
+    · simp [hi] at h
+  | fvar x => simp [Term.opening, Term.open_] at h
+  | top => rfl
+  | abs _ _ => simp [Term.opening, Term.open_] at h
+  | app _ _ => simp [Term.opening, Term.open_] at h
+
+/-- **opening_eq_fvar**: if opening `body` at `y` produces `.fvar yi`, then
+either `body = .bvar 0` (and `yi = y`), or `body = .fvar yi`. -/
+theorem Term.opening_eq_fvar {body : Term} {y yi : String}
+    (h : body^[y] = .fvar yi) :
+    (body = .bvar 0 ∧ yi = y) ∨ body = .fvar yi := by
+  cases body with
+  | bvar i =>
+    simp [Term.opening, Term.open_] at h
+    by_cases hi : i = 0
+    · subst hi
+      simp at h
+      exact Or.inl ⟨rfl, h.symm⟩
+    · simp [hi] at h
+  | fvar x =>
+    simp [Term.opening, Term.open_] at h
+    subst h; exact Or.inr rfl
+  | top => simp [Term.opening, Term.open_] at h
+  | abs _ _ => simp [Term.opening, Term.open_] at h
+  | app _ _ => simp [Term.opening, Term.open_] at h
+
 end Pss
