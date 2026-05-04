@@ -108,5 +108,15 @@ noncomputable def Theorem_5_DeBruijn_Preservation_of
     WSubMStar.of_StepAt_back hstep hwfT hwfT'
   exact WSubMStar.trans hwfT hBack hwf
 
+/-- Closed-term specialization of de Bruijn preservation, using the
+operational `Step` alias. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of
+    (hStepPres : StepPreservesWfM)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_of hStepPres hwf hstep
+
 end DeBruijn
 end Pss

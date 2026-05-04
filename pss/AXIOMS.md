@@ -555,6 +555,10 @@ closures, 2 inactive outstanding).
   commutativity and added
   `Theorem_4_DeBruijn_Progress_of_StrongCommutativity`, reducing the
   progress endpoint to the Theorem-3 premise. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the closed-step preservation
+  endpoint `Theorem_5_DeBruijn_ClosedPreservation_of`, specializing
+  conditional de Bruijn preservation to the `Step` alias. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
