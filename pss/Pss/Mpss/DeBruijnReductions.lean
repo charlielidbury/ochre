@@ -559,6 +559,49 @@ noncomputable def MSubRed.insertAt {Γ : Ctx} {s : Stack} {u v : Term}
       simpa [Stack.shift_shift_zero cutoff sp] using hb
     exact MSubRed.fOp_insertAt hcut ht hα hbody'
 
+/-- Head-extension weakening for de Bruijn equivalence reduction. -/
+noncomputable def MEqRed.weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (h : MEqRed Γ s u v)
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MEqRed (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Head-extension weakening for de Bruijn subtype reduction. -/
+noncomputable def MSubRed.weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (h : MSubRed Γ s u v)
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MSubRed (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
+    (Nat.zero_le Γ.depth) hNew hpv
+
+/-- Weakening under one existing head binder for de Bruijn equivalence
+reduction. The head remains innermost; the new entry is inserted below it. -/
+noncomputable def MEqRed.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {head newHead : CtxEntry}
+    (h : MEqRed (head :: Γ) s u v)
+    (hpv : PrevalidExt (head :: Γ) s)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ)) :
+    MEqRed (head.shift 0 :: newHead :: Γ) (Stack.shift 1 s)
+      (Term.shift 1 u) (Term.shift 1 v) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
+/-- Weakening under one existing head binder for de Bruijn subtype reduction. -/
+noncomputable def MSubRed.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {head newHead : CtxEntry}
+    (h : MSubRed (head :: Γ) s u v)
+    (hpv : PrevalidExt (head :: Γ) s)
+    (hNew : Prevalid (head.shift 0 :: newHead :: Γ)) :
+    MSubRed (head.shift 0 :: newHead :: Γ) (Stack.shift 1 s)
+      (Term.shift 1 u) (Term.shift 1 v) := by
+  simpa using h.insertAt (cutoff := 1) (newEntry := newHead)
+    (by simp [Ctx.depth]) (Prevalid.tail hNew) hpv
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.

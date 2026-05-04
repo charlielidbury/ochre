@@ -230,6 +230,9 @@ hard caveats.
      both terms at the insertion cutoff.
      `MSubRed.insertAt` is also proved, reusing `MEqRed.insertAt` for the
      `Ms-Equ` and bound-equivalence premises.
+     Common corollaries are available as `MEqRed.weaken_head`,
+     `MSubRed.weaken_head`, `MEqRed.weaken_tail_head`, and
+     `MSubRed.weaken_tail_head`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
