@@ -1062,6 +1062,13 @@ closures, 2 inactive outstanding).
   `WSubMStar.sub_head_replace_of_wsubred`, payload-driven transitive
   well-subtyping replacement wrappers whose subtype-reduction residuals
   are already `WSubMStar` paths. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
+  binder-recursive `WSubMStar` replacement wrappers for `WSubMStar`
+  residual subtype steps:
+  `WSubMStar.sub_under_head_replace_of_wsubred` and
+  `WSubMStar.replaceAt_sub_from_body_replaceAt_of_wsubred`. These match
+  the recursive shape needed when changed `.sub` replacement descends
+  below a preserved binder. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added changed-slot `Ms-Pro`
   residual wrappers `WSubMStar.pro_self_replaceAt_sub_to_old` and
   `WSubMStar.pro_sub_head_replace_to_old`, packaging the path from the
