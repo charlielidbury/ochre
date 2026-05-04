@@ -838,6 +838,75 @@ def WSubMStar.trans {Γ : Ctx} {a b c : Term}
     WSubMStar Γ a c :=
   WSubMStar.trs h₁ hwfB h₂
 
+private def _extendLeftWfMotive (Γ : Ctx) (t : Term) (_ : WfM Γ t) : Type :=
+  Unit
+
+private def _extendLeftWSubMMotive (Γ : Ctx) (a b : Term) (_ : WSubM Γ a b) : Type :=
+  Unit
+
+private def _extendLeftWSubMStarMotive (Γ : Ctx) (a b : Term)
+    (_ : WSubMStar Γ a b) : Type :=
+  ∀ {c : Term}, MEqRed Γ [] c a → WfM Γ c → WSubMStar Γ c b
+
+/-- Prepend a forward equivalence-reduction step on the left of de Bruijn
+transitive well-subtyping. -/
+noncomputable def WSubMStar.extend_left_via_MEqRed_fwd
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hred : MEqRed Γ [] c a)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ c b := by
+  exact (WSubMStar.rec
+    (motive_1 := _extendLeftWfMotive)
+    (motive_2 := _extendLeftWSubMMotive)
+    (motive_3 := _extendLeftWSubMStarMotive)
+    (fun _ _ => ())
+    (fun _ _ => ())
+    (fun _ => ())
+    (fun _ _ _ _ => ())
+    (fun _ _ _ _ => ())
+    (fun _ _ => ())
+    (fun _ _ _ => ())
+    (fun _ _ _ _ _ _ _ => ())
+    (fun _ _ _ => ())
+    (fun _ hsub hwfT _ _ _ => fun hr hwfC =>
+      WSubMStar.sub hwfC (WSubM.lf1 hr hsub) hwfT)
+    (fun _ hwfU hRight ihLeft _ _ => fun hr hwfC =>
+      WSubMStar.trs (ihLeft hr hwfC) hwfU hRight)
+    h) hred hwfC
+
+private def _extendRightWSubMStarMotive (Γ : Ctx) (a b : Term)
+    (_ : WSubMStar Γ a b) : Type :=
+  ∀ {c : Term}, MEqRed Γ [] c b → WfM Γ c → WSubMStar Γ a c
+
+/-- Prepend a backward equivalence-reduction step on the right of de Bruijn
+transitive well-subtyping. Given a forward step `c → b`, the result replaces
+the right endpoint `b` by `c`. -/
+noncomputable def WSubMStar.extend_right_via_MEqRed_back
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hred : MEqRed Γ [] c b)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ a c := by
+  exact (WSubMStar.rec
+    (motive_1 := _extendLeftWfMotive)
+    (motive_2 := _extendLeftWSubMMotive)
+    (motive_3 := _extendRightWSubMStarMotive)
+    (fun _ _ => ())
+    (fun _ _ => ())
+    (fun _ => ())
+    (fun _ _ _ _ => ())
+    (fun _ _ _ _ => ())
+    (fun _ _ => ())
+    (fun _ _ _ => ())
+    (fun _ _ _ _ _ _ _ => ())
+    (fun _ _ _ => ())
+    (fun hwfV hsub _ _ _ _ => fun hr hwfC =>
+      WSubMStar.sub hwfV (WSubM.rgh hsub hr) hwfC)
+    (fun hLeft hwfU _ _ _ ihRight => fun hr hwfC =>
+      WSubMStar.trs hLeft hwfU (ihRight hr hwfC))
+    h) hred hwfC
+
 /-- Prepend an equivalence-reduction chain on the left of de Bruijn
 well-subtyping. -/
 noncomputable def WSubM.left_lf1_chain {Γ : Ctx} {a a' c : Term}

@@ -266,7 +266,9 @@ hard caveats.
      `WEquMStar.symm` and `WEquMStar.toWSubMStar`. Endpoint
      well-formedness extractors are available as
      `WSubMStar.wf_left` / `.wf_right` and
-     `WEquMStar.wf_left` / `.wf_right`.
+     `WEquMStar.wf_left` / `.wf_right`. De Bruijn `WSubMStar` can now
+     absorb single empty-stack equivalence steps at either endpoint via
+     `extend_left_via_MEqRed_fwd` and `extend_right_via_MEqRed_back`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
