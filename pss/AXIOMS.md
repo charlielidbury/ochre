@@ -974,6 +974,18 @@ closures, 2 inactive outstanding).
   deriving the shifted old-to-new argument equivalence for the diagrammatic
   `FOp` commutation endpoint from `hEqArg` via the changed-head stack-lift
   package. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRed_equ_under_head_shifted_replace_from_equ_head_lift` and
+  `meqRedStar_equ_under_head_shifted_replace_from_equ_head_lift`, wiring
+  under-head shifted equivalence replacement to an already lifted changed-head
+  old-to-new equivalence. These wrappers derive the doubly shifted
+  `Me-Pro` residual bridge under the preserved head. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRed_equ_under_head_shifted_replace_from_equ_head_lift` and
+  `msubRedStar_equ_under_head_shifted_replace_from_equ_head_lift`, the
+  subtype counterparts that reuse the under-head shifted equivalence package
+  for `Ms-Equ` branches and compose over subtype-reduction chains. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
