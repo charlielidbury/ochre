@@ -473,6 +473,10 @@ hard caveats.
      and abstraction-headed application targets. Their chain-level
      counterparts `MEqRedStar.app_abs_inv` and `MSubRedStar.app_abs_inv`
      record β branches as chains from the β target to the final target.
+     The abstraction-headed application target-to-`Top` specializations
+     are named `appAbs_eqStar_to_top_of_subStar_top`,
+     `msub_appAbs_eqStar_to_top_of_subStar_top`, and
+     `msubStar_appAbs_eqStar_to_top_of_subStar_top`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

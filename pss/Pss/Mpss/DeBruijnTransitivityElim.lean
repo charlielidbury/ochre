@@ -899,6 +899,34 @@ theorem msubStar_abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     (hEq : MEqRedStar Γ s (.abs bound body) t) : MSubStar Γ s t .top :=
   (msub_abs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
 
+/-- If an abstraction-headed application has a subtype chain to `Top`, every
+equivalence-chain target from that source has a subtype chain to `Top`. -/
+theorem appAbs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSubTop : MSubRedStar Γ s (.app (.abs bound body) arg) .top)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) :
+    MSubRedStar Γ s t .top := by
+  exact eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq
+
+/-- Diagrammatic packaging of
+`appAbs_eqStar_to_top_of_subStar_top`. -/
+theorem msub_appAbs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSubTop : MSubRedStar Γ s (.app (.abs bound body) arg) .top)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) : MSub Γ s t .top :=
+  msub_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq
+
+/-- Transitive diagrammatic packaging of
+`appAbs_eqStar_to_top_of_subStar_top`. -/
+theorem msubStar_appAbs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSubTop : MSubRedStar Γ s (.app (.abs bound body) arg) .top)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t) : MSubStar Γ s t .top :=
+  (msub_appAbs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

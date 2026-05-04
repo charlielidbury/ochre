@@ -486,6 +486,12 @@ closures, 2 inactive outstanding).
   `MSubRedStar.app_abs_inv`. The β branch is recorded as a chain from
   the β target to the final target, since later reductions can leave the
   β target's syntactic shape. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `appAbs_eqStar_to_top_of_subStar_top` and diagrammatic wrappers
+  `msub_appAbs_eqStar_to_top_of_subStar_top` /
+  `msubStar_appAbs_eqStar_to_top_of_subStar_top`, the
+  abstraction-headed application specializations of the general
+  target-to-`Top` package. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
