@@ -855,6 +855,10 @@ closures, 2 inactive outstanding).
   constructors for the changed `.sub` replacement slot:
   `MSubRed.pro_sub_head_zero_residual` and
   `MSubRed.pro_sub_under_head_one_residual`. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added generic depth-preserving
+  `Ctx.replaceAt` plus `Prevalid.replaceAt`, giving arbitrary preserved
+  context prefixes a reusable replacement primitive for future `.sub`
+  replacement inductions. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

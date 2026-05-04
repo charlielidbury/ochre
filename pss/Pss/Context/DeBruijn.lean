@@ -44,6 +44,14 @@ end CtxEntry
 /-- A logical context. List head is innermost/newest. -/
 abbrev Ctx := List CtxEntry
 
+namespace CtxEntry
+
+/-- The stored bound of an entry is scoped in the tail context below it. -/
+def ScopedIn (tail : Ctx) (entry : CtxEntry) : Type :=
+  Term.Scoped (List.length tail) entry.bound
+
+end CtxEntry
+
 namespace Ctx
 
 /-- Context length, i.e. the number of de Bruijn variables in scope. -/
@@ -94,6 +102,16 @@ def insertAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
       | _ + 1, [] => []
       | cutoff + 1, head :: Γ => head.shift cutoff :: insertAt cutoff newEntry Γ
 
+/-- Replace the context entry at a de Bruijn index, preserving every other
+entry and leaving out-of-range contexts unchanged. Unlike insertion, this
+does not change context depth, so preserved entries do not need shifting. -/
+def replaceAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
+  | [] => []
+  | head :: Γ =>
+      match cutoff with
+      | 0 => newEntry :: Γ
+      | cutoff + 1 => head :: replaceAt cutoff newEntry Γ
+
 @[simp] theorem lookup_nil (i : Nat) : lookup [] i = none := rfl
 @[simp] theorem lookupSub_nil (i : Nat) : lookupSub [] i = none := rfl
 @[simp] theorem lookupEqu_nil (i : Nat) : lookupEqu [] i = none := rfl
@@ -115,6 +133,28 @@ def insertAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
     (newEntry head₁ head₂ : CtxEntry) (Γ : Ctx) :
     insertAt 2 newEntry (head₁ :: head₂ :: Γ) =
       head₁.shift 1 :: head₂.shift 0 :: newEntry :: Γ := rfl
+
+@[simp] theorem replaceAt_zero_cons (newEntry head : CtxEntry) (Γ : Ctx) :
+    replaceAt 0 newEntry (head :: Γ) = newEntry :: Γ := rfl
+
+@[simp] theorem replaceAt_succ_nil (cutoff : Nat) (newEntry : CtxEntry) :
+    replaceAt (cutoff + 1) newEntry [] = [] := rfl
+
+@[simp] theorem replaceAt_succ_cons (cutoff : Nat) (newEntry head : CtxEntry)
+    (Γ : Ctx) :
+    replaceAt (cutoff + 1) newEntry (head :: Γ) =
+      head :: replaceAt cutoff newEntry Γ := rfl
+
+@[simp] theorem depth_replaceAt (cutoff : Nat) (newEntry : CtxEntry) (Γ : Ctx) :
+    depth (replaceAt cutoff newEntry Γ) = depth Γ := by
+  induction Γ generalizing cutoff with
+  | nil =>
+      cases cutoff <;> rfl
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero => rfl
+      | succ cutoff =>
+          simpa [depth] using ih cutoff
 
 @[simp] theorem depth_insertAt_of_le {cutoff : Nat} {newEntry : CtxEntry} {Γ : Ctx}
     (hcut : cutoff ≤ Γ.depth) :
@@ -1103,6 +1143,52 @@ def tail {e : CtxEntry} {Γ : Ctx} :
   cases h with
   | sub hΓ _ => exact hΓ
   | equ hΓ _ => exact hΓ
+
+/-- Replace one context entry while preserving pre-validity. Since replacement
+does not change context depth, every preserved head remains scoped; only the
+new entry's stored bound needs a scopedness witness in its tail. -/
+noncomputable def replaceAt {Γ : Ctx} {cutoff : Nat} {newEntry : CtxEntry}
+    (hpv : Prevalid Γ)
+    (hcut : cutoff < Γ.depth)
+    (hEntry : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ) newEntry) :
+    Prevalid (Ctx.replaceAt cutoff newEntry Γ) := by
+  induction cutoff generalizing Γ with
+  | zero =>
+      cases Γ with
+      | nil =>
+          exact False.elim (Nat.not_lt_zero _ hcut)
+      | cons head Γ =>
+          cases newEntry with
+          | mk bound kind =>
+              cases kind with
+              | sub =>
+                  exact Prevalid.sub (Prevalid.tail hpv) (by
+                    simpa [CtxEntry.ScopedIn] using hEntry)
+              | equ =>
+                  exact Prevalid.equ (Prevalid.tail hpv) (by
+                    simpa [CtxEntry.ScopedIn] using hEntry)
+  | succ cutoff ih =>
+      cases Γ with
+      | nil =>
+          exact False.elim (Nat.not_lt_zero _ hcut)
+      | cons head Γ =>
+          have hpvTail : Prevalid Γ := Prevalid.tail hpv
+          have hcutTail : cutoff < Ctx.depth Γ := by
+            simpa [Ctx.depth] using hcut
+          have hEntryTail :
+              CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ) newEntry := by
+            simpa [CtxEntry.ScopedIn] using hEntry
+          have hTailNew : Prevalid (Ctx.replaceAt cutoff newEntry Γ) :=
+            ih hpvTail hcutTail hEntryTail
+          cases hpv with
+          | sub _ hHead =>
+              exact Prevalid.sub hTailNew (by
+                rw [Ctx.depth_replaceAt]
+                exact hHead)
+          | equ _ hHead =>
+              exact Prevalid.equ hTailNew (by
+                rw [Ctx.depth_replaceAt]
+                exact hHead)
 
 /-- Replace the bound stored in an innermost `.sub` context entry. The tail
 context and context depth are unchanged, so all existing entries remain
