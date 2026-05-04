@@ -982,6 +982,25 @@ noncomputable def shift_stack_prevalid_head {Γ : Ctx} {s : Stack} {e : CtxEntry
     PrevalidExt Γ s → PrevalidExt (e :: Γ) (Stack.shift 0 s) :=
   fun h => weaken_head h hpv
 
+/-- Insert a logical context entry at an arbitrary cutoff while shifting stack
+operands at the same cutoff. -/
+noncomputable def insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth) :
+    PrevalidExt Γ s →
+    Prevalid (Ctx.insertAt cutoff newEntry Γ) →
+    PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s) := by
+  intro h hpv
+  induction h with
+  | nil _ =>
+    exact PrevalidExt.nil hpv
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (by
+      have hα' := Term.shift_scoped cutoff Γ.depth _ hcut hα
+      have hdepth :
+          Ctx.depth (Ctx.insertAt cutoff newEntry Γ) = Γ.depth + 1 :=
+        Ctx.depth_insertAt_of_le hcut
+      simpa [hdepth] using hα')
+
 /-- Insert a new logical context entry immediately under an existing binder
 head. Stack operands are shifted at cutoff `1`, preserving references to the
 innermost binder at index `0` while lifting all outer-context references. -/

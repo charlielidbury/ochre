@@ -121,6 +121,9 @@ closures, 2 inactive outstanding).
   generalized prevalidity transport for `Ctx.insertAt`. It consumes a
   prevalid witness for the inserted entry over `List.drop cutoff Γ` and
   rebuilds the shifted preserved heads. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `PrevalidExt.insertAt`, the
+  extended-context version of generalized insertion; stack operands are
+  shifted at the insertion cutoff. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
