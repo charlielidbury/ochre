@@ -27,7 +27,7 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
   context extended by the abstraction bound. -/
   | bet {Γ : Ctx} {s : Stack} {t v v' body body' : Term} :
       Term.Scoped Γ.depth t →
-      MEqRed ({ bound := t, kind := .sub } :: Γ) s body body' →
+      MEqRed ({ bound := t, kind := .sub } :: Γ) (Stack.shift 0 s) body body' →
       MEqRed Γ [] v v' →
       MEqRed Γ s (.app (.abs t body) v) (Term.instantiate 0 v' body')
 
@@ -64,7 +64,7 @@ inductive MEqRed : Ctx → Stack → Term → Term → Type where
   binding for the body derivation. -/
   | fOp {Γ : Ctx} {s : Stack} {t t' α body body' : Term} :
       MEqRed Γ [] t t' →
-      MEqRed ({ bound := α, kind := .equ } :: Γ) s body body' →
+      MEqRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
       MEqRed Γ (α :: s) (.abs t body) (.abs t' body')
 
 /-- MPSS subtype reduction in de Bruijn form. -/
@@ -103,7 +103,7 @@ inductive MSubRed : Ctx → Stack → Term → Term → Type where
   /-- **Ms-FOp**. -/
   | fOp {Γ : Ctx} {s : Stack} {t α body body' : Term} :
       Term.Scoped Γ.depth t →
-      MSubRed ({ bound := α, kind := .equ } :: Γ) s body body' →
+      MSubRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
       MSubRed Γ (α :: s) (.abs t body) (.abs t body')
 
 /-- Prop wrapper for equivalence reduction, matching the existing LN API. -/
@@ -227,7 +227,7 @@ noncomputable def MEqRed.refl {Γ : Ctx} {s : Stack} {u : Term}
       have hpvTail : PrevalidExt Γ s' := PrevalidExt.tail hpv
       have hpvBodyCtx : Prevalid ({ bound := α, kind := .equ } :: Γ) :=
         Prevalid.equ (PrevalidExt.ctx hpv) hα
-      have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ) s' :=
+      have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s') :=
         PrevalidExt.weaken_head hpvTail hpvBodyCtx
       exact MEqRed.fOp hBoundRefl (ihBody hpvBody hBody)
 

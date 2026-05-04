@@ -172,6 +172,38 @@ end Ctx
 /-- A continuation stack. List head is top of stack. -/
 abbrev Stack := List Term
 
+namespace Stack
+
+/-- Shift every term in a stack. -/
+def shiftBy (cutoff amount : Nat) : Stack → Stack :=
+  List.map (Term.shiftBy cutoff amount)
+
+/-- One-step shift every term in a stack. -/
+def shift (cutoff : Nat) : Stack → Stack :=
+  shiftBy cutoff 1
+
+@[simp] theorem shiftBy_nil (cutoff amount : Nat) :
+    shiftBy cutoff amount [] = [] := rfl
+
+@[simp] theorem shiftBy_cons (cutoff amount : Nat) (α : Term) (s : Stack) :
+    shiftBy cutoff amount (α :: s) =
+      Term.shiftBy cutoff amount α :: shiftBy cutoff amount s := rfl
+
+@[simp] theorem shift_nil (cutoff : Nat) :
+    shift cutoff [] = [] := rfl
+
+@[simp] theorem shift_cons (cutoff : Nat) (α : Term) (s : Stack) :
+    shift cutoff (α :: s) = Term.shift cutoff α :: shift cutoff s := rfl
+
+/-- Every term in a stack is scoped in a context of depth `depth`. Type-valued
+so it can carry proof-relevant `Term.Scoped` witnesses. -/
+inductive Scoped (depth : Nat) : Stack → Type
+  | nil : Scoped depth []
+  | cons {α : Term} {s : Stack} :
+      Term.Scoped depth α → Scoped depth s → Scoped depth (α :: s)
+
+end Stack
+
 /-- Extended context `Γ ; s`. -/
 abbrev ExtCtx := Ctx × Stack
 
@@ -312,17 +344,33 @@ def push {Γ : Ctx} {s : Stack} {α : Term} :
     PrevalidExt Γ s → Term.Scoped Γ.depth α → PrevalidExt Γ (α :: s) :=
   PrevalidExt.cons
 
-/-- Extend the logical context at the head while preserving stack
-prevalidity. Stack operands scoped in `Γ` remain scoped in `e :: Γ` by
-monotonicity of de Bruijn scoping. -/
+/-- Every operand in a prevalid stack is scoped in the logical context. -/
+noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
+    PrevalidExt Γ s → Stack.Scoped Γ.depth s := by
+  intro h
+  induction h with
+  | nil _ =>
+    exact Stack.Scoped.nil
+  | cons hst hα ih =>
+    exact Stack.Scoped.cons hα ih
+
+/-- Extend the logical context at the head while shifting stack operands to
+preserve references to the old context. -/
 noncomputable def weaken_head {Γ : Ctx} {s : Stack} {e : CtxEntry} :
-    PrevalidExt Γ s → Prevalid (e :: Γ) → PrevalidExt (e :: Γ) s := by
+    PrevalidExt Γ s → Prevalid (e :: Γ) → PrevalidExt (e :: Γ) (Stack.shift 0 s) := by
   intro h hpvHead
   induction h with
   | nil _ =>
     exact PrevalidExt.nil hpvHead
   | cons hst hα ih =>
-    exact PrevalidExt.cons ih (Term.scoped_mono (by simp [Ctx.depth]) hα)
+    exact PrevalidExt.cons ih (Term.shift_scoped 0 Γ.depth _ (Nat.zero_le _) hα)
+
+/-- One-step shifting preserves prevalidity of stacks when the context is
+extended at the head. -/
+noncomputable def shift_stack_prevalid_head {Γ : Ctx} {s : Stack} {e : CtxEntry}
+    (hpv : Prevalid (e :: Γ)) :
+    PrevalidExt Γ s → PrevalidExt (e :: Γ) (Stack.shift 0 s) :=
+  fun h => weaken_head h hpv
 
 end PrevalidExt
 

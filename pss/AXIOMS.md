@@ -57,6 +57,11 @@ closures, 2 inactive outstanding).
   reflexivity from Type-valued `Term.Scoped`, plus
   `MSubRed.refl` via `Ms-Equ` and `PrevalidExt.weaken_head` support in
   `Pss/Context/DeBruijn.lean`.
+* `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnReductions.lean` —
+  corrected head-context extension to shift outer stack operands
+  (`Stack.shift`) under the new innermost binding. Added Type-valued
+  `Stack.Scoped`, `PrevalidExt.stack_scoped`, and shifted-stack
+  prevalidity helpers.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 
