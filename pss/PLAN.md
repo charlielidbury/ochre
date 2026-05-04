@@ -350,6 +350,8 @@ hard caveats.
      future de Bruijn Lemma 1 / Lemma 2 proofs. The layer also has named
      closure helpers `MSub.to_star`, `MSubStar.refl`,
      `MSubStar.single`, `MSubStar.trans`, and `WSubM.toMSubStar`.
+     The `MSubStar` layer has matching reduction adapters
+     `MSubStar.of_MSubRedStar`, `.of_MSubRed`, and `.of_MEqRed`.
      Well-equivalence strips are also available as `WEquM.toMSub`,
      `WEquM.toMSubStar`, and `WEquMStar.toMSubStar`.
      Diagram introduction helpers `MSub.intro`, `MSub.of_MSubRedStar`,

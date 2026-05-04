@@ -289,6 +289,10 @@ closures, 2 inactive outstanding).
   for the de Bruijn diagrammatic layer: `MSub.to_star`,
   `MSubStar.refl`, `MSubStar.single`, `MSubStar.trans`, and
   `WSubM.toMSubStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `MSubStar`
+  reduction adapters `MSubStar.of_MSubRedStar`, `.of_MSubRed`, and
+  `.of_MEqRed`, matching the existing `MSub` introduction API at the
+  transitive layer. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
   introduction helpers `MSub.intro`, `MSub.of_MSubRedStar`,
   `MSub.of_MSubRed`, and `MSub.of_MEqRed`, so future de Bruijn Lemma 1 /

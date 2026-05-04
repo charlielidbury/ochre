@@ -87,6 +87,24 @@ theorem single {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSub Γ s u v) : MSubStar Γ s u v :=
   Relation.ReflTransGen.single h
 
+/-- Embed a subtype-reduction chain as one step of transitive diagrammatic
+subtyping. -/
+theorem of_MSubRedStar {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) : MSubStar Γ s u v :=
+  MSub.to_star (MSub.of_MSubRedStar h)
+
+/-- Embed a single subtype-reduction step as one step of transitive
+diagrammatic subtyping. -/
+theorem of_MSubRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : MSubStar Γ s u v :=
+  MSub.to_star (MSub.of_MSubRed h)
+
+/-- Embed a single equivalence-reduction step as one step of transitive
+diagrammatic subtyping when the extended context is prevalid. -/
+theorem of_MEqRed {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpv : PrevalidExt Γ s) (h : MEqRed Γ s u v) : MSubStar Γ s u v :=
+  MSub.to_star (MSub.of_MEqRed hpv h)
+
 /-- Embed an equivalence-reduction chain as one step of transitive
 diagrammatic subtyping when the extended context is prevalid. -/
 theorem of_MEqRedStar_left {Γ : Ctx} {s : Stack} {u v : Term}
