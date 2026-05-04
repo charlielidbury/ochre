@@ -100,6 +100,42 @@ def StepBetaPreservesWfM : Type :=
     WfM Γ (.app (.abs bound body) arg) →
       WfM Γ (Term.instantiate 0 arg body)
 
+/-- De Bruijn analogue of Lemma 7 in the exact β-instantiation shape:
+substituting an argument that is a well-subtype of the abstraction bound
+preserves body well-formedness. -/
+def BetaInstantiationPreservesWfM : Type :=
+  ∀ {Γ : Ctx} {bound body arg : Term},
+    WSubMStar Γ arg bound →
+      WfM ({ bound := bound, kind := .sub } :: Γ) body →
+        WfM Γ (Term.instantiate 0 arg body)
+
+/-- Function-bound inversion payload needed by the β case: if an abstraction
+has a function supertype, their bounds are well-equivalent. -/
+def AbsFunctionBoundInversion : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term},
+    WSubMStar Γ (.abs bound body) (.abs result .top) →
+      WEquM Γ bound result
+
+/-- The β preservation payload follows from function-bound inversion and the
+exact de Bruijn body-instantiation preservation lemma. -/
+noncomputable def StepBetaPreservesWfM_of
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion) :
+    StepBetaPreservesWfM := by
+  intro Γ bound body arg hwf
+  obtain ⟨result, hFun, hArg⟩ := hwf.app_inv
+  have hEquBoundResult : WEquM Γ bound result := hInv hFun
+  have hSubResultBound : WSubM Γ result bound :=
+    hEquBoundResult.symm.toWSubM
+  have hwfAbs : WfM Γ (.abs bound body) := hFun.wf_left
+  have hAbsParts := hwfAbs.fun_inv
+  have hwfResult : WfM Γ result := hArg.wf_right
+  have hStarResultBound : WSubMStar Γ result bound :=
+    WSubMStar.sub hwfResult hSubResultBound hAbsParts.1
+  have hStarArgBound : WSubMStar Γ arg bound :=
+    WSubMStar.trs hArg hwfResult hStarResultBound
+  exact hSubst hStarArgBound hAbsParts.2
+
 /-- Remaining `.sub` head replacement payload for de Bruijn well-formedness.
 This is the de Bruijn narrowing/replacement bridge needed when an abstraction
 bound changes. -/
@@ -228,6 +264,17 @@ noncomputable def StepPreservesWfM_of_new_wf
   intro Γ t t' hstep hwf
   exact (StepAt.wf_right_nonempty_of_new_wf hBeta hSubHeadReplace hstep).some
     rfl hwf
+
+/-- Operational well-formedness preservation reduced to the lower-level β
+components and the sharpened `.sub` head replacement payload. -/
+noncomputable def StepPreservesWfM_of_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_new_wf
+    (StepBetaPreservesWfM_of hSubst hInv)
+    hSubHeadReplace
 
 /-- De Bruijn preservation, conditional on operational well-formedness
 preservation. The operational step is at the ambient context depth so the
