@@ -8200,17 +8200,44 @@ sub-derivation. Dispatches on body's syntactic shape via `match body`.
   previously-blocked pro-arm is handled internally by the y-fresh-
   source descent.
 * **`body = .app a b`**: gated behind `Empty` premise `hgate_app`.
-  Reason: extending the template with `b` requires `LC b`, but `b`
-  need not be LC (only `b^[y]` is, from the PrevalidExt of the
-  underlying `MEqRed.app`). The architectural fix needs either
-  (i) a strengthened signature with `LC body` as a premise — natural
-  for the headline consumer where bodies arise from `.abs`-bound
-  positions and are LC modulo bvar 0 — or (ii) an opened-template
-  variant that tracks templates as already-opened terms. Iter-27
-  picks one and ships.
+  Iter-27 sharpened blocker: extending the template list with `b` for
+  the recursive call on body `a` requires the new entry to be LC — but
+  the underlying `MEqRed.app`'s `PrevalidExt` only gives `LC (b^[y])`,
+  not `LC b`. Iter-27 attempted option (ii) "generalize LC premise to
+  `LC (b^[y])`" (per the iter-26 dispatcher's docstring), but this
+  approach has a deeper obstacle:
+
+    - Generalizing `descend_body_equ_uniform`'s `hLC_stmpl` to
+      `LC (b^[y])` propagates into `descend_y_fresh_source_template`
+      (called from `.top` and `.fvar` arms). That functor's **fOp**
+      arm subcase B requires `LC b` to collapse `b^[y] = b` and
+      identify the constructor's binding type `αi = b^[y]` with `b`
+      itself. With only `LC (b^[y])`, `αi` would equal `b^[y]`, and
+      its y-freshness `y ∉ fv αi = y ∉ fv (b^[y])` requires
+      `bvar 0 ∉ b` (since `bvar 0 ∈ b ⇒ y ∈ fv (b^[y])`), which is
+      equivalent to LC-ness of `b` modulo bvar 0 — i.e., we'd be back
+      to needing `LC b`.
+
+    - Alternative (also tried): place `v_ = b^[y]` (which IS LC, from
+      `MEqRed.prevalidExt hu`'s cons) directly into the template
+      list. Output template shifts via `(·^[z])`: `v_^[z] = v_ = b^[y]`.
+      But the rebuilt `MEqRed.app` needs the output stack to be
+      `b^[z] :: ...`, NOT `b^[y] :: ...`. So the templated form
+      mismatches the rebuild.
+
+  The path forward (option (ii) properly): rewrite
+  `descend_body_equ_uniform` with a stack-form parameter (already-
+  opened terms `stk : Stack`, no `(·^[y])` opening) whose output is
+  `Stack.subst y (.fvar z) stk`. The substitution form gives
+  `subst y (.fvar z) (b^[y]) = b^[z]` (when `y ∉ fv b`) via
+  `Term.subst_open`, matching the constructor rebuild. This requires
+  reworking the entire `descend_y_fresh_source_template` and
+  `descend_body_equ_uniform` API around stack-form, plus adapting the
+  consumer-facing wrapper in Lemma 2.
 * **`body = .abs t inner`**: gated behind `Empty` premise `hgate_abs`.
-  Reason: opening at depth 1 inside `.abs`'s body requires depth-shift
-  handling not yet developed.
+  Iter-27 unchanged: opening at depth 1 inside `.abs`'s body requires
+  depth-shift handling not yet developed. Strictly secondary to .app
+  (cannot ship before .app's stack-form refactor lands).
 
 ### Why no .app/.tAp or .app/.bet sub-arms
 
