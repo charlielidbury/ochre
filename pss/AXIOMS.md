@@ -740,6 +740,11 @@ closures, 2 inactive outstanding).
   supplies the opposite diagrammatic edge needed when a residual `Me-Pro`
   appears as the source side of a replacement proof. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubStar_equ_head_new_bvar0_to_replaced_residual`, which composes the
+  converse head bridge with a recursively replaced old-bound residual
+  chain. This is the direct consumer shape for changed-head `Me-Pro`
+  residuals in structural replacement. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stack-stable
   top-level equivalence lifts under a changed `.equ` head for reflexive,
   `Me-Top`, `Me-Var`, and `Me-TAp` shapes. These are the first true cases
@@ -804,6 +809,10 @@ closures, 2 inactive outstanding).
   `msub_equ_under_head_new_bvar1_to_old_bound_of_equ_head_lift`, the
   composed form that weakens a changed-head old-to-new lift and immediately
   applies the converse bridge. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubStar_equ_under_head_new_bvar1_to_replaced_residual`, the under-head
+  analogue that composes the converse `bvar 1` bridge with a recursively
+  replaced old-bound residual chain. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

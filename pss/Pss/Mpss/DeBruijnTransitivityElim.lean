@@ -2025,6 +2025,24 @@ theorem msub_equ_head_new_bvar0_to_old_bound {Γ : Ctx} {s : Stack}
     (MSubRedStar.single (MSubRed.equ hpvNew hVarNew))
     (MEqRedStar.single hOldNewStack)
 
+/-- Consume a head `Me-Pro` replacement residual by first joining the new
+head variable back to the old shifted bound, then following a recursively
+replaced residual chain from that old bound. -/
+theorem msubStar_equ_head_new_bvar0_to_replaced_residual {Γ : Ctx} {s : Stack}
+    {old new target : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (Term.shift 0 old) (Term.shift 0 new))
+    (hResidual : MSubStar ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (Term.shift 0 old) target) :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (.bvar 0) target :=
+  MSubStar.trans
+    (MSub.to_star
+      (msub_equ_head_new_bvar0_to_old_bound hpvTail hNewScoped hOldNewStack))
+    hResidual
+
 /-- Under a preserved head and changed `.equ` entry, the old shifted
 under-head bound diagrammatically subtypes the new variable at index `1`.
 This is the one-level-deeper analogue of
@@ -2086,6 +2104,24 @@ theorem msub_equ_under_head_new_bvar1_to_old_bound {Γ : Ctx} {s : Stack}
   exact MSub.intro
     (MSubRedStar.single (MSubRed.equ hpvNew hVarNew))
     (MEqRedStar.single hOldNewStack)
+
+/-- Consume an under-head `Me-Pro` replacement residual by first joining the
+new variable at index `1` back to the old doubly shifted bound, then following
+a recursively replaced residual chain from that old bound. -/
+theorem msubStar_equ_under_head_new_bvar1_to_replaced_residual {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new target : Term}
+    (hpvNew : PrevalidExt (head :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 old)) (Term.shift 0 (Term.shift 0 new)))
+    (hResidual : MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 old)) target) :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 1) target :=
+  MSubStar.trans
+    (MSub.to_star
+      (msub_equ_under_head_new_bvar1_to_old_bound hpvNew hNewScoped hOldNewStack))
+    hResidual
 
 /-- If an old-to-new equivalence has already been lifted under the changed
 `.equ` head, ordinary head weakening lifts it one level deeper under a
