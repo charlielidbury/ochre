@@ -312,6 +312,18 @@ def push {Γ : Ctx} {s : Stack} {α : Term} :
     PrevalidExt Γ s → Term.Scoped Γ.depth α → PrevalidExt Γ (α :: s) :=
   PrevalidExt.cons
 
+/-- Extend the logical context at the head while preserving stack
+prevalidity. Stack operands scoped in `Γ` remain scoped in `e :: Γ` by
+monotonicity of de Bruijn scoping. -/
+noncomputable def weaken_head {Γ : Ctx} {s : Stack} {e : CtxEntry} :
+    PrevalidExt Γ s → Prevalid (e :: Γ) → PrevalidExt (e :: Γ) s := by
+  intro h hpvHead
+  induction h with
+  | nil _ =>
+    exact PrevalidExt.nil hpvHead
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (Term.scoped_mono (by simp [Ctx.depth]) hα)
+
 end PrevalidExt
 
 end DeBruijn

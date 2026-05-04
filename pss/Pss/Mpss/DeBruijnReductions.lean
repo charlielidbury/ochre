@@ -187,6 +187,50 @@ noncomputable def MSubRed.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Term.Scoped Γ.depth v :=
   h.scoped_pair.2
 
+/-! ## Reflexivity -/
+
+/-- Reflexivity of de Bruijn equivalence reduction.
+
+This is direct recursion on Type-valued `Term.Scoped`, avoiding the
+`Classical.choice` opacity that existed before the locally-nameless
+`Term.LC` predicate was made proof-relevant. -/
+noncomputable def MEqRed.refl {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u) :
+    MEqRed Γ s u u := by
+  induction u generalizing Γ s with
+  | bvar i =>
+    exact MEqRed.var hpv hu.bvar_lt
+  | top =>
+    exact MEqRed.top hpv
+  | app u v ihu ihv =>
+    let hparts := Term.Scoped.app_inv hu
+    have huOp : Term.Scoped Γ.depth u := hparts.1
+    have hv : Term.Scoped Γ.depth v := hparts.2
+    have hpvOp : PrevalidExt Γ (v :: s) := PrevalidExt.cons hpv hv
+    have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+    exact MEqRed.app (ihu hpvOp huOp) (ihv hpvNil hv)
+  | abs bound body ihBound ihBody =>
+    let hparts := Term.Scoped.abs_inv hu
+    have hBound : Term.Scoped Γ.depth bound := hparts.1
+    have hBody : Term.Scoped (Γ.depth + 1) body := hparts.2
+    have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have hBoundRefl : MEqRed Γ [] bound bound := ihBound hpvNil hBound
+    cases s with
+    | nil =>
+      have hpvBodyCtx : Prevalid ({ bound := bound, kind := .sub } :: Γ) :=
+        Prevalid.sub (PrevalidExt.ctx hpv) hBound
+      have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil hpvBodyCtx
+      exact MEqRed.fun_ hBoundRefl (ihBody hpvBody hBody)
+    | cons α s' =>
+      have hα : Term.Scoped Γ.depth α := PrevalidExt.head_scoped hpv
+      have hpvTail : PrevalidExt Γ s' := PrevalidExt.tail hpv
+      have hpvBodyCtx : Prevalid ({ bound := α, kind := .equ } :: Γ) :=
+        Prevalid.equ (PrevalidExt.ctx hpv) hα
+      have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ) s' :=
+        PrevalidExt.weaken_head hpvTail hpvBodyCtx
+      exact MEqRed.fOp hBoundRefl (ihBody hpvBody hBody)
+
 
 end DeBruijn
 end Pss
