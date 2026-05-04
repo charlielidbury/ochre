@@ -147,6 +147,12 @@ hard caveats.
      It also now includes Type-valued `Prevalid` / `PrevalidExt`,
      successful-lookup depth lemmas, scoped lookup lemmas, and stack
      prevalidity destructors.
+   * **Reduction skeleton seeded 2026-05-04 on `db-refactor`:**
+     `Pss/Mpss/DeBruijnReductions.lean` defines standalone de Bruijn
+     `MEqRed` / `MSubRed`, Prop wrappers, star closures, and basic
+     source/target scoping invariants. Binder rules use single body
+     derivations under extended nameless contexts rather than cofinite
+     fresh-name functions.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

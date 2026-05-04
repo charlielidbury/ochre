@@ -48,6 +48,11 @@ closures, 2 inactive outstanding).
   stack-head scoping, and scoped lookup lemmas for `.sub` / `.equ`
   bindings. Imported from `Pss.lean`; it does not import or modify the
   locally-nameless context modules.
+* `Pss/Mpss/DeBruijnReductions.lean` — standalone de Bruijn `MEqRed` /
+  `MSubRed` skeleton under `Pss.DeBruijn`, with binder rules collapsed
+  to single body derivations under extended nameless contexts, Prop
+  wrappers / reflexive-transitive closures, and basic source/target
+  scoping invariants.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 
