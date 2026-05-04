@@ -1729,6 +1729,92 @@ noncomputable def MSubRed.fOp_sub_under_head_replace {Γ : Ctx} {s : Stack}
   exact MSubRed.fOp (by simpa [Ctx.depth] using ht)
     (by simpa [Ctx.depth] using hα) hBody
 
+/-- Star-valued residual for the changed under-head `.sub` lookup. -/
+theorem MSubRedStar.pro_sub_under_head_one_residual {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) s
+      (.bvar 1) (Term.shift 0 (Term.shift 0 new)) :=
+  MSubRedStar.single (MSubRed.pro_sub_under_head_one_residual hpv hnew)
+
+/-- Star-valued stable `Ms-Pro` at the preserved head across under-head
+`.sub` replacement. -/
+theorem MSubRedStar.pro_sub_under_head_replace_zero {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.subBinds (head :: { bound := old, kind := .sub } :: Γ) 0 t) :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) s
+      (.bvar 0) t :=
+  MSubRedStar.single (MSubRed.pro_sub_under_head_replace_zero hpv hnew hb)
+
+/-- Star-valued stable `Ms-Pro` strictly below the changed under-head `.sub`
+entry. -/
+theorem MSubRedStar.pro_sub_under_head_replace_succ_succ {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new : Term} {i : Nat} {t : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.subBinds (head :: { bound := old, kind := .sub } :: Γ) (i + 2) t) :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) s
+      (.bvar (i + 2)) t :=
+  MSubRedStar.single (MSubRed.pro_sub_under_head_replace_succ_succ hpv hnew hb)
+
+/-- Star-valued `Ms-Top` under one preserved head across `.sub` replacement. -/
+theorem MSubRedStar.top_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) u) :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) s u .top :=
+  MSubRedStar.single (MSubRed.top_sub_under_head_replace hpv hnew hu)
+
+/-- Star-valued `Ms-Equ` under one preserved head once the equivalence premise
+has already been transported. -/
+theorem MSubRedStar.equ_sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u v : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq : MEqRed (head :: { bound := new, kind := .sub } :: Γ) s u v) :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) s u v :=
+  MSubRedStar.single (MSubRed.equ_sub_under_head_replace hpv hnew hEq)
+
+/-- Star-valued `Ms-App` under one preserved head from an already transported
+operator subtype chain. -/
+theorem MSubRedStar.app_sub_under_head_replace_from_operator {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u u' v : Term}
+    (hOp : MSubRedStar (head :: { bound := new, kind := .sub } :: Γ)
+      (v :: s) u u')
+    (hv : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) v) :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) s
+      (.app u v) (.app u' v) :=
+  MSubRedStar.app_fixed_arg (by simpa [Ctx.depth] using hv) hOp
+
+/-- Star-valued `Ms-FOp` under one preserved head from an already transported
+body subtype chain. -/
+theorem MSubRedStar.fOp_sub_under_head_replace_from_body {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t)
+    (hα : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) α)
+    (hBody : MSubRedStar ({ bound := α, kind := .equ } :: head ::
+        { bound := new, kind := .sub } :: Γ) (Stack.shift 0 s) body body') :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) (α :: s)
+      (.abs t body) (.abs t body') :=
+  MSubRedStar.fOp_body_fixed (by simpa [Ctx.depth] using ht)
+    (by simpa [Ctx.depth] using hα) hBody
+
+/-- Star-valued fixed-bound `Ms-Fun` under one preserved head from an already
+transported body subtype chain. -/
+theorem MSubRedStar.fun_sub_under_head_replace_from_body_fixed_bound {Γ : Ctx}
+    {head : CtxEntry} {old new t body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t)
+    (hEqT : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] t t)
+    (hBody : MSubRedStar ({ bound := t, kind := .sub } :: head ::
+        { bound := new, kind := .sub } :: Γ) [] body body') :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) []
+      (.abs t body) (.abs t body') :=
+  MSubRedStar.fun_body_fixed (by simpa [Ctx.depth] using ht) hEqT hBody
+
 /-! ## Equ-head replacement leaf constructors -/
 
 /-- `Me-Top` is stable when the bound stored in an innermost `.equ` head is
@@ -2622,6 +2708,21 @@ theorem MSubRedStar.fun_replaceAt_sub_from_body_changed_bound {Γ : Ctx}
     MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
       (.abs t body) (.abs t' body') :=
   MSubRedStar.fun_bound_then_body (by simpa [Ctx.depth_replaceAt] using ht)
+    hEq hBodyScoped hBody
+
+/-- Star-valued changing-bound `Ms-Fun` under one preserved head once the body
+chain already lives under the changed bound. -/
+theorem MSubRedStar.fun_sub_under_head_replace_from_body_changed_bound {Γ : Ctx}
+    {head : CtxEntry} {old new t t' body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t)
+    (hEq : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] t t')
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth (head :: { bound := new, kind := .sub } :: Γ) + 1) body)
+    (hBody : MSubRedStar ({ bound := t', kind := .sub } :: head ::
+        { bound := new, kind := .sub } :: Γ) [] body body') :
+    MSubRedStar (head :: { bound := new, kind := .sub } :: Γ) []
+      (.abs t body) (.abs t' body') :=
+  MSubRedStar.fun_bound_then_body (by simpa [Ctx.depth] using ht)
     hEq hBodyScoped hBody
 
 

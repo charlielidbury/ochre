@@ -963,6 +963,13 @@ closures, 2 inactive outstanding).
   `MSubRedStar.fun_replaceAt_sub_from_body_fixed_bound` and
   `MSubRedStar.fun_replaceAt_sub_from_body_changed_bound`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added star-valued under-head
+  `.sub` subtype residual wrappers for the changed index-1 `Ms-Pro`,
+  preserved-head `Ms-Pro`, below-slot `Ms-Pro`, and `Ms-Top` cases. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added under-head `.sub` subtype
+  constructor consumers for `Ms-Equ`, `Ms-App`, `Ms-FOp`, and fixed- and
+  changing-bound `Ms-Fun` endpoint shapes. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
