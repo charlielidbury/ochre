@@ -1813,6 +1813,36 @@ theorem meqRedStar_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
     exact Relation.ReflTransGen.trans ih
       (MEqRedStar.single (MEqRed.fOp hBoundRefl hα hStep.some))
 
+/-- Under a changed `.equ` head, the old shifted head bound diagrammatically
+subtypes the new head variable. The subtype side uses an old-to-new head
+equivalence at the same residual stack; the equivalence side promotes
+`bvar 0` through the new `.equ` head. This isolates the remaining
+stack-sensitive lift needed to use a top-level argument equivalence inside
+arbitrary `FOp` body stacks. -/
+theorem msub_equ_head_old_bound_to_new_bvar0 {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (Term.shift 0 old) (Term.shift 0 new)) :
+    MSub ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 old) (.bvar 0) := by
+  have hpvNewCtx : Prevalid ({ bound := new, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hNewScoped
+  have hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvNewCtx
+  have hNewRefl : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (Term.shift 0 new) (Term.shift 0 new) :=
+    MEqRed.refl hpvNew
+      (Term.shift_scoped 0 Γ.depth new (Nat.zero_le _) hNewScoped)
+  have hVarNew : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (.bvar 0) (Term.shift 0 new) :=
+    MEqRed.pro hpvNew (Ctx.equBinds_zero_self Γ new) hNewRefl
+  exact MSub.intro
+    (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
+    (MEqRedStar.single hVarNew)
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/

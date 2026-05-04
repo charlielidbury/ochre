@@ -695,6 +695,12 @@ closures, 2 inactive outstanding).
   is now exposed as a precise residual reducing from the old shifted
   head bound, rather than hidden inside a failed replacement attempt. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_equ_head_old_bound_to_new_bvar0`, which joins the old shifted
+  head bound with the new `bvar 0` under a changed `.equ` head, assuming
+  the old-to-new head equivalence has been lifted to the same residual
+  stack. This identifies the remaining stack-sensitive lift needed for
+  the head `Me-Pro` residual. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
