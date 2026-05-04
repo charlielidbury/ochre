@@ -312,6 +312,11 @@ closures, 2 inactive outstanding).
   premises: `EqDiamonds.var_var`, `EqDiamonds.pro_var`,
   `EqDiamonds.var_pro`, `StrongCommutes.pro_var`, and
   `StrongCommutes.equ_var`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — discharged the first
+  `Top`-headed application cells for the de Bruijn conditional premises:
+  `EqDiamonds.tAp_tAp`, `EqDiamonds.tAp_app`, `EqDiamonds.app_tAp`,
+  `StrongCommutes.appTop_top_tAp`, `StrongCommutes.appTop_top_app`, and
+  `StrongCommutes.appTop_app_tAp`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

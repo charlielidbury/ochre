@@ -370,6 +370,11 @@ hard caveats.
      `EqDiamonds.var_var`, `EqDiamonds.pro_var`,
      `EqDiamonds.var_pro`, `StrongCommutes.pro_var`, and
      `StrongCommutes.equ_var`.
+     The first `Top`-headed application cells are closed:
+     `EqDiamonds.tAp_tAp`, `EqDiamonds.tAp_app`,
+     `EqDiamonds.app_tAp`, `StrongCommutes.appTop_top_tAp`,
+     `StrongCommutes.appTop_top_app`, and
+     `StrongCommutes.appTop_app_tAp`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

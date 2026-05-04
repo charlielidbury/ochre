@@ -128,6 +128,31 @@ theorem var_pro {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term}
   obtain ⟨t₃, hLeft, hRight⟩ := pro_var hpv hb hα hi
   exact ⟨t₃, hRight, hLeft⟩
 
+/-- The `Me-TAp × Me-TAp` source cell of de Bruijn Lemma 2. -/
+theorem tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u) :
+    ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MEqRedJ Γ s .top t₃ := by
+  let htop : MEqRed Γ s .top .top := MEqRed.top hpv
+  exact ⟨.top, ⟨htop⟩, ⟨htop⟩⟩
+
+/-- The `Me-TAp × Me-App` source cell of de Bruijn Lemma 2. The operator
+component of the app step starts from `Top`, so it also targets `Top`. -/
+theorem tAp_app {Γ : Ctx} {s : Stack} {u u' v' : Term}
+    (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u)
+    (hOp : MEqRed Γ (u :: s) .top u') (hArg : MEqRed Γ [] u v') :
+    ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MEqRedJ Γ s (.app u' v') t₃ := by
+  have hu' : u' = .top := hOp.top_inv
+  subst u'
+  exact ⟨.top, ⟨MEqRed.top hpv⟩, ⟨MEqRed.tAp hpv hArg.scoped_right⟩⟩
+
+/-- The `Me-App × Me-TAp` source cell of de Bruijn Lemma 2. -/
+theorem app_tAp {Γ : Ctx} {s : Stack} {u u' v' : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hOp : MEqRed Γ (u :: s) .top u') (hArg : MEqRed Γ [] u v') :
+    ∃ t₃, MEqRedJ Γ s (.app u' v') t₃ ∧ MEqRedJ Γ s .top t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ := tAp_app hpv hu hOp hArg
+  exact ⟨t₃, hRight, hLeft⟩
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence
@@ -238,6 +263,31 @@ theorem equ_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}
     ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s (.bvar i) t₃ := by
   let hsub : MSubRed Γ s (.bvar i) t := MSubRed.equ hpv heqStep
   exact ⟨t, ⟨MEqRed.refl hpv heqStep.scoped_right⟩, ⟨hsub⟩⟩
+
+/-- The `Ms-Top × Me-TAp` source cell for a `Top`-headed application. -/
+theorem appTop_top_tAp {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u) :
+    ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MSubRedJ Γ s .top t₃ := by
+  exact ⟨.top, ⟨MEqRed.top hpv⟩, ⟨MSubRed.refl hpv Term.Scoped.top⟩⟩
+
+/-- The `Ms-Top × Me-App` source cell for a `Top`-headed application. -/
+theorem appTop_top_app {Γ : Ctx} {s : Stack} {u u' v' : Term}
+    (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u)
+    (hOp : MEqRed Γ (u :: s) .top u') (hArg : MEqRed Γ [] u v') :
+    ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MSubRedJ Γ s (.app u' v') t₃ := by
+  have hu' : u' = .top := hOp.top_inv
+  subst u'
+  exact ⟨.top, ⟨MEqRed.top hpv⟩,
+    ⟨MSubRed.top hpv (Term.Scoped.app Term.Scoped.top hArg.scoped_right)⟩⟩
+
+/-- The `Ms-App × Me-TAp` source cell for a `Top`-headed application. -/
+theorem appTop_app_tAp {Γ : Ctx} {s : Stack} {u u' : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hOp : MSubRed Γ (u :: s) .top u') :
+    ∃ t₃, MEqRedJ Γ s (.app u' u) t₃ ∧ MSubRedJ Γ s .top t₃ := by
+  have hu' : u' = .top := hOp.top_inv
+  subst u'
+  exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩, ⟨MSubRed.refl hpv Term.Scoped.top⟩⟩
 
 end StrongCommutes
 
