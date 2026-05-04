@@ -2216,6 +2216,50 @@ theorem diamond_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
     MEqRedStar.single (MEqRed.fOp hLeft.some hα hBodyRefl),
     MEqRedStar.single (MEqRed.fOp hRight.some hα hBodyRefl)⟩
 
+/-- Lift a bound equivalence-reduction chain through `FOp` while keeping the
+operand and body fixed. -/
+theorem meqRedStar_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
+    {α bound bound' body : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hα : Term.Scoped Γ.depth α)
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body)
+    (hBound : MEqRedStar Γ [] bound bound') :
+    MEqRedStar Γ (α :: s) (.abs bound body) (.abs bound' body) := by
+  have hpvBody : PrevalidExt ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail (Prevalid.equ (PrevalidExt.ctx hpvTail) hα)
+  have hBodyRefl : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body :=
+    MEqRed.refl hpvBody hBodyScoped
+  induction hBound with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | @tail mid bound' hStar hStep ih =>
+      exact Relation.ReflTransGen.trans ih
+        (MEqRedStar.single (MEqRed.fOp hStep.some hα hBodyRefl))
+
+/-- Star-level fixed-body `FOp` abstraction diamond. A bound-level
+equivalence-chain diamond lifts through `FOp` when the operand and body are
+unchanged. -/
+noncomputable def diamond_abs_fOp_bound_fixed_body_star {Γ : Ctx} {s : Stack}
+    {α bound bound₁ bound₂ body : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hα : Term.Scoped Γ.depth α)
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body)
+    (hdiamondBound : EqDiamonds Γ [])
+    (hBound₁ : MEqRedStar Γ [] bound bound₁)
+    (hBound₂ : MEqRedStar Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound₁ body) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound₂ body) t₃ := by
+  obtain ⟨bound₃, hLeft, hRight⟩ :=
+    diamond_eqStar_eqStar_of hdiamondBound hBound₁ hBound₂
+  exact ⟨.abs bound₃ body,
+    meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBodyScoped hLeft,
+    meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBodyScoped hRight⟩
+
 /-- Fixed-body `FOp` abstraction cell for de Bruijn Lemma 1's `Ms-FOp ×
 Me-FOp` branch when the subtype-side body is unchanged. The equivalence side's
 bound step supplies the shared target directly. -/
@@ -2416,6 +2460,43 @@ theorem diamond_abs_fun_bound_fixed_body {Γ : Ctx}
   exact ⟨.abs bound₃ body,
     MEqRedStar.single (MEqRed.fun_ hLeft.some hBody₁),
     MEqRedStar.single (MEqRed.fun_ hRight.some hBody₂)⟩
+
+/-- Lift a bound equivalence-reduction chain through `Fun` while keeping the
+body fixed. -/
+theorem meqRedStar_abs_fun_bound_fixed_body {Γ : Ctx}
+    {bound bound' body : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hBound : MEqRedStar Γ [] bound bound') :
+    MEqRedStar Γ [] (.abs bound body) (.abs bound' body) := by
+  induction hBound with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | @tail mid bound' hStar hStep ih =>
+      have hpvBody : PrevalidExt ({ bound := mid, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hStep.some.scoped_left)
+      have hBodyRefl : MEqRed ({ bound := mid, kind := .sub } :: Γ) [] body body :=
+        MEqRed.refl hpvBody hBodyScoped
+      exact Relation.ReflTransGen.trans ih
+        (MEqRedStar.single (MEqRed.fun_ hStep.some hBodyRefl))
+
+/-- Star-level fixed-body `Fun` abstraction diamond. A bound-level
+equivalence-chain diamond lifts through `Fun` when the body is unchanged. -/
+noncomputable def diamond_abs_fun_bound_fixed_body_star {Γ : Ctx}
+    {bound bound₁ bound₂ body : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hdiamondBound : EqDiamonds Γ [])
+    (hBound₁ : MEqRedStar Γ [] bound bound₁)
+    (hBound₂ : MEqRedStar Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body) t₃ ∧
+        MEqRedStar Γ [] (.abs bound₂ body) t₃ := by
+  obtain ⟨bound₃, hLeft, hRight⟩ :=
+    diamond_eqStar_eqStar_of hdiamondBound hBound₁ hBound₂
+  exact ⟨.abs bound₃ body,
+    meqRedStar_abs_fun_bound_fixed_body hpvNil hBodyScoped hLeft,
+    meqRedStar_abs_fun_bound_fixed_body hpvNil hBodyScoped hRight⟩
 
 /-- Fixed-body `Fun` abstraction cell for de Bruijn Lemma 1's `Ms-Fun ×
 Me-Fun` branch. The subtype constructor's bound premise is itself an
