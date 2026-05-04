@@ -245,7 +245,8 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added conditional chain
   embeddings from empty-stack reduction stars into de Bruijn transitive
   well-formed relations: `WSubMStar.of_MEqRedStar_fwd`,
-  `WSubMStar.of_MSubRedStar_fwd`, and `WEquMStar.of_MEqRedStar_fwd`.
+  `WSubMStar.of_MEqRedStar_back`, `WSubMStar.of_MSubRedStar_fwd`,
+  `WEquMStar.of_MEqRedStar_fwd`, and `WEquMStar.of_MEqRedStar_back`.
   Each requires an explicit stepwise `WfM`-preservation premise, avoiding
   the known false unrestricted subject-reduction statement. No axiom-count
   change.

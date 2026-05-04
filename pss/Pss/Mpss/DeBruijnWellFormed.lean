@@ -1057,6 +1057,29 @@ noncomputable def WSubMStar.of_MEqRedStar_fwd
         (WSubMStar.of_MEqRed_fwd hHead.some hwfX hwfY)
         (ih.some hwfY)⟩
 
+/-- A forward empty-stack equivalence-reduction chain embeds backward into
+de Bruijn transitive well-subtyping under an explicit well-formedness
+preservation premise for the chain's steps. -/
+noncomputable def WSubMStar.of_MEqRedStar_back
+    {Γ : Ctx} {a b : Term}
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) :
+    WSubMStar Γ b a := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x b),
+      Nonempty (WfM Γ x → WSubMStar Γ b x) from
+    (key hChain).some hwfA
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := b)
+    (P := fun x (_ : MEqRedStar Γ [] x b) =>
+      Nonempty (WfM Γ x → WSubMStar Γ b x)) h ?_ ?_
+  · exact ⟨fun hwf => WSubMStar.refl_of_wfM hwf⟩
+  · intro x y hHead _ ih
+    exact ⟨fun hwfX =>
+      let hwfY := hpres hHead hwfX
+      WSubMStar.trans hwfY
+        (ih.some hwfY)
+        (WSubMStar.of_MEqRed_back hHead.some hwfX hwfY)⟩
+
 /-- A forward empty-stack subtype-reduction chain embeds into de Bruijn
 transitive well-subtyping under an explicit well-formedness preservation
 premise for the chain's steps. -/
@@ -1103,6 +1126,30 @@ noncomputable def WEquMStar.of_MEqRedStar_fwd
         (WEquMStar.of_MEqRed_fwd hHead.some hwfX hwfY)
         hwfY
         (ih.some hwfY)⟩
+
+/-- A forward empty-stack equivalence-reduction chain embeds backward into
+de Bruijn transitive well-equivalence under an explicit well-formedness
+preservation premise for the chain's steps. -/
+noncomputable def WEquMStar.of_MEqRedStar_back
+    {Γ : Ctx} {a b : Term}
+    (hpres : ∀ {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MEqRedStar Γ [] a b) (hwfA : WfM Γ a) :
+    WEquMStar Γ b a := by
+  suffices key : ∀ {x : Term} (h : MEqRedStar Γ [] x b),
+      Nonempty (WfM Γ x → WEquMStar Γ b x) from
+    (key hChain).some hwfA
+  intro x h
+  refine Relation.ReflTransGen.head_induction_on (b := b)
+    (P := fun x (_ : MEqRedStar Γ [] x b) =>
+      Nonempty (WfM Γ x → WEquMStar Γ b x)) h ?_ ?_
+  · exact ⟨fun hwf => WEquMStar.refl_of_wfM hwf⟩
+  · intro x y hHead _ ih
+    exact ⟨fun hwfX =>
+      let hwfY := hpres hHead hwfX
+      WEquMStar.trs
+        (ih.some hwfY)
+        hwfY
+        (WEquMStar.of_MEqRed_back hHead.some hwfX hwfY)⟩
 
 /-- Prepend an equivalence-reduction chain on the left of de Bruijn
 well-subtyping. -/
