@@ -955,6 +955,18 @@ noncomputable def WSubMStar.extend_left_via_MSubRed_fwd
       WSubMStar.trs (ihLeft hr hwfC) hwfU hRight)
     h) hred hwfC
 
+/-- Append a forward subtype-reduction step on the right of de Bruijn
+transitive well-subtyping. -/
+noncomputable def WSubMStar.extend_right_via_MSubRed_fwd
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hred : MSubRed Γ [] b c)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ a c := by
+  exact WSubMStar.trans h.wf_right h
+    (WSubMStar.sub h.wf_right
+      (WSubM.lf2 h.wf_right hred hwfC (WSubM.rfl hwfC)) hwfC)
+
 private def _extendRightWSubMStarMotive (Γ : Ctx) (a b : Term)
     (_ : WSubMStar Γ a b) : Type :=
   ∀ {c : Term}, MEqRed Γ [] c b → WfM Γ c → WSubMStar Γ a c
@@ -1368,6 +1380,17 @@ noncomputable def WSubMStar.extend_left_via_MSubRedStar_fwd
     WSubMStar Γ a b := by
   exact WSubMStar.trans (hChain.wf_right_of hpres hwfA)
     (WSubMStar.of_MSubRedStar_fwd hpres hChain hwfA) h
+
+/-- Append a forward subtype-reduction chain on the right of de Bruijn
+transitive well-subtyping under explicit stepwise `WfM` preservation. -/
+noncomputable def WSubMStar.extend_right_via_MSubRedStar_fwd
+    {Γ : Ctx} {a b b' : Term}
+    (h : WSubMStar Γ a b)
+    (hpres : ∀ {x y : Term}, MSubRedJ Γ [] x y → WfM Γ x → WfM Γ y)
+    (hChain : MSubRedStar Γ [] b b') :
+    WSubMStar Γ a b' := by
+  exact WSubMStar.trans h.wf_right h
+    (WSubMStar.of_MSubRedStar_fwd hpres hChain h.wf_right)
 
 /-- Prepend a forward equivalence-reduction chain on the left of de Bruijn
 transitive well-equivalence under explicit stepwise `WfM` preservation. -/

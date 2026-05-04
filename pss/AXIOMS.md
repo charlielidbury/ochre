@@ -1160,6 +1160,12 @@ closures, 2 inactive outstanding).
   left-endpoint extension helper along empty-stack subtype-reduction
   chains: `WSubMStar.extend_left_via_MSubRedStar_fwd`. This requires
   explicit stepwise `WfM` preservation. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added right-endpoint forward
+  subtype-reduction extension helpers for de Bruijn transitive
+  well-subtyping: `WSubMStar.extend_right_via_MSubRed_fwd` and
+  `WSubMStar.extend_right_via_MSubRedStar_fwd`. The chain helper keeps
+  the same explicit stepwise `WfM` preservation premise as the matching
+  left-endpoint subtype-chain extension. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added endpoint-only embeddings
   and endpoint extensions for empty-stack equivalence-reduction chains:
   `WSubM.of_MEqRedStar_fwd`, `WSubM.of_MEqRedStar_back`,
