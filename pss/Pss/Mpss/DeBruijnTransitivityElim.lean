@@ -1958,6 +1958,26 @@ noncomputable def meq_equ_head_stack_lift_fun_cons_of_fop_body {Γ : Ctx}
     simpa [Ctx.depth] using Term.shift_scoped 0 Γ.depth α (Nat.zero_le _) hα
   simpa [Stack.shift] using MEqRed.fOp hBound hαShift hBody
 
+/-- Recursive `Me-Bet` stack lift under a changed `.equ` head. The body
+premise is supplied under the shifted abstraction-bound `.sub` head, and the
+argument premise remains empty-stack as required by `Me-Bet`. -/
+noncomputable def meq_equ_head_stack_lift_bet {Γ : Ctx} {s : Stack}
+    {head t v v' body body' : Term}
+    (ht : Term.Scoped Γ.depth t)
+    (hBody : MEqRed ({ bound := Term.shift 0 t, kind := .sub } ::
+        { bound := head, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+      (Term.shift 1 body) (Term.shift 1 body'))
+    (hArg : MEqRed ({ bound := head, kind := .equ } :: Γ) []
+      (Term.shift 0 v) (Term.shift 0 v')) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.app (.abs t body) v))
+      (Term.shift 0 (Term.instantiate 0 v' body')) := by
+  have htShift : Term.Scoped (Ctx.depth ({ bound := head, kind := .equ } :: Γ))
+      (Term.shift 0 t) := by
+    simpa [Ctx.depth] using Term.shift_scoped 0 Γ.depth t (Nat.zero_le _) ht
+  have hBet := MEqRed.bet htShift hBody hArg
+  simpa [Stack.shift, Term.shift_instantiate_zero 0 v' body'] using hBet
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/

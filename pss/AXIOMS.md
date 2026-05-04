@@ -723,6 +723,12 @@ closures, 2 inactive outstanding).
   for nonempty stacks, where the lifted abstraction is rebuilt through
   `Me-FOp` with an explicit operand-headed body premise. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_stack_lift_bet`, the recursive `Me-Bet` constructor for
+  stack-sensitive lifting under a changed `.equ` head. The helper exposes
+  the shifted body and empty-stack argument premises needed to rebuild the
+  beta step, with the target normalized by the existing substitution-shift
+  lemma. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
