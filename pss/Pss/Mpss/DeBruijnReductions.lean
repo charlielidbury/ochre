@@ -952,6 +952,58 @@ theorem MSubRedStar.weaken_tail_head {Γ : Ctx} {s : Stack} {u v : Term}
     (cutoff := 1) (newEntry := newHead) (by simp [Ctx.depth])
     (Prevalid.tail hNew) hpv
 
+/-! ## Equ-head replacement leaf constructors -/
+
+/-- `Me-Top` is stable when the bound stored in an innermost `.equ` head is
+replaced. -/
+noncomputable def MEqRed.top_equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MEqRed ({ bound := new, kind := .equ } :: Γ) s .top .top :=
+  MEqRed.top (PrevalidExt.equ_head_replace hpv hnew)
+
+/-- `Me-Var` is stable when the bound stored in an innermost `.equ` head is
+replaced; the context depth is unchanged. -/
+noncomputable def MEqRed.var_equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
+    {i : Nat}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hi : i < Ctx.depth ({ bound := old, kind := .equ } :: Γ)) :
+    MEqRed ({ bound := new, kind := .equ } :: Γ) s (.bvar i) (.bvar i) := by
+  exact MEqRed.var (PrevalidExt.equ_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hi)
+
+/-- `Me-TAp` is stable when the bound stored in an innermost `.equ` head is
+replaced. -/
+noncomputable def MEqRed.tAp_equ_head_replace {Γ : Ctx} {s : Stack} {old new u : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) u) :
+    MEqRed ({ bound := new, kind := .equ } :: Γ) s (.app .top u) .top := by
+  exact MEqRed.tAp (PrevalidExt.equ_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hu)
+
+/-- `Ms-Pro` is stable when the bound stored in an innermost `.equ` head is
+replaced, because subtype lookup ignores `.equ` heads. -/
+noncomputable def MSubRed.pro_equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
+    {i : Nat} {t : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.subBinds ({ bound := old, kind := .equ } :: Γ) i t) :
+    MSubRed ({ bound := new, kind := .equ } :: Γ) s (.bvar i) t :=
+  MSubRed.pro (PrevalidExt.equ_head_replace hpv hnew)
+    (Ctx.subBinds_equ_head_replace hb)
+
+/-- `Ms-Top` is stable when the bound stored in an innermost `.equ` head is
+replaced. -/
+noncomputable def MSubRed.top_equ_head_replace {Γ : Ctx} {s : Stack} {old new u : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) u) :
+    MSubRed ({ bound := new, kind := .equ } :: Γ) s u .top := by
+  exact MSubRed.top (PrevalidExt.equ_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hu)
+
 /-! ## Shape inversions -/
 
 /-- A de Bruijn equivalence-reduction step from `Top` can only target `Top`. -/

@@ -676,6 +676,13 @@ closures, 2 inactive outstanding).
   `.equ` bound changes, nonzero equivalence lookups are invariant, and
   `Prevalid` / `PrevalidExt` can be rebuilt over the changed head when
   the new bound is scoped in the same tail. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added Type-valued leaf
+  constructor replacements across an innermost `.equ` head change:
+  `MEqRed.top_equ_head_replace`, `MEqRed.var_equ_head_replace`,
+  `MEqRed.tAp_equ_head_replace`, `MSubRed.pro_equ_head_replace`, and
+  `MSubRed.top_equ_head_replace`. These close the non-head-observing
+  cases needed by the eventual structural replacement proof. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
