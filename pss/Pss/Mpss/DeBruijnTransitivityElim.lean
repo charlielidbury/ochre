@@ -3412,9 +3412,63 @@ theorem meq_equ_under_head_pro_tail_handler_of_replacement {Γ : Ctx} {s : Stack
   MSubStar.trans
     (MSubStar.of_MEqRed (PrevalidExt.equ_under_head_replace hpv hNewScoped)
       (MEqRed.pro_equ_under_head_replace_succ_succ hpv hNewScoped hb
-        (MEqRed.refl (PrevalidExt.equ_under_head_replace hpv hNewScoped)
+      (MEqRed.refl (PrevalidExt.equ_under_head_replace hpv hNewScoped)
           hα.scoped_left)))
     (hReplace hα)
+
+/-- One-step equivalence replacement under a preserved head with all
+`Me-Pro` cases wired. The preserved-head index `0`, changed-entry residual
+index `1`, and non-residual tail indices `2+` are discharged by the canonical
+handlers; constructor recursive replacements remain explicit. -/
+theorem meqRed_equ_under_head_replace_with_pro_from_replacements {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new u v : Term}
+    (hpvOld : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hpvNew : PrevalidExt (head :: { bound := new, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 old)) (Term.shift 0 (Term.shift 0 new)))
+    (hSelfReplace :
+      ∀ {u v : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s u v →
+        MSubStar (head :: { bound := new, kind := .equ } :: Γ) s u v)
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) (arg :: s) op op')
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] arg arg')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hBetBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hFOpBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } :: head ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (h : MEqRed (head :: { bound := old, kind := .equ } :: Γ) s u v) :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s u v :=
+  meqRed_equ_under_head_replace_from_replacements hpvOld hnew
+    (meq_equ_under_head_pro_zero_handler_of_replacement hpvOld hnew
+      (fun hα => hSelfReplace hα))
+    (meq_equ_under_head_pro_residual_handler_of_replacement hpvNew hnew
+      hOldNewStack (fun hResidual => hSelfReplace hResidual))
+    (meq_equ_under_head_pro_tail_handler_of_replacement hpvOld hnew
+      (fun hα => hSelfReplace hα))
+    hAppOpReplace hNilReplace hFunBodyReplace hBetBodyReplace hFOpBodyReplace h
 
 /-- If an old-to-new equivalence has already been lifted under the changed
 `.equ` head, ordinary head weakening lifts it one level deeper under a
