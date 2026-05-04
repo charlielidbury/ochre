@@ -112,6 +112,11 @@ closures, 2 inactive outstanding).
   preserved-head raw lookups before the insertion cutoff. The found entry
   stays at the same index and its stored bound is shifted by the number
   of preserved heads below it. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added kind-specific preserved-head
+  lookup transport: `Ctx.subBinds_insertAt_before` and
+  `Ctx.equBinds_insertAt_before`. These preserve the original binding
+  index and shift the returned bound at the insertion cutoff. No
+  axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

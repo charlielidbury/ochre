@@ -188,9 +188,11 @@ hard caveats.
      insertion cutoff is now available as `Ctx.lookup_insertAt_after`,
      `Ctx.subBinds_insertAt_after`, and `Ctx.equBinds_insertAt_after`.
      The complementary raw preserved-head fact
-     `Ctx.lookup_insertAt_before` is available; the kind-specific
-     preserved-head versions still need the returned-bound shift
-     arithmetic.
+     `Ctx.lookup_insertAt_before` is available. The kind-specific
+     preserved-head transports are also available as
+     `Ctx.subBinds_insertAt_before` and `Ctx.equBinds_insertAt_before`;
+     they preserve the original index and shift the returned bound at
+     the insertion cutoff.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

@@ -363,6 +363,46 @@ theorem subBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry
           subst h
           simp [htail_bind]
 
+/-- Subtype lookup transport for entries before an insertion cutoff. Their
+indices are preserved, and their returned bounds are shifted at the cutoff
+remaining below that entry. -/
+theorem subBinds_insertAt_before {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    {t : Term} (hidx : i < cutoff) :
+    subBinds Γ i t →
+    subBinds (insertAt cutoff newEntry Γ) i (Term.shift cutoff t) := by
+  induction Γ generalizing cutoff i t with
+  | nil =>
+    simp [subBinds]
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      omega
+    | succ cutoff =>
+      cases i with
+      | zero =>
+        intro h
+        cases head with
+        | mk bound kind =>
+          cases kind <;> simp [subBinds, CtxEntry.shift] at h ⊢
+          subst h
+          exact (Term.shiftBy_lift_comm 0 cutoff 1 bound (Nat.zero_le cutoff)).symm
+      | succ i =>
+        intro h
+        have htail : i < cutoff := Nat.succ_lt_succ_iff.mp hidx
+        simp [subBinds] at h ⊢
+        cases hlook : lookupSub tail i with
+        | none =>
+          simp [hlook] at h
+        | some a =>
+          simp [hlook] at h
+          have htail_bind :
+              subBinds (insertAt cutoff newEntry tail) i (Term.shift cutoff a) :=
+            ih (cutoff := cutoff) (i := i) htail hlook
+          simp [subBinds] at htail_bind
+          subst h
+          exact ⟨Term.shift cutoff a, htail_bind,
+            (Term.shiftBy_lift_comm 0 cutoff 1 a (Nat.zero_le cutoff)).symm⟩
+
 /-- Equivalence lookup transport for entries at or outside an insertion cutoff.
 The returned bound is lifted through the inserted entry. -/
 theorem equBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
@@ -397,6 +437,46 @@ theorem equBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry
           simp [equBinds] at htail_bind
           subst h
           simp [htail_bind]
+
+/-- Equivalence lookup transport for entries before an insertion cutoff. Their
+indices are preserved, and their returned bounds are shifted at the insertion
+cutoff. -/
+theorem equBinds_insertAt_before {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    {α : Term} (hidx : i < cutoff) :
+    equBinds Γ i α →
+    equBinds (insertAt cutoff newEntry Γ) i (Term.shift cutoff α) := by
+  induction Γ generalizing cutoff i α with
+  | nil =>
+    simp [equBinds]
+  | cons head tail ih =>
+    cases cutoff with
+    | zero =>
+      omega
+    | succ cutoff =>
+      cases i with
+      | zero =>
+        intro h
+        cases head with
+        | mk bound kind =>
+          cases kind <;> simp [equBinds, CtxEntry.shift] at h ⊢
+          subst h
+          exact (Term.shiftBy_lift_comm 0 cutoff 1 bound (Nat.zero_le cutoff)).symm
+      | succ i =>
+        intro h
+        have htail : i < cutoff := Nat.succ_lt_succ_iff.mp hidx
+        simp [equBinds] at h ⊢
+        cases hlook : lookupEqu tail i with
+        | none =>
+          simp [hlook] at h
+        | some a =>
+          simp [hlook] at h
+          have htail_bind :
+              equBinds (insertAt cutoff newEntry tail) i (Term.shift cutoff a) :=
+            ih (cutoff := cutoff) (i := i) htail hlook
+          simp [equBinds] at htail_bind
+          subst h
+          exact ⟨Term.shift cutoff a, htail_bind,
+            (Term.shiftBy_lift_comm 0 cutoff 1 a (Nat.zero_le cutoff)).symm⟩
 
 /-- De Bruijn index translation for inserting a new context entry after
 `cutoff` preserved heads. -/
