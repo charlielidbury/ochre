@@ -502,4 +502,139 @@ theorem Term.open_close {e : Term} (he : Term.LC e) (k : Nat) (x : String) :
     Term.open_ k (.fvar x) (Term.close_ k x e) = e :=
   Term.open_close_aux e k x (Term.open_lc he k _)
 
+/-! ## §`openInverse` — Phase 1 of Lever A (iter-31)
+
+`Term.openInverse y target_open` recovers a "closed" form: it replaces every
+free occurrence of `y` in `target_open` with `bvar k` at the matching
+binding depth `k` (initial `k = 0`). This is the inverse of opening: when
+`target_open = target^[y]` for some `y`-fresh `target`, `openInverse y` gives
+back `target`.
+
+Operationally, `openInverse y t = Term.close_ 0 y t` — i.e. it is exactly the
+existing close operation specialised at level 0. The dedicated alias and
+lemma names are introduced for the consumer-facing API in
+`Pss/Mpss/Renaming.lean §13` (Lever A, open-target descent), where the call
+site reads more naturally as `Term.openInverse y target` than as
+`Term.close_ 0 y target`.
+
+This is the **prerequisite** for the iter-32+ `MEqRed.openInverse_descend`
+construction that lifts a body-diamond's join target back into a y-fresh
+form, unblocking the consumer-side reconstruction of cofinite hypotheses
+for `MEqRed.bet`'s body slot. See `Pss/Mpss/Renaming.lean §13` for the
+sharpened plan.
+-/
+
+/-- **openInverseAt**: the level-indexed inverse of opening. Replaces each
+`fvar y` with `bvar k` at the matching binding depth, leaves `bvar` and
+other `fvar`s alone. Identical to `Term.close_ k y`; provided as a named
+alias for the Lever A / open-target descent API. -/
+def Term.openInverseAt (y : String) (k : Nat) : Term → Term := Term.close_ k y
+
+/-- **openInverse**: top-level entry point — `openInverseAt y 0`. The function
+the consumer in `Renaming.lean §13` will call. -/
+def Term.openInverse (y : String) : Term → Term := Term.openInverseAt y 0
+
+@[simp] lemma Term.openInverseAt_def (y : String) (k : Nat) (e : Term) :
+    Term.openInverseAt y k e = Term.close_ k y e := rfl
+
+@[simp] lemma Term.openInverse_def (y : String) (e : Term) :
+    Term.openInverse y e = Term.close_ 0 y e := rfl
+
+/-! ### Required properties (iter-31 Phase 1 deliverable) -/
+
+/-- **openInverse_open** (the headline): inverse-then-open recovers the
+original LC term. Direct corollary of `Term.open_close` at `k = 0`.
+
+The hypothesis `hy : y ∉ Term.fv target` is **not** required for this
+direction — `Term.open_close` discharges the side condition from `LC target`
+alone (LC means `target` has no free `bvar 0`, so closing then opening is
+honest). We accept `hy` in the signature for API uniformity with the
+consumer call site, but the proof does not consume it. -/
+theorem Term.openInverse_open (y : String) (target : Term)
+    (_hy : y ∉ Term.fv target) (hLC : Term.LC target) :
+    (Term.openInverse y target)^[y] = target := by
+  unfold Term.opening
+  show Term.open_ 0 (.fvar y) (Term.close_ 0 y target) = target
+  exact Term.open_close hLC 0 y
+
+/-- **openInverse_fresh** (sanity): when `y` doesn't occur free, `openInverse`
+is the identity. Proved by induction on the term; mirrors
+`Term.subst_fresh`. -/
+theorem Term.openInverse_fresh (y : String) (t : Term) (hy : y ∉ Term.fv t) :
+    Term.openInverse y t = t := by
+  show Term.close_ 0 y t = t
+  -- Generalise over the level since the recursion increments under abs.
+  suffices h : ∀ k, Term.close_ k y t = t from h 0
+  intro k
+  induction t generalizing k with
+  | bvar i => rfl
+  | fvar z =>
+    simp [Term.fv] at hy
+    simp [Term.close_, Ne.symm hy]
+  | top => rfl
+  | abs t b iht ihb =>
+    simp [Term.fv] at hy
+    simp [Term.close_, iht hy.1 k, ihb hy.2 (k+1)]
+  | app t s iht ihs =>
+    simp [Term.fv] at hy
+    simp [Term.close_, iht hy.1 k, ihs hy.2 k]
+
+/-- **openInverse_open_self** (the round-trip): opening with `y` then
+inverse-opening recovers `t`, when `y` was fresh in `t`. Direct corollary
+of `Term.close_open`. -/
+theorem Term.openInverse_open_self (y : String) (t : Term)
+    (hy : y ∉ Term.fv t) :
+    Term.openInverse y (t^[y]) = t := by
+  show Term.close_ 0 y (Term.open_ 0 (.fvar y) t) = t
+  exact Term.close_open 0 y t hy
+
+/-- **openInverse_fv** (free-variable bound): `openInverse y t` removes `y`
+from `fv` (replaced by `bvar 0`) and introduces no new free names.
+
+Proof: structural induction over `t` with the level generalised. -/
+theorem Term.openInverse_fv (y : String) (t : Term) :
+    Term.fv (Term.openInverse y t) ⊆ Term.fv t \ {y} := by
+  show Term.fv (Term.close_ 0 y t) ⊆ Term.fv t \ {y}
+  -- Generalise the level: `close_ k y` has the same fv behaviour for all k.
+  suffices h : ∀ k, Term.fv (Term.close_ k y t) ⊆ Term.fv t \ {y} from h 0
+  intro k
+  induction t generalizing k with
+  | bvar i =>
+    simp [Term.close_, Term.fv]
+  | fvar z =>
+    by_cases h : z = y
+    · subst h
+      simp [Term.close_, Term.fv]
+    · simp only [Term.close_, h, if_false, Term.fv]
+      intro w hw
+      simp at hw
+      subst hw
+      refine Finset.mem_sdiff.mpr ⟨by simp, ?_⟩
+      simp; exact h
+  | top => simp [Term.close_, Term.fv]
+  | abs t b iht ihb =>
+    intro w hw
+    simp [Term.close_, Term.fv] at hw
+    rcases hw with hw | hw
+    · have := iht k hw
+      rcases Finset.mem_sdiff.mp this with ⟨h1, h2⟩
+      refine Finset.mem_sdiff.mpr ⟨?_, h2⟩
+      exact Finset.mem_union.mpr (Or.inl h1)
+    · have := ihb (k+1) hw
+      rcases Finset.mem_sdiff.mp this with ⟨h1, h2⟩
+      refine Finset.mem_sdiff.mpr ⟨?_, h2⟩
+      exact Finset.mem_union.mpr (Or.inr h1)
+  | app t s iht ihs =>
+    intro w hw
+    simp [Term.close_, Term.fv] at hw
+    rcases hw with hw | hw
+    · have := iht k hw
+      rcases Finset.mem_sdiff.mp this with ⟨h1, h2⟩
+      refine Finset.mem_sdiff.mpr ⟨?_, h2⟩
+      exact Finset.mem_union.mpr (Or.inl h1)
+    · have := ihs k hw
+      rcases Finset.mem_sdiff.mp this with ⟨h1, h2⟩
+      refine Finset.mem_sdiff.mpr ⟨?_, h2⟩
+      exact Finset.mem_union.mpr (Or.inr h1)
+
 end Pss
