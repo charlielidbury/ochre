@@ -1089,6 +1089,11 @@ closures, 2 inactive outstanding).
   `StrongCommutes.bvar_any_of`, the full de Bruijn Lemma-1 variable-source
   cell. It combines `Ms-Pro`, `Ms-Equ`, and `Ms-Top`; the `Ms-Equ` branch
   delegates to the local equivalence diamond. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added prevalidity-recovering
+  variable-source wrappers `EqDiamonds.bvar_any` and
+  `StrongCommutes.bvar_any`, so future case-grid callers can consume the
+  reduction steps directly while retaining the existing `_of` forms. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical

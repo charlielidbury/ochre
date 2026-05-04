@@ -293,6 +293,18 @@ theorem bvar_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
     | var _ _ =>
       exact var_var hpv hi
 
+/-- The full variable-source cell with `PrevalidExt` recovered from the
+left equivalence step. -/
+theorem bvar_any {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {i : Nat} {t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s (.bvar i) t₁) (h₂ : MEqRed Γ s (.bvar i) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  cases h₁ with
+  | pro hpv hBind hRed =>
+      exact bvar_any_of hdiamond hpv (MEqRed.pro hpv hBind hRed) h₂
+  | var hpv hi =>
+      exact bvar_any_of hdiamond hpv (MEqRed.var hpv hi) h₂
+
 /-- The `Me-TAp × Me-TAp` source cell of de Bruijn Lemma 2. -/
 theorem tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u) :
@@ -626,6 +638,20 @@ theorem bvar_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
     exact top_of hpv hScoped heq
   | equ _ heqSub =>
     exact equ_of hdiamond hpv heqSub heq
+
+/-- The full variable-source commutation cell with `PrevalidExt` recovered
+from the subtype step. -/
+theorem bvar_any {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {i : Nat} {t₁ t₂ : Term}
+    (hsub : MSubRed Γ s (.bvar i) t₁) (heq : MEqRed Γ s (.bvar i) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  cases hsub with
+  | pro hpv hBind =>
+      exact bvar_any_of hdiamond hpv (MSubRed.pro hpv hBind) heq
+  | top hpv hScoped =>
+      exact bvar_any_of hdiamond hpv (MSubRed.top hpv hScoped) heq
+  | equ hpv heqSub =>
+      exact bvar_any_of hdiamond hpv (MSubRed.equ hpv heqSub) heq
 
 /-- The `Ms-Top × Me-TAp` source cell for a `Top`-headed application. -/
 theorem appTop_top_tAp {Γ : Ctx} {s : Stack} {u : Term}
