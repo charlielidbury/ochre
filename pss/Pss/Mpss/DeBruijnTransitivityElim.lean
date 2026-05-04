@@ -968,6 +968,24 @@ theorem msubStar_appAbs_eqStar_beta_or_appAbs {Γ : Ctx} {s : Stack}
   | inr hApp =>
     exact Or.inr hApp
 
+/-- One-step specialization of
+`msub_appAbs_eqStar_beta_or_appAbs`. -/
+theorem msub_appAbs_eqStep_beta_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t) :
+    (∃ arg' body', MSub Γ s t (Term.instantiate 0 arg' body')) ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
+  msub_appAbs_eqStar_beta_or_appAbs (MEqRedStar.single hEq)
+
+/-- Transitive one-step specialization of
+`msubStar_appAbs_eqStar_beta_or_appAbs`. -/
+theorem msubStar_appAbs_eqStep_beta_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t) :
+    (∃ arg' body', MSubStar Γ s t (Term.instantiate 0 arg' body')) ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
+  msubStar_appAbs_eqStar_beta_or_appAbs (MEqRedStar.single hEq)
+
 /-- Diagrammatic packaging of the β branch from
 `MSubRedStar.app_abs_inv`: subtype chains from an abstraction-headed
 application either reach `Top`, have a diagrammatic edge from a β target to
@@ -1010,6 +1028,28 @@ theorem msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs {Γ : Ctx} {s : 
       exact Or.inr (Or.inl ⟨arg', body', hMSub.to_star⟩)
     | inr hRest =>
       exact Or.inr (Or.inr hRest)
+
+/-- One-step specialization of
+`msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs`. -/
+theorem msub_appAbs_subStep_beta_or_top_or_appTop_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t) :
+    t = .top ∨
+      (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t) ∨
+      (∃ arg', t = .app .top arg') ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
+  msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs (MSubRedStar.single hSub)
+
+/-- Transitive one-step specialization of
+`msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs`. -/
+theorem msubStar_appAbs_subStep_beta_or_top_or_appTop_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t) :
+    t = .top ∨
+      (∃ arg' body', MSubStar Γ s (Term.instantiate 0 arg' body') t) ∨
+      (∃ arg', t = .app .top arg') ∨
+      ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
+  msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs (MSubRedStar.single hSub)
 
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/

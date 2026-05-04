@@ -485,6 +485,11 @@ hard caveats.
      The subtype-chain split is packaged by
      `msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs` and
      `msubStar_appAbs_subStar_beta_or_top_or_appTop_or_appAbs`.
+     One-step specializations are available as
+     `msub_appAbs_eqStep_beta_or_appAbs`,
+     `msubStar_appAbs_eqStep_beta_or_appAbs`,
+     `msub_appAbs_subStep_beta_or_top_or_appTop_or_appAbs`, and
+     `msubStar_appAbs_subStep_beta_or_top_or_appTop_or_appAbs`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
