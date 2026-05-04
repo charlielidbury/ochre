@@ -1106,6 +1106,12 @@ closures, 2 inactive outstanding).
   `WSubMStar.pro_sub_head_replace_to_old_of_bind` and
   `WSubMStar.pro_sub_under_head_replace_to_old_of_bind`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WSubMStar.of_MSubRed_replaceAt_sub_from_payloads`, a constructor-level
+  empty-stack subtype-step replacement consumer for arbitrary `.sub`
+  replacement depth. Recursive `Ms-App` and `Ms-Fun` residuals remain
+  explicit payloads, while leaf cases are discharged by the existing
+  well-subtyping-star residual wrappers. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
