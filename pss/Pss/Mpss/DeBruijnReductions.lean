@@ -124,6 +124,25 @@ abbrev MEqRedStar (Γ : Ctx) (s : Stack) : Term → Term → Prop :=
 abbrev MSubRedStar (Γ : Ctx) (s : Stack) : Term → Term → Prop :=
   Relation.ReflTransGen (MSubRedJ Γ s)
 
+/-- Type-valued reflexive-transitive closure of de Bruijn equivalence
+reduction. This is used when later proofs need to construct Type-valued
+evidence from a reduction chain. -/
+inductive MEqRedChain (Γ : Ctx) (s : Stack) : Term → Term → Type where
+  | refl {u : Term} : MEqRedChain Γ s u u
+  | tail {u v w : Term} :
+      MEqRedChain Γ s u v →
+      MEqRed Γ s v w →
+      MEqRedChain Γ s u w
+
+/-- Type-valued reflexive-transitive closure of de Bruijn subtype
+reduction. -/
+inductive MSubRedChain (Γ : Ctx) (s : Stack) : Term → Term → Type where
+  | refl {u : Term} : MSubRedChain Γ s u u
+  | tail {u v w : Term} :
+      MSubRedChain Γ s u v →
+      MSubRed Γ s v w →
+      MSubRedChain Γ s u w
+
 /-! ## Basic scoping invariants -/
 
 /-- Equivalence reduction relates terms scoped in the current de Bruijn
@@ -329,6 +348,25 @@ theorem MSubRedStar.trans {Γ : Ctx} {s : Stack} {u v w : Term}
     (h₁ : MSubRedStar Γ s u v) (h₂ : MSubRedStar Γ s v w) :
     MSubRedStar Γ s u w :=
   Relation.ReflTransGen.trans h₁ h₂
+
+/-- Type-valued equivalence chains embed into the existing Prop-valued
+closure. -/
+theorem MEqRedChain.to_star {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedChain Γ s u v) : MEqRedStar Γ s u v := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hStep ih =>
+      exact MEqRedStar.trans ih (MEqRedStar.single hStep)
+
+/-- Type-valued subtype chains embed into the existing Prop-valued closure. -/
+theorem MSubRedChain.to_star {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedChain Γ s u v) : MSubRedStar Γ s u v := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hStep ih =>
+      exact MSubRedStar.trans ih (MSubRedStar.single hStep)
 
 /-- Transport a subtype-reduction chain when each old step has a replacement
 chain in the target context. -/
@@ -2378,6 +2416,20 @@ theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
       subst hEq
       exact hStep.some.abs_inv
 
+/-- Type-valued abstraction inversion for Type-valued equivalence chains. -/
+noncomputable def MEqRedChain.abs_inv_type {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MEqRedChain Γ s (.abs bound body) v) :
+    Sigma fun bound' => Sigma fun body' => PLift (v = .abs bound' body') := by
+  induction h with
+  | refl =>
+      exact ⟨bound, body, ⟨rfl⟩⟩
+  | tail _ hStep ih =>
+      obtain ⟨bound', body', hEq⟩ := ih
+      cases hEq with
+      | up hEq =>
+          subst hEq
+          exact hStep.abs_inv_type
+
 /-- Bound projection for an empty-stack equivalence chain between
 abstractions. -/
 theorem MEqRedStar.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
@@ -2509,6 +2561,28 @@ theorem MSubRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
       obtain ⟨bound', body', hEq⟩ := hAbs
       subst hEq
       exact hStep.some.abs_inv
+
+/-- Type-valued abstraction inversion for Type-valued subtype chains. -/
+noncomputable def MSubRedChain.abs_inv_type {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MSubRedChain Γ s (.abs bound body) v) :
+    PLift (v = .top) ⊕
+      (Sigma fun bound' => Sigma fun body' => PLift (v = .abs bound' body')) := by
+  induction h with
+  | refl =>
+      exact Sum.inr ⟨bound, body, ⟨rfl⟩⟩
+  | tail _ hStep ih =>
+      cases ih with
+      | inl hTop =>
+          cases hTop with
+          | up hTop =>
+              subst hTop
+              exact Sum.inl ⟨hStep.top_inv⟩
+      | inr hAbs =>
+          obtain ⟨bound', body', hEq⟩ := hAbs
+          cases hEq with
+          | up hEq =>
+              subst hEq
+              exact hStep.abs_inv_type
 
 /-- Bound projection for an empty-stack subtype chain between abstractions. -/
 theorem MSubRedStar.abs_bound_red {Γ : Ctx} {bound body result body' : Term}

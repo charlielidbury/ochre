@@ -1232,6 +1232,11 @@ closures, 2 inactive outstanding).
   `MSubRed.abs_inv_type`, using `PLift` for equality branches. These are
   intended for future Type-valued diagram extraction from `WSubM` evidence.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added Type-valued reduction-chain
+  closures `MEqRedChain` and `MSubRedChain`, embeddings back to the existing
+  Prop-valued `MEqRedStar`/`MSubRedStar`, and Type-valued abstraction
+  inversions `MEqRedChain.abs_inv_type` and
+  `MSubRedChain.abs_inv_type`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
