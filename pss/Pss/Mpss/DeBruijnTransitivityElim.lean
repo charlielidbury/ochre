@@ -1494,17 +1494,20 @@ theorem commute_appAbs_subStep_eqStar_of_branches {Γ : Ctx} {s : Stack}
     (MSubRedStar.single hSub) hEq hSubBet hEqBet hAppAbs
 
 /-- One-step abstraction-headed application commutation split with the local
-equivalence diamond available. `Ms-Top`, `Ms-Equ`, and the `Ms-App` branch
-whose operator reaches `Top` already commute; the only residual is the
-structural `Ms-App` branch whose operator remains abstraction-headed. -/
-theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
+equivalence diamond available, preserving the residual structural `Ms-App`
+operator step. `Ms-Top`, `Ms-Equ`, and the `Ms-App` branch whose operator
+reaches `Top` already commute; the only residual is the structural `Ms-App`
+branch whose operator remains abstraction-headed. -/
+theorem commute_appAbs_subStep_eqStar_of_diamond_or_structApp {Γ : Ctx}
     {s : Stack} {bound body arg t₁ t₂ : Term}
     (hdiamond : EqDiamonds Γ s) (hpv : PrevalidExt Γ s)
     (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
     (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
     (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
     (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
-      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
+      ∃ bound' body',
+        MSubRedJ Γ (arg :: s) (.abs bound body) (.abs bound' body') ∧
+          t₁ = .app (.abs bound' body') arg := by
   cases hSub with
   | top _ _ =>
     exact Or.inl (commute_appAbs_subStep_to_top_eqStar hpv hScoped
@@ -1520,7 +1523,25 @@ theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
     | inr hAbs =>
       obtain ⟨bound', body', hEqAbs⟩ := hAbs
       subst hEqAbs
-      exact Or.inr ⟨bound', body', arg, rfl⟩
+      exact Or.inr ⟨bound', body', ⟨hOp⟩, rfl⟩
+
+/-- Shape-only corollary of
+`commute_appAbs_subStep_eqStar_of_diamond_or_structApp`. -/
+theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
+    {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hdiamond : EqDiamonds Γ s) (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
+  cases commute_appAbs_subStep_eqStar_of_diamond_or_structApp
+      hdiamond hpv hScoped hSub hEq with
+  | inl hJoin =>
+    exact Or.inl hJoin
+  | inr hStruct =>
+    obtain ⟨bound', body', _hOp, hEqTarget⟩ := hStruct
+    exact Or.inr ⟨bound', body', arg, hEqTarget⟩
 
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
