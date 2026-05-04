@@ -453,7 +453,8 @@ hard caveats.
      `msubStar_appTop_subStar_to_top`.
      The full star-level `Top`-headed source cell is also available as
      `commute_appTop_subStar_eqStar`, joining arbitrary subtype and
-     equivalence chains from that source at `Top`.
+     equivalence chains from that source at `Top`; its single-subtype-step
+     specialization is named `commute_appTop_subStep_eqStar`.
      Abstraction subtype shape inversions are available through
      `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, and
      `commute_abs_to_top_eqStar` closes the branch where the subtype side

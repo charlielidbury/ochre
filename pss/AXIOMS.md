@@ -447,6 +447,10 @@ closures, 2 inactive outstanding).
   `commute_appTop_subStar_eqStar`, the full star-level commutation cell
   for a `Top`-headed application source. It joins arbitrary subtype and
   equivalence chains from that source at `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — named
+  `commute_appTop_subStep_eqStar`, the single-subtype-step specialization
+  of the full star-level `Top`-headed source commutation cell. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` and
   `Pss/Mpss/DeBruijnTransitivityElim.lean` — added abstraction subtype
   shape inversions `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, plus the

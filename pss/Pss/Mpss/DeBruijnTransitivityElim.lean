@@ -809,6 +809,15 @@ theorem commute_appTop_subStar_eqStar {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term
       exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg₁),
         MSubRedStar.single (MSubRed.top hpv hEqTargetScoped)⟩
 
+/-- Single-subtype-step specialization of the full star-level `Top`-headed
+source commutation cell. -/
+theorem commute_appTop_subStep_eqStar {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hSub : MSubRed Γ s (.app .top u) t₁)
+    (hEq : MEqRedStar Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_appTop_subStar_eqStar hpv hu (MSubRedStar.single hSub) hEq
+
 /-- If the subtype side has already reached `Top`, any equivalence-chain
 target from the same scoped source joins it at `Top`. -/
 theorem commute_subStar_to_top_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
