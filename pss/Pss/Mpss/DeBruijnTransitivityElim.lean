@@ -274,6 +274,16 @@ theorem diamond_tAp_eqStar {Γ : Ctx} {s : Stack} {u t : Term}
     have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
     exact ⟨.top, Relation.ReflTransGen.refl, MEqRedStar.single (MEqRed.tAp hpv hArg')⟩
 
+/-- Any equivalence-chain target of a `Top`-headed application reduces to
+`Top`. -/
+theorem appTop_eqStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MEqRedStar Γ s (.app .top u) t) : MEqRedStar Γ s t .top := by
+  obtain ⟨t₃, hTop, hTarget⟩ := diamond_tAp_eqStar hpv hu h
+  have ht₃ : t₃ = .top := hTop.top_inv
+  subst t₃
+  exact hTarget
+
 /-- Direct star-level equivalence diamond for a `Top`-headed application
 source. Both equivalence chains can only reach `Top` or another
 `Top`-headed application, and both forms join at `Top`. -/
@@ -562,6 +572,16 @@ theorem commute_appTop_subStar_tAp {Γ : Ctx} {s : Stack} {u t : Term}
       h.scoped_right (Term.Scoped.app Term.Scoped.top hu)
     have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
     exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg'), Relation.ReflTransGen.refl⟩
+
+/-- Any subtype-chain target of a `Top`-headed application equivalence-reduces
+to `Top`. -/
+theorem appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MSubRedStar Γ s (.app .top u) t) : MEqRedStar Γ s t .top := by
+  obtain ⟨t₃, hTarget, hTop⟩ := commute_appTop_subStar_tAp hpv hu h
+  have ht₃ : t₃ = .top := hTop.top_inv
+  subst t₃
+  exact hTarget
 
 /-- Direct star-level commutation for a `Top`-headed application source. Any
 subtype chain and any equivalence chain out of the same source join at

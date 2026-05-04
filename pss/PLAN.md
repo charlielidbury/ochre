@@ -411,6 +411,9 @@ hard caveats.
      `commute_appTop_subStar_tAp` close the corresponding `TAp` targets.
      The full equivalence-chain diamond for `Top`-headed sources is
      named `diamond_appTop_eqStar_eqStar`.
+     Normalization corollaries `appTop_eqStar_to_top` and
+     `appTop_subStar_to_top` expose the resulting target-to-`Top`
+     chains directly.
      The full star-level `Top`-headed source cell is also available as
      `commute_appTop_subStar_eqStar`, joining arbitrary subtype and
      equivalence chains from that source at `Top`.
