@@ -490,6 +490,11 @@ closures, 2 inactive outstanding).
   `msubStar_abs_subStep_top_or_abs`, packaging the existing abstraction
   shape inversion as diagrammatic `Top` or abstraction-target branches.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added abstraction-source
+  equivalence-chain target packages `msub_abs_eqStar_abs`,
+  `msubStar_abs_eqStar_abs`, `msub_abs_eqStep_abs`, and
+  `msubStar_abs_eqStep_abs`, exposing the abstraction-shaped target as a
+  diagrammatic branch. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

@@ -1043,6 +1043,48 @@ theorem msubStar_abs_subStep_top_or_abs {Γ : Ctx} {s : Stack}
           MSubStar Γ s (.abs bound body) (.abs bound' body') :=
   msubStar_abs_subStar_top_or_abs (MSubRedStar.single hSub)
 
+/-- Diagrammatic packaging for equivalence chains from an abstraction. The
+target is always another abstraction. -/
+theorem msub_abs_eqStar_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hEq : MEqRedStar Γ s (.abs bound body) t) :
+    ∃ bound' body',
+      t = .abs bound' body' ∧
+        MSub Γ s (.abs bound body) (.abs bound' body') := by
+  obtain ⟨bound', body', hTarget⟩ := hEq.abs_inv
+  subst hTarget
+  exact ⟨bound', body', rfl, MSub.of_MEqRedStar_left hpv hEq⟩
+
+/-- Transitive diagrammatic packaging for equivalence chains from an
+abstraction. -/
+theorem msubStar_abs_eqStar_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hEq : MEqRedStar Γ s (.abs bound body) t) :
+    ∃ bound' body',
+      t = .abs bound' body' ∧
+        MSubStar Γ s (.abs bound body) (.abs bound' body') := by
+  obtain ⟨bound', body', hTarget, hBranch⟩ := msub_abs_eqStar_abs hpv hEq
+  exact ⟨bound', body', hTarget, hBranch.to_star⟩
+
+/-- One-step specialization of `msub_abs_eqStar_abs`. -/
+theorem msub_abs_eqStep_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hEq : MEqRed Γ s (.abs bound body) t) :
+    ∃ bound' body',
+      t = .abs bound' body' ∧
+        MSub Γ s (.abs bound body) (.abs bound' body') :=
+  msub_abs_eqStar_abs hpv (MEqRedStar.single hEq)
+
+/-- Transitive diagrammatic one-step specialization of
+`msub_abs_eqStar_abs`. -/
+theorem msubStar_abs_eqStep_abs {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hEq : MEqRed Γ s (.abs bound body) t) :
+    ∃ bound' body',
+      t = .abs bound' body' ∧
+        MSubStar Γ s (.abs bound body) (.abs bound' body') :=
+  msubStar_abs_eqStar_abs hpv (MEqRedStar.single hEq)
+
 /-- If a subtype chain from an abstraction-headed application reaches `Top`,
 any equivalence chain from the same source joins it at `Top`. -/
 theorem commute_appAbs_to_top_eqStar {Γ : Ctx} {s : Stack}
