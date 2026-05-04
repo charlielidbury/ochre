@@ -1669,6 +1669,56 @@ theorem commute_appAbs_structApp_eqStep_or_fOp_residual {Γ : Ctx} {s : Stack}
   | inr hResidual =>
     exact Or.inr ⟨joinBound, joinBody, hEqJoin, hResidual⟩
 
+/-- Changed-argument structural application commutation isolated behind the
+two precise `FOp` replacement obligations. These handlers are weaker than a
+blanket stack-head transport theorem: they only need to replace the old
+`.equ` head in the two residual shapes exposed by
+`commute_appAbs_structApp_eqStep_or_fOp_residual`. -/
+theorem commute_appAbs_structApp_eqStep_of_fOp_handlers {Γ : Ctx} {s : Stack}
+    {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hEquResidual :
+      ∀ {joinBound joinBody oldArg : Term} {rest : Stack},
+        arg :: s = oldArg :: rest →
+        MEqRed Γ [] bound₂ joinBound →
+        MEqRed ({ bound := oldArg, kind := .equ } :: Γ)
+          (Stack.shift 0 rest) body₂ joinBody →
+        MSubRedStar Γ (arg' :: s) (.abs bound₂ body₂)
+          (.abs joinBound joinBody))
+    (hSubResidual :
+      ∀ {joinBody oldArg : Term} {rest : Stack},
+        arg :: s = oldArg :: rest →
+        MSubRed ({ bound := oldArg, kind := .equ } :: Γ)
+          (Stack.shift 0 rest) body₂ joinBody →
+        MSubRedStar Γ (arg' :: s) (.abs bound₂ body₂)
+          (.abs bound₂ joinBody)) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
+  cases commute_appAbs_structApp_eqStep_or_fOp_residual hpvTail hcommArg hSubOp
+      hEqOp hEqArg with
+  | inl hJoin =>
+    exact hJoin
+  | inr hResidual =>
+    obtain ⟨joinBound, joinBody, hEqJoin, hResidual⟩ := hResidual
+    have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
+    refine ⟨.app (.abs joinBound joinBody) arg',
+      MEqRedStar.single (MEqRed.app hEqJoin.some hEqArg), ?_⟩
+    cases hResidual with
+    | inl hEqu =>
+      obtain ⟨oldArg, rest, hStack, hBound, hBody⟩ := hEqu
+      exact msubRedStar_app_fixed_arg hArg'Scoped
+        (hEquResidual hStack hBound.some hBody.some)
+    | inr hSub =>
+      obtain ⟨oldArg, rest, hStack, hBoundEq, hBody⟩ := hSub
+      cases hBoundEq
+      exact msubRedStar_app_fixed_arg hArg'Scoped
+        (hSubResidual hStack hBody.some)
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

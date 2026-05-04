@@ -646,6 +646,12 @@ closures, 2 inactive outstanding).
   returns an operator-side `FOp` residual for the joined abstraction
   target, preserving the bound-side evidence needed to distinguish the
   equivalence-derived and direct subtype cases. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_fOp_handlers`, a conditional
+  consumer for the changed-argument structural App/App branch. Instead
+  of assuming blanket stack-head transport, it asks only for the two
+  residual replacement handlers exposed above: one for equivalence-derived
+  `Me-FOp` and one for direct `Ms-FOp`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
