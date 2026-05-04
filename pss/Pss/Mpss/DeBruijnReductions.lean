@@ -1340,6 +1340,37 @@ theorem MSubRedStar.top_inv {Γ : Ctx} {s : Stack} {v : Term}
       subst ih
       exact hStep.some.top_inv
 
+/-- Detail-preserving one-step equivalence inversion from a de Bruijn
+variable. -/
+theorem MEqRed.bvar_inv_detail {Γ : Ctx} {s : Stack} {i : Nat} {v : Term}
+    (h : MEqRed Γ s (.bvar i) v) :
+    (Nonempty (PrevalidExt Γ s) ∧ i < Γ.depth ∧ v = .bvar i) ∨
+      ∃ α α',
+        Γ.equBinds i α ∧
+          MEqRedJ Γ s α α' ∧
+          v = α' := by
+  cases h with
+  | pro hpv hBind hRed =>
+      exact Or.inr ⟨_, _, hBind, ⟨hRed⟩, rfl⟩
+  | var hpv hi =>
+      exact Or.inl ⟨⟨hpv⟩, hi, rfl⟩
+
+/-- Detail-preserving one-step subtype inversion from a de Bruijn variable. -/
+theorem MSubRed.bvar_inv_detail {Γ : Ctx} {s : Stack} {i : Nat} {v : Term}
+    (h : MSubRed Γ s (.bvar i) v) :
+    (∃ t, Γ.subBinds i t ∧ v = t) ∨
+      (Nonempty (PrevalidExt Γ s) ∧
+        Nonempty (Term.Scoped Γ.depth (.bvar i)) ∧
+        v = .top) ∨
+      ∃ t, MEqRedJ Γ s (.bvar i) t ∧ v = t := by
+  cases h with
+  | pro hpv hBind =>
+      exact Or.inl ⟨_, hBind, rfl⟩
+  | top hpv hScoped =>
+      exact Or.inr (Or.inl ⟨⟨hpv⟩, ⟨hScoped⟩, rfl⟩)
+  | equ hpv hEq =>
+      exact Or.inr (Or.inr ⟨_, ⟨hEq⟩, rfl⟩)
+
 /-- A de Bruijn equivalence-reduction step from an abstraction can only target
 an abstraction. -/
 theorem MEqRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}

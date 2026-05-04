@@ -220,6 +220,10 @@ closures, 2 inactive outstanding).
   These are the reduction-side facts needed to rule out `Top` reducing
   to a function shape in the de Bruijn progress path. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added detail-preserving one-step
+  variable-source inversions `MEqRed.bvar_inv_detail` and
+  `MSubRed.bvar_inv_detail`, exposing the exact `Me-Var` / `Me-Pro` and
+  `Ms-Pro` / `Ms-Top` / `Ms-Equ` branches without adding axioms.
 * `Pss/Mpss/DeBruijnContextRed.lean` — ported MPSS extended-context
   reduction to the de Bruijn layer as `ExtCtxRed` / `ExtCtxRedStar`,
   with nameless `Ct-Ann` / `Ct-Stk` constructors, context-depth,
