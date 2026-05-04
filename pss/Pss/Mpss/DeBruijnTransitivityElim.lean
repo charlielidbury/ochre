@@ -4966,6 +4966,64 @@ noncomputable def meq_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stac
     (meq_equ_head_stack_lift_bet_handler_of_replacements hBetBodyReplace hNilReplace)
     h
 
+/-- Function-valued changed-head stack lift with canonical handlers wired in
+for every residual tail stack. This is the form consumed by commutation
+wrappers that need both a top-level shifted argument bridge and recursive
+`FOp` tail bridges from the same lifting package. -/
+noncomputable def meq_equ_head_stack_lift_function_from_replacements {Γ : Ctx}
+    {head u v : Term}
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hProReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {α α' : Term},
+          MEqRed Γ [] α α' →
+          MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+            (Term.shift 0 α) (Term.shift 0 α'))
+    (hAppOpReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {op op' arg : Term},
+          MEqRed Γ (arg :: []) op op' →
+          MEqRed ({ bound := head, kind := .equ } :: Γ)
+            (Term.shift 0 arg :: Stack.shift 0 s)
+            (Term.shift 0 op) (Term.shift 0 op'))
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed Γ [] arg arg' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 arg) (Term.shift 0 arg'))
+    (hFunNilBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hFunConsBodyReplace :
+      ∀ {α bound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth α →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 α, kind := .equ } ::
+          { bound := head, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    (hBetBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {bound body body' : Term},
+          MEqRed ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 []) body body' →
+          MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+            { bound := head, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+            (Term.shift 1 body) (Term.shift 1 body'))
+    (h : MEqRed Γ [] u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+        (Term.shift 0 u) (Term.shift 0 v) :=
+  fun hpvTail =>
+    meq_equ_head_stack_lift_from_replacements hpvTail hHeadScoped
+      (hProReplace hpvTail) (hAppOpReplace hpvTail) hNilReplace
+      hFunNilBodyReplace hFunConsBodyReplace (hBetBodyReplace hpvTail) h
+
 /-- Lift an empty-stack equivalence-reduction chain under a changed `.equ`
 head, given a lift for each single step. -/
 theorem meqRedStar_equ_head_stack_lift_from_step_lift {Γ : Ctx} {s : Stack}

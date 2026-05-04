@@ -1016,6 +1016,12 @@ closures, 2 inactive outstanding).
   deriving both the top-level shifted old-to-new argument equivalence and
   the recursive `FOp` tail old-to-new equivalences from a single reusable
   argument stack-lift function. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_stack_lift_function_from_replacements`, a function-valued
+  changed-head stack lift that packages the canonical handlers for every
+  residual tail stack. This is the reusable source for argument stack-lift
+  functions consumed by the `FOp` tail commutation wrappers. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
