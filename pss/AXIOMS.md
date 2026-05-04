@@ -300,6 +300,11 @@ closures, 2 inactive outstanding).
   `MSub.scoped_right_nonempty`, `MSub.scoped_pair_nonempty`,
   `MSubStar.scoped_right_nonempty`, and
   `MSubStar.scoped_pair_nonempty`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the right-to-left
+  Prop-safe diagram scoping extractors:
+  `MSub.scoped_left_nonempty`, `MSub.scoped_pair_from_right_nonempty`,
+  `MSubStar.scoped_left_nonempty`, and
+  `MSubStar.scoped_pair_from_right_nonempty`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `MSubStar`
   reduction adapters `MSubStar.of_MSubRedStar`, `.of_MSubRed`, and
   `.of_MEqRed`, matching the existing `MSub` introduction API at the

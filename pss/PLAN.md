@@ -358,7 +358,11 @@ hard caveats.
      Diagram endpoint scoping is available in Prop-safe `Nonempty` form
      through `MSub.scoped_right_nonempty`,
      `MSub.scoped_pair_nonempty`, `MSubStar.scoped_right_nonempty`, and
-     `MSubStar.scoped_pair_nonempty`.
+     `MSubStar.scoped_pair_nonempty`; the right-to-left variants are
+     `MSub.scoped_left_nonempty`,
+     `MSub.scoped_pair_from_right_nonempty`,
+     `MSubStar.scoped_left_nonempty`, and
+     `MSubStar.scoped_pair_from_right_nonempty`.
      The `MSubStar` layer has matching reduction adapters
      `MSubStar.of_MSubRedStar`, `.of_MSubRed`, and `.of_MEqRed`.
      Well-equivalence strips are also available as `WEquM.toMSub`,

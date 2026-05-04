@@ -46,6 +46,22 @@ theorem scoped_pair_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
     Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
   ⟨⟨hu, (h.scoped_right_nonempty hu).some⟩⟩
 
+/-- Diagrammatic subtyping also provides left-endpoint scoping in `Prop`
+form from right-endpoint scoping. -/
+theorem scoped_left_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSub Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u) := by
+  obtain ⟨w, hSub, hEqu⟩ := h
+  have hw : Term.Scoped Γ.depth w := hEqu.scoped_right hv
+  exact hSub.scoped_left_nonempty hw
+
+/-- Diagrammatic subtyping relates scoped endpoints in `Prop` form when the
+right endpoint is scoped. -/
+theorem scoped_pair_from_right_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSub Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
+  ⟨⟨(h.scoped_left_nonempty hv).some, hv⟩⟩
+
 /-- Introduce de Bruijn diagrammatic subtyping from explicit subtype and
 equivalence chains to a common reduct. -/
 theorem intro {Γ : Ctx} {s : Stack} {u v w : Term}
@@ -115,6 +131,24 @@ theorem scoped_pair_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubStar Γ s u v) (hu : Term.Scoped Γ.depth u) :
     Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
   ⟨⟨hu, (h.scoped_right_nonempty hu).some⟩⟩
+
+/-- Transitive diagrammatic subtyping provides left-endpoint scoping in
+`Prop` form from right-endpoint scoping. -/
+theorem scoped_left_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubStar Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u) := by
+  induction h with
+  | refl =>
+    exact ⟨hv⟩
+  | tail hStar hStep ih =>
+    exact ih (hStep.scoped_left_nonempty hv).some
+
+/-- Transitive diagrammatic subtyping relates scoped endpoints in `Prop` form
+when the right endpoint is scoped. -/
+theorem scoped_pair_from_right_nonempty {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubStar Γ s u v) (hv : Term.Scoped Γ.depth v) :
+    Nonempty (Term.Scoped Γ.depth u × Term.Scoped Γ.depth v) :=
+  ⟨⟨(h.scoped_left_nonempty hv).some, hv⟩⟩
 
 /-- Embed one diagrammatic step into the reflexive-transitive diagrammatic
 relation. -/
