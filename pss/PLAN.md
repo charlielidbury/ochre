@@ -123,9 +123,9 @@ hard caveats.
      `shiftBy`, one-step `shift`, `instantiate`, and five named algebraic
      lemmas. It also provides `Scoped`/`Closed` plus preservation lemmas
      for shift and instantiate, shift composition, scoped-shift identity,
-     and closed β-instantiation. The module is imported by `Pss.lean`;
-     the locally-nameless development remains untouched until the
-     downstream atomic switch.
+     closed β-instantiation, and scoped inversion/simp lemmas. The module
+     is imported by `Pss.lean`; the locally-nameless development remains
+     untouched until the downstream atomic switch.
 2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
    strengthen. Replaces named `Term.subst`.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,

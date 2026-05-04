@@ -23,9 +23,12 @@ closures, 2 inactive outstanding).
 * `Pss/Syntax/DeBruijn.lean` shift/scoping strengthening —
   `Term.shiftBy_compose`, `Term.shiftBy_scoped`,
   `Term.shiftBy_of_scoped_id`, `Term.shiftBy_closed_id`,
-  `Term.shift_closed_id`, and `Term.instantiate_closed`. Imported from
-  `Pss.lean`. No axiom-count change; `Pss.Sanity` headline closures
-  remain byte-identical to the iter-32 pivot baseline.
+  `Term.shift_closed_id`, and `Term.instantiate_closed`.
+* `Pss/Syntax/DeBruijn.lean` scoped inversion/simp bridge —
+  `scoped_bvar_iff`, `scoped_abs_iff`, `scoped_app_iff`, and closed
+  specializations for `top`, `abs`, and `app`. Imported from `Pss.lean`.
+  No axiom-count change; `Pss.Sanity` headline closures remain
+  byte-identical to the iter-32 pivot baseline.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

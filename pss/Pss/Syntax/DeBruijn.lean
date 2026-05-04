@@ -186,6 +186,53 @@ inductive Scoped : Nat → Term → Prop
 /-- Closed de Bruijn terms have no free indices. -/
 abbrev Closed (t : Term) : Prop := Scoped 0 t
 
+@[simp] theorem scoped_bvar_iff (depth i : Nat) :
+    Scoped depth (.bvar i) ↔ i < depth := by
+  constructor
+  · intro h
+    cases h with
+    | bvar hi => exact hi
+  · exact Scoped.bvar
+
+@[simp] theorem not_scoped_zero_bvar (i : Nat) :
+    ¬ Scoped 0 (.bvar i) := by
+  simp
+
+@[simp] theorem scoped_top_iff (depth : Nat) :
+    Scoped depth .top ↔ True := by
+  constructor
+  · intro _; trivial
+  · intro _; exact Scoped.top
+
+@[simp] theorem scoped_abs_iff (depth : Nat) (bound body : Term) :
+    Scoped depth (.abs bound body) ↔
+      Scoped depth bound ∧ Scoped (depth + 1) body := by
+  constructor
+  · intro h
+    cases h with
+    | abs h_bound h_body => exact ⟨h_bound, h_body⟩
+  · intro h
+    exact Scoped.abs h.1 h.2
+
+@[simp] theorem scoped_app_iff (depth : Nat) (t u : Term) :
+    Scoped depth (.app t u) ↔ Scoped depth t ∧ Scoped depth u := by
+  constructor
+  · intro h
+    cases h with
+    | app h_t h_u => exact ⟨h_t, h_u⟩
+  · intro h
+    exact Scoped.app h.1 h.2
+
+@[simp] theorem closed_top : Closed .top := Scoped.top
+
+@[simp] theorem closed_abs_iff (bound body : Term) :
+    Closed (.abs bound body) ↔ Closed bound ∧ Scoped 1 body :=
+  scoped_abs_iff 0 bound body
+
+@[simp] theorem closed_app_iff (t u : Term) :
+    Closed (.app t u) ↔ Closed t ∧ Closed u :=
+  scoped_app_iff 0 t u
+
 /-- One-step shifting preserves scoping, increasing the ambient depth by one. -/
 theorem shift_scoped (cutoff depth : Nat) (t : Term)
     (hcut : cutoff ≤ depth) :
