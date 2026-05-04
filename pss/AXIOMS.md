@@ -188,6 +188,12 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnReductions.lean` — added named closure helpers
   `MEqRedStar.single`, `MSubRedStar.single`, `MEqRedStar.trans`, and
   `MSubRedStar.trans`. No axiom-count change.
+* `Pss/Mpss/DeBruijnContextRed.lean` — ported MPSS extended-context
+  reduction to the de Bruijn layer as `ExtCtxRed` / `ExtCtxRedStar`,
+  with nameless `Ct-Ann` / `Ct-Stk` constructors, context-depth,
+  stack-length, and context-kind preservation, de Bruijn `lemma_36`,
+  and single-step closure helpers. Imported from `Pss.lean`; no
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
   well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
   separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint

@@ -248,6 +248,11 @@ hard caveats.
      helpers are available as `MEqRedStar.single`,
      `MSubRedStar.single`, `MEqRedStar.trans`, and
      `MSubRedStar.trans`.
+     De Bruijn extended-context reduction is now ported in
+     `Pss/Mpss/DeBruijnContextRed.lean` as `ExtCtxRed` /
+     `ExtCtxRedStar`, with nameless `Ct-Ann` / `Ct-Stk`, structural
+     preservation lemmas, de Bruijn `lemma_36`, and single-step closure
+     helpers.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
    * **Seeded 2026-05-04 on `db-refactor`:**
