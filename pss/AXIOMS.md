@@ -84,15 +84,49 @@ Iter-18 finding: **`hz_Γ : z ∈ Γ.dom` is mathematically required** (not book
 * §11.7.3 — `body = .fvar w` leaf, **var-arm only**. The `pro` arm is gated behind an `Empty` premise (honest scaffolding, NOT an axiom). Pro-arm blocker: `strip_equ_head` requires `avoidsFv` and `cofinDomFresh`, which the uniform signature deliberately excludes. An avoidsFv-free strip variant is needed — iter-20+ target.
 * §11.7.4 — `body = .app a b` recursive case, **`MEqRed.app` constructor arm only** (open-recursion handlers as parameters). `MEqRed.tAp` and `MEqRed.bet` arms documented as deferred to iter-20+.
 
-**Iter-20+ next attack:** continue `descend_body_equ_uniform` —
-* `MEqRed.tAp` arm of `body = .app a b` (mechanical: forces `a = .top`, output via `MEqRed.tAp` at bare Γ).
-* `MEqRed.bet` arm of `body = .app a b` (forces `a = .abs ta inner_a`; recursive on `inner_a`).
-* avoidsFv-free `strip_equ_head` variant for the `body = .fvar w` pro-arm — the genuinely hard piece.
-* `body = .abs t inner` arm (needs strip-from-middle helper for the deeper-binder case).
-* Termination: assemble the open-recursion handlers via `termination_by body.size` once all arms are in.
-* Eventually: consume `descend_body_equ_uniform` in `Lemma_2_DiamondMEqRed_core`'s App×Bet residual to discharge `Lemma_2_inline_app_bet_residual_axiom`.
+**Session 2026-05-04 (iters 20–28) — flat-stack descent shipped:**
 
-The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-20+ retires it once §11.7 is fully shipping.
+Iters 20–25 shipped `descend_y_fresh_source_template` (`Pss/Mpss/Renaming.lean §11.9`)
+covering all 8 MEqRed arms, completing the y-fresh-source descent functor
+(commits `f4f05fd`, `6b4bdcb`, `26b78d7`, `112cd12`, `9c4375e`, `f074df3`).
+
+Iter-26 (commit `34678c8`) assembled `MEqRed.descend_body_equ_uniform` (§11.10)
+as a body-shape-dispatching wrapper. The `.bvar 0` / `.top` / `.fvar` /
+`.bvar (n+1)` arms close cleanly; the `.app a b` and `.abs t inner` arms
+were gated behind `Empty` premises (`hgate_app`, `hgate_abs`).
+
+Iter-27 (commit `542c501`) sharpened the `.app` blocker analysis: the
+gate cannot be discharged in template/outer-split form because the
+operand `b` lacks `LC b` (only `LC (b^[y])`). Recommended path forward:
+rewrite the descent functor with a flat substituted-stack output
+`Stack.subst y (.fvar z) stk`, since `subst y (.fvar z) (b^[y]) = b^[z]`
+when `y ∉ fv b` matches the `MEqRed.app` constructor rebuild.
+
+**Iter-28 (commit `f6b53bd`) shipped the flat-stack descent functor.**
+* `_MEqRed_descend_at_head_subst` (`Pss/Mpss/Renaming.lean §12`, internal)
+  — substitution-form mirror of `Lemma_31_ReductionUnderSubst_Eq` for
+  `.equ` head: source ctx `Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁`, output ctx
+  `Ctx.subst y (.fvar z) Γ₂ ++ Γ₁`, handles `Me-Pro y` arms via
+  `avoidsPro h y = true`'s `decide (yi ≠ y)` factor + `equBinds_split_equ`.
+  All 8 MEqRed arms covered; `bet` uses `rename_stray`, `fun_` uses
+  `rename_sub`, `fOp` uses `_MEqRed_rename_equ_no_fv` for the `pickFresh`
+  → arbitrary-`yfresh` rename to navigate the alpha-equivariance trap.
+* `MEqRed.descend_at_head` (caller-facing wrapper) — uses `hΓ₂_avoid` to
+  bridge `Ctx.subst y (.fvar z) Γ₂ = Γ₂` for the headline use case
+  (`Γ₂ = []`).
+
+This is the iter-27-recommended stack-form descent functor. It supplants
+the template/outer split: source can be y-occurring (e.g. `.fvar y` —
+the body-`bvar 0` case), so the body-shape dispatch in
+`descend_body_equ_uniform` becomes unnecessary at the consumer level.
+
+**Iter-29+ next attack:** consume `MEqRed.descend_at_head` in
+`Diamond.lean`'s `Lemma_2_DiamondMEqRed_core` App×Bet residual,
+potentially bypassing `descend_body_equ_uniform` entirely. Multi-iteration
+work to discharge `Lemma_2_inline_app_bet_residual_axiom`.
+
+The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-29+
+retires it once `descend_at_head` is consumed end-to-end.
 
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
