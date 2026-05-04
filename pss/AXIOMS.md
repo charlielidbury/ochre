@@ -1066,6 +1066,12 @@ closures, 2 inactive outstanding).
   `meqRedStar_equ_under_head_replace_function_from_replacements`, packaging
   the fixed-stack replacement wrappers over every residual stack. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the subtype companion
+  to under-head replacement with canonical `Me-Pro` handlers,
+  `msubRedStar_equ_under_head_replace_with_pro_from_replacements`, plus
+  the function-valued
+  `msubRedStar_equ_under_head_replace_with_pro_function_from_replacements`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
