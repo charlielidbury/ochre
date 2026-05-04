@@ -764,6 +764,12 @@ closures, 2 inactive outstanding).
   converse head bridge with a recursively replaced old-bound residual
   chain. This is the direct consumer shape for changed-head `Me-Pro`
   residuals in structural replacement. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_pro_residual_handler_of_replacement`, a canonical handler
+  builder for the head `Me-Pro` replacement residual: it takes the
+  old-to-new stack lift plus a recursive replacement of the old-bound
+  residual and returns the handler expected by the equivalence splitter.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stack-stable
   top-level equivalence lifts under a changed `.equ` head for reflexive,
   `Me-Top`, `Me-Var`, and `Me-TAp` shapes. These are the first true cases
@@ -832,6 +838,10 @@ closures, 2 inactive outstanding).
   `msubStar_equ_under_head_new_bvar1_to_replaced_residual`, the under-head
   analogue that composes the converse `bvar 1` bridge with a recursively
   replaced old-bound residual chain. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_under_head_pro_residual_handler_of_replacement`, the
+  preserved-head analogue of the canonical `Me-Pro` residual handler
+  builder for index `1`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
