@@ -1030,6 +1030,51 @@ noncomputable def MSubRed.top_equ_head_replace {Γ : Ctx} {s : Stack} {old new u
   exact MSubRed.top (PrevalidExt.equ_head_replace hpv hnew) (by
     simpa [Ctx.depth] using hu)
 
+/-! ### Equ-head replacement under one preserved head -/
+
+/-- `Me-Top` is stable when replacing an `.equ` entry immediately under a
+preserved head. -/
+noncomputable def MEqRed.top_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s .top .top :=
+  MEqRed.top (PrevalidExt.equ_under_head_replace hpv hnew)
+
+/-- `Me-Var` is stable when replacing an `.equ` entry immediately under a
+preserved head; the context depth is unchanged. -/
+noncomputable def MEqRed.var_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term} {i : Nat}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hi : i < Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar i) (.bvar i) := by
+  exact MEqRed.var (PrevalidExt.equ_under_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hi)
+
+/-- `Me-TAp` is stable when replacing an `.equ` entry immediately under a
+preserved head. -/
+noncomputable def MEqRed.tAp_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) u) :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s (.app .top u) .top := by
+  exact MEqRed.tAp (PrevalidExt.equ_under_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hu)
+
+/-- `Ms-Top` is stable when replacing an `.equ` entry immediately under a
+preserved head. -/
+noncomputable def MSubRed.top_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hu : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) u) :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) s u .top := by
+  exact MSubRed.top (PrevalidExt.equ_under_head_replace hpv hnew) (by
+    simpa [Ctx.depth] using hu)
+
 /-! ## Shape inversions -/
 
 /-- A de Bruijn equivalence-reduction step from `Top` can only target `Top`. -/

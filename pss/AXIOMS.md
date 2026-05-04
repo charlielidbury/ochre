@@ -729,6 +729,11 @@ closures, 2 inactive outstanding).
   the shifted body and empty-stack argument premises needed to rebuild the
   beta step, with the target normalized by the existing substitution-shift
   lemma. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnReductions.lean` —
+  added under-head `.equ` replacement prevalidity transport and leaf
+  constructors for `Me-Top`, `Me-Var`, `Me-TAp`, and `Ms-Top`. These
+  support recursive replacement below a preserved binder while keeping the
+  changed `.equ` entry one level down. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
