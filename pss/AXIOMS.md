@@ -934,6 +934,13 @@ closures, 2 inactive outstanding).
   and `msubRedStar_equ_head_shifted_replace_from_replacements`, using the
   shifted equivalence replacement package for `Ms-Equ` branches and exposing
   only recursive constructor replacements. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements`, a
+  diagrammatic variant of the changed-argument structural application
+  commutation package that consumes `MSubStar` body replacements directly.
+  This matches the output of the de Bruijn replacement splitters, rather
+  than requiring raw `MSubRedStar` residual replacements. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -3948,6 +3948,63 @@ theorem commute_appAbs_structApp_eqStep_of_body_fOp_star_replacements {Γ : Ctx}
     exact msubRedStar_abs_fOp_body_fixed_bound hBound₂Scoped hArg'Scoped
       (hSubBodyReplace hBody)
 
+/-- Diagrammatic variant of
+`commute_appAbs_structApp_eqStep_of_body_fOp_star_replacements`. This
+matches the replacement splitters above, whose residual replacement output is
+`MSubStar` rather than a raw `MSubRedStar`. -/
+theorem commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements {Γ : Ctx}
+    {s : Stack} {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hEquBodyReplace :
+      ∀ {joinBound joinBody : Term},
+        MEqRed Γ [] bound₂ joinBound →
+        MEqRed ({ bound := arg, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody →
+        MSubStar ({ bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody)
+    (hSubBodyReplace :
+      ∀ {joinBody : Term},
+        MSubRed ({ bound := arg, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody →
+        MSubStar ({ bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
+  cases commute_appAbs_structApp_eqStep_or_fOp_residual hpvTail hcommArg hSubOp
+      hEqOp hEqArg with
+  | inl hJoin =>
+    obtain ⟨t₃, hEqJoin, hSubJoin⟩ := hJoin
+    exact ⟨t₃, hEqJoin, MSubStar.of_MSubRedStar hSubJoin⟩
+  | inr hResidual =>
+    obtain ⟨joinBound, joinBody, hEqJoin, hResidual⟩ := hResidual
+    have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
+    have hBound₂Scoped : Term.Scoped Γ.depth bound₂ :=
+      (Term.Scoped.abs_inv hEqOp.scoped_right).1
+    have hBody₂ScopedNew :
+        Term.Scoped (Ctx.depth ({ bound := arg', kind := .equ } :: Γ)) body₂ := by
+      simpa [Ctx.depth] using (Term.Scoped.abs_inv hEqOp.scoped_right).2
+    refine ⟨.app (.abs joinBound joinBody) arg',
+      MEqRedStar.single (MEqRed.app hEqJoin.some hEqArg), ?_⟩
+    cases hResidual with
+    | inl hEqu =>
+      obtain ⟨oldArg, rest, hStack, hBound, hBody⟩ := hEqu
+      cases hStack
+      exact msubStar_app_fixed_arg hpvTail hArg'Scoped
+        (msubStar_abs_fOp_equ_bound_body hpvTail hBound.some hArg'Scoped
+          hBody₂ScopedNew (hEquBodyReplace hBound.some hBody.some))
+    | inr hSub =>
+      obtain ⟨oldArg, rest, hStack, hBoundEq, hBody⟩ := hSub
+      cases hStack
+      cases hBoundEq
+      exact msubStar_app_fixed_arg hpvTail hArg'Scoped
+        (msubStar_abs_fOp_body_fixed_bound hpvTail hBound₂Scoped hArg'Scoped
+          (hSubBodyReplace hBody.some))
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of
