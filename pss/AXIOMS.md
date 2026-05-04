@@ -946,6 +946,12 @@ closures, 2 inactive outstanding).
   diagrammatic `FOp` commutation endpoint to the shifted changed-head
   replacement packages for both equivalence-derived and direct subtype body
   residuals. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_stack_lift_from_handlers`, a one-step splitter for lifting
+  empty-stack equivalence reductions under a changed `.equ` head and
+  arbitrary residual stack. Stable leaves are discharged; recursive
+  constructor cases and the nonempty-stack `Me-Fun` lift are explicit
+  handler obligations. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -3876,6 +3876,72 @@ noncomputable def meq_equ_head_stack_lift_bet {Γ : Ctx} {s : Stack}
   have hBet := MEqRed.bet htShift hBody hArg
   simpa [Stack.shift, Term.shift_instantiate_zero 0 v' body'] using hBet
 
+/-- One-step splitter for lifting an empty-stack equivalence step under a
+changed `.equ` head and an arbitrary residual stack. Stable leaves are
+handled directly; recursive constructor cases and the nonempty-stack `Me-Fun`
+case are exposed as explicit handlers. -/
+noncomputable def meq_equ_head_stack_lift_from_handlers {Γ : Ctx} {s : Stack}
+    {head u v : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hPro :
+      ∀ {i : Nat} {α α' : Term},
+        Γ.equBinds i α →
+        MEqRed Γ [] α α' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 (.bvar i)) (Term.shift 0 α'))
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed Γ (arg :: []) op op' →
+        MEqRed Γ [] arg arg' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 (.app op arg)) (Term.shift 0 (.app op' arg')))
+    (hFunNil :
+      ∀ {bound bound' body body' : Term},
+        s = [] →
+        MEqRed Γ [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 (.abs bound body)) (Term.shift 0 (.abs bound' body')))
+    (hFunCons :
+      ∀ {α : Term} {rest : Stack} {bound bound' body body' : Term},
+        s = α :: rest →
+        Term.Scoped Γ.depth α →
+        MEqRed Γ [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 (α :: rest))
+          (Term.shift 0 (.abs bound body)) (Term.shift 0 (.abs bound' body')))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped Γ.depth bound →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed Γ [] arg arg' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 (.app (.abs bound body) arg))
+          (Term.shift 0 (Term.instantiate 0 arg' body')))
+    (h : MEqRed Γ [] u v) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) := by
+  cases h with
+  | top _ =>
+    exact meq_equ_head_stack_lift_top hpvTail hHeadScoped
+  | var _ hi =>
+    exact meq_equ_head_stack_lift_var hpvTail hHeadScoped hi
+  | pro _ hb hα =>
+    exact hPro hb hα
+  | app hOp hArg =>
+    exact hApp hOp hArg
+  | fun_ hBound hBody =>
+    cases s with
+    | nil =>
+      exact hFunNil rfl hBound hBody
+    | cons α rest =>
+      exact hFunCons rfl (PrevalidExt.head_scoped hpvTail) hBound hBody
+  | tAp _ hu =>
+    exact meq_equ_head_stack_lift_tAp hpvTail hHeadScoped hu
+  | bet ht hBody hArg =>
+    exact hBet ht hBody hArg
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/
