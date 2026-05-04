@@ -5,8 +5,32 @@ v2, December 2025), the MPSS Krivine-style reformulation of Hutchins'
 Pure Subtype Systems. Type safety (Theorems 4 and 5) is conditional on
 the axioms below.
 
-**Total axiom count: 11** (1 permanent, 9 active outstanding, 1 inactive
-outstanding).
+**Total axiom count: 12** (1 permanent, 9 active outstanding in headline
+closures, 2 inactive outstanding).
+
+**Session 2026-05-04 (iters 1–7) infrastructure shipped:**
+* `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
+  `449fea0`) — asymmetric extension of `Lemma_32_ReductionUnderSubst_Eq_OfEqu`
+  (substitutes different terms `v` and `v'` mediated by `MEqRed Γ [] v v'`).
+  Counts as INACTIVE: not yet wired into any headline closure.
+* `noVarX` Bool predicate + `noVarX_refl` theorem (commit `d427927`).
+* `MEqRed.derSize` + strict-decrease lemmas (Pss/Mpss/MEqRedSize.lean,
+  commit `a510bbc`).
+* `Term.size` infrastructure (Pss/Syntax/LocallyNameless.lean, commit
+  `fdd3f24`).
+* **`Lemma_2_DiamondMEqRed_core` refactored to `termination_by structural h₁`**
+  (commit `05fcb26`) — KEY ARCHITECTURAL BREAKTHROUGH. Body sub-derivations
+  of `MEqRed.fOp`-shaped `hu` are now reachable via direct recursive
+  `_core` calls. Confirmed in iter 6 (commit `09cbb97`) but blocked at
+  the descent step (avoidance witness on body-diamond's output).
+* `MEqRed.avoidsAllStray` + per-constructor preservation lemmas (5/8
+  arms, commit `d881ed6`) — iter-7 motive-strengthening foundations.
+
+**Iter-8+ next attack:** complete the cofinite-arm `avoidsAllStray`
+preservation (bet/fun_/fOp), then strengthen `_core`'s output motive to
+include `avoidsAllStray` witnesses. With output-side avoidance, the
+descent step in `Lemma_2_inline_app_bet_residual_axiom` becomes possible
+via the new `noVarX`/`avoidsPro`-equipped `Lemma_32_AsymmetricEqu`.
 
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
