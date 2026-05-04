@@ -413,6 +413,57 @@ theorem equBinds_sub_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {α : Te
       intro h
       simpa [equBinds] using h
 
+/-- Subtype lookup at a preserved head remains stable when replacing the
+`.sub` entry immediately below it. -/
+theorem subBinds_sub_under_head_replace_zero {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {t : Term} :
+    subBinds (head :: { bound := old, kind := .sub } :: Γ) 0 t →
+    subBinds (head :: { bound := new, kind := .sub } :: Γ) 0 t := by
+  cases head with
+  | mk bound kind =>
+    cases kind <;> simp [subBinds]
+
+/-- The replaced `.sub` entry immediately under a preserved head remains a
+subtype binding, with the new bound as its target. -/
+theorem subBinds_sub_under_head_replace_one {Γ : Ctx} {head : CtxEntry}
+    {_old new : Term} :
+    subBinds (head :: { bound := new, kind := .sub } :: Γ) 1
+      (Term.shift 0 (Term.shift 0 new)) := by
+  simp [subBinds]
+
+/-- Subtype lookup strictly past the replaced under-head `.sub` entry is
+stable. The changed entry itself is index `1`; this lemma covers `2+`. -/
+theorem subBinds_sub_under_head_replace_succ_succ {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {i : Nat} {t : Term} :
+    subBinds (head :: { bound := old, kind := .sub } :: Γ) ((i + 1) + 1) t →
+    subBinds (head :: { bound := new, kind := .sub } :: Γ) ((i + 1) + 1) t := by
+  intro h
+  simpa [subBinds] using h
+
+/-- Replacing a `.sub` entry immediately under a preserved head preserves
+equivalence lookups. -/
+theorem equBinds_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {i : Nat} {α : Term} :
+    equBinds (head :: { bound := old, kind := .sub } :: Γ) i α →
+    equBinds (head :: { bound := new, kind := .sub } :: Γ) i α := by
+  cases i with
+  | zero =>
+    cases head with
+    | mk bound kind =>
+      cases kind <;> simp [equBinds]
+  | succ i =>
+    intro h
+    simp [equBinds] at h ⊢
+    cases hlook : lookupEqu ({ bound := old, kind := .sub } :: Γ) i with
+    | none =>
+      simp [hlook] at h
+    | some a =>
+      simp [hlook] at h
+      subst h
+      have htail : equBinds ({ bound := new, kind := .sub } :: Γ) i a :=
+        Ctx.equBinds_sub_head_replace (by simpa [equBinds] using hlook)
+      exact ⟨a, by simpa [equBinds] using htail, rfl⟩
+
 /-- Changing the bound stored in an `.equ` head does not affect subtype
 lookups, because subtype lookup skips `.equ` heads. -/
 theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :
