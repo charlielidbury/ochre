@@ -710,6 +710,12 @@ closures, 2 inactive outstanding).
   the old-to-new head equivalence has been lifted to the same residual
   stack. This identifies the remaining stack-sensitive lift needed for
   the head `Me-Pro` residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the converse
+  `msub_equ_head_new_bvar0_to_old_bound`, which joins the new `bvar 0`
+  back to the old shifted head bound using the same common reduct. This
+  supplies the opposite diagrammatic edge needed when a residual `Me-Pro`
+  appears as the source side of a replacement proof. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stack-stable
   top-level equivalence lifts under a changed `.equ` head for reflexive,
   `Me-Top`, `Me-Var`, and `Me-TAp` shapes. These are the first true cases
@@ -766,6 +772,11 @@ closures, 2 inactive outstanding).
   stack lift one binder deeper, and
   `msub_equ_under_head_old_bound_to_new_bvar1_of_equ_head_lift`, which
   composes the weakening with the residual bridge. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the converse
+  `msub_equ_under_head_new_bvar1_to_old_bound`, the preserved-head
+  analogue for the under-head residual at index `1`. It joins `bvar 1`
+  back to the old doubly shifted bound using the new doubly shifted bound
+  as common reduct. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

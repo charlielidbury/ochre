@@ -1843,6 +1843,33 @@ theorem msub_equ_head_old_bound_to_new_bvar0 {Γ : Ctx} {s : Stack}
     (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
     (MEqRedStar.single hVarNew)
 
+/-- Converse diagrammatic bridge for a changed `.equ` head: the new head
+variable subtypes the old shifted head bound, using the new shifted bound as
+the common reduct. -/
+theorem msub_equ_head_new_bvar0_to_old_bound {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (Term.shift 0 old) (Term.shift 0 new)) :
+    MSub ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (.bvar 0) (Term.shift 0 old) := by
+  have hpvNewCtx : Prevalid ({ bound := new, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hNewScoped
+  have hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvNewCtx
+  have hNewRefl : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (Term.shift 0 new) (Term.shift 0 new) :=
+    MEqRed.refl hpvNew
+      (Term.shift_scoped 0 Γ.depth new (Nat.zero_le _) hNewScoped)
+  have hVarNew : MEqRed ({ bound := new, kind := .equ } :: Γ)
+      (Stack.shift 0 s) (.bvar 0) (Term.shift 0 new) :=
+    MEqRed.pro hpvNew (Ctx.equBinds_zero_self Γ new) hNewRefl
+  exact MSub.intro
+    (MSubRedStar.single (MSubRed.equ hpvNew hVarNew))
+    (MEqRedStar.single hOldNewStack)
+
 /-- Under a preserved head and changed `.equ` entry, the old shifted
 under-head bound diagrammatically subtypes the new variable at index `1`.
 This is the one-level-deeper analogue of
@@ -1874,6 +1901,36 @@ theorem msub_equ_under_head_old_bound_to_new_bvar1 {Γ : Ctx} {s : Stack}
   exact MSub.intro
     (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
     (MEqRedStar.single hVarNew)
+
+/-- Converse under-head bridge: the new variable at index `1`
+diagrammatically subtypes the old shifted under-head bound, again using the
+new shifted under-head bound as the common reduct. -/
+theorem msub_equ_under_head_new_bvar1_to_old_bound {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpvNew : PrevalidExt (head :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 old)) (Term.shift 0 (Term.shift 0 new))) :
+    MSub (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 1) (Term.shift 0 (Term.shift 0 old)) := by
+  have hNewShiftScoped :
+      Term.Scoped (Ctx.depth (head :: { bound := new, kind := .equ } :: Γ))
+        (Term.shift 0 (Term.shift 0 new)) := by
+    have hOnce : Term.Scoped (Γ.depth + 1) (Term.shift 0 new) :=
+      Term.shift_scoped 0 Γ.depth new (Nat.zero_le _) hNewScoped
+    have hTwice : Term.Scoped ((Γ.depth + 1) + 1)
+        (Term.shift 0 (Term.shift 0 new)) :=
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 new) (Nat.zero_le _) hOnce
+    simpa [Ctx.depth, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using hTwice
+  have hNewRefl : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 new)) (Term.shift 0 (Term.shift 0 new)) :=
+    MEqRed.refl hpvNew hNewShiftScoped
+  have hVarNew : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 1) (Term.shift 0 (Term.shift 0 new)) :=
+    MEqRed.pro hpvNew (by simp [Ctx.equBinds]) hNewRefl
+  exact MSub.intro
+    (MSubRedStar.single (MSubRed.equ hpvNew hVarNew))
+    (MEqRedStar.single hOldNewStack)
 
 /-- If an old-to-new equivalence has already been lifted under the changed
 `.equ` head, ordinary head weakening lifts it one level deeper under a
