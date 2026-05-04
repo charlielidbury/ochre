@@ -395,6 +395,9 @@ hard caveats.
      `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, and
      `commute_abs_to_top_eqStar` closes the branch where the subtype side
      reaches `Top`.
+     Abstraction-headed application inversions `MEqRed.app_abs_inv` and
+     `MSubRed.app_abs_inv` separate β, `Top`, `Top`-headed application,
+     and abstraction-headed application targets.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

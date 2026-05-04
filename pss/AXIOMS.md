@@ -351,6 +351,11 @@ closures, 2 inactive outstanding).
   shape inversions `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, plus the
   direct abstraction-to-`Top` join `commute_abs_to_top_eqStar`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
+  application shape inversions `MEqRed.app_abs_inv` and
+  `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
+  application targets, and abstraction-headed application targets. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -1054,6 +1054,50 @@ theorem MSubRedStar.app_top_inv {Γ : Ctx} {s : Stack} {arg v : Term}
       subst hEq
       exact hStep.some.app_top_inv
 
+/-- A one-step equivalence reduction from an abstraction-headed application
+is either a β target or another abstraction-headed application. -/
+theorem MEqRed.app_abs_inv {Γ : Ctx} {s : Stack}
+    {bound body arg v : Term}
+    (h : MEqRed Γ s (.app (.abs bound body) arg) v) :
+    (∃ arg' body', v = Term.instantiate 0 arg' body') ∨
+      ∃ bound' body' arg', v = .app (.abs bound' body') arg' := by
+  cases h with
+  | bet _ _ _ =>
+    exact Or.inl ⟨_, _, rfl⟩
+  | app hOp _ =>
+    obtain ⟨bound', body', hEq⟩ := hOp.abs_inv
+    subst hEq
+    exact Or.inr ⟨bound', body', _, rfl⟩
+
+/-- A one-step subtype reduction from an abstraction-headed application is
+either `Top`, a β target inherited through `Ms-Equ`, a `Top`-headed
+application, or another abstraction-headed application. -/
+theorem MSubRed.app_abs_inv {Γ : Ctx} {s : Stack}
+    {bound body arg v : Term}
+    (h : MSubRed Γ s (.app (.abs bound body) arg) v) :
+    v = .top ∨
+      (∃ arg' body', v = Term.instantiate 0 arg' body') ∨
+      (∃ arg', v = .app .top arg') ∨
+      ∃ bound' body' arg', v = .app (.abs bound' body') arg' := by
+  cases h with
+  | top _ _ =>
+    exact Or.inl rfl
+  | equ _ heq =>
+    cases heq.app_abs_inv with
+    | inl hBet =>
+      exact Or.inr (Or.inl hBet)
+    | inr hApp =>
+      exact Or.inr (Or.inr (Or.inr hApp))
+  | app hOp _ =>
+    cases hOp.abs_inv with
+    | inl hTop =>
+      subst hTop
+      exact Or.inr (Or.inr (Or.inl ⟨arg, rfl⟩))
+    | inr hAbs =>
+      obtain ⟨bound', body', hEq⟩ := hAbs
+      subst hEq
+      exact Or.inr (Or.inr (Or.inr ⟨bound', body', arg, rfl⟩))
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.
