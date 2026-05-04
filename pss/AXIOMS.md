@@ -1135,6 +1135,11 @@ closures, 2 inactive outstanding).
   `Wf-Fun` cases to explicit recursive well-formedness,
   equivalence-preservation, and subtype-residual payloads. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WfM.sub_under_head_replace_from_payloads`, the preserved-head
+  analogue of the constructor-level `WfM` replacement packager. This
+  supports recursive binder descent while the changed `.sub` entry
+  remains in the tail. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added structural subtype
   residual wrappers embedding transported raw `Ms-App` and `Ms-Fun`
   replacement chains into well-subtyping stars:
