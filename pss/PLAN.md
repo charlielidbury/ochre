@@ -272,7 +272,11 @@ hard caveats.
      matching `WEquMStar` endpoint helpers are available under the same
      names. De Bruijn `WSubMStar` can also absorb a single empty-stack
      subtype step at its left endpoint via
-     `extend_left_via_MSubRed_fwd`.
+     `extend_left_via_MSubRed_fwd`. Well-formed empty-stack reduction
+     steps can be embedded directly into the transitive well-formed
+     relations with `WSubMStar.of_MEqRed_fwd` / `.of_MEqRed_back`,
+     `WSubMStar.of_MSubRed_fwd`, and `WEquMStar.of_MEqRed_fwd` /
+     `.of_MEqRed_back`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms

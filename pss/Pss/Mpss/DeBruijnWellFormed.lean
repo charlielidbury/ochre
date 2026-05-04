@@ -979,6 +979,46 @@ noncomputable def WEquMStar.extend_right_via_MEqRed_back
       WEquMStar.trs hLeft hwfU (ihRight hr hwfC))
     h) hred hwfC
 
+/-- A forward empty-stack equivalence-reduction step embeds into de Bruijn
+transitive well-subtyping when both endpoints are well-formed. -/
+noncomputable def WSubMStar.of_MEqRed_fwd {Γ : Ctx} {a b : Term}
+    (hred : MEqRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ a b :=
+  WSubMStar.extend_left_via_MEqRed_fwd (WSubMStar.refl_of_wfM hwfB)
+    hred hwfA
+
+/-- A forward empty-stack equivalence-reduction step embeds backward into
+de Bruijn transitive well-subtyping when both endpoints are well-formed. -/
+noncomputable def WSubMStar.of_MEqRed_back {Γ : Ctx} {a b : Term}
+    (hred : MEqRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ b a :=
+  WSubMStar.extend_right_via_MEqRed_back (WSubMStar.refl_of_wfM hwfB)
+    hred hwfA
+
+/-- A forward empty-stack subtype-reduction step embeds into de Bruijn
+transitive well-subtyping when both endpoints are well-formed. -/
+noncomputable def WSubMStar.of_MSubRed_fwd {Γ : Ctx} {a b : Term}
+    (hred : MSubRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ a b :=
+  WSubMStar.extend_left_via_MSubRed_fwd (WSubMStar.refl_of_wfM hwfB)
+    hred hwfA
+
+/-- A forward empty-stack equivalence-reduction step embeds into de Bruijn
+transitive well-equivalence when both endpoints are well-formed. -/
+noncomputable def WEquMStar.of_MEqRed_fwd {Γ : Ctx} {a b : Term}
+    (hred : MEqRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WEquMStar Γ a b :=
+  WEquMStar.extend_left_via_MEqRed_fwd (WEquMStar.refl_of_wfM hwfB)
+    hred hwfA
+
+/-- A forward empty-stack equivalence-reduction step embeds backward into
+de Bruijn transitive well-equivalence when both endpoints are well-formed. -/
+noncomputable def WEquMStar.of_MEqRed_back {Γ : Ctx} {a b : Term}
+    (hred : MEqRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WEquMStar Γ b a :=
+  WEquMStar.extend_right_via_MEqRed_back (WEquMStar.refl_of_wfM hwfB)
+    hred hwfA
+
 /-- Prepend an equivalence-reduction chain on the left of de Bruijn
 well-subtyping. -/
 noncomputable def WSubM.left_lf1_chain {Γ : Ctx} {a a' c : Term}

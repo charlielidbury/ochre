@@ -219,6 +219,12 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added the single-step subtype
   left-endpoint extension helper for de Bruijn transitive well-subtyping:
   `WSubMStar.extend_left_via_MSubRed_fwd`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added direct embeddings from
+  well-formed empty-stack reductions into de Bruijn transitive
+  well-subtyping/equivalence: `WSubMStar.of_MEqRed_fwd`,
+  `WSubMStar.of_MEqRed_back`, `WSubMStar.of_MSubRed_fwd`,
+  `WEquMStar.of_MEqRed_fwd`, and `WEquMStar.of_MEqRed_back`. No
+  axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
