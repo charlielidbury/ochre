@@ -625,6 +625,28 @@ noncomputable def WSubMStar.lf2_self_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
     WSubMStar.sub hwfNew (WSubM.rgh (WSubM.rfl hwfNew) hEqLift) hOldWf
   exact WSubMStar.trs (WSubMStar.trs hStepSelf hwfNew hBack) hOldWf hTail
 
+/-- Changed-slot `Ws-Lf2` replacement residual for a `.sub` entry immediately
+under one preserved context head. This is the index-`1` specialization of
+`lf2_self_replaceAt_sub`, packaged in the shape produced by recursive binder
+cases. -/
+noncomputable def WSubMStar.lf2_sub_under_head_self_replace {Γ : Ctx}
+    {head : CtxEntry} {old new t : Term}
+    (hOldNew : MEqRed Γ [] old new)
+    (hwfVar : WfM (head :: { bound := new, kind := .sub } :: Γ) (.bvar 1))
+    (hwfNew : WfM (head :: { bound := new, kind := .sub } :: Γ)
+      (Term.shiftBy 0 2 new))
+    (hTail : WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+      (Term.shiftBy 0 2 old) t) :
+    WSubMStar (head :: { bound := new, kind := .sub } :: Γ) (.bvar 1) t := by
+  have hcut : 1 < Ctx.depth (head :: { bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.lf2_self_replaceAt_sub
+      (Γ := head :: { bound := old, kind := .sub } :: Γ)
+      (cutoff := 1) (old := old) (new := new) (t := t)
+      hcut (by simpa using hOldNew) hwfVar (by simpa using hwfNew)
+      (by simpa using hTail))
+
 /-- `Top` remains well-formed when replacing the innermost `.sub` context
 annotation. -/
 noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}

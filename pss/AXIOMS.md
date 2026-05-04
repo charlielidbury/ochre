@@ -970,6 +970,10 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnReductions.lean` — added under-head `.sub` subtype
   constructor consumers for `Ms-Equ`, `Ms-App`, `Ms-FOp`, and fixed- and
   changing-bound `Ms-Fun` endpoint shapes. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WSubMStar.lf2_sub_under_head_self_replace`, the index-1 under-head
+  specialization of the changed-slot `Ws-Lf2` replacement residual. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
