@@ -566,7 +566,142 @@ attack the more fundamental obstruction by either:
 
 The newly-added `Lemma_32_AsymmetricEqu` axiom retains its value —
 it's load-bearing for the body-descent step OF the discharge once the
-body-IH is available. Iter 3 should keep it. -/
+body-IH is available. Iter 3 should keep it.
+
+## ITERATION 6 (pss-20260504-iter6): post-WF-refactor descent obstruction
+
+Iteration 6 attempted to leverage iter-5's `termination_by structural h₁`
+WF refactor (commit `05fcb26`) to discharge this axiom by exposing
+`hbody_dst` (the body sub-derivation of `hu = MEqRed.fOp ...`) as a
+structural sub-tree of `h₁ = MEqRed.app hu hv`. With `MEqRed`
+Type-valued and structural recursion on `h₁`, the recursive call
+`Lemma_2_DiamondMEqRed_core (hbody_dst y hy) h₂'` IS structurally
+licensed if reachable from inside the residual.
+
+The architectural plan was:
+
+1. Refactor `_core`'s App arm to do `cases hu` first, exposing
+   `MEqRed.fOp` (the only constructor compatible with source
+   `.abs t' body'` at non-empty stack `(v::s)`).
+2. Pass a body-IH `(fun y hy h₂' => _core (hbody_dst y hy) h₂')` to a
+   new specialized helper `_inline_app_fOp_bet` (for the App×Bet
+   sub-cell when `hu = MEqRed.fOp`).
+3. Discharge the residual by:
+   - Operand diamond via `ihv hv₂` → `⟨v_join, hv'_to_join, hv₂_to_join⟩`.
+   - Pick fresh `y₀`, lift `hbody₂ y₀` to extended context via Lemma 22.
+   - Body diamond via the new body-IH at `y₀` →
+     `⟨body_join_open, hbd_to_join, hb₂_to_join⟩` at extended
+     `(⟨y₀, v, .equ⟩ :: Γ)`.
+   - Close `body_join_open` to a body via `Term.close_ 0 y₀`.
+   - Build LHS chain `(.app (.abs t'_dst body'_dst) v') ⟶
+     Term.opening v_join body_join` via `MEqRed.bet`.
+   - Build RHS chain `Term.opening v₂' body'' ⟶
+     Term.opening v_join body_join` via `Lemma_32_AsymmetricEqu`
+     applied to `hb₂_to_join` with substituends `(v₂', v_join)`.
+
+### The new (deeper) blocker: descent via Lemma 32 needs `noVarX = true`
+
+`MEqRed.bet`'s body cofinite is at the BARE context Γ (NOT at the
+extended context `(⟨y, v, .equ⟩ :: Γ)`). Confirmed by inspection of
+`Pss/Mpss/Reductions.lean:69-85`:
+```
+| bet ... (L : Finset String) :
+    Term.LC t →
+    (∀ x, x ∉ L → MEqRed Γ s (body^[x]) (body'^[x])) →   -- bare Γ
+    True →
+    MEqRed Γ [] v v' →
+    MEqRed Γ s (.app (.abs t body) v) (Term.opening v' body')
+```
+
+So step 5 of the plan (LHS chain via `MEqRed.bet`) requires a body
+sub-derivation at BARE Γ:
+```
+hbd_bare : ∀ y ∉ L_lhs, MEqRed Γ s (body'_dst^[y]) (body_join^[y])
+```
+
+But the body-IH gives us `hbd_to_join` at EXTENDED `(⟨y₀, v, .equ⟩ ::
+Γ)`. To produce `hbd_bare`, we must descend from extended to bare.
+
+**Option A — Lemma 32 with `(.fvar y, .fvar y)` substituends.** Yields
+`MEqRed Γ s (subst y₀ (.fvar y) (body'_dst^[y₀])) (subst y₀ (.fvar y)
+body_join_open) = MEqRed Γ s (body'_dst^[y]) (body_join^[y])` (when
+`y₀ ∉ fv body'_dst`, etc.). But the premise `noVarX hbd_to_join y₀ =
+true` is NOT generally satisfiable. Reason: `body'_dst^[y₀]` — the
+SOURCE of `hbd_to_join` — contains `.fvar y₀` (the opening introduces
+exactly one such occurrence per binder name `y₀` originally bound in
+`body'_dst`). Any natural derivation reducing `body'_dst^[y₀]` will
+either (i) hit a `Me-Var y₀` step at some `.fvar y₀` subterm via
+reflexivity-built fragments, or (ii) hit a `Me-Pro y₀` step via the
+`⟨y₀, v, .equ⟩`-binding (which `avoidsPro` rules out, but `Me-Var`
+shape — distinct from `Me-Pro` — is what `noVarX` checks). The body-IH
+is an existential ("some join derivation"); it offers no avoidance
+guarantees on its output.
+
+**Option B — strengthen the body-IH's output motive.** Re-engineer
+`Lemma_2_DiamondMEqRed_core` to return not just `Σ' t₃, MEqRed _ s t₁
+t₃ × MEqRed _ s t₂ t₃` but additionally guarantee
+`noVarX h_left y₀ = true` and `noVarX h_right y₀ = true` for some
+specified `y₀ ∉ fv source`. This propagates an avoidance constraint
+through every cell of the diamond grid — a substantial re-engineering.
+Moreover, the avoidance does NOT propagate through the `Me-Pro y₀`
+arm (a `Me-Pro` step on a `y₀ ≡ α`-binding crosses into `α`'s
+reduction, which is in `Γ` and hence fine — but the OUTER `y₀ ≠ y₀'`
+discriminator on `Me-Pro` is exactly where avoidance can break). The
+body-IH's freedom of choice makes this bound difficult to enforce.
+
+**Option C — a different descent tool.** A renaming functor that
+maps "MEqRed at `(⟨y₀,v,.equ⟩::Γ) s (body^[y₀]) body'_open` with
+`body'_open = body'^[y₀]` for some closed `body'`" to "MEqRed at
+`Γ s (body^[z]) (body'^[z])` for fresh `z`". This effectively bundles
+the rename + bare-context descent into one operation, replacing
+`Lemma_32_AsymmetricEqu`'s avoidance premises with structural
+preservation lemmas on the renaming. Substantial new infrastructure
+(~200-400 lines mirroring the existing rename functors).
+
+### What iter 7+ should attempt
+
+(A) Pursue **Option B** (strengthen `_core`'s motive with avoidance
+witnesses on the output). Risk: the avoidance witnesses don't
+naturally compose through every cell, and the per-cell helpers' types
+balloon. Medium complexity, may stall like iter-2.
+
+(B) Pursue **Option C** (build a "bare-descent" rename functor on
+MEqRed). This is essentially a Type-valued analogue of Lemma 32 that
+trades avoidance premises for structural compositionality. Higher
+upfront cost but composes more cleanly through the `_core` helper
+chain.
+
+(C) Re-examine whether the paper's proof of Lemma 2's App×Bet cell
+ACTUALLY descends through Me-Var-ridden reductions, or whether the
+paper's "moreover" clause secretly rules them out. The "moreover"
+clause was dropped from this revision (see top docstring, lines 21-46)
+because no downstream consumer needed it. But the App×Bet residual
+DOES seem to need an avoidance side-condition — possibly the dropped
+"moreover" clause is exactly what's needed to bound this descent. If
+so, re-introducing it (as a stronger output motive on `_core`)
+unblocks the descent.
+
+**Recommended next iter:** path (C) — re-read the paper's Lemma 2
+proof for the App×Bet case (Pasquale & García-Pérez 2024 §3.2,
+Appendix A.2) and check whether the "moreover" clause encodes the
+avoidance witness needed for the descent step. If yes, re-introduce
+the moreover clause as a Bool-valued output motive on `_core`'s `Σ'`
+return type, which gives the avoidance witness "for free" from the
+body-diamond's existential.
+
+The body-IH access unblocked in iter-5 IS the right architectural
+foothold; iter-6 confirms that the body-diamond IS reachable as a
+structural recursive call. The remaining obstruction is the
+descent-step avoidance, which is a SEPARATE problem from the body-IH
+access problem.
+
+### Iter-6 changes shipped
+
+Iter-6 ships ONLY this docstring update (no axiom additions, no axiom
+discharges, no signature changes). The headline closures
+(`Theorem_3/4/5`, `Lemma_1/2`) are byte-identical to iter-5. The
+purpose of this commit is to record the descent-step blocker so iter-7
+doesn't re-tread iter-6's path. -/
 private axiom Lemma_2_inline_app_bet_residual_axiom
     {Γ : Ctx} {s : Stack} {u' v v' : Term} {t' body' body'' : Term}
     {L₂ : Finset String} {v₂' : Term}
