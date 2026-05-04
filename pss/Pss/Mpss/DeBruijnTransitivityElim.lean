@@ -105,6 +105,29 @@ theorem top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   subst t₂
   exact ⟨.top, ⟨h₁⟩, ⟨h₂⟩⟩
 
+/-- The `Me-Var × Me-Var` source cell of de Bruijn Lemma 2. -/
+theorem var_var {Γ : Ctx} {s : Stack} {i : Nat}
+    (hpv : PrevalidExt Γ s) (hi : i < Γ.depth) :
+    ∃ t₃, MEqRedJ Γ s (.bvar i) t₃ ∧ MEqRedJ Γ s (.bvar i) t₃ := by
+  let h : MEqRed Γ s (.bvar i) (.bvar i) := MEqRed.var hpv hi
+  exact ⟨.bvar i, ⟨h⟩, ⟨h⟩⟩
+
+/-- The `Me-Pro × Me-Var` source cell of de Bruijn Lemma 2. -/
+theorem pro_var {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term}
+    (hpv : PrevalidExt Γ s) (hb : Γ.equBinds i α)
+    (hα : MEqRed Γ s α α') (_hi : i < Γ.depth) :
+    ∃ t₃, MEqRedJ Γ s α' t₃ ∧ MEqRedJ Γ s (.bvar i) t₃ := by
+  let hpro : MEqRed Γ s (.bvar i) α' := MEqRed.pro hpv hb hα
+  exact ⟨α', ⟨MEqRed.refl hpv hα.scoped_right⟩, ⟨hpro⟩⟩
+
+/-- The `Me-Var × Me-Pro` source cell of de Bruijn Lemma 2. -/
+theorem var_pro {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term}
+    (hpv : PrevalidExt Γ s) (hi : i < Γ.depth)
+    (hb : Γ.equBinds i α) (hα : MEqRed Γ s α α') :
+    ∃ t₃, MEqRedJ Γ s (.bvar i) t₃ ∧ MEqRedJ Γ s α' t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ := pro_var hpv hb hα hi
+  exact ⟨t₃, hRight, hLeft⟩
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence
@@ -200,6 +223,21 @@ theorem top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   subst t₁
   subst t₂
   exact ⟨.top, ⟨heq⟩, ⟨hsub⟩⟩
+
+/-- The `Ms-Pro × Me-Var` source cell of de Bruijn Lemma 1. -/
+theorem pro_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}
+    (hpv : PrevalidExt Γ s) (hb : Γ.subBinds i t) (_hi : i < Γ.depth) :
+    ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s (.bvar i) t₃ := by
+  let hsub : MSubRed Γ s (.bvar i) t := MSubRed.pro hpv hb
+  exact ⟨t, ⟨MEqRed.refl hpv hsub.scoped_right⟩, ⟨hsub⟩⟩
+
+/-- The `Ms-Equ × Me-Var` source cell of de Bruijn Lemma 1. -/
+theorem equ_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}
+    (hpv : PrevalidExt Γ s) (heqStep : MEqRed Γ s (.bvar i) t)
+    (_hi : i < Γ.depth) :
+    ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s (.bvar i) t₃ := by
+  let hsub : MSubRed Γ s (.bvar i) t := MSubRed.equ hpv heqStep
+  exact ⟨t, ⟨MEqRed.refl hpv heqStep.scoped_right⟩, ⟨hsub⟩⟩
 
 end StrongCommutes
 

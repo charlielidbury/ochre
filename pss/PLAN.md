@@ -366,6 +366,10 @@ hard caveats.
      The corresponding direct star-level `Top` cases are also available:
      `diamond_step_eqStar_top`, `diamond_eqStar_eqStar_top`,
      `commute_subStep_eqStar_top`, and `commute_subStar_eqStar_top`.
+     Simple constructor-specific variable cells are also closed:
+     `EqDiamonds.var_var`, `EqDiamonds.pro_var`,
+     `EqDiamonds.var_pro`, `StrongCommutes.pro_var`, and
+     `StrongCommutes.equ_var`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
