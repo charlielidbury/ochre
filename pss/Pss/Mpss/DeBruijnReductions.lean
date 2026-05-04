@@ -1509,6 +1509,43 @@ theorem MEqRedStar.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
       exact Relation.ReflTransGen.tail ih
         ⟨hStep.some.replaceAt_sub hcut hOldNew⟩
 
+/-- Star-valued `Ms-Equ` replacement across arbitrary-depth `.sub`
+replacement. -/
+theorem MSubRedStar.equ_replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {old new : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s u v)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new) :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
+  MSubRedStar.single
+    (MSubRed.equ_replaceAt_sub hpvNew (hEq.replaceAt_sub hcut hOldNew))
+
+/-- Star-valued `Ms-App` replacement from an already-replaced operator
+subtype chain. -/
+theorem MSubRedStar.app_replaceAt_sub_from_operator {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u u' v : Term}
+    (hOp : MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (v :: s) u u')
+    (hv : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) v) :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.app u v) (.app u' v) :=
+  MSubRedStar.app_fixed_arg (by simpa [Ctx.depth_replaceAt] using hv) hOp
+
+/-- Star-valued `Ms-FOp` replacement from an already-replaced body subtype
+chain. -/
+theorem MSubRedStar.fOp_replaceAt_sub_from_body {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new t α body body' : Term}
+    (ht : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t)
+    (hα : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) α)
+    (hBody : MSubRedStar ({ bound := α, kind := .equ } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+        (Stack.shift 0 s) body body') :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (α :: s)
+      (.abs t body) (.abs t body') :=
+  MSubRedStar.fOp_body_fixed (by simpa [Ctx.depth_replaceAt] using ht)
+    (by simpa [Ctx.depth_replaceAt] using hα) hBody
+
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
 noncomputable def MSubRed.pro_sub_head_replace_succ {Γ : Ctx} {s : Stack}

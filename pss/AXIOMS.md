@@ -939,6 +939,11 @@ closures, 2 inactive outstanding).
   `MSubRedStar.fOp_body_fixed`, and `MSubRedStar.fun_body_fixed` for the
   fixed-endpoint shapes needed by star-valued `.sub` replacement. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added star-valued `.sub`
+  replacement consumers for subtype constructors with straightforward
+  chain behavior: `MSubRedStar.equ_replaceAt_sub`,
+  `MSubRedStar.app_replaceAt_sub_from_operator`, and
+  `MSubRedStar.fOp_replaceAt_sub_from_body`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
