@@ -963,6 +963,52 @@ noncomputable def WEquMStar.sub_under_head_replace_of_wf {Γ : Ctx}
         intro x hx
         simpa [Ctx.replaceAt] using hWf (by simpa [Ctx.replaceAt] using hx)))
 
+/-- Binder-recursive specialization of conditional `WEquM` `.sub`
+replacement under an arbitrary preserved head. -/
+noncomputable def WEquM.replaceAt_sub_from_body_replaceAt_of_wf {Γ : Ctx}
+    {cutoff : Nat} {head : CtxEntry} {old new v t : Term}
+    (h : WEquM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+      (head :: Γ)) v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+        (head :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          (head :: Γ)) x) :
+    WEquM (head :: Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t := by
+  have hcutHead : cutoff + 1 < Ctx.depth (head :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm, Nat.add_assoc] using Nat.succ_lt_succ hcut
+  simpa [Ctx.replaceAt] using
+    (WEquM.replaceAt_sub_of_wf
+      (Γ := head :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) (v := v) (t := t)
+      h hcutHead (by simpa [Nat.add_assoc] using hOldNew) hWf)
+
+/-- Binder-recursive specialization of conditional `WEquMStar` `.sub`
+replacement under an arbitrary preserved head. -/
+noncomputable def WEquMStar.replaceAt_sub_from_body_replaceAt_of_wf {Γ : Ctx}
+    {cutoff : Nat} {head : CtxEntry} {old new v t : Term}
+    (h : WEquMStar (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+      (head :: Γ)) v t)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+        (head :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          (head :: Γ)) x) :
+    WEquMStar (head :: Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t := by
+  have hcutHead : cutoff + 1 < Ctx.depth (head :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm, Nat.add_assoc] using Nat.succ_lt_succ hcut
+  simpa [Ctx.replaceAt] using
+    (WEquMStar.replaceAt_sub_of_wf
+      (Γ := head :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) (v := v) (t := t)
+      h hcutHead (by simpa [Nat.add_assoc] using hOldNew) hWf)
+
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
 resulting well-subtyping path steps to shifted `new`, crosses back to shifted

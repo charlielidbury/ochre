@@ -1012,6 +1012,11 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head specializations
   `WEquM.sub_under_head_replace_of_wf` and
   `WEquMStar.sub_under_head_replace_of_wf`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added binder-recursive
+  `replaceAt (cutoff + 1)` specializations
+  `WEquM.replaceAt_sub_from_body_replaceAt_of_wf` and
+  `WEquMStar.replaceAt_sub_from_body_replaceAt_of_wf`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
