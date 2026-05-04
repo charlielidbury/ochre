@@ -559,6 +559,10 @@ closures, 2 inactive outstanding).
   endpoint `Theorem_5_DeBruijn_ClosedPreservation_of`, specializing
   conditional de Bruijn preservation to the `Step` alias. No axiom-count
   change.
+* `Pss/DeBruijnSanity.lean` — added a separate `#print axioms` audit for
+  the de Bruijn Lemma 1/2 chain lifters and Theorems 3/4/5 endpoints,
+  keeping it separate from the locally-nameless headline `Pss.Sanity`
+  audit until the atomic switch. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
