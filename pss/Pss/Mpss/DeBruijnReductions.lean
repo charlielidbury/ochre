@@ -1131,6 +1131,34 @@ noncomputable def MEqRed.fOp_sub_under_head_replace {Γ : Ctx} {s : Stack}
 
 /-! ### Subtype constructors stable across sub-head replacement -/
 
+/-- Generic `Me-Top` transport across replacement of a `.sub` entry at any
+context depth. -/
+noncomputable def MEqRed.top_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {new : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s) :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s .top .top :=
+  MEqRed.top hpvNew
+
+/-- Generic `Me-Var` transport across replacement of a `.sub` entry at any
+context depth. -/
+noncomputable def MEqRed.var_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff i : Nat} {old new : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hi : i < Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.bvar i) (.bvar i) :=
+  MEqRed.var hpvNew (by simpa [Ctx.depth_replaceAt] using hi)
+
+/-- Generic `Me-TAp` transport across replacement of a `.sub` entry at any
+context depth. -/
+noncomputable def MEqRed.tAp_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hu : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) u) :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.app .top u) .top :=
+  MEqRed.tAp hpvNew (by simpa [Ctx.depth_replaceAt] using hu)
+
 /-- Generic `Me-Pro` transport across replacement of a `.sub` entry at any
 context depth. Equivalence lookups are unaffected by the changed `.sub`
 entry. -/
@@ -1142,6 +1170,15 @@ noncomputable def MEqRed.pro_replaceAt_sub {Γ : Ctx} {s : Stack}
     MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
       (.bvar i) α' :=
   MEqRed.pro hpvNew (Ctx.equBinds_replaceAt_sub hb) hα
+
+/-- Generic `Ms-Top` transport across replacement of a `.sub` entry at any
+context depth. -/
+noncomputable def MSubRed.top_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hu : Term.Scoped (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) u) :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u .top :=
+  MSubRed.top hpvNew (by simpa [Ctx.depth_replaceAt] using hu)
 
 /-- The changed innermost `.sub` entry reduces to the new shifted annotation
 after replacement. This is the residual form of head-index `Ms-Pro`. -/

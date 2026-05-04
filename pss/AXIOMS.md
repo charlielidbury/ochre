@@ -877,6 +877,14 @@ closures, 2 inactive outstanding).
   transport across `.sub` replacement:
   `Ctx.subBinds_replaceAt_sub_of_ne` and
   `MSubRed.pro_replaceAt_sub_of_ne`. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `PrevalidExt.replaceAt`, the
+  extended-context counterpart to generic depth-preserving context
+  replacement. Stack operands remain scoped because replacement preserves
+  context depth. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added arbitrary-depth `.sub`
+  replacement leaf constructors `MEqRed.top_replaceAt_sub`,
+  `MEqRed.var_replaceAt_sub`, `MEqRed.tAp_replaceAt_sub`, and
+  `MSubRed.top_replaceAt_sub`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

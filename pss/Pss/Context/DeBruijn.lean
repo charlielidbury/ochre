@@ -1562,6 +1562,23 @@ def push {Γ : Ctx} {s : Stack} {α : Term} :
     PrevalidExt Γ s → Term.Scoped Γ.depth α → PrevalidExt Γ (α :: s) :=
   PrevalidExt.cons
 
+/-- Replace one logical-context entry while preserving extended-context
+prevalidity. Stack operands remain scoped because `Ctx.replaceAt` preserves
+context depth. -/
+noncomputable def replaceAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hcut : cutoff < Γ.depth)
+    (hEntry : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ) newEntry) :
+    PrevalidExt (Ctx.replaceAt cutoff newEntry Γ) s := by
+  induction hpv with
+  | nil hΓ =>
+      exact PrevalidExt.nil (Prevalid.replaceAt hΓ hcut hEntry)
+  | cons hst hα ih =>
+      exact PrevalidExt.cons ih (by
+        rw [Ctx.depth_replaceAt]
+        exact hα)
+
 /-- Every operand in a prevalid stack is scoped in the logical context. -/
 noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
     PrevalidExt Γ s → Stack.Scoped Γ.depth s := by
