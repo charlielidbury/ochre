@@ -204,7 +204,9 @@ hard caveats.
      Syntax now has `Term.shiftBy_instantiate_lt`,
      `Term.shift_instantiate_lt`, and `Term.shift_instantiate_zero`,
      covering the β-target rewrite needed when weakening reductions under
-     inserted context entries.
+     inserted context entries. One-step aliases `Term.shift_shift_zero`
+     and `Stack.shift_shift_zero` name the corresponding binder-stack
+     commutation shape.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

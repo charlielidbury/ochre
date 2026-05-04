@@ -748,6 +748,12 @@ theorem shiftBy_shift_zero (cutoff amount : Nat) (s : Stack) :
       shift 0 (shiftBy cutoff amount s) := by
   simpa [shift] using shiftBy_lift_comm 0 cutoff amount s (Nat.zero_le cutoff)
 
+/-- One-step version of `Stack.shiftBy_shift_zero`. -/
+theorem shift_shift_zero (cutoff : Nat) (s : Stack) :
+    shift (cutoff + 1) (shift 0 s) =
+      shift 0 (shift cutoff s) := by
+  simpa [shift] using shiftBy_shift_zero cutoff 1 s
+
 /-- The stack shape used when weakening a body derivation under an existing
 binder matches the shape obtained by first weakening the outer stack. -/
 theorem shift_one_shift_zero (s : Stack) :

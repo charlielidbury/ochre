@@ -146,6 +146,12 @@ theorem shiftBy_shift_zero (cutoff amount : Nat) (t : Term) :
       shift 0 (shiftBy cutoff amount t) :=
   shiftBy_shiftBy_zero_one cutoff amount t
 
+/-- One-step version of `shiftBy_shift_zero`. -/
+theorem shift_shift_zero (cutoff : Nat) (t : Term) :
+    shift (cutoff + 1) (shift 0 t) =
+      shift 0 (shift cutoff t) :=
+  shiftBy_shift_zero cutoff 1 t
+
 /-! ## Instantiation -/
 
 /-- `instantiate k v t` substitutes `v` for `bvar k` in `t`. Indices above
