@@ -142,6 +142,9 @@ hard caveats.
      closed alias `Step`, β via `Term.instantiate 0`, direct
      abstraction-body stepping at `depth + 1`, source/target scoping
      accessors, application inversion, and star closures.
+     `Pss/Mpss/DeBruijnOperationalSem.lean` proves the de Bruijn
+     Proposition 17 bridge `MEqRed.of_StepAt` / `.of_Step`, including
+     the β case via `MEqRed.bet` under the indexed subtype head.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
    delete most of `Renaming.lean`, port `Prevalid` / `Weakening` /
    `ContextRed` to indices.

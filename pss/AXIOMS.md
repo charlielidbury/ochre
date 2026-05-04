@@ -139,6 +139,15 @@ closures, 2 inactive outstanding).
   abstraction-body stepping at `depth + 1`, source/target scoping
   accessors, application inversion, and star closures. Imported from
   `Pss.lean`; no axiom-count change.
+* `Pss/Mpss/DeBruijnOperationalSem.lean` — proved the de Bruijn
+  Proposition 17 bridge from operational steps into MPSS equivalence
+  reduction: `MEqRed.of_StepAt_nonempty`, `MEqRed.of_StepAt`, and the
+  closed empty-context specialization `MEqRed.of_Step`. The β case is
+  constructed directly with `MEqRed.bet` and reflexivity under the
+  indexed subtype head, so no de Bruijn analogue of
+  `Proposition_17_beta_axiom` is needed. Imported from `Pss.lean`; no
+  headline axiom-count change yet because the old LN theorem closures
+  still use `Pss.Mpss.OperationalSem`.
 * `Pss/Syntax/DeBruijn.lean` / `Pss/Context/DeBruijn.lean` — added
   one-step aliases `Term.shift_shift_zero` and `Stack.shift_shift_zero`
   for the binder-stack commutation shape used by reduction weakening. No
