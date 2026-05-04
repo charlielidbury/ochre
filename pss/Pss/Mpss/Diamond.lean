@@ -701,7 +701,149 @@ Iter-6 ships ONLY this docstring update (no axiom additions, no axiom
 discharges, no signature changes). The headline closures
 (`Theorem_3/4/5`, `Lemma_1/2`) are byte-identical to iter-5. The
 purpose of this commit is to record the descent-step blocker so iter-7
-doesn't re-tread iter-6's path. -/
+doesn't re-tread iter-6's path.
+
+## ITERATION 11 (pss-20260504-iter11): post-`strip_equ_head` re-attack
+
+Iteration 11 attempted to discharge this axiom with the iter-7 (avoidsAllStray
++ per-constructor preservation lemmas), iter-9 (`avoidsFv` Bool predicate),
+and iter-10 (`MEqRed.strip_equ_head` head-removal functor) toolkits in hand.
+The new infrastructure was specifically built to enable the body-IH→bare-Γ
+descent step that iter-6 identified as the blocking hop.
+
+### Architectural mismatch confirmed
+
+`strip_equ_head` (Renaming.lean §10.3) takes
+`MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u'` and returns `MEqRed (Γ₂ ++ Γ₁)
+st u u'`, premised on:
+* `Ctx.AvoidsBoundFv Γ₂ y`
+* `y ∉ Γ₁.dom`
+* `∀ β ∈ st, y ∉ Term.fv β`
+* `avoidsPro h y = true`
+* `cofinDomFresh h = true`
+* **`avoidsFv h y = true`** — the load-bearing prerequisite
+
+`avoidsFv h y` (AvoidsPro.lean §2.8) at every constructor includes
+`decide (y ∉ Term.fv source) && decide (y ∉ Term.fv target)`. For the
+body-IH descent step, the source is `body'_dst^[y₀]` (the dst body of the
+LHS abstraction, opened with the cofinite-quantified body name `y₀`).
+**`body'_dst^[y₀]` literally contains `.fvar y₀`** (opening introduces it
+at every `bvar 0` position the original body had). Therefore
+`decide (y₀ ∉ Term.fv (body'_dst^[y₀])) = false`, and `avoidsFv` cannot
+hold for the body-IH output by construction.
+
+This is not a fixable detail — the binder name appears in the term it binds,
+ALWAYS. Every functor that strips a binder from MEqRed has to grapple with
+this.
+
+### Workarounds attempted in iter 11
+
+**Path 5 (rename-then-strip).** Rename `y₀ → z` first via
+`_MEqRed_rename_equ_no_fv` to align the source as `body'_dst^[z]`, then
+strip `z`. Same problem one level removed: `body'_dst^[z]` contains z, so
+`avoidsFv` at `z` still fails. Rename has no escape route from this loop.
+
+**Path 3 (weaken `avoidsFv` at outermost).** Define a variant
+`avoidsFvInner` skipping the outermost `decide (y ∉ fv source/target)` checks.
+Audit of `strip_equ_head`'s body shows the OUTER src/tgt fv-decision is used
+at three of the eight constructor cases:
+* `app`: needs `y ∉ fv operand` (extracted from `y ∉ fv (.app op operand)`)
+  to discharge `hu_stack_avoid` for the operator IH at extended stack.
+* `tAp`: needs `y ∉ fv u_` for the `fv u_ ⊆ Γ.dom` rebuild.
+* `fun_`: needs `y ∉ fv tt` for `Ctx.AvoidsBoundFv` at the new `Γ₂'`.
+* `fOp`: derives `y ∉ fv αi` from the OUTER stack avoidance, not src/tgt.
+
+If we weaken at the OUTERMOST level only, the THREE cases above still need
+their case-specific freshness facts. For `app` and `tAp`, the OUTERMOST
+source IS `body'_dst^[y₀]`-shaped (when the body-IH outputs an `.app` or
+`.tAp` step at the top). The case-specific `y ∉ fv operand` requirement
+(extracted from `y ∉ fv (.app op operand) ⊆ y ∉ fv source`) still cannot
+be discharged from the OUTERMOST source. Weakening just at the outer level
+does NOT help — the *extracted* obligation is what fails.
+
+**Path 6 (fused "rename + strip" template-aware functor).** Define
+```
+descend_body_equ :
+    MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) (target^[y])
+  → (avoidsPro h y = true)
+  → (y ∉ Term.fv body) → (y ∉ Term.fv target)
+  → (other freshness premises)
+  → ∀ z ∉ L_out, MEqRed Γ s (body^[z]) (target^[z])
+```
+The hypothesis is on TEMPLATES `body, target` (not the opened forms),
+and the conclusion produces the cofinite descent in one step. Proof would
+mirror `_MEqRed_rename_equ_no_fv` (substitution-based, recursive on `h`)
+but ALSO eliminate the `.equ`-head entirely on Me-Pro arms via the
+`avoidsPro` premise (which structurally rules out Me-Pro on the head being
+removed).
+
+This is a NOVEL functor distinct from anything currently shipped. It
+combines:
+1. The "rename head from y to z" semantics of `_MEqRed_rename_equ_no_fv`.
+2. The "remove head entirely" semantics of `strip_equ_head`.
+3. The "template-aware" recursion: at each MEqRed constructor case, the
+   case analysis must reconcile the constructor's source pattern with the
+   template's `body^[y]` shape. For instance, if the outermost rule is
+   `MEqRed.app hu hv` and source = `body^[y]`, then `body` itself must
+   start with a `.app` pattern (or be a `.bvar 0` filled by opening).
+   The "filled by opening" branch is fundamentally what makes the head
+   removal possible — but it requires CASE-ANALYSIS ON THE TEMPLATE
+   STRUCTURE, not just on the derivation.
+
+Estimated effort: **600-1000 lines** (the case grid blowup from joint
+template+derivation case analysis is substantial; each MEqRed constructor
+generates multiple template-shape sub-cases). Ships at infrastructure
+phase, not as part of this discharge directly.
+
+### What iter 12 should attempt
+
+**Recommended:** Build the `descend_body_equ` functor (Path 6) as a
+dedicated infrastructure phase. The shape:
+
+1. **Phase A** (~150 lines): single-step lemma for the `body = .bvar 0`
+   case (template is just the hole). Source `(.bvar 0)^[y] = .fvar y`
+   forces the rule to be `MEqRed.var` or `MEqRed.pro`. The `Me-Pro y` arm
+   is excluded by `avoidsPro y = true`. The `Me-Var y` arm produces
+   target `.fvar y`, which when relabeled produces `.fvar z = (.bvar 0)^[z]`
+   trivially.
+
+2. **Phase B** (~300 lines): per-constructor template-recursion lemmas.
+   For each MEqRed constructor C with sub-derivations, define a helper
+   `descend_body_C : ` (template hypotheses) ` → MEqRed extended... → MEqRed bare...`
+   This is where the case grid blow-up happens.
+
+3. **Phase C** (~150 lines): assemble into `descend_body_equ`. Wire as a
+   `match` on `h` whose arms call the per-constructor helpers from
+   Phase B and the template-leaf helper from Phase A.
+
+4. **Phase D** (~50 lines in Diamond.lean): use `descend_body_equ` to
+   discharge this axiom. The discharge sketch from iter-6 then closes
+   in mechanical fashion.
+
+**Alternative (longer-term, more general):** Re-engineer `avoidsFv` to
+have a TEMPLATE-AWARE variant. `avoidsFvTemplate h y = true` would assert
+"y is a binder name being removed, the source is `body^[y]` for some
+template body with `y ∉ fv body`, and recursive sub-derivations satisfy
+the same template invariant relative to their own bound names". This
+would integrate with `strip_equ_head`'s existing structure but requires
+re-proving all 8 constructor cases of `strip_equ_head` under the new
+predicate. Estimated 800+ lines.
+
+**Not recommended:** Attempting a direct discharge with the current
+toolkit — it's been demonstrated by iter 6 (Lemma 32 path) and now
+iter 11 (strip_equ_head path) that no existing tool bridges the
+extended → bare descent for body-shaped sources.
+
+### Iter-11 changes shipped
+
+Iter-11 ships ONLY this docstring extension (no axiom additions, no
+axiom discharges, no signature changes). The headline closures
+(`Theorem_3/4/5`, `Lemma_1/2`) are byte-identical to iter-10 (commit
+`2a45008`). The purpose of this commit is to record that the
+strip_equ_head infrastructure (iter-10), while load-bearing for other
+discharges, does NOT close this particular residual — and to crystallize
+the Path-6 template-aware descent functor as the iter-12 architectural
+target. -/
 private axiom Lemma_2_inline_app_bet_residual_axiom
     {Γ : Ctx} {s : Stack} {u' v v' : Term} {t' body' body'' : Term}
     {L₂ : Finset String} {v₂' : Term}
