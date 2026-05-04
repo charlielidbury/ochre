@@ -255,6 +255,14 @@ closures, 2 inactive outstanding).
   `WSubM.of_MSubRed_fwd`. The matching transitive embedding
   `WSubMStar.of_MSubRed_fwd` now reuses that named step. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added adapters from de Bruijn
+  operational steps into well-subtyping and well-equivalence:
+  `WSubM.of_StepAt_fwd`, `WSubM.of_StepAt_back`,
+  `WEquM.of_StepAt_fwd`, `WEquM.of_StepAt_back`, plus transitive
+  variants `WSubMStar.of_StepAt_fwd`, `WSubMStar.of_StepAt_back`,
+  `WEquMStar.of_StepAt_fwd`, and `WEquMStar.of_StepAt_back`. These reuse
+  `MEqRed.of_StepAt` and require endpoint well-formedness at the star
+  layer. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added context-prevalidity
   extractors for all five de Bruijn well-formed judgments:
   `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,

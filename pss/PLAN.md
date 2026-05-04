@@ -332,7 +332,9 @@ hard caveats.
      `WSubM.of_MEqRed_fwd` / `.of_MEqRed_back` and
      `WEquM.of_MEqRed_fwd` / `.of_MEqRed_back`; single empty-stack
      subtype steps embed into one-step well-subtyping through
-     `WSubM.of_MSubRed_fwd`.
+     `WSubM.of_MSubRed_fwd`. De Bruijn operational steps can be routed
+     into one-step and transitive well-subtyping/equivalence through the
+     `*.of_StepAt_fwd` / `*.of_StepAt_back` helpers.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms

@@ -1,4 +1,4 @@
-import Pss.Mpss.DeBruijnReductions
+import Pss.Mpss.DeBruijnOperationalSem
 
 /-! # `Pss.Mpss.DeBruijnWellFormed` — de Bruijn MPSS well-formed judgments
 
@@ -1045,6 +1045,38 @@ noncomputable def WSubM.of_MSubRed_fwd {Γ : Ctx} {a b : Term}
     WSubM Γ a b :=
   WSubM.lf2 hwfA hred hwfB (WSubM.rfl hwfB)
 
+/-- A de Bruijn operational step embeds into one de Bruijn well-subtyping step
+when the target is well-formed. -/
+noncomputable def WSubM.of_StepAt_fwd {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfB : WfM Γ b) :
+  WSubM Γ a b :=
+  WSubM.of_MEqRed_fwd
+    (MEqRed.of_StepAt hstep (by rfl) (PrevalidExt.nil hwfB.prevalid)) hwfB
+
+/-- A de Bruijn operational step embeds backward into one de Bruijn
+well-subtyping step when the forward target is well-formed. -/
+noncomputable def WSubM.of_StepAt_back {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfB : WfM Γ b) :
+  WSubM Γ b a :=
+  WSubM.of_MEqRed_back
+    (MEqRed.of_StepAt hstep (by rfl) (PrevalidExt.nil hwfB.prevalid)) hwfB
+
+/-- A de Bruijn operational step embeds into one de Bruijn well-equivalence
+step when the target is well-formed. -/
+noncomputable def WEquM.of_StepAt_fwd {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfB : WfM Γ b) :
+  WEquM Γ a b :=
+  WEquM.of_MEqRed_fwd
+    (MEqRed.of_StepAt hstep (by rfl) (PrevalidExt.nil hwfB.prevalid)) hwfB
+
+/-- A de Bruijn operational step embeds backward into one de Bruijn
+well-equivalence step when the forward target is well-formed. -/
+noncomputable def WEquM.of_StepAt_back {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfB : WfM Γ b) :
+  WEquM Γ b a :=
+  WEquM.of_MEqRed_back
+    (MEqRed.of_StepAt hstep (by rfl) (PrevalidExt.nil hwfB.prevalid)) hwfB
+
 /-- A forward empty-stack equivalence-reduction step embeds into de Bruijn
 transitive well-subtyping when both endpoints are well-formed. -/
 noncomputable def WSubMStar.of_MEqRed_fwd {Γ : Ctx} {a b : Term}
@@ -1079,6 +1111,34 @@ noncomputable def WEquMStar.of_MEqRed_back {Γ : Ctx} {a b : Term}
     (hred : MEqRed Γ [] a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
     WEquMStar Γ b a :=
   WEquMStar.sub hwfB (WEquM.of_MEqRed_back hred hwfB) hwfA
+
+/-- A de Bruijn operational step embeds into transitive well-subtyping when
+both endpoints are well-formed. -/
+noncomputable def WSubMStar.of_StepAt_fwd {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ a b :=
+  WSubMStar.of_WSubM hwfA hwfB (WSubM.of_StepAt_fwd hstep hwfB)
+
+/-- A de Bruijn operational step embeds backward into transitive well-subtyping
+when both endpoints are well-formed. -/
+noncomputable def WSubMStar.of_StepAt_back {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WSubMStar Γ b a :=
+  WSubMStar.of_WSubM hwfB hwfA (WSubM.of_StepAt_back hstep hwfB)
+
+/-- A de Bruijn operational step embeds into transitive well-equivalence when
+both endpoints are well-formed. -/
+noncomputable def WEquMStar.of_StepAt_fwd {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WEquMStar Γ a b :=
+  WEquMStar.sub hwfA (WEquM.of_StepAt_fwd hstep hwfB) hwfB
+
+/-- A de Bruijn operational step embeds backward into transitive
+well-equivalence when both endpoints are well-formed. -/
+noncomputable def WEquMStar.of_StepAt_back {Γ : Ctx} {a b : Term}
+    (hstep : StepAt Γ.depth a b) (hwfA : WfM Γ a) (hwfB : WfM Γ b) :
+    WEquMStar Γ b a :=
+  WEquMStar.sub hwfB (WEquM.of_StepAt_back hstep hwfB) hwfA
 
 /-- Propagate de Bruijn well-formedness along an empty-stack
 equivalence-reduction chain under an explicit stepwise preservation premise. -/
