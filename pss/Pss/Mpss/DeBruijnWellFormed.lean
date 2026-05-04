@@ -862,5 +862,25 @@ def WEquMStar.trans {Γ : Ctx} {a b c : Term}
     WEquMStar Γ a c :=
   WEquMStar.trs h₁ hwfB h₂
 
+/-- Symmetry of de Bruijn transitive well-equivalence. -/
+noncomputable def WEquMStar.symm {Γ : Ctx} {u v : Term} (h : WEquMStar Γ u v) :
+    WEquMStar Γ v u := by
+  induction h with
+  | sub hwfU heq hwfV =>
+    exact WEquMStar.sub hwfV heq.symm hwfU
+  | trs _ hwfMid _ ihLeft ihRight =>
+    exact WEquMStar.trs ihRight hwfMid ihLeft
+
+/-- De Bruijn transitive well-equivalence embeds into de Bruijn transitive
+well-subtyping. -/
+noncomputable def WEquMStar.toWSubMStar {Γ : Ctx} {u v : Term}
+    (h : WEquMStar Γ u v) :
+    WSubMStar Γ u v := by
+  induction h with
+  | sub hwfU heq hwfV =>
+    exact WSubMStar.sub hwfU heq.toWSubM hwfV
+  | trs _ hwfMid _ ihLeft ihRight =>
+    exact WSubMStar.trs ihLeft hwfMid ihRight
+
 end DeBruijn
 end Pss

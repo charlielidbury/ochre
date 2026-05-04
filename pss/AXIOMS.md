@@ -201,6 +201,9 @@ closures, 2 inactive outstanding).
   wrappers `WfM.insertAt'`, `WSubM.insertAt'`, `WSubMStar.insertAt'`,
   `WEquM.insertAt'`, and `WEquMStar.insertAt'`. These are convenience
   forms of the existing `insertAt` lemmas. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added transitive
+  well-equivalence utilities: `WEquMStar.symm` and
+  `WEquMStar.toWSubMStar`. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
