@@ -2088,6 +2088,44 @@ theorem msubRed_equ_under_head_replace_from_handlers {Γ : Ctx} {s : Stack}
   | fOp ht hArg hBody =>
     exact hFOp ht hArg rfl hBody
 
+/-- Canonical `Ms-App` handler for innermost `.equ` replacement: recursively
+replace the operator at the extended argument stack, then lift the resulting
+diagrammatic chain through application with the fixed argument. -/
+theorem msub_equ_head_app_handler_of_operator_replacement {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) (arg :: s) op op')
+    {op op' arg : Term}
+    (hOp : MSubRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op')
+    (hArgScoped : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg) :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s
+      (.app op arg) (.app op' arg) :=
+  msubStar_app_fixed_arg (PrevalidExt.equ_head_replace hpv hnew) hArgScoped
+    (hOpReplace hOp hArgScoped)
+
+/-- Canonical `Ms-App` handler for under-head `.equ` replacement. -/
+theorem msub_equ_under_head_app_handler_of_operator_replacement {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        MSubStar (head :: { bound := new, kind := .equ } :: Γ) (arg :: s) op op')
+    {op op' arg : Term}
+    (hOp : MSubRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op')
+    (hArgScoped : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg) :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.app op arg) (.app op' arg) :=
+  msubStar_app_fixed_arg (PrevalidExt.equ_under_head_replace hpv hnew) hArgScoped
+    (hOpReplace hOp hArgScoped)
+
 /-- Canonical `Ms-FOp` handler for innermost `.equ` replacement: recursively
 replace the body under the preserved operand head, then lift the resulting
 diagrammatic chain through `FOp` with the fixed abstraction bound. -/

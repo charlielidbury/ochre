@@ -852,6 +852,12 @@ closures, 2 inactive outstanding).
   `meq_equ_under_head_pro_zero_handler_of_replacement` and
   `meq_equ_under_head_pro_tail_handler_of_replacement`, covering index
   `0` and indices `2+` respectively. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added canonical `Ms-App`
+  handler builders `msub_equ_head_app_handler_of_operator_replacement` and
+  `msub_equ_under_head_app_handler_of_operator_replacement`, lifting
+  recursive operator replacement chains through fixed-argument application
+  for innermost and preserved-head `.equ` replacement. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added canonical `Ms-FOp`
   handler builders `msub_equ_head_fop_handler_of_body_replacement` and
   `msub_equ_under_head_fop_handler_of_body_replacement`, lifting recursive
