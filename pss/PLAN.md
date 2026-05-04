@@ -391,7 +391,9 @@ hard caveats.
      The star-level `Ms-Equ` branch is named as
      `commute_equStep_eqStar_of`; it lifts the local equivalence diamond
      and embeds the resulting right equivalence chain through
-     `MSubRedStar.of_MEqRedStar`.
+     `MSubRedStar.of_MEqRedStar`. Its chain analogue
+     `commute_equStar_eqStar_of` handles subtype chains made only of
+     `Ms-Equ` steps the same way.
      `Top`-headed application/`TAp` cells are consolidated through
      `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
      `StrongCommutes.appTop_any_tAp_of`.

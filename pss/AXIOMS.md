@@ -342,6 +342,11 @@ closures, 2 inactive outstanding).
   branch obtained by lifting the local equivalence diamond and embedding
   the right join edge through `MSubRedStar.of_MEqRedStar`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_equStar_eqStar_of`, the chain-level analogue for subtype
+  chains made only of `Ms-Equ` steps. It lifts the chain diamond and
+  embeds the right join edge through `MSubRedStar.of_MEqRedStar`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — consolidated `Top`-headed
   application/`TAp` cells with `EqDiamonds.tAp_any`,
   `EqDiamonds.any_tAp`, and `StrongCommutes.appTop_any_tAp_of`; the

@@ -473,6 +473,17 @@ noncomputable def commute_equStep_eqStar_of {Γ : Ctx} {s : Stack}
     diamond_step_eqStar_of hdiamond heqSub heqs
   exact ⟨t₃, hLeft, MSubRedStar.of_MEqRedStar hpv hRight⟩
 
+/-- Star-level commutation for a subtype chain made only of `Ms-Equ` steps.
+This is the chain analogue of `commute_equStep_eqStar_of`. -/
+noncomputable def commute_equStar_eqStar_of {Γ : Ctx} {s : Stack}
+    (hdiamond : EqDiamonds Γ s) {t₀ t₁ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (heqSubs : MEqRedStar Γ s t₀ t₁)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ :=
+    diamond_eqStar_eqStar_of hdiamond heqSubs heqs
+  exact ⟨t₃, hLeft, MSubRedStar.of_MEqRedStar hpv hRight⟩
+
 /-- Direct star-level join for a subtype chain from a `Top`-headed
 application against its `TAp` target. -/
 theorem commute_appTop_subStar_tAp {Γ : Ctx} {s : Stack} {u t : Term}
