@@ -311,7 +311,10 @@ hard caveats.
      `WSubM.of_MEqRedStar_*` / `WEquM.of_MEqRedStar_*` at the one-step
      layers; these require only the relevant endpoint well-formedness
      because the underlying `WSubM`/`WEquM` chain constructors absorb
-     intermediate equivalence-reduction steps.
+     intermediate equivalence-reduction steps. Single empty-stack
+     equivalence steps also embed at the one-step layers through
+     `WSubM.of_MEqRed_fwd` / `.of_MEqRed_back` and
+     `WEquM.of_MEqRed_fwd` / `.of_MEqRed_back`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
