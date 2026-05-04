@@ -707,6 +707,13 @@ closures, 2 inactive outstanding).
   `Ms-Fun`, and `Ms-FOp` as explicit recursive handler obligations for
   the innermost and preserved-head `.equ` replacement contexts. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added one-step equivalence
+  replacement splitters `meqRed_equ_head_replace_from_handlers` and
+  `meqRed_equ_under_head_replace_from_handlers`. They discharge stable
+  `Me-Top`/`Me-Var`/`Me-TAp` leaves, expose the true `Me-Pro` residuals
+  at head index `0` and under-head index `1`, and leave recursive
+  `Me-App`/`Me-Fun`/`Me-Bet`/`Me-FOp` obligations as explicit handlers.
+  No axiom-count change.
 * `Pss/Context/DeBruijn.lean` — added the first `.equ`-head replacement
   infrastructure: subtype lookups are invariant when the innermost
   `.equ` bound changes, nonzero equivalence lookups are invariant, and
