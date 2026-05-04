@@ -1131,6 +1131,18 @@ noncomputable def MEqRed.fOp_sub_under_head_replace {Γ : Ctx} {s : Stack}
 
 /-! ### Subtype constructors stable across sub-head replacement -/
 
+/-- Generic `Me-Pro` transport across replacement of a `.sub` entry at any
+context depth. Equivalence lookups are unaffected by the changed `.sub`
+entry. -/
+noncomputable def MEqRed.pro_replaceAt_sub {Γ : Ctx} {s : Stack}
+    {cutoff i : Nat} {old new α α' : Term}
+    (hpvNew : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hb : Ctx.equBinds (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) i α)
+    (hα : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s α α') :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.bvar i) α' :=
+  MEqRed.pro hpvNew (Ctx.equBinds_replaceAt_sub hb) hα
+
 /-- The changed innermost `.sub` entry reduces to the new shifted annotation
 after replacement. This is the residual form of head-index `Ms-Pro`. -/
 noncomputable def MSubRed.pro_sub_head_zero_residual {Γ : Ctx} {s : Stack}
@@ -1141,6 +1153,16 @@ noncomputable def MSubRed.pro_sub_head_zero_residual {Γ : Ctx} {s : Stack}
       (.bvar 0) (Term.shift 0 new) :=
   MSubRed.pro (PrevalidExt.sub_head_replace hpv hnew) (by
     simp [Ctx.subBinds])
+
+/-- Generic changed-slot `Ms-Pro` residual after replacing a `.sub` entry at
+any context depth. -/
+noncomputable def MSubRed.pro_replaceAt_sub_self {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {new : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s)
+    (hcut : cutoff < Ctx.depth Γ) :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s
+      (.bvar cutoff) (Term.shiftBy 0 (cutoff + 1) new) :=
+  MSubRed.pro hpv (Ctx.subBinds_replaceAt_sub_self hcut)
 
 /-- Non-head `Ms-Pro` is stable when replacing an innermost `.sub` head.
 The head index `0` is intentionally excluded because its target changes. -/
