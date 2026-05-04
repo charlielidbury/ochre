@@ -612,6 +612,21 @@ theorem top_of {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
     ∃ t₃, MEqRedJ Γ s .top t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
   exact ⟨.top, ⟨MEqRed.top hpv⟩, ⟨MSubRed.top hpv heq.scoped_right⟩⟩
 
+/-- The full variable-source cell of de Bruijn Lemma 1. Subtype steps from
+the source variable are `Ms-Pro`, `Ms-Equ`, or `Ms-Top`; the `Ms-Equ` branch
+uses the local variable diamond. -/
+theorem bvar_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {i : Nat} {t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (hsub : MSubRed Γ s (.bvar i) t₁) (heq : MEqRed Γ s (.bvar i) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  cases hsub with
+  | pro _ hsubBind =>
+    exact pro_any hpv hsubBind heq
+  | top _ hScoped =>
+    exact top_of hpv hScoped heq
+  | equ _ heqSub =>
+    exact equ_of hdiamond hpv heqSub heq
+
 /-- The `Ms-Top × Me-TAp` source cell for a `Top`-headed application. -/
 theorem appTop_top_tAp {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u) :
