@@ -5,6 +5,7 @@ import Pss.Util.ParRed
 import Pss.Util.Tactic
 import Pss.Context.Logical
 import Pss.Context.Stack
+import Pss.Context.DeBruijn
 import Pss.Context.Prevalid
 import Pss.Reduction.Operational
 import Pss.Mpss.Reductions

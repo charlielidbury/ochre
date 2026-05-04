@@ -39,6 +39,11 @@ closures, 2 inactive outstanding).
   `Term.instantiate_shiftBy_succ`, `Term.shiftBy_lift_comm`,
   `Term.shiftBy_shiftBy_zero_one`, `Term.shiftBy_shift_zero`, and
   `Term.shiftBy_instantiate`.
+* `Pss/Context/DeBruijn.lean` — standalone de Bruijn logical context and
+  stack seed: nameless `CtxEntry`, list-head-is-innermost `Ctx`,
+  index-based `lookup`, `lookupSub`, `lookupEqu`, binding predicates,
+  `Stack`, and `ExtCtx`. Imported from `Pss.lean`; it does not import or
+  modify the locally-nameless context modules.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
 

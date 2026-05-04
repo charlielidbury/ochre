@@ -140,6 +140,10 @@ hard caveats.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
    delete most of `Renaming.lean`, port `Prevalid` / `Weakening` /
    `ContextRed` to indices.
+   * **Seeded 2026-05-04 on `db-refactor`:** `Pss/Context/DeBruijn.lean`
+     defines nameless context entries, index-based `.sub` / `.equ`
+     lookup, binding predicates, stacks, and extended contexts. This is
+     standalone and does not alter the locally-nameless context modules.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
