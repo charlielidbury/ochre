@@ -345,7 +345,12 @@ hard caveats.
      diagrammatic `MSub` / `MSubStar` layer and strips `WSubM` to `MSub`
      plus `WSubMStar` to `MSubStar`. Collapsing `MSubStar` to `MSub`
      remains the de Bruijn Theorem 3 port and should be driven by the
-     future de Bruijn Lemma 1 / Lemma 2 proofs.
+     future de Bruijn Lemma 1 / Lemma 2 proofs. The layer also has named
+     closure helpers `MSub.to_star`, `MSubStar.refl`,
+     `MSubStar.single`, `MSubStar.trans`, and `WSubM.toMSubStar`.
+     De Bruijn well-formedness now has constructor inversions
+     `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
+     `Sigma` witness because the star judgments are Type-valued.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
    (just the Wf-inversion cluster + Prop-17 + Lemma 24). Update
    `AXIOMS.md` to reflect.

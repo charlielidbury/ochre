@@ -277,6 +277,14 @@ closures, 2 inactive outstanding).
   subtyping steps; collapsing that chain to one `MSub` remains the
   future de Bruijn Theorem 3 port. Imported from `Pss.lean`; no
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added named closure helpers
+  for the de Bruijn diagrammatic layer: `MSub.to_star`,
+  `MSubStar.refl`, `MSubStar.single`, `MSubStar.trans`, and
+  `WSubM.toMSubStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
+  `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
+  judgment. `WfM.app_inv` returns a `Sigma` witness because the
+  underlying well-subtyping stars are Type-valued. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added context-prevalidity
   extractors for all five de Bruijn well-formed judgments:
   `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,

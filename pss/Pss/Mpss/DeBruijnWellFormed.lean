@@ -354,6 +354,24 @@ noncomputable def WEquMStar.prevalid {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v
   | trs _ _ _ ihLeft _ =>
     exact ihLeft
 
+/-! ## Constructor inversions -/
+
+/-- Inversion for de Bruijn well-formed abstractions. -/
+def WfM.fun_inv {Γ : Ctx} {t body : Term}
+    (h : WfM Γ (.abs t body)) :
+    WfM Γ t × WfM ({ bound := t, kind := .sub } :: Γ) body := by
+  cases h with
+  | fun_ hT hBody =>
+    exact ⟨hT, hBody⟩
+
+/-- Inversion for de Bruijn well-formed applications. -/
+def WfM.app_inv {Γ : Ctx} {u v : Term}
+    (h : WfM Γ (.app u v)) :
+    Sigma fun t => WSubMStar Γ u (.abs t .top) × WSubMStar Γ v t := by
+  cases h with
+  | app hFun hArg =>
+    exact ⟨_, hFun, hArg⟩
+
 /-! ## Endpoint well-formedness extractors -/
 
 /-- Left endpoint well-formedness from de Bruijn transitive well-subtyping. -/
