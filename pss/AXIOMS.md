@@ -62,22 +62,37 @@ of a different unblock path: head-removal functor `MEqRed.strip_equ_head`
     `descend_body_equ_fvar` (body = `.fvar w`, w ≠ y; consumes
     `strip_equ_head` on the `pro` arm).
 
-**Iter-14+ next attack:** continue `descend_body_equ` —
-* **Phase B's `app` template case** (deferred from iter 13): generic
-  `body = .app a b`; recursion needs Phase C's mutual recursion or
-  a polymorphic recursive-call hypothesis.
-* **Phase B2 (binder template `body = .abs t inner`)**: needs careful
-  bvar-shift handling under the inner binder.
-* **Phase C**: assembled `descend_body_equ` as mutual recursion across
-  templates.
-* **Phase D** (final): consume `descend_body_equ` in
-  `Lemma_2_DiamondMEqRed_core`'s App×Bet residual to discharge
-  `Lemma_2_inline_app_bet_residual_axiom`.
+**Session 2026-05-04 (iters 14–19) — descend_body_equ Phase B2/C/D shipped, audit found avoidsFv gap, uniform rebuild started:**
 
-The paper's "moreover" clause (which the Plan agent's iter-12 paper
-deep-dive confirmed is exactly `avoidsPro`) is supplied to
-`descend_body_equ` as a premise, recovering the paper-faithful proof
-shape but adapted to LN's explicit binder-name handling.
+Iters 14–16 shipped `descend_body_equ` Phases B2/C/D in `Pss/Mpss/Renaming.lean` §11.4–§11.5 (commits `e0aa2c1`, `dcb0d5c`, `e0a2608`):
+* **Phase B2** (iter 14, commit `e0aa2c1`): `body = .abs t inner` leaf at §11.4. Uses `strip_equ_head + subst_fresh` shortcut keyed off `avoidsFv h y = true`.
+* **Phase C** (iter 15, commit `dcb0d5c`): assembled dispatcher at §11.5 with `rec_app` continuation parameter for the `.app` arm.
+* **Phase D** (iter 16, commit `e0a2608`): total functor by adding `descend_body_equ_app` leaf at §11.4b parallel to §11.4. Generalizes the §11.4 strip+subst pattern.
+
+**Iter-17 audit (§11.6, commit `9e601ab`) confirmed a load-bearing gap.**
+The §11.4–§11.5 functor takes `avoidsFv h y = true` as a premise — and **the headline consumer cannot satisfy it**. The body-IH source is `body'_dst^[y₀]`; whenever `body'_dst` syntactically mentions `.bvar 0`, the opening introduces `.fvar y₀` so `decide (y₀ ∉ fv source) = false`, hence `avoidsFv ≠ true`. Concrete counterexample: `body'_dst = .app (.bvar 0) .top`. The paper's "moreover" clause is `avoidsPro` (strictly weaker), which Phase A already uses correctly. The architectural fix is a stack-template-generalized functor `descend_body_equ_uniform` taking `avoidsPro` only.
+
+**Iter-18 (§11.7, commit `a71e81f`) shipped foundations of the uniform functor:**
+* `_PrevalidExt_descend_under_equ_head_template` (~80 lines) — the prevalid-side helper that descends `PrevalidExt` under stack-template y-freshness premises plus `z ∈ Γ.dom`.
+* `_descend_body_equ_uniform_bvar0_aux` (~15 lines) — auxiliary cases-elim pattern (workaround for Lean 4's dependent-elim quirk on non-variable stack expressions).
+* `MEqRed.descend_body_equ_uniform_bvar0` (~30 lines) — the bvar 0 leaf at the new uniform signature.
+
+Iter-18 finding: **`hz_Γ : z ∈ Γ.dom` is mathematically required** (not bookkeeping) — the output stack `s_tmpl.map (·^[z]) ++ s_outer` carries z-dependence whenever `s_tmpl` has bvar-0-mentioning templates, and the prevalid-fv invariant demands `z ∈ Γ.dom`.
+
+**Iter-19 (§11.7, commit `d2cf8b6`) extended the uniform functor:**
+* §11.7.2 — `body = .top` leaf (full).
+* §11.7.3 — `body = .fvar w` leaf, **var-arm only**. The `pro` arm is gated behind an `Empty` premise (honest scaffolding, NOT an axiom). Pro-arm blocker: `strip_equ_head` requires `avoidsFv` and `cofinDomFresh`, which the uniform signature deliberately excludes. An avoidsFv-free strip variant is needed — iter-20+ target.
+* §11.7.4 — `body = .app a b` recursive case, **`MEqRed.app` constructor arm only** (open-recursion handlers as parameters). `MEqRed.tAp` and `MEqRed.bet` arms documented as deferred to iter-20+.
+
+**Iter-20+ next attack:** continue `descend_body_equ_uniform` —
+* `MEqRed.tAp` arm of `body = .app a b` (mechanical: forces `a = .top`, output via `MEqRed.tAp` at bare Γ).
+* `MEqRed.bet` arm of `body = .app a b` (forces `a = .abs ta inner_a`; recursive on `inner_a`).
+* avoidsFv-free `strip_equ_head` variant for the `body = .fvar w` pro-arm — the genuinely hard piece.
+* `body = .abs t inner` arm (needs strip-from-middle helper for the deeper-binder case).
+* Termination: assemble the open-recursion handlers via `termination_by body.size` once all arms are in.
+* Eventually: consume `descend_body_equ_uniform` in `Lemma_2_DiamondMEqRed_core`'s App×Bet residual to discharge `Lemma_2_inline_app_bet_residual_axiom`.
+
+The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-20+ retires it once §11.7 is fully shipping.
 
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
