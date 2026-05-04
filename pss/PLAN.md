@@ -160,8 +160,14 @@ hard caveats.
      Context lookup now returns bounds lifted into the current context;
      raw stored bounds remain scoped in each entry's tail.
      Lookup weakening under a new head is available for raw, `.sub`, and
-     `.equ` lookups; full reduction weakening still needs a context
-     insertion operation for binder bodies.
+     `.equ` lookups.
+     Context insertion under an existing binder head is now started:
+     `CtxEntry.shift`, `Ctx.insertUnderHeadIndex`,
+     `Prevalid.weaken_tail_head`, `PrevalidExt.weaken_tail_head`, and
+     `.sub` / `.equ` lookup weakening under that insertion shape are
+     available. Full reduction weakening still needs the term-level
+     shift/substitution equalities that connect the β result across this
+     insertion.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,

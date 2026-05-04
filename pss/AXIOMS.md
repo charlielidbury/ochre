@@ -70,6 +70,13 @@ closures, 2 inactive outstanding).
   `equBinds_weaken_head`) and Type-valued `Stack.Scoped.shift`.
   Imported from `Pss.lean`. No axiom-count change; `Pss.Sanity`
   headline closures remain byte-identical to the iter-32 pivot baseline.
+* `Pss/Context/DeBruijn.lean` — binder-body context insertion helpers:
+  `CtxEntry.shift`, `Ctx.insertUnderHeadIndex`,
+  `Prevalid.weaken_tail_head`, `PrevalidExt.weaken_tail_head`,
+  `Stack.Scoped.shiftAt`, and `.sub` / `.equ` lookup weakening for
+  inserting a new outer entry under an existing binder head. This is the
+  context-side prerequisite for full de Bruijn reduction weakening under
+  binder rules; no axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
