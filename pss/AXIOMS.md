@@ -1026,6 +1026,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_equ_head_stack_lift_function_from_replacements`, the
   chain-level function-valued counterpart for reusable changed-head stack
   lifts over `MEqRedStar` chains. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
+  which builds the reusable argument stack-lift function from canonical
+  changed-head replacement premises before invoking the argument-stack-lifted
+  `FOp` commutation wrapper. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
