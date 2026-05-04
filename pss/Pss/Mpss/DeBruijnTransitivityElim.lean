@@ -759,6 +759,24 @@ theorem msubStar_appTop_eqStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}
     (h : MEqRedStar Γ s (.app .top u) t) : MSubStar Γ s t .top :=
   (msub_appTop_eqStar_to_top hpv hu h).to_star
 
+/-- A `Top`-headed application equivalence-reduces directly to `Top`. -/
+theorem appTop_to_top {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u) :
+    MEqRedStar Γ s (.app .top u) .top :=
+  MEqRedStar.single (MEqRed.tAp hpv hu)
+
+/-- Diagrammatic packaging of `appTop_to_top`. -/
+theorem msub_appTop_to_top {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u) :
+    MSub Γ s (.app .top u) .top :=
+  MSub.of_MEqRedStar_left hpv (appTop_to_top hpv hu)
+
+/-- Transitive diagrammatic packaging of `appTop_to_top`. -/
+theorem msubStar_appTop_to_top {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u) :
+    MSubStar Γ s (.app .top u) .top :=
+  (msub_appTop_to_top hpv hu).to_star
+
 /-- Any subtype-chain target of a `Top`-headed application is
 diagrammatically below `Top`. -/
 theorem msub_appTop_subStar_to_top {Γ : Ctx} {s : Stack} {u t : Term}

@@ -450,7 +450,9 @@ hard caveats.
      `msub_appTop_eqStar_to_top` and `msub_appTop_subStar_to_top` view
      those targets as `MSub Γ s _ .top`; matching transitive wrappers
      are available as `msubStar_appTop_eqStar_to_top` and
-     `msubStar_appTop_subStar_to_top`.
+     `msubStar_appTop_subStar_to_top`. The source-normalization helper
+     itself is named `appTop_to_top`, with diagrammatic wrappers
+     `msub_appTop_to_top` and `msubStar_appTop_to_top`.
      The full star-level `Top`-headed source cell is also available as
      `commute_appTop_subStar_eqStar`, joining arbitrary subtype and
      equivalence chains from that source at `Top`; its single-subtype-step

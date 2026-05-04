@@ -443,6 +443,10 @@ closures, 2 inactive outstanding).
   diagrammatic wrappers `msubStar_appTop_eqStar_to_top` and
   `msubStar_appTop_subStar_to_top` for the same `Top`-headed targets. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — named the direct
+  `Top`-headed application normalization `appTop_to_top` and
+  diagrammatic wrappers `msub_appTop_to_top` /
+  `msubStar_appTop_to_top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appTop_subStar_eqStar`, the full star-level commutation cell
   for a `Top`-headed application source. It joins arbitrary subtype and
