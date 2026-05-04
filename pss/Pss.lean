@@ -1,5 +1,6 @@
 import Pss.Syntax.Term
 import Pss.Syntax.LocallyNameless
+import Pss.Syntax.DeBruijn
 import Pss.Util.ParRed
 import Pss.Util.Tactic
 import Pss.Context.Logical

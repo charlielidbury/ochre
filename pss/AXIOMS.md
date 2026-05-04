@@ -8,6 +8,17 @@ the axioms below.
 **Total axiom count: 12** (1 permanent, 9 active outstanding in headline
 closures, 2 inactive outstanding).
 
+**Session 2026-05-04 (db-refactor Phase 1 started):**
+* `Pss/Syntax/DeBruijn.lean` — new standalone raw de Bruijn syntax core
+  on branch `db-refactor`: `Pss.DeBruijn.Term` with constructors
+  `bvar`, `top`, `abs`, `app`; `Term.size`; `Term.shiftBy`;
+  one-step `Term.shift`; `Term.instantiate`; named algebraic lemmas
+  including `shiftBy_zero_id`, `instantiate_distributes_over_app`,
+  `shift_distributes_over_app`, `instantiate_shiftBy_one_id`, and
+  `instantiate_shift_id`. Imported from `Pss.lean`. No axiom-count
+  change; `Pss.Sanity` headline closures remain byte-identical to the
+  iter-32 pivot baseline.
+
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
   `449fea0`) — asymmetric extension of `Lemma_32_ReductionUnderSubst_Eq_OfEqu`

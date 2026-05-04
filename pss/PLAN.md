@@ -118,6 +118,11 @@ hard caveats.
    inductive (`bvar (Nat)`, `top`, `app`, `abs`) plus
    `instantiate`/`shift` operations and 4–6 algebraic lemmas. No
    `MEqRed` work yet. Branch `db-refactor` from `pss`.
+   * **Started 2026-05-04 on `db-refactor`:** `Pss/Syntax/DeBruijn.lean`
+     now provides the standalone `Pss.DeBruijn.Term` core, `size`,
+     `shiftBy`, one-step `shift`, `instantiate`, and five named algebraic
+     lemmas. The module is imported by `Pss.lean`; the locally-nameless
+     development remains untouched until the downstream atomic switch.
 2. **Phase 2 — substitution machinery.** Index-shifting lemmas, lift,
    strengthen. Replaces named `Term.subst`.
 3. **Phase 3 — context + reductions.** Rewrite `Reductions.lean`,
