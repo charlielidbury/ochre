@@ -1058,6 +1058,14 @@ closures, 2 inactive outstanding).
   the function-valued form of the under-head equivalence replacement with
   canonical `Me-Pro` handlers wired at every residual stack. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added unshifted base
+  replacement function wrappers
+  `msubRedStar_equ_head_replace_function_from_replacements`,
+  `msubRedStar_equ_under_head_replace_function_from_replacements`,
+  `meqRedStar_equ_head_replace_function_from_replacements`, and
+  `meqRedStar_equ_under_head_replace_function_from_replacements`, packaging
+  the fixed-stack replacement wrappers over every residual stack. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
