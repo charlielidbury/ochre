@@ -1042,6 +1042,51 @@ theorem MSubRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
   | fOp _ _ _ =>
     exact Or.inr ⟨_, _, rfl⟩
 
+/-- Detail-preserving one-step subtype inversion from an abstraction. This
+keeps constructor evidence for the equivalence-derived abstraction branches,
+direct `Ms-Fun`, and direct `Ms-FOp`. -/
+theorem MSubRed.abs_inv_detail {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MSubRed Γ s (.abs bound body) v) :
+    v = .top ∨
+      (∃ bound' body',
+        MEqRedJ Γ [] bound bound' ∧
+          MEqRedJ ({ bound := bound, kind := .sub } :: Γ) [] body body' ∧
+          v = .abs bound' body') ∨
+      (∃ bound' α rest body',
+        MEqRedJ Γ [] bound bound' ∧
+          Nonempty (Term.Scoped Γ.depth α) ∧
+          s = α :: rest ∧
+          MEqRedJ ({ bound := α, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body' ∧
+          v = .abs bound' body') ∨
+      (∃ bound' body',
+        Nonempty (Term.Scoped Γ.depth bound) ∧
+          MEqRedJ Γ [] bound bound' ∧
+          MSubRedJ ({ bound := bound, kind := .sub } :: Γ) [] body body' ∧
+          v = .abs bound' body') ∨
+      ∃ α rest body',
+        Nonempty (Term.Scoped Γ.depth bound) ∧
+          Nonempty (Term.Scoped Γ.depth α) ∧
+          s = α :: rest ∧
+          MSubRedJ ({ bound := α, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body' ∧
+          v = .abs bound body' := by
+  cases h with
+  | top _ _ =>
+    exact Or.inl rfl
+  | equ _ heq =>
+    cases heq.abs_inv_detail with
+    | inl hFun =>
+      exact Or.inr (Or.inl hFun)
+    | inr hFOp =>
+      exact Or.inr (Or.inr (Or.inl hFOp))
+  | fun_ ht hBound hBody =>
+    exact Or.inr (Or.inr (Or.inr (Or.inl
+      ⟨_, _, ⟨ht⟩, ⟨hBound⟩, ⟨hBody⟩, rfl⟩)))
+  | fOp ht hα hBody =>
+    exact Or.inr (Or.inr (Or.inr (Or.inr
+      ⟨_, _, _, ⟨ht⟩, ⟨hα⟩, rfl, ⟨hBody⟩, rfl⟩)))
+
 /-- A de Bruijn subtype-reduction chain from an abstraction can only target
 `Top` or another abstraction. -/
 theorem MSubRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}

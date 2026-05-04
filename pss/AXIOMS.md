@@ -622,6 +622,11 @@ closures, 2 inactive outstanding).
   body derivation with Prop-safe wrappers, making the stack-head transport
   residual inspectable without losing constructor evidence. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added the matching subtype
+  abstraction splitter `MSubRed.abs_inv_detail`, separating `Ms-Top`,
+  equivalence-derived `Me-Fun` / `Me-FOp`, direct `Ms-Fun`, and direct
+  `Ms-FOp` branches with Prop-safe wrappers for Type-valued payloads. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
