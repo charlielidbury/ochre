@@ -1149,6 +1149,14 @@ closures, 2 inactive outstanding).
   `WSubMStar.of_MSubRed_sub_under_head_replace_from_direct_payloads`,
   and `WSubMStar.of_MSubRed_replaceAt_sub_from_body_direct_payloads`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added direct-payload `WfM`
+  replacement consumers:
+  `WfM.replaceAt_sub_from_direct_payloads`,
+  `WfM.replaceAt_sub_from_body_direct_payloads`,
+  `WfM.sub_head_replace_from_direct_payloads`, and
+  `WfM.sub_under_head_replace_from_direct_payloads`. These consume
+  `WSubMStar` residuals directly for recursive subtype-step cases. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,

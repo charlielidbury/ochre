@@ -4314,6 +4314,56 @@ noncomputable def WfM.replaceAt_sub_from_msub_payloads {Γ : Ctx} {cutoff : Nat}
       WSubMStar.of_MSubRed_replaceAt_sub_from_payloads hred hcut hOldNew
         hWf hSubRedPresNew hAppOp hFunBody hWfNew hx hy)
 
+/-- Arbitrary-depth `WfM` replacement where recursive subtype-step cases are
+provided directly as well-subtyping-star residuals. -/
+noncomputable def WfM.replaceAt_sub_from_direct_payloads {Γ : Ctx}
+    {cutoff : Nat} {old new body : Term}
+    (h : WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) body)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+        WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) x)
+    (hWfBody : ∀ {head x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] x y →
+        WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) x →
+          WfM (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ))
+          arg →
+        MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          (arg :: []) u u' →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.app u arg) →
+          WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ))
+          t →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+            [] body body' →
+          WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.abs t body) →
+          WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+            (.abs t body) (.abs t' body'))
+    (hWfNew : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) new)) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) body :=
+  WfM.replaceAt_sub_from_payloads h hcut hOldNew hWf hWfBody hEqPresOld
+    (fun hx hy hred =>
+      WSubMStar.of_MSubRed_replaceAt_sub_from_direct_payloads
+        hred hcut hOldNew hWf hApp hFun hWfNew hx hy)
+
 /-- Binder-recursive specialization of
 `WfM.replaceAt_sub_from_msub_payloads`. -/
 noncomputable def WfM.replaceAt_sub_from_body_msub_payloads
@@ -4389,6 +4439,80 @@ noncomputable def WfM.replaceAt_sub_from_body_msub_payloads
         simpa [Ctx.replaceAt, Nat.add_assoc] using
           hWfBody (head' := head) hx)
       hEqPresOld hSubRedPresNew hAppOp hFunBody
+      (by simpa [Nat.add_assoc] using hWfNew))
+
+/-- Binder-recursive specialization of
+`WfM.replaceAt_sub_from_direct_payloads`. -/
+noncomputable def WfM.replaceAt_sub_from_body_direct_payloads
+    {Γ : Ctx} {cutoff : Nat} {head old new body : Term}
+    (h : WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+      ({ bound := head, kind := .sub } :: Γ)) body)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hWfBody : ∀ {head' x : Term},
+      WfM (Ctx.replaceAt (cutoff + 2) { bound := old, kind := .sub }
+          ({ bound := head', kind := .sub } ::
+            { bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 2) { bound := new, kind := .sub }
+          ({ bound := head', kind := .sub } ::
+            { bound := head, kind := .sub } :: Γ)) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] x y →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ))) arg →
+        MSubRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) (arg :: []) u u' →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) (.app u arg) →
+          WSubMStar
+            (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped
+          (Ctx.depth (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ))) t →
+        MEqRed (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+                ({ bound := head, kind := .sub } :: Γ)) [] body body' →
+          WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) (.abs t body) →
+          WSubMStar
+            (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) (.abs t body) (.abs t' body'))
+    (hWfNew : WfM
+      (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ))
+      (Term.shiftBy 0 (cutoff + 2) new)) :
+    WfM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) body := by
+  have hcutBody :
+      cutoff + 1 < Ctx.depth ({ bound := head, kind := .sub } :: Γ) := by
+    simpa [Ctx.depth, Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Nat.succ_lt_succ hcut
+  simpa [Ctx.replaceAt, Nat.add_assoc] using
+    (WfM.replaceAt_sub_from_direct_payloads
+      (Γ := { bound := head, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) h hcutBody
+      (by simpa [Nat.add_assoc] using hOldNew)
+      hWf
+      (fun {head x} hx => by
+        simpa [Ctx.replaceAt, Nat.add_assoc] using
+          hWfBody (head' := head) hx)
+      hEqPresOld hApp hFun
       (by simpa [Nat.add_assoc] using hWfNew))
 
 /-- Constructor-level `WfM` head replacement from recursive payloads.
@@ -4471,6 +4595,43 @@ noncomputable def WfM.sub_head_replace_from_msub_payloads {Γ : Ctx}
       WSubMStar.of_MSubRed_sub_head_replace_from_payloads hred hOldNew
         hWf hSubRedPresNew hAppOp hFunBody hWfNew hx hy)
 
+/-- Head `WfM` replacement where recursive subtype-step cases are provided
+directly as well-subtyping-star residuals. -/
+noncomputable def WfM.sub_head_replace_from_direct_payloads {Γ : Ctx}
+    {old new body : Term}
+    (h : WfM ({ bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head : CtxEntry} {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := old, kind := .sub } :: Γ) x →
+          WfM ({ bound := old, kind := .sub } :: Γ) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) arg →
+        MSubRed ({ bound := old, kind := .sub } :: Γ) (arg :: []) u u' →
+          WfM ({ bound := new, kind := .sub } :: Γ) (.app u arg) →
+          WSubMStar ({ bound := new, kind := .sub } :: Γ)
+            (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := old, kind := .sub } :: Γ) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              { bound := old, kind := .sub } :: Γ) [] body body' →
+          WfM ({ bound := new, kind := .sub } :: Γ) (.abs t body) →
+          WSubMStar ({ bound := new, kind := .sub } :: Γ)
+            (.abs t body) (.abs t' body'))
+    (hWfNew : WfM ({ bound := new, kind := .sub } :: Γ) (Term.shift 0 new)) :
+    WfM ({ bound := new, kind := .sub } :: Γ) body :=
+  WfM.sub_head_replace_from_payloads h hOldNew hWf hWfUnder hEqPresOld
+    (fun hx hy hred =>
+      WSubMStar.of_MSubRed_sub_head_replace_from_direct_payloads hred hOldNew
+        hWf hApp hFun hWfNew hx hy)
+
 /-- Constructor-level `WfM` under-head replacement from recursive payloads.
 
 This is the preserved-head analogue of `WfM.sub_head_replace_from_payloads`.
@@ -4552,6 +4713,45 @@ noncomputable def WfM.sub_under_head_replace_from_msub_payloads {Γ : Ctx}
     (fun hx hy hred =>
       WSubMStar.of_MSubRed_sub_under_head_replace_from_payloads hred hOldNew
         hWf hSubRedPresNew hAppOp hFunBody hWfNew hx hy)
+
+/-- Under-head `WfM` replacement where recursive subtype-step cases are
+provided directly as well-subtyping-star residuals. -/
+noncomputable def WfM.sub_under_head_replace_from_direct_payloads {Γ : Ctx}
+    {head : CtxEntry} {old new body : Term}
+    (h : WfM (head :: { bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hWf : ∀ {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head' : CtxEntry} {x : Term},
+      WfM (head' :: head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head' :: head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (head :: { bound := old, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := old, kind := .sub } :: Γ) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) arg →
+        MSubRed (head :: { bound := old, kind := .sub } :: Γ)
+          (arg :: []) u u' →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) (.app u arg) →
+          WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+            (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t →
+        MEqRed (head :: { bound := old, kind := .sub } :: Γ) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } :: head ::
+              { bound := old, kind := .sub } :: Γ) [] body body' →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) (.abs t body) →
+          WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+            (.abs t body) (.abs t' body'))
+    (hWfNew : WfM (head :: { bound := new, kind := .sub } :: Γ)
+      (Term.shiftBy 0 2 new)) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) body :=
+  WfM.sub_under_head_replace_from_payloads h hOldNew hWf hWfUnder hEqPresOld
+    (fun hx hy hred =>
+      WSubMStar.of_MSubRed_sub_under_head_replace_from_direct_payloads
+        hred hOldNew hWf hApp hFun hWfNew hx hy)
 
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/
