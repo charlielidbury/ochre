@@ -1116,6 +1116,22 @@ noncomputable def sub_head_replace {Γ : Ctx} {old new : Term} :
   | sub hΓ _ =>
     exact Prevalid.sub hΓ hnew
 
+/-- Replace a `.sub` entry immediately under a preserved head. Since the tail
+context depth is unchanged, the preserved head bound remains scoped. -/
+noncomputable def sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} :
+    Prevalid (head :: { bound := old, kind := .sub } :: Γ) →
+    Term.Scoped Γ.depth new →
+    Prevalid (head :: { bound := new, kind := .sub } :: Γ) := by
+  intro h hnew
+  cases h with
+  | sub hTail hHead =>
+    exact Prevalid.sub (Prevalid.sub_head_replace hTail hnew) (by
+      simpa [Ctx.depth] using hHead)
+  | equ hTail hHead =>
+    exact Prevalid.equ (Prevalid.sub_head_replace hTail hnew) (by
+      simpa [Ctx.depth] using hHead)
+
 /-- Insert a prevalid entry into a prevalid context after `cutoff` preserved
 heads. The inserted-entry witness is stated over the actual tail at the
 insertion point. -/
@@ -1374,6 +1390,21 @@ noncomputable def sub_head_replace {Γ : Ctx} {s : Stack} {old new : Term} :
   induction h with
   | nil hΓ =>
     exact PrevalidExt.nil (Prevalid.sub_head_replace hΓ hnew)
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (by
+      simpa [Ctx.depth] using hα)
+
+/-- Replace a `.sub` entry immediately under a preserved head while
+preserving extended-context prevalidity. -/
+noncomputable def sub_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term} :
+    PrevalidExt (head :: { bound := old, kind := .sub } :: Γ) s →
+    Term.Scoped Γ.depth new →
+    PrevalidExt (head :: { bound := new, kind := .sub } :: Γ) s := by
+  intro h hnew
+  induction h with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.sub_under_head_replace hΓ hnew)
   | cons hst hα ih =>
     exact PrevalidExt.cons ih (by
       simpa [Ctx.depth] using hα)

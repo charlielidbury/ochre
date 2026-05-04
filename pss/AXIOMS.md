@@ -583,6 +583,11 @@ closures, 2 inactive outstanding).
   and strictly past the replaced entry, a constructor for the replaced
   entry's new subtype binding, and equivalence lookup preservation under
   the preserved head. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added one-preserved-head `.sub`
+  replacement prevalidity helpers `Prevalid.sub_under_head_replace` and
+  `PrevalidExt.sub_under_head_replace`, preserving the outer head while
+  replacing the body-context `.sub` annotation below it. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
