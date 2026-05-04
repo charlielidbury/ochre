@@ -1039,6 +1039,11 @@ closures, 2 inactive outstanding).
   `WSubM.sub_head_replace_to_star_of`. These expose the necessary
   equivalence-preservation and subtype-residual payloads instead of
   asserting false exact `WSubM` replacement. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
+  binder-recursive specializations
+  `WSubM.sub_under_head_replace_to_star_of` and
+  `WSubM.replaceAt_sub_from_body_replaceAt_to_star_of` for the
+  conditional exact-step replacement helper. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
