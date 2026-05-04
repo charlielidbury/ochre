@@ -286,7 +286,11 @@ hard caveats.
      steps can be embedded directly into the transitive well-formed
      relations with `WSubMStar.of_MEqRed_fwd` / `.of_MEqRed_back`,
      `WSubMStar.of_MSubRed_fwd`, and `WEquMStar.of_MEqRed_fwd` /
-     `.of_MEqRed_back`.
+     `.of_MEqRed_back`. Empty-stack reduction chains can also be
+     embedded conditionally via `WSubMStar.of_MEqRedStar_fwd`,
+     `WSubMStar.of_MSubRedStar_fwd`, and
+     `WEquMStar.of_MEqRedStar_fwd` when the caller supplies stepwise
+     `WfM` preservation for that restricted chain.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms

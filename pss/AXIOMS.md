@@ -242,6 +242,13 @@ closures, 2 inactive outstanding).
   `WSubMStar.of_MEqRed_back`, `WSubMStar.of_MSubRed_fwd`,
   `WEquMStar.of_MEqRed_fwd`, and `WEquMStar.of_MEqRed_back`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added conditional chain
+  embeddings from empty-stack reduction stars into de Bruijn transitive
+  well-formed relations: `WSubMStar.of_MEqRedStar_fwd`,
+  `WSubMStar.of_MSubRedStar_fwd`, and `WEquMStar.of_MEqRedStar_fwd`.
+  Each requires an explicit stepwise `WfM`-preservation premise, avoiding
+  the known false unrestricted subject-reduction statement. No axiom-count
+  change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit
