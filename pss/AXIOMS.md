@@ -424,6 +424,9 @@ closures, 2 inactive outstanding).
   `abs_eqStar_to_top_of_subStar_top`, a named corollary exposing the
   target-to-`Top` subtype chain from `commute_abs_to_top_eqStar`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added abstraction-specific
+  diagram wrappers `msub_abs_eqStar_to_top_of_subStar_top` and
+  `msubStar_abs_eqStar_to_top_of_subStar_top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

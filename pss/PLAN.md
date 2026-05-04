@@ -433,7 +433,9 @@ hard caveats.
      `msub_eqStar_to_top_of_subStar_top` packages that target as
      diagrammatically below `Top`; the matching transitive wrapper is
      `msubStar_eqStar_to_top_of_subStar_top`. The abstraction-specific
-     corollary is named `abs_eqStar_to_top_of_subStar_top`.
+     corollary is named `abs_eqStar_to_top_of_subStar_top`, with
+     diagram wrappers `msub_abs_eqStar_to_top_of_subStar_top` and
+     `msubStar_abs_eqStar_to_top_of_subStar_top`.
      Abstraction-headed application inversions `MEqRed.app_abs_inv` and
      `MSubRed.app_abs_inv` separate β, `Top`, `Top`-headed application,
      and abstraction-headed application targets.

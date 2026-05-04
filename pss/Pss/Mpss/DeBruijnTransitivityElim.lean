@@ -729,6 +729,23 @@ theorem abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     MSubRedStar Γ s t .top := by
   exact eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq
 
+/-- Diagrammatic packaging of `abs_eqStar_to_top_of_subStar_top`. -/
+theorem msub_abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.abs bound body))
+    (hSubTop : MSubRedStar Γ s (.abs bound body) .top)
+    (hEq : MEqRedStar Γ s (.abs bound body) t) : MSub Γ s t .top :=
+  msub_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq
+
+/-- Transitive diagrammatic packaging of
+`abs_eqStar_to_top_of_subStar_top`. -/
+theorem msubStar_abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
+    {bound body t : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.abs bound body))
+    (hSubTop : MSubRedStar Γ s (.abs bound body) .top)
+    (hEq : MEqRedStar Γ s (.abs bound body) t) : MSubStar Γ s t .top :=
+  (msub_abs_eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq).to_star
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of
