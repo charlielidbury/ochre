@@ -1067,6 +1067,14 @@ closures, 2 inactive outstanding).
   `WSubMStar.pro_sub_head_replace_to_old`, packaging the path from the
   replaced variable through shifted `new` and back to shifted `old` as a
   `WSubMStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added stable subtype-step leaf
+  residual wrappers for `.sub` replacement:
+  `WSubMStar.pro_replaceAt_sub_of_ne_to_star`,
+  `WSubMStar.pro_sub_head_replace_succ_to_star`,
+  `WSubMStar.top_replaceAt_sub_to_star`,
+  `WSubMStar.top_sub_head_replace_to_star`,
+  `WSubMStar.equ_replaceAt_sub_to_star`, and
+  `WSubMStar.equ_sub_head_replace_to_star`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
   binder-recursive payload wrappers
   `WSubMStar.sub_under_head_replace_of_payload` and

@@ -1239,6 +1239,106 @@ noncomputable def WSubMStar.pro_sub_head_replace_to_old {Γ : Ctx}
       (by simpa [Ctx.replaceAt] using hwfNew)
       (by simpa [Ctx.replaceAt] using hwfOld))
 
+/-- Non-changed `Ms-Pro` replacement residual embedded as a well-subtyping
+star. -/
+noncomputable def WSubMStar.pro_replaceAt_sub_of_ne_to_star {Γ : Ctx}
+    {cutoff i : Nat} {old new t : Term}
+    (hne : i ≠ cutoff)
+    (hb : Ctx.subBinds (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      i t)
+    (hwfVar : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar i))
+    (hwfT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar i) t :=
+  WSubMStar.sub hwfVar
+    (WSubM.lf2 hwfVar
+      (MSubRed.pro_replaceAt_sub_of_ne
+        (PrevalidExt.nil hwfVar.prevalid) hne hb)
+      hwfT (WSubM.rfl hwfT))
+    hwfT
+
+/-- Head specialization of non-changed `Ms-Pro` replacement. -/
+noncomputable def WSubMStar.pro_sub_head_replace_succ_to_star {Γ : Ctx}
+    {old new : Term} {i : Nat} {t : Term}
+    (hb : Ctx.subBinds ({ bound := old, kind := .sub } :: Γ) (i + 1) t)
+    (hwfVar : WfM ({ bound := new, kind := .sub } :: Γ) (.bvar (i + 1)))
+    (hwfT : WfM ({ bound := new, kind := .sub } :: Γ) t) :
+    WSubMStar ({ bound := new, kind := .sub } :: Γ) (.bvar (i + 1)) t := by
+  have hne : i + 1 ≠ 0 := Nat.succ_ne_zero i
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.pro_replaceAt_sub_of_ne_to_star
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (i := i + 1) (old := old) (new := new) (t := t)
+      hne (by simpa [Ctx.replaceAt] using hb)
+      (by simpa [Ctx.replaceAt] using hwfVar)
+      (by simpa [Ctx.replaceAt] using hwfT))
+
+/-- `Ms-Top` replacement residual embedded as a well-subtyping star. -/
+noncomputable def WSubMStar.top_replaceAt_sub_to_star {Γ : Ctx}
+    {cutoff : Nat} {old new u : Term}
+    (hu : Term.Scoped
+      (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) u)
+    (hwfU : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) u)
+    (hwfTop : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      .top) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) u .top :=
+  WSubMStar.sub hwfU
+    (WSubM.lf2 hwfU
+      (MSubRed.top_replaceAt_sub (PrevalidExt.nil hwfU.prevalid) hu)
+      hwfTop (WSubM.rfl hwfTop))
+    hwfTop
+
+/-- Head specialization of `Ms-Top` replacement residual. -/
+noncomputable def WSubMStar.top_sub_head_replace_to_star {Γ : Ctx}
+    {old new u : Term}
+    (hu : Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) u)
+    (hwfU : WfM ({ bound := new, kind := .sub } :: Γ) u)
+    (hwfTop : WfM ({ bound := new, kind := .sub } :: Γ) .top) :
+    WSubMStar ({ bound := new, kind := .sub } :: Γ) u .top := by
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.top_replaceAt_sub_to_star
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) (u := u)
+      (by simpa [Ctx.replaceAt] using hu)
+      (by simpa [Ctx.replaceAt] using hwfU)
+      (by simpa [Ctx.replaceAt] using hwfTop))
+
+/-- `Ms-Equ` replacement residual embedded as a well-subtyping star. -/
+noncomputable def WSubMStar.equ_replaceAt_sub_to_star {Γ : Ctx}
+    {cutoff : Nat} {old new u v : Term}
+    (hEq : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      [] u v)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hwfU : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) u)
+    (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) u v :=
+  WSubMStar.sub hwfU
+    (WSubM.lf2 hwfU
+      (MSubRed.equ_replaceAt_sub (PrevalidExt.nil hwfU.prevalid)
+        (hEq.replaceAt_sub hcut hOldNew))
+      hwfV (WSubM.rfl hwfV))
+    hwfV
+
+/-- Head specialization of `Ms-Equ` replacement residual. -/
+noncomputable def WSubMStar.equ_sub_head_replace_to_star {Γ : Ctx}
+    {old new u v : Term}
+    (hEq : MEqRed ({ bound := old, kind := .sub } :: Γ) [] u v)
+    (hOldNew : MEqRed Γ [] old new)
+    (hwfU : WfM ({ bound := new, kind := .sub } :: Γ) u)
+    (hwfV : WfM ({ bound := new, kind := .sub } :: Γ) v) :
+    WSubMStar ({ bound := new, kind := .sub } :: Γ) u v := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.equ_replaceAt_sub_to_star
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) (u := u) (v := v)
+      (by simpa [Ctx.replaceAt] using hEq) hcut (by simpa using hOldNew)
+      (by simpa [Ctx.replaceAt] using hwfU)
+      (by simpa [Ctx.replaceAt] using hwfV))
+
 /-- `Top` remains well-formed when replacing the innermost `.sub` context
 annotation. -/
 noncomputable def WfM.top_sub_head_replace {Γ : Ctx} {old new : Term}
