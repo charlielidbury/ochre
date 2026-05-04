@@ -858,6 +858,11 @@ closures, 2 inactive outstanding).
   recursive operator replacement chains through fixed-argument application
   for innermost and preserved-head `.equ` replacement. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added canonical `Ms-Fun`
+  handler builders `msub_equ_head_fun_handler_of_raw_replacements` and
+  `msub_equ_under_head_fun_handler_of_raw_replacements`, packaging raw
+  bound-equivalence and body-subtype replacements into the handler shape
+  expected by the subtype replacement splitters. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added canonical `Ms-FOp`
   handler builders `msub_equ_head_fop_handler_of_body_replacement` and
   `msub_equ_under_head_fop_handler_of_body_replacement`, lifting recursive

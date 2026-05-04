@@ -2126,6 +2126,58 @@ theorem msub_equ_under_head_app_handler_of_operator_replacement {Γ : Ctx}
   msubStar_app_fixed_arg (PrevalidExt.equ_under_head_replace hpv hnew) hArgScoped
     (hOpReplace hOp hArgScoped)
 
+/-- Canonical `Ms-Fun` handler for innermost `.equ` replacement when the
+bound equivalence and body subtype premises have already been replaced as raw
+one-step reductions. -/
+theorem msub_equ_head_fun_handler_of_raw_replacements {Γ : Ctx}
+    {old new : Term}
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] bound bound')
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    {bound bound' body body' : Term}
+    (hBoundScoped : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound)
+    (hBound : MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound')
+    (hBody : MSubRed ({ bound := bound, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) [] body body') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) []
+      (.abs bound body) (.abs bound' body') :=
+  MSubStar.of_MSubRed
+    (MSubRed.fun_equ_head_replace hBoundScoped (hBoundReplace hBound)
+      (hBodyReplace hBody))
+
+/-- Canonical `Ms-Fun` handler for under-head `.equ` replacement when the
+bound equivalence and body subtype premises have already been replaced as raw
+one-step reductions. -/
+theorem msub_equ_under_head_fun_handler_of_raw_replacements {Γ : Ctx}
+    {head : CtxEntry} {old new : Term}
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] bound bound')
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    {bound bound' body body' : Term}
+    (hBoundScoped : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) bound)
+    (hBound : MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound')
+    (hBody : MSubRed ({ bound := bound, kind := .sub } :: head ::
+      { bound := old, kind := .equ } :: Γ) [] body body') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) []
+      (.abs bound body) (.abs bound' body') :=
+  MSubStar.of_MSubRed
+    (MSubRed.fun_equ_under_head_replace hBoundScoped (hBoundReplace hBound)
+      (hBodyReplace hBody))
+
 /-- Canonical `Ms-FOp` handler for innermost `.equ` replacement: recursively
 replace the body under the preserved operand head, then lift the resulting
 diagrammatic chain through `FOp` with the fixed abstraction bound. -/
