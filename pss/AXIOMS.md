@@ -1170,6 +1170,11 @@ closures, 2 inactive outstanding).
   These package the existing direct constructor-level subtype residual
   consumer for one-step and transitive well-subtyping callers. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added bound-self
+  well-formedness helpers `WfM.sub_head_bound_from_wf` and
+  `WfM.sub_under_head_bound_from_wf`, deriving the explicit shifted
+  new-bound payloads needed by direct `.sub` replacement from ordinary
+  well-formedness of the bound. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,

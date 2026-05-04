@@ -1935,6 +1935,28 @@ noncomputable def WfM.weaken_head {Γ : Ctx} {t : Term} {newEntry : CtxEntry}
   simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
     (Nat.zero_le Γ.depth) hNew hpv
 
+/-- A well-formed term is well-formed as the shifted bound of a new `.sub`
+head that stores that same term. -/
+noncomputable def WfM.sub_head_bound_from_wf {Γ : Ctx} {t : Term}
+    (h : WfM Γ t) :
+    WfM ({ bound := t, kind := .sub } :: Γ) (Term.shift 0 t) :=
+  h.weaken_head (Prevalid.sub h.prevalid h.scoped) h.prevalid
+
+/-- Preserved-head version of `WfM.sub_head_bound_from_wf`. -/
+noncomputable def WfM.sub_under_head_bound_from_wf {Γ : Ctx}
+    {head : CtxEntry} {t : Term}
+    (h : WfM Γ t)
+    (hpvHead : Prevalid (head :: { bound := t, kind := .sub } :: Γ)) :
+    WfM (head :: { bound := t, kind := .sub } :: Γ) (Term.shiftBy 0 2 t) := by
+  have hSub : WfM ({ bound := t, kind := .sub } :: Γ) (Term.shift 0 t) :=
+    WfM.sub_head_bound_from_wf h
+  have hLift : WfM (head :: { bound := t, kind := .sub } :: Γ)
+      (Term.shift 0 (Term.shift 0 t)) :=
+    hSub.weaken_head hpvHead (Prevalid.sub h.prevalid h.scoped)
+  have hShift : Term.shift 0 (Term.shift 0 t) = Term.shiftBy 0 2 t := by
+    simpa [Term.shift] using (Term.shiftBy_compose 0 1 1 t)
+  simpa [hShift] using hLift
+
 /-- Head-extension weakening for de Bruijn well-subtyping. -/
 noncomputable def WSubM.weaken_head {Γ : Ctx} {v t : Term} {newEntry : CtxEntry}
     (h : WSubM Γ v t)
