@@ -1203,6 +1203,299 @@ theorem AvoidsProUniv_refl
         intro y hy
         exact ihbody _ _ _ _
 
+/-- `Γ.equBinds y α ⇒ y ∈ Γ.dom`. Public helper extracted here so the
+`pro_avoidsAllStray` lemma below can use it (its private duplicates in
+`Commutation.lean` and `WellFormed.lean` aren't reachable from here —
+those modules import `AvoidsPro`, not the other way around). -/
+theorem equBinds_in_dom {Γ : Ctx} {y : String} {α : Term}
+    (h : Γ.equBinds y α) : y ∈ Γ.dom := by
+  induction Γ with
+  | nil => simp [Ctx.equBinds, Ctx.lookupEqu] at h
+  | cons e rest ih =>
+    rw [Ctx.equBinds, Ctx.lookupEqu_cons] at h
+    by_cases hex : e.name = y
+    · simp [Ctx.dom_cons, hex]
+    · simp [hex] at h
+      simp [Ctx.dom_cons]
+      exact Or.inr (ih h)
+
+/-! ## §2.5.5. `avoidsAllStray` — output-motive avoidance for stray names
+
+**Iter-7 motive-strengthening foundations** (`pss: avoidsAllStray helpers
++ per-constructor lemmas (iter 7 — motive-strengthening foundations)`).
+
+Iter-6 (commit `09cbb97`) identified that the descent step of
+`Lemma_2_inline_app_bet_residual_axiom` needs avoidance witnesses on
+the body-diamond's OUTPUT derivations (which `Lemma_2_DiamondMEqRed_core`
+does not currently provide). The path forward is to strengthen `_core`'s
+output-motive to also produce avoidance.
+
+This section installs the foundational `avoidsAllStray` predicate and
+its per-constructor preservation lemmas, so iter-8 can attempt
+`_core_strong` with the strengthened motive.
+
+**What "stray" means.** A name `x` is "stray" relative to a derivation
+`h : MEqRed Γ s u v` when `x ∉ Γ.dom`, `x ∉ Term.fv u`, and
+`x ∉ Term.fv v`. The intuition: such `x` cannot legitimately appear
+in any `Me-Pro` step inside `h`, because:
+
+* `Me-Pro y` requires `Γ.equBinds y _`, hence `y ∈ Γ.dom`. Stray `x`
+  has `x ∉ Γ.dom`, so `y ≠ x` for every outer-level `Me-Pro y`.
+* For body recursions of `bet` (body context = bare `Γ`) and `fun_`
+  (body context = `⟨z, t, .sub⟩::Γ`, `.sub` doesn't admit `Me-Pro`),
+  stray `x` against the OUTER `Γ` still avoids ALL inner `Me-Pro`s.
+* For `fOp` body (context `⟨z, α, .equ⟩::Γ`), inner `Me-Pro` could
+  target `z` itself. The motive's per-constructor lemma for `fOp` will
+  need to widen the stray condition to `x ≠ z` for every body witness
+  `z`, which is the canonical sample-point fragility issue motivating
+  `AvoidsProUniv` (§2.5).
+
+**Bool form vs universal form.** This iteration ships the Bool form
+(matching the prompt's literal proposal) for use as a Prop predicate
+on `_core_strong`'s output sigma. The `fOp` body case will need
+additional reasoning — see the per-constructor lemma's docstring for
+the discharge strategy. -/
+
+/-- `MEqRed.avoidsAllStray h` holds iff `h` avoids `Me-Pro x` for every
+"stray" name `x` (one that's outside `Γ.dom`, `fv u`, `fv v`).
+
+Used as the output motive on `_core_strong` (iter 8) to give the
+β-residual descent step (`Lemma_2_inline_app_bet_residual`) the
+avoidance witness it needs to descend the body-diamond's output via
+`Lemma_32_AsymmetricEqu`. -/
+def MEqRed.avoidsAllStray {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : Prop :=
+  ∀ x, x ∉ Γ.dom → x ∉ Term.fv u → x ∉ Term.fv v → avoidsPro h x = true
+
+/-- `MEqRed.refl` is `avoidsAllStray` (for any stray `x`, `avoidsPro = true`).
+
+Direct corollary of `avoidsPro_refl` (§2.2): the reflexivity witness is
+built from `top`/`var`/`app`/`fun_`/`fOp` constructors only, never
+`Me-Pro`. So it `avoidsPro` ANY name, stray or not. -/
+theorem MEqRed.avoidsAllStray_refl
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hLC : Term.LC u) (hfv : Term.fv u ⊆ Γ.dom) :
+    (MEqRed.refl hpv hLC hfv).avoidsAllStray :=
+  fun x _ _ _ => avoidsPro_refl hpv hLC hfv x
+
+/-! ### §2.5.5.1. Per-constructor `avoidsAllStray` preservation lemmas
+
+For each `MEqRed` constructor, given that the constituent sub-derivations
+are `avoidsAllStray`, the assembled constructor-application is also
+`avoidsAllStray`. The trivial leaves (`top`, `var`, `tAp`) are immediate
+from the per-constructor `avoidsPro_*` simp lemmas (which give `= true`).
+
+The interesting cases are `pro` (where `Me-Pro y` reduces to a check
+`y ≠ x` discharged from `y ∈ Γ.dom` ∧ `x ∉ Γ.dom`) and the cofinite
+arms (`bet`, `fun_`, `fOp`) where the body recursion's stray-x
+hypothesis must align with the body sub-derivation's context. -/
+
+/-- `MEqRed.top` is unconditionally `avoidsAllStray`. -/
+theorem MEqRed.top_avoidsAllStray {Γ s} (hpv : PrevalidExt Γ s) :
+    (MEqRed.top hpv).avoidsAllStray :=
+  fun x _ _ _ => by rw [avoidsPro_top]
+
+/-- `MEqRed.var` is unconditionally `avoidsAllStray`. -/
+theorem MEqRed.var_avoidsAllStray {Γ s y} (hpv : PrevalidExt Γ s) :
+    (@MEqRed.var Γ s y hpv).avoidsAllStray :=
+  fun x _ _ _ => by rw [avoidsPro_var]
+
+/-- `MEqRed.tAp` is unconditionally `avoidsAllStray`. -/
+theorem MEqRed.tAp_avoidsAllStray {Γ s u}
+    (hpv : PrevalidExt Γ s) (hLCu : Term.LC u) (hfvu : Term.fv u ⊆ Γ.dom) :
+    (MEqRed.tAp hpv hLCu hfvu).avoidsAllStray :=
+  fun x _ _ _ => by rw [avoidsPro_tAp]
+
+/-- `MEqRed.pro` preserves `avoidsAllStray` from the inner `α`-derivation.
+
+Key structural fact: `Me-Pro y` requires `Γ.equBinds y α`, which entails
+`y ∈ Γ.dom` (via `_comm_lookupEqu_some_dom` in Commutation.lean or the
+analogous `_equBinds_in_dom` in WellFormed.lean). For stray `x ∉ Γ.dom`,
+this gives `y ≠ x` directly.
+
+The inner derivation `hα : MEqRed Γ s α α'` operates at the same Γ
+(no extension), and we need `avoidsPro hα x = true` from the IH. The
+IH's stray-x hypothesis requires `x ∉ Γ.dom ∧ x ∉ fv α ∧ x ∉ fv α'`.
+The first two come from caller-supplied stray-witnesses against the
+outer `.fvar y` (whose `fv = {y}`, irrelevant to `x ≠ y`); the
+last (`x ∉ fv α'`) is OBSTRUCTED — `α` and `α'` are NOT free-variables
+of `.fvar y`. We need additional information about `α`'s scope.
+
+**Status: shape requires `fv α ⊆ Γ.dom` premise.** The cleanest
+reformulation widens the stray premise to also exclude `Γ`-internal
+free variables — but for the diamond use-case where `_core_strong`
+constructs the output, `α` is bounded by `Prevalid.fv_lookupEqu` (so
+`fv α ⊆ Γ.dom`), and stray-x against `Γ.dom` already implies `x ∉ fv α`.
+
+This is recorded as a known shape-restriction; iter-8 can either thread
+the `fv α ⊆ Γ.dom` premise explicitly or invoke `Prevalid.fv_lookupEqu`
+at the call site. -/
+theorem MEqRed.pro_avoidsAllStray
+    {Γ : Ctx} {s : Stack} {y : String} {α α' : Term}
+    (hpv : PrevalidExt Γ s) (heq : Γ.equBinds y α) (hα : MEqRed Γ s α α')
+    (hα_stray : hα.avoidsAllStray) :
+    (MEqRed.pro hpv heq hα).avoidsAllStray := by
+  intro x hxΓ hxu hxv
+  rw [avoidsPro_pro, Bool.and_eq_true]
+  refine ⟨?_, ?_⟩
+  · -- y ∈ Γ.dom (from equBinds), x ∉ Γ.dom ⇒ y ≠ x.
+    have hyΓ : y ∈ Γ.dom := equBinds_in_dom heq
+    simp [decide_eq_true_eq]
+    intro hyx
+    exact hxΓ (hyx ▸ hyΓ)
+  · -- Apply IH for hα. Need x ∉ fv α and x ∉ fv α'.
+    -- x ∉ fv α: from `Prevalid.fv_lookupEqu` (fv α ⊆ Γ.dom) + x ∉ Γ.dom.
+    have hfvα : Term.fv α ⊆ Γ.dom :=
+      Prevalid.fv_lookupEqu (extractPrevalid hpv) heq
+    have hxα : x ∉ Term.fv α := fun h => hxΓ (hfvα h)
+    -- x ∉ fv α': from MEqRed_fv_subset hα + hxα + hxΓ.
+    have hxα' : x ∉ Term.fv α' := by
+      intro h
+      have : x ∈ Term.fv α ∪ Γ.dom := MEqRed_fv_subset hα h
+      rcases Finset.mem_union.mp this with h' | h'
+      · exact hxα h'
+      · exact hxΓ h'
+    exact hα_stray x hxΓ hxα hxα'
+
+/-- `MEqRed.app` preserves `avoidsAllStray` from both sub-derivations.
+
+`avoidsPro_app` reduces to a conjunction of the inner avoidances. Stray
+x against `.app u v` and `.app u' v'` (i.e. `x ∉ fv u ∪ fv v` and
+`x ∉ fv u' ∪ fv v'`) splits cleanly into per-component stray-witnesses. -/
+theorem MEqRed.app_avoidsAllStray
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term}
+    (hu : MEqRed Γ (v :: s) u u') (hv : MEqRed Γ [] v v')
+    (hu_stray : hu.avoidsAllStray) (hv_stray : hv.avoidsAllStray) :
+    (MEqRed.app hu hv).avoidsAllStray := by
+  intro x hxΓ hxapp hxapp'
+  rw [avoidsPro_app, Bool.and_eq_true]
+  -- fv (.app u v) = fv u ∪ fv v
+  have hxu : x ∉ Term.fv u := fun h =>
+    hxapp (by simp [Term.fv]; exact Or.inl h)
+  have hxv : x ∉ Term.fv v := fun h =>
+    hxapp (by simp [Term.fv]; exact Or.inr h)
+  have hxu' : x ∉ Term.fv u' := fun h =>
+    hxapp' (by simp [Term.fv]; exact Or.inl h)
+  have hxv' : x ∉ Term.fv v' := fun h =>
+    hxapp' (by simp [Term.fv]; exact Or.inr h)
+  exact ⟨hu_stray x hxΓ hxu hxu', hv_stray x hxΓ hxv hxv'⟩
+
+/-! ### §2.5.5.2. Cofinite-arm preservation: known shape obstacle
+
+The `bet`, `fun_`, `fOp` constructors take a cofinite body
+`hbody : ∀ y, y ∉ L → MEqRed _ _ (body^[y]) (body'^[y])`. The
+`avoidsPro_bet/fun_/fOp` simp lemma reduces `avoidsPro` of the
+constructor to `avoidsPro (hbody (pickFresh L) _) x && ...`.
+
+For the body-IH to discharge stray-x, we need:
+
+* The stray-x condition holds against the body's CONTEXT — for `bet`,
+  the body context is bare `Γ` (no extension), so stray against outer
+  Γ suffices. For `fun_` (extension `⟨pickFresh L, t, .sub⟩::Γ`) and
+  `fOp` (extension `⟨pickFresh L, α, .equ⟩::Γ`), the body's context
+  ALSO contains `pickFresh L`, so stray-x must also satisfy
+  `x ≠ pickFresh L`.
+* The stray-x condition holds against the body's free variables —
+  specifically `x ∉ fv (body^[pickFresh L])` and analogously for
+  `body'`.
+
+The first point exposes the **sample-point fragility**: `pickFresh L` is
+fixed by `Classical.choose` against the constructor's L-finset, so
+unless `x ∈ L`, we cannot guarantee `pickFresh L ≠ x`. This is the
+canonical issue motivating `AvoidsProUniv` (§2.5).
+
+For the diamond's intended use (iter-8 `_core_strong`), the body's L
+is constructed from the parent's L plus auxiliary names; the avoidance
+caller can be required to widen `L` to include `{x}` before applying
+the IH. But that's a per-arm cofinite-widening dance, not a uniform
+preservation lemma.
+
+**Pragmatic ship status (iter 7):** the cofinite-arm preservation
+lemmas are NOT shipped as standalone `@[simp]`-style lemmas, because
+the right shape is use-case-dependent (Bool with `x ∈ L` premise vs
+universal `AvoidsProUniv` form). Iter 8 will pick the right shape
+when scaffolding `_core_strong`.
+
+The Bool-shaped variants would carry an additional `x ∈ L` (or
+`x ∉ pickFresh L`) hypothesis, defeating the "uniform stray-x"
+invariant. The universal-shaped variants would re-implement the
+body of `AvoidsProUniv` (already in §2.5).
+
+What IS available for iter 8:
+* `MEqRed.refl_avoidsAllStray`, `top/var/tAp/app/pro_avoidsAllStray`
+  — non-cofinite arms, fully shipped.
+* `AvoidsProUniv` and `AvoidsProUniv_to_avoidsPro` (existing) — the
+  natural rename-stable form. `_core_strong` may want to thread
+  `AvoidsProUniv` directly and bridge to Bool at the consumer.
+
+### §2.5.5.3. Iter-7 Step-4 blocker (for `_core_strong` scaffold)
+
+The prompt's iter-7 Step 4 asks for a scaffolded
+`Lemma_2_DiamondMEqRed_core_strong` with output motive
+`h_out.avoidsAllStray`. Per iter-7 hard constraint #1 ("DO NOT change
+the inline helpers"), the scaffold shape would have to be:
+
+```
+def _core_strong (h₁ h₂) :
+    Σ' t₃, Σ' (h₁' : MEqRed Γ s t₁ t₃) (h₂' : MEqRed Γ s t₂ t₃),
+      h₁'.avoidsAllStray × h₂'.avoidsAllStray :=
+  let ⟨t₃, h₁', h₂'⟩ := _core h₁ h₂
+  ⟨t₃, h₁', h₂', <avoidance_proof_h₁'>, <avoidance_proof_h₂'>⟩
+```
+
+The avoidance proofs must inspect the SHAPE of `_core h₁ h₂`'s output,
+which is opaque from outside (a `Σ'`-projection). Without case-splitting
+along `_core`'s match grid (essentially duplicating it), there's no
+way to extract the constructor shape needed by `pro_avoidsAllStray`,
+`app_avoidsAllStray`, etc.
+
+Duplicating the case grid is feasible for the **trivial cells**
+(`top × top`, `var × var`, `pro × var`, `var × pro`, `tAp × *`),
+where `_core` constructs the output via direct constructor application
+(no helper) and the avoidance follows from
+`top_avoidsAllStray` / `var_avoidsAllStray` / `tAp_avoidsAllStray` /
+`pro_avoidsAllStray` / `refl_avoidsAllStray`.
+
+It is NOT feasible for the **helper-routed cells** (`pro × pro`,
+`app × *`, `bet × *`, `fun_ × fun_`, `fOp × fOp`), because those
+delegate to `_inline_pro_pro/app/bet/fun_fun/fOp_fOp` whose outputs
+come back as opaque `Σ'`s. To prove avoidance on the helper output,
+we'd either:
+
+(a) Re-derive the helper's output structure via additional matching
+    on `_core h₁ h₂` — incurring a 2x case-grid duplication AND a
+    rats'-nest of sub-proofs to align with the helper's internal
+    constructions. The cofinite-arm shape obstacle (this section's
+    earlier discussion) compounds: even if we could see the
+    constructor shape, the body recursions don't compose under
+    `avoidsAllStray` without per-call cofinite widenings.
+
+(b) Modify the helpers to RETURN avoidance witnesses directly
+    (output-motive strengthening at the helper level too) — explicitly
+    forbidden by the iter-7 brief.
+
+Given (a) and (b) are blocked, **Step 4 (`_core_strong`) cannot ship
+in iter 7**. The foundations from Steps 1-3 (definition + 5/8
+per-constructor lemmas + `refl_avoidsAllStray`) ARE shipped here.
+
+### Iter-8 recommended attack
+
+Iter 8's strategy depends on whether the helper-modification ban is
+relaxed:
+
+* **If yes:** modify each `_inline_*` helper to return
+  `Σ' (... × h_out.avoidsAllStray × ...)`. The helpers can then thread
+  the avoidance through their internal constructor applications using
+  the per-constructor lemmas here. The `bet`/`fOp` body cofinite arms
+  will need per-arm cofinite widening — switch the body-arm motive to
+  `AvoidsProUniv`-shaped (from §2.5) for rename-stability.
+
+* **If no:** abandon Bool-shaped avoidance for the body-cofinite arms.
+  Use `AvoidsProUniv` directly as the output motive. The rename-stable
+  form composes naturally through the helpers' lambda IHs, and the
+  Bool consumer (`Lemma_32_AsymmetricEqu`) bridges via
+  `AvoidsProUniv_to_avoidsPro`. -/
+
 /-! ### §2.5.4. `CofinAvoidsProSelfUniv` (extracted)
 
 Definition + per-constructor simp lemmas moved to
