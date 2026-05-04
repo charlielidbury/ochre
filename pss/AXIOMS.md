@@ -689,6 +689,12 @@ closures, 2 inactive outstanding).
   recursively replaced bound reduction, isolating the only remaining
   `Me-Pro` obstruction at the changed head index `0`. No axiom-count
   change.
+* `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` —
+  added `.equ`-head index-0 lookup inversions and
+  `MEqRed.pro_equ_head_zero_residual`. The changed-head `Me-Pro` case
+  is now exposed as a precise residual reducing from the old shifted
+  head bound, rather than hidden inside a failed replacement attempt. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

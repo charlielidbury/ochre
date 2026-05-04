@@ -295,6 +295,19 @@ theorem equBinds_subBinds_false {Γ : Ctx} {i : Nat} {α t : Term} :
 @[simp] theorem equBinds_zero_self (Γ : Ctx) (t : Term) :
     equBinds ({ bound := t, kind := .equ } :: Γ) 0 (Term.shift 0 t) := rfl
 
+/-- An equivalence lookup at an `.equ` head can only return that head's
+stored bound, lifted into the extended context. -/
+theorem equBinds_zero_equ_inv {Γ : Ctx} {t α : Term} :
+    equBinds ({ bound := t, kind := .equ } :: Γ) 0 α →
+    α = Term.shift 0 t := by
+  intro h
+  simpa [equBinds] using h.symm
+
+/-- A subtype lookup at an `.equ` head is impossible. -/
+theorem subBinds_zero_equ_false {Γ : Ctx} {t u : Term} :
+    subBinds ({ bound := t, kind := .equ } :: Γ) 0 u → False := by
+  simp [subBinds]
+
 /-- A successful raw lookup is necessarily within the context depth. -/
 theorem lookup_some_lt {Γ : Ctx} {i : Nat} {e : CtxEntry} :
     Γ.lookup i = some e → i < Γ.depth := by

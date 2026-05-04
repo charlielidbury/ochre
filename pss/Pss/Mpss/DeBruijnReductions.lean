@@ -996,6 +996,19 @@ noncomputable def MEqRed.pro_equ_head_replace_succ {Γ : Ctx} {s : Stack}
   MEqRed.pro (PrevalidExt.equ_head_replace hpv hnew)
     (Ctx.equBinds_equ_head_replace_succ hb) hα
 
+/-- Head `Me-Pro` across an `.equ` head replacement is the one residual case:
+the lookup observes the changed head, so the old derivation reduces from the
+old head bound. -/
+theorem MEqRed.pro_equ_head_zero_residual {Γ : Ctx} {s : Stack}
+    {old α α' : Term}
+    (hb : Ctx.equBinds ({ bound := old, kind := .equ } :: Γ) 0 α)
+    (hα : MEqRed ({ bound := old, kind := .equ } :: Γ) s α α') :
+    α = Term.shift 0 old ∧
+      MEqRedJ ({ bound := old, kind := .equ } :: Γ) s (Term.shift 0 old) α' := by
+  have hαeq : α = Term.shift 0 old := Ctx.equBinds_zero_equ_inv hb
+  subst hαeq
+  exact ⟨rfl, ⟨hα⟩⟩
+
 /-- `Ms-Pro` is stable when the bound stored in an innermost `.equ` head is
 replaced, because subtype lookup ignores `.equ` heads. -/
 noncomputable def MSubRed.pro_equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
