@@ -195,19 +195,51 @@ y-fresh `target'`). Cost: ~600-1000 lines. Requires building a
 canonical `Term.openInverse y target` function and proving the descent
 is body-shape-sensitive.
 
-**Iter-31+ — Lever B (PREFERRED): α-equivariance renaming functor.**
-Build `MEqRed.rename_at_head` taking `MEqRed (⟨y, α, .equ⟩::Γ) s
-(body^[y]) target` with `y ∉ Γ.dom` and producing
-`MEqRed (⟨y', α, .equ⟩::Γ) s (body^[y']) (rename y y' target)` for
-any `y' ∉ Γ.dom`. This is the α-equivariance lemma in functor form.
-With this in hand, the consumer rebuilds the cofinite hypothesis
-without going through stray-z descent — they pick a canonical y₀ from
-the IH, descend in the input form (no widening), then α-rename
-y₀ → y' for arbitrary y'. Cost: ~500-800 lines (the "next big
-architectural lever" mentioned in iter-29 dispatch docs). Requires a
-Type-valued recursive renaming preserving MEqRed's constructor
-structure. Also useful for several other axioms (`Lemma_1_inline_app_bet_residual`,
-`Lemma_2_inline_bet_residual_axiom`).
+**Iter-31+ — Lever B audit: existing `_MEqRed_rename_equ_no_fv` is
+strictly weaker than required.** The plan agent in iter-31 (commit
+`575747e`'s prep work) confirmed `_MEqRed_rename_equ_no_fv`
+(Renaming.lean:1955) requires the target to be ALREADY factored as
+`body'^[y]` with `y ∉ fv body'`. The consumer's body-IH output has no
+such factorization — the join term `body₃` from `_core` is wholly
+existential. Lever B's "rename_at_head with arbitrary target" would
+need an extra ~500-800 lines (substitution-style on possibly-
+y-mentioning targets) AND would still not address the consumer's
+actual need (uniform `body_join`). **Lever B is dispreferred.**
+
+**The deeper finding — `_core`'s body-IH is structurally accessible
+already.** Iter-5 (commit `05fcb26`) added `termination_by structural
+h₁`, so `_core`'s App arm CAN do `cases hu` and recurse on
+`hbody_dst y hy` (a structural sub-tree of `hu = MEqRed.fOp ...`). The
+body-IH was never the missing piece; the missing piece is the descent
+of the body-diamond's join target back into y-fresh form for
+`MEqRed.bet`'s body slot. **Lever A is the right tool.**
+
+**Iter-31 (commit `575747e`) — Lever A Phase 1 SHIPPED.**
+`Term.openInverse y target` (`Pss/Syntax/LocallyNameless.lean`,
++135 lines):
+* `Term.openInverseAt y k` — close the `k`-th binding (alias for
+  existing `Term.close_ k y`).
+* `Term.openInverse y` — close at level 0.
+* `Term.openInverse_open` — `(openInverse y target)^[y] = target`
+  under `Term.LC target`. **This is the property the consumer needs.**
+* `Term.openInverse_fresh` — identity when `y ∉ fv t`.
+* `Term.openInverse_open_self` — round-trip `openInverse y (t^[y]) = t`
+  when `y ∉ fv t`.
+* `Term.openInverse_fv` — `fv (openInverse y t) ⊆ fv t \ {y}`.
+
+Build green; headline axiom closures byte-identical to iter-30
+(9 active axioms unchanged).
+
+**Iter-32+ — Lever A Phase 2.** Build `MEqRed.openInverse_descend`:
+the 7-arm MEqRed traversal that, given
+`MEqRed (⟨y, α, .equ⟩::Γ) s (body^[y]) target_open` plus the moreover
+clause (`avoidsPro h y = true`), produces a y-fresh `target` with
+`target_open = target^[y]` AND a cofinite-y derivation
+`∀ z ∉ Γ.dom, MEqRed Γ s (body^[z]) (target^[z])`. Estimated ~400-700
+lines (the iter-31 plan's lemma signature for `openInverse_descend`).
+With this, the App×Bet residual closes in ~80-150 lines: pick
+canonical y₀, recurse `_core` on body, apply `openInverse_descend` to
+extract uniform `body_join`, rebuild `MEqRed.bet`'s cofinite slot.
 
 The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-30+
 retires it once the cofinite-z bridge lands and `descend_body_equ_uniform_app`
