@@ -1089,6 +1089,60 @@ noncomputable def _Lemma_10_contra_inv_sub
     (fun _ _ _ _ _ _ => ())
     h) heqA heqB
 
+/-! ### §7.3d. Trs-free `WSubMStar` form (iteration-1 infrastructure)
+
+A `Type`-valued packaging of "single-step" `WSubMStar` derivations: a
+`WSubMStar` whose only constructor is `Ws-Sub` (no `Ws-Trs`). This is
+the call-shape that the `WSubM`-level partial discharge
+`_Lemma_10_Inversion_sub_partial` can consume cleanly, since by
+construction every inhabitant unpacks to a single `WSubM`.
+
+This is **iteration-1 infrastructure** for Strategy 5 of `AXIOMS.md`
+axiom #3 (Lemma_10_Inversion). It does **not** discharge the axiom on
+its own — the call site at `TypeSafety.lean:959` currently consumes
+the unrestricted `WSubMStar` shape coming out of `WfM.app`'s `hStarFn`
+field. To leverage this predicate one must either:
+
+* re-architect `WfM.app` to carry `WSubMStarTrsFree` rather than
+  `WSubMStar`, propagating the restriction through the WfM judgment, OR
+* prove that the `hStarFn` argument supplied at the β-arm of
+  `Lemma_6_EvaluationPreservesWf_J` can always be reshaped as
+  `WSubMStarTrsFree` — which would itself entail a `WSubM`-transitivity
+  result, since `TypeSafety.lean` constructs `WfM.app` arguments via
+  `WSubMStar.trs` at lines 1007 and 1025 (auditing as of this commit).
+
+See `AXIOMS.md` axiom #3 (Lemma_10_Inversion) for campaign context. -/
+
+/-- **Trs-free `WSubMStar`** — `Type`-valued, mirroring `WSubMStar.sub`
+with no `.trs` constructor. By construction every inhabitant is a
+single `Ws-Sub` step. Used as the precondition shape for the restricted
+inversion `_Lemma_10_Inversion_trsFree`. -/
+inductive WSubMStarTrsFree : Ctx → Term → Term → Type where
+  /-- Single-step well-subtyping packaging, mirrors `WSubMStar.sub`. -/
+  | sub {Γ : Ctx} {a b : Term} :
+      WfM Γ a → WSubM Γ a b → WfM Γ b → WSubMStarTrsFree Γ a b
+
+/-- Embedding: a trs-free chain is a special case of the full
+`WSubMStar`. Single line, since both have a `.sub` constructor with
+matching field types. -/
+noncomputable def WSubMStarTrsFree.toWSubMStar
+    {Γ : Ctx} {a b : Term} (h : WSubMStarTrsFree Γ a b) :
+    WSubMStar Γ a b :=
+  match h with
+  | .sub hwfA hsub hwfB => WSubMStar.sub hwfA hsub hwfB
+
+/-- **Restricted Lemma 10 inversion** — discharges Lemma_10_Inversion
+on the trs-free shape. By construction, a `WSubMStarTrsFree` unpacks
+to a single `WSubM`, which the `_sub` partial discharge handles
+directly. **No axioms.** -/
+private noncomputable def _Lemma_10_Inversion_trsFree
+    {Γ : Ctx} {t u t' u' : Term}
+    (h : WSubMStarTrsFree Γ (.abs t u) (.abs t' u')) :
+    WEquM Γ t t' := by
+  cases h with
+  | sub _hwfA hsub _hwfB =>
+    exact _Lemma_10_Inversion_sub_partial hsub rfl rfl
+
 /-! ### §7.4. The remaining axiom
 
 Despite the partial `_sub` discharge above, the full `Lemma_10_Inversion`
