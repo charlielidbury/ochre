@@ -2480,6 +2480,26 @@ theorem meqRedStar_abs_fun_bound_fixed_body {Γ : Ctx}
       exact Relation.ReflTransGen.trans ih
         (MEqRedStar.single (MEqRed.fun_ hStep.some hBodyRefl))
 
+/-- Lift a bound equivalence-reduction chain through `Fun` as a subtype chain
+while keeping the body fixed. -/
+theorem msubRedStar_abs_fun_bound_fixed_body {Γ : Ctx}
+    {bound bound' body : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hBound : MEqRedStar Γ [] bound bound') :
+    MSubRedStar Γ [] (.abs bound body) (.abs bound' body) := by
+  induction hBound with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | @tail mid bound' hStar hStep ih =>
+      have hpvBody : PrevalidExt ({ bound := mid, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hStep.some.scoped_left)
+      have hBodyRefl : MSubRed ({ bound := mid, kind := .sub } :: Γ) [] body body :=
+        MSubRed.refl hpvBody hBodyScoped
+      exact Relation.ReflTransGen.trans ih
+        (MSubRedStar.single
+          (MSubRed.fun_ hStep.some.scoped_left hStep.some hBodyRefl))
+
 /-- Star-level fixed-body `Fun` abstraction diamond. A bound-level
 equivalence-chain diamond lifts through `Fun` when the body is unchanged. -/
 noncomputable def diamond_abs_fun_bound_fixed_body_star {Γ : Ctx}
@@ -7746,6 +7766,42 @@ noncomputable def commute_abs_fun_body_fixed_bound_star {Γ : Ctx}
   exact ⟨.abs bound body₃,
     meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped hLeft,
     msubRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped hRight⟩
+
+/-- Star-level fixed-body `FOp` abstraction commutation. Bound equivalence
+chains lift through the equivalence side, while the subtype side is already at
+the same fixed-body endpoint. -/
+noncomputable def commute_abs_fOp_bound_fixed_body_star {Γ : Ctx} {s : Stack}
+    {α bound bound₂ body : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hα : Term.Scoped Γ.depth α)
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body)
+    (hEqBound : MEqRedStar Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound₂ body) t₃ := by
+  exact ⟨.abs bound₂ body,
+    meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBodyScoped hEqBound,
+    Relation.ReflTransGen.refl⟩
+
+/-- Star-level fixed-body `Fun` abstraction commutation. Bound equivalence
+chain diamonds supply a shared bound target, then both sides lift through the
+abstraction with the body unchanged. -/
+noncomputable def commute_abs_fun_bound_fixed_body_star {Γ : Ctx}
+    {bound bound₁ bound₂ body : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRedStar Γ [] bound bound₁)
+    (hEqBound : MEqRedStar Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body) t₃ := by
+  obtain ⟨bound₃, hLeft, hRight⟩ :=
+    diamond_eqStar_eqStar_of hdiamondBound hSubBound hEqBound
+  exact ⟨.abs bound₃ body,
+    meqRedStar_abs_fun_bound_fixed_body hpvNil hBodyScoped hLeft,
+    msubRedStar_abs_fun_bound_fixed_body hpvNil hBodyScoped hRight⟩
 
 namespace MSub
 
