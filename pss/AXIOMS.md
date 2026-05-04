@@ -544,6 +544,12 @@ closures, 2 inactive outstanding).
   abstraction commutation wrappers `commute_abs_fun_bound_fixed_body_star`
   and `commute_abs_fOp_bound_fixed_body_star`, plus the supporting
   `msubRedStar_abs_fun_bound_fixed_body` lift. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the de Bruijn type-safety
+  endpoint module and imported it from `Pss.lean`: conditional progress
+  `Theorem_4_DeBruijn_Progress_of` with explicit
+  `NoTopFunctionSupertypes`, and conditional preservation
+  `Theorem_5_DeBruijn_Preservation_of` with explicit Type-valued
+  `StepPreservesWfM`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
