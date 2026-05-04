@@ -2088,6 +2088,62 @@ theorem msubRed_equ_under_head_replace_from_handlers {Γ : Ctx} {s : Stack}
   | fOp ht hArg hBody =>
     exact hFOp ht hArg rfl hBody
 
+/-- Canonical `Ms-FOp` handler for innermost `.equ` replacement: recursively
+replace the body under the preserved operand head, then lift the resulting
+diagrammatic chain through `FOp` with the fixed abstraction bound. -/
+theorem msub_equ_head_fop_handler_of_body_replacement {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpvTail : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    {bound arg body body' : Term} {rest : Stack}
+    (hBoundScoped : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound)
+    (hArgScoped : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg)
+    (hStack : s = arg :: rest)
+    (hBody : MSubRed ({ bound := arg, kind := .equ } ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s
+      (.abs bound body) (.abs bound body') := by
+  subst hStack
+  have hpvNewTail : PrevalidExt ({ bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.equ_head_replace (PrevalidExt.tail hpvTail) hnew
+  exact msubStar_abs_fOp_body_fixed_bound hpvNewTail hBoundScoped hArgScoped
+    (hBodyReplace hArgScoped rfl hBody)
+
+/-- Canonical `Ms-FOp` handler for under-head `.equ` replacement. -/
+theorem msub_equ_under_head_fop_handler_of_body_replacement {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpvTail : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } :: head ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    {bound arg body body' : Term} {rest : Stack}
+    (hBoundScoped : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) bound)
+    (hArgScoped : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg)
+    (hStack : s = arg :: rest)
+    (hBody : MSubRed ({ bound := arg, kind := .equ } :: head ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.abs bound body) (.abs bound body') := by
+  subst hStack
+  have hpvNewTail : PrevalidExt (head :: { bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.equ_under_head_replace (PrevalidExt.tail hpvTail) hnew
+  exact msubStar_abs_fOp_body_fixed_bound hpvNewTail hBoundScoped hArgScoped
+    (hBodyReplace hArgScoped rfl hBody)
+
 /-- One-step equivalence replacement splitter for an innermost changed `.equ`
 head. Stable leaves are discharged immediately; the head `Me-Pro` case is
 exposed as its precise residual, and recursive constructor cases are exposed
