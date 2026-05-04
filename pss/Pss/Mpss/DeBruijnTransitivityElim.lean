@@ -2845,6 +2845,36 @@ theorem meqRedStar_replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
   | @tail mid v hStar hLast ih =>
     exact MSubStar.trans ih (hStep hLast.some)
 
+/-- Function-valued variant of
+`msubRedStar_replace_from_step_replacement`: consume subtype-reduction
+chains at every residual stack from a tail-polymorphic step replacement. -/
+theorem msubRedStar_replace_from_step_replacement_function {Γ Γ' : Ctx}
+    {u v : Term}
+    (hStep :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {a b : Term},
+          MSubRed Γ s a b → MSubStar Γ' s a b)
+    (h : ∀ {s : Stack}, PrevalidExt Γ s → MSubRedStar Γ s u v) :
+    ∀ {s : Stack}, PrevalidExt Γ s → MSubStar Γ' s u v :=
+  fun hpv =>
+    msubRedStar_replace_from_step_replacement (hStep hpv) (h hpv)
+
+/-- Function-valued variant of
+`meqRedStar_replace_from_step_replacement`: consume equivalence-reduction
+chains at every residual stack from a tail-polymorphic step replacement. -/
+theorem meqRedStar_replace_from_step_replacement_function {Γ Γ' : Ctx}
+    {u v : Term}
+    (hStep :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {a b : Term},
+          MEqRed Γ s a b → MSubStar Γ' s a b)
+    (h : ∀ {s : Stack}, PrevalidExt Γ s → MEqRedStar Γ s u v) :
+    ∀ {s : Stack}, PrevalidExt Γ s → MSubStar Γ' s u v :=
+  fun hpv =>
+    meqRedStar_replace_from_step_replacement (hStep hpv) (h hpv)
+
 /-- Star-level subtype replacement across an innermost changed `.equ` head,
 obtained by composing the one-step replacement wrapper over a subtype
 reduction chain. -/

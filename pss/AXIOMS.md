@@ -1030,6 +1030,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_equ_head_stack_lift_function_from_step_lift`, a generic
   function-valued chain lift over `MEqRedStar` from a tail-polymorphic
   one-step lift. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added generic function-valued
+  chain consumers `msubRedStar_replace_from_step_replacement_function` and
+  `meqRedStar_replace_from_step_replacement_function`, composing
+  tail-polymorphic source chains with tail-polymorphic one-step replacement
+  functions. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
