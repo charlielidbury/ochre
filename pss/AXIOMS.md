@@ -952,6 +952,14 @@ closures, 2 inactive outstanding).
   arbitrary residual stack. Stable leaves are discharged; recursive
   constructor cases and the nonempty-stack `Me-Fun` lift are explicit
   handler obligations. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added canonical handler
+  builders for the changed-head stack-lift splitter:
+  `meq_equ_head_stack_lift_pro_handler_of_replacement`,
+  `meq_equ_head_stack_lift_app_handler_of_replacements`,
+  `meq_equ_head_stack_lift_fun_nil_handler_of_replacements`,
+  `meq_equ_head_stack_lift_fun_cons_handler_of_replacements`, and
+  `meq_equ_head_stack_lift_bet_handler_of_replacements`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

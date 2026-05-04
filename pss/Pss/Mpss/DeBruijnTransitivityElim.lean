@@ -3942,6 +3942,119 @@ noncomputable def meq_equ_head_stack_lift_from_handlers {Γ : Ctx} {s : Stack}
   | bet ht hBody hArg =>
     exact hBet ht hBody hArg
 
+/-- Canonical `Me-Pro` handler for the changed-head stack-lift splitter. -/
+noncomputable def meq_equ_head_stack_lift_pro_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed Γ [] α α' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 α) (Term.shift 0 α'))
+    {i : Nat} {α α' : Term}
+    (hb : Γ.equBinds i α)
+    (hα : MEqRed Γ [] α α') :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.bvar i)) (Term.shift 0 α') :=
+  meq_equ_head_stack_lift_pro hpvTail hHeadScoped hb (hReplace hα)
+
+/-- Canonical `Me-App` handler for the changed-head stack-lift splitter. -/
+noncomputable def meq_equ_head_stack_lift_app_handler_of_replacements {Γ : Ctx}
+    {s : Stack} {head : Term}
+    (hOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed Γ (arg :: []) op op' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ)
+          (Term.shift 0 arg :: Stack.shift 0 s)
+          (Term.shift 0 op) (Term.shift 0 op'))
+    (hArgReplace :
+      ∀ {arg arg' : Term},
+        MEqRed Γ [] arg arg' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 arg) (Term.shift 0 arg'))
+    {op op' arg arg' : Term}
+    (hOp : MEqRed Γ (arg :: []) op op')
+    (hArg : MEqRed Γ [] arg arg') :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.app op arg)) (Term.shift 0 (.app op' arg')) :=
+  meq_equ_head_stack_lift_app (hOpReplace hOp) (hArgReplace hArg)
+
+/-- Canonical empty-stack `Me-Fun` handler for the changed-head stack-lift
+splitter. -/
+noncomputable def meq_equ_head_stack_lift_fun_nil_handler_of_replacements {Γ : Ctx}
+    {head : Term}
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed Γ [] bound bound' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 bound) (Term.shift 0 bound'))
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    {bound bound' body body' : Term}
+    (hStack : ([] : Stack) = [])
+    (hBound : MEqRed Γ [] bound bound')
+    (hBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body') :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) []
+      (Term.shift 0 (.abs bound body)) (Term.shift 0 (.abs bound' body')) := by
+  cases hStack
+  exact meq_equ_head_stack_lift_fun_nil (hBoundReplace hBound) (hBodyReplace hBody)
+
+/-- Canonical nonempty-stack `Me-Fun` handler for the changed-head stack-lift
+splitter. The body lift under the operand `.equ` head remains explicit. -/
+noncomputable def meq_equ_head_stack_lift_fun_cons_handler_of_replacements
+    {Γ : Ctx} {head : Term}
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed Γ [] bound bound' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 bound) (Term.shift 0 bound'))
+    (hBodyReplace :
+      ∀ {α bound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth α →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := Term.shift 0 α, kind := .equ } ::
+          { bound := head, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    {α : Term} {rest : Stack} {bound bound' body body' : Term}
+    (hStack : α :: rest = α :: rest)
+    (hα : Term.Scoped Γ.depth α)
+    (hBound : MEqRed Γ [] bound bound')
+    (hBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body') :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 (α :: rest))
+      (Term.shift 0 (.abs bound body)) (Term.shift 0 (.abs bound' body')) := by
+  cases hStack
+  exact meq_equ_head_stack_lift_fun_cons_of_fop_body hα
+    (hBoundReplace hBound) (hBodyReplace hα hBody)
+
+/-- Canonical `Me-Bet` handler for the changed-head stack-lift splitter. -/
+noncomputable def meq_equ_head_stack_lift_bet_handler_of_replacements {Γ : Ctx}
+    {s : Stack} {head : Term}
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hArgReplace :
+      ∀ {arg arg' : Term},
+        MEqRed Γ [] arg arg' →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 arg) (Term.shift 0 arg'))
+    {bound arg arg' body body' : Term}
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) (Stack.shift 0 [])
+      body body')
+    (hArg : MEqRed Γ [] arg arg') :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.app (.abs bound body) arg))
+      (Term.shift 0 (Term.instantiate 0 arg' body')) :=
+  meq_equ_head_stack_lift_bet hBoundScoped (hBodyReplace hBody) (hArgReplace hArg)
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/
