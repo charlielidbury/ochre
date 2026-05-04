@@ -254,6 +254,8 @@ hard caveats.
      preservation lemmas, de Bruijn `lemma_36`, and single-step closure
      helpers. The star layer also has named `refl`, `single`, `trans`,
      structural preservation, and star-level `lemma_36` helpers.
+     Logical-context prevalidity transport is available at both layers
+     as `*.prevalid_ctx_right_nonempty` and `*.prevalid_ctx_right`.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
    * **Seeded 2026-05-04 on `db-refactor`:**

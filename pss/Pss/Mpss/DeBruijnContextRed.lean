@@ -79,6 +79,35 @@ theorem preserves_kinds {Γ Γ' : Ctx} {s s' : Stack}
   | ann _ _ ih => simp [ih]
   | stk _ _ ih => exact ih
 
+/-! ## Prevalidity invariants -/
+
+/-- De Bruijn extended-context reduction preserves logical-context
+prevalidity from left to right. This intentionally tracks only the logical
+context: under `Ct-Ann`, the recursive stack belongs to the annotation tail,
+while the conclusion lives under the re-added head. -/
+theorem prevalid_ctx_right_nonempty {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRed Γ s Γ' s') : Nonempty (Prevalid Γ → Prevalid Γ') := by
+  induction h with
+  | refl =>
+      exact ⟨fun hpv => hpv⟩
+  | @ann Γ Γ' s s' t t' kind hInner hred ih =>
+      exact ⟨fun hpv =>
+        have hTail : Prevalid Γ := Prevalid.tail hpv
+        have hTargetCtx : Prevalid Γ' := ih.some hTail
+        have hScopedTarget : Term.Scoped Γ'.depth t' := by
+          simpa [← hInner.preserves_ctx_depth] using hred.scoped_right
+        match kind with
+        | .sub => Prevalid.sub hTargetCtx hScopedTarget
+        | .equ => Prevalid.equ hTargetCtx hScopedTarget⟩
+  | stk _ _ ih =>
+      exact ih
+
+/-- De Bruijn extended-context reduction preserves logical-context
+prevalidity from left to right. -/
+noncomputable def prevalid_ctx_right {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRed Γ s Γ' s') : Prevalid Γ → Prevalid Γ' :=
+  h.prevalid_ctx_right_nonempty.some
+
 /-! ## Lemma 36 -/
 
 /-- De Bruijn form of MPSS Lemma 36: stack changes can be stripped from a
@@ -169,6 +198,28 @@ theorem preserves_kinds {Γ Γ' : Ctx} {s s' : Stack}
   · rfl
   · intro E F hHead _ ih
     exact Eq.trans hHead.preserves_kinds ih
+
+/-! ## Star prevalidity invariants -/
+
+/-- De Bruijn extended-context reduction stars preserve logical-context
+prevalidity from left to right. -/
+theorem prevalid_ctx_right_nonempty {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRedStar (Γ, s) (Γ', s')) :
+    Nonempty (Prevalid Γ → Prevalid Γ') := by
+  refine Relation.ReflTransGen.head_induction_on
+    (P := fun E (_ : ExtCtxRedStar E (Γ', s')) =>
+      Nonempty (Prevalid E.1 → Prevalid Γ'))
+    h ?_ ?_
+  · exact ⟨fun hpv => hpv⟩
+  · intro E F hHead _ ih
+    exact ⟨fun hpv => ih.some (hHead.prevalid_ctx_right hpv)⟩
+
+/-- De Bruijn extended-context reduction stars preserve logical-context
+prevalidity from left to right. -/
+noncomputable def prevalid_ctx_right {Γ Γ' : Ctx} {s s' : Stack}
+    (h : ExtCtxRedStar (Γ, s) (Γ', s')) :
+    Prevalid Γ → Prevalid Γ' :=
+  h.prevalid_ctx_right_nonempty.some
 
 /-- Star-level de Bruijn Lemma 36: stack changes can be stripped from an
 extended-context reduction star. -/

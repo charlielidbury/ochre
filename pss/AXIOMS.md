@@ -200,6 +200,12 @@ closures, 2 inactive outstanding).
   `ExtCtxRedStar.preserves_ctx_depth`,
   `ExtCtxRedStar.preserves_stack_length`, `ExtCtxRedStar.preserves_kinds`,
   and star-level `ExtCtxRedStar.lemma_36`. No axiom-count change.
+* `Pss/Mpss/DeBruijnContextRed.lean` — added logical-context
+  prevalidity transport through de Bruijn extended-context reduction and
+  its star closure: `ExtCtxRed.prevalid_ctx_right_nonempty`,
+  `ExtCtxRed.prevalid_ctx_right`,
+  `ExtCtxRedStar.prevalid_ctx_right_nonempty`, and
+  `ExtCtxRedStar.prevalid_ctx_right`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — seeded the Phase-4 de Bruijn
   well-formed judgment layer: mutual `WfM` / `WSubM` / `WSubMStar`,
   separate `WEquM` / `WEquMStar`, reflexive star helpers, scoped endpoint
