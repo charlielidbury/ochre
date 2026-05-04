@@ -863,6 +863,10 @@ closures, 2 inactive outstanding).
   transport `Ctx.equBinds_replaceAt_sub` for `.sub` entry replacement.
   This generalizes the head and one-preserved-head `Me-Pro` lookup cases
   needed by future `.sub` replacement induction. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added generic changed-slot subtype lookup
+  residual `Ctx.subBinds_replaceAt_sub_self`, identifying the replaced
+  `.sub` entry's target as the new bound shifted through every preserved
+  head above it. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a

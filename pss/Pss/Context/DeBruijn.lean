@@ -539,6 +539,35 @@ theorem equBinds_replaceAt_sub {Γ : Ctx} {cutoff i : Nat}
                       (by simpa [equBinds] using hlook)
                   exact ⟨a, by simpa [equBinds] using htail, rfl⟩
 
+/-- After replacing a context entry with a `.sub` entry, lookup at that exact
+index returns the new bound shifted through the replaced entry and every
+preserved head above it. -/
+theorem subBinds_replaceAt_sub_self {Γ : Ctx} {cutoff : Nat} {new : Term}
+    (hcut : cutoff < depth Γ) :
+    subBinds (replaceAt cutoff { bound := new, kind := .sub } Γ) cutoff
+      (Term.shiftBy 0 (cutoff + 1) new) := by
+  induction Γ generalizing cutoff with
+  | nil =>
+      exact False.elim (Nat.not_lt_zero _ hcut)
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero =>
+          simp [subBinds, Term.shift]
+      | succ cutoff =>
+          have hcutTail : cutoff < depth Γ := by
+            simpa [depth] using hcut
+          have htail := ih hcutTail
+          simp [subBinds, replaceAt] at htail ⊢
+          cases hlook : lookupSub (replaceAt cutoff { bound := new, kind := .sub } Γ) cutoff with
+          | none =>
+              simp [hlook] at htail
+          | some a =>
+              simp [hlook] at htail
+              subst htail
+              exact ⟨Term.shiftBy 0 (cutoff + 1) new, rfl, by
+                simpa [Term.shift, Nat.add_assoc] using
+                  (Term.shiftBy_compose 0 (cutoff + 1) 1 new)⟩
+
 /-- Changing the bound stored in an `.equ` head does not affect subtype
 lookups, because subtype lookup skips `.equ` heads. -/
 theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :
