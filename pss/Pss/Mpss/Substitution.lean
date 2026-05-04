@@ -1041,7 +1041,14 @@ as Lemma 31.
 
 The fully asymmetric form is left as a `TODO` for downstream use: the
 proof structure is identical except for the `Me-Pro y = x` case, which
-needs `α[x\v'] = α[x\v]` (i.e. `v = v'` implicit; otherwise needs care). -/
+needs `α[x\v'] = α[x\v]` (i.e. `v = v'` implicit; otherwise needs care).
+
+**Update (post iteration-1 viability spike).** The asymmetric form
+`Lemma_32_AsymmetricEqu` is shipped as an AXIOM in
+`Pss.Mpss.AvoidsPro` §2.7 (it cannot live here because its statement
+references `avoidsPro` and `noVarX`, which are defined in `AvoidsPro`,
+which already imports this module). Iteration 3 will discharge that
+axiom into a theorem. -/
 
 /-- **Lemma 32 (restricted: `s = v`).** Substitution preserves MPSS
 equivalence reduction under an `.equ` head binding `x ≡ v`, when we

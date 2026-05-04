@@ -885,6 +885,136 @@ theorem noVarX_refl
           rw [Ctx.dom_cons]; exact Finset.mem_insert_of_mem hxΓ
         apply ihbody _ _ _ _ hxopen hxΓ'
 
+/-! ## §2.7. `Lemma_32_AsymmetricEqu` — asymmetric extension of Lemma 32
+
+Iteration-1 viability spike. The restricted form
+`Lemma_32_ReductionUnderSubst_Eq_OfEqu` (Substitution.lean:1053)
+substitutes the SAME term `s = v` on both sides of an MEqRed under an
+`.equ`-head binding `x ≡ v`. The TODO at Substitution.lean:1042-1044
+calls out the asymmetric extension (substituting `v` on the LHS and `v'`
+on the RHS for some `v ⟶ v'`) as the form needed for the β-residual
+discharges in `Pss.Mpss.Diamond` and `Pss.Mpss.Commutation`.
+
+The axiom CANNOT live in `Substitution.lean` because its statement
+mentions `avoidsPro` and `noVarX`, which are defined here in
+`Pss.Mpss.AvoidsPro` — and `AvoidsPro` already imports `Substitution`.
+The cycle would be unbreakable without an architectural refactor. So
+the axiom lives here, alongside its avoidance-machinery prerequisites.
+
+### Truthhood analysis (CRITICAL — read before editing)
+
+The naive form
+
+```
+axiom L32asym
+  (hbody : MEqRed (⟨x, α, .equ⟩ :: Γ) s body body')
+  (hv    : MEqRed Γ [] v v')
+  (hav   : avoidsPro hbody x = true) :
+  MEqRed Γ s (subst x v body) (subst x v' body')
+```
+
+is **mathematically FALSE**. Counterexample: take `body = body' = .fvar x`,
+witnessed by
+
+```
+hbody := MEqRed.var hpv  : MEqRed (⟨x,α,.equ⟩::Γ) s (.fvar x) (.fvar x)
+```
+
+(legitimate; `Me-Var` has NO `x ∉ Γ.dom` precondition — see
+`Reductions.lean:104-106`). Then `avoidsPro hbody x = true` vacuously
+(no `Me-Pro` arm fires). The conclusion would require
+
+```
+MEqRed Γ s (subst x v (.fvar x)) (subst x v' (.fvar x))
+  = MEqRed Γ s v v'
+```
+
+i.e. an MEqRed under stack `s` between `v` and `v'`. The premise gives
+us only `MEqRed Γ [] v v'` (under the EMPTY stack). MPSS's stack-lift
+machinery does not provide a free conversion in general, so the
+conclusion is unobtainable.
+
+### The fix: dual avoidance premises
+
+Adding `noVarX hbody x = true` rules out the counterexample directly:
+`noVarX (MEqRed.var hpv) x = decide (y ≠ x)`, so when `y = x`, the
+premise `noVarX hbody x = true` is `decide (x ≠ x) = false`, contradicting
+`= true`. The case is closed.
+
+Why this rules out ALL counterexamples (case-by-case on MEqRed
+constructors of `hbody`):
+
+* `Me-Pro y _ _` — `avoidsPro` already requires `y ≠ x`, blocking
+  `x ↦ α[x\v]` lookup mismatches. `noVarX` adds nothing here.
+* `Me-Var y` — the new premise. `y ≠ x` rules out the counterexample
+  above.
+* `Me-Bet`, `Me-App`, `Me-Fun`, `Me-FOp` — congruence cases with body
+  recursions. The premises propagate into sub-derivations conjunctively,
+  so the IH always has both witnesses available.
+* `Me-Top`, `Me-TAp` — vacuous (no `x` involvement).
+* `Me-Bet`'s `body^[y]` recursion — y is fresh, so `y ≠ x` (assuming
+  pickFresh widening to include `{x}`). The IH applies cleanly.
+
+### Iteration 3 plan: discharge
+
+Mirror `Lemma_32_ReductionUnderSubst_Eq_OfEqu`'s structural induction on
+`hbody`, with these new ingredients per arm:
+
+* **Me-Pro y, y ≠ x**: same as the existing proof — `subst x v (.fvar y)
+  = .fvar y` (when `y ≠ x`).
+* **Me-Pro y, y = x**: now we substitute `v` on LHS and `v'` on RHS.
+  By uniqueness of the `.equ`-head binding, `α = ?`. The conclusion
+  needs `MEqRed Γ s (subst x v α') (subst x v' α')` — depends on a
+  bridging argument; iteration 3 will detail.
+* **Me-Var y**: `noVarX` premise gives `y ≠ x` directly; close via
+  `Term.subst_fvar_ne` and `MEqRed.var` (or `MEqRed.refl` when context
+  shrinks via Lemma 28).
+* **Me-Bet/App/Fun/FOp**: congruence; IH propagates both `avoidsPro`
+  and `noVarX` premises via the per-constructor simp lemmas.
+* **Me-Top/TAp**: trivial.
+
+### Constructor-by-constructor counterexample audit
+
+Beyond the `Me-Var x` leak, no other constructor of MEqRed produces an
+unprovable conclusion under both premises:
+
+* `Me-Pro y` reaches the bound `α` (which is well-scoped in `Γ` ahead
+  of the `⟨x, α, .equ⟩` binding, so `subst x v α = α`). When `y = x`,
+  the body `α'` lives in the same context and the substitution traverses
+  through. The avoidsPro premise rules out the broken case (y = x with
+  inner Me-Pro x).
+* `Me-Bet/App/Fun/FOp` are congruences over MEqRed; substitution
+  distributes (Lemma 31 / Term.subst_open).
+* `Me-Top/TAp/Var` are leaves; the only one with `x`-involvement is
+  Me-Var, ruled out by `noVarX`. -/
+
+/-- **Lemma 32 (asymmetric extension).** Substitution under an `.equ`-head
+binding `x ≡ α` preserves `MEqRed`, with DIFFERENT terms `v` and `v'`
+substituted on each side, mediated by `MEqRed Γ [] v v'`.
+
+Premises:
+* `hbody : MEqRed (⟨x,α,.equ⟩::Γ) s body body'` — the substitution target.
+* `hv    : MEqRed Γ []           v    v'`     — the substituends.
+* `hav   : avoidsPro hbody x = true`          — no `Me-Pro x` step.
+* `hnv   : noVarX    hbody x = true`          — no `Me-Var x` step.
+
+The dual avoidance premises (`avoidsPro` AND `noVarX`) together rule
+out the `MEqRed.var hpv : MEqRed _ s (.fvar x) (.fvar x)` counterexample
+that would force `MEqRed Γ s v v'` from `MEqRed Γ [] v v'` (a non-trivial
+stack-lift not available in general).
+
+**STATUS: AXIOM (iteration-1 viability spike).** Iteration 3 will
+discharge this by structural induction on `hbody`, mirroring
+`Lemma_32_ReductionUnderSubst_Eq_OfEqu`'s proof at Substitution.lean:1053.
+The new `Me-Var x` arm is closed by `Bool.false_ne_true` from `hnv`. -/
+axiom Lemma_32_AsymmetricEqu
+    {Γ : Ctx} {s : Stack} {x : String} {α v v' body body' : Term}
+    (hbody : MEqRed (⟨x, α, .equ⟩ :: Γ) s body body')
+    (hv : MEqRed Γ [] v v')
+    (hav : avoidsPro hbody x = true)
+    (hnv : noVarX hbody x = true) :
+    MEqRed Γ s (Term.subst x v body) (Term.subst x v' body')
+
 /-! ## §2.5. Universal cofinite avoidance: `AvoidsProUniv` (extracted)
 
 The definition `AvoidsProUniv` and its eight per-constructor simp
