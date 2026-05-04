@@ -627,6 +627,14 @@ closures, 2 inactive outstanding).
   equivalence-derived `Me-Fun` / `Me-FOp`, direct `Ms-Fun`, and direct
   `Ms-FOp` branches with Prop-safe wrappers for Type-valued payloads. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_abs_step_stackHead_transport_or_fOp`, a one-step stack-head
+  transport splitter for abstraction-to-abstraction subtype steps. Direct
+  constructor analysis shows the non-empty-stack abstraction residual is
+  `FOp`-shaped: either equivalence-derived `Me-FOp` or direct `Ms-FOp`.
+  This rules out a blanket stack-head transport theorem and identifies
+  the remaining work as an `FOp`-specific stack-head replacement. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -1601,6 +1601,32 @@ theorem commute_appAbs_structApp_eqStep_of_stackHead_transport {Γ : Ctx}
     msubRedStar_app_fixed_arg hArg'Scoped
       (hTransport (Relation.ReflTransGen.single hSubJoin))⟩
 
+/-- One-step stack-head transport splitter for abstraction-to-abstraction
+subtype steps. At a non-empty operator stack, the abstraction-to-abstraction
+branches are `FOp`-shaped, so they remain as explicit residuals whose body
+derivation is tied to the old stack head. -/
+theorem msub_abs_step_stackHead_transport_or_fOp {Γ : Ctx} {s : Stack}
+    {arg arg' bound body bound' body' : Term}
+    (_hpvTail : PrevalidExt Γ s)
+    (_hEqArg : MEqRed Γ [] arg arg')
+    (h : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound' body')) :
+    MSubRedJ Γ (arg' :: s) (.abs bound body) (.abs bound' body') ∨
+      (∃ oldArg rest,
+        arg :: s = oldArg :: rest ∧
+          MEqRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body') ∨
+      (∃ oldArg rest,
+        arg :: s = oldArg :: rest ∧
+          MSubRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body') := by
+  cases h with
+  | equ _ heq =>
+    cases heq with
+    | fOp _ _ hBody =>
+      exact Or.inr (Or.inl ⟨arg, s, rfl, ⟨hBody⟩⟩)
+  | fOp _ _ hBody =>
+    exact Or.inr (Or.inr ⟨arg, s, rfl, ⟨hBody⟩⟩)
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of
