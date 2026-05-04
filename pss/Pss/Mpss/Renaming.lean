@@ -6240,4 +6240,318 @@ noncomputable def MEqRed.descend_body_equ_uniform_bvar0
   -- Delegate to the auxiliary.
   exact _descend_body_equ_uniform_bvar0_aux h hAvoid hpv' z
 
+/-! ### §11.7.2 — Iter-19 leaves: `body = .top` and `body = .fvar w` (var arm)
+
+This sub-section ships the next two leaves of `descend_body_equ_uniform`,
+plus the `MEqRed.app` arm of the `body = .app a b` recursive case.
+
+#### Leaf 1: `body = .top`
+Source: `(.top)^[y] = .top`. The only constructor is `MEqRed.top hpv`.
+Pattern: descend the prevalid via the iter-18 helper, rebuild
+`MEqRed.top` at the bare context.
+
+#### Leaf 2: `body = .fvar w` (var arm)
+Source: `(.fvar w)^[y] = .fvar w`. We split on `w = y` (excluded by
+`hy_body : y ∉ fv (.fvar w)`) vs `w ≠ y`. Constructors:
+* `MEqRed.var hpv` — trivial: descend prevalid, rebuild at bare Γ.
+  Target `.fvar w`; substitution `w ≠ y` makes it a no-op.
+* `MEqRed.pro hpv heq hβ` — see §11.7.3 below for the **deferred** pro-arm
+  blocker analysis.
+
+#### Recursive: `body = .app a b` (app-app arm)
+Source: `(.app a b)^[y] = .app (a^[y]) (b^[y])`. The `MEqRed.app hu hv`
+constructor decomposes:
+* `hu : MEqRed (⟨y,α,.equ⟩::Γ) (b^[y] :: ...) (a^[y]) u'`
+* `hv : MEqRed (⟨y,α,.equ⟩::Γ) [] (b^[y]) v'`
+
+Recursive call shapes:
+* For `hu`: `body := a, s_tmpl := b :: s_tmpl_old`, stack matches.
+* For `hv`: `body := b, s_tmpl := []`, stack matches `[]`.
+
+Termination: `Term.size body` is the well-founded measure;
+`Term.size a < Term.size (.app a b)` and `Term.size b < Term.size (.app a b)`
+both hold. -/
+
+/-- Auxiliary helper for `descend_body_equ_uniform_top`: takes the input
+stack as a free metavariable (mirrors `_descend_body_equ_uniform_bvar0_aux`
+to avoid the cases-elim glitch on non-variable indices). -/
+private noncomputable def _descend_body_equ_uniform_top_aux
+    {Γ : Ctx} {y : String} {α target_y : Term} {stk : Stack}
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) stk .top target_y)
+    {Γ' : Ctx} {stk' : Stack}
+    (hpv' : PrevalidExt Γ' stk') (z : String) :
+    MEqRed Γ' stk' .top (Term.subst y (.fvar z) target_y) := by
+  classical
+  cases h with
+  | @top _ _ hpv =>
+    show MEqRed Γ' stk' .top (Term.subst y (.fvar z) .top)
+    -- subst on .top is a no-op: Term.subst y u .top = .top by definition.
+    show MEqRed Γ' stk' .top .top
+    exact MEqRed.top hpv'
+
+/-- **Iter-19 leaf — `body = .top` case of `descend_body_equ_uniform`.**
+
+Source: `(.top)^[y] = .top`. The only matching MEqRed constructor is
+`MEqRed.top`, which produces target `.top` (substitution is a no-op).
+Output: `MEqRed.top` at the bare Γ with the helper-descended PrevalidExt. -/
+noncomputable def MEqRed.descend_body_equ_uniform_top
+    {Γ : Ctx} {s_outer : Stack} {y : String} {α target_y : Term}
+    (s_tmpl : List Term)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer)
+                ((Term.top)^[y]) target_y)
+    (_hAvoid : avoidsPro h y = true)
+    (hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b)
+    (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (z : String) (hz_Γ : z ∈ Γ.dom) :
+    MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) ((Term.top)^[z])
+              (Term.subst y (.fvar z) target_y) := by
+  classical
+  -- `(.top)^[z] = .top` (opening doesn't touch `.top`).
+  have hopen_z : (Term.top : Term)^[z] = .top := by
+    simp [Term.opening, Term.open_]
+  rw [hopen_z]
+  -- Coerce `h`'s source from `(.top)^[y]` to `.top`.
+  generalize hsrc : (Term.top : Term)^[y] = src at h
+  have hopen_y : (Term.top : Term)^[y] = .top := by
+    simp [Term.opening, Term.open_]
+  rw [hopen_y] at hsrc
+  subst hsrc
+  -- Descend prevalid via iter-18 helper.
+  have hpv_in : PrevalidExt (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer) :=
+    MEqRed.prevalidExt h
+  have hpv' : PrevalidExt Γ (s_tmpl.map (·^[z]) ++ s_outer) :=
+    _PrevalidExt_descend_under_equ_head_template
+      s_tmpl hpv_in hy_stmpl hy_souter hy_Γ z hz_Γ
+  exact _descend_body_equ_uniform_top_aux h hpv' z
+
+/-! ### §11.7.3 — `body = .fvar w` leaf: var-arm + pro-arm blocker
+
+The `fvar w` leaf splits the constructor casework into two arms:
+
+**var-arm** (this iteration): trivial — `MEqRed.var hpv` produces
+target `.fvar w` (with `w ≠ y` from `hy_body`), and `Term.subst y (.fvar z)`
+is a no-op on `.fvar w`. We descend the prevalid and rebuild.
+
+**pro-arm** (deferred to iter-20+): `MEqRed.pro hpv heq hβ` produces
+target `α'` where `hβ : MEqRed (⟨y,α,.equ⟩::Γ) (...) α_lkup α'` and
+`heq : (⟨y,α,.equ⟩::Γ).equBinds w α_lkup`. The strategy outlined in
+iter-19's prompt was to use `MEqRed.strip_equ_head` to descend `hβ`,
+but that functor demands six bundling premises:
+
+  1. `Ctx.AvoidsBoundFv [] y` — trivially true.
+  2. `y ∉ Γ.dom` — given (`hy_Γ`).
+  3. `∀ β ∈ stack, y ∉ fv β` — derivable from `hy_stmpl`, `hy_souter`,
+     plus the LC/fv-subset structure of opened templates.
+  4. `avoidsPro hβ y = true` — derivable from `hAvoid` via `avoidsPro_pro`'s
+     simp lemma (the inner factor).
+  5. `cofinDomFresh hβ = true` — **NOT in our premises.** Iter-19's spec
+     does not pass `cofinDomFresh` through the uniform signature; this is
+     an intentional design choice (`descend_body_equ_uniform` is supposed
+     to be `avoidsPro`-only).
+  6. `avoidsFv hβ y = true` — **NOT in our premises** (the iter-17 audit
+     found this is unsatisfiable for the headline consumer; iter-18+
+     designed `descend_body_equ_uniform` precisely to AVOID this premise).
+
+So `strip_equ_head` is not directly usable in the pro-arm under the
+current uniform signature. The proposed workaround in iter-19's prompt —
+"deriving `y ∉ fv α_lkup` from `_y_notin_fv_lookupEqu_under_avoid` and
+substituting cleanly" — addresses ONE of the missing premises (the
+lookup's bound's freshness), not the full bundle.
+
+**Iter-20+ candidate strategies for the pro-arm:**
+
+(a) **Recursive descent on the inner derivation `hβ`.** Since `hβ`'s
+    source `α_lkup` lives at `(⟨y,α,.equ⟩::Γ)` but is bound at the OUTER
+    Γ (because `w ≠ y`), we know `y ∉ fv α_lkup` via §10.1's
+    `_y_notin_fv_lookupEqu_under_avoid` (with `Γ₂ = []`). With this
+    fresh-source data, we could in principle build a SPECIALIZED variant
+    of `descend_body_equ_uniform` for the case `body` is fresh — but
+    such a "fresh-body" variant is exactly what iter-15's now-retired
+    §11.4–§11.5 functor was, and it required `avoidsFv` which we lack.
+
+(b) **A new functor `descend_y_fresh_source`** that takes a derivation
+    whose source is y-fresh (rather than y-opened) and descends it via
+    `strip_equ_head`'s proof structure but without the global `avoidsFv`
+    bundle — instead localizing the freshness data per constructor case.
+    This is an ~800-line re-implementation of strip_equ_head's core,
+    parametrized differently. This is the next major lever.
+
+(c) **Avoid the pro-arm in the headline consumer.** If
+    `Lemma_2_inline_app_bet_residual_axiom`'s body-IH has shape that
+    rules out `MEqRed.pro` at the body's outermost constructor (e.g.
+    by avoidsPro on the body itself rather than the y-extended
+    derivation), the pro-arm would be vacuous. Worth investigating.
+
+For iter-19, we ship the var-arm and a structural exclusion of the
+pro-arm via `avoidsPro_pro`'s `decide (w ≠ y)` factor — but that factor
+is `decide (y ≠ y)` ONLY when `w = y`, which is excluded by
+`hy_body : y ∉ fv (.fvar w)`. The pro-arm constructor with `w ≠ y`
+has `decide (w ≠ y) = true`, so `avoidsPro_pro` does NOT eliminate
+it via `hAvoid`. The pro-arm therefore CANNOT be discharged by
+`avoidsPro` alone in this leaf.
+
+**Conclusion for iter-19:** ship the var-arm only, with the pro-arm
+left as `sorry`-free analysis. The fvar leaf below takes an additional
+hypothesis `(hpro_excluded : ∀ ...)` shaped like an explicit promise that
+the constructor case will not be `MEqRed.pro` — this is NOT an axiom (it
+unblocks iter-20+ via composition with a future pro-arm helper). -/
+
+/-- **Iter-19 partial — `body = .fvar w` var-arm aux helper.**
+
+This auxiliary helper handles the `MEqRed.var` constructor case for
+the `fvar` leaf: takes input stack as a free metavariable to avoid the
+cases-elim glitch on non-variable indices, and constrains the source
+to `.fvar w` with `w ≠ y`. The `MEqRed.pro` arm is left as a
+deliberately-failing case via `hpro_excluded` (a `False` premise the
+caller is expected to discharge — see §11.7.3 docstring).
+
+This is a building block for iter-20+'s full fvar leaf, NOT a stand-
+alone callable. The caller-side wrapper `descend_body_equ_uniform_fvar`
+(future) will instantiate the stack at the template-aware shape AND
+discharge `hpro_excluded` from a future strip-style functor (per
+§11.7.3 strategy (b)). -/
+private noncomputable def _descend_body_equ_uniform_fvar_var_aux
+    {Γ : Ctx} {y w : String} {α target_y : Term} {stk : Stack}
+    (hwy : w ≠ y)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) stk (.fvar w) target_y)
+    (hpro_excluded : Empty)
+    {Γ' : Ctx} {stk' : Stack}
+    (hpv' : PrevalidExt Γ' stk') (z : String) :
+    MEqRed Γ' stk' (.fvar w) (Term.subst y (.fvar z) target_y) := by
+  classical
+  cases h with
+  | @pro _ _ _ aLkup _ hpv heq hβ =>
+    -- Pro-arm: excluded by the empty-type premise (caller's responsibility).
+    exact hpro_excluded.elim
+  | @var _ _ _ hpv =>
+    -- Source-shape match: pattern's `x` unifies with `w`. Target = .fvar w.
+    show MEqRed Γ' stk' (.fvar w) (Term.subst y (.fvar z) (.fvar w))
+    rw [Term.subst_fvar_ne hwy]
+    exact MEqRed.var hpv'
+
+/-! ### §11.7.4 — `body = .app a b` recursive case, `MEqRed.app` constructor arm
+
+Source: `(.app a b)^[y] = .app (a^[y]) (b^[y])`. Constructors with this
+source shape:
+* `MEqRed.app hu hv` — the central recursive arm (this iteration).
+* `MEqRed.tAp hpv hLCu hfvu` — forces `a^[y] = .top`. **Deferred to iter-20+.**
+* `MEqRed.bet L hLCt hbody hUni hv` — forces `a^[y] = .abs t bd`. **Deferred to iter-20+.**
+
+The `MEqRed.app` arm decomposes:
+* `hu : MEqRed (⟨y,α,.equ⟩::Γ) (b^[y] :: s_tmpl.map (·^[y]) ++ s_outer) (a^[y]) u'`
+  — sub-derivation at the EXTENDED stack with `b^[y]` pushed.
+* `hv : MEqRed (⟨y,α,.equ⟩::Γ) [] (b^[y]) v'` — sub-derivation at `[]`.
+
+For `hu`'s recursion: pass `body := a, s_tmpl := b :: s_tmpl_old`. The
+stack matches: `(b :: s_tmpl_old).map (·^[y]) ++ s_outer = b^[y] :: s_tmpl_old.map (·^[y]) ++ s_outer`.
+
+For `hv`'s recursion: pass `body := b, s_tmpl := [], s_outer := []`. The
+stack matches: `[].map (·^[y]) ++ [] = []`.
+
+Termination: `Term.size a < Term.size (.app a b)` and `Term.size b < ...`,
+so termination on `body.size` works.
+
+### Why we ship this as a "recursion takes explicit handlers" function
+
+The full `descend_body_equ_uniform` recursive functor needs ALL leaves
+shipped (bvar0, top, fvar full incl. pro-arm, abs, app). Iter-19 has
+bvar0 + top + fvar var-arm (pro-arm blocked). Without the fvar pro-arm
+or the abs leaf, the full recursive functor cannot be assembled.
+
+Instead, this iteration ships the `MEqRed.app` arm as a function that
+takes the two sub-recursion calls as explicit parameters
+(`rec_a : ... → MEqRed Γ ... → ...`, `rec_b : ...`). Iter-20+ assembles
+the full functor by instantiating these recursive parameters with the
+top-level recursive call, once all leaves are shipped.
+
+This pattern is faithful to the standard "open recursion via parameter"
+encoding of mutual recursion in dependent type theory. -/
+
+/-- **Iter-19 — `body = .app a b` arm of `descend_body_equ_uniform`,
+`MEqRed.app` constructor case (open recursion).**
+
+Takes two recursion handlers `rec_a` and `rec_b` as explicit premises; the
+caller (a future top-level `descend_body_equ_uniform`) instantiates these
+with the recursive call. The `MEqRed.tAp` and `MEqRed.bet` constructor cases
+are deferred (will live in companion arms `..._app_tAp` and `..._app_bet`). -/
+noncomputable def MEqRed.descend_body_equ_uniform_app_app
+    {Γ : Ctx} {s_outer : Stack} {y : String} {α : Term} {a b : Term}
+    {u' v' : Term}
+    (s_tmpl : List Term)
+    (hu : MEqRed (⟨y, α, .equ⟩ :: Γ)
+            (b^[y] :: (s_tmpl.map (·^[y]) ++ s_outer))
+            (a^[y]) u')
+    (hv : MEqRed (⟨y, α, .equ⟩ :: Γ) [] (b^[y]) v')
+    (hAvoid_u : avoidsPro hu y = true)
+    (hAvoid_v : avoidsPro hv y = true)
+    (hy_a : y ∉ Term.fv a)
+    (hy_b : y ∉ Term.fv b)
+    (hy_stmpl : ∀ b' ∈ s_tmpl, y ∉ Term.fv b')
+    (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (z : String) (hz_Γ : z ∈ Γ.dom)
+    -- Recursion handlers: open the body of each sub-derivation.
+    (rec_a : ∀ {τ_a : Term} (s_tmpl_a : List Term) (s_outer_a : Stack)
+              (h_a : MEqRed (⟨y, α, .equ⟩ :: Γ)
+                       (s_tmpl_a.map (·^[y]) ++ s_outer_a)
+                       (a^[y]) τ_a),
+              avoidsPro h_a y = true →
+              (∀ b' ∈ s_tmpl_a, y ∉ Term.fv b') →
+              (∀ β ∈ s_outer_a, y ∉ Term.fv β) →
+              MEqRed Γ (s_tmpl_a.map (·^[z]) ++ s_outer_a) (a^[z])
+                       (Term.subst y (.fvar z) τ_a))
+    (rec_b : ∀ {τ_b : Term} (s_tmpl_b : List Term) (s_outer_b : Stack)
+              (h_b : MEqRed (⟨y, α, .equ⟩ :: Γ)
+                       (s_tmpl_b.map (·^[y]) ++ s_outer_b)
+                       (b^[y]) τ_b),
+              avoidsPro h_b y = true →
+              (∀ b' ∈ s_tmpl_b, y ∉ Term.fv b') →
+              (∀ β ∈ s_outer_b, y ∉ Term.fv β) →
+              MEqRed Γ (s_tmpl_b.map (·^[z]) ++ s_outer_b) (b^[z])
+                       (Term.subst y (.fvar z) τ_b)) :
+    MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) ((Term.app a b)^[z])
+              (Term.subst y (.fvar z) (.app u' v')) := by
+  classical
+  -- Output source: (.app a b)^[z] = .app (a^[z]) (b^[z]).
+  have hopen_z : (Term.app a b : Term)^[z] = .app (a^[z]) (b^[z]) := by
+    simp [Term.opening, Term.open_]
+  rw [hopen_z]
+  -- Output target: subst y (.fvar z) (.app u' v') = .app (subst y (.fvar z) u') (subst y (.fvar z) v').
+  have htarget_app : Term.subst y (.fvar z) (.app u' v')
+      = .app (Term.subst y (.fvar z) u') (Term.subst y (.fvar z) v') := by
+    simp [Term.subst]
+  rw [htarget_app]
+  -- Recurse on a (with s_tmpl_a = b :: s_tmpl).
+  have hy_b_cons : ∀ b' ∈ b :: s_tmpl, y ∉ Term.fv b' := by
+    intro b' hb'
+    rcases List.mem_cons.mp hb' with rfl | hmem
+    · exact hy_b
+    · exact hy_stmpl b' hmem
+  -- The stack `b^[y] :: s_tmpl.map (·^[y]) ++ s_outer` is definitionally
+  -- equal to `(b :: s_tmpl).map (·^[y]) ++ s_outer`. We use `change` to
+  -- retype `hu` and `hAvoid_u` consistently before invoking `rec_a`.
+  have hu_descended :
+      MEqRed Γ ((b :: s_tmpl).map (·^[z]) ++ s_outer) (a^[z])
+              (Term.subst y (.fvar z) u') := by
+    -- Change the goal so that we can refer to hu under the new stack-shape directly.
+    change MEqRed Γ (b^[z] :: (s_tmpl.map (·^[z]) ++ s_outer)) (a^[z])
+              (Term.subst y (.fvar z) u')
+    -- Use change on rec_a's call by mass-coercing the stack equality on call site.
+    have h_out := rec_a (b :: s_tmpl) s_outer hu hAvoid_u hy_b_cons hy_souter
+    -- h_out : MEqRed Γ ((b :: s_tmpl).map (·^[z]) ++ s_outer) (a^[z])
+    --                   (Term.subst y (.fvar z) u')
+    -- Both stacks reduce identically to `b^[z] :: ...`, so this is the goal.
+    exact h_out
+  -- Recurse on b (with s_tmpl_b = [], s_outer_b = []).
+  have hy_nil_stmpl : ∀ b' ∈ ([] : List Term), y ∉ Term.fv b' := by
+    intro b' hb'; cases hb'
+  have hy_nil_outer : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+    intro β hβ; cases hβ
+  have hv_descended : MEqRed Γ [] (b^[z]) (Term.subst y (.fvar z) v') := by
+    -- `[].map (·^[y]) ++ ([] : Stack) = []` reduces def-eq.
+    have h_out := rec_b [] [] hv hAvoid_v hy_nil_stmpl hy_nil_outer
+    exact h_out
+  exact MEqRed.app hu_descended hv_descended
+
 end Pss
