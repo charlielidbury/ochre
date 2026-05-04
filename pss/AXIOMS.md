@@ -410,6 +410,11 @@ closures, 2 inactive outstanding).
   `StrongCommutes.appTop_any_of`, closing structural branches at `Top`
   and delegating `Ms-Equ` to the local diamond premise. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the direct
+  `Top`-headed application strong-commutativity cell
+  `StrongCommutes.appTop_any`, using `EqDiamonds.appTop_any` for the
+  local `Ms-Equ` branch. The older `StrongCommutes.appTop_any_of` is now
+  a compatibility wrapper. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` and
   `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `Top`-headed
   application shape inversions `MEqRed.app_top_inv`,

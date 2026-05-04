@@ -616,10 +616,10 @@ theorem appTop_any_tAp_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
   | app hOp _ =>
     exact appTop_app_tAp hpv hu hOp
 
-/-- The full `Top`-headed application source cell for de Bruijn Lemma 1. The
-`Ms-Equ` branch delegates to the local equivalence diamond premise; structural
-branches close at `Top`. -/
-theorem appTop_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+/-- The full `Top`-headed application source cell for de Bruijn Lemma 1.
+The local `Ms-Equ` branch is discharged by the matching de Bruijn Lemma 2
+cell `EqDiamonds.appTop_any`; structural branches close at `Top`. -/
+theorem appTop_any {Γ : Ctx} {s : Stack}
     {u t₁ t₂ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
     (hsub : MSubRed Γ s (.app .top u) t₁)
     (heq : MEqRed Γ s (.app .top u) t₂) :
@@ -628,7 +628,8 @@ theorem appTop_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
   | top _ hScoped =>
     exact top_of hpv hScoped heq
   | equ _ heqStep =>
-    exact equ_of hdiamond hpv heqStep heq
+    obtain ⟨t₃, hLeft, hRight⟩ := EqDiamonds.appTop_any hpv hu heqStep heq
+    exact ⟨t₃, hLeft, ⟨MSubRed.equ hpv hRight.some⟩⟩
   | app hOp _ =>
     have hOpTop := MSubRed.top_inv hOp
     subst hOpTop
@@ -644,6 +645,16 @@ theorem appTop_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
       have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
       exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩,
         ⟨MSubRed.top hpv (Term.Scoped.app Term.Scoped.top hArg')⟩⟩
+
+/-- Compatibility wrapper for the full `Top`-headed application source cell
+that matches the conditional Lemma 1 helper shape. The local diamond premise
+is no longer needed for this cell. -/
+theorem appTop_any_of {Γ : Ctx} {s : Stack} (_hdiamond : EqDiamonds Γ s)
+    {u t₁ t₂ : Term} (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hsub : MSubRed Γ s (.app .top u) t₁)
+    (heq : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  exact appTop_any hpv hu hsub heq
 
 end StrongCommutes
 

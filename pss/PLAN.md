@@ -433,7 +433,9 @@ hard caveats.
      The full one-step equivalence diamond for `Top`-headed application
      sources is named `EqDiamonds.appTop_any`.
      The full one-step `Top`-headed application strong-commutativity
-     combinator `StrongCommutes.appTop_any_of` is also available.
+     cell is named `StrongCommutes.appTop_any`;
+     `StrongCommutes.appTop_any_of` is retained as a conditional-wrapper
+     compatibility alias.
      `Top`-headed application shape inversions are available for
      one-step and star equivalence/subtype reductions, and the direct
      star-level joins `diamond_tAp_eqStar` and
