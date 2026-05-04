@@ -689,6 +689,15 @@ closures, 2 inactive outstanding).
   recursively replaced bound reduction, isolating the only remaining
   `Me-Pro` obstruction at the changed head index `0`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added constructor rebuilders for
+  innermost `.equ`-head replacement once recursive premises have already
+  been replaced: `MEqRed.app_equ_head_replace`,
+  `MEqRed.fun_equ_head_replace`, `MEqRed.bet_equ_head_replace`,
+  `MEqRed.fOp_equ_head_replace`, `MSubRed.equ_equ_head_replace`,
+  `MSubRed.app_equ_head_replace`, `MSubRed.fun_equ_head_replace`, and
+  `MSubRed.fOp_equ_head_replace`. These make the eventual structural
+  replacement induction explicit at constructor boundaries. No axiom-count
+  change.
 * `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` —
   added `.equ`-head index-0 lookup inversions and
   `MEqRed.pro_equ_head_zero_residual`. The changed-head `Me-Pro` case
