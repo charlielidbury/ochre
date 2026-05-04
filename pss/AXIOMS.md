@@ -329,6 +329,10 @@ closures, 2 inactive outstanding).
   `EqDiamonds.refl_right`, `StrongCommutes.equ_of`, and
   `StrongCommutes.top_of`, reducing reflexive equivalence, `Ms-Equ`, and
   `Ms-Top` cells to existing premises. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added direct star-level
+  helpers `diamond_refl_eqStar` and `commute_topStep_eqStar`, closing
+  reflexive equivalence and `Ms-Top` steps against arbitrary
+  equivalence-reduction chains. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — consolidated `Top`-headed
   application/`TAp` cells with `EqDiamonds.tAp_any`,
   `EqDiamonds.any_tAp`, and `StrongCommutes.appTop_any_tAp_of`; the

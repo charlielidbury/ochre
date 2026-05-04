@@ -383,6 +383,9 @@ hard caveats.
      Reusable single-step case combinators are in place:
      `EqDiamonds.refl_left`, `EqDiamonds.refl_right`,
      `StrongCommutes.equ_of`, and `StrongCommutes.top_of`.
+     Direct star-level helpers `diamond_refl_eqStar` and
+     `commute_topStep_eqStar` close reflexive equivalence and `Ms-Top`
+     against arbitrary equivalence chains.
      `Top`-headed application/`TAp` cells are consolidated through
      `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
      `StrongCommutes.appTop_any_tAp_of`.

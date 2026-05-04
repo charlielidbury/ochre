@@ -222,6 +222,13 @@ theorem diamond_eqStar_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   subst t₂
   exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
 
+/-- A reflexive equivalence step joins directly against any equivalence chain
+from the same source. -/
+theorem diamond_refl_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₀ t₃ ∧ MEqRedStar Γ s t₂ t₃ := by
+  exact ⟨t₂, h₂, Relation.ReflTransGen.refl⟩
+
 /-- Direct star-level join for a `Top`-headed application against its `TAp`
 target. -/
 theorem diamond_tAp_eqStar {Γ : Ctx} {s : Stack} {u t : Term}
@@ -443,6 +450,16 @@ theorem commute_subStar_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   subst t₁
   subst t₂
   exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+
+/-- A single `Ms-Top` step commutes directly with any equivalence-reduction
+chain from the same source. -/
+theorem commute_topStep_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hScoped : Term.Scoped Γ.depth t₀)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s .top t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  have hTargetScoped : Term.Scoped Γ.depth t₂ := heqs.scoped_right hScoped
+  exact ⟨.top, Relation.ReflTransGen.refl,
+    MSubRedStar.single (MSubRed.top hpv hTargetScoped)⟩
 
 /-- Direct star-level join for a subtype chain from a `Top`-headed
 application against its `TAp` target. -/
