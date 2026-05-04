@@ -502,6 +502,10 @@ closures, 2 inactive outstanding).
   subtype branch closes immediately; the residual branch exposes paired
   abstraction targets for the future structural commutation cell. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added one-equivalence-step
+  specializations of the abstraction dispatcher:
+  `commute_abs_subStar_eqStep_top_or_absAbs` and
+  `commute_abs_subStep_eqStep_top_or_absAbs`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed
