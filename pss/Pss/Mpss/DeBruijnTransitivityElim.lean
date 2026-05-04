@@ -529,6 +529,42 @@ theorem commute_appTop_subStar_tAp {Γ : Ctx} {s : Stack} {u t : Term}
     have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
     exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg'), Relation.ReflTransGen.refl⟩
 
+/-- Direct star-level commutation for a `Top`-headed application source. Any
+subtype chain and any equivalence chain out of the same source join at
+`Top`. -/
+theorem commute_appTop_subStar_eqStar {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (hSub : MSubRedStar Γ s (.app .top u) t₁)
+    (hEq : MEqRedStar Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  have hSubShape := hSub.app_top_inv
+  have hEqShape := hEq.app_top_inv
+  cases hSubShape with
+  | inl hSubTop =>
+    subst hSubTop
+    have hEqScoped : Term.Scoped Γ.depth t₂ :=
+      hEq.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+    exact ⟨.top, Relation.ReflTransGen.refl,
+      MSubRedStar.single (MSubRed.top hpv hEqScoped)⟩
+  | inr hSubApp =>
+    obtain ⟨arg₁, hSubEq⟩ := hSubApp
+    subst hSubEq
+    have hSubTargetScoped : Term.Scoped Γ.depth (.app .top arg₁) :=
+      hSub.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+    have hArg₁ : Term.Scoped Γ.depth arg₁ := (Term.Scoped.app_inv hSubTargetScoped).2
+    cases hEqShape with
+    | inl hEqTop =>
+      subst hEqTop
+      exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg₁),
+        Relation.ReflTransGen.refl⟩
+    | inr hEqApp =>
+      obtain ⟨arg₂, hEqEq⟩ := hEqApp
+      subst hEqEq
+      have hEqTargetScoped : Term.Scoped Γ.depth (.app .top arg₂) :=
+        hEq.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+      exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg₁),
+        MSubRedStar.single (MSubRed.top hpv hEqTargetScoped)⟩
+
 /-- If a subtype chain from an abstraction reaches `Top`, any equivalence
 chain from the same abstraction joins it at `Top`. -/
 theorem commute_abs_to_top_eqStar {Γ : Ctx} {s : Stack}

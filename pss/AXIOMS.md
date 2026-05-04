@@ -378,6 +378,10 @@ closures, 2 inactive outstanding).
   `MSubRedStar.app_top_inv`, plus direct star-level joins
   `diamond_tAp_eqStar` and `commute_appTop_subStar_tAp`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appTop_subStar_eqStar`, the full star-level commutation cell
+  for a `Top`-headed application source. It joins arbitrary subtype and
+  equivalence chains from that source at `Top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` and
   `Pss/Mpss/DeBruijnTransitivityElim.lean` — added abstraction subtype
   shape inversions `MSubRed.abs_inv` and `MSubRedStar.abs_inv`, plus the
