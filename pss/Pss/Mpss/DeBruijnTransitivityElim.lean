@@ -1843,6 +1843,56 @@ theorem msub_equ_head_old_bound_to_new_bvar0 {Γ : Ctx} {s : Stack}
     (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
     (MEqRedStar.single hVarNew)
 
+/-- A reflexive argument equivalence can always be lifted under a changed
+`.equ` head and residual stack. This is the stack-stable base case for the
+head `Me-Pro` bridge. -/
+noncomputable def meq_equ_head_stack_lift_refl {Γ : Ctx} {s : Stack} {head t : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (ht : Term.Scoped Γ.depth t) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 t) (Term.shift 0 t) := by
+  have hpvHead : Prevalid ({ bound := head, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hHeadScoped
+  exact MEqRed.refl (PrevalidExt.weaken_head hpvTail hpvHead)
+    (Term.shift_scoped 0 Γ.depth t (Nat.zero_le _) ht)
+
+/-- The `Me-Top` argument-equivalence step lifts under a changed `.equ` head
+and residual stack. -/
+noncomputable def meq_equ_head_stack_lift_top {Γ : Ctx} {s : Stack} {head : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 .top) (Term.shift 0 .top) :=
+  meq_equ_head_stack_lift_refl hpvTail hHeadScoped Term.Scoped.top
+
+/-- The `Me-Var` argument-equivalence step lifts under a changed `.equ` head
+and residual stack by shifting the variable index through the new head. -/
+noncomputable def meq_equ_head_stack_lift_var {Γ : Ctx} {s : Stack} {head : Term}
+    {i : Nat}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hi : i < Γ.depth) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.bvar i)) (Term.shift 0 (.bvar i)) :=
+  meq_equ_head_stack_lift_refl hpvTail hHeadScoped (Term.Scoped.bvar hi)
+
+/-- The `Me-TAp` argument-equivalence step lifts under a changed `.equ` head
+and residual stack. -/
+noncomputable def meq_equ_head_stack_lift_tAp {Γ : Ctx} {s : Stack} {head u : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hu : Term.Scoped Γ.depth u) :
+    MEqRed ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 (.app .top u)) (Term.shift 0 .top) := by
+  have hpvHead : Prevalid ({ bound := head, kind := .equ } :: Γ) :=
+    Prevalid.equ (PrevalidExt.ctx hpvTail) hHeadScoped
+  have hpv : PrevalidExt ({ bound := head, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail hpvHead
+  exact MEqRed.tAp hpv
+    (Term.shift_scoped 0 Γ.depth u (Nat.zero_le _) hu)
+
 /-- Lift a body equivalence-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through `FOp`, allowing the abstraction
 bound to take the supplied equivalence step first. -/

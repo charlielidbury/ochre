@@ -701,6 +701,12 @@ closures, 2 inactive outstanding).
   the old-to-new head equivalence has been lifted to the same residual
   stack. This identifies the remaining stack-sensitive lift needed for
   the head `Me-Pro` residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stack-stable
+  top-level equivalence lifts under a changed `.equ` head for reflexive,
+  `Me-Top`, `Me-Var`, and `Me-TAp` shapes. These are the first true cases
+  of the stack-sensitive lift needed by `msub_equ_head_old_bound_to_new_bvar0`;
+  `Me-Fun`, `Me-Bet`, and recursive `Me-App` remain residual. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
