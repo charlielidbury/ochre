@@ -1057,6 +1057,36 @@ noncomputable def WSubMStar.sub_under_head_replace_of_wsub {Γ : Ctx}
       (fun {x y} hx hy hxy => by
         simpa [Ctx.replaceAt] using hSub hx hy hxy))
 
+/-- Binder-recursive specialization of `WSubMStar.replaceAt_sub_of_wsub`.
+This packages the context shape produced when a recursive body proof keeps
+its binder head and replaces a deeper `.sub` entry in the tail. -/
+noncomputable def WSubMStar.replaceAt_sub_from_body_replaceAt_of_wsub
+    {Γ : Ctx} {cutoff : Nat} {head old new v t : Term}
+    (h : WSubMStar (Ctx.replaceAt (cutoff + 1)
+      { bound := old, kind := .sub } ({ bound := head, kind := .sub } :: Γ))
+      v t)
+    (hWf : ∀ {x : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x)
+    (hSub : ∀ {x y : Term},
+      WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) x →
+        WfM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+          ({ bound := head, kind := .sub } :: Γ)) y →
+          WSubM (Ctx.replaceAt (cutoff + 1) { bound := old, kind := .sub }
+            ({ bound := head, kind := .sub } :: Γ)) x y →
+            WSubMStar (Ctx.replaceAt (cutoff + 1)
+              { bound := new, kind := .sub }
+              ({ bound := head, kind := .sub } :: Γ)) x y) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t := by
+  simpa [Ctx.replaceAt] using
+    (WSubMStar.replaceAt_sub_of_wsub
+      (Γ := { bound := head, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+      (old := old) (new := new) h hWf hSub)
+
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
 resulting well-subtyping path steps to shifted `new`, crosses back to shifted

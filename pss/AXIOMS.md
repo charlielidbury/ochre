@@ -1023,6 +1023,10 @@ closures, 2 inactive outstanding).
   `WSubMStar.sub_under_head_replace_of_wsub`; these reduce arbitrary
   transitive well-subtyping replacement to step replacement with explicit
   endpoint well-formedness witnesses. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added binder-recursive
+  `WSubMStar.replaceAt_sub_from_body_replaceAt_of_wsub`, preserving the
+  body binder head while applying conditional `.sub` replacement in its
+  tail. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
