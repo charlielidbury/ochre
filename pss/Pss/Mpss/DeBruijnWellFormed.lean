@@ -515,6 +515,17 @@ noncomputable def WfM.fun_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
     WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.abs t body) :=
   WfM.fun_ hT hBody
 
+/-- Binder-recursive `Wf-Fun` replacement wrapper. Recursive calls under the
+function binder naturally produce a `replaceAt (cutoff + 1)` context; this
+packages the definitional fold back to the constructor context. -/
+noncomputable def WfM.fun_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new t body : Term}
+    (hT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t)
+    (hBody : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := t, kind := .sub } :: Γ)) body) :
+    WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) (.abs t body) :=
+  WfM.fun_ hT (by simpa [Ctx.replaceAt] using hBody)
+
 /-- Rebuild `Wf-App` after arbitrary-depth `.sub` replacement, assuming both
 well-subtyping star premises have already been replaced. -/
 noncomputable def WfM.app_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
@@ -585,6 +596,36 @@ noncomputable def WSubMStar.trs_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
       u t) :
     WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
   WSubMStar.trs hLeft hwfMid hRight
+
+/-- Binder-recursive `Ws-Sub` replacement wrapper. -/
+noncomputable def WSubMStar.sub_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v t : Term}
+    (hwfV : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v)
+    (hsub : WSubM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v t)
+    (hwfT : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) t) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubMStar.sub (by simpa [Ctx.replaceAt] using hwfV)
+    (by simpa [Ctx.replaceAt] using hsub)
+    (by simpa [Ctx.replaceAt] using hwfT)
+
+/-- Binder-recursive `Ws-Trs` replacement wrapper. -/
+noncomputable def WSubMStar.trs_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v u t : Term}
+    (hLeft : WSubMStar (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v u)
+    (hwfMid : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) u)
+    (hRight : WSubMStar (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) u t) :
+    WSubMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WSubMStar.trs (by simpa [Ctx.replaceAt] using hLeft)
+    (by simpa [Ctx.replaceAt] using hwfMid)
+    (by simpa [Ctx.replaceAt] using hRight)
 
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the

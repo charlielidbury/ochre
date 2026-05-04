@@ -983,6 +983,10 @@ closures, 2 inactive outstanding).
   constructor rebuilders for `WfM.fun_`, `WfM.app`, all four `WSubM`
   constructors, and both `WSubMStar` constructors. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added binder-recursive
+  `replaceAt (cutoff + 1)` wrappers for `WfM.fun_`, `WSubMStar.sub`,
+  and `WSubMStar.trs`, packaging the definitional fold under a preserved
+  subtype binder. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
