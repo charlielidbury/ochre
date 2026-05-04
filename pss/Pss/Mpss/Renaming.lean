@@ -6554,4 +6554,154 @@ noncomputable def MEqRed.descend_body_equ_uniform_app_app
     exact h_out
   exact MEqRed.app hu_descended hv_descended
 
+/-! ### §11.8 — `MEqRed.strip_equ_head_y_fresh` (iter-20)
+
+This is the y-fresh-source variant of `strip_equ_head` (§10.3). The
+original strip_equ_head bundles `avoidsFv h y = true` (every term in
+the derivation tree is syntactically y-fresh) — necessary because for
+cofinite arms (`bet`, `fun_`, `fOp`), y-freshness of opened bodies
+cannot be derived from y-freshness of outer source/target alone (the
+§11.6 audit canonical counterexample: `body'_dst = .app (.bvar 0) .top`
+makes `body'_dst^[y₀]` literally contain `.fvar y₀`).
+
+The y-fresh variant takes y-freshness DATA at the outer source/target/
+stack level (the data the consumer naturally has), and derives local
+y-freshness for the constructor cases that ALLOW such derivation:
+
+* `top`, `var`: trivial (no recursive sub-derivations).
+* `tAp`: source = `.app .top u`, target = `.top`; y-fresh via
+  `Term.fv_app`. No body recursion.
+* `app`: source = `.app u_ v_`, target = `.app u_' v_'`; both factor
+  cleanly into y-freshness of components via `Term.fv_app`.
+* `pro`: source = `.fvar yi` with `yi ≠ y` (from `hy_src`); recurse
+  into `hβ` with α_lkup's y-freshness derived from §10.1's
+  `_y_notin_fv_lookupEqu_under_avoid`, target's y-freshness from
+  `hy_tgt`.
+* `bet`, `fun_`, `fOp`: BLOCKED. The cofinite body source `bd^[y₀]`
+  needs y-freshness data on `bd` AND `bd'` (the target's body
+  template). `bd` falls out of `hy_src` decomposition via
+  `Term.fv_abs`, but `bd'` is **not** derivable from y-freshness of
+  the OUTER target (which is `Term.opening v0' bd'` for bet, or `.abs
+  tt' bd'` for fun_/fOp — for fun_/fOp `Term.fv_abs` does give it,
+  but for bet it does not). For uniform handling we gate ALL three
+  cofinite arms behind `Empty` premises; iter-21+ can ship the
+  fun_/fOp arms (where `bd'` IS extractable from `Term.fv_abs`)
+  separately if needed.
+
+The consumer (`descend_body_equ_uniform`'s fvar pro-arm) typically
+calls into a `hβ : MEqRed (...) (...) α_lkup α'` where α_lkup is
+derived from the context's `.equ` binding (lookup result, y-fresh by
+construction) — so the `bet` arm appearing inside `hβ` would need to
+have its outer target/source fully y-fresh, which the consumer can
+provide. This iteration ships the easy arms; the cofinite arms are
+the next iteration's target. -/
+
+/-- **Iter-20 — y-fresh-source variant of `MEqRed.strip_equ_head`.**
+
+Same effect as `MEqRed.strip_equ_head` (remove an `.equ`-head from a
+`MEqRed` derivation) but takes localized y-freshness premises:
+`hy_src`, `hy_tgt`, `hst_avoid` (in place of the global `avoidsFv`
+bundle).
+
+**Status (iter-20):** the cofinite arms (`bet`, `fun_`, `fOp`) are
+currently gated behind `Empty` premises (`hbet_excluded`,
+`hfun_excluded`, `hfOp_excluded`). The non-cofinite arms ship working:
+`top`, `var`, `tAp`, `app`, `pro`. -/
+noncomputable def MEqRed.strip_equ_head_y_fresh
+    {Γ₁ Γ₂ : Ctx} {st : Stack} {y : String} {α u u' : Term}
+    (h : MEqRed (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) st u u')
+    (hΓ₂_avoid : Ctx.AvoidsBoundFv Γ₂ y)
+    (hy_Γ₁ : y ∉ Γ₁.dom)
+    (hst_avoid : ∀ β ∈ st, y ∉ Term.fv β)
+    (hAvoid : avoidsPro h y = true)
+    (hy_src : y ∉ Term.fv u)
+    (hy_tgt : y ∉ Term.fv u')
+    (hbet_excluded : Empty)
+    (hfun_excluded : Empty)
+    (hfOp_excluded : Empty) :
+    MEqRed (Γ₂ ++ Γ₁) st u u' := by
+  classical
+  generalize hΓ : (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) = Γ at h
+  induction h generalizing Γ₂ with
+  | @pro Γ st' yi β β' hpv heq hβ ihβ =>
+    subst hΓ
+    rw [avoidsPro_pro] at hAvoid
+    obtain ⟨hyiy_decide, hAvoid_inner⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    have hyiy : yi ≠ y := decide_eq_true_eq.mp hyiy_decide
+    -- Derive y ∉ fv β via §10.1 helper.
+    have hpvFull : Prevalid (Γ₂ ++ ⟨y, α, .equ⟩ :: Γ₁) := extractPrevalid hpv
+    have hy_β : y ∉ Term.fv β :=
+      _y_notin_fv_lookupEqu_under_avoid hpvFull heq hyiy hΓ₂_avoid hy_Γ₁
+    -- Build new prevalidExt for the smaller stack/ctx.
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    have heq' := _equBinds_equ_head_remove_neq hyiy heq
+    -- Recurse on hβ. Source = β (y-fresh from helper), target = β' (y-fresh from hy_tgt).
+    exact MEqRed.pro hpv' heq' (ihβ (Γ₂ := Γ₂) hΓ₂_avoid hst_avoid hy_β hy_tgt rfl
+      hAvoid_inner)
+  | @bet Γ st' tBound v0 v0' bd bd' L hLCt hbody _hUni hv ihbody ihv =>
+    -- Cofinite arm: blocked by avoidsFv-style premise gap; gated behind Empty.
+    exact hbet_excluded.elim
+  | @top Γ st' hpv =>
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    exact MEqRed.top hpv'
+  | @app Γ st' u_ u_' v_ v_' hu hv ihu ihv =>
+    subst hΓ
+    rw [avoidsPro_app] at hAvoid
+    obtain ⟨hAvoid_u, hAvoid_v⟩ := Bool.and_eq_true _ _ |>.mp hAvoid
+    -- Decompose hy_src and hy_tgt: source = .app u_ v_, target = .app u_' v_'.
+    have hy_u_ : y ∉ Term.fv u_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inl h_in)
+    have hy_v_ : y ∉ Term.fv v_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    have hy_u_' : y ∉ Term.fv u_' := by
+      intro h_in; apply hy_tgt; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inl h_in)
+    have hy_v_' : y ∉ Term.fv v_' := by
+      intro h_in; apply hy_tgt; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    -- Stack for u arm = v_ :: st'.
+    have hu_stack_avoid : ∀ β ∈ (v_ :: st'), y ∉ Term.fv β := by
+      intro β hβ
+      rcases List.mem_cons.mp hβ with rfl | hβtail
+      · exact hy_v_
+      · exact hst_avoid β hβtail
+    have hv_stack_avoid : ∀ β ∈ ([] : Stack), y ∉ Term.fv β := by
+      intro β hβ; cases hβ
+    have ihu' := ihu (Γ₂ := Γ₂) hΓ₂_avoid hu_stack_avoid hy_u_ hy_u_' rfl hAvoid_u
+    have ihv' := ihv (Γ₂ := Γ₂) hΓ₂_avoid hv_stack_avoid hy_v_ hy_v_' rfl hAvoid_v
+    exact MEqRed.app ihu' ihv'
+  | @var Γ st' yi hpv =>
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    exact MEqRed.var hpv'
+  | @fun_ Γ tt tt' bd bd' L ht hbody _hUni iht ihbody =>
+    -- Cofinite arm: gated behind Empty (see docstring).
+    exact hfun_excluded.elim
+  | @tAp Γ st' u_ hpv hLCu hfv =>
+    subst hΓ
+    have hpv' : PrevalidExt (Γ₂ ++ Γ₁) st' :=
+      PrevalidExt.equ_head_remove_mid hpv hΓ₂_avoid hst_avoid
+    -- Need fv u_ ⊆ (Γ₂ ++ Γ₁).dom. From hfv : ⊆ insert y (Γ₂ ++ Γ₁).dom and y ∉ fv u_.
+    have hy_u_ : y ∉ Term.fv u_ := by
+      intro h_in; apply hy_src; rw [Term.fv_app]
+      exact Finset.mem_union.mpr (Or.inr h_in)
+    have hfv' : Term.fv u_ ⊆ Ctx.dom (Γ₂ ++ Γ₁) := by
+      intro z hz
+      have hzd := hfv hz
+      rw [_Ctx_dom_eq_under_equ_head_remove] at hzd
+      rw [Finset.mem_insert] at hzd
+      cases hzd with
+      | inl hzy => subst hzy; exact absurd hz hy_u_
+      | inr hz' => exact hz'
+    exact MEqRed.tAp hpv' hLCu hfv'
+  | @fOp Γ st' tt tt' αi bd bd' L ht hbody _hUni iht ihbody =>
+    -- Cofinite arm: gated behind Empty (see docstring).
+    exact hfOp_excluded.elim
+
 end Pss
