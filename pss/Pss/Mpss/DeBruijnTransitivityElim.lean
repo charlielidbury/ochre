@@ -1543,6 +1543,27 @@ theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
     obtain ⟨bound', body', _hOp, hEqTarget⟩ := hStruct
     exact Or.inr ⟨bound', body', arg, hEqTarget⟩
 
+/-- Same-argument structural application commutation for abstraction-headed
+applications. If the subtype and equivalence sides both step only the
+operator under the same argument stack, strong commutativity at that operator
+stack lifts to a join of the two applications. The general changed-argument
+case still needs stack-transport infrastructure. -/
+theorem commute_appAbs_structApp_eqStep_sameArg_of {Γ : Ctx} {s : Stack}
+    {bound body arg bound₁ body₁ bound₂ body₂ : Term}
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂)) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg) t₃ := by
+  obtain ⟨op₃, hEqJoin, hSubJoin⟩ := hcommArg hSubOp hEqOp
+  have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hEqJoin.some.prevalid
+  have hArgRefl : MEqRed Γ [] arg arg := MEqRed.refl hpvNil hArgScoped
+  exact ⟨.app op₃ arg,
+    MEqRedStar.single (MEqRed.app hEqJoin.some hArgRefl),
+    MSubRedStar.single (MSubRed.app hSubJoin.some hArgScoped)⟩
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

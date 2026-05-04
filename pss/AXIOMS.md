@@ -600,6 +600,13 @@ closures, 2 inactive outstanding).
   refine the existing shape-only inversions with `MEqRedJ` / `MSubRedJ`
   payloads for β, residual equivalence application, structural app-to-Top,
   and structural app-to-abstraction branches. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_sameArg_of`, the same-argument
+  structural `Ms-App` / `Me-App` commutation subcase for
+  abstraction-headed applications. It lifts strong commutativity at the
+  operator stack `arg :: s` while keeping the argument reflexive; the
+  changed-argument case remains the stack-transport residual. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
