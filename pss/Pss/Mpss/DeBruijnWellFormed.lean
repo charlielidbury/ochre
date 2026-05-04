@@ -5060,6 +5060,41 @@ noncomputable def WfM.sub_head_replace_from_direct_payloads {Γ : Ctx}
       WSubMStar.of_MSubRed_sub_head_replace_from_direct_payloads hred hOldNew
         hWf hApp hFun hWfNew hx hy)
 
+/-- Head `WfM` replacement from direct recursive payloads, deriving the
+shifted new-bound well-formedness payload from `WfM Γ new`. -/
+noncomputable def WfM.sub_head_replace_from_direct_payloads_of_new_wf {Γ : Ctx}
+    {old new body : Term}
+    (h : WfM ({ bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hNew : WfM Γ new)
+    (hWf : ∀ {x : Term},
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head : CtxEntry} {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+        WfM ({ bound := old, kind := .sub } :: Γ) x →
+          WfM ({ bound := old, kind := .sub } :: Γ) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) arg →
+        MSubRed ({ bound := old, kind := .sub } :: Γ) (arg :: []) u u' →
+          WfM ({ bound := new, kind := .sub } :: Γ) (.app u arg) →
+          WSubMStar ({ bound := new, kind := .sub } :: Γ)
+            (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := old, kind := .sub } :: Γ) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } ::
+              { bound := old, kind := .sub } :: Γ) [] body body' →
+          WfM ({ bound := new, kind := .sub } :: Γ) (.abs t body) →
+          WSubMStar ({ bound := new, kind := .sub } :: Γ)
+            (.abs t body) (.abs t' body')) :
+    WfM ({ bound := new, kind := .sub } :: Γ) body :=
+  WfM.sub_head_replace_from_direct_payloads h hOldNew hWf hWfUnder
+    hEqPresOld hApp hFun (WfM.sub_head_bound_from_wf hNew)
+
 /-- Constructor-level `WfM` under-head replacement from recursive payloads.
 
 This is the preserved-head analogue of `WfM.sub_head_replace_from_payloads`.
@@ -5180,6 +5215,44 @@ noncomputable def WfM.sub_under_head_replace_from_direct_payloads {Γ : Ctx}
     (fun hx hy hred =>
       WSubMStar.of_MSubRed_sub_under_head_replace_from_direct_payloads
         hred hOldNew hWf hApp hFun hWfNew hx hy)
+
+/-- Under-head `WfM` replacement from direct recursive payloads, deriving the
+shifted new-bound well-formedness payload from `WfM Γ new`. -/
+noncomputable def WfM.sub_under_head_replace_from_direct_payloads_of_new_wf
+    {Γ : Ctx} {head : CtxEntry} {old new body : Term}
+    (h : WfM (head :: { bound := old, kind := .sub } :: Γ) body)
+    (hOldNew : MEqRed Γ [] old new)
+    (hNew : WfM Γ new)
+    (hWf : ∀ {x : Term},
+      WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head :: { bound := new, kind := .sub } :: Γ) x)
+    (hWfUnder : ∀ {head' : CtxEntry} {x : Term},
+      WfM (head' :: head :: { bound := old, kind := .sub } :: Γ) x →
+        WfM (head' :: head :: { bound := new, kind := .sub } :: Γ) x)
+    (hEqPresOld : ∀ {x y : Term},
+      MEqRedJ (head :: { bound := old, kind := .sub } :: Γ) [] x y →
+        WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+          WfM (head :: { bound := old, kind := .sub } :: Γ) y)
+    (hApp : ∀ {arg u u' : Term},
+      Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) arg →
+        MSubRed (head :: { bound := old, kind := .sub } :: Γ)
+          (arg :: []) u u' →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) (.app u arg) →
+          WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+            (.app u arg) (.app u' arg))
+    (hFun : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth (head :: { bound := old, kind := .sub } :: Γ)) t →
+        MEqRed (head :: { bound := old, kind := .sub } :: Γ) [] t t' →
+          MSubRed ({ bound := t, kind := .sub } :: head ::
+              { bound := old, kind := .sub } :: Γ) [] body body' →
+          WfM (head :: { bound := new, kind := .sub } :: Γ) (.abs t body) →
+          WSubMStar (head :: { bound := new, kind := .sub } :: Γ)
+            (.abs t body) (.abs t' body')) :
+    WfM (head :: { bound := new, kind := .sub } :: Γ) body :=
+  WfM.sub_under_head_replace_from_direct_payloads h hOldNew hWf hWfUnder
+    hEqPresOld hApp hFun
+    (WfM.sub_under_head_bound_from_wf hNew
+      (Prevalid.sub_under_head_replace h.prevalid hOldNew.scoped_right))
 
 /-- Append a forward subtype-reduction chain on the right of de Bruijn
 transitive well-subtyping under explicit stepwise `WfM` preservation. -/
