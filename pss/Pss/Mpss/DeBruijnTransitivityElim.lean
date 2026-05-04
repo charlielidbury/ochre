@@ -272,6 +272,27 @@ theorem pro_pro_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
   subst hEq
   exact hdiamond hα hβ
 
+/-- The full variable-source cell of de Bruijn Lemma 2. Each side is either
+`Me-Var` or `Me-Pro`; the recursive `Me-Pro × Me-Pro` branch is delegated to
+the supplied local diamond on the looked-up bound. -/
+theorem bvar_any_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {i : Nat} {t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (h₁ : MEqRed Γ s (.bvar i) t₁) (h₂ : MEqRed Γ s (.bvar i) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  cases h₁ with
+  | pro _ hαb hα =>
+    cases h₂ with
+    | pro _ hβb hβ =>
+      exact pro_pro_of hdiamond hpv hαb hβb hα hβ
+    | var _ hi =>
+      exact pro_var hpv hαb hα hi
+  | var _ hi =>
+    cases h₂ with
+    | pro _ hβb hβ =>
+      exact var_pro hpv hi hβb hβ
+    | var _ _ =>
+      exact var_var hpv hi
+
 /-- The `Me-TAp × Me-TAp` source cell of de Bruijn Lemma 2. -/
 theorem tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u) :

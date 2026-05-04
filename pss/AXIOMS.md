@@ -1078,6 +1078,10 @@ closures, 2 inactive outstanding).
   `Me-Pro` branch is impossible by context binding-kind uniqueness. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `EqDiamonds.bvar_any_of`, the full de Bruijn Lemma-2 variable-source
+  cell. It combines the `Me-Var`/`Me-Pro` branches and delegates recursive
+  `Me-Pro × Me-Pro` to the local bound diamond. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical
   changed-head replacement premises before invoking the argument-stack-lifted
