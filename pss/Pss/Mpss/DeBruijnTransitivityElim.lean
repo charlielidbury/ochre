@@ -454,6 +454,27 @@ noncomputable def diamond_eqStar_eqStar_of
     obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
     exact ⟨t₃, hT₁T₃, Relation.ReflTransGen.trans hzy hyT₃⟩
 
+/-- Named de Bruijn Lemma 2 chain lifting: a single-step equivalence diamond
+at a fixed extended context lifts to one equivalence step against an
+equivalence-reduction chain. -/
+noncomputable def Lemma_2_DeBruijn_step_eqStar_of
+    {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s t₀ t₁)
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ :=
+  diamond_step_eqStar_of hdiamond h₁ h₂
+
+/-- Named de Bruijn Lemma 2 chain lifting: a single-step equivalence diamond
+at a fixed extended context lifts to two equivalence-reduction chains. -/
+noncomputable def Lemma_2_DeBruijn_DiamondMEqRedStar_of
+    {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRedStar Γ s t₀ t₁)
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ :=
+  diamond_eqStar_eqStar_of hdiamond h₁ h₂
+
 /-- De Bruijn single-step strong commutativity at a fixed extended context.
 This is the de Bruijn Lemma 1 shape needed by the star-lifting argument for
 Theorem 3. The conclusion uses the Prop wrappers for single Type-valued
@@ -863,6 +884,28 @@ noncomputable def commute_subStar_eqStar_of
       commute_subStep_eqStar_of hcomm hHead.some hEqStar
     obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
     exact ⟨t₃, hT₁T₃, Relation.ReflTransGen.trans hzy hyT₃⟩
+
+/-- Named de Bruijn Lemma 1 chain lifting: single-step strong commutativity
+at a fixed extended context lifts to one subtype step against an
+equivalence-reduction chain. -/
+noncomputable def Lemma_1_DeBruijn_step_eqStar_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s)
+    {t₀ t₁ t₂ : Term}
+    (hsub : MSubRed Γ s t₀ t₁)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_subStep_eqStar_of hcomm hsub heqs
+
+/-- Named de Bruijn Lemma 1 chain lifting: single-step strong commutativity
+at a fixed extended context lifts to subtype-reduction chains against
+equivalence-reduction chains. -/
+noncomputable def Lemma_1_DeBruijn_StrongCommutativityStar_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s)
+    {t₀ t₁ t₂ : Term}
+    (hsubs : MSubRedStar Γ s t₀ t₁)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_subStar_eqStar_of hcomm hsubs heqs
 
 namespace MSub
 

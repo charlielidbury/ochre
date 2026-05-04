@@ -377,8 +377,11 @@ hard caveats.
      `commute_subStar_eqStar_of`, `MSub.trans_step_of`, and
      `MSubStar.collapse_of` collapse `MSubStar` to `MSub` from a
      de Bruijn single-step strong-commutativity premise. Use-site
-     adapters `WSubMStar.toMSub_of` and `WEquMStar.toMSub_of` now
-     combine stripping and collapse at the empty stack. Named
+     aliases `Lemma_1_DeBruijn_step_eqStar_of` and
+     `Lemma_1_DeBruijn_StrongCommutativityStar_of` name the Lemma-1
+     chain-lifting shapes. Use-site adapters `WSubMStar.toMSub_of` and
+     `WEquMStar.toMSub_of` now combine stripping and collapse at the
+     empty stack. Named
      theorem-style aliases are available as
      `Theorem_3_DeBruijn_TransitivityIsAdmissible_of`,
      `Theorem_3_DeBruijn_WSubMStar_toMSub_of`, and
@@ -386,7 +389,9 @@ hard caveats.
      The conditional Lemma 2 star-lifting skeleton is also present:
      `EqDiamonds`, `diamond_step_eqStar_of`, and
      `diamond_eqStar_eqStar_of` lift a single-step equivalence diamond
-     to equivalence-reduction chains.
+     to equivalence-reduction chains. Named aliases
+     `Lemma_2_DeBruijn_step_eqStar_of` and
+     `Lemma_2_DeBruijn_DiamondMEqRedStar_of` mirror the paper milestone.
      The first actual single-step cells are closed:
      `EqDiamonds.top` and `StrongCommutes.top` discharge the `Top` source
      cases by shape inversion.

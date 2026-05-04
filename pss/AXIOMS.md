@@ -326,6 +326,9 @@ closures, 2 inactive outstanding).
   star-to-single-diagram collapse from a de Bruijn single-step strong
   commutativity premise, without introducing axioms. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added named conditional
+  de Bruijn Lemma-1 aliases `Lemma_1_DeBruijn_step_eqStar_of` and
+  `Lemma_1_DeBruijn_StrongCommutativityStar_of`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added conditional
   Theorem-3 use-site adapters `WSubMStar.toMSub_of` and
   `WEquMStar.toMSub_of`, collapsing well-subtyping / well-equivalence
@@ -341,6 +344,9 @@ closures, 2 inactive outstanding).
   `diamond_step_eqStar_of`, and `diamond_eqStar_eqStar_of`. These lift a
   de Bruijn single-step equivalence diamond to equivalence-reduction
   chains, without introducing axioms. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added named conditional
+  de Bruijn Lemma-2 aliases `Lemma_2_DeBruijn_step_eqStar_of` and
+  `Lemma_2_DeBruijn_DiamondMEqRedStar_of`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — discharged the `Top` source
   cells for the de Bruijn conditional single-step premises:
   `EqDiamonds.top` and `StrongCommutes.top`. Both use the de Bruijn
