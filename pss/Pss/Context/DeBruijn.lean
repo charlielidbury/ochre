@@ -597,6 +597,34 @@ theorem insertAtIndex_lt_depth {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
     rw [insertAtIndex_eq_self_of_lt hlt, hdepth]
     omega
 
+/-- Subtype binding transport across `insertAt`, stated using the common
+translated index. -/
+theorem subBinds_insertAt {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    {t : Term} :
+    subBinds Γ i t →
+    subBinds (insertAt cutoff newEntry Γ) (insertAtIndex cutoff i) (Term.shift cutoff t) := by
+  intro h
+  by_cases hidx : cutoff ≤ i
+  · rw [insertAtIndex_eq_succ_of_le hidx]
+    exact subBinds_insertAt_after_shift hidx h
+  · have hlt : i < cutoff := Nat.lt_of_not_ge hidx
+    rw [insertAtIndex_eq_self_of_lt hlt]
+    exact subBinds_insertAt_before hlt h
+
+/-- Equivalence binding transport across `insertAt`, stated using the common
+translated index. -/
+theorem equBinds_insertAt {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
+    {α : Term} :
+    equBinds Γ i α →
+    equBinds (insertAt cutoff newEntry Γ) (insertAtIndex cutoff i) (Term.shift cutoff α) := by
+  intro h
+  by_cases hidx : cutoff ≤ i
+  · rw [insertAtIndex_eq_succ_of_le hidx]
+    exact equBinds_insertAt_after_shift hidx h
+  · have hlt : i < cutoff := Nat.lt_of_not_ge hidx
+    rw [insertAtIndex_eq_self_of_lt hlt]
+    exact equBinds_insertAt_before hlt h
+
 /-- De Bruijn index translation for inserting a new context entry immediately
 under an existing head binder. The binder keeps index `0`; every outer
 reference moves up by one. -/

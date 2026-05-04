@@ -141,6 +141,12 @@ closures, 2 inactive outstanding).
   constructors explicitly carry the scoped operand premise
   `Term.Scoped Γ.depth α`. This is required for future insertion
   weakening to rebuild the `.equ` binder head. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added constructor-level
+  insertion weakening wrappers for de Bruijn reductions: equivalence
+  `var`/`pro`/`top`/`tAp`/`app`/`fun`/`bet`/`fOp`, and subtype
+  `pro`/`top`/`equ`/`app`/`fun`/`fOp`. These wrappers package the
+  existing context insertion, index transport, and shift/instantiation
+  lemmas for the future full weakening induction. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

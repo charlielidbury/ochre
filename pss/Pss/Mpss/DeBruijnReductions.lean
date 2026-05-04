@@ -189,6 +189,214 @@ noncomputable def MSubRed.scoped_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MSubRed Γ s u v) : Term.Scoped Γ.depth v :=
   h.scoped_pair.2
 
+/-! ## Insertion weakening scaffolding -/
+
+/-- Weakening helper for the de Bruijn equivalence variable case under
+`Ctx.insertAt`. -/
+noncomputable def MEqRed.var_insertAt {Γ : Ctx} {s : Stack} {cutoff i : Nat}
+    {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s))
+    (hi : i < Γ.depth) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.bvar i)) (Term.shift cutoff (.bvar i)) := by
+  rw [Ctx.shift_bvar_insertAtIndex]
+  exact MEqRed.var hpv (Ctx.insertAtIndex_lt_depth hcut hi)
+
+/-- Weakening helper for the de Bruijn equivalence promotion case under
+`Ctx.insertAt`. The recursive premise is supplied explicitly; this lemma only
+packages the index and binding transport. -/
+noncomputable def MEqRed.pro_insertAt {Γ : Ctx} {s : Stack} {cutoff i : Nat}
+    {newEntry : CtxEntry} {α α' : Term}
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s))
+    (hb : Γ.equBinds i α)
+    (hrec : MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff α) (Term.shift cutoff α')) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.bvar i)) (Term.shift cutoff α') := by
+  rw [Ctx.shift_bvar_insertAtIndex]
+  exact MEqRed.pro hpv (Ctx.equBinds_insertAt hb) hrec
+
+/-- Weakening helper for `Me-Top` under `Ctx.insertAt`. -/
+noncomputable def MEqRed.top_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff .top) (Term.shift cutoff .top) := by
+  exact MEqRed.top hpv
+
+/-- Weakening helper for `Me-TAp` under `Ctx.insertAt`. -/
+noncomputable def MEqRed.tAp_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {u : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s))
+    (hu : Term.Scoped Γ.depth u) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.app .top u)) (Term.shift cutoff .top) := by
+  have hu' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff u) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut hu
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  simpa using MEqRed.tAp hpv (by simpa [hdepth] using hu')
+
+/-- Weakening helper for `Me-App` under `Ctx.insertAt`; recursive premises are
+supplied explicitly. -/
+noncomputable def MEqRed.app_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {u u' v v' : Term}
+    (hfn : MEqRed (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v :: Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff u'))
+    (harg : MEqRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff v) (Term.shift cutoff v')) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.app u v)) (Term.shift cutoff (.app u' v')) := by
+  exact MEqRed.app hfn harg
+
+/-- Weakening helper for `Me-Fun` under `Ctx.insertAt`; recursive premises are
+supplied explicitly. The body premise uses insertion below the abstraction
+head, i.e. cutoff `cutoff + 1`. -/
+noncomputable def MEqRed.fun_insertAt {Γ : Ctx} {cutoff : Nat}
+    {newEntry : CtxEntry} {t t' body body' : Term}
+    (hbound : MEqRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff t) (Term.shift cutoff t'))
+    (hbody : MEqRed (Ctx.insertAt (cutoff + 1) newEntry
+      ({ bound := t, kind := .sub } :: Γ)) []
+      (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body')) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff (.abs t body)) (Term.shift cutoff (.abs t' body')) := by
+  exact MEqRed.fun_ hbound hbody
+
+/-- Weakening helper for `Me-Bet` under `Ctx.insertAt`; recursive premises are
+supplied explicitly. -/
+noncomputable def MEqRed.bet_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {t v v' body body' : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (ht : Term.Scoped Γ.depth t)
+    (hbody : MEqRed (Ctx.insertAt (cutoff + 1) newEntry
+      ({ bound := t, kind := .sub } :: Γ)) (Stack.shift 0 (Stack.shift cutoff s))
+      (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body'))
+    (harg : MEqRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff v) (Term.shift cutoff v')) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.app (.abs t body) v))
+      (Term.shift cutoff (Term.instantiate 0 v' body')) := by
+  have ht' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff t) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut ht
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  have hbet := MEqRed.bet (by simpa [hdepth] using ht') hbody harg
+  simpa [Term.shift_instantiate_zero cutoff v' body'] using hbet
+
+/-- Weakening helper for `Me-FOp` under `Ctx.insertAt`; recursive premises are
+supplied explicitly. -/
+noncomputable def MEqRed.fOp_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {t t' α body body' : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (hbound : MEqRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff t) (Term.shift cutoff t'))
+    (hα : Term.Scoped Γ.depth α)
+    (hbody : MEqRed (Ctx.insertAt (cutoff + 1) newEntry
+      ({ bound := α, kind := .equ } :: Γ)) (Stack.shift 0 (Stack.shift cutoff s))
+      (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body')) :
+    MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff (α :: s))
+      (Term.shift cutoff (.abs t body)) (Term.shift cutoff (.abs t' body')) := by
+  have hα' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff α) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut hα
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  exact MEqRed.fOp hbound (by simpa [hdepth] using hα') hbody
+
+/-- Weakening helper for the de Bruijn subtype promotion case under
+`Ctx.insertAt`. -/
+noncomputable def MSubRed.pro_insertAt {Γ : Ctx} {s : Stack} {cutoff i : Nat}
+    {newEntry : CtxEntry} {t : Term}
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s))
+    (hb : Γ.subBinds i t) :
+    MSubRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.bvar i)) (Term.shift cutoff t) := by
+  rw [Ctx.shift_bvar_insertAtIndex]
+  exact MSubRed.pro hpv (Ctx.subBinds_insertAt hb)
+
+/-- Weakening helper for `Ms-Top` under `Ctx.insertAt`. -/
+noncomputable def MSubRed.top_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {u : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s))
+    (hu : Term.Scoped Γ.depth u) :
+    MSubRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff .top) := by
+  have hu' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff u) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut hu
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  exact MSubRed.top hpv (by simpa [hdepth] using hu')
+
+/-- Weakening helper for `Ms-Equ` under `Ctx.insertAt`. -/
+noncomputable def MSubRed.equ_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {u v : Term}
+    (hpv : PrevalidExt (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s))
+    (heq : MEqRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v)) :
+    MSubRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff v) :=
+  MSubRed.equ hpv heq
+
+/-- Weakening helper for `Ms-App` under `Ctx.insertAt`; the recursive premise
+is supplied explicitly. -/
+noncomputable def MSubRed.app_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {u u' v : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (hfn : MSubRed (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v :: Stack.shift cutoff s)
+      (Term.shift cutoff u) (Term.shift cutoff u'))
+    (hv : Term.Scoped Γ.depth v) :
+    MSubRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff s)
+      (Term.shift cutoff (.app u v)) (Term.shift cutoff (.app u' v)) := by
+  have hv' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff v) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut hv
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  exact MSubRed.app hfn (by simpa [hdepth] using hv')
+
+/-- Weakening helper for `Ms-Fun` under `Ctx.insertAt`; recursive premises are
+supplied explicitly. -/
+noncomputable def MSubRed.fun_insertAt {Γ : Ctx} {cutoff : Nat}
+    {newEntry : CtxEntry} {t t' body body' : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (ht : Term.Scoped Γ.depth t)
+    (hbound : MEqRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff t) (Term.shift cutoff t'))
+    (hbody : MSubRed (Ctx.insertAt (cutoff + 1) newEntry
+      ({ bound := t, kind := .sub } :: Γ)) []
+      (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body')) :
+    MSubRed (Ctx.insertAt cutoff newEntry Γ) []
+      (Term.shift cutoff (.abs t body)) (Term.shift cutoff (.abs t' body')) := by
+  have ht' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff t) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut ht
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  exact MSubRed.fun_ (by simpa [hdepth] using ht') hbound hbody
+
+/-- Weakening helper for `Ms-FOp` under `Ctx.insertAt`; recursive premises are
+supplied explicitly. -/
+noncomputable def MSubRed.fOp_insertAt {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {newEntry : CtxEntry} {t α body body' : Term}
+    (hcut : cutoff ≤ Γ.depth)
+    (ht : Term.Scoped Γ.depth t)
+    (hα : Term.Scoped Γ.depth α)
+    (hbody : MSubRed (Ctx.insertAt (cutoff + 1) newEntry
+      ({ bound := α, kind := .equ } :: Γ)) (Stack.shift 0 (Stack.shift cutoff s))
+      (Term.shift (cutoff + 1) body) (Term.shift (cutoff + 1) body')) :
+    MSubRed (Ctx.insertAt cutoff newEntry Γ) (Stack.shift cutoff (α :: s))
+      (Term.shift cutoff (.abs t body)) (Term.shift cutoff (.abs t body')) := by
+  have ht' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff t) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut ht
+  have hα' : Term.Scoped (Γ.depth + 1) (Term.shift cutoff α) :=
+    Term.shift_scoped cutoff Γ.depth _ hcut hα
+  have hdepth : (Ctx.insertAt cutoff newEntry Γ).depth = Γ.depth + 1 :=
+    Ctx.depth_insertAt_of_le hcut
+  exact MSubRed.fOp (by simpa [hdepth] using ht') (by simpa [hdepth] using hα') hbody
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.

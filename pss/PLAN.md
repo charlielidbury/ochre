@@ -211,6 +211,13 @@ hard caveats.
      an explicit `Term.Scoped Γ.depth α` operand premise, which is needed
      to rebuild the `.equ` head when reductions are weakened through
      `Ctx.insertAt`.
+     Constructor-level insertion wrappers are now available for the
+     non-recursive and one-recursive cases of de Bruijn reductions:
+     `MEqRed.var_insertAt`, `pro_insertAt`, `top_insertAt`,
+     `tAp_insertAt`, `app_insertAt`, `fun_insertAt`, `bet_insertAt`,
+     `fOp_insertAt`, and matching `MSubRed` wrappers for
+     `pro`/`top`/`equ`/`app`/`fun`/`fOp`. The remaining full weakening
+     theorem is now a prevalidity-threading induction over these wrappers.
 4. **Phase 4 — well-formed judgments.** `WfM`, `WSubM`, `WSubMStar`,
    `WEquM` re-stated in indices.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
