@@ -571,6 +571,14 @@ closures, 2 inactive outstanding).
   `Top` / `Top`-headed subtype targets now immediately produce the
   strong-commutation join, leaving only the β package and residual
   abstraction-headed shape. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the paired branch
+  classifier `commute_appAbs_subStar_eqStar_beta_or_join_or_appAbs` and
+  one-step specialization
+  `commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs`, combining the
+  subtype-chain split with the equivalence-chain β/residual split. The
+  remaining app-abs strong-commutativity surface is now explicit as:
+  subtype β package, immediate join, equivalence β package, or both
+  targets still abstraction-headed. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
