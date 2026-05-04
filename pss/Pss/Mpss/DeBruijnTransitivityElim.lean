@@ -630,6 +630,19 @@ theorem commute_subStar_to_top_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
   exact ⟨.top, Relation.ReflTransGen.refl,
     MSubRedStar.single (MSubRed.top hpv hTargetScoped)⟩
 
+/-- Direct target-to-`Top` chain extracted from
+`commute_subStar_to_top_eqStar`. -/
+theorem eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (hScoped : Term.Scoped Γ.depth t₀)
+    (hSubTop : MSubRedStar Γ s t₀ .top)
+    (hEq : MEqRedStar Γ s t₀ t₂) :
+    MSubRedStar Γ s t₂ .top := by
+  obtain ⟨t₃, hTop, hTarget⟩ :=
+    commute_subStar_to_top_eqStar hpv hScoped hSubTop hEq
+  have ht₃ : t₃ = .top := hTop.top_inv
+  subst t₃
+  exact hTarget
+
 /-- If a subtype chain from an abstraction reaches `Top`, any equivalence
 chain from the same abstraction joins it at `Top`. -/
 theorem commute_abs_to_top_eqStar {Γ : Ctx} {s : Stack}
@@ -648,11 +661,7 @@ theorem abs_eqStar_to_top_of_subStar_top {Γ : Ctx} {s : Stack}
     (hSubTop : MSubRedStar Γ s (.abs bound body) .top)
     (hEq : MEqRedStar Γ s (.abs bound body) t) :
     MSubRedStar Γ s t .top := by
-  obtain ⟨t₃, hTop, hTarget⟩ :=
-    commute_abs_to_top_eqStar hpv hScoped hSubTop hEq
-  have ht₃ : t₃ = .top := hTop.top_inv
-  subst t₃
-  exact hTarget
+  exact eqStar_to_top_of_subStar_top hpv hScoped hSubTop hEq
 
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
