@@ -588,6 +588,55 @@ noncomputable def WEquMStar.insertAt {Γ : Ctx} {v t : Term}
   | trs _ hwfMid _ ihLeft ihRight =>
     exact WEquMStar.trs ihLeft (hwfMid.insertAt hcut hNew hpv) ihRight
 
+/-- General insertion weakening for de Bruijn well-formedness, deriving the
+original context prevalidity from the judgment. -/
+noncomputable def WfM.insertAt' {Γ : Ctx} {t : Term} (h : WfM Γ t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ)) :
+    WfM (Ctx.insertAt cutoff newEntry Γ) (Term.shift cutoff t) :=
+  h.insertAt hcut hNew h.prevalid
+
+/-- General insertion weakening for de Bruijn well-subtyping, deriving the
+original context prevalidity from the judgment. -/
+noncomputable def WSubM.insertAt' {Γ : Ctx} {v t : Term} (h : WSubM Γ v t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ)) :
+    WSubM (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) :=
+  h.insertAt hcut hNew h.prevalid
+
+/-- General insertion weakening for de Bruijn transitive well-subtyping,
+deriving the original context prevalidity from the judgment. -/
+noncomputable def WSubMStar.insertAt' {Γ : Ctx} {v t : Term}
+    (h : WSubMStar Γ v t) {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ)) :
+    WSubMStar (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) :=
+  h.insertAt hcut hNew h.prevalid
+
+/-- General insertion weakening for de Bruijn well-equivalence, deriving the
+original context prevalidity from the judgment. -/
+noncomputable def WEquM.insertAt' {Γ : Ctx} {v t : Term} (h : WEquM Γ v t)
+    {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ)) :
+    WEquM (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) :=
+  h.insertAt hcut hNew h.prevalid
+
+/-- General insertion weakening for de Bruijn transitive well-equivalence,
+deriving the original context prevalidity from the judgment. -/
+noncomputable def WEquMStar.insertAt' {Γ : Ctx} {v t : Term}
+    (h : WEquMStar Γ v t) {cutoff : Nat} {newEntry : CtxEntry}
+    (hcut : cutoff ≤ Γ.depth)
+    (hNew : Prevalid (newEntry :: List.drop cutoff Γ)) :
+    WEquMStar (Ctx.insertAt cutoff newEntry Γ)
+      (Term.shift cutoff v) (Term.shift cutoff t) :=
+  h.insertAt hcut hNew h.prevalid
+
 /-- Head-extension weakening for de Bruijn well-formedness. -/
 noncomputable def WfM.weaken_head {Γ : Ctx} {t : Term} {newEntry : CtxEntry}
     (h : WfM Γ t)

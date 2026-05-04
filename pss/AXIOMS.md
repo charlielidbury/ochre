@@ -197,6 +197,10 @@ closures, 2 inactive outstanding).
   extractors for all five de Bruijn well-formed judgments:
   `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,
   `WEquM.prevalid`, and `WEquMStar.prevalid`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added derived-prevalid insertion
+  wrappers `WfM.insertAt'`, `WSubM.insertAt'`, `WSubMStar.insertAt'`,
+  `WEquM.insertAt'`, and `WEquMStar.insertAt'`. These are convenience
+  forms of the existing `insertAt` lemmas. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

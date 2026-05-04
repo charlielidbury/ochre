@@ -260,7 +260,8 @@ hard caveats.
      `WEquM.left_chain`, `WEquM.right_chain_back`,
      `WEquMStar.WEquM_trans`, and `WEquMStar.trans`. Context
      prevalidity extractors are available for all five judgments as
-     `*.prevalid`.
+     `*.prevalid`, plus derived-prevalid insertion wrappers
+     `*.insertAt'`.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
