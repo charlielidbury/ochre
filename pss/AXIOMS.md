@@ -216,6 +216,9 @@ closures, 2 inactive outstanding).
   endpoint extension helpers for de Bruijn transitive well-equivalence:
   `WEquMStar.extend_left_via_MEqRed_fwd` and
   `WEquMStar.extend_right_via_MEqRed_back`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added the single-step subtype
+  left-endpoint extension helper for de Bruijn transitive well-subtyping:
+  `WSubMStar.extend_left_via_MSubRed_fwd`. No axiom-count change.
 
 **Session 2026-05-04 (iters 1–7) infrastructure shipped:**
 * `Lemma_32_AsymmetricEqu` (Pss/Mpss/AvoidsPro.lean:1010, commit

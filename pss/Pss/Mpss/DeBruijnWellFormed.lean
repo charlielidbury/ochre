@@ -875,6 +875,37 @@ noncomputable def WSubMStar.extend_left_via_MEqRed_fwd
       WSubMStar.trs (ihLeft hr hwfC) hwfU hRight)
     h) hred hwfC
 
+private def _extendLeftWSubMStarMSubRedMotive (Γ : Ctx) (a b : Term)
+    (_ : WSubMStar Γ a b) : Type :=
+  ∀ {c : Term}, MSubRed Γ [] c a → WfM Γ c → WSubMStar Γ c b
+
+/-- Prepend a forward subtype-reduction step on the left of de Bruijn
+transitive well-subtyping. -/
+noncomputable def WSubMStar.extend_left_via_MSubRed_fwd
+    {Γ : Ctx} {a b c : Term}
+    (h : WSubMStar Γ a b)
+    (hred : MSubRed Γ [] c a)
+    (hwfC : WfM Γ c) :
+    WSubMStar Γ c b := by
+  exact (WSubMStar.rec
+    (motive_1 := _extendLeftWfMotive)
+    (motive_2 := _extendLeftWSubMMotive)
+    (motive_3 := _extendLeftWSubMStarMSubRedMotive)
+    (fun _ _ => ())
+    (fun _ _ => ())
+    (fun _ => ())
+    (fun _ _ _ _ => ())
+    (fun _ _ _ _ => ())
+    (fun _ _ => ())
+    (fun _ _ _ => ())
+    (fun _ _ _ _ _ _ _ => ())
+    (fun _ _ _ => ())
+    (fun hwfA hsub hwfT _ _ _ => fun hr hwfC =>
+      WSubMStar.sub hwfC (WSubM.lf2 hwfC hr hwfA hsub) hwfT)
+    (fun _ hwfU hRight ihLeft _ _ => fun hr hwfC =>
+      WSubMStar.trs (ihLeft hr hwfC) hwfU hRight)
+    h) hred hwfC
+
 private def _extendRightWSubMStarMotive (Γ : Ctx) (a b : Term)
     (_ : WSubMStar Γ a b) : Type :=
   ∀ {c : Term}, MEqRed Γ [] c b → WfM Γ c → WSubMStar Γ a c
