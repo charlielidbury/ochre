@@ -1035,6 +1035,11 @@ closures, 2 inactive outstanding).
   `meqRedStar_replace_from_step_replacement_function`, composing
   tail-polymorphic source chains with tail-polymorphic one-step replacement
   functions. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added function-valued shifted
+  head replacement wrappers
+  `meqRedStar_equ_head_shifted_replace_function_from_replacements` and
+  `msubRedStar_equ_head_shifted_replace_function_from_replacements`, packaging
+  shifted replacement over every residual tail stack. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_argument_replacement_fOp_tail_lifts`,
   which builds the reusable argument stack-lift function from canonical

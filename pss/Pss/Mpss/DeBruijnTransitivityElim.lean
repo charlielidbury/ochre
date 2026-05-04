@@ -3299,6 +3299,76 @@ theorem meqRedStar_equ_head_shifted_replace_from_replacements {Γ : Ctx} {s : St
       hBetBodyReplace hFOpBodyReplace)
     h
 
+/-- Function-valued shifted-stack equivalence replacement across a changed
+`.equ` head. This packages the star-level shifted replacement for every
+tail stack. -/
+theorem meqRedStar_equ_head_shifted_replace_function_from_replacements {Γ : Ctx}
+    {old new u v : Term}
+    (hOldScoped : Term.Scoped Γ.depth old)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        MEqRed ({ bound := new, kind := .equ } :: Γ)
+          (Stack.shift 0 s) (Term.shift 0 old) (Term.shift 0 new))
+    (hSelfReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {u v : Term},
+          MEqRed ({ bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) u v →
+          MSubStar ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) u v)
+    (hAppOpReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {op op' arg : Term},
+          MEqRed ({ bound := old, kind := .equ } :: Γ)
+            (arg :: Stack.shift 0 s) op op' →
+          MEqRed ({ bound := new, kind := .equ } :: Γ)
+            (arg :: Stack.shift 0 s) op op')
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] arg arg')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hBetBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {bound body body' : Term},
+          MEqRed ({ bound := bound, kind := .sub } ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+            body body' →
+          MEqRed ({ bound := bound, kind := .sub } ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+            body body')
+    (hFOpBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {arg body body' : Term} {rest : Stack},
+          Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+          Stack.shift 0 s = arg :: rest →
+          MEqRed ({ bound := arg, kind := .equ } ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+          MSubStar ({ bound := arg, kind := .equ } ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (h :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        MEqRedStar ({ bound := old, kind := .equ } :: Γ)
+          (Stack.shift 0 s) u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MSubStar ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) u v :=
+  fun hpvTail =>
+    meqRedStar_equ_head_shifted_replace_from_replacements hpvTail hOldScoped
+      hnew (hOldNewStack hpvTail) (hSelfReplace hpvTail)
+      (hAppOpReplace hpvTail) hNilReplace hFunBodyReplace
+      (hBetBodyReplace hpvTail) (hFOpBodyReplace hpvTail) (h hpvTail)
+
 /-- One-step subtype replacement across a changed `.equ` head at a shifted
 residual stack. The `Ms-Equ` branch is handled by the shifted equivalence
 replacement package, so callers only supply recursive constructor
@@ -3453,6 +3523,103 @@ theorem msubRedStar_equ_head_shifted_replace_from_replacements {Γ : Ctx}
       hEqBetBodyReplace hEqFOpBodyReplace hAppOpReplace hFunBodyReplace
       hFOpBodyReplace)
     h
+
+/-- Function-valued shifted-stack subtype replacement across a changed
+`.equ` head. This packages the chain-level subtype replacement for every
+tail stack, using the shifted equivalence package for each `Ms-Equ` step. -/
+theorem msubRedStar_equ_head_shifted_replace_function_from_replacements {Γ : Ctx}
+    {old new u v : Term}
+    (hOldScoped : Term.Scoped Γ.depth old)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        MEqRed ({ bound := new, kind := .equ } :: Γ)
+          (Stack.shift 0 s) (Term.shift 0 old) (Term.shift 0 new))
+    (hEqSelfReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {u v : Term},
+          MEqRed ({ bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) u v →
+          MSubStar ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) u v)
+    (hEqAppOpReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {op op' arg : Term},
+          MEqRed ({ bound := old, kind := .equ } :: Γ)
+            (arg :: Stack.shift 0 s) op op' →
+          MEqRed ({ bound := new, kind := .equ } :: Γ)
+            (arg :: Stack.shift 0 s) op op')
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] arg arg')
+    (hEqFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hEqBetBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {bound body body' : Term},
+          MEqRed ({ bound := bound, kind := .sub } ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+            body body' →
+          MEqRed ({ bound := bound, kind := .sub } ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 (Stack.shift 0 s))
+            body body')
+    (hEqFOpBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {arg body body' : Term} {rest : Stack},
+          Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+          Stack.shift 0 s = arg :: rest →
+          MEqRed ({ bound := arg, kind := .equ } ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+          MSubStar ({ bound := arg, kind := .equ } ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (hAppOpReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {op op' arg : Term},
+          MSubRed ({ bound := old, kind := .equ } :: Γ)
+            (arg :: Stack.shift 0 s) op op' →
+          Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+          MSubStar ({ bound := new, kind := .equ } :: Γ)
+            (arg :: Stack.shift 0 s) op op')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hFOpBodyReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {arg body body' : Term} {rest : Stack},
+          Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+          Stack.shift 0 s = arg :: rest →
+          MSubRed ({ bound := arg, kind := .equ } ::
+            { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+          MSubStar ({ bound := arg, kind := .equ } ::
+            { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (h :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        MSubRedStar ({ bound := old, kind := .equ } :: Γ)
+          (Stack.shift 0 s) u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MSubStar ({ bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) u v :=
+  fun hpvTail =>
+    msubRedStar_equ_head_shifted_replace_from_replacements hpvTail hOldScoped
+      hnew (hOldNewStack hpvTail) (hEqSelfReplace hpvTail)
+      (hEqAppOpReplace hpvTail) hNilReplace hEqFunBodyReplace
+      (hEqBetBodyReplace hpvTail) (hEqFOpBodyReplace hpvTail)
+      (hAppOpReplace hpvTail) hFunBodyReplace (hFOpBodyReplace hpvTail)
+      (h hpvTail)
 
 /-- Under a preserved head and changed `.equ` entry, the old shifted
 under-head bound diagrammatically subtypes the new variable at index `1`.
