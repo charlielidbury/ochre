@@ -1022,6 +1022,10 @@ closures, 2 inactive outstanding).
   residual tail stack. This is the reusable source for argument stack-lift
   functions consumed by the `FOp` tail commutation wrappers. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRedStar_equ_head_stack_lift_function_from_replacements`, the
+  chain-level function-valued counterpart for reusable changed-head stack
+  lifts over `MEqRedStar` chains. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
