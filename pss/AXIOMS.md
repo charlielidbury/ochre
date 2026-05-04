@@ -1237,6 +1237,12 @@ closures, 2 inactive outstanding).
   Prop-valued `MEqRedStar`/`MSubRedStar`, and Type-valued abstraction
   inversions `MEqRedChain.abs_inv_type` and
   `MSubRedChain.abs_inv_type`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added Type-valued single-step and
+  chain helpers for abstraction-bound projection:
+  `MEqRedChain.single`, `MEqRedChain.trans`, `MSubRedChain.single`,
+  `MSubRedChain.trans`, `MEqRed.abs_bound_chain`,
+  `MEqRedChain.abs_bound_chain`, `MSubRed.abs_bound_chain`, and
+  `MSubRedChain.abs_bound_chain`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,

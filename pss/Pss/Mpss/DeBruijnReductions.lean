@@ -349,6 +349,38 @@ theorem MSubRedStar.trans {Γ : Ctx} {s : Stack} {u v w : Term}
     MSubRedStar Γ s u w :=
   Relation.ReflTransGen.trans h₁ h₂
 
+/-- A single de Bruijn equivalence-reduction step embeds into the
+Type-valued equivalence closure. -/
+def MEqRedChain.single {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : MEqRedChain Γ s u v :=
+  MEqRedChain.tail MEqRedChain.refl h
+
+/-- Type-valued equivalence-chain transitivity. -/
+noncomputable def MEqRedChain.trans {Γ : Ctx} {s : Stack} {u v w : Term}
+    (h₁ : MEqRedChain Γ s u v) (h₂ : MEqRedChain Γ s v w) :
+    MEqRedChain Γ s u w := by
+  induction h₂ with
+  | refl =>
+      exact h₁
+  | tail hChain hStep ih =>
+      exact MEqRedChain.tail ih hStep
+
+/-- A single de Bruijn subtype-reduction step embeds into the Type-valued
+subtype closure. -/
+def MSubRedChain.single {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : MSubRedChain Γ s u v :=
+  MSubRedChain.tail MSubRedChain.refl h
+
+/-- Type-valued subtype-chain transitivity. -/
+noncomputable def MSubRedChain.trans {Γ : Ctx} {s : Stack} {u v w : Term}
+    (h₁ : MSubRedChain Γ s u v) (h₂ : MSubRedChain Γ s v w) :
+    MSubRedChain Γ s u w := by
+  induction h₂ with
+  | refl =>
+      exact h₁
+  | tail hChain hStep ih =>
+      exact MSubRedChain.tail ih hStep
+
 /-- Type-valued equivalence chains embed into the existing Prop-valued
 closure. -/
 theorem MEqRedChain.to_star {Γ : Ctx} {s : Stack} {u v : Term}
@@ -2404,6 +2436,13 @@ def MEqRed.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
   | fun_ hBound _ =>
     exact hBound
 
+/-- Type-valued bound projection for one empty-stack equivalence step between
+abstractions. -/
+def MEqRed.abs_bound_chain {Γ : Ctx} {bound body result body' : Term}
+    (h : MEqRed Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedChain Γ [] bound result :=
+  MEqRedChain.single h.abs_bound_red
+
 /-- A de Bruijn equivalence-reduction chain from an abstraction can only target
 an abstraction. -/
 theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
@@ -2453,6 +2492,36 @@ theorem MEqRedStar.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
       subst hMid
       exact MEqRedStar.trans (ih rfl)
         (MEqRedStar.single hStep.some.abs_bound_red)
+
+/-- Type-valued bound projection for Type-valued empty-stack equivalence
+chains between abstractions. -/
+noncomputable def MEqRedChain.abs_bound_chain {Γ : Ctx}
+    {bound body result body' : Term}
+    (h : MEqRedChain Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedChain Γ [] bound result := by
+  suffices key : ∀ {target : Term},
+      MEqRedChain Γ [] (.abs bound body) target →
+        ∀ {result body' : Term}, PLift (target = .abs result body') →
+          MEqRedChain Γ [] bound result from
+    key h ⟨rfl⟩
+  intro target hChain
+  induction hChain with
+  | refl =>
+      intro result body' hEq
+      cases hEq with
+      | up hEq =>
+          cases hEq
+          exact MEqRedChain.refl
+  | tail hChain hStep ih =>
+      intro result body' hEq
+      cases hEq with
+      | up hEq =>
+          subst hEq
+          obtain ⟨midBound, midBody, hMid⟩ := hChain.abs_inv_type
+          cases hMid with
+          | up hMid =>
+              subst hMid
+              exact MEqRedChain.trans (ih ⟨rfl⟩) hStep.abs_bound_chain
 
 /-- A de Bruijn subtype-reduction step from an abstraction can only target
 `Top` or another abstraction. -/
@@ -2544,6 +2613,17 @@ theorem MSubRed.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
   | fun_ _ hBound _ =>
       exact MEqRedStar.single hBound
 
+/-- Type-valued bound projection for one empty-stack subtype step between
+abstractions. -/
+def MSubRed.abs_bound_chain {Γ : Ctx} {bound body result body' : Term}
+    (h : MSubRed Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedChain Γ [] bound result := by
+  cases h with
+  | equ _ hEq =>
+      exact hEq.abs_bound_chain
+  | fun_ _ hBound _ =>
+      exact MEqRedChain.single hBound
+
 /-- A de Bruijn subtype-reduction chain from an abstraction can only target
 `Top` or another abstraction. -/
 theorem MSubRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
@@ -2610,6 +2690,45 @@ theorem MSubRedStar.abs_bound_red {Γ : Ctx} {bound body result body' : Term}
         cases hTargetTop)
       subst hMid
       exact MEqRedStar.trans (ih rfl) (MSubRed.abs_bound_red (Nonempty.some hStep))
+
+/-- Type-valued bound projection for Type-valued empty-stack subtype chains
+between abstractions. -/
+noncomputable def MSubRedChain.abs_bound_chain {Γ : Ctx}
+    {bound body result body' : Term}
+    (h : MSubRedChain Γ [] (.abs bound body) (.abs result body')) :
+    MEqRedChain Γ [] bound result := by
+  suffices key : ∀ {target : Term},
+      MSubRedChain Γ [] (.abs bound body) target →
+        ∀ {result body' : Term}, PLift (target = .abs result body') →
+          MEqRedChain Γ [] bound result from
+    key h ⟨rfl⟩
+  intro target hChain
+  induction hChain with
+  | refl =>
+      intro result body' hEq
+      cases hEq with
+      | up hEq =>
+          cases hEq
+          exact MEqRedChain.refl
+  | tail hChain hStep ih =>
+      intro result body' hEq
+      cases hEq with
+      | up hEq =>
+          subst hEq
+          cases hChain.abs_inv_type with
+          | inl hTop =>
+              cases hTop with
+              | up hTop =>
+                  subst hTop
+                  have hTargetTop : Term.abs result body' = Term.top :=
+                    hStep.top_inv
+                  cases hTargetTop
+          | inr hAbs =>
+              obtain ⟨midBound, midBody, hMid⟩ := hAbs
+              cases hMid with
+              | up hMid =>
+                  subst hMid
+                  exact MEqRedChain.trans (ih ⟨rfl⟩) hStep.abs_bound_chain
 
 /-- A one-step equivalence reduction from a `Top`-headed application can only
 target either `Top` or another `Top`-headed application. -/
