@@ -658,6 +658,14 @@ closures, 2 inactive outstanding).
   the changed `.equ` head. This leaves the remaining proof obligation at
   the narrow body-replacement boundary, rather than at the outer
   application commutation layer. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level `FOp`
+  body lifting helpers (`msubRedStar_abs_fOp_body_fixed_bound`,
+  `msubRedStar_abs_fOp_equ_body_star`) and
+  `commute_appAbs_structApp_eqStep_of_body_fOp_star_replacements`.
+  The changed-argument structural App/App branch can now consume
+  replacement chains under the new `.equ` head, so the remaining
+  replacement obligation need not be a one-step raw reduction. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
