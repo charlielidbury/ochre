@@ -1064,6 +1064,43 @@ noncomputable def MEqRed.tAp_equ_under_head_replace {Γ : Ctx} {s : Stack}
   exact MEqRed.tAp (PrevalidExt.equ_under_head_replace hpv hnew) (by
     simpa [Ctx.depth] using hu)
 
+/-- Preserved-head `Me-Pro` is stable across under-head `.equ` replacement,
+provided the looked-up bound reduction has already been replaced. -/
+noncomputable def MEqRed.pro_equ_under_head_replace_zero {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term} {α α' : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ) 0 α)
+    (hα : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s α α') :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s (.bvar 0) α' :=
+  MEqRed.pro (PrevalidExt.equ_under_head_replace hpv hnew)
+    (Ctx.equBinds_equ_under_head_replace_zero hb) hα
+
+/-- Non-residual `Me-Pro` past the replaced under-head `.equ` entry is stable.
+The changed entry itself is index `1`; this helper covers indices `2+`. -/
+noncomputable def MEqRed.pro_equ_under_head_replace_succ_succ {Γ : Ctx}
+    {s : Stack} {head : CtxEntry} {old new : Term} {i : Nat} {α α' : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ)
+      ((i + 1) + 1) α)
+    (hα : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s α α') :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar ((i + 1) + 1)) α' :=
+  MEqRed.pro (PrevalidExt.equ_under_head_replace hpv hnew)
+    (Ctx.equBinds_equ_under_head_replace_succ_succ hb) hα
+
+/-- `Ms-Pro` is stable when replacing an `.equ` entry immediately under a
+preserved head, because subtype lookup ignores `.equ` entries. -/
+noncomputable def MSubRed.pro_equ_under_head_replace {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term} {i : Nat} {t : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.subBinds (head :: { bound := old, kind := .equ } :: Γ) i t) :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) s (.bvar i) t :=
+  MSubRed.pro (PrevalidExt.equ_under_head_replace hpv hnew)
+    (Ctx.subBinds_equ_under_head_replace hb)
+
 /-- `Ms-Top` is stable when replacing an `.equ` entry immediately under a
 preserved head. -/
 noncomputable def MSubRed.top_equ_under_head_replace {Γ : Ctx} {s : Stack}

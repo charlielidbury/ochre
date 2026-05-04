@@ -425,6 +425,49 @@ theorem equBinds_equ_head_replace_of_ne_zero {Γ : Ctx} {old new : Term}
   | succ i =>
     exact equBinds_equ_head_replace_succ
 
+/-- Changing the bound stored in an `.equ` entry immediately under a
+preserved head preserves subtype lookups. -/
+theorem subBinds_equ_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {i : Nat} {t : Term} :
+    subBinds (head :: { bound := old, kind := .equ } :: Γ) i t →
+    subBinds (head :: { bound := new, kind := .equ } :: Γ) i t := by
+  cases i with
+  | zero =>
+    cases head with
+    | mk bound kind =>
+      cases kind <;> simp [subBinds]
+  | succ i =>
+    intro h
+    simp [subBinds] at h ⊢
+    cases hlook : lookupSub ({ bound := old, kind := .equ } :: Γ) i with
+    | none =>
+      simp [hlook] at h
+    | some a =>
+      simp [hlook] at h
+      subst h
+      have htail : subBinds ({ bound := new, kind := .equ } :: Γ) i a :=
+        Ctx.subBinds_equ_head_replace (by simpa [subBinds] using hlook)
+      exact ⟨a, by simpa [subBinds] using htail, rfl⟩
+
+/-- Equivalence lookup at the preserved head remains stable when replacing
+the `.equ` entry immediately below it. -/
+theorem equBinds_equ_under_head_replace_zero {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {α : Term} :
+    equBinds (head :: { bound := old, kind := .equ } :: Γ) 0 α →
+    equBinds (head :: { bound := new, kind := .equ } :: Γ) 0 α := by
+  cases head with
+  | mk bound kind =>
+    cases kind <;> simp [equBinds]
+
+/-- Equivalence lookup strictly past the replaced under-head `.equ` entry is
+stable. The changed entry itself is index `1`; this lemma covers `2+`. -/
+theorem equBinds_equ_under_head_replace_succ_succ {Γ : Ctx} {head : CtxEntry}
+    {old new : Term} {i : Nat} {α : Term} :
+    equBinds (head :: { bound := old, kind := .equ } :: Γ) ((i + 1) + 1) α →
+    equBinds (head :: { bound := new, kind := .equ } :: Γ) ((i + 1) + 1) α := by
+  intro h
+  simpa [equBinds] using h
+
 /-- Subtype lookup transport for entries at or outside an insertion cutoff.
 The returned bound is lifted through the inserted entry. -/
 theorem subBinds_insertAt_after {Γ : Ctx} {cutoff i : Nat} {newEntry : CtxEntry}
