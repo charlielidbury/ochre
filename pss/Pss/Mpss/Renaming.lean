@@ -8184,4 +8184,129 @@ noncomputable def MEqRed.descend_y_fresh_source_template
         hy₀_fvbd hy₀_notin_subst_bd' hy₀_stk ihbody_y₀_norm
       simpa using ren
 
+/-! ### §11.10 — `MEqRed.descend_body_equ_uniform` assembly (iter-26)
+
+The unified template-aware descent functor for the body of an equ-bound
+sub-derivation. Dispatches on body's syntactic shape via `match body`.
+
+* **`body = .bvar 0`**: source = `.fvar y`. Uses iter-18's
+  `descend_body_equ_uniform_bvar0` leaf.
+* **`body = .bvar (n+1)`**: source = `.bvar (n+1)`. Vacuous: no `MEqRed`
+  constructor admits a `.bvar` source.
+* **`body = .top`**: source = `.top`, y-fresh. Delegate to
+  `descend_y_fresh_source_template` at `Γ₂ = []`.
+* **`body = .fvar w`** (w ≠ y from `hy_body`): source = `.fvar w`,
+  y-fresh. Delegate to `descend_y_fresh_source_template`. The
+  previously-blocked pro-arm is handled internally by the y-fresh-
+  source descent.
+* **`body = .app a b`**: gated behind `Empty` premise `hgate_app`.
+  Reason: extending the template with `b` requires `LC b`, but `b`
+  need not be LC (only `b^[y]` is, from the PrevalidExt of the
+  underlying `MEqRed.app`). The architectural fix needs either
+  (i) a strengthened signature with `LC body` as a premise — natural
+  for the headline consumer where bodies arise from `.abs`-bound
+  positions and are LC modulo bvar 0 — or (ii) an opened-template
+  variant that tracks templates as already-opened terms. Iter-27
+  picks one and ships.
+* **`body = .abs t inner`**: gated behind `Empty` premise `hgate_abs`.
+  Reason: opening at depth 1 inside `.abs`'s body requires depth-shift
+  handling not yet developed.
+
+### Why no .app/.tAp or .app/.bet sub-arms
+
+These constructor cases can only fire when `body = .app a b` AND
+`a^[y]` matches the constructor's source-shape constraint. Once we
+gate the entire `.app` body shape, the constructor sub-cases are
+subsumed.
+
+### Termination
+
+The function does NOT recurse — every arm delegates to a previously-
+shipped helper (via §11.7's leaves and §11.9's full functor) or to
+an `Empty` gate. The iter-19 prompt's mention of well-founded
+recursion on `Term.size body` applies only when the `.app`/`.abs`
+arms recurse; with both gated, the function is non-recursive. -/
+
+/-- **Iter-26 — assembled `descend_body_equ_uniform` functor.**
+
+Top-level dispatcher matching on `body`'s shape. Each shape is either
+delegated to an existing leaf/full-functor helper or gated behind an
+`Empty` premise (`hgate_app`, `hgate_abs`).
+
+Closed-form `match body` returning a function — so each match arm sees
+`h : MEqRed _ _ ((shape)^[y]) _` typed at the SPECIFIC opened body
+shape, allowing the leaves' direct use. -/
+noncomputable def MEqRed.descend_body_equ_uniform
+    {Γ : Ctx} {s_outer : Stack} {y : String} {α : Term}
+    (body : Term)
+    (s_tmpl : List Term)
+    (hLC_stmpl : ∀ b ∈ s_tmpl, Term.LC b)
+    (hy_body : y ∉ Term.fv body)
+    (hy_stmpl : ∀ b ∈ s_tmpl, y ∉ Term.fv b)
+    (hy_souter : ∀ β ∈ s_outer, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (z : String) (hz_Γ : z ∈ Γ.dom)
+    -- Gates for cases not yet shipped end-to-end.
+    (hgate_app : ∀ a b : Term, body = .app a b → Empty)
+    (hgate_abs : ∀ t inner : Term, body = .abs t inner → Empty) :
+    {target_y : Term} →
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) (s_tmpl.map (·^[y]) ++ s_outer)
+                (body^[y]) target_y) →
+    avoidsPro h y = true →
+    cofinDomFresh h = true →
+    MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (body^[z])
+              (Term.subst y (.fvar z) target_y) := by
+  classical
+  match body, hy_body with
+  | .bvar 0, _hy_body =>
+    intro target_y h hAvoid _hFresh
+    exact MEqRed.descend_body_equ_uniform_bvar0 s_tmpl h hAvoid
+            hy_stmpl hy_souter hy_Γ z hz_Γ
+  | .bvar (n+1), _hy_body =>
+    intro target_y h _hAvoid _hFresh
+    -- Source = .bvar (n+1) (opening at depth 0 doesn't change it). No MEqRed
+    -- constructor has a .bvar source — vacuous via cases.
+    have hopen : (Term.bvar (n+1) : Term)^[y] = .bvar (n+1) := by
+      simp [Term.opening, Term.open_]
+    rw [hopen] at h
+    -- Generalize the stack to make cases work without dep-elim glitches.
+    generalize hst_eq : s_tmpl.map (·^[y]) ++ s_outer = stk at h
+    cases h
+  | .top, _hy_body =>
+    intro target_y h hAvoid hFresh
+    -- (Term.top)^[y] = .top and (Term.top)^[z] = .top are definitional.
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.top : Term)
+                 (Term.subst y (.fvar z) target_y)
+    have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have hy_top : y ∉ Term.fv (.top : Term) := by simp [Term.fv]
+    have hz_out : z ∈ Ctx.dom (([] : Ctx) ++ Γ) := by simpa using hz_Γ
+    -- Pass h directly (input ctx Γ is def-eq to [] ++ Γ).
+    have hres := MEqRed.descend_y_fresh_source_template (Γ₂ := ([] : Ctx)) (Γ₁ := Γ)
+                  s_tmpl h hΓ₂_avoid hAvoid hFresh hLC_stmpl
+                  hy_stmpl hy_souter hy_Γ hy_top z hz_out
+    simpa using hres
+  | .fvar w, hy_body =>
+    intro target_y h hAvoid hFresh
+    have hwy : w ≠ y := by
+      intro heq
+      apply hy_body
+      simp [Term.fv, heq]
+    -- (Term.fvar w)^[y] = .fvar w and (Term.fvar w)^[z] = .fvar w are definitional.
+    show MEqRed Γ (s_tmpl.map (·^[z]) ++ s_outer) (.fvar w)
+                 (Term.subst y (.fvar z) target_y)
+    have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have hy_fvarw : y ∉ Term.fv (.fvar w : Term) := by
+      simp [Term.fv]; exact fun heq => hwy heq.symm
+    have hz_out : z ∈ Ctx.dom (([] : Ctx) ++ Γ) := by simpa using hz_Γ
+    have hres := MEqRed.descend_y_fresh_source_template (Γ₂ := ([] : Ctx)) (Γ₁ := Γ)
+                  s_tmpl h hΓ₂_avoid hAvoid hFresh hLC_stmpl
+                  hy_stmpl hy_souter hy_Γ hy_fvarw z hz_out
+    simpa using hres
+  | .app a b, _hy_body =>
+    intro target_y h _hAvoid _hFresh
+    exact (hgate_app a b rfl).elim
+  | .abs t inner, _hy_body =>
+    intro target_y h _hAvoid _hFresh
+    exact (hgate_abs t inner rfl).elim
+
 end Pss
