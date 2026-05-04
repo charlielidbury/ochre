@@ -1227,6 +1227,11 @@ closures, 2 inactive outstanding).
   `MSubRed.abs_bound_red`, and `MSubRedStar.abs_bound_red`. These expose
   the shared-bound chain needed by the remaining function-bound inversion.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added Type-valued one-step
+  abstraction shape inversions `MEqRed.abs_inv_type` and
+  `MSubRed.abs_inv_type`, using `PLift` for equality branches. These are
+  intended for future Type-valued diagram extraction from `WSubM` evidence.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,

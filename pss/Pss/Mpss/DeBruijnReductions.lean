@@ -2326,6 +2326,16 @@ theorem MEqRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
   | fun_ _ _ => exact ⟨_, _, rfl⟩
   | fOp _ _ _ => exact ⟨_, _, rfl⟩
 
+/-- Type-valued abstraction inversion for one equivalence-reduction step.
+Use this instead of `MEqRed.abs_inv` when the target proof constructs
+Type-valued evidence. -/
+def MEqRed.abs_inv_type {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MEqRed Γ s (.abs bound body) v) :
+    Sigma fun bound' => Sigma fun body' => PLift (v = .abs bound' body') := by
+  cases h with
+  | fun_ _ _ => exact ⟨_, _, ⟨rfl⟩⟩
+  | fOp _ _ _ => exact ⟨_, _, ⟨rfl⟩⟩
+
 /-- Detail-preserving one-step equivalence inversion from an abstraction,
 separating the unapplied-function rule from the operand-stack rule. -/
 theorem MEqRed.abs_inv_detail {Γ : Ctx} {s : Stack} {bound body v : Term}
@@ -2406,6 +2416,24 @@ theorem MSubRed.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
     exact Or.inr ⟨_, _, rfl⟩
   | fOp _ _ _ =>
     exact Or.inr ⟨_, _, rfl⟩
+
+/-- Type-valued abstraction inversion for one subtype-reduction step. Use this
+instead of `MSubRed.abs_inv` when the target proof constructs Type-valued
+evidence. -/
+def MSubRed.abs_inv_type {Γ : Ctx} {s : Stack} {bound body v : Term}
+    (h : MSubRed Γ s (.abs bound body) v) :
+    PLift (v = .top) ⊕
+      (Sigma fun bound' => Sigma fun body' => PLift (v = .abs bound' body')) := by
+  cases h with
+  | top _ _ =>
+    exact Sum.inl ⟨rfl⟩
+  | equ _ heq =>
+    obtain ⟨bound', body', hTarget⟩ := heq.abs_inv_type
+    exact Sum.inr ⟨bound', body', hTarget⟩
+  | fun_ _ _ _ =>
+    exact Sum.inr ⟨_, _, ⟨rfl⟩⟩
+  | fOp _ _ _ =>
+    exact Sum.inr ⟨_, _, ⟨rfl⟩⟩
 
 /-- Detail-preserving one-step subtype inversion from an abstraction. This
 keeps constructor evidence for the equivalence-derived abstraction branches,
