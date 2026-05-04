@@ -164,11 +164,31 @@ structure AbsFunctionBoundDiagram
     MEqRedStar Γ [] (.abs result .top) (.abs joinBound joinBody)
   wfJoinBound : WfM Γ joinBound
 
+/-- Type-valued common-reduct diagram whose reduction chains themselves remain
+in `Type`. This is the shape future extraction from `WSubMStar` should
+produce to avoid Prop-elimination barriers. -/
+structure AbsFunctionBoundChainDiagram
+    (Γ : Ctx) (bound body result : Term) : Type where
+  joinBound : Term
+  joinBody : Term
+  subJoin :
+    MSubRedChain Γ [] (.abs bound body) (.abs joinBound joinBody)
+  eqJoin :
+    MEqRedChain Γ [] (.abs result .top) (.abs joinBound joinBody)
+  wfJoinBound : WfM Γ joinBound
+
 /-- Remaining Type-valued diagram payload for function-bound inversion. -/
 def AbsFunctionBoundDiagramPayload : Type :=
   ∀ {Γ : Ctx} {bound body result : Term},
     WSubMStar Γ (.abs bound body) (.abs result .top) →
       AbsFunctionBoundDiagram Γ bound body result
+
+/-- Remaining Type-valued chain-diagram payload for function-bound
+inversion. -/
+def AbsFunctionBoundChainDiagramPayload : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term},
+    WSubMStar Γ (.abs bound body) (.abs result .top) →
+      AbsFunctionBoundChainDiagram Γ bound body result
 
 /-- A Type-valued common-reduct diagram gives the transitive bound
 well-equivalence needed by β preservation. -/
@@ -187,6 +207,27 @@ noncomputable def AbsFunctionBoundInversion_of_diagram
     WEquMStar.of_MEqRedStar_fwd_of_wf hBoundJoin hwfBound d.wfJoinBound
   have hRight : WEquMStar Γ d.joinBound result :=
     WEquMStar.of_MEqRedStar_back_of_wf hResultJoin hwfResult d.wfJoinBound
+  exact WEquMStar.trans d.wfJoinBound hLeft hRight
+
+/-- A Type-valued chain common-reduct diagram also gives the transitive bound
+well-equivalence needed by β preservation. -/
+noncomputable def AbsFunctionBoundInversion_of_chain_diagram
+    (hDiagram : AbsFunctionBoundChainDiagramPayload) :
+    AbsFunctionBoundInversion := by
+  intro Γ bound body result hFun
+  let d := hDiagram hFun
+  have hwfBound : WfM Γ bound := hFun.wf_left.fun_inv.1
+  have hwfResult : WfM Γ result := hFun.wf_right.fun_inv.1
+  have hBoundJoin : MEqRedChain Γ [] bound d.joinBound :=
+    MSubRedChain.abs_bound_chain d.subJoin
+  have hResultJoin : MEqRedChain Γ [] result d.joinBound :=
+    MEqRedChain.abs_bound_chain d.eqJoin
+  have hLeft : WEquMStar Γ bound d.joinBound :=
+    WEquMStar.of_MEqRedStar_fwd_of_wf hBoundJoin.to_star
+      hwfBound d.wfJoinBound
+  have hRight : WEquMStar Γ d.joinBound result :=
+    WEquMStar.of_MEqRedStar_back_of_wf hResultJoin.to_star
+      hwfResult d.wfJoinBound
   exact WEquMStar.trans d.wfJoinBound hLeft hRight
 
 /-- One-step abstraction-function subtype inversion: any direct empty-stack

@@ -1212,6 +1212,11 @@ closures, 2 inactive outstanding).
   proved `AbsFunctionBoundInversion_of_diagram` using the abstraction-bound
   chain projections. This avoids eliminating Prop-valued `MSub` witnesses
   while constructing `WEquMStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added Type-valued chain diagram
+  payloads `AbsFunctionBoundChainDiagram` and
+  `AbsFunctionBoundChainDiagramPayload`, plus
+  `AbsFunctionBoundInversion_of_chain_diagram`, consuming the new
+  `MEqRedChain`/`MSubRedChain` bound projections. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct diagram-based β and
   preservation wrappers `StepBetaPreservesWfM_of_diagram` and
   `StepPreservesWfM_of_diagram_components`, so the preservation endpoint can
