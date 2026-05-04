@@ -550,6 +550,11 @@ closures, 2 inactive outstanding).
   `NoTopFunctionSupertypes`, and conditional preservation
   `Theorem_5_DeBruijn_Preservation_of` with explicit Type-valued
   `StepPreservesWfM`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — proved
+  `NoTopFunctionSupertypes_of` from empty-context de Bruijn strong
+  commutativity and added
+  `Theorem_4_DeBruijn_Progress_of_StrongCommutativity`, reducing the
+  progress endpoint to the Theorem-3 premise. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

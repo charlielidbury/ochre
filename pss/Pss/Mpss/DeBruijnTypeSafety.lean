@@ -15,6 +15,20 @@ namespace DeBruijn
 def NoTopFunctionSupertypes : Prop :=
   ∀ {bound : Term}, WSubMStar [] .top (.abs bound .top) → False
 
+/-- Once de Bruijn Theorem 3 is available at the empty context, `Top` cannot
+have a function supertype. Diagrammatic subtyping from `Top` can only join at
+`Top`, while equivalence chains from an abstraction can only target another
+abstraction. -/
+noncomputable def NoTopFunctionSupertypes_of
+    (hcomm : StrongCommutes [] []) :
+    NoTopFunctionSupertypes := by
+  intro bound hTopFun
+  obtain ⟨join, hSubTop, hEqAbs⟩ := hTopFun.toMSub_of hcomm
+  have hJoinTop : join = .top := hSubTop.top_inv
+  subst hJoinTop
+  obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
+  cases hAbsTop
+
 /-- De Bruijn progress, conditional on the `Top`-has-no-function-supertype
 fact. A closed well-formed term is an abstraction, `Top`, or takes an
 operational step. -/
@@ -63,6 +77,16 @@ theorem Theorem_4_DeBruijn_Progress_of
               obtain ⟨u', hStepU⟩ := hStepU
               exact Or.inr (Or.inr
                 ⟨_, StepAt.appL hStepU hScopedV⟩)
+
+/-- De Bruijn progress from the empty-context strong-commutativity premise
+used by Theorem 3. -/
+noncomputable def Theorem_4_DeBruijn_Progress_of_StrongCommutativity
+    (hcomm : StrongCommutes [] [])
+    {t : Term} (hwf : WfM [] t) :
+    (∃ bound body, t = .abs bound body) ∨
+      t = .top ∨
+      (∃ t', Step t t') :=
+  Theorem_4_DeBruijn_Progress_of (NoTopFunctionSupertypes_of hcomm) hwf
 
 /-- De Bruijn analogue of Lemma 6's preservation payload for operational
 steps at arbitrary context depth. -/
