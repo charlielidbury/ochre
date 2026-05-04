@@ -2387,6 +2387,71 @@ theorem meq_equ_under_head_bet_handler_of_raw_replacements {Γ : Ctx} {s : Stack
     (MEqRed.bet_equ_under_head_replace hBoundScoped (hBodyReplace hBody)
       (hArgReplace hArg))
 
+/-- Canonical `Me-FOp` handler for innermost `.equ` replacement: replace the
+abstraction-bound equivalence as a raw step, replace the body recursively as a
+diagrammatic chain under the preserved operand head, then lift both through
+`FOp`. -/
+theorem meq_equ_head_fop_handler_of_body_replacement {Γ : Ctx} {s : Stack}
+    {old new : Term}
+    (hpvTail : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) [] bound bound')
+    (hBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    {bound bound' arg body body' : Term} {rest : Stack}
+    (hBound : MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound')
+    (hArgScoped : Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg)
+    (hStack : s = arg :: rest)
+    (hBody : MEqRed ({ bound := arg, kind := .equ } ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s
+      (.abs bound body) (.abs bound' body') := by
+  subst hStack
+  have hpvNewTail : PrevalidExt ({ bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.equ_head_replace (PrevalidExt.tail hpvTail) hnew
+  exact msubStar_abs_fOp_equ_bound_body hpvNewTail (hBoundReplace hBound)
+    hArgScoped hBody.scoped_left (hBodyReplace hArgScoped rfl hBody)
+
+/-- Canonical `Me-FOp` handler for under-head `.equ` replacement. -/
+theorem meq_equ_under_head_fop_handler_of_body_replacement {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpvTail : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) [] bound bound')
+    (hBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } :: head ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    {bound bound' arg body body' : Term} {rest : Stack}
+    (hBound : MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound')
+    (hArgScoped : Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg)
+    (hStack : s = arg :: rest)
+    (hBody : MEqRed ({ bound := arg, kind := .equ } :: head ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar (head :: { bound := new, kind := .equ } :: Γ) s
+      (.abs bound body) (.abs bound' body') := by
+  subst hStack
+  have hpvNewTail : PrevalidExt (head :: { bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.equ_under_head_replace (PrevalidExt.tail hpvTail) hnew
+  exact msubStar_abs_fOp_equ_bound_body hpvNewTail (hBoundReplace hBound)
+    hArgScoped hBody.scoped_left (hBodyReplace hArgScoped rfl hBody)
+
 /-- One-step equivalence replacement splitter for an innermost changed `.equ`
 head. Stable leaves are discharged immediately; the head `Me-Pro` case is
 exposed as its precise residual, and recursive constructor cases are exposed
