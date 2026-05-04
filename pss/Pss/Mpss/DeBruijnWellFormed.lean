@@ -704,6 +704,186 @@ noncomputable def WSubMStar.rfl_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
         Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
   WSubMStar.refl_of_wfM (by simpa [Ctx.replaceAt] using hwf)
 
+/-! ### Well-equivalence replacement constructors -/
+
+/-- Rebuild `Wse-Rfl` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WEquM.rfl_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new t : Term}
+    (hwf : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
+  WEquM.rfl hwf
+
+/-- Rebuild `Wse-Lf1` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WEquM.lf1_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v v' t : Term}
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] v v')
+    (heq : WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v' t) :
+    WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquM.lf1 hred heq
+
+/-- Rebuild `Wse-Rgh` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WEquM.rgh_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v t t' : Term}
+    (heq : WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t')
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      [] t t') :
+    WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquM.rgh heq hred
+
+/-- Rebuild `Wse-Sub` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WEquMStar.sub_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v t : Term}
+    (hwfV : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v)
+    (heq : WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t)
+    (hwfT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WEquMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquMStar.sub hwfV heq hwfT
+
+/-- Rebuild `Wse-Trs` after arbitrary-depth `.sub` replacement. -/
+noncomputable def WEquMStar.trs_replaceAt_sub {Γ : Ctx} {cutoff : Nat}
+    {new v u t : Term}
+    (hLeft : WEquMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v u)
+    (hwfMid : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) u)
+    (hRight : WEquMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      u t) :
+    WEquMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquMStar.trs hLeft hwfMid hRight
+
+/-- `Wse-Lf1` replacement packaged for already-replaced recursive
+well-equivalence premises. -/
+noncomputable def WEquM.lf1_replaceAt_sub_from_replaced {Γ : Ctx}
+    {cutoff : Nat} {old new v v' t : Term}
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      [] v v')
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (heq : WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v' t) :
+    WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquM.lf1 (hred.replaceAt_sub hcut hOldNew) heq
+
+/-- `Wse-Rgh` replacement packaged for already-replaced recursive
+well-equivalence premises. -/
+noncomputable def WEquM.rgh_replaceAt_sub_from_replaced {Γ : Ctx}
+    {cutoff : Nat} {old new v t t' : Term}
+    (heq : WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      v t')
+    (hred : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      [] t t')
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new) :
+    WEquM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquM.rgh heq (hred.replaceAt_sub hcut hOldNew)
+
+/-- Under-head rebuild of `Wse-Rfl` after `.sub` replacement. -/
+noncomputable def WEquM.rfl_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new t : Term}
+    (hwf : WfM (head :: { bound := new, kind := .sub } :: Γ) t) :
+    WEquM (head :: { bound := new, kind := .sub } :: Γ) t t :=
+  WEquM.rfl hwf
+
+/-- Under-head rebuild of `Wse-Lf1` after `.sub` replacement. -/
+noncomputable def WEquM.lf1_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v v' t : Term}
+    (hred : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] v v')
+    (heq : WEquM (head :: { bound := new, kind := .sub } :: Γ) v' t) :
+    WEquM (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WEquM.lf1 hred heq
+
+/-- Under-head rebuild of `Wse-Rgh` after `.sub` replacement. -/
+noncomputable def WEquM.rgh_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
+    {new v t t' : Term}
+    (heq : WEquM (head :: { bound := new, kind := .sub } :: Γ) v t')
+    (hred : MEqRed (head :: { bound := new, kind := .sub } :: Γ) [] t t') :
+    WEquM (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WEquM.rgh heq hred
+
+/-- Under-head rebuild of `Wse-Sub` after `.sub` replacement. -/
+noncomputable def WEquMStar.sub_sub_under_head_replace {Γ : Ctx}
+    {head : CtxEntry} {new v t : Term}
+    (hwfV : WfM (head :: { bound := new, kind := .sub } :: Γ) v)
+    (heq : WEquM (head :: { bound := new, kind := .sub } :: Γ) v t)
+    (hwfT : WfM (head :: { bound := new, kind := .sub } :: Γ) t) :
+    WEquMStar (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WEquMStar.sub hwfV heq hwfT
+
+/-- Under-head rebuild of `Wse-Trs` after `.sub` replacement. -/
+noncomputable def WEquMStar.trs_sub_under_head_replace {Γ : Ctx}
+    {head : CtxEntry} {new v u t : Term}
+    (hLeft : WEquMStar (head :: { bound := new, kind := .sub } :: Γ) v u)
+    (hwfMid : WfM (head :: { bound := new, kind := .sub } :: Γ) u)
+    (hRight : WEquMStar (head :: { bound := new, kind := .sub } :: Γ) u t) :
+    WEquMStar (head :: { bound := new, kind := .sub } :: Γ) v t :=
+  WEquMStar.trs hLeft hwfMid hRight
+
+/-- Binder-recursive rebuild of `Wse-Rfl` after `.sub` replacement. -/
+noncomputable def WEquM.rfl_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head t : Term}
+    (hwf : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) t) :
+    WEquM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t t :=
+  WEquM.rfl (by simpa [Ctx.replaceAt] using hwf)
+
+/-- Binder-recursive rebuild of `Wse-Lf1` after `.sub` replacement. -/
+noncomputable def WEquM.lf1_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v v' t : Term}
+    (hred : MEqRed (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) [] v v')
+    (heq : WEquM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v' t) :
+    WEquM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquM.lf1 (by simpa [Ctx.replaceAt] using hred)
+    (by simpa [Ctx.replaceAt] using heq)
+
+/-- Binder-recursive rebuild of `Wse-Rgh` after `.sub` replacement. -/
+noncomputable def WEquM.rgh_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v t t' : Term}
+    (heq : WEquM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v t')
+    (hred : MEqRed (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) [] t t') :
+    WEquM ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquM.rgh (by simpa [Ctx.replaceAt] using heq)
+    (by simpa [Ctx.replaceAt] using hred)
+
+/-- Binder-recursive rebuild of `Wse-Sub` after `.sub` replacement. -/
+noncomputable def WEquMStar.sub_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v t : Term}
+    (hwfV : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v)
+    (heq : WEquM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v t)
+    (hwfT : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) t) :
+    WEquMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquMStar.sub (by simpa [Ctx.replaceAt] using hwfV)
+    (by simpa [Ctx.replaceAt] using heq)
+    (by simpa [Ctx.replaceAt] using hwfT)
+
+/-- Binder-recursive rebuild of `Wse-Trs` after `.sub` replacement. -/
+noncomputable def WEquMStar.trs_replaceAt_sub_from_body_replaceAt {Γ : Ctx}
+    {cutoff : Nat} {new head v u t : Term}
+    (hLeft : WEquMStar (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) v u)
+    (hwfMid : WfM (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) u)
+    (hRight : WEquMStar (Ctx.replaceAt (cutoff + 1) { bound := new, kind := .sub }
+        ({ bound := head, kind := .sub } :: Γ)) u t) :
+    WEquMStar ({ bound := head, kind := .sub } ::
+        Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) v t :=
+  WEquMStar.trs (by simpa [Ctx.replaceAt] using hLeft)
+    (by simpa [Ctx.replaceAt] using hwfMid)
+    (by simpa [Ctx.replaceAt] using hRight)
+
 /-- Changed-slot `Ws-Lf2` replacement residual. Replacing the subtype entry
 changes the direct `Ms-Pro` target from shifted `old` to shifted `new`; the
 resulting well-subtyping path steps to shifted `new`, crosses back to shifted

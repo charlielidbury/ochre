@@ -997,6 +997,13 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added star-valued reflexive
   `WSubMStar` replacement wrappers for arbitrary-depth, under-head, and
   binder-recursive `.sub` replacement shapes. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added arbitrary-depth `.sub`
+  replacement rebuilders for `WEquM` and `WEquMStar`, plus packaged
+  `Wse-Lf1`/`Wse-Rgh` consumers that transport their `MEqRed` premises.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head and
+  binder-recursive `.sub` replacement rebuilders for `WEquM` and
+  `WEquMStar`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
