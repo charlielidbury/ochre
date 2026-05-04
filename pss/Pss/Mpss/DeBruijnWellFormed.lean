@@ -1258,6 +1258,36 @@ noncomputable def WSubMStar.pro_replaceAt_sub_of_ne_to_star {Γ : Ctx}
       hwfT (WSubM.rfl hwfT))
     hwfT
 
+/-- `Ms-Pro` replacement residual embedded as a well-subtyping star, with the
+changed-slot and preserved-slot lookup cases selected from the binding index.
+
+At the changed `.sub` slot the raw subtype residual reaches shifted `new`, so
+the result uses `WSubMStar.pro_self_replaceAt_sub_to_old` to end at the
+original shifted `old` target. Away from the changed slot, lookup is preserved
+as an ordinary subtype step. -/
+noncomputable def WSubMStar.pro_replaceAt_sub_to_old_of_bind {Γ : Ctx}
+    {cutoff i : Nat} {old new t : Term}
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hb : Ctx.subBinds (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+      i t)
+    (hwfVar : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar i))
+    (hwfNew : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (Term.shiftBy 0 (cutoff + 1) new))
+    (hwfT : WfM (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) t) :
+    WSubMStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+      (.bvar i) t := by
+  by_cases hidx : i = cutoff
+  · subst i
+    have ht : t = Term.shiftBy 0 (cutoff + 1) old :=
+      Ctx.subBinds_unique hb (Ctx.subBinds_replaceAt_sub_self
+        (Γ := Γ) (cutoff := cutoff) (new := old) hcut)
+    subst t
+    exact WSubMStar.pro_self_replaceAt_sub_to_old hcut hOldNew
+      hwfVar hwfNew hwfT
+  · exact WSubMStar.pro_replaceAt_sub_of_ne_to_star hidx hb hwfVar hwfT
+
 /-- Head specialization of non-changed `Ms-Pro` replacement. -/
 noncomputable def WSubMStar.pro_sub_head_replace_succ_to_star {Γ : Ctx}
     {old new : Term} {i : Nat} {t : Term}

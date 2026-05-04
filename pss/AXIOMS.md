@@ -1096,6 +1096,11 @@ closures, 2 inactive outstanding).
   `WSubMStar.top_sub_head_replace_to_star`,
   `WSubMStar.equ_replaceAt_sub_to_star`, and
   `WSubMStar.equ_sub_head_replace_to_star`. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added
+  `WSubMStar.pro_replaceAt_sub_to_old_of_bind`, a generic `Ms-Pro`
+  consumer that selects the changed-slot residual or the preserved-slot
+  residual from the binding index at an arbitrary replaced `.sub` depth.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added under-head subtype-step
   leaf residual wrappers:
   `WSubMStar.pro_sub_under_head_replace_one_to_old`,
