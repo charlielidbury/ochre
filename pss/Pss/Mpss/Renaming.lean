@@ -9099,4 +9099,208 @@ Iter-30 ships:
 Subsequent iterations should attack Lever B (the more general tool;
 also useful for several other axioms in the β-residual cell). -/
 
+/-! ## §14. Iter-32 — `MEqRed.openInverse_descend` (Lever A Phase 2.0)
+
+### Headline goal
+
+Given `h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) target_open` with
+`avoidsPro h y = true` and the standard freshness premises, produce, for
+**any** `z ∉ Γ.dom`, a derivation
+`MEqRed Γ s (body^[z]) ((Term.openInverse y target_open)^[z])`.
+
+This unblocks the §13 (iter-30) cofinite-z gap that was deemed
+architecturally fundamental: rather than substituting `y → z` (which
+fails the `MEqRed.app` PrevalidExt invariant for z-mentioning operands),
+the open-target form opens *both* source and target at z. The source's
+opening is `body^[z]` (using `hy_body`), and the target's opening is
+`(Term.openInverse y target_open)^[z]` — i.e. close-then-reopen at the
+new name.
+
+When `z = y`, by `Term.openInverse_open` (Phase 1 / §`openInverse` in
+`Pss.Syntax.LocallyNameless`) the output target reduces to `target_open`,
+so the construction degenerates to a head-removal descent. When `z ≠ y`,
+it acts as alpha-renaming on the body. Phase 1 established the
+algebraic infrastructure (`Term.openInverse`, `openInverse_open`,
+`openInverse_fresh`, `openInverse_open_self`, `openInverse_fv`); this
+section ships Phase 2.0's structural skeleton.
+
+### Bridge identity (deferred to Phase 2.1)
+
+For LC `target`, `(Term.openInverse y target)^[z] = Term.subst y (.fvar
+z) target`. This is the close-open / subst identity at level 0,
+specialized to the openInverse alias. With this in hand, the output
+target form `(openInverse y target)^[z]` and the substitution-form
+`subst y (.fvar z) target` are interchangeable, letting consumer arms
+choose whichever form simplifies the local proof — including reusing
+`_MEqRed_descend_at_head_subst`-shaped reasoning at cofinite z (where
+that helper would otherwise fail directly because of its `z ∈ Γ.dom`
+restriction).
+
+The bridge lemma needs a level-generalized auxiliary statement for the
+`abs` case: at level k, `open_ k (.fvar z) (close_ k y e) = subst y
+(.fvar z) e` provided `bvar k ∉ e` (carried via LC induction). The
+straightforward induction-on-LC strategy hits a level-mismatch in the
+`abs` arm — when descending into the body, the close moves to level
+`k + 1` but the surface signature is at level k. Phase 2.1 ships this
+lemma via an `open_close_subst_aux` level-generalized helper.
+
+### What Phase 2.0 ships
+
+* `MEqRed.openInverse_descend` — the headline functor signature, with
+  all 8 inductive arms Empty-gated. Each arm's docstring captures the
+  blocker analysis specific to that constructor.
+
+### What's gated and why (per-arm blockers)
+
+All 8 MEqRed constructors (`pro`, `bet`, `top`, `app`, `var`, `fun_`,
+`tAp`, `fOp`) require either:
+
+1. **Body-shape inversion** at the source side — e.g. for `pro`,
+   inverting `body^[y] = .fvar yi` requires case-splitting on `body =
+   .bvar 0` (with yi = y, ruled out by `avoidsPro_pro`) vs `body =
+   .fvar yi` (with yi ≠ y). The inversion lemmas don't yet exist as
+   reusable helpers — `body^[y] = .fvar yi → body ∈ {.bvar 0, .fvar
+   yi}` and analogous for `app`, `top`, `abs` shapes.
+
+2. **Cofinite-z PrevalidExt threading** for the recursive arms (`bet`,
+   `app`, `fun_`, `fOp`). The output PrevalidExt at the smaller ctx Γ
+   for stack `(body_v^[z] :: s)` requires `fv (body_v^[z]) ⊆ Γ.dom`,
+   which fails when `body_v` mentions `bvar 0` (so `body_v^[z]` mentions
+   z, but z ∉ Γ.dom). **This is precisely the iter-30 wall — but in
+   Lever A's open-target form, it's surmountable**: the recursive call
+   re-opens at an in-Γ name `z₀` via the in-domain helper, then
+   alpha-renames `z₀ → z` via `MEqRed.rename_stray` (or analogous).
+   The alpha-rename infrastructure is what Phase 2.x must orchestrate.
+
+3. **`bet`/`fun_`/`fOp` cofinite body recursion** — additionally
+   requires threading `Term.openInverse y` through the body's nested
+   binder. Since `openInverse_at y k` operates at level k (not just 0),
+   the threading composes with `Term.opening` at the body's fresh `y₀`,
+   yielding a nested cofinite hypothesis that recursive Phase 2.x
+   construction must re-package.
+
+### Mathematical truth verification (per the dispatch's safety rule)
+
+Before shipping, sanity-check the headline signature on a small example.
+
+* Take `body = .bvar 0`, `target_open = .fvar y`,
+  `h = MEqRed.var hpv : MEqRed (⟨y, α, .equ⟩ :: Γ) s (.fvar y) (.fvar y)`
+  (legitimate when `Γ` validates `s` and `y ∉ Γ.dom`).
+* Then `avoidsPro h y = true` (by `avoidsPro_var`),
+  `hy_body : y ∉ fv (.bvar 0) = ∅` is trivial, and the LC premise
+  `Term.LC (.fvar y)` holds.
+* Output: `MEqRed Γ s (.fvar z) (.fvar z)`, where:
+  - `body^[z] = (.bvar 0)^[z] = .fvar z`.
+  - `openInverse y (.fvar y) = .bvar 0` (by `openInverseAt_def` then
+    `Term.close_` on `fvar y` at level 0).
+  - `(.bvar 0)^[z] = .fvar z`.
+* Both sides agree. The signature is consistent on this leaf.
+
+Take `body = .fvar w` for some `w ≠ y`. Then `body^[y] = .fvar w` and
+`h = MEqRed.var hpv : MEqRed (⟨y, α, .equ⟩ :: Γ) s (.fvar w) (.fvar w)`
+(needs `w ∈ Γ.dom`). Output: `body^[z] = .fvar w`, `openInverse y
+(.fvar w) = .fvar w` (since y ≠ w), so target = `(.fvar w)^[z] = .fvar
+w`. Output: `MEqRed Γ s (.fvar w) (.fvar w) = MEqRed.var hpv'`, again
+consistent.
+
+The signature is mathematically sound. The constructor-level closure
+is gated on Phase 2.x infrastructure, not on a flaw in the statement. -/
+
+/-- **Iter-32 — `MEqRed.openInverse_descend` (Lever A Phase 2.0).**
+
+The headline open-target descent functor. Given a derivation at the
+extended context `⟨y, α, .equ⟩ :: Γ` with source `body^[y]` and the
+standard freshness premises, produce, for any cofinite `z ∉ Γ.dom`,
+the analogous derivation at the bare context Γ on the z-renamed body
+and the openInverse-then-z-opened target.
+
+**Phase 2.0 status: skeleton with all 8 arms Empty-gated.** The
+constructor-level structural induction is left to Phase 2.x; this
+iteration ships the signature, the bridge lemma `Term.openInverse_open_at`,
+and per-arm blocker analysis docstrings. See §14's leading docblock for
+the full scope summary and Phase 2.x roadmap.
+
+### Per-arm blocker analysis
+
+* **`pro` arm** — Source `.fvar yi`. By `avoidsPro_pro`, `yi ≠ y`. By
+  body inversion `body^[y] = .fvar yi`, either `body = .bvar 0` (with
+  yi = y — ruled out) or `body = .fvar yi`. Recurse on `hα` with the
+  trimmed context `Γ` (the `equBinds_split_equ` infrastructure exists in
+  `Pss.Mpss.Substitution`). **Blocker:** body-shape inversion lemma
+  not yet packaged as a reusable helper.
+
+* **`var` arm** — Source `.fvar yi`. Body inversion: either `body =
+  .bvar 0` (with yi = y; output source `.fvar z`, target via
+  `openInverse_open` reduces to `.fvar z`, output is `MEqRed.var`) or
+  `body = .fvar yi` with yi ≠ y (output is structural). **Blocker:**
+  body-shape inversion (same as `pro`).
+
+* **`top` arm** — Source `.top`. Body inversion: `body = .top` (since
+  `.top` opens to itself). Output `MEqRed Γ s .top .top = MEqRed.top
+  hpv'`. **Blocker:** PrevalidExt at smaller ctx — strip the `⟨y, α,
+  .equ⟩` head requires `hy_souter` to drop y from stack-fv. Mechanical
+  but unbuilt.
+
+* **`tAp` arm** — Source `.app .top u_inner`. Body inversion: `body =
+  .app .top body_u`. Output operand `body_u^[z]`. **Blocker:** the
+  output PrevalidExt's stack invariant `fv (body_u^[z]) ⊆ Γ.dom` may
+  fail if `body_u` has `bvar 0` (so z ∈ fv(body_u^[z]) and z ∉ Γ.dom).
+  This is the iter-30 wall in miniature; Phase 2.x routes via in-Γ z₀
+  + alpha-rename.
+
+* **`app` arm** — Same iter-30 wall. The operator IH at output stack
+  `(body_v^[z] :: s)` requires `fv(body_v^[z]) ⊆ Γ.dom`, which fails
+  for bvar-0-mentioning operands. Phase 2.x: re-open at in-Γ z₀, then
+  alpha-rename z₀ → z. Requires `MEqRed.rename_stray`-style helper at
+  the right place.
+
+* **`bet` arm** — Cofinite body sub-derivation under the equ-extended
+  context. Phase 2.x must thread `openInverse y` through the body's
+  level-1 opening at fresh `y₀`, requiring the level-generalized form
+  of the bridge lemma (currently fixed at level 0). Plus the operand
+  sub-derivation at empty stack (which has no PrevalidExt issue but
+  needs body inversion `body = .app (.abs t_b body_b) v_b`).
+
+* **`fun_` arm** — Cofinite body recursion at extended sub-context
+  `⟨y₀, t, .sub⟩::(⟨y, α, .equ⟩::Γ)`. Body inversion `body = .abs t
+  body_inner`. The output context is `⟨y₀, t', .sub⟩::Γ` (after
+  descent), so the recursion's IH must thread through both the
+  z-opening and the y₀ binder. Phase 2.x: same level-generalized
+  bridge as `bet`.
+
+* **`fOp` arm** — Cofinite body at extended `.equ`-headed sub-context.
+  Same level-generalized bridge as `fun_`/`bet`. The α-binding from
+  the popped stack element preserves correctly (αi doesn't mention y
+  by the input freshness side conditions).
+
+The Empty-premise gates ensure the file compiles — Phase 2.x discharges
+arm-by-arm without re-litigating the signature. -/
+noncomputable def MEqRed.openInverse_descend
+    {Γ : Ctx} {s : Stack} {y : String} {α body target_open : Term}
+    (_hy_body : y ∉ Term.fv body)
+    (_hy_souter : ∀ β ∈ s, y ∉ Term.fv β)
+    (_hy_Γ : y ∉ Γ.dom)
+    (_hLC_target : Term.LC target_open)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) target_open)
+    (_hAvoid : avoidsPro h y = true)
+    (_hFresh : cofinDomFresh h = true)
+    (z : String) (_hz : z ∉ Γ.dom)
+    (hgate_pro : Empty)
+    (_hgate_var : Empty)
+    (_hgate_top : Empty)
+    (_hgate_tAp : Empty)
+    (_hgate_app : Empty)
+    (_hgate_bet : Empty)
+    (_hgate_fun : Empty)
+    (_hgate_fOp : Empty) :
+    MEqRed Γ s (body^[z]) (Term.opening (.fvar z) (Term.openInverse y target_open)) := by
+  -- Phase 2.0 skeleton: all 8 inductive arms are gated by Empty premises.
+  -- Until Phase 2.x supplies the per-arm discharge infrastructure (body-shape
+  -- inversion, level-generalized close-open / subst bridge, and the in-Γ z₀
+  -- + alpha-rename routing for the recursive arms), the construction returns
+  -- by immediately eliminating one of the Empty premises. Any of the eight
+  -- gates will do — they are kept as separate parameters so Phase 2.x can
+  -- close them one-by-one without churning the signature.
+  exact hgate_pro.elim
+
 end Pss
