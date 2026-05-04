@@ -5054,4 +5054,92 @@ MEqRed/MSubRed); a future session can address it via either:
 
 Phase 3 ships MEqRed.stack_replace / .stack_head_replace only. -/
 
+/-! ## §11. `descend_body_equ` — template-aware descent functor on body
+derivations (Phase A: `body = .bvar 0` leaf case)
+
+### Architectural picture
+
+`Lemma_2_inline_app_bet_residual_axiom` (the iter-12 headline blocker)
+needs an "honest descent" operation: given a derivation living at the
+extended context `(⟨y, α, .equ⟩ :: Γ)` with source `body^[y]` (the
+opening of some body template `body : Term` at `y`), produce a
+derivation at the bare `Γ` with source `body^[z]` for a fresh `z` of
+the caller's choice.
+
+The paper sidesteps the obligation via α-conversion on named binders:
+"the body is α-equivalent to one freshened over `z`, so we can just
+work at `z`". Our locally-nameless mechanization makes the obligation
+explicit. The full descent functor `descend_body_equ` will recurse on
+the **body template's** structure (with cases for `.bvar 0`, `.fvar`,
+`.app`, `.abs`, `.bvar (n+1)`, `.top`, etc.), each branch handling the
+shape of `body^[y]` after the opening that template produces.
+
+The total functor is decomposed into Phases A, B, C:
+
+* **Phase A** (this section): `body = .bvar 0` leaf case. The opening
+  `(.bvar 0)^[y]` reduces to `.fvar y`, so the source is literally the
+  binder name. Possible MEqRed constructors at source `.fvar y` are
+  `pro` and `var`; the paper's "moreover" clause (mechanized as
+  `avoidsPro h y = true`) rules out `pro`, leaving `var`.
+* **Phase B** (future): per-template recursion on the other body shapes
+  (`.fvar`, `.app`, `.abs`, deeper `.bvar`, `.top`).
+* **Phase C** (future): assembly into `descend_body_equ` proper, paired
+  with the "moreover"-clause hypotheses that route through Lemma 2's
+  inline-app-bet-residual closing step.
+
+### Phase A signature
+
+The `body = .bvar 0` instantiation — once `(.bvar 0)^[y] = .fvar y` is
+applied — collapses to: descend a `MEqRed (⟨y, α, .equ⟩ :: Γ) s (.fvar y)
+target_y` derivation, with avoidance `avoidsPro h y = true`, to a bare-
+Γ derivation at source `.fvar z`. The substitution `Term.subst y (.fvar z)`
+applied to the target lines up with the renamed source after the descent.
+
+For the `.bvar 0` template specifically, the only outputs target_y can
+take are `.fvar y` itself (via `MEqRed.var`) — `pro` would emit some β'
+but is excluded by `avoidsPro`. So the post-substituted target is `.fvar z`
+and the resulting derivation is `MEqRed.var hpv'` at the bare Γ. -/
+
+/-- **Phase A — `body = .bvar 0` leaf case of the descent functor.**
+
+Given a derivation at the extended context `(⟨y, α, .equ⟩ :: Γ)` whose
+source is `.fvar y` (the opening of `.bvar 0` at `y`), produce a
+derivation at the bare context `Γ` whose source is `.fvar z` for a
+caller-chosen fresh `z`.
+
+The `avoidsPro h y = true` premise (the paper's "moreover" clause)
+rules out the `MEqRed.pro` constructor, leaving only `MEqRed.var`.
+
+This is the simplest leaf of the template-aware functor
+`descend_body_equ` — see the §11 header for the full architectural
+picture. -/
+noncomputable def MEqRed.descend_body_equ_bvar0
+    {Γ : Ctx} {s : Stack} {y : String} {α target_y : Term}
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (.fvar y) target_y)
+    (hAvoid : avoidsPro h y = true)
+    (hst_avoid : ∀ β ∈ s, y ∉ Term.fv β)
+    (z : String) :
+    MEqRed Γ s (.fvar z) (Term.subst y (.fvar z) target_y) := by
+  classical
+  -- Case-analyze on h. Source `.fvar y` rules out everything except
+  -- `pro` (excluded by hAvoid) and `var`.
+  cases h with
+  | @pro _ _ _ β β' hpv heq hβ =>
+    -- Source `.fvar y` here forces the constructor's `x = y`. Then
+    -- avoidsPro_pro adds factor `decide (y ≠ y) && _`, contradiction.
+    rw [avoidsPro_pro] at hAvoid
+    simp at hAvoid
+  | @var _ _ _ hpv =>
+    -- Source `.fvar y`, target `.fvar y`. After `Term.subst y (.fvar z)`,
+    -- target becomes `.fvar z`. Build `MEqRed.var` at the head-removed
+    -- context.
+    have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+    have hpv' : PrevalidExt ([] ++ Γ) s :=
+      PrevalidExt.equ_head_remove_mid (Γ₂ := []) hpv hΓ₂_avoid hst_avoid
+    have hpv'' : PrevalidExt Γ s := by simpa using hpv'
+    -- Goal target after substitution.
+    show MEqRed Γ s (.fvar z) (Term.subst y (.fvar z) (.fvar y))
+    rw [Term.subst_fvar_eq]
+    exact MEqRed.var hpv''
+
 end Pss
