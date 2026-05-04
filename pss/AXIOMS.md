@@ -303,6 +303,10 @@ closures, 2 inactive outstanding).
   `EqDiamonds.top` and `StrongCommutes.top`. Both use the de Bruijn
   reduction shape inversions to close immediately. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — lifted the same `Top`
+  source cell directly to chains with `diamond_step_eqStar_top`,
+  `diamond_eqStar_eqStar_top`, `commute_subStep_eqStar_top`, and
+  `commute_subStar_eqStar_top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

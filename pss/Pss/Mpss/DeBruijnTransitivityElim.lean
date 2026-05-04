@@ -107,6 +107,28 @@ theorem top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
 
 end EqDiamonds
 
+/-- The `Top` source case for one equivalence step against an equivalence
+chain, proved directly by shape inversion. -/
+theorem diamond_step_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s .top t₁) (h₂ : MEqRedStar Γ s .top t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ := by
+  have ht₁ : t₁ = .top := h₁.top_inv
+  have ht₂ : t₂ = .top := h₂.top_inv
+  subst t₁
+  subst t₂
+  exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+
+/-- The `Top` source case for two equivalence chains, proved directly by
+shape inversion. -/
+theorem diamond_eqStar_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
+    (h₁ : MEqRedStar Γ s .top t₁) (h₂ : MEqRedStar Γ s .top t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ := by
+  have ht₁ : t₁ = .top := h₁.top_inv
+  have ht₂ : t₂ = .top := h₂.top_inv
+  subst t₁
+  subst t₂
+  exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+
 /-- Lift a single-step equivalence diamond to one equivalence step against an
 equivalence-reduction chain. -/
 noncomputable def diamond_step_eqStar_of
@@ -180,6 +202,28 @@ theorem top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   exact ⟨.top, ⟨heq⟩, ⟨hsub⟩⟩
 
 end StrongCommutes
+
+/-- The `Top` source case for one subtype step against an equivalence chain,
+proved directly by shape inversion. -/
+theorem commute_subStep_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
+    (hsub : MSubRed Γ s .top t₁) (heqs : MEqRedStar Γ s .top t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  have ht₁ : t₁ = .top := hsub.top_inv
+  have ht₂ : t₂ = .top := heqs.top_inv
+  subst t₁
+  subst t₂
+  exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+
+/-- The `Top` source case for a subtype chain against an equivalence chain,
+proved directly by shape inversion. -/
+theorem commute_subStar_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
+    (hsubs : MSubRedStar Γ s .top t₁) (heqs : MEqRedStar Γ s .top t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  have ht₁ : t₁ = .top := hsubs.top_inv
+  have ht₂ : t₂ = .top := heqs.top_inv
+  subst t₁
+  subst t₂
+  exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
 
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/

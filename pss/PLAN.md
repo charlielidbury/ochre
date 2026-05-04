@@ -363,6 +363,9 @@ hard caveats.
      The first actual single-step cells are closed:
      `EqDiamonds.top` and `StrongCommutes.top` discharge the `Top` source
      cases by shape inversion.
+     The corresponding direct star-level `Top` cases are also available:
+     `diamond_step_eqStar_top`, `diamond_eqStar_eqStar_top`,
+     `commute_subStep_eqStar_top`, and `commute_subStar_eqStar_top`.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
