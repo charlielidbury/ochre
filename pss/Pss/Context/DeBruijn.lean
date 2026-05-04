@@ -238,6 +238,52 @@ def subBinds (Γ : Ctx) (i : Nat) (t : Term) : Prop :=
 def equBinds (Γ : Ctx) (i : Nat) (t : Term) : Prop :=
   Γ.lookupEqu i = some t
 
+theorem lookupSub_unique {Γ : Ctx} {i : Nat} {t u : Term} :
+    Γ.lookupSub i = some t → Γ.lookupSub i = some u → t = u := by
+  intro ht hu
+  rw [ht] at hu
+  cases hu
+  rfl
+
+theorem lookupEqu_unique {Γ : Ctx} {i : Nat} {α β : Term} :
+    Γ.lookupEqu i = some α → Γ.lookupEqu i = some β → α = β := by
+  intro hα hβ
+  rw [hα] at hβ
+  cases hβ
+  rfl
+
+theorem subBinds_unique {Γ : Ctx} {i : Nat} {t u : Term} :
+    Γ.subBinds i t → Γ.subBinds i u → t = u :=
+  lookupSub_unique
+
+theorem equBinds_unique {Γ : Ctx} {i : Nat} {α β : Term} :
+    Γ.equBinds i α → Γ.equBinds i β → α = β :=
+  lookupEqu_unique
+
+theorem subBinds_equBinds_false {Γ : Ctx} {i : Nat} {t α : Term} :
+    Γ.subBinds i t → Γ.equBinds i α → False := by
+  unfold subBinds equBinds
+  induction Γ generalizing i t α with
+  | nil =>
+    simp
+  | cons entry Γ ih =>
+    cases i with
+    | zero =>
+      cases entry with
+      | mk bound kind =>
+        cases kind <;> simp [lookupSub, lookupEqu]
+    | succ i =>
+      intro hsub heq
+      cases hSubLookup : lookupSub Γ i with
+      | none =>
+        simp [lookupSub, hSubLookup] at hsub
+      | some t0 =>
+        cases hEquLookup : lookupEqu Γ i with
+        | none =>
+          simp [lookupEqu, hEquLookup] at heq
+        | some α0 =>
+          exact ih hSubLookup hEquLookup
+
 @[simp] theorem subBinds_zero_self (Γ : Ctx) (t : Term) :
     subBinds ({ bound := t, kind := .sub } :: Γ) 0 (Term.shift 0 t) := rfl
 

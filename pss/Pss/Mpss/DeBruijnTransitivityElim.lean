@@ -128,6 +128,18 @@ theorem var_pro {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term}
   obtain ⟨t₃, hLeft, hRight⟩ := pro_var hpv hb hα hi
   exact ⟨t₃, hRight, hLeft⟩
 
+/-- The recursive `Me-Pro × Me-Pro` source cell of de Bruijn Lemma 2. The
+context lookup fixes both promoted bounds to the same term, then the supplied
+diamond premise closes the bound reductions. -/
+theorem pro_pro_of {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {i : Nat} {α β α' β' : Term}
+    (_hpv : PrevalidExt Γ s) (hαb : Γ.equBinds i α) (hβb : Γ.equBinds i β)
+    (hα : MEqRed Γ s α α') (hβ : MEqRed Γ s β β') :
+    ∃ t₃, MEqRedJ Γ s α' t₃ ∧ MEqRedJ Γ s β' t₃ := by
+  have hEq : α = β := Ctx.equBinds_unique hαb hβb
+  subst hEq
+  exact hdiamond hα hβ
+
 /-- The `Me-TAp × Me-TAp` source cell of de Bruijn Lemma 2. -/
 theorem tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
     (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u) :
@@ -255,6 +267,14 @@ theorem pro_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}
     ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s (.bvar i) t₃ := by
   let hsub : MSubRed Γ s (.bvar i) t := MSubRed.pro hpv hb
   exact ⟨t, ⟨MEqRed.refl hpv hsub.scoped_right⟩, ⟨hsub⟩⟩
+
+/-- The `Ms-Pro × Me-Pro` source cell of de Bruijn Lemma 1 is vacuous: one
+context index cannot carry both a subtype and equivalence binding. -/
+theorem pro_pro_vacuous {Γ : Ctx} {s : Stack} {i : Nat} {t α α' : Term}
+    (hsubBind : Γ.subBinds i t) (heqBind : Γ.equBinds i α)
+    (_hα : MEqRed Γ s α α') :
+    ∃ t₃, MEqRedJ Γ s t t₃ ∧ MSubRedJ Γ s α' t₃ := by
+  exact (Ctx.subBinds_equBinds_false hsubBind heqBind).elim
 
 /-- The `Ms-Equ × Me-Var` source cell of de Bruijn Lemma 1. -/
 theorem equ_var {Γ : Ctx} {s : Stack} {i : Nat} {t : Term}

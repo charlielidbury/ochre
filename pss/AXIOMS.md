@@ -317,6 +317,13 @@ closures, 2 inactive outstanding).
   `EqDiamonds.tAp_tAp`, `EqDiamonds.tAp_app`, `EqDiamonds.app_tAp`,
   `StrongCommutes.appTop_top_tAp`, `StrongCommutes.appTop_top_app`, and
   `StrongCommutes.appTop_app_tAp`. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnTransitivityElim.lean`
+  — added lookup uniqueness/disjointness helpers
+  `Ctx.lookupSub_unique`, `Ctx.lookupEqu_unique`,
+  `Ctx.subBinds_unique`, `Ctx.equBinds_unique`, and
+  `Ctx.subBinds_equBinds_false`; used them to add
+  `EqDiamonds.pro_pro_of` and `StrongCommutes.pro_pro_vacuous`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

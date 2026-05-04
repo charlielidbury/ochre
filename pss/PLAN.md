@@ -375,6 +375,10 @@ hard caveats.
      `EqDiamonds.app_tAp`, `StrongCommutes.appTop_top_tAp`,
      `StrongCommutes.appTop_top_app`, and
      `StrongCommutes.appTop_app_tAp`.
+     Lookup uniqueness/disjointness helpers now support variable-grid
+     cells: `EqDiamonds.pro_pro_of` closes `Me-Pro × Me-Pro`
+     recursively, and `StrongCommutes.pro_pro_vacuous` closes the
+     impossible `Ms-Pro × Me-Pro` clash.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.
