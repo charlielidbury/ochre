@@ -158,6 +158,61 @@ The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-30+
 retires it once the cofinite-z bridge lands and `descend_body_equ_uniform_app`
 is consumed end-to-end.
 
+**Iter-30 (commit forthcoming) — SPIKE result: all three paths are
+fundamentally blocked.** Spiked Path 1 (the dispatch's recommended
+trampoline). After Steps 1+2 (widen Γ → `⟨z, .top, .sub⟩::Γ` via
+`Lemma_22_WeakeningMEqRed`, descend at z via the iter-29 wrapper
+applied to widened ctx) the output lives at `MEqRed (⟨z, .top, .sub⟩::Γ)
+s (body^[z]) (subst y (.fvar z) target)`. Step 3 (strip the synthetic
+head) is **mathematically impossible**: the descended source `body^[z]`
+mentions z (when body has bvar 0). A `.sub` (or `.equ`) head strip
+that descends into `MEqRed.app`'s sub-derivation reaches stack
+`(b^[z]::st)` and demands `Term.fv (b^[z]) ⊆ Γ.dom`. But b^[z] mentions
+z (when b has bvar 0), and z ∉ Γ.dom by hypothesis. The blocker is
+**not** about Me-Pro lookups (which `.sub` strips would skip): it's
+about the recursive PrevalidExt invariant in the `MEqRed.app`
+constructor's stack-extension.
+
+Path 2 (single-witness in-dom + rename to stray) is blocked because
+`MEqRed.rename_stray` requires BOTH endpoints outside Γ.dom — and the
+in-dom witness violates this. There is no `rename_internal_to_stray`
+infrastructure, and Γ may be empty (no in-dom witness even exists).
+
+Path 3 (relax SubstOk in `_MEqRed_descend_at_head_subst`) requires a
+~500-800 line refactor of all 8 MEqRed arms with a different prevalid-
+side strategy. Beyond iter-30 scope.
+
+Detailed analysis lives at `Pss/Mpss/Renaming.lean §13` (iter-30 spike
+section; no code added — analysis only). Sharpened plan for iter-31+:
+two architectural levers actually unblock the gap.
+
+**Iter-31+ — Lever A: Open-target descent.** Reformulate the descent
+on the OPENED form of target. Take `h : MEqRed (⟨y, α, .equ⟩::Γ) s
+(body^[y]) target` and produce `∀ y' ∉ L', MEqRed Γ s (body^[y'])
+(target'^[y'])` where `target'` is reverse-engineered from `target`
+(when `y ∉ fv body`, `target` factors as `target'^[y]` for a unique
+y-fresh `target'`). Cost: ~600-1000 lines. Requires building a
+canonical `Term.openInverse y target` function and proving the descent
+is body-shape-sensitive.
+
+**Iter-31+ — Lever B (PREFERRED): α-equivariance renaming functor.**
+Build `MEqRed.rename_at_head` taking `MEqRed (⟨y, α, .equ⟩::Γ) s
+(body^[y]) target` with `y ∉ Γ.dom` and producing
+`MEqRed (⟨y', α, .equ⟩::Γ) s (body^[y']) (rename y y' target)` for
+any `y' ∉ Γ.dom`. This is the α-equivariance lemma in functor form.
+With this in hand, the consumer rebuilds the cofinite hypothesis
+without going through stray-z descent — they pick a canonical y₀ from
+the IH, descend in the input form (no widening), then α-rename
+y₀ → y' for arbitrary y'. Cost: ~500-800 lines (the "next big
+architectural lever" mentioned in iter-29 dispatch docs). Requires a
+Type-valued recursive renaming preserving MEqRed's constructor
+structure. Also useful for several other axioms (`Lemma_1_inline_app_bet_residual`,
+`Lemma_2_inline_bet_residual_axiom`).
+
+The §11.4–§11.5 functor (avoidsFv-flawed) is RETAINED for now; iter-30+
+retires it once the cofinite-z bridge lands and `descend_body_equ_uniform_app`
+is consumed end-to-end.
+
 **Post Type-LC refactor (Option B, branch `type-lc-experiment`):**
 `avoidsPro_refl` (axiom #12 in the original audit) was discharged to a
 real theorem in commit `64162c2` after lifting `Term.LC` from `Prop` to

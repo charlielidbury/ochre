@@ -8944,4 +8944,159 @@ noncomputable def MEqRed.descend_body_equ_uniform_app
   rw [hstk_eq, hsrc_eq] at hres
   simpa using hres
 
+/-! ## §13. Iter-30 — `MEqRed.descend_body_equ_stray` cofinite-z bridge
+(SPIKE + ANALYSIS, function NOT defined this iteration)
+
+### What we wanted
+
+```lean
+noncomputable def MEqRed.descend_body_equ_stray
+    {Γ : Ctx} {s : Stack} {y z : String} {α body target : Term}
+    (hy_body : y ∉ Term.fv body)
+    (hy_souter : ∀ β ∈ s, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (hz_Γ : z ∉ Γ.dom)            -- KEY: z is OUTSIDE Γ.dom (cofinite)
+    (hz_souter : ∀ β ∈ s, z ∉ Term.fv β)
+    (hyz : y ≠ z)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) target)
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true) :
+    MEqRed Γ s (body^[z]) (Term.subst y (.fvar z) target)
+```
+
+This is the cofinite-z analogue of `descend_body_equ_uniform_app`. The
+existing wrapper (§12, iter-29) requires `z ∈ Γ.dom`; the consumer
+(`Lemma_2_inline_app_bet_residual_axiom`) needs the dual `z ∉ Γ.dom`
+shape so it can rebuild a cofinite hypothesis `∀ y' ∉ L', MEqRed Γ s
+(body_dst^[y']) (body_join^[y'])` for `MEqRed.bet`'s body slot.
+
+### Why iter-30 ships analysis instead of code
+
+Iter-30's dispatch proposed three paths to bridge the gap. After
+spiking each, **all three paths hit a fundamental wall** that requires
+infrastructure beyond this iteration's scope:
+
+#### Path 1 (recommended in dispatch): widen + descend + strip
+
+1. **Widen** Γ → `⟨z, .top, .sub⟩::Γ` via `Lemma_22_WeakeningMEqRed`,
+   producing `h_w : MEqRed (⟨y, α, .equ⟩::⟨z, .top, .sub⟩::Γ) s
+   (body^[y]) target`. This step is doable but requires NEW preservation
+   lemmas: `avoidsPro_Lemma_22` and `cofinDomFresh_Lemma_22`. These
+   would mirror `avoidsPro_NarrowingMEqRed_aux` (Pss/Mpss/Diamond.lean
+   §approx.1127, ~50 lines) but for `Lemma_22_WeakeningMEqRed`'s
+   `MEqRedScoped`-routed structure (~100-150 lines via `toScoped` /
+   `toMEqRed` conversions).
+
+2. **Descend at z** via `MEqRed.descend_at_head` with `Γ₁ :=
+   ⟨z, .top, .sub⟩::Γ`, `Γ₂ := []`. Output:
+   `MEqRed (⟨z, .top, .sub⟩::Γ) s (body^[z]) (Term.subst y (.fvar z) target)`.
+   This step is mechanical given Step 1's preservation.
+
+3. **Strip the synthetic `⟨z, .top, .sub⟩` head** to reach bare Γ.
+   **BLOCKED — fundamental.**
+
+   The descended derivation has source `body^[z]`, which mentions `z`
+   whenever `body` has `bvar 0` occurrences (the typical case for
+   `MEqRed.bet` consumers). When we try to strip the synthetic head,
+   the `MEqRed.app` arm of strip descends to a sub-derivation at stack
+   `(b^[z] :: st)` for source `body^[z] = .app (a^[z]) (b^[z])`. The
+   smaller-context `PrevalidExt Γ (b^[z]::st)` invariant requires
+   `Term.fv (b^[z]) ⊆ Γ.dom`. But `b^[z]` may have `z ∈ fv` (when
+   `b` mentions `bvar 0`), and `z ∉ Γ.dom` by hypothesis.
+
+   **This means strip is mathematically impossible for z-mentioning
+   sources.** The `.sub` strip variant has the same blocker — it's not
+   about `Me-Pro` lookups; it's about the stack-extension invariant
+   in the `MEqRed.app` constructor's recursive structure.
+
+#### Path 2 (single-witness + rename): also blocked
+
+Pick `z₀ ∈ Γ.dom` (any in-dom name), invoke `descend_body_equ_uniform_app`
+to get `MEqRed Γ s (body^[z₀]) (subst y (.fvar z₀) target)`. Then
+rename `z₀ → z` via `MEqRed.rename_stray`. **BLOCKED:**
+`rename_stray` requires both endpoints OUTSIDE `Γ.dom`, but `z₀ ∈ Γ.dom`
+violates this. There is no `rename_internal_to_stray` functor in the
+toolkit, and building one would require proving substitution-of-named-
+variable when the source lives in scope (a `Lemma_31`-shaped proof in
+the opposite direction, which has no existing analogue).
+
+If `Γ` is empty, no `z₀ ∈ Γ.dom` even exists — Path 2 cannot start.
+Even when `Γ` is non-empty, the rename step is the blocker.
+
+#### Path 3 (relax SubstOk in `_MEqRed_descend_at_head_subst`)
+
+Reformulate the internal helper to accept stray `z`. The `SubstOk` premise
+is needed to discharge the substituted prevalid invariants in the `pro`
+arm: `equBinds_split_equ` requires that the substituted stack and ctx
+admit a `Prevalid` derivation. Relaxing to stray `z` requires re-proving
+the prevalid-side helpers (`prevalidExt_subst_stray` exists at §7 but
+operates on whole-context substitution, not partitioned head-removal +
+substitution).
+
+This is a significant refactor (~500-800 lines re-proving all 8 MEqRed
+arms with a different prevalid-side strategy). Beyond iter-30 scope.
+
+### Why all three paths share the same root issue
+
+The descended derivation's source `body^[z]` mentions `z` when `body`
+contains `bvar 0`. The output context Γ does NOT contain `z`. Any
+construction that produces `MEqRed Γ s (body^[z]) (...)` with
+`z ∉ Γ.dom` must thread `z`-references through MEqRed sub-derivations
+that respect the smaller-context PrevalidExt invariants. **The
+`MEqRed.app` constructor's recursive descent into stack `(b :: st)`
+fundamentally requires `b`'s fv to be in the dom**, which is incompatible
+with `z`-mentioning operands at a context that excludes `z`.
+
+This is not a Lean/encoding issue — it's a **semantic constraint of
+the locally-nameless MPSS calculus**. The paper-level argument
+sidesteps it via α-conversion on named binders: a fresh y' is introduced
+and the body opened at y' from scratch, never substituting an existing
+y → y'.
+
+### What infrastructure would actually unblock this
+
+Two architectural levers:
+
+#### Lever A: Open-target descent
+
+Reformulate the descent to operate on the OPEN body (not the opened
+form). Take `h : MEqRed (⟨y, α, .equ⟩::Γ) s (body^[y]) target` with
+`avoidsPro h y` and produce, for each fresh y',
+`MEqRed Γ s (body^[y']) (target'^[y'])` for some `target'` with
+`y' ∉ fv target'`. The construction proceeds by reverse-engineering
+the opening of `target` to identify a `target'` such that `target =
+target'^[y]`.
+
+Cost: ~600-1000 lines. Requires building a `Term.openInverse y target`
+function (when `y ∉ fv body` for the source side, the target side has
+y-occurrences only at positions corresponding to bvar-0 positions in
+target', so reverse-opening is canonical). Proving this is a body-shape-
+sensitive functor.
+
+#### Lever B: Renaming functor with α-equivariance
+
+Build `MEqRed.rename_at_head` taking `MEqRed (⟨y, α, .equ⟩::Γ) s
+(body^[y]) target` with `y ∉ Γ.dom` and producing `MEqRed (⟨y', α,
+.equ⟩::Γ) s (body^[y']) (rename y y' target)` for any `y' ∉ Γ.dom`.
+This is the α-equivariance lemma in functor form. With this in hand,
+the consumer rebuilds the cofinite hypothesis directly without needing
+a stray-z descent at all.
+
+Cost: ~500-800 lines (per the iter-29 dispatch's mention of "the next
+big architectural lever"). Requires a Type-valued recursive renaming
+that preserves `MEqRed`'s constructor structure.
+
+### iter-30 deliverable
+
+Iter-30 ships:
+* **This analysis section** crystallising why the three dispatch-proposed
+  paths hit the same wall.
+* **Sharpened iter-30+ blocker** in `AXIOMS.md`: the cofinite-z gap is
+  not a missing 100-200-line wrapper — it's a fundamental
+  architectural bottleneck that requires Lever A (open-target descent)
+  or Lever B (α-equivariance renaming functor).
+
+Subsequent iterations should attack Lever B (the more general tool;
+also useful for several other axioms in the β-residual cell). -/
+
 end Pss
