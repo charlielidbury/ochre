@@ -334,6 +334,13 @@ closures, 2 inactive outstanding).
   `EqDiamonds.any_tAp`, and `StrongCommutes.appTop_any_tAp_of`; the
   strong-commutativity `Ms-Equ` branch delegates to the local diamond
   premise. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` and
+  `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `Top`-headed
+  application shape inversions `MEqRed.app_top_inv`,
+  `MSubRed.app_top_inv`, `MEqRedStar.app_top_inv`, and
+  `MSubRedStar.app_top_inv`, plus direct star-level joins
+  `diamond_tAp_eqStar` and `commute_appTop_subStar_tAp`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -385,6 +385,10 @@ hard caveats.
      `Top`-headed application/`TAp` cells are consolidated through
      `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
      `StrongCommutes.appTop_any_tAp_of`.
+     `Top`-headed application shape inversions are available for
+     one-step and star equivalence/subtype reductions, and the direct
+     star-level joins `diamond_tAp_eqStar` and
+     `commute_appTop_subStar_tAp` close the corresponding `TAp` targets.
      De Bruijn well-formedness now has constructor inversions
      `WfM.fun_inv` and `WfM.app_inv`; the application inversion uses a
      `Sigma` witness because the star judgments are Type-valued.

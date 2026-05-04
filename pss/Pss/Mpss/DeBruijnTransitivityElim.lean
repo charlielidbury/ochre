@@ -222,6 +222,25 @@ theorem diamond_eqStar_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   subst t₂
   exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
 
+/-- Direct star-level join for a `Top`-headed application against its `TAp`
+target. -/
+theorem diamond_tAp_eqStar {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MEqRedStar Γ s (.app .top u) t) :
+    ∃ t₃, MEqRedStar Γ s .top t₃ ∧ MEqRedStar Γ s t t₃ := by
+  have hShape := h.app_top_inv
+  cases hShape with
+  | inl hTop =>
+    subst hTop
+    exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+  | inr hApp =>
+    obtain ⟨arg', hEq⟩ := hApp
+    subst hEq
+    have hTargetScoped : Term.Scoped Γ.depth (.app .top arg') :=
+      h.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+    have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
+    exact ⟨.top, Relation.ReflTransGen.refl, MEqRedStar.single (MEqRed.tAp hpv hArg')⟩
+
 /-- Lift a single-step equivalence diamond to one equivalence step against an
 equivalence-reduction chain. -/
 noncomputable def diamond_step_eqStar_of
@@ -395,6 +414,25 @@ theorem commute_subStar_eqStar_top {Γ : Ctx} {s : Stack} {t₁ t₂ : Term}
   subst t₁
   subst t₂
   exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+
+/-- Direct star-level join for a subtype chain from a `Top`-headed
+application against its `TAp` target. -/
+theorem commute_appTop_subStar_tAp {Γ : Ctx} {s : Stack} {u t : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u)
+    (h : MSubRedStar Γ s (.app .top u) t) :
+    ∃ t₃, MEqRedStar Γ s t t₃ ∧ MSubRedStar Γ s .top t₃ := by
+  have hShape := h.app_top_inv
+  cases hShape with
+  | inl hTop =>
+    subst hTop
+    exact ⟨.top, Relation.ReflTransGen.refl, Relation.ReflTransGen.refl⟩
+  | inr hApp =>
+    obtain ⟨arg', hEq⟩ := hApp
+    subst hEq
+    have hTargetScoped : Term.Scoped Γ.depth (.app .top arg') :=
+      h.scoped_right (Term.Scoped.app Term.Scoped.top hu)
+    have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
+    exact ⟨.top, MEqRedStar.single (MEqRed.tAp hpv hArg'), Relation.ReflTransGen.refl⟩
 
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/

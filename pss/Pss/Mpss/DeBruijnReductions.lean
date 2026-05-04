@@ -957,6 +957,70 @@ theorem MEqRedStar.abs_inv {Γ : Ctx} {s : Stack} {bound body v : Term}
       subst hEq
       exact hStep.some.abs_inv
 
+/-- A one-step equivalence reduction from a `Top`-headed application can only
+target either `Top` or another `Top`-headed application. -/
+theorem MEqRed.app_top_inv {Γ : Ctx} {s : Stack} {arg v : Term}
+    (h : MEqRed Γ s (.app .top arg) v) :
+    v = .top ∨ ∃ arg', v = .app .top arg' := by
+  cases h with
+  | app hOp _ =>
+    have hTop := MEqRed.top_inv hOp
+    subst hTop
+    exact Or.inr ⟨_, rfl⟩
+  | tAp _ _ =>
+    exact Or.inl rfl
+
+/-- A one-step subtype reduction from a `Top`-headed application can only
+target either `Top` or another `Top`-headed application. -/
+theorem MSubRed.app_top_inv {Γ : Ctx} {s : Stack} {arg v : Term}
+    (h : MSubRed Γ s (.app .top arg) v) :
+    v = .top ∨ ∃ arg', v = .app .top arg' := by
+  cases h with
+  | top _ _ =>
+    exact Or.inl rfl
+  | equ _ heq =>
+    exact heq.app_top_inv
+  | app hOp _ =>
+    have hTop := MSubRed.top_inv hOp
+    subst hTop
+    exact Or.inr ⟨arg, rfl⟩
+
+/-- A de Bruijn equivalence-reduction chain from a `Top`-headed application
+can only target either `Top` or another `Top`-headed application. -/
+theorem MEqRedStar.app_top_inv {Γ : Ctx} {s : Stack} {arg v : Term}
+    (h : MEqRedStar Γ s (.app .top arg) v) :
+    v = .top ∨ ∃ arg', v = .app .top arg' := by
+  induction h with
+  | refl =>
+    exact Or.inr ⟨arg, rfl⟩
+  | tail _ hStep ih =>
+    cases ih with
+    | inl hTop =>
+      subst hTop
+      exact Or.inl hStep.some.top_inv
+    | inr hApp =>
+      obtain ⟨arg', hEq⟩ := hApp
+      subst hEq
+      exact hStep.some.app_top_inv
+
+/-- A de Bruijn subtype-reduction chain from a `Top`-headed application can
+only target either `Top` or another `Top`-headed application. -/
+theorem MSubRedStar.app_top_inv {Γ : Ctx} {s : Stack} {arg v : Term}
+    (h : MSubRedStar Γ s (.app .top arg) v) :
+    v = .top ∨ ∃ arg', v = .app .top arg' := by
+  induction h with
+  | refl =>
+    exact Or.inr ⟨arg, rfl⟩
+  | tail _ hStep ih =>
+    cases ih with
+    | inl hTop =>
+      subst hTop
+      exact Or.inl hStep.some.top_inv
+    | inr hApp =>
+      obtain ⟨arg', hEq⟩ := hApp
+      subst hEq
+      exact hStep.some.app_top_inv
+
 /-! ## Reflexivity -/
 
 /-- Reflexivity of de Bruijn equivalence reduction.
