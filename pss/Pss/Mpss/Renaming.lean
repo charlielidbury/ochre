@@ -8906,4 +8906,42 @@ noncomputable def MEqRed.descend_at_head
   rw [hΓ₂_eq] at hres
   exact hres
 
+/-- **Iter-29 — `MEqRed.descend_body_equ_uniform_app` (consumer wrapper).**
+
+Specializes `MEqRed.descend_at_head` to `Γ₂ = []` and rewrites the
+substitution-form output back to the opening-form expected by
+`Lemma_2_DiamondMEqRed_core`'s App×Bet body-descent step. Applies
+`Stack.subst_fresh` (via `hy_souter`), `Term.subst_open_fresh` (via
+`hy_body`), and trivializes `Ctx.AvoidsBoundFv [] y` for the §12 wrapper.
+
+Caller-facing output: for any `z ∈ Γ.dom`, a derivation at the bare
+context Γ on `body^[z]`. -/
+noncomputable def MEqRed.descend_body_equ_uniform_app
+    {Γ : Ctx} {s : Stack} {y : String} {α body target : Term}
+    (hy_body : y ∉ Term.fv body)
+    (hy_souter : ∀ β ∈ s, y ∉ Term.fv β)
+    (hy_Γ : y ∉ Γ.dom)
+    (h : MEqRed (⟨y, α, .equ⟩ :: Γ) s (body^[y]) target)
+    (hAvoid : avoidsPro h y = true)
+    (hFresh : cofinDomFresh h = true)
+    (z : String) (hz_Γ : z ∈ Γ.dom) :
+    MEqRed Γ s (body^[z]) (Term.subst y (.fvar z) target) := by
+  classical
+  -- Step 1: Build the empty-Γ₂ AvoidsBoundFv witness.
+  have hΓ₂_avoid : Ctx.AvoidsBoundFv ([] : Ctx) y := Ctx.AvoidsBoundFv_nil y
+  -- Step 2: Invoke the iter-28 wrapper. The input ctx
+  -- `⟨y, α, .equ⟩ :: Γ` is def-eq to `[] ++ ⟨y, α, .equ⟩ :: Γ`,
+  -- so `h` is accepted directly with the explicit `Γ₂ := []`.
+  have hres :=
+    MEqRed.descend_at_head (Γ₁ := Γ) (Γ₂ := ([] : Ctx)) (stk := s)
+      h hΓ₂_avoid hy_Γ hAvoid hFresh z hz_Γ
+  -- Step 4: Rewrite the stack via Stack.subst_fresh (using hy_souter).
+  have hstk_eq : Stack.subst y (.fvar z) s = s := Stack.subst_fresh hy_souter
+  -- Step 5: Rewrite the source term via Term.subst_open_fresh (using hy_body).
+  have hsrc_eq : Term.subst y (.fvar z) (body^[y]) = body^[z] :=
+    Term.subst_open_fresh hy_body
+  -- Step 6: Combine — the output ctx ([] ++ Γ) reduces to Γ definitionally.
+  rw [hstk_eq, hsrc_eq] at hres
+  simpa using hres
+
 end Pss
