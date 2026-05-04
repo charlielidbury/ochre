@@ -737,6 +737,12 @@ closures, 2 inactive outstanding).
   binder while keeping the changed `.equ` entry one level down; the
   equivalence lookup at index `1` is exposed as
   `MEqRed.pro_equ_under_head_one_residual`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_equ_under_head_old_bound_to_new_bvar1`, the one-level-deeper
+  analogue of `msub_equ_head_old_bound_to_new_bvar0`. It joins the old
+  shifted under-head `.equ` bound to the new `bvar 1`, assuming the
+  old-to-new bound equivalence has already been lifted to the same
+  preserved-head residual stack. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

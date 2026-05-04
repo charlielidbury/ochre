@@ -1843,6 +1843,38 @@ theorem msub_equ_head_old_bound_to_new_bvar0 {Γ : Ctx} {s : Stack}
     (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
     (MEqRedStar.single hVarNew)
 
+/-- Under a preserved head and changed `.equ` entry, the old shifted
+under-head bound diagrammatically subtypes the new variable at index `1`.
+This is the one-level-deeper analogue of
+`msub_equ_head_old_bound_to_new_bvar0` for the residual exposed by
+`MEqRed.pro_equ_under_head_one_residual`. -/
+theorem msub_equ_under_head_old_bound_to_new_bvar1 {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new : Term}
+    (hpvNew : PrevalidExt (head :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 old)) (Term.shift 0 (Term.shift 0 new))) :
+    MSub (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 old)) (.bvar 1) := by
+  have hNewShiftScoped :
+      Term.Scoped (Ctx.depth (head :: { bound := new, kind := .equ } :: Γ))
+        (Term.shift 0 (Term.shift 0 new)) := by
+    have hOnce : Term.Scoped (Γ.depth + 1) (Term.shift 0 new) :=
+      Term.shift_scoped 0 Γ.depth new (Nat.zero_le _) hNewScoped
+    have hTwice : Term.Scoped ((Γ.depth + 1) + 1)
+        (Term.shift 0 (Term.shift 0 new)) :=
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 new) (Nat.zero_le _) hOnce
+    simpa [Ctx.depth, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using hTwice
+  have hNewRefl : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 new)) (Term.shift 0 (Term.shift 0 new)) :=
+    MEqRed.refl hpvNew hNewShiftScoped
+  have hVarNew : MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 1) (Term.shift 0 (Term.shift 0 new)) :=
+    MEqRed.pro hpvNew (by simp [Ctx.equBinds]) hNewRefl
+  exact MSub.intro
+    (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
+    (MEqRedStar.single hVarNew)
+
 /-- A reflexive argument equivalence can always be lifted under a changed
 `.equ` head and residual stack. This is the stack-stable base case for the
 head `Me-Pro` bridge. -/
