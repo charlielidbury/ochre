@@ -898,6 +898,18 @@ def shift (cutoff : Nat) : Stack → Stack :=
 @[simp] theorem shift_cons (cutoff : Nat) (α : Term) (s : Stack) :
     shift cutoff (α :: s) = Term.shift cutoff α :: shift cutoff s := rfl
 
+/-- If shifting a stack produces a non-empty stack, the original stack was
+non-empty and the head/tail are the shifted original head/tail. -/
+theorem shift_eq_cons_inv {cutoff : Nat} {s : Stack} {α : Term} {rest : Stack}
+    (h : shift cutoff s = α :: rest) :
+    ∃ β tail, s = β :: tail ∧ α = Term.shift cutoff β ∧ rest = shift cutoff tail := by
+  cases s with
+  | nil =>
+    simp at h
+  | cons β tail =>
+    cases h
+    exact ⟨β, tail, rfl, rfl, rfl⟩
+
 /-- Stack-level lift commutation inherited pointwise from terms. -/
 theorem shiftBy_lift_comm (base cutoff amount : Nat) (s : Stack)
     (hbase : base ≤ cutoff) :
@@ -1238,6 +1250,20 @@ def head_scoped {Γ : Ctx} {s : Stack} {α : Term} :
   intro h
   cases h with
   | cons _ hα => exact hα
+
+/-- Extract the tail prevalidity witness when the non-empty stack is known by
+equality rather than definitional shape. -/
+def tail_of_eq_cons {Γ : Ctx} {s : Stack} {α : Term} {rest : Stack}
+    (hpv : PrevalidExt Γ s) (h : s = α :: rest) : PrevalidExt Γ rest := by
+  subst h
+  exact PrevalidExt.tail hpv
+
+/-- Extract the head scoping witness when the non-empty stack is known by
+equality rather than definitional shape. -/
+def head_scoped_of_eq_cons {Γ : Ctx} {s : Stack} {α : Term} {rest : Stack}
+    (hpv : PrevalidExt Γ s) (h : s = α :: rest) : Term.Scoped Γ.depth α := by
+  subst h
+  exact PrevalidExt.head_scoped hpv
 
 /-- Push a scoped operand onto a prevalid extended context. -/
 def push {Γ : Ctx} {s : Stack} {α : Term} :

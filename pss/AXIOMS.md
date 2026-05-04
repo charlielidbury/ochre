@@ -994,6 +994,11 @@ closures, 2 inactive outstanding).
   the form needed by recursive `FOp` body replacements: the old-to-new
   changed-head equivalence is supplied at the preserved head's tail stack and
   weakened under that head locally. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added `Stack.shift_eq_cons_inv` plus
+  equality-based `PrevalidExt.tail_of_eq_cons` and
+  `PrevalidExt.head_scoped_of_eq_cons` extractors. These support future
+  `FOp` residual proofs that learn non-empty stack shape from an equality
+  against `Stack.shift`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
