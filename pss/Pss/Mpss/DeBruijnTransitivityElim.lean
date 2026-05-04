@@ -1331,6 +1331,50 @@ theorem msub_appAbs_subStep_beta_or_toTop_or_appAbs {Γ : Ctx} {s : Stack}
       ∃ bound' body' arg', t = .app (.abs bound' body') arg' :=
   msub_appAbs_subStar_beta_or_toTop_or_appAbs hpv hScoped (MSubRedStar.single hSub)
 
+/-- Abstraction-headed application subtype-chain branch classifier for
+strong commutativity. The raw `Top` and `Top`-headed target branches already
+produce the required join against any equivalence chain from the same source;
+the remaining branches are the β target package and the residual
+abstraction-headed shape. -/
+theorem commute_appAbs_subStar_beta_or_join_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRedStar Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t₁) ∨
+      (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
+  cases msub_appAbs_subStar_beta_or_top_or_appTop_or_appAbs hSub with
+  | inl hTop =>
+    exact Or.inr (Or.inl
+      (commute_appAbs_subStar_topOrAppTop_eqStar hpv hScoped hSub
+        (Or.inl hTop) hEq))
+  | inr hRest =>
+    cases hRest with
+    | inl hBet =>
+      exact Or.inl hBet
+    | inr hRest =>
+      cases hRest with
+      | inl hAppTop =>
+        exact Or.inr (Or.inl
+          (commute_appAbs_subStar_topOrAppTop_eqStar hpv hScoped hSub
+            (Or.inr hAppTop) hEq))
+      | inr hAppAbs =>
+        exact Or.inr (Or.inr hAppAbs)
+
+/-- One-step specialization of
+`commute_appAbs_subStar_beta_or_join_or_appAbs`. -/
+theorem commute_appAbs_subStep_beta_or_join_or_appAbs {Γ : Ctx} {s : Stack}
+    {bound body arg t₁ t₂ : Term} (hpv : PrevalidExt Γ s)
+    (hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg))
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t₁) ∨
+      (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' :=
+  commute_appAbs_subStar_beta_or_join_or_appAbs hpv hScoped
+    (MSubRedStar.single hSub) hEq
+
 /-- Lift single-step strong commutativity to one subtype step against an
 equivalence-reduction chain. -/
 noncomputable def commute_subStep_eqStar_of

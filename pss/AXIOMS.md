@@ -564,6 +564,13 @@ closures, 2 inactive outstanding).
   `msubStar_appAbs_subStep_beta_or_toTop_or_appAbs`,
   combining raw `Top` and `Top`-headed target branches into a single
   target-to-`Top` diagrammatic branch. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStar_beta_or_join_or_appAbs` and its one-step
+  specialization `commute_appAbs_subStep_beta_or_join_or_appAbs`,
+  classifying abstraction-headed application commutation branches: raw
+  `Top` / `Top`-headed subtype targets now immediately produce the
+  strong-commutation join, leaving only the β package and residual
+  abstraction-headed shape. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
