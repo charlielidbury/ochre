@@ -461,6 +461,18 @@ theorem commute_topStep_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
   exact ⟨.top, Relation.ReflTransGen.refl,
     MSubRedStar.single (MSubRed.top hpv hTargetScoped)⟩
 
+/-- Star-level commutation for an `Ms-Equ` subtype step. The join is the
+equivalence diamond against the right-hand equivalence chain, with the right
+join edge embedded into subtype reduction through `Ms-Equ`. -/
+noncomputable def commute_equStep_eqStar_of {Γ : Ctx} {s : Stack}
+    (hdiamond : EqDiamonds Γ s) {t₀ t₁ t₂ : Term}
+    (hpv : PrevalidExt Γ s) (heqSub : MEqRed Γ s t₀ t₁)
+    (heqs : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ :=
+    diamond_step_eqStar_of hdiamond heqSub heqs
+  exact ⟨t₃, hLeft, MSubRedStar.of_MEqRedStar hpv hRight⟩
+
 /-- Direct star-level join for a subtype chain from a `Top`-headed
 application against its `TAp` target. -/
 theorem commute_appTop_subStar_tAp {Γ : Ctx} {s : Stack} {u t : Term}

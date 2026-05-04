@@ -255,7 +255,9 @@ hard caveats.
      `MEqRedStar.scoped_*`, and `MSubRedStar.scoped_*`. Named closure
      helpers are available as `MEqRedStar.single`,
      `MSubRedStar.single`, `MEqRedStar.trans`, and
-     `MSubRedStar.trans`. Shape inversions are available as
+     `MSubRedStar.trans`; equivalence chains embed into subtype chains
+     through `MSubRedStar.of_MEqRedStar` under a fixed `PrevalidExt`.
+     Shape inversions are available as
      `MEqRed.top_inv`, `MSubRed.top_inv`, `MEqRedStar.top_inv`,
      `MSubRedStar.top_inv`, `MEqRed.abs_inv`, and
      `MEqRedStar.abs_inv`.
@@ -386,6 +388,10 @@ hard caveats.
      Direct star-level helpers `diamond_refl_eqStar` and
      `commute_topStep_eqStar` close reflexive equivalence and `Ms-Top`
      against arbitrary equivalence chains.
+     The star-level `Ms-Equ` branch is named as
+     `commute_equStep_eqStar_of`; it lifts the local equivalence diamond
+     and embeds the resulting right equivalence chain through
+     `MSubRedStar.of_MEqRedStar`.
      `Top`-headed application/`TAp` cells are consolidated through
      `EqDiamonds.tAp_any`, `EqDiamonds.any_tAp`, and
      `StrongCommutes.appTop_any_tAp_of`.

@@ -203,6 +203,10 @@ closures, 2 inactive outstanding).
 * `Pss/Mpss/DeBruijnReductions.lean` — added named closure helpers
   `MEqRedStar.single`, `MSubRedStar.single`, `MEqRedStar.trans`, and
   `MSubRedStar.trans`. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRedStar.of_MEqRedStar`, embedding equivalence-reduction chains
+  into subtype-reduction chains through `Ms-Equ` under a fixed
+  `PrevalidExt`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added de Bruijn shape
   inversions for reductions and reduction chains:
   `MEqRed.top_inv`, `MSubRed.top_inv`, `MEqRedStar.top_inv`,
@@ -333,6 +337,11 @@ closures, 2 inactive outstanding).
   helpers `diamond_refl_eqStar` and `commute_topStep_eqStar`, closing
   reflexive equivalence and `Ms-Top` steps against arbitrary
   equivalence-reduction chains. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_equStep_eqStar_of`, the star-level `Ms-Equ` commutation
+  branch obtained by lifting the local equivalence diamond and embedding
+  the right join edge through `MSubRedStar.of_MEqRedStar`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — consolidated `Top`-headed
   application/`TAp` cells with `EqDiamonds.tAp_any`,
   `EqDiamonds.any_tAp`, and `StrongCommutes.appTop_any_tAp_of`; the

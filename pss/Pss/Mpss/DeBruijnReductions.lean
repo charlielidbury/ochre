@@ -293,6 +293,18 @@ theorem MSubRedStar.trans {Γ : Ctx} {s : Stack} {u v w : Term}
     MSubRedStar Γ s u w :=
   Relation.ReflTransGen.trans h₁ h₂
 
+/-- An equivalence-reduction chain embeds into subtype reduction when the
+extended context is prevalid, by wrapping each equivalence step in `Ms-Equ`. -/
+theorem MSubRedStar.of_MEqRedStar {Γ : Ctx} {s : Stack} {u v : Term}
+    (hpv : PrevalidExt Γ s) (h : MEqRedStar Γ s u v) :
+    MSubRedStar Γ s u v := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail y z hStar hStep ih =>
+    exact Relation.ReflTransGen.trans ih
+      (MSubRedStar.single (MSubRed.equ hpv hStep.some))
+
 /-! ## Prevalidity invariants -/
 
 /-- Context prevalidity from de Bruijn equivalence reduction. -/
