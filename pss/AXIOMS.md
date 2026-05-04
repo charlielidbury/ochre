@@ -960,6 +960,10 @@ closures, 2 inactive outstanding).
   `meq_equ_head_stack_lift_fun_cons_handler_of_replacements`, and
   `meq_equ_head_stack_lift_bet_handler_of_replacements`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_head_stack_lift_from_replacements`, wiring the canonical
+  stack-lift handlers into the changed-head stack-lift splitter and leaving
+  only recursive lift premises explicit. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
