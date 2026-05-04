@@ -270,6 +270,13 @@ closures, 2 inactive outstanding).
   `WEquMStar.of_StepAt_fwd`, and `WEquMStar.of_StepAt_back`. These reuse
   `MEqRed.of_StepAt` and require endpoint well-formedness at the star
   layer. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — seeded the de Bruijn
+  diagrammatic subtyping layer with `MSub`, `MSubStar`, `MSub.refl`,
+  `WSubM.toMSub`, and `WSubMStar.toMSubStar`. The last helper strips
+  transitive well-subtyping to a transitive chain of diagrammatic
+  subtyping steps; collapsing that chain to one `MSub` remains the
+  future de Bruijn Theorem 3 port. Imported from `Pss.lean`; no
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added context-prevalidity
   extractors for all five de Bruijn well-formed judgments:
   `WfM.prevalid`, `WSubM.prevalid`, `WSubMStar.prevalid`,

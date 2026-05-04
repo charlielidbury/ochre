@@ -14,6 +14,7 @@ import Pss.Mpss.DeBruijnReductions
 import Pss.Mpss.DeBruijnContextRed
 import Pss.Mpss.DeBruijnWellFormed
 import Pss.Mpss.DeBruijnOperationalSem
+import Pss.Mpss.DeBruijnTransitivityElim
 import Pss.Mpss.EqRed
 import Pss.Mpss.SubRed
 import Pss.Mpss.ContextRed

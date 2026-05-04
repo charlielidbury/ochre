@@ -340,6 +340,12 @@ hard caveats.
      `*.of_StepAt_fwd` / `*.of_StepAt_back` helpers.
 5. **Phase 5 — headline theorems.** Re-prove Lemmas 1, 2; Theorems 3,
    4, 5. The 5 β-residuals discharge here.
+   * **Seeded 2026-05-04 on `db-refactor`:**
+     `Pss/Mpss/DeBruijnTransitivityElim.lean` now defines the de Bruijn
+     diagrammatic `MSub` / `MSubStar` layer and strips `WSubM` to `MSub`
+     plus `WSubMStar` to `MSubStar`. Collapsing `MSubStar` to `MSub`
+     remains the de Bruijn Theorem 3 port and should be driven by the
+     future de Bruijn Lemma 1 / Lemma 2 proofs.
 6. **Phase 6 — cleanup, axiom audit.** Confirm 9 → 4 active axioms
    (just the Wf-inversion cluster + Prop-17 + Lemma 24). Update
    `AXIOMS.md` to reflect.
