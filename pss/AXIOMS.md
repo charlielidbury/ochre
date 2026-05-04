@@ -564,11 +564,14 @@ closures, 2 inactive outstanding).
   keeping it separate from the locally-nameless headline `Pss.Sanity`
   audit until the atomic switch. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — reduced the Type-valued
-  `StepPreservesWfM` premise to two explicit payloads:
-  `StepBetaPreservesWfM` for β instantiation and
-  `StepAbsBoundPreservesWfM` for abstraction-bound replacement. Added
-  `StepAt.wf_right_nonempty_of` and `StepPreservesWfM_of` to prove all
+  `StepPreservesWfM` premise to explicit payloads and added
+  `StepAt.wf_right_nonempty_of` / `StepPreservesWfM_of` to prove the
   structural operational cases. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — sharpened the preservation
+  reducer further: abstraction-bound operational steps now use recursive
+  preservation for the bound and require only the de Bruijn narrowing
+  payload `WfMSubHeadReplace` for replacing the `.sub` head in the body
+  context. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added abstraction-headed
   application shape inversions `MEqRed.app_abs_inv` and
   `MSubRed.app_abs_inv`, separating β targets, `Top`, `Top`-headed

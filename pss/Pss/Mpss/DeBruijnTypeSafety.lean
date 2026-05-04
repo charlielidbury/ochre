@@ -100,14 +100,14 @@ def StepBetaPreservesWfM : Type :=
     WfM Γ (.app (.abs bound body) arg) →
       WfM Γ (Term.instantiate 0 arg body)
 
-/-- Remaining abstraction-bound payload for de Bruijn operational
-well-formedness preservation. The body lives under the old bound, so changing
-the bound still needs the future narrowing/replacement theorem. -/
-def StepAbsBoundPreservesWfM : Type :=
-  ∀ {Γ : Ctx} {bound bound' body : Term},
-    StepAt Γ.depth bound bound' →
-      WfM Γ (.abs bound body) →
-        WfM Γ (.abs bound' body)
+/-- Remaining `.sub` head replacement payload for de Bruijn well-formedness.
+This is the de Bruijn narrowing/replacement bridge needed when an abstraction
+bound changes. -/
+def WfMSubHeadReplace : Type :=
+  ∀ {Γ : Ctx} {old new body : Term},
+    MEqRed Γ [] old new →
+      WfM ({ bound := old, kind := .sub } :: Γ) body →
+        WfM ({ bound := new, kind := .sub } :: Γ) body
 
 namespace StepAt
 
@@ -117,7 +117,7 @@ wrapped in `Nonempty` because `StepAt` is `Prop`-valued while `WfM` is
 `Type`-valued. -/
 theorem wf_right_nonempty_of
     (hBeta : StepBetaPreservesWfM)
-    (hAbsBound : StepAbsBoundPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplace)
     {depth : Nat} {t t' : Term} (hstep : StepAt depth t t') :
     Nonempty (∀ {Γ : Ctx}, Γ.depth = depth → WfM Γ t → WfM Γ t') := by
   induction hstep with
@@ -141,7 +141,12 @@ theorem wf_right_nonempty_of
         WfM.app hFun (WSubMStar.trans hArg.wf_left hBack hArg)⟩
   | @absBound depth bound bound' body hBound _hBodyScoped _ih =>
       exact ⟨fun {Γ} hdepth hwf =>
-        hAbsBound (by simpa [hdepth] using hBound) hwf⟩
+        let hParts := hwf.fun_inv
+        let hwfBound' : WfM Γ bound' := _ih.some hdepth hParts.1
+        let hEqBound : MEqRed Γ [] bound bound' :=
+          MEqRed.of_StepAt (by simpa [hdepth] using hBound) rfl
+            (PrevalidExt.nil hParts.1.prevalid)
+        WfM.fun_ hwfBound' (hSubHeadReplace hEqBound hParts.2)⟩
   | @absBody depth bound body body' _hBoundScoped hBody ih =>
       exact ⟨fun {Γ} hdepth hwf =>
         let hParts := hwf.fun_inv
@@ -152,13 +157,13 @@ theorem wf_right_nonempty_of
 end StepAt
 
 /-- De Bruijn operational well-formedness preservation reduced to the two
-remaining hard payloads: β instantiation and abstraction-bound replacement. -/
+remaining hard payloads: β instantiation and `.sub` head replacement. -/
 noncomputable def StepPreservesWfM_of
     (hBeta : StepBetaPreservesWfM)
-    (hAbsBound : StepAbsBoundPreservesWfM) :
+    (hSubHeadReplace : WfMSubHeadReplace) :
     StepPreservesWfM := by
   intro Γ t t' hstep hwf
-  exact (StepAt.wf_right_nonempty_of hBeta hAbsBound hstep).some rfl hwf
+  exact (StepAt.wf_right_nonempty_of hBeta hSubHeadReplace hstep).some rfl hwf
 
 /-- De Bruijn preservation, conditional on operational well-formedness
 preservation. The operational step is at the ambient context depth so the
