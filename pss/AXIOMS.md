@@ -210,6 +210,10 @@ closures, 2 inactive outstanding).
   `MEqRedStar.single`, `MSubRedStar.single`, `MEqRedStar.trans`, and
   `MSubRedStar.trans`. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRedStar.replace_from_step_replacement`, lifting a per-step raw
+  subtype-reduction replacement into a chain-level replacement. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRedStar.of_MEqRedStar`, embedding equivalence-reduction chains
   into subtype-reduction chains through `Ms-Equ` under a fixed
   `PrevalidExt`. No axiom-count change.

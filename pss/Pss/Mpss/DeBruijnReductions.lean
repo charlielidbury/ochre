@@ -330,6 +330,18 @@ theorem MSubRedStar.trans {Γ : Ctx} {s : Stack} {u v w : Term}
     MSubRedStar Γ s u w :=
   Relation.ReflTransGen.trans h₁ h₂
 
+/-- Transport a subtype-reduction chain when each old step has a replacement
+chain in the target context. -/
+theorem MSubRedStar.replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
+    {u v : Term}
+    (hStep : ∀ {x y : Term}, MSubRed Γ s x y → MSubRedStar Γ' s x y)
+    (h : MSubRedStar Γ s u v) : MSubRedStar Γ' s u v := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hLast ih =>
+      exact MSubRedStar.trans ih (hStep hLast.some)
+
 /-- An equivalence-reduction chain embeds into subtype reduction when the
 extended context is prevalid, by wrapping each equivalence step in `Ms-Equ`. -/
 theorem MSubRedStar.of_MEqRedStar {Γ : Ctx} {s : Stack} {u v : Term}
