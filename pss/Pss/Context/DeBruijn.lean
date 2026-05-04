@@ -504,6 +504,41 @@ theorem equBinds_sub_under_head_replace {Γ : Ctx} {head : CtxEntry}
         Ctx.equBinds_sub_head_replace (by simpa [equBinds] using hlook)
       exact ⟨a, by simpa [equBinds] using htail, rfl⟩
 
+/-- Replacing a `.sub` entry at any context index preserves equivalence
+lookups, because equivalence lookup ignores `.sub` entries and all other
+entries remain in place. -/
+theorem equBinds_replaceAt_sub {Γ : Ctx} {cutoff i : Nat}
+    {old new α : Term} :
+    equBinds (replaceAt cutoff { bound := old, kind := .sub } Γ) i α →
+    equBinds (replaceAt cutoff { bound := new, kind := .sub } Γ) i α := by
+  induction Γ generalizing cutoff i α with
+  | nil =>
+      cases i <;> simp [equBinds, replaceAt]
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero =>
+          exact Ctx.equBinds_sub_head_replace
+      | succ cutoff =>
+          cases i with
+          | zero =>
+              cases head with
+              | mk bound kind =>
+                  cases kind <;> simp [equBinds, replaceAt]
+          | succ i =>
+              intro h
+              simp [equBinds, replaceAt] at h ⊢
+              cases hlook : lookupEqu (replaceAt cutoff { bound := old, kind := .sub } Γ) i with
+              | none =>
+                  simp [hlook] at h
+              | some a =>
+                  simp [hlook] at h
+                  subst h
+                  have htail : equBinds
+                      (replaceAt cutoff { bound := new, kind := .sub } Γ) i a :=
+                    ih (cutoff := cutoff) (i := i) (α := a)
+                      (by simpa [equBinds] using hlook)
+                  exact ⟨a, by simpa [equBinds] using htail, rfl⟩
+
 /-- Changing the bound stored in an `.equ` head does not affect subtype
 lookups, because subtype lookup skips `.equ` heads. -/
 theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :

@@ -859,6 +859,10 @@ closures, 2 inactive outstanding).
   `Ctx.replaceAt` plus `Prevalid.replaceAt`, giving arbitrary preserved
   context prefixes a reusable replacement primitive for future `.sub`
   replacement inductions. No axiom-count change.
+* `Pss/Context/DeBruijn.lean` — added arbitrary-depth equivalence lookup
+  transport `Ctx.equBinds_replaceAt_sub` for `.sub` entry replacement.
+  This generalizes the head and one-preserved-head `Me-Pro` lookup cases
+  needed by future `.sub` replacement induction. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.pro_equ_head_replace_succ`, the non-head `Me-Pro` replacement
   case. It uses the new nonzero equivalence-lookup transport and a
