@@ -1319,6 +1319,36 @@ theorem commute_abs_subStep_eqStep_top_or_absAbs {Γ : Ctx} {s : Stack}
   commute_abs_subStar_eqStar_top_or_absAbs hpv hScoped
     (MSubRedStar.single hSub) (MEqRedStar.single hEq)
 
+/-- One-step abstraction dispatcher with source side conditions recovered from
+the inspected subtype step. -/
+theorem commute_abs_subStep_eqStep_top_or_absAbs_from_left {Γ : Ctx} {s : Stack}
+    {bound body t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.abs bound body) t₁)
+    (hEq : MEqRed Γ s (.abs bound body) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound₁ body₁ bound₂ body₂,
+        t₁ = .abs bound₁ body₁ ∧
+          t₂ = .abs bound₂ body₂ ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₁ body₁) ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₂ body₂) :=
+  commute_abs_subStep_eqStep_top_or_absAbs hSub.prevalidExt hSub.scoped_left
+    hSub hEq
+
+/-- One-step abstraction dispatcher with source side conditions recovered from
+the inspected equivalence step. -/
+theorem commute_abs_subStep_eqStep_top_or_absAbs_from_right {Γ : Ctx} {s : Stack}
+    {bound body t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.abs bound body) t₁)
+    (hEq : MEqRed Γ s (.abs bound body) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound₁ body₁ bound₂ body₂,
+        t₁ = .abs bound₁ body₁ ∧
+          t₂ = .abs bound₂ body₂ ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₁ body₁) ∧
+          MSubStar Γ s (.abs bound body) (.abs bound₂ body₂) :=
+  commute_abs_subStep_eqStep_top_or_absAbs hEq.prevalidExt hEq.scoped_left
+    hSub hEq
+
 /-- If a subtype chain from an abstraction-headed application reaches `Top`,
 any equivalence chain from the same source joins it at `Top`. -/
 theorem commute_appAbs_to_top_eqStar {Γ : Ctx} {s : Stack}
