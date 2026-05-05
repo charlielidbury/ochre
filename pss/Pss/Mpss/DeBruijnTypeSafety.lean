@@ -3548,6 +3548,59 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderNineHeads
       { bound := head₉, kind := kind₉ }]) rfl hArgBound hpv
   simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
 
+/-- Prevalidity transport for β-instantiation under ten preserved context
+heads. This is the fixed prevalidity leaf surface needed by the nine-head
+binder-body frontier and the ten-head structural leaves. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderTenHeads
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) s) :
+    PrevalidExt
+      ({ bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅,
+          kind := kind₅ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆,
+          kind := kind₆ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇,
+          kind := kind₇ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈,
+          kind := kind₈ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉,
+          kind := kind₉ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀,
+          kind := kind₁₀ } :: Γ)
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s) := by
+  have h := BetaInstantiationPreservesPrevalidExtUnderHeads
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ }]) rfl hArgBound hpv
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below eight
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.top
@@ -4798,6 +4851,388 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderNineHeadsStack.of_constru
       subst hC
       simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
         Nat.add_assoc] using hFOp hArgBound hBound hα hBody
+
+/-- `MEqRed.top` is stable under de Bruijn β-instantiation below ten
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.top
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) s) :
+    MEqRed
+      ({ bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ)
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+      .top .top :=
+  MEqRed.top (BetaInstantiationPreservesPrevalidExtUnderTenHeads
+    hArgBound hpv)
+
+/-- `MEqRed.app` is stable under de Bruijn β-instantiation below ten
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.app
+    {Γ : Ctx} {arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ u u' v v' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack}
+    (hFn :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+      MEqRed targetCtx
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) v ::
+          Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) u)
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) u'))
+    (hArg :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+      MEqRed targetCtx []
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) v)
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) v')) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) (.app u v))
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) (.app u' v')) := by
+  simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
+
+/-- Reflexive equivalence reduction is stable under de Bruijn
+β-instantiation below ten preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.refl
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := head₇, kind := kind₇ } ::
+          { bound := head₈, kind := kind₈ } ::
+          { bound := head₉, kind := kind₉ } ::
+          { bound := head₁₀, kind := kind₁₀ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) u)
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) u) := by
+  have hArgShiftScoped :
+      Term.Scoped (Γ.depth + 10) (Term.shiftBy 0 10 arg) := by
+    simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Term.shiftBy_scoped 0 10 Γ.depth arg (Nat.zero_le Γ.depth)
+        hArgBound.scoped_left
+  have hu' :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+      Term.Scoped (Ctx.depth targetCtx)
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 10)
+          (Term.instantiate 10 (Term.shiftBy 0 10 arg) u) :=
+      Term.instantiate_scoped 10 (Γ.depth + 10)
+        (Term.shiftBy 0 10 arg) u (by omega) hArgShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.depth, Nat.add_assoc] using hInst
+  exact MEqRed.refl
+    (BetaInstantiationPreservesPrevalidExtUnderTenHeads hArgBound hpv) hu'
+
+/-- Combined ten-preserved-head `MEqRed.var` substitution helper. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.var
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hi : i < Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ)) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) (.bvar i))
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) (.bvar i)) :=
+  BetaInstantiationPreservesMEqRedUnderTenHeadsStack.refl hArgBound hpv
+    (Term.Scoped.bvar hi)
+
+/-- `MEqRed.tAp` is stable under de Bruijn β-instantiation below ten
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.tAp
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := head₇, kind := kind₇ } ::
+          { bound := head₈, kind := kind₈ } ::
+          { bound := head₉, kind := kind₉ } ::
+          { bound := head₁₀, kind := kind₁₀ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) (.app .top u))
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) .top) := by
+  have h := BetaInstantiationPreservesMEqRedUnderTenHeadsStack.refl
+    hArgBound hpv hu
+  simpa [Term.instantiate] using
+    MEqRed.tAp
+      (BetaInstantiationPreservesPrevalidExtUnderTenHeads hArgBound hpv)
+      (MEqRed.scoped_left h)
+
+/-- The `MEqRed.pro` constructor is stable under de Bruijn β-instantiation
+below ten preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.pro
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ α α' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ : CtxEntryKind} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hb : Ctx.equBinds ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := bound, kind := .sub } :: Γ) i α)
+    (hα :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+      MEqRed targetCtx
+        (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) α)
+        (Term.instantiate 10 (Term.shiftBy 0 10 arg) α')) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₀, kind := kind₁₀ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 10 (Term.shiftBy 0 10 arg) s)
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) (.bvar i))
+      (Term.instantiate 10 (Term.shiftBy 0 10 arg) α') := by
+  have h := BetaInstantiationPreservesMEqRedUnderHeadsStack.pro
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ }])
+    hArgBound hpv hb hα
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
+
+/-- Assemble ten-head equivalence β-instantiation from constructor-local
+frontiers. Structural leaves and `Me-Pro` are discharged here; the explicit
+inputs are the recursive binder constructors. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTenHeadsStack.of_constructors
+    (hFun : BetaInstantiationPreservesMEqRedUnderTenHeadsFunStackPayload)
+    (hBet : BetaInstantiationPreservesMEqRedUnderTenHeadsBetStackPayload)
+    (hFOp : BetaInstantiationPreservesMEqRedUnderTenHeadsFOpStackPayload) :
+    BetaInstantiationPreservesMEqRedUnderTenHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ s hArgBound hred
+  generalize hC : ({ bound := head₁, kind := kind₁ } ::
+      { bound := head₂, kind := kind₂ } ::
+      { bound := head₃, kind := kind₃ } ::
+      { bound := head₄, kind := kind₄ } ::
+      { bound := head₅, kind := kind₅ } ::
+      { bound := head₆, kind := kind₆ } ::
+      { bound := head₇, kind := kind₇ } ::
+      { bound := head₈, kind := kind₈ } ::
+      { bound := head₉, kind := kind₉ } ::
+      { bound := head₁₀, kind := kind₁₀ } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀
+      kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ with
+  | pro hpv hb hα ih =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTenHeadsStack.pro
+        hArgBound hpv hb (ih hArgBound rfl)
+  | bet ht hbody harg =>
+      subst hC
+      exact hBet hArgBound ht hbody harg
+  | top hpv =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTenHeadsStack.top
+        hArgBound hpv
+  | app hOp hArg ihOp ihArg =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTenHeadsStack.app
+        (ihOp hArgBound rfl) (ihArg hArgBound rfl)
+  | var hpv hi =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTenHeadsStack.var
+        hArgBound hpv hi
+  | fun_ hBound hBody =>
+      subst hC
+      exact hFun hArgBound hBound hBody
+  | tAp hpv hu =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTenHeadsStack.tAp
+        hArgBound hpv hu
+  | fOp hBound hα hBody =>
+      subst hC
+      exact hFOp hArgBound hBound hα hBody
 
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below seven
 preserved context heads. -/

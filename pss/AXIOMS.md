@@ -52,8 +52,14 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.pro`, and
   `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.of_constructors`,
   packaging the checked nine-head structural leaves while leaving the
-  recursive ten-head binder adapters explicit. Added endpoints to
-  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  recursive ten-head binder adapters explicit. Added the fixed ten-head
+  prevalidity transport `BetaInstantiationPreservesPrevalidExtUnderTenHeads`
+  and the checked ten-head structural leaves
+  `BetaInstantiationPreservesMEqRedUnderTenHeadsStack.top`, `.app`, `.refl`,
+  `.var`, `.tAp`, and `.pro`, then packaged them as
+  `BetaInstantiationPreservesMEqRedUnderTenHeadsStack.of_constructors` while
+  leaving the recursive eleven-head binder adapters explicit. Added endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
