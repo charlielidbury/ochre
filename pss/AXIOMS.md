@@ -137,6 +137,11 @@ closures, 2 inactive outstanding).
   Added `BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.of_constructors`,
   packaging the checked fourteen-head structural leaves while leaving those
   recursive fifteen-head binder adapters explicit.
+  Added the base fifteen-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderFifteenHeadsStack` and generic
+  list-specialization wrapper
+  `BetaInstantiationPreservesMEqRedUnderFifteenHeadsStack.of_generic`,
+  starting the next recursive frontier.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
