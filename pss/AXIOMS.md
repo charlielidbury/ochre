@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — moved
+  `msubStar_abs_fun_equ_bound_body` before the residual body theorem and
+  added the dual lift `msubStar_abs_fun_body_equ_bound`, which first lifts a
+  body replacement chain under the original `.sub` head and then changes the
+  abstraction bound by an empty-stack equivalence step. This matches the raw
+  `Ms-Fun` constructor shape at the remaining nested residual site. Added the
+  new endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRedStar_replaceAt_equ_function_from_replacements` and
   `msubRedStar_replaceAt_equ_function_from_replacements`, function-valued

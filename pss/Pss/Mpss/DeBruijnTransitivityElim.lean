@@ -3139,6 +3139,48 @@ theorem msubStar_abs_fun_body_fixed_bound {Γ : Ctx}
     exact Relation.ReflTransGen.trans ih
       (MSub.to_star (msub_abs_fun_body_fixed_bound hpvNil hBoundScoped hStep))
 
+/-- Lift a diagrammatic body replacement chain through `Fun` after first
+changing the abstraction bound by an empty-stack equivalence step. -/
+theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
+    {bound bound' body body' : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBound : MEqRed Γ [] bound bound')
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hBody : MSubStar ({ bound := bound', kind := .sub } :: Γ) [] body body') :
+    MSubStar Γ [] (.abs bound body) (.abs bound' body') := by
+  have hpvBodyCtx : Prevalid ({ bound := bound, kind := .sub } :: Γ) :=
+    Prevalid.sub (PrevalidExt.ctx hpvNil) hBound.scoped_left
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil hpvBodyCtx
+  have hBodyRefl : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body :=
+    MEqRed.refl hpvBody hBodyScoped
+  exact MSubStar.trans
+    (MSub.to_star (MSub.of_MEqRed hpvNil (MEqRed.fun_ hBound hBodyRefl)))
+    (msubStar_abs_fun_body_fixed_bound hpvNil hBound.scoped_right hBody)
+
+/-- Lift a body replacement chain through `Fun` under the original `.sub`
+head, then change the abstraction bound by an empty-stack equivalence step. -/
+theorem msubStar_abs_fun_body_equ_bound {Γ : Ctx}
+    {bound bound' body body' : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBound : MEqRed Γ [] bound bound')
+    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hBody : MSubStar ({ bound := bound, kind := .sub } :: Γ) [] body body') :
+    MSubStar Γ [] (.abs bound body) (.abs bound' body') := by
+  have hBodyLift : MSubStar Γ [] (.abs bound body) (.abs bound body') :=
+    msubStar_abs_fun_body_fixed_bound hpvNil hBound.scoped_left hBody
+  have hpvBodyCtx : Prevalid ({ bound := bound, kind := .sub } :: Γ) :=
+    Prevalid.sub (PrevalidExt.ctx hpvNil) hBound.scoped_left
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil hpvBodyCtx
+  have hBody'Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body' :=
+    (hBody.scoped_right_nonempty hBodyScoped).some
+  exact MSubStar.trans hBodyLift
+    (MSubStar.of_MSubRed
+      (MSubRed.fun_ hBound.scoped_left hBound
+        (MSubRed.refl hpvBody hBody'Scoped)))
+
 /-- Fixed-bound `Fun` abstraction cell for de Bruijn Lemma 2. A body-level
 equivalence diamond under the `.sub` head lifts to the abstraction level. -/
 theorem diamond_abs_fun_body_fixed_bound {Γ : Ctx}
@@ -5949,25 +5991,6 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
           intro funBound arg body body' rest hFunScoped hArgScoped hStack hBody
           cases hStack)
         hBody
-
-/-- Lift a diagrammatic body replacement chain through `Fun` after first
-changing the abstraction bound by an empty-stack equivalence step. -/
-theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
-    {bound bound' body body' : Term}
-    (hpvNil : PrevalidExt Γ [])
-    (hBound : MEqRed Γ [] bound bound')
-    (hBodyScoped : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
-    (hBody : MSubStar ({ bound := bound', kind := .sub } :: Γ) [] body body') :
-    MSubStar Γ [] (.abs bound body) (.abs bound' body') := by
-  have hpvBodyCtx : Prevalid ({ bound := bound, kind := .sub } :: Γ) :=
-    Prevalid.sub (PrevalidExt.ctx hpvNil) hBound.scoped_left
-  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
-    PrevalidExt.nil hpvBodyCtx
-  have hBodyRefl : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body :=
-    MEqRed.refl hpvBody hBodyScoped
-  exact MSubStar.trans
-    (MSub.to_star (MSub.of_MEqRed hpvNil (MEqRed.fun_ hBound hBodyRefl)))
-    (msubStar_abs_fun_body_fixed_bound hpvNil hBound.scoped_right hBody)
 
 /-- One-step subtype replacement splitter for an innermost changed `.equ`
 head. Stable leaves are discharged immediately; constructor cases whose
