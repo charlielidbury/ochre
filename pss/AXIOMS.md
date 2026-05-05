@@ -31,8 +31,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderNineHeadsStack` and its generic
   specialization as the next recursive body surface, then exposed
   `BetaInstantiationPreservesMEqRedUnderTenHeadsStack` and its generic
-  specialization for the following binder layer. Added endpoints to
-  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  specialization for the following binder layer. Added the nine-head
+  `Me-Fun`/`Me-Bet`/`Me-FOp` payload surface, which records the next
+  constructor-facing adapters against the ten-head recursive body. Added
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
