@@ -28,6 +28,12 @@ namespace DeBruijn
 #print axioms Theorem_4_DeBruijn_NoTopFunctionSupertypesAt_of
 #print axioms Theorem_4_DeBruijn_NoTopAbstractionSupertypesAt_of
 #print axioms Theorem_4_DeBruijn_NoTopFunctionSupertypes_of
+#print axioms MEqRedAppFunctionSupertypePayload.not_of_no_top
+#print axioms MEqRedStackPreservesWSubMStarLeft.not_of_no_top
+#print axioms MEqRedFOpBodyPayload.not_of_no_top
+#print axioms MEqRedPreservesWfMContextual.not_of_no_top
+#print axioms WfMSubHeadToEquHeadPayload.not_of_no_top
+#print axioms WfMHeadKindTransportPayload.not_of_no_top
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram

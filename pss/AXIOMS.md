@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn no-`Top`
+  diagnostic audit to include the refutations of the too-broad native
+  `Me-App`, stack-left transport, native `Me-FOp` body, contextual
+  preservation, `.sub`→`.equ` head transport, and uniform head-kind
+  transport payloads. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn function-bound audit
   to include the one-step abstraction diagram and inversion extractors:
   `AbsFunctionBoundChainDiagramPayload_of_wsubm`,
