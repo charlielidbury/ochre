@@ -303,6 +303,30 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.refl
         hArgBound.scoped_left (by
           simpa [Ctx.depth, Nat.succ_eq_add_one] using hu))
 
+/-- Empty-stack reflexive equivalence reduction is stable under de Bruijn
+β-instantiation. -/
+noncomputable def BetaInstantiationPreservesMEqRed.refl
+    {Γ : Ctx} {bound arg u : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg u) := by
+  simpa using
+    BetaInstantiationPreservesMEqRedStack.refl hArgBound
+      (PrevalidExt.nil (Prevalid.sub hArgBound.prevalid hArgBound.scoped_right))
+      hu
+
+/-- Empty-stack reflexive subtype reduction is stable under de Bruijn
+β-instantiation. -/
+noncomputable def BetaInstantiationPreservesMSubRed.refl
+    {Γ : Ctx} {bound arg u : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MSubRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg u) := by
+  simpa using
+    BetaInstantiationPreservesMSubRedStack.refl hArgBound
+      (PrevalidExt.nil (Prevalid.sub hArgBound.prevalid hArgBound.scoped_right))
+      hu
+
 /-- Top terms are a closed β-instantiation well-formedness leaf. -/
 noncomputable def BetaInstantiationPreservesWfM.top
     {Γ : Ctx} {bound arg : Term}

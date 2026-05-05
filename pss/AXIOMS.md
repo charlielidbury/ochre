@@ -205,6 +205,12 @@ closures, 2 inactive outstanding).
   instantiate the stack/term, rebuild target prevalidity/scoping, and apply
   the existing de Bruijn reduction reflexivity lemmas. Added both endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added empty-stack specializations
+  `BetaInstantiationPreservesMEqRed.refl` and
+  `BetaInstantiationPreservesMSubRed.refl`, delegating through the new
+  stack-parametric reflexivity leaves with the substituted head context's
+  empty-stack prevalidity. Added both endpoints to `Pss/DeBruijnSanity.lean`;
+  no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

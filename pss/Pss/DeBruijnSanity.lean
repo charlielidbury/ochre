@@ -160,6 +160,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRed.of_stack
 #print axioms BetaInstantiationPreservesMEqRedStack.refl
 #print axioms BetaInstantiationPreservesMSubRedStack.refl
+#print axioms BetaInstantiationPreservesMEqRed.refl
+#print axioms BetaInstantiationPreservesMSubRed.refl
 #print axioms BetaInstantiationPreservesWfM.top
 #print axioms BetaInstantiationPreservesWfM.var_zero
 #print axioms BetaInstantiationPreservesWfM.var_succ_sub
