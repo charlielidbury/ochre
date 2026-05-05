@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRedSubHeadToEquHeadAsMEqPayload` and
+  `MSubRedFunStackAppendPayload.of_body_equ_transport`, reducing the
+  empty-stack-only `Ms-Fun` stack-append residual to the exact stronger
+  conversion needed at non-empty stacks: the body subtype step under the
+  source `.sub` head must be available as an equivalence body step under
+  the operand `.equ` head, so the outer step can rebuild as `Ms-Equ` over
+  `Me-FOp`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedSubHeadToEquHeadPayload` and
   `MEqRedFunStackAppendPayload.of_body_transport`, reducing the
   empty-stack-only `Me-Fun` stack-append residual to body reduction

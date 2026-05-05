@@ -515,6 +515,17 @@ def MSubRedFunStackAppendPayload : Type :=
           Term.Scoped Γ.depth operand →
             MSubRed Γ [operand] (.abs bound body) (.abs bound' body')
 
+/-- Convert the body subtype step of an empty-stack `Ms-Fun` into the
+equivalence body step needed by the non-empty-stack `Me-FOp`/`Ms-Equ`
+rebuild. This is intentionally stronger than ordinary body stack transport:
+`Ms-Fun` changes the abstraction bound, while `Ms-FOp` alone preserves it. -/
+def MSubRedSubHeadToEquHeadAsMEqPayload : Type :=
+  ∀ {Γ : Ctx} {bound operand body body' : Term},
+    MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+      Term.Scoped Γ.depth operand →
+        MEqRed ({ bound := operand, kind := .equ } :: Γ) [] body body'
+
+
 /-- Stack lift for equivalence-reduction chains under one operand stack head. -/
 def MEqRedStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
@@ -853,6 +864,17 @@ def MEqRedFunStackAppendPayload.of_body_transport
     MEqRedFunStackAppendPayload := by
   intro Γ bound bound' body body' operand hBound hBodyRed hOperand
   exact MEqRed.fOp hBound hOperand (hBody hBodyRed hOperand)
+
+/-- A body subtype-to-equivalence conversion under the operand `.equ` head
+discharges the empty-stack-only `Ms-Fun` stack append residual: rebuild the
+non-empty-stack abstraction step as `Ms-Equ` over `Me-FOp`. -/
+noncomputable def MSubRedFunStackAppendPayload.of_body_equ_transport
+    (hBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
+    MSubRedFunStackAppendPayload := by
+  intro Γ bound bound' body body' operand _hBoundScoped hBound hBodyRed hOperand
+  have hpv : PrevalidExt Γ [operand] :=
+    PrevalidExt.cons (PrevalidExt.nil hBound.prevalid) hOperand
+  exact MSubRed.equ hpv (MEqRed.fOp hBound hOperand (hBody hBodyRed hOperand))
 
 namespace Stack
 
