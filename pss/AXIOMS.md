@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added constructor-wired
+  `{sub}, {equ}, {sub}` wrappers
+  `meqRed_equ_under_sub_head_sub_tail_nil_replace_from_replacements` and
+  `msubRed_equ_under_sub_head_sub_tail_nil_replace_from_replacements`.
+  These keep lookup-sensitive residuals explicit while rebuilding app, fun,
+  and beta/subtype fun cases from raw recursive replacements. Added both
+  endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level
   `{sub}, {equ}, {sub}` diagrammatic wrappers
   `meqRedStar_equ_under_sub_head_sub_tail_nil_replace_from_handlers` and
