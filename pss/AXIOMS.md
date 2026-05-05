@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added innermost and
+  under-head `.equ` subtype replacement wrappers
+  `msubRed_equ_head_replace_from_body_replacements` and
+  `msubRed_equ_under_head_replace_from_body_replacements`. These wire the
+  chain-aware `Ms-Fun` body handler into whole-step replacement, so callers
+  can keep recursive fun-body transports as `MSubStar`. Added both endpoints
+  to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added chain-aware canonical
   `Ms-Fun` handlers
   `msub_equ_head_fun_handler_of_body_replacement` and
