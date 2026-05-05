@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added named de Bruijn Theorem 4
+  no-`Top` obstruction endpoints
+  `Theorem_4_DeBruijn_NoTopFunctionSupertypesAt_of`,
+  `Theorem_4_DeBruijn_NoTopAbstractionSupertypesAt_of`, and
+  `Theorem_4_DeBruijn_NoTopFunctionSupertypes_of`, and added them to the
+  de Bruijn axiom audit. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 3 audit to
   include the existing `Theorem_3_DeBruijn_WSubMStar_toMSub_of` and
   `Theorem_3_DeBruijn_WEquMStar_toMSub_of` use-sites, alongside the newer

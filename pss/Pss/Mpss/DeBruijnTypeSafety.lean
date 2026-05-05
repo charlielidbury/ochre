@@ -46,6 +46,14 @@ noncomputable def NoTopFunctionSupertypesAt_of
   obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
   cases hAbsTop
 
+/-- Named de Bruijn Theorem 4 obstruction: context-generic function
+supertypes of `Top` are impossible once Theorem 3 is available at every
+context. -/
+noncomputable def Theorem_4_DeBruijn_NoTopFunctionSupertypesAt_of
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ []) :
+    NoTopFunctionSupertypesAt :=
+  NoTopFunctionSupertypesAt_of hcomm
+
 /-- Once de Bruijn Theorem 3 is available at every context, `Top` cannot have
 any abstraction supertype. -/
 noncomputable def NoTopAbstractionSupertypesAt_of
@@ -58,6 +66,14 @@ noncomputable def NoTopAbstractionSupertypesAt_of
   obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
   cases hAbsTop
 
+/-- Named de Bruijn Theorem 4 obstruction: context-generic abstraction
+supertypes of `Top` are impossible once Theorem 3 is available at every
+context. -/
+noncomputable def Theorem_4_DeBruijn_NoTopAbstractionSupertypesAt_of
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ []) :
+    NoTopAbstractionSupertypesAt :=
+  NoTopAbstractionSupertypesAt_of hcomm
+
 /-- Once de Bruijn Theorem 3 is available at the empty context, `Top` cannot
 have a function supertype. -/
 noncomputable def NoTopFunctionSupertypes_of
@@ -69,6 +85,13 @@ noncomputable def NoTopFunctionSupertypes_of
   subst hJoinTop
   obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
   cases hAbsTop
+
+/-- Named de Bruijn Theorem 4 closed obstruction: at the empty context,
+function supertypes of `Top` are impossible once Theorem 3 is available. -/
+noncomputable def Theorem_4_DeBruijn_NoTopFunctionSupertypes_of
+    (hcomm : StrongCommutes [] []) :
+    NoTopFunctionSupertypes :=
+  NoTopFunctionSupertypes_of hcomm
 
 /-- The context-generic obstruction specializes to the closed progress
 obstruction. -/
